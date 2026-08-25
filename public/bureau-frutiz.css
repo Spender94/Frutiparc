@@ -1399,3 +1399,115 @@ body.bureau-frutiz .fen #chat-panel #pen-bar { grid-area: 3 / 2; }
 body.bureau-frutiz .fen #chat-panel #accent-bar { grid-area: 4 / 2; }
 body.bureau-frutiz .fen #chat-panel .compose { grid-area: 5 / 2; }
 
+
+/* ══ LES DEUX JOURNAUX — « Mon historique » et « Événements » ═══════════════
+   `box.UserLog` et `box.SiteLog` (0x582a9, 0xa9da2) n'ajoutent rien à
+   `win.Log` (DoInitAction sprite#750, 0x57281) qu'une icône : `linkIco` vaut
+   « icoUserLog » (#533) ou « icoSiteLog » (#576), un clip dont chaque IMAGE
+   est une illustration et dont on choisit l'image par le TYPE de l'entrée
+   (`gotoAndStop(item.type)` — d'où les étiquettes « forum », « chat »,
+   « levelUp », « médaille »…). Ces images sont déjà sorties du SWF dans
+   /fb/histo_*.svg et /fb/evt_*.svg : le mobile s'en sert déjà.
+
+   Ce que dit `win.Log` :
+     • `flResizable = false` — la fenêtre ne se redimensionne pas ;
+     • `main.showFrame` min 300 × 200, sans fond ;
+     • `blocMax = 5` — CINQ blocs par page, quoi qu'il arrive ;
+     • `pageMax = ceil(liste.length / 5) − 1`, `prevPage`/`nextPage` bornent ;
+     • chaque bloc est un `cpDocument` de style `frSheet`, min 300 × 60,
+       marge `y.min = 6`, contenant une case de 60 (l'illustration) et le
+       texte ;
+     • le texte est `<b>date - </b>contenu`, et TOUT en gras si l'entrée est
+       neuve (`flNew`) — la date sort de `Lang.formatDateString('short', t)`,
+       « mar 25 aout 23:16 », que le light écrit déjà pareil ;
+     • le pied est un `cpPageSelector` min 300 × 24 dans `margin.bottom`, qui
+       affiche « (index+1)/(pageMax+1) ».
+
+   Relevé 1:1 (fenêtre 314 × 246 posée en 375, 293) :
+     cadre 375 · #DDDDDD 376-377 · bandeau 296..311 · séparateur 312-313
+     carte 1 : #DDDDDD 312-313 · #ADE76B 314-315 · chair 316..371 ·
+               #ADE76B 372-373 · #DDDDDD 374-375
+     blanc 376-377, puis la carte 2 : #DDDDDD 378-379 · #ADE76B 380-381 …
+   Soit une carte de 60 de haut liseré vert compris (le `min.h` du bytecode),
+   un contour `#DDDDDD` de 2 px PEINT HORS de la boîte, et 6 px d'un bloc à
+   l'autre — dont 4 mangés par les deux contours. Exactement la loi des
+   écrans à bouille.
+   Horizontalement : blanc 378-379, contour 380-381, liseré 382-383, chair
+   384.., le texte commence en 444 — soit une case d'illustration de 60.
+   Le reflet de la chair : blanc .64 → 0 sur 8 px (huit valeurs mesurées).
+   L'encre : `#335511`, Verdana gras 10 px, interligne 12. */
+body.bureau-frutiz .fen #evt-panel { display: flex; flex-direction: column; min-height: 0; }
+body.bureau-frutiz .fen #evt-panel .fenetre {
+  display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
+  background: transparent; border: 0; border-radius: 0; box-shadow: none;
+}
+/* Le bandeau du panneau mobile fait doublon avec celui de la fenêtre. */
+body.bureau-frutiz .fen #evt-panel .fen-titre { display: none; }
+/* Le corps se serre, comme celui du salon : le relevé donne 2 px de blanc
+   entre le liseré de la fenêtre et le contour du premier bloc — pas les 6 px
+   que `.fen-corps` laisse par défaut. */
+body.bureau-frutiz .fen:has(#evt-panel) .fen-corps { margin: 0 2px 0; }
+body.bureau-frutiz .fen #evt-panel #evt-liste {
+  flex: 1 1 auto; min-height: 0;
+  /* Rien ne rogne : le contour `#DDDDDD` d'un bloc est peint HORS de sa
+     boîte, et il vient toucher le bandeau pour le premier. */
+  overflow: visible;
+  background: #FFFFFF; padding: 2px 2px 0;
+}
+/* Un bloc : la case de 60 pour l'illustration, puis le texte. Le contour
+   `#DDDDDD` est une ombre à écart — il déborde de la boîte, comme d'époque,
+   et vient toucher le séparateur du bandeau pour le premier bloc. */
+body.bureau-frutiz .fen #evt-panel .evt-item {
+  display: flex; gap: 0; align-items: flex-start;
+  box-sizing: border-box; width: 300px; height: 60px; min-height: 60px;
+  margin: 0 0 6px; padding: 0;
+  background: linear-gradient(rgba(255, 255, 255, .64), rgba(255, 255, 255, 0) 8px), #CCF599;
+  border: 2px solid #ADE76B; border-radius: 0;
+  box-shadow: 0 0 0 2px #DDDDDD;
+}
+body.bureau-frutiz .fen #evt-panel .evt-item .vis {
+  flex: 0 0 60px; width: 60px; height: 56px; align-self: stretch;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+body.bureau-frutiz .fen #evt-panel .evt-item .vis img { max-width: 60px; max-height: 56px; }
+/* LA TYPO. Relevé sur la carte d'époque : interligne 12, hauteur de
+   capitale 8, et « mar 25 aout 23:16 - Connexion » tient en 172 px avant de
+   passer à la ligne dans une case de 236. C'est du 12 px GRAS de la même
+   famille que le fil du salon (174 px au banc d'essai) — pas du 10 px
+   Verdana, qui n'en ferait que 132 et ne couperait pas au bon endroit. */
+body.bureau-frutiz .fen #evt-panel .evt-item .txt {
+  flex: 1 1 auto; min-width: 0; overflow: hidden;
+  font-size: 12px; line-height: 12px; font-weight: 400;
+  color: #335511; word-break: normal; overflow-wrap: break-word;
+}
+body.bureau-frutiz .fen #evt-panel .evt-item .quand { font-weight: 700; }
+/* Une entrée NEUVE a toute sa ligne en gras — et rien de plus : le SWF ne
+   l'agrandit pas (c'était une liberté du mobile, qui la garde). */
+body.bureau-frutiz .fen #evt-panel .evt-item.neuf .txt { font-weight: 700; font-size: 12px; }
+/* LE PIED : les deux gélules aux extrémités, le compte au milieu. Le dessin
+   est celui du SWF (/fb/fleche_*.svg), en 16 px, ceint de 2 px `#DDDDDD`
+   comme toutes les gélules du bureau. */
+/* LE PIED fait 24 (`cpPageSelector`, min 300 × 24) et la gélule 16, ceinte
+   de ses 2 px : 2 + 20 + 2 en hauteur, et le contour à 1 px du bord du
+   corps. Relevé : contour 381..382 et 514..515, gélule 383..398 / 516..531. */
+body.bureau-frutiz .fen #evt-panel .fen-pied {
+  flex: 0 0 24px; height: 24px; align-items: center;
+  padding: 2px 1px; box-sizing: border-box; background: #FFFFFF; margin: 0;
+}
+body.bureau-frutiz .fen #evt-panel .fen-page {
+  width: 16px; height: 16px; margin: 0 2px; border-radius: 4px;
+  box-shadow: 0 0 0 2px #DDDDDD;
+}
+body.bureau-frutiz .fen #evt-panel .fen-page img { width: 16px; height: 16px; }
+body.bureau-frutiz .fen #evt-panel .fen-page:active img { transform: none; }
+/* D'époque les deux gélules gardent leurs couleurs même quand il n'y a qu'une
+   page : `cpPageSelector` ne les grise pas. Elles ne font rien, voilà tout. */
+body.bureau-frutiz .fen #evt-panel .fen-page[disabled] { opacity: 1; }
+body.bureau-frutiz .fen #evt-panel #evt-page {
+  font: 400 12px/14px Verdana, Geneva, sans-serif; color: #000000;
+}
+body.bureau-frutiz .fen #evt-panel .evt-vide,
+body.bureau-frutiz .fen #evt-panel .evt-charge {
+  font-size: 12px; line-height: 12px; font-weight: 700; color: #335511; padding: 12px 6px;
+  text-align: left;
+}

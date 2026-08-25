@@ -4412,18 +4412,26 @@
       return it;
     });
 
-    // Découpage : on remplit tant que la carte suivante tient. Une carte plus
-    // haute que la fenêtre occupe sa page à elle seule, sinon on tournerait sans
-    // jamais avancer.
-    // clientHeight comprend le rembourrage, où les cartes ne vont pas : on le
-    // retire, sinon on en pose une de trop et la barre de défilement apparaît.
-    var cs = getComputedStyle(box);
-    var dispo = box.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
-    var bornes = [0], hauteur = 0;
-    for (var i = 0; i < cartes.length; i++) {
-      var h = cartes[i].offsetHeight + ecart(cartes[i]);
-      if (hauteur && hauteur + h > dispo) { bornes.push(i); hauteur = 0; }
-      hauteur += h;
+    // Découpage. Sur le BUREAU, c'est un compte fixe : `win.Log.blocMax`
+    // vaut 5 (0x57c2d), et la fenêtre ne se redimensionne pas — cinq blocs
+    // par page, toujours. Sur mobile, où la hauteur varie du simple au double
+    // et où les cartes ont des hauteurs très inégales, on remplit tant que la
+    // suivante tient : un compte figé y laisserait tantôt un grand vide,
+    // tantôt une barre de défilement.
+    var bornes = [0];
+    if (document.body.classList.contains("bureau-frutiz")) {
+      for (var b = BLOC_MAX; b < cartes.length; b += BLOC_MAX) bornes.push(b);
+    } else {
+      // clientHeight comprend le rembourrage, où les cartes ne vont pas : on le
+      // retire, sinon on en pose une de trop et la barre de défilement apparaît.
+      var cs = getComputedStyle(box);
+      var dispo = box.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+      var hauteur = 0;
+      for (var i = 0; i < cartes.length; i++) {
+        var h = cartes[i].offsetHeight + ecart(cartes[i]);
+        if (hauteur && hauteur + h > dispo) { bornes.push(i); hauteur = 0; }
+        hauteur += h;
+      }
     }
     etat.page = Math.max(0, Math.min(etat.page, bornes.length - 1));
     var debut = bornes[etat.page];
@@ -4433,7 +4441,14 @@
     }
     box.scrollTop = 0;
     majPied(etat.page, bornes.length);
+    // Sur le bureau, la FENÊTRE suit le nombre de blocs de la page — c'est le
+    // `frameSet` d'époque qui la recalcule (cf. `ajusterJournal`).
+    if (window.BureauFrutiz && BureauFrutiz.ajusterJournal) {
+      BureauFrutiz.ajusterJournal(suite - debut);
+    }
   }
+  // `win.Log.blocMax` (0x57c2d) : cinq blocs par page sur le bureau.
+  var BLOC_MAX = 5;
   // Marge basse d'une carte : elle compte dans la place occupée.
   function ecart(carte) {
     return parseFloat(getComputedStyle(carte).marginBottom) || 0;
@@ -5755,14 +5770,19 @@
   // quatre onglets alimentés par /api/light/fiche, qui réunit la commande chat
   // `userinfo` et les classements FrutiScore de la section Championnat.
   var ficheEtat = { pseudo: null, data: null, onglet: "frutiz" };
-  var MOIS_COURTS = ["janv", "févr", "mars", "avr", "mai", "juin",
+  // ATTENTION : cette table s'appelait `MOIS_COURTS`, comme celle des
+  // journaux — même portée, donc la SECONDE déclaration écrasait la première
+  // et le « Mon historique » datait en « août » là où le bureau écrit
+  // « aout ». Relevé sur Ruffle : « mar 25 aout 23:16 ». Deux noms
+  // distincts, et chacune reste ce qu'elle est.
+  var MOIS_FICHE = ["janv", "févr", "mars", "avr", "mai", "juin",
     "juil", "août", "sept", "oct", "nov", "déc"];
   // Lang.formatDateString(.., "day_short") : « 3 mai 26 ».
   function jourCourt(iso) {
     if (!iso) return "";
     var d = new Date(iso);
     if (isNaN(d.getTime())) return "";
-    return d.getDate() + " " + MOIS_COURTS[d.getMonth()] + " " + String(d.getFullYear() % 100).padStart(2, "0");
+    return d.getDate() + " " + MOIS_FICHE[d.getMonth()] + " " + String(d.getFullYear() % 100).padStart(2, "0");
   }
   // « aujourd'hui », « hier », sinon le jour et l'heure. Une date de visite se
   // lit d'un coup d'œil : personne ne compte les jours de tête.

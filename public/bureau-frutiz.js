@@ -37,8 +37,13 @@ window.BureauFrutiz = (function () {
     forum:      { panneau: '#forum-panel',     titre: 'Forum',          l: 920, h: 640 },
     scores:     { panneau: '#scores-panel',    titre: 'Scores',         l: 720, h: 620 },
     mail:       { panneau: '#mail-panel',      titre: 'Messagerie',     l: 640, h: 560 },
-    evenements: { panneau: '#evt-panel',       titre: 'Événements',     l: 560, h: 560 },
-    historique: { panneau: '#evt-panel',       titre: 'Mon historique', l: 560, h: 560 },
+    // LES DEUX JOURNAUX — `box.SiteLog` et `box.UserLog`, qui n'ajoutent rien
+    // à `win.Log` (0x57281) qu'une icône : `linkIco` vaut « icoSiteLog » ou
+    // « icoUserLog ». Et `win.Log.init` pose `flResizable = false` : ces
+    // fenêtres-là ne se redimensionnent pas. Le gabarit vient du relevé 1:1 —
+    // 314 × 246, cadre `#444444` compris.
+    evenements: { panneau: '#evt-panel',       titre: 'Événements',     l: 314, h: 246, fixe: true },
+    historique: { panneau: '#evt-panel',       titre: 'Mon historique', l: 314, h: 246, fixe: true },
     trombi:     { panneau: '#trombi-panel',    titre: 'Bouilloscope',   l: 780, h: 620 },
     reglages:   { panneau: '#reglages-panel',  titre: 'Préférences',    l: 560, h: 620 },
     grapiz:     { panneau: '#grapiz-panel',    titre: 'Grapiz',         l: 900, h: 660 },
@@ -1025,13 +1030,20 @@ window.BureauFrutiz = (function () {
     // La poignée de redimensionnement (butResize) : flResizable vaut vrai par
     // défaut dans WinStandard — toutes nos fenêtres l'ont.
     var minimum = rub.min || { w: 320, h: 220 };
-    var poignee = document.createElement('div');
-    poignee.className = 'fen-poignee';
-    poignee.title = 'Redimensionner';
-    fen.appendChild(poignee);
     fen.addEventListener('pointerdown', function () { premierPlan(fen); });
     rendreDeplacable(fen, titre);
-    rendreRedimensionnable(fen, poignee, minimum);
+    // `flResizable` vaut vrai par défaut dans WinStandard, mais pas partout :
+    // `win.Log.init` le met à FAUX. Une fenêtre `fixe` n'a donc pas de
+    // poignée du tout — pas même invisible.
+    if (!rub.fixe) {
+      var poignee = document.createElement('div');
+      poignee.className = 'fen-poignee';
+      poignee.title = 'Redimensionner';
+      fen.appendChild(poignee);
+      rendreRedimensionnable(fen, poignee, minimum);
+    } else {
+      fen.classList.add('fen-fixe');
+    }
     $('#bureau-fenetres').appendChild(fen);
     premierPlan(fen);
 
@@ -1042,6 +1054,24 @@ window.BureauFrutiz = (function () {
     };
     fermer.addEventListener('click', function () { fermerFenetre(panneau.id); });
     return f;
+  }
+
+  // ── LA FENÊTRE D'UN JOURNAL GRANDIT AVEC SA PAGE ─────────────────────────
+  // `win.Log` n'est pas redimensionnable, mais sa hauteur n'est pas fixe pour
+  // autant : le `frameSet` la recalcule à chaque `update()`. `main.showFrame`
+  // a `min.h = 200`, et les blocs de la page ont chacun `min.h = 60` avec 6 px
+  // d'écart — quand ils dépassent les 200, c'est la fenêtre qui cède.
+  //   hauteur = 3 (cadre+liseré) + 16 (bandeau) + zone + 24 (pied) + 2 + 3
+  //   zone    = max(200, n × 60 + (n − 1) × 6)
+  // Vérifié sur le relevé : deux blocs → zone 200 → 246 de haut, au pixel.
+  function ajusterJournal(nbBlocs) {
+    if (!actif) return;
+    var p = $('#evt-panel');
+    var f = p && fenetres[p.id];
+    if (!f || !f.fen || f.fen.classList.contains('pliee')) return;
+    var n = Math.max(1, nbBlocs || 1);
+    var zone = Math.max(200, n * 60 + (n - 1) * 6);
+    f.fen.style.height = (46 + zone) + 'px';
   }
 
   function ouvrirFenetre(tab) {
@@ -1268,6 +1298,7 @@ window.BureauFrutiz = (function () {
     majSalons: function () { majSalons(); majTitreSalon(); },
     // Rappelés par le light : la colonne des bouilles suit la liste des
     // connectés, et une émotion joue dans l'écran de la personne.
+    ajusterJournal: ajusterJournal,
     majBouilles: majBouilles,
     majListeConnectes: majListeConnectes,
     ecranDe: ecranDe,
