@@ -456,8 +456,10 @@ body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant {
    100 et haut de 20, au style `Standard.getTextStyle().def` — Verdana 10,
    couleur 0 — que la méthode passe en GRAS (`textFormat.bold = true`). */
 body.bureau-frutiz #side-list .sl-contact .nom {
-  position: absolute; left: 20px; width: 100px; top: 0; height: 18px;
-  line-height: 18px; font: 700 10px Verdana, Arial, sans-serif; color: #000000;
+  /* Le champ descend de 4 px : dans la ligne de 18, le pseudo ne se centre
+     pas sur le voyant mais s'assoit sur sa ligne de base. */
+  position: absolute; left: 20px; width: 100px; top: 4px; height: 14px;
+  line-height: 14px; font: 700 10px Verdana, Arial, sans-serif; color: #000000;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* La boîte de RECHERCHE : `mcSearchButton` (#441), que `buildList` attache à

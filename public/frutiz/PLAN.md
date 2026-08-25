@@ -99,12 +99,56 @@ second bouton du bandeau — à brancher quand les onglets du bureau (la barre
   anticrénelé mesuré à `#335511` sur l'aplat `#ADE76B`
   (ref-bureau-propre.png ; la police pixel d'époque, sans halo blanc).
 
-## Le colorSet par type de fenêtre (mesuré au pixel, session connectée)
+## Le colorSet par type de fenêtre
 
-Le générateur de teintes de `getWinStyle` n'a pas encore été localisé dans le
-bytecode — en attendant, chaque teinte est RELEVÉE sur le rendu Ruffle d'une
-vraie fenêtre (session locale connectée, cf. « La connexion locale » plus
-bas). Trois relevés faits :
+### `Standard.getWinStyle` (0x4957f) — DÉCODÉ
+
+La fonction ne calcule rien : elle rend une TABLE, type de fenêtre → les
+familles de `_global.colorSet` à employer, dans l'ordre. (Le corps est un
+`DefineFunction2` à `flags=0x12a`, donc `suppressThis` + `preloadGlobal` :
+le registre 1 y est `_global`, pas `this`.)
+
+| type | familles |
+|---|---|
+| `global` | green, white |
+| `frFileStandard` | yellow, yellow |
+| `frFileTrash` | green, green |
+| `frFileBlackList` | purple, purple |
+| `frSystem` | white, green, white — plus `bgInfo.inline = 0` |
+| `frRoomList` | pink, pink, pink |
+| `frScore` | orange, orange, orange |
+| `frScoreLight` | orange, orange, orange |
+| `frSheet` | pink, green, green |
+| `frKikooz` | brown, brown |
+| `frDef` | green, green |
+| `frInfo` | yellow, yellow |
+
+### Les RAMPES de `colorSet`
+
+Chaque famille est une rampe de neuf crans :
+`lightest, lighter, light, main, shade, dark, darker, darkest, overdark`.
+`_global.colorSet` lui-même n'est PAS construit dans main.swf (il vient d'un
+SWF chargé en amont, comme `displayParameters`), mais **deux familles y sont
+écrites en clair** — le style d'arbre de 0x49e15 les recopie telles quelles :
+
+- **green** — lightest `#FFFFFF`, lighter `#F3FFD5`, light `#DDFFBB`,
+  main `#CCF599`, shade `#ADE76B`, dark `#94DB39`, darker `#66AA22`,
+  darkest `#558811`, **overdark `#335511`** ;
+- **white** — lightest/lighter/light/main `#FFFFFF`, shade `#DDDDDD`,
+  dark `#AAAAAA`, darker `#888888`, darkest `#444444`, overdark `#222222`.
+
+Deux recoupements confirment qu'il s'agit bien des familles globales et non
+de littéraux locaux : `green.overdark` = `#335511` est exactement la couleur
+de repli documentée pour les étiquettes du bureau
+(`_global.colorSet.green.overdark`, cf. server.js) ET la couleur mesurée au
+pixel sur le rendu ; et `green.shade` = `#ADE76B` est l'aplat du bureau.
+Toute la quincaillerie du bureau se lit alors dans la rampe blanche :
+`#DDDDDD` = white.shade (les liserés), `#444444` = white.darkest (le contour),
+`#888888` = white.darker (l'anneau de la bouille).
+
+Restent inconnues : **yellow, pink, purple, orange, brown** — elles ne
+peuvent venir que du SWF qui pose `_global.colorSet`, ou d'un relevé au pixel
+sur une fenêtre de chaque type. Trois relevés déjà faits :
 
 - **Salons publics** (`frRoomList`, la teinte ROSE, ref-salons.png) :
   pastille fraise `#E01813` ; fond de liste `#FEC9C9`, lignes alternées
