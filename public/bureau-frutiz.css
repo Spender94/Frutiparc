@@ -55,7 +55,7 @@ body.bureau-frutiz #bureau-coin .daily-banner { border-radius: 10px; }
 body.bureau-frutiz #bureau .home-compte {
   position: absolute; left: 12px; bottom: 6px; z-index: 3;
   padding: 0; text-align: left; font-size: 11px;
-  color: var(--fond-txt, #2C4A0F);
+  color: var(--fond-txt, #335511);
   text-shadow: 0 0 3px var(--fond-halo, rgba(255,255,255,.85));
 }
 
@@ -78,13 +78,13 @@ body.bureau-frutiz #bureau .home-tile .ico {
   background: none; border: 0; box-shadow: none; font-size: 30px;
 }
 body.bureau-frutiz #bureau .home-tile .ico img { max-width: 46px; max-height: 46px; }
+/* L'étiquette d'époque : du texte posé À NU sur le fond (mesuré #335511 sur
+   l'aplat #ADE76B, ref-bureau-propre.png) — main.swf ne met AUCUN halo, la
+   lisibilité vient de la couleur de texte imposée par le fond d'écran
+   (--fond-txt, la loi WallPaperMng). */
 body.bureau-frutiz #bureau .home-tile .lbl {
   font-size: 11px; font-weight: 700; line-height: 1.15; text-align: center;
-  color: var(--fond-txt, #2C4A0F);
-  text-shadow:
-    0 0 2px var(--fond-halo, rgba(255,255,255,.85)),
-    0 0 5px var(--fond-halo, rgba(255,255,255,.85)),
-    0 1px 0 var(--fond-halo, rgba(255,255,255,.85));
+  color: var(--fond-txt, #335511);
 }
 
 /* ── Les fenêtres — le chrome de WinStandard, au relevé près ────────────────
@@ -166,6 +166,17 @@ body.bureau-frutiz .fen-fantome {
 
 /* Le panneau logé dans une fenêtre s'affiche — c'est SA fenêtre qui le cadre. */
 body.bureau-frutiz .fen .panel.active { display: flex; flex: 1; min-height: 0; }
+/* Les panneaux qui portent leur PROPRE chrome mobile (la coque .fenetre avec
+   son entête) le déposent en entrant dans une fenêtre du bureau : main.swf ne
+   met qu'UNE barre-titre. Le corps de la fenêtre d'historique est BLANC
+   (mesuré ref-historique.png), les cartes d'entrées #CCF599 bordées ~#B6E580,
+   leur texte #335511 — le même vert très sombre que les étiquettes d'icônes. */
+body.bureau-frutiz .fen .fenetre { background: #fff; border-radius: 0; box-shadow: none; }
+body.bureau-frutiz .fen .fenetre > .fen-titre { display: none; }
+body.bureau-frutiz .fen #evt-panel { padding: 0; background: #fff; }
+body.bureau-frutiz .fen .evt-item { background: #CCF599; border-color: #B6E580; }
+body.bureau-frutiz .fen .evt-item .txt { color: #335511; }
+body.bureau-frutiz .fen #evt-page { color: #A4A4A4; }
 /* Le cadrage « largeur de lecture » du chat plein écran n'a plus cours dans
    une fenêtre : le panneau épouse la fenêtre, la poignée se tait. */
 body.bureau-frutiz .fen #chat-panel { max-width: none; align-self: stretch; width: 100%; }

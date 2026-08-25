@@ -26,13 +26,16 @@ window.BureauFrutiz = (function () {
   // couleur de sa pastille (les fruits de main.swf), et son gabarit.
   // `evenements` et `historique` partagent le panneau #evt-panel : la fenêtre
   // est UNIQUE et se retitre selon l'onglet demandé.
+  // Les pastilles MESURÉES sur le rendu Ruffle connecté (public/frutiz/PLAN.md,
+  // « colorSet ») : Salons = la fraise #E01813, Mon historique = #FF9900.
+  // Les autres restent des placements en attendant leur relevé.
   var RUBRIQUES = {
-    chat:       { panneau: '#chat-panel',      titre: 'Salons',         pastille: '#D8262C', l: 780, h: 580 },
+    chat:       { panneau: '#chat-panel',      titre: 'Salons',         pastille: '#E01813', l: 780, h: 580 },
     forum:      { panneau: '#forum-panel',     titre: 'Forum',          pastille: '#8A5BC8', l: 920, h: 640 },
     scores:     { panneau: '#scores-panel',    titre: 'Scores',         pastille: '#3FA43F', l: 720, h: 620 },
     mail:       { panneau: '#mail-panel',      titre: 'Messagerie',     pastille: '#E7A31C', l: 640, h: 560 },
     evenements: { panneau: '#evt-panel',       titre: 'Événements',     pastille: '#4FA3D8', l: 560, h: 560 },
-    historique: { panneau: '#evt-panel',       titre: 'Mon historique', pastille: '#F08A24', l: 560, h: 560 },
+    historique: { panneau: '#evt-panel',       titre: 'Mon historique', pastille: '#FF9900', l: 560, h: 560 },
     trombi:     { panneau: '#trombi-panel',    titre: 'Bouilloscope',   pastille: '#C8497E', l: 780, h: 620 },
     reglages:   { panneau: '#reglages-panel',  titre: 'Préférences',    pastille: '#7A9C3C', l: 560, h: 620 },
     grapiz:     { panneau: '#grapiz-panel',    titre: 'Grapiz',         pastille: '#8A5BC8', l: 900, h: 660 },

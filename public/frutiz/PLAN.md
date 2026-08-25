@@ -95,18 +95,73 @@ second bouton du bandeau — à brancher quand les onglets du bureau (la barre
   frutimandala à droite ; pilule « N en ligne » verte sombre au coin.
 - Onglet « Bureau » (pastille orange) sous la main bar ; languette CONTACTS
   sur le bord gauche.
+- Étiquettes des icônes du bureau : texte vert TRÈS sombre, cœur
+  anticrénelé mesuré à `#335511` sur l'aplat `#ADE76B`
+  (ref-bureau-propre.png ; la police pixel d'époque, sans halo blanc).
+
+## Le colorSet par type de fenêtre (mesuré au pixel, session connectée)
+
+Le générateur de teintes de `getWinStyle` n'a pas encore été localisé dans le
+bytecode — en attendant, chaque teinte est RELEVÉE sur le rendu Ruffle d'une
+vraie fenêtre (session locale connectée, cf. « La connexion locale » plus
+bas). Trois relevés faits :
+
+- **Salons publics** (`frRoomList`, la teinte ROSE, ref-salons.png) :
+  pastille fraise `#E01813` ; fond de liste `#FEC9C9`, lignes alternées
+  `#FEABAB` / `#FEC9C9`, texte des salons `#DA8484` ; bouton « Créer votre
+  salon » plaque `#DD8487` bord `#B35557` ; champ de saisie `#DDFFBB`.
+- **Mon historique** (la teinte ORANGE, ref-historique.png) : pastille
+  `#FF9900` — exactement la pastille de l'onglet « Bureau » de la barre
+  d'onglets ; corps de fenêtre BLANC ; cartes d'entrées `#CCF599` bordées
+  d'un trait fin `#B6E580` (halo anticrénelé `#DFF7C1`) ; texte des entrées
+  gras `#335511` au cœur plein (346 px purs relevés) — LE MÊME vert très
+  sombre que les étiquettes d'icônes ; pagination texte `#A4A4A4`, flèches
+  roses `#FFEAEC`. Titre de fenêtre `#444444` (confirme getOldWinStyle).
+  Écart de comportement relevé : le SWF affiche les entrées dans l'ordre
+  serveur (la plus ancienne d'abord), le journal light la plus récente
+  d'abord — à trancher à l'étape du panneau.
+- **Alerte** (« Veuillez patienter », la teinte CITRON) : pastille `#E6D52F`,
+  plaque `#F3E549`.
+- **Onglet « Bureau »** (la barre d'onglets du bureau) : onglet BLANC,
+  étiquette « Bureau » grasse `#000000`, pastille `#FF9900` ; le reste de la
+  rangée est une bande vert clair arrondie, soulignée d'un trait sombre.
+
+À noter : le CORPS d'une fenêtre reste blanc (`#FFFFFF`) — la teinte
+n'habille que la pastille et le contenu du panneau (listes, cartes, boutons).
+Détail d'époque confirmé sur ref-historique.png : au repos, les boutons du
+bandeau montrent leur GLYPHE SEUL (les traits bleus de l'enroulement, la
+croix) — la plaque 21×21 n'apparaît qu'au survol, comme extrait.
+
+## La connexion locale (RÉSOLU le 25/08)
+
+Le boot s'arrêtait après `/xml/services.xml` + `/do/prefdef` : services.xml
+annonce `port="${XMLSOCKET_PORT}"`, mais le socketProxy de ruffle.html ne
+mappe QUE les ports 5000 (XMLSocket) et 5001 (frutiscore). Aucun changement
+produit — c'est au HARNAIS de lancer server.js avec `XMLSOCKET_PORT=5000
+FRUTISCORE_PORT=5001` (scratchpad/ref-connecte.js). Chaîne d'un boot sain :
+`prefdef` → WS ident → `/do/onident` → `fond` → `prefsavepartial`.
+
+Manies du harnais Ruffle : l'overlay « Click to unmute » avale les clics
+(cliquer ~22 s après le chargement, au neutre 700,700, deux fois au besoin) ;
+l'éditeur de bouille s'ouvre seul sur un compte neuf (« Valider » à ~(117,442)
+en 1400×860) ; les icônes s'ouvrent au DOUBLE-clic ; rangée d'icônes à
+y≈163 : Gaspard 286, Mes contacts 363, Corbeille 440, Forum 517, Liste
+noire 594, Les salons 671, Mon historique 748, Préférences 826, Scores 903,
+Boutique 980, Bouilloscope 1057, Club 1134.
+
+Le protocole fantôme a été VALIDÉ contre le vrai rendu : ref-drag-fantome.png
+montre, en pleine prise, la silhouette blanche arrondie qui suit la souris
+pendant que la fenêtre « Salons publics » reste en place — exactement la
+reproduction light.
 
 ## Reste à faire (étapes suivantes)
 
-1. L'art des boutons (`butGroupWinTop`) via un parcours DefineButton2 ;
-   la barre-titre des types de fenêtres (winChat #5, winPanel #7,
-   winRoomList #59…) et leurs couleurs `getWinStyle` (colorSet par teinte —
-   générateur encore à localiser ; en attendant, mesure au pixel).
+1. ~~L'art des boutons (`butGroupWinTop`)~~ FAIT (extraits, 9 états) ;
+   reste la barre-titre des types de fenêtres (winChat #5, winPanel #7,
+   winRoomList #59…) et les teintes `getWinStyle` manquantes — mesurer au
+   pixel les fenêtres jaune/verte/blanche/violette (Préférences, Corbeille,
+   Boutique, Mes contacts…) sur la session connectée.
 2. La main bar, l'onglet « Bureau », la languette CONTACTS, la frutimandala.
 3. Les icônes du bureau (fileIconStandard #11) et leur pose en colonnes
    (FPDesktop), le glisser-déposer des icônes.
 4. Le mode « tab » des fenêtres, les préférences (`win_flMoveAnim`).
-5. La connexion Ruffle locale complète : le boot s'arrête aujourd'hui après
-   `/xml/services.xml` + `/do/prefdef` — ni `/do/id` ni XMLSocket ne partent
-   (diagnostic du 25/08, requêtes tracées). À reprendre pour des références
-   à l'écran de tous les états (fenêtres réelles, colorSet mesurable).
