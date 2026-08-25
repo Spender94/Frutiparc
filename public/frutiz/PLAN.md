@@ -1436,6 +1436,101 @@ et un quatrième bouton est ajouté pour l'avertissement. Trois écarts :
   libres `country`/`region` là où le formulaire du bureau envoie des index :
   ce fil-là reste à reprendre.
 
+## LES DEUX JOURNAUX (`win.Log`, DoInitAction sprite#750, 0x57281)
+
+`box.UserLog` (0x582a9) et `box.SiteLog` (0xa9da2) n'ajoutent rien à
+`win.Log` qu'une icône : `linkIco` vaut « icoUserLog » (#533) ou
+« icoSiteLog » (#576). Ces deux clips ont une IMAGE par type d'entrée —
+`inspect-swf.js sprite 533` donne les étiquettes : forum (f10), chat (f20),
+levelUp (f30), levelDown (f31), inscription (f40), filleul (f50), médaille
+(f60), et les images 1..4 sans étiquette pour les sanctions. Elles sont déjà
+sorties dans /fb/histo_*.svg et /fb/evt_*.svg.
+
+Ce que dit le bytecode :
+
+- `flResizable = false` — la fenêtre ne se redimensionne pas ;
+- `main.showFrame` min **300 × 200**, sans fond, et `main.bigFrame` pointe
+  dessus ;
+- **`blocMax = 5`** (0x57c2d) : cinq blocs par page, quoi qu'il arrive.
+  `pageMax = ceil(liste.length / 5) − 1`, `prevPage`/`nextPage` bornent à
+  `[0, pageMax]`, et `updatePageSelector` écrit « (index+1)/(pageMax+1) » ;
+- chaque bloc est un `cpDocument` de style **`frSheet`**, min 300 × 60,
+  marge `y.min = 6` et `y.ratio = 0`, avec une case de **60** pour
+  l'illustration (`gfxList`, `frame = item.type`) puis le texte ;
+- le texte est `<b>date - </b>contenu`, et **tout en gras** si l'entrée est
+  neuve (`flNew`). La date sort de `Lang.formatDateString('short', t)` :
+  « mar 25 aout 23:16 » — **sans accent circonflexe** ;
+- le pied est un `cpPageSelector` min 300 × 24 dans `margin.bottom`.
+
+**La hauteur n'est pas fixe pour autant.** `min.h = 200` sur la zone, 60 par
+bloc : quand les blocs dépassent, c'est la fenêtre qui cède.
+
+    hauteur = 3 + 16 (bandeau) + max(200, n × 60 + (n − 1) × 6) + 24 + 3
+
+Deux blocs → zone 200 → **246** de haut. Vérifié au pixel.
+
+### Le relevé 1:1 (fenêtre 314 × 246 posée en 375, 293)
+
+    colonne x=600 : bandeau 296..311 · contour du bloc `#DDDDDD` 312-313 ·
+      liseré `#ADE76B` 314-315 · chair `#CCF599` 316..371 · liseré 372-373 ·
+      contour 374-375 · BLANC 376-377 · contour du bloc suivant 378-379 …
+    ligne y=410  : blanc 378-379 · contour 380-381 · liseré 382-383 ·
+      chair 384.. · le texte commence en 444 (case de 60) · … · 683 685
+
+Six pixels d'un bloc à l'autre, dont quatre mangés par les deux contours —
+la loi des écrans à bouille, encore. Le reflet de la chair : blanc **.64 → 0
+sur 8 px** (huit valeurs mesurées au centième).
+
+La TYPO : interligne **12**, capitale **8**, et « mar 25 aout 23:16 -
+Connexion » tient en **172 px** avant de passer à la ligne dans une case de
+236. C'est du **12 px gras** de la famille du fil du salon (174 px au banc
+d'essai) — le 10 px Verdana qu'on avait d'abord n'en faisait que 132.
+
+Le PIED : gélules de 16 ceintes de 2 px `#DDDDDD`, contour en 381..400 et
+514..533, « n/N » au milieu. Elles gardent leurs couleurs même quand il n'y a
+qu'une page : `cpPageSelector` ne les grise pas.
+
+## LES SCORES (`box.Score`, 0xade18)
+
+La seule fenêtre du bureau qui ne soit pas verte : son `winType` vaut
+**« winScore »** (0xc1128), d'où la rampe MIEL. Son BANDEAU ne dit pas
+« Scores » mais « Scores - Burning kiwi - mer 26 aout » : c'est le classement
+choisi qui la nomme, sa liste de gauche ne surlignant rien.
+
+### Le relevé 1:1 (fenêtre 610 × 328 posée en 375, 293)
+
+    cadre 375 · `#DDDDDD` 376-377 · bandeau blanc 296..311
+    colonne GAUCHE  contour 380-381 · liseré `#FACE68` 382-383 ·
+                    chair `#FBD888` 384..539 · liseré 540-541 · contour 542-543
+    blanc 544-545
+    colonne DROITE  contour 546-547 · liseré 548-549 · chair 550..975 ·
+                    liseré 976-977 · contour 978-979 · blanc 980-981
+    en hauteur : liste 314..587 · sélecteur de jour 590..613 (gélules
+                 596..611, contour 594..613) · panneau de droite 314..613
+
+Soit **160** pour la colonne de gauche, **430** pour celle de droite, et six
+pixels de l'une à l'autre — dont quatre mangés par les contours. Le reflet de
+la chair est le même que celui des cartes du journal : blanc .64 → 0 sur 8.
+
+La colonne de gauche empile des SECTIONS (« Challenge » avec le podium
+d'argent, « Championnat » avec la coupe d'or, en 18 px noir) et des lignes de
+classement (médaille de 13 px puis le nom, en 12 px, au pas de 16). Le
+panneau de droite porte le tableau, en 12 px noir ; quand il est vide, une
+seule ligne en haut à gauche : « Classement vide pour le moment ».
+
+### Ce qu'il reste à reprendre
+
+- La section « Championnat » d'époque liste QUATRE classements — Class.
+  kikooz, **Frutibandas**, Classement XP, Class. consécration — quand
+  `/api/light/challenge` n'en sert que trois. Le championnat Frutibandas
+  existe pourtant côté revival : c'est la liste servie au light qu'il faut
+  compléter.
+- Les deux derniers classements ont une AUTRE icône que la médaille (un
+  fronton à colonnes) : le SWF la choisit sur le type du classement.
+- Le message d'un classement vide garde la phrase du light (« Aucun score
+  aujourd'hui… ») : la changer toucherait le mobile, qu'on ne bouge pas
+  encore.
+
 ## Reste à faire (étapes suivantes)
 
 1. ~~La barre-titre des types de fenêtres~~ : `drawInterface` lit TOUJOURS

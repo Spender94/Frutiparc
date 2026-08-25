@@ -3974,10 +3974,11 @@
     var g = (challengeScores.games || [])[scoresGameIdx];
     var titre = $("#sc-titre-txt");
     var jour = challengeScores.day || "";
-    if (titre) {
-      titre.textContent = "Scores" + (g ? " - " + g.name : "")
-        + (jour ? " - " + scDateTitre(jour) : "");
-    }
+    var phrase = "Scores" + (g ? " - " + g.name : "")
+      + (jour ? " - " + scDateTitre(jour) : "");
+    if (titre) titre.textContent = phrase;
+    // Sur le bureau c'est le BANDEAU DE LA FENÊTRE qui la porte.
+    if (window.BureauFrutiz && BureauFrutiz.retitrer) BureauFrutiz.retitrer("scores-panel", phrase);
     var pied = $("#sc-jour");
     if (pied) pied.textContent = scDatePied(jour);
     var suiv = $("#sc-jour-suiv");

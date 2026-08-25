@@ -35,7 +35,10 @@ window.BureauFrutiz = (function () {
     chat:       { panneau: '#chat-panel',      titre: 'Salons',         fruit: 'winChat', l: 780, h: 580,
                   min: function () { return minSalon(); } },
     forum:      { panneau: '#forum-panel',     titre: 'Forum',          l: 920, h: 640 },
-    scores:     { panneau: '#scores-panel',    titre: 'Scores',         l: 720, h: 620 },
+    // LES SCORES — `box.Score` (0xade18). Relevé 1:1 : 610 × 328, cadre
+    // `#444444` compris ; la colonne de gauche fait 160 et celle de droite
+    // 430, six pixels entre les deux.
+    scores:     { panneau: '#scores-panel',    titre: 'Scores',         l: 610, h: 328 },
     mail:       { panneau: '#mail-panel',      titre: 'Messagerie',     l: 640, h: 560 },
     // LES DEUX JOURNAUX — `box.SiteLog` et `box.UserLog`, qui n'ajoutent rien
     // à `win.Log` (0x57281) qu'une icône : `linkIco` vaut « icoSiteLog » ou
@@ -1074,6 +1077,15 @@ window.BureauFrutiz = (function () {
     f.fen.style.height = (46 + zone) + 'px';
   }
 
+  // Le bandeau des SCORES ne dit pas « Scores » mais « Scores - Burning kiwi -
+  // mer 26 aout » : `win.Score` le retitre à chaque classement choisi. Le
+  // light compose déjà cette phrase pour son propre bandeau — il nous la
+  // passe, on la met où le bureau la met.
+  function retitrer(idPanneau, texte) {
+    var f = fenetres[idPanneau];
+    if (f && f.txt && texte) f.txt.textContent = texte;
+  }
+
   function ouvrirFenetre(tab) {
     var rub = RUBRIQUES[tab];
     if (!rub) return;
@@ -1299,6 +1311,7 @@ window.BureauFrutiz = (function () {
     // Rappelés par le light : la colonne des bouilles suit la liste des
     // connectés, et une émotion joue dans l'écran de la personne.
     ajusterJournal: ajusterJournal,
+    retitrer: retitrer,
     majBouilles: majBouilles,
     majListeConnectes: majListeConnectes,
     ecranDe: ecranDe,

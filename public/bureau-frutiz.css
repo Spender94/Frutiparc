@@ -1511,3 +1511,113 @@ body.bureau-frutiz .fen #evt-panel .evt-charge {
   font-size: 12px; line-height: 12px; font-weight: 700; color: #335511; padding: 12px 6px;
   text-align: left;
 }
+
+/* ══ LES SCORES — `box.Score` (0xade18) ════════════════════════════════════
+   La seule fenêtre du bureau qui ne soit pas verte : son `winType` vaut
+   « winScore » (0xc1128) et lui donne la rampe MIEL. Relevé 1:1 sur le rendu
+   d'époque (fenêtre 610 × 328 posée en 375, 293) :
+
+     cadre 375 · #DDDDDD 376-377 · bandeau blanc 296..311
+     colonne GAUCHE   contour 380-381 · liseré `#FACE68` 382-383 ·
+                      chair `#FBD888` 384..539 · liseré 540-541 · contour 542-543
+     blanc 544-545
+     colonne DROITE   contour 546-547 · liseré 548-549 · chair 550..975 …
+     et en hauteur : liste 314..587, sélecteur de jour 592..615,
+                     panneau de droite 314..613.
+
+   Soit 160 pour la colonne de gauche, 430 pour celle de droite, et 6 px d'un
+   panneau à l'autre — dont 4 mangés par les deux contours, comme partout
+   ailleurs sur ce bureau. Le reflet de la chair est le même que celui des
+   cartes du journal : blanc .64 → 0 sur 8 px.
+
+   Le BANDEAU, lui, ne dit pas « Scores » mais « Scores - Burning kiwi -
+   mer 26 aout » : c'est le classement choisi qui le nomme (cf. `retitrer`). */
+body.bureau-frutiz .fen:has(#scores-panel) .fen-corps { margin: 0 2px 0; }
+body.bureau-frutiz .fen #scores-panel {
+  display: flex; flex-direction: column; min-height: 0; padding: 0;
+  /* Le corps de la fenêtre est BLANC sous les deux panneaux — c'est lui qu'on
+     voit autour d'eux et derrière le sélecteur de jour. */
+  background: #FFFFFF;
+}
+body.bureau-frutiz .fen #scores-panel #sc-fenetre {
+  margin: 0; border: 0; border-radius: 0; box-shadow: none;
+  background: transparent; overflow: visible;
+}
+/* Le bandeau du panneau mobile fait doublon avec celui de la fenêtre. */
+body.bureau-frutiz .fen #scores-panel #sc-titre { display: none; }
+body.bureau-frutiz .fen #scores-panel #sc-corps {
+  flex: 1 1 auto; min-height: 0; display: flex; gap: 6px;
+  /* 4 px sous les colonnes : le contour du panneau de droite s'y loge
+     (614-615) et il reste 2 px de blanc avant le liseré de la fenêtre. */
+  padding: 2px 2px 4px; overflow: visible;
+}
+body.bureau-frutiz .fen #scores-panel #sc-gauche {
+  flex: 0 0 160px; width: 160px; gap: 0; overflow: visible;
+}
+/* Les deux panneaux : chair miel, liseré `#FACE68`, contour `#DDDDDD` PEINT
+   HORS de la boîte — d'où `overflow: visible` sur ce qui les porte. */
+body.bureau-frutiz .fen #scores-panel #sc-liste,
+body.bureau-frutiz .fen #scores-panel #sc-table {
+  box-sizing: border-box;
+  background: linear-gradient(rgba(255, 255, 255, .64), rgba(255, 255, 255, 0) 8px), #FBD888;
+  border: 2px solid #FACE68; border-radius: 0;
+  box-shadow: 0 0 0 2px #DDDDDD;
+  scrollbar-width: none;
+}
+body.bureau-frutiz .fen #scores-panel #sc-liste::-webkit-scrollbar,
+body.bureau-frutiz .fen #scores-panel #sc-table::-webkit-scrollbar { display: none; }
+body.bureau-frutiz .fen #scores-panel #sc-liste {
+  flex: 1 1 auto; min-height: 0; padding: 0; overflow-y: auto;
+}
+body.bureau-frutiz .fen #scores-panel #sc-table {
+  flex: 1 1 auto; min-width: 0; padding: 2px 4px; overflow-y: auto;
+}
+/* Le SÉLECTEUR DE JOUR, sous la liste : mêmes gélules que le pied des
+   journaux, même bande de 24. Relevé : contour 594..613, gélule 596..611,
+   et 4 px de blanc entre le contour de la liste et la bande. */
+body.bureau-frutiz .fen #scores-panel #sc-pied {
+  flex: 0 0 24px; height: 24px; box-sizing: border-box;
+  /* La bande fait 24 et les gélules s'y calent EN BAS : relevé 594..613 pour
+     leur contour, quand la bande va de 590 à 613. */
+  margin: 2px 0 0; padding: 0 1px; gap: 0; background: transparent;
+  align-items: flex-end;
+}
+body.bureau-frutiz .fen #scores-panel #sc-pied button {
+  width: 16px; height: 16px; border-radius: 4px; box-shadow: 0 0 0 2px #DDDDDD;
+}
+body.bureau-frutiz .fen #scores-panel #sc-pied button img { width: 16px; height: 16px; }
+body.bureau-frutiz .fen #scores-panel #sc-pied button[disabled] { opacity: 1; }
+body.bureau-frutiz .fen #scores-panel #sc-jour {
+  font-size: 12px; line-height: 14px; color: #000000; font-weight: 400;
+}
+/* Un titre de section : le podium ou la coupe, puis le mot en grand. Relevé :
+   encre 320..333 pour « Challenge », soit du 18 px, et le dessin sur 20. */
+body.bureau-frutiz .fen #scores-panel .sc-section {
+  gap: 3px; padding: 1px 2px 0; font-size: 18px; line-height: 20px; color: #000000;
+}
+body.bureau-frutiz .fen #scores-panel .sc-section img { width: 20px; height: 22px; }
+/* Une ligne de classement : la médaille puis le nom, au pas de 16. */
+body.bureau-frutiz .fen #scores-panel .sc-rk {
+  gap: 3px; padding: 0 2px 0 8px; font-size: 12px; line-height: 16px; color: #000000;
+}
+body.bureau-frutiz .fen #scores-panel .sc-rk img { width: 13px; height: 14px; }
+body.bureau-frutiz .fen #scores-panel .sc-rk.on { background: transparent; font-weight: 400; }
+/* Le panneau de droite : l'encre est noire et grasse, comme le titre de la
+   colonne de gauche. */
+body.bureau-frutiz .fen #scores-panel #sc-table .sc-entete,
+body.bureau-frutiz .fen #scores-panel #sc-table .sc-vide {
+  font-size: 12px; line-height: 16px; color: #000000; font-weight: 700;
+}
+/* Le message d'un classement vide se pose EN HAUT À GAUCHE, droit — d'époque
+   c'est « Classement vide pour le moment », une ligne de texte comme une
+   autre, pas une invite centrée. (La phrase, elle, reste celle du light : le
+   mobile la partage.) */
+body.bureau-frutiz .fen #scores-panel #sc-table .sc-vide {
+  text-align: left; font-style: normal; padding: 0; margin: 0;
+}
+body.bureau-frutiz .fen #scores-panel #sc-table .sc-ligne {
+  font-size: 12px; line-height: 16px; color: #000000; min-height: 16px;
+}
+body.bureau-frutiz .fen #scores-panel #sc-table .sc-ligne.moi { background: transparent; }
+body.bureau-frutiz .fen #scores-panel #sc-table .sc-moi,
+body.bureau-frutiz .fen #scores-panel #sc-table .sc-pod span { color: #000000; }
