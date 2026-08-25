@@ -208,17 +208,14 @@ bureau sous la barre et sa rangée d'onglets : recal borne les fenêtres LÀ.
     fond, et UN pixel de fond après le liseré (liseré 84, fond 85, barre 86).
     Remplissage du BAS vers le HAUT, et de gauche à droite dans une barre ;
   • « NIV n » : encre x 86..109, **y 36..44** — collée au biseau du bas ;
-    son CHIFFRE n'est pas un afficheur à segments mais un glyphe plein — la
-    Verdana pixel embarquée (`verdana_10pt_st`, police #602) ;
   • la COUPE : encre **x 116..127, y 11..26** ; le RANG juste après, à
-    x 131, sur **15 px de haut pour des jambages de 2** — c'est la même
-    Verdana pixel, mais au DOUBLE de la taille du « NIV n » ;
+    x 132, sur les MÊMES lignes que la coupe (y 11..26) ;
   • le TRAIT de séparation : **y 28, x 117..224** ;
-  • les RACCOURCIS sont CALÉS À DROITE sous le bout du trait : six icônes de
-    13 px au pas de 15, soit x 135..224, y 31..43 — et dans CET ordre :
-    l'aide, le forum, le courrier, l'historique, les événements, les jeux
-    (les deux voyants allumés du compte de référence tombent alors en
-    x 165..192, ce qui confirme le calage) ;
+  • les RACCOURCIS sont CALÉS À GAUCHE, au DÉBUT du trait (x 117) et non à
+    son bout : six icônes de **15 px au pas de 15** (elles se touchent),
+    centrées sur 124, 139, 154, 169, 184, 199 — soit x 117..206, y 30..43 —
+    et dans CET ordre : l'aide, le forum, le courrier, l'historique, les
+    événements, les jeux ;
   • l'encart porte, comme le cadre de la bouille, un LISERÉ INTERNE plus
     sombre qui fait son relief — `#97AD80` au bord gauche (x 84), `#A2AF94`
     en haut (y 7) ; en bas c'est un BISEAU de 3 px qui s'assombrit
@@ -227,6 +224,16 @@ bureau sous la barre et sa rangée d'onglets : recal borne les fenêtres LÀ.
     sur ~15×8 — l'image est bien celle du SWF (forme #409, blanc à 50 %),
     mais le rendu Flash y monte jusqu'au blanc PUR : il y a probablement
     deux couches superposées à l'origine, à revoir à l'extraction.
+- **Les DEUX chiffres de l'encart ne sont PAS de la Verdana.** Le bytecode
+  tranche sans discussion, il suffisait de lire les champs texte :
+  `DefineEditText #430` tire sur la fonte **#428 « impact » en 11 px** (c'est
+  le NIVEAU : glyphe trapu, jambage de 3 px, SANS empattement au pied — d'où
+  l'écart avec la Verdana, dont le « 1 » en porte un), et `DefineEditText
+  #413` sur la fonte **#412 « lcd » en 22 px** (c'est le RANG, 15 px de haut).
+  Les deux fontes sont EMBARQUÉES dans main.swf ; `scripts/extract-swf-font.js`
+  les sort en WOFF (`public/frutiz/fontes/impact.woff` et `lcd.woff`) comme il
+  l'avait fait pour les jeux. L'encre d'époque est **`#73AF1E`**, pas le
+  `#73B01E` du tiroir mobile.
 - **Les ÉMOTIONS** (`initEmoteIconList` 0x6b6a4) : le gris autour d'une
   émotion n'est ni une plaque carrée ni un flou — c'est une **PASTILLE RONDE
   de 21 px en `#DDDDDD`** derrière le disque de 17, ce qui laisse 2 px de

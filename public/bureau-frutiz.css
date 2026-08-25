@@ -27,6 +27,21 @@
   src: url('/snake3/fontes/verdana10.woff') format('woff');
   font-weight: normal; font-style: normal; font-display: swap;
 }
+/* Les DEUX fontes de l'encart `digital`, extraites de main.swf. Le bytecode
+   les nomme sans ambiguïté : le champ du NIVEAU (DefineEditText #430) tire sur
+   la fonte #428 « impact » en 11 px, et celui du RANG (#413) sur la fonte
+   #412 « lcd » en 22 px. Ni Verdana ni afficheur à segments — d'où le chiffre
+   trapu et sans empattement au pied qu'on lit sur le rendu d'époque. */
+@font-face {
+  font-family: 'ImpactSwf';
+  src: url('/frutiz/fontes/impact.woff') format('woff');
+  font-weight: normal; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'LcdSwf';
+  src: url('/frutiz/fontes/lcd.woff') format('woff');
+  font-weight: normal; font-style: normal; font-display: swap;
+}
 
 /* ── Le bureau lui-même ─────────────────────────────────────────────────── */
 body.bureau-frutiz #app { position: relative; }
@@ -155,12 +170,15 @@ body.bureau-frutiz #bureau-coin .enc-progress i::before { background: #73B01E; }
 body.bureau-frutiz #bureau-coin .enc-trophy { left: 33px; top: 3px; height: 17px; gap: 2px; }
 body.bureau-frutiz #bureau-coin .enc-divider { left: 34px; right: 4px; top: 21px; }
 body.bureau-frutiz #bureau-coin .enc-trophy .tro { height: 16px; }
-/* Le RANG est écrit dans la même Verdana pixel que « NIV n », mais au DOUBLE
-   de la taille : le « 7 » du rendu 1:1 fait 15 px de haut pour des jambages de
-   2 px, exactement le verdana_10pt_st grossi deux fois. */
+/* Le RANG : fonte « lcd » du SWF, 22 px — la taille inscrite dans le champ
+   texte #413. L'encre d'époque est `#73AF1E` (relevé), pas le `#73B01E` du
+   tiroir mobile. */
 body.bureau-frutiz #bureau-coin .enc-trophy .val {
-  font-family: 'VerdanaSwf', Verdana, sans-serif; font-size: 21px;
-  font-weight: normal; color: #73B01E; text-shadow: none;
+  font-family: 'LcdSwf', Verdana, sans-serif; font-size: 22px;
+  font-weight: normal; color: #73AF1E; text-shadow: none;
+  /* la coupe tombe juste, mais le chiffre est centré 2 px trop bas dans sa
+     ligne : d'époque son sommet est au niveau de celui de la coupe (y 11). */
+  position: relative; top: -2px;
 }
 /* « NIV n » : le bloc d'époque va de x 87 à 108 et fait 8 px d'encre (contre
    6 au tiroir) — le sigle est donc plus grand. Et le CHIFFRE n'est pas un
@@ -170,21 +188,23 @@ body.bureau-frutiz #bureau-coin .enc-trophy .val {
 /* Le sigle « NIV » est un SVG qui porte 4 px de marge interne en bas : pour que
    son encre finisse en y 44 comme d'époque, la boîte descend d'un pixel sous le
    biseau — l'encart est en `overflow:hidden`, rien ne dépasse. */
-body.bureau-frutiz #bureau-coin .enc-niv { left: 2px; bottom: -1px; gap: 3px; }
+body.bureau-frutiz #bureau-coin .enc-niv { left: 2px; bottom: -1px; gap: 6px; }
 body.bureau-frutiz #bureau-coin .enc-niv .niv-img { height: 17px; }
 body.bureau-frutiz #bureau-coin .enc-niv .lvl {
-  font-family: 'VerdanaSwf', Verdana, sans-serif; font-size: 11px;
-  font-weight: normal; color: #73B01E;
+  font-family: 'ImpactSwf', Impact, sans-serif; font-size: 11px;
+  font-weight: normal; color: #73AF1E;
 }
 /* Les raccourcis d'époque tiennent plus HAUT (bloc y 26..47 contre 26..50) et
    dans l'ORDRE : l'aide, le forum, le courrier, l'historique, les événements,
    les jeux — l'ordre du tiroir mobile est autre. */
-/* La rangée de raccourcis est CALÉE À DROITE, sous le bout du trait de
-   séparation : les six icônes de 13 px au pas de 15 occupent alors x 135..224,
-   ce qui place bien le courrier et l'historique — les deux voyants allumés du
-   compte de référence — en x 165..192 comme sur le rendu 1:1. */
-body.bureau-frutiz #bureau-coin .mb-shortcuts { left: auto; right: 5px; bottom: 4px; }
-body.bureau-frutiz #bureau-coin .sc-btn img { width: 13px; height: 13px; }
+/* La rangée de raccourcis est CALÉE À GAUCHE, au DÉBUT du trait de séparation
+   (x 117), et non à son bout. Les six icônes du rendu 1:1 y sont centrées sur
+   124, 139, 154, 169, 184 et 199 : un pas de 15 px exactement, à partir de
+   x 117. Elles font 15 px et non 13 — la plus large (l'avertissement) couvre
+   14 px d'encre — et se touchent, sans marge entre les boutons. */
+body.bureau-frutiz #bureau-coin .mb-shortcuts { left: 32px; right: auto; bottom: 4px; }
+body.bureau-frutiz #bureau-coin .sc-btn { padding: 0; }
+body.bureau-frutiz #bureau-coin .sc-btn img { width: 15px; height: 15px; }
 body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Aide"] { order: 0; }
 body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Forum"] { order: 1; }
 body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Mail"] { order: 2; }
