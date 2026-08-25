@@ -1757,6 +1757,11 @@
     body.chat-redim { cursor: col-resize; user-select: none; -webkit-user-select: none; }
   }
 </style>
+<!-- Le bureau façon Frutiz (desktop seulement) : fenêtres, icônes, fond.
+     Le module ne fait RIEN tant que light.html n'appelle pas demarrer(),
+     et demarrer() n'est appelé que sur grand écran — le mobile ne change pas. -->
+<link rel="stylesheet" href="/bureau-frutiz.css">
+<script src="/bureau-frutiz.js"></script>
 <!-- Miniatures de bouilles rapides (cache PNG /bouille-img) pour le Bouilloscope. -->
 <script src="/js/bouille-thumb.js"></script>
 <!-- Palette de couleurs (sélecteur visuel de l'éditeur « Ma Frutibouille »). -->
@@ -2760,6 +2765,10 @@
     // toujours présent derrière. Mobile → on ouvre le tiroir (on atterrit sur le
     // menu) ; desktop → tiroir fermé (le chat est visible, le menu s'ouvre via ‹).
     renderHome();
+    // Sur grand écran, le BUREAU façon Frutiz prend la main : fond d'écran,
+    // icônes, rubriques en fenêtres. Il démarre AVANT le premier activateTab
+    // pour que le salon s'ouvre déjà dans sa fenêtre. Mobile : rien ne change.
+    if (isDesktop() && window.BureauFrutiz) BureauFrutiz.demarrer();
     activateTab("chat");
     if (!isDesktop()) openMenu(true);
     loadHomeProfile();
@@ -3505,6 +3514,10 @@
     if (tab === "mail" && !mailVersRedaction) loadMail();
     // Ces journaux bougent à tout moment : on recharge à chaque ouverture.
     if (tab === "evenements" || tab === "historique") loadJournal(tab);
+    // Sur le bureau façon Frutiz, la rubrique s'ouvre en FENÊTRE — et les
+    // panneaux déjà fenêtrés restent visibles (l'invariant « un seul actif »
+    // du plein écran ne vaut plus là-bas).
+    if (window.BureauFrutiz) BureauFrutiz.apresActivateTab(tab);
   }
 
   // ── Mes disques (feuille de lancement des jeux) ──
@@ -6748,6 +6761,9 @@
   }
 
   function appliquerFond(fond) {
+    // Le bureau façon Frutiz (desktop) peint le MÊME fond, cadré en paysage
+    // comme main.swf ; sur mobile le module se tait et le tiroir suit seul.
+    if (window.BureauFrutiz) BureauFrutiz.poserFond(fond || null);
     var panneau = $("#home-panel");
     if (!panneau) return;
     if (!fond || !fond.url) {

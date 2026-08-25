@@ -1,0 +1,140 @@
+/*
+ * /light façon Frutiz — LE BUREAU (étape 1 : le shell).
+ *
+ * Sur grand écran, /light quitte la mise en page « une rubrique plein écran »
+ * pour retrouver le bureau de main.swf : un fond d'écran, la main bar posée
+ * en haut à gauche, les rubriques en ICÔNES, et chaque rubrique ouverte dans
+ * une FENÊTRE déplaçable au chrome du bureau Flash (pastille de couleur,
+ * replier, fermer).
+ *
+ * Tout est sous `body.bureau-frutiz`, une classe que bureau-frutiz.js ne pose
+ * que sur desktop (≥ 768 px) : le mobile ne voit JAMAIS ces règles — c'est le
+ * contrat (« laisse la version mobile inchangée »).
+ *
+ * Le chrome des fenêtres est refait en CSS d'après main.swf : cadre blanc
+ * arrondi, barre-titre à pastille colorée (fraise du salon, poire de
+ * l'historique…), boutons replier/fermer saumon, corps vert d'eau. Les icônes
+ * du bureau sont les tuiles du tiroir mobile REPARENTÉES (mêmes nœuds, mêmes
+ * clics, mêmes voyants), simplement rhabillées en petites icônes étiquetées.
+ */
+
+/* ── Le bureau lui-même ─────────────────────────────────────────────────── */
+body.bureau-frutiz #app { position: relative; }
+body.bureau-frutiz #bureau {
+  position: absolute; inset: 0; z-index: 1;
+  background: #ADE76B;                /* le vert du portail, sans fond posé */
+  overflow: hidden;
+}
+/* Le tiroir mobile et sa quincaillerie n'existent plus sur le bureau : tout
+   ce qui servait (main bar, grille, compte) a été reparenté sur le bureau. */
+body.bureau-frutiz #home-panel,
+body.bureau-frutiz #home-backdrop { display: none !important; }
+/* La barre du haut mobile vit désormais DANS la fenêtre du salon. Hors d'une
+   fenêtre, elle n'a pas sa place à l'écran. */
+body.bureau-frutiz #topbar { display: none; }
+body.bureau-frutiz .fen #topbar {
+  display: flex; flex-shrink: 0;
+  border-bottom: 1px solid #C6E39A;
+}
+body.bureau-frutiz .fen #topbar #menu-btn { display: none; }
+/* Aucune rubrique ne s'affiche plein écran : elles vivent en fenêtres. */
+body.bureau-frutiz #app > .panel { display: none !important; }
+
+/* ── Le coin haut-gauche : la main bar du compte (comme main.swf) ───────── */
+body.bureau-frutiz #bureau-coin {
+  position: absolute; left: 10px; top: 8px; width: 430px; z-index: 3;
+  display: flex; flex-direction: column; gap: 4px;
+}
+body.bureau-frutiz #bureau-coin .mainbar {
+  border-radius: 12px; border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(60, 40, 0, .18);
+}
+body.bureau-frutiz #bureau-coin .daily-banner { border-radius: 10px; }
+/* Le compte (« connecté en tant que… », Se déconnecter) : une mention de bas
+   de bureau, discrète — le bureau Flash n'affichait rien de plus voyant. */
+body.bureau-frutiz #bureau .home-compte {
+  position: absolute; left: 12px; bottom: 6px; z-index: 3;
+  padding: 0; text-align: left; font-size: 11px;
+  color: var(--fond-txt, #2C4A0F);
+  text-shadow: 0 0 3px var(--fond-halo, rgba(255,255,255,.85));
+}
+
+/* ── Les icônes du bureau (la grille du tiroir, rhabillée) ──────────────── */
+body.bureau-frutiz #bureau #home-grid {
+  position: absolute; top: 10px; left: 460px; right: 16px; z-index: 2;
+  display: flex; flex-flow: row wrap; align-content: flex-start;
+  justify-content: flex-end; gap: 10px 6px;
+  margin: 0; padding: 0;
+}
+body.bureau-frutiz #bureau .home-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  width: 88px; padding: 6px 2px; margin: 0;
+  background: none; border: 0; border-radius: 10px; box-shadow: none;
+  cursor: pointer;
+}
+body.bureau-frutiz #bureau .home-tile:hover { background: rgba(255,255,255,.22); }
+body.bureau-frutiz #bureau .home-tile .ico {
+  width: 46px; height: 46px; display: flex; align-items: center; justify-content: center;
+  background: none; border: 0; box-shadow: none; font-size: 30px;
+}
+body.bureau-frutiz #bureau .home-tile .ico img { max-width: 46px; max-height: 46px; }
+body.bureau-frutiz #bureau .home-tile .lbl {
+  font-size: 11px; font-weight: 700; line-height: 1.15; text-align: center;
+  color: var(--fond-txt, #2C4A0F);
+  text-shadow:
+    0 0 2px var(--fond-halo, rgba(255,255,255,.85)),
+    0 0 5px var(--fond-halo, rgba(255,255,255,.85)),
+    0 1px 0 var(--fond-halo, rgba(255,255,255,.85));
+}
+
+/* ── Les fenêtres façon main.swf ────────────────────────────────────────── */
+body.bureau-frutiz #bureau-fenetres {
+  position: absolute; inset: 0; z-index: 10; pointer-events: none;
+}
+body.bureau-frutiz .fen {
+  position: absolute; pointer-events: auto;
+  display: flex; flex-direction: column;
+  background: #fff; border-radius: 13px;
+  border: 1px solid rgba(90, 120, 40, .55);
+  box-shadow: 0 4px 16px rgba(60, 40, 0, .32);
+  min-width: 280px; max-width: calc(100vw - 24px); max-height: calc(100vh - 16px);
+}
+body.bureau-frutiz .fen-titre {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 8px 5px 11px; cursor: move; user-select: none; -webkit-user-select: none;
+  font-size: 13px; font-weight: 700; font-style: italic; color: #3E5F16;
+  flex-shrink: 0;
+}
+body.bureau-frutiz .fen-pastille {
+  width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,.25);
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.85), rgba(255,255,255,0) 45%),
+    var(--pastille, #D8262C);
+}
+body.bureau-frutiz .fen-titre .txt {
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+body.bureau-frutiz .fen-btn {
+  width: 21px; height: 18px; flex-shrink: 0;
+  border-radius: 6px; border: 1px solid #C24A40;
+  background: linear-gradient(#F98F84, #EF6B5E);
+  color: #fff; font-size: 11px; font-weight: 700; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+}
+body.bureau-frutiz .fen-btn:hover { filter: brightness(1.08); }
+body.bureau-frutiz .fen-corps {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  margin: 0 5px 5px; border-radius: 9px; overflow: hidden;
+  background: #EAF7CC; border: 1px solid #C6E39A;
+}
+/* Replié : la barre-titre seule, comme l'enroulement du bureau Flash. */
+body.bureau-frutiz .fen.pliee .fen-corps { display: none; }
+body.bureau-frutiz .fen.pliee { min-width: 220px; }
+
+/* Le panneau logé dans une fenêtre s'affiche — c'est SA fenêtre qui le cadre. */
+body.bureau-frutiz .fen .panel.active { display: flex; flex: 1; min-height: 0; }
+/* Le cadrage « largeur de lecture » du chat plein écran n'a plus cours dans
+   une fenêtre : le panneau épouse la fenêtre, la poignée se tait. */
+body.bureau-frutiz .fen #chat-panel { max-width: none; align-self: stretch; width: 100%; }
+body.bureau-frutiz .fen #chat-poignee { display: none; }
