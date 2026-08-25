@@ -103,25 +103,54 @@ second bouton du bandeau — à brancher quand les onglets du bureau (la barre
 
 ### `Standard.getWinStyle` (0x4957f) — DÉCODÉ
 
-La fonction ne calcule rien : elle rend une TABLE, type de fenêtre → les
-familles de `_global.colorSet` à employer, dans l'ordre. (Le corps est un
-`DefineFunction2` à `flags=0x12a`, donc `suppressThis` + `preloadGlobal` :
-le registre 1 y est `_global`, pas `this`.)
+La fonction ne calcule rien : elle rend une TABLE, `style[type].color` = un
+TABLEAU de familles de `_global.colorSet`. (Le corps est un `DefineFunction2`
+à `flags=0x12a`, donc `suppressThis` + `preloadGlobal` : le registre 1 y est
+`_global`, pas `this`.)
 
-| type | familles |
-|---|---|
-| `global` | green, white |
-| `frFileStandard` | yellow, yellow |
-| `frFileTrash` | green, green |
-| `frFileBlackList` | purple, purple |
-| `frSystem` | white, green, white — plus `bgInfo.inline = 0` |
-| `frRoomList` | pink, pink, pink |
-| `frScore` | orange, orange, orange |
-| `frScoreLight` | orange, orange, orange |
-| `frSheet` | pink, green, green |
-| `frKikooz` | brown, brown |
-| `frDef` | green, green |
-| `frInfo` | yellow, yellow |
+**Attention au sens de lecture.** `InitArray` dépile depuis le sommet : la
+valeur empilée en DERNIER devient `[0]`. Le désassemblage liste donc les
+familles à l'ENVERS de leurs indices. Deux preuves indépendantes, plus bas —
+la fenêtre standard et l'écran de la bouille. Table remise à l'endroit :
+
+| type | `color[0]` | `color[1]` | `color[2]` |
+|---|---|---|---|
+| `global` | **white** | green | — |
+| `frFileStandard` | yellow | yellow | — |
+| `frFileTrash` | green | green | — |
+| `frFileBlackList` | purple | purple | — |
+| `frSystem` | white | green | white |
+| `frRoomList` | pink | pink | pink |
+| `frScore` | orange | orange | orange |
+| `frScoreLight` | orange | orange | orange |
+| `frSheet` | **green** | green | pink |
+| `frKikooz` | brown | brown | — |
+| `frDef` | green | green | — |
+| `frInfo` | yellow | yellow | — |
+
+`frSystem` porte en plus `bgInfo: {inline: 0}`. Seuls `global` et `frSheet`
+changent de lecture une fois remis à l'endroit — les autres sont symétriques.
+
+Quirk d'époque relevé au passage : `WinDoc.initDoc` (0xa6f7e) va chercher
+`getWinStyle().frDir`, un type qui n'existe PAS dans la table — ce style-là
+est donc toujours `undefined`.
+
+### `Standard.getOldWinStyle` (0x493e3) — l'ancienne table, EN CLAIR
+
+Celle-là n'indirecte rien : elle écrit ses couleurs en dur. C'est elle qui
+sert de témoin, et elle donne aussi quatre styles de CONTENU tout faits :
+
+| style | outline | inline | curve | main | inline | outline | extras |
+|---|---|---|---|---|---|---|---|
+| `global` | 1 | 2 | 10 | `#FFFFFF` | `#DDDDDD` | `#444444` | — |
+| `content` | 2 | 1 | 3 | `#D6F7B5` | `#BAF082` | `#DDDDDD` | dark `#94DB39`, overdark `#66AA22`, light `#E8FFC0` |
+| `content2` | 2 | 2 | 3 | `#E4F499` | `#DCEE5B` | `#DDDDDD` | — |
+| `content3` | 2 | 2 | 3 | `#FFDFDF` | `#FFBBBB` | `#DDDDDD` | dark `#EE8888`, text `#772222`, textdark `#550000` |
+| `content4` | 2 | 0 | 3 | `#FFFFFF` | `#DDDDDD` | `#DDDDDD` | dark `#AAAAAA`, overdark `#888888` |
+
+Les extras de `content` sont EXACTEMENT `green.dark` et `green.darker`, ceux
+de `content4` exactement `white.dark` et `white.darker` : l'ancienne table et
+les rampes sont bien deux écritures de la même palette.
 
 ### Les RAMPES de `colorSet`
 
@@ -175,6 +204,98 @@ n'habille que la pastille et le contenu du panneau (listes, cartes, boutons).
 Détail d'époque confirmé sur ref-historique.png : au repos, les boutons du
 bandeau montrent leur GLYPHE SEUL (les traits bleus de l'enroulement, la
 croix) — la plaque 21×21 n'apparaît qu'au survol, comme extrait.
+
+## La loi de tracé des cadres (`drawCustomSquare`, 0x4b425)
+
+Tout le mobilier du bureau — l'écran de la bouille, l'encart, les panneaux,
+les boutons — passe par UNE seule primitive. La connaître, c'est pouvoir
+peindre n'importe quel cadre sans plus rien mesurer.
+
+    drawSmoothSquare(mc, pos, couleur, rayon)   // un rectangle arrondi PLEIN
+    drawCustomSquare(mc, pos, o, chrome)
+
+`o = { outline, inline, curve, color: { outline, inline, main } }` ;
+`pos = {x, y, w, h}`. Les trois épaisseurs valent 0 si absentes. La fonction
+empile alors, du dessous vers le dessus :
+
+1. si `outline > 0` — un arrondi de rayon **`curve + outline`**, couleur
+   `color.outline`, débordant de `outline` sur les quatre côtés :
+   `(x−outline, y−outline, w+2·outline, h+2·outline)` ;
+2. si `inline > 0` — un arrondi de rayon **`curve`**, couleur `color.inline`,
+   exactement sur `pos` ;
+3. toujours — un arrondi de rayon **`max(curve − inline, 0)`**, couleur
+   `color.main`, rentré de `inline` : `(x+inline, y+inline, w−2·inline,
+   h−2·inline)`.
+4. si `chrome` est vrai — **LE REFLET**, par-dessus tout : un dégradé LINÉAIRE
+   blanc sur blanc, alphas `80 → 0` aux ratios `0 → 255` (donc ~31 % de blanc
+   en haut, transparent en bas), matrice `box` tournée de `1.57` rad (donc
+   vertical) sur une boîte de `(x, y, w, 10)` ; il est peint sur un arrondi de
+   rayon `max(curve − inline, 0)` haut de **10 px seulement**, rentré de
+   `inline`. C'est CE dégradé-là, et pas un autre, qui fait la brillance des
+   cadres d'époque.
+
+### Preuve n° 1 — la fenêtre standard, et le sens des tableaux
+
+`WinStandard.drawInterface` (0x54c96) efface, pose l'ombre portée, puis :
+
+    outline = 1 ; inline = 2 ; curve = 10
+    g = this.style.global.color[0]        // this.style = Standard.getWinStyle()
+    box = { outline: 1, inline: 2, curve: 10,
+            color: { main: g.main, inline: g.shade, outline: g.darkest } }
+    if (this.box.mode === 'desktop')
+        FEMC.drawCustomSquare(mcInterface, {x:0, y:0, w:pos.w, h:pos.h}, box, true)
+
+Deux choses en tombent. D'abord **le cadre d'une fenêtre ne dépend PAS de son
+type** : `drawInterface` lit toujours `style.global`, et le type n'habille que
+la pastille et le contenu — ce que le relevé au pixel disait déjà (« le corps
+d'une fenêtre reste blanc »).
+
+Ensuite, le sens des tableaux. Le rendu Ruffle donne main `#FFFFFF`, inline
+`#DDDDDD`, outline `#444444` — soit `white.main`, `white.shade`,
+`white.darkest`, exactement les trois littéraux de `getOldWinStyle().global`.
+Il faut donc que `getWinStyle().global.color[0]` soit **white**, alors que le
+désassemblage empile green puis white. `InitArray` inverse : dernier empilé =
+indice 0. C'est ce qui remet la table ci-dessus à l'endroit.
+
+Et le `true` final, c'est **le reflet**. Mais il tombe ici sur un fond
+`main` = `white.main` = `#FFFFFF` : du blanc à 31 % sur du blanc pur ne se
+voit pas. Sur une fenêtre du bureau, le reflet est un **no-op d'époque** —
+rien à ajouter au CSS. Il ne se met à compter que là où le fond est teinté
+(`WinDoc.initDoc`, 0xa6dd0 et 0xa6e85, l'appellent aussi avec `true`).
+
+Le CSS actuel de `.fen` tombe déjà juste, et on sait maintenant pourquoi :
+`border-radius: 10px` = `curve`, `border: 1px #444444` = l'outline (dont CSS
+arrondit tout seul le bord extérieur à 10 + 1 = 11 = `curve + outline`), et
+`inset 0 0 0 2px #DDDDDD` = l'inline (dont le bord intérieur retombe sur
+10 − 2 = 8 = `max(curve − inline, 0)`).
+
+### Preuve n° 2 — l'écran de la bouille
+
+`cp.FrutiScreen` (DoInitAction sprite#754, 0x615a7) — l'écran carré qui
+encadre la bouille — se peint ainsi (0x61ddc), avec `mainStyleName` par
+défaut à `frSystem` (0x61ac4) :
+
+    style = Standard.getWinStyle()[this.mainStyleName]   // frSystem → [white, green, white]
+    c0 = style.color[0]   // white
+    c1 = style.color[1]   // green
+    box = { outline: 2, inline: 1, curve: 6,
+            color: { main: c1.darker, inline: c0.darker, outline: c0.shade } }
+    content.screen.drawCustomSquare({x:0, y:0, w:width, h:height}, box)
+    content.mask.drawSmoothSquare({x:1, y:1, w:width−2, h:height−2}, 0, 6)
+
+En dépliant avec les rampes lues plus haut, ça donne : liseré extérieur de
+2 px **`#DDDDDD`** (= white.shade), anneau intérieur de 1 px **`#888888`**
+(= white.darker), fond **`#66AA22`** (= green.darker), et la bouille détourée
+au rayon 6 rentrée de 1.
+
+Or `#DDDDDD` et `#888888` sont EXACTEMENT les deux teintes relevées au pixel
+sur le rendu Ruffle, bien avant d'avoir trouvé `getWinStyle`. Le calcul et la
+mesure tombent d'accord sans qu'on ait rien ajusté : les rampes de 0x49e15 /
+0x49e62 sont bien `_global.colorSet.green` et `.white`, et la loi de tracé
+ci-dessus est la bonne. Elle donne au passage le rayon exact du cadre de la
+bouille — **6**, pas 7 comme mesuré à l'œil (le liseré extérieur, lui, est
+arrondi à `curve + outline` = 8, ce que le `box-shadow` du CSS reproduit tout
+seul en gonflant le rayon de son épaisseur).
 
 ## La connexion locale (RÉSOLU le 25/08)
 
@@ -264,10 +385,23 @@ bureau sous la barre et sa rangée d'onglets : recal borne les fenêtres LÀ.
     sombre qui fait son relief — `#97AD80` au bord gauche (x 84), `#A2AF94`
     en haut (y 7) ; en bas c'est un BISEAU de 3 px qui s'assombrit
     (`#B4DB8B`, `#A0C27B`, `#839471` en y 45-46-47) ;
-  • le REFLET est une tache douce au coin haut-droit, centrée vers (222, 11)
-    sur ~15×8 — l'image est bien celle du SWF (forme #409, blanc à 50 %),
-    mais le rendu Flash y monte jusqu'au blanc PUR : il y a probablement
-    deux couches superposées à l'origine, à revoir à l'extraction.
+  • le REFLET : ce n'était pas la forme #409 (elle appartient au cadre de la
+    bouille) et ce n'est pas UNE tache. `cpDigital` (#417) empile sur son
+    image 1 la plaque #411 (prof. 1), le champ du rang #413 (prof. 2), la
+    coupe #415 (prof. 3) et — tout en haut, prof. 7 — **la forme #416**, une
+    couche de finition d'un seul tenant qui porte CINQ pièces : le trait de
+    séparation `#73B01E` sous la coupe, l'ombre du bas (noir 20 %), le liseré
+    du haut (blanc 40 %), la grande brillance en L le long du haut et du bord
+    droit (blanc 50 %) et **l'éclat OPAQUE du coin haut-droit** — le morceau
+    qui manquait, et qui explique le blanc pur du rendu Flash. Extraite
+    telle quelle en `encart-reflet.svg`, cadrée sur le clip entier donc dans
+    le repère de la plaque (150×45). Relevé après pose, ref vs light, sur le
+    profil vertical du coin (x 220) : 0.567/0.630/0.896/1.000/0.505 contre
+    0.558/0.592/0.808/1.000/0.505 — et le trait de séparation retombe au
+    pixel près sur `#73B01E` en y 28.
+  • la plaque #411 elle-même : 150×45, fond `#C8F39A`, liseré `#DDDDDD` de
+    2 px et, entre les deux, un filet `#666666` d'un DEMI-pixel — c'est lui
+    que le rendu échantillonne à `#97AD80`, la moyenne du gris et du fond.
 - **Les DEUX chiffres de l'encart ne sont PAS de la Verdana.** Le bytecode
   tranche sans discussion, il suffisait de lire les champs texte :
   `DefineEditText #430` tire sur la fonte **#428 « impact » en 11 px** (c'est

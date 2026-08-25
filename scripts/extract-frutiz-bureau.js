@@ -476,6 +476,18 @@ function principal() {
     // La boîte de recherche du panneau des contacts : `mcSearchButton` (#441),
     // que `SideList.buildList` attache à `_y = 770`.
     { cle: 'recherche', id: 441 },
+    // LE REFLET DE L'ENCART. `cpDigital` (#417) empile quatre choses sur son
+    // image 1 : la plaque #411 (profondeur 1, 150×45, le fond `#C8F39A`, le
+    // liseré `#DDDDDD` et le filet sombre `#666666`), le champ du rang #413
+    // (prof. 2), la coupe #415 (prof. 3) — et, TOUT EN HAUT, la forme #416
+    // (prof. 7), qui n'est pas « un reflet » mais la COUCHE DE FINITION
+    // complète : le trait de séparation `#73B01E` sous la coupe, l'ombre
+    // basse (noir 20 %), le liseré haut (blanc 40 %), la grande brillance en
+    // L le long du haut et du bord droit (blanc 50 %) et — ce qui manquait —
+    // l'éclat OPAQUE du coin haut-droit. On la sort seule, mais cadrée sur le
+    // clip entier, donc dans le repère de la plaque : elle se pose telle
+    // quelle sur l'encart.
+    { cle: 'encart-reflet', id: 417, profondeurs: (p) => p === 7 },
   ];
   for (const c of CLIPS) {
     // On relit ses placements à l'octet plutôt que d'appeler aplatir() : le

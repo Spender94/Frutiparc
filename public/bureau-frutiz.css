@@ -110,22 +110,27 @@ body.bureau-frutiz #bureau-coin .mainbar {
 }
 body.bureau-frutiz #bureau-coin .mb-top { gap: 5px; align-items: flex-start; }
 body.bureau-frutiz #bureau-coin .mb-avatar { flex: 0 0 64px; height: 64px; }
-/* Le cadre de la bouille reprend les teintes du bureau (#888888 puis #DDDDDD)
-   au lieu des #D9D9D9/#8A888D du tiroir mobile. L'anneau sombre est tracé
-   À L'INTÉRIEUR du carré : relevé sur le rendu 1:1, la boîte du #888888 fait
-   exactement 64×64 (x 15..78, y 6..69), soit la taille de la FrutiScreen —
-   c'est bien le clip qui borde son propre contenu, comme en Flash. */
+/* Le cadre de la bouille, c'est `cp.FrutiScreen` — et depuis qu'on a décodé
+   `drawCustomSquare` (cf. PLAN.md) on n'a plus à le mesurer, on le CALCULE :
+   FrutiScreen se peint en `frSystem`, soit color = [white, green, white], avec
+   `{outline: 2, inline: 1, curve: 6}`. La loi donne alors un liseré extérieur
+   de 2 px `color[0].shade` = white.shade = #DDDDDD, un anneau intérieur de
+   1 px `color[0].darker` = white.darker = #888888, et un rayon de 6 sur la
+   boîte du #888888 (le liseré extérieur, lui, s'arrondit à curve + outline =
+   8, ce que le box-shadow refait tout seul en gonflant le rayon de son
+   épaisseur). Le relevé 1:1 concordait déjà : la boîte du #888888 fait
+   exactement 64×64 (x 15..78, y 6..69), la taille de la FrutiScreen. */
 body.bureau-frutiz #bureau-coin .mb-avatar .frame {
-  inset: 0; border-radius: 7px; box-shadow: 0 0 0 2px #DDDDDD;
+  inset: 0; border-radius: 6px; box-shadow: 0 0 0 2px #DDDDDD;
 }
 /* L'anneau sombre est tracé PAR-DESSUS la bouille : `stage`, `cadre` et
    `reflet` sont des ENFANTS du cadre, et une ombre interne passerait dessous.
    Un calque dédié, transparent au clic, le remet au premier plan. */
 body.bureau-frutiz #bureau-coin .mb-avatar .frame::after {
-  content: ""; position: absolute; inset: 0; border-radius: 7px;
+  content: ""; position: absolute; inset: 0; border-radius: 6px;
   box-shadow: inset 0 0 0 1px #888888; z-index: 6; pointer-events: none;
 }
-body.bureau-frutiz #bureau-coin #home-avatar-fiche { inset: 0; border-radius: 7px; }
+body.bureau-frutiz #bureau-coin #home-avatar-fiche { inset: 0; border-radius: 6px; }
 /* La colonne de droite démarre UN pixel plus bas que la bouille (liseré de la
    bouille en y 4, liseré de l'encart en y 5) et laisse 3 px entre l'encart et
    la rangée des émotions (encart jusqu'à y 47, liserés y 48-49, blanc y 50,
@@ -149,6 +154,25 @@ body.bureau-frutiz #bureau-coin .mb-encart {
   flex: 0 0 41px; border-radius: 2px;
   box-shadow: inset 0 0 0 1px #97AD80, 0 0 0 2px #DDDDDD;
 }
+/* LA FINITION DE L'ENCART, telle quelle. `cpDigital` (#417) pose en dernier
+   (profondeur 7) la forme #416 : elle porte D'UN SEUL TENANT le trait de
+   séparation sous la coupe (`#73B01E`), l'ombre du bas (noir 20 %), le liseré
+   du haut (blanc 40 %), la grande brillance en L qui longe le haut et le bord
+   droit (blanc 50 %) — et l'ÉCLAT OPAQUE du coin haut-droit, le seul morceau
+   qui manquait et qui fait tout l'effet. Reproduire ces cinq pièces à la main
+   n'aurait donné qu'un à-peu-près ; on pose le dessin d'origine.
+   Le SVG est cadré sur le clip entier, donc dans le repère de la PLAQUE
+   (150×45) : d'où le débord de 2 px, l'épaisseur du liseré `#DDDDDD` que la
+   boîte de l'encart (146×41) ne compte pas. */
+body.bureau-frutiz #bureau-coin .mb-encart::after {
+  content: ""; position: absolute; inset: -2px; z-index: 4; pointer-events: none;
+  background: url('/frutiz/sprites/encart-reflet.svg') left top / 100% 100% no-repeat;
+}
+/* Du coup les deux pièces que le light dessinait à la main font double emploi
+   sur le bureau : le trait de séparation et l'ancien reflet. Le mobile, lui,
+   les garde — ces règles ne valent que sous `.bureau-frutiz`. */
+body.bureau-frutiz #bureau-coin .enc-divider,
+body.bureau-frutiz #bureau-coin .reflet-niv { display: none; }
 /* Les 9 barres de progression, au relevé 1:1 (colonne x=90 du rendu) : des
    barres de **2 px séparées de 1 px**, de y 9 à 35 (9×2 + 8×1 = 26), larges
    de 27 (x 86..113) — pas les filets de 1 px du tiroir mobile. Vide

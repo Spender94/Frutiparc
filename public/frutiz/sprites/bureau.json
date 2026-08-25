@@ -254,6 +254,15 @@
    "h": 22.02
   }
  },
+ "encart-reflet": {
+  "fichier": "encart-reflet.svg",
+  "cadre": {
+   "x": 0,
+   "y": 0,
+   "w": 150,
+   "h": 45
+  }
+ },
  "frutimandalaRoue": {
   "fichier": "frutimandala-roue.svg",
   "cadre": {
