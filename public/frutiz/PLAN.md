@@ -407,6 +407,55 @@ dp_scrollBar 40, dp_element 100.
 - Le clic (`mcSide.onPress` et `butContact.onPress`) appelle `toggle` : le
   dépliement de la liste reste à porter (étape des contacts).
 
+## Les icônes du bureau
+
+- **La grille n'est pas écrite en dur, elle est CALCULÉE.**
+  `FPDesktop.displayIconList` (0xba0af) ne pose rien lui-même : il attache un
+  `cpDragIconList` et lui passe la boîte utile (`mcw − main.cornerX`,
+  `mch − main.cornerY`), la marge de `Standard.getMargin()` corrigée en
+  `x.min = 18` / `y.min = 12`, la couleur de texte
+  (`wallPaper.txtColor`, à défaut `colorSet.green.overdark`), `flTrace: true`
+  et `flMask: false`. C'est `cp.IconList.updateStruct` (0x4f6fc) qui en tire
+  la grille, axe par axe :
+
+  ```
+  utile = côté − 2·marge
+  pas   = size + space
+  max   = floor(utile / pas)
+  reste = utile − (max·size + (max−1)·space)
+  tant que reste > pas : max++ ; reste -= pas
+  coin  = marge            si align vaut « start » ou « null »
+        = marge + reste/2  si « center »
+        = marge + reste    si « end »
+  ```
+
+  puis `alignIcon` (0x4f946) remplit l'axe INTÉRIEUR (`isNot(struct.order)`)
+  avant de faire un pas sur l'axe extérieur, chacun parcouru dans le `sens`
+  inscrit dans sa structure. Sur un écran large, cela donne **une seule
+  RANGÉE** — pas des colonnes comme on pouvait le croire.
+
+- **Le relevé 1:1** (`ref1-icones.png`, bureau dégagé — l'éditeur de bouille
+  n'a pas de croix, il faut lui faire défiler assez de traits pour qu'il
+  accepte « valider ») : **quinze icônes**, centres à **53 + 76·k** (pas
+  mesuré 75,96 sur 14 intervalles), donc `size` 64 et `space` 12. L'ordre :
+  la boîte de réception, les disques, l'inventaire, Gaspard, les contacts,
+  la corbeille, le forum, la liste noire, les salons, l'historique, les
+  préférences, les scores, la boutique, le bouilloscope, le club.
+
+- **La cellule** : le dessin est CENTRÉ sur la ligne y 128 — soit une case
+  d'icône de 44 px partant de y 106, c'est-à-dire `main.cornerY` — et
+  l'étiquette commence juste dessous, en y 152, avec 13 px d'interligne. Le
+  champ de texte fait 64 et non 76 : « Boîte de réception » et « Mon
+  historique » passent à deux lignes, « Mes contacts » (63) tient sur une.
+  L'encre est `#335511` sur l'aplat `#ADE76B`, sans halo.
+
+- **La TAILLE des dessins** n'est pas normalisée : c'est l'artwork tel quel,
+  de 23×39 (l'historique) à 42×42 (le bouilloscope). Deux constats utiles au
+  portage : les icônes tirées de fileIcon.swf en SVG tombent toutes à **0,60**
+  de leur taille native (le SVG a été sorti à 5/3), tandis que les PNG portent
+  des marges transparentes inégales — l'inventaire n'en remplit que 82 %, le
+  forum 70 % en largeur — et doivent donc être contraints sur leur ENCRE.
+
 ## Reste à faire (étapes suivantes)
 
 1. La barre-titre des types de fenêtres (winChat #5, winPanel #7,
@@ -420,8 +469,11 @@ dp_scrollBar 40, dp_element 100.
    initSideIconList 0x6b786) ; le MEUBLE du lecteur frusion est posé (clip
    #324 extrait) mais sa mécanique reste (FDDrive 0x6d884 : trappe, disque,
    éjection), tout comme les boutons de la mandala (rotation, plantation).
-3. Les icônes du bureau (fileIconStandard #11) et leur pose en colonnes
-   (FPDesktop), le glisser-déposer des icônes.
+3. ~~Les icônes du bureau et leur pose~~ FAITE (rangée au pas de 76, case de
+   44, étiquette en y 152, tailles de dessin rétablies). Reste le
+   GLISSER-DÉPOSER des icônes (`cpDragIconList`, `listener.dragIconMouse`
+   #895, `FPDesktop.onDrop` 0xb9ca9) : d'époque les icônes restent sur la
+   grille, le glissé RÉORDONNE la liste.
 4. Le mode « tab » des fenêtres (les onglets qui suivent « Bureau »), le
    menu déroulant de l'onglet, les préférences (`win_flMoveAnim`).
 5. Le DÉPLIEMENT du panneau des contacts (toggle/activate : la bande passe

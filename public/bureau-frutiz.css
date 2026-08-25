@@ -398,34 +398,101 @@ body.bureau-frutiz #bureau .home-compte {
 }
 
 /* ── Les icônes du bureau (la grille du tiroir, rhabillée) ────────────────
-   La rangée d'époque (mesures 1:1) : sous la barre, à partir de x ≈ 130,
-   un PAS de 76 px par icône, étiquette dessous. La pose en colonnes de
-   FPDesktop viendra à l'étape des icônes — ici la géométrie de la rangée. */
+   FPDesktop.displayIconList (0xba0af) ne pose PAS les icônes lui-même : il
+   attache un `cpDragIconList` et lui passe la boîte utile
+   (`mcw − main.cornerX`, `mch − main.cornerY`) plus la marge de
+   `Standard.getMargin()`, corrigée en `x.min = 18`, `y.min = 12`. C'est
+   `cp.IconList.updateStruct` (0x4f6fc) qui en tire la grille :
+
+     utile  = côté − 2·marge
+     pas    = size + space
+     max    = floor(utile / pas)          ← combien tiennent
+     reste  = utile − (max·size + (max−1)·space)
+     coin   = marge  |  marge + reste/2  |  marge + reste   selon `align`
+
+   puis `alignIcon` (0x4f946) remplit un axe INTÉRIEUR avant de faire un pas
+   sur l'axe extérieur — d'où, sur un écran large, une seule RANGÉE.
+
+   Le relevé 1:1 (ref1-icones.png, bureau dégagé) donne les nombres :
+   quinze icônes, centres à **53 + 76·k** (pas mesuré 75,96 sur 14
+   intervalles), donc `size` 64 et `space` 12. Le dessin est CENTRÉ sur la
+   ligne y 128,5 — soit une case d'icône de 46 px partant de y 106, c'est-à-
+   dire `main.cornerY` — et l'étiquette commence juste dessous, en y 152,
+   avec 13 px d'interligne (« Boîte de réception » et « Mon historique »
+   passent à deux lignes : le champ fait 64, pas 76). */
 body.bureau-frutiz #bureau #home-grid {
-  position: absolute; top: 98px; left: 130px; right: 16px; z-index: 2;
+  position: absolute; top: 106px; left: 15px; right: 16px; z-index: 2;
   display: flex; flex-flow: row wrap; align-content: flex-start;
-  justify-content: flex-start; gap: 8px 0;
+  align-items: flex-start; justify-content: flex-start; gap: 12px 0;
   margin: 0; padding: 0;
 }
 body.bureau-frutiz #bureau .home-tile {
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  width: 76px; padding: 6px 2px; margin: 0;
-  background: none; border: 0; border-radius: 10px; box-shadow: none;
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+  width: 76px; padding: 0 6px; margin: 0; box-sizing: border-box;
+  background: none; border: 0; border-radius: 0; box-shadow: none;
   cursor: pointer;
 }
-body.bureau-frutiz #bureau .home-tile:hover { background: rgba(255,255,255,.22); }
+body.bureau-frutiz #bureau .home-tile:hover .lbl { text-decoration: underline; }
 body.bureau-frutiz #bureau .home-tile .ico {
-  width: 46px; height: 46px; display: flex; align-items: center; justify-content: center;
+  width: 64px; height: 44px; display: flex; align-items: center; justify-content: center;
   background: none; border: 0; box-shadow: none; font-size: 30px;
 }
-body.bureau-frutiz #bureau .home-tile .ico img { max-width: 46px; max-height: 46px; }
+/* La TAILLE des dessins. Le tiroir mobile étire chaque icône jusqu'à remplir
+   sa case ; d'époque, elles sont posées à leur taille propre, et elles ne font
+   pas toutes la même — c'est l'artwork tel quel. Deux constats du relevé :
+     • les quatre icônes tirées de fileIcon.swf en SVG (courrier, historique,
+       préférences, club) tombent TOUTES à 0,60 de leur taille native — le
+       SVG a été sorti à 5/3 de l'original. Les événements, même provenance,
+       suivent la règle (51×48 → 31×29) ;
+     • les PNG portent des marges transparentes INÉGALES (l'inventaire n'en
+       remplit que 82 %, le forum 70 % en largeur) : la contrainte doit donc
+       viser leur ENCRE et pas le fichier. Les tailles ci-dessous sont
+       calculées — part d'encre relevée dans le fichier, puis mise à l'échelle
+       pour retrouver la boîte d'époque.
+   `max-*` laisse l'image garder ses proportions : la dimension contraignante
+   l'emporte. */
+body.bureau-frutiz #bureau .home-tile .ico img { max-width: 42px; max-height: 42px; }
+/* extraits de fileIcon.swf en SVG, sans marge : 0,60 de leur taille native */
+body.bureau-frutiz #bureau .home-tile[data-go="mail"]       .ico img { max-width: 37px; max-height: 27px; }
+body.bureau-frutiz #bureau .home-tile[data-go="historique"] .ico img { max-width: 23px; max-height: 39px; }
+body.bureau-frutiz #bureau .home-tile[data-go="evenements"] .ico img { max-width: 31px; max-height: 29px; }
+body.bureau-frutiz #bureau .home-tile[data-go="reglages"]   .ico img { max-width: 31px; max-height: 37px; }
+body.bureau-frutiz #bureau .home-tile[data-go="club"]       .ico img { max-width: 30px; max-height: 37px; }
+/* PNG : la boîte tient compte de la marge transparente du fichier */
+body.bureau-frutiz #bureau .home-tile[data-go="disques"]    .ico img { max-width: 33px; max-height: 33px; }
+body.bureau-frutiz #bureau .home-tile[data-go="inventaire"] .ico img { max-width: 43px; max-height: 39px; }
+body.bureau-frutiz #bureau .home-tile[data-go="forum"]      .ico img { max-width: 35px; max-height: 43px; }
+body.bureau-frutiz #bureau .home-tile[data-go="chat"]       .ico img { max-width: 45px; max-height: 42px; }
+body.bureau-frutiz #bureau .home-tile[data-go="scores"]     .ico img { max-width: 35px; max-height: 38px; }
+body.bureau-frutiz #bureau .home-tile[data-go="shop"]       .ico img { max-width: 36px; max-height: 32px; }
+body.bureau-frutiz #bureau .home-tile[data-go="trombi"]     .ico img { max-width: 42px; max-height: 42px; }
+/* L'ORDRE d'époque, relevé sur le bureau dégagé : la boîte de réception, les
+   disques, l'inventaire, Gaspard, les contacts, la corbeille, le forum, la
+   liste noire, les salons, l'historique, les préférences, les scores, la
+   boutique, le bouilloscope, le club. Le light n'a pas les quatre rubriques
+   Flash (Gaspard, Mes contacts, Corbeille, Liste noire) et en a une de plus,
+   les Événements — rangée contre l'historique, avec qui elle partage sa
+   fenêtre. On ne réordonne que l'AFFICHAGE : le DOM reste celui du mobile. */
+body.bureau-frutiz #bureau .home-tile[data-go="mail"]       { order: 0; }
+body.bureau-frutiz #bureau .home-tile[data-go="disques"]    { order: 1; }
+body.bureau-frutiz #bureau .home-tile[data-go="inventaire"] { order: 2; }
+body.bureau-frutiz #bureau .home-tile[data-go="forum"]      { order: 3; }
+body.bureau-frutiz #bureau .home-tile[data-go="chat"]       { order: 4; }
+body.bureau-frutiz #bureau .home-tile[data-go="historique"] { order: 5; }
+body.bureau-frutiz #bureau .home-tile[data-go="evenements"] { order: 6; }
+body.bureau-frutiz #bureau .home-tile[data-go="reglages"]   { order: 7; }
+body.bureau-frutiz #bureau .home-tile[data-go="scores"]     { order: 8; }
+body.bureau-frutiz #bureau .home-tile[data-go="shop"]       { order: 9; }
+body.bureau-frutiz #bureau .home-tile[data-go="trombi"]     { order: 10; }
+body.bureau-frutiz #bureau .home-tile[data-go="club"]       { order: 11; }
 /* L'étiquette d'époque : du texte posé À NU sur le fond (mesuré #335511 sur
    l'aplat #ADE76B, ref-bureau-propre.png) — main.swf ne met AUCUN halo, la
    lisibilité vient de la couleur de texte imposée par le fond d'écran
    (--fond-txt, la loi WallPaperMng). */
 body.bureau-frutiz #bureau .home-tile .lbl {
-  font-size: 11px; font-weight: 700; line-height: 1.15; text-align: center;
-  color: var(--fond-txt, #335511);
+  font: normal 11px Verdana, Arial, sans-serif; line-height: 13px;
+  text-align: center; color: var(--fond-txt, #335511);
+  max-width: 64px;
 }
 
 /* ── Les fenêtres — le chrome de WinStandard, au relevé près ────────────────
