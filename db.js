@@ -404,6 +404,10 @@ async function initSchema() {
         updated_at  TIMESTAMPTZ DEFAULT now()
       );
 
+      -- Les EXIGENCES de la carte (chutes imposées [{t, id}], en unités de
+      -- tmod) : la table a pu naître sans la colonne, on la complète.
+      ALTER TABLE snake3_tournoi ADD COLUMN IF NOT EXISTS exigences TEXT NOT NULL DEFAULT '[]';
+
       -- Custom wallpapers ("fonds d'écran") uploaded from the admin panel. The
       -- image BYTES live in the DB (not on disk) so a bought wallpaper keeps
       -- loading even after an ephemeral-filesystem redeploy. Served on demand by
@@ -1752,18 +1756,19 @@ async function setMiniwaveMap(dayKey, seed, data) {
   );
 }
 
-// ── Frutisnake : la carte du tournoi (graine, script, ouvert/fermé) ──
+// ── Frutisnake : la carte du tournoi (graine, script, exigences, ouvert/fermé) ──
 async function getSnake3Tournoi() {
   const { rows } = await pool.query(
-    "SELECT graine, carte, ouvert, classement, updated_at FROM snake3_tournoi WHERE slot = 'current'");
+    "SELECT graine, carte, exigences, ouvert, classement, updated_at FROM snake3_tournoi WHERE slot = 'current'");
   return rows[0] || null;
 }
 async function setSnake3Tournoi(etat) {
   await pool.query(
-    `INSERT INTO snake3_tournoi (slot, graine, carte, ouvert, classement, updated_at)
-     VALUES ('current', $1, $2, $3, $4, now())
-     ON CONFLICT (slot) DO UPDATE SET graine = $1, carte = $2, ouvert = $3, classement = $4, updated_at = now()`,
-    [String(etat.graine || ''), String(etat.carte || '[]'), !!etat.ouvert, !!etat.classement]
+    `INSERT INTO snake3_tournoi (slot, graine, carte, exigences, ouvert, classement, updated_at)
+     VALUES ('current', $1, $2, $3, $4, $5, now())
+     ON CONFLICT (slot) DO UPDATE SET graine = $1, carte = $2, exigences = $3, ouvert = $4, classement = $5, updated_at = now()`,
+    [String(etat.graine || ''), String(etat.carte || '[]'), String(etat.exigences || '[]'),
+      !!etat.ouvert, !!etat.classement]
   );
 }
 

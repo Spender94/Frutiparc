@@ -95,11 +95,28 @@ function tirerPosition(hasard, w, h) {
  *   x, y  la position, tirée aux marges de Level.generate_pos ;
  *   vie   la durée à l'écran, en unités de tmod (300 + hasard(150)).
  *
+ * Les EXIGENCES : des chutes que l'admin impose — [{ t, id }] en unités de
+ * tmod. Chacune tombe exactement à son instant (marquée `exigee: true` dans
+ * la carte), position et durée de vie tirées au même rng que le reste :
+ * même graine + mêmes exigences → même carte, au pixel. Autour d'elles, la
+ * loi du jeu continue de s'appliquer :
+ *
+ *   · un UNIQUE exigé (bague, ressort, sonnette…) est retiré des poids du
+ *     tirage organique dès le départ — on ne gagne jamais deux sonnettes,
+ *     exigée ou pas ;
+ *   · les exigences comptent parmi les options posées : la cadence
+ *     organique les voit (le dé se fait plus rare), et elles pèsent dans le
+ *     plafond des dix — sans s'y soumettre elles-mêmes : la volonté de
+ *     l'admin passe devant. Deux exigences peuvent partager le même instant
+ *     (le duo cloche + sonnette) : le moteur les fait tomber dans la même
+ *     image, dans l'ordre donné.
+ *
  * @param {string|number} graine
  * @param {object} cadresOptions  manifest `cadres.options` : id → { w, h }
  * @param {number} dureeTicks     l'horizon couvert (défaut : 20 minutes)
+ * @param {Array}  exigences      chutes imposées [{ t, id }] (facultatif)
  */
-function genererCarte(graine, cadresOptions, dureeTicks) {
+function genererCarte(graine, cadresOptions, dureeTicks, exigences) {
   const duree = Math.max(1, Math.trunc(dureeTicks || 20 * 60 * 32));
   const hasard = creerHasard(graine);
   const probas = C.PROBABILITIES.slice();
@@ -107,9 +124,38 @@ function genererCarte(graine, cadresOptions, dureeTicks) {
   const vivantes = [];                  // les fins de vie des options non ramassées
   let attente = 0;                      // le bonus_time de Game.main
 
+  // Les exigences, triées par instant (tri STABLE : deux exigences au même
+  // instant gardent l'ordre donné), leurs uniques ôtés des poids organiques.
+  const imposees = (exigences || [])
+    .map((e) => ({ t: Math.max(0, Math.trunc(e.t)), id: Math.trunc(e.id) }))
+    .sort((a, b) => a.t - b.t);
+  for (const e of imposees) {
+    if (UNIQUES.indexOf(e.id) >= 0) probas[e.id - 1] = 0;
+  }
+  let prochaine = 0;
+
+  const poser = (t, id, exigee) => {
+    const vie = 300 + hasard(150);
+    const cadre = (cadresOptions && cadresOptions[id]) || { w: 20, h: 20 };
+    const p = tirerPosition(hasard, cadre.w, cadre.h);
+    const entree = {
+      t,
+      id,
+      x: Math.round(p.x * 100) / 100,
+      y: Math.round(p.y * 100) / 100,
+      vie,
+    };
+    if (exigee) entree.exigee = true;
+    entrees.push(entree);
+    vivantes.push(t + vie);
+  };
+
   for (let t = 0; t < duree; t++) {
     for (let i = vivantes.length - 1; i >= 0; i--) {
       if (vivantes[i] <= t) vivantes.splice(i, 1);
+    }
+    while (prochaine < imposees.length && imposees[prochaine].t === t) {
+      poser(t, imposees[prochaine++].id, true);
     }
     // Le plafond de Game.main compte aussi les cases en main (slots) — un
     // état du joueur qu'une carte partagée ne peut pas connaître : on tient
@@ -121,17 +167,7 @@ function genererCarte(graine, cadresOptions, dureeTicks) {
       attente = 0;
       const id = 1 + C.randomProbas(probas, hasard);
       if (UNIQUES.indexOf(id) >= 0) probas[id - 1] = 0;
-      const vie = 300 + hasard(150);
-      const cadre = (cadresOptions && cadresOptions[id]) || { w: 20, h: 20 };
-      const p = tirerPosition(hasard, cadre.w, cadre.h);
-      entrees.push({
-        t,
-        id,
-        x: Math.round(p.x * 100) / 100,
-        y: Math.round(p.y * 100) / 100,
-        vie,
-      });
-      vivantes.push(t + vie);
+      poser(t, id, false);
     } else {
       attente += 1;
     }

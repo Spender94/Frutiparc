@@ -466,6 +466,20 @@
       mode : on rouvre quand tout est prêt. Une coupe « Maître ÈS … » peut se tenir sur ce classement.
     </p>
     <div id="snaketournoi-etat" style="font-size:13px;margin-bottom:10px">Chargement…</div>
+    <!-- Les exigences : des chutes imposées à la carte (option + instant mm:ss).
+         Le reste de la carte est tiré normalement autour d'elles. -->
+    <div style="border:1px dashed #b9d4b9;border-radius:6px;padding:8px 10px;margin-bottom:10px;background:#fff">
+      <div style="font-size:12px;color:#555;margin-bottom:6px">
+        <b>Exigences</b> — des chutes imposées : « à tel instant, telle option tombe, garanti ».
+        Le reste de la carte se tire normalement autour. Deux exigences au même instant tombent
+        dans la même image (le duo cloche + sonnette).
+      </div>
+      <div id="snaketournoi-exigences"></div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="btn btn-sm" onclick="ajouterExigenceSnake(19, 120)">+ Exigence</button>
+        <button class="btn btn-sm" onclick="ajouterDuoClocheSonnette()" title="Le bug difficile à reproduire : les deux options posées au même instant, serpent déjà grandi.">+ Cloche &amp; Sonnette au même instant</button>
+      </div>
+    </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <label style="font-size:12px;color:#555">Graine :
         <input id="snaketournoi-graine" maxlength="40" placeholder="(vide = au hasard)" style="width:160px;padding:4px">
@@ -1647,6 +1661,8 @@ async function loadTournaments() {
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 // ─── Frutisnake : la carte du tournoi (mode « Entraînement » du light) ───
+let snakeNoms = [];                      // OPTION_NOMS servis par l'admin GET
+let snakeExigences = [];                 // [{ id, t }] — t en secondes de jeu
 async function loadSnakeTournoi() {
   try {
     const d = await (await fetch('/api/admin/snake3-tournoi', { headers: hdr() })).json();
@@ -1659,15 +1675,70 @@ async function loadSnakeTournoi() {
     $('#snaketournoi-classement').checked = !!d.classement;
     $('#snaketournoi-ouvrir').style.display = d.ouvert ? 'none' : '';
     $('#snaketournoi-fermer').style.display = d.ouvert ? '' : 'none';
+    snakeNoms = Array.isArray(d.noms) ? d.noms : [];
+    snakeExigences = (d.exigences || []).map(e => ({ id: e.id, t: e.t }));
+    dessinerExigencesSnake();
     dessinerApercuSnake(d.apercu || []);
   } catch (e) { $('#snaketournoi-etat').textContent = 'Erreur : ' + e.message; }
+}
+const mmss = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s) % 60).padStart(2, '0');
+function mmssVersSecondes(txt) {
+  const t = String(txt || '').trim();
+  const m = /^(\d+):([0-5]?\d)$/.exec(t);
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+}
+function dessinerExigencesSnake() {
+  const el = $('#snaketournoi-exigences');
+  if (!snakeExigences.length) {
+    el.innerHTML = '<div style="font-size:12px;color:#999">Aucune — la carte sera 100 % « naturelle ».</div>';
+    return;
+  }
+  const options = (sel) => snakeNoms.map((nom, id) => nom
+    ? `<option value="${id}"${id === sel ? ' selected' : ''}>${esc(nom)}</option>` : '').join('');
+  el.innerHTML = snakeExigences.map((e, i) => `
+    <div style="display:flex;gap:6px;align-items:center;margin:3px 0">
+      <select onchange="snakeExigences[${i}].id = Number(this.value)" style="padding:3px">${options(e.id)}</select>
+      <label style="font-size:12px;color:#555">à
+        <input value="${mmss(e.t)}" size="5" style="padding:3px;text-align:center"
+          onchange="majInstantExigence(${i}, this)"> (mm:ss)
+      </label>
+      <button class="btn btn-sm" onclick="snakeExigences.splice(${i}, 1); dessinerExigencesSnake()">✕</button>
+    </div>`).join('');
+}
+function majInstantExigence(i, input) {
+  const s = mmssVersSecondes(input.value);
+  if (s === null || s > 1199) {
+    toast('Instant illisible ou hors carte (0:00 à 19:59)');
+    input.value = mmss(snakeExigences[i].t);
+    return;
+  }
+  snakeExigences[i].t = s;
+  input.value = mmss(s);
+}
+function ajouterExigenceSnake(id, t) {
+  if (snakeExigences.length >= 12) { toast('Douze exigences au plus.'); return; }
+  snakeExigences.push({ id, t });
+  dessinerExigencesSnake();
+}
+// Le duo du « bug » : la sonnette (31, l'unique à la cloche de queue) et la
+// cloche (32, le serpent fondu en fruits) posées AU MÊME INSTANT — à 5:00,
+// pas en tout début de partie : il faut un serpent déjà long pour que leurs
+// mécaniques s'emmêlent.
+function ajouterDuoClocheSonnette() {
+  if (snakeExigences.some(e => e.id === 31)) { toast('La sonnette est déjà exigée (elle est unique).'); return; }
+  if (snakeExigences.length >= 11) { toast('Douze exigences au plus.'); return; }
+  snakeExigences.push({ id: 31, t: 300 }, { id: 32, t: 300 });
+  dessinerExigencesSnake();
 }
 function dessinerApercuSnake(apercu) {
   const el = $('#snaketournoi-apercu');
   if (!apercu.length) { el.innerHTML = ''; return; }
+  const nbExigees = apercu.filter(a => a.exigee).length;
   const lignes = apercu.map(a =>
-    `<tr><td>${esc(a.temps)}</td><td><b>${esc(a.nom)}</b></td><td>${Math.round(a.x)}, ${Math.round(a.y)}</td><td>${esc(a.vie)}</td></tr>`).join('');
-  el.innerHTML = `<details><summary style="cursor:pointer;font-size:12px;color:#555">Aperçu de la carte (${apercu.length} options)</summary>
+    `<tr${a.exigee ? ' style="background:#fff3d6"' : ''}><td>${esc(a.temps)}</td><td><b>${esc(a.nom)}</b>${a.exigee ? ' <span style="color:#b8860b;font-size:11px">★ exigée</span>' : ''}</td><td>${Math.round(a.x)}, ${Math.round(a.y)}</td><td>${esc(a.vie)}</td></tr>`).join('');
+  el.innerHTML = `<details><summary style="cursor:pointer;font-size:12px;color:#555">Aperçu de la carte (${apercu.length} options${nbExigees ? `, dont ${nbExigees} exigée(s)` : ''})</summary>
     <table style="margin-top:6px"><thead><tr><th>Instant</th><th>Option</th><th>Position</th><th>À l'écran</th></tr></thead>
     <tbody>${lignes}</tbody></table></details>`;
 }
@@ -1677,10 +1748,13 @@ async function genererSnakeTournoi() {
   try {
     const d = await (await fetch('/api/admin/snake3-tournoi/generer', {
       method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()),
-      body: JSON.stringify({ graine }),
+      body: JSON.stringify({ graine, exigences: snakeExigences }),
     })).json();
-    if (d.ok) { toast(`Carte générée (graine « ${d.graine} », ${d.nb} options)`); loadSnakeTournoi(); }
-    else toast('Erreur : ' + (d.error || '?'));
+    if (d.ok) {
+      toast(`Carte générée (graine « ${d.graine} », ${d.nb} options`
+        + (snakeExigences.length ? `, ${snakeExigences.length} exigence(s)` : '') + ')');
+      loadSnakeTournoi();
+    } else toast('Erreur : ' + (d.error || '?'));
   } catch (e) { toast('Erreur : ' + e.message); }
 }
 async function ouvrirSnakeTournoi(ouvrir) {

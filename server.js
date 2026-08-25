@@ -14380,11 +14380,43 @@ let snake3TournoiEtat = null;             // { graine, carte, ouvert, classement
 let snake3TournoiEnBase = false;
 
 function snake3TournoiDefaut() {
-  return { graine: '', carte: [], ouvert: false, classement: true };
+  return { graine: '', carte: [], exigences: [], ouvert: false, classement: true };
 }
 function snake3TournoiValide(e) {
   return !!(e && typeof e === 'object' && Array.isArray(e.carte)
     && typeof e.ouvert === 'boolean' && typeof e.classement === 'boolean');
+}
+// La durée couverte par une carte (l'horizon du générateur) : 20 minutes.
+const SNAKE3_TOURNOI_DUREE_TICKS = 20 * 60 * 32;
+/**
+ * Les EXIGENCES envoyées par l'admin : [{ id, t }] avec t en SECONDES de jeu
+ * (l'UI parle en mm:ss). Rendues en unités de tmod (×32) pour le générateur.
+ * @returns {{ exigences: Array }|{ erreur: string }}
+ */
+function snake3TournoiLireExigences(brut) {
+  if (brut === undefined || brut === null) return { exigences: [] };
+  if (!Array.isArray(brut) || brut.length > 12) {
+    return { erreur: 'exigences_invalides' };
+  }
+  const exigences = [];
+  const uniquesVus = new Set();
+  for (const e of brut) {
+    const id = Math.trunc(Number(e && e.id));
+    const secondes = Number(e && e.t);
+    if (!(id >= 1 && id <= 37)) return { erreur: 'option_inconnue' };
+    if (!Number.isFinite(secondes) || secondes < 0
+      || secondes * 32 >= SNAKE3_TOURNOI_DUREE_TICKS) {
+      return { erreur: 'instant_hors_carte' };
+    }
+    // Un unique (bague, sonnette…) ne se gagne qu'une fois : l'exiger deux
+    // fois fabriquerait une carte impossible dans le jeu d'origine.
+    if (SnakeCarte.UNIQUES.indexOf(id) >= 0) {
+      if (uniquesVus.has(id)) return { erreur: 'unique_en_double' };
+      uniquesVus.add(id);
+    }
+    exigences.push({ id, t: Math.round(secondes * 32) });
+  }
+  return { exigences };
 }
 // Les tailles naturelles des options (manifest cadres.options) : ce sont elles
 // que Level.generate_pos utilise pour tenir l'objet dans les marges.
@@ -14406,6 +14438,7 @@ async function snake3TournoiRangerEnBase(e) {
   try {
     await db.setSnake3Tournoi({
       graine: e.graine, carte: JSON.stringify(e.carte),
+      exigences: JSON.stringify(e.exigences || []),
       ouvert: e.ouvert, classement: e.classement,
     });
     snake3TournoiEnBase = true;
@@ -14422,6 +14455,8 @@ async function snake3Tournoi() {
     if (fs.existsSync(SNAKE3_TOURNOI_FILE)) {
       const surDisque = JSON.parse(fs.readFileSync(SNAKE3_TOURNOI_FILE, 'utf8'));
       if (snake3TournoiValide(surDisque)) {
+        // Un fichier d'avant les exigences n'a pas le champ : on le complète.
+        if (!Array.isArray(surDisque.exigences)) surDisque.exigences = [];
         snake3TournoiEtat = surDisque;
         await snake3TournoiRangerEnBase(surDisque);
         return snake3TournoiEtat;
@@ -14435,6 +14470,7 @@ async function snake3Tournoi() {
         const e = {
           graine: String(ligne.graine || ''),
           carte: JSON.parse(ligne.carte || '[]'),
+          exigences: JSON.parse(ligne.exigences || '[]'),
           ouvert: !!ligne.ouvert,
           classement: ligne.classement !== false,
         };
@@ -14528,7 +14564,8 @@ app.get('/api/snake3/tournoi/score', snake3TournoiScore);
 // L'unité de temps de la carte est le tmod du jeu : 32 par seconde
 // (Const.WANTED_FPS — public/snake3/const.js).
 const SNAKE3_TICKS_PAR_SECONDE = 32;
-// L'aperçu rend la carte lisible : instant mm:ss, nom de l'option.
+// L'aperçu rend la carte lisible : instant mm:ss, nom de l'option — et le
+// marqueur des chutes exigées par l'admin.
 function snake3TournoiApercu(carte) {
   return carte.map((c) => ({
     t: c.t,
@@ -14537,6 +14574,15 @@ function snake3TournoiApercu(carte) {
     nom: SnakeCarte.OPTION_NOMS[c.id] || `option ${c.id}`,
     x: c.x, y: c.y,
     vie: Math.round(c.vie / SNAKE3_TICKS_PAR_SECONDE) + ' s',
+    exigee: !!c.exigee,
+  }));
+}
+// Les exigences telles que l'UI les édite : id + secondes de jeu.
+function snake3TournoiExigencesPourAdmin(exigences) {
+  return (exigences || []).map((e) => ({
+    id: e.id,
+    t: Math.round(e.t / SNAKE3_TICKS_PAR_SECONDE),
+    nom: SnakeCarte.OPTION_NOMS[e.id] || `option ${e.id}`,
   }));
 }
 
@@ -14549,20 +14595,33 @@ app.get('/api/admin/snake3-tournoi', tournoiScope, async (req, res) => {
   res.json({
     ok: true, graine: e.graine, ouvert: e.ouvert, classement: e.classement,
     nb: e.carte.length, apercu: snake3TournoiApercu(e.carte), inscrits,
+    exigences: snake3TournoiExigencesPourAdmin(e.exigences),
+    // La table des 37 options (l'index est l'identifiant) : l'éditeur
+    // d'exigences de l'admin s'en sert pour ses menus déroulants.
+    noms: SnakeCarte.OPTION_NOMS,
   });
 });
 
-// Générer (ou regénérer) la carte d'une graine. Regénérer FERME le mode : on
-// ne change pas la carte sous les joueurs — l'admin rouvre quand il est prêt.
+// Générer (ou regénérer) la carte d'une graine — et des EXIGENCES : les
+// chutes que l'admin impose ([{ id, t }] avec t en secondes de jeu), pour
+// garantir un gros bonus (bombe, potion noire…) ou mettre en scène le duo
+// cloche + sonnette au même instant. Même graine + mêmes exigences → même
+// carte. Regénérer FERME le mode : on ne change pas la carte sous les
+// joueurs — l'admin rouvre quand il est prêt.
 app.post('/api/admin/snake3-tournoi/generer', tournoiScope, async (req, res) => {
   const b = req.body || {};
   const graine = String(b.graine || '').trim()
     || Math.random().toString(36).slice(2, 10);
-  const carte = SnakeCarte.genererCarte(graine, snake3LireCadresOptions());
-  const e = await snake3TournoiPoser({ graine, carte, ouvert: false });
-  console.log(`[SNAKE3 TOURNOI] carte générée (graine « ${graine} », ${carte.length} options) — mode fermé`);
+  const lues = snake3TournoiLireExigences(b.exigences);
+  if (lues.erreur) return res.status(400).json({ ok: false, error: lues.erreur });
+  const carte = SnakeCarte.genererCarte(graine, snake3LireCadresOptions(),
+    SNAKE3_TOURNOI_DUREE_TICKS, lues.exigences);
+  const e = await snake3TournoiPoser({ graine, carte, exigences: lues.exigences, ouvert: false });
+  console.log(`[SNAKE3 TOURNOI] carte générée (graine « ${graine} », ${carte.length} options`
+    + (lues.exigences.length ? `, ${lues.exigences.length} exigence(s)` : '') + ') — mode fermé');
   res.json({ ok: true, graine: e.graine, nb: carte.length, ouvert: e.ouvert,
-    apercu: snake3TournoiApercu(carte) });
+    apercu: snake3TournoiApercu(carte),
+    exigences: snake3TournoiExigencesPourAdmin(e.exigences) });
 });
 
 app.post('/api/admin/snake3-tournoi/ouvrir', tournoiScope, async (req, res) => {

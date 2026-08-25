@@ -93,6 +93,42 @@ test('la carte respecte les lois du jeu (poids, uniques, marges, durées, plafon
   }
 });
 
+test('les exigences tombent à l\'instant dit, lois du jeu autour, uniques respectés', () => {
+  const exigences = [
+    { t: 9600, id: 31 },                // la sonnette à 5:00…
+    { t: 9600, id: 32 },                // …et la cloche au MÊME instant (le bug)
+    { t: 3840, id: 19 },                // une bombe garantie à 2:00
+  ];
+  const carte = Carte.genererCarte('finale-2026', CADRES, undefined, exigences);
+  const imposees = carte.filter((e) => e.exigee);
+  assert.strictEqual(imposees.length, 3, 'les trois chutes imposées sont là');
+  // Le duo au même tick, dans l'ordre donné (tri stable).
+  assert.deepStrictEqual(imposees.filter((e) => e.t === 9600).map((e) => e.id), [31, 32]);
+  assert.strictEqual(imposees.find((e) => e.t === 3840).id, 19);
+  // Position et durée de vie suivent les mêmes lois que le reste.
+  for (const e of imposees) {
+    assert.ok(e.vie >= 300 && e.vie < 450, 'vie 300+hasard(150)');
+    const d = CADRES[e.id];
+    const b = C.BORDER + 10;
+    assert.ok(e.x >= b + d.w / 2 - 0.01 && e.x <= C.WIDTH - b - d.w / 2 + 1, 'x aux marges');
+    assert.ok(e.y >= b + C.BARRE_UP + d.h / 2 - 0.01
+      && e.y <= C.HEIGHT - b - C.FRUTIBARRE_SIZE - d.h / 2 + 1, 'y aux marges');
+  }
+  // La sonnette est UNIQUE : exigée, elle quitte les poids du tirage
+  // organique — une seule dans toute la carte, comme dans le jeu d'origine.
+  assert.strictEqual(carte.filter((e) => e.id === 31).length, 1);
+  // Même graine + mêmes exigences → même carte ; sans exigences, une autre.
+  assert.deepStrictEqual(carte, Carte.genererCarte('finale-2026', CADRES, undefined, exigences));
+  assert.notDeepStrictEqual(carte, Carte.genererCarte('finale-2026', CADRES));
+  // Et les entrées organiques restent triées, ids en règle.
+  let precedent = -1;
+  for (const e of carte) {
+    assert.ok(e.t >= precedent, 'la carte reste triée par instant');
+    precedent = e.t;
+    assert.ok(e.id >= 1 && e.id <= 37);
+  }
+});
+
 test('les trente-sept noms d\'aperçu suivent les commentaires du fichier d\'origine', () => {
   assert.strictEqual(Carte.OPTION_NOMS.length, 38, 'null + 37 noms');
   assert.strictEqual(Carte.OPTION_NOMS[15], 'Potion noire');
@@ -178,6 +214,20 @@ test('en pause, la carte attend — et le dé des options est vraiment coupé', 
   // est bien morte en mode carte. Les fruits, eux, continuent d'en profiter.
   assert.ok(evts.some((e) => e.nom === 'fruitPose'),
     'les fruits restent tirés au dé');
+});
+
+test('deux chutes au même instant tombent dans la même image (le duo cloche + sonnette)', () => {
+  const carte = [
+    { t: 10, id: 31, x: 100, y: 200, vie: 400, exigee: true },
+    { t: 10, id: 32, x: 300, y: 200, vie: 400, exigee: true },
+  ];
+  const { partie, evts } = partieACarte(carte);
+  for (let i = 0; i < 9; i++) partie.main(1, 1 / 32);
+  assert.strictEqual(evts.filter((e) => e.nom === 'bonusPose').length, 0, 'à t=9, rien');
+  partie.main(1, 1 / 32);
+  const poses = evts.filter((e) => e.nom === 'bonusPose');
+  assert.strictEqual(poses.length, 2, 'la même image fait tomber les deux');
+  assert.deepStrictEqual(poses.map((p) => p.d.bonus.id), [31, 32]);
 });
 
 test('sans carte, le tirage aléatoire d\'origine est intact', () => {
@@ -446,6 +496,45 @@ test('regénérer remplace la carte et FERME le mode (jamais sous les joueurs)',
   assert.ok(auHasard.ok && auHasard.graine.length > 0);
   // Ouvrir sans carte est impossible (le guichet le dit).
   await admin('/vider');
+});
+
+test('l\'admin impose des exigences : garanties, validées, persistées', async () => {
+  // Le duo cloche + sonnette à 5:00 (pas en tout début : le serpent doit
+  // avoir grandi pour que leurs mécaniques s'emmêlent) + une bombe à 2:00.
+  const exigences = [{ id: 31, t: 300 }, { id: 32, t: 300 }, { id: 19, t: 120 }];
+  const gen = await admin('/generer', { graine: 'exig-' + RUN, exigences });
+  assert.ok(gen.ok, JSON.stringify(gen));
+  const imposees = gen.apercu.filter((a) => a.exigee);
+  assert.strictEqual(imposees.length, 3);
+  assert.ok(imposees.some((a) => a.nom === 'Sonnette' && a.temps === '5:00'));
+  assert.ok(imposees.some((a) => a.nom === 'Cloche' && a.temps === '5:00'));
+  assert.ok(imposees.some((a) => a.nom === 'Bombe' && a.temps === '2:00'));
+  // L'unique exigé ne repasse pas par le tirage : une seule sonnette en tout.
+  assert.strictEqual(gen.apercu.filter((a) => a.nom === 'Sonnette').length, 1);
+
+  // Le GET admin rend exigences et noms — l'éditeur se re-remplit tel quel.
+  const etat = await adminEtat();
+  assert.deepStrictEqual(etat.exigences.map((e) => [e.id, e.t]),
+    [[31, 300], [32, 300], [19, 120]]);
+  assert.strictEqual(etat.noms[19], 'Bombe');
+
+  // La carte publique porte le duo au même tick (300 s × 32).
+  await admin('/ouvrir');
+  const pub = await etatPublic();
+  assert.deepStrictEqual(
+    pub.carte.filter((e) => e.exigee && e.t === 300 * 32).map((e) => e.id), [31, 32]);
+
+  // Les gardes : option inconnue, instant hors carte, unique en double.
+  assert.strictEqual((await admin('/generer', { graine: 'x', exigences: [{ id: 99, t: 10 }] })).error,
+    'option_inconnue');
+  assert.strictEqual((await admin('/generer', { graine: 'x', exigences: [{ id: 19, t: 1500 }] })).error,
+    'instant_hors_carte');
+  assert.strictEqual((await admin('/generer', {
+    graine: 'x', exigences: [{ id: 31, t: 10 }, { id: 31, t: 60 }],
+  })).error, 'unique_en_double');
+  // …et un refus laisse la carte en place, mode toujours ouvert.
+  assert.strictEqual((await etatPublic()).ouvert, true);
+  await admin('/fermer');
 });
 
 test('le classement est PERMANENT : hors du balayage quotidien des challenges', async () => {
