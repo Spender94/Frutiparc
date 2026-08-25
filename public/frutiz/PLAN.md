@@ -501,6 +501,34 @@ dp_scrollBar 40, dp_element 100.
   (`fond.onPress` bascule `element.open` puis rebâtit la liste), et REPLIÉ il
   ajoute un cinquième de ligne — `currentLine += 0.2`, soit 3,6 px de
   respiration. Un contact est un `userSlot` en `statusDspMode: 'all'`.
+- **Les PIÈCES, extraites du SWF** (rien n'est redessiné) :
+  • l'EN-TÊTE de dossier `sideListTitle` (#215) = `fond` (forme #209, une
+    barre `#999999` de 100×12 que `buildElement` ÉTIRE à
+    `wMain − decal − fondD._width`) + `fondD` (#213, image 1 = forme #211,
+    20,65 × 12 : le BOUT ARRONDI de la barre et son bouton clair `#CCCCCC`)
+    + `tf` (champ #214, **Verdana 10** — font #189, sans couleur déclarée
+    donc noir). QUIRK : `fondD.gotoAndStop(1)` est appelé sans condition — le
+    bout ne change JAMAIS d'image, replié ou non ;
+  • la LIGNE de contact `userSlot` (#261) : sa forme de fond (#259) fait
+    **120 × 18**, d'où la hauteur de ligne. `backgroundId = 2` tombe sur
+    l'image 2 de la bande #260, qui est VIDE : la ligne n'a pas de fond ;
+  • le VOYANT : `UserSlot.init` attache la bande `status` (#253) comme `icon`
+    SANS lui donner de `_x`. Son fond est la forme #216 (`iconBackgroundId
+    = 2`) — un carré arrondi de 17, vide, au liseré `#CCCCCC` — et l'état est
+    la bande #222, dont `ico.gotoAndStop(presence + 1)` choisit l'image :
+    **présence 1 → la pastille VERTE `#ADE76B`** (le serveur envoie `p="1"`
+    dès qu'une socket est ouverte), **présence 0 → l'image 1, la pastille
+    SAUMON `#E3756A`** à reflet blanc. La grise `#CCCCCC` est l'image 3, un
+    troisième état dont le carnet ne se sert pas. Les trois font 8 × 8 et
+    portent un anneau noir ;
+  • le PSEUDO : `initText` (0x6353a) pose le champ à **`_x = 20`**, large de
+    100 et haut de 20, au style `Standard.getTextStyle().def` (0x491a9) —
+    **Verdana 10, couleur 0** — que la méthode passe en **GRAS**.
+- **QUIRK de cadrage** : l'icône étant posée à l'origine de la ligne et son
+  dessin CENTRÉ sur cette origine, la moitié gauche du voyant sort du masque
+  pour les contacts à la racine (decal 0) ; ceux d'un dossier (decal 5) sont
+  presque entiers. Faute d'un compte de référence pourvu de contacts, cela n'a
+  pas pu être confronté à une capture d'époque — c'est la lettre du bytecode.
 - **Carnet vide : rien ne s'écrit.** `buildList` ne parcourt rien et la bande
   reste blanche — pas de message d'absence.
 - Côté light, les données existaient déjà : le bureau Flash lit ses contacts

@@ -122,6 +122,102 @@
    "id": 197
   }
  },
+ "contacts": {
+  "notes": "sideListTitle #215 / userSlot #261 + bande status #253",
+  "sl-dossier-fond": {
+   "fichier": "sl-dossier-fond.svg",
+   "id": 209,
+   "cadre": {
+    "x": 0,
+    "y": 3,
+    "w": 100,
+    "h": 12
+   }
+  },
+  "sl-fleche-1": {
+   "fichier": "sl-fleche-1.svg",
+   "id": 211,
+   "cadre": {
+    "x": 0.05,
+    "y": 3,
+    "w": 20.65,
+    "h": 12
+   }
+  },
+  "sl-fleche-2": {
+   "fichier": "sl-fleche-2.svg",
+   "id": 212,
+   "cadre": {
+    "x": 0,
+    "y": 1,
+    "w": 16,
+    "h": 16
+   }
+  },
+  "sl-icone-fond": {
+   "fichier": "sl-icone-fond.svg",
+   "id": 216,
+   "cadre": {
+    "x": -8.5,
+    "y": -8.5,
+    "w": 17,
+    "h": 17
+   }
+  },
+  "sl-presence-0a": {
+   "fichier": "sl-presence-0a.svg",
+   "id": 218,
+   "cadre": {
+    "x": -4,
+    "y": -4,
+    "w": 8,
+    "h": 8
+   }
+  },
+  "sl-presence-0b": {
+   "fichier": "sl-presence-0b.svg",
+   "id": 219,
+   "cadre": {
+    "x": -0.1,
+    "y": -2.45,
+    "w": 2.3000000000000003,
+    "h": 1.9500000000000002
+   }
+  },
+  "sl-presence-1": {
+   "fichier": "sl-presence-1.svg",
+   "id": 220,
+   "cadre": {
+    "x": -4,
+    "y": -4,
+    "w": 8,
+    "h": 8
+   }
+  },
+  "sl-presence-2": {
+   "fichier": "sl-presence-2.svg",
+   "id": 221,
+   "cadre": {
+    "x": -4,
+    "y": -4,
+    "w": 8,
+    "h": 8
+   }
+  },
+  "sl-presence-0": {
+   "fichier": "sl-presence-0.svg",
+   "ids": [
+    218,
+    219
+   ],
+   "cadre": {
+    "x": -4,
+    "y": -4,
+    "w": 8,
+    "h": 8
+   }
+  }
+ },
  "frusion": {
   "fichier": "frusion.svg",
   "cadre": {

@@ -392,34 +392,66 @@ body.bureau-frutiz #side-list .sl-liste {
   overflow-x: hidden; overflow-y: auto; display: none;
 }
 body.bureau-frutiz.contacts-ouverts #side-list .sl-liste { display: block; }
+/* L'EN-TÊTE DE DOSSIER, `sideListTitle` (#215), avec SES pièces extraites :
+   `fond` (forme #209, une barre `#999999` de 100×12 que `buildElement`
+   ÉTIRE — `fond._width = fondD._x`) et `fondD` (#213, dont l'image 1 est la
+   forme #211 : le BOUT ARRONDI de la barre et son bouton clair `#CCCCCC`,
+   20,65 × 12). Le libellé est le champ #214, en **Verdana 10** (font #189).
+   QUIRK conservé : `fondD.gotoAndStop(1)` est appelé sans condition — le bout
+   ne change JAMAIS d'image, replié ou non. */
 body.bureau-frutiz #side-list .sl-dossier > .sl-titre {
-  display: flex; align-items: center; gap: 3px;
-  height: 18px; padding: 0; border: 0; background: none; width: 100%;
-  font: 700 10px Verdana, Arial, sans-serif; color: #444444;
+  position: relative; display: block; width: 100%;
+  height: 18px; padding: 0; border: 0; background: none;
+  font: normal 10px Verdana, Arial, sans-serif; color: #000000;
   cursor: pointer; text-align: left;
 }
-body.bureau-frutiz #side-list .sl-titre .fleche { flex: 0 0 9px; color: #888888; }
+body.bureau-frutiz #side-list .sl-titre .plaque {
+  position: absolute; left: 0; right: 20.65px; top: 3px; height: 12px;
+  background: url('/frutiz/sprites/sl-dossier-fond.svg') left top / 100% 12px no-repeat;
+}
+body.bureau-frutiz #side-list .sl-titre .bout {
+  position: absolute; right: 0; top: 3px; width: 20.65px; height: 12px;
+  background: url('/frutiz/sprites/sl-fleche-1.svg') left top / 20.65px 12px no-repeat;
+}
+body.bureau-frutiz #side-list .sl-titre .nom {
+  position: relative; display: block; padding-left: 4px; line-height: 18px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 body.bureau-frutiz #side-list .sl-dossier.replie { margin-bottom: 3.6px; }
 body.bureau-frutiz #side-list .sl-dossier.replie > .sl-contenu { display: none; }
 body.bureau-frutiz #side-list .sl-contenu { margin-left: 5px; }
+/* LA LIGNE DE CONTACT, `userSlot` (#261) : sa forme de fond fait 120 × 18 —
+   d'où la hauteur de ligne. `UserSlot.init` (0x633dc) attache la bande
+   `status` (#253) comme `icon`, SANS lui donner de `_x` : le dessin est donc
+   centré sur l'origine de la ligne, et à la racine du carnet sa moitié gauche
+   sort du masque. C'est le rendu d'époque, on le garde.
+   Le fond de l'icône est la forme #216 (`iconBackgroundId = 2`) : un carré
+   arrondi de 17, vide, au liseré `#CCCCCC`. Le voyant est la bande #222, dont
+   `ico.gotoAndStop(presence + 1)` choisit l'image : présence 1 (le serveur
+   envoie `p="1"` quand une socket est ouverte) → la pastille VERTE `#ADE76B` ;
+   présence 0 → l'image 1, la pastille SAUMON `#E3756A` à reflet. La grise
+   `#CCCCCC` est l'image 3, un troisième état que le carnet n'utilise pas. */
 body.bureau-frutiz #side-list .sl-contact {
-  display: flex; align-items: center; gap: 4px;
-  height: 18px; width: 100%; padding: 0 2px; border: 0; background: none;
-  font: normal 10px Verdana, Arial, sans-serif; color: #444444;
+  position: relative; display: block; width: 100%;
+  height: 18px; padding: 0; border: 0; background: none;
   cursor: pointer; text-align: left;
 }
-body.bureau-frutiz #side-list .sl-contact:hover { background: #EEEEEE; }
 body.bureau-frutiz #side-list .sl-contact .voyant {
-  flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%;
-  background: #CCCCCC; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18);
+  position: absolute; left: -8.5px; top: .5px; width: 17px; height: 17px;
+  background: url('/frutiz/sprites/sl-presence-0.svg') center center / 8px 8px no-repeat,
+              url('/frutiz/sprites/sl-icone-fond.svg') left top / 17px 17px no-repeat;
 }
-body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant { background: #2ECC40; }
+body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant {
+  background-image: url('/frutiz/sprites/sl-presence-1.svg'),
+                    url('/frutiz/sprites/sl-icone-fond.svg');
+}
+/* Le pseudo : `initText` (0x6353a) pose le champ à **`_x = 20`**, large de
+   100 et haut de 20, au style `Standard.getTextStyle().def` — Verdana 10,
+   couleur 0 — que la méthode passe en GRAS (`textFormat.bold = true`). */
 body.bureau-frutiz #side-list .sl-contact .nom {
+  position: absolute; left: 20px; width: 100px; top: 0; height: 18px;
+  line-height: 18px; font: 700 10px Verdana, Arial, sans-serif; color: #000000;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-body.bureau-frutiz #side-list .sl-contact.hors-ligne .nom { color: #999999; }
-body.bureau-frutiz #side-list .sl-vide {
-  padding: 6px 6px 0; font: normal 10px Verdana, Arial, sans-serif; color: #999999;
 }
 /* La boîte de RECHERCHE : `mcSearchButton` (#441), que `buildList` attache à
    `_y = 770`. L'art est EXTRAIT du SWF — la pastille grise et sa loupe, dans

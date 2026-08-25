@@ -407,6 +407,60 @@ function principal() {
     }
   }
 
+  // ── Le PANNEAU DES CONTACTS : ses vraies pièces ────────────────────────
+  // `SideList.buildElement` (0xa1243) pose deux sortes de lignes :
+  //   • un DOSSIER = `sideListTitle` (#215), qui contient trois choses —
+  //     `fond` (#210 → la forme #209), `fondD` (#213, DEUX images : #211 et
+  //     #212, la flèche de repli) et `tf` (#214, le champ texte) ;
+  //   • un CONTACT = `userSlot` (#261), dont `UserSlot.init` (0x633dc)
+  //     attache la bande `status` (#253) sous le nom `icon`, puis `butText`
+  //     à `_x = 20` pour le pseudo.
+  // Dans la bande `status`, la profondeur 1 est le FOND de l'icône (#217,
+  // dont `iconBackgroundId = 2` retient la forme #216) et la profondeur 3
+  // l'ÉTAT : image 2 « presence » = la bande #222, dont `ico.gotoAndStop
+  // (presence + 1)` choisit #220 (présence 1) ou #221 (présence 2) ; l'image 1
+  // par défaut réunit #218 et #219.
+  const CONTACTS = [
+    { cle: 'sl-dossier-fond', id: 209 },   // la plaque du dossier
+    { cle: 'sl-fleche-1', id: 211 },       // fondD image 1
+    { cle: 'sl-fleche-2', id: 212 },       // fondD image 2
+    { cle: 'sl-icone-fond', id: 216 },     // le fond de l'icône (iconBackgroundId = 2)
+    { cle: 'sl-presence-0a', id: 218 },    // image 1 de la bande de présence…
+    { cle: 'sl-presence-0b', id: 219 },    // …en deux morceaux
+    { cle: 'sl-presence-1', id: 220 },     // présence 1
+    { cle: 'sl-presence-2', id: 221 },     // présence 2
+  ];
+  chargerFormes(CONTACTS.map((c) => c.id).filter((id) => !corpsFormes.has(id)));
+  {
+    manifeste.contacts = { notes: 'sideListTitle #215 / userSlot #261 + bande status #253' };
+    for (const c of CONTACTS) {
+      const forme = corpsFormes.get(c.id);
+      if (!forme) { console.warn('!! pièce de contact absente', c.id); continue; }
+      const vb = forme.vb;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${arr(vb.x)} ${arr(vb.y)} ${arr(vb.w)} ${arr(vb.h)}" width="${arr(vb.w)}" height="${arr(vb.h)}">\n`
+        + forme.corps + '</svg>\n';
+      fs.writeFileSync(path.join(SORTIE, c.cle + '.svg'), svg, 'utf8');
+      manifeste.contacts[c.cle] = { fichier: c.cle + '.svg', id: c.id, cadre: vb };
+      console.log(c.cle + '.svg (forme #' + c.id + ')', JSON.stringify(vb));
+    }
+  }
+
+  // La présence PAR DÉFAUT réunit deux formes sur la même image : on les
+  // compose sur leur cadre commun, comme le fait le lecteur.
+  {
+    const morceaux = [];
+    for (const pose of placementsFrame1(222)) {
+      if (!corpsFormes.has(pose.ch)) continue;
+      morceaux.push({ shape: pose.ch, M: pose.M, cx: pose.cx });
+    }
+    if (morceaux.length) {
+      const svg = svgCompose(morceaux);
+      fs.writeFileSync(path.join(SORTIE, 'sl-presence-0.svg'), svg.svg, 'utf8');
+      manifeste.contacts["sl-presence-0"] = { fichier: "sl-presence-0.svg", ids: morceaux.map((m) => m.shape), cadre: svg.cadre };
+      console.log('sl-presence-0.svg', JSON.stringify(svg.cadre));
+    }
+  }
+
   // ── Les CLIPS qui s'aplatissent tels quels ─────────────────────────────
   // Tout n'est pas un conteneur vide : le lecteur `frusion` (#324) pose bien
   // ses dessins sur sa première image (la cuve, les trois fruits, les deux

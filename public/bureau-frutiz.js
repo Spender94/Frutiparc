@@ -280,6 +280,16 @@ window.BureauFrutiz = (function () {
     return b;
   }
 
+  function enTeteDossier(nom, bloc) {
+    var t = document.createElement('button');
+    t.type = 'button';
+    t.className = 'sl-titre';
+    t.innerHTML = '<span class="plaque"></span><span class="bout"></span><span class="nom"></span>';
+    t.querySelector('.nom').textContent = nom;
+    t.addEventListener('click', function () { bloc.classList.toggle('replie'); });
+    return t;
+  }
+
   function chargerContacts() {
     var liste = $('#side-list .sl-liste');
     if (!liste) return;
@@ -294,19 +304,10 @@ window.BureauFrutiz = (function () {
         (d.dossiers || []).forEach(function (f) {
           var bloc = document.createElement('div');
           bloc.className = 'sl-dossier';
-          var titre = document.createElement('button');
-          titre.type = 'button';
-          titre.className = 'sl-titre';
-          titre.innerHTML = '<span class="fleche">▾</span><span></span>';
-          titre.lastChild.textContent = f.nom;
           var contenu = document.createElement('div');
           contenu.className = 'sl-contenu';
           (f.contacts || []).forEach(function (c) { contenu.appendChild(ligneContact(c)); });
-          titre.addEventListener('click', function () {
-            var replie = bloc.classList.toggle('replie');
-            titre.querySelector('.fleche').textContent = replie ? '▸' : '▾';
-          });
-          bloc.appendChild(titre);
+          bloc.appendChild(enTeteDossier(f.nom, bloc));
           bloc.appendChild(contenu);
           liste.appendChild(bloc);
         });
