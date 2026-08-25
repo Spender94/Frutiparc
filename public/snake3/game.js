@@ -215,10 +215,17 @@ class VuePartie {
 
     this.fbarreMid = 0;               // mid._width, lissé à 0,9/0,1 chaque image
 
+    // Le TOURNOI ne nourrit pas l'encyclopéfruit : rejouer la même carte en
+    // boucle fausserait la collection (elle mesure le Challenge). Le moteur
+    // reçoit donc une COPIE détachée — la partie se joue pareil (comptes,
+    // seuils), mais la vraie collection ne bouge pas et rien ne se sauve.
+    const collection = jeu.plateforme.fruits;
     this.partie = new P.Partie({
       hasard,
       dims: jeu.dims,
-      fruits: jeu.plateforme.fruits,
+      fruits: this.tournoi
+        ? (Array.isArray(collection) ? collection.slice() : Object.assign({}, collection))
+        : collection,
       evenement: (nom, d) => this.surEvenement(nom, d),
       carte: this.tournoi ? jeu.plateforme.tournoi.carte : null,
     });
@@ -296,7 +303,10 @@ class VuePartie {
     if (!this.tournoi && score > pf.record) pf.record = score;
     const scoreEnvoye = Math.max(0, Math.floor(score));
     const envoi = this.tournoi ? pf.sauverScoreTournoi(scoreEnvoye) : pf.sauverScore(scoreEnvoye);
-    Promise.all([pf.sauverSlot0(), envoi]).then(([, rep]) => {
+    // En tournoi le slot 0 ne bouge pas (collection détachée, record intact) :
+    // on ne l'écrit pas — seul le score part, vers le classement dédié.
+    const rangement = this.tournoi ? Promise.resolve(true) : pf.sauverSlot0();
+    Promise.all([rangement, envoi]).then(([, rep]) => {
       // Manager.scoreSaved, mot pour mot.
       let texte = C.TXT_VOTRE_SCORE(scoreEnvoye) + '\n';
       const vieux = rep && rep.oldScore != null ? rep.oldScore : ancienRecord;

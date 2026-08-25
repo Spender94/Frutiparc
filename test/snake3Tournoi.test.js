@@ -311,19 +311,28 @@ test('la pastille « entraînement » porte le tournoi de bout en bout', async (
   assert.strictEqual(vue.tournoi, true);
   assert.strictEqual(vue.partie.carte, carte);
 
-  // La fin de partie poste au guichet du TOURNOI — jamais au classique — et
-  // laisse le record du slot 0 en paix (c'est celui du Challenge).
+  // Les fruits d'une partie de tournoi ne nourrissent PAS l'encyclopéfruit :
+  // le moteur joue sur une collection détachée, la vraie ne bouge pas.
+  vue.partie.eat_fruit(vue.partie.niveau.generate_fruit(1));
+  assert.strictEqual(vue.partie.fruitsEncyclo[1], 1, 'la partie compte pour elle-même');
+  assert.strictEqual(pf.fruits[1], undefined, 'la collection du joueur est intacte');
+
+  // La fin de partie poste au guichet du TOURNOI — jamais au classique — sans
+  // écrire le slot 0 (ni record ni collection : rien n'a bougé).
   vue.finDePartie(1234);
   await new Promise((r) => setImmediate(r));
-  assert.deepStrictEqual(appels.slice().sort(), ['slot0', 'tournoi:1234']);
+  assert.deepStrictEqual(appels.slice().sort(), ['tournoi:1234']);
   assert.strictEqual(pf.record, 500);
 
-  // Le Challenge, lui, passe toujours par la voie classique.
+  // Le Challenge, lui, passe toujours par la voie classique — collection
+  // partagée, slot 0 rangé.
   const vueClassique = new w.SnakeJeu.VuePartie(jeu);
   assert.strictEqual(vueClassique.partie.carte, null);
+  vueClassique.partie.eat_fruit(vueClassique.partie.niveau.generate_fruit(2));
+  assert.strictEqual(pf.fruits[2], 1, 'le Challenge enrichit la collection');
   vueClassique.finDePartie(2000);
   await new Promise((r) => setImmediate(r));
-  assert.ok(appels.includes('classique'));
+  assert.ok(appels.includes('classique') && appels.includes('slot0'));
   assert.strictEqual(pf.record, 2000, 'le record du slot 0 suit le Challenge');
 });
 
