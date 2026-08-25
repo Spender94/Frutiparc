@@ -18,6 +18,16 @@
  * clics, mêmes voyants), simplement rhabillées en petites icônes étiquetées.
  */
 
+/* La Verdana pixel EMBARQUÉE dans les SWF d'époque (verdana_10pt_st, police
+   #602 de main.swf), déjà extraite pour les portages de jeux. Le bureau s'en
+   sert pour le chiffre du niveau : d'époque, ce n'est pas un afficheur à
+   segments mais un glyphe plein. */
+@font-face {
+  font-family: 'VerdanaSwf';
+  src: url('/snake3/fontes/verdana10.woff') format('woff');
+  font-weight: normal; font-style: normal; font-display: swap;
+}
+
 /* ── Le bureau lui-même ─────────────────────────────────────────────────── */
 body.bureau-frutiz #app { position: relative; }
 body.bureau-frutiz #bureau {
@@ -90,12 +100,14 @@ body.bureau-frutiz #bureau-coin .mb-avatar .frame {
   box-shadow: 0 0 0 1px #888888, 0 0 0 3px #DDDDDD;
 }
 body.bureau-frutiz #bureau-coin #home-avatar-fiche { inset: 0; border-radius: 7px; }
-body.bureau-frutiz #bureau-coin .mb-right { gap: 0; height: 64px; width: 145px; }
+body.bureau-frutiz #bureau-coin .mb-right { gap: 0; height: 66px; width: 145px; }
 /* L'encart `digital` d'époque tient en 45 px de haut, là où le tiroir mobile
    en prend 72 : ses quatre zones (les 9 barres de progression en haut-gauche,
    la coupe et le rang en haut-droite, « NIV n » en bas-gauche, les raccourcis
    en bas-droite) sont remises au gabarit relevé sur le rendu 1:1. */
-body.bureau-frutiz #bureau-coin .mb-encart { flex: 0 0 45px; border-radius: 5px; }
+/* Arrondi RELEVÉ : le fond atteint son bord gauche dès 1 à 2 px du haut —
+   un rayon de 2, pas les 5 du tiroir mobile. */
+body.bureau-frutiz #bureau-coin .mb-encart { flex: 0 0 45px; border-radius: 2px; }
 /* Les 9 barres de progression, au relevé 1:1 (colonne x=90 du rendu) : des
    barres de **2 px séparées de 1 px**, de y 9 à 35 (9×2 + 8×1 = 26), larges
    de 27 (x 86..113) — pas les filets de 1 px du tiroir mobile. Vide
@@ -104,25 +116,67 @@ body.bureau-frutiz #bureau-coin .mb-encart { flex: 0 0 45px; border-radius: 5px;
    barre, de gauche à droite (barre partielle mesurée : `#73B01E` 86..99 puis
    `#A2EB56` 100..113) — c'est déjà la loi de setHomeProgress. */
 body.bureau-frutiz #bureau-coin .enc-progress {
-  left: 1px; top: 3px; width: 27px; height: 26px;
+  /* le bord d'époque laisse UN pixel de fond avant la première barre
+     (liseré 84, fond 85, barre 86) — collées au liseré, elles paraissaient
+     sans marge. */
+  left: 2px; top: 3px; width: 27px; height: 26px;
 }
 body.bureau-frutiz #bureau-coin .enc-progress i { height: 2px; background: #A2EB56; }
 body.bureau-frutiz #bureau-coin .enc-progress i::before { background: #73B01E; }
 body.bureau-frutiz #bureau-coin .enc-trophy { top: 3px; height: 17px; gap: 2px; }
 body.bureau-frutiz #bureau-coin .enc-trophy .tro { height: 16px; }
 body.bureau-frutiz #bureau-coin .enc-trophy .val { font-size: 15px; }
-body.bureau-frutiz #bureau-coin .enc-niv { left: 5px; bottom: 3px; }
-body.bureau-frutiz #bureau-coin .enc-niv .niv-img { height: 13px; }
-body.bureau-frutiz #bureau-coin .enc-niv .lvl { font-size: 9px; }
-body.bureau-frutiz #bureau-coin .mb-shortcuts { bottom: 3px; }
-body.bureau-frutiz #bureau-coin .sc-btn img { width: 15px; height: 15px; }
-body.bureau-frutiz #bureau-coin .reflet-niv { height: 55%; }
-body.bureau-frutiz #bureau-coin .mb-emotes { flex: 0 0 19px; justify-content: flex-start; }
-/* Le smiley d'époque est un disque de **15×15** au milieu de son pas de 21
-   (mesuré : x 87..101, y 54..68) — dessiné bord à bord, une image de 19 px
-   remplissait toute la case et paraissait rognée. */
-body.bureau-frutiz #bureau-coin .em-btn { flex: 0 0 21px; padding: 0; }
-body.bureau-frutiz #bureau-coin .em-btn img { width: 15px; max-width: 15px; height: 15px; }
+/* « NIV n » : le bloc d'époque va de x 87 à 108 et fait 8 px d'encre (contre
+   6 au tiroir) — le sigle est donc plus grand. Et le CHIFFRE n'est pas un
+   afficheur à segments : c'est un glyphe plein de la Verdana pixel embarquée
+   dans les SWF (verdana_10pt_st), celle-là même que les portages de jeux
+   utilisent déjà. */
+body.bureau-frutiz #bureau-coin .enc-niv { left: 2px; bottom: 2px; gap: 3px; }
+body.bureau-frutiz #bureau-coin .enc-niv .niv-img { height: 17px; }
+body.bureau-frutiz #bureau-coin .enc-niv .lvl {
+  font-family: 'VerdanaSwf', Verdana, sans-serif; font-size: 11px;
+  font-weight: normal; color: #73B01E;
+}
+/* Les raccourcis d'époque tiennent plus HAUT (bloc y 26..47 contre 26..50) et
+   dans l'ORDRE : l'aide, le forum, le courrier, l'historique, les événements,
+   les jeux — l'ordre du tiroir mobile est autre. */
+body.bureau-frutiz #bureau-coin .mb-shortcuts { bottom: 6px; }
+body.bureau-frutiz #bureau-coin .sc-btn img { width: 13px; height: 13px; }
+body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Aide"] { order: 0; }
+body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Forum"] { order: 1; }
+body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Mail"] { order: 2; }
+body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Historique"] { order: 3; }
+body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Warning"] { order: 4; }
+body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Jeux"] { order: 5; }
+/* Le REFLET : la brillance d'époque est une tache douce au coin haut-droit,
+   centrée vers (222, 11) et large d'une quinzaine de pixels — pas le long
+   dégradé du tiroir mobile. L'image est bien celle du SWF (forme #409, blanc
+   à 50 %) : seule sa POSE change ici. À revoir : le rendu Flash y monte
+   jusqu'au blanc pur, l'extraction n'en garde que la moitié — il y a
+   probablement deux couches superposées à l'origine. */
+body.bureau-frutiz #bureau-coin .reflet-niv { right: 0; top: 1px; height: 16px; }
+body.bureau-frutiz #bureau-coin .mb-emotes { flex: 0 0 21px; justify-content: flex-start; }
+/* Chaque émotion est une PLAQUE de 21×21 en `#DDDDDD` (le `butPush` que
+   initEmoteIconList pose autour de l'icône) portant l'image de 17×17 :
+   relevé au pixel, plaque y 51..72, icône 86..102 puis 4 px de gris avant la
+   suivante — les plaques se touchent, d'où la bande grise continue. C'est ce
+   liseré diffus qui manquait. */
+body.bureau-frutiz #bureau-coin .mb-emotes { gap: 0; }
+body.bureau-frutiz #bureau-coin .em-btn {
+  flex: 0 0 21px; padding: 0; background: #DDDDDD;
+}
+body.bureau-frutiz #bureau-coin .em-btn img { width: 17px; max-width: 17px; height: 17px; }
+/* L'ORDRE d'époque (bande #102, images 1 à 7 = setEmote 0 à 6) : le neutre,
+   la colère, la tristesse, le sourire, le rire à pleines dents, le rictus,
+   puis le rire aux éclats. Le tiroir mobile les range autrement — on ne
+   touche qu'à l'affichage du bureau, jamais au DOM partagé. */
+body.bureau-frutiz #bureau-coin .em-btn[data-e="5"] { order: 0; }
+body.bureau-frutiz #bureau-coin .em-btn[data-e="1"] { order: 1; }
+body.bureau-frutiz #bureau-coin .em-btn[data-e="2"] { order: 2; }
+body.bureau-frutiz #bureau-coin .em-btn[data-e="3"] { order: 3; }
+body.bureau-frutiz #bureau-coin .em-btn[data-e="4"] { order: 4; }
+body.bureau-frutiz #bureau-coin .em-btn[data-e="7"] { order: 5; }
+body.bureau-frutiz #bureau-coin .em-btn[data-e="6"] { order: 6; }
 /* La bannière quotidienne n'a pas cours dans la barre d'époque. */
 body.bureau-frutiz #bureau-coin .daily-banner { display: none; }
 
@@ -184,8 +238,14 @@ body.bureau-frutiz #frutimandala {
   z-index: 2; overflow: hidden;
   background: url('/frutiz/sprites/frutimandala-fond.svg') left top / 200px 80px no-repeat;
 }
+/* Le cadran est MASQUÉ par le châssis : le vert d'époque ne commence qu'à
+   6 px du haut de la pièce (relevé au centre du cadran : blanc jusqu'à 6,
+   liseré 6..8, roue ensuite). Sans ce masque la roue débordait sur la barre. */
+body.bureau-frutiz #frutimandala .cadran {
+  position: absolute; left: 0; top: 6px; right: 0; bottom: 0; overflow: hidden;
+}
 body.bureau-frutiz #frutimandala .roue {
-  position: absolute; left: -27px; top: -158.45px; width: 252px; height: 252px;
+  position: absolute; left: -27px; top: -164.45px; width: 252px; height: 252px;
   background: url('/frutiz/sprites/frutimandala-roue.svg') left top / 252px 252px no-repeat;
   transform-origin: 50% 50%;
 }

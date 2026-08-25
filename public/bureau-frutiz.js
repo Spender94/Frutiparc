@@ -472,11 +472,16 @@ window.BureauFrutiz = (function () {
     // le verre par-dessus (profondeurs 8 à 25).
     var mandala = document.createElement('div');
     mandala.id = 'frutimandala';
+    // Le cadran MASQUE la roue : le châssis la recouvre sur ses 6 px du haut
+    // (relevé au centre — le vert d'époque ne commence qu'à y 8).
+    var cadran = document.createElement('div');
+    cadran.className = 'cadran';
     var roue = document.createElement('div');
     roue.className = 'roue';
+    cadran.appendChild(roue);
     var dessus = document.createElement('div');
     dessus.className = 'dessus';
-    mandala.appendChild(roue);
+    mandala.appendChild(cadran);
     mandala.appendChild(dessus);
     // Elle vit DANS la barre (c'est le dernier élément de son frameSet), pas
     // sur l'écran : sa marge droite se compte donc depuis le bord de la barre.

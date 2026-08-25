@@ -194,6 +194,29 @@ bureau sous la barre et sa rangée d'onglets : recal borne les fenêtres LÀ.
   rangée des 7 smileys dessous, **pas de 21 px** (mesuré 88, 109, 130, 151,
   172, 193, 214 — soit struct 19 + margin 2, exactement l'initFrameSet).
   Cadre de la bouille : `#DDDDDD` en 13..15 puis `#888888` en 15.
+- **Le détail de l'encart**, relevé point par point :
+  • ARRONDI 2 px seulement (le fond atteint son bord dès 1 à 2 px du haut) ;
+  • les 9 barres laissent UN pixel de fond après le liseré (liseré 84, fond
+    85, barre 86..113) ;
+  • « NIV n » fait **8 px d'encre** (x 87..108) et son CHIFFRE n'est pas un
+    afficheur à segments mais un glyphe plein — la Verdana pixel embarquée
+    (`verdana_10pt_st`, police #602), déjà extraite pour les jeux ;
+  • les RACCOURCIS tiennent haut (bloc y 26..47) et dans CET ordre :
+    l'aide, le forum, le courrier, l'historique, les événements, les jeux ;
+  • le REFLET est une tache douce au coin haut-droit, centrée vers (222, 11)
+    sur ~15×8 — l'image est bien celle du SWF (forme #409, blanc à 50 %),
+    mais le rendu Flash y monte jusqu'au blanc PUR : il y a probablement
+    deux couches superposées à l'origine, à revoir à l'extraction.
+- **Les ÉMOTIONS** (`initEmoteIconList` 0x6b6a4) : chacune est un `butPush`
+  qui porte une PLAQUE de 21×21 en `#DDDDDD` avec l'image 17×17 au milieu
+  (relevé : plaque y 51..72, icône x 86..102, puis 4 px de gris avant la
+  suivante — les plaques se touchent, d'où la bande grise continue ; c'est ce
+  liseré qui donne le « contour diffus »). L'art est la bande #102, sept
+  images en BITMAP 17×17 (#88, #90, #92, #94, #96, #98, #100) dans CET
+  ordre : le neutre, la colère, la tristesse, le sourire, le rire à pleines
+  dents, le rictus, le rire aux éclats — `setEmote(0..6)`. Le tiroir mobile
+  les range autrement : le bureau ne réordonne que l'AFFICHAGE (propriété
+  `order`), jamais le DOM partagé.
 - **Profondeurs relevées au bord gauche** : la BANDE des contacts passe
   PAR-DESSUS la barre (à y=40 son liseré `#DDDDDD` se lit encore en 6..9),
   mais son OMBRE passe DESSOUS (le `#444444` y disparaît) — l'ombre est
