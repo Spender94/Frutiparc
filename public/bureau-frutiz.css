@@ -139,28 +139,35 @@ body.bureau-frutiz #onglet-bureau span {
   user-select: none; -webkit-user-select: none;
 }
 
-/* ── La boîte de la frusion (le lecteur, en haut à droite ; mesures 1:1) ──
-   Même chrome que la barre, coins BAS arrondis des deux côtés ; blanc
-   110 px de large, 76 de haut, le contour tombant à Stage.width − 6 —
-   soit un bord blanc à 8 px du bord d'écran. */
+/* ── LE LECTEUR FRUSION (clip `frusion` #324, aplati tel quel) ────────────
+   Ce n'est pas un conteneur vide : sa première image porte TOUT le meuble —
+   le panneau blanc aux quatre coins arrondis avec son liseré et son contour,
+   la cuve grise, et les trois fruits (rouge, jaune, vert) au-dessus. Cadre
+   (−117.5, 0)–(1.5, 77.5). Posé au relevé 1:1 : le contour tombe en
+   x 1258..1376 sur une scène de 1380 — soit 4 px du bord droit — et de
+   y 0 à 77.5. (Les deux boutons ronds du bas, casque et éjection, sont
+   attachés au runtime par FrusionSlot : ils viendront avec le lecteur.) */
 body.bureau-frutiz #frusion-boite {
-  position: absolute; top: 0; right: 8px; width: 110px; height: 76px;
+  position: absolute; top: 0; right: 4px; width: 119px; height: 77.5px;
   z-index: 2;
-  background: #fff; border-radius: 0 0 10px 10px;
-  box-shadow: inset 0 0 0 2px #DDDDDD, 0 0 0 2px #444444;
+  background: url('/frutiz/sprites/frusion.svg') left top / 119px 77.5px no-repeat;
 }
 
-/* ── La pilule « N en ligne » (coin haut-droit, au-dessus de tout) ──────── */
+/* ── La pilule « N en ligne » ─────────────────────────────────────────────
+   Elle ne flotte pas dans le coin : elle est POSÉE SUR le lecteur, en haut.
+   Mesuré 1:1 : x 1271..1369 (98 de large), y 8..32 (24 de haut) — soit
+   11 px du bord droit ; fond `#526B3A`, point `#2ECC40`, texte `#CFF599`. */
 body.bureau-frutiz #pill-enligne {
-  position: absolute; top: 8px; right: 6px; z-index: 3;
-  height: 22px; padding: 0 9px 0 8px; border-radius: 11px;
-  background: #43671F; color: #fff;
-  font: 700 11px Verdana, Arial, sans-serif; line-height: 22px;
+  position: absolute; top: 8px; right: 11px; z-index: 3;
+  width: 98px; height: 24px; box-sizing: border-box;
+  padding: 0 7px; border-radius: 12px;
+  background: #526B3A; color: #CFF599;
+  font: 700 11px Verdana, Arial, sans-serif; line-height: 24px;
   display: flex; align-items: center; gap: 5px;
   user-select: none; -webkit-user-select: none;
 }
 body.bureau-frutiz #pill-enligne .point {
-  width: 8px; height: 8px; border-radius: 50%; background: #9FE855;
+  width: 8px; height: 8px; border-radius: 50%; background: #2ECC40;
 }
 
 /* ── LE PANNEAU DES CONTACTS (`_global.SideList`, DoInitAction sprite#847,

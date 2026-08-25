@@ -121,5 +121,14 @@
    "fichier": "fruit_f86.svg",
    "id": 197
   }
+ },
+ "frusion": {
+  "fichier": "frusion.svg",
+  "cadre": {
+   "x": -117.5,
+   "y": 0,
+   "w": 119,
+   "h": 77.5
+  }
  }
 }

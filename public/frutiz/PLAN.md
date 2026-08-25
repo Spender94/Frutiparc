@@ -249,16 +249,24 @@ un cadre commun (sprites/fruit_*.svg) ; le light applique la même loi.
 
 ## La zone droite (mesures 1:1, ref1-bureau.png)
 
-- **La boîte frusion** (le lecteur de disques) : blanc 1262..1372 (110 de
-  large), même chrome que la barre, coins BAS arrondis, hauteur 76, contour
-  à Stage.width − 6. Son CONTENU (la console, frusionSlot #19) est un clip
-  VIDE construit au runtime (la classe à 0x6d884 : openSlot/runDisc…) — à
-  transcrire.
+- **Le lecteur frusion** : contrairement à `frusionSlot` (#19, vide), le clip
+  **`frusion` (#324) porte TOUT le meuble sur sa première image** — le
+  panneau blanc aux quatre coins arrondis (forme #300, 119×77.5, contour
+  `#444444`), la cuve grise, les trois fruits (#318 à −58.1, 36.8) et les
+  DEUX BOUTONS RONDS : `#317` (le casque) à −100, 60 et `#313` (l'éjection)
+  à −15.85, 60 — des **DefineButton2** que l'aplatisseur commun saute, d'où
+  leur absence au premier essai. Extrait en un seul SVG
+  (sprites/frusion.svg) par le même chemin que l'onglet.
+  Posé au relevé 1:1 : contour x 1258..1376 sur 1380 — **4 px du bord
+  droit** — et y 0..77.5. Reste la mécanique (FDDrive 0x6d884 : la trappe
+  `doorA`/`doorB` qui coulisse de x 36/61 à 11/…, le disque qui tourne).
 - **La frutimandala** (cpWheelMng) : l'éventail aux fruits x≈1050..1230,
   qui dépasse la barre en haut ; boutons rose (flèches), « G » jaune, ↓↑
   vert. À transcrire (composant dynamique).
-- **La pilule « N en ligne »** : bord droit à Stage.width − 6, y ≈ 8..30,
-  fond vert sombre `#43671F`, texte blanc gras, point vert clair.
+- **La pilule « N en ligne »** : elle ne flotte pas dans le coin — elle est
+  POSÉE SUR le lecteur, en haut. Mesuré : x 1271..1369 (98 de large, soit
+  11 px du bord droit), y 8..32 (24 de haut) ; fond `#526B3A`, point
+  `#2ECC40`, texte `#CFF599`.
 - **La languette CONTACTS** : voir la section SideList ci-dessous — ce n'est
   pas une étiquette isolée mais la POIGNÉE d'un panneau pleine hauteur.
 - **La rangée d'icônes** : sous la barre, un PAS de 76 px — mesuré Gaspard
@@ -313,8 +321,9 @@ dp_scrollBar 40, dp_element 100.
    Boutique, Mes contacts…) sur la session connectée.
 2. ~~L'INTÉRIEUR de la main bar au gabarit~~ FAIT (bouille 64, encart 45,
    smileys au pas de 21) ; restent les 3 `butPushVerySmallPink`
-   (halfHide/fullScreen, initSideIconList 0x6b786), la frutimandala
-   (cpWheelMng) et la console frusion (FrusionSlot, 0x6d884).
+   (halfHide/fullScreen, initSideIconList 0x6b786) et la frutimandala
+   (cpWheelMng). Le MEUBLE du lecteur frusion est posé (clip #324 extrait) ;
+   reste sa mécanique (FDDrive 0x6d884 : trappe, disque, éjection).
 3. Les icônes du bureau (fileIconStandard #11) et leur pose en colonnes
    (FPDesktop), le glisser-déposer des icônes.
 4. Le mode « tab » des fenêtres (les onglets qui suivent « Bureau »), le

@@ -404,6 +404,37 @@ function principal() {
     }
   }
 
+  // ── Les CLIPS qui s'aplatissent tels quels ─────────────────────────────
+  // Tout n'est pas un conteneur vide : le lecteur `frusion` (#324) pose bien
+  // ses dessins sur sa première image (la cuve, les trois fruits, les deux
+  // boutons ronds). On l'aplatit par la bibliothèque commune, à l'identique.
+  const CLIPS = [{ cle: 'frusion', id: 324 }];
+  for (const c of CLIPS) {
+    // On relit ses placements à l'octet plutôt que d'appeler aplatir() : le
+    // lecteur pose DEUX DefineButton2 (#317 le casque à gauche, #313
+    // l'éjection à droite), que l'aplatisseur commun saute — leur état UP est
+    // composé ici, comme pour l'onglet.
+    const morceaux = [];
+    for (const pose of placementsFrame1(c.id)) {
+      const def = boutons.get(pose.ch);
+      if (def) {
+        for (const rec of lireBouton(def).up) {
+          for (const m of morceauxDe({ ch: rec.ch, M: composerTwips(pose.M, rec.M), cx: rec.cx })) morceaux.push(m);
+        }
+      } else {
+        for (const m of morceauxDe(pose)) morceaux.push(m);
+      }
+    }
+    const formesClip = new Set();
+    for (const m of morceaux) if (m.shape !== undefined) formesClip.add(m.shape);
+    chargerFormes([...formesClip].filter((id) => !corpsFormes.has(id)));
+    const r = svgCompose(morceaux);
+    if (!r) { console.warn('!! clip vide', c.cle); continue; }
+    fs.writeFileSync(path.join(SORTIE, c.cle + '.svg'), r.svg, 'utf8');
+    manifeste[c.cle] = { fichier: c.cle + '.svg', cadre: r.cadre };
+    console.log(c.cle + '.svg', JSON.stringify(r.cadre));
+  }
+
   fs.writeFileSync(path.join(SORTIE, 'bureau.json'), JSON.stringify(manifeste, null, 1), 'utf8');
   console.log('manifeste → public/frutiz/sprites/bureau.json');
 }
