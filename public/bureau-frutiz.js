@@ -125,36 +125,143 @@ window.BureauFrutiz = (function () {
     img.src = fond.url;
   }
 
-  // ── Les fenêtres ──────────────────────────────────────────────────────
+  // ── Les fenêtres — le protocole FANTÔME de WinStandard ────────────────
+  // Transcrit du bytecode (public/frutiz/PLAN.md porte les décalages) : on ne
+  // déplace jamais la fenêtre en direct. La prise attache un FANTÔME — la
+  // silhouette blanche win.Ghost — qui suit la souris rigidement pendant que
+  // la fenêtre reste en place ; au lâcher, applyGhost recopie la position du
+  // fantôme, recal borne au bureau, et moveToPos fait GLISSER la fenêtre vers
+  // sa place (le coefficient 3 d'animList.addSlide) si l'animation est active.
+  var FLUIDE = true;                    // la préférence win_flMoveAnim du SWF
+
   function premierPlan(fen) { fen.style.zIndex = String(++zCourant); }
 
-  function bornerDansEcran(fen) {
-    var r = fen.getBoundingClientRect();
-    var x = parseFloat(fen.style.left) || 0;
-    var y = parseFloat(fen.style.top) || 0;
-    x = Math.min(Math.max(x, 60 - r.width), window.innerWidth - 60);
-    y = Math.min(Math.max(y, 0), window.innerHeight - 40);
-    fen.style.left = Math.round(x) + 'px';
-    fen.style.top = Math.round(y) + 'px';
+  function posDe(fen) {
+    return {
+      x: parseFloat(fen.style.left) || 0,
+      y: parseFloat(fen.style.top) || 0,
+      w: fen.offsetWidth,
+      h: fen.offsetHeight,
+    };
   }
 
+  // recal (0x54126) : la taille bornée aux minima et au bureau, la position
+  // gardée dans la zone visible.
+  function recal(pos, minimum) {
+    var vw = window.innerWidth, vh = window.innerHeight;
+    pos.w = Math.max(minimum.w, Math.min(pos.w, vw));
+    pos.h = Math.max(minimum.h, Math.min(pos.h, vh));
+    pos.x = Math.max(0, Math.min(pos.x, vw - pos.w));
+    pos.y = Math.max(0, Math.min(pos.y, vh - pos.h));
+    return pos;
+  }
+
+  function bornerDansEcran(fen) {
+    var f = null;
+    for (var id in fenetres) if (fenetres[id].fen === fen) f = fenetres[id];
+    var pos = recal(posDe(fen), (f && f.minimum) || { w: 160, h: 60 });
+    fen.style.left = Math.round(pos.x) + 'px';
+    fen.style.top = Math.round(pos.y) + 'px';
+  }
+
+  // moveToPos (0x55b47) : le glissement vers la place — chaque image (au pas
+  // du lecteur, 25 ms) la fenêtre parcourt UN TIERS du chemin restant.
+  function glisserVers(fen, cible) {
+    if (fen._glisse) clearInterval(fen._glisse);
+    if (!FLUIDE) {
+      fen.style.left = Math.round(cible.x) + 'px';
+      fen.style.top = Math.round(cible.y) + 'px';
+      return;
+    }
+    fen._glisse = setInterval(function () {
+      var x = parseFloat(fen.style.left) || 0;
+      var y = parseFloat(fen.style.top) || 0;
+      x += (cible.x - x) / 3;
+      y += (cible.y - y) / 3;
+      if (Math.abs(cible.x - x) < 0.5 && Math.abs(cible.y - y) < 0.5) {
+        x = cible.x; y = cible.y;
+        clearInterval(fen._glisse); fen._glisse = null;
+      }
+      fen.style.left = Math.round(x) + 'px';
+      fen.style.top = Math.round(y) + 'px';
+    }, 25);
+  }
+
+  function creerFantome(pos) {
+    var fantome = document.createElement('div');
+    fantome.className = 'fen-fantome';
+    fantome.style.left = pos.x + 'px';
+    fantome.style.top = pos.y + 'px';
+    // border-box : la bordure de 2 px du fantôme compte dans sa taille, comme
+    // la silhouette du clip couvrait exactement le cadre de la fenêtre.
+    fantome.style.boxSizing = 'border-box';
+    fantome.style.width = pos.w + 'px';
+    fantome.style.height = pos.h + 'px';
+    $('#bureau-fenetres').appendChild(fantome);
+    return fantome;
+  }
+
+  // initDrag/endDrag (0x53b7b/0x53d6d) : le déplacement au fantôme.
   function rendreDeplacable(fen, titre) {
     titre.addEventListener('pointerdown', function (ev) {
       if (ev.target.closest('.fen-btn')) return;
       ev.preventDefault();
       premierPlan(fen);
-      var dx = ev.clientX - (parseFloat(fen.style.left) || 0);
-      var dy = ev.clientY - (parseFloat(fen.style.top) || 0);
+      var pos = posDe(fen);
+      var fantome = creerFantome(pos);
+      var decalx = ev.clientX, decaly = ev.clientY;
       var glisser = function (e2) {
-        fen.style.left = Math.round(e2.clientX - dx) + 'px';
-        fen.style.top = Math.round(e2.clientY - dy) + 'px';
+        fantome.style.left = Math.round(pos.x + e2.clientX - decalx) + 'px';
+        fantome.style.top = Math.round(pos.y + e2.clientY - decaly) + 'px';
       };
-      var lacher = function () {
+      var lacher = function (e2) {
         document.removeEventListener('pointermove', glisser);
         document.removeEventListener('pointerup', lacher);
-        bornerDansEcran(fen);
+        // applyGhost : la position du fantôme devient la position voulue,
+        // recal la borne, moveToPos y fait glisser la fenêtre.
+        var cible = recal({
+          x: pos.x + e2.clientX - decalx,
+          y: pos.y + e2.clientY - decaly,
+          w: pos.w, h: pos.h,
+        }, { w: pos.w, h: pos.h });
+        fantome.remove();
+        glisserVers(fen, cible);
       };
       document.addEventListener('pointermove', glisser);
+      document.addEventListener('pointerup', lacher);
+    });
+  }
+
+  // initResize/endResize (0x53a2e/0x53b2a) : le redimensionnement au fantôme —
+  // decalSize garde l'écart entre la souris et le coin, les minima s'imposent
+  // pendant le suivi, la taille ne s'applique qu'au lâcher.
+  function rendreRedimensionnable(fen, poignee, minimum) {
+    poignee.addEventListener('pointerdown', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      premierPlan(fen);
+      var pos = posDe(fen);
+      var fantome = creerFantome(pos);
+      var decalSizeX = pos.w - ev.clientX;
+      var decalSizeY = pos.h - ev.clientY;
+      var taille = { w: pos.w, h: pos.h };
+      var suivre = function (e2) {
+        taille.w = Math.max(minimum.w, e2.clientX + decalSizeX);
+        taille.h = Math.max(minimum.h, e2.clientY + decalSizeY);
+        fantome.style.width = Math.round(taille.w) + 'px';
+        fantome.style.height = Math.round(taille.h) + 'px';
+      };
+      var lacher = function () {
+        document.removeEventListener('pointermove', suivre);
+        document.removeEventListener('pointerup', lacher);
+        fantome.remove();
+        var cible = recal({ x: pos.x, y: pos.y, w: taille.w, h: taille.h }, minimum);
+        fen.style.width = Math.round(cible.w) + 'px';
+        fen.style.height = Math.round(cible.h) + 'px';
+        fen.style.left = Math.round(cible.x) + 'px';
+        fen.style.top = Math.round(cible.y) + 'px';
+      };
+      document.addEventListener('pointermove', suivre);
       document.addEventListener('pointerup', lacher);
     });
   }
@@ -209,13 +316,21 @@ window.BureauFrutiz = (function () {
     corps.className = 'fen-corps';
     fen.appendChild(titre);
     fen.appendChild(corps);
+    // La poignée de redimensionnement (butResize) : flResizable vaut vrai par
+    // défaut dans WinStandard — toutes nos fenêtres l'ont.
+    var minimum = rub.min || { w: 320, h: 220 };
+    var poignee = document.createElement('div');
+    poignee.className = 'fen-poignee';
+    poignee.title = 'Redimensionner';
+    fen.appendChild(poignee);
     fen.addEventListener('pointerdown', function () { premierPlan(fen); });
     rendreDeplacable(fen, titre);
+    rendreRedimensionnable(fen, poignee, minimum);
     $('#bureau-fenetres').appendChild(fen);
     premierPlan(fen);
 
     var f = {
-      fen: fen, corps: corps, panneau: panneau,
+      fen: fen, corps: corps, panneau: panneau, minimum: minimum,
       origine: deplacer(panneau, corps),
       txt: txt, pastille: pastille, topbar: null,
     };
