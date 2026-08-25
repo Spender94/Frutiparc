@@ -32,7 +32,8 @@ window.BureauFrutiz = (function () {
   // `evenements` et `historique` partagent le panneau #evt-panel : la fenêtre
   // est UNIQUE et se retitre selon l'onglet demandé.
   var RUBRIQUES = {
-    chat:       { panneau: '#chat-panel',      titre: 'Salons',         fruit: 'winChat', l: 780, h: 580 },
+    chat:       { panneau: '#chat-panel',      titre: 'Salons',         fruit: 'winChat', l: 780, h: 580,
+                  min: function () { return minSalon(); } },
     forum:      { panneau: '#forum-panel',     titre: 'Forum',          l: 920, h: 640 },
     scores:     { panneau: '#scores-panel',    titre: 'Scores',         l: 720, h: 620 },
     mail:       { panneau: '#mail-panel',      titre: 'Messagerie',     l: 640, h: 560 },
@@ -168,8 +169,17 @@ window.BureauFrutiz = (function () {
   // Et `main.cornerX = wSide` (SideList.init, 0xa0a5b) : le bureau commence
   // après la bande des contacts — 9 px, ou 129 quand la liste est dépliée.
   var CORNER_Y = 106, CORNER_X = 9;
+  // ── LES MINIMA D'UNE FENÊTRE ─────────────────────────────────────────────
+  // `WinStandard.minimum` n'est pas une constante : c'est `frameSet.minInt`,
+  // le minimum INTERNE de l'arbre de cadres, recalculé à chaque changement
+  // (`onFrameSetUpdate`, 0x5493d). Ouvrir un panneau RELÈVE donc le minimum,
+  // et `recal` fait grandir la fenêtre si elle était en dessous. Un minimum
+  // peut donc être une fonction ici, et non un couple figé.
+  function minDe(m) { return typeof m === 'function' ? m() : (m || { w: 160, h: 60 }); }
+
   function recal(pos, minimum) {
     var vw = window.innerWidth, vh = window.innerHeight;
+    minimum = minDe(minimum);
     pos.w = Math.max(minimum.w, Math.min(pos.w, vw - CORNER_X));
     pos.h = Math.max(minimum.h, Math.min(pos.h, vh - CORNER_Y));
     pos.x = Math.max(CORNER_X, Math.min(pos.x, vw - pos.w));
@@ -403,17 +413,76 @@ window.BureauFrutiz = (function () {
     f.bouillesBranchees = true;
     f.corps.addEventListener('click', function (e) {
       if (!actif) return;
-      var b = e.target && e.target.closest && e.target.closest('#bouille-toggle');
-      if (!b) return;
-      e.stopPropagation();
-      e.preventDefault();
-      var p = $('#chat-panel');
-      var t = $('#topbar');
-      if (!p) return;
-      var ouvert = p.classList.toggle('bouilles-ouvertes');
-      if (t) t.classList.toggle('en-rangee', ouvert);
-      if (ouvert) majBouilles();
+      var c = e.target && e.target.closest ? e.target : null;
+      if (!c) return;
+      if (c.closest('#bouille-toggle')) {
+        e.stopPropagation();
+        e.preventDefault();
+        var p = $('#chat-panel');
+        var t = $('#topbar');
+        if (!p) return;
+        var ouvert = p.classList.toggle('bouilles-ouvertes');
+        if (t) t.classList.toggle('en-rangee', ouvert);
+        if (ouvert) majBouilles();
+        appliquerMinimum(f);
+        return;
+      }
+      // Les feutres et les connectés, eux, sont bien branchés côté light : on
+      // repasse APRÈS lui pour relever le minimum, comme `onFrameSetUpdate`.
+      if (c.closest('#pen-btn') || c.closest('#users-btn')) {
+        setTimeout(function () { appliquerMinimum(f); }, 0);
+      }
     }, true);
+  }
+
+  // ── LE MINIMUM DE LA FENÊTRE DU SALON ────────────────────────────────────
+  // L'arbre de cadres du salon : `margin.left` porte la colonne d'icônes et,
+  // quand elle s'ouvre, la pile des bouilles ; `main` porte le fil, les
+  // feutres et la saisie ; `margin.right` les connectés. Un cadre de type
+  // « w » empile ses enfants EN HAUTEUR (les hauteurs s'ajoutent, les largeurs
+  // se maximisent) ; un cadre « h » les range en largeur (`updateMinInt`,
+  // 0x479e9). Les mins sont écrits dans le bytecode :
+  //   colonne d'icônes   min {w:24}          marge 8   (0x694b0)
+  //   cpScreenList       min {w:100, h:200}  marge 12  (0x6973d)
+  //   multiTextField     min {w:100, h:100}  marge INTÉRIEURE 8 (0x68b1f)
+  //   cpPenList          min {w:120, h:48}   marge 6   (0x69849)
+  //   cpUserList         min {w:122, h:100}  marge 6   (0x66c9f)
+  //   inputField         14 de haut,         marge 6   (0x68c46)
+  // et la colonne d'icônes passe de 104 (quatre gélules au pas de 26) à 28
+  // quand les bouilles l'obligent à se mettre en rangée (0x69646).
+  //
+  // Vérifié sur Ruffle : on rétrécit la fenêtre à fond par sa poignée, puis on
+  // ouvre les panneaux un à un — elle grandit d'elle-même jusqu'au nouveau
+  // minimum. Relevé au pixel sur le cadre `#444444` :
+  //   nu 202×156 · +bouilles 228×256 · +connectés 356×256 · +feutres 374×256.
+  // Les 8 px de chrome en largeur et les 28 en hauteur (12 de cadre, 16 de
+  // bandeau) tombent de ces quatre mesures, et le PLANCHER de 202 est celui du
+  // bandeau-titre, que le contenu n'atteint jamais tout seul.
+  function minSalon() {
+    var p = $('#chat-panel');
+    var bouilles = !!(p && p.classList.contains('bouilles-ouvertes'));
+    var tiroir = $('#users-drawer');
+    var connectes = !!(tiroir && tiroir.classList.contains('open'));
+    var barre = $('#pen-bar');
+    var feutres = !!(barre && barre.classList.contains('show'));
+    var gauche = { w: bouilles ? 112 : 32, h: bouilles ? 228 : 104 };
+    var milieu = { w: feutres ? 126 : 108, h: 128 + (feutres ? 48 : 0) };
+    var droite = { w: connectes ? 128 : 0, h: connectes ? 100 : 0 };
+    return {
+      w: Math.max(202, 8 + gauche.w + milieu.w + droite.w),
+      h: 28 + Math.max(milieu.h, gauche.h, droite.h),
+    };
+  }
+
+  // `recal` après un changement d'arbre : la fenêtre grandit si elle est
+  // passée sous le nouveau minimum, et ne bouge pas sinon.
+  function appliquerMinimum(f) {
+    if (!f || !f.fen) return;
+    var cible = recal(posDe(f.fen), f.minimum);
+    f.fen.style.width = Math.round(cible.w) + 'px';
+    f.fen.style.height = Math.round(cible.h) + 'px';
+    f.fen.style.left = Math.round(cible.x) + 'px';
+    f.fen.style.top = Math.round(cible.y) + 'px';
   }
 
   // ── LA COLONNE DES BOUILLES (`cp.ScreenList`) ─────────────────────────────
@@ -436,6 +505,23 @@ window.BureauFrutiz = (function () {
   // `CSS.escape` n'est pas partout ; un pseudo n'a de toute façon que des
   // lettres, des chiffres, `_` et `-`, on s'en tient là.
   function cleCss(s) { return s.replace(/["\\\]]/g, ''); }
+
+  // ── LA LISTE DES CONNECTÉS ────────────────────────────────────────────────
+  // La bande d'une personne va d'un bord à l'autre de la boîte, liseré compris.
+  // Or un `overflow` rogne à la zone de remplissage, DANS la bordure : la boîte
+  // ne peut donc pas défiler elle-même sans couper les bandes de 10 px. On
+  // glisse une enveloppe qui déborde de la bordure et qui, elle, défile. Le
+  // light refait la liste à chaque relevé des connectés : on la ré-enveloppe
+  // au même moment.
+  function majListeConnectes() {
+    var l = $('#users-list');
+    if (!l || !actif) return;
+    if (l.children.length === 1 && l.firstElementChild.className === 'ul-defile') return;
+    var d = document.createElement('div');
+    d.className = 'ul-defile';
+    while (l.firstChild) d.appendChild(l.firstChild);
+    l.appendChild(d);
+  }
 
   function majBouilles() {
     var col = $('#bouille-overlay');
@@ -622,13 +708,14 @@ window.BureauFrutiz = (function () {
       ev.stopPropagation();
       premierPlan(fen);
       var pos = posDe(fen);
+      var min = minDe(minimum);          // les panneaux ne bougent pas pendant le glissé
       var fantome = creerFantome(pos);
       var decalSizeX = pos.w - ev.clientX;
       var decalSizeY = pos.h - ev.clientY;
       var taille = { w: pos.w, h: pos.h };
       var suivre = function (e2) {
-        taille.w = Math.max(minimum.w, e2.clientX + decalSizeX);
-        taille.h = Math.max(minimum.h, e2.clientY + decalSizeY);
+        taille.w = Math.max(min.w, e2.clientX + decalSizeX);
+        taille.h = Math.max(min.h, e2.clientY + decalSizeY);
         fantome.style.width = Math.round(taille.w) + 'px';
         fantome.style.height = Math.round(taille.h) + 'px';
       };
@@ -941,6 +1028,7 @@ window.BureauFrutiz = (function () {
     // Rappelés par le light : la colonne des bouilles suit la liste des
     // connectés, et une émotion joue dans l'écran de la personne.
     majBouilles: majBouilles,
+    majListeConnectes: majListeConnectes,
     ecranDe: ecranDe,
     actif: function () { return actif; },
   };

@@ -6200,6 +6200,9 @@
     names.forEach(function (n) {
       list.appendChild(ligneConnecte(n, "", !!(set[n] && set[n].staff)));
     });
+    // Sur le bureau, les lignes vont d'un bord à l'autre de la boîte : elles
+    // passent dans une enveloppe qui déborde de la bordure et qui défile.
+    if (window.BureauFrutiz && BureauFrutiz.actif && BureauFrutiz.actif() && BureauFrutiz.majListeConnectes) BureauFrutiz.majListeConnectes();
   }
 
   // « … voir les messages précédents … » — le lien des logs du staff, comme au

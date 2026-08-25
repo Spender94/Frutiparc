@@ -949,6 +949,14 @@ messages (x 443..604), pas sur son contour. Et rien ne l'accompagne :
 d'époque il n'y a NI bouton « Envoyer » NI aide aux accents, on valide à
 Entrée.
 
+**Le rayon n'est PAS maximal.** Le bout de la barre est la forme **#166**, un
+dessin de 4×14 dont le tracé part de (0,0) et arrive en (−4, 4) par une seule
+courbe : un quart de rond de **rayon 4** sur une barre de 14, là où la gélule
+pleine en demanderait 7. Le relevé au pixel le confirme — le bord gauche
+n'atteint x 523 qu'en y 506, quatre lignes sous le haut de la barre. Le liseré
+`#CCCCCC` fait partie du même dessin et suit la courbe. (La forme #167 est la
+même en vert `#E8F8D1`/`#D5F2B4` : c'est la variante des fenêtres vertes.)
+
 ### Le titre
 
 `nom du salon + " (" + affluence + ")"` — « Salon Fraise (1) » sur le relevé.
@@ -968,6 +976,75 @@ Et `toggleScreenList` (0x69646) fait une chose de plus : quand la liste des
 bouilles s'ouvre, la colonne des icônes passe en RANGÉE — `min.h` devient
 `lefIconListHMaxLarge` = 28. Le relevé le montre bien : les quatre gélules se
 rangent côte à côte au-dessus des panneaux.
+
+### LES MINIMA : `minimum` n'est PAS une constante
+
+`WinStandard.minimum`, c'est **`frameSet.minInt`** — le minimum INTERNE de
+l'arbre de cadres, recalculé à chaque changement (`onFrameSetUpdate`,
+0x5493d). Ouvrir un panneau RELÈVE donc le minimum, et le `recal` de la
+fenêtre la fait grandir si elle était en dessous. Le bornage lui-même
+(0x54100) :
+
+    pos.w = max( minimum.w, min( pos.w, mcw − main.cornerX ) )
+    pos.h = max( minimum.h, min( pos.h, mch − main.cornerY ) )
+    pos.x = max( main.cornerX, min( pos.x, mcw − pos.w ) )
+    pos.y = max( main.cornerY, min( pos.y, mch − pos.h ) )
+
+`Frame.updateMinInt` (0x479e9) agrège l'arbre. Un cadre de type **« w »**
+empile ses enfants EN HAUTEUR (les hauteurs s'ADDITIONNENT, les largeurs se
+maximisent) ; un cadre **« h »** les range en largeur. Pour une feuille
+(`type: 'compo'`) :
+
+    minInt.w = max(min.w, path.min.w) + margin.x.min + marginInt.x.min
+    minInt.h = max(min.h, path.min.h) + margin.y.min + marginInt.y.min
+
+où `margin` est un TOTAL (pas une valeur par côté) et `Standard.getMargin()`
+(0x490ea) rend `{x:{min:0, ratio:0.5, align:0}, y:{…}}`.
+
+L'arbre d'une fenêtre (`initFrameSet`, 0x54878) :
+
+    frameSet    « w »
+    ├── top     « w »  min {w:0, h:6}
+    ├── center  « h »
+    │   ├── left    « w »  min {w:6, h:0}
+    │   ├── center  « w »   ← bigFrame, le contenu
+    │   └── right   « w »  min {w:6, h:0}
+    └── bottom  « w »  min {w:0, h:6}
+
+Les mins du salon, écrits dans le bytecode :
+
+| pièce | min | marge |
+|---|---|---|
+| colonne d'icônes | `{w:24}` | 8 |
+| `cpScreenList` (bouilles) | `{w:100, h:200}` | 12 |
+| `multiTextField` (le fil) | `{w:100, h:100}` | 8 (INTÉRIEURE) |
+| `cpPenList` (feutres) | `{w:120, h:48}` | 6 |
+| `cpUserList` (connectés) | `{w:122, h:100}` | 6 |
+| `inputField` (saisie) | 14 de haut | 6 |
+
+et la colonne d'icônes passe de **104** (quatre gélules au pas de 26) à **28**
+quand les bouilles l'obligent à se mettre en rangée (0x69646).
+
+**Vérifié sur Ruffle**, et c'est la mesure la plus élégante du carnet : on
+rétrécit la fenêtre à fond par sa poignée, puis on ouvre les panneaux un à un
+— elle GRANDIT d'elle-même jusqu'au nouveau minimum, qu'il suffit alors de
+lire sur le cadre `#444444` :
+
+    nu 202×156 · +bouilles 228×256 · +connectés 356×256 · +feutres 374×256
+
+De ces quatre mesures tombent les 8 px de chrome en largeur, les 28 en hauteur
+(12 de cadre + 16 de bandeau), et un PLANCHER de 202 en largeur — celui du
+bandeau-titre, que le contenu n'atteint jamais seul. D'où :
+
+    min.w = max(202, 8 + gauche.w + milieu.w + droite.w)
+    min.h = 28  +  max(milieu.h, gauche.h, droite.h)
+
+    gauche = bouilles ? {w:112, h:228} : {w:32,  h:104}
+    milieu = feutres  ? {w:126, …}     : {w:108, …}   ;  h = 128 + (feutres ? 48 : 0)
+    droite = connectés? {w:128, h:100} : {w:0,   h:0}
+
+Le light rend les quatre mesures au pixel, et la fenêtre grandit toute seule
+quand un panneau s'ouvre alors qu'elle était au minimum.
 
 ### LA CHARPENTE EN TROIS COLONNES (relevé 1:1, au pixel)
 
@@ -1036,6 +1113,23 @@ Et la bande d'une personne va d'un bord à l'autre : **557..676**, soit 120 px
 — elle RECOUVRE à gauche l'anneau gris et le liseré vert, à droite elle
 s'arrête juste avant. Le pseudo y est CENTRÉ (« temoinchat5 » sur 71 px dans
 une bande de 120, à 2 px du milieu), en Verdana gras 10, encre `#22224A`.
+
+**UNE LIGNE SUR DEUX seulement porte la bande.** `cp.UserList` (0x66d4b) le
+dit au bit près :
+
+    backgroundId = 2 − ((i / 2) == Math.round(i / 2))
+
+soit **1** pour les rangs pairs et **2** pour les impairs — et l'image 2 de la
+bande #260 est VIDE : c'est justement celle dont le panneau des contacts se
+sert, où aucune ligne n'a de fond. Une ligne sur deux laisse donc voir le
+`#E8F8D1` de la boîte : voilà l'alternance. (Et `i` est le rang À L'ÉCRAN, pas
+celui dans la liste : l'alternance ne bouge pas quand on fait défiler.)
+
+Côté CSS il y a un piège : un `overflow` rogne au bord de la zone de
+remplissage, c'est-à-dire À L'INTÉRIEUR de la bordure. Une boîte en
+`border-image` qui défile elle-même coupe donc ses bandes de 10 px. Le
+défilement est confié à une enveloppe qui déborde de la bordure par des marges
+négatives et qui, elle, rogne sur les 122 px pleins.
 
 ### LES FEUTRES, au pixel
 
