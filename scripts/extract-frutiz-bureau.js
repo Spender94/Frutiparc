@@ -263,6 +263,10 @@ function principal() {
     { cle: 'butWinTop1', id: 173 },
     { cle: 'butWinTop2', id: 176 },
     { cle: 'butWinTop3', id: 179 },
+    // La languette CONTACTS : `sideListContact` (#436) est LUI AUSSI un
+    // DefineButton2 — SideList.init l'attache sous le nom `butContact` à
+    // x = wSide (9), y = 800 (le bas de la scène d'époque).
+    { cle: 'butContact', id: 436 },
   ];
   // Toutes les formes touchées, en un passage.
   const formes = new Set();

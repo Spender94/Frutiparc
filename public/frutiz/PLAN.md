@@ -248,14 +248,51 @@ un cadre commun (sprites/fruit_*.svg) ; le light applique la même loi.
   vert. À transcrire (composant dynamique).
 - **La pilule « N en ligne »** : bord droit à Stage.width − 6, y ≈ 8..30,
   fond vert sombre `#43671F`, texte blanc gras, point vert clair.
-- **La languette CONTACTS** : bord GAUCHE, en BAS (y ≈ 700..790), plaque
-  blanche aux coins droits arrondis, lettres empilées à la verticale.
+- **La languette CONTACTS** : voir la section SideList ci-dessous — ce n'est
+  pas une étiquette isolée mais la POIGNÉE d'un panneau pleine hauteur.
 - **La rangée d'icônes** : sous la barre, un PAS de 76 px — mesuré Gaspard
   282, Mes contacts 358, Corbeille 433, Forum 509, Liste noire 585, Les
   salons 661, Mon historique 737, Préférences 814, Scores 889, Boutique
   965, Bouilloscope 1042, Club 1117 (centres) ; étiquettes dessous.
 - L'éditeur de bouille d'un compte neuf est une fenêtre SANS CROIX (« Ma
   Frutibouille ») : on n'en sort qu'en validant une bouille travaillée.
+
+## Le panneau des contacts (`_global.SideList`, DoInitAction sprite#847, 0xa05b7)
+
+La « languette CONTACTS » n'est pas une étiquette posée dans un coin : c'est
+la POIGNÉE d'un panneau qui court sur toute la hauteur du bord gauche, et
+qui se DÉPLIE en liste de contacts.
+
+Constantes du prototype (0xa1708) : **`wSide` 9** (la bande repliée),
+**`wShade` 3** (le liseré), **`wMain` 120** (la liste dépliée),
+`hSearch` 24 ; profondeurs dp_bg 5, dp_list 20, dp_butSearch 24,
+dp_scrollBar 40, dp_element 100.
+
+- **update** (0xa0b4c) : `w = wSide` (+ `wMain` si `flActive`), puis DEUX
+  aplats pleine hauteur (`mch`) — `FEMC.drawSquare(0xFFFFFF)` de largeur w,
+  et `drawSquare(0xDDDDDD)` de largeur `wShade` collé au bord DROIT
+  (`x = w − wShade`). La poignée suit : `butContact._x = wSide +
+  flActive·wMain`.
+- **`ombre`** (init 0xa0a92) : le clip `carreFond` (#584 — il ne pose que la
+  forme #185, le carré `#444444`) attaché à `main`, réduit à `_width = 2`,
+  posé à `main.cornerX` et haut de `mch` (onStageResize 0xa0c94).
+- **init** (0xa0a09) pose **`main.cornerX = wSide`** : le bureau commence à
+  9 px du bord — et à 129 quand la liste est ouverte (`activate` 0xa0d50 :
+  `cornerX = wMain + wSide`). Le light borne ses fenêtres à cornerX.
+- **La poignée** : `sideListContact` (#436) est un **DefineButton2** —
+  extrait tel quel (scripts/extract-frutiz-bureau.js, cible `butContact`) :
+  plaque blanche, liseré `#DDDDDD`, et les lettres « CONTACTS » PIVOTÉES
+  d'un quart de tour, `#666666` au repos, **`#E7756B` (saumon) au survol**.
+  Cadre (−7.75, −84.15)–(12, 0) : l'origine est EN BAS.
+  `onStageResize` la pose à `_x = wSide` (9) et **`_y = 800`** — une
+  constante EN DUR (la hauteur de scène d'époque), d'où la poignée collée au
+  bas de l'écran ; le light l'ancre au bas du bureau, ce qui redonne le même
+  rendu à la taille d'époque. (Idem `butSearch._y = 770` quand la liste est
+  ouverte.)
+- Relevé au pixel 1:1, référence et light : blanc 0..6, `#DDDDDD` 6..9,
+  `#444444` 9..11 ; haut de la poignée à y 725. Identiques.
+- Le clic (`mcSide.onPress` et `butContact.onPress`) appelle `toggle` : le
+  dépliement de la liste reste à porter (étape des contacts).
 
 ## Reste à faire (étapes suivantes)
 
@@ -271,4 +308,6 @@ un cadre commun (sprites/fruit_*.svg) ; le light applique la même loi.
    (FPDesktop), le glisser-déposer des icônes.
 4. Le mode « tab » des fenêtres (les onglets qui suivent « Bureau »), le
    menu déroulant de l'onglet, les préférences (`win_flMoveAnim`).
-5. Le tiroir des contacts derrière la languette CONTACTS.
+5. Le DÉPLIEMENT du panneau des contacts (toggle/activate : la bande passe
+   de 9 à 129, `attachList`, la barre de recherche `butSearch`, le
+   défilement) — le décor est fait, la liste reste à porter.

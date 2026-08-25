@@ -158,12 +158,14 @@ window.BureauFrutiz = (function () {
   // barre (76) plus la rangée d'onglets. recal (0x54126) borne les fenêtres
   // à ce coin : une fenêtre ne passe JAMAIS au-dessus de la zone de la barre
   // (et la barre, plus profonde, recouvre ce qui s'en approche).
-  var CORNER_Y = 106;
+  // Et `main.cornerX = wSide` (SideList.init, 0xa0a5b) : le bureau commence
+  // après la bande des contacts — 9 px, ou 129 quand la liste est dépliée.
+  var CORNER_Y = 106, CORNER_X = 9;
   function recal(pos, minimum) {
     var vw = window.innerWidth, vh = window.innerHeight;
-    pos.w = Math.max(minimum.w, Math.min(pos.w, vw));
+    pos.w = Math.max(minimum.w, Math.min(pos.w, vw - CORNER_X));
     pos.h = Math.max(minimum.h, Math.min(pos.h, vh - CORNER_Y));
-    pos.x = Math.max(0, Math.min(pos.x, vw - pos.w));
+    pos.x = Math.max(CORNER_X, Math.min(pos.x, vw - pos.w));
     pos.y = Math.max(CORNER_Y, Math.min(pos.y, vh - pos.h));
     return pos;
   }
@@ -461,14 +463,24 @@ window.BureauFrutiz = (function () {
     majEnLigne();
     setInterval(majEnLigne, 60000);
 
-    // La languette CONTACTS du bord gauche (bas d'écran) : lettres empilées
-    // à la verticale, plaque blanche aux coins droits arrondis. Le tiroir
-    // qu'elle ouvre viendra avec l'étape des contacts — la languette fait
-    // partie du décor d'époque.
-    var languette = document.createElement('div');
+    // LE PANNEAU DES CONTACTS (SideList) : la bande blanche de 9 px (wSide)
+    // au liseré de 3 (wShade), son ombre de 2 px (le clip carreFond) posée à
+    // cornerX, et la POIGNÉE — le DefineButton2 `sideListContact` extrait tel
+    // quel, collé en bas comme `butContact._y = 800`. Le dépliement de la
+    // liste (wMain 120, activate/toggle) viendra avec l'étape des contacts ;
+    // ici c'est le décor, au relevé près.
+    var bande = document.createElement('div');
+    bande.id = 'side-list';
+    var ombre = document.createElement('div');
+    ombre.id = 'side-list-ombre';
+    var languette = document.createElement('button');
+    languette.type = 'button';
     languette.id = 'languette-contacts';
+    languette.title = 'Contacts';
     languette.textContent = 'CONTACTS';
-    bureau.appendChild(languette);
+    haut.appendChild(bande);
+    haut.appendChild(ombre);
+    haut.appendChild(languette);
 
     // La main bar quitte le tiroir : c'est le meuble du bureau maintenant.
     // (La bannière quotidienne reste au tiroir : main.swf n'a pas de bandeau

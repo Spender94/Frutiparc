@@ -122,16 +122,44 @@ body.bureau-frutiz #pill-enligne .point {
   width: 8px; height: 8px; border-radius: 50%; background: #9FE855;
 }
 
-/* ── La languette CONTACTS (bord gauche, en bas ; lettres empilées) ─────── */
+/* ── LE PANNEAU DES CONTACTS (`_global.SideList`, DoInitAction sprite#847,
+   0xa05b7) — la « languette » n'est que sa poignée ────────────────────────
+   Constantes du prototype (0xa1708) : **wSide 9**, **wShade 3**, wMain 120
+   (la liste ouverte), hSearch 24. `update` (0xa0b4c) trace DEUX rectangles
+   pleine hauteur (mch) : le BLANC `FEMC.drawSquare(0xFFFFFF)` de largeur
+   wSide (+ wMain quand la liste est ouverte), puis le LISERÉ
+   `drawSquare(0xDDDDDD)` de largeur wShade collé au bord DROIT. À côté,
+   `ombre` = le clip `carreFond` (#584, un carré `#444444`) réduit à
+   `_width = 2`, posé à `main.cornerX` et haut de mch (init 0xa0a92,
+   onStageResize 0xa0c94). Relevé au pixel 1:1 : blanc 0..6, `#DDDDDD` 6..9,
+   `#444444` 9..11 — au twip près. `init` pose d'ailleurs
+   **`main.cornerX = wSide`** : le bureau commence à 9 px du bord. */
+body.bureau-frutiz #side-list {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 9px; z-index: 1;
+  background: linear-gradient(to right, #FFFFFF 0 6px, #DDDDDD 6px 9px);
+}
+body.bureau-frutiz #side-list-ombre {
+  position: absolute; left: 9px; top: 0; bottom: 0; width: 2px; z-index: 1;
+  background: #444444;
+}
+/* La poignée : `sideListContact` (#436) est un DefineButton2 — l'art est
+   extrait tel quel (plaque, liseré, lettres PIVOTÉES d'un quart de tour),
+   états compris : au repos les lettres sont `#666666`, au survol elles
+   passent au SAUMON `#E7756B`. SideList.init l'attache à `_x = wSide` (9) et
+   onStageResize la pose à **`_y = 800`** — une constante en dur, la hauteur
+   de scène d'époque : la poignée est donc collée EN BAS. Son cadre va de
+   (−7.75, −84.15) à (12, 0) : à l'écran, x 1.25..21, 84.15 de haut. */
 body.bureau-frutiz #languette-contacts {
-  position: absolute; left: 0; bottom: 12px; z-index: 3;
-  width: 15px; padding: 6px 0 6px 1px; box-sizing: border-box;
-  background: #fff; border-radius: 0 6px 6px 0;
-  box-shadow: inset 0 0 0 1px #DDDDDD, 0 0 0 1px #444444;
-  writing-mode: vertical-lr; text-orientation: upright;
-  font: 700 8px Verdana, Arial, sans-serif; color: #444444;
-  letter-spacing: 2px; text-align: center;
-  user-select: none; -webkit-user-select: none;
+  position: absolute; left: 1.25px; bottom: 0; z-index: 1;
+  width: 19.75px; height: 84.15px; padding: 0; border: 0;
+  background: url('/frutiz/sprites/butContact_up.svg') center / 19.75px 84.15px no-repeat;
+  cursor: pointer; color: transparent; font-size: 0;
+}
+body.bureau-frutiz #languette-contacts:hover {
+  background-image: url('/frutiz/sprites/butContact_over.svg');
+}
+body.bureau-frutiz #languette-contacts:active {
+  background-image: url('/frutiz/sprites/butContact_down.svg');
 }
 
 /* Le compte (« connecté en tant que… », Se déconnecter) : une mention de bas

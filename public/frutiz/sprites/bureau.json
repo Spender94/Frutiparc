@@ -50,6 +50,23 @@
     "w": 21,
     "h": 21
    }
+  },
+  "butContact": {
+   "up": {
+    "fichier": "butContact_up.svg"
+   },
+   "over": {
+    "fichier": "butContact_over.svg"
+   },
+   "down": {
+    "fichier": "butContact_down.svg"
+   },
+   "cadre": {
+    "x": -7.75,
+    "y": -84.15,
+    "w": 19.75,
+    "h": 84.15
+   }
   }
  },
  "notes": "butGroupWinTop #180 : images 1..3 → boutons #173/#176/#179 (up/over/down)",
