@@ -1108,6 +1108,34 @@ QUIRK d'époque, gardé : la nouvelle venue est poussée dans `contentList`
 AVANT le tirage de sa hauteur, et son `_y` vaut alors 0 — le tirage se
 refuse donc lui-même le haut de la zone.
 
+### Ce qu'un écran empile (`initScreen`, 0x61c1d)
+
+| profondeur | clip | rôle |
+|---|---|---|
+| 10 | `screen` | la plaque, TRACÉE par `drawCustomSquare` |
+| 30 | `inside` | masqué par `mask` : le FOND, puis les bouilles |
+| 40 | `mask` | un `drawSmoothSquare` au rayon `curve` |
+| 50 | `light` | le REFLET, hors du masque — au-dessus de tout |
+
+et `drawScreen` (0x61d40) finit par trois lignes qui disent tout :
+
+    inside.bg._width  = width      // le fond est ÉTIRÉ à l'écran
+    inside.bg._height = height
+    light._x          = width      // le reflet est calé sur le bord DROIT
+
+- **Le fond**, c'est `frutiScreenBackground` (**#139**, cinq images, laissé
+  sur la première par `bg.stop()`) — et ce n'est PAS un cercle propre : c'est
+  un dessin à la main, un pourtour `#A2E866` aux contours ondulants, une
+  bande `#C5F297`, et un cœur en dégradé radial `#D6F7B5` → `#C5F297` dont le
+  centre est DÉCALÉ en haut à gauche (34,45 ; 33,45). Le cercle CSS que j'en
+  avais tiré au pixel en donnait les teintes, pas la forme.
+- **Le reflet**, c'est `frutiScreenLight` (**#395**) : un croissant blanc à
+  50 % (plus un éclat plein) de 42,7 × 31,8, qui ne s'étire pas et se pose à
+  2 px du bord droit et 2 px du haut. Il passe PAR-DESSUS la bouille —
+  relevé d'époque : `#E2F9CB` au-dessus du fond, soit exactement `#C5F297`
+  sous un blanc à 50 %, et la peau du Frutiz s'éclaircit dessous. Il est sur
+  la bouille de la main bar aussi : c'est le même objet.
+
 Le cadre d'un écran, on n'a pas eu à le mesurer, on le CALCULE : liseré
 extérieur 2 px `white.shade` `#DDDDDD`, anneau intérieur 1 px `white.darker`
 `#888888`, rayon 6.
@@ -1271,9 +1299,9 @@ et un quatrième bouton est ajouté pour l'avertissement. Trois écarts :
   - les écrans sont des IMAGES (le cache PNG partagé du site, celui du
     Bouilloscope et du trombinoscope) et non un lecteur Flash par personne :
     un salon plein ne coûte alors que des images déjà en cache ;
-  - le fond dégradé de l'écran est repeint en CSS d'après le relevé, parce
-    que la capture du cache est prise sur un vert PLAT (`#E8F8D3`, le fond
-    des cartes du forum) — on la détoure et on remet le dégradé dessous.
+  - la capture du cache est prise sur un vert PLAT (`#E8F8D3`, le fond des
+    cartes du forum) : on la DÉTOURE, et le fond du SWF (#139) reparaît
+    dessous, étiré comme d'époque.
   Quand quelqu'un fait une émotion, le seul lecteur du light déménage DANS
   son écran le temps de l'animation, puis s'éteint : c'est exactement là que
   le SWF la joue.

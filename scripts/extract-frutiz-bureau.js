@@ -702,6 +702,18 @@ function principal() {
     { cle: 'user-list-boite', id: 352, profondeurs: (p) => p !== 11 && p !== 19, cadrePropre: true },
     { cle: 'user-list-pilule', id: 352, profondeurs: (p) => p === 11, cadrePropre: true },
     { cle: 'user-slot', id: 261, cadrePropre: true },
+    // L'ÉCRAN À BOUILLE (`cp.FrutiScreen`, 0x61a2e) : sous la bouille, le fond
+    // `frutiScreenBackground` (#139) ÉTIRÉ à la taille de l'écran
+    // (`inside.bg._width = width`, `_height = height`) ; au-dessus de tout, et
+    // sans masque, le reflet `frutiScreenLight` (#395) calé sur le bord DROIT
+    // (`light._x = width`). Le fond n'est pas un cercle propre : c'est un
+    // dessin à la main — un pourtour `#A2E866` aux contours ondulants, une
+    // bande `#C5F297`, et un cœur en dégradé radial `#D6F7B5` → `#C5F297`
+    // dont le centre est DÉCALÉ en haut à gauche (34,45 ; 33,45). Voilà
+    // pourquoi le cercle CSS que j'en avais tiré sonnait faux.
+    // Le clip du fond a cinq images ; `bg.stop()` le laisse sur la PREMIÈRE.
+    { cle: 'ecran-fond', id: 139, cadrePropre: true },
+    { cle: 'ecran-reflet', id: 395, cadrePropre: true },
   ];
   for (const c of CLIPS) {
     // On relit ses placements à l'octet plutôt que d'appeler aplatir() : le

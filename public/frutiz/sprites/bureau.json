@@ -494,6 +494,24 @@
    "h": 18
   }
  },
+ "ecran-fond": {
+  "fichier": "ecran-fond.svg",
+  "cadre": {
+   "x": 0,
+   "y": 0,
+   "w": 100,
+   "h": 100.1
+  }
+ },
+ "ecran-reflet": {
+  "fichier": "ecran-reflet.svg",
+  "cadre": {
+   "x": -44.7,
+   "y": 2,
+   "w": 42.7,
+   "h": 31.8
+  }
+ },
  "frutimandalaRoue": {
   "fichier": "frutimandala-roue.svg",
   "cadre": {

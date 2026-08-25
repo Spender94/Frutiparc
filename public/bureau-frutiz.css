@@ -130,6 +130,18 @@ body.bureau-frutiz #bureau-coin .mb-avatar .frame::after {
   content: ""; position: absolute; inset: 0; border-radius: 6px;
   box-shadow: inset 0 0 0 1px #888888; z-index: 6; pointer-events: none;
 }
+/* Le REFLET de l'écran, `frutiScreenLight` (#395) : il appartient au même
+   objet, il est donc AUSSI sur la bouille de la main bar. Relevé d'époque :
+   `#E2F9CB` en x 74 y 10, soit exactement `#C5F297` sous un blanc à 50 % — et
+   la peau du Frutiz s'éclaircit dessous, preuve qu'il passe PAR-DESSUS (il
+   est à la profondeur 50, hors du masque). Calé sur le bord droit
+   (`light._x = width`), à 2 px du bord et 2 px du haut, et il ne s'étire
+   pas. */
+body.bureau-frutiz #bureau-coin .mb-avatar .frame::before {
+  content: ""; position: absolute; right: 2px; top: 2px;
+  width: 42.7px; height: 31.8px; z-index: 7; pointer-events: none;
+  background: url('/frutiz/sprites/ecran-reflet.svg') 0 0 / 42.7px 31.8px no-repeat;
+}
 body.bureau-frutiz #bureau-coin #home-avatar-fiche { inset: 0; border-radius: 6px; }
 /* La colonne de droite démarre UN pixel plus bas que la bouille (liseré de la
    bouille en y 4, liseré de l'encart en y 5) et laisse 3 px entre l'encart et
@@ -1084,18 +1096,28 @@ body.bureau-frutiz .fen #chat-panel.bouilles-ouvertes #bouille-overlay {
    écrans se suivent au pas de `size + ecart`, soit 102 (`screen<i>._y =
    i × (size + ecart)`, `ecart = 2` au prototype) : les deux liserés se
    touchent et se confondent, exactement comme d'époque. */
-/* Le fond de l'écran est un DÉGRADÉ RADIAL, relevé au pixel sur le rendu
-   d'époque : `#D6F7B5` jusqu'à 49 px du centre, puis `#C5F297` de 51 à 60, et
-   `#A2E866` au-delà de 64 — rapporté au rayon du coin (70,7 sur un carré de
-   100), cela donne 69 %, 74–85 % et 91 %. Les trois teintes se lisent aussi
-   bien sur la colonne x 419 que sur la ligne y 318 : la distance au centre
-   suffit à les expliquer, c'est bien un cercle. */
+/* Le fond de l'écran est le DESSIN du SWF — `frutiScreenBackground` (#139),
+   que `drawScreen` ÉTIRE à la taille de l'écran (`inside.bg._width = width`,
+   `_height = height`), d'où le `100% 100%`. Ce n'est pas un cercle propre :
+   c'est un dessin à la main — un pourtour `#A2E866` aux contours ondulants,
+   une bande `#C5F297`, et un cœur en dégradé radial `#D6F7B5` → `#C5F297`
+   dont le centre est DÉCALÉ en haut à gauche. Le cercle CSS que j'en avais
+   tiré au pixel en donnait les teintes, pas la forme. */
 body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran {
   position: relative; flex: 0 0 100px; width: 100px; height: 100px;
-  background: radial-gradient(circle farthest-corner at 50% 50%,
-    #D6F7B5 0 69%, #C5F297 74%, #C5F297 85%, #A2E866 91%);
+  background: url('/frutiz/sprites/ecran-fond.svg') 0 0 / 100% 100% no-repeat;
   border-radius: 6px; box-shadow: 0 0 0 2px #DDDDDD;
   overflow: hidden; margin: 0 0 2px;
+}
+/* Et le REFLET, `frutiScreenLight` (#395) : un croissant blanc à 50 %, posé
+   au-dessus de TOUT — il est à la profondeur 50, hors du masque — et calé sur
+   le bord droit (`light._x = width`), à 2 px du bord et 2 px du haut. Il ne
+   s'étire pas : c'est un dessin de 42,7 × 31,8, la même taille sur un écran
+   carré comme sur la grande bande du mode CLB. */
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran::before {
+  content: ""; position: absolute; right: 2px; top: 2px;
+  width: 42.7px; height: 31.8px; z-index: 7; pointer-events: none;
+  background: url('/frutiz/sprites/ecran-reflet.svg') 0 0 / 42.7px 31.8px no-repeat;
 }
 /* MODE CLB : quand il y a plus de monde que d'écrans qui tiennent, il n'en
    reste qu'UN, et il prend toute la zone (`extWidth = width`,
