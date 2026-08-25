@@ -100,6 +100,25 @@
   var W_MARGE = 78;     // distance moyenne au bord DU BLOC (0…~3,5) : LE CENTRE
   var W_LIGNE = 400;    // fronts exposés par fruit (0…4) : LA PREMIÈRE LIGNE
 
+  // ── CE QUI NE CHANGE PAS EN FINALE ────────────────────────────────────────
+  //
+  // On a cru qu'il fallait lever le pied sur la doctrine quand il ne reste que
+  // quelques pions : à cinq, en lâcher un c'est un cinquième de son armée, et
+  // les termes de position sont des MOYENNES PAR FRUIT — leur poids ne fond pas
+  // avec l'armée, si bien que la première ligne peut peser 800 quand les cinq
+  // pions n'en valent que 750. Ça ressemble à une anomalie.
+  //
+  // Ça n'en est pas une. Interpolé des deux façons possibles — rendre son plein
+  // prix à l'écarté, effacer les termes de position — et mesuré à 500 parties
+  // par variante, aux deux profondeurs : chaque levier coûte NEUF POINTS de
+  // victoires, les deux ensemble douze. C'est logique après coup : sur un
+  // plateau rétréci, une poussée ratée n'emporte pas un pion sur trente mais
+  // un sur cinq. La géométrie compte PLUS en fin de partie, pas moins.
+  //
+  // Le danger que les joueurs sentent en finale est réel, mais il ne vient pas
+  // de la géométrie : il vient des CARTES, que la recherche ne modélise pas du
+  // tout. C'est là qu'on corrige — cf. menaceDeLaMain.
+
   // ── Lecture d'une position ────────────────────────────────────────────────
   // Pour une équipe : son compte, ses contacts (paires de voisins orthogonaux),
   // ses FRONTS EXPOSÉS (cf. l'arme ultime, plus haut), et son BLOC PRINCIPAL —
@@ -164,6 +183,7 @@
   // n'est pas combien de pions sont en première ligne, c'est quelle PART de
   // l'armée l'est — d'où « cinq pions contre vingt » qui reste une bonne
   // affaire tant que les vingt sont dehors et les cinq dedans.
+  //
   function valeurCamp(a, t) {
     var bloc = a.blocN[t], ecart = a.n[t] - bloc;
     return W_BLOC * bloc + W_ECART * ecart
@@ -255,6 +275,15 @@
   // — fenêtre nulle au niveau maximum (donc seulement les vraies égalités),
   // large d'un fruit tout en bas. Deux parties contre le même bot ne se
   // ressemblent donc pas, sans qu'il ait jamais l'air de se saborder.
+  //
+  // (On a aussi armé ici un GARDE DE FINALE : la main d'en face étant publique
+  // depuis le draft, refuser les coups qui nous laissent à portée de sa
+  // meilleure carte — un Renfort lui en rend trois, une Conversion vaut deux
+  // d'écart. Instrumenté à toutes les profondeurs : sur 1 500 occasions, il n'a
+  // JAMAIS changé un seul coup. La raison est instructive — à cinq pions,
+  // perdre le reste vaut −∞ pour la recherche, qui écarte donc déjà ces coups
+  // d'elle-même. Le bot ne brade pas ses finales ; il y arrivait les mains
+  // vides. C'est le tempo des cartes qui corrige ça, pas le choix du coup.)
   function chooseMove(board, team, skill, rng) {
     rng = rng || Math.random;
     if (skill === undefined || skill === null) skill = 0.5;
@@ -294,6 +323,10 @@
   // `avancement` va de 0 (plateau plein) à 1 (fin de partie). Le facteur
   // multiplie le gain SIMULÉ : on ne fausse pas le calcul, on dit seulement à
   // quel moment une carte mérite qu'on la dépense.
+  // La barre à franchir pour dépenser une carte, en fruits (cf. chooseCardPlay).
+  var SEUIL_BASE = 0.35;       // le minimum, en toute fin de partie
+  var SEUIL_NIVEAU = 0.45;     // ce que le niveau ajoute
+  var SEUIL_OUVERTURE = 1.10;  // ce que le plateau PLEIN ajoute en plus
   function avancementPartie(restants) {
     if (restants >= 48) return 0;
     if (restants <= 12) return 1;
@@ -305,6 +338,13 @@
       case CARD.RENFORT:      return 0.45 + 0.90 * av;   // tard
       case CARD.CONVERSION:   return 0.55 + 0.70 * av;   // tard
       case CARD.ENCLUME:      return 0.85 + 0.30 * av;   // un peu plus tard
+      // Le rocher reste PRESSÉ, contre l'intuition. Un rocher seul sur une
+      // ligne de bord ne retient pas le bord (isEmptyBorder ne compte que les
+      // fruits : la ligne est jugée vide et le plateau recule par-dessus, le
+      // rocher disparaît), et on a donc essayé de le retarder. Au banc, ça
+      // coûte SEPT POINTS de victoires : sur un plateau plein il y a bien plus
+      // de chaînes à bloquer, et ça vaut largement le risque de le perdre plus
+      // tard. Le fait est vrai, la conclusion ne l'était pas.
       case CARD.PETRIFICATION:return 1.15 - 0.30 * av;   // bloquer sert tant qu'il y a du monde
       default:                return 1;                  // les autres sont de circonstance
     }
@@ -560,14 +600,23 @@
     });
 
     if (!meilleur) return null;
-    // Un bon niveau exige un vrai gain ; un faible se décide plus vite (et
-    // gaspille donc ses cartes). Le seuil est en « fruits ».
-    // (On a essayé de relever EN PLUS la barre en ouverture, pour retenir la
-    // main pendant les premiers tours. Au banc d'essai, ni la version douce ni
-    // la version sévère ne battaient franchement l'absence de barrière : le
-    // facteur de moment fait déjà le travail, et une barrière de plus ne
-    // faisait que du bruit. Retirée plutôt que gardée « au cas où ».)
-    var seuil = W_FRUIT * (0.15 + 0.55 * skill);
+
+    // ── LA BARRE : ce qu'une carte doit rapporter pour mériter d'être jouée ──
+    //
+    // Le facteur de moment ne suffisait pas. Mesuré sur quarante parties :
+    // 57 % des cartes partaient alors qu'il restait QUARANTE fruits ou plus, et
+    // 6 % seulement en dessous de vingt-quatre — le Renfort lui-même, qui ne
+    // vaut qu'en fin de partie, sortait à trente-huit fruits en médiane. Un
+    // facteur multiplicatif rabote le gain, il n'empêche pas de le franchir :
+    // sur un plateau plein, TOUT rapporte un peu, et la barre était basse.
+    //
+    // Elle est donc haute quand le plateau est plein, et descend avec lui. Le
+    // niveau n'y fait qu'un appoint : un bot faible doit rester battable, pas
+    // vider sa main dès le troisième tour — ça n'a l'air ni faible ni fort,
+    // ça a l'air cassé. (La Vachette n'est pas gênée : sur un plateau plein,
+    // raser la meilleure colonne rapporte quatre fruits nets, très au-dessus.)
+    var seuil = W_FRUIT * (SEUIL_BASE + SEUIL_NIVEAU * skill
+      + SEUIL_OUVERTURE * (1 - avancement));
     if (meilleur.gain < seuil) {
       // Fin de partie : garder ses cartes ne sert plus à rien.
       var presqueFini = (my + op) <= 8;

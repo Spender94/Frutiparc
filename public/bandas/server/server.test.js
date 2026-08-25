@@ -674,6 +674,47 @@ ok(Bot.facteurMoment(CARD.RENFORT, 1) > Bot.facteurMoment(CARD.VACHETTE, 1),
   ok(tard && tard.card === CARD.RENFORT, 'tempo: en fin de partie, il sort');
 })();
 
+// ── ARRIVER EN FINALE AVEC UNE CARTE ────────────────────────────────────────
+// Le vrai reproche des joueurs : « les bots jouent leurs cartes en début de
+// partie ». C'était exact — et le facteur de moment n'y suffisait pas. Un
+// facteur MULTIPLIE le gain, il n'empêche pas de franchir la barre : sur un
+// plateau plein tout rapporte un peu, et la barre était basse. Elle monte donc
+// avec le remplissage du plateau (SEUIL_OUVERTURE).
+//
+// On ne teste pas le réglage, on teste CE QUI SE VOIT : le bot doit encore
+// tenir une carte quand la partie se décide. Mesuré sur ces 40 parties, l'ancien
+// bot arrivait les mains vides quatre fois sur cinq.
+(function () {
+  var finalesAvecMain = 0, finales = 0;
+  for (var p = 0; p < 40; p++) {
+    var rng = seeded(p + 1);
+    var g = new G.BandasGame({ size: 8, cardsPerPlayer: 3, rng: rng });
+    var tour = 0, compte = null;
+    while (!g.ended && tour < 400) {
+      tour++;
+      var t = g.currentTeam;
+      if (g.phase === G.PHASE_CARD_SELECTION) { g.chooseCard(t, Bot.chooseDraft(g.pool, 0.4, rng)); continue; }
+      if (compte === null && g.board.countSpritesOf(0) + g.board.countSpritesOf(1) <= 12) {
+        compte = g.hands[0].length + g.hands[1].length;
+      }
+      if (!g.cardPlayedThisTurn) {
+        var c = Bot.chooseCardPlay(g, t, 0.4, rng);
+        if (c) { var r = g.playCard(t, c.card, c.x, c.y); if (r && r.ok && g.ended) break; }
+      }
+      if (g.ended) break;
+      if (g.currentTeam !== t) continue;
+      g.move(t, Bot.chooseMove(g.board, t, 0.4, rng));
+    }
+    if (compte === null) continue;
+    finales++;
+    if (compte > 0) finalesAvecMain++;
+  }
+  ok(finales >= 20, 'finale: assez de parties vont jusqu\'à la finale (' + finales + ')');
+  var part = finalesAvecMain / Math.max(1, finales);
+  ok(part >= 0.6, 'finale: on y arrive une carte en main dans au moins 60 % des cas ('
+    + Math.round(100 * part) + ' %)');
+})();
+
 // ── LE CENTRE AVANT LE MATÉRIEL, POUR DE BON ───────────────────────────────
 // Quatre fruits bien placés valent mieux que SIX mal placés : c'est ce qui
 // autorise le bot à laisser filer ses pions de bord pour se recentrer.
