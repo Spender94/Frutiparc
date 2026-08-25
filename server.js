@@ -1463,6 +1463,17 @@ const RANKINGS = {
   // dure, plus on joue de coups — donc le plus GRAND gagne, comme pour le
   // serpent le plus long.
   swapou2_contest:    { name: 'Swapou - Contest',          game: 'swapou2',  type: 'C' },
+  // ── Frutisnake Tournoi : la carte partagée (mode « Entraînement ») ───────
+  // Le classement du mode à carte scriptée du light : l'admin génère une carte
+  // d'une graine, l'ouvre le temps d'un tournoi, et tout le monde joue la même
+  // séquence d'options (public/snake3/carte.js). Hors de LEGACY_RANKINGS donc
+  // PERMANENT (pas de remise à zéro nocturne ni de médailles du jour — c'est
+  // le bouton « Vider » de l'admin qui fait place nette entre deux éditions),
+  // hors des quotas FD (un tournoi ne se rationne pas), et type 'C' pour
+  // qu'une coupe « Maître ÈS … » puisse capturer ses scores. Sa présence au
+  // livre des records du Club suit l'interrupteur « classement » de l'admin
+  // (snake3TournoiEtat.classement).
+  snake3_tournoi:     { name: 'Frutisnake - Tournoi',      game: 'snake3',   type: 'C' },
 };
 
 // Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
@@ -1742,6 +1753,10 @@ function parseMiniwaveNiveau(raw) {
 const PILOTE_PLAFONDS = {
   minipixiz_classic: { max: 200000 },
   miniwave_classic:  { max: MINIWAVE_NIVEAU_MAX * 12000, parNiveau: 12000 },
+  // Le TOURNOI Frutisnake (carte partagée du light) : le score vient du même
+  // moteur JS que le Challenge — même exposition au forgeage, même remède. Le
+  // rail est posé loin au-dessus des grandes parties humaines du classique.
+  snake3_tournoi:    { max: 1000000 },
 };
 
 /**
@@ -14347,6 +14362,251 @@ function handleContest(req, res) {
 app.post('/api/contest/:jeu', handleContest);
 app.get('/api/contest/:jeu', handleContest);
 
+// ── Frutisnake : la CARTE du tournoi (mode « Entraînement » du light) ────────
+// L'admin génère d'une graine une séquence d'options — mêmes objets, mêmes
+// endroits, mêmes instants pour tous (public/snake3/carte.js, la loi de tirage
+// du jeu lui-même) — puis OUVRE le mode : la pastille « entraînement » (la
+// neuvième du clip menu du SWF, jamais branchée en light) apparaît au menu du
+// jeu et les scores entrent au classement dédié snake3_tournoi. Les fruits
+// restent tirés en partie (ils suivent la frutibarre de chacun — c'est le
+// contrat du mode).
+//
+// L'état vit en mémoire, sur le disque (data/) et en base — le trio de la map
+// MiniWave : une carte régénérée par un redéploiement en pleine fenêtre ferait
+// jouer deux tournois différents sous le même classement.
+const SNAKE3_TOURNOI_FILE = path.join(SCORES_DIR, 'snake3-tournoi.json');
+const SnakeCarte = require('./public/snake3/carte.js');
+let snake3TournoiEtat = null;             // { graine, carte, ouvert, classement }
+let snake3TournoiEnBase = false;
+
+function snake3TournoiDefaut() {
+  return { graine: '', carte: [], ouvert: false, classement: true };
+}
+function snake3TournoiValide(e) {
+  return !!(e && typeof e === 'object' && Array.isArray(e.carte)
+    && typeof e.ouvert === 'boolean' && typeof e.classement === 'boolean');
+}
+// Les tailles naturelles des options (manifest cadres.options) : ce sont elles
+// que Level.generate_pos utilise pour tenir l'objet dans les marges.
+let snake3CadresOptions = null;
+function snake3LireCadresOptions() {
+  if (snake3CadresOptions) return snake3CadresOptions;
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(__dirname, 'public/snake3/sprites/sprites.json'), 'utf8'));
+    snake3CadresOptions = (m.cadres && m.cadres.options) || {};
+  } catch (e) {
+    console.error('[SNAKE3 TOURNOI] manifest illisible:', e.message);
+    snake3CadresOptions = {};
+  }
+  return snake3CadresOptions;
+}
+
+async function snake3TournoiRangerEnBase(e) {
+  if (!process.env.DATABASE_URL || snake3TournoiEnBase) return;
+  try {
+    await db.setSnake3Tournoi({
+      graine: e.graine, carte: JSON.stringify(e.carte),
+      ouvert: e.ouvert, classement: e.classement,
+    });
+    snake3TournoiEnBase = true;
+  } catch (err) { console.error('[SNAKE3 TOURNOI] écriture en base:', err.message); }
+}
+
+/** L'état courant — mémoire, puis disque (reboot), puis base (déploiement neuf). */
+async function snake3Tournoi() {
+  if (snake3TournoiValide(snake3TournoiEtat)) {
+    await snake3TournoiRangerEnBase(snake3TournoiEtat);
+    return snake3TournoiEtat;
+  }
+  try {
+    if (fs.existsSync(SNAKE3_TOURNOI_FILE)) {
+      const surDisque = JSON.parse(fs.readFileSync(SNAKE3_TOURNOI_FILE, 'utf8'));
+      if (snake3TournoiValide(surDisque)) {
+        snake3TournoiEtat = surDisque;
+        await snake3TournoiRangerEnBase(surDisque);
+        return snake3TournoiEtat;
+      }
+    }
+  } catch (e) { /* on regarde plus loin */ }
+  if (process.env.DATABASE_URL) {
+    try {
+      const ligne = await db.getSnake3Tournoi();
+      if (ligne) {
+        const e = {
+          graine: String(ligne.graine || ''),
+          carte: JSON.parse(ligne.carte || '[]'),
+          ouvert: !!ligne.ouvert,
+          classement: ligne.classement !== false,
+        };
+        if (snake3TournoiValide(e)) {
+          snake3TournoiEtat = e;
+          snake3TournoiEnBase = true;
+          snake3TournoiEcrireDisque(e);
+          return snake3TournoiEtat;
+        }
+      }
+    } catch (e) { console.error('[SNAKE3 TOURNOI] lecture en base:', e.message); }
+  }
+  snake3TournoiEtat = snake3TournoiDefaut();
+  return snake3TournoiEtat;
+}
+
+function snake3TournoiEcrireDisque(e) {
+  try {
+    if (!fs.existsSync(SCORES_DIR)) fs.mkdirSync(SCORES_DIR, { recursive: true });
+    const tmp = SNAKE3_TOURNOI_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(e), 'utf8');
+    fs.renameSync(tmp, SNAKE3_TOURNOI_FILE);
+  } catch (e2) { console.error('[SNAKE3 TOURNOI] écriture du disque:', e2.message); }
+}
+
+async function snake3TournoiPoser(patch) {
+  const e = Object.assign(await snake3Tournoi(), patch);
+  snake3TournoiEtat = e;
+  snake3TournoiEcrireDisque(e);
+  snake3TournoiEnBase = false;            // l'état a changé : la copie est à refaire
+  await snake3TournoiRangerEnBase(e);
+  return e;
+}
+
+// L'état PUBLIC — le jeu light le lit au menu. La carte n'est servie que
+// mode ouvert : fermée, elle n'existe pour personne (et ne se préjoue pas).
+app.get('/api/snake3/tournoi', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const e = await snake3Tournoi();
+  res.json({
+    ok: true,
+    ouvert: !!(e.ouvert && e.carte.length),
+    graine: e.ouvert ? e.graine : null,
+    carte: (e.ouvert && e.carte.length) ? e.carte : null,
+  });
+});
+
+// Le score d'une partie de tournoi. Comme les Contests : hors quota FD (un
+// tournoi ne se rationne pas), persistScore ne garde que le meilleur. Deux
+// gardes en plus : le mode doit être OUVERT (une partie finie après la
+// fermeture arrive encore — on la prend si elle porte la bonne graine… non :
+// fermé, c'est fermé, le couperet est le même pour tous), et la graine jouée
+// doit être celle de la carte courante (une partie entamée sur une carte
+// remplacée entre-temps ne vaut rien sur le nouveau classement).
+function snake3TournoiScore(req, res) {
+  snake3Tournoi().then((e) => {
+    const params = Object.assign({}, req.query || {}, req.body || {});
+    const username = resolveUsernameFromSid(String(params.sid || ''));
+    if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+    if (!e.ouvert || !e.carte.length) return res.status(409).json({ ok: false, error: 'tournoi_ferme' });
+    const graine = String(params.graine || '');
+    if (graine !== String(e.graine)) {
+      return res.status(409).json({ ok: false, error: 'carte_perimee', graine: e.graine });
+    }
+    const score = Math.floor(Number(params.score));
+    if (!Number.isFinite(score) || score < 0) {
+      return res.status(400).json({ ok: false, error: 'score_invalide' });
+    }
+    const refus = raisonScoreImplausible('snake3_tournoi', score, '');
+    if (refus) {
+      console.warn(`[SNAKE3 TOURNOI] score refusé pour ${username} : ${refus}`);
+      return res.status(400).json({ ok: false, error: 'implausible_score', raison: refus });
+    }
+    // La graine voyage dans la donnée : on sait toujours sur QUELLE carte un
+    // record a été fait (et « Vider » entre deux éditions repart de zéro).
+    const r = persistScore(username, 'snake3_tournoi', score, 'graine:' + graine);
+    if (r.updated) {
+      console.log(`[SNAKE3 TOURNOI] ${username} : ${score} pts (ancien ${r.oldScore}, place ${r.newPos})`);
+    }
+    return res.json({ ok: true, updated: r.updated, newScore: r.newScore,
+      oldScore: r.oldScore, oldPos: r.oldPos, newPos: r.newPos });
+  }).catch((err) => {
+    console.error('[SNAKE3 TOURNOI] score:', err.message);
+    res.status(500).json({ ok: false, error: 'interne' });
+  });
+}
+app.post('/api/snake3/tournoi/score', snake3TournoiScore);
+app.get('/api/snake3/tournoi/score', snake3TournoiScore);
+
+// ── L'admin du tournoi (onglet Tournoi, avec les coupes « Maître ÈS … ») ──
+// L'unité de temps de la carte est le tmod du jeu : 32 par seconde
+// (Const.WANTED_FPS — public/snake3/const.js).
+const SNAKE3_TICKS_PAR_SECONDE = 32;
+// L'aperçu rend la carte lisible : instant mm:ss, nom de l'option.
+function snake3TournoiApercu(carte) {
+  return carte.map((c) => ({
+    t: c.t,
+    temps: `${Math.floor(c.t / SNAKE3_TICKS_PAR_SECONDE / 60)}:${String(Math.floor(c.t / SNAKE3_TICKS_PAR_SECONDE) % 60).padStart(2, '0')}`,
+    id: c.id,
+    nom: SnakeCarte.OPTION_NOMS[c.id] || `option ${c.id}`,
+    x: c.x, y: c.y,
+    vie: Math.round(c.vie / SNAKE3_TICKS_PAR_SECONDE) + ' s',
+  }));
+}
+
+app.get('/api/admin/snake3-tournoi', tournoiScope, async (req, res) => {
+  const e = await snake3Tournoi();
+  let inscrits = 0;
+  for (const u of Object.keys(scoresData.users)) {
+    if (scoresData.users[u].snake3_tournoi !== undefined) inscrits++;
+  }
+  res.json({
+    ok: true, graine: e.graine, ouvert: e.ouvert, classement: e.classement,
+    nb: e.carte.length, apercu: snake3TournoiApercu(e.carte), inscrits,
+  });
+});
+
+// Générer (ou regénérer) la carte d'une graine. Regénérer FERME le mode : on
+// ne change pas la carte sous les joueurs — l'admin rouvre quand il est prêt.
+app.post('/api/admin/snake3-tournoi/generer', tournoiScope, async (req, res) => {
+  const b = req.body || {};
+  const graine = String(b.graine || '').trim()
+    || Math.random().toString(36).slice(2, 10);
+  const carte = SnakeCarte.genererCarte(graine, snake3LireCadresOptions());
+  const e = await snake3TournoiPoser({ graine, carte, ouvert: false });
+  console.log(`[SNAKE3 TOURNOI] carte générée (graine « ${graine} », ${carte.length} options) — mode fermé`);
+  res.json({ ok: true, graine: e.graine, nb: carte.length, ouvert: e.ouvert,
+    apercu: snake3TournoiApercu(carte) });
+});
+
+app.post('/api/admin/snake3-tournoi/ouvrir', tournoiScope, async (req, res) => {
+  const e = await snake3Tournoi();
+  if (!e.carte.length) return res.status(409).json({ ok: false, error: 'pas_de_carte', message: 'Générer une carte d\'abord.' });
+  await snake3TournoiPoser({ ouvert: true });
+  console.log(`[SNAKE3 TOURNOI] mode OUVERT (graine « ${e.graine} »)`);
+  res.json({ ok: true, ouvert: true });
+});
+
+app.post('/api/admin/snake3-tournoi/fermer', tournoiScope, async (req, res) => {
+  await snake3TournoiPoser({ ouvert: false });
+  console.log('[SNAKE3 TOURNOI] mode fermé');
+  res.json({ ok: true, ouvert: false });
+});
+
+// L'interrupteur du classement : éteint, snake3_tournoi disparaît du livre des
+// records du Club et des fiches — les scores restent, ils ne sont plus montrés.
+app.post('/api/admin/snake3-tournoi/classement', tournoiScope, async (req, res) => {
+  const visible = !!(req.body && req.body.visible);
+  await snake3TournoiPoser({ classement: visible });
+  res.json({ ok: true, classement: visible });
+});
+
+// Place nette entre deux éditions : les scores du classement s'effacent
+// partout (mémoire, fichier, base). La carte et l'état du mode ne bougent pas.
+app.post('/api/admin/snake3-tournoi/vider', tournoiScope, async (req, res) => {
+  let vides = 0;
+  for (const u of Object.keys(scoresData.users)) {
+    if (scoresData.users[u].snake3_tournoi === undefined) continue;
+    delete scoresData.users[u].snake3_tournoi;
+    if (Object.keys(scoresData.users[u]).length === 0) delete scoresData.users[u];
+    vides++;
+  }
+  if (vides) saveScoresFile();
+  let enBase = 0;
+  if (process.env.DATABASE_URL) {
+    try { enBase = await db.deleteScoresForRanking('snake3_tournoi'); }
+    catch (e) { console.error('[SNAKE3 TOURNOI] vidage en base:', e.message); }
+  }
+  console.log(`[SNAKE3 TOURNOI] classement vidé (${vides} en mémoire, ${enBase} en base)`);
+  res.json({ ok: true, vides, enBase });
+});
+
 app.get('/api/fd/status', (req, res) => {
   const username = resolveUsernameFromSid(String(req.query.sid || ''));
   if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
@@ -17793,6 +18053,10 @@ app.get('/api/club/records', async (req, res) => {
 
   const out = [];
   for (const [rkId, meta] of Object.entries(RANKINGS)) {
+    // Le classement du TOURNOI Frutisnake suit son interrupteur d'admin :
+    // éteint, il disparaît du livre (les scores restent, ils ne sont plus
+    // montrés) — cf. la section « Frutisnake : la carte du tournoi ».
+    if (rkId === 'snake3_tournoi' && !(await snake3Tournoi()).classement) continue;
     const userMap = bestByRanking[rkId] || {};
     const all = Object.entries(userMap).map(([user, v]) => ({
       user: getDisplayName(user),
@@ -17832,6 +18096,10 @@ function ficheMontreLeClassement(rkId, meta) {
   if (!meta) return false;
   if (meta.game === 'mb2') return false;
   if (/^bkiwi_.*_classic$/.test(rkId)) return false;
+  // Le tournoi Frutisnake suit son interrupteur d'admin. L'état est celui en
+  // mémoire — les appelants font `await snake3Tournoi()` avant leur boucle
+  // pour qu'il soit à jour même juste après un démarrage.
+  if (rkId === 'snake3_tournoi' && snake3TournoiEtat && !snake3TournoiEtat.classement) return false;
   return true;
 }
 
@@ -17926,6 +18194,7 @@ app.get('/api/club/player', async (req, res) => {
 
     // ── Les records ──
     const records = [];
+    await snake3Tournoi();              // l'interrupteur du tournoi, à jour
     for (const [rkId, meta] of Object.entries(RANKINGS)) {
       if (!ficheMontreLeClassement(rkId, meta)) continue;
       const userMap = bestByRanking[rkId] || {};
@@ -17980,6 +18249,7 @@ app.get('/api/club/players', async (req, res) => {
     };
     for (const m of await toutesLesMedailles()) noter(m.username);
     const bestByRanking = await livreDesRecords();
+    await snake3Tournoi();                       // l'interrupteur du tournoi
     for (const [rkId, userMap] of Object.entries(bestByRanking)) {
       if (!ficheMontreLeClassement(rkId, RANKINGS[rkId])) continue;
       for (const u of Object.keys(userMap)) noter(u);

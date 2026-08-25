@@ -453,6 +453,34 @@
   </p>
   <div id="tournoi-list"></div>
   <div id="tournoi-detail" style="margin-top:14px"></div>
+
+  <!-- Frutisnake : la carte du tournoi (mode « Entraînement » du portage light) -->
+  <div style="border:1px solid #cde0cd;border-radius:8px;padding:12px 14px;margin-top:22px;background:#f7fbf5">
+    <h3 style="margin:0 0 4px">🐍 Frutisnake — carte du tournoi</h3>
+    <p style="color:#777;font-size:12px;margin:0 0 10px;max-width:780px">
+      Une carte générée d'une <b>graine</b> fait tomber les <b>mêmes options aux mêmes endroits, aux
+      mêmes instants</b> pour tout le monde (les fruits restent aléatoires, au gré de la frutibarre de
+      chacun). Ouvert, le mode ajoute la pastille « <b>entraînement</b> » au menu du jeu light et les
+      scores entrent au classement dédié <b>Frutisnake - Tournoi</b> (permanent, hors quota Fruit
+      Défendu — « Vider » fait place nette entre deux éditions). Regénérer la carte <b>ferme</b> le
+      mode : on rouvre quand tout est prêt. Une coupe « Maître ÈS … » peut se tenir sur ce classement.
+    </p>
+    <div id="snaketournoi-etat" style="font-size:13px;margin-bottom:10px">Chargement…</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <label style="font-size:12px;color:#555">Graine :
+        <input id="snaketournoi-graine" maxlength="40" placeholder="(vide = au hasard)" style="width:160px;padding:4px">
+      </label>
+      <button class="btn" onclick="genererSnakeTournoi()">Générer la carte</button>
+      <button class="btn-success" id="snaketournoi-ouvrir" onclick="ouvrirSnakeTournoi(true)">Ouvrir le mode</button>
+      <button class="btn" id="snaketournoi-fermer" onclick="ouvrirSnakeTournoi(false)">Fermer</button>
+      <label style="font-size:12px;color:#555;margin-left:8px">
+        <input type="checkbox" id="snaketournoi-classement" onchange="classementSnakeTournoi(this.checked)">
+        Classement visible (Club)
+      </label>
+      <button class="btn btn-sm" style="background:#c10000;color:#fff;margin-left:auto" onclick="viderSnakeTournoi()">Vider le classement</button>
+    </div>
+    <div id="snaketournoi-apercu" style="margin-top:10px"></div>
+  </div>
 </div>
 
 <div class="content" id="tab-shop" style="display:none">
@@ -1289,7 +1317,7 @@ function switchTab(name) {
   if (name === 'kiloute' && !$('#kiloute-body').dataset.loaded) loadKiloute();
   if (name === 'trombinoscope') loadTrombinoscope();
   if (name === 'referrals') loadReferrals();
-  if (name === 'tournoi') loadTournaments();
+  if (name === 'tournoi') { loadTournaments(); loadSnakeTournoi(); }
   if (name === 'dons') loadDons();
 }
 
@@ -1618,6 +1646,71 @@ async function loadTournaments() {
         </tr>`).join('') + '</tbody></table>';
   } catch (e) { toast('Erreur: ' + e.message); }
 }
+// ─── Frutisnake : la carte du tournoi (mode « Entraînement » du light) ───
+async function loadSnakeTournoi() {
+  try {
+    const d = await (await fetch('/api/admin/snake3-tournoi', { headers: hdr() })).json();
+    if (!d.ok) { $('#snaketournoi-etat').textContent = 'Erreur : ' + (d.error || '?'); return; }
+    const etat = d.nb
+      ? `Carte : graine « <b>${esc(d.graine)}</b> », <b>${d.nb}</b> options sur 20 min — mode <b style="color:${d.ouvert ? '#2f8f2f' : '#b31111'}">${d.ouvert ? 'OUVERT' : 'fermé'}</b>.`
+      : 'Aucune carte — générer une graine pour commencer.';
+    $('#snaketournoi-etat').innerHTML = etat
+      + ` &nbsp;·&nbsp; ${d.inscrits} joueur(s) au classement.`;
+    $('#snaketournoi-classement').checked = !!d.classement;
+    $('#snaketournoi-ouvrir').style.display = d.ouvert ? 'none' : '';
+    $('#snaketournoi-fermer').style.display = d.ouvert ? '' : 'none';
+    dessinerApercuSnake(d.apercu || []);
+  } catch (e) { $('#snaketournoi-etat').textContent = 'Erreur : ' + e.message; }
+}
+function dessinerApercuSnake(apercu) {
+  const el = $('#snaketournoi-apercu');
+  if (!apercu.length) { el.innerHTML = ''; return; }
+  const lignes = apercu.map(a =>
+    `<tr><td>${esc(a.temps)}</td><td><b>${esc(a.nom)}</b></td><td>${Math.round(a.x)}, ${Math.round(a.y)}</td><td>${esc(a.vie)}</td></tr>`).join('');
+  el.innerHTML = `<details><summary style="cursor:pointer;font-size:12px;color:#555">Aperçu de la carte (${apercu.length} options)</summary>
+    <table style="margin-top:6px"><thead><tr><th>Instant</th><th>Option</th><th>Position</th><th>À l'écran</th></tr></thead>
+    <tbody>${lignes}</tbody></table></details>`;
+}
+async function genererSnakeTournoi() {
+  const graine = $('#snaketournoi-graine').value.trim();
+  if (!confirm('Générer une nouvelle carte ? Le mode sera FERMÉ (à rouvrir une fois prêt), et les scores déjà posés resteront ceux de l\'ancienne carte tant que tu ne vides pas le classement.')) return;
+  try {
+    const d = await (await fetch('/api/admin/snake3-tournoi/generer', {
+      method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()),
+      body: JSON.stringify({ graine }),
+    })).json();
+    if (d.ok) { toast(`Carte générée (graine « ${d.graine} », ${d.nb} options)`); loadSnakeTournoi(); }
+    else toast('Erreur : ' + (d.error || '?'));
+  } catch (e) { toast('Erreur : ' + e.message); }
+}
+async function ouvrirSnakeTournoi(ouvrir) {
+  try {
+    const d = await (await fetch('/api/admin/snake3-tournoi/' + (ouvrir ? 'ouvrir' : 'fermer'), {
+      method: 'POST', headers: hdr(),
+    })).json();
+    if (d.ok) { toast(ouvrir ? 'Mode ouvert — la pastille est au menu.' : 'Mode fermé.'); loadSnakeTournoi(); }
+    else toast('Erreur : ' + (d.message || d.error || '?'));
+  } catch (e) { toast('Erreur : ' + e.message); }
+}
+async function classementSnakeTournoi(visible) {
+  try {
+    const d = await (await fetch('/api/admin/snake3-tournoi/classement', {
+      method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()),
+      body: JSON.stringify({ visible }),
+    })).json();
+    if (d.ok) toast(visible ? 'Classement visible au Club.' : 'Classement masqué.');
+    else toast('Erreur : ' + (d.error || '?'));
+  } catch (e) { toast('Erreur : ' + e.message); }
+}
+async function viderSnakeTournoi() {
+  if (!confirm('Vider le classement du tournoi ? Tous les scores (mémoire, fichier, base) sont effacés — irréversible.')) return;
+  try {
+    const d = await (await fetch('/api/admin/snake3-tournoi/vider', { method: 'POST', headers: hdr() })).json();
+    if (d.ok) { toast(`Classement vidé (${d.vides} en mémoire, ${d.enBase} en base)`); loadSnakeTournoi(); }
+    else toast('Erreur : ' + (d.error || '?'));
+  } catch (e) { toast('Erreur : ' + e.message); }
+}
+
 async function openCreateTournament() {
   if (!tournoiGames) {
     try { tournoiGames = await (await fetch('/api/admin/tournament-games', { headers: hdr() })).json(); }

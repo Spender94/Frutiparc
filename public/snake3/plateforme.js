@@ -44,6 +44,27 @@ class Plateforme {
     // Les options de confort achetées en boutique. `snake3Hud` est le « pack
     // de Frutisnake » (article 40, 300 kikooz) : le tableau de bord de partie.
     this.options = {};
+    // Le TOURNOI (la carte partagée, mode « Entraînement ») : l'état public
+    // servi par /api/snake3/tournoi. Fermé tant que le serveur n'a rien dit.
+    this.tournoi = { ouvert: false, graine: null, carte: null };
+  }
+
+  // L'état du tournoi — public (la pastille du menu s'affiche aussi aux
+  // visiteurs), rafraîchi à chaque retour au menu principal.
+  chargerTournoi() {
+    return fetch('/api/snake3/tournoi', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j) {
+          this.tournoi = {
+            ouvert: !!j.ouvert,
+            graine: j.graine || null,
+            carte: Array.isArray(j.carte) ? j.carte : null,
+          };
+        }
+        return this.tournoi;
+      })
+      .catch(() => this.tournoi);
   }
 
   // SnakeClient.serviceConnect + onServiceConnect.
@@ -51,8 +72,11 @@ class Plateforme {
     if (!this.sid) {
       this.fruits = [];
       this.charge = true;
-      return Promise.resolve(this);
+      // Même sans compte, la pastille du tournoi doit se montrer si le mode
+      // est ouvert (on peut regarder ; le score, lui, demandera une session).
+      return this.chargerTournoi().then(() => this);
     }
+    const tournoi = this.chargerTournoi();
     const profil = fetch('/api/light/profile?sid=' + encodeURIComponent(this.sid), { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((p) => { if (p && p.username) this.pseudo = p.username; })
@@ -96,7 +120,7 @@ class Plateforme {
         }
       })
       .catch(() => { this.charge = false; });
-    return Promise.all([profil, options, slots]).then(() => this);
+    return Promise.all([profil, options, slots, tournoi]).then(() => this);
   }
 
   // SnakeClient.onSaveScore — la collection et le record, slot 0.
@@ -134,6 +158,22 @@ class Plateforme {
     return fetch('/api/saveScore?' + p.toString())
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
+  }
+
+  // Le score du TOURNOI part sur son propre guichet : classement dédié
+  // (snake3_tournoi), pas de quota Fruit Défendu, et la graine voyage avec le
+  // score — le serveur écarte une partie jouée sur une carte périmée.
+  sauverScoreTournoi(score) {
+    if (!this.sid) return Promise.resolve(null);
+    return fetch('/api/snake3/tournoi/score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        sid: this.sid,
+        score: String(Math.max(0, Math.floor(score))),
+        graine: this.tournoi.graine || '',
+      }).toString(),
+    }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   }
 }
 

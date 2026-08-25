@@ -189,9 +189,13 @@ class Transition {
 }
 
 // ── La partie classique, côté écran (Game.as) ─────────────────────────────
+// `opts.tournoi` : la même partie, jouée sur la CARTE partagée (carte.js) —
+// les options tombent aux instants du script, le score part au classement
+// dédié au lieu du classique.
 class VuePartie {
-  constructor(jeu) {
+  constructor(jeu, opts) {
     this.jeu = jeu;
+    this.tournoi = !!(opts && opts.tournoi);
     this.popups = [];
     this.particules = new R.Particules(hasard);
     this.enrobages = new Map();       // objet moteur → Enrobage
@@ -216,6 +220,7 @@ class VuePartie {
       dims: jeu.dims,
       fruits: jeu.plateforme.fruits,
       evenement: (nom, d) => this.surEvenement(nom, d),
+      carte: this.tournoi ? jeu.plateforme.tournoi.carte : null,
     });
     // Le terrier d'où sort le serpent : PopupFX(100, 0, 0, 3, 1, 0, 0, 0),
     // détruit sous z = 3 (Game.as).
@@ -283,12 +288,15 @@ class VuePartie {
     this.ecran = new Ecran(jeu, 'connexion', C.TXT_SCORE_SAVING);
 
     const pf = jeu.plateforme;
-    const ancienRecord = pf.record;
-    if (score > pf.record) pf.record = score;
-    // La collection enrichie par la partie est déjà dans pf.fruits (le
-    // moteur partage l'objet). On la range, puis le score.
+    const ancienRecord = this.tournoi ? 0 : pf.record;
+    // Le record du slot 0 est celui du CLASSIQUE : une partie de tournoi ne
+    // le touche pas (son « record » vit dans le classement dédié, la réponse
+    // du serveur le porte). La collection de fruits, elle, est personnelle —
+    // elle s'enrichit dans tous les modes.
+    if (!this.tournoi && score > pf.record) pf.record = score;
     const scoreEnvoye = Math.max(0, Math.floor(score));
-    Promise.all([pf.sauverSlot0(), pf.sauverScore(scoreEnvoye)]).then(([, rep]) => {
+    const envoi = this.tournoi ? pf.sauverScoreTournoi(scoreEnvoye) : pf.sauverScore(scoreEnvoye);
+    Promise.all([pf.sauverSlot0(), envoi]).then(([, rep]) => {
       // Manager.scoreSaved, mot pour mot.
       let texte = C.TXT_VOTRE_SCORE(scoreEnvoye) + '\n';
       const vieux = rep && rep.oldScore != null ? rep.oldScore : ancienRecord;
@@ -716,15 +724,42 @@ class Jeu {
     this.sons.enable(C.CHANNEL_SOUNDS, this.bruitages);
   }
 
+  // Le menu principal. Quand le TOURNOI est ouvert (l'admin a posé une carte),
+  // la pastille « entraînement » — la neuvième du clip `menu`, dessinée dans
+  // le SWF mais jamais branchée en light — s'y ajoute et porte la carte
+  // partagée. À chaque retour au menu on redemande l'état au serveur : si le
+  // mode vient d'ouvrir ou de fermer, le carrousel se refait par une
+  // transition, comme n'importe quel changement d'écran.
+  menuPrincipal() {
+    const pf = this.plateforme;
+    const ouvert = !!(pf.tournoi && pf.tournoi.ouvert && pf.tournoi.carte);
+    if (pf.chargerTournoi) {
+      pf.chargerTournoi().then((t) => {
+        const apres = !!(t && t.ouvert && t.carte);
+        if (apres !== ouvert && this.next_mode === -1 && this.mode instanceof M.Menu) {
+          this.forcerMode(0);
+        }
+      });
+    }
+    return new M.Menu(this, ouvert ? [1, 9, 2, 3, 4] : [1, 2, 3, 4], (n) => this.choixMenu(n));
+  }
+
   // Manager.nextMode. En light, pas de disque blanc : le menu principal
   // offre les quatre entrées, actives (cf. l'en-tête du fichier).
   modeSuivant() {
     switch (this.next_mode) {
-      case 0: return new M.Menu(this, [1, 2, 3, 4], (n) => this.choixMenu(n));
+      case 0: return this.menuPrincipal();
       case 2: return new VueBataille(this, this.nplayers || 2);
       case 3: return new M.MenuOptions(this);
       case 4: return new E.Encyclo(this);
       case 5: return new M.Menu(this, [6, 7, 8, 5], (n) => this.choixMenu(n));
+      // La carte a pu fermer entre l'affichage de la pastille et le clic : on
+      // retombe alors sur le menu plutôt que de partir sans script.
+      case 96: {
+        if (!(this.plateforme.tournoi && this.plateforme.tournoi.carte)) return this.menuPrincipal();
+        this.tmodForce = 1;
+        return new VuePartie(this, { tournoi: true });
+      }
       case 97: { this.tmodForce = 1; return new VuePartie(this); }
       default: return null;
     }
@@ -733,7 +768,10 @@ class Jeu {
   // Manager.run_main_menu.
   choixMenu(n) {
     switch (n) {
-      case 1: case 9: this.forcerMode(97); break;   // Challenge — le jeu part
+      case 1: this.forcerMode(97); break;           // Challenge — le jeu part
+      // Dans le SWF, la pastille 9 (« ENTRAINEMENT ») lançait la partie
+      // ordinaire ; ici elle porte le TOURNOI — la partie sur carte partagée.
+      case 9: this.forcerMode(96); break;
       case 2: this.poserModeSuivant(5); break;      // le menu Battle
       case 3: this.poserModeSuivant(3); break;
       case 4: this.poserModeSuivant(4); break;
@@ -844,7 +882,7 @@ class Jeu {
     this.canvas.addEventListener('pointerup', fin);
     this.canvas.addEventListener('pointercancel', fin);
 
-    this.mode = new M.Menu(this, [1, 2, 3, 4], (n) => this.choixMenu(n));
+    this.mode = this.menuPrincipal();
     this.next_mode = -1;
 
     // Le PAS DU LECTEUR : le SWF tourne à 40 images par seconde, et tout ce

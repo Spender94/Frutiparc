@@ -171,6 +171,16 @@ class Niveau {
     return bonus;
   }
 
+  // La chute SCRIPTÉE du tournoi (carte.js) : l'option, sa place et sa durée
+  // sont déjà tirées dans la carte — on pose tel quel, sans toucher au hasard.
+  poser_bonus(id, x, y, vie) {
+    const bonus = new Option(this, id, vie);
+    bonus.x = x;
+    bonus.y = y;
+    this.bonuses.push(bonus);
+    return bonus;
+  }
+
   update(partie, tmod) {
     for (let i = 0; i < this.fruits.length; i++) {
       const f = this.fruits[i];

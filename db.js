@@ -390,6 +390,20 @@ async function initSchema() {
         updated_at  TIMESTAMPTZ DEFAULT now()
       );
 
+      -- Frutisnake : la CARTE du tournoi (mode « Entraînement » du light).
+      -- Générée d'une graine par l'admin, ouverte/fermée à la demande ; la
+      -- copie en base fait survivre la carte (et son état) aux redéploiements,
+      -- sans quoi une carte régénérée en pleine fenêtre casserait l'équité —
+      -- même souci, même remède que miniwave_maps juste au-dessus.
+      CREATE TABLE IF NOT EXISTS snake3_tournoi (
+        slot        TEXT PRIMARY KEY CHECK (slot IN ('current')),
+        graine      TEXT NOT NULL DEFAULT '',
+        carte       TEXT NOT NULL DEFAULT '[]',
+        ouvert      BOOLEAN NOT NULL DEFAULT FALSE,
+        classement  BOOLEAN NOT NULL DEFAULT TRUE,
+        updated_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- Custom wallpapers ("fonds d'écran") uploaded from the admin panel. The
       -- image BYTES live in the DB (not on disk) so a bought wallpaper keeps
       -- loading even after an ephemeral-filesystem redeploy. Served on demand by
@@ -1355,6 +1369,13 @@ async function deleteScore(userId, rankingId) {
   await pool.query('DELETE FROM scores WHERE user_id = $1 AND ranking_id = $2', [userId, rankingId]);
 }
 
+// Vide un classement ENTIER (tous les joueurs) — le tableau du tournoi
+// Frutisnake entre deux éditions. Renvoie le nombre de lignes retirées.
+async function deleteScoresForRanking(rankingId) {
+  const r = await pool.query('DELETE FROM scores WHERE ranking_id = $1', [rankingId]);
+  return r.rowCount || 0;
+}
+
 // Supprime TOUTES les entrées archivées (tous les jours) d'un joueur pour un
 // classement donné — nécessaire pour retirer un record mal mappé du livre des
 // records du Club (qui lit scores ∪ archive). Renvoie le nombre de lignes.
@@ -1728,6 +1749,21 @@ async function setMiniwaveMap(dayKey, seed, data) {
      VALUES ('current', $1, $2, $3, now())
      ON CONFLICT (slot) DO UPDATE SET day_key = $1, seed = $2, data = $3, updated_at = now()`,
     [dayKey, String(seed || ''), data]
+  );
+}
+
+// ── Frutisnake : la carte du tournoi (graine, script, ouvert/fermé) ──
+async function getSnake3Tournoi() {
+  const { rows } = await pool.query(
+    "SELECT graine, carte, ouvert, classement, updated_at FROM snake3_tournoi WHERE slot = 'current'");
+  return rows[0] || null;
+}
+async function setSnake3Tournoi(etat) {
+  await pool.query(
+    `INSERT INTO snake3_tournoi (slot, graine, carte, ouvert, classement, updated_at)
+     VALUES ('current', $1, $2, $3, $4, now())
+     ON CONFLICT (slot) DO UPDATE SET graine = $1, carte = $2, ouvert = $3, classement = $4, updated_at = now()`,
+    [String(etat.graine || ''), String(etat.carte || '[]'), !!etat.ouvert, !!etat.classement]
   );
 }
 
@@ -2943,6 +2979,7 @@ module.exports = {
   isUsernameReserved,
   unreserveUsername,
   deleteScore,
+  deleteScoresForRanking,
   deleteArchivedScore,
   deleteAccessory,
   deleteItem,
@@ -2979,6 +3016,8 @@ module.exports = {
   swapMb2Maps,
   getMiniwaveMap,
   setMiniwaveMap,
+  getSnake3Tournoi,
+  setSnake3Tournoi,
   deleteWallpaper,
   upsertForumImage,
   getForumImage,

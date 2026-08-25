@@ -30,6 +30,8 @@ class Partie {
    *   dims        les cadres du SWF (fruit(id), bonus(id), col)
    *   evenement   (nom, données)
    *   fruits      l'encyclopédie : { id → nombre ramassé } (Encyclo.fruits)
+   *   carte       le script d'options du tournoi [{ t, id, x, y, vie }, …]
+   *               (carte.js) — remplace le tirage aléatoire des options
    */
   constructor(o) {
     const opts = o || {};
@@ -90,6 +92,15 @@ class Partie {
     this.trou = { x: p.x, y: p.y };   // le terrier du départ, pour le décor
 
     this.bonus_probabilities = C.PROBABILITIES.slice();
+
+    // La CARTE du tournoi (carte.js) : une liste [{ t, id, x, y, vie }, …]
+    // triée par t. Quand elle est là, les options ne se tirent plus au dé —
+    // elles tombent aux instants de la carte, aux mêmes endroits pour tous.
+    // Les fruits, eux, restent tirés normalement (ils suivent la frutibarre,
+    // donc le jeu de chacun — c'est le contrat du mode).
+    this.carte = Array.isArray(opts.carte) ? opts.carte : null;
+    this.carteIndex = 0;
+    this.horlogeCarte = 0;            // la somme des tmod écoulés, l'axe de la carte
 
     // Les fruits déjà « débloqués » à l'entrée en partie : endGame n'annonce
     // que les NOUVEAUX passages de seuil.
@@ -433,7 +444,19 @@ class Partie {
       this.gen_fruit();
     }
 
-    if (this.slots.length + this.unique_slots.length + this.niveau.nbonus() < 10) {
+    if (this.carte) {
+      // Le TOURNOI : les options tombent aux instants de la carte, pas au dé.
+      // Pas de plafond ici — il dépendrait des cases en main, donc du joueur,
+      // et la carte doit tomber pareil pour tous (il est tenu à la génération,
+      // sur les options posées — carte.js).
+      this.horlogeCarte += tmod;
+      while (this.carteIndex < this.carte.length
+        && this.carte[this.carteIndex].t <= this.horlogeCarte) {
+        const e = this.carte[this.carteIndex++];
+        const b = this.niveau.poser_bonus(e.id, e.x, e.y, e.vie);
+        this.evenement('bonusPose', { bonus: b });
+      }
+    } else if (this.slots.length + this.unique_slots.length + this.niveau.nbonus() < 10) {
       const k = Math.round((C.BONUS_FREQ + this.score / 500)
         * (this.niveau.nbonus() + 1) / tmod - this.bonus_time / 6);
       if (this.hasard(Math.max(1, k)) === 0) {
