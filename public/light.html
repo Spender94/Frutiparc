@@ -6403,26 +6403,29 @@
   // The chat protocol carries a pen index in the message's p= attribute. By
   // default every user owns all 17 boutique feutres (indices 0..16). The label
   // order matches public/ft/pack-pen / the boutique FEUTRE list. Colours are the
-  // standard "ISO" feutre palette; tweak FEUTRES if a shade needs to match the
-  // Flash client exactly.
+  // Les DIX-SEPT feutres, relevés au pixel sur le rendu Ruffle de la liste des
+  // feutres du salon (cp.PenList #810, scratchpad/rc3-3-feutres.png) : le corps
+  // d'un feutre est peint sur cinq colonnes, et c'est la deuxième — la plus
+  // claire — qui porte la couleur nominale. Les approximations « ISO » d'avant
+  // en étaient loin : l'orange est #FF6600, pas #E8732A.
   var FEUTRES = [
-    { i: 0,  name: "Orange",            color: "#E8732A" },
-    { i: 1,  name: "Bleu",              color: "#2A6FE8" },
-    { i: 2,  name: "Vert foncé",        color: "#1E6B2E" },
-    { i: 3,  name: "Bordeaux",          color: "#8C1F2F" },
-    { i: 4,  name: "Rose",              color: "#E84A9C" },
-    { i: 5,  name: "Jaune",             color: "#E8C81E" },
-    { i: 6,  name: "Vert clair",        color: "#6FBF3B" },
-    { i: 7,  name: "Cyan",              color: "#1FA8C0" },
-    { i: 8,  name: "Bleu foncé",        color: "#1E2F8C" },
-    { i: 9,  name: "Marron",            color: "#8C5A2B" },
-    { i: 10, name: "Marron foncé",      color: "#5A3A1E" },
-    { i: 11, name: "Vert kaki",         color: "#7A7A3A" },
-    { i: 12, name: "Bleu pétrole",      color: "#2A7A8C" },
-    { i: 13, name: "Vert",              color: "#2E8C3A" },
-    { i: 14, name: "Bleu pétrole foncé",color: "#1E4A55" },
-    { i: 15, name: "Orange foncé",      color: "#B85518" },
-    { i: 16, name: "Violet",            color: "#7A2AB8" },
+    { i: 0,  name: "Orange",            color: "#FF6600" },
+    { i: 1,  name: "Bleu",              color: "#6666CC" },
+    { i: 2,  name: "Vert foncé",        color: "#5EA523" },
+    { i: 3,  name: "Bordeaux",          color: "#962761" },
+    { i: 4,  name: "Rose",              color: "#F986E2" },
+    { i: 5,  name: "Jaune",             color: "#EBB601" },
+    { i: 6,  name: "Vert clair",        color: "#20D251" },
+    { i: 7,  name: "Cyan",              color: "#47B9C9" },
+    { i: 8,  name: "Bleu foncé",        color: "#472899" },
+    { i: 9,  name: "Marron",            color: "#A0752E" },
+    { i: 10, name: "Marron foncé",      color: "#66451E" },
+    { i: 11, name: "Vert kaki",         color: "#729236" },
+    { i: 12, name: "Bleu pétrole",      color: "#408877" },
+    { i: 13, name: "Vert",              color: "#5B944B" },
+    { i: 14, name: "Bleu pétrole foncé",color: "#264859" },
+    { i: 15, name: "Orange foncé",      color: "#C8400D" },
+    { i: 16, name: "Violet",            color: "#6E3C8D" },
   ];
   var FEUTRE_BY_INDEX = {};
   FEUTRES.forEach(function (f) { FEUTRE_BY_INDEX[f.i] = f.color; });
@@ -6436,6 +6439,19 @@
 
   // Build the feutre swatch row once (a "none" chip + the 17 colours). Tapping a
   // swatch sets state.pen and tints the composer text so the choice is obvious.
+  // Les cinq colonnes du corps d'un feutre, à partir de sa couleur nominale.
+  function corpsDeFeutre(hex) {
+    var n = parseInt(hex.slice(1), 16);
+    var r = (n >> 16) & 255, v = (n >> 8) & 255, b = n & 255;
+    function moins(d) {
+      var c = [Math.max(0, r - d), Math.max(0, v - d), Math.max(0, b - d)];
+      return "#" + c.map(function (x) { return x.toString(16).padStart(2, "0"); }).join("");
+    }
+    var col = [moins(59), moins(0), moins(30), moins(95), moins(131)];
+    return "linear-gradient(to right,"
+      + col.map(function (c, i) { return c + " " + i + "px " + (i + 1) + "px"; }).join(",") + ")";
+  }
+
   function buildPenBar() {
     var bar = $("#pen-bar");
     if (!bar) return;
@@ -6447,6 +6463,14 @@
     FEUTRES.forEach(function (f) {
       var sw = el("div", "pen-swatch" + (String(state.pen) === String(f.i) ? " sel" : ""));
       sw.style.background = f.color; sw.title = f.name;
+      // Le bureau desktop dessine de VRAIS feutres, pas des pastilles : le
+      // corps d'un feutre est peint sur cinq colonnes, et le SWF les obtient
+      // par une transformation ADDITIVE de la couleur nominale (relevé sur
+      // deux feutres de teintes très différentes, les écarts sont les mêmes) :
+      //   colonne 1 = base − 59, 2 = base, 3 = base − 30, 4 = base − 95,
+      //   colonne 5 = base − 131, chaque canal borné à 0.
+      // On pose le dégradé en propriété : le mobile garde son aplat.
+      sw.style.setProperty("--feutre-corps", corpsDeFeutre(f.color));
       sw.setAttribute("data-pen", f.i);
       sw.addEventListener("click", function () { selectPen(String(f.i)); });
       bar.appendChild(sw);

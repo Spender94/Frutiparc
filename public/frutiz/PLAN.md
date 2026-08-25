@@ -954,6 +954,48 @@ Entrée.
 `nom du salon + " (" + affluence + ")"` — « Salon Fraise (1) » sur le relevé.
 La pastille est la FRAISE : `getIconLabel()` rend `"winChat"` (0x8068a).
 
+### Les trois panneaux des boutons
+
+Chaque bouton ouvre un compo, et le bytecode dit où :
+
+| bouton | compo | `min` | où |
+|---|---|---|---|
+| bouille | `cpScreenList` (0x6973d) | 100×200 | `margin.LEFT` |
+| connectés | `cpUserList` (0x695a7) | — | `margin.RIGHT` |
+| feutres | `cpPenList` (0x69849) | 120×48 | `main`, à l'INDEX 2 — entre le fil et la saisie |
+
+Et `toggleScreenList` (0x69646) fait une chose de plus : quand la liste des
+bouilles s'ouvre, la colonne des icônes passe en RANGÉE — `min.h` devient
+`lefIconListHMaxLarge` = 28. Le relevé le montre bien : les quatre gélules se
+rangent côte à côte au-dessus des panneaux.
+
+### LES FEUTRES, au pixel
+
+Un feutre, c'est un capuchon gris, un corps de couleur et une pointe blanche —
+**5 px de large, 31 de haut, au pas de 12**. En coupe verticale :
+`#E1E1E1` sur 3, `#C4C4C4` sur 1, `#6F6F6F` sur 1, le corps sur 22, `#6F6F6F`
+sur 1, blanc sur 2, `#E1E1E1` sur 1.
+
+Le corps est peint sur CINQ colonnes, et le SWF les tire de la couleur
+nominale par une transformation ADDITIVE — vérifié sur deux feutres de teintes
+très différentes, les écarts sont identiques :
+
+    colonne 1 = base − 59    colonne 2 = base (la couleur nominale)
+    colonne 3 = base − 30    colonne 4 = base − 95    colonne 5 = base − 131
+
+chaque canal borné à 0. (`cp.PenList.display`, 0x8212c, attache un `penGFX`
+par feutre et le teinte ; les feutres qu'on ne POSSÈDE pas sont grisés à
+`#DDDDDD`, 0x821b1.)
+
+Les dix-sept couleurs, relevées sur la colonne 2 de chaque feutre :
+
+    0 #FF6600   1 #6666CC   2 #5EA523   3 #962761   4 #F986E2   5 #EBB601
+    6 #20D251   7 #47B9C9   8 #472899   9 #A0752E  10 #66451E  11 #729236
+   12 #408877  13 #5B944B  14 #264859  15 #C8400D  16 #6E3C8D
+
+Le light en avait des approximations « ISO » assez loin du compte —
+l'orange était `#E8732A` là où le SWF met `#FF6600`. Elles sont corrigées.
+
 ### Ce que le light en fait, et les écarts assumés
 
 La barre du haut mobile devient la colonne de gauche (mêmes nœuds, mêmes
@@ -966,8 +1008,18 @@ et un quatrième bouton est ajouté pour l'avertissement. Trois écarts :
   modérateur « !texte » du light, lui, marche toujours.)
 - **Le bouton « Envoyer » et l'aide aux accents disparaissent** sur le
   bureau : ni l'un ni l'autre n'existent d'époque. Entrée envoie.
-- **La poignée de redimensionnement reste au-dessus**, comme pour « Salons
-  publics » — mêmes raisons.
+- **La poignée de redimensionnement ne se montre qu'au survol** de son coin.
+  D'époque elle est à la profondeur 160, sous le frameSet : on ne la voit
+  jamais, mais le clic la traverse quand même. HTML ne sait pas faire ça — un
+  élément transparent, lui, reçoit les clics : elle reste donc là, invisible,
+  et s'allume quand la souris arrive dessus.
+- **Le bouton des bouilles devient un vrai bascule de panneau** sur le
+  bureau. Le light s'en servait pour une préférence (afficher ou non la
+  bouille de qui vient de parler, en surimpression du fil) ; d'époque il
+  ouvre un panneau qui reste. Le clic est donc intercepté avant d'atteindre
+  le bouton et ouvre le panneau — le mobile garde sa préférence.
+  Reste un écart : le SWF y met la bouille de CHAQUE membre du salon, le
+  light celle de qui vient de parler. Il n'en sait rendre qu'une.
 
 ## Reste à faire (étapes suivantes)
 

@@ -388,6 +388,33 @@ window.BureauFrutiz = (function () {
   // pas ce fil-là ; le bouton est dessiné parce qu'il fait partie de la
   // fenêtre, mais il est désactivé et le dit. (Le cri modérateur « !texte »
   // du light, lui, marche toujours.)
+  // LE BOUTON DES BOUILLES. D'époque (`toggleScreenList`, 0x69646) il ouvre un
+  // PANNEAU qui reste — `cpScreenList`, 100 de large, dans la marge gauche — et
+  // range du même coup la colonne des icônes en RANGÉE (`min.h` passe à
+  // `lefIconListHMaxLarge`). Le light, lui, s'en sert pour une préférence :
+  // afficher ou non la bouille de qui vient de parler, en surimpression du fil.
+  //
+  // Sur le bureau, c'est le geste d'époque qui l'emporte : le clic est
+  // intercepté AVANT d'atteindre le bouton (capture sur le corps de la
+  // fenêtre), et il ouvre ou ferme le panneau. La préférence du light reste
+  // celle du mobile, où rien ne change.
+  function brancherBouillesSalon(f) {
+    if (f.bouillesBranchees) return;
+    f.bouillesBranchees = true;
+    f.corps.addEventListener('click', function (e) {
+      if (!actif) return;
+      var b = e.target && e.target.closest && e.target.closest('#bouille-toggle');
+      if (!b) return;
+      e.stopPropagation();
+      e.preventDefault();
+      var p = $('#chat-panel');
+      var t = $('#topbar');
+      if (!p) return;
+      var ouvert = p.classList.toggle('bouilles-ouvertes');
+      if (t) t.classList.toggle('en-rangee', ouvert);
+    }, true);
+  }
+
   var boutonWarning = null;
   function warningSalon() {
     if (boutonWarning) return boutonWarning;
@@ -657,6 +684,7 @@ window.BureauFrutiz = (function () {
         if (f.topbar) {
           f.corps.insertBefore(topbar, f.corps.firstChild);
           topbar.appendChild(warningSalon());
+          brancherBouillesSalon(f);
         }
       }
     } else {

@@ -731,11 +731,19 @@ body.bureau-frutiz .fen.pliee { min-width: 220px; }
 
 /* La poignée de redimensionnement : le dessin `resizeIcon` du SWF (12×12),
    posé à pos.w−20, pos.h−20 comme updateDeskSize le fait. */
+/* La poignée ne se MONTRE qu'au survol de son coin. D'époque elle est à la
+   profondeur 160, sous le frameSet : on ne la voit jamais, mais le clic la
+   traverse quand même. HTML ne sait pas faire ça — un élément invisible
+   reçoit pourtant les clics, alors on la laisse transparente et on ne
+   l'allume que quand la souris arrive dessus. */
 body.bureau-frutiz .fen-poignee {
   position: absolute; right: 8px; bottom: 8px; width: 12px; height: 12px;
   background: url('/frutiz/sprites/resizeIcon.svg') no-repeat center / 12px 12px;
   cursor: nwse-resize; z-index: 2;
+  opacity: 0; transition: opacity .12s linear;
 }
+body.bureau-frutiz .fen-poignee:hover,
+body.bureau-frutiz .fen-poignee:active { opacity: 1; }
 
 /* LE FANTÔME du déplacement et du redimensionnement (win.Ghost) : la
    silhouette blanche — 4 arcs de coin 10×10 épais de 2 et 4 traits de 2 px
@@ -885,9 +893,12 @@ body.bureau-frutiz .fen #topbar {
 body.bureau-frutiz .fen #topbar #menu-btn,
 body.bureau-frutiz .fen #topbar #room-select { display: none; }
 /* Les quatre gélules, dans l'ordre du bytecode. */
+/* Le param du bouton dit `curve: 4` : la gélule est arrondie à 4, et son
+   contour — 2 px au-delà — à 4 + 2 = 6. CSS gonfle tout seul le rayon d'une
+   ombre portée de son épaisseur : il suffit d'arrondir la boîte à 4. */
 body.bureau-frutiz .fen #topbar .icon-btn {
   flex: 0 0 20px; width: 20px; height: 20px; min-width: 0; padding: 0;
-  border: 0; border-radius: 0; background: transparent;
+  border: 0; border-radius: 4px; background: transparent;
   box-shadow: 0 0 0 2px #DDDDDD; margin: 2px 0;
   background-position: center; background-repeat: no-repeat; background-size: 20px 20px;
 }
@@ -957,3 +968,145 @@ body.bureau-frutiz .fen #chat-panel #messages .msg {
   margin: 0; font-size: 12px; line-height: 17px; color: #335511;
 }
 body.bureau-frutiz .fen #chat-panel #messages .msg.system { font-size: 12px; color: #335511; }
+
+/* ── Les TROIS PANNEAUX du salon ────────────────────────────────────────────
+   Les trois premiers boutons de la colonne ouvrent chacun un compo, et le
+   bytecode dit exactement où :
+     • `displayScreenList` (0x6973d) — `cpScreenList`, min 100×200, dans
+       `margin.LEFT` : les bouilles du salon, à gauche de la conversation ;
+     • `displayUserList`  (0x695a7) — `cpUserList`, dans `margin.RIGHT` ;
+     • `displayPenList`   (0x69849) — `cpPenList`, min 120×48, inséré dans
+       `main` à l'index 2, donc ENTRE la conversation et la ligne de saisie.
+   Le light avait les trois fonctions, mais en habits mobiles : un tiroir qui
+   glisse, une bande flottante, une bouille en surimpression. Ici elles se
+   rangent comme d'époque.
+
+   Détail relevé : quand la liste des BOUILLES s'ouvre, la colonne des icônes
+   se met en RANGÉE — `toggleScreenList` remplace `min.h` par
+   `lefIconListHMaxLarge` = 4 + 24 × ceil(4/4) = 28. */
+/* En RANGÉE, la colonne passe au-dessus : le corps de la fenêtre s'empile,
+   et la barre prend toute la largeur sur 24 px de haut — la hauteur que
+   `lefIconListHMaxLarge` lui donne. */
+body.bureau-frutiz .fen:has(#topbar.en-rangee) .fen-corps { flex-direction: column; }
+body.bureau-frutiz .fen #topbar.en-rangee {
+  flex: 0 0 24px; flex-direction: row; justify-content: flex-start;
+  width: 100%; height: 24px; padding: 2px 0 0; gap: 2px;
+}
+/* En rangée, les boutons se suivent horizontalement : la marge de 2 px passe
+   sur les côtés. */
+body.bureau-frutiz .fen #topbar.en-rangee .icon-btn { margin: 0 2px; }
+
+/* LES FEUTRES. Le corps d'un feutre fait 5 px de large et 22 de haut, coiffé
+   d'un capuchon gris et terminé par une pointe blanche — 31 px en tout, au
+   PAS DE 12. La première couche peint le capuchon et la pointe et laisse le
+   milieu transparent : c'est le dégradé du corps qui s'y voit. */
+/* La rangée de feutres se pose à MÊME le blanc de la fenêtre : le rendu
+   d'époque ne lui met ni cadre ni fond. */
+body.bureau-frutiz .fen #chat-panel #pen-bar {
+  flex: 0 0 auto; gap: 7px; padding: 5px 4px 2px; margin-top: 0;
+  background: transparent; border: 0; border-radius: 0;
+  box-shadow: none; overflow-x: auto;
+}
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch {
+  width: 5px; height: 31px; flex: 0 0 5px; border: 0; border-radius: 0;
+  box-shadow: none; transform: none; color: transparent; font-size: 0;
+  background:
+    linear-gradient(to bottom,
+      #E1E1E1 0 3px, #C4C4C4 3px 4px, #6F6F6F 4px 5px,
+      transparent 5px 27px, #6F6F6F 27px 28px,
+      #FFFFFF 28px 30px, #E1E1E1 30px 31px),
+    var(--feutre-corps, linear-gradient(to right, #DDDDDD 0 5px)) !important;
+}
+/* Le feutre CHOISI se soulève de 3 px — c'est la seule marque, le SWF n'en
+   met pas d'autre. Et « aucun feutre » prend le gris dont le SWF grise les
+   feutres qu'on ne possède pas (`setPColor(pen, #DDDDDD)`, 0x821b1). */
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.sel { margin-top: -3px; }
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.none::before { content: none; }
+
+/* LES BOUILLES, à gauche : le compo `cpScreenList` fait 100 de large et se
+   peint comme la conversation (contour `#DDDDDD`, liseré `#ADE76B`, fond
+   `#CCF599`). La bouille du light y prend sa place au lieu de survoler le
+   fil. */
+body.bureau-frutiz .fen #chat-panel #bouille-overlay {
+  position: static; width: 100px; display: none;
+  background: #CCF599; border: 2px solid #ADE76B; border-radius: 5px;
+  box-shadow: 0 0 0 2px #DDDDDD; overflow: hidden;
+  margin: 0 2px 0 0; align-items: center; justify-content: center;
+}
+body.bureau-frutiz .fen #chat-panel.bouilles-ouvertes #bouille-overlay { display: flex; flex-direction: column; }
+body.bureau-frutiz .fen #chat-panel #bouille-overlay #bouille-overlay-stage {
+  position: static; transform: none; opacity: 1; width: 96px; height: 96px;
+}
+body.bureau-frutiz .fen #chat-panel #bouille-overlay #bouille-overlay-name {
+  position: static; opacity: 1; font: 700 10px Verdana, Arial, sans-serif;
+  color: #335511; background: transparent; padding: 2px 0 0;
+}
+
+/* LES CONNECTÉS, à droite : plus un tiroir qui glisse par-dessus l'écran,
+   un panneau posé dans la fenêtre. Même peinture que la conversation. */
+body.bureau-frutiz .fen #chat-panel #users-drawer {
+  position: static; transform: none; width: 116px;
+  margin: 0 0 0 2px; box-shadow: 0 0 0 2px #DDDDDD;
+  background: #CCF599; border: 2px solid #ADE76B; border-radius: 5px;
+  display: none; height: auto; min-height: 0;
+}
+body.bureau-frutiz .fen #chat-panel #users-drawer.open { display: flex; flex-direction: column; }
+body.bureau-frutiz .fen #chat-panel #users-drawer h3 {
+  padding: 2px 4px; background: transparent; border: 0;
+  font: 700 10px Verdana, Arial, sans-serif; color: #335511;
+}
+body.bureau-frutiz .fen #chat-panel #users-drawer .u {
+  font: normal 10px Verdana, Arial, sans-serif; color: #335511; padding: 1px 4px;
+}
+body.bureau-frutiz .fen #chat-panel #users-drawer .vide {
+  font: normal 10px Verdana, Arial, sans-serif; color: #6c8f3a; padding: 6px 4px;
+}
+/* Le voile du tiroir mobile n'a plus lieu d'être : le panneau est DANS la
+   fenêtre, il ne recouvre rien. */
+body.bureau-frutiz .fen #chat-panel #drawer-backdrop { display: none !important; }
+/* Le fil et ses panneaux se rangent en GRILLE : bouilles | conversation |
+   connectés sur la première ligne, puis les feutres et la saisie pleine
+   largeur. Une grille plutôt qu'un flex qui passe à la ligne, parce qu'ici
+   c'est la PREMIÈRE ligne qui doit prendre toute la hauteur restante — un
+   `flex-wrap` la partage entre les lignes, et la rangée des feutres se
+   retrouvait à flotter au milieu du blanc. Une colonne dont le panneau est
+   masqué se réduit à zéro d'elle-même. */
+body.bureau-frutiz .fen #chat-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto auto auto;
+  column-gap: 0; row-gap: 0;
+}
+body.bureau-frutiz .fen #chat-panel #bouille-overlay { grid-area: 1 / 1; }
+body.bureau-frutiz .fen #chat-panel #messages { grid-area: 1 / 2; }
+body.bureau-frutiz .fen #chat-panel #users-drawer { grid-area: 1 / 3; }
+body.bureau-frutiz .fen #chat-panel #pen-bar { grid-area: 2 / 1 / auto / 4; }
+body.bureau-frutiz .fen #chat-panel #accent-bar { grid-area: 3 / 1 / auto / 4; }
+body.bureau-frutiz .fen #chat-panel .compose { grid-area: 4 / 1 / auto / 4; }
+
+/* Les onglets du tiroir des connectés reviennent à l'échelle du bureau :
+   d'époque le panneau n'a qu'une liste, encadrée d'une barre en haut et
+   d'une en bas. On garde les deux vues du light (« ce salon » / « tout le
+   site »), mais à la taille du reste. */
+body.bureau-frutiz .fen #chat-panel #users-drawer #drawer-onglets {
+  flex: 0 0 auto; gap: 2px; padding: 0 2px 2px; border: 0; background: transparent;
+}
+body.bureau-frutiz .fen #chat-panel #users-drawer .dr-onglet {
+  flex: 1; min-width: 0; padding: 1px 0; border: 0; border-radius: 3px;
+  font: normal 10px Verdana, Arial, sans-serif; color: #335511;
+  background: #FFFFFF; box-shadow: 0 0 0 1px #ADE76B;
+}
+body.bureau-frutiz .fen #chat-panel #users-drawer .dr-onglet.on {
+  background: #ADE76B; color: #FFFFFF; font-weight: 700;
+}
+/* La liste elle-même : des lignes de 10 px, comme le carnet de contacts. */
+body.bureau-frutiz .fen #chat-panel #users-drawer #users-list {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 0 2px;
+}
+body.bureau-frutiz .fen #chat-panel #users-drawer .u .pseudo,
+body.bureau-frutiz .fen #chat-panel #users-drawer .u .haut {
+  font: normal 10px Verdana, Arial, sans-serif; color: #335511;
+}
+body.bureau-frutiz .fen #chat-panel #users-drawer .u .lieu {
+  font: normal 9px Verdana, Arial, sans-serif; color: #6c8f3a;
+}
