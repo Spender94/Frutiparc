@@ -524,15 +524,35 @@ function principal() {
       // `_y`, le feutre choisi se retrouve 3 px plus haut. C'est là toute la
       // marque de la sélection.
       const L = 7;
+      const CAPUCHON = { y0: 1, y1: 14, x0: 1, teint: false };   // 7 de large, gris
+      const PIED = { y0: 52, y1: 55, x0: 2, teint: false };      // anneau + pointe
+      // TROIS ÉTATS, et le bouton `butCustom` les prend dans la même bande :
+      // repos, survol, choisi. Relevé au pixel sur Ruffle (feutre orange
+      // #FF6600, colonne du milieu) :
+      //   repos  607..646 — a0 e1×11 c4 6f | E14800×22 | 6f ff ff e1
+      //   survol 605..646 — le capuchon MONTE de 2 px et découvre deux lignes
+      //                     du fût : A00700 6F0000, puis le corps inchangé
+      //   choisi 610..646 — plus de capuchon du tout : 000000 000000 A00700
+      //                     6F0000 6F0000 A00700×5 6F0000, puis le corps
+      // Les trois dessins sont ALIGNÉS PAR LE BAS : la pointe ne bouge jamais,
+      // c'est le haut qui monte ou descend.
+      // Et la TEINTE court des lignes 19 à 51 — pas seulement le corps : la
+      // mine et la virole du feutre décapuchonné sont teintées elles aussi
+      // (A00700 et 6F0000 sont bien `#FF6600 + gris − 255` pour gris a0 et
+      // 6f). Seuls le capuchon et le pied restent gris.
       const COIFFE = [
-        { y0: 1, y1: 14, x0: 1, teint: false },            // le capuchon
+        CAPUCHON,
         { y0: 30, y1: 51, x0: 2, teint: true },            // le CORPS, teinté
-        { y0: 52, y1: 55, x0: 2, teint: false },           // anneau + pointe
+        PIED,
+      ];
+      const SURVOL = [
+        CAPUCHON,
+        { y0: 28, y1: 51, x0: 2, teint: true },            // deux lignes de plus
+        PIED,
       ];
       const NUE = [
-        { y0: 19, y1: 29, x0: 2, teint: false },           // mine + virole
-        { y0: 30, y1: 51, x0: 2, teint: true },            // le CORPS, teinté
-        { y0: 52, y1: 55, x0: 2, teint: false },           // anneau + pointe
+        { y0: 19, y1: 51, x0: 2, teint: true },            // mine, virole, corps
+        PIED,
       ];
       const composer = (bandes, base) => {
         const h = bandes.reduce((n, b) => n + (b.y1 - b.y0 + 1), 0);
@@ -546,8 +566,10 @@ function principal() {
             const si = (sy * planche.w + x) * 4;
             const di = (ligne * L + (x - b.x0 + dx)) * 4;
             const gris = planche.data[si];
-            // Le noir de la planche est le VIDE (rien n'y est dessiné).
-            const vide = gris === 0 && planche.data[si + 1] === 0 && planche.data[si + 2] === 0;
+            // Le VIDE de la planche, c'est son canal ALPHA — pas sa noirceur :
+            // la MINE du feutre décapuchonné est un vrai noir plein (lignes 19
+            // et 20), et la prendre pour du vide l'effaçait.
+            const vide = planche.data[si + 3] === 0;
             for (let k = 0; k < 3; k++) {
               pix[di + k] = b.teint ? Math.max(0, Math.min(255, base[k] + gris - 255)) : gris;
             }
@@ -557,17 +579,17 @@ function principal() {
         return { pix, h };
       };
       manifeste.feutres = { cadre: { x: 0, y: 0, w: L, h: 40 },
-        notes: 'bitmap #595 (9×57, niveaux de gris). Coiffé : lignes 1..14 (capuchon, x1..7) empilées sur 30..55 (corps, x2..6), 7×40. Décapuchonné (feutre choisi, frame 5) : lignes 19..55, 7×37 — posé au même haut, il finit 3 px plus haut. Le corps seul est teinté : résultat = couleur + (gris − 255)' };
+        notes: 'bitmap #595 (9×57, niveaux de gris), trois états ALIGNÉS PAR LE BAS. Repos : lignes 1..14 (capuchon, x1..7) sur 30..55 (x2..6), 7×40. Survol : le capuchon monte de 2 px, lignes 1..14 sur 28..55, 7×42. Choisi (frame 5) : plus de capuchon, lignes 19..55, 7×37. Teinte des lignes 19..51 : résultat = couleur + (gris − 255) ; capuchon et pied restent gris' };
       FEUTRES.forEach((teinte, i) => {
         const base = [parseInt(teinte.slice(1, 3), 16), parseInt(teinte.slice(3, 5), 16), parseInt(teinte.slice(5, 7), 16)];
-        for (const [suffixe, bandes] of [['', COIFFE], ['-sel', NUE]]) {
+        for (const [suffixe, bandes] of [['', COIFFE], ['-survol', SURVOL], ['-sel', NUE]]) {
           const { pix, h } = composer(bandes, base);
           const nom = 'feutre-' + i + suffixe + '.png';
           fs.writeFileSync(path.join(SORTIE, nom), encoderPng(L, h, pix));
           manifeste.feutres['feutre-' + i + suffixe] = { fichier: nom, couleur: teinte, h };
         }
       });
-      console.log('feutre-0..16(-sel).png (7×40 coiffé, 7×37 décapuchonné, bitmap #595)');
+      console.log('feutre-0..16(-survol|-sel).png (7×40 repos, 7×42 survol, 7×37 choisi, bitmap #595)');
     }
   }
 

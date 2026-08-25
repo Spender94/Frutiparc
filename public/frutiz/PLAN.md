@@ -1048,6 +1048,23 @@ quand un panneau s'ouvre alors qu'elle était au minimum.
 
 ### LA CHARPENTE EN TROIS COLONNES (relevé 1:1, au pixel)
 
+**La colonne d'icônes est DANS la marge gauche**, pas dans un bandeau qui
+traverserait la fenêtre. `genLeftIconList` (0x691da) la range dans
+`margin.left`, au-dessus de `cpScreenList` : les quatre gélules et la pile
+des bouilles partagent la même colonne. Quand les bouilles s'ouvrent, les
+icônes passent EN RANGÉE (`min.h` tombe à `lefIconListHMaxLarge`) et
+s'alignent sur le bord gauche de la zone des écrans. Relevé sur une fenêtre
+de 818×484 posée en (422, 272) :
+
+    fermé     icônes  429..448 (colonne)   fil à 455
+    en grand  icônes  429..526 (rangée, 4 au pas de 26)
+              bouilles 429..528            fil à 535
+
+Dans les deux cas le contour du bouton (2 px) et celui de la bouille bavent
+dans les 2 px de blanc du panneau : 429 − 2 = 427 pour l'anneau, et le fil
+commence 6 px après le bord droit de la colonne. Le fil part du HAUT de la
+fenêtre en position fermée : rien ne le pousse vers le bas.
+
 Les deux panneaux latéraux sont des MARGES de la fenêtre — ils descendent sur
 toute la hauteur du corps. Les feutres et la ligne de saisie, eux, sont dans
 `main`, la colonne du MILIEU : ils s'arrêtent donc au bord du fil. Le relevé
@@ -1158,6 +1175,69 @@ J'avais d'abord peint la zone comme le compo vert du fil (celui-là a son
 dégradé et son liseré `#ADE76B`) : c'était le mauvais fond. La règle est
 celle des écrans, pas celle des compos.
 
+### LE SURVOL ET LE CLIC D'UNE BOUILLE
+
+`cp.ScreenList.attachFrutiScreen` (0xb6597) accroche DEUX choses à chaque
+écran, et deux seulement :
+
+    setAction({obj: win.box, method: "openFrutizInfo", args: u})
+    setTip({id: "frutiScreen" + u,
+            cb: {obj: win.box, method: "getTipDocLong", args: u}})
+
+Le CLIC ouvre donc la fiche du joueur — la même fenêtre que partout ailleurs.
+
+Le SURVOL passe par `TipTextMng` (`frutiparc/TipTextMng.as`, DoInitAction
+sprite#888) : `displayCallBack` appelle `box.getTipDocLong(u)`, qui rend
+
+    Lang.fv("chat.u_tip_long", {u, a: age, c: pays, r: région, l: niveau})
+    langText.chat.u_tip_long = "<b>$u</b> : $a ans, $r ($c), niveau $l"
+
+**et tout sort du CACHE, pas du réseau.** `UserMng.getInfoBasic` (0x229f7)
+lit `infoBasicCache`, rempli par `formatInfoBasic` (0x26786) à partir du nœud
+`<u>` de la liste des connectés : `bd` → `birthdayToAge`, `x` → `xpToLevel`,
+`co` → `Lang.country`, `rg` → `Lang.region`. La bulle est instantanée.
+
+**`co` et `rg` sont des INDEX** dans la table `<ct>` de
+`public/xml/lang_french.xml` — France y est le pays « 1 », Paris le
+département « 75 » — et un index introuvable donne le mot `Inconnu`. Notre
+serveur envoyait les colonnes libres de la base (`co="FR" rg="IDF"`) : la
+bulle affichait « 22 ans, Inconnu (Inconnu), niveau 32 » pour tout le monde,
+sur le Flash comme ailleurs. `buildUserAttrs` envoie désormais
+`countryIndex`/`regionIndex`, les mêmes que `<userinfo>` donne déjà à la
+fiche.
+
+#### La bulle, au pixel (relevé Ruffle, fenêtre 626×486)
+
+    coin haut-gauche = (souris.x − 1, souris.y + 19)
+
+et elle NE SUIT PAS le curseur : elle se pose une fois, au point d'entrée, et
+n'y bouge plus jusqu'au `rollOut`. Trois survols, trois bulles au même écart.
+
+    boîte 122 × 48, arrondi extérieur 6
+    de l'extérieur vers la chair :
+      1 px #66AA22 · 2 px #DDFFBB · 2 px #94DB39 · 1 px #ADE76B · #CCF599
+    reflet blanc en haut de la chair : .72 → 0 sur 9 px
+      (les neuf valeurs mesurées, #EFFCDE … #CEF59D, tombent au centième)
+    Verdana 10 px, interligne 12, encre noire
+    3 px de marge à gauche, aucune en haut : 3 lignes = 36 = la chair
+
+**La largeur ne s'adapte PAS au texte** : « zoe » comme « Gaspard » donnent
+122. Et **le pseudo tient sa ligne à lui seul**, la suite commençant par son
+espace : c'est ainsi que le champ HTML du SWF rend `<b>$u</b> : …` — vérifié
+sur les deux pseudos.
+
+#### Deux choses que le SWF ne fait PAS
+
+- **En mode aquarium, aucune bulle et aucun clic.** `attachCLBScreen`
+  (0x74728a) crée un unique `frutiScreen` avec `flCLB: true` et ne lui pose
+  ni `setTip` ni `setAction` ; `onCLBEvent` n'en pose pas non plus sur les
+  bouilles qui y entrent. Seuls les écrans du mode MULTI répondent.
+- **`updateScreen` (0x747044) ne rafraîchit PAS la bulle.** Quand une case
+  change de titulaire, il refait `setAction` mais laisse `tipId` et
+  `tipCb.args` sur l'ANCIEN pseudo : la bulle ment jusqu'au prochain
+  détachement. Bug d'époque ; le light lit le pseudo de la case au moment du
+  survol, il ne peut pas se tromper. **Écart assumé.**
+
 ### LA LISTE DES CONTACTS : trois pièces du SWF, pas du CSS
 
 `cp.UserList` ne dessine rien non plus. Elle attache `userListBackground`
@@ -1211,15 +1291,19 @@ une planche de 9×57 en NIVEAUX DE GRIS dont `cp.PenList.display` (0x8212c)
 teinte une copie par feutre. Le noir de la planche est le VIDE, pas une
 couleur.
 
-La planche tient DEUX dessins, et le feutre affiché les EMPILE :
+La planche tient les MORCEAUX du feutre, et chaque état les empile
+autrement :
 
 - **lignes 1..14, colonnes 1..7** : le CAPUCHON, plus large ;
-- **lignes 30..55, colonnes 2..6** : le CORPS, l'anneau et la pointe.
+- **lignes 19..29, colonnes 2..6** : la MINE et la virole — ce que le
+  capuchon cache ;
+- **lignes 30..51** : le FÛT ;
+- **lignes 52..55** : l'anneau et la pointe.
 
-Sept px de large, **quarante de haut**. Le relevé de la colonne nominale
-(x = 530 sur le feutre orange) donne `a0 d2 e1 ff×6 e1×3 c4 6f | corps×22 |
-6f ff ff e1` : exactement les lignes 1..14 puis 30..55 bout à bout. Les
-lignes 19..29 — une mine et une virole plus étroite — ne servent pas là.
+Sept px de large, **quarante de haut** au repos. Le relevé de la colonne
+nominale (x = 530 sur le feutre orange) donne `a0 d2 e1 ff×6 e1×3 c4 6f |
+corps×22 | 6f ff ff e1` : exactement les lignes 1..14 puis 30..55 bout à
+bout.
 
 `display` dit la pose, et elle tombe juste :
 
@@ -1242,21 +1326,47 @@ valent 196, 255, 225, 160, 124 — soit exactement 255−59, 255, 255−30,
 255−95, 255−131. C'est ce que j'avais lu comme « cinq écarts additifs » :
 ce sont les cinq colonnes de la planche.
 
-Et la teinture ne prend QUE le corps — **les lignes 30..51**, le clip `col`
-que `FEMC.setColor(pen.gfx.col, penList[i], 2)` vise. Le relevé au pixel
-montre un capuchon et une pointe GRIS quelle que soit la couleur du feutre ;
-les trois premiers feutres du rendu ont rigoureusement le même capuchon. Les
-teinter entièrement était un contresens. (Les feutres qu'on ne POSSÈDE pas
+Et la teinture ne prend QUE le clip `col` que
+`FEMC.setColor(pen.gfx.col, penList[i], 2)` vise : **les lignes 19..51**,
+mine et virole comprises. Le capuchon (1..14) et le pied (52..55) restent
+GRIS quelle que soit la couleur du feutre — les trois premiers feutres du
+rendu ont rigoureusement le même capuchon. (Les feutres qu'on ne POSSÈDE pas
 sont peints d'un `#DDDDDD` PLAT : `setPColor(pen, 0xDDDDDD, 0)`, 0x821b1,
 là où les autres reçoivent `setPColor(pen, 0xFFFFFF, 100)`, l'identité.)
 
-**Le feutre CHOISI est décapuchonné.** `selectPen` (0x821f4) envoie son `gfx`
-à la **frame 5** et rend le précédent à la frame 1 ; recliquer le feutre
-courant remet `current` à `undefined` — c'est comme cela qu'on se déchoisit,
-il n'y a pas de bouton « aucun feutre » d'époque. La frame 5, ce sont les
-lignes 19..55 de la planche : le feutre sans son capuchon, mine dehors.
-Trois lignes de MOINS que le feutre coiffé — posé au même `_y`, il finit donc
-3 px plus haut que ses voisins, et c'est toute la marque de la sélection.
+#### Les TROIS états du feutre — relevé 1:1, hex pour hex
+
+Un feutre est un `butCustom` : son `gfx` porte une bande d'états, et le
+bouton y pioche à partir de `frameDecal`. Les trois dessins sont **alignés
+par le BAS** — la pointe ne bouge jamais, c'est le haut qui monte ou
+descend. Relevé sur Ruffle, feutre orange `#FF6600`, colonne du milieu :
+
+    repos   607..646  a0 e1×11 c4 6f | E14800×22 | 6f ff ff e1      (40)
+    survol  605..646  a0 e1×11 c4 6f | A00700 6F0000 | E14800×22 …  (42)
+    choisi  610..646  000000×2 A00700 6F0000×2 A00700×5 6F0000 | …  (37)
+
+- **repos** = lignes 1..14 + 30..55.
+- **AU SURVOL, le capuchon MONTE de deux pixels** et découvre deux lignes du
+  fût : lignes 1..14 + 28..55. Rien d'autre ne bouge, le corps ne pâlit pas
+  d'un iota.
+- **le feutre CHOISI est décapuchonné** : `selectPen` (0x821f4) envoie son
+  `gfx` à la **frame 5** et rend le précédent à la frame 1 ; recliquer le
+  feutre courant remet `current` à `undefined` — c'est comme cela qu'on se
+  déchoisit, il n'y a pas de bouton « aucun feutre » d'époque. La frame 5,
+  ce sont les lignes 19..55 : le feutre sans capuchon, mine dehors. Trois
+  lignes de moins que le feutre coiffé, alignées par le bas : le haut du
+  feutre descend de 3, le corps ne bouge pas.
+- **et le feutre choisi ne réagit plus au survol** : `frameDecal` passe à 5,
+  et le relevé donne exactement les mêmes pixels, souris dessus ou pas.
+
+**Piège : `rollOverPen` est du CODE MORT.** `cp.PenList` définit bien
+`rollOverPen` (0x8244c) et `rollOutPen`, qui demandent
+`animList.addPaint(pen, …, FENumber.toColorObj(0xFFFFFF), 50)` puis la même
+chose à 100 — de quoi faire croire que le feutre survolé pâlit à mi-chemin
+du blanc. **Rien ne les appelle** : le `link` du bouton (0x8212c) ne branche
+que `onPress`. Le rendu d'époque tranche — le corps du feutre survolé garde
+`#E14800` au pixel près. On avait d'abord porté le blanchiment ; il est
+retiré.
 
 Les dix-sept couleurs, relevées sur la colonne 2 de chaque feutre :
 
@@ -1316,6 +1426,15 @@ et un quatrième bouton est ajouté pour l'avertissement. Trois écarts :
   article du revival. On lui prête la SILHOUETTE du feutre (le PNG sert de
   masque) et on la remplit d'un arc-en-ciel puisé dans les dix-sept teintes.
   C'est le seul feutre dessiné et non extrait.
+- **La bulle de survol est refaite en CSS**, aux couleurs et aux mesures du
+  relevé (cf. plus haut) ; son contenu vient du même cache que celui du SWF —
+  les attributs de la liste des connectés — et le clic ouvre la fiche du
+  light, qui est la nôtre. Deux écarts de données : la région reste
+  « Inconnu » tant que le joueur n'a pas rempli sa fiche (l'index par défaut,
+  `1`, n'est le code d'aucun département — les codes vont de `01` à `95`), et
+  la RECHERCHE de joueurs (`searchuser`) filtre toujours sur les colonnes
+  libres `country`/`region` là où le formulaire du bureau envoie des index :
+  ce fil-là reste à reprendre.
 
 ## Reste à faire (étapes suivantes)
 

@@ -2493,6 +2493,10 @@
     intentionalClose: false,
     usersByRoom: {},   // room -> { pseudo: { staff } } (m="1" du salon)
     bouilleByUser: {},
+    // `UserMng.infoBasicCache` d'époque : les attributs que la liste des
+    // connectés porte déjà (âge, pays, région, xp) — de quoi remplir la bulle
+    // de survol d'une bouille SANS aller redemander quoi que ce soit.
+    infoByUser: {},
     jeuByUser: {}, // lowercased pseudo -> bouille state string "f"
     overlayTimer: null,
     pen: "",           // selected feutre index ("" = default colour, "mc" = multicolore)
@@ -2802,6 +2806,26 @@
         return c ? 'Discussion privée avec ' + c.avec : roomLabel(state.room);
       },
       rejoindre: function (id) { switchRoom(id); },
+      // LE CLIC sur une bouille : `cp.ScreenList.attachFrutiScreen` (0xb6597)
+      // pose `setAction({obj: win.box, method: "openFrutizInfo", args: u})`.
+      // Le light a déjà cette fiche : c'est la même.
+      ouvrirFiche: function (pseudo) { ouvrirFiche(pseudo); },
+      // LE SURVOL : `setTip({cb:{method:"getTipDocLong", args:u}})` →
+      // `box.getTipDocLong(u)` (0x3131a) rend
+      // `Lang.fv("chat.u_tip_long", {u, a, c, r, l})`, soit
+      // « <b>$u</b> : $a ans, $r ($c), niveau $l » — tout tiré du cache
+      // `infoBasic`, sans un aller-retour de plus. Ici, la table des pays
+      // arrive en différé la toute première fois ; d'où le rappel.
+      infoBasique: function (pseudo, cb) {
+        var i = state.infoByUser[String(pseudo || "").toLowerCase()];
+        if (!i) return null;
+        var rendre = function () {
+          return { pseudo: pseudo, age: i.age, niveau: i.niveau,
+            pays: nomPays(i.pays), region: nomRegion(i.pays, i.region) };
+        };
+        if (cb) chargerTablePays(function () { cb(rendre()); });
+        return rendre();
+      },
       // Les membres du salon avec leur bouille — de quoi remplir la colonne
       // d'écrans du bureau (`cp.ScreenList`), qui en montre UN par personne.
       membres: function () {
@@ -4861,6 +4885,7 @@
             set[uname] = { staff: attr(frag, "m") === "1" };
             rememberBouille(uname, attr(frag, "f"));
             rememberStatut(uname, attr(frag, "s"));
+            rememberInfoBasic(frag);
           }
         }
         state.usersByRoom[room] = set;
@@ -4897,6 +4922,7 @@
           // avait mis en cache avant son départ — « il joue à Grapiz » alors
           // qu'il a fini depuis longtemps.
           rememberStatut(uj, attr(xml, "s"));
+          rememberInfoBasic(xml);
           if (!state.usersByRoom[rj]) state.usersByRoom[rj] = {};
           state.usersByRoom[rj][uj] = { staff: attr(xml, "m") === "1" };
           if (rj === state.room) { renderUsers(); systemLine(uj + (estPrive(rj) ? " est là." : " a rejoint le salon.")); }
@@ -5980,6 +6006,43 @@
   // sont des index, pas du texte libre.
   // ══════════════════════════════════════════════════════════════════════════
   var profilPays = [];                  // la table servie par /api/light/profil
+  // ── La table des pays, à la demande ──────────────────────────────────────
+  // C'est le bloc <ct> de public/xml/lang_french.xml — celui-là même que le
+  // bureau charge dans `langText.countries` et que `Lang.country(co)` /
+  // `Lang.region(co, rg)` (0x25da2 et 0x25dfd) interrogent. Cinq pays, 4 ko :
+  // on le prend une fois, à la première bulle de survol ou au premier
+  // « modifier ma fiche », et on n'y revient plus.
+  var paysEnRoute = null;
+  function chargerTablePays(cb) {
+    if (profilPays.length) { if (cb) cb(profilPays); return; }
+    if (paysEnRoute) { if (cb) paysEnRoute.push(cb); return; }
+    paysEnRoute = cb ? [cb] : [];
+    fetch("/api/light/profil?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (j && j.ok) profilPays = j.pays || []; })
+      .catch(function () { /* la bulle se contentera d'« Inconnu » */ })
+      .then(function () {
+        var f = paysEnRoute || []; paysEnRoute = null;
+        f.forEach(function (g) { try { g(profilPays); } catch (e) {} });
+      });
+  }
+  // Un index introuvable donne « Inconnu » — la règle d'époque, au mot près.
+  function nomPays(co) {
+    for (var i = 0; i < profilPays.length; i++) {
+      if (String(profilPays[i].code) === String(co)) return profilPays[i].nom;
+    }
+    return "Inconnu";
+  }
+  function nomRegion(co, rg) {
+    for (var i = 0; i < profilPays.length; i++) {
+      if (String(profilPays[i].code) !== String(co)) continue;
+      var r = profilPays[i].regions || [];
+      for (var k = 0; k < r.length; k++) {
+        if (String(r[k].code) === String(rg)) return r[k].nom;
+      }
+    }
+    return "Inconnu";
+  }
   function ouvrirProfil() {
     $("#profil-sheet-backdrop").classList.add("show");
     $("#profil-sheet").classList.add("show");
@@ -6346,6 +6409,36 @@
     if (clean.length >= 4) state.bouilleByUser[String(pseudo).toLowerCase()] = clean;
   }
 
+  // ── LES INFOS DE BASE, telles que le bureau les lit ──────────────────────
+  // `UserMng.formatInfoBasic(node)` (0x26786) ne lit rien d'autre que le nœud
+  // <u> de la liste des connectés : l'âge sort de `bd`, le niveau de `x`, le
+  // pays et la région des INDEX `co`/`rg` résolus dans lang_french.xml. Le
+  // bureau range le tout dans `infoBasicCache` et n'interroge plus le serveur
+  // — la bulle de survol est instantanée. On fait pareil.
+  function anniversaireEnAge(bd) {
+    // `UserMng.birthdayToAge` (0x264d6) : rien avant 10 caractères.
+    var s = String(bd || "");
+    if (!s || s === "0000-00-00" || s.length < 10) return 0;
+    var an = +s.substr(0, 4), mois = +s.substr(5, 2), jour = +s.substr(8, 2);
+    var n = new Date();
+    var age = n.getFullYear() - an;
+    var m = n.getMonth() + 1;
+    if (m < mois || (m === mois && n.getDate() < jour)) age -= 1;
+    return age;
+  }
+  // `UserMng.xpToLevel` (0x2637d), au point-virgule près.
+  function xpEnNiveau(xp) { return Math.floor(Math.sqrt(Math.max(0, +xp || 0) / 10000) + 1); }
+  function rememberInfoBasic(frag) {
+    var u = attr(frag, "u");
+    if (!u) return;
+    state.infoByUser[String(u).toLowerCase()] = {
+      age: anniversaireEnAge(attr(frag, "bd")),
+      niveau: xpEnNiveau(attr(frag, "x")),
+      pays: String(attr(frag, "co") || ""),
+      region: String(attr(frag, "rg") || ""),
+    };
+  }
+
   // ── Le voyant de jeu ──
   // Le serveur diffuse pour chaque joueur une chaîne de statut de quatre
   // caractères en base 62 : absence(1) + JEU(2) + émote(1). Les deux du milieu
@@ -6475,11 +6568,13 @@
       var sw = el("div", "pen-swatch" + (String(state.pen) === String(f.i) ? " sel" : ""));
       sw.style.background = f.color; sw.title = f.name;
       // Le bureau desktop montre le VRAI feutre — le bitmap #595 de main.swf
-      // découpé et teinté (scripts/extract-frutiz-bureau.js). On pose les deux
-      // images en propriétés : le feutre coiffé et, pour celui qu'on a choisi,
-      // le feutre décapuchonné (la frame 5 du SWF). Le mobile, lui, garde sa
-      // pastille de couleur et ne lit ni l'une ni l'autre.
+      // découpé et teinté (scripts/extract-frutiz-bureau.js). Trois dessins,
+      // les trois états du bouton d'époque : au repos le feutre coiffé, au
+      // survol le même capuchon relevé de 2 px, et une fois choisi le feutre
+      // décapuchonné (frame 5). Le mobile, lui, garde sa pastille de couleur
+      // et n'en lit aucun.
       sw.style.setProperty("--feutre-image", "url(/frutiz/sprites/feutre-" + f.i + ".png)");
+      sw.style.setProperty("--feutre-image-survol", "url(/frutiz/sprites/feutre-" + f.i + "-survol.png)");
       sw.style.setProperty("--feutre-image-sel", "url(/frutiz/sprites/feutre-" + f.i + "-sel.png)");
       sw.setAttribute("data-pen", f.i);
       // Sur le bureau Frutiz, la pastille « aucun feutre » n'existe pas : on

@@ -890,14 +890,20 @@ body.bureau-frutiz #salons-panel .sp-nom {
    relevé, la ligne de saisie finit en y 415 et le liseré de la fenêtre
    commence en 420. */
 body.bureau-frutiz .fen:has(#chat-panel.active) .fen-corps {
-  flex-direction: row; gap: 2px; margin: 0 2px 4px;
+  flex-direction: row; gap: 0; margin: 0 2px 4px;
 }
 /* La colonne descend de 2 px : d'époque le contour `#DDDDDD` du premier
    bouton tombe en y 288-289 et la gélule en 290, soit 2 px de blanc entre le
-   haut du corps et le contour. */
+   haut du corps et le contour. Le contour du bouton, comme celui d'un écran
+   à bouille, est une ombre portée qui DÉBORDE dans les 2 px de rembourrage du
+   panneau : relevé 1:1, la gélule occupe x 429..448 et son contour 427..450,
+   quand le bord du contenu est en 429. La colonne fait donc la largeur d'une
+   gélule — 20 — et laisse SIX px avant le fil, exactement comme la pile des
+   bouilles : le compo commence en 455, soit 429 + 20 + 6. */
 body.bureau-frutiz .fen #topbar {
-  flex: 0 0 24px; flex-direction: column; align-items: center;
-  gap: 2px; padding: 2px 0 0; border: 0; background: transparent;
+  flex: 0 0 24px; width: 20px; flex-direction: column; align-items: center;
+  gap: 6px; padding: 2px 0 0; border: 0; background: transparent;
+  margin-right: 6px;
   height: max-content;
 }
 /* Le menu déroulant des salons n'a plus lieu d'être : c'est « Salons
@@ -911,7 +917,7 @@ body.bureau-frutiz .fen #topbar #room-select { display: none; }
 body.bureau-frutiz .fen #topbar .icon-btn {
   flex: 0 0 20px; width: 20px; height: 20px; min-width: 0; padding: 0;
   border: 0; border-radius: 4px; background: transparent;
-  box-shadow: 0 0 0 2px #DDDDDD; margin: 2px 0;
+  box-shadow: 0 0 0 2px #DDDDDD; margin: 0;
   background-position: center; background-repeat: no-repeat; background-size: 20px 20px;
 }
 body.bureau-frutiz .fen #topbar .icon-btn img { display: none; }
@@ -1002,24 +1008,25 @@ body.bureau-frutiz .fen #chat-panel #messages .msg.system { font-size: 12px; col
    Détail relevé : quand la liste des BOUILLES s'ouvre, la colonne des icônes
    se met en RANGÉE — `toggleScreenList` remplace `min.h` par
    `lefIconListHMaxLarge` = 4 + 24 × ceil(4/4) = 28. */
-/* En RANGÉE, la colonne passe au-dessus : le corps de la fenêtre s'empile,
-   et la barre prend toute la largeur sur 24 px de haut — la hauteur que
-   `lefIconListHMaxLarge` lui donne. */
-body.bureau-frutiz .fen:has(#topbar.en-rangee) .fen-corps { flex-direction: column; }
+/* En RANGÉE, la colonne se couche AU-DESSUS DE LA PILE DES BOUILLES — dans
+   la marge gauche, pas en bandeau sur toute la largeur : `mcLeftIconList` et
+   `screenList` sont tous deux dans `margin.left`, un cadre de type « w » qui
+   empile ses enfants en hauteur. Le fil de discussion, lui, ne descend PAS :
+   relevé sur la fenêtre d'époque en grand, les quatre gélules occupent
+   x 427..528 y 295..315 pendant que le compo commence en (533, 295) — même
+   hauteur de départ. `lefIconListHMaxLarge` lui donne 24 px de haut. */
 body.bureau-frutiz .fen #topbar.en-rangee {
   flex: 0 0 24px; flex-direction: row; justify-content: flex-start;
-  width: 100%; height: 24px; padding: 2px 0 0; gap: 2px;
+  width: max-content; height: 24px; padding: 2px 0 0; gap: 6px;
 }
-/* En rangée, les boutons se suivent horizontalement : la marge de 2 px passe
-   sur les côtés. */
-body.bureau-frutiz .fen #topbar.en-rangee .icon-btn { margin: 0 2px; }
 
 /* LES FEUTRES — les dessins du SWF, pas une peinture. Chaque feutre est le
    bitmap #595 recomposé : capuchon gris de 7 px de large sur 14 de haut,
    posé sur un corps de 5 px de large et 22 de haut, anneau et pointe
-   blanche. Sept px de large, QUARANTE de haut, au PAS DE 12 — d'où les 5 px
-   d'écart. Seul le corps est teinté (`résultat = couleur + (gris − 255)`) :
-   le capuchon et la pointe restent gris quelle que soit la couleur.
+   blanche. Sept px de large, QUARANTE de haut au repos, au PAS DE 12 — d'où
+   les 5 px d'écart. La teinte court des lignes 19 à 51 de la planche
+   (`résultat = couleur + (gris − 255)`) : le capuchon et le pied restent
+   gris quelle que soit la couleur.
    La rangée se pose à MÊME le blanc de la fenêtre : le rendu d'époque ne lui
    met ni cadre ni fond, et il ne la fait pas passer à la ligne — au-delà de
    la largeur, les derniers feutres sont simplement coupés. */
@@ -1032,10 +1039,14 @@ body.bureau-frutiz .fen #chat-panel #pen-bar {
   background: transparent; border: 0; border-radius: 0;
   box-shadow: none; overflow: hidden;
 }
+/* Les TROIS dessins sont alignés PAR LE BAS : la pointe ne bouge jamais.
+   D'où une case de 42 (le plus haut des trois, le survol) remontée de 2 pour
+   que le bas reste à sa place, et une image posée `center bottom`. */
 body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch {
-  width: 7px; height: 40px; flex: 0 0 7px; border: 0; border-radius: 0;
+  width: 7px; height: 42px; margin-top: -2px; flex: 0 0 7px;
+  border: 0; border-radius: 0;
   box-shadow: none; transform: none; color: transparent; font-size: 0;
-  background: var(--feutre-image, none) center / 7px 40px no-repeat !important;
+  background: var(--feutre-image, none) center bottom / 7px 40px no-repeat !important;
   image-rendering: pixelated;
 }
 /* « Aucun feutre » n'existe pas d'époque — c'est une commodité du light, et
@@ -1048,22 +1059,46 @@ body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.none { display: none; }
    le feutre semble se soulever. C'est toute la marque de la sélection, le SWF
    n'en met pas d'autre. */
 body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.sel {
-  height: 37px; align-self: flex-start; margin-top: 0;
-  background: var(--feutre-image-sel, var(--feutre-image, none)) center / 7px 37px no-repeat !important;
+  background: var(--feutre-image-sel, var(--feutre-image, none)) center bottom / 7px 37px no-repeat !important;
+}
+/* AU SURVOL, le feutre S'ENTROUVRE : son CAPUCHON monte de deux pixels et
+   découvre deux lignes du fût. Rien d'autre ne bouge — la pointe reste où
+   elle est, le corps garde sa couleur.
+   Le bytecode fait croire à autre chose : `cp.PenList` définit `rollOverPen`
+   (0x8244c) et `rollOutPen`, qui demandent une peinture vers le blanc à 50 %
+   puis 100. Mais RIEN NE LES APPELLE — le `link` du bouton (0x8212c) ne
+   branche que `onPress`. Ce sont deux fonctions mortes, et le rendu d'époque
+   le confirme : le corps du feutre survolé ne pâlit pas d'un iota.
+   Ce qui bouge, c'est la FRAME : un `butCustom` prend ses états dans la bande
+   du `gfx` (repos / survol / appui) à partir de `frameDecal`. Frame 1 au
+   repos, frame 2 au survol — le capuchon relevé.
+   Le feutre CHOISI, lui, ne réagit plus : `frameDecal` passe à 5 et le relevé
+   1:1 donne exactement les mêmes pixels, survolé ou non. */
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch:hover {
+  background: var(--feutre-image-survol, var(--feutre-image, none)) center bottom / 7px 42px no-repeat !important;
+}
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.sel:hover {
+  background: var(--feutre-image-sel, var(--feutre-image, none)) center bottom / 7px 37px no-repeat !important;
 }
 /* Le feutre MULTICOLORE est un article du revival : la planche #595 n'a pas
    de teinte pour lui. On lui prête donc la SILHOUETTE du feutre — le PNG sert
    de masque — et on la remplit d'un arc-en-ciel puisé dans les dix-sept
    teintes. C'est le seul feutre dessiné et non extrait, et il est signalé
    comme tel dans le carnet. */
-body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc {
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc,
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {
   background: linear-gradient(#FF6600, #EBB601, #5EA523, #47B9C9, #472899, #962761) !important;
-  -webkit-mask: url('/frutiz/sprites/feutre-0.png') center / 7px 40px no-repeat;
-  mask: url('/frutiz/sprites/feutre-0.png') center / 7px 40px no-repeat;
+  -webkit-mask: url('/frutiz/sprites/feutre-0.png') center bottom / 7px 40px no-repeat;
+  mask: url('/frutiz/sprites/feutre-0.png') center bottom / 7px 40px no-repeat;
 }
-body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc.sel {
-  -webkit-mask: url('/frutiz/sprites/feutre-0-sel.png') center / 7px 37px no-repeat;
-  mask: url('/frutiz/sprites/feutre-0-sel.png') center / 7px 37px no-repeat;
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {
+  -webkit-mask: url('/frutiz/sprites/feutre-0-survol.png') center bottom / 7px 42px no-repeat;
+  mask: url('/frutiz/sprites/feutre-0-survol.png') center bottom / 7px 42px no-repeat;
+}
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc.sel,
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc.sel:hover {
+  -webkit-mask: url('/frutiz/sprites/feutre-0-sel.png') center bottom / 7px 37px no-repeat;
+  mask: url('/frutiz/sprites/feutre-0-sel.png') center bottom / 7px 37px no-repeat;
 }
 
 /* LES BOUILLES, à gauche. Le compo `cpScreenList` n'a pas de fond à lui : ce
@@ -1082,7 +1117,16 @@ body.bureau-frutiz .fen #chat-panel #bouille-overlay {
   align-self: stretch; background: transparent; border: 0; border-radius: 0;
   box-shadow: none; overflow: hidden auto; scrollbar-width: none;
   margin: 0 6px 0 0; padding: 0;
+  /* Sur mobile la zone est une SURIMPRESSION du fil : elle laisse passer la
+     souris pour qu'on puisse lire dessous. Ici c'est un panneau à part, et
+     chaque écran est un BOUTON — `cp.FrutiScreen` branche `onRollOver`,
+     `onRollOut` et `onPress`. Il lui faut donc le curseur. */
+  pointer-events: auto;
 }
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran { cursor: pointer; }
+/* …sauf la scène de l'émotion, qui joue DANS l'écran : son iframe avalerait
+   le clic destiné à la fiche. */
+body.bureau-frutiz .fen #chat-panel #bouille-overlay #bouille-overlay-stage { pointer-events: none; }
 /* Aucune barre de défilement : `size = width`, et une barre qui mangerait la
    largeur ferait changer le nombre d'écrans qui tiennent. */
 body.bureau-frutiz .fen #chat-panel #bouille-overlay::-webkit-scrollbar { display: none; }
@@ -1151,6 +1195,44 @@ body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran img {
   display: block; width: 98px; height: 98px; margin: 1px; border: 0;
   object-fit: contain;
 }
+/* ── LA BULLE DE SURVOL D'UNE BOUILLE ───────────────────────────────────────
+   `cp.FrutiScreen.setTip` (0x6299a) branche `onRollOver` sur
+   `tip.displayCallBack({id:'frutiScreen'+u, cb:{obj:win.box,
+   method:'getTipDocLong', args:u}})` ; `TipTextMng.display` attache alors le
+   clip `tipText` sur `main` à la profondeur `Depths.tipText` — au-dessus de
+   tout, et sans jamais prendre la souris.
+
+   Relevé 1:1 sur Ruffle (fenêtre 626×486, trois survols) :
+     • coin haut-gauche = (souris.x − 1, souris.y + 19), et la bulle NE SUIT
+       PAS le curseur : elle se pose une fois et n'y bouge plus ;
+     • boîte 122 × 48, arrondi extérieur 6 ; de l'extérieur vers la chair :
+       1 px #66AA22 · 2 px #DDFFBB · 2 px #94DB39 · 1 px #ADE76B · #CCF599 ;
+     • un reflet blanc en haut de la chair, de .72 à 0 sur 9 px — les neuf
+       valeurs mesurées (#EFFCDE … #CEF59D) tombent au centième ;
+     • Verdana 10 px, interligne 12, encre noire, 3 px de marge à gauche,
+       aucune marge en haut : trois lignes remplissent la chair (36 = 3 × 12).
+   La largeur NE S'ADAPTE PAS au texte : « zoe » comme « Gaspard » donnent
+   122. D'où la chair fixe à 110 (104 de texte + 2 × 3 de marge). */
+body.bureau-frutiz .bo-tip {
+  position: fixed; z-index: 60; display: none; pointer-events: none;
+  box-sizing: content-box; width: 104px; padding: 0 3px;
+  background: linear-gradient(rgba(255, 255, 255, .72), rgba(255, 255, 255, 0) 9px), #CCF599;
+  border: 1px solid #ADE76B; border-radius: 1px;
+  /* Et une OMBRE PORTÉE sous le tout : le relevé la donne noire, à ~.20
+     contre le liseré et éteinte 4 px plus loin, un peu plus marquée sous la
+     bulle que sur ses flancs (d'où le pixel de décalage). */
+  box-shadow: 0 0 0 2px #94DB39, 0 0 0 4px #DDFFBB, 0 0 0 5px #66AA22,
+              0 1px 5px 5px rgba(0, 0, 0, .4);
+  font: 10px/12px Verdana, Geneva, sans-serif; color: #000000;
+  /* Un champ Flash n'avale pas l'espace de tête : la deuxième ligne du relevé
+     commence bien par « ␣: 22 ans ». Sans `pre-wrap`, HTML le mangerait. */
+  white-space: pre-wrap; word-wrap: break-word;
+}
+body.bureau-frutiz .bo-tip.vue { display: block; }
+/* Le pseudo tient sa ligne à lui seul : c'est ainsi que le champ HTML du SWF
+   rend `<b>$u</b> : …` — vérifié sur « zoe » comme sur « Gaspard ». */
+body.bureau-frutiz .bo-tip b { display: block; font-weight: 700; }
+
 /* Le pseudo n'est pas écrit sous l'écran : d'époque il n'apparaît qu'en
    infobulle au survol. Et la scène du light — la bouille en surimpression du
    fil — se déplace DANS l'écran de la personne le temps d'une émotion : c'est
@@ -1280,13 +1362,18 @@ body.bureau-frutiz .fen #chat-panel #drawer-backdrop { display: none !important;
 body.bureau-frutiz .fen #chat-panel {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: minmax(0, 1fr) auto auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
   column-gap: 0; row-gap: 0;
 }
-body.bureau-frutiz .fen #chat-panel #bouille-overlay { grid-area: 1 / 1 / -1 / 2; }
-body.bureau-frutiz .fen #chat-panel #messages { grid-area: 1 / 2; }
+/* La colonne d'icônes tient TOUTE la marge gauche quand elle est debout, et
+   seulement sa première ligne quand elle se couche — la pile des bouilles
+   prend alors le reste. Le fil, lui, part toujours de la première ligne. */
+body.bureau-frutiz .fen #chat-panel #topbar { grid-area: 1 / 1 / -1 / 2; }
+body.bureau-frutiz .fen #chat-panel #topbar.en-rangee { grid-area: 1 / 1 / 2 / 2; }
+body.bureau-frutiz .fen #chat-panel #bouille-overlay { grid-area: 2 / 1 / -1 / 2; }
+body.bureau-frutiz .fen #chat-panel #messages { grid-area: 1 / 2 / 3 / 3; }
 body.bureau-frutiz .fen #chat-panel #users-drawer { grid-area: 1 / 3 / -1 / 4; }
-body.bureau-frutiz .fen #chat-panel #pen-bar { grid-area: 2 / 2; }
-body.bureau-frutiz .fen #chat-panel #accent-bar { grid-area: 3 / 2; }
-body.bureau-frutiz .fen #chat-panel .compose { grid-area: 4 / 2; }
+body.bureau-frutiz .fen #chat-panel #pen-bar { grid-area: 3 / 2; }
+body.bureau-frutiz .fen #chat-panel #accent-bar { grid-area: 4 / 2; }
+body.bureau-frutiz .fen #chat-panel .compose { grid-area: 5 / 2; }
 

@@ -22589,9 +22589,18 @@ function getStatusCode(user, username) {
 // Used both for the initial userlist dump and for <userjoined> broadcasts —
 // without these attrs, the chat shows the user with a black pseudo and the
 // info card falls back to "NN"/"inconnue"/level 0.
+//
+// `co` ET `rg` SONT DES INDEX, pas des codes lettres. UserMng.formatInfoBasic
+// (0x26786) les passe à Lang.country(co) et Lang.region(rg, co), qui lisent la
+// table <ct> de public/xml/lang_french.xml — France y est le pays « 1 » et
+// Paris le département « 75 ». On envoyait `co="FR" rg="IDF"` (les colonnes
+// libres de la base) : introuvables dans la table, la bulle de survol d'une
+// bouille affichait « 22 ans, Inconnu (Inconnu), niveau 32 » pour tout le
+// monde. Ce sont countryIndex/regionIndex qu'il faut donner — les mêmes que
+// <userinfo> envoie déjà à la fiche.
 function buildUserAttrs(username, present = '1', channelName) {
   const ud = users[username] || {};
-  return `u="${escapeXml(getDisplayName(username))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="${present}" s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(username, channelName)}`;
+  return `u="${escapeXml(getDisplayName(username))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.countryIndex || '1'}" rg="${ud.regionIndex || '1'}" p="${present}" s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(username, channelName)}`;
 }
 
 // Update the "internal" portion of a user's status string (used for the
@@ -23176,7 +23185,7 @@ case 'join': {
 
   for (const u of userArr) {
     const ud = users[u] || {};
-    userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, g)} />`;
+    userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.countryIndex || '1'}" rg="${ud.regionIndex || '1'}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, g)} />`;
   }
 
   const timeAttrs = buildChatTimeAttrs();
@@ -23247,7 +23256,7 @@ case 'join': {
       let userXml = '';
       for (const u of userArr) {
         const ud = users[u] || {};
-        userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, g)} />`;
+        userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.countryIndex || '1'}" rg="${ud.regionIndex || '1'}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, g)} />`;
       }
       sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
       break;
@@ -24542,7 +24551,7 @@ case 'createchannel': {
     for (const u of participantNames) {
       const ud = users[u] || {};
       const present = getSocketsForUsername(u).length > 0 ? 1 : 0;
-      userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="${present}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, privateGroup)} />`;
+      userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.countryIndex || '1'}" rg="${ud.regionIndex || '1'}" p="${present}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, privateGroup)} />`;
       traceXml += `<u u="${escapeXml(getDisplayName(u))}" p="${present}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, privateGroup)} />`;
     }
     sendToClient(socket, `<${CMD.userlist} g="${privateGroup}">${userXml}</${CMD.userlist}>`);

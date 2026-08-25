@@ -435,7 +435,91 @@ window.BureauFrutiz = (function () {
       if (c.closest('#pen-btn') || c.closest('#users-btn')) {
         setTimeout(function () { appliquerMinimum(f); majBouilles(); }, 0);
       }
+      // LE CLIC SUR UN ÉCRAN ouvre la fiche : `attachFrutiScreen` (0xb6597)
+      // pose `setAction({obj: win.box, method: 'openFrutizInfo', args: u})`.
+      var ec = c.closest('.bo-ecran:not(.clb)');
+      if (ec && ec.getAttribute('data-nom')) {
+        e.stopPropagation();
+        e.preventDefault();
+        tipCacher();
+        var S = window.SalonsBureau;
+        if (S && S.ouvrirFiche) S.ouvrirFiche(ec.getAttribute('data-nom'));
+      }
     }, true);
+    // LE SURVOL. `cp.FrutiScreen.setTip` (0x6299a) : `onRollOver` appelle
+    // `tip.displayCallBack({id, cb})`, `onRollOut` `tip.remove(id)`. La bulle
+    // se pose UNE FOIS, au point d'entrée, et n'y bouge plus — vérifié sur
+    // Ruffle : trois survols, trois bulles au même écart du curseur.
+    f.corps.addEventListener('mouseover', function (e) {
+      if (!actif) return;
+      var ec = e.target && e.target.closest ? e.target.closest('.bo-ecran:not(.clb)') : null;
+      if (!ec || !ec.getAttribute('data-nom') || ec === tipCible) return;
+      tipMontrer(ec, e.clientX, e.clientY);
+    });
+    f.corps.addEventListener('mouseout', function (e) {
+      if (!tipCible) return;
+      var ec = e.target && e.target.closest ? e.target.closest('.bo-ecran:not(.clb)') : null;
+      if (ec !== tipCible) return;
+      if (e.relatedTarget && ec.contains(e.relatedTarget)) return;
+      tipCacher();
+    });
+  }
+
+  // ── LA BULLE DE SURVOL ────────────────────────────────────────────────────
+  // `TipTextMng.display` attache le clip `tipText` sur `main`, à la profondeur
+  // `Depths.tipText` : au-dessus de tout, et SANS jamais intercepter la souris.
+  // Le relevé 1:1 (Ruffle, fenêtre 626×486) donne la géométrie exacte :
+  //   coin haut-gauche = (souris.x − 1, souris.y + 19)
+  //   boîte 122 × 48, arrondi 6, liserés (de l'extérieur vers la chair)
+  //   1 px #66AA22 · 2 px #DDFFBB · 2 px #94DB39 · 1 px #ADE76B · chair #CCF599
+  //   reflet blanc en haut de la chair : .72 → 0 sur 9 px (les neuf valeurs
+  //   mesurées tombent au centième)
+  //   texte Verdana 10 px, interligne 12, encre noire, 3 px de marge à gauche
+  // La LARGEUR NE S'ADAPTE PAS au texte : « zoe » comme « Gaspard » donnent
+  // 122 de large. Et le pseudo tient sa ligne à lui seul — c'est ainsi que le
+  // champ HTML du SWF rend `<b>$u</b> : …`.
+  var tipCible = null;
+  var tipBoite = null;
+  function tipMontrer(ec, x, y) {
+    var pseudo = ec.getAttribute('data-nom');
+    var S = window.SalonsBureau;
+    if (!S || !S.infoBasique) return;
+    tipCible = ec;
+    if (!tipBoite) {
+      tipBoite = document.createElement('div');
+      tipBoite.className = 'bo-tip';
+      // Sur le corps du document, pas dans `#bureau-haut` : la couche haute
+      // rend la souris à tous ses enfants, et une bulle qui intercepte le
+      // curseur se ferait fuir elle-même.
+      document.body.appendChild(tipBoite);
+    }
+    // (souris.x − 1, souris.y + 19) est le coin de la boîte VISIBLE, anneaux
+    // compris ; l'élément, lui, commence 5 px plus loin — les trois anneaux
+    // sont des ombres portées, hors boîte.
+    tipBoite.style.left = (x + 4) + 'px';
+    tipBoite.style.top = (y + 24) + 'px';
+    tipEcrire(pseudo, S.infoBasique(pseudo));
+    // La table des pays peut arriver après coup : on réécrit alors la bulle,
+    // si elle parle encore du même écran.
+    S.infoBasique(pseudo, function (i) {
+      if (tipCible === ec) tipEcrire(pseudo, i);
+    });
+    tipBoite.classList.add('vue');
+  }
+  function tipEcrire(pseudo, i) {
+    if (!tipBoite) return;
+    // « <b>$u</b> : $a ans, $r ($c), niveau $l » (langText.chat.u_tip_long).
+    var b = document.createElement('b');
+    b.textContent = pseudo;
+    tipBoite.textContent = '';
+    tipBoite.appendChild(b);
+    tipBoite.appendChild(document.createTextNode(i
+      ? ' : ' + i.age + ' ans, ' + i.region + ' (' + i.pays + '), niveau ' + i.niveau
+      : ''));
+  }
+  function tipCacher() {
+    tipCible = null;
+    if (tipBoite) tipBoite.classList.remove('vue');
   }
 
   // ── LE MINIMUM DE LA FENÊTRE DU SALON ────────────────────────────────────
@@ -603,8 +687,10 @@ window.BureauFrutiz = (function () {
 
   // On ne refait la vignette que si la bouille a changé : sinon elle
   // clignoterait à chaque relevé des connectés.
+  // Le pseudo ne va PAS dans `title` : l'infobulle du navigateur ferait
+  // doublon — et concurrence — avec celle du SWF, qu'on refait ici.
   function poserBouille(ecran, bouille, pseudo) {
-    if (pseudo) ecran.title = pseudo;
+    if (pseudo) ecran.setAttribute('data-nom', pseudo);
     if (!bouille || ecran.getAttribute('data-bouille') === bouille) return;
     ecran.setAttribute('data-bouille', bouille);
     var vieux = ecran.querySelector('img');
@@ -640,6 +726,8 @@ window.BureauFrutiz = (function () {
   function majBouilles() {
     var col = $('#bouille-overlay');
     var p = $('#chat-panel');
+    // Un écran qui disparaît emporte sa bulle : `remove(id)` d'époque.
+    if (tipCible && !document.documentElement.contains(tipCible)) tipCacher();
     if (!col || !p || !p.classList.contains('bouilles-ouvertes')) return;
     var S = window.SalonsBureau;
     var gens = (S && S.membres) ? S.membres() : [];
@@ -974,9 +1062,15 @@ window.BureauFrutiz = (function () {
       // feutre, bouilles, connectés) : c'est SA barre d'outils.
       if (tab === 'chat') {
         var topbar = $('#topbar');
-        if (topbar) f.topbar = { noeud: topbar, origine: deplacer(topbar, f.corps) };
+        // La colonne d'icônes appartient à la MARGE GAUCHE de la fenêtre, pas
+        // à un bandeau au-dessus : `displayLeftIconList` (0x69384) la pose
+        // dans `margin.left`, et la pile des bouilles vient dessous quand elle
+        // s'ouvre. Elle entre donc DANS le panneau, où la grille lui donne sa
+        // colonne — sans quoi le fil de discussion se retrouverait poussé de
+        // 24 px vers le bas dès qu'on met les icônes en rangée.
+        if (topbar) f.topbar = { noeud: topbar, origine: deplacer(topbar, panneau) };
         if (f.topbar) {
-          f.corps.insertBefore(topbar, f.corps.firstChild);
+          panneau.insertBefore(topbar, panneau.firstChild);
           topbar.appendChild(warningSalon());
           brancherBouillesSalon(f);
         }
