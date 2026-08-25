@@ -722,12 +722,134 @@ dp_scrollBar 40, dp_element 100.
   sert la même lecture en JSON, sans rien réordonner — l'ordre d'insertion est
   celui que le joueur voit d'époque.
 
+## « Salons publics » (`win.RoomList` 0xbebb6, `cp.RoomList` 0x70733)
+
+La première fenêtre du bureau qui n'a PAS d'équivalent mobile : côté light on
+choisit son salon dans un menu déroulant, côté Frutiz c'est une fenêtre à
+elle seule. Le double-clic sur l'icône « Les salons » l'ouvre ; un clic sur
+une rangée entre dans le salon.
+
+### La charpente (`initFrameSet`, 0xbec4d)
+
+    mcRoomList = main.newElement({ name: 'roomListFrame', link: 'cpRoomList',
+                                   type: 'compo', flBackground: true,
+                                   mainStyleName: 'frRoomList',
+                                   min: { w: 200, h: 240 },
+                                   args: { flMask: true, flWait: true } })
+    main.bigFrame = main.roomListFrame
+    mcTool = margin.bottom.newElement({ type: 'compo', name: 'frameCreate',
+                                        link: 'cpDocument', mainStyleName: 'frSystem',
+                                        min: { w: 260, h: 18 },
+                                        margin: { x: {min: 4, ratio: 0}, y: {min: 6, ratio: .66} },
+                                        args: { flDocumentFit: true, doc: <XML> } })
+
+Le document de la barre du bas est écrit en toutes lettres dans le bytecode :
+
+    <p><l><s w="4"/><b t="{Lang.fv('chat.create_channel')}" l="butPushStandard"
+          o="win" m="createNewRoom"/><s w="10"/><i v="roomName" dy="1" b="1"></i>
+          <s w="3"/></l></p>
+
+soit : 4 px, le bouton « créer un salon », 10 px, le champ `roomName`, 3 px.
+`createNewRoom` (0xbee80) passe `mcTool.card.roomName.value` à
+`box.createChannel`.
+
+### La liste (`setList`, 0x70881)
+
+    pal.bg = style.color[0]                       // frRoomList → colorSet.pink
+    hauteur = 20                                  // reg7, en dur
+    pour chaque salon i :
+      texte = nom + " (" + nbUser + ")"
+      behavior = { type: 'colorBackground',
+                   color: { base: pal.bg.darker, over: pal.bg.dark,
+                            press: pal.bg.main,  bg: pal.bg.lighter } }
+      buttonAction = [{ obj: win.box, method: 'join', args: [salon.id] }]
+      si i % 2 == 0 : flBackground = true ; bgColor = pal.bg.shade
+      butText[i]._y = i * 20
+
+Deux choses à noter. D'abord, ce sont les rangées **PAIRES** qui reçoivent le
+fond appuyé. Ensuite, la ligne `textStyle.textPropery.color = 0` (0x70a1d) —
+**`textPropery`, avec la faute** : la propriété n'existe pas, l'affectation
+tombe dans le vide et le noir voulu n'est jamais posé. Bug d'origine, gardé.
+
+### Le relevé 1:1 (scratchpad/ref3-salons.png, viewport 1380×800)
+
+Attention : la capture `ref-salons.png` du premier passage avait été prise en
+1400×860, donc **agrandie de 1,45 %** — c'est ce qui faisait lire un pas de
+20,27 px là où le bytecode dit 20. Refaite en 1380×800, tout retombe juste.
+
+Fenêtre x 9..273 (**265**), y 105..392 (**288**) :
+
+| bande | de..à | quoi |
+|---|---|---|
+| contour | 105 | `#444444`, 1 px |
+| liseré | 106-107 | `#DDDDDD`, 2 px |
+| bandeau | 108..123 | blanc, **16 px** |
+| contour du compo | 124-125 | `#DDDDDD`, 2 px |
+| liste | 126..365 | **240 px**, le `min.h` du bytecode |
+| contour du compo | 366-367 | `#DDDDDD` |
+| barre du bas | 372..387 | le bouton (16 px) et le champ (14 px) |
+| liseré / contour | 390-391 / 392 | `#DDDDDD` puis `#444444` |
+
+En largeur : contenu de la liste x 15..266 (**252**), contour du compo 13-14
+et 267-268, blanc 269-270, liseré 271-272, contour 273.
+
+Le BANDEAU, au détail : pastille (encre x 17..28, y 108..121), titre gras
+11 px `#444444` à partir de x 31, croix de fermeture x 257..267.
+
+Teintes, toutes relevées :
+
+- rangée paire `#FEABAB`, impaire `#FEC9C9`, **survol `#FFF2F2`** — les deux
+  parités passent au survol, le fond appuyé des paires ne le retient pas ;
+- encre des rangées `#BA4444`, Verdana 10 (la taille de `getTextStyle`) ;
+- bouton : anneau `#F28687`, fond `#FFAAAD`, encre `#660000` grasse, éclat du
+  bout droit `#FFEAEC` — et ce sont EXACTEMENT les couleurs du dessin extrait
+  (`butPushStandard` #465), donc aucune teinture à l'emploi ;
+- champ : fond `#DDFFBB` = green.light, bord `#94DB39` = green.dark — là, en
+  revanche, le dessin d'origine (`inputField` #170) est GRIS `#EEEEEE` et se
+  fait bien teinter.
+
+Le bouton et le champ sont des GÉLULES faites de bouts de gélule : les étirer
+depuis le SVG déformerait leurs extrémités rondes. On les refait donc en CSS,
+avec les teintes ci-dessus — la forme, elle, est un simple `border-radius`.
+
+Sur ce que le relevé NE dit pas : les noms de crans de `pal.bg` ne collent
+pas avec ce qu'on mesure (`over` devrait valoir `pink.dark`, or `#FFF2F2` est
+plus clair que `pink.lighter` = `#FEC9C9`). Soit `butText` n'emploie pas les
+crans comme leur nom le laisse croire, soit la famille `pink` n'est pas celle
+qu'on suppose. On note donc les MESURES, pas une rampe reconstituée.
+
+### Ce que le light en fait
+
+La fenêtre est bâtie par `bureau-frutiz.js` (elle n'a pas de panneau mobile à
+emprunter) et se remplit par un pont posé dans light.html, `window.SalonsBureau`
+— liste des salons publics avec leur affluence, salon courant, et `rejoindre`.
+`renderRoomOptions` la rafraîchit à chaque changement d'affluence.
+
+Deux écarts assumés, faute de mieux côté serveur ou côté usage :
+
+- **« créer un salon » est inerte.** Le serveur du revival n'a pas de
+  `createChannel` : les onze salons sont fixes. Le bouton est dessiné parce
+  qu'il fait partie de la fenêtre, mais il est désactivé et le dit.
+- **La poignée de redimensionnement reste visible.** D'époque elle est à la
+  profondeur 160, SOUS le frameSet (200→800) : la barre du bas la recouvre,
+  et on ne la voit pas — mais en Flash le clic la traverse quand même. En
+  HTML ce n'est pas le cas : la mettre dessous la rendrait insaisissable et
+  la fenêtre non redimensionnable. Elle reste donc au-dessus.
+
+Le titre de la fenêtre du SALON, lui, devient le nom du salon (au lieu de
+« Salons » pour tous). Le bureau d'époque fait de même, mais la capture de
+référence ne montre pas cette fenêtre-là : la formule exacte du titre (avec
+ou sans « Salon de ») reste à confirmer.
+
 ## Reste à faire (étapes suivantes)
 
-1. La barre-titre des types de fenêtres (winChat #5, winPanel #7,
-   winRoomList #59…) et les teintes `getWinStyle` manquantes — mesurer au
-   pixel les fenêtres jaune/verte/blanche/violette (Préférences, Corbeille,
-   Boutique, Mes contacts…) sur la session connectée.
+1. ~~La barre-titre des types de fenêtres~~ : `drawInterface` lit TOUJOURS
+   `style.global`, le cadre ne dépend donc pas du type — seuls la pastille et
+   le CONTENU changent, et le bandeau fait 16 px (relevé, cf. « Salons
+   publics »). Restent les teintes `getWinStyle` manquantes : mesurer au pixel
+   les fenêtres jaune/verte/violette/marron (Préférences, Corbeille, Liste
+   noire, Kikooz) sur la session connectée — le rose est entamé par la liste
+   des salons, l'orange et le citron sont notés plus haut.
 2. ~~L'INTÉRIEUR de la main bar au gabarit~~ FAIT (bouille 64, encart 45,
    smileys de 15 au pas de 21, barres de progression 2 px/1 px aux teintes
    `#A2EB56`/`#73B01E`) ; ~~la frutimandala~~ FAITE (roue des frutisignes

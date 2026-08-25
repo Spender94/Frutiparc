@@ -48,6 +48,13 @@ window.BureauFrutiz = (function () {
     snake3:     { panneau: '#snake3-panel',    titre: 'Frutisnake',     l: 880, h: 740 },
     minifever:  { panneau: '#minifever-panel', titre: 'Mini-Fever',     l: 880, h: 760 },
     jamajama:   { panneau: '#jamajama-panel',  titre: 'JamaJama',       l: 620, h: 640 },
+    // « Salons publics » — la SEULE fenêtre du bureau qui n'existe pas côté
+    // mobile : le light y met un menu déroulant, main.swf une fenêtre à part
+    // entière (`win.RoomList`, 0xbebb6). Son gabarit vient du bytecode et du
+    // relevé 1:1 : `min: {w: 200, h: 240}` est écrit dans `initFrameSet`
+    // (0xbec80), et la fenêtre s'ouvre à 265×288 sur le rendu d'époque.
+    salons:     { panneau: '#salons-panel',    titre: 'Salons publics', fruit: 'winChat',
+                  l: 265, h: 288, min: { w: 200, h: 240 } },
   };
 
   function fruitUrl(nom) { return '/frutiz/sprites/fruit_' + (nom || 'default') + '.svg'; }
@@ -278,6 +285,99 @@ window.BureauFrutiz = (function () {
     b.querySelector('.nom').textContent = c.pseudo;
     b.addEventListener('click', function () { ouvrirFiche(c.pseudo); });
     return b;
+  }
+
+  // ── « Salons publics » (`win.RoomList` 0xbebb6, `cp.RoomList` 0x70733) ──
+  //
+  // Sur mobile, choisir son salon c'est dérouler un `<select>`. Sur le bureau
+  // d'époque, c'est une FENÊTRE : la liste des salons avec leur affluence, une
+  // rangée par salon, et sous elle une barre pour en créer un.
+  //
+  // `cp.RoomList.setList` (0x70881) donne la loi au mot près :
+  //
+  //     pal.bg = style.color[0]                  // frRoomList → colorSet.pink
+  //     pour chaque salon i :
+  //       texte  = nom + " (" + nbUser + ")"
+  //       hauteur = 20                            // reg7, écrit en dur
+  //       clic   = win.box.join(salon.id)
+  //       si i % 2 == 0 : fond = pal.bg.shade     // UNE rangée sur deux
+  //       butText._y = i * 20
+  //
+  // Les teintes sont relevées au pixel sur le rendu Ruffle 1:1 (scratchpad/
+  // ref3-salons.png) : rangée paire `#FEABAB`, impaire `#FEC9C9`, survol
+  // `#FFF2F2` (paires ET impaires), encre `#BA4444`. Le SWF ne marque PAS le
+  // salon courant — on ne le marque pas non plus.
+  var salonsPanneau = null;
+
+  function panneauSalons() {
+    if (salonsPanneau) return salonsPanneau;
+    var p = document.createElement('section');
+    p.className = 'panel';
+    p.id = 'salons-panel';
+    var liste = document.createElement('div');
+    liste.className = 'sp-liste';
+    // La barre du bas : `initFrameSet` (0xbec4d) y pose, dans cet ordre, un
+    // espace de 4, un `<b l="butPushStandard">` étiqueté `chat.create_channel`,
+    // un espace de 10, puis le champ `<i v="roomName">`.
+    var pied = document.createElement('div');
+    pied.className = 'sp-pied';
+    var creer = document.createElement('button');
+    creer.type = 'button';
+    creer.className = 'sp-creer';
+    creer.textContent = 'créer un salon';
+    // Le serveur du revival n'a pas de `createChannel` : les onze salons sont
+    // fixes. Le bouton est là parce qu'il fait partie de la fenêtre, mais il
+    // n'a rien à appeler — mieux vaut le dire que faire semblant.
+    creer.disabled = true;
+    creer.title = 'La création de salons n’est pas ouverte sur le revival';
+    var nom = document.createElement('input');
+    nom.type = 'text';
+    nom.className = 'sp-nom';
+    nom.disabled = true;
+    nom.setAttribute('aria-label', 'Nom du salon à créer');
+    pied.appendChild(creer);
+    pied.appendChild(nom);
+    p.appendChild(liste);
+    p.appendChild(pied);
+    salonsPanneau = p;
+    return p;
+  }
+
+  function majSalons() {
+    if (!salonsPanneau) return;
+    var pont = window.SalonsBureau;
+    if (!pont) return;
+    var liste = salonsPanneau.querySelector('.sp-liste');
+    var salons = pont.liste() || [];
+    liste.textContent = '';
+    salons.forEach(function (s, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'sp-salon' + (i % 2 === 0 ? ' paire' : '');
+      b.textContent = s.nom + ' (' + s.nbUser + ')';
+      b.addEventListener('click', function () {
+        pont.rejoindre(s.id);
+        // `box.join` fait suivre la fenêtre du salon : elle s'ouvre (ou
+        // repasse devant) sur le salon qu'on vient de rejoindre.
+        ouvrirFenetre('chat');
+      });
+      liste.appendChild(b);
+    });
+  }
+
+  function ouvrirSalonsPublics() {
+    if (!actif) return;
+    ouvrirFenetre('salons');
+    majSalons();
+  }
+
+  // La fenêtre du salon porte le NOM du salon, comme le bureau d'époque —
+  // « Salons » tout court ne disait rien de l'endroit où l'on parle.
+  function majTitreSalon() {
+    var f = fenetres['chat-panel'];
+    if (!f || !window.SalonsBureau) return;
+    var nom = window.SalonsBureau.nomCourant();
+    if (nom) f.txt.textContent = nom;
   }
 
   function enTeteDossier(nom, bloc) {
@@ -513,6 +613,11 @@ window.BureauFrutiz = (function () {
   function ouvrirFenetre(tab) {
     var rub = RUBRIQUES[tab];
     if (!rub) return;
+    // « Salons publics » n'a pas de panneau mobile à emprunter : on le bâtit
+    // au premier appel et on le range dans #app, hors écran tant qu'il n'est
+    // pas `.active` — c'est de là que le reparentage le prendra, et c'est là
+    // qu'il retournera à la fermeture.
+    if (tab === 'salons' && !$(rub.panneau)) $('#app').appendChild(panneauSalons());
     var panneau = $(rub.panneau);
     if (!panneau) return;
     var f = fenetres[panneau.id];
@@ -534,6 +639,7 @@ window.BureauFrutiz = (function () {
     f.txt.textContent = rub.titre;
     f.pastille.style.backgroundImage = 'url(' + fruitUrl(rub.fruit) + ')';
     panneau.classList.add('active');
+    if (tab === 'chat') majTitreSalon();
   }
 
   // ── Les crochets appelés par light.html ───────────────────────────────
@@ -709,6 +815,12 @@ window.BureauFrutiz = (function () {
     demarrer: demarrer,
     apresActivateTab: apresActivateTab,
     poserFond: poserFond,
+    // La tuile « Salons » du bureau ouvre la LISTE, pas la conversation :
+    // c'est le double-clic sur « Les salons » du bureau d'époque.
+    ouvrirSalonsPublics: ouvrirSalonsPublics,
+    // Rappelé par renderRoomOptions : l'affluence des salons bouge, la
+    // fenêtre la suit — et la fenêtre du salon se retitre au changement.
+    majSalons: function () { majSalons(); majTitreSalon(); },
     actif: function () { return actif; },
   };
 })();

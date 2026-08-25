@@ -645,17 +645,30 @@ body.bureau-frutiz #bureau .home-tile .lbl {
 body.bureau-frutiz #bureau-fenetres {
   position: absolute; inset: 0; z-index: 10; pointer-events: none;
 }
+/* Le liseré de 2 px est une OMBRE INTERNE : il ne pousse rien. Un padding de
+   2 px le double en mise en page, pour que le bandeau commence là où il
+   commence d'époque — après le liseré, pas dessous. Relevé : fenêtre en
+   y 105, contour 105, liseré 106-107, bandeau blanc à partir de 108. */
 body.bureau-frutiz .fen {
   position: absolute; pointer-events: auto; box-sizing: border-box;
   display: flex; flex-direction: column;
   background: #fff; border-radius: 10px;
-  border: 1px solid #444444;
+  border: 1px solid #444444; padding: 2px;
   box-shadow: inset 0 0 0 2px #DDDDDD, 7px 7px 17px -4px rgba(0, 0, 0, .5);
   min-width: 160px; max-width: calc(100vw - 12px); max-height: calc(100vh - 106px);
 }
+/* Le BANDEAU fait **16 px**, pas un de plus — relevé au pixel sur le rendu 1:1
+   (scratchpad/ref3-salons.png, fenêtre posée en y 105) : contour en 105,
+   liseré 106-107, bandeau BLANC 108..123, puis le contour du contenu en 124.
+   Dedans : la pastille (encre x 17..28, y 108..121), le titre gras 11 px
+   `#444444` qui démarre à x 31, et les deux boutons collés au bord droit (la
+   croix, encre x 257..267). Les boutons gardent leur boîte de 21 px — celle
+   du dessin d'origine — et DÉBORDENT donc un peu du bandeau, comme en Flash,
+   où rien ne les rogne. */
 body.bureau-frutiz .fen-titre {
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 8px 3px 10px; cursor: move; user-select: none; -webkit-user-select: none;
+  display: flex; align-items: center; gap: 0;
+  height: 16px; padding: 0 0 0 3px; box-sizing: content-box;
+  cursor: move; user-select: none; -webkit-user-select: none;
   font: 700 11px Verdana, Arial, sans-serif; color: #444444;
   flex-shrink: 0;
 }
@@ -731,3 +744,66 @@ body.bureau-frutiz .fen #evt-page { color: #A4A4A4; }
    une fenêtre : le panneau épouse la fenêtre, la poignée se tait. */
 body.bureau-frutiz .fen #chat-panel { max-width: none; align-self: stretch; width: 100%; }
 body.bureau-frutiz .fen #chat-poignee { display: none; }
+
+/* ── « Salons publics » (win.RoomList 0xbebb6, cp.RoomList 0x70733) ─────────
+   La fenêtre que le light n'avait pas : côté mobile on choisit son salon dans
+   un menu déroulant, côté bureau d'époque c'est une fenêtre à soi, avec une
+   rangée par salon et son affluence.
+
+   Le corps se serre : `.fen-corps` laisse 6 px partout, mais le relevé 1:1
+   (scratchpad/ref3-salons.png, fenêtre x 9..273 y 105..392) donne **2 px** de
+   blanc entre le liseré de la fenêtre et le contour du compo. */
+body.bureau-frutiz .fen #salons-panel {
+  padding: 0; background: #fff; gap: 2px;
+}
+/* Le corps se cale sur le relevé : le contour du compo tombe en x 13-14 et
+   267-268, donc 1 px de blanc à gauche et 2 à droite du liseré de la fenêtre
+   (la largeur d'époque est impaire, l'écart part d'un côté). */
+body.bureau-frutiz .fen:has(#salons-panel.active) .fen-corps { margin: 0 2px 2px 1px; }
+/* La LISTE. Son contour est celui d'un compo de contenu — 2 px `#DDDDDD`,
+   comme le `content4` de getOldWinStyle. Le fond visible sous la dernière
+   rangée est celui de la rangée suivante qui n'existe pas : d'époque le compo
+   se peint en `pal.bg`, on garde donc la teinte claire. */
+body.bureau-frutiz #salons-panel .sp-liste {
+  flex: 1; min-height: 0; overflow-y: auto;
+  border: 2px solid #DDDDDD; box-sizing: border-box;
+  background: #FEC9C9;
+}
+/* Une rangée = **20 px** (reg7, écrit en dur dans setList) et `_y = i * 20` :
+   aucun écart entre elles. Le texte est la Verdana 10 de `getTextStyle`,
+   encre `#BA4444` relevée au cœur des glyphes. Une rangée sur DEUX — les
+   PAIRES, `i % 2 == 0` — reçoit `bgColor = pal.bg.shade` ; les autres gardent
+   le fond de base. Au survol, les deux passent à `#FFF2F2`. */
+body.bureau-frutiz #salons-panel .sp-salon {
+  display: block; width: 100%; height: 20px; padding: 0 3px; box-sizing: border-box;
+  border: 0; margin: 0; cursor: pointer; text-align: left;
+  font: normal 10px Verdana, Arial, sans-serif; line-height: 20px; color: #BA4444;
+  background: #FEC9C9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+body.bureau-frutiz #salons-panel .sp-salon.paire { background: #FEABAB; }
+body.bureau-frutiz #salons-panel .sp-salon:hover { background: #FFF2F2; }
+/* La barre du bas (`frameCreate`, un cpDocument de 18 px de haut minimum posé
+   dans la marge basse) : 4 px de marge, le bouton, 10 px, le champ. */
+body.bureau-frutiz #salons-panel .sp-pied {
+  flex: 0 0 16px; display: flex; align-items: center; gap: 12px; padding: 0 1px;
+}
+/* Le bouton `butPushStandard` (#465) est une GÉLULE de 16 px de haut : le
+   dessin extrait donne l'anneau `#F28687` de 1,5 px et le fond `#FFAAAD`, le
+   relevé donne l'encre `#660000` et l'éclat `#FFEAEC` du bout droit. Une
+   gélule s'étire — on la refait donc en CSS plutôt que d'étirer le SVG, qui
+   déformerait ses bouts ronds. */
+body.bureau-frutiz #salons-panel .sp-creer {
+  flex: 0 0 120px; height: 16px; padding: 0; border: 0; border-radius: 8px;
+  background: #FFAAAD; box-shadow: inset 0 0 0 1.5px #F28687;
+  font: 700 10px Verdana, Arial, sans-serif; color: #660000;
+  cursor: pointer; white-space: nowrap;
+}
+body.bureau-frutiz #salons-panel .sp-creer[disabled] { cursor: default; }
+/* Le champ `<i v="roomName">` (`inputField` #170, 14 px de haut) : le dessin
+   d'origine est GRIS et se fait teinter à l'emploi — d'où le vert relevé,
+   `#DDFFBB` = green.light dans le fond et `#94DB39` = green.dark au bord. */
+body.bureau-frutiz #salons-panel .sp-nom {
+  flex: 1; min-width: 0; height: 14px; padding: 0 6px; border: 0;
+  border-radius: 7px; background: #DDFFBB; box-shadow: inset 0 0 0 1px #94DB39;
+  font: normal 10px Verdana, Arial, sans-serif; color: #335511;
+}

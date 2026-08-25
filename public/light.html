@@ -2549,6 +2549,9 @@
       sel.appendChild(gPrives);
     }
     sel.value = current;
+    // Le bureau desktop tient la MÊME liste dans sa fenêtre « Salons publics » :
+    // elle se rafraîchit d'ici, à chaque changement d'affluence ou de salon.
+    if (window.BureauFrutiz && BureauFrutiz.majSalons) BureauFrutiz.majSalons();
   }
 
   // ── Discussions privées ───────────────────────────────────────────────────
@@ -2775,6 +2778,23 @@
     // compteur « en ligne » de la frusion ne s'actualisait jamais.
     window.state = state;
     window.ouvrirFicheJoueur = ouvrirFiche;
+    // Le bureau desktop refait la fenêtre « Salons publics » de main.swf : il
+    // lui faut la liste des salons publics avec leur affluence, le salon
+    // courant, et de quoi en rejoindre un. Les discussions privées n'y sont
+    // PAS — le bureau d'époque ne les liste pas dans cette fenêtre-là.
+    window.SalonsBureau = {
+      liste: function () {
+        return ROOMS.map(function (r) {
+          return { id: r[0], nom: roomLabel(r[0]), nbUser: state.roomCounts[r[0]] || 0 };
+        });
+      },
+      courant: function () { return state.room; },
+      nomCourant: function () {
+        var c = state.prives[state.room];
+        return c ? 'Discussion privée avec ' + c.avec : roomLabel(state.room);
+      },
+      rejoindre: function (id) { switchRoom(id); },
+    };
     if (isDesktop() && window.BureauFrutiz) BureauFrutiz.demarrer();
     activateTab("chat");
     if (!isDesktop()) openMenu(true);
@@ -3163,6 +3183,12 @@
       if (go === "disques") return openDisquesSheet();
       if (go === "inventaire") return openBouilleSheet();
       if (go === "club") return window.open("/club/", "_blank");
+      // Sur le BUREAU, « Les salons » n'ouvre pas la conversation : il ouvre la
+      // LISTE des salons, et c'est en cliquant un salon qu'on y entre — le
+      // double-clic sur l'icône « Les salons » de main.swf. Sur mobile, rien
+      // ne change : la conversation s'ouvre directement.
+      if (go === "chat" && window.BureauFrutiz && BureauFrutiz.actif()
+          && BureauFrutiz.ouvrirSalonsPublics) return BureauFrutiz.ouvrirSalonsPublics();
       activateTab(go); // chat / forum / scores
     });
   });
