@@ -371,13 +371,34 @@ window.BureauFrutiz = (function () {
     majSalons();
   }
 
-  // La fenêtre du salon porte le NOM du salon, comme le bureau d'époque —
+  // La fenêtre du salon porte le NOM du salon SUIVI DE SON AFFLUENCE, comme
+  // le bureau d'époque — « Salon Fraise (1) » sur le rendu de référence.
   // « Salons » tout court ne disait rien de l'endroit où l'on parle.
   function majTitreSalon() {
     var f = fenetres['chat-panel'];
     if (!f || !window.SalonsBureau) return;
     var nom = window.SalonsBureau.nomCourant();
-    if (nom) f.txt.textContent = nom;
+    if (!nom) return;
+    var n = window.SalonsBureau.affluenceCourante();
+    f.txt.textContent = nom + (n === null ? '' : ' (' + n + ')');
+  }
+
+  // LE QUATRIÈME BOUTON de la colonne du salon : `chat_warning`, qui d'époque
+  // appelle `box.whining` — un appel au modérateur. Le serveur du revival n'a
+  // pas ce fil-là ; le bouton est dessiné parce qu'il fait partie de la
+  // fenêtre, mais il est désactivé et le dit. (Le cri modérateur « !texte »
+  // du light, lui, marche toujours.)
+  var boutonWarning = null;
+  function warningSalon() {
+    if (boutonWarning) return boutonWarning;
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'chat-warning';
+    b.className = 'icon-btn bare';
+    b.disabled = true;
+    b.title = 'L’appel au modérateur n’est pas ouvert sur le revival';
+    boutonWarning = b;
+    return b;
   }
 
   function enTeteDossier(nom, bloc) {
@@ -542,8 +563,12 @@ window.BureauFrutiz = (function () {
     var f = fenetres[idPanneau];
     if (!f) return;
     f.panneau.classList.remove('active');
-    // La barre du salon retourne à sa place d'origine avec le panneau.
-    if (f.topbar) rendre(f.topbar.noeud, f.topbar.origine);
+    // La barre du salon retourne à sa place d'origine avec le panneau — sans
+    // le bouton d'avertissement, qui n'appartient qu'au bureau.
+    if (f.topbar) {
+      if (boutonWarning && boutonWarning.parentNode) boutonWarning.parentNode.removeChild(boutonWarning);
+      rendre(f.topbar.noeud, f.topbar.origine);
+    }
     rendre(f.panneau, f.origine);
     f.fen.remove();
     delete fenetres[idPanneau];
@@ -629,7 +654,10 @@ window.BureauFrutiz = (function () {
       if (tab === 'chat') {
         var topbar = $('#topbar');
         if (topbar) f.topbar = { noeud: topbar, origine: deplacer(topbar, f.corps) };
-        if (f.topbar) f.corps.insertBefore(topbar, f.corps.firstChild);
+        if (f.topbar) {
+          f.corps.insertBefore(topbar, f.corps.firstChild);
+          topbar.appendChild(warningSalon());
+        }
       }
     } else {
       f.fen.classList.remove('pliee');

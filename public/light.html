@@ -2789,6 +2789,14 @@
         });
       },
       courant: function () { return state.room; },
+      // L'affluence du salon courant — le bureau d'époque la met dans le
+      // TITRE de la fenêtre, « Salon Fraise (1) ». Une discussion privée n'en
+      // a pas : elle se compte à deux, et le SWF n'en titre pas.
+      affluenceCourante: function () {
+        if (state.prives[state.room]) return null;
+        var n = state.roomCounts[state.room];
+        return typeof n === 'number' ? n : null;
+      },
       nomCourant: function () {
         var c = state.prives[state.room];
         return c ? 'Discussion privée avec ' + c.avec : roomLabel(state.room);

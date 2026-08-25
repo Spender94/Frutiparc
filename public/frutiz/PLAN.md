@@ -858,6 +858,117 @@ Le titre de la fenêtre du SALON, lui, devient le nom du salon (au lieu de
 référence ne montre pas cette fenêtre-là : la formule exacte du titre (avec
 ou sans « Salon de ») reste à confirmer.
 
+## La fenêtre du SALON (`win.Chat` 0x690f4, qui étend `win.Dialog`)
+
+Le light mettait sa barre d'outils EN HAUT, avec un menu déroulant de salons.
+Le bureau d'époque met quatre boutons EN COLONNE À GAUCHE, et pas de menu :
+le salon se choisit dans « Salons publics ».
+
+### Les quatre boutons (`genLeftIconList`, 0x691da)
+
+Chacun est un `butPush` dont le `param` vaut
+`{link: 'butPushSmallPink', frame: N, outline: 2, curve: 4, tipId: …}`.
+Dans l'ordre du tableau (`InitArray` dépile depuis le sommet — le
+désassemblage les liste donc à l'envers) :
+
+| # | frame | tipId | action |
+|---|---|---|---|
+| 0 | 3 | `chat_bouille` | `toggleScreenList` |
+| 1 | 2 | `chat_userlist` | `toggleUserList` |
+| 2 | 4 | `chat_penlist` | `togglePenList` |
+| 3 | 5 | `chat_warning` | `box.whining` |
+
+Le rendu 1:1 les montre exactement dans cet ordre — bouille, liste, feutres,
+avertissement. **Quatrième confirmation** du sens de `InitArray`.
+
+Le `frame` ne vise pas `butPushSmallPink` (#378), qui n'a que trois images :
+il vise la BANDE D'ICÔNES #374 que #378 pose à sa profondeur 5. Ses images :
+2 = la liste (#360), 3 = la bouille (#361), 4 = les feutres (#362), 5 =
+l'avertissement (#363). #378 pose aussi la GÉLULE #359 (20×20, anneau
+`#F28687`, fond `#FFAAAD`) et le REFLET #375 (un filet blanc de 16×3,65 en
+haut). Les quatre boutons sont donc extraits en empilant trois formes —
+gélule, reflet, icône — toutes posées à l'origine.
+
+`displayLeftIconList` (0x693c9) donne le gabarit : `struct.x.size = 22`,
+`struct.y.size = 22`, `space = 4` des deux côtés, compo `leftIconListFrame`
+de `min: {w: 24, h: 0}` dans `margin.left`. Relevé : la gélule fait **20×20**,
+son contour `#DDDDDD` de 2 px l'entoure (24 de large, la largeur du compo),
+et deux boutons sont séparés de 2 px de blanc — **pas de 26**.
+
+`genLeftIconList` calcule aussi `lefIconListHMaxThin = 4 + 24 × 4 = 100`
+(la colonne) et `lefIconListHMaxLarge = 4 + 24 × ceil(4/4) = 28` (la rangée,
+quand la liste des bouilles s'ouvre et pousse les icônes à se ranger en
+largeur).
+
+### Le relevé 1:1 (scratchpad/rc2-1-deplacee.png)
+
+Fenêtre x 410..611 (**202**), y 267..422 (**156**) — la taille d'ouverture.
+
+| bande | de..à | quoi |
+|---|---|---|
+| contour / liseré | 267 / 268-269 | `#444444` puis `#DDDDDD` |
+| bandeau | 270..285 | blanc, 16 px — comme toutes les fenêtres |
+| zone des messages | 286..397 | contour `#DDDDDD` 2, liseré `#ADE76B` 2, fond `#CCF599` |
+| blanc | 398..401 | 4 px |
+| ligne de saisie | 402..415 | 14 px |
+| blanc | 416..419 | 4 px |
+| liseré / contour | 420-421 / 422 | |
+
+En largeur : blanc 413-414, colonne des boutons 415..438 (24), blanc 439-440,
+zone des messages 441..606, blanc 607-608.
+
+Les boutons tombent en y 290, 316, 342, 368 — pas de 26, et 2 px de blanc
+entre le haut du corps et le contour du premier.
+
+### Le REFLET de la zone des messages — la loi confirmée
+
+La zone des messages est peinte par `drawCustomSquare` avec le drapeau
+`chrome`, et c'est ici qu'on peut enfin VÉRIFIER le dégradé décrit plus haut.
+Relevé sur le fond `#CCF599`, ligne par ligne à partir du liseré :
+0,608 — 0,51 — 0,43 — 0,35 — 0,275 — 0,196 — 0,118 — 0,039 — 0. Une descente
+LINÉAIRE qui s'éteint au dixième pixel.
+
+Or la loi dit : dégradé blanc d'alpha 80 → 0 sur 10 px depuis le bord du
+compo, peint à partir de `y + inline`. Avec `inline = 2`, la première ligne
+visible vaut donc `0,8 × (1 − 2/10) = 0,64`. Mesuré 0,608. **Les `alphas` de
+`beginGradientFill` sont bien des POURCENTAGES** (80 = 80 %), et non des
+valeurs sur 255 — le doute était noté plus haut, il est levé.
+
+### La typographie des messages
+
+Bandes d'encre relevées : y 297..305, 314..322, 330..338 — hauteur d'encre
+**9 px**, INTERLIGNE **17**. Neuf pixels de capitale, c'est du **12 px** en
+Verdana. L'encre est `#335511` = green.overdark, la même que les étiquettes
+d'icônes du bureau — pas le vert délavé du fil mobile.
+
+### La ligne de saisie
+
+C'est `inputField` (#170) TEL QUEL, sans teinture : 14 px de haut, corps
+`#EEEEEE`, arête haute `#CCCCCC`. Elle s'aligne sur le LISERÉ de la zone des
+messages (x 443..604), pas sur son contour. Et rien ne l'accompagne :
+d'époque il n'y a NI bouton « Envoyer » NI aide aux accents, on valide à
+Entrée.
+
+### Le titre
+
+`nom du salon + " (" + affluence + ")"` — « Salon Fraise (1) » sur le relevé.
+La pastille est la FRAISE : `getIconLabel()` rend `"winChat"` (0x8068a).
+
+### Ce que le light en fait, et les écarts assumés
+
+La barre du haut mobile devient la colonne de gauche (mêmes nœuds, mêmes
+clics : le feutre, les bouilles, les connectés), le menu des salons se tait,
+et un quatrième bouton est ajouté pour l'avertissement. Trois écarts :
+
+- **L'avertissement est inerte.** `box.whining` appelle un modérateur ; le
+  serveur du revival n'a pas ce fil-là. Le bouton est dessiné parce qu'il
+  fait partie de la fenêtre, mais il est désactivé et le dit. (Le cri
+  modérateur « !texte » du light, lui, marche toujours.)
+- **Le bouton « Envoyer » et l'aide aux accents disparaissent** sur le
+  bureau : ni l'un ni l'autre n'existent d'époque. Entrée envoie.
+- **La poignée de redimensionnement reste au-dessus**, comme pour « Salons
+  publics » — mêmes raisons.
+
 ## Reste à faire (étapes suivantes)
 
 1. ~~La barre-titre des types de fenêtres~~ : `drawInterface` lit TOUJOURS

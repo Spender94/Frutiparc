@@ -85,6 +85,31 @@
    "fichier": "onglet_corps.svg"
   }
  },
+ "chatBoutons": {
+  "cadre": {
+   "x": 0,
+   "y": 0,
+   "w": 20,
+   "h": 20
+  },
+  "notes": "butPushSmallPink #378 : gélule #359 + reflet #375 + icône de la bande #374",
+  "chat-but-bouille": {
+   "fichier": "chat-but-bouille.svg",
+   "icone": 361
+  },
+  "chat-but-userlist": {
+   "fichier": "chat-but-userlist.svg",
+   "icone": 360
+  },
+  "chat-but-penlist": {
+   "fichier": "chat-but-penlist.svg",
+   "icone": 362
+  },
+  "chat-but-warning": {
+   "fichier": "chat-but-warning.svg",
+   "icone": 363
+  }
+ },
  "fruits": {
   "cadre": {
    "x": 1.35,

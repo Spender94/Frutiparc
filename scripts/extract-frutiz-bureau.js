@@ -369,6 +369,42 @@ function principal() {
     }
   }
 
+  // ── Les quatre boutons de la colonne gauche du SALON ────────────────────
+  // `win.Chat.genLeftIconList` (0x691da) déclare quatre `butPush` dont le
+  // `param` est `{link: 'butPushSmallPink', frame: N, outline: 2, curve: 4}`.
+  // `butPushSmallPink` (#378) pose, sur son image 1, la GÉLULE #359 (20×20,
+  // anneau `#F28687`, fond `#FFAAAD`), la bande d'icônes #374 et le REFLET
+  // #375 (un filet blanc de 16×3,65 en haut). C'est la bande #374 que le
+  // `frame` vise : image 2 = la liste, 3 = la bouille, 4 = les feutres,
+  // 5 = l'avertissement. Tout est posé à l'origine — les formes portent leur
+  // propre décalage —, donc composer un bouton, c'est empiler trois formes.
+  const CHAT_BOUTONS = [
+    { cle: 'chat-but-bouille',  icone: 361 },   // image 3 — tipId chat_bouille
+    { cle: 'chat-but-userlist', icone: 360 },   // image 2 — tipId chat_userlist
+    { cle: 'chat-but-penlist',  icone: 362 },   // image 4 — tipId chat_penlist
+    { cle: 'chat-but-warning',  icone: 363 },   // image 5 — tipId chat_warning
+  ];
+  chargerFormes([359, 375, ...CHAT_BOUTONS.map((b) => b.icone)]
+    .filter((id) => !corpsFormes.has(id)));
+  {
+    // La gélule donne le cadre : 20×20, les icônes tiennent dedans.
+    const gelule = corpsFormes.get(359);
+    const cadre = gelule ? { x: gelule.vb.x, y: gelule.vb.y, w: gelule.vb.w, h: gelule.vb.h } : null;
+    if (!cadre) console.warn('!! gélule #359 absente');
+    else {
+      manifeste.chatBoutons = { cadre, notes: 'butPushSmallPink #378 : gélule #359 + reflet #375 + icône de la bande #374' };
+      for (const b of CHAT_BOUTONS) {
+        const ico = corpsFormes.get(b.icone);
+        if (!ico) { console.warn('!! icône absente', b.icone); continue; }
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${arr(cadre.x)} ${arr(cadre.y)} ${arr(cadre.w)} ${arr(cadre.h)}" width="${arr(cadre.w)}" height="${arr(cadre.h)}">\n`
+          + gelule.corps + corpsFormes.get(375).corps + ico.corps + '</svg>\n';
+        fs.writeFileSync(path.join(SORTIE, b.cle + '.svg'), svg, 'utf8');
+        manifeste.chatBoutons[b.cle] = { fichier: b.cle + '.svg', icone: b.icone };
+        console.log(b.cle + '.svg (icône #' + b.icone + ')');
+      }
+    }
+  }
+
   // ── La bande des fruits-pastilles (#198) ────────────────────────────────
   // Une image étiquetée par TYPE de fenêtre — la pastille d'une barre-titre
   // est un gotoAndStop sur cette bande, et une étiquette inconnue laisse la
