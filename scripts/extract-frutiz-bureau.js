@@ -114,18 +114,21 @@ function lireBouton(def) {
 
 // ── Les formes, par l'extracteur commun ───────────────────────────────────
 const TMP = fs.mkdtempSync(path.join(require('os').tmpdir(), 'frutiz-formes-'));
-const corpsFormes = new Map();          // id → { corps, vb }
-function chargerFormes(ids) {
+const corpsFormes = new Map();          // id → { corps, vb } (main.swf)
+// `fichier`/`formes` permettent de servir une SECONDE source : la roue de la
+// frutimandala vit dans public/wheel/wheel1.swf, pas dans main.swf.
+function chargerFormes(ids, fichier = SWF, formes = corpsFormes) {
   if (!ids.length) return;
+  const dossier = fichier === SWF ? TMP : path.join(TMP, path.basename(fichier, '.swf'));
   execFileSync(process.execPath,
-    [path.join(__dirname, 'extract-swf-shapes.js'), SWF, TMP, ...ids.map(String)],
+    [path.join(__dirname, 'extract-swf-shapes.js'), fichier, dossier, ...ids.map(String)],
     { stdio: 'pipe' });
   for (const id of ids) {
-    const p = path.join(TMP, 'shape' + id + '.svg');
+    const p = path.join(dossier, 'shape' + id + '.svg');
     if (!fs.existsSync(p)) { console.warn('!! forme absente', id); continue; }
     const t = fs.readFileSync(p, 'utf8');
     const vb = /viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)"/.exec(t);
-    corpsFormes.set(id, {
+    formes.set(id, {
       corps: t.replace(/<svg[^>]*>/, '').replace('</svg>', ''),
       vb: { x: +vb[1], y: +vb[2], w: +vb[3], h: +vb[4] },
     });
@@ -164,12 +167,12 @@ function morceauxDe(pose) {
 }
 
 const arr = (v) => String(Math.round(v * 100) / 100);
-function svgCompose(morceaux) {
+function svgCompose(morceaux, formes = corpsFormes) {
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   const dessins = [];
   for (const m of morceaux) {
     if (m.masque) continue;
-    const f = corpsFormes.get(m.shape);
+    const f = formes.get(m.shape);
     if (!f) continue;
     for (const [px, py] of [[f.vb.x, f.vb.y], [f.vb.x + f.vb.w, f.vb.y],
       [f.vb.x, f.vb.y + f.vb.h], [f.vb.x + f.vb.w, f.vb.y + f.vb.h]]) {
@@ -184,7 +187,7 @@ function svgCompose(morceaux) {
   const l = Math.max(0.01, x1 - x0), h = Math.max(0.01, y1 - y0);
   let defs = '', corps = '';
   for (const d of dessins) {
-    const f = corpsFormes.get(d.shape);
+    const f = formes.get(d.shape);
     const fc = filtreCx(d.cx);
     if (fc) defs += fc.def;
     corps += `<g transform="matrix(${[d.M.a, d.M.b, d.M.c, d.M.d, d.M.e / 20, d.M.f / 20]
@@ -408,31 +411,72 @@ function principal() {
   // Tout n'est pas un conteneur vide : le lecteur `frusion` (#324) pose bien
   // ses dessins sur sa première image (la cuve, les trois fruits, les deux
   // boutons ronds). On l'aplatit par la bibliothèque commune, à l'identique.
-  const CLIPS = [{ cle: 'frusion', id: 324 }, { cle: 'frutimandala', id: 640 }];
+  // La frutimandala sort en DEUX COUCHES, comme ses profondeurs le veulent :
+  // le châssis de fond (#609, profondeur 1) passe SOUS le cadran, et les
+  // quatre boutons plus le verre (profondeurs 8 à 25) passent DESSUS — c'est
+  // la place du cadran (#613, profondeur 3) que vient prendre la roue.
+  const CLIPS = [
+    { cle: 'frusion', id: 324 },
+    { cle: 'frutimandala-fond', id: 640, profondeurs: (p) => p < 3 },
+    { cle: 'frutimandala-dessus', id: 640, profondeurs: (p) => p > 3 },
+  ];
   for (const c of CLIPS) {
     // On relit ses placements à l'octet plutôt que d'appeler aplatir() : le
     // lecteur pose DEUX DefineButton2 (#317 le casque à gauche, #313
     // l'éjection à droite), que l'aplatisseur commun saute — leur état UP est
     // composé ici, comme pour l'onglet.
     const morceaux = [];
+    let cadreEntier = null;
     for (const pose of placementsFrame1(c.id)) {
       const def = boutons.get(pose.ch);
+      const sortis = [];
       if (def) {
         for (const rec of lireBouton(def).up) {
-          for (const m of morceauxDe({ ch: rec.ch, M: composerTwips(pose.M, rec.M), cx: rec.cx })) morceaux.push(m);
+          for (const m of morceauxDe({ ch: rec.ch, M: composerTwips(pose.M, rec.M), cx: rec.cx })) sortis.push(m);
         }
       } else {
-        for (const m of morceauxDe(pose)) morceaux.push(m);
+        for (const m of morceauxDe(pose)) sortis.push(m);
       }
+      // Les couches d'un même clip partagent le cadre du clip ENTIER : sans
+      // ça, chaque SVG se recadrerait sur son propre contenu et les deux ne
+      // se superposeraient plus.
+      for (const m of sortis) { m._prof = pose.prof; morceaux.push(m); }
     }
     const formesClip = new Set();
     for (const m of morceaux) if (m.shape !== undefined) formesClip.add(m.shape);
     chargerFormes([...formesClip].filter((id) => !corpsFormes.has(id)));
-    const r = svgCompose(morceaux);
-    if (!r) { console.warn('!! clip vide', c.cle); continue; }
-    fs.writeFileSync(path.join(SORTIE, c.cle + '.svg'), r.svg, 'utf8');
-    manifeste[c.cle] = { fichier: c.cle + '.svg', cadre: r.cadre };
-    console.log(c.cle + '.svg', JSON.stringify(r.cadre));
+    cadreEntier = svgCompose(morceaux);
+    const garde = c.profondeurs ? morceaux.filter((m) => c.profondeurs(m._prof)) : morceaux;
+    const r = svgCompose(garde);
+    if (!r || !cadreEntier) { console.warn('!! clip vide', c.cle); continue; }
+    const k = cadreEntier.cadre;
+    const svg = r.svg.replace(/viewBox="[^"]*" width="[^"]*" height="[^"]*"/,
+      `viewBox="${arr(k.x)} ${arr(k.y)} ${arr(k.w)} ${arr(k.h)}" width="${arr(k.w)}" height="${arr(k.h)}"`);
+    fs.writeFileSync(path.join(SORTIE, c.cle + '.svg'), svg, 'utf8');
+    manifeste[c.cle] = { fichier: c.cle + '.svg', cadre: k };
+    console.log(c.cle + '.svg', JSON.stringify(k));
+  }
+
+  // ── La ROUE de la frutimandala (public/wheel/wheel1.swf) ────────────────
+  // Le cadran est vide dans main.swf parce qu'il n'y est pas : `Wheel`
+  // (#773) charge une PEAU EXTERNE — `Path.wheel` = « /wheel/wheel$i.swf »,
+  // avec `wheelId` 1 pour wheel.FruitMonth (#777). Le sprite #62 de ce
+  // fichier EST la roue : dix quartiers (#52) posés tous les 36°, et les
+  // dix fruits des frutisignes par-dessus. On l'aplatit tel quel.
+  {
+    const ROUE = path.join(RACINE, 'public/wheel/wheel1.swf');
+    const swfRoue = ouvrir(ROUE, { textesEnFormes: false });
+    const formesRoue = new Map();
+    const morceaux = swfRoue.aplatir(62, IDENTITE, 0, 1, '', undefined);
+    const ids = new Set();
+    for (const m of morceaux) if (m.shape !== undefined) ids.add(m.shape);
+    chargerFormes([...ids], ROUE, formesRoue);
+    const r = svgCompose(morceaux, formesRoue);
+    if (r) {
+      fs.writeFileSync(path.join(SORTIE, 'frutimandala-roue.svg'), r.svg, 'utf8');
+      manifeste.frutimandalaRoue = { fichier: 'frutimandala-roue.svg', cadre: r.cadre };
+      console.log('frutimandala-roue.svg', JSON.stringify(r.cadre));
+    } else console.warn('!! roue vide');
   }
 
   fs.writeFileSync(path.join(SORTIE, 'bureau.json'), JSON.stringify(manifeste, null, 1), 'utf8');

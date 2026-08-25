@@ -388,6 +388,24 @@ window.BureauFrutiz = (function () {
     for (var id in fenetres) fenetres[id].panneau.classList.add('active');
   }
 
+  // LA ROUE DES FRUTISIGNES (wheel.FruitMonth #777, RunDate.getCurrentFSign
+  // 0xbbf73). La loi d'époque, au chiffre près :
+  //     t     = getTime() / 1000
+  //     signe = floor(((t − 345600) / 604800) % 10)
+  //     part  =      ((t − 345600) / 604800) % 1
+  // 604800 s = UNE SEMAINE par signe, dix signes qui tournent ; 345600 = le
+  // décalage d'origine (4 jours). Et update() pose la rotation :
+  //     setRot((signe + part) × 36)   — 36° par signe, 360 pour le tour.
+  // Vérifié : au moment de la capture de référence le signe était le KIWI,
+  // et c'est bien le kiwi qui trône au centre du cadran, citron à sa gauche
+  // et raisin à sa droite.
+  function tournerMandala(roue) {
+    var t = Date.now() / 1000;
+    var signe = Math.floor(((t - 345600) / 604800) % 10);
+    var part = ((t - 345600) / 604800) % 1;
+    roue.style.transform = 'rotate(' + ((signe + part) * 36).toFixed(2) + 'deg)';
+  }
+
   // La pilule « N en ligne » : le même décompte que le tiroir « site » du
   // light (/api/light/online), rafraîchi sans hâte — la pilule d'époque
   // n'était qu'un compteur, le détail vit ailleurs.
@@ -447,6 +465,24 @@ window.BureauFrutiz = (function () {
     var frusion = document.createElement('div');
     frusion.id = 'frusion-boite';
     haut.appendChild(frusion);
+
+    // LA FRUTIMANDALA (cpWheelMng #640) : trois couches, comme les
+    // profondeurs du SWF — le châssis de FOND (profondeur 1), la ROUE des
+    // frutisignes à la place du cadran (profondeur 3), puis les boutons et
+    // le verre par-dessus (profondeurs 8 à 25).
+    var mandala = document.createElement('div');
+    mandala.id = 'frutimandala';
+    var roue = document.createElement('div');
+    roue.className = 'roue';
+    var dessus = document.createElement('div');
+    dessus.className = 'dessus';
+    mandala.appendChild(roue);
+    mandala.appendChild(dessus);
+    // Elle vit DANS la barre (c'est le dernier élément de son frameSet), pas
+    // sur l'écran : sa marge droite se compte donc depuis le bord de la barre.
+    coin.appendChild(mandala);
+    tournerMandala(roue);
+    setInterval(function () { tournerMandala(roue); }, 60000);
 
     // La pilule « N en ligne » (coin haut-droit, bord à Stage.width − 6).
     var pilule = document.createElement('div');

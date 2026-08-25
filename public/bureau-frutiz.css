@@ -96,10 +96,18 @@ body.bureau-frutiz #bureau-coin .mb-right { gap: 0; height: 64px; width: 145px; 
    la coupe et le rang en haut-droite, « NIV n » en bas-gauche, les raccourcis
    en bas-droite) sont remises au gabarit relevé sur le rendu 1:1. */
 body.bureau-frutiz #bureau-coin .mb-encart { flex: 0 0 45px; border-radius: 5px; }
+/* Les 9 barres de progression, au relevé 1:1 (colonne x=90 du rendu) : des
+   barres de **2 px séparées de 1 px**, de y 9 à 35 (9×2 + 8×1 = 26), larges
+   de 27 (x 86..113) — pas les filets de 1 px du tiroir mobile. Vide
+   `#A2EB56`, PLEIN `#73B01E`, l'écart laissant voir le fond `#C8F39A` de
+   l'encart. Le remplissage d'époque va du BAS vers le HAUT et, dans une
+   barre, de gauche à droite (barre partielle mesurée : `#73B01E` 86..99 puis
+   `#A2EB56` 100..113) — c'est déjà la loi de setHomeProgress. */
 body.bureau-frutiz #bureau-coin .enc-progress {
-  left: 5px; top: 5px; width: 30px; height: 21px;
+  left: 1px; top: 3px; width: 27px; height: 26px;
 }
-body.bureau-frutiz #bureau-coin .enc-progress i { height: 1px; }
+body.bureau-frutiz #bureau-coin .enc-progress i { height: 2px; background: #A2EB56; }
+body.bureau-frutiz #bureau-coin .enc-progress i::before { background: #73B01E; }
 body.bureau-frutiz #bureau-coin .enc-trophy { top: 3px; height: 17px; gap: 2px; }
 body.bureau-frutiz #bureau-coin .enc-trophy .tro { height: 16px; }
 body.bureau-frutiz #bureau-coin .enc-trophy .val { font-size: 15px; }
@@ -110,8 +118,11 @@ body.bureau-frutiz #bureau-coin .mb-shortcuts { bottom: 3px; }
 body.bureau-frutiz #bureau-coin .sc-btn img { width: 15px; height: 15px; }
 body.bureau-frutiz #bureau-coin .reflet-niv { height: 55%; }
 body.bureau-frutiz #bureau-coin .mb-emotes { flex: 0 0 19px; justify-content: flex-start; }
+/* Le smiley d'époque est un disque de **15×15** au milieu de son pas de 21
+   (mesuré : x 87..101, y 54..68) — dessiné bord à bord, une image de 19 px
+   remplissait toute la case et paraissait rognée. */
 body.bureau-frutiz #bureau-coin .em-btn { flex: 0 0 21px; padding: 0; }
-body.bureau-frutiz #bureau-coin .em-btn img { width: 19px; max-width: 19px; }
+body.bureau-frutiz #bureau-coin .em-btn img { width: 15px; max-width: 15px; height: 15px; }
 /* La bannière quotidienne n'a pas cours dans la barre d'époque. */
 body.bureau-frutiz #bureau-coin .daily-banner { display: none; }
 
@@ -151,6 +162,36 @@ body.bureau-frutiz #frusion-boite {
   position: absolute; top: 0; right: 4px; width: 119px; height: 77.5px;
   z-index: 2;
   background: url('/frutiz/sprites/frusion.svg') left top / 119px 77.5px no-repeat;
+}
+
+/* ── LA FRUTIMANDALA (cpWheelMng #640 + la peau /wheel/wheel1.swf) ────────
+   Trois couches, exactement les profondeurs du SWF : le châssis de FOND
+   (#609, prof. 1), la ROUE à la place du cadran (#613, prof. 3), les quatre
+   boutons et le verre PAR-DESSUS (prof. 8 à 25) — sans quoi la roue mangerait
+   le bouton vert, qui tombe pourtant à l'intérieur du disque.
+   Pose relevée : le châssis occupe 200×80 au bout droit de la barre (bord
+   droit de la barre mesuré à x 1240, bouton vert finissant à 1230). Le centre
+   de la roue est celui du cadran d'origine — (92.7, −36.8) dans cpWheelMng,
+   soit (99, −32.45) dans le cadre du châssis : le disque de 252 se place donc
+   à (99 − 126, −32.45 − 126). Les coins du châssis tombent à 149 du centre,
+   hors du disque (rayon 126) : les boutons y restent au clair. */
+body.bureau-frutiz #frutimandala {
+  /* calage vérifié sur un repère commun aux deux rendus, le bouton « G » :
+     x 1049..1093, y 52..67 dans main.swf — la couche se pose donc au bord
+     droit de la barre (right −2, le contour la recouvrant) et 4 px sous son
+     haut, le reste dépassant sous la barre qui l'écrête, comme d'époque. */
+  position: absolute; top: 4px; right: -2px; width: 200px; height: 80px;
+  z-index: 2; overflow: hidden;
+  background: url('/frutiz/sprites/frutimandala-fond.svg') left top / 200px 80px no-repeat;
+}
+body.bureau-frutiz #frutimandala .roue {
+  position: absolute; left: -27px; top: -158.45px; width: 252px; height: 252px;
+  background: url('/frutiz/sprites/frutimandala-roue.svg') left top / 252px 252px no-repeat;
+  transform-origin: 50% 50%;
+}
+body.bureau-frutiz #frutimandala .dessus {
+  position: absolute; inset: 0;
+  background: url('/frutiz/sprites/frutimandala-dessus.svg') left top / 200px 80px no-repeat;
 }
 
 /* ── La pilule « N en ligne » ─────────────────────────────────────────────

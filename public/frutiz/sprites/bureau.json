@@ -131,13 +131,31 @@
    "h": 77.5
   }
  },
- "frutimandala": {
-  "fichier": "frutimandala.svg",
+ "frutimandala-fond": {
+  "fichier": "frutimandala-fond.svg",
   "cadre": {
    "x": -6.3,
    "y": -4.35,
    "w": 200,
    "h": 80
+  }
+ },
+ "frutimandala-dessus": {
+  "fichier": "frutimandala-dessus.svg",
+  "cadre": {
+   "x": -6.3,
+   "y": -4.35,
+   "w": 200,
+   "h": 80
+  }
+ },
+ "frutimandalaRoue": {
+  "fichier": "frutimandala-roue.svg",
+  "cadre": {
+   "x": -126.01,
+   "y": -125.99,
+   "w": 252.01,
+   "h": 252.01
   }
  }
 }
