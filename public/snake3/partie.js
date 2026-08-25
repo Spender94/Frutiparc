@@ -108,16 +108,32 @@ class Partie {
     };
   }
 
-  // Le cadre du petit clip `col` de la tête — la bouche, un peu en avant.
+  // ── Le cadre du petit clip `col` de la tête — la bouche, un peu en avant ──
+  //
+  // Manger, c'est `Std.hitTest(fruit, col_mc)` : DEUX CLIPS, donc Flash compare
+  // leurs cadres alignés sur les axes de la scène. Or `col` est un enfant de
+  // `tete`, et Snake.draw pose `tete._rotation = ang·180/π` : le petit
+  // rectangle TOURNE avec la tête, et le cadre aligné d'un rectangle tourné
+  // grandit avec l'angle —
+  //
+  //     W = |w·cos θ| + |h·sin θ|      H = |w·sin θ| + |h·cos θ|
+  //
+  // À 45°, les 12,44 × 13,66 mesurés dans le SWF deviennent 18,5 × 18,5, une
+  // demi-fois plus large. On gardait la taille droite quel que soit le cap :
+  // les fruits étaient donc plus durs à prendre qu'en Flash partout sauf à
+  // l'horizontale et à la verticale. Le décalage du clip tourne lui aussi.
   colDeTete(serpent) {
     const s = serpent || this.serpent;
     const scale = (30 + 70 * (Math.min(10, s.len + 3) / 10)) / 100;
-    const d = (this.dims && this.dims.col) || { dx: 8, w: 12, h: 12 };
+    const d = (this.dims && this.dims.col) || { dx: 0.8, dy: -6.85, w: 12.44, h: 13.66 };
+    const cx = d.dx + d.w / 2;          // le centre du cadre, dans le repère de la tête
+    const cy = (d.dy || 0) + d.h / 2;
+    const co = Math.cos(s.ang), si = Math.sin(s.ang);
     return {
-      x: s.x + s.dx * d.dx * scale,
-      y: s.y + s.dy * d.dx * scale,
-      w: d.w * scale,
-      h: d.h * scale,
+      x: s.x + (cx * co - cy * si) * scale,
+      y: s.y + (cx * si + cy * co) * scale,
+      w: (d.w * Math.abs(co) + d.h * Math.abs(si)) * scale,
+      h: (d.w * Math.abs(si) + d.h * Math.abs(co)) * scale,
     };
   }
 

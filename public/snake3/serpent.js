@@ -34,6 +34,11 @@ const C = sousNode ? require('./const.js') : racine.SnakeConst;
 
 const nombre = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
+// Sous-pas par segment pour suivre la quadratique du corps. Cinq suffisent :
+// l'écart d'une polyligne à cinq pas sur un segment de 25 px reste sous le
+// dixième de pixel — trente fois moins que le demi-trait le plus mince.
+const SOUS_PAS_CORPS = 5;
+
 /**
  * Le serpent.
  *
@@ -81,6 +86,10 @@ class Serpent {
     // L'horloge du dessin (getTimer()/100 dans draw) : le client la fournit,
     // la distorsion de la potion violette s'anime avec elle.
     this.time = 0;
+    // Et le tmod du DERNIER tracé : draw_queue a deux branches (courbes en
+    // deçà de 1,7, segments au-delà), et hitTest interroge la forme telle
+    // qu'elle a été dessinée. Posé par rendu.js, comme Snake.draw pose `time`.
+    this.tmod_dessin = C.WANTED_FPS / C.SWF_FPS;
 
     const pos = { x: this.x, y: this.y };
     for (let i = 0; i < 50; i++) this.queue.push(pos);
@@ -178,14 +187,21 @@ class Serpent {
   /*
    * gfx.hitTest(x, y, true) — le point contre le dessin du corps.
    *
-   * Le dessin : pour chaque segment i (de len à 1), une courbe entre les
-   * points de file [n-5(k+1)] et [n-5k], tracée deux fois — bordure large de
-   * `i·s·q + 8`, corps large de `i·s·q + 5`. Le test « forme » de Flash voit
-   * l'union : la bordure, la plus large, décide. Les traits de Flash ont
-   * bouts et joints ronds : géométriquement, être touché = être à moins d'une
-   * demi-largeur d'un point de la ligne. On approche la courbe par la
-   * POLYLIGNE des points de file (espacés de cinq pixels : l'écart de flèche
-   * d'une quadratique sur un pas pareil est inférieur au pixel).
+   * Le dessin : pour chaque segment i (de len à 1), une COURBE QUADRATIQUE de
+   * la file [n] à la file [n-5], de point de contrôle la file [n-2], tracée
+   * deux fois — bordure large de `i·s·q + 8`, corps large de `i·s·q + 5`. Le
+   * test « forme » de Flash voit l'union : la bordure, la plus large, décide.
+   * Les traits de Flash ont bouts et joints ronds : géométriquement, être
+   * touché = être à moins d'une demi-largeur d'un point de la ligne.
+   *
+   * On suit donc EXACTEMENT la même géométrie que le tracé (rendu.js) : les
+   * deux branches de draw_queue selon tmod, le point de contrôle, et le
+   * gondolement `distort`. On approchait naguère chaque segment par sa CORDE
+   * droite — 25 px d'un bout à l'autre — et la corde coupe le virage : elle
+   * passe DEDANS, si bien qu'un point à l'intérieur d'une boucle se retrouvait
+   * plus près d'elle que du trait réel. Mesuré : jusqu'à 1,55 px de trop, soit
+   * +33 % sur les segments fins de la queue, là où le trait est le plus mince.
+   * C'est ce qui faisait mourir en FRÔLANT sa propre queue.
    *
    * Comme dans draw_queue, le segment 1 (la pointe de la queue) au alpha nul
    * compte quand même : hitTest ignore la transparence du TRAIT (seul le clip
@@ -194,19 +210,39 @@ class Serpent {
    */
   toucheLeCorps(px, py) {
     const q = this.queue;
-    const n = q.length - 1;
+    let n = q.length - 1;
     const scale = Math.min(10, this.len + 3) / 10;
     const s = scale * 15 / this.len;
     const eat_flag = (this.eat > 0);
-
+    // Flash teste la forme telle qu'elle a été DESSINÉE au dernier passage :
+    // même branche, même gondolement. `tmod_dessin`/`time` sont posés par
+    // rendu.js, comme Snake.draw pose `time` avant d'appeler draw_queue.
+    const courbe = !(this.tmod_dessin >= 1.7);
+    let x0 = q[n].x, y0 = q[n].y;          // le « pen » de Flash
     for (let i = this.len; i > 0; i--) {
-      const a = q[Math.max(0, n - 5 * (this.len - i + 1))];
-      const b = q[Math.max(0, n - 5 * (this.len - i))];
-      let qc = 1;
-      if (eat_flag) qc = Math.max(1, 2 - (i - this.eat) * (i - this.eat) / 2);
-      const largeur = i * s * qc + 8;      // la passe de bordure, la plus large
-      const r = largeur / 2;
-      if (distanceSegment2(px, py, a.x, a.y, b.x, b.y) <= r * r) return true;
+      const qc = eat_flag ? Math.max(1, 2 - (i - this.eat) * (i - this.eat) / 2) : 1;
+      const r = (i * s * qc + 8) / 2;      // la passe de bordure, la plus large
+      const r2 = r * r;
+      const delta = this.distort
+        ? Math.cos(i + this.time) * Math.min(6, this.len - i) * this.distort_val : 0;
+      const p = q[Math.max(0, n - 5)];
+      const bx = p.x + delta, by = p.y - delta;
+      if (courbe) {
+        const p2 = q[Math.max(0, n - 2)];
+        const cx = p2.x + delta, cy = p2.y - delta;
+        let vx = x0, vy = y0;
+        for (let k = 1; k <= SOUS_PAS_CORPS; k++) {
+          const t = k / SOUS_PAS_CORPS, u = 1 - t;
+          const wx = u * u * x0 + 2 * u * t * cx + t * t * bx;
+          const wy = u * u * y0 + 2 * u * t * cy + t * t * by;
+          if (distanceSegment2(px, py, vx, vy, wx, wy) <= r2) return true;
+          vx = wx; vy = wy;
+        }
+      } else if (distanceSegment2(px, py, x0, y0, bx, by) <= r2) {
+        return true;
+      }
+      x0 = bx; y0 = by;
+      n -= 5;
     }
     return false;
   }

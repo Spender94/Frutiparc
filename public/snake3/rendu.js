@@ -153,6 +153,10 @@ class Particules {
 function dessinerSerpent(ctx, s, tmod, temps) {
   if (s.len <= 0 || s.queue.length === 0) return;
   const scale = Math.min(10, s.len + 3) / 10;
+  // Snake.draw pose `time` avant de tracer ; on note aussi la branche choisie.
+  // C'est cette forme-là que le hitTest du corps interrogera (toucheLeCorps).
+  s.time = temps;
+  s.tmod_dessin = tmod;
 
   const passe = (couleur, lsize) => {
     const q = s.queue;

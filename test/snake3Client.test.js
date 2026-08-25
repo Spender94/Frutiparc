@@ -1226,3 +1226,135 @@ test('la langue affiche ses munitions, aux mesures exactes du SWF', () => {
   // Et il est bien DANS la case, en haut à gauche — pas sous son bord.
   assert.ok(ecrits[1].y < cy, 'le compteur est au-dessus du centre de la case');
 });
+
+// ── Les hitbox : celle de la bouche, celle du corps ─────────────────────────
+//
+// Manger, c'est `Std.hitTest(fruit, col_mc)` : DEUX CLIPS, donc Flash compare
+// leurs cadres alignés sur les axes de la SCÈNE. Or `col` vit dans `tete`, et
+// Snake.draw pose `tete._rotation = ang·180/π` — le petit rectangle tourne, et
+// le cadre aligné d'un rectangle tourné grandit avec l'angle. On testait la
+// taille droite quel que soit le cap : les fruits étaient plus durs à prendre
+// qu'en Flash partout sauf aux quatre points cardinaux.
+
+test('la bouche s\'élargit quand la tête tourne, comme le cadre d\'un clip tourné', () => {
+  const w = bacASable();
+  const plateforme = { fruits: {}, record: 0, prefs: { $music: true, $sounds: true, $keys: null },
+    sauverSlot0: () => Promise.resolve(true), sauverScore: () => Promise.resolve(null),
+    sauverPrefs: () => Promise.resolve(true) };
+  const sons = new Proxy({}, { get: () => () => false });
+  const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'), plateforme, sons);
+  const vue = new w.SnakeJeu.VuePartie(jeu);
+  const partie = vue.partie;
+
+  // Le cadre mesuré DANS le SWF, arbitre du test.
+  const d = manifeste.cadres.col;
+  assert.ok(d && d.w > 0 && d.h > 0, 'le manifeste porte le cadre de `col`');
+
+  const s = partie.serpent;
+  s.x = 300; s.y = 200;
+  const echelle = (30 + 70 * (Math.min(10, s.len + 3) / 10)) / 100;
+
+  const droit = (ang) => {
+    s.ang = ang;
+    s.dx = Math.cos(ang); s.dy = Math.sin(ang);
+    return partie.colDeTete(s);
+  };
+
+  // À l'horizontale, le cadre est celui du clip, à l'échelle près.
+  const a0 = droit(0);
+  assert.ok(Math.abs(a0.w - d.w * echelle) < 0.01, 'à 0° : la largeur du clip');
+  assert.ok(Math.abs(a0.h - d.h * echelle) < 0.01, 'à 0° : la hauteur du clip');
+
+  // À 45°, W = H = (w + h)·cos45 — le cadre aligné d'un rectangle tourné.
+  const a45 = droit(Math.PI / 4);
+  const attendu45 = (d.w + d.h) * Math.SQRT1_2 * echelle;
+  assert.ok(Math.abs(a45.w - attendu45) < 0.01, 'à 45° : ' + a45.w + ' vs ' + attendu45);
+  assert.ok(Math.abs(a45.h - attendu45) < 0.01, 'à 45° : hauteur pareille');
+  assert.ok(a45.w > a0.w * 1.3, 'la bouche est nettement plus large en biais qu\'à plat');
+
+  // Et la loi complète tient à tous les caps.
+  for (const ang of [0.3, 1.1, 2.4, -0.8, 3.9]) {
+    const a = droit(ang);
+    const co = Math.abs(Math.cos(ang)), si = Math.abs(Math.sin(ang));
+    assert.ok(Math.abs(a.w - (d.w * co + d.h * si) * echelle) < 0.01, 'largeur à ' + ang);
+    assert.ok(Math.abs(a.h - (d.w * si + d.h * co) * echelle) < 0.01, 'hauteur à ' + ang);
+  }
+});
+
+// Le corps, lui, est tracé en COURBES quadratiques (draw_queue : contrôle
+// queue[n-2], fin queue[n-5]). On approchait chaque segment par sa corde
+// droite — 25 px d'un bout à l'autre — et la corde coupe le virage : elle
+// passe DEDANS. Un point à l'intérieur d'une boucle se retrouvait donc plus
+// près d'elle que du trait réel : on mourait en FRÔLANT sa propre queue.
+
+test('le corps tue selon sa courbe tracée, pas selon la corde qui coupe le virage', () => {
+  const S = require('../public/snake3/serpent.js');
+  const C = require('../public/snake3/const.js');
+
+  // Une file de points telle que Snake.move la remplit : un point tous les
+  // cinq pixels de route, en virage au braquage maximum.
+  const tmod = C.WANTED_FPS / C.SWF_FPS;
+  const vitesse = C.SNAKE_DEFAULT_SPEED * tmod;
+  const q = [];
+  let x = 0, y = 0, ang = 0, dist = 0;
+  while (q.length < 200) {
+    ang += C.SNAKE_DEFAULT_TURN * tmod;
+    x += Math.cos(ang) * vitesse; y += Math.sin(ang) * vitesse;
+    dist += vitesse / 5;
+    while (dist >= 1) { dist--; q.push({ x, y }); }
+  }
+
+  const s = new S.Serpent({ x: 0, y: 0 });
+  s.queue = q;
+  s.len = 12;
+  s.eat = 0;
+  s.tmod_dessin = tmod;          // la branche « courbes » de draw_queue
+
+  const n = q.length - 1;
+  const echelle = Math.min(10, s.len + 3) / 10;
+  const pas = echelle * 15 / s.len;
+
+  // On prend le deuxième segment (près de la tête, corde bien courbée) et le
+  // point PILE sur la limite de la corde, du côté intérieur du virage.
+  const i = s.len - 1;
+  const p0 = q[n - 5], ctrl = q[n - 7], p1 = q[n - 10];
+  const r = (i * pas + 8) / 2;
+  const vx = p0.x - p1.x, vy = p0.y - p1.y, L = Math.hypot(vx, vy);
+  const mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
+
+  // Distance réelle à la courbe, échantillonnée finement.
+  const dCourbe = (px, py) => {
+    let best = Infinity;
+    for (let k = 0; k <= 400; k++) {
+      const t = k / 400, u = 1 - t;
+      const bx = u * u * p1.x + 2 * u * t * ctrl.x + t * t * p0.x;
+      const by = u * u * p1.y + 2 * u * t * ctrl.y + t * t * p0.y;
+      best = Math.min(best, Math.hypot(px - bx, py - by));
+    }
+    return best;
+  };
+
+  // Le côté où la corde coupe le virage : celui où la courbe s'éloigne.
+  let cote = 1;
+  if (dCourbe(mx - vy / L * r, my + vx / L * r) < dCourbe(mx + vy / L * r, my - vx / L * r)) cote = -1;
+  const px = mx + (-vy / L) * cote * r, py = my + (vx / L) * cote * r;
+
+  // Ce point est à la limite de la CORDE (donc « touché » avec l'ancienne
+  // approximation) mais franchement hors du TRAIT réellement dessiné.
+  assert.ok(dCourbe(px, py) > r + 0.5,
+    'le point est bien hors du trait tracé (' + dCourbe(px, py).toFixed(2) + ' > ' + r.toFixed(2) + ')');
+  assert.strictEqual(s.toucheLeCorps(px, py), false, 'frôler la courbe ne tue pas');
+
+  // Et l'intérieur du trait tue toujours : on ne l'a pas rétréci.
+  const surLaCourbe = (t) => {
+    const u = 1 - t;
+    return { x: u * u * p1.x + 2 * u * t * ctrl.x + t * t * p0.x,
+      y: u * u * p1.y + 2 * u * t * ctrl.y + t * t * p0.y };
+  };
+  for (const t of [0.15, 0.5, 0.85]) {
+    const c = surLaCourbe(t);
+    assert.strictEqual(s.toucheLeCorps(c.x, c.y), true, 'le cœur du trait tue (t=' + t + ')');
+    assert.strictEqual(s.toucheLeCorps(c.x + (-vy / L) * (r * 0.8), c.y + (vx / L) * (r * 0.8)), true,
+      'le bord intérieur du trait tue aussi (t=' + t + ')');
+  }
+});
