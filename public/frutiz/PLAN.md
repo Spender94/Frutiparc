@@ -63,12 +63,23 @@ contour blanc de 2 px aux coins arrondis de 10. Reproduit en CSS
 au bureau. `moveToCenter` (0x55bf5) centre dans
 `[cornerX..mcw] × [cornerY..mch]`.
 
-### Les boutons du haut (genTopIconList, 0x54c24)
+### Les boutons du haut (genTopIconList, 0x54c24) — EXTRAITS
 
-WinStandard n'en déclare qu'UN : `butGroup` → clip `WinTop` frame 1,
-`onPress → tryToClose`. Les fenêtres à plusieurs boutons (salon…) ajoutent
-les leurs par surcharge. **À extraire** : l'art de `butGroupWinTop` (#180) vit
-dans des DefineButton2 que l'aplatisseur ne traverse pas encore.
+WinStandard n'en déclare qu'UN : `butGroup` → frame 1, `onPress → tryToClose`.
+L'art vit dans des DefineButton2 que l'aplatisseur commun ne traverse pas :
+scripts/extract-frutiz-bureau.js lit leurs BUTTONRECORDs à l'octet et compose
+chaque état en SVG (sprites/butWinTop*.svg + bureau.json).
+
+- `butGroupWinTop` (#180) place les boutons **#173/#176/#179** sur ses trois
+  images : 1 = FERMER (la croix, plaque beige), 2 = l'ENROULEMENT/onglet
+  (les traits, plaque bleue), 3 = l'AIDE (le « ? », plaque verte).
+- Le détail d'époque : au REPOS seul le glyphe se dessine ; la plaque 21×21
+  n'arrive qu'au survol (état over), l'appui la fonce (down). Les trois états
+  sont normalisés sur le cadre commun 21×21 pour que rien ne saute.
+- `winTopBar` (#442), `mainBar` (#3) et `DesktopBg` (#12) sont des clips
+  CONTENEURS VIDES : leurs visuels se construisent au runtime par leurs
+  classes (cp.WinTopBar, MainBar, Desktop) — rien à aplatir, tout à
+  transcrire.
 
 ### Modes (updatePos/updateSize 0x53e3d/0x53ead)
 
@@ -95,5 +106,7 @@ second bouton du bandeau — à brancher quand les onglets du bureau (la barre
 3. Les icônes du bureau (fileIconStandard #11) et leur pose en colonnes
    (FPDesktop), le glisser-déposer des icônes.
 4. Le mode « tab » des fenêtres, les préférences (`win_flMoveAnim`).
-5. La connexion Ruffle locale complète (socketProxy 5000/5001) pour des
-   références à l'écran de tous les états.
+5. La connexion Ruffle locale complète : le boot s'arrête aujourd'hui après
+   `/xml/services.xml` + `/do/prefdef` — ni `/do/id` ni XMLSocket ne partent
+   (diagnostic du 25/08, requêtes tracées). À reprendre pour des références
+   à l'écran de tous les états (fenêtres réelles, colorSet mesurable).

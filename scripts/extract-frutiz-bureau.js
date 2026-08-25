@@ -1,0 +1,260 @@
+#!/usr/bin/env node
+/*
+ * Sort les dessins du BUREAU (main.swf) pour le portage light — la partie que
+ * l'extracteur commun ne sait pas traverser : les DefineButton2.
+ *
+ *   node scripts/extract-frutiz-bureau.js          → écrit public/frutiz/sprites/
+ *
+ * Le bandeau d'une fenêtre (cp.WinTopBar) attache des `butGroupWinTop`
+ * (sprite #180) : trois images, une par BOUTON — #173, #176, #179, des
+ * DefineButton2. Un bouton n'est pas un clip : ses états (up/over/down)
+ * sont des BUTTONRECORDs, chacun posant un caractère avec sa matrice et sa
+ * transformation de couleur. L'aplatisseur commun (lib/swf-sprites.js) les
+ * ignore, et c'est pour cela que le sprite #180 sortait « vide ».
+ *
+ * Ici on lit les BUTTONRECORDs à l'octet, on compose chaque état en SVG
+ * (formes extraites par extract-swf-shapes.js, matrices en pixels, cxform en
+ * filtre de couleur), et on écrit un manifeste avec les cadres — mêmes
+ * conventions que les autres extracteurs du dépôt.
+ */
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+const { ouvrir, IDENTITE } = require('./lib/swf-sprites.js');
+
+const RACINE = path.join(__dirname, '..');
+const SWF = path.join(RACINE, 'legacy/main.swf');
+const SORTIE = path.join(RACINE, 'public/frutiz/sprites');
+
+const swf = ouvrir(SWF, { textesEnFormes: false });
+const b = swf.b;
+
+// ── Les DefineButton2 du fichier ──────────────────────────────────────────
+function tousLesBoutons() {
+  const boutons = new Map();
+  const nbits = b[0] >> 3;
+  const debut = Math.ceil((5 + nbits * 4) / 8) + 4;
+  (function scan(from, to) {
+    let o = from;
+    while (o + 2 <= to) {
+      const cl = b.readUInt16LE(o); const code = cl >> 6;
+      let len = cl & 0x3f, hs = 2;
+      if (len === 0x3f) { len = b.readUInt32LE(o + 2); hs = 6; }
+      const corps = o + hs;
+      if (code === 0) break;
+      if (code === 39) scan(corps + 4, corps + len);
+      if (code === 34) boutons.set(b.readUInt16LE(corps), { corps, len });
+      o = corps + len;
+    }
+  })(debut, b.length);
+  return boutons;
+}
+
+// ── La lecture au bit (MATRIX et CXFORMWITHALPHA, non alignés) ────────────
+class Bits {
+  constructor(o) { this.o = o; this.bit = 0; }
+  u(n) {
+    let v = 0;
+    for (let i = 0; i < n; i++) {
+      v = (v << 1) | ((b[this.o] >> (7 - this.bit)) & 1);
+      if (++this.bit === 8) { this.bit = 0; this.o++; }
+    }
+    return v >>> 0;
+  }
+  s(n) { if (!n) return 0; const v = this.u(n); return (v & (1 << (n - 1))) ? v - (1 << n) : v; }
+  aligner() { if (this.bit) { this.bit = 0; this.o++; } return this.o; }
+}
+function lireMatrice(bits) {
+  const M = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+  if (bits.u(1)) { const n = bits.u(5); M.a = bits.s(n) / 65536; M.d = bits.s(n) / 65536; }
+  if (bits.u(1)) { const n = bits.u(5); M.b = bits.s(n) / 65536; M.c = bits.s(n) / 65536; }
+  const n = bits.u(5); M.e = bits.s(n); M.f = bits.s(n);
+  bits.aligner();
+  return M;
+}
+function lireCx(bits) {
+  const add = bits.u(1), mult = bits.u(1), n = bits.u(4);
+  const c = { mr: 256, mv: 256, mb: 256, ma: 256, ar: 0, av: 0, ab: 0, aa: 0 };
+  if (mult) { c.mr = bits.s(n); c.mv = bits.s(n); c.mb = bits.s(n); c.ma = bits.s(n); }
+  if (add) { c.ar = bits.s(n); c.av = bits.s(n); c.ab = bits.s(n); c.aa = bits.s(n); }
+  bits.aligner();
+  return c;
+}
+const cxNeutre = (c) => !c || (c.mr === 256 && c.mv === 256 && c.mb === 256
+  && c.ma === 256 && !c.ar && !c.av && !c.ab && !c.aa);
+
+// ── Les BUTTONRECORDs d'un DefineButton2 ──────────────────────────────────
+// { up: [...], over: [...], down: [...] } — chaque entrée { ch, prof, M, cx }.
+function lireBouton(def) {
+  let o = def.corps + 2;                // après l'id
+  o += 1;                               // drapeaux (trackAsMenu)
+  o += 2;                               // actionOffset
+  const etats = { up: [], over: [], down: [] };
+  while (b[o] !== 0) {
+    const drapeaux = b[o]; o += 1;
+    const ch = b.readUInt16LE(o); o += 2;
+    const prof = b.readUInt16LE(o); o += 2;
+    const bits = new Bits(o);
+    const M = lireMatrice(bits);
+    const cx = lireCx(bits);
+    o = bits.o;
+    // ButtonHasFilterList / ButtonHasBlendMode (SWF8) : absents de ce fichier
+    // (drapeaux ≤ 0x0f partout) — on le vérifie plutôt que de le supposer.
+    if (drapeaux & 0x30) throw new Error('bouton à filtres/blend, non géré : ' + drapeaux);
+    const pose = { ch, prof, M, cx };
+    if (drapeaux & 1) etats.up.push(pose);
+    if (drapeaux & 2) etats.over.push(pose);
+    if (drapeaux & 4) etats.down.push(pose);
+    // bit 3 = hitTest : la zone cliquable, invisible — rien à dessiner.
+  }
+  return etats;
+}
+
+// ── Les formes, par l'extracteur commun ───────────────────────────────────
+const TMP = fs.mkdtempSync(path.join(require('os').tmpdir(), 'frutiz-formes-'));
+const corpsFormes = new Map();          // id → { corps, vb }
+function chargerFormes(ids) {
+  if (!ids.length) return;
+  execFileSync(process.execPath,
+    [path.join(__dirname, 'extract-swf-shapes.js'), SWF, TMP, ...ids.map(String)],
+    { stdio: 'pipe' });
+  for (const id of ids) {
+    const p = path.join(TMP, 'shape' + id + '.svg');
+    if (!fs.existsSync(p)) { console.warn('!! forme absente', id); continue; }
+    const t = fs.readFileSync(p, 'utf8');
+    const vb = /viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)"/.exec(t);
+    corpsFormes.set(id, {
+      corps: t.replace(/<svg[^>]*>/, '').replace('</svg>', ''),
+      vb: { x: +vb[1], y: +vb[2], w: +vb[3], h: +vb[4] },
+    });
+  }
+}
+
+// Un cxform en filtre SVG (le même feColorMatrix que les autres extracteurs :
+// sortie = source × mult/256 + add/255).
+let nFiltre = 0;
+function filtreCx(cx) {
+  if (cxNeutre(cx)) return null;
+  const id = 'cx' + (++nFiltre);
+  const m = [
+    cx.mr / 256, 0, 0, 0, cx.ar / 255,
+    0, cx.mv / 256, 0, 0, cx.av / 255,
+    0, 0, cx.mb / 256, 0, cx.ab / 255,
+    0, 0, 0, cx.ma / 256, cx.aa / 255,
+  ];
+  return {
+    id,
+    def: `<filter id="${id}" color-interpolation-filters="sRGB">`
+      + `<feColorMatrix type="matrix" values="${m.map((v) => +v.toFixed(4)).join(' ')}"/></filter>`,
+  };
+}
+
+// ── La composition d'un état en SVG ───────────────────────────────────────
+// Chaque pose devient des morceaux-formes : une forme telle quelle, un sprite
+// via l'aplatisseur commun (ses matrices composées sous celle du record).
+function morceauxDe(pose) {
+  if (swf.estForme(pose.ch)) return [{ shape: pose.ch, M: pose.M, cx: pose.cx }];
+  if (swf.estSprite(pose.ch)) {
+    return swf.aplatir(pose.ch, pose.M, 0, 1, '', pose.cx).map((m) => m);
+  }
+  console.warn('!! caractère non géré dans un bouton :', pose.ch);
+  return [];
+}
+
+const arr = (v) => String(Math.round(v * 100) / 100);
+function svgCompose(morceaux) {
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  const dessins = [];
+  for (const m of morceaux) {
+    if (m.masque) continue;
+    const f = corpsFormes.get(m.shape);
+    if (!f) continue;
+    for (const [px, py] of [[f.vb.x, f.vb.y], [f.vb.x + f.vb.w, f.vb.y],
+      [f.vb.x, f.vb.y + f.vb.h], [f.vb.x + f.vb.w, f.vb.y + f.vb.h]]) {
+      const sx = m.M.a * px + m.M.c * py + m.M.e / 20;
+      const sy = m.M.b * px + m.M.d * py + m.M.f / 20;
+      x0 = Math.min(x0, sx); y0 = Math.min(y0, sy);
+      x1 = Math.max(x1, sx); y1 = Math.max(y1, sy);
+    }
+    dessins.push(m);
+  }
+  if (!dessins.length) return null;
+  const l = Math.max(0.01, x1 - x0), h = Math.max(0.01, y1 - y0);
+  let defs = '', corps = '';
+  for (const d of dessins) {
+    const f = corpsFormes.get(d.shape);
+    const fc = filtreCx(d.cx);
+    if (fc) defs += fc.def;
+    corps += `<g transform="matrix(${[d.M.a, d.M.b, d.M.c, d.M.d, d.M.e / 20, d.M.f / 20]
+      .map((v) => +v.toFixed(4)).join(',')})"` + (fc ? ` filter="url(#${fc.id})"` : '') + '>'
+      + f.corps + '</g>\n';
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${arr(x0)} ${arr(y0)} ${arr(l)} ${arr(h)}" width="${arr(l)}" height="${arr(h)}">\n`
+    + (defs ? '<defs>' + defs + '</defs>\n' : '') + corps + '</svg>\n';
+  return { svg, cadre: { x: +arr(x0), y: +arr(y0), w: +arr(l), h: +arr(h) } };
+}
+
+// ── L'extraction ──────────────────────────────────────────────────────────
+function principal() {
+  fs.mkdirSync(SORTIE, { recursive: true });
+  const boutons = tousLesBoutons();
+  // Le bandeau : butGroupWinTop (#180) place #173/#176/#179 sur ses trois
+  // images — le bouton 1 est celui de genTopIconList (fermer, tryToClose).
+  const CIBLES = [
+    { cle: 'butWinTop1', id: 173 },
+    { cle: 'butWinTop2', id: 176 },
+    { cle: 'butWinTop3', id: 179 },
+  ];
+  // Toutes les formes touchées, en un passage.
+  const formes = new Set();
+  const lus = [];
+  for (const c of CIBLES) {
+    const def = boutons.get(c.id);
+    if (!def) { console.warn('!! bouton absent', c.id); continue; }
+    const etats = lireBouton(def);
+    for (const nomEtat of ['up', 'over', 'down']) {
+      for (const pose of etats[nomEtat]) {
+        for (const m of morceauxDe(pose)) if (m.shape !== undefined) formes.add(m.shape);
+      }
+    }
+    lus.push({ c, etats });
+  }
+  chargerFormes([...formes]);
+
+  const manifeste = { boutons: {}, notes: 'butGroupWinTop #180 : images 1..3 → boutons #173/#176/#179 (up/over/down)' };
+  for (const { c, etats } of lus) {
+    manifeste.boutons[c.cle] = {};
+    // Le cadre COMMUN aux trois états : au repos seul le glyphe se dessine,
+    // la plaque n'arrive qu'au survol — sans repère commun, le glyphe
+    // sauterait au premier survol. On compose chaque état dans l'union.
+    const rendus = {};
+    let u = null;
+    for (const nomEtat of ['up', 'over', 'down']) {
+      const morceaux = [];
+      for (const pose of etats[nomEtat]) morceaux.push(...morceauxDe(pose));
+      const r = svgCompose(morceaux);
+      if (!r) { console.warn('!! état vide', c.cle, nomEtat); continue; }
+      rendus[nomEtat] = r;
+      u = u ? {
+        x: Math.min(u.x, r.cadre.x), y: Math.min(u.y, r.cadre.y),
+        x1: Math.max(u.x1, r.cadre.x + r.cadre.w), y1: Math.max(u.y1, r.cadre.y + r.cadre.h),
+      } : { x: r.cadre.x, y: r.cadre.y, x1: r.cadre.x + r.cadre.w, y1: r.cadre.y + r.cadre.h };
+    }
+    const cadre = { x: u.x, y: u.y, w: +arr(u.x1 - u.x), h: +arr(u.y1 - u.y) };
+    for (const nomEtat of Object.keys(rendus)) {
+      const fichier = c.cle + '_' + nomEtat + '.svg';
+      const svg = rendus[nomEtat].svg.replace(/viewBox="[^"]*" width="[^"]*" height="[^"]*"/,
+        `viewBox="${arr(cadre.x)} ${arr(cadre.y)} ${arr(cadre.w)} ${arr(cadre.h)}" width="${arr(cadre.w)}" height="${arr(cadre.h)}"`);
+      fs.writeFileSync(path.join(SORTIE, fichier), svg, 'utf8');
+      manifeste.boutons[c.cle][nomEtat] = { fichier };
+      console.log(fichier, 'cadre commun', JSON.stringify(cadre));
+    }
+    manifeste.boutons[c.cle].cadre = cadre;
+  }
+  fs.writeFileSync(path.join(SORTIE, 'bureau.json'), JSON.stringify(manifeste, null, 1), 'utf8');
+  console.log('manifeste → public/frutiz/sprites/bureau.json');
+}
+
+principal();

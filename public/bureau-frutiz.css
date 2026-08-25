@@ -120,17 +120,23 @@ body.bureau-frutiz .fen-pastille {
 body.bureau-frutiz .fen-titre .txt {
   flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* Les boutons du bandeau (butGroupWinTop) : l'art exact reste à extraire des
-   DefineButton2 — en attendant, la forme et les tons relevés sur le bureau. */
+/* Les boutons du bandeau : les DefineButton2 de butGroupWinTop (#180),
+   extraits état par état (scripts/extract-frutiz-bureau.js). Le détail
+   d'époque : au REPOS seul le glyphe se dessine, la plaque colorée (21×21)
+   n'arrive qu'au survol, et l'appui la fonce. Bouton 1 = fermer (la croix,
+   plaque beige), 2 = l'enroulement/onglet (les traits, plaque bleue),
+   3 = l'aide (le « ? », plaque verte — pas encore branché). */
 body.bureau-frutiz .fen-btn {
-  width: 19px; height: 16px; flex-shrink: 0;
-  border-radius: 5px; border: 1px solid #C24A40;
-  background: linear-gradient(#F9BBBB, #F28687);
-  color: #fff; font-size: 10px; font-weight: 700; line-height: 1;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer; padding: 0;
+  width: 21px; height: 21px; flex-shrink: 0;
+  border: 0; padding: 0; cursor: pointer; color: transparent;
+  background: transparent center / 21px 21px no-repeat;
 }
-body.bureau-frutiz .fen-btn:hover { filter: brightness(1.06); }
+body.bureau-frutiz .fen-btn.fermer { background-image: url('/frutiz/sprites/butWinTop1_up.svg'); }
+body.bureau-frutiz .fen-btn.fermer:hover { background-image: url('/frutiz/sprites/butWinTop1_over.svg'); }
+body.bureau-frutiz .fen-btn.fermer:active { background-image: url('/frutiz/sprites/butWinTop1_down.svg'); }
+body.bureau-frutiz .fen-btn.plier { background-image: url('/frutiz/sprites/butWinTop2_up.svg'); }
+body.bureau-frutiz .fen-btn.plier:hover { background-image: url('/frutiz/sprites/butWinTop2_over.svg'); }
+body.bureau-frutiz .fen-btn.plier:active { background-image: url('/frutiz/sprites/butWinTop2_down.svg'); }
 /* Le corps : la zone du contenu, dans les 6 px de bords du frameSet. */
 body.bureau-frutiz .fen-corps {
   flex: 1; min-height: 0; display: flex; flex-direction: column;

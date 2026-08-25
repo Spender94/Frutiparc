@@ -298,15 +298,15 @@ window.BureauFrutiz = (function () {
     var txt = document.createElement('span');
     txt.className = 'txt';
     txt.textContent = rub.titre;
+    // Les vrais boutons du bandeau (butGroupWinTop) : l'enroulement puis la
+    // croix, la croix au bord — l'ordre du bureau Flash.
     var plier = document.createElement('button');
-    plier.className = 'fen-btn';
+    plier.className = 'fen-btn plier';
     plier.title = 'Replier';
-    plier.textContent = '≡';
     plier.addEventListener('click', function () { fen.classList.toggle('pliee'); });
     var fermer = document.createElement('button');
-    fermer.className = 'fen-btn';
+    fermer.className = 'fen-btn fermer';
     fermer.title = 'Fermer';
-    fermer.textContent = '✕';
     titre.appendChild(pastille);
     titre.appendChild(txt);
     titre.appendChild(plier);
