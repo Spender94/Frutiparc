@@ -1129,6 +1129,13 @@ et `drawScreen` (0x61d40) finit par trois lignes qui disent tout :
   bande `#C5F297`, et un cœur en dégradé radial `#D6F7B5` → `#C5F297` dont le
   centre est DÉCALÉ en haut à gauche (34,45 ; 33,45). Le cercle CSS que j'en
   avais tiré au pixel en donnait les teintes, pas la forme.
+  Et il s'ÉTIRE sans garder ses proportions : sur la bande verticale du mode
+  CLB (100 × 200) le cœur devient une grande ellipse et le `#A2E866` sort du
+  champ — relevé d'époque sur la colonne du milieu, `#D6F7B5` jusqu'à la
+  ligne 141, puis la rampe vers `#C5F297` à 173, et pas un pixel de
+  `#A2E866`. Un SVG conserve ses proportions PAR DÉFAUT et se contentait d'un
+  carré centré, blanc au-dessus et au-dessous : d'où le
+  `preserveAspectRatio="none"` que l'extracteur lui pose.
 - **Le reflet**, c'est `frutiScreenLight` (**#395**) : un croissant blanc à
   50 % (plus un éclat plein) de 42,7 × 31,8, qui ne s'étire pas et se pose à
   2 px du bord droit et 2 px du haut. Il passe PAR-DESSUS la bouille —

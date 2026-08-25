@@ -712,7 +712,12 @@ function principal() {
     // dont le centre est DÉCALÉ en haut à gauche (34,45 ; 33,45). Voilà
     // pourquoi le cercle CSS que j'en avais tiré sonnait faux.
     // Le clip du fond a cinq images ; `bg.stop()` le laisse sur la PREMIÈRE.
-    { cle: 'ecran-fond', id: 139, cadrePropre: true },
+    // Le fond est ÉTIRÉ par le lecteur (`_width`/`_height`), qui ne conserve
+    // aucune proportion : sur la grande bande verticale du mode CLB il fait
+    // 100×200. Un SVG, lui, garde ses proportions par défaut et se serait
+    // contenté d'un carré centré, blanc au-dessus et au-dessous — d'où
+    // `preserveAspectRatio="none"`.
+    { cle: 'ecran-fond', id: 139, cadrePropre: true, etirable: true },
     { cle: 'ecran-reflet', id: 395, cadrePropre: true },
   ];
   for (const c of CLIPS) {
@@ -749,7 +754,8 @@ function principal() {
     // (un fond en border-image, une gélule) plutôt que superposée aux autres.
     const k = c.cadrePropre ? r.cadre : cadreEntier.cadre;
     const svg = r.svg.replace(/viewBox="[^"]*" width="[^"]*" height="[^"]*"/,
-      `viewBox="${arr(k.x)} ${arr(k.y)} ${arr(k.w)} ${arr(k.h)}" width="${arr(k.w)}" height="${arr(k.h)}"`);
+      `viewBox="${arr(k.x)} ${arr(k.y)} ${arr(k.w)} ${arr(k.h)}" width="${arr(k.w)}" height="${arr(k.h)}"`
+      + (c.etirable ? ' preserveAspectRatio="none"' : ''));
     fs.writeFileSync(path.join(SORTIE, c.cle + '.svg'), svg, 'utf8');
     manifeste[c.cle] = { fichier: c.cle + '.svg', cadre: k };
     console.log(c.cle + '.svg', JSON.stringify(k));
