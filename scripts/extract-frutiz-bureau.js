@@ -419,6 +419,9 @@ function principal() {
     { cle: 'frusion', id: 324 },
     { cle: 'frutimandala-fond', id: 640, profondeurs: (p) => p < 3 },
     { cle: 'frutimandala-dessus', id: 640, profondeurs: (p) => p > 3 },
+    // La boîte de recherche du panneau des contacts : `mcSearchButton` (#441),
+    // que `SideList.buildList` attache à `_y = 770`.
+    { cle: 'recherche', id: 441 },
   ];
   for (const c of CLIPS) {
     // On relit ses placements à l'octet plutôt que d'appeler aplatir() : le

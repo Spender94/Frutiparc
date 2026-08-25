@@ -246,6 +246,80 @@ window.BureauFrutiz = (function () {
     });
   }
 
+  // ── LE PANNEAU DES CONTACTS (SideList, DoInitAction #847 0xa05b7) ──────
+  // `toggle` (0xa0e2a) appelle `activate` ou `deActivate`, et toute la
+  // différence tient dans UNE borne : `main.cornerX` passe de `wSide` (9) à
+  // `wMain + wSide` (129). Le bureau entier suit — la barre, l'onglet, la
+  // rangée d'icônes et le bornage des fenêtres —, ce que la feuille de style
+  // reproduit avec `--cornerX`. Relevé 1:1 : la première icône passe du
+  // centre 53 au centre 173, soit exactement +120 = wMain.
+  //
+  // La liste elle-même vient de `buildList`/`buildElement` : une ligne fait
+  // **18 px**, chaque niveau de dossier décale de **5 px**, et un dossier
+  // REPLIÉ ajoute un cinquième de ligne (`currentLine += 0.2`). Les dossiers
+  // se replient au clic sur leur titre (`fond.onPress` bascule `element.open`
+  // puis rebâtit la liste).
+  var contactsCharges = false;
+
+  function basculerContacts() {
+    var ouvert = document.body.classList.toggle('contacts-ouverts');
+    CORNER_X = ouvert ? 129 : 9;
+    // `activate` termine par `main.onResize()` : les fenêtres sont rebornées.
+    for (var id in fenetres) bornerDansEcran(fenetres[id].fen);
+    if (ouvert && !contactsCharges) { contactsCharges = true; chargerContacts(); }
+  }
+
+  function ligneContact(c) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sl-contact ' + (c.enLigne ? 'en-ligne' : 'hors-ligne');
+    b.title = c.pseudo + (c.jeu ? ' — joue à ' + c.jeu : (c.enLigne ? ' — en ligne' : ' — hors ligne'));
+    b.innerHTML = '<span class="voyant"></span><span class="nom"></span>';
+    b.querySelector('.nom').textContent = c.pseudo;
+    b.addEventListener('click', function () { ouvrirFiche(c.pseudo); });
+    return b;
+  }
+
+  function chargerContacts() {
+    var liste = $('#side-list .sl-liste');
+    if (!liste) return;
+    var sid = (window.state && window.state.sid) || '';
+    fetch('/api/light/contacts?sid=' + encodeURIComponent(sid))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        liste.textContent = '';
+        if (!d || !d.ok) return;
+        // Carnet vide : la bande reste BLANCHE, sans un mot. C'est ce que fait
+        // le SWF — `buildList` ne parcourt rien et n'écrit rien.
+        (d.dossiers || []).forEach(function (f) {
+          var bloc = document.createElement('div');
+          bloc.className = 'sl-dossier';
+          var titre = document.createElement('button');
+          titre.type = 'button';
+          titre.className = 'sl-titre';
+          titre.innerHTML = '<span class="fleche">▾</span><span></span>';
+          titre.lastChild.textContent = f.nom;
+          var contenu = document.createElement('div');
+          contenu.className = 'sl-contenu';
+          (f.contacts || []).forEach(function (c) { contenu.appendChild(ligneContact(c)); });
+          titre.addEventListener('click', function () {
+            var replie = bloc.classList.toggle('replie');
+            titre.querySelector('.fleche').textContent = replie ? '▸' : '▾';
+          });
+          bloc.appendChild(titre);
+          bloc.appendChild(contenu);
+          liste.appendChild(bloc);
+        });
+        (d.contacts || []).forEach(function (c) { liste.appendChild(ligneContact(c)); });
+      })
+      .catch(function () {});
+  }
+
+  // Le clic sur un contact ouvre SA FICHE, comme le `userSlot` du bureau.
+  function ouvrirFiche(pseudo) {
+    if (window.ouvrirFicheJoueur) window.ouvrirFicheJoueur(pseudo);
+  }
+
   // ── Le GLISSER-DÉPOSER des icônes du bureau ────────────────────────────
   // `cpDragIconList` + `FPDesktop.onDrop` (0xb9ca9). Le comportement a été
   // relevé sur le rendu 1:1 (une icône prise, promenée, lâchée, puis un
@@ -590,11 +664,11 @@ window.BureauFrutiz = (function () {
     // LE PANNEAU DES CONTACTS (SideList) : la bande blanche de 9 px (wSide)
     // au liseré de 3 (wShade), son ombre de 2 px (le clip carreFond) posée à
     // cornerX, et la POIGNÉE — le DefineButton2 `sideListContact` extrait tel
-    // quel, collé en bas comme `butContact._y = 800`. Le dépliement de la
-    // liste (wMain 120, activate/toggle) viendra avec l'étape des contacts ;
-    // ici c'est le décor, au relevé près.
+    // quel, collé en bas comme `butContact._y = 800`.
     var bande = document.createElement('div');
     bande.id = 'side-list';
+    bande.innerHTML = '<div class="sl-liste"></div>'
+      + '<button type="button" class="sl-recherche" title="Chercher un joueur">recherche</button>';
     var ombre = document.createElement('div');
     ombre.id = 'side-list-ombre';
     var languette = document.createElement('button');
@@ -605,6 +679,13 @@ window.BureauFrutiz = (function () {
     haut.appendChild(bande);
     haut.appendChild(ombre);
     haut.appendChild(languette);
+    languette.addEventListener('click', basculerContacts);
+    bande.querySelector('.sl-recherche').addEventListener('click', function () {
+      // `butSearch.onPress` ouvre la fenêtre « search » (uniqWinMng.open).
+      // Le light n'a pas d'annuaire : le Bouilloscope en tient lieu.
+      var tuile = $('#bureau .home-tile[data-go="trombi"]');
+      if (tuile) tuile.click();
+    });
 
     // La main bar quitte le tiroir : c'est le meuble du bureau maintenant.
     // (La bannière quotidienne reste au tiroir : main.swf n'a pas de bandeau

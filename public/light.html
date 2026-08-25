@@ -2768,6 +2768,13 @@
     // Sur grand écran, le BUREAU façon Frutiz prend la main : fond d'écran,
     // icônes, rubriques en fenêtres. Il démarre AVANT le premier activateTab
     // pour que le salon s'ouvre déjà dans sa fenêtre. Mobile : rien ne change.
+    // Le bureau vit dans un AUTRE fichier, hors de cette fermeture : on lui
+    // ouvre les deux seules portes dont il a besoin — la session (pour ses
+    // appels d'API) et l'ouverture d'une fiche joueur (le `userSlot` du
+    // panneau des contacts). Sans cela, `window.state` restait indéfini et le
+    // compteur « en ligne » de la frusion ne s'actualisait jamais.
+    window.state = state;
+    window.ouvrirFicheJoueur = ouvrirFiche;
     if (isDesktop() && window.BureauFrutiz) BureauFrutiz.demarrer();
     activateTab("chat");
     if (!isDesktop()) openMenu(true);

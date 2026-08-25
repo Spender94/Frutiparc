@@ -19033,6 +19033,54 @@ app.get('/api/light/online', (req, res) => {
   res.json({ ok: true, count: liste.length, users: liste });
 });
 
+// ─────────────────────────────────────────────
+// ENDPOINT: /api/light/contacts — le carnet de contacts, pour le bureau light.
+//
+// Les données existent déjà : le bureau Flash les lit en XML (`<f u="mycontact">`
+// plus haut), avec ses dossiers. On en sert ici la MÊME lecture en JSON, sans
+// rien réordonner : `SideList.buildList` parcourt la liste dans l'ordre reçu,
+// donc l'ordre d'insertion est celui que le joueur voit d'époque.
+// ─────────────────────────────────────────────
+app.get('/api/light/contacts', (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
+  const user = users[username];
+  ensureContactLists(user);
+
+  // Qui est connecté, à la minuscule près — même source que /api/light/online.
+  const enLigne = new Map();
+  for (const [, cl] of xmlSocketClients) {
+    if (!cl || !cl.username || !cl.logged) continue;
+    enLigne.set(String(cl.username).toLowerCase(), cl.username);
+  }
+
+  const fiche = (addr) => {
+    const local = String(addr).split('@')[0];
+    const nom = enLigne.get(local.toLowerCase());
+    const o = { pseudo: getDisplayName(local), addr: String(addr), enLigne: !!nom };
+    if (nom) {
+      const jeu = STATUS_INTERNAL_JEU[statusInternalOf(nom)];
+      if (jeu) o.jeu = jeu;
+    }
+    return o;
+  };
+
+  const parDossier = {};
+  for (const addr of user.contacts) {
+    const f = getContactFolder(user, addr);
+    if (!parDossier[f]) parDossier[f] = [];
+    parDossier[f].push(addr);
+  }
+  const dossiers = (user.contactFolders || []).map((f) => ({
+    uid: f.uid,
+    nom: f.name,
+    contacts: (parDossier[f.uid] || []).map(fiche),
+  }));
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, dossiers, contacts: (parDossier.mycontact || []).map(fiche) });
+});
+
 // « Je joue / j'ai fini » — la balise des jeux NATIFS (mobile et portages).
 // Les jeux en SWF passent par le lancement Frusion ou FrutiScore, qui posent
 // déjà le voyant ; les natifs n'avaient aucun chemin. Le client l'appelle au

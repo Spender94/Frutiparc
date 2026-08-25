@@ -476,6 +476,38 @@ dp_scrollBar 40, dp_element 100.
   des marges transparentes inégales — l'inventaire n'en remplit que 82 %, le
   forum 70 % en largeur — et doivent donc être contraints sur leur ENCRE.
 
+## Le panneau des contacts, déplié
+
+- **Tout tient dans UNE borne.** `SideList.toggle` (0xa0e2a) appelle
+  `activate`, qui pose `main.cornerX = wMain + wSide` (**129**), ou
+  `deActivate`, qui le remet à `wSide` (**9**) ; chacun finit par
+  `main.onResize()` puis `update()`. Le bureau entier suit cette borne — la
+  barre, l'onglet, la rangée d'icônes, le bornage des fenêtres. Relevé 1:1 :
+  la première icône passe du centre 53 au centre **173**, l'onglet et la barre
+  de −9/−2 à 111/118 : partout **+120**, soit `wMain`.
+- **Le décor** (`update` 0xa0b45) : un `drawSquare` blanc de largeur
+  `wSide (+ wMain si ouvert)` sur toute la hauteur, puis un `drawSquare`
+  `#DDDDDD` de `wShade` (3) collé au bord DROIT, et la poignée posée à
+  `wSide + flActive·wMain`. Relevé ouvert : blanc 0..125, `#DDDDDD` 126..128,
+  `#444444` 129..130 — fermé : blanc 0..5, `#DDDDDD` 6..8, `#444444` 9..10.
+- **La liste** (`buildList` 0xa1038) est masquée à `wMain × (mch − hSearch)` :
+  elle s'arrête 24 px avant le bas, où se pose `butSearch` — `mcSearchButton`
+  (#441), à `_y = 770`, une constante en dur comme le `_y = 800` de la
+  poignée. L'art est extrait tel quel (la pastille grise et sa loupe, cadre
+  (9,95 ; 0,65)–(105,85 ; 22,67)) ; seul le mot « recherche » est un champ
+  texte. Le bouton ouvre la fenêtre `search`.
+- **Une ligne fait 18 px** et chaque niveau de dossier décale de **5 px**
+  (`buildElement` 0xa1243). Un dossier se replie au clic sur son titre
+  (`fond.onPress` bascule `element.open` puis rebâtit la liste), et REPLIÉ il
+  ajoute un cinquième de ligne — `currentLine += 0.2`, soit 3,6 px de
+  respiration. Un contact est un `userSlot` en `statusDspMode: 'all'`.
+- **Carnet vide : rien ne s'écrit.** `buildList` ne parcourt rien et la bande
+  reste blanche — pas de message d'absence.
+- Côté light, les données existaient déjà : le bureau Flash lit ses contacts
+  en XML (`<f u="mycontact">`, dossiers compris). `/api/light/contacts` en
+  sert la même lecture en JSON, sans rien réordonner — l'ordre d'insertion est
+  celui que le joueur voit d'époque.
+
 ## Reste à faire (étapes suivantes)
 
 1. La barre-titre des types de fenêtres (winChat #5, winPanel #7,
@@ -492,6 +524,8 @@ dp_scrollBar 40, dp_element 100.
 3. ~~Les icônes du bureau, leur pose et leur glisser-déposer~~ FAIT.
 4. Le mode « tab » des fenêtres (les onglets qui suivent « Bureau »), le
    menu déroulant de l'onglet, les préférences (`win_flMoveAnim`).
-5. Le DÉPLIEMENT du panneau des contacts (toggle/activate : la bande passe
-   de 9 à 129, `attachList`, la barre de recherche `butSearch`, le
-   défilement) — le décor est fait, la liste reste à porter.
+5. ~~Le dépliement du panneau des contacts~~ FAIT (bande 9 → 129, tout le
+   bureau décalé de +120, liste à 18 px la ligne, dossiers repliables,
+   `butSearch` extrait). Reste, quand le light saura les gérer : AJOUTER ou
+   retirer un contact, et le glisser-déposer d'un contact d'un dossier à
+   l'autre (`SideList.onDrop` 0xa15a3).

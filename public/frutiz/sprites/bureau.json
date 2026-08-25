@@ -149,6 +149,15 @@
    "h": 80
   }
  },
+ "recherche": {
+  "fichier": "recherche.svg",
+  "cadre": {
+   "x": 9.95,
+   "y": 0.65,
+   "w": 95.9,
+   "h": 22.02
+  }
+ },
  "frutimandalaRoue": {
   "fichier": "frutimandala-roue.svg",
   "cadre": {

@@ -83,8 +83,8 @@ body.bureau-frutiz #app > .panel { display: none !important; }
 body.bureau-frutiz #bureau-coin {
   /* décalée de −2 : le liseré et le contour des bords haut/gauche sortent de
      l'écran, comme la boîte du SWF décalée de −10 — à l'écran, blanc pur. */
-  position: absolute; left: -2px; top: -2px; z-index: 2;
-  width: calc(100vw - 140px); min-width: 600px; height: 78px;
+  position: absolute; left: calc(var(--cornerX) - 11px); top: -2px; z-index: 2;
+  width: calc(100vw - 131px - var(--cornerX)); min-width: 600px; height: 78px;
   box-sizing: border-box; overflow: hidden;
   background: #fff;
   border-radius: 0 0 12px 0;
@@ -264,7 +264,7 @@ body.bureau-frutiz #onglet-bureau {
   /* le bureau pose ses onglets à cornerX = 8 (mesuré 1:1 : liseré gauche de
      la plaque à x 6..8, pastille 13..22, bord droit 110..114) — l'élément se
      place donc à 8 − 17.5 = −9.5. */
-  position: absolute; left: -9.5px; top: 58px; width: 123px; height: 41.5px;
+  position: absolute; left: calc(var(--cornerX) - 18.5px); top: 58px; width: 123px; height: 41.5px;
   z-index: 1;
   background:
     url('/frutiz/sprites/onglet_corps.svg') left top / 123px 41.5px no-repeat,
@@ -360,14 +360,80 @@ body.bureau-frutiz #pill-enligne .point {
 /* Profondeurs relevées : la BANDE passe PAR-DESSUS la barre (à y=40, son
    liseré #DDDDDD se lit encore à 6..9), mais son OMBRE passe DESSOUS (le
    #444444 y disparaît) — l'ombre est attachée à `main`, la bande non. */
+/* DÉPLIER la bande (`toggle` 0xa0e2a) : `activate` pose
+   `main.cornerX = wMain + wSide` (129) et `deActivate` le remet à `wSide` (9).
+   Tout le bureau suit cette borne — la barre, l'onglet, la rangée d'icônes et
+   le bornage des fenêtres — ce que reproduit la variable `--cornerX`. Relevé
+   1:1 : ouverte, blanc 0..125, `#DDDDDD` 126..128, `#444444` 129..130, et la
+   première icône passe du centre 53 au centre 173, soit +120 = wMain. */
+/* La borne est posée sur le BODY : `#bureau-coin`, l'onglet et la poignée
+   vivent dans `#bureau-haut`, qui est un FRÈRE de `#bureau` — une variable
+   posée sur le bureau ne les atteindrait pas. */
+body.bureau-frutiz { --cornerX: 9px; }
+body.bureau-frutiz.contacts-ouverts { --cornerX: 129px; }
 body.bureau-frutiz #side-list {
-  position: absolute; left: 0; top: 0; bottom: 0; width: 9px; z-index: 3;
-  background: linear-gradient(to right, #FFFFFF 0 6px, #DDDDDD 6px 9px);
+  position: absolute; left: 0; top: 0; bottom: 0; z-index: 3;
+  width: var(--cornerX);
+  background: linear-gradient(to right,
+    #FFFFFF 0 calc(var(--cornerX) - 3px), #DDDDDD calc(var(--cornerX) - 3px) var(--cornerX));
 }
 body.bureau-frutiz #side-list-ombre {
-  position: absolute; left: 9px; top: 0; bottom: 0; width: 2px; z-index: 1;
+  position: absolute; left: var(--cornerX); top: 0; bottom: 0; width: 2px; z-index: 1;
   background: #444444;
 }
+/* Le contenu du panneau. `buildList` (0xa1038) masque la liste à
+   `wMain × (mch − hSearch)` : elle s'arrête donc 24 px avant le bas, où se
+   pose `butSearch` (`_y = 770`, une constante en dur comme le `_y = 800` de
+   la poignée). Chaque ligne fait **18 px** et chaque niveau de dossier décale
+   de **5 px** (`buildElement` 0xa1243) ; un dossier REPLIÉ ajoute un cinquième
+   de ligne (`currentLine += 0.2`), soit 3,6 px de respiration. */
+body.bureau-frutiz #side-list .sl-liste {
+  position: absolute; left: 0; top: 0; width: 120px; bottom: 24px;
+  overflow-x: hidden; overflow-y: auto; display: none;
+}
+body.bureau-frutiz.contacts-ouverts #side-list .sl-liste { display: block; }
+body.bureau-frutiz #side-list .sl-dossier > .sl-titre {
+  display: flex; align-items: center; gap: 3px;
+  height: 18px; padding: 0; border: 0; background: none; width: 100%;
+  font: 700 10px Verdana, Arial, sans-serif; color: #444444;
+  cursor: pointer; text-align: left;
+}
+body.bureau-frutiz #side-list .sl-titre .fleche { flex: 0 0 9px; color: #888888; }
+body.bureau-frutiz #side-list .sl-dossier.replie { margin-bottom: 3.6px; }
+body.bureau-frutiz #side-list .sl-dossier.replie > .sl-contenu { display: none; }
+body.bureau-frutiz #side-list .sl-contenu { margin-left: 5px; }
+body.bureau-frutiz #side-list .sl-contact {
+  display: flex; align-items: center; gap: 4px;
+  height: 18px; width: 100%; padding: 0 2px; border: 0; background: none;
+  font: normal 10px Verdana, Arial, sans-serif; color: #444444;
+  cursor: pointer; text-align: left;
+}
+body.bureau-frutiz #side-list .sl-contact:hover { background: #EEEEEE; }
+body.bureau-frutiz #side-list .sl-contact .voyant {
+  flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%;
+  background: #CCCCCC; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18);
+}
+body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant { background: #2ECC40; }
+body.bureau-frutiz #side-list .sl-contact .nom {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+body.bureau-frutiz #side-list .sl-contact.hors-ligne .nom { color: #999999; }
+body.bureau-frutiz #side-list .sl-vide {
+  padding: 6px 6px 0; font: normal 10px Verdana, Arial, sans-serif; color: #999999;
+}
+/* La boîte de RECHERCHE : `mcSearchButton` (#441), que `buildList` attache à
+   `_y = 770`. L'art est EXTRAIT du SWF — la pastille grise et sa loupe, dans
+   leur cadre (9,95 ; 0,65)–(105,85 ; 22,67) — ce qui pose l'ensemble
+   exactement où le rendu 1:1 le montre (x 10..105, encre y 771..785). Seul le
+   mot « recherche » est du texte : c'est un champ, pas un dessin. */
+body.bureau-frutiz #side-list .sl-recherche {
+  position: absolute; left: 9.95px; top: 770.65px; width: 95.9px; height: 22.02px;
+  display: none; align-items: flex-start; padding: 2px 0 0 24px;
+  border: 0; background: url('/frutiz/sprites/recherche.svg') left top / 95.9px 22.02px no-repeat;
+  font: 700 10px Verdana, Arial, sans-serif; color: #FFFFFF;
+  cursor: pointer; text-align: left;
+}
+body.bureau-frutiz.contacts-ouverts #side-list .sl-recherche { display: flex; }
 /* La poignée : `sideListContact` (#436) est un DefineButton2 — l'art est
    extrait tel quel (plaque, liseré, lettres PIVOTÉES d'un quart de tour),
    états compris : au repos les lettres sont `#666666`, au survol elles
@@ -376,7 +442,7 @@ body.bureau-frutiz #side-list-ombre {
    de scène d'époque : la poignée est donc collée EN BAS. Son cadre va de
    (−7.75, −84.15) à (12, 0) : à l'écran, x 1.25..21, 84.15 de haut. */
 body.bureau-frutiz #languette-contacts {
-  position: absolute; left: 1.25px; bottom: 0; z-index: 1;
+  position: absolute; left: calc(var(--cornerX) - 7.75px); bottom: 0; z-index: 4;
   width: 19.75px; height: 84.15px; padding: 0; border: 0;
   background: url('/frutiz/sprites/butContact_up.svg') center / 19.75px 84.15px no-repeat;
   cursor: pointer; color: transparent; font-size: 0;
@@ -421,7 +487,7 @@ body.bureau-frutiz #bureau .home-compte {
    avec 13 px d'interligne (« Boîte de réception » et « Mon historique »
    passent à deux lignes : le champ fait 64, pas 76). */
 body.bureau-frutiz #bureau #home-grid {
-  position: absolute; top: 106px; left: 15px; right: 16px; z-index: 2;
+  position: absolute; top: 106px; left: calc(var(--cornerX) + 6px); right: 16px; z-index: 2;
   display: flex; flex-flow: row wrap; align-content: flex-start;
   align-items: flex-start; justify-content: flex-start; gap: 12px 0;
   margin: 0; padding: 0;
