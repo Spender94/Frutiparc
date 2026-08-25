@@ -187,38 +187,57 @@ bureau sous la barre et sa rangée d'onglets : recal borne les fenêtres LÀ.
   jauge — au-dessus de la liste des **7 butPushEmoteIcon**, struct 19 px,
   initEmoteIconList 0x6b6a4), `tile` (type w, min 100 — la zone EXTENSIBLE,
   blanche), et **cpWheelMng** (la frutimandala, au bout droit).
-- **L'intérieur au gabarit** (relevé 1:1) : la barre fait 76 de haut, marge
-  6 — il reste **64 px de contenu** et tout y tient. Bouille **64×64** à
-  x 15..79 (= cornerX 9 + margin 6), y 6..70 ; encart `digital` x 85..228
-  (cpDigital, min 130×45, étiré par le frame de type `w`), y 6..51 ; la
-  rangée des 7 smileys dessous, **pas de 21 px** (mesuré 88, 109, 130, 151,
-  172, 193, 214 — soit struct 19 + margin 2, exactement l'initFrameSet).
-  Cadre de la bouille : `#DDDDDD` en 13..15 puis `#888888` en 15.
-- **Le détail de l'encart**, relevé point par point :
+- **L'intérieur au gabarit** (relevé 1:1, boîtes utiles — les liserés
+  `#DDDDDD` sont EN PLUS, 2 px tout autour) : la barre fait 76 de haut,
+  marge 6 — il reste **64 px de contenu** et tout y tient.
+  • **Bouille 64×64 à x 15..78, y 6..69.** Le carré du `#888888` mesure
+    EXACTEMENT 64 : l'anneau sombre est donc tracé À L'INTÉRIEUR de la
+    FrutiScreen, pas autour — c'est le clip qui borde son propre contenu. Le
+    `#DDDDDD` occupe les 2 px suivants (x 13-14 / 79-80, y 4-5 / 70-71).
+  • **Encart `digital` x 84..229, y 7..47** — soit **146 × 41**. Les
+    « 130×45 » du bytecode comptent les DEUX liserés : 45 = 41 + 2 + 2. Entre
+    la bouille et l'encart, 5 px : 2 de `#DDDDDD`, 1 de blanc, 2 de `#DDDDDD`.
+    L'encart démarre UN pixel plus bas que la bouille.
+  • **Rangée des 7 émotions x 84..230, y 51..71** — 7 × 21, collée 3 px sous
+    l'encart (liserés y 48-49, blanc y 50). Elle déborde d'un pixel à droite,
+    comme d'époque.
+- **Le détail de l'encart** (positions données par rapport au bord intérieur
+  x 84, y 7) :
   • ARRONDI 2 px seulement (le fond atteint son bord dès 1 à 2 px du haut) ;
-  • les 9 barres laissent UN pixel de fond après le liseré (liseré 84, fond
-    85, barre 86..113) ;
-  • « NIV n » fait **8 px d'encre** (x 87..108) et son CHIFFRE n'est pas un
-    afficheur à segments mais un glyphe plein — la Verdana pixel embarquée
-    (`verdana_10pt_st`, police #602), déjà extraite pour les jeux ;
-  • les RACCOURCIS tiennent haut (bloc y 26..47) et dans CET ordre :
-    l'aide, le forum, le courrier, l'historique, les événements, les jeux ;
-  • la COUPE, le rang et le trait de séparation commencent à x 110 (contre
-    123 au tiroir) : la colonne de droite est plus près des barres ;
+  • les 9 BARRES : x 86..112 (27 de large), y 9..34 — 2 px de barre, 1 px de
+    fond, et UN pixel de fond après le liseré (liseré 84, fond 85, barre 86).
+    Remplissage du BAS vers le HAUT, et de gauche à droite dans une barre ;
+  • « NIV n » : encre x 86..109, **y 36..44** — collée au biseau du bas ;
+    son CHIFFRE n'est pas un afficheur à segments mais un glyphe plein — la
+    Verdana pixel embarquée (`verdana_10pt_st`, police #602) ;
+  • la COUPE : encre **x 116..127, y 11..26** ; le RANG juste après, à
+    x 131, sur **15 px de haut pour des jambages de 2** — c'est la même
+    Verdana pixel, mais au DOUBLE de la taille du « NIV n » ;
+  • le TRAIT de séparation : **y 28, x 117..224** ;
+  • les RACCOURCIS sont CALÉS À DROITE sous le bout du trait : six icônes de
+    13 px au pas de 15, soit x 135..224, y 31..43 — et dans CET ordre :
+    l'aide, le forum, le courrier, l'historique, les événements, les jeux
+    (les deux voyants allumés du compte de référence tombent alors en
+    x 165..192, ce qui confirme le calage) ;
   • l'encart porte, comme le cadre de la bouille, un LISERÉ INTERNE plus
     sombre qui fait son relief — `#97AD80` au bord gauche (x 84), `#A2AF94`
-    en haut (y 7), juste à l'intérieur des 2 px de `#DDDDDD` ;
+    en haut (y 7) ; en bas c'est un BISEAU de 3 px qui s'assombrit
+    (`#B4DB8B`, `#A0C27B`, `#839471` en y 45-46-47) ;
   • le REFLET est une tache douce au coin haut-droit, centrée vers (222, 11)
     sur ~15×8 — l'image est bien celle du SWF (forme #409, blanc à 50 %),
     mais le rendu Flash y monte jusqu'au blanc PUR : il y a probablement
     deux couches superposées à l'origine, à revoir à l'extraction.
 - **Les ÉMOTIONS** (`initEmoteIconList` 0x6b6a4) : le gris autour d'une
-  émotion n'est PAS une plaque carrée — la carte de gris relevée sur le rendu
-  (x 82..111, y 49..74) dessine un **halo CIRCULAIRE** qui épouse le disque
-  et s'éteint vers le blanc en 3 à 4 px ; au-dessus et au-dessous des disques
-  le fond reste BLANC. C'est une lueur portée par la forme ronde de l'icône
-  (profil mesuré à mi-hauteur : blanc, puis deux pixels à ~221, puis le bord
-  du disque à 87). L'art est la bande #102, sept
+  émotion n'est ni une plaque carrée ni un flou — c'est une **PASTILLE RONDE
+  de 21 px en `#DDDDDD`** derrière le disque de 17, ce qui laisse 2 px de
+  gris tout autour ; au-dessus et au-dessous des disques le fond redevient
+  BLANC, et les cercles voisins SE TOUCHENT (4 px de gris entre deux disques,
+  2 de chaque anneau). Relevé y 51..71, disque x 86..102, anneau x 84..104.
+  Le « diffus » qu'on croit voir n'est que l'anticrénelage du cercle — et il
+  faut noter que Flash remplit ses formes jusqu'au dernier pixel là où le
+  navigateur applique la couverture réelle du pixel tangent : sans un demi-
+  pixel d'expansion, l'anneau CSS paraît deux fois trop fin.
+  L'art est la bande #102, sept
   images en BITMAP 17×17 (#88, #90, #92, #94, #96, #98, #100) dans CET
   ordre : le neutre, la colère, la tristesse, le sourire, le rire à pleines
   dents, le rictus, le rire aux éclats — `setEmote(0..6)`. Le tiroir mobile

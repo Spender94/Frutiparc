@@ -87,20 +87,37 @@ body.bureau-frutiz #bureau-coin {
        PAS de 21 px exactement — mesuré 88, 109, 130, 151, 172, 193, 214) ;
      • `tile` : la zone extensible, blanche, qui remplit le reste. */
 body.bureau-frutiz #bureau-coin .mainbar {
-  margin: 8px 8px 8px 18px; padding: 0;
+  /* marge gauche 17 : l'anneau de la bouille commence à x 15 dans le rendu
+     1:1, et `#bureau-coin` est posé à −2. */
+  margin: 8px 8px 8px 17px; padding: 0;
   border-radius: 0; border: 0; box-shadow: none; background: none;
   width: max-content; max-width: calc(100% - 25px);
 }
 body.bureau-frutiz #bureau-coin .mb-top { gap: 5px; align-items: flex-start; }
 body.bureau-frutiz #bureau-coin .mb-avatar { flex: 0 0 64px; height: 64px; }
-/* Le cadre de la bouille reprend les teintes du bureau (mesuré : #DDDDDD en
-   13..15, #888888 en 15) au lieu des #D9D9D9/#8A888D du tiroir mobile. */
+/* Le cadre de la bouille reprend les teintes du bureau (#888888 puis #DDDDDD)
+   au lieu des #D9D9D9/#8A888D du tiroir mobile. L'anneau sombre est tracé
+   À L'INTÉRIEUR du carré : relevé sur le rendu 1:1, la boîte du #888888 fait
+   exactement 64×64 (x 15..78, y 6..69), soit la taille de la FrutiScreen —
+   c'est bien le clip qui borde son propre contenu, comme en Flash. */
 body.bureau-frutiz #bureau-coin .mb-avatar .frame {
-  inset: 0; border-radius: 7px;
-  box-shadow: 0 0 0 1px #888888, 0 0 0 3px #DDDDDD;
+  inset: 0; border-radius: 7px; box-shadow: 0 0 0 2px #DDDDDD;
+}
+/* L'anneau sombre est tracé PAR-DESSUS la bouille : `stage`, `cadre` et
+   `reflet` sont des ENFANTS du cadre, et une ombre interne passerait dessous.
+   Un calque dédié, transparent au clic, le remet au premier plan. */
+body.bureau-frutiz #bureau-coin .mb-avatar .frame::after {
+  content: ""; position: absolute; inset: 0; border-radius: 7px;
+  box-shadow: inset 0 0 0 1px #888888; z-index: 6; pointer-events: none;
 }
 body.bureau-frutiz #bureau-coin #home-avatar-fiche { inset: 0; border-radius: 7px; }
-body.bureau-frutiz #bureau-coin .mb-right { gap: 0; height: 66px; width: 145px; }
+/* La colonne de droite démarre UN pixel plus bas que la bouille (liseré de la
+   bouille en y 4, liseré de l'encart en y 5) et laisse 3 px entre l'encart et
+   la rangée des émotions (encart jusqu'à y 47, liserés y 48-49, blanc y 50,
+   émotions à partir de y 51). */
+body.bureau-frutiz #bureau-coin .mb-right {
+  gap: 3px; height: 65px; width: 146px; margin-top: 1px;
+}
 /* L'encart `digital` d'époque tient en 45 px de haut, là où le tiroir mobile
    en prend 72 : ses quatre zones (les 9 barres de progression en haut-gauche,
    la coupe et le rang en haut-droite, « NIV n » en bas-gauche, les raccourcis
@@ -110,8 +127,11 @@ body.bureau-frutiz #bureau-coin .mb-right { gap: 0; height: 66px; width: 145px; 
    la bouille, un LISERÉ INTERNE plus sombre qui lui donne son relief :
    mesuré `#97AD80` sur le bord gauche (x 84) et `#A2AF94` en haut (y 7),
    juste à l'intérieur des 2 px de `#DDDDDD`. */
+/* Les 45 px du bytecode comptent les DEUX liserés : le rendu 1:1 donne le
+   #DDDDDD en y 5-6 et y 48-49, donc une boîte utile de 41 px (y 7..47) et
+   146 px de large (x 84..229). */
 body.bureau-frutiz #bureau-coin .mb-encart {
-  flex: 0 0 45px; border-radius: 2px;
+  flex: 0 0 41px; border-radius: 2px;
   box-shadow: inset 0 0 0 1px #97AD80, 0 0 0 2px #DDDDDD;
 }
 /* Les 9 barres de progression, au relevé 1:1 (colonne x=90 du rendu) : des
@@ -125,23 +145,32 @@ body.bureau-frutiz #bureau-coin .enc-progress {
   /* le bord d'époque laisse UN pixel de fond avant la première barre
      (liseré 84, fond 85, barre 86) — collées au liseré, elles paraissaient
      sans marge. */
-  left: 2px; top: 3px; width: 27px; height: 26px;
+  left: 2px; top: 2px; width: 27px; height: 26px;
 }
 body.bureau-frutiz #bureau-coin .enc-progress i { height: 2px; background: #A2EB56; }
 body.bureau-frutiz #bureau-coin .enc-progress i::before { background: #73B01E; }
 /* La coupe et le rang commencent à x 110 dans le rendu d'époque (contre 123
    au tiroir) : l'espace entre les barres de progression et la colonne de
    droite est plus serré. Le trait de séparation part du même bord. */
-body.bureau-frutiz #bureau-coin .enc-trophy { left: 25px; top: 3px; height: 17px; gap: 2px; }
-body.bureau-frutiz #bureau-coin .enc-divider { left: 25px; }
+body.bureau-frutiz #bureau-coin .enc-trophy { left: 33px; top: 3px; height: 17px; gap: 2px; }
+body.bureau-frutiz #bureau-coin .enc-divider { left: 34px; right: 4px; top: 21px; }
 body.bureau-frutiz #bureau-coin .enc-trophy .tro { height: 16px; }
-body.bureau-frutiz #bureau-coin .enc-trophy .val { font-size: 15px; }
+/* Le RANG est écrit dans la même Verdana pixel que « NIV n », mais au DOUBLE
+   de la taille : le « 7 » du rendu 1:1 fait 15 px de haut pour des jambages de
+   2 px, exactement le verdana_10pt_st grossi deux fois. */
+body.bureau-frutiz #bureau-coin .enc-trophy .val {
+  font-family: 'VerdanaSwf', Verdana, sans-serif; font-size: 21px;
+  font-weight: normal; color: #73B01E; text-shadow: none;
+}
 /* « NIV n » : le bloc d'époque va de x 87 à 108 et fait 8 px d'encre (contre
    6 au tiroir) — le sigle est donc plus grand. Et le CHIFFRE n'est pas un
    afficheur à segments : c'est un glyphe plein de la Verdana pixel embarquée
    dans les SWF (verdana_10pt_st), celle-là même que les portages de jeux
    utilisent déjà. */
-body.bureau-frutiz #bureau-coin .enc-niv { left: 2px; bottom: 2px; gap: 3px; }
+/* Le sigle « NIV » est un SVG qui porte 4 px de marge interne en bas : pour que
+   son encre finisse en y 44 comme d'époque, la boîte descend d'un pixel sous le
+   biseau — l'encart est en `overflow:hidden`, rien ne dépasse. */
+body.bureau-frutiz #bureau-coin .enc-niv { left: 2px; bottom: -1px; gap: 3px; }
 body.bureau-frutiz #bureau-coin .enc-niv .niv-img { height: 17px; }
 body.bureau-frutiz #bureau-coin .enc-niv .lvl {
   font-family: 'VerdanaSwf', Verdana, sans-serif; font-size: 11px;
@@ -150,7 +179,11 @@ body.bureau-frutiz #bureau-coin .enc-niv .lvl {
 /* Les raccourcis d'époque tiennent plus HAUT (bloc y 26..47 contre 26..50) et
    dans l'ORDRE : l'aide, le forum, le courrier, l'historique, les événements,
    les jeux — l'ordre du tiroir mobile est autre. */
-body.bureau-frutiz #bureau-coin .mb-shortcuts { bottom: 6px; }
+/* La rangée de raccourcis est CALÉE À DROITE, sous le bout du trait de
+   séparation : les six icônes de 13 px au pas de 15 occupent alors x 135..224,
+   ce qui place bien le courrier et l'historique — les deux voyants allumés du
+   compte de référence — en x 165..192 comme sur le rendu 1:1. */
+body.bureau-frutiz #bureau-coin .mb-shortcuts { left: auto; right: 5px; bottom: 4px; }
 body.bureau-frutiz #bureau-coin .sc-btn img { width: 13px; height: 13px; }
 body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Aide"] { order: 0; }
 body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Forum"] { order: 1; }
@@ -166,18 +199,25 @@ body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Jeux"] { order: 5; }
    probablement deux couches superposées à l'origine. */
 body.bureau-frutiz #bureau-coin .reflet-niv { right: 0; top: 1px; height: 16px; }
 body.bureau-frutiz #bureau-coin .mb-emotes { flex: 0 0 21px; justify-content: flex-start; }
-/* Le gris autour d'une émotion est un HALO CIRCULAIRE, pas une plaque : la
-   carte de gris relevée sur le rendu (x 82..111, y 49..74) dessine un anneau
-   qui épouse le disque et s'éteint vers le blanc en 3 à 4 px — au-dessus et
-   au-dessous des disques, le fond reste BLANC. C'est une lueur portée par la
-   forme ronde de l'icône, que `drop-shadow` reproduit exactement puisqu'il
-   suit son canal alpha. */
+/* Le gris autour d'une émotion est un ANNEAU ROND, pas une plaque carrée :
+   la carte relevée sur le rendu 1:1 (y 51..71) dessine, pour chacun des sept
+   boutons, un cercle de 21 px en #DDDDDD dont le disque de 17 px occupe le
+   centre — il reste donc 2 px de gris tout autour, et le fond redevient BLANC
+   au-dessus et au-dessous. Les cercles voisins se touchent (4 px de #DDDDDD
+   entre deux disques : 2 de chaque anneau). Le « diffus » que l'on croit voir
+   n'est que l'anti-crénelage du cercle. Un fond rond de 21 px derrière
+   l'icône le reproduit exactement. */
 body.bureau-frutiz #bureau-coin .mb-emotes { gap: 0; }
+/* Le cercle d'époque couvre PLEINEMENT ses 21 colonnes (x 84..104 en #DDDDDD
+   franc, x 83 resté blanc) : Flash ne dégrade pas le pixel tangent, là où le
+   navigateur lui applique sa couverture réelle — un quart de teinte — et
+   l'anneau paraît deux fois trop fin. Un demi-pixel d'ombre portée, qui suit
+   le même arrondi, rend le bord franc et soude les cercles voisins (4 px de
+   gris entre deux disques, comme sur le rendu 1:1). */
 body.bureau-frutiz #bureau-coin .em-btn {
-  flex: 0 0 21px; padding: 0; background: transparent;
-}
-body.bureau-frutiz #bureau-coin .em-btn img {
-  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, .3));
+  flex: 0 0 21px; width: 21px; height: 21px; padding: 0;
+  background: #DDDDDD; border-radius: 50%;
+  box-shadow: 0 0 0 .5px #DDDDDD;
 }
 body.bureau-frutiz #bureau-coin .em-btn img { width: 17px; max-width: 17px; height: 17px; }
 /* L'ORDRE d'époque (bande #102, images 1 à 7 = setEmote 0 à 6) : le neutre,
