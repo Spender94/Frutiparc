@@ -6155,9 +6155,10 @@
     }
     var nm = el("span"); nm.textContent = pseudo;
     contenu.appendChild(nm);
-    if (staff) { var s = el("span", "badge"); s.textContent = "staff"; contenu.appendChild(s); }
+    if (staff) { var s = el("span", "badge staff"); s.textContent = "staff"; contenu.appendChild(s); }
     if (pseudo.toLowerCase() === state.userLower) {
-      var b = el("span", "badge"); b.textContent = "toi"; contenu.appendChild(b);
+      // La pastille « toi » n'existe pas d'époque : le bureau la masque.
+      var b = el("span", "badge moi"); b.textContent = "toi"; contenu.appendChild(b);
     }
     // Appuyer sur un pseudo ouvre sa FICHE, comme au bureau — et la fiche
     // porte le bouton « discuter en privé ». La sienne se regarde aussi.

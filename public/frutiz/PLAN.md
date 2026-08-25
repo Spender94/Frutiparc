@@ -1065,14 +1065,52 @@ de droite, deux de blanc au milieu. (En CSS il faut le porter par les MARGES
 des panneaux et non par un `column-gap` : une colonne fermée ne doit rien
 coûter.)
 
-### La zone des bouilles : une PILE d'écrans
+### La zone des bouilles a DEUX VISAGES
 
-`cp.ScreenList` n'a pas de fond à elle : elle empile des `cp.FrutiScreen`,
-**le même objet que la bouille de la main bar** — un par personne du salon,
-**100×100**, alignés en haut de la marge gauche. Elle ne remplit pas la
-colonne, elle s'empile. D'où le cadre, qu'on n'a plus à mesurer puisqu'on le
-CALCULE : liseré extérieur 2 px `white.shade` `#DDDDDD`, anneau intérieur
-1 px `white.darker` `#888888`, rayon 6.
+`cp.ScreenList` (0xb6088) n'a pas de fond à elle, et surtout elle change de
+nature selon la place et le monde :
+
+    size = width                                   // un écran est CARRÉ
+    max  = Math.floor(height / (size + ecart))     // ecart = 2 (prototype)
+    win.box.userList.wantList(max, 'setUserList', this)
+
+    setUserList(list, userTotal):
+      si max >= userTotal  →  removeCLBScreen(), attachMultiScreen(), update…
+      sinon                →  removeMultiScreen(), attachCLBScreen(), update…
+
+- **MULTI**, quand tout le monde tient : un `cp.FrutiScreen` par personne —
+  **le même objet que la bouille de la main bar** — empilé au pas de
+  `size + 2` (`screen<i>._y = i × (size + ecart)`, d'où les liserés qui se
+  touchent), chacun cliquable vers sa fiche (`openFrutizInfo`) et coiffé
+  d'une infobulle.
+- **CLB**, quand il y a plus de monde que d'écrans : un SEUL `frutiScreen`,
+  monté avec `flCLB: true`, qui prend TOUTE la zone (`extWidth = width`,
+  `extHeight = height`) — la grande bande verticale — et que
+  `box.addUserActionListener(…, 'onCLBEvent')` branche sur les actions du
+  salon.
+
+**Et le mode CLB n'est pas « une bouille qui remplace l'autre » : c'est un
+AQUARIUM.** `cp.FrutiScreen.onCLBEvent` (0x62361) :
+
+- la bouille de qui s'exprime est attachée à l'échelle `minSide =
+  min(width, height)` — elle reste donc CARRÉE, jamais déformée — et posée
+  hors champ à gauche (`_x = −width`) ;
+- on lui cherche une hauteur AU HASARD dans `[0, height − minSide[`, en
+  refusant celles qui tombent à moins de `minSide / 2` d'une voisine — vingt
+  essais, puis tant pis (`checkContentCollide`, 0x62693) ;
+- elle glisse jusqu'à `x = 0` (`animList.addSlide`, 1,5) ;
+- si la personne est DÉJÀ là, rien de neuf : elle re-glisse et joue son
+  émotion ;
+- au-delà de `maxContent` = **3**, la plus ancienne repart par la gauche
+  (`launchIntoTheSpace`) et disparaît.
+
+QUIRK d'époque, gardé : la nouvelle venue est poussée dans `contentList`
+AVANT le tirage de sa hauteur, et son `_y` vaut alors 0 — le tirage se
+refuse donc lui-même le haut de la zone.
+
+Le cadre d'un écran, on n'a pas eu à le mesurer, on le CALCULE : liseré
+extérieur 2 px `white.shade` `#DDDDDD`, anneau intérieur 1 px `white.darker`
+`#888888`, rayon 6.
 
 Le fond, lui, ne vient pas du SWF du bureau mais de la BOUILLE : c'est un
 **dégradé radial**, relevé au pixel — `#D6F7B5` jusqu'à 49 px du centre,
@@ -1212,12 +1250,12 @@ et un quatrième bouton est ajouté pour l'avertissement. Trois écarts :
   jamais, mais le clic la traverse quand même. HTML ne sait pas faire ça — un
   élément transparent, lui, reçoit les clics : elle reste donc là, invisible,
   et s'allume quand la souris arrive dessus.
-- **Le titre de la liste et l'onglet « Tout le site » sautent** sur le
-  bureau : ni l'un ni l'autre n'existe d'époque — `cp.UserList` n'affiche
-  que les lignes. Le mobile, lui, les garde tous les deux. Restent les deux
-  pastilles « toi » et « staff », qui disent quelque chose que le revival ne
-  dit nulle part ailleurs : elles restent, mises à l'échelle de la bande et
-  dans la palette verte.
+- **Le titre de la liste, l'onglet « Tout le site » et la pastille « toi »
+  sautent** sur le bureau : rien de tout cela n'existe d'époque —
+  `cp.UserList` n'affiche que les lignes. Le mobile, lui, les garde. Seule
+  reste la pastille du STAFF, qui signale les modérateurs — le revival ne le
+  signale nulle part ailleurs — mise à l'échelle de la bande et dans la
+  palette verte.
 - **La pastille « aucun feutre » saute aussi.** Elle décalerait toute la
   rangée d'un pas, et le SWF a mieux : on se déchoisit en RECLIQUANT son
   feutre (`selectPen` remet `current` à `undefined`). C'est ce que fait le
@@ -1227,8 +1265,9 @@ et un quatrième bouton est ajouté pour l'avertissement. Trois écarts :
   bouille de qui vient de parler, en surimpression du fil) ; d'époque il
   ouvre un panneau qui reste. Le clic est donc intercepté avant d'atteindre
   le bouton et ouvre le panneau — le mobile garde sa préférence.
-  La colonne montre bien, désormais, la bouille de CHAQUE membre du salon.
-  Deux écarts subsistent, tous deux de moyens :
+  La zone montre bien, désormais, ses DEUX visages — la pile d'écrans quand
+  tout le monde tient, l'aquarium sinon, avec le même seuil et les mêmes
+  places au hasard. Deux écarts subsistent, tous deux de moyens :
   - les écrans sont des IMAGES (le cache PNG partagé du site, celui du
     Bouilloscope et du trombinoscope) et non un lecteur Flash par personne :
     un salon plein ne coûte alors que des images déjà en cache ;

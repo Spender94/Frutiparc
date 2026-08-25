@@ -423,14 +423,17 @@ window.BureauFrutiz = (function () {
         if (!p) return;
         var ouvert = p.classList.toggle('bouilles-ouvertes');
         if (t) t.classList.toggle('en-rangee', ouvert);
-        if (ouvert) majBouilles();
+        // La fenêtre grandit D'ABORD s'il le faut : c'est sa hauteur qui dit
+        // combien d'écrans tiennent, donc lequel des deux visages la zone
+        // prend.
         appliquerMinimum(f);
+        if (ouvert) majBouilles();
         return;
       }
       // Les feutres et les connectés, eux, sont bien branchés côté light : on
       // repasse APRÈS lui pour relever le minimum, comme `onFrameSetUpdate`.
       if (c.closest('#pen-btn') || c.closest('#users-btn')) {
-        setTimeout(function () { appliquerMinimum(f); }, 0);
+        setTimeout(function () { appliquerMinimum(f); majBouilles(); }, 0);
       }
     }, true);
   }
@@ -485,22 +488,133 @@ window.BureauFrutiz = (function () {
     f.fen.style.top = Math.round(cible.y) + 'px';
   }
 
-  // ── LA COLONNE DES BOUILLES (`cp.ScreenList`) ─────────────────────────────
-  // D'époque, ce panneau n'est pas une surimpression : c'est une PILE d'écrans
-  // de 100×100 (`cp.FrutiScreen`), un par personne du salon, dans l'ordre de
-  // la liste des connectés. Le light, lui, s'en servait pour montrer la bouille
-  // de qui venait de parler, en gros, par-dessus le fil.
+  // ── LA ZONE DES BOUILLES (`cp.ScreenList`, 0xb6088) ───────────────────────
+  // Ce panneau a DEUX visages, et le bytecode dit lequel au pixel près :
   //
-  // On rend donc la colonne d'époque, et on la remplit d'IMAGES — le cache PNG
+  //     size = width                              // un écran est CARRÉ
+  //     max  = Math.floor(height / (size + ecart))   // ecart = 2 (prototype)
+  //     win.box.userList.wantList(max, 'setUserList', this)
+  //
+  //     setUserList(list, userTotal):
+  //       si max >= userTotal  →  removeCLBScreen(), attachMultiScreen(),
+  //                               updateMultiScreen()
+  //       sinon                →  removeMultiScreen(), attachCLBScreen(),
+  //                               updateCLBScreen()
+  //
+  // • MULTI — tout le monde tient : UN écran par personne, empilé au pas de
+  //   `size + 2` (`screen<i>._y = i × (size + ecart)`), chacun cliquable vers
+  //   sa fiche (`openFrutizInfo`) et coiffé d'une infobulle.
+  // • CLB — il y a plus de monde que d'écrans : un SEUL `frutiScreen`, monté
+  //   avec `flCLB: true`, qui prend TOUTE la zone (`extWidth = width`,
+  //   `extHeight = height`) et que `box.addUserActionListener(…, 'onCLBEvent')`
+  //   branche sur les actions du salon. D'où la grande zone verticale — et ce
+  //   n'est pas une bouille qui remplace l'autre, c'est un AQUARIUM.
+  //   `cp.FrutiScreen.onCLBEvent` (0x62361) :
+  //     – la bouille de qui s'exprime est attachée à l'échelle `minSide` =
+  //       `min(width, height)`, posée hors champ à gauche (`_x = −width`) ;
+  //     – on lui cherche une hauteur au HASARD dans `[0, height − minSide[`,
+  //       en refusant celles qui tombent à moins de `minSide / 2` d'une
+  //       voisine — vingt essais, puis tant pis (`checkContentCollide`) ;
+  //     – elle glisse jusqu'à `x = 0` (`animList.addSlide`, 1,5) ;
+  //     – si la personne est DÉJÀ là, rien de neuf : elle re-glisse et joue
+  //       son émotion ;
+  //     – au-delà de `maxContent` = **3**, la plus ancienne repart par la
+  //       gauche (`launchIntoTheSpace`) et disparaît.
+  //   QUIRK d'époque : la nouvelle venue est poussée dans la liste AVANT le
+  //   tirage de sa hauteur, et son `_y` vaut alors 0 — le tirage se refuse
+  //   donc lui-même le haut de la zone. On garde le biais.
+  //
+  // Le light rend les deux, et remplit les écrans d'IMAGES — le cache PNG
   // partagé du site (`FPBouilleThumb`, le même que le Bouilloscope et le
   // trombinoscope) — plutôt que d'un lecteur Flash par personne : un salon
   // plein ne coûte alors que des images déjà en cache. Le lecteur, il n'y en a
   // qu'UN, et il ne s'allume que le temps d'une émotion (cf. `ecranDe`).
+  var ECRAN_ECART = 2;               // `ScreenList.prototype.ecart` (0xb68ee)
+  var CLB_MAX = 3;                   // `FrutiScreen.maxContent` (0x61b61)
+
+  // L'écran qui doit jouer l'émotion de quelqu'un : le sien en mode MULTI, et
+  // en mode CLB la bouille qu'on fait entrer dans l'aquarium.
   function ecranDe(pseudo) {
     var col = $('#bouille-overlay');
     var p = $('#chat-panel');
     if (!col || !p || !p.classList.contains('bouilles-ouvertes')) return null;
+    if (col.querySelector('.bo-ecran.clb')) return clbAccueille(pseudo);
     return col.querySelector('.bo-ecran[data-qui="' + cleCss(String(pseudo).toLowerCase()) + '"]');
+  }
+
+  // `onCLBEvent` : quelqu'un s'exprime, sa bouille entre dans l'aquarium.
+  function clbAccueille(pseudo) {
+    var ec = $('#bouille-overlay .bo-ecran.clb');
+    if (!ec) return null;
+    var cle = String(pseudo).toLowerCase();
+    var cote = Math.min(ec.clientWidth, ec.clientHeight);
+    var b = ec.querySelector('.bo-clb[data-qui="' + cleCss(cle) + '"]');
+    if (!b) {
+      b = document.createElement('div');
+      b.className = 'bo-clb';
+      b.setAttribute('data-qui', cle);
+      b.style.width = cote + 'px';
+      b.style.height = cote + 'px';
+      b.style.left = (-ec.clientWidth) + 'px';   // hors champ, à gauche
+      ec.appendChild(b);                         // AVANT le tirage : cf. le quirk
+      b.style.top = Math.round(hauteurLibre(ec, cote)) + 'px';
+      poserBouille(b, bouilleDe(pseudo), pseudo);
+      void b.offsetWidth;                        // que le départ soit enregistré
+    }
+    b.style.left = '0px';
+    var tous = ec.querySelectorAll('.bo-clb:not(.part)');
+    if (tous.length > CLB_MAX) partirDansLEspace(tous[0], ec);
+    return b;
+  }
+
+  // Une hauteur au hasard qui ne tombe pas à moins d'un demi-côté d'une
+  // voisine — vingt essais, puis tant pis (`checkContentCollide`, 0x62693).
+  function hauteurLibre(ec, cote) {
+    var libre = Math.max(0, ec.clientHeight - cote);
+    var pris = Array.prototype.map.call(ec.querySelectorAll('.bo-clb'), function (e) {
+      return parseFloat(e.style.top) || 0;
+    });
+    for (var i = 0; i < 20; i++) {
+      var y = Math.random() * libre, bon = true;
+      for (var k = 0; k < pris.length; k++) if (Math.abs(pris[k] - y) < cote / 2) { bon = false; break; }
+      if (bon) return y;
+    }
+    return Math.random() * libre;
+  }
+
+  // `launchIntoTheSpace` : la plus ancienne repart par la gauche et disparaît.
+  function partirDansLEspace(b, ec) {
+    if (b.classList.contains('part')) return;
+    b.classList.add('part');
+    rendreScene(b);
+    b.style.left = (-Math.min(ec.clientWidth, ec.clientHeight)) + 'px';
+    setTimeout(function () { if (b.parentNode) b.remove(); }, 700);
+  }
+
+  function bouilleDe(pseudo) {
+    var S = window.SalonsBureau;
+    var gens = (S && S.membres) ? S.membres() : [];
+    var cle = String(pseudo).toLowerCase();
+    for (var i = 0; i < gens.length; i++) {
+      if (String(gens[i].pseudo).toLowerCase() === cle) return gens[i].bouille;
+    }
+    return null;
+  }
+
+  // On ne refait la vignette que si la bouille a changé : sinon elle
+  // clignoterait à chaque relevé des connectés.
+  function poserBouille(ecran, bouille, pseudo) {
+    if (pseudo) ecran.title = pseudo;
+    if (!bouille || ecran.getAttribute('data-bouille') === bouille) return;
+    ecran.setAttribute('data-bouille', bouille);
+    var vieux = ecran.querySelector('img');
+    if (vieux) vieux.remove();
+    // `detourer` retire le vert plat sur lequel la capture est peinte
+    // (#E8F8D3, le fond des cartes du forum) : ici c'est le DÉGRADÉ de
+    // l'écran qui doit se voir derrière la bouille, pas un carré pâle.
+    if (window.FPBouilleThumb) {
+      ecran.insertAdjacentHTML('afterbegin', FPBouilleThumb.imgHtml(bouille, 0, { detourer: true }));
+    }
   }
   // `CSS.escape` n'est pas partout ; un pseudo n'a de toute façon que des
   // lettres, des chiffres, `_` et `-`, on s'en tient là.
@@ -529,6 +643,17 @@ window.BureauFrutiz = (function () {
     if (!col || !p || !p.classList.contains('bouilles-ouvertes')) return;
     var S = window.SalonsBureau;
     var gens = (S && S.membres) ? S.membres() : [];
+    var cote = col.clientWidth || 100;
+    var max = Math.floor((col.clientHeight || 0) / (cote + ECRAN_ECART));
+    if (max >= gens.length) pileDeBouilles(col, gens);
+    else bouilleUnique(col);
+  }
+
+  // MULTI : un écran par personne, au pas de `size + ecart`.
+  function pileDeBouilles(col, gens) {
+    col.classList.remove('un-seul-ecran');
+    var seul = col.querySelector('.bo-ecran.clb');
+    if (seul) rendreScene(seul), seul.remove();
     var vus = {};
     gens.forEach(function (g) {
       var cle = String(g.pseudo).toLowerCase();
@@ -540,26 +665,44 @@ window.BureauFrutiz = (function () {
         ecran.setAttribute('data-qui', cle);
         col.appendChild(ecran);
       }
-      ecran.title = g.pseudo;
-      // On ne refait la vignette que si la bouille a changé : sinon elle
-      // clignoterait à chaque relevé des connectés.
-      if (ecran.getAttribute('data-bouille') !== g.bouille) {
-        ecran.setAttribute('data-bouille', g.bouille);
-        var vieux = ecran.querySelector('img');
-        if (vieux) vieux.remove();
-        // `detourer` retire le vert plat sur lequel la capture est peinte
-        // (#E8F8D3, le fond des cartes du forum) : ici c'est le DÉGRADÉ de
-        // l'écran qui doit se voir derrière la bouille, pas un carré pâle.
-        if (window.FPBouilleThumb) {
-          ecran.insertAdjacentHTML('afterbegin', FPBouilleThumb.imgHtml(g.bouille, 0, { detourer: true }));
-        }
-      }
+      poserBouille(ecran, g.bouille, g.pseudo);
     });
     // Qui a quitté le salon perd son écran — sauf s'il est en train de jouer
     // une émotion : la scène du light y est logée, on ne l'arrache pas.
     Array.prototype.slice.call(col.querySelectorAll('.bo-ecran')).forEach(function (e) {
       if (!vus[e.getAttribute('data-qui')] && !e.querySelector('#bouille-overlay-stage')) e.remove();
     });
+  }
+
+  // CLB : un seul écran, qui prend toute la zone. Les bouilles de qui
+  // s'exprime y entrent par la gauche et s'y installent (cf. `clbAccueille`).
+  function bouilleUnique(col) {
+    col.classList.add('un-seul-ecran');
+    var seul = col.querySelector('.bo-ecran.clb');
+    Array.prototype.slice.call(col.querySelectorAll('.bo-ecran')).forEach(function (e) {
+      if (e !== seul) { rendreScene(e); e.remove(); }
+    });
+    if (!seul) {
+      seul = document.createElement('div');
+      seul.className = 'bo-ecran clb';
+      col.appendChild(seul);
+      return;
+    }
+    // La zone a pu changer de taille : les bouilles suivent son petit côté.
+    var cote = Math.min(seul.clientWidth, seul.clientHeight);
+    Array.prototype.forEach.call(seul.querySelectorAll('.bo-clb'), function (b) {
+      b.style.width = cote + 'px';
+      b.style.height = cote + 'px';
+      var y = parseFloat(b.style.top) || 0;
+      b.style.top = Math.min(y, Math.max(0, seul.clientHeight - cote)) + 'px';
+    });
+  }
+
+  // La scène du light (le lecteur Flash) ne doit jamais partir avec l'écran
+  // qui la loge : on la remet dans la colonne avant de retirer celui-ci.
+  function rendreScene(ecran) {
+    var scene = ecran.querySelector('#bouille-overlay-stage');
+    if (scene) { scene.classList.remove('joue'); $('#bouille-overlay').appendChild(scene); }
   }
 
   var boutonWarning = null;
@@ -728,6 +871,9 @@ window.BureauFrutiz = (function () {
         fen.style.height = Math.round(cible.h) + 'px';
         fen.style.left = Math.round(cible.x) + 'px';
         fen.style.top = Math.round(cible.y) + 'px';
+        // La zone des bouilles compte combien d'écrans tiennent dans sa
+        // hauteur : elle change de visage quand la fenêtre change de taille.
+        majBouilles();
       };
       document.addEventListener('pointermove', suivre);
       document.addEventListener('pointerup', lacher);
@@ -1012,6 +1158,7 @@ window.BureauFrutiz = (function () {
     window.addEventListener('resize', function () {
       poserFond(fondCourant);
       for (var id in fenetres) bornerDansEcran(fenetres[id].fen);
+      majBouilles();
     });
   }
 

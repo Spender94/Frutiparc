@@ -1068,9 +1068,12 @@ body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc.sel {
 body.bureau-frutiz .fen #chat-panel #bouille-overlay {
   position: static; width: 100px; flex: 0 0 100px; display: none;
   align-self: stretch; background: transparent; border: 0; border-radius: 0;
-  box-shadow: none; overflow: hidden auto;
+  box-shadow: none; overflow: hidden auto; scrollbar-width: none;
   margin: 0 6px 0 0; padding: 0;
 }
+/* Aucune barre de défilement : `size = width`, et une barre qui mangerait la
+   largeur ferait changer le nombre d'écrans qui tiennent. */
+body.bureau-frutiz .fen #chat-panel #bouille-overlay::-webkit-scrollbar { display: none; }
 body.bureau-frutiz .fen #chat-panel.bouilles-ouvertes #bouille-overlay {
   display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start;
 }
@@ -1078,8 +1081,9 @@ body.bureau-frutiz .fen #chat-panel.bouilles-ouvertes #bouille-overlay {
    de la main bar. D'où le même calcul (cf. plus haut) : liseré extérieur 2 px
    `white.shade` = `#DDDDDD`, anneau intérieur 1 px `white.darker` = `#888888`,
    rayon 6. Le dégradé vert du fond vient avec la bouille elle-même. Les
-   écrans se suivent au pas de 104, pour que les liserés se touchent sans se
-   chevaucher. */
+   écrans se suivent au pas de `size + ecart`, soit 102 (`screen<i>._y =
+   i × (size + ecart)`, `ecart = 2` au prototype) : les deux liserés se
+   touchent et se confondent, exactement comme d'époque. */
 /* Le fond de l'écran est un DÉGRADÉ RADIAL, relevé au pixel sur le rendu
    d'époque : `#D6F7B5` jusqu'à 49 px du centre, puis `#C5F297` de 51 à 60, et
    `#A2E866` au-delà de 64 — rapporté au rayon du coin (70,7 sur un carré de
@@ -1091,7 +1095,29 @@ body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran {
   background: radial-gradient(circle farthest-corner at 50% 50%,
     #D6F7B5 0 69%, #C5F297 74%, #C5F297 85%, #A2E866 91%);
   border-radius: 6px; box-shadow: 0 0 0 2px #DDDDDD;
-  overflow: hidden; margin: 0 0 4px;
+  overflow: hidden; margin: 0 0 2px;
+}
+/* MODE CLB : quand il y a plus de monde que d'écrans qui tiennent, il n'en
+   reste qu'UN, et il prend toute la zone (`extWidth = width`,
+   `extHeight = height`). C'est la grande bande verticale où passe la bouille
+   de qui s'exprime. */
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran.clb {
+  flex: 1 1 auto; height: auto; align-self: stretch; margin: 0;
+}
+/* Chaque bouille de l'aquarium : un carré du PETIT côté de la zone, posé en
+   absolu à sa hauteur, qui entre par la gauche en glissant. */
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran.clb .bo-clb {
+  position: absolute; left: 0; z-index: 3;
+  transition: left .42s cubic-bezier(.16, .72, .27, 1);
+}
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran.clb .bo-clb img {
+  width: 100%; height: 100%; margin: 0;
+}
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-clb #bouille-overlay-stage {
+  left: 0; top: 0; right: 0; bottom: 0; width: auto; height: auto;
+}
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-clb #bouille-overlay-stage iframe {
+  width: 100%; height: 100%;
 }
 /* L'anneau sombre passe PAR-DESSUS la bouille, comme dans la main bar : une
    ombre interne sur la boîte passerait sous l'image. */
@@ -1187,10 +1213,11 @@ body.bureau-frutiz .fen #chat-panel #users-drawer .u.avec-lieu { flex-direction:
 body.bureau-frutiz .fen #chat-panel #users-drawer .u .haut {
   display: flex; align-items: center; gap: 4px; min-width: 0;
 }
-/* Les pastilles « toi » et « staff » du light : elles n'existent pas d'époque
-   (`cp.UserList` n'écrit que le pseudo), mais elles disent quelque chose que
-   le revival ne dit pas ailleurs. On les garde, à l'échelle de la bande et
-   dans la palette verte, pour qu'elles ne cassent pas la ligne. */
+/* Les pastilles du light n'existent pas d'époque : `cp.UserList` n'écrit que
+   le pseudo. Celle du « toi » ne dit rien qu'on ne sache — elle saute. Celle
+   du staff reste, à l'échelle de la bande et dans la palette verte : elle
+   signale les modérateurs, que le revival ne signale nulle part ailleurs. */
+body.bureau-frutiz .fen #chat-panel #users-drawer .u .badge.moi { display: none; }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u .badge {
   flex: 0 0 auto; padding: 0 3px; border-radius: 5px;
   font: 700 8px Verdana, Arial, sans-serif; line-height: 11px; letter-spacing: 0;
