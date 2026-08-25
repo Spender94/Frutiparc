@@ -65,14 +65,55 @@ body.bureau-frutiz #bureau-coin {
   border-radius: 0 0 12px 0;
   box-shadow: inset 0 0 0 2px #DDDDDD, 0 0 0 2px #444444;
 }
-/* L'intérieur mobile SE SERRE à gauche (le « tile » d'époque — la zone
-   extensible de la barre — reste blanc à droite) ; la transcription des
-   composants d'époque (FrutiScreen, cpDigital, les butPushEmoteIcon) est
-   l'étape suivante du carnet. La marge 8 = les 6 du SWF + les 2 du décalage. */
+/* L'INTÉRIEUR de la barre, au gabarit d'époque (initFrameSet 0x6bb6c, relevé
+   1:1). La barre fait 76 de haut, marge 6 : il reste 64 px de contenu, et
+   TOUT y tient — là où le tiroir mobile étale 110 px de bouille.
+     • `screen` (FrutiScreen) : un CARRÉ de côté height − 2·margin = 64,
+       posé à x = cornerX + margin = 9 + 6 = 15 (mesuré : bouille 15..79,
+       y 6..70) — d'où la marge gauche 17 (le bloc est décalé de −2) ;
+     • `info` : la colonne de droite, qui démarre à x 84 — `digital`
+       (cpDigital, min 130×45, étiré à 143 : mesuré x 85..228, y 6..51) et,
+       dessous, la rangée des 7 `butPushEmoteIcon` (struct 19 + margin 2 :
+       PAS de 21 px exactement — mesuré 88, 109, 130, 151, 172, 193, 214) ;
+     • `tile` : la zone extensible, blanche, qui remplit le reste. */
 body.bureau-frutiz #bureau-coin .mainbar {
-  margin: 8px; border-radius: 0; border: 0; box-shadow: none; background: none;
-  width: max-content; max-width: 640px;
+  margin: 8px 8px 8px 18px; padding: 0;
+  border-radius: 0; border: 0; box-shadow: none; background: none;
+  width: max-content; max-width: calc(100% - 25px);
 }
+body.bureau-frutiz #bureau-coin .mb-top { gap: 5px; align-items: flex-start; }
+body.bureau-frutiz #bureau-coin .mb-avatar { flex: 0 0 64px; height: 64px; }
+/* Le cadre de la bouille reprend les teintes du bureau (mesuré : #DDDDDD en
+   13..15, #888888 en 15) au lieu des #D9D9D9/#8A888D du tiroir mobile. */
+body.bureau-frutiz #bureau-coin .mb-avatar .frame {
+  inset: 0; border-radius: 7px;
+  box-shadow: 0 0 0 1px #888888, 0 0 0 3px #DDDDDD;
+}
+body.bureau-frutiz #bureau-coin #home-avatar-fiche { inset: 0; border-radius: 7px; }
+body.bureau-frutiz #bureau-coin .mb-right { gap: 0; height: 64px; width: 145px; }
+/* L'encart `digital` d'époque tient en 45 px de haut, là où le tiroir mobile
+   en prend 72 : ses quatre zones (les 9 barres de progression en haut-gauche,
+   la coupe et le rang en haut-droite, « NIV n » en bas-gauche, les raccourcis
+   en bas-droite) sont remises au gabarit relevé sur le rendu 1:1. */
+body.bureau-frutiz #bureau-coin .mb-encart { flex: 0 0 45px; border-radius: 5px; }
+body.bureau-frutiz #bureau-coin .enc-progress {
+  left: 5px; top: 5px; width: 30px; height: 21px;
+}
+body.bureau-frutiz #bureau-coin .enc-progress i { height: 1px; }
+body.bureau-frutiz #bureau-coin .enc-trophy { top: 3px; height: 17px; gap: 2px; }
+body.bureau-frutiz #bureau-coin .enc-trophy .tro { height: 16px; }
+body.bureau-frutiz #bureau-coin .enc-trophy .val { font-size: 15px; }
+body.bureau-frutiz #bureau-coin .enc-niv { left: 5px; bottom: 3px; }
+body.bureau-frutiz #bureau-coin .enc-niv .niv-img { height: 13px; }
+body.bureau-frutiz #bureau-coin .enc-niv .lvl { font-size: 9px; }
+body.bureau-frutiz #bureau-coin .mb-shortcuts { bottom: 3px; }
+body.bureau-frutiz #bureau-coin .sc-btn img { width: 15px; height: 15px; }
+body.bureau-frutiz #bureau-coin .reflet-niv { height: 55%; }
+body.bureau-frutiz #bureau-coin .mb-emotes { flex: 0 0 19px; justify-content: flex-start; }
+body.bureau-frutiz #bureau-coin .em-btn { flex: 0 0 21px; padding: 0; }
+body.bureau-frutiz #bureau-coin .em-btn img { width: 19px; max-width: 19px; }
+/* La bannière quotidienne n'a pas cours dans la barre d'époque. */
+body.bureau-frutiz #bureau-coin .daily-banner { display: none; }
 
 /* ── L'ONGLET « Bureau » (MainBarTab #781 ; art extrait tel quel) ─────────
    mcTab._y = height (76) ; l'onglet est posé à x = id × tabSpace (110) — le
@@ -134,8 +175,11 @@ body.bureau-frutiz #pill-enligne .point {
    onStageResize 0xa0c94). Relevé au pixel 1:1 : blanc 0..6, `#DDDDDD` 6..9,
    `#444444` 9..11 — au twip près. `init` pose d'ailleurs
    **`main.cornerX = wSide`** : le bureau commence à 9 px du bord. */
+/* Profondeurs relevées : la BANDE passe PAR-DESSUS la barre (à y=40, son
+   liseré #DDDDDD se lit encore à 6..9), mais son OMBRE passe DESSOUS (le
+   #444444 y disparaît) — l'ombre est attachée à `main`, la bande non. */
 body.bureau-frutiz #side-list {
-  position: absolute; left: 0; top: 0; bottom: 0; width: 9px; z-index: 1;
+  position: absolute; left: 0; top: 0; bottom: 0; width: 9px; z-index: 3;
   background: linear-gradient(to right, #FFFFFF 0 6px, #DDDDDD 6px 9px);
 }
 body.bureau-frutiz #side-list-ombre {

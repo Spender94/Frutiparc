@@ -187,6 +187,17 @@ bureau sous la barre et sa rangée d'onglets : recal borne les fenêtres LÀ.
   jauge — au-dessus de la liste des **7 butPushEmoteIcon**, struct 19 px,
   initEmoteIconList 0x6b6a4), `tile` (type w, min 100 — la zone EXTENSIBLE,
   blanche), et **cpWheelMng** (la frutimandala, au bout droit).
+- **L'intérieur au gabarit** (relevé 1:1) : la barre fait 76 de haut, marge
+  6 — il reste **64 px de contenu** et tout y tient. Bouille **64×64** à
+  x 15..79 (= cornerX 9 + margin 6), y 6..70 ; encart `digital` x 85..228
+  (cpDigital, min 130×45, étiré par le frame de type `w`), y 6..51 ; la
+  rangée des 7 smileys dessous, **pas de 21 px** (mesuré 88, 109, 130, 151,
+  172, 193, 214 — soit struct 19 + margin 2, exactement l'initFrameSet).
+  Cadre de la bouille : `#DDDDDD` en 13..15 puis `#888888` en 15.
+- **Profondeurs relevées au bord gauche** : la BANDE des contacts passe
+  PAR-DESSUS la barre (à y=40 son liseré `#DDDDDD` se lit encore en 6..9),
+  mais son OMBRE passe DESSOUS (le `#444444` y disparaît) — l'ombre est
+  attachée à `main`, la bande non.
 - **initInterface** (0x6b8af) : mcInterface prof 10, mcTab prof 8,
   mcTabBlack prof 4, mcInterfaceBlack prof 2 ; `mcTab._y = height` — la
   rangée d'onglets pend sous la barre, RECOUVERTE par elle (8 < 10).
@@ -300,10 +311,10 @@ dp_scrollBar 40, dp_element 100.
    winRoomList #59…) et les teintes `getWinStyle` manquantes — mesurer au
    pixel les fenêtres jaune/verte/blanche/violette (Préférences, Corbeille,
    Boutique, Mes contacts…) sur la session connectée.
-2. L'INTÉRIEUR de la main bar : FrutiScreen (le carré bouille 64),
-   cpDigital (130×45, le NIV et la jauge), les 7 butPushEmoteIcon (struct
-   19 px), les 3 butPushVerySmallPink (halfHide/fullScreen) ; puis la
-   frutimandala (cpWheelMng) et la console frusion (FrusionSlot).
+2. ~~L'INTÉRIEUR de la main bar au gabarit~~ FAIT (bouille 64, encart 45,
+   smileys au pas de 21) ; restent les 3 `butPushVerySmallPink`
+   (halfHide/fullScreen, initSideIconList 0x6b786), la frutimandala
+   (cpWheelMng) et la console frusion (FrusionSlot, 0x6d884).
 3. Les icônes du bureau (fileIconStandard #11) et leur pose en colonnes
    (FPDesktop), le glisser-déposer des icônes.
 4. Le mode « tab » des fenêtres (les onglets qui suivent « Bureau »), le
