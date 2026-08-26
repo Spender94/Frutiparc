@@ -64,6 +64,17 @@ window.BureauFrutiz = (function () {
     // (0xbec80), et la fenêtre s'ouvre à 265×288 sur le rendu d'époque.
     salons:     { panneau: '#salons-panel',    titre: 'Salons publics', fruit: 'winChat',
                   l: 265, h: 288, min: { w: 200, h: 240 } },
+    // L'EXPLORATEUR — `win.Explorer`, la fenêtre JAUNE (winType « winExplorer »,
+    // d'où la banane en pastille). Son gabarit est écrit dans `init` :
+    // `pos = {x:50, y:50, w:400, h:400}` — 402 × 402 le contour compris, ce
+    // que le relevé 1:1 confirme. Deux dossiers l'ouvrent depuis le bureau ;
+    // c'est la MÊME fenêtre, seul l'uid de départ change.
+    // `init` finit par `moveToCenter()` : l'explorateur s'ouvre AU MILIEU, pas
+    // en cascade comme les autres.
+    'ex-disques':    { panneau: '#ex-disques-panel',    titre: 'Mes disques', fruit: 'winExplorer',
+                       l: 402, h: 402, min: { w: 100, h: 128 }, centre: true },
+    'ex-inventaire': { panneau: '#ex-inventaire-panel', titre: 'Inventaire',  fruit: 'winExplorer',
+                       l: 402, h: 402, min: { w: 100, h: 128 }, centre: true },
   };
 
   function fruitUrl(nom) { return '/frutiz/sprites/fruit_' + (nom || 'default') + '.svg'; }
@@ -387,6 +398,497 @@ window.BureauFrutiz = (function () {
     if (!actif) return;
     ouvrirFenetre('salons');
     majSalons();
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     L'EXPLORATEUR (`win.Explorer` 0x91d21, `box.Explorer` 0x86eb4)
+
+     La fenêtre jaune qui montre un DOSSIER : « Mes disques », « Inventaire »,
+     et tout ce qu'ils contiennent. Une seule classe pour les deux, comme
+     d'époque — c'est le dossier ouvert qui décide de tout.
+
+     `win.Explorer.init` donne le gabarit : `pos = {x:50, y:50, w:400, h:400}`,
+     puis trois compos empilés,
+
+         initNavigatorIconList()      la barre d'outils, si elle a des boutons
+         displayNavigatorIconList()   compo « navigatorFrame », min {w:80,h:28}
+                                      struct {x:{size:24,space:2}, y:{…}}
+         displayExplorer()            compo « fileIconListFrame », le champ
+
+     et la barre d'outils N'EXISTE PAS quand elle est vide (`if(!length) return`)
+     — c'est pourquoi la racine de l'inventaire n'a pas de rangée de boutons et
+     « Accessoires » en a une. Les boutons viennent de `butPushNavigator`, une
+     image par action :
+
+         flUp          → image 2, « explorer_up »              box.getParent
+         flNewDirectory→ image 3, « explorer_new_folder »      nouveau dossier
+         flRemoveAll   → image 4, « explorer_empty_recyclebin »
+         flMail        → image 5, « explorer_new_mail »
+
+     et `box.Explorer.onLoadList` décide lesquels selon le dossier :
+
+         uid commence par « inv »  → ni nouveau dossier ni vidage
+         uid == corbeille          → vidage
+         uid ∈ {boîtes mail, inventaire, liste noire} → pas de nouveau dossier
+         sinon                     → nouveau dossier
+         flUp = le dossier a un parent
+
+     La NAVIGATION se fait SUR PLACE : `IconFileBox.click` appelle
+     `box.getList(uid)` pour un dossier, et la fenêtre se retitre du nom du
+     dossier ouvert (`setTitle(this.list.desc[0])`). Rien ne s'empile.
+
+     Le clic sur un FICHIER passe d'abord par `box.Explorer.specialClick` :
+
+         uid commence par « invpicto, » → la pop-up des pictos du forum
+         type == « bouille »            → mainCnx.cmd("fbouille", {f: desc[1]})
+                                          (+ la fenêtre « recherche » pour le
+                                          Bananocle — la blague d'origine)
+         type == « wallpaper »          → wallPaper.loadWP(desc[1], desc[2])
+
+     et sinon `_global.onFileClick`.
+
+     Enfin les BANDEAUX D'AVERTISSEMENT, `window.displayAlert` : une phrase
+     selon le dossier, prise telle quelle dans lang_french.as.
+
+     Tout cela se branche sur `/ff/ls`, l'API que main.swf interroge déjà : le
+     serveur du revival la sert pour tous ces dossiers. Le portage lit donc
+     EXACTEMENT la même chose que le bureau Flash. */
+
+  // Le cadre de chaque dessin sorti de fileIcon.swf (scripts/extract-frutiz-
+  // explorer.js). Il donne l'origine du dessin par rapport au point
+  // d'enregistrement du clip — c'est ce qui le pose au bon endroit dans sa case.
+  var CADRES = null;
+  function cadresExplorateur() {
+    if (CADRES) return CADRES;
+    CADRES = {};
+    var x = new XMLHttpRequest();
+    try {
+      x.open('GET', '/frutiz/sprites/explorateur.json', false);
+      x.send(null);
+      if (x.status >= 200 && x.status < 300) CADRES = JSON.parse(x.responseText);
+    } catch (e) { /* les icônes se poseront à leur taille naturelle */ }
+    return CADRES;
+  }
+
+  // `but.icon.Standard.display` (0x842e0), au chiffre près :
+  //     bx = 3, by = 4, textRatio = 0.5, icoRatio = 1.66 (1 pour une bouille)
+  //     r4 = width × (1 − textRatio)          // width = case − 2×bx
+  //     ico._xscale = ico._yscale = r4 × icoRatio        (en POUR CENT)
+  //     ico._x = (width − r4) / 2
+  //     titleField.pos = {x: 0, y: r4, w: width, h: height × textRatio}
+  var EX_CASE = 80;                      // la case d'une icône, mesurée 1:1
+  var EX_BX = 3, EX_BY = 4;
+  var EX_LARGEUR = EX_CASE - 2 * EX_BX;  // 74
+  var EX_R4 = EX_LARGEUR / 2;            // 37 — hauteur de l'icône ET y du titre
+
+  // Les dossiers de l'inventaire et la boîte à disques : les racines que le
+  // bureau ouvre depuis ses icônes.
+  var EXPLORATEURS = {
+    disques:    { panneau: '#ex-disques-panel',    uid: 'disccollector', titre: 'Mes disques' },
+    inventaire: { panneau: '#ex-inventaire-panel', uid: 'inventory',     titre: 'Inventaire' },
+  };
+  var exEtats = {};                      // clé → { uid, panneau, liste, titre }
+
+  function panneauExplorateur(cle) {
+    var conf = EXPLORATEURS[cle];
+    var p = document.createElement('section');
+    p.className = 'panel ex-panel';
+    p.id = conf.panneau.slice(1);
+    p.innerHTML = '<div class="ex-nav" hidden></div>'
+      + '<div class="ex-alerte" hidden></div>'
+      + '<div class="ex-champ"></div>';
+    return p;
+  }
+
+  // Le bouton d'une action de la barre d'outils.
+  function boutonNav(action, titre, faire) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ex-nav-but';
+    b.title = titre;
+    b.style.backgroundImage = 'url(/frutiz/sprites/nav_' + action + '.svg)';
+    if (faire) b.addEventListener('click', faire);
+    else { b.disabled = true; }
+    return b;
+  }
+
+  // Une case d'icône : le dessin posé comme `but.icon.Standard` le pose, et
+  // l'étiquette dessous, centrée, sur deux lignes au plus.
+  function caseExplorateur(opts) {
+    var d = document.createElement('div');
+    d.className = 'ex-slot' + (opts.classe ? ' ' + opts.classe : '');
+    if (opts.titre) d.title = opts.titre;
+    if (opts.faire) {
+      d.tabIndex = 0;
+      d.addEventListener('click', opts.faire);
+      d.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); opts.faire(e); }
+      });
+    } else {
+      d.classList.add('inerte');
+    }
+    if (opts.dessin) d.appendChild(opts.dessin);
+    if (opts.nom !== undefined) {
+      var l = document.createElement('span');
+      l.className = 'ex-lbl';
+      l.textContent = opts.nom;
+      d.appendChild(l);
+    }
+    return d;
+  }
+
+  // Le dessin d'une icône « standard » : le SVG sorti du SWF, à l'échelle du
+  // bureau (r4 × icoRatio) et posé sur l'origine de son clip.
+  function dessinStandard(nom, ratio) {
+    var c = cadresExplorateur()[nom];
+    var img = document.createElement('img');
+    img.className = 'ex-img';
+    img.alt = '';
+    img.src = '/frutiz/sprites/' + nom + '.svg';
+    if (!c) return img;
+    var e = EX_R4 * (ratio === undefined ? 1.66 : ratio) / 100;
+    img.style.width = (c.w * e) + 'px';
+    img.style.height = (c.h * e) + 'px';
+    // `ico._y` n'est jamais posé : le clip s'accroche en haut de la marge, et
+    // c'est l'origine du dessin qui décide du reste.
+    img.style.top = (EX_BY + c.y * e) + 'px';
+    return img;
+  }
+
+  // LE DISQUE, tel que `but.icon.Full` le dessine : pas d'étiquette, l'anneau
+  // du type de FD et par-dessus la jaquette du jeu — les deux images que
+  // `ico.disc.gotoAndStop(desc[0] + 1)` et `ico.disc.label.gotoAndStop(desc[1])`
+  // choisissent.
+  var JAQUETTES = {
+    Grapiz: 'grapiz', grapiz: 'grapiz', bandas: 'bandas', bkiwi: 'bkiwi',
+    kaluga: 'kaluga', kalugaPreview: 'kalugaPreview', swapou2: 'swapou2',
+    miniwave: 'miniwave', minipixiz: 'minipixiz', minifever: 'minifever',
+    snake3: 'snake', snake: 'snake', jama: 'jama', mb2: 'mb2',
+    mele: 'mele', tower: 'tower', tuberculoz: 'tuberculoz',
+  };
+  function dessinDisque(type, jeu) {
+    var d = document.createElement('span');
+    d.className = 'ex-disque';
+    var anneau = document.createElement('img');
+    anneau.alt = '';
+    anneau.src = '/frutiz/sprites/disc_anneau_' + (Number(type) || 0) + '.svg';
+    d.appendChild(anneau);
+    var nom = JAQUETTES[jeu] || JAQUETTES[String(jeu).toLowerCase()];
+    if (nom) {
+      var jaq = document.createElement('img');
+      jaq.alt = '';
+      jaq.className = 'jaquette';
+      jaq.src = '/frutiz/sprites/disc_jaquette_' + nom + '.svg';
+      d.appendChild(jaq);
+    }
+    return d;
+  }
+
+  // La bouille d'un accessoire : `but.Icon.display` remplace l'icône par un
+  // `frutibouille` et met `icoRatio` à 1 — l'aperçu fait donc r4 de côté.
+  function dessinBouille(etat) {
+    var c = document.createElement('span');
+    c.className = 'ex-bouille';
+    var f = document.createElement('iframe');
+    f.setAttribute('scrolling', 'no');
+    f.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    f.setAttribute('tabindex', '-1');
+    f.src = '/bouille-preview.html?s=' + encodeURIComponent(String(etat || '').replace(/[^0-9A-Za-z]/g, ''))
+      + '&bg=transparent';
+    c.appendChild(f);
+    return c;
+  }
+
+  // Le fond d'écran : l'icône du type « wallpaper », et dedans l'image du fond
+  // — le SWF, lui, ne montre que le cadre ; on y met la vignette, qui dit tout
+  // de suite lequel c'est.
+  function dessinFond(url, couleur) {
+    var img = dessinStandard('ico_wallpaper');
+    if (!url) return img;
+    var c = document.createElement('span');
+    c.className = 'ex-fond';
+    c.style.width = img.style.width;
+    c.style.height = img.style.height;
+    c.style.top = img.style.top;
+    var v = document.createElement('span');
+    v.className = 'vign';
+    v.style.backgroundImage = 'url("' + url + '")';
+    var arr = String(couleur || '').split(';')[0];
+    if (/^[0-9a-fA-F]{6}$/.test(arr)) v.style.backgroundColor = '#' + arr;
+    c.appendChild(v);
+    c.appendChild(img);
+    img.style.top = '0';
+    return c;
+  }
+
+  // L'ARBRE DES DOSSIERS (`/ff/tree`), que `FFileMng` lit une fois pour toutes
+  // au démarrage. C'est LUI qui nomme et TYPE un dossier : `onLoadDesktop` fait
+  // `var i = fileMng.tree[uid]; desc: [i.name, i.type]`. Le listing, lui, ne
+  // porte qu'un `t="folder"` générique — sans l'arbre, les trois dossiers de
+  // l'inventaire perdraient leur coffre.
+  var arbre = null, arbreEnCours = null;
+  function chargerArbre() {
+    if (arbre) return Promise.resolve(arbre);
+    if (arbreEnCours) return arbreEnCours;
+    var sid = (window.state && window.state.sid) || '';
+    arbreEnCours = fetch('/ff/tree?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
+      .then(function (r) { return r.text(); })
+      .then(function (t) {
+        var doc = new DOMParser().parseFromString(t, 'text/xml');
+        var m = {};
+        var noeuds = doc.getElementsByTagName('f');
+        for (var i = 0; i < noeuds.length; i++) {
+          var n = noeuds[i];
+          m[n.getAttribute('u')] = { nom: n.getAttribute('n') || '', type: n.getAttribute('t') || 'default' };
+        }
+        arbre = m;
+        return m;
+      })
+      .catch(function () { arbre = {}; return arbre; });
+    return arbreEnCours;
+  }
+
+  // ── Ce que `box.Explorer.onLoadList` décide du dossier ouvert ───────────
+  var MAIL_UIDS = { messages: 1, inbox: 1, outbox: 1, draftbox: 1, blackbox: 1 };
+  function typeDeDossier(uid, aParent) {
+    var t = { flUp: !!aParent, flNewDirectory: false, flRemoveAll: false, flMail: false };
+    if (String(uid).indexOf('inv') === 0) return t;
+    if (uid === 'recyclebin') { t.flRemoveAll = true; return t; }
+    t.flNewDirectory = !(MAIL_UIDS[uid] || uid === 'inventory' || uid === 'blacklist');
+    t.flMail = !!MAIL_UIDS[uid];
+    return t;
+  }
+
+  // `window.displayAlert` — la phrase du dossier, mot pour mot (lang_french.as).
+  function alerteDossier(uid, entrees) {
+    var n = entrees.length;
+    if (uid === 'disccollector') {
+      var noir = entrees.some(function (e) { return e.type === 'disc' && e.desc[0] === '0'; });
+      if (noir) {
+        return 'Pour jouer, faîtes glisser les disques dans la Frusion : '
+          + 'la console en haut à droite de Frutiparc';
+      }
+      if (!entrees.some(function (e) { return e.type === 'disc'; })) {
+        return 'Vous n’avez plus de Fruti-Disque ? Les FD noirs sont distribués tous les jours '
+          + 'à minuit, mais vous pouvez dès maintenant acheter des FD blancs ou des Pass '
+          + 'dans la boutique !';
+      }
+      return '';
+    }
+    // La phrase de l'inventaire vide. D'époque elle ne sort que sur la RACINE
+    // (`uid == fileMng.inventory && listSize() < 2`) — mais la racine du
+    // revival porte toujours ses trois dossiers, si bien qu'elle ne sortirait
+    // jamais. On la garde donc AUSSI pour un dossier d'inventaire vide : c'est
+    // là qu'elle a quelque chose à dire, et c'est la phrase d'origine, dans le
+    // bandeau d'origine.
+    if ((uid === 'inventory' || String(uid).indexOf('inv') === 0) && n < 2) {
+      return 'Vous trouverez dans votre inventaire des objets achetés dans la boutique '
+        + 'ou accumulés en jouant.';
+    }
+    return '';
+  }
+
+  // ── La lecture d'un dossier ────────────────────────────────────────────
+  // `/ff/ls` rend le XML que `FFileMng.analyseXml` sait lire : `<e>` un
+  // fichier (le contenu = les lignes de `desc`), `<f>` un dossier.
+  function lireDossier(xml) {
+    var racine = xml && xml.documentElement;
+    var out = [];
+    if (!racine) return out;
+    for (var n = racine.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType !== 1) continue;
+      if (n.nodeName === 'e') {
+        out.push({
+          uid: n.getAttribute('u') || '',
+          type: n.getAttribute('t') || 'default',
+          desc: String(n.textContent || '').split(/\r\n|\r|\n/),
+        });
+      } else if (n.nodeName === 'f') {
+        // `onLoadDesktop` : le nom ET le type d'un dossier viennent de
+        // l'ARBRE (`fileMng.tree[uid]`), pas du listing.
+        var uid = n.getAttribute('u') || '';
+        var i = (arbre && arbre[uid]) || null;
+        out.push({
+          uid: uid,
+          type: 'folder',
+          desc: [(i && i.nom) || n.getAttribute('n') || '',
+            (i && i.type) || n.getAttribute('t') || 'default'],
+        });
+      }
+    }
+    return out;
+  }
+
+  function ouvrirDossier(cle, uid, titre) {
+    var etat = exEtats[cle];
+    if (!etat) return;
+    etat.uid = uid;
+    etat.titre = titre || EXPLORATEURS[cle].titre;
+    retitrer(etat.panneau.id, etat.titre);
+    var sid = (window.state && window.state.sid) || '';
+    var champ = etat.panneau.querySelector('.ex-champ');
+    champ.textContent = '';
+    champ.classList.add('attente');
+    Promise.all([
+      chargerArbre(),
+      fetch('/ff/ls?uid=' + encodeURIComponent(uid) + '&sid=' + encodeURIComponent(sid),
+        { cache: 'no-store' }).then(function (r) { return r.text(); }),
+    ])
+      .then(function (r) {
+        if (etat.uid !== uid) return;     // un autre dossier a été demandé entre-temps
+        var xml = new DOMParser().parseFromString(r[1], 'text/xml');
+        dessinerDossier(cle, uid, lireDossier(xml));
+      })
+      .catch(function () {
+        champ.classList.remove('attente');
+        champ.textContent = '';
+        var m = document.createElement('div');
+        m.className = 'ex-vide';
+        m.textContent = 'Dossier indisponible.';
+        champ.appendChild(m);
+      });
+  }
+
+  function dessinerDossier(cle, uid, entrees) {
+    var etat = exEtats[cle];
+    var conf = EXPLORATEURS[cle];
+    var racine = uid === conf.uid;
+    var t = typeDeDossier(uid, !racine);
+
+    // La barre d'outils, dans l'ordre de `initNavigatorIconList`.
+    var nav = etat.panneau.querySelector('.ex-nav');
+    nav.textContent = '';
+    if (t.flUp) {
+      nav.appendChild(boutonNav('up', 'Remonter d’un dossier', function () {
+        ouvrirDossier(cle, conf.uid, conf.titre);
+      }));
+    }
+    if (t.flNewDirectory) {
+      // D'époque ce bouton déplie un champ « nouveau dossier ». Le serveur du
+      // revival ne crée pas de dossier dans la boîte à disques : le bouton est
+      // là parce qu'il fait partie de la fenêtre, mais il n'a rien à appeler.
+      var b = boutonNav('new_folder', 'La création de dossiers n’est pas ouverte sur le revival', null);
+      nav.appendChild(b);
+    }
+    nav.hidden = !nav.firstChild;
+
+    var alerte = etat.panneau.querySelector('.ex-alerte');
+    var phrase = alerteDossier(uid, entrees);
+    alerte.textContent = phrase;
+    alerte.hidden = !phrase;
+
+    var champ = etat.panneau.querySelector('.ex-champ');
+    champ.classList.remove('attente');
+    champ.textContent = '';
+    // `box.Explorer.displayList` trie par NOM, croissant, sans tenir compte de
+    // la casse — les dossiers ne passent pas devant.
+    entrees = entrees.slice().sort(function (a, b) {
+      return String(nomDe(a)).toLowerCase().localeCompare(String(nomDe(b)).toLowerCase(), 'fr');
+    });
+    // Un dossier vide reste VIDE : le bureau d'époque n'écrit rien dans le
+    // champ, c'est le bandeau d'avertissement qui parle à sa place.
+    for (var i = 0; i < entrees.length; i++) champ.appendChild(caseDe(cle, entrees[i]));
+  }
+
+  function nomDe(e) { return e.desc[0] || ''; }
+
+  function caseDe(cle, e) {
+    var conf = EXPLORATEURS[cle];
+    if (e.type === 'folder') {
+      var typeDossier = e.desc[1] || 'default';
+      var nomIco = cadresExplorateur()['ico_dossier_' + typeDossier]
+        ? 'ico_dossier_' + typeDossier : 'ico_dossier_default';
+      return caseExplorateur({
+        nom: nomDe(e), dessin: dessinStandard(nomIco), titre: nomDe(e),
+        faire: function () { ouvrirDossier(cle, e.uid, nomDe(e)); },
+      });
+    }
+    if (e.type === 'disc') return caseDisque(e);
+    if (e.type === 'bouille') {
+      return caseExplorateur({
+        nom: nomDe(e), dessin: dessinBouille(e.desc[1]), classe: 'ex-slot-bouille',
+        titre: 'Porter « ' + nomDe(e) + ' »',
+        faire: function () { poserAccessoire(nomDe(e), e.desc[1]); },
+      });
+    }
+    if (e.type === 'wallpaper') {
+      // Une entrée d'UNE seule ligne — pas d'url, pas de couleur — c'est le
+      // retour au thème d'origine : `loadWP(undefined)` efface la préférence.
+      var vide = e.uid === '__fond_defaut__' || !e.desc[1];
+      return caseExplorateur({
+        nom: nomDe(e), dessin: dessinFond(vide ? '' : e.desc[1], e.desc[2]),
+        titre: 'Poser « ' + nomDe(e) + ' » sur le bureau',
+        faire: function () { poserFondInventaire(vide ? '' : e.uid); },
+      });
+    }
+    if (e.type === 'url') {
+      // `<e t="url">` porte une ligne `javascript:fp_openPopup('url', nom, spec)` :
+      // le bureau l'exécute tel quel. On en tire l'adresse et on ouvre la
+      // fenêtre nous-mêmes.
+      var lien = ouvrirPopup(e.desc[1]);
+      return caseExplorateur({
+        nom: nomDe(e), dessin: dessinStandard('ico_pictoForum'), titre: nomDe(e),
+        faire: lien,
+      });
+    }
+    return caseExplorateur({ nom: nomDe(e), dessin: dessinStandard('ico_default'), titre: nomDe(e) });
+  }
+
+  function ouvrirPopup(commande) {
+    var m = /fp_openPopup\('([^']*)'\s*,\s*'([^']*)'\s*,\s*'([^']*)'/.exec(String(commande || ''));
+    if (!m) return null;
+    return function () { window.open(m[1], m[2], m[3]); };
+  }
+
+  // LES DISQUES. `but.icon.Full` ne met pas d'étiquette : le disque se
+  // reconnaît à sa jaquette. Le clic, lui, lance le jeu — c'est ce que fait
+  // `_global.onFileClick` d'un disque une fois posé dans la Frusion.
+  // Le libellé d'un disque (`desc[1]`) est celui qui CHOISIT la jaquette dans
+  // fileIcon.swf — c'est aussi ce qui nous dit quel jeu lancer. Trois disques
+  // n'ont pas de portage light : Burning Kiwi, Kaluga et Motion-Ball ne se
+  // lisent que sur la version Flash. On les montre quand même — le bureau
+  // d'époque montre TOUS les disques du joueur — et on le dit à la main.
+  var JEUX_LIGHT = {
+    grapiz: 'grapiz', bandas: 'bandas', swapou2: 'swapou', miniwave: 'miniwave',
+    miniwaved: 'miniwave', minipixiz: 'minipixiz', minipixizd: 'minipixiz',
+    snake3: 'snake3', snake: 'snake3', minifever: 'minifever',
+    jama: 'jamajama', jamajama: 'jamajama',
+  };
+  function caseDisque(e) {
+    var type = e.desc[0], jeu = e.desc[1] || '';
+    var tab = JEUX_LIGHT[String(jeu).toLowerCase()];
+    return caseExplorateur({
+      classe: 'ex-slot-disque',
+      dessin: dessinDisque(type, jeu),
+      titre: tab ? 'Jouer' : 'Ce disque ne se lit que sur la version Flash',
+      faire: tab && window.activateTab ? function () { window.activateTab(tab); } : null,
+    });
+  }
+
+  // `specialClick` : un accessoire se PORTE (la commande `fbouille`), un fond
+  // d'écran se POSE. Le light sait déjà faire les deux — on lui passe la main.
+  function poserAccessoire(nom, etat) {
+    if (window.InventaireBureau && InventaireBureau.porterAccessoire) {
+      InventaireBureau.porterAccessoire(nom, etat);
+    }
+  }
+  function poserFondInventaire(id) {
+    if (window.InventaireBureau && InventaireBureau.poserFond) InventaireBureau.poserFond(id);
+  }
+
+  // L'ouverture depuis le bureau : la fenêtre, puis la racine du dossier.
+  function ouvrirExplorateur(cle) {
+    if (!actif) return;
+    var conf = EXPLORATEURS[cle];
+    if (!conf) return;
+    if (!$(conf.panneau)) $('#app').appendChild(panneauExplorateur(cle));
+    var neuf = !exEtats[cle];
+    ouvrirFenetre('ex-' + cle);
+    exEtats[cle] = exEtats[cle] || { panneau: $(conf.panneau), uid: null, titre: conf.titre };
+    // Rouverte, la fenêtre revient à la RACINE : `box.Explorer.init` refait
+    // `getList()` sans argument, et `close()` a effacé l'uid courant.
+    if (neuf || exEtats[cle].uid === null) ouvrirDossier(cle, conf.uid, conf.titre);
+    else ouvrirDossier(cle, exEtats[cle].uid, exEtats[cle].titre);
   }
 
   // La fenêtre du salon porte le NOM du salon SUIVI DE SON AFFLUENCE, comme
@@ -1162,6 +1664,11 @@ window.BureauFrutiz = (function () {
     rendre(f.panneau, f.origine);
     f.fen.remove();
     delete fenetres[idPanneau];
+    // `box.Explorer.close` oublie le dossier courant : rouverte, la fenêtre
+    // repart de sa racine.
+    for (var cle in exEtats) {
+      if (exEtats[cle].panneau && exEtats[cle].panneau.id === idPanneau) exEtats[cle].uid = null;
+    }
   }
 
   function creerFenetre(rub, panneau) {
@@ -1172,10 +1679,18 @@ window.BureauFrutiz = (function () {
     // Les ouvertures se décalent en cascade sous le coin de la main bar et
     // sous la rangée d'icônes du haut (qu'une fenêtre neuve ne doit pas
     // recouvrir d'emblée — on peut toujours la déplacer ensuite).
-    fen.style.left = Math.min(450 + (cascade % 6) * 26, window.innerWidth - rub.l - 12) + 'px';
-    fen.style.top = (185 + (cascade % 6) * 24) + 'px';
-    if (parseFloat(fen.style.left) < 12) fen.style.left = '12px';
-    cascade++;
+    if (rub.centre) {
+      // `WinStandard.moveToCenter` : la fenêtre se pose au milieu de la zone
+      // utile, celle qui commence sous la main bar.
+      fen.style.left = Math.max(12, Math.round((window.innerWidth - rub.l) / 2)) + 'px';
+      fen.style.top = Math.max(CORNER_Y + 6,
+        Math.round(CORNER_Y + (window.innerHeight - CORNER_Y - rub.h) / 2)) + 'px';
+    } else {
+      fen.style.left = Math.min(450 + (cascade % 6) * 26, window.innerWidth - rub.l - 12) + 'px';
+      fen.style.top = (185 + (cascade % 6) * 24) + 'px';
+      if (parseFloat(fen.style.left) < 12) fen.style.left = '12px';
+      cascade++;
+    }
 
     var titre = document.createElement('div');
     titre.className = 'fen-titre';
@@ -1520,6 +2035,9 @@ window.BureauFrutiz = (function () {
     // La tuile « Salons » du bureau ouvre la LISTE, pas la conversation :
     // c'est le double-clic sur « Les salons » du bureau d'époque.
     ouvrirSalonsPublics: ouvrirSalonsPublics,
+    // Les deux explorateurs : « Mes disques » et « Inventaire ».
+    ouvrirDisques: function () { ouvrirExplorateur('disques'); },
+    ouvrirInventaire: function () { ouvrirExplorateur('inventaire'); },
     // Rappelé par renderRoomOptions : l'affluence des salons bouge, la
     // fenêtre la suit — et la fenêtre du salon se retitre au changement.
     majSalons: function () { majSalons(); majTitreSalon(); },

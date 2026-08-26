@@ -1531,6 +1531,139 @@ seule ligne en haut à gauche : « Classement vide pour le moment ».
   aujourd'hui… ») : la changer toucherait le mobile, qu'on ne bouge pas
   encore.
 
+## L'EXPLORATEUR (`win.Explorer` 0x91d21, `box.Explorer` 0x86eb4)
+
+La fenêtre JAUNE — « Mes disques », « Inventaire », et tout dossier qu'on y
+ouvre. UNE seule classe pour les deux : c'est le dossier ouvert qui décide de
+tout.
+
+### Le gabarit, du bytecode
+
+    win.Explorer.init :
+      pos = {x: 50, y: 50, w: 400, h: 400}      // 402 × 402 contour compris
+      folderType (défaut) = {styleName: "frFileStandard",
+                             flNewDirectory: true, flRemoveAll: false}
+      initNavigatorIconList() ; displayNavigatorIconList() ;
+      displayExplorer() ; endInit() ; moveToCenter()   ← elle s'ouvre AU MILIEU
+
+    displayNavigatorIconList :
+      si la liste est VIDE → rien du tout (pas de rangée de boutons)
+      struct : limit "y", x.size 24, y.size 24, x.space 2, y.space 2
+      compo « navigatorFrame », link « basicIconList », min {w: 80, h: 28}
+
+    displayExplorer :
+      compo « fileIconListFrame », link « fileIconList », min {w: 100, h: 100},
+      flBackground, flWait, mainStyleName = folderType.styleName
+
+    displayAlert(arr) :
+      un compo « cpDocument » par phrase, POSÉ APRÈS « navigatorFrame »,
+      min {w: 100, h: 20}, flBackground, mainStyleName « frSystem »
+
+### Les boutons de la barre d'outils (`butPushNavigator` #393)
+
+    flUp           → image 2, tip « explorer_up »              box.getParent
+    flNewDirectory → image 3, tip « explorer_new_folder »      (l'ÉTOILE)
+    flRemoveAll    → image 4, tip « explorer_empty_recyclebin »
+    flMail         → image 5, tip « explorer_new_mail »
+
+tous avec `outline: 2, curve: 4` — une plaque de 20 px, 2 px de `#DDDDDD`
+peints autour, soit la case de 24 de la liste.
+
+Et `box.Explorer.onLoadList` choisit lesquels :
+
+    flUp = le dossier a un parent (≠ "root")
+    uid commence par « inv »  → ni nouveau dossier ni vidage
+    uid == corbeille          → vidage
+    uid ∈ {boîtes mail, inventaire, liste noire} ou tpl mail → pas de dossier
+    sinon                     → nouveau dossier
+
+### La navigation, SUR PLACE
+
+`IconFileBox.click` (frutiparc/IconFileBox.as) :
+
+    si box.specialClick({uid, type, desc, name})   → fini
+    sinon si type == "folder"  → box.getList(uid)   ← la MÊME fenêtre
+    sinon                      → _global.onFileClick(...)
+
+et `onLoadList` retitre la fenêtre du nom du dossier (`setTitle(list.desc[0])`).
+Rien ne s'empile : c'est un UN CLIC, et le bouton « remonter » revient.
+
+`box.Explorer.specialClick` :
+
+    uid commence par « invpicto, » → la pop-up des pictos du forum
+    type == « bouille »   → mainCnx.cmd("fbouille", {f: desc[1]})
+                            (+ la fenêtre « recherche » pour le Bananocle)
+    type == « wallpaper » → wallPaper.loadWP(desc[1], desc[2])
+
+### Les icônes (`but.Icon` 0x4e473, `but.icon.Standard` 0x842e0)
+
+    but.Icon : icoRatio = 1.66 (1 pour une bouille)
+      type "folder"  → ico.s1.gotoAndStop(desc[1])   ← la bande des dossiers
+      type "disc"    → ico.disc.gotoAndStop(Number(desc[0]) + 1)
+                       ico.disc.label.gotoAndStop(desc[1])
+      type "bouille" → l'icône est REMPLACÉE par un `frutibouille`, icoRatio 1
+
+    but.icon.Standard : bx = 3, by = 4, textRatio = 0.5
+      r4 = width × (1 − textRatio)          // width = case − 2×bx = 74
+      ico._xscale = ico._yscale = r4 × icoRatio        (en POUR CENT)
+      ico._x = (width − r4) / 2
+      titleField.pos = {x: 0, y: r4, w: width, h: height × textRatio}, centré
+
+Case de **80 px** au relevé 1:1 — d'où `width = 74`, `r4 = 37`, une échelle de
+61,4 % qui donne les 36 px du coffre, et l'étiquette à 41 px du haut de la case.
+Les disques, eux, passent par `but.icon.Full` : pas d'étiquette, 63 px de côté,
+7 px sous le haut de la case.
+
+### Le relevé au pixel (fenêtre en x 485..885 / y 146..547)
+
+    ligne  y=193 : 486 #DDDDDD  488 #FFFFFF  490 #DDDDDD
+                   491 #E4E476  492 #EAEA0F  493 #F1F13B  494 #F8F866
+    colonne x=686 : 146 #444444  147 #DDDDDD  149 blanc (bandeau, 16 px)
+                    165 #DDDDDD  167 #EAEA0F  169 → reflet blanc sur 8 px
+                    177 #F8F866
+
+soit : contour de la fenêtre, 2 px de liseré `#DDDDDD`, 2 px de blanc, le
+contour de 2 px `#DDDDDD` du champ, son liseré de 2 px `#EAEA0F`, et le fond
+`#F8F866` sous le reflet (0,6 → 0 sur 8 px, comme la zone des messages).
+
+Le bandeau d'avertissement : contour de 2 px `#DDDDDD`, fond blanc, intérieur
+de 30 px pour deux lignes — **11 px** de corps (la ligne d'époque tient 373 px
+pour soixante-seize signes), 13 px d'interligne, encre `#222222` dont
+l'anticrénelage descend par paliers réguliers (#5A5A5A, #919191, #C8C8C8).
+
+L'encre des étiquettes d'icônes est `#5A5A00` — le jaune très sombre, pendant
+exact du `#335511` vert des étiquettes du bureau (rampe relevée : #5A5A00,
+#82821A, #A9A933, #D1D14D, #F8F866).
+
+### Les dessins
+
+Ils ne sont PAS dans main.swf mais dans `fileIcon.swf` : la bande `iconGFX`
+(#223, une image par type de fichier) et, imbriquée sous le nom `s1` dans son
+image « folder », la bande des dossiers (#200 : « inventory » le coffre,
+« disccollector » la boîte à disques, « recyclebin »…). Un disque empile
+l'anneau du type de FD (5 teintes du même dessin) et la jaquette du jeu (17
+images, une par titre). `scripts/extract-frutiz-explorer.js` sort tout cela,
+plus les quatre boutons de `butPushNavigator`, dans `public/frutiz/sprites/`
+avec un manifeste `explorateur.json` qui donne le cadre de chaque dessin.
+
+### Ce que le portage lit
+
+Les mêmes URL que le bureau Flash : `/ff/tree` une fois (l'arbre NOMME et TYPE
+les dossiers — sans lui les trois dossiers de l'inventaire perdraient leur
+coffre), puis `/ff/ls?uid=…` à chaque navigation.
+
+Écarts assumés :
+- le champ DÉFILE (`overflow: auto`), là où le SWF ne défilait pas — c'est le
+  retour #22, corrigé pour le bureau light ;
+- le bouton « nouveau dossier » de « Mes disques » est dessiné plein (comme
+  d'époque) mais inerte : `/ff/mk` ne range pas de dossier ailleurs que dans
+  « Mes contacts », y compris pour le bureau Flash ;
+- la phrase « Vous trouverez dans votre inventaire… » sort AUSSI sur un
+  dossier d'inventaire vide. D'époque elle ne visait que la racine, qui dans le
+  revival porte toujours ses trois dossiers — elle ne serait jamais sortie ;
+- trois disques n'ont pas de portage light (Burning Kiwi, Kaluga, Motion-Ball) :
+  ils restent dessinés, comme d'époque, et le disent à l'infobulle.
+
 ## Reste à faire (étapes suivantes)
 
 1. ~~La barre-titre des types de fenêtres~~ : `drawInterface` lit TOUJOURS
@@ -1548,8 +1681,14 @@ seule ligne en haut à gauche : « Classement vide pour le moment ».
    #324 extrait) mais sa mécanique reste (FDDrive 0x6d884 : trappe, disque,
    éjection), tout comme les boutons de la mandala (rotation, plantation).
 3. ~~Les icônes du bureau, leur pose et leur glisser-déposer~~ FAIT.
-4. Le mode « tab » des fenêtres (les onglets qui suivent « Bureau »), le
-   menu déroulant de l'onglet, les préférences (`win_flMoveAnim`).
+4. ~~Le mode « tab » des fenêtres~~ FAIT (glissade par le haut, Ctrl qui la
+   saute, onglet « Bureau » qui clignote, menu « Vers bureau / Fermer »).
+   Reste la préférence `win_flMoveAnim`.
+6. ~~L'EXPLORATEUR~~ FAIT (« Mes disques » et « Inventaire », cf. plus haut).
+   Restent, quand le serveur saura les tenir : la CORBEILLE (`frFileTrash` +
+   `flRemoveAll`), les boîtes MAIL (`tpl: "mail"`, `fileIconDetail` et ses
+   colonnes triables) et le glisser-déposer d'un fichier d'un dossier à
+   l'autre (`IconFileBox.onDrop` → `fileMng.move`, Ctrl pour copier).
 5. ~~Le dépliement du panneau des contacts~~ FAIT (bande 9 → 129, tout le
    bureau décalé de +120, liste à 18 px la ligne, dossiers repliables,
    `butSearch` extrait). Reste, quand le light saura les gérer : AJOUTER ou

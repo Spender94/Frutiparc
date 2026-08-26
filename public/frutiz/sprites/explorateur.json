@@ -1,0 +1,254 @@
+{
+  "ico_wallpaper": {
+    "x": 3.45,
+    "y": 12.35,
+    "w": 53.5,
+    "h": 43.6
+  },
+  "ico_link": {
+    "x": 0,
+    "y": 7.55,
+    "w": 59.35,
+    "h": 51.5
+  },
+  "ico_pictoForum": {
+    "x": 2.95,
+    "y": 2.05,
+    "w": 55.2,
+    "h": 56.2
+  },
+  "ico_text": {
+    "x": -3.6,
+    "y": -0.65,
+    "w": 67.25,
+    "h": 60.3
+  },
+  "ico_default": {
+    "x": 4.55,
+    "y": 0.65,
+    "w": 66.95,
+    "h": 56.1
+  },
+  "ico_dossier_default": {
+    "x": 1.48,
+    "y": 7.49,
+    "w": 58.1,
+    "h": 43.1
+  },
+  "ico_dossier_inventory": {
+    "x": 1.05,
+    "y": 3.64,
+    "w": 59.03,
+    "h": 51.42
+  },
+  "ico_dossier_disccollector": {
+    "x": 4.93,
+    "y": 2.11,
+    "w": 53.69,
+    "h": 54.53
+  },
+  "ico_dossier_recyclebin": {
+    "x": 2.15,
+    "y": 1.45,
+    "w": 51.39,
+    "h": 58.41
+  },
+  "ico_dossier_mycontact": {
+    "x": 1.48,
+    "y": 7.49,
+    "w": 58.1,
+    "h": 43.1
+  },
+  "ico_dossier_inbox": {
+    "x": -2.12,
+    "y": 5.19,
+    "w": 62.15,
+    "h": 44.27
+  },
+  "ico_dossier_outbox": {
+    "x": -2.12,
+    "y": 5.19,
+    "w": 62.15,
+    "h": 44.27
+  },
+  "ico_dossier_draftBox": {
+    "x": -3.15,
+    "y": 11.65,
+    "w": 69.59,
+    "h": 39.33
+  },
+  "ico_dossier_blackbox": {
+    "x": -2.12,
+    "y": 5.19,
+    "w": 62.15,
+    "h": 44.27
+  },
+  "ico_dossier_messages": {
+    "x": -2.12,
+    "y": 5.19,
+    "w": 62.15,
+    "h": 44.27
+  },
+  "ico_dossier_blacklist": {
+    "x": 2.15,
+    "y": 1.45,
+    "w": 51.39,
+    "h": 58.41
+  },
+  "disc_anneau_0": {
+    "x": -31.5,
+    "y": -31.5,
+    "w": 63,
+    "h": 63
+  },
+  "disc_anneau_1": {
+    "x": -31.5,
+    "y": -31.5,
+    "w": 63,
+    "h": 63
+  },
+  "disc_anneau_2": {
+    "x": -31.5,
+    "y": -31.5,
+    "w": 63,
+    "h": 63
+  },
+  "disc_anneau_3": {
+    "x": -31.5,
+    "y": -31.5,
+    "w": 63,
+    "h": 63
+  },
+  "disc_anneau_4": {
+    "x": -30,
+    "y": -30,
+    "w": 60,
+    "h": 60
+  },
+  "disc_jaquette_snake": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "disc_jaquette_kaluga": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "disc_jaquette_kalugaPreview": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "disc_jaquette_tuberculoz": {
+    "x": -28.5,
+    "y": -29.35,
+    "w": 58,
+    "h": 58
+  },
+  "disc_jaquette_bkiwi": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "disc_jaquette_swapou2": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "disc_jaquette_mele": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "disc_jaquette_grapiz": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "disc_jaquette_mb2": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "disc_jaquette_bandas": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "disc_jaquette_miniwave": {
+    "x": -30.53,
+    "y": -30.5,
+    "w": 61.06,
+    "h": 61.05
+  },
+  "disc_jaquette_jama": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "disc_jaquette_minipixiz": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "disc_jaquette_tower": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "disc_jaquette_miniwaved": {
+    "x": -30.53,
+    "y": -30.5,
+    "w": 61.06,
+    "h": 61.05
+  },
+  "disc_jaquette_minipixizd": {
+    "x": -30.55,
+    "y": -31.53,
+    "w": 61.05,
+    "h": 62.03
+  },
+  "disc_jaquette_minifever": {
+    "x": -30.5,
+    "y": -30.5,
+    "w": 61,
+    "h": 61
+  },
+  "nav_up": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+  },
+  "nav_new_folder": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+  },
+  "nav_empty_recyclebin": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+  },
+  "nav_new_mail": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+  }
+}

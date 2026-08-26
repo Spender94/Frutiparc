@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-30 -30 60 60" width="60" height="60">
+<g transform="matrix(1,0,0,1,0,0)">
+  <defs>
+    <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0.00053,0,0,0.00079,-0.5,-17.15)"><stop offset="0" stop-color="#f7f593"/><stop offset="0.52941" stop-color="#a6ff8e"/><stop offset="1" stop-color="#f7f593"/></linearGradient>
+    <linearGradient id="g2" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0.00005,-0.00017,0.00075,0.0002,16.75,4.9)"><stop offset="0" stop-color="#f7f593"/><stop offset="0.52941" stop-color="#ff8e8e"/><stop offset="1" stop-color="#f7f593"/></linearGradient>
+    <linearGradient id="g3" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0.00012,-0.00012,0.00054,0.00054,-12.15,-12.55)"><stop offset="0" stop-color="#f7f593"/><stop offset="0.52941" stop-color="#fd8ffe"/><stop offset="1" stop-color="#f7f593"/></linearGradient>
+    <linearGradient id="g4" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0.00007,-0.00025,0.00074,0.0002,-16.75,-5)"><stop offset="0" stop-color="#f7f593"/><stop offset="0.52941" stop-color="#ff8e8e"/><stop offset="1" stop-color="#f7f593"/></linearGradient>
+  </defs>
+  <path d="M2.45 -4.35Q1.4 -4.95 0.15 -5L-0.1 -5L-2.4 -4.4L-2.6 -4.25L-15.15 -26L-14.35 -26.45Q-8.25 -29.85 -0.8 -30L0.8 -30Q8.6 -29.8 15 -26.05L2.45 -4.35Z" fill="url(#g1)" fill-rule="evenodd"/>
+  <path d="M5 0.05L5 0Q5 -1.35 4.35 -2.45L3.55 -3.55L2.45 -4.35L15 -26.05Q18.25 -24.1 21.15 -21.2Q24.05 -18.3 26.05 -15Q29.95 -8.3 30 0L30 0.05L5 0.05ZM-5 0.05Q-5 1.45 -4.3 2.55L-3.55 3.55L-2.55 4.3L-2.45 4.4L-2.4 4.4Q-1.35 5 -0.1 5L0 5Q1.3 5 2.4 4.4L2.45 4.35L3.55 3.55L4.3 2.6L25.95 15.15Q24 18.35 21.15 21.2Q18.25 24.15 14.9 26.1Q8.25 30 0 30L-0.1 30Q-7.95 30 -14.35 26.45L-15.1 26Q-18.35 24.1 -21.25 21.2Q-24.1 18.35 -26.05 15.1Q-30 8.4 -30 0.05L-5 0.05Z" fill="#f7f593" fill-rule="evenodd"/>
+  <path d="M4.3 2.6Q5 1.45 5 0.05L30 0.05Q29.95 8.4 25.95 15.15L4.3 2.6Z" fill="url(#g2)" fill-rule="evenodd"/>
+  <path d="M-2.6 -4.25L-3.55 -3.55L-4.4 -2.4L-26.1 -14.95Q-24.15 -18.3 -21.25 -21.2Q-18.4 -24.05 -15.15 -26L-2.6 -4.25Z" fill="url(#g3)" fill-rule="evenodd"/>
+  <path d="M-4.4 -2.4Q-5 -1.35 -5 0L-5 0.05L-30 0.05L-30 0Q-30 -8.3 -26.1 -14.95L-4.4 -2.4Z" fill="url(#g4)" fill-rule="evenodd"/>
+
+</g>
+</svg>

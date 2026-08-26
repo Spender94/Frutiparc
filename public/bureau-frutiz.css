@@ -1705,3 +1705,149 @@ body.bureau-frutiz .fen #scores-panel #sc-table .sc-ligne {
 body.bureau-frutiz .fen #scores-panel #sc-table .sc-ligne.moi { background: transparent; }
 body.bureau-frutiz .fen #scores-panel #sc-table .sc-moi,
 body.bureau-frutiz .fen #scores-panel #sc-table .sc-pod span { color: #000000; }
+
+/* ── L'EXPLORATEUR (`win.Explorer`, `box.Explorer`) ─────────────────────────
+   « Mes disques » et « Inventaire » : la fenêtre JAUNE du bureau.
+
+   Le jaune est la couleur du type de fenêtre — `winType = "winExplorer"` — et
+   c'est le même `colorSet` qui donne la banane en pastille et la teinte du
+   champ. Le relevé 1:1 (scratchpad/rb-2-disques.png et rb-4-inventaire.png,
+   fenêtre en x 485..885 / y 146..547) donne la rampe au pixel :
+
+     ligne y=193 :  486 #DDDDDD  488 #FFFFFF  490 #DDDDDD
+                    491 #E4E476  492 #EAEA0F  493 #F1F13B  494 #F8F866
+     colonne x=686 : 146 #444444  147 #DDDDDD  149 blanc (bandeau, 16 px)
+                    165 #DDDDDD  167 #EAEA0F  169 → dégradé blanc sur 8 px
+                    177 #F8F866
+
+   soit, en repartant du bord : le contour de la fenêtre, ses 2 px de liseré
+   `#DDDDDD`, 2 px de blanc, le contour de 2 px `#DDDDDD` du champ, son liseré
+   de 2 px `#EAEA0F` — et le fond `#F8F866` sous le REFLET, le même dégradé
+   blanc de 8 px que la zone des messages du salon.
+
+   L'encre des étiquettes est `#5A5A00`, le « jaune très sombre » du jeu de
+   couleurs — exactement ce que `#335511` est au vert des icônes du bureau. */
+body.bureau-frutiz .fen:has(.ex-panel.active) .fen-corps { margin: 0 2px 2px; }
+body.bureau-frutiz .fen .ex-panel {
+  padding: 0; gap: 0; background: transparent; min-height: 0;
+}
+/* LA BARRE D'OUTILS — compo « navigatorFrame », `min: {w: 80, h: 28}`, une
+   liste d'icônes de 24 px de côté avec 2 px d'écart (win.Explorer.
+   displayNavigatorIconList). Elle n'existe QUE si elle a des boutons : sur la
+   racine de l'inventaire, il n'y en a aucun et la rangée disparaît — le champ
+   remonte alors sous le bandeau, comme sur le rendu d'époque. */
+body.bureau-frutiz .fen .ex-panel .ex-nav {
+  flex: 0 0 28px; height: 28px; box-sizing: border-box;
+  padding: 4px 0 0 4px; display: flex; gap: 4px; align-items: flex-start;
+}
+body.bureau-frutiz .fen .ex-panel .ex-nav[hidden] { display: none; }
+/* Le bouton : `butPushNavigator` posé dans une plaque de 20 px arrondie à
+   `curve: 4`, avec `outline: 2` — les 2 px de `#DDDDDD` peints AUTOUR de la
+   boîte, d'où l'ombre portée plutôt qu'une bordure. */
+body.bureau-frutiz .fen .ex-panel .ex-nav-but {
+  width: 20px; height: 20px; flex: 0 0 20px; padding: 0; border: 0;
+  border-radius: 4px; box-shadow: 0 0 0 2px #DDDDDD;
+  background: transparent center / 20px 20px no-repeat;
+  cursor: pointer; color: transparent; font-size: 0;
+}
+/* Un bouton sans action garde sa couleur : le bureau d'époque le dessine
+   plein, et c'est l'infobulle qui dit pourquoi il ne fait rien. */
+body.bureau-frutiz .fen .ex-panel .ex-nav-but:disabled { cursor: default; }
+/* LE BANDEAU D'AVERTISSEMENT — `window.displayAlert`, un `cpDocument` posé
+   entre la barre d'outils et le champ. Relevé : contour de 2 px `#DDDDDD`,
+   fond blanc, et 2 px de blanc entre lui et le champ. */
+body.bureau-frutiz .fen .ex-panel .ex-alerte {
+  /* 30 px d'intérieur pour deux lignes, au relevé (y 195..224) : 13 px
+     d'interligne et 2 px de marge haut et bas. */
+  flex: 0 0 auto; margin: 0 2px 2px; padding: 2px 5px;
+  border: 2px solid #DDDDDD; background: #FFFFFF; border-radius: 3px;
+  /* Relevé : deux lignes d'encre en y 198..208 et 211..220 — 13 px
+     d'interligne, 11 px de corps (la ligne d'époque tient 373 px pour
+     soixante-seize signes), et une encre `#222222` dont l'anticrénelage
+     descend par paliers réguliers (#5A5A5A, #919191, #C8C8C8). */
+  font: normal 11px Verdana, Arial, sans-serif; line-height: 13px; color: #222222;
+}
+body.bureau-frutiz .fen .ex-panel .ex-alerte[hidden] { display: none; }
+/* LE CHAMP — compo « fileIconListFrame », peint par `drawCustomSquare` comme
+   la zone des messages du salon : contour 2 px `#DDDDDD`, liseré 2 px
+   `#EAEA0F`, fond `#F8F866`, et le drapeau `chrome` — le reflet blanc de 8 px
+   qui part à 0,6 et s'éteint. */
+/* Le CONTOUR de 2 px est peint HORS de la boîte (une ombre portée, comme
+   partout dans le bureau) : il lui faut donc 2 px de marge sur les quatre
+   côtés, sinon `overflow: hidden` du corps le rogne — c'est ce qui manquait au
+   ras du bandeau, où le relevé le veut collé (y 165-166 pour un bandeau qui
+   finit en 164). */
+body.bureau-frutiz .fen .ex-panel .ex-champ {
+  flex: 1; min-height: 0; margin: 2px;
+  padding: 4px; box-sizing: border-box; overflow: auto;
+  display: flex; flex-wrap: wrap; align-content: flex-start;
+  background:
+    /* le reflet se compte depuis l'INTÉRIEUR du liseré : le fond d'une boîte
+       part de son contour, d'où les 2 px d'avance donnés au dégradé */
+    linear-gradient(to bottom, rgba(255,255,255,.6) 2px, rgba(255,255,255,0) 10px),
+    #F8F866;
+  border: 2px solid #EAEA0F; border-radius: 5px;
+  box-shadow: 0 0 0 2px #DDDDDD;
+}
+/* La CASE d'une icône : 80 px de côté au relevé (les jaquettes se suivent de
+   80 en 80, en largeur comme en hauteur). Dedans, `but.icon.Standard` pose
+   l'icône en haut — `bx: 3, by: 4` de marge — et l'étiquette à `y = r4`,
+   centrée sur toute la largeur utile. */
+body.bureau-frutiz .fen .ex-panel .ex-slot {
+  position: relative; width: 80px; height: 80px; flex: 0 0 80px;
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+}
+/* Le bureau d'époque ne PÂLIT rien : une icône sans action reste dessinée
+   comme les autres, elle ne répond simplement pas au clic. */
+body.bureau-frutiz .fen .ex-panel .ex-slot.inerte { cursor: default; }
+body.bureau-frutiz .fen .ex-panel .ex-slot:focus-visible { outline: 1px dotted #5A5A00; }
+body.bureau-frutiz .fen .ex-panel .ex-img,
+body.bureau-frutiz .fen .ex-panel .ex-fond,
+body.bureau-frutiz .fen .ex-panel .ex-bouille,
+body.bureau-frutiz .fen .ex-panel .ex-disque {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  display: block; pointer-events: none;
+}
+/* L'étiquette : `titleField.pos = {x: 0, y: r4, w: width, h: height × 0.5}`,
+   alignée au centre, sur plusieurs lignes. 10 px de Verdana au relevé
+   (« Pictos » tient en 28 px), encre `#5A5A00`. */
+body.bureau-frutiz .fen .ex-panel .ex-lbl {
+  position: absolute; left: 3px; top: 41px; width: 74px; height: 36px;
+  text-align: center; overflow: hidden;
+  font: normal 10px Verdana, Arial, sans-serif; line-height: 12px; color: #5A5A00;
+}
+/* LE DISQUE — `but.icon.Full` : pas d'étiquette, l'anneau du type de FD et sa
+   jaquette par-dessus, 63 px de côté au relevé, à 7 px du haut de la case. */
+body.bureau-frutiz .fen .ex-panel .ex-disque {
+  top: 7px; width: 63px; height: 63px;
+}
+body.bureau-frutiz .fen .ex-panel .ex-disque img {
+  position: absolute; inset: 0; width: 63px; height: 63px;
+}
+body.bureau-frutiz .fen .ex-panel .ex-disque img.jaquette {
+  width: 61px; height: 61px; left: 1px; top: 1px;
+}
+body.bureau-frutiz .fen .ex-panel .ex-slot-disque:not(.inerte):active .ex-disque {
+  transform: translateX(-50%) scale(.94);
+}
+/* L'ACCESSOIRE — `but.Icon.display` remplace l'icône par un `frutibouille` et
+   met `icoRatio` à 1 : l'aperçu fait donc r4 (37 px) de côté. */
+body.bureau-frutiz .fen .ex-panel .ex-bouille {
+  top: 4px; width: 37px; height: 37px;
+}
+body.bureau-frutiz .fen .ex-panel .ex-bouille iframe {
+  width: 100%; height: 100%; border: 0; display: block; pointer-events: none;
+}
+/* LE FOND D'ÉCRAN : le cadre du SWF, et dedans la vignette du fond. */
+body.bureau-frutiz .fen .ex-panel .ex-fond .vign {
+  position: absolute; left: 14.5%; top: 13%; width: 71%; height: 62%;
+  background: center / cover no-repeat;
+}
+body.bureau-frutiz .fen .ex-panel .ex-fond .ex-img {
+  position: absolute; left: 0; top: 0; transform: none;
+}
+body.bureau-frutiz .fen .ex-panel .ex-vide {
+  width: 100%; padding: 4px 2px;
+  font: normal 10px Verdana, Arial, sans-serif; color: #5A5A00;
+}
+body.bureau-frutiz .fen .ex-panel .ex-champ.attente { cursor: progress; }

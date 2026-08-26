@@ -3148,7 +3148,12 @@
         b.innerHTML = '<img class="ico-repos" src="/fb/' + it.file + '.svg" alt="' + xmlEscape(it.name) + '">'
           + (it.voyant ? '<img class="ico-alerte" src="/fb/' + it.voyant + '.svg" alt="" aria-hidden="true">' : '');
         if (it.go) b.addEventListener("click", function () {
-          if (it.go === "disques") return openDisquesSheet();
+          if (it.go === "disques") {
+            if (window.BureauFrutiz && BureauFrutiz.actif() && BureauFrutiz.ouvrirDisques) {
+              return BureauFrutiz.ouvrirDisques();
+            }
+            return openDisquesSheet();
+          }
           activateTab(it.go);
         });
         sc.appendChild(b);
@@ -3224,8 +3229,18 @@
       var go = b.getAttribute("data-go");
       if (go === "shop") return openShopSheet();
       if (go === "mail" || go === "evenements" || go === "historique") return activateTab(go);
-      if (go === "disques") return openDisquesSheet();
-      if (go === "inventaire") return openBouilleSheet();
+      // Sur le BUREAU, « Mes disques » et « Inventaire » ne sont pas des
+      // feuilles mais des FENÊTRES — l'explorateur jaune de main.swf, qui lit
+      // les mêmes dossiers par /ff/ls. Sur mobile, rien ne change.
+      var surBureau = window.BureauFrutiz && BureauFrutiz.actif();
+      if (go === "disques") {
+        if (surBureau && BureauFrutiz.ouvrirDisques) return BureauFrutiz.ouvrirDisques();
+        return openDisquesSheet();
+      }
+      if (go === "inventaire") {
+        if (surBureau && BureauFrutiz.ouvrirInventaire) return BureauFrutiz.ouvrirInventaire();
+        return openBouilleSheet();
+      }
       if (go === "club") return window.open("/club/", "_blank");
       // Sur le BUREAU, « Les salons » n'ouvre pas la conversation : il ouvre la
       // LISTE des salons, et c'est en cliquant un salon qu'on y entre — le
@@ -7098,6 +7113,41 @@
         .catch(function () {});
     }
   }
+
+  // LE PONT DE L'INVENTAIRE POUR LE BUREAU.
+  //
+  // Sur desktop, l'inventaire n'est pas une feuille à onglets mais la FENÊTRE
+  // JAUNE de main.swf (`win.Explorer`) : elle lit les dossiers par /ff/ls, comme
+  // le bureau Flash, et rend la main ici pour les deux gestes que
+  // `box.Explorer.specialClick` connaît — porter un accessoire, poser un fond.
+  window.InventaireBureau = {
+    // `mainCnx.cmd("fbouille", {f: desc[1]})` : l'état complet arrive du
+    // serveur, on le porte tel quel. Le reste (aperçu de l'accueil, grille
+    // mobile, envoi par la socket) suit le même chemin que pickAccessory.
+    porterAccessoire: function (nom, etatBouille) {
+      var s = String(etatBouille || "").replace(/[^0-9A-Za-z]/g, "");
+      if (s.length !== 24) return;
+      accSel = isIncarnation(s)
+        ? { suffix: s.substring(15, 24), fullState: s }
+        : { suffix: s.substring(15, 24), fullState: null };
+      if (!isIncarnation(s)) myBase = s;
+      var newState = buildState(myBase, accSel.suffix, accSel.fullState);
+      state.bouilleByUser[state.userLower] = newState;
+      homeProfile.bouille = newState;
+      refreshHomeAvatar();
+      renderAccGrid();
+      updateSheetPreview();
+      if (state.ws && state.ws.readyState === 1) {
+        wsSend('<ae f="' + xmlEscape(newState) + '" />');
+      } else {
+        fetch("/do/eb?sid=" + encodeURIComponent(state.sid) + "&b=" + encodeURIComponent(newState), { cache: "no-store" })
+          .catch(function () {});
+      }
+    },
+    // `wallPaper.loadWP(...)` : le fond se pose ET se retient. Un identifiant
+    // vide, c'est le retour au thème d'origine.
+    poserFond: function (id) { poserFond(id || ""); },
+  };
 
   // ── "Ma Frutibouille" : éditeur de visage (chars 2-23 de l'état bouille) ───
   // Auto-affiché à la connexion tant que le serveur signale needsBouille
