@@ -1980,6 +1980,129 @@ toujours une copie à l'envoi. Le renvoi (« Faire suivre ») n'existe pas côt�
 light. À l'inverse, le portage ajoute un « Retour » que les trois fenêtres
 d'époque n'avaient pas : elles se fermaient.
 
+## POSER SUR LE BUREAU (`FPDesktop` sprite#883 0xb8cae, `cp.DragIconList`)
+
+Le bureau n'est pas un décor : c'est un **dossier**. `FPDesktop` s'abonne à
+`fileMng` sur l'uid « root » et tient sa liste d'`IconFileBox`.
+
+### Le geste, et ses DEUX formes
+
+Tirer un **fichier** passe par `IconFileBox` :
+
+```
+pressIcon  : setInterval(checkDrag, 25) ; dragPoint = souris
+checkDrag  : distance > dragDistMin (4) → createDragIcon(), on désarme
+createDragIcon : path._visible = false  ← l'icône quitte sa fenêtre
+click      : le contrôle court ENCORE ⇒ c'était un clic
+onEndDrag  : path._visible = true ; IconFileBox.dragEnd = getTimer()
+initMove   : path._alpha = 50   ← le fantôme pendant que le serveur répond
+```
+
+Tirer un **contact** du carnet n'a pas de seuil du tout —
+`UserSlot.initButtons` le branche sur `onDragOut` :
+
+```
+mcUser.setButtonMethod("onDragOut", this, "createDragIcon")
+
+createDragIcon() :
+  _global.createDragIcon({ uid: "new", type: "contact",
+                           desc: [userName + "@frutiparc.com"],
+                           name: userName, fbouille: this.fbouille })
+```
+
+L'uid **« new »** est tout : c'est lui qui fait prendre à `onDrop` la branche
+« créer ». Les mêmes arguments servent au clic (`onFileClick`) et au menu
+contextuel (`getFileContextMenu`), et la fenêtre des scores les rebranche
+telle quelle sur chaque pseudo de son tableau.
+
+### Où ça tombe (`listener.dragIconMouse`)
+
+```
+onMouseUp :
+  mc = eval(dragIcon._droptarget)  sinon  findDropTarget()
+  si mc == undefined        → desktop.onDrop(dragIconOrig)   ← LE BUREAU
+  sinon si mc.dropBox       → mc.dropBox.onDrop(orig, mc)
+  sinon                     → mc.onDrop(orig)
+  puis deleteDragIcon()
+```
+
+`findDropTargetIn` descend récursivement les clips sous le curseur, saute
+l'icône glissée et les invisibles, et retient le plus profond qui porte un
+`dropBox`. **Rien dessous = le bureau** : c'est pourquoi lâcher sur le fond
+pose l'objet là. `Depths.dragIcon = 100`, au-dessus de tout.
+
+### Ce que le bureau en fait (`FPDesktop.onDrop`)
+
+```
+si l'uid est DÉJÀ dans ma liste :
+    pos = globalToLocal(dragIcon._x, _y)
+    removeFromList / addToList        ← on REPOSITIONNE, rien de plus
+sinon si ico.uid == "new"  → fileMng.make(ico, "root", { pos })
+sinon si Key.isDown(17)    → fileMng.copy(ico.uid, "root", { pos })   ← Ctrl
+sinon                      → fileMng.move(ico.uid, "root", { pos })
+```
+
+Et `IconFileBox.onDrop`, quand on lâche sur une ICÔNE : la cible est
+`this.uid` si c'est un dossier, sinon `this.parent` — déposer à côté d'un
+fichier le range dans le dossier de ce fichier.
+
+### La grille (`cp.DragIconList`)
+
+```
+gridSpace = displayParameters.icon.size.large + 4          → 84
+displayIconList : margin x.min 18, y.min 12, flMask: false
+                  textColor = wallPaper.txtColor sinon colorSet.green.overdark
+initGrid  : xMax = floor(width / gridSpace), idem en y
+fitInGrid : sans pos      → getNextAvailablePos()
+            hors cadre    → on ramène par pas ENTIERS, puis findNear()
+getNextAvailablePos : balayage LIGNE PAR LIGNE (y dehors, x dedans)
+addToGrid : case = round(pos / gridSpace) — et elle en tient PLUSIEURS :
+            la grille sert à trouver du vide, pas à interdire les recouvrements
+findNear  : parcours récursif, dix cases au plus
+updateIcons : _x = pos.x, _y = pos.y — aucune animation, ça claque
+newIconObj : "fileIconFull" pour un disque, "fileIconStandard" sinon
+```
+
+### Le clic sur un raccourci
+
+```
+FPDesktop.iconClick(ico) :
+  type "folder" → explorerMng.open(ico.uid)
+  type "link"   → eval(ico.desc[1])()
+```
+
+Un **contact** n'y est pas : il passe par `IconFileBox.click` →
+`_global.onFileClick`, qui ouvre sa fiche. Un **disque** non plus, et c'est
+voulu — la branche « disc » d'`openFunctions.as` est en commentaire. Le
+bandeau de « Mes disques » le dit : « Pour jouer, faîtes glisser les disques
+dans la Frusion ».
+
+### Ce que le portage en fait
+
+Le revival tenait DÉJÀ ce bureau pour le client Flash : `user.desktopItems`,
+que `/ff/mv` remplit et que `desktopNodesXml` sert en XML. Le mode Frutiz du
+light lit et écrit **le même** — poser un disque depuis le light le retire de
+« Mes disques » côté Flash aussi. Un objet, une place.
+
+Deux choses ont été ajoutées à ce modèle :
+
+- la **position** (`x`, `y`), que le revival ne retenait pas alors que
+  `fileMng.make/move/copy` la porte d'époque. Un objet posé avant reprend la
+  première case libre, comme `getNextAvailablePos` ;
+- les **dossiers** (`t: "folder"`, et un `p` de parent sur ce qu'ils
+  tiennent). Le SWF n'a pas d'explorateur pour les ouvrir côté revival :
+  `desktopNodesXml` les saute, ainsi que leur contenu. Ils n'existent donc
+  que pour le mode Frutiz du light, qui les ouvre dans une fenêtre bâtie à la
+  volée — le même procédé que « Salons publics ».
+
+**Ce que le portage ne reprend pas.** `fileMng.copy` : Ctrl est lu et
+transmis, mais un contact ou un disque ne se duplique pas — d'époque non
+plus, un même uid ne tient qu'une place sur le bureau. Le raccourci de type
+« link » n'a pas d'équivalent (rien ne pose d'`eval` sur ce bureau-là), et
+`initMove`/`onMoveError` (le fantôme à 50 % pendant l'aller-retour serveur)
+sont sautés : la réponse est locale et immédiate, l'icône paraît tout de
+suite et disparaît si le serveur refuse.
+
 ## LA BOUTIQUE (`win.Shop`, DoInitAction sprite#795 0x797d3)
 
 `win.Shop extends win.Advance` : une fenêtre à DEUX COLONNES, et

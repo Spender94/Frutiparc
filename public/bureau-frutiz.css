@@ -607,6 +607,80 @@ body.bureau-frutiz .fb-glisse-icone .ex-disque img { position: absolute; width: 
 body.bureau-frutiz .fb-glisse-icone .ex-disque img.jaquette {
   width: 61px; height: 61px; left: 1px; top: 1px;
 }
+/* Une bouille attrapée depuis le carnet : `but.Icon.display` met `icoRatio`
+   à 1 pour un `frutibouille` — l'aperçu fait donc r4 de côté, 37 px. */
+body.bureau-frutiz .fb-glisse-icone .ex-bouille {
+  position: relative; left: 0; top: 0; display: block; width: 37px; height: 37px;
+}
+body.bureau-frutiz .fb-glisse-icone .ex-bouille iframe { width: 37px; height: 37px; border: 0; }
+
+/* ── LES RACCOURCIS DU BUREAU (`cp.DragIconList`) ────────────────────────────
+   `FPDesktop.displayIconList` attache un `cpDragIconList` avec une marge de
+   18 en x, 12 en y, et `attachIcon` donne à chaque case
+   `displayParameters.icon.size.large` de côté — 80. La grille avance de
+   `size.large + 4`, soit 84, et `updateIcons` pose bêtement `_x = pos.x` :
+   aucune animation, l'icône claque à sa place.
+
+   L'étiquette suit `but.icon.Standard` : `textRatio = 0,5`, donc le dessin
+   occupe la moitié haute (37) et le libellé la moitié basse, centré. Un
+   DISQUE passe par `but.icon.Full` — pas d'étiquette du tout. */
+body.bureau-frutiz .fb-raccourci {
+  position: absolute; width: 80px; height: 80px; z-index: 2;
+  display: flex; flex-direction: column; align-items: center;
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+}
+body.bureau-frutiz .fb-raccourci .ex-bouille,
+body.bureau-frutiz .fb-raccourci .ex-img {
+  position: relative; left: 0; top: 4px; display: block;
+}
+body.bureau-frutiz .fb-raccourci .ex-bouille { width: 37px; height: 37px; }
+body.bureau-frutiz .fb-raccourci .ex-bouille iframe { width: 37px; height: 37px; border: 0; }
+/* `but.icon.Full` : 63 px de côté, 7 px sous le haut de la case, sans nom. */
+body.bureau-frutiz .fb-raccourci .ex-disque {
+  position: relative; left: 0; top: 7px; transform: none;
+  display: block; width: 63px; height: 63px;
+}
+body.bureau-frutiz .fb-raccourci .ex-disque img { position: absolute; width: 63px; height: 63px; }
+body.bureau-frutiz .fb-raccourci .ex-disque img.jaquette {
+  width: 61px; height: 61px; left: 1px; top: 1px;
+}
+/* L'étiquette du bureau prend la couleur que `displayIconList` calcule : celle
+   du fond d'écran s'il en impose une, sinon `colorSet.green.overdark`. */
+body.bureau-frutiz .fb-raccourci .fb-r-lbl {
+  position: absolute; left: 3px; top: 41px; width: 74px;
+  font: 700 11px Verdana, Arial, sans-serif; text-align: center;
+  color: var(--fond-txt, #2C4A0F); line-height: 1.15;
+  text-shadow: 0 0 3px rgba(var(--fond-halo, 255,255,255), .9);
+  overflow: hidden; word-break: break-word;
+}
+body.bureau-frutiz .fb-raccourci:active .ex-bouille,
+body.bureau-frutiz .fb-raccourci:active .ex-img { transform: scale(.9); }
+
+/* Le menu du fond d'écran (`FPDesktop.getMenu`) : la même typographie que
+   les entrées de menu d'un onglet — Verdana 10 noir, rose au survol. */
+body.bureau-frutiz .fb-menu-bureau {
+  position: fixed; z-index: 4000; background: #FFFFFF;
+  box-shadow: 0 0 0 2px #DDDDDD; border-radius: 3px; padding: 4px 0;
+}
+body.bureau-frutiz .fb-menu-bureau button {
+  display: block; width: 100%; border: 0; background: none; cursor: pointer;
+  font: 400 10px Verdana, Arial, sans-serif; color: #000000;
+  padding: 3px 10px 3px 8px; text-align: left; white-space: nowrap;
+}
+body.bureau-frutiz .fb-menu-bureau button:hover { color: #E7756B; }
+body.bureau-frutiz .fb-menu-bureau button:active { color: #DDDDDD; }
+
+/* La fenêtre d'un dossier du bureau : la même grille de cases que les deux
+   explorateurs, sur le blanc de `frSystem`. */
+body.bureau-frutiz .fen .fb-dossier-panneau {
+  flex: 1; min-height: 0; overflow: auto; padding: 8px;
+  display: flex; flex-wrap: wrap; align-content: flex-start; gap: 0;
+  background: #FFFFFF;
+}
+body.bureau-frutiz .fen .fb-dossier-vide {
+  margin: 0; padding: 12px 8px;
+  font: 400 11px Verdana, Arial, sans-serif; color: #5A7D33;
+}
 
 /* ── LA FRUTIMANDALA (cpWheelMng #640 + les peaux /wheel/wheel0|1.swf) ────
    Les couches, exactement les profondeurs du SWF : le châssis de FOND

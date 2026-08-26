@@ -352,8 +352,58 @@ window.BureauFrutiz = (function () {
       v.style.backgroundImage = "url('" + voyantUrl(c.jeu) + "'), "
         + "url('/frutiz/sprites/sl-icone-fond.svg')";
     }
-    b.addEventListener('click', function () { ouvrirFiche(c.pseudo); });
+    b.addEventListener('click', function () {
+      if (Date.now() - dernierDepot < 250) return;   // c'était un GLISSÉ
+      ouvrirFiche(c.pseudo);
+    });
+    // Un contact du carnet s'ATTRAPE. `UserSlot.initButtons` ne passe pas par
+    // le contrôle de distance des fichiers : il branche `createDragIcon` sur
+    // `onDragOut` — le glissé part dès que le curseur QUITTE le bouton, sans
+    // seuil. Et ce qu'il emporte est un fichier « à naître » :
+    //
+    //     createDragIcon({ uid: "new", type: "contact",
+    //                      desc: [userName + "@frutiparc.com"],
+    //                      name: userName, fbouille: this.fbouille })
+    //
+    // — l'uid « new » est ce qui fait prendre à `FPDesktop.onDrop` la branche
+    // `fileMng.make` : déposer un contact CRÉE le raccourci.
+    attraperContact(b, c);
     return b;
+  }
+
+  // `onDragOut` : le bouton perd le curseur alors qu'il est enfoncé.
+  function attraperContact(b, c) {
+    b.addEventListener('pointerdown', function (ev) {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      var parti = false;
+      var boite = b.getBoundingClientRect();
+      var dehors = function (e) {
+        if (!parti) {
+          if (e.clientX >= boite.left && e.clientX <= boite.right
+            && e.clientY >= boite.top && e.clientY <= boite.bottom) return;
+          parti = true;
+          glisseur.source = null;              // le slot RESTE en place
+          creerIconeGlissee({
+            uid: 'new', type: 'contact',
+            desc: [c.pseudo + '@frutiparc.com', c.bouille || ''],
+            name: c.pseudo,
+          }, dessinBouille(c.bouille || ''), e.clientX, e.clientY);
+        }
+        glisseur.ctrl = !!(e.ctrlKey || e.metaKey);
+        glisseur.el.style.left = e.clientX + 'px';
+        glisseur.el.style.top = e.clientY + 'px';
+      };
+      var lache = function (e) {
+        document.removeEventListener('pointermove', dehors);
+        document.removeEventListener('pointerup', lache, true);
+        if (!parti) return;
+        e.preventDefault(); e.stopPropagation();
+        finirGlisser(e.clientX, e.clientY);
+      };
+      document.addEventListener('pointermove', dehors);
+      document.addEventListener('pointerup', lache, true);
+    });
   }
 
   // Le voyant d'un jeu, celui-là même que la liste des connectés pose à
@@ -992,21 +1042,397 @@ window.BureauFrutiz = (function () {
     return el;
   }
 
+  // `listener.dragIconMouse.onMouseUp` : on cherche ce qu'il y a sous le
+  // curseur ; le premier parent porteur d'un `dropBox` reçoit le dépôt, et
+  // QUAND IL N'Y EN A PAS, c'est le BUREAU qui le prend —
+  //
+  //     if (mc == undefined) this.desktop.onDrop(this.dragIconOrig);
+  //
+  // d'où le comportement d'époque : lâcher n'importe où sur le fond pose
+  // l'objet là.
   function finirGlisser(x, y) {
     if (!glisseur.el) return;
     var info = glisseur.info;
+    var ctrl = glisseur.ctrl;           // `Key.isDown(17)` : Ctrl = COPIER
     glisseur.el.remove();
     glisseur.el = null;
     glisseur.info = null;
+    glisseur.ctrl = false;
     // La CIBLE : ce qui se trouve sous le curseur au lâcher. L'icône glissée
     // ne compte pas (elle ne reçoit pas les clics).
     var cible = document.elementFromPoint(x, y);
     var boite = cible && cible.closest ? cible.closest('[data-depot]') : null;
+    var quoi = boite ? boite.getAttribute('data-depot') : null;
     var pris = false;
-    if (boite && boite.getAttribute('data-depot') === 'frusion') pris = frusion.deposer(info);
+    if (quoi === 'frusion') pris = frusion.deposer(info);
+    else if (quoi === 'dossier') pris = deposerDansDossier(info, boite.getAttribute('data-uid'));
+    else if (quoi === 'bureau' || (!boite && surLeBureau(cible))) pris = deposerSurBureau(info, x, y, ctrl);
+    // `IconFileBox.onEndDrag` note l'heure (`IconFileBox.dragEnd = getTimer()`)
+    // pour que le clic de fin de geste n'ouvre rien.
+    if (pris) {
+      dernierDepot = Date.now();
+      // `fileMng` prévient ses ÉCOUTEURS : « Mes disques » se relit, le disque
+      // posé n'y est plus.
+      if (info.type === 'disc') relireExplorateurs();
+    }
     prevenirGlisser(info.type, 'fin');
     if (!pris && glisseur.source) glisseur.source.style.visibility = '';
     glisseur.source = null;
+  }
+
+  // Le fond du bureau, ou l'un de ses raccourcis : dans les deux cas c'est le
+  // bureau qui reçoit — `findDropTargetIn` ne s'arrête que sur un `dropBox`,
+  // et un raccourci n'en est pas un.
+  function surLeBureau(el) {
+    if (!el || !el.closest) return false;
+    return !!el.closest('#bureau') && !el.closest('.fen') && !el.closest('#side-list');
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     CE QU'ON POSE SUR LE BUREAU (`FPDesktop`, DoInitAction sprite#883 0xb8cae)
+
+     Le bureau d'époque est un DOSSIER comme un autre : `FPDesktop` s'abonne à
+     `fileMng` sur l'uid « root » et tient sa liste d'`IconFileBox`. Déposer
+     quelque chose dessus passe par `onDrop` :
+
+         onDrop(ico, mc) :
+           si l'uid est DÉJÀ dans ma liste  → on le REPOSITIONNE seulement
+               pos = globalToLocal(dragIcon._x, _y) ; removeFromList/addToList
+           sinon si ico.uid == "new"        → fileMng.make(ico, "root", {pos})
+           sinon si Key.isDown(17)          → fileMng.copy(ico.uid, "root", …)
+           sinon                            → fileMng.move(ico.uid, "root", …)
+
+     Et `displayIconList` monte le tout dans un `cpDragIconList` avec une marge
+     de 18 en x, 12 en y, la couleur de texte du fond d'écran (ou
+     `colorSet.green.overdark` s'il n'en impose pas) et `flMask: false`.
+
+     La grille est celle de `cp.DragIconList` :
+
+         gridSpace = displayParameters.icon.size.large + 4      → 84
+         initGrid  : xMax = floor(width / gridSpace), idem en y
+         fitInGrid : sans pos → getNextAvailablePos() ; hors cadre → on
+                     ramène par pas entiers puis findNear()
+         getNextAvailablePos : balayage LIGNE PAR LIGNE (y dehors, x dedans)
+         addToGrid : la case est round(pos / gridSpace) — et elle peut en
+                     contenir PLUSIEURS : la grille sert à trouver du vide,
+                     pas à empêcher les recouvrements.
+         updateIcons : _x = pos.x, _y = pos.y — aucune animation, ça claque. */
+  var GRILLE_PAS = 84;                  // icon.size.large (80) + 4
+  var GRILLE_MX = 18, GRILLE_MY = 12;   // `Standard.getMargin()` + x.min/y.min
+  var objetsBureau = [];                // la liste « root » de FPDesktop
+  var bureauCharge = false;
+
+  function jetonSid() { return (window.state && window.state.sid) || ''; }
+
+  function chargerObjetsBureau() {
+    var sid = jetonSid();
+    if (!sid) return;
+    fetch('/api/light/bureau/objets?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) return;
+        objetsBureau = d.objets || [];
+        bureauCharge = true;
+        rafraichirBureau();
+      })
+      .catch(function () { /* hors ligne : le bureau reste nu */ });
+  }
+
+  function ecrireObjetBureau(corps) {
+    var sid = jetonSid();
+    if (!sid) return Promise.resolve(null);
+    corps.sid = sid;
+    return fetch('/api/light/bureau/objets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corps),
+    }).then(function (r) { return r.json(); }).catch(function () { return null; });
+  }
+
+  // `initGrid` + `getNextAvailablePos` : la première case libre, en balayant
+  // ligne par ligne. Les cases occupées sont celles des objets DÉJÀ posés.
+  function caseLibreBureau(parent) {
+    var bureau = $('#bureau');
+    var l = bureau ? bureau.clientWidth : 1200, h = bureau ? bureau.clientHeight : 700;
+    var xMax = Math.max(1, Math.floor(l / GRILLE_PAS));
+    var yMax = Math.max(1, Math.floor(h / GRILLE_PAS));
+    var prises = {};
+    objetsBureau.forEach(function (o) {
+      if ((o.parent || 'root') !== parent) return;
+      prises[Math.round(o.pos.x / GRILLE_PAS) + ':' + Math.round(o.pos.y / GRILLE_PAS)] = true;
+    });
+    for (var y = 0; y < yMax; y++) {
+      for (var x = 0; x < xMax; x++) {
+        if (!prises[x + ':' + y]) return { x: x * GRILLE_PAS, y: y * GRILLE_PAS };
+      }
+    }
+    return { x: 0, y: 0 };
+  }
+
+  // `fitInGrid` : une position hors cadre revient par pas ENTIERS de
+  // `gridSpace`, puis `findNear` cherche une case libre à moins de dix.
+  function rangerDansGrille(pos, parent) {
+    var bureau = $('#bureau');
+    var l = bureau ? bureau.clientWidth : 1200, h = bureau ? bureau.clientHeight : 700;
+    var xMax = Math.max(1, Math.floor(l / GRILLE_PAS));
+    var yMax = Math.max(1, Math.floor(h / GRILLE_PAS));
+    var x = pos.x, y = pos.y;
+    while (x > (xMax - 1) * GRILLE_PAS) x -= GRILLE_PAS;
+    while (y > (yMax - 1) * GRILLE_PAS) y -= GRILLE_PAS;
+    return { x: Math.max(0, x), y: Math.max(0, y), parent: parent };
+  }
+
+  // `FPDesktop.onDrop`, branche par branche.
+  function deposerSurBureau(info, x, y, ctrl) {
+    var bureau = $('#bureau');
+    if (!bureau) return false;
+    var app = bureau.getBoundingClientRect();
+    // `globalToLocal` : la position du curseur DANS la liste d'icônes, dont
+    // l'origine est la marge de `displayIconList`.
+    var pos = rangerDansGrille({
+      x: Math.round(x - app.left - GRILLE_MX),
+      y: Math.round(y - app.top - GRILLE_MY),
+    }, 'root');
+
+    // Un objet DÉJÀ du bureau ne se recrée pas : il se repositionne.
+    var dedans = info.uid && trouverObjet(info.uid);
+    if (dedans && !ctrl) {
+      dedans.pos = { x: pos.x, y: pos.y };
+      dedans.parent = 'root';
+      rafraichirBureau();
+      ecrireObjetBureau({ action: 'move', uid: dedans.uid, parent: 'root', pos: dedans.pos });
+      return true;
+    }
+    return creerObjetBureau(info, 'root', pos);
+  }
+
+  function deposerDansDossier(info, uid) {
+    if (!uid) return false;
+    var dedans = info.uid && trouverObjet(info.uid);
+    if (dedans) {
+      if (dedans.uid === uid) return false;         // un dossier dans lui-même
+      dedans.parent = uid;
+      dedans.pos = caseLibreBureau(uid);
+      rafraichirBureau();
+      ecrireObjetBureau({ action: 'move', uid: dedans.uid, parent: uid, pos: dedans.pos });
+      return true;
+    }
+    return creerObjetBureau(info, uid, caseLibreBureau(uid));
+  }
+
+  // `fileMng.addListener` : chaque explorateur ouvert écoute SON dossier et se
+  // relit quand il change. Le portage relit simplement ce qui est affiché.
+  function relireExplorateurs() {
+    for (var cle in exEtats) {
+      var e = exEtats[cle];
+      if (e && e.uid) ouvrirDossier(cle, e.uid, e.titre);
+    }
+  }
+
+  function creerObjetBureau(info, parent, pos) {
+    // `fileMng.make` ne connaît que ce que l'icône glissée porte : son type,
+    // son `desc` et son nom. Un accessoire ou un fond ne se posent pas sur le
+    // bureau d'époque (ils s'appliquent), on ne prend que ce qui s'y pose.
+    if (info.type !== 'contact' && info.type !== 'disc' && info.type !== 'folder') return false;
+    // L'UID est celui du fichier : l'identifiant du disque au catalogue,
+    // l'adresse pour un contact. C'est ce que `fileMng` manipule d'époque, et
+    // c'est ce qui fait qu'un disque posé quitte « Mes disques ».
+    var uid = info.type === 'contact' ? (info.desc || [])[0] : info.uid;
+    var provisoire = {
+      uid: uid || ('tmp' + Math.random().toString(36).slice(2)),
+      parent: parent, type: info.type,
+      desc: (info.desc || []).slice(),
+      name: info.name || '',
+      pos: { x: pos.x, y: pos.y },
+    };
+    if (trouverObjet(provisoire.uid)) return false;      // déjà posé
+    objetsBureau.push(provisoire);
+    rafraichirBureau();
+    ecrireObjetBureau({
+      action: 'make', parent: parent, type: info.type, uid: uid,
+      desc: provisoire.desc, name: provisoire.name, pos: provisoire.pos,
+    }).then(function (d) {
+      var i = objetsBureau.indexOf(provisoire);
+      if (!d || !d.ok) { if (i >= 0) objetsBureau.splice(i, 1); rafraichirBureau(); return; }
+      // Le serveur refuse le doublon d'un contact : l'icône revient à sa
+      // place, comme d'époque quand `fileMng` renvoie une erreur.
+      if (d.deja) { if (i >= 0) objetsBureau.splice(i, 1); rafraichirBureau(); return; }
+      if (i >= 0) objetsBureau[i] = d.objet;
+      rafraichirBureau();
+    });
+    return true;
+  }
+
+  function trouverObjet(uid) {
+    for (var i = 0; i < objetsBureau.length; i++) if (objetsBureau[i].uid === uid) return objetsBureau[i];
+    return null;
+  }
+
+  function retirerObjetBureau(uid) {
+    for (var i = objetsBureau.length - 1; i >= 0; i--) {
+      if (objetsBureau[i].uid === uid || objetsBureau[i].parent === uid) objetsBureau.splice(i, 1);
+    }
+    rafraichirBureau();
+    ecrireObjetBureau({ action: 'remove', uid: uid });
+  }
+
+  // `newIconObj` : un disque prend `fileIconFull` (pas d'étiquette), tout le
+  // reste `fileIconStandard`. Et `but.Icon.display` remplace le dessin d'un
+  // contact par sa FRUTIBOUILLE.
+  function dessinObjet(o) {
+    if (o.type === 'disc') return dessinDisque(o.desc[0], o.desc[1] || '');
+    if (o.type === 'folder') return dessinStandard('ico_folder');
+    return dessinBouille(o.desc[1] || '');
+  }
+
+  function dessinerObjetsBureau() {
+    var bureau = $('#bureau');
+    if (!bureau) return;
+    var vieux = bureau.querySelectorAll('.fb-raccourci');
+    for (var v = 0; v < vieux.length; v++) vieux[v].remove();
+    // `fitInGrid` : ce qui n'a pas de position prend la première case libre.
+    objetsBureau.forEach(function (o) {
+      if (!o.pos) o.pos = caseLibreBureau(o.parent || 'root');
+    });
+    objetsBureau.forEach(function (o) {
+      if ((o.parent || 'root') !== 'root') return;
+      bureau.appendChild(raccourciBureau(o));
+    });
+  }
+
+  function raccourciBureau(o) {
+    var d = document.createElement('div');
+    d.className = 'fb-raccourci fb-r-' + o.type;
+    d.setAttribute('data-uid', o.uid);
+    // Un DOSSIER est un `dropBox` : `IconFileBox.onDrop` prend son propre uid
+    // pour cible. Les autres n'en sont pas — le dépôt file au bureau.
+    if (o.type === 'folder') { d.setAttribute('data-depot', 'dossier'); }
+    d.style.left = (GRILLE_MX + o.pos.x) + 'px';
+    d.style.top = (GRILLE_MY + o.pos.y) + 'px';
+    d.appendChild(dessinObjet(o));
+    if (o.type !== 'disc') {           // `but.icon.Full` ne met pas d'étiquette
+      var l = document.createElement('span');
+      l.className = 'fb-r-lbl';
+      l.textContent = o.name || o.desc[0] || '';
+      d.appendChild(l);
+    }
+    d.title = o.type === 'contact' ? o.name : (o.name || '');
+
+    // `IconFileBox.click` : le contrôle de glissé court encore ⇒ c'était un
+    // CLIC. Un contact ouvre sa fiche ; un disque ne fait RIEN, comme
+    // d'époque (la branche « disc » d'`openFunctions.as` est commentée).
+    d.addEventListener('click', function (ev) {
+      if (Date.now() - dernierDepot < 250) { ev.stopPropagation(); return; }
+      if (o.type === 'contact') ouvrirFiche(o.name || o.desc[0]);
+      else if (o.type === 'folder') ouvrirDossierBureau(o);
+    });
+    // `getFileContextMenu` : d'époque le clic droit offre de jeter le fichier.
+    d.addEventListener('contextmenu', function (ev) {
+      ev.preventDefault();
+      if (window.confirm('Retirer « ' + (o.name || o.desc[0]) + ' » du bureau ?')) retirerObjetBureau(o.uid);
+    });
+    rendreAttrapable(d, {
+      uid: o.uid, type: o.type, desc: o.desc, name: o.name,
+    }, function () { return dessinObjet(o); });
+    return d;
+  }
+
+  var dernierDepot = 0;
+
+  // `FPDesktop.getMenu` : le menu du fond d'écran. D'époque il tient la
+  // déconnexion, le mode light, le repli de la barre et la recherche — tout
+  // cela vit déjà ailleurs dans le portage. Ne reste ici que ce qui manquait :
+  // créer un dossier, comme `explorer_new_folder` le fait dans une fenêtre.
+  function menuDuBureau(x, y) {
+    var vieux = document.querySelector('.fb-menu-bureau');
+    if (vieux) vieux.remove();
+    var m = document.createElement('div');
+    m.className = 'fb-menu-bureau';
+    m.style.left = x + 'px';
+    m.style.top = y + 'px';
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = 'Nouveau dossier';
+    b.addEventListener('click', function () {
+      m.remove();
+      var nom = window.prompt('Nom du dossier ?', 'Nouveau dossier');
+      if (!nom) return;
+      var bureau = $('#bureau');
+      var app = bureau.getBoundingClientRect();
+      creerObjetBureau({ type: 'folder', desc: [], name: nom.slice(0, 40) }, 'root',
+        rangerDansGrille({ x: Math.round(x - app.left - GRILLE_MX),
+          y: Math.round(y - app.top - GRILLE_MY) }, 'root'));
+    });
+    m.appendChild(b);
+    document.body.appendChild(m);
+    var fermer = function () { m.remove(); document.removeEventListener('pointerdown', fermer, true); };
+    setTimeout(function () { document.addEventListener('pointerdown', fermer, true); }, 0);
+  }
+
+  // Un dossier du bureau s'ouvre dans une fenêtre, comme
+  // `_global.explorerMng.open(ico.uid)` le fait d'époque. Elle est bâtie à la
+  // volée — même procédé que « Salons publics », qui n'a pas non plus de
+  // panneau mobile à emprunter.
+  function ouvrirDossierBureau(o) {
+    var tab = 'dossier:' + o.uid;
+    var idp = 'fb-dossier-' + o.uid;
+    if (!$('#' + idp)) {
+      var p = document.createElement('div');
+      p.id = idp;
+      p.className = 'fb-dossier-panneau';
+      p.setAttribute('data-depot', 'dossier');
+      p.setAttribute('data-uid', o.uid);
+      $('#app').appendChild(p);
+      RUBRIQUES[tab] = {
+        panneau: '#' + idp, titre: o.name || 'Dossier', fruit: 'winExplorer',
+        l: 400, h: 300, min: { w: 200, h: 128 }, centre: true,
+      };
+    }
+    ouvrirFenetre(tab);
+    dessinerDossierBureau(o.uid);
+  }
+
+  // Ce que le bureau tient dans un dossier donné.
+  function objetsDuDossier(uid) {
+    return objetsBureau.filter(function (o) { return (o.parent || 'root') === uid; });
+  }
+
+  function dessinerDossierBureau(uid) {
+    var p = $('#fb-dossier-' + uid);
+    if (!p) return;
+    p.innerHTML = '';
+    var liste = objetsDuDossier(uid);
+    if (!liste.length) {
+      var vide = document.createElement('p');
+      vide.className = 'fb-dossier-vide';
+      vide.textContent = 'Ce dossier est vide. Glissez-y ce que vous voulez y ranger.';
+      p.appendChild(vide);
+      return;
+    }
+    liste.forEach(function (o) {
+      var c = caseExplorateur({
+        classe: o.type === 'disc' ? 'ex-slot-disque' : '',
+        dessin: dessinObjet(o),
+        nom: o.type === 'disc' ? undefined : (o.name || o.desc[0] || ''),
+        titre: o.name || '',
+        faire: o.type === 'contact' ? function () {
+          if (Date.now() - dernierDepot < 250) return;
+          ouvrirFiche(o.name || o.desc[0]);
+        } : undefined,
+      });
+      c.classList.remove('inerte');
+      rendreAttrapable(c, { uid: o.uid, type: o.type, desc: o.desc, name: o.name },
+        function () { return dessinObjet(o); });
+      p.appendChild(c);
+    });
+  }
+
+  // Redessiner le bureau ET les dossiers ouverts : un objet peut passer de
+  // l'un à l'autre.
+  function rafraichirBureau() {
+    dessinerObjetsBureau();
+    var ouverts = document.querySelectorAll('.fb-dossier-panneau');
+    for (var i = 0; i < ouverts.length; i++) dessinerDossierBureau(ouverts[i].getAttribute('data-uid'));
   }
 
   // Rendre une case d'explorateur ATTRAPABLE. Le clic simple reste possible :
@@ -1027,13 +1453,20 @@ window.BureauFrutiz = (function () {
           glisseur.source = el;
           creerIconeGlissee(info, dessine(), e.clientX, e.clientY);
         }
+        // `Key.isDown(17)` est lu AU DÉPÔT d'époque ; on retient donc l'état
+        // de la touche à chaque pas, le dernier fait foi.
+        glisseur.ctrl = !!(e.ctrlKey || e.metaKey);
         glisseur.el.style.left = e.clientX + 'px';
         glisseur.el.style.top = e.clientY + 'px';
       };
       var lache = function (e) {
         document.removeEventListener('pointermove', bouge);
         document.removeEventListener('pointerup', lache);
-        if (parti) { e.preventDefault(); e.stopPropagation(); finirGlisser(e.clientX, e.clientY); }
+        if (parti) {
+          e.preventDefault(); e.stopPropagation();
+          glisseur.ctrl = !!(e.ctrlKey || e.metaKey);
+          finirGlisser(e.clientX, e.clientY);
+        }
       };
       document.addEventListener('pointermove', bouge);
       document.addEventListener('pointerup', lache, true);
@@ -3416,6 +3849,15 @@ window.BureauFrutiz = (function () {
 
     var bureau = document.createElement('div');
     bureau.id = 'bureau';
+    // `listener.dragIconMouse.onMouseUp` : quand rien sous le curseur ne porte
+    // de `dropBox`, c'est le BUREAU qui reçoit. Ici il le dit franchement.
+    bureau.setAttribute('data-depot', 'bureau');
+    // `FPDesktop.getMenu` : le clic droit sur le fond ouvre le menu du bureau.
+    bureau.addEventListener('contextmenu', function (ev) {
+      if (ev.target !== bureau) return;      // un raccourci a le sien
+      ev.preventDefault();
+      menuDuBureau(ev.clientX, ev.clientY);
+    });
     var couche = document.createElement('div');
     couche.id = 'bureau-fenetres';
     // La couche HAUTE : la barre et ses meubles, AU-DESSUS des fenêtres —
@@ -3523,10 +3965,16 @@ window.BureauFrutiz = (function () {
     if (compte) bureau.appendChild(compte);
 
     poserFond(fondCourant);
+    // Ce que le joueur a posé sur son bureau : `FPDesktop` s'abonne à `fileMng`
+    // sur « root » dès son `init`, et le portage relit la même liste.
+    chargerObjetsBureau();
     window.addEventListener('resize', function () {
       poserFond(fondCourant);
       for (var id in fenetres) bornerDansEcran(fenetres[id].fen);
       majBouilles();
+      // `cpDragIconList.updateSize` relance `initGrid` + `fitInGrid` : la
+      // grille change de taille, les icônes hors cadre reviennent dedans.
+      rafraichirBureau();
     });
   }
 
@@ -3542,6 +3990,9 @@ window.BureauFrutiz = (function () {
     ouvrirInventaire: function () { ouvrirExplorateur('inventaire'); },
     // La boutique : une FENÊTRE sur le bureau, la feuille du mobile ailleurs.
     ouvrirBoutique: ouvrirBoutique,
+    // Ce que le joueur a posé sur son bureau, pour le banc et pour le light.
+    objetsBureau: function () { return objetsBureau.slice(); },
+    rafraichirBureau: rafraichirBureau,
     // Rappelé par renderRoomOptions : l'affluence des salons bouge, la
     // fenêtre la suit — et la fenêtre du salon se retitre au changement.
     majSalons: function () { majSalons(); majTitreSalon(); },

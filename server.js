@@ -4999,10 +4999,30 @@ function parseDesktopItems(raw) {
   for (const it of brut) {
     if (!it || typeof it !== 'object') continue;
     const u = String(it.u || '');
-    const t = it.t === 'contact' ? 'contact' : 'disc';
+    // « folder » est une addition du portage : le bureau d'époque en accepte
+    // (`FPDesktop` liste ce que `fileMng` lui donne), mais le revival n'avait
+    // qu'un bureau plat. Le client Flash ne les voit pas — `desktopNodesXml`
+    // les saute, faute d'explorateur pour les ouvrir côté SWF.
+    const t = it.t === 'contact' ? 'contact' : (it.t === 'folder' ? 'folder' : 'disc');
     if (!u || vus.has(t + ':' + u)) continue;
     vus.add(t + ':' + u);
-    out.push({ u, t });
+    // La POSITION, quand elle est connue. D'époque `FPDesktop.onDrop` la
+    // passe à `fileMng.make/move/copy` — `{ pos: { x: _xmouse, y: _ymouse } }`
+    // — et `cp.DragIconList.fitInGrid` la range dans sa grille. Les icônes
+    // posées avant que le portage ne la retienne n'en ont pas : elles
+    // reprennent la première case libre, comme `getNextAvailablePos`.
+    const item = { u, t };
+    const x = Math.trunc(Number(it.x));
+    const y = Math.trunc(Number(it.y));
+    if (Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x < 4000 && y < 4000) {
+      item.x = x; item.y = y;
+    }
+    if (t === 'folder') item.n = String(it.n || 'Dossier').slice(0, 40);
+    // Le PARENT : « root » (le bureau) ou l'uid d'un dossier, exactement le
+    // vocabulaire que `FPDesktop.onDrop` passe à `fileMng`.
+    const par = String(it.p || '');
+    if (par && par !== 'root') item.p = par.slice(0, 64);
+    out.push(item);
   }
   return out;
 }
@@ -5019,13 +5039,49 @@ function desktopPersist(username, user) {
   }
 }
 
-function desktopAdd(username, user, uid, type) {
+function desktopAdd(username, user, uid, type, pos, extra) {
   const liste = ensureDesktopItems(user);
   const u = String(uid || '');
   if (!u) return;
-  if (liste.some((it) => it.u === u && it.t === type)) return;   // déjà posé
-  liste.push({ u, t: type });
+  const deja = liste.find((it) => it.u === u && it.t === type);
+  if (deja) {                                    // déjà posé : on le REPLACE
+    if (pos) { deja.x = pos.x; deja.y = pos.y; }
+    if (extra && extra.parent !== undefined) {
+      if (extra.parent && extra.parent !== 'root') deja.p = extra.parent; else delete deja.p;
+    }
+    desktopPersist(username, user);
+    return;
+  }
+  const item = { u, t: type };
+  if (pos) { item.x = pos.x; item.y = pos.y; }
+  if (extra && extra.name) item.n = String(extra.name).slice(0, 40);
+  if (extra && extra.parent && extra.parent !== 'root') item.p = extra.parent;
+  liste.push(item);
   desktopPersist(username, user);
+}
+
+// `FPDesktop.onDrop`, première branche : l'objet est DÉJÀ du bureau, il ne se
+// recrée pas — il se repositionne. `IconFileBox.onDrop`, lui, le fait CHANGER
+// DE DOSSIER : les deux passent par ici.
+function desktopMove(username, user, uid, pos, parent) {
+  const u = String(uid || '');
+  const item = ensureDesktopItems(user).find((it) => it.u === u);
+  if (!item) return false;
+  if (pos) { item.x = pos.x; item.y = pos.y; }
+  if (parent !== undefined) {
+    if (parent && parent !== 'root') item.p = parent; else delete item.p;
+  }
+  desktopPersist(username, user);
+  return true;
+}
+
+// Jeter un dossier emporte ce qu'il contient — d'époque `fileMng.remove`
+// descend l'arbre. Les disques qu'il tenait retournent au catalogue.
+function desktopRemoveTree(username, user, uid) {
+  const u = String(uid || '');
+  const liste = ensureDesktopItems(user);
+  user.desktopItems = liste.filter((it) => it.u !== u && it.p !== u);
+  if (user.desktopItems.length !== liste.length) desktopPersist(username, user);
 }
 
 function desktopRemove(username, user, uid) {
@@ -5054,6 +5110,9 @@ function desktopHasDisc(user, id) {
 function desktopNodesXml(user) {
   let xml = '';
   for (const it of ensureDesktopItems(user)) {
+    // Rangé dans un dossier du portage, ou dossier lui-même : le SWF n'a pas
+    // de quoi l'ouvrir, il ne le montre donc pas.
+    if (it.p || it.t === 'folder') continue;
     if (it.t === 'disc') {
       const disc = GAME_DISCS[it.u];
       if (!disc) continue;
@@ -19358,6 +19417,109 @@ app.get('/api/light/online', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// ENDPOINTS: /api/light/bureau/objets — CE QUE LE JOUEUR A POSÉ SUR SON BUREAU
+//
+// D'époque le bureau est un dossier comme un autre : `FPDesktop` écoute
+// `fileMng` sur l'uid « root », et déposer une icône dessus appelle
+// `fileMng.make` (uid « new »), `fileMng.copy` (Ctrl enfoncé) ou
+// `fileMng.move`. Chaque appel emporte une position — `{ pos: { x: _xmouse,
+// y: _ymouse } }` — que `cp.DragIconList.fitInGrid` range ensuite dans sa
+// grille de `icon.size.large + 4`.
+//
+// Le revival tenait DÉJÀ ce bureau pour le client Flash : `user.desktopItems`,
+// que `/ff/mv` remplit et que `desktopNodesXml` sert en XML. On ne s'en fait
+// pas un second — le mode Frutiz du light lit et écrit LE MÊME. Poser un
+// disque depuis le light le retire donc de « Mes disques » côté Flash aussi,
+// exactement comme d'époque : un objet, une place.
+// ─────────────────────────────────────────────
+
+// Ce que l'icône doit dessiner : pour un disque son type et son jeu (le
+// `desc[0]`/`desc[1]` de `but.Icon`), pour un contact son pseudo et sa bouille.
+function bureauObjetEnrichi(user, it) {
+  const place = { parent: it.p || 'root', pos: (it.x === undefined ? null : { x: it.x, y: it.y }) };
+  if (it.t === 'folder') {
+    return Object.assign({ uid: it.u, type: 'folder', desc: [], name: it.n || 'Dossier' }, place);
+  }
+  if (it.t === 'disc') {
+    const disc = GAME_DISCS[it.u];
+    if (!disc) return null;                      // disque retiré du catalogue
+    const nom = disc.iconName || disc.swfName;
+    return Object.assign({ uid: it.u, type: 'disc', desc: [String(disc.discType), nom], name: nom }, place);
+  }
+  const adresse = normalizeContactAddress(it.u) || it.u;
+  const local = String(adresse).split('@')[0];
+  if (!local) return null;
+  const compte = users[local] || users[getDisplayName(local)];
+  return Object.assign({
+    uid: it.u, type: 'contact',
+    desc: [adresse, compte ? bouilleOf(compte, local) : ''],
+    name: getDisplayName(local),
+  }, place);
+}
+
+app.get('/api/light/bureau/objets', (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
+  const user = users[username];
+  const objets = ensureDesktopItems(user)
+    .map((it) => bureauObjetEnrichi(user, it))
+    .filter(Boolean);
+  res.json({ ok: true, objets });
+});
+
+app.post('/api/light/bureau/objets', (req, res) => {
+  const corps = req.body || {};
+  const username = resolveUsernameFromSid(corps.sid || req.query.sid || '');
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
+  const user = users[username];
+  const action = String(corps.action || '');
+  const pos = (corps.pos && Number.isFinite(Number(corps.pos.x)))
+    ? { x: Math.max(0, Math.min(4000, Math.trunc(Number(corps.pos.x)) || 0)),
+        y: Math.max(0, Math.min(4000, Math.trunc(Number(corps.pos.y)) || 0)) }
+    : null;
+
+  const parent = String(corps.parent || 'root').slice(0, 64) || 'root';
+
+  if (action === 'make') {
+    const type = ['contact', 'disc', 'folder'].includes(corps.type) ? corps.type : null;
+    if (!type) return res.status(400).json({ ok: false, error: 'type' });
+    if (ensureDesktopItems(user).length >= 120) return res.status(409).json({ ok: false, error: 'plein' });
+    if (type === 'folder') {
+      const uid = 'fbd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      desktopAdd(username, user, uid, 'folder', pos, { name: corps.name, parent });
+      const cree = ensureDesktopItems(user).find((x) => x.u === uid);
+      return res.json({ ok: true, objet: bureauObjetEnrichi(user, cree) });
+    }
+    // L'uid d'époque : celui du disque au catalogue, l'adresse pour un contact.
+    let uid = String(corps.uid || '');
+    if (type === 'contact') uid = normalizeContactAddress(String((corps.desc || [])[0] || uid)) || uid;
+    if (!uid) return res.status(400).json({ ok: false, error: 'uid' });
+    if (type === 'disc' && !GAME_DISCS[uid]) return res.status(404).json({ ok: false, error: 'disque' });
+    const deja = ensureDesktopItems(user).some((it) => it.u === uid && it.t === type);
+    desktopAdd(username, user, uid, type, pos, { parent });
+    const it = ensureDesktopItems(user).find((x) => x.u === uid && x.t === type);
+    return res.json({ ok: true, deja, objet: bureauObjetEnrichi(user, it) });
+  }
+
+  if (action === 'move') {
+    const uid = String(corps.uid || '');
+    if (uid === parent) return res.status(400).json({ ok: false, error: 'boucle' });
+    if (!desktopMove(username, user, uid, pos, parent)) return res.status(404).json({ ok: false, error: 'inconnu' });
+    const it = ensureDesktopItems(user).find((x) => x.u === uid);
+    return res.json({ ok: true, objet: bureauObjetEnrichi(user, it) });
+  }
+
+  if (action === 'remove') {
+    // Un disque retiré du bureau RETOURNE à « Mes disques » : c'est
+    // `desktopRemove` qui le rend au catalogue, `/ff/ls` le reliste aussitôt.
+    desktopRemoveTree(username, user, String(corps.uid || ''));
+    return res.json({ ok: true });
+  }
+
+  return res.status(400).json({ ok: false, error: 'action' });
+});
+
+// ─────────────────────────────────────────────
 // ENDPOINT: /api/light/contacts — le carnet de contacts, pour le bureau light.
 //
 // Les données existent déjà : le bureau Flash les lit en XML (`<f u="mycontact">`
@@ -19382,6 +19544,11 @@ app.get('/api/light/contacts', (req, res) => {
     const local = String(addr).split('@')[0];
     const nom = enLigne.get(local.toLowerCase());
     const o = { pseudo: getDisplayName(local), addr: String(addr), enLigne: !!nom };
+    // La BOUILLE du contact. `UserSlot` la tient de `onStatusObj` et la passe
+    // telle quelle à `createDragIcon` — c'est elle qui devient le dessin du
+    // raccourci quand on lâche le contact sur le bureau.
+    const compte = users[local] || users[getDisplayName(local)];
+    if (compte) o.bouille = bouilleOf(compte, local);
     if (nom) {
       const jeu = STATUS_INTERNAL_JEU[statusInternalOf(nom)];
       if (jeu) o.jeu = jeu;
