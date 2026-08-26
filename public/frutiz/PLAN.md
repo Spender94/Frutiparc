@@ -2005,8 +2005,28 @@ margin.top → up (type "h", marge x.min 12, y.min 5, y.ratio 1)
               outline 2, curve 4  → toggleAdvancedMode
 ```
 
-`genIconList` bâtit les boutons de gauche depuis `box.iconList` — chacun est
-un `butPush` sur `butPushSmallWhite`, avec son image et son `tipId`.
+`genIconList` bâtit les boutons de gauche depuis `box.iconList`, et c'est
+`box.Frutiz.getIconList` qui compose cette liste — ordre et conditions
+compris :
+
+```
+si c'est MA fiche  → image 10 seule                    frutiz_edit_info
+sinon :
+  image  2  frutiz_chat_now
+  image  3  frutiz_new_mail
+  image 13  frutiz_blog
+  image  4  frutiz_add_to_contact       si pas déjà au carnet
+  image  5  frutiz_add_to_blacklist     sinon image 12, l'en retirer
+  si me.flMode :
+    image 6 frutiz_kick    ← seulement quand la fiche vient d'un SALON
+    image 7 frutiz_ban  ·  image 8 frutiz_mute
+  si me.flAnimator et le groupe commence par « quizz » :
+    image 6 (si pas modérateur) puis image 7 frutiz_banquick
+```
+
+Ce sont les images de la bande `icon` (#500) que porte `butPushSmallWhite` —
+des **bitmaps** de 20 × 20, pas des tracés : l'extracteur de formes les rend
+vides, et c'est `inlinerImages` qui y remet l'image.
 
 ### Le bas (ouverte)
 
@@ -2066,7 +2086,13 @@ y  14..37             les rayures de l'écran : un trait #D6F7B5 d'un pixel
 ```
 
 Ce n'est donc pas une jauge à barres claires sur fond sombre : c'est un
-écran vert rayé de lignes de balayage plus pâles.
+écran vert rayé de lignes de balayage plus pâles. Et le REFLET est sur cet
+écran-là, pas sur la bouille : la colonne x = 20 ne montre aucune brillance
+de y 9 à 39.
+
+Le bouton du dépli, enfin, est `butPushSmallPink` (#378) : sa plaque est le
+dessin #359, et le triangle vient de SA bande `icon` (#374) à l'image 13 —
+la forme #369, huit de côté, centrée sur les vingt de la plaque.
 
 Les onglets tombent en quatre colonnes égales — centres relevés en 39, 119,
 199, 278 pour une largeur utile de 315.

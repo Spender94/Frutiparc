@@ -558,6 +558,129 @@
    "id": 197
   }
  },
+ "fiche": {
+  "notes": "box.Frutiz.getIconList : bande icon #500 de butPushSmallWhite, plus butPushSmallPink #378",
+  "fiche-ico-chat": {
+   "fichier": "fiche-ico-chat.svg",
+   "id": 475,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "fiche-ico-mail": {
+   "fichier": "fiche-ico-mail.svg",
+   "id": 477,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "fiche-ico-contact": {
+   "fichier": "fiche-ico-contact.svg",
+   "id": 479,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "fiche-ico-noire": {
+   "fichier": "fiche-ico-noire.svg",
+   "id": 481,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "fiche-ico-kick": {
+   "fichier": "fiche-ico-kick.svg",
+   "id": 483,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "fiche-ico-ban": {
+   "fichier": "fiche-ico-ban.svg",
+   "id": 485,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "fiche-ico-mute": {
+   "fichier": "fiche-ico-mute.svg",
+   "id": 487,
+   "cadre": {
+    "x": 10,
+    "y": 10,
+    "w": 40,
+    "h": 40
+   }
+  },
+  "fiche-ico-editer": {
+   "fichier": "fiche-ico-editer.svg",
+   "id": 491,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "fiche-ico-denoire": {
+   "fichier": "fiche-ico-denoire.svg",
+   "id": 495,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "fiche-ico-blog": {
+   "fichier": "fiche-ico-blog.svg",
+   "id": 497,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "fiche-rose": {
+   "fichier": "fiche-rose.svg",
+   "id": 359,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "fiche-rose-tri": {
+   "fichier": "fiche-rose-tri.svg",
+   "id": 369,
+   "cadre": {
+    "x": 3.85,
+    "y": 4.05,
+    "w": 8.15,
+    "h": 8.75
+   }
+  }
+ },
  "boutique": {
   "notes": "win.Shop : cpCounter #38, butPushSmallWhite #502, shopBullet #567, butPushShop #461, shopScreen #408, butPushMoreKikooz #558",
   "shop-kikooz": {

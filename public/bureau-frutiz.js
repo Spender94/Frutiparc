@@ -2627,8 +2627,93 @@ window.BureauFrutiz = (function () {
       f.style.setProperty('--fy', (110 + ficheRang * 20) + 'px');
       f.dataset.posee = '1';
       glisserFiche(f);
+      var rangee = f.querySelector('.fiche-actions');
+      if (rangee) completerIconesFiche(rangee);
     }
+    habillerIconesFiche();
     majGenreFiche(f);
+  }
+
+  /* `box.Frutiz.getIconList` compose la rangée de boutons blancs, et l'ordre
+     comme les conditions viennent du bytecode :
+
+       si c'est MA fiche  → image 10 seule (frutiz_edit_info)
+       sinon, dans l'ordre :
+         image  2  frutiz_chat_now
+         image  3  frutiz_new_mail
+         image 13  frutiz_blog
+         image  4  frutiz_add_to_contact       si pas déjà au carnet
+         image  5  frutiz_add_to_blacklist     sinon image 12, l'en retirer
+         si me.flMode :
+           image 6 frutiz_kick   (seulement quand la fiche vient d'un SALON)
+           image 7 frutiz_ban  ·  image 8 frutiz_mute
+
+     Le light n'en montrait que deux : le mobile avait écarté le blog, le
+     carnet et la liste noire faute de place. Au bureau il y a la place, et
+     l'époque les met. */
+  var FICHE_ICONES = [
+    { id: 'fiche-mp',       art: 'fiche-ico-chat' },
+    { id: 'fiche-mail',     art: 'fiche-ico-mail' },
+    { id: 'fiche-blog',     art: 'fiche-ico-blog',    titre: 'Son blog' },
+    { id: 'fiche-contact',  art: 'fiche-ico-contact', titre: 'Ajouter à mes contacts' },
+    { id: 'fiche-noire',    art: 'fiche-ico-noire',   titre: 'Mettre en liste noire' },
+    { id: 'fiche-kick',     art: 'fiche-ico-kick' },
+    { id: 'fiche-ban',      art: 'fiche-ico-ban' },
+    { id: 'fiche-totoche',  art: 'fiche-ico-mute' },
+    { id: 'fiche-editer',   art: 'fiche-ico-editer' },
+  ];
+
+  // Les trois que le mobile n'a pas : on les monte une fois, à leur place
+  // d'époque, et on les câble sur ce que le light sait faire.
+  function completerIconesFiche(rangee) {
+    var pseudo = function () {
+      var e = $('#fiche-pseudo');
+      return e ? e.textContent.trim() : '';
+    };
+    var neuf = function (id, art, titre, faire) {
+      if ($('#' + id)) return null;
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.id = id;
+      b.title = titre;
+      b.innerHTML = '<img src="/frutiz/sprites/' + art + '.svg" alt="">';
+      b.addEventListener('click', faire);
+      return b;
+    };
+    var blog = neuf('fiche-blog', 'fiche-ico-blog', 'Son blog', function () {
+      window.open('/bouilloscope/?u=' + encodeURIComponent(pseudo()), '_blank');
+    });
+    var contact = neuf('fiche-contact', 'fiche-ico-contact', 'Ajouter à mes contacts', function () {
+      var sid = jetonSid(), u = pseudo();
+      if (!sid || !u) return;
+      fetch('/ff/mk?sid=' + encodeURIComponent(sid) + '&folder=mycontact&t=contact&u='
+        + encodeURIComponent(u)).then(function () { chargerContacts(); });
+    });
+    var noire = neuf('fiche-noire', 'fiche-ico-noire', 'Mettre en liste noire', function () {
+      var sid = jetonSid(), u = pseudo();
+      if (!sid || !u) return;
+      if (!window.confirm('Mettre « ' + u + ' » en liste noire ?')) return;
+      fetch('/ff/mk?sid=' + encodeURIComponent(sid) + '&folder=blacklist&t=contact&u='
+        + encodeURIComponent(u)).then(function () { chargerContacts(); });
+    });
+    // `getIconList` les pousse APRÈS le courrier et AVANT la modération.
+    var apres = $('#fiche-mail');
+    [blog, contact, noire].forEach(function (b) {
+      if (!b) return;
+      if (apres && apres.parentNode === rangee) rangee.insertBefore(b, apres.nextSibling);
+      else rangee.appendChild(b);
+      apres = b;
+    });
+  }
+
+  // Les glyphes d'époque, à la place des PNG du mobile.
+  function habillerIconesFiche() {
+    FICHE_ICONES.forEach(function (d) {
+      var b = $('#' + d.id);
+      if (!b) return;
+      var i = b.querySelector('img');
+      if (i) i.src = '/frutiz/sprites/' + d.art + '.svg';
+    });
   }
 
   // `UserSlot.onInfoBasic` : le pseudo prend la couleur du GENRE — le bleu

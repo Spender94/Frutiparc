@@ -816,6 +816,58 @@ function principal() {
   // `pushKikooz` demandent `frame: 3` alors que #558 n'a qu'une image (Flash
   // borne le gotoAndStop), et la marge de `menuFrame` pose deux fois
   // `x.ratio` là où la seconde devait être `y.ratio`.
+  // ── LA FICHE (`win.Frutiz` sprite#753, `box.Frutiz` sprite#835) ────────
+  //
+  // `box.Frutiz.getIconList` compose la rangée de boutons blancs. Sur SA
+  // PROPRE fiche il n'y en a qu'un ; sur celle d'un autre, jusqu'à cinq, plus
+  // ceux de la modération :
+  //
+  //   image  2  frutiz_chat_now              discuter en privé
+  //   image  3  frutiz_new_mail              lui écrire
+  //   image 13  frutiz_blog                  son blog
+  //   image  4  frutiz_add_to_contact        (si pas déjà au carnet)
+  //   image  5  frutiz_add_to_blacklist      (sinon image 12, l'en retirer)
+  //   image  6  frutiz_kick    ┐ si me.flMode — et le kick seulement quand
+  //   image  7  frutiz_ban     │ la fiche vient d'un SALON (group défini)
+  //   image  8  frutiz_mute    ┘
+  //   image 10  frutiz_edit_info             sur la SIENNE, et elle seule
+  //
+  // Ce sont les images de la bande `icon` (#500) que `butPushSmallWhite`
+  // porte — des bitmaps de 20 × 20, pas des tracés. Et le bouton du dépli
+  // est `butPushSmallPink` (#378) : sa plaque #359, et le triangle qu'il
+  // prend à SA bande `icon` (#374) à l'image 13, la forme #369.
+  const FICHE = [
+    { cle: 'fiche-ico-chat', id: 475 },      // image 2
+    { cle: 'fiche-ico-mail', id: 477 },      // image 3
+    { cle: 'fiche-ico-contact', id: 479 },   // image 4
+    { cle: 'fiche-ico-noire', id: 481 },     // image 5
+    { cle: 'fiche-ico-kick', id: 483 },      // image 6
+    { cle: 'fiche-ico-ban', id: 485 },       // image 7
+    { cle: 'fiche-ico-mute', id: 487 },      // image 8
+    { cle: 'fiche-ico-editer', id: 491 },    // image 10
+    { cle: 'fiche-ico-denoire', id: 495 },   // image 12
+    { cle: 'fiche-ico-blog', id: 497 },      // image 13
+    { cle: 'fiche-rose', id: 359 },          // butPushSmallPink, la plaque
+    { cle: 'fiche-rose-tri', id: 369 },      // son icon (#374) image 13
+  ];
+  chargerFormes(FICHE.map((c) => c.id).filter((id) => !corpsFormes.has(id)));
+  // Ces glyphes-là sont des IMAGES : l'extracteur de formes les rend vides,
+  // `inlinerImages` y remet le bitmap à la taille du cadre.
+  inlinerImages(FICHE.map((c) => c.id), SWF, corpsFormes);
+  {
+    manifeste.fiche = { notes: 'box.Frutiz.getIconList : bande icon #500 de butPushSmallWhite, plus butPushSmallPink #378' };
+    for (const c of FICHE) {
+      const forme = corpsFormes.get(c.id);
+      if (!forme) { console.warn('!! pièce de fiche absente', c.id); continue; }
+      const vb = forme.vb;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${arr(vb.x)} ${arr(vb.y)} ${arr(vb.w)} ${arr(vb.h)}" width="${arr(vb.w)}" height="${arr(vb.h)}">\n`
+        + forme.corps + '</svg>\n';
+      fs.writeFileSync(path.join(SORTIE, c.cle + '.svg'), svg, 'utf8');
+      manifeste.fiche[c.cle] = { fichier: c.cle + '.svg', id: c.id, cadre: vb };
+      console.log(c.cle + '.svg (forme #' + c.id + ')', JSON.stringify(vb));
+    }
+  }
+
   const BOUTIQUE = [
     { cle: 'shop-kikooz', id: 396 },        // la pièce du compteur
     { cle: 'shop-but-blanc', id: 473 },     // butPushSmallWhite, image 1

@@ -63,15 +63,23 @@ test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte',
   assert.match(BLOC, /#fiche \{[\s\S]*?background: #FFFFFF;/);
   // `frutiScreen` : `fix { w: base + 36, h: base }` — 76 × 42, cerclé #888888.
   assert.match(BLOC, /\.fiche-plaque \{\s*\n\s*height: 42px; width: 76px;[\s\S]*?border: 1px solid #888888;/);
-  assert.match(BLOC, /\.fiche-plaque \.fa-frame \{\s*\n\s*width: 38px; height: 36px;[^}]*background: #D6F7B5;/);
+  // Le panneau de la bouille ne fait PAS toute la plaque : x 8..42, y 9..39.
+  assert.match(BLOC, /\.fiche-plaque \.fa-frame \{\s*\n\s*width: 35px; height: 31px;[^}]*background: #D6F7B5;/);
   // L'écran du niveau : une chair #A2EB56 rayée d'un trait #D6F7B5 tous les
   // trois pixels — pas des barres claires sur fond sombre. Relevé en travers
   // (x 43..69) et en hauteur (y 14..37, pas de 3).
-  assert.match(BLOC, /\.fa-progress \{[\s\S]*?width: 27px; height: 24px;[\s\S]*?#A2EB56 0, #A2EB56 2px, #D6F7B5 2px, #D6F7B5 3px/);
+  assert.match(BLOC, /\.fa-progress \{[\s\S]*?width: 27px; height: 23px;[\s\S]*?#A2EB56 0, #A2EB56 2px, #D1F5AB 2px, #D1F5AB 3px/);
   assert.match(BLOC, /\.fa-progress i \{ display: none; \}/);
-  // LE REFLET : les deux dessins de la mainbar, bien VISIBLES.
-  assert.match(BLOC, /\.fiche-plaque \.reflet \{\s*\n\s*display: block;[\s\S]*?opacity: 1;/);
-  assert.match(BLOC, /\.fiche-plaque \.reflet-niv \{\s*\n\s*display: block;[\s\S]*?opacity: 1;/);
+  // LE REFLET est sur l'ÉCRAN (x 70..73), pas sur la bouille — la colonne
+  // x=20 ne montre aucune brillance de y 9 à 39.
+  assert.match(BLOC, /\.fiche-plaque \.cadre,\s*\nbody\.bureau-frutiz #fiche \.fiche-plaque \.reflet \{ display: none; \}/);
+  assert.match(BLOC, /\.fiche-plaque \.reflet-niv \{\s*\n\s*display: block; position: absolute; left: 43px;[\s\S]*?opacity: 1;/);
+  // Le bouton du dépli porte son VRAI dessin — la plaque #359 et le triangle
+  // #369, qui ne fait que huit de côté et reste centré.
+  assert.match(BLOC, /#fiche-avance \{[\s\S]*?fiche-rose\.svg'\) center \/ 20px 20px/);
+  assert.match(BLOC, /#fiche-avance img \{[\s\S]*?fiche-rose-tri\.svg'\);\s*\n\s*width: 9px; height: 9px;/);
+  // La croix est au coin HAUT-DROIT de la fenêtre, pas au bout d'une ligne.
+  assert.match(BLOC, /#fiche-fermer \{\s*\n\s*position: absolute; right: 5px; top: 5px;/);
   // Le bouton du dépli est CARRÉ : 20 d'art, comme les blancs (x 293..316).
   assert.match(BLOC, /\.fiche-actions button \{\s*\n\s*width: 20px; height: 20px; min-width: 0; min-height: 0;/);
   assert.match(BLOC, /\.fiche-actions button img \{\s*\n\s*width: 20px; height: 20px;[^}]*object-fit: contain;/);
@@ -79,6 +87,31 @@ test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte',
   assert.match(BLOC, /\.fiche-corps \{[\s\S]*?#CCF599;[\s\S]*?inset 0 2px 0 #ADE76B/);
   // `getPageObj` la borne à 240 de haut.
   assert.match(BLOC, /\.fiche-page \{\s*\n\s*height: 240px;/);
+});
+
+test('la rangée d’icônes suit box.Frutiz.getIconList', () => {
+  const EX = fs.readFileSync(path.join(ROOT, 'scripts/extract-frutiz-bureau.js'), 'utf8');
+  // Les glyphes sont les IMAGES de la bande `icon` (#500) de
+  // butPushSmallWhite — des bitmaps de 20 × 20, sortis du SWF.
+  const pieces = [
+    ['fiche-ico-chat', 475], ['fiche-ico-mail', 477], ['fiche-ico-contact', 479],
+    ['fiche-ico-noire', 481], ['fiche-ico-kick', 483], ['fiche-ico-ban', 485],
+    ['fiche-ico-mute', 487], ['fiche-ico-editer', 491], ['fiche-ico-denoire', 495],
+    ['fiche-ico-blog', 497], ['fiche-rose', 359], ['fiche-rose-tri', 369],
+  ];
+  for (const [cle, id] of pieces) {
+    assert.match(EX, new RegExp("\\{ cle: '" + cle + "', id: " + id + " \\}"), cle + ' manque à l’extracteur');
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/frutiz/sprites', cle + '.svg')), cle + '.svg manque');
+  }
+  // L'ORDRE d'époque : chat, courrier, blog, carnet, liste noire, puis la
+  // modération. Le mobile n'avait que les deux premiers.
+  assert.match(JS, /\{ id: 'fiche-mp', +art: 'fiche-ico-chat' \}/);
+  assert.match(JS, /\{ id: 'fiche-blog', +art: 'fiche-ico-blog'/);
+  assert.match(JS, /\{ id: 'fiche-contact', +art: 'fiche-ico-contact'/);
+  assert.match(JS, /\{ id: 'fiche-noire', +art: 'fiche-ico-noire'/);
+  // Les trois manquants sont montés à leur place, après le courrier.
+  assert.match(JS, /if \(apres && apres\.parentNode === rangee\) rangee\.insertBefore\(b, apres\.nextSibling\);/);
+  assert.match(JS, /var apres = \$\('#fiche-mail'\);/);
 });
 
 test('les rangées : dix-neuf et demi de pas, et un filet qui les ferme', () => {
