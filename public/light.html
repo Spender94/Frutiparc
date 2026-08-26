@@ -4427,7 +4427,9 @@
         + "." + xmlEscape(e.kindExt || "svg") + '" alt="" '
         + 'onerror="this.onerror=null;this.src=\'/fb/' + def.repli + '.svg\'"></div>'
         + '<div class="txt"><span class="quand">' + xmlEscape(journalDate(e.date))
-        + ' - </span>' + xmlEscape(e.text || "") + '</div>';
+        // Le tiret vit dans son propre élément : le bureau met la date sur sa
+        // ligne et le masque, le mobile garde « date - message » d'un trait.
+        + '<i> - </i></span>' + xmlEscape(e.text || "") + '</div>';
       box.appendChild(it);
       return it;
     });

@@ -90,12 +90,27 @@ test('le dépôt ne vaut que TIROIR SORTI, et sur le tiroir', () => {
   // ne reçoit rien tant qu'il est rentré.
   assert.match(CSS, /\.fr-cible \{[\s\S]*?pointer-events: none;/);
   assert.match(CSS, /#frusion-boite\.fr-ouvert \.fr-cible \{ pointer-events: auto; \}/);
+  // Et elle N'EST PAS une pièce mobile : ses 71 px de haut de page disent déjà
+  // le tiroir SORTI. Rangée dans le tiroir, elle prenait EN PLUS sa
+  // translation de 69 et tombait à 140 — sous le dessin, dans le vide : le
+  // disque ne se posait jamais. Elle est donc posée sur la console, AVANT le
+  // tiroir (le disque rendu, lui, doit rester cliquable au-dessus d'elle).
+  const ordre = JS.slice(JS.indexOf('cible.className = \'fr-cible\''));
+  assert.match(ordre, /b\.appendChild\(cible\);\s*\n\s*b\.appendChild\(mSlot\);/,
+    'la cible se pose sur la console, sous le tiroir');
+  assert.doesNotMatch(JS, /mSlot\.appendChild\(cible\)/);
+  // Le disque n'attrape le curseur QUE rendu : sinon il volerait les dépôts.
+  assert.match(CSS, /\.fr-disque \{[\s\S]*?pointer-events: none;/);
+  assert.match(CSS, /\.fr-disque\.reprenable \{ pointer-events: auto;/);
 });
 
 test('le jeu prend un ONGLET, et le fermer éjecte', () => {
   // `FPSlotList.addSlot(slot, true)` → mainBar.addTab + activate.
   assert.match(JS, /window\.activateTab\(tab\)/);
-  assert.match(JS, /mettreEnOnglet\(panneau\.id\)/);
+  // `FPSlotList.addSlot(slot, flGo)` : un jeu qu'on vient de lancer S'AFFICHE,
+  // donc flGo vrai — au contraire d'une fenêtre qu'on range, qui laisse la
+  // main au bureau.
+  assert.match(JS, /mettreEnOnglet\(panneau\.id, true\)/);
   // Le routeur du light est ouvert au bureau pour cela.
   assert.match(LIGHT, /window\.activateTab = activateTab;/);
   // Fermer la fenêtre du jeu = `onReadyToClose` : le disque ralentit et sort.

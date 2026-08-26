@@ -326,7 +326,7 @@ body.bureau-frutiz .fb-onglet {
   /* le bureau pose ses onglets à cornerX = 8 (mesuré 1:1 : liseré gauche de
      la plaque à x 6..8, pastille 13..22, bord droit 110..114). */
   position: absolute; left: 0; top: 0; width: 123px; height: 41.5px;
-  z-index: 1; cursor: pointer; pointer-events: auto;
+  cursor: pointer; pointer-events: auto;
   background:
     url('/frutiz/sprites/onglet_corps.svg') left top / 123px 41.5px no-repeat,
     url('/frutiz/sprites/onglet_fond.svg') left top / 123px 41.5px no-repeat;
@@ -344,7 +344,10 @@ body.bureau-frutiz .fb-onglet[data-slot]:not([data-slot="bureau"]) {
 /* L'onglet ACTIF est celui dont l'espace de travail est à l'écran : d'époque
    il monte de deux pixels et sa plaque se soude au contenu. Les autres
    restent en retrait. */
-body.bureau-frutiz .fb-onglet.actif { top: -2px; z-index: 2; }
+/* L'activation ne change PAS la profondeur d'époque (`activate` ne fait aucun
+   swapDepths) : elle remonte l'onglet de deux pixels, rien de plus. Le rang
+   seul commande l'empilement, et c'est `dessinerOnglets` qui le pose. */
+body.bureau-frutiz .fb-onglet.actif { top: -2px; }
 body.bureau-frutiz .fb-onglet:not(.actif) { filter: saturate(.85) brightness(.97); }
 /* L'AVERTISSEMENT d'un slot (`Slot.warning`) : une fenêtre s'est ouverte sur
    le bureau alors qu'un onglet avait la main — l'onglet « Bureau » clignote
@@ -386,16 +389,30 @@ body.bureau-frutiz .fen.fen-glisse {
 body.bureau-frutiz.fb-onglet-actif #bureau,
 body.bureau-frutiz.fb-onglet-actif .fen:not(.fen-onglet-vue) { display: none; }
 
-/* Le menu d'un onglet (`FPTab.getMenu`) : « Vers bureau », « Fermer ». */
+/* LA PASTILLE de l'onglet est un BOUTON : `MainBarTab.init` accroche
+   `bottom.but`, dont l'`onPress` déroule le menu du slot. Sa place est celle
+   que le dessin lui donne dans la plaque — (1,36 ; 22,75), 15,85 × 15,05 —
+   et elle est TRANSPARENTE : c'est le fond de l'onglet qui porte l'image. */
+body.bureau-frutiz .fb-onglet-ico {
+  position: absolute; left: 1.36px; top: 22.75px; width: 15.85px; height: 15.05px;
+  padding: 0; border: 0; background: transparent; cursor: pointer; z-index: 2;
+}
+/* Le menu d'un onglet (`MainBarTab.attachMenu`) : il ne flotte pas au
+   curseur, il se DÉROULE dans la barre — l'onglet descend de
+   `tabMenuMargeUp + n × tabMenuSpace` et le menu occupe la place libérée. */
+body.bureau-frutiz .fb-onglet.menu-ouvert { top: var(--menu-h); }
 body.bureau-frutiz #fb-menu-onglet {
-  position: fixed; z-index: 400; min-width: 128px; padding: 2px;
-  background: #FFFFFF; border: 1px solid #444444; border-radius: 3px;
-  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+  /* La rangée d'onglets est posée 18 px plus haut que la plaque visible (le
+     cadre du clip déborde vers le haut, sous la barre qui l'écrête) : le menu
+     part donc de 18, c'est-à-dire du bord bas de la barre. */
+  position: absolute; top: 18px; z-index: 600; box-sizing: border-box;
+  background: #FFFFFF; border: 1px solid #444444; border-radius: 0 0 3px 3px;
+  border-top: 0; pointer-events: auto;
 }
 body.bureau-frutiz #fb-menu-onglet button {
-  display: block; width: 100%; padding: 4px 10px; border: 0; background: none;
-  font: 400 11px Verdana, Arial, sans-serif; color: #335511; text-align: left;
-  cursor: pointer;
+  display: block; width: 100%; padding: 0 6px; border: 0; background: none;
+  font: 700 11px Verdana, Arial, sans-serif; color: #335511; text-align: left;
+  line-height: 18px; cursor: pointer; white-space: nowrap;
 }
 body.bureau-frutiz #fb-menu-onglet button:hover { background: #CCF599; }
 
@@ -937,7 +954,8 @@ body.bureau-frutiz .fen-corps {
 body.bureau-frutiz .fen-titre {
   display: flex; align-items: center; gap: 0;
   height: 16px; padding: 0 0 0 3px; box-sizing: content-box;
-  cursor: move; user-select: none; -webkit-user-select: none;
+  /* Flash n'a que la flèche : pas de croix de déplacement sur le bandeau. */
+  cursor: default; user-select: none; -webkit-user-select: none;
   font: 700 11px Verdana, Arial, sans-serif; color: #444444;
   flex-shrink: 0;
 }
@@ -1708,20 +1726,22 @@ body.bureau-frutiz .fen #evt-panel .evt-item .vis {
   display: flex; align-items: center; justify-content: center; overflow: hidden;
 }
 body.bureau-frutiz .fen #evt-panel .evt-item .vis img { max-width: 60px; max-height: 56px; }
-/* LA TYPO. Relevé sur la carte d'époque : interligne 12, hauteur de
-   capitale 8, et « mar 25 aout 23:16 - Connexion » tient en 172 px avant de
-   passer à la ligne dans une case de 236. C'est du 12 px GRAS de la même
-   famille que le fil du salon (174 px au banc d'essai) — pas du 10 px
-   Verdana, qui n'en ferait que 132 et ne couperait pas au bon endroit. */
+/* LA TYPO. Le 12 px relevé sur la carte d'époque tassait le texte dans une
+   case de 60 : la ligne y passait au ras du bord et la date mangeait le
+   début du message. On descend à 9 px, et la DATE prend sa propre ligne —
+   le message commence alors toujours au même endroit, quelle que soit la
+   longueur de « mar 25 aout 23:16 ». Le tiret qui les séparait n'a plus
+   d'objet : il est masqué (il reste pour le mobile, qui garde la ligne). */
 body.bureau-frutiz .fen #evt-panel .evt-item .txt {
   flex: 1 1 auto; min-width: 0; overflow: hidden;
-  font-size: 12px; line-height: 12px; font-weight: 400;
+  font-size: 9px; line-height: 12px; font-weight: 400;
   color: #335511; word-break: normal; overflow-wrap: break-word;
 }
-body.bureau-frutiz .fen #evt-panel .evt-item .quand { font-weight: 700; }
+body.bureau-frutiz .fen #evt-panel .evt-item .quand { font-weight: 700; display: block; }
+body.bureau-frutiz .fen #evt-panel .evt-item .quand i { display: none; }
 /* Une entrée NEUVE a toute sa ligne en gras — et rien de plus : le SWF ne
    l'agrandit pas (c'était une liberté du mobile, qui la garde). */
-body.bureau-frutiz .fen #evt-panel .evt-item.neuf .txt { font-weight: 700; font-size: 12px; }
+body.bureau-frutiz .fen #evt-panel .evt-item.neuf .txt { font-weight: 700; font-size: 9px; }
 /* LE PIED : les deux gélules aux extrémités, le compte au milieu. Le dessin
    est celui du SWF (/fb/fleche_*.svg), en 16 px, ceint de 2 px `#DDDDDD`
    comme toutes les gélules du bureau. */

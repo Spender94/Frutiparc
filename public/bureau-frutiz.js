@@ -1080,10 +1080,20 @@ window.BureauFrutiz = (function () {
     });
     mSlot.appendChild(disque);
     // La zone de dépôt : `slot.dropBox = this`, c'est le TIROIR qu'on vise.
+    //
+    // Elle est posée SUR LA CONSOLE, pas dans le tiroir. Ses 71 px de haut de
+    // page DISENT DÉJÀ le tiroir sorti — c'est la place qu'il occupe une fois
+    // descendu. Rangée parmi les pièces mobiles, elle recevait EN PLUS leur
+    // translation de 69 et se retrouvait à 140, sous le tiroir, dans le vide :
+    // le disque tombait à côté à chaque fois. (Le banc d'essai visait la cible
+    // par son propre rectangle — il ne pouvait pas voir la faute.)
+    //
+    // Et elle passe AVANT le tiroir : le disque rendu, lui, se reprend d'un
+    // clic (`slot.disc.onPress = takeDisc`) et doit donc rester au-dessus.
     var cible = document.createElement('div');
     cible.className = 'fr-cible';
     cible.setAttribute('data-depot', 'frusion');
-    mSlot.appendChild(cible);
+    b.appendChild(cible);
     b.appendChild(mSlot);
     b.appendChild(couche('avant'));
     var casque = document.createElement('button');
@@ -1221,7 +1231,9 @@ window.BureauFrutiz = (function () {
     var rub = RUBRIQUES[tab];
     var panneau = rub && $(rub.panneau);
     if (panneau && fenetres[panneau.id] && !fenetres[panneau.id].onglet) {
-      mettreEnOnglet(panneau.id);
+      // Un jeu qu'on vient de lancer S'AFFICHE : `FPSlotList.addSlot(slot,
+      // flGo)` avec flGo vrai, l'onglet s'active dans la foulée.
+      mettreEnOnglet(panneau.id, true);
     }
   };
 
@@ -1821,14 +1833,21 @@ window.BureauFrutiz = (function () {
     grille.addEventListener('pointerdown', function (ev) {
       var tuile = ev.target.closest('.home-tile');
       if (!tuile || ev.button !== 0) return;
-      var boite = tuile.getBoundingClientRect();
-      var app = bureau.getBoundingClientRect();
+      // Sans cela le navigateur démarre une SÉLECTION DE TEXTE : le libellé
+      // et tout ce que le geste balaie virent au bleu pendant le glissé. Le
+      // même remède que pour les disques de la Frusion.
+      ev.preventDefault();
       var departX = ev.clientX, departY = ev.clientY;
       var bouge = false;
       // Le décalage du curseur DANS la tuile, pour qu'elle ne saute pas sous
       // la main au premier pixel de mouvement.
+      var boite = tuile.getBoundingClientRect();
       var decalX = ev.clientX - boite.left, decalY = ev.clientY - boite.top;
       var trou = null;
+      // La capture suit le pointeur PARTOUT — au-dessus d'une fenêtre, hors
+      // du bureau, hors de la page. Sans elle, un survol malencontreux volait
+      // les événements et la tuile restait collée au curseur.
+      try { tuile.setPointerCapture(ev.pointerId); } catch (e) { /* vieux navigateur */ }
 
       var glisser = function (e2) {
         if (!bouge) {
@@ -1836,7 +1855,7 @@ window.BureauFrutiz = (function () {
           bouge = true;
           // La case libérée reste OUVERTE : on laisse un espaceur de la même
           // largeur, sinon la rangée se refermerait — d'époque elle ne le
-          // fait pas.
+          // fait pas. Une tuile DÉJÀ posée a laissé le sien au premier voyage.
           if (!tuile.classList.contains('posee')) {
             trou = document.createElement('div');
             trou.className = 'home-trou';
@@ -1847,13 +1866,19 @@ window.BureauFrutiz = (function () {
           tuile.classList.add('posee', 'en-main');
           bureau.appendChild(tuile);
         }
+        // Le repère est relu à CHAQUE pas : le bureau bouge (la barre se
+        // replie, la bande des contacts s'ouvre) et une boîte figée au départ
+        // décalait la tuile de tout ce que le bureau avait bougé depuis.
+        var app = bureau.getBoundingClientRect();
         tuile.style.left = Math.round(e2.clientX - app.left - decalX) + 'px';
         tuile.style.top = Math.round(e2.clientY - app.top - decalY) + 'px';
       };
 
-      var lacher = function () {
-        document.removeEventListener('pointermove', glisser);
-        document.removeEventListener('pointerup', lacher);
+      var lacher = function (e2) {
+        tuile.removeEventListener('pointermove', glisser);
+        tuile.removeEventListener('pointerup', lacher);
+        tuile.removeEventListener('pointercancel', lacher);
+        try { tuile.releasePointerCapture(e2.pointerId); } catch (e) { /* déjà rendu */ }
         if (!bouge) return;                       // simple clic : la rubrique s'ouvre
         tuile.classList.remove('en-main');
         tuile.style.left = (parseFloat(tuile.style.left) + ICONE_SAUT_X) + 'px';
@@ -1861,8 +1886,11 @@ window.BureauFrutiz = (function () {
         dernierGlisse = Date.now();
       };
 
-      document.addEventListener('pointermove', glisser);
-      document.addEventListener('pointerup', lacher);
+      // Sur la TUILE, pas sur le document : avec la capture, c'est elle qui
+      // reçoit tout, et les écouteurs partent avec elle si elle est retirée.
+      tuile.addEventListener('pointermove', glisser);
+      tuile.addEventListener('pointerup', lacher);
+      tuile.addEventListener('pointercancel', lacher);
     });
   }
 
@@ -1948,12 +1976,27 @@ window.BureauFrutiz = (function () {
     lab.textContent = titre;
     o.appendChild(lab);
     o.addEventListener('click', function () { activerSlot(id); });
-    // Le menu de l'onglet (`FPTab.getMenu`) : deux entrées, sur le clic droit.
-    o.addEventListener('contextmenu', function (e) {
-      if (id === 'bureau') return;
-      e.preventDefault();
-      menuOnglet(id, e.clientX, e.clientY);
-    });
+    // LA PASTILLE EST UN BOUTON. `MainBarTab.init` accroche `bottom.but`, et
+    // c'est SON `onPress` qui déroule le menu du slot (`slot.getMenu()`) —
+    // l'onglet descend, le menu prend la place libérée au-dessus de
+    // l'étiquette. On sert donc une vraie zone cliquable à la place exacte que
+    // la pastille occupe dans la plaque (1,36 ; 22,75 — 15,85 × 15,05).
+    if (id !== 'bureau') {
+      var ico = document.createElement('button');
+      ico.type = 'button';
+      ico.className = 'fb-onglet-ico';
+      ico.title = 'Menu de l\'onglet';
+      ico.addEventListener('click', function (e) {
+        e.stopPropagation();                // le clic sur la plaque ACTIVE ; ici, non
+        menuOnglet(id);
+      });
+      o.appendChild(ico);
+      // Le clic droit ouvre le même menu : commodité du portage, sans coût.
+      o.addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+        menuOnglet(id);
+      });
+    }
     $('#bureau-onglets').appendChild(o);
     return o;
   }
@@ -1972,6 +2015,12 @@ window.BureauFrutiz = (function () {
       for (var j = 0; j < liste.length; j++) if (liste[j].id === id) rang = j;
       if (rang < 0) { o.remove(); i--; continue; }
       o.style.left = (rang * 110) + 'px';
+      // L'EMPILEMENT. `MainBar.addTab` attache l'onglet à
+      // `dp_tab + (tabMax − id × 2)` : plus le rang est GRAND, plus la
+      // profondeur est BASSE — le nouvel onglet passe SOUS les précédents, et
+      // « Bureau » reste devant. L'activation, elle, ne change pas la
+      // profondeur : elle ne fait que remonter l'onglet de deux pixels.
+      o.style.zIndex = String(500 - rang);
       o.classList.toggle('actif', id === slotActif);
     }
   }
@@ -1993,8 +2042,18 @@ window.BureauFrutiz = (function () {
     if (avant !== id) dessinerOnglets();
   }
 
-  /** Le « ─ » du bandeau : la fenêtre quitte le bureau pour un onglet. */
-  function mettreEnOnglet(idPanneau) {
+  /**
+   * Le « ─ » du bandeau : la fenêtre quitte le bureau pour un onglet.
+   *
+   * `flGo` dit si l'onglet PREND LA MAIN dans la foulée. Ce n'est pas un
+   * détail : `WinStandard.putInTab` passe `Key.isDown(17)` — donc VRAI sous
+   * Ctrl seulement — jusqu'à `FPSlotList.addSlot(slot, flGo)`, qui ne fait
+   * `slot.mc.activate()` que si flGo. Au clic ordinaire, la fenêtre SE RANGE :
+   * l'onglet se pose dans la barre et on reste sur le bureau, fond d'écran
+   * compris. On l'activait toujours — la fenêtre s'étalait aussitôt en plein
+   * écran et le bureau disparaissait sous elle.
+   */
+  function mettreEnOnglet(idPanneau, flGo) {
     var f = fenetres[idPanneau];
     if (!f || f.onglet) return;
     var id = 'tab-' + idPanneau;
@@ -2009,7 +2068,7 @@ window.BureauFrutiz = (function () {
     f.fen.classList.add('fen-en-onglet');
     f.fen.style.left = ''; f.fen.style.top = '';
     f.fen.style.width = ''; f.fen.style.height = '';
-    activerSlot(id);
+    if (flGo) activerSlot(id);
     dessinerOnglets();
     majBouilles();
   }
@@ -2036,15 +2095,34 @@ window.BureauFrutiz = (function () {
     majBouilles();
   }
 
-  // Le menu de `FPTab` : « Vers bureau » puis « Fermer ». Un menu tout simple,
-  // posé au curseur et refermé au premier clic ailleurs.
-  function menuOnglet(idOnglet, x, y) {
-    var vieux = $('#fb-menu-onglet');
-    if (vieux) vieux.remove();
-    var m = document.createElement('div');
-    m.id = 'fb-menu-onglet';
-    m.style.left = Math.round(x) + 'px';
-    m.style.top = Math.round(y) + 'px';
+  // ── LE MENU D'UN ONGLET (`MainBarTab.attachMenu`, 0x6f1d8) ────────────
+  //
+  // Ce n'est pas un menu contextuel flottant : il se DÉROULE dans la barre.
+  // `attachMenu` étire la plaque de l'onglet vers le haut —
+  //
+  //     barre._height = tabMenuMargeUp + n × tabMenuSpace     (8 + n × 18)
+  //
+  // — puis `scrollDown` fait descendre l'onglet de cette hauteur-là, ce qui
+  // dégage la place au-dessus de l'étiquette. Les entrées sont posées à
+  // `_y = −(i × tabMenuSpace + 16)`, l'index 0 EN BAS : `FPTab.getMenu` rendant
+  // [« Vers bureau », « Fermer »], on lit donc, de haut en bas, « Fermer »
+  // puis « Vers bureau ». Largeur 100, gras, marge gauche 4.
+  var MENU_ESPACE = 18, MENU_MARGE_HAUT = 8, MENU_MARGE_GAUCHE = 4, MENU_LARGEUR = 100;
+  var ongletOuvert = null;
+
+  function fermerMenuOnglet() {
+    var m = $('#fb-menu-onglet');
+    if (m) m.remove();
+    if (ongletOuvert) ongletOuvert.classList.remove('menu-ouvert');
+    ongletOuvert = null;
+  }
+
+  function menuOnglet(idOnglet) {
+    var onglet = document.querySelector('.fb-onglet[data-slot="' + idOnglet + '"]');
+    if (!onglet) return;
+    // Un second appui referme, comme `bottom.but.onPress` quand `flMenu`.
+    if (ongletOuvert === onglet) { fermerMenuOnglet(); return; }
+    fermerMenuOnglet();
     var entrees = [
       { titre: 'Vers bureau', faire: function () { versBureau(idOnglet); } },
       { titre: 'Fermer', faire: function () {
@@ -2053,18 +2131,35 @@ window.BureauFrutiz = (function () {
         if (s) fermerFenetre(s.panneau);
       } },
     ];
-    entrees.forEach(function (e) {
+    var m = document.createElement('div');
+    m.id = 'fb-menu-onglet';
+    m.style.left = (parseFloat(onglet.style.left || 0) + MENU_MARGE_GAUCHE) + 'px';
+    m.style.width = MENU_LARGEUR + 'px';
+    m.style.paddingTop = MENU_MARGE_HAUT + 'px';
+    m.style.zIndex = String(600);
+    // De haut en bas : l'index le plus grand d'abord (l'ordre des `_y`).
+    entrees.slice().reverse().forEach(function (e) {
       var b = document.createElement('button');
       b.type = 'button';
       b.textContent = e.titre;
-      b.addEventListener('click', function () { m.remove(); e.faire(); });
+      b.style.height = MENU_ESPACE + 'px';
+      b.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        fermerMenuOnglet();
+        e.faire();
+      });
       m.appendChild(b);
     });
-    document.body.appendChild(m);
+    $('#bureau-onglets').appendChild(m);
+    onglet.style.setProperty('--menu-h',
+      (MENU_MARGE_HAUT + entrees.length * MENU_ESPACE) + 'px');
+    onglet.classList.add('menu-ouvert');
+    ongletOuvert = onglet;
     setTimeout(function () {
-      document.addEventListener('pointerdown', function fermer() {
-        m.remove();
+      document.addEventListener('pointerdown', function fermer(ev) {
+        if (m.contains(ev.target)) return;
         document.removeEventListener('pointerdown', fermer);
+        fermerMenuOnglet();
       });
     }, 0);
   }
@@ -2146,12 +2241,15 @@ window.BureauFrutiz = (function () {
     plier.className = 'fen-btn plier';
     plier.title = 'Mettre en onglet';
     plier.addEventListener('click', function (e) {
-      if (e.ctrlKey || e.metaKey) { mettreEnOnglet(panneau.id); return; }
+      // Ctrl : pas de glissade, ET l'onglet prend la main — c'est le même
+      // `Key.isDown(17)` qui commande les deux (`putInTab` → `addSlot(…, true)`).
+      if (e.ctrlKey || e.metaKey) { mettreEnOnglet(panneau.id, true); return; }
       fen.classList.add('fen-glisse');
       var apres = function () {
         fen.removeEventListener('transitionend', apres);
         fen.classList.remove('fen-glisse');
-        mettreEnOnglet(panneau.id);
+        // Clic ordinaire : la fenêtre se RANGE, on reste sur le bureau.
+        mettreEnOnglet(panneau.id, false);
       };
       fen.addEventListener('transitionend', apres);
       // Filet : si la transition ne part pas (fenêtre déjà hors flux), on
@@ -2728,10 +2826,41 @@ window.BureauFrutiz = (function () {
       .catch(function () {});
   }
 
+  // ── LE CLIGNOTEMENT DU PREMIER SURVOL ────────────────────────────────
+  //
+  // Les états d'un bouton sont trois DESSINS distincts (`_up`, `_over`,
+  // `_down`) posés en `background-image`. Le navigateur ne va chercher un
+  // dessin qu'au moment où la règle s'applique : au tout premier survol, la
+  // pièce disparaît le temps du chargement, puis revient — et ne cligne plus
+  // jamais. Flash, lui, avait tout en mémoire dès la première image.
+  //
+  // On lit donc la feuille de style du bureau et on demande TOUTES ses images
+  // d'un coup. Une seule requête (le fichier est déjà en cache), et le reste
+  // part en parallèle sans rien bloquer.
+  var precharge = [];                   // on garde les Image vivantes le temps du chargement
+  function prechargerImages() {
+    fetch('/bureau-frutiz.css', { cache: 'force-cache' })
+      .then(function (r) { return r.ok ? r.text() : ''; })
+      .then(function (css) {
+        var vues = {};
+        var re = /url\(\s*['"]?(\/[^'")]+)['"]?\s*\)/g;
+        var m;
+        while ((m = re.exec(css))) {
+          if (vues[m[1]]) continue;
+          vues[m[1]] = true;
+          var img = new Image();
+          img.src = m[1];
+          precharge.push(img);
+        }
+      })
+      .catch(function () {});
+  }
+
   function demarrer() {
     if (actif) return;
     actif = true;
     document.body.classList.add('bureau-frutiz');
+    prechargerImages();
     var app = $('#app');
 
     var bureau = document.createElement('div');

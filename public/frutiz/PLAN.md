@@ -1758,6 +1758,87 @@ est commentée dans `openFunctions.as`, et le bandeau de la fenêtre le dit —
 « Pour jouer, faîtes glisser les disques dans la Frusion ». C'est le GLISSER,
 et lui seul, qui sort le tiroir et lance le jeu.
 
+## LES ONGLETS (`MainBar.addTab`, `MainBarTab` 0x6f0d6, `FPSlotList.addSlot`)
+
+Trois lois que le portage avait manquées, et qui se voient toutes les trois.
+
+### L'empilement
+
+```
+addTab(o) : mcTab.attachMovie("tab", …, dp_tab + (tabMax − id × 2), …)
+```
+
+`id` est le rang dans `tabList` : plus il est GRAND, plus la profondeur est
+BASSE. **Le nouvel onglet passe SOUS les précédents**, et « Bureau » reste
+devant. L'activation n'y change rien — `activate` ne fait aucun `swapDepths` :
+elle remonte l'onglet de deux pixels (`scrollUp` vise `flActive × 4`), rien de
+plus.
+
+### Le menu, et la PASTILLE qui l'ouvre
+
+`MainBarTab.init` accroche un bouton sur `bottom.but` — la pastille du fruit,
+en bas à gauche de la plaque. C'est LUI qui porte le menu :
+
+```
+onRollOver : ico.gotoAndStop(flMenu ? 3 : 2)     (si le slot a un menu)
+onPress    : flMenu ? scrollUp() : (attachMenu() ; scrollDown())
+attachMenu : barre._height = tabMenuMargeUp + n × tabMenuSpace     (8 + n × 18)
+             chaque entrée : butText, largeur 100, GRAS,
+                             _x = tabMenuMargeLeft (4)
+                             _y = −(i × tabMenuSpace + 16)
+scrollDown : barre._y → barre._height     (l'onglet DESCEND d'autant)
+```
+
+Le menu ne flotte pas au curseur : la plaque s'étire vers le haut, l'onglet
+descend, et les entrées prennent la place libérée. `FPTab.getMenu` rend
+`[« Vers bureau », « Fermer »]`, mais l'index 0 est posé EN BAS : on lit donc,
+de haut en bas, **« Fermer » puis « Vers bureau »** — exactement ce que montre
+le rendu d'époque.
+
+### Replier ne veut pas dire afficher
+
+```
+WinStandard.putInTab : Key.isDown(17) ? box.putInTab(true)
+                                      : glissade puis box.putInTab(false)
+box.putInTab(flGo)   : slot.tab(this, flGo)
+FPDesktop.tab        : slotList.addSlot(new FPTab(…), flGo)
+FPSlotList.addSlot   : … ; if (flGo) slot.mc.activate()
+```
+
+Au clic ORDINAIRE, `flGo` est faux : la fenêtre glisse hors de l'écran, l'onglet
+se pose dans la barre — et **on reste sur le bureau**. Ctrl enfoncée, la
+glissade saute ET l'onglet prend la main. Le portage activait toujours : la
+fenêtre s'étalait aussitôt en plein écran, ce qui escamotait le bureau et son
+fond d'écran.
+
+## LES FINITIONS DU PORTAGE
+
+Quatre choses qui n'ont pas d'équivalent dans le SWF — elles naissent du
+navigateur — mais qui se voient autant que le reste.
+
+· **Le clignotement du premier survol.** Un état de bouton est un DESSIN à
+  part (`_over`, `_down`) posé en `background-image` : le navigateur ne va le
+  chercher qu'au moment où la règle s'applique, et la pièce disparaît le temps
+  du chargement. Flash avait tout en mémoire dès la première image. Le bureau
+  demande donc, au démarrage, toutes les images que sa feuille de style cite
+  (`prechargerImages`) — une requête, déjà en cache, et le reste en parallèle.
+
+· **Le curseur du bandeau.** `cursor: move` était une invention : Flash n'a
+  que la flèche. C'est `default`.
+
+· **Le glisser d'une icône.** Sans `preventDefault` sur le `pointerdown`, le
+  navigateur démarre une sélection de texte et tout ce que le geste balaie
+  vire au bleu ; sans `setPointerCapture`, un survol malencontreux vole les
+  événements et la tuile reste collée au curseur. Le repère du bureau est
+  relu à chaque pas — il bouge (la barre se replie, la bande des contacts
+  s'ouvre).
+
+· **La zone de dépôt de la Frusion.** `.fr-cible` disait déjà le tiroir SORTI
+  (71 px de haut de page) : rangée parmi les pièces mobiles, elle recevait EN
+  PLUS leur translation de 69 et tombait à 140 — sous le dessin, dans le vide.
+  Le disque ne se posait jamais. Elle est sur la console, et AVANT le tiroir :
+  le disque rendu, lui, doit rester cliquable au-dessus d'elle.
+
 ## LA FRUTIMANDALA (`cp.WheelMng`, DoInitAction sprite#774 0x6a7c2)
 
 Le cadran du coin haut-droit n'est pas un décor : c'est un tourne-disque à
