@@ -135,6 +135,45 @@ function chargerFormes(ids, fichier = SWF, formes = corpsFormes) {
   }
 }
 
+// ── Les formes qui ne sont QU'UNE IMAGE ───────────────────────────────────
+// Tout n'est pas tracé : le cadran jour/nuit (#50 de wheel0.swf) est une forme
+// de 204×204 dont le seul remplissage est un bitmap — le disque bleu, ses
+// étoiles et la couronne des vingt-quatre heures. L'extracteur de formes ne
+// sait pas rendre ça et la sort VIDE. On la remplace donc par son image,
+// posée à la taille de la forme : c'est exactement ce que le lecteur affiche.
+function inlinerImages(ids, fichier, formes) {
+  const table = execFileSync(process.execPath,
+    [path.join(__dirname, 'extract-swf-shapes.js'), fichier],
+    { encoding: 'utf8', maxBuffer: 128e6 });
+  const seules = new Map();                 // forme → bitmap, quand il est seul
+  for (const ligne of table.split('\n')) {
+    const m = /^#(\d+)\t\S+\t\S+\t(.*?)\t/.exec(ligne + '\t');
+    if (!m) continue;
+    const id = Number(m[1]);
+    if (!ids.includes(id)) continue;
+    const images = [...m[2].matchAll(/bitmap#(\d+)/g)]
+      .map((x) => Number(x[1])).filter((n) => n !== 65535);
+    const autres = m[2].replace(/bitmap#\d+/g, '').trim();
+    if (images.length === 1 && !autres) seules.set(id, images[0]);
+  }
+  if (!seules.size) return;
+  const dossier = fs.mkdtempSync(path.join(require('os').tmpdir(), 'frutiz-img-'));
+  execFileSync(process.execPath,
+    [path.join(__dirname, 'extract-swf-bitmaps.js'), fichier, dossier,
+      ...[...new Set(seules.values())].map(String)], { stdio: 'pipe' });
+  const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.gif': 'image/gif' };
+  for (const [id, bmp] of seules) {
+    const f = formes.get(id);
+    if (!f) continue;
+    const nom = fs.readdirSync(dossier).find((n) => n.startsWith('bitmap' + bmp + '.'));
+    if (!nom) { console.warn('!! image absente pour la forme', id); continue; }
+    const b64 = fs.readFileSync(path.join(dossier, nom)).toString('base64');
+    f.corps = `<image x="${arr(f.vb.x)}" y="${arr(f.vb.y)}"`
+      + ` width="${arr(f.vb.w)}" height="${arr(f.vb.h)}"`
+      + ` href="data:${MIME[path.extname(nom)] || 'image/png'};base64,${b64}"/>`;
+  }
+}
+
 // Un cxform en filtre SVG (le même feColorMatrix que les autres extracteurs :
 // sortie = source × mult/256 + add/255).
 let nFiltre = 0;
@@ -278,6 +317,17 @@ function principal() {
     // son disque.
     { cle: 'frusionCasque', id: 317 },
     { cle: 'frusionEject', id: 313 },
+    // LES QUATRE BOUTONS DE LA FRUTIMANDALA. `cpWheelMng` (#640) les pose sur
+    // sa première image, et ce sont des DefineButton2 dont les actions disent
+    // à quoi ils servent (lues à l'octet) :
+    //     #618 (0,75 ; 21,7)   → pressLeft      — vide d'époque
+    //     #623 (167,15 ; 21,8) → pressRight     — vide d'époque
+    //     #629 (0,75 ; 43,7)   → pressSwap      — change de cadran
+    //     #635 (136,35 ; 43,8) → pressValidate  → bar.toggleHalfHide()
+    { cle: 'mandalaGauche', id: 618 },
+    { cle: 'mandalaDroite', id: 623 },
+    { cle: 'mandalaSwap', id: 629 },
+    { cle: 'mandalaValider', id: 635 },
   ];
   // Toutes les formes touchées, en un passage.
   const formes = new Set();
@@ -722,8 +772,25 @@ function principal() {
     { cle: 'frusion-milieu', id: 324, profondeurs: (p) => p === 9 },
     { cle: 'frusion-slot', id: 324, profondeurs: (p) => p === 10 },
     { cle: 'frusion-avant', id: 324, profondeurs: (p) => p >= 20 && p !== 24 && p !== 29 },
-    { cle: 'frutimandala-fond', id: 640, profondeurs: (p) => p < 3 },
-    { cle: 'frutimandala-dessus', id: 640, profondeurs: (p) => p > 3 },
+    // LE MASQUE du cadran. La profondeur 1 de cpWheelMng porte un clip NOMMÉ
+    // `mask` (#609) : un bol rouge — plat en haut, arrondi en bas — qui ne se
+    // dessine jamais, il DÉCOUPE. Sans lui, les coins des cadrans débordent :
+    // celui du jour/nuit est un bitmap OPAQUE peint sur le vert du bureau
+    // (#ADE76B jusque dans ses coins), qui laisserait une écharpe verte le
+    // long du bol. On le sort tel quel et la feuille de style s'en sert en
+    // `mask-image`.
+    { cle: 'frutimandala-masque', id: 640, profondeurs: (p) => p < 3 },
+    // Le DESSUS sans les boutons : ils sont sortis à part, avec leurs états,
+    // pour qu'on puisse les presser. Restent la vitre (#639, prof. 25) et la
+    // pièce de la profondeur 8.
+    { cle: 'frutimandala-dessus', id: 640, profondeurs: (p) => p === 8 || p === 25 },
+    // LA LANGUETTE DU REPLI. `MainBar.toggleHalfHide` attache `testRetour`
+    // (#587) à la profondeur 1328 quand la barre s'escamote : un petit onglet
+    // posé à `_y = hideHeight` — donc en haut de l'écran une fois la barre
+    // remontée de 220 — qui la fait redescendre au clic. Le clip tient un
+    // dessin de 14×14 et un champ Verdana gras 10 en `#4D7417` : « mode
+    // rapide ». Le champ, on le pose en HTML ; ici on ne sort que le dessin.
+    { cle: 'mode-rapide', id: 587, cadrePropre: true },
     // La boîte de recherche du panneau des contacts : `mcSearchButton` (#441),
     // que `SideList.buildList` attache à `_y = 770`.
     { cle: 'recherche', id: 441 },
@@ -830,6 +897,78 @@ function principal() {
       manifeste.frutimandalaRoue = { fichier: 'frutimandala-roue.svg', cadre: r.cadre };
       console.log('frutimandala-roue.svg', JSON.stringify(r.cadre));
     } else console.warn('!! roue vide');
+  }
+
+  // ── L'AUTRE cadran : le JOUR/NUIT (public/wheel/wheel0.swf) ─────────────
+  // `cp.WheelMng.init` pose `list = ["whDayNight", "whFruitMonth"]` : la
+  // frutimandala a DEUX faces, et le bouton du bas-gauche (`pressSwap`) les
+  // échange. `wheel.DayNight` porte `wheelId = 0` — sa peau est donc
+  // wheel0.swf. Le sprite #63 en est la racine : le cadran des vingt-quatre
+  // heures, et par-dessus un clip nommé `display` (profondeur 30) qui reste
+  // DROIT pendant que le cadran tourne — c'est là que l'heure s'affiche.
+  // On sort le cadran SANS lui, et les chiffres à part.
+  {
+    const JOUR = path.join(RACINE, 'public/wheel/wheel0.swf');
+    const swfJour = ouvrir(JOUR, { textesEnFormes: false });
+    const formesJour = new Map();
+    const poses = (swfJour.parSprite.get(63) || new Map()).get(1) || [];
+    const morceaux = [];
+    for (const p of poses) {
+      if (p.nom === 'display') continue;
+      morceaux.push(...swfJour.aplatir(p.ch, p.M, 0, 1, '', p.cx));
+    }
+    const ids = new Set();
+    for (const m of morceaux) if (m.shape !== undefined) ids.add(m.shape);
+    // Les CHIFFRES de l'heure : `police` (#47) tient un glyphe par image —
+    // 1 à 10 les chiffres 0 à 9, et 12 les deux-points. C'est cette bande-là
+    // que `extGameNumb` déroule pour écrire « 21:37 ».
+    const bande = swfJour.parSprite.get(47) || new Map();
+    const GLYPHES = { 1: '0', 2: '1', 3: '2', 4: '3', 5: '4', 6: '5', 7: '6', 8: '7', 9: '8', 10: '9', 12: 'deuxpoints' };
+    const chiffres = [];
+    for (const [f, nom] of Object.entries(GLYPHES)) {
+      const m = swfJour.aplatir(47, IDENTITE, 0, +f, '', undefined);
+      for (const x of m) if (x.shape !== undefined) ids.add(x.shape);
+      chiffres.push({ nom: 'mandala-chiffre-' + nom, morceaux: m });
+    }
+    chargerFormes([...ids], JOUR, formesJour);
+    // Le fond du cadran (#50) n'est pas un tracé mais une IMAGE : le disque
+    // bleu qui va du plein jour à la nuit étoilée, avec sa couronne de
+    // vingt-quatre graduations. Sans elle il ne resterait que le soleil et
+    // la lune, flottant dans le vide.
+    inlinerImages([...ids], JOUR, formesJour);
+    const r = svgCompose(morceaux, formesJour);
+    if (r) {
+      fs.writeFileSync(path.join(SORTIE, 'frutimandala-jour.svg'), r.svg, 'utf8');
+      manifeste.frutimandalaJour = { fichier: 'frutimandala-jour.svg', cadre: r.cadre };
+      console.log('frutimandala-jour.svg', JSON.stringify(r.cadre));
+    } else console.warn('!! cadran jour/nuit vide');
+    // Les glyphes partagent le cadre du plus grand : ils s'alignent alors sans
+    // que l'écriture ne saute d'un chiffre à l'autre.
+    const rendus = chiffres.map((c) => ({ nom: c.nom, r: svgCompose(c.morceaux, formesJour) }))
+      .filter((c) => c.r);
+    let u = null;
+    for (const c of rendus) {
+      const k = c.r.cadre;
+      u = u ? { x: Math.min(u.x, k.x), y: Math.min(u.y, k.y),
+        x1: Math.max(u.x1, k.x + k.w), y1: Math.max(u.y1, k.y + k.h) }
+        : { x: k.x, y: k.y, x1: k.x + k.w, y1: k.y + k.h };
+    }
+    if (u) {
+      const cadre = { x: u.x, y: u.y, w: +arr(u.x1 - u.x), h: +arr(u.y1 - u.y) };
+      // Chacun garde AUSSI sa largeur propre : `ext.game.Numb.setNum` avance
+      // d'un glyphe au suivant de `mc._width`, qui est la boîte du dessin —
+      // le « 1 » est étroit, le « 8 » large, et l'écriture le suit.
+      const boites = {};
+      for (const c of rendus) {
+        const k = c.r.cadre;
+        boites[c.nom] = { x: +arr(k.x), y: +arr(k.y), w: +arr(k.w), h: +arr(k.h) };
+        const svg = c.r.svg.replace(/viewBox="[^"]*" width="[^"]*" height="[^"]*"/,
+          `viewBox="${arr(cadre.x)} ${arr(cadre.y)} ${arr(cadre.w)} ${arr(cadre.h)}" width="${arr(cadre.w)}" height="${arr(cadre.h)}"`);
+        fs.writeFileSync(path.join(SORTIE, c.nom + '.svg'), svg, 'utf8');
+      }
+      manifeste.mandalaChiffres = { cadre, glyphes: rendus.map((c) => c.nom), boites };
+      console.log(rendus.length + ' chiffres de l’heure', JSON.stringify(cadre));
+    }
   }
 
   fs.writeFileSync(path.join(SORTIE, 'bureau.json'), JSON.stringify(manifeste, null, 1), 'utf8');

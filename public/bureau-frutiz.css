@@ -494,17 +494,19 @@ body.bureau-frutiz .fb-glisse-icone .ex-disque img.jaquette {
   width: 61px; height: 61px; left: 1px; top: 1px;
 }
 
-/* ── LA FRUTIMANDALA (cpWheelMng #640 + la peau /wheel/wheel1.swf) ────────
-   Trois couches, exactement les profondeurs du SWF : le châssis de FOND
-   (#609, prof. 1), la ROUE à la place du cadran (#613, prof. 3), les quatre
-   boutons et le verre PAR-DESSUS (prof. 8 à 25) — sans quoi la roue mangerait
-   le bouton vert, qui tombe pourtant à l'intérieur du disque.
+/* ── LA FRUTIMANDALA (cpWheelMng #640 + les peaux /wheel/wheel0|1.swf) ────
+   Les couches, exactement les profondeurs du SWF : le châssis de FOND
+   (#609, prof. 1 et #613, prof. 3) ; `inside` (#407, prof. 8), le plateau
+   VIDE où les cadrans s'attachent ; les quatre boutons (prof. 12 à 21) et le
+   verre (#639, prof. 25) PAR-DESSUS — sans quoi la roue mangerait le bouton
+   vert, qui tombe pourtant à l'intérieur du disque.
    Pose relevée : le châssis occupe 200×80 au bout droit de la barre (bord
    droit de la barre mesuré à x 1240, bouton vert finissant à 1230). Le centre
-   de la roue est celui du cadran d'origine — (92.7, −36.8) dans cpWheelMng,
-   soit (99, −32.45) dans le cadre du châssis : le disque de 252 se place donc
-   à (99 − 126, −32.45 − 126). Les coins du châssis tombent à 149 du centre,
-   hors du disque (rayon 126) : les boutons y restent au clair. */
+   des cadrans est celui de `inside` — (93,1 ; −37,5) dans cpWheelMng, soit
+   (99,4 ; −33,15) dans le cadre du châssis. Les coins du châssis tombent à
+   149 du centre, hors du disque des frutisignes (rayon 126) : les boutons y
+   restent au clair. Vérifié 1:1 contre le rendu Ruffle : l'heure « 11:22 »
+   occupe la même boîte de 112×22 au même endroit. */
 body.bureau-frutiz #frutimandala {
   /* calage vérifié sur un repère commun aux deux rendus, le bouton « G » :
      x 1049..1093, y 52..67 dans main.swf — la couche se pose donc au bord
@@ -512,22 +514,90 @@ body.bureau-frutiz #frutimandala {
      haut, le reste dépassant sous la barre qui l'écrête, comme d'époque. */
   position: absolute; top: 4px; right: -2px; width: 200px; height: 80px;
   z-index: 2; overflow: hidden;
-  background: url('/frutiz/sprites/frutimandala-fond.svg') left top / 200px 80px no-repeat;
 }
-/* Le cadran est MASQUÉ par le châssis : le vert d'époque ne commence qu'à
-   6 px du haut de la pièce (relevé au centre du cadran : blanc jusqu'à 6,
-   liseré 6..8, roue ensuite). Sans ce masque la roue débordait sur la barre. */
-body.bureau-frutiz #frutimandala .cadran {
-  position: absolute; left: 0; top: 6px; right: 0; bottom: 0; overflow: hidden;
-}
-body.bureau-frutiz #frutimandala .roue {
-  position: absolute; left: -27px; top: -164.45px; width: 252px; height: 252px;
-  background: url('/frutiz/sprites/frutimandala-roue.svg') left top / 252px 252px no-repeat;
-  transform-origin: 50% 50%;
-}
-body.bureau-frutiz #frutimandala .dessus {
-  position: absolute; inset: 0;
+/* Le VERRE est à la profondeur 25 : au-dessus des boutons eux-mêmes. */
+body.bureau-frutiz #frutimandala .md-dessus {
+  position: absolute; inset: 0; z-index: 4; pointer-events: none;
   background: url('/frutiz/sprites/frutimandala-dessus.svg') left top / 200px 80px no-repeat;
+}
+/* LE BOL. La profondeur 1 de cpWheelMng est un clip nommé `mask` (#609) :
+   plat en haut, arrondi en bas, il ne se dessine pas — il découpe. C'est lui
+   qui donne aux deux cadrans leur silhouette de quartier de fruit, et sans
+   lui le cadran jour/nuit (un bitmap OPAQUE peint jusque dans ses coins sur
+   le vert du bureau) laisserait une écharpe verte le long du bol. */
+body.bureau-frutiz #frutimandala .md-cadran {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  -webkit-mask: url('/frutiz/sprites/frutimandala-masque.svg') left top / 200px 80px no-repeat;
+  mask: url('/frutiz/sprites/frutimandala-masque.svg') left top / 200px 80px no-repeat;
+}
+/* `inside`, `wheel<dp>` et `display` sont des POINTS : chacun ne porte que sa
+   rotation, autour du centre du cadran, et le dessin pend dessous. C'est
+   ainsi qu'`animDisk` fait tourner le plateau entier pendant que `display`
+   contre-tourne pour garder l'heure droite. */
+body.bureau-frutiz #frutimandala .md-inside,
+body.bureau-frutiz #frutimandala .md-roue,
+body.bureau-frutiz #frutimandala .md-display,
+body.bureau-frutiz #frutimandala .md-heure {
+  position: absolute; width: 0; height: 0; transform-origin: 0 0;
+}
+body.bureau-frutiz #frutimandala .md-roue,
+body.bureau-frutiz #frutimandala .md-display { left: 0; top: 0; }
+body.bureau-frutiz #frutimandala .md-art {
+  position: absolute; background-repeat: no-repeat;
+}
+/* `attachMovie("extGameNumb", "hour", 1, {…, _y: 52})` : l'afficheur pend à
+   52 px sous le centre, et son compteur est mis à l'échelle 85 %. */
+body.bureau-frutiz #frutimandala .md-heure {
+  top: 52px; transform: scale(.85);
+}
+body.bureau-frutiz #frutimandala .md-heure i {
+  position: absolute; width: 37.95px; height: 34.55px;
+  background-repeat: no-repeat; background-size: 37.95px 34.55px;
+}
+/* Les quatre boutons, aux places du clip. Les deux triangles rouges ne font
+   RIEN d'époque (`pressLeft`/`pressRight` sont vides) : ils gardent leurs
+   trois états, mais pas de curseur de main. */
+body.bureau-frutiz #frutimandala .md-but {
+  position: absolute; padding: 0; border: 0; background: transparent no-repeat;
+  background-size: 100% 100%; cursor: pointer; z-index: 3;
+}
+body.bureau-frutiz #frutimandala .md-mandalaGauche,
+body.bureau-frutiz #frutimandala .md-mandalaDroite { cursor: default; }
+body.bureau-frutiz #frutimandala .md-mandalaGauche { background-image: url('/frutiz/sprites/mandalaGauche_up.svg'); }
+body.bureau-frutiz #frutimandala .md-mandalaGauche:hover { background-image: url('/frutiz/sprites/mandalaGauche_over.svg'); }
+body.bureau-frutiz #frutimandala .md-mandalaGauche:active { background-image: url('/frutiz/sprites/mandalaGauche_down.svg'); }
+body.bureau-frutiz #frutimandala .md-mandalaDroite { background-image: url('/frutiz/sprites/mandalaDroite_up.svg'); }
+body.bureau-frutiz #frutimandala .md-mandalaDroite:hover { background-image: url('/frutiz/sprites/mandalaDroite_over.svg'); }
+body.bureau-frutiz #frutimandala .md-mandalaDroite:active { background-image: url('/frutiz/sprites/mandalaDroite_down.svg'); }
+body.bureau-frutiz #frutimandala .md-mandalaSwap { background-image: url('/frutiz/sprites/mandalaSwap_up.svg'); }
+body.bureau-frutiz #frutimandala .md-mandalaSwap:hover { background-image: url('/frutiz/sprites/mandalaSwap_over.svg'); }
+body.bureau-frutiz #frutimandala .md-mandalaSwap:active { background-image: url('/frutiz/sprites/mandalaSwap_down.svg'); }
+body.bureau-frutiz #frutimandala .md-mandalaValider { background-image: url('/frutiz/sprites/mandalaValider_up.svg'); }
+body.bureau-frutiz #frutimandala .md-mandalaValider:hover { background-image: url('/frutiz/sprites/mandalaValider_over.svg'); }
+body.bureau-frutiz #frutimandala .md-mandalaValider:active { background-image: url('/frutiz/sprites/mandalaValider_down.svg'); }
+
+/* ── LA LANGUETTE DU MODE RAPIDE (`testRetour` #587) ──────────────────────
+   `MainBar.toggleHalfHide` l'attache à `_y = hideHeight` (220) dans la barre :
+   une fois celle-ci remontée d'autant, elle tombe au ras du haut de l'écran,
+   à l'abscisse de la barre (cornerX). Le dessin fait 14,05×14 ; le champ
+   « mode rapide » suit à 16,3, en Verdana gras 10 `#4D7417`.
+   `_visible = false` jusqu'à `endMove` : elle n'apparaît qu'une fois la barre
+   partie — d'où la classe « vu ». */
+body.bureau-frutiz #mode-rapide {
+  position: absolute; left: var(--cornerX); top: 0; z-index: 30;
+  width: 96px; height: 16px; padding: 0; border: 0; background: none;
+  text-align: left; cursor: pointer; visibility: hidden;
+  font: 700 10px Verdana, Arial, sans-serif; color: #4D7417;
+  user-select: none; -webkit-user-select: none;
+}
+body.bureau-frutiz #mode-rapide.vu { visibility: visible; }
+body.bureau-frutiz #mode-rapide i {
+  position: absolute; left: 0; top: 0; width: 14.05px; height: 14px;
+  background: url('/frutiz/sprites/mode-rapide.svg') left top / 14.05px 14px no-repeat;
+}
+body.bureau-frutiz #mode-rapide span {
+  position: absolute; left: 16.3px; top: -0.3px; line-height: 13px;
+  white-space: nowrap;
 }
 
 /* ── La pilule « N en ligne » ─────────────────────────────────────────────
@@ -729,7 +799,10 @@ body.bureau-frutiz #bureau .home-compte {
    avec 13 px d'interligne (« Boîte de réception » et « Mon historique »
    passent à deux lignes : le champ fait 64, pas 76). */
 body.bureau-frutiz #bureau #home-grid {
-  position: absolute; top: 106px; left: calc(var(--cornerX) + 6px); right: 16px; z-index: 2;
+  /* La rangée commence AU COIN du bureau : `main.cornerY`, que le repli de la
+     barre (« mode rapide ») fait passer de 106 à 10. Les icônes remontent
+     alors, comme d'époque. */
+  position: absolute; top: var(--cornerY); left: calc(var(--cornerX) + 6px); right: 16px; z-index: 2;
   display: flex; flex-flow: row wrap; align-content: flex-start;
   align-items: flex-start; justify-content: flex-start; gap: 12px 0;
   margin: 0; padding: 0;

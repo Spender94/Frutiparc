@@ -101,6 +101,74 @@
     "w": 20,
     "h": 20
    }
+  },
+  "mandalaGauche": {
+   "up": {
+    "fichier": "mandalaGauche_up.svg"
+   },
+   "over": {
+    "fichier": "mandalaGauche_over.svg"
+   },
+   "down": {
+    "fichier": "mandalaGauche_down.svg"
+   },
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 19.25,
+    "h": 20
+   }
+  },
+  "mandalaDroite": {
+   "up": {
+    "fichier": "mandalaDroite_up.svg"
+   },
+   "over": {
+    "fichier": "mandalaDroite_over.svg"
+   },
+   "down": {
+    "fichier": "mandalaDroite_down.svg"
+   },
+   "cadre": {
+    "x": 0.1,
+    "y": 0,
+    "w": 19.25,
+    "h": 20
+   }
+  },
+  "mandalaSwap": {
+   "up": {
+    "fichier": "mandalaSwap_up.svg"
+   },
+   "over": {
+    "fichier": "mandalaSwap_over.svg"
+   },
+   "down": {
+    "fichier": "mandalaSwap_down.svg"
+   },
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 50.05,
+    "h": 20
+   }
+  },
+  "mandalaValider": {
+   "up": {
+    "fichier": "mandalaValider_up.svg"
+   },
+   "over": {
+    "fichier": "mandalaValider_over.svg"
+   },
+   "down": {
+    "fichier": "mandalaValider_down.svg"
+   },
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 50.1,
+    "h": 20
+   }
   }
  },
  "notes": "butGroupWinTop #180 : images 1..3 → boutons #173/#176/#179 (up/over/down)",
@@ -595,8 +663,8 @@
    "h": 77.5
   }
  },
- "frutimandala-fond": {
-  "fichier": "frutimandala-fond.svg",
+ "frutimandala-masque": {
+  "fichier": "frutimandala-masque.svg",
   "cadre": {
    "x": -6.3,
    "y": -4.35,
@@ -611,6 +679,15 @@
    "y": -4.35,
    "w": 200,
    "h": 80
+  }
+ },
+ "mode-rapide": {
+  "fichier": "mode-rapide.svg",
+  "cadre": {
+   "x": 0,
+   "y": 0,
+   "w": 14.05,
+   "h": 14
   }
  },
  "recherche": {
@@ -683,6 +760,104 @@
    "y": -125.99,
    "w": 252.01,
    "h": 252.01
+  }
+ },
+ "frutimandalaJour": {
+  "fichier": "frutimandala-jour.svg",
+  "cadre": {
+   "x": -102,
+   "y": -102,
+   "w": 204,
+   "h": 204
+  }
+ },
+ "mandalaChiffres": {
+  "cadre": {
+   "x": -3.8,
+   "y": -5.25,
+   "w": 37.95,
+   "h": 34.55
+  },
+  "glyphes": [
+   "mandala-chiffre-0",
+   "mandala-chiffre-1",
+   "mandala-chiffre-2",
+   "mandala-chiffre-3",
+   "mandala-chiffre-4",
+   "mandala-chiffre-5",
+   "mandala-chiffre-6",
+   "mandala-chiffre-7",
+   "mandala-chiffre-8",
+   "mandala-chiffre-9",
+   "mandala-chiffre-deuxpoints"
+  ],
+  "boites": {
+   "mandala-chiffre-0": {
+    "x": -3.8,
+    "y": -5.25,
+    "w": 37.85,
+    "h": 34.55
+   },
+   "mandala-chiffre-1": {
+    "x": -3.8,
+    "y": -5.25,
+    "w": 22.85,
+    "h": 34.25
+   },
+   "mandala-chiffre-2": {
+    "x": -3.8,
+    "y": -5.25,
+    "w": 37.5,
+    "h": 34.55
+   },
+   "mandala-chiffre-3": {
+    "x": -3.8,
+    "y": -5.25,
+    "w": 37.55,
+    "h": 34.55
+   },
+   "mandala-chiffre-4": {
+    "x": -3.8,
+    "y": -5.25,
+    "w": 37.5,
+    "h": 33.95
+   },
+   "mandala-chiffre-5": {
+    "x": -3.8,
+    "y": -5.25,
+    "w": 37.5,
+    "h": 34.55
+   },
+   "mandala-chiffre-6": {
+    "x": -3.8,
+    "y": -5.25,
+    "w": 37.95,
+    "h": 34.55
+   },
+   "mandala-chiffre-7": {
+    "x": -3.8,
+    "y": -5.25,
+    "w": 37.55,
+    "h": 34.25
+   },
+   "mandala-chiffre-8": {
+    "x": -3.8,
+    "y": -5.25,
+    "w": 37.4,
+    "h": 34.55
+   },
+   "mandala-chiffre-9": {
+    "x": -3.8,
+    "y": -5.25,
+    "w": 37.5,
+    "h": 34.25
+   },
+   "mandala-chiffre-deuxpoints": {
+    "x": -1.2,
+    "y": -4.05,
+    "w": 19.2,
+    "h": 32.15
+   }
   }
  }
 }

@@ -142,7 +142,10 @@ window.BureauFrutiz = (function () {
     img.onload = function () {
       var dispo = bureau.getBoundingClientRect();
       var coin = $('#bureau-coin');
-      var cornerY = coin ? coin.offsetHeight + coin.offsetTop : 0;
+      // La barre REPLIÉE (« mode rapide ») libère le haut de l'écran : le
+      // fond se recentre sur toute la hauteur, comme après `main.onResize()`.
+      var cornerY = coin
+        ? Math.max(0, coin.offsetHeight + coin.offsetTop + repli.barre) : 0;
       var largeur = dispo.width;
       var hauteur = Math.max(0, dispo.height - cornerY);
       var w = img.naturalWidth, h = img.naturalHeight;
@@ -863,17 +866,20 @@ window.BureauFrutiz = (function () {
     var type = e.desc[0], jeu = e.desc[1] || '';
     var tab = JEUX_LIGHT[String(jeu).toLowerCase()];
     // D'époque, `_global.onFileClick` ne fait RIEN d'un disque — la branche
-    // « disc » est commentée dans openFunctions.as : on joue en le GLISSANT
-    // dans la Frusion, et le bandeau de la fenêtre le dit. Le portage garde
-    // ce geste-là, et laisse le clic faire le même chemin (le tiroir sort, le
-    // disque y descend, la machine le lance) plutôt que de ne rien faire.
+    // « disc » est commentée dans openFunctions.as. On joue en le GLISSANT
+    // dans la Frusion, et le bandeau de la fenêtre le dit : « Pour jouer,
+    // faîtes glisser les disques dans la Frusion ». Le clic reste donc muet,
+    // comme d'époque ; c'est le glisser qui ouvre le tiroir.
     var c = caseExplorateur({
       classe: 'ex-slot-disque',
       dessin: dessinDisque(type, jeu),
       titre: tab ? 'Glissez-le dans la Frusion' : 'Ce disque ne se lit que sur la version Flash',
-      faire: tab ? function () { frusion.inserer(e); } : null,
     });
-    if (tab) rendreAttrapable(c, e, function () { return dessinDisque(type, jeu); });
+    // Muet au clic ne veut pas dire INERTE : un disque jouable s'attrape.
+    if (tab) {
+      c.classList.remove('inerte');
+      rendreAttrapable(c, e, function () { return dessinDisque(type, jeu); });
+    }
     return c;
   }
 
@@ -1287,16 +1293,6 @@ window.BureauFrutiz = (function () {
     var e = exEtats.disques;
     if (e && e.uid && $(EXPLORATEURS.disques.panneau)) ouvrirDossier('disques', e.uid, e.titre);
   }
-
-  // Le chemin COURT : un clic sur un disque. Le tiroir sort, on laisse le
-  // temps de le voir sortir, puis le disque y descend — la même mécanique que
-  // le glisser, sans le glisser.
-  frusion.inserer = function (info) {
-    if (this.disque) return;
-    var self = this;
-    this.openSlot();
-    setTimeout(function () { self.deposer(info); }, 320);
-  };
 
   // `forceCloseSlot` : le disque s'en va sans qu'on le reprenne (on a fermé
   // le jeu autrement, ou quitté le bureau).
@@ -2304,7 +2300,222 @@ window.BureauFrutiz = (function () {
     for (var id in fenetres) fenetres[id].panneau.classList.add('active');
   }
 
-  // LA ROUE DES FRUTISIGNES (wheel.FruitMonth #777, RunDate.getCurrentFSign
+  // ═══ LA FRUTIMANDALA ═════════════════════════════════════════════════
+  // `cp.WheelMng` (DoInitAction 0x6a7c2) n'est pas un décor : c'est un
+  // TOURNE-DISQUE à deux faces. Le clip cpWheelMng (#640) pose, dans cet
+  // ordre de profondeurs :
+  //
+  //      1  mask   (#609)   le châssis — et le masque du cadran
+  //      3         (#613)   le fond du cadran
+  //      8  inside (#407)   le CONTENEUR des roues (vide dans le SWF)
+  //   12/14        (#618, #623)   les deux triangles rouges
+  //   17/21        (#629, #635)   l'échange (« G ») et la validation
+  //     25  cadran (#639)   le verre
+  //
+  // `init` pose `list = ["whDayNight", "whFruitMonth"]` puis appelle
+  // `swapWheel()` : `currentPos` passe de 0 à 1 — c'est donc la roue des
+  // FRUTISIGNES qui s'affiche en premier, et le bouton du bas-gauche
+  // (`pressSwap`) fait tourner l'autre à sa place.
+  var MD_L = 200, MD_H = 80;              // le dessin du châssis
+  var MD_DX = 6.3, MD_DY = 4.35;          // …dont l'origine du clip est à −6,3 ; −4,35
+  // `inside` est posé à (1862 ; −750) twips dans le clip : le CENTRE des deux
+  // cadrans, à 99,4 du bord gauche du dessin et 33,15 AU-DESSUS de son haut.
+  // Seule la calotte basse des roues se voit donc dans la fenêtre.
+  var MD_CX = 93.1 + MD_DX, MD_CY = -37.5 + MD_DY;
+  // Le clip nommé `mask` (#609, profondeur 1) DÉCOUPE les cadrans : la
+  // feuille de style s'en sert en `mask-image`, à l'échelle du dessin.
+  var MD_RAY = 100;                       // `ray` : la roue entre par la gauche, à −2·ray
+  // Les quatre boutons, aux places du clip (plus l'origine du dessin) et à la
+  // taille de leur état UP.
+  var MD_BOUTONS = [
+    { cle: 'mandalaGauche', x: 0.75, y: 21.7, l: 19.25, h: 20, act: 'pressLeft',
+      titre: '' },
+    { cle: 'mandalaDroite', x: 167.15 + 0.1, y: 21.8, l: 19.25, h: 20, act: 'pressRight',
+      titre: '' },
+    { cle: 'mandalaSwap', x: 0.75, y: 43.7, l: 50.05, h: 20, act: 'pressSwap',
+      titre: 'Changer de cadran' },
+    { cle: 'mandalaValider', x: 136.35, y: 43.8, l: 50.1, h: 20, act: 'pressValidate',
+      titre: 'Mode rapide' },
+  ];
+  // Les deux peaux, chargées d'ordinaire par `Wheel.loadSkin` depuis
+  // /wheel/wheel<wheelId>.swf : ici, leurs dessins déjà sortis.
+  var MD_ROUES = {
+    whFruitMonth: { fichier: 'frutimandala-roue', x: -126.01, y: -125.99, l: 252.01, h: 252.01 },
+    whDayNight: { fichier: 'frutimandala-jour', x: -102, y: -102, l: 204, h: 204 },
+  };
+  // La bande `police` (#47) de wheel0.swf : un glyphe par image. Chacun garde
+  // sa LARGEUR propre — c'est de `mc._width` que `setNum` avance — et son bord
+  // gauche, le même pour tous les chiffres (−3,8) sauf les deux-points.
+  var MD_CHIFFRE = { x: -3.8, y: -5.25, l: 37.95, h: 34.55 };
+  var MD_GLYPHES = {
+    '0': { n: '0', w: 37.85 }, '1': { n: '1', w: 22.85 }, '2': { n: '2', w: 37.5 },
+    '3': { n: '3', w: 37.55 }, '4': { n: '4', w: 37.5 }, '5': { n: '5', w: 37.5 },
+    '6': { n: '6', w: 37.95 }, '7': { n: '7', w: 37.55 }, '8': { n: '8', w: 37.4 },
+    '9': { n: '9', w: 37.5 }, ':': { n: 'deuxpoints', w: 19.2, x: -1.2 },
+  };
+  var MD_ECHELLE = 0.85;                  // `scale: 85` de l'objet d'init
+  var MD_HEURE_Y = 52;                    // `_y: 52`, sous le centre du cadran
+
+  var mandala = {
+    boite: null, cadran: null, inside: null,
+    liste: ['whDayNight', 'whFruitMonth'],
+    pos: 0, dp: 0, roues: {},             // dp → { el, lien, art, display, heure, gx }
+    tour: 0, accel: 0, flRoue: false, flSwap: false,
+    anim: null, dernier: 0, aidHeure: null,
+  };
+
+  // `Wheel.setRot(deg) { this._rotation = deg }`, et `wheel.DayNight` y ajoute
+  // `display._rotation = −deg` : le cadran tourne, l'heure reste droite.
+  // `onBaseTurn` en dit autant pendant l'échange, où c'est `inside` qui vire :
+  // `display._rotation = −(this._rotation + this._parent._rotation)`.
+  mandala.poserRoue = function (r) {
+    r.el.style.transform = 'translateX(' + r.gx.toFixed(2) + 'px) rotate('
+      + r.rot.toFixed(2) + 'deg)';
+    if (r.display) {
+      r.display.style.transform = 'rotate(' + (-(r.rot + this.tour * 6)).toFixed(2) + 'deg)';
+    }
+  };
+
+  mandala.setRot = function (r, deg) { r.rot = deg; this.poserRoue(r); };
+
+  // `loadWheel(link)` : la roue s'attache à la profondeur 10000 − dp — la
+  // NOUVELLE passe donc DESSOUS, et c'est l'ancienne qui s'efface au-dessus
+  // d'elle. Première roue : elle entre en glissant depuis −2·ray. Les
+  // suivantes : le plateau s'emballe (`animDisk`).
+  mandala.loadWheel = function (lien) {
+    this.dp += 1;
+    var dp = this.dp;
+    var conf = MD_ROUES[lien];
+    var el = document.createElement('div');
+    el.className = 'md-roue';
+    el.style.zIndex = String(10000 - dp);
+    var art = document.createElement('div');
+    art.className = 'md-art';
+    art.style.left = conf.x + 'px'; art.style.top = conf.y + 'px';
+    art.style.width = conf.l + 'px'; art.style.height = conf.h + 'px';
+    art.style.backgroundImage = 'url(/frutiz/sprites/' + conf.fichier + '.svg)';
+    art.style.backgroundSize = conf.l + 'px ' + conf.h + 'px';
+    el.appendChild(art);
+    var r = { el: el, art: art, lien: lien, gx: 0, rot: 0, dp: dp, mort: false };
+    // Le cadran JOUR/NUIT porte son afficheur : `display` (profondeur 30 de
+    // wheel0.swf), posé à l'origine du disque, où `wheelInit` attache
+    // `extGameNumb` sous le nom « hour ».
+    if (lien === 'whDayNight') {
+      r.display = document.createElement('div');
+      r.display.className = 'md-display';
+      r.heure = document.createElement('div');
+      r.heure.className = 'md-heure';
+      r.display.appendChild(r.heure);
+      el.appendChild(r.display);
+    }
+    this.roues[dp] = r;
+    this.inside.appendChild(el);
+    if (this.flRoue) {
+      this.tour = 2; this.accel = 0.3;
+      this.sortante = this.roues[dp - 1] || null;
+      this.flSwap = true;
+      this.battre();
+    } else {
+      r.gx = -MD_RAY * 2;
+      r.cible = 0;
+      this.battre();
+    }
+    this.flRoue = true;
+    if (lien === 'whDayNight') this.majJourNuit(r);
+    else this.majFrutisigne(r);
+    return r;
+  };
+
+  mandala.swapWheel = function () {
+    this.pos = (this.pos + 1) % this.liste.length;
+    this.loadWheel(this.liste[this.pos]);
+  };
+
+  // `pressSwap` : rien tant que l'échange court (`if (!flSwap) swapWheel()`).
+  mandala.pressSwap = function () { if (!this.flSwap) this.swapWheel(); };
+  // Les deux triangles rouges sont MUETS d'époque : `pressLeft` et
+  // `pressRight` sont des fonctions vides. On les garde tels quels.
+  mandala.pressLeft = function () {};
+  mandala.pressRight = function () {};
+  mandala.pressValidate = function () { basculerRepli(); };
+
+  // `AnimList` bat toutes les 25 ms ; `tmod` mesure le temps réellement passé
+  // en multiples de ce battement.
+  mandala.battre = function () {
+    var self = this;
+    if (this.anim) return;
+    this.dernier = 0;
+    var pas = function (t) {
+      self.anim = null;
+      var tmod = self.dernier ? Math.min(4, (t - self.dernier) / 25) : 1;
+      self.dernier = t;
+      var encore = false;
+      if (self.flSwap) { self.animDisk(tmod); encore = encore || self.flSwap; }
+      if (self.glisser(tmod)) encore = true;
+      if (encore) self.anim = requestAnimationFrame(pas);
+    };
+    this.anim = requestAnimationFrame(pas);
+  };
+
+  // `AnimList.slide` : regular = regular × r + pos × (1 − r), r = 0,8 ^ tmod.
+  // Ici il n'y a qu'un axe à faire glisser, l'entrée de la première roue.
+  mandala.glisser = function (tmod) {
+    var encore = false;
+    for (var dp in this.roues) {
+      var r = this.roues[dp];
+      if (r.cible === undefined) continue;
+      var e = Math.pow(0.8, tmod);
+      r.gx = r.gx * e + r.cible * (1 - e);
+      if (Math.round(r.gx) === Math.round(r.cible)) { r.gx = r.cible; delete r.cible; }
+      else encore = true;
+      this.poserRoue(r);
+    }
+    return encore;
+  };
+
+  // `animDisk(mcIn, mcOut)` — le plateau s'emballe puis rend la main :
+  //     accel −= tmod / 90 ;  r = (1 + accel) ^ tmod ;  turning ×= r
+  //     inside._rotation = turning × 6
+  //     r < 1 ? (l'ancienne roue encore là : turning ×= −1) et on la tue
+  //           : mcOut._alpha = (r − 1) × 400
+  //     |turning| < 0,1 → on s'arrête.
+  mandala.animDisk = function (tmod) {
+    this.accel -= tmod / 90;
+    var r = Math.pow(1 + this.accel, tmod);
+    this.tour *= r;
+    this.inside.style.transform = 'rotate(' + (this.tour * 6).toFixed(2) + 'deg)';
+    // `inside["wheel" + dp].onBaseTurn()` : la NOUVELLE roue redresse son
+    // afficheur pendant que le plateau vire.
+    var neuve = this.roues[this.dp];
+    if (neuve) this.poserRoue(neuve);
+    var s = this.sortante;
+    if (r < 1) {
+      // Le plateau a fini d'accélérer : l'ancienne roue s'en va, et le sens
+      // s'INVERSE — le plateau se dévide jusqu'à revenir droit.
+      if (s && !s.mort) {
+        this.tour *= -1;
+        s.mort = true;
+        clearTimeout(s.aid);
+        if (s.el.parentNode) s.el.parentNode.removeChild(s.el);
+        delete this.roues[s.dp];
+      }
+    } else if (s && !s.mort) {
+      s.el.style.opacity = String(Math.min(1, (r - 1) * 4));
+    }
+    if (Math.abs(this.tour) < 0.1) {
+      this.tour = 0;
+      this.flSwap = false;
+      this.sortante = null;
+      // ÉCART assumé : d'époque `inside._rotation` garde sa dernière valeur
+      // (jusqu'à 0,6°, `turning` valant encore moins de 0,1 quand la boucle
+      // s'arrête) ; on le remet droit, ce qui ne se voit pas mais évite de
+      // traîner un cadran de travers.
+      this.inside.style.transform = 'rotate(0deg)';
+      for (var k in this.roues) this.poserRoue(this.roues[k]);
+    }
+  };
+
+  // ── LA ROUE DES FRUTISIGNES (wheel.FruitMonth #777, RunDate.getCurrentFSign
   // 0xbbf73). La loi d'époque, au chiffre près :
   //     t     = getTime() / 1000
   //     signe = floor(((t − 345600) / 604800) % 10)
@@ -2314,12 +2525,190 @@ window.BureauFrutiz = (function () {
   //     setRot((signe + part) × 36)   — 36° par signe, 360 pour le tour.
   // Vérifié : au moment de la capture de référence le signe était le KIWI,
   // et c'est bien le kiwi qui trône au centre du cadran, citron à sa gauche
-  // et raisin à sa droite.
-  function tournerMandala(roue) {
+  // et raisin à sa droite. `wheel.FruitMonth` se remet à jour toutes les
+  // heures ; on suit la même cadence.
+  mandala.majFrutisigne = function (r) {
     var t = Date.now() / 1000;
     var signe = Math.floor(((t - 345600) / 604800) % 10);
     var part = ((t - 345600) / 604800) % 1;
-    roue.style.transform = 'rotate(' + ((signe + part) * 36).toFixed(2) + 'deg)';
+    this.setRot(r, (signe + part) * 36);
+    var self = this;
+    clearTimeout(r.aid);
+    r.aid = setTimeout(function () { if (!r.mort) self.majFrutisigne(r); }, 3600000);
+  };
+
+  // ── LE CADRAN JOUR/NUIT (wheel.DayNight #800, 0x7d97f) ──────────────────
+  //     dayCoef = (h + m / 60) / 24 ;  setRot(dayCoef × 360)
+  // À minuit le disque est droit — la LUNE est en bas, dans la fenêtre ; à
+  // midi il a fait un demi-tour et c'est le SOLEIL qu'on y voit. L'heure,
+  // elle, s'écrit droite au centre : `display` contre-tourne d'autant.
+  // `wheelInit` cale le premier réveil sur la MINUTE suivante
+  // (`60 − getSeconds()`), puis passe à 60 s pile.
+  mandala.majJourNuit = function (r) {
+    var d = new Date();
+    var h = d.getHours(), m = d.getMinutes();
+    this.setRot(r, ((h + m / 60) / 24) * 360);
+    ecrireHeure(r.heure, (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m);
+    var self = this;
+    clearTimeout(r.aid);
+    r.aid = setTimeout(function () {
+      if (!r.mort) self.majJourNuit(r);
+    }, (60 - d.getSeconds()) * 1000 + 500);
+  };
+
+  // `ext.game.Numb.setNum` — la classe partagée que la rustine
+  // scripts/patch-main-heure-mandala.js a rendue à main.swf, et qui écrit
+  // l'heure du cadran :
+  //     un clip par caractère, `mc._x = x` puis `x += mc._width` ;
+  //     `compteur._xscale = _yscale = scale` (85) ;
+  //     `compteur._x = (−compteur._width / 2) × align` (align = 1).
+  // La dernière ligne CENTRE la boîte d'encre, pas le texte : l'origine part
+  // à −largeur/2 sans corriger le bord gauche du premier glyphe — l'écriture
+  // penche donc de 3 px vers la gauche. C'est ainsi d'époque, on le garde.
+  function ecrireHeure(el, txt) {
+    if (!el) return;
+    el.textContent = '';
+    var x = 0, g0 = 1e9, g1 = -1e9, i, g, bx;
+    for (i = 0; i < txt.length; i++) {
+      g = MD_GLYPHES[txt.charAt(i)];
+      if (!g) continue;
+      bx = g.x === undefined ? MD_CHIFFRE.x : g.x;
+      g0 = Math.min(g0, x + bx);
+      g1 = Math.max(g1, x + bx + g.w);
+      var img = document.createElement('i');
+      img.style.left = (x + MD_CHIFFRE.x) + 'px';
+      img.style.top = MD_CHIFFRE.y + 'px';
+      img.style.backgroundImage = 'url(/frutiz/sprites/mandala-chiffre-' + g.n + '.svg)';
+      el.appendChild(img);
+      x += g.w;
+    }
+    if (g1 < g0) return;
+    el.style.left = (-MD_ECHELLE * (g1 - g0) / 2).toFixed(2) + 'px';
+  }
+
+  function batirMandala() {
+    var boite = document.createElement('div');
+    boite.id = 'frutimandala';
+    var cadran = document.createElement('div');
+    cadran.className = 'md-cadran';
+    var inside = document.createElement('div');
+    inside.className = 'md-inside';
+    inside.style.left = MD_CX + 'px';
+    inside.style.top = MD_CY + 'px';
+    cadran.appendChild(inside);
+    var dessus = document.createElement('div');
+    dessus.className = 'md-dessus';
+    boite.appendChild(cadran);
+    boite.appendChild(dessus);
+    for (var i = 0; i < MD_BOUTONS.length; i++) {
+      (function (b) {
+        var but = document.createElement('button');
+        but.type = 'button';
+        but.className = 'md-but md-' + b.cle;
+        but.style.left = (b.x + MD_DX) + 'px';
+        but.style.top = (b.y + MD_DY) + 'px';
+        but.style.width = b.l + 'px';
+        but.style.height = b.h + 'px';
+        if (b.titre) but.title = b.titre;
+        but.addEventListener('click', function () { mandala[b.act](); });
+        boite.appendChild(but);
+      })(MD_BOUTONS[i]);
+    }
+    mandala.boite = boite;
+    mandala.cadran = cadran;
+    mandala.inside = inside;
+    mandala.swapWheel();                  // `init` : la roue des frutisignes d'abord
+    return boite;
+  }
+
+  // ═══ LE REPLI DE LA BARRE (MainBar.toggleHalfHide) ════════════════════
+  //     hideHeight = 220
+  //     replié   : pos.y = −220 ; frusion.jumpTo(−220) ; on attache
+  //                `testRetour` à `_y = hideHeight` — donc au ras du haut de
+  //                l'écran — invisible jusqu'à la fin du glissement
+  //                (`endMove` le rend visible) ;
+  //     déplié   : testRetour.removeMovieClip() ; pos.y = 0 ; frusion.jumpTo(0)
+  //     puis     : animList.addSlide("barSlide", this, …, 2)  — la barre
+  //                glisse DEUX FOIS plus vite que la frusion (ratio 1) ;
+  //                main.cornerY = 10 + 96 × !flHalfHide  → 106 ou 10 ;
+  //                main.onResize().
+  var MD_CACHE = 220;
+  var repli = { actif: false, barre: 0, frusion: 0, cible: 0, anim: null, dernier: 0 };
+
+  function posterRepli() {
+    var coin = $('#bureau-coin');
+    var onglets = $('#bureau-onglets');
+    var t = 'translateY(' + repli.barre.toFixed(2) + 'px)';
+    if (coin) coin.style.transform = t;
+    // `mcTab` est un enfant de la barre (`_y = height`) : la rangée d'onglets
+    // monte avec elle.
+    if (onglets) onglets.style.transform = t;
+    var f = 'translateY(' + repli.frusion.toFixed(2) + 'px)';
+    if (frusion.boite) frusion.boite.style.transform = f;
+    var pilule = $('#pill-enligne');
+    if (pilule) pilule.style.transform = f;
+  }
+
+  function basculerRepli(force) {
+    repli.actif = force === undefined ? !repli.actif : !!force;
+    var nub = $('#mode-rapide');
+    if (repli.actif) {
+      repli.cible = -MD_CACHE;
+      if (!nub) document.getElementById('bureau-haut').appendChild(batirNub());
+      else nub.classList.remove('vu');
+    } else {
+      repli.cible = 0;
+      if (nub && nub.parentNode) nub.parentNode.removeChild(nub);
+    }
+    CORNER_Y = 10 + 96 * (repli.actif ? 0 : 1);
+    // Le bureau suit le coin : la rangée d'icônes remonte, comme d'époque.
+    document.body.style.setProperty('--cornerY', CORNER_Y + 'px');
+    battreRepli();
+    // `main.onResize()` : les fenêtres se recalent sous le nouveau coin.
+    for (var id in fenetres) bornerDansEcran(fenetres[id].fen);
+    poserFond(fondCourant);
+  }
+
+  function battreRepli() {
+    if (repli.anim) return;
+    repli.dernier = 0;
+    var pas = function (t) {
+      repli.anim = null;
+      var tmod = repli.dernier ? Math.min(4, (t - repli.dernier) / 25) : 1;
+      repli.dernier = t;
+      // La barre : ratio 2. La frusion : `jumpTo` → addSlide sans ratio, donc 1.
+      var rb = Math.pow(0.8, tmod * 2), rf = Math.pow(0.8, tmod);
+      repli.barre = repli.barre * rb + repli.cible * (1 - rb);
+      repli.frusion = repli.frusion * rf + repli.cible * (1 - rf);
+      var fini = Math.round(repli.barre) === Math.round(repli.cible)
+        && Math.round(repli.frusion) === Math.round(repli.cible);
+      if (fini) { repli.barre = repli.cible; repli.frusion = repli.cible; }
+      posterRepli();
+      if (!fini) repli.anim = requestAnimationFrame(pas);
+      else if (repli.actif) {
+        // `endMove` : la languette ne se montre qu'une fois la barre partie.
+        var nub = $('#mode-rapide');
+        if (nub) nub.classList.add('vu');
+      }
+    };
+    repli.anim = requestAnimationFrame(pas);
+  }
+
+  // `testRetour` (#587) : le dessin de 14×14 et son champ « mode rapide » en
+  // Verdana gras 10 `#4D7417`, posés à l'origine de la barre — soit, une fois
+  // la barre remontée de 220, au coin haut-gauche de l'écran.
+  function batirNub() {
+    var nub = document.createElement('button');
+    nub.type = 'button';
+    nub.id = 'mode-rapide';
+    nub.title = 'Revenir à la barre';
+    var img = document.createElement('i');
+    var txt = document.createElement('span');
+    txt.textContent = 'mode rapide';
+    nub.appendChild(img);
+    nub.appendChild(txt);
+    nub.addEventListener('click', function () { basculerRepli(false); });
+    return nub;
   }
 
   // La pilule « N en ligne » : le même décompte que le tiroir « site » du
@@ -2382,28 +2771,12 @@ window.BureauFrutiz = (function () {
     // reprend.
     haut.appendChild(batirFrusion());
 
-    // LA FRUTIMANDALA (cpWheelMng #640) : trois couches, comme les
-    // profondeurs du SWF — le châssis de FOND (profondeur 1), la ROUE des
-    // frutisignes à la place du cadran (profondeur 3), puis les boutons et
-    // le verre par-dessus (profondeurs 8 à 25).
-    var mandala = document.createElement('div');
-    mandala.id = 'frutimandala';
-    // Le cadran MASQUE la roue : le châssis la recouvre sur ses 6 px du haut
-    // (relevé au centre — le vert d'époque ne commence qu'à y 8).
-    var cadran = document.createElement('div');
-    cadran.className = 'cadran';
-    var roue = document.createElement('div');
-    roue.className = 'roue';
-    cadran.appendChild(roue);
-    var dessus = document.createElement('div');
-    dessus.className = 'dessus';
-    mandala.appendChild(cadran);
-    mandala.appendChild(dessus);
-    // Elle vit DANS la barre (c'est le dernier élément de son frameSet), pas
-    // sur l'écran : sa marge droite se compte donc depuis le bord de la barre.
-    coin.appendChild(mandala);
-    tournerMandala(roue);
-    setInterval(function () { tournerMandala(roue); }, 60000);
+    // LA FRUTIMANDALA (cpWheelMng #640) : le châssis, ses deux cadrans qui
+    // s'échangent et ses quatre boutons. Elle vit DANS la barre (c'est le
+    // dernier élément de son frameSet), pas sur l'écran : sa marge droite se
+    // compte donc depuis le bord de la barre — et elle monte avec elle quand
+    // le « mode rapide » la replie.
+    coin.appendChild(batirMandala());
 
     // La pilule « N en ligne » (coin haut-droit, bord à Stage.width − 6).
     var pilule = document.createElement('div');

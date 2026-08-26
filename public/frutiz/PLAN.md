@@ -1751,9 +1751,177 @@ qu'un jeu d'anneaux flous.
   plutôt que de jouer une animation de jaquette : le même flou, sans dessin de
   plus ;
 - `pushReset` n'a pas le canal du Frusion Server : le portage refait ce qu'on
-  en voit — le jeu se referme et se relance sur le même disque ;
-- le CLIC sur un disque, qui d'époque ne fait rien, prend ici le même chemin
-  que le glisser (le tiroir sort, le disque descend, la machine le lance).
+  en voit — le jeu se referme et se relance sur le même disque.
+
+Le CLIC sur un disque ne fait RIEN, comme d'époque : la branche `case "disc"`
+est commentée dans `openFunctions.as`, et le bandeau de la fenêtre le dit —
+« Pour jouer, faîtes glisser les disques dans la Frusion ». C'est le GLISSER,
+et lui seul, qui sort le tiroir et lance le jeu.
+
+## LA FRUTIMANDALA (`cp.WheelMng`, DoInitAction sprite#774 0x6a7c2)
+
+Le cadran du coin haut-droit n'est pas un décor : c'est un tourne-disque à
+deux faces, et le clip `cpWheelMng` (#640) en donne l'assemblage.
+
+### Les couches du clip
+
+| prof. | id | rôle |
+|------:|---:|------|
+| 1  | #609 `mask`   | le BOL — plat en haut, arrondi en bas. Il ne se dessine pas : il DÉCOUPE. |
+| 3  | #613          | le fond du cadran, sous les roues |
+| 8  | #407 `inside` | le PLATEAU, vide dans le SWF : c'est là que les roues s'attachent |
+| 12 | #618          | le triangle rouge de gauche → `pressLeft` |
+| 14 | #623          | celui de droite → `pressRight` |
+| 17 | #629          | le « G » orange → `pressSwap` |
+| 21 | #635          | la double flèche verte → `pressValidate` |
+| 25 | #639 `cadran` | le VERRE, par-dessus les boutons eux-mêmes |
+
+`inside` est posé à (1862 ; −750) twips, soit (93,1 ; −37,5) dans le clip —
+et (99,4 ; −33,15) dans le dessin, qui commence à (−6,3 ; −4,35). Le centre
+des deux roues tombe donc 33 px AU-DESSUS du châssis : seule leur calotte
+basse se voit, ce qui donne au cadran sa forme de quartier de fruit.
+
+Le bol de la profondeur 1 est indispensable au portage : le cadran jour/nuit
+n'est pas un tracé mais un BITMAP **opaque jusque dans ses coins**, peints du
+vert du bureau (`#ADE76B`). Sans découpe, une écharpe verte courait le long
+du châssis. La feuille de style s'en sert en `mask-image`.
+
+### Les deux faces, et leur échange
+
+```
+init      : fix = {w:186, h:64} ; ray = 100 ; turning = 0
+            list = ["whDayNight", "whFruitMonth"] ; swapWheel()
+swapWheel : currentPos = (currentPos + 1) % 2 ; loadWheel(list[currentPos])
+```
+
+`currentPos` part de 0 : le premier `swapWheel` amène donc **la roue des
+frutisignes**, et c'est le bouton « G » qui fait tourner l'autre à sa place.
+
+`loadWheel(link)` attache la roue à la profondeur **10000 − dp** : la NOUVELLE
+passe DESSOUS, et c'est l'ancienne qui s'efface au-dessus d'elle. Première
+roue : elle entre en glissant depuis `_x = −2·ray` (`AnimList.addSlide`,
+`r = 0,8^tmod`). Les suivantes : le plateau s'emballe.
+
+```
+animDisk(mcIn, mcOut) — toutes les 25 ms
+    accel -= tmod / 90
+    r      = (1 + accel) ^ tmod
+    turning *= r
+    inside._rotation = turning * 6
+    inside["wheel" + dp].onBaseTurn()
+    r < 1 ? (mcOut encore visible : turning *= −1) puis mcOut.kill()
+          : mcOut._alpha = (r − 1) * 400
+    |turning| < 0,1 → on s'arrête
+```
+
+`turning` part de 2 et `accel` de 0,3 : le plateau accélère une trentaine de
+battements, l'ancienne face s'efface, puis le sens s'inverse et tout se
+dévide jusqu'à revenir droit.
+
+`pressSwap` ne fait rien tant que l'échange court (`if (!flSwap)`).
+`pressLeft` et `pressRight` sont **vides d'époque** : les deux triangles
+rouges ne servent à rien, et le portage les laisse muets.
+
+### La roue des frutisignes (`wheel.FruitMonth` #777, 0x6d1a4)
+
+`wheelId = 1` → /wheel/wheel1.swf. `RunDate.getCurrentFSign` (0xbbf73) :
+
+```
+t     = getTime() / 1000
+signe = floor(((t − 345600) / 604800) % 10)      604800 s = une semaine
+part  =      ((t − 345600) / 604800) % 1         345600 = 4 jours de décalage
+setRot((signe + part) × 36)                      36° par signe
+```
+
+Remise à l'heure toutes les heures.
+
+### Le cadran jour/nuit (`wheel.DayNight` #800, 0x7d97f)
+
+`wheelId = 0` → /wheel/wheel0.swf : un disque de 204 — le ciel qui va du plein
+jour à la nuit étoilée, sa couronne de vingt-quatre graduations, un SOLEIL en
+haut (−0,5 ; −66,2) et une LUNE en bas (0,1 ; 69,3).
+
+```
+wheelInit      : display.attachMovie("extGameNumb", "hour", 1,
+                     { link: "police", num: "21:37", scale: 85, _y: 52 })
+                 premier réveil calé sur la minute (60 − getSeconds()), puis 60 s
+updateDayCoef  : dayCoef = (h + m/60) / 24
+                 setRot(dayCoef * 360)
+                 hour.setNum(pad(h) + ":" + pad(m))
+setRot(deg)    : this._rotation = deg ; display._rotation = −deg
+onBaseTurn()   : display._rotation = −(this._rotation + this._parent._rotation)
+```
+
+À minuit le disque est droit et c'est la lune qu'on voit dans la fenêtre ; à
+midi il a fait un demi-tour et le soleil y trône. L'heure, elle, ne tourne
+jamais : `display` contre-tourne exactement d'autant, et `onBaseTurn` fait de
+même pendant que le plateau vire.
+
+### Les chiffres (`ext.game.Numb`, rendue par la rustine)
+
+`extGameNumb` est un sprite VIDE de wheel0.swf : tout vient d'une classe de la
+bibliothèque partagée de Motion-Twin que main.swf n'embarque pas, et que
+`scripts/patch-main-heure-mandala.js` a restituée (cf. tâche « l'heure ne
+s'affiche pas »). Sa loi :
+
+```
+setNum(num) : un clip par caractère, pris dans la bande `police` (#47) —
+              images 1..10 = « 0 » à « 9 », image 12 = « : »
+              mc._x = x ; x += mc._width
+              compteur._xscale = _yscale = scale        (85)
+              compteur._x = (−compteur._width / 2) × align   (align = 1)
+```
+
+La dernière ligne centre la BOÎTE D'ENCRE, pas le texte : l'origine part à
+−largeur/2 sans corriger le bord gauche du premier glyphe, si bien que
+l'écriture penche de 3 px vers la gauche. C'est ainsi d'époque, on le garde.
+
+Les largeurs propres comptent : tous les chiffres font ~37,5 sauf le « 1 »
+(22,85), et les deux-points 19,2 — d'où le manifeste `mandalaChiffres.boites`.
+
+### Le REPLI de la barre (`MainBar.toggleHalfHide`, 0x6afbc)
+
+Le bouton vert n'est pas une validation : il **escamote la barre**.
+
+```
+hideHeight = 220
+replié  : pos.y = −220 ; main.frusion.jumpTo(−220)
+          attachMovie("testRetour", "testRetour", 1328)
+          testRetour._visible = false ; testRetour._y = hideHeight
+déplié  : testRetour.removeMovieClip() ; pos.y = 0 ; frusion.jumpTo(0)
+puis    : animList.addSlide("barSlide", this, {…endMove}, 2)
+          main.cornerY = 10 + 96 * !flHalfHide          → 106 ou 10
+          main.onResize()
+endMove : testRetour._visible = true
+```
+
+La barre glisse au ratio **2**, la frusion (`jumpTo` → `addSlide` sans ratio)
+au ratio **1** : elle traîne derrière, et c'est voulu. `cornerY` tombant à 10,
+la rangée d'icônes du bureau remonte et les fenêtres reprennent toute la
+hauteur.
+
+`testRetour` (#587) est une petite languette : un dessin de 14,05×14 et un
+champ Verdana gras 10 `#4D7417` à 16,3 — « mode rapide ». Posée à
+`_y = hideHeight` dans une barre remontée d'autant, elle tombe au ras du haut
+de l'écran, à l'abscisse de la barre. Invisible jusqu'à `endMove` : elle
+n'apparaît qu'une fois la barre partie.
+
+### Le relevé 1:1 (scratchpad/md-*.png contre ml-*.png)
+
+Le châssis occupe **x 1040..1240, y 2..82**, le centre des cadrans tombe donc
+à (1139,4 ; −31,15). L'heure « 11:22 » du rendu Ruffle occupe une boîte
+d'encre bleue de **112 × 22** en x 1080..1191 / y 20..41 ; la maquette du
+portage, aux mêmes lois, donne la même boîte à la même place. Le cadran
+jour/nuit commence à x 1060 sur les deux rendus à y 20, et le bouton « G »
+tombe en x 1049..1093.
+
+Écarts assumés :
+- d'époque `inside._rotation` garde sa dernière valeur à la fin de l'échange
+  (jusqu'à 0,6°, `turning` valant encore moins de 0,1) ; le portage le remet
+  droit — invisible, mais on ne traîne pas un cadran de travers ;
+- les trois `butPushVerySmallPink` de `initSideIconList` (0x6b786), qui
+  offrent le même repli et le plein écran depuis le flanc de la barre, ne sont
+  pas encore posés : le bouton vert de la mandala en tient lieu.
 
 ## Reste à faire (étapes suivantes)
 
@@ -1766,11 +1934,10 @@ qu'un jeu d'anneaux flous.
    des salons, l'orange et le citron sont notés plus haut.
 2. ~~L'INTÉRIEUR de la main bar au gabarit~~ FAIT (bouille 64, encart 45,
    smileys de 15 au pas de 21, barres de progression 2 px/1 px aux teintes
-   `#A2EB56`/`#73B01E`) ; ~~la frutimandala~~ FAITE (roue des frutisignes
-   comprise). Restent les 3 `butPushVerySmallPink` (halfHide/fullScreen,
-   initSideIconList 0x6b786) ; le MEUBLE du lecteur frusion est posé (clip
-   #324 extrait) mais sa mécanique reste (FDDrive 0x6d884 : trappe, disque,
-   éjection), tout comme les boutons de la mandala (rotation, plantation).
+   `#A2EB56`/`#73B01E`) ; ~~la frutimandala~~ FAITE — les deux cadrans et leur
+   échange, l'heure du jour/nuit, le repli de la barre (cf. plus haut).
+   Restent les 3 `butPushVerySmallPink` (halfHide/fullScreen,
+   initSideIconList 0x6b786) et le plein écran (`toggleFullScreen`).
 3. ~~Les icônes du bureau, leur pose et leur glisser-déposer~~ FAIT.
 4. ~~Le mode « tab » des fenêtres~~ FAIT (glissade par le haut, Ctrl qui la
    saute, onglet « Bureau » qui clignote, menu « Vers bureau / Fermer »).
