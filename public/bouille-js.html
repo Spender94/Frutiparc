@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frutibouilles — moteur JavaScript</title>
+<!--
+  Banc d'essai du moteur JS de frutibouilles (public/js/bouille-*.js).
+
+  À gauche le moteur JavaScript, à droite le SWF d'époque joué par Ruffle : la
+  même bouille, la même humeur, la même animation. C'est la seule façon honnête
+  de juger un portage — l'original est à côté, à la même taille.
+
+  Cette page est un ATELIER, pas une page du site : rien d'autre ne la charge.
+-->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #E8F8D3; font: 12px Verdana, Geneva, sans-serif; color: #335511; padding: 14px; }
+  h1 { font-size: 15px; margin-bottom: 10px; }
+  .duo { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+  .vue { background: #E8F8D3; border: 2px solid #ADE76B; }
+  .vue h2 { font-size: 11px; text-align: center; padding: 3px; background: #ADE76B; color: #335511; }
+  #js, #ruffle { display: block; width: 240px; height: 240px; border: 0; background: #E8F8D3; }
+  .reglages { margin-top: 14px; display: grid; gap: 8px; max-width: 720px; }
+  .ligne { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  label { min-width: 92px; }
+  input[type=text] { font: 12px monospace; padding: 3px 5px; border: 1px solid #ADE76B; width: 260px; }
+  input[type=range] { width: 200px; }
+  button { font: 11px Verdana; padding: 3px 7px; border: 1px solid #ADE76B; background: #FFF; color: #335511; cursor: pointer; }
+  button.actif { background: #ADE76B; }
+  .val { font: 11px monospace; min-width: 32px; }
+  .chrono { margin-top: 10px; font: 11px monospace; color: #5A7D33; }
+</style>
+</head>
+<body>
+<h1>Frutibouilles — moteur JavaScript vs Flash</h1>
+
+<div class="duo">
+  <div class="vue"><h2>JavaScript</h2><canvas id="js" width="240" height="240"></canvas></div>
+  <div class="vue"><h2>Flash (Ruffle)</h2><iframe id="ruffle" title="Ruffle"></iframe></div>
+</div>
+
+<div class="reglages">
+  <div class="ligne"><label for="etat">État</label>
+    <input type="text" id="etat" value="000000010000000000000000" maxlength="24">
+    <button id="hasard">Au hasard</button></div>
+  <div class="ligne"><label>Humeur</label><span id="humeurs"></span></div>
+  <div class="ligne"><label>Animation</label><span id="anims"></span></div>
+  <div class="ligne" id="curseurs"></div>
+</div>
+<div class="chrono" id="chrono"></div>
+
+<script src="/js/bouille-swf.js"></script>
+<script src="/js/bouille-avm.js"></script>
+<script src="/js/bouille-moteur.js"></script>
+<script>
+(function () {
+  'use strict';
+  var M = window.FPBouilleMoteur;
+  var canvas = document.getElementById('js');
+  var cadre = document.getElementById('ruffle');
+  var champ = document.getElementById('etat');
+  var chrono = document.getElementById('chrono');
+  var bouille = null, humeurCourante = 0, animCourante = 0;
+
+  var params = new URLSearchParams(location.search);
+  if (params.get('s')) champ.value = params.get('s');
+
+  function ruffleUrl() {
+    return '/bouille-preview.html?s=' + encodeURIComponent(champ.value)
+      + '&e=' + humeurCourante
+      + (animCourante ? '&anim=' + encodeURIComponent(nomAnim(animCourante)) : '');
+  }
+  // Les étiquettes de la pellicule du visage ne portent pas tout à fait les
+  // noms de actionList : « siffle » y est « sifflote », « pleure » « pleurer ».
+  function nomAnim(i) {
+    return ({ 7: 'sifflote', 11: 'pleurer' })[i] || M.ANIMATIONS[i];
+  }
+
+  function boutons(hote, noms, surClic) {
+    noms.forEach(function (nom, i) {
+      var b = document.createElement('button');
+      b.textContent = nom;
+      b.onclick = function () {
+        Array.prototype.forEach.call(hote.children, function (x) { x.classList.remove('actif'); });
+        b.classList.add('actif');
+        surClic(i);
+      };
+      hote.appendChild(b);
+    });
+    if (hote.firstChild) hote.firstChild.classList.add('actif');
+  }
+
+  boutons(document.getElementById('humeurs'),
+    ['normal', 'fâché', 'triste', 'sourire', 'rire', 'gêné', 'moqueur', 'totoché'],
+    function (i) { humeurCourante = i; if (bouille) bouille.humeur(i); cadre.src = ruffleUrl(); });
+
+  boutons(document.getElementById('anims'), M.ANIMATIONS, function (i) {
+    animCourante = i;
+    if (!bouille) return;
+    if (i === 0) { bouille.moteur.jouerAnim(0); bouille.arreter(); bouille.rendre(); }
+    else bouille.animer(i);
+    cadre.src = ruffleUrl();
+  });
+
+  // Les onze curseurs de conception : ce sont ceux d'updateInfo() du SWF.
+  var CHAMPS = [
+    { nom: 'famille', pos: 0 }, { nom: 'yeux', pos: 2 }, { nom: 'iris', pos: 4 },
+    { nom: 'cheveux', pos: 6 }, { nom: 'bouche', pos: 8 },
+    { nom: 'couleur1', pos: 10, palette: true }, { nom: 'couleur2', pos: 12, palette: true },
+    { nom: 'accessoire', pos: 14 }, { nom: 'accessoire2', pos: 16 },
+    { nom: 'acc coul.1', pos: 18, palette: true }, { nom: 'acc coul.2', pos: 20, palette: true },
+    { nom: 'acc coul.3', pos: 22, palette: true },
+  ];
+  var hoteC = document.getElementById('curseurs');
+  hoteC.style.display = 'grid';
+  hoteC.style.gridTemplateColumns = 'repeat(2, auto)';
+  CHAMPS.forEach(function (c) {
+    var l = document.createElement('div');
+    l.className = 'ligne';
+    var t = document.createElement('label'); t.textContent = c.nom;
+    var r = document.createElement('input'); r.type = 'range'; r.min = 0; r.max = c.palette ? 52 : 70; r.value = 0;
+    var v = document.createElement('span'); v.className = 'val';
+    r.oninput = function () {
+      var s = champ.value.split('');
+      var deux = M.encode62(Number(r.value), 2);
+      s[c.pos] = deux.charAt(0); s[c.pos + 1] = deux.charAt(1);
+      champ.value = s.join('');
+      v.textContent = r.value;
+      appliquer();
+    };
+    l.appendChild(t); l.appendChild(r); l.appendChild(v);
+    hoteC.appendChild(l);
+    c.curseur = r; c.valeur = v;
+  });
+
+  function bornes() {
+    if (!bouille) return;
+    var f = bouille.moteur.racine.face;
+    var e = function (n) { return f && f.enfantNomme(n); };
+    var oa = e('oa'), ca = e('ca'), b = e('b');
+    var caC = ca && ca.enfantNomme('c');
+    var max = {
+      2: oa ? oa.def.n - 1 : 0,
+      4: (function () { var o = oa && oa.enfantNomme('o'); var p = o && o.enfantNomme('p'); return p ? p.def.n - 1 : 0; })(),
+      6: ca ? ca.def.n - 1 : 0,
+      8: b ? b.def.n - 1 : 0,
+      14: caC ? caC.def.n - 1 : 0,
+      16: (function () { var a = caC && caC.enfantNomme('acc'); return a ? a.def.n - 1 : 0; })(),
+    };
+    CHAMPS.forEach(function (c) {
+      if (max[c.pos] !== undefined) c.curseur.max = max[c.pos];
+      if (c.pos === 0) c.curseur.max = 24;
+      var s = champ.value.substring(c.pos, c.pos + 2);
+      c.curseur.value = M.decode62(s);
+      c.valeur.textContent = c.curseur.value;
+    });
+  }
+
+  var familleChargee = -1;
+  function appliquer() {
+    var etat = champ.value;
+    var fam = M.familleDe(etat);
+    var t0 = performance.now();
+    if (bouille && fam === familleChargee) {
+      bouille.definir(etat).humeur(humeurCourante);
+      if (animCourante) bouille.animer(animCourante);
+      chrono.textContent = 'rendu ' + (performance.now() - t0).toFixed(1) + ' ms';
+      bornes();
+      cadre.src = ruffleUrl();
+      return;
+    }
+    if (bouille) bouille.arreter();
+    M.creer(canvas, etat, { humeur: humeurCourante }).then(function (b) {
+      bouille = b;
+      familleChargee = fam;
+      chrono.textContent = 'famille ' + fam + ' chargée + rendue en '
+        + (performance.now() - t0).toFixed(0) + ' ms — '
+        + b.moteur.defs.formes.size + ' formes, ' + b.moteur.defs.sprites.size + ' clips';
+      if (animCourante) b.animer(animCourante);
+      bornes();
+      cadre.src = ruffleUrl();
+    }).catch(function (e) {
+      chrono.textContent = 'échec : ' + e.message;
+      familleChargee = -1;
+    });
+  }
+
+  champ.oninput = appliquer;
+  document.getElementById('hasard').onclick = function () {
+    var FAM = [0, 10, 11, 12, 13, 14, 15, 16, 23, 24];
+    var s = M.encode62(FAM[Math.floor(Math.random() * FAM.length)], 2);
+    for (var i = 1; i < 12; i++) s += M.encode62(Math.floor(Math.random() * (i >= 5 && i <= 6 ? 53 : 9)), 2);
+    champ.value = s;
+    appliquer();
+  };
+
+  appliquer();
+  window.bouilleBanc = { get b() { return bouille; }, appliquer: appliquer };
+})();
+</script>
+</body>
+</html>
