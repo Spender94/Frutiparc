@@ -141,12 +141,14 @@ test('LA BOUTIQUE : deux colonnes, et les pièces sorties du SWF', () => {
   // `win.Shop` : la fenêtre du fruit VERT (`winType = "winShop"`). Relevé
   // 1:1 — x 8..483 / y 104..507, soit 476 × 404.
   assert.match(JS, /boutique:\s+\{ panneau: '#shop-sheet',\s+titre: 'Boutique', fruit: 'winShop',\s*\n\s*l: 476, h: 404,/);
-  // Les huit pièces extraites du SWF, et leurs formes.
+  // Les onze pièces extraites du SWF, et leurs formes.
   const EX = fs.readFileSync(path.join(ROOT, 'scripts/extract-frutiz-bureau.js'), 'utf8');
   const pieces = [
     ['shop-kikooz', 396], ['shop-but-blanc', 473], ['shop-but-blanc-2', 501],
     ['shop-ico-journal', 498], ['shop-ico-kikooz', 499],
-    ['shop-dossier', 563], ['shop-dossier-ouvert', 564], ['shop-plus-kikooz', 557],
+    ['shop-puce-article', 563], ['shop-puce-rubrique', 564],
+    ['shop-but-acheter', 460], ['shop-cadre', 405], ['shop-cadre-reflet', 409],
+    ['shop-plus-kikooz', 557],
   ];
   for (const [cle, id] of pieces) {
     assert.match(EX, new RegExp("\\{ cle: '" + cle + "', id: " + id + " \\}"), cle + ' manque à l’extracteur');
@@ -156,13 +158,36 @@ test('LA BOUTIQUE : deux colonnes, et les pièces sorties du SWF', () => {
   // fiche à droite et la grande plaque sous elle.
   assert.match(CSS, /#shop-sheet \.sheet-body \{[\s\S]*?grid-template-columns: 148px 1fr;/);
   // Le compteur : `cpCounter` au style `frKikooz` — relevé pilule #F8D5BC,
-  // liseré #F3BE8C, encre #764A34, Verdana 14 GRAS.
-  assert.match(CSS, /\.bo-solde \{[\s\S]*?background: #F8D5BC; border: 2px solid #F3BE8C;[\s\S]*?font: 700 14px Verdana[^;]*; color: #764A34;/);
+  // liseré #F3BE8C, encre #764A34, Verdana 14 GRAS. Le coin fait 5, pas une
+  // pilule : le relevé donne quatre pixels d'arc à chaque bout.
+  assert.match(CSS, /\.bo-solde \{[\s\S]*?background: #F8D5BC; border: 2px solid #F3BE8C; border-radius: 5px;[\s\S]*?font: 700 14px Verdana[^;]*; color: #764A34;/);
+  // LES PUCES DE L'ARBRE. `caps.Exe` prend l'image 1 de `shopBullet` (#563,
+  // l'ocre) et `caps.Dir` de niveau 0 l'image 2 (#564, le rose) : c'est
+  // « article / rubrique » et non « fermé / ouvert ». Les tailles suivent
+  // `getTreeStyle` (10 et 16) et les rangées `Capsule.height = size + 6`.
+  const rub = /#bo-rubriques \.bo-rub::before \{[\s\S]*?\}/.exec(CSS)[0];
+  assert.match(rub, /shop-puce-rubrique\.svg/);
+  const art = /#bo-rubriques \.bo-art::before \{[\s\S]*?\}/.exec(CSS)[0];
+  assert.match(art, /shop-puce-article\.svg/);
+  assert.match(CSS, /#bo-rubriques button \{[\s\S]*?height: 22px;[\s\S]*?font: normal 16px Verdana/);
+  assert.match(CSS, /#bo-rubriques \.bo-art \{\s*\n\s*height: 16px;[\s\S]*?font-size: 10px;/);
+  // Les deux boutons blancs portent le contour que `butPush` dessine
+  // (`outline: 2`) : 24 × 24 pour un art de 20.
+  assert.match(CSS, /\.bq-ico \{[\s\S]*?box-shadow: 0 0 0 2px #DDDDDD;[\s\S]*?shop-but-blanc\.svg/);
   // La fiche : le style `frSheet` — contour #DDDDDD, liseré #ADE76B, chair
-  // #CCF599, encre #5A7D33.
-  assert.match(CSS, /#bo-fiche \{[\s\S]*?#CCF599;\s*\n\s*border: 2px solid #ADE76B;[\s\S]*?color: #5A7D33;/);
-  // La plaque orange, 150 × 60, calée à droite.
-  assert.match(CSS, /\.bq-plus \{\s*\n\s*width: 150px; height: 60px;[\s\S]*?shop-plus-kikooz\.svg/);
+  // #CCF599. L'encre relevée est #335511 (#5A7D33 n'était que du crénelage).
+  assert.match(CSS, /#bo-fiche \{[\s\S]*?#CCF599;\s*\n\s*border: 2px solid #ADE76B;[\s\S]*?color: #335511;/);
+  // DEUX COLONNES dans la fiche : `attachMenu` glisse le `cp.ProductMenu` de
+  // 100 à l'index 0 de `showFrame`, qui est de type "h".
+  assert.match(CSS, /#bo-fiche \{[\s\S]*?grid-template-columns: 100px 1fr;/);
+  assert.match(CSS, /#bo-fiche \.bo-tete \{ display: contents; \}/);
+  // L'aperçu est `shopScreen` (100 × 100) sous son lustre `shopScreenLight`.
+  assert.match(CSS, /\.bo-vue \.cadre \{[\s\S]*?width: 100px; height: 100px;[\s\S]*?shop-cadre\.svg/);
+  assert.match(CSS, /\.bo-vue \.cadre::after \{[\s\S]*?shop-cadre-reflet\.svg/);
+  // « Acheter » est `butPushShop` : 80 × 16 d'art, deux pixels de contour.
+  assert.match(CSS, /\.bo-acheter \{[\s\S]*?width: 80px; height: 16px;[\s\S]*?border: 2px solid #ADE76B;[\s\S]*?shop-but-acheter\.svg/);
+  // La plaque orange, 150 × 60, calée à droite, elle aussi cerclée.
+  assert.match(CSS, /\.bq-plus \{\s*\n\s*width: 150px; height: 60px;[\s\S]*?box-shadow: 0 0 0 2px #DDDDDD;[\s\S]*?shop-plus-kikooz\.svg/);
   assert.match(CSS, /\.bq-pied \{[\s\S]*?justify-content: flex-end;/);
   // Sur le bureau la boutique est une FENÊTRE ; sur mobile, la feuille.
   assert.match(LIGHT, /if \(surBureau && BureauFrutiz\.ouvrirBoutique\) return BureauFrutiz\.ouvrirBoutique\(\);/);

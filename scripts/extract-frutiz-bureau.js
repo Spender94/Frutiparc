@@ -783,11 +783,30 @@ function principal() {
   //                      au survol), et l'ICÔNE vient de la bande #500 —
   //                      image 20 (le journal des kikooz, #498) et image 21
   //                      (en obtenir, #499) ;
-  //                · `menuFrame`, un `cpTree` de 140 de large dont les puces
-  //                  sont `shopBullet` (#567) : image 1 le dossier FERMÉ
-  //                  (#563), image 2 le dossier OUVERT (#564).
+  //                · `menuFrame`, un `cpTree` de 140 de large.
+  //
+  // Les puces de l'arbre ne se lisent PAS dans `win.Shop` : `cp.Tree` attache
+  // un `capsDir` (nœud à enfants) ou un `capsExe` (feuille), et `Capsule`
+  // prend `box.bulletLink` s'il existe, sinon `style.bullet`. Or
+  // `box.Shop.analyseTree` pose `bulletLink: "shopBullet"` sur les DEUX. Le
+  // numéro d'image, lui, vient de la classe :
+  //
+  //   caps.Exe (l'ARTICLE)   → gotoAndStop(1)                → #563, l'OCRE
+  //   caps.Dir (la RUBRIQUE) → gotoAndStop(min(niveau,2)+2)  → #564, le ROSE
+  //
+  // Ce n'est donc pas « fermé / ouvert » : c'est « feuille / dossier ». La
+  // taille du texte suit `Standard.getTreeStyle()` — 10 pour la feuille, 16
+  // au premier niveau de dossier — et `Capsule.height = size + 6`, d'où des
+  // rangées de 16 et de 22.
+  //
   //   main         · `showFrame` → `menuInfoFrame`, un `cpDocument` au style
   //                  `frSheet` (le vert) : la fiche de l'article ;
+  //                  et, GLISSÉ DEVANT LUI (index 0, donc à sa gauche puisque
+  //                  `showFrame` est de type "h"), `menuProductFrame`, un
+  //                  `cp.ProductMenu` de 100 de large : `shopScreen` (#405,
+  //                  100 × 100, avec le lustre #409) posé à `_y = 4`, puis les
+  //                  boutons `butPushShop` (#460, 80 × 16) à
+  //                  `_y = 110 + i × 22`, centrés sur les 100 ;
   //                · `bar` → `pushKikooz`, un `butPush` sur
   //                  `butPushMoreKikooz` (#558 → forme #557), min 100 × 60 —
   //                  la grande plaque orange « OBTENIR DES KIKOOZ », qui en
@@ -803,13 +822,16 @@ function principal() {
     { cle: 'shop-but-blanc-2', id: 501 },   // …image 2 (survol)
     { cle: 'shop-ico-journal', id: 498 },   // bande #500, image 20
     { cle: 'shop-ico-kikooz', id: 499 },    // bande #500, image 21
-    { cle: 'shop-dossier', id: 563 },       // shopBullet image 1 : fermé
-    { cle: 'shop-dossier-ouvert', id: 564 },// shopBullet image 2 : ouvert
+    { cle: 'shop-puce-article', id: 563 },  // shopBullet image 1 → caps.Exe
+    { cle: 'shop-puce-rubrique', id: 564 }, // shopBullet image 2 → caps.Dir niveau 0
+    { cle: 'shop-but-acheter', id: 460 },   // butPushShop, 80 × 16
+    { cle: 'shop-cadre', id: 405 },         // shopScreen, 100 × 100
+    { cle: 'shop-cadre-reflet', id: 409 },  // shopScreenLight, le lustre
     { cle: 'shop-plus-kikooz', id: 557 },   // butPushMoreKikooz
   ];
   chargerFormes(BOUTIQUE.map((c) => c.id).filter((id) => !corpsFormes.has(id)));
   {
-    manifeste.boutique = { notes: 'win.Shop : cpCounter #38, butPushSmallWhite #502, shopBullet #567, butPushMoreKikooz #558' };
+    manifeste.boutique = { notes: 'win.Shop : cpCounter #38, butPushSmallWhite #502, shopBullet #567, butPushShop #461, shopScreen #408, butPushMoreKikooz #558' };
     for (const c of BOUTIQUE) {
       const forme = corpsFormes.get(c.id);
       if (!forme) { console.warn('!! pièce de boutique absente', c.id); continue; }

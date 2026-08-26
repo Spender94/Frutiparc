@@ -2018,9 +2018,7 @@ journal, #499 le sac de kikooz. Le bouton garde la plaque, l'enfant change
 de dessin.
 
 **`menuFrame`**, un `cpTree` de `140 × 60`, `flBackground`, style
-`frSystem`, `args = { width: 140, flMask: true }`. Ses puces sortent de
-`shopBullet` (#567) : image 1 le dossier fermé (#563), image 2 le dossier
-ouvert (#564), et 36 images de plus pour l'animation d'attente.
+`frSystem`, `args = { width: 140, flMask: true }`.
 
 Sa marge cache une **coquille d'époque**, gardée telle quelle :
 
@@ -2031,6 +2029,47 @@ r8.x.min = 8 ; r8.x.ratio = 1 ; r8.y.min = 16 ; r8.x.ratio = 1 ;
 
 `y.ratio` n'est donc jamais posé : la colonne de gauche ne s'étire pas
 verticalement comme l'auteur le croyait.
+
+### Les puces de l'arbre : la chaîne complète
+
+Rien dans `win.Shop` ne dit à quoi ressemble une ligne. Il faut descendre :
+
+```
+cp.Tree.addPhysElement   attache "capsDir" si box.list existe, sinon "capsExe"
+Capsule.initBullet       lien = box.bulletLink  sinon  style.bullet
+Standard.getTreeStyle()  bullet = "standardBullet" pour les quatre niveaux
+box.Shop.analyseTree     pose bulletLink: "shopBullet" sur <c> ET sur <p>
+```
+
+Le lien est donc `shopBullet` (#567) pour tout l'arbre de la boutique, et
+c'est la **classe** qui choisit l'image :
+
+```
+caps.Exe   (l'ARTICLE)    gotoAndStop(1)                 → #563, l'OCRE
+caps.Dir   (la RUBRIQUE)  gotoAndStop(min(niveau,2)+2)   → #564, le ROSE
+```
+
+Ce n'est donc pas « dossier fermé / dossier ouvert » : c'est
+« feuille / nœud ». Les 36 images suivantes servent à l'attente.
+
+Les tailles viennent du même `getTreeStyle()` : quatre styles, dont seul le
+corps est modifié — `+6` au niveau 1, `+4` au 2, `+2` au 3, sur une base de
+10. `caps.Exe` prend `treeStyle[0]` (10), un dossier de niveau 0 prend
+`treeStyle[1]` (16). Et `Capsule.height = textFormat.size + 6` donne les
+rangées : **16 pour un article, 22 pour une rubrique** — vérifié au pixel,
+les cinq puces roses tombent en 57, 127, 149, 171, 193.
+
+Deux **coquilles** de plus dans cette fonction :
+
+```
+r2.def.color = 4473924 ; r2.def.bold = true ;     ← jamais lues
+r3[4].ts.textFormat.size = …                      ← r3[4] n'existe pas
+```
+
+`Capsule` ne lit que `style.ts.textFormat` : la couleur et la graisse posées
+un cran trop haut ne s'appliquent jamais, et le relevé le confirme — les
+rubriques sont en **noir maigre**, pas en #444444 gras. Quant à `r3[4]`, la
+boucle s'arrête à 3 : l'écriture part dans le vide, sans bruit.
 
 ### La colonne de droite (`main`)
 
@@ -2048,9 +2087,25 @@ qu'une seule image. Flash borne le `gotoAndStop` — on voit l'image 1.
 
 ### Choisir un article (`displayItem`)
 
-`attachMenu` glisse un `cpProductMenu` **en tête** de `showFrame` (index 0,
-donc au-dessus de la feuille), marge `x.min 12, y.min 4, y.ratio 1`. Puis
-`cpMenu.setItem(item.picto, entrées)` — le picto de l'article et ses
+`attachMenu` glisse un `cpProductMenu` **en tête** de `showFrame` (index 0).
+Or `showFrame` est de type `"h"` : l'index 0, c'est la **gauche**. La fiche
+se coupe donc en deux colonnes, et non en deux bandes.
+
+`cp.ProductMenu` fait `min: { w: 100, h: 300 }` et se monte ainsi :
+
+```
+genScreen    attache "shopScreen" (#405, 100 × 100) puis, dedans,
+             "shopScreenLight" (#409) — le lustre ; screen._y = 4
+genButList   pour chaque entrée, un butPush sur "butPushShop" (#460,
+             80 × 16), curve 8, couleur style.color[0].shade
+             _y = 110 + i × 22   ;   _x = (100 − _width) / 2
+```
+
+Le relevé le confirme au pixel : l'aperçu en y 33..132 (soit 29 + 4) et le
+bouton en y 139..158, exactement 29 + 110. Sa marge `x.min = 12` sépare la
+colonne du document, qui commence en x 273.
+
+Puis `cpMenu.setItem(item.picto, entrées)` — le picto de l'article et ses
 boutons, montés à l'envers par des `unshift` :
 
 ```
@@ -2082,19 +2137,37 @@ molette fait défiler la feuille, pas la fenêtre. `displayWait`,
 `onBuyError`, `onBuySuccess` sont vides, et `testAlpha` (`_alpha = 50`) est
 resté dans la version publiée.
 
-### Le relevé 1:1 (fenêtre 476 × 404, scratchpad/sr-1-boutique.png)
+### Le relevé 1:1 (scratchpad/sr2-2-article.png)
+
+Une rubrique dépliée et un article choisi. L'origine est le trait sombre de
+la fenêtre, qui fait 476 × 404 ; les rectangles incluent le contour
+#DDDDDD, que le SWF dessine à 2 px de tout.
 
 ```
-fenêtre en x 8..483 / y 104..507
-colonne de gauche en x 17..156          (140, marge de 8 de chaque côté)
-pastille du compteur y 124..149         (26 : 22 + le contour et le liseré)
-   contour #DDDDDD · liseré #F3BE8C · chair #F8D5BC · encre #764A34
-feuille verte (frSheet)
-   contour #DDDDDD · liseré #ADE76B · chair #CCF599 · encre #5A7D33
-la grande plaque commence en y 438
+COLONNE DE GAUCHE
+  compteur      6 .. 79    ×  23 .. 48     74 × 26, coins de 5
+                contour #DDDDDD · liseré #F3BE8C · chair #F8D5BC
+  bouton 1     98 .. 121   ×  25 .. 48     24 × 24 pour un art de 20
+  bouton 2    124 .. 147   ×  25 .. 48     2 px entre les deux
+  arbre         6 .. 149   ×  47 .. 392    140 dedans, bord #DDDDDD
+                rubriques en 57, 127, 149, 171, 193      (pas de 22)
+                articles  en 80, 96, 112                 (pas de 16)
+
+COLONNE DE DROITE
+  feuille     154 .. 469   ×  23 .. 330
+                contour #DDDDDD · liseré #ADE76B · chair #CCF599
+  aperçu      162 .. 261   ×  33 .. 132    100 × 100
+  « Acheter » 170 .. 253   × 139 .. 158    l'art 80 × 16 + 2 de contour
+  document       dès 273   ×  dès 29
+  plaque      314 .. 467   × 335 .. 398    l'art 150 × 60 + 2 de contour
 ```
 
-### Les huit pièces sorties du SWF
+Les encres, relevées sur les pixels les plus sombres : le nom **#842929**,
+tout le corps de la fiche **#335511**, l'arbre en noir, le compteur
+#764A34. `#5A7D33` et `#80A555`, que le premier relevé avait pris pour
+l'encre, ne sont que l'anticrénelage de #335511 sur #CCF599.
+
+### Les onze pièces sorties du SWF
 
 ```
 shop-kikooz          #396 (+#397)   la pièce du compteur
@@ -2102,8 +2175,11 @@ shop-but-blanc       #473           butPushSmallWhite, image 1
 shop-but-blanc-2     #501           … image 2 (le survol)
 shop-ico-journal     #498           icon (#500) image 20
 shop-ico-kikooz      #499           icon (#500) image 21
-shop-dossier         #563           shopBullet image 1 : fermé
-shop-dossier-ouvert  #564           shopBullet image 2 : ouvert
+shop-puce-article    #563           shopBullet image 1 → caps.Exe
+shop-puce-rubrique   #564           shopBullet image 2 → caps.Dir niveau 0
+shop-but-acheter     #460           butPushShop, 80 × 16
+shop-cadre           #405           shopScreen, 100 × 100
+shop-cadre-reflet    #409           shopScreenLight, le lustre
 shop-plus-kikooz     #557           butPushMoreKikooz, 150 × 60
 ```
 
@@ -2114,6 +2190,12 @@ shop-plus-kikooz     #557           butPushMoreKikooz, 150 × 60
 compteur et la plaque orange du bas ; le reste (l'arbre, la fiche, le prix,
 « Acheter ») est déjà celui du light, seulement rhabillé. La molette du
 `cpDocument` devient le défilement naturel de `#bo-fiche`.
+
+Le mobile empile l'aperçu, le nom, l'accroche et le descriptif : sur 240 px
+la colonne de 100 étranglerait le texte. Sur le bureau on remet la grille
+d'époque — `.bo-tete` passe en `display: contents` pour que ses deux enfants
+deviennent des cases, `.bo-vue` tient la colonne de gauche sur toute la
+hauteur, et le reste va à droite.
 
 **Ce que le portage ne reprend pas.** Le journal des kikooz (image 20)
 n'existe pas côté light — le bouton est là, mais il mène à la même page

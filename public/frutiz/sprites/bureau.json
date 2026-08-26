@@ -559,7 +559,7 @@
   }
  },
  "boutique": {
-  "notes": "win.Shop : cpCounter #38, butPushSmallWhite #502, shopBullet #567, butPushMoreKikooz #558",
+  "notes": "win.Shop : cpCounter #38, butPushSmallWhite #502, shopBullet #567, butPushShop #461, shopScreen #408, butPushMoreKikooz #558",
   "shop-kikooz": {
    "fichier": "shop-kikooz.svg",
    "id": 396,
@@ -610,8 +610,8 @@
     "h": 18.349999999999998
    }
   },
-  "shop-dossier": {
-   "fichier": "shop-dossier.svg",
+  "shop-puce-article": {
+   "fichier": "shop-puce-article.svg",
    "id": 563,
    "cadre": {
     "x": -6.05,
@@ -620,14 +620,44 @@
     "h": 12.85
    }
   },
-  "shop-dossier-ouvert": {
-   "fichier": "shop-dossier-ouvert.svg",
+  "shop-puce-rubrique": {
+   "fichier": "shop-puce-rubrique.svg",
    "id": 564,
    "cadre": {
     "x": -10.9,
     "y": -9.1,
     "w": 20.1,
     "h": 17.45
+   }
+  },
+  "shop-but-acheter": {
+   "fichier": "shop-but-acheter.svg",
+   "id": 460,
+   "cadre": {
+    "x": 0.05,
+    "y": 0.05,
+    "w": 80,
+    "h": 16.099999999999998
+   }
+  },
+  "shop-cadre": {
+   "fichier": "shop-cadre.svg",
+   "id": 405,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 100,
+    "h": 100
+   }
+  },
+  "shop-cadre-reflet": {
+   "fichier": "shop-cadre-reflet.svg",
+   "id": 409,
+   "cadre": {
+    "x": 21.85,
+    "y": 4.3,
+    "w": 72.75,
+    "h": 64.45
    }
   },
   "shop-plus-kikooz": {
