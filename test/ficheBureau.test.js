@@ -61,19 +61,27 @@ test('elle se pose en escalier et se glisse par son cadre', () => {
 test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte', () => {
   assert.match(BLOC, /#fiche \{[\s\S]*?width: 324px;/);
   assert.match(BLOC, /#fiche \{[\s\S]*?background: #FFFFFF;/);
-  // `frutiScreen` : `fix { w: base + 36, h: base }` — 76 × 42, cerclé #888888.
-  assert.match(BLOC, /\.fiche-plaque \{\s*\n\s*height: 42px; width: 76px;[\s\S]*?border: 1px solid #888888;/);
-  // Le panneau de la bouille ne fait PAS toute la plaque : x 8..42, y 9..39.
-  assert.match(BLOC, /\.fiche-plaque \.fa-frame \{\s*\n\s*width: 35px; height: 31px;[^}]*background: #D6F7B5;/);
-  // L'écran du niveau : une chair #A2EB56 rayée d'un trait #D6F7B5 tous les
-  // trois pixels — pas des barres claires sur fond sombre. Relevé en travers
-  // (x 43..69) et en hauteur (y 14..37, pas de 3).
-  assert.match(BLOC, /\.fa-progress \{[\s\S]*?width: 27px; height: 23px;[\s\S]*?#A2EB56 0, #A2EB56 2px, #D1F5AB 2px, #D1F5AB 3px/);
-  assert.match(BLOC, /\.fa-progress i \{ display: none; \}/);
-  // LE REFLET est sur l'ÉCRAN (x 70..73), pas sur la bouille — la colonne
-  // x=20 ne montre aucune brillance de y 9 à 39.
-  assert.match(BLOC, /\.fiche-plaque \.cadre,\s*\nbody\.bureau-frutiz #fiche \.fiche-plaque \.reflet \{ display: none; \}/);
-  assert.match(BLOC, /\.fiche-plaque \.reflet-niv \{\s*\n\s*display: block; position: absolute; left: 43px;[\s\S]*?opacity: 1;/);
+  // LA PLAQUE EST CELLE DU MOBILE — décision assumée, pas un oubli. Le relevé
+  // d'époque (`frutiScreen`, `fix { w: base + 36, h: base }` = 76 × 42) tient la
+  // bouille dans 35 × 31 et le « NIV n » dans huit pixels d'encre : fidèle et
+  // illisible. Le bureau reprend donc le gabarit du portage mobile — vignette
+  // de 60, neuf barres, afficheur à segments — et pour cela il ne doit RIEN
+  // redéfinir : ce sont les règles de light.html qui s'appliquent.
+  assert.doesNotMatch(BLOC, /\.fiche-plaque \{/);
+  assert.doesNotMatch(BLOC, /\.fiche-plaque \.fa-frame \{/);
+  assert.doesNotMatch(BLOC, /\.fiche-plaque \.fa-jauge \{/);
+  assert.doesNotMatch(BLOC, /\.fa-progress \{/);
+  assert.doesNotMatch(BLOC, /\.fiche-plaque \.fa-niv/);
+  assert.doesNotMatch(BLOC, /\.fiche-plaque \.reflet-niv \{/);
+  assert.doesNotMatch(BLOC, /\.fiche-plaque \.cadre/);
+  // Et le haut s'aligne comme sur le mobile : les deux blocs par le HAUT, neuf
+  // pixels entre la plaque et la colonne de droite.
+  assert.match(BLOC, /\.fiche-haut \{\s*\n\s*align-items: flex-start; gap: 9px;/);
+  // Le gabarit mobile, lui, reste celui de light.html : vignette de 60 dans son
+  // cadre, neuf barres de 30, le chiffre en afficheur à segments.
+  assert.match(LIGHT, /\.fiche-plaque \.fa-frame \{\s*\n\s*position: relative; width: 60px; height: 60px;/);
+  assert.match(LIGHT, /\.fiche-plaque \.fa-progress \{ display: flex; flex-direction: column; gap: 1\.5px; width: 30px; \}/);
+  assert.match(LIGHT, /\.fiche-plaque \.fa-niv b \{\s*\n\s*font-family: 'DSEG7'/);
   // Le bouton du dépli porte son VRAI dessin — la plaque #359 et le triangle
   // #369, qui ne fait que huit de côté et reste centré.
   assert.match(BLOC, /#fiche-avance \{[\s\S]*?fiche-rose\.svg'\) center \/ 20px 20px/);
@@ -147,6 +155,15 @@ test('les encres relevées, genre compris', () => {
   assert.match(LIGHT, /var fg = \(d && d\.basic && d\.basic\.sexe === "F"\) \? "F" : \(d && d\.basic \? "M" : ""\);/);
   assert.doesNotMatch(BLOC, /#fiche\.elle/);
   assert.doesNotMatch(JS, /function majGenreFiche|majGenreFiche\(f\);/);
+});
+
+test('la bouille de la fiche est dessinée en JS, pas jouée par Ruffle', () => {
+  // `FPBouilleVignette` rend la bouille dans un canvas ; le chemin Flash
+  // (ruffle.html dans une iframe) n'a plus rien à faire ici. Un seul moteur
+  // pour toutes les bouilles du site : accueil, salons, fiche.
+  assert.match(LIGHT, /function previewIframe\(state\) \{\s*\n\s*return FPBouilleVignette\.html\(state \|\| DEFAULT_BOUILLE\);/);
+  assert.match(LIGHT, /\$\("#fiche-avatar"\)\.innerHTML = \(d && d\.bouille\) \? previewIframe\(d\.bouille\) : "";\s*\n\s*brancherApercus\(\$\("#fiche-avatar"\)\);/);
+  assert.doesNotMatch(LIGHT, /rendue par Ruffle comme partout ailleurs/);
 });
 
 test('rien de tout cela ne touche le mobile', () => {

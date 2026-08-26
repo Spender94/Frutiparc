@@ -6355,7 +6355,8 @@
     // Le pseudo de la fiche est un `userSlot` lui aussi : même encre.
     var fg = (d && d.basic && d.basic.sexe === "F") ? "F" : (d && d.basic ? "M" : "");
     if (fg) fp.setAttribute("data-genre", fg); else fp.removeAttribute("data-genre");
-    // L'avatar : la vraie bouille, rendue par Ruffle comme partout ailleurs.
+    // L'avatar : la vraie bouille, dessinée par le moteur JS (FPBouilleVignette)
+    // — pas par Ruffle. C'est le même rendu partout : accueil, salons, fiche.
     $("#fiche-avatar").innerHTML = (d && d.bouille) ? previewIframe(d.bouille) : "";
     brancherApercus($("#fiche-avatar"));
     $("#fiche-niveau").textContent = (d && d.basic) ? d.basic.niveau : "–";

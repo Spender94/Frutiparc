@@ -2023,6 +2023,19 @@ margin.top → up (type "h", marge x.min 12, y.min 5, y.ratio 1)
               outline 2, curve 4  → toggleAdvancedMode
 ```
 
+**ÉCART ASSUMÉ : la plaque du bureau est celle du MOBILE.** `fix { w: base+36,
+h: base }` donne un `frutiScreen` de 76 × 42 — la bouille y tient dans 35 × 31,
+l'écran du niveau se réduit à vingt-sept pixels de rayures et le « NIV n » à
+huit pixels d'encre. C'est fidèle au twip près, et c'est illisible sur un écran
+d'aujourd'hui : le visage du frutiz, qui est le sujet même de la fiche, n'y est
+plus reconnaissable. Le portage mobile avait déjà tranché (vignette de 52 portée
+à 60, neuf barres, chiffre en afficheur à segments) ; le bureau reprend ce
+gabarit-là, et pour cela `bureau-frutiz.css` ne redéfinit AUCUNE règle de
+plaque — ce sont celles de `light.html` qui s'appliquent, les mêmes pour les
+deux écrans. Le relevé d'époque reste noté en commentaire dans la feuille, au
+cas où l'arbitrage changerait. La bouille, elle, est dessinée par
+`FPBouilleVignette` (un canvas), jamais par Ruffle.
+
 `genIconList` bâtit les boutons de gauche depuis `box.iconList`, et c'est
 `box.Frutiz.getIconList` qui compose cette liste — ordre et conditions
 compris :
