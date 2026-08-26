@@ -63,11 +63,31 @@ test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte',
   assert.match(BLOC, /#fiche \{[\s\S]*?background: #FFFFFF;/);
   // `frutiScreen` : `fix { w: base + 36, h: base }` — 76 × 42, cerclé #888888.
   assert.match(BLOC, /\.fiche-plaque \{\s*\n\s*height: 42px; width: 76px;[\s\S]*?border: 1px solid #888888;/);
-  assert.match(BLOC, /\.fiche-plaque \.fa-frame \{ width: 36px; height: 36px;/);
+  assert.match(BLOC, /\.fiche-plaque \.fa-frame \{\s*\n\s*width: 38px; height: 36px;[^}]*background: #D6F7B5;/);
+  // L'écran du niveau : une chair #A2EB56 rayée d'un trait #D6F7B5 tous les
+  // trois pixels — pas des barres claires sur fond sombre. Relevé en travers
+  // (x 43..69) et en hauteur (y 14..37, pas de 3).
+  assert.match(BLOC, /\.fa-progress \{[\s\S]*?width: 27px; height: 24px;[\s\S]*?#A2EB56 0, #A2EB56 2px, #D6F7B5 2px, #D6F7B5 3px/);
+  assert.match(BLOC, /\.fa-progress i \{ display: none; \}/);
+  // LE REFLET : les deux dessins de la mainbar, bien VISIBLES.
+  assert.match(BLOC, /\.fiche-plaque \.reflet \{\s*\n\s*display: block;[\s\S]*?opacity: 1;/);
+  assert.match(BLOC, /\.fiche-plaque \.reflet-niv \{\s*\n\s*display: block;[\s\S]*?opacity: 1;/);
+  // Le bouton du dépli est CARRÉ : 20 d'art, comme les blancs (x 293..316).
+  assert.match(BLOC, /\.fiche-actions button \{\s*\n\s*width: 20px; height: 20px; min-width: 0; min-height: 0;/);
+  assert.match(BLOC, /\.fiche-actions button img \{\s*\n\s*width: 20px; height: 20px;[^}]*object-fit: contain;/);
   // `explorer` : un `cpDocument` au style frSheet — le vert du bureau.
   assert.match(BLOC, /\.fiche-corps \{[\s\S]*?#CCF599;[\s\S]*?inset 0 2px 0 #ADE76B/);
   // `getPageObj` la borne à 240 de haut.
   assert.match(BLOC, /\.fiche-page \{\s*\n\s*height: 240px;/);
+});
+
+test('les rangées : dix-neuf et demi de pas, et un filet qui les ferme', () => {
+  // L'encre des libellés tombe en 187, 208, 227, 244 et 265 — (265-187)/4.
+  assert.match(BLOC, /\.fiche-ligne \{\s*\n\s*font-size: 11px; padding: 0; height: 19\.5px;/);
+  // Le bloc s'ouvre sur un filet (#ADE76B en 180-181) et se FERME sur un
+  // autre (277-278) — c'est celui-là qui manquait.
+  assert.match(BLOC, /\.fiche-lignes \{\s*\n\s*padding-bottom: 6px; border-bottom: 2px solid #ADE76B;/);
+  assert.match(BLOC, /\.fiche-signes,\s*\nbody\.bureau-frutiz #fiche \.fiche-medailles \{ border-bottom: 2px solid #ADE76B; \}/);
 });
 
 test('les quatre onglets : colonnes égales, texte gras, le courant en #842929', () => {

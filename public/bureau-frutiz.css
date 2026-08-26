@@ -2137,22 +2137,48 @@ body.bureau-frutiz #fiche .fiche-haut {
 }
 body.bureau-frutiz #fiche .fiche-plaque {
   height: 42px; width: 76px; box-sizing: border-box;
-  padding: 2px; margin-right: 6px; gap: 2px;
+  padding: 2px 6px 2px 3px; margin-right: 6px; gap: 2px;
   background: #C5F297; border: 1px solid #888888; border-radius: 4px;
   box-shadow: 0 0 0 2px #DDDDDD;
 }
 /* `fix: { w: base + 36, h: base }` : la bouille tient les 36 de gauche, l'écran
    du niveau les 36 de droite. Le gabarit du mobile en fait 60 de côté — trop
    haut d'un tiers pour une plaque de 42. */
-body.bureau-frutiz #fiche .fiche-plaque .fa-frame { width: 36px; height: 36px; border-radius: 3px; }
-body.bureau-frutiz #fiche .fiche-plaque .fa-jauge { gap: 1px; }
-body.bureau-frutiz #fiche .fiche-plaque .fa-progress { width: 26px; gap: 1px; }
-body.bureau-frutiz #fiche .fiche-plaque .fa-progress i { height: 1.5px; }
+/* La bouille repose sur un panneau plus clair — #D6F7B5 de x 4 à 42. */
+body.bureau-frutiz #fiche .fiche-plaque .fa-frame {
+  width: 38px; height: 36px; border-radius: 3px; background: #D6F7B5;
+}
+/* L'ÉCRAN DU NIVEAU. Le premier relevé m'avait trompé : la chair de l'écran
+   est le #A2EB56 vif (x 43..69 en travers), et ce sont des traits FINS de
+   #D6F7B5, un pixel tous les trois, qui la rayent — de y 14 à 37. Pas des
+   barres claires sur fond sombre : un écran vert rayé de lignes de balayage.
+   Le gabarit mobile en fait neuf barres empilées ; ici c'est la rayure qui
+   compte, on la peint d'un trait et on range les barres. */
+body.bureau-frutiz #fiche .fiche-plaque .fa-jauge { gap: 0; width: 27px; }
+body.bureau-frutiz #fiche .fiche-plaque .fa-progress {
+  width: 27px; height: 24px; gap: 0; display: block; border-radius: 1px;
+  background: repeating-linear-gradient(to bottom,
+    #A2EB56 0, #A2EB56 2px, #D6F7B5 2px, #D6F7B5 3px);
+}
+body.bureau-frutiz #fiche .fiche-plaque .fa-progress i { display: none; }
+body.bureau-frutiz #fiche .fiche-plaque .fa-niv {
+  height: 10px; justify-content: flex-start; gap: 2px;
+}
 body.bureau-frutiz #fiche .fiche-plaque .fa-niv img { height: 9px; width: auto; }
 body.bureau-frutiz #fiche .fiche-plaque .fa-niv b { font-size: 9px; }
-body.bureau-frutiz #fiche .fiche-plaque .reflet-niv,
-body.bureau-frutiz #fiche .fiche-plaque .cadre,
-body.bureau-frutiz #fiche .fiche-plaque .reflet { display: none; }
+/* LE REFLET, que le relevé donne en clair : une bande brillante en haut de la
+   plaque (#EAFBDA en y 10-11) et un liseré #E2F9CB au bord droit (x 73-74).
+   Ce sont les deux dessins de la mainbar — `reflet_bouille` sur la bouille,
+   `reflet_niveau` sur l'écran —, à l'échelle d'une plaque de 42. */
+body.bureau-frutiz #fiche .fiche-plaque .cadre { display: none; }
+body.bureau-frutiz #fiche .fiche-plaque .reflet {
+  display: block; position: absolute; left: 3px; top: 2px;
+  width: 38px; height: auto; z-index: 3; opacity: 1; pointer-events: none;
+}
+body.bureau-frutiz #fiche .fiche-plaque .reflet-niv {
+  display: block; position: absolute; right: 4px; top: 2px;
+  width: 27px; height: auto; z-index: 3; opacity: 1; pointer-events: none;
+}
 body.bureau-frutiz #fiche .fiche-droite {
   display: flex; flex-direction: column; justify-content: space-between;
   min-width: 0; flex: 1;
@@ -2178,14 +2204,17 @@ body.bureau-frutiz #fiche .fiche-actions {
   display: flex; align-items: flex-start; gap: 6px; height: 22px;
 }
 body.bureau-frutiz #fiche .fiche-actions button {
-  width: 20px; height: 20px; padding: 0; border: 0; flex: 0 0 auto;
+  width: 20px; height: 20px; min-width: 0; min-height: 0; box-sizing: border-box;
+  padding: 0; border: 0; flex: 0 0 20px; align-self: flex-start;
   border-radius: 4px; box-shadow: 0 0 0 2px #DDDDDD; background: #FFFFFF;
-  cursor: pointer;
+  cursor: pointer; overflow: hidden;
 }
-body.bureau-frutiz #fiche .fiche-actions button img { width: 18px; height: 18px; display: block; margin: 1px; }
-body.bureau-frutiz #fiche .fiche-actions #fiche-avance {
-  margin-left: auto; background: #F5A9A9;
+body.bureau-frutiz #fiche .fiche-actions button img {
+  width: 20px; height: 20px; display: block; margin: 0; object-fit: contain;
 }
+/* `butPushSmallPink` image 13 : le MÊME carré de 20 que les blancs, relevé en
+   x 293..316 et y 28..51 — vingt d'art plus deux de contour de chaque côté. */
+body.bureau-frutiz #fiche .fiche-actions #fiche-avance { margin-left: auto; }
 /* LE BAS : la feuille verte (`frSheet`), collée sous le haut blanc. */
 body.bureau-frutiz #fiche .fiche-corps {
   margin: 0; border: 0; border-radius: 0 0 5px 5px;
@@ -2221,7 +2250,17 @@ body.bureau-frutiz #fiche .fiche-titre::before,
 body.bureau-frutiz #fiche .fiche-titre::after { background: #ADE76B; height: 2px; }
 body.bureau-frutiz #fiche .fiche-signes,
 body.bureau-frutiz #fiche .fiche-medailles { border-bottom: 2px solid #ADE76B; }
-body.bureau-frutiz #fiche .fiche-ligne { font-size: 11px; padding: 2px 0; }
+/* Le pas d'une rangée, relevé sur les cinq lignes de l'onglet « frutiz » :
+   l'encre des libellés tombe en 187, 208, 227, 244 et 265 — dix-neuf et demi
+   d'une rangée à l'autre. */
+body.bureau-frutiz #fiche .fiche-ligne {
+  font-size: 11px; padding: 0; height: 19.5px; align-items: center; line-height: 1;
+}
+/* Et le bloc des rangées se FERME sur un filet, comme il s'était ouvert :
+   #ADE76B en y 180-181 au-dessus, en 277-278 au-dessous. */
+body.bureau-frutiz #fiche .fiche-lignes {
+  padding-bottom: 6px; border-bottom: 2px solid #ADE76B;
+}
 body.bureau-frutiz #fiche .fiche-ligne .lib,
 body.bureau-frutiz #fiche .fiche-ligne .val { color: #335511; }
 body.bureau-frutiz #fiche .fiche-jour { color: #335511; }

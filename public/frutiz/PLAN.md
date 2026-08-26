@@ -2044,9 +2044,29 @@ y   8..49            la plaque : 42 de haut, cerclée de #888888
 y  54-55   #DDDDDD   ·   56-57 #ADE76B   ·   58..65 le reflet blanc
 y  66..297 #CCF599   la chair de la feuille
 y  79-80   #ADE76B   le filet sous les onglets
-y 180-181, 277-278   les deux autres filets de la page
+y 180-181, 277-278   les deux autres filets de la page — le bloc des
+                     rangées s'OUVRE sur l'un et se FERME sur l'autre
 x 315-316  #ADE76B   ·  317-318 #DDDDDD  ·  323 #444444
 ```
+
+Les rangées d'une page tombent en 187, 208, 227, 244, 265 : **dix-neuf et
+demi** de pas.
+
+Et la plaque, en travers (y = 28) puis en hauteur (x = 52) :
+
+```
+x   4..42   #D6F7B5   le panneau de la bouille
+x  43..69   #A2EB56   l'écran du niveau — sa CHAIR est le vert vif
+x  70..75   #C5F297   le fond de la plaque, avec le reflet #E2F9CB en 73-74
+x  76       #888888   son contour ·  77-78 #DDDDDD
+
+y  10-11    #EAFBDA   la bande brillante du haut
+y  14..37             les rayures de l'écran : un trait #D6F7B5 d'un pixel
+                      tous les trois, sur la chair #A2EB56
+```
+
+Ce n'est donc pas une jauge à barres claires sur fond sombre : c'est un
+écran vert rayé de lignes de balayage plus pâles.
 
 Les onglets tombent en quatre colonnes égales — centres relevés en 39, 119,
 199, 278 pour une largeur utile de 315.
