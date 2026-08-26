@@ -311,13 +311,28 @@ class VuePartie {
     Promise.all([rangement, envoi]).then(([, rep]) => {
       // Manager.scoreSaved, mot pour mot.
       let texte = C.TXT_VOTRE_SCORE(scoreEnvoye) + '\n';
-      const vieux = rep && rep.oldScore != null ? rep.oldScore : ancienRecord;
-      const oldPos = rep ? rep.oldPos : 0;
-      const newPos = rep ? rep.newPos : 0;
+      // …sauf que le serveur peut REFUSER. Il le disait déjà (`ok: false` et
+      // un motif), mais rien ne l'écoutait : vingt minutes de tournoi
+      // partaient au néant sous un « Votre record personnel » paisible. On
+      // s'arrête là, et on dit pourquoi.
+      if (!rep || rep.ok === false) {
+        texte += C.TXT_SCORE_PERDU + '\n' + C.TXT_SCORE_PERDU_MOTIF(rep && rep.error) + '\n';
+        this.ecran.poserEcran('gameOver');
+        this.ecran.poserTexte(texte);
+        this.ecran.poserPresse(() => this.chaineFruits());
+        return;
+      }
+      const vieux = rep.oldScore != null ? rep.oldScore : ancienRecord;
+      const oldPos = rep.oldPos || 0;
+      const newPos = rep.newPos || 0;
       if (scoreEnvoye > vieux && oldPos > 0) texte += C.TXT_SCORE_BATTU + '\n';
       if (newPos > 0 && newPos < oldPos && oldPos > 0) texte += C.TXT_PLACE_GAGNEES(oldPos - newPos) + '\n';
       if (newPos > 0) texte += C.TXT_VOTRE_PLACE(newPos) + '\n';
       else texte += C.TXT_VOTRE_RECORD(Math.max(scoreEnvoye, ancienRecord)) + '\n';
+      // Le score classique est bien PARTI, mais sans Fruit Défendu il n'entre
+      // pas au classement du jour : vu du joueur, c'est le même « mon score
+      // n'apparaît pas ». On le dit aussi.
+      if (rep.fdBlocked) texte += C.TXT_SCORE_SANS_FD + '\n';
 
       this.ecran.poserEcran('gameOver');
       this.ecran.poserTexte(texte);

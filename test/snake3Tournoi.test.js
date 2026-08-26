@@ -476,7 +476,9 @@ test('la vie du mode : fermé → carte générée → ouvert → score → ferm
   // Sans session : refusé (le classement est nominatif).
   assert.strictEqual((await posterScore('', 800, 'finale-' + RUN)).status, 401);
   // L'absurde est écarté (le score vient du navigateur, comme les pilotes).
-  assert.strictEqual((await posterScore(sid, 5000000, 'finale-' + RUN)).status, 400);
+  // Ce test disait 5 000 000 : il verrouillait le rail à un million, c'est-à-dire
+  // SOUS ce que le mode produit honnêtement (cf. le test dédié plus bas).
+  assert.strictEqual((await posterScore(sid, 999999999, 'finale-' + RUN)).status, 400);
 
   // Le tournoi ne touche pas au quota Fruit Défendu.
   const quota = await (await fetch(`${BASE}/api/fd/status?sid=${encodeURIComponent(sid)}&game=snake3`)).json();
@@ -564,6 +566,72 @@ test('le meilleur score est retenu — y compris après un changement de carte',
   assert.strictEqual(memeGraine.vides, 0);
   assert.strictEqual((await adminEtat()).inscrits, 1, 'le classement est intact');
   await admin('/vider');
+});
+
+test('le rail de plausibilité laisse passer les millions du tournoi', async () => {
+  // Le bug signalé : « les scores au-dessus d'un million ne s'enregistrent
+  // pas ». Le rail était posé à 1 000 000 — sous ce que le mode produit. Le
+  // tournoi dure VINGT MINUTES, et le moteur, mené par un joueur parfait
+  // (frutibarre pleine, chaque fruit mangé à l'instant où il tombe), donne
+  // jusqu'à 850 000 sans multiplicateur, 1,7 M sous potion rose et 3,9 M sous
+  // potion rose ET langue — sans compter la canne, qui fait un fruit géant à
+  // dix fois sa valeur.
+  const sid = await sidFor(joueur('millions'));
+  await admin('/generer', { graine: 'gros-' + RUN });
+  await admin('/ouvrir');
+
+  // Une belle partie sous potion rose : elle DOIT entrer.
+  let r = await (await posterScore(sid, 1750000, 'gros-' + RUN)).json();
+  assert.ok(r.ok && r.updated, 'un score de 1 750 000 est enregistré : ' + JSON.stringify(r));
+  assert.strictEqual(r.newScore, 1750000);
+
+  // Une partie d'exception, potion rose ET langue, cannes comprises : aussi.
+  r = await (await posterScore(sid, 3900000, 'gros-' + RUN)).json();
+  assert.ok(r.updated, 'et le pire cas mesuré du moteur également');
+  assert.strictEqual(r.oldScore, 1750000);
+
+  // Le rail existe toujours, dix fois au-dessus : l'absurde reste écarté.
+  const trop = await posterScore(sid, 40000001, 'gros-' + RUN);
+  assert.strictEqual(trop.status, 400, 'au-delà du rail : refusé');
+  const j = await trop.json();
+  assert.strictEqual(j.error, 'implausible_score');
+  assert.match(j.raison, /au-delà du plafond/);
+  // …et le refus ne mange pas le record déjà posé.
+  assert.strictEqual((await (await posterScore(sid, 1, 'gros-' + RUN)).json()).newScore, 3900000);
+
+  await admin('/vider');
+  await admin('/fermer');
+});
+
+test('un score refusé se DIT au joueur, il ne se perd plus en silence', () => {
+  // Le second défaut : le client jetait le corps de la réponse dès que le
+  // statut n'était pas 200 (`r.ok ? r.json() : null`), et l'écran de fin
+  // affichait « Votre record personnel » comme si tout allait bien. Vingt
+  // minutes de tournoi disparaissaient sans un mot.
+  const pf = fs.readFileSync(path.join(RACINE, 'public/snake3/plateforme.js'), 'utf8');
+  assert.match(pf, /static reponse\(promesse\)/);
+  // Les DEUX guichets de score passent par là. (Les lectures d'état — carte du
+  // tournoi, profil, options — gardent leur `r.ok ? … : null` : un état absent
+  // se remplace par un défaut, il n'y a rien à annoncer.)
+  assert.match(pf, /return Plateforme\.reponse\(fetch\('\/api\/snake3\/tournoi\/score'/);
+  assert.match(pf, /return Plateforme\.reponse\(fetch\('\/api\/saveScore\?'/);
+  const corpsScores = pf.slice(pf.indexOf('static reponse'));
+  assert.doesNotMatch(corpsScores, /r\.ok \? r\.json\(\) : null/,
+    'un guichet de score ne doit plus jeter le corps de la réponse');
+
+  const g = fs.readFileSync(path.join(RACINE, 'public/snake3/game.js'), 'utf8');
+  assert.match(g, /if \(!rep \|\| rep\.ok === false\) \{/);
+  assert.match(g, /C\.TXT_SCORE_PERDU \+ '\\n' \+ C\.TXT_SCORE_PERDU_MOTIF\(rep && rep\.error\)/);
+  // Le score classique PART bien mais reste hors classement sans Fruit
+  // Défendu : même symptôme vu du joueur, dit lui aussi.
+  assert.match(g, /if \(rep\.fdBlocked\) texte \+= C\.TXT_SCORE_SANS_FD/);
+
+  // Chaque motif rendu par le serveur a sa phrase.
+  assert.strictEqual(C.TXT_SCORE_PERDU_MOTIF('implausible_score'), 'Le serveur a refusé ce score.');
+  assert.match(C.TXT_SCORE_PERDU_MOTIF('carte_perimee'), /carte du tournoi a changé/);
+  assert.match(C.TXT_SCORE_PERDU_MOTIF('tournoi_ferme'), /tournoi a fermé/);
+  assert.match(C.TXT_SCORE_PERDU_MOTIF('auth_required'), /session a expiré/);
+  assert.match(C.TXT_SCORE_PERDU_MOTIF('bidule-inconnu'), /n'a pas répondu/);
 });
 
 test('regénérer remplace la carte et FERME le mode (jamais sous les joueurs)', async () => {

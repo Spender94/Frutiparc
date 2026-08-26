@@ -1766,9 +1766,28 @@ const PILOTE_PLAFONDS = {
   minipixiz_classic: { max: 200000 },
   miniwave_classic:  { max: MINIWAVE_NIVEAU_MAX * 12000, parNiveau: 12000 },
   // Le TOURNOI Frutisnake (carte partagée du light) : le score vient du même
-  // moteur JS que le Challenge — même exposition au forgeage, même remède. Le
-  // rail est posé loin au-dessus des grandes parties humaines du classique.
-  snake3_tournoi:    { max: 1000000 },
+  // moteur JS que le Challenge — même exposition au forgeage, même remède.
+  //
+  // Le premier rail, posé à 1 000 000 « loin au-dessus des grandes parties
+  // humaines du classique », tombait en fait DEDANS : le tournoi dure VINGT
+  // MINUTES (SNAKE3_TOURNOI_DUREE_TICKS, 38 400 tics à 32 par seconde), ce qui
+  // n'a rien à voir avec une partie classique. Mesure faite sur le moteur
+  // lui-même (joueur parfait : frutibarre pleine, chaque fruit mangé à
+  // l'instant où il tombe, jamais mort) :
+  //
+  //     sans multiplicateur              jusqu'à   850 000
+  //     sous potion rose (×2)            jusqu'à 1 700 000
+  //     sous potion rose ET langue (×4)  jusqu'à 3 900 000
+  //
+  // — et la mesure ignore la CANNE, qui fait à elle seule un fruit géant à dix
+  // fois sa valeur (100 000 points d'un coup, 400 000 sous ×4), ainsi que les
+  // cartes chargées d'options que l'admin peut composer. Des scores honnêtes
+  // partaient donc à la poubelle, et en silence.
+  //
+  // Le rail est reposé DIX FOIS au-dessus de ce pire cas mesuré. Il ne prétend
+  // pas arrêter un forgeur — personne n'a jamais été gêné pour poser 999 999 —
+  // il n'écarte que l'absurde, ce pour quoi ces rails existent.
+  snake3_tournoi:    { max: 40000000 },
 };
 
 /**

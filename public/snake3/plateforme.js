@@ -148,24 +148,39 @@ class Plateforme {
     }).then((r) => r.ok).catch(() => false);
   }
 
+  // La réponse d'un guichet de score, REFUS COMPRIS.
+  //
+  // On jetait le corps dès que le statut n'était pas 200 (`r.ok ? r.json() :
+  // null`) : un score refusé revenait donc indistinguable d'une absence de
+  // réponse, et l'écran de fin annonçait un record tranquille. Or c'est
+  // justement là que le serveur EXPLIQUE — `{ ok: false, error, raison }`. On
+  // lit le corps dans tous les cas ; il ne reste `{ ok: false }` nu que si la
+  // réponse n'est pas lisible du tout (proxy, coupure).
+  static reponse(promesse) {
+    return promesse
+      .then((r) => r.json().catch(() => null).then((j) => (
+        j && typeof j === 'object' ? j : { ok: r.ok, error: 'reseau' })))
+      .catch(() => ({ ok: false, error: 'reseau' }));
+  }
+
   // GameClient.saveScore, mode 0 (classique). Répond { ok, oldScore, oldPos,
   // bestScorePos } — ce que Manager.scoreSaved met en phrases.
   sauverScore(score) {
-    if (!this.sid) return Promise.resolve(null);
+    // Sans compte, on joue quand même — mais le score ne va nulle part, et
+    // c'est autre chose qu'une session expirée : le motif le dit.
+    if (!this.sid) return Promise.resolve({ ok: false, error: 'hors_ligne' });
     const p = new URLSearchParams({
       sid: this.sid, game: 'snake3', m: '0', score: String(Math.max(0, Math.floor(score))),
     });
-    return fetch('/api/saveScore?' + p.toString())
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null);
+    return Plateforme.reponse(fetch('/api/saveScore?' + p.toString()));
   }
 
   // Le score du TOURNOI part sur son propre guichet : classement dédié
   // (snake3_tournoi), pas de quota Fruit Défendu, et la graine voyage avec le
   // score — le serveur écarte une partie jouée sur une carte périmée.
   sauverScoreTournoi(score) {
-    if (!this.sid) return Promise.resolve(null);
-    return fetch('/api/snake3/tournoi/score', {
+    if (!this.sid) return Promise.resolve({ ok: false, error: 'hors_ligne' });
+    return Plateforme.reponse(fetch('/api/snake3/tournoi/score', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -173,7 +188,7 @@ class Plateforme {
         score: String(Math.max(0, Math.floor(score))),
         graine: this.tournoi.graine || '',
       }).toString(),
-    }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    }));
   }
 }
 

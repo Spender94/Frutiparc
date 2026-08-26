@@ -175,6 +175,30 @@ C.TXT_VOTRE_SCORE = (s) => 'Votre score : ' + s;
 C.TXT_VOTRE_RECORD = (s) => 'Votre record personnel : ' + s;
 C.TXT_VOTRE_PLACE = (p) => 'Votre classement aujourd\'hui : ' + p;
 C.TXT_PLACE_GAGNEES = (p) => 'Vous avez gagné ' + ((p === 1) ? 'une place' : (p + ' places')) + ' dans le classement !';
+// ── Quand le score N'EST PAS enregistré ───────────────────────────────────
+// Le SWF d'époque n'avait pas ce cas : le FrutiScore répondait ou la partie
+// restait sur « Sauvegarde en cours... ». Le portage, lui, encaissait le refus
+// sans un mot et affichait « Votre record personnel » comme si de rien
+// n'était — le joueur ne découvrait qu'au classement que ses vingt minutes
+// n'avaient rien laissé. On le dit désormais, avec le motif rendu par le
+// serveur.
+C.TXT_SCORE_PERDU = 'ATTENTION : score NON enregistré !';
+C.TXT_SCORE_PERDU_MOTIF = function (code) {
+  switch (String(code || '')) {
+    case 'implausible_score':
+    case 'score_invalide':   return 'Le serveur a refusé ce score.';
+    case 'carte_perimee':    return 'La carte du tournoi a changé en cours de partie.';
+    case 'tournoi_ferme':    return 'Le tournoi a fermé pendant la partie.';
+    case 'auth_required':
+    case 'not_authenticated': return 'Votre session a expiré : reconnectez-vous.';
+    case 'unknown_game':     return 'Classement introuvable.';
+    case 'hors_ligne':       return 'Connectez-vous pour enregistrer vos scores.';
+    default:                 return 'Le serveur n\'a pas répondu.';
+  }
+};
+// Le score classique PART bien, mais sans Fruit Défendu il n'entre pas au
+// classement du jour (`fdBlocked`) — même symptôme vu du joueur, autre cause.
+C.TXT_SCORE_SANS_FD = 'Sans Fruit Défendu, ce score ne compte pas au classement.';
 C.TXT_FRUIT_NAME = function (id) {
   if (id >= 320) id -= 20;
   return C.FRUIT_NAMES[id - 1];
