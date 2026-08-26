@@ -976,9 +976,182 @@ window.BureauFrutiz = (function () {
     });
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  //   LES ONGLETS — `SlotList`, `FPDesktop` et `FPTab`
+  // ════════════════════════════════════════════════════════════════════════
+  //
+  // Le bureau d'époque n'est pas un simple gestionnaire de fenêtres
+  // flottantes : c'est un ESPACE DE TRAVAIL À ONGLETS. `_global.slotList`
+  // (SlotList.as) tient une liste de SLOTS dont un seul est actif ; le premier
+  // est le BUREAU (`FPDesktop`, l'onglet « Bureau »), et chaque fenêtre mise
+  // en onglet prend un `FPTab` à elle.
+  //
+  //   · le bouton « ─ » du bandeau appelle `WinStandard.putInTab()` : la
+  //     fenêtre GLISSE d'abord hors de l'écran par le haut
+  //     (`pos.y = −(pos.h + 100)`, sauf si Ctrl est enfoncée — le raccourci
+  //     d'époque pour y aller sans animation), puis passe au slot ;
+  //   · `FPDesktop.tab(box)` crée le `FPTab` et le rend actif ;
+  //   · `WinStandard.initTabMode()` RETIRE le bandeau (`winTopBar`) et masque
+  //     la poignée : en onglet la fenêtre n'a plus de barre de titre — l'onglet
+  //     EST sa barre de titre — et elle occupe tout l'espace du bureau
+  //     (`tab.w = mcw − cornerX`, `tab.h = mch − cornerY`) ;
+  //   · `FPDesktop.onDeactivate()` cache le fond du bureau ET sa rangée
+  //     d'icônes : passer sur un onglet escamote le bureau entier ;
+  //   · `FPTab.getMenu()` donne le menu de l'onglet : « Vers bureau »
+  //     (`moveToDesktop`) et « Fermer » (`tryToClose`).
+  var slots = [];                       // [{ id, titre, fruit, panneau }] — 'bureau' en tête
+  var slotActif = 'bureau';
+  var ongletBureau = null;
+
+  function creerOnglet(id, titre, fruit) {
+    var o = document.createElement('div');
+    o.className = 'fb-onglet';
+    o.setAttribute('data-slot', id);
+    // La pastille : c'est `getIconLabel()` du slot qui la choisit — l'orange
+    // du bureau, la banane d'un explorateur, la fraise d'un salon… La plaque
+    // extraite du SWF porte l'orange en dur : on sert donc la plaque NUE
+    // (onglet_plaque.svg) et on pose la pastille par-dessus, à la place exacte
+    // qu'elle occupe dans le clip d'origine.
+    if (id !== 'bureau') {
+      o.style.backgroundImage = 'url(' + fruitUrl(fruit) + '), '
+        + "url('/frutiz/sprites/onglet_plaque.svg'), url('/frutiz/sprites/onglet_fond.svg')";
+    }
+    var lab = document.createElement('span');
+    lab.textContent = titre;
+    o.appendChild(lab);
+    o.addEventListener('click', function () { activerSlot(id); });
+    // Le menu de l'onglet (`FPTab.getMenu`) : deux entrées, sur le clic droit.
+    o.addEventListener('contextmenu', function (e) {
+      if (id === 'bureau') return;
+      e.preventDefault();
+      menuOnglet(id, e.clientX, e.clientY);
+    });
+    $('#bureau-onglets').appendChild(o);
+    return o;
+  }
+
+  // `_global.main.tabSpace` : les onglets se posent à `id × 110`, le premier à
+  // l'origine de la barre. La plaque déborde de 17,5 px à gauche de son cadre
+  // (cf. le SVG) — d'où le −18,5 de la mise en place.
+  function dessinerOnglets() {
+    var barre = $('#bureau-onglets');
+    if (!barre) return;
+    var liste = [{ id: 'bureau' }].concat(slots);
+    for (var i = 0; i < barre.children.length; i++) {
+      var o = barre.children[i];
+      var id = o.getAttribute('data-slot');
+      var rang = -1;
+      for (var j = 0; j < liste.length; j++) if (liste[j].id === id) rang = j;
+      if (rang < 0) { o.remove(); i--; continue; }
+      o.style.left = (rang * 110) + 'px';
+      o.classList.toggle('actif', id === slotActif);
+    }
+  }
+
+  function activerSlot(id) {
+    if (slotActif === id) return;
+    var avant = slotActif;
+    slotActif = id;
+    // Le bureau s'escamote quand un onglet prend la main (FPDesktop.onDeactivate
+    // cache `mcDesk` ET la rangée d'icônes), et revient quand on le rappelle.
+    document.body.classList.toggle('fb-onglet-actif', id !== 'bureau');
+    if (id === 'bureau' && ongletBureau) ongletBureau.classList.remove('clignote');
+    for (var i = 0; i < slots.length; i++) {
+      var s = slots[i];
+      var f = fenetres[s.panneau];
+      if (!f) continue;
+      f.fen.classList.toggle('fen-onglet-vue', s.id === id);
+    }
+    if (avant !== id) dessinerOnglets();
+  }
+
+  /** Le « ─ » du bandeau : la fenêtre quitte le bureau pour un onglet. */
+  function mettreEnOnglet(idPanneau) {
+    var f = fenetres[idPanneau];
+    if (!f || f.onglet) return;
+    var id = 'tab-' + idPanneau;
+    // On retient la pose du bureau : « Vers bureau » la rendra telle quelle.
+    f.poseBureau = {
+      left: f.fen.style.left, top: f.fen.style.top,
+      width: f.fen.style.width, height: f.fen.style.height,
+    };
+    f.onglet = id;
+    slots.push({ id: id, titre: f.txt.textContent, fruit: f.fruit, panneau: idPanneau });
+    creerOnglet(id, f.txt.textContent, f.fruit);
+    f.fen.classList.add('fen-en-onglet');
+    f.fen.style.left = ''; f.fen.style.top = '';
+    f.fen.style.width = ''; f.fen.style.height = '';
+    activerSlot(id);
+    dessinerOnglets();
+    majBouilles();
+  }
+
+  /** `FPTab.moveToDesktop` : l'onglet rend sa fenêtre au bureau. */
+  function versBureau(idOnglet) {
+    var s = null;
+    for (var i = 0; i < slots.length; i++) if (slots[i].id === idOnglet) s = slots[i];
+    if (!s) return;
+    var f = fenetres[s.panneau];
+    slots.splice(slots.indexOf(s), 1);
+    if (f) {
+      f.onglet = null;
+      f.fen.classList.remove('fen-en-onglet', 'fen-onglet-vue');
+      if (f.poseBureau) {
+        f.fen.style.left = f.poseBureau.left; f.fen.style.top = f.poseBureau.top;
+        f.fen.style.width = f.poseBureau.width; f.fen.style.height = f.poseBureau.height;
+      }
+      premierPlan(f.fen);
+    }
+    slotActif = null;                   // pour forcer la bascule
+    activerSlot('bureau');
+    dessinerOnglets();
+    majBouilles();
+  }
+
+  // Le menu de `FPTab` : « Vers bureau » puis « Fermer ». Un menu tout simple,
+  // posé au curseur et refermé au premier clic ailleurs.
+  function menuOnglet(idOnglet, x, y) {
+    var vieux = $('#fb-menu-onglet');
+    if (vieux) vieux.remove();
+    var m = document.createElement('div');
+    m.id = 'fb-menu-onglet';
+    m.style.left = Math.round(x) + 'px';
+    m.style.top = Math.round(y) + 'px';
+    var entrees = [
+      { titre: 'Vers bureau', faire: function () { versBureau(idOnglet); } },
+      { titre: 'Fermer', faire: function () {
+        var s = null;
+        for (var i = 0; i < slots.length; i++) if (slots[i].id === idOnglet) s = slots[i];
+        if (s) fermerFenetre(s.panneau);
+      } },
+    ];
+    entrees.forEach(function (e) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = e.titre;
+      b.addEventListener('click', function () { m.remove(); e.faire(); });
+      m.appendChild(b);
+    });
+    document.body.appendChild(m);
+    setTimeout(function () {
+      document.addEventListener('pointerdown', function fermer() {
+        m.remove();
+        document.removeEventListener('pointerdown', fermer);
+      });
+    }, 0);
+  }
+
   function fermerFenetre(idPanneau) {
     var f = fenetres[idPanneau];
     if (!f) return;
+    // Une fenêtre en onglet emporte son onglet avec elle.
+    if (f.onglet) {
+      for (var i = slots.length - 1; i >= 0; i--) {
+        if (slots[i].id === f.onglet) slots.splice(i, 1);
+      }
+      if (slotActif === f.onglet) { slotActif = null; activerSlot('bureau'); }
+      dessinerOnglets();
+    }
     f.panneau.classList.remove('active');
     // La barre du salon retourne à sa place d'origine avec le panneau — sans
     // le bouton d'avertissement, qui n'appartient qu'au bureau.
@@ -1012,12 +1185,30 @@ window.BureauFrutiz = (function () {
     var txt = document.createElement('span');
     txt.className = 'txt';
     txt.textContent = rub.titre;
-    // Les vrais boutons du bandeau (butGroupWinTop) : l'enroulement puis la
-    // croix, la croix au bord — l'ordre du bureau Flash.
+    // Les vrais boutons du bandeau (butGroupWinTop) : la MISE EN ONGLET puis
+    // la croix, la croix au bord — l'ordre du bureau Flash. Le premier n'est
+    // pas un « replier » : `WinStandard.putInTab()` fait glisser la fenêtre
+    // hors de l'écran par le haut, puis la donne à un onglet
+    // (`FPDesktop.tab`). Ctrl enfoncée, la glissade est sautée — c'est écrit
+    // tel quel dans le moteur (`if(Key.isDown(17))`).
     var plier = document.createElement('button');
     plier.className = 'fen-btn plier';
-    plier.title = 'Replier';
-    plier.addEventListener('click', function () { fen.classList.toggle('pliee'); });
+    plier.title = 'Mettre en onglet';
+    plier.addEventListener('click', function (e) {
+      if (e.ctrlKey || e.metaKey) { mettreEnOnglet(panneau.id); return; }
+      fen.classList.add('fen-glisse');
+      var apres = function () {
+        fen.removeEventListener('transitionend', apres);
+        fen.classList.remove('fen-glisse');
+        mettreEnOnglet(panneau.id);
+      };
+      fen.addEventListener('transitionend', apres);
+      // Filet : si la transition ne part pas (fenêtre déjà hors flux), on
+      // bascule quand même.
+      setTimeout(function () {
+        if (fen.classList.contains('fen-glisse')) apres();
+      }, 420);
+    });
     var fermer = document.createElement('button');
     fermer.className = 'fen-btn fermer';
     fermer.title = 'Fermer';
@@ -1054,6 +1245,9 @@ window.BureauFrutiz = (function () {
       fen: fen, corps: corps, panneau: panneau, minimum: minimum,
       origine: deplacer(panneau, corps),
       txt: txt, pastille: pastille, topbar: null,
+      // Le fruit du type de fenêtre : le bandeau ET l'onglet le portent —
+      // c'est `getIconLabel()` qui le donne, une fois pour les deux.
+      fruit: rub.fruit || null, onglet: null, poseBureau: null,
     };
     fermer.addEventListener('click', function () { fermerFenetre(panneau.id); });
     return f;
@@ -1083,7 +1277,15 @@ window.BureauFrutiz = (function () {
   // passe, on la met où le bureau la met.
   function retitrer(idPanneau, texte) {
     var f = fenetres[idPanneau];
-    if (f && f.txt && texte) f.txt.textContent = texte;
+    if (!f || !texte) return;
+    if (f.txt) f.txt.textContent = texte;
+    // `FPTab.setTitle` suit le titre de sa fenêtre : l'onglet se retitre avec
+    // le bandeau.
+    if (f.onglet) {
+      for (var i = 0; i < slots.length; i++) if (slots[i].id === f.onglet) slots[i].titre = texte;
+      var o = document.querySelector('.fb-onglet[data-slot="' + f.onglet + '"] span');
+      if (o) o.textContent = texte;
+    }
   }
 
   function ouvrirFenetre(tab) {
@@ -1117,9 +1319,18 @@ window.BureauFrutiz = (function () {
           brancherBouillesSalon(f);
         }
       }
+    } else if (f.onglet) {
+      // Déjà en onglet : on y va.
+      activerSlot(f.onglet);
     } else {
-      f.fen.classList.remove('pliee');
       premierPlan(f.fen);
+    }
+    // Le bureau reçoit la fenêtre alors qu'un ONGLET a la main : d'époque il
+    // ne se met pas au premier plan tout seul, il AVERTIT — `FPDesktop.addBox`
+    // fait `if(!this.flActive) this.warning()`, et l'onglet « Bureau »
+    // clignote jusqu'à ce qu'on le rappelle.
+    if (!f.onglet && slotActif !== 'bureau' && ongletBureau) {
+      ongletBureau.classList.add('clignote');
     }
     // #evt-panel sert deux rubriques : la fenêtre prend le titre demandé.
     f.txt.textContent = rub.titre;
@@ -1194,18 +1405,22 @@ window.BureauFrutiz = (function () {
     app.appendChild(couche);
     app.appendChild(haut);
 
-    // L'ONGLET « Bureau » (MainBarTab #781) : les deux clips extraits —
-    // tabFond (la silhouette sombre) sous tab (la plaque + l'orange) — dans
+    // LA BARRE D'ONGLETS (MainBarTab #781) : les deux clips extraits —
+    // tabFond (la silhouette sombre) sous tab (la plaque + la pastille) — dans
     // leur cadre commun (x −17.5, y −18, 123×41.5), posés à l'origine de la
     // barre d'onglets (mcTab._y = height = 76). Le label est le champ #190 :
-    // Verdana 10 gras #000000, lié au titre du slot (« Bureau »).
-    var onglet = document.createElement('div');
-    onglet.id = 'onglet-bureau';
-    var ongletLabel = document.createElement('span');
-    ongletLabel.textContent = 'Bureau';
-    onglet.appendChild(ongletLabel);
-    haut.appendChild(onglet);          // sous la barre (tabBlack 4 < tab 8 < interface 10)
+    // Verdana 10 gras #000000, lié au titre du slot.
+    //
+    // Ce n'est pas UN onglet mais une LISTE : `_global.slotList` (SlotList.as)
+    // tient un slot par espace de travail — le bureau (FPDesktop, l'onglet
+    // « Bureau ») et un FPTab par fenêtre mise en onglet. Un seul est actif à
+    // la fois : `activate()` désactive le précédent.
+    var barreOnglets = document.createElement('div');
+    barreOnglets.id = 'bureau-onglets';
+    haut.appendChild(barreOnglets);    // sous la barre (tabBlack 4 < tab 8 < interface 10)
     haut.appendChild(coin);
+    ongletBureau = creerOnglet('bureau', 'Bureau', null);
+    dessinerOnglets();
 
     // La boîte de la FRUSION (le lecteur de disques, en haut à droite) : le
     // même chrome que la barre — blanc, liseré #DDD, contour #444, coins bas

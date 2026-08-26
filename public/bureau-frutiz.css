@@ -225,11 +225,29 @@ body.bureau-frutiz #bureau-coin .enc-trophy .val {
 /* Le sigle « NIV » est un SVG qui porte 4 px de marge interne en bas : pour que
    son encre finisse en y 44 comme d'époque, la boîte descend d'un pixel sous le
    biseau — l'encart est en `overflow:hidden`, rien ne dépasse. */
-body.bureau-frutiz #bureau-coin .enc-niv { left: 2px; bottom: -1px; gap: 6px; }
-body.bureau-frutiz #bureau-coin .enc-niv .niv-img { height: 17px; }
+/* LA LOI DE `barLevel` (sprite #431), lue au twip près dans le fichier :
+     · le sigle est la forme #429, posée en (4.35, 28.75) — 14,2 × 17,4, la
+       taille NATURELLE du SVG extrait : le rendre en 17 px l'écrasait de 2 %,
+       d'où des jambages d'un demi-pixel trop épais ;
+     · le NIVEAU est le champ #430, posé en (14.6, 28.75), cadre (2.9, −2) de
+       16,7 × 17,4. Les 2 px de gouttière que Flash réserve de chaque côté
+       ôtés, il reste une zone utile de **12,7 × 13,4** qui commence 0,95 px
+       après le sigle — et ce champ déclare `align CENTRE`.
+   C'est ce dernier point qui manquait : le chiffre poussait vers la droite au
+   lieu de rester centré sur sa colonne, si bien qu'à deux chiffres « NIV 13 »
+   débordait sur la rangée de raccourcis. Une boîte FIXE et centrée règle le
+   cas de 1 comme celui de 32.
+   Le +2 px vertical : Flash pose la ligne de texte sous le haut de la zone
+   utile, là où CSS centre le glyphe dans son interligne — deux pixels d'écart,
+   relevés au comparatif 1:1 (l'encre doit courir des lignes 36 à 44). */
+body.bureau-frutiz #bureau-coin .enc-niv {
+  left: 2px; bottom: -1px; gap: 0.95px; align-items: flex-start;
+}
+body.bureau-frutiz #bureau-coin .enc-niv .niv-img { height: 17.4px; width: 14.2px; }
 body.bureau-frutiz #bureau-coin .enc-niv .lvl {
   font-family: 'ImpactSwf', Impact, sans-serif; font-size: 11px;
   font-weight: normal; color: #73B01E;
+  flex: 0 0 12.7px; text-align: center; line-height: 13.4px; margin-top: 2px;
 }
 /* Les raccourcis d'époque tiennent plus HAUT (bloc y 26..47 contre 26..50) et
    dans l'ORDRE : l'aide, le forum, le courrier, l'historique, les événements,
@@ -297,23 +315,89 @@ body.bureau-frutiz #bureau-coin .daily-banner { display: none; }
    l'élément se place donc à (−17.5, 58) et laisse la barre recouvrir ce qui
    dépasse en haut (profondeurs du SWF : tabBlack 4 < tab 8 < interface 10).
    Le label est le champ #190 : Verdana 10 gras #000000, à ~30 px du bord. */
-body.bureau-frutiz #onglet-bureau {
+/* La BARRE : les onglets se posent à `id × tabSpace` (110), le premier à
+   l'origine. La plaque déborde de 17,5 px à gauche de son cadre — d'où le
+   −18,5 de la mise en place. */
+body.bureau-frutiz #bureau-onglets {
+  position: absolute; left: calc(var(--cornerX) - 18.5px); top: 58px;
+  height: 41.5px; right: 0; z-index: 1; pointer-events: none;
+}
+body.bureau-frutiz .fb-onglet {
   /* le bureau pose ses onglets à cornerX = 8 (mesuré 1:1 : liseré gauche de
-     la plaque à x 6..8, pastille 13..22, bord droit 110..114) — l'élément se
-     place donc à 8 − 17.5 = −9.5. */
-  position: absolute; left: calc(var(--cornerX) - 18.5px); top: 58px; width: 123px; height: 41.5px;
-  z-index: 1;
+     la plaque à x 6..8, pastille 13..22, bord droit 110..114). */
+  position: absolute; left: 0; top: 0; width: 123px; height: 41.5px;
+  z-index: 1; cursor: pointer; pointer-events: auto;
   background:
     url('/frutiz/sprites/onglet_corps.svg') left top / 123px 41.5px no-repeat,
     url('/frutiz/sprites/onglet_fond.svg') left top / 123px 41.5px no-repeat;
 }
-body.bureau-frutiz #onglet-bureau span {
+/* Un onglet de FENÊTRE porte la pastille de son type — la plaque est alors
+   servie NUE (`onglet_plaque.svg`, le clip d'origine amputé de son orange) et
+   le fruit posé exactement à la place que le groupe occupe dans le SVG :
+   (3.16, 23.90) pour l'encre, soit (1.36, 22.75) pour le cadre 15,85 × 15,05
+   des sprites de fruits. */
+body.bureau-frutiz .fb-onglet[data-slot]:not([data-slot="bureau"]) {
+  background-position: 1.36px 22.75px, left top, left top;
+  background-size: 15.85px 15.05px, 123px 41.5px, 123px 41.5px;
+  background-repeat: no-repeat, no-repeat, no-repeat;
+}
+/* L'onglet ACTIF est celui dont l'espace de travail est à l'écran : d'époque
+   il monte de deux pixels et sa plaque se soude au contenu. Les autres
+   restent en retrait. */
+body.bureau-frutiz .fb-onglet.actif { top: -2px; z-index: 2; }
+body.bureau-frutiz .fb-onglet:not(.actif) { filter: saturate(.85) brightness(.97); }
+/* L'AVERTISSEMENT d'un slot (`Slot.warning`) : une fenêtre s'est ouverte sur
+   le bureau alors qu'un onglet avait la main — l'onglet « Bureau » clignote
+   jusqu'à ce qu'on le rappelle. */
+@keyframes fb-onglet-clignote { 50% { filter: brightness(1.35) saturate(1.6); } }
+body.bureau-frutiz .fb-onglet.clignote { animation: fb-onglet-clignote .7s steps(1) infinite; }
+body.bureau-frutiz .fb-onglet span {
   /* les glyphes d'époque : « Bureau » à x ≈ 30 de l'écran, centré dans la
      plaque (écran 78..100) — soit, dans l'élément, (39.5, bande à ~84..94). */
-  position: absolute; left: 39.5px; top: 22px; height: 20px; line-height: 20px;
+  position: absolute; left: 39.5px; top: 22px; right: 8px; height: 20px; line-height: 20px;
   font: 700 10px Verdana, Arial, sans-serif; color: #000000;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   user-select: none; -webkit-user-select: none;
 }
+
+/* ── UNE FENÊTRE EN ONGLET ────────────────────────────────────────────────
+   `WinStandard.initTabMode()` retire le bandeau (`winTopBar`) et masque la
+   poignée : l'onglet EST la barre de titre. Et la fenêtre occupe TOUT
+   l'espace du bureau — `tab.w = mcw − cornerX`, `tab.h = mch − cornerY`. */
+body.bureau-frutiz .fen.fen-en-onglet {
+  left: var(--cornerX) !important; top: var(--cornerY) !important;
+  width: calc(100% - var(--cornerX)) !important;
+  height: calc(100% - var(--cornerY)) !important;
+  display: none; border-radius: 0; box-shadow: none;
+}
+body.bureau-frutiz .fen.fen-en-onglet.fen-onglet-vue { display: flex; }
+body.bureau-frutiz .fen.fen-en-onglet > .fen-titre,
+body.bureau-frutiz .fen.fen-en-onglet > .fen-poignee { display: none; }
+/* La GLISSADE de `putInTab()` : la fenêtre sort par le haut avant de passer
+   en onglet (`pos.y = −(pos.h + 100)`). Ctrl enfoncée, Flash saute l'anim. */
+body.bureau-frutiz .fen.fen-glisse {
+  transition: transform .28s ease-in;
+  transform: translateY(calc(-100% - 100px));
+}
+/* Le bureau s'escamote quand un onglet prend la main : `FPDesktop
+   .onDeactivate()` cache `mcDesk` ET sa rangée d'icônes — ici les deux vivent
+   dans `#bureau`, un seul `display:none` suffit. Les fenêtres restées sur le
+   bureau s'escamotent avec lui. */
+body.bureau-frutiz.fb-onglet-actif #bureau,
+body.bureau-frutiz.fb-onglet-actif .fen:not(.fen-onglet-vue) { display: none; }
+
+/* Le menu d'un onglet (`FPTab.getMenu`) : « Vers bureau », « Fermer ». */
+body.bureau-frutiz #fb-menu-onglet {
+  position: fixed; z-index: 400; min-width: 128px; padding: 2px;
+  background: #FFFFFF; border: 1px solid #444444; border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+}
+body.bureau-frutiz #fb-menu-onglet button {
+  display: block; width: 100%; padding: 4px 10px; border: 0; background: none;
+  font: 400 11px Verdana, Arial, sans-serif; color: #335511; text-align: left;
+  cursor: pointer;
+}
+body.bureau-frutiz #fb-menu-onglet button:hover { background: #CCF599; }
 
 /* ── LE LECTEUR FRUSION (clip `frusion` #324, aplati tel quel) ────────────
    Ce n'est pas un conteneur vide : sa première image porte TOUT le meuble —
@@ -406,7 +490,7 @@ body.bureau-frutiz #pill-enligne .point {
 /* La borne est posée sur le BODY : `#bureau-coin`, l'onglet et la poignée
    vivent dans `#bureau-haut`, qui est un FRÈRE de `#bureau` — une variable
    posée sur le bureau ne les atteindrait pas. */
-body.bureau-frutiz { --cornerX: 9px; }
+body.bureau-frutiz { --cornerX: 9px; --cornerY: 106px; }
 body.bureau-frutiz.contacts-ouverts { --cornerX: 129px; }
 body.bureau-frutiz #side-list {
   position: absolute; left: 0; top: 0; bottom: 0; z-index: 3;

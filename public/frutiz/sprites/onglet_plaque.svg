@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-17.5 -18 123 41.5" width="123" height="41.5">
+<g transform="matrix(1,0,0,1,-17.5,0.05)">
+  <path d="M121.5 -0.05L118.5 -0.05L118.5 -2.05L121.5 -2.05L121.5 -0.05ZM4.5 -0.05L1.5 -0.05L1.5 -2.05L4.5 -2.05L4.5 -0.05Z" fill="#dddddd" fill-rule="evenodd"/>
+  <path d="M118.5 -2.05L118.5 -0.05L4.5 -0.05L4.5 -2.05L118.5 -2.05Z" fill="#ffffff" fill-rule="evenodd"/>
+  <path d="M1.5 -0.05L4.5 -0.05L4.5 10.95Q4.5 13.8 6.55 15.9Q8.6 17.9 11.5 17.95L111.5 17.95Q114.4 17.9 116.45 15.9Q118.5 13.8 118.5 10.95L118.5 -0.05L121.5 -0.05L121.5 10.95L121.45 12.05Q121.1 15.5 118.6 18.05Q115.65 20.95 111.5 20.95L11.5 20.95Q7.35 20.95 4.45 18.05Q1.9 15.5 1.55 12.05L1.5 10.95L1.5 -0.05Z" fill="#dddddd" fill-rule="evenodd"/>
+  <path d="M118.5 -0.05L118.5 10.95Q118.5 13.8 116.45 15.9Q114.4 17.9 111.5 17.95L11.5 17.95Q8.6 17.9 6.55 15.9Q4.5 13.8 4.5 10.95L4.5 -0.05L118.5 -0.05Z" fill="#ffffff" fill-rule="evenodd"/>
+
+</g>
+
+<g transform="matrix(1,0,0,0.2222,-16,0)">
+  <path d="M3 -18L3 0L0 0L0 -18L3 -18ZM117 0L117 -18L120 -18L120 0L117 0Z" fill="#dddddd" fill-rule="evenodd"/>
+  <path d="M3 0L3 -18L117 -18L117 0L3 0Z" fill="#ffffff" fill-rule="evenodd"/>
+
+</g>
+<g transform="matrix(1,0,0,1,0,0)">
+  <path d="M-17.5 2L-17.5 -0.5L91.85 -0.5L91.85 2L-17.5 2Z" fill="#999999" fill-rule="evenodd"/>
+  <path d="M91.85 2L91.85 -0.5L105.5 -0.5L104.1 2L91.85 2Z" fill="#999999" fill-rule="evenodd"/>
+
+</g>
+</svg>

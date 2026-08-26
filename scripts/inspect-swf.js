@@ -25,6 +25,14 @@
 //                             à l'identifiant.
 //   chaines <motif>           cherche un motif dans les chaînes du fichier
 //                             (noms de classes, clés de traduction, labels).
+//   texte [id…]               les CHAMPS DE TEXTE (DefineEditText) : cadre,
+//                             police et corps, couleur, alignement, marges,
+//                             interligne, nom de variable et texte initial.
+//                             C'est ce que déclare l'auteur — la vérité sur la
+//                             typo d'un libellé, là où un rendu ne donne que
+//                             l'anticrénelage. Sans argument : tous.
+//   polices [id…]             les POLICES (DefineFont2/3) : nom, style, et la
+//                             table des caractères qu'elles embarquent.
 //
 // Les identifiants qu'il renvoie s'utilisent tels quels avec les deux
 // extracteurs.
@@ -179,6 +187,93 @@ if (commande === 'bandes') {
     let f = m.index; while (f < s.length && s.charCodeAt(f) >= 32 && f < m.index + 70) f++;
     const t = s.slice(d, f);
     if (!vus.has(t)) { vus.add(t); console.log(m.index + '\t' + JSON.stringify(t)); }
+  }
+
+} else if (commande === 'texte' || commande === 'polices') {
+  // Le nom d'une police, tel que DefineFont2/3 le déclare — c'est lui qu'un
+  // champ de texte désigne par son identifiant.
+  const nomsPolice = new Map();
+  parcourir((code, corps, len) => {
+    if (code !== 48 && code !== 75) return;           // DefineFont2 / DefineFont3
+    const id = b.readUInt16LE(corps);
+    const drapeaux = b[corps + 2];
+    const nl = b[corps + 4];
+    nomsPolice.set(id, {
+      nom: b.slice(corps + 5, corps + 5 + nl).toString('utf8').replace(/\0/g, ''),
+      gras: !!(drapeaux & 1), italique: !!(drapeaux & 2),
+      // DefineFont3 range ses coordonnées au 1/20 d'EM : les hauteurs d'un
+      // champ qui l'emploie restent en twips, mais les glyphes sont 20× plus
+      // fins — c'est ce qui distingue une police « pixel » d'une vectorielle.
+      tag: code === 75 ? 'DefineFont3' : 'DefineFont2',
+    });
+  });
+  if (commande === 'polices') {
+    const veut = new Set(args.map(Number));
+    for (const [id, f] of nomsPolice) {
+      if (veut.size && !veut.has(id)) continue;
+      console.log(`#${id}\t${f.nom}${f.gras ? ' gras' : ''}${f.italique ? ' italique' : ''}\t${f.tag}`);
+    }
+  } else {
+    const veut = new Set(args.map(Number));
+    parcourir((code, corps, len, sprite) => {
+      if (code !== 37) return;                        // DefineEditText
+      const id = b.readUInt16LE(corps);
+      if (veut.size && !veut.has(id)) return;
+      // RECT (cadre), puis deux octets de drapeaux, puis les champs optionnels
+      // dans l'ordre du format.
+      const r = new Bits(b, corps + 2);
+      const n = r.u(5);
+      const cadre = { x0: r.s(n) / 20, x1: r.s(n) / 20, y0: r.s(n) / 20, y1: r.s(n) / 20 };
+      r.align();
+      let o = r.o;
+      const f1 = b[o], f2 = b[o + 1]; o += 2;
+      const aTexte = !!(f1 & 0x80), aMax = !!(f1 & 0x20), aCouleur = !!(f1 & 0x04),
+        aPolice = !!(f1 & 0x01), aClasse = !!(f1 & 0x02), aMise = !!(f2 & 0x20);
+      const info = [];
+      if (aPolice) {
+        const fid = b.readUInt16LE(o); o += 2;
+        const h = b.readUInt16LE(o); o += 2;
+        const f = nomsPolice.get(fid);
+        info.push(`police #${fid}${f ? ' « ' + f.nom + ' »' + (f.gras ? ' gras' : '') : ''} ${h / 20} px`);
+      } else if (aClasse) {
+        let e = o; while (b[e] !== 0) e++;
+        info.push(`classe « ${b.slice(o, e).toString('utf8')} »`);
+        o = e + 1;
+        const h = b.readUInt16LE(o); o += 2;
+        info.push(`${h / 20} px`);
+      }
+      if (aCouleur) {
+        const c = '#' + [b[o], b[o + 1], b[o + 2]].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+        const a = b[o + 3]; o += 4;
+        info.push('encre ' + c + (a < 255 ? ' α' + a : ''));
+      }
+      if (aMax) { info.push('maxlen ' + b.readUInt16LE(o)); o += 2; }
+      if (aMise) {
+        const ALIGN = ['gauche', 'droite', 'centre', 'justifié'];
+        info.push('align ' + (ALIGN[b[o]] || b[o])
+          + ` marges ${b.readUInt16LE(o + 1) / 20}/${b.readUInt16LE(o + 3) / 20}`
+          + ` retrait ${b.readUInt16LE(o + 5) / 20} interligne ${b.readInt16LE(o + 7) / 20}`);
+        o += 9;
+      }
+      let e = o; while (b[e] !== 0) e++;
+      const variable = b.slice(o, e).toString('utf8');
+      o = e + 1;
+      let initial = '';
+      if (aTexte) { let e2 = o; while (b[e2] !== 0) e2++; initial = b.slice(o, e2).toString('utf8'); }
+      const dr = [];
+      if (f1 & 0x40) dr.push('wordwrap'); if (f1 & 0x20 && false) dr.push('');
+      if (f1 & 0x10) dr.push('multiline'); if (f1 & 0x08) dr.push('password');
+      if (f1 & 0x02 && !aPolice) dr.push('fontclass');
+      if (f2 & 0x80) dr.push('lecture-seule'); if (f2 & 0x40) dr.push('bordure');
+      if (f2 & 0x10) dr.push('sélectionnable-non'); if (f2 & 0x08) dr.push('html');
+      if (f2 & 0x04) dr.push('police-embarquée'); if (f1 & 0x01 && (f2 & 0x02)) dr.push('auto-size');
+      console.log(`#${id}\tdans sprite#${sprite}\tcadre ${cadre.x0},${cadre.y0} `
+        + `${Math.round((cadre.x1 - cadre.x0) * 100) / 100}×${Math.round((cadre.y1 - cadre.y0) * 100) / 100}`
+        + `\t${info.join(' · ')}`
+        + (variable ? `\tvar « ${variable} »` : '')
+        + (initial ? `\ttexte « ${initial} »` : '')
+        + (dr.length ? `\t[${dr.join(' ')}]` : ''));
+    });
   }
 
 } else {

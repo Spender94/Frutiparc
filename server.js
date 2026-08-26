@@ -24675,21 +24675,25 @@ case 'trace': {
     case 'xpposition': {
       const myXp = (users[client.username] || {}).xp || 0;
       let pos = 1;
-      if (myXp > 0) {
-        try {
-          const dbUsers = await db.listAllUsers();
-          const merged = new Map();
-          for (const row of dbUsers) {
+      // Le comptage tournait sous un `if (myXp > 0)` : un joueur sans XP se
+      // voyait donc annoncer PREMIER, quand /api/light/profile — même
+      // classement, même définition — le rangeait derrière tous ceux qui en
+      // ont. Les deux clients affichent le même encart : ils doivent donner le
+      // même rang. On compte toujours ; sans base, la mémoire suffit.
+      try {
+        const merged = new Map();
+        if (process.env.DATABASE_URL) {
+          for (const row of await db.listAllUsers()) {
             if (row.xp > 0) merged.set(row.username, row.xp);
           }
-          for (const [u, ud] of Object.entries(users)) {
-            if (ud && Number.isFinite(ud.xp) && ud.xp > 0) merged.set(u, ud.xp);
-          }
-          for (const [, xp] of merged) {
-            if (xp > myXp) pos++;
-          }
-        } catch (e) { /* fallback to 1 */ }
-      }
+        }
+        for (const [u, ud] of Object.entries(users)) {
+          if (ud && Number.isFinite(ud.xp) && ud.xp > 0) merged.set(u, ud.xp);
+        }
+        for (const [, xp] of merged) {
+          if (xp > myXp) pos++;
+        }
+      } catch (e) { /* fallback to 1 */ }
       sendToClient(socket, `<${CMD.xpposition} p="${pos}" />`);
       break;
     }
