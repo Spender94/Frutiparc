@@ -2596,9 +2596,73 @@ window.BureauFrutiz = (function () {
     if (window.MagasinLight && MagasinLight.charger) MagasinLight.charger();
   }
 
-  // Le clic sur un contact ouvre SA FICHE, comme le `userSlot` du bureau.
+  /* ══════════════════════════════════════════════════════════════════════════
+     LA FICHE (`win.Frutiz`, DoInitAction sprite#753 0x583ad)
+
+     `win.Frutiz extends WinStandard` : une FENÊTRE. Rien ne s'assombrit
+     derrière elle, et `initInterface` la rend glissable par son cadre —
+
+         mcInterface.onPress = function() {
+           this._parent.box.activate(); this._parent.initDrag();
+         }
+         mcInterface.onRelease = mcInterface.onReleaseOutside = endDrag
+
+     Le mobile en fait une carte modale (sur un téléphone, une fenêtre
+     flottante n'a nulle part où flotter) ; le bureau lui rend sa nature. */
+  var ficheRang = 0;
+
   function ouvrirFiche(pseudo) {
-    if (window.ouvrirFicheJoueur) window.ouvrirFicheJoueur(pseudo);
+    if (!window.ouvrirFicheJoueur) return;
+    window.ouvrirFicheJoueur(pseudo);
+    if (actif) poserFiche();
+  }
+
+  // `openWin` pose chaque nouvelle fenêtre en escalier : la fiche suit.
+  function poserFiche() {
+    var f = $('#fiche');
+    if (!f) return;
+    if (!f.dataset.posee) {
+      ficheRang = (ficheRang + 1) % 8;
+      f.style.setProperty('--fx', (200 + ficheRang * 22) + 'px');
+      f.style.setProperty('--fy', (110 + ficheRang * 20) + 'px');
+      f.dataset.posee = '1';
+      glisserFiche(f);
+    }
+    majGenreFiche(f);
+  }
+
+  // `UserSlot.onInfoBasic` : le pseudo prend la couleur du GENRE — le bleu
+  // #242169 pour un garçon, le rouge #BB4A44 pour une fille.
+  function majGenreFiche(f) {
+    var lire = function () {
+      var d = window.ficheDerniere && window.ficheDerniere();
+      f.classList.toggle('elle', !!(d && d.basic && d.basic.sexe === 'F'));
+    };
+    lire();
+    setTimeout(lire, 500);
+    setTimeout(lire, 1500);
+  }
+
+  // `initDrag` / `endDrag` : on l'attrape par son CADRE — tout le haut blanc,
+  // sauf ce qui est déjà un bouton.
+  function glisserFiche(f) {
+    f.addEventListener('pointerdown', function (ev) {
+      if (ev.button !== 0) return;
+      if (ev.target.closest('button, a, input, .fiche-corps')) return;
+      ev.preventDefault();
+      var b = f.getBoundingClientRect();
+      var dx = ev.clientX - b.left, dy = ev.clientY - b.top;
+      var bouge = function (e) {
+        f.style.setProperty('--fx', Math.max(0, e.clientX - dx) + 'px');
+        f.style.setProperty('--fy', Math.max(0, e.clientY - dy) + 'px');
+      };
+      var lache = function () {
+        document.removeEventListener('pointermove', bouge);
+        document.removeEventListener('pointerup', lache);
+      };
+      document.addEventListener('pointermove', bouge);
+      document.addEventListener('pointerup', lache);
+    });
   }
 
   // ── Le GLISSER-DÉPOSER des icônes du bureau ────────────────────────────
@@ -3990,6 +4054,8 @@ window.BureauFrutiz = (function () {
     ouvrirInventaire: function () { ouvrirExplorateur('inventaire'); },
     // La boutique : une FENÊTRE sur le bureau, la feuille du mobile ailleurs.
     ouvrirBoutique: ouvrirBoutique,
+    // La fiche : au bureau c'est une fenêtre, elle se pose et se glisse.
+    poserFiche: poserFiche,
     // Ce que le joueur a posé sur son bureau, pour le banc et pour le light.
     objetsBureau: function () { return objetsBureau.slice(); },
     rafraichirBureau: rafraichirBureau,

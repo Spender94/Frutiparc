@@ -2073,6 +2073,160 @@ body.bureau-frutiz .fen #scores-panel #sc-table .sc-pod span { color: #000000; }
 
 
 
+/* ── LA FICHE (`win.Frutiz` sprite#753 0x583ad, `FrutizInfo` 0x94ba0) ────────
+   `win.Frutiz extends WinStandard` : c'est une FENÊTRE, pas une boîte de
+   dialogue. Rien ne s'assombrit derrière elle, et `initInterface` la rend
+   glissable par son cadre —
+
+     mcInterface.onPress = function() { box.activate(); initDrag(); }
+
+   Le mobile en fait une carte modale, à raison : sur un téléphone une
+   fenêtre flottante n'a nulle part où flotter. Ici on lui rend sa nature.
+
+   LE HAUT (`base = 42`), monté par `initFrameSet` :
+
+     margin.top → up (type "h", marge x.min 12, y.min 5, y.ratio 1)
+       screenFrame  `frutiScreen`, style frSystem, fix { w: base+36, h: base }
+       mid (type "w", min 240)
+         info   `cpFrutizBasicInfo`, min 200 × 20   — le pseudo et l'âge
+         icon (type "h", marge x.min 4, x.ratio 1)
+           left   `basicIconList` des boutons blancs, align "start"
+           right  `basicIconList` d'UN bouton : `butPushSmallPink` image 13,
+                  outline 2, curve 4 → toggleAdvancedMode
+
+   LE BAS, que `initAdvancedMode` ajoute et `exitAdvancedMode` retire :
+
+     main → explorer  `cpDocument`, style frSheet, flBackground,
+                      min { w: 250, h: 244 }, marge y.min 4, y.ratio 1
+
+   et `getMenuLine` ouvre chaque page par les quatre onglets — du TEXTE, gras
+   et centré, en style 1 sauf le courant qui prend 1 + 10 = 11.
+
+   Relevé 1:1 (scratchpad/fr-2-ouverte.png, origine au trait sombre de la
+   fenêtre, 324 de large) :
+
+     y   2      #444444   le trait de la fenêtre
+     y   3-4    #DDDDDD   ·   y 5..53   #FFFFFF   — le HAUT est blanc
+     y   8..49            la plaque : 42 de haut, cerclée de #888888
+     y  54-55   #DDDDDD   ·   56-57 #ADE76B   ·   58..65 le reflet blanc
+     y  66..297 #CCF599   la chair de la feuille
+     y  79-80   #ADE76B   le filet sous les onglets
+     y 180-181, 277-278   les deux autres filets de la page
+     x 315-316  #ADE76B   ·  317-318 #DDDDDD  ·  323 #444444
+
+   Les encres : le pseudo prend la couleur du GENRE (`UserSlot.onInfoBasic` —
+   #242169 pour un garçon, #BB4A44 pour une fille), l'âge #404040, l'onglet
+   courant #842929, les autres et tout le corps #335511. */
+body.bureau-frutiz #fiche-backdrop {
+  position: fixed; inset: 0; z-index: 70;
+  display: block; background: none; padding: 0;
+  pointer-events: none;                /* le bureau reste vivant DERRIÈRE */
+}
+body.bureau-frutiz #fiche-backdrop.show { display: block; }
+body.bureau-frutiz #fiche {
+  position: absolute; left: var(--fx, 220px); top: var(--fy, 120px);
+  width: 324px; max-height: none; overflow: visible;
+  pointer-events: auto;
+  background: #FFFFFF; border: 0; border-radius: 6px;
+  box-shadow: 0 0 0 2px #DDDDDD, 0 0 0 3px #444444, 2px 3px 6px rgba(0,0,0,.35);
+  padding: 0;
+}
+/* LE HAUT : la plaque à gauche, puis les deux lignes. `base = 42`. */
+body.bureau-frutiz #fiche .fiche-haut {
+  align-items: stretch; gap: 0; padding: 5px 12px 5px 5px;
+}
+body.bureau-frutiz #fiche .fiche-plaque {
+  height: 42px; width: 76px; box-sizing: border-box;
+  padding: 2px; margin-right: 6px; gap: 2px;
+  background: #C5F297; border: 1px solid #888888; border-radius: 4px;
+  box-shadow: 0 0 0 2px #DDDDDD;
+}
+/* `fix: { w: base + 36, h: base }` : la bouille tient les 36 de gauche, l'écran
+   du niveau les 36 de droite. Le gabarit du mobile en fait 60 de côté — trop
+   haut d'un tiers pour une plaque de 42. */
+body.bureau-frutiz #fiche .fiche-plaque .fa-frame { width: 36px; height: 36px; border-radius: 3px; }
+body.bureau-frutiz #fiche .fiche-plaque .fa-jauge { gap: 1px; }
+body.bureau-frutiz #fiche .fiche-plaque .fa-progress { width: 26px; gap: 1px; }
+body.bureau-frutiz #fiche .fiche-plaque .fa-progress i { height: 1.5px; }
+body.bureau-frutiz #fiche .fiche-plaque .fa-niv img { height: 9px; width: auto; }
+body.bureau-frutiz #fiche .fiche-plaque .fa-niv b { font-size: 9px; }
+body.bureau-frutiz #fiche .fiche-plaque .reflet-niv,
+body.bureau-frutiz #fiche .fiche-plaque .cadre,
+body.bureau-frutiz #fiche .fiche-plaque .reflet { display: none; }
+body.bureau-frutiz #fiche .fiche-droite {
+  display: flex; flex-direction: column; justify-content: space-between;
+  min-width: 0; flex: 1;
+}
+/* La ligne d'identité : le voyant, le pseudo à la couleur de son GENRE,
+   l'âge et le pays poussés à droite, la croix au bout. */
+body.bureau-frutiz #fiche .fiche-nom-ligne {
+  display: flex; align-items: center; gap: 5px; height: 20px;
+}
+body.bureau-frutiz #fiche #fiche-pseudo {
+  font: 700 11px Verdana, Arial, sans-serif; color: #242169;
+}
+body.bureau-frutiz #fiche.elle #fiche-pseudo { color: #BB4A44; }
+body.bureau-frutiz #fiche .fiche-nom-ligne .meta {
+  margin-left: auto; font: 400 11px Verdana, Arial, sans-serif; color: #404040;
+  white-space: nowrap;
+}
+body.bureau-frutiz #fiche #fiche-fermer { flex: 0 0 auto; padding: 0 0 0 6px; }
+/* La rangée d'actions : les boutons blancs collés à GAUCHE (`x.align
+   "start"`), le bouton rose au BOUT (`x.align "end"`). Chacun porte le
+   contour de deux pixels que `butPush` dessine. */
+body.bureau-frutiz #fiche .fiche-actions {
+  display: flex; align-items: flex-start; gap: 6px; height: 22px;
+}
+body.bureau-frutiz #fiche .fiche-actions button {
+  width: 20px; height: 20px; padding: 0; border: 0; flex: 0 0 auto;
+  border-radius: 4px; box-shadow: 0 0 0 2px #DDDDDD; background: #FFFFFF;
+  cursor: pointer;
+}
+body.bureau-frutiz #fiche .fiche-actions button img { width: 18px; height: 18px; display: block; margin: 1px; }
+body.bureau-frutiz #fiche .fiche-actions #fiche-avance {
+  margin-left: auto; background: #F5A9A9;
+}
+/* LE BAS : la feuille verte (`frSheet`), collée sous le haut blanc. */
+body.bureau-frutiz #fiche .fiche-corps {
+  margin: 0; border: 0; border-radius: 0 0 5px 5px;
+  background: linear-gradient(to bottom, rgba(255,255,255,.55) 0, rgba(255,255,255,0) 8px), #CCF599;
+  box-shadow: inset 0 2px 0 #ADE76B, inset 0 -2px 0 #ADE76B,
+              inset 2px 0 0 #ADE76B, inset -2px 0 0 #ADE76B;
+  overflow: hidden;
+}
+/* LES ONGLETS : quatre colonnes ÉGALES de texte gras centré, séparées du
+   corps par le filet #ADE76B relevé en y 79-80. */
+body.bureau-frutiz #fiche .fiche-onglets {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  margin: 2px 2px 0; padding: 4px 0 3px; border: 0;
+  border-bottom: 2px solid #ADE76B; background: none;
+}
+body.bureau-frutiz #fiche .fiche-onglets button {
+  border: 0; background: none; cursor: pointer; padding: 2px 0;
+  font: 700 12px Verdana, Arial, sans-serif; color: #335511; text-align: center;
+  text-transform: lowercase;         /* `categoryList` : "frutiz", "perso"… */
+}
+body.bureau-frutiz #fiche .fiche-onglets button.actif { color: #842929; }
+body.bureau-frutiz #fiche .fiche-onglets button:hover { color: #E7756B; }
+/* LA PAGE : `getPageObj` la borne à 250 × 240 ; la fenêtre en fait 324, on
+   garde la hauteur et on laisse la largeur suivre. */
+body.bureau-frutiz #fiche .fiche-page {
+  height: 240px; padding: 8px 6px 6px; overflow-y: auto;
+  font: 400 11px Verdana, Arial, sans-serif; color: #335511;
+}
+body.bureau-frutiz #fiche .fiche-titre {
+  color: #335511; font-size: 12px; text-transform: lowercase;
+}
+body.bureau-frutiz #fiche .fiche-titre::before,
+body.bureau-frutiz #fiche .fiche-titre::after { background: #ADE76B; height: 2px; }
+body.bureau-frutiz #fiche .fiche-signes,
+body.bureau-frutiz #fiche .fiche-medailles { border-bottom: 2px solid #ADE76B; }
+body.bureau-frutiz #fiche .fiche-ligne { font-size: 11px; padding: 2px 0; }
+body.bureau-frutiz #fiche .fiche-ligne .lib,
+body.bureau-frutiz #fiche .fiche-ligne .val { color: #335511; }
+body.bureau-frutiz #fiche .fiche-jour { color: #335511; }
+body.bureau-frutiz #fiche .fiche-jour .pts { color: #5A7D33; }
+
 /* ── LA BOUTIQUE (`win.Shop`, `box.Shop`) ─────────────────────────────────
    `initFrameSet` monte la fenêtre en DEUX colonnes :
 

@@ -2782,6 +2782,9 @@
     // compteur « en ligne » de la frusion ne s'actualisait jamais.
     window.state = state;
     window.ouvrirFicheJoueur = ouvrirFiche;
+  // Ce que la fiche affiche en ce moment — le bureau y lit le GENRE, dont
+  // `UserSlot.onInfoBasic` tire la couleur du pseudo.
+  window.ficheDerniere = function () { return ficheEtat && ficheEtat.data; };
     // Et le ROUTEUR de rubriques : c'est lui que la Frusion appelle quand un
     // disque descend dans le tiroir — `frusionMng.launchDisc` puis
     // `FPSlotList.addSlot`, côté bureau d'époque.
@@ -5875,6 +5878,9 @@
     poserFicheDeployee(ficheDeployee());
     $("#fiche-backdrop").classList.add("show");
     renderFiche();
+    // Au bureau, `win.Frutiz` est une FENÊTRE : elle se pose en escalier et
+    // se glisse par son cadre, et rien ne s'assombrit derrière elle.
+    if (window.BureauFrutiz && BureauFrutiz.poserFiche) BureauFrutiz.poserFiche();
     fetch("/api/light/fiche?sid=" + encodeURIComponent(state.sid) + "&u=" + encodeURIComponent(p),
       { cache: "no-store" })
       .then(function (r) { return r.json(); })

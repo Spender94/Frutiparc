@@ -1980,6 +1980,96 @@ toujours une copie à l'envoi. Le renvoi (« Faire suivre ») n'existe pas côt�
 light. À l'inverse, le portage ajoute un « Retour » que les trois fenêtres
 d'époque n'avaient pas : elles se fermaient.
 
+## LA FICHE (`win.Frutiz` sprite#753 0x583ad, `FrutizInfo` 0x94ba0)
+
+`win.Frutiz extends WinStandard` : **une fenêtre**. Rien ne s'assombrit
+derrière elle, et `initInterface` la rend glissable par son cadre —
+
+```
+mcInterface.onPress = function() {
+  this._parent.box.activate(); this._parent.initDrag();
+}
+mcInterface.onRelease = mcInterface.onReleaseOutside = endDrag
+```
+
+### Le haut (fermée), `base = 42`
+
+```
+margin.top → up (type "h", marge x.min 12, y.min 5, y.ratio 1)
+  screenFrame   `frutiScreen`, style frSystem, fix { w: base+36, h: base }
+  mid (type "w", min 240)
+    info    `cpFrutizBasicInfo`, min 200 × 20      le pseudo, l'âge, la ville
+    icon (type "h", marge x.min 4, x.ratio 1)
+      left    `basicIconList` des boutons blancs, x.align "start"
+      right   `basicIconList` d'UN bouton : butPushSmallPink image 13,
+              outline 2, curve 4  → toggleAdvancedMode
+```
+
+`genIconList` bâtit les boutons de gauche depuis `box.iconList` — chacun est
+un `butPush` sur `butPushSmallWhite`, avec son image et son `tipId`.
+
+### Le bas (ouverte)
+
+```
+initAdvancedMode :
+  explorer = main.newElement({ link: "cpDocument", mainStyleName: "frSheet",
+                               flBackground: true, min: { w: 250, h: 244 },
+                               margin: { y.min 4, y.ratio 1 } })
+  explorer.displayWait() ; loadInfo("frutiz")
+exitAdvancedMode :
+  main.removeElement("explorer") ; pos.h = base
+```
+
+`getPageObj(cat)` compose la page sur `{ x:0, y:0, w:250, h:240 }`, et
+`getMenuLine` l'ouvre par les quatre catégories — du TEXTE, gras et centré,
+en style **1** sauf la courante qui prend **1 + 10 = 11**. `categoryList`
+vaut `["frutiz", "perso", "scores", "bonus"]`, en minuscules : c'est la clé
+elle-même qui s'affiche, et le titre de page aussi.
+
+`genDisplayInfo` donne les lignes :
+
+```
+frutiz : frutiJob · consécration ( %) · niveau · frutiAge ( mois) · inscription
+perso  : Prénom · Nom · Date de naissance · Activité · Pays · Région · Ville
+```
+
+### Le relevé 1:1 (scratchpad/fr-2-ouverte.png)
+
+Origine au trait sombre de la fenêtre, qui fait **324** de large.
+
+```
+y   2      #444444   le trait de la fenêtre
+y   3-4    #DDDDDD   ·   y 5..53   #FFFFFF   — le HAUT est blanc
+y   8..49            la plaque : 42 de haut, cerclée de #888888
+y  54-55   #DDDDDD   ·   56-57 #ADE76B   ·   58..65 le reflet blanc
+y  66..297 #CCF599   la chair de la feuille
+y  79-80   #ADE76B   le filet sous les onglets
+y 180-181, 277-278   les deux autres filets de la page
+x 315-316  #ADE76B   ·  317-318 #DDDDDD  ·  323 #444444
+```
+
+Les onglets tombent en quatre colonnes égales — centres relevés en 39, 119,
+199, 278 pour une largeur utile de 315.
+
+Les encres : le pseudo prend la couleur du **genre** (`UserSlot.onInfoBasic`
+— `2367849` = #242169 pour un garçon, `12272708` = #BB4A44 pour une fille),
+l'âge #404040, l'onglet courant #842929, les autres et tout le corps
+#335511.
+
+### Ce que le portage en fait
+
+Le mobile garde sa CARTE MODALE : sur un téléphone une fenêtre flottante n'a
+nulle part où flotter, et le voile y a un sens. Sur le bureau, tout le bloc
+est repris sous `body.bureau-frutiz` — le voile devient transparent et
+`pointer-events: none` (le bureau reste vivant derrière), la fiche se pose en
+escalier comme `openWin` le fait de ses fenêtres, et se glisse par son cadre.
+
+**Ce que le portage ne reprend pas.** `FrutizInfo` d'époque charge chaque
+catégorie à la demande (`weWant` / `state_int`), avec un `displayWait` le
+temps que le serveur réponde ; le light sert la fiche entière en un appel.
+Et la fiche d'époque s'empile dans les fenêtres du bureau (barre d'onglets
+comprise) : ici elle flotte, sans onglet à elle.
+
 ## POSER SUR LE BUREAU (`FPDesktop` sprite#883 0xb8cae, `cp.DragIconList`)
 
 Le bureau n'est pas un décor : c'est un **dossier**. `FPDesktop` s'abonne à
