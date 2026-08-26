@@ -2932,6 +2932,7 @@ window.BureauFrutiz = (function () {
       try { tuile.setPointerCapture(ev.pointerId); } catch (e) { /* vieux navigateur */ }
 
       var glisser = function (e2) {
+        if (e2.pointerId !== ev.pointerId) return;
         if (!bouge) {
           if (Math.abs(e2.clientX - departX) < 4 && Math.abs(e2.clientY - departY) < 4) return;
           bouge = true;
@@ -2947,6 +2948,11 @@ window.BureauFrutiz = (function () {
           }
           tuile.classList.add('posee', 'en-main');
           bureau.appendChild(tuile);
+          // REPOSER LA CAPTURE. Un élément qui change de parent est d'abord
+          // RETIRÉ du document, et le retrait libère la capture de pointeur :
+          // sans ce rappel, la tuile ne recevait plus rien après son premier
+          // pas et restait figée là, `en-main`, sans jamais se déposer.
+          try { tuile.setPointerCapture(ev.pointerId); } catch (e) { /* vieux navigateur */ }
         }
         // Le repère est relu à CHAQUE pas : le bureau bouge (la barre se
         // replie, la bande des contacts s'ouvre) et une boîte figée au départ
@@ -2957,9 +2963,10 @@ window.BureauFrutiz = (function () {
       };
 
       var lacher = function (e2) {
-        tuile.removeEventListener('pointermove', glisser);
-        tuile.removeEventListener('pointerup', lacher);
-        tuile.removeEventListener('pointercancel', lacher);
+        if (e2.pointerId !== ev.pointerId) return;
+        document.removeEventListener('pointermove', glisser);
+        document.removeEventListener('pointerup', lacher);
+        document.removeEventListener('pointercancel', lacher);
         try { tuile.releasePointerCapture(e2.pointerId); } catch (e) { /* déjà rendu */ }
         if (!bouge) return;                       // simple clic : la rubrique s'ouvre
         tuile.classList.remove('en-main');
@@ -2968,11 +2975,14 @@ window.BureauFrutiz = (function () {
         dernierGlisse = Date.now();
       };
 
-      // Sur la TUILE, pas sur le document : avec la capture, c'est elle qui
-      // reçoit tout, et les écouteurs partent avec elle si elle est retirée.
-      tuile.addEventListener('pointermove', glisser);
-      tuile.addEventListener('pointerup', lacher);
-      tuile.addEventListener('pointercancel', lacher);
+      // Sur le DOCUMENT, et la capture par-dessus : les deux se complètent.
+      // Capture posée, l'événement va à la tuile PUIS remonte jusqu'ici — on
+      // le voit. Capture perdue (le reparentage, une fenêtre qui passe
+      // dessous), le document le reçoit quand même. Écouter la tuile seule
+      // laissait le geste en plan dès qu'elle changeait de parent.
+      document.addEventListener('pointermove', glisser);
+      document.addEventListener('pointerup', lacher);
+      document.addEventListener('pointercancel', lacher);
     });
   }
 

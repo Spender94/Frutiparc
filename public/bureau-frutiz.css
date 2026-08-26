@@ -31,7 +31,16 @@
    les nomme sans ambiguïté : le champ du NIVEAU (DefineEditText #430) tire sur
    la fonte #428 « impact » en 11 px, et celui du RANG (#413) sur la fonte
    #412 « lcd » en 22 px. Ni Verdana ni afficheur à segments — d'où le chiffre
-   trapu et sans empattement au pied qu'on lit sur le rendu d'époque. */
+   trapu et sans empattement au pied qu'on lit sur le rendu d'époque.
+
+   TOUT CE QUI SUIT REPOSE SUR LEURS MÉTRIQUES. Les hauteurs de ligne et les
+   rattrapages du pixel plus bas sont calés sur l'ascendante déclarée par la
+   fonte (1033/1024 d'em pour « impact », 1024/1024 pour « lcd »). Ces valeurs
+   vivent dans DEUX tables — `hhea`, que lit FreeType (Linux), et `OS/2`, que
+   lisent Windows et macOS — et l'extraction n'en écrivait qu'une correctement :
+   la seconde était décalée de deux octets, si bien que les mêmes règles
+   donnaient un rendu juste ici et des chiffres remontés de trois pixels chez
+   les joueurs. Voir scripts/lib/table-os2.js et test/fontesSwf.test.js. */
 @font-face {
   font-family: 'ImpactSwf';
   src: url('/frutiz/fontes/impact.woff') format('woff');

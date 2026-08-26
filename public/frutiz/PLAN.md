@@ -417,6 +417,24 @@ bureau sous la barre et sa rangée d'onglets : recal borne les fenêtres LÀ.
   octets, et `HasTextColor` est le bit 0x04 du PREMIER — le lire dans le
   second fait manquer toutes les couleurs déclarées, ce qui m'a d'abord fait
   croire les libellés noirs par défaut.)
+- **La table `OS/2` des fontes extraites était fausse, et ça ne se voyait pas
+  ici.** Le champ `sFamilyClass` manquait — deux octets — si bien que tout ce
+  qui suit se lisait deux octets trop tôt : `usWinAscent` tombait sur la valeur
+  écrite pour `usWinDescent` (216 unités au lieu de 1033 pour « impact »), et
+  `fsSelection` sur l'index du premier caractère. Or un navigateur ne prend pas
+  ses métriques verticales au même endroit selon la plate-forme : **Linux
+  (FreeType) lit `hhea`**, qui était juste, **Windows et macOS lisent `OS/2`**,
+  qui ne l'était pas. D'où un encart parfait au banc d'essai et cassé chez les
+  joueurs — le numéro de niveau remontait au-dessus du sigle « NIV » et le rang,
+  écrit en 22 px, sortait par le haut de la plaque, que `overflow:hidden`
+  rognait : il n'en restait qu'un demi-chiffre. La table est désormais bâtie par
+  `scripts/lib/table-os2.js` (96 octets pile, `sTypo*` et `usWin*` accordés à
+  `hhea`, bit USE_TYPO_METRICS levé pour que tous les moteurs s'en tiennent aux
+  mêmes valeurs) ; `scripts/reparer-os2-fontes.js` a remis d'aplomb les vingt et
+  une fontes déjà livrées, et `test/fontesSwf.test.js` monte la garde.
+  (Leçon de méthode : quand un rendu est juste sur la machine qui l'audite et
+  faux ailleurs, la fonte est suspecte avant la CSS — c'est le seul endroit où
+  la même règle peut donner deux résultats.)
 - **Les ÉMOTIONS** (`initEmoteIconList` 0x6b6a4) : le gris autour d'une
   émotion n'est ni une plaque carrée ni un flou — c'est une **PASTILLE RONDE
   de 21 px en `#DDDDDD`** derrière le disque de 17, ce qui laisse 2 px de

@@ -29,6 +29,7 @@
 
 const fs = require('fs');
 const zlib = require('zlib');
+const { batirOs2 } = require('./lib/table-os2.js');
 
 // ── Lire le SWF ──────────────────────────────────────────────────────────────
 
@@ -321,20 +322,20 @@ function batirTtf(o) {
   maxp.u32(0x00010000).u16(n).u16(g.maxPoints).u16(g.maxContours)
     .u16(0).u16(0).u16(2).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0);
 
-  const os2 = new Plume();
-  os2.u16(4).i16(Math.round(chasseMax * 0.6)).u16(400).u16(5).u16(0);
-  for (let i = 0; i < 10; i++) os2.i16(0);
-  os2.brut(Buffer.from([2, 0, 5, 3, 0, 0, 0, 0, 0, 0]));   // panose
-  os2.u32(0x00000003).u32(0).u32(0).u32(0);
-  os2.mot('SWFX');
-  os2.u16(0x0040);                                          // fsSelection : REGULAR
-  const codes = glyphes.map((x) => x.code).filter((c) => c && c <= 0xffff).sort((a, b) => a - b);
-  os2.u16(codes[0] || 32).u16(codes[codes.length - 1] || 126);
-  os2.i16(hauteur).i16(profondeur).i16(interligne);
-  os2.u16(hauteur).u16(-profondeur);
-  os2.u32(0).u32(0);
-  os2.i16(Math.round(em * 0.5)).i16(Math.round(em * 0.7));
-  os2.u16(1).u16(32).u16(1).i16(0).i16(0).i16(0);
+  // `OS/2` : voir scripts/lib/table-os2.js. Elle était écrite ici à la main et
+  // il y manquait `sFamilyClass` — deux octets qui décalaient tout le reste, si
+  // bien que les navigateurs qui lisent leurs métriques dans OS/2 (Windows,
+  // macOS) prenaient `usWinDescent` pour `usWinAscent`. Sur ces machines les
+  // chiffres remontaient de plusieurs pixels et l'encart les rognait.
+  const os2 = batirOs2({
+    em,
+    ascent: hauteur,
+    descent: profondeur,
+    lineGap: interligne,
+    chasses: glyphes.map((x) => x.chasse),
+    codes: glyphes.map((x) => x.code),
+    boite: g.boite,
+  });
 
   const post = new Plume();
   post.u32(0x00030000).u32(0).i16(0).i16(0).u32(0).u32(0).u32(0).u32(0).u32(0);
@@ -353,7 +354,7 @@ function batirTtf(o) {
   glyphes.forEach((x, i) => { if (i > 0 && x.code && !corr.has(x.code)) corr.set(x.code, i); });
 
   const tbl = [
-    ['OS/2', os2.out()], ['cmap', cmap(corr)], ['glyf', Buffer.concat(g.morceaux)],
+    ['OS/2', os2], ['cmap', cmap(corr)], ['glyf', Buffer.concat(g.morceaux)],
     ['head', headB], ['hhea', hhea.out()], ['hmtx', hmtx.out()], ['loca', loca.out()],
     ['maxp', maxp.out()], ['name', noms], ['post', post.out()],
   ].sort((a, b) => (a[0] < b[0] ? -1 : 1));

@@ -3443,6 +3443,16 @@
     // net : il s'empare du pointeur dès le deuxième mouvement.
     grille.addEventListener("dragstart", function (ev) { ev.preventDefault(); });
     grille.addEventListener("pointerdown", function (ev) {
+      // SUR LE BUREAU, ce n'est pas ce geste-ci qui commande. Les icônes s'y
+      // POSENT où l'on veut (`FPDesktop` + `cp.DragIconList`, cf.
+      // `rendreIconesDeplacables`) au lieu de se réordonner en rangée, et les
+      // deux gestes se disputaient la même tuile : la grille reprenait la
+      // capture du pointeur — donc le bureau ne voyait plus ni le mouvement ni
+      // le lâcher —, `deplacer` réinsérait l'icône dans la rangée à chaque pas,
+      // et `tuile-partie` la laissait fantomatique à 28 % pendant que la
+      // rangée raccourcie faisait remonter le bas du bureau. Résultat : rien ne
+      // se déposait, et une bande de `body` apparaissait sous le fond d'écran.
+      if (window.BureauFrutiz && BureauFrutiz.actif && BureauFrutiz.actif()) return;
       if (ev.button != null && ev.button !== 0) return;
       var t = ev.target.closest && ev.target.closest(".home-tile");
       if (!t || t.parentNode !== grille) return;

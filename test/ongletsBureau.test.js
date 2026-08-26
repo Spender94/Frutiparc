@@ -215,12 +215,33 @@ test('le glisser d’une icône ne déclenche plus la sélection du navigateur',
   const bloc = JS.slice(debut, JS.indexOf('\n  }\n', JS.indexOf('pointercancel', debut)));
   // Sans preventDefault, tout le bureau vire au bleu pendant le geste.
   assert.match(bloc, /ev\.preventDefault\(\);/);
-  // La capture suit le pointeur partout, y compris hors de la page.
-  assert.match(bloc, /tuile\.setPointerCapture\(ev\.pointerId\)/);
-  assert.match(bloc, /tuile\.addEventListener\('pointermove', glisser\)/);
-  assert.match(bloc, /tuile\.addEventListener\('pointercancel', lacher\)/);
+  // La capture suit le pointeur partout, y compris hors de la page…
+  assert.match(bloc, /try \{ tuile\.setPointerCapture\(ev\.pointerId\); \}/);
+  // …mais elle est PERDUE au reparentage : passer la tuile du #home-grid au
+  // #bureau la retire un instant du document, et le retrait rend la capture.
+  // Sans ce second appel, la tuile ne recevait plus rien après son premier pas
+  // et restait collée au curseur, `en-main`, sans jamais se déposer.
+  assert.match(bloc, /bureau\.appendChild\(tuile\);\s*\n[\s\S]{0,400}?try \{ tuile\.setPointerCapture\(ev\.pointerId\); \}/);
+  // Et les écouteurs vivent sur le DOCUMENT, pas sur la tuile : capture posée,
+  // l'événement remonte jusque-là ; capture perdue, le document le reçoit
+  // quand même. Un `pointerId` étranger (deuxième doigt) est ignoré.
+  assert.match(bloc, /document\.addEventListener\('pointermove', glisser\);/);
+  assert.match(bloc, /document\.addEventListener\('pointerup', lacher\);/);
+  assert.match(bloc, /document\.addEventListener\('pointercancel', lacher\);/);
+  assert.doesNotMatch(bloc, /tuile\.addEventListener\('pointer/);
+  assert.match(bloc, /var glisser = function \(e2\) \{\s*\n\s*if \(e2\.pointerId !== ev\.pointerId\) return;/);
+  assert.match(bloc, /var lacher = function \(e2\) \{\s*\n\s*if \(e2\.pointerId !== ev\.pointerId\) return;/);
   // Le repère est relu à chaque pas : le bureau bouge sous la tuile.
   assert.match(bloc, /var app = bureau\.getBoundingClientRect\(\);\s*\n\s*tuile\.style\.left/);
+});
+
+test('sur le bureau, le rangement mobile des tuiles ne s’arme pas', () => {
+  // Deux gestes visaient la même tuile : celui du bureau (bureau-frutiz.js) et
+  // le rangement par appui long du mobile (light.html). Ce dernier volait la
+  // capture, réinsérait la tuile dans #home-grid à chaque pas et laissait la
+  // classe `tuile-partie` — l'icône restait fantomatique et la grille, en se
+  // rétrécissant, découvrait une bande de fond plus claire en bas du bureau.
+  assert.match(LIGHT, /if \(window\.BureauFrutiz && BureauFrutiz\.actif && BureauFrutiz\.actif\(\)\) return;/);
 });
 
 test('le journal : 9 px, et la date sur sa propre ligne', () => {
