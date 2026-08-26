@@ -2531,6 +2531,15 @@
     // de survol d'une bouille SANS aller redemander quoi que ce soit.
     infoByUser: {},
     jeuByUser: {}, // lowercased pseudo -> bouille state string "f"
+    // L'HUMEUR de chacun. `StatusMng.send` (0x33eb0) empile TROIS champs en
+    // base 62 dans le même attribut `s` — external, internal, ET emote — que
+    // le serveur reconstruit sur quatre caractères : `[ext][internal×2][emote]`.
+    // On ne lisait que le voyant de jeu ; l'humeur, quatrième caractère, était
+    // jetée. C'est elle qui doit peindre la bouille d'un salon.
+    humeurByUser: {},
+    // Le dernier `s` qu'on a envoyé pour SOI : on ne change qu'un champ à la
+    // fois, il faut donc garder les deux autres.
+    statutMien: "0000",
     overlayTimer: null,
     pen: "",           // selected feutre index ("" = default colour, "mc" = multicolore)
     ownedFeutres: [],  // feutres spéciaux possédés (ex. "mc") — profil serveur
@@ -2875,6 +2884,9 @@
           return {
             pseudo: n,
             bouille: state.bouilleByUser[n.toLowerCase()] || DEFAULT_BOUILLE,
+            // L'humeur voyage dans le quatrième caractère du statut : elle fait
+            // partie de la bouille au même titre que l'accessoire.
+            humeur: humeurDe(n),
             staff: !!(set[n] && set[n].staff),
           };
         });
@@ -3185,6 +3197,34 @@
       b.classList.toggle("active", Number(b.getAttribute("data-e")) === homeMood);
     });
     refreshHomeAvatar();
+    // ET ON LE DIT AUX AUTRES. `StatusMng.setEmote(eId)` (0x33e29) pose le
+    // champ puis appelle `send()`, qui empile les trois champs en base 62 et
+    // envoie `cmd("status", {s})` ; le serveur rediffuse une trace `<z>` à tous
+    // les salons où l'on est. Sans cet envoi, l'humeur restait dans le
+    // navigateur : elle changeait la bouille de la barre du haut et personne
+    // d'autre ne la voyait jamais.
+    envoyerMonStatut({ emote: homeMood });
+  }
+  /*
+   * Le statut tient sur QUATRE caractères — `[ext][internal×2][emote]`, ce que
+   * `getStatusCode` assemble côté serveur. On ne change qu'un champ à la fois,
+   * les autres se relisent donc dans le dernier `s` connu.
+   */
+  function envoyerMonStatut(champs) {
+    var s = String(state.statutMien || "0000");
+    while (s.length < 4) s += "0";
+    var ext = champs && champs.externe !== undefined
+      ? encode62(champs.externe, 1) : s.charAt(0);
+    var inter = champs && champs.interne !== undefined
+      ? encode62(champs.interne, 2) : s.substring(1, 3);
+    var em = champs && champs.emote !== undefined
+      ? encode62(champs.emote, 1) : s.charAt(3);
+    var neuf = ext + inter + em;
+    if (neuf === state.statutMien) return;
+    state.statutMien = neuf;
+    // `af`, le code de `status` sur le fil (CMD.status) — comme le reste du
+    // light, qui parle en codes courts et non en noms longs.
+    wsSend('<af s="' + neuf + '" />');
   }
   function renderHome() {
     // Le rangement du bureau est propre à chaque frutiz : on ne peut le poser
@@ -6962,7 +7002,13 @@
   function rememberBouille(pseudo, f) {
     if (!pseudo || !f) return;
     var clean = String(f).replace(/[^0-9A-Za-z]/g, "");
-    if (clean.length >= 4) state.bouilleByUser[String(pseudo).toLowerCase()] = clean;
+    if (clean.length < 4) return;
+    var cle = String(pseudo).toLowerCase();
+    var avant = state.bouilleByUser[cle];
+    state.bouilleByUser[cle] = clean;
+    // Un accessoire posé en cours de route arrive par la trace `<z>` : la
+    // colonne d'écrans du salon doit le voir sans qu'on ferme la fenêtre.
+    if (avant && avant !== clean) majBouillesPartout();
   }
 
   // ── LES INFOS DE BASE, telles que le bureau les lit ──────────────────────
@@ -7037,16 +7083,62 @@
     }
     return r;
   }
+  // Le miroir, pour écrire un statut : `FENumber.encode62(n, largeur)`.
+  function encode62(n, largeur) {
+    var v = Math.max(0, Math.floor(Number(n) || 0));
+    var s = "";
+    while (v > 0) { s = BASE62.charAt(v % 62) + s; v = Math.floor(v / 62); }
+    while (s.length < (largeur || 1)) s = "0" + s;
+    return s;
+  }
   function rememberStatut(pseudo, s) {
     if (!pseudo || s === null || s === undefined) return;
+    var cle = String(pseudo).toLowerCase();
     var interne = decode62(String(s).substring(1, 3));
-    var avant = state.jeuByUser[String(pseudo).toLowerCase()];
+    var avant = state.jeuByUser[cle];
     var jeu = VOYANTS_JEU[interne] || "";
-    state.jeuByUser[String(pseudo).toLowerCase()] = jeu;
+    state.jeuByUser[cle] = jeu;
     // Un voyant qui s'allume ou s'éteint se voit tout de suite dans la liste.
     if (avant !== jeu && drawerVue === "salon") renderUsers();
+    // ET L'HUMEUR, quatrième caractère. `getStatusCode` (server.js) assemble
+    // `encode62(ext,1) + encode62(internal,2) + encode62(emote,1)`, exactement
+    // comme `StatusMng.send` d'époque. Elle voyage donc avec chaque arrivée
+    // (`<v s=…>`), chaque liste de connectés (`<k>`) et chaque trace (`<z>`) —
+    // il suffisait de la lire.
+    var em = String(s).length > 3 ? decode62(String(s).substring(3, 4)) : 0;
+    if (!(em >= 0 && em <= 7)) em = 0;
+    var avantEm = state.humeurByUser[cle] || 0;
+    state.humeurByUser[cle] = em;
+    if (avantEm !== em) majBouillesPartout();
+    // Quand c'est MOI que le serveur décrit, on retient le statut entier : le
+    // prochain changement d'humeur ne doit pas effacer le voyant du jeu en
+    // cours, qui vit dans les deux caractères du milieu.
+    if (cle === state.userLower) {
+      var mien = String(s).replace(/[^0-9A-Za-z]/g, "").substring(0, 4);
+      if (mien.length === 4) state.statutMien = mien;
+    }
   }
   function voyantDe(pseudo) { return state.jeuByUser[String(pseudo).toLowerCase()] || ""; }
+  function humeurDe(pseudo) { return state.humeurByUser[String(pseudo).toLowerCase()] || 0; }
+
+  /*
+   * LA BOUILLE D'UN SALON DOIT SUIVRE SON PROPRIÉTAIRE.
+   *
+   * Une fenêtre de discussion montrait la bouille telle qu'elle était au moment
+   * où l'on y était entré : le cache (`bouilleByUser`, `humeurByUser`) se
+   * tenait à jour, mais personne ne prévenait la colonne d'écrans. Un accessoire
+   * mis en cours de route, une humeur changée — rien ne bougeait avant de
+   * fermer et rouvrir la fenêtre.
+   *
+   * Les trois trames qui portent un changement (`<z>` la trace, `<v>` l'arrivée,
+   * `<k>` la liste) passent toutes par `rememberBouille`/`rememberStatut` : on
+   * redemande le rafraîchissement depuis là.
+   */
+  function majBouillesPartout() {
+    if (window.BureauFrutiz && BureauFrutiz.majBouilles) BureauFrutiz.majBouilles();
+    // Sur le mobile, la bouille de la barre du haut est la mienne.
+    if (typeof refreshHomeAvatar === "function") refreshHomeAvatar();
+  }
 
   // Emote detection — IDENTICAL to the desktop. Source of truth:
   //   _global.actionInfo (FAMILLE 0) in frutiparc/global.as : token → emote id

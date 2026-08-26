@@ -151,7 +151,9 @@
     var b = posees.get(c);
     if (b && M.familleDe(s) === M.familleDe(avant)) {
       b.definir(s);
-      if (e) b.humeur(e);
+      // `humeur(0)` est le visage NEUTRE, pas « pas d'humeur » : le tester
+      // interdisait tout retour au calme — une bouille fâchée le restait.
+      b.humeur(e);
       return b;
     }
     oublier(c);

@@ -2133,7 +2133,8 @@ window.BureauFrutiz = (function () {
       b.style.left = (-ec.clientWidth) + 'px';   // hors champ, à gauche
       ec.appendChild(b);                         // AVANT le tirage : cf. le quirk
       b.style.top = Math.round(hauteurLibre(ec, cote)) + 'px';
-      poserBouille(b, bouilleDe(pseudo, panneau), pseudo);
+      var m = membreDe(pseudo, panneau);
+      poserBouille(b, m && m.bouille, pseudo, m && m.humeur);
       void b.offsetWidth;                        // que le départ soit enregistré
     }
     b.style.left = '0px';
@@ -2167,29 +2168,46 @@ window.BureauFrutiz = (function () {
   }
 
   function bouilleDe(pseudo, panneau) {
+    var g = membreDe(pseudo, panneau);
+    return g ? g.bouille : null;
+  }
+  function membreDe(pseudo, panneau) {
     var gens = membresDuPanneau(panneau);
     var cle = String(pseudo).toLowerCase();
     for (var i = 0; i < gens.length; i++) {
-      if (String(gens[i].pseudo).toLowerCase() === cle) return gens[i].bouille;
+      if (String(gens[i].pseudo).toLowerCase() === cle) return gens[i];
     }
     return null;
   }
 
-  // On ne refait la vignette que si la bouille a changé : sinon elle
+  // On ne refait la vignette que si quelque chose a changé : sinon elle
   // clignoterait à chaque relevé des connectés.
+  //
+  // « Quelque chose », c'est la CHAÎNE (accessoire, couleurs, coupe) ET
+  // L'HUMEUR — les deux voyagent avec chaque trace `<z>`, et la fenêtre montrait
+  // jusqu'ici l'état figé au moment où l'on y était entré. Quand seule l'humeur
+  // bouge, `rafraichir` suffit : l'arbre est déjà monté, on ne recharge rien.
+  //
   // Le pseudo ne va PAS dans `title` : l'infobulle du navigateur ferait
   // doublon — et concurrence — avec celle du SWF, qu'on refait ici.
-  function poserBouille(ecran, bouille, pseudo) {
+  function poserBouille(ecran, bouille, pseudo, humeur) {
     if (pseudo) ecran.setAttribute('data-nom', pseudo);
-    if (!bouille || ecran.getAttribute('data-bouille') === bouille) return;
+    if (!bouille) return;
+    var em = String(Number(humeur) || 0);
+    var memeEtat = ecran.getAttribute('data-bouille') === bouille;
+    var memeHumeur = ecran.getAttribute('data-humeur') === em;
+    if (memeEtat && memeHumeur) return;
     ecran.setAttribute('data-bouille', bouille);
+    ecran.setAttribute('data-humeur', em);
+    var toile = ecran.querySelector('canvas.fp-bvig');
+    if (memeEtat && toile) { FPBouilleVignette.rafraichir(toile, bouille, Number(em)); return; }
     var vieux = ecran.querySelector('img, canvas.fp-bvig');
     if (vieux) vieux.remove();
     // Le moteur JS dessine sur fond TRANSPARENT : c'est le dégradé de l'écran
     // qui se voit derrière la bouille. (Le cache PNG peignait la capture sur le
     // vert plat des cartes du forum, d'où le `detourer` qu'il fallait lui
     // demander — plus rien à détourer ici.)
-    ecran.insertAdjacentHTML('afterbegin', FPBouilleVignette.html(bouille));
+    ecran.insertAdjacentHTML('afterbegin', FPBouilleVignette.html(bouille, { humeur: Number(em) }));
     FPBouilleVignette.brancher(ecran);
   }
   // `CSS.escape` n'est pas partout ; un pseudo n'a de toute façon que des
@@ -2260,7 +2278,7 @@ window.BureauFrutiz = (function () {
         ecran.setAttribute('data-qui', cle);
         col.appendChild(ecran);
       }
-      poserBouille(ecran, g.bouille, g.pseudo);
+      poserBouille(ecran, g.bouille, g.pseudo, g.humeur);
     });
     // Qui a quitté le salon perd son écran — sauf s'il est en train de jouer
     // une émotion : la scène du light y est logée, on ne l'arrache pas.

@@ -398,6 +398,36 @@
       },
       // endAnim() du SWF remonte à _parent (le porteur, absent ici).
       endAnim: function () { if (moteur.surFinAnim) moteur.surFinAnim(); },
+      /*
+       * applyColor(mc) — la fonction du script racine (offset 1012 du SWF de
+       * famille) :
+       *
+       *     FEMC.setColor(mc, generalPalette[faceColor])
+       *
+       * Elle manquait, et c'est elle qui tient tout l'édifice. `apply(s)` ne
+       * teinte QU'UNE FOIS, en parcourant l'arbre tel qu'il est à cet instant.
+       * Or une pellicule qui change d'image remplace ses pièces : Flash ne
+       * garde un enfant que s'il retrouve sa PROFONDEUR avec le MÊME caractère
+       * (`Clip.poser` applique la même règle). Dès que la bouche changeait de
+       * dessin — une humeur, une animation —, la nouvelle pièce arrivait
+       * VIERGE et la bouche perdait sa couleur.
+       *
+       * L'époque ne rattrape pas le coup après coup : chaque pièce colorée
+       * porte, sur SA propre image 1, un script de soixante et onze octets qui
+       * rappelle la teinte elle-même —
+       *
+       *     _parent._parent._parent._parent.applyColor(this.col)
+       *
+       * soit, depuis `face.b.b.col`, quatre crans jusqu'à la racine. Trente-six
+       * pièces le font dans famille0.swf. La teinte revient donc au moment même
+       * où la pièce naît, et `Clip.poser` joue déjà le script d'image 1 des
+       * clips qu'il vient de créer : il suffisait que la racine sache répondre.
+       */
+      applyColor: function (mc) {
+        if (!mc) return undefined;
+        mc.teinte = PALETTE[this.faceColor] || PALETTE[0];
+        return undefined;
+      },
       playAnim: function (id) { moteur.jouerAnim(id); },
       applyEmote: function (id) { moteur.humeur(id); },
       emote: function () { moteur.appliquerHumeur(); },
@@ -449,6 +479,10 @@
     this.racine.s = s;
     this.etat = { eyeId, eyeSc, hairId, mouthId, faceColor, secondColor,
       accId, accSecId, accColor1, accColor2, accColor3, famille: n(0) };
+    // `apply(s)` du SWF pose ces douze valeurs en VARIABLES DE RACINE — c'est
+    // là que `applyColor` va chercher `faceColor` quand une pièce se recolore
+    // toute seule. Sans elles, la fonction rendait la palette 0 à tout le monde.
+    Object.assign(this.racine, this.etat);
 
     const ca = face.enfantNomme('ca'), cb = face.enfantNomme('cb');
     const oa = face.enfantNomme('oa'), ob = face.enfantNomme('ob');

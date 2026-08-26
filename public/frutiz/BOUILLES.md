@@ -203,6 +203,60 @@ et **oublie `cb.c.acc2`**. Le second accessoire de l'arrière-plan reste donc su
 sa première image. On ne corrige pas : c'est le rendu d'époque, et un test veille
 à ce que personne ne « répare » la ligne manquante.
 
+## 5 bis. `applyColor` : la teinte que chaque pièce se rappelle
+
+`apply(s)` ne teinte **qu'une fois**, en parcourant l'arbre tel qu'il est à cet
+instant. Or une pellicule qui change d'image REMPLACE ses pièces : Flash ne garde
+un enfant que s'il retrouve sa PROFONDEUR avec le MÊME caractère (`Clip.poser`
+applique la même règle). Dès que la bouche changeait de dessin — une humeur, une
+animation —, la nouvelle pièce arrivait vierge et la bouche perdait sa couleur.
+
+L'époque ne rattrape pas le coup après coup : chaque pièce colorée porte sur SA
+propre image 1 un script de **soixante et onze octets** qui rappelle la teinte
+lui-même —
+
+```
+constantPool ("col", "_parent", "applyColor")
+push "col" ; getVariable                      ← this.col
+push 1, "_parent" ; getVariable
+push "_parent" ; getMember  ×3                ← quatre crans jusqu'à la racine
+push "applyColor" ; callMethod
+```
+
+soit `_parent._parent._parent._parent.applyColor(this.col)` — depuis
+`face.b.b.col`, exactement la racine. **Trente-six pièces** le font dans
+`famille0.swf`. Et `applyColor(mc)` (offset 1012 du script racine) n'est qu'une
+ligne :
+
+```
+FEMC.setColor(mc, generalPalette[faceColor])
+```
+
+Le portage jouait déjà ces scripts — `Clip.poser` exécute l'image 1 des clips
+qu'il vient de créer — mais la racine ne savait pas répondre à `applyColor`, et
+`apply(s)` ne posait pas ses douze valeurs en variables de racine. Les deux sont
+là désormais ; `test/bouilleVivante.test.js` vérifie que la bouche garde sa
+couleur sur les huit humeurs, et qu'elle la perd si l'on débranche la fonction.
+
+(Au passage : `humeur(0)` est le visage NEUTRE, pas « pas d'humeur ». La vignette
+testait `if (e) b.humeur(e)`, ce qui interdisait tout retour au calme — une
+bouille fâchée le restait.)
+
+## 5 ter. L'humeur voyage dans le STATUT
+
+`StatusMng.send` (main.swf, 0x33eb0) empile trois champs en base 62 dans le même
+attribut `s` — `external`, `internal`, **`emote`** — que le serveur reconstruit
+sur quatre caractères : `[ext][internal×2][emote]`. Le light n'en lisait que les
+deux du milieu (le voyant de jeu) ; l'humeur, quatrième caractère, était jetée.
+D'où une bouille de salon figée dans l'état où elle était au moment où l'on
+entrait dans la fenêtre — accessoire compris, car personne ne prévenait la
+colonne d'écrans quand la trace `<z>` apportait une nouvelle chaîne.
+
+Désormais : `rememberStatut` décode l'humeur, `setHomeMood` la renvoie au serveur
+(`<af s=…>`, le code de `status`), et tout changement de chaîne ou d'humeur
+rafraîchit les fenêtres ouvertes. Quand seule l'humeur bouge, `rafraichir`
+suffit : l'arbre est déjà monté, on ne recharge pas le SWF de famille.
+
 ## 6. Un défaut du chemin Flash actuel (familles 10 et 11)
 
 `scripts/patch-famille.js` greffe dans chaque `famille<N>.swf` le nécessaire pour
