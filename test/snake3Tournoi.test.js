@@ -370,6 +370,7 @@ after(async () => {
     fs.writeFileSync(fichier, JSON.stringify(d));
   } catch { /* rien à nettoyer */ }
   try { fs.unlinkSync(path.join(RACINE, 'data/snake3-tournoi.json')); } catch { /* absent */ }
+  try { fs.unlinkSync(path.join(RACINE, 'data/snake3-tournoi-editions.json')); } catch { /* absent */ }
 });
 
 const admin = (chemin, corps) => fetch(BASE + '/api/admin/snake3-tournoi' + chemin, {
@@ -492,6 +493,55 @@ test('le classement dédié : visible au Club, masquable, vidable', async () => 
   assert.ok(!livre || !livre.scores.length, 'le livre ne montre plus personne');
 });
 
+test('le meilleur score est retenu — y compris après un changement de carte', async () => {
+  // Le bug signalé : « seul le premier score semble s'enregistrer ». Le
+  // serveur gardait bien le meilleur… d'une carte que plus personne ne jouait.
+  // Un record posé sur la graine A refusait ensuite tout score de la graine B
+  // qui lui était inférieur — persistScore comparait deux cartes différentes.
+  const sid = await sidFor(joueur('meilleur'));
+  await admin('/generer', { graine: 'best1-' + RUN });
+  await admin('/ouvrir');
+  let r = await (await posterScore(sid, 300, 'best1-' + RUN)).json();
+  assert.ok(r.updated && r.newScore === 300);
+  r = await (await posterScore(sid, 120, 'best1-' + RUN)).json();
+  assert.strictEqual(r.updated, false, 'sur la MÊME carte, seul le meilleur reste');
+  assert.strictEqual(r.newScore, 300);
+
+  // Nouvelle graine = nouvelle édition : le tableau repart à zéro, et le
+  // palmarès de l'édition close est archivé (rien ne se perd).
+  const regen = await admin('/generer', { graine: 'best2-' + RUN });
+  assert.strictEqual(regen.vides, 1, 'le score de l\'édition précédente quitte le tableau');
+  assert.strictEqual((await adminEtat()).inscrits, 0, 'plus personne au classement');
+  const editions = JSON.parse(fs.readFileSync(
+    path.join(RACINE, 'data/snake3-tournoi-editions.json'), 'utf8'));
+  const close = editions.find((e) => e.graine === 'best1-' + RUN);
+  assert.ok(close, 'l\'édition close est archivée');
+  assert.ok(close.classement.some((l) => l.u === joueur('meilleur').toLowerCase() && l.score === 300));
+
+  // Et sur la nouvelle carte, les scores entrent de nouveau — du plus petit
+  // au plus grand, sans que le 300 de l'autre carte ne fasse barrage.
+  await admin('/ouvrir');
+  r = await (await posterScore(sid, 100, 'best2-' + RUN)).json();
+  assert.ok(r.updated, 'le premier score de la nouvelle carte passe');
+  assert.strictEqual(r.newScore, 100);
+  r = await (await posterScore(sid, 150, 'best2-' + RUN)).json();
+  assert.ok(r.updated, 'un meilleur score passe');
+  assert.strictEqual(r.oldScore, 100);
+  r = await (await posterScore(sid, 90, 'best2-' + RUN)).json();
+  assert.strictEqual(r.updated, false, 'un moins bon ne passe pas');
+  assert.strictEqual(r.newScore, 150);
+  const livre = await livreDesRecords();
+  assert.ok(livre.scores.some((s) => s.user === joueur('meilleur') && s.score === 150),
+    'le livre des records ne montre que l\'édition en cours');
+
+  // Regénérer sous la MÊME graine ne touche à rien : ce n'est pas une
+  // nouvelle édition, seulement une carte recalculée à l'identique.
+  const memeGraine = await admin('/generer', { graine: 'best2-' + RUN });
+  assert.strictEqual(memeGraine.vides, 0);
+  assert.strictEqual((await adminEtat()).inscrits, 1, 'le classement est intact');
+  await admin('/vider');
+});
+
 test('regénérer remplace la carte et FERME le mode (jamais sous les joueurs)', async () => {
   await admin('/generer', { graine: 'a-' + RUN });
   await admin('/ouvrir');
@@ -548,14 +598,58 @@ test('l\'admin impose des exigences : garanties, validées, persistées', async 
 
 test('le classement est PERMANENT : hors du balayage quotidien des challenges', async () => {
   const src = fs.readFileSync(path.join(RACINE, 'server.js'), 'utf8');
-  // La remise à zéro nocturne se nourrit de LEGACY_RANKINGS section C —
-  // snake3_tournoi ne doit pas y paraître.
-  assert.ok(!/internal: 'snake3_tournoi'/.test(src),
-    'pas de descripteur legacy : pas de remise à zéro quotidienne ni de médailles');
+  // La remise à zéro nocturne se nourrit de LEGACY_RANKINGS section C. Le
+  // tournoi A un descripteur legacy (son onglet du tableau des scores) mais en
+  // section 'L' — c'est ce qui le tient hors du balayage et des médailles.
+  const ligne = src.split('\n').find((l) => /internal: 'snake3_tournoi'/.test(l));
+  assert.ok(ligne, 'le tournoi a bien un descripteur legacy (son onglet)');
+  assert.ok(/section: 'L'/.test(ligne),
+    'section L : ni remise à zéro quotidienne, ni médailles du jour');
   // Et type 'C' dans RANKINGS : une coupe « Maître ÈS … » peut s'y adosser.
   const jeux = await (await fetch(BASE + '/api/admin/tournament-games', {
     headers: { 'x-admin-key': CLE },
   })).json();
   assert.ok(jeux.some((g) => g.ranking_id === 'snake3_tournoi'),
     'éligible aux coupes « Maître ÈS … »');
+});
+
+test('le tournoi a son onglet au tableau des scores — bureau ET light', async () => {
+  const sid = await sidFor(joueur('tableau'));
+  await admin('/generer', { graine: 'tab-' + RUN });
+  await admin('/ouvrir');
+  assert.ok((await (await posterScore(sid, 4242, 'tab-' + RUN)).json()).updated);
+
+  // Le light : section « Championnat », classement permanent, ma place donnée.
+  const lireLight = async () => {
+    const j = await (await fetch(
+      `${BASE}/api/light/challenge?sid=${encodeURIComponent(sid)}`)).json();
+    return (j.games || []).find((g) => g.id === 'snake3_tournoi');
+  };
+  let onglet = await lireLight();
+  assert.ok(onglet, 'le tournoi est servi au tableau des scores du light');
+  assert.strictEqual(onglet.section, 'L');
+  assert.strictEqual(onglet.allTime, true, 'permanent : ni « aujourd\'hui » ni podium');
+  assert.strictEqual(onglet.game, 'snake3', 'la jaquette du serpent');
+  assert.ok(onglet.scores.some((s) => s.user === joueur('tableau') && s.score === 4242));
+  assert.ok(onglet.me && onglet.me.pos >= 1, 'ma place est donnée');
+
+  // Le bureau : le descripteur qu'envoie listRankings — section L, gabarit
+  // gs='1' (un score seul) et l'étiquette de jeu 'snake3'.
+  const ligne = fs.readFileSync(path.join(RACINE, 'server.js'), 'utf8')
+    .split('\n').find((l) => /internal: 'snake3_tournoi'/.test(l));
+  assert.ok(ligne, 'descripteur legacy présent');
+  const champ = (nom) => (new RegExp(nom + ": '([^']*)'").exec(ligne) || [])[1];
+  assert.deepStrictEqual([champ('section'), champ('gs'), champ('g'), champ('ty')],
+    ['L', '1', 'snake3', 'point']);
+  // Bureau et light nomment l'onglet pareil (le light lit rn).
+  assert.strictEqual(onglet.name, champ('rn'));
+
+  // L'interrupteur d'admin le retire des DEUX tableaux, comme du livre du Club.
+  assert.ok((await admin('/classement', { visible: false })).ok);
+  assert.strictEqual(await lireLight(), undefined, 'masqué : plus d\'onglet au light');
+  assert.ok((await admin('/classement', { visible: true })).ok);
+  onglet = await lireLight();
+  assert.ok(onglet, 'rallumé : l\'onglet revient');
+  await admin('/vider');
+  await admin('/fermer');
 });

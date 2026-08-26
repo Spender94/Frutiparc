@@ -98,8 +98,13 @@ test('la liste des classements est celle du bureau : ordre, libellés, sections'
     // Les deux Concours n'ont PLUS d'onglet : ils encombraient le tableau pour
     // deux records qui bougent peu — ils se consultent au livre des records du
     // Club (/api/club/records), où RANKINGS les garde.
-    'Class. kikooz', 'Classement XP', 'Class. consécration',
-  ], 'la section Championnat, XP et consécration comprises — sans les Concours');
+    // L'ordre est celui du bureau : kikooz (rk '9'), le CHAMPIONNAT de
+    // Frutibandas (rk '7' — le light n'en servait pas, sa section était donc
+    // amputée d'une ligne), le TOURNOI de Frutisnake (rk '16'), puis les deux
+    // classements « joueur » que main.swf ajoute lui-même à la liste reçue.
+    'Class. kikooz', 'Frutibandas', 'Snake tournoi',
+    'Classement XP', 'Class. consécration',
+  ], 'la section Championnat : la même que celle du bureau, sans les Concours');
 
   // Les libellés viennent bien du descriptif du bureau, pas d'une table à part.
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');

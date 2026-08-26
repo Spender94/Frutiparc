@@ -797,16 +797,25 @@ class Croix {
 }
 
 // ── 31. Sonnette — une cloche au bout de la queue, qui gobe au passage ────
+// Sonnette.as attache le clip `sonnette` sur PLAN_DUMMIES à la prise
+// (`s_mc = game.dmanager.attach(...)`), le replace et l'oriente à CHAQUE image,
+// et le retire à la fermeture. La cloche est donc VISIBLE en permanence, pendue
+// au bout de la queue — ce n'est pas un effet fugace au coup de sonnette.
+// On tient ici le même objet, sous le même nom de rôle : game.sonnetteMc, que
+// la vue dessine telle quelle (game.js).
 class Sonnette extends Slot {
   constructor(game) {
     super(game, 45);
     this.balance = 0;                 // > 0 : l'animation du coup joue
-    this.cloche = { x: 0, y: 0, ang: 0 };
+    // Le pendant de s_mc : { x, y, ang (radians), frame }. Image 1 au repos,
+    // image 2 pendant le coup (le clip y superpose son fantôme à 50 %).
+    game.sonnetteMc = { x: 0, y: 0, ang: 0, frame: 1 };
     this.permanent(1, 0);
     game.sonnette_active = true;
   }
 
   close() {
+    this.game.sonnetteMc = null;      // s_mc.removeMovieClip()
     super.close();
   }
 
@@ -828,16 +837,19 @@ class Sonnette extends Slot {
       p2 = s.end_queue_pos(delta++);
     } while (p1 === p2 && delta < 100);
 
+    // Flash pose `_rotation = ang * 180 / Math.PI` ; le rendu du portage
+    // travaille en radians — c'est le même angle.
     const ang = Math.atan2(p1.y - p2.y, p1.x - p2.x);
-    this.cloche = { x: p1.x, y: p1.y, ang: ang * 180 / Math.PI };
+    const mc = game.sonnetteMc;
+    if (mc) { mc.x = p1.x; mc.y = p1.y; mc.ang = ang; }
 
     if (this.balance > 0) this.balance -= deltaT;
 
     if (this.balance <= 0 && game.entree.espace) {
       this.balance = 0.6;             // la durée du coup de cloche du clip
       game.evenement('son', { nom: 'sonnette' });
-      game.evenement('sonnetteSonne', { x: p1.x, y: p1.y });
     }
+    if (mc) mc.frame = this.balance > 0 ? 2 : 1;
 
     // La cloche mange ce qu'elle touche — en permanence, coup ou pas : c'est
     // `get_fruit(s_mc)` à chaque image dans le fichier d'origine.

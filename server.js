@@ -1539,6 +1539,18 @@ const LEGACY_RANKINGS = [
   // Grapiz garde son rk '8' à vide : son mode championnat n'est pas ouvert.
   { rk: '7', internal: 'bandas_champion',   ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   { rk: '8', internal: null,                ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
+  // Le TOURNOI de Frutisnake : le classement de la carte partagée. Il n'avait
+  // d'onglet nulle part — on le lisait seulement au livre des records du Club,
+  // alors que c'est un tableau de compétition, celui qu'on vient consulter.
+  // Section 'L' (Championnat) et non 'C' : la section C EST la liste de la
+  // remise à zéro quotidienne (DAILY_RESET_RANKING_SET), or le tournoi est
+  // PERMANENT — c'est le bouton « Vider » de l'admin qui fait place nette entre
+  // deux éditions, pas la nuit. C'est la même convention que les deux Contests
+  // (cf. la note plus haut). gs='1' : le gabarit de Frutisnake, un score seul
+  // sans colonne annexe (la graine voyage dans la donnée mais ne s'affiche
+  // pas). g='snake3' : fileIcon.swf donne déjà la jaquette du serpent.
+  // rk '16' — 10/11/12 restent réservés aux onglets décrits plus haut.
+  { rk: '16', internal: 'snake3_tournoi',   ty: 'point',       rn: 'Snake tournoi', gs: '1', g: 'snake3', section: 'L' },
 ];
 // Classement « joueur » Kikooz : id virtuel (n'est PAS dans RANKINGS pour ne pas
 // polluer les itérations — livre des records web, etc.). isLowerBetter/
@@ -2000,6 +2012,10 @@ function formatRankingExtraData(rankingId, rawData, scoreHint) {
   // bureau affiche ce classement sur le gabarit gs='1' (Frutisnake, sans
   // colonne annexe) : on n'envoie rien plutôt qu'un chiffre orphelin.
   if (rankingId === 'minifever_arcade') return '';
+  // Tournoi Frutisnake : la donnée stockée est la GRAINE de la carte (« graine:… »).
+  // Elle sert au serveur (savoir sur quelle carte un record a été fait), pas au
+  // joueur — et le gabarit gs='1' n'a de toute façon pas de colonne annexe.
+  if (rankingId === 'snake3_tournoi') return '';
   if (!raw) {
     if (rankingId.startsWith('bkiwi_track')) return 'Skiwix:5:1:';
     if (rankingId === 'swapou2_classic' || rankingId === 'swapou2_challenge') return 'S0:';
@@ -14487,6 +14503,16 @@ async function snake3Tournoi() {
   return snake3TournoiEtat;
 }
 
+/**
+ * L'interrupteur « classement » de l'admin, lisible SANS attendre : les lectures
+ * synchrones (listRankings du tableau des scores, fiches) n'ont pas de point
+ * d'await. L'état est chargé au démarrage (cf. l'appel à snake3Tournoi() plus
+ * bas) ; tant qu'il ne l'est pas, on montre — c'est la valeur par défaut.
+ */
+function snake3TournoiClassementVisible() {
+  return !snake3TournoiEtat || snake3TournoiEtat.classement !== false;
+}
+
 function snake3TournoiEcrireDisque(e) {
   try {
     if (!fs.existsSync(SCORES_DIR)) fs.mkdirSync(SCORES_DIR, { recursive: true });
@@ -14518,6 +14544,115 @@ app.get('/api/snake3/tournoi', async (req, res) => {
   });
 });
 
+// ── Le classement SUIT LA CARTE ─────────────────────────────────────────────
+// La graine voyage dans la donnée du score (« graine:<g> ») : on sait toujours
+// sur QUELLE carte un record a été fait. Deux conséquences, et c'est tout le
+// sens de ce qui suit.
+//
+//   • Un record posé sur une carte REMPLACÉE n'appartient plus au classement en
+//     cours. Le laisser en place bloquait TOUT : persistScore ne garde que le
+//     meilleur, et un vieux 300 fait sur une autre carte refusait le 100 puis
+//     le 150 de la nouvelle. C'est le « seul le premier score s'enregistre »
+//     signalé — le serveur gardait bien le meilleur, mais le meilleur d'une
+//     carte que plus personne ne jouait. On traite donc une telle entrée comme
+//     ABSENTE : le score de la carte courante s'écrit par-dessus.
+//   • Regénérer sous une NOUVELLE graine, c'est ouvrir une nouvelle édition :
+//     le classement repart à zéro (sinon le tableau mélange deux cartes). Rien
+//     n'est perdu pour autant — le palmarès de l'édition qui s'achève est rangé
+//     dans data/snake3-tournoi-editions.json.
+const SNAKE3_TOURNOI_EDITIONS_FILE = path.join(SCORES_DIR, 'snake3-tournoi-editions.json');
+const SNAKE3_TOURNOI_EDITIONS_MAX = 50;   // on garde les 50 dernières éditions
+
+/** La graine sur laquelle un score du tournoi a été fait ('' si non étiqueté). */
+function snake3TournoiGraineDuScore(entree) {
+  const d = (entree && entree.data !== undefined && entree.data !== null) ? String(entree.data) : '';
+  const m = /^graine:([\s\S]*)$/.exec(d);
+  return m ? m[1] : '';
+}
+
+/** Le classement du tournoi tel qu'il vit en mémoire, trié, tous scores confondus. */
+function snake3TournoiClassementVif() {
+  const lignes = [];
+  for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+    const e = rlist && rlist.snake3_tournoi;
+    if (!e || !Number.isFinite(Number(e.score))) continue;
+    lignes.push({ u, score: Number(e.score), graine: snake3TournoiGraineDuScore(e),
+      updatedAt: e.updatedAt || '' });
+  }
+  lignes.sort((a, b) => b.score - a.score);
+  return lignes;
+}
+
+/** Le palmarès d'une édition, rangé sur le disque avant que le tableau reparte à zéro. */
+function snake3TournoiArchiverEdition(graine, lignes) {
+  if (!lignes.length) return;
+  try {
+    if (!fs.existsSync(SCORES_DIR)) fs.mkdirSync(SCORES_DIR, { recursive: true });
+    let editions = [];
+    if (fs.existsSync(SNAKE3_TOURNOI_EDITIONS_FILE)) {
+      const lu = JSON.parse(fs.readFileSync(SNAKE3_TOURNOI_EDITIONS_FILE, 'utf8'));
+      if (Array.isArray(lu)) editions = lu;
+    }
+    editions.unshift({
+      graine, close: new Date().toISOString(),
+      classement: lignes.map((l) => ({ u: l.u, score: l.score, updatedAt: l.updatedAt })),
+    });
+    if (editions.length > SNAKE3_TOURNOI_EDITIONS_MAX) editions.length = SNAKE3_TOURNOI_EDITIONS_MAX;
+    const tmp = SNAKE3_TOURNOI_EDITIONS_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(editions), 'utf8');
+    fs.renameSync(tmp, SNAKE3_TOURNOI_EDITIONS_FILE);
+  } catch (e) { console.error('[SNAKE3 TOURNOI] archive d\'édition:', e.message); }
+}
+
+/** Retire du classement l'entrée d'un joueur (mémoire, fichier, base). */
+function snake3TournoiRetirer(u) {
+  const ud = scoresData.users[u];
+  if (!ud || ud.snake3_tournoi === undefined) return false;
+  delete ud.snake3_tournoi;
+  if (Object.keys(ud).length === 0) delete scoresData.users[u];
+  const dbId = users[u] && users[u]._dbId;
+  if (dbId) {
+    db.deleteScore(dbId, 'snake3_tournoi').catch((e) => {
+      console.error('[SNAKE3 TOURNOI] retrait en base:', e.message);
+    });
+  }
+  return true;
+}
+
+/**
+ * Le record d'un joueur fait sur une AUTRE carte est traité comme absent : on
+ * l'efface avant d'écrire, sinon persistScore le comparerait au nouveau score
+ * et refuserait tout ce qui lui est inférieur. C'est le cœur du correctif.
+ */
+function snake3TournoiOublierAncienScore(username, graine) {
+  const prec = scoresData.users[username] && scoresData.users[username].snake3_tournoi;
+  if (!prec) return false;
+  if (snake3TournoiGraineDuScore(prec) === graine) return false;
+  const ancien = Number(prec.score) || 0;
+  if (!snake3TournoiRetirer(username)) return false;
+  saveScoresFile();
+  console.log(`[SNAKE3 TOURNOI] ${username} : record d'une autre carte oublié `
+    + `(${ancien} pts, graine « ${snake3TournoiGraineDuScore(prec)} ») — le classement suit la carte courante`);
+  return true;
+}
+
+/**
+ * Nouvelle carte, nouvelle édition : le palmarès en cours est archivé puis le
+ * classement est vidé de tout ce qui ne porte pas la nouvelle graine.
+ * @returns {Promise<number>} le nombre d'entrées retirées.
+ */
+async function snake3TournoiNouvelleEdition(ancienneGraine, graine) {
+  const lignes = snake3TournoiClassementVif();
+  const perimees = lignes.filter((l) => l.graine !== graine);
+  if (!perimees.length) return 0;
+  snake3TournoiArchiverEdition(ancienneGraine, perimees);
+  for (const l of perimees) snake3TournoiRetirer(l.u);
+  saveScoresFile();
+  console.log(`[SNAKE3 TOURNOI] nouvelle édition (graine « ${graine} ») : `
+    + `${perimees.length} score(s) de l'édition précédente archivé(s) puis retiré(s) du classement`);
+  return perimees.length;
+}
+
 // Le score d'une partie de tournoi. Comme les Contests : hors quota FD (un
 // tournoi ne se rationne pas), persistScore ne garde que le meilleur. Deux
 // gardes en plus : le mode doit être OUVERT (une partie finie après la
@@ -14544,8 +14679,8 @@ function snake3TournoiScore(req, res) {
       console.warn(`[SNAKE3 TOURNOI] score refusé pour ${username} : ${refus}`);
       return res.status(400).json({ ok: false, error: 'implausible_score', raison: refus });
     }
-    // La graine voyage dans la donnée : on sait toujours sur QUELLE carte un
-    // record a été fait (et « Vider » entre deux éditions repart de zéro).
+    // Un record d'une AUTRE carte ne fait pas barrage à celui-ci (cf. plus haut).
+    snake3TournoiOublierAncienScore(username, graine);
     const r = persistScore(username, 'snake3_tournoi', score, 'graine:' + graine);
     if (r.updated) {
       console.log(`[SNAKE3 TOURNOI] ${username} : ${score} pts (ancien ${r.oldScore}, place ${r.newPos})`);
@@ -14616,11 +14751,17 @@ app.post('/api/admin/snake3-tournoi/generer', tournoiScope, async (req, res) => 
   if (lues.erreur) return res.status(400).json({ ok: false, error: lues.erreur });
   const carte = SnakeCarte.genererCarte(graine, snake3LireCadresOptions(),
     SNAKE3_TOURNOI_DUREE_TICKS, lues.exigences);
+  const ancienneGraine = String((await snake3Tournoi()).graine || '');
   const e = await snake3TournoiPoser({ graine, carte, exigences: lues.exigences, ouvert: false });
+  // Nouvelle graine = nouvelle édition : le classement de la précédente est
+  // archivé puis retiré du tableau. Sans ça il mélangerait deux cartes — et
+  // ses vieux records barreraient la route aux nouveaux.
+  const vides = graine !== ancienneGraine
+    ? await snake3TournoiNouvelleEdition(ancienneGraine, graine) : 0;
   console.log(`[SNAKE3 TOURNOI] carte générée (graine « ${graine} », ${carte.length} options`
     + (lues.exigences.length ? `, ${lues.exigences.length} exigence(s)` : '') + ') — mode fermé');
   res.json({ ok: true, graine: e.graine, nb: carte.length, ouvert: e.ouvert,
-    apercu: snake3TournoiApercu(carte),
+    apercu: snake3TournoiApercu(carte), vides,
     exigences: snake3TournoiExigencesPourAdmin(e.exigences) });
 });
 
@@ -18158,7 +18299,7 @@ function ficheMontreLeClassement(rkId, meta) {
   // Le tournoi Frutisnake suit son interrupteur d'admin. L'état est celui en
   // mémoire — les appelants font `await snake3Tournoi()` avant leur boucle
   // pour qu'il soit à jour même juste après un démarrage.
-  if (rkId === 'snake3_tournoi' && snake3TournoiEtat && !snake3TournoiEtat.classement) return false;
+  if (rkId === 'snake3_tournoi' && !snake3TournoiClassementVisible()) return false;
   return true;
 }
 
@@ -18591,6 +18732,38 @@ app.get('/api/light/challenge', async (req, res) => {
     }));
     games.push(permanent('kikooz', nomBureau('kikooz', 'Class. kikooz'), 'kikooz', kAll));
   } catch (e) { console.error('[LIGHT] kikooz ranking error:', e.message); }
+  // Le CHAMPIONNAT de Frutibandas : le bureau lui donne un onglet (rk '7',
+  // section L) mais le light n'en servait pas — sa section Championnat était
+  // amputée d'une ligne par rapport à celle du SWF. Les deux tableaux
+  // affichent maintenant les mêmes classements, dans le même ordre.
+  try {
+    const bd = [];
+    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+      const s = rlist && rlist.bandas_champion;
+      if (!s || !Number.isFinite(Number(s.score))) continue;
+      bd.push({ u, s: Number(s.score), label: Number(s.score).toLocaleString('fr-FR') });
+    }
+    bd.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
+    games.push(permanent('bandas_champion',
+      nomBureau('bandas_champion', 'Frutibandas'), 'bandas', bd));
+  } catch (e) { console.error('[LIGHT] bandas champion ranking error:', e.message); }
+  // Le TOURNOI de Frutisnake, à la même place que dans le tableau du bureau
+  // (section Championnat, cf. son descripteur legacy rk '16') : le classement
+  // de la carte partagée ne se lisait qu'au livre des records du Club.
+  // Il suit l'interrupteur « classement » de l'admin, comme partout ailleurs.
+  try {
+    if (snake3TournoiClassementVisible()) {
+      const tt = [];
+      for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+        const s = rlist && rlist.snake3_tournoi;
+        if (!s || !Number.isFinite(Number(s.score))) continue;
+        tt.push({ u, s: Number(s.score), label: Number(s.score).toLocaleString('fr-FR') });
+      }
+      tt.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
+      games.push(permanent('snake3_tournoi',
+        nomBureau('snake3_tournoi', 'Snake tournoi'), 'snake3', tt));
+    }
+  } catch (e) { console.error('[LIGHT] snake3 tournoi ranking error:', e.message); }
   // (Les CONCOURS ne défilent plus ici — cf. la note au-dessus de la boucle
   // des jeux : le livre des records du Club les garde.)
   // L'XP et la consécration : les deux classements « joueur » du bureau. Ils ne
@@ -20225,6 +20398,13 @@ const server = app.listen(port, '0.0.0.0', () => {
   // Reconcile mod-badge and anim-cap inventories with each user's role.
   syncAllRoleAccessories().catch((e) =>
     console.error('[ROLE-ACC] startup sync failed:', e.message),
+  );
+
+  // L'état du tournoi Frutisnake, chargé une bonne fois : les lectures
+  // SYNCHRONES (l'onglet du tableau des scores, les fiches) consultent
+  // l'interrupteur « classement » sans pouvoir attendre.
+  snake3Tournoi().catch((e) =>
+    console.error('[SNAKE3 TOURNOI] chargement au démarrage:', e.message),
   );
 
   // Auto-seed forum categories/boards and demo content on first run
@@ -23404,6 +23584,9 @@ case 'join': {
           // in one tab but not the other. Advertising only real rankings keeps
           // each game in the single section where it actually has scores.
           if (!d.internal) continue;
+          // Le tournoi Frutisnake suit son interrupteur d'admin : masqué, il
+          // quitte le tableau des scores comme il quitte le livre du Club.
+          if (d.internal === 'snake3_tournoi' && !snake3TournoiClassementVisible()) continue;
           const sec = d.section === 'L' ? 'L' : 'C';
           bySection[sec].push(d);
         }

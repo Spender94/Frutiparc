@@ -201,7 +201,6 @@ class VuePartie {
     this.enrobages = new Map();       // objet moteur → Enrobage
     this.bombes = [];                 // { x, y, frame } — la mèche puis le souffle
     this.serpentsNoirs = [];
-    this.sonnettes = [];              // { x, y, temps }
     this.trouFx = null;
     this.filmsSlot = new Map();       // case → images écoulées sur son icône
     this.ecran = null;                // l'écran par-dessus (sauvegarde, gameOver…)
@@ -271,7 +270,6 @@ class VuePartie {
         if (i >= 0) this.serpentsNoirs.splice(i, 1);
         break;
       }
-      case 'sonnetteSonne': this.sonnettes.push({ x: d.x, y: d.y, temps: 0.6 }); break;
       case 'gameOver': {
         // Game.game_over — la musique bascule sur le jingle.
         const sons = jeu.sons;
@@ -291,6 +289,10 @@ class VuePartie {
   // fraîchement débloqués, et retour au menu.
   finDePartie(score) {
     const jeu = this.jeu;
+    // Une partie ne se termine qu'UNE fois : `finie` était posé mais jamais
+    // relu, si bien qu'un second `finPartie` (l'écran de sauvegarde est encore
+    // là, le moteur n'est pas arrêté) postait un deuxième score au classement.
+    if (this.finie) return;
     this.finie = true;
     this.ecran = new Ecran(jeu, 'connexion', C.TXT_SCORE_SAVING);
 
@@ -382,8 +384,6 @@ class VuePartie {
       }
     }
     this.bombes = this.bombes.filter((b) => !b.mort);
-    for (const s of this.sonnettes) s.temps -= deltaT;
-    this.sonnettes = this.sonnettes.filter((s) => s.temps > 0);
 
     // Les icônes de la rangée de cases : le clip est figé sur l'image de son
     // objet, mais le sous-clip dessus continue de jouer. Changer d'image le
@@ -457,8 +457,12 @@ class VuePartie {
     R.dessinerSerpent(ctx, partie.serpent, jeu.tmod, jeu.temps());
     R.dessinerTete(ctx, partie.serpent, partie.serpent.tete_frame);
 
-    // La sonnette qui tinte à la queue (PLAN_DUMMIES).
-    for (const s of this.sonnettes) D.poser(ctx, 'sonnette', 1, s.x, s.y, 1, 1, 0);
+    // La cloche de la sonnette, pendue au bout de la queue (PLAN_DUMMIES) —
+    // visible tant que la Sonnette est en jeu, pas seulement au coup de
+    // cloche : c'est le clip que Sonnette.as attache à la prise et replace à
+    // chaque image. Image 1 au repos, image 2 pendant le coup.
+    const cl = partie.sonnetteMc;
+    if (cl) D.poser(ctx, 'sonnette', cl.frame, cl.x, cl.y, 1, 1, cl.ang);
 
     // Les débris d'explosion (PLAN_DUMMIES).
     this.particules.dessiner(ctx);
@@ -1007,9 +1011,20 @@ window.demarrerFrutisnake = function (options) {
     const jeu = new Jeu(canvas, plateforme, sons);
     jeu.appliquerPrefs();
     if (opts.pad) jeu.pad = opts.pad;
+    // Tout ce que l'ARÈNE dessine passe ici. Une image n'est chargée qu'au
+    // premier appel à rendreFichier, qui renvoie null en attendant : le tout
+    // premier effet d'un clip non préchargé ne se peint donc PAS. Les débris
+    // d'explosion (`qparticule`) durent dix images — la première dynamite de
+    // la partie n'avait aucun effet visuel, et « ça marchait ensuite » parce
+    // que l'image était alors en cache. Même histoire pour le souffle de la
+    // première bombe, la cloche de la sonnette, le terrier du départ et le
+    // rideau de la première transition. Ces clips-là pèsent 90 ko en tout :
+    // on les attend avec le reste plutôt que de sacrifier un effet par partie.
     return D.precharger(['menu', 'title', 'menuBackground', 'fleche', 'screens',
       'screensSans', 'pan', 'background', 'tete', 'fruits', 'options', 'slot',
-      'barreScore', 'chiffresVert', 'chiffresRouge', 'chiffresJaune']).then(() => {
+      'barreScore', 'chiffresVert', 'chiffresRouge', 'chiffresJaune',
+      'qparticule', 'bombe', 'sonnette', 'langue', 'trou', 'beurk',
+      'snakeMask', 'barSide', 'barMid', 'fbarre', 'optionPanel']).then(() => {
       // Les suites d'animation (fioles, ciseaux) partent en fond : le menu
       // n'a pas à les attendre, elles seront prêtes à la première partie.
       D.amorcerAnimations(['options', 'slot']);

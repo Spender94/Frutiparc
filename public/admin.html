@@ -1744,7 +1744,11 @@ function dessinerApercuSnake(apercu) {
 }
 async function genererSnakeTournoi() {
   const graine = $('#snaketournoi-graine').value.trim();
-  if (!confirm('Générer une nouvelle carte ? Le mode sera FERMÉ (à rouvrir une fois prêt), et les scores déjà posés resteront ceux de l\'ancienne carte tant que tu ne vides pas le classement.')) return;
+  if (!confirm('Générer une nouvelle carte ? Le mode sera FERMÉ (à rouvrir une fois prêt).\n\n'
+    + 'Si la GRAINE change, c\'est une nouvelle édition : le classement repart à zéro '
+    + '(le palmarès de l\'édition précédente est archivé dans data/snake3-tournoi-editions.json). '
+    + 'Un score fait sur une autre carte n\'a rien à faire dans le tableau en cours — et il en '
+    + 'bloquerait les nouveaux.')) return;
   try {
     const d = await (await fetch('/api/admin/snake3-tournoi/generer', {
       method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()),
@@ -1752,7 +1756,8 @@ async function genererSnakeTournoi() {
     })).json();
     if (d.ok) {
       toast(`Carte générée (graine « ${d.graine} », ${d.nb} options`
-        + (snakeExigences.length ? `, ${snakeExigences.length} exigence(s)` : '') + ')');
+        + (snakeExigences.length ? `, ${snakeExigences.length} exigence(s)` : '') + ')'
+        + (d.vides ? ` — ${d.vides} score(s) de l'édition précédente archivé(s)` : ''));
       loadSnakeTournoi();
     } else toast('Erreur : ' + (d.error || '?'));
   } catch (e) { toast('Erreur : ' + e.message); }

@@ -67,6 +67,9 @@ class Partie {
     // statiques se remettent à zéro à CHAQUE partie.
     B.Pile.counter = 0;
     this.sonnette_active = false;
+    // La cloche pendue à la queue, tant qu'une Sonnette est en jeu : le clip
+    // `sonnette` de PLAN_DUMMIES (cf. bonus.js). null = aucune sonnette prise.
+    this.sonnetteMc = null;
 
     this.slots = [];
     this.unique_slots = [];

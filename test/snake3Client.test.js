@@ -44,6 +44,22 @@ test('le manifeste porte tous les clips que le client consomme', () => {
   }
 });
 
+test('les clips de l\'ARÈNE sont préchargés (sinon le premier effet est perdu)', () => {
+  // Une image n'est chargée qu'au premier appel à rendreFichier, qui renvoie
+  // null en attendant : le tout premier effet d'un clip non préchargé ne se
+  // peint PAS. C'est ce qui rendait la première dynamite d'une partie
+  // invisible (les débris `qparticule` ne durent que dix images) — et « ça
+  // marchait ensuite », l'image étant alors en cache.
+  const src = fs.readFileSync(path.join(RACINE, 'public/snake3/game.js'), 'utf8');
+  const bloc = /D\.precharger\(\[([\s\S]*?)\]\)/.exec(src);
+  assert.ok(bloc, 'la liste de préchargement est là');
+  const preches = new Set((bloc[1].match(/'([^']+)'/g) || []).map((s) => s.slice(1, -1)));
+  for (const cle of ['qparticule', 'bombe', 'sonnette', 'langue', 'trou', 'beurk',
+    'snakeMask', 'barSide', 'barMid', 'fbarre', 'tete', 'fruits', 'options', 'slot']) {
+    assert.ok(preches.has(cle), 'clip d\'arène non préchargé : ' + cle);
+  }
+});
+
 test('les mesures du moteur et des vues sont là', () => {
   const c = manifeste.cadres;
   assert.ok(c.col && c.col.w > 0, 'col de la tête');
@@ -740,6 +756,64 @@ test('le compteur de fruits passe par eat_fruit, la seule porte', () => {
   const src = fs.readFileSync(path.join(RACINE, 'public/snake3/partie.js'), 'utf8');
   assert.ok(/eat_fruit\(f\) \{\s*this\.nbFruits\+\+;/.test(src),
     'le compteur doit être en tête d\'eat_fruit');
+});
+
+// ── La sonnette : une cloche PENDUE à la queue, pas un effet fugace ───────
+test('la sonnette pend au bout de la queue, orientée, et sonne à l\'espace', () => {
+  // Sonnette.as attache le clip `sonnette` à la prise, le replace et
+  // l'oriente à CHAQUE image, et le retire à la fermeture : la cloche est
+  // visible en permanence. Le portage ne peignait qu'un anneau de 0,6 s au
+  // coup de cloche — la sonnette ne se voyait donc jamais sur le serpent.
+  const w = bacASable();
+  const { vue, s } = serpentPose(w, 6);
+  const partie = vue.partie;
+  assert.strictEqual(partie.sonnetteMc, null, 'aucune cloche sans sonnette');
+
+  partie.get_bonus({ id: 31, x: 200, y: 200 });
+  const mc = partie.sonnetteMc;
+  assert.ok(mc, 'la prise attache la cloche');
+
+  // Une image de jeu : la cloche se pose sur le DERNIER point de la queue et
+  // s'oriente le long de la queue (Math.atan2(p1.y-p2.y, p1.x-p2.x)).
+  partie.entree = { gauche: false, droite: false, haut: false, bas: false, espace: false, echap: false };
+  for (const u of partie.unique_slots) u.permanent(1, 1 / 32);
+  const q = s.end_queue_pos(0);
+  assert.strictEqual(Math.round(mc.x), Math.round(q.x));
+  assert.strictEqual(Math.round(mc.y), Math.round(q.y));
+  // La queue posée par serpentPose file plein est : l'angle vaut π (la cloche
+  // regarde vers l'arrière). En radians — c'est ce qu'attend le rendu, quand
+  // Flash écrivait le même angle en degrés dans _rotation.
+  assert.ok(Math.abs(Math.abs(mc.ang) - Math.PI) < 1e-6, 'orientée le long de la queue : ' + mc.ang);
+  assert.strictEqual(mc.frame, 1, 'au repos, image 1');
+
+  // ESPACE : le coup de cloche passe à l'image 2 (le clip y superpose son
+  // fantôme à 50 %) et y reste le temps du coup.
+  partie.entree.espace = true;
+  for (const u of partie.unique_slots) u.permanent(1, 1 / 32);
+  assert.strictEqual(mc.frame, 2, 'pendant le coup, image 2');
+  partie.entree.espace = false;
+  for (let i = 0; i < 20; i++) for (const u of partie.unique_slots) u.permanent(1, 1 / 32);
+  assert.strictEqual(mc.frame, 1, 'le coup passé, retour à l\'image 1');
+
+  // Et la vue la dessine depuis le moteur, pas depuis une liste d'effets.
+  const src = fs.readFileSync(path.join(RACINE, 'public/snake3/game.js'), 'utf8');
+  assert.ok(/partie\.sonnetteMc/.test(src), 'la vue lit la cloche du moteur');
+  assert.ok(!/this\.sonnettes/.test(src), 'plus de liste d\'anneaux fugaces');
+});
+
+test('une partie ne poste qu\'UN score, même si finPartie revient', () => {
+  const w = bacASable();
+  const envois = [];
+  const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'),
+    { fruits: {}, record: 0, options: {}, prefs: { $music: true, $sounds: true, $keys: null },
+      sauverSlot0: () => Promise.resolve(true),
+      sauverScore: (s) => { envois.push(s); return Promise.resolve(null); } },
+    new Proxy({}, { get: () => () => false }));
+  const vue = new w.SnakeJeu.VuePartie(jeu);
+  jeu.mode = vue;
+  vue.finDePartie(1200);
+  vue.finDePartie(30);
+  assert.deepStrictEqual(envois, [1200], 'le second appel ne repart pas au serveur');
 });
 
 test('le tableau de bord reprend les cinq lignes et les couleurs du disque', () => {
