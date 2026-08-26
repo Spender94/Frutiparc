@@ -80,7 +80,9 @@ test('chaque salon a SON fil, et les lignes vont dans le fil de LEUR salon', () 
   assert.match(bloc, /kind: isAdmin \? "admin" : "normal", noFrom: isAdmin, pen: penColor, salon: salon \}\);/);
   // Les arrivées et les départs aussi : chaque fenêtre tient le compte de ses
   // propres allées et venues.
-  assert.match(LIGHT, /if \(rj === state\.room \|\| aSonJournal\(rj\)\) \{[\s\S]*?systemLine\(uj \+ \(estPrive\(rj\) \? " est là\." : " a rejoint le salon\."\), rj\);/);
+  // (Les mots sont ceux de `chat.userjoined`, sans point final — cf.
+  // finitionsFenetre.test.js.)
+  assert.match(LIGHT, /if \(rj === state\.room \|\| aSonJournal\(rj\)\) \{[\s\S]*?systemLine\(uj \+ \(estPrive\(rj\) \? " est là\." : " a rejoint le salon"\), rj\);/);
   assert.match(LIGHT, /if \(rl === state\.room \|\| aSonJournal\(rl\)\) \{/);
 });
 
@@ -168,7 +170,8 @@ test('le feutre reste celui du JOUEUR, pas celui d’une fenêtre', () => {
 test('après une coupure, chaque fenêtre reprend sa place', () => {
   // Le serveur a oublié les abonnements : on les refait un à un, et l'on vide
   // les fils avant le rejeu pour ne pas lire deux fois la même chose.
-  assert.match(LIGHT, /cadresOuverts\(\)\.forEach\(function \(sn\) \{\s*\n\s*if \(sn === state\.room \|\| refaits\[sn\]\) return;\s*\n\s*clearMessages\(sn\);\s*\n\s*rejoindreSalon\(sn\);/);
+  // Le fil vidé retrouve sa phrase d'entrée : `onJoin` la pose à CHAQUE join.
+  assert.match(LIGHT, /cadresOuverts\(\)\.forEach\(function \(sn\) \{\s*\n\s*if \(sn === state\.room \|\| refaits\[sn\]\) return;\s*\n\s*clearMessages\(sn\);\s*\n\s*systemLine\(phraseEntree\(sn\), sn\);\s*\n\s*rejoindreSalon\(sn\);/);
   assert.match(LIGHT, /clearMessages\(aSonJournal\(state\.room\) \? state\.room : undefined\);/);
 });
 

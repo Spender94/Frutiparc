@@ -246,13 +246,19 @@ test('le pseudo d’un contact vire au rose sous le curseur', () => {
   // soit press = #DDDDDD et over = #E7756B. `setBehavior` (0x9fd26) laisse
   // `base` à la couleur propre du champ, puis câble onRollOver → over,
   // onPress → press, onRollOut/onDragOut/onReleaseOutside → base.
-  assert.match(CSS, /\.sl-contact:hover \.nom \{ color: #E7756B; \}/);
-  assert.match(CSS, /\.sl-contact:active \.nom \{ color: #DDDDDD; \}/);
+  //
+  // …MAIS ce comportement par défaut ne vaut que TANT QUE LE GENRE EST INCONNU.
+  // `UserSlot.onInfoBasic` (0x63a51) l'écrase dès que le serveur a dit `sx` :
+  // le pseudo passe au bleu du garçon ou au rouge de la fille, survol compris
+  // (cf. finitionsFenetre.test.js). D'où les `:not([data-genre])`, sans quoi
+  // ces règles-ci l'emporteraient par spécificité.
+  assert.match(CSS, /\.sl-contact:not\(\[data-genre\]\):hover \.nom \{ color: #E7756B; \}/);
+  assert.match(CSS, /\.sl-contact:not\(\[data-genre\]\):active \.nom \{ color: #DDDDDD; \}/);
   // Au repos, la couleur du champ : noir (`Standard.getTextStyle().def`).
   assert.match(CSS, /#side-list \.sl-contact \.nom \{[\s\S]*?color: #000000;/);
   // La liste des connectés d'un salon est le MÊME `userSlot` : même règle.
-  assert.match(CSS, /#users-drawer \.u:hover span:not\(\.badge\) \{ color: #E7756B; \}/);
-  assert.match(CSS, /#users-drawer \.u:active span:not\(\.badge\) \{ color: #DDDDDD; \}/);
+  assert.match(CSS, /#users-drawer \.u:not\(\[data-genre\]\):hover span:not\(\.badge\) \{ color: #E7756B; \}/);
+  assert.match(CSS, /#users-drawer \.u:not\(\[data-genre\]\):active span:not\(\.badge\) \{ color: #DDDDDD; \}/);
 });
 
 test('le forum sort du bureau : une fenêtre de NAVIGATEUR, pas une fenêtre du bureau', () => {
