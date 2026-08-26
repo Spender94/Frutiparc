@@ -391,12 +391,17 @@ test('avancer() dit si quelque chose a bougé', async () => {
   assert.strictEqual(mo.avancer(), false, 'une bouille entièrement figée ne bouge plus');
 });
 
-test('le moteur ne touche à rien du site : aucune page ne le charge encore', () => {
+test('le moteur ne sert QUE là où on l’a branché', () => {
+  // Premier branchement : le Bouilloscope, et lui seul (test/bouilloscopeJs).
+  // Partout ailleurs — le forum, le club, l'écran du bureau, le chat, l'éditeur
+  // « Ma Frutibouille » — le rendu d'avant reste en place le temps qu'on juge
+  // sur pièces.
   const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
-  for (const f of ['bouille-swf.js', 'bouille-avm.js', 'bouille-moteur.js']) {
-    assert.ok(!light.includes(f), 'le mobile ignore ' + f);
-  }
-  // Le banc d'essai, lui, les charge tous les trois — et rien d'autre.
+  assert.ok(light.includes('/js/bouille-moteur.js'), 'le light charge le moteur');
+  const usages = light.match(/FPBouilleVignette\.\w+\(/g) || [];
+  assert.strictEqual(usages.length, 2, 'une pose et un branchement, dans la seule grille');
+  assert.ok(light.includes('FPBouilleThumb.imgHtml'), 'le reste du light passe encore par le cache PNG');
+  // Le banc d'essai, lui, charge les trois modules — et rien d'autre.
   const banc = fs.readFileSync(path.join(ROOT, 'public/bouille-js.html'), 'utf8');
   for (const f of ['bouille-swf.js', 'bouille-avm.js', 'bouille-moteur.js']) {
     assert.ok(banc.includes(f), 'le banc charge ' + f);

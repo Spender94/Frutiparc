@@ -397,16 +397,60 @@ Deux pièges de nommage :
 * `bouille-preview.html` attend l'**index** de `playAnim` dans son paramètre
   `anim`, pas une étiquette — le banc d'essai s'y est fait prendre.
 
-## 10. Ce qui reste à faire
+## 10. Premier branchement : le Bouilloscope
 
-* **Brancher** : remplacer Ruffle là où une bouille s'affiche — le forum,
-  le Bouilloscope, la barre de contacts, la fiche, l'éditeur « Ma Frutibouille ».
-  Rien n'est branché pour l'instant : le moteur ne sert qu'au banc d'essai.
+La grille des visages existait en trois exemplaires — l'onglet de l'admin, la
+fenêtre du bureau Frutiz, la page du light —, et aucun n'était bon.
+`public/js/bouille-vignette.js` les remplace tous les trois : deux lignes à
+l'endroit qui dessinait la grille.
+
+```js
+hote.innerHTML = liste.map((e) => '<div class="tb">'
+  + FPBouilleVignette.html(e.bouille) + '</div>').join('');
+FPBouilleVignette.brancher(hote);
+```
+
+La vignette reste **paresseuse** (on ne dessine que ce qui approche de l'écran)
+et **immobile** (`anime: false` — quarante-huit têtes qui scintillent à quarante
+images par seconde ne valent pas le courant dépensé). Comme le dessin ne se fait
+qu'une fois, il se paie le suréchantillonnage ×4 sans compter. Une **famille**
+est téléchargée et analysée UNE fois, et toutes les vignettes qui en relèvent la
+partagent — y compris ses tracés `Path2D`, rangés sur la famille elle-même.
+
+### Ce que ça pèse, mesuré sur quarante-huit Frutiz
+
+| | avant | après |
+|---|---|---|
+| **l'onglet de l'admin** — une iframe Ruffle par vignette | 241 requêtes, **47 s** avant d'y voir quelque chose ; la 2ᵉ visite ne va pas plus vite (44 s) | 8 requêtes, **850 ms** pour les vignettes visibles |
+| **le bureau et le light** — cache PNG | 20 Ko la vignette, ~960 Ko la grille — *à condition que le cache soit chaud* | 662 Ko de SWF de famille, puis plus rien |
+| **le code** | ~4,9 Mo de WebAssembly Ruffle | 90 Ko bruts, **19 Ko gzippés** |
+
+Les 47 secondes de l'admin ne sont pas un problème de réseau : au deuxième
+passage les octets viennent du cache disque, et pourtant chaque iframe recompile
+et réinstancie son module WebAssembly. C'est le prix de quarante-huit lecteurs
+Flash pour quarante-huit têtes de soixante-douze pixels.
+
+Le SWF de famille, lui, est un fichier statique ordinaire : le navigateur le
+garde comme n'importe quelle image, et les visites suivantes ne le redemandent
+pas. La famille 0 est la seule lourde (414 Ko) ; les neuf autres tiennent entre
+8 et 91 Ko.
+
+**Ce qui n'a PAS basculé** — le forum, le club, l'écran du bureau, le chat,
+l'éditeur « Ma Frutibouille » — garde `FPBouilleThumb` et son cache PNG, le
+temps de juger sur pièces.
+
+## 11. Ce qui reste à faire
+
+* **Généraliser**, si le Bouilloscope convainc : le forum, la barre de contacts,
+  la fiche, l'écran du bureau, et l'éditeur « Ma Frutibouille » — ce dernier est
+  le plus beau candidat, sa prévisualisation étant encore une iframe Ruffle
+  rechargée à chaque clic de flèche.
 * **L'éditeur de conception** : `updateInfo()` donne déjà la liste des onze
   réglages et leurs bornes (`_totalframes - 1` du clip visé) ; le banc s'en sert.
   Reste à l'habiller aux couleurs du parc et à le poser sur `/light`.
-* **Le cache PNG** (`/bouille-img`, `scripts/warm-bouilles.js`) devient inutile
-  dès que le moteur JS rend directement : à retirer le moment venu.
+* **Le cache PNG** (`/bouille-img`, `scripts/warm-bouilles.js`, le bouton
+  « Réchauffer les bouilles » de l'admin) devient inutile à mesure que le moteur
+  prend la main : à retirer quand plus rien ne s'en sert.
 * **Le `DefineText` #63** de la famille 0 — une inscription sur un seul
   accessoire. Le fichier porte la police qu'il faut (`DefineFont2` #62, avec ses
   tracés de glyphes) : c'est une centaine de lignes le jour où l'on voudra la

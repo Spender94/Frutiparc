@@ -372,7 +372,13 @@
     this.defs = defs;
     this.alea = options.alea || Math.random;
     this.profondeurScript = 0;
-    this.chemins = new Map();          // clé de tracé → Path2D
+    // Les tracés et les morphs calculés se rangent sur la FAMILLE, pas sur le
+    // lecteur : une grille de quarante-huit vignettes partage alors un seul jeu
+    // de Path2D au lieu d'en reconstruire quarante-huit.
+    if (!defs._chemins) defs._chemins = new Map();
+    if (!defs._morphsCalcules) defs._morphsCalcules = new Map();
+    this.chemins = defs._chemins;
+    this.morphsCalcules = defs._morphsCalcules;
 
     // _root : les variables et les fonctions du script racine des familles.
     const moteur = this;
@@ -641,7 +647,6 @@
     if (!m) return null;
     const t = Math.max(0, Math.min(1, (ratio || 0) / 65535));
     const cle = ch + '@' + Math.round(t * 1000);
-    if (!this.morphsCalcules) this.morphsCalcules = new Map();
     let r = this.morphsCalcules.get(cle);
     if (!r) {
       const swf = (typeof module === 'object' && module.exports)

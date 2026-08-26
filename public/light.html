@@ -1308,7 +1308,7 @@
   }
   /* Vignette bouille = iframe Ruffle (même rendu que le forum), fond vert carte. */
   .trombi-card .tb { width: 72px; height: 72px; border: 1px solid #cfe0b3; border-radius: 8px; background: #E8F8D3; overflow: hidden; }
-  .trombi-card .tb iframe, .trombi-card .tb img { width: 100%; height: 100%; border: 0; display: block; object-fit: contain; }
+  .trombi-card .tb iframe, .trombi-card .tb img, .trombi-card .tb canvas { width: 100%; height: 100%; border: 0; display: block; object-fit: contain; }
   .trombi-card .nm {
     font-size: 12px; font-weight: bold; color: #2C4A0F; max-width: 100%;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1762,7 +1762,14 @@
      et demarrer() n'est appelé que sur grand écran — le mobile ne change pas. -->
 <link rel="stylesheet" href="/bureau-frutiz.css">
 <script src="/bureau-frutiz.js"></script>
-<!-- Miniatures de bouilles rapides (cache PNG /bouille-img) pour le Bouilloscope. -->
+<!-- LE BOUILLOSCOPE EN JAVASCRIPT — le moteur lit les SWF de famille d'époque
+     (public/fbouille) et dessine dans un canevas : plus d'iframe Ruffle par
+     vignette, plus de cache PNG à réchauffer. Voir public/frutiz/BOUILLES.md. -->
+<script src="/js/bouille-swf.js"></script>
+<script src="/js/bouille-avm.js"></script>
+<script src="/js/bouille-moteur.js"></script>
+<script src="/js/bouille-vignette.js"></script>
+<!-- Miniatures de bouilles rapides (cache PNG /bouille-img), encore utilisées ailleurs. -->
 <script src="/js/bouille-thumb.js"></script>
 <!-- Palette de couleurs (sélecteur visuel de l'éditeur « Ma Frutibouille »). -->
 <script src="/js/bouille-palette.js"></script>
@@ -3470,8 +3477,9 @@
       // réchauffé en arrière-plan par FPBouilleThumb. loading="lazy" => seules les
       // vignettes proches du viewport sont sondées/capturées.
       body.innerHTML = slice.map(function (e) {
-        return '<div class="trombi-card" data-pseudo="' + xmlEscape(e.pseudo) + '"><div class="tb">' + FPBouilleThumb.imgHtml(e.bouille) + '</div><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
+        return '<div class="trombi-card" data-pseudo="' + xmlEscape(e.pseudo) + '"><div class="tb">' + FPBouilleVignette.html(e.bouille) + '</div><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
       }).join("");
+      FPBouilleVignette.brancher(body);
       // Toucher une vignette ouvre la fiche du frutiz, comme au bureau.
       Array.prototype.forEach.call(body.querySelectorAll(".trombi-card"), function (c) {
         c.addEventListener("click", function () { ouvrirFiche(c.getAttribute("data-pseudo")); });

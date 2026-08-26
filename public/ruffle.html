@@ -128,7 +128,14 @@
         s.src = 'https://unpkg.com/@ruffle-rs/ruffle';
         document.head.appendChild(s);
     "></script>
-    <!-- Miniatures de bouilles rapides (cache PNG /bouille-img) pour le Bouilloscope. -->
+    <!-- LE BOUILLOSCOPE EN JAVASCRIPT — le moteur lit les SWF de famille d'époque
+         (public/fbouille) et dessine dans un canevas : plus d'iframe Ruffle par
+         vignette, plus de cache PNG à réchauffer. Voir public/frutiz/BOUILLES.md. -->
+    <script src="/js/bouille-swf.js"></script>
+    <script src="/js/bouille-avm.js"></script>
+    <script src="/js/bouille-moteur.js"></script>
+    <script src="/js/bouille-vignette.js"></script>
+    <!-- Miniatures de bouilles rapides (cache PNG /bouille-img), encore utilisées ailleurs. -->
     <script src="/js/bouille-thumb.js"></script>
 </head>
 <body>
@@ -1045,10 +1052,11 @@
                         // sondées/capturées.
                         gridEl.innerHTML = slice.map(function (e) {
                             return '<div class="fpt-card" style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1px solid #f0dada;border-radius:10px;padding:8px 4px;text-align:center">'
-                                + '<span style="display:block;width:72px;height:72px;border:1px solid #cfe0b3;border-radius:8px;background:#E8F8D3;overflow:hidden">' + FPBouilleThumb.imgHtml(e.bouille) + '</span>'
+                                + '<span style="display:block;width:72px;height:72px;border:1px solid #cfe0b3;border-radius:8px;background:#E8F8D3;overflow:hidden">' + FPBouilleVignette.html(e.bouille) + '</span>'
                                 + '<span style="font-size:12px;font-weight:bold;color:#2C4A0F;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.pseudo) + '</span></div>';
                         }).join("");
                     }
+                    FPBouilleVignette.brancher(gridEl);
                     gridEl.scrollTop = 0;
                     renderPager(list.length, pages);
                 }
