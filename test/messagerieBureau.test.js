@@ -134,11 +134,15 @@ test('la bouille qui joue une émotion ne se DOUBLE plus', () => {
   // Et l'écran qu'on retire rend sa scène ET sa vignette.
   assert.match(JS, /ecran\.classList\.remove\('bo-anime'\);\s+\/\/ sa vignette figée revient/);
   // `!important` : `FPBouilleThumb` pose `visibility: visible` EN LIGNE.
-  // Deux formes à effacer, désormais : l'IMAGE du cache PNG là où il sert
-  // encore, et le CANEVAS du moteur JS partout où la bouille est dessinée
-  // sur place. Sans la seconde, l'écran montrerait la bouille figée SOUS
-  // celle qui s'anime — le doublon qu'on vient d'éteindre.
-  assert.match(CSS, /\.bo-anime img,\n[^\n]*\.bo-anime canvas \{ visibility: hidden !important; \}/);
+  // Deux formes à effacer : l'IMAGE du cache PNG là où il sert encore, et le
+  // CANEVAS du moteur JS partout où la bouille est dessinée sur place. Sans
+  // la seconde, l'écran montrerait la bouille figée SOUS celle qui s'anime.
+  //
+  // Mais l'enfant DIRECT, et lui seul (« > ») : depuis le portage JS des
+  // bouilles, le LECTEUR est un canevas lui aussi, et il vit DANS l'écran le
+  // temps de l'animation. Sans le « > », il disparaissait avec la vignette et
+  // l'écran restait blanc quatre secondes durant.
+  assert.match(CSS, /\.bo-anime > img,\n[^\n]*\.bo-anime > canvas \{ visibility: hidden !important; \}/);
 });
 
 test('LA BOUTIQUE : deux colonnes, et les pièces sorties du SWF', () => {

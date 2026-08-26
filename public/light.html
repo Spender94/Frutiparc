@@ -2805,19 +2805,55 @@
         });
       },
       courant: function () { return state.room; },
-      // L'affluence du salon courant — le bureau d'époque la met dans le
-      // TITRE de la fenêtre, « Salon Fraise (1) ». Une discussion privée n'en
-      // a pas : elle se compte à deux, et le SWF n'en titre pas.
-      affluenceCourante: function () {
-        if (state.prives[state.room]) return null;
-        var n = state.roomCounts[state.room];
+      // « Rejoindre » depuis la fenêtre « Salons publics » : le salon prend SA
+      // fenêtre. `box.join` d'époque instancie une `box.Chat` de plus.
+      rejoindre: function (id) { ouvrirSalon(id); },
+      // ── UNE FENÊTRE PAR SALON ──
+      // Le bureau demande le panneau d'un salon : on le fabrique (et l'on
+      // rejoint au passage), il le loge dans une fenêtre. `fermerCadre` défait
+      // les deux — `box.Chat.close` (0x2a11a) quitte le salon.
+      cadre: function (id) {
+        var c = creerCadreSalon(id);
+        return c ? c.panneau : null;
+      },
+      fermerCadre: function (id) { fermerCadreSalon(id); },
+      // La fenêtre courante devient le salon « regardé » : c'est lui que le
+      // panneau mobile suit, et à qui vont les lignes sans salon.
+      regarder: function (id) {
+        if (!id || !cadres[id]) return;
+        state.room = id;
+        var conv = state.prives[id];
+        if (conv) { conv.nonLus = 0; majPastilleMp(); }
+        renderRoomOptions();
+        var sel = $("#room-select");
+        if (sel && sel.querySelector('option[value="' + id.replace(/"/g, "") + '"]')) sel.value = id;
+        renderUsers();
+      },
+      // Le NOM d'un salon et son AFFLUENCE — le bureau d'époque en fait le
+      // titre de la fenêtre, « Salon Fraise (1) ». Une discussion privée n'a
+      // pas d'affluence : elle se compte à deux, et le SWF n'en titre pas.
+      titreDe: function (id) {
+        var conv = state.prives[id];
+        return conv ? 'Discussion privée avec ' + conv.avec : roomLabel(id);
+      },
+      affluenceDe: function (id) {
+        if (state.prives[id]) return null;
+        var n = state.roomCounts[id];
         return typeof n === 'number' ? n : null;
       },
-      nomCourant: function () {
-        var c = state.prives[state.room];
-        return c ? 'Discussion privée avec ' + c.avec : roomLabel(state.room);
+      // Les membres d'un salon avec leur bouille — de quoi remplir la colonne
+      // d'écrans de SA fenêtre (`cp.ScreenList`), qui en montre UN par
+      // personne.
+      membresDe: function (id) {
+        var set = state.usersByRoom[id] || {};
+        return membresDuSalon(id).map(function (n) {
+          return {
+            pseudo: n,
+            bouille: state.bouilleByUser[n.toLowerCase()] || DEFAULT_BOUILLE,
+            staff: !!(set[n] && set[n].staff),
+          };
+        });
       },
-      rejoindre: function (id) { switchRoom(id); },
       // LE CLIC sur une bouille : `cp.ScreenList.attachFrutiScreen` (0xb6597)
       // pose `setAction({obj: win.box, method: "openFrutizInfo", args: u})`.
       // Le light a déjà cette fiche : c'est la même.
@@ -2837,18 +2873,6 @@
         };
         if (cb) chargerTablePays(function () { cb(rendre()); });
         return rendre();
-      },
-      // Les membres du salon avec leur bouille — de quoi remplir la colonne
-      // d'écrans du bureau (`cp.ScreenList`), qui en montre UN par personne.
-      membres: function () {
-        var set = state.usersByRoom[state.room] || {};
-        return membresDuSalon().map(function (n) {
-          return {
-            pseudo: n,
-            bouille: state.bouilleByUser[n.toLowerCase()] || DEFAULT_BOUILLE,
-            staff: !!(set[n] && set[n].staff),
-          };
-        });
       },
     };
     if (isDesktop() && window.BureauFrutiz) BureauFrutiz.demarrer();
@@ -4803,9 +4827,12 @@
     // bascule d'appli redevient invisible, comme elle devrait l'être.
     if (on && state.coupureTimer) { clearTimeout(state.coupureTimer); state.coupureTimer = null; }
     var cd = $("#conn-dot"); if (cd) cd.classList.toggle("on", on); // (voyant retiré de l'accueil)
-    $("#compose-input").disabled = !on;
-    $("#compose-send").disabled = !on;
-    var at = $("#accent-toggle"); if (at) at.disabled = !on;
+    // Toutes les saisies : celle du panneau mobile et celles des fenêtres de
+    // salon du bureau. (`querySelectorAll` avec un sélecteur d'identifiant
+    // rend TOUS les nœuds — c'est ce qui rend le doublon inoffensif.)
+    ["#compose-input", "#compose-send", "#accent-toggle"].forEach(function (sel) {
+      Array.prototype.forEach.call(document.querySelectorAll(sel), function (n) { n.disabled = !on; });
+    });
   }
   function connectWs() {
     var ws;
@@ -4923,9 +4950,23 @@
       case "k": // ident response
         if (attr(xml, "k") === "401") { systemLine("Connexion refusée (session expirée)."); return; }
         setConnected(true);
-        // ident OK → join the current/default room, then ask for the room list
-        // (participant counts) and refresh it periodically.
-        switchRoom($("#room-select").value || ROOMS[0][0]);
+        // ident OK → on (re)prend sa place, puis on demande la liste des salons
+        // (leur affluence) et on la rafraîchit régulièrement.
+        //
+        // À la PREMIÈRE connexion, le salon par défaut s'ouvre : en fenêtre sur
+        // le bureau, à l'écran sur le mobile. Après une coupure, le serveur a
+        // oublié nos abonnements — il faut les refaire un à un : le salon
+        // courant, les discussions privées, et toutes les fenêtres de
+        // conversation restées ouvertes (cf. `rejoindreLesPrives`).
+        if (!state.room) {
+          ouvrirSalon($("#room-select").value || ROOMS[0][0]);
+        } else {
+          // Le serveur rejoue les dernières minutes au join : on vide le fil
+          // d'abord, sinon on lirait deux fois la même chose.
+          clearMessages(aSonJournal(state.room) ? state.room : undefined);
+          delete histoMontre[state.room];
+          rejoindreSalon(state.room);
+        }
         rejoindreLesPrives();
         requestChannelList();
         startChannelListPolling();
@@ -4982,7 +5023,8 @@
           }
         }
         state.usersByRoom[room] = set;
-        if (room === state.room) renderUsers();
+        // Le salon qu'on regarde, ET la fenêtre qui lui est propre s'il en a une.
+        majSalonPartout(room);
         // Et si MA ligne porte m="1", le lien des logs du bureau.
         montrerLienHisto(room, set);
         break;
@@ -5018,7 +5060,13 @@
           rememberInfoBasic(xml);
           if (!state.usersByRoom[rj]) state.usersByRoom[rj] = {};
           state.usersByRoom[rj][uj] = { staff: attr(xml, "m") === "1" };
-          if (rj === state.room) { renderUsers(); systemLine(uj + (estPrive(rj) ? " est là." : " a rejoint le salon.")); }
+          // La ligne « X a rejoint le salon » va dans le fil DE CE SALON : sur
+          // le bureau, chaque fenêtre tient le compte de ses propres allées et
+          // venues.
+          if (rj === state.room || aSonJournal(rj)) {
+            majSalonPartout(rj);
+            systemLine(uj + (estPrive(rj) ? " est là." : " a rejoint le salon."), rj);
+          }
         }
         break;
       }
@@ -5027,19 +5075,27 @@
         var rl = attr(xml, "g"); var ul = attr(xml, "u");
         if (rl && state.usersByRoom[rl]) {
           delete state.usersByRoom[rl][ul];
-          if (rl === state.room) { renderUsers(); systemLine(ul + (estPrive(rl) ? " s'est déconnecté(e)." : " a quitté le salon.")); }
+          if (rl === state.room || aSonJournal(rl)) {
+            majSalonPartout(rl);
+            systemLine(ul + (estPrive(rl) ? " s'est déconnecté(e)." : " a quitté le salon."), rl);
+          }
         }
         break;
       }
 
       case "t": { // chat message: <t u="from" t="m" g="salon" h="[hh:mm:ss] " ...>body</t>
-        // Une seule conversation est à l'écran, mais la socket reste abonnée aux
-        // discussions privées ouvertes : sans ce tri, un message privé s'écrirait
-        // au milieu du salon public (et réciproquement). Les trames sans `g`
-        // (annonces globales) restent affichées telles quelles.
+        // Sur le mobile une seule conversation est à l'écran, mais la socket
+        // reste abonnée aux discussions privées ouvertes : sans ce tri, un
+        // message privé s'écrirait au milieu du salon public (et
+        // réciproquement). Les trames sans `g` (annonces globales) restent
+        // affichées telles quelles.
+        //
+        // Sur le bureau, un salon qui a SA fenêtre a aussi son fil : la ligne
+        // y va, même si l'on regarde ailleurs. C'est tout l'intérêt d'avoir
+        // plusieurs `box.Chat` ouvertes en même temps.
         var salon = attr(xml, "g");
         var ty = attr(xml, "t") || "m";
-        if (salon && salon !== state.room) {
+        if (salon && salon !== state.room && !aSonJournal(salon)) {
           var conv = state.prives[salon];
           if (conv && !(conv.sourdineJusqua > Date.now())) {
             conv.nonLus += 1;
@@ -5047,12 +5103,12 @@
             majPastilleMp();
             // Une discussion privée en arrière-plan avertit elle aussi : c'est
             // le « cmode == "private" » de `onSend`.
-            avertirOngletChat(ty);
+            avertirOngletChat(ty, salon);
           }
           break;
         }
         // Le salon qu'on regarde — mais dont l'onglet, lui, peut être rangé.
-        avertirOngletChat(ty);
+        avertirOngletChat(ty, salon);
         var from = attr(xml, "u");
         var h = attr(xml, "h");
         var body = bodyOf(xml);
@@ -5063,8 +5119,8 @@
         if (emAnim) {
           var emWho = xmlUnescape(attr(xml, "eu")) || from;
           var emLabel = xmlUnescape(attr(xml, "el")) || (ANIM_LABEL[emAnim] || "parle");
-          addEmoteMessage({ from: emWho, time: h, label: emLabel });
-          if (emWho) showBouilleOverlay(emWho, emAnim, emLabel);
+          addEmoteMessage({ from: emWho, time: h, label: emLabel, salon: salon });
+          if (emWho) showBouilleOverlay(emWho, emAnim, emLabel, salon);
           break;
         }
         // Image frames (the /image command + MikeHorny's image quizzes) carry an
@@ -5074,9 +5130,9 @@
           var iu = xmlUnescape(attr(body, "u"));
           var ititle = xmlUnescape(bodyOf(body));
           if (/^(\/|https?:\/\/)/.test(iu)) {
-            addImageMessage({ from: from, time: h, url: iu, w: parseInt(attr(body, "w"), 10) || 0, title: ititle });
+            addImageMessage({ from: from, time: h, url: iu, w: parseInt(attr(body, "w"), 10) || 0, title: ititle, salon: salon });
           } else {
-            addMessage({ from: from, time: h, body: "[image]", kind: "system" });
+            addMessage({ from: from, time: h, body: "[image]", kind: "system", salon: salon });
           }
           break;
         }
@@ -5090,7 +5146,7 @@
           var gTo = xmlUnescape(attr(body, "u"));
           if (sameName(gTo, state.user)) {
             addMessage({
-              from: from, time: h, kind: "blue", noFrom: true,
+              from: from, time: h, kind: "blue", noFrom: true, salon: salon,
               body: (from || "Quelqu'un") + " vient de t'offrir "
                 + (isFinite(gAmt) ? gAmt : attr(body, "k")) + " kikooz !",
             });
@@ -5122,7 +5178,7 @@
           // On traite donc le corps de la même façon quoi qu'il arrive : un
           // « < » écrit par un joueur nous parvient échappé, il survit.
           var cBody = htmlToText(stripCdata(body).replace(/<br\s*\/?>/gi, "\n"));
-          if (cBody) addMessage({ from: from, time: h, body: cBody, kind: "blue", noFrom: (from === "admin") });
+          if (cBody) addMessage({ from: from, time: h, body: cBody, kind: "blue", noFrom: (from === "admin"), salon: salon });
           break;
         }
         // Admin / system announcements (totoche, mode bleu, cri "!", gains…) are
@@ -5140,7 +5196,7 @@
           // besoin de ce balisage. attr() renvoie la valeur BRUTE (entités encodées),
           // donc on décode d'abord (xmlUnescape → vraies balises) puis htmlToText les
           // retire, pour un horodatage propre « [hh:mm:ss] ».
-          if (mcText) addMessage({ from: from, time: htmlToText(xmlUnescape(h)), body: mcText, kind: "normal", multicolor: true });
+          if (mcText) addMessage({ from: from, time: htmlToText(xmlUnescape(h)), body: mcText, kind: "normal", multicolor: true, salon: salon });
           break;
         }
         // st="r" → cri modérateur ("!texte"), rendu en rouge gras comme desktop.
@@ -5148,7 +5204,7 @@
         if (/^\s*</.test(stripped)) {
           var plain = htmlToText(stripped);
           var isShout = (attr(xml, "st") === "r");
-          if (plain) addMessage({ from: from, time: h, kind: isShout ? "shout" : "admin", noFrom: true, body: plain });
+          if (plain) addMessage({ from: from, time: h, kind: isShout ? "shout" : "admin", noFrom: true, body: plain, salon: salon });
           break;
         }
         // Emotes travel as ordinary text (e.g. "mdr"). To keep the experience
@@ -5160,11 +5216,11 @@
         var penColor = penColorFor(attr(xml, "p"));
         var em = isAdmin ? { isEmote: false, anim: "parle", label: null } : detectEmote(text);
         if (em.isEmote) {
-          addEmoteMessage({ from: from, time: h, label: em.label });
+          addEmoteMessage({ from: from, time: h, label: em.label, salon: salon });
         } else {
-          addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor });
+          addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor, salon: salon });
         }
-        if (from && !isAdmin) showBouilleOverlay(from, em.anim, em.label);
+        if (from && !isAdmin) showBouilleOverlay(from, em.anim, em.label, salon);
         break;
       }
 
@@ -5191,7 +5247,7 @@
         var idSalon = attr(xml, "g");
         if (!idSalon) break;
         retenirPrive(idSalon, avecQui, attr(xml, "p"));
-        switchRoom(idSalon);
+        ouvrirSalon(idSalon);
         break;
       }
 
@@ -5207,6 +5263,20 @@
         var dejaLa = !!state.prives[idInvite];
         retenirPrive(idInvite, deQui, attr(xml, "p"));
         if (idInvite === state.room) break;
+        // LE BUREAU, LUI, OUVRE LA CONVERSATION — mais rangée.
+        // `chatMng.onInvite` (0x8d840) : si une boîte existe déjà pour ce
+        // joueur, ou si la préférence `invite_chat_behavior` vaut « accepter »,
+        // il appelle `chatMng.open(p, g, u, trashSlot)` (0x8d599). Le quatrième
+        // argument est le SLOT D'ATTENTE : la conversation existe, elle a sa
+        // fenêtre, mais elle ne prend pas le bureau — c'est l'onglet qui
+        // clignote. Sans ça, une invitation reçue n'aurait aucun moyen d'être
+        // ouverte sur le bureau, où le menu déroulant des salons n'existe pas.
+        if (window.BureauFrutiz && BureauFrutiz.actif && BureauFrutiz.actif()
+            && BureauFrutiz.ouvrirSalonEnFond) {
+          BureauFrutiz.ouvrirSalonEnFond(idInvite);
+          majPastilleMp();
+          break;
+        }
         if (!dejaLa) systemLine(deQui + " t'écrit en privé — ouvre « " + deQui + " » dans la liste des salons.");
         majPastilleMp();
         break;
@@ -5307,26 +5377,48 @@
   }
 
   // ── Room switching ──
+  // Le mot de passe transmis par le serveur accompagne le join d'un salon privé.
+  function rejoindreSalon(room) {
+    var conv = state.prives[room];
+    wsSend('<o g="' + xmlEscape(room) + '"' + (conv && conv.pass ? ' p="' + xmlEscape(conv.pass) + '"' : '') + ' />');
+  }
+  // Ouvrir un salon. Sur le bureau il prend SA fenêtre — une par salon, comme
+  // `Slot.addBox` (0x35c98) qui en tient une liste ; sur le mobile, il prend
+  // l'écran, et remplace celui qu'on lisait.
+  function ouvrirSalon(room) {
+    if (!room) return;
+    if (window.BureauFrutiz && BureauFrutiz.actif && BureauFrutiz.actif() && BureauFrutiz.ouvrirSalon) {
+      BureauFrutiz.ouvrirSalon(room);
+      return;
+    }
+    switchRoom(room);
+  }
   function switchRoom(room) {
     if (!room) return;
+    // Il a déjà sa fenêtre sur le bureau : on y est, son fil est plein, il n'y
+    // a ni à rejoindre ni à réécrire l'en-tête.
+    var dejaOuvert = aSonJournal(room);
     // On quitte le salon public qu'on laisse — mais JAMAIS une discussion privée :
     // y rester abonné est ce qui permet de recevoir la suite pendant qu'on lit
-    // ailleurs, et donc d'afficher un badge « nouveau ».
-    if (state.room && state.room !== room && !estPrive(state.room)) {
+    // ailleurs, et donc d'afficher un badge « nouveau ». Ni un salon qui GARDE
+    // SA FENÊTRE : elle continue de vivre, elle doit continuer de recevoir.
+    if (state.room && state.room !== room && !estPrive(state.room) && !aSonJournal(state.room)) {
       wsSend('<y g="' + xmlEscape(state.room) + '" />');
+      delete state.usersByRoom[state.room];
     }
     state.room = room;
     var conv = state.prives[room];
     if (conv) { conv.nonLus = 0; majPastilleMp(); }
     renderRoomOptions();
     $("#room-select").value = room;
-    clearMessages();
-    // Le bureau remet « … voir les messages précédents … » à CHAQUE entrée
-    // (onJoin → onIamMode) : l'écran vient d'être vidé, le lien doit revenir.
-    delete histoMontre[room];
-    systemLine("— " + (conv ? "Discussion privée avec " + conv.avec : roomLabel(room)) + " —");
-    // Le mot de passe transmis par le serveur accompagne le join d'un salon privé.
-    wsSend('<o g="' + xmlEscape(room) + '"' + (conv && conv.pass ? ' p="' + xmlEscape(conv.pass) + '"' : '') + ' />');
+    if (!dejaOuvert) {
+      clearMessages();
+      // Le bureau remet « … voir les messages précédents … » à CHAQUE entrée
+      // (onJoin → onIamMode) : l'écran vient d'être vidé, le lien doit revenir.
+      delete histoMontre[room];
+      systemLine("— " + (conv ? "Discussion privée avec " + conv.avec : roomLabel(room)) + " —");
+      rejoindreSalon(room);
+    }
     renderUsers();
   }
 
@@ -5338,12 +5430,21 @@
   // compteur de non-lus. Aucun message n'est perdu pour autant : il est dans
   // l'historique, et s'affiche à l'ouverture de la conversation.
   function rejoindreLesPrives() {
+    var refaits = {};
     for (var id in state.prives) {
       if (id === state.room) continue;
       var c = state.prives[id];
       c.sourdineJusqua = Date.now() + 2000;
+      refaits[id] = true;
       wsSend('<o g="' + xmlEscape(id) + '"' + (c.pass ? ' p="' + xmlEscape(c.pass) + '"' : '') + ' />');
     }
+    // Les salons PUBLICS qui ont leur fenêtre sur le bureau sont dans le même
+    // cas : le serveur a oublié l'abonnement, la fenêtre est toujours là.
+    cadresOuverts().forEach(function (sn) {
+      if (sn === state.room || refaits[sn]) return;
+      clearMessages(sn);
+      rejoindreSalon(sn);
+    });
   }
 
   // Pastille sur l'icône « connectés » : un point tant qu'une discussion privée
@@ -5370,12 +5471,237 @@
   }
 
   // ── Messages UI ──
+  /*
+   * UN JOURNAL PAR SALON.
+   *
+   * Le mobile n'a qu'un fil, `#messages` : changer de salon le vide et le
+   * remplit d'autre chose. C'est la bonne façon de faire sur un téléphone —
+   * une conversation à la fois, plein écran.
+   *
+   * Le bureau d'époque, lui, n'a pas de « fil courant » : `box.Chat` est une
+   * instance PAR SALON (`chatMng.setBox(user, this)` pour un privé, 0x29fdc ;
+   * `channelMng.pushUniq(group)` pour un public, 0x2a065) et chacune a sa
+   * fenêtre. On peut donc en ouvrir autant qu'on veut.
+   *
+   * D'où cette indirection, et elle seule : chaque fenêtre de salon enregistre
+   * SON fil, et les lignes vont dans le fil de LEUR salon. Le mobile
+   * n'enregistre rien — `journalDe` rend alors `#messages` pour tout le monde,
+   * et il ne se passe rien de neuf.
+   */
   var msgEl = $("#messages");
-  function nearBottom() {
-    return (msgEl.scrollHeight - msgEl.scrollTop - msgEl.clientHeight) < 60;
+  var journaux = {};                    // salon → son fil à lui
+  function journalDe(salon) {
+    return (salon && journaux[salon]) || msgEl;
   }
-  function scrollDown() { msgEl.scrollTop = msgEl.scrollHeight; }
-  function clearMessages() { msgEl.innerHTML = ""; }
+  function aSonJournal(salon) { return !!(salon && journaux[salon]); }
+  function nearBottom(el) {
+    var m = el || msgEl;
+    return (m.scrollHeight - m.scrollTop - m.clientHeight) < 60;
+  }
+  function scrollDown(el) { var m = el || msgEl; m.scrollTop = m.scrollHeight; }
+  function clearMessages(salon) {
+    var m = salon === undefined ? msgEl : journalDe(salon);
+    m.innerHTML = "";
+  }
+
+  /* ── UN CADRE PAR SALON ────────────────────────────────────────────────────
+   *
+   * La suite du relevé ci-dessus. Un CADRE, c'est le panneau du chat recopié
+   * et branché sur UN salon : son fil, sa saisie, ses feutres, ses connectés,
+   * sa colonne de bouilles, sa barre d'icônes. Le bureau loge chaque cadre
+   * dans une fenêtre à lui — autant de fenêtres que de salons ouverts, comme
+   * `Slot.addBox` (0x35c98) qui tient une LISTE de boîtes. Le mobile n'en crée
+   * aucun et garde son panneau unique.
+   *
+   * LES IDENTIFIANTS SONT GARDÉS DANS LA COPIE, et c'est délibéré. La feuille
+   * de style du chat est écrite en « #… » d'un bout à l'autre, celle du bureau
+   * par-dessus : les réécrire toutes coûterait bien plus que le doublon ne
+   * gêne. Et il ne gêne pas — `document.querySelector("#x")` rend le PREMIER
+   * nœud du document, donc toujours le panneau mobile d'origine, qui vient en
+   * tête du corps. Tout le code existant continue de s'adresser à lui ; ce qui
+   * vise un cadre passe par `dansCadre`, qui cherche DANS le cadre.
+   */
+  var cadres = {};                      // salon → cadre
+  function cadreDe(salon) { return (salon && cadres[salon]) || null; }
+  function dansCadre(c, id) { return c.panneau.querySelector("#" + id); }
+  function cadresOuverts() { return Object.keys(cadres); }
+
+  function creerCadreSalon(salon) {
+    if (!salon) return null;
+    if (cadres[salon]) return cadres[salon];
+    var p = $("#chat-panel").cloneNode(true);
+    p.setAttribute("data-salon", salon);
+    // La poignée de largeur est un geste du panneau plein écran ; dans une
+    // fenêtre, c'est le coin qui redimensionne.
+    var poi = p.querySelector("#chat-poignee");
+    if (poi) poi.remove();
+    // La barre d'icônes appartient à la MARGE GAUCHE de la fenêtre du salon
+    // (`displayLeftIconList`, 0x69384) : chaque cadre a la sienne. Sans le « ‹ »
+    // de l'accueil ni le menu déroulant des salons — une fenêtre d'époque est
+    // liée À SON salon, elle n'en change pas ; on en ouvre une autre.
+    var barre = $("#topbar").cloneNode(true);
+    ["#menu-btn", "#room-select"].forEach(function (s) {
+      var n = barre.querySelector(s); if (n) n.remove();
+    });
+    p.insertBefore(barre, p.firstChild);
+    // La copie a pris le contenu du panneau mobile au passage, et son état
+    // avec : on repart d'un cadre vierge, barres refermées.
+    ["#messages", "#pen-bar", "#accent-bar", "#users-list", "#bouille-overlay-stage"]
+      .forEach(function (s) { var n = p.querySelector(s); if (n) { n.innerHTML = ""; n.classList.remove("show"); } });
+    var ov = p.querySelector("#bouille-overlay");
+    if (ov) ov.classList.remove("show", "leaving");
+    ["#pen-btn", "#users-btn", "#accent-toggle"].forEach(function (s) {
+      var n = p.querySelector(s); if (n) n.classList.remove("on");
+    });
+    var c = { salon: salon, panneau: p, fil: p.querySelector("#messages"), vue: "salon", canvas: null };
+    cadres[salon] = c;
+    journaux[salon] = c.fil;
+    brancherCadre(c);
+    var conv = state.prives[salon];
+    systemLine("— " + (conv ? "Discussion privée avec " + conv.avec : roomLabel(salon)) + " —", salon);
+    // `box.Chat.init` finit par rejoindre — sauf pour un salon où l'on est
+    // déjà : celui qu'on regardait, ou une discussion privée à laquelle le
+    // serveur nous a abonnés (`<s>`). `usersByRoom` ne porte une liste que
+    // pour les salons où l'on est.
+    if (salon !== state.room && !state.usersByRoom[salon]) rejoindreSalon(salon);
+    else majConnectesCadre(c);
+    return c;
+  }
+
+  /*
+   * Le cadre s'en va. `box.Chat.close` (0x2a11a) commence par `this.part()` —
+   * AVANT le test `cmode == "private"` : fermer une fenêtre de conversation,
+   * c'est quitter le salon, public ou privé. Vient ensuite le rangement :
+   * `chatMng.unsetBox(this.user)` pour un privé (0x2a188), `channelMng.rm(
+   * this.group)` pour un salon (0x2a1dc).
+   *
+   * (Le mobile n'a pas de cadre : il ne passe jamais par ici, et sa règle
+   * « on ne quitte jamais un privé » — cf. `switchRoom` — reste entière.)
+   */
+  function fermerCadreSalon(salon) {
+    var c = cadres[salon];
+    if (!c) return;
+    delete cadres[salon];
+    delete journaux[salon];
+    // Le lecteur du cadre s'arrête avec lui : une émotion en cours tournerait
+    // sinon dans un canevas détaché.
+    if (c.timer) clearTimeout(c.timer);
+    overlayEteindre(c);
+    if (c.panneau.parentNode) c.panneau.parentNode.removeChild(c.panneau);
+    wsSend('<y g="' + xmlEscape(salon) + '" />');
+    delete state.usersByRoom[salon];
+    if (estPrive(salon)) delete state.prives[salon];
+    // Le salon « regardé » part avec sa fenêtre : c'est une autre conversation
+    // ouverte qui prend sa place, s'il en reste une.
+    if (state.room === salon) {
+      var reste = cadresOuverts();
+      state.room = reste.length ? reste[reste.length - 1] : "";
+      var sel = $("#room-select");
+      if (sel && state.room) sel.value = state.room;
+      renderUsers();
+    }
+    renderRoomOptions();
+    majPastilleMp();
+  }
+
+  function brancherCadre(c) {
+    var inp = dansCadre(c, "compose-input");
+    var form = dansCadre(c, "compose-form");
+    var envoi = dansCadre(c, "compose-send");
+    var acc = dansCadre(c, "accent-toggle");
+    [inp, envoi, acc].forEach(function (n) { if (n) n.disabled = !state.connected; });
+    if (inp) inp.style.color = penColorFor(state.pen) || "#2C4A0F";
+    if (form) form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      envoyerDansSalon(c.salon, inp ? inp.value : "", inp);
+    });
+    // Les accents.
+    remplirBarreAccents(dansCadre(c, "accent-bar"), inp);
+    if (acc) acc.addEventListener("click", function () {
+      var bar = dansCadre(c, "accent-bar");
+      var vu = bar.classList.toggle("show");
+      acc.classList.toggle("on", vu);
+      var pen = dansCadre(c, "pen-bar"); if (pen) pen.classList.remove("show");
+      if (vu && inp) inp.focus();
+    });
+    // Les feutres. `state.pen` reste COMMUN à tous les cadres : le feutre est
+    // celui du joueur, pas celui d'une fenêtre — `selectPen` (0x821f4) écrit
+    // dans `PenMng.current`, un seul pour toute la session.
+    var penBtn = dansCadre(c, "pen-btn");
+    if (penBtn) penBtn.addEventListener("click", function () {
+      var bar = dansCadre(c, "pen-bar");
+      buildPenBar(bar);
+      var vu = bar.classList.toggle("show");
+      penBtn.classList.toggle("on", vu);
+      var a = dansCadre(c, "accent-bar"); if (a) a.classList.remove("show");
+      if (vu && nearBottom(c.fil)) scrollDown(c.fil);
+    });
+    // Les connectés — `cpUserList`, dans `margin.right` du frameset : la
+    // fenêtre du salon s'ouvre AVEC, d'où l'appel d'entrée.
+    var usersBtn = dansCadre(c, "users-btn");
+    var tiroir = dansCadre(c, "users-drawer");
+    var fond = dansCadre(c, "drawer-backdrop");
+    function ouvrirTiroir(o) {
+      if (tiroir) tiroir.classList.toggle("open", o);
+      if (fond) fond.classList.toggle("show", o);
+      if (usersBtn) usersBtn.classList.toggle("on", o);
+      if (o) majConnectesCadre(c);
+    }
+    if (usersBtn) usersBtn.addEventListener("click", function () {
+      ouvrirTiroir(!(tiroir && tiroir.classList.contains("open")));
+    });
+    if (fond) fond.addEventListener("click", function () { ouvrirTiroir(false); });
+    Array.prototype.forEach.call(c.panneau.querySelectorAll(".dr-onglet"), function (b) {
+      b.addEventListener("click", function () {
+        c.vue = b.getAttribute("data-vue");
+        Array.prototype.forEach.call(c.panneau.querySelectorAll(".dr-onglet"), function (o) {
+          o.classList.toggle("on", o.getAttribute("data-vue") === c.vue);
+        });
+        var l = dansCadre(c, "users-list"); if (l) l.scrollTop = 0;
+        majConnectesCadre(c);
+        if (c.vue === "site") chargerSite();
+      });
+    });
+    brancherDefilement(dansCadre(c, "users-list"), dansCadre(c, "users-scroll-up"), -1);
+    brancherDefilement(dansCadre(c, "users-list"), dansCadre(c, "users-scroll-down"), 1);
+    ouvrirTiroir(true);
+  }
+
+  // Écrire DANS un salon donné — le même chemin que la saisie du panneau
+  // mobile, mais sans passer par « le salon qu'on regarde ».
+  function envoyerDansSalon(salon, texte, inp) {
+    var text = String(texte == null ? "" : texte);
+    if (!text.trim() || !state.connected || !salon) return;
+    if (text.charAt(0) === "/" && traiterCommande(text, salon)) {
+      if (inp) { inp.value = ""; inp.focus(); }
+      return;
+    }
+    wsSend('<t g="' + xmlEscape(salon) + '" t="m" p="' + xmlEscape(state.pen) + '">' + bodyEscape(text) + "</t>");
+    if (inp) { inp.value = ""; inp.focus(); }
+  }
+
+  // La liste des connectés d'un cadre : les membres de SON salon (ou, si l'on
+  // a choisi l'autre onglet, tout le site).
+  function majConnectesCadre(c) {
+    var list = dansCadre(c, "users-list");
+    if (!list) return;
+    if (c.vue === "site") { remplirListeSite(list); return; }
+    var set = state.usersByRoom[c.salon] || {};
+    list.innerHTML = "";
+    membresDuSalon(c.salon).forEach(function (n) {
+      list.appendChild(ligneConnecte(n, "", !!(set[n] && set[n].staff)));
+    });
+    if (window.BureauFrutiz && BureauFrutiz.majListeConnectes) BureauFrutiz.majListeConnectes(c.panneau);
+  }
+  // Le salon a bougé (liste reçue, arrivée, départ) : son cadre suit, et sa
+  // colonne de bouilles avec.
+  function majSalonPartout(salon) {
+    var c = cadres[salon];
+    if (c) majConnectesCadre(c);
+    if (salon === state.room) renderUsers();
+    if (window.BureauFrutiz && BureauFrutiz.majSalons) BureauFrutiz.majSalons();
+  }
+
   function cleanTime(h) {
     // server sends "[hh:mm:ss] " — show the full "[hh:mm:ss]" form so a line
     // reads "[14:03:27] pseudo : message". Falls back to "[hh:mm]" if seconds
@@ -5386,7 +5712,10 @@
     return m2 ? "[" + m2[1] + ":" + m2[2] + "]" : "";
   }
   function addMessage(o) {
-    var stick = nearBottom();
+    // `o.salon` dit dans QUEL fil la ligne va. Sans lui — les annonces
+    // globales, le courrier, les dons — c'est celui qu'on regarde.
+    var fil = journalDe(o.salon || state.room);
+    var stick = nearBottom(fil);
     var row = el("div", "msg" + (o.kind === "system" ? " system" : o.kind === "admin" ? " admin" : o.kind === "shout" ? " shout" : o.kind === "blue" ? " blue" : ""));
     if (o.kind === "system") {
       row.textContent = o.body;
@@ -5416,21 +5745,24 @@
       bd.textContent = o.body;
       row.appendChild(bd);
     }
-    msgEl.appendChild(row);
+    fil.appendChild(row);
     // Cap DOM size for long sessions.
-    while (msgEl.childNodes.length > 400) msgEl.removeChild(msgEl.firstChild);
-    if (stick) scrollDown();
+    while (fil.childNodes.length > 400) fil.removeChild(fil.firstChild);
+    if (stick) scrollDown(fil);
   }
-  function systemLine(text) { addMessage({ kind: "system", body: text }); }
+  function systemLine(text, salon) {
+    addMessage({ kind: "system", body: text, salon: salon });
+  }
 
   // `box.Chat.onSend` : une trame de conversation AVERTIT son slot — mais pas
   // toutes. Le SWF encadre l'appel d'un « if (t != "b" && t != "i") » : ni les
   // annonces, ni les images ne font clignoter l'onglet. Sur le bureau light,
   // c'est celui de la fenêtre des salons qui se teinte de rose (ou celui du
   // bureau si elle y est restée) ; ailleurs, l'appel ne fait rien.
-  function avertirOngletChat(ty) {
+  function avertirOngletChat(ty, salon) {
     if (ty === "b" || ty === "i") return;
-    if (window.BureauFrutiz && BureauFrutiz.avertirConversation) BureauFrutiz.avertirConversation();
+    // `salon` désigne la fenêtre à avertir : chaque conversation a la sienne.
+    if (window.BureauFrutiz && BureauFrutiz.avertirConversation) BureauFrutiz.avertirConversation(salon);
   }
 
   // ── Blindtest ──
@@ -5634,8 +5966,9 @@
   // Ligne système suivie d'un lien d'action. Sert au repli « il n'est pas
   // connecté → écris-lui » : le bureau propose exactement ça, autant ne pas
   // laisser le mobile sur un simple constat d'échec.
-  function systemAction(texte, libelle, action) {
-    var stick = nearBottom();
+  function systemAction(texte, libelle, action, salon) {
+    var fil = journalDe(salon || state.room);
+    var stick = nearBottom(fil);
     var row = el("div", "msg system");
     row.appendChild(document.createTextNode(texte + " "));
     var a = el("button", "sys-lien");
@@ -5643,16 +5976,17 @@
     a.textContent = libelle;
     a.addEventListener("click", action);
     row.appendChild(a);
-    msgEl.appendChild(row);
-    while (msgEl.childNodes.length > 400) msgEl.removeChild(msgEl.firstChild);
-    if (stick) scrollDown();
+    fil.appendChild(row);
+    while (fil.childNodes.length > 400) fil.removeChild(fil.firstChild);
+    if (stick) scrollDown(fil);
   }
 
   // Emote line, identical to the desktop: "[hh:mm:ss] pseudo <phrase>" with the
   // pseudo in bold and the whole line in italics, NO colon (e.g.
   // "kasparov éclate de rire").
   function addEmoteMessage(o) {
-    var stick = nearBottom();
+    var fil = journalDe(o.salon || state.room);
+    var stick = nearBottom(fil);
     var row = el("div", "msg emote");
     var t = cleanTime(o.time);
     if (t) { var ts = el("span", "time"); ts.textContent = t; row.appendChild(ts); }
@@ -5663,15 +5997,16 @@
     row.appendChild(document.createTextNode(" "));
     var lb = el("span", "body"); lb.textContent = o.label;
     row.appendChild(lb);
-    msgEl.appendChild(row);
-    while (msgEl.childNodes.length > 400) msgEl.removeChild(msgEl.firstChild);
-    if (stick) scrollDown();
+    fil.appendChild(row);
+    while (fil.childNodes.length > 400) fil.removeChild(fil.firstChild);
+    if (stick) scrollDown(fil);
   }
 
   // Render an image message inline: "[hh:mm:ss] pseudo : <title>" then the
   // picture below it. Used for t="i" frames (/image + MikeHorny image quizzes).
   function addImageMessage(o) {
-    var stick = nearBottom();
+    var fil = journalDe(o.salon || state.room);
+    var stick = nearBottom(fil);
     var row = el("div", "msg img-msg");
     var t = cleanTime(o.time);
     if (t) { var ts = el("span", "time"); ts.textContent = t; row.appendChild(ts); }
@@ -5686,13 +6021,13 @@
     img.loading = "lazy";
     if (o.w) img.style.maxWidth = Math.min(o.w, 320) + "px";
     img.onerror = function () { var f = el("span", "img-fail"); f.textContent = "[image indisponible]"; wrap.innerHTML = ""; wrap.appendChild(f); };
-    img.addEventListener("load", function () { if (stick) scrollDown(); });
+    img.addEventListener("load", function () { if (stick) scrollDown(fil); });
     img.src = o.url;
     wrap.appendChild(img);
     row.appendChild(wrap);
-    msgEl.appendChild(row);
-    while (msgEl.childNodes.length > 400) msgEl.removeChild(msgEl.firstChild);
-    if (stick) scrollDown();
+    fil.appendChild(row);
+    while (fil.childNodes.length > 400) fil.removeChild(fil.firstChild);
+    if (stick) scrollDown(fil);
   }
 
   // ── Don de kikooz (/donne) ──
@@ -5720,11 +6055,12 @@
     "4": "Tu n'as pas assez de kikooz pour ce don.",
   };
 
-  function commandeDon(mots, texte) {
+  function commandeDon(mots, texte, salon) {
+    var ou = salon || state.room;
     // Mêmes garde-fous que le bureau : au moins deux arguments, le premier
     // numérique. Un simple « /donne toto 3 » (arguments inversés) tombe ici.
     var montant = Math.floor(Number(mots[1]));
-    if (mots.length < 3 || !isFinite(montant) || montant <= 0) { systemLine(SYNTAXE_DON); return; }
+    if (mots.length < 3 || !isFinite(montant) || montant <= 0) { systemLine(SYNTAXE_DON, ou); return; }
     var cible = mots[2];
     // Le reste de la ligne est le message qui accompagne le don. Le bureau le
     // découpe par longueurs cumulées ; on retrouve la même chose en repartant de
@@ -5745,18 +6081,18 @@
         // /donne puise dans le compte du joueur, jamais dans l'enveloppe
         // hebdomadaire des animateurs — celle-ci appartient à /don. Le refus
         // « plus d'enveloppe » n'a donc plus lieu d'être ici.
-        if (code !== "0") { systemLine(REFUS_DON[code] || "Le don n'a pas abouti."); return; }
+        if (code !== "0") { systemLine(REFUS_DON[code] || "Le don n'a pas abouti.", ou); return; }
         var solde = Number(attr(xml, "a"));
         var recu = xmlUnescape(attr(xml, "u")) || cible;   // pseudo tel que le serveur l'orthographie
         var offert = Number(attr(xml, "g")) || montant;
         if (isFinite(solde)) setKikoozSolde(solde);
-        systemLine("Don réussi ! Tu as maintenant " + solde + " kikooz disponibles.");
+        systemLine("Don réussi ! Tu as maintenant " + solde + " kikooz disponibles.", ou);
         // Le serveur a déjà transféré les kikooz ; cette trame n'est QUE l'annonce
         // au salon, celle que le destinataire voit s'afficher (chez lui seul).
-        wsSend('<t g="' + xmlEscape(state.room) + '" t="g" p="">'
+        wsSend('<t g="' + xmlEscape(ou) + '" t="g" p="">'
           + '<g k="' + xmlEscape(String(offert)) + '" u="' + xmlEscape(recu) + '" /></t>');
       })
-      .catch(function () { systemLine("Le don n'a pas abouti (serveur injoignable)."); });
+      .catch(function () { systemLine("Le don n'a pas abouti (serveur injoignable).", ou); });
   }
 
   // ── Quota hebdomadaire de dons (/meskikooz) ──
@@ -5765,30 +6101,34 @@
   // comme sur le bureau (qui gate la commande sur son drapeau d'animateur).
   var CMD_QUOTA = ["/meskikooz", "/mykikooz", "/kikoozrestants"];
 
-  function commandeQuota() {
+  function commandeQuota(salon) {
+    var ou = salon || state.room;
     fetch("/do/give?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
       .then(function (r) { return r.text(); })
       .then(function (xml) {
         if (attr(xml, "k") !== "0") {
-          systemLine("Seuls les animateurs ont un quota de dons à distribuer.");
+          systemLine("Seuls les animateurs ont un quota de dons à distribuer.", ou);
           return;
         }
         // p="0" : l'appelant n'est pas plafonné (modérateur). Annoncer un « reste »
         // dans ce cas laisserait croire à une limite qui n'existe pas.
         systemLine(attr(xml, "p") === "0"
           ? "Tes dons ne sont pas plafonnés."
-          : "Il te reste " + attr(xml, "a") + " kikooz distribuables cette semaine.");
+          : "Il te reste " + attr(xml, "a") + " kikooz distribuables cette semaine.", ou);
       })
-      .catch(function () { systemLine("Quota indisponible (serveur injoignable)."); });
+      .catch(function () { systemLine("Quota indisponible (serveur injoignable).", ou); });
   }
 
   // Renvoie true si la ligne a été traitée localement. Toutes les autres
   // commandes (/topic, /stats, /fiche, /don…) partent au serveur, qui les gère.
-  function traiterCommande(texte) {
+  // `salon` dit OÙ écrire les réponses : sur le bureau, chaque salon a sa
+  // fenêtre, et un accusé de don doit s'afficher dans celle où l'on a tapé la
+  // commande.
+  function traiterCommande(texte, salon) {
     var mots = texte.trim().split(/\s+/);
     var cmd = mots[0].toLowerCase();
-    if (CMD_DON.indexOf(cmd) !== -1) { commandeDon(mots, texte.trim()); return true; }
-    if (CMD_QUOTA.indexOf(cmd) !== -1) { commandeQuota(); return true; }
+    if (CMD_DON.indexOf(cmd) !== -1) { commandeDon(mots, texte.trim(), salon); return true; }
+    if (CMD_QUOTA.indexOf(cmd) !== -1) { commandeQuota(salon); return true; }
     return false;
   }
 
@@ -5801,7 +6141,7 @@
     // Les commandes que le BUREAU traite lui-même n'ont pas de gestionnaire
     // serveur : les envoyer telles quelles ne rapporterait qu'un « Commande
     // inconnue ». On les exécute ici, comme le SWF.
-    if (text.charAt(0) === "/" && traiterCommande(text)) { inp.value = ""; inp.focus(); return; }
+    if (text.charAt(0) === "/" && traiterCommande(text, state.room)) { inp.value = ""; inp.focus(); return; }
     // Always send the user's actual text. Each client detects emotes from the
     // text itself and reacts locally (here via detectEmote on receive; the
     // desktop SWF triggers its own emote icons/bouille the same way it does for
@@ -5830,18 +6170,25 @@
     try { input.setSelectionRange(pos, pos); } catch (e) {}
     input.focus();
   }
-  (function initAccentBar() {
-    var bar = $("#accent-bar");
-    var toggle = $("#accent-toggle");
-    if (!bar || !toggle) return;
+  // Les touches d'une barre d'accents, rattachées à UNE saisie : le panneau
+  // mobile a la sienne, chaque cadre de salon du bureau la sienne.
+  function remplirBarreAccents(bar, inp) {
+    if (!bar) return;
+    bar.innerHTML = "";
     ACCENT_KEYS.forEach(function (ch) {
       var b = el("button", "accent-key");
       b.type = "button";
       b.textContent = ch;
       // mousedown (not click) so the composer keeps focus / caret position.
-      b.addEventListener("mousedown", function (ev) { ev.preventDefault(); insertAtCursor($("#compose-input"), ch); });
+      b.addEventListener("mousedown", function (ev) { ev.preventDefault(); insertAtCursor(inp, ch); });
       bar.appendChild(b);
     });
+  }
+  (function initAccentBar() {
+    var bar = $("#accent-bar");
+    var toggle = $("#accent-toggle");
+    if (!bar || !toggle) return;
+    remplirBarreAccents(bar, $("#compose-input"));
     toggle.addEventListener("click", function () {
       var showing = bar.classList.toggle("show");
       toggle.classList.toggle("on", showing);
@@ -6354,8 +6701,8 @@
   // Le staff du salon d'abord (m="1"), puis l'alphabet — le tri du bureau
   // (UserListMng : flMode en tête). Le bureau Frutiz s'en sert aussi pour
   // remplir sa colonne de bouilles, d'où la fonction à part.
-  function membresDuSalon() {
-    var set = state.usersByRoom[state.room] || {};
+  function membresDuSalon(salon) {
+    var set = state.usersByRoom[salon || state.room] || {};
     return Object.keys(set).sort(function (a, b) {
       var sa = set[a] && set[a].staff ? 0 : 1;
       var sb = set[b] && set[b].staff ? 0 : 1;
@@ -6391,7 +6738,10 @@
   // m="1" sur ce salon, une fois par salon.
   var histoMontre = {};
   function montrerLienHisto(room, set) {
-    if (histoMontre[room] || room !== state.room || estPrive(room)) return;
+    if (histoMontre[room] || estPrive(room)) return;
+    // Le salon qu'on regarde, ou celui qui a sa fenêtre : le lien va dans SON
+    // fil, comme la ligne d'entrée.
+    if (room !== state.room && !aSonJournal(room)) return;
     var moi = null;
     for (var n in set) { if (n.toLowerCase() === state.userLower) { moi = set[n]; break; } }
     if (!moi || !moi.staff) return;
@@ -6399,14 +6749,15 @@
     systemAction("", "... voir les messages précédents ...", function () {
       window.open("/api/chat/histo?sid=" + encodeURIComponent(state.sid)
         + "&g=" + encodeURIComponent(room), "fp_histo", "width=680,height=720");
-    });
+    }, room);
   }
 
   // Vue « tout le site ». Le lieu affiché est le salon PUBLIC où se trouve le
   // joueur ; qui n'en a rejoint aucun (il joue, il lit le forum…) est simplement
   // « en ligne ». Les discussions privées ne sont jamais nommées.
-  function renderSite() {
-    var list = $("#users-list");
+  function renderSite() { remplirListeSite($("#users-list")); }
+  function remplirListeSite(list) {
+    if (!list) return;
     list.innerHTML = "";
     if (!siteListe) {
       var att = el("div", "vide"); att.textContent = "Chargement…";
@@ -6439,13 +6790,20 @@
         if (!d || !d.ok) return;
         siteListe = d.users || [];
         if (drawerVue === "site") renderSite();
+        // Les cadres du bureau ont chacun leur onglet : ceux qui regardent le
+        // site se rafraîchissent aussi.
+        cadresOuverts().forEach(function (s) {
+          if (cadres[s].vue === "site") majConnectesCadre(cadres[s]);
+        });
       })
       .catch(function () {});
   }
 
   function drawerBascule(vue) {
     drawerVue = vue;
-    Array.prototype.forEach.call(document.querySelectorAll(".dr-onglet"), function (b) {
+    // Les onglets DU PANNEAU MOBILE : les cadres du bureau ont les leurs, et
+    // chacun regarde ce qu'il veut.
+    Array.prototype.forEach.call($("#chat-panel").querySelectorAll(".dr-onglet"), function (b) {
       b.classList.toggle("on", b.getAttribute("data-vue") === vue);
     });
     $("#users-list").scrollTop = 0;
@@ -6457,10 +6815,12 @@
   // interroger le serveur pour un tiroir fermé ne sert personne.
   function majRafraichissementSite() {
     var voulu = (drawerVue === "site") && $("#users-drawer").classList.contains("open");
+    // Un cadre du bureau posé sur « tout le site » compte autant.
+    if (!voulu) voulu = cadresOuverts().some(function (s) { return cadres[s].vue === "site"; });
     if (voulu && !siteTimer) siteTimer = setInterval(chargerSite, 15000);
     if (!voulu && siteTimer) { clearInterval(siteTimer); siteTimer = null; }
   }
-  Array.prototype.forEach.call(document.querySelectorAll(".dr-onglet"), function (b) {
+  Array.prototype.forEach.call($("#chat-panel").querySelectorAll(".dr-onglet"), function (b) {
     b.addEventListener("click", function () { drawerBascule(b.getAttribute("data-vue")); });
   });
 
@@ -6478,22 +6838,20 @@
   $("#drawer-backdrop").addEventListener("click", function () { openDrawer(false); });
 
   // Pink scroll buttons (top/bottom of the connected list): tap to nudge,
-  // press-and-hold to keep scrolling.
-  (function () {
-    var list = $("#users-list");
-    function bind(btn, dir) {
-      if (!btn || !list) return;
-      var timer = null;
-      function step() { list.scrollTop += dir * 48; }
-      function stop() { if (timer) { clearInterval(timer); timer = null; } }
-      function start(ev) { ev.preventDefault(); step(); stop(); timer = setInterval(step, 90); }
-      btn.addEventListener("mousedown", start);
-      btn.addEventListener("touchstart", start, { passive: false });
-      ["mouseup", "mouseleave", "touchend", "touchcancel"].forEach(function (e) { btn.addEventListener(e, stop); });
-    }
-    bind($("#users-scroll-up"), -1);
-    bind($("#users-scroll-down"), 1);
-  })();
+  // press-and-hold to keep scrolling. (Nommée, parce que chaque cadre de salon
+  // du bureau a sa liste et ses deux boutons.)
+  function brancherDefilement(list, btn, dir) {
+    if (!btn || !list) return;
+    var timer = null;
+    function step() { list.scrollTop += dir * 48; }
+    function stop() { if (timer) { clearInterval(timer); timer = null; } }
+    function start(ev) { ev.preventDefault(); step(); stop(); timer = setInterval(step, 90); }
+    btn.addEventListener("mousedown", start);
+    btn.addEventListener("touchstart", start, { passive: false });
+    ["mouseup", "mouseleave", "touchend", "touchcancel"].forEach(function (e) { btn.addEventListener(e, stop); });
+  }
+  brancherDefilement($("#users-list"), $("#users-scroll-up"), -1);
+  brancherDefilement($("#users-list"), $("#users-scroll-down"), 1);
 
   // ── Bouille display toggle (header) ──────────────────────────────────────
   // Some users want a very "light" experience with no bouille animations popping
@@ -6507,7 +6865,10 @@
       btn.setAttribute("aria-pressed", state.bouillesEnabled ? "true" : "false");
       btn.title = state.bouillesEnabled ? "Masquer les bouilles" : "Afficher les bouilles";
     }
-    if (!state.bouillesEnabled) hideBouilleOverlay();
+    if (!state.bouillesEnabled) {
+      hideBouilleOverlay(null);
+      cadresOuverts().forEach(function (sn) { hideBouilleOverlay(cadres[sn]); });
+    }
   }
   try { if (localStorage.getItem(BOUILLE_PREF_KEY) === "0") state.bouillesEnabled = false; } catch (e) {}
   $("#bouille-toggle").addEventListener("click", function () {
@@ -6673,8 +7034,8 @@
 
   // Build the feutre swatch row once (a "none" chip + the 17 colours). Tapping a
   // swatch sets state.pen and tints the composer text so the choice is obvious.
-  function buildPenBar() {
-    var bar = $("#pen-bar");
+  function buildPenBar(cible) {
+    var bar = cible || $("#pen-bar");
     if (!bar) return;
     bar.innerHTML = "";   // reconstruit à chaque ouverture (reflète la possession du feutre multicolore)
     var none = el("div", "pen-swatch none" + (state.pen === "" ? " sel" : ""));
@@ -6713,6 +7074,9 @@
       bar.appendChild(mc);
     }
   }
+  // Le feutre est celui du JOUEUR, pas celui d'une fenêtre (`PenMng.current`,
+  // un seul pour la session) : le choix se répercute sur toutes les barres
+  // ouvertes et toutes les saisies, cadres du bureau compris.
   function selectPen(idx) {
     state.pen = idx;
     Array.prototype.forEach.call(document.querySelectorAll("#pen-bar .pen-swatch"), function (sw) {
@@ -6720,8 +7084,9 @@
       sw.classList.toggle("sel", (idx === "" && sw.classList.contains("none")) || (v != null && v === idx));
     });
     // Tint the input so you see your current feutre while typing.
-    var inp = $("#compose-input");
-    if (inp) inp.style.color = penColorFor(idx) || "#2C4A0F";
+    Array.prototype.forEach.call(document.querySelectorAll("#compose-input"), function (inp) {
+      inp.style.color = penColorFor(idx) || "#2C4A0F";
+    });
   }
   $("#pen-btn").addEventListener("click", function () {
     buildPenBar();
@@ -6752,61 +7117,78 @@
    * Le moteur exécute la vraie routine playAnim du SWF de famille (le visage,
    * la bouche ET les yeux), à quarante images par seconde, en vectoriel.
    */
+  // Chaque CADRE a sa scène et son lecteur : deux fenêtres de salon peuvent
+  // jouer deux émotions en même temps, elles ne se disputent pas le même
+  // canevas. `c` nul = le panneau mobile.
   var overlayCanvas = null;
-  function overlayIframe() {
-    if (overlayCanvas && overlayCanvas.isConnected) return overlayCanvas;
-    var scene = $("#bouille-overlay-stage");
+  var overlayTimer = null;
+  function noeudChat(c, id) { return c ? dansCadre(c, id) : $("#" + id); }
+  function overlayIframe(c) {
+    var courant = c ? c.canvas : overlayCanvas;
+    if (courant && courant.isConnected) return courant;
+    var scene = noeudChat(c, "bouille-overlay-stage");
     scene.innerHTML = FPBouilleVignette.html(DEFAULT_BOUILLE, { anime: true });
-    overlayCanvas = scene.querySelector("canvas.fp-bvig");
-    return overlayCanvas;
+    var cv = scene.querySelector("canvas.fp-bvig");
+    if (c) c.canvas = cv; else overlayCanvas = cv;
+    return cv;
   }
-  function overlayJouer(pseudo, anim) {
+  function overlayJouer(pseudo, anim, c) {
     var f = state.bouilleByUser[String(pseudo).toLowerCase()] || DEFAULT_BOUILLE;
-    FPBouilleVignette.jouer(overlayIframe(), f, ANIM_INDEX[anim] || 1);
+    FPBouilleVignette.jouer(overlayIframe(c), f, ANIM_INDEX[anim] || 1);
   }
-  function overlayEteindre() {
-    if (overlayCanvas) FPBouilleVignette.stopper(overlayCanvas);
+  function overlayEteindre(c) {
+    var cv = c ? c.canvas : overlayCanvas;
+    if (cv) FPBouilleVignette.stopper(cv);
+  }
+  function overlayMinuteur(c, fn) {
+    if (c) { if (c.timer) clearTimeout(c.timer); c.timer = setTimeout(fn, OVERLAY_HOLD_MS); return; }
+    if (overlayTimer) clearTimeout(overlayTimer);
+    overlayTimer = setTimeout(fn, OVERLAY_HOLD_MS);
   }
 
   var OVERLAY_HOLD_MS = 4200;
-  function showBouilleOverlay(pseudo, anim, labelOverride) {
+  function showBouilleOverlay(pseudo, anim, labelOverride, salon) {
     if (!state.bouillesEnabled) return; // "light" mode: no bouille animations
+    // La fenêtre concernée : celle du salon d'où vient la ligne. Sans cadre —
+    // le mobile, ou une annonce sans salon — c'est le panneau d'origine.
+    var c = cadreDe(salon || state.room);
     // Sur le bureau Frutiz, l'animation ne passe PAS en surimpression du fil :
     // elle joue DANS l'écran de la personne, là où `cp.ScreenList` la joue
-    // d'époque. On y déménage la scène du light — le même lecteur, un seul —
-    // le temps de l'animation, puis on l'éteint et la bouille figée revient.
+    // d'époque. On y déménage la scène du cadre — le même lecteur, un seul par
+    // fenêtre — le temps de l'animation, puis on l'éteint et la bouille figée
+    // revient.
     var ecran = document.body.classList.contains("bureau-frutiz")
-      && window.BureauFrutiz && BureauFrutiz.ecranDe && BureauFrutiz.ecranDe(pseudo);
+      && window.BureauFrutiz && BureauFrutiz.ecranDe
+      && BureauFrutiz.ecranDe(pseudo, c ? c.panneau : null);
     if (ecran) {
       // La bouille FIGÉE de cet écran s'efface le temps de l'animation :
       // d'époque c'est la MÊME bouille qui s'anime, pas une seconde posée
       // par-dessus la première. Sans ça, la vignette PNG transparaissait sous
       // le lecteur et l'on en voyait deux.
-      var colonne = $("#bouille-overlay");
+      var colonne = noeudChat(c, "bouille-overlay");
       if (colonne) {
         var deja = colonne.querySelectorAll(".bo-anime");
         for (var i2 = 0; i2 < deja.length; i2++) deja[i2].classList.remove("bo-anime");
       }
-      var scene = $("#bouille-overlay-stage");
+      var scene = noeudChat(c, "bouille-overlay-stage");
       if (scene.parentNode !== ecran) ecran.appendChild(scene);
       scene.classList.add("joue");
       ecran.classList.add("bo-anime");
-      overlayJouer(pseudo, anim);
-      if (state.overlayTimer) clearTimeout(state.overlayTimer);
-      state.overlayTimer = setTimeout(function () {
+      overlayJouer(pseudo, anim, c);
+      overlayMinuteur(c, function () {
         scene.classList.remove("joue");
         ecran.classList.remove("bo-anime");
-        overlayEteindre();
-      }, OVERLAY_HOLD_MS);
+        overlayEteindre(c);
+      });
       return;
     }
-    var box = $("#bouille-overlay");
+    var box = noeudChat(c, "bouille-overlay");
     if (!box) return;
-    var name = $("#bouille-overlay-name");
+    var name = noeudChat(c, "bouille-overlay-name");
     name.textContent = pseudo + " " + (labelOverride || ANIM_LABEL[anim] || "parle");
 
     // Rejouer la même émote la relance depuis le début : playAnim s'en charge.
-    overlayJouer(pseudo, anim);
+    overlayJouer(pseudo, anim, c);
 
     box.classList.remove("leaving");
     // Force reflow so removing .show→adding works as a fresh slide-in even when
@@ -6814,18 +7196,17 @@
     void box.offsetWidth;
     box.classList.add("show");
 
-    if (state.overlayTimer) clearTimeout(state.overlayTimer);
-    state.overlayTimer = setTimeout(hideBouilleOverlay, OVERLAY_HOLD_MS);
+    overlayMinuteur(c, function () { hideBouilleOverlay(c); });
   }
-  function hideBouilleOverlay() {
-    var box = $("#bouille-overlay");
+  function hideBouilleOverlay(c) {
+    var box = noeudChat(c, "bouille-overlay");
     if (!box) return;
     // Trigger the slide-out, then fully hide so the iframe stops compositing.
     box.classList.add("leaving");
     box.classList.remove("show");
     setTimeout(function () {
       box.classList.remove("leaving");
-      overlayEteindre();               // au repos, plus rien ne tourne
+      overlayEteindre(c);              // au repos, plus rien ne tourne
     }, 520);
   }
 

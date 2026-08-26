@@ -1763,8 +1763,14 @@ body.bureau-frutiz .fen #chat-panel #bouille-overlay #bouille-overlay-stage.joue
    quand la vignette a fini de charger (c'est ainsi qu'il cache l'icône
    d'image cassée le temps du rendu) — une règle de feuille n'en viendrait
    pas à bout. */
-body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-anime img,
-body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-anime canvas { visibility: hidden !important; }
+/* Le sélecteur vise la VIGNETTE FIGÉE, c'est-à-dire l'enfant DIRECT de
+   l'écran — pas tout ce qui traîne dedans. Depuis que les bouilles sont
+   rendues en JS, le lecteur est un canevas lui aussi, et il vit DANS l'écran
+   le temps de l'animation : un `.bo-anime canvas` sans `>` le masquait avec
+   la vignette, et l'écran devenait blanc pendant les quatre secondes de
+   l'émotion. */
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-anime > img,
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-anime > canvas { visibility: hidden !important; }
 body.bureau-frutiz .fen #chat-panel #bouille-overlay #bouille-overlay-stage iframe {
   width: 98px; height: 98px; border: 0; display: block;
 }
@@ -2180,9 +2186,13 @@ body.bureau-frutiz .fen #scores-panel #sc-table .sc-pod span { color: #000000; }
    Les encres : le pseudo prend la couleur du GENRE (`UserSlot.onInfoBasic` —
    #242169 pour un garçon, #BB4A44 pour une fille), l'âge #404040, l'onglet
    courant #842929, les autres et tout le corps #335511. */
+/* Le voile du mobile devient, ici, une simple COUCHE transparente : la fiche
+   est une fenêtre du bureau, elle ne noircit rien et n'arrête pas la souris.
+   Mais elle reste commandée par `.show`, comme sur le mobile — sans quoi une
+   fiche vide flottait en permanence au-dessus du bureau. */
 body.bureau-frutiz #fiche-backdrop {
   position: fixed; inset: 0; z-index: 70;
-  display: block; background: none; padding: 0;
+  display: none; background: none; padding: 0;
   pointer-events: none;                /* le bureau reste vivant DERRIÈRE */
 }
 body.bureau-frutiz #fiche-backdrop.show { display: block; }

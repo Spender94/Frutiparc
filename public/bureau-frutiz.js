@@ -32,8 +32,12 @@ window.BureauFrutiz = (function () {
   // `evenements` et `historique` partagent le panneau #evt-panel : la fenêtre
   // est UNIQUE et se retitre selon l'onglet demandé.
   var RUBRIQUES = {
-    chat:       { panneau: '#chat-panel',      titre: 'Salons',         fruit: 'winChat', l: 780, h: 580,
-                  min: function () { return minSalon(); } },
+    // PAS DE RUBRIQUE « chat » ICI — et ce n'est pas un oubli non plus.
+    // `box.Chat` est une instance PAR SALON (`chatMng.setBox(user, this)`
+    // 0x29fdc pour un privé, `channelMng.pushUniq(group)` 0x2a065 pour un
+    // public) et `Slot.addBox` (0x35c98) en tient une LISTE : le bureau
+    // d'époque ouvre autant de fenêtres de conversation qu'on veut. Chacune
+    // est bâtie à la volée par `ouvrirSalon`, sous la clé « salon:<id> ».
     // PAS DE FORUM ICI — et ce n'est pas un oubli. `win.Forum` (0x6e136) est
     // la seule rubrique qui ne s'ouvre pas SUR le bureau : elle renvoie
     // dehors, dans une fenêtre de navigateur à elle. Voir `ouvrirForum`.
@@ -539,12 +543,9 @@ window.BureauFrutiz = (function () {
       b.type = 'button';
       b.className = 'sp-salon' + (i % 2 === 0 ? ' paire' : '');
       b.textContent = s.nom + ' (' + s.nbUser + ')';
-      b.addEventListener('click', function () {
-        pont.rejoindre(s.id);
-        // `box.join` fait suivre la fenêtre du salon : elle s'ouvre (ou
-        // repasse devant) sur le salon qu'on vient de rejoindre.
-        ouvrirFenetre('chat');
-      });
+      // `box.join` instancie une `box.Chat` de plus : le salon prend SA
+      // fenêtre, et celles déjà ouvertes restent où elles sont.
+      b.addEventListener('click', function () { pont.rejoindre(s.id); });
       liste.appendChild(b);
     });
   }
@@ -1864,13 +1865,20 @@ window.BureauFrutiz = (function () {
   // La fenêtre du salon porte le NOM du salon SUIVI DE SON AFFLUENCE, comme
   // le bureau d'époque — « Salon Fraise (1) » sur le rendu de référence.
   // « Salons » tout court ne disait rien de l'endroit où l'on parle.
-  function majTitreSalon() {
-    var f = fenetres['chat-panel'];
-    if (!f || !window.SalonsBureau) return;
-    var nom = window.SalonsBureau.nomCourant();
-    if (!nom) return;
-    var n = window.SalonsBureau.affluenceCourante();
-    f.txt.textContent = nom + (n === null ? '' : ' (' + n + ')');
+  function majTitreSalon(salon) {
+    var S = window.SalonsBureau;
+    if (!S) return;
+    // Sans salon nommé, on retitre TOUTES les fenêtres de conversation :
+    // l'affluence d'un salon bouge sans qu'on lui parle.
+    var cles = salon ? ['salon:' + salon] : Object.keys(fenetres);
+    cles.forEach(function (cle) {
+      var f = fenetres[cle];
+      if (!f || !f.salon) return;
+      var nom = S.titreDe(f.salon);
+      if (!nom) return;
+      var n = S.affluenceDe(f.salon);
+      retitrer(cle, nom + (n === null ? '' : ' (' + n + ')'));
+    });
   }
 
   // LE QUATRIÈME BOUTON de la colonne du salon : `chat_warning`, qui d'époque
@@ -1891,6 +1899,7 @@ window.BureauFrutiz = (function () {
   function brancherBouillesSalon(f) {
     if (f.bouillesBranchees) return;
     f.bouillesBranchees = true;
+    var panneau = f.panneau;
     f.corps.addEventListener('click', function (e) {
       if (!actif) return;
       var c = e.target && e.target.closest ? e.target : null;
@@ -1898,22 +1907,20 @@ window.BureauFrutiz = (function () {
       if (c.closest('#bouille-toggle')) {
         e.stopPropagation();
         e.preventDefault();
-        var p = $('#chat-panel');
-        var t = $('#topbar');
-        if (!p) return;
-        var ouvert = p.classList.toggle('bouilles-ouvertes');
+        var t = panneau.querySelector('#topbar');
+        var ouvert = panneau.classList.toggle('bouilles-ouvertes');
         if (t) t.classList.toggle('en-rangee', ouvert);
         // La fenêtre grandit D'ABORD s'il le faut : c'est sa hauteur qui dit
         // combien d'écrans tiennent, donc lequel des deux visages la zone
         // prend.
         appliquerMinimum(f);
-        if (ouvert) majBouilles();
+        if (ouvert) majBouilles(panneau);
         return;
       }
       // Les feutres et les connectés, eux, sont bien branchés côté light : on
       // repasse APRÈS lui pour relever le minimum, comme `onFrameSetUpdate`.
       if (c.closest('#pen-btn') || c.closest('#users-btn')) {
-        setTimeout(function () { appliquerMinimum(f); majBouilles(); }, 0);
+        setTimeout(function () { appliquerMinimum(f); majBouilles(panneau); }, 0);
       }
       // LE CLIC SUR UN ÉCRAN ouvre la fiche : `attachFrutiScreen` (0xb6597)
       // pose `setAction({obj: win.box, method: 'openFrutizInfo', args: u})`.
@@ -2025,12 +2032,12 @@ window.BureauFrutiz = (function () {
   // Les 8 px de chrome en largeur et les 28 en hauteur (12 de cadre, 16 de
   // bandeau) tombent de ces quatre mesures, et le PLANCHER de 202 est celui du
   // bandeau-titre, que le contenu n'atteint jamais tout seul.
-  function minSalon() {
-    var p = $('#chat-panel');
-    var bouilles = !!(p && p.classList.contains('bouilles-ouvertes'));
-    var tiroir = $('#users-drawer');
+  function minSalon(p) {
+    if (!p) return { w: 202, h: 156 };
+    var bouilles = !!p.classList.contains('bouilles-ouvertes');
+    var tiroir = p.querySelector('#users-drawer');
     var connectes = !!(tiroir && tiroir.classList.contains('open'));
-    var barre = $('#pen-bar');
+    var barre = p.querySelector('#pen-bar');
     var feutres = !!(barre && barre.classList.contains('show'));
     var gauche = { w: bouilles ? 112 : 32, h: bouilles ? 228 : 104 };
     var milieu = { w: feutres ? 126 : 108, h: 128 + (feutres ? 48 : 0) };
@@ -2098,17 +2105,17 @@ window.BureauFrutiz = (function () {
 
   // L'écran qui doit jouer l'émotion de quelqu'un : le sien en mode MULTI, et
   // en mode CLB la bouille qu'on fait entrer dans l'aquarium.
-  function ecranDe(pseudo) {
-    var col = $('#bouille-overlay');
-    var p = $('#chat-panel');
-    if (!col || !p || !p.classList.contains('bouilles-ouvertes')) return null;
-    if (col.querySelector('.bo-ecran.clb')) return clbAccueille(pseudo);
+  function ecranDe(pseudo, panneau) {
+    var p = panneau || $('#chat-panel');
+    var col = p && p.querySelector('#bouille-overlay');
+    if (!col || !p.classList.contains('bouilles-ouvertes')) return null;
+    if (col.querySelector('.bo-ecran.clb')) return clbAccueille(pseudo, p);
     return col.querySelector('.bo-ecran[data-qui="' + cleCss(String(pseudo).toLowerCase()) + '"]');
   }
 
   // `onCLBEvent` : quelqu'un s'exprime, sa bouille entre dans l'aquarium.
-  function clbAccueille(pseudo) {
-    var ec = $('#bouille-overlay .bo-ecran.clb');
+  function clbAccueille(pseudo, panneau) {
+    var ec = (panneau || document).querySelector('#bouille-overlay .bo-ecran.clb');
     if (!ec) return null;
     var cle = String(pseudo).toLowerCase();
     var cote = Math.min(ec.clientWidth, ec.clientHeight);
@@ -2122,7 +2129,7 @@ window.BureauFrutiz = (function () {
       b.style.left = (-ec.clientWidth) + 'px';   // hors champ, à gauche
       ec.appendChild(b);                         // AVANT le tirage : cf. le quirk
       b.style.top = Math.round(hauteurLibre(ec, cote)) + 'px';
-      poserBouille(b, bouilleDe(pseudo), pseudo);
+      poserBouille(b, bouilleDe(pseudo, panneau), pseudo);
       void b.offsetWidth;                        // que le départ soit enregistré
     }
     b.style.left = '0px';
@@ -2155,9 +2162,8 @@ window.BureauFrutiz = (function () {
     setTimeout(function () { if (b.parentNode) b.remove(); }, 700);
   }
 
-  function bouilleDe(pseudo) {
-    var S = window.SalonsBureau;
-    var gens = (S && S.membres) ? S.membres() : [];
+  function bouilleDe(pseudo, panneau) {
+    var gens = membresDuPanneau(panneau);
     var cle = String(pseudo).toLowerCase();
     for (var i = 0; i < gens.length; i++) {
       if (String(gens[i].pseudo).toLowerCase() === cle) return gens[i].bouille;
@@ -2193,9 +2199,15 @@ window.BureauFrutiz = (function () {
   // glisse une enveloppe qui déborde de la bordure et qui, elle, défile. Le
   // light refait la liste à chaque relevé des connectés : on la ré-enveloppe
   // au même moment.
-  function majListeConnectes() {
-    var l = $('#users-list');
-    if (!l || !actif) return;
+  function majListeConnectes(panneau) {
+    if (!actif) return;
+    // Sans panneau nommé : toutes les fenêtres de conversation ouvertes.
+    if (!panneau) {
+      for (var cle in fenetres) if (fenetres[cle].salon) majListeConnectes(fenetres[cle].panneau);
+      return;
+    }
+    var l = panneau.querySelector('#users-list');
+    if (!l) return;
     if (l.children.length === 1 && l.firstElementChild.className === 'ul-defile') return;
     var d = document.createElement('div');
     d.className = 'ul-defile';
@@ -2203,18 +2215,29 @@ window.BureauFrutiz = (function () {
     l.appendChild(d);
   }
 
-  function majBouilles() {
-    var col = $('#bouille-overlay');
-    var p = $('#chat-panel');
+  // Sans panneau nommé : toutes les fenêtres de conversation ouvertes.
+  function majBouilles(panneau) {
     // Un écran qui disparaît emporte sa bulle : `remove(id)` d'époque.
     if (tipCible && !document.documentElement.contains(tipCible)) tipCacher();
-    if (!col || !p || !p.classList.contains('bouilles-ouvertes')) return;
-    var S = window.SalonsBureau;
-    var gens = (S && S.membres) ? S.membres() : [];
+    if (!panneau) {
+      for (var cle in fenetres) if (fenetres[cle].salon) majBouilles(fenetres[cle].panneau);
+      return;
+    }
+    var col = panneau.querySelector('#bouille-overlay');
+    if (!col || !panneau.classList.contains('bouilles-ouvertes')) return;
+    var gens = membresDuPanneau(panneau);
     var cote = col.clientWidth || 100;
     var max = Math.floor((col.clientHeight || 0) / (cote + ECRAN_ECART));
     if (max >= gens.length) pileDeBouilles(col, gens);
     else bouilleUnique(col);
+  }
+
+  // Les membres du salon d'une fenêtre — c'est le panneau qui dit lequel.
+  function membresDuPanneau(panneau) {
+    var S = window.SalonsBureau;
+    var salon = panneau && panneau.getAttribute('data-salon');
+    if (!S || !salon || !S.membresDe) return [];
+    return S.membresDe(salon) || [];
   }
 
   // MULTI : un écran par personne, au pas de `size + ecart`.
@@ -2271,19 +2294,20 @@ window.BureauFrutiz = (function () {
   function rendreScene(ecran) {
     var scene = ecran.querySelector('#bouille-overlay-stage');
     ecran.classList.remove('bo-anime');   // sa vignette figée revient
-    if (scene) { scene.classList.remove('joue'); $('#bouille-overlay').appendChild(scene); }
+    // La colonne de CETTE fenêtre-là : chaque cadre a sa scène et son lecteur.
+    var col = ecran.closest ? ecran.closest('#bouille-overlay') : null;
+    if (scene && col) { scene.classList.remove('joue'); col.appendChild(scene); }
   }
 
-  var boutonWarning = null;
+  // Un bouton par fenêtre de conversation : la colonne d'icônes appartient à
+  // la fenêtre, pas au bureau.
   function warningSalon() {
-    if (boutonWarning) return boutonWarning;
     var b = document.createElement('button');
     b.type = 'button';
     b.id = 'chat-warning';
     b.className = 'icon-btn bare';
     b.disabled = true;
     b.title = 'L’appel au modérateur n’est pas ouvert sur le revival';
-    boutonWarning = b;
     return b;
   }
 
@@ -3244,18 +3268,20 @@ window.BureauFrutiz = (function () {
    *       this.slot.warning();
    *     }
    *
-   * D'époque chaque conversation a SA fenêtre ; le light n'en a qu'une, où
-   * salons et discussions privées défilent tour à tour. C'est donc l'onglet
-   * qui la porte qui clignote — ou celui du BUREAU si elle y est restée,
-   * exactement comme le fait `box.Chat` en remontant d'abord la fenêtre au
-   * premier plan avant d'avertir le slot.
+   * Chaque conversation a SA fenêtre, ici comme d'époque : c'est l'onglet qui
+   * porte CELLE DU SALON CONCERNÉ qui clignote — ou celui du BUREAU si elle y
+   * est restée, exactement comme le fait `box.Chat` en remontant d'abord la
+   * fenêtre au premier plan avant d'avertir le slot.
    *
    * (Quirk d'origine, laissé de côté : `onSend` exige `passwd != undefined`
    * pour un salon, `onSendUser` exige l'inverse — les deux gardes se
    * contredisent. Le light avertit dans les deux cas, salons et privés.)
    */
-  function avertirConversation() {
-    var f = fenetres['chat-panel'];
+  function avertirConversation(salon) {
+    var f = salon ? fenetres['salon:' + salon] : null;
+    // Sans salon nommé (une annonce globale), c'est la conversation qu'on
+    // regarde qui s'agite.
+    if (!f) f = fenetres['salon:' + salonCourant()];
     if (!f) return false;
     return avertirSlot(f.onglet || 'bureau');
   }
@@ -3411,15 +3437,17 @@ window.BureauFrutiz = (function () {
       dessinerOnglets();
     }
     f.panneau.classList.remove('active');
-    // La barre du salon retourne à sa place d'origine avec le panneau — sans
-    // le bouton d'avertissement, qui n'appartient qu'au bureau.
-    if (f.topbar) {
-      if (boutonWarning && boutonWarning.parentNode) boutonWarning.parentNode.removeChild(boutonWarning);
-      rendre(f.topbar.noeud, f.topbar.origine);
-    }
     rendre(f.panneau, f.origine);
     f.fen.remove();
     delete fenetres[idPanneau];
+    // `box.Chat.close` (0x2a0be) : fermer la fenêtre d'une conversation, c'est
+    // la quitter — `channelMng.remove(group)` pour un salon public,
+    // `chatMng.unsetBox(user)` pour un privé. Le cadre s'en va avec elle, et
+    // la rubrique aussi : celle-ci retient le panneau, qui n'existe plus.
+    if (f.salon) {
+      delete RUBRIQUES[idPanneau];
+      if (window.SalonsBureau && SalonsBureau.fermerCadre) SalonsBureau.fermerCadre(f.salon);
+    }
     // `box.Explorer.close` oublie le dossier courant : rouverte, la fenêtre
     // repart de sa racine.
     for (var cle in exEtats) {
@@ -3437,7 +3465,8 @@ window.BureauFrutiz = (function () {
     }
   }
 
-  function creerFenetre(rub, panneau) {
+  function creerFenetre(rub, panneau, cle) {
+    cle = cle || panneau.id;
     var fen = document.createElement('div');
     fen.className = 'fen';
     fen.style.width = Math.min(rub.l, window.innerWidth - 24) + 'px';
@@ -3509,13 +3538,13 @@ window.BureauFrutiz = (function () {
     plier.addEventListener('click', function (e) {
       // Ctrl : pas de glissade, ET l'onglet prend la main — c'est le même
       // `Key.isDown(17)` qui commande les deux (`putInTab` → `addSlot(…, true)`).
-      if (e.ctrlKey || e.metaKey) { mettreEnOnglet(panneau.id, true); return; }
+      if (e.ctrlKey || e.metaKey) { mettreEnOnglet(cle, true); return; }
       fen.classList.add('fen-glisse');
       var apres = function () {
         fen.removeEventListener('transitionend', apres);
         fen.classList.remove('fen-glisse');
         // Clic ordinaire : la fenêtre se RANGE, on reste sur le bureau.
-        mettreEnOnglet(panneau.id, false);
+        mettreEnOnglet(cle, false);
       };
       fen.addEventListener('transitionend', apres);
       // Filet : si la transition ne part pas (fenêtre déjà hors flux), on
@@ -3560,14 +3589,16 @@ window.BureauFrutiz = (function () {
     fen._entree = null;
 
     var f = {
-      fen: fen, corps: corps, panneau: panneau, minimum: minimum,
+      fen: fen, corps: corps, panneau: panneau, minimum: minimum, cle: cle,
       origine: deplacer(panneau, corps),
+      // Le salon d'une fenêtre de conversation ; nul pour toutes les autres.
+      salon: rub.salon || null,
       txt: txt, pastille: pastille, topbar: null,
       // Le fruit du type de fenêtre : le bandeau ET l'onglet le portent —
       // c'est `getIconLabel()` qui le donne, une fois pour les deux.
       fruit: rub.fruit || null, onglet: null, poseBureau: null,
     };
-    fermer.addEventListener('click', function () { fermerFenetre(panneau.id); });
+    fermer.addEventListener('click', function () { fermerFenetre(cle); });
     return f;
   }
 
@@ -3606,11 +3637,74 @@ window.BureauFrutiz = (function () {
     }
   }
 
+  /* ══ UNE FENÊTRE PAR SALON ═════════════════════════════════════════════
+     `box.Chat` est une instance PAR SALON — `chatMng.setBox(this.user, this)`
+     (0x29fdc) pour une discussion privée, `channelMng.pushUniq(this.group)`
+     (0x2a065) pour un salon public — et `Slot.addBox` (0x35c98) range les
+     boîtes d'un slot dans une LISTE. Le bureau d'époque tient donc autant de
+     fenêtres de conversation qu'on en ouvre ; rejoindre un salon n'en ferme
+     aucune.
+
+     Le panneau, lui, vient du light : `SalonsBureau.cadre(id)` recopie le
+     panneau du chat et le branche sur CE salon (son fil, sa saisie, ses
+     feutres, ses connectés). Ici on ne fait que le loger dans une fenêtre —
+     avec son bouton d'appel au modérateur et le geste des bouilles, qui
+     appartiennent au bureau.
+
+     La rubrique est bâtie à la volée, sous la clé « salon:<id> », comme
+     `ouvrirDossierBureau` le fait pour « dossier:<uid> ». */
+  function salonCourant() {
+    var S = window.SalonsBureau;
+    if (!S) return null;
+    var id = S.courant && S.courant();
+    if (id) return id;
+    // Plus une seule conversation ouverte (on les a toutes fermées) : on
+    // retombe sur le premier salon public, celui que le light rejoint au
+    // démarrage.
+    var l = (S.liste && S.liste()) || [];
+    return l.length ? l[0].id : null;
+  }
+  function ouvrirSalon(salon, enFond) {
+    if (!actif || !salon) return;
+    var S = window.SalonsBureau;
+    if (!S || !S.cadre) return;
+    var cle = 'salon:' + salon;
+    var neuve = !fenetres[cle];
+    if (!RUBRIQUES[cle]) {
+      var panneau = S.cadre(salon);
+      if (!panneau) return;
+      // Hors écran tant qu'il n'est pas `.active` — c'est de là que le
+      // reparentage le prendra, et c'est là qu'il retournera à la fermeture.
+      if (!panneau.parentNode) $('#app').appendChild(panneau);
+      RUBRIQUES[cle] = {
+        panneau: '[data-salon="' + String(salon).replace(/["\\\]]/g, '') + '"]',
+        cle: cle, salon: salon, titre: S.titreDe(salon), fruit: 'winChat',
+        l: 780, h: 580, min: function () { return minSalon(panneau); },
+      };
+    }
+    ouvrirFenetre(cle);
+    var f = fenetres[cle];
+    if (enFond) {
+      // `chatMng.open(p, g, u, trashSlot)` (0x8d599) : une conversation qu'on
+      // n'a pas demandée s'ouvre DANS LE SLOT D'ATTENTE, pas sur le bureau.
+      // C'est l'onglet qui prévient — `box.Chat.onSend` finit par
+      // `this.slot.warning()` — et non la fenêtre qui s'impose.
+      if (f && neuve && !f.onglet) mettreEnOnglet(cle, false);
+      if (f) avertirSlot(f.onglet || 'bureau');
+      return;
+    }
+    // La fenêtre qu'on vient d'ouvrir (ou de rappeler) est celle qu'on
+    // regarde : c'est elle que le reste du light suit.
+    if (S.regarder) S.regarder(salon);
+  }
+
   function ouvrirFenetre(tab) {
     // Le forum n'est pas une fenêtre du bureau : `win.Forum` renvoie vers
     // l'extérieur (cf. `ouvrirForum`). Quel que soit le chemin qui mène ici —
     // une tuile, un lien profond, `apresActivateTab` — il sort de la page.
     if (tab === 'forum') return ouvrirForum();
+    // « Le salon » n'est pas une fenêtre non plus : c'est une par salon.
+    if (tab === 'chat') return ouvrirSalon(salonCourant());
     var rub = RUBRIQUES[tab];
     if (!rub) return;
     // « Salons publics » n'a pas de panneau mobile à emprunter : on le bâtit
@@ -3620,26 +3714,23 @@ window.BureauFrutiz = (function () {
     if (tab === 'salons' && !$(rub.panneau)) $('#app').appendChild(panneauSalons());
     var panneau = $(rub.panneau);
     if (!panneau) return;
-    var f = fenetres[panneau.id];
+    // Les panneaux de salon portent tous le même identifiant (ce sont des
+    // copies) : c'est la rubrique qui donne la clé de leur fenêtre.
+    var cle = rub.cle || panneau.id;
+    var f = fenetres[cle];
     if (!f) {
-      f = creerFenetre(rub, panneau);
-      fenetres[panneau.id] = f;
-      // La fenêtre du salon embarque la barre du haut (choix du salon,
-      // feutre, bouilles, connectés) : c'est SA barre d'outils.
-      if (tab === 'chat') {
-        var topbar = $('#topbar');
+      f = creerFenetre(rub, panneau, cle);
+      fenetres[cle] = f;
+      if (rub.salon) {
+        f.salon = rub.salon;
         // La colonne d'icônes appartient à la MARGE GAUCHE de la fenêtre, pas
         // à un bandeau au-dessus : `displayLeftIconList` (0x69384) la pose
         // dans `margin.left`, et la pile des bouilles vient dessous quand elle
-        // s'ouvre. Elle entre donc DANS le panneau, où la grille lui donne sa
-        // colonne — sans quoi le fil de discussion se retrouverait poussé de
-        // 24 px vers le bas dès qu'on met les icônes en rangée.
-        if (topbar) f.topbar = { noeud: topbar, origine: deplacer(topbar, panneau) };
-        if (f.topbar) {
-          panneau.insertBefore(topbar, panneau.firstChild);
-          topbar.appendChild(warningSalon());
-          brancherBouillesSalon(f);
-        }
+        // s'ouvre. Le cadre l'apporte déjà, en tête de panneau ; le bureau n'y
+        // ajoute que son quatrième bouton.
+        var topbar = panneau.querySelector('#topbar');
+        if (topbar && !topbar.querySelector('#chat-warning')) topbar.appendChild(warningSalon());
+        brancherBouillesSalon(f);
       }
     } else if (f.onglet) {
       // Déjà en onglet : on y va.
@@ -3660,7 +3751,7 @@ window.BureauFrutiz = (function () {
     if (tab === 'mail') habillerMail(panneau);
     if (tab === 'boutique') habillerBoutique(panneau);
     panneau.classList.add('active');
-    if (tab === 'chat') majTitreSalon();
+    if (rub.salon) { majTitreSalon(rub.salon); majBouilles(panneau); }
   }
 
   // ── Les crochets appelés par light.html ───────────────────────────────
@@ -4278,6 +4369,12 @@ window.BureauFrutiz = (function () {
     // La tuile « Salons » du bureau ouvre la LISTE, pas la conversation :
     // c'est le double-clic sur « Les salons » du bureau d'époque.
     ouvrirSalonsPublics: ouvrirSalonsPublics,
+    // UNE FENÊTRE PAR SALON : le light appelle ici pour ouvrir (ou rappeler
+    // au premier plan) la conversation d'un salon, public ou privé.
+    ouvrirSalon: ouvrirSalon,
+    // La même, mais RANGÉE : une invitation reçue s'ouvre en onglet qui
+    // clignote, sans prendre le bureau (`chatMng.open(…, trashSlot)`).
+    ouvrirSalonEnFond: function (salon) { ouvrirSalon(salon, true); },
     // Les deux explorateurs : « Mes disques » et « Inventaire ».
     ouvrirDisques: function () { ouvrirExplorateur('disques'); },
     ouvrirInventaire: function () { ouvrirExplorateur('inventaire'); },

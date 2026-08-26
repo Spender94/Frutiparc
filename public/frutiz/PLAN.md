@@ -2659,6 +2659,91 @@ défini et **jamais appelé** : du code mort. L'entrée n'en dépend pas.)*
 `userPref.getPref("win_flMoveAnim")`. La table des préférences vient du
 serveur, pas du SWF — le portage la tient dans `FLUIDE`.)*
 
+## UNE FENÊTRE PAR SALON (`box.Chat` 0x29cb9, `Slot.addBox` 0x35c98)
+
+Le bureau n'a pas de « fenêtre des salons » où les conversations défileraient
+tour à tour. Le bytecode le dit deux fois dans le même `init` :
+
+```
+cmode == "private"  →  chatMng.setBox(this.user, this)      (0x29fdc)
+cmode == "channel"  →  channelMng.pushUniq(this.group)      (0x2a065)
+```
+
+Une `box.Chat` est donc indexée par SON interlocuteur ou par SON salon, et
+`Slot.addBox` (0x35c98) range les boîtes d'un slot dans une **liste**, pas
+dans un emplacement unique. On en ouvre autant qu'on veut ; rejoindre un salon
+n'en ferme aucune.
+
+*(Quirk d'époque conservé : les deux branches du test « privé » posent le même
+`winType = "winChat"` — le rose, pour les salons comme pour les privés.)*
+
+### Fermer, c'est quitter
+
+`box.Chat.close` (0x2a11a) commence par `this.part()` — **avant** le test
+`cmode == "private"`, donc pour les deux modes. Vient ensuite le rangement :
+
+| mode | rangement |
+|---|---|
+| privé | `chatMng.unsetBox(this.user)` (0x2a188) puis `mainCnx.strace(this, user)` |
+| salon | `channelMng.rm(this.group)` (0x2a1dc) |
+
+Fermer la fenêtre d'une conversation quitte donc le salon, discussion privée
+comprise. *(Le mobile garde sa règle à lui — « on ne quitte jamais un privé »,
+faute de quoi un message reçu en arrière-plan n'arriverait jamais : il n'a pas
+de fenêtre à fermer.)*
+
+`tryToClose` (0x2a24a) est le geste de la CROIX, et il ajoute une nuance : sur
+une discussion privée déjà jointe, si `chooseInviteBehavior` rend `P` ou `R`
+(demander / refuser), on ferme vraiment ; sinon la boîte est simplement
+**déplacée dans `trashSlot`** — rangée, pas détruite. Le portage ferme dans
+les deux cas : le revival n'a pas la table des préférences d'invitation.
+
+### Une invitation ne s'impose pas
+
+`chatMng.onInvite` (0x8d840) trie l'arrivant :
+
+```
+si chatMng["_" + u.toLowerCase()] existe  →  chatMng.open(p, g, u, trashSlot)
+sinon, selon chooseInviteBehavior(userPref.getPref("invite_chat_behavior")) :
+    "A"  →  chatMng.open(p, g, u, trashSlot)      accepter
+    "P"  →  une boîte de dialogue                 demander
+    "R"  →  refuse                                refuser
+```
+
+Le quatrième argument d'`open` est le **slot d'attente**. La conversation
+existe, elle a sa fenêtre — mais elle ne prend pas le bureau : c'est l'onglet
+qui prévient, `box.Chat.onSend` finissant par `this.slot.warning()`. Le
+portage fait exactement cela : la fenêtre naît en onglet, l'onglet clignote.
+Sans quoi, sur le bureau, une invitation reçue n'aurait aucun moyen d'être
+ouverte — le menu déroulant des salons du mobile n'y existe pas.
+
+### Ce que le portage en a fait
+
+Le panneau du chat du light est RECOPIÉ par salon (`creerCadreSalon`), barre
+d'icônes comprise, et chaque copie est branchée sur son salon : son fil, sa
+saisie, ses feutres, ses connectés, sa colonne de bouilles, son lecteur
+d'émotion. Le bureau loge chaque copie dans une fenêtre, sous la clé
+`salon:<id>` — le procédé des dossiers (`dossier:<uid>`).
+
+Trois choix méritent un mot :
+
+- **Les identifiants sont gardés dans la copie.** La feuille de style du chat
+  est écrite en `#…` d'un bout à l'autre, celle du bureau par-dessus : les
+  réécrire toutes coûterait bien plus que le doublon ne gêne. Et il ne gêne
+  pas — `document.querySelector("#x")` rend le PREMIER nœud du document, donc
+  toujours le panneau mobile d'origine, qui vient en tête du corps. Tout ce
+  qui vise une fenêtre passe par `dansCadre`, qui cherche DANS la copie.
+- **Le feutre reste commun.** `selectPen` (0x821f4) écrit dans
+  `PenMng.current`, un seul pour la session : le choix se répercute sur toutes
+  les barres et toutes les saisies ouvertes.
+- **La copie n'a ni « ‹ » ni menu déroulant des salons.** Une fenêtre d'époque
+  est liée À SON salon ; on en ouvre une autre par « Salons publics » ou par
+  la fiche d'un joueur.
+
+Le mobile ne crée aucune copie : `journalDe(salon)` lui rend `#messages` pour
+tout le monde, et rien ne change — un fil, un sélecteur, une conversation à la
+fois, ce qui reste la bonne façon de faire sur un téléphone.
+
 ## LA FRUTIMANDALA (`cp.WheelMng`, DoInitAction sprite#774 0x6a7c2)
 
 Le cadran du coin haut-droit n'est pas un décor : c'est un tourne-disque à

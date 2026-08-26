@@ -102,8 +102,11 @@ test('replier RANGE la fenêtre — seul Ctrl y va tout de suite', () => {
   // `WinStandard.putInTab` : Key.isDown(17) → putInTab(true) → addSlot(…, true).
   assert.match(JS, /function mettreEnOnglet\(idPanneau, flGo\)/);
   assert.match(JS, /if \(flGo\) activerSlot\(id\);/);
-  assert.match(JS, /if \(e\.ctrlKey \|\| e\.metaKey\) \{ mettreEnOnglet\(panneau\.id, true\); return; \}/);
-  assert.match(JS, /mettreEnOnglet\(panneau\.id, false\);/);
+  // La fenêtre se désigne par SA CLÉ, pas par l'identifiant de son panneau :
+  // les fenêtres de conversation sont des copies du même panneau, elles le
+  // portent toutes (cf. salonsFenetres.test.js).
+  assert.match(JS, /if \(e\.ctrlKey \|\| e\.metaKey\) \{ mettreEnOnglet\(cle, true\); return; \}/);
+  assert.match(JS, /mettreEnOnglet\(cle, false\);/);
   // Un jeu qu'on vient de lancer, lui, s'affiche : flGo vrai.
   assert.match(JS, /mettreEnOnglet\(panneau\.id, true\);\s*\n\s*\}\s*\n\s*\};/);
   // Le bureau ne s'escamote que si un onglet A LA MAIN — et même alors, ce
@@ -177,17 +180,19 @@ test('l’onglet d’une conversation CLIGNOTE rose à l’arrivée d’un messa
   assert.match(JS, /if \(!o \|\| o\.classList\.contains\('clignote'\)\) return false;/);
   // `Slot.onActivate` : le slot qui prend la main cesse d'avertir.
   assert.match(JS, /if \(neuf\) neuf\.classList\.remove\('clignote'\);/);
-  // `box.Chat.onSend` : la fenêtre des salons avertit l'onglet qui la porte —
-  // ou celui du bureau si elle y est restée.
-  assert.match(JS, /function avertirConversation\(\) \{[\s\S]*?return avertirSlot\(f\.onglet \|\| 'bureau'\);/);
+  // `box.Chat.onSend` : la fenêtre DU SALON CONCERNÉ avertit l'onglet qui la
+  // porte — ou celui du bureau si elle y est restée. Chaque conversation a sa
+  // fenêtre, c'est donc le salon qui désigne laquelle.
+  assert.match(JS, /function avertirConversation\(salon\) \{[\s\S]*?return avertirSlot\(f\.onglet \|\| 'bureau'\);/);
+  assert.match(JS, /var f = salon \? fenetres\['salon:' \+ salon\] : null;/);
   assert.match(JS, /avertirConversation: avertirConversation,/);
   // Côté light : salons ET discussions privées, mais ni les annonces (t="b")
   // ni les images (t="i") — le garde-fou d'`onSend`.
-  assert.match(LIGHT, /function avertirOngletChat\(ty\) \{\s*\n\s*if \(ty === "b" \|\| ty === "i"\) return;/);
+  assert.match(LIGHT, /function avertirOngletChat\(ty, salon\) \{\s*\n\s*if \(ty === "b" \|\| ty === "i"\) return;/);
   const t = LIGHT.indexOf('case "t":');
   const bloc = LIGHT.slice(t, LIGHT.indexOf('var from = attr(xml, "u");', t));
-  assert.match(bloc, /conv\.nonLus \+= 1;[\s\S]*?avertirOngletChat\(ty\);/);      // en privé
-  assert.match(bloc, /\/\/ Le salon qu'on regarde[\s\S]*?avertirOngletChat\(ty\);/); // en salon
+  assert.match(bloc, /conv\.nonLus \+= 1;[\s\S]*?avertirOngletChat\(ty, salon\);/);      // en privé
+  assert.match(bloc, /\/\/ Le salon qu'on regarde[\s\S]*?avertirOngletChat\(ty, salon\);/); // en salon
 });
 
 test('les états de survol sont préchargés — plus de clignotement', () => {
