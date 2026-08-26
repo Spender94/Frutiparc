@@ -398,9 +398,14 @@ test('le moteur ne sert QUE là où on l’a branché', () => {
   // sur pièces.
   const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   assert.ok(light.includes('/js/bouille-moteur.js'), 'le light charge le moteur');
-  const usages = light.match(/FPBouilleVignette\.\w+\(/g) || [];
-  assert.strictEqual(usages.length, 2, 'une pose et un branchement, dans la seule grille');
-  assert.ok(light.includes('FPBouilleThumb.imgHtml'), 'le reste du light passe encore par le cache PNG');
+  // Le light est passé au moteur pour tout ce qui MONTRE une bouille : le
+  // Bouilloscope, l'éditeur, l'avatar de l'accueil, celui d'une fiche, les
+  // vignettes d'accessoires et de la boutique, et la réaction du chat.
+  assert.ok((light.match(/FPBouilleVignette\.\w+\(/g) || []).length >= 10);
+  // Ce qui reste au cache PNG : la vignette du tableau des scores, qu'on
+  // détoure encore à la main. Un seul appel, et il est nommé.
+  const restes = light.match(/FPBouilleThumb\.\w+\(/g) || [];
+  assert.strictEqual(restes.length, 1, 'un seul reste, dans le tableau des scores');
   // Le banc d'essai, lui, charge les trois modules — et rien d'autre.
   const banc = fs.readFileSync(path.join(ROOT, 'public/bouille-js.html'), 'utf8');
   for (const f of ['bouille-swf.js', 'bouille-avm.js', 'bouille-moteur.js']) {

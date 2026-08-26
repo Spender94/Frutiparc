@@ -439,12 +439,73 @@ pas. La famille 0 est la seule lourde (414 Ko) ; les neuf autres tiennent entre
 l'éditeur « Ma Frutibouille » — garde `FPBouilleThumb` et son cache PNG, le
 temps de juger sur pièces.
 
-## 11. Ce qui reste à faire
+## 11. Généralisation : l'éditeur, puis tout le light
 
-* **Généraliser**, si le Bouilloscope convainc : le forum, la barre de contacts,
-  la fiche, l'écran du bureau, et l'éditeur « Ma Frutibouille » — ce dernier est
-  le plus beau candidat, sa prévisualisation étant encore une iframe Ruffle
-  rechargée à chaque clic de flèche.
+Le Bouilloscope ayant convaincu, `bouille-vignette.js` s'est vu ouvrir **trois
+portes**, une par usage :
+
+| porte | ce qu'elle fait | qui s'en sert |
+|---|---|---|
+| `html(etat)` + `brancher(hote)` | une vignette **posée**, dessinée quand elle approche de l'écran, puis immobile | le Bouilloscope, les vignettes d'accessoires, l'avatar d'une fiche, la boutique |
+| `rafraichir(canevas, etat[, humeur])` | **changer d'état sans rien recharger** | l'éditeur, l'essayage d'accessoires, l'avatar du bandeau |
+| `jouer(canevas, etat, anim)` / `stopper(canevas)` | lancer l'une des treize animations, puis revenir au repos | la réaction qui passe sur le chat |
+
+Deux qualités, et pourquoi : une vignette posée ne se dessine qu'**une fois** —
+elle se paie le suréchantillonnage ×4 sans compter ; une bouille qui **s'anime**
+redessine quarante fois par seconde — on la met à ×2, cinq fois moins cher, et
+l'œil ne fait pas la différence en mouvement.
+
+### L'éditeur « Ma Frutibouille »
+
+C'était le pire cas de tout le site : **une iframe Ruffle rechargée à chaque
+clic de flèche**. Assez lente pour qu'il ait fallu poser un `setTimeout` de
+120 ms — attendre que le doigt se calme avant de rendre.
+
+Changer d'état, pour le moteur, c'est rejouer `apply()` sur un arbre déjà monté
+tant qu'on reste dans la **même famille** — quelques dixièmes de milliseconde.
+Le délai a donc disparu : `fbRenderPreviewSoon()` appelle `fbRenderPreview()`
+tout de suite. Le nom reste pour ne pas toucher aux quinze endroits qui
+l'appellent ; l'attente, elle, n'a plus de raison d'être.
+
+Mesuré au banc (`scratchpad/fbediteur.js`, Chromium, mobile 420 × 860) :
+
+| | avant | après |
+|---|---|---|
+| vingt coiffures parcourues | vingt rechargements de lecteur Flash | **423 ms**, soit 21,1 ms le pas |
+| lecteurs Flash dans l'éditeur | 1, rechargé à chaque pas | **0** |
+| requêtes réseau pendant le défilement | 1 par pas | **0** (une seule au départ, le SWF de famille) |
+
+### Le reste du light
+
+Le même `previewIframe()` servait cinq endroits ; il rend maintenant un canevas,
+et les cinq ont basculé d'un coup : l'**avatar d'une fiche**, les **vignettes
+d'accessoires** de l'inventaire, la **fiche d'un accessoire**, la **boutique**,
+et l'éditeur. S'y ajoutent :
+
+* **l'avatar du bandeau** (`setHomeAvatar`) — les sept émotes changeaient
+  l'humeur en rechargeant l'iframe avec `?e=` ; c'est un `rafraichir(c, s, e)` ;
+* **la réaction du chat** — une iframe dont on remettait le `src` à
+  `about:blank` puis à l'URL pour forcer le rejeu, soit un lecteur Flash entier
+  par message. C'est un canevas monté une fois, à qui l'on dit « joue rire ».
+  Relevé : la légende s'affiche, le canevas bouge (35 695 octets de différence
+  d'un cliché à l'autre), puis se tait ; zéro lecteur Flash dans la page, une
+  seule requête bouille.
+
+Les sélecteurs CSS qui disaient `iframe` disent maintenant `iframe, canvas` —
+y compris `.bo-anime` sur le bureau Frutiz, où la bouille figée d'un écran doit
+s'effacer le temps que celle qui s'anime joue, sous peine de doublon.
+
+### Ce qui n'a pas encore basculé
+
+Le **forum** (`public/fb/index.html`), le **club**, l'**écran du bureau**
+(`bureau-frutiz.js`), **Grapiz**, **Bandas**, le tableau des **scores** et
+l'aperçu de **pack** de l'admin. Ils gardent `FPBouilleThumb` et son cache PNG,
+ou une iframe Ruffle.
+
+## 12. Ce qui reste à faire
+
+* **Finir la généralisation** : le forum, le club, l'écran du bureau Frutiz,
+  Grapiz, Bandas, le tableau des scores, l'aperçu de pack de l'admin.
 * **L'éditeur de conception** : `updateInfo()` donne déjà la liste des onze
   réglages et leurs bornes (`_totalframes - 1` du clip visé) ; le banc s'en sert.
   Reste à l'habiller aux couleurs du parc et à le poser sur `/light`.

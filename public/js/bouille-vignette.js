@@ -1,42 +1,44 @@
 /*
-  FPBouilleVignette — les vignettes du Bouilloscope, rendues en JavaScript.
+  FPBouilleVignette — toutes les bouilles du site, rendues en JavaScript.
 
-  POURQUOI. Le Bouilloscope montre une grille de visages : quarante-huit d'un
-  coup, sur trois écrans différents (l'onglet de l'admin, la fenêtre du bureau
-  Frutiz, la page du light). Chacun s'y prenait à sa façon, et aucune n'était
-  bonne :
+  POURQUOI. Une bouille s'affichait jusqu'ici de deux façons, aucune bonne :
 
-    · l'admin posait une IFRAME RUFFLE PAR VIGNETTE — quarante-huit lecteurs
-      Flash pour quarante-huit têtes de cent pixels ;
-    · le bureau et le light passaient par le cache PNG du serveur
-      (/bouille-img) : léger une fois chaud, mais il faut le remplir, et le
-      remplir demandait… encore Ruffle, dans une iframe cachée, une capture, un
-      aller-retour serveur et une écriture en base.
+    · une IFRAME RUFFLE — un lecteur Flash complet par visage. Le Bouilloscope
+      de l'admin en posait quarante-huit d'un coup (241 requêtes, 47 secondes) ;
+      l'éditeur « Ma Frutibouille » en rechargeait un à CHAQUE clic de flèche,
+      assez lentement pour qu'il ait fallu attendre 120 ms que le doigt se calme
+      avant de rendre ;
+    · le CACHE PNG du serveur (/bouille-img) — léger une fois chaud, mais le
+      remplir demandait encore Ruffle, dans une iframe cachée, avec une capture,
+      un aller-retour serveur et une écriture en base.
 
-  Ici, rien de tout cela. Le moteur JS (bouille-swf/avm/moteur) lit le SWF de
-  famille d'époque et dessine dans un canevas. Une FAMILLE est téléchargée et
-  analysée UNE fois, puis toutes les vignettes qui en relèvent la partagent —
-  y compris ses tracés Path2D, rangés sur la famille elle-même. La grille ne
-  coûte alors qu'un dessin par vignette, et rien du tout au serveur.
+  Ici, un canevas et le moteur JS (bouille-swf/avm/moteur), qui lit le SWF de
+  famille d'époque. Une FAMILLE est téléchargée et analysée UNE fois par page,
+  puis toutes les bouilles qui en relèvent la partagent — y compris ses tracés
+  Path2D, rangés sur la famille elle-même.
 
-  CE QU'ON GARDE DU COMPORTEMENT D'AVANT :
+  TROIS USAGES, TROIS PORTES :
 
-    · vignette PARESSEUSE — on ne dessine que ce qui approche de l'écran, comme
-      le faisait loading="lazy" ;
-    · vignette IMMOBILE — `anime: false`. Une bouille au repos n'est pourtant
-      pas figée sous Flash (l'éclat de l'iris tourne), mais quarante-huit têtes
-      qui scintillent à quarante images par seconde ne valent pas le courant
-      dépensé. La qualité, elle, est au maximum : le dessin ne se faisant
-      qu'une fois, il se paie le suréchantillonnage ×4.
-    · fond TRANSPARENT — le carré vert du cache PNG obligeait à détourer la
-      vignette à la main pour la poser ailleurs que sur du vert. Un canevas n'a
-      pas de fond : le problème disparaît.
+    html(etat) + brancher(hote)     une vignette POSÉE, dessinée quand elle
+                                    approche de l'écran, puis immobile.
+                                    Le Bouilloscope, les vignettes d'accessoires,
+                                    l'avatar d'une fiche.
 
-  USAGE — deux lignes à l'endroit qui dessinait la grille :
+    rafraichir(canevas, etat)       changer d'état SANS rien recharger : tant
+                                    qu'on reste dans la même famille, c'est un
+                                    apply() sur un arbre déjà monté. L'éditeur
+                                    et l'essayage d'accessoires.
 
-      hote.innerHTML = liste.map((e) => '<div class="tb">'
-        + FPBouilleVignette.html(e.bouille) + '</div>').join('');
-      FPBouilleVignette.brancher(hote);
+    jouer(canevas, etat, anim)      lancer une des treize animations, puis
+                                    stopper(canevas) pour revenir au repos.
+                                    La réaction qui passe sur le chat.
+
+  DEUX RÉGLAGES, ET POURQUOI :
+
+    · une vignette posée ne se dessine QU'UNE FOIS : elle se paie donc le
+      suréchantillonnage ×4 du moteur sans compter ;
+    · une bouille qui S'ANIME redessine quarante fois par seconde : on la met
+      à ×2, ce qui coûte cinq fois moins et ne se voit pas en mouvement.
 */
 (function (global) {
   'use strict';
@@ -51,6 +53,7 @@
   var DOSSIER = '/fbouille/';
   var chargements = {};                 // famille → Promise<defs>
   var posees = new WeakMap();           // canevas → Bouille
+  var promesses = new WeakMap();        // canevas → Promise<Bouille|null>
   var guettes = new WeakSet();          // canevas déjà confiés au guetteur
   var guetteur = null;
 
@@ -60,11 +63,12 @@
     return t;
   }
 
-  /** Le HTML d'une vignette : un canevas qui remplit sa boîte. */
+  /** Le HTML d'une bouille : un canevas qui remplit sa boîte. */
   function html(etat, o) {
     var s = nettoyer(etat);
     var e = (o && o.humeur) ? Number(o.humeur) : 0;
     return '<canvas class="fp-bvig" data-s="' + s + '" data-e="' + e + '"'
+      + ((o && o.anime) ? ' data-anime="1"' : '')
       + ' width="1" height="1" aria-hidden="true"'
       + ' style="width:100%;height:100%;display:block"></canvas>';
   }
@@ -75,25 +79,34 @@
         ? Promise.reject(new Error('famille ' + n + ' absente'))
         : Swf.charger(DOSSIER + 'famille' + n + '.swf');
       // Une famille introuvable ne doit pas laisser traîner un rejet non
-      // rattrapé dans la console à chaque vignette.
+      // rattrapé dans la console à chaque bouille.
       chargements[n].catch(function () {});
     }
     return chargements[n];
   }
 
+  /** Monte la bouille sur ce canevas. Rend une promesse, mise en cache. */
   function dessiner(c) {
-    if (posees.has(c)) return;
-    posees.set(c, null);                // marque « en cours »
+    var p = promesses.get(c);
+    if (p) return p;
     var s = c.getAttribute('data-s') || '';
     var e = Number(c.getAttribute('data-e') || 0);
-    famille(M.familleDe(s)).then(function (defs) {
-      if (!c.isConnected) { posees.delete(c); return; }
-      var b = new M.Bouille(c, defs, { etat: s, humeur: e, anime: false });
+    var anime = c.getAttribute('data-anime') === '1';
+    p = famille(M.familleDe(s)).then(function (defs) {
+      if (!c.isConnected) { promesses.delete(c); return null; }
+      // `super: 2` en mouvement : quarante images par seconde ne supportent pas
+      // le ×4 d'une vignette figée, et l'œil ne fait pas la différence.
+      var b = new M.Bouille(c, defs, { etat: s, humeur: e,
+        anime: anime, super: anime ? 2 : undefined });
       posees.set(c, b);
       c.setAttribute('data-prete', '1');
+      return b;
     }).catch(function () {
       c.setAttribute('data-prete', 'absent');
+      return null;
     });
+    promesses.set(c, p);
+    return p;
   }
 
   function observer() {
@@ -108,32 +121,81 @@
     return guetteur;
   }
 
-  /** Branche (ou rebranche) toutes les vignettes trouvées sous `racine`. */
+  /** Branche toutes les bouilles trouvées sous `racine`. Idempotent. */
   function brancher(racine) {
     var hote = racine || global.document;
     var liste = hote.querySelectorAll('canvas.fp-bvig');
     var g = observer();
     for (var i = 0; i < liste.length; i++) {
-      if (posees.has(liste[i]) || guettes.has(liste[i])) continue;
+      if (promesses.has(liste[i]) || guettes.has(liste[i])) continue;
       guettes.add(liste[i]);
       if (g) g.observe(liste[i]); else dessiner(liste[i]);
     }
     return liste.length;
   }
 
-  /** Redessine une vignette (changement d'état ou d'humeur). */
+  /*
+   * Changer d'état — et c'est là que le moteur change la donne.
+   *
+   * L'éditeur rechargeait une iframe Ruffle à chaque clic de flèche. Ici, tant
+   * qu'on reste dans la même FAMILLE, changer d'état c'est rejouer apply() sur
+   * un arbre déjà monté : quelques dixièmes de milliseconde. Changer de famille,
+   * en revanche, demande un autre fichier — on repart de zéro.
+   */
   function rafraichir(c, etat, humeur) {
-    if (etat !== undefined) c.setAttribute('data-s', nettoyer(etat));
-    if (humeur !== undefined) c.setAttribute('data-e', String(Number(humeur) || 0));
+    var avant = c.getAttribute('data-s') || '';
+    var s = etat === undefined ? avant : nettoyer(etat);
+    var e = humeur === undefined ? Number(c.getAttribute('data-e') || 0) : (Number(humeur) || 0);
+    c.setAttribute('data-s', s);
+    c.setAttribute('data-e', String(e));
     var b = posees.get(c);
-    posees.delete(c);
-    guettes.delete(c);
-    if (b) { b.arreter(); }
+    if (b && M.familleDe(s) === M.familleDe(avant)) {
+      b.definir(s);
+      if (e) b.humeur(e);
+      return b;
+    }
+    oublier(c);
     dessiner(c);
+    return null;
   }
+
+  function oublier(c) {
+    var b = posees.get(c);
+    if (b) b.arreter();
+    posees.delete(c);
+    promesses.delete(c);
+    guettes.delete(c);
+  }
+
+  /** Lance une animation (indice de playAnim, 1 = parle). */
+  function jouer(c, etat, anim) {
+    var neuf = c.getAttribute('data-anime') !== '1';
+    c.setAttribute('data-anime', '1');
+    if (neuf) oublier(c);               // la qualité change : on remonte
+    if (etat !== undefined && !neuf) rafraichir(c, etat);
+    else if (etat !== undefined) c.setAttribute('data-s', nettoyer(etat));
+    return dessiner(c).then(function (b) {
+      if (b) b.animer(Number(anim) || 1);
+      return b;
+    });
+  }
+
+  /** Ramène au repos : l'animation s'arrête, la bouille reste. */
+  function stopper(c) {
+    var b = posees.get(c);
+    if (!b) return null;
+    b.moteur.jouerAnim(0);
+    b.arreter();
+    b.rendre();
+    return b;
+  }
+
+  /** La bouille posée sur ce canevas, si elle est déjà dessinée. */
+  function bouilleDe(c) { return posees.get(c) || null; }
 
   global.FPBouilleVignette = {
     html: html, brancher: brancher, rafraichir: rafraichir,
+    jouer: jouer, stopper: stopper, bouilleDe: bouilleDe, oublier: oublier,
     FAMILLES: FAMILLES, familles: chargements,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

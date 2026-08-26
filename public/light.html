@@ -122,7 +122,7 @@
     width: 132px; height: 132px; background: #fff; border: 2px solid #DDDDDD;
     border-radius: 14px; overflow: hidden;
   }
-  #bouille-sheet-preview iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
+  #bouille-sheet-preview iframe, #bouille-sheet-preview canvas { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
   .sheet-hint { font-size: 12px; color: #2f5510; margin-bottom: 8px; font-weight: bold; }
 
   /* ── « Modifier ma fiche » ────────────────────────────────────────────────
@@ -177,7 +177,7 @@
   /* The Ruffle preview iframe must NOT eat the tap, otherwise the .acc-item
      click never fires and selection silently does nothing. pointer-events:none
      lets the tap fall through to the card. */
-  .acc-item .thumb iframe { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
+  .acc-item .thumb iframe, .acc-item .thumb canvas { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
   /* Transparent overlay above the iframe guarantees the whole tile is tappable
      (belt-and-suspenders on browsers that still route touch to the iframe). */
   .acc-item .thumb::after { content: ""; position: absolute; inset: 0; }
@@ -363,7 +363,7 @@
     width: 78px; height: 78px; position: relative; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
   }
-  .bo-vue iframe { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
+  .bo-vue iframe, .bo-vue canvas { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
   .bo-vue img { max-width: 100%; max-height: 100%; display: block; }
   /* Le stylo : le corps d'origine, et par-dessus son calque teinté — le SWF
      colore ce même calque par code, on fait pareil avec un masque. */
@@ -424,7 +424,7 @@
     width: 132px; height: 132px; margin: 2px auto 6px; border-radius: 14px;
     overflow: hidden; background: #cfe6a3; border: 1px solid #aacf86;
   }
-  .fb-preview iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .fb-preview iframe, .fb-preview canvas { width: 100%; height: 100%; border: 0; display: block; }
   .fb-rows { display: flex; flex-direction: column; gap: 9px; margin: 8px 2px 14px; }
   .fb-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   /* Flèches = icônes fournies (normal + pressed au tap), au lieu des boutons CSS. */
@@ -646,7 +646,7 @@
   }
   #bouille-overlay.show #bouille-overlay-stage { transform: translateX(0); opacity: 1; }
   #bouille-overlay.leaving #bouille-overlay-stage { transform: translateX(-130vw); opacity: 0; }
-  #bouille-overlay-stage iframe {
+  #bouille-overlay-stage iframe, #bouille-overlay-stage canvas {
     width: 100%; height: 100%; border: 0; background: transparent; display: block;
   }
   /* Small floating caption so you still know who reacts, but unobtrusive. */
@@ -715,7 +715,7 @@
     z-index: 2;
   }
   .fiche-plaque .fa-frame .stage { position: absolute; inset: 5%; z-index: 2; border-radius: 4px; overflow: hidden; }
-  .fiche-plaque .fa-frame .stage iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; pointer-events: none; }
+  .fiche-plaque .fa-frame .stage iframe, .fiche-plaque .fa-frame .stage canvas { width: 100%; height: 100%; border: 0; display: block; background: transparent; pointer-events: none; }
   .fiche-plaque .fa-jauge {
     position: relative; z-index: 2; display: flex; flex-direction: column;
     align-items: center; gap: 3px; padding-right: 3px;
@@ -1497,7 +1497,7 @@
   .mb-avatar .stage {
     position: absolute; inset: 5%; z-index: 2; border-radius: 9px; overflow: hidden;
   }
-  .mb-avatar .stage iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
+  .mb-avatar .stage iframe, .mb-avatar .stage canvas { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
   /* Reflet (brillance) dans le coin SUPÉRIEUR DROIT de l'encart bouille. */
   .mb-avatar .reflet { right: 5%; top: 5%; width: 46%; height: auto; z-index: 3; }
   /* Le calque de clic : au-dessus de tout, invisible, toute la vignette. */
@@ -3103,13 +3103,15 @@
   function setHomeAvatar(stateStr, mood) {
     var stage = $("#home-avatar"); if (!stage) return;
     var s = String(stateStr || DEFAULT_BOUILLE).replace(/[^0-9A-Za-z]/g, "");
-    var q = "s=" + encodeURIComponent(s) + "&bg=transparent";
-    if (mood && Number(mood) > 0) q += "&e=" + encodeURIComponent(Number(mood));
-    var url = "/bouille-preview.html?" + q;
-    if (url === homeAvatarUrl && stage.firstChild) return; // déjà à jour
-    homeAvatarUrl = url;
-    stage.innerHTML = '<iframe scrolling="no" aria-hidden="true" '
-      + 'sandbox="allow-scripts allow-same-origin" src="' + url + '"></iframe>';
+    var e = (mood && Number(mood) > 0) ? Number(mood) : 0;
+    var cle = s + "/" + e;
+    if (cle === homeAvatarUrl && stage.firstChild) return; // déjà à jour
+    homeAvatarUrl = cle;
+    // Changer d'humeur ne recharge plus de lecteur : on le dit à la bouille.
+    var c = stage.querySelector("canvas.fp-bvig");
+    if (c) { FPBouilleVignette.rafraichir(c, s, e); return; }
+    stage.innerHTML = FPBouilleVignette.html(s, { humeur: e });
+    FPBouilleVignette.brancher(stage);
   }
   // La bouille du bureau ouvre ma fiche — d'où l'on peut la modifier.
   (function () {
@@ -3827,6 +3829,7 @@
         : '')
       + '<div class="bo-etat" id="bo-etat"></div>';
     box.innerHTML = html;
+    brancherApercus(box);
     var b = $("#bo-acheter");
     if (b) b.addEventListener("click", function () { buyShopItem(b); });
   }
@@ -5921,6 +5924,7 @@
     $("#fiche-pseudo").textContent = (d && d.pseudo) || ficheEtat.pseudo || "…";
     // L'avatar : la vraie bouille, rendue par Ruffle comme partout ailleurs.
     $("#fiche-avatar").innerHTML = (d && d.bouille) ? previewIframe(d.bouille) : "";
+    brancherApercus($("#fiche-avatar"));
     $("#fiche-niveau").textContent = (d && d.basic) ? d.basic.niveau : "–";
     // Les NEUF barres de l'écran de niveau : la même règle que l'encart de
     // l'accueil (levelProgress = UserMng.xpLevelCompletionRate, remplissage du
@@ -6721,30 +6725,31 @@
     pleurer:"pleure", langue:"tire la langue", miam:"se régale",
     question:"se pose des questions", rougir:"rougit", sifflote:"sifflote",
     gum:"fait une bulle de chewing-gum", regard:"regarde ailleurs" };
-  // Live-Ruffle overlay: instead of a captured GIF (latency + raster pixelation)
-  // we embed bouille-preview.html in a transparent iframe — Ruffle renders the
-  // bouille as VECTORS (crisp at any size) and plays the animation directly,
-  // exactly like the forum avatars. The iframe slides in from the left, holds,
-  // then slides back out to the left.
-  //
-  // We keep ONE iframe and just reload its src per reaction; reusing it avoids a
-  // fresh Ruffle/WASM boot on every message after the first.
-  var overlayFrame = null;
+  /*
+   * LA RÉACTION QUI PASSE SUR LE CHAT.
+   *
+   * C'était une iframe Ruffle qu'on rechargeait à chaque message — src remis à
+   * « about:blank » puis à l'URL, pour forcer le rejeu. Un lecteur Flash entier
+   * par réaction, avec sa latence d'amorçage.
+   *
+   * C'est maintenant UN canevas, monté une fois, à qui l'on dit « joue rire ».
+   * Le moteur exécute la vraie routine playAnim du SWF de famille (le visage,
+   * la bouche ET les yeux), à quarante images par seconde, en vectoriel.
+   */
+  var overlayCanvas = null;
   function overlayIframe() {
-    if (overlayFrame) return overlayFrame;
-    overlayFrame = document.createElement("iframe");
-    overlayFrame.setAttribute("scrolling", "no");
-    overlayFrame.setAttribute("aria-hidden", "true");
-    // allow-scripts so Ruffle runs; allow-same-origin so it can fetch the SWF.
-    overlayFrame.setAttribute("sandbox", "allow-scripts allow-same-origin");
-    $("#bouille-overlay-stage").appendChild(overlayFrame);
-    return overlayFrame;
+    if (overlayCanvas && overlayCanvas.isConnected) return overlayCanvas;
+    var scene = $("#bouille-overlay-stage");
+    scene.innerHTML = FPBouilleVignette.html(DEFAULT_BOUILLE, { anime: true });
+    overlayCanvas = scene.querySelector("canvas.fp-bvig");
+    return overlayCanvas;
   }
-  function overlayUrl(pseudo, anim) {
+  function overlayJouer(pseudo, anim) {
     var f = state.bouilleByUser[String(pseudo).toLowerCase()] || DEFAULT_BOUILLE;
-    var idx = ANIM_INDEX[anim] || 1; // default = parle
-    return "/bouille-preview.html?s=" + encodeURIComponent(f)
-      + "&e=0&anim=" + idx + "&bg=transparent";
+    FPBouilleVignette.jouer(overlayIframe(), f, ANIM_INDEX[anim] || 1);
+  }
+  function overlayEteindre() {
+    if (overlayCanvas) FPBouilleVignette.stopper(overlayCanvas);
   }
 
   var OVERLAY_HOLD_MS = 4200;
@@ -6770,14 +6775,12 @@
       if (scene.parentNode !== ecran) ecran.appendChild(scene);
       scene.classList.add("joue");
       ecran.classList.add("bo-anime");
-      var f2 = overlayIframe();
-      f2.src = "about:blank";
-      setTimeout(function () { f2.src = overlayUrl(pseudo, anim); }, 20);
+      overlayJouer(pseudo, anim);
       if (state.overlayTimer) clearTimeout(state.overlayTimer);
       state.overlayTimer = setTimeout(function () {
         scene.classList.remove("joue");
         ecran.classList.remove("bo-anime");
-        if (overlayFrame) overlayFrame.src = "about:blank";
+        overlayEteindre();
       }, OVERLAY_HOLD_MS);
       return;
     }
@@ -6786,13 +6789,8 @@
     var name = $("#bouille-overlay-name");
     name.textContent = pseudo + " " + (labelOverride || ANIM_LABEL[anim] || "parle");
 
-    var frame = overlayIframe();
-    // Reload the bouille (force even if the URL is identical, so a repeated emote
-    // replays the animation from the start).
-    var url = overlayUrl(pseudo, anim);
-    frame.src = "about:blank";
-    // next tick → real src, so the browser registers a navigation/replay.
-    setTimeout(function () { frame.src = url; }, 20);
+    // Rejouer la même émote la relance depuis le début : playAnim s'en charge.
+    overlayJouer(pseudo, anim);
 
     box.classList.remove("leaving");
     // Force reflow so removing .show→adding works as a fresh slide-in even when
@@ -6811,7 +6809,7 @@
     box.classList.remove("show");
     setTimeout(function () {
       box.classList.remove("leaving");
-      if (overlayFrame) overlayFrame.src = "about:blank"; // stop Ruffle when idle
+      overlayEteindre();               // au repos, plus rien ne tourne
     }, 520);
   }
 
@@ -6834,11 +6832,25 @@
     var s = String(base || DEFAULT_BOUILLE); while (s.length < 24) s += "0";
     return s.substring(0, 15) + (suffix9 || s.substring(15, 24));
   }
+  /*
+   * L'APERÇU D'UNE BOUILLE — cinq endroits s'en servent : l'éditeur « Ma
+   * Frutibouille », l'avatar de la fiche, les vignettes d'accessoires de
+   * l'inventaire, celles de la boutique, et le grand aperçu de la feuille
+   * d'accessoires.
+   *
+   * C'était une IFRAME RUFFLE à chaque fois — un lecteur Flash complet par
+   * aperçu, rechargé de zéro au moindre changement d'état. C'est maintenant un
+   * canevas que le moteur JS dessine (public/js/bouille-*.js) : le SWF de
+   * famille est lu UNE fois pour toute la page, et changer d'état ne coûte plus
+   * qu'un apply() sur un arbre déjà monté.
+   *
+   * Le fond reste transparent — un canevas n'en a pas.
+   */
   function previewIframe(state) {
-    var s = String(state || DEFAULT_BOUILLE).replace(/[^0-9A-Za-z]/g, "");
-    return '<iframe scrolling="no" sandbox="allow-scripts allow-same-origin" src="/bouille-preview.html?s='
-      + encodeURIComponent(s) + '&bg=transparent"></iframe>';
+    return FPBouilleVignette.html(state || DEFAULT_BOUILLE);
   }
+  /** À appeler après avoir posé des aperçus dans le document. */
+  function brancherApercus(hote) { FPBouilleVignette.brancher(hote); }
 
   function openBouilleSheet(rubrique) {
     openMenu(false); // close the hamburger if it was open
@@ -7158,10 +7170,16 @@
       item.addEventListener("click", function () { pickAccessory(i); });
       grid.appendChild(item);
     });
+    brancherApercus(grid);
   }
   function updateSheetPreview() {
     var st = buildState(myBase, accSel.suffix, accSel.fullState);
+    // Essayer un accessoire ne recharge plus rien : on donne le nouvel état à
+    // la bouille déjà en place.
+    var c = $("#bouille-sheet-preview").querySelector("canvas.fp-bvig");
+    if (c) { FPBouilleVignette.rafraichir(c, st); return; }
     $("#bouille-sheet-preview").innerHTML = previewIframe(st);
+    brancherApercus($("#bouille-sheet-preview"));
   }
   function pickAccessory(i) {
     var ac = accList[i]; if (!ac) return;
@@ -7289,14 +7307,25 @@
     fbState = fbState.substring(0, pos) + fbEncChar(Math.floor(val / 62)) + fbEncChar(val % 62) + fbState.substring(pos + 2);
   }
 
-  function fbRenderPreview() { $("#fb-editor-preview").innerHTML = previewIframe(fbState); }
-  // Recharger l'iframe Flash recrée le player Ruffle (~lent) : on débounce pour
-  // ne rendre qu'une fois le défilement stabilisé (taps rapides → 1 seul reload).
-  var fbPrevTimer = null;
-  function fbRenderPreviewSoon() {
-    if (fbPrevTimer) clearTimeout(fbPrevTimer);
-    fbPrevTimer = setTimeout(fbRenderPreview, 120);
+  /*
+   * L'APERÇU DE L'ÉDITEUR — c'est ici que le moteur JS se voit le mieux.
+   *
+   * Avant : chaque clic de flèche rechargeait l'iframe, donc recréait un
+   * lecteur Ruffle. C'était assez lent pour qu'il ait fallu ATTENDRE 120 ms que
+   * le doigt se calme avant de rendre — l'aperçu traînait derrière le choix.
+   *
+   * Maintenant : la bouille reste montée, on lui donne le nouvel état. Le
+   * délai n'a plus de raison d'être, et `fbRenderPreviewSoon` rend TOUT DE
+   * SUITE (on garde le nom, une dizaine d'appels s'en servent).
+   */
+  function fbApercu() { return $("#fb-editor-preview").querySelector("canvas.fp-bvig"); }
+  function fbRenderPreview() {
+    var c = fbApercu();
+    if (c) { FPBouilleVignette.rafraichir(c, fbState); return; }
+    $("#fb-editor-preview").innerHTML = previewIframe(fbState);
+    brancherApercus($("#fb-editor-preview"));
   }
+  function fbRenderPreviewSoon() { fbRenderPreview(); }
   // Les valeurs qu'on propose vraiment pour cette ligne — le sac à patate en
   // moins pour les cheveux.
   function fbChoix(part) {

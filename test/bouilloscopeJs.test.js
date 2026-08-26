@@ -128,10 +128,34 @@ test('la carte du Bouilloscope mobile accepte un canevas', () => {
     'sans cette règle, le canevas ne remplirait pas la case de 72 px');
 });
 
-test('la vignette est IMMOBILE et à la qualité maximale', () => {
-  // `anime: false` : on ne paie le dessin qu'une fois — mais on le paie bien,
-  // le suréchantillonnage par défaut (×4) étant alors gratuit à l'usage.
-  assert.match(VIGNETTE, /anime:\s*false/);
-  assert.ok(!/anime:\s*true/.test(VIGNETTE));
-  assert.ok(!/super:/.test(VIGNETTE), 'on laisse le défaut du moteur, qui est le maximum utile');
+test('deux modes : la vignette POSÉE et la bouille QUI S’ANIME', () => {
+  // Une vignette posée ne se dessine qu'une fois : elle se paie le
+  // suréchantillonnage ×4 du moteur sans compter. Une bouille qui s'anime
+  // redessine quarante fois par seconde : ×2, cinq fois moins cher, et l'œil ne
+  // fait pas la différence en mouvement.
+  assert.match(VIGNETTE, /anime: anime, super: anime \? 2 : undefined/,
+    'la qualité suit le mode');
+  assert.match(VIGNETTE, /jouer:/, 'le module sait lancer une animation');
+  assert.match(VIGNETTE, /stopper:/, 'et la ramener au repos');
+});
+
+test('la réaction du chat ne recharge plus de lecteur', () => {
+  // C'était une iframe Ruffle dont on remettait le src à « about:blank » puis à
+  // l'URL, pour forcer le rejeu — un lecteur Flash entier par message.
+  const bloc = LIGHT.slice(LIGHT.indexOf('function showBouilleOverlay'),
+    LIGHT.indexOf('function hideBouilleOverlay'));
+  assert.ok(!bloc.includes('about:blank'), 'plus de rechargement d’iframe');
+  assert.ok(!bloc.includes('bouille-preview.html'), 'plus de lecteur Flash');
+  assert.ok(bloc.includes('overlayJouer('), 'on dit simplement « joue »');
+});
+
+test('l’éditeur répond au doigt : plus d’attente de 120 ms', () => {
+  // Recharger une iframe Ruffle était assez lent pour qu'il ait fallu attendre
+  // que le doigt se calme avant de rendre. Changer d'état, lui, est immédiat.
+  const bloc = LIGHT.slice(LIGHT.indexOf('function fbApercu'),
+    LIGHT.indexOf('function fbChoix'));
+  assert.ok(bloc.includes('FPBouilleVignette.rafraichir('), 'l’aperçu se met à jour sur place');
+  assert.ok(!/setTimeout\(fbRenderPreview/.test(LIGHT), 'plus de délai');
+  assert.match(bloc, /function fbRenderPreviewSoon\(\) \{ fbRenderPreview\(\); \}/,
+    'le nom reste, l’attente disparaît');
 });
