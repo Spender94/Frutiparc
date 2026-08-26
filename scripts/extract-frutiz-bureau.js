@@ -270,6 +270,14 @@ function principal() {
     // DefineButton2 — SideList.init l'attache sous le nom `butContact` à
     // x = wSide (9), y = 800 (le bas de la scène d'époque).
     { cle: 'butContact', id: 436 },
+    // LES DEUX BOUTONS RONDS DU LECTEUR FRUSION : `frusion` (#324) les pose
+    // sur sa première image, et ce sont eux aussi des DefineButton2 — #317 le
+    // CASQUE à gauche (`pushReset`, x −100) et #313 l'ÉJECTION à droite
+    // (`pushEject`, x −15,85). Ils sortent avec leurs trois états parce que le
+    // lecteur les fait vivre : on appuie sur celui de droite pour reprendre
+    // son disque.
+    { cle: 'frusionCasque', id: 317 },
+    { cle: 'frusionEject', id: 313 },
   ];
   // Toutes les formes touchées, en un passage.
   const formes = new Set();
@@ -695,6 +703,25 @@ function principal() {
   // la place du cadran (#613, profondeur 3) que vient prendre la roue.
   const CLIPS = [
     { cle: 'frusion', id: 324 },
+    // LE LECTEUR EN COUCHES. `_global.Frusion` fait GLISSER son tiroir :
+    // `slot._y` va de 71 (fermé) à 140 (ouvert), et `fondSlot` le suit
+    // (`fondSlot._y = slot._y`). Il faut donc sortir séparément ce qui bouge
+    // et ce qui reste, dans l'ordre des profondeurs du clip :
+    //
+    //     1  fondFrusion (#301)   le fond, immobile
+    //     3  fondSlot    (#303)   le berceau du tiroir — IL BOUGE
+    //     9  #304                 la plaque du milieu, immobile
+    //    10  slot        (#308)   le TIROIR — il bouge, et porte le disque
+    //  21+34 #309, #319           la façade, par-dessus le tiroir
+    //    24  #313, 29 #317        les deux boutons (sortis à part, ci-dessus)
+    //
+    // Les couches partagent le cadre du clip entier : elles se superposent
+    // donc telles quelles, et il suffit de descendre les deux mobiles.
+    { cle: 'frusion-arriere', id: 324, profondeurs: (p) => p === 1 },
+    { cle: 'frusion-fondslot', id: 324, profondeurs: (p) => p === 3 },
+    { cle: 'frusion-milieu', id: 324, profondeurs: (p) => p === 9 },
+    { cle: 'frusion-slot', id: 324, profondeurs: (p) => p === 10 },
+    { cle: 'frusion-avant', id: 324, profondeurs: (p) => p >= 20 && p !== 24 && p !== 29 },
     { cle: 'frutimandala-fond', id: 640, profondeurs: (p) => p < 3 },
     { cle: 'frutimandala-dessus', id: 640, profondeurs: (p) => p > 3 },
     // La boîte de recherche du panneau des contacts : `mcSearchButton` (#441),

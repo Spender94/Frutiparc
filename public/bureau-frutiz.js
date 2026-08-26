@@ -780,6 +780,11 @@ window.BureauFrutiz = (function () {
     var champ = etat.panneau.querySelector('.ex-champ');
     champ.classList.remove('attente');
     champ.textContent = '';
+    // `fileMng.frusionOn` : le disque QUI TOURNE n'est plus dans la boîte —
+    // il est dans le lecteur. Il y revient quand on l'éjecte.
+    if (frusion.disque) {
+      entrees = entrees.filter(function (x) { return x.uid !== frusion.disque.uid; });
+    }
     // `box.Explorer.displayList` trie par NOM, croissant, sans tenir compte de
     // la casse — les dossiers ne passent pas devant.
     entrees = entrees.slice().sort(function (a, b) {
@@ -857,12 +862,19 @@ window.BureauFrutiz = (function () {
   function caseDisque(e) {
     var type = e.desc[0], jeu = e.desc[1] || '';
     var tab = JEUX_LIGHT[String(jeu).toLowerCase()];
-    return caseExplorateur({
+    // D'époque, `_global.onFileClick` ne fait RIEN d'un disque — la branche
+    // « disc » est commentée dans openFunctions.as : on joue en le GLISSANT
+    // dans la Frusion, et le bandeau de la fenêtre le dit. Le portage garde
+    // ce geste-là, et laisse le clic faire le même chemin (le tiroir sort, le
+    // disque y descend, la machine le lance) plutôt que de ne rien faire.
+    var c = caseExplorateur({
       classe: 'ex-slot-disque',
       dessin: dessinDisque(type, jeu),
-      titre: tab ? 'Jouer' : 'Ce disque ne se lit que sur la version Flash',
-      faire: tab && window.activateTab ? function () { window.activateTab(tab); } : null,
+      titre: tab ? 'Glissez-le dans la Frusion' : 'Ce disque ne se lit que sur la version Flash',
+      faire: tab ? function () { frusion.inserer(e); } : null,
     });
+    if (tab) rendreAttrapable(c, e, function () { return dessinDisque(type, jeu); });
+    return c;
   }
 
   // `specialClick` : un accessoire se PORTE (la commande `fbouille`), un fond
@@ -875,6 +887,424 @@ window.BureauFrutiz = (function () {
   function poserFondInventaire(id) {
     if (window.InventaireBureau && InventaireBureau.poserFond) InventaireBureau.poserFond(id);
   }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     LE GLISSER-DÉPOSER DE FICHIERS (`_global.createDragIcon`, `dragListener`)
+
+     Au bureau d'époque on n'ouvre pas un disque : on l'ATTRAPE et on le POSE
+     dans la Frusion. `IconFileBox.pressIcon` arme un contrôle toutes les 25 ms
+     et, dès que la souris a bougé de plus de `dragDistMin = 4`, appelle
+     `createDragIcon` : l'icône quitte sa fenêtre (elle s'y fait invisible) et
+     suit le curseur. `onEndDrag` la rend, `IconFileBox.onDrop` la reçoit.
+
+     Le lecteur, lui, s'abonne au TYPE de fichier :
+
+         dragListener.addListener("disc", {obj: this,
+             startMethod: "onStartDragDisc", stopMethod: "onEndDragDisc"})
+
+     — c'est ce qui fait sortir le tiroir DÈS QU'ON ATTRAPE un disque, avant
+     même de savoir où il ira. */
+  var DIST_MIN_GLISSER = 4;             // IconFileBox.dragDistMin
+  var glisseur = { info: null, el: null, source: null };
+  var abonnesGlisser = {};              // type → [{ debut, fin }]
+
+  function ecouterGlisser(type, obj) {
+    (abonnesGlisser[type] = abonnesGlisser[type] || []).push(obj);
+  }
+  function prevenirGlisser(type, phase) {
+    var l = abonnesGlisser[type] || [];
+    for (var i = 0; i < l.length; i++) if (l[i][phase]) l[i][phase]();
+  }
+
+  // `_global.createDragIcon` : le dessin du fichier, à la taille de l'icône,
+  // centré sur le curseur et transparent aux clics (c'est ce qu'il y a DESSOUS
+  // qui reçoit le dépôt).
+  function creerIconeGlissee(info, dessin, x, y) {
+    var el = document.createElement('div');
+    el.className = 'fb-glisse-icone';
+    el.appendChild(dessin);
+    document.body.appendChild(el);
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    glisseur.info = info;
+    glisseur.el = el;
+    prevenirGlisser(info.type, 'debut');
+    return el;
+  }
+
+  function finirGlisser(x, y) {
+    if (!glisseur.el) return;
+    var info = glisseur.info;
+    glisseur.el.remove();
+    glisseur.el = null;
+    glisseur.info = null;
+    // La CIBLE : ce qui se trouve sous le curseur au lâcher. L'icône glissée
+    // ne compte pas (elle ne reçoit pas les clics).
+    var cible = document.elementFromPoint(x, y);
+    var boite = cible && cible.closest ? cible.closest('[data-depot]') : null;
+    var pris = false;
+    if (boite && boite.getAttribute('data-depot') === 'frusion') pris = frusion.deposer(info);
+    prevenirGlisser(info.type, 'fin');
+    if (!pris && glisseur.source) glisseur.source.style.visibility = '';
+    glisseur.source = null;
+  }
+
+  // Rendre une case d'explorateur ATTRAPABLE. Le clic simple reste possible :
+  // c'est la distance parcourue qui décide, comme `IconFileBox.checkDrag`.
+  function rendreAttrapable(el, info, dessine) {
+    el.addEventListener('pointerdown', function (ev) {
+      if (ev.button !== 0) return;
+      // Sans cela, tirer sur une icône déclenche la SÉLECTION du navigateur et
+      // tout le bureau vire au bleu.
+      ev.preventDefault();
+      var x0 = ev.clientX, y0 = ev.clientY, parti = false;
+      var bouge = function (e) {
+        if (!parti) {
+          var d = Math.sqrt(Math.pow(e.clientX - x0, 2) + Math.pow(e.clientY - y0, 2));
+          if (d <= DIST_MIN_GLISSER) return;
+          parti = true;
+          el.style.visibility = 'hidden';     // `path._visible = false`
+          glisseur.source = el;
+          creerIconeGlissee(info, dessine(), e.clientX, e.clientY);
+        }
+        glisseur.el.style.left = e.clientX + 'px';
+        glisseur.el.style.top = e.clientY + 'px';
+      };
+      var lache = function (e) {
+        document.removeEventListener('pointermove', bouge);
+        document.removeEventListener('pointerup', lache);
+        if (parti) { e.preventDefault(); e.stopPropagation(); finirGlisser(e.clientX, e.clientY); }
+      };
+      document.addEventListener('pointermove', bouge);
+      document.addEventListener('pointerup', lache, true);
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     LE LECTEUR FRUSION (`_global.Frusion`, DoInitAction 0x990e0)
+
+     Le clip `frusion` (#324) n'est pas un décor : c'est une MACHINE. Son
+     bytecode donne toute la mécanique, au chiffre près.
+
+         init :  width = 116, margin = 16, slot._y = 71
+                 flOpen = flDisc = flRotating = flRunning = false
+                 slot.dropBox = this
+                 dragListener.addListener("disc", {startMethod:
+                     "onStartDragDisc", stopMethod: "onEndDragDisc"})
+
+         openSlot  : moveSlot vers 140      closeSlot : moveSlot vers 71
+         moveSlot(y) :
+             r = 0,8 ^ tmod
+             slot._y = slot._y × r + y × (1 − r)      ← approche exponentielle
+             fondSlot._y = slot._y
+             si arrondi(slot._y) == arrondi(y) :
+                 slot._y = y ; on arrête
+                 si y == 71 et flDisc : runDisc()      ← le disque démarre
+         rotateDisc(sens) :
+             d.speed += tmod × sens ; d._rotation −= d.speed
+             si sens > 0 et speed > 140 : on arrête, et la jaquette JOUE son
+                 animation de rotation (les anneaux flous du rendu d'époque)
+             si sens < 0 et speed < 0   : on arrête, flRotating = false,
+                 et `this[discDestiny]()` — c'est ainsi que l'éjection enchaîne
+
+         onStartDragDisc : si !flDisc et !flOpen → openSlot()
+         onEndDragDisc   : si !flDisc et flOpen  → closeSlot()
+         onDrop(o) : si o.type == "disc" et !flDisc et flOpen :
+             flDisc = true ; le disque s'attache au tiroir (fileIconFull) ;
+             closeSlot() ; frusionMng.launchDisc(uid) ; fileMng.frusionOn(info)
+         pushEject : frusionMng.eject()  → le jeu se ferme, puis
+                     stopDisc("releaseDisc")
+         releaseDisc : fileMng.frusionOff() ; openSlot() ; le disque devient
+                     CLIQUABLE → takeDisc() le rend au curseur
+         pushReset : frusionMng.reset() — le jeu redémarre
+
+     Les deux boutons ronds sont des DefineButton2 du clip : #317 à gauche
+     appelle `pushReset`, #313 à droite `pushEject` (lu dans leurs actions).
+
+     La GÉOMÉTRIE vient du clip et du relevé 1:1 (scratchpad/fr-*.png) :
+     le clip fait 119 × 77,5 et son origine tombe à x 117,5 dans la boîte ;
+     le tiroir est posé à (−58, 71), donc à x 59,5 dans la boîte, et descend
+     de 69 px ; le disque, lui, fait 63 px et son centre se pose 32,25 px
+     AU-DESSUS de l'origine du tiroir — c'est-à-dire au ras du haut de la
+     cuve, dont l'ouverture ne laisse voir que sa moitié basse. */
+  var FR_L = 119, FR_H = 77.5;          // le cadre du clip
+  var FR_X0 = 117.5;                    // l'origine du clip dans la boîte
+  var FR_SLOT_X = FR_X0 - 58;           // 59,5 — l'axe du tiroir
+  var FR_FERME = 71, FR_OUVERT = 140;   // slot._y, fermé et ouvert
+  var FR_DISQUE = 63;                   // la jaquette, à l'échelle 1
+  var FR_DISQUE_DY = -32.25;            // son centre, sous l'origine du tiroir
+  var FR_VMAX = 140;                    // rotateDisc : au-delà, la jaquette file
+
+  var frusion = {
+    boite: null, tiroirs: null, disqueEl: null, cible: null,
+    y: FR_FERME, cibleY: FR_FERME, ouvert: false,
+    disque: null, vitesse: 0, sens: 0, destin: null, anim: null, dernier: 0,
+  };
+
+  function couche(nom) {
+    var d = document.createElement('div');
+    d.className = 'fr-couche fr-' + nom;
+    return d;
+  }
+
+  function batirFrusion() {
+    var b = document.createElement('div');
+    b.id = 'frusion-boite';
+    b.appendChild(couche('arriere'));
+    // Le berceau et le tiroir descendent ENSEMBLE (`fondSlot._y = slot._y`),
+    // mais de part et d'autre de la plaque du milieu : deux enveloppes.
+    var mFond = document.createElement('div');
+    mFond.className = 'fr-mobile fr-m-fond';
+    mFond.appendChild(couche('fondslot'));
+    b.appendChild(mFond);
+    b.appendChild(couche('milieu'));
+    var mSlot = document.createElement('div');
+    mSlot.className = 'fr-mobile fr-m-slot';
+    mSlot.appendChild(couche('slot'));
+    // Le disque vit DANS le tiroir : il descend avec lui, et la façade ne
+    // laisse voir que ce qui passe par la cuve.
+    var disque = document.createElement('div');
+    disque.className = 'fr-disque';
+    // `releaseDisc` pose `slot.disc.onPress = takeDisc` : une fois rendu, le
+    // disque se reprend d'un clic — et repart au bout du curseur.
+    disque.addEventListener('pointerdown', function (ev) {
+      if (!disque.classList.contains('reprenable')) return;
+      ev.preventDefault();
+      frusion.takeDisc(ev);
+    });
+    mSlot.appendChild(disque);
+    // La zone de dépôt : `slot.dropBox = this`, c'est le TIROIR qu'on vise.
+    var cible = document.createElement('div');
+    cible.className = 'fr-cible';
+    cible.setAttribute('data-depot', 'frusion');
+    mSlot.appendChild(cible);
+    b.appendChild(mSlot);
+    b.appendChild(couche('avant'));
+    var casque = document.createElement('button');
+    casque.type = 'button';
+    casque.className = 'fr-but fr-casque';
+    casque.title = 'Redémarrer le jeu';
+    casque.addEventListener('click', function () { frusion.pushReset(); });
+    var eject = document.createElement('button');
+    eject.type = 'button';
+    eject.className = 'fr-but fr-eject';
+    eject.title = 'Éjecter le disque';
+    eject.addEventListener('click', function () { frusion.pushEject(); });
+    b.appendChild(casque);
+    b.appendChild(eject);
+
+    frusion.boite = b;
+    frusion.tiroirs = [mFond, mSlot];
+    frusion.disqueEl = disque;
+    frusion.cible = cible;
+    frusion.poser();
+    // Le lecteur s'abonne au glisser des DISQUES, comme d'époque.
+    ecouterGlisser('disc', {
+      debut: function () { frusion.onStartDragDisc(); },
+      fin: function () { frusion.onEndDragDisc(); },
+    });
+    return b;
+  }
+
+  frusion.poser = function () {
+    var d = this.y - FR_FERME;
+    for (var i = 0; i < this.tiroirs.length; i++) {
+      this.tiroirs[i].style.transform = 'translateY(' + d.toFixed(2) + 'px)';
+    }
+  };
+
+  // `AnimList` bat toutes les 25 ms ; `tmod` mesure le temps réellement passé
+  // en multiples de ce battement. Une boucle d'animation du navigateur donne
+  // la même chose, sans minuterie.
+  frusion.battre = function () {
+    var self = this;
+    if (this.anim) return;
+    this.dernier = 0;
+    var pas = function (t) {
+      self.anim = null;
+      var tmod = self.dernier ? Math.min(4, (t - self.dernier) / 25) : 1;
+      self.dernier = t;
+      var encore = false;
+      if (self.y !== self.cibleY) { self.moveSlot(self.cibleY, tmod); encore = true; }
+      if (self.sens) { self.rotateDisc(self.sens, tmod); encore = true; }
+      if (encore) self.anim = requestAnimationFrame(pas);
+    };
+    this.anim = requestAnimationFrame(pas);
+  };
+
+  frusion.moveSlot = function (y, tmod) {
+    var r = Math.pow(0.8, tmod);
+    this.y = this.y * r + y * (1 - r);
+    if (Math.round(this.y) === Math.round(y)) {
+      this.y = y;
+      // « si y == 71 et flDisc : runDisc() » — le tiroir refermé sur un
+      // disque, la machine le lance.
+      if (y === FR_FERME && this.disque) this.runDisc();
+    }
+    this.poser();
+  };
+
+  frusion.openSlot = function () {
+    this.cibleY = FR_OUVERT; this.ouvert = true;
+    this.boite.classList.add('fr-ouvert');
+    this.battre();
+  };
+  frusion.closeSlot = function () {
+    this.cibleY = FR_FERME; this.ouvert = false;
+    this.boite.classList.remove('fr-ouvert');
+    this.battre();
+  };
+
+  frusion.runDisc = function () { this.sens = 1; this.battre(); };
+  frusion.stopDisc = function (destin) {
+    this.destin = destin || null;
+    this.sens = -2;
+    this.battre();
+  };
+  frusion.rotateDisc = function (sens, tmod) {
+    this.vitesse += tmod * sens;
+    this.rotation = (this.rotation || 0) - this.vitesse;
+    if (this.disqueEl) this.disqueEl.style.transform = 'rotate(' + this.rotation.toFixed(1) + 'deg)';
+    if (sens > 0 && this.vitesse > FR_VMAX) {
+      // D'époque le clip s'arrête là et la JAQUETTE joue son animation de
+      // rotation — les anneaux flous du rendu 1:1. Ici, c'est le disque qui
+      // continue de tourner à cette vitesse-là : le même flou, sans dessin
+      // supplémentaire.
+      this.vitesse = FR_VMAX;
+      if (this.disqueEl) this.disqueEl.classList.add('file');
+      this.sens = 0;
+    }
+    if (sens < 0 && this.vitesse < 0) {
+      this.sens = 0;
+      this.vitesse = 0;
+      if (this.disqueEl) this.disqueEl.classList.remove('file');
+      var d = this.destin;
+      this.destin = null;
+      if (d && this[d]) this[d]();
+    }
+  };
+
+  frusion.onStartDragDisc = function () { if (!this.disque && !this.ouvert) this.openSlot(); };
+  frusion.onEndDragDisc = function () { if (!this.disque && this.ouvert) this.closeSlot(); };
+
+  // `onDrop` : le disque entre, le tiroir se referme, et le jeu se lance.
+  frusion.deposer = function (info) {
+    if (!info || info.type !== 'disc' || this.disque || !this.ouvert) return false;
+    this.disque = info;
+    this.disqueEl.textContent = '';
+    this.disqueEl.appendChild(dessinDisque(info.desc[0], info.desc[1]));
+    this.disqueEl.classList.add('plein');
+    this.disqueEl.classList.remove('file');
+    this.rotation = 0;
+    this.vitesse = 0;
+    this.closeSlot();
+    this.lancer(info);
+    rafraichirDisques();
+    return true;
+  };
+
+  // `frusionMng.launchDisc` + `FPSlotList.addSlot(slot, true)` : le jeu ne
+  // s'ouvre pas en fenêtre flottante, il prend l'espace de travail et se
+  // donne un ONGLET à côté de « Bureau ».
+  frusion.lancer = function (info) {
+    var tab = JEUX_LIGHT[String(info.desc[1] || '').toLowerCase()];
+    this.jeu = null;
+    if (!tab || !window.activateTab) return;
+    this.jeu = tab;
+    window.activateTab(tab);
+    var rub = RUBRIQUES[tab];
+    var panneau = rub && $(rub.panneau);
+    if (panneau && fenetres[panneau.id] && !fenetres[panneau.id].onglet) {
+      mettreEnOnglet(panneau.id);
+    }
+  };
+
+  frusion.pushEject = function () {
+    if (!this.disque || this.sens < 0) return;
+    // `frusionMng.eject()` demande au jeu de se fermer ; quand il a rendu la
+    // main, la machine ralentit le disque et le rend.
+    if (this.jeu) {
+      var rub = RUBRIQUES[this.jeu];
+      var panneau = rub && $(rub.panneau);
+      if (panneau && fenetres[panneau.id]) fermerFenetre(panneau.id);
+      this.jeu = null;
+    }
+    this.stopDisc('releaseDisc');
+  };
+
+  frusion.pushReset = function () {
+    if (!this.disque || !this.jeu) return;
+    // `frusionMng.reset()` : le jeu redémarre. Le portage n'a pas le canal du
+    // Frusion Server — on refait ce qu'il fait de visible : on referme le jeu
+    // et on le relance sur le même disque.
+    var jeu = this.jeu;
+    var rub = RUBRIQUES[jeu];
+    var panneau = rub && $(rub.panneau);
+    if (panneau && fenetres[panneau.id]) fermerFenetre(panneau.id);
+    var self = this;
+    setTimeout(function () { self.lancer(self.disque); }, 80);
+  };
+
+  // `releaseDisc` : le tiroir ressort et le disque, posé dedans, redevient
+  // attrapable — un clic dessus le remet au bout du curseur (`takeDisc`).
+  frusion.releaseDisc = function () {
+    this.openSlot();
+    this.disqueEl.classList.add('reprenable');
+  };
+
+  frusion.takeDisc = function (ev) {
+    if (!this.disque) return;
+    var info = this.disque;
+    this.removeDisc();
+    // `iconInfo.comeFromFrusion = true` : le disque revient du lecteur.
+    info = Object.assign({}, info, { comeFromFrusion: true });
+    glisseur.source = null;
+    creerIconeGlissee(info, dessinDisque(info.desc[0], info.desc[1]), ev.clientX, ev.clientY);
+    var bouge = function (e) {
+      if (!glisseur.el) return;
+      glisseur.el.style.left = e.clientX + 'px';
+      glisseur.el.style.top = e.clientY + 'px';
+    };
+    var lache = function (e) {
+      document.removeEventListener('pointermove', bouge);
+      document.removeEventListener('pointerup', lache, true);
+      finirGlisser(e.clientX, e.clientY);
+    };
+    document.addEventListener('pointermove', bouge);
+    document.addEventListener('pointerup', lache, true);
+  };
+
+  frusion.removeDisc = function () {
+    this.disque = null;
+    this.disqueEl.textContent = '';
+    this.disqueEl.classList.remove('plein', 'file', 'reprenable');
+    rafraichirDisques();
+  };
+
+  // La fenêtre « Mes disques » suit l'état du lecteur, comme les écoutants de
+  // `fileMng` d'époque : le disque inséré la quitte, le disque éjecté y rentre.
+  function rafraichirDisques() {
+    var e = exEtats.disques;
+    if (e && e.uid && $(EXPLORATEURS.disques.panneau)) ouvrirDossier('disques', e.uid, e.titre);
+  }
+
+  // Le chemin COURT : un clic sur un disque. Le tiroir sort, on laisse le
+  // temps de le voir sortir, puis le disque y descend — la même mécanique que
+  // le glisser, sans le glisser.
+  frusion.inserer = function (info) {
+    if (this.disque) return;
+    var self = this;
+    this.openSlot();
+    setTimeout(function () { self.deposer(info); }, 320);
+  };
+
+  // `forceCloseSlot` : le disque s'en va sans qu'on le reprenne (on a fermé
+  // le jeu autrement, ou quitté le bureau).
+  frusion.forceCloseSlot = function () {
+    if (!this.ouvert) return;
+    if (this.disque) this.removeDisc();
+    this.closeSlot();
+  };
 
   // L'ouverture depuis le bureau : la fenêtre, puis la racine du dossier.
   function ouvrirExplorateur(cle) {
@@ -1669,6 +2099,16 @@ window.BureauFrutiz = (function () {
     for (var cle in exEtats) {
       if (exEtats[cle].panneau && exEtats[cle].panneau.id === idPanneau) exEtats[cle].uid = null;
     }
+    // FERMER LE JEU, C'EST ÉJECTER. D'époque le jeu ne se ferme pas tout
+    // seul : c'est `FrusionSlot.onReadyToClose` qui prévient le lecteur, et le
+    // lecteur rend le disque. Ici la fenêtre du jeu joue le rôle du slot.
+    if (frusion && frusion.jeu) {
+      var rub = RUBRIQUES[frusion.jeu];
+      if (rub && rub.panneau === '#' + idPanneau) {
+        frusion.jeu = null;
+        frusion.stopDisc('releaseDisc');
+      }
+    }
   }
 
   function creerFenetre(rub, panneau) {
@@ -1937,14 +2377,10 @@ window.BureauFrutiz = (function () {
     ongletBureau = creerOnglet('bureau', 'Bureau', null);
     dessinerOnglets();
 
-    // La boîte de la FRUSION (le lecteur de disques, en haut à droite) : le
-    // même chrome que la barre — blanc, liseré #DDD, contour #444, coins bas
-    // arrondis — hauteur 76, calée à 8 px du bord (le contour tombe à
-    // Stage.width − 6, comme la pilule). Son contenu (la console) viendra
-    // avec la transcription de FrusionSlot.
-    var frusion = document.createElement('div');
-    frusion.id = 'frusion-boite';
-    haut.appendChild(frusion);
+    // LE LECTEUR FRUSION (le clip `frusion` #324, en couches), avec sa
+    // mécanique : le tiroir qui sort, le disque qu'on y pose, celui qu'on
+    // reprend.
+    haut.appendChild(batirFrusion());
 
     // LA FRUTIMANDALA (cpWheelMng #640) : trois couches, comme les
     // profondeurs du SWF — le châssis de FOND (profondeur 1), la ROUE des

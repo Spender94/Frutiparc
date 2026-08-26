@@ -1664,6 +1664,97 @@ coffre), puis `/ff/ls?uid=…` à chaque navigation.
 - trois disques n'ont pas de portage light (Burning Kiwi, Kaluga, Motion-Ball) :
   ils restent dessinés, comme d'époque, et le disent à l'infobulle.
 
+## LE LECTEUR FRUSION (`_global.Frusion`, DoInitAction 0x990e0)
+
+Le clip `frusion` (#324) n'est pas un décor : c'est une MACHINE, et son
+bytecode donne toute la mécanique.
+
+### Les couches du clip
+
+    prof.  1  fondFrusion (#301)   le fond, immobile
+           3  fondSlot    (#303)   le berceau du tiroir — IL BOUGE
+           9  #304                 la plaque du milieu, immobile
+          10  slot        (#308)   le TIROIR — il bouge, et porte le disque
+          21  #309 (+34 #319)      la FAÇADE, une plaque opaque PERCÉE de la
+                                   cuve : c'est par ce trou qu'on voit tourner
+                                   le disque, et rien de plus
+          24  #313                 l'ÉJECTION  (DefineButton2 → pushEject)
+          29  #317                 le CASQUE   (DefineButton2 → pushReset)
+
+Le clip fait 119 × 77,5 et son origine tombe à x 117,5 dans la boîte. Le
+tiroir est posé à (−58, 71) — donc x 59,5 dans la boîte.
+
+### La mécanique, au chiffre près
+
+    init : width = 116, margin = 16, slot._y = 71
+           slot.dropBox = this
+           dragListener.addListener("disc", {startMethod: "onStartDragDisc",
+                                             stopMethod:  "onEndDragDisc"})
+
+    openSlot  → moveSlot vers 140          closeSlot → moveSlot vers 71
+    moveSlot(y) :
+        r = 0,8 ^ tmod
+        slot._y = slot._y × r + y × (1 − r)        ← approche exponentielle
+        fondSlot._y = slot._y
+        arrivé : si y == 71 ET flDisc → runDisc()
+
+    rotateDisc(sens) :
+        d.speed += tmod × sens ; d._rotation −= d.speed
+        sens > 0 et speed > 140 → on arrête, et la jaquette JOUE son animation
+            de rotation (les anneaux flous du rendu d'époque)
+        sens < 0 et speed < 0   → on arrête, flRotating = false, et
+            `this[discDestiny]()` — c'est ainsi que l'éjection enchaîne
+
+    onStartDragDisc : si !flDisc et !flOpen → openSlot()   ← LE TIROIR SORT
+                      DÈS QU'ON ATTRAPE UN DISQUE, avant de savoir où il ira
+    onEndDragDisc   : si !flDisc et flOpen  → closeSlot()
+
+    onDrop(o) : si o.type == "disc" et !flDisc et flOpen :
+        flDisc = true ; le disque s'attache au tiroir en `fileIconFull`, posé
+        à (−31, −63) ; closeSlot() ; frusionMng.launchDisc(uid) ;
+        fileMng.frusionOn(iconInfo)
+
+    pushEject   → frusionMng.eject() ; le jeu rend la main, puis
+                  stopDisc("releaseDisc")
+    releaseDisc → fileMng.frusionOff() ; openSlot() ; le disque devient
+                  CLIQUABLE — `slot.disc.onPress = takeDisc`
+    takeDisc    → removeDisc() ; iconInfo.comeFromFrusion = true ;
+                  createDragIcon(iconInfo)
+    burstDisc   → le disque s'efface (fadeDisc) : un FD consommé
+    pushReset   → frusionMng.reset()
+    breakFrusion / hangFrusion → l'easter egg, la console qui tremble
+
+`frusion.FrusionManager.launchDisc` charge le GameDisc puis ouvre le jeu selon
+sa taille (`checkOpenMode` : interne, pop-up ou cadre) et
+`FPSlotList.addSlot(slot, true)` lui donne un ONGLET dans la main bar, qu'il
+active — le jeu prend l'espace de travail, il ne flotte pas en fenêtre.
+
+### Le glisser d'un fichier (`IconFileBox`, frutiparc/IconFileBox.as)
+
+    pressIcon  : un contrôle toutes les 25 ms
+    checkDrag  : au-delà de dragDistMin = 4 → createDragIcon(), et l'icône
+                 d'origine devient invisible (`path._visible = false`)
+    click      : si le contrôle court encore, c'était un CLIC — et pour un
+                 disque, `_global.onFileClick` ne fait RIEN (la branche
+                 « disc » est commentée dans openFunctions.as)
+
+### Le relevé 1:1 (scratchpad/fr-*.png, console en x 1257..1376)
+
+Tiroir sorti : la hampe blanche descend jusqu'à y ≈ 145, le berceau gris est
+centré sur l'axe (x 59,5 dans la boîte). Disque inséré : on n'en voit que la
+MOITIÉ BASSE, dans la cuve — son centre tombe donc au ras de la corde, à 32,25
+px au-dessus de l'origine du tiroir. À plein régime, la jaquette n'est plus
+qu'un jeu d'anneaux flous.
+
+Écarts assumés :
+- au-delà de 140, le portage garde le disque en rotation à cette vitesse-là
+  plutôt que de jouer une animation de jaquette : le même flou, sans dessin de
+  plus ;
+- `pushReset` n'a pas le canal du Frusion Server : le portage refait ce qu'on
+  en voit — le jeu se referme et se relance sur le même disque ;
+- le CLIC sur un disque, qui d'époque ne fait rien, prend ici le même chemin
+  que le glisser (le tiroir sort, le disque descend, la machine le lance).
+
 ## Reste à faire (étapes suivantes)
 
 1. ~~La barre-titre des types de fenêtres~~ : `drawInterface` lit TOUJOURS
@@ -1685,6 +1776,9 @@ coffre), puis `/ff/ls?uid=…` à chaque navigation.
    saute, onglet « Bureau » qui clignote, menu « Vers bureau / Fermer »).
    Reste la préférence `win_flMoveAnim`.
 6. ~~L'EXPLORATEUR~~ FAIT (« Mes disques » et « Inventaire », cf. plus haut).
+7. ~~Le LECTEUR FRUSION~~ FAIT (tiroir, insertion par glisser, rotation,
+   éjection, disque repris — cf. plus haut). Restent le `burstDisc` d'un FD
+   consommé, le décompte des parties, et l'easter egg `breakFrusion`.
    Restent, quand le serveur saura les tenir : la CORBEILLE (`frFileTrash` +
    `flRemoveAll`), les boîtes MAIL (`tpl: "mail"`, `fileIconDetail` et ses
    colonnes triables) et le glisser-déposer d'un fichier d'un dossier à

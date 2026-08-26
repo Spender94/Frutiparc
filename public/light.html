@@ -2782,6 +2782,10 @@
     // compteur « en ligne » de la frusion ne s'actualisait jamais.
     window.state = state;
     window.ouvrirFicheJoueur = ouvrirFiche;
+    // Et le ROUTEUR de rubriques : c'est lui que la Frusion appelle quand un
+    // disque descend dans le tiroir — `frusionMng.launchDisc` puis
+    // `FPSlotList.addSlot`, côté bureau d'époque.
+    window.activateTab = activateTab;
     // Le bureau desktop refait la fenêtre « Salons publics » de main.swf : il
     // lui faut la liste des salons publics avec leur affluence, le salon
     // courant, et de quoi en rejoindre un. Les discussions privées n'y sont

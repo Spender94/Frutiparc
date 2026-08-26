@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -10 20 20" width="20" height="20">
+<g transform="matrix(0.2,0,0,0.2,0,0)">
+  <path d="M35.35 -35.4Q50 -20.7 50 0Q50 20.7 35.35 35.35Q20.7 50 0 50Q-20.7 50 -35.35 35.35Q-50 20.7 -50 0Q-50 -20.7 -35.35 -35.4Q-20.7 -50 0 -50Q20.7 -50 35.35 -35.4Z" fill="#dddddd" fill-rule="evenodd"/>
+
+</g>
+<g transform="matrix(1,0,0,1,0,0)">
+  <defs>
+    <radialGradient id="g1" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00186,0,0,0.00093,-0.1,6.5)"><stop offset="0" stop-color="#ffffff"/><stop offset="0.16471" stop-color="#eeeeee"/><stop offset="0.61961" stop-color="#e1e1e1"/><stop offset="1" stop-color="#bfbfbf"/></radialGradient>
+    <radialGradient id="g2" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00081,0,0,0.00081,0.05,-8.4)"><stop offset="0" stop-color="#ffffff" stop-opacity="0.8"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <path d="M-6.35 -6.4Q-3.75 -9.05 0 -9Q1.9 -9.05 3.55 -8.35L6.4 -6.4Q9 -3.75 9 0Q9 3.7 6.4 6.35Q3.75 9 0 9Q-3.75 9 -6.35 6.35L-7.45 5.05Q-9 2.85 -9 0Q-9 -3.75 -6.35 -6.4Z" fill="url(#g1)" fill-rule="evenodd"/>
+  <path d="M0 -3.2Q-1.15 -3.2 -1.95 -2.45L-1.9 -2.45Q-2.65 -1.65 -2.65 -0.5Q-2.65 0.6 -1.95 1.35L-1.9 1.35Q-1.65 1.6 -1.65 2L-1.9 2.7L-1.95 2.7L-2.6 2.95L-3.25 2.7Q-4.55 1.4 -4.55 -0.5Q-4.55 -2.45 -3.25 -3.75Q-1.9 -5.1 0 -5.1Q1.85 -5.1 3.2 -3.75Q4.55 -2.45 4.55 -0.5Q4.55 0.9 3.8 2L3.8 1.95L3.65 2.15L3.6 2.25L3.05 2.7L2.3 2.65L1.85 2.05L1.85 2.1Q1.7 1.7 1.9 1.35L2.1 1.05L2.2 0.95L2.2 0.9Q2.65 0.3 2.65 -0.5Q2.65 -1.65 1.85 -2.45Q1.1 -3.2 0 -3.2ZM-0.05 -0.45L0.6 -0.15L0.85 0.5L0.85 4.15L0.6 4.8L0.6 4.85L-0.1 5.1L-0.75 4.8L-1.05 4.15L-1.05 0.5L-0.75 -0.15L-0.1 -0.45L-0.05 -0.45Z" fill="#666666" fill-rule="evenodd"/>
+  <path d="M3.15 -7.55Q4.5 -7 5.7 -5.85Q8 -3.5 8 -0.15L8 0Q7.75 0.45 6.1 1Q3.55 1.75 0 1.8L-6.05 1L-7.05 0.65Q-7.85 0.3 -8 0L-8 -0.15Q-8 -3.5 -5.65 -5.85Q-3.35 -8.2 0 -8.15Q1.7 -8.2 3.15 -7.55Z" fill="url(#g2)" fill-rule="evenodd"/>
+
+</g>
+</svg>

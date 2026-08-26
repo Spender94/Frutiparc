@@ -67,6 +67,40 @@
     "w": 19.75,
     "h": 84.15
    }
+  },
+  "frusionCasque": {
+   "up": {
+    "fichier": "frusionCasque_up.svg"
+   },
+   "over": {
+    "fichier": "frusionCasque_over.svg"
+   },
+   "down": {
+    "fichier": "frusionCasque_down.svg"
+   },
+   "cadre": {
+    "x": -10,
+    "y": -10,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "frusionEject": {
+   "up": {
+    "fichier": "frusionEject_up.svg"
+   },
+   "over": {
+    "fichier": "frusionEject_over.svg"
+   },
+   "down": {
+    "fichier": "frusionEject_down.svg"
+   },
+   "cadre": {
+    "x": -10,
+    "y": -10,
+    "w": 20,
+    "h": 20
+   }
   }
  },
  "notes": "butGroupWinTop #180 : images 1..3 → boutons #173/#176/#179 (up/over/down)",
@@ -509,6 +543,51 @@
  },
  "frusion": {
   "fichier": "frusion.svg",
+  "cadre": {
+   "x": -117.5,
+   "y": 0,
+   "w": 119,
+   "h": 77.5
+  }
+ },
+ "frusion-arriere": {
+  "fichier": "frusion-arriere.svg",
+  "cadre": {
+   "x": -117.5,
+   "y": 0,
+   "w": 119,
+   "h": 77.5
+  }
+ },
+ "frusion-fondslot": {
+  "fichier": "frusion-fondslot.svg",
+  "cadre": {
+   "x": -117.5,
+   "y": 0,
+   "w": 119,
+   "h": 77.5
+  }
+ },
+ "frusion-milieu": {
+  "fichier": "frusion-milieu.svg",
+  "cadre": {
+   "x": -117.5,
+   "y": 0,
+   "w": 119,
+   "h": 77.5
+  }
+ },
+ "frusion-slot": {
+  "fichier": "frusion-slot.svg",
+  "cadre": {
+   "x": -117.5,
+   "y": 0,
+   "w": 119,
+   "h": 77.5
+  }
+ },
+ "frusion-avant": {
+  "fichier": "frusion-avant.svg",
   "cadre": {
    "x": -117.5,
    "y": 0,

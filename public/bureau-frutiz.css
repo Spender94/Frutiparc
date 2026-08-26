@@ -410,7 +410,88 @@ body.bureau-frutiz #fb-menu-onglet button:hover { background: #CCF599; }
 body.bureau-frutiz #frusion-boite {
   position: absolute; top: 0; right: 4px; width: 119px; height: 77.5px;
   z-index: 2;
-  background: url('/frutiz/sprites/frusion.svg') left top / 119px 77.5px no-repeat;
+}
+/* Les COUCHES, dans l'ordre des profondeurs du clip : le fond (1), le berceau
+   du tiroir (3), la plaque du milieu (9), le TIROIR (10) et sa jaquette, puis
+   la FAÇADE (21 et 34) — une plaque opaque PERCÉE de la cuve, par laquelle on
+   voit tourner le disque. Toutes partagent le cadre du clip, elles se
+   superposent donc telles quelles. */
+body.bureau-frutiz #frusion-boite .fr-couche,
+body.bureau-frutiz #frusion-boite .fr-mobile {
+  position: absolute; left: 0; top: 0; width: 119px; height: 77.5px;
+  pointer-events: none;
+}
+body.bureau-frutiz #frusion-boite .fr-couche {
+  background: left top / 119px 77.5px no-repeat;
+}
+body.bureau-frutiz #frusion-boite .fr-arriere { background-image: url('/frutiz/sprites/frusion-arriere.svg'); }
+body.bureau-frutiz #frusion-boite .fr-fondslot { background-image: url('/frutiz/sprites/frusion-fondslot.svg'); }
+body.bureau-frutiz #frusion-boite .fr-milieu { background-image: url('/frutiz/sprites/frusion-milieu.svg'); }
+body.bureau-frutiz #frusion-boite .fr-slot { background-image: url('/frutiz/sprites/frusion-slot.svg'); }
+body.bureau-frutiz #frusion-boite .fr-avant { background-image: url('/frutiz/sprites/frusion-avant.svg'); }
+/* LE DISQUE. `but.icon.Full` ne le met pas à l'échelle (`_xscale = 100`) : il
+   fait ses 63 px. `slot.disc._y = −63` le pose au-dessus de l'origine du
+   tiroir — au relevé 1:1, son centre tombe 32,25 px plus haut, c'est-à-dire
+   au ras de la corde de la cuve : on n'en voit que la moitié basse, et c'est
+   ce qui donne le demi-disque qui tourne du rendu d'époque. */
+body.bureau-frutiz #frusion-boite .fr-disque {
+  position: absolute; left: 28px; top: 7.25px; width: 63px; height: 63px;
+  display: none; pointer-events: none;
+}
+body.bureau-frutiz #frusion-boite .fr-disque.plein { display: block; }
+body.bureau-frutiz #frusion-boite .fr-disque.reprenable { pointer-events: auto; cursor: grab; }
+body.bureau-frutiz #frusion-boite .fr-disque .ex-disque {
+  position: absolute; left: 0; top: 0; width: 63px; height: 63px;
+  display: block; transform: none;
+}
+body.bureau-frutiz #frusion-boite .fr-disque .ex-disque img {
+  position: absolute; left: 0; top: 0; width: 63px; height: 63px;
+}
+body.bureau-frutiz #frusion-boite .fr-disque .ex-disque img.jaquette {
+  width: 61px; height: 61px; left: 1px; top: 1px;
+}
+/* LA ZONE DE DÉPÔT : `slot.dropBox = this` — c'est le TIROIR qu'on vise, pas
+   la console. Relevé 1:1 sur le tiroir sorti : il occupe x 28..91 dans la
+   boîte, et descend jusqu'à 74 px sous l'origine du tiroir. */
+body.bureau-frutiz #frusion-boite .fr-cible {
+  position: absolute; left: 28px; top: 71px; width: 63px; height: 74px;
+  pointer-events: none;
+}
+/* Elle n'attrape les dépôts que TIROIR SORTI : rentrée, elle couvrirait un
+   morceau de bureau sans rien y faire. */
+body.bureau-frutiz #frusion-boite.fr-ouvert .fr-cible { pointer-events: auto; }
+/* LES DEUX BOUTONS RONDS, aux places du clip : `#317` (le casque, pushReset)
+   en (−100, 60) et `#313` (l'éjection, pushEject) en (−15,85, 60), dans un
+   repère dont l'origine tombe à x 117,5 — soit x 17,5 et 101,65 dans la
+   boîte. Leurs dessins font 20 px et sont centrés sur ce point. */
+body.bureau-frutiz #frusion-boite .fr-but {
+  position: absolute; top: 50px; width: 20px; height: 20px;
+  border: 0; padding: 0; cursor: pointer; color: transparent; font-size: 0;
+  background: transparent center / 20px 20px no-repeat;
+}
+body.bureau-frutiz #frusion-boite .fr-casque { left: 7.5px; }
+body.bureau-frutiz #frusion-boite .fr-eject { left: 91.65px; }
+body.bureau-frutiz #frusion-boite .fr-casque { background-image: url('/frutiz/sprites/frusionCasque_up.svg'); }
+body.bureau-frutiz #frusion-boite .fr-casque:hover { background-image: url('/frutiz/sprites/frusionCasque_over.svg'); }
+body.bureau-frutiz #frusion-boite .fr-casque:active { background-image: url('/frutiz/sprites/frusionCasque_down.svg'); }
+body.bureau-frutiz #frusion-boite .fr-eject { background-image: url('/frutiz/sprites/frusionEject_up.svg'); }
+body.bureau-frutiz #frusion-boite .fr-eject:hover { background-image: url('/frutiz/sprites/frusionEject_over.svg'); }
+body.bureau-frutiz #frusion-boite .fr-eject:active { background-image: url('/frutiz/sprites/frusionEject_down.svg'); }
+
+/* L'ICÔNE GLISSÉE (`_global.createDragIcon`) : le dessin du fichier au bout
+   du curseur, centré dessus et transparent aux clics — c'est ce qu'il y a
+   DESSOUS qui reçoit le dépôt. */
+body.bureau-frutiz .fb-glisse-icone {
+  position: fixed; z-index: 3000; pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+body.bureau-frutiz .fb-glisse-icone .ex-disque {
+  position: relative; left: 0; top: 0; transform: none;
+  display: block; width: 63px; height: 63px;
+}
+body.bureau-frutiz .fb-glisse-icone .ex-disque img { position: absolute; width: 63px; height: 63px; }
+body.bureau-frutiz .fb-glisse-icone .ex-disque img.jaquette {
+  width: 61px; height: 61px; left: 1px; top: 1px;
 }
 
 /* ── LA FRUTIMANDALA (cpWheelMng #640 + la peau /wheel/wheel1.swf) ────────
@@ -1796,7 +1877,13 @@ body.bureau-frutiz .fen .ex-panel .ex-champ {
 body.bureau-frutiz .fen .ex-panel .ex-slot {
   position: relative; width: 80px; height: 80px; flex: 0 0 80px;
   border: 0; background: transparent; padding: 0; cursor: pointer;
+  user-select: none; -webkit-user-select: none;
 }
+/* Un disque s'ATTRAPE : le curseur le dit, et le glisser natif du navigateur
+   (on tire une image) ne doit pas couper le nôtre. */
+body.bureau-frutiz .fen .ex-panel .ex-slot-disque:not(.inerte) { cursor: grab; }
+body.bureau-frutiz .fen .ex-panel .ex-slot img,
+body.bureau-frutiz .fen .ex-panel .ex-slot .ex-disque { -webkit-user-drag: none; }
 /* Le bureau d'époque ne PÂLIT rien : une icône sans action reste dessinée
    comme les autres, elle ne répond simplement pas au clic. */
 body.bureau-frutiz .fen .ex-panel .ex-slot.inerte { cursor: default; }
