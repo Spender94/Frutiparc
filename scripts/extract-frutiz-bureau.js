@@ -206,7 +206,12 @@ function morceauxDe(pose) {
 }
 
 const arr = (v) => String(Math.round(v * 100) / 100);
-function svgCompose(morceaux, formes = corpsFormes) {
+// `etire` : la pièce est destinée à être ÉTIRÉE dans la page (la plaque d'un
+// onglet, que `barre._height` fait grandir). Sans `preserveAspectRatio="none"`
+// un SVG servi en `background-image` garde son rapport et se CENTRE dans la
+// boîte : la plaque de 120 × 18 posée dans 120 × 44 se dessinait au milieu, et
+// laissait treize pixels de vide au-dessus comme au-dessous.
+function svgCompose(morceaux, formes = corpsFormes, etire = false) {
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   const dessins = [];
   for (const m of morceaux) {
@@ -233,7 +238,8 @@ function svgCompose(morceaux, formes = corpsFormes) {
       .map((v) => +v.toFixed(4)).join(',')})"` + (fc ? ` filter="url(#${fc.id})"` : '') + '>'
       + f.corps + '</g>\n';
   }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${arr(x0)} ${arr(y0)} ${arr(l)} ${arr(h)}" width="${arr(l)}" height="${arr(h)}">\n`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${arr(x0)} ${arr(y0)} ${arr(l)} ${arr(h)}" width="${arr(l)}" height="${arr(h)}"`
+    + (etire ? ' preserveAspectRatio="none"' : '') + '>\n'
     + (defs ? '<defs>' + defs + '</defs>\n' : '') + corps + '</svg>\n';
   return { svg, cadre: { x: +arr(x0), y: +arr(y0), w: +arr(l), h: +arr(h) } };
 }
@@ -407,12 +413,13 @@ function principal() {
   // morceaux séparément — un onglet aplati ne saurait pas s'ouvrir.
   const ONGLET_PIECES = [
     // La plaque, à sa taille NATURELLE (18 de haut) : la feuille de style
-    // l'étire du repos (4) à la hauteur du menu (8 + n × 18).
-    { cle: 'onglet_barre', id: 204, brut: true },
+    // l'étire du repos (4) à la hauteur du menu (8 + n × 18). D'où `etire`.
+    { cle: 'onglet_barre', id: 204, brut: true, etire: true },
     // Le pied, SANS la pastille ni le titre : la première est un clip à trois
     // images (posé à part, il change avec le slot), le second du texte.
     { cle: 'onglet_pied', id: 202, brut: true, sauf: (p) => p.nom === 'ico' || p.nom === 'but' },
-    { cle: 'onglet_fondh', id: 186, brut: true },
+    // `updateFond` recopie `barre._height` dans `fondH` : elle s'étire aussi.
+    { cle: 'onglet_fondh', id: 186, brut: true, etire: true },
     { cle: 'onglet_fondb', id: 184, brut: true },
     // LA COUTURE : le clip `tab` a un TROISIÈME enfant, la forme #205, posée à
     // (0, 0) à la profondeur 13 — donc au-dessus du pied (3) ET de la plaque
@@ -439,7 +446,7 @@ function principal() {
     }
     const ids = liste.filter((m) => m.shape !== undefined).map((m) => m.shape);
     chargerFormes(ids.filter((id) => !corpsFormes.has(id)));
-    const r = svgCompose(liste);
+    const r = svgCompose(liste, corpsFormes, !!c.etire);
     if (!r) { console.warn('!! pièce d’onglet vide', c.cle); continue; }
     fs.writeFileSync(path.join(SORTIE, c.cle + '.svg'), r.svg, 'utf8');
     manifeste[c.cle] = { fichier: c.cle + '.svg', cadre: r.cadre };

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -18 120 18" width="120" height="18">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -18 120 18" width="120" height="18" preserveAspectRatio="none">
 <g transform="matrix(1,0,0,1,0,0)">
   <path d="M3 -18L3 0L0 0L0 -18L3 -18ZM117 0L117 -18L120 -18L120 0L117 0Z" fill="#dddddd" fill-rule="evenodd"/>
   <path d="M3 0L3 -18L117 -18L117 0L3 0Z" fill="#ffffff" fill-rule="evenodd"/>

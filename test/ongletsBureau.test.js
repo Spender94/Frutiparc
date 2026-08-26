@@ -66,6 +66,26 @@ test('l’onglet est fait de PIÈCES qui s’étirent, pas d’une image', () =>
   assert.match(JS, /\$\('#bureau-onglets-noir'\)\.appendChild\(fond\)/);
 });
 
+test('les deux pièces ÉTIRÉES gardent leur `preserveAspectRatio="none"`', () => {
+  // Sans lui, un SVG servi en `background-image` conserve son rapport et se
+  // CENTRE dans la boîte : la plaque de 120 × 18 posée dans 120 × 44 se
+  // dessinait au milieu, avec treize pixels de vide au-dessus comme au-dessous
+  // — le menu déroulé était troué. Seules `barre` et `fondH` s'étirent ;
+  // le pied, la couture et `fondB` gardent leur taille.
+  const svg = (n) => fs.readFileSync(path.join(ROOT, 'public/frutiz/sprites', n), 'utf8').split('\n')[0];
+  for (const n of ['onglet_barre.svg', 'onglet_fondh.svg']) {
+    assert.match(svg(n), /preserveAspectRatio="none"/, n + ' doit pouvoir s’étirer');
+  }
+  for (const n of ['onglet_pied.svg', 'onglet_fondb.svg', 'onglet_couture.svg']) {
+    assert.doesNotMatch(svg(n), /preserveAspectRatio/, n + ' ne s’étire pas');
+  }
+  // Et l'extracteur doit continuer à les marquer.
+  const EX = fs.readFileSync(path.join(ROOT, 'scripts/extract-frutiz-bureau.js'), 'utf8');
+  assert.match(EX, /\{ cle: 'onglet_barre', id: 204, brut: true, etire: true \}/);
+  assert.match(EX, /\{ cle: 'onglet_fondh', id: 186, brut: true, etire: true \}/);
+  assert.match(EX, /svgCompose\(liste, corpsFormes, !!c\.etire\)/);
+});
+
 test('le liseré sombre de la barre passe SOUS les onglets', () => {
   // `drawInterface` dessine en deux clips : `mcInterfaceBlack` (profondeur 2)
   // pour le contour sombre, `mcInterface` (10) pour le liseré et le blanc.
