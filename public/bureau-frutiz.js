@@ -182,8 +182,40 @@ window.BureauFrutiz = (function () {
   // silhouette blanche win.Ghost — qui suit la souris rigidement pendant que
   // la fenêtre reste en place ; au lâcher, applyGhost recopie la position du
   // fantôme, recal borne au bureau, et moveToPos fait GLISSER la fenêtre vers
-  // sa place (le coefficient 3 d'animList.addSlide) si l'animation est active.
+  // sa place, si l'animation est active.
   var FLUIDE = true;                    // la préférence win_flMoveAnim du SWF
+
+  /*
+   * LA VITESSE DU GLISSEMENT, relevée au pas près.
+   *
+   * `moveToPos` (0x55b47) ne bouge rien lui-même : il confie la fenêtre à
+   * `AnimList.addSlide` (0x51514), qui pose un `setInterval` de **25 ms** et
+   * appelle `AnimList.slide` (0x515d1) à chaque battement —
+   *
+   *     var k = Math.pow(0.8, tmod × ratio);
+   *     regular.x = regular.x × k + pos.x × (1 − k);
+   *     regular.y = regular.y × k + pos.y × (1 − k);
+   *     _x = regular.x; _y = regular.y;
+   *     if (Math.round(regular.y) == Math.round(pos.y)
+   *      && Math.round(regular.x) == Math.round(pos.x)) { _x = pos.x; _y = pos.y; remove(); }
+   *
+   * `ratio` vaut 1 (addSlide le met à 1 quand il n'est pas donné, et
+   * `moveToPos` n'en passe pas), et `tmod` vaut 1 : `_global.tmod = 1` est
+   * posé une fois pour toutes par le CLIENT FRUSION (frusion_client.swf,
+   * offset 5813) et main.swf ne fait que le lire — vingt-trois fois, jamais
+   * en écriture.
+   *
+   * Donc **k = 0,8** : la fenêtre couvre UN CINQUIÈME du chemin restant tous
+   * les 25 ms. Le portage en prenait un tiers — d'où une arrivée deux fois
+   * trop vive. Il faut ~10,3 pas (258 ms) pour en faire 90 %, contre 5,7
+   * (142 ms) avec un tiers.
+   *
+   * L'ARRÊT n'est pas « à moins d'un demi-pixel » mais « dans le même pixel
+   * entier », les deux coordonnées ARRONDIES : c'est plus tolérant sur un
+   * axe (1,6 → 2,4 s'arrête) et plus strict sur l'autre (1,4 → 1,6 continue).
+   */
+  var GLISSE_K = 0.8;                   // Math.pow(0.8, tmod × ratio), tmod = ratio = 1
+  var GLISSE_MS = 25;                   // le setInterval d'addSlide
 
   function premierPlan(fen) { fen.style.zIndex = String(++zCourant); }
 
@@ -223,16 +255,27 @@ window.BureauFrutiz = (function () {
     return pos;
   }
 
+  // `WinStandard.onStageResize` (0x54709) ne fait qu'un `update()` — donc, en
+  // mode bureau, `recal(); moveToPos()`. Une fenêtre que l'écran rétréci
+  // repousse ne SAUTE donc pas dans le cadre : elle y glisse, comme après un
+  // déplacement. (Rien à faire quand elle y est déjà : le SWF appelle bien
+  // `moveToPos`, mais l'animation s'arrête au premier battement.)
   function bornerDansEcran(fen) {
     var f = null;
     for (var id in fenetres) if (fenetres[id].fen === fen) f = fenetres[id];
+    // `recal` corrige SUR PLACE et rend le même objet : on garde une copie de
+    // l'avant, sans quoi la comparaison se ferait avec elle-même.
+    var avant = posDe(fen);
     var pos = recal(posDe(fen), (f && f.minimum) || { w: 160, h: 60 });
-    fen.style.left = Math.round(pos.x) + 'px';
-    fen.style.top = Math.round(pos.y) + 'px';
+    if (Math.round(avant.x) === Math.round(pos.x)
+      && Math.round(avant.y) === Math.round(pos.y)) return;
+    glisserVers(fen, pos);
   }
 
-  // moveToPos (0x55b47) : le glissement vers la place — chaque image (au pas
-  // du lecteur, 25 ms) la fenêtre parcourt UN TIERS du chemin restant.
+  // moveToPos (0x55b47) → AnimList.slide (0x515d1) : voir la note de GLISSE_K.
+  // Le SWF garde la position EXACTE dans `regular` et n'arrondit que pour
+  // l'affichage — arrondir la position elle-même à chaque pas ferait boiter
+  // la fin du trajet, où l'on n'avance plus que d'une fraction de pixel.
   function glisserVers(fen, cible) {
     if (fen._glisse) clearInterval(fen._glisse);
     if (!FLUIDE) {
@@ -240,18 +283,21 @@ window.BureauFrutiz = (function () {
       fen.style.top = Math.round(cible.y) + 'px';
       return;
     }
+    // `addSlide` remet `regular` sur la position courante du clip.
+    var reg = { x: parseFloat(fen.style.left) || 0, y: parseFloat(fen.style.top) || 0 };
     fen._glisse = setInterval(function () {
-      var x = parseFloat(fen.style.left) || 0;
-      var y = parseFloat(fen.style.top) || 0;
-      x += (cible.x - x) / 3;
-      y += (cible.y - y) / 3;
-      if (Math.abs(cible.x - x) < 0.5 && Math.abs(cible.y - y) < 0.5) {
-        x = cible.x; y = cible.y;
+      reg.x = reg.x * GLISSE_K + cible.x * (1 - GLISSE_K);
+      reg.y = reg.y * GLISSE_K + cible.y * (1 - GLISSE_K);
+      fen.style.left = Math.round(reg.x) + 'px';
+      fen.style.top = Math.round(reg.y) + 'px';
+      if (Math.round(reg.y) === Math.round(cible.y)
+        && Math.round(reg.x) === Math.round(cible.x)) {
+        reg.x = cible.x; reg.y = cible.y;
+        fen.style.left = Math.round(cible.x) + 'px';
+        fen.style.top = Math.round(cible.y) + 'px';
         clearInterval(fen._glisse); fen._glisse = null;
       }
-      fen.style.left = Math.round(x) + 'px';
-      fen.style.top = Math.round(y) + 'px';
-    }, 25);
+    }, GLISSE_MS);
   }
 
   function creerFantome(pos) {
@@ -3399,18 +3445,49 @@ window.BureauFrutiz = (function () {
     // Les ouvertures se décalent en cascade sous le coin de la main bar et
     // sous la rangée d'icônes du haut (qu'une fenêtre neuve ne doit pas
     // recouvrir d'emblée — on peut toujours la déplacer ensuite).
+    var place;
     if (rub.centre) {
-      // `WinStandard.moveToCenter` : la fenêtre se pose au milieu de la zone
-      // utile, celle qui commence sous la main bar.
-      fen.style.left = Math.max(12, Math.round((window.innerWidth - rub.l) / 2)) + 'px';
-      fen.style.top = Math.max(CORNER_Y + 6,
-        Math.round(CORNER_Y + (window.innerHeight - CORNER_Y - rub.h) / 2)) + 'px';
+      // `WinStandard.moveToCenter` (0x55bee) : la fenêtre se pose au milieu de
+      // la zone utile, celle qui commence sous la main bar — et le SWF finit
+      // par `recal(); moveToPos()`, donc elle Y GLISSE, elle n'y saute pas.
+      place = {
+        x: Math.max(12, Math.round((window.innerWidth - rub.l) / 2)),
+        y: Math.max(CORNER_Y + 6,
+          Math.round(CORNER_Y + (window.innerHeight - CORNER_Y - rub.h) / 2)),
+      };
     } else {
-      fen.style.left = Math.min(450 + (cascade % 6) * 26, window.innerWidth - rub.l - 12) + 'px';
-      fen.style.top = (185 + (cascade % 6) * 24) + 'px';
-      if (parseFloat(fen.style.left) < 12) fen.style.left = '12px';
+      place = {
+        x: Math.min(450 + (cascade % 6) * 26, window.innerWidth - rub.l - 12),
+        y: 185 + (cascade % 6) * 24,
+      };
+      if (place.x < 12) place.x = 12;
       cascade++;
     }
+    /*
+     * L'ARRIVÉE : la fenêtre VIENT DU COIN, elle n'apparaît pas à sa place.
+     *
+     * `Box.init` (0x23286) attache le clip sans lui donner de position —
+     *
+     *     this.slot.slotList.mc.attachMovie(this.winType, id, this.depth, this.winOpt)
+     *
+     * et `winOpt` ne porte que `box` et `title`. Un clip fraîchement attaché
+     * est donc à (0, 0) de `slotList.mc`, c'est-à-dire au coin de la scène.
+     * La suite pose sa place et l'y envoie EN GLISSANT :
+     *
+     *     endInit → onChangeMode (0x543d5) → initDesktopMode → update (0x53e06)
+     *             → updatePos (0x53e3d) → updateDeskPos (0x53f47)
+     *             → recal(); moveToPos()
+     *
+     * D'où la fenêtre qui sort de sous la main bar en diagonale. Ce n'est vrai
+     * qu'à la PREMIÈRE ouverture : rouvrir une fenêtre déjà bâtie prend la
+     * branche `else` de `Box.init` (swapDepths + onChangeMode), et `moveToPos`
+     * part alors de la place où elle est déjà — donc ne bouge pas.
+     */
+    fen.style.left = '0px';
+    fen.style.top = '0px';
+    fen._entree = recal(
+      { x: place.x, y: place.y, w: parseFloat(fen.style.width), h: parseFloat(fen.style.height) },
+      rub.min || { w: 320, h: 220 });
 
     var titre = document.createElement('div');
     titre.className = 'fen-titre';
@@ -3478,6 +3555,9 @@ window.BureauFrutiz = (function () {
     }
     $('#bureau-fenetres').appendChild(fen);
     premierPlan(fen);
+    // `updateDeskPos` : la fenêtre, encore au coin, part vers sa place.
+    glisserVers(fen, fen._entree);
+    fen._entree = null;
 
     var f = {
       fen: fen, corps: corps, panneau: panneau, minimum: minimum,

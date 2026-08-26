@@ -2582,6 +2582,83 @@ virait au blanc. Il n'escamote plus que ses ENFANTS — les icônes, la mention
 de compte — et coupe la souris sur ce qui reste, un clip invisible ne recevant
 rien d'époque.
 
+### Une fenêtre VIENT DU COIN, et à quelle vitesse
+
+**D'où elle part.** `Box.init` (0x23286) attache le clip sans lui donner de
+position :
+
+```
+this.slot.slotList.mc.attachMovie(this.winType, id, this.depth, this.winOpt)
+```
+
+et `winOpt` ne porte que `box` et `title`. Un clip fraîchement attaché est donc
+à **(0, 0)** de `slotList.mc` — le coin de la scène. La suite pose sa place et
+l'y envoie **en glissant** :
+
+```
+endInit → onChangeMode (0x543d5) → initDesktopMode → update (0x53e06)
+        → updatePos (0x53e3d) → updateDeskPos (0x53f47) → recal(); moveToPos()
+```
+
+D'où la fenêtre qui sort de sous la main bar en diagonale. Ce n'est vrai qu'à
+la PREMIÈRE ouverture : rouvrir une fenêtre déjà bâtie prend la branche `else`
+de `Box.init` (`swapDepths` + `onChangeMode`), et `moveToPos` part alors de la
+place où elle est déjà. Et **même les fenêtres centrées** y vont en glissant :
+`moveToCenter` (0x55bee) calcule le milieu puis finit par `recal(); moveToPos()`.
+
+**À quelle vitesse.** `moveToPos` (0x55b47) ne bouge rien lui-même — il confie
+la fenêtre à `AnimList.addSlide` (0x51514), qui pose un `setInterval` de
+**25 ms** et appelle `AnimList.slide` (0x515d1) à chaque battement :
+
+```js
+var k = Math.pow(0.8, tmod × ratio);
+mc.regular.x = mc.regular.x × k + mc.pos.x × (1 − k);
+mc.regular.y = mc.regular.y × k + mc.pos.y × (1 − k);
+mc._x = mc.regular.x;  mc._y = mc.regular.y;
+if (Math.round(mc.regular.y) == Math.round(mc.pos.y)
+ && Math.round(mc.regular.x) == Math.round(mc.pos.x)) {
+  mc._x = mc.pos.x;  mc._y = mc.pos.y;  this.remove(name);
+}
+```
+
+Les deux inconnues se lèvent :
+
+* **`ratio` = 1** — `addSlide` le met à 1 quand il n'est pas donné, et
+  `moveToPos` n'en passe pas (`addSlide("slide", this, callback)`, trois
+  arguments) ;
+* **`tmod` = 1** — et c'est la surprise : main.swf ne l'écrit **jamais**. Ses
+  vingt-trois occurrences sont toutes des lectures. `_global.tmod = 1` est posé
+  une fois pour toutes par le **client Frusion** (`frusion_client.swf`, offset
+  5813), et `_global` est partagé entre les niveaux.
+
+Donc **k = 0,8** : la fenêtre couvre **un cinquième du chemin restant tous les
+25 ms**. Il faut ~10,3 battements — 258 ms, plus les 25 ms du premier — pour en
+faire 90 %.
+
+| | coefficient | 90 % du chemin |
+|---|---|---|
+| **main.swf** | 0,8 par pas de 25 ms | 283 ms |
+| portage d'avant (un tiers) | 0,667 | 167 ms — deux fois trop vif |
+| portage mesuré au banc | **0,7996** | **284 ms** |
+
+L'ARRÊT n'est pas « à moins d'un demi-pixel » mais « dans le même pixel
+entier », les deux coordonnées arrondies : plus tolérant sur un axe (1,6 → 2,4
+s'arrête) et plus strict sur l'autre (1,4 → 1,6 continue).
+
+Et `onStageResize` (0x54709) ne fait qu'un `update()` : une fenêtre que l'écran
+rétréci repousse **glisse** dans le cadre, elle n'y saute pas.
+
+*(Le SWF garde la position exacte dans `regular` et n'arrondit que pour
+l'affichage. Arrondir la position elle-même à chaque pas ferait boiter la fin
+du trajet, où l'on n'avance plus que d'une fraction de pixel.)*
+
+*(`initComeFromNowhereMove` (0x55aa0), qui pousse `pos.y` à `100 − h`, est
+défini et **jamais appelé** : du code mort. L'entrée n'en dépend pas.)*
+
+*(L'animation est une PRÉFÉRENCE : `endInit` lit `flMoveAnim` dans
+`userPref.getPref("win_flMoveAnim")`. La table des préférences vient du
+serveur, pas du SWF — le portage la tient dans `FLUIDE`.)*
+
 ## LA FRUTIMANDALA (`cp.WheelMng`, DoInitAction sprite#774 0x6a7c2)
 
 Le cadran du coin haut-droit n'est pas un décor : c'est un tourne-disque à

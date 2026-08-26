@@ -302,3 +302,49 @@ test('une fenêtre en plein écran laisse voir le FOND D’ÉCRAN au-dessus d’
   // Et le fond est bien peint sur `#bureau` lui-même.
   assert.match(JS, /bureau\.style\.backgroundImage = 'url\("' \+ fond\.url \+ '"\)'/);
 });
+
+test('une fenêtre VIENT DU COIN, et y met le temps du SWF', () => {
+  /* LA VITESSE. `moveToPos` (0x55b47) ne bouge rien : il confie la fenêtre à
+     `AnimList.addSlide` (0x51514), qui pose un setInterval de 25 ms et appelle
+     `AnimList.slide` (0x515d1) —
+
+         var k = Math.pow(0.8, tmod × ratio);
+         regular.x = regular.x × k + pos.x × (1 − k);
+
+     `ratio` vaut 1 (addSlide le met à 1 quand il manque, et moveToPos n'en
+     passe pas) et `tmod` vaut 1 : `_global.tmod = 1` est posé par le CLIENT
+     FRUSION (frusion_client.swf, offset 5813) et main.swf ne fait que le lire.
+     Donc k = 0,8 : un CINQUIÈME du chemin restant tous les 25 ms. */
+  assert.match(JS, /var GLISSE_K = 0\.8;/);
+  assert.match(JS, /var GLISSE_MS = 25;/);
+  assert.match(JS, /reg\.x = reg\.x \* GLISSE_K \+ cible\.x \* \(1 - GLISSE_K\);/);
+  assert.match(JS, /reg\.y = reg\.y \* GLISSE_K \+ cible\.y \* \(1 - GLISSE_K\);/);
+  // L'arrêt du SWF : les deux coordonnées dans le même pixel ENTIER, pas
+  // « à moins d'un demi-pixel » — c'est plus tolérant sur un axe, plus strict
+  // sur l'autre.
+  assert.match(JS, /if \(Math\.round\(reg\.y\) === Math\.round\(cible\.y\)\s*\n\s*&& Math\.round\(reg\.x\) === Math\.round\(cible\.x\)\)/);
+  assert.ok(!/\(cible\.x - x\) \/ 3/.test(JS), 'le tiers d’avant a disparu');
+
+  /* L'ARRIVÉE. `Box.init` (0x23286) attache le clip sans position —
+     `attachMovie(winType, id, depth, winOpt)` et `winOpt` ne porte que `box`
+     et `title`. Il est donc à (0,0) de `slotList.mc`. La suite l'envoie à sa
+     place EN GLISSANT : endInit → onChangeMode (0x543d5) → update (0x53e06)
+     → updatePos (0x53e3d) → updateDeskPos (0x53f47) → recal(); moveToPos(). */
+  const bloc = JS.slice(JS.indexOf('function creerFenetre'),
+    JS.indexOf('function ajusterJournal'));
+  assert.match(bloc, /fen\.style\.left = '0px';\s*\n\s*fen\.style\.top = '0px';/,
+    'la fenêtre naît au coin');
+  assert.match(bloc, /fen\._entree = recal\(/, 'et sa place est bornée d’avance');
+  assert.match(bloc, /glisserVers\(fen, fen\._entree\);/, 'puis elle y glisse');
+  // Même les fenêtres CENTRÉES : `moveToCenter` (0x55bee) finit par
+  // `recal(); moveToPos()` — elle ne saute pas au milieu, elle y va.
+  assert.match(bloc, /moveToCenter[\s\S]{0,200}?glisse/i);
+
+  // `onStageResize` (0x54709) ne fait qu'un `update()` : une fenêtre que
+  // l'écran rétréci repousse GLISSE dans le cadre, elle n'y saute pas.
+  const borne = JS.slice(JS.indexOf('function bornerDansEcran'),
+    JS.indexOf('function glisserVers'));
+  assert.match(borne, /glisserVers\(fen, pos\);/);
+  assert.ok(!/fen\.style\.left = Math\.round\(pos\.x\)/.test(borne),
+    'plus de saut dans le cadre');
+});
