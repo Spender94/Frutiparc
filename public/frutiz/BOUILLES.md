@@ -303,7 +303,7 @@ Chargement + premier rendu, mesuré dans le navigateur : **~320 ms** pour la
 famille 0 (414 Ko de SWF, 1224 formes, 633 clips), **30 à 100 ms** pour les
 autres.
 
-## 8. Le rendu
+## 8. Le rendu, et la question des coutures
 
 Canevas 2D, à la densité de l'écran (`devicePixelRatio`), plutôt que du SVG : une
 bouille compte quelques centaines de tracés, et un avatar de salon n'a pas à
@@ -311,6 +311,76 @@ peser trois cents nœuds de DOM. Les tracés sont mis en cache en `Path2D`, les
 masques (`ClipDepth`) deviennent des `ctx.clip()`, les dégradés sont posés dans
 leur repère d'origine (le carré de 32768 twips), et les transformations de
 couleur du fichier se composent avec la teinte.
+
+### La couture
+
+Deux aplats voisins d'une même forme partagent leur bord au twip près. Le canevas
+les peint pourtant l'un APRÈS l'autre : chacun couvre son pixel de bord à moitié
+et se mélange au FOND, pas à son voisin. Il reste entre les deux un liséré du
+fond — un cheveu clair le long de chaque contour. Flash ne l'a pas : son
+rastériseur calcule la couverture de tous les remplissages d'une forme en une
+passe.
+
+Mesuré : sur les 66 pixels qui séparaient un rendu à un pixel par unité du rendu
+Flash, **55 tiraient vers le fond**. C'était bien la couture, pas de
+l'anticrénelage ordinaire.
+
+Deux remèdes ont été essayés, l'un contre l'autre.
+
+**Le liséré de raccord** — repasser chaque tracé au trait, de sa propre couleur,
+sur un pixel de large, pour que les aplats se chevauchent d'un demi-pixel au lieu
+de se toucher. Il ôte 78 % des coutures… et épaissit la silhouette d'un
+demi-pixel : l'erreur moyenne face à la référence passe de 0,86 à 1,65 sur 255.
+Trop cher. Il ne sert plus que de filet, armé uniquement quand le
+suréchantillonnage n'a pas pu se faire.
+
+**Le suréchantillonnage** — dessiner dans un tampon n fois plus grand, puis le
+réduire par MOITIÉS successives (chacune étant la moyenne exacte de quatre
+pixels). C'est lui qui règle la question, et sans toucher à la géométrie. Le
+facteur est donc une puissance de deux : réduire d'un coup d'un facteur 3 ou 5
+laisse le navigateur choisir son filtre, et c'est mesurablement moins bon.
+
+### Ce que ça donne
+
+La bonne référence n'est plus Ruffle à la même taille — ce serait comparer deux
+anticrénelages. On rend Flash **six fois plus grand** et on le réduit par moyenne
+exacte : c'est la géométrie idéale. Erreur moyenne sur 255, à deux tailles :
+
+| rendu | à 240 px | à 80 px |
+|---|---|---|
+| moteur JS, sans renfort | 1,73 | 4,37 |
+| moteur JS, ×2 | 0,89 | 2,54 |
+| moteur JS, ×4 | **0,46** | **1,45** |
+| moteur JS, ×8 | 0,40 | 0,91 |
+| **Ruffle rendu à cette taille** | 1,47 | 3,59 |
+
+À la taille d'un avatar, le moteur est **deux fois et demie plus proche de la
+géométrie d'origine que le lecteur Flash lui-même**. Et le compte de coutures
+tombe de 1,73 % des pixels à 0,63 % — exactement le score de la référence Flash,
+c'est-à-dire le bruit des détails clairs du dessin, plus aucun artefact.
+
+### Ce que ça coûte
+
+Le tracé vectoriel ne coûte rien (0,14 ms l'image, quelle que soit la taille) :
+tout le prix est dans le suréchantillonnage. Mesuré en conteneur, sans
+accélération matérielle :
+
+| canevas | ×1 | ×2 | ×4 | ×8 |
+|---|---|---|---|---|
+| 40 px | 0,19 ms | 0,84 | 1,53 | 3,14 |
+| 80 px | 0,14 ms | 1,08 | 2,92 | 8,16 |
+| 240 px | 0,13 ms | 2,21 | 13,69 | 62,70 |
+
+D'où les règles de conduite pour le branchement :
+
+* le défaut est **×4**, plafonné à un tampon de 2048 px de côté ;
+* une vignette qui ne s'anime pas (`anime: false`) paie ce prix **une fois** :
+  c'est le bon réglage pour le Bouilloscope, le trombinoscope, la barre de
+  contacts ;
+* une bouille qui s'anime en permanence à 240 px coûte 14 ms l'image : lui
+  passer `super: 2` la ramène à 2 ms sans que l'œil y perde grand-chose ;
+* le lecteur ne redessine que si une tête de lecture a AVANCÉ (`avancer()` le
+  dit) — une bouille dont tous les clips sont arrêtés ne coûte plus rien.
 
 ## 9. Les noms
 

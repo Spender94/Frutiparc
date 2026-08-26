@@ -353,6 +353,44 @@ test('l’interpréteur AVM1 tient les idiomes d’époque', () => {
   assert.deepStrictEqual(clip2.vise, [8, true], 'retour d’une image, en lecture');
 });
 
+test('le suréchantillonnage : puissances de deux, sous le plafond du tampon', () => {
+  // Le facteur est une PUISSANCE DE DEUX — la réduction se fait par moitiés
+  // successives, chacune étant la moyenne exacte de quatre pixels. Réduire d'un
+  // coup d'un facteur 3 ou 5 laisse le navigateur choisir son filtre, et le
+  // résultat est mesurablement moins bon (0,46 d'erreur moyenne contre 0,77 à
+  // 0,91 sur 255, face à un Flash rendu six fois plus grand).
+  const f = Moteur.facteurPour;
+  assert.strictEqual(f(40, 4), 4, 'une vignette prend ses quatre passes');
+  assert.strictEqual(f(80, 4), 4);
+  assert.strictEqual(f(240, 4), 4, 'tampon 960, sous le plafond');
+  assert.strictEqual(f(512, 4), 4, 'tampon 2048, pile au plafond');
+  assert.strictEqual(f(600, 4), 2, 'au-delà, on redescend d’un cran');
+  assert.strictEqual(f(1100, 4), 1, 'et une très grande vue se passe de renfort');
+  assert.strictEqual(f(80, 8), 8, 'on peut demander plus');
+  assert.strictEqual(f(80, 1), 1, 'ou rien du tout');
+  assert.strictEqual(f(80, 3), 2, 'un facteur impair retombe sur la puissance de deux du dessous');
+});
+
+test('avancer() dit si quelque chose a bougé', async () => {
+  // Le lecteur ne redessine que si une tête de lecture a avancé : c'est ce qui
+  // permet de payer le suréchantillonnage seulement quand il sert.
+  const defs = await lire('famille0.swf');
+  const mo = new Moteur.Moteur(defs, { alea: () => 0.5 });
+  const face = mo.creerVisage();
+  mo.definir(etat([0, 1, 0, 5, 1, 15, 22, 0, 0, 0, 0, 0]));
+  mo.jouerAnim(2);                              // « rire » : ça bouge
+  let bouge = 0;
+  for (let i = 0; i < 30; i++) if (mo.avancer()) bouge++;
+  assert.ok(bouge > 20, 'une animation fait bouger presque chaque image (' + bouge + '/30)');
+  // Tout arrêter, y compris les clips imbriqués : plus rien ne doit bouger.
+  mo.jouerAnim(0);
+  (function figer(c) {
+    c.enLecture = false;
+    for (const e of c.enfants.values()) if (e.objet) figer(e.objet);
+  })(face);
+  assert.strictEqual(mo.avancer(), false, 'une bouille entièrement figée ne bouge plus');
+});
+
 test('le moteur ne touche à rien du site : aucune page ne le charge encore', () => {
   const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   for (const f of ['bouille-swf.js', 'bouille-avm.js', 'bouille-moteur.js']) {

@@ -19,10 +19,17 @@
     ?planche=acc2         toutes les variantes d'accessoire secondaire
     ?planche=cheveux      toutes les coiffures de la famille
     ?planche=anim&a=N     une animation, image par image (&pas=3&n=16)
+    ?planche=une          une seule tuile (&e= humeur, &a= animation, &t= images)
 
   Le mode planche est DÉTERMINISTE : le tirage au sort du moteur (la taille du
-  chewing-gum, la bouche de « parle ») est calé, et l'on avance d'un nombre
-  d'images choisi plutôt que de photographier une boucle vivante.
+  chewing-gum, la bouche de « parle ») est calé par &alea=, et l'on avance d'un
+  nombre d'images choisi plutôt que de photographier une boucle vivante.
+
+  Réglages de RENDU, pour les relevés de netteté :
+    &px=240      la taille de la tuile
+    &super=N     le facteur de suréchantillonnage (défaut 4, ramené à la
+                 puissance de deux qui tient sous un tampon de 2048)
+    &couture=0   ôte le liséré de raccord, pour voir ce qu'il rattrape
 
   Cette page est un ATELIER, pas une page du site : rien d'autre ne la charge.
 -->
@@ -114,6 +121,12 @@
       var ALEA = Number(params.get('alea'));
       if (!(ALEA >= 0 && ALEA < 1)) ALEA = 0.5;
       var tirage = function () { return ALEA; };
+      // Réglages de rendu, pour les relevés de netteté : `px` la taille de la
+      // tuile, `super` le facteur de suréchantillonnage, `couture=0` pour ôter
+      // le liséré de raccord et voir ce qu'il rattrape.
+      var PX = Number(params.get('px')) || 240;
+      var SUPER = params.get('super') === null ? undefined : Math.max(1, Number(params.get('super')));
+      var COUTURE = params.get('couture') !== '0';
       var temoin = new M.Bouille(document.createElement('canvas'), defs,
         { etat: base, anime: false, alea: tirage });
       var f = temoin.moteur.racine.face;
@@ -126,7 +139,13 @@
       };
 
       var tuiles = [];
-      if (PLANCHE === 'humeurs') {
+      if (PLANCHE === 'une') {
+        // Une seule tuile, à la taille demandée : c'est le mode des relevés de
+        // NETTETÉ, où l'on compare au Flash rendu en haute résolution.
+        titre.textContent = 'Une bouille — ' + base;
+        tuiles.push({ etat: base, humeur: Number(params.get('e') || 0),
+          anim: Number(params.get('a') || 0), ticks: Number(params.get('t') || 0), legende: base });
+      } else if (PLANCHE === 'humeurs') {
         titre.textContent = 'Les huit humeurs (emoteList) — ' + base;
         M.NOMS_HUMEURS.forEach(function (nom, i) {
           tuiles.push({ etat: base, humeur: i, legende: i + ' ' + nom });
@@ -160,11 +179,14 @@
       tuiles.forEach(function (t) {
         var fig = document.createElement('figure');
         var c = document.createElement('canvas');
-        c.width = 240; c.height = 240;
+        c.width = PX; c.height = PX;
+        c.style.width = PX + 'px'; c.style.height = PX + 'px';
+        fig.style.width = PX + 'px';
         var cap = document.createElement('figcaption');
         cap.textContent = t.legende;
         fig.appendChild(c); fig.appendChild(cap); hote.appendChild(fig);
-        var b = new M.Bouille(c, defs, { etat: t.etat, anime: false, alea: tirage });
+        var b = new M.Bouille(c, defs, { etat: t.etat, anime: false, alea: tirage,
+          super: SUPER, antiCouture: COUTURE });
         if (t.humeur) b.moteur.humeur(t.humeur);
         if (t.anim) {
           b.moteur.jouerAnim(0);
