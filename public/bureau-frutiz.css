@@ -506,12 +506,35 @@ body.bureau-frutiz .fen.fen-glisse {
   transition: transform .28s ease-in;
   transform: translateY(calc(-100% - 100px));
 }
-/* Le bureau s'escamote quand un onglet prend la main : `FPDesktop
-   .onDeactivate()` cache `mcDesk` ET sa rangée d'icônes — ici les deux vivent
-   dans `#bureau`, un seul `display:none` suffit. Les fenêtres restées sur le
-   bureau s'escamotent avec lui. */
-body.bureau-frutiz.fb-onglet-actif #bureau,
+/* Le bureau s'escamote quand un onglet prend la main :
+
+       FPDesktop.onDeactivate = function () {
+         this.mcDesk.iconList.removeMovieClip();   // la rangée d'icônes
+         this.mcDesk._visible = false;             // le fond du bureau
+         …
+       }                                           (0xb9574)
+
+   MAIS PAS LE FOND D'ÉCRAN. `wallPaper` est un manager à part
+   (`WallPaperMng`, 0x9a5e8), que `FPDesktop` ne touche jamais : l'image
+   reste peinte derrière tout, et c'est elle qu'on lit dans la bande qui
+   sépare le haut de la fenêtre, la barre et la frusion.
+
+   La preuve est dans ceux qui la cachent EXPRÈS, parce qu'elle est encore
+   là : le slot du forum appelle `wallPaper.hide()` (0x6e2fa) et un jeu
+   `wallPaper.hideImage()` (0x36cb1) — deux appels qui ne voudraient rien
+   dire si un onglet actif l'avait déjà effacée.
+
+   Ici le fond d'écran est peint sur `#bureau` lui-même (`poserFond`) et les
+   icônes sont ses ENFANTS : on n'escamote donc que les enfants, et l'on
+   coupe la souris sur ce qui reste — un clip invisible ne reçoit rien. */
+body.bureau-frutiz.fb-onglet-actif #bureau { pointer-events: none; }
+body.bureau-frutiz.fb-onglet-actif #bureau > *,
 body.bureau-frutiz.fb-onglet-actif .fen:not(.fen-onglet-vue) { display: none; }
+/* La rangée d'icônes est nommée à part : sa règle de mise en place porte DEUX
+   identifiants (`#bureau #home-grid`), et l'emporterait sur le `> *`
+   ci-dessus, qui n'en a qu'un. C'est pourtant elle que `onDeactivate` retire
+   en premier — `iconList.removeMovieClip()`. */
+body.bureau-frutiz.fb-onglet-actif #bureau #home-grid { display: none; }
 
 /* ── LE LECTEUR FRUSION (clip `frusion` #324, aplati tel quel) ────────────
    Ce n'est pas un conteneur vide : sa première image porte TOUT le meuble —
@@ -934,6 +957,26 @@ body.bureau-frutiz #side-list .sl-contact .nom {
   line-height: 14px; font: 700 10px Verdana, Arial, sans-serif; color: #000000;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* LE PSEUDO CHANGE DE COULEUR AU SURVOL. Ce n'est pas un ornement ajouté : le
+   champ n'est pas un texte mais un `butText` (`UserSlot.initText` l'attache),
+   et tout `butText` sans comportement déclaré se voit poser celui de la
+   maison — `Standard.getButTextBasicBehavior()` (0x4985a) :
+
+       { type: "colorText", color: { press: 0xDDDDDD, over: 0xE7756B } }
+
+   `setBehavior` (0x9fd26) complète ce qui manque — `base` n'est pas donné,
+   il prend donc la couleur PROPRE du champ — puis, pour le type
+   « colorText » (0x9fe44), câble six méthodes de bouton :
+
+       onRollOver → over      onPress          → press
+       onRollOut  → base      onDragOut        → base
+       onRelease  → over      onReleaseOutside → base
+
+   D'où les deux règles ci-dessous, et rien de plus : `:hover` couvre
+   onRollOver et onRelease (le curseur est encore dessus), `:active` couvre
+   onPress, et tout le reste revient à `base` de lui-même. */
+body.bureau-frutiz #side-list .sl-contact:hover .nom { color: #E7756B; }
+body.bureau-frutiz #side-list .sl-contact:active .nom { color: #DDDDDD; }
 /* La boîte de RECHERCHE : `mcSearchButton` (#441), que `buildList` attache à
    `_y = 770`. L'art est EXTRAIT du SWF — la pastille grise et sa loupe, dans
    leur cadre (9,95 ; 0,65)–(105,85 ; 22,67) — ce qui pose l'ensemble
@@ -1794,6 +1837,14 @@ body.bureau-frutiz .fen #chat-panel #users-drawer .u {
    n'a de fond). Une ligne sur deux laisse donc voir le `#E8F8D1` de la boîte :
    voilà l'alternance. */
 body.bureau-frutiz .fen #chat-panel #users-drawer .u:nth-child(even) { background-image: none; }
+/* La liste des connectés est faite du MÊME `userSlot` que le carnet, donc du
+   même `butText` : le pseudo vire au `#E7756B` sous le curseur et au
+   `#DDDDDD` sous le doigt (cf. la note du carnet, plus haut). Seul le PSEUDO
+   suit — la pastille de staff et le lieu ne sont pas des champs d'époque. */
+body.bureau-frutiz .fen #chat-panel #users-drawer .u:hover span:not(.badge) { color: #E7756B; }
+body.bureau-frutiz .fen #chat-panel #users-drawer .u:active span:not(.badge) { color: #DDDDDD; }
+body.bureau-frutiz .fen #chat-panel #users-drawer .u:hover .lieu,
+body.bureau-frutiz .fen #chat-panel #users-drawer .u:active .lieu { color: #6c8f3a; }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u.avec-lieu { flex-direction: row; }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u .haut {
   display: flex; align-items: center; gap: 4px; min-width: 0;

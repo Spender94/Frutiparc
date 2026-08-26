@@ -2889,8 +2889,14 @@
     if (ouvre === "prive" && avec) { activateTab("chat"); openMenu(false); ouvrirPrive(avec); return; }
     if (ouvre === "mail" || ouvre === "evenements" || ouvre === "historique") { activateTab(ouvre); return; }
     // Une citation sur le forum mène AU SUJET : on (re)charge le cadre avec le
-    // sujet demandé — le forum s'ouvre dessus au lieu de l'accueil.
+    // sujet demandé — le forum s'ouvre dessus au lieu de l'accueil. Sur le
+    // bureau, où le forum vit dans SA fenêtre de navigateur, c'est elle qu'on
+    // amène sur le sujet.
     if (ouvre === "forum" && sujet) {
+      if (window.BureauFrutiz && BureauFrutiz.actif() && BureauFrutiz.ouvrirForum) {
+        BureauFrutiz.ouvrirForum(sujet);
+        return;
+      }
       activateTab("forum"); openMenu(false);
       var fr = $("#forum-frame");
       if (fr && state.sid) {
@@ -3261,6 +3267,13 @@
         return openBouilleSheet();
       }
       if (go === "club") return window.open("/club/", "_blank");
+      // LE FORUM. Sur le bureau, `win.Forum` n'ouvre pas de fenêtre du bureau :
+      // il renvoie DEHORS, dans une fenêtre de navigateur à lui
+      // (`fp_activatePopupForum`). Sur mobile, rien ne change : le cadre
+      // plein écran reste, avec son lien « ‹ Salons » pour revenir.
+      if (go === "forum" && surBureau && BureauFrutiz.ouvrirForum) {
+        return BureauFrutiz.ouvrirForum();
+      }
       // Sur le BUREAU, « Les salons » n'ouvre pas la conversation : il ouvre la
       // LISTE des salons, et c'est en cliquant un salon qu'on y entre — le
       // double-clic sur l'icône « Les salons » de main.swf. Sur mobile, rien
@@ -3558,7 +3571,10 @@
     // Chargements paresseux (1re ouverture, gardés en mémoire ensuite). On reste
     // sur /light, donc la socket de chat de la page parente n'est jamais coupée
     // pendant qu'on consulte le forum / joue / regarde les scores.
-    if (tab === "forum") {
+    // Le cadre du forum ne se charge que là où il SERT : sur le bureau, le
+    // forum a sa fenêtre de navigateur, et remplir ce cadre-ci ouvrirait une
+    // seconde session en pure perte (deux lectures, deux voyants).
+    if (tab === "forum" && !(window.BureauFrutiz && BureauFrutiz.actif())) {
       var fr = $("#forum-frame");
       if (fr && !fr.getAttribute("src") && state.sid) {
         fr.setAttribute("src", "/fb/?sid=" + encodeURIComponent(state.sid) + "&from=light");

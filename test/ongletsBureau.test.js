@@ -106,9 +106,9 @@ test('replier RANGE la fenêtre — seul Ctrl y va tout de suite', () => {
   assert.match(JS, /mettreEnOnglet\(panneau\.id, false\);/);
   // Un jeu qu'on vient de lancer, lui, s'affiche : flGo vrai.
   assert.match(JS, /mettreEnOnglet\(panneau\.id, true\);\s*\n\s*\}\s*\n\s*\};/);
-  // Le bureau ne s'escamote que si un onglet A LA MAIN : rangée, la fenêtre
-  // laisse le fond d'écran en place.
-  assert.match(CSS, /body\.bureau-frutiz\.fb-onglet-actif #bureau,/);
+  // Le bureau ne s'escamote que si un onglet A LA MAIN — et même alors, ce
+  // sont ses MEUBLES qui partent, pas le fond d'écran (cf. le test dédié).
+  assert.match(CSS, /body\.bureau-frutiz\.fb-onglet-actif #bureau > \*,/);
   assert.match(JS, /document\.body\.classList\.toggle\('fb-onglet-actif', id !== 'bureau'\)/);
 });
 
@@ -226,4 +226,79 @@ test('le journal : 9 px, et la date sur sa propre ligne', () => {
   // Le tiret vit dans son propre élément : le mobile le garde, le bureau le
   // masque — une seule chaîne pour les deux mises en page.
   assert.match(LIGHT, /\+ '<i> - <\/i><\/span>' \+ xmlEscape\(e\.text \|\| ""\)/);
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TROIS FINITIONS DE PLUS, toutes relevées dans main.swf. */
+
+test('le pseudo d’un contact vire au rose sous le curseur', () => {
+  // Le champ n'est pas un texte mais un `butText` (`UserSlot.initText`,
+  // 0x63541), et tout `butText` sans comportement déclaré se voit poser celui
+  // de la maison — `Standard.getButTextBasicBehavior()` (0x4986c) :
+  //
+  //     { type: "colorText", color: { press: 14540253, over: 15168875 } }
+  //
+  // soit press = #DDDDDD et over = #E7756B. `setBehavior` (0x9fd26) laisse
+  // `base` à la couleur propre du champ, puis câble onRollOver → over,
+  // onPress → press, onRollOut/onDragOut/onReleaseOutside → base.
+  assert.match(CSS, /\.sl-contact:hover \.nom \{ color: #E7756B; \}/);
+  assert.match(CSS, /\.sl-contact:active \.nom \{ color: #DDDDDD; \}/);
+  // Au repos, la couleur du champ : noir (`Standard.getTextStyle().def`).
+  assert.match(CSS, /#side-list \.sl-contact \.nom \{[\s\S]*?color: #000000;/);
+  // La liste des connectés d'un salon est le MÊME `userSlot` : même règle.
+  assert.match(CSS, /#users-drawer \.u:hover span:not\(\.badge\) \{ color: #E7756B; \}/);
+  assert.match(CSS, /#users-drawer \.u:active span:not\(\.badge\) \{ color: #DDDDDD; \}/);
+});
+
+test('le forum sort du bureau : une fenêtre de NAVIGATEUR, pas une fenêtre du bureau', () => {
+  // `win.Forum.init` (0x6e136) n'attache aucun contenu : il appelle
+  // `fp_goURLResize('/fb/?sid=…',1)` et pose un simple témoin sur le bureau.
+  // L'ouverture se fait à l'activation, `fp_activatePopupForum()`.
+  assert.ok(!/forum:\s*\{ panneau: '#forum-panel'/.test(JS),
+    'le forum n’est plus une rubrique fenêtrable');
+  assert.match(JS, /function ouvrirFenetre\(tab\) \{\s*\n(?:\s*\/\/[^\n]*\n)*\s*if \(tab === 'forum'\) return ouvrirForum\(\);/,
+    'quel que soit le chemin, on sort de la page');
+  assert.match(JS, /window\.open\(url, 'frutiparc_forum', FORUM_FENETRE\)/);
+  // Le même nom de fenêtre que le chemin Flash : un seul forum ouvert.
+  const ruffle = fs.readFileSync(path.join(ROOT, 'public/ruffle.html'), 'utf8');
+  assert.ok(ruffle.includes('"frutiparc_forum"'), 'le lecteur Flash vise la même fenêtre');
+  // Rappelée au premier plan plutôt que rouverte — c'est ce que fait
+  // `fp_activatePopupForum` quand la popup vit déjà.
+  assert.match(JS, /if \(popupForum && !popupForum\.closed\)/);
+  // PAS de « from=light » : ce paramètre est celui du cadre mobile (il pose un
+  // lien « ‹ Salons » et fait revenir `closeForum()` sur /light). L'adresse se
+  // bâtit de deux morceaux, et de deux seulement.
+  assert.match(JS, /if \(sid\) q\.push\('sid=' \+ encodeURIComponent\(sid\)\);/);
+  assert.match(JS, /if \(sujet\) q\.push\('sujet=' \+ encodeURIComponent\(sujet\)\);/);
+  assert.match(JS, /var url = '\/fb\/' \+ \(q\.length \? '\?' \+ q\.join\('&'\) : ''\);/);
+
+  // Côté light : la tuile du bureau y va, le mobile garde son cadre.
+  assert.match(LIGHT, /if \(go === "forum" && surBureau && BureauFrutiz\.ouvrirForum\)/);
+  assert.match(LIGHT, /if \(tab === "forum" && !\(window\.BureauFrutiz && BureauFrutiz\.actif\(\)\)\)/,
+    'le cadre mobile ne se charge pas en double sur le bureau');
+  // Une citation reçue en notification mène AU SUJET, fenêtre comprise.
+  assert.match(LIGHT, /BureauFrutiz\.ouvrirForum\(sujet\)/);
+  assert.match(JS, /function ouvrirForum\(sujet\)/);
+});
+
+test('une fenêtre en plein écran laisse voir le FOND D’ÉCRAN au-dessus d’elle', () => {
+  // `FPDesktop.onDeactivate` (0xb9574) retire la rangée d'icônes et cache
+  // `mcDesk` — mais PAS le fond d'écran, qui relève d'un manager à part
+  // (`WallPaperMng`, 0x9a5e8). La preuve : le slot du forum appelle
+  // `wallPaper.hide()` (0x6e2fa) et un jeu `wallPaper.hideImage()` (0x36cb1)
+  // — deux appels sans objet si un onglet actif l'avait déjà effacé.
+  //
+  // Le portage cachait `#bureau` en entier : la bande entre le haut de la
+  // fenêtre, la barre et la frusion virait au blanc.
+  assert.ok(!/\.fb-onglet-actif #bureau,\s*\n[^\n]*\.fen:not\(\.fen-onglet-vue\) \{ display: none; \}/.test(CSS),
+    '#bureau n’est plus escamoté en entier');
+  assert.match(CSS, /\.fb-onglet-actif #bureau \{ pointer-events: none; \}/,
+    'invisible d’époque veut dire aussi : ne reçoit plus la souris');
+  assert.match(CSS, /\.fb-onglet-actif #bureau > \*,\s*\n[^\n]*\.fen:not\(\.fen-onglet-vue\) \{ display: none; \}/,
+    'seuls les MEUBLES du bureau s’escamotent');
+  // La rangée d'icônes est nommée à part : sa règle de pose porte deux
+  // identifiants et l'emporterait sur le `> *`.
+  assert.match(CSS, /\.fb-onglet-actif #bureau #home-grid \{ display: none; \}/);
+  // Et le fond est bien peint sur `#bureau` lui-même.
+  assert.match(JS, /bureau\.style\.backgroundImage = 'url\("' \+ fond\.url \+ '"\)'/);
 });

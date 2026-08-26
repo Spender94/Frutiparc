@@ -2491,6 +2491,97 @@ navigateur — mais qui se voient autant que le reste.
   Le disque ne se posait jamais. Elle est sur la console, et AVANT le tiroir :
   le disque rendu, lui, doit rester cliquable au-dessus d'elle.
 
+## TROIS RELEVÉS DE FINITION
+
+### Le pseudo qui rougit sous le curseur (`butText`, 0x4986c / 0x9fd26)
+
+Le pseudo d'un contact n'est pas un texte : c'est un `butText`, attaché par
+`UserSlot.initText` (0x63541) avec le style de la maison, mis en gras. Et tout
+`butText` qui n'apporte pas son propre comportement se voit poser celui par
+défaut, `Standard.getButTextBasicBehavior()` :
+
+```
+{ type: "colorText", color: { press: 14540253, over: 15168875 } }
+                                    0xDDDDDD         0xE7756B
+```
+
+`setBehavior` (0x9fd26) complète ce qui manque — `base` n'étant pas donné, il
+prend la couleur PROPRE du champ (noir) — puis, pour le type « colorText »
+(0x9fe44), câble six méthodes de bouton :
+
+| événement | couleur |
+|---|---|
+| `onRollOver` | `over` — **#E7756B** |
+| `onPress` | `press` — **#DDDDDD** |
+| `onRollOut`, `onDragOut`, `onReleaseOutside` | `base` |
+| `onRelease` | `over` (le curseur est encore dessus) |
+
+Deux règles CSS suffisent : `:hover` couvre onRollOver **et** onRelease,
+`:active` couvre onPress, et le reste revient à `base` de lui-même. La liste
+des connectés d'un salon est le même `userSlot` : même comportement.
+
+*(Trois autres jeux de couleurs existent dans `UserSlot` — 0x63aad, 0x63ae4,
+0x63b2f — mais ils servent les `displayType` « gender » (bleu / rouge) et
+« xp » (vert), que le carnet n'emploie pas : il passe `statusDspMode: "all"`
+sans `displayType`.)*
+
+### Le forum n'est pas une fenêtre du bureau (`win.Forum` 0x6e136)
+
+C'est la seule rubrique qui sort de la page. `init` n'attache aucun contenu :
+
+```
+getURL("javascript:fp_goURLResize('/fb/?sid=" + sid + "',1)")
+```
+
+puis pose un `ForumSlot` sur le bureau — un simple témoin. L'ouverture réelle
+tient à l'activation du slot :
+
+| moment | mode `cwm == "1"` | sinon |
+|---|---|---|
+| `onActivate` | `fp_resizeMe(1)` — un CADRE dans la page | `fp_activatePopupForum()` — une FENÊTRE |
+| `onDeactivate` | `fp_resizeMe(0)` | rien : la fenêtre reste |
+| `close` | `fp_closeFrame(1)` | `fp_closePopupForum()` |
+
+Et dans les deux cas `me.status.setInternal("forum")` (le voyant « lit le
+forum ») puis `wallPaper.hide()`.
+
+Le revival garde la seconde branche — c'est déjà ce que fait la page du
+lecteur Flash (`ruffle.html`, `openForumPopup`), et le forum a besoin de sa
+largeur. Les deux bureaux visent **la même fenêtre nommée**
+(`frutiparc_forum`) : passer de l'un à l'autre n'en laisse pas deux ouvertes.
+Le mobile, lui, garde son cadre plein écran et son lien « ‹ Salons ».
+
+### Un onglet actif ne fait pas disparaître le fond d'écran (0xb9574)
+
+```
+FPDesktop.onDeactivate = function () {
+  this.mcDesk.iconList.removeMovieClip();   // la rangée d'icônes
+  this.mcDesk._visible = false;             // le fond du bureau
+  this.mc.deactivate();
+  super.onDeactivate();
+}
+```
+
+Rien sur le fond d'écran : `wallPaper` est un manager à part
+(`WallPaperMng`, 0x9a5e8), que `FPDesktop` ne touche jamais. L'image reste
+peinte derrière tout, et c'est elle qu'on lit dans la bande qui sépare le haut
+de la fenêtre, la barre et la frusion.
+
+La preuve est chez ceux qui la cachent **exprès**, parce qu'elle est encore
+là : le slot du forum appelle `wallPaper.hide()` (0x6e2fa) et un jeu
+`wallPaper.hideImage()` (0x36cb1). Deux appels sans objet si un onglet actif
+l'avait déjà effacée. Et les deux ne font pas la même chose —
+
+| méthode | effet |
+|---|---|
+| `hide()` / `show()` | `mc._visible` — l'image ET la couleur |
+| `hideImage()` / `showImage()` | `mc.image._visible` — l'image seule, la couleur reste |
+
+Le portage cachait `#bureau` en entier (fond d'écran compris) : la bande
+virait au blanc. Il n'escamote plus que ses ENFANTS — les icônes, la mention
+de compte — et coupe la souris sur ce qui reste, un clip invisible ne recevant
+rien d'époque.
+
 ## LA FRUTIMANDALA (`cp.WheelMng`, DoInitAction sprite#774 0x6a7c2)
 
 Le cadran du coin haut-droit n'est pas un décor : c'est un tourne-disque à

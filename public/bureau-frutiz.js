@@ -34,7 +34,9 @@ window.BureauFrutiz = (function () {
   var RUBRIQUES = {
     chat:       { panneau: '#chat-panel',      titre: 'Salons',         fruit: 'winChat', l: 780, h: 580,
                   min: function () { return minSalon(); } },
-    forum:      { panneau: '#forum-panel',     titre: 'Forum',          l: 920, h: 640 },
+    // PAS DE FORUM ICI — et ce n'est pas un oubli. `win.Forum` (0x6e136) est
+    // la seule rubrique qui ne s'ouvre pas SUR le bureau : elle renvoie
+    // dehors, dans une fenêtre de navigateur à elle. Voir `ouvrirForum`.
     // LES SCORES — `box.Score` (0xade18). Relevé 1:1 : 610 × 328, cadre
     // `#444444` compris ; la colonne de gauche fait 160 et celle de droite
     // 430, six pixels entre les deux.
@@ -2594,6 +2596,67 @@ window.BureauFrutiz = (function () {
   }
 
   /* ══════════════════════════════════════════════════════════════════════════
+     LE FORUM — LA SEULE RUBRIQUE QUI SORT DU BUREAU
+
+     `win.Forum` (0x6e136) n'est pas une fenêtre du bureau : c'est un renvoi
+     vers l'EXTÉRIEUR. Son `init` n'attache aucun contenu, il appelle le pont
+     JavaScript de la page qui portait le lecteur Flash —
+
+         getURL("javascript:fp_goURLResize('/fb/?sid=" + sid + "',1)")
+
+     — puis pose sur le bureau un simple `ForumSlot` (le témoin qui dit « le
+     forum est ouvert, là-bas »). L'ouverture réelle se fait à l'activation :
+
+         onActivate:   cwm == "1" ? fp_resizeMe(1) : fp_activatePopupForum()
+                       me.status.setInternal("forum")   // le voyant « lit le forum »
+                       wallPaper.hide()
+         onDeactivate: cwm == "1" ? fp_resizeMe(0) : (rien — la popup reste)
+                       me.status.unsetInternal("forum")
+         close:        fp_closeFrame(1) / fp_closePopupForum()
+
+     Deux modes, donc : un CADRE dans la page (`cwm`, le mode « une seule
+     fenêtre »), ou une VRAIE FENÊTRE de navigateur. Le revival garde la
+     seconde — c'est ce que la page du lecteur Flash fait déjà (`ruffle.html`,
+     `fp_activatePopupForum`), et le forum a besoin de sa largeur.
+
+     Le voyant « lit le forum » ne demande rien ici : c'est le serveur qui le
+     pose en voyant passer `/fb/?sid=…` (server.js, route du forum) — la même
+     chose qu'il faisait pour le cadre du light. */
+  var popupForum = null;
+  // Le même nom et le même gabarit que le chemin Flash (`ruffle.html`,
+  // `openForumPopup`) : les deux bureaux ouvrent LA MÊME fenêtre, et passer
+  // de l'un à l'autre ne laisse pas deux forums ouverts côte à côte.
+  var FORUM_FENETRE = 'width=860,height=640,resizable=yes,scrollbars=yes,'
+    + 'menubar=no,toolbar=no,location=no,status=no';
+
+  function ouvrirForum(sujet) {
+    // PAS de « &from=light » : ce paramètre est celui du CADRE mobile — il
+    // pose un lien « ‹ Salons » et fait revenir `closeForum()` sur /light.
+    // Une fenêtre ouverte par script se ferme, elle, avec `window.close()`.
+    var sid = jetonSid();
+    var q = [];
+    if (sid) q.push('sid=' + encodeURIComponent(sid));
+    // Une citation reçue en notification mène AU SUJET, pas à l'accueil.
+    if (sujet) q.push('sujet=' + encodeURIComponent(sujet));
+    var url = '/fb/' + (q.length ? '?' + q.join('&') : '');
+    if (popupForum && !popupForum.closed) {
+      // `fp_activatePopupForum` ne rouvre pas : il RAMÈNE au premier plan.
+      // Un sujet demandé y mène quand même — la fenêtre est du même domaine.
+      try {
+        if (sujet) popupForum.location.href = url;
+        popupForum.focus();
+        return true;
+      } catch (e) { /* refusé : on rouvre */ }
+    }
+    popupForum = window.open(url, 'frutiparc_forum', FORUM_FENETRE);
+    // Un bloqueur de fenêtres rend `null` : plutôt que de ne rien faire, on
+    // ouvre dans un onglet — le forum reste atteignable.
+    if (!popupForum) window.open(url, '_blank');
+    else try { popupForum.focus(); } catch (e) {}
+    return true;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
      LA FICHE (`win.Frutiz`, DoInitAction sprite#753 0x583ad)
 
      `win.Frutiz extends WinStandard` : une FENÊTRE. Rien ne s'assombrit
@@ -3464,6 +3527,10 @@ window.BureauFrutiz = (function () {
   }
 
   function ouvrirFenetre(tab) {
+    // Le forum n'est pas une fenêtre du bureau : `win.Forum` renvoie vers
+    // l'extérieur (cf. `ouvrirForum`). Quel que soit le chemin qui mène ici —
+    // une tuile, un lien profond, `apresActivateTab` — il sort de la page.
+    if (tab === 'forum') return ouvrirForum();
     var rub = RUBRIQUES[tab];
     if (!rub) return;
     // « Salons publics » n'a pas de panneau mobile à emprunter : on le bâtit
@@ -4136,6 +4203,9 @@ window.BureauFrutiz = (function () {
     ouvrirInventaire: function () { ouvrirExplorateur('inventaire'); },
     // La boutique : une FENÊTRE sur le bureau, la feuille du mobile ailleurs.
     ouvrirBoutique: ouvrirBoutique,
+    // Le forum : ni fenêtre ni cadre, une FENÊTRE DE NAVIGATEUR à part —
+    // `win.Forum` ne fait rien d'autre que renvoyer dehors.
+    ouvrirForum: ouvrirForum,
     // La fiche : au bureau c'est une fenêtre, elle se pose et se glisse.
     poserFiche: poserFiche,
     // Ce que le joueur a posé sur son bureau, pour le banc et pour le light.
