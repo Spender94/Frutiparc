@@ -942,7 +942,13 @@
     ctx.clearRect(0, 0, w, h);
     if (this.fond) { ctx.fillStyle = this.fond; ctx.fillRect(0, 0, w, h); }
     const k = Math.min(w / sc.w, h / sc.h);
-    ctx.setTransform(k, 0, 0, k, -sc.x * k, -sc.y * k);
+    // Flash cale la scène au CENTRE de sa fenêtre quand les rapports diffèrent
+    // (`scaleMode = "showAll"`). Sans ce décalage, une boîte non carrée — celle
+    // de l'aperçu de pack de l'admin fait 160 × 180 — collerait la bouille en
+    // haut à gauche et mettrait toute la marge du même côté. Sur une boîte
+    // carrée, dx et dy valent zéro : rien ne change.
+    const dx = (w - sc.w * k) / 2, dy = (h - sc.h * k) / 2;
+    ctx.setTransform(k, 0, 0, k, dx - sc.x * k, dy - sc.y * k);
     this.moteur.dessiner(ctx, IDENTITE);
     if (f > 1) {
       // Réduction par MOITIÉS, d'un tampon vers un autre. Replier un canevas

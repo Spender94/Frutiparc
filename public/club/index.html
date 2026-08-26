@@ -307,8 +307,8 @@
     padding: 10px 12px;
     margin-bottom: 12px;
   }
-  /* La bouille : même vignette que le forum (cache PNG, détourée du vert de
-     capture pour se poser sur n'importe quel fond). */
+  /* La bouille : un canevas du moteur JS, dessiné sur fond transparent — elle
+     se pose donc sur n'importe quel fond sans rien à détourer. */
   .fiche-bouille {
     width: 76px;
     height: 76px;
@@ -467,7 +467,12 @@
 
 <!-- Vignettes de bouilles : une <img> sur le cache PNG du serveur, pas une
      instance Ruffle de plus. Le même rendu que le forum. -->
-<script src="/js/bouille-thumb.js"></script>
+<!-- Le moteur de bouilles en JavaScript : la tête d'une fiche était une
+     capture PNG du serveur, qu'il fallait avoir réchauffée par Ruffle. -->
+<script src="/js/bouille-swf.js"></script>
+<script src="/js/bouille-avm.js"></script>
+<script src="/js/bouille-moteur.js"></script>
+<script src="/js/bouille-vignette.js"></script>
 <script>
   let recordsData = null;
   let joueursCharges = false;
@@ -760,9 +765,7 @@
     }
 
     const m = d.medailles || { or: 0, argent: 0, bronze: 0, total: 0 };
-    const bouille = window.FPBouilleThumb
-      ? FPBouilleThumb.imgHtml(d.bouille, 0, { detourer: true })
-      : '';
+    const bouille = FPBouilleVignette.html(d.bouille);
 
     let html = '<div class="fiche-tete">'
       + '<div class="fiche-bouille">' + bouille + '</div>'
@@ -835,6 +838,7 @@
       : '';
     root.className = 'fiche';
     root.innerHTML = html;
+    FPBouilleVignette.brancher(root);
   }
 
   // On arrive parfois DROIT sur une fiche : /club/?p=anthonybdx — c'est

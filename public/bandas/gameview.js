@@ -180,16 +180,20 @@
     closeSheet();
     players.sort(function (a, b2) { return a.e - b2.e; }).forEach(function (p) {
       var fb = (p.f && p.f.length >= 15) ? p.f : "000000010000000000000000";
-      var src = "/bouille-preview.html?s=" + encodeURIComponent(fb) + "&bg=transparent";
-      $("#pf" + p.e).src = src;
+      // Une bouille = un canevas du moteur JS, dessiné à l'écran. C'étaient deux
+      // lecteurs Flash sur le plateau et deux autres dans la barre mobile —
+      // quatre, allumés en pleine partie.
+      var tete = FPBouilleVignette.html(fb);
+      var gr = $("#pf" + p.e);
+      if (gr) { gr.innerHTML = tete; FPBouilleVignette.brancher(gr); }
       $("#pname" + p.e).textContent = p.n || p.u;
       $("#pserie" + p.e).textContent = "★ " + (p.sr || 0);
       $("#m-name" + p.e).textContent = p.n || p.u;
       $("#m-serie" + p.e).textContent = "★" + (p.sr || 0);
-      // mobile : bouille du joueur dans l'encart (comme Grapiz). iframe créée
-      // une seule fois au démarrage (GV.start) → pas de rechargement Ruffle.
+      // mobile : bouille du joueur dans l'encart (comme Grapiz), posée une seule
+      // fois au démarrage (GV.start).
       var av = $("#m-av" + p.e);
-      if (av) av.innerHTML = '<iframe scrolling="no" sandbox="allow-scripts allow-same-origin" src="' + src + '"></iframe>';
+      if (av) { av.innerHTML = tete; FPBouilleVignette.brancher(av); }
     });
     // mobile : MA main en grand, celle de l'adversaire en petit (dos)
     var mine = GV.myTeam === 1 ? 1 : 0;

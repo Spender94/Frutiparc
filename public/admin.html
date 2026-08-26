@@ -813,7 +813,7 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
   <div class="toolbar">
     <button class="btn" onclick="loadTrombinoscope()">Rafraîchir</button>
     <span id="tromb-count" style="font-size:12px;color:#666"></span>
-    <button class="btn btn-sm" id="tromb-warm" onclick="warmTrombinoscope()" title="Génère et met en cache l'image PNG de chaque bouille, pour un affichage instantané côté Bouilloscope (main.swf et /light).">⚡ Réchauffer les bouilles</button>
+    <button class="btn btn-sm" id="tromb-warm" onclick="warmTrombinoscope()" title="Remplit le cache PNG des bouilles (/bouille-img). PLUS AUCUNE PAGE NE S'EN SERT depuis que le moteur JS dessine les bouilles : le cache ne sert qu'à un éventuel retour en arrière.">⚡ Réchauffer les bouilles</button>
     <button class="btn btn-sm" id="tromb-diag" onclick="bouilleDiagnostic()" title="Combien de bouilles sont réellement rendables (famille disponible) ? Et celles qui ne le sont pas, pourquoi ?">🔎 Diagnostic rendu</button>
     <button class="btn btn-sm" id="tromb-export" onclick="exportTrombinoscope()" title="Télécharge toutes les bouilles au format CSV (pseudo,bouille), réimportable tel quel.">⬇️ Exporter CSV</button>
     <button class="btn btn-sm" id="tromb-repair" onclick="repairTrombinoscope()" title="Répare les bouilles corrompues (zéros de tête perdus via Excel) en reprenant la bouille du compte joueur de même pseudo.">🛠️ Réparer (comptes)</button>
@@ -1103,7 +1103,12 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
       </div>
       <div style="flex:0 0 200px;text-align:center">
         <div id="pack-preview-box" style="width:160px;height:180px;border:2px solid #b5d68a;border-radius:8px;overflow:hidden;background:#E8F8D3;margin:0 auto">
-          <iframe id="pack-preview-iframe" src="/bouille-preview.html?s=0004060h0407000000000000" style="width:100%;height:100%;border:none" sandbox="allow-scripts allow-same-origin"></iframe>
+          <!-- L'aperçu du pack : un canevas du moteur JS, redessiné sur place
+               à chaque réglage (changer d'état, dans la même famille, c'est un
+               apply() sur un arbre déjà monté). C'était une iframe Ruffle
+               rechargée à chaque frappe. -->
+          <canvas class="fp-bvig" id="pack-preview-canvas" data-s="0004060h0407000000000000" data-e="0"
+                  width="1" height="1" aria-hidden="true" style="width:100%;height:100%;display:block"></canvas>
         </div>
         <div style="margin-top:8px;font-size:11px;color:#666">Aperçu en direct</div>
         <div id="pack-suffix-editor" style="margin-top:10px;text-align:left"></div>
@@ -1423,8 +1428,13 @@ async function importTrombinoscope() {
 
 // Pré-réchauffe le cache PNG de TOUTES les bouilles enregistrées : génère l'image
 // de chaque bouille (depuis l'admin, sans main.swf concurrent → rapide) et la met
-// en cache serveur. Ensuite l'affichage du Bouilloscope est instantané pour tout
-// le monde (main.swf comme /light). Les bouilles déjà en cache sont sautées.
+// en cache serveur. Les bouilles déjà en cache sont sautées.
+//
+// ATTENTION : plus aucune page du site ne LIT ce cache — le moteur JS
+// (bouille-swf/avm/moteur + FPBouilleVignette) dessine les bouilles dans un
+// canevas, à partir du SWF de famille. Le bouton reste le temps de juger sur
+// pièces ; il part avec `/bouille-img` et `scripts/warm-bouilles.js` le jour
+// où l'on retire le cache (cf. public/frutiz/BOUILLES.md, § 12).
 async function warmTrombinoscope() {
   if (typeof FPBouilleThumb === 'undefined' || !FPBouilleThumb.warmAll) return;
   if (!trombinoscope.length) { toast('Rien à réchauffer'); return; }
@@ -4157,7 +4167,7 @@ function updatePackPreview() {
   const base = $('#pack-base').value || '0004060h0407000';
   let suffix = ($('#pack-suffix9').value || '').padEnd(9, '0').substring(0, 9);
   const state = base + suffix;
-  $('#pack-preview-iframe').src = '/bouille-preview.html?s=' + encodeURIComponent(state);
+  FPBouilleVignette.rafraichir($('#pack-preview-canvas'), state);
   renderSuffixEditor(suffix);
 }
 

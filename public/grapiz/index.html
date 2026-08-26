@@ -117,7 +117,7 @@
     background:#f59a12 0 0/100% 100% no-repeat; background-image:url(encart_joueur.png); }
   .gcard.active { box-shadow:0 0 0 2px #fff, 0 0 11px 1px #ffdf7a; }
   .gc-av { width:56px; height:56px; flex:0 0 auto; border-radius:7px; overflow:hidden; background:#ffffff66; box-shadow:inset 0 0 0 1px #ffffffcc, 0 1px 2px #00000026; }
-  .gc-av iframe { width:100%; height:100%; border:0; display:block; }
+  .gc-av iframe, .gc-av canvas { width:100%; height:100%; border:0; display:block; }
   .gc-info { display:flex; flex-direction:column; min-width:0; gap:1px; }
   .gc-namerow { display:flex; align-items:center; gap:6px; }
   .gc-sq { width:11px; height:11px; border-radius:2px; flex:0 0 auto; box-shadow:inset 0 0 0 1px #ffffffcc, 0 1px 1px #0000003a; }
@@ -292,6 +292,12 @@
     </div>
   </div>
 
+<!-- Le moteur de bouilles en JavaScript : les quatre têtes de la barre des
+     joueurs étaient quatre lecteurs Flash, chargés en pleine partie. -->
+<script src="/js/bouille-swf.js"></script>
+<script src="/js/bouille-avm.js"></script>
+<script src="/js/bouille-moteur.js"></script>
+<script src="/js/bouille-vignette.js"></script>
 <script src="engine.js"></script>
 <script>
 (function () {
@@ -684,7 +690,7 @@
     state.players.slice().sort(function (a, b) { return a.e - b.e; }).forEach(function (p) {
       var fb = (p.f && p.f.length >= 15) ? p.f : DEFAULT_BOUILLE;
       var c = div("gcard"); c.dataset.team = p.e;
-      c.innerHTML = '<div class="gc-av"><iframe scrolling="no" sandbox="allow-scripts allow-same-origin" src="/bouille-preview.html?s=' + encodeURIComponent(fb) + '&bg=transparent"></iframe></div>'
+      c.innerHTML = '<div class="gc-av">' + FPBouilleVignette.html(fb) + '</div>'
         + '<div class="gc-info">'
         + '<div class="gc-namerow"><span class="gc-sq" style="background:' + (p.e === 0 ? "#ff5151" : "#4f7cff") + '"></span><span class="gc-name">' + esc(p.n || p.u) + "</span></div>"
         + '<div class="gc-line"><span class="gc-star">' + STAR_SVG + '</span><span class="gc-streak" data-team="' + p.e + '">' + (p.sr || 0) + "</span></div>"
@@ -692,6 +698,7 @@
         + "</div>";
       top.appendChild(c);
     });
+    FPBouilleVignette.brancher(top);
   }
   function updateCards() {
     state.players.forEach(function (p) {

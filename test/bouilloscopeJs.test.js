@@ -110,15 +110,21 @@ test('plus une seule iframe Ruffle dans la grille de l’admin', () => {
   assert.ok(grille.includes('FPBouilleVignette.html('));
 });
 
-test('le cache PNG reste en place pour tout ce qui n’a pas basculé', () => {
-  // Le forum, le club, l'écran du bureau et le chat s'en servent encore : on
-  // change le Bouilloscope, pas tout le site d'un coup.
-  for (const [nom, src] of [['admin', ADMIN], ['light', LIGHT], ['bureau Frutiz', BUREAU]]) {
-    assert.ok(src.includes('/js/bouille-thumb.js'), nom + ' garde bouille-thumb');
+test('le cache PNG n’est plus lu par personne', () => {
+  // Le forum, le club et l'écran du bureau s'en servaient ; ils dessinent
+  // maintenant. Plus rien ne LIT /bouille-img : les pages ne chargent même plus
+  // le module qui le sondait.
+  for (const [nom, src] of [['light', LIGHT], ['bureau Frutiz', BUREAU]]) {
+    assert.ok(!src.includes('/js/bouille-thumb.js'), nom + ' ne charge plus bouille-thumb');
   }
-  assert.ok(LIGHT.includes('FPBouilleThumb.imgHtml'), 'le light s’en sert encore ailleurs');
-  assert.ok(lire('public/club/index.html').includes('FPBouilleThumb.imgHtml'), 'le club aussi');
-  assert.ok(lire('public/bureau-frutiz.js').includes('FPBouilleThumb.imgHtml'), 'l’écran du bureau aussi');
+  for (const f of ['public/light.html', 'public/club/index.html', 'public/bureau-frutiz.js']) {
+    assert.ok(!/FPBouilleThumb\.\w+\(/.test(lire(f)), f + ' ne demande plus de capture');
+  }
+  // Seule l'admin garde le module : son bouton « Réchauffer les bouilles »
+  // remplit encore le cache — au cas où l'on ferait marche arrière. Le bouton
+  // dit lui-même que plus personne ne s'en sert.
+  assert.ok(ADMIN.includes('/js/bouille-thumb.js'), 'l’admin garde de quoi réchauffer');
+  assert.match(ADMIN, /PLUS AUCUNE PAGE NE S'EN SERT/);
 });
 
 test('la carte du Bouilloscope mobile accepte un canevas', () => {

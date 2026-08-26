@@ -612,7 +612,8 @@ body.bureau-frutiz .fb-glisse-icone .ex-disque img.jaquette {
 body.bureau-frutiz .fb-glisse-icone .ex-bouille {
   position: relative; left: 0; top: 0; display: block; width: 37px; height: 37px;
 }
-body.bureau-frutiz .fb-glisse-icone .ex-bouille iframe { width: 37px; height: 37px; border: 0; }
+body.bureau-frutiz .fb-glisse-icone .ex-bouille iframe,
+body.bureau-frutiz .fb-glisse-icone .ex-bouille canvas { width: 37px; height: 37px; border: 0; }
 
 /* ── LES RACCOURCIS DU BUREAU (`cp.DragIconList`) ────────────────────────────
    `FPDesktop.displayIconList` attache un `cpDragIconList` avec une marge de
@@ -634,7 +635,8 @@ body.bureau-frutiz .fb-raccourci .ex-img {
   position: relative; left: 0; top: 4px; display: block;
 }
 body.bureau-frutiz .fb-raccourci .ex-bouille { width: 37px; height: 37px; }
-body.bureau-frutiz .fb-raccourci .ex-bouille iframe { width: 37px; height: 37px; border: 0; }
+body.bureau-frutiz .fb-raccourci .ex-bouille iframe,
+body.bureau-frutiz .fb-raccourci .ex-bouille canvas { width: 37px; height: 37px; border: 0; }
 /* `but.icon.Full` : 63 px de côté, 7 px sous le haut de la case, sans nom. */
 body.bureau-frutiz .fb-raccourci .ex-disque {
   position: relative; left: 0; top: 7px; transform: none;
@@ -1630,7 +1632,8 @@ body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran.clb .bo-clb {
   position: absolute; left: 0; z-index: 3;
   transition: left .42s cubic-bezier(.16, .72, .27, 1);
 }
-body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran.clb .bo-clb img {
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran.clb .bo-clb img,
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran.clb .bo-clb canvas {
   width: 100%; height: 100%; margin: 0;
 }
 body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-clb #bouille-overlay-stage {
@@ -1649,6 +1652,13 @@ body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran::after {
 body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran img {
   display: block; width: 98px; height: 98px; margin: 1px; border: 0;
   object-fit: contain;
+}
+/* `!important` : `FPBouilleVignette` pose `width:100%;height:100%` EN LIGNE —
+   ce qui est juste partout ailleurs, mais pas ici : l'écran fait 100 px et la
+   bouille s'y pose en RETRAIT d'un pixel, comme l'image qu'elle remplace. */
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran > canvas.fp-bvig {
+  display: block; width: 98px !important; height: 98px !important;
+  margin: 1px; border: 0;
 }
 /* ── LA BULLE DE SURVOL D'UNE BOUILLE ───────────────────────────────────────
    `cp.FrutiScreen.setTip` (0x6299a) branche `onRollOver` sur
@@ -2928,7 +2938,8 @@ body.bureau-frutiz .fen .ex-panel .ex-slot-disque:not(.inerte):active .ex-disque
 body.bureau-frutiz .fen .ex-panel .ex-bouille {
   top: 4px; width: 37px; height: 37px;
 }
-body.bureau-frutiz .fen .ex-panel .ex-bouille iframe {
+body.bureau-frutiz .fen .ex-panel .ex-bouille iframe,
+body.bureau-frutiz .fen .ex-panel .ex-bouille canvas {
   width: 100%; height: 100%; border: 0; display: block; pointer-events: none;
 }
 /* LE FOND D'ÉCRAN : le cadre du SWF, et dedans la vignette du fond. */

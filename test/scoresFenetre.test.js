@@ -245,7 +245,7 @@ test('le panneau du light reproduit la fenêtre : barre de titre, deux volets, p
   assert.match(html, /Je suis ' \+ g\.me\.pos/, 'puis « Je suis Nème avec … »');
   assert.match(html, /<span class="f">Frutiz<\/span>[\s\S]{0,120}Score[\s\S]{0,80}Heure/,
     'puis les colonnes Frutiz / Score / Heure');
-  assert.match(html, /FPBouilleThumb\.imgHtml\(s\.bouille/, 'et la bouille de chaque joueur');
+  assert.match(html, /FPBouilleVignette\.html\(s\.bouille\)/, 'et la bouille de chaque joueur');
   assert.match(html, /xmlEscape\(s\.time/, 'ainsi que l\'heure de son score');
 
   // Les sections sont celles du serveur, pas une liste recopiée.
@@ -281,22 +281,18 @@ test('le sélecteur de jour est celui du bureau : sous la liste, entre deux bout
   }
 });
 
-test('les bouilles du tableau sont détourées : pas de carré vert sur le panneau doré', () => {
+test('les bouilles du tableau n’ont plus de carré vert à détourer', () => {
+  // C'était une capture PNG peinte sur le vert des cartes du forum (#E8F8D3) :
+  // posée sur le panneau doré de la fenêtre, le carré sautait aux yeux, et il
+  // fallait le retirer pixel par pixel (`detourer`). Le moteur JS dessine sur
+  // fond TRANSPARENT : il n'y a plus rien à détourer.
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
-  assert.match(html, /FPBouilleThumb\.imgHtml\(s\.bouille, 0, \{ detourer: true \}\)/,
-    'le tableau demande des vignettes détourées');
-
-  const thumb = fs.readFileSync(path.join(ROOT, 'public/js/bouille-thumb.js'), 'utf8');
-  assert.match(thumb, /function detourer\(img\)/, 'le détourage existe');
-  assert.match(thumb, /var FOND = \[0xE8, 0xF8, 0xD3\]/,
-    'et vise la couleur de fond de bouille-capture.html');
-  assert.match(thumb, /data-detour="1"/, 'posé par l\'option `detourer`');
-  // La vignette « ? » du repli suit la même règle, sinon le carré revenait par
-  // la bande pour les bouilles non rendables.
-  assert.match(thumb, /function placeholderPour\(img\)/, 'le repli « ? » a sa version sans fond');
-  // Et le cache serveur n'est pas touché : le forum garde ses vignettes vertes.
-  const capture = fs.readFileSync(path.join(ROOT, 'public/bouille-capture.html'), 'utf8');
-  assert.match(capture, /backgroundColor: "#E8F8D3"/, 'la capture reste peinte sur le vert du forum');
+  assert.match(html, /FPBouilleVignette\.html\(s\.bouille\)/, 'le tableau dessine la bouille');
+  assert.ok(!/FPBouilleThumb/.test(html), 'plus de capture PNG dans le light');
+  const vig = fs.readFileSync(path.join(ROOT, 'public/js/bouille-vignette.js'), 'utf8');
+  assert.doesNotMatch(vig, /background/, 'le canevas ne peint aucun fond');
+  // Et la case du tableau accepte bien un canevas de 18 px.
+  assert.match(html, /\.sc-ligne \.b img, \.sc-ligne \.b canvas \{ width: 18px; height: 18px;/);
 });
 
 /*

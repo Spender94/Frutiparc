@@ -224,7 +224,8 @@
     position: relative;
     border-radius: 10px;
   }
-  .post .post-author .avatar iframe {
+  .post .post-author .avatar iframe,
+  .post .post-author .avatar canvas {
     width: 100%;
     height: 100%;
     border: none;
@@ -670,7 +671,8 @@
     flex-shrink: 0;
     overflow: hidden;
   }
-  .bouille-preview-box iframe {
+  .bouille-preview-box iframe,
+  .bouille-preview-box canvas {
     width: 100%;
     height: 100%;
     border: none;
@@ -930,7 +932,8 @@
     overflow: hidden;
     border-radius: 10px;
   }
-  .editor-preview-author .avatar iframe {
+  .editor-preview-author .avatar iframe,
+  .editor-preview-author .avatar canvas {
     width: 100%; height: 100%;
     border: none; display: block;
     pointer-events: none;
@@ -1027,7 +1030,8 @@
     background: transparent;
     position: relative;
   }
-  .bouille-item .b-thumb iframe {
+  .bouille-item .b-thumb iframe,
+  .bouille-item .b-thumb canvas {
     width: 100%;
     height: 100%;
     border: none;
@@ -1411,6 +1415,14 @@
   Design Frutiparc &copy; <a href="https://www.motiontwin.com">Motion Twin</a>
 </div>
 
+<!-- Le moteur de bouilles en JavaScript : il lit le SWF de famille d'époque et
+     dessine dans un canevas. Remplace l'iframe Ruffle qu'on posait par avatar —
+     un lecteur Flash complet pour chaque tête de quatre-vingt-dix pixels. -->
+<script src="/js/bouille-swf.js"></script>
+<script src="/js/bouille-avm.js"></script>
+<script src="/js/bouille-moteur.js"></script>
+<script src="/js/bouille-vignette.js"></script>
+
 <script>
 const params = new URLSearchParams(window.location.search);
 const SID = params.get('sid') || '';
@@ -1428,9 +1440,9 @@ let myBanned = false;
 let myBannedUntilDisplay = null;
 let myBannedPermanent = false;
 
-// Moods ("humeur") = the famille SWF's emoteList indices (0-7); see
-// bouille-preview.html. Each maps to an eye+mouth combo. Labels for 3/5/6/7
-// are best-guess from the shapes — adjust freely.
+// Moods ("humeur") = the famille SWF's emoteList indices (0-7); see HUMEURS in
+// bouille-moteur.js. Each maps to an eye+mouth combo. Labels for 3/5/6/7 are
+// best-guess from the shapes — adjust freely.
 const EXPRESSIONS = [
   { id: 0, name: 'Neutre' },
   { id: 1, name: 'Colère' },
@@ -1490,13 +1502,20 @@ function resolveBouilleState(sel) {
   return buildBouilleState(myBouille, sel && sel.accSuffix9);
 }
 
+// Une bouille = UN CANEVAS, dessiné par le moteur JS quand il approche de
+// l'écran (FPBouilleVignette.brancher pose le guetteur). C'était une iframe
+// Ruffle : un lecteur Flash entier par vignette, et le sélecteur d'accessoires
+// en pose huit d'un coup.
 function getBouillePreviewHtml(state, emote) {
   var s = String(state || '').replace(/[^0-9a-zA-Z]/g, '');
   if (!s || s.length < 2) s = '000000010000000000000000';
-  var q = 's=' + encodeURIComponent(s);
-  if (emote != null && Number(emote) > 0) q += '&e=' + encodeURIComponent(Number(emote));
-  return '<iframe src="/bouille-preview.html?' + q +
-    '" sandbox="allow-scripts allow-same-origin"></iframe>';
+  return FPBouilleVignette.html(s, { humeur: (emote != null && Number(emote) > 0) ? Number(emote) : 0 });
+}
+
+// Après chaque insertion de bouilles dans la page : le guetteur les prend en
+// charge (et ne prend pas deux fois la même — brancher() est idempotent).
+function brancherBouilles(hote) {
+  if (window.FPBouilleVignette) FPBouilleVignette.brancher(hote || document);
 }
 
 var _activeBouilleSel = {};
@@ -1507,7 +1526,7 @@ function bouilleSetExpression(formId, mouthId) {
   refreshBouillePreview(formId);
   // Re-render the grid so each thumbnail also shows the new mouth.
   var grid = document.getElementById('bouille-grid-' + formId);
-  if (grid) grid.innerHTML = renderBouilleGrid(formId);
+  if (grid) { grid.innerHTML = renderBouilleGrid(formId); brancherBouilles(grid); }
   // Keep the dropdown in sync (also when called programmatically).
   var sel = document.getElementById('expr-sel-' + formId);
   if (sel && sel.value !== String(mouthId)) sel.value = String(mouthId);
@@ -1559,14 +1578,23 @@ function getCurrentMood(formId) {
   return (m != null && Number(m) >= 0) ? Number(m) : 0;
 }
 
+// Changer d'accessoire ou d'humeur ne remonte plus rien : tant qu'on reste dans
+// la même famille, c'est un apply() sur un arbre déjà monté. Le canevas n'est
+// refait que s'il n'existe pas encore.
+function poserBouille(hote, state, mood) {
+  if (!hote) return;
+  var c = hote.querySelector('canvas.fp-bvig');
+  if (c) { FPBouilleVignette.rafraichir(c, state, Number(mood) || 0); return; }
+  hote.innerHTML = getBouillePreviewHtml(state, mood);
+  brancherBouilles(hote);
+}
+
 function refreshBouillePreview(formId) {
   var sel = _activeBouilleSel[formId] || {};
   var state = resolveBouilleState(sel);
-  var box = document.getElementById('bouille-preview-' + formId);
-  if (box) box.innerHTML = getBouillePreviewHtml(state, sel.mouthId);
+  poserBouille(document.getElementById('bouille-preview-' + formId), state, sel.mouthId);
   // Update inline preview avatar at the top of the editor too
-  var preview = document.getElementById('editor-preview-avatar-' + formId);
-  if (preview) preview.innerHTML = getBouillePreviewHtml(state, sel.mouthId);
+  poserBouille(document.getElementById('editor-preview-avatar-' + formId), state, sel.mouthId);
 }
 
 function getCurrentBouilleState(formId) {
@@ -1582,7 +1610,7 @@ function bouilleNavPage(formId, delta) {
   cur = Math.max(0, Math.min(pages - 1, cur + delta));
   _bouillePage[formId] = cur;
   var grid = document.getElementById('bouille-grid-' + formId);
-  if (grid) grid.innerHTML = renderBouilleGrid(formId);
+  if (grid) { grid.innerHTML = renderBouilleGrid(formId); brancherBouilles(grid); }
   var nav = document.getElementById('bouille-nav-' + formId);
   if (nav) nav.innerHTML = renderBouilleNavLinks(formId);
 }
@@ -1801,13 +1829,13 @@ function renderBBCode(s) {
   return out;
 }
 
+// L'avatar posé à gauche de chaque message. Vingt messages par page, c'était
+// vingt lecteurs Flash ; c'est désormais vingt canevas et UN SWF de famille,
+// partagé par toutes les têtes qui en relèvent.
 function renderBouillAvatar(bouille, username, mood) {
   var s = String(bouille || '').replace(/[^0-9a-zA-Z]/g, '');
   if (!s || s.length < 2) s = '000000010000000000000000';
-  var q = 's=' + encodeURIComponent(s);
-  if (mood != null && Number(mood) > 0) q += '&e=' + encodeURIComponent(Number(mood));
-  return '<iframe src="/bouille-preview.html?' + q
-    + '" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe>';
+  return FPBouilleVignette.html(s, { humeur: (mood != null && Number(mood) > 0) ? Number(mood) : 0 });
 }
 
 function formatDate(iso) {
@@ -2215,6 +2243,7 @@ async function loadTopic(topicId, page) {
   html += '</div>';
 
   app.innerHTML = html;
+  brancherBouilles(app);       // les avatars des messages
 }
 function topicPage(p) { pousserHistoire('topic', currentTopicId, p); loadTopic(currentTopicId, p); }
 
@@ -2342,6 +2371,7 @@ function showReplyForm(initialContent) {
     onCancel: 'loadTopic(' + currentTopicId + ', currentTopicData ? currentTopicData.page : 1)',
     submitLabel: 'Envoyer',
   });
+  brancherBouilles(app);
   var ta = document.getElementById('reply-content');
   if (ta) {
     ta.focus();
@@ -3134,7 +3164,7 @@ function previewEditor(formId, hasTitle) {
   html += '</div></div>';
 
   var slot = document.getElementById('editor-preview-' + formId);
-  if (slot) slot.innerHTML = html;
+  if (slot) { slot.innerHTML = html; brancherBouilles(slot); }
   // Scroll to top so the user actually sees the preview, like the original.
   if (slot && slot.scrollIntoView) slot.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -3149,6 +3179,7 @@ function showNewTopicForm(boardId) {
     onCancel: 'navigate(\'board\',' + boardId + ')',
     submitLabel: 'Envoyer',
   });
+  brancherBouilles(app);
   var t = document.getElementById('newtopic-title');
   if (t) t.focus();
 }

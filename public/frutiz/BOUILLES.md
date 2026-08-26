@@ -495,17 +495,47 @@ Les sélecteurs CSS qui disaient `iframe` disent maintenant `iframe, canvas` —
 y compris `.bo-anime` sur le bureau Frutiz, où la bouille figée d'un écran doit
 s'effacer le temps que celle qui s'anime joue, sous peine de doublon.
 
-### Ce qui n'a pas encore basculé
+### Et le reste du site
 
-Le **forum** (`public/fb/index.html`), le **club**, l'**écran du bureau**
-(`bureau-frutiz.js`), **Grapiz**, **Bandas**, le tableau des **scores** et
-l'aperçu de **pack** de l'admin. Ils gardent `FPBouilleThumb` et son cache PNG,
-ou une iframe Ruffle.
+Le même mouvement a fini la tournée :
+
+| page | avant | après |
+|---|---|---|
+| **le forum** — l'avatar de chaque message | une iframe Ruffle par message, vingt par page | vingt canevas, **un** SWF de famille pour tout le fil |
+| **le forum** — le sélecteur d'accessoires (8 vignettes) et l'aperçu | huit iframes de plus, rechargées à chaque clic | huit canevas ; changer d'accessoire ou d'humeur = `rafraichir`, **zéro requête** |
+| **le club** — la tête d'une fiche | capture PNG détourée du vert de capture | un canevas, fond transparent |
+| **l'écran d'un salon** (bureau Frutiz) | capture PNG `detourer: true` | un canevas — le dégradé de l'écran se voit derrière |
+| **les accessoires de l'inventaire** (bureau) | une iframe Ruffle par accessoire | un canevas par accessoire |
+| **Grapiz** — les têtes de la barre des joueurs | 2 à 4 lecteurs Flash allumés en pleine partie | autant de canevas |
+| **Bandas** — les deux têtes du plateau + les deux pastilles mobiles | 4 lecteurs Flash | 4 canevas, un seul appel `FPBouilleVignette.html` par joueur |
+| **le tableau des scores** | capture PNG détourée | un canevas de 18 px |
+| **l'aperçu de pack** de l'admin | une iframe rechargée à chaque frappe | un canevas rafraîchi sur place |
+
+Relevé sur une page de sujet à trois messages : **3 canevas, 1 requête**
+(`famille0.swf`), **0 lecteur Flash** ; puis l'éditeur, ses huit vignettes, un
+changement d'accessoire et un changement d'humeur — toujours **1 requête au
+total**.
+
+En traversant les boîtes NON CARRÉES (l'aperçu de pack fait 160 × 180), un
+défaut est apparu : le moteur collait la scène en haut à gauche. Flash, lui,
+la CENTRE (`scaleMode = "showAll"`). C'est corrigé dans `rendre()` ; sur une
+boîte carrée le décalage vaut zéro, donc rien ne bouge ailleurs.
+
+### Le cache PNG n'est plus lu
+
+`/bouille-img` existe toujours, mais **plus aucune page ne le lit** :
+`bouille-thumb.js` a quitté le light et le bureau. Seule l'admin le charge
+encore, pour son bouton « Réchauffer les bouilles » — dont l'infobulle dit
+maintenant que le cache ne sert qu'à un éventuel retour en arrière.
 
 ## 12. Ce qui reste à faire
 
-* **Finir la généralisation** : le forum, le club, l'écran du bureau Frutiz,
-  Grapiz, Bandas, le tableau des scores, l'aperçu de pack de l'admin.
+* **Retirer le cache PNG** : `/bouille-img`, `scripts/warm-bouilles.js`,
+  `public/bouille-capture.html`, `public/js/bouille-thumb.js` et le bouton
+  « Réchauffer les bouilles » de l'admin. Plus rien ne les lit ; ils attendent
+  qu'on soit sûr de ne pas revenir en arrière.
+* **`bouille-preview.html`** (le lecteur Ruffle d'une bouille) ne sert plus qu'au
+  banc d'essai, comme RÉFÉRENCE de comparaison. À garder pour ça.
 * **L'éditeur de conception** : `updateInfo()` donne déjà la liste des onze
   réglages et leurs bornes (`_totalframes - 1` du clip visé) ; le banc s'en sert.
   Reste à l'habiller aux couleurs du parc et à le poser sur `/light`.

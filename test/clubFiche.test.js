@@ -215,7 +215,12 @@ test('la page du Club n\'affiche plus la consécration, et ouvre une fiche', asy
   assert.equal(/data-tab="consecration"/.test(html), false, 'plus d\'onglet consécration');
   assert.ok(/data-tab="fiche"/.test(html), 'un onglet « Fiche joueur » à la place');
   assert.ok(/api\/club\/player\?u=/.test(html), 'qui interroge la fiche');
-  assert.ok(/bouille-thumb\.js/.test(html), 'et sait dessiner une bouille');
+  // La tête de la fiche était une capture PNG du serveur, qu'il fallait avoir
+  // réchauffée par Ruffle ; c'est un canevas que le moteur JS dessine à partir
+  // du SWF de famille, sur fond transparent.
+  assert.ok(/bouille-vignette\.js/.test(html), 'et sait dessiner une bouille');
+  assert.ok(/FPBouilleVignette\.html\(d\.bouille\)/.test(html), 'la tête de la fiche');
+  assert.ok(/FPBouilleVignette\.brancher\(root\)/.test(html), 'branchée après insertion');
 });
 
 // Les médailles du bureau, pas celles de la police système : le jeton

@@ -391,21 +391,35 @@ test('avancer() dit si quelque chose a bougé', async () => {
   assert.strictEqual(mo.avancer(), false, 'une bouille entièrement figée ne bouge plus');
 });
 
-test('le moteur ne sert QUE là où on l’a branché', () => {
-  // Premier branchement : le Bouilloscope, et lui seul (test/bouilloscopeJs).
-  // Partout ailleurs — le forum, le club, l'écran du bureau, le chat, l'éditeur
-  // « Ma Frutibouille » — le rendu d'avant reste en place le temps qu'on juge
-  // sur pièces.
+test('plus une seule bouille de tout le site ne passe par Flash', () => {
+  // Le moteur a fini sa tournée : le Bouilloscope, l'éditeur, le forum, le
+  // club, l'écran du bureau, les deux jeux à bouilles et l'aperçu de pack de
+  // l'admin. Ce test garde le résultat — qu'aucune de ces pages ne rouvre un
+  // lecteur Flash ni ne redemande une capture PNG au serveur.
   const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   assert.ok(light.includes('/js/bouille-moteur.js'), 'le light charge le moteur');
-  // Le light est passé au moteur pour tout ce qui MONTRE une bouille : le
+  // Le light MONTRE une bouille à une bonne dizaine d'endroits : le
   // Bouilloscope, l'éditeur, l'avatar de l'accueil, celui d'une fiche, les
-  // vignettes d'accessoires et de la boutique, et la réaction du chat.
+  // vignettes d'accessoires et de la boutique, le tableau des scores, et la
+  // réaction du chat.
   assert.ok((light.match(/FPBouilleVignette\.\w+\(/g) || []).length >= 10);
-  // Ce qui reste au cache PNG : la vignette du tableau des scores, qu'on
-  // détoure encore à la main. Un seul appel, et il est nommé.
-  const restes = light.match(/FPBouilleThumb\.\w+\(/g) || [];
-  assert.strictEqual(restes.length, 1, 'un seul reste, dans le tableau des scores');
+  const PAGES = ['public/light.html', 'public/ruffle.html', 'public/fb/index.html',
+    'public/club/index.html', 'public/grapiz/index.html', 'public/bandas/index.html',
+    'public/bureau-frutiz.js', 'public/bandas/gameview.js'];
+  for (const f of PAGES) {
+    const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    assert.ok(!/FPBouilleThumb\.\w+\(/.test(src), f + ' ne demande plus de capture PNG');
+    assert.ok(!src.includes('bouille-preview.html'), f + ' n’ouvre plus de lecteur Flash');
+    // Chaque page charge le moteur, s'en sert, ou les deux — Bandas le charge
+    // dans son index et l'appelle depuis gameview.js.
+    assert.ok(src.includes('FPBouilleVignette.') || src.includes('/js/bouille-vignette.js'),
+      f + ' passe par le moteur JS');
+  }
+  // L'admin garde SON bouton « Réchauffer les bouilles » — le cache existe
+  // encore, plus personne ne le lit. Il part avec /bouille-img.
+  const admin = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');
+  assert.ok(!admin.includes('bouille-preview.html'), 'l’admin n’ouvre plus de lecteur Flash');
+  assert.match(admin, /PLUS AUCUNE PAGE NE S'EN SERT/, 'et le bouton du cache le dit');
   // Le banc d'essai, lui, charge les trois modules — et rien d'autre.
   const banc = fs.readFileSync(path.join(ROOT, 'public/bouille-js.html'), 'utf8');
   for (const f of ['bouille-swf.js', 'bouille-avm.js', 'bouille-moteur.js']) {

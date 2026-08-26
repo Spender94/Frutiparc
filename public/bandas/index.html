@@ -119,7 +119,9 @@
     transform-origin:top center; background:url(assets/page/game.png) 0 0/1050px 728px no-repeat;
     cursor:url(assets/mouse/normal.png) 2 2, auto; user-select:none; }
   #page .abs { position:absolute; }
-  #page iframe.bouille { border:0; background:transparent; pointer-events:none; }
+  #page iframe.bouille, #page .bouille canvas { border:0; background:transparent; pointer-events:none; }
+  #page div.bouille { overflow:hidden; }
+  #page .bouille canvas { width:100%; height:100%; display:block; }
   .pname { font-weight:bold; color:#5b6f1d; font-size:14px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .pclock { font-weight:bold; color:#7a8d2a; font-size:15px; text-align:center; font-variant-numeric:tabular-nums; }
   .pcountf { font-weight:bold; color:#5b6f1d; font-size:16px; }
@@ -215,7 +217,7 @@
     .mchip .msq { width:10px; height:10px; border-radius:2px; position:absolute; top:5px; left:5px; box-shadow:0 0 0 1px #00000033; }
     /* bouille du joueur (comme Grapiz) */
     .mchip .mav { flex:0 0 auto; width:42px; height:42px; border-radius:8px; overflow:hidden; background:#ffffff22; }
-    .mchip .mav iframe { width:100%; height:100%; border:0; display:block; pointer-events:none; background:transparent; }
+    .mchip .mav iframe, .mchip .mav canvas { width:100%; height:100%; border:0; display:block; pointer-events:none; background:transparent; }
     .mchip .minfo { display:flex; flex-direction:column; gap:2px; min-width:0; }
     .mchip .mname { font-weight:bold; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .mchip .mmeta { font-size:12px; opacity:.95; font-variant-numeric:tabular-nums; }
@@ -352,8 +354,8 @@
   <!-- Partie : page 1050x728 (bureau) / pile verticale (mobile) -->
   <div id="screen-game" class="screen">
     <div id="page">
-      <iframe class="bouille abs" id="pf0" scrolling="no" sandbox="allow-scripts allow-same-origin" style="left:23px;top:25px;width:125px;height:125px"></iframe>
-      <iframe class="bouille abs" id="pf1" scrolling="no" sandbox="allow-scripts allow-same-origin" style="left:898px;top:25px;width:125px;height:125px"></iframe>
+      <div class="bouille abs" id="pf0" style="left:23px;top:25px;width:125px;height:125px"></div>
+      <div class="bouille abs" id="pf1" style="left:898px;top:25px;width:125px;height:125px"></div>
       <div class="pside abs" id="pside0" style="left:8px;top:155px;width:215px">
         <div class="pname" id="pname0"></div>
         <div class="pclock" id="pclock0">00:00</div>
@@ -447,6 +449,12 @@
     <div class="corps" id="tournoi-corps"></div>
   </div></div>
 
+<!-- Le moteur de bouilles en JavaScript : les deux têtes du plateau (et les
+     deux pastilles mobiles) étaient autant de lecteurs Flash. -->
+<script src="/js/bouille-swf.js"></script>
+<script src="/js/bouille-avm.js"></script>
+<script src="/js/bouille-moteur.js"></script>
+<script src="/js/bouille-vignette.js"></script>
 <script src="engine.js"></script>
 <script src="gameview.js"></script>
 <script src="ui.js"></script>

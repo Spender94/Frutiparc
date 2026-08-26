@@ -696,13 +696,10 @@ window.BureauFrutiz = (function () {
   function dessinBouille(etat) {
     var c = document.createElement('span');
     c.className = 'ex-bouille';
-    var f = document.createElement('iframe');
-    f.setAttribute('scrolling', 'no');
-    f.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-    f.setAttribute('tabindex', '-1');
-    f.src = '/bouille-preview.html?s=' + encodeURIComponent(String(etat || '').replace(/[^0-9A-Za-z]/g, ''))
-      + '&bg=transparent';
-    c.appendChild(f);
+    // Un canevas du moteur JS : c'était un lecteur Flash par accessoire, et
+    // l'inventaire en aligne des dizaines.
+    c.innerHTML = FPBouilleVignette.html(etat);
+    FPBouilleVignette.brancher(c);
     return c;
   }
 
@@ -2128,14 +2125,14 @@ window.BureauFrutiz = (function () {
     if (pseudo) ecran.setAttribute('data-nom', pseudo);
     if (!bouille || ecran.getAttribute('data-bouille') === bouille) return;
     ecran.setAttribute('data-bouille', bouille);
-    var vieux = ecran.querySelector('img');
+    var vieux = ecran.querySelector('img, canvas.fp-bvig');
     if (vieux) vieux.remove();
-    // `detourer` retire le vert plat sur lequel la capture est peinte
-    // (#E8F8D3, le fond des cartes du forum) : ici c'est le DÉGRADÉ de
-    // l'écran qui doit se voir derrière la bouille, pas un carré pâle.
-    if (window.FPBouilleThumb) {
-      ecran.insertAdjacentHTML('afterbegin', FPBouilleThumb.imgHtml(bouille, 0, { detourer: true }));
-    }
+    // Le moteur JS dessine sur fond TRANSPARENT : c'est le dégradé de l'écran
+    // qui se voit derrière la bouille. (Le cache PNG peignait la capture sur le
+    // vert plat des cartes du forum, d'où le `detourer` qu'il fallait lui
+    // demander — plus rien à détourer ici.)
+    ecran.insertAdjacentHTML('afterbegin', FPBouilleVignette.html(bouille));
+    FPBouilleVignette.brancher(ecran);
   }
   // `CSS.escape` n'est pas partout ; un pseudo n'a de toute façon que des
   // lettres, des chiffres, `_` et `-`, on s'en tient là.
