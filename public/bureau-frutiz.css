@@ -80,7 +80,8 @@ body.bureau-frutiz #app > .panel { display: none !important; }
    margin = 6. Largeur (update 0x6bfbb) : 1370 − cornerX − la zone frusion —
    soit le bord droit MOINS 142 px, minimum 600 (minWidth). Vérifié au pixel
    sur le rendu 1:1 : blanc 0..74, #DDD 74..76, #444 76..78. */
-body.bureau-frutiz #bureau-coin {
+body.bureau-frutiz #bureau-coin,
+body.bureau-frutiz #bureau-coin-noir {
   /* décalée de −2 : le liseré et le contour des bords haut/gauche sortent de
      l'écran, comme la boîte du SWF décalée de −10 — à l'écran, blanc pur. */
   position: absolute; left: calc(var(--cornerX) - 11px); top: -2px; z-index: 2;
@@ -88,7 +89,16 @@ body.bureau-frutiz #bureau-coin {
   box-sizing: border-box; overflow: hidden;
   background: #fff;
   border-radius: 0 0 12px 0;
-  box-shadow: inset 0 0 0 2px #DDDDDD, 0 0 0 2px #444444;
+  box-shadow: inset 0 0 0 2px #DDDDDD;
+}
+/* Le CONTOUR SOMBRE est un clip à part, et plus bas : `drawInterface` le pose
+   dans `mcInterfaceBlack` (profondeur 2) tandis que le liseré et le fond
+   blanc vont dans `mcInterface` (10). Entre les deux vivent `mcTabBlack` (4)
+   et `mcTab` (8) — les onglets. Le trait sombre du bas passe donc SOUS eux,
+   et ce qu'on lit à sa place, c'est la couture grise de l'onglet. */
+body.bureau-frutiz #bureau-coin-noir {
+  z-index: 0; background: none; box-shadow: 0 0 0 2px #444444;
+  pointer-events: none;
 }
 /* L'INTÉRIEUR de la barre, au gabarit d'époque (initFrameSet 0x6bb6c, relevé
    1:1). La barre fait 76 de haut, marge 6 : il reste 64 px de contenu, et
@@ -309,67 +319,156 @@ body.bureau-frutiz #bureau-coin .em-btn[data-e="6"] { order: 6; }
 /* La bannière quotidienne n'a pas cours dans la barre d'époque. */
 body.bureau-frutiz #bureau-coin .daily-banner { display: none; }
 
-/* ── L'ONGLET « Bureau » (MainBarTab #781 ; art extrait tel quel) ─────────
-   mcTab._y = height (76) ; l'onglet est posé à x = id × tabSpace (110) — le
-   premier à 0. L'art vit dans le cadre commun (−17.5, −18)–(105.5, 23.5) :
-   l'élément se place donc à (−17.5, 58) et laisse la barre recouvrir ce qui
-   dépasse en haut (profondeurs du SWF : tabBlack 4 < tab 8 < interface 10).
-   Le label est le champ #190 : Verdana 10 gras #000000, à ~30 px du bord. */
-/* La BARRE : les onglets se posent à `id × tabSpace` (110), le premier à
-   l'origine. La plaque déborde de 17,5 px à gauche de son cadre — d'où le
-   −18,5 de la mise en place. */
+/* ── LES ONGLETS (`MainBarTab` #781) : un onglet S'ÉTIRE ─────────────────
+   Le clip `tab` n'est pas d'une pièce, et c'est toute l'affaire. C'est une
+   PLAQUE étirable au-dessus d'un PIED, doublés d'une silhouette sombre :
+
+       barre (#204 → #203)  120 × 18, de y −18 à 0, posée à (−16, 0) et
+                            écrasée à 0,2222 — 4 px de haut au repos ;
+       bottom (#202)        le PIED (#188, 120 × 23 à 1,5 ; −2,05), avec la
+                            pastille (`ico`) à 17,5 ; 2,95 et le titre
+                            (champ #190) à 37,25 ; 4,3 ;
+       tabFond (#187)       la silhouette sombre — `fondH` sous la plaque,
+                            `fondB` sous le pied. Elle ne vit PAS dans le
+                            clip : `init` l'attache à `bar.mcTabBlack`, un
+                            conteneur posé SOUS toute la rangée.
+
+   La plaque est bornée en bas par `barre._y` et monte de `barre._height` :
+   elle occupe donc `_y − _height` .. `_y`, et ce qui dépasse au-dessus de 0
+   passe sous la barre principale. Trois positions de repos, et une seule
+   règle :
+
+       scrollUp   : barre._y → flActive × 4   (0 rangé, 4 actif)
+       attachMenu : barre._height = tabMenuMargeUp + n × tabMenuSpace
+       scrollDown : barre._y → barre._height  (la plaque descend d'autant)
+
+   Le menu ne se pose donc pas SUR l'onglet : c'est la plaque étirée qui lui
+   fait son fond, et l'onglet descend pour lui laisser la place. D'où les
+   deux variables : `--y` (barre._y) et `--h` (barre._height), que le JS
+   anime au 0,8 ^ tmod d'époque.
+
+   L'origine du clip tombe au bas de la barre principale (mcTab._y = 76), à
+   `cornerX + rang × tabSpace` (110). */
 body.bureau-frutiz #bureau-onglets {
-  position: absolute; left: calc(var(--cornerX) - 18.5px); top: 58px;
-  height: 41.5px; right: 0; z-index: 1; pointer-events: none;
+  position: absolute; left: var(--cornerX); top: 76px;
+  height: 0; right: 0; z-index: 1; pointer-events: none;
 }
-body.bureau-frutiz .fb-onglet {
-  /* le bureau pose ses onglets à cornerX = 8 (mesuré 1:1 : liseré gauche de
-     la plaque à x 6..8, pastille 13..22, bord droit 110..114). */
-  position: absolute; left: 0; top: 0; width: 123px; height: 41.5px;
-  cursor: pointer; pointer-events: auto;
-  background:
-    url('/frutiz/sprites/onglet_corps.svg') left top / 123px 41.5px no-repeat,
-    url('/frutiz/sprites/onglet_fond.svg') left top / 123px 41.5px no-repeat;
+/* `mcTabBlack` : la silhouette de TOUS les onglets, sous TOUS les onglets.
+   Rangée dans le clip de chacun, celle du rang 0 déborderait par-dessus la
+   plaque du rang 1 (les onglets se chevauchent de 13 px). */
+body.bureau-frutiz #bureau-onglets-noir {
+  position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 0;
 }
-/* Un onglet de FENÊTRE porte la pastille de son type — la plaque est alors
-   servie NUE (`onglet_plaque.svg`, le clip d'origine amputé de son orange) et
-   le fruit posé exactement à la place que le groupe occupe dans le SVG :
-   (3.16, 23.90) pour l'encre, soit (1.36, 22.75) pour le cadre 15,85 × 15,05
-   des sprites de fruits. */
-body.bureau-frutiz .fb-onglet[data-slot]:not([data-slot="bureau"]) {
-  /* La pastille se cale sur celle que le dessin de « Bureau » porte en dur —
-     c'est le même clip. Relevé 1:1 sur le rendu Ruffle : l'orange du rang 0
-     est centrée en x 17,5, la banane du rang 1 en 127,5 — un écart de
-     `tabSpace` (110), donc la même place dans chaque onglet. Elle était posée
-     à 1,36, soit 17,7 px trop à gauche : au rang 1 elle passait SOUS la plaque
-     du voisin, qui la mangeait. */
-  background-position: 19.08px 22.75px, left top, left top;
-  background-size: 15.85px 15.05px, 123px 41.5px, 123px 41.5px;
-  background-repeat: no-repeat, no-repeat, no-repeat;
+body.bureau-frutiz .fb-onglet,
+body.bureau-frutiz .fb-onglet-fond {
+  position: absolute; left: 0; top: 0; width: 0; height: 0;
+  --y: 0px; --h: 4px;
 }
-/* L'onglet ACTIF est celui dont l'espace de travail est à l'écran : d'époque
-   il monte de deux pixels et sa plaque se soude au contenu. Les autres
-   restent en retrait. */
-/* L'activation ne change PAS la profondeur d'époque (`activate` ne fait aucun
-   swapDepths) : le rang seul commande l'empilement, et c'est `dessinerOnglets`
-   qui le pose. Ce qu'elle change, c'est la HAUTEUR — et vers le BAS :
-   `MainBarTab.scrollUp` fait tendre `barre._y` vers `flActive * 4`, donc 4 pour
-   l'onglet actif et 0 pour les autres. On le remontait de deux pixels, ce qui
-   décalait toute la rangée de six. */
-body.bureau-frutiz .fb-onglet.actif { top: 4px; }
-body.bureau-frutiz .fb-onglet:not(.actif) { filter: saturate(.85) brightness(.97); }
-/* L'AVERTISSEMENT d'un slot (`Slot.warning`) : une fenêtre s'est ouverte sur
-   le bureau alors qu'un onglet avait la main — l'onglet « Bureau » clignote
-   jusqu'à ce qu'on le rappelle. */
-@keyframes fb-onglet-clignote { 50% { filter: brightness(1.35) saturate(1.6); } }
-body.bureau-frutiz .fb-onglet.clignote { animation: fb-onglet-clignote .7s steps(1) infinite; }
+body.bureau-frutiz .fb-onglet { cursor: pointer; pointer-events: auto; }
+/* L'ARRIVÉE : `init` pose le clip à `_y = −30` et lui donne un `addSlide`
+   vers `pos.y = 0` — l'onglet TOMBE de sous la barre. */
+body.bureau-frutiz .fb-onglet.pose,
+body.bureau-frutiz .fb-onglet-fond.pose { transition: top .3s cubic-bezier(.2, .7, .3, 1); }
+body.bureau-frutiz .fb-onglet i,
+body.bureau-frutiz .fb-onglet-fond i {
+  position: absolute; display: block; pointer-events: none;
+  background-repeat: no-repeat; background-size: 100% 100%;
+}
+/* La silhouette sombre — `updateFond` : fondH suit la plaque, fondB le pied. */
+body.bureau-frutiz .ot-fondh {
+  left: -17.5px; top: calc(var(--y) - var(--h)); width: 123px; height: var(--h);
+  background-image: url('/frutiz/sprites/onglet_fondh.svg');
+}
+body.bureau-frutiz .ot-fondb {
+  left: -17.5px; top: var(--y); width: 122.95px; height: 23.5px;
+  background-image: url('/frutiz/sprites/onglet_fondb.svg');
+}
+/* La plaque étirable, puis le pied. */
+body.bureau-frutiz .ot-barre {
+  left: -16px; top: calc(var(--y) - var(--h)); width: 120px; height: var(--h);
+  background-image: url('/frutiz/sprites/onglet_barre.svg');
+}
+body.bureau-frutiz .ot-pied {
+  left: -16px; top: calc(var(--y) - 2.05px); width: 120px; height: 23px;
+  background-image: url('/frutiz/sprites/onglet_pied.svg');
+}
+/* LA COUTURE : le clip `tab` a un TROISIÈME enfant, la forme #205, posée à
+   (0, 0) à la profondeur 13 — au-dessus du pied (3) ET de la plaque (10).
+   Une bande `#999999` de 123 × 2,5 à cheval sur l'origine (y −0,5 à 2), qui
+   recoud l'onglet au liseré sombre de la barre. Elle ne suit RIEN : ni `--y`
+   ni `--h` ne la touchent, et c'est bien ce que dit le relevé 1:1 — la bande
+   grise court de cornerX au bord droit du dernier onglet, quel que soit
+   l'onglet actif. */
+body.bureau-frutiz .fb-onglet .ot-couture {
+  left: -17.5px; top: -0.5px; width: 123px; height: 2.5px; z-index: 1;
+  background-image: url('/frutiz/sprites/onglet_couture.svg');
+}
+/* LA PASTILLE est un BOUTON : `MainBarTab.init` accroche `bottom.but`, dont
+   l'`onPress` déroule le menu du slot. `ico` est ancré à (17,5 ; 2,95) dans
+   le pied — soit x 0 dans le repère du clip — et le fruit lui-même occupe,
+   DANS ce clip, le cadre (1,35 ; 1,7)–15,85 × 15,05. D'où le (1,35 ;
+   `--y` + 4,65) : le relevé 1:1 pose l'orange du rang 0 actif en y 86..96. */
+body.bureau-frutiz .fb-onglet-ico {
+  position: absolute; left: 1.35px; top: calc(var(--y) + 4.65px);
+  width: 15.85px; height: 15.05px; padding: 0; border: 0;
+  background: transparent no-repeat left top / 15.85px 15.05px;
+  cursor: pointer; z-index: 2;
+}
+/* LE TITRE : le champ #190 du pied, à (37,25 ; 4,3) — soit, le pied étant
+   posé à −17,5, x 19,75 dans le repère du clip. Verdana 10 gras noir. */
 body.bureau-frutiz .fb-onglet span {
-  /* les glyphes d'époque : « Bureau » à x ≈ 30 de l'écran, centré dans la
-     plaque (écran 78..100) — soit, dans l'élément, (39.5, bande à ~84..94). */
-  position: absolute; left: 39.5px; top: 22px; right: 8px; height: 20px; line-height: 20px;
+  position: absolute; left: 19.75px; top: calc(var(--y) + 4.3px);
+  width: 82.85px; height: 16px; line-height: 16px;
   font: 700 10px Verdana, Arial, sans-serif; color: #000000;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   user-select: none; -webkit-user-select: none;
+}
+/* LE MENU (`MainBarTab.attachMenu`) : il ne flotte pas au curseur et n'a pas
+   de fond à lui — les entrées sont attachées DANS le clip, à `menuMc._y =
+   barre._y`, et c'est la plaque étirée qui leur sert de plaque. Chaque
+   `butText` fait 100 × tabMenuSpace, marge gauche 4, et se pose à
+   `_y = −(i × tabMenuSpace + 16)` : l'index 0 EN BAS. `FPTab.getMenu` rendant
+   [« Vers bureau », « Fermer »], on lit donc, de haut en bas, « Fermer » puis
+   « Vers bureau ». */
+body.bureau-frutiz .fb-onglet .ot-menu {
+  position: absolute; top: var(--y); height: 0;
+  z-index: 3; pointer-events: none;
+}
+body.bureau-frutiz .fb-onglet .ot-menu button {
+  position: absolute; left: 0;
+  padding: 0; border: 0; background: none; pointer-events: auto;
+  font: 700 11px Verdana, Arial, sans-serif; color: #335511;
+  text-align: left; cursor: pointer; white-space: nowrap;
+}
+body.bureau-frutiz .fb-onglet .ot-menu button:hover { color: #000000; }
+/* L'AVERTISSEMENT d'un slot (`MainBarTab.warning`) : un message est arrivé
+   dans une conversation qu'on ne regarde pas. `addColorFlash` alterne toutes
+   les 500 ms entre `FEMC.setColor` et `FEMC.killColor` — soit une teinte de
+   `0xFFB1AB` à 30 %, une demi-seconde sur deux. Une teinte, pas un
+   clignotement de luminosité : le calque rose à 30 % d'opacité donne
+   exactement `fond × 0,7 + rose × 0,3`, et le masque le confine au DESSIN
+   (l'onglet garde ses coins transparents). */
+@keyframes fb-onglet-clignote {
+  0%, 49.99% { opacity: 0; }
+  50%, 100%  { opacity: .3; }
+}
+body.bureau-frutiz .fb-onglet .ot-teinte {
+  background: #FFB1AB; opacity: 0; z-index: 4;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+}
+body.bureau-frutiz .fb-onglet .ot-teinte.ot-barre {
+  -webkit-mask-image: url('/frutiz/sprites/onglet_barre.svg');
+  mask-image: url('/frutiz/sprites/onglet_barre.svg');
+  background-image: none;
+}
+body.bureau-frutiz .fb-onglet .ot-teinte.ot-pied {
+  -webkit-mask-image: url('/frutiz/sprites/onglet_pied.svg');
+  mask-image: url('/frutiz/sprites/onglet_pied.svg');
+  background-image: none;
+}
+body.bureau-frutiz .fb-onglet.clignote .ot-teinte {
+  animation: fb-onglet-clignote 1s steps(1, end) infinite;
 }
 
 /* ── UNE FENÊTRE EN ONGLET ────────────────────────────────────────────────
@@ -397,33 +496,6 @@ body.bureau-frutiz .fen.fen-glisse {
    bureau s'escamotent avec lui. */
 body.bureau-frutiz.fb-onglet-actif #bureau,
 body.bureau-frutiz.fb-onglet-actif .fen:not(.fen-onglet-vue) { display: none; }
-
-/* LA PASTILLE de l'onglet est un BOUTON : `MainBarTab.init` accroche
-   `bottom.but`, dont l'`onPress` déroule le menu du slot. Sa place est celle
-   que le dessin lui donne dans la plaque — (1,36 ; 22,75), 15,85 × 15,05 —
-   et elle est TRANSPARENTE : c'est le fond de l'onglet qui porte l'image. */
-body.bureau-frutiz .fb-onglet-ico {
-  position: absolute; left: 19.08px; top: 22.75px; width: 15.85px; height: 15.05px;
-  padding: 0; border: 0; background: transparent; cursor: pointer; z-index: 2;
-}
-/* Le menu d'un onglet (`MainBarTab.attachMenu`) : il ne flotte pas au
-   curseur, il se DÉROULE dans la barre — l'onglet descend de
-   `tabMenuMargeUp + n × tabMenuSpace` et le menu occupe la place libérée. */
-body.bureau-frutiz .fb-onglet.menu-ouvert { top: var(--menu-h); }
-body.bureau-frutiz #fb-menu-onglet {
-  /* La rangée d'onglets est posée 18 px plus haut que la plaque visible (le
-     cadre du clip déborde vers le haut, sous la barre qui l'écrête) : le menu
-     part donc de 18, c'est-à-dire du bord bas de la barre. */
-  position: absolute; top: 18px; z-index: 600; box-sizing: border-box;
-  background: #FFFFFF; border: 1px solid #444444; border-radius: 0 0 3px 3px;
-  border-top: 0; pointer-events: auto;
-}
-body.bureau-frutiz #fb-menu-onglet button {
-  display: block; width: 100%; padding: 0 6px; border: 0; background: none;
-  font: 700 11px Verdana, Arial, sans-serif; color: #335511; text-align: left;
-  line-height: 18px; cursor: pointer; white-space: nowrap;
-}
-body.bureau-frutiz #fb-menu-onglet button:hover { background: #CCF599; }
 
 /* ── LE LECTEUR FRUSION (clip `frusion` #324, aplati tel quel) ────────────
    Ce n'est pas un conteneur vide : sa première image porte TOUT le meuble —
@@ -675,8 +747,11 @@ body.bureau-frutiz #side-list {
   background: linear-gradient(to right,
     #FFFFFF 0 calc(var(--cornerX) - 3px), #DDDDDD calc(var(--cornerX) - 3px) var(--cornerX));
 }
+/* L'OMBRE passe SOUS la barre — et donc sous les onglets, qui vivent DEDANS
+   (`mcTab` est un enfant de la barre). Au même z-index que la rangée
+   d'onglets, elle traversait la plaque d'un trait sombre de 2 px. */
 body.bureau-frutiz #side-list-ombre {
-  position: absolute; left: var(--cornerX); top: 0; bottom: 0; width: 2px; z-index: 1;
+  position: absolute; left: var(--cornerX); top: 0; bottom: 0; width: 2px; z-index: 0;
   background: #444444;
 }
 /* Le contenu du panneau. `buildList` (0xa1038) masque la liste à

@@ -1955,73 +1955,184 @@ window.BureauFrutiz = (function () {
   //     d'icônes : passer sur un onglet escamote le bureau entier ;
   //   · `FPTab.getMenu()` donne le menu de l'onglet : « Vers bureau »
   //     (`moveToDesktop`) et « Fermer » (`tryToClose`).
+  // ── LA GÉOMÉTRIE D'UN ONGLET (`MainBarTab`, sprite #781) ──────────────
+  //
+  // Le clip `tab` n'est pas d'une pièce : c'est une PLAQUE étirable (`barre`)
+  // au-dessus d'un PIED (`bottom`), doublés d'une silhouette sombre
+  // (`tabFond`) que `init` attache non pas au clip mais à `bar.mcTabBlack` —
+  // un conteneur posé SOUS toute la rangée.
+  //
+  // La plaque est bornée en BAS par `barre._y` et monte de `barre._height` :
+  // elle occupe `_y − _height` .. `_y`, et ce qui dépasse au-dessus de 0
+  // passe sous la barre principale. Le pied la suit (`bottom._y = barre._y`).
+  // D'où les trois positions de repos :
+  //
+  //     scrollUp   : barre._y → flActive × 4 ; à l'arrivée _height = _y et
+  //                  `removeMenu()` — l'onglet rangé est plat, l'actif garde
+  //                  4 px de plaque qui le raccordent à la barre ;
+  //     activate   : barre._height = max(4, _height) puis scrollDown ;
+  //     attachMenu : barre._height = tabMenuMargeUp + n × tabMenuSpace, et
+  //                  scrollDown fait DESCENDRE l'onglet d'autant.
+  //
+  // Le menu ne se pose donc pas SUR l'onglet : les entrées sont attachées
+  // DANS le clip (`menuMc`, à `_y = barre._y`), et c'est la plaque étirée qui
+  // leur sert de fond. C'était là tout l'écart avec le portage précédent, qui
+  // posait un panneau blanc par-dessus.
+  //
+  // Les deux défilements sont la même interpolation, celle de tout le SWF :
+  // `v = v × 0,8^tmod + cible × (1 − 0,8^tmod)`, battue par un
+  // `setInterval(…, 25)`. On garde le pas de 25 ms comme unité de tmod : la
+  // vitesse est celle d'époque, quelle que soit la cadence d'affichage.
+  var TAB_ESPACE = 110;                 // _global.main.tabSpace
+  var TAB_PLAQUE = 4;                   // la plaque au repos (yscale 0,2222 de 18)
+  var TAB_ARRIVEE = -30;                // `init` : this._y = −30, puis addSlide vers 0
+  var MENU_ESPACE = 18, MENU_MARGE_HAUT = 8, MENU_MARGE_GAUCHE = 4, MENU_LARGEUR = 100;
   var slots = [];                       // [{ id, titre, fruit, panneau }] — 'bureau' en tête
   var slotActif = 'bureau';
   var ongletBureau = null;
+  var ongletOuvert = null;              // celui dont le menu est déroulé
+
+  function pieceOnglet(cls) {
+    var i = document.createElement('i');
+    i.className = cls;
+    return i;
+  }
+
+  // `updateFond` : la silhouette recopie `barre._y`, `barre._height` et
+  // `bottom._y`. Ici les trois tiennent dans deux variables.
+  function poserOnglet(o) {
+    var y = o.etat.y.toFixed(2) + 'px', h = o.etat.h.toFixed(2) + 'px';
+    o.style.setProperty('--y', y); o.style.setProperty('--h', h);
+    o.fond.style.setProperty('--y', y); o.fond.style.setProperty('--h', h);
+  }
+
+  function animerOnglet(o) {
+    var e = o.etat;
+    if (e.anim) return;                 // la boucle en cours suivra la cible
+    e.dernier = 0;
+    var pas = function (t) {
+      if (!o.parentNode) { e.anim = null; return; }
+      // Le premier pas vaut un tick d'époque ; ensuite on mesure, borné pour
+      // qu'un onglet resté en arrière-plan ne saute pas d'un coup.
+      var dt = e.dernier ? Math.min(t - e.dernier, 200) : 25;
+      e.dernier = t;
+      var r = Math.pow(0.8, dt / 25);
+      e.y = e.y * r + e.cible * (1 - r);
+      if (Math.round(e.y) === Math.round(e.cible)) {
+        e.y = e.cible;
+        // `scrollUp` : arrivé, il rabat la plaque sur le pied — et c'est LUI
+        // qui retire le menu, jamais avant : la plaque le porte jusqu'en haut.
+        // (`scrollDown`, lui, arrive à `cible = _height` et n'y touche pas.)
+        if (e.h > e.cible) e.h = e.cible;
+        if (ongletOuvert !== o) retirerMenu(o);
+        e.anim = null;
+        poserOnglet(o);
+        return;
+      }
+      poserOnglet(o);
+      e.anim = requestAnimationFrame(pas);
+    };
+    e.anim = requestAnimationFrame(pas);
+  }
 
   function creerOnglet(id, titre, fruit) {
     var o = document.createElement('div');
     o.className = 'fb-onglet';
     o.setAttribute('data-slot', id);
-    // La pastille : c'est `getIconLabel()` du slot qui la choisit — l'orange
-    // du bureau, la banane d'un explorateur, la fraise d'un salon… La plaque
-    // extraite du SWF porte l'orange en dur : on sert donc la plaque NUE
-    // (onglet_plaque.svg) et on pose la pastille par-dessus, à la place exacte
-    // qu'elle occupe dans le clip d'origine.
-    if (id !== 'bureau') {
-      o.style.backgroundImage = 'url(' + fruitUrl(fruit) + '), '
-        + "url('/frutiz/sprites/onglet_plaque.svg'), url('/frutiz/sprites/onglet_fond.svg')";
-    }
+    // `tabFond` va dans `mcTabBlack`, pas dans le clip : rangée dans
+    // l'onglet, la silhouette du rang 0 déborderait par-dessus la plaque du
+    // rang 1 (les onglets se chevauchent de treize pixels).
+    var fond = document.createElement('div');
+    fond.className = 'fb-onglet-fond';
+    fond.setAttribute('data-slot', id);
+    fond.appendChild(pieceOnglet('ot-fondh'));
+    fond.appendChild(pieceOnglet('ot-fondb'));
+    o.fond = fond;
+    o.appendChild(pieceOnglet('ot-barre'));
+    o.appendChild(pieceOnglet('ot-pied'));
     var lab = document.createElement('span');
     lab.textContent = titre;
     o.appendChild(lab);
-    o.addEventListener('click', function () { activerSlot(id); });
     // LA PASTILLE EST UN BOUTON. `MainBarTab.init` accroche `bottom.but`, et
-    // c'est SON `onPress` qui déroule le menu du slot (`slot.getMenu()`) —
-    // l'onglet descend, le menu prend la place libérée au-dessus de
-    // l'étiquette. On sert donc une vraie zone cliquable à la place exacte que
-    // la pastille occupe dans la plaque (1,36 ; 22,75 — 15,85 × 15,05).
-    if (id !== 'bureau') {
-      var ico = document.createElement('button');
-      ico.type = 'button';
-      ico.className = 'fb-onglet-ico';
-      ico.title = 'Menu de l\'onglet';
-      ico.addEventListener('click', function (e) {
-        e.stopPropagation();                // le clic sur la plaque ACTIVE ; ici, non
-        menuOnglet(id);
-      });
-      o.appendChild(ico);
-      // Le clic droit ouvre le même menu : commodité du portage, sans coût.
-      o.addEventListener('contextmenu', function (e) {
-        e.preventDefault();
-        menuOnglet(id);
-      });
-    }
+    // c'est SON `onPress` qui déroule le menu du slot (`slot.getMenu()`). La
+    // plaque extraite du SWF est NUE : la pastille porte le fruit que
+    // `getIconLabel()` choisit — l'orange du bureau, la banane d'un
+    // explorateur, la fraise d'un salon.
+    var ico = document.createElement('button');
+    ico.type = 'button';
+    ico.className = 'fb-onglet-ico';
+    ico.title = 'Menu de l\'onglet';
+    ico.style.backgroundImage = 'url(' + fruitUrl(fruit) + ')';
+    ico.addEventListener('click', function (e) {
+      e.stopPropagation();              // le clic sur la plaque ACTIVE ; ici, non
+      menuOnglet(id);
+    });
+    o.appendChild(ico);
+    // La COUTURE (#205, profondeur 13) : la bande grise qui recoud l'onglet au
+    // liseré de la barre, par-dessus la plaque comme par-dessus le pied.
+    o.appendChild(pieceOnglet('ot-couture'));
+    // Les deux calques de `warning()` : une teinte rose masquée par le dessin.
+    o.appendChild(pieceOnglet('ot-teinte ot-barre'));
+    o.appendChild(pieceOnglet('ot-teinte ot-pied'));
+    o.addEventListener('click', function () { activerSlot(id); });
+    // Le clic droit ouvre le même menu : commodité du portage, sans coût.
+    o.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      menuOnglet(id);
+    });
+    o.etat = { y: 0, h: TAB_PLAQUE, cible: 0, anim: null, dernier: 0 };
+    poserOnglet(o);
+    // `init` pose le clip à `_y = −30` et lui donne un `addSlide` vers 0 :
+    // l'onglet TOMBE de sous la barre.
+    o.style.top = TAB_ARRIVEE + 'px';
+    fond.style.top = TAB_ARRIVEE + 'px';
+    $('#bureau-onglets-noir').appendChild(fond);
     $('#bureau-onglets').appendChild(o);
+    requestAnimationFrame(function () {
+      o.classList.add('pose'); fond.classList.add('pose');
+      o.style.top = '0px'; fond.style.top = '0px';
+    });
     return o;
   }
 
-  // `_global.main.tabSpace` : les onglets se posent à `id × 110`, le premier à
-  // l'origine de la barre. La plaque déborde de 17,5 px à gauche de son cadre
-  // (cf. le SVG) — d'où le −18,5 de la mise en place.
+  // `_global.main.tabSpace` : les onglets se posent à `rang × 110`, le premier
+  // à l'origine de la barre (cornerX).
   function dessinerOnglets() {
     var barre = $('#bureau-onglets');
     if (!barre) return;
     var liste = [{ id: 'bureau' }].concat(slots);
-    for (var i = 0; i < barre.children.length; i++) {
-      var o = barre.children[i];
+    var vus = document.querySelectorAll('.fb-onglet');
+    for (var i = 0; i < vus.length; i++) {
+      var o = vus[i];
       var id = o.getAttribute('data-slot');
       var rang = -1;
       for (var j = 0; j < liste.length; j++) if (liste[j].id === id) rang = j;
-      if (rang < 0) { o.remove(); i--; continue; }
-      o.style.left = (rang * 110) + 'px';
+      if (rang < 0) { if (o.fond) o.fond.remove(); o.remove(); continue; }
+      o.style.left = (rang * TAB_ESPACE) + 'px';
+      o.fond.style.left = o.style.left;
       // L'EMPILEMENT. `MainBar.addTab` attache l'onglet à
       // `dp_tab + (tabMax − id × 2)` : plus le rang est GRAND, plus la
       // profondeur est BASSE — le nouvel onglet passe SOUS les précédents, et
       // « Bureau » reste devant. L'activation, elle, ne change pas la
-      // profondeur : elle ne fait que remonter l'onglet de deux pixels.
+      // profondeur : elle ne fait que DESCENDRE l'onglet de quatre pixels.
       o.style.zIndex = String(500 - rang);
-      o.classList.toggle('actif', id === slotActif);
+      o.fond.style.zIndex = o.style.zIndex;
+      var etait = o.classList.contains('actif');
+      var est = (id === slotActif);
+      if (est === etait) continue;
+      o.classList.toggle('actif', est);
+      if (est) {
+        // `activate` : la plaque prend au moins 4 px, puis scrollDown. Un menu
+        // encore déroulé garde sa hauteur ; un menu qu'on vient de refermer
+        // laisse la sienne derrière lui — on vise alors le repos, et c'est
+        // `scrollUp` qui rabattra la plaque en arrivant.
+        o.etat.h = Math.max(TAB_PLAQUE, o.etat.h);
+        o.etat.cible = ongletOuvert === o ? o.etat.h : TAB_PLAQUE;
+      } else {
+        // `deactivate` : flMenu = false, puis scrollUp vers flActive × 4 = 0.
+        o.etat.cible = 0;
+      }
+      animerOnglet(o);
     }
   }
 
@@ -2029,10 +2140,15 @@ window.BureauFrutiz = (function () {
     if (slotActif === id) return;
     var avant = slotActif;
     slotActif = id;
+    // `Slot.deactivate` remet flMenu à faux : changer de slot referme le menu.
+    fermerMenuOnglet();
     // Le bureau s'escamote quand un onglet prend la main (FPDesktop.onDeactivate
     // cache `mcDesk` ET la rangée d'icônes), et revient quand on le rappelle.
     document.body.classList.toggle('fb-onglet-actif', id !== 'bureau');
-    if (id === 'bureau' && ongletBureau) ongletBureau.classList.remove('clignote');
+    // `Slot.onActivate` : « if (this.flWarning) this.onStopWarning() » — le
+    // slot qui prend la main cesse d'avertir (`MainBarTab.stopWarning`).
+    var neuf = document.querySelector('.fb-onglet[data-slot="' + id + '"]');
+    if (neuf) neuf.classList.remove('clignote');
     for (var i = 0; i < slots.length; i++) {
       var s = slots[i];
       var f = fenetres[s.panneau];
@@ -2040,6 +2156,47 @@ window.BureauFrutiz = (function () {
       f.fen.classList.toggle('fen-onglet-vue', s.id === id);
     }
     if (avant !== id) dessinerOnglets();
+  }
+
+  /**
+   * `Slot.warning()` — un slot réclame l'attention.
+   *
+   * Le garde-fou est dans `Slot.warning` lui-même : un slot ACTIF n'avertit
+   * jamais (« if (this.flActive) return false »), et un slot déjà en alerte
+   * ne relance pas l'animation (« if (this.flWarning) return false »).
+   * `FPTab.onWarning` appelle alors `MainBarTab.warning()`, qui teinte
+   * l'onglet de `0xFFB1AB` à 30 %, une demi-seconde sur deux.
+   */
+  function avertirSlot(id) {
+    if (!actif || !id || id === slotActif) return false;
+    var o = document.querySelector('.fb-onglet[data-slot="' + id + '"]');
+    if (!o || o.classList.contains('clignote')) return false;
+    o.classList.add('clignote');
+    return true;
+  }
+
+  /**
+   * Un message est arrivé dans une conversation (`box.Chat.onSend`).
+   *
+   *     if (cmode == "private" || cmode == "channel" && passwd != undefined) {
+   *       if (mode == "desktop") this.activate();
+   *       this.slot.warning();
+   *     }
+   *
+   * D'époque chaque conversation a SA fenêtre ; le light n'en a qu'une, où
+   * salons et discussions privées défilent tour à tour. C'est donc l'onglet
+   * qui la porte qui clignote — ou celui du BUREAU si elle y est restée,
+   * exactement comme le fait `box.Chat` en remontant d'abord la fenêtre au
+   * premier plan avant d'avertir le slot.
+   *
+   * (Quirk d'origine, laissé de côté : `onSend` exige `passwd != undefined`
+   * pour un salon, `onSendUser` exige l'inverse — les deux gardes se
+   * contredisent. Le light avertit dans les deux cas, salons et privés.)
+   */
+  function avertirConversation() {
+    var f = fenetres['chat-panel'];
+    if (!f) return false;
+    return avertirSlot(f.onglet || 'bureau');
   }
 
   /**
@@ -2095,26 +2252,48 @@ window.BureauFrutiz = (function () {
     majBouilles();
   }
 
-  // ── LE MENU D'UN ONGLET (`MainBarTab.attachMenu`, 0x6f1d8) ────────────
+  // ── LE MENU D'UN ONGLET (`MainBarTab.attachMenu`) ─────────────────────
   //
-  // Ce n'est pas un menu contextuel flottant : il se DÉROULE dans la barre.
-  // `attachMenu` étire la plaque de l'onglet vers le haut —
+  // Ce n'est pas un menu contextuel flottant, et ce n'est pas non plus un
+  // panneau posé sur l'onglet : `attachMenu` crée un clip VIDE dans l'onglet,
+  // étire la plaque —
   //
   //     barre._height = tabMenuMargeUp + n × tabMenuSpace     (8 + n × 18)
   //
-  // — puis `scrollDown` fait descendre l'onglet de cette hauteur-là, ce qui
-  // dégage la place au-dessus de l'étiquette. Les entrées sont posées à
-  // `_y = −(i × tabMenuSpace + 16)`, l'index 0 EN BAS : `FPTab.getMenu` rendant
-  // [« Vers bureau », « Fermer »], on lit donc, de haut en bas, « Fermer »
-  // puis « Vers bureau ». Largeur 100, gras, marge gauche 4.
-  var MENU_ESPACE = 18, MENU_MARGE_HAUT = 8, MENU_MARGE_GAUCHE = 4, MENU_LARGEUR = 100;
-  var ongletOuvert = null;
+  // — puis `scrollDown` fait descendre l'onglet jusqu'à cette hauteur, ce qui
+  // dégage la place au-dessus de l'étiquette. Les entrées sont des `butText`
+  // de 100 × tabMenuSpace, gras, posées à `_x = tabMenuMargeLeft` (4) et
+  // `_y = −(i × tabMenuSpace + 16)` : l'index 0 EN BAS. `FPTab.getMenu`
+  // rendant [« Vers bureau », « Fermer »], on lit donc, de haut en bas,
+  // « Fermer » puis « Vers bureau ».
+  function menuDuSlot(idOnglet) {
+    // `FPDesktop` n'a pas de menu : `bottom.but.onPress` teste
+    // `getMenu().length > 0` et se contente d'activer le slot.
+    if (idOnglet === 'bureau') return [];
+    return [
+      { titre: 'Vers bureau', faire: function () { versBureau(idOnglet); } },
+      { titre: 'Fermer', faire: function () {
+        var s = null;
+        for (var i = 0; i < slots.length; i++) if (slots[i].id === idOnglet) s = slots[i];
+        if (s) fermerFenetre(s.panneau);
+      } },
+    ];
+  }
+
+  function retirerMenu(o) {
+    var m = o.querySelector('.ot-menu');
+    if (m) m.remove();
+  }
 
   function fermerMenuOnglet() {
-    var m = $('#fb-menu-onglet');
-    if (m) m.remove();
-    if (ongletOuvert) ongletOuvert.classList.remove('menu-ouvert');
+    var o = ongletOuvert;
     ongletOuvert = null;
+    if (!o) return;
+    o.classList.remove('menu-ouvert');
+    // `bottom.but.onPress` quand flMenu : scrollUp. C'est LUI qui retire le
+    // menu — à l'arrivée seulement : la plaque le porte jusqu'en haut.
+    o.etat.cible = o.classList.contains('actif') ? TAB_PLAQUE : 0;
+    animerOnglet(o);
   }
 
   function menuOnglet(idOnglet) {
@@ -2123,26 +2302,20 @@ window.BureauFrutiz = (function () {
     // Un second appui referme, comme `bottom.but.onPress` quand `flMenu`.
     if (ongletOuvert === onglet) { fermerMenuOnglet(); return; }
     fermerMenuOnglet();
-    var entrees = [
-      { titre: 'Vers bureau', faire: function () { versBureau(idOnglet); } },
-      { titre: 'Fermer', faire: function () {
-        var s = null;
-        for (var i = 0; i < slots.length; i++) if (slots[i].id === idOnglet) s = slots[i];
-        if (s) fermerFenetre(s.panneau);
-      } },
-    ];
+    var entrees = menuDuSlot(idOnglet);
+    if (!entrees.length) { activerSlot(idOnglet); return; }
+    retirerMenu(onglet);
     var m = document.createElement('div');
-    m.id = 'fb-menu-onglet';
-    m.style.left = (parseFloat(onglet.style.left || 0) + MENU_MARGE_GAUCHE) + 'px';
-    m.style.width = MENU_LARGEUR + 'px';
-    m.style.paddingTop = MENU_MARGE_HAUT + 'px';
-    m.style.zIndex = String(600);
-    // De haut en bas : l'index le plus grand d'abord (l'ordre des `_y`).
-    entrees.slice().reverse().forEach(function (e) {
+    m.className = 'ot-menu';
+    m.style.left = MENU_MARGE_GAUCHE + 'px';
+    entrees.forEach(function (e, i) {
       var b = document.createElement('button');
       b.type = 'button';
       b.textContent = e.titre;
+      b.style.top = (-(i * MENU_ESPACE + 16)) + 'px';
+      b.style.width = MENU_LARGEUR + 'px';
       b.style.height = MENU_ESPACE + 'px';
+      b.style.lineHeight = MENU_ESPACE + 'px';
       b.addEventListener('click', function (ev) {
         ev.stopPropagation();
         fermerMenuOnglet();
@@ -2150,9 +2323,10 @@ window.BureauFrutiz = (function () {
       });
       m.appendChild(b);
     });
-    $('#bureau-onglets').appendChild(m);
-    onglet.style.setProperty('--menu-h',
-      (MENU_MARGE_HAUT + entrees.length * MENU_ESPACE) + 'px');
+    onglet.appendChild(m);
+    onglet.etat.h = MENU_MARGE_HAUT + entrees.length * MENU_ESPACE;
+    onglet.etat.cible = onglet.etat.h;
+    animerOnglet(onglet);
     onglet.classList.add('menu-ouvert');
     ongletOuvert = onglet;
     setTimeout(function () {
@@ -2378,9 +2552,7 @@ window.BureauFrutiz = (function () {
     // ne se met pas au premier plan tout seul, il AVERTIT — `FPDesktop.addBox`
     // fait `if(!this.flActive) this.warning()`, et l'onglet « Bureau »
     // clignote jusqu'à ce qu'on le rappelle.
-    if (!f.onglet && slotActif !== 'bureau' && ongletBureau) {
-      ongletBureau.classList.add('clignote');
-    }
+    if (!f.onglet) avertirSlot('bureau');
     // #evt-panel sert deux rubriques : la fenêtre prend le titre demandé.
     f.txt.textContent = rub.titre;
     f.pastille.style.backgroundImage = 'url(' + fruitUrl(rub.fruit) + ')';
@@ -2735,9 +2907,11 @@ window.BureauFrutiz = (function () {
 
   function posterRepli() {
     var coin = $('#bureau-coin');
+    var coinNoir = $('#bureau-coin-noir');
     var onglets = $('#bureau-onglets');
     var t = 'translateY(' + repli.barre.toFixed(2) + 'px)';
     if (coin) coin.style.transform = t;
+    if (coinNoir) coinNoir.style.transform = t;   // le contour suit la barre
     // `mcTab` est un enfant de la barre (`_y = height`) : la rangée d'onglets
     // monte avec elle.
     if (onglets) onglets.style.transform = t;
@@ -2874,6 +3048,13 @@ window.BureauFrutiz = (function () {
     haut.id = 'bureau-haut';
     var coin = document.createElement('div');
     coin.id = 'bureau-coin';
+    // `drawInterface` dessine la barre en DEUX clips, et pas au même étage :
+    // le contour sombre dans `mcInterfaceBlack` (profondeur 2), le liseré et
+    // le fond blanc dans `mcInterface` (10). Entre les deux, `mcTabBlack` (4)
+    // et `mcTab` (8) — les onglets. Le liseré du bas passe donc SOUS eux, et
+    // c'est la couture de l'onglet qu'on lit à sa place.
+    var coinNoir = document.createElement('div');
+    coinNoir.id = 'bureau-coin-noir';
     app.appendChild(bureau);
     app.appendChild(couche);
     app.appendChild(haut);
@@ -2890,8 +3071,14 @@ window.BureauFrutiz = (function () {
     // la fois : `activate()` désactive le précédent.
     var barreOnglets = document.createElement('div');
     barreOnglets.id = 'bureau-onglets';
-    haut.appendChild(barreOnglets);    // sous la barre (tabBlack 4 < tab 8 < interface 10)
-    haut.appendChild(coin);
+    // `mcTabBlack` : la silhouette sombre de TOUS les onglets, sous TOUS les
+    // onglets (`init` y attache « tabFond », pas dans le clip de l'onglet).
+    var noirOnglets = document.createElement('div');
+    noirOnglets.id = 'bureau-onglets-noir';
+    barreOnglets.appendChild(noirOnglets);
+    haut.appendChild(coinNoir);        // mcInterfaceBlack (2)
+    haut.appendChild(barreOnglets);    // mcTabBlack (4) puis mcTab (8)
+    haut.appendChild(coin);            // mcInterface (10)
     ongletBureau = creerOnglet('bureau', 'Bureau', null);
     dessinerOnglets();
 
@@ -2983,6 +3170,10 @@ window.BureauFrutiz = (function () {
     // connectés, et une émotion joue dans l'écran de la personne.
     ajusterJournal: ajusterJournal,
     retitrer: retitrer,
+    // `box.Chat.onSend` : une trame de conversation avertit son slot. L'onglet
+    // qui porte la fenêtre des salons (ou celui du bureau si elle y est
+    // restée) se teinte de rose tant qu'on ne l'a pas rappelé.
+    avertirConversation: avertirConversation,
     majBouilles: majBouilles,
     majListeConnectes: majListeConnectes,
     ecranDe: ecranDe,

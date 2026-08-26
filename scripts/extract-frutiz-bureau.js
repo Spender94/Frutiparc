@@ -385,6 +385,67 @@ function principal() {
   // 10 #000000 lié à _parent.name) : il ne se dessine pas ici — c'est du
   // texte HTML dans le portage. Les deux SVG partagent le MÊME cadre pour
   // se superposer tels quels.
+  //
+  // ── ET IL S'ÉTIRE ──
+  // Le clip `tab` n'est pas d'une pièce : c'est une PLAQUE au-dessus d'un
+  // PIED, et c'est la plaque qui grandit.
+  //
+  //     barre (#204 → #203)  la plaque : 120 × 18, de y −18 à 0, posée à
+  //                          (−16, 0) et écrasée à 0,2222 — soit 4 px de
+  //                          haut au repos (`activate` : max(4, …)) ;
+  //     bottom (#202)        le PIED : le dessin #188 (120 × 23 à 1,5 ; −2,05),
+  //                          la pastille `ico` (#201) à (17,5 ; 2,95) et le
+  //                          champ du titre (#190) à (37,25 ; 4,3), le tout
+  //                          posé à (−17,5 ; 0,05) ;
+  //     tabFond (#187)       la silhouette sombre, en DEUX morceaux qui
+  //                          suivent : `fondH` (#186) sous la plaque,
+  //                          `fondB` (#184) sous le pied.
+  //
+  // `attachMenu` fait `barre._height = tabMenuMargeUp + n × tabMenuSpace` et
+  // `scrollDown` descend le pied d'autant : le menu ne se pose pas SUR
+  // l'onglet, c'est la plaque étirée qui lui fait son fond. On sort donc les
+  // morceaux séparément — un onglet aplati ne saurait pas s'ouvrir.
+  const ONGLET_PIECES = [
+    // La plaque, à sa taille NATURELLE (18 de haut) : la feuille de style
+    // l'étire du repos (4) à la hauteur du menu (8 + n × 18).
+    { cle: 'onglet_barre', id: 204, brut: true },
+    // Le pied, SANS la pastille ni le titre : la première est un clip à trois
+    // images (posé à part, il change avec le slot), le second du texte.
+    { cle: 'onglet_pied', id: 202, brut: true, sauf: (p) => p.nom === 'ico' || p.nom === 'but' },
+    { cle: 'onglet_fondh', id: 186, brut: true },
+    { cle: 'onglet_fondb', id: 184, brut: true },
+    // LA COUTURE : le clip `tab` a un TROISIÈME enfant, la forme #205, posée à
+    // (0, 0) à la profondeur 13 — donc au-dessus du pied (3) ET de la plaque
+    // (10). Un bandeau de 123 × 2,5 à cheval sur y 0 (de −0,5 à 2), qui vient
+    // recoudre l'onglet au liseré sombre de la barre. C'est lui, la bande
+    // grise du relevé 1:1 juste sous la barre — et pas une teinte du fond.
+    { cle: 'onglet_couture', forme: 205 },
+  ];
+  for (const c of ONGLET_PIECES) {
+    const liste = [];
+    const poses = c.forme !== undefined
+      ? [{ ch: c.forme, M: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 } }]
+      : placementsFrame1(c.id);
+    for (const pose of poses) {
+      if (c.sauf && c.sauf(pose)) continue;
+      const def = boutons.get(pose.ch);
+      if (def) {
+        for (const rec of lireBouton(def).up) {
+          for (const m of morceauxDe({ ch: rec.ch, M: composerTwips(pose.M, rec.M), cx: rec.cx })) liste.push(m);
+        }
+      } else {
+        for (const m of morceauxDe(pose)) liste.push(m);
+      }
+    }
+    const ids = liste.filter((m) => m.shape !== undefined).map((m) => m.shape);
+    chargerFormes(ids.filter((id) => !corpsFormes.has(id)));
+    const r = svgCompose(liste);
+    if (!r) { console.warn('!! pièce d’onglet vide', c.cle); continue; }
+    fs.writeFileSync(path.join(SORTIE, c.cle + '.svg'), r.svg, 'utf8');
+    manifeste[c.cle] = { fichier: c.cle + '.svg', cadre: r.cadre };
+    console.log(c.cle + '.svg', JSON.stringify(r.cadre));
+  }
+
   const ONGLET = [{ cle: 'onglet_fond', id: 187 }, { cle: 'onglet_corps', id: 206 }];
   const morceauxOnglet = new Map();
   const formesOnglet = new Set();

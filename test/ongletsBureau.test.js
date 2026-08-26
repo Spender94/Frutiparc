@@ -35,10 +35,47 @@ test('le nouvel onglet passe SOUS les précédents', () => {
   // `attachMovie("tab", …, dp_tab + (tabMax − r4 × 2))`, r4 = le rang.
   assert.match(JS, /o\.style\.zIndex = String\(500 - rang\)/);
   // Et l'activation ne remonte PAS l'onglet en profondeur. Ce qu'elle change,
-  // c'est la hauteur, et vers le BAS : `scrollUp` fait tendre `barre._y` vers
-  // `flActive * 4` — l'onglet actif descend de quatre pixels.
-  assert.match(CSS, /\.fb-onglet\.actif \{ top: 4px; \}/);
+  // c'est la hauteur de la PLAQUE, et vers le BAS : `activate` porte
+  // `barre._height` à 4 au moins, puis `scrollDown` fait tendre `barre._y`
+  // vers cette hauteur ; `deactivate` rappelle `scrollUp` vers `flActive × 4`,
+  // c'est-à-dire zéro.
+  assert.match(JS, /o\.etat\.h = Math\.max\(TAB_PLAQUE, o\.etat\.h\);\s*\n\s*o\.etat\.cible = ongletOuvert === o \? o\.etat\.h : TAB_PLAQUE;/);
+  assert.match(JS, /\} else \{[\s\S]{0,220}?o\.etat\.cible = 0;\s*\n\s*\}\s*\n\s*animerOnglet\(o\);/);
   assert.doesNotMatch(CSS, /\.fb-onglet\.actif \{[^}]*z-index/);
+});
+
+test('l’onglet est fait de PIÈCES qui s’étirent, pas d’une image', () => {
+  // Le clip `tab` (#206) : la plaque `barre` (#204, écrasée à 0,2222 — 4 px),
+  // le pied `bottom` (#202) et, au-dessus des deux, la couture #205. La
+  // silhouette `tabFond` (#187) vit à part, dans `mcTabBlack`.
+  for (const p of ['ot-barre', 'ot-pied', 'ot-couture', 'ot-fondh', 'ot-fondb']) {
+    assert.match(JS, new RegExp("pieceOnglet\\('" + p + "'"), p + ' manque à l’onglet');
+  }
+  // La plaque occupe `barre._y − barre._height` .. `barre._y` : deux variables,
+  // pas une. Le pied la suit (`bottom._y = barre._y`), et la couture ne suit
+  // rien du tout — elle est posée à (0, 0) dans le clip.
+  assert.match(CSS, /\.ot-barre \{\s*\n\s*left: -16px; top: calc\(var\(--y\) - var\(--h\)\); width: 120px; height: var\(--h\);/);
+  assert.match(CSS, /\.ot-pied \{\s*\n\s*left: -16px; top: calc\(var\(--y\) - 2\.05px\); width: 120px; height: 23px;/);
+  assert.match(CSS, /\.ot-couture \{\s*\n\s*left: -17\.5px; top: -0\.5px; width: 123px; height: 2\.5px;/);
+  // `updateFond` : fondH recopie la plaque, fondB suit le pied.
+  assert.match(CSS, /\.ot-fondh \{\s*\n\s*left: -17\.5px; top: calc\(var\(--y\) - var\(--h\)\); width: 123px; height: var\(--h\);/);
+  assert.match(CSS, /\.ot-fondb \{\s*\n\s*left: -17\.5px; top: var\(--y\); width: 122\.95px; height: 23\.5px;/);
+  // Et le fond va dans SON conteneur : rangée dans l'onglet, la silhouette du
+  // rang 0 déborderait par-dessus la plaque du rang 1.
+  assert.match(JS, /noirOnglets\.id = 'bureau-onglets-noir'/);
+  assert.match(JS, /\$\('#bureau-onglets-noir'\)\.appendChild\(fond\)/);
+});
+
+test('le liseré sombre de la barre passe SOUS les onglets', () => {
+  // `drawInterface` dessine en deux clips : `mcInterfaceBlack` (profondeur 2)
+  // pour le contour sombre, `mcInterface` (10) pour le liseré et le blanc.
+  // Entre les deux, `mcTabBlack` (4) et `mcTab` (8). D'où la couture grise
+  // relevée 1:1 au ras de la barre — et non le trait noir.
+  assert.match(JS, /coinNoir\.id = 'bureau-coin-noir'/);
+  assert.match(JS, /haut\.appendChild\(coinNoir\);[^\n]*\n\s*haut\.appendChild\(barreOnglets\);[^\n]*\n\s*haut\.appendChild\(coin\);/);
+  assert.match(CSS, /#bureau-coin-noir \{\s*\n\s*z-index: 0; background: none; box-shadow: 0 0 0 2px #444444;/);
+  // L'ombre de la bande des contacts passe elle aussi dessous.
+  assert.match(CSS, /#side-list-ombre \{[\s\S]*?z-index: 0;/);
 });
 
 test('replier RANGE la fenêtre — seul Ctrl y va tout de suite', () => {
@@ -62,16 +99,56 @@ test('la pastille de l’onglet ouvre le menu, « Fermer » en tête', () => {
   assert.match(JS, /MENU_ESPACE = 18, MENU_MARGE_HAUT = 8, MENU_MARGE_GAUCHE = 4, MENU_LARGEUR = 100/);
   // `getMenu` rend [Vers bureau, Fermer] et les pose à `_y = −(i × 18 + 16)` :
   // l'index 0 EN BAS. De haut en bas, on lit donc Fermer puis Vers bureau.
-  assert.match(JS, /entrees\.slice\(\)\.reverse\(\)\.forEach/);
-  // L'onglet DESCEND de la hauteur du menu, qui prend sa place.
-  assert.match(JS, /onglet\.style\.setProperty\('--menu-h',/);
-  assert.match(CSS, /\.fb-onglet\.menu-ouvert \{ top: var\(--menu-h\); \}/);
-  // La pastille est à la place que le dessin lui donne dans la plaque.
-  // Relevé 1:1 : la pastille est centrée en x 17,5 dans chaque onglet — celle
-  // du rang 1 tombe donc en 127,5, soit 19,08 dans le cadre du dessin. À 1,36
-  // elle passait sous la plaque du voisin.
-  assert.match(CSS, /\.fb-onglet-ico \{\s*position: absolute; left: 19\.08px; top: 22\.75px;/);
-  assert.match(CSS, /background-position: 19\.08px 22\.75px, left top, left top;/);
+  assert.match(JS, /b\.style\.top = \(-\(i \* MENU_ESPACE \+ 16\)\) \+ 'px';/);
+  // Le menu n'est PAS un panneau posé sur l'onglet : `attachMenu` étire la
+  // plaque à `tabMenuMargeUp + n × tabMenuSpace`, `scrollDown` fait descendre
+  // l'onglet d'autant, et les entrées vivent DANS le clip — c'est la plaque
+  // étirée qui leur sert de fond.
+  assert.match(JS, /onglet\.etat\.h = MENU_MARGE_HAUT \+ entrees\.length \* MENU_ESPACE;\s*\n\s*onglet\.etat\.cible = onglet\.etat\.h;/);
+  assert.match(JS, /m\.className = 'ot-menu'/);
+  assert.doesNotMatch(CSS, /#fb-menu-onglet/);
+  assert.doesNotMatch(CSS, /--menu-h/);
+  // Et c'est `scrollUp` qui le retire, à l'arrivée seulement : la plaque le
+  // porte jusqu'en haut.
+  assert.match(JS, /if \(e\.h > e\.cible\) e\.h = e\.cible;\s*\n\s*if \(ongletOuvert !== o\) retirerMenu\(o\);/);
+  // La pastille est à la place que le dessin lui donne : `ico` ancré à
+  // (17,5 ; 2,95) dans le pied — soit x 0 dans le clip — et le fruit occupe,
+  // dans ce clip, le cadre (1,35 ; 1,7). Relevé 1:1 : l'orange de l'onglet
+  // actif tombe en y 86..96, et son bord gauche en x 12.
+  assert.match(CSS, /\.fb-onglet-ico \{\s*\n\s*position: absolute; left: 1\.35px; top: calc\(var\(--y\) \+ 4\.65px\);/);
+  // Le bureau n'a pas de menu (`getMenu` vide) : sa pastille ne fait
+  // qu'activer le slot, comme `bottom.but.onPress` quand la liste est vide.
+  assert.match(JS, /if \(idOnglet === 'bureau'\) return \[\];/);
+  assert.match(JS, /if \(!entrees\.length\) \{ activerSlot\(idOnglet\); return; \}/);
+});
+
+test('l’onglet d’une conversation CLIGNOTE rose à l’arrivée d’un message', () => {
+  // `MainBarTab.warning` : addColorFlash("warning", this, { color: 16755627,
+  // alpha: 30, tempo: 500 }) — 0xFFB1AB à 30 %, et `colorFlash` alterne
+  // `setColor`/`killColor` à chaque top : une demi-seconde sur deux.
+  assert.match(CSS, /@keyframes fb-onglet-clignote \{\s*\n\s*0%, 49\.99% \{ opacity: 0; \}\s*\n\s*50%, 100%\s*\{ opacity: \.3; \}/);
+  assert.match(CSS, /\.ot-teinte \{\s*\n\s*background: #FFB1AB; opacity: 0; z-index: 4;/);
+  assert.match(CSS, /\.fb-onglet\.clignote \.ot-teinte \{\s*\n\s*animation: fb-onglet-clignote 1s steps\(1, end\) infinite;/);
+  // Une TEINTE, pas un clignotement de luminosité : le calque rose est masqué
+  // par le dessin, pour que l'onglet garde ses coins transparents.
+  assert.match(CSS, /\.ot-teinte\.ot-pied \{\s*\n\s*-webkit-mask-image: url\('\/frutiz\/sprites\/onglet_pied\.svg'\);/);
+  // `Slot.warning` : un slot ACTIF n'avertit jamais, et un slot déjà en alerte
+  // ne relance pas l'animation.
+  assert.match(JS, /function avertirSlot\(id\) \{\s*\n\s*if \(!actif \|\| !id \|\| id === slotActif\) return false;/);
+  assert.match(JS, /if \(!o \|\| o\.classList\.contains\('clignote'\)\) return false;/);
+  // `Slot.onActivate` : le slot qui prend la main cesse d'avertir.
+  assert.match(JS, /if \(neuf\) neuf\.classList\.remove\('clignote'\);/);
+  // `box.Chat.onSend` : la fenêtre des salons avertit l'onglet qui la porte —
+  // ou celui du bureau si elle y est restée.
+  assert.match(JS, /function avertirConversation\(\) \{[\s\S]*?return avertirSlot\(f\.onglet \|\| 'bureau'\);/);
+  assert.match(JS, /avertirConversation: avertirConversation,/);
+  // Côté light : salons ET discussions privées, mais ni les annonces (t="b")
+  // ni les images (t="i") — le garde-fou d'`onSend`.
+  assert.match(LIGHT, /function avertirOngletChat\(ty\) \{\s*\n\s*if \(ty === "b" \|\| ty === "i"\) return;/);
+  const t = LIGHT.indexOf('case "t":');
+  const bloc = LIGHT.slice(t, LIGHT.indexOf('var from = attr(xml, "u");', t));
+  assert.match(bloc, /conv\.nonLus \+= 1;[\s\S]*?avertirOngletChat\(ty\);/);      // en privé
+  assert.match(bloc, /\/\/ Le salon qu'on regarde[\s\S]*?avertirOngletChat\(ty\);/); // en salon
 });
 
 test('les états de survol sont préchargés — plus de clignotement', () => {

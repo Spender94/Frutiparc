@@ -4982,17 +4982,22 @@
         // au milieu du salon public (et réciproquement). Les trames sans `g`
         // (annonces globales) restent affichées telles quelles.
         var salon = attr(xml, "g");
+        var ty = attr(xml, "t") || "m";
         if (salon && salon !== state.room) {
           var conv = state.prives[salon];
           if (conv && !(conv.sourdineJusqua > Date.now())) {
             conv.nonLus += 1;
             renderRoomOptions();
             majPastilleMp();
+            // Une discussion privée en arrière-plan avertit elle aussi : c'est
+            // le « cmode == "private" » de `onSend`.
+            avertirOngletChat(ty);
           }
           break;
         }
+        // Le salon qu'on regarde — mais dont l'onglet, lui, peut être rangé.
+        avertirOngletChat(ty);
         var from = attr(xml, "u");
-        var ty = attr(xml, "t") || "m";
         var h = attr(xml, "h");
         var body = bodyOf(xml);
         // Émote normalisée côté serveur : e=anim, el=phrase, eu=pseudo. Le SWF
@@ -5361,6 +5366,16 @@
     if (stick) scrollDown();
   }
   function systemLine(text) { addMessage({ kind: "system", body: text }); }
+
+  // `box.Chat.onSend` : une trame de conversation AVERTIT son slot — mais pas
+  // toutes. Le SWF encadre l'appel d'un « if (t != "b" && t != "i") » : ni les
+  // annonces, ni les images ne font clignoter l'onglet. Sur le bureau light,
+  // c'est celui de la fenêtre des salons qui se teinte de rose (ou celui du
+  // bureau si elle y est restée) ; ailleurs, l'appel ne fait rien.
+  function avertirOngletChat(ty) {
+    if (ty === "b" || ty === "i") return;
+    if (window.BureauFrutiz && BureauFrutiz.avertirConversation) BureauFrutiz.avertirConversation();
+  }
 
   // ── Blindtest ──
   //

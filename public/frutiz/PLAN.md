@@ -1811,6 +1811,89 @@ glissade saute ET l'onglet prend la main. Le portage activait toujours : la
 fenêtre s'étalait aussitôt en plein écran, ce qui escamotait le bureau et son
 fond d'écran.
 
+### Un onglet est fait de PIÈCES, et elles s'étirent
+
+C'est là que le portage se trompait le plus lourdement : il servait l'onglet
+comme UNE image aplatie et posait le menu par-dessus, dans un panneau blanc à
+lui. Le clip `tab` (#206) a en fait trois enfants, à trois profondeurs :
+
+```
+ 3  bottom (#202)   à (−17,5 ; 0,05)  le PIED : la forme #188 (120 × 23 à
+                                      1,5 ; −2,05), le champ #190 à
+                                      (37,25 ; 4,3) et la pastille `ico`
+                                      (#201) à (17,5 ; 2,95)
+10  barre  (#204)   à (−16 ; 0)       la PLAQUE : la forme #203, 120 × 18,
+                                      de y −18 à 0, écrasée à 0,2222 —
+                                      quatre pixels au repos
+13  #205            à (0 ; 0)         la COUTURE : une bande #999999 de
+                                      123 × 2,5, de y −0,5 à 2
+```
+
+et, hors du clip, la silhouette sombre `tabFond` (#187 : `fondB` #184 et
+`fondH` #186), que `init` attache à `bar.mcTabBlack` — un conteneur posé sous
+TOUTE la rangée, pas dans l'onglet.
+
+La plaque est bornée en BAS par `barre._y` et monte de `barre._height` : elle
+occupe `_y − _height` .. `_y`, et ce qui dépasse au-dessus de 0 passe sous la
+barre. Le pied la suit (`bottom._y = barre._y`). Trois positions de repos, et
+une seule règle :
+
+```
+scrollUp   : barre._y → flActive × 4     ; à l'arrivée _height = _y, removeMenu()
+activate   : barre._height = max(4, _height) puis scrollDown
+attachMenu : barre._height = 8 + n × 18  ; scrollDown fait DESCENDRE l'onglet
+updateFond : fondH._height = barre._height ; fondH._y = barre._y ;
+             fondB._y = bottom._y
+```
+
+Les deux défilements sont la même interpolation, celle de tout le SWF :
+`v = v × 0,8^tmod + cible × (1 − 0,8^tmod)`, battue par un `setInterval(…, 25)`.
+
+**Les profondeurs de la barre comptent autant.** `drawInterface` ne dessine pas
+la barre d'un bloc :
+
+```
+ 2  mcInterfaceBlack   le CONTOUR sombre  (darkest, −12 → 78, rayon 12)
+ 4  mcTabBlack         les silhouettes des onglets
+ 8  mcTab              les onglets
+10  mcInterface        le liseré #DDDDDD et le fond blanc (−10 → 76 ; −8 → 74)
+```
+
+Le liseré sombre du bas passe donc SOUS les onglets, et le fond blanc PAR-DESSUS.
+Ce qu'on lit au ras de la barre au-dessus d'un onglet, ce n'est pas le trait
+noir : c'est la couture grise. Relevé 1:1, la bande `#999999` court de `cornerX`
+au bord droit du dernier onglet — et le trait `#444444` reprend juste après.
+
+### L'avertissement rose
+
+```
+warning     : animList.addColorFlash("warning", this,
+                                     { color: 16755627, alpha: 30, tempo: 500 })
+colorFlash  : i++ ; (i % 2 == 0) ? FEMC.setColor(mc, obj) : FEMC.killColor(mc)
+stopWarning : animList.remove("warning") ; FEMC.killColor(this)
+```
+
+`16755627 = 0xFFB1AB` : une TEINTE à 30 %, pas un clignotement de luminosité —
+et elle alterne une demi-seconde sur deux. Le garde-fou est dans `Slot.warning` :
+un slot ACTIF n'avertit jamais, un slot déjà en alerte ne relance pas
+l'animation, et `Slot.onActivate` coupe l'alerte du slot qui prend la main.
+
+Qui avertit ? `box.Chat.onSend` (et `onSendUser`), à chaque trame de
+conversation qui n'est ni une annonce (`t="b"`) ni une image (`t="i"`) :
+
+```
+if (cmode == "private" || cmode == "channel" && passwd != undefined) {
+  if (mode == "desktop") this.activate();
+  this.slot.warning();
+}
+```
+
+— avec, au passage, un vrai bug d'époque : `onSend` exige `passwd != undefined`
+pour un salon, `onSendUser` exige l'inverse. Les deux gardes se contredisent.
+Le light avertit dans les deux cas, salons et discussions privées, puisqu'il
+n'a qu'UNE fenêtre de conversation : c'est l'onglet qui la porte qui se teinte,
+ou celui du bureau si elle y est restée.
+
 ## LES FINITIONS DU PORTAGE
 
 Quatre choses qui n'ont pas d'équivalent dans le SWF — elles naissent du
