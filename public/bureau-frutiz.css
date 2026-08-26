@@ -840,6 +840,14 @@ body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant {
   background-image: url('/frutiz/sprites/sl-presence-1.svg'),
                     url('/frutiz/sprites/sl-icone-fond.svg');
 }
+/* EN PARTIE : `onStatusObj` fait `icon.gotoAndStop("internal")` — l'icône du
+   JEU remplace la pastille de présence dans le même cadre de 17. Le dessin
+   est celui que la liste des connectés d'un salon pose déjà à gauche du
+   pseudo ; il remplit le cadre, moins son liseré. */
+body.bureau-frutiz #side-list .sl-contact .voyant.jeu {
+  background-size: 15px 15px, 17px 17px;
+  background-position: center center, left top;
+}
 /* Le pseudo : `initText` (0x6353a) pose le champ à **`_x = 20`**, large de
    100 et haut de 20, au style `Standard.getTextStyle().def` — Verdana 10,
    couleur 0 — que la méthode passe en GRAS (`textFormat.bold = true`). */
@@ -1619,6 +1627,15 @@ body.bureau-frutiz .fen #chat-panel #bouille-overlay #bouille-overlay-stage {
   width: 98px; height: 98px; transform: none; opacity: 1; z-index: 5;
 }
 body.bureau-frutiz .fen #chat-panel #bouille-overlay #bouille-overlay-stage.joue { display: block; }
+/* L'écran qui joue une émotion ne montre QUE le lecteur : sa vignette figée
+   s'efface. Le SWF n'a qu'une bouille par écran — elle s'anime, elle ne se
+   double pas. (`visibility` et non `display` : l'image garde sa place, et
+   revenir de l'animation ne fait pas sauter la mise en page.) */
+/* `!important` : `FPBouilleThumb` pose `style.visibility = "visible"` EN LIGNE
+   quand la vignette a fini de charger (c'est ainsi qu'il cache l'icône
+   d'image cassée le temps du rendu) — une règle de feuille n'en viendrait
+   pas à bout. */
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-anime img { visibility: hidden !important; }
 body.bureau-frutiz .fen #chat-panel #bouille-overlay #bouille-overlay-stage iframe {
   width: 98px; height: 98px; border: 0; display: block;
 }
@@ -1979,6 +1996,265 @@ body.bureau-frutiz .fen #scores-panel #sc-table .sc-ligne {
 body.bureau-frutiz .fen #scores-panel #sc-table .sc-ligne.moi { background: transparent; }
 body.bureau-frutiz .fen #scores-panel #sc-table .sc-moi,
 body.bureau-frutiz .fen #scores-panel #sc-table .sc-pod span { color: #000000; }
+
+
+/* ── LA MESSAGERIE ────────────────────────────────────────────────────────
+   D'époque ce ne sont pas trois vues d'une fenêtre mais TROIS fenêtres : la
+   boîte de réception est un EXPLORATEUR (`box.Explorer` sur `fileMng.inbox`,
+   `list.tpl == "mail"` — la fenêtre JAUNE), lire un courrier ouvre
+   `winViewMail` (500 × 400), en écrire un ouvre `winMail`. Le light n'a qu'un
+   panneau à reparenter : on y rejoue les trois GABARITS l'un après l'autre.
+
+   Relevé 1:1 (scratchpad/mr-1-boite.png — fenêtre en x 486..896 / y 146..546,
+   soit 411 × 401, la taille de l'explorateur) :
+
+     y 229-230  #DDDDDD   le contour du bandeau des colonnes
+     y 231-232  #EAEA0F   son liseré
+     y 233-244  reflet blanc puis #F9F977   sa chair — 18 px en tout
+     y 245-246  #EAEA0F
+     y 247-248  #DDDDDD   le contour du champ
+     y 251-254  #DDDDDD puis #EAEA0F
+     y 255-262  le même reflet, puis #F8F866
+     y 277, 299, 321…     #EAEA0F : une rangée fait 22 px
+
+   et, en travers (y=270) : #F1F13B à 631-632 et 811-812 — deux pixels de
+   séparation entre les colonnes, aux abscisses 140 et « largeur − 80 »,
+   exactement les `min` du `lister`. L'encre du bandeau est #404000, celle
+   des rangées #5A5A00. */
+body.bureau-frutiz .fen #mail-panel {
+  padding: 0; gap: 0; background: transparent; min-height: 0;
+  display: flex; flex-direction: column;
+}
+/* Les onglets du mobile n'existent pas d'époque : on change de boîte par le
+   DOSSIER PARENT, comme dans n'importe quel explorateur. */
+body.bureau-frutiz .fen #mail-panel #mail-head { display: none; }
+/* LA BARRE D'OUTILS — `initNavigatorIconList` : pour une boîte aux lettres,
+   `flNewDirectory` et `flRemoveAll` sont faux, `flUp` et `flMail` vrais. Deux
+   boutons, aux mesures de l'explorateur (20 px, écart 4, marge 4). */
+body.bureau-frutiz .fen #mail-panel .mx-nav {
+  flex: 0 0 28px; height: 28px; box-sizing: border-box;
+  padding: 4px 0 0 4px; display: flex; gap: 4px; align-items: flex-start;
+}
+body.bureau-frutiz .fen #mail-panel .mx-nav-but {
+  width: 20px; height: 20px; flex: 0 0 20px; padding: 0; border: 0;
+  border-radius: 4px; box-shadow: 0 0 0 2px #DDDDDD;
+  background: transparent center / 20px 20px no-repeat;
+  cursor: pointer; color: transparent; font-size: 0;
+}
+/* LE CHAMP, l'écorce commune : contour 2 px #DDDDDD peint HORS de la boîte,
+   liseré 2 px #EAEA0F, chair #F8F866 sous un reflet blanc de 8 px. */
+body.bureau-frutiz .fen #mail-panel .mx-champ,
+body.bureau-frutiz .fen #mail-panel #mail-liste,
+body.bureau-frutiz .fen #mail-panel #mail-lu-corps,
+body.bureau-frutiz .fen #mail-panel #mail-texte {
+  margin: 2px; box-sizing: border-box; overflow: auto;
+  background: linear-gradient(to bottom, rgba(255,255,255,.6) 2px, rgba(255,255,255,0) 10px), #F8F866;
+  border: 2px solid #EAEA0F; border-radius: 5px; box-shadow: 0 0 0 2px #DDDDDD;
+}
+/* LE BANDEAU DES COLONNES : sa propre boîte, 18 px, chair un ton plus clair. */
+body.bureau-frutiz .fen #mail-panel .mx-entete {
+  flex: 0 0 18px; height: 18px; box-sizing: border-box; display: flex;
+  margin: 2px 2px 0; overflow: hidden;
+  background: linear-gradient(to bottom, rgba(255,255,255,.6) 2px, rgba(255,255,255,0) 10px), #F9F977;
+  border: 2px solid #EAEA0F; border-radius: 5px 5px 0 0; box-shadow: 0 0 0 2px #DDDDDD;
+}
+body.bureau-frutiz .fen #mail-panel .mx-col {
+  flex: 0 0 auto; padding: 0 0 0 3px; border: 0; background: none;
+  display: flex; align-items: center; gap: 3px; overflow: hidden;
+  font: normal 10px Verdana, Arial, sans-serif; color: #404000;
+  line-height: 14px; cursor: pointer; text-align: left; white-space: nowrap;
+}
+body.bureau-frutiz .fen #mail-panel .mx-col.big { flex: 1 1 auto; min-width: 0; }
+body.bureau-frutiz .fen #mail-panel .mx-col .t { overflow: hidden; text-overflow: ellipsis; }
+/* La flèche de tri, sur la SEULE colonne triée — `currentSort` part sur la
+   date en DESC. */
+body.bureau-frutiz .fen #mail-panel .mx-col .fl { display: none; }
+body.bureau-frutiz .fen #mail-panel .mx-col.trie .fl {
+  display: block; width: 0; height: 0; flex: 0 0 auto;
+  border-left: 3px solid transparent; border-right: 3px solid transparent;
+  border-bottom: 4px solid #6C6400;
+}
+body.bureau-frutiz .fen #mail-panel .mx-col.trie.desc .fl {
+  border-bottom: 0; border-top: 4px solid #6C6400;
+}
+/* LA LISTE et ses rangées de 22 px. */
+body.bureau-frutiz .fen #mail-panel #mail-vue-liste {
+  flex: 1; min-height: 0; display: none; flex-direction: column; padding: 0;
+}
+body.bureau-frutiz .fen #mail-panel #mail-vue-liste.on { display: flex; }
+body.bureau-frutiz .fen #mail-panel:not(.mx-dossiers) .mx-dossiers-champ { display: none; }
+/* Le dossier parent REMPLACE la vue courante, quelle qu'elle soit — c'est un
+   autre dossier de l'explorateur, pas un panneau de plus. (`!important` : les
+   règles `.on` des trois vues ont la même force et viennent plus bas dans la
+   feuille.) */
+body.bureau-frutiz .fen #mail-panel.mx-dossiers #mail-vue-liste,
+body.bureau-frutiz .fen #mail-panel.mx-dossiers #mail-vue-lecture,
+body.bureau-frutiz .fen #mail-panel.mx-dossiers #mail-vue-ecriture { display: none !important; }
+/* Le champ est une BOÎTE à part sous le bandeau : le relevé donne deux pixels
+   de blanc entre les deux contours (y 249-250). */
+body.bureau-frutiz .fen #mail-panel #mail-liste {
+  flex: 1; min-height: 0; margin: 6px 2px 2px; padding: 0;
+}
+body.bureau-frutiz .fen #mail-panel .mx-rang {
+  display: flex; align-items: center; width: 100%; height: 22px;
+  padding: 0; border: 0; border-bottom: 1px solid #EAEA0F; background: none;
+  font: normal 10px Verdana, Arial, sans-serif; color: #5A5A00;
+  text-align: left; cursor: pointer; box-sizing: border-box;
+}
+/* `but.icon.Detail.display` pose l'icône à `ico._x = 2` et décale le premier
+   champ de 20 : l'enveloppe tient dans ces vingt pixels. */
+body.bureau-frutiz .fen #mail-panel .mx-rang .mx-ico {
+  flex: 0 0 20px; width: 20px; height: 18px; margin-left: 2px;
+  background: url('/frutiz/sprites/nav_new_mail.svg') left center / 16px 16px no-repeat;
+}
+body.bureau-frutiz .fen #mail-panel .mx-rang .mx-cell {
+  flex: 0 0 auto; padding: 0 4px 0 1px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+  border-right: 2px solid #F1F13B; box-sizing: border-box;
+}
+/* Le premier champ partage ses 140 px avec l'icône (le `+20` de `Detail`). */
+body.bureau-frutiz .fen #mail-panel .mx-rang .mx-cell:first-of-type {
+  width: 118px !important;
+}
+body.bureau-frutiz .fen #mail-panel .mx-rang .mx-cell.big { flex: 1 1 auto; min-width: 0; }
+body.bureau-frutiz .fen #mail-panel .mx-rang .mx-cell:last-child { border-right: 0; }
+/* Un courrier non lu s'écrit en GRAS — c'est le seul écart que le fichier
+   porte dans l'explorateur d'époque (`fileIcon` passe le titre en gras tant
+   que `accessFile` n'a pas été appelé). */
+body.bureau-frutiz .fen #mail-panel .mx-rang.neuf { font-weight: 700; color: #404000; }
+body.bureau-frutiz .fen #mail-panel .mx-rang:hover { background: rgba(255,255,255,.45); }
+body.bureau-frutiz .fen #mail-panel .mail-vide,
+body.bureau-frutiz .fen #mail-panel .mail-charge {
+  padding: 6px; font: normal 10px Verdana, Arial, sans-serif; color: #5A5A00;
+  background: none; border: 0;
+}
+/* LE DOSSIER PARENT : les boîtes en icônes, comme tout dossier d'explorateur. */
+body.bureau-frutiz .fen #mail-panel .mx-dossiers-champ {
+  flex: 1; min-height: 0; padding: 4px;
+  display: flex; flex-wrap: wrap; align-content: flex-start;
+}
+body.bureau-frutiz .fen #mail-panel .mx-slot {
+  position: relative; width: 80px; height: 80px; flex: 0 0 80px;
+  border: 0; background: transparent; padding: 3px 0 0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font: normal 10px Verdana, Arial, sans-serif; color: #5A5A00; text-align: center;
+  user-select: none; -webkit-user-select: none;
+}
+body.bureau-frutiz .fen #mail-panel .mx-slot img { width: 44px; height: 44px; }
+body.bureau-frutiz .fen #mail-panel .mx-slot span { line-height: 11px; }
+
+/* ── LIRE UN COURRIER (`win.ViewMail`, 500 × 400) ─────────────────────────
+   `attachInfo` : QUATRE lignes de 20 px, étiquette de 60 alignée à DROITE —
+   Date, De, À, Sujet — puis le corps, puis la barre du bas :
+   « Mettre à la corbeille », un grand espace, « Répondre », huit pixels,
+   « Faire suivre ». (Le renvoi n'existe pas côté light ; le « Retour » qu'on
+   ajoute n'existait pas d'époque — les trois fenêtres se fermaient.) */
+body.bureau-frutiz .fen #mail-panel #mail-vue-lecture,
+body.bureau-frutiz .fen #mail-panel #mail-vue-ecriture {
+  flex: 1; min-height: 0; display: none; flex-direction: column; padding: 0;
+}
+body.bureau-frutiz .fen #mail-panel #mail-vue-lecture.on,
+body.bureau-frutiz .fen #mail-panel #mail-vue-ecriture.on { display: flex; }
+body.bureau-frutiz .fen #mail-panel .mx-info { flex: 0 0 auto; padding: 2px 4px 0; }
+body.bureau-frutiz .fen #mail-panel .mx-ligne,
+body.bureau-frutiz .fen #mail-panel .mx-de {
+  display: flex; align-items: center; height: 20px; gap: 4px;
+  font: normal 10px Verdana, Arial, sans-serif; color: #000000;
+}
+body.bureau-frutiz .fen #mail-panel .mx-lab {
+  flex: 0 0 60px; width: 60px; text-align: right; color: #5A5A00;
+}
+body.bureau-frutiz .fen #mail-panel .mx-val {
+  flex: 1 1 auto; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+/* Le bandeau du mobile fait double emploi avec l'en-tête d'époque. */
+body.bureau-frutiz .fen #mail-panel .mail-entete { display: none; }
+body.bureau-frutiz .fen #mail-panel #mail-lu-corps {
+  flex: 1; min-height: 0; margin: 2px 4px; padding: 4px;
+  font: normal 12px Verdana, Arial, sans-serif; color: #5A5A00;
+  white-space: pre-wrap; word-wrap: break-word;
+}
+/* LA BARRE DU BAS — `attachEndButton` lui donne `margin.x.min = 4`,
+   `margin.y.min = 6` et `ratio 0,66` : quatre pixels sur les flancs, six en
+   haut et en bas. */
+body.bureau-frutiz .fen #mail-panel .mail-actions {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 6px 4px; border: 0; background: none;
+}
+/* `attachEndButton` compose la barre dans cet ordre : « Mettre à la
+   corbeille », un grand espace, puis « Répondre ». (Le « Retour » du light
+   n'existait pas d'époque — la fenêtre se fermait ; il passe en tête.) */
+body.bureau-frutiz .fen #mail-panel #mail-retour { order: 0; }
+body.bureau-frutiz .fen #mail-panel #mail-supprimer { order: 1; }
+body.bureau-frutiz .fen #mail-panel #mail-repondre { order: 2; margin-left: auto; }
+body.bureau-frutiz .fen #mail-panel #mail-annuler { order: 0; }
+body.bureau-frutiz .fen #mail-panel #mail-envoyer { order: 2; margin-left: auto; }
+/* Le bouton d'époque : `butPushStandard`, la pastille verte du bureau. */
+body.bureau-frutiz .fen #mail-panel .ma-btn {
+  height: 20px; padding: 0 10px; border: 0; border-radius: 10px;
+  background: #94DB39; box-shadow: 0 0 0 2px #66AA22;
+  font: 700 10px Verdana, Arial, sans-serif; color: #FFFFFF;
+  cursor: pointer; white-space: nowrap;
+}
+body.bureau-frutiz .fen #mail-panel .ma-btn:hover { background: #ADE76B; }
+body.bureau-frutiz .fen #mail-panel .ma-btn:disabled { opacity: .6; cursor: default; }
+
+/* ── ÉCRIRE UN COURRIER (`win.Mail`) ──────────────────────────────────────
+   `attachInfo` : TROIS lignes de 20 px, étiquette de 60 — De (en clair, sur
+   fond), À, Sujet ; puis le corps (`textFormat: { size: 12 }`) ; puis la
+   barre du bas, avec la case « garder une copie » et le bouton d'envoi.
+
+   NON PORTÉ, et il faut le dire : `attachEditTool` pose entre les deux une
+   barre de 28 px — gras, italique, souligné (`butFlagSmallPink`, images 2 à
+   4) et un menu de corps de texte de 100 px. Le courrier du light est du
+   texte simple d'un bout à l'autre, de la saisie à l'API : une barre de
+   style n'aurait rien à teindre. Même chose pour la case « garder une copie
+   dans les messages envoyés » — le serveur en garde toujours une. */
+body.bureau-frutiz .fen #mail-panel .mail-form {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  padding: 2px 4px 0; gap: 0;
+}
+body.bureau-frutiz .fen #mail-panel .mx-de .mx-val {
+  background: #FFFFFF; border-radius: 3px; box-shadow: 0 0 0 2px #DDDDDD;
+  padding: 0 4px; line-height: 16px; margin: 0 2px;
+}
+/* Les étiquettes du mobile deviennent celles d'époque, de 60 px, sur la même
+   ligne que leur champ. */
+body.bureau-frutiz .fen #mail-panel .mail-form label {
+  flex: 0 0 60px; width: 60px; text-align: right; padding: 0 4px 0 0;
+  font: normal 10px Verdana, Arial, sans-serif; color: #5A5A00;
+  line-height: 20px;
+}
+body.bureau-frutiz .fen #mail-panel .mail-form label[for="mail-texte"] { display: none; }
+body.bureau-frutiz .fen #mail-panel #mail-a,
+body.bureau-frutiz .fen #mail-panel #mail-sujet {
+  height: 16px; margin: 2px 2px 2px 0; padding: 0 4px; box-sizing: border-box;
+  border: 0; border-radius: 3px; box-shadow: 0 0 0 2px #DDDDDD;
+  background: #FFFFFF; font: normal 10px Verdana, Arial, sans-serif; color: #000000;
+}
+/* Chaque étiquette et son champ tiennent sur une ligne de 20 px : la grille
+   du mobile devient une pile de lignes. */
+body.bureau-frutiz .fen #mail-panel .mail-form {
+  display: grid; grid-template-columns: 60px 1fr; align-items: center; row-gap: 0;
+}
+body.bureau-frutiz .fen #mail-panel .mail-form .mx-de {
+  grid-column: 1 / -1; display: grid; grid-template-columns: 60px 1fr;
+  align-items: center;
+}
+/* La grille centre ses cellules (les étiquettes s'assoient sur la ligne de
+   leur champ) : le corps, lui, doit REMPLIR sa rangée. */
+body.bureau-frutiz .fen #mail-panel #mail-texte {
+  grid-column: 1 / -1; align-self: stretch; height: 100%; min-height: 0; resize: none;
+  margin: 2px 0; padding: 4px; box-sizing: border-box;
+  font: normal 12px Verdana, Arial, sans-serif; color: #5A5A00;
+}
+body.bureau-frutiz .fen #mail-panel .mail-form { grid-template-rows: 20px 20px 20px 1fr auto; }
+body.bureau-frutiz .fen #mail-panel .mail-erreur {
+  grid-column: 1 / -1; padding: 0 2px;
+  font: normal 10px Verdana, Arial, sans-serif; color: #AA2222;
+}
+body.bureau-frutiz .fen #mail-panel .mail-erreur.ok { color: #5A8A22; }
 
 /* ── L'EXPLORATEUR (`win.Explorer`, `box.Explorer`) ─────────────────────────
    « Mes disques » et « Inventaire » : la fenêtre JAUNE du bureau.

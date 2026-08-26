@@ -4200,6 +4200,12 @@
       box.appendChild(b);
     });
     box.scrollTop = 0;
+    // Le bureau Frutiz refait la même liste À SA FAÇON : d'époque la boîte de
+    // réception est un EXPLORATEUR (`box.Explorer`, `list.tpl == "mail"`), avec
+    // ses trois colonnes et sa barre d'outils. Mêmes données, autre habit.
+    if (window.BureauFrutiz && BureauFrutiz.majMessagerie) {
+      BureauFrutiz.majMessagerie(mailListe, mailDossier);
+    }
   }
   function ouvrirMail(uid) {
     fetch("/api/light/mail/read?sid=" + encodeURIComponent(state.sid)
@@ -4223,6 +4229,11 @@
         $("#mail-repondre").style.display = (mailLu.folder === "outbox") ? "none" : "";
         mailVue("lecture");
         $("#mail-lu-corps").scrollTop = 0;
+        // Le bureau remplit SON en-tête : `win.ViewMail` en a quatre lignes —
+        // Date, De, À, Sujet — là où le mobile en résume trois.
+        if (window.BureauFrutiz && BureauFrutiz.majLectureMail) {
+          BureauFrutiz.majLectureMail(mailLu);
+        }
       })
       .catch(function () { systemLine("Ce courrier n'a pas pu être ouvert."); });
   }
@@ -4304,6 +4315,13 @@
       .catch(function () {});
   }
 
+  // Ce que le bureau Frutiz appelle pour piloter la messagerie : il n'a ni
+  // onglets ni boutons à lui, il rejoue les mêmes gestes que le mobile.
+  window.MessagerieLight = {
+    charger: loadMail, ecrire: ecrireMail, ouvrir: ouvrirMail, vue: mailVue,
+    dossier: function () { return mailDossier; },
+    lu: function () { return mailLu; },
+  };
   Array.prototype.forEach.call(document.querySelectorAll(".mail-tab"), function (t) {
     t.addEventListener("click", function () { loadMail(t.getAttribute("data-folder")); });
   });
@@ -6717,15 +6735,26 @@
     var ecran = document.body.classList.contains("bureau-frutiz")
       && window.BureauFrutiz && BureauFrutiz.ecranDe && BureauFrutiz.ecranDe(pseudo);
     if (ecran) {
+      // La bouille FIGÉE de cet écran s'efface le temps de l'animation :
+      // d'époque c'est la MÊME bouille qui s'anime, pas une seconde posée
+      // par-dessus la première. Sans ça, la vignette PNG transparaissait sous
+      // le lecteur et l'on en voyait deux.
+      var colonne = $("#bouille-overlay");
+      if (colonne) {
+        var deja = colonne.querySelectorAll(".bo-anime");
+        for (var i2 = 0; i2 < deja.length; i2++) deja[i2].classList.remove("bo-anime");
+      }
       var scene = $("#bouille-overlay-stage");
       if (scene.parentNode !== ecran) ecran.appendChild(scene);
       scene.classList.add("joue");
+      ecran.classList.add("bo-anime");
       var f2 = overlayIframe();
       f2.src = "about:blank";
       setTimeout(function () { f2.src = overlayUrl(pseudo, anim); }, 20);
       if (state.overlayTimer) clearTimeout(state.overlayTimer);
       state.overlayTimer = setTimeout(function () {
         scene.classList.remove("joue");
+        ecran.classList.remove("bo-anime");
         if (overlayFrame) overlayFrame.src = "about:blank";
       }, OVERLAY_HOLD_MS);
       return;

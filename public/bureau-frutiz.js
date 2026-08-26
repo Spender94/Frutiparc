@@ -39,7 +39,14 @@ window.BureauFrutiz = (function () {
     // `#444444` compris ; la colonne de gauche fait 160 et celle de droite
     // 430, six pixels entre les deux.
     scores:     { panneau: '#scores-panel',    titre: 'Scores',         l: 610, h: 328 },
-    mail:       { panneau: '#mail-panel',      titre: 'Messagerie',     l: 640, h: 560 },
+    // LA MESSAGERIE — d'époque c'est un EXPLORATEUR (`box.Explorer` sur
+    // `fileMng.inbox`), donc la fenêtre jaune et son gabarit : `win.Explorer`
+    // pose `pos = {50, 50, 400, 400}` et s'ouvre AU MILIEU. Le relevé 1:1 la
+    // donne en x 486..896 / y 146..546 — 411 × 401, contour compris. Le titre
+    // vient du dossier (`setTitle(this.list.desc[0])`).
+    mail:       { panneau: '#mail-panel',      titre: 'Boîte de réception',
+                  fruit: 'winExplorer', l: 412, h: 402,
+                  min: { w: 200, h: 128 }, centre: true },
     // LES DEUX JOURNAUX — `box.SiteLog` et `box.UserLog`, qui n'ajoutent rien
     // à `win.Log` (0x57281) qu'une icône : `linkIco` vaut « icoSiteLog » ou
     // « icoUserLog ». Et `win.Log.init` pose `flResizable = false` : ces
@@ -298,25 +305,67 @@ window.BureauFrutiz = (function () {
   // REPLIÉ ajoute un cinquième de ligne (`currentLine += 0.2`). Les dossiers
   // se replient au clic sur leur titre (`fond.onPress` bascule `element.open`
   // puis rebâtit la liste).
-  var contactsCharges = false;
+  // Les voyants de la bande VIVENT : d'époque le serveur pousse le statut de
+  // chaque contact (`onStatusObj`) et `userSlot` change d'icône sur-le-champ.
+  // Le light n'a pas cette poussée hors salon — il relit donc le carnet à
+  // chaque ouverture, puis toutes les trente secondes tant qu'il est ouvert.
+  var contactsMinuteur = null;
 
   function basculerContacts() {
     var ouvert = document.body.classList.toggle('contacts-ouverts');
     CORNER_X = ouvert ? 129 : 9;
     // `activate` termine par `main.onResize()` : les fenêtres sont rebornées.
     for (var id in fenetres) bornerDansEcran(fenetres[id].fen);
-    if (ouvert && !contactsCharges) { contactsCharges = true; chargerContacts(); }
+    if (contactsMinuteur) { clearInterval(contactsMinuteur); contactsMinuteur = null; }
+    if (!ouvert) return;
+    chargerContacts();
+    contactsMinuteur = setInterval(chargerContacts, 30000);
   }
 
+  // `UserSlot.onStatusObj` donne l'ordre exact de ce que porte l'icône :
+  //
+  //     status == undefined   → rien
+  //     présence 0            → image 1 de `ico` : la pastille SAUMON
+  //     status.internal       → l'icône du JEU, à la place de la pastille
+  //     status.external       → celle du jeu externe
+  //     sinon                 → image 2 : la pastille VERTE
+  //
+  // Et le carnet passe `statusDspMode: "all"` (SideList.buildElement) : il
+  // montre TOUT, hors ligne compris. C'est le même clip `userSlot` que la
+  // liste des connectés d'un salon — seul le voyant de jeu manquait ici.
   function ligneContact(c) {
     var b = document.createElement('button');
     b.type = 'button';
     b.className = 'sl-contact ' + (c.enLigne ? 'en-ligne' : 'hors-ligne');
-    b.title = c.pseudo + (c.jeu ? ' — joue à ' + c.jeu : (c.enLigne ? ' — en ligne' : ' — hors ligne'));
+    b.title = c.pseudo + (c.jeu ? ' — ' + libelleJeu(c.jeu)
+      : (c.enLigne ? ' — en ligne' : ' — hors ligne'));
     b.innerHTML = '<span class="voyant"></span><span class="nom"></span>';
     b.querySelector('.nom').textContent = c.pseudo;
+    if (c.enLigne && c.jeu) {
+      var v = b.querySelector('.voyant');
+      v.classList.add('jeu');
+      v.style.backgroundImage = "url('" + voyantUrl(c.jeu) + "'), "
+        + "url('/frutiz/sprites/sl-icone-fond.svg')";
+    }
     b.addEventListener('click', function () { ouvrirFiche(c.pseudo); });
     return b;
+  }
+
+  // Le voyant d'un jeu, celui-là même que la liste des connectés pose à
+  // gauche du pseudo. Seul Swapou change de nom au passage (swapou2 côté
+  // serveur), comme dans `VOYANT_ASSET_KEY` du light.
+  function voyantUrl(jeu) {
+    return '/fb/voyant_' + (jeu === 'swapou2' ? 'swapou' : jeu) + '.png';
+  }
+  var JEUX_NOM = {
+    forum: 'Forum', bkiwi: 'Burning Kiwi', mb2: 'MotionBall 2', swapou: 'Swapou',
+    swapou2: 'Swapou', snake3: 'Frutisnake', bandas: 'Frutibandas', grapiz: 'Grapiz',
+    kaluga: 'Kaluga', miniwave: 'Mini-Wave', minipixiz: 'Minipixiz',
+    minifever: 'Mini-Fever',
+  };
+  function libelleJeu(jeu) {
+    var n = JEUX_NOM[jeu] || jeu;
+    return jeu === 'forum' ? 'lit le forum' : 'joue à ' + n;
   }
 
   // ── « Salons publics » (`win.RoomList` 0xbebb6, `cp.RoomList` 0x70733) ──
@@ -1738,6 +1787,7 @@ window.BureauFrutiz = (function () {
   // qui la loge : on la remet dans la colonne avant de retirer celui-ci.
   function rendreScene(ecran) {
     var scene = ecran.querySelector('#bouille-overlay-stage');
+    ecran.classList.remove('bo-anime');   // sa vignette figée revient
     if (scene) { scene.classList.remove('joue'); $('#bouille-overlay').appendChild(scene); }
   }
 
@@ -1771,6 +1821,12 @@ window.BureauFrutiz = (function () {
     fetch('/api/light/contacts?sid=' + encodeURIComponent(sid))
       .then(function (r) { return r.json(); })
       .then(function (d) {
+        // `element.open` survit à `buildList` : un dossier replié le reste
+        // quand la liste se refait. On note donc l'état avant de tout jeter.
+        var replies = {};
+        Array.prototype.forEach.call(liste.querySelectorAll('.sl-dossier'), function (b) {
+          if (b.classList.contains('replie')) replies[b.getAttribute('data-nom')] = true;
+        });
         liste.textContent = '';
         if (!d || !d.ok) return;
         // Carnet vide : la bande reste BLANCHE, sans un mot. C'est ce que fait
@@ -1778,6 +1834,8 @@ window.BureauFrutiz = (function () {
         (d.dossiers || []).forEach(function (f) {
           var bloc = document.createElement('div');
           bloc.className = 'sl-dossier';
+          bloc.setAttribute('data-nom', f.nom);
+          if (replies[f.nom]) bloc.classList.add('replie');
           var contenu = document.createElement('div');
           contenu.className = 'sl-contenu';
           (f.contacts || []).forEach(function (c) { contenu.appendChild(ligneContact(c)); });
@@ -1788,6 +1846,240 @@ window.BureauFrutiz = (function () {
         (d.contacts || []).forEach(function (c) { liste.appendChild(ligneContact(c)); });
       })
       .catch(function () {});
+  }
+
+
+  // ── LA MESSAGERIE ────────────────────────────────────────────────────────
+  //
+  // D'époque ce ne sont pas trois vues d'une même fenêtre mais TROIS fenêtres :
+  // la boîte de réception est un EXPLORATEUR (la fenêtre jaune, `winExplorer`),
+  // lire un courrier ouvre `winViewMail` (500 × 400) et en écrire un ouvre
+  // `winMail`. Le light n'a qu'un panneau `#mail-panel` à reparenter : on y
+  // rejoue les trois GABARITS, l'un après l'autre.
+  //
+  // LA BOÎTE — `box.Explorer.init` monte le type de dossier :
+  //
+  //     flNewDirectory = false ; flRemoveAll = false ; flMail = true
+  //     styleName      = "frFileStandard"                     (le jaune)
+  //     lister         = [ {De|À, 140}, {Sujet, 200, big}, {Date, 80} ]
+  //     currentSort    = { field: "date", sens: "DESC" }
+  //
+  // et `win.Explorer.displayList` passe le gabarit « mail » : chaque entrée
+  // devient un `fileIconDetail` — l'icône, puis les trois colonnes.
+  //
+  // Relevé 1:1 (fenêtre en x 486..896 / y 146..546, soit 411 × 401) :
+  //   · le bandeau des colonnes est une BOÎTE à lui — contour 2 px #DDDDDD,
+  //     liseré 2 px #EAEA0F, chair #F9F977 sous le reflet, 18 px de haut ;
+  //   · le champ dessous a la même écorce, chair #F8F866 ;
+  //   · une rangée fait 22 px, la suivante s'en sépare d'un trait #EAEA0F ;
+  //   · les colonnes se séparent de 2 px de #F1F13B, à 140 et à « largeur−80 » ;
+  //   · l'encre du bandeau est #404000, celle des rangées #5A5A00.
+  var MAIL_COLONNES = [
+    { cle: 'qui', titre: 'Expéditeur', titreEnvoi: 'Destinataire', tri: 'from', l: 140 },
+    { cle: 'subject', titre: 'Sujet', tri: 'name', big: true },
+    { cle: 'date', titre: 'Date', tri: 'date', l: 80 },
+  ];
+  var mailTri = { champ: 'date', desc: true };   // `currentSort` en mode mail
+  var mailHabille = false;
+
+  function navBouton(image, titre, faire) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ex-nav-but mx-nav-but';
+    b.title = titre;
+    b.textContent = titre;
+    b.style.backgroundImage = "url('/frutiz/sprites/" + image + ".svg')";
+    b.addEventListener('click', faire);
+    return b;
+  }
+
+  function habillerMail(panneau) {
+    if (mailHabille || !panneau) return;
+    mailHabille = true;
+    // LA BARRE D'OUTILS (`initNavigatorIconList`) : pour une boîte aux lettres
+    // `flNewDirectory` et `flRemoveAll` sont faux, `flUp` et `flMail` vrais —
+    // deux boutons, la flèche du dossier parent et l'enveloppe.
+    var nav = document.createElement('div');
+    nav.className = 'mx-nav';
+    nav.appendChild(navBouton('nav_up', 'Dossier parent', function () {
+      panneau.classList.toggle('mx-dossiers');
+    }));
+    nav.appendChild(navBouton('nav_new_mail', 'Écrire un courrier', function () {
+      if (window.MessagerieLight) MessagerieLight.ecrire('', '');
+    }));
+    panneau.insertBefore(nav, panneau.firstChild);
+
+    // LE DOSSIER PARENT (`fileMng.messages`) : ses boîtes, en icônes, comme
+    // n'importe quel dossier de l'explorateur.
+    var dossiers = document.createElement('div');
+    dossiers.className = 'mx-champ mx-dossiers-champ';
+    [['inbox', 'Boîte de réception'], ['outbox', 'Messages envoyés'],
+      ['blackbox', 'Indésirables']].forEach(function (d) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ex-slot mx-slot';
+      b.innerHTML = '<img alt=""><span></span>';
+      b.querySelector('img').src = '/frutiz/sprites/ico_dossier_' + d[0] + '.svg';
+      b.querySelector('span').textContent = d[1];
+      b.addEventListener('click', function () {
+        panneau.classList.remove('mx-dossiers');
+        if (window.MessagerieLight) MessagerieLight.charger(d[0]);
+      });
+      dossiers.appendChild(b);
+    });
+    panneau.insertBefore(dossiers, $('#mail-vue-liste'));
+
+    // LE BANDEAU DES COLONNES, sa propre boîte au-dessus du champ.
+    var entete = document.createElement('div');
+    entete.className = 'mx-entete';
+    MAIL_COLONNES.forEach(function (c) {
+      var t = document.createElement('button');
+      t.type = 'button';
+      t.className = 'mx-col' + (c.big ? ' big' : '');
+      t.setAttribute('data-col', c.cle);
+      if (!c.big) t.style.width = c.l + 'px';
+      t.innerHTML = '<span class="t"></span><i class="fl"></i>';
+      t.addEventListener('click', function () {
+        // Un second clic sur la même colonne retourne le sens.
+        if (mailTri.champ === c.tri) mailTri.desc = !mailTri.desc;
+        else { mailTri.champ = c.tri; mailTri.desc = (c.tri === 'date'); }
+        majMessagerie(mailDerniere, mailDossierVu);
+      });
+      entete.appendChild(t);
+    });
+    var vue = $('#mail-vue-liste');
+    if (vue) vue.insertBefore(entete, vue.firstChild);
+
+    // LES LIBELLÉS D'ÉPOQUE. `win.ViewMail.attachEndButton` compose sa barre
+    // en XML : « Mettre à la corbeille », un grand espace, « Répondre », huit
+    // pixels, « Faire suivre ». Le light n'a pas le renvoi, et il lui faut un
+    // « Retour » que les trois fenêtres d'époque n'avaient pas — elles se
+    // fermaient. Le reste prend les mots du SWF.
+    var pou = $('#mail-supprimer');
+    if (pou) pou.textContent = 'Mettre à la corbeille';
+    var env = $('#mail-envoyer');
+    if (env) env.textContent = 'Envoyer';
+
+    // L'EN-TÊTE DE LECTURE (`win.ViewMail.attachInfo`) : quatre lignes de 20,
+    // étiquette de 60 alignée à DROITE — Date, De, À, Sujet. Le light n'en
+    // affiche que trois valeurs ; on monte le gabarit complet et on le
+    // remplit à l'ouverture.
+    var lect = $('#mail-vue-lecture');
+    if (lect) {
+      var info = document.createElement('div');
+      info.className = 'mx-info';
+      [['date', 'Date'], ['from', 'De'], ['to', 'À'], ['subject', 'Sujet']].forEach(function (l) {
+        var ligne = document.createElement('div');
+        ligne.className = 'mx-ligne';
+        ligne.innerHTML = '<span class="mx-lab"></span><span class="mx-val" data-champ="'
+          + l[0] + '"></span>';
+        ligne.querySelector('.mx-lab').textContent = l[1];
+        info.appendChild(ligne);
+      });
+      lect.insertBefore(info, lect.firstChild);
+    }
+
+    // L'EN-TÊTE DE RÉDACTION (`win.Mail.attachInfo`) : trois lignes de 20,
+    // étiquette de 60 — De (en clair, sur fond), À, Sujet. Le light a déjà les
+    // deux champs ; il lui manque la ligne « De », que `preInit` remplit avec
+    // « pseudo <pseudo@frutiparc.com> ».
+    var form = $('#mail-vue-ecriture .mail-form');
+    if (form && !form.querySelector('.mx-de')) {
+      var de = document.createElement('div');
+      de.className = 'mx-de';
+      de.innerHTML = '<span class="mx-lab">De</span><span class="mx-val"></span>';
+      var moi = (window.state && window.state.user) || '';
+      de.querySelector('.mx-val').textContent = moi + ' <' + moi + '@frutiparc.com>';
+      form.insertBefore(de, form.firstChild);
+    }
+  }
+
+  var mailDerniere = [], mailDossierVu = 'inbox';
+
+  /**
+   * La LISTE, au gabarit « mail » de l'explorateur.
+   *
+   * `box.Explorer` trie côté client (`currentSort`), et le SWF ne recharge
+   * rien pour cela : on fait de même sur la liste que le light vient de
+   * recevoir.
+   */
+  function majMessagerie(liste, dossier) {
+    var panneau = $('#mail-panel');
+    if (!panneau || !actif) return;
+    habillerMail(panneau);
+    mailDerniere = liste || [];
+    mailDossierVu = dossier || 'inbox';
+    var envoi = (mailDossierVu === 'outbox');
+    // `lister` change de première colonne selon la boîte : « Expéditeur » à
+    // l'arrivée, « Destinataire » au départ.
+    Array.prototype.forEach.call(panneau.querySelectorAll('.mx-col'), function (t, i) {
+      var c = MAIL_COLONNES[i];
+      t.querySelector('.t').textContent = (envoi && c.titreEnvoi) ? c.titreEnvoi : c.titre;
+      t.classList.toggle('trie', mailTri.champ === c.tri);
+      t.classList.toggle('desc', mailTri.desc);
+    });
+    var champ = $('#mail-liste');
+    if (!champ) return;
+    var rangs = mailDerniere.slice();
+    var sens = mailTri.desc ? -1 : 1;
+    rangs.sort(function (a, b) {
+      var va, vb;
+      if (mailTri.champ === 'date') { va = a.date || ''; vb = b.date || ''; }
+      else if (mailTri.champ === 'name') { va = (a.subject || '').toLowerCase(); vb = (b.subject || '').toLowerCase(); }
+      else { va = ((envoi ? a.to : a.from) || '').toLowerCase(); vb = ((envoi ? b.to : b.from) || '').toLowerCase(); }
+      return va < vb ? -sens : va > vb ? sens : 0;
+    });
+    champ.textContent = '';
+    rangs.forEach(function (m) {
+      var r = document.createElement('button');
+      r.type = 'button';
+      r.className = 'mx-rang' + (!m.read && !envoi ? ' neuf' : '');
+      var ico = document.createElement('i');
+      ico.className = 'mx-ico';
+      r.appendChild(ico);
+      [envoi ? (m.to || '?') : (m.from || '?'), m.subject || '(sans sujet)',
+        mailDateCourte(m.date)].forEach(function (txt, i) {
+        var c = document.createElement('span');
+        c.className = 'mx-cell' + (MAIL_COLONNES[i].big ? ' big' : '');
+        if (!MAIL_COLONNES[i].big) c.style.width = MAIL_COLONNES[i].l + 'px';
+        c.textContent = txt;
+        r.appendChild(c);
+      });
+      r.addEventListener('click', function () {
+        if (window.MessagerieLight) MessagerieLight.ouvrir(m.uid);
+      });
+      champ.appendChild(r);
+    });
+  }
+
+  /**
+   * `win.ViewMail.setMail` : les quatre champs de l'en-tête, dans l'ordre.
+   *
+   * `box.ViewMail.init` compose les deux adresses avec
+   * `FPString.toDisplayMail` — « pseudo <pseudo@frutiparc.com> ». On garde la
+   * forme, elle dit d'un coup d'œil de qui vient le courrier et où il est allé.
+   */
+  function majLectureMail(m) {
+    var panneau = $('#mail-panel');
+    if (!panneau || !actif || !m) return;
+    var moi = (window.state && window.state.user) || '';
+    var adr = function (p) { return p ? (p + ' <' + p + '@frutiparc.com>') : ''; };
+    var val = {
+      date: mailDateCourte(m.date),
+      from: adr(m.from || (m.folder === 'outbox' ? moi : '')),
+      to: adr(m.to || (m.folder === 'outbox' ? '' : moi)),
+      subject: m.subject || '(sans sujet)',
+    };
+    Array.prototype.forEach.call(panneau.querySelectorAll('.mx-val[data-champ]'), function (e) {
+      e.textContent = val[e.getAttribute('data-champ')] || '';
+    });
+  }
+
+  // `but.icon.Detail.display` : `dateDsp = Lang.formatDateString(date,
+  // "numeric")` — la date COURTE, jour/mois/année et l'heure.
+  function mailDateCourte(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ''));
+    return m ? m[3] + '/' + m[2] + '/' + m[1].slice(2) + ' ' + m[4] + ':' + m[5] : String(s || '');
   }
 
   // Le clic sur un contact ouvre SA FICHE, comme le `userSlot` du bureau.
@@ -2556,6 +2848,9 @@ window.BureauFrutiz = (function () {
     // #evt-panel sert deux rubriques : la fenêtre prend le titre demandé.
     f.txt.textContent = rub.titre;
     f.pastille.style.backgroundImage = 'url(' + fruitUrl(rub.fruit) + ')';
+    // La messagerie prend son écorce d'explorateur AVANT le premier listing :
+    // sans quoi la fenêtre s'ouvrirait un instant en habits de mobile.
+    if (tab === 'mail') habillerMail(panneau);
     panneau.classList.add('active');
     if (tab === 'chat') majTitreSalon();
   }
@@ -3169,6 +3464,10 @@ window.BureauFrutiz = (function () {
     // Rappelés par le light : la colonne des bouilles suit la liste des
     // connectés, et une émotion joue dans l'écran de la personne.
     ajusterJournal: ajusterJournal,
+    // La messagerie du light, rhabillée en explorateur : mêmes données, le
+    // gabarit « mail » de `box.Explorer` par-dessus.
+    majMessagerie: majMessagerie,
+    majLectureMail: majLectureMail,
     retitrer: retitrer,
     // `box.Chat.onSend` : une trame de conversation avertit son slot. L'onglet
     // qui porte la fenêtre des salons (ou celui du bureau si elle y est

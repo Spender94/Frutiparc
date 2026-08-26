@@ -1918,6 +1918,68 @@ Le light avertit dans les deux cas, salons et discussions privées, puisqu'il
 n'a qu'UNE fenêtre de conversation : c'est l'onglet qui la porte qui se teinte,
 ou celui du bureau si elle y est restée.
 
+## LA MESSAGERIE (`box.Explorer`, `win.ViewMail`, `win.Mail`)
+
+Ce ne sont pas trois vues d'une fenêtre mais **trois fenêtres**.
+
+### La boîte de réception EST un explorateur
+
+L'icône « Boîte de réception » du bureau ouvre `box.Explorer` sur
+`fileMng.inbox` — la fenêtre JAUNE, avec `list.tpl == "mail"`. `init` monte le
+type de dossier :
+
+```
+flNewDirectory = false ; flRemoveAll = false ; flMail = true ; flUp
+styleName      = "frFileStandard"                            (le jaune)
+lister         = [ {De|À, 140}, {Sujet, 200, big}, {Date, 80} ]
+currentSort    = { field: "date", sens: "DESC" }
+```
+
+`initNavigatorIconList` n'y pose donc que deux boutons — `butPushNavigator`
+image 2 (dossier parent) et image 5 (écrire un courrier) —, et
+`win.Explorer.displayList` passe chaque entrée en `fileIconDetail` : l'icône,
+puis les trois colonnes. La première est décalée de 20 px, la place de l'icône.
+
+Relevé 1:1 (fenêtre en x 486..896 / y 146..546, soit 411 × 401) :
+
+```
+y 229-230  #DDDDDD   le contour du bandeau des colonnes
+y 231-232  #EAEA0F   son liseré
+y 233-244  reflet blanc puis #F9F977  — 18 px en tout
+y 247-254  le contour puis le liseré du CHAMP, deux boîtes distinctes
+y 255-262  le même reflet, puis #F8F866
+y 277, 299, 321…     #EAEA0F : une rangée fait 22 px
+x 631-632, 811-812   #F1F13B : deux pixels entre les colonnes
+```
+
+L'encre du bandeau est `#404000`, celle des rangées `#5A5A00`. Et le bandeau
+d'avertissement (`explorer.alert.inbox_empty`) ne paraît que si la boîte tient
+une entrée ou moins.
+
+### Lire (`win.ViewMail`, 500 × 400)
+
+`attachInfo` : quatre lignes de 20 px, étiquette de 60 **alignée à droite** —
+Date, De, À, Sujet, les deux adresses passées par `FPString.toDisplayMail`
+(« pseudo &lt;pseudo@frutiparc.com&gt; »). Puis le corps. Puis, en bas,
+« Mettre à la corbeille », un grand espace, « Répondre », huit pixels,
+« Faire suivre ».
+
+### Écrire (`win.Mail`)
+
+`attachInfo` : trois lignes de 20 px, étiquette de 60 — De (en clair, sur
+fond), À (qui accepte le DÉPÔT d'un contact), Sujet. Puis `attachEditTool`,
+une barre de 28 px : gras, italique, souligné (`butFlagSmallPink`, images 2 à
+4, 20 px chacun), un espace, un menu de corps de texte de 100 px. Puis le
+corps (`textFormat: { size: 12 }`). Puis la barre du bas : une case « garder
+une copie dans les messages envoyés », un grand espace, « Envoyer ».
+
+**Ce que le portage ne reprend pas, et pourquoi.** La barre de style et la
+case de copie n'ont rien à commander : le courrier du light est du texte
+simple d'un bout à l'autre — saisie, API, relecture — et le serveur garde
+toujours une copie à l'envoi. Le renvoi (« Faire suivre ») n'existe pas côté
+light. À l'inverse, le portage ajoute un « Retour » que les trois fenêtres
+d'époque n'avaient pas : elles se fermaient.
+
 ## LES FINITIONS DU PORTAGE
 
 Quatre choses qui n'ont pas d'équivalent dans le SWF — elles naissent du
