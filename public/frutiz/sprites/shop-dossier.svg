@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6.05 -6.35 12.2 12.85" width="12.2" height="12.85">
+
+  <path d="M5.6 -3.75L6 -3.4L6.15 -2.85L6.15 3L6 3.55L5.6 3.9L0.5 6.4L0.05 6.5L-0.4 6.4L-5.5 3.9L-5.9 3.55L-6.05 3L-6.05 -2.85L-5.9 -3.4L-5.5 -3.75L-0.4 -6.25L0.05 -6.35L0.5 -6.25L5.6 -3.75Z" fill="#554410" fill-rule="evenodd"/>
+  <path d="M-5 -2.9L0.1 -5.4L5.15 -2.9L0.1 -0.35L-5 -2.9ZM5.15 -2.35L5.15 3L0.1 5.5L0.1 -0.35L5.15 -2.35ZM-3.75 -2.9L0.1 -1L3.95 -2.9L0.1 -4.8L-3.75 -2.9Z" fill="#f1d28d" fill-rule="evenodd"/>
+  <path d="M5.15 -2.9L5.15 -2.35L0.1 -0.35L5.15 -2.9Z" fill="#ffffff" fill-rule="evenodd"/>
+  <path d="M0.1 5.5L-5 3L-5 -2.9L0.1 -0.35L0.1 5.5Z" fill="#e9b94b" fill-rule="evenodd"/>
+  <path d="M0.1 -1L-3.75 -2.9L0.1 -4.8L3.95 -2.9L0.1 -1Z" fill="#926112" fill-rule="evenodd"/>
+
+</svg>

@@ -558,6 +558,89 @@
    "id": 197
   }
  },
+ "boutique": {
+  "notes": "win.Shop : cpCounter #38, butPushSmallWhite #502, shopBullet #567, butPushMoreKikooz #558",
+  "shop-kikooz": {
+   "fichier": "shop-kikooz.svg",
+   "id": 396,
+   "cadre": {
+    "x": 4.1,
+    "y": 4.9,
+    "w": 16.049999999999997,
+    "h": 14.950000000000001
+   }
+  },
+  "shop-but-blanc": {
+   "fichier": "shop-but-blanc.svg",
+   "id": 473,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "shop-but-blanc-2": {
+   "fichier": "shop-but-blanc-2.svg",
+   "id": 501,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 20
+   }
+  },
+  "shop-ico-journal": {
+   "fichier": "shop-ico-journal.svg",
+   "id": 498,
+   "cadre": {
+    "x": 3.15,
+    "y": 1.95,
+    "w": 13.549999999999999,
+    "h": 15.95
+   }
+  },
+  "shop-ico-kikooz": {
+   "fichier": "shop-ico-kikooz.svg",
+   "id": 499,
+   "cadre": {
+    "x": 0.55,
+    "y": 0.8,
+    "w": 19.099999999999998,
+    "h": 18.349999999999998
+   }
+  },
+  "shop-dossier": {
+   "fichier": "shop-dossier.svg",
+   "id": 563,
+   "cadre": {
+    "x": -6.05,
+    "y": -6.35,
+    "w": 12.2,
+    "h": 12.85
+   }
+  },
+  "shop-dossier-ouvert": {
+   "fichier": "shop-dossier-ouvert.svg",
+   "id": 564,
+   "cadre": {
+    "x": -10.9,
+    "y": -9.1,
+    "w": 20.1,
+    "h": 17.45
+   }
+  },
+  "shop-plus-kikooz": {
+   "fichier": "shop-plus-kikooz.svg",
+   "id": 557,
+   "cadre": {
+    "x": 0,
+    "y": 0,
+    "w": 150,
+    "h": 60
+   }
+  }
+ },
  "contacts": {
   "notes": "sideListTitle #215 / userSlot #261 + bande status #253",
   "sl-dossier-fond": {

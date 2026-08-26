@@ -1998,6 +1998,180 @@ body.bureau-frutiz .fen #scores-panel #sc-table .sc-moi,
 body.bureau-frutiz .fen #scores-panel #sc-table .sc-pod span { color: #000000; }
 
 
+
+/* ── LA BOUTIQUE (`win.Shop`, `box.Shop`) ─────────────────────────────────
+   `initFrameSet` monte la fenêtre en DEUX colonnes :
+
+     margin.left (140)  · `bar`       : le compteur de kikooz (`cpCounter`,
+                                        style `frKikooz`) et, calés à DROITE,
+                                        deux `butPushSmallWhite` ;
+                        · `menuFrame` : un `cpTree` de 140 au style `frSystem`
+                                        — le BLANC —, puces `shopBullet` ;
+     main               · `showFrame` → `menuInfoFrame`, un `cpDocument` au
+                                        style `frSheet` — le VERT ;
+                        · `bar`       → `pushKikooz`, la plaque orange
+                                        `butPushMoreKikooz`, min 100 × 60.
+
+   Relevé 1:1 (fenêtre en x 8..483 / y 104..507, soit 476 × 404) :
+
+     x  15-16   #DDDDDD   le contour de la colonne de gauche
+     x  17..156           sa largeur : 140, au mot du `min`
+     x 163-164  #DDDDDD   le contour de la fiche
+     x 165-166  #ADE76B   son liseré
+     x 167..474 #CCF599   sa chair, sous un reflet blanc de 10 px
+     y 124-125  #DDDDDD · 126-127 #F3BE8C · chair #F8D5BC jusqu'à 145
+                          la pilule du compteur : 26 px en tout
+     y 428-437            deux pixels de liseré, le contour, quatre de blanc —
+                          puis la plaque orange, à droite
+
+   L'encre de la fiche est #5A7D33, celle du compteur #764A34 (le brun sombre
+   du `colorSet`). */
+body.bureau-frutiz .fen #shop-sheet {
+  position: static; inset: auto; transform: none; transition: none;
+  max-height: none; border: 0; border-radius: 0; box-shadow: none;
+  background: transparent; z-index: auto;
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+/* La fenêtre a sa propre barre de titre : celle de la feuille fait double
+   emploi, et le voile du mobile n'a rien à faire ici. */
+body.bureau-frutiz .fen #shop-sheet .sheet-head { display: none; }
+body.bureau-frutiz #shop-sheet-backdrop { display: none !important; }
+body.bureau-frutiz .fen #shop-sheet .sheet-body {
+  flex: 1; min-height: 0; padding: 0; overflow: hidden;
+  display: grid; grid-template-columns: 148px 1fr; grid-template-rows: 26px 1fr auto;
+  gap: 0;
+}
+/* LA BARRE DU HAUT À GAUCHE : le compteur, puis les deux boutons calés à
+   droite (`struct.x.align = "end"`). */
+body.bureau-frutiz .fen #shop-sheet #bo-haut {
+  grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 4px;
+  padding: 0 0 0 8px; margin: 0; background: none; border: 0; min-width: 0;
+}
+/* LE COMPTEUR : `cpCounter` au style `frKikooz` — la pièce `iconCounter`
+   (forme #396) à gauche, le nombre en Verdana 14 GRAS. */
+body.bureau-frutiz .fen #shop-sheet .bo-solde {
+  display: flex; align-items: center; gap: 3px; box-sizing: border-box;
+  height: 22px; padding: 0 6px 0 3px; min-width: 44px;
+  background: #F8D5BC; border: 2px solid #F3BE8C; border-radius: 11px;
+  box-shadow: 0 0 0 2px #DDDDDD;
+  font: 700 14px Verdana, Arial, sans-serif; color: #764A34;
+}
+body.bureau-frutiz .fen #shop-sheet .bo-solde img {
+  width: 16px; height: 15px; display: block;
+  content: url('/frutiz/sprites/shop-kikooz.svg');
+}
+body.bureau-frutiz .fen #shop-sheet .bo-solde strong { font: inherit; color: inherit; }
+/* LES DEUX PETITS BOUTONS BLANCS : `butPushSmallWhite` — la plaque est la
+   forme #473, et #501 la remplace au survol (l'image 2). */
+body.bureau-frutiz .fen #shop-sheet .bq-icones {
+  margin-left: auto; display: flex; gap: 3px; padding-right: 4px;
+}
+body.bureau-frutiz .fen #shop-sheet .bq-ico {
+  position: relative; width: 20px; height: 20px; flex: 0 0 20px;
+  padding: 0; border: 0; cursor: pointer; color: transparent; font-size: 0;
+  background: url('/frutiz/sprites/shop-but-blanc.svg') center / 20px 20px no-repeat;
+}
+body.bureau-frutiz .fen #shop-sheet .bq-ico:hover {
+  background-image: url('/frutiz/sprites/shop-but-blanc-2.svg');
+}
+body.bureau-frutiz .fen #shop-sheet .bq-ico i {
+  position: absolute; inset: 1px; display: block;
+  background: center / contain no-repeat;
+}
+/* L'ARBRE DES RUBRIQUES : `cpTree`, 140 de large, une boîte blanche. */
+body.bureau-frutiz .fen #shop-sheet #bo-fenetre {
+  display: contents;
+}
+body.bureau-frutiz .fen #shop-sheet #bo-rubriques {
+  grid-column: 1; grid-row: 2 / span 2; margin: 8px 6px 8px 8px;
+  padding: 4px 0; overflow: auto; min-height: 0;
+  background: #FFFFFF; border-radius: 3px; box-shadow: 0 0 0 2px #DDDDDD;
+  display: block;
+}
+/* Une ligne de l'arbre : la puce `shopBullet` (dossier fermé / ouvert) puis
+   le libellé, en Verdana 12. La puce du mobile fait double emploi. */
+body.bureau-frutiz .fen #shop-sheet #bo-rubriques button {
+  display: flex; align-items: center; gap: 5px; width: 100%; height: 20px;
+  padding: 0 4px 0 6px; border: 0; background: none; cursor: pointer;
+  font: normal 12px Verdana, Arial, sans-serif; color: #000000;
+  text-align: left; white-space: nowrap; overflow: hidden;
+}
+body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-rub img { display: none; }
+body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-rub::before {
+  content: ""; flex: 0 0 13px; width: 13px; height: 13px;
+  background: url('/frutiz/sprites/shop-dossier.svg') center / 13px 13px no-repeat;
+}
+/* `shopBullet` image 2 : le dossier OUVERT, plus large et plus bas — d'où son
+   cadre à lui (20,1 × 17,45 contre 12,2 × 12,85). */
+body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-rub.on::before {
+  background-image: url('/frutiz/sprites/shop-dossier-ouvert.svg');
+  background-size: 16px 14px;
+}
+body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-rub.on { font-weight: 700; }
+/* Une FEUILLE de l'arbre — un article — n'a pas de dossier : elle s'indente
+   sous le sien. */
+body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art {
+  padding-left: 24px; color: #335511;
+}
+body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art.on { font-weight: 700; color: #000000; }
+body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art.eu { color: #8AA86A; }
+body.bureau-frutiz .fen #shop-sheet #bo-rubriques button:hover { background: #E8F8D3; }
+/* LA FICHE : le style `frSheet` — le vert du bureau, sous son reflet. */
+body.bureau-frutiz .fen #shop-sheet #bo-fiche {
+  grid-column: 2; grid-row: 1 / span 2; margin: 8px 8px 0 0;
+  padding: 8px; overflow: auto; min-height: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,.6) 2px, rgba(255,255,255,0) 12px), #CCF599;
+  border: 2px solid #ADE76B; border-radius: 5px; box-shadow: 0 0 0 2px #DDDDDD;
+  font: normal 11px Verdana, Arial, sans-serif; color: #5A7D33;
+}
+/* `displayItemPage("description")` compose la fiche en XML : le NOM en
+   `<t s="4">`, le descriptif, puis le prix en `<t s="3">` et les mentions en
+   `<t s="2">`. L'aperçu et le bouton d'achat sont à gauche du nom. */
+body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-tete {
+  display: flex; gap: 10px; align-items: flex-start;
+}
+body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-apercu {
+  flex: 0 0 100px; width: 100px; min-height: 100px; box-sizing: border-box;
+  background: #E8F8D3; border: 2px solid #ADE76B; border-radius: 3px;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-titre {
+  font: 700 14px Verdana, Arial, sans-serif; color: #335511; margin: 0 0 4px;
+}
+body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-accroche {
+  font: 700 11px Verdana, Arial, sans-serif; color: #335511; margin: 6px 0;
+}
+body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-texte { margin: 6px 0; }
+body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-prix {
+  font: 700 13px Verdana, Arial, sans-serif; color: #335511; margin: 8px 0 0;
+}
+body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-etat { margin-top: 4px; }
+body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-etat.err { color: #AA2222; }
+body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-etat.ok { color: #5A8A22; }
+/* « Acheter » : la pastille verte du bureau (`butPushStandard`), sous
+   l'aperçu — `displayItem` la met en TÊTE du menu de l'article. */
+body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-acheter {
+  display: block; width: 100px; height: 18px; margin: 4px 0 0;
+  padding: 0; border: 0; border-radius: 9px;
+  background: #94DB39; box-shadow: 0 0 0 2px #66AA22;
+  font: 700 10px Verdana, Arial, sans-serif; color: #FFFFFF; cursor: pointer;
+}
+body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-acheter:hover { background: #ADE76B; }
+body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-acheter:disabled {
+  background: #C8C8C8; box-shadow: 0 0 0 2px #999999; cursor: default;
+}
+/* LA GRANDE PLAQUE, calée à DROITE sous la fiche (`main.bar` a un `empty`
+   élastique devant elle). L'art fait 150 × 60 ; `min` la borne à 100 × 60. */
+body.bureau-frutiz .fen #shop-sheet .bq-pied {
+  grid-column: 2; grid-row: 3; display: flex; justify-content: flex-end;
+  padding: 6px 8px; margin: 0;
+}
+body.bureau-frutiz .fen #shop-sheet .bq-plus {
+  width: 150px; height: 60px; flex: 0 0 auto; padding: 0; border: 0;
+  background: url('/frutiz/sprites/shop-plus-kikooz.svg') center / 150px 60px no-repeat;
+  cursor: pointer; color: transparent; font-size: 0;
+}
+
 /* ── LA MESSAGERIE ────────────────────────────────────────────────────────
    D'époque ce ne sont pas trois vues d'une fenêtre mais TROIS fenêtres : la
    boîte de réception est un EXPLORATEUR (`box.Explorer` sur `fileMng.inbox`,

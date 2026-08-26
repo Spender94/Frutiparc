@@ -1980,6 +1980,146 @@ toujours une copie à l'envoi. Le renvoi (« Faire suivre ») n'existe pas côt�
 light. À l'inverse, le portage ajoute un « Retour » que les trois fenêtres
 d'époque n'avaient pas : elles se fermaient.
 
+## LA BOUTIQUE (`win.Shop`, DoInitAction sprite#795 0x797d3)
+
+`win.Shop extends win.Advance` : une fenêtre à DEUX COLONNES, et
+`initFrameSet` les monte de haut en bas.
+
+### La colonne de gauche (`margin.left`, 140 de large)
+
+Deux cadres l'un sous l'autre.
+
+**`bar`**, un cadre horizontal de `140 × topLeftBarHeight` (**22**), marge
+`x.min = 8, x.ratio = 1`. Il tient à son tour deux choses :
+
+```
+kikoozFrame  cpCounter        min 70 × 22   flBackground   frKikooz
+             args = { align: "left", textStyle: Standard.getTextStyle().def
+                      + size 14, bold, color colorSet.brown.overdark }
+iconList     basicIconList    min 70 × 22   struct = getSmallStruct()
+             + x.margin 0, y.margin 0, x.align "end", y.align "start"
+             mask = { flScrollable: false }
+```
+
+Le compteur porte donc son propre fond (la pastille) et son chiffre en
+Verdana 14 gras brun ; les deux boutons se rangent **au bout** de la ligne,
+collés en haut. `genIconList` les décrit : deux `butPush` posés sur
+`butPushSmallWhite` (#502), `outline: 2, curve: 4`, images **20** et **21** —
+
+```
+20  tipId "shop_kikooz_log"      → uniqWinMng.open("kikoozLog")
+21  tipId "shop_obtain_kikooz"   → box.obtainKikooz()
+```
+
+Attention à la lecture : `butPushSmallWhite` n'a que **deux** images (la
+plaque blanche #473, la plaque de survol #501). Le 20 et le 21 ne sont pas
+des images du bouton mais de son clip enfant `icon` (#500) — #498 le
+journal, #499 le sac de kikooz. Le bouton garde la plaque, l'enfant change
+de dessin.
+
+**`menuFrame`**, un `cpTree` de `140 × 60`, `flBackground`, style
+`frSystem`, `args = { width: 140, flMask: true }`. Ses puces sortent de
+`shopBullet` (#567) : image 1 le dossier fermé (#563), image 2 le dossier
+ouvert (#564), et 36 images de plus pour l'animation d'attente.
+
+Sa marge cache une **coquille d'époque**, gardée telle quelle :
+
+```
+r8.x.min = 8 ; r8.x.ratio = 1 ; r8.y.min = 16 ; r8.x.ratio = 1 ;
+                                                ↑ le second devait être y
+```
+
+`y.ratio` n'est donc jamais posé : la colonne de gauche ne s'étire pas
+verticalement comme l'auteur le croyait.
+
+### La colonne de droite (`main`)
+
+`showFrame` (horizontal, min 300 × 200, `flBackground`, marge `x.min 8`)
+contient `menuInfoFrame` — un `cpDocument` de style **`frSheet`**, la
+feuille verte, marge `y.min 4, y.ratio 1`, `flMask`. Puis, sous elle,
+`bar` (marge `y.min 6, y.ratio 1`) : un `empty` qui pousse, puis
+`pushKikooz`, un `butPush` sur `butPushMoreKikooz` (#558), `outline: 2,
+curve: 6`, min `100 × 60` → `box.obtainKikooz()`. La grande plaque orange
+part donc à DROITE, et elle mesure en vrai 150 × 60, la taille de son
+dessin (#557).
+
+Là encore une coquille : les arguments demandent `frame: 3`, or #558 n'a
+qu'une seule image. Flash borne le `gotoAndStop` — on voit l'image 1.
+
+### Choisir un article (`displayItem`)
+
+`attachMenu` glisse un `cpProductMenu` **en tête** de `showFrame` (index 0,
+donc au-dessus de la feuille), marge `x.min 12, y.min 4, y.ratio 1`. Puis
+`cpMenu.setItem(item.picto, entrées)` — le picto de l'article et ses
+boutons, montés à l'envers par des `unshift` :
+
+```
+si item.screens.length   → push   « Images »       displayItemPage("screenshot")
+   … et alors seulement  → unshift « Description »  displayItemPage("description")
+si !item.alreadyBuy      → unshift Lang.fv("shop.buy") → box.buy(item.id)
+```
+
+« Description » ne paraît donc **que** s'il y a des images : sans elles il
+n'y a qu'une page, et pas d'onglet pour y revenir.
+
+`displayItemPage("description")` fabrique un petit XML que le `cpDocument`
+avale :
+
+```
+<l><t s="4">nom</t></l>
+description (les \n rendus par FEString.replaceBackSlashN)
+<l><t s="3"> shop.already_have  |  shop.price {p} </t></l>
+   + éventuellement <l><t s="2"> shop.price_comment {c}  shop.price_end {d} </t></l>
+si quantity > -1  → <l><t s="2">shop.pack_quantity {q}</t></l>
+si screens.length → <l><t s="2">N images disponibles !</t></l>
+```
+
+Cette dernière ligne est écrite **en français dans le bytecode**, sans
+passer par `Lang` : la seule de la fenêtre.
+
+Enfin `scrollText(px)` pousse `cpInfo.mask.y.path.pixelScroll(px)` — la
+molette fait défiler la feuille, pas la fenêtre. `displayWait`,
+`onBuyError`, `onBuySuccess` sont vides, et `testAlpha` (`_alpha = 50`) est
+resté dans la version publiée.
+
+### Le relevé 1:1 (fenêtre 476 × 404, scratchpad/sr-1-boutique.png)
+
+```
+fenêtre en x 8..483 / y 104..507
+colonne de gauche en x 17..156          (140, marge de 8 de chaque côté)
+pastille du compteur y 124..149         (26 : 22 + le contour et le liseré)
+   contour #DDDDDD · liseré #F3BE8C · chair #F8D5BC · encre #764A34
+feuille verte (frSheet)
+   contour #DDDDDD · liseré #ADE76B · chair #CCF599 · encre #5A7D33
+la grande plaque commence en y 438
+```
+
+### Les huit pièces sorties du SWF
+
+```
+shop-kikooz          #396 (+#397)   la pièce du compteur
+shop-but-blanc       #473           butPushSmallWhite, image 1
+shop-but-blanc-2     #501           … image 2 (le survol)
+shop-ico-journal     #498           icon (#500) image 20
+shop-ico-kikooz      #499           icon (#500) image 21
+shop-dossier         #563           shopBullet image 1 : fermé
+shop-dossier-ouvert  #564           shopBullet image 2 : ouvert
+shop-plus-kikooz     #557           butPushMoreKikooz, 150 × 60
+```
+
+### Ce que le portage en fait
+
+`RUBRIQUES.boutique` ouvre `#shop-sheet` en 476 × 404, centrée, pastille
+`winShop`. `habillerBoutique` ajoute les deux boutons blancs de la barre du
+compteur et la plaque orange du bas ; le reste (l'arbre, la fiche, le prix,
+« Acheter ») est déjà celui du light, seulement rhabillé. La molette du
+`cpDocument` devient le défilement naturel de `#bo-fiche`.
+
+**Ce que le portage ne reprend pas.** Le journal des kikooz (image 20)
+n'existe pas côté light — le bouton est là, mais il mène à la même page
+d'obtention que son voisin. Et l'onglet « Images » n'a rien à montrer :
+les articles du light ne portent pas de captures.
+
 ## LES FINITIONS DU PORTAGE
 
 Quatre choses qui n'ont pas d'équivalent dans le SWF — elles naissent du

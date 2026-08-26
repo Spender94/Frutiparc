@@ -3231,12 +3231,17 @@
       // Un glissement qui vient de finir n'est pas un clic.
       if (bureauVientDeGlisser) return;
       var go = b.getAttribute("data-go");
-      if (go === "shop") return openShopSheet();
       if (go === "mail" || go === "evenements" || go === "historique") return activateTab(go);
       // Sur le BUREAU, « Mes disques » et « Inventaire » ne sont pas des
       // feuilles mais des FENÊTRES — l'explorateur jaune de main.swf, qui lit
       // les mêmes dossiers par /ff/ls. Sur mobile, rien ne change.
       var surBureau = window.BureauFrutiz && BureauFrutiz.actif();
+      // La BOUTIQUE, comme les deux explorateurs : une fenêtre sur le bureau
+      // (`win.Shop`), une feuille sur mobile.
+      if (go === "shop") {
+        if (surBureau && BureauFrutiz.ouvrirBoutique) return BureauFrutiz.ouvrirBoutique();
+        return openShopSheet();
+      }
       if (go === "disques") {
         if (surBureau && BureauFrutiz.ouvrirDisques) return BureauFrutiz.ouvrirDisques();
         return openDisquesSheet();
@@ -3882,6 +3887,9 @@
     $("#shop-sheet").classList.remove("show");
   }
   // Ouverture via la tuile « Boutique » de l'accueil (cf. home-tile[data-go]).
+  // Ce dont le bureau a besoin pour piloter la boutique : il rejoue les mêmes
+  // gestes que le mobile, sans onglets ni feuille.
+  window.MagasinLight = { charger: loadShop, acheter: buyShopItem };
   $("#shop-sheet-close").addEventListener("click", closeShopSheet);
   $("#shop-sheet-backdrop").addEventListener("click", closeShopSheet);
 

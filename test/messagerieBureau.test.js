@@ -16,6 +16,11 @@
  *   · l'écran d'une bouille qui joue une émotion doit cacher sa vignette
  *     figée : le SWF n'a qu'UNE bouille par écran, elle s'anime, elle ne se
  *     double pas.
+ *
+ * Et, depuis, LA BOUTIQUE — `win.Shop`, la fenêtre verte à deux colonnes :
+ * le compteur de kikooz et l'arbre des rubriques à gauche, la fiche de
+ * l'article à droite, la grande plaque orange dessous. Huit pièces sorties du
+ * SWF pour elle seule.
  */
 'use strict';
 
@@ -130,4 +135,37 @@ test('la bouille qui joue une émotion ne se DOUBLE plus', () => {
   assert.match(JS, /ecran\.classList\.remove\('bo-anime'\);\s+\/\/ sa vignette figée revient/);
   // `!important` : `FPBouilleThumb` pose `visibility: visible` EN LIGNE.
   assert.match(CSS, /\.bo-anime img \{ visibility: hidden !important; \}/);
+});
+
+test('LA BOUTIQUE : deux colonnes, et les pièces sorties du SWF', () => {
+  // `win.Shop` : la fenêtre du fruit VERT (`winType = "winShop"`). Relevé
+  // 1:1 — x 8..483 / y 104..507, soit 476 × 404.
+  assert.match(JS, /boutique:\s+\{ panneau: '#shop-sheet',\s+titre: 'Boutique', fruit: 'winShop',\s*\n\s*l: 476, h: 404,/);
+  // Les huit pièces extraites du SWF, et leurs formes.
+  const EX = fs.readFileSync(path.join(ROOT, 'scripts/extract-frutiz-bureau.js'), 'utf8');
+  const pieces = [
+    ['shop-kikooz', 396], ['shop-but-blanc', 473], ['shop-but-blanc-2', 501],
+    ['shop-ico-journal', 498], ['shop-ico-kikooz', 499],
+    ['shop-dossier', 563], ['shop-dossier-ouvert', 564], ['shop-plus-kikooz', 557],
+  ];
+  for (const [cle, id] of pieces) {
+    assert.match(EX, new RegExp("\\{ cle: '" + cle + "', id: " + id + " \\}"), cle + ' manque à l’extracteur');
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/frutiz/sprites', cle + '.svg')), cle + '.svg manque');
+  }
+  // `initFrameSet` : la colonne de gauche fait 140, l'arbre est dessous, la
+  // fiche à droite et la grande plaque sous elle.
+  assert.match(CSS, /#shop-sheet \.sheet-body \{[\s\S]*?grid-template-columns: 148px 1fr;/);
+  // Le compteur : `cpCounter` au style `frKikooz` — relevé pilule #F8D5BC,
+  // liseré #F3BE8C, encre #764A34, Verdana 14 GRAS.
+  assert.match(CSS, /\.bo-solde \{[\s\S]*?background: #F8D5BC; border: 2px solid #F3BE8C;[\s\S]*?font: 700 14px Verdana[^;]*; color: #764A34;/);
+  // La fiche : le style `frSheet` — contour #DDDDDD, liseré #ADE76B, chair
+  // #CCF599, encre #5A7D33.
+  assert.match(CSS, /#bo-fiche \{[\s\S]*?#CCF599;\s*\n\s*border: 2px solid #ADE76B;[\s\S]*?color: #5A7D33;/);
+  // La plaque orange, 150 × 60, calée à droite.
+  assert.match(CSS, /\.bq-plus \{\s*\n\s*width: 150px; height: 60px;[\s\S]*?shop-plus-kikooz\.svg/);
+  assert.match(CSS, /\.bq-pied \{[\s\S]*?justify-content: flex-end;/);
+  // Sur le bureau la boutique est une FENÊTRE ; sur mobile, la feuille.
+  assert.match(LIGHT, /if \(surBureau && BureauFrutiz\.ouvrirBoutique\) return BureauFrutiz\.ouvrirBoutique\(\);/);
+  assert.match(LIGHT, /window\.MagasinLight = \{ charger: loadShop, acheter: buyShopItem \};/);
+  assert.match(JS, /ouvrirBoutique: ouvrirBoutique,/);
 });

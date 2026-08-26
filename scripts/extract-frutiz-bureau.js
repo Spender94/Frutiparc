@@ -770,6 +770,58 @@ function principal() {
   // l'ÉTAT : image 2 « presence » = la bande #222, dont `ico.gotoAndStop
   // (presence + 1)` choisit #220 (présence 1) ou #221 (présence 2) ; l'image 1
   // par défaut réunit #218 et #219.
+  // ── LA BOUTIQUE (`win.Shop` sprite#795, 0x797d3) ───────────────────────
+  //
+  // `initFrameSet` monte la fenêtre en deux colonnes :
+  //
+  //   margin.left  · `bar` (140 × topLeftBarHeight = 22, marge x 8) :
+  //                    - `kikoozFrame`, un `cpCounter` au style `frKikooz`
+  //                      (Verdana 14 GRAS, `colorSet.brown.overdark`), qui
+  //                      attache la pièce `iconCounter` (#397 → forme #396) ;
+  //                    - `iconList`, deux `butPushSmallWhite` (#502) : la
+  //                      plaque est la forme #473 (image 1) ou #501 (image 2,
+  //                      au survol), et l'ICÔNE vient de la bande #500 —
+  //                      image 20 (le journal des kikooz, #498) et image 21
+  //                      (en obtenir, #499) ;
+  //                · `menuFrame`, un `cpTree` de 140 de large dont les puces
+  //                  sont `shopBullet` (#567) : image 1 le dossier FERMÉ
+  //                  (#563), image 2 le dossier OUVERT (#564).
+  //   main         · `showFrame` → `menuInfoFrame`, un `cpDocument` au style
+  //                  `frSheet` (le vert) : la fiche de l'article ;
+  //                · `bar` → `pushKikooz`, un `butPush` sur
+  //                  `butPushMoreKikooz` (#558 → forme #557), min 100 × 60 —
+  //                  la grande plaque orange « OBTENIR DES KIKOOZ », qui en
+  //                  mesure en vrai 150.
+  //
+  // Deux coquilles d'époque, gardées telles quelles : les arguments de
+  // `pushKikooz` demandent `frame: 3` alors que #558 n'a qu'une image (Flash
+  // borne le gotoAndStop), et la marge de `menuFrame` pose deux fois
+  // `x.ratio` là où la seconde devait être `y.ratio`.
+  const BOUTIQUE = [
+    { cle: 'shop-kikooz', id: 396 },        // la pièce du compteur
+    { cle: 'shop-but-blanc', id: 473 },     // butPushSmallWhite, image 1
+    { cle: 'shop-but-blanc-2', id: 501 },   // …image 2 (survol)
+    { cle: 'shop-ico-journal', id: 498 },   // bande #500, image 20
+    { cle: 'shop-ico-kikooz', id: 499 },    // bande #500, image 21
+    { cle: 'shop-dossier', id: 563 },       // shopBullet image 1 : fermé
+    { cle: 'shop-dossier-ouvert', id: 564 },// shopBullet image 2 : ouvert
+    { cle: 'shop-plus-kikooz', id: 557 },   // butPushMoreKikooz
+  ];
+  chargerFormes(BOUTIQUE.map((c) => c.id).filter((id) => !corpsFormes.has(id)));
+  {
+    manifeste.boutique = { notes: 'win.Shop : cpCounter #38, butPushSmallWhite #502, shopBullet #567, butPushMoreKikooz #558' };
+    for (const c of BOUTIQUE) {
+      const forme = corpsFormes.get(c.id);
+      if (!forme) { console.warn('!! pièce de boutique absente', c.id); continue; }
+      const vb = forme.vb;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${arr(vb.x)} ${arr(vb.y)} ${arr(vb.w)} ${arr(vb.h)}" width="${arr(vb.w)}" height="${arr(vb.h)}">\n`
+        + forme.corps + '</svg>\n';
+      fs.writeFileSync(path.join(SORTIE, c.cle + '.svg'), svg, 'utf8');
+      manifeste.boutique[c.cle] = { fichier: c.cle + '.svg', id: c.id, cadre: vb };
+      console.log(c.cle + '.svg (forme #' + c.id + ')', JSON.stringify(vb));
+    }
+  }
+
   const CONTACTS = [
     { cle: 'sl-dossier-fond', id: 209 },   // la plaque du dossier
     { cle: 'sl-fleche-1', id: 211 },       // fondD image 1

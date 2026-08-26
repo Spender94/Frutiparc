@@ -39,6 +39,11 @@ window.BureauFrutiz = (function () {
     // `#444444` compris ; la colonne de gauche fait 160 et celle de droite
     // 430, six pixels entre les deux.
     scores:     { panneau: '#scores-panel',    titre: 'Scores',         l: 610, h: 328 },
+    // LA BOUTIQUE — `win.Shop`. Relevé 1:1 : la fenêtre tient en 476 × 404,
+    // contour compris, et s'ouvre au milieu. `winType = "winShop"` : le fruit
+    // VERT en pastille.
+    boutique:   { panneau: '#shop-sheet',      titre: 'Boutique', fruit: 'winShop',
+                  l: 476, h: 404, min: { w: 300, h: 200 }, centre: true },
     // LA MESSAGERIE — d'époque c'est un EXPLORATEUR (`box.Explorer` sur
     // `fileMng.inbox`), donc la fenêtre jaune et son gabarit : `win.Explorer`
     // pose `pos = {50, 50, 400, 400}` et s'ouvre AU MILIEU. Le relevé 1:1 la
@@ -2082,6 +2087,82 @@ window.BureauFrutiz = (function () {
     return m ? m[3] + '/' + m[2] + '/' + m[1].slice(2) + ' ' + m[4] + ':' + m[5] : String(s || '');
   }
 
+
+  // ── LA BOUTIQUE (`win.Shop`, `box.Shop`) ─────────────────────────────────
+  //
+  // `initFrameSet` monte la fenêtre en DEUX colonnes :
+  //
+  //   margin.left (140)  · `bar` : le compteur de kikooz (`cpCounter`, style
+  //                        `frKikooz`, Verdana 14 GRAS en brun sombre, avec la
+  //                        pièce `iconCounter`) et, calé à DROITE, deux
+  //                        `butPushSmallWhite` — le journal des kikooz
+  //                        (`uniqWinMng.open("kikoozLog")`) et « en obtenir »
+  //                        (`box.obtainKikooz`) ;
+  //                      · `menuFrame` : un `cpTree` de 140 de large, dont les
+  //                        puces sont `shopBullet` — dossier fermé, dossier
+  //                        ouvert.
+  //   main               · `showFrame` → `menuInfoFrame`, un `cpDocument` au
+  //                        style `frSheet` (le VERT) : la fiche de l'article ;
+  //                      · `bar` → `pushKikooz`, la grande plaque orange
+  //                        « OBTENIR DES KIKOOZ » (`butPushMoreKikooz`),
+  //                        min 100 × 60, calée à droite.
+  //
+  // Relevé 1:1 (scratchpad/sr-1-boutique.png — fenêtre en x 8..483 / y 104..507,
+  // soit 476 × 404) :
+  //   · le compteur est une pilule de 26 px — contour 2 px #DDDDDD, liseré
+  //     2 px #F3BE8C, chair #F8D5BC, encre #764A34 ;
+  //   · la colonne de gauche fait 140, son arbre est une boîte blanche ;
+  //   · la fiche a l'écorce verte : contour #DDDDDD, liseré #ADE76B, chair
+  //     #CCF599 sous un reflet blanc, encre #5A7D33 ;
+  //   · le gros bouton se pose sous la fiche, à droite.
+  var boutiqueHabillee = false;
+
+  function habillerBoutique(feuille) {
+    if (boutiqueHabillee || !feuille) return;
+    boutiqueHabillee = true;
+    var haut = feuille.querySelector('#bo-haut');
+    if (!haut) return;
+    // LES DEUX PETITS BOUTONS BLANCS (`iconList`) : `butPushSmallWhite` porte
+    // la plaque, et la bande d'icônes donne l'image — 20 le journal, 21 la
+    // main qui en donne.
+    var barre = document.createElement('div');
+    barre.className = 'bq-icones';
+    [['shop-ico-journal', 'Journal des kikooz', function () {
+      window.open('/club/', '_blank');           // le journal vit au Club
+    }], ['shop-ico-kikooz', 'Obtenir des kikooz', function () {
+      window.open('/kikooz', '_blank');
+    }]].forEach(function (d) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'bq-ico';
+      b.title = d[1];
+      b.textContent = d[1];
+      b.innerHTML = '<i style="background-image:url(\'/frutiz/sprites/' + d[0] + '.svg\')"></i>';
+      b.addEventListener('click', d[2]);
+      barre.appendChild(b);
+    });
+    haut.appendChild(barre);
+
+    // LA GRANDE PLAQUE, sous la fiche et à droite (`main.bar.pushKikooz`).
+    var pied = document.createElement('div');
+    pied.className = 'bq-pied';
+    var gros = document.createElement('button');
+    gros.type = 'button';
+    gros.className = 'bq-plus';
+    gros.title = 'Obtenir des kikooz';
+    gros.textContent = 'Obtenir des kikooz';
+    gros.addEventListener('click', function () { window.open('/kikooz', '_blank'); });
+    pied.appendChild(gros);
+    var corps = feuille.querySelector('#bo-corps');
+    if (corps) corps.appendChild(pied);
+  }
+
+  /** La boutique s'ouvre en FENÊTRE sur le bureau, pas en feuille. */
+  function ouvrirBoutique() {
+    ouvrirFenetre('boutique');
+    if (window.MagasinLight && MagasinLight.charger) MagasinLight.charger();
+  }
+
   // Le clic sur un contact ouvre SA FICHE, comme le `userSlot` du bureau.
   function ouvrirFiche(pseudo) {
     if (window.ouvrirFicheJoueur) window.ouvrirFicheJoueur(pseudo);
@@ -2851,6 +2932,7 @@ window.BureauFrutiz = (function () {
     // La messagerie prend son écorce d'explorateur AVANT le premier listing :
     // sans quoi la fenêtre s'ouvrirait un instant en habits de mobile.
     if (tab === 'mail') habillerMail(panneau);
+    if (tab === 'boutique') habillerBoutique(panneau);
     panneau.classList.add('active');
     if (tab === 'chat') majTitreSalon();
   }
@@ -3458,6 +3540,8 @@ window.BureauFrutiz = (function () {
     // Les deux explorateurs : « Mes disques » et « Inventaire ».
     ouvrirDisques: function () { ouvrirExplorateur('disques'); },
     ouvrirInventaire: function () { ouvrirExplorateur('inventaire'); },
+    // La boutique : une FENÊTRE sur le bureau, la feuille du mobile ailleurs.
+    ouvrirBoutique: ouvrirBoutique,
     // Rappelé par renderRoomOptions : l'affluence des salons bouge, la
     // fenêtre la suit — et la fenêtre du salon se retitre au changement.
     majSalons: function () { majSalons(); majTitreSalon(); },
