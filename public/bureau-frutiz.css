@@ -337,7 +337,13 @@ body.bureau-frutiz .fb-onglet {
    (3.16, 23.90) pour l'encre, soit (1.36, 22.75) pour le cadre 15,85 × 15,05
    des sprites de fruits. */
 body.bureau-frutiz .fb-onglet[data-slot]:not([data-slot="bureau"]) {
-  background-position: 1.36px 22.75px, left top, left top;
+  /* La pastille se cale sur celle que le dessin de « Bureau » porte en dur —
+     c'est le même clip. Relevé 1:1 sur le rendu Ruffle : l'orange du rang 0
+     est centrée en x 17,5, la banane du rang 1 en 127,5 — un écart de
+     `tabSpace` (110), donc la même place dans chaque onglet. Elle était posée
+     à 1,36, soit 17,7 px trop à gauche : au rang 1 elle passait SOUS la plaque
+     du voisin, qui la mangeait. */
+  background-position: 19.08px 22.75px, left top, left top;
   background-size: 15.85px 15.05px, 123px 41.5px, 123px 41.5px;
   background-repeat: no-repeat, no-repeat, no-repeat;
 }
@@ -345,9 +351,12 @@ body.bureau-frutiz .fb-onglet[data-slot]:not([data-slot="bureau"]) {
    il monte de deux pixels et sa plaque se soude au contenu. Les autres
    restent en retrait. */
 /* L'activation ne change PAS la profondeur d'époque (`activate` ne fait aucun
-   swapDepths) : elle remonte l'onglet de deux pixels, rien de plus. Le rang
-   seul commande l'empilement, et c'est `dessinerOnglets` qui le pose. */
-body.bureau-frutiz .fb-onglet.actif { top: -2px; }
+   swapDepths) : le rang seul commande l'empilement, et c'est `dessinerOnglets`
+   qui le pose. Ce qu'elle change, c'est la HAUTEUR — et vers le BAS :
+   `MainBarTab.scrollUp` fait tendre `barre._y` vers `flActive * 4`, donc 4 pour
+   l'onglet actif et 0 pour les autres. On le remontait de deux pixels, ce qui
+   décalait toute la rangée de six. */
+body.bureau-frutiz .fb-onglet.actif { top: 4px; }
 body.bureau-frutiz .fb-onglet:not(.actif) { filter: saturate(.85) brightness(.97); }
 /* L'AVERTISSEMENT d'un slot (`Slot.warning`) : une fenêtre s'est ouverte sur
    le bureau alors qu'un onglet avait la main — l'onglet « Bureau » clignote
@@ -394,7 +403,7 @@ body.bureau-frutiz.fb-onglet-actif .fen:not(.fen-onglet-vue) { display: none; }
    que le dessin lui donne dans la plaque — (1,36 ; 22,75), 15,85 × 15,05 —
    et elle est TRANSPARENTE : c'est le fond de l'onglet qui porte l'image. */
 body.bureau-frutiz .fb-onglet-ico {
-  position: absolute; left: 1.36px; top: 22.75px; width: 15.85px; height: 15.05px;
+  position: absolute; left: 19.08px; top: 22.75px; width: 15.85px; height: 15.05px;
   padding: 0; border: 0; background: transparent; cursor: pointer; z-index: 2;
 }
 /* Le menu d'un onglet (`MainBarTab.attachMenu`) : il ne flotte pas au

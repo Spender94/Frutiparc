@@ -34,9 +34,10 @@ const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
 test('le nouvel onglet passe SOUS les précédents', () => {
   // `attachMovie("tab", …, dp_tab + (tabMax − r4 × 2))`, r4 = le rang.
   assert.match(JS, /o\.style\.zIndex = String\(500 - rang\)/);
-  // Et l'activation ne remonte PAS l'onglet en profondeur : elle ne fait que
-  // le lever de deux pixels (`scrollUp` vise `flActive * 4`).
-  assert.match(CSS, /\.fb-onglet\.actif \{ top: -2px; \}/);
+  // Et l'activation ne remonte PAS l'onglet en profondeur. Ce qu'elle change,
+  // c'est la hauteur, et vers le BAS : `scrollUp` fait tendre `barre._y` vers
+  // `flActive * 4` — l'onglet actif descend de quatre pixels.
+  assert.match(CSS, /\.fb-onglet\.actif \{ top: 4px; \}/);
   assert.doesNotMatch(CSS, /\.fb-onglet\.actif \{[^}]*z-index/);
 });
 
@@ -66,7 +67,11 @@ test('la pastille de l’onglet ouvre le menu, « Fermer » en tête', () => {
   assert.match(JS, /onglet\.style\.setProperty\('--menu-h',/);
   assert.match(CSS, /\.fb-onglet\.menu-ouvert \{ top: var\(--menu-h\); \}/);
   // La pastille est à la place que le dessin lui donne dans la plaque.
-  assert.match(CSS, /\.fb-onglet-ico \{\s*position: absolute; left: 1\.36px; top: 22\.75px; width: 15\.85px; height: 15\.05px;/);
+  // Relevé 1:1 : la pastille est centrée en x 17,5 dans chaque onglet — celle
+  // du rang 1 tombe donc en 127,5, soit 19,08 dans le cadre du dessin. À 1,36
+  // elle passait sous la plaque du voisin.
+  assert.match(CSS, /\.fb-onglet-ico \{\s*position: absolute; left: 19\.08px; top: 22\.75px;/);
+  assert.match(CSS, /background-position: 19\.08px 22\.75px, left top, left top;/);
 });
 
 test('les états de survol sont préchargés — plus de clignotement', () => {
