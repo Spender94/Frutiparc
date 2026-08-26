@@ -99,6 +99,16 @@
   const HUMEURS = [[0, 0], [1, 2], [2, 1], [0, 3], [3, 4], [1, 4], [2, 3], [2, 6]];
   const ANIMATIONS = ['stop', 'parle', 'rire', 'mdr', 'langue', 'rougir', 'regard',
     'siffle', 'gum', 'question', 'miam', 'pleure', 'larme'];
+  // Les noms tels que le parc les affiche déjà — ceux du forum (EXPRESSIONS,
+  // public/fb/index.html) et de la page de démonstration. Le SWF, lui, ne
+  // nomme pas ses humeurs : emoteList n'est qu'un tableau de couples.
+  const NOMS_HUMEURS = ['Neutre', 'Colère', 'Triste', 'Sourire', 'Joie',
+    'Déterminé', 'Embarrassé', 'Totoché'];
+  const NOMS_ANIMATIONS = ['Repos', 'Parler', 'Rire', 'MDR', 'Langue', 'Rougir',
+    'Regard', 'Sifflote', 'Chewing-gum', 'Question', 'Miam', 'Pleurer', 'Larme'];
+  // actionList nomme « siffle » et « pleure » ce que la pellicule étiquette
+  // « sifflote » et « pleurer ». playAnim() vise les étiquettes.
+  const ETIQUETTES = { siffle: 'sifflote', pleure: 'pleurer' };
 
   // ── Transformations de couleur ───────────────────────────────────────────
   const CX_NEUTRE = { mr: 256, mv: 256, mb: 256, ma: 256, ar: 0, av: 0, ab: 0, aa: 0 };
@@ -224,8 +234,8 @@
       let sb = null;
       if (e.objet) { const t = e.objet.boite(prof + 1); if (t) sb = t; }
       else {
-        const f = this.moteur.defs.formes.get(e.ch);
-        if (f) sb = f.bounds;
+        const t = this.moteur.formeDe(e.ch, e.ratio);
+        if (t) sb = t.f.bounds;
       }
       if (!sb) continue;
       const M = e.objet ? composerM(e.M, ecartClip(e.objet)) : e.M;
@@ -615,14 +625,36 @@
     return p;
   };
 
-  Moteur.prototype.dessinerForme = function (ctx, id, M, cx, alpha) {
-    const f = this.defs.formes.get(id);
-    if (!f) return;
+  // Une forme, ordinaire ou INTERPOLÉE. Un morph n'existe qu'à un taux donné —
+  // le champ `ratio` du placement, de 0 à 65535 — d'où le calcul à la demande,
+  // mis en cache par taux (le fard de « rougir » n'en prend qu'une poignée).
+  Moteur.prototype.formeDe = function (ch, ratio) {
+    const f = this.defs.formes.get(ch);
+    if (f) return { f, cle: String(ch) };
+    const m = this.defs.morphs && this.defs.morphs.get(ch);
+    if (!m) return null;
+    const t = Math.max(0, Math.min(1, (ratio || 0) / 65535));
+    const cle = ch + '@' + Math.round(t * 1000);
+    if (!this.morphsCalcules) this.morphsCalcules = new Map();
+    let r = this.morphsCalcules.get(cle);
+    if (!r) {
+      const swf = (typeof module === 'object' && module.exports)
+        ? require('./bouille-swf.js') : global.FPBouilleSwf;
+      r = swf.interpolerMorph(m, t);
+      this.morphsCalcules.set(cle, r);
+    }
+    return { f: r, cle };
+  };
+
+  Moteur.prototype.dessinerForme = function (ctx, id, M, cx, alpha, ratio) {
+    const t = this.formeDe(id, ratio);
+    if (!t) return;
+    const f = t.f, id2 = t.cle;
     ctx.save();
     ctx.transform(M.a, M.b, M.c, M.d, M.e, M.f);
     for (let i = 0; i < f.couches.length; i++) {
       const c = f.couches[i];
-      const p = this.chemin(id + ':' + i, c.d);
+      const p = this.chemin(id2 + ':' + i, c.d);
       const o = opacite(c.alpha, cx) * alpha;
       if (o <= 0) continue;
       ctx.globalAlpha = o;
@@ -636,7 +668,7 @@
         ctx.save();
         const G = c.degrade.M;
         ctx.transform(G.a / 20, G.b / 20, G.c / 20, G.d / 20, G.e / 20, G.f / 20);
-        ctx.fill(p2dDegrade(this, id, i, c, G), 'evenodd');
+        ctx.fill(p2dDegrade(this, id2, i, c, G), 'evenodd');
         ctx.restore();
       } else {
         ctx.fillStyle = teindre(c.rgb, cx);
@@ -711,7 +743,7 @@
 
   Moteur.prototype.dessinerEnfant = function (ctx, e, M, cx, alpha) {
     if (e.objet) this.dessinerClip(ctx, e.objet, M, cx, alpha);
-    else this.dessinerForme(ctx, e.ch, composerM(M, e.M), composerCx(cx, e.cx || null), alpha);
+    else this.dessinerForme(ctx, e.ch, composerM(M, e.M), composerCx(cx, e.cx || null), alpha, e.ratio);
   };
 
   // Accumule le TRACÉ d'un masque (toutes ses formes, matrices comprises) dans
@@ -724,13 +756,13 @@
       for (const s of e.objet.enfants.values()) this.accumuler(chemin, s, Mi, prof + 1);
       return;
     }
-    const f = this.defs.formes.get(e.ch);
-    if (!f) return;
+    const t = this.formeDe(e.ch, e.ratio);
+    if (!t) return;
     const A = composerM(M, e.M);
     const m = new global.DOMMatrix([A.a, A.b, A.c, A.d, A.e, A.f]);
-    for (let i = 0; i < f.couches.length; i++) {
-      if (f.couches[i].trait) continue;
-      chemin.addPath(this.chemin(e.ch + ':' + i, f.couches[i].d), m);
+    for (let i = 0; i < t.f.couches.length; i++) {
+      if (t.f.couches[i].trait) continue;
+      chemin.addPath(this.chemin(t.cle + ':' + i, t.f.couches[i].d), m);
     }
   };
 
@@ -828,7 +860,7 @@
 
   const API = {
     Moteur, Bouille, Clip,
-    PALETTE, HUMEURS, ANIMATIONS,
+    PALETTE, HUMEURS, ANIMATIONS, NOMS_HUMEURS, NOMS_ANIMATIONS, ETIQUETTES,
     decode62, encode62, teindre, cxTeinte, composerCx, composerM, etatsDe,
     /** Famille d'une chaîne d'état : les deux premiers caractères, en base 62. */
     familleDe: function (s) { return decode62(String(s || '00').substring(0, 2)); },

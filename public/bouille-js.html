@@ -7,9 +7,22 @@
 <!--
   Banc d'essai du moteur JS de frutibouilles (public/js/bouille-*.js).
 
-  À gauche le moteur JavaScript, à droite le SWF d'époque joué par Ruffle : la
-  même bouille, la même humeur, la même animation. C'est la seule façon honnête
-  de juger un portage — l'original est à côté, à la même taille.
+  DUO (par défaut) — à gauche le moteur JavaScript, à droite le SWF d'époque
+  joué par Ruffle : même bouille, même humeur, même animation. C'est la seule
+  façon honnête de juger un portage : l'original est à côté, à la même taille.
+
+  PLANCHES (?planche=…) — des contacts rendus par le seul moteur JS, à partir
+  d'UN chargement de famille. Elles servent aux relevés :
+
+    ?planche=humeurs      les huit humeurs d'emoteList
+    ?planche=acc          tous les accessoires d'une coiffure (&h=N)
+    ?planche=acc2         toutes les variantes d'accessoire secondaire
+    ?planche=cheveux      toutes les coiffures de la famille
+    ?planche=anim&a=N     une animation, image par image (&pas=3&n=16)
+
+  Le mode planche est DÉTERMINISTE : le tirage au sort du moteur (la taille du
+  chewing-gum, la bouche de « parle ») est calé, et l'on avance d'un nombre
+  d'images choisi plutôt que de photographier une boucle vivante.
 
   Cette page est un ATELIER, pas une page du site : rien d'autre ne la charge.
 -->
@@ -21,26 +34,39 @@
   .vue { background: #E8F8D3; border: 2px solid #ADE76B; }
   .vue h2 { font-size: 11px; text-align: center; padding: 3px; background: #ADE76B; color: #335511; }
   #js, #ruffle { display: block; width: 240px; height: 240px; border: 0; background: #E8F8D3; }
-  .reglages { margin-top: 14px; display: grid; gap: 8px; max-width: 720px; }
+  .reglages { margin-top: 14px; display: grid; gap: 8px; max-width: 760px; }
   .ligne { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   label { min-width: 92px; }
   input[type=text] { font: 12px monospace; padding: 3px 5px; border: 1px solid #ADE76B; width: 260px; }
-  input[type=range] { width: 200px; }
+  input[type=range] { width: 190px; }
   button { font: 11px Verdana; padding: 3px 7px; border: 1px solid #ADE76B; background: #FFF; color: #335511; cursor: pointer; }
   button.actif { background: #ADE76B; }
   .val { font: 11px monospace; min-width: 32px; }
   .chrono { margin-top: 10px; font: 11px monospace; color: #5A7D33; }
+  /* Les planches */
+  #planche { display: flex; flex-wrap: wrap; gap: 6px; }
+  /* Le même fond que bouille-preview.html, pour que les relevés se comparent
+     pixel à pixel sans que la couleur de la tuile fausse la mesure. */
+  /* 240 px, la taille de bouille-preview.html : les deux côtés se relèvent
+     alors à la MÊME résolution, et l'écart mesuré n'est plus celui du
+     rééchantillonnage. */
+  #planche figure { width: 240px; background: #E8F8D3; border: 1px solid #ADE76B; }
+  #planche canvas { display: block; width: 240px; height: 240px; }
+  #planche figcaption { font: 10px Verdana; text-align: center; padding: 2px 1px;
+    background: #ADE76B; color: #335511; white-space: nowrap; overflow: hidden; }
 </style>
 </head>
 <body>
-<h1>Frutibouilles — moteur JavaScript vs Flash</h1>
+<h1 id="titre">Frutibouilles — moteur JavaScript vs Flash</h1>
 
-<div class="duo">
+<div id="duo" class="duo">
   <div class="vue"><h2>JavaScript</h2><canvas id="js" width="240" height="240"></canvas></div>
   <div class="vue"><h2>Flash (Ruffle)</h2><iframe id="ruffle" title="Ruffle"></iframe></div>
 </div>
 
-<div class="reglages">
+<div id="planche"></div>
+
+<div class="reglages" id="reglages">
   <div class="ligne"><label for="etat">État</label>
     <input type="text" id="etat" value="000000010000000000000000" maxlength="24">
     <button id="hasard">Au hasard</button></div>
@@ -50,6 +76,7 @@
 </div>
 <div class="chrono" id="chrono"></div>
 
+<script src="/js/bouille-palette.js"></script>
 <script src="/js/bouille-swf.js"></script>
 <script src="/js/bouille-avm.js"></script>
 <script src="/js/bouille-moteur.js"></script>
@@ -57,24 +84,124 @@
 (function () {
   'use strict';
   var M = window.FPBouilleMoteur;
+  var Swf = window.FPBouilleSwf;
+  var params = new URLSearchParams(location.search);
+  var PLANCHE = params.get('planche');
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  MODE PLANCHE — un contact rendu par le seul moteur JS.
+  // ─────────────────────────────────────────────────────────────────────
+  if (PLANCHE) {
+    document.getElementById('duo').style.display = 'none';
+    document.getElementById('reglages').style.display = 'none';
+    var base = params.get('s') || '000200010402000f0m0000000000'.slice(0, 24);
+    var hote = document.getElementById('planche');
+    var titre = document.getElementById('titre');
+    var ACC = (window.FPBouille && window.FPBouille.ACCESSORIES) || [];
+
+    var pose = function (etat, pos, val) {
+      var s = etat.split('');
+      var d = M.encode62(val, 2);
+      s[pos] = d.charAt(0); s[pos + 1] = d.charAt(1);
+      return s.join('');
+    };
+
+    Swf.charger('/fbouille/famille' + M.familleDe(base) + '.swf').then(function (defs) {
+      // Une bouille témoin, pour lire les bornes réelles de cette famille.
+      // Le tirage au sort du moteur est CALÉ : « parle » choisit sa bouche par
+      // random(4), le chewing-gum sa taille par random(150). &alea= permet au
+      // relevé de balayer les quatre bouches possibles.
+      var ALEA = Number(params.get('alea'));
+      if (!(ALEA >= 0 && ALEA < 1)) ALEA = 0.5;
+      var tirage = function () { return ALEA; };
+      var temoin = new M.Bouille(document.createElement('canvas'), defs,
+        { etat: base, anime: false, alea: tirage });
+      var f = temoin.moteur.racine.face;
+      var e = function (c, n) { return c && c.enfantNomme(n); };
+      var caC = e(e(f, 'ca'), 'c');
+      var bornes = {
+        cheveux: e(f, 'ca') ? e(f, 'ca').def.n : 1,
+        acc: caC ? caC.def.n : 1,
+        acc2: e(caC, 'acc') ? e(caC, 'acc').def.n : 1,
+      };
+
+      var tuiles = [];
+      if (PLANCHE === 'humeurs') {
+        titre.textContent = 'Les huit humeurs (emoteList) — ' + base;
+        M.NOMS_HUMEURS.forEach(function (nom, i) {
+          tuiles.push({ etat: base, humeur: i, legende: i + ' ' + nom });
+        });
+      } else if (PLANCHE === 'acc' || PLANCHE === 'acc2') {
+        // Un rouleau d'accessoires traîne souvent une longue queue d'images
+        // vides (178 déclarées pour 17 utiles, sur la coiffure 0 de la famille
+        // 0) : &n= borne le relevé à ce qui sert.
+        var pos = PLANCHE === 'acc' ? 14 : 16;
+        var n = Math.min(Number(params.get('n') || 99),
+          PLANCHE === 'acc' ? bornes.acc : bornes.acc2);
+        titre.textContent = (PLANCHE === 'acc' ? 'Accessoires' : 'Accessoires secondaires')
+          + ' — coiffure ' + M.decode62(base.substring(6, 8)) + ', ' + n + ' images'
+          + (PLANCHE === 'acc2' ? ' (accessoire ' + M.decode62(base.substring(14, 16)) + ')' : '');
+        for (var i = 0; i < n; i++) {
+          tuiles.push({ etat: pose(base, pos, i),
+            legende: i + (PLANCHE === 'acc' && ACC[i] ? ' ' + ACC[i] : '') });
+        }
+      } else if (PLANCHE === 'cheveux') {
+        var nh = Math.min(Number(params.get('n') || 99), bornes.cheveux);
+        titre.textContent = 'Les coiffures — ' + nh + ' sur ' + bornes.cheveux;
+        for (var h = 0; h < nh; h++) tuiles.push({ etat: pose(base, 6, h), legende: 'ch ' + h });
+      } else if (PLANCHE === 'anim') {
+        var a = Number(params.get('a') || 1);
+        var pas = Number(params.get('pas') || 3), nb = Number(params.get('n') || 16);
+        titre.textContent = 'Animation ' + a + ' — ' + (M.NOMS_ANIMATIONS[a] || '?')
+          + ' — une image toutes les ' + pas + ' (40 im/s)';
+        for (var k = 0; k < nb; k++) tuiles.push({ etat: base, anim: a, ticks: k * pas, legende: '+' + (k * pas) });
+      }
+
+      tuiles.forEach(function (t) {
+        var fig = document.createElement('figure');
+        var c = document.createElement('canvas');
+        c.width = 240; c.height = 240;
+        var cap = document.createElement('figcaption');
+        cap.textContent = t.legende;
+        fig.appendChild(c); fig.appendChild(cap); hote.appendChild(fig);
+        var b = new M.Bouille(c, defs, { etat: t.etat, anime: false, alea: tirage });
+        if (t.humeur) b.moteur.humeur(t.humeur);
+        if (t.anim) {
+          b.moteur.jouerAnim(0);
+          b.moteur.action(t.anim);
+          for (var k = 0; k < t.ticks; k++) b.moteur.avancer();
+        }
+        b.rendre();
+      });
+      // Le relevé (scratchpad/fbplanche.js) rejoue la MÊME liste sous Ruffle ;
+      // le comparateur d'animations (fbanimcmp.js) réutilise la famille déjà
+      // chargée pour fabriquer des poses à la volée.
+      window.__tuiles = tuiles;
+      window.__defs = defs;
+      document.body.setAttribute('data-prete', '1');
+    }).catch(function (err) {
+      titre.textContent = 'échec : ' + err.message;
+      document.body.setAttribute('data-prete', 'erreur');
+    });
+    return;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  MODE DUO — le moteur JS et Ruffle côte à côte.
+  // ─────────────────────────────────────────────────────────────────────
   var canvas = document.getElementById('js');
   var cadre = document.getElementById('ruffle');
   var champ = document.getElementById('etat');
   var chrono = document.getElementById('chrono');
   var bouille = null, humeurCourante = 0, animCourante = 0;
-
-  var params = new URLSearchParams(location.search);
   if (params.get('s')) champ.value = params.get('s');
 
+  // bouille-preview.html attend l'INDEX de playAnim (1 parle … 11 pleurer),
+  // pas une étiquette : c'est ce que passe aussi la page de démonstration.
   function ruffleUrl() {
     return '/bouille-preview.html?s=' + encodeURIComponent(champ.value)
       + '&e=' + humeurCourante
-      + (animCourante ? '&anim=' + encodeURIComponent(nomAnim(animCourante)) : '');
-  }
-  // Les étiquettes de la pellicule du visage ne portent pas tout à fait les
-  // noms de actionList : « siffle » y est « sifflote », « pleure » « pleurer ».
-  function nomAnim(i) {
-    return ({ 7: 'sifflote', 11: 'pleurer' })[i] || M.ANIMATIONS[i];
+      + (animCourante ? '&anim=' + animCourante : '');
   }
 
   function boutons(hote, noms, surClic) {
@@ -91,19 +218,21 @@
     if (hote.firstChild) hote.firstChild.classList.add('actif');
   }
 
-  boutons(document.getElementById('humeurs'),
-    ['normal', 'fâché', 'triste', 'sourire', 'rire', 'gêné', 'moqueur', 'totoché'],
-    function (i) { humeurCourante = i; if (bouille) bouille.humeur(i); cadre.src = ruffleUrl(); });
+  boutons(document.getElementById('humeurs'), M.NOMS_HUMEURS, function (i) {
+    humeurCourante = i;
+    if (bouille) bouille.humeur(i);
+    cadre.src = ruffleUrl();
+  });
 
-  boutons(document.getElementById('anims'), M.ANIMATIONS, function (i) {
+  boutons(document.getElementById('anims'), M.NOMS_ANIMATIONS, function (i) {
     animCourante = i;
     if (!bouille) return;
-    if (i === 0) { bouille.moteur.jouerAnim(0); bouille.arreter(); bouille.rendre(); }
+    if (i === 0) { bouille.moteur.jouerAnim(0); bouille.rendre(); }
     else bouille.animer(i);
     cadre.src = ruffleUrl();
   });
 
-  // Les onze curseurs de conception : ce sont ceux d'updateInfo() du SWF.
+  // Les onze réglages de conception : ce sont ceux d'updateInfo() du SWF.
   var CHAMPS = [
     { nom: 'famille', pos: 0 }, { nom: 'yeux', pos: 2 }, { nom: 'iris', pos: 4 },
     { nom: 'cheveux', pos: 6 }, { nom: 'bouche', pos: 8 },
@@ -151,8 +280,7 @@
     CHAMPS.forEach(function (c) {
       if (max[c.pos] !== undefined) c.curseur.max = max[c.pos];
       if (c.pos === 0) c.curseur.max = 24;
-      var s = champ.value.substring(c.pos, c.pos + 2);
-      c.curseur.value = M.decode62(s);
+      c.curseur.value = M.decode62(champ.value.substring(c.pos, c.pos + 2));
       c.valeur.textContent = c.curseur.value;
     });
   }
@@ -180,6 +308,7 @@
       if (animCourante) b.animer(animCourante);
       bornes();
       cadre.src = ruffleUrl();
+      document.body.setAttribute('data-prete', '1');
     }).catch(function (e) {
       chrono.textContent = 'échec : ' + e.message;
       familleChargee = -1;

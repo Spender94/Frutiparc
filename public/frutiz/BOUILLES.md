@@ -17,6 +17,20 @@ enveloppe JavaScript. Le SWF de famille, lui, est téléchargé dans les deux ca
 
 Banc d'essai : **`/bouille-js.html`** — le moteur JS à gauche, Ruffle à droite,
 même état, même humeur, même animation, avec les onze curseurs de conception.
+Et des **planches** de relevé, rendues par le seul moteur JS depuis un unique
+chargement de famille :
+
+| adresse | ce qu'elle contacte |
+|---|---|
+| `?planche=humeurs` | les huit humeurs d'`emoteList` |
+| `?planche=acc&n=17` | tous les accessoires de la coiffure de l'état |
+| `?planche=acc2&n=12` | les variantes d'accessoire secondaire |
+| `?planche=cheveux` | toutes les coiffures de la famille |
+| `?planche=anim&a=N&pas=3&n=16` | une animation, image par image |
+
+Le mode planche est **déterministe** — le tirage au sort du moteur est calé
+(`&alea=`), et l'on avance d'un nombre d'images choisi plutôt que de
+photographier une boucle vivante. C'est ce qui rend les relevés reproductibles.
 
 ---
 
@@ -116,9 +130,11 @@ l'admin et la vitrine de la boutique. Un test le vérifie entrée par entrée.
 posé par `applyEmote(id)` puis `emote()` :
 
 ```
-0 normal [0,0]   1 fâché [1,2]   2 triste [2,1]   3 sourire [0,3]
-4 rire   [3,4]   5 gêné  [1,4]   6 moqueur [2,3]  7 totoché [2,6]
+0 Neutre [0,0]   1 Colère [1,2]      2 Triste     [2,1]   3 Sourire [0,3]
+4 Joie   [3,4]   5 Déterminé [1,4]   6 Embarrassé [2,3]   7 Totoché [2,6]
 ```
+
+(Les noms viennent du parc, pas du SWF : voir §9.)
 
 `actionList` — treize actions, appelées par `action(id)` puis `playAnim(id)` :
 
@@ -153,6 +169,32 @@ imbriqués — l'éclat de l'iris, le frémissement d'un accessoire — continue
 tourner, exactement comme sous Flash (vérifié : deux captures Ruffle espacées de
 700 ms diffèrent). Le moteur tourne donc par défaut ; `anime: false` sert aux
 vignettes, où quarante-huit têtes qui scintillent ne valent pas le courant.
+
+## 4 bis. Le fard de « rougir » : une forme INTERPOLÉE
+
+Le piège du portage, trouvé en comparant image par image. « Rougir » ne colore
+pas le visage avec un dessin ordinaire : il pose, à la **profondeur 10** du
+visage, un **`DefineMorphShape`** — deux dessins et la promesse que le lecteur
+sait passer de l'un à l'autre, le taux de mélange arrivant avec le placement
+(champ `ratio` de PlaceObject2, de 0 à 65535).
+
+Ici c'est un dégradé radial rouge dont l'opacité au centre monte, puis redescend :
+
+| images du visage | caractère | opacité au centre |
+|---|---|---|
+| 51 → 57 | morph #1818 | 10 % → 50 % (taux 0, 9362, 18725, 28087, 37449, 46811, 56174) |
+| 58 → 63 | morph #1819 | 50 % → 10 % (taux 0, 10923, 21845, 32768, 43691, 54613) |
+
+Tant que le lecteur ignorait les morphs, la bouille rougissait… sans rougir :
+l'écart avec Flash restait à 8,7 % sur toute l'animation, et aucune image du
+moteur ne ressemblait à celle de Flash. Une fois les morphs lus et interpolés,
+l'écart tombe à **0,14 %**.
+
+Toutes les familles sauf la 11 et la 13 en portent deux — c'est toujours le fard.
+Un contrôle de couverture, dans les tests, vérifie qu'aucun caractère POSÉ
+quelque part n'échappe au lecteur : c'est ce contrôle qui aurait attrapé le fard
+du premier coup. Il ne reste qu'une exception connue, `#63` de la famille 0, un
+`DefineText` — une inscription sur un seul accessoire, hors périmètre.
 
 ## 5. Un bogue d'époque, conservé
 
@@ -201,6 +243,62 @@ Banc `/bouille-js.html`, captures des deux moitiés, comparaison pixel à pixel
 Le reliquat est de l'anticrénelage de bord, plus le déphasage des clips qui
 tournent : les deux lecteurs ne sont pas au même instant de l'éclat d'iris.
 
+### Les huit humeurs
+
+Planche `?planche=humeurs`, coiffure 6 de la famille 0, tuile par tuile :
+
+| humeur | écart | | humeur | écart |
+|---|---|---|---|---|
+| 0 Neutre | 0,53 % | | 4 Joie | 1,27 % |
+| 1 Colère | 1,71 % | | 5 Déterminé | 1,79 % |
+| 2 Triste | 0,87 % | | 6 Embarrassé | 1,12 % |
+| 3 Sourire | 1,12 % | | 7 Totoché | 0,62 % |
+
+Les formes sont **identiques** — sourcils, paupières, dents : l'écart est
+entièrement de l'anticrénelage sur les contours noirs, plus marqué là où
+l'humeur ouvre l'œil ou découvre les dents.
+
+### Les accessoires
+
+Planche `?planche=acc`, coiffure 4 (la seule sorte qui porte un `col` sur les
+deux couches de cheveux) : les **dix-sept types**, de « Rien » à « Carapace »,
+tiennent entre **0,40 % et 1,36 %**, moyenne 0,71 %. Les **variantes
+secondaires** (`?planche=acc2`, les motifs posés sur l'accessoire) tiennent
+entre 0,57 % et 0,65 %, moyenne 0,60 % — les trois couleurs d'accessoire
+comprises.
+
+### Les animations
+
+Ici on ne peut pas caler les deux lecteurs : Ruffle lance l'animation quand il
+finit de charger. On procède donc autrement — pour **chaque image photographiée
+sous Flash**, on cherche la meilleure correspondance parmi les poses que le
+moteur produit en avançant image par image. Si chaque pose Flash trouve une pose
+JS quasi identique ET que les images retenues montent dans l'ordre, l'animation
+est reproduite, gestes **et** tempo.
+
+| animation | écart moyen | max | images JS retenues |
+|---|---|---|---|
+| 1 Parler | 0,89 % | 1,38 % | boucle 0-8 |
+| 2 Rire | 0,98 % | 1,22 % | boucle 0-8 |
+| 3 MDR | 1,50 % | 2,19 % | boucle 2-8 |
+| 4 Langue | 1,43 % | 1,91 % | boucle 5-8 |
+| 5 Rougir | 0,14 % | 0,15 % | tenue |
+| 6 Regard | 0,10 % | 0,10 % | tenue |
+| 7 Sifflote | 0,79 % | 1,00 % | **5 → 37, strictement croissante** |
+| 8 Chewing-gum | 1,01 % | 2,59 % | **17 → 110, strictement croissante** |
+| 9 Question | 0,44 % | 0,55 % | 4 → 25 puis relance |
+| 10 Miam | 0,44 % | 0,49 % | boucle |
+| 11 Pleurer | 1,12 % | 1,27 % | boucle |
+
+Les deux longues — sifflote et le chewing-gum — sont les plus parlantes : les
+images retenues montent **une par une**, sans jamais reculer. C'est la preuve
+que le tempo est le bon, et pas seulement les poses ; les courtes bouclent, donc
+plusieurs images se ressemblent et l'ordre y est moins probant.
+
+Le tirage au sort compte : « parle » choisit sa bouche par `random(4)` et le
+chewing-gum sa taille par `random(150) + 30`. Le relevé balaie donc les quatre
+bouches possibles pour ces deux-là.
+
 Chargement + premier rendu, mesuré dans le navigateur : **~320 ms** pour la
 famille 0 (414 Ko de SWF, 1224 formes, 633 clips), **30 à 100 ms** pour les
 autres.
@@ -214,7 +312,22 @@ masques (`ClipDepth`) deviennent des `ctx.clip()`, les dégradés sont posés da
 leur repère d'origine (le carré de 32768 twips), et les transformations de
 couleur du fichier se composent avec la teinte.
 
-## 9. Ce qui reste à faire
+## 9. Les noms
+
+Le SWF ne nomme pas ses humeurs : `emoteList` n'est qu'un tableau de couples. Le
+parc, lui, les affiche déjà — sous les noms du forum (`EXPRESSIONS`,
+`public/fb/index.html`) et de la page de démonstration. Le moteur exporte donc
+ces mêmes noms (`NOMS_HUMEURS`, `NOMS_ANIMATIONS`) plutôt que d'en inventer.
+
+Deux pièges de nommage :
+
+* `actionList` appelle **« siffle »** et **« pleure »** ce que la pellicule
+  étiquette **« sifflote »** et **« pleurer »** ; `playAnim()` vise les
+  étiquettes (`ETIQUETTES` fait le pont) ;
+* `bouille-preview.html` attend l'**index** de `playAnim` dans son paramètre
+  `anim`, pas une étiquette — le banc d'essai s'y est fait prendre.
+
+## 10. Ce qui reste à faire
 
 * **Brancher** : remplacer Ruffle là où une bouille s'affiche — le forum,
   le Bouilloscope, la barre de contacts, la fiche, l'éditeur « Ma Frutibouille ».
@@ -224,6 +337,7 @@ couleur du fichier se composent avec la teinte.
   Reste à l'habiller aux couleurs du parc et à le poser sur `/light`.
 * **Le cache PNG** (`/bouille-img`, `scripts/warm-bouilles.js`) devient inutile
   dès que le moteur JS rend directement : à retirer le moment venu.
-* **Les deux `DefineMorphShape`** de la famille 0 ne sont pas atteints par le
-  visage ; s'ils le devenaient, il faudrait interpoler comme
-  `scripts/lib/swf-morph.js` sait le faire.
+* **Le `DefineText` #63** de la famille 0 — une inscription sur un seul
+  accessoire. Le fichier porte la police qu'il faut (`DefineFont2` #62, avec ses
+  tracés de glyphes) : c'est une centaine de lignes le jour où l'on voudra la
+  dernière miette.

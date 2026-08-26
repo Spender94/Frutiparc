@@ -219,6 +219,96 @@ test('les treize animations jouent, bouclent et rendent la main', async () => {
   assert.strictEqual(face.frame, avant, 'mais rien n’est relancé en cours d’animation');
 });
 
+test('le FARD de « rougir » est une forme INTERPOLÉE, et elle est lue', async () => {
+  // Deux DefineMorphShape, et rien d'autre dans le fichier ne s'en approche :
+  // un dégradé radial rouge dont l'opacité au centre monte de 10 % à 50 %
+  // (#1818, images 51-57 du visage) puis redescend (#1819, images 58-63).
+  // Sans les lire, la bouille rougissait… sans rougir.
+  const defs = await lire('famille0.swf');
+  assert.deepStrictEqual([...defs.morphs.keys()], [1818, 1819]);
+  const opacites = (id, t) => {
+    const r = Swf.interpolerMorph(defs.morphs.get(id), t);
+    assert.strictEqual(r.couches.length, 1, 'une seule couche');
+    const g = r.couches[0].degrade;
+    assert.ok(g && g.radial, 'un dégradé radial');
+    return g.arrets.map((a) => ({ rgb: a.rgb.join(','), a: Math.round(a.alpha * 100) / 100 }));
+  };
+  assert.deepStrictEqual(opacites(1818, 0), [{ rgb: '255,0,0', a: 0.1 }, { rgb: '255,0,0', a: 0 }]);
+  assert.deepStrictEqual(opacites(1818, 1), [{ rgb: '255,0,0', a: 0.5 }, { rgb: '255,0,0', a: 0 }]);
+  assert.deepStrictEqual(opacites(1819, 0), [{ rgb: '255,0,0', a: 0.5 }, { rgb: '255,0,0', a: 0 }]);
+  assert.deepStrictEqual(opacites(1819, 1), [{ rgb: '255,0,0', a: 0.1 }, { rgb: '255,0,0', a: 0 }]);
+  // Le taux monte bien, image après image, à la profondeur 10 du visage.
+  const mo0 = new Moteur.Moteur(defs, { alea: () => 0.5 });
+  const etats = Moteur.etatsDe(mo0.creerVisage().def);
+  const taux = [];
+  for (let f = 51; f <= 63; f++) {
+    const p = etats[f - 1].get(10);
+    assert.ok(p, 'image ' + f + ' : le fard est posé');
+    taux.push([p.ch, p.ratio === null || p.ratio === undefined ? 0 : p.ratio]);
+  }
+  assert.strictEqual(taux[0][0], 1818);
+  assert.strictEqual(taux[12][0], 1819);
+  for (let i = 1; i < 7; i++) assert.ok(taux[i][1] > taux[i - 1][1], 'le fard monte (' + i + ')');
+  // Et le moteur sait rendre un morph comme une forme ordinaire.
+  const mo = new Moteur.Moteur(defs, { alea: () => 0.5 });
+  mo.creerVisage();
+  const t = mo.formeDe(1818, 32768);
+  assert.ok(t && t.f.couches.length === 1 && t.f.couches[0].degrade, 'formeDe rend le morph');
+  assert.ok(t.cle !== '1818', 'la clé de cache porte le taux');
+});
+
+test('aucun caractère posé n’échappe au lecteur (hors un texte)', async () => {
+  // Un contrôle de couverture : si une famille plaçait un type de caractère que
+  // le lecteur ne connaît pas, il manquerait un morceau de dessin — c'est
+  // exactement ce qui arrivait au fard avant qu'on lise les morphs.
+  for (const f of FAMILLES) {
+    const defs = await lire(f);
+    const inconnus = new Set();
+    for (const sp of defs.sprites.values()) {
+      for (const etat of Moteur.etatsDe(sp)) {
+        for (const p of etat.values()) {
+          if (!defs.formes.has(p.ch) && !defs.sprites.has(p.ch) && !defs.morphs.has(p.ch)) inconnus.add(p.ch);
+        }
+      }
+    }
+    // #63 de la famille 0 est un DefineText — une inscription sur un seul
+    // accessoire. Connu, borné, et hors périmètre pour l'instant.
+    const restants = [...inconnus].filter((id) => !(f === 'famille0.swf' && id === 63));
+    assert.deepStrictEqual(restants, [], f + ' : caractères non lus');
+  }
+});
+
+test('les noms d’humeurs et d’animations sont ceux déjà affichés par le parc', () => {
+  const forum = fs.readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
+  const bloc = forum.slice(forum.indexOf('const EXPRESSIONS'), forum.indexOf('const EXPRESSIONS') + 400);
+  Moteur.NOMS_HUMEURS.forEach((nom, i) => {
+    assert.ok(bloc.includes("name: '" + nom + "'"), 'le forum nomme l’humeur ' + i + ' « ' + nom + ' »');
+  });
+  assert.strictEqual(Moteur.NOMS_HUMEURS.length, Moteur.HUMEURS.length);
+  assert.strictEqual(Moteur.NOMS_ANIMATIONS.length, Moteur.ANIMATIONS.length);
+  // actionList nomme « siffle » et « pleure » ; la pellicule étiquette
+  // « sifflote » et « pleurer ». Les deux tables doivent rester d'accord.
+  assert.deepStrictEqual(Moteur.ETIQUETTES, { siffle: 'sifflote', pleure: 'pleurer' });
+});
+
+test('chaque accessoire de la coiffure change vraiment le dessin', async () => {
+  const defs = await lire('famille0.swf');
+  const mo = new Moteur.Moteur(defs, { alea: () => 0.5 });
+  const face = mo.creerVisage();
+  const e = (c, n) => c && c.enfantNomme(n);
+  const vus = new Set();
+  for (let acc = 0; acc < 17; acc++) {
+    mo.definir(etat([0, 2, 1, 4, 2, 3, 9, acc, 1, 21, 15, 29]));
+    const caC = e(e(face, 'ca'), 'c'), cbC = e(e(face, 'cb'), 'c');
+    assert.strictEqual(caC.frame, acc + 1, 'accessoire ' + acc + ' : image ' + (acc + 1));
+    assert.strictEqual(cbC.frame, acc + 1, 'les deux couches suivent');
+    // La signature du dessin : les caractères posés dans les deux rouleaux.
+    const sig = [caC, cbC].map((c) => [...c.enfants.values()].map((x) => x.ch).join('.')).join('|');
+    vus.add(sig);
+  }
+  assert.ok(vus.size >= 12, 'les accessoires donnent des dessins distincts (' + vus.size + '/17)');
+});
+
 test('l’interpréteur AVM1 tient les idiomes d’époque', () => {
   // « compt-- ; si compt > 0, tenir l'image » — la boucle sur deux images.
   //   push "compt" ; getvariable ; decrement ; push "compt" ; … setvariable

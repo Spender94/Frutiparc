@@ -74,6 +74,32 @@
     return (v & (1 << (n - 1))) ? v - (1 << n) : v;
   };
   Bits.prototype.aligner = function () { if (this.bit) { this.bit = 0; this.o++; } return this.o; };
+  Bits.prototype.u8 = function () { return this.b[this.o++]; };
+  Bits.prototype.u16 = function () { const v = this.b[this.o] | (this.b[this.o + 1] << 8); this.o += 2; return v; };
+  Bits.prototype.u32 = function () {
+    const v = (this.b[this.o] | (this.b[this.o + 1] << 8) | (this.b[this.o + 2] << 16)
+      | (this.b[this.o + 3] << 24)) >>> 0;
+    this.o += 4; return v;
+  };
+  Bits.prototype.rect = function () {
+    const n = this.u(5);
+    const r = { x0: this.s(n), x1: this.s(n), y0: this.s(n), y1: this.s(n) };
+    this.aligner();
+    return r;
+  };
+  Bits.prototype.matriceT = function () {          // matrice en TWIPS
+    const M = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+    if (this.u(1)) { const n = this.u(5); M.a = this.s(n) / 65536; M.d = this.s(n) / 65536; }
+    if (this.u(1)) { const n = this.u(5); M.b = this.s(n) / 65536; M.c = this.s(n) / 65536; }
+    const n = this.u(5); M.e = this.s(n); M.f = this.s(n);
+    this.aligner();
+    return M;
+  };
+  Bits.prototype.rgba = function () {
+    const c = { r: this.b[this.o], v: this.b[this.o + 1], b: this.b[this.o + 2], a: this.b[this.o + 3] };
+    this.o += 4;
+    return c;
+  };
 
   const u16 = (b, o) => b[o] | (b[o + 1] << 8);
   const u32 = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
@@ -321,6 +347,187 @@
     return { id, bounds: { x: v[0] / 20, y: v[2] / 20, w: (v[1] - v[0]) / 20, h: (v[3] - v[2]) / 20 }, couches };
   }
 
+  // ── Les formes INTERPOLÉES (DefineMorphShape 45 / MorphShape2 46) ────────
+  //
+  // Un morph n'est pas un dessin mais DEUX, plus la promesse que le lecteur sait
+  // passer de l'un à l'autre : le fichier range la forme de départ, celle
+  // d'arrivée et deux jeux de styles, et le TAUX de mélange arrive au moment du
+  // placement (le champ `ratio` de PlaceObject2, de 0 à 65535).
+  //
+  // Sur une bouille, c'est le FARD de « rougir » : deux morphs, posés à la
+  // profondeur 10 du visage entre les images 51 et 65, dont le taux monte au fil
+  // des images. Sans les lire, la bouille rougit… sans rougir.
+  function lireStylesMorph(r) {
+    let n = r.u8();
+    if (n === 0xff) n = r.u16();
+    const l = [];
+    for (let i = 0; i < n; i++) {
+      const type = r.u8();
+      if (type === 0x00) {
+        l.push({ type, c0: r.rgba(), c1: r.rgba() });
+      } else if (type === 0x10 || type === 0x12 || type === 0x13) {
+        const m0 = r.matriceT(), m1 = r.matriceT();
+        const nb = r.u8();
+        const arrets = [];
+        for (let k = 0; k < nb; k++) arrets.push({ t0: r.u8(), c0: r.rgba(), t1: r.u8(), c1: r.rgba() });
+        const st = { type, m0, m1, arrets };
+        if (type === 0x13) { st.focal0 = r.u16(); st.focal1 = r.u16(); }
+        l.push(st);
+      } else {
+        l.push({ type, bitmap: r.u16(), m0: r.matriceT(), m1: r.matriceT() });
+      }
+    }
+    return l;
+  }
+  function lireTraitsMorph(r, v2) {
+    let n = r.u8();
+    if (n === 0xff) n = r.u16();
+    const l = [];
+    for (let i = 0; i < n; i++) {
+      const t = { w0: r.u16(), w1: r.u16() };
+      if (v2) {
+        const drapeaux = r.u16();
+        const aRemplissage = (drapeaux >> 3) & 1;
+        r.u8();
+        if (((drapeaux >> 8) & 3) === 2) r.u16();
+        if (aRemplissage) { t.remplissage = true; lireStylesMorph(r); }
+        else { t.c0 = r.rgba(); t.c1 = r.rgba(); }
+      } else { t.c0 = r.rgba(); t.c1 = r.rgba(); }
+      l.push(t);
+    }
+    return l;
+  }
+  function lireAretesMorph(r) {
+    let nb = r.u8();
+    let nFillBits = nb >> 4, nLineBits = nb & 15;
+    const out = [];
+    let x = 0, y = 0;
+    for (;;) {
+      if (r.u(1)) {
+        const droite = r.u(1);
+        const nbits = r.u(4) + 2;
+        if (droite) {
+          let dx = 0, dy = 0;
+          if (r.u(1)) { dx = r.s(nbits); dy = r.s(nbits); }
+          else if (r.u(1)) dy = r.s(nbits);
+          else dx = r.s(nbits);
+          x += dx; y += dy;
+          out.push({ type: 'ligne', x, y });
+        } else {
+          const cx = x + r.s(nbits), cy = y + r.s(nbits);
+          x = cx + r.s(nbits); y = cy + r.s(nbits);
+          out.push({ type: 'courbe', cx, cy, x, y });
+        }
+      } else {
+        const drapeaux = r.u(5);
+        if (drapeaux === 0) break;
+        if (drapeaux & 1) { const n = r.u(5); x = r.s(n); y = r.s(n); out.push({ type: 'move', x, y }); }
+        if (drapeaux & 2) out.push({ type: 'fill0', style: r.u(nFillBits) });
+        if (drapeaux & 4) out.push({ type: 'fill1', style: r.u(nFillBits) });
+        if (drapeaux & 8) out.push({ type: 'trait', style: r.u(nLineBits) });
+        if (drapeaux & 16) {
+          r.aligner();
+          lireStylesMorph(r); lireTraitsMorph(r, false);
+          const z = r.u8(); nFillBits = z >> 4; nLineBits = z & 15;
+        }
+      }
+    }
+    r.aligner();
+    return out;
+  }
+  function lireMorph(b, corps, len, code) {
+    // La spécification donne quatre rectangles à DefineMorphShape2 et deux à
+    // DefineMorphShape, mais tous les ateliers ne l'ont pas suivie. Plutôt que
+    // de croire l'étiquette, on essaie les deux dispositions et l'on garde celle
+    // dont le champ Offset tombe dans le tag.
+    const essayer = (quatre) => {
+      const r = new Bits(b, corps);
+      const id = r.u16();
+      r.rect(); r.rect();
+      if (quatre) { r.rect(); r.rect(); r.u8(); }
+      const off = r.u32();
+      return { r, id, off, apres: r.o, quatre, ok: off > 0 && off < len };
+    };
+    let t = essayer(code === 46);
+    if (!t.ok) t = essayer(code !== 46);
+    if (!t.ok) return null;
+    const rb = new Bits(b, corps);
+    rb.u16();
+    const bd0 = rb.rect(), bd1 = rb.rect();
+    const styles = lireStylesMorph(t.r);
+    const traits = lireTraitsMorph(t.r, code === 46 && t.quatre);
+    const a = lireAretesMorph(t.r);
+    t.r.o = t.apres + t.off; t.r.bit = 0;
+    const fin = lireAretesMorph(t.r);        // l'arrivée : la géométrie seule
+    return { id: t.id, bounds: [bd0, bd1], styles, traits, debut: a, fin };
+  }
+
+  const mel = (a, b, t) => a + (b - a) * t;
+  /** Un morph au taux `t` (0 = début, 1 = fin), au FORMAT DES FORMES. */
+  function interpolerMorph(m, t) {
+    const geoB = m.fin.filter((e) => e.type !== 'fill0' && e.type !== 'fill1' && e.type !== 'trait');
+    let iB = 0;
+    const point = (e) => {
+      const f = geoB[iB++];
+      if (!f || f.type !== e.type) return e;
+      const p = { type: e.type, x: mel(e.x, f.x, t), y: mel(e.y, f.y, t) };
+      if (e.type === 'courbe') { p.cx = mel(e.cx, f.cx, t); p.cy = mel(e.cy, f.cy, t); }
+      return p;
+    };
+    const chemins = new Map();
+    let style = 0, d = '', ouvert = false, cx = 0, cy = 0;
+    const finir = () => {
+      if (ouvert && d && style > 0) {
+        if (!chemins.has(style)) chemins.set(style, '');
+        chemins.set(style, chemins.get(style) + d + 'Z');
+      }
+      d = '';
+    };
+    for (const e of m.debut) {
+      if (e.type === 'fill1' || e.type === 'fill0') {
+        finir(); style = e.style; ouvert = true;
+        d = 'M' + PX(cx) + ' ' + PX(cy);
+        continue;
+      }
+      if (e.type === 'trait') continue;
+      const p = point(e);
+      cx = p.x; cy = p.y;
+      if (p.type === 'move') { finir(); d = 'M' + PX(p.x) + ' ' + PX(p.y); ouvert = true; }
+      else if (p.type === 'ligne') d += 'L' + PX(p.x) + ' ' + PX(p.y);
+      else d += 'Q' + PX(p.cx) + ' ' + PX(p.cy) + ' ' + PX(p.x) + ' ' + PX(p.y);
+    }
+    finir();
+    const couches = [];
+    for (const [num, chemin] of chemins) {
+      const st = m.styles[num - 1];
+      if (!st) continue;
+      if (st.type === 0x00) {
+        couches.push({ d: chemin, rgb: [Math.round(mel(st.c0.r, st.c1.r, t)),
+          Math.round(mel(st.c0.v, st.c1.v, t)), Math.round(mel(st.c0.b, st.c1.b, t))],
+          alpha: mel(st.c0.a, st.c1.a, t) / 255, trait: false });
+      } else if (st.type === 0x10 || st.type === 0x12 || st.type === 0x13) {
+        const M = { a: mel(st.m0.a, st.m1.a, t), b: mel(st.m0.b, st.m1.b, t),
+          c: mel(st.m0.c, st.m1.c, t), d: mel(st.m0.d, st.m1.d, t),
+          e: mel(st.m0.e, st.m1.e, t), f: mel(st.m0.f, st.m1.f, t) };
+        const arrets = st.arrets.map((s) => ({
+          ratio: Math.round(mel(s.t0, s.t1, t)),
+          rgb: [Math.round(mel(s.c0.r, s.c1.r, t)), Math.round(mel(s.c0.v, s.c1.v, t)),
+            Math.round(mel(s.c0.b, s.c1.b, t))],
+          alpha: mel(s.c0.a, s.c1.a, t) / 255,
+        }));
+        couches.push({ d: chemin, rgb: [0, 0, 0], alpha: 1, trait: false,
+          degrade: { radial: st.type !== 0x10, focale: 0, etalement: 0, interpolation: 0, M, arrets } });
+      }
+    }
+    const bd = {
+      x: mel(m.bounds[0].x0, m.bounds[1].x0, t) / 20,
+      y: mel(m.bounds[0].y0, m.bounds[1].y0, t) / 20,
+      w: (mel(m.bounds[0].x1, m.bounds[1].x1, t) - mel(m.bounds[0].x0, m.bounds[1].x0, t)) / 20,
+      h: (mel(m.bounds[0].y1, m.bounds[1].y1, t) - mel(m.bounds[0].y0, m.bounds[1].y0, t)) / 20,
+    };
+    return { id: m.id, bounds: bd, couches };
+  }
+
   // ── Le fichier entier ────────────────────────────────────────────────────
   //
   // Les pellicules sortent image par image, sous forme d'ORDRES : c'est bien
@@ -335,6 +542,7 @@
     const debut = rc.fin + 4;
 
     const formes = new Map();
+    const morphs = new Map();           // id → forme interpolable
     const sprites = new Map();          // id → { n, labels, images: [ordres] }
     const exports = new Map();
     const racine = { n: 0, labels: {}, images: [] };
@@ -362,6 +570,9 @@
         if (code === 2 || code === 22 || code === 32 || code === 83) {
           const f = lireForme(b, corps, code);
           formes.set(f.id, f);
+        } else if (code === 45 || code === 46) {
+          // Un morph illisible ne doit pas arrêter la lecture du fichier.
+          try { const m = lireMorph(b, corps, len, code); if (m) morphs.set(m.id, m); } catch (e) { /* passé */ }
         } else if (code === 39) {
           const sid = u16(b, corps);
           const p = pellicule(sid);
@@ -419,10 +630,10 @@
       if (!p.n) p.n = p.images.length;
     })(debut, b.length, 0);
 
-    return { scene, cadence, formes, sprites, racine, exports };
+    return { scene, cadence, formes, morphs, sprites, racine, exports };
   }
 
-  const API = { lire, decompresser, CX_NEUTRE, cxNeutre,
+  const API = { lire, decompresser, interpolerMorph, CX_NEUTRE, cxNeutre,
     charger: function (url) {
       return fetch(url).then((r) => {
         if (!r.ok) throw new Error('SWF introuvable : ' + url);
