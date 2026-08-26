@@ -142,6 +142,25 @@ test('la pastille de l’onglet ouvre le menu, « Fermer » en tête', () => {
   assert.match(JS, /if \(!entrees\.length\) \{ activerSlot\(idOnglet\); return; \}/);
 });
 
+test('les libellés du menu : Verdana 10 MAIGRE noir, rose au survol', () => {
+  // La règle de l'entrée, et elle seule.
+  const debut = CSS.indexOf('.ot-menu button {');
+  const regle = CSS.slice(debut, CSS.indexOf('}', debut));
+  // `Standard.getTextStyle()` : { color: 0, font: "Verdana", size: 10 }.
+  assert.match(regle, /font: 400 10px Verdana, Arial, sans-serif; color: #000000;/);
+  // Et surtout PAS de gras : `attachMenu` passe un `textFormat: { bold: true }`
+  // que personne ne relit (ni `But`, ni `but.Text`, ni `but.TextBasic` — seul
+  // `textStyle` compte, et il est vide). Le relevé 1:1 le confirme.
+  assert.doesNotMatch(regle, /font: 700/);
+  // La gouttière de 2 px de tout TextField Flash : `pos.x` vaut
+  // `margin.x.min × margin.x.ratio` = 0, et l'encre tombe deux pixels plus loin.
+  assert.match(regle, /padding: 0 0 3px 2px;/);
+  // `Standard.getButTextBasicBehavior()` : type "colorText",
+  // over = 15168875 (#E7756B), press = 14540253 (#DDDDDD).
+  assert.match(CSS, /\.ot-menu button:hover \{ color: #E7756B; \}/);
+  assert.match(CSS, /\.ot-menu button:active \{ color: #DDDDDD; \}/);
+});
+
 test('l’onglet d’une conversation CLIGNOTE rose à l’arrivée d’un message', () => {
   // `MainBarTab.warning` : addColorFlash("warning", this, { color: 16755627,
   // alpha: 30, tempo: 500 }) — 0xFFB1AB à 30 %, et `colorFlash` alterne

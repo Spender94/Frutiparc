@@ -1864,6 +1864,30 @@ Ce qu'on lit au ras de la barre au-dessus d'un onglet, ce n'est pas le trait
 noir : c'est la couture grise. Relevé 1:1, la bande `#999999` court de `cornerX`
 au bord droit du dernier onglet — et le trait `#444444` reprend juste après.
 
+### Le style d'une entrée de menu
+
+Il se compose en deux endroits, et il n'y a rien d'autre :
+
+```
+Standard.getTextStyle()             → { color: 0, font: "Verdana", size: 10 }
+Standard.getButTextBasicBehavior()  → { type: "colorText",
+                                        color: { press: 14540253, over: 15168875 } }
+```
+
+Du **Verdana 10 noir**, qui passe à **`#E7756B`** au survol (`15168875`) et à
+`#DDDDDD` à l'appui (`14540253`). La couleur de base n'est pas fournie :
+`but.TextBasic.setBehavior` la prend alors dans le champ, donc le noir du
+style. La gouttière de 2 px est celle de tout `TextField` Flash — `pos.x` vaut
+`margin.x.min × margin.x.ratio` = 0, et l'encre du « F » tombe en x 126 pour
+un bouton posé en 123.
+
+**Le gras n'arrive jamais.** `attachMenu` passe pourtant
+`textFormat: { bold: true }` dans l'objet d'initialisation — mais aucune des
+trois classes ne le relit : `But`, `but.Text` et `but.TextBasic` ne consultent
+que `textStyle`, laissé vide. Le relevé 1:1 le confirme : les libellés du menu
+sont maigres là où l'étiquette de l'onglet, elle, est bien grasse. Bug
+d'origine, conservé.
+
 ### L'avertissement rose
 
 ```

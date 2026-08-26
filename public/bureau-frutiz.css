@@ -434,13 +434,29 @@ body.bureau-frutiz .fb-onglet .ot-menu {
   position: absolute; top: var(--y); height: 0;
   z-index: 3; pointer-events: none;
 }
+/* LE STYLE D'UNE ENTRÉE, tel que le SWF le compose :
+   `Standard.getTextStyle()` donne `{ color: 0, font: "Verdana", size: 10 }`
+   — du Verdana 10 NOIR — et `Standard.getButTextBasicBehavior()` donne le
+   comportement `colorText` : `over` = 15168875 (#E7756B, le rose du survol),
+   `press` = 14540253 (#DDDDDD). La base n'est pas fournie : `setBehavior` la
+   prend alors dans le champ, donc le noir du style.
+   Le GRAS, lui, n'arrive jamais : `attachMenu` passe bien un
+   `textFormat: { bold: true }` dans l'objet d'initialisation, mais aucune des
+   trois classes (`But`, `but.Text`, `but.TextBasic`) ne le relit — seul
+   `textStyle` compte, et il est vide. Le relevé 1:1 le confirme, les libellés
+   du menu sont maigres là où l'étiquette de l'onglet est grasse. On garde le
+   bug d'origine.
+   La gouttière de 2 px est celle de tout `TextField` Flash : `pos.x` vaut
+   `margin.x.min × margin.x.ratio` = 0, et l'encre du « F » tombe en x 126
+   pour un bouton posé en 123. */
 body.bureau-frutiz .fb-onglet .ot-menu button {
-  position: absolute; left: 0;
-  padding: 0; border: 0; background: none; pointer-events: auto;
-  font: 700 11px Verdana, Arial, sans-serif; color: #335511;
+  position: absolute; left: 0; box-sizing: border-box;
+  padding: 0 0 3px 2px; border: 0; background: none; pointer-events: auto;
+  font: 400 10px Verdana, Arial, sans-serif; color: #000000;
   text-align: left; cursor: pointer; white-space: nowrap;
 }
-body.bureau-frutiz .fb-onglet .ot-menu button:hover { color: #000000; }
+body.bureau-frutiz .fb-onglet .ot-menu button:hover { color: #E7756B; }
+body.bureau-frutiz .fb-onglet .ot-menu button:active { color: #DDDDDD; }
 /* L'AVERTISSEMENT d'un slot (`MainBarTab.warning`) : un message est arrivé
    dans une conversation qu'on ne regarde pas. `addColorFlash` alterne toutes
    les 500 ms entre `FEMC.setColor` et `FEMC.killColor` — soit une teinte de
