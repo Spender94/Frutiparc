@@ -22,7 +22,7 @@
  * la fenêtre fait 324 de large, le haut est BLANC de y 5 à 53, la feuille
  * verte commence en 54 (#DDDDDD), 56 (#ADE76B), 58 (le reflet), et le filet
  * sous les onglets tombe en 79-80. Les encres : pseudo à la couleur du genre
- * (#242169 garçon, #BB4A44 fille), âge #404040, onglet courant #842929, tout
+ * (#242169 garçon, #BB4444 fille), âge #404040, onglet courant #842929, tout
  * le reste #335511.
  */
 const { test } = require('node:test');
@@ -134,14 +134,19 @@ test('les quatre onglets : colonnes égales, texte gras, le courant en #842929',
 });
 
 test('les encres relevées, genre compris', () => {
-  // `UserSlot.onInfoBasic` : le pseudo prend la couleur du GENRE.
   assert.match(BLOC, /#fiche-pseudo \{\s*\n\s*font: 700 11px Verdana[^;]*; color: #242169;/);
-  assert.match(BLOC, /#fiche\.elle #fiche-pseudo \{ color: #BB4A44; \}/);
   assert.match(BLOC, /\.fiche-nom-ligne \.meta \{[\s\S]*?color: #404040;/);
   assert.match(BLOC, /\.fiche-ligne \.lib,\s*\nbody\.bureau-frutiz #fiche \.fiche-ligne \.val \{ color: #335511; \}/);
-  // Le serveur donne déjà le sexe, et le bureau le lit.
-  assert.match(LIGHT, /window\.ficheDerniere = function \(\) \{ return ficheEtat && ficheEtat\.data; \};/);
-  assert.match(JS, /f\.classList\.toggle\('elle', !!\(d && d\.basic && d\.basic\.sexe === 'F'\)\);/);
+  // `UserSlot.onInfoBasic` (0x63a51) : le pseudo prend la couleur du GENRE, et
+  // la règle vaut pour LES DEUX mises en page — elle vit donc dans light.html,
+  // avec les valeurs exactes du bytecode (celle qui était ici disait #BB4A44,
+  // un chiffre de travers). Le bureau n'a plus rien à guetter : `renderFiche`
+  // pose l'attribut au moment où il écrit le pseudo.
+  assert.match(LIGHT, /#fiche-pseudo\[data-genre="M"\] \{ color: #242169; \}/);
+  assert.match(LIGHT, /#fiche-pseudo\[data-genre="F"\] \{ color: #BB4444; \}/);
+  assert.match(LIGHT, /var fg = \(d && d\.basic && d\.basic\.sexe === "F"\) \? "F" : \(d && d\.basic \? "M" : ""\);/);
+  assert.doesNotMatch(BLOC, /#fiche\.elle/);
+  assert.doesNotMatch(JS, /function majGenreFiche|majGenreFiche\(f\);/);
 });
 
 test('rien de tout cela ne touche le mobile', () => {

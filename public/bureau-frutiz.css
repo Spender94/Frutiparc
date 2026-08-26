@@ -499,7 +499,9 @@ body.bureau-frutiz .fen.fen-en-onglet {
 }
 body.bureau-frutiz .fen.fen-en-onglet.fen-onglet-vue { display: flex; }
 body.bureau-frutiz .fen.fen-en-onglet > .fen-titre,
-body.bureau-frutiz .fen.fen-en-onglet > .fen-poignee { display: none; }
+/* `initTabMode` (0x5463f) : une fenêtre passée en onglet cache sa poignée. */
+body.bureau-frutiz .fen.fen-en-onglet > .fen-poignee,
+body.bureau-frutiz .fen.fen-en-onglet > .fen-poignee-vue { display: none; }
 /* La GLISSADE de `putInTab()` : la fenêtre sort par le haut avant de passer
    en onglet (`pos.y = −(pos.h + 100)`). Ctrl enfoncée, Flash saute l'anim. */
 body.bureau-frutiz .fen.fen-glisse {
@@ -975,8 +977,12 @@ body.bureau-frutiz #side-list .sl-contact .nom {
    D'où les deux règles ci-dessous, et rien de plus : `:hover` couvre
    onRollOver et onRelease (le curseur est encore dessus), `:active` couvre
    onPress, et tout le reste revient à `base` de lui-même. */
-body.bureau-frutiz #side-list .sl-contact:hover .nom { color: #E7756B; }
-body.bureau-frutiz #side-list .sl-contact:active .nom { color: #DDDDDD; }
+/* …et tant que le genre est INCONNU. `UserSlot.onInfoBasic` (0x63a51) écrase
+   ce comportement par défaut dès que le serveur a dit `sx` : le pseudo passe
+   alors au bleu du garçon ou au rouge de la fille, survol compris (les règles
+   sont dans light.html). */
+body.bureau-frutiz #side-list .sl-contact:not([data-genre]):hover .nom { color: #E7756B; }
+body.bureau-frutiz #side-list .sl-contact:not([data-genre]):active .nom { color: #DDDDDD; }
 /* La boîte de RECHERCHE : `mcSearchButton` (#441), que `buildList` attache à
    `_y = 770`. L'art est EXTRAIT du SWF — la pastille grise et sa loupe, dans
    leur cadre (9,95 ; 0,65)–(105,85 ; 22,67) — ce qui pose l'ensemble
@@ -1221,24 +1227,64 @@ body.bureau-frutiz .fen-corps {
 }
 /* Replié : la barre-titre seule, comme l'enroulement du bureau Flash. */
 body.bureau-frutiz .fen.pliee .fen-corps,
-body.bureau-frutiz .fen.pliee .fen-poignee { display: none; }
+body.bureau-frutiz .fen.pliee .fen-poignee,
+body.bureau-frutiz .fen.pliee .fen-poignee-vue { display: none; }
 body.bureau-frutiz .fen.pliee { min-width: 220px; }
 
-/* La poignée de redimensionnement : le dessin `resizeIcon` du SWF (12×12),
-   posé à pos.w−20, pos.h−20 comme updateDeskSize le fait. */
-/* La poignée ne se MONTRE qu'au survol de son coin. D'époque elle est à la
-   profondeur 160, sous le frameSet : on ne la voit jamais, mais le clic la
-   traverse quand même. HTML ne sait pas faire ça — un élément invisible
-   reçoit pourtant les clics, alors on la laisse transparente et on ne
-   l'allume que quand la souris arrive dessus. */
+/* ── LA POIGNÉE DE REDIMENSIONNEMENT ──────────────────────────────────────
+   LA ZONE SENSIBLE d'abord : `initButtons` (0x5449d) attache le symbole
+   `transp` — un bouton dont la forme de hit fait 100 × 100 — à
+   `_xscale = _yscale = 30` (0x544b7), et `updateDeskSize` (0x5400c) le pose à
+   `pos.w − 20, pos.h − 20`. Soit un carré de 30 ancré 20 px avant le coin,
+   qui DÉBORDE donc de 10 px : c'est ce débordement qu'on attrape, et c'est
+   pour cela que la poignée du portage — collée à 8 px À L'INTÉRIEUR — ne
+   tombait jamais où l'œil la cherche.
+
+   Elle reste TRANSPARENTE : d'époque le clip est un bouton sans image, à la
+   profondeur 160, sous le frameSet. On ne le voit jamais ; ce qu'on voit,
+   c'est la pastille que le survol fait naître (cf. `.fen-poignee-vue`). */
 body.bureau-frutiz .fen-poignee {
-  position: absolute; right: 8px; bottom: 8px; width: 12px; height: 12px;
-  background: url('/frutiz/sprites/resizeIcon.svg') no-repeat center / 12px 12px;
-  cursor: nwse-resize; z-index: 2;
-  opacity: 0; transition: opacity .12s linear;
+  /* −11 et non −10 : une position absolue se règle sur la boîte de
+     REMPLISSAGE, qui commence 1 px après le bord de la fenêtre (le liseré
+     `#444444`). Un pixel de compensation, et le carré déborde bien de 10. */
+  position: absolute; right: -11px; bottom: -11px; width: 30px; height: 30px;
+  background: none; cursor: nwse-resize; z-index: 3;
 }
-body.bureau-frutiz .fen-poignee:hover,
-body.bureau-frutiz .fen-poignee:active { opacity: 1; }
+/* LA PASTILLE, elle, n'existe que le temps du survol — `startResizeAnim`
+   (0x568c1) la crée, `removeResizeArrow` la retire. Trois `drawOval`
+   concentriques autour de (−9, −9) dans le clip, plus l'icône au centre :
+
+     outline Ø 20  `darkest` #444444   ·  shade Ø 18 `shade` #DDDDDD
+     main    Ø 14  `main`    #FFFFFF   ·  resizeIcon 12 × 12
+
+   Les teintes sont celles de `style.global.color[0]`, et `getWinStyle`
+   (0x4957f) donne à `global` la famille **white** : la pastille est blanche
+   cerclée de gris sur TOUTES les fenêtres, quel que soit leur fruit.
+
+   L'origine du clip est son coin bas-droit (les cercles vont de −19 à +1) :
+   posée en (w+9, h+9) par l'animation, elle centre les cercles sur le COIN
+   exact de la fenêtre. `transform-origin: 0 0` reproduit le `_xscale` de
+   Flash, qui met à l'échelle autour de l'origine du clip. */
+body.bureau-frutiz .fen-poignee-vue {
+  position: absolute; left: 0; top: 0; width: 0; height: 0;
+  transform-origin: 0 0; pointer-events: none; z-index: 4;
+}
+body.bureau-frutiz .fen-poignee-vue i {
+  position: absolute; display: block; border-radius: 50%;
+}
+body.bureau-frutiz .fen-poignee-vue .pv-anneau {
+  left: -19px; top: -19px; width: 20px; height: 20px; background: #444444;
+}
+body.bureau-frutiz .fen-poignee-vue .pv-ombre {
+  left: -18px; top: -18px; width: 18px; height: 18px; background: #DDDDDD;
+}
+body.bureau-frutiz .fen-poignee-vue .pv-chair {
+  left: -16px; top: -16px; width: 14px; height: 14px; background: #FFFFFF;
+}
+body.bureau-frutiz .fen-poignee-vue .pv-icone {
+  left: -15px; top: -15px; width: 12px; height: 12px; border-radius: 0;
+  background: url('/frutiz/sprites/resizeIcon.svg') no-repeat center / 12px 12px;
+}
 
 /* LE FANTÔME du déplacement et du redimensionnement (win.Ghost) : la
    silhouette blanche — 4 arcs de coin 10×10 épais de 2 et 4 traits de 2 px
@@ -1847,8 +1893,8 @@ body.bureau-frutiz .fen #chat-panel #users-drawer .u:nth-child(even) { backgroun
    même `butText` : le pseudo vire au `#E7756B` sous le curseur et au
    `#DDDDDD` sous le doigt (cf. la note du carnet, plus haut). Seul le PSEUDO
    suit — la pastille de staff et le lieu ne sont pas des champs d'époque. */
-body.bureau-frutiz .fen #chat-panel #users-drawer .u:hover span:not(.badge) { color: #E7756B; }
-body.bureau-frutiz .fen #chat-panel #users-drawer .u:active span:not(.badge) { color: #DDDDDD; }
+body.bureau-frutiz .fen #chat-panel #users-drawer .u:not([data-genre]):hover span:not(.badge) { color: #E7756B; }
+body.bureau-frutiz .fen #chat-panel #users-drawer .u:not([data-genre]):active span:not(.badge) { color: #DDDDDD; }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u:hover .lieu,
 body.bureau-frutiz .fen #chat-panel #users-drawer .u:active .lieu { color: #6c8f3a; }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u.avec-lieu { flex-direction: row; }
@@ -2184,7 +2230,7 @@ body.bureau-frutiz .fen #scores-panel #sc-table .sc-pod span { color: #000000; }
      x 315-316  #ADE76B   ·  317-318 #DDDDDD  ·  323 #444444
 
    Les encres : le pseudo prend la couleur du GENRE (`UserSlot.onInfoBasic` —
-   #242169 pour un garçon, #BB4A44 pour une fille), l'âge #404040, l'onglet
+   #242169 pour un garçon, #BB4444 pour une fille), l'âge #404040, l'onglet
    courant #842929, les autres et tout le corps #335511. */
 /* Le voile du mobile devient, ici, une simple COUCHE transparente : la fiche
    est une fenêtre du bureau, elle ne noircit rien et n'arrête pas la souris.
@@ -2278,7 +2324,10 @@ body.bureau-frutiz #fiche .fiche-nom-ligne {
 body.bureau-frutiz #fiche #fiche-pseudo {
   font: 700 11px Verdana, Arial, sans-serif; color: #242169;
 }
-body.bureau-frutiz #fiche.elle #fiche-pseudo { color: #BB4A44; }
+/* (Le pseudo de la fiche prend la couleur du GENRE — `UserSlot.onInfoBasic`,
+   0x63a51. La règle vit maintenant dans light.html, où elle vaut pour les deux
+   mises en page, et avec les valeurs exactes du bytecode : #242169 et
+   #BB4444. Celle qui était ici disait #BB4A44, un chiffre de travers.) */
 body.bureau-frutiz #fiche .fiche-nom-ligne .meta {
   margin-left: auto; font: 400 11px Verdana, Arial, sans-serif; color: #404040;
   white-space: nowrap;

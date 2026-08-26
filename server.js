@@ -19549,6 +19549,11 @@ app.get('/api/light/contacts', (req, res) => {
     // raccourci quand on lâche le contact sur le bureau.
     const compte = users[local] || users[getDisplayName(local)];
     if (compte) o.bouille = bouilleOf(compte, local);
+    // Le GENRE : c'est lui qui donne au pseudo son encre. `UserSlot` pose
+    // `displayType = "gender"` par défaut (0x6352f) et `onInfoBasic` (0x63a51)
+    // colore en bleu ou en rouge — le carnet est le même composant que la
+    // liste des connectés d'un salon, il suit la même règle.
+    if (compte && compte.gender) o.genre = String(compte.gender).toUpperCase() === 'F' ? 'F' : 'M';
     if (nom) {
       const jeu = STATUS_INTERNAL_JEU[statusInternalOf(nom)];
       if (jeu) o.jeu = jeu;

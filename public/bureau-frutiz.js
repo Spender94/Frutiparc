@@ -398,6 +398,10 @@ window.BureauFrutiz = (function () {
       : (c.enLigne ? ' — en ligne' : ' — hors ligne'));
     b.innerHTML = '<span class="voyant"></span><span class="nom"></span>';
     b.querySelector('.nom').textContent = c.pseudo;
+    // L'encre du pseudo suit le GENRE (`UserSlot.onInfoBasic`, 0x63a51) : les
+    // règles vivent dans light.html, elles valent pour le carnet comme pour la
+    // liste des connectés — c'est le même `userSlot`.
+    if (c.genre) b.setAttribute('data-genre', c.genre);
     if (c.enLigne && c.jeu) {
       var v = b.querySelector('.voyant');
       v.classList.add('jeu');
@@ -2761,7 +2765,6 @@ window.BureauFrutiz = (function () {
       if (rangee) completerIconesFiche(rangee);
     }
     habillerIconesFiche();
-    majGenreFiche(f);
   }
 
   /* `box.Frutiz.getIconList` compose la rangée de boutons blancs, et l'ordre
@@ -2847,16 +2850,10 @@ window.BureauFrutiz = (function () {
   }
 
   // `UserSlot.onInfoBasic` : le pseudo prend la couleur du GENRE — le bleu
-  // #242169 pour un garçon, le rouge #BB4A44 pour une fille.
-  function majGenreFiche(f) {
-    var lire = function () {
-      var d = window.ficheDerniere && window.ficheDerniere();
-      f.classList.toggle('elle', !!(d && d.basic && d.basic.sexe === 'F'));
-    };
-    lire();
-    setTimeout(lire, 500);
-    setTimeout(lire, 1500);
-  }
+  // #242169 pour un garçon, le rouge #BB4444 pour une fille.
+  // (`majGenreFiche` guettait ici l'arrivée des données pour teinter le pseudo
+  // en rose. C'est `renderFiche` qui pose l'attribut désormais, au moment où il
+  // écrit le pseudo — il a la donnée sous la main, plus rien à guetter.)
 
   // `initDrag` / `endDrag` : on l'attrape par son CADRE — tout le haut blanc,
   // sauf ce qui est déjà un bouton.
@@ -2982,7 +2979,110 @@ window.BureauFrutiz = (function () {
   // initResize/endResize (0x53a2e/0x53b2a) : le redimensionnement au fantôme —
   // decalSize garde l'écart entre la souris et le coin, les minima s'imposent
   // pendant le suivi, la taille ne s'applique qu'au lâcher.
+  /* ══ LA POIGNÉE, ET CE QU'ELLE MONTRE ══════════════════════════════════
+     Deux clips, et il ne faut pas les confondre.
+
+     LA ZONE SENSIBLE. `initButtons` (0x5449d) attache le symbole `transp` —
+     un DefineButton2 dont la seule forme de hit (#130) fait 100 × 100 — sous
+     le nom d'instance `butResize`, puis le met à `_xscale = _yscale = 30`
+     (0x544b7). `updateDeskSize` (0x5400c) le pose à `pos.w − 20, pos.h − 20`.
+     Elle couvre donc un carré de **30** ancré 20 px avant le coin : elle
+     DÉBORDE de 10 px, et c'est ce débordement qu'on attrape.
+
+     LE DESSIN N'EXISTE QU'AU SURVOL. `onRollOver → startResizeAnim`
+     (0x568c1), `onRollOut → endResizeAnim` (0x56d7d). Avec `s = 18`, la
+     méthode crée un clip vide et y trace trois `drawOval` concentriques
+     autour de (−9, −9), plus l'icône `resizeIcon` (#355, 12 × 12) au centre :
+
+       outline  Ø 20  `darkest`   #444444      (x = −(s+1), w = s+2)
+       shade    Ø 18  `shade`     #DDDDDD      (x = −s,     w = s)
+       main     Ø 14  `main`      #FFFFFF      (x = 2−s,    w = s−4)
+
+     Les teintes viennent de `style.global.color[0]`, et `getWinStyle` (0x4957f)
+     donne à `global` la famille **white** : la pastille est blanche cerclée de
+     gris, quel que soit le fruit de la fenêtre.
+
+     LE MOUVEMENT. Le clip naît en `(pos.w − s, pos.h − s)` à l'échelle 0, puis
+     `animList.addSlide(…, ratio 2)` l'envoie vers `(pos.w + s/2, pos.h + s/2)`
+     pendant qu'`addResize` (ratio 1) le porte à 100 %. À l'arrivée l'origine du
+     clip est en (w+9, h+9) et les cercles, centrés en (−9, −9), tombent donc
+     EXACTEMENT SUR LE COIN de la fenêtre. Au départ du curseur, cible
+     `(pos.w − 20, pos.h − 20)` à l'échelle 0, ratio 1, puis suppression.
+
+     La loi est celle de toutes les animations de la maison — `AnimList.slide`
+     (0x515d1) et `AnimList.resize` (0x518c8) écrivent le même
+     `Math.pow(0.8, tmod × ratio)` toutes les 25 ms. Ratio 2 → k = 0,64.
+
+     Le portage posait une icône fixe à 8 px des bords, sans pastille et sans
+     mouvement : elle ne tombait donc jamais sur le coin. */
+  var POIGNEE_S = 18;                  // le `var s = 18` de startResizeAnim
+  var POIGNEE_ANCRE = 20;              // `pos.w − 20`, la pose de butResize
+
+  // `pos.w`/`pos.h` sont les dimensions de la fenêtre BORD COMPRIS, alors qu'un
+  // enfant en position absolue se règle sur la boîte de remplissage — laquelle
+  // commence 1 px plus loin, après le liseré. D'où le pixel retranché : sans
+  // lui, la pastille tomberait un cran à côté du coin.
+  var POIGNEE_BORD = 1;
+  function poseVue(fen, x, y, echelle) {
+    var v = fen._poigneeVue;
+    if (!v) return;
+    v.style.left = (x - POIGNEE_BORD) + 'px';
+    v.style.top = (y - POIGNEE_BORD) + 'px';
+    v.style.transform = 'scale(' + (echelle / 100) + ')';
+  }
+
+  // `startResizeAnim` / `endResizeAnim`, avec leur cible et leur ratio.
+  function animerPoignee(fen, entrante) {
+    var reg = fen._poigneeReg;
+    if (!reg) return;
+    if (fen._poigneeAnim) clearInterval(fen._poigneeAnim);
+    var pos = posDe(fen);
+    var cible = entrante
+      ? { x: pos.w + POIGNEE_S / 2, y: pos.h + POIGNEE_S / 2, e: 100 }
+      : { x: pos.w - POIGNEE_ANCRE, y: pos.h - POIGNEE_ANCRE, e: 0 };
+    var kMouv = Math.pow(GLISSE_K, entrante ? 2 : 1);   // le `ratio` d'addSlide
+    fen._poigneeAnim = setInterval(function () {
+      reg.x = reg.x * kMouv + cible.x * (1 - kMouv);
+      reg.y = reg.y * kMouv + cible.y * (1 - kMouv);
+      reg.e = reg.e * GLISSE_K + cible.e * (1 - GLISSE_K);   // addResize, ratio 1
+      poseVue(fen, reg.x, reg.y, reg.e);
+      if (Math.round(reg.x) === Math.round(cible.x)
+        && Math.round(reg.y) === Math.round(cible.y)
+        && Math.round(reg.e) === Math.round(cible.e)) {
+        clearInterval(fen._poigneeAnim); fen._poigneeAnim = null;
+        poseVue(fen, cible.x, cible.y, cible.e);
+        // `removeResizeArrow` : au repos, le dessin n'existe pas.
+        if (!entrante && fen._poigneeVue) {
+          fen._poigneeVue.remove(); fen._poigneeVue = null; fen._poigneeReg = null;
+        }
+      }
+    }, GLISSE_MS);
+  }
+
+  function montrerPoignee(fen) {
+    if (fen._poigneeVue) { animerPoignee(fen, true); return; }
+    var v = document.createElement('div');
+    v.className = 'fen-poignee-vue';
+    v.innerHTML = '<i class="pv-anneau"></i><i class="pv-ombre"></i>'
+      + '<i class="pv-chair"></i><i class="pv-icone"></i>';
+    fen.appendChild(v);
+    fen._poigneeVue = v;
+    var pos = posDe(fen);
+    fen._poigneeReg = { x: pos.w - POIGNEE_S, y: pos.h - POIGNEE_S, e: 0 };
+    poseVue(fen, fen._poigneeReg.x, fen._poigneeReg.y, 0);
+    void v.offsetWidth;                // que le départ soit enregistré
+    animerPoignee(fen, true);
+  }
+  function cacherPoignee(fen) {
+    if (!fen._poigneeVue) return;
+    animerPoignee(fen, false);
+  }
+
   function rendreRedimensionnable(fen, poignee, minimum) {
+    poignee.addEventListener('pointerenter', function () { montrerPoignee(fen); });
+    poignee.addEventListener('pointerleave', function () {
+      if (!poignee._tient) cacherPoignee(fen);
+    });
     poignee.addEventListener('pointerdown', function (ev) {
       ev.preventDefault();
       ev.stopPropagation();
@@ -3008,10 +3108,18 @@ window.BureauFrutiz = (function () {
         fen.style.height = Math.round(cible.h) + 'px';
         fen.style.left = Math.round(cible.x) + 'px';
         fen.style.top = Math.round(cible.y) + 'px';
+        // `onRelease` rend la main au survol ; `onReleaseOutside` (0x54593)
+        // range la pastille dans la foulée — ici, c'est le curseur qui décide.
+        poignee._tient = false;
+        if (!poignee.matches(':hover')) cacherPoignee(fen);
+        else animerPoignee(fen, true);        // elle suit le nouveau coin
         // La zone des bouilles compte combien d'écrans tiennent dans sa
         // hauteur : elle change de visage quand la fenêtre change de taille.
         majBouilles();
       };
+      // Tant qu'on tient la poignée, le curseur peut sortir de sa zone : la
+      // pastille ne doit pas s'en aller sous la main.
+      poignee._tient = true;
       document.addEventListener('pointermove', suivre);
       document.addEventListener('pointerup', lacher);
     });

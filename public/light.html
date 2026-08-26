@@ -960,6 +960,34 @@
     font-size: 10px; font-weight: bold; background: #242169; color: #fff;
     border-radius: 8px; padding: 1px 6px; letter-spacing: 0; text-shadow: none; flex-shrink: 0;
   }
+  /* ── LA COULEUR DU PSEUDO EST CELLE DU GENRE ──────────────────────────────
+     `UserSlot.init` pose `displayType = "gender"` PAR DÉFAUT (0x6352f) : ce
+     n'est pas une option que le carnet ou la liste des connectés demandent,
+     c'est la règle de la maison. `onInfoBasic` (0x63a51) câble alors, sur le
+     champ du pseudo, un `setBehavior` de type « colorText » à trois états :
+
+       gender == "M"   base #242169 · over #2E42B1 · press #5669B3   (0x63aad)
+       sinon           base #BB4444 · over #E77575 · press #FEABAB   (0x63ae4)
+
+     (Le troisième jeu du bytecode, 0x63b2f, sert `displayType: "xp"` —
+     #335511 / #558811 / #66AA22 — que rien n'emploie ici.)
+
+     Les deux bases sont d'ailleurs les couleurs de la maison : #242169 est
+     l'encre des pseudos du light, et #BB4444 vaut `colorSet.pink.darker`.
+     Tant que le serveur n'a pas dit le genre, pas d'attribut et pas de
+     couleur : le champ garde la sienne, exactement comme `onInfoBasic` qui
+     ne fait rien si `o.gender` est indéfini. */
+  .u[data-genre="M"] .nom, .sl-contact[data-genre="M"] .nom { color: #242169; }
+  .u[data-genre="F"] .nom, .sl-contact[data-genre="F"] .nom { color: #BB4444; }
+  .u.mp[data-genre="M"]:hover .nom,  .sl-contact[data-genre="M"]:hover .nom  { color: #2E42B1; }
+  .u.mp[data-genre="M"]:active .nom, .sl-contact[data-genre="M"]:active .nom { color: #5669B3; }
+  .u.mp[data-genre="F"]:hover .nom,  .sl-contact[data-genre="F"]:hover .nom  { color: #E77575; }
+  .u.mp[data-genre="F"]:active .nom, .sl-contact[data-genre="F"]:active .nom { color: #FEABAB; }
+  /* Le pseudo de la FICHE est un `userSlot` lui aussi — mais un champ mort :
+     il n'a que sa couleur de base. */
+  #fiche-pseudo[data-genre="M"] { color: #242169; }
+  #fiche-pseudo[data-genre="F"] { color: #BB4444; }
+
   /* Un pseudo sur lequel on peut appuyer pour écrire en privé. L'enveloppe dit
      ce que le simple texte ne disait pas : que la ligne est un bouton. */
   /* Pas d'enveloppe au bout de la ligne : toucher un pseudo n'ouvre PAS une
@@ -2787,9 +2815,6 @@
     // compteur « en ligne » de la frusion ne s'actualisait jamais.
     window.state = state;
     window.ouvrirFicheJoueur = ouvrirFiche;
-  // Ce que la fiche affiche en ce moment — le bureau y lit le GENRE, dont
-  // `UserSlot.onInfoBasic` tire la couleur du pseudo.
-  window.ficheDerniere = function () { return ficheEtat && ficheEtat.data; };
     // Et le ROUTEUR de rubriques : c'est lui que la Frusion appelle quand un
     // disque descend dans le tiroir — `frusionMng.launchDisc` puis
     // `FPSlotList.addSlot`, côté bureau d'époque.
@@ -4962,9 +4987,12 @@
           ouvrirSalon($("#room-select").value || ROOMS[0][0]);
         } else {
           // Le serveur rejoue les dernières minutes au join : on vide le fil
-          // d'abord, sinon on lirait deux fois la même chose.
+          // d'abord, sinon on lirait deux fois la même chose. Et l'on réécrit
+          // la phrase d'entrée — `box.Chat.onJoin` (0x2e3a9) pose `chat.onjoin`
+          // à CHAQUE join, celui d'une reconnexion compris.
           clearMessages(aSonJournal(state.room) ? state.room : undefined);
           delete histoMontre[state.room];
+          systemLine(phraseEntree(state.room), aSonJournal(state.room) ? state.room : undefined);
           rejoindreSalon(state.room);
         }
         rejoindreLesPrives();
@@ -5065,7 +5093,11 @@
           // venues.
           if (rj === state.room || aSonJournal(rj)) {
             majSalonPartout(rj);
-            systemLine(uj + (estPrive(rj) ? " est là." : " a rejoint le salon."), rj);
+            // chat.userjoined = "<i>$u a rejoint le salon</i>" — sans point
+            // final, c'est ainsi dans la table. En privé, la table n'a pas de
+            // phrase d'arrivée (l'entrée se dit une fois, à l'ouverture) : on
+            // garde celle du light.
+            systemLine(uj + (estPrive(rj) ? " est là." : " a rejoint le salon"), rj);
           }
         }
         break;
@@ -5077,7 +5109,9 @@
           delete state.usersByRoom[rl][ul];
           if (rl === state.room || aSonJournal(rl)) {
             majSalonPartout(rl);
-            systemLine(ul + (estPrive(rl) ? " s'est déconnecté(e)." : " a quitté le salon."), rl);
+            // chat.userleaved  = "<i>$u a quitté le salon</i>"
+            // chat.privatedcnx = "<i>$u a quitté la discussion</i>"
+            systemLine(ul + (estPrive(rl) ? " a quitté la discussion" : " a quitté le salon"), rl);
           }
         }
         break;
@@ -5377,6 +5411,28 @@
   }
 
   // ── Room switching ──
+  /*
+   * CE QUE LE BUREAU ÉCRIT EN ENTRANT. Les deux phrases sont dans
+   * `frutiparc/lang_french.as`, la table d'époque :
+   *
+   *   chat.onjoin      = "<i>Vous discutez maintenant sur le salon $t</i>"
+   *   chat.initprivate = "<i>Vous pouvez desormais discuter avec $u.</i>"
+   *
+   * `box.Chat.onJoin` (0x2e3a9) ne pose `onjoin` QUE hors discussion privée,
+   * et `$t` y vaut `FEString.unHTML(this.topic)` — le sujet du salon, c'est-
+   * à-dire le nom que la liste des salons affiche.
+   *
+   * QUIRK CONSERVÉ : « desormais » est écrit SANS accent dans la table
+   * d'origine. C'est le texte qu'ont lu les joueurs de 2005, on le garde.
+   * L'italique aussi : toutes ces lignes sont enveloppées de <i>, et
+   * `.msg.system` l'est déjà.
+   */
+  function phraseEntree(room) {
+    var conv = state.prives[room];
+    return conv
+      ? "Vous pouvez desormais discuter avec " + conv.avec + "."
+      : "Vous discutez maintenant sur le salon " + roomLabel(room);
+  }
   // Le mot de passe transmis par le serveur accompagne le join d'un salon privé.
   function rejoindreSalon(room) {
     var conv = state.prives[room];
@@ -5416,7 +5472,7 @@
       // Le bureau remet « … voir les messages précédents … » à CHAQUE entrée
       // (onJoin → onIamMode) : l'écran vient d'être vidé, le lien doit revenir.
       delete histoMontre[room];
-      systemLine("— " + (conv ? "Discussion privée avec " + conv.avec : roomLabel(room)) + " —");
+      systemLine(phraseEntree(room));
       rejoindreSalon(room);
     }
     renderUsers();
@@ -5443,6 +5499,7 @@
     cadresOuverts().forEach(function (sn) {
       if (sn === state.room || refaits[sn]) return;
       clearMessages(sn);
+      systemLine(phraseEntree(sn), sn);
       rejoindreSalon(sn);
     });
   }
@@ -5557,8 +5614,7 @@
     cadres[salon] = c;
     journaux[salon] = c.fil;
     brancherCadre(c);
-    var conv = state.prives[salon];
-    systemLine("— " + (conv ? "Discussion privée avec " + conv.avec : roomLabel(salon)) + " —", salon);
+    systemLine(phraseEntree(salon), salon);
     // `box.Chat.init` finit par rejoindre — sauf pour un salon où l'on est
     // déjà : celui qu'on regardait, ou une discussion privée à laquelle le
     // serveur nous a abonnés (`<s>`). `usersByRoom` ne porte une liste que
@@ -6284,7 +6340,11 @@
   }
   function renderFiche() {
     var d = ficheEtat.data;
-    $("#fiche-pseudo").textContent = (d && d.pseudo) || ficheEtat.pseudo || "…";
+    var fp = $("#fiche-pseudo");
+    fp.textContent = (d && d.pseudo) || ficheEtat.pseudo || "…";
+    // Le pseudo de la fiche est un `userSlot` lui aussi : même encre.
+    var fg = (d && d.basic && d.basic.sexe === "F") ? "F" : (d && d.basic ? "M" : "");
+    if (fg) fp.setAttribute("data-genre", fg); else fp.removeAttribute("data-genre");
     // L'avatar : la vraie bouille, rendue par Ruffle comme partout ailleurs.
     $("#fiche-avatar").innerHTML = (d && d.bouille) ? previewIframe(d.bouille) : "";
     brancherApercus($("#fiche-avatar"));
@@ -6680,8 +6740,15 @@
       vj.title = libelleActivite(jeu);
       contenu.appendChild(vj);
     }
-    var nm = el("span"); nm.textContent = pseudo;
+    var nm = el("span", "nom"); nm.textContent = pseudo;
     contenu.appendChild(nm);
+    // LA COULEUR DU PSEUDO EST CELLE DU GENRE. `UserSlot` pose
+    // `displayType = "gender"` PAR DÉFAUT (0x6352f) — ce n'est pas une option
+    // que le carnet ou la liste des connectés demandent, c'est la règle — et
+    // `onInfoBasic` (0x63a51) câble alors un `setBehavior` colorText à trois
+    // états, l'un pour les garçons, l'autre pour tout le reste.
+    var gi = state.infoByUser[String(pseudo).toLowerCase()];
+    if (gi && gi.genre) u.setAttribute("data-genre", gi.genre);
     if (staff) { var s = el("span", "badge staff"); s.textContent = "staff"; contenu.appendChild(s); }
     if (pseudo.toLowerCase() === state.userLower) {
       // La pastille « toi » n'existe pas d'époque : le bureau la masque.
@@ -6909,11 +6976,17 @@
   function rememberInfoBasic(frag) {
     var u = attr(frag, "u");
     if (!u) return;
+    // `sx` porte le genre — `formatInfoBasic` (0x2680f) en fait `o.gender`, et
+    // c'est lui qui décide de la couleur du pseudo (cf. `ligneConnecte`).
+    var sx = String(attr(frag, "sx") || "").toUpperCase();
     state.infoByUser[String(u).toLowerCase()] = {
       age: anniversaireEnAge(attr(frag, "bd")),
       niveau: xpEnNiveau(attr(frag, "x")),
       pays: String(attr(frag, "co") || ""),
       region: String(attr(frag, "rg") || ""),
+      // Rien du tout si le serveur se tait : `onInfoBasic` ne colore que si
+      // `o.gender` est défini, sinon le pseudo garde l'encre du champ.
+      genre: sx === "F" ? "F" : (sx === "M" ? "M" : ""),
     };
   }
 

@@ -2098,9 +2098,10 @@ Les onglets tombent en quatre colonnes égales — centres relevés en 39, 119,
 199, 278 pour une largeur utile de 315.
 
 Les encres : le pseudo prend la couleur du **genre** (`UserSlot.onInfoBasic`
-— `2367849` = #242169 pour un garçon, `12272708` = #BB4A44 pour une fille),
+— `2367849` = #242169 pour un garçon, `12272708` = #BB4444 pour une fille),
 l'âge #404040, l'onglet courant #842929, les autres et tout le corps
-#335511.
+#335511. (Le relevé disait #BB4A44 : un chiffre de travers, corrigé — voir la
+section « Le pseudo prend la couleur du genre ».)
 
 ### Ce que le portage en fait
 
@@ -2658,6 +2659,119 @@ défini et **jamais appelé** : du code mort. L'entrée n'en dépend pas.)*
 *(L'animation est une PRÉFÉRENCE : `endInit` lit `flMoveAnim` dans
 `userPref.getPref("win_flMoveAnim")`. La table des préférences vient du
 serveur, pas du SWF — le portage la tient dans `FLUIDE`.)*
+
+## LE PSEUDO PREND LA COULEUR DU GENRE (`UserSlot`, 0x63541)
+
+Ce n'est pas une option qu'un composant demanderait : `UserSlot.init` pose le
+mode d'affichage PAR DÉFAUT, et c'est le genre —
+
+```
+if (this.displayType == undefined) this.displayType = "gender";     (0x6352f)
+```
+
+— après quoi `onInfoBasic(o)` (0x63a51) câble sur le champ du pseudo un
+`setBehavior` de type « colorText » à trois états, à condition que `o.gender`
+soit défini :
+
+| `displayType` | `base` | `over` | `press` | offset |
+|---|---|---|---|---|
+| `gender`, `M` | **#242169** | #2E42B1 | #5669B3 | 0x63aad |
+| `gender`, autre | **#BB4444** | #E77575 | #FEABAB | 0x63ae4 |
+| `xp` | #335511 | #558811 | #66AA22 | 0x63b2f |
+
+Les trois du rouge sont la famille `pink` de `_global.colorSet`
+(`frutiparc/global.as`) : `darker`, `dark`, `shade`. Le jeu `xp` n'est employé
+nulle part ici. Et `base` #242169 est l'encre que le light donnait déjà à tous
+les pseudos : le garçon ne change donc pas de couleur, c'est la fille qui en
+gagne une.
+
+Le genre voyage dans l'attribut **`sx`** du nœud `<u>` : `formatInfoBasic`
+(0x2680f) en fait `o.gender`, et le serveur du revival l'envoie déjà
+(`buildUserAttrs`). Trois endroits le portent donc : la liste des connectés
+d'un salon, le carnet des contacts (même `userSlot`, même défaut) et le pseudo
+de la fiche.
+
+*(Le comportement générique de `butText` — rose au survol, gris à l'appui —
+ne vaut que TANT QUE le genre est inconnu : `onInfoBasic` l'écrase. D'où les
+`:not([data-genre])` du portage.)*
+
+*(Correction d'un relevé antérieur : la fiche notait #BB4A44. La valeur du
+bytecode est `12272708`, soit **#BB4444**.)*
+
+## LA POIGNÉE DE REDIMENSIONNEMENT (`initButtons` 0x5449d, `startResizeAnim` 0x568c1)
+
+Deux clips, qu'il ne faut pas confondre.
+
+**LA ZONE SENSIBLE.** `initButtons` attache le symbole `transp` — un
+DefineButton2 (#131) dont l'unique BUTTONRECORD est un `hitTest` sur la forme
+#130, **100 × 100** — sous le nom d'instance `butResize`, puis le met à
+`_xscale = _yscale = 30`. `updateDeskSize` (0x5400c) le pose à
+`pos.w − 20, pos.h − 20`. C'est donc un carré de **30** ancré 20 px avant le
+coin : il DÉBORDE de 10 px, et c'est ce débordement qu'on attrape. Le portage
+la collait à 8 px À L'INTÉRIEUR — elle ne tombait jamais où l'œil la cherche.
+
+**LE DESSIN N'EXISTE QU'AU SURVOL.** `onRollOver → startResizeAnim`,
+`onRollOut → endResizeAnim` (0x56d7d). Avec `var s = 18`, la méthode crée un
+clip vide et y trace trois `drawOval` concentriques autour de (−9, −9), plus
+l'icône `resizeIcon` (#355, 12 × 12) au même centre :
+
+| pièce | boîte dans le clip | Ø | teinte |
+|---|---|---|---|
+| `outline` | x = −(s+1), w = s+2 | 20 | `darkest` **#444444** |
+| `shade` | x = −s, w = s | 18 | `shade` **#DDDDDD** |
+| `main` | x = 2−s, w = s−4 | 14 | `main` **#FFFFFF** |
+
+Les teintes viennent de `style.global.color[0]`, et `getWinStyle` (0x4957f)
+donne à `global` la famille **white** : la pastille est blanche cerclée de
+gris sur TOUTES les fenêtres, quel que soit leur fruit.
+
+**LE MOUVEMENT.** Le clip naît en `(pos.w − s, pos.h − s)` à l'échelle 0, puis
+
+```
+animList.addSlide("resizeArrowMove", resizeArrow, cb, 2)   ratio 2 → k = 0,64
+animList.addResize("resizeArrowSize", resizeArrow)         ratio 1 → k = 0,8
+       cible = { x: pos.w + s/2, y: pos.h + s/2, xscale: 100, yscale: 100 }
+```
+
+À l'arrivée l'origine du clip est en (w+9, h+9) ; les cercles, centrés en
+(−9, −9), tombent donc **exactement sur le coin** de la fenêtre. Au départ du
+curseur, `endResizeAnim` vise `(pos.w − 20, pos.h − 20)` à l'échelle 0, ratio
+1, puis `removeResizeArrow` : au repos, le dessin n'existe pas.
+
+`AnimList.resize` (0x518c8) écrit la MÊME loi que `slide` —
+`Math.pow(0.8, tmod × ratio)` toutes les 25 ms — appliquée à
+`xscale`/`yscale`. Et `initTabMode` (0x5463f) met `butResize._visible = false`
+sur une fenêtre passée en onglet.
+
+## CE QU'ON LIT EN ENTRANT DANS UN SALON
+
+La table d'époque est dans le dépôt : `frutiparc/lang_french.as`. Inutile de
+deviner —
+
+```
+chat.onjoin      = "<i>Vous discutez maintenant sur le salon $t</i>"
+chat.initprivate = "<i>Vous pouvez desormais discuter avec $u.</i>"
+chat.userjoined  = "<i>$u a rejoint le salon</i>"
+chat.userleaved  = "<i>$u a quitté le salon</i>"
+chat.privatedcnx = "<i>$u a quitté la discussion</i>"
+```
+
+`box.Chat.onJoin` (0x2e3a9) ne pose `onjoin` QUE hors discussion privée, et
+`$t` y vaut `FEString.unHTML(this.topic)` — le SUJET du salon, c'est-à-dire le
+nom que la liste des salons affiche. « Vous discutez maintenant sur le salon
+Salon Anim's » n'est donc pas un doublon du portage : c'est le nom que
+l'animation a donné à ce salon-là.
+
+Deux détails qui comptent : ces lignes sont TOUTES en italique (le `<i>` de la
+table, que `.msg.system` porte déjà), et aucune n'a de point final sauf
+`initprivate`. Le portage écrivait « — Salon Citron — », qui n'était de nulle
+part, et ajoutait des points.
+
+QUIRK CONSERVÉ : « desormais » est écrit **sans accent** dans la table
+d'origine. C'est le texte qu'ont lu les joueurs de 2005 ; on le garde.
+
+Enfin, `onJoin` écrit la phrase à CHAQUE entrée — celle d'une reconnexion
+comprise. Le fil qu'on vide avant le rejeu du serveur doit donc la retrouver.
 
 ## UNE FENÊTRE PAR SALON (`box.Chat` 0x29cb9, `Slot.addBox` 0x35c98)
 
