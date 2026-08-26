@@ -2149,7 +2149,9 @@ COLONNE DE GAUCHE
                 contour #DDDDDD · liseré #F3BE8C · chair #F8D5BC
   bouton 1     98 .. 121   ×  25 .. 48     24 × 24 pour un art de 20
   bouton 2    124 .. 147   ×  25 .. 48     2 px entre les deux
-  arbre         6 .. 149   ×  47 .. 392    140 dedans, bord #DDDDDD
+  arbre         6 .. 149   ×  53 .. 392    140 dedans, bord #DDDDDD
+                49 .. 52 sont blancs : le #DDDDDD de 47-48 est le
+                contour BAS de la pastille, pas le haut de l arbre
                 rubriques en 57, 127, 149, 171, 193      (pas de 22)
                 articles  en 80, 96, 112                 (pas de 16)
 

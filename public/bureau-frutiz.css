@@ -2029,7 +2029,9 @@ body.bureau-frutiz .fen #scores-panel #sc-table .sc-pod span { color: #000000; }
                     contour #DDDDDD 2 · liseré #F3BE8C 2 · chair #F8D5BC
        bouton 1     x 98..121  y 25..48   24 × 24, contour #DDDDDD 2
        bouton 2     x 124..147 y 25..48   2 px entre les deux
-       arbre        x 6..149   y 47..392  bord #DDDDDD 2, fond blanc
+       arbre        x 6..149   y 53..392  bord #DDDDDD 2, fond blanc
+                    (49..52 sont BLANCS : le #DDDDDD de 47-48 est le
+                     contour bas de la pastille, pas le haut de l'arbre)
                     rubrique : puce rose de 20, texte 16, rangée de 22
                     article  : puce ocre de 12, texte 10, rangée de 16
 
@@ -2110,7 +2112,7 @@ body.bureau-frutiz .fen #shop-sheet #bo-fenetre {
   display: contents;
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques {
-  grid-column: 1; grid-row: 2 / span 2; margin: 0 5px 6px 0;
+  grid-column: 1; grid-row: 2 / span 2; margin: 8px 5px 8px 0;
   padding: 5px 0 0; overflow: auto; min-height: 0;
   background: #FFFFFF; border-radius: 3px; box-shadow: 0 0 0 2px #DDDDDD;
   display: block;

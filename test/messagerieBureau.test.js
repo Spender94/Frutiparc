@@ -170,6 +170,10 @@ test('LA BOUTIQUE : deux colonnes, et les pièces sorties du SWF', () => {
   const art = /#bo-rubriques \.bo-art::before \{[\s\S]*?\}/.exec(CSS)[0];
   assert.match(art, /shop-puce-article\.svg/);
   assert.match(CSS, /#bo-rubriques button \{[\s\S]*?height: 22px;[\s\S]*?font: normal 16px Verdana/);
+  // L'arbre respire sous la pastille : la colonne x=30 du relevé donne
+  // 45-46 #F3BE8C, 47-48 #DDDDDD (le contour BAS de la pastille), 49-52
+  // BLANCS, puis 53-54 #DDDDDD — le haut de l'arbre. Quatre pixels d'écart.
+  assert.match(CSS, /#bo-rubriques \{\s*\n\s*grid-column: 1; grid-row: 2 \/ span 2; margin: 8px 5px 8px 0;/);
   assert.match(CSS, /#bo-rubriques \.bo-art \{\s*\n\s*height: 16px;[\s\S]*?font-size: 10px;/);
   // Les deux boutons blancs portent le contour que `butPush` dessine
   // (`outline: 2`) : 24 × 24 pour un art de 20.
