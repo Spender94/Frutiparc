@@ -407,6 +407,14 @@ async function initSchema() {
       -- Les EXIGENCES de la carte (chutes imposées [{t, id}], en unités de
       -- tmod) : la table a pu naître sans la colonne, on la complète.
       ALTER TABLE snake3_tournoi ADD COLUMN IF NOT EXISTS exigences TEXT NOT NULL DEFAULT '[]';
+      -- « organique » : le tirage libre autour des chutes imposées. Éteint, la
+      -- carte ne porte QUE les exigences (une carte à un seul objet, ou à
+      -- quatre-vingts objets choisis un à un). « manuelle » : la carte a été
+      -- écrite/retouchée à la main dans l'admin — elle ne découle donc plus de
+      -- la graine, et régénérer l'écraserait. Deux témoins d'état, pas des
+      -- réglages du jeu : le contenu, lui, vit dans la colonne « carte ».
+      ALTER TABLE snake3_tournoi ADD COLUMN IF NOT EXISTS organique BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE snake3_tournoi ADD COLUMN IF NOT EXISTS manuelle BOOLEAN NOT NULL DEFAULT FALSE;
 
       -- Custom wallpapers ("fonds d'écran") uploaded from the admin panel. The
       -- image BYTES live in the DB (not on disk) so a bought wallpaper keeps
@@ -1759,16 +1767,18 @@ async function setMiniwaveMap(dayKey, seed, data) {
 // ── Frutisnake : la carte du tournoi (graine, script, exigences, ouvert/fermé) ──
 async function getSnake3Tournoi() {
   const { rows } = await pool.query(
-    "SELECT graine, carte, exigences, ouvert, classement, updated_at FROM snake3_tournoi WHERE slot = 'current'");
+    'SELECT graine, carte, exigences, ouvert, classement, organique, manuelle, updated_at '
+    + "FROM snake3_tournoi WHERE slot = 'current'");
   return rows[0] || null;
 }
 async function setSnake3Tournoi(etat) {
   await pool.query(
-    `INSERT INTO snake3_tournoi (slot, graine, carte, exigences, ouvert, classement, updated_at)
-     VALUES ('current', $1, $2, $3, $4, $5, now())
-     ON CONFLICT (slot) DO UPDATE SET graine = $1, carte = $2, exigences = $3, ouvert = $4, classement = $5, updated_at = now()`,
+    `INSERT INTO snake3_tournoi (slot, graine, carte, exigences, ouvert, classement, organique, manuelle, updated_at)
+     VALUES ('current', $1, $2, $3, $4, $5, $6, $7, now())
+     ON CONFLICT (slot) DO UPDATE SET graine = $1, carte = $2, exigences = $3, ouvert = $4,
+       classement = $5, organique = $6, manuelle = $7, updated_at = now()`,
     [String(etat.graine || ''), String(etat.carte || '[]'), String(etat.exigences || '[]'),
-      !!etat.ouvert, !!etat.classement]
+      !!etat.ouvert, !!etat.classement, etat.organique !== false, !!etat.manuelle]
   );
 }
 

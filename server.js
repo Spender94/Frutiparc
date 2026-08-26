@@ -14396,7 +14396,10 @@ let snake3TournoiEtat = null;             // { graine, carte, ouvert, classement
 let snake3TournoiEnBase = false;
 
 function snake3TournoiDefaut() {
-  return { graine: '', carte: [], exigences: [], ouvert: false, classement: true };
+  return { graine: '', carte: [], exigences: [], ouvert: false, classement: true,
+    // Le tirage libre autour des chutes imposées (éteint : la carte ne porte
+    // QUE les exigences), et le témoin « carte retouchée à la main ».
+    organique: true, manuelle: false };
 }
 function snake3TournoiValide(e) {
   return !!(e && typeof e === 'object' && Array.isArray(e.carte)
@@ -14404,6 +14407,12 @@ function snake3TournoiValide(e) {
 }
 // La durée couverte par une carte (l'horizon du générateur) : 20 minutes.
 const SNAKE3_TOURNOI_DUREE_TICKS = 20 * 60 * 32;
+// Le plafond des chutes imposées. Il valait douze, ce qui suffisait au duo
+// cloche + sonnette et à trois gros bonus garantis — pas à « une carte de
+// quatre-vingts objets imposés ». L'horizon est de 20 minutes : à 240 chutes
+// c'est encore une toutes les cinq secondes, au-delà la carte n'est plus une
+// carte mais une pluie. C'est aussi le plafond d'une carte écrite à la main.
+const SNAKE3_TOURNOI_CHUTES_MAX = 240;
 /**
  * Les EXIGENCES envoyées par l'admin : [{ id, t }] avec t en SECONDES de jeu
  * (l'UI parle en mm:ss). Rendues en unités de tmod (×32) pour le générateur.
@@ -14411,7 +14420,7 @@ const SNAKE3_TOURNOI_DUREE_TICKS = 20 * 60 * 32;
  */
 function snake3TournoiLireExigences(brut) {
   if (brut === undefined || brut === null) return { exigences: [] };
-  if (!Array.isArray(brut) || brut.length > 12) {
+  if (!Array.isArray(brut) || brut.length > SNAKE3_TOURNOI_CHUTES_MAX) {
     return { erreur: 'exigences_invalides' };
   }
   const exigences = [];
@@ -14434,6 +14443,64 @@ function snake3TournoiLireExigences(brut) {
   }
   return { exigences };
 }
+/**
+ * Une carte ÉCRITE À LA MAIN par l'admin : [{ t, id, x, y, vie, exigee }] avec
+ * t et vie en SECONDES de jeu (l'UI parle en mm:ss et en secondes), x/y en
+ * pixels de scène. On revalide tout — c'est la carte que jouera tout le monde.
+ *
+ * Les lois vérifiées sont celles du jeu, pas des lubies :
+ *   · l'option existe (1..37) et l'instant tient dans l'horizon ;
+ *   · la durée de vie est celle d'une option posée, dans la fourchette du
+ *     fichier d'origine (Level.generate_bonus : 300 + hasard(150) unités) —
+ *     mais on laisse l'admin sortir de la fourchette tant que ça reste une
+ *     durée jouable, c'est tout l'intérêt d'écrire à la main ;
+ *   · la position tient dans les marges de Level.generate_pos, à la taille
+ *     naturelle du dessin — hors marges, l'objet dépasserait du cadre ;
+ *   · un UNIQUE (bague, sonnette…) n'apparaît qu'une fois : deux le rendraient
+ *     injouable, le jeu ne sait pas en poser deux.
+ * @returns {{ carte: Array }|{ erreur: string }}
+ */
+function snake3TournoiLireCarte(brut) {
+  if (!Array.isArray(brut)) return { erreur: 'carte_invalide' };
+  if (brut.length > SNAKE3_TOURNOI_CHUTES_MAX) return { erreur: 'carte_trop_longue' };
+  const cadres = snake3LireCadresOptions();
+  const b = 10 + 10;                     // Const.BORDER + 10 (Level.generate_pos)
+  const BARRE_UP = 60, FRUTIBARRE = 15, LARGEUR = 700, HAUTEUR = 480;
+  const carte = [];
+  const uniquesVus = new Set();
+  for (const e of brut) {
+    const id = Math.trunc(Number(e && e.id));
+    if (!(id >= 1 && id <= 37)) return { erreur: 'option_inconnue' };
+    const t = Math.round(Number(e && e.t) * SNAKE3_TICKS_PAR_SECONDE);
+    if (!Number.isFinite(t) || t < 0 || t >= SNAKE3_TOURNOI_DUREE_TICKS) {
+      return { erreur: 'instant_hors_carte' };
+    }
+    const vie = Math.round(Number(e && e.vie) * SNAKE3_TICKS_PAR_SECONDE);
+    if (!Number.isFinite(vie) || vie < SNAKE3_TICKS_PAR_SECONDE || vie > SNAKE3_TOURNOI_DUREE_TICKS) {
+      return { erreur: 'duree_invalide' };
+    }
+    const d = cadres[id] || { w: 20, h: 20 };
+    const x = Math.round(Number(e && e.x) * 100) / 100;
+    const y = Math.round(Number(e && e.y) * 100) / 100;
+    if (!Number.isFinite(x) || x < b + d.w / 2 - 0.01 || x > LARGEUR - b - d.w / 2 + 0.01
+      || !Number.isFinite(y) || y < b + BARRE_UP + d.h / 2 - 0.01
+      || y > HAUTEUR - b - FRUTIBARRE - d.h / 2 + 0.01) {
+      return { erreur: 'position_hors_cadre' };
+    }
+    if (SnakeCarte.UNIQUES.indexOf(id) >= 0) {
+      if (uniquesVus.has(id)) return { erreur: 'unique_en_double' };
+      uniquesVus.add(id);
+    }
+    const entree = { t, id, x, y, vie };
+    if (e && e.exigee) entree.exigee = true;
+    carte.push(entree);
+  }
+  // Le moteur déroule la carte dans l'ordre : elle doit être triée par instant
+  // (tri STABLE — deux chutes au même instant gardent l'ordre donné).
+  carte.sort((p, q) => p.t - q.t);
+  return { carte };
+}
+
 // Les tailles naturelles des options (manifest cadres.options) : ce sont elles
 // que Level.generate_pos utilise pour tenir l'objet dans les marges.
 let snake3CadresOptions = null;
@@ -14473,6 +14540,9 @@ async function snake3Tournoi() {
       if (snake3TournoiValide(surDisque)) {
         // Un fichier d'avant les exigences n'a pas le champ : on le complète.
         if (!Array.isArray(surDisque.exigences)) surDisque.exigences = [];
+        // Idem pour les deux témoins de l'éditeur de carte.
+        if (typeof surDisque.organique !== 'boolean') surDisque.organique = true;
+        if (typeof surDisque.manuelle !== 'boolean') surDisque.manuelle = false;
         snake3TournoiEtat = surDisque;
         await snake3TournoiRangerEnBase(surDisque);
         return snake3TournoiEtat;
@@ -14489,6 +14559,8 @@ async function snake3Tournoi() {
           exigences: JSON.parse(ligne.exigences || '[]'),
           ouvert: !!ligne.ouvert,
           classement: ligne.classement !== false,
+          organique: ligne.organique !== false,
+          manuelle: !!ligne.manuelle,
         };
         if (snake3TournoiValide(e)) {
           snake3TournoiEtat = e;
@@ -14700,14 +14772,18 @@ app.get('/api/snake3/tournoi/score', snake3TournoiScore);
 // (Const.WANTED_FPS — public/snake3/const.js).
 const SNAKE3_TICKS_PAR_SECONDE = 32;
 // L'aperçu rend la carte lisible : instant mm:ss, nom de l'option — et le
-// marqueur des chutes exigées par l'admin.
+// marqueur des chutes exigées par l'admin. C'est AUSSI la source de l'éditeur
+// de carte : `secondes` et `vieS` sont les valeurs que l'éditeur renvoie
+// telles quelles à /carte (le serveur les repasse en unités de tmod).
 function snake3TournoiApercu(carte) {
   return carte.map((c) => ({
     t: c.t,
+    secondes: Math.round(c.t / SNAKE3_TICKS_PAR_SECONDE),
     temps: `${Math.floor(c.t / SNAKE3_TICKS_PAR_SECONDE / 60)}:${String(Math.floor(c.t / SNAKE3_TICKS_PAR_SECONDE) % 60).padStart(2, '0')}`,
     id: c.id,
     nom: SnakeCarte.OPTION_NOMS[c.id] || `option ${c.id}`,
     x: c.x, y: c.y,
+    vieS: Math.round(c.vie / SNAKE3_TICKS_PAR_SECONDE),
     vie: Math.round(c.vie / SNAKE3_TICKS_PAR_SECONDE) + ' s',
     exigee: !!c.exigee,
   }));
@@ -14731,9 +14807,18 @@ app.get('/api/admin/snake3-tournoi', tournoiScope, async (req, res) => {
     ok: true, graine: e.graine, ouvert: e.ouvert, classement: e.classement,
     nb: e.carte.length, apercu: snake3TournoiApercu(e.carte), inscrits,
     exigences: snake3TournoiExigencesPourAdmin(e.exigences),
+    organique: e.organique !== false, manuelle: !!e.manuelle,
     // La table des 37 options (l'index est l'identifiant) : l'éditeur
     // d'exigences de l'admin s'en sert pour ses menus déroulants.
     noms: SnakeCarte.OPTION_NOMS,
+    // Ce que l'éditeur de carte doit connaître pour valider avant d'envoyer :
+    // les marges de Level.generate_pos et la taille naturelle de chaque option.
+    cadres: snake3LireCadresOptions(),
+    limites: {
+      chutesMax: SNAKE3_TOURNOI_CHUTES_MAX,
+      dureeS: Math.floor(SNAKE3_TOURNOI_DUREE_TICKS / SNAKE3_TICKS_PAR_SECONDE),
+      marge: 20, largeur: 700, hauteur: 480, barreHaut: 60, frutibarre: 15,
+    },
   });
 });
 
@@ -14749,10 +14834,21 @@ app.post('/api/admin/snake3-tournoi/generer', tournoiScope, async (req, res) => 
     || Math.random().toString(36).slice(2, 10);
   const lues = snake3TournoiLireExigences(b.exigences);
   if (lues.erreur) return res.status(400).json({ ok: false, error: lues.erreur });
+  // Le tirage LIBRE autour des chutes imposées. Éteint, la carte ne porte que
+  // les exigences : c'est ainsi qu'on fait une carte à un seul objet, ou une
+  // carte de quatre-vingts objets choisis un à un.
+  const organique = b.organique !== false;
+  if (!organique && !lues.exigences.length) {
+    return res.status(400).json({ ok: false, error: 'carte_vide',
+      message: 'Sans tirage libre, il faut au moins une chute imposée.' });
+  }
   const carte = SnakeCarte.genererCarte(graine, snake3LireCadresOptions(),
-    SNAKE3_TOURNOI_DUREE_TICKS, lues.exigences);
+    SNAKE3_TOURNOI_DUREE_TICKS, lues.exigences, { organique });
   const ancienneGraine = String((await snake3Tournoi()).graine || '');
-  const e = await snake3TournoiPoser({ graine, carte, exigences: lues.exigences, ouvert: false });
+  // Une carte fraîchement générée n'est plus « écrite à la main » : elle
+  // découle de nouveau de la graine et de ses exigences.
+  const e = await snake3TournoiPoser({ graine, carte, exigences: lues.exigences,
+    ouvert: false, organique, manuelle: false });
   // Nouvelle graine = nouvelle édition : le classement de la précédente est
   // archivé puis retiré du tableau. Sans ça il mélangerait deux cartes — et
   // ses vieux records barreraient la route aux nouveaux.
@@ -14761,7 +14857,43 @@ app.post('/api/admin/snake3-tournoi/generer', tournoiScope, async (req, res) => 
   console.log(`[SNAKE3 TOURNOI] carte générée (graine « ${graine} », ${carte.length} options`
     + (lues.exigences.length ? `, ${lues.exigences.length} exigence(s)` : '') + ') — mode fermé');
   res.json({ ok: true, graine: e.graine, nb: carte.length, ouvert: e.ouvert,
-    apercu: snake3TournoiApercu(carte), vides,
+    apercu: snake3TournoiApercu(carte), vides, organique: e.organique, manuelle: false,
+    exigences: snake3TournoiExigencesPourAdmin(e.exigences) });
+});
+
+/**
+ * La carte ÉCRITE À LA MAIN — l'éditeur de l'admin.
+ *
+ * Générer d'une graine donne une carte « à la façon du jeu » ; l'éditer à la
+ * main donne la carte qu'on VEUT : retoucher l'instant ou la place d'une
+ * chute, en ajouter, en retirer, ou tout écrire de zéro. La carte remplace
+ * celle en place — mais ne touche NI à la graine (elle reste l'étiquette de
+ * l'édition, portée par les scores) NI aux exigences (le brouillon qui a
+ * servi à générer). Regénérer écrase la retouche : c'est le sens du témoin
+ * `manuelle`, que l'admin voit.
+ *
+ * Comme la génération : cela FERME le mode. On ne change pas la carte sous
+ * les joueurs — l'admin rouvre quand il est prêt.
+ */
+app.post('/api/admin/snake3-tournoi/carte', tournoiScope, async (req, res) => {
+  const lue = snake3TournoiLireCarte((req.body || {}).carte);
+  if (lue.erreur) return res.status(400).json({ ok: false, error: lue.erreur });
+  if (!lue.carte.length) {
+    return res.status(400).json({ ok: false, error: 'carte_vide',
+      message: 'Une carte sans aucune chute ne se joue pas.' });
+  }
+  // Une carte écrite de zéro (aucune génération avant) n'a pas d'étiquette :
+  // on lui en donne une, sans quoi l'édition serait anonyme et ses scores
+  // impossibles à rattacher à une carte.
+  const avant = await snake3Tournoi();
+  const patch = { carte: lue.carte, ouvert: false, manuelle: true };
+  if (!String(avant.graine || '')) patch.graine = 'main-' + Math.random().toString(36).slice(2, 8);
+  const e = await snake3TournoiPoser(patch);
+  console.log(`[SNAKE3 TOURNOI] carte écrite à la main (graine « ${e.graine} », `
+    + `${lue.carte.length} chutes) — mode fermé`);
+  res.json({ ok: true, graine: e.graine, nb: lue.carte.length, ouvert: e.ouvert,
+    manuelle: true, organique: e.organique !== false,
+    apercu: snake3TournoiApercu(lue.carte),
     exigences: snake3TournoiExigencesPourAdmin(e.exigences) });
 });
 

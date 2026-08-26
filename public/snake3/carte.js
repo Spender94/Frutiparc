@@ -111,13 +111,20 @@ function tirerPosition(hasard, w, h) {
  *     (le duo cloche + sonnette) : le moteur les fait tomber dans la même
  *     image, dans l'ordre donné.
  *
+ * Le tirage ORGANIQUE peut être coupé (`options.organique = false`) : la carte
+ * ne porte alors QUE les chutes imposées — une carte à un seul objet, ou une
+ * carte de quatre-vingts objets choisis un à un, sans rien autour. Positions
+ * et durées de vie restent tirées de la graine, donc reproductibles.
+ *
  * @param {string|number} graine
  * @param {object} cadresOptions  manifest `cadres.options` : id → { w, h }
  * @param {number} dureeTicks     l'horizon couvert (défaut : 20 minutes)
  * @param {Array}  exigences      chutes imposées [{ t, id }] (facultatif)
+ * @param {object} options        { organique } — le tirage libre autour (défaut : oui)
  */
-function genererCarte(graine, cadresOptions, dureeTicks, exigences) {
+function genererCarte(graine, cadresOptions, dureeTicks, exigences, options) {
   const duree = Math.max(1, Math.trunc(dureeTicks || 20 * 60 * 32));
+  const organique = !(options && options.organique === false);
   const hasard = creerHasard(graine);
   const probas = C.PROBABILITIES.slice();
   const entrees = [];
@@ -156,6 +163,12 @@ function genererCarte(graine, cadresOptions, dureeTicks, exigences) {
     }
     while (prochaine < imposees.length && imposees[prochaine].t === t) {
       poser(t, imposees[prochaine++].id, true);
+    }
+    // Sans tirage organique, la carte S'ARRÊTE aux chutes imposées : dès la
+    // dernière posée, plus rien à faire jusqu'au bout de l'horizon.
+    if (!organique) {
+      if (prochaine >= imposees.length) break;
+      continue;
     }
     // Le plafond de Game.main compte aussi les cases en main (slots) — un
     // état du joueur qu'une carte partagée ne peut pas connaître : on tient

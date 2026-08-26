@@ -129,6 +129,30 @@ test('les exigences tombent à l\'instant dit, lois du jeu autour, uniques respe
   }
 });
 
+test('sans tirage libre, la carte ne porte QUE les chutes imposées', () => {
+  // « Des maps avec seulement 1 objet imposé, d'autres avec 80 » : le tirage
+  // organique s'éteint, la carte se réduit alors aux exigences — positions et
+  // durées toujours tirées de la graine, donc reproductibles.
+  const une = Carte.genererCarte('solo', CADRES, undefined, [{ t: 320, id: 19 }], { organique: false });
+  assert.strictEqual(une.length, 1, 'une carte à un seul objet');
+  assert.strictEqual(une[0].id, 19);
+  assert.strictEqual(une[0].t, 320);
+  assert.strictEqual(une[0].exigee, true);
+  assert.ok(une[0].vie >= 300 && une[0].vie < 450, 'la durée reste celle du jeu');
+
+  const ex = Array.from({ length: 80 }, (_, i) => ({ t: i * 14 * 32, id: 1 + (i % 7) }));
+  const gros = Carte.genererCarte('gros', CADRES, undefined, ex, { organique: false });
+  assert.strictEqual(gros.length, 80, 'quatre-vingts objets imposés, ni plus ni moins');
+  assert.ok(gros.every((e) => e.exigee), 'toutes imposées');
+  assert.deepStrictEqual(gros.map((e) => e.t), ex.map((e) => e.t), 'aux instants dits');
+  // Reproductible, et sans exigences : rien du tout.
+  assert.deepStrictEqual(gros, Carte.genererCarte('gros', CADRES, undefined, ex, { organique: false }));
+  assert.deepStrictEqual(Carte.genererCarte('vide', CADRES, undefined, [], { organique: false }), []);
+  // Le tirage libre reste le comportement par défaut, à l'identique.
+  assert.deepStrictEqual(Carte.genererCarte('temoin', CADRES),
+    Carte.genererCarte('temoin', CADRES, undefined, [], { organique: true }));
+});
+
 test('les trente-sept noms d\'aperçu suivent les commentaires du fichier d\'origine', () => {
   assert.strictEqual(Carte.OPTION_NOMS.length, 38, 'null + 37 noms');
   assert.strictEqual(Carte.OPTION_NOMS[15], 'Potion noire');
@@ -594,6 +618,93 @@ test('l\'admin impose des exigences : garanties, validées, persistées', async 
   // …et un refus laisse la carte en place, mode toujours ouvert.
   assert.strictEqual((await etatPublic()).ouvert, true);
   await admin('/fermer');
+});
+
+test('l\'admin écrit la carte à la main : éditer, ajouter, supprimer', async () => {
+  // Générer d'une graine donne une carte « à la façon du jeu » ; l'éditer
+  // donne la carte qu'on VEUT. L'aperçu sert de source à l'éditeur (secondes
+  // et vieS), et /carte revalide chaque ligne contre les lois du jeu.
+  await admin('/generer', { graine: 'edit-' + RUN });
+  let etat = await adminEtat();
+  assert.ok(etat.apercu[0].secondes !== undefined && etat.apercu[0].vieS !== undefined,
+    'l\'aperçu porte les valeurs éditables');
+  assert.ok(etat.cadres && etat.cadres['19'] && etat.limites.chutesMax >= 80,
+    'l\'éditeur reçoit les tailles d\'options et les limites');
+  assert.strictEqual(etat.manuelle, false, 'une carte générée n\'est pas « à la main »');
+
+  // On retouche : la première change d'instant et d'option, la deuxième
+  // disparaît, une chute s'ajoute.
+  const carte = etat.apercu.map((a) => ({ t: a.secondes, id: a.id, x: a.x, y: a.y, vie: a.vieS, exigee: a.exigee }));
+  const nAvant = carte.length;
+  carte[0].t = 90; carte[0].id = 27;
+  carte.splice(1, 1);
+  carte.push({ t: 15, id: 19, x: 350, y: 250, vie: 12, exigee: true });
+  const r = await admin('/carte', { carte });
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.strictEqual(r.nb, nAvant, 'une de moins, une de plus');
+  assert.strictEqual(r.manuelle, true);
+  assert.strictEqual(r.ouvert, false, 'enregistrer ferme le mode, comme générer');
+
+  etat = await adminEtat();
+  assert.strictEqual(etat.manuelle, true, 'le témoin reste : regénérer écraserait');
+  assert.ok(etat.apercu.every((a, i, t) => i === 0 || t[i - 1].t <= a.t), 'la carte reste triée');
+  const ajoutee = etat.apercu.find((a) => a.secondes === 15 && a.id === 19);
+  assert.ok(ajoutee, 'la chute ajoutée est là');
+  assert.strictEqual(ajoutee.x, 350);
+  assert.strictEqual(ajoutee.vieS, 12);
+  assert.ok(etat.apercu.some((a) => a.secondes === 90 && a.id === 27), 'la retouche a pris');
+
+  // Et c'est bien CETTE carte que les joueurs reçoivent.
+  await admin('/ouvrir');
+  const pub = await etatPublic();
+  assert.strictEqual(pub.carte.length, r.nb);
+  assert.ok(pub.carte.some((c) => c.t === 15 * 32 && c.id === 19 && c.x === 350));
+  await admin('/fermer');
+
+  // Les gardes : ce que le jeu ne sait pas jouer est refusé.
+  const bonne = { t: 60, id: 19, x: 350, y: 250, vie: 10 };
+  const refus = async (c) => (await admin('/carte', { carte: c })).error;
+  assert.strictEqual(await refus([Object.assign({}, bonne, { id: 99 })]), 'option_inconnue');
+  assert.strictEqual(await refus([Object.assign({}, bonne, { t: 1300 })]), 'instant_hors_carte');
+  assert.strictEqual(await refus([Object.assign({}, bonne, { vie: 0 })]), 'duree_invalide');
+  assert.strictEqual(await refus([Object.assign({}, bonne, { x: 5 })]), 'position_hors_cadre');
+  assert.strictEqual(await refus([Object.assign({}, bonne, { y: 470 })]), 'position_hors_cadre');
+  assert.strictEqual(await refus([Object.assign({}, bonne, { id: 31 }),
+    Object.assign({}, bonne, { id: 31, t: 120 })]), 'unique_en_double');
+  assert.strictEqual(await refus([]), 'carte_vide');
+  assert.strictEqual(await refus(Array.from({ length: 241 }, (_, i) =>
+    Object.assign({}, bonne, { t: i }))), 'carte_trop_longue');
+  // …et un refus laisse la carte en place.
+  assert.strictEqual((await adminEtat()).nb, r.nb);
+});
+
+test('l\'admin impose 1 objet, ou 80 : le plafond de douze a sauté', async () => {
+  // « Typiquement, je veux pouvoir créer des maps avec seulement 1 objet
+  // imposé ou d'autres avec 80 objets imposés. »
+  let g = await admin('/generer', { graine: 'un-' + RUN, organique: false,
+    exigences: [{ id: 19, t: 10 }] });
+  assert.ok(g.ok, JSON.stringify(g));
+  assert.strictEqual(g.nb, 1, 'une carte à un seul objet');
+  assert.strictEqual(g.apercu[0].nom, 'Bombe');
+  assert.strictEqual(g.organique, false);
+  assert.strictEqual((await adminEtat()).organique, false, 'l\'état s\'en souvient');
+
+  const ex = Array.from({ length: 80 }, (_, i) => ({ id: 1 + (i % 7), t: i * 14 }));
+  g = await admin('/generer', { graine: 'quatrevingts-' + RUN, organique: false, exigences: ex });
+  assert.ok(g.ok, JSON.stringify(g));
+  assert.strictEqual(g.nb, 80);
+  assert.ok(g.apercu.every((a) => a.exigee), 'quatre-vingts chutes, toutes imposées');
+
+  // Le plafond existe toujours, mais à 240 — et sans exigence, une carte sans
+  // tirage libre serait vide : on la refuse plutôt que de servir du néant.
+  assert.strictEqual((await admin('/generer', { graine: 'x', exigences:
+    Array.from({ length: 241 }, (_, i) => ({ id: 1, t: i })) })).error, 'exigences_invalides');
+  assert.strictEqual((await admin('/generer', { graine: 'x', organique: false, exigences: [] })).error,
+    'carte_vide');
+  // Le tirage libre reste le défaut quand on ne dit rien.
+  g = await admin('/generer', { graine: 'defaut-' + RUN });
+  assert.strictEqual(g.organique, true);
+  assert.ok(g.nb >= 15, 'une carte pleine');
 });
 
 test('le classement est PERMANENT : hors du balayage quotidien des challenges', async () => {
