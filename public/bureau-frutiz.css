@@ -886,10 +886,17 @@ body.bureau-frutiz #side-list-ombre {
    la poignée). Chaque ligne fait **18 px** et chaque niveau de dossier décale
    de **5 px** (`buildElement` 0xa1243) ; un dossier REPLIÉ ajoute un cinquième
    de ligne (`currentLine += 0.2`), soit 3,6 px de respiration. */
+/* AUCUN ASCENSEUR ICI. La bande des contacts n'est pas un `cpDocument` : c'est
+   un `FPSlotList` que `buildList` masque et fait glisser lui-même — il n'a pas
+   de `scrollInfo`, donc pas de `sbRound`. La barre du navigateur, elle,
+   mangeait dix-huit des cent vingt pixels de la bande et coupait les pseudos.
+   Le contenu défile toujours, à la molette. */
 body.bureau-frutiz #side-list .sl-liste {
   position: absolute; left: 0; top: 0; width: 120px; bottom: 24px;
   overflow-x: hidden; overflow-y: auto; display: none;
+  scrollbar-width: none; -ms-overflow-style: none;
 }
+body.bureau-frutiz #side-list .sl-liste::-webkit-scrollbar { display: none; width: 0; height: 0; }
 body.bureau-frutiz.contacts-ouverts #side-list .sl-liste { display: block; }
 /* L'EN-TÊTE DE DOSSIER, `sideListTitle` (#215), avec SES pièces extraites :
    `fond` (forme #209, une barre `#999999` de 100×12 que `buildElement`
@@ -1240,6 +1247,64 @@ body.bureau-frutiz .fen.pliee .fen-poignee,
 body.bureau-frutiz .fen.pliee .fen-poignee-vue { display: none; }
 body.bureau-frutiz .fen.pliee { min-width: 220px; }
 
+/* ── L'ASCENSEUR (`sbRound`, sprite#865 `_global.sb.Round`) ────────────────
+   Il n'y a RIEN à extraire : d'époque l'ascenseur n'est pas un dessin mais un
+   tracé. `sb.Round.init` crée deux clips vides — `fond` et `square` — et les
+   peint au `FEMC.drawSmoothSquare`, deux passes chacun :
+
+     fond    rayon `curve`,             couleur `back.dark`
+             rayon `curve − shadeSpace`, couleur `back.shade`, rentré de 1
+     square  rayon `curve`,             couleur `fore.shade`
+             rayon `curve − shadeSpace`, couleur `fore.main`,  rentré de 1
+
+   soit, pour chacun, une gélule à liseré d'UN pixel. Les réglages viennent du
+   `scrollInfo` par défaut d'un composant (`initMask`, 0x460e2) :
+
+     link "sbRound", size 14, margin { top: 4, side: 2 }
+     color.fore = win.style.global.color[0]   → `colorSet.white`
+     color.back = composant.style.color[0]    → `colorSet.green` sur le vert
+
+   et de la classe elle-même : `shadeSpace = 1`, `curve = size / 2 = 7`,
+   `minSquareSize = 16`, `marginInside = 0`. D'où : une barre de 14 posée dans
+   18 (2 de marge de chaque côté), qui s'arrête 4 px avant chaque extrémité,
+   une glissière `#ADE76B` cerclée de `#94DB39` et un curseur blanc cerclé de
+   `#DDDDDD`, jamais plus court que 16.
+
+   Les bordures transparentes portent les marges (la boîte de remplissage
+   retombe sur les 14 utiles) et l'ombre interne d'un pixel joue le liseré. */
+body.bureau-frutiz .fen *::-webkit-scrollbar,
+body.bureau-frutiz #fiche *::-webkit-scrollbar {
+  width: 18px; height: 18px; background: transparent;
+}
+body.bureau-frutiz .fen *::-webkit-scrollbar-track,
+body.bureau-frutiz #fiche *::-webkit-scrollbar-track {
+  background-color: #ADE76B; background-clip: padding-box;
+  border: 4px solid transparent; border-left-width: 2px; border-right-width: 2px;
+  border-radius: 9px; box-shadow: inset 0 0 0 1px #94DB39;
+}
+body.bureau-frutiz .fen *::-webkit-scrollbar-thumb,
+body.bureau-frutiz #fiche *::-webkit-scrollbar-thumb {
+  min-height: 16px; min-width: 16px;
+  background-color: #FFFFFF; background-clip: padding-box;
+  border: 4px solid transparent; border-left-width: 2px; border-right-width: 2px;
+  border-radius: 9px; box-shadow: inset 0 0 0 1px #DDDDDD;
+}
+/* Ni flèches ni coin : `sb.Round` n'en dessine aucun. */
+body.bureau-frutiz .fen *::-webkit-scrollbar-button,
+body.bureau-frutiz #fiche *::-webkit-scrollbar-button { display: none; }
+body.bureau-frutiz .fen *::-webkit-scrollbar-corner,
+body.bureau-frutiz #fiche *::-webkit-scrollbar-corner { background: transparent; }
+/* Firefox ne sait pas dessiner la gélule : on lui donne au moins les encres —
+   mais SOUS `@supports`, et c'est capital. Depuis Chrome 121, poser
+   `scrollbar-color` (ou `scrollbar-width`) fait basculer l'élément sur la
+   barre STANDARD et met les `::-webkit-scrollbar` au rebut : la mise en forme
+   d'époque disparaissait sans un mot. Le garde-fou existait déjà dans
+   light.html pour `.fiche-page` et `#trombi-body` ; on s'y range. */
+@supports not selector(::-webkit-scrollbar) {
+  body.bureau-frutiz .fen *,
+  body.bureau-frutiz #fiche * { scrollbar-color: #FFFFFF #ADE76B; scrollbar-width: thin; }
+}
+
 /* ── LA POIGNÉE DE REDIMENSIONNEMENT ──────────────────────────────────────
    LA ZONE SENSIBLE d'abord : `initButtons` (0x5449d) attache le symbole
    `transp` — un bouton dont la forme de hit fait 100 × 100 — à
@@ -1274,9 +1339,26 @@ body.bureau-frutiz .fen-poignee {
    posée en (w+9, h+9) par l'animation, elle centre les cercles sur le COIN
    exact de la fenêtre. `transform-origin: 0 0` reproduit le `_xscale` de
    Flash, qui met à l'échelle autour de l'origine du clip. */
+/* ET ELLE PASSE DERRIÈRE LA FENÊTRE. Les profondeurs de `win.Advance` le
+   disent sans ambiguïté :
+
+     dp_outline      10      le liseré sombre
+     dp_inline       20      le liseré clair
+     dp_resizeArrow  30      LE DESSIN de la poignée
+     …
+     dp_interface   100      le contenu
+     dp_frameBg     112      la plaque de la fenêtre
+     dp_butResize   160      la zone sensible (invisible)
+
+   Le dessin est donc AU-DESSUS des deux liserés et EN DESSOUS de la plaque :
+   la fenêtre le mange, il n'en dépasse que le quartier qui sort du coin. Un
+   `z-index: -1` reproduit exactement cet ordre — il se peint après le fond et
+   le liseré de `.fen`, avant la plaque blanche de `.fen::before` (z-index 0).
+   La zone sensible, elle, reste au-dessus de tout (z-index 3), comme le 160
+   de `butResize`. */
 body.bureau-frutiz .fen-poignee-vue {
   position: absolute; left: 0; top: 0; width: 0; height: 0;
-  transform-origin: 0 0; pointer-events: none; z-index: 4;
+  transform-origin: 0 0; pointer-events: none; z-index: -1;
 }
 body.bureau-frutiz .fen-poignee-vue i {
   position: absolute; display: block; border-radius: 50%;
@@ -1911,14 +1993,19 @@ body.bureau-frutiz .fen #chat-panel #users-drawer .u .haut {
   display: flex; align-items: center; gap: 4px; min-width: 0;
 }
 /* Les pastilles du light n'existent pas d'époque : `cp.UserList` n'écrit que
-   le pseudo. Celle du « toi » ne dit rien qu'on ne sache — elle saute. Celle
-   du staff reste, à l'échelle de la bande et dans la palette verte : elle
-   signale les modérateurs, que le revival ne signale nulle part ailleurs. */
-body.bureau-frutiz .fen #chat-panel #users-drawer .u .badge.moi { display: none; }
-body.bureau-frutiz .fen #chat-panel #users-drawer .u .badge {
-  flex: 0 0 auto; padding: 0 3px; border-radius: 5px;
-  font: 700 8px Verdana, Arial, sans-serif; line-height: 11px; letter-spacing: 0;
-  background: #94DB39; color: #FFFFFF; text-shadow: none;
+   le pseudo, rien d'autre. Ni « toi » — qui ne dit rien qu'on ne sache — ni
+   « staff » : la bande fait 18 px de haut et le pseudo y est CENTRÉ ; une
+   étiquette de plus le pousse de côté et casse ce centrage. Les deux sautent.
+   (Elles restent sur le mobile, où la tuile est assez grande pour les tenir.)
+   Le rôle de modérateur se lit sur la fiche, qui est à un clic. */
+body.bureau-frutiz .fen #chat-panel #users-drawer .u .badge { display: none; }
+/* LE VOYANT « en partie » est un ajout du revival — il n'a pas de taille
+   d'époque à respecter, mais il doit tenir DANS la bande de 18. Le gabarit
+   mobile (22 px) la débordait de quatre pixels : l'icône mordait sur les
+   bandes voisines et poussait le pseudo hors du centre. Quatorze, c'est la
+   hauteur du texte : le voyant se lit sans écraser la ligne. */
+body.bureau-frutiz .fen #chat-panel #users-drawer .u .voyant {
+  width: 14px; height: 14px; flex: 0 0 14px; object-fit: contain;
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u .lieu {
   position: static; font: normal 9px Verdana, Arial, sans-serif; color: #6c8f3a;
@@ -2135,10 +2222,19 @@ body.bureau-frutiz .fen #scores-panel #sc-table {
   background: linear-gradient(rgba(255, 255, 255, .64), rgba(255, 255, 255, 0) 8px), #FBD888;
   border: 2px solid #FACE68; border-radius: 0;
   box-shadow: 0 0 0 2px #DDDDDD;
-  scrollbar-width: none;
 }
-body.bureau-frutiz .fen #scores-panel #sc-liste::-webkit-scrollbar,
-body.bureau-frutiz .fen #scores-panel #sc-table::-webkit-scrollbar { display: none; }
+/* (Les deux colonnes cachaient leur ascenseur ; elles gardent maintenant celui
+   de `sbRound`, comme le reste des fenêtres. Sur l'orange du tableau des
+   scores, la glissière prend la teinte du panneau — `color.back` vient du
+   style DU COMPOSANT, pas de la fenêtre.) */
+body.bureau-frutiz .fen #scores-panel #sc-liste::-webkit-scrollbar-track,
+body.bureau-frutiz .fen #scores-panel #sc-table::-webkit-scrollbar-track {
+  background-color: #FACE68; box-shadow: inset 0 0 0 1px #F2A93C;
+}
+@supports not selector(::-webkit-scrollbar) {
+  body.bureau-frutiz .fen #scores-panel #sc-liste,
+  body.bureau-frutiz .fen #scores-panel #sc-table { scrollbar-color: #FFFFFF #FACE68; }
+}
 body.bureau-frutiz .fen #scores-panel #sc-liste {
   flex: 1 1 auto; min-height: 0; padding: 0; overflow-y: auto;
 }
@@ -2338,9 +2434,11 @@ body.bureau-frutiz #fiche .fiche-actions #fiche-avance img {
   content: url('/frutiz/sprites/fiche-rose-tri.svg');
   width: 9px; height: 9px; margin: 5.5px auto;
 }
-/* LE BAS : la feuille verte (`frSheet`), collée sous le haut blanc. */
+/* LE BAS : la feuille verte (`frSheet`), sous le haut blanc — avec deux
+   pixels de blanc tout autour, comme la plaque d'une fenêtre qui laisse voir
+   son liseré. Collée aux bords, elle donnait l'impression de déborder. */
 body.bureau-frutiz #fiche .fiche-corps {
-  margin: 0; border: 0; border-radius: 0 0 5px 5px;
+  margin: 0 2px 2px; border: 0; border-radius: 0 0 5px 5px;
   background: linear-gradient(to bottom, rgba(255,255,255,.55) 0, rgba(255,255,255,0) 8px), #CCF599;
   box-shadow: inset 0 2px 0 #ADE76B, inset 0 -2px 0 #ADE76B,
               inset 2px 0 0 #ADE76B, inset -2px 0 0 #ADE76B;
