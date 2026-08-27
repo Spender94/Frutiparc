@@ -194,8 +194,11 @@ test('le client mobile sait ouvrir, router et signaler les discussions privées'
   assert.ok(/case "s": \{/.test(html), 'invitation entrante traitée');
   assert.ok(/n'est pas connect/.test(html), 'le refus 201 est expliqué au joueur');
 
-  // Routage : sans tri par salon, un message privé s'écrirait dans le salon public.
-  assert.ok(/var salon = attr\(xml, "g"\);[\s\S]{0,400}salon !== state\.room/.test(html),
+  // Routage : sans tri par salon, un message privé s'écrirait dans le salon
+  // public. (La branche du FOND D'ÉCRAN — t="b" — s'intercale entre les deux :
+  // elle passe AVANT le tri, une conversation en arrière-plan a droit au fond
+  // de l'autre. D'où l'écart, désormais large.)
+  assert.ok(/var salon = attr\(xml, "g"\);[\s\S]{0,3000}salon !== state\.room/.test(html),
     'les messages sont triés par salon');
 
   // On ne quitte JAMAIS une discussion privée : sinon on cesse d'en recevoir.

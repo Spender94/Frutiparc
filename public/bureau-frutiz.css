@@ -1720,6 +1720,17 @@ body.bureau-frutiz .fen #chat-panel #messages {
   border: 2px solid #ADE76B; border-radius: 5px;
   box-shadow: 0 0 0 2px #DDDDDD;
 }
+/* EN PRIVÉ, LE FOND D'ÉCRAN DE L'AUTRE se glisse ENTRE le lustre et la chair —
+   `Frame.setWallpaper` (0x487df) charge l'image dans `bg.wp`, sous tout le
+   reste du cadre, et la fond dans la couleur du composant
+   (`FEMC.setPColor(bg.wp, style.color[0].main, 100 − prc)`). */
+body.bureau-frutiz .fen #chat-panel #messages.a-fond-prive {
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,.64) 0, rgba(255,255,255,0) 8px),
+    linear-gradient(var(--wp-voile), var(--wp-voile)),
+    var(--wp-img) center / cover no-repeat,
+    #CCF599;
+}
 /* LA LIGNE DE SAISIE, c'est `inputField` (#170) tel quel, SANS teinture :
    14 px de haut, corps `#EEEEEE`, arête haute `#CCCCCC` — le relevé donne
    `#CCCCCC` sur une ligne puis `#EEEEEE` sur treize. Elle fait la largeur de

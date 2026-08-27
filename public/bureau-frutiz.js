@@ -3921,10 +3921,51 @@ window.BureauFrutiz = (function () {
   // `_y = −(i × tabMenuSpace + 16)` : l'index 0 EN BAS. `FPTab.getMenu`
   // rendant [« Vers bureau », « Fermer »], on lit donc, de haut en bas,
   // « Fermer » puis « Vers bureau ».
+  /*
+   * LE MENU DE L'ONGLET « BUREAU » — il existe, et il tient quatre entrées.
+   *
+   * Le portage avait conclu que `FPDesktop` n'en avait pas ; c'était faux, et
+   * la pastille de l'onglet ne faisait donc rien. `FPDesktop.getMenu`
+   * (0xb97cd) se lit d'un bloc :
+   *
+   *     getMenu = function () {
+   *       var m;
+   *       if (me.name est l'un de bumdum, deepnight, yota, whitetigle, skool,
+   *           warp, roger, test, ernest, hiko, ou (en minuscules) gaspard ou
+   *           snowstar)
+   *         m = [ {title: "Invisibilité",      → mainCnx.cmd("invisible")},
+   *               {title: "Créer accessoires", → desktop.addBox(new
+   *                                               box.NewBouille())},
+   *               {title: "Afficher debug",    → moveDebugToDesktop()} ];
+   *       else m = [];
+   *       var t = main.mainBar.flHalfHide ? "Afficher barre" : "Mode rapide";
+   *       m.push({title: "Se déconnecter", → logout()});
+   *       m.push({title: "Mode light",     → golight()});
+   *       m.push({title: t,                → main.mainBar.toggleHalfHide()});
+   *       m.push({title: "Recherche",      → uniqWinMng.open("search")});
+   *       return m;
+   *     };
+   *
+   * Les trois premières sont l'outillage des AUTEURS (les pseudos sont ceux de
+   * Motion-Twin) : elles n'ont pas cours ici. Restent les quatre de tout le
+   * monde, et chacune existait déjà ailleurs dans le portage — il ne manquait
+   * que de les rassembler là où l'époque les mettait.
+   *
+   * C'est aussi le menu du CLIC DROIT sur le fond d'écran (cf. `menuDuBureau`,
+   * qui n'y ajoute que « Nouveau dossier »).
+   */
   function menuDuSlot(idOnglet) {
-    // `FPDesktop` n'a pas de menu : `bottom.but.onPress` teste
-    // `getMenu().length > 0` et se contente d'activer le slot.
-    if (idOnglet === 'bureau') return [];
+    if (idOnglet === 'bureau') {
+      return [
+        { titre: 'Se déconnecter', faire: deconnecter },
+        { titre: 'Mode light', faire: passerEnLight },
+        // `flHalfHide` décide du libellé, pas de l'action : c'est la même
+        // bascule dans les deux sens.
+        { titre: repli.actif ? 'Afficher barre' : 'Mode rapide',
+          faire: function () { basculerRepli(); } },
+        { titre: 'Recherche', faire: ouvrirRecherche },
+      ];
+    }
     return [
       { titre: 'Vers bureau', faire: function () { versBureau(idOnglet); } },
       { titre: 'Fermer', faire: function () {
@@ -3933,6 +3974,34 @@ window.BureauFrutiz = (function () {
         if (s) fermerFenetre(s.panneau);
       } },
     ];
+  }
+
+  // `FPDesktop.logout` : on part. La confirmation en deux temps est une
+  // prudence du TIROIR mobile, où le doigt dérape ; on repasse par son bouton
+  // pour ne pas dédoubler le chemin (fermeture de la socket comprise), en
+  // l'armant puis en le confirmant d'un seul geste.
+  function deconnecter() {
+    var b = $('#logout-btn');
+    if (!b) return;
+    b.click();
+    b.click();
+  }
+
+  // `FPDesktop.golight` : quitter le bureau pour la version légère. Elle est
+  // ICI la même page, en présentation mobile — `isDesktop()` décide, et
+  // `?vue=light` le lui interdit. Revenir au bureau, c'est rouvrir /light.html
+  // sans le paramètre : rien n'est retenu nulle part.
+  function passerEnLight() {
+    var p = new URLSearchParams(window.location.search);
+    p.set('vue', 'light');
+    window.location.href = window.location.pathname + '?' + p.toString();
+  }
+
+  // `uniqWinMng.open("search")` : le light n'a pas d'annuaire, le Bouilloscope
+  // en tient lieu — le même choix que le bouton de la bande des contacts.
+  function ouvrirRecherche() {
+    var tuile = $('#bureau .home-tile[data-go="trombi"]');
+    if (tuile) tuile.click();
   }
 
   function retirerMenu(o) {

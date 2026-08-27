@@ -495,6 +495,19 @@
     border: 1px solid #ADE76B; border-radius: 5px;
     box-shadow: 0 0 0 1px #DDDDDD;
   }
+  /* EN PRIVÉ, LE FOND D'ÉCRAN DE L'AUTRE (cf. fondDuSalon). `Frame.setWallpaper`
+     charge l'image puis la fond dans la couleur du cadre :
+     `FEMC.setPColor(bg.wp, style.color[0].main, 100 − prc)` — avec le pvAlpha
+     d'époque (80), il n'en reste que 20 %. Ici, le même calcul : le voile plat
+     par-dessus l'image, à l'opacité que la trame a dite.
+     `background-attachment` reste à `scroll` : d'époque `bg.wp` appartient au
+     CADRE, il ne défile pas avec les lignes. */
+  #messages.a-fond-prive {
+    background:
+      linear-gradient(var(--wp-voile), var(--wp-voile)),
+      var(--wp-img) center / cover no-repeat,
+      #CCF599;
+  }
   /* Messages render as "[hh:mm:ss] pseudo : message" in Verdana, reusing the
      forum's post palette: dark-green author, slightly lighter green body. */
   .msg { margin: 3px 0; line-height: 1.4; word-wrap: break-word; font-family: 'Verdana', Arial, sans-serif; }
@@ -3088,7 +3101,15 @@
     });
   })();
 
+  // `?vue=light` : l'entrée « Mode light » du menu de l'onglet Bureau
+  // (`FPDesktop.golight`). Rien n'est retenu — revenir au bureau, c'est
+  // rouvrir /light.html sans le paramètre.
+  function vueLightForcee() {
+    try { return new URLSearchParams(window.location.search).get("vue") === "light"; }
+    catch (e) { return false; }
+  }
   function isDesktop() {
+    if (vueLightForcee()) return false;
     try { return window.matchMedia("(min-width: 768px)").matches; } catch (e) { return false; }
   }
   function openMenu(open) { $("#app").classList.toggle("menu-open", open !== false); }
@@ -5348,6 +5369,12 @@
         majSalonPartout(room);
         // Et si MA ligne porte m="1", le lien des logs du bureau.
         montrerLienHisto(room, set);
+        // `onChatReady` : la conversation est prête, je montre mon bureau.
+        // Une fois par conversation — la liste, elle, se rafraîchit souvent.
+        if (estPrive(room) && state.prives[room] && !state.prives[room].fondEnvoye) {
+          state.prives[room].fondEnvoye = true;
+          envoyerMonFond(room);
+        }
         break;
       }
 
@@ -5468,6 +5495,39 @@
         // plusieurs `box.Chat` ouvertes en même temps.
         var salon = attr(xml, "g");
         var ty = attr(xml, "t") || "m";
+        /*
+         * t="b" — LE FOND D'ÉCRAN DE L'INTERLOCUTEUR, PAS UNE LIGNE DE TEXTE.
+         *
+         * En privé, chacun montre son bureau à l'autre. `cp.ChatManager`
+         * l'envoie comme un message de conversation ordinaire, corps brut,
+         * type « b » (`sendWallpaper`, 0x2d620) :
+         *
+         *     sendWallpaper = function (url, alpha) {
+         *       this.send(new XML().createTextNode(alpha + ";" + url), "b");
+         *     };
+         *
+         * et `cp.Chat.onTrace` (0x2f178) le RETIENT avant tout affichage :
+         *
+         *     if (t === "b") {
+         *       if (node.attributes.u === me.name) return false;   ← pas moi
+         *       var s = node.firstChild.nodeValue.toString();
+         *       if (s.length > 0) { var p = s.split(";");
+         *         this.wallpaper = { url: p[1], alpha: Number(p[0]) }; }
+         *       else this.wallpaper = { url: null, alpha: null };
+         *       this.window.setWallpaper(this.wallpaper.url,
+         *                                this.wallpaper.alpha);
+         *       return undefined;                    ← AUCUN addText
+         *     }
+         *
+         * Le portage ne connaissait pas ce type : la trame tombait dans la voie
+         * ordinaire et s'écrivait dans le fil — « acgi : 80;wal-custom/hiko.jpg ».
+         */
+        if (ty === "b") {
+          if (!sameName(attr(xml, "u"), state.user)) {
+            fondDuSalon(salon, xmlUnescape(stripCdata(bodyOf(xml))));
+          }
+          break;
+        }
         if (salon && salon !== state.room && !aSonJournal(salon)) {
           var conv = state.prives[salon];
           if (conv && !(conv.sourdineJusqua > Date.now())) {
@@ -5888,6 +5948,95 @@
   var journaux = {};                    // salon → son fil à lui
   function journalDe(salon) {
     return (salon && journaux[salon]) || msgEl;
+  }
+
+  /*
+   * LE FOND D'ÉCRAN D'UNE CONVERSATION PRIVÉE.
+   *
+   * `win.Chat.setWallpaper(url, prc)` (0x698df) passe la main à
+   * `Frame.setWallpaper` (0x487df), qui charge l'image dans `bg.wp` puis la
+   * fond dans la couleur du composant :
+   *
+   *     mcl.loadClip(url, bg.wp.img);
+   *     FEMC.setPColor(bg.wp, style.color[0].main, 100 - prc);
+   *
+   * `setPColor(mc, c, p)` (0x4a9d1) garde `p %` de l'image et plaque
+   * `100 − p %` de la couleur. Avec le `pvAlpha` d'époque — **80**, la valeur
+   * par défaut de `WallPaperMng.loadWP` (0x9a6b9) — il ne reste donc que
+   * **20 %** de l'illustration sous 80 % du vert du cadre. C'est bien un fond
+   * très estompé, pas une image de fond.
+   *
+   * En CSS, la même chose au pixel : un voile plat de la chair du fil par
+   * DESSUS l'image, à l'opacité complémentaire. `background-attachment` reste
+   * à `scroll` — d'époque `bg.wp` appartient au CADRE, il ne défile pas avec
+   * les lignes.
+   *
+   * L'URL VIENT D'UN AUTRE JOUEUR : on ne pose que ce qui a la forme d'un fond
+   * du parc (`wal-custom/<id>.<ext>`, cf. /api/light/fond). Ni schéma, ni hôte,
+   * ni remontée de dossier — le SWF, lui, donnait l'URL telle quelle à
+   * `loadClip`.
+   */
+  var FOND_PRIVE_ALPHA = 80;            // `WallPaperMng.pvAlpha` par défaut
+  function urlFondSure(u) {
+    var s = String(u || "").trim();
+    if (!s || s.length > 200) return null;
+    if (!/^[A-Za-z0-9_\-./]+$/.test(s)) return null;   // ni « : », ni espace, ni «  » »
+    if (s.charAt(0) === "/" || s.indexOf("..") >= 0) return null;
+    if (!/\.(jpe?g|png|gif|webp)$/i.test(s)) return null;
+    return "/" + s;
+  }
+  function fondDuSalon(salon, brut) {
+    var fil = journalDe(salon);
+    if (!fil) return;
+    var t = String(brut || "");
+    var url = null, alpha = null;
+    if (t.length > 0) {
+      var p = t.split(";");
+      url = urlFondSure(p[1]);
+      alpha = Number(p[0]);
+    }
+    if (!url) {                          // chaîne vide, ou url refusée : on retire
+      fil.classList.remove("a-fond-prive");
+      fil.style.removeProperty("--wp-img");
+      fil.style.removeProperty("--wp-voile");
+      return;
+    }
+    if (!(alpha >= 0 && alpha <= 100)) alpha = FOND_PRIVE_ALPHA;
+    fil.style.setProperty("--wp-img", 'url("' + url + '")');
+    fil.style.setProperty("--wp-voile", "rgba(204,245,153," + (alpha / 100) + ")");
+    fil.classList.add("a-fond-prive");
+  }
+
+  /*
+   * ET LE MIEN PART CHEZ L'AUTRE — la moitié qu'on oublie.
+   *
+   * `onChatReady` (0x31843) l'envoie à l'ouverture du salon, et
+   * `onChangeWallpaper` (0x317ea) à chaque fois qu'on en change :
+   *
+   *     onChatReady        = function () {
+   *       if (wallPaper.url !== undefined)
+   *         this.sendWallpaper(wallPaper.url, wallPaper.pvAlpha);
+   *     };
+   *     onChangeWallpaper  = function (url, alpha) {
+   *       if (this.cmode === "private") this.sendWallpaper(url, alpha);
+   *     };
+   *
+   * En public, rien : `cmode` vaut alors « channel ». Un salon partagé n'a pas
+   * de fond — ce serait celui de qui ?
+   */
+  function envoyerMonFond(salon) {
+    if (!estPrive(salon)) return;
+    if (!state.ws || state.ws.readyState !== 1) return;
+    var f = invFondActuel;
+    var u = f && f.url ? String(f.url).replace(/^\/+/, "") : "";
+    var a = (f && isFinite(f.alpha)) ? f.alpha : FOND_PRIVE_ALPHA;
+    // Sans fond, on envoie une chaîne VIDE : `onTrace` en fait
+    // `{url: null, alpha: null}` et le cadre se dénude.
+    wsSend('<t g="' + xmlEscape(salon) + '" t="b" p="">'
+      + bodyEscape(u ? a + ";" + u : "") + "</t>");
+  }
+  function envoyerMonFondPartout() {
+    for (var id in state.prives) envoyerMonFond(id);
   }
   function aSonJournal(salon) { return !!(salon && journaux[salon]); }
   function nearBottom(el) {
@@ -7979,6 +8128,8 @@
     // Le bureau façon Frutiz (desktop) peint le MÊME fond, cadré en paysage
     // comme main.swf ; sur mobile le module se tait et le tiroir suit seul.
     if (window.BureauFrutiz) BureauFrutiz.poserFond(fond || null);
+    // `onChangeWallpaper` : mes conversations privées en sont averties.
+    envoyerMonFondPartout();
     var panneau = $("#home-panel");
     if (!panneau) return;
     if (!fond || !fond.url) {

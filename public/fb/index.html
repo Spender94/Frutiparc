@@ -1974,6 +1974,7 @@ async function loadIndex() {
 
   var html = '';
 
+  // (`prevenirLHote` est défini plus bas, avec le reste du marquage.)
   // « Tout marquer comme lu » — l'interrupteur du voyant Forum, EN TÊTE.
   //
   // Le voyant s'allume au moindre sujet ayant du nouveau, et un sujet jamais
@@ -2025,10 +2026,31 @@ async function loadIndex() {
 }
 
 /**
+ * LA PAGE QUI NOUS A OUVERTS — et il y en a DEUX SORTES.
+ *
+ * /light tient le voyant du raccourci Forum : il doit apprendre tout de suite
+ * qu'on a tout marqué comme lu, plutôt qu'à la prochaine sortie du forum. Mais
+ * le forum ne s'ouvre pas de la même façon des deux côtés :
+ *
+ *   · sur le TÉLÉPHONE, il vit dans le cadre `#forum-frame` — c'est `parent` ;
+ *   · sur le BUREAU FRUTIZ, `win.Forum` (0x6e136) n'est pas une fenêtre du
+ *     bureau mais un renvoi vers une VRAIE fenêtre de navigateur, et le
+ *     portage fait pareil (`ouvrirForum`, window.open). `parent` vaut alors la
+ *     fenêtre elle-même : le message ne partait à personne, et le voyant
+ *     clignotait encore une fois le forum tout lu. C'est `opener` qu'il faut.
+ *
+ * On parle aux deux, sans se demander lequel existe : celui qui n'est pas là
+ * ne reçoit rien.
+ */
+function prevenirLHote(message) {
+  [window.parent, window.opener].forEach(function (w) {
+    try { if (w && w !== window) w.postMessage(message, '*'); } catch (e) { /* autre domaine */ }
+  });
+}
+
+/**
  * Marque tout le forum comme lu, puis rafraîchit l'index (les dossiers
- * repassent en gris) et prévient la page qui nous héberge — /light tient le
- * voyant du raccourci Forum, il doit le relire tout de suite plutôt qu'à la
- * prochaine sortie du forum.
+ * repassent en gris) et prévient la page qui nous héberge.
  */
 async function marquerToutLu() {
   var b = document.getElementById('tout-lu-btn');
@@ -2044,11 +2066,13 @@ async function marquerToutLu() {
   try {
     var r = await apiFetch('/api/forum/read-all', { method: 'POST' });
     if (!r || !r.ok) throw new Error((r && r.error) || 'échec');
-    try {
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ forum: 'toutLu', restant: Number(r.restant) || 0 }, '*');
-      }
-    } catch (e) { /* page hébergée ailleurs : tant pis pour le voyant */ }
+    // On prévient CELUI QUI NOUS A OUVERTS, quel que soit le chemin — sans
+    // quoi le voyant du raccourci Forum continue de clignoter.
+    //   · le cadre mobile (`#forum-frame`) nous héberge : c'est `parent` ;
+    //   · le bureau Frutiz, lui, ouvre le forum dans une FENÊTRE À PART
+    //     (`ouvrirForum`, window.open) — `parent` vaut alors la fenêtre
+    //     elle-même, et le message ne partait à personne. C'est `opener`.
+    prevenirLHote({ forum: 'toutLu', restant: Number(r.restant) || 0 });
     await loadIndex();
   } catch (e) {
     if (b) { b.disabled = false; dire('Tout marquer comme lu', 'Tout lu'); }

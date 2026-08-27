@@ -287,7 +287,12 @@ test('le forum porte le bouton, et /light écoute son extinction', () => {
     'il appelle bien la route de marquage');
   assert.match(forum, /if \(actions && currentUser\) \{[\s\S]{0,400}tout-lu-btn/,
     'réservé au frutiz connecté (un visiteur n\'a rien à marquer)');
-  assert.match(forum, /postMessage\(\{ forum: 'toutLu'/, 'et il prévient la page qui l\'héberge');
+  // Il prévient la page qui l'héberge — et il y en a DEUX SORTES : le cadre
+  // du téléphone (`parent`) et la FENÊTRE du bureau (`opener`, cf.
+  // `ouvrirForum` : `win.Forum` n'est pas une fenêtre du bureau). Ne viser que
+  // `parent` laissait le voyant clignoter sur le bureau.
+  assert.match(forum, /prevenirLHote\(\{ forum: 'toutLu'/, 'et il prévient la page qui l\'héberge');
+  assert.match(forum, /\[window\.parent, window\.opener\]\.forEach/, 'le cadre ET l\'ouvreur');
 
   // EN HAUT de l'index, pas en bas : la liste des forums fait plusieurs
   // écrans sur un téléphone, et personne ne descendait chercher le bouton.

@@ -139,9 +139,11 @@ test('la pastille de l’onglet ouvre le menu, « Fermer » en tête', () => {
   // dans ce clip, le cadre (1,35 ; 1,7). Relevé 1:1 : l'orange de l'onglet
   // actif tombe en y 86..96, et son bord gauche en x 12.
   assert.match(CSS, /\.fb-onglet-ico \{\s*\n\s*position: absolute; left: 1\.35px; top: calc\(var\(--y\) \+ 4\.65px\);/);
-  // Le bureau n'a pas de menu (`getMenu` vide) : sa pastille ne fait
-  // qu'activer le slot, comme `bottom.but.onPress` quand la liste est vide.
-  assert.match(JS, /if \(idOnglet === 'bureau'\) return \[\];/);
+  // LE BUREAU A UN MENU, LUI AUSSI. On l'avait cru vide ; `FPDesktop.getMenu`
+  // (0xb97cd) rend quatre entrées à tout le monde — cf. ongletBureau.test.js.
+  assert.match(JS, /if \(idOnglet === 'bureau'\) \{\s*\n\s*return \[/);
+  // Le repli reste : un slot SANS menu se contente d'activer, comme
+  // `bottom.but.onPress` quand la liste est vide.
   assert.match(JS, /if \(!entrees\.length\) \{ activerSlot\(idOnglet\); return; \}/);
 });
 

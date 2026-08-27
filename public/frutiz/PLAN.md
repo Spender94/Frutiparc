@@ -3155,6 +3155,92 @@ n'en ferme aucune.
 *(Quirk d'époque conservé : les deux branches du test « privé » posent le même
 `winType = "winChat"` — le rose, pour les salons comme pour les privés.)*
 
+### En privé, chacun montre son bureau à l'autre (`t="b"`)
+
+Le fond d'écran voyage comme un MESSAGE DE CONVERSATION, corps brut, type
+« b ». `cp.ChatManager.sendWallpaper` (0x2d620) :
+
+    sendWallpaper = function (url, alpha) {
+      this.send(new XML().createTextNode(alpha + ";" + url), "b");
+    };
+
+Deux moments l'appellent — l'ouverture du salon, et chaque changement de fond :
+
+    onChatReady       = function () {                       // 0x31843
+      if (wallPaper.url !== undefined)
+        this.sendWallpaper(wallPaper.url, wallPaper.pvAlpha);
+    };
+    onChangeWallpaper = function (url, alpha) {             // 0x317ea
+      if (this.cmode === "private") this.sendWallpaper(url, alpha);
+    };
+
+En public, rien : `cmode` vaut alors « channel », et un salon partagé n'a pas
+de fond — ce serait celui de qui ?
+
+À la réception, `cp.Chat.onTrace` (0x2f178) retient le type AVANT tout
+affichage :
+
+    if (t === "b") {
+      if (node.attributes.u === me.name) return false;      ← pas mon écho
+      var s = node.firstChild.nodeValue.toString();
+      if (s.length > 0) { var p = s.split(";");
+        this.wallpaper = { url: p[1], alpha: Number(p[0]) }; }
+      else this.wallpaper = { url: null, alpha: null };
+      this.window.setWallpaper(this.wallpaper.url, this.wallpaper.alpha);
+      return undefined;                                     ← AUCUN addText
+    }
+
+**Et l'opacité n'est pas un détail.** `win.Chat.setWallpaper` (0x698df) passe
+la main à `Frame.setWallpaper` (0x487df), qui charge l'image dans `bg.wp` — le
+fond du CADRE, sous tout le reste — puis la FOND dans la couleur du composant :
+
+    mcl.loadClip(url, bg.wp.img);
+    FEMC.setPColor(bg.wp, style.color[0].main, 100 - prc);
+
+`setPColor(mc, c, p)` (0x4a9d1) garde `p %` de l'image et plaque `100 − p %` de
+la couleur. Le `pvAlpha` d'époque vaut **80** par défaut
+(`WallPaperMng.loadWP`, 0x9a6b9 : `dataMisc.length < 3 ? 80 : dataMisc[2]`) :
+il ne reste donc que **20 %** de l'illustration. C'est un fond très estompé,
+pas une image de fond. En CSS, exactement la même chose — un voile plat de la
+chair du fil par-dessus l'image, `background-attachment` laissé à `scroll`
+puisque `bg.wp` appartient au cadre et ne défile pas avec les lignes.
+
+**Écart assumé** : l'URL vient d'un autre joueur, et le SWF la donnait telle
+quelle à `loadClip`. Le portage n'accepte que la forme d'un fond du parc
+(`wal-custom/<id>.<ext>`) — ni schéma, ni hôte, ni remontée de dossier.
+
+### L'onglet « Bureau » a un menu — quatre entrées
+
+`FPDesktop.getMenu` (0xb97cd) n'est pas vide, contrairement à ce que le
+portage avait d'abord conclu :
+
+    getMenu = function () {
+      var m;
+      if (me.name est l'un de bumdum, deepnight, yota, whitetigle, skool,
+          warp, roger, test, ernest, hiko, ou (en minuscules) gaspard ou
+          snowstar)
+        m = [ {title: "Invisibilité",      → mainCnx.cmd("invisible")},
+              {title: "Créer accessoires", → desktop.addBox(new
+                                              box.NewBouille())},
+              {title: "Afficher debug",    → moveDebugToDesktop()} ];
+      else m = [];
+      var t = main.mainBar.flHalfHide ? "Afficher barre" : "Mode rapide";
+      m.push({title: "Se déconnecter", → logout()});
+      m.push({title: "Mode light",     → golight()});
+      m.push({title: t,                → main.mainBar.toggleHalfHide()});
+      m.push({title: "Recherche",      → uniqWinMng.open("search")});
+      return m;
+    };
+
+Les trois premières sont l'outillage des AUTEURS — les pseudos sont ceux de
+Motion-Twin — et n'ont pas cours sur le revival. Restent les quatre de tout le
+monde, et `flHalfHide` ne décide QUE du libellé : c'est la même bascule dans
+les deux sens. C'est aussi le menu du clic droit sur le fond d'écran.
+
+Comme pour `FPTab`, l'index 0 est posé EN BAS (`_y = −(i × tabMenuSpace + 16)`)
+et l'on lit donc, de haut en bas, « Recherche », « Mode rapide », « Mode
+light », « Se déconnecter ».
+
 ### Fermer, c'est quitter
 
 `box.Chat.close` (0x2a11a) commence par `this.part()` — **avant** le test
