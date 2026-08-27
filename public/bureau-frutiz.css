@@ -1640,50 +1640,208 @@ body.bureau-frutiz .fen #recherche-panel {
   padding: 0; background: #FFFFFF; gap: 0;
 }
 
-/* ── GASPARD (`win.Help`, 0xbd7db) ─────────────────────────────────────────
-   Une fenêtre de DIALOGUE, comme un salon : `win.Help` étend `win.Dialog`, et
-   `initMainField` / `initInputField` en donnent le partage — le champ de
-   lecture prend toute la place, avec 8 px de marge, et la ligne de saisie
-   s'accroche dessous avec 6.
+/* ══ GASPARD (`win.Help`, 0xbd7db) ═════════════════════════════════════════
+   UNE FENÊTRE DE CONVERSATION, pas un panneau nu. `win.Help` étend
+   `win.Dialog` exactement comme `win.Chat` : même écorce, même grille —
+   colonne d'icônes dans `margin.left`, `main` au milieu (la page puis la
+   ligne de saisie), les présents dans `margin.right`, et sous la colonne la
+   pile des bouilles quand on l'ouvre. Deux gélules au lieu de quatre, et un
+   `cpDocument` de style `frSheet` là où le salon met son fil : voilà toute la
+   différence.
 
-   Le contenu, lui, est une PILE DE LIGNES DE TEXTE (`displayContent` empile
-   des `{type:'text', big:1, …}` dans `lineList`) : le titre, le corps, un
-   intertitre par groupe de liens, un lien par rubrique, et le retour. */
+   Le partage vient du bytecode, cadre par cadre :
+
+     leftIconListFrame  `basicIconList`, min {w: 32, h: 0}, cases de 24,
+                        écart 2, marge 2, alignement « center » (0xbd9e5).
+                        Le salon écrit la même géométrie autrement (cases de
+                        22, écart 4, compo de 24 + marge de 8) : PAS de 26 et
+                        32 de large des deux côtés — les deux colonnes se
+                        dessinent donc au pixel près pareil, d'où la règle
+                        `.icon-btn` partagée avec `#topbar`.
+     screenList         `cpScreenList`, min {w: 100, h: 200}, marge 12 (0xbdd14)
+     showFrame          type « h », min {w: 200, h: 200}, fond (0xbddd9)
+     fieldFrame         `cpDocument` min 200 × 200, style « frSheet »,
+                        masque et fond
+     inputFrame         `inputField`, marge y.min = 6, ratio 1 (0x68bee)
+     userListFrame      `cpUserList`, marge 12 (0xbdbc8)
+
+   ET LES ENCRES SONT CELLES DE `frSheet`. `Standard.getDocStyle` (Standard.as)
+   prend `color = [green, green, pink]` et en tire :
+
+     s[0]  `#558811` (green.darkest),  10 px, retrait 6  → le corps, les liens
+     s[2]  `#335511` (green.overdark), 12 px GRAS, retrait 2 → les intertitres
+     s[4]  `#852929` (pink.darkest),   15 px GRAS       → le titre de la page
+
+   et `Standard.getStyleSheet()` peint tous les liens en `#344D67`, SANS
+   soulignement — il n'apparaît qu'au survol (`a:hover`). */
 body.bureau-frutiz .fen #gaspard-panel {
-  display: flex; flex-direction: column; min-height: 0;
-  padding: 0; background: #FFFFFF; gap: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  column-gap: 0; row-gap: 0;
+  padding: 2px 2px 0; background: transparent; gap: 0; min-height: 0;
 }
-body.bureau-frutiz .fen:has(#gaspard-panel.active) .fen-corps { margin: 0 2px 0; }
+/* Le corps se serre comme celui du salon : 2 px de blanc de chaque côté, 4 en
+   bas — c'est la même écorce de dialogue. */
+body.bureau-frutiz .fen:has(#gaspard-panel.active) .fen-corps {
+  flex-direction: row; gap: 0; margin: 0 2px 4px;
+}
+/* La colonne d'icônes tient toute la marge gauche quand elle est debout, et
+   seulement sa première ligne quand la pile des bouilles la couche. */
+body.bureau-frutiz #gaspard-panel .gs-icones  { grid-area: 1 / 1 / -1 / 2; }
+body.bureau-frutiz #gaspard-panel.gs-a-ecrans .gs-icones { grid-area: 1 / 1 / 2 / 2; }
+body.bureau-frutiz #gaspard-panel .gs-ecrans  { grid-area: 2 / 1 / -1 / 2; }
+body.bureau-frutiz #gaspard-panel .gs-page    { grid-area: 1 / 2 / 3 / 3; }
+body.bureau-frutiz #gaspard-panel .gs-saisie  { grid-area: 3 / 2; }
+body.bureau-frutiz #gaspard-panel .gs-users   { grid-area: 1 / 3 / -1 / 4; }
+/* LA COLONNE. Mêmes mesures que celle du salon (cf. `#topbar`) : la gélule
+   fait 20 × 20, son contour `#DDDDDD` de 2 px est une ombre portée qui déborde
+   dans le rembourrage, et le pas est de 26. Couchée, elle range ses deux
+   gélules en rangée — `lefIconListHMaxLarge`. */
+body.bureau-frutiz #gaspard-panel .gs-icones {
+  display: flex; flex: 0 0 24px; width: 20px; flex-direction: column;
+  align-items: center; gap: 6px; padding: 2px 0 0; margin-right: 6px;
+  height: max-content; background: transparent; border: 0;
+}
+body.bureau-frutiz #gaspard-panel.gs-a-ecrans .gs-icones {
+  flex-direction: row; width: auto; height: 24px; padding: 2px 0 0;
+}
+body.bureau-frutiz #gaspard-panel .gs-icones .icon-btn {
+  flex: 0 0 20px; width: 20px; height: 20px; min-width: 0; padding: 0;
+  border: 0; border-radius: 4px; background-color: transparent;
+  box-shadow: 0 0 0 2px #DDDDDD; margin: 0; cursor: pointer;
+  background-position: center; background-repeat: no-repeat; background-size: 20px 20px;
+}
+/* Les deux images de `butPushSmallPink` que `genLeftIconList` demande :
+   l'image 3 pour les bouilles, l'image 2 pour les présents — les mêmes que
+   les 3e et 2e gélules du salon. (Le raccourci `background` de la règle
+   ci-dessus remettrait l'image à `none` : elle n'écrit donc que la COULEUR.) */
+body.bureau-frutiz #gaspard-panel .gs-icones .gs-but-ecrans {
+  background-image: url('/frutiz/sprites/chat-but-bouille.svg');
+}
+body.bureau-frutiz #gaspard-panel .gs-icones .gs-but-users {
+  background-image: url('/frutiz/sprites/chat-but-userlist.svg');
+}
+/* LA PILE DES BOUILLES (`cpScreenList`, min 100 × 200, marge 12). Fermée, elle
+   ne coûte rien ; ouverte, elle empile des écrans carrés au pas de `size + 2`.
+   L'écart de 6 px vers le fil est celui du salon : deux contours et deux px de
+   blanc. */
+body.bureau-frutiz #gaspard-panel .gs-ecrans {
+  display: none; width: 100px; flex-direction: column; gap: 2px;
+  margin: 2px 6px 0 2px; overflow: hidden;
+}
+body.bureau-frutiz #gaspard-panel.gs-a-ecrans .gs-ecrans { display: flex; }
+/* L'ÉCRAN, c'est le dessin `frutiScreen` du SWF (fond #383 et reflet #395),
+   pas une peinture CSS — les mêmes fichiers que la colonne du salon. */
+body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran {
+  position: relative; width: 100px; height: 100px; flex: 0 0 100px;
+  background: url('/frutiz/sprites/ecran-fond.svg') 0 0 / 100% 100% no-repeat;
+  border-radius: 6px; box-shadow: 0 0 0 2px #DDDDDD; overflow: hidden;
+}
+body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran::before {
+  content: ""; position: absolute; right: 2px; top: 2px;
+  width: 42.7px; height: 31.8px; z-index: 7; pointer-events: none;
+  background: url('/frutiz/sprites/ecran-reflet.svg') 0 0 / 42.7px 31.8px no-repeat;
+}
+body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran > canvas.fp-bvig,
+body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran > img {
+  display: block; width: 98px !important; height: 98px !important;
+  margin: 1px; border: 0;
+}
+/* LA PAGE — le `cpDocument`. Même chair que la zone des messages du salon :
+   contour 2 px `#DDDDDD` (white.shade), liseré 2 px `#ADE76B` (green.shade),
+   fond `#CCF599` (green.main), et le reflet blanc de 8 px du drapeau
+   `chrome`. */
+/* LE REMBOURRAGE est de 2 px, pas plus : un `cpDocument` n'a pas de marge à
+   lui — le relevé 1:1 des cartes du journal (le même composant, le même style
+   `frSheet`) montre le texte qui commence AU BORD de la chair, aux deux
+   pixels de gouttière d'un champ Flash près. Ce sont les styles qui portent
+   le retrait : `leftMargin` vaut 6 pour le corps et les liens, 2 pour les
+   intertitres, 0 pour le titre. */
 body.bureau-frutiz #gaspard-panel .gs-page {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
-  padding: 8px; background: #FFFFFF;
-  font: 10px Verdana, Arial, sans-serif; color: #22224A;
+  min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden;
+  margin: 0; padding: 2px;
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,.64) 0, rgba(255,255,255,0) 8px),
+    #CCF599;
+  border: 2px solid #ADE76B; border-radius: 5px;
+  box-shadow: 0 0 0 2px #DDDDDD;
+  font: 400 10px/13px Verdana, Arial, sans-serif; color: #558811;
 }
-body.bureau-frutiz #gaspard-panel .gs-l { margin: 0 0 4px; word-wrap: break-word; }
-body.bureau-frutiz #gaspard-panel .gs-titre {
-  font-weight: 700; color: #000000; margin-bottom: 6px;
+/* Une LIGNE du `lineList`. Le `space` de son style dit ce qui la suit :
+   0 pour le corps et les liens, 2 pour un intertitre, 4 pour le titre. */
+body.bureau-frutiz #gaspard-panel .gs-l { margin: 0; word-wrap: break-word; }
+body.bureau-frutiz #gaspard-panel .gs-titre {          /* s[4] */
+  font-size: 15px; line-height: 19px; font-weight: 700; color: #852929;
+  margin-bottom: 4px;
 }
-body.bureau-frutiz #gaspard-panel .gs-corps { line-height: 14.3px; }
-body.bureau-frutiz #gaspard-panel .gs-groupe {
-  font-weight: 700; color: #7E2A6B; margin: 8px 0 3px;
+body.bureau-frutiz #gaspard-panel .gs-corps {          /* s[0] */
+  margin-left: 6px; margin-bottom: 0;
 }
-body.bureau-frutiz #gaspard-panel .gs-lien { margin-left: 8px; }
-body.bureau-frutiz #gaspard-panel .gs-retour { margin-top: 8px; }
-body.bureau-frutiz #gaspard-panel .gs-l a { color: #2B4EA2; text-decoration: underline; }
-body.bureau-frutiz #gaspard-panel .gs-l a:hover { color: #D16767; }
-body.bureau-frutiz #gaspard-panel .gs-attente,
-body.bureau-frutiz #gaspard-panel .gs-erreur { color: #7A7A7A; font-style: italic; }
-/* La ligne de saisie : `initInputField` lui donne 6 px de marge haute et la
-   laisse prendre toute la largeur. */
+body.bureau-frutiz #gaspard-panel .gs-groupe {         /* s[2] */
+  font-size: 12px; line-height: 15px; font-weight: 700; color: #335511;
+  margin: 6px 0 2px 2px;
+}
+body.bureau-frutiz #gaspard-panel .gs-lien { margin-left: 6px; }
+body.bureau-frutiz #gaspard-panel .gs-retour {         /* s[2], mais en lien */
+  font-size: 12px; line-height: 15px; font-weight: 700;
+  margin: 6px 0 2px 2px;
+}
+/* `Standard.getStyleSheet()` : `a:link` et `a:hover` en `#344D67`, le
+   soulignement UNIQUEMENT au survol. */
+body.bureau-frutiz #gaspard-panel .gs-l a { color: #344D67; text-decoration: none; }
+body.bureau-frutiz #gaspard-panel .gs-l a:hover { text-decoration: underline; }
+/* LA LIGNE DE SAISIE, c'est `inputField` (#170) tel quel — le même dessin que
+   celle du salon : 14 px de haut, corps `#EEEEEE`, arête haute `#CCCCCC`,
+   quart de rond de rayon 4. Six px la séparent du contour de la page (4 de
+   marge d'époque, plus les 2 du contour, peint hors de la boîte). */
 body.bureau-frutiz #gaspard-panel .gs-saisie {
-  flex: 0 0 auto; padding: 6px 8px 8px; background: #FFFFFF;
+  padding: 0; background: transparent; border: 0; margin-top: 6px;
 }
 body.bureau-frutiz #gaspard-panel .gs-in {
-  width: 100%; box-sizing: border-box; height: 18px;
-  border: 1px solid #B4B4B4; background: #FFFFFF; padding: 0 4px;
-  font: 10px Verdana, Arial, sans-serif; color: #22224A; outline: none;
+  /* `display: block` : un champ en ligne traîne derrière lui la descente de sa
+     ligne, et la barre de 14 en occupait 17. */
+  display: block; width: 100%; box-sizing: border-box; height: 14px;
+  border: 0; border-radius: 4px; padding: 0 7px;
+  background: #EEEEEE; box-shadow: inset 0 1px 0 #CCCCCC;
+  font: normal 10px/14px Verdana, Arial, sans-serif; color: #333333; outline: none;
 }
-body.bureau-frutiz #gaspard-panel .gs-in:focus { border-color: #7E2A6B; }
+/* LES PRÉSENTS (`cpUserList`) — les dessins du SWF, comme au salon : la gélule
+   rose en haut et en bas (ce sont les boutons de défilement), la boîte verte
+   entre les deux, et une bande `userSlot` par personne. À deux noms elles
+   tiennent toujours ; les gélules ne servent donc jamais, mais elles sont là,
+   parce que le composant les porte. */
+body.bureau-frutiz #gaspard-panel .gs-users {
+  display: none; width: 122px; margin: 0 2px 0 6px; gap: 4px;
+}
+body.bureau-frutiz #gaspard-panel.gs-a-users .gs-users {
+  display: flex; flex-direction: column;
+}
+body.bureau-frutiz #gaspard-panel .gs-ul-fleche {
+  flex: 0 0 20px; width: 100%;
+  background: url('/frutiz/sprites/user-list-pilule.svg') center / 100% 20px no-repeat;
+}
+body.bureau-frutiz #gaspard-panel .gs-ul-boite {
+  flex: 1 1 auto; min-height: 0; overflow: visible;
+  border: 10px solid transparent;
+  border-image: url('/frutiz/sprites/user-list-boite.svg') 10 fill / 10px stretch;
+}
+body.bureau-frutiz #gaspard-panel .gs-ul-defile {
+  margin: 0 -10px; width: calc(100% + 20px); height: 100%;
+  overflow-x: hidden; overflow-y: auto; scrollbar-width: none;
+}
+body.bureau-frutiz #gaspard-panel .gs-ul-defile::-webkit-scrollbar { display: none; }
+/* La bande d'une personne : 120 × 18, le pseudo à 22 (les 20 px du voyant plus
+   la gouttière du champ Flash), et une ligne sur deux seulement porte le
+   dessin — `backgroundId = 2 − ((i / 2) == Math.round(i / 2))`. */
+body.bureau-frutiz #gaspard-panel .gs-ul-defile .u {
+  height: 18px; min-height: 18px; width: 120px; margin: 0; border: 0;
+  padding: 0 4px 0 22px; box-sizing: border-box;
+  background: url('/frutiz/sprites/user-slot.svg') left top / 120px 18px no-repeat;
+  font: 700 10px/18px Verdana, Arial, sans-serif; color: #22224A;
+  display: flex; align-items: center; overflow: hidden; white-space: nowrap;
+}
+body.bureau-frutiz #gaspard-panel .gs-ul-defile .u:nth-child(even) { background-image: none; }
 /* LE SURVOL DE LA RANGÉE, `rollOver(id)` : le nom de la rubrique s'écrit dans
    le champ du rang. Écart assumé — d'époque il garde la fonte de l'afficheur,
    mais notre boîte est taillée pour quatre chiffres et « historique » y

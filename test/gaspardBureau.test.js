@@ -146,9 +146,146 @@ test('la fenêtre est un dialogue, avec la pastille du chat', () => {
   // `getIconLabel()` renvoie « winChat » (0x8068a).
   assert.match(m[0], /fruit: 'winChat'/);
   assert.match(m[0], /panneau: '#gaspard-panel'/);
-  // `win.Dialog.initMainField` : le champ ne descend pas sous 100 × 100, avec
-  // 8 px de marge de chaque côté ; la ligne de saisie prend le reste.
-  assert.match(m[0], /min: minFenetre\(100 \+ 16, 100 \+ 16 \+ 24\)/);
-  // Ni `pos` ni `centre` : elle se pose dans le coin comme les autres.
+  // LE GABARIT NE S'ÉCRIT PAS DANS LA RUBRIQUE. `win.Help` ne pose ni `pos`
+  // ni `moveToCenter` : `recal` en fait le minimum de son contenu, comme pour
+  // une conversation neuve. (Le portage avait d'abord écrit
+  // `minFenetre(100 + 16, …)`, hérité de `win.Dialog.initMainField` — mais
+  // `win.Help` RÉÉCRIT cette méthode, cf. 0xbddd9 : son champ ne descend pas
+  // sous 200 × 200, pas 100 × 100.)
+  assert.match(m[0], /min: function \(\) \{ return minGaspard\(\); \}/);
   assert.ok(!/centre: true/.test(m[0]), 'elle ne s’ouvre pas au milieu');
+});
+
+/*
+ * L'ÉCORCE DE DIALOGUE. `win.Help` (0xbd7db) étend `win.Dialog` : ce sont les
+ * mêmes cadres que ceux d'un salon, et les mesures sortent du bytecode.
+ */
+test('la colonne d’icônes porte les deux gélules du bytecode', () => {
+  // `genLeftIconList` (0xbd8bc) : DEUX `butPush` de param `butPushSmallPink`,
+  // image 3 → toggleScreenList, image 2 → toggleUserList. Ce sont les mêmes
+  // dessins que les 3e et 2e gélules du salon.
+  const p = /function panneauGaspard\(\) \{[\s\S]*?\n  \}/.exec(JS);
+  assert.ok(p, 'le panneau doit exister');
+  assert.match(p[0], /gelule\('ecrans'/, 'la gélule des bouilles');
+  assert.match(p[0], /gelule\('users'/, 'la gélule des présents');
+  // …et DEUX seulement : ni feutres ni cri modérateur, `win.Help` n'en a pas.
+  assert.strictEqual((p[0].match(/gelule\(/g) || []).length, 2,
+    'deux gélules, pas quatre');
+  assert.match(CSS, /\.gs-but-ecrans \{\s*background-image: url\('\/frutiz\/sprites\/chat-but-bouille\.svg'\)/);
+  assert.match(CSS, /\.gs-but-users \{\s*background-image: url\('\/frutiz\/sprites\/chat-but-userlist\.svg'\)/);
+  // Le PAS d'une gélule : `lefIconListHMaxThin = 4 + 26 × len`.
+  assert.match(JS, /var GS_ICONE = 26;/);
+});
+
+test('les deux panneaux s’ouvrent fermés, et relèvent le minimum', () => {
+  // `win.Help.init` (0xbd840) commence par `flUserList = false` et
+  // `flScreenList = false` : la fenêtre naît nue, comme une conversation.
+  const p = /function panneauGaspard\(\) \{[\s\S]*?\n  \}/.exec(JS)[0];
+  assert.ok(!/gs-a-ecrans|gs-a-users/.test(p),
+    'aucun des deux panneaux n’est ouvert à la construction');
+  const b = /function basculerPanneauGaspard\(quoi\) \{[\s\S]*?\n  \}/.exec(JS);
+  assert.ok(b, 'les deux bascules doivent exister');
+  // `toggleScreenList` couche la colonne (`lefIconListHMaxLarge`) ; les deux
+  // finissent par `frameSet.update()`, qui relève le minimum de la fenêtre.
+  assert.match(b[0], /classList\.toggle\('en-rangee', ouvert\)/);
+  assert.match(b[0], /appliquerMinimum\(f\)/);
+  // Le minimum, cadre par cadre — les mins sont ceux du bytecode.
+  const min = /function minGaspard\(\) \{[\s\S]*?\n  \}/.exec(JS);
+  assert.ok(min, 'minGaspard doit exister');
+  assert.match(min[0], /ecrans \? 112 : 32/, 'cpScreenList 100 + 12 de marge, sinon la colonne (32)');
+  assert.match(min[0], /w: 200, h: 200 \+ 6 \+ 14/, 'showFrame 200×200, saisie 14 + 6 de marge');
+  assert.match(min[0], /users \? 134 : 0/, 'cpUserList 122 + 12 de marge');
+});
+
+test('les présents sont deux : le joueur, puis Gaspard', () => {
+  // `box.Help.init` (0x7fdf6) :
+  //     if (me.logged) userList.addUser(me.name);
+  //     userList.addUser(Lang.fv("help.name"));
+  const g = /function gensDeGaspard\(\) \{[\s\S]*?\n  \}/.exec(JS);
+  assert.ok(g, 'la liste des deux noms doit exister');
+  assert.match(g[0], /if \(moi\) gens\.push\(moi\);/, 'le joueur seulement s’il est identifié');
+  assert.match(g[0], /gens\.push\(GS_MOTS\.nom\);/, 'puis Gaspard, toujours');
+  // Et c'est la bande `userSlot` du salon, pas une tuile inventée.
+  assert.match(CSS, /#gaspard-panel \.gs-ul-defile \.u \{[\s\S]*?user-slot\.svg/);
+  assert.match(CSS, /#gaspard-panel \.gs-ul-defile \.u:nth-child\(even\) \{ background-image: none; \}/);
+});
+
+test('les mots sont ceux de lang_french.as, pas des inventions', () => {
+  const m = /var GS_MOTS = \{[\s\S]*?\n  \};/.exec(JS);
+  assert.ok(m, 'la table des mots doit exister');
+  // help.link_type.* — le portage avait inventé « Voir aussi » et « Les
+  // rubriques », qui n'existent nulle part.
+  assert.match(m[0], /cat_tree: 'Rubriques :'/);
+  assert.match(m[0], /cat_ls: 'Dans cette rubrique :'/);
+  assert.match(m[0], /seealso: 'Voir également :'/);
+  assert.ok(!/Voir aussi|Les rubriques/.test(m[0]),
+    'les libellés inventés doivent avoir disparu');
+  // please_wait, et les deux phrases de résultat avec leur $n.
+  assert.match(m[0], /attente: 'Veuillez patienter\.\.\.'/);
+  assert.match(m[0], /e: 'J’ai trouvé \$n résultats correspondants à votre recherche :'/);
+  assert.match(m[0], /s: 'J’ai trouvé \$n résultats proches de votre recherche :'/);
+  // help.link_back : DEUX liens, `getPrevious` et `getContent` sans argument.
+  assert.match(JS, /var GS_RETOUR = '<a href="#" data-gs="precedent">Précédent<\/a> - '/);
+  assert.match(JS, /data-gs="index">Index de l’aide<\/a>/);
+  // `getContent()` sans argument vaut `getContent(1)` (0x7ff27).
+  const c = /function contenuGaspard\(id\) \{[\s\S]*?\n  \}/.exec(JS)[0];
+  assert.match(c, /if \(id === undefined\) id = 1;/);
+});
+
+test('la page porte les encres de `frSheet`, et les liens celles du styleSheet', () => {
+  // Standard.getDocStyle(frSheet) : color = [green, green, pink] →
+  //   s[0] green.darkest #558811 · s[2] green.overdark #335511 (12 gras)
+  //   s[4] pink.darkest  #852929 (15 gras)
+  assert.match(CSS, /#gaspard-panel \.gs-page \{[\s\S]*?color: #558811;/);
+  assert.match(CSS, /#gaspard-panel \.gs-titre \{[\s\S]*?color: #852929;/);
+  assert.match(CSS, /#gaspard-panel \.gs-groupe \{[\s\S]*?color: #335511;/);
+  // Standard.getStyleSheet() : `a:link` #344D67, souligné au SURVOL seulement.
+  assert.match(CSS, /#gaspard-panel \.gs-l a \{ color: #344D67; text-decoration: none; \}/);
+  assert.match(CSS, /#gaspard-panel \.gs-l a:hover \{ text-decoration: underline; \}/);
+  // Et la chair du composant, la même qu'au salon : #CCF599 dans un liseré
+  // #ADE76B, cerclé de #DDDDDD hors boîte.
+  const page = /#gaspard-panel \.gs-page \{[\s\S]*?\n\}/.exec(CSS)[0];
+  assert.match(page, /#CCF599/);
+  assert.match(page, /border: 2px solid #ADE76B/);
+  assert.match(page, /box-shadow: 0 0 0 2px #DDDDDD/);
+  // La ligne de saisie, c'est `inputField` (#170) : 14 de haut, #EEEEEE,
+  // arête #CCCCCC — le même dessin qu'au salon.
+  const saisie = /#gaspard-panel \.gs-in \{[\s\S]*?\n\}/.exec(CSS)[0];
+  assert.match(saisie, /height: 14px/);
+  assert.match(saisie, /background: #EEEEEE/);
+  assert.match(saisie, /box-shadow: inset 0 1px 0 #CCCCCC/);
+});
+
+test('rouvrir la fenêtre bâtit une boîte NEUVE', () => {
+  // `box.Help.close` fait `uniqWinMng.unsetBox("help")` : la boîte s'en va
+  // tout entière. Rouvrir en construit une autre — `previousArr = []`,
+  // `lastSearchTimer = 0`, `flUserList` et `flScreenList` à faux — et son
+  // `init` recharge `{i: 1}`. (Relevé au banc : 454 × 270 avec les deux
+  // panneaux et une page fille, puis 240 × 248 et « Gaspard - Bienvenue »
+  // après fermeture-réouverture.)
+  const o = /function ouvrirGaspard\(\) \{[\s\S]*?\n  \}/.exec(JS);
+  assert.ok(o, 'ouvrirGaspard doit exister');
+  assert.match(o[0], /gsEtat\.precedents = \[\];/);
+  assert.match(o[0], /gsEtat\.derniere = 0;/);
+  assert.match(o[0], /\['gs-a-ecrans', 'gs-a-users'\]\.forEach/);
+  // …et le chargement passe par `loadContent`, pas `getContent` : l'index
+  // n'est pas un « précédent » de lui-même.
+  assert.match(o[0], /chargerGaspard\(\{ i: 1 \}\)/);
+  assert.ok(!/contenuGaspard\(1\)/.test(o[0]),
+    'passer par getContent empilerait la page d’accueil dans sa propre pile');
+});
+
+test('une panne du serveur ouvre une alerte, pas une ligne dans la page', () => {
+  // `onGetContent` / `onSearch` (0x803c3, 0x8014c) : `openErrorAlert(
+  // Lang.fv("error.host_unreachable"))`, et pour un `k` renvoyé,
+  // `Lang.fv("error.http." + k)`.
+  const e = /function erreurGaspard\(txt\) \{[\s\S]*?\n  \}/.exec(JS);
+  assert.ok(e, 'le chemin d’erreur doit exister');
+  assert.match(e[0], /alerte\('', txt\)/);
+  const m = /var GS_ERREURS = \{[\s\S]*?\n  \};/.exec(JS);
+  assert.ok(m, 'les motifs `error.http.<k>` doivent être portés');
+  assert.match(m[0], /2: 'Action non autorisée'/);
+  assert.match(m[0], /3: 'Requête non valide'/);
+  const charge = /function chargerGaspard\(o\) \{[\s\S]*?\n  \}/.exec(JS)[0];
+  assert.match(charge, /GS_ERREURS\[k\] \|\| GS_ERREURS\[1\]/);
 });

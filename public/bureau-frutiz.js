@@ -103,13 +103,14 @@ window.BureauFrutiz = (function () {
                   l: 284, h: 84, fixe: true, min: minFenetre(270, 20 + 24) },
     // GASPARD — `box.Help` / `win.Help` (0xbd7db). C'est une fenêtre de
     // DIALOGUE, comme un salon : `win.Help` étend `win.Dialog`, et
-    // `getIconLabel` renvoie « winChat » — d'où la pastille du chat. Son
-    // gabarit vient de `win.Dialog.initMainField` : le champ principal ne
-    // descend pas sous 100 × 100, avec 8 px de marge de chaque côté, et la
-    // ligne de saisie prend le reste. Ni `pos` ni `moveToCenter` : elle
-    // s'ouvre dans le coin, comme presque toutes les autres.
+    // `getIconLabel` renvoie « winChat » — d'où la pastille du chat.
+    // Son gabarit ne s'écrit nulle part : `win.Help` ne pose ni `pos` ni
+    // `moveToCenter`, donc `recal` en fait le MINIMUM de son contenu, comme
+    // pour une conversation neuve. C'est `minGaspard` qui le calcule, cadre
+    // par cadre — 240 × 248 fenêtre nue, plus large quand on ouvre les
+    // bouilles ou les présents. Le `l`/`h` à zéro laisse `recal` décider.
     gaspard:    { panneau: '#gaspard-panel', titre: 'Gaspard', fruit: 'winChat',
-                  l: 320, h: 300, min: minFenetre(100 + 16, 100 + 16 + 24) },
+                  l: 0, h: 0, min: function () { return minGaspard(); } },
     // L'EXPLORATEUR — `win.Explorer`, la fenêtre JAUNE (winType « winExplorer »,
     // d'où la banane en pastille). Son gabarit est écrit dans `init` :
     // `pos = {x:50, y:50, w:400, h:400}` — 402 × 402 le contour compris, ce
@@ -5293,9 +5294,109 @@ window.BureauFrutiz = (function () {
    * 2005, derrière ces deux adresses ; le portage le tient en base, et
    * l'administration l'y écrit (`/api/admin/gaspard/topics`).
    */
+  /*
+   * LA FENÊTRE, cadre par cadre. `win.Help` (0xbd7db) étend `win.Dialog` —
+   * c'est donc l'écorce d'un salon, avec DEUX gélules au lieu de quatre :
+   *
+   *   init()                       flUserList = false ; flScreenList = false
+   *                                super.init()   → initMainField, initInputField
+   *                                nbUser = 2
+   *                                genLeftIconList() ; displayLeftIconList()
+   *
+   *   genLeftIconList (0xbd8bc)    deux `butPush` de param `butPushSmallPink`,
+   *                                `outline: 2`, `curve: 4` —
+   *                                  image 3 → toggleScreenList (les bouilles)
+   *                                  image 2 → toggleUserList   (les présents)
+   *                                lefIconListHMaxThin  = 4 + 26 × 2  = 56
+   *                                lefIconListHMaxLarge = 4 + 26 × ⌈2/3⌉ = 30
+   *
+   *   displayLeftIconList (0xbd9e5)  `basicIconList` min {w: 32, h: 0}, struct
+   *                                limitée en x, cases de 24, écart 2, marge 2,
+   *                                alignement « center », dans `margin.left`.
+   *                                (Le salon écrit la même chose autrement —
+   *                                cases de 22, écart 4, compo de 24 et marge
+   *                                de 8 : PAS de 26 et 32 de large des deux
+   *                                côtés. Les deux colonnes se dessinent donc
+   *                                pareil, d'où la feuille de style partagée.)
+   *
+   *   initMainField (0xbddd9)      RÉÉCRIT celui du dialogue : là où le salon
+   *                                pose un `multiTextField`, Gaspard pose un
+   *                                cadre `showFrame` (type « h », min 200×200,
+   *                                fond) contenant un `cpDocument` de style
+   *                                « frSheet », min 200 × 200 lui aussi.
+   *
+   *   initInputField (0x68bee)     hérité tel quel : `inputField` sous la page,
+   *                                marge `y.min = 6`, `y.ratio = 1`.
+   *
+   *   displayScreenList (0xbdd14)  `cpScreenList` min {w: 100, h: 200}, marge
+   *                                12, dans `margin.left` — sous la colonne
+   *                                d'icônes, qui se couche en rangée.
+   *   displayUserList  (0xbdbc8)   `cpUserList` dans `margin.right`, marge 12.
+   *
+   * LE STYLE `frSheet` (Standard.as) donne la couleur des trois encres :
+   *   color = [green, green, pink]
+   *   s[0]  vert `#558811`, 10 px, retrait 6   → le corps et les liens
+   *   s[2]  vert `#335511`, 12 px GRAS, retrait 2 → les intertitres, le retour
+   *   s[4]  rose `#852929`, 15 px GRAS          → le titre de la page
+   * et `Standard.getStyleSheet()` peint les liens en `#344D67`, soulignés au
+   * survol seulement.
+   */
   var GASPARD_ATTENTE = 2500;           // `analyseInput` : le pas entre deux recherches
+  var GS_ICONE = 26;                    // le pas d'une gélule (24 de case + 2 d'écart)
   var gsPanneau = null;
   var gsEtat = { precedents: [], courant: null, charge: false, derniere: 0 };
+
+  /*
+   * LES MOTS SONT CEUX DE 2005 — `frutiparc/lang_french.as`, au caractère près :
+   *
+   *   help.title            « Gaspard - $t »
+   *   help.name             « Gaspard »
+   *   help.search           « Recherche »
+   *   help.link             <a href="asfunction:win.box.getContent,$i">$n</a>
+   *   help.link_back        « Précédent » - « Index de l'aide »
+   *   help.link_type.cat_tree  « Rubriques : »
+   *   help.link_type.cat_ls    « Dans cette rubrique : »
+   *   help.link_type.seealso   « Voir également : »
+   *   help.results_exact    « J'ai trouvé $n résultats correspondants… »
+   *   help.results_similar  « J'ai trouvé $n résultats proches… »
+   *   help.no_result        « Désolé, je n'ai rien trouvé… »
+   *   help.contact_me       le conseil de recherche + l'adresse de Gaspard
+   *   please_wait           « Veuillez patienter... »
+   *
+   * (Le portage avait inventé « Voir aussi » et « Les rubriques », qui
+   * n'existaient pas, et un « retour » là où l'époque offre DEUX liens.)
+   */
+  var GS_MOTS = {
+    nom: 'Gaspard',
+    recherche: 'Recherche',
+    attente: 'Veuillez patienter...',
+    injoignable: 'L’accès au serveur Frutiparc semble impossible. '
+      + 'Pensez à vérifier votre connexion internet.',
+    resultats: {
+      e: 'J’ai trouvé $n résultats correspondants à votre recherche :',
+      s: 'J’ai trouvé $n résultats proches de votre recherche :',
+    },
+    rien: 'Désolé, je n’ai rien trouvé correspondant à votre recherche.',
+    conseil: 'Essayez de faire une recherche plus large : indiquez un seul mot '
+      + 'plutôt qu’une phrase. Par exemple, cherchez <i>titems</i> plutôt que '
+      + '<i>C’est quoi les titems ?</i>. Vérifiez également l’orthographe.'
+      + '<br/><br/>Si vous avez besoin de <b>support technique</b>, vous pouvez '
+      + 'envoyer un mail à : '
+      + '<a href="mailto:gaspard@frutiparc.com">gaspard@frutiparc.com</a>',
+    groupes: {
+      cat_tree: 'Rubriques :',
+      cat_ls: 'Dans cette rubrique :',
+      seealso: 'Voir également :',
+    },
+  };
+  // « error.http.<k> », les motifs que le serveur peut renvoyer (0x8045e).
+  var GS_ERREURS = {
+    1: 'Une erreur inconue s’est produite sur le serveur (HTTP)',
+    2: 'Action non autorisée',
+    3: 'Requête non valide',
+    4: 'Une erreur s’est produite sur le serveur',
+    5: 'Cette action vous est interdite pour le moment',
+  };
 
   function panneauGaspard() {
     if (gsPanneau) return gsPanneau;
@@ -5303,13 +5404,23 @@ window.BureauFrutiz = (function () {
     p.className = 'panel';
     p.id = 'gaspard-panel';
 
-    // `initMainField` : un `multiTextField` qui prend toute la place, marges
-    // de 8. C'est la page — titre, corps, liens, retour.
+    // `displayLeftIconList` : la colonne, dans `margin.left`.
+    var icones = document.createElement('div');
+    icones.className = 'gs-icones';
+    icones.appendChild(gelule('ecrans', 'Afficher les bouilles'));
+    icones.appendChild(gelule('users', 'Afficher les frutiz présents'));
+    p.appendChild(icones);
+
+    // `displayScreenList` : la pile des bouilles, sous la colonne. Fermée à
+    // l'ouverture (`flScreenList = false`).
+    var ecrans = document.createElement('div');
+    ecrans.className = 'gs-ecrans';
+    p.appendChild(ecrans);
+
+    // `main` : la page, puis la ligne de saisie.
     var page = document.createElement('div');
     page.className = 'gs-page';
     p.appendChild(page);
-
-    // `initInputField` : la ligne de saisie, sous le champ, marge de 6.
     var bas = document.createElement('div');
     bas.className = 'gs-saisie';
     var champ = document.createElement('input');
@@ -5318,6 +5429,14 @@ window.BureauFrutiz = (function () {
     champ.setAttribute('aria-label', 'Poser une question à Gaspard');
     bas.appendChild(champ);
     p.appendChild(bas);
+
+    // `displayUserList` : les présents, dans `margin.right`. Fermée elle aussi.
+    var users = document.createElement('div');
+    users.className = 'gs-users';
+    users.innerHTML = '<div class="gs-ul-fleche haut"></div>'
+      + '<div class="gs-ul-boite"><div class="gs-ul-defile"></div></div>'
+      + '<div class="gs-ul-fleche bas"></div>';
+    p.appendChild(users);
 
     // `onEnter` : la saisie part, et ne se vide QUE si elle est partie.
     champ.addEventListener('keydown', function (ev) {
@@ -5330,17 +5449,160 @@ window.BureauFrutiz = (function () {
       if (page.scrollHeight <= page.clientHeight) return;
       ev.stopPropagation();
     });
-    // Un lien de la page : soit une rubrique, soit le retour.
+    // Un lien de la page : une rubrique, le précédent, ou l'index.
     page.addEventListener('click', function (ev) {
       var a = ev.target.closest ? ev.target.closest('a[data-gs]') : null;
       if (!a) return;
       ev.preventDefault();
-      if (a.getAttribute('data-gs') === 'retour') pagePrecedenteGaspard();
-      else contenuGaspard(Number(a.getAttribute('data-gs')));
+      var quoi = a.getAttribute('data-gs');
+      if (quoi === 'precedent') pagePrecedenteGaspard();
+      else if (quoi === 'index') contenuGaspard();
+      else contenuGaspard(Number(quoi));
+    });
+    // Les deux gélules.
+    icones.addEventListener('click', function (ev) {
+      var b = ev.target.closest ? ev.target.closest('.icon-btn') : null;
+      if (!b) return;
+      basculerPanneauGaspard(b.getAttribute('data-gs-but'));
     });
 
     gsPanneau = p;
     return p;
+  }
+
+  // Une gélule de la colonne : le même bouton que le salon, au même dessin.
+  function gelule(quoi, titre) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'icon-btn gs-but-' + quoi;
+    b.setAttribute('data-gs-but', quoi);
+    b.title = titre;
+    b.setAttribute('aria-label', titre);
+    return b;
+  }
+
+  /*
+   * `toggleScreenList` (0xbdc67) et `toggleUserList` (0xbdb4d).
+   *
+   * Le premier fait DEUX choses : il pose (ou retire) la pile des bouilles, et
+   * il change le minimum de la colonne d'icônes — `lefIconListHMaxLarge` quand
+   * la pile est là (30 : les gélules se couchent en rangée pour lui laisser la
+   * hauteur), `lefIconListHMaxThin` sinon (56 : elles se remettent debout).
+   * Les deux finissent par `frameSet.update()`, qui RELÈVE le minimum de la
+   * fenêtre — d'où `appliquerMinimum`, comme au salon.
+   */
+  function basculerPanneauGaspard(quoi) {
+    var p = panneauGaspard();
+    var ouvert = p.classList.toggle(quoi === 'ecrans' ? 'gs-a-ecrans' : 'gs-a-users');
+    var b = p.querySelector('.gs-but-' + quoi);
+    if (b) b.classList.toggle('on', ouvert);
+    if (quoi === 'ecrans') p.querySelector('.gs-icones').classList.toggle('en-rangee', ouvert);
+    var f = fenetres['gaspard-panel'];
+    if (f) appliquerMinimum(f);
+    if (quoi === 'ecrans') majEcransGaspard();
+    else majPresentsGaspard();
+  }
+
+  /*
+   * LE MINIMUM DE LA FENÊTRE, par le même chemin que celui du salon —
+   * `Frame.updateMinInt` remonte l'arbre que `win.Help` a bâti :
+   *
+   *   margin.left   colonne d'icônes   min {w: 32}, hauteur 56 debout / 30 couchée
+   *                 cpScreenList       min {w: 100, h: 200}, marge 12
+   *   main (« w »)  showFrame          min {w: 200, h: 200}
+   *                 inputField         14 de haut, marge 6
+   *   margin.right  cpUserList         min {w: 122, h: 100}, marge 12
+   *
+   * Les 8 px de chrome en largeur et les 28 en hauteur sont ceux relevés au
+   * pixel sur la fenêtre de salon (12 de cadre, 16 de bandeau) : c'est la même
+   * écorce. Nue, la fenêtre s'ouvre donc à 240 × 248.
+   */
+  function minGaspard() {
+    var p = gsPanneau;
+    var ecrans = !!(p && p.classList.contains('gs-a-ecrans'));
+    var users = !!(p && p.classList.contains('gs-a-users'));
+    var gauche = { w: ecrans ? 112 : 32, h: ecrans ? 30 + 200 + 12 : 4 + GS_ICONE * 2 };
+    var milieu = { w: 200, h: 200 + 6 + 14 };
+    var droite = { w: users ? 134 : 0, h: users ? 100 : 0 };
+    return {
+      w: Math.max(202, 8 + gauche.w + milieu.w + droite.w),
+      h: 28 + Math.max(milieu.h, gauche.h, droite.h),
+    };
+  }
+
+  /*
+   * LES PRÉSENTS — `nbUser = 2`, et `box.Help.init` (0x7fdf6) dit lesquels :
+   *
+   *     if (me.logged) userList.addUser(me.name);
+   *     userList.addUser(Lang.fv("help.name"));
+   *
+   * soit le joueur puis Gaspard, dans cet ordre. La bande est le `userSlot`
+   * (#261) du salon, et l'alternance des fonds suit la même règle : une ligne
+   * sur deux seulement porte le dessin.
+   */
+  function gensDeGaspard() {
+    var moi = (window.state && window.state.user) || '';
+    var gens = [];
+    if (moi) gens.push(moi);
+    gens.push(GS_MOTS.nom);
+    return gens;
+  }
+  function majPresentsGaspard() {
+    var p = gsPanneau;
+    if (!p || !p.classList.contains('gs-a-users')) return;
+    var liste = p.querySelector('.gs-ul-defile');
+    if (!liste) return;
+    liste.textContent = '';
+    gensDeGaspard().forEach(function (nom) {
+      var d = document.createElement('div');
+      d.className = 'u';
+      var s = document.createElement('span');
+      s.textContent = nom;
+      d.appendChild(s);
+      liste.appendChild(d);
+    });
+  }
+  // LA BOUILLE DE QUELQU'UN, dans l'ordre où le light la connaît : celle du
+  // carnet de session d'abord (un accessoire posé en cours de route y arrive
+  // par la trace `<z>`), et pour SOI celle que la tuile d'accueil montre déjà
+  // — c'est la même règle que `refreshHomeAvatar`. À défaut, le sac à patates.
+  function bouilleDeGaspard(pseudo) {
+    var cle = String(pseudo).toLowerCase();
+    var carnet = (window.state && window.state.bouilleByUser) || {};
+    if (carnet[cle]) return carnet[cle];
+    var moi = String((window.state && window.state.user) || '').toLowerCase();
+    if (cle === moi) {
+      var c = document.querySelector('#home-avatar canvas.fp-bvig');
+      var s = c && c.getAttribute('data-s');
+      if (s) return s;
+    }
+    return '000000010000000000000000';
+  }
+
+  // LES BOUILLES — `cp.ScreenList` empile un écran carré par personne, au pas
+  // de `size + 2`. À deux, elles tiennent toujours : le mode CLB (l'aquarium)
+  // ne se déclenche jamais ici.
+  function majEcransGaspard() {
+    var p = gsPanneau;
+    if (!p || !p.classList.contains('gs-a-ecrans')) return;
+    var col = p.querySelector('.gs-ecrans');
+    if (!col) return;
+    var vus = {};
+    gensDeGaspard().forEach(function (nom) {
+      var cle = String(nom).toLowerCase();
+      vus[cle] = true;
+      var ecran = col.querySelector('.bo-ecran[data-qui="' + cleCss(cle) + '"]');
+      if (!ecran) {
+        ecran = document.createElement('div');
+        ecran.className = 'bo-ecran';
+        ecran.setAttribute('data-qui', cle);
+        col.appendChild(ecran);
+      }
+      poserBouille(ecran, bouilleDeGaspard(nom), nom, 0);
+    });
+    Array.prototype.slice.call(col.querySelectorAll('.bo-ecran')).forEach(function (e) {
+      if (!vus[e.getAttribute('data-qui')]) e.remove();
+    });
   }
 
   // `analyseInput` (0x806f3), au mot près : rien à envoyer si la saisie est
@@ -5356,10 +5618,12 @@ window.BureauFrutiz = (function () {
     return true;
   }
 
-  // `getContent(id)` : la page courante entre dans la pile avant qu'on parte.
+  // `getContent(id)` (0x7ff27) : sans argument c'est l'INDEX (`id = 1`), et la
+  // page courante entre dans la pile avant qu'on parte.
   function contenuGaspard(id) {
+    if (id === undefined) id = 1;
     if (gsEtat.courant) gsEtat.precedents.push(gsEtat.courant);
-    chargerGaspard({ i: id === undefined ? 1 : id });
+    chargerGaspard({ i: id });
   }
   // `getPrevious()` : on ne dépile que s'il y a de quoi.
   function pagePrecedenteGaspard() {
@@ -5375,18 +5639,21 @@ window.BureauFrutiz = (function () {
     return base + (q.length ? '?' + q.join('&') : '');
   }
 
-  // `loadContent(o)` : la fenêtre affiche l'attente, puis `HTTP("fh/get", o)`.
+  // `loadContent(o)` (0x8032b) : la fenêtre affiche l'attente, puis
+  // `HTTP("fh/get", o)`. Le TITRE ne bouge pas ici — c'est `onGetContent` qui
+  // le pose, une fois la page arrivée.
   function chargerGaspard(o) {
     gsEtat.courant = o;
     gsEtat.charge = true;
     attendreGaspard();
     lireXmlGaspard(urlGaspard('/fh/get', o), function (doc) {
       gsEtat.charge = false;
-      if (!doc) return erreurGaspard('Gaspard ne répond pas.');
+      if (!doc) return erreurGaspard(GS_MOTS.injoignable);
       var h = doc.documentElement;
       // `onGetContent` : la racine doit s'appeler `h` et n'avoir aucun `k`.
       if (!h || h.nodeName !== 'h' || h.getAttribute('k') !== null) {
-        return erreurGaspard('Erreur ' + (h && h.getAttribute('k') || '1') + '.');
+        var k = (h && h.getAttribute('k')) || 1;
+        return erreurGaspard(GS_ERREURS[k] || GS_ERREURS[1]);
       }
       var groupes = {};                 // t → [ {i, n}, … ], dans l'ordre du XML
       var ordre = [];
@@ -5417,13 +5684,15 @@ window.BureauFrutiz = (function () {
     });
   }
 
-  // `search(s)` : même attente, `HTTP("fh/search", {s: s})`.
+  // `search(s)` (0x800b3) : même attente, `HTTP("fh/search", {s: s})`. Le titre
+  // devient « Gaspard - Recherche » DÈS LE RETOUR, avant même le dépouillement.
   function chercherGaspard(s) {
     gsEtat.charge = true;
     attendreGaspard();
     lireXmlGaspard(urlGaspard('/fh/search', { s: s }), function (doc) {
       gsEtat.charge = false;
-      if (!doc) return erreurGaspard('Gaspard ne répond pas.');
+      if (!doc) return erreurGaspard(GS_MOTS.injoignable);
+      titrerGaspard(GS_MOTS.recherche);
       var r = doc.documentElement;
       var n = Number(r && r.getAttribute('n'));
       // `onSearch` : moins d'un résultat, on le dit ; un seul, on l'ouvre.
@@ -5457,9 +5726,10 @@ window.BureauFrutiz = (function () {
   }
 
   // ── Ce que la fenêtre montre ──────────────────────────────────────────
-  // `displayContent` empile des LIGNES DE TEXTE : le titre, le corps (en
-  // HTML), puis un intertitre par groupe de liens et un lien par rubrique, et
-  // le retour tout en bas s'il y a de quoi revenir.
+  // `displayContent` (0xbdef4) empile des LIGNES DE TEXTE dans le document, et
+  // chacune porte son style : le titre en `sid: 4` (rose, 15 gras), le corps
+  // et les liens sans `sid` (vert, 10), les intertitres et le retour en
+  // `sid: 2` (vert foncé, 12 gras).
   function pageGaspard() {
     var p = panneauGaspard();
     var page = p.querySelector('.gs-page');
@@ -5477,19 +5747,26 @@ window.BureauFrutiz = (function () {
     return String(s === undefined || s === null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
+  // `help.link` : <a href="asfunction:win.box.getContent,$i">$n</a>
   function lienGaspard(l) {
     return '<a href="#" data-gs="' + l.i + '">' + echapperGaspard(l.n) + '</a>';
   }
-  // `help.link_type.<t>` : les deux groupes que le serveur envoie.
-  var GS_GROUPES = { cat_ls: 'Voir aussi', cat_tree: 'Les rubriques' };
+  // `help.link_back` : DEUX liens séparés d'un tiret — `getPrevious` et
+  // `getContent` sans argument, qui ramène à l'index.
+  var GS_RETOUR = '<a href="#" data-gs="precedent">Précédent</a> - '
+    + '<a href="#" data-gs="index">Index de l’aide</a>';
 
+  // `displayWait` (0xbe2a8) : une seule ligne, en `sid: 2`. Le bandeau garde
+  // le nom de la page qu'on quitte — le SWF ne le retitre pas ici.
   function attendreGaspard() {
-    ligneGaspard(pageGaspard(), 'gs-attente', 'chargement...');
-    titrerGaspard('chargement...');
+    ligneGaspard(pageGaspard(), 'gs-groupe', echapperGaspard(GS_MOTS.attente));
   }
+  // `openErrorAlert` : une ALERTE, pas une ligne dans la page. La page reste
+  // sur ce qu'elle montrait — d'époque `displayWait` l'a déjà vidée, on fait
+  // pareil, l'alerte se pose par-dessus.
   function erreurGaspard(txt) {
-    ligneGaspard(pageGaspard(), 'gs-erreur', echapperGaspard(txt));
-    titrerGaspard('Gaspard');
+    ligneGaspard(pageGaspard(), 'gs-groupe', echapperGaspard(GS_MOTS.attente));
+    alerte('', txt);
   }
   function afficherGaspard(o) {
     var page = pageGaspard();
@@ -5499,34 +5776,32 @@ window.BureauFrutiz = (function () {
       var t = o.ordre[i];
       var g = o.groupes[t];
       if (!g || !g.length) continue;    // `if (arr.length == 0) continue`
-      ligneGaspard(page, 'gs-groupe', echapperGaspard(GS_GROUPES[t] || t));
+      ligneGaspard(page, 'gs-groupe', echapperGaspard(GS_MOTS.groupes[t] || t));
       for (var j = 0; j < g.length; j++) ligneGaspard(page, 'gs-lien', lienGaspard(g[j]));
     }
-    if (o.retour) ligneGaspard(page, 'gs-retour', '<a href="#" data-gs="retour">retour</a>');
+    if (o.retour) ligneGaspard(page, 'gs-retour', GS_RETOUR);
     page.scrollTop = 0;
     titrerGaspard(o.titre);
   }
+  // `displayResult({nb, method, list})` (0xbe3c0) : l'intertitre porte le
+  // COMPTE, et la méthode dit s'il est exact — `m == "e"`, la lettre seule.
   function resultatsGaspard(nb, exact, liste) {
     var page = pageGaspard();
-    ligneGaspard(page, 'gs-titre',
-      nb + (exact ? ' réponse' : ' réponse approchante') + (nb > 1 ? 's' : ''));
+    ligneGaspard(page, 'gs-groupe',
+      echapperGaspard(GS_MOTS.resultats[exact ? 'e' : 's'].replace('$n', nb)));
     for (var i = 0; i < liste.length; i++) ligneGaspard(page, 'gs-lien', lienGaspard(liste[i]));
-    if (gsEtat.precedents.length) {
-      ligneGaspard(page, 'gs-retour', '<a href="#" data-gs="retour">retour</a>');
-    }
+    ligneGaspard(page, 'gs-retour', GS_RETOUR);
     page.scrollTop = 0;
-    titrerGaspard('recherche');
   }
+  // `displayNoResult` (0xbe6b0) : l'excuse, le conseil, puis le retour.
   function sansResultatGaspard() {
     var page = pageGaspard();
-    ligneGaspard(page, 'gs-corps', 'Gaspard ne trouve rien à ce sujet.');
-    ligneGaspard(page, 'gs-corps', 'Pose-lui la question autrement, ou écris-lui.');
-    if (gsEtat.precedents.length) {
-      ligneGaspard(page, 'gs-retour', '<a href="#" data-gs="retour">retour</a>');
-    }
-    titrerGaspard('recherche');
+    ligneGaspard(page, 'gs-groupe', echapperGaspard(GS_MOTS.rien));
+    ligneGaspard(page, 'gs-corps', GS_MOTS.conseil);
+    ligneGaspard(page, 'gs-retour', GS_RETOUR);
+    page.scrollTop = 0;
   }
-  // `setTitle(Lang.fv("help.title", {t: …}))` : le titre porte la page lue.
+  // `setTitle(Lang.fv("help.title", {t: …}))` : « Gaspard - $t ».
   function titrerGaspard(t) {
     var f = fenetres['gaspard-panel'];
     if (f) f.txt.textContent = 'Gaspard - ' + t;
@@ -5591,11 +5866,28 @@ window.BureauFrutiz = (function () {
   // `select(0)` → `uniqWinMng.open("help")`. La fenêtre s'ouvre sur la page
   // d'accueil, `loadContent({i: 1})`, à la PREMIÈRE ouverture seulement : la
   // rouvrir la rappelle telle qu'on l'a laissée (`Box.init` prend sa branche
-  // `else`, elle ne se recharge pas).
+  // `else`, elle ne se recharge pas). `box.Help.init` charge SANS empiler —
+  // `loadContent` directement, pas `getContent` : l'index n'est pas un
+  // « précédent » de lui-même.
   function ouvrirGaspard() {
     var neuve = !fenetres['gaspard-panel'];
+    // Fermer, c'est `uniqWinMng.unsetBox("help")` : la boîte s'en va tout
+    // entière. Rouvrir en construit une NEUVE — `previousArr = []`,
+    // `lastSearchTimer = 0`, `flUserList` et `flScreenList` à faux. Le portage
+    // garde le même nœud de panneau ; on lui rend donc son état de naissance.
+    if (neuve && gsPanneau) {
+      gsEtat.precedents = [];
+      gsEtat.courant = null;
+      gsEtat.derniere = 0;
+      ['gs-a-ecrans', 'gs-a-users'].forEach(function (c) { gsPanneau.classList.remove(c); });
+      gsPanneau.querySelector('.gs-icones').classList.remove('en-rangee');
+      Array.prototype.slice.call(gsPanneau.querySelectorAll('.icon-btn'))
+        .forEach(function (b) { b.classList.remove('on'); });
+    }
     ouvrirFenetre('gaspard');
-    if (neuve) contenuGaspard(1);
+    if (!neuve) return;
+    titrerGaspard(GS_MOTS.attente);     // le titre du constructeur (0x7fcfa)
+    chargerGaspard({ i: 1 });
   }
 
   function ouvrirFenetre(tab) {
