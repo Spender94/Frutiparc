@@ -82,14 +82,16 @@ test('moveToCenter SOUSTRAIT le coin, il ne l’ajoute pas', () => {
   assert.doesNotMatch(JS, /CORNER_Y \+ \(window\.innerHeight - CORNER_Y - rub\.h\) \/ 2/);
 });
 
-test('les explorateurs sont les seuls à s’ouvrir au milieu', () => {
+test('les explorateurs et la boîte d’alerte sont les seuls à se centrer', () => {
   // `win.Explorer` : pos {50,50,400,400} puis moveToCenter — 402 × 402 contour
   // compris. La boîte de réception, les deux dossiers du bureau et un dossier
-  // posé sur le fond sont tous des `win.Explorer`.
+  // posé sur le fond sont tous des `win.Explorer`. La boutique se centre aussi
+  // (`win.Shop`), et `win.Alert` (sprite#812) finit son `init` par
+  // `moveToCenter()` comme les autres boîtes de dialogue.
   const centres = JS.match(/centre: true/g) || [];
-  assert.strictEqual(centres.length, 5, 'cinq fenêtres seulement se centrent');
+  assert.strictEqual(centres.length, 6, 'six fenêtres seulement se centrent');
   for (const m of JS.matchAll(/l: (\d+), h: (\d+)[^\n]*centre: true/g)) {
-    assert.ok(['402', '476'].includes(m[1]), 'gabarit inattendu : ' + m[0]);
+    assert.ok(['402', '476', '260'].includes(m[1]), 'gabarit inattendu : ' + m[0]);
   }
 });
 

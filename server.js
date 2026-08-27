@@ -21148,6 +21148,7 @@ function runChannelCleanup(username) {
     if (channels[g].users && channels[g].users.has(username)) {
       channels[g].users.delete(username);
       broadcastToChannel(g, `<${CMD.userleaved} g="${g}" u="${escapeXml(getDisplayName(username))}" />`);
+      if (estSalonJoueur(g)) purgerSalonJoueur(g);
     }
   }
 }
@@ -23223,17 +23224,74 @@ function setUserExternalStatus(username, externalIdx) {
   notifyTraceSubscribers(username);
 }
 
-function buildChannelListXml() {
+// ── LES SALONS CRÉÉS PAR LES JOUEURS ───────────────────────────────────────
+//
+// `box.RoomList.createChannel(n)` (main.swf, 0xa65a5) tient en cinq lignes :
+//
+//     if (n === undefined || n.length === 0) {
+//       openErrorAlert(Lang.fv("error.chat.topic_required"));  // « Vous devez
+//       return;                                    spécifier un sujet… »
+//     }
+//     channelMng.create(n);
+//     this.close();                                // la fenêtre se referme
+//
+// Le salon porte donc le SUJET qu'on lui donne — pas un identifiant. On en
+// dérive une clé stable, préfixée pour ne jamais entrer en collision avec les
+// onze salons fixes ni avec les discussions privées (`pm_` / `pm2_`).
+//
+// CE QU'IL A DE PRIVÉ : il n'apparaît QUE dans la liste de ceux qui y sont.
+// Un salon vide n'existe donc plus pour personne, et on le retire — c'est ce
+// qui fait la différence entre un salon de joueur et les onze permanents.
+// Pour y entrer, il faut son sujet : le redonner à `createChannel` REJOINT le
+// salon existant au lieu d'en créer un second. C'est l'invitation, et c'est
+// aussi ce que fait `channelMng.create` d'époque quand le nom est déjà pris.
+const SALON_JOUEUR = 'sal_';
+
+function estSalonJoueur(nom) { return String(nom || '').indexOf(SALON_JOUEUR) === 0; }
+
+/** Le sujet d'un salon → sa clé. Accents rabattus, tout le reste en tirets. */
+function cleSalonJoueur(sujet) {
+  const nu = String(sujet || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const s = nu.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
+  return s ? SALON_JOUEUR + s : '';
+}
+
+/** Retire un salon de joueur qu'il ne reste personne pour voir. */
+function purgerSalonJoueur(nom) {
+  const ch = channels[nom];
+  if (!ch || !estSalonJoueur(nom)) return;
+  const vivants = [...ch.users].filter(u => !NPC_USERNAMES.has(u));
+  if (vivants.length === 0) delete channels[nom];
+}
+
+/*
+ * La liste des salons, TELLE QUE LA VOIT `username`.
+ *
+ * Les onze permanents pour tout le monde ; un salon de joueur seulement pour
+ * ceux qui y sont. Le paramètre est donc obligatoire en pratique : appelée
+ * sans lui, la fonction ne rend que les salons publics — ce qui est le bon
+ * défaut pour un appelant qui ne sait pas à qui il parle.
+ */
+function buildChannelListXml(username) {
   let inner = '';
   for (const [name, ch] of Object.entries(channels)) {
     // Hide private message channels AND private (password-protected) salons
     // from the public room list. A non-empty password is what makes a
     // user-created salon "private", so gate on both the flag and the pass.
     if (ch.private || (ch.pass && String(ch.pass).length > 0)) continue;
+    if (estSalonJoueur(name) && !(username && ch.users.has(username))) continue;
     const desc = ch.desc || `Salon ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
-    inner += `<g g="${name}" n="${ch.users.size}"><desc>${escapeXml(desc)}</desc></g>`;
+    inner += `<g g="${name}" n="${ch.users.size}"${estSalonJoueur(name) ? ' pv="1"' : ''}`
+      + `><desc>${escapeXml(desc)}</desc></g>`;
   }
   return `<${CMD.channellist}>${inner}</${CMD.channellist}>`;
+}
+
+/** Renvoie à chaque socket SA liste — elles ne sont plus toutes la même. */
+function pousserListeSalons() {
+  for (const [sock, cl] of xmlSocketClients) {
+    sendToClient(sock, buildChannelListXml(cl && cl.username));
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -23608,11 +23666,51 @@ async function handleCBeeMessage(socket, rawXml) {
         sendToClient(socket, `<${CMD.channellist} k="0"><rk${subAttrs}/></${CMD.channellist}>`);
         break;
       }
-      sendToClient(socket, buildChannelListXml());
+      sendToClient(socket, buildChannelListXml(client.username));
       break;
     }
 
     // ── join / FrutiScore startGame ──
+/*
+ * `createChannel` — créer un salon, ou rejoindre celui qui porte déjà ce sujet.
+ *
+ * La réponse reprend la forme d'époque : `<createChannel r="…" g="…" />` en cas
+ * de succès, `<createChannel r="…" k="1" e="…" />` en cas de refus (`onError`
+ * lit `k`, `box.RoomList` affiche `error.chat.create_channel` suivi du motif).
+ * Le client REJOINT ensuite lui-même, comme le fait `channelMng.create` d'époque
+ * en passant par `onCreateChannel` puis `join`.
+ */
+case 'createChannel': {
+  const r = String(msg.attrs.r || '');
+  const rep = (attrs) => sendToClient(socket, `<createChannel r="${escapeXml(r)}" ${attrs} />`);
+  if (!client.username) { rep('k="1" e="Connectez-vous d’abord."'); break; }
+  const sujet = String(msg.attrs.n || '').trim().slice(0, 60);
+  // `error.chat.topic_required` : le SWF barre déjà le coup côté client, on ne
+  // lui fait pas confiance pour autant.
+  if (!sujet) { rep('k="1" e="Vous devez spécifier un sujet pour créer un salon."'); break; }
+  const cle = cleSalonJoueur(sujet);
+  if (!cle) { rep('k="1" e="Ce sujet ne contient aucune lettre."'); break; }
+  // Un compte banni des salons publics l'est aussi de ceux qu'on improvise.
+  const ban = getBanInfoForUser(client.username);
+  if (ban.banned) { rep('k="1" e="Votre compte est banni des salons."'); break; }
+  if (channels[cle]) {
+    // Le sujet est déjà pris : on ne crée pas un doublon, on y entre. C'est
+    // l'invitation — il suffit de connaître le sujet. Le `d` rend le sujet
+    // CANONIQUE (celui du créateur), pas la casse que le second a tapée.
+    rep(`g="${escapeXml(cle)}" d="${escapeXml(channels[cle].desc || sujet)}"`);
+    break;
+  }
+  const ouverts = Object.keys(channels).filter(estSalonJoueur).length;
+  if (ouverts >= 200) { rep('k="1" e="Trop de salons ouverts, réessayez plus tard."'); break; }
+  channels[cle] = {
+    desc: sujet, topic: sujet, users: new Set(),
+    salonJoueur: true, owner: client.username, cree: Date.now(),
+  };
+  console.log(`[CHAT] salon de joueur « ${sujet} » (${cle}) créé par ${client.username}`);
+  rep(`g="${escapeXml(cle)}" d="${escapeXml(sujet)}"`);
+  break;
+}
+
 case 'join': {
   // FrutiScore overlap: startGame uses wire code "o" with disc attrs.
   if (msg.attrs.d != undefined) {
@@ -23654,6 +23752,15 @@ case 'join': {
         private: true,
         pass: msg.attrs.p || '',
       };
+    } else if (estSalonJoueur(g)) {
+      // Le dernier occupant est parti pendant qu'on cliquait : on rouvre le
+      // salon plutôt que d'envoyer un « Salon Sal_xyz » dans la figure. Le
+      // sujet se relit dans la clé, tirets rendus aux espaces.
+      const sujet = g.slice(SALON_JOUEUR.length).replace(/-+/g, ' ').trim();
+      channels[g] = {
+        desc: sujet || 'Salon', topic: sujet || 'Salon', users: new Set(),
+        salonJoueur: true, owner: client.username, cree: Date.now(),
+      };
     } else {
     channels[g] = {
       desc: `Salon ${g.charAt(0).toUpperCase()}${g.slice(1)}`,
@@ -23682,6 +23789,9 @@ case 'join': {
   }
   channel.users.add(client.username);
   client.channels.add(g);
+  // Un salon de joueur vient d'apparaître pour ce client (et son affluence a
+  // changé pour les autres membres) : leurs listes ne sont plus les mêmes.
+  if (estSalonJoueur(g)) pousserListeSalons();
 
   const userArr = Array.from(channel.users);
   let userXml = '';
@@ -23805,6 +23915,9 @@ case 'join': {
           `<${CMD.userleaved} u="${escapeXml(getDisplayName(client.username))}" g="${g}" />`
         );
         notifyTraceSubscribers(client.username);
+        // Un salon de joueur que plus personne ne regarde n'existe plus, et la
+        // liste de tout le monde change avec lui.
+        if (estSalonJoueur(g)) { purgerSalonJoueur(g); pousserListeSalons(); }
       }
       break;
     }
@@ -24384,8 +24497,7 @@ case 'send': {
         // Le nom affiché tient dans cent caractères (la borne de l'admin).
         channel.desc = newTopic.slice(0, 100);
         broadcastToChannel(g, `<${CMD.topic} g="${escapeXml(g)}">${escapeXml(newTopic)}</${CMD.topic}>`);
-        const listeXml = buildChannelListXml();
-        for (const [sock] of xmlSocketClients) sendToClient(sock, listeXml);
+        pousserListeSalons();
         if (process.env.DATABASE_URL) {
           db.upsertChannel(g, channel.desc, newTopic)
             .catch(e => console.error('[DB] topic save error:', e.message));

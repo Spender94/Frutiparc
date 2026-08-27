@@ -2553,6 +2553,11 @@
     // des salons publics, on ne les QUITTE jamais : rester abonné est ce qui
     // permet de recevoir la suite de la conversation pendant qu'on lit ailleurs.
     prives: {},        // id de salon -> { avec: "Pseudo", pass: "", nonLus: 0 }
+    // ── Salons créés par les joueurs (`createChannel`, cf. server.js) ──
+    // Ils n'existent, dans la liste, QUE pour ceux qui y sont : le serveur les
+    // retire du `<q>` des autres. On les garde ici, appris du `<q>`, pour les
+    // ranger après les onze permanents.
+    salonsJoueurs: {}, // id "sal_…" -> { nom, nbUser }
   };
 
   var DEFAULT_BOUILLE = "000000010000000000000000";
@@ -2834,9 +2839,42 @@
     // PAS — le bureau d'époque ne les liste pas dans cette fenêtre-là.
     window.SalonsBureau = {
       liste: function () {
-        return ROOMS.map(function (r) {
+        var l = ROOMS.map(function (r) {
           return { id: r[0], nom: roomLabel(r[0]), nbUser: state.roomCounts[r[0]] || 0 };
         });
+        // Puis LES SALONS DE JOUEURS où l'on est. Le serveur ne les met dans
+        // notre `<q>` que si l'on en fait partie : ils n'apparaissent donc
+        // jamais dans la fenêtre de quelqu'un d'autre.
+        Object.keys(state.salonsJoueurs).sort().forEach(function (id) {
+          l.push({ id: id, nom: roomLabel(id), nbUser: state.roomCounts[id] || 0, joueur: true });
+        });
+        return l;
+      },
+      /*
+       * `box.RoomList.createChannel(n)` (0xa65a5) : le sujet vide est refusé,
+       * sinon `channelMng.create(n)` puis `this.close()` — la fenêtre des
+       * salons se referme derrière soi.
+       *
+       * Redonner un sujet DÉJÀ pris rejoint le salon au lieu d'en ouvrir un
+       * second : c'est comme cela qu'on invite quelqu'un, en lui donnant le
+       * sujet. Rend une promesse — le bureau attend la réponse pour ouvrir la
+       * fenêtre du salon, ou pour dire pourquoi il ne le fait pas.
+       */
+      creer: function (sujet) {
+        var n = String(sujet || "").trim();
+        if (!n) {
+          return Promise.reject(new Error("Vous devez spécifier un sujet pour créer un salon."));
+        }
+        var r = "cc" + (++creerSalonSeq);
+        return new Promise(function (ok, ko) {
+          creerSalonEnCours[r] = { ok: ok, ko: ko };
+          setTimeout(function () {
+            if (!creerSalonEnCours[r]) return;
+            delete creerSalonEnCours[r];
+            ko(new Error("Le serveur n'a pas répondu."));
+          }, 8000);
+          wsSend('<createChannel r="' + r + '" n="' + xmlEscape(n) + '" />');
+        }).then(function (id) { ouvrirSalon(id); return id; });
       },
       courant: function () { return state.room; },
       // « Rejoindre » depuis la fenêtre « Salons publics » : le salon prend SA
@@ -4994,6 +5032,10 @@
   // Ask the server for the public room list (participant counts). Cheap; we
   // poll it so the "(n)" stays roughly live without per-event chatter.
   function requestChannelList() { wsSend("<q />"); }
+  // Les demandes de création en vol, par identifiant : le serveur répond
+  // `<createChannel r="…" g="…" />` ou `<createChannel r="…" k="1" e="…" />`.
+  var creerSalonEnCours = {};
+  var creerSalonSeq = 0;
   var channelListTimer = null;
   function startChannelListPolling() {
     if (channelListTimer) return;
@@ -5058,12 +5100,35 @@
         rafraichirCompteursJournaux();
         break;
 
-      case "o": // join confirmed: <o g="room" p="">...</o>
-        // nothing extra; userlist follows
+      case "o": { // join confirmed: <o g="room" p=""><desc>…</desc></o>
+        // Le `<desc>` du join porte le nom du salon : on le retient, c'est ce
+        // qui titre la fenêtre et ce qui nomme le salon dans la phrase
+        // d'entrée. (Le `<q>` le redira, mais plus tard.)
+        var og = attr(xml, "g");
+        var od = xml.match(/<desc>([\s\S]*?)<\/desc>/);
+        if (og && od) state.roomLabels[og] = xmlUnescape(od[1]);
+        // userlist follows
         break;
+      }
+
+      case "createChannel": {
+        var rid = attr(xml, "r");
+        var att = creerSalonEnCours[rid];
+        if (!att) break;
+        delete creerSalonEnCours[rid];
+        if (attr(xml, "k") === "1") att.ko(new Error(attr(xml, "e") || "Impossible de créer ce salon."));
+        else {
+          // Le sujet CANONIQUE, avant même le prochain `<q>` : sans lui, la
+          // phrase d'entrée sortirait avec la clé brute (« sal_le-coin-… »).
+          var lab = attr(xml, "d");
+          if (lab) state.roomLabels[attr(xml, "g")] = xmlUnescape(lab);
+          att.ok(attr(xml, "g"));
+        }
+        break;
+      }
 
       case "q": { // channellist: <q><g g="pomme" n="3"><desc>Salon Anim's</desc></g>…</q>
-        var gre = /<g\b([^>]*)>([\s\S]*?)<\/g>/g, gm, changed = false;
+        var gre = /<g\b([^>]*)>([\s\S]*?)<\/g>/g, gm, changed = false, vus = {};
         while ((gm = gre.exec(xml)) !== null) {
           var gattr = "<g " + gm[1] + ">";
           var gid = attr(gattr, "g");
@@ -5074,10 +5139,23 @@
             // selector shows "Salon Anim's", not the id/built-in label.
             var dm = gm[2].match(/<desc>([\s\S]*?)<\/desc>/);
             if (dm) state.roomLabels[gid] = xmlUnescape(dm[1]);
+            // `pv="1"` : un salon de joueur. Le serveur ne l'envoie qu'à ceux
+            // qui y sont — sa seule présence ici veut dire qu'on en fait partie.
+            if (attr(gattr, "pv") === "1") vus[gid] = true;
             changed = true;
           }
         }
-        if (changed) renderRoomOptions();
+        if (changed) {
+          // Ce qui a disparu du `<q>` a disparu pour de bon : le dernier
+          // occupant est parti, le salon n'existe plus.
+          Object.keys(state.salonsJoueurs).forEach(function (id) {
+            if (!vus[id]) delete state.salonsJoueurs[id];
+          });
+          Object.keys(vus).forEach(function (id) {
+            state.salonsJoueurs[id] = { nom: roomLabel(id), nbUser: state.roomCounts[id] || 0 };
+          });
+          renderRoomOptions();
+        }
         break;
       }
 

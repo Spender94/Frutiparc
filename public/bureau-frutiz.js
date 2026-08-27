@@ -513,6 +513,61 @@ window.BureauFrutiz = (function () {
     return jeu === 'forum' ? 'lit le forum' : 'joue à ' + n;
   }
 
+  /*
+   * `win.Alert` (DoInitAction sprite#812) — LA BOÎTE D'ALERTE DU BUREAU.
+   *
+   * Deux cadres et rien d'autre, écrits dans son `initFrameSet` :
+   *
+   *     frameDoc     cpDocument frSystem   min { w: 200, h: 80 }
+   *     frameButton  cpDocument frSystem   min { w: 200, h: 24 }
+   *
+   * `init` finit par `moveToCenter()` : elle s'ouvre au milieu, comme
+   * l'explorateur. Le bouton dit « Fermer » — `_global.langText.close`.
+   *
+   * C'est ce que `openErrorAlert` ouvre, et c'est par là que passe le refus de
+   * `createChannel` : « Impossible de créer ce salon : » suivi du motif.
+   */
+  var alerteSeq = 0;
+  function alerte(titre, texte) {
+    var phrase = String(titre || '') + String(texte || '');
+    if (!actif) { window.alert(phrase); return null; }
+    var id = 'fb-alerte-' + (++alerteSeq);
+    var p = document.createElement('div');
+    p.id = id;
+    p.className = 'fb-alerte-panneau';
+    var doc = document.createElement('div');
+    doc.className = 'fb-alerte-doc';
+    doc.textContent = phrase;
+    var pied = document.createElement('div');
+    pied.className = 'fb-alerte-pied';
+    var ok = document.createElement('button');
+    ok.type = 'button';
+    ok.className = 'fb-alerte-ok';
+    ok.textContent = 'Fermer';
+    pied.appendChild(ok);
+    p.appendChild(doc);
+    p.appendChild(pied);
+    $('#app').appendChild(p);
+    RUBRIQUES[id] = {
+      panneau: '#' + id, titre: 'Frutiparc', fruit: 'winAlert',
+      l: 260, h: 130, min: minFenetre(200, 80 + 24), centre: true, fixe: true,
+    };
+    var partir = function () {
+      fermerFenetre(id);
+      delete RUBRIQUES[id];
+      p.remove();
+    };
+    ok.addEventListener('click', partir);
+    ouvrirFenetre(id);
+    var f = fenetres[id];
+    if (f && f.fen) {
+      var croix = f.fen.querySelector('.fen-btn.fermer');
+      if (croix) croix.addEventListener('click', function () { delete RUBRIQUES[id]; p.remove(); });
+    }
+    ok.focus();
+    return id;
+  }
+
   // ── « Salons publics » (`win.RoomList` 0xbebb6, `cp.RoomList` 0x70733) ──
   //
   // Sur mobile, choisir son salon c'est dérouler un `<select>`. Sur le bureau
@@ -551,16 +606,53 @@ window.BureauFrutiz = (function () {
     creer.type = 'button';
     creer.className = 'sp-creer';
     creer.textContent = 'créer un salon';
-    // Le serveur du revival n'a pas de `createChannel` : les onze salons sont
-    // fixes. Le bouton est là parce qu'il fait partie de la fenêtre, mais il
-    // n'a rien à appeler — mieux vaut le dire que faire semblant.
-    creer.disabled = true;
-    creer.title = 'La création de salons n’est pas ouverte sur le revival';
     var nom = document.createElement('input');
     nom.type = 'text';
     nom.className = 'sp-nom';
-    nom.disabled = true;
-    nom.setAttribute('aria-label', 'Nom du salon à créer');
+    nom.maxLength = 60;
+    nom.setAttribute('aria-label', 'Sujet du salon à créer');
+    /*
+     * `box.RoomList.createChannel(n)` (0xa65a5), au mot près :
+     *
+     *     if (n === undefined || n.length === 0) {
+     *       openErrorAlert(Lang.fv("error.chat.topic_required"));
+     *       return;
+     *     }
+     *     channelMng.create(n);
+     *     this.close();
+     *
+     * Le salon porte le SUJET qu'on lui donne, et il est PRIVÉ au sens du
+     * listing : il n'apparaît que dans la fenêtre de ceux qui y sont (c'est le
+     * serveur qui le retire du `<q>` des autres). Redonner un sujet déjà pris
+     * y entre au lieu d'ouvrir un doublon — c'est ainsi qu'on invite.
+     */
+    var lancerCreation = function () {
+      var S = window.SalonsBureau;
+      if (!S || !S.creer || creer.disabled) return;
+      var sujet = nom.value.trim();
+      if (!sujet) {
+        alerte('Impossible de créer ce salon : ',
+          'Vous devez spécifier un sujet pour créer un salon.');
+        nom.focus();
+        return;
+      }
+      creer.disabled = true;
+      S.creer(sujet).then(function () {
+        nom.value = '';
+        creer.disabled = false;
+        // `this.close()` : la fenêtre des salons se referme derrière soi, celle
+        // du salon vient de s'ouvrir. (La clé d'une fenêtre est celle de son
+        // PANNEAU, pas de sa rubrique — cf. `ouvrirFenetre`.)
+        fermerFenetre('salons-panel');
+      }, function (e) {
+        creer.disabled = false;
+        alerte('Impossible de créer ce salon : ', (e && e.message) || '');
+      });
+    };
+    creer.addEventListener('click', lancerCreation);
+    nom.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); lancerCreation(); }
+    });
     pied.appendChild(creer);
     pied.appendChild(nom);
     p.appendChild(liste);
