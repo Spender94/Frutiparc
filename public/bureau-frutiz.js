@@ -1842,22 +1842,38 @@ window.BureauFrutiz = (function () {
   }
 
   // LES DISQUES. `but.icon.Full` ne met pas d'étiquette : le disque se
-  // reconnaît à sa jaquette. Le clic, lui, lance le jeu — c'est ce que fait
-  // `_global.onFileClick` d'un disque une fois posé dans la Frusion.
-  // Le libellé d'un disque (`desc[1]`) est celui qui CHOISIT la jaquette dans
-  // fileIcon.swf — c'est aussi ce qui nous dit quel jeu lancer. Trois disques
-  // n'ont pas de portage light : Burning Kiwi, Kaluga et Motion-Ball ne se
-  // lisent que sur la version Flash. On les montre quand même — le bureau
-  // d'époque montre TOUS les disques du joueur — et on le dit à la main.
+  // reconnaît à sa jaquette. Le libellé d'un disque (`desc[1]`) est celui qui
+  // CHOISIT la jaquette dans fileIcon.swf — c'est aussi ce qui nous dit quel
+  // jeu lancer.
   var JEUX_LIGHT = {
     grapiz: 'grapiz', bandas: 'bandas', swapou2: 'swapou', miniwave: 'miniwave',
     miniwaved: 'miniwave', minipixiz: 'minipixiz', minipixizd: 'minipixiz',
     snake3: 'snake3', snake: 'snake3', minifever: 'minifever',
     jama: 'jamajama', jamajama: 'jamajama',
   };
+  /*
+   * LES TROIS QUI SONT ENCORE EN FLASH.
+   *
+   * Burning Kiwi, Kaluga et Motion-Ball 2 n'ont pas de portage JS : ils se
+   * lisent sous Ruffle, dans une fenêtre à part. Le bureau les MONTRAIT — le
+   * bureau d'époque montre tous les disques du joueur — mais les laissait
+   * INERTES : pas attrapables, donc impossibles à glisser dans la Frusion.
+   * Quatre pastilles sur quinze qui ne répondaient pas (Kaluga en a deux, le
+   * FD et son aperçu), alors que main.swf accepte n'importe quel disque dans
+   * sa console.
+   *
+   * Le catalogue vit dans `light.html` (`window.JeuxFlash`), avec les mêmes
+   * dimensions et le même rognage que le bureau donne à `game-popup.html` —
+   * un seul endroit pour les trois.
+   */
+  function jeuFlashDe(jeu) {
+    var P = window.JeuxFlash;
+    return P && P.parDisque ? P.parDisque(jeu) : null;
+  }
   function caseDisque(e) {
     var type = e.desc[0], jeu = e.desc[1] || '';
     var tab = JEUX_LIGHT[String(jeu).toLowerCase()];
+    var flash = tab ? null : jeuFlashDe(jeu);
     // D'époque, `_global.onFileClick` ne fait RIEN d'un disque — la branche
     // « disc » est commentée dans openFunctions.as. On joue en le GLISSANT
     // dans la Frusion, et le bandeau de la fenêtre le dit : « Pour jouer,
@@ -1866,10 +1882,12 @@ window.BureauFrutiz = (function () {
     var c = caseExplorateur({
       classe: 'ex-slot-disque',
       dessin: dessinDisque(type, jeu),
-      titre: tab ? 'Glissez-le dans la Frusion' : 'Ce disque ne se lit que sur la version Flash',
+      titre: flash ? 'Glissez-le dans la Frusion (il s’ouvre en fenêtre à part)'
+        : 'Glissez-le dans la Frusion',
     });
-    // Muet au clic ne veut pas dire INERTE : un disque jouable s'attrape.
-    if (tab) {
+    // Muet au clic ne veut pas dire INERTE : un disque s'attrape, qu'il soit
+    // porté en JS ou joué sous Ruffle.
+    if (tab || flash) {
       c.classList.remove('inerte');
       rendreAttrapable(c, e, function () { return dessinDisque(type, jeu); });
     }
@@ -2493,6 +2511,9 @@ window.BureauFrutiz = (function () {
     boite: null, tiroirs: null, disqueEl: null, cible: null,
     y: FR_FERME, cibleY: FR_FERME, ouvert: false,
     disque: null, vitesse: 0, sens: 0, destin: null, anim: null, dernier: 0,
+    // `jeu` : l'onglet du portage. `jeuFlash` : la fenêtre de Ruffle, pour
+    // les trois disques qui n'ont pas de portage.
+    jeu: null, jeuFlash: null,
   };
 
   function couche(nom) {
@@ -2697,7 +2718,16 @@ window.BureauFrutiz = (function () {
   frusion.lancer = function (info) {
     var tab = JEUX_LIGHT[String(info.desc[1] || '').toLowerCase()];
     this.jeu = null;
-    if (!tab || !window.activateTab) return;
+    this.jeuFlash = null;
+    // LES TROIS DISQUES QUI SONT ENCORE EN FLASH : pas d'onglet, une FENÊTRE
+    // À PART (game-popup.html + Ruffle) — celle que la Frusion d'époque
+    // ouvrait déjà pour eux depuis `ruffle.html`.
+    if (!tab) {
+      var f = jeuFlashDe(info.desc[1] || '');
+      if (f && window.JeuxFlash) { this.jeuFlash = f; window.JeuxFlash.ouvrir(f); }
+      return;
+    }
+    if (!window.activateTab) return;
     this.jeu = tab;
     window.activateTab(tab);
     var rub = RUBRIQUES[tab];
@@ -2719,10 +2749,22 @@ window.BureauFrutiz = (function () {
       if (panneau && fenetres[panneau.id]) fermerFenetre(panneau.id);
       this.jeu = null;
     }
+    // Un jeu Flash n'a pas d'onglet à fermer : c'est sa fenêtre qui s'en va.
+    if (this.jeuFlash) {
+      if (window.JeuxFlash) window.JeuxFlash.fermer();
+      this.jeuFlash = null;
+    }
     this.stopDisc('releaseDisc');
   };
 
   frusion.pushReset = function () {
+    // `frusionMng.reset()` vaut pour les deux : l'onglet du portage comme la
+    // fenêtre de Ruffle.
+    if (this.disque && !this.jeu && this.jeuFlash) {
+      var f = this.jeuFlash;
+      if (window.JeuxFlash) { window.JeuxFlash.fermer(); window.JeuxFlash.ouvrir(f); }
+      return;
+    }
     if (!this.disque || !this.jeu) return;
     // `frusionMng.reset()` : le jeu redémarre. Le portage n'a pas le canal du
     // Frusion Server — on refait ce qu'il fait de visible : on referme le jeu

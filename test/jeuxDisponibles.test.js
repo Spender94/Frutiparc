@@ -36,6 +36,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
 const SERVEUR = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+const BUREAU = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.js'), 'utf8');
 
 // La liste mobile, telle qu'elle est écrite dans le light.
 function listeMobile() {
@@ -136,4 +137,53 @@ test('Frutisnake et JamaJama portent la jaquette d’époque', () => {
     assert.ok(!fs.existsSync(path.join(ROOT, f)), f + ' devrait avoir été retiré');
   }
   assert.ok(!/fd_snake3|fd_jamajama/.test(LIGHT), 'plus aucun renvoi vers les montages');
+});
+
+/*
+ * ET SUR LE BUREAU, ILS S'ATTRAPENT.
+ *
+ * « Mes disques » du bureau montre les quinze FD du catalogue, mais ne rendait
+ * attrapables que ceux qui ont un portage JS : Burning Kiwi, Kaluga (deux
+ * pastilles — le FD et son aperçu) et Motion-Ball 2 restaient INERTES, donc
+ * impossibles à glisser dans la Frusion. main.swf, lui, accepte n'importe quel
+ * disque dans sa console : c'était un manque du portage, pas une règle
+ * d'époque.
+ */
+test('les trois disques Flash s’attrapent aussi sur le bureau', () => {
+  // Le pont : le catalogue des trois vit dans light.html, le bureau y puise.
+  assert.match(LIGHT, /window\.JeuxFlash = \{/);
+  assert.match(LIGHT, /parDisque: function \(libelle\)/);
+  assert.match(BUREAU, /function jeuFlashDe\(jeu\) \{/);
+  // La condition d'attrapabilité couvre les deux familles.
+  const bloc = /function caseDisque\(e\) \{[\s\S]*?\n  \}/.exec(BUREAU);
+  assert.ok(bloc, 'caseDisque doit exister');
+  assert.match(bloc[0], /var flash = tab \? null : jeuFlashDe\(jeu\);/);
+  assert.match(bloc[0], /if \(tab \|\| flash\) \{/,
+    'un disque Flash doit s’attraper comme un autre');
+  // Et la Frusion sait quoi en faire : une FENÊTRE, pas un onglet.
+  const lance = /frusion\.lancer = function \(info\) \{[\s\S]*?\n  \};/.exec(BUREAU)[0];
+  assert.match(lance, /window\.JeuxFlash\.ouvrir\(f\)/);
+  // L'éjection la referme, comme elle ferme l'onglet d'un jeu porté.
+  const eject = /frusion\.pushEject = function \(\) \{[\s\S]*?\n  \};/.exec(BUREAU)[0];
+  assert.match(eject, /window\.JeuxFlash\.fermer\(\)/);
+});
+
+/*
+ * UN DISQUE POSÉ SUR LE BUREAU QUITTE « MES DISQUES ».
+ *
+ * C'est la règle d'époque — un disque est un objet, pas un raccourci — et
+ * c'est ce qui étonne : la fenêtre s'ouvre dans le coin, juste par-dessus les
+ * icônes du bureau, et l'on croit ses disques perdus. Le catalogue, lui, ne
+ * filtre rien d'autre : les quinze y sont pour qui n'a rien posé.
+ */
+test('le catalogue ne retient que ce qui n’est pas déjà sur le bureau', () => {
+  const bloc = /if \(uid === 'disccollector'\) \{[\s\S]*?\n  \}/.exec(SERVEUR);
+  assert.ok(bloc, 'le listing du catalogue doit exister');
+  assert.match(bloc[0], /for \(const \[id, disc\] of Object\.entries\(GAME_DISCS\)\) \{/);
+  assert.match(bloc[0], /if \(desktopHasDisc\(user, id\)\) continue;/);
+  // AUCUNE autre condition : ni niveau, ni achat, ni pack.
+  const corps = bloc[0].slice(bloc[0].indexOf('for ('));
+  const conditions = corps.match(/\bif \(/g) || [];
+  assert.strictEqual(conditions.length, 1,
+    'une seule condition dans la boucle, celle du bureau (relevé : ' + conditions.length + ')');
 });

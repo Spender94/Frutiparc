@@ -4121,6 +4121,27 @@ dessins ont été comparés au pixel : le portage du BUREAU est exact — les SV
 sortis sont identiques aux bitmaps du SWF, y compris les deux doublons
 d'époque (`kaluga` = `kalugaPreview` = forme #22, `swapou2` = `mele` = #35).
 
+### Les quatre pastilles qui ne répondaient pas
+
+« Mes disques » du bureau montre les quinze FD du catalogue, mais ne rendait
+attrapables que ceux qui ont un portage JS (`JEUX_LIGHT`). Burning Kiwi, Kaluga
+— deux pastilles, le FD et son aperçu — et Motion-Ball 2 restaient donc
+INERTES : impossibles à glisser dans la Frusion, alors que main.swf accepte
+n'importe quel disque dans sa console. Ce n'était pas une règle d'époque mais
+un manque du portage. Ils s'attrapent désormais comme les autres et s'ouvrent
+en fenêtre à part (`game-popup.html` + Ruffle) ; l'éjection la referme, le
+casque la relance. Le catalogue des trois vit dans `light.html`
+(`window.JeuxFlash`), un seul endroit pour la feuille mobile et le bureau.
+
+### Un disque posé sur le bureau QUITTE « Mes disques »
+
+C'est la règle d'époque — un disque est un objet, pas un raccourci — et c'est
+elle qui surprend : la fenêtre s'ouvre dans le coin, juste par-dessus les
+icônes du bureau, et l'on croit ses disques perdus. Vérifié au banc : poser
+Frutisnake et Frutibandas sur le bureau fait tomber le catalogue de 15 à 13, et
+les deux icônes apparaissent bien sur le bureau, jaquette d'époque comprise.
+Le listing ne filtre RIEN d'autre — ni niveau, ni achat, ni pack.
+
 La feuille des disques du MOBILE, elle, servait deux images inventées :
 Frutisnake et JamaJama. Les commentaires disaient qu'aucune jaquette n'existait
 pour ces deux jeux ; `snake` (image 1 — le serpent vert lové autour d'une

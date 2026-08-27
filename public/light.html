@@ -3965,6 +3965,35 @@
     } catch (e) { /* déjà fermée */ }
     window.__gamePopup = window.open(url, "frutiparc_game", traits);
   }
+  /*
+   * LE BUREAU S'EN SERT AUSSI.
+   *
+   * « Mes disques » du bureau montre les quinze FD du catalogue, et trois
+   * d'entre eux n'ont pas de portage JS : ils se lisent sous Ruffle, dans une
+   * fenêtre à part. Faute de ce pont, ils y restaient INERTES — pas
+   * attrapables, donc impossibles à glisser dans la Frusion, alors que
+   * main.swf accepte n'importe quel disque dans sa console.
+   *
+   * Le catalogue est ici, indexé par le libellé du disque (`desc[1]`, celui
+   * qui choisit aussi la jaquette dans fileIcon.swf), pour qu'il n'existe
+   * qu'en un seul endroit.
+   */
+  window.JeuxFlash = {
+    ouvrir: ouvrirJeuFlash,
+    fermer: function () {
+      try {
+        if (window.__gamePopup && !window.__gamePopup.closed) window.__gamePopup.close();
+      } catch (e) { /* déjà fermée */ }
+      window.__gamePopup = null;
+    },
+    parDisque: function (libelle) {
+      var l = String(libelle || "").toLowerCase();
+      for (var i = 0; i < DISCS.length; i++) {
+        if (DISCS[i].flash && DISCS[i].jaquette === l) return DISCS[i];
+      }
+      return null;
+    },
+  };
   function renderDiscs() {
     var grid = $("#disques-grid");
     if (!grid) return;
