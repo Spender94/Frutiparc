@@ -93,22 +93,39 @@ test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte',
   assert.match(BLOC, /#fiche \.fiche-plaque \.fa-niv b \{[\s\S]*?flex: 0 0 12\.7px; text-align: center;/);
   // Et ce sont EXACTEMENT les valeurs de la main bar : les deux blocs ne
   // peuvent plus diverger sans qu'on s'en aperçoive.
-  assert.match(CSS, /#bureau-coin \.enc-progress i \{ height: 2px; background: #A2EB56; \}/);
+  //
+  // LA MAIN BAR NE LES PEINT PLUS EN NEUF BOÎTES, mais en deux surfaces
+  // dégradées — neuf boîtes se calent neuf fois sur la grille de l'écran, et
+  // sur un écran dense une barre sur deux ressortait plus épaisse (relevé
+  // bench-xp3 : à dpr 1,5, l'encre par période allait de 1,33 à 2,00 en
+  // alternance). Les MESURES, elles, n'ont pas bougé : filet de 2, pas de 3,
+  // `#A2EB56` à vide et `#73B01E` plein. C'est ce que l'on vérifie ici, dans
+  // la forme où elles vivent désormais.
+  assert.match(CSS, /#bureau-coin \.enc-progress \{[\s\S]*?repeating-linear-gradient\(to top, #A2EB56 0 2px, transparent 2px 3px\)/);
+  assert.match(CSS, /#bureau-coin \.enc-progress::after \{[\s\S]*?repeating-linear-gradient\(to top, #73B01E 0 2px, transparent 2px 3px\)/);
+  assert.match(CSS, /#bureau-coin \.enc-progress::after \{[\s\S]*?height: max\(0px, calc\(var\(--xp-pleines\) \* 3px - 1px\)\);/);
+  // La barre EN COURS reste une boîte : c'est la seule qui soit partielle.
+  assert.match(CSS, /#bureau-coin \.enc-progress::before \{[\s\S]*?width: var\(--xp-part\); height: 2px; background: #73B01E;/);
   assert.match(CSS, /#bureau-coin \.enc-niv \.niv-img \{ height: 17\.4px; width: 14\.2px; \}/);
   // Et le haut s'aligne comme sur le mobile : les deux blocs par le HAUT, neuf
   // pixels entre la plaque et la colonne de droite.
   assert.match(BLOC, /\.fiche-haut \{\s*\n\s*align-items: flex-start; gap: 9px;/);
-  // Le gabarit mobile, lui, reste celui de light.html : vignette de 52 dans son
-  // cadre, neuf barres de 30, le chiffre en afficheur à segments.
-  assert.match(LIGHT, /\.fiche-plaque \.fa-frame \{\s*\n\s*position: relative; width: 52px; height: 52px;/);
+  // Le gabarit mobile, lui, reste celui de light.html : neuf barres de 30 et
+  // le chiffre en afficheur à segments. La VIGNETTE, en revanche, est commune
+  // aux deux mises en page — le joueur l'a réglée à 48 sur relevé (elle valait
+  // 52, puis 60, puis 52 : cf. le test dédié de lightFiche).
+  assert.match(LIGHT, /\.fiche-plaque \.fa-frame \{\s*\n\s*position: relative; width: 48px; height: 48px;/);
   assert.match(LIGHT, /\.fiche-plaque \.fa-progress \{ display: flex; flex-direction: column; gap: 1\.5px; width: 30px; \}/);
   assert.match(LIGHT, /\.fiche-plaque \.fa-niv b \{\s*\n\s*font-family: 'DSEG7'/);
   // Le bouton du dépli porte son VRAI dessin — la plaque #359 et le triangle
   // #369, qui ne fait que huit de côté et reste centré.
   assert.match(BLOC, /#fiche-avance \{[\s\S]*?fiche-rose\.svg'\) center \/ 20px 20px/);
   assert.match(BLOC, /#fiche-avance img \{[\s\S]*?fiche-rose-tri\.svg'\);\s*\n\s*width: 9px; height: 9px;/);
-  // La croix est au coin HAUT-DROIT de la fenêtre, pas au bout d'une ligne.
-  assert.match(BLOC, /#fiche-fermer \{\s*\n\s*position: absolute; right: 5px; top: 5px;/);
+  // La croix est au coin HAUT-DROIT de la fenêtre, pas au bout d'une ligne —
+  // et tout en haut (`top: 0`), avec un DESSIN de 18 qui déborde sa zone
+  // sensible de 13. Réglé au relevé du joueur.
+  assert.match(BLOC, /#fiche-fermer \{\s*\n\s*position: absolute; right: 5px; top: 0;/);
+  assert.match(BLOC, /#fiche-fermer img \{ width: 18px; height: 18px; display: block; \}/);
   // Le bouton du dépli est CARRÉ : 20 d'art, comme les blancs (x 293..316).
   assert.match(BLOC, /\.fiche-actions button \{\s*\n\s*width: 20px; height: 20px; min-width: 0; min-height: 0;/);
   assert.match(BLOC, /\.fiche-actions button img \{\s*\n\s*width: 20px; height: 20px;[^}]*object-fit: contain;/);

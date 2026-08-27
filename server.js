@@ -19071,7 +19071,13 @@ app.get('/api/light/challenge', async (req, res) => {
     for (const [u, ud] of Object.entries(users)) {
       if (ud && Number.isFinite(ud.xp) && ud.xp > 0) fusion.set(u, Number(ud.xp));
     }
-    const xp = [...fusion.entries()].map(([u, s]) => ({ u, s, label: Number(s).toLocaleString('fr-FR') + ' xp' }));
+    // LE CLASSEMENT XP MONTRE LE NIVEAU, pas le compte d'expérience : c'est le
+    // niveau qu'on lit partout ailleurs (l'encart, la fiche, la bande de la
+    // main bar), et un nombre à six chiffres ne dit rien à personne. Le TRI
+    // reste sur l'XP — deux joueurs de niveau 13 ne sont pas à égalité.
+    const xp = [...fusion.entries()].map(([u, s]) => ({
+      u, s, label: 'niveau ' + getLevelForXp(s),
+    }));
     xp.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
     games.push(permanent('_xp', 'Classement XP', 'xp', xp));
   } catch (e) { console.error('[LIGHT] xp ranking error:', e.message); }

@@ -204,6 +204,16 @@ body.bureau-frutiz #bureau-coin .mb-avatar .frame::before {
   width: 42.7px; height: 31.8px; z-index: 7; pointer-events: none;
   background: url('/frutiz/sprites/ecran-reflet.svg') 0 0 / 42.7px 31.8px no-repeat;
 }
+/* LA BOUILLE, CINQ POUR CENT PLUS GRANDE dans l'encart — demandé au rendu.
+   C'est le DESSIN qu'on agrandit, pas la scène : le cadre garde ses 64 px et
+   ses deux anneaux, et le débord se coupe sur `overflow: hidden`. Une mise à
+   l'échelle plutôt qu'un `inset` rogné, pour que les coins arrondis de la
+   scène ne bougent pas d'un pixel. (Écart assumé — le SWF ne grandit rien ;
+   c'est un réglage de lisibilité, et il ne vaut QUE pour le bureau.) */
+body.bureau-frutiz #bureau-coin .mb-avatar .stage canvas,
+body.bureau-frutiz #bureau-coin .mb-avatar .stage iframe {
+  transform: scale(1.05); transform-origin: 50% 50%;
+}
 body.bureau-frutiz #bureau-coin #home-avatar-fiche { inset: 0; border-radius: 6px; }
 /* La colonne de droite démarre UN pixel plus bas que la bouille (liseré de la
    bouille en y 4, liseré de l'encart en y 5) et laisse 3 px entre l'encart et
@@ -263,8 +273,42 @@ body.bureau-frutiz #bureau-coin .enc-progress {
      sans marge. */
   left: 2px; top: 2px; width: 27px; height: 26px;
 }
-body.bureau-frutiz #bureau-coin .enc-progress i { height: 2px; background: #A2EB56; }
-body.bureau-frutiz #bureau-coin .enc-progress i::before { background: #73B01E; }
+/* LES NEUF FILETS SONT PEINTS EN DEUX SURFACES, pas en neuf boîtes — cf. la
+   note de `brancherBarresXp` : neuf boîtes se calent neuf fois sur la grille
+   de l'écran, et sur un écran dense une barre sur deux ressortait plus épaisse
+   que sa voisine (relevé : 2, 3, 2, 3… rangées à dpr 1,5). Un dégradé répété
+   se rastérise d'un seul tenant, et le pas de 3 px y reste le même partout.
+
+   Le pas, la hauteur et l'ordre viennent du bytecode : filet de 2, écart de 1,
+   remplissage du BAS vers le haut. */
+body.bureau-frutiz #bureau-coin .enc-progress {
+  --xp-pleines: 0;
+  --xp-part: 0%;
+  --xp-part-bas: -10px;
+  /* les neuf filets vides, calés sur le BAS de la boîte comme le remplissage */
+  background:
+    repeating-linear-gradient(to top, #A2EB56 0 2px, transparent 2px 3px)
+    left bottom / 100% 26px no-repeat;
+}
+/* Les neuf boîtes ne peignent plus rien : elles restent pour le light, qui y
+   écrit son calcul, et pour le gabarit tactile, qui les affiche toujours. */
+body.bureau-frutiz #bureau-coin .enc-progress i,
+body.bureau-frutiz #bureau-coin .enc-progress i::before { background: none; }
+/* LES BARRES PLEINES : une seule boîte, ancrée en bas, haute d'autant de pas
+   qu'il y a de barres remplies (le dernier écart ne compte pas). */
+body.bureau-frutiz #bureau-coin .enc-progress::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+  height: max(0px, calc(var(--xp-pleines) * 3px - 1px));
+  background: repeating-linear-gradient(to top, #73B01E 0 2px, transparent 2px 3px);
+  pointer-events: none;
+}
+/* LA BARRE EN COURS : la seule qui soit partielle (`setHomeProgress` n'en
+   remplit qu'une à la fois), et elle se remplit de la GAUCHE vers la droite. */
+body.bureau-frutiz #bureau-coin .enc-progress::before {
+  content: ""; position: absolute; left: 0; bottom: var(--xp-part-bas);
+  width: var(--xp-part); height: 2px; background: #73B01E;
+  pointer-events: none;
+}
 /* La coupe et le rang commencent à x 110 dans le rendu d'époque (contre 123
    au tiroir) : l'espace entre les barres de progression et la colonne de
    droite est plus serré. Le trait de séparation part du même bord. */
@@ -1221,8 +1265,8 @@ body.bureau-frutiz .fen {
   position: absolute; pointer-events: auto; box-sizing: border-box;
   display: flex; flex-direction: column;
   background: #DDDDDD; border-radius: 10px;
-  border: 1px solid #444444; padding: 2px;
-  box-shadow: 7px 7px 17px -4px rgba(0, 0, 0, .5);
+  border: 1.35px solid #444444; padding: 2px;
+  box-shadow: 0 0 5px 1.75px rgba(0, 0, 0, .4);
   min-width: 160px; max-width: calc(100vw - 12px); max-height: calc(100vh - 106px);
 }
 body.bureau-frutiz .fen::before {
@@ -3073,7 +3117,7 @@ body.bureau-frutiz #fiche .fiche-plaque {
    rayures comme pour « NIV n ») : calés à gauche, pas centrés l'un sur
    l'autre — c'est déjà ce que fait la main bar. */
 body.bureau-frutiz #fiche .fiche-plaque .fa-jauge {
-  padding-right: 2px; align-items: flex-start;
+  padding-top: 5px; padding-right: 2px; align-items: flex-start;
 }
 /* LES BARRES ET LE NIVEAU : ceux de la MAIN BAR, à l'identique.
    `frutiScreen` et `cpDigital` posent le même `barLevel` (#431) et les mêmes
@@ -3120,11 +3164,13 @@ body.bureau-frutiz #fiche .fiche-nom-ligne .meta {
 /* LA CROIX : `WinStandard` la pose au coin HAUT-DROIT de la fenêtre, pas au
    bout d'une ligne de texte. */
 body.bureau-frutiz #fiche #fiche-fermer {
-  position: absolute; right: 5px; top: 5px; z-index: 4;
+  position: absolute; right: 5px; top: 0; z-index: 4;
   width: 13px; height: 13px; padding: 0; border: 0; background: none;
   cursor: pointer;
 }
-body.bureau-frutiz #fiche #fiche-fermer img { width: 13px; height: 13px; display: block; }
+/* Le DESSIN déborde sa case : la croix fait 18 px dans une zone sensible de
+   13, comme sur le rendu d'époque. */
+body.bureau-frutiz #fiche #fiche-fermer img { width: 18px; height: 18px; display: block; }
 body.bureau-frutiz #fiche .fiche-nom-ligne .meta { padding-right: 18px; }
 /* La rangée d'actions : les boutons blancs collés à GAUCHE (`x.align
    "start"`), le bouton rose au BOUT (`x.align "end"`). Chacun porte le

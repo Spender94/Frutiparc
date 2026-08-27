@@ -208,8 +208,8 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
     'la vignette ne contient plus que la bouille');
   // La vignette garde son PROPRE repère (position: relative) — c'est ce qui
   // fait tenir le cadre et le reflet sur la plaque, et non sur elle. Sa taille
-  // est revenue à 52 : voir le test dédié plus bas.
-  assert.match(html, /\.fiche-plaque \.fa-frame \{\s*position: relative; width: 52px; height: 52px;/,
+  // est passée à 48 : voir le test dédié plus bas.
+  assert.match(html, /\.fiche-plaque \.fa-frame \{\s*position: relative; width: 48px; height: 48px;/,
     'et garde son repère, à sa taille');
   // La bouille n'a plus de contour, et la carte porte son ombre de tous les côtés.
   assert.match(html, /\.fiche-plaque \.fa-frame \{[^}]*\n\s*z-index: 2;\n\s*\}/,
@@ -393,18 +393,19 @@ test('l\'écran mobile porte la fenêtre, les onglets et les gestes', () => {
 
 // ── Les deux retouches d'affichage du mode light ─────────────────────────
 
-test('la vignette de la fiche fait 52 px, et le visage la remplit', () => {
-  // Elle avait été grossie de quinze pour cent (52 → 60) pour la lisibilité au
-  // téléphone. Retour à 52 à la demande — mais la bouille, elle, n'y perd
-  // rien : la marge du dessin passe de 5 % à 1 %, et le visage occupe presque
-  // tout le cadre au lieu d'y flotter.
+test('la vignette de la fiche fait 48 px, et le visage la remplit', () => {
+  // Son histoire, en trois temps : 52 d'origine, grossie de quinze pour cent
+  // (60) pour la lisibilité au téléphone, ramenée à 52 sur retour du joueur,
+  // puis à 48 — toujours sur relevé du joueur, qui règle cette carte au pixel.
+  // La bouille, elle, n'y perd rien : la marge du dessin est passée de 5 % à
+  // 1 %, puis à ZÉRO — le visage remplit maintenant tout le cadre.
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   const regle = /\.fiche-plaque \.fa-frame \{[^}]*\}/.exec(html);
   assert.ok(regle, 'la vignette de la fiche a bien sa règle');
-  assert.match(regle[0], /width: 52px; height: 52px/, 'elle fait cinquante-deux pixels');
+  assert.match(regle[0], /width: 48px; height: 48px/, 'elle fait quarante-huit pixels');
   const dessin = /\.fiche-plaque \.fa-frame \.stage \{[^}]*\}/.exec(html);
   assert.ok(dessin, 'la scène de la bouille a bien sa règle');
-  assert.match(dessin[0], /inset: 1%/, 'et le dessin ne laisse qu’un pour cent de marge');
+  assert.match(dessin[0], /inset: 0;/, 'et le dessin ne laisse plus aucune marge');
   // La plaque reste une boîte flexible : elle se règle d'elle-même autour.
   const plaque = /\.fiche-plaque \{[^}]*\}/.exec(html);
   assert.ok(plaque && /display: flex/.test(plaque[0]),

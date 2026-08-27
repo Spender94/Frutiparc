@@ -282,7 +282,13 @@ test('le client mobile affiche, signale et date les événements', () => {
   // Le pageur ne compte pas les entrées, il MESURE : les cartes ont des hauteurs
   // très inégales, un nombre figé laisserait tantôt un grand vide, tantôt une
   // barre de défilement — et paginer n'aurait plus de sens.
-  assert.ok(!/PAR_PAGE/.test(html), 'aucun nombre d\'entrées figé');
+  // (La recherche portait sur TOUT light.html ; elle vise le journal, et le
+  // tableau des scores a depuis sa propre pagination — celle-là à pas fixe,
+  // parce que `box.Score` l'écrit ainsi : `nbResult = 10`, 0xc1132. On ne
+  // relit donc que le code du journal.)
+  const journal = /function renderJournal\([\s\S]*?\n  \}/.exec(html);
+  assert.ok(journal, 'le rendu du journal doit exister');
+  assert.ok(!/PAR_PAGE/.test(journal[0]), 'aucun nombre d\'entrées figé');
   assert.match(html, /var dispo = box\.clientHeight - \(parseFloat\(cs\.paddingTop\)/,
     'la place disponible est mesurée, rembourrage déduit');
   assert.match(html, /if \(hauteur && hauteur \+ h > dispo\) \{ bornes\.push\(i\); hauteur = 0; \}/,

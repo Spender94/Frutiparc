@@ -741,10 +741,10 @@
     position: absolute; right: 3%; top: 4%; width: 26%; height: auto; z-index: 4; pointer-events: none;
   }
   .fiche-plaque .fa-frame {
-    position: relative; width: 52px; height: 52px; border-radius: 5px; overflow: hidden;
+    position: relative; width: 48px; height: 48px; border-radius: 5px; overflow: hidden;
     z-index: 2;
   }
-  .fiche-plaque .fa-frame .stage { position: absolute; inset: 1%; z-index: 2; border-radius: 4px; overflow: hidden; }
+  .fiche-plaque .fa-frame .stage { position: absolute; inset: 0; z-index: 2; border-radius: 4px; overflow: hidden; }
   .fiche-plaque .fa-frame .stage iframe, .fiche-plaque .fa-frame .stage canvas { width: 100%; height: 100%; border: 0; display: block; background: transparent; pointer-events: none; }
   .fiche-plaque .fa-jauge {
     position: relative; z-index: 2; display: flex; flex-direction: column;
@@ -1443,11 +1443,34 @@
   .sc-podium { display: flex; justify-content: space-around; gap: 6px; padding: 2px 0 4px; }
   .sc-pod { display: flex; align-items: center; gap: 4px; min-width: 0; }
   .sc-pod img { width: 22px; height: 22px; flex: 0 0 auto; }
+  /* Le nom d'un médaillé est en GRAS : c'est un vainqueur de la veille, pas
+     une ligne de liste. */
   .sc-pod span {
-    font-size: 11px; color: #433005; overflow: hidden;
+    font-size: 11px; font-weight: bold; color: #433005; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap;
   }
   .sc-moi { text-align: center; font-size: 12px; font-weight: bold; color: #433005; padding: 3px 0 5px; }
+  /* LA PAGINATION — la ligne de bas de tableau de `win.Score` (0xc389e) : deux
+     boutons poussés aux deux bouts par un `{type:'spacer', big:1}`, et 4 px de
+     blanc au-dessus (`{height: 4}`).
+
+     Un `type: 'button'` de document est un `butText` : DU TEXTE, sans gélule ni
+     contour. Son comportement est écrit une fois pour toutes dans
+     `Standard.getButTextBasicBehavior()` —
+
+         { type: "colorText", color: { press: 0xDDDDDD, over: 0xE7756B } }
+
+     — l'encre passe au rose sous le curseur et au gris clair sous le doigt.
+     C'est le même bouton que les entrées du menu d'un onglet et que les pseudos
+     de la liste des connectés. */
+  .sc-pages { display: flex; align-items: center; gap: 0; padding: 4px 0 2px; }
+  .sc-page-esp { flex: 1 1 auto; }
+  .sc-page-btn {
+    flex: 0 0 auto; border: 0; background: transparent; padding: 0; cursor: pointer;
+    font: bold 11px/14px Verdana, Arial, sans-serif; color: #433005;
+  }
+  .sc-page-btn:hover { color: #E7756B; }
+  .sc-page-btn:active { color: #DDDDDD; }
   /* rang · frutibouille · Frutiz · Score · <colonnes annexes> · Heure — l'ordre
      de `cp.Score`. `--sc-annexes` porte les largeurs d'époque des colonnes
      annexes (« 60px 60px » pour Burning Kiwi) ; sans elles, la piste est vide
@@ -4292,7 +4315,10 @@
   function loadChallengeScores() {
     var t = $("#sc-table");
     if (t && !challengeScores) t.innerHTML = '<div class="sc-vide">Chargement…</div>';
-    var u = "/api/light/challenge?sid=" + encodeURIComponent(state.sid)
+    // CINQUANTE lignes : le plafond du serveur, soit cinq pages de dix
+    // (`nbResult`). D'époque chaque page est une requête ; ici tout arrive
+    // d'un coup et l'on tourne les pages sans rien redemander.
+    var u = "/api/light/challenge?limit=50&sid=" + encodeURIComponent(state.sid)
       + (scoresJour ? "&day=" + encodeURIComponent(scoresJour) : "");
     fetch(u, { cache: "no-store" })
       .then(function (r) { return r.json(); })
@@ -4444,9 +4470,33 @@
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
   }
 
+  /* LA PUCE D'UNE LIGNE DE L'ARBRE — `bulletLink: "scoreBullet"` (#583), un
+     clip de DOUZE images dont `win.Score.onRankingList` (0xc18de) choisit
+     l'index :
+
+       · une ligne de classement    aucun `bulletFrame` → image 1, la MÉDAILLE
+         (0xc19fb : `{text, action, bulletLink: "scoreBullet"}`)
+       · l'en-tête « Challenge »    `bulletFrame: 10` → le PODIUM
+       · l'en-tête « Championnat »  `bulletFrame: 11` → la COUPE
+         (0xc1ac5 : `ty == "C" ? 10 : 11`)
+       · « Classement XP »          `bulletFrame: 12`  ┐ le PANTHÉON —
+       · « Class. consécration »    `bulletFrame: 12`  ┘ les deux le partagent
+         (0xc1b69 et 0xc1bb3, les deux lignes que main.swf AJOUTE lui-même à
+         la liste que le serveur lui envoie)
+
+     Les trois premières images étaient déjà sorties d'un rendu Ruffle
+     (extract-scores-icones.js). La douzième ne s'y voyait pas : elle est prise
+     dans le binaire — image 12 de #583 → forme #582 → bitmap #581, 24 × 22,
+     `/fb/score_pantheon.png`. Le portage mettait la médaille sur ces deux
+     lignes-là, comme sur toutes les autres. */
+  function puceDeClassement(g) {
+    return (g && (g.id === '_xp' || g.id === '_rate'))
+      ? '/fb/score_pantheon.png' : '/fb/score_medaille.png';
+  }
+
   // La colonne de gauche : deux sections, comme le bureau. La médaille à
-  // couronne précède CHAQUE ligne (ce n'est pas l'icône du jeu — le SWF met la
-  // même partout).
+  // couronne précède CHAQUE ligne — sauf les deux classements « joueur », qui
+  // portent le panthéon (cf. `puceDeClassement`).
   function renderScoresListe() {
     var box = $("#sc-liste");
     if (!box || !challengeScores) return;
@@ -4461,7 +4511,7 @@
         var i = jeux.indexOf(g);
         html += '<button type="button" class="sc-rk' + (i === scoresGameIdx ? " on" : "") + '"'
           + ' data-i="' + i + '">'
-          + '<img src="/fb/score_medaille.png" alt="" onerror="this.style.display=\'none\'">'
+          + '<img src="' + puceDeClassement(g) + '" alt="" onerror="this.style.display=\'none\'">'
           + '<span>' + xmlEscape(g.name) + '</span></button>';
       });
     });
@@ -4472,6 +4522,9 @@
     Array.prototype.forEach.call(box.querySelectorAll(".sc-rk"), function (b) {
       b.addEventListener("click", function () {
         scoresGameIdx = Number(b.getAttribute("data-i")) || 0;
+        // `getRanking(rId)` sans `start` repart de zéro (0xc1c88) : changer de
+        // classement, c'est revenir en tête.
+        scoresDebut = 0;
         renderScoresListe(); renderScoresBody();
       });
     });
@@ -4509,6 +4562,7 @@
 
     var html = "";
     // Les médaillés de la veille, en tête — la rangée de médailles du bureau.
+    // Les noms sont en GRAS : ce sont des vainqueurs, pas une liste de plus.
     if (g.podium && g.podium.length) {
       var ak = MEDAL_ASSET_KEY[g.game] || g.game;
       html += '<div class="sc-podium">';
@@ -4520,11 +4574,20 @@
       });
       html += '</div>';
     }
-    // « Je suis 4ème avec 2798 » — la ligne que le bureau met au-dessus du
-    // tableau. Sans classement du joueur, on n'invente rien.
+    /* MA PLACE, dans les deux cas — et les deux phrases sont celles de
+       `lang_french.as`, au caractère près :
+
+         score.my_rank.details = "Je suis $p avec $s"
+         score.my_rank.empty   = "Je ne suis pas classé pour le moment"
+
+       `win.Score` pose la seconde quand `myRank` est absent (0xc2fb9) ; le
+       portage ne posait rien du tout, et l'on ne savait pas si l'on n'était
+       pas classé ou si la ligne avait été oubliée. */
     if (g.me && g.me.pos) {
       html += '<div class="sc-moi">Je suis ' + g.me.pos + (g.me.pos === 1 ? "er" : "ème")
         + ' avec ' + xmlEscape(String(g.me.label || g.me.score)) + '</div>';
+    } else if (state.user) {
+      html += '<div class="sc-moi">Je ne suis pas classé pour le moment</div>';
     }
     if (!g.scores || !g.scores.length) {
       html += '<div class="sc-vide">'
@@ -4534,12 +4597,12 @@
         + '</div>';
     } else {
       html += '<div class="sc-entete"><span class="f">Frutiz</span>'
-        + '<span class="s">Score</span>'
+        + '<span class="s">' + xmlEscape(titreColonneScore(g)) + '</span>'
         + annexes.map(function (c) {
           return '<span class="d">' + xmlEscape(c.n) + '</span>';
         }).join("")
         + '<span class="h">Heure</span></div>';
-      g.scores.forEach(function (s, i) {
+      scPage(g).forEach(function (s, i) {
         html += '<div class="sc-ligne' + (s.isMe ? " moi" : "") + '">'
           + '<span class="r">' + (s.pos || (i + 1)) + '</span>'
           // Un canevas du moteur JS, sur fond transparent : le panneau doré de
@@ -4558,11 +4621,84 @@
           + '<span class="h">' + xmlEscape(s.time || "") + '</span>'
           + '</div>';
       });
+      html += scPagination(g);
     }
     box.innerHTML = html;
     brancherPseudos(box);
     FPBouilleVignette.brancher(box);
+    Array.prototype.forEach.call(box.querySelectorAll(".sc-page-btn"), function (b) {
+      b.addEventListener("click", function () {
+        scoresDebut = Math.max(0, scoresDebut + Number(b.getAttribute("data-pas")) * SC_PAR_PAGE);
+        renderScoresBody();
+      });
+    });
     box.scrollTop = 0;
+  }
+
+  /* ── LA PAGINATION, telle que `win.Score` la pose ────────────────────────
+     `box.Score.init` (0xc1132) fixe `nbResult = 10` : DIX lignes par page. Le
+     bas du tableau (0xc389e) est une ligne de document à deux boutons de
+     texte, poussés aux deux bouts par un `{type:'spacer', big:1}` :
+
+       si currentStart > 0                    « précédents »  → getPrevPage
+       spacer big:1
+       si la page suivante existe             « suivants »    → getNextPage
+
+     et la condition du second, au mot près :
+
+       currentStart + nbResult < currentRanking.nbResult
+       OU (currentRanking.nbResult indéfini ET la page reçue est PLEINE)
+
+     Les mots viennent de `lang_french.as` (`score.prev`, `score.next`).
+
+     ÉCART ASSUMÉ SUR LE CHEMIN, PAS SUR LE RENDU : d'époque chaque page est
+     une requête (`getRanking(rId, start)`), parce que le serveur de 2005 est
+     au bout d'un modem. Ici le classement arrive entier dans la réponse de
+     `/api/light/challenge` — on demande donc les cinquante premières lignes
+     (le plafond du serveur) et l'on tourne les pages sans rien redemander.
+     Le joueur voit la même chose ; il l'attend moins longtemps.
+
+     Changer de classement ou de jour ramène à la première page : `getRanking`
+     part de `start = 0` (0xc1c88). */
+  var SC_PAR_PAGE = 10;             // `nbResult` (0xc1132)
+  var scoresDebut = 0;              // `currentStart`
+  function scPage(g) {
+    var tout = g.scores || [];
+    if (scoresDebut >= tout.length) scoresDebut = 0;
+    return tout.slice(scoresDebut, scoresDebut + SC_PAR_PAGE);
+  }
+  function scPagination(g) {
+    var tout = g.scores || [];
+    var total = Number(g.count);
+    var apres = scoresDebut + SC_PAR_PAGE;
+    // « suivants » : le total le dit s'il est connu ; sinon, une page pleine
+    // laisse espérer la suivante. On borne aussi à ce qu'on a REÇU — le
+    // serveur ne descend pas plus bas que son plafond.
+    var suite = apres < Math.min(isFinite(total) ? total : Infinity, tout.length);
+    if (!scoresDebut && !suite) return "";
+    return '<div class="sc-pages">'
+      + (scoresDebut > 0
+        ? '<button type="button" class="sc-page-btn" data-pas="-1">précédents</button>' : '')
+      + '<span class="sc-page-esp"></span>'
+      + (suite
+        ? '<button type="button" class="sc-page-btn" data-pas="1">suivants</button>' : '')
+      + '</div>';
+  }
+  /* Le TITRE DE LA COLONNE des scores : `score.score_type.<t>` de
+     `lang_french.as` — « Score » pour des points, « Temps » pour un chrono,
+     et pour les deux classements joueur « Expérience » et « Consécration ».
+     Le portage écrivait « Score » partout.
+
+     ÉCART ASSUMÉ sur l'XP : la colonne annonce « Niveau », pas
+     « Expérience », parce que c'est le NIVEAU qu'on y lit désormais — un
+     compte d'expérience à six chiffres ne dit rien, et le niveau est ce que
+     le reste du site affiche (l'encart, la fiche, la main bar). Le tri, lui,
+     reste sur l'XP : deux joueurs de niveau 13 ne sont pas à égalité. */
+  function titreColonneScore(g) {
+    if (g.id === '_xp') return "Niveau";
+    if (g.id === '_rate') return "Consécration";
+    if (g.lowerIsBetter) return "Temps";
+    return "Score";
   }
 
   // Le pied : un jour en arrière, un jour en avant — jamais après aujourd'hui.
@@ -4571,12 +4707,14 @@
     if (prec) prec.addEventListener("click", function () {
       if (!challengeScores) return;
       scoresJour = scDecale(challengeScores.day, -1);
+      scoresDebut = 0;              // un autre jour, un autre tableau
       loadChallengeScores();
     });
     if (suiv) suiv.addEventListener("click", function () {
       if (!challengeScores || !challengeScores.past) return;
       var j = scDecale(challengeScores.day, 1);
       scoresJour = (j === challengeScores.today) ? "" : j;
+      scoresDebut = 0;
       loadChallengeScores();
     });
   })();
@@ -6315,6 +6453,11 @@
     ["#pen-btn", "#users-btn", "#accent-toggle"].forEach(function (s) {
       var n = p.querySelector(s); if (n) n.classList.remove("on");
     });
+    // PAS DE « Message… » DANS LA BARRE : `inputField` (#170) est une barre
+    // vide, l'invite est une commodité du gabarit tactile. (Le panneau mobile
+    // garde la sienne : seule la COPIE fenêtrée s'en défait.)
+    var saisie = p.querySelector("#compose-input");
+    if (saisie) saisie.removeAttribute("placeholder");
     var c = { salon: salon, panneau: p, fil: p.querySelector("#messages"), vue: "salon", canvas: null };
     cadres[salon] = c;
     journaux[salon] = c.fil;

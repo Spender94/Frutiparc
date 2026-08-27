@@ -125,7 +125,10 @@ test('l’écurie se retourne au clic — la voiture, puis l’écusson', () => 
 test('les colonnes annexes se glissent entre le score et l’heure', () => {
   assert.match(LIGHT, /grid-template-columns: 18px 20px minmax\(0,1fr\) auto var\(--sc-annexes, \) 38px;/);
   // L'en-tête et la ligne portent les mêmes cellules, au même rang.
-  assert.match(LIGHT, /\+ '<span class="s">Score<\/span>'\s*\n\s*\+ annexes\.map/);
+  // Le titre de la colonne n'est plus le mot « Score » en dur : il vient de
+  // `score.score_type.<t>` (lang_french.as) — « Temps » pour un chrono,
+  // « Consécration » pour la consécration, « Niveau » pour l'XP.
+  assert.match(LIGHT, /\+ '<span class="s">' \+ xmlEscape\(titreColonneScore\(g\)\) \+ '<\/span>'\s*\n\s*\+ annexes\.map/);
   assert.match(LIGHT, /\+ '<span class="s">' \+ xmlEscape\(s\.label\) \+ '<\/span>'\s*\n\s*\+ annexes\.map/);
 });
 

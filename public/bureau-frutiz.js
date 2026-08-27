@@ -5825,6 +5825,74 @@ window.BureauFrutiz = (function () {
     Aide: 'gaspard', Forum: 'forum', Mail: 'messages',
     Historique: 'historique', Warning: 'evenements', Jeux: 'jeux',
   };
+  /*
+   * LES NEUF BARRES D'XP DE L'ENCART — DEUX BOÎTES PEINTES, ET NON NEUF.
+   *
+   * `barLevel` (#431) découpe la progression du niveau en neuf filets de 2 px
+   * séparés de 1 : un pas de 3, vingt-six px en tout. Le portage en faisait
+   * neuf éléments, et la mise en page était JUSTE — relevé au banc, dpr = 1 :
+   * neuf boîtes de 2 px aux ordonnées 0, 3, 6 … 24, huit écarts de 1.
+   *
+   * Mais un écran DENSE ne peint pas des pixels CSS. À dpr 1,5 un filet de 2
+   * vaut 3 rangées d'écran et un écart 1,5 : le navigateur cale chaque boîte
+   * séparément, et le relevé (bench-xp2, capture à la résolution de l'écran)
+   * donne 2, 3, 2, 3, 2, 3… — une barre sur deux la moitié plus épaisse. À
+   * 1,25 et à 2, même chose sur d'autres rangs. C'est ce qu'on voit à l'œil,
+   * et ce n'était pas une impression.
+   *
+   * Le remède ne peut pas être un réglage de plus sur neuf boîtes : tant
+   * qu'elles sont neuf, elles se calent neuf fois. On les remplace donc par
+   * DEUX SURFACES peintes d'un dégradé répété, que le navigateur rastérise
+   * d'un seul tenant — le rythme y est alors le même d'un bout à l'autre,
+   * quelle que soit la densité :
+   *
+   *   · le fond du composant   les neuf filets VIDES  (#A2EB56)
+   *   · `::after`              les filets PLEINS (#73B01E), une boîte ancrée
+   *                            EN BAS dont la hauteur vaut le nombre de
+   *                            barres pleines — le remplissage monte du bas,
+   *                            comme d'époque
+   *   · `::before`             la barre EN COURS, la seule qui soit partielle
+   *                            (cf. `setHomeProgress` : une seule à la fois)
+   *
+   * Il ne reste qu'à donner à la feuille de style ce que le light a calculé.
+   * On le lit sur les neuf éléments eux-mêmes (leur `--f`), sans toucher au
+   * calcul : le gabarit tactile garde ses neuf boîtes et son rendu.
+   */
+  function brancherBarresXp() {
+    // L'ENCART N'EST PAS ENCORE DANS LE COIN à cet instant : il est emprunté au
+    // gabarit tactile et reparenté plus tard (même piège que la rangée
+    // d'icônes, cf. `brancherRangeeEncart`). On vise donc le document, où le
+    // nœud existe depuis le premier rendu.
+    var boite = $('#home-progress');
+    if (!boite || boite._xpBranche) return;
+    boite._xpBranche = true;
+    var relire = function () {
+      var barres = boite.querySelectorAll('i');
+      if (!barres.length) return;
+      // Le DOM va du haut vers le bas, le remplissage du bas vers le haut :
+      // on compte donc à rebours.
+      var pleines = 0, partielle = 0, rangPartiel = -1;
+      for (var i = barres.length - 1; i >= 0; i--) {
+        var f = parseFloat(barres[i].style.getPropertyValue('--f')) || 0;
+        if (f >= 99.95) { pleines++; continue; }
+        if (f > 0) { partielle = f; rangPartiel = barres.length - 1 - i; }
+        break;
+      }
+      boite.style.setProperty('--xp-pleines', pleines);
+      boite.style.setProperty('--xp-part', partielle + '%');
+      // L'ordonnée de la barre en cours, comptée depuis le BAS : la première
+      // au-dessus des pleines.
+      boite.style.setProperty('--xp-part-bas',
+        (rangPartiel < 0 ? -10 : rangPartiel * 3) + 'px');
+    };
+    relire();
+    // Le light réécrit les `--f` à chaque relevé de profil : on repasse
+    // derrière lui, sans lui demander de nous prévenir.
+    new MutationObserver(relire).observe(boite, {
+      attributes: true, attributeFilter: ['style'], subtree: true,
+    });
+  }
+
   function brancherRangeeEncart(coin) {
     if (!coin || coin._rangeeBranchee) return;
     coin._rangeeBranchee = true;
@@ -6598,6 +6666,7 @@ window.BureauFrutiz = (function () {
     // le « mode rapide » la replie.
     coin.appendChild(batirMandala());
     brancherRangeeEncart(coin);
+    brancherBarresXp();
 
     // PAS DE PILULE « N EN LIGNE ». C'était une invention du portage, posée en
     // surimpression du coin haut-droit ; main.swf n'a rien de tel — le compte
