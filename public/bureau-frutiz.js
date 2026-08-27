@@ -44,12 +44,15 @@ window.BureauFrutiz = (function () {
     // LES SCORES — `box.Score` (0xade18). Relevé 1:1 : 610 × 328, cadre
     // `#444444` compris ; la colonne de gauche fait 160 et celle de droite
     // 430, six pixels entre les deux.
-    scores:     { panneau: '#scores-panel',    titre: 'Scores',         l: 610, h: 328 },
+    // `win.Score.initFrameSet` (sprite#869) : l'arbre à gauche et le tableau à
+    // droite, côte à côte — `tree` min 160×60, `showFrame` min 300×200.
+    scores:     { panneau: '#scores-panel',    titre: 'Scores',         l: 610, h: 328,
+                  min: minFenetre(160 + 300, 200) },
     // LA BOUTIQUE — `win.Shop`. Relevé 1:1 : la fenêtre tient en 476 × 404,
     // contour compris, et s'ouvre au milieu. `winType = "winShop"` : le fruit
     // VERT en pastille.
     boutique:   { panneau: '#shop-sheet',      titre: 'Boutique', fruit: 'winShop',
-                  l: 476, h: 404, min: { w: 300, h: 200 }, centre: true },
+                  l: 476, h: 404, min: minFenetre(140 + 300, 200), centre: true },
     // LA MESSAGERIE — d'époque c'est un EXPLORATEUR (`box.Explorer` sur
     // `fileMng.inbox`), donc la fenêtre jaune et son gabarit : `win.Explorer`
     // pose `pos = {50, 50, 400, 400}` et s'ouvre AU MILIEU. Le relevé 1:1 la
@@ -57,16 +60,21 @@ window.BureauFrutiz = (function () {
     // vient du dossier (`setTitle(this.list.desc[0])`).
     mail:       { panneau: '#mail-panel',      titre: 'Boîte de réception',
                   fruit: 'winExplorer', l: 412, h: 402,
-                  min: { w: 200, h: 128 }, centre: true },
+                  min: minFenetre(100, 28 + 100), centre: true },
     // LES DEUX JOURNAUX — `box.SiteLog` et `box.UserLog`, qui n'ajoutent rien
     // à `win.Log` (0x57281) qu'une icône : `linkIco` vaut « icoSiteLog » ou
     // « icoUserLog ». Et `win.Log.init` pose `flResizable = false` : ces
     // fenêtres-là ne se redimensionnent pas. Le gabarit vient du relevé 1:1 —
     // 314 × 246, cadre `#444444` compris.
-    evenements: { panneau: '#evt-panel',       titre: 'Événements',     l: 314, h: 246, fixe: true },
-    historique: { panneau: '#evt-panel',       titre: 'Mon historique', l: 314, h: 246, fixe: true },
+    evenements: { panneau: '#evt-panel',       titre: 'Événements',     l: 314, h: 246, fixe: true,
+                  min: minFenetre(300, 200) },
+    historique: { panneau: '#evt-panel',       titre: 'Mon historique', l: 314, h: 246, fixe: true,
+                  min: minFenetre(300, 200) },
     trombi:     { panneau: '#trombi-panel',    titre: 'Bouilloscope',   l: 780, h: 620 },
-    reglages:   { panneau: '#reglages-panel',  titre: 'Préférences',    l: 560, h: 620 },
+    // `win.Pref` (sprite#831) : l'arbre des rubriques (menuFrame min 140×60)
+    // et le panneau de droite (showFrame min 200×200), côte à côte.
+    reglages:   { panneau: '#reglages-panel',  titre: 'Préférences',    l: 560, h: 620,
+                  min: minFenetre(140 + 200, 200) },
     grapiz:     { panneau: '#grapiz-panel',    titre: 'Grapiz',         l: 900, h: 660 },
     bandas:     { panneau: '#bandas-panel',    titre: 'Frutibandas',    l: 900, h: 660 },
     swapou:     { panneau: '#swapou-panel',    titre: 'Swapou',         l: 900, h: 660 },
@@ -81,18 +89,18 @@ window.BureauFrutiz = (function () {
     // relevé 1:1 : `min: {w: 200, h: 240}` est écrit dans `initFrameSet`
     // (0xbec80), et la fenêtre s'ouvre à 265×288 sur le rendu d'époque.
     salons:     { panneau: '#salons-panel',    titre: 'Salons publics', fruit: 'winChat',
-                  l: 265, h: 288, min: { w: 200, h: 240 } },
+                  l: 265, h: 288, min: minFenetre(200, 240) },
     // L'EXPLORATEUR — `win.Explorer`, la fenêtre JAUNE (winType « winExplorer »,
     // d'où la banane en pastille). Son gabarit est écrit dans `init` :
     // `pos = {x:50, y:50, w:400, h:400}` — 402 × 402 le contour compris, ce
     // que le relevé 1:1 confirme. Deux dossiers l'ouvrent depuis le bureau ;
     // c'est la MÊME fenêtre, seul l'uid de départ change.
-    // `init` finit par `moveToCenter()` : l'explorateur s'ouvre AU MILIEU, pas
-    // en cascade comme les autres.
+    // `init` finit par `moveToCenter()` : l'explorateur est la SEULE fenêtre du
+    // bureau à s'ouvrir au milieu — toutes les autres se posent dans le coin.
     'ex-disques':    { panneau: '#ex-disques-panel',    titre: 'Mes disques', fruit: 'winExplorer',
-                       l: 402, h: 402, min: { w: 100, h: 128 }, centre: true },
+                       l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
     'ex-inventaire': { panneau: '#ex-inventaire-panel', titre: 'Inventaire',  fruit: 'winExplorer',
-                       l: 402, h: 402, min: { w: 100, h: 128 }, centre: true },
+                       l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
   };
 
   function fruitUrl(nom) { return '/frutiz/sprites/fruit_' + (nom || 'default') + '.svg'; }
@@ -100,7 +108,6 @@ window.BureauFrutiz = (function () {
   var actif = false;
   var fenetres = {};                    // id de panneau → { fen, corps, panneau, origine, txt, pastille }
   var zCourant = 20;                    // premier plan : le dernier cliqué
-  var cascade = 0;                      // décalage des ouvertures successives
   var fondCourant = null;               // le dernier fond posé (repeint au resize)
 
   function $(s) { return document.querySelector(s); }
@@ -248,6 +255,33 @@ window.BureauFrutiz = (function () {
   // et `recal` fait grandir la fenêtre si elle était en dessous. Un minimum
   // peut donc être une fonction ici, et non un couple figé.
   function minDe(m) { return typeof m === 'function' ? m() : (m || { w: 160, h: 60 }); }
+
+  /*
+   * LE MINIMUM D'UNE FENÊTRE, À PARTIR DE CELUI DE SON CONTENU.
+   *
+   * `Frame.updateMinInt` (0x479ba) remonte l'arbre : un cadre de type « w »
+   * empile ses enfants (largeur = le plus large, hauteur = la somme), un cadre
+   * de type « h » les range côte à côte (l'inverse), et chacun prend au moins
+   * son propre `min`. L'arbre qu'`initFrameSet` (0x547f9) bâtit autour du
+   * contenu est toujours le même —
+   *
+   *     frameSet   type w
+   *       top      type w   min { w: 0, h: 6 }  + winTopBar (compo, min 200×20)
+   *       center   type h
+   *         left   type w   min { w: 6, h: 0 }
+   *         center type w   ← LE CONTENU (`this.main`)
+   *         right  type w   min { w: 6, h: 0 }
+   *       bottom   type w   min { w: 0, h: 6 }
+   *
+   * — d'où, en deux lignes : la largeur ajoute les deux bandes de 6 et ne
+   * descend jamais sous les 200 de la barre de titre ; la hauteur ajoute la
+   * barre (20) et la bande du bas (6).
+   *
+   * Ces minima ne changent RIEN à la taille d'ouverture : `recal` ne fait que
+   * remonter une fenêtre trop petite, et chaque relevé 1:1 est déjà au-dessus.
+   * Ils bornent la POIGNÉE de redimensionnement, et c'est tout.
+   */
+  function minFenetre(w, h) { return { w: Math.max(200, w + 12), h: h + 26 }; }
 
   function recal(pos, minimum) {
     var vw = window.innerWidth, vh = window.innerHeight;
@@ -1435,7 +1469,10 @@ window.BureauFrutiz = (function () {
       $('#app').appendChild(p);
       RUBRIQUES[tab] = {
         panneau: '#' + idp, titre: o.name || 'Dossier', fruit: 'winExplorer',
-        l: 400, h: 300, min: { w: 200, h: 128 }, centre: true,
+        // Un dossier du bureau s'ouvre dans un `win.Explorer` comme les
+        // autres : même gabarit (400 × 400 + contour) et même arrivée au
+        // milieu — `explorer_new_folder` ne fait rien d'autre.
+        l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true,
       };
     }
     ouvrirFenetre(tab);
@@ -2764,7 +2801,6 @@ window.BureauFrutiz = (function () {
 
      Le mobile en fait une carte modale (sur un téléphone, une fenêtre
      flottante n'a nulle part où flotter) ; le bureau lui rend sa nature. */
-  var ficheRang = 0;
 
   function ouvrirFiche(pseudo) {
     if (!window.ouvrirFicheJoueur) return;
@@ -2772,14 +2808,16 @@ window.BureauFrutiz = (function () {
     if (actif) poserFiche();
   }
 
-  // `openWin` pose chaque nouvelle fenêtre en escalier : la fiche suit.
+  // La fiche est une fenêtre comme les autres : `win.Frutiz` (sprite#819) ne
+  // se donne pas de `pos` et n'appelle pas `moveToCenter`, donc `recal` la pose
+  // DANS LE COIN, comme tout ce qui s'ouvre sur le bureau. (Elle y arrivait en
+  // escalier : c'était une invention, au même titre que celui des fenêtres.)
   function poserFiche() {
     var f = $('#fiche');
     if (!f) return;
     if (!f.dataset.posee) {
-      ficheRang = (ficheRang + 1) % 8;
-      f.style.setProperty('--fx', (200 + ficheRang * 22) + 'px');
-      f.style.setProperty('--fy', (110 + ficheRang * 20) + 'px');
+      f.style.setProperty('--fx', CORNER_X + 'px');
+      f.style.setProperty('--fy', CORNER_Y + 'px');
       f.dataset.posee = '1';
       glisserFiche(f);
       var rangee = f.querySelector('.fiche-actions');
@@ -3610,26 +3648,58 @@ window.BureauFrutiz = (function () {
     fen.className = 'fen';
     fen.style.width = Math.min(rub.l, window.innerWidth - 24) + 'px';
     fen.style.height = Math.min(rub.h, window.innerHeight - CORNER_Y - 12) + 'px';
-    // Les ouvertures se décalent en cascade sous le coin de la main bar et
-    // sous la rangée d'icônes du haut (qu'une fenêtre neuve ne doit pas
-    // recouvrir d'emblée — on peut toujours la déplacer ensuite).
+    /*
+     * OÙ ELLE SE POSE — dans le COIN, et elle y reste.
+     *
+     * `WinStandard.init` (0x53807) ne donne aucune position à la fenêtre :
+     *
+     *     if (this.pos === undefined) this.pos = { x: 0, y: 0, w: 0, h: 0 };
+     *
+     * et c'est `recal` (0x5411f) qui en fait une place réelle, en bornant au
+     * coin de la zone utile :
+     *
+     *     pos.x = max(cornerX, min(mcw - pos.w, pos.x))   →   cornerX
+     *     pos.y = max(cornerY, min(mch - pos.h, pos.y))   →   cornerY
+     *
+     * Une fenêtre neuve se pose donc SOUS LA MAIN BAR ET CONTRE LA BANDE DES
+     * CONTACTS, et elle n'en bouge plus : il n'y a pas d'escalier d'ouverture
+     * dans main.swf. Celui qu'on avait ici — 450 + n×26, 185 + n×24 — était une
+     * invention, et c'est elle qui envoyait les fenêtres au milieu du bureau.
+     *
+     * DEUX FENÊTRES dérogent, et elles le font en écrivant leur propre `pos`
+     * dans leur `init` :
+     *
+     *     win.Explorer  (0x92447)  pos = { x: 50, y: 50, w: 400, h: 400 }
+     *                              puis moveToCenter()      → au milieu
+     *     win.ViewMail  (0xc8910)  pos = { x: 50, y: 50, w: 500, h: 400 }
+     *                              sans moveToCenter        → à (50, cornerY)
+     *
+     * Rouvrir une fenêtre déjà bâtie ne la déplace pas non plus : `Box.init`
+     * prend alors sa branche `else` (swapDepths + onChangeMode), et
+     * `moveToPos` part de là où elle est.
+     */
     var place;
     if (rub.centre) {
-      // `WinStandard.moveToCenter` (0x55bee) : la fenêtre se pose au milieu de
-      // la zone utile, celle qui commence sous la main bar — et le SWF finit
-      // par `recal(); moveToPos()`, donc elle Y GLISSE, elle n'y saute pas.
+      // `WinStandard.moveToCenter` (0x55bee) — et ce n'est PAS « le milieu de
+      // la zone utile » :
+      //
+      //     pos.x = (mcw - (main.cornerX + pos.w)) / 2
+      //     pos.y = (mch - (main.cornerY + pos.h)) / 2
+      //
+      // Le coin est SOUSTRAIT, pas ajouté : la fenêtre se pose donc un demi-
+      // coin plus haut et plus à gauche que le vrai centre. `recal` la ramène
+      // ensuite dans le cadre si elle en sort, puis `moveToPos` l'y fait
+      // GLISSER depuis le coin : une fenêtre centrée ne saute pas au milieu.
       place = {
-        x: Math.max(12, Math.round((window.innerWidth - rub.l) / 2)),
-        y: Math.max(CORNER_Y + 6,
-          Math.round(CORNER_Y + (window.innerHeight - CORNER_Y - rub.h) / 2)),
+        x: (window.innerWidth - (CORNER_X + parseFloat(fen.style.width))) / 2,
+        y: (window.innerHeight - (CORNER_Y + parseFloat(fen.style.height))) / 2,
       };
+    } else if (rub.pos) {
+      // Une fenêtre qui écrit son `pos` : `recal` la bornera au coin si sa
+      // place tombe dessous (c'est le cas de `y` = 50 sous une main bar de 106).
+      place = { x: rub.pos.x, y: rub.pos.y };
     } else {
-      place = {
-        x: Math.min(450 + (cascade % 6) * 26, window.innerWidth - rub.l - 12),
-        y: 185 + (cascade % 6) * 24,
-      };
-      if (place.x < 12) place.x = 12;
-      cascade++;
+      place = { x: 0, y: 0 };            // `recal` en fera (cornerX, cornerY)
     }
     /*
      * L'ARRIVÉE : la fenêtre VIENT DU COIN, elle n'apparaît pas à sa place.

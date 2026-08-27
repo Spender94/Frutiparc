@@ -39,7 +39,9 @@ test('la boîte de réception est un EXPLORATEUR, au gabarit d’époque', () =>
   // relevé 1:1 donne la fenêtre en 411 × 401, contour compris. Et c'est la
   // fenêtre JAUNE : `winType = "winExplorer"`, d'où la banane en pastille.
   assert.match(JS, /mail:\s+\{ panneau: '#mail-panel',\s+titre: 'Boîte de réception',\s*\n\s*fruit: 'winExplorer', l: 412, h: 402,/);
-  assert.match(JS, /min: \{ w: 200, h: 128 \}, centre: true \}/);
+  // Le minimum vient de `initFrameSet` : navigatorFrame 80×28 au-dessus de
+  // fileIconListFrame 100×100, plus le chrome de la fenêtre.
+  assert.match(JS, /min: minFenetre\(100, 28 \+ 100\), centre: true \}/);
   // `lister` : De|À 140, Sujet 200 (big), Date 80 — et le tri part sur la
   // date, en DESC (`currentSort`).
   assert.match(JS, /\{ cle: 'qui', titre: 'Expéditeur', titreEnvoi: 'Destinataire', tri: 'from', l: 140 \}/);

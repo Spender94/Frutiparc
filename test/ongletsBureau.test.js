@@ -370,7 +370,7 @@ test('une fenêtre VIENT DU COIN, et y met le temps du SWF', () => {
   assert.match(bloc, /glisserVers\(fen, fen\._entree\);/, 'puis elle y glisse');
   // Même les fenêtres CENTRÉES : `moveToCenter` (0x55bee) finit par
   // `recal(); moveToPos()` — elle ne saute pas au milieu, elle y va.
-  assert.match(bloc, /moveToCenter[\s\S]{0,200}?glisse/i);
+  assert.match(bloc, /moveToCenter[\s\S]{0,600}?GLISSER/);
 
   // `onStageResize` (0x54709) ne fait qu'un `update()` : une fenêtre que
   // l'écran rétréci repousse GLISSE dans le cadre, elle n'y saute pas.

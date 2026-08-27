@@ -969,10 +969,17 @@ body.bureau-frutiz #side-list .sl-contact .voyant.jeu {
    100 et haut de 20, au style `Standard.getTextStyle().def` — Verdana 10,
    couleur 0 — que la méthode passe en GRAS (`textFormat.bold = true`). */
 body.bureau-frutiz #side-list .sl-contact .nom {
-  /* Le champ descend de 4 px : dans la ligne de 18, le pseudo ne se centre
-     pas sur le voyant mais s'assoit sur sa ligne de base. */
-  position: absolute; left: 20px; width: 100px; top: 4px; height: 14px;
-  line-height: 14px; font: 700 10px Verdana, Arial, sans-serif; color: #000000;
+  /* LES DEUX PIXELS DE LA GOUTTIÈRE. Un `TextField` Flash réserve deux pixels
+     tout autour de son texte (le « gutter », qui n'est ni réglable ni visible
+     dans les coordonnées du champ) : un champ posé à `_x = 20` dessine sa
+     première lettre à 22, et son ascendante deux crans plus bas que le bord.
+     Un `<span>` n'a pas cette marge — on la rend à la main.
+
+     Et pas de `line-height` : c'est la fonte qui place la ligne de base, comme
+     Flash le fait avec les métriques de la Verdana. La forcer à 14 recentrait
+     le texte dans sa boîte et le décalait d'un demi-pixel vers le bas. */
+  position: absolute; left: 22px; width: 100px; top: 3px; height: 14px;
+  font: 700 10px Verdana, Arial, sans-serif; color: #000000;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* LE PSEUDO CHANGE DE COULEUR AU SURVOL. Ce n'est pas un ornement ajouté : le
@@ -2314,9 +2321,11 @@ body.bureau-frutiz .fen #scores-panel .sc-section {
   gap: 3px; padding: 1px 2px 0; font-size: 18px; line-height: 20px; color: #000000;
 }
 body.bureau-frutiz .fen #scores-panel .sc-section img { width: 20px; height: 22px; }
-/* Une ligne de classement : la médaille puis le nom, au pas de 16. */
+/* Une ligne de classement : la médaille puis le nom, au pas de 16. Le nom d'un
+   jeu est plus long que le mot d'une section — 11 px, pas 12, sans quoi
+   « Burning Kiwi » ou « Motion-Ball » se fait rogner par l'ellipse. */
 body.bureau-frutiz .fen #scores-panel .sc-rk {
-  gap: 3px; padding: 0 2px 0 8px; font-size: 12px; line-height: 16px; color: #000000;
+  gap: 3px; padding: 0 2px 0 8px; font-size: 11px; line-height: 16px; color: #000000;
 }
 body.bureau-frutiz .fen #scores-panel .sc-rk img { width: 13px; height: 14px; }
 body.bureau-frutiz .fen #scores-panel .sc-rk.on { background: transparent; font-weight: 400; }
@@ -2425,6 +2434,15 @@ body.bureau-frutiz #fiche {
 body.bureau-frutiz #fiche .fiche-haut {
   align-items: flex-start; gap: 9px; padding: 5px 12px 5px 5px;
 }
+/* LA SEULE EXCEPTION à ce qui précède : la plaque n'a pas de remplissage.
+   `frutiScreen` cerne ses deux panneaux à même le liseré — le fond vert ne se
+   voit qu'ENTRE la bouille et l'écran du niveau, jamais autour. Les trois
+   pixels du mobile viennent de sa feuille tactile, où la plaque est posée sur
+   du blanc et a besoin de respirer ; dans la fenêtre, ils dédoublent le liseré.
+
+   Une règle de bureau, donc, et pas une retouche de `.fiche-plaque` : le
+   gabarit tactile ne bouge pas d'un pixel. */
+body.bureau-frutiz #fiche .fiche-plaque { padding: 0; }
 body.bureau-frutiz #fiche .fiche-droite {
   display: flex; flex-direction: column; justify-content: space-between;
   min-width: 0; flex: 1;

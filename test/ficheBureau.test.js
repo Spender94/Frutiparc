@@ -48,9 +48,13 @@ test('rien ne s’assombrit derrière : c’est une FENÊTRE', () => {
   assert.match(LIGHT, /#fiche-backdrop \{[\s\S]*?background: rgba\(20, 32, 8, \.45\);/);
 });
 
-test('elle se pose en escalier et se glisse par son cadre', () => {
-  assert.match(JS, /function poserFiche\(\) \{[\s\S]*?f\.style\.setProperty\('--fx'/);
-  assert.match(JS, /ficheRang = \(ficheRang \+ 1\) % 8;/);
+test('elle se pose DANS LE COIN et se glisse par son cadre', () => {
+  // `win.Frutiz` (sprite#819) ne se donne pas de `pos` et n'appelle pas
+  // `moveToCenter` : c'est `recal` qui la place, donc (cornerX, cornerY).
+  // L'escalier qu'on avait ici était une invention.
+  assert.match(JS, /function poserFiche\(\) \{[\s\S]*?f\.style\.setProperty\('--fx', CORNER_X \+ 'px'\);/);
+  assert.match(JS, /f\.style\.setProperty\('--fy', CORNER_Y \+ 'px'\);/);
+  assert.doesNotMatch(JS, /ficheRang/);
   // `initDrag` : on l'attrape par le cadre, pas par un bouton ni la feuille.
   assert.match(JS, /if \(ev\.target\.closest\('button, a, input, \.fiche-corps'\)\) return;/);
   assert.match(BLOC, /#fiche \{\s*\n\s*position: absolute; left: var\(--fx, 220px\); top: var\(--fy, 120px\);/);
@@ -67,7 +71,11 @@ test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte',
   // illisible. Le bureau reprend donc le gabarit du portage mobile — vignette
   // de 60, neuf barres, afficheur à segments — et pour cela il ne doit RIEN
   // redéfinir : ce sont les règles de light.html qui s'appliquent.
-  assert.doesNotMatch(BLOC, /\.fiche-plaque \{/);
+  // UNE SEULE exception, et elle est soustractive : la plaque n'a pas de
+  // remplissage dans la fenêtre. `frutiScreen` cerne ses deux panneaux à même
+  // le liseré, et les trois pixels du gabarit tactile y dédoublent le trait.
+  assert.match(BLOC, /body\.bureau-frutiz #fiche \.fiche-plaque \{ padding: 0; \}/);
+  assert.doesNotMatch(BLOC, /^\s*\.fiche-plaque \{/m);
   assert.doesNotMatch(BLOC, /\.fiche-plaque \.fa-frame \{/);
   assert.doesNotMatch(BLOC, /\.fiche-plaque \.fa-jauge \{/);
   assert.doesNotMatch(BLOC, /\.fa-progress \{/);

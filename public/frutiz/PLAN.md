@@ -60,8 +60,79 @@ contour blanc de 2 px aux coins arrondis de 10. Reproduit en CSS
 ### Le bornage (recal, 0x54126)
 
 `pos.w = max(minimum.w, min(pos.w, mcw − cornerX))`, pareil en h ; x/y bornés
-au bureau. `moveToCenter` (0x55bf5) centre dans
-`[cornerX..mcw] × [cornerY..mch]`.
+au bureau :
+
+```js
+pos.x = max(cornerX, min(mcw − pos.w, pos.x))
+pos.y = max(cornerY, min(mch − pos.h, pos.y))
+```
+
+C'est là que se joue **la place d'ouverture**, et elle surprend : `init`
+(0x53807) donne à la fenêtre `pos = {x: 0, y: 0, w: 0, h: 0}` quand elle n'en a
+pas, donc `recal` la pose **DANS LE COIN** — `(cornerX, cornerY)`, sous la main
+bar et contre la bande des contacts — **à son minimum**. Il n'y a pas
+d'escalier d'ouverture dans main.swf : deux fenêtres neuves se recouvrent, et
+c'est le comportement d'époque. Deux classes seulement dérogent, en écrivant
+leur `pos` dans leur propre `init` :
+
+| classe | `pos` | et ensuite |
+|---|---|---|
+| `win.Explorer` (0x92447) | `{50, 50, 400, 400}` | `moveToCenter()` — au milieu |
+| `win.ViewMail` (0xc8910) | `{50, 50, 500, 400}` | rien — donc `(50, cornerY)` |
+
+`moveToCenter` (0x55bf5), lui, **soustrait** le coin au lieu de l'ajouter :
+
+```js
+pos.x = (mcw − (main.cornerX + pos.w)) / 2
+pos.y = (mch − (main.cornerY + pos.h)) / 2
+```
+
+— la fenêtre se pose donc un demi-coin plus haut et plus à gauche que le vrai
+centre, puis `recal` la ramène dans le cadre.
+
+**Et le coin ?** `main.cornerY = 106` (0x6b5e2), ramené à `10 + 96 × !flHalfHide`
+quand la main bar se replie (0x6c5ca) ; `main.cornerX = sideList.wSide` = **9**,
+et `wMain + wSide` = **129** quand la bande des contacts est dépliée (0xa0d63,
+avec `wSide = 9` et `wMain = 120` en 0xa1708).
+
+### La taille d'ouverture (frameSet.minInt)
+
+`pos.w`/`pos.h` partant de zéro, c'est `minimum` qui donne la taille — et
+`minimum` vaut `frameSet.minInt` (`onFrameSetUpdate`, 0x54acb), que
+`Frame.updateMinInt` (0x479ba) remonte depuis le contenu :
+
+```js
+if (type === "compo") {
+  minInt.w = max(min.w, path.min.w) + margin.x.min + marginInt.x.min
+} else {                      // un cadre de cadres
+  //  type "w" : enfants EMPILÉS   → w = le plus large,  h = la somme
+  //  type "h" : enfants CÔTE À CÔTE → h = le plus haut, w = la somme
+}
+```
+
+L'arbre qu'`initFrameSet` (0x547f9) bâtit autour du contenu est toujours le
+même — `top` (min h 6) portant `winTopBar` (min 200 × 20), `left`/`right`
+(min w 6), `bottom` (min h 6) — d'où, en deux lignes :
+
+```
+minW = max(200, contenu.w + 12)
+minH = contenu.h + 26
+```
+
+Les contenus, eux, sont écrits classe par classe. Relevé :
+
+| fenêtre | classe | contenu déclaré | minimum |
+|---|---|---|---|
+| Scores | `win.Score` #869 | `tree` 160×60 ∥ `showFrame` 300×200 | 472 × 226 |
+| Boutique | `win.Shop` #795 | `menuFrame` 140×60 ∥ `showFrame` 300×200 | 452 × 226 |
+| Préférences | `win.Pref` #831 | `menuFrame` 140×60 ∥ `showFrame` 200×200 | 352 × 226 |
+| Salons publics | `win.RoomList` #894 | `roomListFrame` 200×240 | 212 × 266 |
+| Événements / Historique | `win.Log` #750 | `showFrame` 300×200 | 312 × 226 |
+| Explorateurs | `win.Explorer` #833 | `navigatorFrame` 80×28 / `fileIconList` 100×100 | 200 × 154 |
+
+Ces minima ne changent rien à la taille D'OUVERTURE — chaque relevé 1:1 est
+déjà au-dessus — mais ils bornent la poignée de redimensionnement, et c'est
+`recal` qui fait grandir une fenêtre passée dessous.
 
 ### Les boutons du haut (genTopIconList, 0x54c24) — EXTRAITS
 
@@ -2139,8 +2210,9 @@ section « Le pseudo prend la couleur du genre ».)
 Le mobile garde sa CARTE MODALE : sur un téléphone une fenêtre flottante n'a
 nulle part où flotter, et le voile y a un sens. Sur le bureau, tout le bloc
 est repris sous `body.bureau-frutiz` — le voile devient transparent et
-`pointer-events: none` (le bureau reste vivant derrière), la fiche se pose en
-escalier comme `openWin` le fait de ses fenêtres, et se glisse par son cadre.
+`pointer-events: none` (le bureau reste vivant derrière), la fiche se pose
+**dans le coin** comme toutes les fenêtres du bureau — `win.Frutiz` ne se donne
+pas de `pos` et n'appelle pas `moveToCenter` —, et se glisse par son cadre.
 
 **Ce que le portage ne reprend pas.** `FrutizInfo` d'époque charge chaque
 catégorie à la demande (`weWant` / `state_int`), avec un `displayWait` le
