@@ -102,7 +102,11 @@ test('répondre et transférer citent le message, au gabarit d’époque', () =>
   assert.match(LANG, /mail\.forward_tpl = '<br><br><b>--- Message transf.r. ---<\/b>/);
   const bloc = JS.slice(JS.indexOf('function citerMail'), JS.indexOf('function habillerMail'));
   assert.match(bloc, /var entete = quoi === 'reply' \? '--- En réponse au message ---' : '--- Message transféré ---';/);
-  assert.match(bloc, /'Date : ' \+ \(m\.date \|\| ''\) \+ '\\n'/);
+  // `$d` n'est pas la date brute : les deux gabarits la passent par
+  // `Lang.formatDateString(date, "long")` (0xaec2b et 0xaed9b) — la date en
+  // toutes lettres, comme dans l'en-tête de la visionneuse. On citait
+  // l'horodatage du serveur (« 2026-08-27 22:13:39 »).
+  assert.match(bloc, /'Date : ' \+ mailDateLongue\(m\.date\) \+ '\\n'/);
   assert.match(bloc, /'A : ' \+ \(m\.to \|\| ''\) \+ '\\n'/);
   // `box.ViewMail.forward` (0xaecd9) : « Tr: » collé, et pas de doublon si le
   // sujet en porte déjà un (le SWF teste « tr: » ET « tr : »).

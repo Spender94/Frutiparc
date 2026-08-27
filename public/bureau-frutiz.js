@@ -3594,8 +3594,10 @@ window.BureauFrutiz = (function () {
     var prefixe = quoi === 'reply' ? 'Re: ' : 'Tr: ';
     var deja = quoi === 'reply' ? /^re\s*:/i : /^tr\s*:/i;
     var entete = quoi === 'reply' ? '--- En réponse au message ---' : '--- Message transféré ---';
+    // `$d` vaut `Lang.formatDateString(date, "long")` dans les deux gabarits
+    // (0xaec2b et 0xaed9b) : la date en toutes lettres, pas l'horodatage brut.
     var corps = '\n\n' + entete + '\n'
-      + 'Date : ' + (m.date || '') + '\n'
+      + 'Date : ' + mailDateLongue(m.date) + '\n'
       + 'De : ' + (m.from || '') + '\n'
       + 'A : ' + (m.to || '') + '\n'
       + 'Sujet : ' + s + '\n\n'
@@ -3755,7 +3757,102 @@ window.BureauFrutiz = (function () {
     if (lblA) lblA.textContent = 'A :';
     var lblS = $('#mail-vue-ecriture .mail-form label[for="mail-sujet"]');
     if (lblS) lblS.textContent = 'Sujet :';
+
+    /*
+     * LA BARRE DE STYLE (`win.Mail.attachEditTool`, 0x78048).
+     *
+     * Un `cpDocument` de 28 px, style `frSystem`, dont le `lineList` tient —
+     * après le retournement d'InitArray (0x781a5) — dans cet ordre :
+     *
+     *   {type:'link', link:'butFlag', width:20,
+     *    param:{variable:'flBold',      link:'butFlagSmallPink', frame:2}}
+     *   … idem flItalic (image 3) et flUnderline (image 4)
+     *   {type:'spacer', big:1}
+     *   {type:'comboBox', width:100, dy:4,
+     *    param:{variable:'textSize', def:'normal', text:Lang.fv('mail.font_size')}}
+     *
+     * `win.Mail.endInit` (0x77d4d) les branche sur un `AdvancedTextInput` :
+     *   {field: mainDoc.console.content, docPanel: panelToolDoc,
+     *    btBold:'flBold', btItalic:'flItalic', btUnderline:'flUnderline',
+     *    cbColor:'', cbSize:'textSize'}
+     * et le champ du corps porte `fieldProperty.html = true` — d'époque le
+     * message EST du HTML, que `box.Mail.sendMail` fait passer par
+     * `FEString.simplifyHTML` avant de l'envoyer.
+     *
+     * ÉCART ASSUMÉ : le courrier du portage est du texte simple d'un bout à
+     * l'autre (le lecteur écrit `textContent`, et ce lecteur est PARTAGÉ avec
+     * le gabarit tactile, qui ne doit pas bouger). Les trois drapeaux et le
+     * menu des corps agissent donc sur TOUT le champ, à l'écran seulement :
+     * la mise en forme ne survit pas à l'envoi. La rendre réelle demande
+     * d'ouvrir le corps à une liste blanche d'époque (`<b> <i> <u> <br>
+     * <font size>`) des DEUX côtés — c'est un changement à part.
+     */
+    var form2 = $('#mail-vue-ecriture .mail-form');
+    if (form2 && !form2.querySelector('.mx-outils')) {
+      var outils = document.createElement('div');
+      outils.className = 'mx-outils';
+      MAIL_DRAPEAUX.forEach(function (f) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mx-flag mx-flag-' + f[0];
+        b.title = f[2];
+        b.textContent = f[2];
+        b.setAttribute('aria-pressed', 'false');
+        b.addEventListener('click', function () {
+          var on = b.getAttribute('aria-pressed') !== 'true';
+          b.setAttribute('aria-pressed', on ? 'true' : 'false');
+          var champ = $('#mail-texte');
+          if (champ) champ.classList.toggle('mx-' + f[1], on);
+        });
+        outils.appendChild(b);
+      });
+      var esp = document.createElement('span');
+      esp.className = 'mx-outils-esp';
+      outils.appendChild(esp);
+      var taille = document.createElement('select');
+      taille.className = 'mx-taille';
+      taille.id = 'mail-taille';
+      taille.title = 'Taille du texte';
+      MAIL_CORPS.forEach(function (t) {
+        var o = document.createElement('option');
+        o.value = String(t[1]);
+        o.textContent = t[0];
+        taille.appendChild(o);
+      });
+      taille.value = '12';                 // « Normal », le `def` du comboBox
+      taille.addEventListener('change', function () {
+        var champ = $('#mail-texte');
+        if (champ) champ.style.fontSize = taille.value + 'px';
+      });
+      outils.appendChild(taille);
+      form2.insertBefore(outils, $('#mail-texte'));
+    }
+
+    // LA CASE « garder une copie » (`attachEndButton`, 0x784b0) :
+    // `{type:'checkBox', width:210, param:{variable:'savetooutbox',
+    // text: Lang.fv('mail.add_in_outbox')}}`, cochée par défaut — c'est ce
+    // que `box.Mail.sendMail` relaie au serveur dans `o` (0x8a9d6).
+    var barre = $('#mail-vue-ecriture .mail-actions');
+    if (barre && !barre.querySelector('.mx-copie')) {
+      var lab = document.createElement('label');
+      lab.className = 'mx-copie';
+      lab.innerHTML = '<input type="checkbox" id="mail-copie" checked><span></span>';
+      lab.querySelector('span').textContent = MAIL_COPIE;
+      barre.insertBefore(lab, barre.firstChild);
+    }
   }
+
+  // `mail.font_size` (lang_french.as) : les sept mots du `comboBox`, du plus
+  // gros au plus petit. Les corps ne se devinent pas — `AdvancedTextInput`
+  // les porte en clair (0x7970d) : `cbSizeEqui = [6, 8, 10, 12, 14, 16, 18]`,
+  // que l'InitArray retourne en [18, 16, 14, 12, 10, 8, 6]. Le quatrième,
+  // « Normal », vaut donc 12 — la taille de départ du champ
+  // (`tFormat.size = 12`, 0x796cc), et son encre est 3364113 = #335511.
+  var MAIL_CORPS = [['Trop gros', 18], ['Très gros', 16], ['Gros', 14],
+    ['Normal', 12], ['Petit', 10], ['Très petit', 8], ['Illisible', 6]];
+  var MAIL_DRAPEAUX = [['gras', 'g', 'Gras'], ['italique', 'i', 'Italique'],
+    ['souligne', 's', 'Souligné']];
+  var MAIL_COPIE = 'Ajouter dans "Messages envoyés"';
 
   var mailDerniere = [], mailDossierVu = 'inbox';
 
@@ -3828,7 +3925,9 @@ window.BureauFrutiz = (function () {
     var moi = (window.state && window.state.user) || '';
     var adr = function (p) { return p ? (p + ' <' + p + '@frutiparc.com>') : ''; };
     var val = {
-      date: mailDateCourte(m.date),
+      // `win.ViewMail.setMail` (0xaeb22) demande le format « long », pas le
+      // « numeric » de la liste : `Lang.formatDateString(date, "long")`.
+      date: mailDateLongue(m.date),
       from: adr(m.from || (m.folder === 'outbox' ? moi : '')),
       to: adr(m.to || (m.folder === 'outbox' ? '' : moi)),
       subject: m.subject || '(sans sujet)',
@@ -3853,15 +3952,43 @@ window.BureauFrutiz = (function () {
   };
   function retitrerMail(vue) {
     if (!actif) return;
+    // Trois fenêtres d'époque dans un seul panneau : la classe dit LAQUELLE
+    // on regarde, et la feuille de style rend à chacune ses couleurs (la
+    // liste est un explorateur JAUNE, lire et écrire sont VERTES).
+    var panneau = $('#mail-panel');
+    if (panneau) {
+      panneau.classList.toggle('mx-lit', vue === 'lecture');
+      panneau.classList.toggle('mx-ecrit', vue === 'ecriture');
+    }
     if (vue === 'ecriture') retitrer('mail-panel', 'Composer un nouveau message');
     else if (vue === 'liste') retitrer('mail-panel', MAIL_DOSSIERS[mailDossierVu] || 'Courrier');
   }
 
-  // `but.icon.Detail.display` : `dateDsp = Lang.formatDateString(date,
-  // "numeric")` — la date COURTE, jour/mois/année et l'heure.
+  // `but.icon.Detail.display` (0x524c7) : `dateDsp = Lang.formatDateString(
+  // date, "numeric")`, et `date.format_numeric` vaut « $D/$N $H:$I »
+  // (lang_french.as) — le quantième, le mois et l'heure. PAS D'ANNÉE : la
+  // colonne d'époque n'en montre pas.
   function mailDateCourte(s) {
     var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ''));
-    return m ? m[3] + '/' + m[2] + '/' + m[1].slice(2) + ' ' + m[4] + ':' + m[5] : String(s || '');
+    return m ? m[3] + '/' + m[2] + ' ' + m[4] + ':' + m[5] : String(s || '');
+  }
+
+  // `date.format_long` = « $a $d $m $H:$I » : le jour de la semaine en toutes
+  // lettres, le quantième SANS zéro, le mois en toutes lettres, puis l'heure
+  // et les minutes AVEC zéro — « jeudi 27 aout 20:17 ». Les douze mois et les
+  // sept jours sortent de `lang_french.as`, « aout » compris, sans accent
+  // circonflexe comme d'époque.
+  var MAIL_JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi',
+    'samedi', 'dimanche'];
+  var MAIL_MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+    'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'décembre'];
+  function mailDateLongue(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ''));
+    if (!m) return String(s || '');
+    // `$b` va de 1 (lundi) à 7 (dimanche) : le dimanche de `getDay()` vaut 0.
+    var jour = MAIL_JOURS[(new Date(+m[1], +m[2] - 1, +m[3]).getDay() + 6) % 7];
+    return jour + ' ' + Number(m[3]) + ' ' + MAIL_MOIS[+m[2] - 1]
+      + ' ' + m[4] + ':' + m[5];
   }
 
 

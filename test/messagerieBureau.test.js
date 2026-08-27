@@ -85,7 +85,14 @@ test('lire et écrire : les gabarits de winViewMail et winMail', () => {
   // lang_french.as qui les écrit (cf. test/courrierBureau.test.js).
   assert.match(JS, /\[\['date', 'Date :'\], \['from', 'De :'\], \['to', 'A :'\], \['subject', 'Sujet :'\]\]/);
   assert.match(CSS, /\.mx-ligne,\s*\n\s*body\.bureau-frutiz \.fen #mail-panel \.mx-de \{\s*\n\s*display: flex; align-items: center; height: 20px;/);
-  assert.match(CSS, /\.mx-lab \{\s*\n\s*flex: 0 0 60px; width: 60px; text-align: right;/);
+  assert.match(CSS, /\.mx-lab \{\s*\n\s*flex: 0 0 60px; width: 60px; color: #222222;/);
+  // L'alignement N'EST PLUS commun aux deux vues, et ce n'était pas une
+  // inattention d'époque : `win.ViewMail` pose `textFormat: {align: "right"}`
+  // sur ses quatre étiquettes (0xc8bb2, 0xc8c4e, 0xc8cea, 0xc8d82),
+  // `win.Mail` n'en pose aucune sur les siennes (0x77e61, 0x77ee6, 0x77f6e).
+  // On lit à droite, on écrit à gauche.
+  assert.match(CSS, /\.mx-info \.mx-lab \{ text-align: right; \}/);
+  assert.match(CSS, /\.mail-form label \{\s*\n\s*flex: 0 0 60px; width: 60px; text-align: left;/);
   // `attachEndButton` : « Supprimer », un grand espace, puis « Répondre » et
   // « Transférer » — les trois mots de lang_french.as.
   assert.match(JS, /pou\.textContent = 'Supprimer'/);

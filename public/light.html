@@ -4937,6 +4937,12 @@
       subject: $("#mail-sujet").value.trim(),
       body: $("#mail-texte").value,
     };
+    // La case « Ajouter dans "Messages envoyés" » du bureau : d'époque
+    // `box.Mail.sendMail` relaie la variable `savetooutbox` au serveur dans
+    // `o` (0x8a9d6). Le gabarit tactile n'a pas cette case — le champ reste
+    // absent, et le serveur garde la copie, comme avant.
+    var copieMail = $("#mail-copie");
+    if (copieMail) corps.saveToOutbox = copieMail.checked;
     if (!corps.to) { err.textContent = "Indique un destinataire."; return; }
     if (!corps.body.trim()) { err.textContent = "Le message est vide."; return; }
     $("#mail-envoyer").disabled = true;

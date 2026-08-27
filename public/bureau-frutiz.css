@@ -1887,13 +1887,18 @@ body.bureau-frutiz #gaspard-panel .gs-ul-defile .u {
 }
 body.bureau-frutiz #gaspard-panel .gs-ul-defile .u:nth-child(even) { background-image: none; }
 /* LE SURVOL DE LA RANGÉE, `rollOver(id)` : le nom de la rubrique s'écrit dans
-   le champ du rang. Écart assumé — d'époque il garde la fonte de l'afficheur,
-   mais notre boîte est taillée pour quatre chiffres et « historique » y
-   déborderait ; le mot passe donc en Verdana, à la taille qui tient. */
-body.bureau-frutiz #bureau-coin .enc-trophy .val.gs-survol {
-  font-family: Verdana, Arial, sans-serif; font-size: 9px; font-weight: 700;
-  line-height: 22px; letter-spacing: -0.03em; white-space: nowrap;
-}
+   LE CHAMP DU RANG — le même champ, donc la même fonte. `rollOver` ne fait que
+   `field.text = nameList[id]` (0x6cf59) ; il ne retouche aucun format.
+
+   J'avais fait passer le mot en Verdana 9 px, au prétexte qu'« historique »
+   déborderait de la boîte. C'était un écart, et il n'avait pas lieu d'être :
+   la fonte `LcdSwf` extraite du SWF ne porte QUE des minuscules (relevé de sa
+   table cmap : espace, `%`, `.`, les dix chiffres et a-z — trente-neuf
+   caractères, pas une capitale), et les six noms de `nameList` sont en
+   minuscules eux aussi. Le mot tient donc dans la fonte de l'afficheur, à sa
+   taille, exactement comme d'époque. On ne garde que le `nowrap` : le champ
+   d'origine est une ligne. */
+body.bureau-frutiz #bureau-coin .enc-trophy .val.gs-survol { white-space: nowrap; }
 /* Le corps se serre comme celui du journal : 2 px de blanc entre le liseré de
    la fenêtre et le contenu. */
 body.bureau-frutiz .fen:has(#recherche-panel.active) .fen-corps { margin: 0 2px 0; }
@@ -3539,11 +3544,24 @@ body.bureau-frutiz .fen #mail-panel .mx-nav-but {
   cursor: pointer; color: transparent; font-size: 0;
 }
 /* LE CHAMP, l'écorce commune : contour 2 px #DDDDDD peint HORS de la boîte,
-   liseré 2 px #EAEA0F, chair #F8F866 sous un reflet blanc de 8 px. */
+   liseré 2 px #EAEA0F, chair #F8F866 sous un reflet blanc de 8 px.
+
+   ATTENTION — CE JAUNE EST CELUI DE L'EXPLORATEUR, ET LUI SEUL. Il vaut pour
+   la LISTE (la boîte aux lettres est un dossier, `win.Explorer` la montre en
+   jaune), pas pour les deux autres vues : `registerSymphony.as` enregistre
+   trois classes distinctes, et `winType` est le nom de linkage du clip de la
+   fenêtre —
+
+       Object.registerClass("winExplorer",  win.Explorer);   ← la liste
+       Object.registerClass("winMail",      win.Mail);       ← écrire (0x8a562)
+       Object.registerClass("winViewMail",  win.ViewMail);   ← lire   (0xae7f7)
+
+   Lire et écrire un courrier sont donc DEUX FENÊTRES À ELLES, au vert par
+   défaut du bureau — ce que le rendu d'époque montre sans ambiguïté. Le
+   portage les peignait en jaune parce qu'il les logeait dans la fenêtre de
+   l'explorateur ; c'est corrigé plus bas, vue par vue. */
 body.bureau-frutiz .fen #mail-panel .mx-champ,
-body.bureau-frutiz .fen #mail-panel #mail-liste,
-body.bureau-frutiz .fen #mail-panel #mail-lu-corps,
-body.bureau-frutiz .fen #mail-panel #mail-texte {
+body.bureau-frutiz .fen #mail-panel #mail-liste {
   margin: 2px; box-sizing: border-box; overflow: auto;
   background: linear-gradient(to bottom, rgba(255,255,255,.6) 2px, rgba(255,255,255,0) 10px), #F8F866;
   border: 2px solid #EAEA0F; border-radius: 5px; box-shadow: 0 0 0 2px #DDDDDD;
@@ -3640,36 +3658,87 @@ body.bureau-frutiz .fen #mail-panel .mx-slot {
 body.bureau-frutiz .fen #mail-panel .mx-slot img { width: 44px; height: 44px; }
 body.bureau-frutiz .fen #mail-panel .mx-slot span { line-height: 11px; }
 
-/* ── LIRE UN COURRIER (`win.ViewMail`, 500 × 400) ─────────────────────────
-   `attachInfo` : QUATRE lignes de 20 px, étiquette de 60 alignée à DROITE —
-   Date, De, À, Sujet — puis le corps, puis la barre du bas :
-   « Mettre à la corbeille », un grand espace, « Répondre », huit pixels,
-   « Faire suivre ». (Le renvoi n'existe pas côté light ; le « Retour » qu'on
-   ajoute n'existait pas d'époque — les trois fenêtres se fermaient.) */
+/* ══ LIRE ET ÉCRIRE : DEUX FENÊTRES À ELLES ═══════════════════════════════
+   `win.ViewMail` (`winViewMail`, 0xc8971) et `win.Mail` (`winMail`, 0x77bf2)
+   ne sont PAS des explorateurs — `registerSymphony.as` en fait deux classes,
+   et `winType` est le nom de linkage du clip de fenêtre. Le portage les
+   peignait en jaune parce qu'il loge les trois vues dans une seule fenêtre.
+
+   Chacune monte les mêmes cadres, et leurs styles sont écrits noir sur blanc
+   dans le bytecode :
+
+     infoFrame      `cpDocument`, `mainStyleName: "frSystem"`   (pas de fond)
+     editToolFrame  `cpDocument`, `frSystem`, 28 px             (écriture)
+     mainFrame      `cpDocument`, `frDef`, `flBackground: true` (le corps)
+     butDoc         `cpDocument`, `frSystem`, marges 4 / 6      (la barre)
+
+   `Standard.getWinStyle()` donne `frSystem = [white, green, white]` et
+   `frDef = [green, green]` ; `getDocStyle` en tire —
+
+     frSystem   encre  `ts.textFormat.color = c0.overdark` = `#222222`
+                saisie `inputColor = c1` → le VERT des `inputField`
+                fond   AUCUN : le cadre se pose sur la plaque blanche que
+                       `.fen::before` peint déjà pour toutes les fenêtres
+     frDef      encre  `#335511` (green.overdark)
+                fond   `flBackground` → le champ vert du bureau
+
+   Autrement dit : l'en-tête, la barre de style et la barre du bas sont sur du
+   BLANC en encre gris foncé ; seul le CORPS du message est vert. */
 body.bureau-frutiz .fen #mail-panel #mail-vue-lecture,
 body.bureau-frutiz .fen #mail-panel #mail-vue-ecriture {
   flex: 1; min-height: 0; display: none; flex-direction: column; padding: 0;
 }
 body.bureau-frutiz .fen #mail-panel #mail-vue-lecture.on,
 body.bureau-frutiz .fen #mail-panel #mail-vue-ecriture.on { display: flex; }
-body.bureau-frutiz .fen #mail-panel .mx-info { flex: 0 0 auto; padding: 2px 4px 0; }
+/* LA BARRE D'OUTILS EST CELLE DE L'EXPLORATEUR — elle n'a rien à faire dans
+   les deux autres vues, qui sont des fenêtres à part d'époque. */
+body.bureau-frutiz .fen #mail-panel.mx-lit .mx-nav,
+body.bureau-frutiz .fen #mail-panel.mx-ecrit .mx-nav { display: none; }
+/* L'ascenseur suit le COMPOSANT, et le corps du message est en `frDef` : vert,
+   là où la liste (l'explorateur) reste jaune. */
+body.bureau-frutiz .fen:has(#mail-panel.mx-lit),
+body.bureau-frutiz .fen:has(#mail-panel.mx-ecrit) {
+  --asc-glissiere: #ADE76B;            /* colorSet.green.shade */
+  --asc-liseret:   #94DB39;            /* colorSet.green.dark  */
+}
+/* `attachInfo` : QUATRE lignes de 20 px en lecture (Date, De, A, Sujet),
+   TROIS en écriture (De, A, Sujet), étiquette de 60.
+
+   L'ALIGNEMENT DES ÉTIQUETTES N'EST PAS LE MÊME DES DEUX CÔTÉS, et ce n'est
+   pas une inattention de transcription : `win.ViewMail` écrit
+   `param.textFormat = {align: "right"}` sur ses quatre étiquettes (0xc8bb2,
+   0xc8c4e, 0xc8cea, 0xc8d82), `win.Mail` n'en met aucune sur les siennes
+   (0x77e61, 0x77ee6, 0x77f6e). On lit à droite, on écrit à gauche.
+
+   Le cadre n'a pas de marge à lui (`Standard.getMargin()` → min 0) : les 2 px
+   sont ceux du bureau, ceux que prend déjà la liste. */
+body.bureau-frutiz .fen #mail-panel .mx-info { flex: 0 0 auto; padding: 2px 2px 0; }
 body.bureau-frutiz .fen #mail-panel .mx-ligne,
 body.bureau-frutiz .fen #mail-panel .mx-de {
   display: flex; align-items: center; height: 20px; gap: 4px;
-  font: normal 10px Verdana, Arial, sans-serif; color: #000000;
+  font: normal 10px Verdana, Arial, sans-serif; color: #222222;
 }
 body.bureau-frutiz .fen #mail-panel .mx-lab {
-  flex: 0 0 60px; width: 60px; text-align: right; color: #5A5A00;
+  flex: 0 0 60px; width: 60px; color: #222222;
 }
+body.bureau-frutiz .fen #mail-panel .mx-info .mx-lab { text-align: right; }
 body.bureau-frutiz .fen #mail-panel .mx-val {
   flex: 1 1 auto; min-width: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap;
 }
 /* Le bandeau du mobile fait double emploi avec l'en-tête d'époque. */
 body.bureau-frutiz .fen #mail-panel .mail-entete { display: none; }
+/* LE CORPS DU MESSAGE — `mainFrame`, seul cadre à porter `flBackground`, et
+   il est en `frDef` : le champ VERT du bureau, celui de la zone des messages
+   d'un salon, au pixel près (contour 2 px `#DDDDDD` peint hors boîte, liseré
+   2 px `#ADE76B`, chair `#CCF599` sous un reflet blanc de 8 px).
+   `textFormat: {size: 12}` (0xc9040) donne le corps de 12. */
 body.bureau-frutiz .fen #mail-panel #mail-lu-corps {
-  flex: 1; min-height: 0; margin: 2px 4px; padding: 4px;
-  font: normal 12px Verdana, Arial, sans-serif; color: #5A5A00;
+  flex: 1; min-height: 0; margin: 2px; padding: 4px 6px; box-sizing: border-box;
+  overflow: auto;
+  background: linear-gradient(to bottom, rgba(255,255,255,.64) 0, rgba(255,255,255,0) 8px), #CCF599;
+  border: 2px solid #ADE76B; border-radius: 5px; box-shadow: 0 0 0 2px #DDDDDD;
+  font: normal 12px Verdana, Arial, sans-serif; color: #335511;
   white-space: pre-wrap; word-wrap: break-word;
 }
 /* LA BARRE DU BAS — `attachEndButton` lui donne `margin.x.min = 4`,
@@ -3679,8 +3748,8 @@ body.bureau-frutiz .fen #mail-panel .mail-actions {
   flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
   padding: 6px 4px; border: 0; background: none;
 }
-/* `attachEndButton` compose la barre dans cet ordre : « Mettre à la
-   corbeille », un grand espace, puis « Répondre ». (Le « Retour » du light
+/* `attachEndButton` compose la barre dans cet ordre : « Supprimer », un grand
+   espace, puis « Répondre » et « Transférer ». (Le « Retour » du light
    n'existait pas d'époque — la fenêtre se fermait ; il passe en tête.) */
 body.bureau-frutiz .fen #mail-panel #mail-retour { order: 0; }
 body.bureau-frutiz .fen #mail-panel #mail-supprimer { order: 1; }
@@ -3688,14 +3757,18 @@ body.bureau-frutiz .fen #mail-panel #mail-supprimer { order: 1; }
    Répondre / Transférer, lesquels ne sont séparés que de `<s w="8"/>`. */
 body.bureau-frutiz .fen #mail-panel #mail-repondre { order: 2; margin-left: auto; }
 body.bureau-frutiz .fen #mail-panel #mail-transferer { order: 3; margin-left: 0; }
+/* Côté écriture, le retournement d'InitArray (0x78504) donne
+   `[spacer w=4, checkBox 210, spacer big, bouton Envoyer]` : la case d'abord,
+   l'espace élastique, le bouton au bout. */
 body.bureau-frutiz .fen #mail-panel #mail-annuler { order: 0; }
+body.bureau-frutiz .fen #mail-panel .mx-copie { order: 1; }
 body.bureau-frutiz .fen #mail-panel #mail-envoyer { order: 2; margin-left: auto; }
-/* LE BOUTON D'ÉPOQUE. `attachEndButton` les déclare tous les trois
-   `l="butPushStandard"` — et `butPushStandard` (#465) n'est PAS une pastille
-   verte : c'est la GÉLULE ROSE de 16 px que porte déjà la barre des salons.
-   Le dessin extrait donne l'anneau `#F28687` de 1,5 px et le fond `#FFAAAD` ;
-   le relevé donne l'encre `#660000` et l'éclat `#FFEAEC` du bout droit. Le
-   vert d'ici était une invention.
+/* LE BOUTON D'ÉPOQUE. `attachEndButton` les déclare tous `l="butPushStandard"`
+   — et `butPushStandard` (#465) n'est PAS une pastille verte : c'est la
+   GÉLULE ROSE de 16 px que porte déjà la barre des salons. Le dessin extrait
+   donne l'anneau `#F28687` de 1,5 px et le fond `#FFAAAD` ; le relevé donne
+   l'encre `#660000` et l'éclat `#FFEAEC` du bout droit. Le vert d'ici était
+   une invention.
 
    Une gélule s'étire : on la refait en CSS plutôt que d'étirer le SVG, qui
    déformerait ses bouts ronds (même raison qu'au pied de « Salons publics »). */
@@ -3726,55 +3799,153 @@ body.bureau-frutiz .fen #mail-panel .ma-btn.danger {
 }
 
 /* ── ÉCRIRE UN COURRIER (`win.Mail`) ──────────────────────────────────────
-   `attachInfo` : TROIS lignes de 20 px, étiquette de 60 — De (en clair, sur
-   fond), À, Sujet ; puis le corps (`textFormat: { size: 12 }`) ; puis la
-   barre du bas, avec la case « garder une copie » et le bouton d'envoi.
-
-   NON PORTÉ, et il faut le dire : `attachEditTool` pose entre les deux une
-   barre de 28 px — gras, italique, souligné (`butFlagSmallPink`, images 2 à
-   4) et un menu de corps de texte de 100 px. Le courrier du light est du
-   texte simple d'un bout à l'autre, de la saisie à l'API : une barre de
-   style n'aurait rien à teindre. Même chose pour la case « garder une copie
-   dans les messages envoyés » — le serveur en garde toujours une. */
+   Quatre cadres empilés : l'en-tête (trois lignes de 20), la barre de style
+   (28), le corps, puis la barre du bas. */
 body.bureau-frutiz .fen #mail-panel .mail-form {
-  flex: 1; min-height: 0; display: flex; flex-direction: column;
-  padding: 2px 4px 0; gap: 0;
-}
-body.bureau-frutiz .fen #mail-panel .mx-de .mx-val {
-  background: #FFFFFF; border-radius: 3px; box-shadow: 0 0 0 2px #DDDDDD;
-  padding: 0 4px; line-height: 16px; margin: 0 2px;
-}
-/* Les étiquettes du mobile deviennent celles d'époque, de 60 px, sur la même
-   ligne que leur champ. */
-body.bureau-frutiz .fen #mail-panel .mail-form label {
-  flex: 0 0 60px; width: 60px; text-align: right; padding: 0 4px 0 0;
-  font: normal 10px Verdana, Arial, sans-serif; color: #5A5A00;
-  line-height: 20px;
-}
-body.bureau-frutiz .fen #mail-panel .mail-form label[for="mail-texte"] { display: none; }
-body.bureau-frutiz .fen #mail-panel #mail-a,
-body.bureau-frutiz .fen #mail-panel #mail-sujet {
-  height: 16px; margin: 2px 2px 2px 0; padding: 0 4px; box-sizing: border-box;
-  border: 0; border-radius: 3px; box-shadow: 0 0 0 2px #DDDDDD;
-  background: #FFFFFF; font: normal 10px Verdana, Arial, sans-serif; color: #000000;
-}
-/* Chaque étiquette et son champ tiennent sur une ligne de 20 px : la grille
-   du mobile devient une pile de lignes. */
-body.bureau-frutiz .fen #mail-panel .mail-form {
-  display: grid; grid-template-columns: 60px 1fr; align-items: center; row-gap: 0;
+  flex: 1; min-height: 0; padding: 2px 2px 0;
+  display: grid; grid-template-columns: 60px 1fr; align-items: center;
+  grid-template-rows: 20px 20px 20px 28px 1fr auto; row-gap: 0;
 }
 body.bureau-frutiz .fen #mail-panel .mail-form .mx-de {
   grid-column: 1 / -1; display: grid; grid-template-columns: 60px 1fr;
   align-items: center;
 }
-/* La grille centre ses cellules (les étiquettes s'assoient sur la ligne de
-   leur champ) : le corps, lui, doit REMPLIR sa rangée. */
-body.bureau-frutiz .fen #mail-panel #mail-texte {
-  grid-column: 1 / -1; align-self: stretch; height: 100%; min-height: 0; resize: none;
-  margin: 2px 0; padding: 4px; box-sizing: border-box;
-  font: normal 12px Verdana, Arial, sans-serif; color: #5A5A00;
+/* La ligne « De » n'est pas un champ : c'est un `type: "text"` porteur de
+   `flBackground: true` (0x77f46). `de.Text.display` (0x730f8) prend alors
+   `bgMainStyleName = "bgTextColor"`, et `getDocStyle` pose `bgTextColor = c0`
+   — le BLANC de `frSystem`, pas le vert des saisies. `drawCustomSquare`
+   (0x734ab) le peint en `c0.light` avec un liseré de 1 px en `c0.dark`, soit
+   `#FFFFFF` cerclé de `#AAAAAA`.
+   (Le rayon, lui, vaut `(this.size + 5) / 2` — et `size` n'est jamais posé sur
+   un `de.Text` : le calcul d'époque part en NaN. On arrondit légèrement plutôt
+   que de reproduire un tracé indéfini.) */
+body.bureau-frutiz .fen #mail-panel .mx-de .mx-val {
+  background: #FFFFFF; border-radius: 3px; box-shadow: inset 0 0 0 1px #AAAAAA;
+  padding: 0 6px; line-height: 14px; margin: 0;
 }
-body.bureau-frutiz .fen #mail-panel .mail-form { grid-template-rows: 20px 20px 20px 1fr auto; }
+/* Les étiquettes du mobile deviennent celles d'époque, de 60 px, sur la même
+   ligne que leur champ — et à GAUCHE : `win.Mail` ne leur donne pas le
+   `align: "right"` que `win.ViewMail` donne aux siennes. */
+body.bureau-frutiz .fen #mail-panel .mail-form label {
+  flex: 0 0 60px; width: 60px; text-align: left; padding: 0 4px 0 0;
+  font: normal 10px Verdana, Arial, sans-serif; color: #222222;
+  line-height: 20px;
+}
+body.bureau-frutiz .fen #mail-panel .mail-form label[for="mail-texte"] { display: none; }
+/* LES DEUX CHAMPS : `inputField` (#170) teinté par `inputColor` — c'est
+   `color[1]` de `frSystem`, donc le VERT — exactement comme le champ « sujet
+   du salon » et celui de la Recherche : 14 px, chair `#DDFFBB`, bord
+   `#94DB39`. */
+body.bureau-frutiz .fen #mail-panel #mail-a,
+body.bureau-frutiz .fen #mail-panel #mail-sujet {
+  height: 14px; margin: 0; padding: 0 6px; box-sizing: border-box;
+  border: 0; border-radius: 7px; box-shadow: inset 0 0 0 1px #94DB39;
+  background: #DDFFBB; font: normal 10px Verdana, Arial, sans-serif; color: #335511;
+}
+body.bureau-frutiz .fen #mail-panel #mail-a::placeholder,
+body.bureau-frutiz .fen #mail-panel #mail-sujet::placeholder,
+body.bureau-frutiz .fen #mail-panel #mail-texte::placeholder { color: #94DB39; }
+/* ── LA BARRE DE STYLE (`attachEditTool`, 0x78048) ────────────────────────
+   Un `cpDocument` de style `frSystem` sur 28 px, dont le `lineList` tient —
+   après le retournement d'InitArray (0x781a5) — dans cet ordre :
+
+       butFlag flBold      `butFlagSmallPink` image 2, largeur 20
+       butFlag flItalic    …                  image 3
+       butFlag flUnderline …                  image 4
+       {type: 'spacer', big: 1}          ← l'espace élastique
+       comboBox textSize, largeur 100, `dy: 4`, `def: "normal"`,
+                texte = Lang.fv("mail.font_size")
+
+   soit G I S à gauche, le menu des corps à droite, poussé de 4 px vers le bas.
+   Les sept mots sont ceux de `lang_french.as` : « Trop gros;Très gros;Gros;
+   Normal;Petit;Très petit;Illisible », et leurs corps sont écrits en clair
+   dans `AdvancedTextInput` (0x7970d) : `cbSizeEqui = [6, 8, 10, 12, 14, 16,
+   18]`, que l'InitArray retourne — 18, 16, 14, 12, 10, 8, 6. « Normal » vaut
+   donc 12, la taille de départ du champ (`tFormat.size = 12`, 0x796cc). */
+body.bureau-frutiz .fen #mail-panel .mx-outils {
+  grid-column: 1 / -1; height: 28px; box-sizing: border-box;
+  display: flex; align-items: flex-start; gap: 0; padding: 0;
+}
+/* LES TROIS DRAPEAUX : `butFlagSmallPink` (#562) tel quel. Le clip a deux
+   images — relâchée (#359 + le reflet #375) et enfoncée (#560 + #561) — et
+   porte un clip `icon` (#559) dont l'image 2, 3 ou 4 choisit le picto : le G
+   (#370), le I (#371) ou le S souligné (#372), tous les trois en `#5B0B0B`.
+   Les cinq dessins sont extraits tels quels ; la coque et le picto se
+   superposent en deux couches de fond, chacune dans son carré de 20. */
+body.bureau-frutiz .fen #mail-panel .mx-flag {
+  width: 20px; height: 20px; flex: 0 0 20px; padding: 0; border: 0;
+  background: var(--mx-ico) 0 0 / 20px 20px no-repeat,
+              url('/frutiz/sprites/but-flag-haut.svg') 0 0 / 20px 20px no-repeat;
+  cursor: pointer; color: transparent; font-size: 0;
+}
+body.bureau-frutiz .fen #mail-panel .mx-flag-gras { --mx-ico: url('/frutiz/sprites/but-flag-gras.svg'); }
+body.bureau-frutiz .fen #mail-panel .mx-flag-italique { --mx-ico: url('/frutiz/sprites/but-flag-italique.svg'); }
+body.bureau-frutiz .fen #mail-panel .mx-flag-souligne { --mx-ico: url('/frutiz/sprites/but-flag-souligne.svg'); }
+/* Un `butFlag` reste ENFONCÉ tant que son drapeau est vrai — c'est ce qui le
+   distingue d'un `butPush`, et c'est l'image 2 du clip. */
+body.bureau-frutiz .fen #mail-panel .mx-flag[aria-pressed="true"] {
+  background: var(--mx-ico) 0 0 / 20px 20px no-repeat,
+              url('/frutiz/sprites/but-flag-bas.svg') 0 0 / 20px 20px no-repeat;
+}
+/* `{type:'spacer', big:1}` : le menu des corps est poussé au bout. */
+body.bureau-frutiz .fen #mail-panel .mx-outils-esp { flex: 1 1 auto; }
+/* LE MENU DES CORPS, `comboBox` de 100 px, décalé de `dy: 4`. `newElement`
+   (0x65c9c) lui passe `pal = {but: outColor, bg: inputColor}` : son fond est
+   celui des champs, donc vert lui aussi — même gélule que la Recherche. */
+body.bureau-frutiz .fen #mail-panel .mx-taille {
+  flex: 0 0 100px; width: 100px; height: 16px; margin-top: 4px;
+  box-sizing: border-box; border: 0; border-radius: 8px;
+  box-shadow: inset 0 0 0 1px #94DB39; background: #DDFFBB; padding: 0 4px 0 6px;
+  font: normal 10px Verdana, Arial, sans-serif; color: #335511; cursor: pointer;
+}
+/* LA CASE « garder une copie » (`attachEndButton`, 0x784b0) :
+   `{type:'checkBox', width:210, param:{variable:'savetooutbox',
+   text: mail.add_in_outbox}}`. `de.CheckBox.drawGfx` (0xa971e) la dessine
+   dans `inputColor` — le vert — et SANS arrondi (`curve: 0`) :
+
+     la case    x 1, y 2,5, w = h = th − 3, chair `inputColor.light`
+                (`#DDFFBB`), liseré de 1 en `inputColor.dark` (`#94DB39`)
+     la coche   x 3,5, y 5, w = h = th − 8, pleine, `inputColor.darker`
+                (`#66AA22`) — un carré, pas un crochet
+     l'étiquette décalée de `th` vers la droite
+
+   `th = field.textHeight + 3` : une ligne de Verdana 10 mesure 13, d'où
+   th = 16, une case de 13 et une coche de 8. */
+body.bureau-frutiz .fen #mail-panel .mx-copie {
+  flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 3px;
+  font: normal 10px Verdana, Arial, sans-serif; color: #222222;
+  cursor: pointer; white-space: nowrap; overflow: hidden;
+}
+body.bureau-frutiz .fen #mail-panel .mx-copie input {
+  appearance: none; -webkit-appearance: none;
+  flex: 0 0 13px; width: 13px; height: 13px; margin: 0 0 0 1px; padding: 0;
+  border: 0; border-radius: 0; background: #DDFFBB;
+  box-shadow: inset 0 0 0 1px #94DB39; cursor: pointer;
+  display: grid; place-content: center;
+}
+body.bureau-frutiz .fen #mail-panel .mx-copie input::after {
+  content: ""; width: 8px; height: 8px; background: transparent;
+}
+body.bureau-frutiz .fen #mail-panel .mx-copie input:checked::after { background: #66AA22; }
+/* LE CORPS À ÉCRIRE : le même cadre `frDef` qu'en lecture — `attachMain`
+   (0x7835d) porte `flBackground: true` et `mainStyleName: "frDef"`, et la
+   saisie qui l'occupe est TRANSPARENTE (`flBackground: false`) en encre
+   `colorToUse: "overdark"`, corps 12. La grille centre ses cellules : le
+   corps, lui, doit REMPLIR sa rangée. */
+body.bureau-frutiz .fen #mail-panel #mail-texte {
+  grid-column: 1 / -1; align-self: stretch; height: 100%; min-height: 0;
+  resize: none; margin: 2px 0; padding: 4px 6px; box-sizing: border-box;
+  overflow: auto;
+  background: linear-gradient(to bottom, rgba(255,255,255,.64) 0, rgba(255,255,255,0) 8px), #CCF599;
+  border: 2px solid #ADE76B; border-radius: 5px; box-shadow: 0 0 0 2px #DDDDDD;
+  font: normal 12px Verdana, Arial, sans-serif; color: #335511;
+}
+/* Les trois drapeaux et le menu des corps agissent sur TOUT le champ, comme
+   les variables `flBold` / `flItalic` / `flUnderline` / `textSize` du
+   document d'époque. */
+body.bureau-frutiz .fen #mail-panel #mail-texte.mx-g { font-weight: 700; }
+body.bureau-frutiz .fen #mail-panel #mail-texte.mx-i { font-style: italic; }
+body.bureau-frutiz .fen #mail-panel #mail-texte.mx-s { text-decoration: underline; }
 body.bureau-frutiz .fen #mail-panel .mail-erreur {
   grid-column: 1 / -1; padding: 0 2px;
   font: normal 10px Verdana, Arial, sans-serif; color: #AA2222;

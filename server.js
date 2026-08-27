@@ -19227,8 +19227,15 @@ app.post('/api/light/mail/send', async (req, res) => {
     date: maintenant,
     read: true,
   };
-  user.mails.push(mail);
-  if (user._dbId) db.saveMail(user._dbId, mail).catch((e) => console.error('[DB] outbox save error:', e.message));
+  // La case « Ajouter dans "Messages envoyés" » du bureau (`savetooutbox`,
+  // 0x784b0) : `box.Mail.sendMail` la relaie dans `o`, et sans elle le SWF ne
+  // gardait AUCUNE copie. Absente de la requête — c'est le cas du gabarit
+  // tactile, qui n'a pas cette case — on garde la copie.
+  const garderCopie = corps.saveToOutbox === undefined || !!corps.saveToOutbox;
+  if (garderCopie) {
+    user.mails.push(mail);
+    if (user._dbId) db.saveMail(user._dbId, mail).catch((e) => console.error('[DB] outbox save error:', e.message));
+  }
 
   try {
     await deliverMailToRecipients(mail, username);
