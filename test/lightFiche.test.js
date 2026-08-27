@@ -324,7 +324,11 @@ test('l\'onglet perso nomme le pays et la région, pas des blancs', () => {
   assert.match(src, /pays: lieuDit\.pays, region: lieuDit\.region,/,
     'et la fiche en sort les NOMS');
   // Le repli : sans index résolvable, le texte libre plutôt qu'un blanc.
-  assert.match(src, /region: region \|\| \(ud && ud\.region\) \|\| '',/,
+  // (`regions` est un TABLEAU depuis que l'ordre du fichier de langue compte —
+  // un objet remontait « 10, 11, 12… » devant « 01, 02 ». Cf. la recherche.)
+  assert.match(src, /pays\.regions\.find\(\(r\) => r\.code === cible\)/,
+    'la région se cherche par son code dans la liste ordonnée');
+  assert.match(src, /region: \(region && region\.nom\) \|\| \(ud && ud\.region\) \|\| '',/,
     'à défaut d\'index, le texte libre');
 });
 

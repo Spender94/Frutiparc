@@ -19659,14 +19659,29 @@ function tablePays() {
     const xml = fs.readFileSync(path.join(__dirname, 'public/xml/lang_french.xml'), 'utf8');
     const bloc = /<ct>([\s\S]*?)<\/ct>/.exec(xml);
     if (bloc) {
-      const reC = /<c c="([^"]*)" n="([^"]*)"[^>]*>([\s\S]*?)<\/c>/g;
+      // `tn` et `d` sont `regionName` et `displayCode` de langText.countries :
+      // box.Search.onCountryChange (0x986db) titre le menu des régions avec le
+      // premier (« département » pour la France) et préfixe chaque entrée de
+      // son code quand le second vaut 1 (« 01 - Ain »).
+      const reC = /<c c="([^"]*)" n="([^"]*)"([^>]*)>([\s\S]*?)<\/c>/g;
       let m;
       while ((m = reC.exec(bloc[1])) !== null) {
-        const regions = {};
+        // UN TABLEAU, pas un objet : les clés « 01 », « 02 »… « 10 » sont pour
+        // partie des index entiers aux yeux de JavaScript, qui les remonte en
+        // tête et ordonne le reste par insertion — la liste des départements
+        // sortait donc « 10, 11, 12… puis 01, 02 ». L'ordre du fichier de
+        // langue est le bon, c'est celui qu'on garde.
+        const regions = [];
         const reR = /<r c="([^"]*)">([^<]*)<\/r>/g;
         let r;
-        while ((r = reR.exec(m[3])) !== null) regions[r[1]] = r[2];
-        TABLE_PAYS[m[1]] = { nom: m[2], regions };
+        while ((r = reR.exec(m[4])) !== null) regions.push({ code: r[1], nom: r[2] });
+        const tn = /\btn="([^"]*)"/.exec(m[3]);
+        const dc = /\bd="([^"]*)"/.exec(m[3]);
+        TABLE_PAYS[m[1]] = {
+          nom: m[2], regions,
+          nomRegion: tn ? tn[1] : '',
+          afficherCode: !!(dc && dc[1] === '1'),
+        };
       }
     }
   } catch (e) { /* table absente : la fiche se rabattra sur le texte libre */ }
@@ -19678,10 +19693,11 @@ function tablePays() {
 function nomsPaysRegion(ud) {
   const t = tablePays();
   const pays = t[String((ud && ud.countryIndex) || '')] || null;
-  const region = pays && pays.regions[String((ud && ud.regionIndex) || '')];
+  const cible = String((ud && ud.regionIndex) || '');
+  const region = pays && (pays.regions.find((r) => r.code === cible) || null);
   return {
     pays: (pays && pays.nom) || '',
-    region: region || (ud && ud.region) || '',
+    region: (region && region.nom) || (ud && ud.region) || '',
   };
 }
 
@@ -19815,7 +19831,12 @@ app.get('/api/light/profil', (req, res) => {
     },
     pays: Object.keys(t).map((c) => ({
       code: c, nom: t[c].nom,
-      regions: Object.keys(t[c].regions).map((r) => ({ code: r, nom: t[c].regions[r] })),
+      // Le NOM du découpage (« département ») et le drapeau qui décide de
+      // préfixer chaque région de son code : la recherche avancée du bureau
+      // s'en sert pour titrer et libeller son menu, comme box.onCountryChange.
+      nomRegion: t[c].nomRegion || '',
+      afficherCode: !!t[c].afficherCode,
+      regions: t[c].regions.map((r) => ({ code: r.code, nom: r.nom })),
     })),
   });
 });
@@ -25295,6 +25316,17 @@ case 'createchannel': {
     // Flash client (box.Search.onSearch) reads:
     //   root attrs: s (echoed start), n (total count)
     //   each <u>: u, x, sx, bd, co, rg, ct, f, p, s
+    //
+    // `co` ET `rg` SONT DES INDEX — la même règle que buildUserAttrs. Une fiche
+    // de résultat passe par UserMng.formatInfoBasic, qui les donne à
+    // Lang.country(co) / Lang.region(rg, co) : la table <ct> de
+    // public/xml/lang_french.xml, où la France est le pays « 1 » et la Gironde
+    // le département « 33 ». Ce sont AUSSI les images du clip `countryBox` du
+    // listing (fr, be, lu, ca, ch dans cet ordre), que cp.SearchSlot vise par
+    // `gotoAndStop(info.countryCode)`. On envoyait ici `co="FR" rg="IDF"` (les
+    // colonnes libres de la base) : le drapeau restait sur la France, la région
+    // affichait « Inconnu », et les deux filtres de la recherche avancée — qui
+    // comparent l'index choisi dans le menu — ne retenaient jamais personne.
     case 'searchuser': {
       const start = Number(msg.attrs.s || 0) || 0;
       const limit = Number(msg.attrs.l || 20) || 20;
@@ -25315,8 +25347,8 @@ case 'createchannel': {
           xp: ud.xp || 0,
           gender: ud.gender || 'M',
           birthday: ud.birthday || '2000-01-01',
-          country: ud.country || 'FR',
-          region: ud.region || '',
+          country: String(ud.countryIndex || '1'),
+          region: String(ud.regionIndex || '1'),
           city: ud.city || '',
           fbouille: bouilleOf(ud, uname),
           status: getStatusCode(ud, uname),
@@ -25337,8 +25369,8 @@ case 'createchannel': {
               xp: row.xp || 0,
               gender: row.gender || 'M',
               birthday: bday,
-              country: row.country || 'FR',
-              region: row.region || '',
+              country: String(row.country_index || '1'),
+              region: String(row.region_index || '1'),
               city: row.city || '',
               fbouille: row.fbouille || DEFAULT_BOUILLE_STATE,
               status: '0000',

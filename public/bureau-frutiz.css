@@ -1019,16 +1019,26 @@ body.bureau-frutiz #side-list .sl-contact .nom {
 body.bureau-frutiz #side-list .sl-contact:not([data-genre]):hover .nom { color: #E7756B; }
 body.bureau-frutiz #side-list .sl-contact:not([data-genre]):active .nom { color: #DDDDDD; }
 /* La boîte de RECHERCHE : `mcSearchButton` (#441), que `buildList` attache à
-   `_y = 770`. L'art est EXTRAIT du SWF — la pastille grise et sa loupe, dans
-   leur cadre (9,95 ; 0,65)–(105,85 ; 22,67) — ce qui pose l'ensemble
-   exactement où le rendu 1:1 le montre (x 10..105, encre y 771..785). Seul le
-   mot « recherche » est du texte : c'est un champ, pas un dessin. */
+   `_y = 770` — la hauteur de scène d'époque moins `hSearch = 24`, dont le
+   masque de la liste des contacts est raccourci d'autant. L'art est EXTRAIT du
+   SWF — la pastille grise et sa loupe, dans leur cadre (9,95 ; 0,65)–(105,85 ;
+   22,67) — ce qui pose l'ensemble exactement où le rendu 1:1 le montre
+   (x 10..105, encre y 771..785). Seul le mot « recherche » est du texte : c'est
+   un champ, pas un dessin.
+
+   ET CE CHAMP EST CENTRÉ. Le DefineEditText #438, relevé au tag : police #148
+   (verdana GRAS) en 10, encre BLANCHE, `align = 2` (centré), `readOnly`. Il est
+   posé en (26 ; 2,35) avec un rectangle propre de (−2 ; −2) à (73,4 ; 14,05),
+   et Flash rentre le texte de 2 px dans ce rectangle : la zone utile va donc,
+   rapportée au cadre du dessin, de x 16,05 à 87,45 et de y 1,7 à 13,75. Le mot
+   était jusqu'ici collé à gauche, contre la loupe. */
 body.bureau-frutiz #side-list .sl-recherche {
   position: absolute; left: 9.95px; top: 770.65px; width: 95.9px; height: 22.02px;
-  display: none; align-items: flex-start; padding: 2px 0 0 24px;
+  display: none; align-items: flex-start; justify-content: center;
+  padding: 1.7px 8.45px 0 16.05px; box-sizing: border-box;
   border: 0; background: url('/frutiz/sprites/recherche.svg') left top / 95.9px 22.02px no-repeat;
-  font: 700 10px Verdana, Arial, sans-serif; color: #FFFFFF;
-  cursor: pointer; text-align: left;
+  font: 700 10px/12px Verdana, Arial, sans-serif; color: #FFFFFF;
+  cursor: pointer; text-align: center;
 }
 body.bureau-frutiz.contacts-ouverts #side-list .sl-recherche { display: flex; }
 /* La poignée : `sideListContact` (#436) est un DefineButton2 — l'art est
@@ -1597,6 +1607,191 @@ body.bureau-frutiz #salons-panel .sp-nom {
   flex: 1; min-width: 0; height: 14px; padding: 0 6px; border: 0;
   border-radius: 7px; background: #DDFFBB; box-shadow: inset 0 0 0 1px #94DB39;
   font: normal 10px Verdana, Arial, sans-serif; color: #335511;
+}
+
+/* ── LA RECHERCHE (`win.Search` 0x855db, `cp.SearchSlot` 0xc79dd) ───────────
+   L'autre fenêtre que le light n'avait pas. Trois cadres empilés, écrits dans
+   `initFrameSet` (0x8567a) :
+
+     doc          le formulaire, style `frSystem` (le BLANC des barres de
+                  service), min 270 × 20, marge y.min = 6 ;
+     showFrame    le listing, min 270 × 0 — il ne fait que ce qu'on y met ;
+     pageSelector min 270 × 24, marge x.min = 10, dans margin.bottom.
+
+   `flResizable = false` et `flDocumentFit = true` : on ne l'attrape pas par le
+   coin, elle prend la taille de ce qu'elle porte. */
+body.bureau-frutiz .fen #recherche-panel {
+  display: flex; flex-direction: column; min-height: 0;
+  padding: 0; background: #FFFFFF; gap: 0;
+}
+/* Le corps se serre comme celui du journal : 2 px de blanc entre le liseré de
+   la fenêtre et le contenu. */
+body.bureau-frutiz .fen:has(#recherche-panel.active) .fen-corps { margin: 0 2px 0; }
+/* LE FORMULAIRE. Style `frSystem` : fond blanc, encre sombre. Les largeurs
+   des étiquettes et des champs sont celles du bytecode, au pixel — c'est
+   pourquoi elles sont posées en ligne dans le JS et non ici. */
+body.bureau-frutiz #recherche-panel .rc-form {
+  flex: 0 0 auto; padding: 6px 1px 0; background: #FFFFFF;
+}
+body.bureau-frutiz #recherche-panel .rc-ligne {
+  display: flex; align-items: center; height: 22px; gap: 0;
+}
+body.bureau-frutiz #recherche-panel .rc-lbl {
+  flex: 0 0 auto; box-sizing: border-box; padding-right: 4px;
+  font: 400 10px Verdana, Arial, sans-serif; color: #000000;
+  white-space: nowrap; overflow: hidden;
+}
+body.bureau-frutiz #recherche-panel .rc-espace { flex: 0 0 auto; }
+/* Le champ `inputField` (#170) : la gélule grise du SWF, teintée à l'emploi.
+   Sur le blanc de `frSystem` elle prend le gris de `colorSet.white` —
+   `#EEEEEE` de chair, `#DDDDDD` au bord. */
+body.bureau-frutiz #recherche-panel .rc-in {
+  flex: 1 1 auto; min-width: 0; height: 14px; padding: 0 6px; border: 0;
+  border-radius: 7px; background: #EEEEEE; box-shadow: inset 0 0 0 1px #DDDDDD;
+  font: 400 10px Verdana, Arial, sans-serif; color: #333333;
+}
+body.bureau-frutiz #recherche-panel .rc-in:focus { outline: 1px solid #AAAAAA; }
+/* `butPushStandard` en gris — la même gélule que « créer un salon », dans la
+   teinte de `frSystem`. */
+body.bureau-frutiz #recherche-panel .rc-but {
+  position: relative; flex: 0 0 auto; min-width: 36px; height: 16px;
+  margin: 0 0 0 4px; padding: 0 8px; border: 0; border-radius: 8px;
+  background: #EEEEEE; box-shadow: inset 0 0 0 1.5px #DDDDDD;
+  font: 700 10px Verdana, Arial, sans-serif; color: #444444;
+  cursor: pointer; white-space: nowrap;
+}
+body.bureau-frutiz #recherche-panel .rc-but::after {
+  content: ""; position: absolute; inset: 1.5px; pointer-events: none;
+  border-radius: 6.5px;
+  border-top: 1px solid #FFFFFF; border-right: 1px solid #FFFFFF;
+  border-left: 0; border-bottom: 0;
+}
+body.bureau-frutiz #recherche-panel .rc-but:hover { background: #F6F6F6; }
+body.bureau-frutiz #recherche-panel .rc-but:active { background: #DDDDDD; }
+/* LE BOUTON « avancée » N'EXISTE QUE SI L'ON A LE BANANOCLE. `getSearchLines`
+   (0x863d4) ne le pousse dans la ligne que si `flAdvanceAvailable` — ce n'est
+   pas un bouton grisé, c'est un bouton absent. */
+body.bureau-frutiz #recherche-panel .rc-avance { display: none; }
+body.bureau-frutiz #recherche-panel.avance-possible .rc-avance { display: inline-block; }
+/* Les quatre lignes avancées ne sont montées que quand `flAdvance` est vrai —
+   `updateSearchFrame` (0x85857) concatène `getAdvanceSearchLines()` ou non. */
+body.bureau-frutiz #recherche-panel .rc-avancee { display: none; }
+body.bureau-frutiz #recherche-panel.avancee-ouverte .rc-avancee { display: block; }
+body.bureau-frutiz #recherche-panel .rc-radio {
+  flex: 0 0 auto; box-sizing: border-box; display: flex; align-items: center; gap: 3px;
+  font: 400 10px Verdana, Arial, sans-serif; color: #000000; cursor: pointer;
+  white-space: nowrap; overflow: hidden;
+}
+body.bureau-frutiz #recherche-panel .rc-radio input { width: 11px; height: 11px; margin: 0; }
+/* Le `comboBox` d'époque (`big: 100` — il prend la place restante). */
+body.bureau-frutiz #recherche-panel .rc-combo {
+  flex: 1 1 auto; min-width: 0; height: 16px; padding: 0 4px;
+  border: 0; border-radius: 8px;
+  background: #EEEEEE; box-shadow: inset 0 0 0 1px #DDDDDD;
+  font: 400 10px Verdana, Arial, sans-serif; color: #333333; cursor: pointer;
+}
+/* LE LISTING : les blocs de 50, `blocMax` = 6 au plus. Rien ne rogne — le
+   contour `#DDDDDD` d'un bloc est peint HORS de sa boîte, comme partout. */
+body.bureau-frutiz #recherche-panel .rc-liste {
+  flex: 1 1 auto; min-height: 0; overflow: visible; padding: 4px 0 0;
+}
+/* UNE ENTRÉE (`cp.SearchSlot`) : 270 × 50, `th = 44`, `mLeft = 24`. Les quatre
+   pièces sont posées en absolu, aux coordonnées du bytecode. */
+body.bureau-frutiz #recherche-panel .rc-slot {
+  position: relative; box-sizing: border-box;
+  width: 270px; height: 50px; margin: 0; cursor: pointer;
+}
+/* Le voyant : `_x = 2`, `_y = 0`, et le fond (ch217) posé en (9, 9) avec une
+   forme de 16 — donc x 3..19, y 1..17 sur le bloc. */
+body.bureau-frutiz #recherche-panel .rc-slot .rc-voyant {
+  position: absolute; left: 3px; top: 1px; width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  background: url('/frutiz/sprites/recherche-voyant-fond.svg') center / 16px 16px no-repeat;
+}
+/* `ico` est posé au CENTRE du fond, en (8,95 ; 8,95) — le pip de présence fait
+   8 px, l'icône d'un jeu 16. */
+body.bureau-frutiz #recherche-panel .rc-slot .rc-voyant .pip { width: 8px; height: 8px; }
+body.bureau-frutiz #recherche-panel .rc-slot .rc-voyant .jeu { width: 16px; height: 16px; }
+/* Le drapeau : `_x = 2`, `_y = th * 0.5 = 22`, même décalage de fond que le
+   voyant (la forme de `countryBox` est cadrée en (1, 1)). */
+body.bureau-frutiz #recherche-panel .rc-slot .rc-drapeau {
+  position: absolute; left: 3px; top: 23px; width: 16px; height: 16px;
+}
+/* La bouille : `frutiScreen` en `fix: {w: th, h: th}`, posée à `_x = mLeft`. */
+body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille {
+  position: absolute; left: 24px; top: 0; width: 44px; height: 44px;
+  overflow: hidden;
+}
+body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille canvas,
+body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille img {
+  width: 44px; height: 44px; display: block;
+}
+/* LA PLAQUE, derrière le document : `updateInfoBackground` (0xc8026) la trace
+   en x = th + mLeft + 6 = 74, large de `width − (74 + 2)` = 194, haute de th,
+   `curve: 4`, liseré de 2 et contour de 2 (`#DDDDDD`, soit
+   `win.style.global.color[0].shade`). Le quatrième argument de
+   `drawCustomSquare` vaut `true` : le REFLET, comme sur les cartes du journal.
+   La couleur suit le GENRE — `colorSet.green` pour les garçons,
+   `colorSet.pink` pour tout le reste. */
+body.bureau-frutiz #recherche-panel .rc-slot::before {
+  content: ""; position: absolute; left: 74px; top: 0; width: 194px; height: 44px;
+  box-sizing: border-box; border-radius: 6px;
+  background: linear-gradient(rgba(255, 255, 255, .64), rgba(255, 255, 255, 0) 8px), #FEC9C9;
+  border: 2px solid #FEABAB; box-shadow: 0 0 0 2px #DDDDDD;
+}
+body.bureau-frutiz #recherche-panel .rc-slot[data-genre="M"]::before {
+  background: linear-gradient(rgba(255, 255, 255, .64), rgba(255, 255, 255, 0) 8px), #CCF599;
+  border-color: #ADE76B;
+}
+/* LE DOCUMENT : `cpDocument` 190 × 44 en (mLeft + th + 8 = 76, 1). Son style
+   suit le genre lui aussi — `frSheet` (encre verte) pour les garçons,
+   `frRoomList` (encre rose) pour tout le reste. */
+body.bureau-frutiz #recherche-panel .rc-slot .rc-doc {
+  position: absolute; left: 76px; top: 1px; width: 190px; height: 44px;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 0 4px; box-sizing: border-box; color: #BA4444; overflow: hidden;
+}
+body.bureau-frutiz #recherche-panel .rc-slot[data-genre="M"] .rc-doc { color: #335511; }
+body.bureau-frutiz #recherche-panel .rc-slot .rc-l1,
+body.bureau-frutiz #recherche-panel .rc-slot .rc-l2 {
+  display: flex; align-items: baseline; gap: 4px; min-width: 0;
+}
+/* Le pseudo : `{type:"text", width:110, textFormat:{size:11, bold:true}}`. */
+body.bureau-frutiz #recherche-panel .rc-slot .rc-nom {
+  flex: 0 0 110px; width: 110px;
+  font: 700 11px Verdana, Arial, sans-serif;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* « $age ans » : `{type:"text", width:60}`, sans format — la taille du style. */
+body.bureau-frutiz #recherche-panel .rc-slot .rc-age {
+  flex: 0 0 60px; width: 60px; font: 400 10px Verdana, Arial, sans-serif;
+  white-space: nowrap; overflow: hidden;
+}
+/* La région et la ville : `big: 1` (elles prennent le reste), taille 10,
+   ALIGNÉES À DROITE, `multiline: false` et `wordWrap: false`. */
+body.bureau-frutiz #recherche-panel .rc-slot .rc-reg,
+body.bureau-frutiz #recherche-panel .rc-slot .rc-ville {
+  flex: 1 1 auto; min-width: 0; text-align: right;
+  font: 400 10px Verdana, Arial, sans-serif;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* LE PIED (`cpPageSelector`, min 270 × 24, marge x.min = 10) : les deux
+   gélules aux extrémités, le compte au milieu — le même dessin que le
+   journal. */
+body.bureau-frutiz #recherche-panel .rc-pied {
+  flex: 0 0 24px; height: 24px; display: flex; align-items: center;
+  justify-content: space-between; padding: 2px 1px; box-sizing: border-box;
+  background: #FFFFFF;
+}
+body.bureau-frutiz #recherche-panel .rc-page {
+  width: 16px; height: 16px; margin: 0 2px; padding: 0; border: 0;
+  border-radius: 4px; background: transparent; box-shadow: 0 0 0 2px #DDDDDD;
+  cursor: pointer; line-height: 0;
+}
+body.bureau-frutiz #recherche-panel .rc-page img { width: 16px; height: 16px; }
+body.bureau-frutiz #recherche-panel .rc-compte {
+  flex: 1 1 auto; text-align: center;
+  font: 400 12px/14px Verdana, Geneva, sans-serif; color: #000000;
 }
 
 /* ── LA BOÎTE D'ALERTE (`win.Alert`, DoInitAction sprite#812) ───────────────

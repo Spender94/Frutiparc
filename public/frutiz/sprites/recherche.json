@@ -1,0 +1,67 @@
+{
+ "bouton": {
+  "champ": {
+   "x": 14.05,
+   "y": -0.3,
+   "w": 75.4,
+   "h": 16.05
+  },
+  "cadre": {
+   "x": 9.95,
+   "y": 0.65,
+   "w": 95.9,
+   "h": 22.02
+  },
+  "images": [
+   "recherche"
+  ]
+ },
+ "pays": {
+  "codes": [
+   "fr",
+   "be",
+   "lu",
+   "ca",
+   "ch",
+   "ot"
+  ],
+  "cadre": {
+   "x": 1,
+   "y": 1,
+   "w": 16,
+   "h": 16
+  },
+  "images": [
+   "recherche-pays-fr",
+   "recherche-pays-be",
+   "recherche-pays-lu",
+   "recherche-pays-ca",
+   "recherche-pays-ch",
+   "recherche-pays-ot"
+  ]
+ },
+ "voyantFond": {
+  "cadre": {
+   "x": 1,
+   "y": 1,
+   "w": 16,
+   "h": 16
+  },
+  "images": [
+   "recherche-voyant-fond"
+  ]
+ },
+ "presence": {
+  "cadre": {
+   "x": -4,
+   "y": -4,
+   "w": 8,
+   "h": 8
+  },
+  "images": [
+   "recherche-presence-0",
+   "recherche-presence-1",
+   "recherche-presence-2"
+  ]
+ }
+}

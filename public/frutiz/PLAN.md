@@ -793,7 +793,8 @@ dp_scrollBar 40, dp_element 100.
   (#441), à `_y = 770`, une constante en dur comme le `_y = 800` de la
   poignée. L'art est extrait tel quel (la pastille grise et sa loupe, cadre
   (9,95 ; 0,65)–(105,85 ; 22,67)) ; seul le mot « recherche » est un champ
-  texte. Le bouton ouvre la fenêtre `search`.
+  texte — verdana GRAS 10, blanc, **centré** (`align = 2`). Le bouton ouvre la
+  fenêtre `search` (cf. « LA RECHERCHE DE FRUTIZ », plus bas).
 - **Une ligne fait 18 px** et chaque niveau de dossier décale de **5 px**
   (`buildElement` 0xa1243). Un dossier se replie au clic sur son titre
   (`fond.onPress` bascule `element.open` puis rebâtit la liste), et REPLIÉ il
@@ -3472,6 +3473,219 @@ tombe en x 1049..1093.
 - les trois `butPushVerySmallPink` de `initSideIconList` (0x6b786), qui
   offrent le même repli et le plein écran depuis le flanc de la barre, ne sont
   pas encore posés : le bouton vert de la mandala en tient lieu.
+
+## LA RECHERCHE DE FRUTIZ (`win.Search` 0x855db, `box.Search` 0x984e7)
+
+La deuxième fenêtre du bureau qui n'a pas de jumeau mobile — l'autre est
+« Salons publics ». Deux portes y mènent, et ce sont celles de l'époque : le
+bouton du bas de la bande des contacts (`SideList.buildList` 0xa115b :
+`butSearch.onPress = uniqWinMng.open("search")`) et l'entrée « Recherche » du
+menu de l'onglet Bureau (`FPDesktop.getMenu`). Le portage renvoyait les deux
+vers le Bouilloscope, faute d'annuaire.
+
+### Le gabarit
+
+`win.Search.init` (0x85629) tient en trois lignes — `mWidth = 270`,
+`flResizable = false`, `flAdvance = false` — et `initFrameSet` (0x8567a) empile,
+de haut en bas :
+
+    doc          cpDocument « search », style frSystem, min {w: 270, h: 20},
+                 marge y.min = 6 / y.ratio = 0, args {flDocumentFit: true}
+    showFrame    un cadre nu, min {w: 270, h: 0} — les blocs vont là
+    pageSelector cpPageSelector, min {w: 270, h: 24}, dans margin.bottom,
+                 marge x.min = 10
+
+`flDocumentFit` : **la fenêtre prend la taille de son contenu**. Elle grandit
+donc quand la recherche avancée se déplie et quand les résultats arrivent — d'où
+`updateSize()` appelé (deux fois !) par `toggleAdvance`, et `frameSet.update()`
+après chaque `displayBloc`. Le portage recalcule la hauteur au même moment
+(`ajusterFenetreRecherche`) ; la largeur suit la loi du journal (300 de contenu
+→ 314 de fenêtre), soit **284**.
+
+`winType = "winSearchFrutiz"` — une étiquette que la bande de fruits #198 ne
+connaît pas : la pastille reste l'ORANGE par défaut.
+
+### Le formulaire (`getSearchLines` 0x862c9, `getAdvanceSearchLines` 0x8646d)
+
+Une ligne simple, toujours :
+
+    text   width 60   « pseudo : »
+    input             variable "pseudo", maxChars 18, restrict "0-9a-zA-Z"
+    spacer width 4
+    button            « ok »       → launchSearch
+    button dx 3       « avancée »  → toggleAdvance   [SI flAdvanceAvailable]
+
+puis quatre lignes de plus quand `flAdvance` est vrai :
+
+    text 48 « sexe : »   radio 76 « Masculin » M
+                         radio 76 « Feminin »  F
+                         radio 60 « Tous »     ""
+    text 66 « age min : » input 40 (maxChars 2, restrict "0-9")
+    spacer 12
+    text 66 « age max : » input 40 (maxChars 2, restrict "0-9")
+    text 50 « pays : »    comboBox big 100, variable "country"
+    text 50 « region : »  comboBox big 100, variable "region"
+
+**L'ordre des trois boutons de sexe est bien « Masculin, Feminin, Tous ».**
+`InitArray` renverse l'ordre d'empilement, et le bytecode empile Tous, Feminin,
+Masculin, puis l'étiquette. C'est contre-intuitif ; c'est ce que la fenêtre
+d'origine affichait, et le « Feminin » sans accent aussi.
+
+`win.search.Frutiz.launchSearch` (0x86a57) commence par une trappe de mise au
+point : ENTRÉE enfoncée pendant l'appui sur « ok » affiche quatre « bumdum » de
+Bordeaux au lieu d'interroger le serveur. **Écart assumé** : l'outillage des
+auteurs n'a pas cours ici.
+
+### La requête (`box.Search.launchSearch` 0x98ab6)
+
+    if (flLoading) return false
+    nbPerPage = window.blocMax                      // 6
+    q = {} ; q.s = 0 ; q.l = nbPerPage
+    if (obj.pseudo.length >= 2)   q.u  = obj.pseudo   ← MOINS DE DEUX
+    if (obj.gender.length)        q.sx = obj.gender     LETTRES : IGNORÉ
+    t = servTime.getCompleteObject() ; Y = Number($Y)
+    if (obj.ageMin.length) { m = Number(obj.ageMin)
+                             if (m > 0) q.bdm = (Y − m) + "-$N-$D" }
+    if (obj.ageMax.length) { M = Number(obj.ageMax)
+                             q.bd = (Y − M − 1) + "-$N-$D" }
+    if (obj.city.length)          q.ct = obj.city
+    if (countryKey[obj.country] !== undefined) {
+      q.co = countryKey[obj.country]
+      if (regionKey[obj.region] !== undefined) q.rg = regionKey[obj.region]
+    }
+    currentSearch = q ; flLoading = true ; mainCnx.cmd("searchuser", q)
+
+Deux BORNES D'ANNIVERSAIRE, donc, et pas deux âges : `bdm` est la date de
+naissance la plus ANCIENNE acceptée (elle plafonne l'âge), `bd` la plus RÉCENTE
+(elle le plancherise). Le « −1 » de `bd` est d'origine : il fait de
+« age max : 20 » un « jusqu'à 20 ans révolus ».
+
+`q.ct` (la ville) n'a pas de champ dans cette fenêtre-là : la boîte le prévoit
+pour une autre recherche, qui n'existe pas dans ce SWF.
+
+`nextPage` (0x98cfe) et `prevPage` (0x98dce) ne refont PAS la requête : ils
+bougent `currentSearch.s` et la renvoient telle quelle, avec deux bornes écrites
+en clair — `s < nbResult − nbPerPage` d'un côté, `s > 0` de l'autre.
+
+### La réponse (`onSearch` 0x98ea1)
+
+    flLoading = false
+    if (node.attributes.k !== undefined) { openErrorAlert(…) ; return false }
+    page = Math.ceil(Number(s) / nbPerPage + 1)
+    if (s == "0") nbResult = Number(n)        ← le total ne se lit qu'à la 1re page
+    pour chaque <u> : info = UserMng.formatInfoBasic(u)
+      info.fbouille = f ; info.city = ct ; info.presence = Number(p)
+      info.status   = s !== undefined ? StatusMng.analyseStr(s) : {}
+    window.displayBloc(list, page, nbResult)
+
+et le pied dit `page + "/" + ceil(searchMax / blocMax) + " - " + searchMax +
+" réponse" + (searchMax > 1 ? "s" : "")`.
+
+### Une entrée (`cp.SearchSlot` 0xc79dd) — `th = 44`, `mLeft = 24`, 270 × 50
+
+    status     (le voyant)  16 × 16 en (2, 0), `bg` figé sur son image 2
+    countryBox (le drapeau) 16 × 16 en (2, th·0.5 = 22)
+    frutiScreen (la bouille) fix 44 × 44 en (mLeft = 24, 0)
+    doc         cpDocument 190 × 44 en (mLeft + th + 8 = 76, 1) :
+                  [ pseudo 110, gras 11 | région, taille 10, à DROITE ]
+                  [ « $age ans » 60     | ville,  taille 10, à DROITE ]
+
+et derrière le document, `updateInfoBackground` (0xc8026) peint un carré arrondi
+au `drawCustomSquare`, chrome (le reflet) compris :
+
+    x = th + mLeft + 6 = 74      w = width − (x + 2) = 194      h = th
+    inline 2 · outline 2 · curve 4
+    color.main    = colorSet.pink | colorSet.green
+    color.inline  = la même en .shade
+    color.outline = win.style.global.color[0].shade = #DDDDDD
+
+**LE GENRE DÉCIDE DE TOUT** : `info.gender == "M"` donne le VERT (`frSheet`,
+encre `#335511`), et tout le reste — les filles ET le genre inconnu — le ROSE
+(`frRoomList`, encre `#BA4444`). La même règle que la couleur des pseudos dans
+les salons. Et `select()` (0xc830e) fait `frutizInfMng.open(info.nickname)` :
+cliquer une entrée ouvre la fiche, où que l'on clique dessus.
+
+`updateStatus` (0xc818a), dans l'ordre : pas de statut → image blanche ;
+`presence == 0` → l'image « presence » et `ico` à `presence + 1` ; sinon le JEU
+en cours (`status.internal`), puis l'absence (`status.external`), puis la
+présence par défaut.
+
+### Les dessins sortis du SWF (`scripts/extract-recherche.js`)
+
+- **`mcSearchButton` (#441)** — UN SEUL dessin, trois PROFONDEURS (et non trois
+  états) : la plaque grise ch437 (95,6 × 14,45), le champ ch438 et la loupe
+  ch440 tournée de 45°. `SideList` ne lui pose qu'un `onPress` : rien ne va
+  jamais chercher une deuxième image. Le champ, relevé au tag : police #148
+  (**verdana gras**) en 10, encre BLANCHE, **`align = 2` — centré**, `readOnly`,
+  texte « recherche », posé en (26 ; 2,35) avec un rectangle de (−2 ; −2) à
+  (73,4 ; 14,05). Le portage écrit donc le mot en texte par-dessus le dessin,
+  centré dans la zone utile (gouttière de 2 px comprise : x 16,05..87,45).
+- **`countryBox` (#113)** — six images ÉTIQUETÉES `fr, be, lu, ca, ch, ot`.
+  `initScreen` fait `country.gotoAndStop(info.countryCode)` avec l'INDEX en
+  chaîne : Flash ne trouve pas d'étiquette « 3 », retombe sur le numéro
+  d'image — et les six images se recoupent EXACTEMENT avec la table `<ct>` de
+  lang_french.xml (France 1, Belgique 2, Luxembourg 3, Canada 4, Suisse 5). Un
+  code vide devient « ot » (`initScreen` le réécrit) ; Flash borne les autres.
+- **`status` (#253)** — le fond `bg` (ch217, 16 × 16) et, au centre,
+  `ico` : ch222 pour la PRÉSENCE (trois images seulement — rouge hors ligne,
+  verte en ligne, grise invisible), ch246 pour les jeux (déjà sortis par
+  `extract-voyants-jeux.js`), ch252 pour les absences. **Les absences ne sont
+  pas sorties** : le revival ne les émet jamais (`getStatusCode` assemble un
+  `encode62(ext, 1)` toujours nul) et l'ordre d'`externalList` (away, phone,
+  zzz, work, eat) ne se recoupe pas avec les cinq dessins relevés. On ne devine
+  pas une correspondance qu'aucun trafic ne viendrait confirmer.
+
+### Le Bananocle ouvre la recherche avancée
+
+`box.Search` (0x9868d) : `winOpt.flAdvanceAvailable = me.hasItem(833)` — l'objet
+833, c'est le Bananocle (banane + monocle). Et `onAdvanceSearch(b)` (0x98a5d) :
+
+    me.useFrutibouille(b ? "Bananocle" : "Normal")
+
+**Déplier la recherche avancée VOUS MET LE BANANOCLE SUR LE NEZ**, et la replier
+vous rend votre visage. Ce n'est pas un ornement de la fenêtre : c'est votre
+bouille qui change, et les salons la voient changer.
+
+**Écart assumé, et il ne vient pas de la fenêtre** : sur ce serveur le Bananocle
+est un accessoire OFFERT (`DEFAULT_ACCESSORIES`), là où il s'achetait en 2005.
+La condition est reproduite telle quelle — la possession réelle de l'objet —
+mais tout le monde le possède, et le bouton « avancée » paraît pour tout le
+monde. Le jour où il repassera à la caisse, la porte se refermera d'elle-même.
+
+### Trois choses que le portage a dû réparer au passage
+
+1. **`searchuser` renvoyait `co="FR" rg="IDF"`**, les colonnes libres de la
+   base, quand tout le reste du serveur envoie déjà les INDEX
+   (`countryIndex` / `regionIndex`, cf. `buildUserAttrs`). Le drapeau restait
+   sur la France, la région disait « Inconnu », et les deux filtres de la
+   recherche avancée — qui comparent l'index choisi dans le menu — ne
+   retenaient jamais personne. `db.listAllUsers()` ne rapportait même pas les
+   deux colonnes.
+2. **L'ordre des départements**. La table `<ct>` était rangée dans un OBJET
+   dont les clés « 01 »… « 10 » sont, pour partie, des index entiers aux yeux
+   de JavaScript : il remontait « 10, 11, 12… » en tête et laissait « 01, 02 »
+   à la fin. C'est un tableau maintenant, dans l'ordre du fichier de langue.
+   (Le menu « Région » de la fiche mobile en souffrait aussi.)
+3. **`me.hasItem` ne répondait jamais oui.** D'époque, `MeMng` tient la liste
+   des objets depuis l'ident. Ici elle n'arrivait qu'à l'ouverture de la
+   feuille « Ma Frutibouille », que le bureau desktop n'ouvre jamais : la
+   recherche avancée était donc invisible pour tout le monde.
+
+### Les libellés reconstruits
+
+Les titres des deux menus déroulants viennent du fichier de langue du SERVEUR
+(`search.country_combo_title`, `search.region_combo_title`,
+`search.region_combo_none`), qui n'est pas dans le SWF. **Un seul est connu au
+mot près** : `win.search.Frutiz.init` (0x861e9) écrit en dur « Choisissez un
+pays ! » comme valeur de repli d'`infoRegion` — c'est donc la phrase d'époque
+pour la liste des régions avant tout choix de pays. Les deux autres sont
+reconstruits sur ce modèle.
+
+Ce qui n'est PAS reconstruit, c'est la SUBSTITUTION du titre des régions :
+`fv(clé, {n: regionName.toLowerCase()})`, où `regionName` est l'attribut `tn` de
+la table `<ct>`. Il ne vaut « département » que pour la France — les quatre
+autres pays y portent leur propre code (« be », « lu », « ca », « ch »). C'est
+la donnée d'origine ; on ne la corrige pas.
 
 ## L'ASCENSEUR (`ScrollBar` sprite#864, `sb.Round` sprite#865)
 

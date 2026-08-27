@@ -5424,6 +5424,65 @@
         break;
       }
 
+      /*
+       * LA RÉPONSE DE LA RECHERCHE — `box.Search.onSearch` (0x98ea1), au mot
+       * près :
+       *
+       *     flLoading = false
+       *     if (node.attributes.k !== undefined) {
+       *       openErrorAlert(Lang.fv("error.cbee." + k)); return false;
+       *     }
+       *     page = Math.ceil(Number(s) / nbPerPage + 1)
+       *     if (s == "0") nbResult = Number(n)      // le TOTAL n'arrive qu'à
+       *                                             // la première page
+       *     pour chaque <u> : info = UserMng.formatInfoBasic(u)
+       *       info.fbouille = f ; info.city = ct ; info.presence = Number(p)
+       *       info.status   = s !== undefined ? StatusMng.analyseStr(s) : {}
+       *     window.displayBloc(list, page, nbResult)
+       *
+       * `formatInfoBasic` est déjà porté (rememberInfoBasic) : on relit les
+       * mêmes attributs, avec les mêmes conversions — l'âge depuis `bd`, le
+       * niveau depuis `x`, et pays/région qui restent des INDEX (c'est le
+       * bureau qui les résout, pour le drapeau comme pour le nom).
+       */
+      case "bn": {
+        if (!window.BureauFrutiz || !BureauFrutiz.resultatsRecherche) break;
+        if (/\bk="/.test(xml)) {
+          BureauFrutiz.resultatsRecherche(null, 0, 0, attr(xml, "k") || "1");
+          break;
+        }
+        var bnDeb = Number(attr(xml, "s")) || 0;
+        var bnPar = Number(attr(xml, "l")) || 6;
+        var bnListe = [];
+        var bnRe = /<u\b([^>]*)\/>/g, bnM;
+        while ((bnM = bnRe.exec(xml)) !== null) {
+          var f = "<u " + bnM[1] + "/>";
+          var st = attr(f, "s");
+          bnListe.push({
+            pseudo: attr(f, "u"),
+            niveau: xpEnNiveau(attr(f, "x")),
+            genre: String(attr(f, "sx") || "").toUpperCase() === "F" ? "F" : "M",
+            age: anniversaireEnAge(attr(f, "bd")),
+            pays: String(attr(f, "co") || ""),
+            region: String(attr(f, "rg") || ""),
+            ville: attr(f, "ct") || "",
+            bouille: String(attr(f, "f") || "").replace(/[^0-9A-Za-z]/g, ""),
+            // `presence` : 0 hors ligne, 1 en ligne, 2 invisible.
+            presence: Number(attr(f, "p")) || 0,
+            // `StatusMng.analyseStr` : absence(1) + JEU(2) + émote(1) en base 62.
+            jeu: st ? (VOYANTS_JEU[decode62(String(st).substring(1, 3))] || "") : "",
+            humeur: st && st.length > 3 ? decode62(String(st).substring(3, 4)) : 0,
+          });
+        }
+        // Le total n'est juste qu'à la PREMIÈRE page : les suivantes le
+        // répètent, mais `onSearch` ne le relit qu'à `s == "0"` — on garde la
+        // même règle, c'est le bureau qui retient `nbResult`.
+        BureauFrutiz.resultatsRecherche(bnListe,
+          Math.ceil(bnDeb / bnPar + 1),
+          attr(xml, "s") === "0" ? Number(attr(xml, "n")) || 0 : null, "");
+        break;
+      }
+
       case "z": { // trace push: <z><u u=".." f="<bouille>" .../></z> — bouille data
         var zre = /<u\b([^>]*)\/>/g, zm;
         var zTrouve = false;
@@ -8029,7 +8088,13 @@
   $("#bouille-sheet-close").addEventListener("click", closeBouilleSheet);
   $("#bouille-sheet-backdrop").addEventListener("click", closeBouilleSheet);
 
-  function loadAccessories() {
+  // `apres` : le bureau a besoin de SAVOIR ce qu'on possède avant d'ouvrir sa
+  // fenêtre de recherche (le Bananocle y ouvre la recherche avancée). D'époque
+  // la question ne se pose pas — `MeMng` tient la liste des objets depuis
+  // l'ident, et `me.hasItem(833)` répond sans rien demander. Ici la liste
+  // n'arrivait qu'à l'ouverture de la feuille « Ma Frutibouille », que le
+  // bureau desktop n'ouvre jamais : `hasItem` répondait donc toujours non.
+  function loadAccessories(apres) {
     fetch("/api/forum/me?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -8065,9 +8130,11 @@
         else accSel = { suffix: cur.substring(15, 24), fullState: null };
         renderAccGrid();
         updateSheetPreview();
+        if (apres) apres();
       })
       .catch(function () {
         $("#bouille-acc-grid").innerHTML = '<div class="sheet-hint">Inventaire indisponible.</div>';
+        if (apres) apres();
       });
   }
 
@@ -8286,6 +8353,146 @@
     // `wallPaper.loadWP(...)` : le fond se pose ET se retient. Un identifiant
     // vide, c'est le retour au thème d'origine.
     poserFond: function (id) { poserFond(id || ""); },
+  };
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     LE PONT DE LA RECHERCHE POUR LE BUREAU
+     `win.search.Frutiz` (0x86170) · `box.Search` (0x984e7)
+
+     Le bureau tient la FENÊTRE (le formulaire, le listing, la pagination) ; le
+     light tient la SOCKET et ce qui vit avec elle. Cette frontière est celle du
+     SWF : `win.Search` ne parle jamais au serveur, il appelle sa `box`.
+
+     `box.Search.launchSearch(obj)` (0x98ab6) construit la requête, au mot près :
+
+         if (flLoading) return false
+         nbPerPage = window.blocMax                    // 6
+         q = {}                                        // <bn …/>
+         q.s = 0                                       // le rang de départ
+         q.l = nbPerPage
+         if (obj.pseudo.length >= 2)   q.u  = obj.pseudo   // MOINS DE DEUX
+         if (obj.gender.length)        q.sx = obj.gender   // LETTRES : IGNORÉ
+         t = servTime.getCompleteObject() ; Y = Number($Y)
+         if (obj.ageMin.length) { m = Number(obj.ageMin)
+                                  if (m > 0) q.bdm = (Y − m) + "-$N-$D" }
+         if (obj.ageMax.length) { M = Number(obj.ageMax)
+                                  q.bd = (Y − M − 1) + "-$N-$D" }
+         if (obj.city.length)          q.ct = obj.city
+         if (countryKey[obj.country] !== undefined) {
+           q.co = countryKey[obj.country]
+           if (regionKey[obj.region] !== undefined) q.rg = regionKey[obj.region]
+         }
+         currentSearch = q ; flLoading = true ; mainCnx.cmd("searchuser", q)
+
+     Deux bornes d'anniversaire, donc, et pas deux âges : `bdm` est la date de
+     naissance la PLUS ANCIENNE acceptée (elle plafonne l'âge) et `bd` la plus
+     RÉCENTE (elle le plancherise). Le « −1 » de `bd` est d'origine : il fait de
+     « age max : 20 » un « jusqu'à 20 ans révolus ».
+
+     `q.ct` (la ville) n'a PAS de champ dans la fenêtre des Frutiz —
+     `getAdvanceSearchLines` (0x8646d) donne quatre lignes : sexe, âges, pays,
+     région. Le code de la boîte le prévoit pour une autre fenêtre de recherche
+     qui n'existe pas dans ce SWF ; on le garde côté serveur, personne ne
+     l'envoie.
+
+     `nextPage`/`prevPage` (0x98cfe, 0x98dce) ne refont PAS la requête : ils ne
+     bougent que `currentSearch.s` et la renvoient telle quelle.
+  */
+  // `servTime.getCompleteObject()` : l'horloge du SERVEUR. Le portage n'en tient
+  // pas de copie décalée — l'âge d'une bouille se calcule déjà sur l'horloge du
+  // navigateur (`anniversaireEnAge`), on garde la même.
+  function dateDuJour() {
+    var d = new Date();
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return { an: d.getFullYear(), moisJour: "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) };
+  }
+  // L'accessoire nommé, dans l'inventaire tel que le light le tient. C'est ce
+  // que `me.hasItem(833)` demandait : le Bananocle est l'objet 833 du catalogue
+  // d'époque, et c'est LUI qui ouvre la recherche avancée.
+  function accessoireNomme(nom) {
+    var cle = String(nom || "").toLowerCase();
+    for (var i = 0; i < accList.length; i++) {
+      if (String(accList[i].name || "").toLowerCase() === cle) return accList[i];
+    }
+    return null;
+  }
+  window.RechercheBureau = {
+    /*
+     * `box.Search` (0x9868d) : `winOpt.flAdvanceAvailable = me.hasItem(833)`.
+     *
+     * ÉCART ASSUMÉ, et il ne vient pas de la fenêtre : sur ce serveur le
+     * Bananocle est un accessoire OFFERT (server.js, DEFAULT_ACCESSORIES), là
+     * où il s'achetait en 2005. La condition est donc reproduite telle quelle
+     * — on la pose sur la possession réelle de l'objet — mais tout le monde le
+     * possède, et le bouton « avancée » paraît pour tout le monde. Le jour où
+     * le Bananocle repassera à la caisse, la porte se refermera d'elle-même.
+     */
+    bananocle: function (cb) {
+      // La liste peut n'être pas encore là : on la demande, puis on rappelle.
+      // (`MeMng` d'époque l'a depuis l'ident — voir `loadAccessories`.)
+      if (!accList.length && cb) {
+        loadAccessories(function () { cb(!!accessoireNomme("Bananocle")); });
+        return false;
+      }
+      var a = !!accessoireNomme("Bananocle");
+      if (cb) cb(a);
+      return a;
+    },
+    /*
+     * `box.Search.onAdvanceSearch(b)` (0x98a5d) :
+     *     me.useFrutibouille(b ? "Bananocle" : "Normal")
+     * Déplier la recherche avancée VOUS MET LE BANANOCLE SUR LE NEZ ; la
+     * replier vous rend votre visage. Ce n'est pas un ornement de la fenêtre :
+     * c'est votre bouille qui change, et les salons la voient changer.
+     */
+    porterBananocle: function (avance) {
+      var ac = accessoireNomme(avance ? "Bananocle" : "Normal");
+      if (!ac) return;
+      var i = accList.indexOf(ac);
+      if (i >= 0) pickAccessory(i);
+    },
+    // La table <ct> de lang_french.xml — les deux menus déroulants de la
+    // recherche avancée y puisent leurs libellés ET leurs index.
+    tablePays: function (cb) { chargerTablePays(function () { cb(profilPays); }); },
+    nomPays: function (co) { return nomPays(co); },
+    nomRegion: function (co, rg) { return nomRegion(co, rg); },
+    // La fiche d'un résultat : `cp.SearchSlot.select` (0xc830e) fait
+    // `frutizInfMng.open(info.nickname)` — la même fiche que partout ailleurs.
+    ouvrirFiche: function (pseudo) { ouvrirFiche(pseudo); },
+    /*
+     * `mainCnx.cmd("searchuser", q)`. Le bureau donne le formulaire tel que
+     * `win.Search.launchSearch` (0x859f9) le ramasse (`doc.card[*].value`) ;
+     * la mise en requête est celle de la boîte, ci-dessus.
+     *
+     * Rend `false` si rien n'est parti (socket fermée) : la fenêtre garde alors
+     * son « chargement... » pour elle.
+     */
+    chercher: function (form, depart) {
+      if (!state.ws || state.ws.readyState !== 1) return false;
+      var q = { s: Math.max(0, Number(depart) || 0), l: 6 };
+      var pseudo = String((form && form.pseudo) || "");
+      if (pseudo.length >= 2) q.u = pseudo;
+      var genre = String((form && form.gender) || "");
+      if (genre.length) q.sx = genre;
+      var j = dateDuJour();
+      var aMin = String((form && form.ageMin) || "");
+      if (aMin.length) {
+        var m = Number(aMin);
+        if (m > 0) q.bdm = (j.an - m) + j.moisJour;
+      }
+      var aMax = String((form && form.ageMax) || "");
+      if (aMax.length) q.bd = (j.an - Number(aMax) - 1) + j.moisJour;
+      var co = String((form && form.country) || "");
+      if (co) {
+        q.co = co;
+        var rg = String((form && form.region) || "");
+        if (rg) q.rg = rg;
+      }
+      var xml = "<bn";
+      for (var k in q) xml += " " + k + '="' + xmlEscape(q[k]) + '"';
+      wsSend(xml + " />");
+      return true;
+    },
   };
 
   // ── "Ma Frutibouille" : éditeur de visage (chars 2-23 de l'état bouille) ───

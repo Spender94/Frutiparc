@@ -90,6 +90,17 @@ window.BureauFrutiz = (function () {
     // (0xbec80), et la fenêtre s'ouvre à 265×288 sur le rendu d'époque.
     salons:     { panneau: '#salons-panel',    titre: 'Salons publics', fruit: 'winChat',
                   l: 265, h: 288, min: minFenetre(200, 240) },
+    // « Recherche » — `win.Search` (0x855db). L'autre fenêtre sans équivalent
+    // mobile. Son gabarit est écrit dans `init` : `mWidth = 270` et
+    // `flResizable = false`. La largeur suit la loi du journal (300 de contenu
+    // → 314 de fenêtre) : 270 + 14 = 284. La HAUTEUR, elle, ne se fixe pas —
+    // `flDocumentFit` la fait suivre le contenu, et `ajusterFenetreRecherche`
+    // la recalcule à chaque dépliage et à chaque page de résultats. Le `h` ci-
+    // dessous n'est donc que celui de la fenêtre VIDE, à l'ouverture.
+    // `winType = "winSearchFrutiz"` : une étiquette que la bande de fruits
+    // #198 ne connaît pas, donc l'ORANGE par défaut en pastille.
+    recherche:  { panneau: '#recherche-panel', titre: 'Recherche', fruit: 'winSearchFrutiz',
+                  l: 284, h: 84, fixe: true, min: minFenetre(270, 20 + 24) },
     // L'EXPLORATEUR — `win.Explorer`, la fenêtre JAUNE (winType « winExplorer »,
     // d'où la banane en pastille). Son gabarit est écrit dans `init` :
     // `pos = {x:50, y:50, w:400, h:400}` — 402 × 402 le contour compris, ce
@@ -759,6 +770,613 @@ window.BureauFrutiz = (function () {
     if (!actif) return;
     ouvrirFenetre('salons');
     majSalons();
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     LA RECHERCHE DE FRUTIZ
+     `win.Search` (0x855db) · `win.search.Frutiz` (0x86170) · `box.Search`
+     (0x984e7) · `cp.SearchSlot` (0xc79dd)
+
+     Une deuxième fenêtre sans équivalent mobile — comme « Salons publics », on
+     la bâtit ici de toutes pièces. Deux portes y mènent, et ce sont celles de
+     l'époque : le bouton du bas de la bande des contacts
+     (`SideList.buildList` 0xa115b : `butSearch.onPress = uniqWinMng.open("search")`)
+     et l'entrée « Recherche » du menu de l'onglet Bureau (`FPDesktop.getMenu`).
+
+     ── LE GABARIT ──────────────────────────────────────────────────────────
+     `win.Search.init` (0x85629) tient en trois lignes :
+
+         mWidth = 270 ; flResizable = false ; flAdvance = false
+
+     et `initFrameSet` (0x8567a) empile, de haut en bas :
+
+         doc          cpDocument « search », style frSystem, min {w:270, h:20},
+                      marge y.min = 6 / y.ratio = 0, args {flDocumentFit:true}
+         showFrame    un cadre nu, min {w:270, h:0} — c'est là que vont les blocs
+         pageSelector cpPageSelector, min {w:270, h:24}, dans margin.bottom,
+                      marge x.min = 10
+
+     `flDocumentFit` : la fenêtre PREND LA TAILLE DE SON CONTENU. Elle grandit
+     donc quand la recherche avancée se déplie, et quand les résultats
+     arrivent — d'où `updateSize()` appelé (deux fois !) par `toggleAdvance` et
+     `frameSet.update()` après chaque `displayBloc`.
+
+     ── LE FORMULAIRE ───────────────────────────────────────────────────────
+     `getSearchLines` (0x862c9) rend UNE ligne, dans cet ordre :
+
+         text   width 60   « pseudo : »
+         input             variable "pseudo", maxChars 18, restrict "0-9a-zA-Z"
+         spacer width 4
+         button            « ok »       → launchSearch
+         button dx 3       « avancée »  → toggleAdvance   [si flAdvanceAvailable]
+
+     `getAdvanceSearchLines` (0x8646d) en rend QUATRE :
+
+         text 48 « sexe : »   radio 76 « Masculin » M
+                              radio 76 « Feminin »  F
+                              radio 60 « Tous »     ""
+         text 66 « age min : » input 40 (maxChars 2, restrict "0-9")
+         spacer 12
+         text 66 « age max : » input 40 (maxChars 2, restrict "0-9")
+         text 50 « pays : »    comboBox big 100, variable "country"
+         text 50 « region : »  comboBox big 100, variable "region"
+
+     L'ORDRE DES TROIS BOUTONS DE SEXE est bien celui-là : `InitArray` renverse
+     l'ordre d'empilement, et le bytecode empile Tous, Feminin, Masculin, puis
+     l'étiquette. Le menu d'origine disait donc « sexe : Masculin Feminin
+     Tous » — c'est contre-intuitif, et c'est ce qu'il disait. On le garde. (Le
+     « Feminin » sans accent est d'origine aussi.)
+
+     `launchSearch` de la fenêtre Frutiz (0x86a57) commence par une trappe de
+     mise au point : si la touche ENTRÉE est enfoncée pendant l'appui sur « ok »,
+     elle affiche quatre « bumdum » de Bordeaux au lieu d'interroger le serveur.
+     ÉCART ASSUMÉ : on ne reproduit pas l'outillage des auteurs.
+
+     ── UNE ENTRÉE DU LISTING ───────────────────────────────────────────────
+     `cp.SearchSlot`, `th = 44`, `mLeft = 24`, bloc de 270 × 50 :
+
+         status     (le voyant)  16 × 16 en (2, 0), bg figé sur son image 2
+         countryBox (le drapeau) 16 × 16 en (2, th·0.5 = 22)
+         frutiScreen (la bouille) fix 44 × 44 en (mLeft = 24, 0)
+         doc         cpDocument 190 × 44 en (mLeft + th + 8 = 76, 1), deux
+                     lignes : [pseudo 110 en gras 11 | région, taille 10, à
+                     droite] et [« $age ans » 60 | ville, taille 10, à droite]
+
+     et derrière le doc, `updateInfoBackground` (0xc8026) peint un carré
+     arrondi (`drawCustomSquare`, chrome compris) :
+
+         x = th + mLeft + 6 = 74   w = width − (x + 2)   h = th
+         inline 2, outline 2, curve 4
+         color.main    = colorSet.pink | colorSet.green
+         color.inline  = la même en .shade
+         color.outline = win.style.global.color[0].shade = #DDDDDD
+
+     LE GENRE DÉCIDE DE TOUT : `info.gender == "M"` donne le VERT (frSheet), et
+     tout le reste — les filles ET le genre inconnu — le ROSE (frRoomList).
+     C'est la même règle que la couleur des pseudos dans les salons.
+
+     Enfin, `select()` (0xc830e) : `frutizInfMng.open(info.nickname)` — cliquer
+     une entrée ouvre la fiche, où que l'on clique dessus (la bouille comme le
+     document ont le même `onPress`).
+  */
+  var RC_LARGEUR = 270;                 // `mWidth`
+  var RC_BLOC_MAX = 6;                  // `blocMax`
+  var RC_TH = 44, RC_MLEFT = 24;        // `cp.SearchSlot.th` et `.mLeft`
+  var RC_BLOC_H = 50;                   // `displayBloc` : h = 50, en dur
+  var RC_LIGNE = 22;                    // une ligne du formulaire
+  var RC_PIED = 24;                     // `cpPageSelector` min h
+  // Les six images de `countryBox`, dans leur ordre de clip. Elles se recoupent
+  // exactement avec la table <ct> de lang_french.xml (France 1, Belgique 2,
+  // Luxembourg 3, Canada 4, Suisse 5) : `gotoAndStop(info.countryCode)` reçoit
+  // l'INDEX en chaîne, ne trouve pas d'étiquette « 3 » et retombe sur le numéro
+  // d'image — d'où la coïncidence, qui n'en est pas une. Un code vide devient
+  // « ot » (`initScreen` le réécrit), et Flash borne les autres : au-dessous de
+  // 1 on reste sur la France, au-dessus de 6 on tombe sur « ot ».
+  var RC_DRAPEAUX = ['fr', 'be', 'lu', 'ca', 'ch', 'ot'];
+  function drapeauDe(co) {
+    var s = String(co == null ? '' : co);
+    if (s === '') return 'ot';
+    var n = Number(s);
+    if (!isFinite(n)) return 'ot';
+    if (n < 1) return RC_DRAPEAUX[0];
+    return RC_DRAPEAUX[Math.min(Math.round(n), RC_DRAPEAUX.length) - 1];
+  }
+
+  var rcPanneau = null;
+  var rcEtat = {
+    avance: false,        // `flAdvance`
+    charge: false,        // `flLoading`
+    depart: 0,            // `currentSearch.s`
+    total: 0,             // `nbResult`
+    resultats: [],
+    pays: null,           // la table <ct>, une fois chargée
+  };
+
+  function panneauRecherche() {
+    if (rcPanneau) return rcPanneau;
+    var p = document.createElement('section');
+    p.className = 'panel';
+    p.id = 'recherche-panel';
+
+    var form = document.createElement('div');
+    form.className = 'rc-form';
+
+    // ── La ligne simple ────────────────────────────────────────────────────
+    var l1 = ligneRecherche();
+    l1.appendChild(etiquetteRecherche('pseudo :', 60));
+    var pseudo = document.createElement('input');
+    pseudo.type = 'text';
+    pseudo.className = 'rc-in rc-pseudo';
+    pseudo.maxLength = 18;
+    pseudo.setAttribute('aria-label', 'Pseudo cherché');
+    l1.appendChild(pseudo);
+    l1.appendChild(espaceRecherche(4));
+    var ok = boutonRecherche('ok', 'rc-ok');
+    l1.appendChild(ok);
+    // « avancée » : le bouton n'EXISTE que si l'on a le Bananocle
+    // (`flAdvanceAvailable`). `dx: 3` — trois pixels de plus que l'espace
+    // ordinaire entre deux éléments d'une ligne.
+    var avance = boutonRecherche('avancée', 'rc-avance');
+    avance.style.marginLeft = '3px';
+    l1.appendChild(avance);
+    form.appendChild(l1);
+
+    // ── Les quatre lignes avancées ─────────────────────────────────────────
+    var av = document.createElement('div');
+    av.className = 'rc-avancee';
+
+    var lS = ligneRecherche();
+    lS.appendChild(etiquetteRecherche('sexe :', 48));
+    lS.appendChild(radioRecherche('M', 'Masculin', 76));
+    lS.appendChild(radioRecherche('F', 'Feminin', 76));
+    lS.appendChild(radioRecherche('', 'Tous', 60, true));
+    av.appendChild(lS);
+
+    var lA = ligneRecherche();
+    lA.appendChild(etiquetteRecherche('age min :', 66));
+    lA.appendChild(champAge('rc-agemin', 'Âge minimum'));
+    lA.appendChild(espaceRecherche(12));
+    lA.appendChild(etiquetteRecherche('age max :', 66));
+    lA.appendChild(champAge('rc-agemax', 'Âge maximum'));
+    av.appendChild(lA);
+
+    var lP = ligneRecherche();
+    lP.appendChild(etiquetteRecherche('pays :', 50));
+    var selP = document.createElement('select');
+    selP.className = 'rc-combo rc-pays';
+    selP.setAttribute('aria-label', 'Pays');
+    lP.appendChild(selP);
+    av.appendChild(lP);
+
+    var lR = ligneRecherche();
+    lR.appendChild(etiquetteRecherche('region :', 50));
+    var selR = document.createElement('select');
+    selR.className = 'rc-combo rc-region';
+    selR.setAttribute('aria-label', 'Région');
+    lR.appendChild(selR);
+    av.appendChild(lR);
+
+    form.appendChild(av);
+    p.appendChild(form);
+
+    // ── Le listing, puis le sélecteur de page ──────────────────────────────
+    var liste = document.createElement('div');
+    liste.className = 'rc-liste';
+    p.appendChild(liste);
+
+    var pied = document.createElement('div');
+    pied.className = 'rc-pied';
+    var prev = document.createElement('button');
+    prev.type = 'button';
+    prev.className = 'rc-page rc-prev';
+    prev.title = 'Page précédente';
+    prev.innerHTML = '<img src="/fb/fleche_gauche.svg" alt="" aria-hidden="true">';
+    var compte = document.createElement('span');
+    compte.className = 'rc-compte';
+    var next = document.createElement('button');
+    next.type = 'button';
+    next.className = 'rc-page rc-next';
+    next.title = 'Page suivante';
+    next.innerHTML = '<img src="/fb/fleche_droite.svg" alt="" aria-hidden="true">';
+    pied.appendChild(prev);
+    pied.appendChild(compte);
+    pied.appendChild(next);
+    p.appendChild(pied);
+
+    // ── Le câblage ─────────────────────────────────────────────────────────
+    ok.addEventListener('click', lancerRecherche);
+    // La touche entrée dans un champ vaut l'appui sur « ok » : `cpInput` d'époque
+    // relaie `onEnter` au premier bouton de sa ligne.
+    form.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); lancerRecherche(); }
+    });
+    // `restrict` d'un champ Flash : les touches interdites ne s'écrivent pas.
+    filtrerSaisie(pseudo, /[^0-9A-Za-z]/g);
+    filtrerSaisie(av.querySelector('.rc-agemin'), /[^0-9]/g);
+    filtrerSaisie(av.querySelector('.rc-agemax'), /[^0-9]/g);
+    avance.addEventListener('click', basculerAvancee);
+    selP.addEventListener('change', majComboRegion);
+    prev.addEventListener('click', pagePrecedente);
+    next.addEventListener('click', pageSuivante);
+
+    rcPanneau = p;
+    return p;
+  }
+
+  function ligneRecherche() {
+    var d = document.createElement('div');
+    d.className = 'rc-ligne';
+    return d;
+  }
+  function etiquetteRecherche(txt, largeur) {
+    var s = document.createElement('span');
+    s.className = 'rc-lbl';
+    s.style.width = largeur + 'px';
+    s.textContent = txt;
+    return s;
+  }
+  function espaceRecherche(largeur) {
+    var s = document.createElement('span');
+    s.className = 'rc-espace';
+    s.style.width = largeur + 'px';
+    return s;
+  }
+  function boutonRecherche(txt, cls) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'rc-but ' + cls;
+    b.textContent = txt;
+    return b;
+  }
+  function radioRecherche(val, txt, largeur, coche) {
+    var l = document.createElement('label');
+    l.className = 'rc-radio';
+    l.style.width = largeur + 'px';
+    var r = document.createElement('input');
+    r.type = 'radio';
+    r.name = 'rc-sexe';
+    r.value = val;
+    if (coche) r.checked = true;
+    l.appendChild(r);
+    l.appendChild(document.createTextNode(txt));
+    return l;
+  }
+  function champAge(cls, aria) {
+    var i = document.createElement('input');
+    i.type = 'text';
+    i.className = 'rc-in ' + cls;
+    i.maxLength = 2;
+    i.style.width = '40px';
+    i.setAttribute('aria-label', aria);
+    return i;
+  }
+  // `restrict` : Flash refuse la frappe, il ne nettoie pas après coup. On s'en
+  // approche au plus près — la position du curseur est conservée.
+  function filtrerSaisie(champ, interdit) {
+    if (!champ) return;
+    champ.addEventListener('input', function () {
+      var propre = champ.value.replace(interdit, '');
+      if (propre === champ.value) return;
+      var p = champ.selectionStart;
+      champ.value = propre;
+      try { champ.setSelectionRange(p - 1, p - 1); } catch (e) {}
+    });
+  }
+
+  // Le formulaire tel que `win.Search.launchSearch` (0x859f9) le ramasse :
+  // `for (n in doc.card) obj[n] = doc.card[n].value`.
+  function formulaireRecherche() {
+    if (!rcPanneau) return {};
+    var sexe = rcPanneau.querySelector('.rc-avancee input[name="rc-sexe"]:checked');
+    var pays = rcPanneau.querySelector('.rc-pays');
+    var reg = rcPanneau.querySelector('.rc-region');
+    var f = { pseudo: rcPanneau.querySelector('.rc-pseudo').value };
+    // Une recherche SIMPLE n'envoie que le pseudo : les champs avancés ne
+    // figurent dans `doc.card` que lorsque leurs lignes sont montées.
+    if (rcEtat.avance) {
+      f.gender = sexe ? sexe.value : '';
+      f.ageMin = rcPanneau.querySelector('.rc-agemin').value;
+      f.ageMax = rcPanneau.querySelector('.rc-agemax').value;
+      f.country = pays ? pays.value : '';
+      f.region = reg ? reg.value : '';
+    }
+    return f;
+  }
+
+  function pontRecherche() { return window.RechercheBureau || null; }
+
+  /*
+   * `win.Search.launchSearch` : la boîte part chercher, le sélecteur de page
+   * dit « chargement... » et la fenêtre se remet à jour. Le premier appel
+   * repart toujours de zéro (`box.launchSearch` pose `q.s = 0`).
+   */
+  function lancerRecherche() {
+    var P = pontRecherche();
+    if (!P || rcEtat.charge) return;
+    rcEtat.depart = 0;
+    envoyerRecherche();
+  }
+  function envoyerRecherche() {
+    var P = pontRecherche();
+    if (!P) return;
+    if (!P.chercher(formulaireRecherche(), rcEtat.depart)) return;
+    rcEtat.charge = true;
+    texteDePage('chargement...');
+  }
+  // `box.nextPage` (0x98cfe) : rien à faire si l'on charge déjà, et rien non
+  // plus si l'on est sur la dernière page — la condition est écrite en clair,
+  // `currentSearch.s < nbResult − nbPerPage`.
+  function pageSuivante() {
+    if (rcEtat.charge) return;
+    if (!(rcEtat.depart < rcEtat.total - RC_BLOC_MAX)) return;
+    rcEtat.depart = Math.min(rcEtat.total, rcEtat.depart + RC_BLOC_MAX);
+    envoyerRecherche();
+  }
+  function pagePrecedente() {
+    if (rcEtat.charge) return;
+    if (!(rcEtat.depart > 0)) return;
+    rcEtat.depart = Math.max(rcEtat.depart - RC_BLOC_MAX, 0);
+    envoyerRecherche();
+  }
+
+  /*
+   * `win.Search.toggleAdvance` (0x8597f), au mot près :
+   *
+   *     flAdvance = !flAdvance
+   *     box.onAdvanceSearch(flAdvance)      // ← LE BANANOCLE SUR LE NEZ
+   *     updateSearchFrame() ; updateSize() ; updateSize()
+   */
+  function basculerAvancee() {
+    if (!rcPanneau) return;
+    rcEtat.avance = !rcEtat.avance;
+    rcPanneau.classList.toggle('avancee-ouverte', rcEtat.avance);
+    var P = pontRecherche();
+    if (P && P.porterBananocle) P.porterBananocle(rcEtat.avance);
+    if (rcEtat.avance) chargerCombosPays();
+    ajusterFenetreRecherche();
+  }
+
+  /*
+   * Les deux menus déroulants. `box.Search` (0x98564) bâtit `countryList` avec
+   * un TITRE en tête, dont la clé est `undefined` : tant qu'on ne descend pas
+   * dedans, aucun `co` ne part. `onCountryChange` (0x986db) refait alors celui
+   * des régions, titre compris, et `updateRegionCombo` (0x867be) le repose sur
+   * sa première entrée.
+   *
+   * Les libellés des trois titres viennent du fichier de langue du SERVEUR
+   * (`search.country_combo_title`, `search.region_combo_title`,
+   * `search.choose_country_first`) : il n'est pas dans le SWF. Un seul est
+   * connu au mot près — `win.search.Frutiz.init` (0x861e9) écrit en dur
+   * « Choisissez un pays ! » comme valeur de repli d'`infoRegion`, et c'est
+   * donc bien la phrase d'époque pour la liste des régions AVANT tout choix de
+   * pays. Les deux autres sont reconstruits sur ce modèle ; le seul point non
+   * reconstruit du titre des régions est sa SUBSTITUTION : `fv(clé, {n:
+   * regionName.toLowerCase()})`, où `regionName` est l'attribut `tn` de la
+   * table <ct>. Il ne vaut « département » que pour la France — les quatre
+   * autres pays y portent leur propre code (« be », « lu », « ca », « ch »).
+   * C'est la donnée d'origine, on ne la corrige pas.
+   */
+  var RC_TITRE_PAYS = 'Choisissez un pays';
+  var RC_TITRE_AVANT_PAYS = 'Choisissez un pays !';
+  var RC_TITRE_SANS_REGION = 'Aucune région';
+  function chargerCombosPays() {
+    var P = pontRecherche();
+    if (!P || !P.tablePays || rcEtat.pays) { majComboPays(); return; }
+    P.tablePays(function (table) {
+      rcEtat.pays = table || [];
+      majComboPays();
+      ajusterFenetreRecherche();
+    });
+  }
+  function majComboPays() {
+    if (!rcPanneau) return;
+    var sel = rcPanneau.querySelector('.rc-pays');
+    if (!sel) return;
+    var garde = sel.value;
+    sel.textContent = '';
+    sel.appendChild(optionRecherche('', RC_TITRE_PAYS));
+    (rcEtat.pays || []).forEach(function (c) {
+      sel.appendChild(optionRecherche(c.code, c.nom));
+    });
+    sel.value = garde || '';
+    if (!sel.value) sel.selectedIndex = 0;
+    majComboRegion();
+  }
+  function majComboRegion() {
+    if (!rcPanneau) return;
+    var selP = rcPanneau.querySelector('.rc-pays');
+    var sel = rcPanneau.querySelector('.rc-region');
+    if (!selP || !sel) return;
+    sel.textContent = '';
+    var pays = null;
+    (rcEtat.pays || []).forEach(function (c) {
+      if (String(c.code) === String(selP.value)) pays = c;
+    });
+    if (!pays) {
+      sel.appendChild(optionRecherche('', RC_TITRE_AVANT_PAYS));
+    } else if (!(pays.regions || []).length) {
+      sel.appendChild(optionRecherche('', RC_TITRE_SANS_REGION));
+    } else {
+      var n = String(pays.nomRegion || '').toLowerCase();
+      sel.appendChild(optionRecherche('', 'Choisissez un ' + (n || 'lieu')));
+      pays.regions.forEach(function (r) {
+        // `displayCode` : « 01 - Ain » plutôt que « Ain » tout court.
+        sel.appendChild(optionRecherche(r.code,
+          pays.afficherCode ? (r.code + ' - ' + r.nom) : r.nom));
+      });
+    }
+    // `updateRegionCombo` finit par `valSetTo(0)` : le menu revient sur son
+    // titre chaque fois qu'on change de pays.
+    sel.selectedIndex = 0;
+  }
+  function optionRecherche(valeur, texte) {
+    var o = document.createElement('option');
+    o.value = valeur;
+    o.textContent = texte;
+    return o;
+  }
+
+  /*
+   * `win.Search.displayBloc` (0x86863) :
+   *
+   *     cleanPage()
+   *     pour chaque info : newElement cpSearchSlot, min {w: mWidth, h: 50}
+   *     nbPages = Math.ceil(searchMax / blocMax)
+   *     setText(page + "/" + nbPages + " - " + searchMax + " réponse[s]")
+   *     frameSet.update()
+   *
+   * Le pluriel se décide sur `searchMax > 1` — « 1 réponse », « 0 réponse ».
+   */
+  function afficherResultats(liste, page, total, erreur) {
+    rcEtat.charge = false;
+    if (!rcPanneau) return;
+    if (erreur) {
+      // `openErrorAlert(Lang.fv("error.cbee." + k))` : le code d'erreur du
+      // serveur, que ce portage n'émet pas — on dit au moins qu'on a échoué.
+      alerte('Recherche impossible : ', 'le serveur a refusé la demande.');
+      texteDePage('');
+      return;
+    }
+    if (total !== null && total !== undefined) rcEtat.total = Number(total) || 0;
+    rcEtat.resultats = liste || [];
+    var zone = rcPanneau.querySelector('.rc-liste');
+    zone.textContent = '';
+    rcEtat.resultats.forEach(function (info) { zone.appendChild(blocRecherche(info)); });
+    var nbPages = Math.ceil(rcEtat.total / RC_BLOC_MAX);
+    texteDePage(page + '/' + nbPages + ' - ' + rcEtat.total
+      + ' réponse' + (rcEtat.total > 1 ? 's' : ''));
+    ajusterFenetreRecherche();
+  }
+  function texteDePage(t) {
+    if (!rcPanneau) return;
+    var c = rcPanneau.querySelector('.rc-compte');
+    if (c) c.textContent = t;
+  }
+
+  // Une entrée : `cp.SearchSlot.initScreen` (0xc7a79) et `initDoc` (0xc7cbe).
+  function blocRecherche(info) {
+    var d = document.createElement('div');
+    d.className = 'rc-slot';
+    // La couleur du bloc ET l'encre du document : `gender == "M"` → le vert,
+    // TOUT LE RESTE → le rose. (Le genre inconnu suit les filles, d'époque.)
+    d.setAttribute('data-genre', info.genre === 'M' ? 'M' : 'F');
+
+    // Le voyant. `bg.gotoAndStop(2)` puis `updateStatus` (0xc818a) :
+    //   presence == 0                → image « presence », ico = presence + 1
+    //   status.internal défini       → image « internal », ico = le jeu
+    //   status.external défini       → image « external » (jamais émise ici)
+    //   sinon                        → image « presence », ico = presence + 1
+    var voyant = document.createElement('span');
+    voyant.className = 'rc-voyant';
+    var ico = document.createElement('img');
+    if (info.presence !== 0 && info.jeu) {
+      ico.src = voyantUrl(info.jeu);
+      ico.className = 'jeu';
+      voyant.title = libelleJeu(info.jeu);
+    } else {
+      // Le pip de `presence` : 0 rouge (hors ligne), 1 vert (en ligne),
+      // 2 gris (invisible). Flash borne au-delà de la troisième image.
+      var pr = Math.max(0, Math.min(2, Number(info.presence) || 0));
+      ico.src = '/frutiz/sprites/recherche-presence-' + pr + '.svg';
+      ico.className = 'pip';
+      voyant.title = pr === 1 ? 'En ligne' : (pr === 2 ? 'Invisible' : 'Hors ligne');
+    }
+    ico.alt = '';
+    voyant.appendChild(ico);
+    d.appendChild(voyant);
+
+    // Le drapeau.
+    var dr = document.createElement('img');
+    dr.className = 'rc-drapeau';
+    dr.src = '/frutiz/sprites/recherche-pays-' + drapeauDe(info.pays) + '.svg';
+    dr.alt = '';
+    var P = pontRecherche();
+    if (P && P.nomPays) dr.title = P.nomPays(info.pays);
+    d.appendChild(dr);
+
+    // La bouille, 44 × 44 — `attachMovie("frutiScreen", …, {fix:{w:th,h:th}})`
+    // puis `onStatusObj({fbouille, status, presence})` : l'humeur voyage avec.
+    var ec = document.createElement('div');
+    ec.className = 'rc-bouille';
+    if (info.bouille && info.bouille.length >= 4) {
+      ec.innerHTML = FPBouilleVignette.html(info.bouille, { humeur: Number(info.humeur) || 0 });
+      FPBouilleVignette.brancher(ec);
+    }
+    d.appendChild(ec);
+
+    var doc = document.createElement('div');
+    doc.className = 'rc-doc';
+    var l1 = document.createElement('div');
+    l1.className = 'rc-l1';
+    var nom = document.createElement('span');
+    nom.className = 'rc-nom';
+    nom.textContent = info.pseudo;
+    var reg = document.createElement('span');
+    reg.className = 'rc-reg';
+    reg.textContent = (P && P.nomRegion) ? P.nomRegion(info.pays, info.region) : '';
+    l1.appendChild(nom);
+    l1.appendChild(reg);
+    var l2 = document.createElement('div');
+    l2.className = 'rc-l2';
+    var age = document.createElement('span');
+    age.className = 'rc-age';
+    age.textContent = info.age + ' ans';
+    var ville = document.createElement('span');
+    ville.className = 'rc-ville';
+    ville.textContent = info.ville || '';
+    l2.appendChild(age);
+    l2.appendChild(ville);
+    doc.appendChild(l1);
+    doc.appendChild(l2);
+    d.appendChild(doc);
+
+    // `select()` : la fiche s'ouvre, qu'on clique la bouille ou le document.
+    d.addEventListener('click', function () {
+      if (P && P.ouvrirFiche) P.ouvrirFiche(info.pseudo);
+    });
+    d.title = 'Voir la fiche de ' + info.pseudo;
+    return d;
+  }
+
+  /*
+   * `flDocumentFit` + `updateSize()` : la fenêtre fait la taille de ce qu'elle
+   * contient. On la recalcule à chaque changement — dépliage de la recherche
+   * avancée, arrivée d'une page de résultats — comme le SWF le fait par son
+   * `frameSet.update()`.
+   */
+  function hauteurRecherche() {
+    var lignes = 1 + (rcEtat.avance ? 4 : 0);
+    // 6 : `Standard.getMargin().y.min` du document du formulaire.
+    return 26 + 6 + lignes * RC_LIGNE + 4
+      + rcEtat.resultats.length * RC_BLOC_H + RC_PIED + 4;
+  }
+  function ajusterFenetreRecherche() {
+    var f = fenetres['recherche-panel'];
+    if (!f) return;
+    f.fen.style.height = Math.min(hauteurRecherche(),
+      window.innerHeight - CORNER_Y - 12) + 'px';
+    bornerDansEcran(f.fen);
+  }
+
+  function ouvrirRechercheFenetre() {
+    if (!actif) return;
+    ouvrirFenetre('recherche');
+    // `flAdvanceAvailable` se relit à chaque ouverture : l'objet a pu être
+    // acquis (ou perdu) entre deux. La réponse peut arriver en différé la
+    // toute première fois — l'inventaire n'est demandé qu'une fois.
+    var P = pontRecherche();
+    if (P && P.bananocle) {
+      P.bananocle(function (dispo) {
+        if (!rcPanneau) return;
+        rcPanneau.classList.toggle('avance-possible', dispo);
+        if (!dispo && rcEtat.avance) basculerAvancee();
+        else ajusterFenetreRecherche();
+      });
+    }
+    if (rcEtat.avance) chargerCombosPays();
+    ajusterFenetreRecherche();
+    var champ = rcPanneau.querySelector('.rc-pseudo');
+    if (champ) champ.focus();
   }
 
   /* ══════════════════════════════════════════════════════════════════════════
@@ -3997,12 +4615,10 @@ window.BureauFrutiz = (function () {
     window.location.href = window.location.pathname + '?' + p.toString();
   }
 
-  // `uniqWinMng.open("search")` : le light n'a pas d'annuaire, le Bouilloscope
-  // en tient lieu — le même choix que le bouton de la bande des contacts.
-  function ouvrirRecherche() {
-    var tuile = $('#bureau .home-tile[data-go="trombi"]');
-    if (tuile) tuile.click();
-  }
+  // `uniqWinMng.open("search")` : la fenêtre de recherche, celle-là même que le
+  // bouton du bas de la bande des contacts ouvre. (Elle tenait lieu jusqu'ici
+  // d'un renvoi vers le Bouilloscope, faute d'annuaire ; il y en a un.)
+  function ouvrirRecherche() { ouvrirRechercheFenetre(); }
 
   function retirerMenu(o) {
     var m = o.querySelector('.ot-menu');
@@ -4400,6 +5016,8 @@ window.BureauFrutiz = (function () {
     // pas `.active` — c'est de là que le reparentage le prendra, et c'est là
     // qu'il retournera à la fermeture.
     if (tab === 'salons' && !$(rub.panneau)) $('#app').appendChild(panneauSalons());
+    // Idem pour « Recherche » : elle non plus n'a pas de panneau mobile.
+    if (tab === 'recherche' && !$(rub.panneau)) $('#app').appendChild(panneauRecherche());
     var panneau = $(rub.panneau);
     if (!panneau) return;
     // Les panneaux de salon portent tous le même identifiant (ce sont des
@@ -5020,12 +5638,8 @@ window.BureauFrutiz = (function () {
     haut.appendChild(ombre);
     haut.appendChild(languette);
     languette.addEventListener('click', basculerContacts);
-    bande.querySelector('.sl-recherche').addEventListener('click', function () {
-      // `butSearch.onPress` ouvre la fenêtre « search » (uniqWinMng.open).
-      // Le light n'a pas d'annuaire : le Bouilloscope en tient lieu.
-      var tuile = $('#bureau .home-tile[data-go="trombi"]');
-      if (tuile) tuile.click();
-    });
+    // `butSearch.onPress = uniqWinMng.open("search")` (0xa1172).
+    bande.querySelector('.sl-recherche').addEventListener('click', ouvrirRechercheFenetre);
 
     // La main bar quitte le tiroir : c'est le meuble du bureau maintenant.
     // (La bannière quotidienne reste au tiroir : main.swf n'a pas de bandeau
@@ -5059,6 +5673,10 @@ window.BureauFrutiz = (function () {
     // La tuile « Salons » du bureau ouvre la LISTE, pas la conversation :
     // c'est le double-clic sur « Les salons » du bureau d'époque.
     ouvrirSalonsPublics: ouvrirSalonsPublics,
+    // LA RECHERCHE : le bureau ouvre la fenêtre, le light lui rend la réponse
+    // du serveur (`box.Search.onSearch` → `win.displayBloc`).
+    ouvrirRecherche: ouvrirRechercheFenetre,
+    resultatsRecherche: afficherResultats,
     // UNE FENÊTRE PAR SALON : le light appelle ici pour ouvrir (ou rappeler
     // au premier plan) la conversation d'un salon, public ou privé.
     ouvrirSalon: ouvrirSalon,

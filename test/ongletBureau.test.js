@@ -87,8 +87,11 @@ test('chaque entrée repasse par ce qui existait déjà', () => {
   assert.match(JS, /function deconnecter\(\) \{[\s\S]{0,300}?var b = \$\('#logout-btn'\);/);
   // Le repli est celui de `toggleHalfHide`, déjà porté.
   assert.match(JS, /function basculerRepli\(force\) \{/);
-  // La recherche, c'est le Bouilloscope — le même choix que `butSearch`.
-  assert.match(JS, /function ouvrirRecherche\(\) \{[\s\S]{0,200}?home-tile\[data-go="trombi"\]/);
+  // La recherche ouvre SA fenêtre — le même chemin que `butSearch`, qui
+  // appelle `uniqWinMng.open("search")` (elle renvoyait jusqu'ici vers le
+  // Bouilloscope, faute d'annuaire).
+  assert.match(JS, /function ouvrirRecherche\(\) \{ ouvrirRechercheFenetre\(\); \}/);
+  assert.match(JS, /\.sl-recherche'\)\.addEventListener\('click', ouvrirRechercheFenetre\);/);
 });
 
 test('« Mode light » passe par l’URL, sans rien retenir', () => {

@@ -1328,7 +1328,11 @@ async function clearAllChallengeData() {
 
 async function listAllUsers() {
   const { rows } = await pool.query(
-    'SELECT id, username, display_name, email, xp, kikooz, fbouille, gender, is_moderator, is_animator, fruti_sign, fruti_sign_b, real_job, frutijob, birthday, country, region, city, created_at, last_login, banned_until FROM users ORDER BY created_at DESC'
+    // `country_index` / `region_index` sont les INDEX de lang_french.xml — les
+    // seuls que le bureau sache lire (Lang.country / Lang.region). La recherche
+    // les envoie dans `co`/`rg` ; sans eux la fiche d'un joueur hors ligne
+    // affichait « Inconnu » et le filtre par pays ne retenait personne.
+    'SELECT id, username, display_name, email, xp, kikooz, fbouille, gender, is_moderator, is_animator, fruti_sign, fruti_sign_b, real_job, frutijob, birthday, country, region, country_index, region_index, city, created_at, last_login, banned_until FROM users ORDER BY created_at DESC'
   );
   return rows;
 }
