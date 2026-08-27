@@ -341,8 +341,13 @@ test('la vue modérateur : kick, ban et totoché, aux modérateurs seulement', (
   assert.match(html, /d\.vous && d\.vous\.moderateur/, 'la vue suit les droits du regardeur');
   // Les mêmes fils que le bureau : kick <l>, ban <m>, totoché <az> — et une
   // confirmation d'abord, un doigt glisse plus vite qu'une souris.
-  assert.match(html, /wsSend\('<l u="' \+ xmlEscape\(p\) \+ '" g="' \+ xmlEscape\(state\.room/,
-    'kick sur le salon courant');
+  // Le kick porte le salon D'OÙ LA FICHE A ÉTÉ OUVERTE, pas le salon
+  // « courant » : sur le bureau il y a une fenêtre par salon (cf.
+  // test/moderationBureau.test.js).
+  assert.match(html, /var ou = ficheEtat\.salon \|\| state\.room \|\| "";/,
+    'le kick vise le salon de la fiche');
+  assert.match(html, /wsSend\('<l u="' \+ xmlEscape\(p\) \+ '" g="' \+ xmlEscape\(ou\) \+ '" \/>'\)/,
+    'kick sur ce salon-là');
   assert.match(html, /wsSend\('<m u="' \+ xmlEscape\(p\) \+ '" g="0" \/>'\)/, 'ban global');
   assert.match(html, /wsSend\('<az u="' \+ xmlEscape\(p\) \+ '" \/>'\)/, 'totoché');
   assert.ok((html.match(/window\.confirm\(/g) || []).length >= 3, 'trois confirmations');

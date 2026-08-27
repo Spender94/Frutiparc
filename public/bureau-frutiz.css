@@ -836,23 +836,6 @@ body.bureau-frutiz #mode-rapide span {
   white-space: nowrap;
 }
 
-/* ── La pilule « N en ligne » ─────────────────────────────────────────────
-   Elle ne flotte pas dans le coin : elle est POSÉE SUR le lecteur, en haut.
-   Mesuré 1:1 : x 1271..1369 (98 de large), y 8..32 (24 de haut) — soit
-   11 px du bord droit ; fond `#526B3A`, point `#2ECC40`, texte `#CFF599`. */
-body.bureau-frutiz #pill-enligne {
-  position: absolute; top: 8px; right: 11px; z-index: 3;
-  width: 98px; height: 24px; box-sizing: border-box;
-  padding: 0 7px; border-radius: 12px;
-  background: #526B3A; color: #CFF599;
-  font: 700 11px Verdana, Arial, sans-serif; line-height: 24px;
-  display: flex; align-items: center; gap: 5px;
-  user-select: none; -webkit-user-select: none;
-}
-body.bureau-frutiz #pill-enligne .point {
-  width: 8px; height: 8px; border-radius: 50%; background: #2ECC40;
-}
-
 /* ── LE PANNEAU DES CONTACTS (`_global.SideList`, DoInitAction sprite#847,
    0xa05b7) — la « languette » n'est que sa poignée ────────────────────────
    Constantes du prototype (0xa1708) : **wSide 9**, **wShade 3**, wMain 120

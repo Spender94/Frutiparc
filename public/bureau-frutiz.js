@@ -2283,6 +2283,18 @@ window.BureauFrutiz = (function () {
           y: Math.round(y - app.top - GRILLE_MY) }, 'root'));
     });
     m.appendChild(b);
+    // « Se déconnecter » : c'est ICI qu'elle vit d'époque, dans le menu du fond
+    // d'écran — le bureau n'a pas de pied de page. On appuie sur le bouton du
+    // tiroir mobile, qui reste la seule porte de sortie du light.
+    var sortir = document.createElement('button');
+    sortir.type = 'button';
+    sortir.textContent = 'Se déconnecter';
+    sortir.addEventListener('click', function () {
+      m.remove();
+      var q = $('#logout-btn');
+      if (q) q.click();
+    });
+    m.appendChild(sortir);
     document.body.appendChild(m);
     var fermer = function () { m.remove(); document.removeEventListener('pointerdown', fermer, true); };
     setTimeout(function () { document.addEventListener('pointerdown', fermer, true); }, 0);
@@ -2833,7 +2845,10 @@ window.BureauFrutiz = (function () {
         e.preventDefault();
         tipCacher();
         var S = window.SalonsBureau;
-        if (S && S.ouvrirFiche) S.ouvrirFiche(ec.getAttribute('data-nom'));
+        // Le SALON de cette fenêtre-là : c'est lui que la fiche retiendra pour
+        // son kick (`box.Frutiz` est ouverte PAR un salon, `openFrutizInfo`).
+        if (S && S.ouvrirFiche) S.ouvrirFiche(ec.getAttribute('data-nom'),
+          panneau.getAttribute('data-salon'));
       }
     }, true);
     // LE SURVOL. `cp.FrutiScreen.setTip` (0x6299a) : `onRollOver` appelle
@@ -3057,9 +3072,52 @@ window.BureauFrutiz = (function () {
     poserBouille(b, m && m.bouille, pseudo, m && m.humeur);
     void b.offsetWidth;                          // que le départ soit enregistré
     b.style.left = '0px';
+    // L'ORDRE DE DÉPART SE POSE SUR LA BOUILLE, PAS SUR LA FENÊTRE : c'est
+    // `content.actionCallBack` (cf. `armerDepart`). On l'arme à chaque passage,
+    // puisque reparler relance l'animation — donc le compte à rebours.
+    armerDepart(b, ec);
     var tous = ec.querySelectorAll('.bo-clb:not(.part)');
     if (tous.length > CLB_MAX) partirDansLEspace(tous[0], ec);
     return b;
+  }
+
+  /*
+   * `content.actionCallBack` — UN ORDRE DE DÉPART PAR BOUILLE.
+   *
+   * `cp.FrutiScreen.onAction` (0x62245) le pose sur le CONTENU, pas sur
+   * l'écran :
+   *
+   *     content.action(o.id, o.length);
+   *     if (this.flCLB) {
+   *       content.actionCallBack = { obj: this, method: "launchIntoTheSpace",
+   *                                  args: content };
+   *     }
+   *
+   * et il se déclenche à la fin de SON animation, quoi qu'il arrive ailleurs.
+   *
+   * LE PORTAGE N'AVAIT QU'UN MINUTEUR PAR FENÊTRE (`overlayMinuteur`), parce
+   * qu'il n'a qu'un lecteur par fenêtre. Chaque nouvelle émotion l'écrasait
+   * (`clearTimeout`), et la bouille précédente ne comptait plus que sur la
+   * boucle `.bo-anime` de `showBouilleOverlay` pour être renvoyée. Il suffisait
+   * qu'elle rate ce rendez-vous — une émotion venue d'un salon dont la fenêtre
+   * est fermée (le minuteur global remplace alors celui du cadre), la colonne
+   * des bouilles refermée puis rouverte, les bouilles coupées dans les
+   * préférences — pour qu'elle reste là POUR TOUJOURS : plus personne n'avait
+   * de raison de la faire partir.
+   *
+   * Chaque bouille porte donc maintenant son propre compte à rebours. C'est la
+   * règle d'époque, et elle rend le figeage impossible : ce qui entre dans
+   * l'aquarium en ressort, sans dépendre de ce que fait la fenêtre.
+   */
+  var EMOTE_MS = 4200;               // = OVERLAY_HOLD_MS (light.html)
+  function armerDepart(b, ec) {
+    if (b.bfEmote) clearTimeout(b.bfEmote);
+    b.bfEmote = setTimeout(function () {
+      b.bfEmote = null;
+      // L'écran a pu être remplacé entre-temps (bascule MULTI/CLB) : on part de
+      // celui qui la porte AUJOURD'HUI.
+      if (b.parentNode) partirDansLEspace(b, b.parentNode);
+    }, EMOTE_MS);
   }
 
   // Une hauteur au hasard qui ne tombe pas à moins d'un demi-côté d'une
@@ -3082,6 +3140,7 @@ window.BureauFrutiz = (function () {
   // et du plan au bout du glissement.
   function partirDansLEspace(b, ec) {
     if (b.classList.contains('part')) return;
+    if (b.bfEmote) { clearTimeout(b.bfEmote); b.bfEmote = null; }   // elle s'en va
     b.classList.add('part');
     rendreScene(b);
     b.style.left = (-Math.min(ec.clientWidth, ec.clientHeight)) + 'px';
@@ -5515,8 +5574,6 @@ window.BureauFrutiz = (function () {
     if (onglets) onglets.style.transform = t;
     var f = 'translateY(' + repli.frusion.toFixed(2) + 'px)';
     if (frusion.boite) frusion.boite.style.transform = f;
-    var pilule = $('#pill-enligne');
-    if (pilule) pilule.style.transform = f;
   }
 
   function basculerRepli(force) {
@@ -5580,23 +5637,6 @@ window.BureauFrutiz = (function () {
     nub.appendChild(txt);
     nub.addEventListener('click', function () { basculerRepli(false); });
     return nub;
-  }
-
-  // La pilule « N en ligne » : le même décompte que le tiroir « site » du
-  // light (/api/light/online), rafraîchi sans hâte — la pilule d'époque
-  // n'était qu'un compteur, le détail vit ailleurs.
-  function majEnLigne() {
-    var sid = window.state && window.state.sid;
-    if (!sid) return;
-    fetch('/api/light/online?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (!d || !d.ok) return;
-        var n = Math.max(1, (d.users || []).length);
-        var el = $('#pill-enligne-txt');
-        if (el) el.textContent = n + ' en ligne';
-      })
-      .catch(function () {});
   }
 
   // ── LE CLIGNOTEMENT DU PREMIER SURVOL ────────────────────────────────
@@ -5825,20 +5865,10 @@ window.BureauFrutiz = (function () {
     // le « mode rapide » la replie.
     coin.appendChild(batirMandala());
 
-    // La pilule « N en ligne » (coin haut-droit, bord à Stage.width − 6).
-    var pilule = document.createElement('div');
-    pilule.id = 'pill-enligne';
-    var point = document.createElement('span');
-    point.className = 'point';
-    var piluleTxt = document.createElement('span');
-    piluleTxt.id = 'pill-enligne-txt';
-    piluleTxt.textContent = '1 en ligne';
-    pilule.appendChild(point);
-    pilule.appendChild(piluleTxt);
-    pilule.appendChild(document.createTextNode(' ▾'));
-    haut.appendChild(pilule);
-    majEnLigne();
-    setInterval(majEnLigne, 60000);
+    // PAS DE PILULE « N EN LIGNE ». C'était une invention du portage, posée en
+    // surimpression du coin haut-droit ; main.swf n'a rien de tel — le compte
+    // des présents se lit dans la liste des connectés d'une fenêtre de salon,
+    // et le titre du salon le porte déjà entre parenthèses.
 
     // LE PANNEAU DES CONTACTS (SideList) : la bande blanche de 9 px (wSide)
     // au liseré de 3 (wShade), son ombre de 2 px (le clip carreFond) posée à
@@ -5869,8 +5899,9 @@ window.BureauFrutiz = (function () {
     if (mainbar) coin.appendChild(mainbar);
     var grille = $('#home-grid');
     if (grille) { bureau.appendChild(grille); rendreIconesDeplacables(grille, bureau); }
-    var compte = $('#home-panel .home-compte');
-    if (compte) bureau.appendChild(compte);
+    // LA LIGNE DU COMPTE RESTE AU TIROIR. Le bureau d'époque n'a pas de pied de
+    // page : « Se déconnecter » y vit dans le MENU DU FOND D'ÉCRAN (cf.
+    // `menuDuBureau`), et la confidentialité n'a rien à faire sur un bureau.
 
     poserFond(fondCourant);
     // Ce que le joueur a posé sur son bureau : `FPDesktop` s'abonne à `fileMng`

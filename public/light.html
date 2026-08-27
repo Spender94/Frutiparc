@@ -2955,7 +2955,7 @@
       // LE CLIC sur une bouille : `cp.ScreenList.attachFrutiScreen` (0xb6597)
       // pose `setAction({obj: win.box, method: "openFrutizInfo", args: u})`.
       // Le light a déjà cette fiche : c'est la même.
-      ouvrirFiche: function (pseudo) { ouvrirFiche(pseudo); },
+      ouvrirFiche: function (pseudo, salon) { ouvrirFiche(pseudo, salon); },
       // LE SURVOL : `setTip({cb:{method:"getTipDocLong", args:u}})` →
       // `box.getTipDocLong(u)` (0x3131a) rend
       // `Lang.fv("chat.u_tip_long", {u, a, c, r, l})`, soit
@@ -6739,11 +6739,61 @@
   // `salon` dit OÙ écrire les réponses : sur le bureau, chaque salon a sa
   // fenêtre, et un accusé de don doit s'afficher dans celle où l'on a tapé la
   // commande.
+  /*
+   * LA MODÉRATION EN LIGNE DE COMMANDE — `box.Chat.onSend` (0x2a5ae).
+   *
+   * Le SWF traite `/kick` et `/eject` LUI-MÊME, sous une seule condition :
+   *
+   *     if (this.flMode && words[1].length) {
+   *       this.eject(this.userList.getRealUserName(words[1]));
+   *     }
+   *
+   * `flMode` est le `m="1"` de SA propre entrée dans CE salon — donc
+   * modérateur partout, animateur chez lui. Qui ne l'a pas ne voit rien se
+   * passer : la commande est avalée, sans message d'erreur. On garde la
+   * règle et le silence.
+   *
+   * ÉCART ASSUMÉ : `/totoche` n'existe pas dans le SWF (le totoché ne s'y
+   * donne qu'au bouton de la fiche). On l'ajoute par symétrie avec `/kick`,
+   * sur la même condition — c'est une demande du parc, pas un relevé.
+   */
+  var CMD_KICK = ["/kick", "/eject"];
+  var CMD_TOTOCHE = ["/totoche", "/totocher"];
+
+  // `flMode` : suis-je staff de CE salon-là ? Le serveur pose `m="1"` sur mon
+  // entrée de la liste (`modAttr`), et c'est de là que le SWF le tire.
+  function jeSuisStaff(salon) {
+    var set = state.usersByRoom[salon || state.room] || {};
+    var moi = set[state.user];
+    if (!moi) {
+      for (var n in set) if (n.toLowerCase() === state.userLower) { moi = set[n]; break; }
+    }
+    return !!(moi && moi.staff);
+  }
+
+  function commandeModeration(cmd, mots, salon) {
+    var ou = salon || state.room;
+    // `this.flMode && words[1].length` — les deux, sinon rien du tout.
+    if (!jeSuisStaff(ou)) return;
+    var cible = String(mots[1] || "").trim();
+    if (!cible) return;
+    if (CMD_KICK.indexOf(cmd) !== -1) {
+      // `eject(user)` → la même trame que le bouton de la fiche.
+      wsSend('<l u="' + xmlEscape(cible) + '" g="' + xmlEscape(ou) + '" />');
+    } else {
+      wsSend('<az u="' + xmlEscape(cible) + '" />');
+    }
+  }
+
   function traiterCommande(texte, salon) {
     var mots = texte.trim().split(/\s+/);
     var cmd = mots[0].toLowerCase();
     if (CMD_DON.indexOf(cmd) !== -1) { commandeDon(mots, texte.trim(), salon); return true; }
     if (CMD_QUOTA.indexOf(cmd) !== -1) { commandeQuota(salon); return true; }
+    if (CMD_KICK.indexOf(cmd) !== -1 || CMD_TOTOCHE.indexOf(cmd) !== -1) {
+      commandeModeration(cmd, mots, salon);
+      return true;                 // traitée — même refusée, elle ne part pas
+    }
     return false;
   }
 
@@ -6824,7 +6874,11 @@
   // Ce que le bureau montre en cliquant un pseudo (FrutizInfo + winFrutizInfo) :
   // quatre onglets alimentés par /api/light/fiche, qui réunit la commande chat
   // `userinfo` et les classements FrutiScore de la section Championnat.
-  var ficheEtat = { pseudo: null, data: null, onglet: "frutiz" };
+  // `salon` : CELUI D'OÙ LA FICHE A ÉTÉ OUVERTE. Le kick porte un `g`, et sur
+  // le bureau il y a une fenêtre par salon : prendre `state.room` éjectait du
+  // salon « courant » — pas forcément celui qu'on regardait — et le serveur
+  // répondait 403 quand on n'y était pas staff.
+  var ficheEtat = { pseudo: null, data: null, onglet: "frutiz", salon: null };
   // ATTENTION : cette table s'appelait `MOIS_COURTS`, comme celle des
   // journaux — même portée, donc la SECONDE déclaration écrasait la première
   // et le « Mon historique » datait en « août » là où le bureau écrit
@@ -6860,10 +6914,10 @@
     }
     return String(score);
   }
-  function ouvrirFiche(pseudo) {
+  function ouvrirFiche(pseudo, salon) {
     var p = String(pseudo || "").trim();
     if (!p) return;
-    ficheEtat = { pseudo: p, data: null, onglet: "frutiz" };
+    ficheEtat = { pseudo: p, data: null, onglet: "frutiz", salon: salon || state.room || null };
     poserFicheDeployee(ficheDeployee());
     $("#fiche-backdrop").classList.add("show");
     renderFiche();
@@ -6887,7 +6941,7 @@
   }
   function fermerFiche() {
     $("#fiche-backdrop").classList.remove("show");
-    ficheEtat = { pseudo: null, data: null, onglet: "frutiz" };
+    ficheEtat = { pseudo: null, data: null, onglet: "frutiz", salon: null };
   }
   function ligneFiche(lib, val) {
     var l = el("div", "fiche-ligne");
@@ -7270,8 +7324,9 @@
   // glisse plus vite qu'une souris.
   $("#fiche-kick").addEventListener("click", function () {
     var p = ficheEtat.pseudo;
+    var ou = ficheEtat.salon || state.room || "";
     if (!window.confirm("Éjecter " + p + " du salon ?")) return;
-    wsSend('<l u="' + xmlEscape(p) + '" g="' + xmlEscape(state.room || "") + '" />');
+    wsSend('<l u="' + xmlEscape(p) + '" g="' + xmlEscape(ou) + '" />');
     fermerFiche();
   });
   $("#fiche-ban").addEventListener("click", function () {
