@@ -4322,6 +4322,10 @@
       var e = $("#mail-vue-" + v);
       if (e) e.classList.toggle("on", v === nom);
     });
+    // Le bureau tient TROIS fenêtres d'époque dans ce seul panneau : son
+    // bandeau suit la vue (le dossier, le sujet, « Composer un nouveau
+    // message »). Sur mobile, il n'y a pas de bandeau à suivre.
+    if (window.BureauFrutiz && BureauFrutiz.retitrerMail) BureauFrutiz.retitrerMail(nom);
   }
   // « 2026-08-01 14:32:05 » → « 01/08 14:32 » (aujourd'hui : juste l'heure).
   function mailDate(s) {
@@ -4414,13 +4418,16 @@
   }
   // Rédaction. `dest` pré-remplit le destinataire (réponse, ou « écrire à » depuis
   // le chat quand la personne n'est pas connectée).
-  function ecrireMail(dest, sujet) {
+  // `corps` : le texte pré-rempli. Le bureau s'en sert pour les gabarits
+  // d'époque (`mail.reply_tpl`, `mail.forward_tpl`, lang_french.as) ; le
+  // mobile n'en passe pas et garde donc exactement son comportement.
+  function ecrireMail(dest, sujet, corps) {
     mailVersRedaction = true;
     activateTab("mail");
     mailVersRedaction = false;
     $("#mail-a").value = dest || "";
     $("#mail-sujet").value = sujet || "";
-    $("#mail-texte").value = "";
+    $("#mail-texte").value = corps || "";
     var err = $("#mail-erreur"); err.textContent = ""; err.classList.remove("ok");
     $("#mail-envoyer").disabled = false;
     mailVue("ecriture");

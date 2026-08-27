@@ -3011,18 +3011,46 @@ body.bureau-frutiz .fen #mail-panel .mail-actions {
    n'existait pas d'époque — la fenêtre se fermait ; il passe en tête.) */
 body.bureau-frutiz .fen #mail-panel #mail-retour { order: 0; }
 body.bureau-frutiz .fen #mail-panel #mail-supprimer { order: 1; }
+/* `<s b="1"/>` : l'espace ÉLASTIQUE qui sépare la corbeille du couple
+   Répondre / Transférer, lesquels ne sont séparés que de `<s w="8"/>`. */
 body.bureau-frutiz .fen #mail-panel #mail-repondre { order: 2; margin-left: auto; }
+body.bureau-frutiz .fen #mail-panel #mail-transferer { order: 3; margin-left: 0; }
 body.bureau-frutiz .fen #mail-panel #mail-annuler { order: 0; }
 body.bureau-frutiz .fen #mail-panel #mail-envoyer { order: 2; margin-left: auto; }
-/* Le bouton d'époque : `butPushStandard`, la pastille verte du bureau. */
+/* LE BOUTON D'ÉPOQUE. `attachEndButton` les déclare tous les trois
+   `l="butPushStandard"` — et `butPushStandard` (#465) n'est PAS une pastille
+   verte : c'est la GÉLULE ROSE de 16 px que porte déjà la barre des salons.
+   Le dessin extrait donne l'anneau `#F28687` de 1,5 px et le fond `#FFAAAD` ;
+   le relevé donne l'encre `#660000` et l'éclat `#FFEAEC` du bout droit. Le
+   vert d'ici était une invention.
+
+   Une gélule s'étire : on la refait en CSS plutôt que d'étirer le SVG, qui
+   déformerait ses bouts ronds (même raison qu'au pied de « Salons publics »). */
 body.bureau-frutiz .fen #mail-panel .ma-btn {
-  height: 20px; padding: 0 10px; border: 0; border-radius: 10px;
-  background: #94DB39; box-shadow: 0 0 0 2px #66AA22;
-  font: 700 10px Verdana, Arial, sans-serif; color: #FFFFFF;
-  cursor: pointer; white-space: nowrap;
+  position: relative;
+  height: 16px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: #FFAAAD; box-shadow: inset 0 0 0 1.5px #F28687;
+  font: 700 10px Verdana, Arial, sans-serif; color: #660000;
+  cursor: pointer; white-space: nowrap; flex: 0 0 auto;
 }
-body.bureau-frutiz .fen #mail-panel .ma-btn:hover { background: #ADE76B; }
+/* LE REFLET : un filet de 1 px qui longe l'intérieur du bord haut puis
+   s'enroule autour du bout droit (troisième forme du dessin #462). */
+body.bureau-frutiz .fen #mail-panel .ma-btn::after {
+  content: ""; position: absolute; inset: 1.5px; pointer-events: none;
+  border-radius: 6.5px;
+  border-top: 1px solid #FFEAEC; border-right: 1px solid #FFEAEC;
+  border-left: 0; border-bottom: 0;
+}
+/* `setBehavior` (0x9fd26) ne câble pas de survol sur un `butPush` : le dessin
+   est le même au repos et sous le curseur. Seul l'appui l'enfonce (image 2). */
+body.bureau-frutiz .fen #mail-panel .ma-btn:active { background: #F28687; }
 body.bureau-frutiz .fen #mail-panel .ma-btn:disabled { opacity: .6; cursor: default; }
+/* Le mobile teinte ses trois boutons (vert « primaire », rouge « danger ») ;
+   d'époque ils sont IDENTIQUES — même lien, même dessin. */
+body.bureau-frutiz .fen #mail-panel .ma-btn.primaire,
+body.bureau-frutiz .fen #mail-panel .ma-btn.danger {
+  background: #FFAAAD; color: #660000;
+}
 
 /* ── ÉCRIRE UN COURRIER (`win.Mail`) ──────────────────────────────────────
    `attachInfo` : TROIS lignes de 20 px, étiquette de 60 — De (en clair, sur

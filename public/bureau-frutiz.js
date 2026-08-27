@@ -2554,6 +2554,41 @@ window.BureauFrutiz = (function () {
     return b;
   }
 
+  /*
+   * Les deux gabarits de citation, au mot près (lang_french.as) :
+   *
+   *   mail.reply_tpl   = '<br><br><b>--- En réponse au message ---</b><br>…'
+   *   mail.forward_tpl = '<br><br><b>--- Message transféré ---</b><br>…'
+   *
+   * suivis de « Date : $d », « De : $f », « A : $t », « Sujet : $s », une
+   * ligne vide, puis « $c ». Le courrier du portage est du texte simple d'un
+   * bout à l'autre : les `<br>` deviennent des retours à la ligne et le gras
+   * tombe, le reste ne bouge pas.
+   *
+   * `mail.reply_subject` = « Re: $s », `mail.forward_subject` = « Tr: $s » —
+   * avec les deux-points COLLÉS, comme dans le SWF.
+   */
+  function citerMail(quoi, ev) {
+    var M = window.MessagerieLight;
+    var m = M && M.lu && M.lu();
+    if (!m) return;
+    if (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+    var s = String(m.subject || '');
+    var prefixe = quoi === 'reply' ? 'Re: ' : 'Tr: ';
+    var deja = quoi === 'reply' ? /^re\s*:/i : /^tr\s*:/i;
+    var entete = quoi === 'reply' ? '--- En réponse au message ---' : '--- Message transféré ---';
+    var corps = '\n\n' + entete + '\n'
+      + 'Date : ' + (m.date || '') + '\n'
+      + 'De : ' + (m.from || '') + '\n'
+      + 'A : ' + (m.to || '') + '\n'
+      + 'Sujet : ' + s + '\n\n'
+      + (m.body || m.text || '');
+    // `reply` répond à l'expéditeur ; `forward` laisse le destinataire à
+    // choisir — le SWF ouvre la fenêtre d'écriture avec le champ vide.
+    M.ecrire(quoi === 'reply' ? (m.from || '') : '',
+      deja.test(s) ? s : prefixe + (s || '(sans sujet)'), corps);
+  }
+
   function habillerMail(panneau) {
     if (mailHabille || !panneau) return;
     mailHabille = true;
@@ -2611,15 +2646,55 @@ window.BureauFrutiz = (function () {
     var vue = $('#mail-vue-liste');
     if (vue) vue.insertBefore(entete, vue.firstChild);
 
-    // LES LIBELLÉS D'ÉPOQUE. `win.ViewMail.attachEndButton` compose sa barre
-    // en XML : « Mettre à la corbeille », un grand espace, « Répondre », huit
-    // pixels, « Faire suivre ». Le light n'a pas le renvoi, et il lui faut un
-    // « Retour » que les trois fenêtres d'époque n'avaient pas — elles se
-    // fermaient. Le reste prend les mots du SWF.
+    /*
+     * LA BARRE DU BAS DE LA LECTURE. `win.ViewMail.attachEndButton` (0xc8e72)
+     * la compose en XML, et il n'y a rien à interpréter :
+     *
+     *   <b t="{mail.move_to_recyclebin}" l="butPushStandard" m="moveToRecycleBin"/>
+     *   <s b="1"/>                                     ← un espace ÉLASTIQUE
+     *   <b t="{mail.reply}"   l="butPushStandard" m="reply"/>
+     *   <s w="8"/>
+     *   <b t="{mail.forward}" l="butPushStandard" m="forward"/>
+     *
+     * Les trois libellés sortent de lang_french.as, et deux d'entre eux
+     * n'étaient pas ceux qu'on affichait : `mail.move_to_recyclebin` vaut
+     * « Supprimer » (et non « Mettre à la corbeille »), `mail.forward` vaut
+     * « Transférer » (et non « Faire suivre »). Le troisième bouton manquait
+     * tout court.
+     *
+     * Le « Retour » du light n'existait pas d'époque — les trois fenêtres se
+     * fermaient — mais il n'a nulle part où aller ici : il passe en tête.
+     */
     var pou = $('#mail-supprimer');
-    if (pou) pou.textContent = 'Mettre à la corbeille';
+    if (pou) pou.textContent = 'Supprimer';
+    // Les chevrons du gabarit tactile n'ont pas d'équivalent d'époque : un
+    // `butPushStandard` ne porte que son mot.
+    var ret = $('#mail-retour');
+    if (ret) ret.textContent = 'Retour';
+    var ann = $('#mail-annuler');
+    if (ann) ann.textContent = 'Annuler';
     var env = $('#mail-envoyer');
     if (env) env.textContent = 'Envoyer';
+
+    // RÉPONDRE ET TRANSFÉRER CITENT LE MESSAGE. `mail.reply_tpl` et
+    // `mail.forward_tpl` (lang_french.as) sont deux gabarits à quatre
+    // substitutions — $d la date, $f l'expéditeur, $t le destinataire,
+    // $s le sujet, $c le corps — que le SWF pose dans le nouveau message.
+    // Le light répondait sur une page blanche.
+    var rep = $('#mail-repondre');
+    if (rep && !rep.dataset.epoque) {
+      rep.dataset.epoque = '1';
+      rep.addEventListener('click', citerMail.bind(null, 'reply'), true);
+    }
+    if (rep && !$('#mail-transferer')) {
+      var tr = document.createElement('button');
+      tr.type = 'button';
+      tr.className = 'ma-btn';
+      tr.id = 'mail-transferer';
+      tr.textContent = 'Transférer';
+      tr.addEventListener('click', citerMail.bind(null, 'forward'));
+      rep.parentNode.insertBefore(tr, rep.nextSibling);
+    }
 
     // L'EN-TÊTE DE LECTURE (`win.ViewMail.attachInfo`) : quatre lignes de 20,
     // étiquette de 60 alignée à DROITE — Date, De, À, Sujet. Le light n'en
@@ -2629,7 +2704,10 @@ window.BureauFrutiz = (function () {
     if (lect) {
       var info = document.createElement('div');
       info.className = 'mx-info';
-      [['date', 'Date'], ['from', 'De'], ['to', 'À'], ['subject', 'Sujet']].forEach(function (l) {
+      // Les étiquettes portent leurs DEUX-POINTS, et le « A » n'a pas
+      // d'accent : `mail.date` = « Date : », `mail.from` = « De : »,
+      // `mail.to` = « A : », `mail.subject` = « Sujet : » (lang_french.as).
+      [['date', 'Date :'], ['from', 'De :'], ['to', 'A :'], ['subject', 'Sujet :']].forEach(function (l) {
         var ligne = document.createElement('div');
         ligne.className = 'mx-ligne';
         ligne.innerHTML = '<span class="mx-lab"></span><span class="mx-val" data-champ="'
@@ -2648,11 +2726,18 @@ window.BureauFrutiz = (function () {
     if (form && !form.querySelector('.mx-de')) {
       var de = document.createElement('div');
       de.className = 'mx-de';
-      de.innerHTML = '<span class="mx-lab">De</span><span class="mx-val"></span>';
+      de.innerHTML = '<span class="mx-lab">De :</span><span class="mx-val"></span>';
       var moi = (window.state && window.state.user) || '';
       de.querySelector('.mx-val').textContent = moi + ' <' + moi + '@frutiparc.com>';
       form.insertBefore(de, form.firstChild);
     }
+    // Les deux étiquettes du light prennent elles aussi les mots du SWF. On
+    // les réécrit ICI, et pas dans light.html : le gabarit tactile garde les
+    // siens (« À », « Sujet »), qui vont mieux à une colonne de champs.
+    var lblA = $('#mail-vue-ecriture .mail-form label[for="mail-a"]');
+    if (lblA) lblA.textContent = 'A :';
+    var lblS = $('#mail-vue-ecriture .mail-form label[for="mail-sujet"]');
+    if (lblS) lblS.textContent = 'Sujet :';
   }
 
   var mailDerniere = [], mailDossierVu = 'inbox';
@@ -2734,6 +2819,25 @@ window.BureauFrutiz = (function () {
     Array.prototype.forEach.call(panneau.querySelectorAll('.mx-val[data-champ]'), function (e) {
       e.textContent = val[e.getAttribute('data-champ')] || '';
     });
+    // D'ÉPOQUE C'EST UNE FENÊTRE PAR MESSAGE : `win.ViewMail` porte le SUJET
+    // en bandeau, pas le nom de la boîte. Le portage n'a qu'un panneau, mais
+    // il peut au moins se retitrer — c'est ce que le bandeau annonce.
+    retitrer('mail-panel', val.subject);
+  }
+
+  /*
+   * Le bandeau suit la VUE, comme les trois fenêtres d'époque suivaient leur
+   * classe : `win.Explorer` pour la boîte (titre = le dossier), `win.ViewMail`
+   * pour la lecture (titre = le sujet), `win.Mail` pour l'écriture
+   * (`mail.write_new_mail` = « Composer un nouveau message »).
+   */
+  var MAIL_DOSSIERS = {
+    inbox: 'Boîte de réception', outbox: 'Messages envoyés', blackbox: 'Indésirables',
+  };
+  function retitrerMail(vue) {
+    if (!actif) return;
+    if (vue === 'ecriture') retitrer('mail-panel', 'Composer un nouveau message');
+    else if (vue === 'liste') retitrer('mail-panel', MAIL_DOSSIERS[mailDossierVu] || 'Courrier');
   }
 
   // `but.icon.Detail.display` : `dateDsp = Lang.formatDateString(date,
@@ -4699,6 +4803,8 @@ window.BureauFrutiz = (function () {
     // gabarit « mail » de `box.Explorer` par-dessus.
     majMessagerie: majMessagerie,
     majLectureMail: majLectureMail,
+    // Le light prévient à chaque changement de vue : le bandeau suit.
+    retitrerMail: retitrerMail,
     retitrer: retitrer,
     // `box.Chat.onSend` : une trame de conversation avertit son slot. L'onglet
     // qui porte la fenêtre des salons (ou celui du bureau si elle y est

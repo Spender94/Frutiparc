@@ -81,12 +81,14 @@ test('les mesures 1:1 du champ et de ses rangées', () => {
 
 test('lire et écrire : les gabarits de winViewMail et winMail', () => {
   // `win.ViewMail.attachInfo` : QUATRE lignes de 20, étiquette de 60 à DROITE.
-  assert.match(JS, /\[\['date', 'Date'\], \['from', 'De'\], \['to', 'À'\], \['subject', 'Sujet'\]\]/);
+  // Les mots portent leurs deux-points, et le « A » n'a pas d'accent — c'est
+  // lang_french.as qui les écrit (cf. test/courrierBureau.test.js).
+  assert.match(JS, /\[\['date', 'Date :'\], \['from', 'De :'\], \['to', 'A :'\], \['subject', 'Sujet :'\]\]/);
   assert.match(CSS, /\.mx-ligne,\s*\n\s*body\.bureau-frutiz \.fen #mail-panel \.mx-de \{\s*\n\s*display: flex; align-items: center; height: 20px;/);
   assert.match(CSS, /\.mx-lab \{\s*\n\s*flex: 0 0 60px; width: 60px; text-align: right;/);
-  // `attachEndButton` : « Mettre à la corbeille », un grand espace, puis
-  // « Répondre ».
-  assert.match(JS, /pou\.textContent = 'Mettre à la corbeille'/);
+  // `attachEndButton` : « Supprimer », un grand espace, puis « Répondre » et
+  // « Transférer » — les trois mots de lang_french.as.
+  assert.match(JS, /pou\.textContent = 'Supprimer'/);
   assert.match(CSS, /#mail-supprimer \{ order: 1; \}/);
   assert.match(CSS, /#mail-repondre \{ order: 2; margin-left: auto; \}/);
   // `win.Mail.attachInfo` : la ligne « De », que `box.Mail.preInit` remplit
