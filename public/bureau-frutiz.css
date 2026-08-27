@@ -120,12 +120,23 @@ body.bureau-frutiz #bureau-coin-noir {
        dessous, la rangée des 7 `butPushEmoteIcon` (struct 19 + margin 2 :
        PAS de 21 px exactement — mesuré 88, 109, 130, 151, 172, 193, 214) ;
      • `tile` : la zone extensible, blanche, qui remplit le reste. */
+/* LA LARGEUR EST DONNÉE, PAS DÉDUITE. La barre tient trois mesures d'époque —
+   la bouille (64), l'écart (5) et la colonne de droite (146) — soit 215 px,
+   du bord gauche de l'anneau (x 15) au bord droit de l'encart (x 230).
+   On l'écrivait `width: max-content` sous un `max-width: calc(100% - 25px)` :
+   deux tailles INTRINSÈQUES là où le SWF n'en a que des fixes. Firefox et
+   Chromium ne résolvent pas ce genre de chaîne pareil, et sous Firefox la
+   colonne de droite se faisait rogner — l'encart rétrécissait (ses raccourcis
+   disparaissaient dans son `overflow: hidden`) pendant que la rangée
+   d'émotions, elle, gardait ses sept boutons de 21 px et débordait par la
+   droite. D'où l'impression d'un encart tronqué. Une largeur fixe ne peut pas
+   diverger d'un moteur à l'autre. */
 body.bureau-frutiz #bureau-coin .mainbar {
   /* marge gauche 17 : l'anneau de la bouille commence à x 15 dans le rendu
      1:1, et `#bureau-coin` est posé à −2. */
   margin: 8px 8px 8px 17px; padding: 0;
   border-radius: 0; border: 0; box-shadow: none; background: none;
-  width: max-content; max-width: calc(100% - 25px);
+  width: 215px; max-width: none;
 }
 body.bureau-frutiz #bureau-coin .mb-top { gap: 5px; align-items: flex-start; }
 body.bureau-frutiz #bureau-coin .mb-avatar { flex: 0 0 64px; height: 64px; }
@@ -166,8 +177,11 @@ body.bureau-frutiz #bureau-coin #home-avatar-fiche { inset: 0; border-radius: 6p
    bouille en y 4, liseré de l'encart en y 5) et laisse 3 px entre l'encart et
    la rangée des émotions (encart jusqu'à y 47, liserés y 48-49, blanc y 50,
    émotions à partir de y 51). */
+/* `flex: 0 0 146px` et non le `flex: 1 1 auto; min-width: 0` du tiroir mobile :
+   146 est une mesure, pas une préférence. Laissée rétrécissable, la colonne
+   cédait au moindre calcul serré et emportait l'encart avec elle. */
 body.bureau-frutiz #bureau-coin .mb-right {
-  gap: 3px; height: 65px; width: 146px; margin-top: 1px;
+  flex: 0 0 146px; gap: 3px; height: 65px; width: 146px; margin-top: 1px;
 }
 /* L'encart `digital` d'époque tient en 45 px de haut, là où le tiroir mobile
    en prend 72 : ses quatre zones (les 9 barres de progression en haut-gauche,
@@ -316,15 +330,13 @@ body.bureau-frutiz #bureau-coin .em-btn {
 body.bureau-frutiz #bureau-coin .em-btn img { width: 17px; max-width: 17px; height: 17px; }
 /* L'ORDRE d'époque (bande #102, images 1 à 7 = setEmote 0 à 6) : le neutre,
    la colère, la tristesse, le sourire, le rire à pleines dents, le rictus,
-   puis le rire aux éclats. Le tiroir mobile les range autrement — on ne
-   touche qu'à l'affichage du bureau, jamais au DOM partagé. */
-body.bureau-frutiz #bureau-coin .em-btn[data-e="5"] { order: 0; }
-body.bureau-frutiz #bureau-coin .em-btn[data-e="1"] { order: 1; }
-body.bureau-frutiz #bureau-coin .em-btn[data-e="2"] { order: 2; }
-body.bureau-frutiz #bureau-coin .em-btn[data-e="3"] { order: 3; }
-body.bureau-frutiz #bureau-coin .em-btn[data-e="4"] { order: 4; }
-body.bureau-frutiz #bureau-coin .em-btn[data-e="7"] { order: 5; }
-body.bureau-frutiz #bureau-coin .em-btn[data-e="6"] { order: 6; }
+   puis le rire aux éclats.
+   IL ÉTAIT REFAIT ICI, en `order:`, parce que le DOM partagé les rangeait
+   autrement — et c'est là que se cachait le vrai défaut : la RANGÉE était
+   d'époque, le CÂBLAGE ne l'était pas (le visage neutre posait l'humeur 5).
+   `HOME_EMOTES` porte maintenant l'ordre ET les identifiants du SWF
+   (`initEmoteIconList`, 0x6b6a4), le DOM sort donc déjà juste : plus rien à
+   remettre en place. */
 /* La bannière quotidienne n'a pas cours dans la barre d'époque. */
 body.bureau-frutiz #bureau-coin .daily-banner { display: none; }
 
@@ -1745,6 +1757,42 @@ body.bureau-frutiz .fen #chat-panel #messages .msg {
   margin: 0; font-size: 12px; line-height: 17px; color: #335511;
 }
 body.bureau-frutiz .fen #chat-panel #messages .msg.system { font-size: 12px; color: #335511; }
+/* LA LIGNE DE L'ANIMATEUR EST PLUS GRANDE, et c'est écrit dans le SWF.
+   `cp.Chat.onTrace` compose les trois modes séparément (0x2f533 et suivants) :
+
+       t == "w"  →  penRedMode       "<b>"   + msg + "</b>"
+       t == "c"  →  penBlueAnimator  "<font size=\"14\"><b>" + msg + "</b></font>"
+
+   Le cri de modération reste donc au corps du fil (12), le bleu monte à 14 —
+   un septième de plus. Le light le savait (`.msg.blue { font-size: 1.1667em }`),
+   mais la règle du bureau, plus spécifique, ramenait TOUTE ligne à 12 : les
+   deux modes finissaient à la même taille. */
+body.bureau-frutiz .fen #chat-panel #messages .msg.blue { font-size: 14px; }
+/* LE PSEUDO DE QUI ÉCRIT N'EST PAS D'UNE AUTRE COULEUR. `addText` (0xb6d1c)
+   peint la ligne entière d'une seule encre (`<font color="#…">`, celle du
+   composant) et `onTrace` ne distingue jamais l'auteur du lecteur : le rose du
+   light était un ajout. On rend au pseudo l'encre commune — sans toucher aux
+   deux modes qui, eux, teintent VRAIMENT toute la ligne. */
+body.bureau-frutiz .fen #chat-panel #messages .msg:not(.blue):not(.shout) .from.me {
+  color: #2C4A0F;
+}
+body.bureau-frutiz .fen #chat-panel #messages .msg.emote:not(.blue):not(.shout) .from.me {
+  color: #4F7B1F;
+}
+/* « … VOIR LES MESSAGES PRÉCÉDENTS … » EST UNE LIGNE COMME UNE AUTRE.
+   `box.Chat.onIamMode` (0x316e1) ne fait qu'un `addText` :
+
+       addText("<a href=\"javascript:fp_openHisto('" + sid + "','" + group
+               + "')\">... voir les messages précédents ...</a>")
+
+   et `addText` n'ajoute QUE la couleur du composant (plus un `<b>` si
+   `flBold`, qui ne l'est pas ici). Pas d'italique — celui de « Vous discutez
+   maintenant sur le salon $t » vient du `<i>` de la table de langue, pas du
+   composant —, pas de gras, et Flash ne souligne pas les `<a>`. Le light en
+   avait fait un lien de navigateur : gras, souligné, italique. */
+body.bureau-frutiz .fen #chat-panel #messages .sys-lien {
+  font-style: normal; font-weight: normal; text-decoration: none; color: inherit;
+}
 
 /* ── Les TROIS PANNEAUX du salon ────────────────────────────────────────────
    Les trois premiers boutons de la colonne ouvrent chacun un compo, et le
@@ -2805,7 +2853,14 @@ body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art::before {
   background: url('/frutiz/sprites/shop-puce-article.svg') center / 12px 12px no-repeat;
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art.on { font-weight: 700; }
-body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art.eu { color: #8AA86A; }
+/* UN ARTICLE DÉJÀ ACHETÉ NE SE VOIT PAS DANS LA LISTE. On le grisait
+   (`.bo-art.eu`) ; l'arbre d'époque n'en sait rien. Une capsule tient sa
+   couleur du PANNEAU et de lui seul — `Capsule.fadeIn` (0x9f147) fait
+   `FEMC.setPColor(this, c, 0)` puis laisse `addPaint` la ramener à 100 —, et
+   `box.Shop.analyseTree` ne pose sur `<c>` et `<p>` qu'un `bulletLink`. Rien,
+   nulle part, ne consulte ce que le joueur possède avant de peindre la ligne.
+   La classe reste dans le DOM (le tiroir mobile s'en sert) ; ici elle ne
+   change plus rien. */
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques button:hover { background: #E8F8D3; }
 /* LA FICHE : le style `frSheet` — le vert du bureau, sous son reflet. */
 body.bureau-frutiz .fen #shop-sheet #bo-fiche {

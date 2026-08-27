@@ -517,11 +517,37 @@ bureau sous la barre et sa rangée d'onglets : recal borne les fenêtres LÀ.
   navigateur applique la couverture réelle du pixel tangent : sans un demi-
   pixel d'expansion, l'anneau CSS paraît deux fois trop fin.
   L'art est la bande #102, sept
-  images en BITMAP 17×17 (#88, #90, #92, #94, #96, #98, #100) dans CET
-  ordre : le neutre, la colère, la tristesse, le sourire, le rire à pleines
-  dents, le rictus, le rire aux éclats — `setEmote(0..6)`. Le tiroir mobile
-  les range autrement : le bureau ne réordonne que l'AFFICHAGE (propriété
-  `order`), jamais le DOM partagé.
+  images en BITMAP 17×17 dans CET ordre : le neutre, la colère, la tristesse,
+  le sourire, le rire à pleines dents, le rictus, le rire aux éclats.
+
+  **LA BOUCLE DIT TOUT, et il fallait la lire jusqu'au bout :**
+
+  ```
+  for (i = 0; i < 7; i++)
+    emoteIconList.push({ link: "butPush", param: {
+      link: "butPushEmoteIcon", frame: 1 + i,          ← l'image de la bande
+      outline: 2, curve: 8,
+      buttonAction: [{ onPress: { obj: me.status,
+                                  method: "setEmote", args: i } }] }});
+  ```
+
+  Donc **image i+1 ↔ humeur i**, et les sept boutons couvrent les humeurs
+  **0 à 6** : le premier est le visage NEUTRE, et « Totoché » (7) n'a pas de
+  bouton dans la barre. `butPushEmoteIcon` (#103) n'enveloppe que la bande
+  #102, qui pose ch89, 91, 93, 95, 97, 99, 101 aux profondeurs 1 à 7 — une
+  par image. Les SVG extraits portent ces numéros dans leur `PatternID`, ce
+  qui donne l'ordre sans la moindre supposition, et le recoupement avec
+  `emoteList` est net : l'humeur 5 est `[œil 1, bouche 4]`, soit les sourcils
+  de la colère sur le sourire à pleines dents — c'est exactement le rictus de
+  l'image 6.
+
+  **Le piège, tombé une fois.** L'ordre d'AFFICHAGE avait été relevé juste et
+  refait en CSS (`order:`), mais le DOM partagé gardait `e = 1..7` : la rangée
+  paraissait d'époque et cliquer le visage neutre posait « Déterminé », le
+  sourire posait « Joie », et ainsi de suite jusqu'au dernier. Le décalage se
+  voyait sur la bouille, pas sur la barre. `HOME_EMOTES` porte désormais
+  l'ordre ET les identifiants du SWF, et le `order:` du bureau a disparu — il
+  n'avait plus rien à remettre en place.
 - **Profondeurs relevées au bord gauche** : la BANDE des contacts passe
   PAR-DESSUS la barre (à y=40 son liseré `#DDDDDD` se lit encore en 6..9),
   mais son OMBRE passe DESSOUS (le `#444444` y disparaît) — l'ombre est
@@ -1373,6 +1399,33 @@ n'y bouge plus jusqu'au `rollOut`. Trois survols, trois bulles au même écart.
 122. Et **le pseudo tient sa ligne à lui seul**, la suite commençant par son
 espace : c'est ainsi que le champ HTML du SWF rend `<b>$u</b> : …` — vérifié
 sur les deux pseudos.
+
+#### Une bouille ne RESTE pas dans l'aquarium : elle y passe
+
+`cp.FrutiScreen.onAction` (0x62245) joue l'émotion puis, en mode CLB et
+seulement là, pose sur la bouille son ordre de départ :
+
+    content.action(o.id, o.length);
+    if (this.flCLB) {
+      content.actionCallBack = { obj: this, method: "launchIntoTheSpace",
+                                 args: content };
+    }
+
+`actionCallBack` se déclenche à la FIN de l'animation. `launchIntoTheSpace`
+(0x62565) repose `pos = {x: −minSide, y: _y}` et confie le trajet à
+`animList.addSlide(content, "contentSlide" + user, 1.5, {obj, method:
+"removeCLBContent", args: content})` ; au bout du glissement,
+`removeCLBContent` (0x625ee) la `splice` de `contentList` et la
+`removeMovieClip`. **Qui a fini de parler s'en va.**
+
+Le portage n'avait gardé que le débordement (`maxContent` = 3, la plus
+ancienne chassée par la nouvelle) : les bouilles s'accumulaient, figées sur
+leur vignette, jusqu'au quatrième arrivant. Et comme le light n'a qu'UN
+lecteur par fenêtre là où l'époque en avait un par bouille, il faut appeler
+le rappel à DEUX moments : la fin du minuteur, et l'arrivée d'une autre
+émotion qui prend le lecteur — celle d'avant est alors interrompue, donc
+finie elle aussi. C'est ce second cas qui laissait « parfois » une bouille en
+plan.
 
 #### Deux choses que le SWF ne fait PAS
 

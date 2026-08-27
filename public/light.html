@@ -3101,15 +3101,35 @@
   // ── Main bar de l'accueil : avatar, niveau, emotes (humeurs), raccourcis ──
   // Emotes → humeur de la bouille via le param `e` de bouille-preview (freeze
   // statique, EXACTEMENT comme le forum — pas l'animation transitoire du chat).
-  // Les 7 icônes fournies couvrent les humeurs e=1..7 (cf. EXPRESSIONS du forum).
+  //
+  // L'ORDRE ET LE CÂBLAGE VIENNENT DU SWF, pas de nous. `MainBar.initEmoteIconList`
+  // (0x6b6a4) monte les sept boutons dans une boucle, et la boucle dit tout :
+  //
+  //     for (i = 0; i < 7; i++)
+  //       emoteIconList.push({ link: "butPush", param: {
+  //         link: "butPushEmoteIcon", frame: 1 + i,          ← l'image de la bande
+  //         outline: 2, curve: 8,
+  //         buttonAction: [{ onPress: { obj: me.status,
+  //                                     method: "setEmote", args: i } }] }});
+  //
+  // Donc **image i+1 ↔ humeur i**, et les sept boutons couvrent les humeurs
+  // **0 à 6** — le premier est le visage NEUTRE, et « Totoché » (7) n'a pas de
+  // bouton dans la barre. Les images, elles, se lisent dans la bande
+  // `butPushEmoteIcon` (#103 → #102), qui pose ch89, 91, 93, 95, 97, 99, 101 aux
+  // profondeurs 1 à 7 ; les SVG extraits portent ces numéros dans leur
+  // `PatternID`, ce qui donne l'ordre ci-dessous sans la moindre supposition.
+  //
+  // Le portage avait les sept mêmes dessins, mais rangés autrement ET décalés
+  // d'un cran (e=1..7) : cliquer le visage neutre posait « Déterminé », le
+  // sourire posait « Joie », et ainsi de suite.
   var HOME_EMOTES = [
-    { file: "emote_mechant", e: 1, name: "Colère" },
-    { file: "emote_triste",  e: 2, name: "Triste" },
-    { file: "emote_content", e: 3, name: "Sourire" },
-    { file: "emote_ravi",    e: 4, name: "Joie" },
-    { file: "emote_stoique", e: 5, name: "Déterminé" },
-    { file: "emote_transi",  e: 6, name: "Embarrassé" },
-    { file: "emote_fou",     e: 7, name: "Totoché" },
+    { file: "emote_stoique", e: 0, name: "Neutre" },      // image 1 — ch89
+    { file: "emote_mechant", e: 1, name: "Colère" },      // image 2 — ch91
+    { file: "emote_triste",  e: 2, name: "Triste" },      // image 3 — ch93
+    { file: "emote_content", e: 3, name: "Sourire" },     // image 4 — ch95
+    { file: "emote_ravi",    e: 4, name: "Joie" },        // image 5 — ch97
+    { file: "emote_fou",     e: 5, name: "Déterminé" },   // image 6 — ch99
+    { file: "emote_transi",  e: 6, name: "Embarrassé" },  // image 7 — ch101
   ];
   // Raccourcis de l'encart niveau. `go` = rubrique ouverte au clic (les autres
   // restent inertes en attendant d'être branchées). `voyant` désigne l'icône de
@@ -3289,8 +3309,10 @@
         var b = el("button", "em-btn");
         b.type = "button"; b.title = it.name; b.setAttribute("data-e", it.e);
         b.innerHTML = '<img src="/fb/' + it.file + '.svg" alt="' + xmlEscape(it.name) + '">';
-        // Recliquer la même humeur revient au neutre.
-        b.addEventListener("click", function () { setHomeMood(homeMood === it.e ? 0 : it.e); });
+        // `setEmote(i)`, sans détour : la rangée A un bouton neutre (le premier),
+        // il n'y a donc rien à basculer. Le portage rendait le second appui au
+        // neutre parce qu'il croyait la rangée privée de ce visage-là.
+        b.addEventListener("click", function () { setHomeMood(it.e); });
         em.appendChild(b);
       });
     }
@@ -7636,7 +7658,14 @@
       var colonne = noeudChat(c, "bouille-overlay");
       if (colonne) {
         var deja = colonne.querySelectorAll(".bo-anime");
-        for (var i2 = 0; i2 < deja.length; i2++) deja[i2].classList.remove("bo-anime");
+        for (var i2 = 0; i2 < deja.length; i2++) {
+          deja[i2].classList.remove("bo-anime");
+          // Celle qu'on INTERROMPT a fini de parler : dans l'aquarium, elle
+          // s'en va. D'époque chaque bouille avait son lecteur et son
+          // `actionCallBack` ; ici le lecteur est unique, et lui prendre la
+          // place termine l'animation aussi sûrement que le minuteur.
+          if (deja[i2] !== ecran && BureauFrutiz.finirEmote) BureauFrutiz.finirEmote(deja[i2]);
+        }
       }
       var scene = noeudChat(c, "bouille-overlay-stage");
       if (scene.parentNode !== ecran) ecran.appendChild(scene);
@@ -7647,6 +7676,10 @@
         scene.classList.remove("joue");
         ecran.classList.remove("bo-anime");
         overlayEteindre(c);
+        // `actionCallBack` : l'animation est allée à son terme, la bouille
+        // quitte l'aquarium (`launchIntoTheSpace`). En mode MULTI son écran
+        // lui appartient, elle y reste — `finirEmote` ne s'y trompe pas.
+        if (BureauFrutiz.finirEmote) BureauFrutiz.finirEmote(ecran);
       });
       return;
     }

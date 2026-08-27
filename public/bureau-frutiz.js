@@ -2372,13 +2372,46 @@ window.BureauFrutiz = (function () {
     return Math.random() * libre;
   }
 
-  // `launchIntoTheSpace` : la plus ancienne repart par la gauche et disparaît.
+  // `launchIntoTheSpace` (0x62565) : la bouille repart par la gauche, jusqu'à
+  // `pos.x = −minSide`, et `removeCLBContent` (0x625ee) la retire de la liste
+  // et du plan au bout du glissement.
   function partirDansLEspace(b, ec) {
     if (b.classList.contains('part')) return;
     b.classList.add('part');
     rendreScene(b);
     b.style.left = (-Math.min(ec.clientWidth, ec.clientHeight)) + 'px';
     setTimeout(function () { if (b.parentNode) b.remove(); }, 700);
+  }
+
+  /*
+   * UNE BOUILLE NE RESTE PAS DANS L'AQUARIUM : ELLE Y PASSE.
+   *
+   * `cp.FrutiScreen.onAction` (0x62245) joue l'émotion, puis — en mode CLB, et
+   * seulement là — pose sur la bouille son ordre de départ :
+   *
+   *     content.action(o.id, o.length);
+   *     if (this.flCLB) {
+   *       content.actionCallBack = { obj: this,
+   *                                  method: "launchIntoTheSpace",
+   *                                  args: content };
+   *     }
+   *
+   * `actionCallBack` se déclenche à la FIN de l'animation : qui a fini de
+   * parler s'en va. Le portage n'avait gardé que le débordement
+   * (`maxContent` = 3, la plus ancienne chassée par la nouvelle), si bien que
+   * les bouilles s'accumulaient, figées sur leur vignette, jusqu'au quatrième
+   * arrivant.
+   *
+   * DEUX MOMENTS l'appellent, parce que le light n'a qu'UN lecteur par fenêtre
+   * là où l'époque en avait un par bouille :
+   *   · la fin du minuteur — l'animation est allée à son terme ;
+   *   · l'arrivée d'une AUTRE émotion, qui prend le lecteur — celle d'avant
+   *     est interrompue, donc finie elle aussi. C'est ce cas-là qui laissait
+   *     « parfois » une bouille en plan.
+   */
+  function finirEmote(ecran) {
+    if (!ecran || !ecran.classList.contains('bo-clb')) return;   // MULTI : on reste
+    if (ecran.parentNode) partirDansLEspace(ecran, ecran.parentNode);
   }
 
   function bouilleDe(pseudo, panneau) {
@@ -4999,6 +5032,7 @@ window.BureauFrutiz = (function () {
     majBouilles: majBouilles,
     majListeConnectes: majListeConnectes,
     ecranDe: ecranDe,
+    finirEmote: finirEmote,
     actif: function () { return actif; },
   };
 })();
