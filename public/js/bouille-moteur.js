@@ -214,15 +214,54 @@
     this.visible = true;
     this.echX = 1; this.echY = 1;      // _xscale/_yscale, en facteur
     this.dx = 0; this.dy = 0;          // décalage de _x/_y par rapport au placement
+    this.drot = 0;                     // écart de _rotation, en degrés
     this.M = IDENTITE;
   }
 
+  /*
+   * La matrice du clip : son placement, augmenté de ce que les scripts lui ont
+   * fait — l'échelle, le décalage, et LA ROTATION.
+   *
+   * `_rotation` fait tourner le clip dans le repère de son PARENT, autour de sa
+   * propre origine : la rotation se compose donc À GAUCHE de la partie linéaire
+   * du placement, et la translation n'y touche pas. C'est ce que Flash fait en
+   * recomposant a/b/c/d à partir de l'angle et des deux échelles.
+   *
+   * Elle manquait, et deux accessoires d'époque en dépendent entièrement : la
+   * variante 25 de l'accessoire 3 (famille 0) est un moulinet dont les deux
+   * pales ne bougent que par script —
+   *
+   *     image 1 : vit = -(random(5) + 3)          (l'autre pale : random(3) + 2)
+   *     image 2 : _parent.col2._rotation += vit
+   *     image 3 : gotoAndPlay(_currentframe - 1)
+   *
+   * — trois images qui posent toutes le même dessin au même endroit. Sans
+   * `_rotation`, la pellicule tournait bel et bien, mais l'accessoire restait
+   * rigoureusement immobile.
+   */
   Clip.prototype.matrice = function () {
     const M = this.M;
-    if (this.echX === 1 && this.echY === 1 && !this.dx && !this.dy) return M;
-    return { a: M.a * this.echX, b: M.b * this.echX, c: M.c * this.echY, d: M.d * this.echY,
-      e: M.e + this.dx, f: M.f + this.dy };
+    if (this.echX === 1 && this.echY === 1 && !this.dx && !this.dy && !this.drot) return M;
+    let a = M.a * this.echX, b = M.b * this.echX, c = M.c * this.echY, d = M.d * this.echY;
+    if (this.drot) {
+      const r = this.drot * Math.PI / 180, co = Math.cos(r), si = Math.sin(r);
+      const a2 = a * co - b * si, b2 = a * si + b * co;
+      const c2 = c * co - d * si, d2 = c * si + d * co;
+      a = a2; b = b2; c = c2; d = d2;
+    }
+    return { a, b, c, d, e: M.e + this.dx, f: M.f + this.dy };
   };
+
+  // L'angle DU PLACEMENT, en degrés : ce que `_rotation` vaut avant que le
+  // moindre script y touche.
+  Clip.prototype.rotationPosee = function () {
+    return Math.atan2(this.M.b, this.M.a) * 180 / Math.PI;
+  };
+  // Flash ramène toujours `_rotation` dans ]-180, 180].
+  function angle180(v) {
+    v = ((v + 180) % 360 + 360) % 360 - 180;
+    return v === -180 ? 180 : v;
+  }
 
   // Boîte englobante LOCALE (avant sa propre matrice) — ce que _width mesure.
   Clip.prototype.boite = function (prof) {
@@ -298,10 +337,32 @@
     this.moteur.executer(this, n);
   };
 
+  /*
+   * VRAI si quelque chose, quelque part sous ce clip, a encore une image à
+   * jouer.
+   *
+   * Une tête de lecture arrêtée le RESTE : seule l'exécution d'un script peut
+   * la relancer, et un script ne s'exécute qu'au passage d'une image — donc
+   * jamais si plus rien n'avance. Un arbre entièrement figé est donc figé pour
+   * de bon, tant que personne n'appelle apply(), une humeur ou une animation.
+   *
+   * C'est ce qui permet de trancher, bouille par bouille, entre l'image fixe
+   * (dessinée une fois, au suréchantillonnage plein) et la pellicule vivante.
+   */
+  Clip.prototype.peutBouger = function (prof) {
+    prof = prof || 0;
+    if (prof > 12) return false;
+    if (this.enLecture && this.def.n > 1) return true;
+    for (const e of this.enfants.values()) {
+      if (e.objet && e.objet.peutBouger(prof + 1)) return true;
+    }
+    return false;
+  };
+
   // Rend VRAI si quelque chose a bougé — le lecteur s'en sert pour ne pas
-  // redessiner une bouille qui n'a pas changé. Toutes les têtes de lecture d'une
-  // bouille au repos ne sont pas arrêtées (l'éclat de l'iris tourne), mais
-  // beaucoup le sont, et une famille sans animation ne coûte alors plus rien.
+  // redessiner une bouille qui n'a pas changé. Relevé sur les dix familles :
+  // une bouille au repos n'a AUCUNE tête de lecture en marche (`apply()` les
+  // arrête toutes, une à une) ; seul un accessoire animé en remet une.
   Clip.prototype.avancer = function () {
     let bouge = false;
     if (this.neuf) { this.neuf = false; }
@@ -329,6 +390,7 @@
       case '_y': return this.M.f + this.dy;
       case '_xscale': return this.echX * 100;
       case '_yscale': return this.echY * 100;
+      case '_rotation': return angle180(this.rotationPosee() + this.drot);
       case '_width': { const b = this.boite(); return b ? b.w * this.echX : 0; }
       case '_height': { const b = this.boite(); return b ? b.h * this.echY : 0; }
       default: break;
@@ -345,6 +407,7 @@
       case '_y': this.dy = Avm.nombre(v) - this.M.f; return;
       case '_xscale': this.echX = Avm.nombre(v) / 100; return;
       case '_yscale': this.echY = Avm.nombre(v) / 100; return;
+      case '_rotation': this.drot = Avm.nombre(v) - this.rotationPosee(); return;
       case '_width': { const b = this.boite(); if (b && b.w) this.echX = Avm.nombre(v) / b.w; return; }
       case '_height': { const b = this.boite(); if (b && b.h) this.echY = Avm.nombre(v) / b.h; return; }
       default: this.vars[nom] = v;
@@ -664,6 +727,11 @@
     return this.racine.face ? this.racine.face.avancer() : false;
   };
 
+  /** VRAI tant que l'arbre a une pellicule en marche (cf. Clip.peutBouger). */
+  Moteur.prototype.enMouvement = function () {
+    return this.racine.face ? this.racine.face.peutBouger() : false;
+  };
+
   // ── Dessin ───────────────────────────────────────────────────────────────
   Moteur.prototype.chemin = function (cle, d) {
     let p = this.chemins.get(cle);
@@ -881,25 +949,73 @@
     this.cadence = defs.cadence || 40;
     this.taille = options.taille || defs.scene.w || 100;
     this.fond = options.fond || null;
-    // `super` : le facteur de suréchantillonnage demandé (4 par défaut, ramené
-    // selon la taille finale) ; `antiCouture: false` retire le liséré de
-    // raccord. Les deux servent aux relevés — en usage, on garde les défauts.
-    this.superDemande = options.super === undefined ? 4 : Math.max(1, options.super | 0);
+    /*
+     * LES DEUX FINESSES.
+     *
+     * `super` est le facteur de suréchantillonnage demandé (cf. plus bas). Une
+     * bouille IMMOBILE se dessine une seule fois : elle se paie le ×4 sans
+     * compter. Une bouille qui TOURNE se redessine quarante fois par seconde,
+     * et le ×4 y coûte quatre fois plus de pixels pour une différence que l'œil
+     * ne voit pas en mouvement — on la met à ×2.
+     *
+     * On ne choisit donc pas à la construction mais à chaque changement d'état,
+     * dans `ajuster()`, selon ce que l'arbre a réellement à jouer. Un `super`
+     * explicite (les relevés) fige les deux valeurs : un relevé doit rendre ce
+     * qu'on lui demande.
+     */
+    this.superRepos = options.super === undefined ? 4 : Math.max(1, options.super | 0);
+    this.superAnime = options.super === undefined ? 2 : this.superRepos;
+    this.superDemande = this.superRepos;
     this.couturesForcees = options.antiCouture;      // undefined = automatique
+    /*
+     * `anime` — ce que la bouille a le DROIT de faire, pas ce qu'elle fait :
+     *
+     *   false  la boucle est interdite. Les planches de relevés
+     *          (bouille-js.html) avancent le moteur à la main, image par image ;
+     *   true   la bouille est destinée à jouer des animations (la réaction qui
+     *          passe sur le chat) : on lui laisse la finesse de mouvement même
+     *          entre deux réactions, pour ne pas refaire ses tampons à chaque
+     *          fois ;
+     *   absent AUTOMATIQUE — et c'est le cas courant. `ajuster()` demande à
+     *          l'arbre s'il a quelque chose à jouer : un accessoire animé, une
+     *          humeur en cours, une animation. Sinon, image fixe.
+     *
+     * C'était `anime !== false` : toute vignette posée restait figée, et les
+     * accessoires animés d'époque (famille 0 : 3, 6, 10) ne tournaient nulle
+     * part — ni sur la fiche, ni dans l'éditeur, ni dans un salon.
+     */
+    this.anime = options.anime === undefined ? null : !!options.anime;
     this.enMarche = false;
+    this.calme = 0;
+    this.attache = false;
     this._boucle = null;
     this.moteur.surFinAnim = options.surFinAnim || null;
     if (options.etat) this.moteur.definir(options.etat);
     if (options.humeur) this.moteur.humeur(options.humeur);
     this.redimensionner();
+    this.ajuster();
     this.rendre();
-    // Une bouille au repos n'est PAS immobile : `face` est arrêté, mais les
-    // clips imbriqués — l'éclat de l'iris, le frémissement d'un accessoire —
-    // continuent de tourner, exactement comme sous Flash. On tourne donc par
-    // défaut ; `anime: false` sert aux vignettes (Bouilloscope, trombinoscope),
-    // où quarante-huit têtes qui scintillent ne valent pas le courant dépensé.
-    if (options.anime !== false) this.demarrer();
   }
+
+  /*
+   * Faut-il faire tourner cette bouille, et à quelle finesse ?
+   *
+   * Appelée après tout ce qui peut remettre une pellicule en marche — la
+   * construction, apply(), une humeur, une animation — et par la boucle
+   * elle-même quand plus rien ne bouge, pour qu'elle s'éteigne d'elle-même et
+   * rende à la bouille sa finesse de repos.
+   *
+   * Rend VRAI quand les tampons ont changé de taille : l'appelant doit alors
+   * redessiner.
+   */
+  Bouille.prototype.ajuster = function () {
+    const vivante = this.anime === false ? false : this.moteur.enMouvement();
+    const sup = (vivante || this.anime === true) ? this.superAnime : this.superRepos;
+    let refaire = false;
+    if (sup !== this.superDemande) { this.superDemande = sup; this.redimensionner(); refaire = true; }
+    if (vivante) this.demarrer(); else this.arreter();
+    return refaire;
+  };
 
   // ── LE SURÉCHANTILLONNAGE ────────────────────────────────────────────────
   //
@@ -1013,19 +1129,28 @@
     return this;
   };
 
-  Bouille.prototype.definir = function (etat) { this.moteur.definir(etat); return this.rendre(); };
-  Bouille.prototype.humeur = function (id) { this.moteur.humeur(id); return this.rendre(); };
+  // Les trois portes qui peuvent remettre une pellicule en marche — ou l'en
+  // retirer : chacune repasse par `ajuster()`.
+  Bouille.prototype.definir = function (etat) { this.moteur.definir(etat); this.ajuster(); return this.rendre(); };
+  Bouille.prototype.humeur = function (id) { this.moteur.humeur(id); this.ajuster(); return this.rendre(); };
   Bouille.prototype.animer = function (id) {
     if (typeof id === 'string') id = Math.max(0, ANIMATIONS.indexOf(id));
     this.moteur.action(id);
-    this.demarrer();
+    // `ajuster` peut refaire les tampons (la finesse change) : sans ce rendu,
+    // le canevas resterait vide jusqu'à la première image qui bouge.
+    if (this.ajuster()) this.rendre();
     return this;
   };
   Bouille.prototype.etat = function () { return this.moteur.etat; };
 
+  // Une seconde de calme plat avant de se demander si l'on peut s'éteindre :
+  // quarante images, la longueur d'une pellicule d'accessoire.
+  const CALME_MAX = 40;
+
   Bouille.prototype.demarrer = function () {
     if (this.enMarche) return this;
     this.enMarche = true;
+    this.calme = 0;
     const self = this;
     let precedent = (global.performance || Date).now();
     let reste = 0;
@@ -1033,12 +1158,25 @@
     (function tic() {
       if (!self.enMarche) return;
       self._boucle = global.requestAnimationFrame(tic);
+      // Un canevas qui a QUITTÉ le document n'a plus rien à dessiner. Le bureau
+      // remplace des écrans de salon sans prévenir personne (`vieux.remove()`),
+      // et le chat refait sa scène de réaction : sans ce garde-fou, chaque
+      // remplacement laisserait une boucle tourner pour un canevas invisible.
+      if (self.attache) { if (!self.canvas.isConnected) { self.arreter(); return; } }
+      else if (self.canvas.isConnected !== false) self.attache = true;
       const t = (global.performance || Date).now();
       reste += Math.min(200, t - precedent);
       precedent = t;
       let bouge = false;
       while (reste >= pas) { reste -= pas; if (self.moteur.avancer()) bouge = true; }
-      if (bouge) self.rendre();
+      if (bouge) { self.calme = 0; self.rendre(); return; }
+      // Rien n'a bougé depuis une seconde : l'animation est finie. Si l'arbre
+      // n'a plus rien à jouer, la boucle s'éteint et la bouille reprend sa
+      // finesse de repos — c'est le pendant de `ajuster()`, vu du lecteur.
+      if (++self.calme > CALME_MAX) {
+        self.calme = 0;
+        if (self.ajuster()) self.rendre();
+      }
     })();
     return this;
   };
@@ -1048,6 +1186,8 @@
     this._boucle = null;
     return this;
   };
+
+  Bouille.prototype.enMouvement = function () { return this.moteur.enMouvement(); };
 
   const API = {
     Moteur, Bouille, Clip,

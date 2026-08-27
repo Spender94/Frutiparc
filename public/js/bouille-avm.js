@@ -27,6 +27,15 @@
         « rejouer le rire, sinon rendre la main à l'animation suivante ».
     bubble._width = bubble._width + size ; if (bubble._width > random(150) + 30) …
         le chewing-gum qui gonfle jusqu'à une taille tirée au sort.
+    vit = -(random(5) + 3) ; _parent.col2._rotation += vit ; gotoAndPlay(2)
+        la casquette qui tourne — trois images dont le dessin ne change pas,
+        et dont TOUT le mouvement est dans ce script.
+
+  LES PROPRIÉTÉS. Le même recensement ne cite que sept `_propriétés` dans les
+  scripts d'image : _totalframes, _width, _height, _alpha, _visible,
+  _currentframe et _rotation. Elles se lisent et s'écrivent toutes ici, par leur
+  nom (GetMember/SetMember) comme par leur numéro (GetProperty/SetProperty, d'où
+  la table PROPS) ; c'est au clip de savoir ce qu'elles veulent dire.
 
   L'HÔTE. L'interpréteur ne connaît ni le SVG ni la pellicule : il parle à des
   objets qui exposent avmGet / avmSet / avmAppel (nos clips, dans

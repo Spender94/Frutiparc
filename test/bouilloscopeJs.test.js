@@ -34,6 +34,7 @@ const vm = require('node:vm');
 const ROOT = path.join(__dirname, '..');
 const lire = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const VIGNETTE = lire('public/js/bouille-vignette.js');
+const MOTEUR = lire('public/js/bouille-moteur.js');
 const ADMIN = lire('public/admin.html');
 const LIGHT = lire('public/light.html');
 const BUREAU = lire('public/ruffle.html');
@@ -139,8 +140,16 @@ test('deux modes : la vignette POSÉE et la bouille QUI S’ANIME', () => {
   // suréchantillonnage ×4 du moteur sans compter. Une bouille qui s'anime
   // redessine quarante fois par seconde : ×2, cinq fois moins cher, et l'œil ne
   // fait pas la différence en mouvement.
-  assert.match(VIGNETTE, /anime: anime, super: anime \? 2 : undefined/,
-    'la qualité suit le mode');
+  //
+  // Ce n'est plus la VIGNETTE qui tranche, c'est le moteur : elle imposait
+  // `anime: false`, et les accessoires animés d'époque restaient figés partout
+  // (cf. test/accessoiresAnimes.test.js). `Bouille.ajuster()` demande à l'arbre
+  // s'il a quelque chose à jouer et règle les deux — la boucle et la finesse.
+  assert.match(VIGNETTE, /anime: anime \? true : undefined/, 'le mode reste un indice');
+  assert.match(MOTEUR, /const sup = \(vivante \|\| this\.anime === true\) \? this\.superAnime : this\.superRepos;/,
+    'la qualité suit ce que l’arbre a vraiment à jouer');
+  assert.match(MOTEUR, /this\.superRepos = options\.super === undefined \? 4 : Math\.max\(1, options\.super \| 0\);/);
+  assert.match(MOTEUR, /this\.superAnime = options\.super === undefined \? 2 : this\.superRepos;/);
   assert.match(VIGNETTE, /jouer:/, 'le module sait lancer une animation');
   assert.match(VIGNETTE, /stopper:/, 'et la ramener au repos');
 });

@@ -257,6 +257,78 @@ Désormais : `rememberStatut` décode l'humeur, `setHomeMood` la renvoie au serv
 rafraîchit les fenêtres ouvertes. Quand seule l'humeur bouge, `rafraichir`
 suffit : l'arbre est déjà monté, on ne recharge pas le SWF de famille.
 
+## 5 quater. Les accessoires ANIMÉS
+
+Cinq accessoires de la bibliothèque bougent d'époque, et aucun ne bougeait ici.
+Deux causes superposées, l'une dans le lecteur, l'autre dans l'interpréteur.
+
+### La vignette figeait tout
+
+`FPBouilleVignette` montait ses bouilles avec `anime: false` : une image, puis
+plus rien. C'était défendable — **aucune** des dix familles n'a de pellicule en
+marche une fois `apply()` passé, mesuré tête par tête — mais faux dès qu'un
+accessoire en a une. `apply()` n'arrête que `c`, `acc` et `acc2` (`gotoAndStop`,
+relevé dans le `with(face)` du script racine) ; jamais leurs enfants, et c'est
+un enfant qui porte l'animation.
+
+Le lecteur tranche maintenant tout seul. `Moteur.enMouvement()` demande à
+l'arbre s'il lui reste une tête de lecture en marche — une tête arrêtée le
+reste, puisque seul un script peut la relancer et qu'un script ne s'exécute
+qu'au passage d'une image. `Bouille.ajuster()` en tire les deux conséquences :
+
+| l'arbre | la boucle | le suréchantillonnage |
+|---|---|---|
+| rien à jouer | éteinte | ×4 — une image fixe se le paie sans compter |
+| une pellicule en marche | 40 im/s | ×2 — cinq fois moins cher, invisible en mouvement |
+
+`ajuster()` est rappelé aux trois portes du moteur (`definir`, `humeur`,
+`animer`) et par la boucle elle-même après une seconde de calme plat : une
+réaction de chat finie, la bouille reprend sa finesse de repos toute seule. Et
+la boucle s'éteint quand son canevas quitte le document — le bureau remplace des
+écrans de salon sans prévenir personne.
+
+### `_rotation` n'était pas appliqué
+
+La variante 25 de l'accessoire 3 (famille 0) est une casquette dont deux pièces
+tournent en sens contraires, et **rien d'autre** : trois images qui posent toutes
+le même dessin au même endroit, et un script qui fait tout le travail.
+
+```
+image 1 : vit = -(random(5) + 3)          ← l'autre pièce : random(3) + 2
+image 2 : _parent.col2._rotation += vit
+image 3 : gotoAndPlay(_currentframe - 1)  ← la boucle sur deux images
+```
+
+L'interpréteur rangeait `_rotation` parmi les variables ordinaires du clip :
+l'angle s'accumulait fidèlement… et ne tournait rien. `Clip` le traite désormais
+comme `_x` et `_xscale` — un ÉCART par rapport au placement, `drot`, que
+`matrice()` compose **à gauche** de la partie linéaire (la rotation se fait dans
+le repère du parent, autour de l'origine du clip) et que `avmGet` relit ramené
+dans `]-180, 180]`, comme Flash. Avec `alea` figé à 0,5 : -5° et +3° par image,
+soit -200 et +120 degrés par seconde.
+
+C'était le seul trou : un recensement des scripts d'image des dix familles ne
+cite que sept propriétés — `_totalframes`, `_width`, `_height`, `_alpha`,
+`_visible`, `_currentframe` et `_rotation`.
+
+### Le recensement
+
+| famille | accessoire | variante | ce qui joue |
+|---|---|---|---|
+| 0 | 3 | 25 | `acc/col2` et `acc/col3` — 3 images, tout est dans le script |
+| 0 | 3 | 33 | `acc/#30` — 24 images |
+| 0 | 6 | 0 | `acc/col` — 75 images (l'écran du visiocasque) |
+| 0 | 10 | 4 | `acc/col2` — 27 images |
+| 12 | 2 | — | `acc/col` — 75 images |
+
+`test/accessoiresAnimes.test.js` refait ce recensement à chaque exécution : si
+une famille change, la liste change avec elle et le test le dit.
+
+Vérifié contre Ruffle, sur la casquette et sur le visiocasque : la vitesse est
+tirée au sort à l'image 1, donc les deux côtés ne peuvent pas coïncider au
+pixel — ce qui se compare, c'est la ZONE qui remue. Elle est la même à deux
+pixels près (`64,89 → 90,106` sous Flash, `64,92 → 91,105` ici).
+
 ## 6. Un défaut du chemin Flash actuel (familles 10 et 11)
 
 `scripts/patch-famille.js` greffe dans chaque `famille<N>.swf` le nécessaire pour

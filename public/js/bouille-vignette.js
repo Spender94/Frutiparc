@@ -20,7 +20,7 @@
   TROIS USAGES, TROIS PORTES :
 
     html(etat) + brancher(hote)     une vignette POSÉE, dessinée quand elle
-                                    approche de l'écran, puis immobile.
+                                    approche de l'écran.
                                     Le Bouilloscope, les vignettes d'accessoires,
                                     l'avatar d'une fiche.
 
@@ -33,12 +33,19 @@
                                     stopper(canevas) pour revenir au repos.
                                     La réaction qui passe sur le chat.
 
-  DEUX RÉGLAGES, ET POURQUOI :
+  POSÉE NE VEUT PAS DIRE IMMOBILE. Une vignette était jusqu'ici dessinée une
+  fois pour toutes (`anime: false`), et les accessoires ANIMÉS d'époque — dans
+  la famille 0 : le 3 (variantes 25 et 33), le 6, le 10 — apparaissaient figés
+  partout : sur la fiche, dans l'éditeur, dans l'inventaire, dans un salon.
+  C'est faux : `apply()` du SWF n'arrête que `c`, `acc` et `acc2` (gotoAndStop),
+  jamais leurs enfants, et c'est un enfant qui porte la pellicule — soixante-
+  quinze images pour le 6, vingt-sept pour le 10.
 
-    · une vignette posée ne se dessine QU'UNE FOIS : elle se paie donc le
-      suréchantillonnage ×4 du moteur sans compter ;
-    · une bouille qui S'ANIME redessine quarante fois par seconde : on la met
-      à ×2, ce qui coûte cinq fois moins et ne se voit pas en mouvement.
+  On laisse donc le moteur décider : il demande à l'arbre s'il a une tête de
+  lecture en marche (`enMouvement`). S'il n'en a aucune, la bouille est une
+  image fixe et se paie le suréchantillonnage ×4 sans compter ; s'il en a une,
+  elle tourne à quarante images par seconde et passe à ×2 — cinq fois moins
+  cher, et l'œil n'y voit rien en mouvement.
 */
 (function (global) {
   'use strict';
@@ -94,10 +101,12 @@
     var anime = c.getAttribute('data-anime') === '1';
     p = famille(M.familleDe(s)).then(function (defs) {
       if (!c.isConnected) { promesses.delete(c); return null; }
-      // `super: 2` en mouvement : quarante images par seconde ne supportent pas
-      // le ×4 d'une vignette figée, et l'œil ne fait pas la différence.
+      // Sans `anime`, le moteur tranche tout seul : image fixe si l'arbre n'a
+      // rien à jouer, pellicule sinon. `data-anime="1"` (la scène de réaction
+      // du chat) annonce qu'on va lui demander des animations : elle garde
+      // alors la finesse de mouvement entre deux réactions.
       var b = new M.Bouille(c, defs, { etat: s, humeur: e,
-        anime: anime, super: anime ? 2 : undefined });
+        anime: anime ? true : undefined });
       posees.set(c, b);
       c.setAttribute('data-prete', '1');
       return b;
@@ -169,25 +178,36 @@
     guettes.delete(c);
   }
 
-  /** Lance une animation (indice de playAnim, 1 = parle). */
+  /*
+   * Lance une animation (indice de playAnim, 1 = parle).
+   *
+   * Il fallait autrefois REMONTER la bouille au premier appel, parce que la
+   * finesse de rendu était fixée à la construction et changeait entre une
+   * vignette figée et une bouille en mouvement. Le moteur l'ajuste maintenant
+   * de lui-même : on garde l'arbre en place, l'animation part tout de suite.
+   */
   function jouer(c, etat, anim) {
-    var neuf = c.getAttribute('data-anime') !== '1';
     c.setAttribute('data-anime', '1');
-    if (neuf) oublier(c);               // la qualité change : on remonte
-    if (etat !== undefined && !neuf) rafraichir(c, etat);
-    else if (etat !== undefined) c.setAttribute('data-s', nettoyer(etat));
+    if (etat !== undefined) rafraichir(c, etat);
     return dessiner(c).then(function (b) {
       if (b) b.animer(Number(anim) || 1);
       return b;
     });
   }
 
-  /** Ramène au repos : l'animation s'arrête, la bouille reste. */
+  /*
+   * Ramène au repos : l'animation s'arrête, la bouille reste.
+   *
+   * `ajuster()` et non `arreter()` : `jouerAnim(0)` remet le visage, les yeux
+   * et la bouche à l'arrêt, mais un ACCESSOIRE animé, lui, n'a jamais cessé de
+   * tourner — d'époque comme ici. C'est au moteur de dire si la boucle a
+   * encore une raison d'être.
+   */
   function stopper(c) {
     var b = posees.get(c);
     if (!b) return null;
     b.moteur.jouerAnim(0);
-    b.arreter();
+    b.ajuster();
     b.rendre();
     return b;
   }

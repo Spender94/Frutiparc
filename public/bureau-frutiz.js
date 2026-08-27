@@ -2202,7 +2202,10 @@ window.BureauFrutiz = (function () {
     var toile = ecran.querySelector('canvas.fp-bvig');
     if (memeEtat && toile) { FPBouilleVignette.rafraichir(toile, bouille, Number(em)); return; }
     var vieux = ecran.querySelector('img, canvas.fp-bvig');
-    if (vieux) vieux.remove();
+    // `oublier` avant de retirer : une bouille qui anime un accessoire tient
+    // une boucle de rendu, et un canevas arraché du document la garderait
+    // ouverte le temps d'une image de plus.
+    if (vieux) { if (vieux.tagName === 'CANVAS') FPBouilleVignette.oublier(vieux); vieux.remove(); }
     // Le moteur JS dessine sur fond TRANSPARENT : c'est le dégradé de l'écran
     // qui se voit derrière la bouille. (Le cache PNG peignait la capture sur le
     // vert plat des cartes du forum, d'où le `detourer` qu'il fallait lui
