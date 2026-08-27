@@ -1,0 +1,326 @@
+{
+ "kaluga_tz_kaluga": {
+  "lib": "kaluga_tz",
+  "data": "kaluga:",
+  "w": 18,
+  "h": 18
+ },
+ "kaluga_tz_piwali": {
+  "lib": "kaluga_tz",
+  "data": "piwali:",
+  "w": 18,
+  "h": 18
+ },
+ "kaluga_tz_nalika": {
+  "lib": "kaluga_tz",
+  "data": "nalika:",
+  "w": 18,
+  "h": 18
+ },
+ "kaluga_tz_gomola": {
+  "lib": "kaluga_tz",
+  "data": "gomola:",
+  "w": 18,
+  "h": 18
+ },
+ "kaluga_tz_makulo": {
+  "lib": "kaluga_tz",
+  "data": "makulo:",
+  "w": 18,
+  "h": 18
+ },
+ "kaluga_tz_inconnu": {
+  "lib": "kaluga_tz",
+  "data": "?:",
+  "w": 18,
+  "h": 18
+ },
+ "bkiwi_car_ultra-orange": {
+  "lib": "bkiwi_team",
+  "data": "ultra orange:",
+  "w": 20,
+  "h": 20
+ },
+ "bkiwi_team_ultra-orange": {
+  "lib": "bkiwi_team_ecusson",
+  "data": "ultra orange:",
+  "w": 20,
+  "h": 20
+ },
+ "bkiwi_car_uwe-wing": {
+  "lib": "bkiwi_team",
+  "data": "uwe wing:",
+  "w": 20,
+  "h": 20
+ },
+ "bkiwi_team_uwe-wing": {
+  "lib": "bkiwi_team_ecusson",
+  "data": "uwe wing:",
+  "w": 20,
+  "h": 20
+ },
+ "bkiwi_car_fury-hun": {
+  "lib": "bkiwi_team",
+  "data": "fury hun:",
+  "w": 20,
+  "h": 20
+ },
+ "bkiwi_team_fury-hun": {
+  "lib": "bkiwi_team_ecusson",
+  "data": "fury hun:",
+  "w": 20,
+  "h": 20
+ },
+ "bkiwi_car_sonic-brain": {
+  "lib": "bkiwi_team",
+  "data": "sonic brain:",
+  "w": 20,
+  "h": 20
+ },
+ "bkiwi_team_sonic-brain": {
+  "lib": "bkiwi_team_ecusson",
+  "data": "sonic brain:",
+  "w": 20,
+  "h": 20
+ },
+ "bkiwi_car_kiwix": {
+  "lib": "bkiwi_team",
+  "data": "kiwix:",
+  "w": 20,
+  "h": 20
+ },
+ "bkiwi_team_kiwix": {
+  "lib": "bkiwi_team_ecusson",
+  "data": "kiwix:",
+  "w": 20,
+  "h": 20
+ },
+ "bkiwi_rank_1_1": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:1:1:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_1_2": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:2:1:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_1_3": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:3:1:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_1_4": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:4:1:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_1_5": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:5:1:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_1_6": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:6:1:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_2_1": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:1:2:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_2_2": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:2:2:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_2_3": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:3:2:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_2_4": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:4:2:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_2_5": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:5:2:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_2_6": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:6:2:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_3_1": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:1:3:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_3_2": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:2:3:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_3_3": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:3:3:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_3_4": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:4:3:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_3_5": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:5:3:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_3_6": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:6:3:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_4_1": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:1:4:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_4_2": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:2:4:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_4_3": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:3:4:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_4_4": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:4:4:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_4_5": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:5:4:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_4_6": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:6:4:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_5_1": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:1:5:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_5_2": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:2:5:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_5_3": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:3:5:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_5_4": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:4:5:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_5_5": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:5:5:",
+  "w": 30,
+  "h": 20
+ },
+ "bkiwi_rank_5_6": {
+  "lib": "bkiwi_rank",
+  "data": "kiwix:6:5:",
+  "w": 30,
+  "h": 20
+ },
+ "swapou_char_0": {
+  "lib": "swapou_score_chars",
+  "data": "0:",
+  "w": 20,
+  "h": 20
+ },
+ "swapou_char_1": {
+  "lib": "swapou_score_chars",
+  "data": "1:",
+  "w": 20,
+  "h": 20
+ },
+ "swapou_char_2": {
+  "lib": "swapou_score_chars",
+  "data": "2:",
+  "w": 20,
+  "h": 20
+ },
+ "swapou_char_3": {
+  "lib": "swapou_score_chars",
+  "data": "3:",
+  "w": 20,
+  "h": 20
+ },
+ "swapou_char_4": {
+  "lib": "swapou_score_chars",
+  "data": "4:",
+  "w": 20,
+  "h": 20
+ },
+ "swapou_char_5": {
+  "lib": "swapou_score_chars",
+  "data": "5:",
+  "w": 20,
+  "h": 20
+ },
+ "swapou_char_6": {
+  "lib": "swapou_score_chars",
+  "data": "6:",
+  "w": 20,
+  "h": 20
+ },
+ "swapou_char_inconnu": {
+  "lib": "swapou_score_chars",
+  "data": ":",
+  "w": 20,
+  "h": 20
+ }
+}

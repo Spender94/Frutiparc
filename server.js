@@ -1618,18 +1618,45 @@ function buildLegacyUserResultPayload(user, reqId = '') {
   return `<n${r} u="${u}"></n>`;
 }
 
+// ── LES COLONNES ANNEXES DU TABLEAU DES SCORES ────────────────────────────
+//
+// `cp.Score` (sprite#900) compose chaque ligne dans cet ordre :
+//
+//     rang | frutibouille | Frutiz | Score | <colonnes annexes> | Heure
+//
+// Les colonnes annexes viennent du `<ds>` que le serveur décrit par jeu (`gs`).
+// Une colonne `t="t"` est du texte ; une colonne `t="s"` est un DESSIN : le SWF
+// charge `/sd/<bibliothèque>.swf` (Path.scoreDataMisc) et lui passe la donnée
+// annexe de la ligne dans `param.data` (0xc377c). Trois jeux en ont :
+//
+//   gs 0  Burning Kiwi  l'écurie (sa voiture) et le rang de l'épreuve
+//   gs 3  Swapou 2      le personnage joué
+//   gs 4  Kaluga        le tzongre
+//
+// Le portage light n'a pas de lecteur Flash : il montre les mêmes dessins,
+// sortis image par image de ces quatre SWF (scripts/extract-scores-sd.js) et
+// choisis par la MÊME règle — voir `vignetteScoreData` dans light.html.
+const SCORE_DATA_SPEC = {
+  0: [{ n: 'Ecurie', w: 60, lib: 'bkiwi_team' }, { n: 'Rang', w: 60, lib: 'bkiwi_rank' }],
+  3: [{ n: 'Perso', w: 45, lib: 'swapou_score_chars' }],
+  4: [{ n: 'Tzongre', w: 60, lib: 'kaluga_tz' }],
+};
+
 function buildLegacyGameScoreInfo(gs) {
   const game = Number(gs);
-  let inner = '';
-  if (game === 0) {
-    inner += '<desc n="Ecurie" t="s" w="60">bkiwi_team</desc>';
-    inner += '<desc n="Rang" t="s" w="60">bkiwi_rank</desc>';
-  } else if (game === 3) {
-    inner += '<desc n="Perso" t="s" w="45">swapou_score_chars</desc>';
-  } else if (game === 4) {
-    inner += '<desc n="Tzongre" t="s" w="60">kaluga_tz</desc>';
-  }
+  const inner = (SCORE_DATA_SPEC[game] || [])
+    .map((c) => `<desc n="${c.n}" t="s" w="${c.w}">${c.lib}</desc>`).join('');
   return `<w gs="${Number.isFinite(game) ? game : 0}"><ds>${inner}</ds></w>`;
+}
+
+// Les colonnes annexes d'un classement INTERNE (pour le portage light), par le
+// même chemin que le bureau : le descripteur d'époque donne le `gs`, le `gs`
+// donne le gabarit. Burning Kiwi n'a pas de descripteur par circuit — ses
+// classements empruntent celui de rk '0', comme partout ailleurs.
+function scoreDataSpecFor(rankingId) {
+  const cle = /^bkiwi_/.test(String(rankingId || '')) ? 'bkiwi_track5_classic' : rankingId;
+  const d = LEGACY_RANKINGS.find((x) => x.internal === cle);
+  return (d && SCORE_DATA_SPEC[Number(d.gs)]) || null;
 }
 
 const KALUGA_TZONGRE_BY_ID = {
@@ -18847,16 +18874,23 @@ app.get('/api/light/challenge', async (req, res) => {
     pod.sort((a, b) => a.rank - b.rank);
     return pod.slice(0, 3);
   };
-  // Une ligne du tableau, dans la forme qu'affiche le bureau.
-  const ligne = (rkId, e, pos) => ({
-    pos,
-    user: getDisplayName(e.u),
-    bouille: bouilleOf(users[e.u], e.u),
-    score: e.s,
-    label: formatChallengeScoreLabel(rkId, e.s, e.data),
-    time: heureDe(e.at),
-    isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
-  });
+  // Une ligne du tableau, dans la forme qu'affiche le bureau. `extra` est la
+  // donnée annexe — celle que le SWF passe aux petites bibliothèques /sd/ pour
+  // dessiner l'écurie, le rang, le perso ou le tzongre. On ne l'envoie que si
+  // le jeu a une colonne pour la recevoir : ailleurs elle n'a pas de rendu.
+  const ligne = (rkId, e, pos) => {
+    const l = {
+      pos,
+      user: getDisplayName(e.u),
+      bouille: bouilleOf(users[e.u], e.u),
+      score: e.s,
+      label: formatChallengeScoreLabel(rkId, e.s, e.data),
+      time: heureDe(e.at),
+      isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
+    };
+    if (scoreDataSpecFor(rkId)) l.extra = formatRankingExtraData(rkId, e.data, e.s);
+    return l;
+  };
   // Le classement complet d'un jeu, aujourd'hui (mémoire) ou un jour passé
   // (archive). Renvoie aussi MA place — le bureau l'affiche en tête, même
   // quand le joueur n'est pas dans les premières lignes.
@@ -18905,6 +18939,10 @@ app.get('/api/light/challenge', async (req, res) => {
       count: c.count,
       scores: c.scores,
       me: c.me,
+      // Les colonnes annexes du bureau (`<ds>` du `<w gs>`), pour les trois
+      // jeux qui en ont : l'écurie et le rang de Burning Kiwi, le perso de
+      // Swapou, le tzongre de Kaluga.
+      extras: scoreDataSpecFor(rkId) || undefined,
       // Le podium de la veille n'a de sens que sur la journée en cours : un
       // jour passé montre son propre tableau, pas les médailles d'après.
       podium: passe ? [] : podiumFor(g.game),

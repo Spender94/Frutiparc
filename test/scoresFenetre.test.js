@@ -243,8 +243,10 @@ test('le panneau du light reproduit la fenêtre : barre de titre, deux volets, p
   assert.match(html, /class="sc-podium"/, 'les médaillés de la veille en tête');
   assert.match(html, /medal_' \+ p\.medal \+ '_/, 'avec leur vraie médaille');
   assert.match(html, /Je suis ' \+ g\.me\.pos/, 'puis « Je suis Nème avec … »');
-  assert.match(html, /<span class="f">Frutiz<\/span>[\s\S]{0,120}Score[\s\S]{0,80}Heure/,
-    'puis les colonnes Frutiz / Score / Heure');
+  // `cp.Score` compose l'en-tête dans cet ordre-là, les COLONNES ANNEXES
+  // glissées entre le score et l'heure (cf. test/scoresAnnexes.test.js).
+  assert.match(html, /<span class="f">Frutiz<\/span>[\s\S]{0,120}Score[\s\S]{0,300}Heure/,
+    'puis les colonnes Frutiz / Score / <annexes> / Heure');
   assert.match(html, /FPBouilleVignette\.html\(s\.bouille\)/, 'et la bouille de chaque joueur');
   assert.match(html, /xmlEscape\(s\.time/, 'ainsi que l\'heure de son score');
 

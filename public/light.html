@@ -1419,10 +1419,20 @@
     text-overflow: ellipsis; white-space: nowrap;
   }
   .sc-moi { text-align: center; font-size: 12px; font-weight: bold; color: #433005; padding: 3px 0 5px; }
+  /* rang · frutibouille · Frutiz · Score · <colonnes annexes> · Heure — l'ordre
+     de `cp.Score`. `--sc-annexes` porte les largeurs d'époque des colonnes
+     annexes (« 60px 60px » pour Burning Kiwi) ; sans elles, la piste est vide
+     et la grille est celle d'avant, au pixel près. */
   .sc-entete, .sc-ligne {
-    display: grid; grid-template-columns: 18px 20px minmax(0,1fr) auto 38px;
+    display: grid;
+    grid-template-columns: 18px 20px minmax(0,1fr) auto var(--sc-annexes, ) 38px;
     align-items: center; gap: 4px; font-size: 11px; color: #433005; min-height: 19px;
   }
+  .sc-entete .d, .sc-ligne .d { text-align: center; }
+  .sc-ligne .d { line-height: 0; }
+  .sc-ligne .d img.sd { display: inline-block; vertical-align: middle; }
+  /* L'écurie se retourne au clic : voiture ↔ écusson (`this.onRelease`). */
+  .sc-ligne .d img.sd[data-bascule] { cursor: pointer; }
   .sc-entete { font-weight: bold; padding-bottom: 2px; }
   .sc-entete .f { grid-column: 3; }
   .sc-entete .s { text-align: right; }
@@ -4093,6 +4103,106 @@
       });
   }
 
+  /* ── LES COLONNES ANNEXES (les « données de score » du bureau) ───────────
+     `cp.Score` (sprite#900) compose une ligne dans cet ordre :
+
+         rang | frutibouille | Frutiz | Score | <colonnes annexes> | Heure
+
+     Une colonne annexe `t="s"` est un DESSIN : le SWF fabrique un élément
+     `url` d'adresse `/sd/<bibliothèque>.swf` (Path.scoreDataMisc) et lui passe
+     la donnée annexe de la ligne dans `param.data` (0xc377c). Trois jeux en
+     ont — l'écurie et le rang de Burning Kiwi, le perso de Swapou, le tzongre
+     de Kaluga.
+
+     Chacune de ces quatre bibliothèques fait la même chose à son image 1 :
+     découper `data` aux deux-points, et se placer sur une image. On rejoue
+     leur règle À LA LETTRE, avec les dessins sortis de ces mêmes SWF
+     (scripts/extract-scores-sd.js → /fb/sd/*.png).
+
+     Le BORNAGE compte : `gotoAndStop(n)` retient la dernière image quand n la
+     dépasse, la première quand n vaut moins de 1, et ne bouge pas du tout sur
+     un NaN — d'où `sdBorner`, qui ramène les trois cas à la même chose puisque
+     ces clips partent tous de leur première image.
+
+     Ces colonnes sont celles du BUREAU. Le mobile ne les affiche pas : sur un
+     téléphone, soixante pixels de plus par colonne mangeraient le pseudo. */
+  var SD_TZONGRES = ["kaluga", "piwali", "nalika", "gomola", "makulo"];
+  var SD_ECURIES = ["ultra orange", "uwe wing", "fury hun", "sonic brain", "kiwix"];
+  // La scène de chaque bibliothèque, en pixels (l'en-tête de son SWF).
+  var SD_SCENE = {
+    kaluga_tz: [18, 18], bkiwi_team: [20, 20],
+    bkiwi_rank: [30, 20], swapou_score_chars: [20, 20],
+  };
+  function sdBorner(n, max) {
+    return isFinite(n) ? Math.max(1, Math.min(max, n)) : 1;
+  }
+  function vignetteSd(lib, nom, titre, autre) {
+    var t = SD_SCENE[lib] || [20, 20];
+    return '<img class="sd" src="/fb/sd/' + nom + '.png"'
+      + ' width="' + t[0] + '" height="' + t[1] + '" alt=""'
+      + (titre ? ' title="' + xmlEscape(titre) + '"' : "")
+      + (autre ? ' data-bascule="/fb/sd/' + autre + '.png"' : "")
+      + ' onerror="this.style.display=\'none\'">';
+  }
+  // `cp.Score` DÉSÉRIALISE avant de passer la donnée à la bibliothèque :
+  //
+  //     d = ext.util.MTSerialization.unserialize(node.attributes.d);
+  //     if (d == null) d = node.attributes.d;            // 0xc3632
+  //
+  // Une valeur sérialisée porte son type en tête — « S » pour une chaîne,
+  // « N » pour un nombre. « Skiwix:5:1: » arrive donc au SWF sous la forme
+  // « kiwix:5:1: », et c'est bien « kiwix » que `bkiwi_team` compare. Sans ce
+  // dépouillement, aucune écurie ni aucun tzongre ne se reconnaît.
+  function sdDeserialiser(brut) {
+    var s = String(brut == null ? "" : brut);
+    var m = /^S([^;]*)$/.exec(s);
+    if (m) return m[1];
+    m = /^N(-?\d+(?:\.\d+)?)$/.exec(s);
+    return m ? m[1] : s;
+  }
+  function vignetteScoreData(lib, data) {
+    var d = sdDeserialiser(data).split(":");
+    if (lib === "kaluga_tz") {
+      // frame = kaluga 1 · piwali 2 · nalika 3 · gomola 4 · makulo 5, sinon 0
+      // (`error = true`) ; puis gotoAndStop(10 + frame) sur la pellicule.
+      var i = SD_TZONGRES.indexOf(String(d[0] || "").toLowerCase());
+      return i < 0 ? vignetteSd(lib, "kaluga_tz_inconnu")
+        : vignetteSd(lib, "kaluga_tz_" + SD_TZONGRES[i], SD_TZONGRES[i]);
+    }
+    if (lib === "bkiwi_team") {
+      var e = SD_ECURIES.indexOf(String(d[0] || "").toLowerCase());
+      // Écurie inconnue : `teams._visible = false; cars._visible = false` —
+      // la case reste vide.
+      if (e < 0) return "";
+      var k = SD_ECURIES[e].replace(/ /g, "-");
+      // La VOITURE est ce qu'on voit (`teams._visible = false` en fin de
+      // script) ; le clic bascule sur l'écusson, et retour (`this.onRelease`).
+      return vignetteSd(lib, "bkiwi_car_" + k, SD_ECURIES[e], "bkiwi_team_" + k);
+    }
+    if (lib === "bkiwi_rank") {
+      // pos = data[2] (la couronne, 5 images — la cinquième est vide),
+      // perf = data[1] (les tours parfaits, 6 images). Un `pos` illisible
+      // efface tout : `rank._visible = false`.
+      var pos = parseInt(d[2], 10), perf = parseInt(d[1], 10);
+      if (isNaN(pos)) return "";
+      return vignetteSd(lib, "bkiwi_rank_" + sdBorner(pos, 5) + "_" + sdBorner(perf, 6));
+    }
+    if (lib === "swapou_score_chars") {
+      // chars.gotoAndStop(parseInt(data[0]) + 2) — l'image 1 est le refus.
+      var f = sdBorner(parseInt(d[0], 10) + 2, 8);
+      return vignetteSd(lib, f === 1 ? "swapou_char_inconnu" : "swapou_char_" + (f - 2));
+    }
+    return "";
+  }
+  // Le clic d'époque sur l'écurie : voiture ↔ écusson, dans les deux sens.
+  document.addEventListener("click", function (ev) {
+    var img = ev.target && ev.target.closest && ev.target.closest("img.sd[data-bascule]");
+    if (!img) return;
+    var autre = img.getAttribute("data-bascule");
+    img.setAttribute("data-bascule", img.getAttribute("src"));
+    img.setAttribute("src", autre);
+  });
+
   // jeu (API) → suffixe des visuels de médaille /fb/medal_{couleur}_{clé}.png
   var MEDAL_ASSET_KEY = {
     bandas: "bandas", grapiz: "grapiz", swapou2: "swapou",
@@ -4177,6 +4287,19 @@
     if (suiv) suiv.disabled = !challengeScores.past;
     if (!g) { box.innerHTML = ""; return; }
 
+    // Les colonnes annexes du bureau (`<ds>` du `<w gs>`) : la largeur de
+    // chacune est celle du descripteur d'époque — Ecurie 60, Rang 60, Perso
+    // 45, Tzongre 60. Elles se glissent ENTRE le score et l'heure, comme dans
+    // `cp.Score`. Le mobile n'en montre aucune.
+    var annexes = (document.body.classList.contains("bureau-frutiz") && g.extras) || [];
+    if (annexes.length) {
+      box.style.setProperty("--sc-annexes", annexes.map(function (c) {
+        return c.w + "px";
+      }).join(" "));
+    } else {
+      box.style.removeProperty("--sc-annexes");
+    }
+
     var html = "";
     // Les médaillés de la veille, en tête — la rangée de médailles du bureau.
     if (g.podium && g.podium.length) {
@@ -4204,7 +4327,11 @@
         + '</div>';
     } else {
       html += '<div class="sc-entete"><span class="f">Frutiz</span>'
-        + '<span class="s">Score</span><span class="h">Heure</span></div>';
+        + '<span class="s">Score</span>'
+        + annexes.map(function (c) {
+          return '<span class="d">' + xmlEscape(c.n) + '</span>';
+        }).join("")
+        + '<span class="h">Heure</span></div>';
       g.scores.forEach(function (s, i) {
         html += '<div class="sc-ligne' + (s.isMe ? " moi" : "") + '">'
           + '<span class="r">' + (s.pos || (i + 1)) + '</span>'
@@ -4218,6 +4345,9 @@
           + '</span>'
           + '<span class="n" data-fiche="' + xmlEscape(s.user) + '">' + xmlEscape(s.user) + '</span>'
           + '<span class="s">' + xmlEscape(s.label) + '</span>'
+          + annexes.map(function (c) {
+            return '<span class="d">' + vignetteScoreData(c.lib, s.extra) + '</span>';
+          }).join("")
           + '<span class="h">' + xmlEscape(s.time || "") + '</span>'
           + '</div>';
       });

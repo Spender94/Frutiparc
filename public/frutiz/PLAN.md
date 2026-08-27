@@ -1646,6 +1646,62 @@ classement (médaille de 13 px puis le nom, en 12 px, au pas de 16). Le
 panneau de droite porte le tableau, en 12 px noir ; quand il est vide, une
 seule ligne en haut à gauche : « Classement vide pour le moment ».
 
+### Les COLONNES ANNEXES (`cp.Score`, sprite#900)
+
+Une ligne du tableau n'a pas toujours cinq cases. `cp.Score` en compose la
+liste à deux endroits — l'en-tête au `InitArray` de 0xc326e, la ligne à celui
+de 0xc360a — et l'ordre est le même :
+
+    rang | frutibouille | Frutiz | Score | <colonnes annexes> | Heure
+
+Les colonnes annexes sont décrites par le serveur, dans le `<ds>` du `<w gs>`
+de chaque jeu. Deux types :
+
+    t="t"   du TEXTE — `FEString.formatVars(d, spec.dat)` (0xc36f2)
+    t="s"   un DESSIN — un élément `url` d'adresse
+            `FEString.formatVars({u: spec.dat}, Path.scoreDataMisc)`, soit
+            `/sd/<bibliothèque>.swf`, avec `param.data = d` (0xc377c)
+
+et `d` n'est pas l'attribut brut : c'est
+`ext.util.MTSerialization.unserialize(node.attributes.d)`, la chaîne brute ne
+servant que de repli. « Skiwix:5:1: » arrive donc au SWF sous la forme
+« kiwix:5:1: ». **Trois jeux seulement** ont un `<ds>` non vide :
+
+| `gs` | jeu | colonnes |
+| --- | --- | --- |
+| 0 | Burning Kiwi | Ecurie (60, `bkiwi_team`) · Rang (60, `bkiwi_rank`) |
+| 3 | Swapou 2 | Perso (45, `swapou_score_chars`) |
+| 4 | Kaluga | Tzongre (60, `kaluga_tz`) |
+
+Chacune de ces petites bibliothèques (vingt pixels de côté) découpe `data` aux
+deux-points à son image 1 et se place sur une image :
+
+    kaluga_tz           data[0] → kaluga 1 · piwali 2 · nalika 3 · gomola 4
+                        · makulo 5, sinon 0 ; gotoAndStop(10 + n). Pas un seul
+                        sprite dans le fichier : ses cinq tzongres sont posés
+                        sur la pellicule RACINE, images 11 à 15.
+    bkiwi_team          data[0] → ultra orange · uwe wing · fury hun · sonic
+                        brain · kiwix. `teams` ET `cars` vont sur l'image, puis
+                        `teams._visible = false` : c'est la VOITURE qu'on voit,
+                        et `this.onRelease` bascule sur l'écusson. Nom inconnu
+                        → les deux disparaissent.
+    bkiwi_rank          pos = data[2] → `rank.pos` (5 images, la 5ᵉ VIDE : la
+                        couronne verte « 1 », l'argent « 2 », le bronze « 3 »,
+                        le gris « 4 », puis rien) ; perf = data[1] →
+                        `rank.perfects` (6 images : la croix, une, deux, trois
+                        barres, l'étoile, le point d'interrogation). Un `pos`
+                        illisible efface tout (`rank._visible = false`).
+    swapou_score_chars  chars.gotoAndStop(parseInt(data[0]) + 2), 8 images —
+                        la première étant le refus (la croix rouge).
+
+Le portage n'a pas de lecteur Flash : `scripts/extract-scores-sd.js` rend ces
+quatre SWF état par état sous Ruffle et en tire cinquante-quatre PNG
+(`public/fb/sd/`), que `vignetteScoreData` (light.html) choisit par la MÊME
+règle — bornage de `gotoAndStop` compris : au-delà de la dernière image on y
+reste, en deçà de la première on y revient. Ces colonnes sont celles du
+BUREAU ; le mobile n'en montre aucune (soixante pixels de plus par colonne y
+mangeraient le pseudo).
+
 ### Ce qu'il reste à reprendre
 
 - La section « Championnat » d'époque liste QUATRE classements — Class.
