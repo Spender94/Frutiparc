@@ -4029,3 +4029,115 @@ puis disparaît.
    `butSearch` extrait). Reste, quand le light saura les gérer : AJOUTER ou
    retirer un contact, et le glisser-déposer d'un contact d'un dossier à
    l'autre (`SideList.onDrop` 0xa15a3).
+
+## GASPARD, l'aide du bureau (`box.Help` 0x7fc9f, `win.Help` 0xbd7db)
+
+La PREMIÈRE des six icônes de l'encart. `initNameList` (0xb56c0) donne la
+rangée — attention au retournement d'`InitArray`, la dernière valeur empilée
+devient l'indice 0 :
+
+    Push "jeux","evenements","historique","messages","forum","gaspard", 6
+    InitArray   →   [gaspard, forum, messages, historique, evenements, jeux]
+
+`initIcons` (0x6cbbc) les pose de gauche à droite (`_x = 42 + i×15`, `_y = 33`,
+image `i+1` de `digitalIcon`, zone sensible `transp` à 15 % décalée de −7,5),
+et câble trois gestes : `onPress` → `select(id)`, `onRollOver` → le champ du
+RANG affiche `nameList[id]`, `onRollOut` → il redevient `ladderPos`.
+
+    select(id)   0 → uniqWinMng.open("help")    3 → uniqWinMng.open("userLog")
+                 1 → openForum()                4 → uniqWinMng.open("siteLog")
+                 2 → openInbox()                5 → openGame()
+
+Gaspard, c'est donc l'AIDE — et sa fenêtre est une CONVERSATION : `win.Help`
+étend `win.Dialog` comme le salon, `getIconLabel()` renvoie « winChat » (d'où
+la pastille du chat), et la liste des présents porte deux noms (`nbUser = 2`) :
+soi et Gaspard. Ni `pos` ni `moveToCenter` : elle s'ouvre dans le coin.
+
+    init           userList.addUser(me.name) ; addUser(Lang.fv("help.name"))
+                   loadContent(openContent || { i: 1 })
+    getContent(id) previousArr.push(current) ; loadContent({ i: id })
+    getPrevious()  loadContent(previousArr.pop())
+    analyseInput   trim ; vide → non ; getTimer() − lastSearchTimer ≤ 2500 → non
+    search(s)      HTTP("fh/search", { s: s })
+    loadContent(o) HTTP("fh/get", o)
+    onWheel(d)     window.scrollText(−10 × d)
+
+### La forme des deux réponses, telle que le SWF les analyse
+
+`onGetContent` (0x80396) et `onSearch` (0x8011f) disent quels nœuds et quels
+attributs ils lisent — il n'y a plus à deviner :
+
+    <h i="12" n="Titre">                 racine `h`, SANS attribut `k`
+      <c><![CDATA[le corps]]></c>        (un `k` → openErrorAlert(error.http.k))
+      <l>
+        <l t="cat_ls"   i="13" n="Une sous-rubrique"/>
+        <l t="cat_tree" i="1"  n="Accueil"/>
+      </l>
+    </h>
+
+    <r n="3" m="e"><e i="12" n="Titre"/>…</r>
+        n = 0 → aucun résultat ; n = 1 → la page s'ouvre directement ;
+        m comparé à la seule lettre « e » (sinon : résultats approchants)
+
+Le groupe est un ATTRIBUT du lien (`t`), pas le nom du conteneur : il titre la
+section via `Lang.fv("help.link_type." + t)`. Le portage écrivait
+`<cat_tree>`/`<cat_ls>` avec des `<l id n/>`, et `n="result"` en tête de
+recherche : trois attributs sur quatre tombaient à côté, et `Number("result")`
+valant NaN, la fenêtre partait dans la branche des résultats multiples avec une
+liste vide. Corrigé des deux côtés — la fenêtre du portage ET main.swf sous
+Ruffle lisent maintenant la même chose.
+
+**CE QUE LE SWF N'A PAS** : le TEXTE de l'aide. Il vivait sur le serveur de
+2005, derrière ces deux adresses. Le portage le tient en base
+(`gaspard_help_topics`) et l'administration l'y écrit
+(`/api/admin/gaspard/topics`) : les rubriques restent à rédiger.
+
+## L'interlettrage de la Verdana
+
+main.swf porte un texte STATIQUE en Verdana 10 px — « chargement du truc en
+cours » (DefineText #603 et #606, fonte #602 « verdana_10pt_st »). Un texte
+statique ne stocke pas des lettres mais des couples (glyphe, avance), et ces
+avances-là sont toutes des MULTIPLES DE 20 TWIPS : des pixels entiers. Le
+navigateur, lui, avance au centième — 145,75 px contre 144,00 relevés dans le
+SWF pour la même phrase.
+
+    écart mesuré sur la phrase           −0,0649 px par caractère
+    moyenne pondérée (fréquences du fr.) −0,0696 px par caractère
+
+D'où `body.bureau-frutiz { letter-spacing: -0.007em }`, le milieu des deux
+relevés. Les deux fontes SORTIES du SWF (`ImpactSwf`, `LcdSwf`) sont remises à
+`normal` : leurs glyphes sont placés par la table de la fonte, sans arrondi à
+rattraper. La table de référence n'est pas de confiance aveugle — la fonte #148
+de main.swf, la seule Verdana qui déclare sa mise en page, donne 684 716 680
+350 1084 703 716 509 pour a d e i m o p r, soit au centième de pixel près les
+avances de Verdana Gras : la police embarquée est la vraie, l'écart ne vient
+que de l'arrondi. Vérifié par `test/verdanaEspacement.test.js`, qui relit les
+avances DANS le SWF.
+
+## Les jaquettes de disque
+
+Les dix-sept étiquettes de la bande de `fileIcon.swf` (sprite #81) et leurs
+dessins ont été comparés au pixel : le portage du BUREAU est exact — les SVG
+sortis sont identiques aux bitmaps du SWF, y compris les deux doublons
+d'époque (`kaluga` = `kalugaPreview` = forme #22, `swapou2` = `mele` = #35).
+
+La feuille des disques du MOBILE, elle, servait deux images inventées :
+Frutisnake et JamaJama. Les commentaires disaient qu'aucune jaquette n'existait
+pour ces deux jeux ; `snake` (image 1 — le serpent vert lové autour d'une
+pomme) et `jama` (image 12) étaient dans le SWF depuis le début. Rétablies, et
+les montages retirés. Les trois disques Flash (Burning Kiwi, Kaluga,
+Motion-Ball 2) composent désormais l'ANNEAU et la jaquette comme
+`but.icon.Full`, au lieu de la jaquette seule dont le trou laissait voir la
+feuille — Motion-Ball 2 prend l'anneau BLANC, son `discType` au catalogue.
+
+## Le disque qui file
+
+`rotateDisc` (0x990e0) accélère jusqu'à 140, puis, `sens > 0 && speed > 140` :
+le clip s'arrête et la JAQUETTE joue sa propre animation de rotation. Le
+portage mettait bien `sens` à zéro… et n'avait rien derrière : `battre()` ne
+redemande une image que si le tiroir bouge ou si `sens` n'est pas nul, la
+boucle s'arrêtait net, et le disque restait FIGÉ pendant toute la partie. Il
+file maintenant pour de bon, à la vitesse d'arrivée, et l'éjection le remet à
+plat. `test/frusionDisqueTourne.test.js` exécute les trois méthodes livrées sur
+un lecteur en carton, et rejoue l'ANCIENNE `battre` pour montrer d'où venait le
+figeage.

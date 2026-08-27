@@ -288,6 +288,23 @@
     transition: transform .1s ease;
   }
   .fd-item:active .thumb img { transform: scale(.92); }
+  /* Le disque composé : anneau dessous, jaquette dessus. L'ombre passe sur la
+     vignette entière — posée sur chaque couche, elle se verrait deux fois. */
+  .fd-item .thumb.fd-compose {
+    position: relative; filter: drop-shadow(0 2px 3px rgba(44,74,15,.4));
+    transition: transform .1s ease;
+  }
+  /* L'appui rétrécit la VIGNETTE, pas chacune de ses couches : la jaquette
+     n'est pas centrée sur l'anneau, deux réductions séparées la décaleraient. */
+  .fd-item:active .thumb.fd-compose { transform: scale(.92); }
+  .fd-item:active .thumb.fd-compose img { transform: none; }
+  .fd-item .thumb.fd-compose img {
+    position: absolute; left: 0; top: 0; filter: none;
+  }
+  /* 61 des 63 pixels de l'anneau, à un pixel du bord — `ico.disc.label`. */
+  .fd-item .thumb.fd-compose img.jaq {
+    left: 1.587%; top: 1.587%; width: 96.825%; height: 96.825%;
+  }
   .fd-item .lbl {
     font-size: 11px; color: #2C4A0F; margin-top: 5px; font-weight: bold;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -3874,22 +3891,35 @@
   // relais) qui tient encore l'ancienne image ne la relit pas de lui-même.
   // Remplacer un PNG sans toucher à ce numéro, c'est le remplacer pour les
   // nouveaux venus seulement — on l'incrémente à chaque nouvelle jaquette.
+  /*
+   * DEUX FAÇONS DE POSER UNE JAQUETTE, et la première est la bonne :
+   *
+   *   { jaquette: "snake" }  → l'anneau et la jaquette D'ÉPOQUE, empilés comme
+   *                            le bureau les empile (fileIcon.swf, clip `disc`)
+   *   { img: "…" }           → une image toute faite, pour les seuls jeux dont
+   *                            fileIcon.swf ne porte pas la jaquette
+   *
+   * La bande des jaquettes de fileIcon.swf tient dix-sept étiquettes, et deux
+   * d'entre elles servaient ici une image inventée : `snake` (Frutisnake, un
+   * serpent vert lové autour d'une pomme) et `jama` (JamaJama, le décor sombre
+   * au bloc jaune). Les commentaires qui justifiaient ces montages disaient
+   * qu'aucune jaquette n'avait été dessinée pour ces deux jeux — c'était faux,
+   * elles étaient dans le SWF depuis le début.
+   *
+   * Les cinq PNG qui restent ont été relevés au pixel près sur ces mêmes
+   * dessins : on ne les refait pas.
+   */
   var DISCS = [
     { tab: "bandas", img: "/fb/fd_bandas.png", name: "Frutibandas" },
     { tab: "grapiz", img: "/fb/fd_grapiz.png", name: "Grapiz" },
     { tab: "swapou", img: "/fb/fd_swapou.png", name: "Swapou" },
     { tab: "miniwave", img: "/fb/fd_miniwave.png?v=2", name: "Mini-Wave" },
     { tab: "minipixiz", img: "/fb/fd_minipixiz.png?v=2", name: "Minipixiz" },
-    // La jaquette de Frutisnake est composée des dessins du jeu
-    // (scripts/make-snake3-disc.js) : il n'en existait pas de dessinée.
-    { tab: "snake3", img: "/fb/fd_snake3.png", name: "Frutisnake" },
+    { tab: "snake3", jaquette: "snake", name: "Frutisnake" },
     // Mini-Fever n'a jamais eu de jaquette : la sienne est composée des
     // épreuves portées (scripts/make-minifever-pictos.js), en SVG.
     { tab: "minifever", img: "/fb/fd_minifever.svg", name: "Mini-Fever" },
-    // JamaJama non plus n'a jamais eu de jaquette (le portail le lançait par
-    // un iconName que fileIcon.swf ne connaît pas). La sienne est composée
-    // de ses propres dessins — scripts/make-jamajama-disc.js.
-    { tab: "jamajama", img: "/fb/fd_jamajama.svg", name: "JamaJama" },
+    { tab: "jamajama", jaquette: "jama", name: "JamaJama" },
     /*
      * LES TROIS QUI SONT ENCORE EN FLASH.
      *
@@ -3900,15 +3930,15 @@
      *     bkiwi1  w=350 h=350           kaluga1 w=640 h=480 ct=20 cb=20
      *     mb2     w=550 h=400
      *
-     * Leur jaquette est celle du bureau (sortie de fileIcon.swf) : il n'en
-     * existe pas de version mobile, et c'est le même dessin.
+     * `anneau` suit leur `discType` au catalogue : Motion-Ball 2 est un FD
+     * BLANC (1), les deux autres des FD noirs (0).
      */
     { flash: "bkiwi", swf: "games/burningKiwi/burningkiwi.swf", w: 350, h: 350,
-      img: "/frutiz/sprites/disc_jaquette_bkiwi.svg", name: "Burning Kiwi" },
+      jaquette: "bkiwi", name: "Burning Kiwi" },
     { flash: "kaluga", swf: "games/kaluga/full.swf", w: 640, h: 480, ct: 20, cb: 20,
-      img: "/frutiz/sprites/disc_jaquette_kaluga.svg", name: "Kaluga" },
+      jaquette: "kaluga", name: "Kaluga" },
     { flash: "mb2", swf: "games/motionBall2/full.swf", w: 550, h: 400,
-      img: "/frutiz/sprites/disc_jaquette_mb2.svg", name: "Motion-Ball 2" },
+      jaquette: "mb2", anneau: "1", name: "Motion-Ball 2" },
   ];
 
   /*
@@ -3941,9 +3971,18 @@
     grid.innerHTML = "";
     DISCS.forEach(function (d) {
       var item = el("div", "fd-item");
-      item.innerHTML = '<div class="thumb"><img src="' + d.img + '" alt="' + xmlEscape(d.name)
-        + '" onerror="this.replaceWith(document.createTextNode(\'💿\'))"></div>'
-        + '<div class="lbl">' + xmlEscape(d.name) + '</div>';
+      // Le disque en deux couches, comme `but.icon.Full` : l'anneau du type de
+      // FD dessous, la jaquette du jeu dessus. Elle fait 61 des 63 pixels de
+      // l'anneau et se pose à un pixel du bord — les proportions du bureau,
+      // exprimées en pourcentage puisque la vignette suit la cellule.
+      var dessin = d.jaquette
+        ? '<img src="/frutiz/sprites/disc_anneau_' + (d.anneau || "0") + '.svg" alt="">'
+          + '<img class="jaq" src="/frutiz/sprites/disc_jaquette_' + d.jaquette + '.svg"'
+          + ' alt="' + xmlEscape(d.name) + '">'
+        : '<img src="' + d.img + '" alt="' + xmlEscape(d.name)
+          + '" onerror="this.replaceWith(document.createTextNode(\'💿\'))">';
+      item.innerHTML = '<div class="thumb' + (d.jaquette ? " fd-compose" : "") + '">' + dessin
+        + '</div><div class="lbl">' + xmlEscape(d.name) + '</div>';
       item.addEventListener("click", function () {
         closeDisquesSheet();
         if (d.flash) return ouvrirJeuFlash(d);

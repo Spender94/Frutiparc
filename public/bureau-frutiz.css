@@ -52,6 +52,38 @@
   font-weight: normal; font-style: normal; font-display: swap;
 }
 
+/* LA VERDANA D'ÉPOQUE EST LÉGÈREMENT PLUS SERRÉE, ET ON PEUT DIRE DE COMBIEN.
+ *
+ * main.swf porte un texte STATIQUE en Verdana 10 px — « chargement du truc en
+ * cours » (DefineText #603 et #606, fonte #602 « verdana_10pt_st »). Un texte
+ * statique ne stocke pas des lettres mais des couples (glyphe, avance), et ces
+ * avances-là sont TOUTES des multiples de 20 twips : 4 px pour l'espace et le
+ * r, 5 px pour le c et le s, 6 px pour le a, 10 px pour le m. Des pixels
+ * entiers — Flash calait le texte sur la grille de l'écran.
+ *
+ * Le navigateur, lui, avance au centième : à 10 px, Verdana donne 4,175 px
+ * pour le r et 6,338 px pour le n. Sur la phrase entière, 145,75 px contre
+ * 144,00 relevés dans le SWF — 1,75 px de trop pour vingt-sept caractères.
+ *
+ *     écart mesuré sur la phrase           −0,0649 px par caractère
+ *     moyenne pondérée (fréquences du fr.) −0,0696 px par caractère
+ *
+ * D'où le réglage ci-dessous, −0,007 em, soit −0,07 px à 10 px : le milieu des
+ * deux relevés. C'est infime par lettre et se voit sur la ligne, exactement
+ * comme dans le rendu d'époque.
+ *
+ * (La table de la fonte #148 — la seule Verdana de main.swf qui déclare sa
+ * mise en page — dit 684, 716, 680, 350, 1084, 703, 716, 509 pour a d e i m o
+ * p r : ce sont au centième près les avances de Verdana Gras. La police
+ * embarquée est donc bien la vraie ; l'écart ne vient que de l'arrondi.)
+ */
+body.bureau-frutiz { letter-spacing: -0.007em; }
+/* Sauf les deux fontes SORTIES du SWF : leurs glyphes sont placés par la table
+   de la fonte elle-même, sans arrondi à corriger. */
+body.bureau-frutiz #bureau-coin .enc-trophy .val,
+body.bureau-frutiz #bureau-coin .enc-niv .lvl,
+body.bureau-frutiz #fiche .fiche-plaque .fa-niv b { letter-spacing: normal; }
+
 /* ── Le bureau lui-même ─────────────────────────────────────────────────── */
 body.bureau-frutiz #app { position: relative; }
 body.bureau-frutiz #bureau {
@@ -1607,6 +1639,59 @@ body.bureau-frutiz .fen #recherche-panel {
   display: flex; flex-direction: column; min-height: 0;
   padding: 0; background: #FFFFFF; gap: 0;
 }
+
+/* ── GASPARD (`win.Help`, 0xbd7db) ─────────────────────────────────────────
+   Une fenêtre de DIALOGUE, comme un salon : `win.Help` étend `win.Dialog`, et
+   `initMainField` / `initInputField` en donnent le partage — le champ de
+   lecture prend toute la place, avec 8 px de marge, et la ligne de saisie
+   s'accroche dessous avec 6.
+
+   Le contenu, lui, est une PILE DE LIGNES DE TEXTE (`displayContent` empile
+   des `{type:'text', big:1, …}` dans `lineList`) : le titre, le corps, un
+   intertitre par groupe de liens, un lien par rubrique, et le retour. */
+body.bureau-frutiz .fen #gaspard-panel {
+  display: flex; flex-direction: column; min-height: 0;
+  padding: 0; background: #FFFFFF; gap: 0;
+}
+body.bureau-frutiz .fen:has(#gaspard-panel.active) .fen-corps { margin: 0 2px 0; }
+body.bureau-frutiz #gaspard-panel .gs-page {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  padding: 8px; background: #FFFFFF;
+  font: 10px Verdana, Arial, sans-serif; color: #22224A;
+}
+body.bureau-frutiz #gaspard-panel .gs-l { margin: 0 0 4px; word-wrap: break-word; }
+body.bureau-frutiz #gaspard-panel .gs-titre {
+  font-weight: 700; color: #000000; margin-bottom: 6px;
+}
+body.bureau-frutiz #gaspard-panel .gs-corps { line-height: 14.3px; }
+body.bureau-frutiz #gaspard-panel .gs-groupe {
+  font-weight: 700; color: #7E2A6B; margin: 8px 0 3px;
+}
+body.bureau-frutiz #gaspard-panel .gs-lien { margin-left: 8px; }
+body.bureau-frutiz #gaspard-panel .gs-retour { margin-top: 8px; }
+body.bureau-frutiz #gaspard-panel .gs-l a { color: #2B4EA2; text-decoration: underline; }
+body.bureau-frutiz #gaspard-panel .gs-l a:hover { color: #D16767; }
+body.bureau-frutiz #gaspard-panel .gs-attente,
+body.bureau-frutiz #gaspard-panel .gs-erreur { color: #7A7A7A; font-style: italic; }
+/* La ligne de saisie : `initInputField` lui donne 6 px de marge haute et la
+   laisse prendre toute la largeur. */
+body.bureau-frutiz #gaspard-panel .gs-saisie {
+  flex: 0 0 auto; padding: 6px 8px 8px; background: #FFFFFF;
+}
+body.bureau-frutiz #gaspard-panel .gs-in {
+  width: 100%; box-sizing: border-box; height: 18px;
+  border: 1px solid #B4B4B4; background: #FFFFFF; padding: 0 4px;
+  font: 10px Verdana, Arial, sans-serif; color: #22224A; outline: none;
+}
+body.bureau-frutiz #gaspard-panel .gs-in:focus { border-color: #7E2A6B; }
+/* LE SURVOL DE LA RANGÉE, `rollOver(id)` : le nom de la rubrique s'écrit dans
+   le champ du rang. Écart assumé — d'époque il garde la fonte de l'afficheur,
+   mais notre boîte est taillée pour quatre chiffres et « historique » y
+   déborderait ; le mot passe donc en Verdana, à la taille qui tient. */
+body.bureau-frutiz #bureau-coin .enc-trophy .val.gs-survol {
+  font-family: Verdana, Arial, sans-serif; font-size: 9px; font-weight: 700;
+  line-height: 22px; letter-spacing: -0.03em; white-space: nowrap;
+}
 /* Le corps se serre comme celui du journal : 2 px de blanc entre le liseré de
    la fenêtre et le contenu. */
 body.bureau-frutiz .fen:has(#recherche-panel.active) .fen-corps { margin: 0 2px 0; }
@@ -2380,14 +2465,31 @@ body.bureau-frutiz .fen #chat-panel #users-drawer #users-list .ul-defile::-webki
    le tiroir mobile en fait des tuiles de 48 px en Verdana 22 gras.
    La bande d'époque va d'un bord à l'autre de la boîte : relevé 1:1, la boîte
    occupe x 557..678 et la bande 557..676 — 120 px, elle RECOUVRE à gauche
-   l'anneau gris ET le liseré vert. Et le pseudo est CENTRÉ (« temoinchat5 »
-   sur 71 px dans une bande de 120, à 2 px du milieu). */
+   l'anneau gris ET le liseré vert.
+
+   LE PSEUDO N'EST PAS CENTRÉ, il commence à 20. `UserSlot.initInterface`
+   (0x63541) attache son champ ainsi :
+
+       attachMovie("butText", "mcUser", 4,
+                   {width: 100, height: 20, textStyle: ts, _x: 20})
+
+   — et les VINGT PIXELS DE GAUCHE sont ceux du VOYANT : le clip `icon` du
+   slot, dont les images sont étiquetées `internal` / `external` (0x6391c) et
+   dont l'`ico` intérieur dit à quoi la personne joue. Avec la gouttière de
+   2 px d'un champ Flash, le premier glyphe tombe donc à 22.
+
+   Le relevé 1:1 qu'on avait lu « centré » se lit d'ailleurs mieux ainsi :
+   « temoinchat5 » fait 71 px ; posé à 22, il occupe 22..93, centre 57,5 —
+   soit les deux pixels à gauche du milieu de la bande (60) qu'on mesurait. */
 body.bureau-frutiz .fen #chat-panel #users-drawer .u {
-  height: 18px; min-height: 18px; width: 120px; padding: 0 4px; margin: 0; border: 0;
+  position: relative;
+  height: 18px; min-height: 18px; width: 120px; margin: 0; border: 0;
+  /* 22 à gauche : les 20 du voyant, plus la gouttière du champ. */
+  padding: 0 4px 0 22px;
   background: url('/frutiz/sprites/user-slot.svg') left top / 120px 18px no-repeat;
   font: 700 10px Verdana, Arial, sans-serif; color: #22224A;
-  font-weight: 700; font-size: 10px; letter-spacing: 0; text-shadow: none;
-  line-height: 18px; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 10px; text-shadow: none;
+  line-height: 18px; display: flex; align-items: center; justify-content: flex-start;
   gap: 4px; overflow: hidden; white-space: nowrap; box-sizing: border-box;
 }
 /* UNE LIGNE SUR DEUX seulement porte la bande. `cp.UserList` (0x66d4b) le dit
@@ -2422,6 +2524,9 @@ body.bureau-frutiz .fen #chat-panel #users-drawer .u .badge { display: none; }
    bandes voisines et poussait le pseudo hors du centre. Quatorze, c'est la
    hauteur du texte : le voyant se lit sans écraser la ligne. */
 body.bureau-frutiz .fen #chat-panel #users-drawer .u .voyant {
+  /* Il occupe SA place, celle que `_x = 20` laisse au clip `icon` : posé en
+     absolu dans les vingt pixels réservés, il ne pousse plus le pseudo. */
+  position: absolute; left: 3px; top: 2px;
   width: 14px; height: 14px; flex: 0 0 14px; object-fit: contain;
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u .lieu {

@@ -209,11 +209,20 @@ function principal() {
    */
   m.loi = { lissage: 0.9, seuil: 0.995, cadence: 100 };
 
-  // La LISTE des dessins de l'interface — « tous les éléments de l'interface
-  // de frutiparc », comme la phrase le promet. C'est ce que la page précharge,
-  // et c'est ce qui donne au ruban une progression VRAIE.
+  /*
+   * La LISTE des dessins de l'interface — « tous les éléments de l'interface
+   * de frutiparc », comme la phrase le promet. C'est ce que la page précharge,
+   * et c'est ce qui donne au ruban une progression VRAIE.
+   *
+   * LES PNG COMPTENT AUSSI. Elle ne prenait que les SVG, et les cinquante et
+   * un dessins de FEUTRES (bitmap #595 découpé et teinté) sont des PNG : ils
+   * n'étaient donc pas préchargés, et la barre des feutres clignotait au
+   * premier survol — le défaut même que cette page est censée effacer. Ils
+   * échappaient en plus au balayage de la feuille de style, parce que le light
+   * les pose en variables CSS (`--feutre-image`), pas en `url()` littéral.
+   */
   m.interface = fs.readdirSync(SORTIE)
-    .filter((f) => /\.svg$/.test(f) && !/^chargement-/.test(f))
+    .filter((f) => /\.(svg|png)$/.test(f) && !/^chargement-/.test(f))
     .sort()
     .map((f) => '/frutiz/sprites/' + f);
 

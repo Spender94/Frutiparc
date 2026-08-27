@@ -98,9 +98,42 @@ test('les trois jeux Flash y sont aussi, en fenêtre à part', () => {
 });
 
 test('leurs jaquettes sont celles du SWF, et elles existent', () => {
+  // La feuille des disques compose l'ANNEAU et la JAQUETTE, comme
+  // `but.icon.Full` : la jaquette seule laissait voir le fond de la feuille
+  // par le trou du disque.
   for (const nom of ['bkiwi', 'kaluga', 'mb2']) {
     const p = path.join(ROOT, 'public/frutiz/sprites/disc_jaquette_' + nom + '.svg');
     assert.ok(fs.existsSync(p), 'jaquette manquante : ' + nom);
-    assert.match(LIGHT, new RegExp('img: "/frutiz/sprites/disc_jaquette_' + nom + '\\.svg"'));
+    assert.match(LIGHT, new RegExp('jaquette: "' + nom + '"'));
   }
+  // Motion-Ball 2 est un FD BLANC : `discType` 1 au catalogue.
+  assert.match(LIGHT, /jaquette: "mb2", anneau: "1"/);
+  for (const t of ['0', '1']) {
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/frutiz/sprites/disc_anneau_' + t + '.svg')),
+      'anneau manquant : ' + t);
+  }
+});
+
+/*
+ * LES DEUX JAQUETTES QU'ON AVAIT INVENTÉES.
+ *
+ * fileIcon.swf porte dix-sept étiquettes de jaquette, et deux d'entre elles
+ * servaient à des jeux pour lesquels le portage avait composé sa propre image
+ * — Frutisnake (`snake`, image 1 de la bande : le serpent vert lové autour
+ * d'une pomme) et JamaJama (`jama`, image 12). Les commentaires disaient
+ * qu'aucune jaquette n'existait pour eux ; elles étaient là depuis le début.
+ */
+test('Frutisnake et JamaJama portent la jaquette d’époque', () => {
+  for (const [tab, nom] of [['snake3', 'snake'], ['jamajama', 'jama']]) {
+    assert.match(LIGHT, new RegExp('tab: "' + tab + '", jaquette: "' + nom + '"'),
+      tab + ' doit prendre la jaquette « ' + nom + ' » du SWF');
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/frutiz/sprites/disc_jaquette_' + nom + '.svg')),
+      'jaquette manquante : ' + nom);
+  }
+  // Et les montages qui les remplaçaient ont disparu.
+  for (const f of ['public/fb/fd_snake3.png', 'public/fb/fd_jamajama.svg',
+    'scripts/make-snake3-disc.js', 'scripts/make-jamajama-disc.js']) {
+    assert.ok(!fs.existsSync(path.join(ROOT, f)), f + ' devrait avoir été retiré');
+  }
+  assert.ok(!/fd_snake3|fd_jamajama/.test(LIGHT), 'plus aucun renvoi vers les montages');
 });

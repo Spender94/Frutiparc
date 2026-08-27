@@ -101,6 +101,15 @@ window.BureauFrutiz = (function () {
     // #198 ne connaît pas, donc l'ORANGE par défaut en pastille.
     recherche:  { panneau: '#recherche-panel', titre: 'Recherche', fruit: 'winSearchFrutiz',
                   l: 284, h: 84, fixe: true, min: minFenetre(270, 20 + 24) },
+    // GASPARD — `box.Help` / `win.Help` (0xbd7db). C'est une fenêtre de
+    // DIALOGUE, comme un salon : `win.Help` étend `win.Dialog`, et
+    // `getIconLabel` renvoie « winChat » — d'où la pastille du chat. Son
+    // gabarit vient de `win.Dialog.initMainField` : le champ principal ne
+    // descend pas sous 100 × 100, avec 8 px de marge de chaque côté, et la
+    // ligne de saisie prend le reste. Ni `pos` ni `moveToCenter` : elle
+    // s'ouvre dans le coin, comme presque toutes les autres.
+    gaspard:    { panneau: '#gaspard-panel', titre: 'Gaspard', fruit: 'winChat',
+                  l: 320, h: 300, min: minFenetre(100 + 16, 100 + 16 + 24) },
     // L'EXPLORATEUR — `win.Explorer`, la fenêtre JAUNE (winType « winExplorer »,
     // d'où la banane en pastille). Son gabarit est écrit dans `init` :
     // `pos = {x:50, y:50, w:400, h:400}` — 402 × 402 le contour compris, ce
@@ -2582,6 +2591,13 @@ window.BureauFrutiz = (function () {
       var encore = false;
       if (self.y !== self.cibleY) { self.moveSlot(self.cibleY, tmod); encore = true; }
       if (self.sens) { self.rotateDisc(self.sens, tmod); encore = true; }
+      // LE DISQUE NE S'ARRÊTE PAS UNE FOIS LANCÉ. `rotateDisc` met `sens` à
+      // zéro quand la vitesse atteint 140 — d'époque, c'est là que la JAQUETTE
+      // prend le relais et joue son animation de rotation. Ici il n'y avait
+      // rien derrière : la boucle s'arrêtait et le disque restait FIGÉ sur son
+      // dernier angle. Il continue donc de tourner à cette vitesse-là, ce qui
+      // est le même mouvement, sans dessin supplémentaire.
+      else if (self.file) { self.tournerAVide(tmod); encore = true; }
       if (encore) self.anim = requestAnimationFrame(pas);
     };
     this.anim = requestAnimationFrame(pas);
@@ -2626,17 +2642,32 @@ window.BureauFrutiz = (function () {
       // continue de tourner à cette vitesse-là : le même flou, sans dessin
       // supplémentaire.
       this.vitesse = FR_VMAX;
+      this.file = true;                 // il file — et il continue de filer
       if (this.disqueEl) this.disqueEl.classList.add('file');
       this.sens = 0;
     }
     if (sens < 0 && this.vitesse < 0) {
       this.sens = 0;
       this.vitesse = 0;
+      this.file = false;
       if (this.disqueEl) this.disqueEl.classList.remove('file');
       var d = this.destin;
       this.destin = null;
       if (d && this[d]) this[d]();
     }
+  };
+
+  // La rotation d'entretien, à vitesse constante : celle que la jaquette
+  // d'époque jouait toute seule une fois le disque lancé.
+  frusion.tournerAVide = function (tmod) {
+    // Le modulo replie l'angle dans un tour à chaque image. D'époque le
+    // bytecode écrit `d._rotation -= d.speed` sans borne, mais `_rotation`
+    // est une propriété de Flash, que le lecteur ramène lui-même entre -180
+    // et 180 : c'est le même mouvement. Une transformation CSS, elle,
+    // accepterait un angle qui enfle sans fin — des millions de degrés au
+    // bout d'une partie, et la précision du dixième finirait par y passer.
+    this.rotation = ((this.rotation || 0) - FR_VMAX * tmod) % 360;
+    if (this.disqueEl) this.disqueEl.style.transform = 'rotate(' + this.rotation.toFixed(1) + 'deg)';
   };
 
   frusion.onStartDragDisc = function () { if (!this.disque && !this.ouvert) this.openSlot(); };
@@ -2650,6 +2681,7 @@ window.BureauFrutiz = (function () {
     this.disqueEl.appendChild(dessinDisque(info.desc[0], info.desc[1]));
     this.disqueEl.classList.add('plein');
     this.disqueEl.classList.remove('file');
+    this.file = false;
     this.rendu = false;                 // `fileMng.frusionOn` : il quitte ses dossiers
     this.rotation = 0;
     this.vitesse = 0;
@@ -5159,6 +5191,352 @@ window.BureauFrutiz = (function () {
     if (S.regarder) S.regarder(salon);
   }
 
+  /* ═══ GASPARD ════════════════════════════════════════════════════════════
+   *
+   * La PREMIÈRE des six icônes de l'encart, et la fenêtre qu'elle ouvre.
+   *
+   * `initNameList` (0xb56c0) nomme la rangée. Attention à l'ordre : `InitArray`
+   * dépile, la dernière valeur empilée devient l'indice 0 —
+   *
+   *     Push "jeux","evenements","historique","messages","forum","gaspard", 6
+   *     InitArray                → [gaspard, forum, messages, historique,
+   *                                 evenements, jeux]
+   *
+   * `initIcons` (0x6cbbc) les pose de gauche à droite, `icon<i>._x = 42 + i×15`
+   * et `_y = 33`, chacune arrêtée sur l'image `i+1` de `digitalIcon` ; un clip
+   * `transp` de 15 % leur sert de zone sensible, décalé de −7,5 px puisque les
+   * dessins sont centrés. Le survol écrit `nameList[id]` dans le champ du
+   * classement, la sortie y remet le rang, et l'appui appelle `select(id)` :
+   *
+   *     0 → uniqWinMng.open("help")      3 → uniqWinMng.open("userLog")
+   *     1 → openForum()                  4 → uniqWinMng.open("siteLog")
+   *     2 → openInbox()                  5 → openGame()
+   *
+   * Gaspard, c'est donc l'aide — et sa fenêtre est une CONVERSATION :
+   * `box.Help` (0x7fc9f) étend `box.Standard`, `win.Help` (0xbd7db) étend
+   * `win.Dialog` comme le salon, et `getIconLabel` renvoie « winChat » — la
+   * pastille du chat. La liste des présents contient deux noms (`nbUser = 2`) :
+   * soi et Gaspard.
+   *
+   *     init          userList.addUser(me.name) puis addUser(help.name)
+   *                   loadContent(openContent || { i: 1 })
+   *     getContent(id)      previousArr.push(current) ; loadContent({i: id})
+   *     getPrevious()       loadContent(previousArr.pop())
+   *     analyseInput(s)     trim ; vide → non ; moins de 2500 ms depuis la
+   *                         dernière → non ; sinon search(s)
+   *     search(s)           HTTP("fh/search", {s: s})
+   *     loadContent(o)      HTTP("fh/get", o)
+   *     onWheel(d)          window.scrollText(−10 × d)
+   *
+   * CE QUE LE SWF N'A PAS : le TEXTE de l'aide. Il vivait sur le serveur de
+   * 2005, derrière ces deux adresses ; le portage le tient en base, et
+   * l'administration l'y écrit (`/api/admin/gaspard/topics`).
+   */
+  var GASPARD_ATTENTE = 2500;           // `analyseInput` : le pas entre deux recherches
+  var gsPanneau = null;
+  var gsEtat = { precedents: [], courant: null, charge: false, derniere: 0 };
+
+  function panneauGaspard() {
+    if (gsPanneau) return gsPanneau;
+    var p = document.createElement('section');
+    p.className = 'panel';
+    p.id = 'gaspard-panel';
+
+    // `initMainField` : un `multiTextField` qui prend toute la place, marges
+    // de 8. C'est la page — titre, corps, liens, retour.
+    var page = document.createElement('div');
+    page.className = 'gs-page';
+    p.appendChild(page);
+
+    // `initInputField` : la ligne de saisie, sous le champ, marge de 6.
+    var bas = document.createElement('div');
+    bas.className = 'gs-saisie';
+    var champ = document.createElement('input');
+    champ.type = 'text';
+    champ.className = 'gs-in';
+    champ.setAttribute('aria-label', 'Poser une question à Gaspard');
+    bas.appendChild(champ);
+    p.appendChild(bas);
+
+    // `onEnter` : la saisie part, et ne se vide QUE si elle est partie.
+    champ.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      if (analyserSaisieGaspard(champ.value)) champ.value = '';
+    });
+    // `onWheel` : la molette fait défiler la page, pas la fenêtre.
+    page.addEventListener('wheel', function (ev) {
+      if (page.scrollHeight <= page.clientHeight) return;
+      ev.stopPropagation();
+    });
+    // Un lien de la page : soit une rubrique, soit le retour.
+    page.addEventListener('click', function (ev) {
+      var a = ev.target.closest ? ev.target.closest('a[data-gs]') : null;
+      if (!a) return;
+      ev.preventDefault();
+      if (a.getAttribute('data-gs') === 'retour') pagePrecedenteGaspard();
+      else contenuGaspard(Number(a.getAttribute('data-gs')));
+    });
+
+    gsPanneau = p;
+    return p;
+  }
+
+  // `analyseInput` (0x806f3), au mot près : rien à envoyer si la saisie est
+  // vide, rien non plus si la précédente a moins de 2500 ms. Le compteur ne
+  // se remet à zéro QUE lorsqu'une recherche part réellement.
+  function analyserSaisieGaspard(brut) {
+    var s = String(brut || '').replace(/^\s+|\s+$/g, '');
+    if (!s.length) return false;
+    var t = Date.now();
+    if (!(t - gsEtat.derniere > GASPARD_ATTENTE)) return false;
+    gsEtat.derniere = t;
+    chercherGaspard(s);
+    return true;
+  }
+
+  // `getContent(id)` : la page courante entre dans la pile avant qu'on parte.
+  function contenuGaspard(id) {
+    if (gsEtat.courant) gsEtat.precedents.push(gsEtat.courant);
+    chargerGaspard({ i: id === undefined ? 1 : id });
+  }
+  // `getPrevious()` : on ne dépile que s'il y a de quoi.
+  function pagePrecedenteGaspard() {
+    if (!gsEtat.precedents.length) return;
+    chargerGaspard(gsEtat.precedents.pop());
+  }
+
+  function urlGaspard(base, params) {
+    var q = [];
+    for (var k in params) if (params[k] !== undefined && params[k] !== null) {
+      q.push(encodeURIComponent(k) + '=' + encodeURIComponent(params[k]));
+    }
+    return base + (q.length ? '?' + q.join('&') : '');
+  }
+
+  // `loadContent(o)` : la fenêtre affiche l'attente, puis `HTTP("fh/get", o)`.
+  function chargerGaspard(o) {
+    gsEtat.courant = o;
+    gsEtat.charge = true;
+    attendreGaspard();
+    lireXmlGaspard(urlGaspard('/fh/get', o), function (doc) {
+      gsEtat.charge = false;
+      if (!doc) return erreurGaspard('Gaspard ne répond pas.');
+      var h = doc.documentElement;
+      // `onGetContent` : la racine doit s'appeler `h` et n'avoir aucun `k`.
+      if (!h || h.nodeName !== 'h' || h.getAttribute('k') !== null) {
+        return erreurGaspard('Erreur ' + (h && h.getAttribute('k') || '1') + '.');
+      }
+      var groupes = {};                 // t → [ {i, n}, … ], dans l'ordre du XML
+      var ordre = [];
+      var corps = '';
+      var enfants = h.childNodes;
+      for (var i = 0; i < enfants.length; i++) {
+        var e = enfants[i];
+        if (e.nodeType !== 1) continue;
+        if (e.nodeName === 'c') { corps = e.textContent || ''; continue; }
+        if (e.nodeName !== 'l') continue;
+        var dedans = e.childNodes;
+        for (var j = 0; j < dedans.length; j++) {
+          var l = dedans[j];
+          if (l.nodeType !== 1) continue;
+          var t = l.getAttribute('t') || '';
+          if (!groupes[t]) { groupes[t] = []; ordre.push(t); }
+          groupes[t].push({ i: Number(l.getAttribute('i')), n: l.getAttribute('n') || '' });
+        }
+      }
+      afficherGaspard({
+        id: Number(h.getAttribute('i')),
+        titre: h.getAttribute('n') || '',
+        corps: corps,
+        groupes: groupes,
+        ordre: ordre,
+        retour: gsEtat.precedents.length > 0,
+      });
+    });
+  }
+
+  // `search(s)` : même attente, `HTTP("fh/search", {s: s})`.
+  function chercherGaspard(s) {
+    gsEtat.charge = true;
+    attendreGaspard();
+    lireXmlGaspard(urlGaspard('/fh/search', { s: s }), function (doc) {
+      gsEtat.charge = false;
+      if (!doc) return erreurGaspard('Gaspard ne répond pas.');
+      var r = doc.documentElement;
+      var n = Number(r && r.getAttribute('n'));
+      // `onSearch` : moins d'un résultat, on le dit ; un seul, on l'ouvre.
+      if (!(n >= 1)) return sansResultatGaspard();
+      var liste = [];
+      var enfants = r.childNodes;
+      for (var i = 0; i < enfants.length; i++) {
+        var e = enfants[i];
+        if (e.nodeType !== 1) continue;
+        liste.push({ i: Number(e.getAttribute('i')), n: e.getAttribute('n') || '' });
+      }
+      if (n === 1 && liste.length) return contenuGaspard(liste[0].i);
+      resultatsGaspard(n, (r.getAttribute('m') || '') === 'e', liste);
+    });
+  }
+
+  function lireXmlGaspard(url, suite) {
+    var x = new XMLHttpRequest();
+    x.open('GET', url, true);
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4) return;
+      var doc = null;
+      try {
+        doc = x.responseXML
+          || new DOMParser().parseFromString(x.responseText || '', 'text/xml');
+        if (doc && doc.getElementsByTagName('parsererror').length) doc = null;
+      } catch (e) { doc = null; }
+      suite(x.status >= 200 && x.status < 300 ? doc : null);
+    };
+    try { x.send(); } catch (e) { suite(null); }
+  }
+
+  // ── Ce que la fenêtre montre ──────────────────────────────────────────
+  // `displayContent` empile des LIGNES DE TEXTE : le titre, le corps (en
+  // HTML), puis un intertitre par groupe de liens et un lien par rubrique, et
+  // le retour tout en bas s'il y a de quoi revenir.
+  function pageGaspard() {
+    var p = panneauGaspard();
+    var page = p.querySelector('.gs-page');
+    page.textContent = '';
+    return page;
+  }
+  function ligneGaspard(page, cls, html) {
+    var d = document.createElement('div');
+    d.className = 'gs-l ' + cls;
+    d.innerHTML = html;
+    page.appendChild(d);
+    return d;
+  }
+  function echapperGaspard(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function lienGaspard(l) {
+    return '<a href="#" data-gs="' + l.i + '">' + echapperGaspard(l.n) + '</a>';
+  }
+  // `help.link_type.<t>` : les deux groupes que le serveur envoie.
+  var GS_GROUPES = { cat_ls: 'Voir aussi', cat_tree: 'Les rubriques' };
+
+  function attendreGaspard() {
+    ligneGaspard(pageGaspard(), 'gs-attente', 'chargement...');
+    titrerGaspard('chargement...');
+  }
+  function erreurGaspard(txt) {
+    ligneGaspard(pageGaspard(), 'gs-erreur', echapperGaspard(txt));
+    titrerGaspard('Gaspard');
+  }
+  function afficherGaspard(o) {
+    var page = pageGaspard();
+    ligneGaspard(page, 'gs-titre', echapperGaspard(o.titre));
+    ligneGaspard(page, 'gs-corps', o.corps || '');
+    for (var i = 0; i < o.ordre.length; i++) {
+      var t = o.ordre[i];
+      var g = o.groupes[t];
+      if (!g || !g.length) continue;    // `if (arr.length == 0) continue`
+      ligneGaspard(page, 'gs-groupe', echapperGaspard(GS_GROUPES[t] || t));
+      for (var j = 0; j < g.length; j++) ligneGaspard(page, 'gs-lien', lienGaspard(g[j]));
+    }
+    if (o.retour) ligneGaspard(page, 'gs-retour', '<a href="#" data-gs="retour">retour</a>');
+    page.scrollTop = 0;
+    titrerGaspard(o.titre);
+  }
+  function resultatsGaspard(nb, exact, liste) {
+    var page = pageGaspard();
+    ligneGaspard(page, 'gs-titre',
+      nb + (exact ? ' réponse' : ' réponse approchante') + (nb > 1 ? 's' : ''));
+    for (var i = 0; i < liste.length; i++) ligneGaspard(page, 'gs-lien', lienGaspard(liste[i]));
+    if (gsEtat.precedents.length) {
+      ligneGaspard(page, 'gs-retour', '<a href="#" data-gs="retour">retour</a>');
+    }
+    page.scrollTop = 0;
+    titrerGaspard('recherche');
+  }
+  function sansResultatGaspard() {
+    var page = pageGaspard();
+    ligneGaspard(page, 'gs-corps', 'Gaspard ne trouve rien à ce sujet.');
+    ligneGaspard(page, 'gs-corps', 'Pose-lui la question autrement, ou écris-lui.');
+    if (gsEtat.precedents.length) {
+      ligneGaspard(page, 'gs-retour', '<a href="#" data-gs="retour">retour</a>');
+    }
+    titrerGaspard('recherche');
+  }
+  // `setTitle(Lang.fv("help.title", {t: …}))` : le titre porte la page lue.
+  function titrerGaspard(t) {
+    var f = fenetres['gaspard-panel'];
+    if (f) f.txt.textContent = 'Gaspard - ' + t;
+  }
+
+  /*
+   * LA RANGÉE DE L'ENCART, telle que `initIcons` la câble.
+   *
+   * Trois gestes, trois méthodes, et le light n'en branchait aucun sur la
+   * première icône : l'aide n'a pas de rubrique mobile, son bouton restait
+   * donc muet. Ici il ouvre Gaspard, comme `select(0)`.
+   *
+   *     onPress     → _parent.select(id)
+   *     onRollOver  → _parent.rollOver(id)  →  field.text = nameList[id]
+   *     onRollOut   → _parent.rollOut(id)   →  field.text = ladderPos
+   *
+   * Le champ, c'est celui du RANG (le chiffre sous la coupe) : survoler une
+   * icône y écrit le nom de la rubrique, en sortir y remet le classement.
+   */
+  var GS_NOMS = {                       // `nameList`, après le retournement
+    Aide: 'gaspard', Forum: 'forum', Mail: 'messages',
+    Historique: 'historique', Warning: 'evenements', Jeux: 'jeux',
+  };
+  function brancherRangeeEncart(coin) {
+    if (!coin || coin._rangeeBranchee) return;
+    coin._rangeeBranchee = true;
+    // On écoute LE COIN, pas la rangée : l'encart est emprunté au mobile et
+    // reparenté ici plus tard, la rangée n'existe pas encore à cet instant.
+    var quelBouton = function (ev) {
+      return ev.target && ev.target.closest ? ev.target.closest('.mb-shortcuts .sc-btn') : null;
+    };
+    var champDuRang = function () { return coin.querySelector('.enc-trophy .val'); };
+    var rang = null;                    // `ladderPos`, retenu à l'entrée
+    coin.addEventListener('mouseover', function (ev) {
+      var b = quelBouton(ev);
+      var champ = champDuRang();
+      if (!b || !champ) return;
+      if (rang === null) rang = champ.textContent;
+      champ.textContent = GS_NOMS[b.getAttribute('data-sc')] || '';
+      champ.classList.add('gs-survol');
+    });
+    coin.addEventListener('mouseout', function (ev) {
+      var champ = champDuRang();
+      if (!champ || rang === null) return;
+      // Passer d'une icône à l'autre ne repasse pas par le rang : on ne le
+      // rend qu'en QUITTANT la rangée pour de bon.
+      var vers = ev.relatedTarget;
+      if (vers && vers.closest && vers.closest('.mb-shortcuts')) return;
+      champ.textContent = rang;
+      rang = null;
+      champ.classList.remove('gs-survol');
+    });
+    coin.addEventListener('click', function (ev) {
+      var b = quelBouton(ev);
+      if (!b || b.getAttribute('data-sc') !== 'Aide') return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      ouvrirGaspard();
+    });
+  }
+
+  // `select(0)` → `uniqWinMng.open("help")`. La fenêtre s'ouvre sur la page
+  // d'accueil, `loadContent({i: 1})`, à la PREMIÈRE ouverture seulement : la
+  // rouvrir la rappelle telle qu'on l'a laissée (`Box.init` prend sa branche
+  // `else`, elle ne se recharge pas).
+  function ouvrirGaspard() {
+    var neuve = !fenetres['gaspard-panel'];
+    ouvrirFenetre('gaspard');
+    if (neuve) contenuGaspard(1);
+  }
+
   function ouvrirFenetre(tab) {
     // Le forum n'est pas une fenêtre du bureau : `win.Forum` renvoie vers
     // l'extérieur (cf. `ouvrirForum`). Quel que soit le chemin qui mène ici —
@@ -5175,6 +5553,8 @@ window.BureauFrutiz = (function () {
     if (tab === 'salons' && !$(rub.panneau)) $('#app').appendChild(panneauSalons());
     // Idem pour « Recherche » : elle non plus n'a pas de panneau mobile.
     if (tab === 'recherche' && !$(rub.panneau)) $('#app').appendChild(panneauRecherche());
+    // Et pour Gaspard : le mobile n'a pas d'aide, son icône y est muette.
+    if (tab === 'gaspard' && !$(rub.panneau)) $('#app').appendChild(panneauGaspard());
     var panneau = $(rub.panneau);
     if (!panneau) return;
     // Les panneaux de salon portent tous le même identifiant (ce sont des
@@ -5864,6 +6244,7 @@ window.BureauFrutiz = (function () {
     // compte donc depuis le bord de la barre — et elle monte avec elle quand
     // le « mode rapide » la replie.
     coin.appendChild(batirMandala());
+    brancherRangeeEncart(coin);
 
     // PAS DE PILULE « N EN LIGNE ». C'était une invention du portage, posée en
     // surimpression du coin haut-droit ; main.swf n'a rien de tel — le compte
@@ -5935,6 +6316,8 @@ window.BureauFrutiz = (function () {
     // La même, mais RANGÉE : une invitation reçue s'ouvre en onglet qui
     // clignote, sans prendre le bureau (`chatMng.open(…, trashSlot)`).
     ouvrirSalonEnFond: function (salon) { ouvrirSalon(salon, true); },
+    // GASPARD, la première icône de l'encart : `select(0)` d'époque.
+    ouvrirGaspard: ouvrirGaspard,
     // Les deux explorateurs : « Mes disques » et « Inventaire ».
     ouvrirDisques: function () { ouvrirExplorateur('disques'); },
     ouvrirInventaire: function () { ouvrirExplorateur('inventaire'); },

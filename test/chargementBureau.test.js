@@ -248,11 +248,18 @@ test('« tous les éléments de l’interface » : la promesse est tenue', () =>
   assert.ok(MANIFESTE.interface.length > 100,
     'la liste ne compte que ' + MANIFESTE.interface.length + ' dessins');
   for (const u of MANIFESTE.interface) {
-    assert.match(u, /^\/frutiz\/sprites\/[^/]+\.svg$/);
+    // LES PNG COMPTENT AUSSI : les cinquante et un dessins de FEUTRES sont des
+    // bitmaps découpés dans le #595, pas des tracés. Les exclure, c'était les
+    // laisser hors du préchargement — et la barre des feutres clignotait au
+    // premier survol, le défaut même que cette page est censée effacer.
+    assert.match(u, /^\/frutiz\/sprites\/[^/]+\.(svg|png)$/);
     assert.ok(fs.existsSync(path.join(SPRITES, path.basename(u))), u + ' manque');
     assert.ok(!/^chargement-/.test(path.basename(u)),
       'la barre ne se précharge pas elle-même');
   }
+  const feutres = MANIFESTE.interface.filter((u) => /\/feutre-/.test(u));
+  assert.ok(feutres.length >= 51,
+    'les feutres doivent être préchargés (relevé : ' + feutres.length + ')');
   // Deux inventaires : la liste du SWF et les images de la feuille de style.
   assert.match(JS, /fetch\('\/frutiz\/sprites\/chargement\.json', \{ cache: 'force-cache' \}\)/);
   assert.match(JS, /fetch\('\/bureau-frutiz\.css', \{ cache: 'force-cache' \}\)/);

@@ -8792,28 +8792,51 @@ app.delete('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
 });
 
 // ───────── Public Gaspard help endpoints (consumed by main.swf) ─────────
-// The SWF's win.box.Help class calls two URLs (discovered by string-matching
-// the compiled SWF):
-//   /fh/search?s=<query>   — text search across topics
-//   /fh/get?i=<id>         — fetch a single topic's body + sub-links
-// Response is XML. Format reverse-engineered from the parser strings:
-//   firstChild.attributes.n/nb/m/list/nextSibling for search,
-//   c.nodeValue + l.id.content.links.back for get.
+/*
+ * GASPARD — les deux adresses de l'aide, et la forme EXACTE de leur réponse.
+ *
+ * `box.Help` (0x7fc9f) appelle :
+ *
+ *     loadContent(o)  →  new HTTP("fh/get",    o,     {type:'xml', method:'onGetContent'})
+ *     search(s)       →  new HTTP("fh/search", {s:s}, {type:'xml', method:'onSearch'})
+ *
+ * La forme des réponses n'est plus à deviner : `onGetContent` (0x80396) et
+ * `onSearch` (0x8011f) DISENT quels nœuds et quels attributs ils lisent.
+ *
+ *   fh/get — la racine doit s'appeler `h` et ne PAS porter d'attribut `k` :
+ *
+ *       if (racine.attributes.k !== undefined || racine.nodeName !== 'h')
+ *           openErrorAlert(Lang.fv('error.http.' + (k ?? 1)))
+ *
+ *   d'où la forme :
+ *
+ *       <h i="12" n="Titre de la page">
+ *         <c><![CDATA[le corps]]></c>
+ *         <l>
+ *           <l t="groupe" i="13" n="Une sous-rubrique"/>
+ *           …
+ *         </l>
+ *       </h>
+ *
+ *   `i` (et non `id`) porte l'identifiant, `c.firstChild.nodeValue` le corps,
+ *   et le conteneur des liens s'appelle `l` : ce sont ses ENFANTS qui portent
+ *   `t` (le groupe, qui titre la rubrique via `help.link_type.<t>`), `i` et
+ *   `n`. Le portage écrivait `<cat_tree>`/`<cat_ls>` avec des `<l id n/>` :
+ *   trois attributs sur quatre tombaient à côté, et la fenêtre d'époque
+ *   n'affichait aucun lien.
+ *
+ *   fh/search — la racine porte le NOMBRE de résultats dans `n` (un nombre,
+ *   passé à `Number()`) et la méthode dans `m` ; le SWF compare `m` à « e » :
+ *
+ *       <r n="3" m="e"><e i="12" n="Titre"/>…</r>
+ *
+ *   `n = 0` → aucun résultat ; `n = 1` → la page s'ouvre directement.
+ *   Le nom des nœuds enfants est libre : le parcours ne regarde que
+ *   `nodeType > 0` et leurs attributs `i` et `n`.
+ */
 
 function escapeXmlText(s) {
   return String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-}
-
-function gaspardTopicLinksXml(parentId, allTopics) {
-  // Children of `parentId` (or root entries when parentId is null) ordered
-  // by sort_order. Each emitted as <l id="N">Title</l> per the SWF's
-  // displayContent path which reads l.id and l.firstChild.nodeValue.
-  const children = allTopics
-    .filter((t) => (t.parent_id || null) === (parentId || null))
-    .sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
-  return children.map((c) =>
-    `<l id="${c.id}">${escapeXmlText(c.title)}</l>`
-  ).join('');
 }
 
 // Format the topic body for the SWF's TextField. CDATA wrapping makes
@@ -8843,19 +8866,18 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
   console.log(`[GASPARD] /fh/get method=${req.method} idRaw=${JSON.stringify(idRaw)} parsedId=${Number.isInteger(id) ? id : '(none)'} q=${JSON.stringify(req.query)} b=${JSON.stringify(req.body || {})}`);
   try {
     const all = await db.listGaspardHelpTopics();
-    const buildLinksXml = (parentId, container) => {
-      // Build a <cat_tree> (root) or <cat_ls> (children) container. Children
-      // are filtered by parent_id and ordered by (sort_order, id). The SWF
-      // determines link type from the container element name and reads
-      // l.id + l.n (the title) — no text content inside <l>.
+    // Les liens d'un groupe. `onGetContent` range chaque `<l>` INTÉRIEUR dans
+    // `links[t]` : le groupe est un attribut du lien, pas le nom du conteneur.
+    // `cat_ls` = les sous-rubriques de la page courante, `cat_tree` = les
+    // rubriques de premier niveau ; ces deux noms-là deviennent les titres de
+    // section, via `Lang.fv('help.link_type.' + t)`.
+    const buildLinksXml = (parentId, groupe) => {
       const children = all
         .filter((t) => (t.parent_id || null) === (parentId || null))
         .sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
-      if (children.length === 0) return '';
-      const items = children.map((c) =>
-        `<l id="${c.id}" n="${escapeXmlText(c.title)}"/>`
+      return children.map((c) =>
+        `<l t="${groupe}" i="${c.id}" n="${escapeXmlText(c.title)}"/>`
       ).join('');
-      return `<${container}>${items}</${container}>`;
     };
 
     const indexTopic = all.find((t) => t.is_index) || null;
@@ -8879,13 +8901,14 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     // from any topic. cat_ls (children of the current topic) is added only
     // when the topic has sub-rubriques.
     const rootTree = buildLinksXml(null, 'cat_tree');
+    const liens = (dedans) => (dedans ? `<l>${dedans}</l>` : '');
 
     if (!topic) {
       // No admin-defined index → emit a generated welcome so the SWF still
       // has something to render with the root nav.
       const indexBody = "Bienvenue ! Choisissez une rubrique ci-dessous, ou utilisez la recherche.";
       return res.type('text/xml').send(
-        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0" n="Index de l'aide"><c>${escapeXmlText(indexBody)}</c>${rootTree}</h>`
+        `<?xml version="1.0" encoding="UTF-8"?>\n<h i="0" n="Index de l'aide"><c>${gaspardBodyXml(indexBody)}</c>${liens(rootTree)}</h>`
       );
     }
 
@@ -8896,11 +8919,13 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     // duplicate the cat_tree we already emit) and only show the root nav.
     const navXml = topic.is_index ? rootTree : (children + rootTree);
     return res.type('text/xml').send(
-      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}" n="${safeTitle}"${backAttr}><c>${escapeXmlText(topic.body || '')}</c>${navXml}</h>`
+      `<?xml version="1.0" encoding="UTF-8"?>\n<h i="${topic.id}" n="${safeTitle}"${backAttr}><c>${gaspardBodyXml(topic.body || '')}</c>${liens(navXml)}</h>`
     );
   } catch (e) {
     console.error('[GASPARD] /fh/get error:', e.message);
-    res.type('text/xml').status(200).send('<?xml version="1.0"?>\n<h n="Erreur">Erreur serveur</h>');
+    // Une erreur se DIT au parseur : l'attribut `k` de la racine est ce
+    // qu'il regarde, et il ouvre alors l'alerte `error.http.<k>`.
+    res.type('text/xml').status(200).send('<?xml version="1.0"?>\n<h k="1" n="Erreur"/>');
   }
 });
 
@@ -8908,8 +8933,11 @@ app.all(['/fh/search', '/legacy/fh/search'], async (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const query = String(params.s || '').trim().toLowerCase();
   console.log(`[GASPARD] /fh/search method=${req.method} s=${JSON.stringify(query)} q=${JSON.stringify(req.query)} b=${JSON.stringify(req.body || {})}`);
+  // `n` porte le NOMBRE de résultats, et `onSearch` le passe à `Number()` :
+  // « no_result » y devenait NaN, ni `< 1` ni `== 1`, et la fenêtre partait
+  // dans la branche des résultats multiples avec une liste vide.
   if (!query) {
-    return res.type('text/xml').send('<r n="no_result" nb="0" m="exact"/>');
+    return res.type('text/xml').send('<r n="0" m="e"/>');
   }
   try {
     const all = await db.listGaspardHelpTopics();
@@ -8929,19 +8957,19 @@ app.all(['/fh/search', '/legacy/fh/search'], async (req, res) => {
       hits = all.filter(matchesSimilar);
     }
     if (hits.length === 0) {
-      return res.type('text/xml').send('<r n="no_result" nb="0" m="exact"/>');
+      return res.type('text/xml').send('<r n="0" m="e"/>');
     }
-    // Cover the likely attribute-name variations for the id (id / k / i)
-    // and emit the title as both n= attribute and element text so whatever
-    // path the SWF takes resolves.
+    // Le SWF compare la méthode à la seule lettre « e » : tout le reste vaut
+    // « approchant » (help.results_similar). Chaque résultat porte `i` et `n`
+    // — le nom du noeud, lui, n'est jamais lu.
     const items = hits.slice(0, 50)
-      .map((t) => `<i id="${t.id}" k="${t.id}" i="${t.id}" n="${escapeXmlText(t.title)}">${escapeXmlText(t.title)}</i>`).join('');
+      .map((t) => `<e i="${t.id}" n="${escapeXmlText(t.title)}"/>`).join('');
     return res.type('text/xml').send(
-      `<r n="result" nb="${hits.length}" m="${mode}">${items}</r>`
+      `<r n="${hits.length}" m="${mode === 'exact' ? 'e' : 's'}">${items}</r>`
     );
   } catch (e) {
     console.error('[GASPARD] /fh/search error:', e.message);
-    res.type('text/xml').status(200).send('<r n="no_result" nb="0" m="exact"/>');
+    res.type('text/xml').status(200).send('<r n="0" m="e"/>');
   }
 });
 
