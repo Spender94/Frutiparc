@@ -860,6 +860,45 @@ fond appuyé. Ensuite, la ligne `textStyle.textPropery.color = 0` (0x70a1d) —
 **`textPropery`, avec la faute** : la propriété n'existe pas, l'affectation
 tombe dans le vide et le noir voulu n'est jamais posé. Bug d'origine, gardé.
 
+### Créer un salon (`box.RoomList.createChannel`, 0xa65a5)
+
+Le clic du bouton passe par `createNewRoom` (0xbee79), qui lit
+`mcTool.card.roomName.value` et le donne à `createChannel(n)` :
+
+```js
+if (n === undefined || n.length === 0) {
+  openErrorAlert(Lang.fv("error.chat.topic_required"));
+  return;                     // « Vous devez spécifier un sujet… »
+}
+channelMng.create(n);
+this.close();                 // la fenêtre des salons se referme
+```
+
+Le salon porte donc **le sujet**, pas un identifiant : le portage en dérive une
+clé (`sal_` + le sujet sans accents, tout le reste en tirets) qui ne peut heurter
+ni les onze salons fixes ni les discussions privées `pm_`/`pm2_`.
+
+**Ce qu'il a de privé.** Il n'apparaît que dans la liste de ceux qui y sont :
+`buildChannelListXml` prend un pseudo et retire du `<q>` tout salon de joueur
+dont ce pseudo n'est pas membre — chaque socket reçoit SA liste. Un salon vide
+n'existe donc plus pour personne, et le serveur le purge au dernier départ,
+aux deux sorties (le `leave` explicite et la fin de la grâce de reconnexion).
+Les PNJ ne comptent pas comme occupants : Gaspard ne maintient pas un salon en
+vie. C'est ce qui distingue un salon de joueur des onze permanents.
+
+**Comment on y entre.** En donnant son sujet : `createChannel` sur un sujet déjà
+pris REJOINT le salon au lieu d'en ouvrir un second, et renvoie le sujet
+CANONIQUE (`d="…"`) pour que le second arrivant le nomme comme le premier —
+sans quoi la phrase d'entrée sortirait avec la clé brute. Le second chemin
+d'époque est écrit dans lang_french.as (`explorer.alert.invite_contact`) :
+« Pour inviter un de vos contacts dans une discussion privée ou un salon, il
+suffit de le faire glisser vers la fenêtre du chat. »
+
+**Et le refus** passe par `win.Alert` (DoInitAction sprite#812) : deux cadres —
+`frameDoc` (cpDocument frSystem, min 200 × 80) et `frameButton` (min 200 × 24) —
+un bouton « Fermer » (`_global.langText.close`), et `moveToCenter()` à la fin de
+son `init`.
+
 ### Le relevé 1:1 (scratchpad/ref3-salons.png, viewport 1380×800)
 
 Attention : la capture `ref-salons.png` du premier passage avait été prise en
