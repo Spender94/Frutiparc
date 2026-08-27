@@ -1642,32 +1642,72 @@ body.bureau-frutiz #recherche-panel .rc-lbl {
   white-space: nowrap; overflow: hidden;
 }
 body.bureau-frutiz #recherche-panel .rc-espace { flex: 0 0 auto; }
-/* Le champ `inputField` (#170) : la gélule grise du SWF, teintée à l'emploi.
-   Sur le blanc de `frSystem` elle prend le gris de `colorSet.white` —
-   `#EEEEEE` de chair, `#DDDDDD` au bord. */
+/* ── LA TEINTE DES CHAMPS ET DES BOUTONS ────────────────────────────────
+   Rien ici n'est gris par défaut : `cp.Document.newElement` (0x659a5) puise
+   dans le style du document, et le style du document est `frSystem` —
+   `Standard.getWinStyle` (0x49659) lui donne `color = [white, green, white]`.
+   `Standard.getDocStyle` (0x4989b) en tire :
+
+       inputColor      = color[1]        → colorSet.GREEN
+       bgTextColor     = color[0]
+       outlineColorNum = color[0].shade  → colorSet.white.shade = #DDDDDD
+       ts.textFormat.color = color[0].overdark
+
+   • un `type: "input"`  devient un `deInput`, dont la gélule `inputField`
+     (#170) est GRISE dans le SWF et se fait teindre par `inputColor` : elle
+     est donc VERTE ici, exactement comme le champ « sujet » des salons ;
+   • un `type: "comboBox"` reçoit `pal.bg = docStyle.inputColor` — vert aussi ;
+   • un `type: "button"` prend l'art `butPushStandard` (#465) — LA GÉLULE
+     ROSE, la même que « créer un salon » — et `but.Push.init` (0x80a10) la
+     pose sur un `drawSmoothSquare` de `curve + outline` rempli de `color`,
+     large de `gfx + 2·outline` : un LISERÉ de 2 px en `outlineColorNum`
+     autour de la gélule.
+
+   Les boutons n'étaient donc pas censés être gris : ils sont roses, cerclés
+   de gris clair. */
 body.bureau-frutiz #recherche-panel .rc-in {
   flex: 1 1 auto; min-width: 0; height: 14px; padding: 0 6px; border: 0;
-  border-radius: 7px; background: #EEEEEE; box-shadow: inset 0 0 0 1px #DDDDDD;
-  font: 400 10px Verdana, Arial, sans-serif; color: #333333;
+  border-radius: 7px; background: #DDFFBB; box-shadow: inset 0 0 0 1px #94DB39;
+  font: 400 10px Verdana, Arial, sans-serif; color: #335511;
 }
-body.bureau-frutiz #recherche-panel .rc-in:focus { outline: 1px solid #AAAAAA; }
-/* `butPushStandard` en gris — la même gélule que « créer un salon », dans la
-   teinte de `frSystem`. */
+body.bureau-frutiz #recherche-panel .rc-in:focus { outline: 1px solid #94DB39; }
+/* LE BOUTON. La gélule d'origine a TROIS largeurs (les images 1, 2 et 3 de
+   #465 : 40, 80 et 120 px, toutes de 16 de haut) ; comme pour « créer un
+   salon », on la refait en CSS plutôt que d'étirer le SVG, qui écraserait ses
+   bouts ronds — et elle s'ajuste alors à son libellé au lieu de sauter d'un
+   palier à l'autre. Chair `#FFAAAD`, anneau `#F28687`, éclat `#FFEAEC`,
+   encre `#660000` : les couleurs du dessin extrait.
+   Le `padding` de 2 px et le fond `#DDDDDD` portent le liseré de `but.Push`. */
 body.bureau-frutiz #recherche-panel .rc-but {
-  position: relative; flex: 0 0 auto; min-width: 36px; height: 16px;
-  margin: 0 0 0 4px; padding: 0 8px; border: 0; border-radius: 8px;
-  background: #EEEEEE; box-shadow: inset 0 0 0 1.5px #DDDDDD;
-  font: 700 10px Verdana, Arial, sans-serif; color: #444444;
-  cursor: pointer; white-space: nowrap;
+  position: relative; z-index: 0;            /* la gélule se glisse DERRIÈRE */
+  flex: 0 0 auto; min-width: 40px; height: 20px;
+  margin: 0 0 0 4px; padding: 2px 10px 0; border: 0; border-radius: 10px;
+  box-sizing: border-box; background: #DDDDDD;
+  font: 700 10px/16px Verdana, Arial, sans-serif; color: #660000;
+  cursor: pointer; white-space: nowrap; text-align: center;
 }
+/* La gélule elle-même, DANS le liseré : `gfx._x = gfx._y = outline`. */
+body.bureau-frutiz #recherche-panel .rc-but::before {
+  content: ""; position: absolute; inset: 2px; z-index: -2; border-radius: 8px;
+  background: #FFAAAD; box-shadow: inset 0 0 0 1.5px #F28687;
+}
+/* L'ÉCLAT du dessin (#462, troisième forme, en `#FFEAEC`) : un filet qui longe
+   l'intérieur du bord haut puis s'enroule autour du bout DROIT. */
 body.bureau-frutiz #recherche-panel .rc-but::after {
-  content: ""; position: absolute; inset: 1.5px; pointer-events: none;
+  content: ""; position: absolute; inset: 3.5px; z-index: -1; pointer-events: none;
   border-radius: 6.5px;
-  border-top: 1px solid #FFFFFF; border-right: 1px solid #FFFFFF;
+  border-top: 1px solid #FFEAEC; border-right: 1px solid #FFEAEC;
   border-left: 0; border-bottom: 0;
 }
-body.bureau-frutiz #recherche-panel .rc-but:hover { background: #F6F6F6; }
-body.bureau-frutiz #recherche-panel .rc-but:active { background: #DDDDDD; }
+/* `setPos` (0x80d9e) : `gfx._y = y + outline`, avec y = 0 au repos, 1 au
+   survol et 2 à l'appui. La gélule DESCEND — c'est tout l'effet « push », et
+   le libellé, qui vit dans l'art, descend avec elle. */
+body.bureau-frutiz #recherche-panel .rc-but:hover::before,
+body.bureau-frutiz #recherche-panel .rc-but:hover::after { transform: translateY(1px); }
+body.bureau-frutiz #recherche-panel .rc-but:active::before,
+body.bureau-frutiz #recherche-panel .rc-but:active::after { transform: translateY(2px); }
+body.bureau-frutiz #recherche-panel .rc-but:hover { padding-top: 3px; }
+body.bureau-frutiz #recherche-panel .rc-but:active { padding-top: 4px; }
 /* LE BOUTON « avancée » N'EXISTE QUE SI L'ON A LE BANANOCLE. `getSearchLines`
    (0x863d4) ne le pousse dans la ligne que si `flAdvanceAvailable` — ce n'est
    pas un bouton grisé, c'est un bouton absent. */
@@ -1682,13 +1722,20 @@ body.bureau-frutiz #recherche-panel .rc-radio {
   font: 400 10px Verdana, Arial, sans-serif; color: #000000; cursor: pointer;
   white-space: nowrap; overflow: hidden;
 }
-body.bureau-frutiz #recherche-panel .rc-radio input { width: 11px; height: 11px; margin: 0; }
-/* Le `comboBox` d'époque (`big: 100` — il prend la place restante). */
+/* `de.Radio` (#50) est un sprite VIDE : la classe dessine tout au trait, dans
+   la palette du document. On s'en approche au plus près avec `accent-color`,
+   posé sur le vert d'`inputColor`. */
+body.bureau-frutiz #recherche-panel .rc-radio input {
+  width: 11px; height: 11px; margin: 0; accent-color: #94DB39;
+}
+/* Le `comboBox` d'époque (`big: 100` — il prend la place restante).
+   `newElement` (0x65c9c) lui passe `pal = {but: outColor, bg: inputColor}` :
+   son fond est celui des champs, donc VERT lui aussi. */
 body.bureau-frutiz #recherche-panel .rc-combo {
   flex: 1 1 auto; min-width: 0; height: 16px; padding: 0 4px;
   border: 0; border-radius: 8px;
-  background: #EEEEEE; box-shadow: inset 0 0 0 1px #DDDDDD;
-  font: 400 10px Verdana, Arial, sans-serif; color: #333333; cursor: pointer;
+  background: #DDFFBB; box-shadow: inset 0 0 0 1px #94DB39;
+  font: 400 10px Verdana, Arial, sans-serif; color: #335511; cursor: pointer;
 }
 /* LE LISTING : les blocs de 50, `blocMax` = 6 au plus. Rien ne rogne — le
    contour `#DDDDDD` d'un bloc est peint HORS de sa boîte, comme partout. */

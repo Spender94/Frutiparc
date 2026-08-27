@@ -1473,6 +1473,12 @@ window.BureauFrutiz = (function () {
     var p = document.createElement('section');
     p.className = 'panel ex-panel';
     p.id = conf.panneau.slice(1);
+    // `box.Explorer` EST un `dropBox` : `IconFileBox.onDrop` prend l'uid du
+    // dossier affiché pour cible et appelle `fileMng.move`. Le portage n'en
+    // avait fait aucun — rendre à « Mes disques » un disque qu'on venait
+    // d'éjecter tombait dans le vide.
+    p.setAttribute('data-depot', 'explorateur');
+    p.setAttribute('data-cle', cle);
     p.innerHTML = '<div class="ex-nav" hidden></div>'
       + '<div class="ex-alerte" hidden></div>'
       + '<div class="ex-champ"></div>';
@@ -1758,9 +1764,14 @@ window.BureauFrutiz = (function () {
     champ.textContent = '';
     // `fileMng.frusionOn` : le disque QUI TOURNE n'est plus dans la boîte —
     // il est dans le lecteur. Il y revient quand on l'éjecte.
-    if (frusion.disque) {
-      entrees = entrees.filter(function (x) { return x.uid !== frusion.disque.uid; });
-    }
+    // Et `fileMng.move` : un disque POSÉ AILLEURS — sur le bureau, dans un
+    // dossier — a QUITTÉ la boîte. Un déménagement, pas une copie : sans ce
+    // filtre, glisser un disque sur le bureau en laissait un second dans
+    // « Mes disques », et l'on se retrouvait avec deux fois le même FD.
+    entrees = entrees.filter(function (x) {
+      if (x.type !== 'disc') return true;
+      return !dansLeLecteur(x) && !trouverObjet(x.uid);
+    });
     // `box.Explorer.displayList` trie par NOM, croissant, sans tenir compte de
     // la casse — les dossiers ne passent pas devant.
     entrees = entrees.slice().sort(function (a, b) {
@@ -1935,6 +1946,7 @@ window.BureauFrutiz = (function () {
     var pris = false;
     if (quoi === 'frusion') pris = frusion.deposer(info);
     else if (quoi === 'dossier') pris = deposerDansDossier(info, boite.getAttribute('data-uid'));
+    else if (quoi === 'explorateur') pris = deposerDansExplorateur(info, boite.getAttribute('data-cle'));
     else if (quoi === 'bureau' || (!boite && surLeBureau(cible))) pris = deposerSurBureau(info, x, y, ctrl);
     // `IconFileBox.onEndDrag` note l'heure (`IconFileBox.dragEnd = getTimer()`)
     // pour que le clic de fin de geste n'ouvre rien.
@@ -2089,6 +2101,26 @@ window.BureauFrutiz = (function () {
     return creerObjetBureau(info, uid, caseLibreBureau(uid));
   }
 
+  /*
+   * RANGER DANS UNE FENÊTRE D'EXPLORATEUR (`fileMng.move(uid, dossier)`).
+   *
+   * « Mes disques » est la BOÎTE du serveur : un disque y est TOUJOURS. Ce qui
+   * l'en sort, ce n'est pas un déménagement mais un raccourci posé ailleurs —
+   * sur le bureau ou dans un dossier. L'y ranger, c'est donc retirer ce
+   * raccourci-là ; et un disque qui sort du lecteur sans raccourci y rentre de
+   * lui-même, le geste réussit quand même.
+   *
+   * L'inventaire, lui, ne range rien : ses accessoires, fonds et pictos ne se
+   * posent pas sur le bureau d'époque (ils s'APPLIQUENT — cf.
+   * `box.Explorer.specialClick`), il n'y a donc rien à lui rendre.
+   */
+  function deposerDansExplorateur(info, cle) {
+    if (cle !== 'disques' || !info || info.type !== 'disc') return false;
+    var dedans = info.uid && trouverObjet(info.uid);
+    if (dedans) retirerObjetBureau(dedans.uid);
+    return true;
+  }
+
   // `fileMng.addListener` : chaque explorateur ouvert écoute SON dossier et se
   // relit quand il change. Le portage relit simplement ce qui est affiché.
   function relireExplorateurs() {
@@ -2165,8 +2197,26 @@ window.BureauFrutiz = (function () {
     });
     objetsBureau.forEach(function (o) {
       if ((o.parent || 'root') !== 'root') return;
+      if (dansLeLecteur(o)) return;      // `fileMng.frusionOn` : il n'est plus là
       bureau.appendChild(raccourciBureau(o));
     });
+  }
+
+  /*
+   * `fileMng.frusionOn(info)` / `frusionOff()` — LE DISQUE QUI TOURNE N'EST
+   * NULLE PART AILLEURS.
+   *
+   * D'époque, insérer un disque le retire du GESTIONNAIRE DE FICHIERS : tous
+   * ceux qui l'écoutent se relisent, et il disparaît d'un coup de la boîte à
+   * disques, du bureau et de tout dossier ouvert. Il y revient à l'éjection.
+   *
+   * Le portage ne filtrait que la fenêtre « Mes disques » : un disque posé sur
+   * le bureau restait sur le bureau pendant qu'il tournait dans le lecteur —
+   * on en voyait deux, et l'éjecter en donnait un troisième.
+   */
+  function dansLeLecteur(o) {
+    return !!(frusion && frusion.disque && !frusion.rendu
+      && o && frusion.disque.uid === o.uid);
   }
 
   function raccourciBureau(o) {
@@ -2264,9 +2314,12 @@ window.BureauFrutiz = (function () {
     dessinerDossierBureau(o.uid);
   }
 
-  // Ce que le bureau tient dans un dossier donné.
+  // Ce que le bureau tient dans un dossier donné — le disque qui tourne dans
+  // le lecteur en sort, comme partout ailleurs (`fileMng.frusionOn`).
   function objetsDuDossier(uid) {
-    return objetsBureau.filter(function (o) { return (o.parent || 'root') === uid; });
+    return objetsBureau.filter(function (o) {
+      return (o.parent || 'root') === uid && !dansLeLecteur(o);
+    });
   }
 
   function dessinerDossierBureau(uid) {
@@ -2331,9 +2384,21 @@ window.BureauFrutiz = (function () {
         glisseur.el.style.left = e.clientX + 'px';
         glisseur.el.style.top = e.clientY + 'px';
       };
+      /*
+       * LE DÉSABONNEMENT DOIT PORTER LE MÊME DRAPEAU QUE L'ABONNEMENT.
+       *
+       * `pointerup` était écouté en CAPTURE (`true`) et retiré sans — deux
+       * clés différentes pour le navigateur : le retrait ne retirait rien. Un
+       * écouteur restait donc accroché au document à CHAQUE glissé, avec son
+       * `parti` figé à vrai, et tous les anciens se réveillaient au relâchement
+       * suivant : chacun faisait son `stopPropagation()` et appelait
+       * `finirGlisser` à vide. De là l'impression, au bout de quelques gestes,
+       * qu'« on ne peut plus rien lâcher ».
+       */
       var lache = function (e) {
         document.removeEventListener('pointermove', bouge);
-        document.removeEventListener('pointerup', lache);
+        document.removeEventListener('pointerup', lache, true);
+        document.removeEventListener('pointercancel', lache, true);
         if (parti) {
           e.preventDefault(); e.stopPropagation();
           glisseur.ctrl = !!(e.ctrlKey || e.metaKey);
@@ -2342,6 +2407,9 @@ window.BureauFrutiz = (function () {
       };
       document.addEventListener('pointermove', bouge);
       document.addEventListener('pointerup', lache, true);
+      // Un glissé que le navigateur interrompt (le doigt sort de l'écran, une
+      // fenêtre passe devant) doit rendre l'icône, pas la laisser invisible.
+      document.addEventListener('pointercancel', lache, true);
     });
   }
 
@@ -2570,6 +2638,7 @@ window.BureauFrutiz = (function () {
     this.disqueEl.appendChild(dessinDisque(info.desc[0], info.desc[1]));
     this.disqueEl.classList.add('plein');
     this.disqueEl.classList.remove('file');
+    this.rendu = false;                 // `fileMng.frusionOn` : il quitte ses dossiers
     this.rotation = 0;
     this.vitesse = 0;
     this.closeSlot();
@@ -2625,8 +2694,13 @@ window.BureauFrutiz = (function () {
   // `releaseDisc` : le tiroir ressort et le disque, posé dedans, redevient
   // attrapable — un clic dessus le remet au bout du curseur (`takeDisc`).
   frusion.releaseDisc = function () {
+    // `fileMng.frusionOff()` : le disque redevient un fichier comme les
+    // autres — il repeuple sa boîte et son dossier AVANT même qu'on le
+    // reprenne au curseur. `rendu` est ce drapeau-là.
+    this.rendu = true;
     this.openSlot();
     this.disqueEl.classList.add('reprenable');
+    rafraichirDisques();
   };
 
   frusion.takeDisc = function (ev) {
@@ -2653,16 +2727,19 @@ window.BureauFrutiz = (function () {
 
   frusion.removeDisc = function () {
     this.disque = null;
+    this.rendu = false;
     this.disqueEl.textContent = '';
     this.disqueEl.classList.remove('plein', 'file', 'reprenable');
     rafraichirDisques();
   };
 
-  // La fenêtre « Mes disques » suit l'état du lecteur, comme les écoutants de
-  // `fileMng` d'époque : le disque inséré la quitte, le disque éjecté y rentre.
+  // TOUS les écoutants de `fileMng` suivent l'état du lecteur : la fenêtre
+  // « Mes disques », le bureau, et les dossiers ouverts. Le disque inséré les
+  // quitte, le disque éjecté y rentre.
   function rafraichirDisques() {
     var e = exEtats.disques;
     if (e && e.uid && $(EXPLORATEURS.disques.panneau)) ouvrirDossier('disques', e.uid, e.titre);
+    rafraichirBureau();
   }
 
   // `forceCloseSlot` : le disque s'en va sans qu'on le reprenne (on a fermé
@@ -2952,6 +3029,16 @@ window.BureauFrutiz = (function () {
     var cle = String(pseudo).toLowerCase();
     var cote = Math.min(ec.clientWidth, ec.clientHeight);
     var b = ec.querySelector('.bo-clb[data-qui="' + cleCss(cle) + '"]');
+    // ELLE REPARTAIT ? ELLE RESTE. `onCLBEvent` (0x62318) ne fait `addContent`
+    // que si la personne n'est pas déjà dans `contentList` — et une bouille qui
+    // s'en va y EST ENCORE : `removeCLBContent` ne l'en retire qu'au bout du
+    // glissement. Elle reprend donc son `addSlide(1.5, …, "contentSlide" +
+    // user)`, et comme le glissement porte son nom, le nouveau REMPLACE
+    // l'ancien — callback de suppression compris. Le portage laissait au
+    // contraire son minuteur courir : sept dixièmes plus tard la bouille
+    // s'effaçait en pleine parole, EN EMPORTANT LE LECTEUR qu'on venait d'y
+    // loger. C'est ce clignotement-là qu'on voyait « parfois ».
+    if (b) revenirDeLEspace(b);
     if (!b) {
       b = document.createElement('div');
       b.className = 'bo-clb';
@@ -2998,7 +3085,18 @@ window.BureauFrutiz = (function () {
     b.classList.add('part');
     rendreScene(b);
     b.style.left = (-Math.min(ec.clientWidth, ec.clientHeight)) + 'px';
-    setTimeout(function () { if (b.parentNode) b.remove(); }, 700);
+    b.bfDepart = setTimeout(function () {
+      b.bfDepart = null;
+      // Ceinture ET bretelles : le lecteur ne part JAMAIS avec l'écran qui le
+      // loge, quoi qu'il se soit passé entre-temps.
+      rendreScene(b);
+      if (b.parentNode) b.remove();
+    }, 700);
+  }
+  // Le glissement de départ est annulé : la bouille reprend sa place.
+  function revenirDeLEspace(b) {
+    if (b.bfDepart) { clearTimeout(b.bfDepart); b.bfDepart = null; }
+    b.classList.remove('part');
   }
 
   /*

@@ -121,11 +121,76 @@ test('le jeu prend un ONGLET, et le fermer éjecte', () => {
   assert.match(JS, /frusion\.takeDisc = function/);
 });
 
-test('le disque qui tourne quitte la boîte à disques', () => {
-  // `fileMng.frusionOn` : le disque n'est plus dans le dossier tant qu'il est
-  // dans le lecteur.
-  assert.match(JS, /return x\.uid !== frusion\.disque\.uid;/);
-  assert.match(JS, /function rafraichirDisques\(\)/);
+/*
+ * `fileMng.frusionOn(info)` / `frusionOff()` — LE DISQUE QUI TOURNE N'EST
+ * NULLE PART AILLEURS.
+ *
+ * D'époque, insérer un disque le retire du GESTIONNAIRE DE FICHIERS : tous
+ * ceux qui l'écoutent se relisent, et il disparaît d'un coup de la boîte à
+ * disques, du bureau et de tout dossier ouvert. Il y revient à l'éjection —
+ * et `releaseDisc` le rend AVANT même qu'on le reprenne au curseur.
+ *
+ * Le portage ne filtrait que la fenêtre « Mes disques » : un disque posé sur
+ * le bureau y restait pendant qu'il tournait dans le lecteur.
+ */
+test('le disque qui tourne quitte la boîte, le bureau et les dossiers', () => {
+  assert.match(JS, /function dansLeLecteur\(o\) \{\s*\n\s*return !!\(frusion && frusion\.disque && !frusion\.rendu/);
+  // la boîte
+  assert.match(JS, /if \(x\.type !== 'disc'\) return true;\s*\n\s*return !dansLeLecteur\(x\) && !trouverObjet\(x\.uid\);/);
+  // le bureau
+  assert.match(JS, /if \(dansLeLecteur\(o\)\) return;\s+\/\/ `fileMng\.frusionOn`/);
+  // et les dossiers du bureau
+  assert.match(JS, /return \(o\.parent \|\| 'root'\) === uid && !dansLeLecteur\(o\);/);
+  // tous les écoutants se relisent d'un coup
+  assert.match(JS, /function rafraichirDisques\(\) \{[\s\S]{0,260}?rafraichirBureau\(\);/);
+  // `frusionOff` : rendu AVANT qu'on le reprenne
+  assert.match(JS, /frusion\.releaseDisc = function \(\) \{[\s\S]{0,320}?this\.rendu = true;[\s\S]{0,200}?rafraichirDisques\(\);/);
+});
+
+/*
+ * UN DISQUE POSÉ AILLEURS A QUITTÉ LA BOÎTE — `fileMng.move`, pas une copie.
+ * Sans ce filtre, glisser un disque sur le bureau en laissait un second dans
+ * « Mes disques » : on se retrouvait avec deux fois le même FD.
+ */
+test('un disque déménagé ne reste pas AUSSI dans sa boîte', () => {
+  assert.match(JS, /return !dansLeLecteur\(x\) && !trouverObjet\(x\.uid\);/);
+});
+
+/*
+ * `box.Explorer` EST un `dropBox` : `IconFileBox.onDrop` prend l'uid du
+ * dossier affiché et appelle `fileMng.move`. Le portage n'en avait fait aucun,
+ * et rendre à « Mes disques » un disque qu'on venait d'éjecter tombait dans le
+ * vide.
+ */
+test('la fenêtre d’explorateur reçoit ce qu’on lui apporte', () => {
+  assert.match(JS, /p\.setAttribute\('data-depot', 'explorateur'\);\s*\n\s*p\.setAttribute\('data-cle', cle\);/);
+  assert.match(JS, /else if \(quoi === 'explorateur'\) pris = deposerDansExplorateur\(info, boite\.getAttribute\('data-cle'\)\);/);
+  const d = JS.slice(JS.indexOf('function deposerDansExplorateur'), JS.indexOf('// `fileMng.addListener`'));
+  // « Mes disques » seulement : l'inventaire n'a rien à recevoir.
+  assert.match(d, /if \(cle !== 'disques' \|\| !info \|\| info\.type !== 'disc'\) return false;/);
+  assert.match(d, /if \(dedans\) retirerObjetBureau\(dedans\.uid\);/);
+  assert.match(d, /return true;/);
+});
+
+/*
+ * LE DÉSABONNEMENT DOIT PORTER LE MÊME DRAPEAU QUE L'ABONNEMENT.
+ *
+ * `pointerup` était écouté en CAPTURE et retiré sans : deux clés différentes
+ * pour le navigateur, le retrait ne retirait rien. Un écouteur restait donc
+ * accroché au document à CHAQUE glissé, avec son `parti` figé à vrai, et tous
+ * les anciens se réveillaient au relâchement suivant — chacun faisant son
+ * `stopPropagation()`. De là l'impression qu'« on ne peut plus rien lâcher ».
+ * Mesuré au banc : sept écouteurs de trop après six gestes.
+ */
+test('un glissé retire exactement les écouteurs qu’il a posés', () => {
+  const r = JS.slice(JS.indexOf('function rendreAttrapable(el, info, dessine)'),
+    JS.indexOf('LE LECTEUR FRUSION'));
+  assert.match(r, /document\.removeEventListener\('pointerup', lache, true\);/);
+  assert.match(r, /document\.addEventListener\('pointerup', lache, true\);/);
+  // Un glissé interrompu par le navigateur rend l'icône au lieu de la laisser
+  // invisible.
+  assert.match(r, /document\.removeEventListener\('pointercancel', lache, true\);/);
+  assert.match(r, /document\.addEventListener\('pointercancel', lache, true\);/);
 });
 
 test('la géométrie est celle du clip et du relevé 1:1', () => {

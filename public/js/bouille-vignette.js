@@ -165,9 +165,24 @@
       b.humeur(e);
       return b;
     }
+    // CHANGER DE FAMILLE, C'EST REPARTIR DE ZÉRO — et le remontage est
+    // ASYNCHRONE (il faut aller chercher un autre fichier). Sans effacer, le
+    // canevas garde les pixels de la bouille PRÉCÉDENTE tout ce temps-là :
+    // dans l'aquarium du chat, où un seul lecteur sert tout le monde, on
+    // voyait le visage du locuteur d'avant sous celui qui vient de parler,
+    // puis un clignotement quand la nouvelle famille arrivait enfin.
+    vider(c);
     oublier(c);
     dessiner(c);
     return null;
+  }
+
+  /** Efface le canevas — rien ne doit survivre à un changement de bouille. */
+  function vider(c) {
+    try {
+      var g = c.getContext('2d');
+      if (g) g.clearRect(0, 0, c.width, c.height);
+    } catch (err) { /* un canevas détaché n'a rien à effacer */ }
   }
 
   function oublier(c) {
@@ -186,9 +201,9 @@
    * vignette figée et une bouille en mouvement. Le moteur l'ajuste maintenant
    * de lui-même : on garde l'arbre en place, l'animation part tout de suite.
    */
-  function jouer(c, etat, anim) {
+  function jouer(c, etat, anim, humeur) {
     c.setAttribute('data-anime', '1');
-    if (etat !== undefined) rafraichir(c, etat);
+    if (etat !== undefined) rafraichir(c, etat, humeur);
     return dessiner(c).then(function (b) {
       if (b) b.animer(Number(anim) || 1);
       return b;

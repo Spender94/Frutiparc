@@ -7830,9 +7830,14 @@
     if (c) c.canvas = cv; else overlayCanvas = cv;
     return cv;
   }
+  // L'HUMEUR VOYAGE AVEC. Le lecteur est UNIQUE par fenêtre : sans la lui
+  // donner, il gardait celle du locuteur précédent — une bouille fâchée
+  // prêtait ses sourcils à la suivante entre deux images d'animation.
   function overlayJouer(pseudo, anim, c) {
-    var f = state.bouilleByUser[String(pseudo).toLowerCase()] || DEFAULT_BOUILLE;
-    FPBouilleVignette.jouer(overlayIframe(c), f, ANIM_INDEX[anim] || 1);
+    var cle = String(pseudo).toLowerCase();
+    var f = state.bouilleByUser[cle] || DEFAULT_BOUILLE;
+    FPBouilleVignette.jouer(overlayIframe(c), f, ANIM_INDEX[anim] || 1,
+      state.humeurByUser[cle] || 0);
   }
   function overlayEteindre(c) {
     var cv = c ? c.canvas : overlayCanvas;
@@ -7867,6 +7872,11 @@
       if (colonne) {
         var deja = colonne.querySelectorAll(".bo-anime");
         for (var i2 = 0; i2 < deja.length; i2++) {
+          // SAUF CELUI-LÀ. Reparler d'affilée, c'est le même écran : le lui
+          // retirer pour le lui rendre trois lignes plus bas faisait
+          // reparaître sa vignette figée le temps d'une image — un clignotement
+          // pour rien.
+          if (deja[i2] === ecran) continue;
           deja[i2].classList.remove("bo-anime");
           // Celle qu'on INTERROMPT a fini de parler : dans l'aquarium, elle
           // s'en va. D'époque chaque bouille avait son lecteur et son

@@ -3610,6 +3610,38 @@ cliquer une entrée ouvre la fiche, où que l'on clique dessus.
 en cours (`status.internal`), puis l'absence (`status.external`), puis la
 présence par défaut.
 
+### La teinte du formulaire : rien n'y est gris
+
+`cp.Document.newElement` (0x659a5) ne prend pas les couleurs d'une palette à
+lui : il puise dans le STYLE DU DOCUMENT, et celui de la recherche est
+`frSystem`. `Standard.getWinStyle` (0x49659) lui donne `color = [white, green,
+white]`, dont `Standard.getDocStyle` (0x4989b) tire :
+
+    inputColor      = color[1]        → colorSet.GREEN
+    bgTextColor     = color[0]
+    outlineColorNum = color[0].shade  → colorSet.white.shade = #DDDDDD
+    ts.textFormat.color = color[0].overdark
+
+D'où, ligne par ligne :
+
+- un **`type: "input"`** devient un `deInput`, dont la gélule `inputField`
+  (#170) est GRISE dans le SWF et se fait teindre par `inputColor` : elle est
+  donc VERTE (`#DDFFBB` de chair, `#94DB39` au bord), exactement comme le champ
+  « sujet » de la fenêtre des salons ;
+- un **`type: "comboBox"`** reçoit `pal = {but: outColor, bg: inputColor}` —
+  vert lui aussi ;
+- un **`type: "button"`** prend `link = "butPush"` et, faute de `param.link`,
+  l'art `butPushStandard` (#465) : **LA GÉLULE ROSE**, celle de « créer un
+  salon » — chair `#FFAAAD`, anneau `#F28687`, éclat `#FFEAEC`, encre `#660000`,
+  et TROIS largeurs sur trois images (40, 80, 120 ; le portage l'étire en CSS
+  plutôt que d'écraser ses bouts ronds). `but.Push.init` (0x80a10) la pose sur
+  un `drawSmoothSquare` de rayon `curve + outline` rempli de `color`, large de
+  `gfx + 2·outline` : un LISERÉ de 2 px en `outlineColorNum` autour d'elle. Et
+  `setPos` (0x80d9e) fait `gfx._y = y + outline` avec y = 0 au repos, 1 au
+  survol, 2 à l'appui — la gélule DESCEND, c'est tout l'effet « push ».
+
+Les boutons ne sont donc pas gris : ils sont **roses, cerclés de gris clair**.
+
 ### Les dessins sortis du SWF (`scripts/extract-recherche.js`)
 
 - **`mcSearchButton` (#441)** — UN SEUL dessin, trois PROFONDEURS (et non trois
@@ -3686,6 +3718,88 @@ Ce qui n'est PAS reconstruit, c'est la SUBSTITUTION du titre des régions :
 la table `<ct>`. Il ne vaut « département » que pour la France — les quatre
 autres pays y portent leur propre code (« be », « lu », « ca », « ch »). C'est
 la donnée d'origine ; on ne la corrige pas.
+
+## L'AQUARIUM QUI CLIGNOTAIT
+
+Trois causes, toutes dans le fait que le portage n'a qu'UN lecteur par fenêtre
+là où l'époque en avait un par bouille.
+
+- **Une bouille qui reprend la parole en partant.** `onCLBEvent` (0x62318) ne
+  fait `addContent` que si la personne n'est pas déjà dans `contentList` — et
+  une bouille qui s'en va y EST ENCORE : `removeCLBContent` (0x625ee) ne l'en
+  retire qu'au bout du glissement. Elle reprend donc son `addSlide(1.5, …,
+  "contentSlide" + user)`, et comme le glissement PORTE SON NOM, le nouveau
+  remplace l'ancien — callback de suppression compris. Le portage laissait au
+  contraire son minuteur courir : sept dixièmes plus tard la bouille s'effaçait
+  en pleine parole, **en emportant le lecteur** qu'on venait d'y loger.
+- **Le canevas gardait le locuteur précédent.** `FPBouilleVignette.rafraichir`
+  remonte l'arbre quand on CHANGE DE FAMILLE, et ce remontage est asynchrone —
+  il faut aller chercher un autre fichier. Sans l'effacer, le canevas gardait
+  les pixels de la bouille d'avant tout ce temps-là : on voyait le visage du
+  locuteur précédent sous celui qui venait de parler, puis un clignotement
+  quand la nouvelle famille arrivait enfin. Il s'efface maintenant, et
+  `jouer()` transmet aussi l'HUMEUR — sans quoi une bouille fâchée prêtait ses
+  sourcils à la suivante.
+- **Reparler d'affilée.** `showBouilleOverlay` retirait `bo-anime` à TOUS les
+  écrans, y compris celui qui allait jouer, pour le lui rendre trois lignes
+  plus bas : sa vignette figée reparaissait le temps d'une image.
+
+## LE GLISSER-DÉPOSER, ET CE QUI L'EMPÊCHAIT
+
+Trois défauts distincts se donnaient la main, et le résultat ressemblait à « le
+glisser-déposer marche une fois sur deux ».
+
+### 1. Le désabonnement portait une autre clé que l'abonnement
+
+`rendreAttrapable` — le geste de TOUTES les icônes, celles des explorateurs
+comme celles du bureau — écoutait `pointerup` **en capture** et le retirait
+**sans** :
+
+    document.addEventListener('pointerup', lache, true);
+    …
+    document.removeEventListener('pointerup', lache);      // ← rien retiré
+
+Pour le navigateur ce sont deux clés différentes : le retrait ne retirait rien.
+Un écouteur restait donc accroché au document à CHAQUE glissé, avec son `parti`
+figé à vrai, et tous les anciens se réveillaient au relâchement suivant —
+chacun faisant son `stopPropagation()` et appelant `finirGlisser` à vide.
+**Mesuré au banc : sept écouteurs de trop après six gestes.** De là
+l'impression, au bout de quelques manipulations, qu'« on ne peut plus rien
+lâcher ». Le portage retire maintenant avec le même drapeau, et écoute aussi
+`pointercancel` — un glissé que le navigateur interrompt doit rendre son icône
+plutôt que la laisser invisible.
+
+### 2. Une fenêtre d'explorateur n'était pas un `dropBox`
+
+`box.Explorer` en est un d'époque : `IconFileBox.onDrop` prend l'uid du dossier
+affiché et appelle `fileMng.move`. Le portage n'avait fait de `dropBox` que la
+Frusion, les dossiers du bureau et le fond d'écran — rendre à « Mes disques »
+un disque qu'on venait d'éjecter tombait donc dans le vide.
+
+« Mes disques » est la BOÎTE du serveur : un disque y est toujours. Ce qui l'en
+sort, ce n'est pas un déménagement mais un RACCOURCI posé ailleurs. L'y ranger,
+c'est retirer ce raccourci-là — et un disque qui sort du lecteur sans raccourci
+y rentre de lui-même, le geste réussit quand même. L'inventaire, lui, ne reçoit
+rien : ses accessoires, fonds et pictos ne se posent pas sur le bureau, ils
+s'APPLIQUENT (`box.Explorer.specialClick`).
+
+### 3. `fileMng.frusionOn` ne vidait qu'une seule vue
+
+Insérer un disque le retire du GESTIONNAIRE DE FICHIERS : tous ceux qui
+l'écoutent se relisent, et il disparaît d'un coup de la boîte à disques, du
+bureau et de tout dossier ouvert. Il y revient à l'éjection — et c'est
+`releaseDisc` qui le rend (`fileMng.frusionOff()`), **avant** même qu'on le
+reprenne au curseur.
+
+Le portage ne filtrait que la fenêtre « Mes disques ». Un disque posé sur le
+bureau y restait donc pendant qu'il tournait dans le lecteur, et il manquait
+l'autre moitié de la règle : `fileMng.move` est un DÉMÉNAGEMENT, pas une copie
+— un disque glissé sur le bureau quitte sa boîte. Sans ce filtre-là, le même FD
+figurait aux deux endroits.
+
+Relevé au banc, sur le code d'avant : après un aller-retour boîte → bureau →
+lecteur → éjection → boîte, on comptait **deux disques sur le bureau et treize
+dans une boîte qui en avait quinze**. Après : un seul exemplaire, où qu'il soit.
 
 ## L'ASCENSEUR (`ScrollBar` sprite#864, `sb.Round` sprite#865)
 

@@ -59,9 +59,61 @@ test('le rappel de départ ne vaut qu’en CLB', () => {
 test('la bouille repart par la gauche, puis disparaît', () => {
   const p = JS.slice(JS.indexOf('function partirDansLEspace'), JS.indexOf('/*\n   * UNE BOUILLE'));
   assert.match(p, /b\.style\.left = \(-Math\.min\(ec\.clientWidth, ec\.clientHeight\)\) \+ 'px';/);
-  assert.match(p, /setTimeout\(function \(\) \{ if \(b\.parentNode\) b\.remove\(\); \}, 700\);/);
-  // `rendreScene` AVANT le départ : le lecteur ne part pas avec elle.
+  assert.match(p, /b\.bfDepart = setTimeout\(function \(\) \{[\s\S]{0,300}?if \(b\.parentNode\) b\.remove\(\);\s*\n\s*\}, 700\);/);
+  // `rendreScene` AVANT le départ — ET encore au moment de retirer : le
+  // lecteur ne part JAMAIS avec l'écran qui le loge.
   assert.match(p, /b\.classList\.add\('part'\);\s*\n\s*rendreScene\(b\);/);
+  assert.match(p, /b\.bfDepart = null;\s*\n[\s\S]{0,220}?rendreScene\(b\);/);
+});
+
+/*
+ * ELLE REPARTAIT ? ELLE RESTE.
+ *
+ * `onCLBEvent` (0x62318) ne fait `addContent` que si la personne n'est pas
+ * déjà dans `contentList` — et une bouille qui s'en va y EST ENCORE :
+ * `removeCLBContent` (0x625ee) ne l'en retire qu'au bout du glissement. Elle
+ * reprend donc son `addSlide(1.5, …, "contentSlide" + user)`, et comme le
+ * glissement porte SON NOM, le nouveau remplace l'ancien — callback de
+ * suppression compris.
+ *
+ * Le portage laissait au contraire son minuteur courir : sept dixièmes plus
+ * tard la bouille s'effaçait en pleine parole, en emportant le lecteur qu'on
+ * venait d'y loger. C'est le clignotement qu'on voyait « parfois ».
+ */
+test('une bouille qui reprend la parole en partant annule son départ', () => {
+  const c = JS.slice(JS.indexOf('function clbAccueille'), JS.indexOf('function hauteurLibre'));
+  assert.match(c, /if \(b\) revenirDeLEspace\(b\);/);
+  const r = JS.slice(JS.indexOf('function revenirDeLEspace'), JS.indexOf('function revenirDeLEspace') + 300);
+  assert.match(r, /if \(b\.bfDepart\) \{ clearTimeout\(b\.bfDepart\); b\.bfDepart = null; \}/);
+  assert.match(r, /b\.classList\.remove\('part'\);/);
+});
+
+/*
+ * LE LECTEUR EST UNIQUE : IL NE DOIT RIEN GARDER DU LOCUTEUR PRÉCÉDENT.
+ *
+ * `FPBouilleVignette.rafraichir` remonte l'arbre quand on CHANGE DE FAMILLE —
+ * et ce remontage est asynchrone (un autre fichier à aller chercher). Sans
+ * effacer, le canevas gardait les pixels de la bouille d'avant tout ce
+ * temps-là : dans l'aquarium, on voyait le visage du locuteur précédent sous
+ * celui qui venait de parler.
+ */
+test('le canevas s’efface avant de changer de famille', () => {
+  const V = fs.readFileSync(path.join(ROOT, 'public/js/bouille-vignette.js'), 'utf8');
+  const r = V.slice(V.indexOf('function rafraichir(c, etat, humeur)'), V.indexOf('function vider(c)'));
+  assert.match(r, /vider\(c\);\s*\n\s*oublier\(c\);\s*\n\s*dessiner\(c\);/);
+  assert.match(V, /function vider\(c\) \{[\s\S]{0,240}?g\.clearRect\(0, 0, c\.width, c\.height\)/);
+  // Et l'humeur voyage avec l'animation : `jouer` la transmet.
+  assert.match(V, /function jouer\(c, etat, anim, humeur\) \{/);
+  assert.match(V, /if \(etat !== undefined\) rafraichir\(c, etat, humeur\);/);
+  assert.match(LIGHT, /FPBouilleVignette\.jouer\(overlayIframe\(c\), f, ANIM_INDEX\[anim\] \|\| 1,\s*\n\s*state\.humeurByUser\[cle\] \|\| 0\);/);
+});
+
+test('reparler d’affilée ne fait pas clignoter son propre écran', () => {
+  const d = LIGHT.indexOf('var deja = colonne.querySelectorAll(".bo-anime");');
+  const bloc = LIGHT.slice(d, LIGHT.indexOf('ecran.classList.add("bo-anime");', d));
+  assert.match(bloc, /if \(deja\[i2\] === ecran\) continue;/);
+  // et le retrait ne vaut donc que pour les AUTRES
+  assert.match(bloc, /deja\[i2\]\.classList\.remove\("bo-anime"\);/);
 });
 
 test('les deux moments qui terminent une action', () => {

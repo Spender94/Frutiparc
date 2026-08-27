@@ -141,6 +141,36 @@ test('les quatre lignes avancées, avec l’ordre d’origine des sexes', () => 
   assert.match(f, /etiquetteRecherche\('region :', 50\)/);
 });
 
+/*
+ * LA TEINTE DU FORMULAIRE — rien n'y est gris.
+ *
+ * `cp.Document.newElement` (0x659a5) puise dans le style du document, et le
+ * style du document est `frSystem` : `Standard.getWinStyle` (0x49659) lui donne
+ * `color = [white, green, white]`, dont `Standard.getDocStyle` (0x4989b) tire
+ * `inputColor = color[1]` (le VERT) et `outlineColorNum = color[0].shade`
+ * (#DDDDDD). Un `type: "button"` prend l'art `butPushStandard` (#465) — la
+ * GÉLULE ROSE, la même que « créer un salon » — et `but.Push.init` (0x80a10)
+ * la pose sur un `drawSmoothSquare` rempli de `color`, large de
+ * `gfx + 2·outline` : un liseré de 2 px autour d'elle. Les boutons ne sont donc
+ * pas gris, ils sont roses cerclés de gris clair, et ils DESCENDENT de 1 px au
+ * survol, de 2 à l'appui (`setPos`, 0x80d9e).
+ */
+test('les champs sont VERTS (inputColor) et les boutons ROSES (butPushStandard)', () => {
+  const f = CSS.slice(CSS.indexOf('body.bureau-frutiz #recherche-panel .rc-in {'),
+    CSS.indexOf('body.bureau-frutiz #recherche-panel .rc-liste {'));
+  // les champs et les menus : la gélule `inputField` teintée en vert
+  assert.match(f, /\.rc-in \{[\s\S]{0,240}?background: #DDFFBB; box-shadow: inset 0 0 0 1px #94DB39;/);
+  assert.match(f, /\.rc-combo \{[\s\S]{0,240}?background: #DDFFBB; box-shadow: inset 0 0 0 1px #94DB39;/);
+  // le liseré de `but.Push`, puis la gélule dedans
+  assert.match(f, /\.rc-but \{[\s\S]{0,320}?background: #DDDDDD;/);
+  assert.match(f, /\.rc-but::before \{[\s\S]{0,200}?background: #FFAAAD; box-shadow: inset 0 0 0 1\.5px #F28687;/);
+  assert.match(f, /\.rc-but::after \{[\s\S]{0,220}?border-top: 1px solid #FFEAEC;/);
+  assert.match(f, /color: #660000;/);
+  // `setPos(0/1/2)` : la gélule descend
+  assert.match(f, /\.rc-but:hover::before,[\s\S]{0,120}?transform: translateY\(1px\);/);
+  assert.match(f, /\.rc-but:active::before,[\s\S]{0,120}?transform: translateY\(2px\);/);
+});
+
 test('le bouton « avancée » n’EXISTE pas sans le Bananocle', () => {
   // `getSearchLines` (0x863d4) ne le pousse dans la ligne que si
   // `flAdvanceAvailable` : ce n'est pas un bouton grisé, c'est un absent.
