@@ -4185,3 +4185,45 @@ la garde dans `caseLibreBureau`, et le filet du chargement ramené à la seule
 LECTURE — une erreur de rendu ne doit pas disparaître dans le silence.
 `test/bureauObjetsSansPos.test.js` exécute la fonction livrée et rejoue
 l'ancienne pour montrer d'où venait le vide.
+
+## « Le light est plus lent que Ruffle »
+
+Mesuré, pas supposé. Le repos ne coûte RIEN — dix secondes de bureau au calme :
+zéro milliseconde de script, zéro image demandée. Tout se joue au CHARGEMENT.
+
+`express.static` sans options pose `Cache-Control: max-age=0`. Le navigateur
+garde bien le fichier, mais REDEMANDE au serveur, à chaque chargement, s'il a
+changé : une requête, une réponse « 304 Non modifié », zéro octet utile — et
+il faut la faire pour chacun. Le bureau en faisait deux cent quatre-vingts.
+
+Relevé au banc (Chromium, octets réellement passés sur le réseau, second
+chargement avec le cache déjà chaud) :
+
+    avant   303 réponses, 303 vont au serveur, dont 280 revalidations
+    après   303 réponses, 280 servies par le CACHE, 23 vont au serveur
+
+Sur la boucle locale l'écart se lit à peine (1031 → 790 ms). Chez un joueur,
+chaque aller-retour vaut sa latence : à 40 ms et six connexions parallèles,
+280 revalidations font près de deux secondes AVANT que le bureau paraisse, à
+chaque visite. Au téléphone, en 4G, le double. Ruffle, lui, avait déjà
+`maxAge: '7d', immutable` sur son moteur et ne redemandait rien : voilà tout
+l'écart, et il n'était pas dans le portage mais dans ses en-têtes.
+
+Quatre dossiers d'artefacts extraits des SWF passent donc en cache d'une
+semaine : `/frutiz/sprites`, `/frutiz/fontes`, `/snake3/fontes`, `/fb`. La page,
+ses scripts et sa feuille de style restent à `max-age=0` — ils doivent changer
+au déploiement. Ils sont déjà compressés (446 Ko de page → 137 sur le réseau)
+et se revalident en 304.
+
+**La contrepartie, à connaître** : un dessin REMPLACÉ ne parvient pas aux
+joueurs qui tiennent déjà l'ancien avant la fin de la semaine. La parade est
+déjà dans le portage — incrémenter le `?v=` de l'appel, comme le light le fait
+pour `/fb/fd_miniwave.png?v=2`. Ajouter un dessin ne pose aucun problème.
+
+### Ce qui reste à gagner
+
+Le PREMIER chargement, lui, demande toujours 275 fichiers un par un. Le cache
+n'y peut rien : personne ne les a encore. C'est le prochain levier — réunir les
+dessins de l'interface en un seul envoi, comme main.swf le faisait en un
+fichier. Chantier plus lourd (les URL sont écrites en clair dans la feuille de
+style), à ouvrir séparément.

@@ -20231,6 +20231,53 @@ app.post('/api/light/shop/buy', (req, res) => {
   res.json({ ok: true, kikooz: r.kikooz, bouille: r.bouille, name: r.pack.name });
 });
 
+/*
+ * LES DESSINS SORTIS DES SWF SE GARDENT.
+ *
+ * `express.static` sans options pose `Cache-Control: max-age=0` : le
+ * navigateur garde bien le fichier, mais REDEMANDE au serveur, à chaque
+ * chargement, s'il a changé. Une requête, une réponse « 304 Non modifié »,
+ * zéro octet utile — et il faut la faire pour chacun.
+ *
+ * Le bureau light en fait DEUX CENT QUATRE-VINGTS. Relevé au banc, second
+ * chargement, cache du navigateur déjà chaud :
+ *
+ *     requêtes : 303   dont 280 revalidations (304) et 23 vrais téléchargements
+ *
+ * Sur la boucle locale ça coûte une seconde. Chez un joueur, chaque aller-
+ * retour vaut son temps de latence : à 40 ms et six connexions parallèles,
+ * 280 revalidations font près de deux secondes AVANT que le bureau paraisse —
+ * à chaque visite, pour des fichiers qui n'ont pas bougé. Au téléphone, en
+ * 4G, c'est le double. C'est là qu'est passée la promesse du « plus léger que
+ * Flash » : Ruffle, lui, a `maxAge: '7d', immutable` sur son moteur et ne
+ * redemande rien.
+ *
+ * Ces dossiers-là ne contiennent que des ARTEFACTS EXTRAITS des SWF, produits
+ * par les scripts d'extraction. Ils ne changent qu'à une regénération.
+ *
+ * LA CONTREPARTIE, et il faut la connaître : un dessin remplacé ne parvient
+ * pas aux joueurs qui tiennent déjà l'ancien, tant que la semaine n'est pas
+ * écoulée. La parade est déjà dans le portage — on incrémente le `?v=` de
+ * l'appel, comme le light le fait pour `/fb/fd_miniwave.png?v=2`. Ajouter un
+ * dessin ne pose aucun problème : personne ne l'a en cache.
+ *
+ * Sept jours, c'est la durée que ce dépôt accorde déjà au moteur de Ruffle
+ * (`/ruffle`, plus haut) : on ne fait qu'étendre aux dessins du portage ce
+ * qu'on accordait au lecteur Flash.
+ */
+const CACHE_ARTEFACTS = { maxAge: '7d', immutable: true };
+app.use('/frutiz/sprites',
+  express.static(path.join(__dirname, 'public', 'frutiz', 'sprites'), CACHE_ARTEFACTS));
+app.use('/frutiz/fontes',
+  express.static(path.join(__dirname, 'public', 'frutiz', 'fontes'), CACHE_ARTEFACTS));
+app.use('/snake3/fontes',
+  express.static(path.join(__dirname, 'public', 'snake3', 'fontes'), CACHE_ARTEFACTS));
+// `/fb` : les dessins de bouille, les icônes et les jaquettes. Même nature —
+// ils sortent des SWF ou d'un script de composition — et c'est déjà là que le
+// light incrémente son `?v=` quand il en remplace un.
+app.use('/fb',
+  express.static(path.join(__dirname, 'public', 'fb'), CACHE_ARTEFACTS));
+
 // ─────────────────────────────────────────────
 // Serve static files AFTER API routes so our endpoints take priority
 // ─────────────────────────────────────────────
