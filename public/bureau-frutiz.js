@@ -231,9 +231,18 @@ window.BureauFrutiz = (function () {
   function premierPlan(fen) { fen.style.zIndex = String(++zCourant); }
 
   function posDe(fen) {
+    // La FICHE se place par `--fx`/`--fy` — sa feuille tactile occupe déjà
+    // `left`/`top`. On lit l'une ou l'autre paire, et tout ce qui suit
+    // (`recal`, `glisserVers`, `bornerDansEcran`) vaut pour elle comme pour
+    // n'importe quelle fenêtre : c'en est une (`win.Frutiz extends
+    // WinStandard`).
+    var x = parseFloat(fen.style.left);
+    var y = parseFloat(fen.style.top);
+    if (isNaN(x)) x = parseFloat(fen.style.getPropertyValue('--fx'));
+    if (isNaN(y)) y = parseFloat(fen.style.getPropertyValue('--fy'));
     return {
-      x: parseFloat(fen.style.left) || 0,
-      y: parseFloat(fen.style.top) || 0,
+      x: isNaN(x) ? 0 : x,
+      y: isNaN(y) ? 0 : y,
       w: fen.offsetWidth,
       h: fen.offsetHeight,
     };
@@ -314,31 +323,37 @@ window.BureauFrutiz = (function () {
   // Le SWF garde la position EXACTE dans `regular` et n'arrondit que pour
   // l'affichage — arrondir la position elle-même à chaque pas ferait boiter
   // la fin du trajet, où l'on n'avance plus que d'une fraction de pixel.
-  function glisserVers(fen, cible) {
+  // Le troisième argument, `poser`, dit COMMENT écrire la position. Les
+  // fenêtres l'écrivent dans `left`/`top` ; la fiche, dont la feuille tactile
+  // occupe déjà ces deux propriétés, l'écrit dans ses variables `--fx`/`--fy`.
+  // Le mouvement, lui, est le même — c'est tout l'intérêt.
+  function glisserVers(fen, cible, poser) {
+    poser = poser || function (x, y) {
+      fen.style.left = x + 'px';
+      fen.style.top = y + 'px';
+    };
     if (fen._glisse) clearInterval(fen._glisse);
-    if (!FLUIDE) {
-      fen.style.left = Math.round(cible.x) + 'px';
-      fen.style.top = Math.round(cible.y) + 'px';
-      return;
-    }
+    if (!FLUIDE) { poser(Math.round(cible.x), Math.round(cible.y)); return; }
     // `addSlide` remet `regular` sur la position courante du clip.
-    var reg = { x: parseFloat(fen.style.left) || 0, y: parseFloat(fen.style.top) || 0 };
+    var depart = posDe(fen);
+    var reg = { x: depart.x, y: depart.y };
     fen._glisse = setInterval(function () {
       reg.x = reg.x * GLISSE_K + cible.x * (1 - GLISSE_K);
       reg.y = reg.y * GLISSE_K + cible.y * (1 - GLISSE_K);
-      fen.style.left = Math.round(reg.x) + 'px';
-      fen.style.top = Math.round(reg.y) + 'px';
+      poser(Math.round(reg.x), Math.round(reg.y));
       if (Math.round(reg.y) === Math.round(cible.y)
         && Math.round(reg.x) === Math.round(cible.x)) {
         reg.x = cible.x; reg.y = cible.y;
-        fen.style.left = Math.round(cible.x) + 'px';
-        fen.style.top = Math.round(cible.y) + 'px';
+        poser(Math.round(cible.x), Math.round(cible.y));
         clearInterval(fen._glisse); fen._glisse = null;
       }
     }, GLISSE_MS);
   }
 
-  function creerFantome(pos) {
+  // `hote` : la couche où poser la silhouette. Les fenêtres la posent dans
+  // `#bureau-fenetres` ; la fiche, qui vit une couche au-dessus, la pose chez
+  // elle — sans quoi le fantôme passerait DERRIÈRE ce qu'on déplace.
+  function creerFantome(pos, hote) {
     var fantome = document.createElement('div');
     fantome.className = 'fen-fantome';
     fantome.style.left = pos.x + 'px';
@@ -348,7 +363,7 @@ window.BureauFrutiz = (function () {
     fantome.style.boxSizing = 'border-box';
     fantome.style.width = pos.w + 'px';
     fantome.style.height = pos.h + 'px';
-    $('#bureau-fenetres').appendChild(fantome);
+    (hote || $('#bureau-fenetres')).appendChild(fantome);
     return fantome;
   }
 
@@ -407,6 +422,7 @@ window.BureauFrutiz = (function () {
     CORNER_X = ouvert ? 129 : 9;
     // `activate` termine par `main.onResize()` : les fenêtres sont rebornées.
     for (var id in fenetres) bornerDansEcran(fenetres[id].fen);
+    bornerFiche();
     if (contactsMinuteur) { clearInterval(contactsMinuteur); contactsMinuteur = null; }
     if (!ouvert) return;
     chargerContacts();
@@ -3110,26 +3126,73 @@ window.BureauFrutiz = (function () {
   // en rose. C'est `renderFiche` qui pose l'attribut désormais, au moment où il
   // écrit le pseudo — il a la donnée sous la main, plus rien à guetter.)
 
-  // `initDrag` / `endDrag` : on l'attrape par son CADRE — tout le haut blanc,
-  // sauf ce qui est déjà un bouton.
+  // OÙ LA FICHE SE POSE — dans `--fx`/`--fy`, mais avec la même arithmétique
+  // que `left`/`top` d'une fenêtre.
+  function poserFicheA(x, y) {
+    var f = $('#fiche');
+    if (!f) return;
+    f.style.setProperty('--fx', x + 'px');
+    f.style.setProperty('--fy', y + 'px');
+  }
+
+  /* `initDrag` / `endDrag` : la fiche se déplace COMME UNE FENÊTRE, parce que
+     c'en est une — `win.Frutiz extends WinStandard`, et `initInterface` lui
+     branche le même couple :
+
+         mcInterface.onPress = function() { box.activate(); initDrag(); }
+         mcInterface.onRelease = mcInterface.onReleaseOutside = endDrag
+
+     `WinStandard.initDrag` (0x53b7b) n'attache pas la fenêtre au curseur : il
+     sort le FANTÔME (`win.Ghost`, la silhouette blanche à quatre arcs) et
+     c'est lui qui suit la souris. `endDrag` (0x53d6d) reprend sa place,
+     `recal` la borne à la zone du bureau, `moveToPos` y fait GLISSER la
+     fenêtre.
+
+     Le portage attachait la fiche au curseur, sans silhouette, et ne la
+     bornait qu'à zéro : elle pouvait passer sous la main bar et derrière la
+     bande des contacts, et elle sautait sans glisser. Elle suit maintenant le
+     même chemin que les autres — au même code près. */
   function glisserFiche(f) {
     f.addEventListener('pointerdown', function (ev) {
       if (ev.button !== 0) return;
       if (ev.target.closest('button, a, input, .fiche-corps')) return;
       ev.preventDefault();
-      var b = f.getBoundingClientRect();
-      var dx = ev.clientX - b.left, dy = ev.clientY - b.top;
-      var bouge = function (e) {
-        f.style.setProperty('--fx', Math.max(0, e.clientX - dx) + 'px');
-        f.style.setProperty('--fy', Math.max(0, e.clientY - dy) + 'px');
+      var pos = posDe(f);
+      // Le fantôme vit DANS la couche de la fiche : `#bureau-fenetres` est
+      // une couche plus bas, et la silhouette y passerait derrière elle.
+      var fantome = creerFantome(pos, f.parentNode);
+      var decalx = ev.clientX, decaly = ev.clientY;
+      var glisser = function (e2) {
+        fantome.style.left = Math.round(pos.x + e2.clientX - decalx) + 'px';
+        fantome.style.top = Math.round(pos.y + e2.clientY - decaly) + 'px';
       };
-      var lache = function () {
-        document.removeEventListener('pointermove', bouge);
-        document.removeEventListener('pointerup', lache);
+      var lacher = function (e2) {
+        document.removeEventListener('pointermove', glisser);
+        document.removeEventListener('pointerup', lacher);
+        var cible = recal({
+          x: pos.x + e2.clientX - decalx,
+          y: pos.y + e2.clientY - decaly,
+          w: pos.w, h: pos.h,
+        }, { w: pos.w, h: pos.h });
+        fantome.remove();
+        glisserVers(f, cible, poserFicheA);
       };
-      document.addEventListener('pointermove', bouge);
-      document.addEventListener('pointerup', lache);
+      document.addEventListener('pointermove', glisser);
+      document.addEventListener('pointerup', lacher);
     });
+  }
+
+  // `main.onResize()` reborne TOUT ce qui est posé sur le bureau — la fiche
+  // comprise. C'est le même appel qui suit `SideList.activate` quand la bande
+  // des contacts s'ouvre et pousse `cornerX` de 9 à 129.
+  function bornerFiche() {
+    var f = $('#fiche');
+    if (!f || !f.dataset.posee || !f.offsetWidth) return;
+    var avant = posDe(f);
+    var pos = recal(posDe(f), { w: avant.w, h: avant.h });
+    if (Math.round(avant.x) === Math.round(pos.x)
+      && Math.round(avant.y) === Math.round(pos.y)) return;
+    glisserVers(f, pos, poserFicheA);
   }
 
   // ── Le GLISSER-DÉPOSER des icônes du bureau ────────────────────────────
@@ -4556,6 +4619,7 @@ window.BureauFrutiz = (function () {
     battreRepli();
     // `main.onResize()` : les fenêtres se recalent sous le nouveau coin.
     for (var id in fenetres) bornerDansEcran(fenetres[id].fen);
+    bornerFiche();
     poserFond(fondCourant);
   }
 
@@ -4779,6 +4843,7 @@ window.BureauFrutiz = (function () {
     window.addEventListener('resize', function () {
       poserFond(fondCourant);
       for (var id in fenetres) bornerDansEcran(fenetres[id].fen);
+      bornerFiche();
       majBouilles();
       // `cpDragIconList.updateSize` relance `initGrid` + `fitInGrid` : la
       // grille change de taille, les icônes hors cadre reviennent dedans.

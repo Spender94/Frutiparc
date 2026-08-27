@@ -2456,10 +2456,13 @@ body.bureau-frutiz #fiche {
    illisible sur un écran d'aujourd'hui — le visage du frutiz, qui est le sujet
    de la fiche, n'y est plus reconnaissable. Le portage mobile avait déjà
    tranché : la vignette de 52 fait 60, la plaque grandit d'autant, l'écran
-   garde ses neuf barres et le chiffre son afficheur à segments. Le bureau
-   reprend ce gabarit-là — donc AUCUNE règle de plaque ici, celles de light.html
-   s'appliquent telles quelles. Ne remettez pas d'override sans une bonne
-   raison : c'est ce que ce bloc a fait, et le rendu s'en est ressenti.
+   garde ses neuf barres. Le bureau reprend ce GABARIT-là — la vignette de 60
+   reste. Ce qu'il ne reprend pas, ce sont les FINITIONS du tactile : les trois
+   pixels de remplissage, les cinq de gouttière, les filets de 1,5 px et
+   l'afficheur à sept segments. Tout cela a un équivalent d'époque, et il est
+   déjà dans cette feuille — c'est celui de la main bar. Les règles qui suivent
+   ne font que le rappeler ici. N'allez pas plus loin sans un relevé : c'est ce
+   que ce bloc a fait une fois, et le rendu s'en est ressenti.
 
    (Le relevé, si l'envie revient : plaque cerclée de #888888 sur fond #C5F297,
    panneau de bouille #D6F7B5 en x 8..42 / y 9..39, rayures de l'écran en
@@ -2477,6 +2480,42 @@ body.bureau-frutiz #fiche .fiche-haut {
    Une règle de bureau, donc, et pas une retouche de `.fiche-plaque` : le
    gabarit tactile ne bouge pas d'un pixel. */
 body.bureau-frutiz #fiche .fiche-plaque { padding: 0; }
+/* LES ESPACEMENTS DE LA PLAQUE, au relevé.
+   `frutiScreen` colle ses deux panneaux : la bouille finit en x 42, les
+   rayures de l'écran commencent en x 43 — UN pixel, pas cinq. Et sous les
+   rayures (y 37) le « NIV n » commence en y 41 : quatre. Le liseré, lui, est
+   `#888888` et non le `#666` de la feuille tactile. */
+body.bureau-frutiz #fiche .fiche-plaque {
+  gap: 1px; border-color: #888888;
+}
+/* Les deux blocs de l'écran commencent au MÊME bord (x 43 d'époque, pour les
+   rayures comme pour « NIV n ») : calés à gauche, pas centrés l'un sur
+   l'autre — c'est déjà ce que fait la main bar. */
+body.bureau-frutiz #fiche .fiche-plaque .fa-jauge {
+  gap: 4px; padding-right: 2px; align-items: flex-start;
+}
+/* LES BARRES ET LE NIVEAU : ceux de la MAIN BAR, à l'identique.
+   `frutiScreen` et `cpDigital` posent le même `barLevel` (#431) et les mêmes
+   neuf barres ; c'est le portage mobile qui leur avait donné deux rendus —
+   des filets de 1,5 px et un afficheur à sept segments ici, les barres de 2 px
+   et le glyphe plein là-bas. Le second est le bon, et la fiche le reprend :
+
+     · barres de 2 px séparées de 1, larges de 27, vide `#A2EB56`,
+       plein `#73B01E` ;
+     · le sigle « NIV » à sa taille naturelle (14,2 × 17,4) ;
+     · le chiffre en Verdana pixel du SWF, `#73B01E`, CENTRÉ dans une colonne
+       fixe de 12,7 px (le champ #430 déclare `align centre`) — sans quoi
+       « NIV 13 » pousse vers la droite et « NIV 1 » flotte. */
+body.bureau-frutiz #fiche .fiche-plaque .fa-progress { width: 27px; gap: 1px; }
+body.bureau-frutiz #fiche .fiche-plaque .fa-progress i { height: 2px; background: #A2EB56; }
+body.bureau-frutiz #fiche .fiche-plaque .fa-progress i::before { background: #73B01E; }
+body.bureau-frutiz #fiche .fiche-plaque .fa-niv { gap: 0.95px; align-items: flex-start; }
+body.bureau-frutiz #fiche .fiche-plaque .fa-niv img { height: 17.4px; width: 14.2px; }
+body.bureau-frutiz #fiche .fiche-plaque .fa-niv b {
+  font-family: 'ImpactSwf', Impact, sans-serif; font-size: 11px; font-weight: normal;
+  color: #73B01E; flex: 0 0 12.7px; text-align: center; line-height: 13.4px;
+  margin-top: 2px;
+}
 body.bureau-frutiz #fiche .fiche-droite {
   display: flex; flex-direction: column; justify-content: space-between;
   min-width: 0; flex: 1;

@@ -65,23 +65,36 @@ test('elle se pose DANS LE COIN et se glisse par son cadre', () => {
 test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte', () => {
   assert.match(BLOC, /#fiche \{[\s\S]*?width: 324px;/);
   assert.match(BLOC, /#fiche \{[\s\S]*?background: #FFFFFF;/);
-  // LA PLAQUE EST CELLE DU MOBILE — décision assumée, pas un oubli. Le relevé
-  // d'époque (`frutiScreen`, `fix { w: base + 36, h: base }` = 76 × 42) tient la
-  // bouille dans 35 × 31 et le « NIV n » dans huit pixels d'encre : fidèle et
-  // illisible. Le bureau reprend donc le gabarit du portage mobile — vignette
-  // de 60, neuf barres, afficheur à segments — et pour cela il ne doit RIEN
-  // redéfinir : ce sont les règles de light.html qui s'appliquent.
-  // UNE SEULE exception, et elle est soustractive : la plaque n'a pas de
-  // remplissage dans la fenêtre. `frutiScreen` cerne ses deux panneaux à même
-  // le liseré, et les trois pixels du gabarit tactile y dédoublent le trait.
-  assert.match(BLOC, /body\.bureau-frutiz #fiche \.fiche-plaque \{ padding: 0; \}/);
+  // LE GABARIT DE LA PLAQUE EST CELUI DU MOBILE — décision assumée, pas un
+  // oubli. Le relevé d'époque (`frutiScreen`, `fix { w: base + 36, h: base }`
+  // = 76 × 42) tient la bouille dans 35 × 31 et le « NIV n » dans huit pixels
+  // d'encre : fidèle et illisible. La vignette de 60 reste donc, et le cadre
+  // qui l'entoure aussi.
   assert.doesNotMatch(BLOC, /^\s*\.fiche-plaque \{/m);
   assert.doesNotMatch(BLOC, /\.fiche-plaque \.fa-frame \{/);
-  assert.doesNotMatch(BLOC, /\.fiche-plaque \.fa-jauge \{/);
-  assert.doesNotMatch(BLOC, /\.fa-progress \{/);
-  assert.doesNotMatch(BLOC, /\.fiche-plaque \.fa-niv/);
   assert.doesNotMatch(BLOC, /\.fiche-plaque \.reflet-niv \{/);
   assert.doesNotMatch(BLOC, /\.fiche-plaque \.cadre/);
+  // CE QUI NE RESTE PAS, ce sont les FINITIONS du gabarit tactile. Trois
+  // d'entre elles ont un équivalent d'époque, et il est déjà dans cette
+  // feuille — c'est celui de la main bar, qui pose le MÊME `barLevel` (#431)
+  // et les MÊMES neuf barres :
+  //   · le remplissage de 3 px (`frutiScreen` cerne ses panneaux à même le
+  //     liseré) et la gouttière de 5 (d'époque : UN pixel, x 42 → x 43) ;
+  //   · les filets de 1,5 px, qui sont des barres de 2 séparées de 1 ;
+  //   · l'afficheur à sept segments, qui est un glyphe plein de la Verdana
+  //     pixel du SWF, centré dans une colonne fixe (le champ #430 déclare
+  //     `align centre`).
+  assert.match(BLOC, /body\.bureau-frutiz #fiche \.fiche-plaque \{ padding: 0; \}/);
+  assert.match(BLOC, /#fiche \.fiche-plaque \{\s*\n\s*gap: 1px; border-color: #888888;\s*\n\s*\}/);
+  assert.match(BLOC, /#fiche \.fiche-plaque \.fa-progress \{ width: 27px; gap: 1px; \}/);
+  assert.match(BLOC, /#fiche \.fiche-plaque \.fa-progress i \{ height: 2px; background: #A2EB56; \}/);
+  assert.match(BLOC, /#fiche \.fiche-plaque \.fa-niv img \{ height: 17\.4px; width: 14\.2px; \}/);
+  assert.match(BLOC, /#fiche \.fiche-plaque \.fa-niv b \{[\s\S]*?font-family: 'ImpactSwf'/);
+  assert.match(BLOC, /#fiche \.fiche-plaque \.fa-niv b \{[\s\S]*?flex: 0 0 12\.7px; text-align: center;/);
+  // Et ce sont EXACTEMENT les valeurs de la main bar : les deux blocs ne
+  // peuvent plus diverger sans qu'on s'en aperçoive.
+  assert.match(CSS, /#bureau-coin \.enc-progress i \{ height: 2px; background: #A2EB56; \}/);
+  assert.match(CSS, /#bureau-coin \.enc-niv \.niv-img \{ height: 17\.4px; width: 14\.2px; \}/);
   // Et le haut s'aligne comme sur le mobile : les deux blocs par le HAUT, neuf
   // pixels entre la plaque et la colonne de droite.
   assert.match(BLOC, /\.fiche-haut \{\s*\n\s*align-items: flex-start; gap: 9px;/);
