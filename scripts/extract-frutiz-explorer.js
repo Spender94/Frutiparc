@@ -231,12 +231,51 @@ function sortir(nom, morceaux, formes) {
       }
       if (morceaux.length) aComposer.push({ nom: 'disc_anneau_' + (f - 1), morceaux });
     }
+    // LA JAQUETTE : l'image 1 de son clip, et rien d'autre.
+    //
+    // Chaque image de la bande pose un clip nommé `gfx` — la jaquette d'un
+    // jeu. Ce clip a deux ou trois images, et son script d'image 1 est un
+    // simple `Stop` :
+    //
+    //     image 1  →  Stop                            (le RECTO, le dessin)
+    //     image 2  →  setProperty("", _rotation, random(360))
+    //     image 3  →  gotoAndPlay(1)                  (donc retour au Stop)
+    //
+    // Les images 2-3 portent un AUTRE bitmap : le VERSO brillant du disque,
+    // qu'une rotation au hasard fait tourner. Rien ne les montre — `Stop`
+    // tient l'image 1, et `but.Icon` finit d'ailleurs par
+    // `ico.disc.label.gfx.stop()`.
+    //
+    // On descendait dans `gfx` avec le NUMÉRO D'IMAGE DE LA BANDE : pour
+    // Kaluga (image 2) et son aperçu (image 3), ces numéros existent aussi
+    // dans le clip, et c'est le verso brillant qui sortait à la place du
+    // dessin. D'où deux disques vierges dans « Mes disques ».
     if (bandeJaquettes) {
+      const imagesBande = swf.parSprite.get(bandeJaquettes.ch) || new Map();
       for (const [nom, f] of labelsDe(swf, bandeJaquettes.ch)) {
-        aComposer.push({
-          nom: 'disc_jaquette_' + nom,
-          morceaux: swf.aplatir(bandeJaquettes.ch, bandeJaquettes.M, 0, f),
-        });
+        const morceaux = [];
+        for (const p of imagesBande.get(f) || []) {
+          const M = swf.composer(bandeJaquettes.M, p.M);
+          const cx = swf.composerCouleur(bandeJaquettes.cx, p.cx);
+          const dedans = (swf.parSprite.get(p.ch) || new Map()).get(1);
+          // La jaquette greffée de Mini-Fever est une FORME posée telle
+          // quelle, pas un clip : elle n'a pas d'image 1 à descendre.
+          if (!dedans) { morceaux.push(...swf.aplatir(p.ch, M, 0, 1, '', cx)); continue; }
+          for (const q of dedans) {
+            // LE BANDEAU « DEMO ». Son script d'image 1 (#58 et #63) dit :
+            //
+            //     setProperty("", _visible, _parent._parent._currentframe > 60)
+            //
+            // `_parent._parent`, c'est la BANDE : le bandeau ne se montre donc
+            // que sur ses images de fin — miniwaved (61) et minipixizd (62).
+            // Le portage le posait sur les deux, et le disque Mini-Wave du
+            // commerce (image 11) portait un DEMO qu'il n'a pas.
+            if (q.nom === 'demo' && f <= 60) continue;
+            morceaux.push(...swf.aplatir(q.ch, swf.composer(M, q.M), 0, 1, '',
+              swf.composerCouleur(cx, q.cx)));
+          }
+        }
+        aComposer.push({ nom: 'disc_jaquette_' + nom, morceaux });
       }
     }
 
