@@ -4227,3 +4227,34 @@ n'y peut rien : personne ne les a encore. C'est le prochain levier — réunir l
 dessins de l'interface en un seul envoi, comme main.swf le faisait en un
 fichier. Chantier plus lourd (les URL sont écrites en clair dans la feuille de
 style), à ouvrir séparément.
+
+## Deux bouilles sur un seul canevas
+
+« On y voit alternativement la bouille du user qui parle et la bouille par
+défaut (sac à patates). » Deux causes, toutes deux réelles.
+
+**La course.** Dans le chat, UN canevas sert tout le monde : chaque personne
+qui parle le redemande pour sa bouille, et `rafraichir` oublie la précédente
+pour relancer un montage. Or monter une bouille, c'est d'abord aller chercher
+un FICHIER de famille. Oublier ne suffisait pas : la demande d'AVANT continuait
+sa route et, à son retour, montait quand même son arbre — `posees.set(c, b)`,
+et sa boucle de rendu partait. Deux bouilles vivantes sur un canevas, chacune
+peignant la sienne à quarante images par seconde. Chaque montage porte
+désormais son NUMÉRO DE TOUR ; `oublier` le fait tourner, et un montage qui
+n'est plus le tour courant rend la main sans rien poser.
+`test/bouilleClignote.test.js` exécute le module livré avec un moteur dont on
+tient les promesses : l'ancienne version en monte DEUX, la nouvelle une seule.
+
+**L'inconnu.** Le cache `bouilleByUser` se remplit des trames `<p>/<v>/<z>` :
+quelqu'un qui parle avant que sa présence soit passée n'y est pas, et l'on
+posait le sac à patates ; sa vraie bouille arrivait à la ligne suivante. On va
+maintenant la CHERCHER, une fois (`/api/light/fiche`), et on la retient. La
+scène naît en outre avec la bonne bouille au lieu de naître avec celle par
+défaut pour être corrigée aussitôt.
+
+## Gaspard : l'icône du bureau
+
+Elle était dans l'encart (la première des six, `nameList[0]`) mais pas sur le
+BUREAU, où les rubriques ont leur tuile. Elle y est, avec l'icône d'époque
+(`/fb/Aide.svg`, celle-là même de l'encart), et seulement là : `home-tile-bureau`
+la cache sur mobile, qui n'a pas de fenêtre d'aide.

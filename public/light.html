@@ -1767,6 +1767,10 @@
   /* Sans ça, un appui long sur une icône ferait défiler le tiroir au lieu de
      l'emporter — et sur iOS ouvrirait le menu de partage de l'image. */
   .home-tile { touch-action: manipulation; -webkit-touch-callout: none; }
+  /* Les tuiles réservées au BUREAU : le mobile ne les voit pas. Gaspard ouvre
+     une fenêtre, et le mobile n'en a pas — son accueil reste ce qu'il était. */
+  .home-tile-bureau { display: none; }
+  body.bureau-frutiz .home-tile-bureau { display: block; }
   /* Et sans ça, tirer sur une icône déclenche le glisser-déposer NATIF du
      navigateur (on tire une image) : il avale les événements de pointeur et
      rend le déplacement impossible. */
@@ -1981,6 +1985,11 @@
            en vecteur de la feuille des liens de fileIcon.swf
            (scripts/extract-preferences-icone.js), comme la prune du Club. -->
       <button class="home-tile" data-go="reglages"><span class="ico"><img src="/fb/icone_preferences.svg" alt="" onerror="this.replaceWith(document.createTextNode('⚙️'))"></span><span class="lbl">Réglages</span></button>
+      <!-- GASPARD. Son icône est celle de l'encart — la première des six de la
+           rangée digitale, sortie de main.swf comme les autres. La tuile ne
+           paraît QUE sur le bureau : le mobile n'a pas de fenêtre d'aide, et
+           son accueil ne change pas. -->
+      <button class="home-tile home-tile-bureau" data-go="gaspard"><span class="ico"><img src="/fb/Aide.svg" alt="" onerror="this.replaceWith(document.createTextNode('❓'))"></span><span class="lbl">Gaspard</span></button>
     </div>
 
     <!-- Le compte, et la sortie. Le bureau Flash n'offre « Se déconnecter »
@@ -3457,6 +3466,12 @@
       if (go === "disques") {
         if (surBureau && BureauFrutiz.ouvrirDisques) return BureauFrutiz.ouvrirDisques();
         return openDisquesSheet();
+      }
+      // GASPARD n'existe QUE sur le bureau : sa tuile y est seule à paraître,
+      // et sur mobile un clic égaré ne doit rien casser.
+      if (go === "gaspard") {
+        if (surBureau && BureauFrutiz.ouvrirGaspard) BureauFrutiz.ouvrirGaspard();
+        return;
       }
       if (go === "inventaire") {
         if (surBureau && BureauFrutiz.ouvrirInventaire) return BureauFrutiz.ouvrirInventaire();
@@ -8019,22 +8034,55 @@
   var overlayCanvas = null;
   var overlayTimer = null;
   function noeudChat(c, id) { return c ? dansCadre(c, id) : $("#" + id); }
-  function overlayIframe(c) {
+  // LA SCÈNE NAÎT AVEC LA BONNE BOUILLE. Elle naissait avec celle par défaut —
+  // le sac à patates — et l'on comptait sur `jouer` pour la remplacer aussitôt.
+  // Un canevas de plus à corriger, pour rien : on lui donne le bon visage tout
+  // de suite.
+  function overlayIframe(c, etat) {
     var courant = c ? c.canvas : overlayCanvas;
     if (courant && courant.isConnected) return courant;
     var scene = noeudChat(c, "bouille-overlay-stage");
-    scene.innerHTML = FPBouilleVignette.html(DEFAULT_BOUILLE, { anime: true });
+    scene.innerHTML = FPBouilleVignette.html(etat || DEFAULT_BOUILLE, { anime: true });
     var cv = scene.querySelector("canvas.fp-bvig");
     if (c) c.canvas = cv; else overlayCanvas = cv;
     return cv;
+  }
+  /*
+   * LA BOUILLE D'UN INCONNU NE S'INVENTE PAS.
+   *
+   * Le cache se remplit des trames `<p>/<v>/<z>` : quelqu'un qui parle AVANT
+   * que sa fiche de présence soit passée n'y est pas encore, et l'on posait
+   * alors le sac à patates. À la ligne suivante sa vraie bouille arrivait, et
+   * l'on voyait l'une puis l'autre — le clignotement que les joueurs
+   * décrivent, entre deux messages.
+   *
+   * On va donc la CHERCHER, une fois, et on la retient. Le temps de la
+   * réponse la réaction joue avec ce qu'on a ; dès qu'elle rentre, la scène
+   * se corrige et les lignes suivantes sont justes.
+   */
+  var bouillesDemandees = {};
+  function reclamerBouille(cle) {
+    if (!cle || bouillesDemandees[cle] || state.bouilleByUser[cle] || !state.sid) return;
+    bouillesDemandees[cle] = 1;
+    fetch("/api/light/fiche?sid=" + encodeURIComponent(state.sid)
+      + "&u=" + encodeURIComponent(cle), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok || !d.bouille) return;
+        rememberBouille(cle, d.bouille);
+        majBouillesPartout();
+      })
+      .catch(function () { /* hors ligne : on gardera ce qu'on a */ });
   }
   // L'HUMEUR VOYAGE AVEC. Le lecteur est UNIQUE par fenêtre : sans la lui
   // donner, il gardait celle du locuteur précédent — une bouille fâchée
   // prêtait ses sourcils à la suivante entre deux images d'animation.
   function overlayJouer(pseudo, anim, c) {
     var cle = String(pseudo).toLowerCase();
-    var f = state.bouilleByUser[cle] || DEFAULT_BOUILLE;
-    FPBouilleVignette.jouer(overlayIframe(c), f, ANIM_INDEX[anim] || 1,
+    var connue = state.bouilleByUser[cle];
+    if (!connue) reclamerBouille(cle);
+    var f = connue || DEFAULT_BOUILLE;
+    FPBouilleVignette.jouer(overlayIframe(c, f), f, ANIM_INDEX[anim] || 1,
       state.humeurByUser[cle] || 0);
   }
   function overlayEteindre(c) {

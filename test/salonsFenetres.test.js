@@ -146,7 +146,7 @@ test('chaque fenêtre a SA colonne d’icônes, SES connectés, SA colonne de bo
 test('deux conversations peuvent jouer deux émotions à la fois', () => {
   // Un lecteur par cadre : `c.canvas`, `c.timer`. Sans cela, deux fenêtres se
   // disputeraient le même canevas.
-  assert.match(LIGHT, /function overlayIframe\(c\) \{\s*\n\s*var courant = c \? c\.canvas : overlayCanvas;/);
+  assert.match(LIGHT, /function overlayIframe\(c, etat\) \{\s*\n\s*var courant = c \? c\.canvas : overlayCanvas;/);
   assert.match(LIGHT, /function overlayMinuteur\(c, fn\) \{/);
   assert.match(LIGHT, /function showBouilleOverlay\(pseudo, anim, labelOverride, salon\) \{/);
   assert.match(LIGHT, /BureauFrutiz\.ecranDe\(pseudo, c \? c\.panneau : null\)/);

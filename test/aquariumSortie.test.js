@@ -105,7 +105,7 @@ test('le canevas s’efface avant de changer de famille', () => {
   // Et l'humeur voyage avec l'animation : `jouer` la transmet.
   assert.match(V, /function jouer\(c, etat, anim, humeur\) \{/);
   assert.match(V, /if \(etat !== undefined\) rafraichir\(c, etat, humeur\);/);
-  assert.match(LIGHT, /FPBouilleVignette\.jouer\(overlayIframe\(c\), f, ANIM_INDEX\[anim\] \|\| 1,\s*\n\s*state\.humeurByUser\[cle\] \|\| 0\);/);
+  assert.match(LIGHT, /FPBouilleVignette\.jouer\(overlayIframe\(c, f\), f, ANIM_INDEX\[anim\] \|\| 1,\s*\n\s*state\.humeurByUser\[cle\] \|\| 0\);/);
 });
 
 test('reparler d’affilée ne fait pas clignoter son propre écran', () => {

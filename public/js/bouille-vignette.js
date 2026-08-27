@@ -62,6 +62,7 @@
   var posees = new WeakMap();           // canevas → Bouille
   var promesses = new WeakMap();        // canevas → Promise<Bouille|null>
   var guettes = new WeakSet();          // canevas déjà confiés au guetteur
+  var tours = new WeakMap();            // canevas → numéro du montage en cours
   var guetteur = null;
 
   function nettoyer(s) {
@@ -92,15 +93,38 @@
     return chargements[n];
   }
 
-  /** Monte la bouille sur ce canevas. Rend une promesse, mise en cache. */
+  /*
+   * Monte la bouille sur ce canevas. Rend une promesse, mise en cache.
+   *
+   * LE NUMÉRO DE TOUR, ET POURQUOI IL N'EST PAS DÉCORATIF.
+   *
+   * Aller chercher une famille, c'est aller chercher un FICHIER : entre la
+   * demande et la réponse, il se passe le temps du réseau. Or on ne demande
+   * pas qu'une fois. Dans le chat, un seul canevas sert tout le monde, et
+   * chaque personne qui parle le redemande pour SA bouille — `rafraichir`
+   * oublie la précédente et relance.
+   *
+   * Oublier ne suffisait pas. La demande d'AVANT continuait sa route, et
+   * quand elle rentrait — après la nouvelle, ou pendant — elle montait quand
+   * même son arbre sur le canevas : `posees.set(c, b)`, et sa boucle de
+   * rendu partait. Deux bouilles vivantes sur un seul canevas, chacune
+   * peignant la sienne à quarante images par seconde. C'est le clignotement
+   * que les joueurs voyaient : la bouille de celui qui parle et le sac à
+   * patates l'une par-dessus l'autre.
+   *
+   * Chaque montage porte donc son numéro de tour. Au retour, s'il n'est plus
+   * le tour courant, on rend la main sans rien poser.
+   */
   function dessiner(c) {
     var p = promesses.get(c);
     if (p) return p;
     var s = c.getAttribute('data-s') || '';
     var e = Number(c.getAttribute('data-e') || 0);
     var anime = c.getAttribute('data-anime') === '1';
+    var tour = (tours.get(c) || 0) + 1;
+    tours.set(c, tour);
     p = famille(M.familleDe(s)).then(function (defs) {
-      if (!c.isConnected) { promesses.delete(c); return null; }
+      if (!c.isConnected || tours.get(c) !== tour) { promesses.delete(c); return null; }
       // Sans `anime`, le moteur tranche tout seul : image fixe si l'arbre n'a
       // rien à jouer, pellicule sinon. `data-anime="1"` (la scène de réaction
       // du chat) annonce qu'on va lui demander des animations : elle garde
@@ -111,6 +135,7 @@
       c.setAttribute('data-prete', '1');
       return b;
     }).catch(function () {
+      if (tours.get(c) !== tour) return null;
       c.setAttribute('data-prete', 'absent');
       return null;
     });
@@ -191,6 +216,11 @@
     posees.delete(c);
     promesses.delete(c);
     guettes.delete(c);
+    // ET ON TOURNE LA PAGE : un montage encore en route ne doit plus rien
+    // poser à son retour. Sans ce coup de tampon, `arreter()` n'arrête que la
+    // bouille DÉJÀ montée — celle qui arrive derrière repartirait de plus
+    // belle sur le même canevas.
+    tours.set(c, (tours.get(c) || 0) + 1);
   }
 
   /*
