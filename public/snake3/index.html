@@ -197,6 +197,17 @@
     b.addEventListener('pointerup', function (ev) { poser(false, ev); });
     b.addEventListener('pointercancel', function (ev) { poser(false, ev); });
     b.addEventListener('pointerleave', function (ev) { if (pad[touche]) poser(false, ev); });
+    // …ET SUR LA FENÊTRE. Les quatre écouteurs ci-dessus sont posés SUR LE
+    // BOUTON : si le bouton cesse d'être affiché pendant qu'on appuie — le
+    // light met le panneau du jeu en `display:none` quand on va discuter —
+    // aucun d'eux ne se déclenche, et la touche reste enfoncée pour toujours.
+    var relacher = function () {
+      if (!pad[touche]) return;
+      pad[touche] = false;
+      b.classList.remove('presse');
+    };
+    window.addEventListener('pointerup', relacher);
+    window.addEventListener('pointercancel', relacher);
   });
 
   // Le conseil de tourner le téléphone : une fois par appareil, quelques
@@ -217,6 +228,13 @@
   } catch (e) { /* stockage refusé : pas de conseil, pas de gêne */ }
 
   window.demarrerFrutisnake({ canvas: 'scene', pad: pad }).then(function (jeu) {
+    // `relacherTout` vide le pavé côté jeu ; ici on dé-enfonce les boutons,
+    // pour que l'écran dise la même chose que l'état.
+    jeu.padReset = function () {
+      document.querySelectorAll('#commandes .btn.presse').forEach(function (b) {
+        b.classList.remove('presse');
+      });
+    };
     return window.SnakePack.monter(jeu);
   });
 })();

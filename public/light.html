@@ -3737,10 +3737,38 @@
     setTimeout(viser, 600);
   }
 
+  /*
+   * QUITTER UN JEU, C'EST LÂCHER SES COMMANDES.
+   *
+   * Le panneau qu'on quitte passe en `display:none`. Les écouteurs de
+   * relâchement d'un jeu sont posés sur SES pièces (le canevas, les boutons du
+   * pavé tactile) : une pièce qui cesse d'être affichée sous le doigt ne reçoit
+   * plus ni `pointerup` ni `pointercancel`, et la touche reste enfoncée POUR
+   * TOUJOURS. Au retour, plus rien ne répond — la pause se remet à chaque
+   * image, ou le personnage part tout seul.
+   *
+   * On demande donc au cadre de tout lâcher. Le contrat est une seule
+   * fonction, `window.__relacherCommandes` : Frutisnake l'expose (game.js), et
+   * les autres portages n'ont qu'à faire pareil. Sans elle, on retombe sur le
+   * `blur`, que la plupart écoutent déjà.
+   */
+  function lacherCommandes(tab) {
+    var sel = CADRES_JEU[tab];
+    if (!sel) return;
+    var cadre = $(sel);
+    var w = cadre && cadre.contentWindow;
+    if (!w) return;
+    try {
+      if (typeof w.__relacherCommandes === "function") w.__relacherCommandes();
+      else w.dispatchEvent(new Event("blur"));
+    } catch (e) { /* cadre d'une autre origine, ou pas encore prêt */ }
+  }
+
   function activateTab(tab) {
     // Choisir une rubrique referme le tiroir (le contenu choisi occupe l'écran).
     closeMenu();
     if (ongletCourant === "forum" && tab !== "forum") loadHomeProfile();
+    if (ongletCourant && ongletCourant !== tab) lacherCommandes(ongletCourant);
     ongletCourant = tab;
     $("#chat-panel").classList.toggle("active", tab === "chat");
     $("#forum-panel").classList.toggle("active", tab === "forum");
@@ -3862,7 +3890,51 @@
     // un iconName que fileIcon.swf ne connaît pas). La sienne est composée
     // de ses propres dessins — scripts/make-jamajama-disc.js.
     { tab: "jamajama", img: "/fb/fd_jamajama.svg", name: "JamaJama" },
+    /*
+     * LES TROIS QUI SONT ENCORE EN FLASH.
+     *
+     * Ils n'ont pas de portage JS : ils s'ouvrent donc dans une FENÊTRE À PART
+     * (game-popup.html + Ruffle), comme le bureau les ouvre — `props` du
+     * catalogue serveur (`GAME_DISCS`), au chiffre près :
+     *
+     *     bkiwi1  w=350 h=350           kaluga1 w=640 h=480 ct=20 cb=20
+     *     mb2     w=550 h=400
+     *
+     * Leur jaquette est celle du bureau (sortie de fileIcon.swf) : il n'en
+     * existe pas de version mobile, et c'est le même dessin.
+     */
+    { flash: "bkiwi", swf: "games/burningKiwi/burningkiwi.swf", w: 350, h: 350,
+      img: "/frutiz/sprites/disc_jaquette_bkiwi.svg", name: "Burning Kiwi" },
+    { flash: "kaluga", swf: "games/kaluga/full.swf", w: 640, h: 480, ct: 20, cb: 20,
+      img: "/frutiz/sprites/disc_jaquette_kaluga.svg", name: "Kaluga" },
+    { flash: "mb2", swf: "games/motionBall2/full.swf", w: 550, h: 400,
+      img: "/frutiz/sprites/disc_jaquette_mb2.svg", name: "Motion-Ball 2" },
   ];
+
+  /*
+   * OUVRIR UN JEU FLASH — la même fenêtre que le bureau.
+   *
+   * `ruffle.html` construit l'URL ainsi (Frusion, lancement d'un disque), et
+   * la fenêtre est agrandie de 32 px pour le cadre ; le rognage de Kaluga
+   * (ct/cb) réduit d'autant la hauteur visible.
+   */
+  function ouvrirJeuFlash(d) {
+    var url = "/game-popup.html?swf=" + encodeURIComponent(d.swf)
+      + "&width=" + d.w + "&height=" + d.h
+      + "&game=" + encodeURIComponent(d.flash)
+      + "&sid=" + encodeURIComponent(state.sid || "");
+    if (d.ct) url += "&ct=" + d.ct;
+    if (d.cb) url += "&cb=" + d.cb;
+    var visible = Math.max(1, d.h - (d.ct || 0) - (d.cb || 0));
+    var traits = "width=" + (d.w + 32) + ",height=" + (visible + 32)
+      + ",resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no";
+    // Une seule fenêtre de jeu à la fois : deux SWF ouverts se disputeraient
+    // leurs sauvegardes (c'est la règle de `ruffle.html`, on la reprend).
+    try {
+      if (window.__gamePopup && !window.__gamePopup.closed) window.__gamePopup.close();
+    } catch (e) { /* déjà fermée */ }
+    window.__gamePopup = window.open(url, "frutiparc_game", traits);
+  }
   function renderDiscs() {
     var grid = $("#disques-grid");
     if (!grid) return;
@@ -3872,7 +3944,11 @@
       item.innerHTML = '<div class="thumb"><img src="' + d.img + '" alt="' + xmlEscape(d.name)
         + '" onerror="this.replaceWith(document.createTextNode(\'💿\'))"></div>'
         + '<div class="lbl">' + xmlEscape(d.name) + '</div>';
-      item.addEventListener("click", function () { closeDisquesSheet(); activateTab(d.tab); });
+      item.addEventListener("click", function () {
+        closeDisquesSheet();
+        if (d.flash) return ouvrirJeuFlash(d);
+        activateTab(d.tab);
+      });
       grid.appendChild(item);
     });
   }

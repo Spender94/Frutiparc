@@ -559,6 +559,12 @@ function bacASable() {
   contexte.document = {
     createElement: () => faireCanvas(),
     getElementById: () => faireCanvas(),
+    // Le jeu écoute `visibilitychange` pour lâcher ses commandes quand la page
+    // passe au second plan (cf. test/jeuCommandesRelachees.test.js) : le bac à
+    // sable doit offrir ce que tout document offre.
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    hidden: false,
   };
   contexte.addEventListener = () => {};
   vm.createContext(contexte);

@@ -5121,8 +5121,24 @@ function desktopRemove(username, user, uid) {
 
 // Le disque `id` est-il posé sur le bureau ? « Mes disques » s'en sert pour ne
 // pas le lister deux fois.
+/**
+ * Ce disque est-il POSÉ quelque part — donc absent du catalogue ?
+ *
+ * « Quelque part » veut dire : à un endroit où le joueur peut le reprendre.
+ * Le bureau lui-même, ou un dossier du bureau QUI EXISTE ENCORE. Un disque
+ * rangé dans un dossier disparu (`it.p` qui ne désigne plus rien) n'est nulle
+ * part : il ne se voit ni sur le bureau, ni dans « Mes disques », ni dans
+ * aucune fenêtre — il est PERDU, et le joueur n'a plus son jeu.
+ *
+ * On le rend donc au catalogue. C'est la règle que `desktopNodesXml` énonce
+ * déjà pour les icônes (« mieux vaut une icône de moins qu'un bureau qui
+ * refuse de s'afficher ») : un disque ne peut pas se perdre.
+ */
 function desktopHasDisc(user, id) {
-  return ensureDesktopItems(user).some((it) => it.t === 'disc' && it.u === id);
+  const liste = ensureDesktopItems(user);
+  const dossiers = new Set(liste.filter((it) => it.t === 'folder').map((it) => it.u));
+  return liste.some((it) => it.t === 'disc' && it.u === id
+    && (!it.p || it.p === 'root' || dossiers.has(it.p)));
 }
 
 /**

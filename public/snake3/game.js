@@ -877,8 +877,42 @@ class Jeu {
     // téléphone qu'on tourne (portrait/paysage n'ont pas la même disposition),
     // le tableau de bord du pack qui s'ajoute, le panneau de /light qu'on
     // redimensionne. On suit donc l'aire de jeu elle-même.
+    /*
+     * RELÂCHER TOUT — sans quoi un contrôle qui se cache reste enfoncé.
+     *
+     * `pointerup` et `pointercancel` étaient posés sur le CANEVAS, et les
+     * boutons du pavé tactile sur EUX-MÊMES (index.html). Si la pièce cesse
+     * d'être affichée pendant qu'on appuie — c'est exactement ce que fait le
+     * light quand on quitte l'onglet du jeu pour aller discuter : le panneau
+     * passe en `display:none` et la scène tombe à 0 × 0 — le relâchement
+     * n'arrive JAMAIS. La touche reste enfoncée pour toujours.
+     *
+     * Au retour, `entree.echap` (ou une direction) est vrai à chaque image :
+     * la pause se remet aussitôt qu'on la lève, le serpent fonce dans le mur,
+     * et plus rien ne répond. « Le jeu a freezé, on ne peut plus rien faire. »
+     *
+     * On relâche donc tout dès que la scène cesse d'être visible — et le light
+     * peut le demander lui-même par `__relacherCommandes`.
+     */
+    this.relacherTout = () => {
+      this.touches.clear();
+      if (this.pad) for (const k of Object.keys(this.pad)) this.pad[k] = false;
+      if (this.pointeur && this.pointeur.bas) {
+        this.pointeur.bas = false;
+        if (this.mode && this.mode.relacher) this.mode.relacher();
+      }
+      if (this.padReset) this.padReset();      // les boutons se dé-enfoncent
+    };
+    window.__relacherCommandes = this.relacherTout;
+
     if (window.ResizeObserver) {
-      new ResizeObserver(() => this.redimensionner()).observe(this.canvas.parentElement);
+      new ResizeObserver(() => {
+        this.redimensionner();
+        // Une scène à zéro, c'est un panneau caché : plus aucun événement de
+        // relâchement ne viendra, on le fait nous-mêmes.
+        const b = this.canvas.getBoundingClientRect();
+        if (!b.width || !b.height) this.relacherTout();
+      }).observe(this.canvas.parentElement);
     }
 
     window.addEventListener('keydown', (ev) => {
@@ -887,7 +921,10 @@ class Jeu {
       if ([32, 37, 38, 39, 40].includes(code)) ev.preventDefault();
     });
     window.addEventListener('keyup', (ev) => this.touches.delete(ev.keyCode || ev.which));
-    window.addEventListener('blur', () => this.touches.clear());
+    window.addEventListener('blur', () => this.relacherTout());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.relacherTout();
+    });
 
     const position = (ev) => {
       const r = this.canvas.getBoundingClientRect();
@@ -910,6 +947,10 @@ class Jeu {
     };
     this.canvas.addEventListener('pointerup', fin);
     this.canvas.addEventListener('pointercancel', fin);
+    // …ET SUR LA FENÊTRE : un doigt relâché hors du canevas laissait sinon le
+    // pointeur « enfoncé », et `mode.relacher()` n'était jamais appelé.
+    window.addEventListener('pointerup', fin);
+    window.addEventListener('pointercancel', fin);
 
     this.mode = this.menuPrincipal();
     this.next_mode = -1;
