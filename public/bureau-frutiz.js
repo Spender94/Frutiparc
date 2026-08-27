@@ -2318,7 +2318,13 @@ window.BureauFrutiz = (function () {
     var col = p && p.querySelector('#bouille-overlay');
     if (!col || !p.classList.contains('bouilles-ouvertes')) return null;
     if (col.querySelector('.bo-ecran.clb')) return clbAccueille(pseudo, p);
-    return col.querySelector('.bo-ecran[data-qui="' + cleCss(String(pseudo).toLowerCase()) + '"]');
+    var ec = col.querySelector('.bo-ecran[data-qui="' + cleCss(String(pseudo).toLowerCase()) + '"]');
+    // La même règle qu'en CLB : l'animation, elle, lit le cache et joue le BON
+    // accessoire ; la vignette figée qui reparaît derrière elle doit dire la
+    // même chose, sinon on voit le bon dessin quatre secondes puis l'ancien.
+    var m = ec && membreDe(pseudo, p);
+    if (m) poserBouille(ec, m.bouille, m.pseudo, m.humeur);
+    return ec;
   }
 
   // `onCLBEvent` : quelqu'un s'exprime, sa bouille entre dans l'aquarium.
@@ -2337,10 +2343,14 @@ window.BureauFrutiz = (function () {
       b.style.left = (-ec.clientWidth) + 'px';   // hors champ, à gauche
       ec.appendChild(b);                         // AVANT le tirage : cf. le quirk
       b.style.top = Math.round(hauteurLibre(ec, cote)) + 'px';
-      var m = membreDe(pseudo, panneau);
-      poserBouille(b, m && m.bouille, pseudo, m && m.humeur);
-      void b.offsetWidth;                        // que le départ soit enregistré
     }
+    // Le dessin se refait à CHAQUE passage, pas seulement à l'arrivée : la
+    // vignette figée qui reparaît à la fin de l'émotion doit porter la bouille
+    // du moment, et pas celle de la première prise de parole. (D'époque, la
+    // règle vient de `frutiScreen.onStatusObj` — cf. `bouilleUnique`.)
+    var m = membreDe(pseudo, panneau);
+    poserBouille(b, m && m.bouille, pseudo, m && m.humeur);
+    void b.offsetWidth;                          // que le départ soit enregistré
     b.style.left = '0px';
     var tous = ec.querySelectorAll('.bo-clb:not(.part)');
     if (tous.length > CLB_MAX) partirDansLEspace(tous[0], ec);
@@ -2376,8 +2386,9 @@ window.BureauFrutiz = (function () {
     return g ? g.bouille : null;
   }
   function membreDe(pseudo, panneau) {
-    var gens = membresDuPanneau(panneau);
-    var cle = String(pseudo).toLowerCase();
+    return dansListe(membresDuPanneau(panneau), String(pseudo).toLowerCase());
+  }
+  function dansListe(gens, cle) {
     for (var i = 0; i < gens.length; i++) {
       if (String(gens[i].pseudo).toLowerCase() === cle) return gens[i];
     }
@@ -2403,9 +2414,13 @@ window.BureauFrutiz = (function () {
     if (memeEtat && memeHumeur) return;
     ecran.setAttribute('data-bouille', bouille);
     ecran.setAttribute('data-humeur', em);
-    var toile = ecran.querySelector('canvas.fp-bvig');
+    // ENFANTS DIRECTS SEULEMENT : pendant une émotion, l'écran héberge AUSSI la
+    // scène du light (`#bouille-overlay-stage`), qui contient son propre canevas
+    // animé. Une recherche en profondeur pourrait tomber dessus et l'arracher au
+    // milieu de son animation.
+    var toile = ecran.querySelector(':scope > canvas.fp-bvig');
     if (memeEtat && toile) { FPBouilleVignette.rafraichir(toile, bouille, Number(em)); return; }
-    var vieux = ecran.querySelector('img, canvas.fp-bvig');
+    var vieux = ecran.querySelector(':scope > img, :scope > canvas.fp-bvig');
     // `oublier` avant de retirer : une bouille qui anime un accessoire tient
     // une boucle de rendu, et un canevas arraché du document la garderait
     // ouverte le temps d'une image de plus.
@@ -2458,7 +2473,7 @@ window.BureauFrutiz = (function () {
     var cote = col.clientWidth || 100;
     var max = Math.floor((col.clientHeight || 0) / (cote + ECRAN_ECART));
     if (max >= gens.length) pileDeBouilles(col, gens);
-    else bouilleUnique(col);
+    else bouilleUnique(col, gens);
   }
 
   // Les membres du salon d'une fenêtre — c'est le panneau qui dit lequel.
@@ -2496,7 +2511,27 @@ window.BureauFrutiz = (function () {
 
   // CLB : un seul écran, qui prend toute la zone. Les bouilles de qui
   // s'exprime y entrent par la gauche et s'y installent (cf. `clbAccueille`).
-  function bouilleUnique(col) {
+  //
+  // LE REDESSIN, ET L'ÉCART ASSUMÉ AVEC L'ÉPOQUE. En MULTI, chaque écran est
+  // INSCRIT auprès de son propriétaire — `attachFrutiScreen` (0xb646f) finit par
+  // `win.box.userList.defineMc(user, screen)`, et `UserMng.User.setMc` (0x268d0)
+  // le range dans un `mcList`. Quand le statut de la personne change,
+  // `User.onStatusObj` (0x26a28) parcourt ce `mcList` et appelle
+  // `mc.onInfoBasic(o)` ; `frutiScreen.onInfoBasic` (0x62226) renvoie sur
+  // `onStatusObj` (0x620fe), qui, l'arbre déjà monté, fait
+  // `last.apply(o.fbouille)` puis `last.applyEmote(o.status.emote)`. La bouille
+  // se refait donc SUR PLACE, accessoire et humeur compris.
+  //
+  // L'aquarium, lui, n'est inscrit nulle part : `attachCLBScreen` (0xb6717) ne
+  // pose qu'un `addUserActionListener(..., 'onCLBEvent')`, et `updateCLBScreen`
+  // (0xb67f5) ne fait que retailler. D'époque, une bouille déjà dans l'aquarium
+  // gardait donc l'accessoire qu'elle avait en y entrant — `onCLBEvent` (0x62318)
+  // n'appelle `addContent` QUE si la personne n'y est pas encore. On ne garde
+  // pas ce trou-là : la règle de l'époque (« un statut qui change refait la
+  // bouille ») s'applique ici aussi, sans quoi la fenêtre étroite — celle qui
+  // s'ouvre à la connexion, et qui bascule en CLB dès qu'on est deux — ne
+  // montrerait jamais un accessoire mis en cours de route.
+  function bouilleUnique(col, gens) {
     col.classList.add('un-seul-ecran');
     var seul = col.querySelector('.bo-ecran.clb');
     Array.prototype.slice.call(col.querySelectorAll('.bo-ecran')).forEach(function (e) {
@@ -2510,11 +2545,16 @@ window.BureauFrutiz = (function () {
     }
     // La zone a pu changer de taille : les bouilles suivent son petit côté.
     var cote = Math.min(seul.clientWidth, seul.clientHeight);
+    var liste = gens || [];
     Array.prototype.forEach.call(seul.querySelectorAll('.bo-clb'), function (b) {
       b.style.width = cote + 'px';
       b.style.height = cote + 'px';
       var y = parseFloat(b.style.top) || 0;
       b.style.top = Math.min(y, Math.max(0, seul.clientHeight - cote)) + 'px';
+      // Et le DESSIN suit l'état courant : `poserBouille` ne refait rien si
+      // rien n'a bougé.
+      var m = dansListe(liste, b.getAttribute('data-qui'));
+      if (m) poserBouille(b, m.bouille, m.pseudo, m.humeur);
     });
   }
 

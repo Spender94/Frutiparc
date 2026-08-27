@@ -1386,6 +1386,69 @@ sur les deux pseudos.
   détachement. Bug d'époque ; le light lit le pseudo de la case au moment du
   survol, il ne peut pas se tromper. **Écart assumé.**
 
+### UNE BOUILLE SE REFAIT SUR PLACE (`defineMc` → `onStatusObj`)
+
+Un écran ne se contente pas d'afficher une bouille au moment où on l'accroche :
+il est **INSCRIT auprès de son titulaire**, et c'est cette inscription qui le
+tient à jour. `attachFrutiScreen` (0xb646f) finit par
+
+    win.box.userList.defineMc(user, screen)
+
+`UserListMng.defineMc(u, mc)` (0x32244) fait `list[u].setMc(mc)`, et
+`UserMng.User.setMc` (0x268d0) range le clip dans un `mcList`. Ensuite,
+`User.onStatusObj(obj)` (0x26a28) fusionne `obj` dans `infoBasic` **puis
+parcourt `mcList` et appelle `mc.onInfoBasic(obj)` sur chacun**.
+
+Côté écran, `frutiScreen.onInfoBasic` (0x62226) renvoie sur `onStatusObj`
+(0x620fe), qui tient en huit lignes :
+
+    onStatusObj = function (o, callback) {
+      if (o === undefined) { test += "Et mes arguments ? …"; return; }
+      if (this.current !== "frutibouille") {          // rien de chargé encore
+        this.addContent({id: o.fbouille, loadInitCallback: callback},
+                        "frutibouille", true);
+        if (o.status.emote !== undefined) this.last.applyEmote(o.status.emote);
+      } else {                                        // l'arbre est monté
+        var mc = this.last;
+        mc.apply(o.fbouille);                         // ← LA BOUILLE SE REFAIT
+        if (o.status.emote !== undefined) mc.applyEmote(o.status.emote);
+      }
+    };
+
+**Un accessoire posé, une humeur changée : l'écran suit, sans rien recharger.**
+
+#### L'aquarium, lui, n'est inscrit nulle part
+
+`attachCLBScreen` (0xb6717) ne pose qu'un
+`box.addUserActionListener(content.screen, 'onCLBEvent')` — pas de `defineMc` —
+et `updateCLBScreen` (0xb67f5) ne fait que retailler (`extWidth`, `extHeight`,
+`updateSize`). Or `onCLBEvent` (0x62318) n'appelle `addContent` **QUE si la
+personne n'est pas déjà dans la liste** : celle qui y est reste dessinée comme
+elle l'était en entrant, jusqu'à ce que `maxContent` (3) la chasse par la
+gauche. **Trou d'époque.** Le portage ne le garde pas : la règle des écrans
+nominatifs s'applique aussi à l'aquarium, sans quoi la fenêtre étroite — celle
+qui s'ouvre à la connexion, et qui bascule en CLB dès qu'on est deux — ne
+montrerait jamais un accessoire mis en cours de route. **Écart assumé.**
+
+#### ET MOI, JE NE SUIS PAS DANS MA PROPRE TRACE
+
+Le serveur diffuse bien la trace `<z>` au salon — mais
+`broadcastToChannel(ch, traceXml, socket)` en **exclut l'expéditeur**, et lui
+renvoie à la place un accusé **sans pseudo** : `<ae f="…"/>` pour la bouille,
+`<af s="…"/>` pour le statut. Le SWF sait quoi en faire, `MeMng` le dit en deux
+lignes (`onStatus` 0x227e4, `onFbouille` 0x228d6, et `onInvisible` 0x2285d sur
+le même patron) :
+
+    if (node.attributes.u === undefined && node.attributes.s !== undefined) {
+      node.attributes.u = me.name;   // l'accusé, c'est MOI
+      this.onTrace(node);            // et il repart en trace ordinaire
+    }
+
+Sans ces deux `case`, ma colonne d'écrans gardait l'état du moment où j'étais
+entré dans le salon. Pire : l'animation d'une émotion, elle, lit le cache et
+jouait le BON accessoire — puis la vignette figée reprenait sa place à la fin.
+Quatre secondes de vérité, et le mensonge revenait.
+
 ### LA LISTE DES CONTACTS : trois pièces du SWF, pas du CSS
 
 `cp.UserList` ne dessine rien non plus. Elle attache `userListBackground`

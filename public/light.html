@@ -5329,6 +5329,52 @@
         break;
       }
 
+      /*
+       * L'ÉCHO DE MES PROPRES CHANGEMENTS — `<ae>` la bouille, `<af>` le statut.
+       *
+       * Le serveur diffuse la trace `<z>` à tout le salon SAUF à moi
+       * (`broadcastToChannel(ch, traceXml, socket)`, le troisième argument
+       * exclut l'expéditeur) et me renvoie à la place un ACCUSÉ SANS PSEUDO.
+       * C'est ce que le SWF attend, et `MeMng` le traite en deux lignes
+       * (0x227e4 et 0x228d6) :
+       *
+       *     onStatus = function (node) {
+       *       if (node.attributes.u === undefined
+       *           && node.attributes.s !== undefined) {
+       *         node.attributes.u = me.name;   ← l'accusé, c'est MOI
+       *         this.onTrace(node);            ← et il repart en trace ordinaire
+       *       }
+       *     };
+       *     onFbouille = function (node) {
+       *       if (node.attributes.u === undefined) {
+       *         node.attributes.u = me.name; this.onTrace(node);
+       *       }
+       *     };
+       *
+       * Le portage n'écoutait ni l'un ni l'autre. Résultat : ma colonne
+       * d'écrans gardait la bouille et l'humeur du moment où j'étais entré
+       * dans le salon — un accessoire mis en cours de route ne s'y voyait
+       * jamais. Pire : l'animation d'une émotion, elle, lit le cache
+       * (`overlayJouer`), donc le BON accessoire, et la vignette figée
+       * reprenait sa place à la fin. On voyait le bon dessin quatre secondes,
+       * puis l'ancien.
+       *
+       * `majBouillesPartout` est appelé SANS condition : le cache a déjà été
+       * mis à jour sur-le-champ par `pickAccessory` / `porterAccessoire` /
+       * `fbValider`, si bien que le garde « ça a changé » de `rememberBouille`
+       * ne verrait rien passer.
+       */
+      case "ae": {  // fbouille : l'accusé porte f=
+        rememberBouille(state.user, attr(xml, "f"));
+        majBouillesPartout();
+        break;
+      }
+      case "af": {  // status : l'accusé porte s= (voyant de jeu ET humeur)
+        rememberStatut(state.user, attr(xml, "s"));
+        majBouillesPartout();
+        break;
+      }
+
       case "z": { // trace push: <z><u u=".." f="<bouille>" .../></z> — bouille data
         var zre = /<u\b([^>]*)\/>/g, zm;
         var zTrouve = false;
@@ -7367,10 +7413,23 @@
    * `<k>` la liste) passent toutes par `rememberBouille`/`rememberStatut` : on
    * redemande le rafraîchissement depuis là.
    */
+  var majBouillesPrevu = false;
   function majBouillesPartout() {
-    if (window.BureauFrutiz && BureauFrutiz.majBouilles) BureauFrutiz.majBouilles();
-    // Sur le mobile, la bouille de la barre du haut est la mienne.
-    if (typeof refreshHomeAvatar === "function") refreshHomeAvatar();
+    // Les traces arrivent souvent en grappe — une par personne quand la liste
+    // d'un salon se rafraîchit, deux pour un changement d'accessoire (la trace
+    // et son accusé). On ne redessine la colonne qu'une fois : chaque bouille
+    // y est un canevas qu'il faut refaire, et le lecteur d'une émotion en
+    // cours n'aime pas être bousculé.
+    // `setTimeout` et non `requestAnimationFrame` : dans un onglet en
+    // arrière-plan, le battement ne vient jamais et le drapeau resterait levé.
+    if (majBouillesPrevu) return;
+    majBouillesPrevu = true;
+    setTimeout(function () {
+      majBouillesPrevu = false;
+      if (window.BureauFrutiz && BureauFrutiz.majBouilles) BureauFrutiz.majBouilles();
+      // Sur le mobile, la bouille de la barre du haut est la mienne.
+      if (typeof refreshHomeAvatar === "function") refreshHomeAvatar();
+    }, 0);
   }
 
   // Emote detection — IDENTICAL to the desktop. Source of truth:
