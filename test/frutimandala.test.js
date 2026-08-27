@@ -141,8 +141,9 @@ test('le bouton vert replie la barre — hideHeight 220, cornerY 106 → 10', ()
   assert.match(JS, /Math\.pow\(0\.8, tmod \* 2\), rf = Math\.pow\(0\.8, tmod\)/);
   // Le bureau suit le coin : la rangée d'icônes remonte.
   assert.match(CSS, /top: var\(--cornerY\); left: calc\(var\(--cornerX\) \+ 6px\)/);
-  // `main.onResize()` : les fenêtres se recalent.
-  assert.match(JS, /for \(var id in fenetres\) bornerDansEcran\(fenetres\[id\]\.fen\);\s*\n\s*poserFond\(fondCourant\);/);
+  // `main.onResize()` : les fenêtres se recalent — et la FICHE avec elles,
+  // puisque c'en est une (`win.Frutiz extends WinStandard`).
+  assert.match(JS, /for \(var id in fenetres\) bornerDansEcran\(fenetres\[id\]\.fen\);\s*\n\s*bornerFiche\(\);\s*\n\s*poserFond\(fondCourant\);/);
 });
 
 test('la languette « mode rapide » est celle du SWF', () => {

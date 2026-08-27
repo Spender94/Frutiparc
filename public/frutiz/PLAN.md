@@ -2519,6 +2519,36 @@ Standard.getTreeStyle()  bullet = "standardBullet" pour les quatre niveaux
 box.Shop.analyseTree     pose bulletLink: "shopBullet" sur <c> ET sur <p>
 ```
 
+### Une entrée d'arbre ARRIVE, elle ne paraît pas
+
+`cp.Tree.addPhysElement` (0x7b6xx) ne pose pas la capsule à sa place :
+
+    content.attachMovie(link, "caps" + n, 80000 - n, …);
+    caps.pos.x = x + marginLeft;  caps._x = caps.pos.x;
+    caps._y = last._y + last.height / 2;        ← elle NAÎT au milieu de la
+    if (last !== undefined) {                      précédente
+      caps.moveTo(last.pos.y + last.height);    ← puis GLISSE à sa place
+      caps.fadeIn();                            ← en se colorant
+      caps.id = last.id + 1;
+    } else {
+      caps.moveTo(0, true);                     ← la première se pose net
+      caps.id = 0;
+    }
+
+`Capsule.moveTo(y, flDirect)` (0x9f0aa) pose `pos.y`, puis confie le trajet à
+`tree.animList.addSlide(…, 2)` — le même amortissement que les fenêtres,
+`_y = _y × 0.64 + cible × 0.36` toutes les 25 ms. `Capsule.fadeIn` (0x9f147)
+peint la capsule de la couleur du panneau (`FEMC.setPColor(this, c, 0)`) et
+laisse `addPaint` la ramener à 100 : de la teinte du fond à ses propres
+couleurs.
+
+La liste étant bâtie d'un coup, `last._y` n'a pas encore bougé quand la
+suivante naît : les décalages se cumulent de moitié en moitié, et **chaque
+entrée démarre à la MOITIÉ de son décalage final**. La colonne entière se
+déplie donc depuis le haut. C'est vrai des scores comme de la boutique, et à
+chaque fois que l'arbre change — déplier une rubrique fait arriver ses
+articles de la même façon.
+
 Le lien est donc `shopBullet` (#567) pour tout l'arbre de la boutique, et
 c'est la **classe** qui choisit l'image :
 

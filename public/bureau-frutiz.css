@@ -1442,6 +1442,40 @@ body.bureau-frutiz .fen-poignee-vue .pv-icone {
   background: url('/frutiz/sprites/resizeIcon.svg') no-repeat center / 12px 12px;
 }
 
+/* ── L'ARRIVÉE DES ENTRÉES D'UN MENU (`cp.Tree.addPhysElement`) ───────────
+   Chaque capsule d'arbre naît au MILIEU de la précédente, glisse à sa place
+   (`Capsule.moveTo`, amorti par `animList.addSlide`) et se colore depuis la
+   teinte du panneau (`Capsule.fadeIn` → `addPaint`). La première se pose net.
+   Bâtie d'un coup, la colonne part donc à mi-hauteur et se déplie depuis le
+   haut — c'est `animerEntrees` qui pose `--cy`, la moitié du décalage final.
+   LA COURBE est l'équivalent continu de l'amortissement d'époque
+   (`_y = _y × 0.64 + cible × 0.36` toutes les 25 ms, soit `addSlide` au ratio
+   2). Le trajet restant y vaut `0.64^(t/25)` : 68 % parcourus à 65 ms, 90 % à
+   130, 97 % à 195 — et c'est presque exactement une cubique sortante sur
+   260 ms (58 %, 88 %, 98 %). Une exponentielle plus raide (`.22, 1, .36, 1`)
+   avalait la moitié du chemin dans le premier battement : le mouvement se
+   voyait à peine. */
+body.bureau-frutiz #sc-liste > *,
+body.bureau-frutiz .fen #shop-sheet #bo-rubriques > * {
+  transition: transform .26s cubic-bezier(.33, 1, .68, 1),
+              opacity .26s cubic-bezier(.33, 1, .68, 1);
+}
+/* `transition: none` sur l'état DE DÉPART, et c'est tout le sel : sans lui,
+   poser la classe ne fait pas sauter l'entrée à sa place de naissance — elle
+   l'y emmène en 260 ms, et la retirer deux battements plus tard la ramène
+   aussitôt. On ne voyait qu'un frémissement. */
+body.bureau-frutiz #sc-liste > .caps-entre,
+body.bureau-frutiz .fen #shop-sheet #bo-rubriques > .caps-entre {
+  transition: none;
+  transform: translateY(var(--cy, 0px)); opacity: 0;
+}
+/* Un lecteur qui demande moins de mouvement n'en a pas : l'entrée est là,
+   simplement, sans le trajet. */
+@media (prefers-reduced-motion: reduce) {
+  body.bureau-frutiz #sc-liste > *,
+  body.bureau-frutiz .fen #shop-sheet #bo-rubriques > * { transition: none; }
+}
+
 /* LE FANTÔME du déplacement et du redimensionnement (win.Ghost) : la
    silhouette blanche — 4 arcs de coin 10×10 épais de 2 et 4 traits de 2 px
    (formes #157/#159 du SWF), soit exactement ce contour-ci. La fenêtre ne

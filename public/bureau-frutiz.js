@@ -230,6 +230,65 @@ window.BureauFrutiz = (function () {
 
   function premierPlan(fen) { fen.style.zIndex = String(++zCourant); }
 
+  /* ── L'ARRIVÉE DES ENTRÉES D'UN MENU (`cp.Tree.addPhysElement`, 0x7b6xx) ──
+   *
+   * Une entrée d'arbre — un classement dans la fenêtre des scores, une
+   * rubrique ou un article dans la boutique — ne PARAÎT pas à sa place : elle
+   * y arrive. Le bytecode, dans l'ordre :
+   *
+   *     content.attachMovie(link, "caps" + n, 80000 - n, …);
+   *     caps.pos.x = x + marginLeft;  caps._x = caps.pos.x;
+   *     caps._y = last._y + last.height / 2;          ← elle NAÎT au milieu
+   *     if (last !== undefined) {                        de la précédente
+   *       caps.moveTo(last.pos.y + last.height);      ← puis GLISSE à sa place
+   *       caps.fadeIn();                              ← en se colorant
+   *       caps.id = last.id + 1;
+   *     } else {
+   *       caps.moveTo(0, true);                       ← la première se pose net
+   *       caps.id = 0;
+   *     }
+   *
+   * `Capsule.moveTo(y, flDirect)` (0x9f0aa) pose `pos.y` puis, sans
+   * `flDirect`, confie le trajet à `tree.animList.addSlide(…, 2)` — le même
+   * amortissement que les fenêtres, au ratio 2 près. `Capsule.fadeIn`
+   * (0x9f147) peint la capsule de la couleur du panneau
+   * (`FEMC.setPColor(this, c, 0)`) et laisse `addPaint` la ramener à 100 : de
+   * la teinte du fond à ses propres couleurs.
+   *
+   * LA LISTE EST BÂTIE D'UN COUP : `last._y` n'a pas encore bougé quand la
+   * suivante naît, si bien que les décalages se cumulent de moitié en moitié.
+   * Chaque entrée démarre donc à LA MOITIÉ de son décalage final, et la
+   * colonne entière se déplie depuis le haut. C'est tout ce que cette
+   * fonction écrit : le reste est une transition CSS, dont la courbe est
+   * l'équivalent continu de `_y = _y × 0.64 + cible × 0.36` toutes les 25 ms.
+   */
+  function animerEntrees(hote) {
+    if (!hote || !FLUIDE) return;
+    // Une copie : la collection d'enfants est VIVANTE, et la colonne peut se
+    // refaire entre les deux battements ci-dessous.
+    var l = [].slice.call(hote.children);
+    if (l.length < 2) return;
+    var haut = l[0].getBoundingClientRect().top;
+    var pris = [];
+    for (var i = 1; i < l.length; i++) {
+      var dy = l[i].getBoundingClientRect().top - haut;
+      if (dy <= 0) continue;
+      l[i].style.setProperty('--cy', (-dy / 2) + 'px');
+      l[i].classList.add('caps-entre');
+      pris.push(l[i]);
+    }
+    if (!pris.length) return;
+    // DEUX battements : le premier PEINT l'état de départ, le second lâche la
+    // transition. Un simple recalcul forcé ne suffit pas — le navigateur
+    // fusionne les deux styles quand ils tombent dans le même cycle, et
+    // l'entrée se fait alors sans mouvement du tout.
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        for (var j = 0; j < pris.length; j++) pris[j].classList.remove('caps-entre');
+      });
+    });
+  }
+
   function posDe(fen) {
     // La FICHE se place par `--fx`/`--fy` — sa feuille tactile occupe déjà
     // `left`/`top`. On lit l'une ou l'autre paire, et tout ce qui suit
@@ -4874,6 +4933,9 @@ window.BureauFrutiz = (function () {
     ouvrirForum: ouvrirForum,
     // La fiche : au bureau c'est une fenêtre, elle se pose et se glisse.
     poserFiche: poserFiche,
+    // Les entrées d'un menu arrivent en glissant : le light rappelle ici
+    // chaque fois qu'il refait la colonne des scores ou celle de la boutique.
+    animerEntrees: animerEntrees,
     // Ce que le joueur a posé sur son bureau, pour le banc et pour le light.
     objetsBureau: function () { return objetsBureau.slice(); },
     rafraichirBureau: rafraichirBureau,

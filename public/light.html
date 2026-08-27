@@ -3924,6 +3924,9 @@
       });
     });
     box.innerHTML = html;
+    // Les rubriques et leurs articles arrivent en glissant, comme l'arbre du
+    // bureau d'époque (`cp.Tree`). Sur un téléphone, rien ne bouge.
+    if (window.BureauFrutiz && BureauFrutiz.animerEntrees) BureauFrutiz.animerEntrees(box);
     Array.prototype.forEach.call(box.querySelectorAll("[data-r]"), function (b) {
       b.addEventListener("click", function () {
         var r = Number(b.getAttribute("data-r")) || 0;
@@ -4262,6 +4265,9 @@
       });
     });
     box.innerHTML = html;
+    // `cp.Tree.addPhysElement` : chaque entrée naît au milieu de la précédente
+    // et glisse à sa place. Le bureau sait le faire ; le mobile n'a pas d'arbre.
+    if (window.BureauFrutiz && BureauFrutiz.animerEntrees) BureauFrutiz.animerEntrees(box);
     Array.prototype.forEach.call(box.querySelectorAll(".sc-rk"), function (b) {
       b.addEventListener("click", function () {
         scoresGameIdx = Number(b.getAttribute("data-i")) || 0;
