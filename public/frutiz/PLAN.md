@@ -3054,6 +3054,64 @@ tombe en x 1049..1093.
   offrent le même repli et le plein écran depuis le flanc de la barre, ne sont
   pas encore posés : le bouton vert de la mandala en tient lieu.
 
+## L'ASCENSEUR (`ScrollBar` sprite#864, `sb.Round` sprite#865)
+
+**Il n'y a rien à extraire : d'époque l'ascenseur n'est pas un dessin mais un
+tracé.** `sb.Round.init` crée deux clips VIDES — `fond` et `square` — et les
+peint au `FEMC.drawSmoothSquare`, deux passes chacun :
+
+```
+fond    rayon curve,              couleur back.dark
+        rayon curve − shadeSpace, couleur back.shade,  rentré de 1
+square  rayon curve,              couleur fore.shade
+        rayon curve − shadeSpace, couleur fore.main,   rentré de 1
+```
+
+soit, pour chacun, une gélule à liseré d'UN pixel. Les réglages viennent du
+`scrollInfo` par défaut d'un composant (`cpDocument.initMask`, 0x460e2) :
+
+```
+link "sbRound", size 14, margin { top: 4, side: 2 }
+color.fore = win.style.global.color[0]
+color.back = composant.style.color[0]
+```
+
+et de la classe elle-même : `shadeSpace = 1`, `curve = size / 2 = 7`,
+`minSquareSize = 16`, `marginInside = 0`. D'où une barre de 14 posée dans 18
+(deux de marge de chaque côté) qui s'arrête 4 px avant chaque extrémité, et un
+curseur jamais plus court que 16.
+
+**LES DEUX JEUX DE COULEURS NE VIENNENT PAS DU MÊME ENDROIT**, et c'est tout
+l'intérêt : `fore` est pris au style **global de la fenêtre** — toujours
+`colorSet.white` — tandis que `back` est pris au **style du COMPOSANT**. Le
+curseur est donc blanc partout, et la glissière change de fenêtre en fenêtre :
+
+| composant (`mainStyleName`) | où | jeu | glissière / liseré |
+|---|---|---|---|
+| `frSheet`, `frDef` | chat, journaux, boutique, fiche | green | `#ADE76B` / `#94DB39` |
+| `frRoomList` (`cpRoomList`, 0xbec80) | Salons publics | pink | `#FEABAB` / `#E77575` |
+| `frScore` (arbre + colonnes, 0xadf23) | Scores | orange | `#FACE68` / `#F8B443` |
+| `frFileStandard` (`listerFrame`, 0x9309a) | courrier, disques, inventaire, dossiers | yellow | `#EAEA0F` / `#CACA0D` |
+| `frFileTrash` | la corbeille (pas encore portée) | green | `#ADE76B` / `#94DB39` |
+| `frFileBlackList` | la liste noire (pas encore portée) | purple | `#BF9ED1` / `#A679C1` |
+| `frKikooz` (0x7a1bb) | le compteur de la boutique | brown | `#F3BE8C` / `#E6965B` |
+| `frSystem` | arbres, volets d'info | white | `#DDDDDD` / `#AAAAAA` |
+
+La liste de l'explorateur mérite un mot : elle ne déclare pas un style en dur,
+elle prend `mainStyleName = folderType.styleName` (0x930be) — c'est le DOSSIER
+affiché qui décide. Un dossier ordinaire est `frFileStandard` (le jaune), la
+corbeille `frFileTrash`, la liste noire `frFileBlackList`.
+
+Le portage pose deux variables CSS (`--asc-glissiere`, `--asc-liseret`) sur la
+fenêtre et les règles `::-webkit-scrollbar-*` ne font que les lire. Relevé au
+banc, fenêtre par fenêtre : salon vert, Salons publics rose, Scores orange,
+courrier / disques / inventaire jaunes, boutique et journaux verts.
+
+**Piège à ne pas refaire** : `scrollbar-color` doit rester sous
+`@supports not selector(::-webkit-scrollbar)`. Depuis Chrome 121, le poser
+bascule l'élément sur la barre STANDARD et met tous les `::-webkit-scrollbar` au
+rebut — la mise en forme d'époque disparaît sans un mot d'erreur.
+
 ## Reste à faire (étapes suivantes)
 
 1. ~~La barre-titre des types de fenêtres~~ : `drawInterface` lit TOUJOURS

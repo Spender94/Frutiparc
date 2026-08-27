@@ -22,6 +22,7 @@ const ROOT = path.join(__dirname, '..');
 const CSS = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
 const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
 const GLOBAL = fs.readFileSync(path.join(ROOT, 'frutiparc/global.as'), 'latin1');
+const STANDARD = fs.readFileSync(path.join(ROOT, 'frutiparc/Standard.as'), 'latin1');
 
 /* ── 1. LA FEUILLE DE LA FICHE ────────────────────────────────────────────── */
 
@@ -77,20 +78,50 @@ test('l’ascenseur reprend le tracé de sb.Round, encres comprises', () => {
   // (`initMask`, 0x460e2) impose size 14 et margin { top: 4, side: 2 }.
   // `shadeSpace = 1`, `curve = size / 2 = 7`, `minSquareSize = 16`.
   assert.match(CSS, /\.fen \*::-webkit-scrollbar,[\s\S]{0,80}\{\s*\n\s*width: 18px; height: 18px;/);
-  assert.match(CSS, /::-webkit-scrollbar-track,[\s\S]{0,90}\{\s*\n\s*background-color: #ADE76B;[\s\S]*?border: 4px solid transparent; border-left-width: 2px; border-right-width: 2px;[\s\S]*?box-shadow: inset 0 0 0 1px #94DB39;/);
+  assert.match(CSS, /::-webkit-scrollbar-track,[\s\S]{0,90}\{\s*\n\s*background-color: var\(--asc-glissiere\);[\s\S]*?border: 4px solid transparent; border-left-width: 2px; border-right-width: 2px;[\s\S]*?box-shadow: inset 0 0 0 1px var\(--asc-liseret\);/);
   assert.match(CSS, /::-webkit-scrollbar-thumb,[\s\S]{0,90}\{\s*\n\s*min-height: 16px;[\s\S]*?background-color: #FFFFFF;[\s\S]*?box-shadow: inset 0 0 0 1px #DDDDDD;/);
   // Ni flèches ni coin : `sb.Round` n'en dessine aucun.
   assert.match(CSS, /::-webkit-scrollbar-button,[\s\S]{0,90}\{ display: none; \}/);
 
-  // Les quatre encres viennent des jeux de couleurs d'époque, pas de nulle
-  // part : `color.fore = win.style.global.color[0]` → `colorSet.white`,
-  // `color.back = composant.style.color[0]` → `colorSet.green`.
+  // Le CURSEUR est blanc partout : `color.fore = win.style.global.color[0]`,
+  // et `getWinStyle().global.color[0]` vaut `colorSet.white`.
   const white = GLOBAL.slice(GLOBAL.indexOf('white:{'), GLOBAL.indexOf('green:{'));
   assert.match(white, /main:\s*0xFFFFFF/);
   assert.match(white, /shade:\s*0xDDDDDD/);
-  const green = GLOBAL.slice(GLOBAL.indexOf('green:{'), GLOBAL.indexOf('pink:{'));
-  assert.match(green, /shade:\s*0xADE76B/);
-  assert.match(green, /dark:\s*0x94DB39/);
+  assert.match(STANDARD, /global:\{\s*\n\s*color:\[\s*\n\s*_global\.colorSet\.white,/);
+});
+
+test('la GLISSIÈRE prend la couleur du composant, fenêtre par fenêtre', () => {
+  // `color.back = composant.style.color[0]` : c'est le style DU COMPOSANT qui
+  // décide, pas celui de la fenêtre. Chaque teinte est le `shade` (le corps) et
+  // le `dark` (le liseré) du jeu de couleurs que `getWinStyle()` lui donne.
+  const jeu = (nom, suivant) => GLOBAL.slice(GLOBAL.indexOf(nom + ':{'), GLOBAL.indexOf(suivant + ':{'));
+  const teinte = (nom, suivant) => {
+    const bloc = jeu(nom, suivant);
+    return {
+      shade: '#' + /shade:\s*0x([0-9A-F]{6})/.exec(bloc)[1],
+      dark: '#' + /dark:\s*0x([0-9A-F]{6})/.exec(bloc)[1],
+    };
+  };
+  const vert = teinte('green', 'pink');
+  const rose = teinte('pink', 'yellow');
+  const jaune = teinte('yellow', 'orange');
+  const orange = teinte('orange', 'purple');
+
+  // Le défaut — `frSheet` / `frDef`, dont `color[0]` est le vert.
+  assert.match(CSS, new RegExp('--asc-glissiere: ' + vert.shade + ';[\\s\\S]{0,80}--asc-liseret:   ' + vert.dark + ';'));
+  // « Salons publics » : `cpRoomList`, `mainStyleName: "frRoomList"` → le rose.
+  assert.match(STANDARD, /frRoomList:\{\s*\n\s*color:\[\s*\n\s*_global\.colorSet\.pink,/);
+  assert.match(CSS, new RegExp('#salons-panel\\)[\\s\\S]{0,120}--asc-glissiere: ' + rose.shade + ';[\\s\\S]{0,80}--asc-liseret:   ' + rose.dark + ';'));
+  // Les Scores : l'arbre comme les colonnes sont en `frScore` → l'orange.
+  assert.match(STANDARD, /frScore:\{\s*\n\s*color:\[\s*\n\s*_global\.colorSet\.orange,/);
+  assert.match(CSS, new RegExp('#scores-panel\\)[\\s\\S]{0,120}--asc-glissiere: ' + orange.shade + ';[\\s\\S]{0,80}--asc-liseret:   ' + orange.dark + ';'));
+  // L'explorateur : `listerFrame` prend `folderType.styleName`, soit
+  // `frFileStandard` pour un dossier ordinaire → le jaune.
+  assert.match(STANDARD, /frFileStandard:\{\s*\n\s*color:\[\s*\n\s*_global\.colorSet\.yellow,/);
+  assert.match(CSS, new RegExp('\\.ex-panel\\)[\\s\\S]{0,180}--asc-glissiere: ' + jaune.shade + ';[\\s\\S]{0,80}--asc-liseret:   ' + jaune.dark + ';'));
+  // Le courrier et les dossiers du bureau sont la MÊME fenêtre.
+  assert.match(CSS, /\.fen:has\(#mail-panel\),\s*\nbody\.bureau-frutiz \.fen:has\(\.ex-panel\),\s*\nbody\.bureau-frutiz \.fen:has\(\.fb-dossier-panneau\)/);
 });
 
 test('scrollbar-color reste sous @supports, sinon Chromium jette le reste', () => {
@@ -99,7 +130,7 @@ test('scrollbar-color reste sous @supports, sinon Chromium jette le reste', () =
   // d'époque disparaissait sans un mot. C'est le garde-fou que light.html
   // utilisait déjà pour `.fiche-page` et `#trombi-body`.
   const gardes = [...CSS.matchAll(/@supports not selector\(::-webkit-scrollbar\) \{/g)];
-  assert.ok(gardes.length >= 2, 'les scrollbar-color doivent vivre sous @supports');
+  assert.ok(gardes.length >= 1, 'les scrollbar-color doivent vivre sous @supports');
   for (const m of CSS.matchAll(/^(?!\s*\/).*scrollbar-color:/gm)) {
     const avant = CSS.slice(0, m.index);
     const ouvert = (avant.match(/@supports not selector\(::-webkit-scrollbar\) \{/g) || []).length;

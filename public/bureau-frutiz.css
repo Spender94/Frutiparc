@@ -1271,16 +1271,44 @@ body.bureau-frutiz .fen.pliee { min-width: 220px; }
    `#DDDDDD`, jamais plus court que 16.
 
    Les bordures transparentes portent les marges (la boîte de remplissage
-   retombe sur les 14 utiles) et l'ombre interne d'un pixel joue le liseré. */
+   retombe sur les 14 utiles) et l'ombre interne d'un pixel joue le liseré.
+
+   ── ET LA GLISSIÈRE PREND LA COULEUR DU COMPOSANT ────────────────────────
+   Les deux jeux de couleurs ne viennent PAS du même endroit :
+
+     fore (le curseur)   win.style.global.color[0]   → toujours `colorSet.white`
+     back (la glissière) composant.style.color[0]    → LE STYLE DU COMPOSANT
+
+   Le curseur est donc blanc partout (`main` #FFFFFF cerclé de `shade` #DDDDDD),
+   et c'est la GLISSIÈRE qui change de fenêtre en fenêtre — `shade` à l'intérieur,
+   `dark` pour le liseré, dans la teinte que `Standard.getWinStyle()` donne au
+   style du composant :
+
+     frSheet · frDef · frFileTrash   green   #ADE76B / #94DB39   (le défaut)
+     frRoomList                      pink    #FEABAB / #E77575
+     frScore · frScoreLight          orange  #FACE68 / #F8B443
+     frFileStandard · frInfo         yellow  #EAEA0F / #CACA0D
+     frFileBlackList                 purple  #BF9ED1 / #A679C1
+     frKikooz                        brown   #F3BE8C / #E6965B
+     frSystem                        white   #DDDDDD / #AAAAAA
+
+   Les valeurs sont celles de `_global.colorSet` (frutiparc/global.as), pas des
+   approximations. Chaque fenêtre pose donc ses deux variables ; les règles
+   ci-dessous ne font que les lire. */
+body.bureau-frutiz .fen,
+body.bureau-frutiz #fiche {
+  --asc-glissiere: #ADE76B;            /* colorSet.green.shade */
+  --asc-liseret:   #94DB39;            /* colorSet.green.dark  */
+}
 body.bureau-frutiz .fen *::-webkit-scrollbar,
 body.bureau-frutiz #fiche *::-webkit-scrollbar {
   width: 18px; height: 18px; background: transparent;
 }
 body.bureau-frutiz .fen *::-webkit-scrollbar-track,
 body.bureau-frutiz #fiche *::-webkit-scrollbar-track {
-  background-color: #ADE76B; background-clip: padding-box;
+  background-color: var(--asc-glissiere); background-clip: padding-box;
   border: 4px solid transparent; border-left-width: 2px; border-right-width: 2px;
-  border-radius: 9px; box-shadow: inset 0 0 0 1px #94DB39;
+  border-radius: 9px; box-shadow: inset 0 0 0 1px var(--asc-liseret);
 }
 body.bureau-frutiz .fen *::-webkit-scrollbar-thumb,
 body.bureau-frutiz #fiche *::-webkit-scrollbar-thumb {
@@ -1288,6 +1316,34 @@ body.bureau-frutiz #fiche *::-webkit-scrollbar-thumb {
   background-color: #FFFFFF; background-clip: padding-box;
   border: 4px solid transparent; border-left-width: 2px; border-right-width: 2px;
   border-radius: 9px; box-shadow: inset 0 0 0 1px #DDDDDD;
+}
+/* « Salons publics » : `initFrameSet` (0xbec80) monte un `cpRoomList` en
+   `mainStyleName: "frRoomList"` — la seule fenêtre ROSE du bureau. */
+body.bureau-frutiz .fen:has(#salons-panel) {
+  --asc-glissiere: #FEABAB;            /* colorSet.pink.shade */
+  --asc-liseret:   #E77575;            /* colorSet.pink.dark  */
+}
+/* Les Scores : l'arbre (0xadf23) comme les deux colonnes sont en `frScore`. */
+body.bureau-frutiz .fen:has(#scores-panel) {
+  --asc-glissiere: #FACE68;            /* colorSet.orange.shade */
+  --asc-liseret:   #F8B443;            /* colorSet.orange.dark  */
+}
+/* L'EXPLORATEUR — le courrier, les disques, l'inventaire et les dossiers posés
+   sur le bureau sont la MÊME fenêtre (`win.Explorer`). Sa liste, `listerFrame`
+   (`cpListField`, 0x9309a), prend son style du DOSSIER affiché :
+
+     mainStyleName = folderType.styleName
+
+   soit `frFileStandard` — le jaune — pour un dossier ordinaire. (La corbeille
+   vaudrait `frFileTrash`, le vert, et la liste noire `frFileBlackList`, le
+   violet : ni l'une ni l'autre n'a encore de fenêtre sur le bureau.) L'arbre de
+   gauche, lui, est en `frSystem` et le volet d'info en `frSheet` — mais ils ne
+   défilent pas. */
+body.bureau-frutiz .fen:has(#mail-panel),
+body.bureau-frutiz .fen:has(.ex-panel),
+body.bureau-frutiz .fen:has(.fb-dossier-panneau) {
+  --asc-glissiere: #EAEA0F;            /* colorSet.yellow.shade */
+  --asc-liseret:   #CACA0D;            /* colorSet.yellow.dark  */
 }
 /* Ni flèches ni coin : `sb.Round` n'en dessine aucun. */
 body.bureau-frutiz .fen *::-webkit-scrollbar-button,
@@ -1302,7 +1358,9 @@ body.bureau-frutiz #fiche *::-webkit-scrollbar-corner { background: transparent;
    light.html pour `.fiche-page` et `#trombi-body` ; on s'y range. */
 @supports not selector(::-webkit-scrollbar) {
   body.bureau-frutiz .fen *,
-  body.bureau-frutiz #fiche * { scrollbar-color: #FFFFFF #ADE76B; scrollbar-width: thin; }
+  body.bureau-frutiz #fiche * {
+    scrollbar-color: #FFFFFF var(--asc-glissiere); scrollbar-width: thin;
+  }
 }
 
 /* ── LA POIGNÉE DE REDIMENSIONNEMENT ──────────────────────────────────────
@@ -2224,17 +2282,8 @@ body.bureau-frutiz .fen #scores-panel #sc-table {
   box-shadow: 0 0 0 2px #DDDDDD;
 }
 /* (Les deux colonnes cachaient leur ascenseur ; elles gardent maintenant celui
-   de `sbRound`, comme le reste des fenêtres. Sur l'orange du tableau des
-   scores, la glissière prend la teinte du panneau — `color.back` vient du
-   style DU COMPOSANT, pas de la fenêtre.) */
-body.bureau-frutiz .fen #scores-panel #sc-liste::-webkit-scrollbar-track,
-body.bureau-frutiz .fen #scores-panel #sc-table::-webkit-scrollbar-track {
-  background-color: #FACE68; box-shadow: inset 0 0 0 1px #F2A93C;
-}
-@supports not selector(::-webkit-scrollbar) {
-  body.bureau-frutiz .fen #scores-panel #sc-liste,
-  body.bureau-frutiz .fen #scores-panel #sc-table { scrollbar-color: #FFFFFF #FACE68; }
-}
+   de `sbRound`, comme le reste des fenêtres — en orange, puisque `frScore` est
+   le style du composant. La teinte est posée plus haut, sur la fenêtre.) */
 body.bureau-frutiz .fen #scores-panel #sc-liste {
   flex: 1 1 auto; min-height: 0; padding: 0; overflow-y: auto;
 }
