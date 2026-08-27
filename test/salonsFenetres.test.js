@@ -136,9 +136,11 @@ test('chaque fenêtre a SA colonne d’icônes, SES connectés, SA colonne de bo
   // Côté light, la liste des connectés d'un cadre suit SON salon.
   assert.match(LIGHT, /membresDuSalon\(c\.salon\)\.forEach\(function \(n\) \{/);
   assert.match(LIGHT, /membresDe: function \(id\) \{/);
-  // La fenêtre du salon s'ouvre AVEC ses connectés (`cpUserList` est dans
-  // `margin.right` dès `initFrameSet`).
-  assert.match(LIGHT, /ouvrirTiroir\(true\);\s*\n\s*\}/);
+  // La fenêtre du salon s'ouvre SANS ses connectés : `win.Chat.init` (0x6915f)
+  // ferme ses trois panneaux avant même d'appeler `win.Dialog.init`. La liste
+  // est REMPLIE mais REFERMÉE — le bouton la montre, et la fenêtre grandit
+  // alors d'elle-même (cf. test/salonEtroit.test.js).
+  assert.match(LIGHT, /ouvrirTiroir\(false\);\s*\n\s*majConnectesCadre\(c\);\s*\n\s*\}/);
 });
 
 test('deux conversations peuvent jouer deux émotions à la fois', () => {

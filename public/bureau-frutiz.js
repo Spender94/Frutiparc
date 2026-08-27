@@ -3922,6 +3922,14 @@ window.BureauFrutiz = (function () {
     fen._entree = recal(
       { x: place.x, y: place.y, w: parseFloat(fen.style.width), h: parseFloat(fen.style.height) },
       rub.min || { w: 320, h: 220 });
+    // `recal` borne la TAILLE autant que la place (`pos.w`, `pos.h`) : une
+    // rubrique peut donc déclarer un gabarit plus petit que son minimum — ou
+    // ne rien déclarer du tout, comme `win.Chat` dont le `pos` reste à zéro —
+    // et la fenêtre s'ouvre au minimum de son contenu. Sans cette ligne, la
+    // largeur écrite plus haut restait telle quelle et le minimum n'agissait
+    // qu'à la poignée.
+    fen.style.width = Math.round(fen._entree.w) + 'px';
+    fen.style.height = Math.round(fen._entree.h) + 'px';
 
     var titre = document.createElement('div');
     titre.className = 'fen-titre';
@@ -4084,7 +4092,18 @@ window.BureauFrutiz = (function () {
       RUBRIQUES[cle] = {
         panneau: '[data-salon="' + String(salon).replace(/["\\\]]/g, '') + '"]',
         cle: cle, salon: salon, titre: S.titreDe(salon), fruit: 'winChat',
-        l: 780, h: 580, min: function () { return minSalon(panneau); },
+        // `win.Chat` n'écrit PAS de `pos` : ni `win.Chat.init` (0x69154, qui ne
+        // fait que fermer ses trois panneaux et appeler `win.Dialog.init`), ni
+        // `win.Dialog.init` (0x68ac3), ni `win.Advance` au-dessus. Le `pos` de
+        // `WinStandard.init` reste donc à zéro, et `recal` en fait le MINIMUM
+        // du contenu, dans le coin. Une conversation s'ouvre étroite, et c'est
+        // à l'usage qu'on l'étire — le portage l'ouvrait à 780 × 580, c'est-
+        // à-dire plus grande que la moitié du bureau.
+        //   `h: 0` dit exactement cela : la hauteur est celle de `minSalon`.
+        //   La largeur est celle qu'on veut voir à l'ouverture (220), et elle
+        //   remonte d'elle-même quand la colonne des bouilles ou la liste des
+        //   connectés relève le minimum (`appliquerMinimum`).
+        l: 220, h: 0, min: function () { return minSalon(panneau); },
       };
     }
     ouvrirFenetre(cle);

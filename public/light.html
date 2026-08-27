@@ -5957,8 +5957,17 @@
       var a = dansCadre(c, "accent-bar"); if (a) a.classList.remove("show");
       if (vu && nearBottom(c.fil)) scrollDown(c.fil);
     });
-    // Les connectés — `cpUserList`, dans `margin.right` du frameset : la
-    // fenêtre du salon s'ouvre AVEC, d'où l'appel d'entrée.
+    // Les connectés — `cpUserList`, dans `margin.right` du frameset. La
+    // fenêtre s'ouvre SANS : `win.Chat.init` (0x6915f) commence par fermer ses
+    // trois panneaux avant même d'appeler `win.Dialog.init` —
+    //
+    //     this.flPenList = false; this.flUserList = false;
+    //     this.flScreenList = false;
+    //
+    // et c'est ce qui donne à une conversation neuve sa largeur d'époque : le
+    // `pos` de `WinStandard` reste à zéro, `recal` en fait le MINIMUM, et ce
+    // minimum est celui d'un salon nu. Le tiroir ouvert d'entrée ajoutait à
+    // lui seul cent-vingt-huit pixels.
     var usersBtn = dansCadre(c, "users-btn");
     var tiroir = dansCadre(c, "users-drawer");
     var fond = dansCadre(c, "drawer-backdrop");
@@ -5985,7 +5994,10 @@
     });
     brancherDefilement(dansCadre(c, "users-list"), dansCadre(c, "users-scroll-up"), -1);
     brancherDefilement(dansCadre(c, "users-list"), dansCadre(c, "users-scroll-down"), 1);
-    ouvrirTiroir(true);
+    // La liste est REMPLIE mais REFERMÉE : le bouton la montre en un clic, et
+    // la fenêtre grandit alors d'elle-même (`appliquerMinimum`).
+    ouvrirTiroir(false);
+    majConnectesCadre(c);
   }
 
   // Écrire DANS un salon donné — le même chemin que la saisie du panneau

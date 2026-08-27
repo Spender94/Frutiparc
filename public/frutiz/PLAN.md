@@ -992,6 +992,26 @@ Le light mettait sa barre d'outils EN HAUT, avec un menu déroulant de salons.
 Le bureau d'époque met quatre boutons EN COLONNE À GAUCHE, et pas de menu :
 le salon se choisit dans « Salons publics ».
 
+### Elle s'ouvre ÉTROITE, et fermée
+
+`win.Chat` n'écrit AUCUN `pos` — ni son `init` (0x69154), ni `win.Dialog.init`
+(0x68ac3) au-dessus, ni `win.Advance` au-dessus encore. Le `pos` de
+`WinStandard.init` reste donc `{0, 0, 0, 0}`, et `recal` en fait le MINIMUM du
+contenu, dans le coin (cf. « OÙ UNE FENÊTRE S'OUVRE »).
+
+Et ce minimum est celui d'un salon NU, parce que la toute première chose que
+fait `init` (0x6915f) est de fermer ses trois panneaux :
+
+    this.flPenList = false;
+    this.flUserList = false;
+    this.flScreenList = false;
+
+Une conversation neuve n'a donc ni sa colonne de bouilles, ni sa liste de
+connectés, ni sa barre de feutres — on les ouvre au bouton, et la fenêtre
+grandit alors d'elle-même jusqu'au nouveau minimum. Le portage l'ouvrait à
+780 × 580 avec les connectés déjà déployés ; elle s'ouvre maintenant en
+**220 × 156 posés dans le coin**, et passe à 276 au clic sur les connectés.
+
 ### Les quatre boutons (`genLeftIconList`, 0x691da)
 
 Chacun est un `butPush` dont le `param` vaut
