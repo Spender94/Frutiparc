@@ -5607,33 +5607,156 @@ window.BureauFrutiz = (function () {
   // pièce disparaît le temps du chargement, puis revient — et ne cligne plus
   // jamais. Flash, lui, avait tout en mémoire dès la première image.
   //
-  // On lit donc la feuille de style du bureau et on demande TOUTES ses images
-  // d'un coup. Une seule requête (le fichier est déjà en cache), et le reste
-  // part en parallèle sans rien bloquer.
+  // On demande donc TOUS les dessins de l'interface d'un coup, en deux
+  // inventaires : la LISTE d'époque (`chargement.json`, ce que l'extracteur a
+  // sorti de main.swf) et les images citées par la feuille de style du bureau.
+  // C'est exactement ce que la page de chargement promet — « tous les éléments
+  // de l'interface de frutiparc » — et c'est elle qui compte les arrivées.
   var precharge = [];                   // on garde les Image vivantes le temps du chargement
-  function prechargerImages() {
+  function inventaireDuChargement(declarer, fini) {
+    var restants = 2;
+    var termine = function () { if (--restants === 0 && fini) fini(); };
+    var demander = function (url) {
+      var img = new Image();
+      var arrive = declarer(url);
+      img.onload = arrive; img.onerror = arrive;   // une image absente est « réglée » aussi
+      img.src = url;
+      precharge.push(img);
+    };
+    var vues = {};
+    var unique = function (url) { if (vues[url]) return; vues[url] = true; demander(url); };
+    // 1. les dessins sortis du SWF (scripts/extract-chargement.js)
+    fetch('/frutiz/sprites/chargement.json', { cache: 'force-cache' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (m) { if (m && m.interface) m.interface.forEach(unique); })
+      .catch(function () { /* pas de manifeste : la feuille de style suffira */ })
+      .then(termine, termine);
+    // 2. celles que la feuille de style pose en `background-image`
     fetch('/bureau-frutiz.css', { cache: 'force-cache' })
       .then(function (r) { return r.ok ? r.text() : ''; })
       .then(function (css) {
-        var vues = {};
         var re = /url\(\s*['"]?(\/[^'")]+)['"]?\s*\)/g;
         var m;
-        while ((m = re.exec(css))) {
-          if (vues[m[1]]) continue;
-          vues[m[1]] = true;
-          var img = new Image();
-          img.src = m[1];
-          precharge.push(img);
-        }
+        while ((m = re.exec(css))) unique(m[1]);
       })
-      .catch(function () {});
+      .catch(function () { /* tant pis, le premier survol clignotera */ })
+      .then(termine, termine);
+  }
+
+  /*
+   * ── LA PAGE DE CHARGEMENT — `loadingProcess` (#154) ───────────────────
+   *
+   * La toute première chose que main.swf montrait : un écran vert, le mot
+   * CHARGEMENT, et une BARRE ROSE qui se remplit. `loadingInit()` (0x08641)
+   * l'attache à la profondeur 512, `updateLoadingSize()` (0x087ba) la pose,
+   * `loadingLoop()` (0x08a52) la fait vivre — une fois par image, à 100 im/s.
+   *
+   *     ratio = (mLoaded + iLoaded) / (mTotal + iTotal)
+   *     coef  = coef × 0,9 + ratio × 0,1
+   *     mid._width = coef × midMax        b2._x = b1._x + mid._width
+   *     fieldInfo.text = « fichiers restants : » + round((1 − coef) × 100) + « % »
+   *     fini quand tout est là ET coef > 0,995 → gotoAndPlay("fin"),
+   *     puis icon.removeMovieClip() et lp.removeMovieClip()
+   *
+   * DEUX CHOSES D'ÉPOQUE QU'ON GARDE TELLES QUELLES :
+   *
+   *  · LA BARRE MONTE PENDANT QUE LE NOMBRE DESCEND. Le libellé dit
+   *    « fichiers restants » et affiche (1 − coef) : à barre pleine il marque
+   *    0 %. Le texte par défaut du champ dit d'ailleurs « fichiers
+   *    téléchargés », preuve que l'un des deux a été changé sans l'autre.
+   *    C'est le bug d'origine, il reste.
+   *  · LE PLANCHER DE DEMI-SECONDE. Le lissage part de coef = 0 : même tout
+   *    en cache, il faut une cinquantaine d'images d'époque pour franchir
+   *    0,995 (0,9⁵⁰ ≈ 0,005). La page ne clignote donc jamais.
+   *
+   * Ce que le ruban MESURE : là où le SWF pesait ses propres octets et ceux de
+   * fileIcon.swf, le portage pèse les dessins de l'interface — un fichier
+   * réglé, un pas de plus. Le reste (la loi, la géométrie, les mots) est au
+   * chiffre près celui du SWF ; la géométrie vit dans la feuille de style.
+   */
+  var CH_LISSAGE = 0.9;          // coef = coef × 0,9 + ratio × 0,1, par image
+  var CH_SEUIL = 0.995;          // et fini au-delà
+  var CH_CADENCE = 10;           // une image d'époque = 10 ms (100 im/s)
+  var CH_TITRE = 'CHARGEMENT';
+  var CH_PREFIXE = 'fichiers restants : ';
+  var CH_INFO_TITRE = 'Information :';
+  var CH_INFO = 'Ce chargement comprend tous les éléments de l’interface de'
+    + ' frutiparc ce qui vous permettra de naviguer plus rapidement ensuite !';
+
+  var pageChargement = null;
+  function ouvrirChargement() {
+    if (pageChargement) return;
+    var page = document.createElement('div');
+    page.id = 'fb-chargement';
+    // Les neuf enfants de `loadingProcess`, dans l'ordre de leurs profondeurs :
+    // la gouttière (image 2 des clips), le ruban (image 1), puis les champs.
+    page.innerHTML =
+      '<div class="ch-barre">'
+      + '<i class="ch-g1"></i><i class="ch-gm"></i><i class="ch-g2"></i>'
+      + '<div class="ch-ruban"><i class="ch-b1"></i><i class="ch-mid"></i><i class="ch-b2"></i></div>'
+      + '</div>'
+      + '<div class="ch-titre"></div>'
+      + '<div class="ch-champ"></div>'
+      + '<div class="ch-info-titre"></div>'
+      + '<div class="ch-info"></div>';
+    page.querySelector('.ch-titre').textContent = CH_TITRE;
+    page.querySelector('.ch-info-titre').textContent = CH_INFO_TITRE;
+    page.querySelector('.ch-info').textContent = CH_INFO;
+    var champ = page.querySelector('.ch-champ');
+    document.body.appendChild(page);
+    pageChargement = page;
+
+    var total = 0, regles = 0, pret = false, coef = 0, dernier = 0;
+    // `mTotal` était connu dès la première image : tant qu'on ne sait pas
+    // combien de fichiers on attend, le ratio reste à zéro — sans quoi le
+    // ruban avancerait puis RECULERAIT quand le second inventaire arrive.
+    inventaireDuChargement(
+      function (url) { total++; return function () { regles++; }; },
+      function () { pret = true; }
+    );
+
+    var poser = function (c) {
+      // `mid._width = coef × midMax` et `b2._x = b1._x + mid._width` : ici, la
+      // feuille de style tire la même largeur de `--ch-coef`, et le bout droit
+      // suit tout seul (il est collé à `left: 100%` du ruban).
+      page.style.setProperty('--ch-coef', String(c));
+      champ.textContent = CH_PREFIXE + Math.round((1 - c) * 100) + '%';
+    };
+    poser(0);
+
+    var fermer = function () {
+      // « fin » : `lp.removeMovieClip()`, sans fondu — la page disparaît.
+      if (page.parentNode) page.parentNode.removeChild(page);
+      if (pageChargement === page) pageChargement = null;
+    };
+
+    var boucle = function (ts) {
+      if (!page.parentNode) return;                 // fermée entre-temps
+      var dt = dernier ? Math.max(0, ts - dernier) : CH_CADENCE;
+      dernier = ts;
+      var ratio = pret ? (total ? regles / total : 1) : 0;
+      // `loadingLoop` lisse de 0,9 UNE FOIS PAR IMAGE, à 100 im/s. On garde la
+      // constante de temps plutôt que le compte d'images : `coef − ratio` est
+      // multiplié par 0,9 tous les 10 ms, ce que la forme fermée donne
+      // exactement pour un intervalle quelconque.
+      coef = ratio + (coef - ratio) * Math.pow(CH_LISSAGE, dt / CH_CADENCE);
+      poser(coef);
+      if (pret && regles === total && coef > CH_SEUIL) { fermer(); return; }
+      requestAnimationFrame(boucle);
+    };
+    requestAnimationFrame(boucle);
+    return fermer;
   }
 
   function demarrer() {
     if (actif) return;
     actif = true;
     document.body.classList.add('bureau-frutiz');
-    prechargerImages();
+    // La page de chargement passe DEVANT (profondeur 512, au-dessus de tout) :
+    // le bureau se monte derrière elle pendant que les dessins arrivent, et
+    // elle s'efface d'elle-même. C'est aussi elle qui précharge — d'où le
+    // `flLoading` d'époque, vrai le temps du montage.
+    ouvrirChargement();
     var app = $('#app');
 
     var bureau = document.createElement('div');

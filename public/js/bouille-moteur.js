@@ -291,9 +291,23 @@
     return { a: c.echX, b: 0, c: 0, d: c.echY, e: c.dx, f: c.dy };
   }
 
+  /*
+   * `mc.nom` — LE DERNIER POSÉ GAGNE.
+   *
+   * Flash range les enfants d'un clip par leur nom d'instance au fur et à
+   * mesure des PlaceObject : deux enfants du même nom, et c'est celui de la
+   * PLUS HAUTE PROFONDEUR — le dernier posé — que `mc.nom` désigne. Le portage
+   * rendait le premier.
+   *
+   * Un seul endroit s'en soucie dans tout le corpus des familles, mais il
+   * existe : `face.ca.c.acc.col3` de l'accessoire 9 variante 5 (famille 0)
+   * porte DEUX `col3`. Le portage teignait celui du dessous et laissait celui
+   * du dessus dans ses couleurs brutes.
+   */
   Clip.prototype.enfantNomme = function (nom) {
-    for (const e of this.enfants.values()) if (e.nom === nom) return e.objet || null;
-    return null;
+    let trouve = null;
+    for (const e of this.enfants.values()) if (e.nom === nom && e.objet) trouve = e.objet;
+    return trouve;
   };
 
   // Rejoue les ordres jusqu'à l'image n. Un enfant survit s'il retrouve sa
@@ -579,18 +593,34 @@
     teinter(caC && caC.enfantNomme('col3'), faceColor);
     teinter(cbC && cbC.enfantNomme('col'), secondColor);
     teinter(cbC && cbC.enfantNomme('col3'), faceColor);
-    for (const acc of [caAcc, cbAcc]) {
-      if (!acc || !acc.visible) continue;
-      teinter(acc.enfantNomme('col'), accColor1);
-      teinter(acc.enfantNomme('col2'), accColor2);
-      teinter(acc.enfantNomme('col3'), accColor3);
-    }
-    for (const acc of [caAcc2, cbAcc2]) {
-      if (!acc || !acc.visible) continue;
-      teinter(acc.enfantNomme('col'), accColor1);
-      teinter(acc.enfantNomme('col2'), accColor2);
-      teinter(acc.enfantNomme('col3'), accColor3);
-    }
+    /*
+     * C'EST L'AVANT QUI DÉCIDE POUR LES DEUX. `apply()` du SWF de famille ne
+     * teste QU'UNE visibilité par jeu, celle de la couche AVANT, et teinte
+     * ensuite les deux couches :
+     *
+     *     if (face.ca.c.acc._visible) {
+     *       accColor1 → ca.c.acc.col   accColor1 → cb.c.acc.col
+     *       accColor2 → ca.c.acc.col2  accColor2 → cb.c.acc.col2
+     *       accColor3 → ca.c.acc.col3  accColor3 → cb.c.acc.col3
+     *     }
+     *     if (face.ca.c.acc2._visible) { … idem pour acc2 …
+     *
+     * Le portage testait CHAQUE couche séparément : une pièce d'arrière-plan
+     * que le SWF cache gardait sa couleur brute là où l'époque la teignait
+     * quand même, et l'inverse aussi. Six `setColor` par jeu, sous une seule
+     * condition — celle de l'avant.
+     */
+    const jeu = (avant, arriere) => {
+      if (!avant || !avant.visible) return;
+      for (const acc of [avant, arriere]) {
+        if (!acc) continue;
+        teinter(acc.enfantNomme('col'), accColor1);
+        teinter(acc.enfantNomme('col2'), accColor2);
+        teinter(acc.enfantNomme('col3'), accColor3);
+      }
+    };
+    jeu(caAcc, cbAcc);
+    jeu(caAcc2, cbAcc2);
     this.appliquerHumeur();
     return this;
   };

@@ -159,6 +159,42 @@ test('les teintes atterrissent sur les clips nommés du script racine', async ()
   assert.deepStrictEqual(e(e(face, 'ca'), 'c').enfantNomme('col').teinte, Moteur.PALETTE[9]);
 });
 
+test('`mc.nom` désigne le DERNIER posé, pas le premier', async () => {
+  // Flash range les enfants d'un clip par nom d'instance au fur et à mesure
+  // des PlaceObject : deux enfants du même nom, et c'est celui de la PLUS
+  // HAUTE PROFONDEUR — le dernier posé — que `mc.nom` rend.
+  const src = fs.readFileSync(path.join(ROOT, 'public/js/bouille-moteur.js'), 'utf8');
+  assert.match(src, /Clip\.prototype\.enfantNomme = function \(nom\) \{\s*\n\s*let trouve = null;\s*\n\s*for \(const e of this\.enfants\.values\(\)\) if \(e\.nom === nom && e\.objet\) trouve = e\.objet;\s*\n\s*return trouve;/);
+  // Le seul cas du corpus : `ca.c.acc` de l'accessoire 9 variante 5 (famille 0)
+  // porte DEUX `col3`. `setColor` n'en teint qu'UN — d'époque comme ici —,
+  // mais ce n'est pas le même : Flash prend celui du DESSUS, le portage
+  // prenait celui du dessous, et la pièce visible restait brute.
+  const defs = await lire('famille0.swf');
+  const mo = new Moteur.Moteur(defs, { alea: () => 0.5 });
+  const face = mo.creerVisage();
+  mo.definir(etat([0, 0, 0, 0, 0, 1, 2, 9, 5, 11, 21, 31]));
+  const acc = face.enfantNomme('ca').enfantNomme('c').enfantNomme('acc');
+  const col3 = [];
+  for (const [prof, e] of acc.enfants) if (e.nom === 'col3' && e.objet) col3.push([prof, e.objet]);
+  assert.strictEqual(col3.length, 2, 'deux `col3` posés — c’est le cas d’espèce');
+  col3.sort((x, y) => x[0] - y[0]);
+  assert.ok(!col3[0][1].teinte, 'celui du dessous reste brut');
+  assert.deepStrictEqual(col3[1][1].teinte, Moteur.PALETTE[31], 'celui du DESSUS est teint');
+  assert.strictEqual(acc.enfantNomme('col3'), col3[1][1], '`acc.col3` rend celui du dessus');
+});
+
+test('l’AVANT décide pour les deux couches : une seule condition par jeu', () => {
+  // `apply()` du SWF de famille ne teste QUE `face.ca.c.acc._visible`, puis
+  // teinte les six clips — ca ET cb. Le portage testait chaque couche
+  // séparément : une pièce d'arrière-plan que le SWF cache gardait sa couleur
+  // brute là où l'époque la teignait quand même.
+  const src = fs.readFileSync(path.join(ROOT, 'public/js/bouille-moteur.js'), 'utf8');
+  assert.match(src, /const jeu = \(avant, arriere\) => \{\s*\n\s*if \(!avant \|\| !avant\.visible\) return;\s*\n\s*for \(const acc of \[avant, arriere\]\) \{/);
+  assert.match(src, /jeu\(caAcc, cbAcc\);\s*\n\s*jeu\(caAcc2, cbAcc2\);/);
+  // et surtout PAS l'ancienne boucle, qui filtrait couche par couche
+  assert.doesNotMatch(src, /for \(const acc of \[caAcc, cbAcc\]\)/);
+});
+
 test('BOGUE D’ÉPOQUE conservé : cb.c.acc2 n’est pas calé', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public/js/bouille-moteur.js'), 'utf8');
   // Les trois que le script racine cale, et pas le quatrième.

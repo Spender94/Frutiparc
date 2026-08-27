@@ -200,11 +200,15 @@ test('l’onglet d’une conversation CLIGNOTE rose à l’arrivée d’un messa
 test('les états de survol sont préchargés — plus de clignotement', () => {
   // Un `background-image` d'état ne part chercher son dessin qu'au premier
   // survol : la pièce disparaît le temps du chargement. On demande donc
-  // toutes les images de la feuille dès le démarrage du bureau.
-  assert.match(JS, /function prechargerImages\(\)/);
+  // toutes les images de la feuille dès le démarrage du bureau — c'est la
+  // PAGE DE CHARGEMENT qui s'en charge maintenant (cf. chargementBureau), et
+  // c'est même ce que son texte d'époque promet.
+  assert.match(JS, /function inventaireDuChargement\(declarer, fini\)/);
   assert.match(JS, /fetch\('\/bureau-frutiz\.css'/);
   assert.match(JS, /url\\\(\\s\*\['"\]\?\(\\\/\[\^'"\)\]\+\)\['"\]\?\\s\*\\\)/);
-  assert.match(JS, /actif = true;\s*\n\s*document\.body\.classList\.add\('bureau-frutiz'\);\s*\n\s*prechargerImages\(\);/);
+  assert.match(JS, /actif = true;\s*\n\s*document\.body\.classList\.add\('bureau-frutiz'\);\s*\n(?:\s*\/\/[^\n]*\n)*\s*ouvrirChargement\(\);/);
+  // et l'inventaire du manifeste s'y ajoute : les 165 dessins de l'interface
+  assert.match(JS, /fetch\('\/frutiz\/sprites\/chargement\.json'/);
 });
 
 test('le bandeau d’une fenêtre garde la FLÈCHE', () => {

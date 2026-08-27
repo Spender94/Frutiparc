@@ -3641,3 +3641,124 @@ body.bureau-frutiz .fen .ex-panel .ex-vide {
   font: normal 10px Verdana, Arial, sans-serif; color: #5A5A00;
 }
 body.bureau-frutiz .fen .ex-panel .ex-champ.attente { cursor: progress; }
+
+/* ══ LA PAGE DE CHARGEMENT — `loadingProcess` (#154) ═══════════════════════
+ *
+ * La première chose que main.swf montrait : un écran VERT, le mot CHARGEMENT,
+ * et une BARRE ROSE qui se remplit. Toute la géométrie qui suit vient de
+ * `updateLoadingSize()` (0x087ba), au chiffre près — la feuille de style la
+ * tient parce que c'est de la MISE EN PAGE, et parce qu'elle est responsive
+ * exactement comme l'était la fonction d'époque (rappelée à chaque `onResize`
+ * tant que `flLoading`).
+ *
+ * ATTENTION : la scène de cette page n'est pas le RECT du SWF (1024 × 768)
+ * mais `_global.mcw` × `_global.mch`, posés à `baseMcw = 1265`, `baseMch = 768`
+ * par la toute première DoAction du fichier (0x07fd0). Tout s'y exprime en
+ * MARGES, donc tout se transpose tel quel à la fenêtre du navigateur :
+ *
+ *     mx = 32 ; b = 9 ; x0 = mx + b = 41 ; cy = mch / 2
+ *     midMax = mcw − (mx + b) × 2                 (la gouttière : mx → mcw − mx)
+ *     title._x     = mcw / 2   title._y     = cy − 24
+ *     fieldInfo._x = mx        fieldInfo._y = cy + 16
+ *     info._x      = mcw / 2   info._y      = cy + 32
+ *     b1 · bgb1 · mid · bgmid → _x = x0, _y = cy   (les formes vont de −3 à 15)
+ *     mid._width = coef × midMax   b2._x = b1._x + mid._width
+ *
+ * Les quatre dessins viennent de deux clips à deux images : `mid` (ch142,
+ * 10 × 18) et `bout` (ch145, 9 × 18) — image 1 le remplissage, image 2 la
+ * gouttière. Le bout DROIT est le même dessin en miroir (matrice a = −1),
+ * d'où le `scaleX(-1)`. Voir scripts/extract-chargement.js. */
+body.bureau-frutiz #fb-chargement {
+  position: fixed; inset: 0; z-index: 5000; overflow: hidden;
+  background: #ADE76B;                  /* SetBackgroundColor de main.swf */
+  --ch-coef: 0;                         /* le lissage de `loadingLoop` */
+}
+/* LA BARRE : de x = mx à x = mcw − mx, centrée sur cy, 18 de haut dont 3
+   au-dessus de la ligne médiane. Sa largeur intérieure vaut donc midMax + 18,
+   les deux bouts compris. */
+body.bureau-frutiz #fb-chargement .ch-barre {
+  position: absolute; left: 32px; right: 32px;
+  top: 50%; margin-top: -3px; height: 18px;
+}
+body.bureau-frutiz #fb-chargement .ch-barre i,
+body.bureau-frutiz #fb-chargement .ch-ruban i {
+  position: absolute; top: 0; height: 18px; display: block;
+  background-repeat: no-repeat; background-size: 100% 100%;
+}
+/* La GOUTTIÈRE (image 2 des deux clips) : `bgb1` collé à gauche, `bgmid`
+   étiré sur midMax, `bgb2` en miroir à x0 + midMax — soit le bord droit. */
+body.bureau-frutiz #fb-chargement .ch-g1,
+body.bureau-frutiz #fb-chargement .ch-g2 {
+  width: 9px; background-image: url('/frutiz/sprites/chargement-bout-vide.svg');
+}
+body.bureau-frutiz #fb-chargement .ch-g1 { left: 0; }
+body.bureau-frutiz #fb-chargement .ch-g2 { right: 0; transform: scaleX(-1); }
+body.bureau-frutiz #fb-chargement .ch-gm {
+  left: 9px; right: 9px;
+  background-image: url('/frutiz/sprites/chargement-milieu-vide.svg');
+}
+/* LE RUBAN (image 1) : `mid._width = coef × midMax`. Il commence à x0 — soit
+   9 px après le bord de la barre — et sa largeur est cette fraction de midMax,
+   que la barre mesure à 18 px près (ses deux bouts). */
+body.bureau-frutiz #fb-chargement .ch-ruban {
+  position: absolute; left: 9px; top: 0; height: 18px;
+  width: calc(var(--ch-coef) * (100% - 18px));
+}
+body.bureau-frutiz #fb-chargement .ch-b1,
+body.bureau-frutiz #fb-chargement .ch-b2 {
+  width: 9px; background-image: url('/frutiz/sprites/chargement-bout-plein.svg');
+}
+/* Le dessin d'un bout va de −9 à 0 : le gauche déborde donc DEVANT le ruban. */
+body.bureau-frutiz #fb-chargement .ch-b1 { left: -9px; }
+/* `b2._x = b1._x + mid._width`, en miroir : il commence où le ruban finit. */
+body.bureau-frutiz #fb-chargement .ch-b2 { left: 100%; transform: scaleX(-1); }
+body.bureau-frutiz #fb-chargement .ch-mid {
+  left: 0; width: 100%;
+  background-image: url('/frutiz/sprites/chargement-milieu-plein.svg');
+}
+/* ── LES TROIS CHAMPS ──────────────────────────────────────────────────────
+ * Un EditText Flash a une GOUTTIÈRE de 2 px : son RECT part de (−2, −2) et la
+ * première ligne pose sa base à `y0 + 2 + ascendante`. Verdana déclare
+ * (police #148) ascendante 1030/1024 et descendante 215/1024 d'em, d'où la
+ * hauteur d'une boîte d'UNE ligne : 2 + (1,0059 + 0,21) × h + 2. Poser
+ * `line-height` égal à cette hauteur remet la base exactement où Flash la met
+ * — la demi-interligne du navigateur vaut alors les 2 px de la gouttière.
+ * Les `left`/`top` ci-dessous sont donc ceux du RECT, pas ceux du texte. */
+body.bureau-frutiz #fb-chargement .ch-titre,
+body.bureau-frutiz #fb-chargement .ch-champ,
+body.bureau-frutiz #fb-chargement .ch-info-titre,
+body.bureau-frutiz #fb-chargement .ch-info {
+  position: absolute; box-sizing: border-box; padding: 0 2px;
+  color: #4D7614;                       /* la couleur des quatre DefineEditText */
+  font-family: Verdana, Arial, sans-serif;
+  text-align: center; overflow: hidden;
+}
+/* #149 « CHARGEMENT » — verdana GRAS 14, RECT (−2,−2)–(145 ; 19,05), posé à
+   (−71,5 ; −8,5) dans `title`, lui-même à (mcw / 2 ; cy − 24). */
+body.bureau-frutiz #fb-chargement .ch-titre {
+  left: 50%; margin-left: -73.5px; top: 50%; margin-top: -34.5px;
+  width: 147px; height: 21.05px; font-size: 14px; font-weight: 700;
+  line-height: 21.05px;
+}
+/* #147 `fieldInfo` — verdana 10, à GAUCHE, RECT (−2,−2)–(489,1 ; 15,7), posé
+   à (mx ; cy + 16) : la gouttière met donc le premier glyphe pile sur mx. */
+body.bureau-frutiz #fb-chargement .ch-champ {
+  left: 30px; top: 50%; margin-top: 14px;
+  width: 491.1px; height: 17.7px; font-size: 10px; line-height: 16.16px;
+  text-align: left; white-space: nowrap;
+}
+/* #152 « Information : » — verdana GRAS 10, RECT (−2,−2)–(194,75 ; 14,05),
+   posé à (−96,4 ; −4,5) dans `info`, lui-même à (mcw / 2 ; cy + 32). */
+body.bureau-frutiz #fb-chargement .ch-info-titre {
+  left: 50%; margin-left: -98.4px; top: 50%; margin-top: 25.5px;
+  width: 196.75px; height: 16.05px; font-size: 10px; font-weight: 700;
+  line-height: 16.05px;
+}
+/* #151 la phrase d'époque — verdana 10, centrée, multiligne, RECT
+   (−2,−2)–(197,5 ; 121,5) posé à (−97,75 ; 11,45) : une colonne de 199,5
+   centrée sur mcw / 2. Interligne d'un paragraphe : ascendante + descendante
+   + interligne de police (221/1024) + interligne du champ (2), soit 16,32. */
+body.bureau-frutiz #fb-chargement .ch-info {
+  left: 50%; margin-left: -99.75px; top: 50%; margin-top: 41.45px;
+  width: 199.5px; height: 123.5px; font-size: 10px; line-height: 16.32px;
+}

@@ -3859,6 +3859,144 @@ courrier / disques / inventaire jaunes, boutique et journaux verts.
 bascule l'élément sur la barre STANDARD et met tous les `::-webkit-scrollbar` au
 rebut — la mise en forme d'époque disparaît sans un mot d'erreur.
 
+## LA PAGE DE CHARGEMENT (`loadingProcess` #154, `loadingInit` 0x08641)
+
+**La toute première chose que main.swf montrait** : un écran vert, le mot
+CHARGEMENT, et une **barre rose** qui se remplit. Trois fonctions et un clip
+suffisent — `loadingInit()` (0x08641) attache `loadingProcess` à la profondeur
+512, `updateLoadingSize()` (0x087ba) le pose, `loadingLoop()` (0x08a52) le fait
+vivre une fois par image, à 100 im/s.
+
+### La scène n'est PAS le RECT du SWF
+
+`updateLoadingSize` travaille sur `_global.mcw` × `_global.mch` — que la
+première DoAction du fichier (0x07fd0) pose à **`baseMcw = 1265`,
+`baseMch = 768`**, et que `StageResize.onResize` y remet à chaque secousse
+avant de rappeler `updateLoadingSize()` tant que `flLoading`. Le RECT du SWF
+(1024 × 768) ne sert à rien ici. Tout s'exprime en MARGES, donc tout se
+transpose tel quel à la fenêtre du navigateur :
+
+```
+mx = 32 ; b = 9 ; x0 = mx + b = 41 ; cy = mch / 2 = 384
+midMax = mcw − (mx + b) × 2 = 1183        // la gouttière : mx → mcw − mx
+title._x     = mcw / 2 = 632,5   title._y     = cy − 24 = 360
+fieldInfo._x = mx = 32           fieldInfo._y = cy + 16 = 400
+info._x      = mcw / 2 = 632,5   info._y      = cy + 32 = 416
+b1 · bgb1 · mid · bgmid → _x = x0, _y = cy      // les formes vont de −3 à 15
+bgmid._width = midMax            bgb2._x = x0 + midMax = 1224
+```
+
+Neuf enfants, dans l'ordre des profondeurs : `bgb1` · `bgmid` · `bgb2` (la
+gouttière), `b1` · `mid` · `b2` (le ruban), puis `fieldInfo`, `title`, `info`.
+
+### Deux dessins pour six pièces
+
+Il n'y a que **deux clips, à deux images chacun** — `loadingInit` fait
+`b1/mid/b2.gotoAndStop(1)` et `bgb1/bgmid/bgb2.gotoAndStop(2)` :
+
+| clip | taille | image 1 (ruban) | image 2 (gouttière) |
+|---|---|---|---|
+| ch142 `mid` | 10 × 18 | ch140 | ch141 |
+| ch145 `bout` | 9 × 18 | ch143 | ch144 |
+
+et **le bout DROIT est le même dessin posé avec `a = −1`** : un miroir. Le
+dessin d'un bout va de −9 à 0, si bien que le bout gauche couvre `mx..x0` et
+que le droit, en miroir à `x0 + largeur`, s'étend vers la droite — la barre
+tient donc exactement de `mx` à `mcw − mx`.
+
+Les couleurs, relevées sur les formes :
+
+* **remplissage** — une bande BLANCHE de 18 de haut et, dedans, un ruban de 12
+  (y 0..12) en dégradé vertical `#BB1E1E` en haut → `#EE9595` (12,9 %) →
+  `#FFC1C1` en bas, coiffé d'un reflet blanc dégradé (y 1..7,5). D'où les trois
+  pixels blancs au-dessus et au-dessous du rose ;
+* **gouttière** — un corps `#8FCF5A` de 16 (y −2,05..13,95) cerclé d'un liseré
+  clair `#DBF3BA` d'un pixel. Sous le bout dort en plus un `#8EDB24` que le
+  liseré recouvre entièrement : un reliquat d'époque, gardé tel quel.
+
+Le fond de scène est le vert `#ADE76B` du `SetBackgroundColor`, et l'encre des
+quatre champs `#4D7614`.
+
+### Les quatre champs, et où Flash pose leur base
+
+Un `DefineEditText` a une **gouttière de 2 px** : son RECT part de (−2, −2) et
+la première ligne pose sa base à `y0 + 2 + ascendante`. Verdana (police #148)
+déclare 1030/1024 d'ascendante et 215/1024 de descendante, d'où la hauteur
+d'une boîte d'UNE ligne : `2 + (1,0059 + 0,21) × h + 2` — ce que confirme le
+RECT du titre (21,05 pour h = 14). **Poser `line-height` égal à cette hauteur
+remet la base exactement où Flash la met** : la demi-interligne du navigateur
+vaut alors les 2 px de la gouttière.
+
+| champ | fonte | RECT | posé à | dans |
+|---|---|---|---|---|
+| #149 « CHARGEMENT » | verdana **gras** 14, centré | (−2,−2)–(145 ; 19,05) | (−71,5 ; −8,5) | `title` |
+| #147 `fieldInfo` | verdana 10, à gauche | (−2,−2)–(489,1 ; 15,7) | — (c'est le champ lui-même) | `lp` |
+| #152 « Information : » | verdana **gras** 10, centré | (−2,−2)–(194,75 ; 14,05) | (−96,4 ; −4,5) | `info` |
+| #151 la phrase | verdana 10, centré, multiligne | (−2,−2)–(197,5 ; 121,5) | (−97,75 ; 11,45) | `info` |
+
+L'interligne d'un PARAGRAPHE ajoute l'interligne de police (221/1024) et celle
+du champ (2) : `1,4317 × h + 2`, soit 16,32 pour une fonte de 10.
+
+La phrase d'époque, mot pour mot : « Ce chargement comprend tous les éléments
+de l'interface de frutiparc ce qui vous permettra de naviguer plus rapidement
+ensuite ! »
+
+### La loi du ruban
+
+```
+iTotal/iLoaded = les octets de `icon` (fileIcon.swf, chargé pour rien d'autre
+                 que le préchargement) ; si iTotal < 1024 → iLoaded = 0,
+                 iTotal = 110000   (le SWF n'a pas encore répondu)
+mTotal/mLoaded = les octets de main.swf lui-même
+fini si mTotal == mLoaded ET iTotal == iLoaded ET coef > 0,995
+     → gotoAndPlay("fin"), flLoading = false,
+       icon.removeMovieClip(), lp.removeMovieClip()      // sans fondu
+sinon :
+     ratio = (mLoaded + iLoaded) / (mTotal + iTotal)
+     coef  = coef × 0,9 + ratio × 0,1
+     mid._width = coef × midMax        b2._x = b1._x + mid._width
+     fieldInfo.text = « fichiers restants : » + round((1 − coef) × 100) + « % »
+```
+
+**DEUX CHOSES D'ÉPOQUE QU'ON GARDE TELLES QUELLES :**
+
+* **la barre MONTE pendant que le nombre DESCEND.** Le libellé dit « fichiers
+  restants » et affiche `(1 − coef)` : à barre pleine il marque 0 %. Le texte
+  par défaut du champ dit d'ailleurs « fichiers téléchargés : 100 % », preuve
+  que l'un des deux a été changé sans l'autre. C'est le bug d'origine ;
+* **le plancher d'une demi-seconde.** Le lissage part de `coef = 0` : même tout
+  en cache, il faut **51 images d'époque** (0,9⁵¹ ≈ 0,0046) pour franchir
+  0,995, soit 510 ms. La page ne clignote donc jamais.
+
+### Le portage
+
+`scripts/extract-chargement.js` sort les quatre dessins et un manifeste
+(`public/frutiz/sprites/chargement.json`) qui porte la géométrie, les boîtes,
+les mots, la loi — **et la liste des 165 dessins d'interface**. La feuille de
+style tient toute la mise en page (c'en est), le JS ne garde que la loi.
+
+Là où le SWF pesait ses propres octets et ceux de `fileIcon.swf`, le portage
+pèse **les dessins de l'interface** : un fichier réglé, un pas de plus. C'est
+exactement ce que la phrase promet, et ça règle du même coup le clignotement du
+premier survol (les `_up`/`_over`/`_down` sont en mémoire avant le premier
+mouvement de souris). Deux inventaires : la liste du manifeste et les images
+citées par `bureau-frutiz.css`. Une image absente compte comme réglée — sinon
+la page ne finirait jamais.
+
+`ratio` reste à **zéro tant que le total n'est pas connu** : `mTotal` l'était
+dès la première image d'époque, et sans cette garde le ruban avancerait puis
+RECULERAIT quand le second inventaire arrive.
+
+Le lissage vaut 0,9 **par image de 10 ms**, pas par trame d'affichage : à 60 Hz
+la forme fermée `coef = ratio + (coef − ratio) × 0,9^(dt/10)` rend exactement la
+valeur d'époque. La constante de temps est gardée, pas le compte d'images.
+
+Relevé au banc (Playwright, 1265 × 768) : gouttière x 32..1233 avec un milieu
+de 1183 (= midMax), ruban à partir de x 41 et son bout droit qui le suit, titre
+en (559 ; 349,5), champ en (30 ; 398), bloc d'information en (534,11 ; 409,5) —
+au dixième les valeurs du SWF. La page reste 0,65 s à froid, 1,9 s cache chaud,
+puis disparaît.
+
 ## Reste à faire (étapes suivantes)
 
 1. ~~La barre-titre des types de fenêtres~~ : `drawInterface` lit TOUJOURS
