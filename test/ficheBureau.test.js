@@ -68,7 +68,7 @@ test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte',
   // LE GABARIT DE LA PLAQUE EST CELUI DU MOBILE — décision assumée, pas un
   // oubli. Le relevé d'époque (`frutiScreen`, `fix { w: base + 36, h: base }`
   // = 76 × 42) tient la bouille dans 35 × 31 et le « NIV n » dans huit pixels
-  // d'encre : fidèle et illisible. La vignette de 60 reste donc, et le cadre
+  // d'encre : fidèle et illisible. La vignette de 52 reste donc, et le cadre
   // qui l'entoure aussi.
   assert.doesNotMatch(BLOC, /^\s*\.fiche-plaque \{/m);
   assert.doesNotMatch(BLOC, /\.fiche-plaque \.fa-frame \{/);
@@ -98,9 +98,9 @@ test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte',
   // Et le haut s'aligne comme sur le mobile : les deux blocs par le HAUT, neuf
   // pixels entre la plaque et la colonne de droite.
   assert.match(BLOC, /\.fiche-haut \{\s*\n\s*align-items: flex-start; gap: 9px;/);
-  // Le gabarit mobile, lui, reste celui de light.html : vignette de 60 dans son
+  // Le gabarit mobile, lui, reste celui de light.html : vignette de 52 dans son
   // cadre, neuf barres de 30, le chiffre en afficheur à segments.
-  assert.match(LIGHT, /\.fiche-plaque \.fa-frame \{\s*\n\s*position: relative; width: 60px; height: 60px;/);
+  assert.match(LIGHT, /\.fiche-plaque \.fa-frame \{\s*\n\s*position: relative; width: 52px; height: 52px;/);
   assert.match(LIGHT, /\.fiche-plaque \.fa-progress \{ display: flex; flex-direction: column; gap: 1\.5px; width: 30px; \}/);
   assert.match(LIGHT, /\.fiche-plaque \.fa-niv b \{\s*\n\s*font-family: 'DSEG7'/);
   // Le bouton du dépli porte son VRAI dessin — la plaque #359 et le triangle

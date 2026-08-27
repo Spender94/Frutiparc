@@ -4162,3 +4162,26 @@ file maintenant pour de bon, à la vitesse d'arrivée, et l'éjection le remet �
 plat. `test/frusionDisqueTourne.test.js` exécute les trois méthodes livrées sur
 un lecteur en carton, et rejoue l'ANCIENNE `battre` pour montrer d'où venait le
 figeage.
+
+## Le bureau qui restait nu
+
+Un disque posé sur le bureau DEPUIS main.swf n'a pas de coordonnées : `/ff/mv`
+appelle `desktopAdd(user, file, 'disc')` sans position, et
+`bureauObjetEnrichi` renvoie `pos: null`. C'est prévu — `fitInGrid` d'époque
+donne sa place à un fichier qui n'en a pas, et le portage fait pareil :
+
+    objetsBureau.forEach((o) => { if (!o.pos) o.pos = caseLibreBureau(…) })
+
+Sauf que `caseLibreBureau` relit TOUTE la liste pour savoir quelles cases sont
+prises, et y lisait `o.pos.x` — y compris sur les objets dont le `pos` est
+justement ce qu'on vient chercher. Le TypeError partait dans le `.catch` de
+`chargerObjetsBureau`, celui qui devait couvrir la coupure réseau, et le bureau
+restait NU : pas une icône, pas un message. **Un seul disque posé depuis le
+Flash suffisait à effacer tout le bureau du portage.**
+
+Relevé au banc, avant : « icônes VISIBLES sur le bureau : AUCUNE » pour deux
+disques posés sans position ; après : « snake3, bandas1 ». Deux correctifs :
+la garde dans `caseLibreBureau`, et le filet du chargement ramené à la seule
+LECTURE — une erreur de rendu ne doit pas disparaître dans le silence.
+`test/bureauObjetsSansPos.test.js` exécute la fonction livrée et rejoue
+l'ancienne pour montrer d'où venait le vide.

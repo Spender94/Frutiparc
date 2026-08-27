@@ -2035,15 +2035,19 @@ window.BureauFrutiz = (function () {
   function chargerObjetsBureau() {
     var sid = jetonSid();
     if (!sid) return;
+    // LE FILET NE COUVRE QUE LA LECTURE. Il enveloppait aussi le DESSIN, si
+    // bien qu'une erreur de code y disparaissait sans un mot — c'est ainsi
+    // qu'un bureau entier a pu rester nu sur un `o.pos.x` de trop. Le rendu
+    // est donc sorti de sa portée : s'il casse, ça se voit.
     fetch('/api/light/bureau/objets?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
+      .catch(function () { return null; })   // hors ligne : rien à lire
       .then(function (d) {
         if (!d || !d.ok) return;
         objetsBureau = d.objets || [];
         bureauCharge = true;
         rafraichirBureau();
-      })
-      .catch(function () { /* hors ligne : le bureau reste nu */ });
+      });
   }
 
   function ecrireObjetBureau(corps) {
@@ -2057,8 +2061,22 @@ window.BureauFrutiz = (function () {
     }).then(function (r) { return r.json(); }).catch(function () { return null; });
   }
 
-  // `initGrid` + `getNextAvailablePos` : la première case libre, en balayant
-  // ligne par ligne. Les cases occupées sont celles des objets DÉJÀ posés.
+  /*
+   * `initGrid` + `getNextAvailablePos` : la première case libre, en balayant
+   * ligne par ligne. Les cases occupées sont celles des objets DÉJÀ POSÉS —
+   * et « posé » veut dire : qui a une position.
+   *
+   * IL Y EN A QUI N'EN ONT PAS, et c'est le cas le plus courant : quand
+   * main.swf pose un disque sur le bureau, `/ff/mv` appelle `desktopAdd` SANS
+   * coordonnées, et `bureauObjetEnrichi` renvoie `pos: null`. Or on entre ici
+   * précisément pour donner une place à ces objets-là : la boucle les
+   * rencontrait donc avec leur `pos` encore nul et lisait `o.pos.x`.
+   *
+   * Le TypeError partait dans le `.catch` de `chargerObjetsBureau` — celui
+   * qui devait couvrir la coupure réseau — et le bureau restait NU. Pas une
+   * icône, pas un message : un seul disque posé depuis le Flash suffisait à
+   * effacer tout le bureau du portage.
+   */
   function caseLibreBureau(parent) {
     var bureau = $('#bureau');
     var l = bureau ? bureau.clientWidth : 1200, h = bureau ? bureau.clientHeight : 700;
@@ -2067,6 +2085,7 @@ window.BureauFrutiz = (function () {
     var prises = {};
     objetsBureau.forEach(function (o) {
       if ((o.parent || 'root') !== parent) return;
+      if (!o.pos) return;               // pas encore placé : il ne prend rien
       prises[Math.round(o.pos.x / GRILLE_PAS) + ':' + Math.round(o.pos.y / GRILLE_PAS)] = true;
     });
     for (var y = 0; y < yMax; y++) {

@@ -2915,7 +2915,7 @@ body.bureau-frutiz #fiche .fiche-plaque {
    rayures comme pour « NIV n ») : calés à gauche, pas centrés l'un sur
    l'autre — c'est déjà ce que fait la main bar. */
 body.bureau-frutiz #fiche .fiche-plaque .fa-jauge {
-  gap: 4px; padding-right: 2px; align-items: flex-start;
+  padding-right: 2px; align-items: flex-start;
 }
 /* LES BARRES ET LE NIVEAU : ceux de la MAIN BAR, à l'identique.
    `frutiScreen` et `cpDigital` posent le même `barLevel` (#431) et les mêmes
