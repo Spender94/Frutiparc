@@ -1454,23 +1454,41 @@
      boutons poussés aux deux bouts par un `{type:'spacer', big:1}`, et 4 px de
      blanc au-dessus (`{height: 4}`).
 
-     Un `type: 'button'` de document est un `butText` : DU TEXTE, sans gélule ni
-     contour. Son comportement est écrit une fois pour toutes dans
-     `Standard.getButTextBasicBehavior()` —
+     ET CE SONT DE VRAIS BOUTONS ROSES. Le dépouillement d'un élément de
+     document (0x65b6d) le dit sans détour :
 
-         { type: "colorText", color: { press: 0xDDDDDD, over: 0xE7756B } }
+         case "button":
+           e.link = "butPush";
+           if (e.param.link  == undefined) e.param.link  = "butPushStandard";
+           if (e.param.color == undefined) e.param.color = doc.docStyle.outlineColorNum;
 
-     — l'encre passe au rose sous le curseur et au gris clair sous le doigt.
-     C'est le même bouton que les entrées du menu d'un onglet et que les pseudos
-     de la liste des connectés. */
+     `butPushStandard` (#465) est une GÉLULE ROSE de 16 px de haut, en trois
+     largeurs (images 1 à 3 : 40, 80, 120). Le bureau la dessine DÉJÀ — c'est
+     le bouton « créer un salon » de la fenêtre des salons, transcrit en CSS et
+     relevé 1:1 (cf. `#salons-panel .sp-creer` dans bureau-frutiz.css) : chair
+     `#FFAAAD`, anneau intérieur `#F28687` de 1,5 px, encre `#660000` en
+     Verdana gras 10, et le reflet `#FFEAEC` qui longe le bord haut puis
+     s'enroule autour du bout droit. On reprend ce rendu-là, tel quel : une
+     gélule s'étire, un SVG déformerait ses bouts ronds.
+
+     (J'avais d'abord lu ces boutons comme des `butText` — du texte qui change
+     de couleur. C'était faux : `butText` est le bouton des entrées de menu et
+     des pseudos, pas celui d'un élément de document.) */
   .sc-pages { display: flex; align-items: center; gap: 0; padding: 4px 0 2px; }
   .sc-page-esp { flex: 1 1 auto; }
   .sc-page-btn {
-    flex: 0 0 auto; border: 0; background: transparent; padding: 0; cursor: pointer;
-    font: bold 11px/14px Verdana, Arial, sans-serif; color: #433005;
+    position: relative;
+    flex: 0 0 80px; height: 16px; padding: 0; border: 0; border-radius: 8px;
+    background: #FFAAAD; box-shadow: inset 0 0 0 1.5px #F28687;
+    font: 700 10px Verdana, Arial, sans-serif; color: #660000;
+    cursor: pointer; white-space: nowrap;
   }
-  .sc-page-btn:hover { color: #E7756B; }
-  .sc-page-btn:active { color: #DDDDDD; }
+  .sc-page-btn::after {
+    content: ""; position: absolute; inset: 1.5px; pointer-events: none;
+    border-radius: 6.5px;
+    border-top: 1px solid #FFEAEC; border-right: 1px solid #FFEAEC;
+    border-left: 0; border-bottom: 0;
+  }
   /* rang · frutibouille · Frutiz · Score · <colonnes annexes> · Heure — l'ordre
      de `cp.Score`. `--sc-annexes` porte les largeurs d'époque des colonnes
      annexes (« 60px 60px » pour Burning Kiwi) ; sans elles, la piste est vide

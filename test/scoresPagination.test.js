@@ -31,6 +31,7 @@ const zlib = require('node:zlib');
 
 const ROOT = path.join(__dirname, '..');
 const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+const CSS = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
 const SERVEUR = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 
 // Les trois fonctions de pagination, telles qu'elles sont livrées.
@@ -175,18 +176,47 @@ test('le nom d’un médaillé est en gras', () => {
   assert.match(r[0], /font-weight: bold/);
 });
 
-test('les deux boutons sont des `butText` : du texte, pas des gélules', () => {
-  // `Standard.getButTextBasicBehavior()` (Standard.as) :
-  //     { type: "colorText", color: { press: 0xDDDDDD, over: 0xE7756B } }
-  // — l'encre change, rien d'autre. Le portage leur avait d'abord donné une
-  // gélule blanche cerclée de `butPush` : une invention.
+test('les deux boutons sont de VRAIES gélules roses (`butPushStandard`)', () => {
+  /* Le dépouillement d'un élément de document (0x65b6d) :
+   *     case "button":
+   *       e.link = "butPush";
+   *       if (e.param.link  == undefined) e.param.link  = "butPushStandard";
+   *       if (e.param.color == undefined) e.param.color = doc.docStyle.outlineColorNum;
+   *
+   * (Le portage les avait d'abord dessinés en `butText` — du texte qui change
+   * de couleur. C'est le bouton des entrées de menu et des pseudos, pas celui
+   * d'un élément de document.) */
   const r = /\.sc-page-btn \{[^}]*\}/.exec(LIGHT);
   assert.ok(r, 'la règle du bouton doit exister');
-  assert.match(r[0], /background: transparent/, 'aucune gélule');
-  assert.ok(!/box-shadow/.test(r[0]), 'aucun contour');
-  assert.match(LIGHT, /\.sc-page-btn:hover \{ color: #E7756B; \}/, 'rose au survol');
-  assert.match(LIGHT, /\.sc-page-btn:active \{ color: #DDDDDD; \}/, 'gris sous le doigt');
+  assert.match(r[0], /background: #FFAAAD/, 'la chair rose de `butPushStandard`');
+  assert.match(r[0], /box-shadow: inset 0 0 0 1\.5px #F28687/, 'son anneau intérieur');
+  assert.match(r[0], /height: 16px/, 'seize de haut, comme le dessin');
+  assert.match(r[0], /flex: 0 0 80px/, 'la largeur du milieu (image 2 : 40, 80, 120)');
+  assert.match(r[0], /font: 700 10px Verdana[^;]*; color: #660000/, 'l’encre relevée');
+  // Le reflet `#FFEAEC` : bord haut puis bout droit.
+  assert.match(LIGHT, /\.sc-page-btn::after \{[\s\S]*?border-top: 1px solid #FFEAEC; border-right: 1px solid #FFEAEC;/);
   // Et le `spacer big:1` qui les pousse aux deux bouts.
   assert.match(LIGHT, /\.sc-page-esp \{ flex: 1 1 auto; \}/);
   assert.match(LIGHT, /'<span class="sc-page-esp"><\/span>'/);
+});
+
+test('c’est LE MÊME rendu que le bouton « créer un salon »', () => {
+  // Les deux sortent de `butPushStandard` (#465) : celui de la fenêtre des
+  // salons a été relevé 1:1 sur le rendu d'époque, et la pagination le
+  // reprend au lieu d'en inventer un second. Les deux ne peuvent plus
+  // diverger sans qu'on s'en aperçoive.
+  const salon = /#salons-panel \.sp-creer \{[^}]*\}/.exec(CSS);
+  assert.ok(salon, 'le bouton de la fenêtre des salons doit exister');
+  const page = /\.sc-page-btn \{[^}]*\}/.exec(LIGHT);
+  for (const t of ['height: 16px', 'border-radius: 8px', 'background: #FFAAAD',
+    'box-shadow: inset 0 0 0 1.5px #F28687', 'color: #660000']) {
+    assert.ok(salon[0].includes(t), 'le bouton des salons porte « ' + t + ' »');
+    assert.ok(page[0].includes(t), 'celui de la pagination aussi : « ' + t + ' »');
+  }
+  // Le clip est bien dans main.swf.
+  const brut = fs.readFileSync(path.join(ROOT, 'legacy/main.swf'));
+  const corps = brut.toString('latin1', 0, 3) === 'CWS'
+    ? zlib.inflateSync(brut.slice(8)) : brut.slice(8);
+  assert.ok(corps.toString('latin1').includes('butPushStandard'),
+    'le nom d’auteur `butPushStandard` est dans le SWF');
 });
