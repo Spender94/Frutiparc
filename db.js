@@ -657,6 +657,21 @@ async function initSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_forum_topic_reads_user ON forum_topic_reads(username);
 
+      -- Les sujets SUIVIS — le ❤ qu'on pose sur un fil qui compte. Sert à la
+      -- préférence forum_notify en mode « seulement mes sujets suivis » : le
+      -- voyant ne s'allume plus que sur eux, et un nouveau message dans l'un
+      -- d'eux pousse une notification. Une ligne = un joueur suit un sujet ;
+      -- pas de ligne = il ne le suit pas. Rien de tout cela n'existait en
+      -- 2005 : le forum d'époque ne notifiait rien du tout.
+      CREATE TABLE IF NOT EXISTS forum_topic_follows (
+        username   TEXT NOT NULL,
+        topic_id   INTEGER NOT NULL REFERENCES forum_topics(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (username, topic_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_forum_topic_follows_user ON forum_topic_follows(username);
+      CREATE INDEX IF NOT EXISTS idx_forum_topic_follows_topic ON forum_topic_follows(topic_id);
+
       -- Forum polls ("sondages"). At most one poll per topic (enforced by the
       -- unique index on topic_id). A poll is a question + a fixed set of
       -- options; each user may cast a single vote, recorded in forum_poll_votes
@@ -2214,18 +2229,72 @@ async function forumGetCategories() {
  * s'allumait au visage de son auteur.
  *
  * Sert au voyant du raccourci Forum sur /light.
+ *
+ * `mode` est la préférence `forum_notify` (14) : 0 n'allume plus rien, 2 ne
+ * compte que les sujets SUIVIS, et tout le reste — 1 compris, le défaut —
+ * garde le décompte d'avant. Un appelant qui ne passe rien obtient donc
+ * exactement le comportement historique.
  */
-async function forumCountUnread(username) {
+const FORUM_NOTIFY_AUCUNE = 0;
+const FORUM_NOTIFY_SUIVIS = 2;
+
+async function forumCountUnread(username, mode) {
   if (!username) return 0;
+  if (mode === FORUM_NOTIFY_AUCUNE) return 0;
+  const suivisSeuls = mode === FORUM_NOTIFY_SUIVIS;
   const { rows } = await pool.query(`
     SELECT COUNT(*)::int AS n
     FROM forum_topics t
     LEFT JOIN forum_topic_reads r
       ON r.topic_id = t.id AND r.username = $1
+    ${suivisSeuls ? 'JOIN forum_topic_follows w ON w.topic_id = t.id AND w.username = $1' : ''}
     WHERE t.last_post_at > COALESCE(r.read_at, 'epoch'::timestamptz)
       AND LOWER(COALESCE(t.last_post_by, '')) <> LOWER($1)
   `, [username]);
   return (rows[0] && rows[0].n) || 0;
+}
+
+/**
+ * Poser ou retirer le ❤ sur un sujet.
+ *
+ * @returns {boolean} l'état APRÈS l'appel — suivi ou non
+ */
+async function forumSetTopicFollow(username, topicId, on) {
+  if (!username || !topicId) return false;
+  if (on) {
+    await pool.query(
+      `INSERT INTO forum_topic_follows (username, topic_id)
+       VALUES ($1, $2) ON CONFLICT (username, topic_id) DO NOTHING`,
+      [username, topicId]
+    );
+    return true;
+  }
+  await pool.query(
+    'DELETE FROM forum_topic_follows WHERE username = $1 AND topic_id = $2',
+    [username, topicId]
+  );
+  return false;
+}
+
+async function forumIsTopicFollowed(username, topicId) {
+  if (!username || !topicId) return false;
+  const { rows } = await pool.query(
+    'SELECT 1 FROM forum_topic_follows WHERE username = $1 AND topic_id = $2',
+    [username, topicId]
+  );
+  return rows.length > 0;
+}
+
+// Qui suit ce sujet — la liste que la notification de nouveau message
+// parcourt. L'auteur du message n'est PAS écarté ici : c'est à l'appelant de
+// le faire, comme il écarte déjà les joueurs présents devant leur écran.
+async function forumTopicFollowers(topicId) {
+  if (!topicId) return [];
+  const { rows } = await pool.query(
+    'SELECT username FROM forum_topic_follows WHERE topic_id = $1',
+    [topicId]
+  );
+  return rows.map((r) => r.username);
 }
 
 async function forumGetBoards(username = null) {
@@ -2263,14 +2332,19 @@ async function forumGetTopics(boardId, page, perPage, username = null) {
     ? `(t.last_post_at > COALESCE(r.read_at, 'epoch'::timestamptz)) AS unread`
     : 'FALSE AS unread';
   const unreadJoin = username
-    ? `LEFT JOIN forum_topic_reads r ON r.topic_id = t.id AND r.username = $4`
+    ? `LEFT JOIN forum_topic_reads r ON r.topic_id = t.id AND r.username = $4
+       LEFT JOIN forum_topic_follows w ON w.topic_id = t.id AND w.username = $4`
     : '';
+  // Le ❤ de la liste : le sujet est-il suivi par celui qui regarde ? Un
+  // visiteur anonyme n'en suit aucun.
+  const followedSelect = username ? '(w.username IS NOT NULL) AS followed' : 'FALSE AS followed';
   const params = username
     ? [boardId, perPage, offset, username]
     : [boardId, perPage, offset];
   const { rows } = await pool.query(`
     SELECT t.*,
       ${unreadSelect},
+      ${followedSelect},
       (SELECT COUNT(*) FROM forum_posts p WHERE p.topic_id = t.id) - 1 AS reply_count
     FROM forum_topics t
     ${unreadJoin}
@@ -3104,6 +3178,9 @@ module.exports = {
   forumIncrementViews,
   forumMarkTopicRead,
   forumMarkAllRead,
+  forumSetTopicFollow,
+  forumIsTopicFollowed,
+  forumTopicFollowers,
   forumGetBoard,
   forumCreateBoard,
   forumUpdateBoard,

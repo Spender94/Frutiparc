@@ -4248,3 +4248,226 @@ body.bureau-frutiz #fb-chargement .ch-info {
   left: 50%; margin-left: -99.75px; top: 50%; margin-top: 41.45px;
   width: 199.5px; height: 123.5px; font-size: 10px; line-height: 16.32px;
 }
+
+/* ── « MES PRÉFÉRENCES » (`win.Pref` sprite#831, `box.Pref` 0xc9a6e) ────────
+   `box.Pref` pose `winType = "winPref"` et `title = Lang.fv("pref.title")`,
+   soit « Mes préférences » — et non « Préférences ». `initFrameSet` (0x9146b)
+   monte TROIS cadres :
+
+     margin.left   · `menuFrame` — un `cpTree` de 140 (`args {width: 140,
+                     flMask: true}`), `flBackground: true`, style `frSystem`
+                     — le BLANC —, min 140 × 60, marge x.min 8 / ratio 1 ;
+     main          · `showFrame` (type "h", min 200 × 200, `flBackground`,
+                     marge x.min 8 / ratio 1) qui reçoit `menuInfoFrame`,
+                     un `cpDocument` de style `frSheet` — le VERT — avec
+                     `flMask`, min 200 × 200 ;
+     margin.bottom · `frameCreate` — un `cpDocument` `frSystem`, min 260 × 18,
+                     marge x.min 4 / ratio 0, y.min 6 / ratio 0.66, dont le
+                     document est écrit à la main :
+
+       <p><l><s w="4"/><b t="{pref.use_default}" l="butPushStandard"
+                          o="win" m="useDefault"/><s w="10"/>
+             <b t="{pref.save}" l="butPushStandard" o="win" m="save"/>
+             <s w="4"/></l></p>
+
+   Deux gélules ROSES (`butPushStandard`, #465), 10 px entre elles, calées à
+   GAUCHE (`x.ratio = 0`).
+
+   L'ARBRE. `box.Pref.analysePrefForm` ne pose AUCUN `bulletLink` : les
+   capsules retombent donc sur `Standard.getTreeStyle().bullet`, qui vaut
+   `standardBullet` (#404, 0x492b3). Une rubrique est un `caps.Dir` — son
+   `initBullet` (0xa7e30) fait `gotoAndStop(min(treeStyle.length - 2, niveau)
+   + 2)`, soit l'image 2 au niveau 0 : la BILLE ROUGE de 16 (#399). Une
+   préférence est un `caps.Exe` (0xa0463) : sans `bulletFrame`, `gotoAndStop(1)`
+   — l'image 1, le petit disque de 6 (#398).
+
+   LES TAILLES viennent de `getTreeStyle` : le niveau 0 garde le `getTextStyle`
+   d'origine (Verdana 10) et les niveaux suivants ne changent QUE de taille —
+   +6 au niveau 1, +4 au 2, +2 au 3. La rubrique est donc du 16 et l'article du
+   10 (l'ordre paraît inversé, il ne l'est pas : `setList` monte les rubriques
+   au niveau 1). La couleur `#444444` et le gras que la boucle pose pour les
+   niveaux > 0 n'atteignent JAMAIS le TextFormat : ils sont écrits sur
+   `ts` (`reg2.def`) et non sur `ts.textFormat`. Tout l'arbre reste donc en
+   noir maigre — la même bizarrerie que la boutique, et on la garde.
+   `Capsule.height = size + 6` donne les rangées : 22 et 16.
+
+   ÉCART ASSUMÉ — la rubrique « Cet appareil ». Les trois cartes du panneau
+   mobile (notifications poussées, installation de l'appli, diagnostic) n'ont
+   pas d'équivalent en 2005 : elles ne touchent pas au compte mais au
+   navigateur qui l'affiche. Plutôt que de les perdre, elles deviennent une
+   rubrique de plus, tout en bas de l'arbre. */
+body.bureau-frutiz .fen #reglages-panel {
+  padding: 0; display: flex; flex-direction: column; min-height: 0;
+}
+/* La fenêtre a sa propre barre de titre : celle du panneau mobile fait double
+   emploi. */
+body.bureau-frutiz .fen #reglages-panel > .fenetre > .fen-titre { display: none; }
+body.bureau-frutiz .fen #reglages-panel > .fenetre {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  border: 0; border-radius: 0; box-shadow: none; background: none;
+  padding: 0; margin: 0;
+}
+/* LES TROIS CADRES : 140 de colonne, le reste au document, la barre en bas. */
+body.bureau-frutiz .fen #reglages-panel .pf-fen {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: 140px 1fr; grid-template-rows: 1fr auto;
+  column-gap: 8px; row-gap: 6px;
+  padding: 6px 4px 0;
+}
+/* L'ARBRE (`cpTree` `frSystem`) : la boîte blanche, contour `#DDDDDD` de 2 —
+   `c0.shade` du blanc, comme celui de la boutique. */
+body.bureau-frutiz .fen #reglages-panel .pf-arbre {
+  grid-column: 1; grid-row: 1;
+  overflow: auto; min-height: 0; padding: 5px 0 0;
+  background: #FFFFFF; border-radius: 3px; box-shadow: 0 0 0 2px #DDDDDD;
+}
+body.bureau-frutiz .fen #reglages-panel .pf-arbre button {
+  display: flex; align-items: center; gap: 4px; width: 100%;
+  padding: 0 4px 0 3px; border: 0; background: none; cursor: pointer;
+  font-family: Verdana, Arial, sans-serif; color: #000000;
+  text-align: left; white-space: nowrap; overflow: hidden;
+}
+/* Une RUBRIQUE : `caps.Dir`, image 2 de `standardBullet` — la bille rouge de
+   16 —, texte de 16, rangée de 16 + 6 = 22. */
+/* (Les deux sélecteurs passent par `.pf-arbre` : sans lui, la règle générique
+   `… .pf-arbre button` — un élément de plus — l'emporterait sur celle-ci, et
+   l'indentation de la préférence se perdrait.) */
+body.bureau-frutiz .fen #reglages-panel .pf-arbre .pf-rub {
+  height: 22px; font-size: 16px; font-weight: normal;
+}
+body.bureau-frutiz .fen #reglages-panel .pf-rub::before {
+  content: ""; flex: 0 0 16px; width: 16px; height: 16px;
+  background: url('/frutiz/sprites/puce-standard-2.svg') center / 16px 16px no-repeat;
+}
+/* Une PRÉFÉRENCE : `caps.Exe`, image 1 — le disque de 6 —, texte de 10,
+   rangée de 16, et un cran d'indentation (`tree.offset`). */
+body.bureau-frutiz .fen #reglages-panel .pf-arbre .pf-pref {
+  height: 16px; padding-left: 11px; font-size: 10px;
+}
+body.bureau-frutiz .fen #reglages-panel .pf-pref::before {
+  content: ""; flex: 0 0 6px; width: 6px; height: 6px;
+  background: url('/frutiz/sprites/puce-standard-1.svg') center / 6px 6px no-repeat;
+}
+body.bureau-frutiz .fen #reglages-panel .pf-arbre button:hover { background: #F2F2F2; }
+body.bureau-frutiz .fen #reglages-panel .pf-pref.on { font-weight: 700; }
+/* LE PANNEAU DE DROITE (`menuInfoFrame`, `cpDocument` `frSheet`) : le vert du
+   bureau sous son reflet, exactement comme la fiche de la boutique.
+   `getDocStyle('frSheet')` donne l'encre `#335511` (c0.overdark), le liseré
+   `#ADE76B` (c0.shade) et la chair `#CCF599` (c0.main). */
+body.bureau-frutiz .fen #reglages-panel .pf-feuille {
+  grid-column: 2; grid-row: 1;
+  overflow: auto; min-height: 0; padding: 8px 10px 10px;
+  background: linear-gradient(to bottom, rgba(255,255,255,.6) 2px, rgba(255,255,255,0) 12px), #CCF599;
+  border: 2px solid #ADE76B; border-radius: 5px; box-shadow: 0 0 0 2px #DDDDDD;
+  font: normal 11px Verdana, Arial, sans-serif; color: #335511;
+}
+/* Le titre de la préférence choisie : `s[2]` de `getDocStyle` — 12 gras, à
+   l'encre `mainTitleColor` (c2.overdark ; pour `frSheet`, c2 est le ROSE). */
+body.bureau-frutiz .fen #reglages-panel .pf-titre {
+  font-size: 12px; font-weight: 700; color: #842929; margin: 0 0 6px;
+}
+/* Le corps du document : `getDocStyle` donne `s[0]` en Verdana 10 avec un
+   interligne de 6 (d'où les 16 px de rangée) et l'encre `c0.overdark`. */
+body.bureau-frutiz .fen #reglages-panel .pf-desc {
+  font-size: 10px; line-height: 16px; margin: 0 0 10px; color: #335511;
+}
+/* LES WIDGETS. Un `<r>` du document est un `deRadio` (#50) et un `<i>` un
+   champ de saisie. `de.Radio.drawGfx` (0x73e65) ne pose pas de dessin : il
+   TRACE deux ovales avec `FEMC.drawCustomOval`, tous deux pris dans
+   `docStyle.inputColor` — c'est-à-dire `c1`, le VERT pour `frSheet` :
+
+     · la coque   x 1   y 2,5  w = th − 3  h = th − 3, `inline: 1`,
+                  chair `light` (#DDFFBB), liseré `dark` (#94DB39) ;
+     · le point   x 3,5 y 5    w = th − 8  h = th − 8, sans contour,
+                  chair `darker` (#66AA22) — et seulement si `flActive`.
+
+   `th` vaut 16 dans ce document : la coque fait donc 13 et le point 8, avec
+   2,5 de jeu tout autour — exactement les mesures de la case à cocher du
+   courrier, ronde ici au lieu d'être carrée. */
+body.bureau-frutiz .fen #reglages-panel .pf-choix {
+  display: flex; align-items: center; gap: 6px; min-height: 18px;
+  font-size: 10px; line-height: 16px; color: #335511; cursor: pointer;
+}
+body.bureau-frutiz .fen #reglages-panel .pf-choix input {
+  appearance: none; -webkit-appearance: none;
+  flex: 0 0 13px; width: 13px; height: 13px; margin: 0; padding: 0;
+  border: 0; border-radius: 50%; background: #DDFFBB;
+  box-shadow: inset 0 0 0 1px #94DB39; cursor: pointer;
+  display: grid; place-content: center;
+}
+body.bureau-frutiz .fen #reglages-panel .pf-choix input::after {
+  content: ""; width: 8px; height: 8px; border-radius: 50%; background: transparent;
+}
+body.bureau-frutiz .fen #reglages-panel .pf-choix input:checked::after { background: #66AA22; }
+body.bureau-frutiz .fen #reglages-panel .pf-saisie {
+  box-sizing: border-box; height: 18px; width: 100%; max-width: 200px;
+  padding: 0 4px; border: 0; border-radius: 3px;
+  background: #FFFFFF; box-shadow: inset 0 0 0 1px #AAAAAA;
+  font: normal 11px Verdana, Arial, sans-serif; color: #335511;
+}
+/* La ligne « valeur d'origine », pour que « Valeurs par défaut » soit lisible
+   avant même d'appuyer dessus. */
+body.bureau-frutiz .fen #reglages-panel .pf-defaut {
+  margin-top: 10px; font-size: 9px; color: #5A7D33;
+}
+/* LA BARRE DU BAS (`frameCreate`) : deux gélules roses, 10 px entre elles,
+   calées à gauche (`x.min = 4`, `x.ratio = 0`). */
+body.bureau-frutiz .fen #reglages-panel .pf-outils {
+  grid-column: 1 / span 2; grid-row: 2;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 4px 6px; min-height: 18px;
+}
+body.bureau-frutiz .fen #reglages-panel .pf-but {
+  position: relative;
+  height: 16px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: #FFAAAD; box-shadow: inset 0 0 0 1.5px #F28687;
+  font: 700 10px Verdana, Arial, sans-serif; color: #660000;
+  cursor: pointer; white-space: nowrap; flex: 0 0 auto;
+}
+body.bureau-frutiz .fen #reglages-panel .pf-but::after {
+  content: ""; position: absolute; inset: 1.5px; pointer-events: none;
+  border-radius: 6.5px;
+  border-top: 1px solid #FFEAEC; border-right: 1px solid #FFEAEC;
+  border-left: 0; border-bottom: 0;
+}
+body.bureau-frutiz .fen #reglages-panel .pf-but:active { background: #F28687; }
+body.bureau-frutiz .fen #reglages-panel .pf-but:disabled { opacity: .6; cursor: default; }
+/* LES CARTES DE L'APPLI, rapatriées dans le panneau vert. Elles gardent leurs
+   identifiants (tout le JS du mobile les cherche par `id`) ; seul leur
+   habillage change — plus de carte blanche flottante, le vert du document
+   suffit. */
+body.bureau-frutiz .fen #reglages-panel #reg-corps {
+  padding: 0; margin: 0; background: none; display: block;
+}
+/* `display: block` bat le `display: none` que la feuille du navigateur donne
+   à `[hidden]` : sans cette ligne, les cartes de l'appareil resteraient
+   affichées sous CHAQUE préférence. */
+body.bureau-frutiz .fen #reglages-panel #reg-corps[hidden] { display: none; }
+body.bureau-frutiz .fen #reglages-panel .reg-carte {
+  background: none; border: 0; border-radius: 0; box-shadow: none;
+  padding: 0; margin: 0;
+}
+body.bureau-frutiz .fen #reglages-panel .reg-titre {
+  font-size: 12px; font-weight: 700; color: #842929; margin: 0 0 6px;
+}
+body.bureau-frutiz .fen #reglages-panel .reg-texte {
+  font-size: 10px; line-height: 15px; color: #335511; margin: 0 0 8px;
+}
+body.bureau-frutiz .fen #reglages-panel .reg-note { color: #5A7D33; }
+body.bureau-frutiz .fen #reglages-panel .reg-actions {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 6px;
+}
+body.bureau-frutiz .fen #reglages-panel .reg-etat { font-size: 10px; color: #335511; }
+/* Les boutons de l'appli prennent la gélule d'époque, comme ceux du bas. */
+body.bureau-frutiz .fen #reglages-panel .reg-btn {
+  position: relative;
+  height: 16px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: #FFAAAD; box-shadow: inset 0 0 0 1.5px #F28687;
+  font: 700 10px Verdana, Arial, sans-serif; color: #660000;
+  cursor: pointer; white-space: nowrap; flex: 0 0 auto;
+}
+body.bureau-frutiz .fen #reglages-panel .reg-btn:active { background: #F28687; }
+body.bureau-frutiz .fen #reglages-panel .reg-pied {
+  margin-top: 10px; font-size: 9px; text-align: left;
+}
+body.bureau-frutiz .fen #reglages-panel .reg-pied a { color: #558811; }

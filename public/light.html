@@ -2603,6 +2603,23 @@
   // « ! » rouge gras, /kick, /image) — aligné sur ANIM_CHANNEL côté serveur.
   var SALON_ANIM = "pomme";
 
+  /*
+   * LES CINQ PRÉFÉRENCES D'AFFICHAGE DU CHAT (`prefDefs` 9 à 13).
+   *
+   * `ch_dsp_h` met (ou non) l'heure devant chaque message ; les quatre autres
+   * décident si le fil raconte les arrivées, les départs, les expulsions et
+   * les bannissements. Toutes valent OUI par défaut — c'est ce que dit
+   * `prefDefs`, et c'est ce que le light faisait déjà sans le savoir.
+   *
+   * La fenêtre « Mes préférences » du bureau les repose par
+   * `SalonsBureau.poserPrefsAffichage`. Sur téléphone, personne n'y touche :
+   * elles restent à OUI, et l'affichage ne bouge pas d'un pixel.
+   */
+  var PREFS_CHAT = {
+    heure: true, arrivees: true, departs: true,
+    expulsions: true, bannissements: true,
+  };
+
   var state = {
     sid: "",
     user: "",          // display name
@@ -3043,6 +3060,18 @@
         };
         if (cb) chargerTablePays(function () { cb(rendre()); });
         return rendre();
+      },
+      // LES CINQ PRÉFÉRENCES D'AFFICHAGE DU CHAT (`ch_dsp_h`, `ch_dsp_join`,
+      // `ch_dsp_leave`, `ch_dsp_kick`, `ch_dsp_ban`). La fenêtre « Mes
+      // préférences » du bureau les enregistre ; c'est ici qu'elles agissent.
+      // Toutes valent OUI par défaut — c'est ce que dit `prefDefs`.
+      poserPrefsAffichage: function (p) {
+        if (!p) return;
+        PREFS_CHAT.heure = p.heure !== false;
+        PREFS_CHAT.arrivees = p.arrivees !== false;
+        PREFS_CHAT.departs = p.departs !== false;
+        PREFS_CHAT.expulsions = p.expulsions !== false;
+        PREFS_CHAT.bannissements = p.bannissements !== false;
       },
     };
     if (isDesktop() && window.BureauFrutiz) BureauFrutiz.demarrer();
@@ -5848,7 +5877,13 @@
             // final, c'est ainsi dans la table. En privé, la table n'a pas de
             // phrase d'arrivée (l'entrée se dit une fois, à l'ouverture) : on
             // garde celle du light.
-            systemLine(uj + (estPrive(rj) ? " est là." : " a rejoint le salon"), rj);
+            //
+            // `ch_dsp_join` peut couper la ligne — mais pas la mise à jour de
+            // la liste des présents, qui la précède : c'est l'AFFICHAGE que la
+            // préférence règle, pas la présence.
+            if (PREFS_CHAT.arrivees) {
+              systemLine(uj + (estPrive(rj) ? " est là." : " a rejoint le salon"), rj);
+            }
           }
         }
         break;
@@ -5862,7 +5897,9 @@
             majSalonPartout(rl);
             // chat.userleaved  = "<i>$u a quitté le salon</i>"
             // chat.privatedcnx = "<i>$u a quitté la discussion</i>"
-            systemLine(ul + (estPrive(rl) ? " a quitté la discussion" : " a quitté le salon"), rl);
+            if (PREFS_CHAT.departs) {                 // `ch_dsp_leave`
+              systemLine(ul + (estPrive(rl) ? " a quitté la discussion" : " a quitté le salon"), rl);
+            }
           }
         }
         break;
@@ -6173,11 +6210,15 @@
         var kWho = attr(xml, "u");
         var kBy = attr(xml, "by");
         var kVerb = (tag === "ah") ? "banni" : "expulsé";
+        // `ch_dsp_kick` / `ch_dsp_ban` masquent la ligne quand elle concerne
+        // QUELQU'UN D'AUTRE. Se faire expulser soi-même se dit toujours : la
+        // préférence règle le bruit de fond du salon, pas ce qui vous arrive.
+        var kDire = (tag === "ah") ? PREFS_CHAT.bannissements : PREFS_CHAT.expulsions;
         if (sameName(kWho, state.user)) {
           systemLine("Tu as été " + kVerb + " du salon" + (kBy ? " par " + kBy : "") + ".");
         } else {
           if (state.usersByRoom[state.room]) { delete state.usersByRoom[state.room][kWho]; renderUsers(); }
-          systemLine(kWho + " a été " + kVerb + " du salon" + (kBy ? " par " + kBy : "") + ".");
+          if (kDire) systemLine(kWho + " a été " + kVerb + " du salon" + (kBy ? " par " + kBy : "") + ".");
         }
         break;
       }
@@ -6668,7 +6709,8 @@
     } else {
       // A feutre colour (o.pen) tints the WHOLE line — "[hh:mm:ss] pseudo :
       // message" — not just the body. The pseudo stays bold (.from in CSS).
-      var t = cleanTime(o.time);
+      // `ch_dsp_h` : l'horodatage se retire, le reste de la ligne ne bouge pas.
+      var t = PREFS_CHAT.heure ? cleanTime(o.time) : "";
       // Feutre multicolore (o.multicolor) : comme un feutre normal, TOUTE la ligne
       // (horodatage + pseudo + corps) est teintée — ici en dégradé arc-en-ciel.
       if (t) { var ts = el("span", "time" + (o.multicolor ? " mc-text" : "")); ts.textContent = t; if (o.pen && !o.multicolor) ts.style.color = o.pen; row.appendChild(ts); }

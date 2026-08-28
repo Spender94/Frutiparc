@@ -72,8 +72,10 @@ window.BureauFrutiz = (function () {
                   min: minFenetre(300, 200) },
     trombi:     { panneau: '#trombi-panel',    titre: 'Bouilloscope',   l: 780, h: 620 },
     // `win.Pref` (sprite#831) : l'arbre des rubriques (menuFrame min 140×60)
-    // et le panneau de droite (showFrame min 200×200), côte à côte.
-    reglages:   { panneau: '#reglages-panel',  titre: 'Préférences',    l: 560, h: 620,
+    // et le panneau de droite (showFrame min 200×200), côte à côte. Le titre
+    // est celui du constructeur (`box.Pref`, 0xc9af5) : `pref.title` vaut
+    // « Mes préférences » dans lang_french.as, pas « Préférences ».
+    reglages:   { panneau: '#reglages-panel',  titre: 'Mes préférences', l: 560, h: 620,
                   min: minFenetre(140 + 200, 200) },
     grapiz:     { panneau: '#grapiz-panel',    titre: 'Grapiz',         l: 900, h: 660 },
     bandas:     { panneau: '#bandas-panel',    titre: 'Frutibandas',    l: 900, h: 660 },
@@ -4217,6 +4219,354 @@ window.BureauFrutiz = (function () {
   }
 
   /* ══════════════════════════════════════════════════════════════════════════
+     « MES PRÉFÉRENCES » (`win.Pref` sprite#831, `box.Pref` 0xc9a6e)
+
+     `box.Pref.init` demande `do/prefForm` en XML, `analysePrefForm` en fait un
+     arbre de rubriques et de préférences, et `win.Pref.initFrameSet` (0x9146b)
+     monte les trois cadres décrits dans la feuille de style : l'arbre blanc de
+     140 à gauche, le document VERT (`frSheet`) à droite, et la barre du bas
+     avec deux gélules roses.
+
+     Le cycle d'édition vient du bytecode, et il n'est pas celui d'un panneau
+     de réglages moderne :
+
+       · `displayPref(pref)` remplit le document avec le formulaire de la
+         préférence choisie ; `updateFromForm` (0xca16a) recopie le widget dans
+         la COPIE de travail (`prefDetails[i].value`) ;
+       · `useDefault` (0xca17f) remet TOUTES les préférences de la copie à leur
+         `defVal` — sans rien enregistrer ;
+       · `save` (0xca24e) fait `updateFromForm`, `userPref.setFromCopy`,
+         `userPref.save()`… puis `close()`. La fenêtre se FERME en
+         enregistrant.
+
+     Rien n'est écrit avant « Enregistrer » : c'est un brouillon, et on le
+     reproduit tel quel.
+
+     Le serveur sert le MÊME formulaire aux deux clients — `/do/prefForm` pour
+     le SWF, `/api/light/prefs` pour ici, tous deux bâtis sur `prefDefs`,
+     `PREF_LABELS` et `PREF_CATEGORIES`. L'écriture passe par entrée, comme
+     `prefsavepartial` : `/do/prefsave` écraserait la chaîne entière. */
+
+  var prefHabillee = false;
+  var prefEtat = null;     // { categories, valeurs, defauts, brouillon, choix }
+
+  // Les rubriques que le serveur ne connaît pas : elles ne touchent pas au
+  // compte mais au navigateur qui l'affiche (voir l'ÉCART ASSUMÉ en CSS).
+  // Chaque entrée montre une des cartes déjà présentes dans `#reg-corps`.
+  var PF_LOCALES = {
+    name: 'Cet appareil',
+    prefs: [
+      { local: 0, label: 'Notifications' },
+      { local: 1, label: "L'appli" },
+      { local: 2, label: 'Rien ne sonne ?' },
+    ],
+  };
+
+  function habillerReglages(panneau) {
+    if (!panneau) return;
+    // L'écorce ne se monte qu'une fois ; les VALEURS, elles, se relisent à
+    // chaque ouverture — `box.Pref.init` redemande `do/prefForm` à chaque
+    // fois, et une fenêtre rouverte ne doit pas rouvrir sur un vieux
+    // brouillon.
+    if (prefHabillee) { chargerPrefs(panneau); return; }
+    prefHabillee = true;
+    var boite = panneau.querySelector('.fenetre') || panneau;
+
+    var fen = document.createElement('div');
+    fen.className = 'pf-fen';
+    var arbre = document.createElement('div');
+    arbre.className = 'pf-arbre';
+    var feuille = document.createElement('div');
+    feuille.className = 'pf-feuille';
+    var outils = document.createElement('div');
+    outils.className = 'pf-outils';
+    // `<b t="{pref.use_default}" …/><s w="10"/><b t="{pref.save}" …/>` — les
+    // deux libellés sortent de lang_french.as (« Valeurs par défaut »,
+    // « Enregistrer »), dans cet ordre.
+    outils.appendChild(prefBouton('Valeurs par défaut', prefUseDefault));
+    outils.appendChild(prefBouton('Enregistrer', prefSave));
+    fen.appendChild(arbre);
+    fen.appendChild(feuille);
+    fen.appendChild(outils);
+    boite.appendChild(fen);
+
+    // Les cartes de l'appli descendent dans le document vert : le JS du
+    // mobile les cherche par identifiant, elles gardent donc les leurs.
+    var corps = panneau.querySelector('#reg-corps');
+    if (corps) feuille.appendChild(corps);
+
+    chargerPrefs(panneau);
+  }
+
+  function prefBouton(libelle, action) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pf-but';
+    b.textContent = libelle;
+    b.addEventListener('click', action);
+    return b;
+  }
+
+  function chargerPrefs(panneau) {
+    var sid = jetonSid();
+    if (!sid) return;
+    fetch('/api/light/prefs?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.ok) return;
+        prefEtat = {
+          categories: (j.categories || []).concat([PF_LOCALES]),
+          defauts: j.defaults || {},
+          // Le BROUILLON : `box.Pref.prefDetails`, la copie de travail que
+          // seul « Enregistrer » reverse dans le compte.
+          brouillon: Object.assign({}, j.values || {}),
+          choix: null,
+          panneau: panneau,
+        };
+        dessinerArbrePrefs();
+        // `box.Pref.onPrefForm` finit par `displayPref()` sans argument :
+        // le document reste vide tant qu'on n'a rien choisi.
+        afficherPref(null);
+      })
+      .catch(function () {});
+  }
+
+  function dessinerArbrePrefs() {
+    if (!prefEtat) return;
+    var arbre = prefEtat.panneau.querySelector('.pf-arbre');
+    if (!arbre) return;
+    arbre.textContent = '';
+    prefEtat.categories.forEach(function (cat) {
+      var r = document.createElement('button');
+      r.type = 'button';
+      r.className = 'pf-rub';
+      r.textContent = cat.name;
+      arbre.appendChild(r);
+      // `cp.Tree` ouvre tout : `analysePrefForm` ne pose pas `flOpen`, mais
+      // les rubriques d'une fenêtre de préférences n'ont que deux niveaux et
+      // le SWF les déplie d'un clic. Ici tout est visible d'emblée — une
+      // rubrique repliée cacherait la moitié des réglages sans raison.
+      (cat.prefs || []).forEach(function (p) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'pf-pref';
+        b.textContent = p.label;
+        b.addEventListener('click', function () { afficherPref(p); });
+        arbre.appendChild(b);
+      });
+    });
+    marquerPrefChoisie();
+  }
+
+  function marquerPrefChoisie() {
+    if (!prefEtat) return;
+    var arbre = prefEtat.panneau.querySelector('.pf-arbre');
+    if (!arbre) return;
+    var voulu = prefEtat.choix ? (prefEtat.choix.name || ('local' + prefEtat.choix.local)) : null;
+    var i = 0;
+    var boutons = arbre.querySelectorAll('.pf-pref');
+    prefEtat.categories.forEach(function (cat) {
+      (cat.prefs || []).forEach(function (p) {
+        var cle = p.name || ('local' + p.local);
+        if (boutons[i]) boutons[i].classList.toggle('on', cle === voulu);
+        i++;
+      });
+    });
+  }
+
+  /**
+   * `win.Pref.displayPref` (0x9181b) : sans argument, il vide le document.
+   * Avec une préférence, il monte son formulaire — et le formulaire lit la
+   * COPIE (`prefDetails[i].value`), jamais la valeur enregistrée.
+   */
+  function afficherPref(p) {
+    if (!prefEtat) return;
+    var feuille = prefEtat.panneau.querySelector('.pf-feuille');
+    if (!feuille) return;
+    prefEtat.choix = p;
+    marquerPrefChoisie();
+    // Le document se vide de ses widgets, mais les cartes de l'appli restent
+    // dans le DOM : ce sont elles qu'on montre ou cache.
+    var corps = feuille.querySelector('#reg-corps');
+    [].slice.call(feuille.children).forEach(function (n) {
+      if (n !== corps) n.remove();
+    });
+    if (corps) corps.hidden = !(p && p.local !== undefined);
+    if (!p) return;
+
+    if (p.local !== undefined) {
+      // Une rubrique de l'appareil : on ne montre que SA carte.
+      if (!corps) return;
+      var cartes = corps.querySelectorAll('.reg-carte');
+      for (var k = 0; k < cartes.length; k++) cartes[k].hidden = (k !== p.local);
+      return;
+    }
+
+    var titre = document.createElement('div');
+    titre.className = 'pf-titre';
+    titre.textContent = p.label;
+    var desc = document.createElement('div');
+    desc.className = 'pf-desc';
+    desc.textContent = p.desc || '';
+    feuille.insertBefore(desc, feuille.firstChild);
+    feuille.insertBefore(titre, feuille.firstChild);
+
+    var valeur = prefEtat.brouillon[p.name];
+    if (valeur === undefined) valeur = p.def;
+    feuille.appendChild(champPref(p, valeur));
+
+    // « Valeurs par défaut » ne dit pas ce qu'il va faire : cette ligne le
+    // dit pour lui.
+    var d = document.createElement('div');
+    d.className = 'pf-defaut';
+    d.textContent = 'Valeur d’origine : ' + libellePref(p, p.def);
+    feuille.appendChild(d);
+  }
+
+  // Le libellé d'une valeur — celui du choix quand il y en a, la valeur brute
+  // sinon (un booléen d'époque vaut 'Y' ou 'N', jamais true/false).
+  function libellePref(p, v) {
+    for (var i = 0; i < (p.choices || []).length; i++) {
+      if (p.choices[i].v === v) return p.choices[i].label;
+    }
+    if (p.type === 'b') return v === 'N' ? 'Non' : 'Oui';
+    return v === '' ? '(vide)' : String(v);
+  }
+
+  /**
+   * Le widget, tel que `Standard.getPrefForm` le décrit par type — deux radios
+   * Oui/Non pour un booléen, un champ de saisie sinon — ou la liste de choix
+   * que le serveur envoie à sa place.
+   */
+  function champPref(p, valeur) {
+    var boite = document.createElement('div');
+    var choix = p.choices && p.choices.length
+      ? p.choices
+      : (p.type === 'b' ? [{ v: 'Y', label: 'Oui' }, { v: 'N', label: 'Non' }] : null);
+    if (choix) {
+      choix.forEach(function (c) {
+        var l = document.createElement('label');
+        l.className = 'pf-choix';
+        var r = document.createElement('input');
+        r.type = 'radio';
+        r.name = 'pf-' + p.name;
+        r.value = c.v;
+        r.checked = (c.v === valeur);
+        r.addEventListener('change', function () {
+          if (r.checked) prefEtat.brouillon[p.name] = c.v;
+        });
+        l.appendChild(r);
+        l.appendChild(document.createTextNode(c.label));
+        boite.appendChild(l);
+      });
+      return boite;
+    }
+    var i = document.createElement('input');
+    i.type = 'text';
+    i.className = 'pf-saisie';
+    i.value = valeur === undefined ? '' : String(valeur);
+    // `r="0-9"` : un entier d'époque ne prend que des chiffres. La chaîne
+    // stockée est en base 62, mais le champ montre le nombre — la conversion
+    // est faite ici, comme `AdvancedTextInput` la faisait là-bas.
+    if (p.type === 'i') {
+      i.value = String(decode62Bureau(valeur));
+      i.inputMode = 'numeric';
+      i.addEventListener('input', function () {
+        i.value = i.value.replace(/[^0-9]/g, '');
+        prefEtat.brouillon[p.name] = encode62Bureau(Number(i.value) || 0);
+      });
+    } else {
+      i.addEventListener('input', function () { prefEtat.brouillon[p.name] = i.value; });
+    }
+    boite.appendChild(i);
+    return boite;
+  }
+
+  // Les deux moitiés de la base 62 du SWF (`encode62`/`decode62` du serveur) :
+  // 0-9, puis a-z, puis A-Z.
+  var BASE62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  function decode62Bureau(s) {
+    var r = 0, t = String(s === undefined || s === null ? '' : s);
+    for (var i = 0; i < t.length; i++) {
+      var v = BASE62.indexOf(t.charAt(i));
+      r = r * 62 + (v < 0 ? 0 : v);
+    }
+    return r;
+  }
+  function encode62Bureau(n) {
+    if (!n) return '0';
+    var r = '', x = Math.floor(n);
+    while (x > 0) { r = BASE62.charAt(x % 62) + r; x = Math.floor(x / 62); }
+    return r;
+  }
+
+  // `box.Pref.useDefault` (0xca17f) : TOUTE la copie retombe sur ses valeurs
+  // d'origine, et le document se redessine sur la préférence en cours. Rien
+  // n'est enregistré — il faut encore « Enregistrer ».
+  function prefUseDefault() {
+    if (!prefEtat) return;
+    prefEtat.brouillon = Object.assign({}, prefEtat.defauts);
+    afficherPref(prefEtat.choix);
+  }
+
+  // `box.Pref.save` (0xca24e) : la copie passe dans le compte, puis
+  // `close()` — la fenêtre s'en va.
+  function prefSave() {
+    if (!prefEtat) return;
+    var sid = jetonSid();
+    if (!sid) return;
+    fetch('/api/light/prefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: sid, prefs: prefEtat.brouillon }),
+    }).then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok) appliquerPrefsLocales(j.values || {});
+      })
+      .catch(function () {})
+      .then(function () { fermerFenetre('reglages-panel'); });
+  }
+
+  /* ── CE QUE LE BUREAU FAIT DES PRÉFÉRENCES ──────────────────────────────
+     Une préférence sans effet n'est qu'un décor. Le bureau light honore
+     celles dont il a le moyen :
+
+       win_flMoveAnim  → l'animation d'ouverture et de déplacement (`FLUIDE`) ;
+       ch_dsp_h        → l'horodatage devant chaque message ;
+       ch_dsp_join/leave/kick/ban → les lignes d'arrivée, de départ,
+                         d'expulsion et de bannissement dans le fil.
+
+     Les autres restent servies et enregistrées — le SWF s'en sert, et un
+     réglage posé ici doit le suivre là-bas — mais le light ne les consulte
+     pas encore : `default_channel` et `cl_open` touchent au démarrage,
+     `cache_length` au cache du lecteur Flash, `wallpaper` passe par
+     l'inventaire, et les deux comportements d'invitation par le serveur. */
+  function appliquerPrefsLocales(valeurs) {
+    if (!valeurs) return;
+    FLUIDE = valeurs.win_flMoveAnim !== 'N';
+    if (window.SalonsBureau && SalonsBureau.poserPrefsAffichage) {
+      SalonsBureau.poserPrefsAffichage({
+        heure: valeurs.ch_dsp_h !== 'N',
+        arrivees: valeurs.ch_dsp_join !== 'N',
+        departs: valeurs.ch_dsp_leave !== 'N',
+        expulsions: valeurs.ch_dsp_kick !== 'N',
+        bannissements: valeurs.ch_dsp_ban !== 'N',
+      });
+    }
+  }
+
+  // À la connexion, le bureau lit une fois les préférences pour se régler —
+  // c'est le `userPref` que `do/onident` remet au SWF.
+  function relirePrefs() {
+    var sid = jetonSid();
+    if (!sid) return;
+    fetch('/api/light/prefs?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (j && j.ok) appliquerPrefsLocales(j.values); })
+      .catch(function () {});
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
      LA FICHE (`win.Frutiz`, DoInitAction sprite#753 0x583ad)
 
      `win.Frutiz extends WinStandard` : une FENÊTRE. Rien ne s'assombrit
@@ -6258,6 +6608,7 @@ window.BureauFrutiz = (function () {
     // sans quoi la fenêtre s'ouvrirait un instant en habits de mobile.
     if (tab === 'mail') habillerMail(panneau);
     if (tab === 'boutique') habillerBoutique(panneau);
+    if (tab === 'reglages') habillerReglages(panneau);
     panneau.classList.add('active');
     if (rub.salon) { majTitreSalon(rub.salon); majBouilles(panneau); }
   }
@@ -6955,6 +7306,9 @@ window.BureauFrutiz = (function () {
     // Ce que le joueur a posé sur son bureau : `FPDesktop` s'abonne à `fileMng`
     // sur « root » dès son `init`, et le portage relit la même liste.
     chargerObjetsBureau();
+    // Les préférences se lisent une fois au démarrage — c'est le `userPref`
+    // que `do/onident` remet au SWF avant même le premier écran.
+    relirePrefs();
     window.addEventListener('resize', function () {
       poserFond(fondCourant);
       for (var id in fenetres) bornerDansEcran(fenetres[id].fen);

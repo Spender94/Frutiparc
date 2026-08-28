@@ -4430,7 +4430,24 @@ const prefDefs = [
   { id: 11, type: 'b', name: 'ch_dsp_leave',             def: 'Y' },
   { id: 12, type: 'b', name: 'ch_dsp_kick',              def: 'Y' },
   { id: 13, type: 'b', name: 'ch_dsp_ban',               def: 'Y' },
+  // ─── AJOUT DU PORTAGE ────────────────────────────────────────────────
+  // Le forum de 2005 n'envoyait rien : il n'y avait ni voyant sur le
+  // raccourci, ni notification poussée sur le téléphone. Les deux existent
+  // ici, et rien ne permettait de les régler. Cette préférence-là n'a donc
+  // pas d'original — elle prolonge la table plutôt que de la contredire, au
+  // premier identifiant libre, et suit toutes les règles des autres
+  // (`prefdef`, `mypref`, `prefsave`, `prefForm` la portent sans exception).
+  //
+  //   0 · aucune notification du forum
+  //   1 · tous les sujets (le comportement d'avant, et le défaut)
+  //   2 · seulement les sujets suivis (le ❤️ posé sur un fil)
+  { id: 14, type: 'i', name: 'forum_notify',             def: encode62(1) },
 ];
+
+// Les trois modes de `forum_notify`, nommés pour ne pas semer des 0/1/2 nus.
+const FORUM_NOTIFY_AUCUNE = 0;
+const FORUM_NOTIFY_TOUS = 1;
+const FORUM_NOTIFY_SUIVIS = 2;
 
 function buildPrefDefString() {
   let r = '';
@@ -4687,12 +4704,25 @@ function notifyNewMail(targetUsername, mail) {
 // fidèlement ses sujets non lus. La règle est celle du voyant light
 // (test/forumVoyant.test.js) : les messages de l'AUTEUR ne s'allument pas
 // à son propre visage — tous les autres connectés sont prévenus.
-function notifyForumNews(authorUsername) {
+// Le voyant forum du bureau, allumé chez les autres connectés.
+//
+// `suiveurs` — la liste des joueurs qui suivent le sujet concerné, quand
+// l'appelant a pu la lire — sert à la préférence `forum_notify` : celui qui a
+// demandé « seulement mes sujets suivis » ne voit son voyant s'allumer que
+// pour eux, et celui qui a tout coupé ne le voit jamais. Sans liste (base
+// absente, sujet tout neuf que personne ne suit encore), le mode 2 se tait :
+// c'est bien ce qu'il demande.
+function notifyForumNews(authorUsername, suiveurs) {
   const auteur = String(authorUsername || '').toLowerCase();
+  const suivi = new Set((suiveurs || []).map((n) => String(n || '').toLowerCase()));
   const xml = `<${CMD.newforummsg} />`;
   for (const [sock, cl] of xmlSocketClients) {
     if (!cl || !cl.logged || !cl.username) continue;
-    if (String(cl.username).toLowerCase() === auteur) continue;
+    const qui = String(cl.username).toLowerCase();
+    if (qui === auteur) continue;
+    const mode = forumNotifyModeDe(qui);
+    if (mode === FORUM_NOTIFY_AUCUNE) continue;
+    if (mode === FORUM_NOTIFY_SUIVIS && !suivi.has(qui)) continue;
     sendToClient(sock, xml);
   }
 }
@@ -5966,6 +5996,12 @@ function pousserNotifCitationsForum(auteur, topicId, titre, contenu) {
     if (!cible || vus.has(cible)) continue;
     if (cible === String(auteur).toLowerCase() || NPC_USERNAMES.has(cible)) continue;
     vus.add(cible);
+    // « Désactiver complètement les notifications du forum » vaut aussi pour
+    // les citations : c'est encore le forum qui parle.
+    if (forumNotifyModeDe(cible) === FORUM_NOTIFY_AUCUNE) {
+      noterDecisionPush(cible, 'forum', false, 'notifications du forum coupées (forum_notify = 0)');
+      continue;
+    }
     if (estJoignableEnDirect(cible)) {
       noterDecisionPush(cible, 'forum', false, 'présent (socket fraîche au premier plan)');
       continue;
@@ -5973,6 +6009,40 @@ function pousserNotifCitationsForum(auteur, topicId, titre, contenu) {
     noterDecisionPush(cible, 'forum', true, 'absent → envoyé');
     pousserNotif(cible, {
       t: `✏️ ${getDisplayName(auteur)} te cite sur le forum`,
+      c: String(titre || 'Un sujet du forum'),
+      u: '/light?ouvre=forum&sujet=' + Number(topicId),
+      tag: 'forum_' + Number(topicId),
+    }, PUSH_TTL.forum);
+  }
+}
+
+/**
+ * Prévenir CEUX QUI SUIVENT le sujet qu'un message vient d'y tomber.
+ *
+ * C'est le mode 2 de `forum_notify`, et lui seul : en mode 1 le forum n'a
+ * jamais rien poussé (le voyant du raccourci suffisait), et le ❤ n'a pas à
+ * changer ça pour ceux qui n'ont rien demandé. Un joueur qui veut être
+ * prévenu à chaque message d'un fil met la préférence sur « seulement mes
+ * sujets suivis » et pose son cœur.
+ *
+ * L'auteur ne se notifie pas lui-même, et un joueur devant son écran ne reçoit
+ * rien — les deux règles de `pousserNotifCitationsForum`.
+ */
+async function pousserNotifSuiviForum(auteur, topicId, titre, connus) {
+  if (!pushPret || !process.env.DATABASE_URL) return;
+  const suiveurs = connus || await db.forumTopicFollowers(topicId).catch(() => []);
+  const bas = String(auteur || '').toLowerCase();
+  for (const brut of suiveurs) {
+    const cible = String(brut || '').toLowerCase();
+    if (!cible || cible === bas || NPC_USERNAMES.has(cible)) continue;
+    if (forumNotifyModeDe(cible) !== FORUM_NOTIFY_SUIVIS) continue;
+    if (estJoignableEnDirect(cible)) {
+      noterDecisionPush(cible, 'forum', false, 'présent (socket fraîche au premier plan)');
+      continue;
+    }
+    noterDecisionPush(cible, 'forum', true, 'sujet suivi, absent → envoyé');
+    pousserNotif(cible, {
+      t: `💬 ${getDisplayName(auteur)} a répondu sur un sujet que tu suis`,
       c: String(titre || 'Un sujet du forum'),
       u: '/light?ouvre=forum&sujet=' + Number(topicId),
       tag: 'forum_' + Number(topicId),
@@ -14286,6 +14356,40 @@ function getPrefValue(str, id) {
   return e ? e.value : '';
 }
 
+// ── LIRE UNE PRÉFÉRENCE PAR SON NOM ─────────────────────────────────────
+// `userPref.get(name)` du SWF, côté serveur : la chaîne stockée ne porte que
+// ce qui DIFFÈRE du défaut (prefsavepartial efface l'entrée quand la valeur
+// retombe dessus), donc l'absence vaut le défaut de `prefDefs` — jamais zéro.
+function prefBrute(user, name) {
+  const def = prefDefs.find((p) => p.name === name);
+  if (!def) return '';
+  const brut = getPrefValue((user && user.prefs) || '', def.id);
+  return brut === '' ? def.def : brut;
+}
+
+// Un booléen d'époque, c'est 'Y' ou 'N' — pas true/false.
+function prefBool(user, name) {
+  return prefBrute(user, name) !== 'N';
+}
+
+// Un entier d'époque est écrit en base 62, comme tout le reste de la chaîne.
+function prefEntier(user, name) {
+  return decode62(prefBrute(user, name));
+}
+
+// Le mode de notification du forum, borné : une valeur aberrante (un vieux
+// client, une main sur la base) ne doit pas éteindre le voyant en silence —
+// elle retombe sur le comportement historique, « tous les sujets ».
+function forumNotifyMode(user) {
+  const v = prefEntier(user, 'forum_notify');
+  return (v === FORUM_NOTIFY_AUCUNE || v === FORUM_NOTIFY_SUIVIS) ? v : FORUM_NOTIFY_TOUS;
+}
+
+function forumNotifyModeDe(username) {
+  const u = users[String(username || '').toLowerCase()];
+  return u ? forumNotifyMode(u) : FORUM_NOTIFY_TOUS;
+}
+
 // « url|dataMisc » → { url, color }. On rend dataMisc TEL QUEL : c'est le
 // client qui le découpe (couleur de fond, couleur du texte, opacité), avec les
 // mêmes conventions que WallPaperMng.loadWP. Le serveur n'a pas à en connaître
@@ -15456,39 +15560,46 @@ app.all(['/do/smi', '/smi', '/do/mi', '/mi', '/do/emi', '/emi'], saveMyInfo);
 // The client sends i=<prefId>&v=<value> to update a single pref.
 // We parse the encoded prefs string, update the entry, re-encode and persist.
 // ─────────────────────────────────────────────
+// Écrit UNE préférence dans la chaîne d'un joueur, en laissant les autres
+// exactement où elles étaient. Sorti du gestionnaire pour que la fenêtre du
+// bureau light écrive par le même chemin que le SWF : deux clients, une seule
+// règle de normalisation.
+//
+// @returns {boolean} vrai si la chaîne a bougé (l'identifiant existait)
+function appliquerPref(username, user, prefId, rawVal) {
+  if (!Number.isFinite(prefId)) return false;
+  const def = prefDefs.find((p) => p.id === prefId);
+  if (!def) return false;
+  const parsed = parsePrefString(user.prefs || '');
+  const isDefault = (rawVal === '' || rawVal === def.def);
+  if (isDefault) {
+    delete parsed[prefId];
+  } else if (prefId === PREF_ID_WALLPAPER) {
+    // Le bureau réécrit le fond à chaque démarrage (WallPaperMng.loadWP
+    // finit par userPref.setAndSave). On complète la couleur de texte au
+    // passage, pour que la valeur stockée converge même si un vieux
+    // client renvoie l'ancienne forme.
+    const f = parseWallpaperPref(rawVal);
+    parsed[prefId] = f ? f.url + '|' + completerDataMisc(f.color) : rawVal;
+  } else {
+    parsed[prefId] = rawVal;
+  }
+  user.prefs = encodePrefString(parsed);
+  if (user._dbId) db.updateUser(username, { prefs: user.prefs }).catch(dbErr('updateUser'));
+  return true;
+}
+
 app.get('/do/prefsavepartial', (req, res) => {
   const sid = req.query.sid;
   const session = sessions[sid];
   if (session && session.user && users[session.user]) {
-    const user = users[session.user];
-    const prefId = Number(req.query.i);
     // Une valeur VIDE ne voyage pas : le client la laisse tomber en montant la
     // requête, et il n'arrive que `?i=5`. C'est pourtant une valeur — celle
     // qu'écrit WallPaperMng.loadWP quand on repose le thème d'origine
     // (`userPref.setAndSave("wallpaper","")`). L'absence du paramètre VAUT donc
-    // la chaîne vide, et le vide remet la préférence à son défaut plus bas.
-    const rawVal = req.query.v === undefined ? '' : String(req.query.v);
-    if (Number.isFinite(prefId)) {
-      const parsed = parsePrefString(user.prefs || '');
-      const def = prefDefs.find(p => p.id === prefId);
-      if (def) {
-        const isDefault = (rawVal === '' || rawVal === def.def);
-        if (isDefault) {
-          delete parsed[prefId];
-        } else if (prefId === PREF_ID_WALLPAPER) {
-          // Le bureau réécrit le fond à chaque démarrage (WallPaperMng.loadWP
-          // finit par userPref.setAndSave). On complète la couleur de texte au
-          // passage, pour que la valeur stockée converge même si un vieux
-          // client renvoie l'ancienne forme.
-          const f = parseWallpaperPref(rawVal);
-          parsed[prefId] = f ? f.url + '|' + completerDataMisc(f.color) : rawVal;
-        } else {
-          parsed[prefId] = rawVal;
-        }
-        user.prefs = encodePrefString(parsed);
-        if (user._dbId) db.updateUser(session.user, { prefs: user.prefs }).catch(dbErr('updateUser'));
-      }
-    }
+    // la chaîne vide, et le vide remet la préférence à son défaut.
+    appliquerPref(session.user, users[session.user], Number(req.query.i),
+      req.query.v === undefined ? '' : String(req.query.v));
   }
   res.type('text/plain').send('state=0');
 });
@@ -15514,57 +15625,176 @@ app.get('/do/prefsavepartial', (req, res) => {
 // with the same default `<l>` widget Standard.getPrefForm would produce per
 // type (bool/int/string). The `i` attribute must be the decimal preference id
 // so box.Pref can join it against `_global.userPref.prefsId`.
+// Le libellé, la phrase d'explication et — quand la préférence est un CHOIX et
+// non un nombre libre — la liste des valeurs possibles. Sorti du gestionnaire :
+// `/do/prefForm` (le SWF) et `/api/light/prefs` (la fenêtre du bureau light)
+// décrivent ainsi le MÊME formulaire, et une correction de libellé profite aux
+// deux d'un coup.
+//
+// `choices` n'est pas une entorse au SWF : `Standard.getPrefForm` n'est qu'un
+// REPLI, appelé seulement quand le serveur n'a rien envoyé. Un serveur qui
+// pose ses propres `<r>` reste dans les clous — `win.Pref.displayPref` monte
+// le document tel qu'il arrive.
+// Les NEUF comportements d'invitation, tels que `_global.chooseInviteBehavior`
+// les décline (frutiparc/openFunctions.as:549, table de commentaire à l'appui).
+// Ce ne sont pas trois choix mais neuf : une action par défaut (Accepter,
+// Demander, Refuser) et, pour six d'entre eux, une exception prise dans la
+// liste noire ou dans la liste de contacts. La valeur par défaut est 1 —
+// « accepter, sauf mes indésirables » —, celle qu'écrit `prefDefs`.
+const INVITE_MODES = [
+  [0, 'Toujours accepter'],
+  [1, 'Accepter, refuser mes indésirables'],
+  [2, 'Accepter, me demander pour mes indésirables'],
+  [3, 'Toujours me demander'],
+  [4, 'Me demander, refuser mes indésirables'],
+  [5, 'Me demander, accepter mes contacts'],
+  [6, 'Toujours refuser'],
+  [7, 'Refuser, accepter mes contacts'],
+  [8, 'Refuser, me demander pour mes contacts'],
+];
+
+const PREF_LABELS = {
+  default_channel:         { label: 'Salon par défaut',                desc: 'Identifiant du salon rejoint automatiquement à la connexion.' },
+  dsp_newmail_alert:       { label: 'Alerte nouveau message',          desc: 'Afficher une alerte à la réception d\'un nouveau mail.' },
+  invite_channel_behavior: { label: 'Invitation salon',                desc: 'Comportement lors de la réception d\'une invitation de salon.',
+                             choices: INVITE_MODES },
+  invite_chat_behavior:    { label: 'Invitation chat privé',           desc: 'Comportement lors de la réception d\'une invitation de chat privé.',
+                             choices: INVITE_MODES },
+  wallpaper:               { label: 'Fond d\'écran',                   desc: 'Nom du fond d\'écran utilisé sur le bureau.' },
+  cache_length:            { label: 'Durée du cache',                  desc: 'Nombre de jours pendant lesquels les fichiers sont conservés.' },
+  cl_open:                 { label: 'Ouvrir la liste de contacts',     desc: 'Ouvrir automatiquement la liste de contacts au démarrage.' },
+  win_flMoveAnim:          { label: 'Animations des fenêtres',         desc: 'Activer les animations de déplacement des fenêtres.' },
+  ch_dsp_h:                { label: 'Afficher l\'heure',               desc: 'Afficher l\'heure devant chaque message du chat.' },
+  ch_dsp_join:             { label: 'Afficher les arrivées',           desc: 'Afficher un message quand un utilisateur rejoint le salon.' },
+  ch_dsp_leave:            { label: 'Afficher les départs',            desc: 'Afficher un message quand un utilisateur quitte le salon.' },
+  ch_dsp_kick:             { label: 'Afficher les expulsions',         desc: 'Afficher un message quand un utilisateur est expulsé.' },
+  ch_dsp_ban:              { label: 'Afficher les bannissements',      desc: 'Afficher un message quand un utilisateur est banni.' },
+  forum_notify:            { label: 'Notifications du forum',
+                             desc: 'Quand prévenir d\'un nouveau message sur le forum — voyant du raccourci et notification sur le téléphone.',
+                             choices: [
+                               [FORUM_NOTIFY_TOUS,   'Pour tous les sujets'],
+                               [FORUM_NOTIFY_SUIVIS, 'Seulement mes sujets suivis (❤)'],
+                               [FORUM_NOTIFY_AUCUNE, 'Jamais'],
+                             ] },
+};
+
+const PREF_CATEGORIES = [
+  { name: 'Général', ids: [1, 6, 7, 8] },
+  { name: 'Chat',    ids: [9, 10, 11, 12, 13] },
+  { name: 'Mail',    ids: [2] },
+  { name: 'Invitations', ids: [3, 4] },
+  { name: 'Forum',   ids: [14] },
+  { name: 'Apparence',   ids: [5] },
+];
+
+// Default widget per pref type — mirrors Standard.getPrefForm in main.swf.
+//  bool   → two radios labelled Oui/Non bound to "value" with values Y/N
+//  int    → text input restricted to 0-9
+//  string → free-text input
+const PREF_FORM_PAR_TYPE = {
+  b: '<l><s b="1"/><r w="60" v="value" u="Y">Oui</r><s b="1"/><r w="60" v="value" u="N">Non</r><s b="1"/></l>',
+  i: '<l><s w="20"/><i v="value" dy="1" b="1" r="0-9"></i><s w="20"/></l>',
+  s: '<l><s w="20"/><i v="value" dy="1" b="1"></i><s w="20"/></l>',
+};
+
+// Une préférence à choix : un `<r>` par valeur, chacun sur SA ligne. Le panneau
+// de droite ne fait que 200 de large au minimum — trois libellés sur une même
+// ligne s'y écraseraient.
+function prefFormChoix(choices) {
+  return choices
+    .map(([v, lib]) => `<l><s w="8"/><r v="value" u="${escapeXml(encode62(v))}">${escapeXml(lib)}</r><s b="1"/></l>`)
+    .join('');
+}
+
+function prefFormDe(def) {
+  const meta = PREF_LABELS[def.name];
+  if (meta && meta.choices) return prefFormChoix(meta.choices);
+  return PREF_FORM_PAR_TYPE[def.type] || PREF_FORM_PAR_TYPE.s;
+}
+
 app.get(['/do/prefForm', '/prefForm'], (req, res) => {
-  const prefLabels = {
-    default_channel:         { label: 'Salon par défaut',                desc: 'Identifiant du salon rejoint automatiquement à la connexion.' },
-    dsp_newmail_alert:       { label: 'Alerte nouveau message',          desc: 'Afficher une alerte à la réception d\'un nouveau mail.' },
-    invite_channel_behavior: { label: 'Invitation salon',                desc: 'Comportement lors de la réception d\'une invitation de salon.' },
-    invite_chat_behavior:    { label: 'Invitation chat privé',           desc: 'Comportement lors de la réception d\'une invitation de chat privé.' },
-    wallpaper:               { label: 'Fond d\'écran',                   desc: 'Nom du fond d\'écran utilisé sur le bureau.' },
-    cache_length:            { label: 'Durée du cache',                  desc: 'Nombre de jours pendant lesquels les fichiers sont conservés.' },
-    cl_open:                 { label: 'Ouvrir la liste de contacts',     desc: 'Ouvrir automatiquement la liste de contacts au démarrage.' },
-    win_flMoveAnim:          { label: 'Animations des fenêtres',         desc: 'Activer les animations de déplacement des fenêtres.' },
-    ch_dsp_h:                { label: 'Afficher l\'heure',               desc: 'Afficher l\'heure devant chaque message du chat.' },
-    ch_dsp_join:             { label: 'Afficher les arrivées',           desc: 'Afficher un message quand un utilisateur rejoint le salon.' },
-    ch_dsp_leave:            { label: 'Afficher les départs',            desc: 'Afficher un message quand un utilisateur quitte le salon.' },
-    ch_dsp_kick:             { label: 'Afficher les expulsions',         desc: 'Afficher un message quand un utilisateur est expulsé.' },
-    ch_dsp_ban:              { label: 'Afficher les bannissements',      desc: 'Afficher un message quand un utilisateur est banni.' },
-  };
-
-  const categories = [
-    { name: 'Général', ids: [1, 6, 7, 8] },
-    { name: 'Chat',    ids: [9, 10, 11, 12, 13] },
-    { name: 'Mail',    ids: [2] },
-    { name: 'Invitations', ids: [3, 4] },
-    { name: 'Apparence',   ids: [5] },
-  ];
-
-  // Default widget per pref type — mirrors Standard.getPrefForm in main.swf.
-  //  bool   → two radios labelled Oui/Non bound to "value" with values Y/N
-  //  int    → text input restricted to 0-9
-  //  string → free-text input
-  const formForType = {
-    b: '<l><s b="1"/><r w="60" v="value" u="Y">Oui</r><s b="1"/><r w="60" v="value" u="N">Non</r><s b="1"/></l>',
-    i: '<l><s w="20"/><i v="value" dy="1" b="1" r="0-9"></i><s w="20"/></l>',
-    s: '<l><s w="20"/><i v="value" dy="1" b="1"></i><s w="20"/></l>',
-  };
-
   const byId = Object.fromEntries(prefDefs.map((p) => [p.id, p]));
   let body = '<p>';
-  for (const cat of categories) {
+  for (const cat of PREF_CATEGORIES) {
     body += `<c n="${escapeXml(cat.name)}">`;
     for (const id of cat.ids) {
       const def = byId[id];
       if (!def) continue;
-      const meta = prefLabels[def.name] || { label: def.name, desc: '' };
-      const form = formForType[def.type] || formForType.s;
-      body += `<p i="${id}" f="${escapeXml(meta.label)}"><d>${escapeXml(meta.desc)}</d><f>${form}</f></p>`;
+      const meta = PREF_LABELS[def.name] || { label: def.name, desc: '' };
+      body += `<p i="${id}" f="${escapeXml(meta.label)}"><d>${escapeXml(meta.desc)}</d><f>${prefFormDe(def)}</f></p>`;
     }
     body += '</c>';
   }
   body += '</p>';
 
   res.type('text/xml').send(body);
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: /api/light/prefs — le même formulaire, en JSON
+//
+// La fenêtre « Mes préférences » du bureau light lit ici ce que `box.Pref`
+// assemblait en trois requêtes (`prefdef` pour les types et les défauts,
+// `mypref` pour les valeurs, `prefForm` pour l'arbre) : mêmes identifiants,
+// mêmes libellés, mêmes catégories, puisque tout sort de `prefDefs`,
+// `PREF_LABELS` et `PREF_CATEGORIES`. Un seul aller-retour, et surtout aucune
+// deuxième liste à tenir à jour.
+//
+// L'ÉCRITURE passe par POST et retombe sur `appliquerPref`, celle de
+// `/do/prefsavepartial` — et non sur `/do/prefsave`, qui écrase la chaîne
+// ENTIÈRE avec ce que le client lui donne. Un client qui n'afficherait pas
+// toutes les préférences effacerait celles qu'il ignore ; entrée par entrée,
+// ce risque n'existe pas.
+// ─────────────────────────────────────────────
+function prefsEnJson(user) {
+  const brute = (user && user.prefs) || '';
+  const valeurs = {};
+  for (const p of prefDefs) {
+    const v = getPrefValue(brute, p.id);
+    valeurs[p.name] = v === '' ? p.def : v;
+  }
+  const byId = Object.fromEntries(prefDefs.map((p) => [p.id, p]));
+  const categories = PREF_CATEGORIES.map((cat) => ({
+    name: cat.name,
+    prefs: cat.ids.map((id) => byId[id]).filter(Boolean).map((def) => {
+      const meta = PREF_LABELS[def.name] || { label: def.name, desc: '' };
+      return {
+        id: def.id,
+        name: def.name,
+        type: def.type,
+        def: def.def,
+        label: meta.label,
+        desc: meta.desc || '',
+        // Une valeur de choix voyage en base 62, comme dans la chaîne stockée :
+        // le client compare des chaînes, jamais des nombres.
+        choices: (meta.choices || []).map(([v, lib]) => ({ v: encode62(v), label: lib })),
+      };
+    }),
+  }));
+  return { defaults: Object.fromEntries(prefDefs.map((p) => [p.name, p.def])), values: valeurs, categories };
+}
+
+app.get('/api/light/prefs', (req, res) => {
+  const username = resolveUsernameFromSid(String(req.query.sid || ''));
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  res.json({ ok: true, ...prefsEnJson(users[username] || {}) });
+});
+
+app.post('/api/light/prefs', (req, res) => {
+  const username = resolveUsernameFromSid(String((req.body && req.body.sid) || req.query.sid || ''));
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const user = users[username];
+  if (!user) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const demande = (req.body && req.body.prefs) || {};
+  const parNom = Object.fromEntries(prefDefs.map((p) => [p.name, p]));
+  let ecrites = 0;
+  for (const nom of Object.keys(demande)) {
+    const def = parNom[nom];
+    if (!def) continue;
+    const v = demande[nom];
+    if (appliquerPref(username, user, def.id, v === null || v === undefined ? '' : String(v))) ecrites++;
+  }
+  res.json({ ok: true, saved: ecrites, ...prefsEnJson(user) });
 });
 
 // ─────────────────────────────────────────────
@@ -17613,7 +17843,7 @@ app.post('/api/forum/read-all', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true, marques: 0, restant: 0 });
   try {
     const marques = await db.forumMarkAllRead(username);
-    const restant = await db.forumCountUnread(username).catch(() => 0);
+    const restant = await db.forumCountUnread(username, forumNotifyModeDe(username)).catch(() => 0);
     console.log(`[FORUM] ${username} marque tout comme lu (${marques} sujets, reste ${restant})`);
     res.json({ ok: true, marques, restant });
   } catch (e) {
@@ -17643,6 +17873,8 @@ app.get('/api/forum/board/:id', async (req, res) => {
       lastPostAt: t.last_post_at, lastPostBy: getDisplayName(t.last_post_by),
       createdAt: t.created_at,
       unread: !!t.unread,
+      // Le ❤ : ce sujet fait-il partie de ceux que je suis ?
+      followed: !!t.followed,
     }));
     res.json({
       board: {
@@ -17718,6 +17950,12 @@ app.get('/api/forum/topic/:id', async (req, res) => {
     const canManagePoll = !!(poll && currentUser && (
       String(topic.author_username).toLowerCase() === String(currentUser).toLowerCase() || currentIsMod
     ));
+    // Le ❤ du sujet — et le mode de notification qui lui donne son sens : en
+    // « tous les sujets » ou « jamais », le cœur ne commande rien, et le
+    // client le dit plutôt que de laisser croire à un réglage sans effet.
+    const followed = currentUser
+      ? await db.forumIsTopicFollowed(currentUser, topicId).catch(() => false)
+      : false;
     res.json({
       topic: {
         id: topic.id, title: topic.title, author: getDisplayName(topic.author_username),
@@ -17737,7 +17975,34 @@ app.get('/api/forum/topic/:id', async (req, res) => {
       peutPoster: peutPosterDansBoard(currentUser, board),
       peutModerer: peutModererBoard(currentUser, board),
       poll, canManagePoll,
+      followed,
+      forumNotify: currentUser ? forumNotifyModeDe(currentUser) : FORUM_NOTIFY_TOUS,
     });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── LE ❤ D'UN SUJET ────────────────────────────────────────────────────
+// Poser (ou retirer) le suivi. Sert au mode « seulement mes sujets suivis »
+// de la préférence `forum_notify` : voyant du raccourci et notification
+// poussée ne regardent alors plus que ces sujets-là.
+app.post('/api/forum/topic/:id/follow', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_database' });
+  const username = forumAuth(req);
+  if (!username) return res.status(401).json({ error: 'auth_required' });
+  try {
+    const topicId = Number(req.params.id);
+    const topic = await db.forumGetTopic(topicId);
+    if (!topic) return res.status(404).json({ error: 'topic not found' });
+    // Un sujet d'un forum réservé ne se suit pas depuis l'extérieur : sans ce
+    // garde-fou, le ❤ serait un moyen détourné d'apprendre qu'il bouge.
+    const { staffOnly } = await isStaffOnlyBoard(topic.board_id);
+    if (staffOnly && !isForumStaff(username)) return res.status(404).json({ error: 'topic not found' });
+    // Sans corps explicite, on bascule : c'est un bouton, pas une case.
+    const voulu = (req.body && req.body.follow !== undefined)
+      ? !!req.body.follow
+      : !(await db.forumIsTopicFollowed(username, topicId));
+    const followed = await db.forumSetTopicFollow(username, topicId, voulu);
+    res.json({ ok: true, followed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -18076,11 +18341,21 @@ app.post('/api/forum/post', async (req, res) => {
     if (currentCount + 1 >= FORUM_MAX_POSTS_PER_TOPIC) {
       db.forumSetLocked(topicId, true).catch(dbErr('forumSetLocked auto'));
     }
-    // Une réponse rallume le voyant forum du bureau, comme un sujet neuf.
-    notifyForumNews(username);
+    // Une réponse rallume le voyant forum du bureau, comme un sujet neuf —
+    // chez ceux qui suivent ce sujet-là s'ils ont réglé leurs notifications
+    // ainsi, chez tout le monde sinon.
+    const suiveurs = process.env.DATABASE_URL
+      ? await db.forumTopicFollowers(topicId).catch(() => [])
+      : [];
+    notifyForumNews(username, suiveurs);
     // Et si elle CITE quelqu'un ([quote=…]), le cité absent est prévenu sur
     // son téléphone, avec le sujet en lien direct.
     pousserNotifCitationsForum(username, topicId, topic.title, content);
+    // Ceux qui ont posé un ❤ sur ce sujet et demandé à n'être prévenus que
+    // pour ceux-là reçoivent la leur. Le forum ne doit pas attendre l'envoi
+    // des notifications pour répondre : on laisse filer.
+    pousserNotifSuiviForum(username, topicId, topic.title, suiveurs)
+      .catch((e) => console.error('[FORUM] pousserNotifSuiviForum:', e.message));
     res.json({ ok: true, postId: post.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -19440,7 +19715,9 @@ app.get('/api/light/profile', async (req, res) => {
   // Le forum vit en base : sans elle, rien à compter.
   let forumUnread = 0;
   if (process.env.DATABASE_URL) {
-    try { forumUnread = await db.forumCountUnread(username); }
+    // Le voyant suit la préférence `forum_notify` : éteint en mode 0, borné
+    // aux sujets suivis en mode 2, inchangé sinon.
+    try { forumUnread = await db.forumCountUnread(username, forumNotifyMode(u)); }
     catch (e) { console.error('[LIGHT] forumCountUnread:', e.message); }
   }
   res.json({
@@ -23757,7 +24034,7 @@ async function handleCBeeMessage(socket, rawXml) {
       // sujets ont du nouveau — la même règle que le forumUnread du profil
       // /light, lue en tâche de fond pour ne pas retenir l'ident sur la base.
       if (process.env.DATABASE_URL) {
-        db.forumCountUnread(effectiveLogin)
+        db.forumCountUnread(effectiveLogin, forumNotifyModeDe(effectiveLogin))
           .then((n) => {
             if (n > 0 && client.logged && xmlSocketClients.has(socket)) {
               sendToClient(socket, `<${CMD.newforummsg} />`);

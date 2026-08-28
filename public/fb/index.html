@@ -296,6 +296,24 @@
   .act-btn-red:hover,
   .act-btn-green:hover,
   .act-btn-blue:hover { background: #d2645a; color: #fff; text-decoration: none; }
+  /* LE ❤ D'UN SUJET — « je veux être prévenu quand quelqu'un poste ici ».
+     Un cœur creux tant qu'on ne suit pas, plein une fois posé. C'est un
+     réglage personnel, pas une action de modération : il ne prend donc pas la
+     pastille rouge des `act-btn`, mais reste un bouton nu. */
+  .suivi-btn {
+    background: none; border: 0; padding: 0 3px; cursor: pointer;
+    font-size: 13px; line-height: 1; color: #AABB99;
+    font-family: Verdana, sans-serif; vertical-align: middle;
+  }
+  .suivi-btn:hover { color: #E3756A; }
+  .suivi-btn.on { color: #E3756A; }
+  /* Dans la liste des sujets, le cœur suit le titre sans le pousser. */
+  .row .title .suivi-btn { font-size: 11px; }
+  /* Sous la barre d'actions du sujet, il porte son libellé. */
+  .shell-left .suivi-btn { font-size: 11px; color: #558811; padding: 0 6px; }
+  .shell-left .suivi-btn .c { font-size: 13px; color: #AABB99; }
+  .shell-left .suivi-btn.on .c { color: #E3756A; }
+  .shell-left .suivi-btn:hover { text-decoration: underline; }
   .post .post-content {
     font-size: 12px;
     line-height: 1.6;
@@ -2113,6 +2131,9 @@ async function loadBoard(boardId, page) {
     if (t.isSticky) html += '<span class="sticky-tag">Post-it: </span>';
     if (t.isLocked) html += '<span class="locked-tag">[verrouillé] </span>';
     html += '<a href="#" onclick="navigate(\'topic\',' + t.id + ');return false">' + escapeHtml(t.title) + '</a>';
+    // Le ❤ : suivre ce sujet sans l'ouvrir. Réservé aux connectés — un
+    // visiteur n'a rien à suivre.
+    if (currentUser) html += ' ' + boutonSuivi(t.id, t.followed, false);
     html += '</div>';
     html += '<div class="author">par <a href="#">' + escapeHtml(t.author) + '</a></div>';
     html += '</div>';
@@ -2250,6 +2271,9 @@ async function loadTopic(topicId, page) {
     } else {
       html += '<a href="#" onclick="showReplyForm();return false" class="img-btn"><img src="/fb/reply.gif" alt="Répondre"></a>';
     }
+    // Suivre CE sujet. Le libellé dit à quoi sert le cœur, et l'infobulle
+    // rappelle le réglage qui le rend actif.
+    html += boutonSuivi(data.topic.id, data.followed, true, data.forumNotify);
   }
   html += '</div>';
   html += '<div class="shell-center">';
@@ -2270,6 +2294,59 @@ async function loadTopic(topicId, page) {
   brancherBouilles(app);       // les avatars des messages
 }
 function topicPage(p) { pousserHistoire('topic', currentTopicId, p); loadTopic(currentTopicId, p); }
+
+// ── LE ❤ DES SUJETS SUIVIS ────────────────────────────────────────────
+// Rien de tout cela n'existait en 2005 : le forum d'époque ne prévenait de
+// rien. Ici, la préférence « Notifications du forum » (14) a trois positions,
+// et celle du milieu — « seulement mes sujets suivis » — s'appuie sur ces
+// cœurs : le voyant du raccourci Forum ne compte plus qu'eux, et un nouveau
+// message dans l'un d'eux pousse une notification sur le téléphone.
+//
+// Le cœur se pose même quand la préférence est ailleurs : on marque un sujet
+// aujourd'hui, on bascule le réglage demain. L'infobulle le dit, plutôt que de
+// laisser croire à un bouton mort.
+var SUIVI_ETAT = {};
+
+function boutonSuivi(topicId, suivi, avecLibelle, mode) {
+  SUIVI_ETAT[topicId] = !!suivi;
+  var titre = suivi ? 'Ne plus suivre ce sujet' : 'Suivre ce sujet';
+  if (mode !== undefined && Number(mode) !== 2) {
+    titre += ' — actif si « Notifications du forum » est réglé sur'
+      + ' « Seulement mes sujets suivis »';
+  }
+  return '<button type="button" class="suivi-btn' + (suivi ? ' on' : '') + '"'
+    + ' id="suivi-' + topicId + '" title="' + escapeHtml(titre) + '"'
+    + ' onclick="basculerSuivi(' + topicId + ');return false">'
+    + '<span class="c">' + (suivi ? '♥' : '♡') + '</span>'
+    + (avecLibelle ? ' ' + (suivi ? 'Suivi' : 'Suivre') : '')
+    + '</button>';
+}
+
+async function basculerSuivi(topicId) {
+  var b = document.getElementById('suivi-' + topicId);
+  if (!b || b.disabled) return;
+  b.disabled = true;
+  try {
+    var r = await apiFetch('/api/forum/topic/' + topicId + '/follow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ follow: !SUIVI_ETAT[topicId] }),
+    });
+    if (r && r.ok) {
+      SUIVI_ETAT[topicId] = !!r.followed;
+      b.classList.toggle('on', !!r.followed);
+      var c = b.querySelector('.c');
+      if (c) c.textContent = r.followed ? '♥' : '♡';
+      // Le libellé n'existe que sur le bouton du sujet ; dans la liste, le
+      // cœur est seul et il n'y a rien à réécrire.
+      if (b.childNodes.length > 1) {
+        b.lastChild.textContent = ' ' + (r.followed ? 'Suivi' : 'Suivre');
+      }
+      b.title = r.followed ? 'Ne plus suivre ce sujet' : 'Suivre ce sujet';
+    }
+  } catch (e) { /* le cœur reste comme il était */ }
+  b.disabled = false;
+}
 
 // ── Forum polls (sondages) ──
 // Per-poll "show the results without voting" toggle (client-side only).
