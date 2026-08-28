@@ -83,13 +83,18 @@
     var cid = i >= 0 ? raw.slice(i + 1).replace(/[^0-9A-Za-z]/g, '').slice(0, 24) : '';
     return { s: nettoyer(i >= 0 ? raw.slice(0, i) : raw), cid: cid };
   }
+  // Résout un id vers { paths, couleurs } (ou null). `couleurs` = les 3 niveaux
+  // de couleur (hex) de l'accessoire, pour ses tracés « à niveau ».
   function paquetCustom(id) {
     if (!id) return Promise.resolve(null);
     if (Object.prototype.hasOwnProperty.call(customPret, id)) return Promise.resolve(customPret[id]);
     if (!customCache[id]) {
       customCache[id] = global.fetch('/api/light/acc-maison/' + encodeURIComponent(id))
         .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (j) { var p = (j && j.ok) ? j.paths : null; customPret[id] = p; return p; })
+        .then(function (j) {
+          var p = (j && j.ok) ? { paths: j.paths, couleurs: j.couleurs || null } : null;
+          customPret[id] = p; return p;
+        })
         .catch(function () { customPret[id] = null; return null; });
     }
     return customCache[id];
@@ -150,14 +155,15 @@
     var tour = (tours.get(c) || 0) + 1;
     tours.set(c, tour);
     p = Promise.all([famille(M.familleDe(s)), paquetCustom(cid)]).then(function (r) {
-      var defs = r[0], paths = r[1];
+      var defs = r[0], paq = r[1];
       if (!c.isConnected || tours.get(c) !== tour) { promesses.delete(c); return null; }
       // Sans `anime`, le moteur tranche tout seul : image fixe si l'arbre n'a
       // rien à jouer, pellicule sinon. `data-anime="1"` (la scène de réaction
       // du chat) annonce qu'on va lui demander des animations : elle garde
       // alors la finesse de mouvement entre deux réactions.
       var b = new M.Bouille(c, defs, { etat: s, humeur: e,
-        anime: anime ? true : undefined, accessoireCustom: paths });
+        anime: anime ? true : undefined,
+        accessoireCustom: paq && paq.paths, accessoireCouleurs: paq && paq.couleurs });
       posees.set(c, b);
       c.setAttribute('data-prete', '1');
       return b;
@@ -217,16 +223,21 @@
       // L'accessoire maison est posé AVANT le rendu (definir rerend) : on prend
       // ses aplats dans le cache résolu s'ils y sont, sinon on rerend au retour.
       var pret = Object.prototype.hasOwnProperty.call(customPret, sp.cid) ? customPret[sp.cid] : undefined;
-      if (sp.cid && pret !== undefined) b.moteur.accessoireCustom = pret || null;
-      else if (!sp.cid) b.moteur.accessoireCustom = null;
+      if (sp.cid && pret !== undefined) {
+        b.moteur.accessoireCustom = pret ? pret.paths : null;
+        b.moteur.accessoireCouleurs = pret ? pret.couleurs : null;
+      } else if (!sp.cid) {
+        b.moteur.accessoireCustom = null; b.moteur.accessoireCouleurs = null;
+      }
       b.definir(s);
       // `humeur(0)` est le visage NEUTRE, pas « pas d'humeur » : le tester
       // interdisait tout retour au calme — une bouille fâchée le restait.
       b.humeur(e);
       if (sp.cid && pret === undefined) {
-        paquetCustom(sp.cid).then(function (paths) {
+        paquetCustom(sp.cid).then(function (paq) {
           if (c.getAttribute('data-custom') !== sp.cid || posees.get(c) !== b) return; // périmé
-          b.moteur.accessoireCustom = paths || null;
+          b.moteur.accessoireCustom = paq ? paq.paths : null;
+          b.moteur.accessoireCouleurs = paq ? paq.couleurs : null;
           b.rendre();
         });
       }

@@ -100,6 +100,10 @@
       + "    · « accessoire-arriere »  : ce qui passe DERRIÈRE les cheveux de devant\n"
       + "                                (un bandeau sous la frange, l'arrière d'un chapeau…).\n"
       + "    · « repere » (la tête)    : un simple fond — verrouille-le, il est ignoré au retour.\n"
+      + "    NIVEAUX DE COULEUR (optionnel) : place des formes dans un groupe nommé\n"
+      + "    « couleur1 », « couleur2 » ou « couleur3 » (dans l'un ou l'autre calque).\n"
+      + "    Ces zones se recolorent ensuite depuis l'admin (3 niveaux, palette du parc) ;\n"
+      + "    le reste garde sa couleur. Dessine-les en aplats — la teinte les remplace.\n"
       + "    · Repère = le carré du visage (" + sc.w + "×" + sc.h + "). N'agrandis pas le plan de travail.\n"
       + "  -->\n"
       + '  <g id="accessoire-arriere">\n' + arriere + "\n  </g>\n"
@@ -183,34 +187,45 @@
     try {
       var repere = vivant.querySelector("#repere");
       var gArr = vivant.querySelector("#accessoire-arriere");
-      var gAv = vivant.querySelector("#accessoire");
-      // Deux calques : l'avant (« accessoire ») et l'arrière (« accessoire-arriere »).
-      // Sans calque nommé du tout, on lit tout ce qui n'est pas le repère, en avant.
-      var sources = [];
-      if (gAv) sources.push({ racine: gAv, avant: true });
-      if (gArr) sources.push({ racine: gArr, avant: false });
-      if (!sources.length) sources.push({ racine: vivant, avant: true });
-
-      sources.forEach(function (src) {
-        var els = src.racine.querySelectorAll("path,rect,circle,ellipse,line,polygon,polyline");
-        for (var i = 0; i < els.length; i++) {
-          var el = els[i];
-          if (repere && repere.contains(el)) continue;        // le fond, jamais
-          if (gArr && src.avant && gArr.contains(el)) continue; // évite le doublon si imbriqué
-          var d = elementVersD(el);
-          if (!d) continue;
-          var ctm = el.getCTM();                              // élément → viewBox (scène)
-          var m = ctm ? [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f] : null;
-          var op = opaciteDe(global, el);
-          var fill = couleur(global, el, "fill");
-          var stroke = couleur(global, el, "stroke");
-          if (fill) out.push({ d: d, fill: fill, alpha: op.fill, m: m, avant: src.avant });
-          if (stroke) {
-            var lw = parseFloat(global.getComputedStyle(el).strokeWidth) || 1;
-            out.push({ d: d, fill: stroke, alpha: op.stroke, m: m, trait: true, largeur: lw, avant: src.avant });
-          }
+      // L'AVANT / ARRIÈRE vient du calque de tête (« accessoire-arriere »). Le
+      // NIVEAU DE COULEUR (1, 2 ou 3) vient d'un groupe ancêtre nommé
+      // « couleur1/2/3 » (Illustrator peut y accoler un « _1 » : on tolère). Un
+      // tracé sans un tel ancêtre garde sa couleur fixe (niveau 0).
+      function slotDe(el) {
+        for (var n = el; n && n !== vivant.parentNode; n = n.parentNode) {
+          var m = /^couleur([123])/i.exec(n.id || "");
+          if (m) return Number(m[1]);
         }
-      });
+        return 0;
+      }
+      function faire(d, fill, alpha, m, avant, slot, trait, largeur) {
+        var p = { d: d, fill: fill, alpha: alpha, m: m };
+        if (!avant) p.avant = false;
+        if (slot) p.slot = slot;
+        if (trait) { p.trait = true; p.largeur = largeur; }
+        return p;
+      }
+      // Une seule passe sur tous les dessinables (hors repère) : l'ordre du
+      // document = l'ordre de peinture.
+      var els = vivant.querySelectorAll("path,rect,circle,ellipse,line,polygon,polyline");
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        if (repere && repere.contains(el)) continue;          // le fond, jamais
+        var d = elementVersD(el);
+        if (!d) continue;
+        var ctm = el.getCTM();                                // élément → viewBox (scène)
+        var m = ctm ? [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f] : null;
+        var op = opaciteDe(global, el);
+        var avant = !(gArr && gArr.contains(el));
+        var slot = slotDe(el);
+        var fill = couleur(global, el, "fill");
+        var stroke = couleur(global, el, "stroke");
+        if (fill) out.push(faire(d, fill, op.fill, m, avant, slot, false, 0));
+        if (stroke) {
+          var lw = parseFloat(global.getComputedStyle(el).strokeWidth) || 1;
+          out.push(faire(d, stroke, op.stroke, m, avant, slot, true, lw));
+        }
+      }
     } finally {
       global.document.body.removeChild(hote);
     }

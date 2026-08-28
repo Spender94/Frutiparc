@@ -453,6 +453,10 @@
     // qu'un graphiste a dessinés, posée PAR-DESSUS la bouille. Voir
     // exporterAccessoire (la sortie) et bouille-custom.js (l'entrée).
     this.accessoireCustom = options.accessoireCustom || null;
+    // Les trois niveaux de couleur d'un accessoire maison (hex) : un tracé marqué
+    // slot 1/2/3 se peint avec la couleur correspondante ; les autres gardent la
+    // leur. C'est l'analogue des col/col2/col3 des accessoires d'époque.
+    this.accessoireCouleurs = options.accessoireCouleurs || null;
     // Les tracés et les morphs calculés se rangent sur la FAMILLE, pas sur le
     // lecteur : une grille de quarante-huit vignettes partage alors un seul jeu
     // de Path2D au lieu d'en reconstruire quarante-huit.
@@ -1021,12 +1025,16 @@
       // lui, émet déjà en repère scène (pas de m) — les deux passent par ici.
       if (p.m) ctx.transform(p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5]);
       ctx.globalAlpha = (p.alpha == null ? 1 : p.alpha);
+      // Un tracé « à niveau » (slot 1/2/3) prend la couleur du niveau si elle est
+      // fournie ; sinon il garde la sienne.
+      const teinte = (p.slot && this.accessoireCouleurs && this.accessoireCouleurs[p.slot - 1])
+        ? this.accessoireCouleurs[p.slot - 1] : p.fill;
       if (p.trait) {
-        ctx.strokeStyle = p.fill; ctx.lineWidth = p.largeur || 1;
+        ctx.strokeStyle = teinte; ctx.lineWidth = p.largeur || 1;
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
         ctx.stroke(p._p2d);
       } else {
-        ctx.fillStyle = p.fill;
+        ctx.fillStyle = teinte;
         ctx.fill(p._p2d, 'evenodd');
       }
       ctx.restore();

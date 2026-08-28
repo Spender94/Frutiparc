@@ -557,6 +557,7 @@
         <div style="flex:1">
           <label style="font-size:12px;color:#555;display:block">Nom<input id="am-nom" type="text" maxlength="60" style="width:100%;box-sizing:border-box"></label>
           <label style="font-size:12px;color:#555;display:block;margin-top:6px">Prix (K)<input id="am-prix" type="number" min="0" step="10" value="60" style="width:90px"></label>
+          <div id="am-couleurs" style="margin-top:8px"></div>
           <button class="btn-success" id="am-creer" style="margin-top:8px" disabled onclick="creerAccMaison()">Créer l'accessoire</button>
           <div id="am-etat" style="font-size:11px;color:#777;margin-top:4px"></div>
         </div>
@@ -4064,23 +4065,55 @@ async function toggleBouilleEdit(username, allow) {
 // La tête témoin des aperçus : famille 0, coiffure 8, accessoire SWF « Rien ».
 const AM_TETE = '000300080002070000000000';
 let amPaths = null;
+let amCouleurs = ['', '', ''];   // les 3 niveaux de couleur choisis (hex)
 
 function amApercu(canvas, paths) {
   FPBouilleSwf.charger('/fbouille/famille' + FPBouilleMoteur.familleDe(AM_TETE) + '.swf')
     .then(function (defs) {
-      new FPBouilleMoteur.Bouille(canvas, defs, { etat: AM_TETE, anime: false, accessoireCustom: paths });
+      new FPBouilleMoteur.Bouille(canvas, defs, { etat: AM_TETE, anime: false,
+        accessoireCustom: paths, accessoireCouleurs: amCouleurs });
     }).catch(function () {});
+}
+function amRepreview() {
+  const hote = $('#am-apercu-hote');
+  hote.innerHTML = '<canvas width="1" height="1" style="width:100%;height:100%;display:block"></canvas>';
+  amApercu(hote.querySelector('canvas'), amPaths);
+}
+// Une rangée de pastilles de palette pour CHAQUE niveau de couleur présent dans
+// le SVG (un groupe « couleur1/2/3 »). Sans niveau, rien à régler.
+function construireCouleursMaison() {
+  const hote = $('#am-couleurs'); if (!hote) return; hote.innerHTML = '';
+  const slots = amPaths ? [...new Set(amPaths.filter(function (p) { return p.slot; }).map(function (p) { return p.slot; }))].sort() : [];
+  if (!slots.length) return;
+  const COLS = (window.FPBouille && FPBouille.COLORS) || [];
+  slots.forEach(function (slot) {
+    if (!amCouleurs[slot - 1]) amCouleurs[slot - 1] = (COLS[0] && COLS[0].hex) || '#ffffff';
+    const ligne = document.createElement('div');
+    ligne.style.cssText = 'display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin-bottom:3px';
+    const lab = document.createElement('span'); lab.textContent = 'Niveau ' + slot; lab.style.cssText = 'font-size:11px;color:#555;width:58px';
+    ligne.appendChild(lab);
+    COLS.forEach(function (col) {
+      const s = document.createElement('span');
+      s.style.cssText = 'width:14px;height:14px;border-radius:3px;cursor:pointer;border:1px solid rgba(0,0,0,.2)'
+        + (amCouleurs[slot - 1] === col.hex ? ';outline:2px solid #000046;outline-offset:1px' : '');
+      s.style.background = col.hex; s.title = col.name;
+      s.onclick = function () { amCouleurs[slot - 1] = col.hex; construireCouleursMaison(); amRepreview(); };
+      ligne.appendChild(s);
+    });
+    hote.appendChild(ligne);
+  });
 }
 
 function amCharger(svgTexte) {
   try { amPaths = FPBouilleCustom.charger(svgTexte); } catch (e) { amPaths = null; }
   const etat = $('#am-etat'), bouton = $('#am-creer');
-  if (!amPaths || !amPaths.length) { etat.textContent = 'SVG illisible ou sans dessin.'; bouton.disabled = true; return; }
-  etat.textContent = amPaths.length + ' aplat(s) lu(s).';
+  if (!amPaths || !amPaths.length) { etat.textContent = 'SVG illisible ou sans dessin.'; bouton.disabled = true; $('#am-couleurs').innerHTML = ''; return; }
+  const nbSlots = new Set(amPaths.filter(function (p) { return p.slot; }).map(function (p) { return p.slot; })).size;
+  etat.textContent = amPaths.length + ' aplat(s)' + (nbSlots ? ', ' + nbSlots + ' niveau(x) de couleur' : '') + '.';
   bouton.disabled = false;
-  const hote = $('#am-apercu-hote');
-  hote.innerHTML = '<canvas width="1" height="1" style="width:100%;height:100%;display:block"></canvas>';
-  amApercu(hote.querySelector('canvas'), amPaths);
+  amCouleurs = ['', '', ''];
+  construireCouleursMaison();
+  amRepreview();
 }
 
 async function creerAccMaison() {
@@ -4088,14 +4121,14 @@ async function creerAccMaison() {
   const nom = $('#am-nom').value.trim(), prix = Number($('#am-prix').value) || 0;
   if (!nom) { $('#am-etat').textContent = 'Donne un nom.'; return; }
   const h = hdr(); h['Content-Type'] = 'application/octet-stream';
-  const body = new Blob([JSON.stringify({ name: nom, price: prix, paths: amPaths })], { type: 'application/octet-stream' });
+  const body = new Blob([JSON.stringify({ name: nom, price: prix, paths: amPaths, couleurs: amCouleurs })], { type: 'application/octet-stream' });
   try {
     const r = await fetch('/api/admin/acc-maison', { method: 'POST', headers: h, body: body });
     const j = await r.json();
     if (j.ok) {
       $('#am-etat').textContent = 'Créé : ' + j.id;
-      $('#am-nom').value = ''; amPaths = null; $('#am-creer').disabled = true;
-      $('#am-apercu-hote').innerHTML = ''; $('#am-fichier').value = '';
+      $('#am-nom').value = ''; amPaths = null; amCouleurs = ['', '', '']; $('#am-creer').disabled = true;
+      $('#am-apercu-hote').innerHTML = ''; $('#am-couleurs').innerHTML = ''; $('#am-fichier').value = '';
       loadAccMaison();
     } else $('#am-etat').textContent = 'Erreur : ' + (j.error || '?');
   } catch (e) { $('#am-etat').textContent = 'Erreur réseau.'; }

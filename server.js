@@ -1122,8 +1122,10 @@ function bouilleOf(user, username) {
   else base = DEFAULT_BOUILLE_STATE;
   // Un accessoire maison voyage AVEC la bouille : « <état>|<id> ». Le lecteur JS
   // (FPBouilleVignette) le reconnaît et va chercher ses aplats ; le SWF ne lit
-  // que les 24 premiers caractères, donc le suffixe lui est transparent.
-  const id = user && user.accMaisonId;
+  // que les 24 premiers caractères, donc le suffixe lui est transparent. L'id
+  // vient de l'utilisateur, ou à défaut de la table d'équipement persistée.
+  const id = (user && user.accMaisonId)
+    || (username && accMaisonEquip[String(username).toLowerCase()]) || null;
   return (id && accessoiresMaison[id]) ? base + '|' + id : base;
 }
 
@@ -3000,6 +3002,8 @@ async function hydrateUserFromDb(username, dbUser) {
       await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
     }
   }
+  // L'accessoire maison porté est persisté hors base : on le rétablit ici.
+  mem.accMaisonId = accMaisonEquip[String(username).toLowerCase()] || null;
   users[username] = mem; // atomique : seulement après un chargement COMPLET
   const [items, accs, dbScores, dbContacts, dbBlacklist, dbMails, dbGameItems, dbUserLog, dbSiteLog, dbContactFolders] = loaded;
 
@@ -5456,12 +5460,50 @@ function nettoyerPathsMaison(paths) {
     const q = { d: String((p && p.d) || '').slice(0, 20000), fill: String((p && p.fill) || '#000').slice(0, 40) };
     if (p.alpha != null && p.alpha < 1) q.alpha = Math.max(0, Math.min(1, Number(p.alpha) || 0));
     if (p.avant === false) q.avant = false;
+    if (p.slot === 1 || p.slot === 2 || p.slot === 3) q.slot = p.slot;   // niveau de couleur
     if (p.trait) { q.trait = true; q.largeur = Math.max(0, Math.min(50, Number(p.largeur) || 1)); }
     if (Array.isArray(p.m) && p.m.length === 6 && p.m.every((n) => isFinite(n))) q.m = p.m.map(Number);
     return q;
   }).filter((p) => p.d && /^[Mm]/.test(p.d));
 }
+
+// Les trois niveaux de couleur d'un accessoire : jusqu'à trois hex #rrggbb.
+function nettoyerCouleursMaison(c) {
+  if (!Array.isArray(c)) return null;
+  const hex = c.slice(0, 3).map((x) => {
+    const s = String(x || '').trim();
+    return /^#[0-9a-fA-F]{6}$/.test(s) ? s.toLowerCase() : null;
+  });
+  return hex.some((x) => x) ? hex : null;
+}
 chargerAccMaison();
+
+// Qui porte quoi — persisté à part (data/acc-maison-equip.json), indépendamment
+// de la base : un accessoire porté survit à un redémarrage même en mode mémoire.
+// { usernameMinuscule → idAccessoire }
+const ACC_MAISON_EQUIP_FILE = path.join(__dirname, 'data', 'acc-maison-equip.json');
+const accMaisonEquip = {};
+function chargerEquip() {
+  try {
+    const brut = JSON.parse(fs.readFileSync(ACC_MAISON_EQUIP_FILE, 'utf8'));
+    for (const [u, id] of Object.entries(brut || {})) if (id) accMaisonEquip[u] = id;
+  } catch (e) { /* pas de fichier */ }
+}
+function sauverEquip() {
+  try {
+    fs.mkdirSync(path.dirname(ACC_MAISON_EQUIP_FILE), { recursive: true });
+    fs.writeFileSync(ACC_MAISON_EQUIP_FILE, JSON.stringify(accMaisonEquip));
+  } catch (e) { console.error('[ACC-MAISON] sauvegarde équipement:', e.message); }
+}
+// Pose (ou retire) l'accessoire porté d'un utilisateur, en mémoire ET sur disque.
+function definirEquip(username, id) {
+  const cle = String(username || '').toLowerCase();
+  if (!cle) return;
+  if (id) accMaisonEquip[cle] = id; else delete accMaisonEquip[cle];
+  if (users[username]) users[username].accMaisonId = id || null;
+  sauverEquip();
+}
+chargerEquip();
 
 // Default accessory description — the two paragraphs the original Frutiparc
 // showed for every accessory. win.Shop.displayItemPage runs
@@ -10441,7 +10483,7 @@ app.get('/api/light/acc-maison/:id', (req, res) => {
   const a = accessoiresMaison[req.params.id];
   if (!a) return res.status(404).json({ ok: false });
   res.setHeader('Cache-Control', 'public, max-age=300');
-  res.json({ ok: true, id: a.id, name: a.name, paths: a.paths });
+  res.json({ ok: true, id: a.id, name: a.name, paths: a.paths, couleurs: a.couleurs || null });
 });
 
 // Public : la liste (id + nom), pour le sélecteur « porter un accessoire maison ».
@@ -10455,7 +10497,7 @@ app.post('/api/light/acc-maison/equip', (req, res) => {
   if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
   const id = (req.body && req.body.id) || '';
   if (id && !accessoiresMaison[id]) return res.status(404).json({ ok: false, error: 'inconnu' });
-  users[username].accMaisonId = id || null;
+  definirEquip(username, id || null);   // mémoire + disque (survit au redémarrage)
   res.json({ ok: true, accMaisonId: id || null });
 });
 
@@ -10476,7 +10518,8 @@ app.post('/api/admin/acc-maison', adminScope('shop'),
     const paths = nettoyerPathsMaison(b.paths);
     if (!b.name || !paths.length) return res.status(400).json({ error: 'name + paths requis (paths non vide)' });
     const id = nextAccMaisonId();
-    const a = { id, name: String(b.name).slice(0, 60), price: Number(b.price) || 0, paths, createdAt: new Date().toISOString() };
+    const couleurs = nettoyerCouleursMaison(b.couleurs);
+    const a = { id, name: String(b.name).slice(0, 60), price: Number(b.price) || 0, paths, couleurs, createdAt: new Date().toISOString() };
     accessoiresMaison[id] = a; sauverAccMaison();
     console.log(`[ACC-MAISON] créé ${id} « ${a.name} » (${paths.length} aplats)`);
     res.json({ ok: true, id, name: a.name });
@@ -10484,8 +10527,11 @@ app.post('/api/admin/acc-maison', adminScope('shop'),
 app.delete('/api/admin/acc-maison/:id', adminScope('shop'), (req, res) => {
   if (!accessoiresMaison[req.params.id]) return res.status(404).json({ error: 'not found' });
   delete accessoiresMaison[req.params.id]; sauverAccMaison();
-  // Personne ne le porte plus : on retire l'id des porteurs en mémoire.
+  // Personne ne le porte plus : on retire l'id des porteurs (mémoire + disque).
   for (const u of Object.values(users)) if (u && u.accMaisonId === req.params.id) u.accMaisonId = null;
+  let change = false;
+  for (const [k, v] of Object.entries(accMaisonEquip)) if (v === req.params.id) { delete accMaisonEquip[k]; change = true; }
+  if (change) sauverEquip();
   res.json({ ok: true });
 });
 
@@ -20289,7 +20335,7 @@ app.get('/api/light/profil', (req, res) => {
       pays: String(u.countryIndex || '1'), region: String(u.regionIndex || '1'),
       site: u.siteUrl || '', commentaire: u.comment || '',
     },
-    accMaisonId: u.accMaisonId || '',
+    accMaisonId: u.accMaisonId || accMaisonEquip[username.toLowerCase()] || '',
     accMaison: Object.values(accessoiresMaison).map((a) => ({ id: a.id, name: a.name })),
     pays: Object.keys(t).map((c) => ({
       code: c, nom: t[c].nom,
