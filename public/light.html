@@ -157,6 +157,24 @@
     box-shadow: 0 1px 2px rgba(44,74,15,.25), inset 0 1px 0 rgba(255,255,255,.6);
   }
   #prof-enregistrer:disabled { opacity: .5; cursor: default; }
+  /* Le sélecteur d'accessoire maison : des vignettes de MA bouille, chacune avec
+     un accessoire, la portée surlignée en rose. Cliquer l'équipe aussitôt. */
+  .prof-accm-lab { font-size: 11px; font-weight: bold; color: #2f5510; margin-bottom: 4px; }
+  .accm-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .accm-tuile {
+    width: 66px; text-align: center; cursor: pointer; padding: 3px;
+    border: 2px solid transparent; border-radius: 9px; background: none;
+  }
+  .accm-tuile.on { border-color: #E78690; background: #FEF1F3; }
+  .accm-tuile .accm-vig {
+    width: 58px; height: 58px; margin: 0 auto; overflow: hidden;
+    background: #EFF7DF; border: 1px solid #B9C6A0; border-radius: 7px;
+  }
+  .accm-tuile .accm-vig iframe, .accm-tuile .accm-vig canvas { width: 100%; height: 100%; border: 0; display: block; }
+  .accm-tuile .accm-nom {
+    font-size: 9px; line-height: 1.2; color: #335511; margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 62px;
+  }
   /* Accessory grid: bouilles laid side by side on the yellow inventory card,
      with no per-item frame or background (cf. the boutique "Accessoires"). */
   .acc-grid {
@@ -2529,6 +2547,10 @@
     </div>
     <div class="sheet-body">
       <div class="prof-grille">
+        <div class="prof-large prof-accm">
+          <div class="prof-accm-lab">Accessoire maison</div>
+          <div id="prof-accmaison-grid" class="accm-grid"></div>
+        </div>
         <label>Prénom<input id="prof-prenom" type="text" maxlength="64" autocomplete="given-name"></label>
         <label>Nom<input id="prof-nom" type="text" maxlength="64" autocomplete="family-name"></label>
         <label class="prof-case"><input id="prof-nom-public" type="checkbox"><span>Afficher mon nom sur ma fiche</span></label>
@@ -2540,7 +2562,6 @@
         <label>Ville<input id="prof-ville" type="text" maxlength="80"></label>
         <label>Site Internet<input id="prof-site" type="url" maxlength="256" placeholder="http://…"></label>
         <label class="prof-large">Commentaire<textarea id="prof-com" maxlength="500" rows="4"></textarea></label>
-        <label class="prof-large">Accessoire maison<select id="prof-accmaison"><option value="">— aucun —</option></select></label>
       </div>
       <div class="prof-pied">
         <span id="prof-etat"></span>
@@ -7827,37 +7848,51 @@
   // ── Accessoire maison : le porter / le retirer ──────────────────────────
   // On remplit le menu avec le catalogue, on coche l'accessoire porté, et un
   // changement le pose tout de suite (serveur + avatar d'accueil).
-  function remplirAccMaison(liste, courant) {
-    var sel = $("#prof-accmaison");
-    if (!sel) return;
-    sel.innerHTML = '<option value="">— aucun —</option>';
-    (liste || []).forEach(function (a) {
-      var o = document.createElement("option");
-      o.value = a.id; o.textContent = a.name;
-      sel.appendChild(o);
-    });
-    sel.value = courant || "";
+  var accMaisonListe = [], accMaisonCourant = "";
+  // MA bouille sans le suffixe d'accessoire maison : la base sur laquelle on
+  // essaie chaque accessoire dans les vignettes.
+  function maBouilleBase() {
+    return String((state.bouilleByUser && state.bouilleByUser[state.userLower]) || homeProfile.bouille || DEFAULT_BOUILLE).split("|")[0];
   }
-  (function () {
-    var sel = $("#prof-accmaison");
-    if (!sel) return;
-    sel.addEventListener("change", function () {
-      var id = sel.value || "";
-      var corps = "sid=" + encodeURIComponent(state.sid) + "&id=" + encodeURIComponent(id);
-      fetch("/api/light/acc-maison/equip", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: corps,
-      }).then(function (r) { return r.json(); }).then(function (j) {
-        if (!j || !j.ok) return;
-        // La bouille « live » gagne (ou perd) son suffixe : l'avatar d'accueil
-        // et les aperçus s'y remettent sans recharger le profil.
-        var base = String((state.bouilleByUser && state.bouilleByUser[state.userLower]) || homeProfile.bouille || DEFAULT_BOUILLE).split("|")[0];
-        state.bouilleByUser[state.userLower] = id ? (base + "|" + id) : base;
-        refreshHomeAvatar();
-      }).catch(function () {});
-    });
-  })();
+  function remplirAccMaison(liste, courant) {
+    accMaisonListe = liste || [];
+    accMaisonCourant = courant || "";
+    var grid = $("#prof-accmaison-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    var base = maBouilleBase();
+    function tuile(id, nom) {
+      var t = el("div", "accm-tuile" + (accMaisonCourant === (id || "") ? " on" : ""));
+      var v = el("div", "accm-vig");
+      v.innerHTML = previewIframe(id ? (base + "|" + id) : base);
+      var n = el("div", "accm-nom"); n.textContent = nom; n.title = nom;
+      t.appendChild(v); t.appendChild(n);
+      t.addEventListener("click", function () { equiperAccMaison(id || ""); });
+      grid.appendChild(t);
+      brancherApercus(v);
+    }
+    tuile("", "Aucun");
+    accMaisonListe.forEach(function (a) { tuile(a.id, a.name); });
+  }
+  // Porte (ou retire) un accessoire maison : le serveur le retient (persistant),
+  // et la bouille « live » gagne/perd son suffixe — avatar d'accueil et vignettes
+  // suivent sans recharger.
+  function equiperAccMaison(id) {
+    var corps = "sid=" + encodeURIComponent(state.sid) + "&id=" + encodeURIComponent(id);
+    fetch("/api/light/acc-maison/equip", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: corps,
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || !j.ok) return;
+      var base = maBouilleBase();
+      var nouv = id ? (base + "|" + id) : base;
+      state.bouilleByUser[state.userLower] = nouv;
+      homeProfile.bouille = nouv;
+      refreshHomeAvatar();
+      remplirAccMaison(accMaisonListe, id);   // resurligne la sélection
+    }).catch(function () {});
+  }
   $("#fiche-editer").addEventListener("click", ouvrirProfil);
   $("#profil-sheet-close").addEventListener("click", fermerProfil);
   $("#profil-sheet-backdrop").addEventListener("click", fermerProfil);
