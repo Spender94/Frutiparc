@@ -2540,6 +2540,7 @@
         <label>Ville<input id="prof-ville" type="text" maxlength="80"></label>
         <label>Site Internet<input id="prof-site" type="url" maxlength="256" placeholder="http://…"></label>
         <label class="prof-large">Commentaire<textarea id="prof-com" maxlength="500" rows="4"></textarea></label>
+        <label class="prof-large">Accessoire maison<select id="prof-accmaison"><option value="">— aucun —</option></select></label>
       </div>
       <div class="prof-pied">
         <span id="prof-etat"></span>
@@ -3431,7 +3432,9 @@
 
   function setHomeAvatar(stateStr, mood) {
     var stage = $("#home-avatar"); if (!stage) return;
-    var s = String(stateStr || DEFAULT_BOUILLE).replace(/[^0-9A-Za-z]/g, "");
+    // On garde le « | » : une bouille peut porter un accessoire maison
+    // (« <état>|<id> ») que la vignette sait lire.
+    var s = String(stateStr || DEFAULT_BOUILLE).replace(/[^0-9A-Za-z|]/g, "");
     var e = (mood && Number(mood) > 0) ? Number(mood) : 0;
     var cle = s + "/" + e;
     if (cle === homeAvatarUrl && stage.firstChild) return; // déjà à jour
@@ -5929,7 +5932,7 @@
             pays: String(attr(f, "co") || ""),
             region: String(attr(f, "rg") || ""),
             ville: attr(f, "ct") || "",
-            bouille: String(attr(f, "f") || "").replace(/[^0-9A-Za-z]/g, ""),
+            bouille: String(attr(f, "f") || "").replace(/[^0-9A-Za-z|]/g, ""),
             // `presence` : 0 hors ligne, 1 en ligne, 2 invisible.
             presence: Number(attr(f, "p")) || 0,
             // `StatusMng.analyseStr` : absence(1) + JEU(2) + émote(1) en base 62.
@@ -7776,6 +7779,7 @@
         $("#prof-ville").value = p.ville || "";
         $("#prof-site").value = p.site || "";
         $("#prof-com").value = p.commentaire || "";
+        remplirAccMaison(j.accMaison || [], j.accMaisonId || "");
         remplirPays(p.pays, p.region);
         $("#prof-etat").textContent = "";
       })
@@ -7819,6 +7823,41 @@
     if (!sel.value && sel.options.length) sel.selectedIndex = 0;
   }
   $("#prof-pays").addEventListener("change", function () { remplirRegions(""); });
+
+  // ── Accessoire maison : le porter / le retirer ──────────────────────────
+  // On remplit le menu avec le catalogue, on coche l'accessoire porté, et un
+  // changement le pose tout de suite (serveur + avatar d'accueil).
+  function remplirAccMaison(liste, courant) {
+    var sel = $("#prof-accmaison");
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— aucun —</option>';
+    (liste || []).forEach(function (a) {
+      var o = document.createElement("option");
+      o.value = a.id; o.textContent = a.name;
+      sel.appendChild(o);
+    });
+    sel.value = courant || "";
+  }
+  (function () {
+    var sel = $("#prof-accmaison");
+    if (!sel) return;
+    sel.addEventListener("change", function () {
+      var id = sel.value || "";
+      var corps = "sid=" + encodeURIComponent(state.sid) + "&id=" + encodeURIComponent(id);
+      fetch("/api/light/acc-maison/equip", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: corps,
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (!j || !j.ok) return;
+        // La bouille « live » gagne (ou perd) son suffixe : l'avatar d'accueil
+        // et les aperçus s'y remettent sans recharger le profil.
+        var base = String((state.bouilleByUser && state.bouilleByUser[state.userLower]) || homeProfile.bouille || DEFAULT_BOUILLE).split("|")[0];
+        state.bouilleByUser[state.userLower] = id ? (base + "|" + id) : base;
+        refreshHomeAvatar();
+      }).catch(function () {});
+    });
+  })();
   $("#fiche-editer").addEventListener("click", ouvrirProfil);
   $("#profil-sheet-close").addEventListener("click", fermerProfil);
   $("#profil-sheet-backdrop").addEventListener("click", fermerProfil);
@@ -8160,7 +8199,8 @@
   // when they talk we can render the right avatar.
   function rememberBouille(pseudo, f) {
     if (!pseudo || !f) return;
-    var clean = String(f).replace(/[^0-9A-Za-z]/g, "");
+    // On garde le « | » : l'accessoire maison voyage avec la bouille.
+    var clean = String(f).replace(/[^0-9A-Za-z|]/g, "");
     if (clean.length < 4) return;
     var cle = String(pseudo).toLowerCase();
     var avant = state.bouilleByUser[cle];

@@ -20289,6 +20289,8 @@ app.get('/api/light/profil', (req, res) => {
       pays: String(u.countryIndex || '1'), region: String(u.regionIndex || '1'),
       site: u.siteUrl || '', commentaire: u.comment || '',
     },
+    accMaisonId: u.accMaisonId || '',
+    accMaison: Object.values(accessoiresMaison).map((a) => ({ id: a.id, name: a.name })),
     pays: Object.keys(t).map((c) => ({
       code: c, nom: t[c].nom,
       // Le NOM du découpage (« département ») et le drapeau qui décide de
