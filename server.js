@@ -23205,6 +23205,60 @@ function patchSlot0(username, game, existingData, ctx) {
 // { channelName: { question, points: Map<username, number>, active } }
 const quizState = {};
 
+// ─────────────────────────────────────────────
+// SONDAGES EN DIRECT — un animateur/modérateur ouvre une question dans le
+// salon, les frutiz cliquent une réponse, et la jauge se remplit en direct.
+//
+// L'état est éphémère (perdu au redémarrage), un sondage à la fois par salon.
+//   { id, question, options: [texte…], votes: Map<username, indexChoisi>,
+//     active, author }
+// La trame diffusée est un `send t="poll"` dont le corps est un JSON :
+//   { id, kind:"start|update|end", q, opts:[…], counts:[…], total }
+// Chaque client suit LOCALEMENT son propre vote (le décompte est public, pas
+// le « qui a voté quoi »). Voter passe par la commande texte `/vote N`, que le
+// clic sur une option envoie tout seul — jamais affichée comme un message.
+const pollState = {};
+
+// Un sondage a besoin d'un identifiant court et unique (pour retrouver, côté
+// client, la bulle à mettre à jour). L'horloge + un compteur suffisent.
+let pollSeq = 0;
+function nextPollId() {
+  pollSeq = (pollSeq + 1) % 100000;
+  return `p${Date.now().toString(36)}${pollSeq.toString(36)}`;
+}
+
+// Le décompte d'un sondage, dans l'ordre des options.
+function tallyPoll(poll) {
+  const counts = poll.options.map(() => 0);
+  for (const idx of poll.votes.values()) {
+    if (idx >= 0 && idx < counts.length) counts[idx]++;
+  }
+  return counts;
+}
+
+// La trame `send t="poll"` — un JSON en CDATA. `kind` dit au client s'il crée la
+// bulle (start), remonte les jauges (update) ou la fige avec le vainqueur (end).
+//
+// Elle ne part QU'AUX clients Light : comme le blindtest, le SWF du bureau ne
+// connaît pas ce type et n'a pas à recevoir une trame qu'il rendrait de travers.
+function broadcastPoll(channelName, poll, kind) {
+  const counts = tallyPoll(poll);
+  const total = counts.reduce((a, b) => a + b, 0);
+  const payload = JSON.stringify({
+    id: poll.id,
+    kind,
+    q: poll.question,
+    opts: poll.options,
+    counts,
+    total,
+  });
+  const t = buildChatTimeAttrs();
+  const xml = `<${CMD.send} u="admin" t="poll" p="" g="${escapeXml(channelName)}" h="${t.h}" d="${t.d}"><![CDATA[${payload}]]></${CMD.send}>`;
+  for (const [sock, cl] of xmlSocketClients) {
+    if (cl && cl.estLight && cl.channels.has(channelName)) sendToClient(sock, xml);
+  }
+}
+
 /**
  * Le classement d'un quiz, mis au propre.
  *
@@ -24291,6 +24345,17 @@ case 'join': {
     for (const frame of getChannelHistory(g)) sendToClient(socket, frame);
   }
 
+  // 3 ter. Un sondage est ouvert dans ce salon : le nouvel arrivant (Light) le
+  //        voit lui aussi, avec le décompte du moment — sinon il aurait manqué
+  //        la trame « start » et ne saurait pas qu'on vote.
+  if (client.estLight && pollState[g] && pollState[g].active) {
+    const p = pollState[g];
+    const counts = tallyPoll(p);
+    const total = counts.reduce((a, b) => a + b, 0);
+    const payload = JSON.stringify({ id: p.id, kind: 'start', q: p.question, opts: p.options, counts, total });
+    sendToClient(socket, `<${CMD.send} u="admin" t="poll" p="" g="${escapeXml(g)}" h="" d=""><![CDATA[${payload}]]></${CMD.send}>`);
+  }
+
   // 4. Notification aux autres + trace du nouvel arrivant pour leurs FrutiScreen
   {
     const joinerUd = users[client.username] || {};
@@ -24806,8 +24871,10 @@ case 'send': {
       if (!quizState[g]) quizState[g] = { question: '', points: new Map(), active: true };
       const cur = quizState[g].points.get(target) || 0;
       quizState[g].points.set(target, cur + amount);
-      const msg2 = `<![CDATA[<b><font color="#0066CC">+${amount} point${amount > 1 ? 's' : ''} pour ${getDisplayName(target)} (total : ${cur + amount})</font></b>]]>`;
-      broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
+      // Style animateur (t="c") : le client le rend dans le MÊME bleu gras que
+      // /blueon (.msg.blue = penBlueAnimator #000046), au lieu du bleu vif inline.
+      const msg2 = `<![CDATA[+${amount} point${amount > 1 ? 's' : ''} pour ${getDisplayName(target)} (total : ${cur + amount})]]>`;
+      broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
       break;
     }
 
@@ -24818,8 +24885,9 @@ case 'send': {
       if (!target || !quizState[g]) { break; }
       const cur = quizState[g].points.get(target) || 0;
       quizState[g].points.set(target, Math.max(0, cur - amount));
-      const msg2 = `<![CDATA[<b><font color="#0066CC">-${amount} point${amount > 1 ? 's' : ''} pour ${getDisplayName(target)} (total : ${Math.max(0, cur - amount)})</font></b>]]>`;
-      broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
+      // Style animateur (t="c") : même bleu gras que /blueon (.msg.blue).
+      const msg2 = `<![CDATA[-${amount} point${amount > 1 ? 's' : ''} pour ${getDisplayName(target)} (total : ${Math.max(0, cur - amount)})]]>`;
+      broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
       break;
     }
 
@@ -24841,6 +24909,72 @@ case 'send': {
         broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
       }
       delete quizState[g];
+      break;
+    }
+
+    // ── /poll : sondage en direct (animateurs + modérateurs) ──
+    //
+    //   /poll Question ? | Option A | Option B [| Option C…]
+    //
+    // Deux options minimum, six au plus. Le sondage prend la place de celui du
+    // salon s'il y en avait un (un à la fois). La bulle s'ouvre chez tout le
+    // monde ; on clique une réponse, la jauge monte en direct.
+    if (canAnimate && /^\/poll\b/i.test(text)) {
+      const brut = unescapeXml(text).replace(/^\/poll\s*/i, '').trim();
+      if (!brut) {
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe : /poll Question ? | Option A | Option B | …   (2 à 6 réponses). /pollend pour clore.')}</${CMD.send}>`);
+        break;
+      }
+      const morceaux = brut.split('|').map((s) => s.trim()).filter((s) => s.length);
+      const question = morceaux.shift() || '';
+      const options = morceaux.slice(0, 6);
+      if (!question || options.length < 2) {
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Il faut une question et au moins deux réponses : /poll Question ? | Réponse A | Réponse B')}</${CMD.send}>`);
+        break;
+      }
+      // Bornes de sécurité : question et réponses assez courtes pour la bulle,
+      // les balises HTML retirées (le client réaffiche en texte de toute façon),
+      // et plus aucun « < » ni « > » — ce qui neutralise au passage un « ]]> »
+      // qui clôturerait trop tôt la section CDATA de la trame.
+      const propre = (s) => String(s || '').replace(/<[^>]*>/g, '').replace(/[<>]/g, '').slice(0, 120).trim();
+      pollState[g] = {
+        id: nextPollId(),
+        question: propre(question).slice(0, 160),
+        options: options.map((o) => propre(o)).filter((o) => o.length).slice(0, 6),
+        votes: new Map(),
+        active: true,
+        author: client.username,
+      };
+      if (pollState[g].options.length < 2) { delete pollState[g]; break; }
+      broadcastPoll(g, pollState[g], 'start');
+      break;
+    }
+
+    // ── /vote N : le clic sur une option l'envoie tout seul (jamais tapé). ──
+    // Ouvert à tout frutiz du salon ; on ne compte qu'un vote par personne, et
+    // changer d'avis remplace le précédent. La trame ne s'affiche jamais comme
+    // un message : on la traite et on sort.
+    if (/^\/vote\b/i.test(text)) {
+      const poll = pollState[g];
+      const n = parseInt(String(text).replace(/^\/vote\s*/i, '').trim(), 10);
+      if (poll && poll.active && Number.isInteger(n) && n >= 0 && n < poll.options.length) {
+        const prev = poll.votes.get(client.username);
+        if (prev !== n) {
+          poll.votes.set(client.username, n);
+          broadcastPoll(g, poll, 'update');
+        }
+      }
+      break;
+    }
+
+    // ── /pollend, /pollstop : clore le sondage et figer le résultat. ──
+    if (canAnimate && /^\/(pollend|pollstop|pollclose)\s*$/i.test(text)) {
+      const poll = pollState[g];
+      if (poll) {
+        poll.active = false;
+        broadcastPoll(g, poll, 'end');
+        delete pollState[g];
+      }
       break;
     }
 

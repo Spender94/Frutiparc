@@ -611,6 +611,45 @@
   .msg.emote .from { color: #4f7b1f; }
   .msg.emote .from.me { color: #E3756A; }
   .msg .body.emote { font-style: italic; color: #4f7b1f; }
+  /* Sondage en direct (/poll) — une carte à la sauce Frutiparc : chair verte du
+     parc, liseré vert-de-gris, jauges qui montent, la réponse choisie cochée en
+     rose. Elle vit DANS le fil du chat, retrouvée par son data-poll-id pour
+     remonter les jauges sans bousculer la conversation. */
+  .msg.poll {
+    display: block; margin: 5px 0; padding: 8px 9px 7px;
+    background: #EFF7DF; border: 1px solid #B9C6A0; border-radius: 10px;
+    box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 1px 2px rgba(44,74,15,.12);
+  }
+  .poll-tete { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; }
+  .poll-ico { font-size: 14px; line-height: 1; flex: 0 0 auto; }
+  .poll-titre { color: #000046; font-weight: bold; font-size: 13px; line-height: 1.2; }
+  .poll-opt {
+    position: relative; overflow: hidden; display: flex; align-items: center;
+    width: 100%; margin: 4px 0 0; padding: 6px 9px; box-sizing: border-box;
+    border: 1px solid #C6D3AE; border-radius: 8px; background: #fff;
+    font: inherit; text-align: left; cursor: pointer; color: #335511;
+    -webkit-appearance: none; appearance: none;
+  }
+  .poll-opt:hover:not(:disabled) { border-color: #9FB37E; }
+  .poll-opt:disabled { cursor: default; }
+  /* La jauge : un remplissage vert derrière le texte, sa largeur = le score. */
+  .poll-jauge {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+    background: linear-gradient(#DCF0B2, #C7E48C); border-radius: 7px 0 0 7px;
+    transition: width .35s ease; z-index: 0;
+  }
+  .poll-opt-txt { position: relative; z-index: 1; flex: 1 1 auto; font-size: 12.5px; font-weight: bold; }
+  .poll-opt-val { position: relative; z-index: 1; flex: 0 0 auto; margin-left: 8px;
+    font-size: 11px; font-weight: bold; color: #4f7b1f; font-variant-numeric: tabular-nums; }
+  /* MON vote : liseré rose et jauge rosée, comme le reste du parc. */
+  .poll-opt.voted { border-color: #E78690; background: #FEF1F3; }
+  .poll-opt.voted .poll-jauge { background: linear-gradient(#FAD1D7, #F4A9B2); }
+  .poll-opt.voted .poll-opt-val { color: #D46A76; }
+  /* Sondage clos : la réponse gagnante coiffée d'un liseré doré. */
+  .poll-opt.win { border-color: #E4B23C; }
+  .poll-opt.win .poll-opt-txt::after { content: " 🏆"; }
+  .poll-pied { margin-top: 6px; font-size: 10.5px; color: #6a8a4a; }
+  .msg.poll.ended { opacity: .96; }
   /* Quiz / "/image" pictures: shown INLINE in the chat body on mobile (the
      desktop SWF opens them in a separate window instead). */
   .msg.img-msg .img-wrap { margin-top: 4px; }
@@ -2665,6 +2704,7 @@
     coupureTimer: null,   // annonce différée de « Connexion perdue » (4 s)
     intentionalClose: false,
     usersByRoom: {},   // room -> { pseudo: { staff } } (m="1" du salon)
+    pollMine: {},      // id sondage -> index de MON vote (le décompte est public, pas ça)
     bouilleByUser: {},
     // `UserMng.infoBasicCache` d'époque : les attributs que la liste des
     // connectés porte déjà (âge, pays, région, xp) — de quoi remplir la bulle
@@ -6104,6 +6144,13 @@
           if (cBody) addMessage({ from: from, time: h, body: cBody, kind: "blue", noFrom: (from === "admin"), salon: salon });
           break;
         }
+        // Sondage en direct (/poll) : le corps est un JSON. On ouvre — ou on
+        // met à jour, ou on fige — la bulle interactive du salon.
+        if (ty === "poll") {
+          var pjson = stripCdata(body);
+          try { renderPoll(JSON.parse(pjson), salon); } catch (e) {}
+          break;
+        }
         // Admin / system announcements (totoche, mode bleu, cri "!", gains…) are
         // sent as CDATA, sometimes wrapping a little HTML. Peel the CDATA and, if
         // what remains is markup, render its text — this is what used to fall
@@ -6808,6 +6855,83 @@
   }
   function systemLine(text, salon) {
     addMessage({ kind: "system", body: text, salon: salon });
+  }
+
+  // ── Sondages en direct (/poll) ──
+  //
+  // La trame « t="poll" » porte {id, kind, q, opts, counts, total}. On matérialise
+  // une bulle dans le fil du salon (une par sondage, retrouvée par data-poll-id) :
+  //  · start  → on la crée (ou on la recycle si elle existait) ;
+  //  · update → on remonte les jauges sans bouger la bulle ;
+  //  · end    → on fige, on couronne la réponse gagnante, on coupe les clics.
+  // Le « qui a voté quoi » n'est jamais diffusé : chacun retient SON choix ici
+  // (state.pollMine[id]) et voter renvoie la commande texte /vote N, que le clic
+  // émet tout seul — elle n'apparaît jamais comme un message.
+  function renderPoll(data, salon) {
+    if (!data || !data.id) return;
+    var fil = journalDe(salon || state.room);
+    var stick = nearBottom(fil);
+    var mine = state.pollMine[data.id];
+    if (mine === undefined) mine = -1;
+    var ended = (data.kind === "end");
+    var opts = data.opts || [];
+    var counts = data.counts || [];
+    var total = data.total || 0;
+
+    // La réponse en tête (pour la couronner à la clôture, ex æquo compris).
+    var maxc = -1;
+    for (var mi = 0; mi < counts.length; mi++) if (counts[mi] > maxc) maxc = counts[mi];
+
+    var box = fil.querySelector('.msg.poll[data-poll-id="' + data.id + '"]');
+    if (!box) {
+      box = el("div", "msg poll");
+      box.setAttribute("data-poll-id", data.id);
+      fil.appendChild(box);
+      while (fil.childNodes.length > 400) fil.removeChild(fil.firstChild);
+    }
+    box.classList.toggle("ended", ended);
+    box.innerHTML = "";
+
+    var tete = el("div", "poll-tete");
+    var pic = el("span", "poll-ico"); pic.textContent = "📊"; tete.appendChild(pic);
+    var titre = el("span", "poll-titre"); titre.textContent = data.q || "Sondage"; tete.appendChild(titre);
+    box.appendChild(tete);
+
+    opts.forEach(function (label, i) {
+      var n = counts[i] || 0;
+      var pct = total > 0 ? Math.round((n / total) * 100) : 0;
+      var opt = el("button", "poll-opt");
+      opt.type = "button";
+      if (mine === i) opt.classList.add("voted");
+      if (ended && n === maxc && total > 0) opt.classList.add("win");
+      if (ended) opt.disabled = true;
+      var jauge = el("span", "poll-jauge"); jauge.style.width = pct + "%"; opt.appendChild(jauge);
+      var txt = el("span", "poll-opt-txt"); txt.textContent = label; opt.appendChild(txt);
+      var val = el("span", "poll-opt-val"); val.textContent = pct + "%" + (n ? " (" + n + ")" : ""); opt.appendChild(val);
+      if (!ended) {
+        opt.addEventListener("click", function () {
+          if (state.pollMine[data.id] === i) return;   // déjà ce choix
+          state.pollMine[data.id] = i;
+          // Reflet optimiste : on coche tout de suite, le serveur confirmera le
+          // décompte à la volée pour tout le salon.
+          var freres = box.querySelectorAll(".poll-opt");
+          for (var k = 0; k < freres.length; k++) freres[k].classList.remove("voted");
+          opt.classList.add("voted");
+          wsSend('<t g="' + xmlEscape(salon || state.room) + '" t="m" p="">/vote ' + i + '</t>');
+        });
+      }
+      box.appendChild(opt);
+    });
+
+    var pied = el("div", "poll-pied");
+    pied.textContent = ended
+      ? ("Sondage terminé — " + total + " vote" + (total > 1 ? "s" : ""))
+      : (total > 0
+        ? (total + " vote" + (total > 1 ? "s" : "") + " · touche une réponse")
+        : "Touche une réponse pour voter");
+    box.appendChild(pied);
+
+    if (stick) scrollDown(fil);
   }
 
   // `box.Chat.onSend` : une trame de conversation AVERTIT son slot — mais pas
