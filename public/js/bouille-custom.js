@@ -78,27 +78,33 @@
     var etat = bouille.moteur.racine.s || "";
     var fond = fondTete(bouille.moteur.defs, etat, cote);
 
-    var corps = ex.paths.map(pathXml).join("\n");
+    var avant = ex.paths.filter(function (p) { return p.avant !== false; }).map(pathXml).join("\n");
+    var arriere = ex.paths.filter(function (p) { return p.avant === false; }).map(pathXml).join("\n");
     var viewBox = sc.x + " " + sc.y + " " + sc.w + " " + sc.h;
     var image = fond
       ? '    <image x="' + sc.x + '" y="' + sc.y + '" width="' + sc.w + '" height="' + sc.h
         + '" href="' + fond + '" xlink:href="' + fond + '" />'
       : "";
 
-    // Deux groupes NOMMÉS : Illustrator en fait deux calques. On dit au graphiste
-    // de verrouiller « repere » (le fond) et de ne dessiner que dans « accessoire ».
+    // Trois groupes NOMMÉS = trois calques dans Illustrator, dans l'ordre où ils
+    // se peignent : l'ARRIÈRE (derrière les cheveux de devant), puis le REPÈRE
+    // (la tête, un simple fond), puis l'AVANT (par-dessus tout). Le graphiste
+    // dessine dans « accessoire » (avant) et/ou « accessoire-arriere », jamais
+    // dans « repere » (verrouillé, ignoré au retour).
     return '<?xml version="1.0" encoding="UTF-8"?>\n'
       + '<svg xmlns="' + SVGNS + '" xmlns:xlink="' + XLINKNS + '" '
       + 'viewBox="' + viewBox + '" width="' + sc.w + '" height="' + sc.h + '">\n'
       + "  <!--\n"
       + "    Frutiparc — accessoire" + (opts.nom ? " « " + opts.nom + " »" : "") + " à retravailler.\n"
-      + "    · Dessine UNIQUEMENT dans le calque « accessoire ».\n"
-      + "    · Le calque « repere » (la tête) n'est qu'un fond : verrouille-le,\n"
-      + "      il est ignoré à la réimportation.\n"
+      + "    · « accessoire »          : ce qui passe PAR-DESSUS (le gros de l'objet).\n"
+      + "    · « accessoire-arriere »  : ce qui passe DERRIÈRE les cheveux de devant\n"
+      + "                                (un bandeau sous la frange, l'arrière d'un chapeau…).\n"
+      + "    · « repere » (la tête)    : un simple fond — verrouille-le, il est ignoré au retour.\n"
       + "    · Repère = le carré du visage (" + sc.w + "×" + sc.h + "). N'agrandis pas le plan de travail.\n"
       + "  -->\n"
+      + '  <g id="accessoire-arriere">\n' + arriere + "\n  </g>\n"
       + '  <g id="repere" opacity="0.85" style="pointer-events:none">\n' + image + "\n  </g>\n"
-      + '  <g id="accessoire">\n' + corps + "\n  </g>\n"
+      + '  <g id="accessoire">\n' + avant + "\n  </g>\n"
       + "</svg>\n";
   }
 
@@ -175,26 +181,36 @@
 
     var out = [];
     try {
-      // La couche à lire : « accessoire » si elle existe, sinon tout sauf « repere ».
-      var racine = vivant.querySelector("#accessoire") || vivant;
       var repere = vivant.querySelector("#repere");
-      var els = racine.querySelectorAll("path,rect,circle,ellipse,line,polygon,polyline");
-      for (var i = 0; i < els.length; i++) {
-        var el = els[i];
-        if (repere && repere.contains(el)) continue;         // le fond, jamais
-        var d = elementVersD(el);
-        if (!d) continue;
-        var ctm = el.getCTM();                                // élément → viewBox (scène)
-        var m = ctm ? [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f] : null;
-        var op = opaciteDe(global, el);
-        var fill = couleur(global, el, "fill");
-        var stroke = couleur(global, el, "stroke");
-        if (fill) out.push({ d: d, fill: fill, alpha: op.fill, m: m });
-        if (stroke) {
-          var lw = parseFloat(global.getComputedStyle(el).strokeWidth) || 1;
-          out.push({ d: d, fill: stroke, alpha: op.stroke, m: m, trait: true, largeur: lw });
+      var gArr = vivant.querySelector("#accessoire-arriere");
+      var gAv = vivant.querySelector("#accessoire");
+      // Deux calques : l'avant (« accessoire ») et l'arrière (« accessoire-arriere »).
+      // Sans calque nommé du tout, on lit tout ce qui n'est pas le repère, en avant.
+      var sources = [];
+      if (gAv) sources.push({ racine: gAv, avant: true });
+      if (gArr) sources.push({ racine: gArr, avant: false });
+      if (!sources.length) sources.push({ racine: vivant, avant: true });
+
+      sources.forEach(function (src) {
+        var els = src.racine.querySelectorAll("path,rect,circle,ellipse,line,polygon,polyline");
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i];
+          if (repere && repere.contains(el)) continue;        // le fond, jamais
+          if (gArr && src.avant && gArr.contains(el)) continue; // évite le doublon si imbriqué
+          var d = elementVersD(el);
+          if (!d) continue;
+          var ctm = el.getCTM();                              // élément → viewBox (scène)
+          var m = ctm ? [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f] : null;
+          var op = opaciteDe(global, el);
+          var fill = couleur(global, el, "fill");
+          var stroke = couleur(global, el, "stroke");
+          if (fill) out.push({ d: d, fill: fill, alpha: op.fill, m: m, avant: src.avant });
+          if (stroke) {
+            var lw = parseFloat(global.getComputedStyle(el).strokeWidth) || 1;
+            out.push({ d: d, fill: stroke, alpha: op.stroke, m: m, trait: true, largeur: lw, avant: src.avant });
+          }
         }
-      }
+      });
     } finally {
       global.document.body.removeChild(hote);
     }

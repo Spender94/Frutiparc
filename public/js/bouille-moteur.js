@@ -967,10 +967,41 @@
   Moteur.prototype.dessiner = function (ctx, M) {
     const face = this.racine.face;
     if (!face) return;
-    this.dessinerClip(ctx, face, M || IDENTITE, null, 1);
-    // Un accessoire « maison » se pose PAR-DESSUS, dans le repère de la scène —
-    // le même que celui où l'on vient de peindre (ctx est déjà scène→canevas).
-    if (this.accessoireCustom) this.dessinerAccessoireCustom(ctx);
+    const ac = this.accessoireCustom;
+    // Un accessoire « maison » a deux couches, comme celui d'époque : l'ARRIÈRE
+    // (p.avant === false) passe DERRIÈRE les cheveux de devant, l'AVANT par-
+    // dessus tout. Sans couche arrière, on garde le chemin simple.
+    const arriere = ac ? ac.filter((p) => p.avant === false) : null;
+    if (arriere && arriere.length) {
+      this.dessinerFaceAvecArriere(ctx, face, M || IDENTITE, arriere);
+    } else {
+      this.dessinerClip(ctx, face, M || IDENTITE, null, 1);
+    }
+    if (ac) {
+      const avant = ac.filter((p) => p.avant !== false);
+      if (avant.length) this.dessinerAccessoireCustom(ctx, avant);
+    }
+  };
+
+  // L'accessoire ARRIÈRE se glisse là où le SWF met `cb.c` : derrière les cheveux
+  // de devant (`ca`), mais devant le visage. On dessine tout SAUF ca, on pose
+  // l'arrière, puis ca par-dessus. (Un bandeau sous la frange se range là.)
+  Moteur.prototype.dessinerFaceAvecArriere = function (ctx, face, M, arriere) {
+    let eCa = null;
+    for (const e of face.enfants.values()) if (e.nom === 'ca') eCa = e;
+    const ca = eCa && eCa.objet;
+    let vis;
+    if (ca) { vis = ca.visible; ca.visible = false; }
+    this.dessinerClip(ctx, face, M, null, 1);              // tout sauf ca
+    if (ca) ca.visible = vis;
+    this.dessinerAccessoireCustom(ctx, arriere);           // l'accessoire arrière
+    if (ca) {                                              // puis ca (cheveux devant)
+      const mc = face.teinte ? cxTeinte(face.teinte) : face.cxPlacement;
+      const cxi = composerCx(null, mc || null);
+      const ai = face.alpha / 100;
+      const Mi = composerM(M, face.matrice());
+      this.dessinerEnfant(ctx, eCa, Mi, cxi, ai);
+    }
   };
 
   // ── Accessoire custom : peindre les aplats SVG d'un graphiste ──────────────
@@ -978,8 +1009,8 @@
   // = defs.scene) : on les remplit tels quels. On ne cache pas les Path2D sur la
   // FAMILLE (defs._chemins est partagé entre toutes les bouilles) — chaque tracé
   // garde le sien sur lui.
-  Moteur.prototype.dessinerAccessoireCustom = function (ctx) {
-    const paths = this.accessoireCustom;
+  Moteur.prototype.dessinerAccessoireCustom = function (ctx, paths) {
+    paths = paths || this.accessoireCustom;
     if (!paths || !paths.length) return;
     for (let i = 0; i < paths.length; i++) {
       const p = paths[i];
