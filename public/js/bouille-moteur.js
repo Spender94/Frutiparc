@@ -449,6 +449,10 @@
     this.defs = defs;
     this.alea = options.alea || Math.random;
     this.profondeurScript = 0;
+    // Un accessoire « maison » : une liste d'aplats SVG (repère de la scène)
+    // qu'un graphiste a dessinés, posée PAR-DESSUS la bouille. Voir
+    // exporterAccessoire (la sortie) et bouille-custom.js (l'entrée).
+    this.accessoireCustom = options.accessoireCustom || null;
     // Les tracés et les morphs calculés se rangent sur la FAMILLE, pas sur le
     // lecteur : une grille de quarante-huit vignettes partage alors un seul jeu
     // de Path2D au lieu d'en reconstruire quarante-huit.
@@ -964,6 +968,109 @@
     const face = this.racine.face;
     if (!face) return;
     this.dessinerClip(ctx, face, M || IDENTITE, null, 1);
+    // Un accessoire « maison » se pose PAR-DESSUS, dans le repère de la scène —
+    // le même que celui où l'on vient de peindre (ctx est déjà scène→canevas).
+    if (this.accessoireCustom) this.dessinerAccessoireCustom(ctx);
+  };
+
+  // ── Accessoire custom : peindre les aplats SVG d'un graphiste ──────────────
+  // Les tracés arrivent DÉJÀ dans le repère de la scène (le viewBox de l'export
+  // = defs.scene) : on les remplit tels quels. On ne cache pas les Path2D sur la
+  // FAMILLE (defs._chemins est partagé entre toutes les bouilles) — chaque tracé
+  // garde le sien sur lui.
+  Moteur.prototype.dessinerAccessoireCustom = function (ctx) {
+    const paths = this.accessoireCustom;
+    if (!paths || !paths.length) return;
+    for (let i = 0; i < paths.length; i++) {
+      const p = paths[i];
+      if (!p._p2d) { try { p._p2d = new global.Path2D(p.d); } catch (e) { continue; } }
+      ctx.save();
+      // Un tracé importé garde SON repère (celui de ses groupes Illustrator) :
+      // on applique sa matrice `m` par-dessus le repère scène→canevas. L'export,
+      // lui, émet déjà en repère scène (pas de m) — les deux passent par ici.
+      if (p.m) ctx.transform(p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5]);
+      ctx.globalAlpha = (p.alpha == null ? 1 : p.alpha);
+      if (p.trait) {
+        ctx.strokeStyle = p.fill; ctx.lineWidth = p.largeur || 1;
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        ctx.stroke(p._p2d);
+      } else {
+        ctx.fillStyle = p.fill;
+        ctx.fill(p._p2d, 'evenodd');
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  };
+
+  // ── EXPORT : l'accessoire APLATI en tracés SVG (repère de la scène) ─────────
+  //
+  // On refait la marche de dessinerClip — mêmes matrices, mêmes teintes, même
+  // ordre de profondeur — mais au lieu de peindre, on émet pour chaque aplat
+  // SOUS UN ROULEAU d'accessoire (face.ca.c à l'avant, face.cb.c à l'arrière)
+  // un { d, fill, alpha }. Le résultat est l'accessoire exactement tel qu'il se
+  // voit, dans le repère de la scène (donc du viewBox) : prêt pour Illustrator.
+  //
+  // Le rouleau `c` est l'enfant nommé « c » d'une coiffure (`ca`/`cb`). Tout ce
+  // qui en descend est l'accessoire ; le reste (cheveux, visage, yeux) est
+  // ignoré. Les dégradés sont aplatis à leur première couleur (v1) ; les masques
+  // ne sont pas rejoués (un accessoire n'en porte pas d'ordinaire).
+  Moteur.prototype.exporterAccessoire = function () {
+    const self = this;
+    const face = this.racine.face;
+    const sortie = [];
+    if (!face) return { scene: this.defs.scene, paths: sortie };
+    const R = (v) => Math.round(v * 100) / 100;
+    function transformer(d, m) {
+      return d.replace(/([MLQ])([^MLQZ]*)/g, function (_, cmd, args) {
+        const n = args.trim().split(/[\s,]+/).filter((s) => s.length).map(Number);
+        const out = [];
+        for (let i = 0; i < n.length; i += 2) {
+          const x = n[i], y = n[i + 1];
+          out.push(R(m.a * x + m.c * y + m.e), R(m.b * x + m.d * y + m.f));
+        }
+        return cmd + out.join(' ');
+      });
+    }
+    function emettre(ch, M, cx, alpha, ratio, avant) {
+      const t = self.formeDe(ch, ratio);
+      if (!t) return;
+      for (let i = 0; i < t.f.couches.length; i++) {
+        const c = t.f.couches[i];
+        const o = opacite(c.alpha, cx) * alpha;
+        if (o <= 0) continue;
+        const p = { avant: avant, alpha: Math.round(o * 1000) / 1000, d: transformer(c.d, M) };
+        if (c.trait) { p.trait = true; p.largeur = c.largeur; p.fill = teindre(c.rgb, cx); }
+        else if (c.degrade) {
+          const a0 = c.degrade.arrets && c.degrade.arrets[0];
+          p.fill = teindre((a0 && a0.rgb) || [136, 136, 136], cx);
+        } else p.fill = teindre(c.rgb, cx);
+        sortie.push(p);
+      }
+    }
+    function marcher(clip, M, cx, alpha, ctxt) {
+      if (!clip.visible) return;
+      const mc = clip.teinte ? cxTeinte(clip.teinte) : clip.cxPlacement;
+      const cxi = composerCx(cx, mc || null);
+      const ai = alpha * (clip.alpha / 100);
+      if (ai <= 0) return;
+      const Mi = composerM(M, clip.matrice());
+      const profs = Array.from(clip.enfants.keys()).sort((a, b) => a - b);
+      for (let k = 0; k < profs.length; k++) {
+        const e = clip.enfants.get(profs[k]);
+        let sous = ctxt;
+        if (ctxt === 'r' && e.nom === 'ca') sous = 'Cav';
+        else if (ctxt === 'r' && e.nom === 'cb') sous = 'Car';
+        else if (ctxt === 'Cav' && e.nom === 'c') sous = 'Rav';
+        else if (ctxt === 'Car' && e.nom === 'c') sous = 'Rar';
+        if (e.objet) marcher(e.objet, Mi, cxi, ai, sous);
+        else if (sous === 'Rav' || sous === 'Rar') {
+          emettre(e.ch, composerM(Mi, e.M), composerCx(cxi, e.cx || null), ai, e.ratio, sous === 'Rav');
+        }
+      }
+    }
+    marcher(face, IDENTITE, null, 1, 'r');
+    return { scene: Object.assign({}, this.defs.scene), paths: sortie };
   };
 
   // ── L'objet public ───────────────────────────────────────────────────────
