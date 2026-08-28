@@ -7747,8 +7747,19 @@
     return "Inconnu";
   }
   function ouvrirProfil() {
-    $("#profil-sheet-backdrop").classList.add("show");
-    $("#profil-sheet").classList.add("show");
+    // Au bureau, « modifier ma fiche » est la fenêtre win.EditInfo : le bureau
+    // reparente #profil-sheet dans une fenêtre à l'écorce verte. Ailleurs, la
+    // feuille du mobile monte du bas. Les champs se remplissent pareil des deux
+    // côtés — c'est le même DOM, seulement rhabillé.
+    if (window.BureauFrutiz && BureauFrutiz.actif() && BureauFrutiz.ouvrirProfil) {
+      BureauFrutiz.ouvrirProfil();
+    } else {
+      $("#profil-sheet-backdrop").classList.add("show");
+      $("#profil-sheet").classList.add("show");
+    }
+    chargerProfil();
+  }
+  function chargerProfil() {
     $("#prof-etat").textContent = "Chargement…";
     fetch("/api/light/profil?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
       .then(function (r) { return r.json(); })
@@ -7771,6 +7782,12 @@
       .catch(function () { $("#prof-etat").textContent = "Chargement impossible."; });
   }
   function fermerProfil() {
+    // Au bureau, fermer c'est fermer la FENÊTRE (win.EditInfo.save fait close()) ;
+    // le bureau remet #profil-sheet à sa place. Sur mobile, la feuille redescend.
+    if (window.BureauFrutiz && BureauFrutiz.actif() && BureauFrutiz.fermerProfil) {
+      BureauFrutiz.fermerProfil();
+      return;
+    }
     $("#profil-sheet-backdrop").classList.remove("show");
     $("#profil-sheet").classList.remove("show");
   }

@@ -4471,3 +4471,105 @@ body.bureau-frutiz .fen #reglages-panel .reg-pied {
   margin-top: 10px; font-size: 9px; text-align: left;
 }
 body.bureau-frutiz .fen #reglages-panel .reg-pied a { color: #558811; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   « MODIFIER MA FICHE » — `win.EditInfo`, la feuille du mobile rhabillée en
+   fenêtre. Comme la boutique et les préférences : le voile et le bandeau du
+   mobile s'effacent, le formulaire prend l'écorce verte `frSheet`
+   (chair #CCF599, liseré #ADE76B, contour #DDDDDD, encre #335511), les
+   saisies deviennent les champs blancs `de.Input`, et le bouton
+   « Enregistrer » la gélule rose `butPushStandard` du bas.
+   ════════════════════════════════════════════════════════════════════════ */
+body.bureau-frutiz .fen:has(#profil-sheet) .fen-corps { margin: 0 4px 4px 4px; }
+body.bureau-frutiz .fen #profil-sheet {
+  position: static; inset: auto; transform: none; transition: none;
+  max-height: none; border: 0; border-radius: 0; box-shadow: none;
+  background: transparent; z-index: auto; padding: 0;
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+/* La fenêtre a sa propre barre de titre : celle de la feuille et le voile du
+   mobile n'ont rien à faire ici. */
+body.bureau-frutiz .fen #profil-sheet .sheet-head { display: none; }
+body.bureau-frutiz #profil-sheet-backdrop { display: none !important; }
+body.bureau-frutiz .fen #profil-sheet .sheet-body {
+  flex: 1; min-height: 0; padding: 0; margin: 0; overflow: hidden;
+  border: 0; border-radius: 0; box-shadow: none; background: none;
+  display: flex; flex-direction: column; gap: 4px;
+}
+/* LE DOCUMENT VERT (`frSheet`) : les champs y tiennent sur deux colonnes, et
+   il défile si la fenêtre rapetisse. */
+body.bureau-frutiz .fen #profil-sheet .prof-grille {
+  flex: 1; min-height: 0; overflow: auto;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; align-content: start;
+  padding: 8px 10px 10px; margin: 4px 0 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,.6) 2px, rgba(255,255,255,0) 12px), #CCF599;
+  border: 2px solid #ADE76B; border-radius: 5px; box-shadow: 0 0 0 2px #DDDDDD;
+  font: normal 11px Verdana, Arial, sans-serif; color: #335511;
+}
+/* Une ligne : l'intitulé au-dessus, en encre du document ; le champ dessous. */
+body.bureau-frutiz .fen #profil-sheet .prof-grille label {
+  display: flex; flex-direction: column; gap: 3px;
+  font: 700 10px Verdana, Arial, sans-serif; color: #335511;
+}
+/* LES CHAMPS BLANCS (`de.Input`) : chair blanche, liseré 1 px #AAAAAA, Verdana
+   11 en encre du document — les mesures de `.pf-saisie`. */
+body.bureau-frutiz .fen #profil-sheet .prof-grille input[type=text],
+body.bureau-frutiz .fen #profil-sheet .prof-grille input[type=url],
+body.bureau-frutiz .fen #profil-sheet .prof-grille input[type=date],
+body.bureau-frutiz .fen #profil-sheet .prof-grille select,
+body.bureau-frutiz .fen #profil-sheet .prof-grille textarea {
+  box-sizing: border-box; width: 100%; max-width: none; height: 20px;
+  padding: 0 5px; border: 0; border-radius: 3px;
+  background: #FFFFFF; box-shadow: inset 0 0 0 1px #AAAAAA;
+  font: normal 11px Verdana, Arial, sans-serif; color: #335511;
+}
+body.bureau-frutiz .fen #profil-sheet .prof-grille select { padding: 0 3px; }
+body.bureau-frutiz .fen #profil-sheet .prof-grille textarea {
+  height: auto; min-height: 54px; padding: 4px 5px; line-height: 15px; resize: vertical;
+}
+/* Le commentaire tient toute la largeur (`.prof-large`), la case aussi — et
+   le site, dont l'URL est longue et qui, seul sur sa rangée, laissait un vide. */
+body.bureau-frutiz .fen #profil-sheet .prof-grille .prof-large,
+body.bureau-frutiz .fen #profil-sheet .prof-grille .prof-case,
+body.bureau-frutiz .fen #profil-sheet .prof-grille label:has(#prof-site) { grid-column: 1 / -1; }
+/* LA CASE « afficher mon nom » — le petit carré vert de `de.Check`, chair
+   #DDFFBB liserée #94DB39, coché d'un point #66AA22. */
+body.bureau-frutiz .fen #profil-sheet .prof-grille .prof-case {
+  flex-direction: row; align-items: center; gap: 6px;
+  font: normal 10px Verdana, Arial, sans-serif; color: #335511;
+}
+body.bureau-frutiz .fen #profil-sheet .prof-grille .prof-case input {
+  appearance: none; -webkit-appearance: none;
+  flex: 0 0 13px; width: 13px; height: 13px; margin: 0; padding: 0;
+  border: 0; border-radius: 3px; background: #DDFFBB;
+  box-shadow: inset 0 0 0 1px #94DB39; cursor: pointer;
+  display: grid; place-content: center;
+}
+body.bureau-frutiz .fen #profil-sheet .prof-grille .prof-case input::after {
+  content: ""; width: 7px; height: 7px; border-radius: 1px; background: transparent;
+}
+body.bureau-frutiz .fen #profil-sheet .prof-grille .prof-case input:checked::after { background: #66AA22; }
+/* LA BARRE DU BAS (`frameCreate`, style `frSystem`) : l'état à gauche, la
+   gélule rose « Enregistrer » calée à droite. */
+body.bureau-frutiz .fen #profil-sheet .prof-pied {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+  justify-content: flex-end; padding: 2px 4px 2px; margin: 0; min-height: 18px;
+}
+body.bureau-frutiz .fen #profil-sheet #prof-etat {
+  margin-right: auto; font: normal 10px Verdana, Arial, sans-serif; color: #335511;
+}
+body.bureau-frutiz .fen #profil-sheet #prof-enregistrer {
+  position: relative;
+  height: 16px; padding: 0 14px; border: 0; border-radius: 8px;
+  background: #FFAAAD; box-shadow: inset 0 0 0 1.5px #F28687;
+  font: 700 10px Verdana, Arial, sans-serif; color: #660000;
+  cursor: pointer; white-space: nowrap; flex: 0 0 auto;
+}
+body.bureau-frutiz .fen #profil-sheet #prof-enregistrer::after {
+  content: ""; position: absolute; inset: 1.5px; pointer-events: none;
+  border-radius: 6.5px;
+  border-top: 1px solid #FFEAEC; border-right: 1px solid #FFEAEC;
+  border-left: 0; border-bottom: 0;
+}
+body.bureau-frutiz .fen #profil-sheet #prof-enregistrer:active { background: #F28687; }
+body.bureau-frutiz .fen #profil-sheet #prof-enregistrer:disabled { opacity: .6; cursor: default; }

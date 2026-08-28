@@ -53,6 +53,13 @@ window.BureauFrutiz = (function () {
     // VERT en pastille.
     boutique:   { panneau: '#shop-sheet',      titre: 'Boutique', fruit: 'winShop',
                   l: 476, h: 404, min: minFenetre(140 + 300, 200), centre: true },
+    // « MODIFIER MA FICHE » — `win.EditInfo`, la fenêtre que le bouton d'édition
+    // (image 10, `frutiz_edit_info`) ouvre sur SA fiche. Le formulaire — mêmes
+    // champs, même /do/smi — vient du panneau mobile #profil-sheet, rhabillé en
+    // écorce verte (`frSheet`). EditInfo n'est pas dans la bande de fruits
+    // (#198) : sa pastille retombe sur l'ORANGE par défaut, comme la recherche.
+    'fiche-edit': { panneau: '#profil-sheet',  titre: 'Modifier ma fiche',
+                    l: 404, h: 470, min: minFenetre(320, 300), centre: true },
     // LA MESSAGERIE — d'époque c'est un EXPLORATEUR (`box.Explorer` sur
     // `fileMng.inbox`), donc la fenêtre jaune et son gabarit : `win.Explorer`
     // pose `pos = {50, 50, 400, 400}` et s'ouvre AU MILIEU. Le relevé 1:1 la
@@ -7344,6 +7351,11 @@ window.BureauFrutiz = (function () {
     ouvrirInventaire: function () { ouvrirExplorateur('inventaire'); },
     // La boutique : une FENÊTRE sur le bureau, la feuille du mobile ailleurs.
     ouvrirBoutique: ouvrirBoutique,
+    // « Modifier ma fiche » (`win.EditInfo`) : une FENÊTRE aussi. Le light
+    // remplit les champs après l'ouverture ; la fermeture remet la feuille en
+    // place (et l'enregistrement, comme d'époque, ferme la fenêtre).
+    ouvrirProfil: function () { ouvrirFenetre('fiche-edit'); },
+    fermerProfil: function () { fermerFenetre('profil-sheet'); },
     // Le forum : ni fenêtre ni cadre, une FENÊTRE DE NAVIGATEUR à part —
     // `win.Forum` ne fait rien d'autre que renvoyer dehors.
     ouvrirForum: ouvrirForum,
