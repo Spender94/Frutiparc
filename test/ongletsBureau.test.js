@@ -284,8 +284,10 @@ test('le pseudo d’un contact vire au rose sous le curseur', () => {
   // Au repos, la couleur du champ : noir (`Standard.getTextStyle().def`).
   assert.match(CSS, /#side-list \.sl-contact \.nom \{[\s\S]*?color: #000000;/);
   // La liste des connectés d'un salon est le MÊME `userSlot` : même règle.
-  assert.match(CSS, /#users-drawer \.u:not\(\[data-genre\]\):hover span:not\(\.badge\) \{ color: #E7756B; \}/);
-  assert.match(CSS, /#users-drawer \.u:not\(\[data-genre\]\):active span:not\(\.badge\) \{ color: #DDDDDD; \}/);
+  // La règle est désormais COMMUNE au salon et à la fenêtre de Gaspard :
+  // `cp.UserList` monte le même `userSlot` dans les deux.
+  assert.match(CSS, /#users-drawer \.u:not\(\[data-genre\]\):hover span:not\(\.badge\),\s*\n\s*body\.bureau-frutiz #gaspard-panel \.gs-ul-defile \.u:not\(\[data-genre\]\):hover span:not\(\.badge\) \{ color: #E7756B; \}/);
+  assert.match(CSS, /#users-drawer \.u:not\(\[data-genre\]\):active span:not\(\.badge\),\s*\n\s*body\.bureau-frutiz #gaspard-panel \.gs-ul-defile \.u:not\(\[data-genre\]\):active span:not\(\.badge\) \{ color: #DDDDDD; \}/);
 });
 
 test('le forum sort du bureau : une fenêtre de NAVIGATEUR, pas une fenêtre du bureau', () => {

@@ -2089,6 +2089,26 @@ window.BureauFrutiz = (function () {
       if (!o.pos) return;               // pas encore placé : il ne prend rien
       prises[Math.round(o.pos.x / GRILLE_PAS) + ':' + Math.round(o.pos.y / GRILLE_PAS)] = true;
     });
+    // ET LA RANGÉE D'ICÔNES PREND SES CASES. D'époque il n'y a qu'UNE liste :
+    // `/ff/ls?uid=root` sert la boîte de réception, les disques, l'inventaire,
+    // les contacts, la corbeille ET ce que le joueur a posé, dans le même
+    // `cp.DragIconList` — `getNextAvailablePos` saute donc naturellement les
+    // cases des premières. Le portage, lui, montre les fixes dans `#home-grid`
+    // et le reste en absolu : sans cela, la première case libre tombe en
+    // (18, 12), c'est-à-dire DERRIÈRE la barre du haut. Une icône sans
+    // position y disparaissait — celle de Gaspard, et tout disque que
+    // main.swf pose sans coordonnées.
+    // La rangée commence à `main.cornerY` : au-dessus d'elle il n'y a pas de
+    // case du tout — c'est la barre du haut. On barre donc TOUT ce qui précède
+    // sa dernière ligne, pas seulement les lignes qu'elle recouvre.
+    var rangee = bureau && bureau.querySelector('#home-grid');
+    if (rangee) {
+      var rb = rangee.getBoundingClientRect(), bb = bureau.getBoundingClientRect();
+      var y1 = Math.ceil((rb.bottom - bb.top - GRILLE_MY) / GRILLE_PAS);
+      for (var ry = 0; ry < y1; ry++) {
+        for (var rx = 0; rx < xMax; rx++) prises[rx + ':' + ry] = true;
+      }
+    }
     for (var y = 0; y < yMax; y++) {
       for (var x = 0; x < xMax; x++) {
         if (!prises[x + ':' + y]) return { x: x * GRILLE_PAS, y: y * GRILLE_PAS };
@@ -2284,13 +2304,30 @@ window.BureauFrutiz = (function () {
     }
     d.title = o.type === 'contact' ? o.name : (o.name || '');
 
-    // `IconFileBox.click` : le contrôle de glissé court encore ⇒ c'était un
-    // CLIC. Un contact ouvre sa fiche ; un disque ne fait RIEN, comme
-    // d'époque (la branche « disc » d'`openFunctions.as` est commentée).
+    /*
+     * `IconFileBox.click` : le contrôle de glissé court encore ⇒ c'était un
+     * CLIC. Un disque ne fait RIEN, comme d'époque (la branche « disc »
+     * d'`openFunctions.as` est commentée). Un contact, lui, suit la règle
+     * qu'écrit `openFunctions.as` mot pour mot :
+     *
+     *     case "contact":
+     *       if(obj.name.indexOf("@") < 0){
+     *         if(obj.name.toLowerCase() == Lang.fv("help.name").toLowerCase()){
+     *           _global.chatNow(obj.name);              ← GASPARD
+     *         }else{
+     *           _global.frutizInfMng.open(obj.name, _global.desktop);
+     *         }
+     *       }
+     *
+     * et `chatMng.open` renvoie Gaspard sur `uniqWinMng.open("help")` : son
+     * icône n'ouvre donc pas une fiche, elle ouvre SA FENÊTRE.
+     */
     d.addEventListener('click', function (ev) {
       if (Date.now() - dernierDepot < 250) { ev.stopPropagation(); return; }
-      if (o.type === 'contact') ouvrirFiche(o.name || o.desc[0]);
-      else if (o.type === 'folder') ouvrirDossierBureau(o);
+      if (o.type === 'contact') {
+        if (estGaspard(o.name || o.desc[0])) ouvrirGaspard();
+        else ouvrirFiche(o.name || o.desc[0]);
+      } else if (o.type === 'folder') ouvrirDossierBureau(o);
     });
     // `getFileContextMenu` : d'époque le clic droit offre de jeter le fichier.
     d.addEventListener('contextmenu', function (ev) {
@@ -2301,6 +2338,36 @@ window.BureauFrutiz = (function () {
       uid: o.uid, type: o.type, desc: o.desc, name: o.name,
     }, function () { return dessinObjet(o); });
     return d;
+  }
+
+  // `Lang.fv("help.name")` — le nom que `openFunctions.as` compare, en
+  // minuscules, pour reconnaître Gaspard parmi les contacts.
+  function estGaspard(nom) {
+    return String(nom || '').split('@')[0].toLowerCase() === GS_MOTS.nom.toLowerCase();
+  }
+
+  /*
+   * L'ICÔNE DE GASPARD DANS LA RANGÉE DU BUREAU.
+   *
+   * D'époque il n'y a qu'une liste d'icônes, et Gaspard y est un CONTACT :
+   * `/ff/ls?uid=root` sert, entre l'inventaire et le carnet,
+   *
+   *     <e u="Gaspard" t="contact" s="10" d="0" a="0">Gaspard@frutiparc.com</e>
+   *
+   * et `but.Icon.display` remplace le dessin d'un contact par sa
+   * FRUTIBOUILLE. Le portage montre les icônes fixes dans `#home-grid` : la
+   * tuile de Gaspard y était, mais avec le point d'interrogation de la barre
+   * du haut — un dessin de 15 × 14 en `#A2EB56`, vert clair sur vert clair.
+   * On ne voyait rien. On lui rend sa bouille, celle que le serveur garde
+   * pour lui.
+   */
+  function habillerIconeGaspard() {
+    var t = $('#home-grid .home-tile[data-go="gaspard"]');
+    var ico = t && t.querySelector('.ico');
+    if (!ico || ico._gsHabille) return;
+    ico._gsHabille = true;
+    ico.textContent = '';
+    ico.appendChild(dessinBouille(GS_BOUILLE));
   }
 
   var dernierDepot = 0;
@@ -2931,24 +2998,45 @@ window.BureauFrutiz = (function () {
       if (c.closest('#pen-btn') || c.closest('#users-btn')) {
         setTimeout(function () { appliquerMinimum(f); majBouilles(panneau); }, 0);
       }
-      // LE CLIC SUR UN ÉCRAN ouvre la fiche : `attachFrutiScreen` (0xb6597)
-      // pose `setAction({obj: win.box, method: 'openFrutizInfo', args: u})`.
-      var ec = c.closest('.bo-ecran:not(.clb)');
-      if (ec && ec.getAttribute('data-nom')) {
-        e.stopPropagation();
-        e.preventDefault();
-        tipCacher();
-        var S = window.SalonsBureau;
-        // Le SALON de cette fenêtre-là : c'est lui que la fiche retiendra pour
-        // son kick (`box.Frutiz` est ouverte PAR un salon, `openFrutizInfo`).
-        if (S && S.ouvrirFiche) S.ouvrirFiche(ec.getAttribute('data-nom'),
-          panneau.getAttribute('data-salon'));
-      }
     }, true);
-    // LE SURVOL. `cp.FrutiScreen.setTip` (0x6299a) : `onRollOver` appelle
-    // `tip.displayCallBack({id, cb})`, `onRollOut` `tip.remove(id)`. La bulle
-    // se pose UNE FOIS, au point d'entrée, et n'y bouge plus — vérifié sur
-    // Ruffle : trois survols, trois bulles au même écart du curseur.
+    brancherEcrans(f);
+  }
+
+  /*
+   * LE CLIC ET LE SURVOL D'UN ÉCRAN — communs à TOUTES les fenêtres qui en
+   * portent. `cp.ScreenList` est le même composant partout : le salon en
+   * empile un par membre, `win.Help` en empile un par personne de sa liste
+   * (soi et Gaspard). Les deux gestes viennent donc du même endroit, au lieu
+   * de n'exister que dans la fenêtre de salon.
+   *
+   *   clic    `attachFrutiScreen` (0xb6597) pose
+   *           `setAction({obj: win.box, method: 'openFrutizInfo', args: u})`
+   *   survol  `cp.FrutiScreen.setTip` (0x6299a) : `onRollOver` appelle
+   *           `tip.displayCallBack({id, cb})`, `onRollOut` `tip.remove(id)`.
+   *           La bulle se pose UNE FOIS, au point d'entrée, et n'y bouge plus
+   *           — vérifié sur Ruffle : trois survols, trois bulles au même écart
+   *           du curseur.
+   */
+  function brancherEcrans(f) {
+    if (f.ecransBranches) return;
+    f.ecransBranches = true;
+    var panneau = f.panneau;
+    f.corps.addEventListener('click', function (e) {
+      if (!actif) return;
+      var ec = e.target && e.target.closest ? e.target.closest('.bo-ecran:not(.clb)') : null;
+      if (!ec || !ec.getAttribute('data-nom')) return;
+      e.stopPropagation();
+      e.preventDefault();
+      tipCacher();
+      var nom = ec.getAttribute('data-nom');
+      // Gaspard n'a pas de fiche : `openFunctions.as` renvoie son nom sur
+      // `chatNow`, et `chatMng.open` sur `uniqWinMng.open("help")`.
+      if (estGaspard(nom)) { ouvrirGaspard(); return; }
+      var S = window.SalonsBureau;
+      // Le SALON de cette fenêtre-là : c'est lui que la fiche retiendra pour
+      // son kick (`box.Frutiz` est ouverte PAR un salon, `openFrutizInfo`).
+      if (S && S.ouvrirFiche) S.ouvrirFiche(nom, panneau.getAttribute('data-salon'));
+    }, true);
     f.corps.addEventListener('mouseover', function (e) {
       if (!actif) return;
       var ec = e.target && e.target.closest ? e.target.closest('.bo-ecran:not(.clb)') : null;
@@ -5493,6 +5581,10 @@ window.BureauFrutiz = (function () {
    * (Le portage avait inventé « Voir aussi » et « Les rubriques », qui
    * n'existaient pas, et un « retour » là où l'époque offre DEUX liens.)
    */
+  // La bouille de Gaspard, celle du serveur (`HARDCODED_FRUTIZ`, server.js) :
+  // douze paires en base 62, la première `0n` = 0×62 + 23, soit la FAMILLE 23
+  // (public/fbouille/famille23.swf), et tout le reste à zéro.
+  var GS_BOUILLE = '0n0000000000000000000000';
   var GS_MOTS = {
     nom: 'Gaspard',
     recherche: 'Recherche',
@@ -5674,18 +5766,34 @@ window.BureauFrutiz = (function () {
     gens.push(GS_MOTS.nom);
     return gens;
   }
+  // LA BANDE EST CELLE DU SALON, pas une imitation : `cp.UserList` monte le
+  // même `userSlot` partout où il y a des présents, et le light sait déjà la
+  // fabriquer (`ligneConnecte`). On la lui demande — d'où le voyant, la
+  // couleur du genre et le clic vers la fiche, que la version d'ici n'avait
+  // pas. Gaspard, lui, n'a pas de fiche : son nom renvoie sur SA fenêtre,
+  // comme `chatMng.open` (openFunctions.as).
   function majPresentsGaspard() {
     var p = gsPanneau;
     if (!p || !p.classList.contains('gs-a-users')) return;
     var liste = p.querySelector('.gs-ul-defile');
     if (!liste) return;
+    var S = window.SalonsBureau;
     liste.textContent = '';
     gensDeGaspard().forEach(function (nom) {
-      var d = document.createElement('div');
-      d.className = 'u';
-      var s = document.createElement('span');
-      s.textContent = nom;
-      d.appendChild(s);
+      var d = (S && S.ligne) ? S.ligne(nom) : null;
+      if (!d) {
+        d = document.createElement('div');
+        d.className = 'u';
+        d.innerHTML = '<span class="nom"></span>';
+        d.querySelector('.nom').textContent = nom;
+      }
+      if (estGaspard(nom)) {
+        d.title = 'Parler à ' + GS_MOTS.nom;
+        d.addEventListener('click', function (ev) {
+          ev.stopImmediatePropagation();
+          ouvrirGaspard();
+        }, true);
+      }
       liste.appendChild(d);
     });
   }
@@ -5695,6 +5803,12 @@ window.BureauFrutiz = (function () {
   // — c'est la même règle que `refreshHomeAvatar`. À défaut, le sac à patates.
   function bouilleDeGaspard(pseudo) {
     var cle = String(pseudo).toLowerCase();
+    // LUI, il n'est dans aucun carnet : il n'a pas de compte. Sa bouille est
+    // celle que le serveur garde en dur (HARDCODED_FRUTIZ) et sert au SWF —
+    // douze paires en base 62 dont la première vaut 23 : la FAMILLE 23, le
+    // rouquin à la feuille, tout le reste à zéro. On la montrait en sac à
+    // patates faute de la chercher.
+    if (cle === GS_MOTS.nom.toLowerCase()) return GS_BOUILLE;
     var carnet = (window.state && window.state.bouilleByUser) || {};
     if (carnet[cle]) return carnet[cle];
     var moi = String((window.state && window.state.user) || '').toLowerCase();
@@ -6080,6 +6194,9 @@ window.BureauFrutiz = (function () {
         .forEach(function (b) { b.classList.remove('on'); });
     }
     ouvrirFenetre('gaspard');
+    // Ses écrans sont ceux d'un salon : mêmes gestes, même bulle de survol.
+    var f = fenetres['gaspard-panel'];
+    if (f) brancherEcrans(f);
     if (!neuve) return;
     titrerGaspard(GS_MOTS.attente);     // le titre du constructeur (0x7fcfa)
     chargerGaspard({ i: 1 });
@@ -6829,6 +6946,7 @@ window.BureauFrutiz = (function () {
     if (mainbar) coin.appendChild(mainbar);
     var grille = $('#home-grid');
     if (grille) { bureau.appendChild(grille); rendreIconesDeplacables(grille, bureau); }
+    habillerIconeGaspard();
     // LA LIGNE DU COMPTE RESTE AU TIROIR. Le bureau d'époque n'a pas de pied de
     // page : « Se déconnecter » y vit dans le MENU DU FOND D'ÉCRAN (cf.
     // `menuDuBureau`), et la confidentialité n'a rien à faire sur un bureau.

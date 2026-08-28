@@ -41,13 +41,22 @@ function fonction(nom) {
 }
 
 // Un bureau en carton : la grille, la liste, et de quoi mesurer.
-function bureau(objets) {
-  const GRILLE_PAS = 80;
-  const faux = { clientWidth: 800, clientHeight: 600 };
+//
+// `rangee` dit où se trouve `#home-grid` — la rangée d'icônes du bureau, qui
+// commence à `main.cornerY`. Sans elle (le cas des trois premiers essais), le
+// carton n'en a pas et la grille part de la case 0, comme avant.
+function bureau(objets, rangee) {
+  const GRILLE_PAS = 80, GRILLE_MY = 12;
+  const faux = {
+    clientWidth: 800, clientHeight: 600,
+    getBoundingClientRect: () => ({ top: 0, left: 0 }),
+    querySelector: () => (rangee
+      ? { getBoundingClientRect: () => rangee } : null),
+  };
   // eslint-disable-next-line no-new-func
-  const f = new Function('$', 'GRILLE_PAS', 'objetsBureau',
+  const f = new Function('$', 'GRILLE_PAS', 'GRILLE_MY', 'objetsBureau',
     fonction('caseLibreBureau') + '\nreturn caseLibreBureau;')(
-    () => faux, GRILLE_PAS, objets);
+    () => faux, GRILLE_PAS, GRILLE_MY, objets);
   return { caseLibre: f, PAS: GRILLE_PAS };
 }
 
@@ -96,9 +105,11 @@ test('AVANT le correctif, la même liste levait une erreur', () => {
     .replace("if (!o.pos) return;", '');
   assert.ok(!/if \(!o\.pos\) return;/.test(ancienne), 'la garde doit avoir sauté');
   // eslint-disable-next-line no-new-func
-  const f = new Function('$', 'GRILLE_PAS', 'objetsBureau',
+  const f = new Function('$', 'GRILLE_PAS', 'GRILLE_MY', 'objetsBureau',
     ancienne + '\nreturn caseLibreBureau;')(
-    () => ({ clientWidth: 800, clientHeight: 600 }), 80, objets);
+    () => ({ clientWidth: 800, clientHeight: 600,
+      getBoundingClientRect: () => ({ top: 0, left: 0 }), querySelector: () => null }),
+    80, 12, objets);
   assert.throws(() => f('root'), TypeError,
     'l’ancienne version devait buter sur un `pos` nul');
 });
@@ -111,4 +122,35 @@ test('le filet du chargement ne couvre plus le DESSIN', () => {
   const iRendu = bloc.indexOf('rafraichirBureau()');
   assert.ok(iCatch >= 0 && iRendu >= 0, 'les deux doivent être là');
   assert.ok(iCatch < iRendu, 'le filet vient AVANT le rendu, il ne l’enveloppe plus');
+});
+
+/*
+ * ET LA RANGÉE D'ICÔNES PREND SES CASES.
+ *
+ * D'époque il n'y a qu'UNE liste : `/ff/ls?uid=root` sert la boîte de
+ * réception, les disques, l'inventaire, les contacts, la corbeille ET ce que
+ * le joueur a posé, dans le même `cp.DragIconList` — `getNextAvailablePos`
+ * saute donc naturellement les cases des premières, qui commencent au coin du
+ * bureau (`main.cornerY`, 106).
+ *
+ * Le portage montre les fixes dans `#home-grid` et le reste en absolu : sans
+ * cette exclusion, la première case libre tombait en (18, 12), DERRIÈRE la
+ * barre du haut. Relevé au banc (bench-gs5) : l'icône de Gaspard, servie sans
+ * position, se posait en (18, 12) et n'était nulle part à l'écran ; elle est
+ * maintenant en (18, 180), sous la rangée qui s'arrête en 163.
+ */
+test('les cases cachées par la barre du haut ne sont jamais rendues', () => {
+  const objets = [{ uid: 'Gaspard@frutiparc.com', parent: 'root', pos: null }];
+  // La rangée d'époque : du coin (106) au bas des étiquettes (163).
+  const { caseLibre, PAS } = bureau(objets, { top: 106, bottom: 163 });
+  const p = caseLibre('root');
+  // (163 − 12) / 80 = 1,89 → deux lignes barrées, la troisième est libre.
+  assert.deepStrictEqual(p, { x: 0, y: 2 * PAS });
+  assert.ok(p.y + 12 > 163, 'et elle tombe SOUS la rangée');
+});
+
+test('sans rangée, rien ne change : la case 0 reste la première', () => {
+  const objets = [{ uid: 'a', parent: 'root', pos: null }];
+  const { caseLibre } = bureau(objets);
+  assert.deepStrictEqual(caseLibre('root'), { x: 0, y: 0 });
 });

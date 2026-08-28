@@ -74,7 +74,9 @@ test('le comportement par défaut ne vaut plus quand le genre est connu', () => 
   // roses du survol ne doivent plus s'appliquer aux lignes qui portent un
   // genre, sans quoi elles gagneraient par spécificité.
   assert.match(CSS, /#side-list \.sl-contact:not\(\[data-genre\]\):hover \.nom \{ color: #E7756B; \}/);
-  assert.match(CSS, /#users-drawer \.u:not\(\[data-genre\]\):hover span:not\(\.badge\) \{ color: #E7756B; \}/);
+  // La règle est désormais COMMUNE au salon et à la fenêtre de Gaspard :
+  // `cp.UserList` monte le même `userSlot` dans les deux.
+  assert.match(CSS, /#users-drawer \.u:not\(\[data-genre\]\):hover span:not\(\.badge\),\s*\n\s*body\.bureau-frutiz #gaspard-panel \.gs-ul-defile \.u:not\(\[data-genre\]\):hover span:not\(\.badge\) \{ color: #E7756B; \}/);
 });
 
 /* ── 2. LA POIGNÉE ────────────────────────────────────────────────────── */

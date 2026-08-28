@@ -81,5 +81,7 @@ test('la fiche retient le salon d’où on l’a ouverte', () => {
   assert.match(LIGHT, /wsSend\('<l u="' \+ xmlEscape\(p\) \+ '" g="' \+ xmlEscape\(ou\) \+ '" \/>'\);/);
   // le clic sur un écran de l'aquarium le lui donne
   assert.match(LIGHT, /ouvrirFiche: function \(pseudo, salon\) \{ ouvrirFiche\(pseudo, salon\); \},/);
-  assert.match(JS, /S\.ouvrirFiche\(ec\.getAttribute\('data-nom'\),\s*\n\s*panneau\.getAttribute\('data-salon'\)\);/);
+  // Le clic est passé dans `brancherEcrans`, partagé avec la fenêtre de
+  // Gaspard : le nom est lu une fois, le salon reste celui de la fenêtre.
+  assert.match(JS, /if \(S && S\.ouvrirFiche\) S\.ouvrirFiche\(nom, panneau\.getAttribute\('data-salon'\)\);/);
 });

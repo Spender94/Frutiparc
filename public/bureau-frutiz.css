@@ -1210,6 +1210,18 @@ body.bureau-frutiz #bureau .home-tile[data-go="chat"]       .ico img { max-width
 body.bureau-frutiz #bureau .home-tile[data-go="scores"]     .ico img { max-width: 35px; max-height: 38px; }
 body.bureau-frutiz #bureau .home-tile[data-go="shop"]       .ico img { max-width: 36px; max-height: 32px; }
 body.bureau-frutiz #bureau .home-tile[data-go="trombi"]     .ico img { max-width: 42px; max-height: 42px; }
+/* GASPARD N'A PAS DE DESSIN : c'est un CONTACT dans la liste d'époque
+   (`<e u="Gaspard" t="contact">`), et `but.Icon.display` remplace le dessin
+   d'un contact par sa FRUTIBOUILLE. Sa tuile portait le point d'interrogation
+   de la barre du haut — 15 × 14 en `#A2EB56`, vert clair sur vert clair : on
+   ne voyait rien. Elle porte maintenant sa bouille, à la taille des icônes
+   voisines. */
+body.bureau-frutiz #bureau .home-tile[data-go="gaspard"] .ico .ex-bouille {
+  width: 42px; height: 42px; display: block; position: relative;
+}
+body.bureau-frutiz #bureau .home-tile[data-go="gaspard"] .ico .ex-bouille canvas.fp-bvig {
+  display: block; width: 42px !important; height: 42px !important;
+}
 /* L'ORDRE d'époque, relevé sur le bureau dégagé : la boîte de réception, les
    disques, l'inventaire, Gaspard, les contacts, la corbeille, le forum, la
    liste noire, les salons, l'historique, les préférences, les scores, la
@@ -1770,28 +1782,21 @@ body.bureau-frutiz #gaspard-panel .gs-icones .gs-but-users {
    ne coûte rien ; ouverte, elle empile des écrans carrés au pas de `size + 2`.
    L'écart de 6 px vers le fil est celui du salon : deux contours et deux px de
    blanc. */
+/* L'écart de 2 px entre deux écrans vient de LEUR marge (`screen<i>._y =
+   i × (size + ecart)`, `ecart = 2`), partagée avec la colonne du salon : la
+   colonne ne l'ajoute pas une seconde fois. */
 body.bureau-frutiz #gaspard-panel .gs-ecrans {
-  display: none; width: 100px; flex-direction: column; gap: 2px;
-  margin: 2px 6px 0 2px; overflow: hidden;
+  display: none; width: 100px; flex-direction: column;
+  margin: 2px 6px 0 2px; overflow: visible;
 }
 body.bureau-frutiz #gaspard-panel.gs-a-ecrans .gs-ecrans { display: flex; }
-/* L'ÉCRAN, c'est le dessin `frutiScreen` du SWF (fond #383 et reflet #395),
-   pas une peinture CSS — les mêmes fichiers que la colonne du salon. */
-body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran {
-  position: relative; width: 100px; height: 100px; flex: 0 0 100px;
-  background: url('/frutiz/sprites/ecran-fond.svg') 0 0 / 100% 100% no-repeat;
-  border-radius: 6px; box-shadow: 0 0 0 2px #DDDDDD; overflow: hidden;
-}
-body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran::before {
-  content: ""; position: absolute; right: 2px; top: 2px;
-  width: 42.7px; height: 31.8px; z-index: 7; pointer-events: none;
-  background: url('/frutiz/sprites/ecran-reflet.svg') 0 0 / 42.7px 31.8px no-repeat;
-}
-body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran > canvas.fp-bvig,
-body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran > img {
-  display: block; width: 98px !important; height: 98px !important;
-  margin: 1px; border: 0;
-}
+/* L'ÉCRAN EST CELUI DU SALON, à la lettre : `cp.ScreenList` est le même
+   composant des deux côtés. Ses règles sont donc écrites UNE fois, plus bas
+   avec celles de la fenêtre de conversation, et cette colonne-ci y est
+   simplement ajoutée — dessin `frutiScreen` du SWF, reflet, anneau sombre
+   par-dessus la bouille, et le retrait d'un pixel. L'anneau `#888888` et le
+   curseur manquaient ici : la pile de Gaspard n'avait que la moitié de
+   l'écorce. */
 /* LA PAGE — le `cpDocument`. Même chair que la zone des messages du salon :
    contour 2 px `#DDDDDD` (white.shade), liseré 2 px `#ADE76B` (green.shade),
    fond `#CCF599` (green.main), et le reflet blanc de 8 px du drapeau
@@ -1875,17 +1880,14 @@ body.bureau-frutiz #gaspard-panel .gs-ul-defile {
   overflow-x: hidden; overflow-y: auto; scrollbar-width: none;
 }
 body.bureau-frutiz #gaspard-panel .gs-ul-defile::-webkit-scrollbar { display: none; }
-/* La bande d'une personne : 120 × 18, le pseudo à 22 (les 20 px du voyant plus
-   la gouttière du champ Flash), et une ligne sur deux seulement porte le
-   dessin — `backgroundId = 2 − ((i / 2) == Math.round(i / 2))`. */
-body.bureau-frutiz #gaspard-panel .gs-ul-defile .u {
-  height: 18px; min-height: 18px; width: 120px; margin: 0; border: 0;
-  padding: 0 4px 0 22px; box-sizing: border-box;
-  background: url('/frutiz/sprites/user-slot.svg') left top / 120px 18px no-repeat;
-  font: 700 10px/18px Verdana, Arial, sans-serif; color: #22224A;
-  display: flex; align-items: center; overflow: hidden; white-space: nowrap;
-}
-body.bureau-frutiz #gaspard-panel .gs-ul-defile .u:nth-child(even) { background-image: none; }
+/* LA BANDE D'UNE PERSONNE EST CELLE DU SALON, à la lettre elle aussi :
+   `cp.UserList` monte le même `userSlot` (#261) partout où il y a des
+   présents. Ses règles sont donc écrites une seule fois, plus bas avec celles
+   du tiroir des connectés, et cette liste-ci y est ajoutée — d'où le voyant
+   « en partie », la couleur du genre et le survol `butText`, qui manquaient
+   ici. Le light fabrique la bande (`SalonsBureau.ligne`), la feuille de style
+   la met en forme, et les deux fenêtres se ressemblent parce qu'elles
+   partagent tout. */
 /* LE SURVOL DE LA RANGÉE, `rollOver(id)` : le nom de la rubrique s'écrit dans
    LE CHAMP DU RANG — le même champ, donc la même fonte. `rollOver` ne fait que
    `field.text = nameList[id]` (0x6cf59) ; il ne retouche aucun format.
@@ -2471,7 +2473,8 @@ body.bureau-frutiz .fen #chat-panel #bouille-overlay {
      `onRollOut` et `onPress`. Il lui faut donc le curseur. */
   pointer-events: auto;
 }
-body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran { cursor: pointer; }
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran,
+body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran { cursor: pointer; }
 /* …sauf la scène de l'émotion, qui joue DANS l'écran : son iframe avalerait
    le clic destiné à la fiche. */
 body.bureau-frutiz .fen #chat-panel #bouille-overlay #bouille-overlay-stage { pointer-events: none; }
@@ -2492,7 +2495,8 @@ body.bureau-frutiz .fen #chat-panel.bouilles-ouvertes #bouille-overlay {
    une bande `#C5F297`, et un cœur en dégradé radial `#D6F7B5` → `#C5F297`
    dont le centre est DÉCALÉ en haut à gauche. Le cercle CSS que j'en avais
    tiré au pixel en donnait les teintes, pas la forme. */
-body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran {
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran,
+body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran {
   position: relative; flex: 0 0 100px; width: 100px; height: 100px;
   background: url('/frutiz/sprites/ecran-fond.svg') 0 0 / 100% 100% no-repeat;
   border-radius: 6px; box-shadow: 0 0 0 2px #DDDDDD;
@@ -2503,7 +2507,8 @@ body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran {
    le bord droit (`light._x = width`), à 2 px du bord et 2 px du haut. Il ne
    s'étire pas : c'est un dessin de 42,7 × 31,8, la même taille sur un écran
    carré comme sur la grande bande du mode CLB. */
-body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran::before {
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran::before,
+body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran::before {
   content: ""; position: absolute; right: 2px; top: 2px;
   width: 42.7px; height: 31.8px; z-index: 7; pointer-events: none;
   background: url('/frutiz/sprites/ecran-reflet.svg') 0 0 / 42.7px 31.8px no-repeat;
@@ -2534,18 +2539,21 @@ body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-clb #bouille-overlay-st
 }
 /* L'anneau sombre passe PAR-DESSUS la bouille, comme dans la main bar : une
    ombre interne sur la boîte passerait sous l'image. */
-body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran::after {
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran::after,
+body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran::after {
   content: ""; position: absolute; inset: 0; border-radius: 6px;
   box-shadow: inset 0 0 0 1px #888888; z-index: 6; pointer-events: none;
 }
-body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran img {
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran img,
+body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran img {
   display: block; width: 98px; height: 98px; margin: 1px; border: 0;
   object-fit: contain;
 }
 /* `!important` : `FPBouilleVignette` pose `width:100%;height:100%` EN LIGNE —
    ce qui est juste partout ailleurs, mais pas ici : l'écran fait 100 px et la
    bouille s'y pose en RETRAIT d'un pixel, comme l'image qu'elle remplace. */
-body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran > canvas.fp-bvig {
+body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran > canvas.fp-bvig,
+body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran > canvas.fp-bvig {
   display: block; width: 98px !important; height: 98px !important;
   margin: 1px; border: 0;
 }
@@ -2688,7 +2696,8 @@ body.bureau-frutiz .fen #chat-panel #users-drawer #users-list .ul-defile::-webki
    Le relevé 1:1 qu'on avait lu « centré » se lit d'ailleurs mieux ainsi :
    « temoinchat5 » fait 71 px ; posé à 22, il occupe 22..93, centre 57,5 —
    soit les deux pixels à gauche du milieu de la bande (60) qu'on mesurait. */
-body.bureau-frutiz .fen #chat-panel #users-drawer .u {
+body.bureau-frutiz .fen #chat-panel #users-drawer .u,
+body.bureau-frutiz #gaspard-panel .gs-ul-defile .u {
   position: relative;
   height: 18px; min-height: 18px; width: 120px; margin: 0; border: 0;
   /* 22 à gauche : les 20 du voyant, plus la gouttière du champ. */
@@ -2705,17 +2714,21 @@ body.bureau-frutiz .fen #chat-panel #users-drawer .u {
    est VIDE (c'est celle dont le panneau des contacts se sert, où aucune ligne
    n'a de fond). Une ligne sur deux laisse donc voir le `#E8F8D1` de la boîte :
    voilà l'alternance. */
-body.bureau-frutiz .fen #chat-panel #users-drawer .u:nth-child(even) { background-image: none; }
+body.bureau-frutiz .fen #chat-panel #users-drawer .u:nth-child(even),
+body.bureau-frutiz #gaspard-panel .gs-ul-defile .u:nth-child(even) { background-image: none; }
 /* La liste des connectés est faite du MÊME `userSlot` que le carnet, donc du
    même `butText` : le pseudo vire au `#E7756B` sous le curseur et au
    `#DDDDDD` sous le doigt (cf. la note du carnet, plus haut). Seul le PSEUDO
    suit — la pastille de staff et le lieu ne sont pas des champs d'époque. */
-body.bureau-frutiz .fen #chat-panel #users-drawer .u:not([data-genre]):hover span:not(.badge) { color: #E7756B; }
-body.bureau-frutiz .fen #chat-panel #users-drawer .u:not([data-genre]):active span:not(.badge) { color: #DDDDDD; }
+body.bureau-frutiz .fen #chat-panel #users-drawer .u:not([data-genre]):hover span:not(.badge),
+body.bureau-frutiz #gaspard-panel .gs-ul-defile .u:not([data-genre]):hover span:not(.badge) { color: #E7756B; }
+body.bureau-frutiz .fen #chat-panel #users-drawer .u:not([data-genre]):active span:not(.badge),
+body.bureau-frutiz #gaspard-panel .gs-ul-defile .u:not([data-genre]):active span:not(.badge) { color: #DDDDDD; }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u:hover .lieu,
 body.bureau-frutiz .fen #chat-panel #users-drawer .u:active .lieu { color: #6c8f3a; }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u.avec-lieu { flex-direction: row; }
-body.bureau-frutiz .fen #chat-panel #users-drawer .u .haut {
+body.bureau-frutiz .fen #chat-panel #users-drawer .u .haut,
+body.bureau-frutiz #gaspard-panel .gs-ul-defile .u .haut {
   display: flex; align-items: center; gap: 4px; min-width: 0;
 }
 /* Les pastilles du light n'existent pas d'époque : `cp.UserList` n'écrit que
@@ -2724,13 +2737,15 @@ body.bureau-frutiz .fen #chat-panel #users-drawer .u .haut {
    étiquette de plus le pousse de côté et casse ce centrage. Les deux sautent.
    (Elles restent sur le mobile, où la tuile est assez grande pour les tenir.)
    Le rôle de modérateur se lit sur la fiche, qui est à un clic. */
-body.bureau-frutiz .fen #chat-panel #users-drawer .u .badge { display: none; }
+body.bureau-frutiz .fen #chat-panel #users-drawer .u .badge,
+body.bureau-frutiz #gaspard-panel .gs-ul-defile .u .badge { display: none; }
 /* LE VOYANT « en partie » est un ajout du revival — il n'a pas de taille
    d'époque à respecter, mais il doit tenir DANS la bande de 18. Le gabarit
    mobile (22 px) la débordait de quatre pixels : l'icône mordait sur les
    bandes voisines et poussait le pseudo hors du centre. Quatorze, c'est la
    hauteur du texte : le voyant se lit sans écraser la ligne. */
-body.bureau-frutiz .fen #chat-panel #users-drawer .u .voyant {
+body.bureau-frutiz .fen #chat-panel #users-drawer .u .voyant,
+body.bureau-frutiz #gaspard-panel .gs-ul-defile .u .voyant {
   /* Il occupe SA place, celle que `_x = 20` laisse au clip `icon` : posé en
      absolu dans les vingt pixels réservés, il ne pousse plus le pseudo. */
   position: absolute; left: 3px; top: 2px;

@@ -3018,6 +3018,12 @@
           };
         });
       },
+      // UNE BANDE DE LA LISTE DES CONNECTÉS. `cp.UserList` monte le MÊME
+      // `userSlot` partout où il y a des présents — la fenêtre d'un salon
+      // comme celle de Gaspard. Le bureau s'en sert donc pour les deux, au
+      // lieu d'en refaire une à la main : voyant, couleur du genre et clic
+      // vers la fiche viennent tous d'ici.
+      ligne: function (pseudo, staff) { return ligneConnecte(pseudo, "", !!staff); },
       // LE CLIC sur une bouille : `cp.ScreenList.attachFrutiScreen` (0xb6597)
       // pose `setAction({obj: win.box, method: "openFrutizInfo", args: u})`.
       // Le light a déjà cette fiche : c'est la même.

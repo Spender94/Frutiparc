@@ -35,16 +35,18 @@ test('la feuille verte de la fiche laisse deux pixels de blanc', () => {
 test('le voyant tient dans la bande de 18 du userSlot', () => {
   // La bande fait 18 px (`userSlot` #261) ; le gabarit mobile en met 22, qui
   // la débordent de quatre et poussent le pseudo hors du centre.
-  assert.match(CSS, /#users-drawer \.u \{[\s\S]*?height: 18px; min-height: 18px;/);
+  // La règle est désormais COMMUNE au salon et à la fenêtre de Gaspard :
+  // `cp.UserList` monte le même `userSlot` dans les deux.
+  assert.match(CSS, /#users-drawer \.u,\s*\n\s*body\.bureau-frutiz #gaspard-panel \.gs-ul-defile \.u \{[\s\S]*?height: 18px; min-height: 18px;/);
   // Le voyant est POSÉ, pas rangé dans un flux : `UserSlot.init` (0x63541)
   // attache le champ du pseudo à `_x = 20` et laisse les vingt pixels de
   // gauche au clip `icon`. Le pseudo, lui, part de la gauche.
-  const bloc = /#users-drawer \.u \.voyant \{([\s\S]*?)\n\}/.exec(CSS);
+  const bloc = /#users-drawer \.u \.voyant,[\s\S]*?\.u \.voyant \{([\s\S]*?)\n\}/.exec(CSS);
   assert.ok(bloc, 'la règle du voyant doit exister');
   assert.match(bloc[1], /position: absolute; left: 3px; top: 2px;/);
   assert.match(bloc[1], /width: 14px; height: 14px; flex: 0 0 14px;/);
-  assert.match(CSS, /#users-drawer \.u \{[\s\S]*?padding: 0 4px 0 22px;/);
-  assert.match(CSS, /#users-drawer \.u \{[\s\S]*?justify-content: flex-start;/);
+  assert.match(CSS, /#users-drawer \.u,\s*\n\s*body\.bureau-frutiz #gaspard-panel \.gs-ul-defile \.u \{[\s\S]*?padding: 0 4px 0 22px;/);
+  assert.match(CSS, /#users-drawer \.u,\s*\n\s*body\.bureau-frutiz #gaspard-panel \.gs-ul-defile \.u \{[\s\S]*?justify-content: flex-start;/);
   // Le mobile, lui, garde ses 22 : la tuile y est assez grande.
   assert.match(LIGHT, /#users-drawer \.u \.voyant \{ width: 22px; height: 22px;/);
 });
@@ -64,7 +66,9 @@ test('le dessin de la poignée se peint sous la fenêtre', () => {
 /* ── 4. LES PASTILLES ─────────────────────────────────────────────────────── */
 
 test('ni « staff » ni « toi » dans la liste des connectés du bureau', () => {
-  assert.match(CSS, /#users-drawer \.u \.badge \{ display: none; \}/);
+  // La règle est désormais COMMUNE au salon et à la fenêtre de Gaspard :
+  // `cp.UserList` monte le même `userSlot` dans les deux.
+  assert.match(CSS, /#users-drawer \.u \.badge,\s*\n\s*body\.bureau-frutiz #gaspard-panel \.gs-ul-defile \.u \.badge \{ display: none; \}/);
   // Et plus de règle qui les habillerait : elles ne s'affichent plus du tout.
   assert.doesNotMatch(CSS, /#users-drawer \.u \.badge \{\s*\n\s*flex: 0 0 auto;/);
   // Le mobile les garde — `ligneConnecte` continue de les poser.

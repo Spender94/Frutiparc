@@ -1564,9 +1564,20 @@ const INTERNAL_TO_LEGACY_RK = Object.fromEntries([
   ...LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.internal, r.rk]),
   ...Array.from({ length: 6 }, (_, i) => [`bkiwi_track${i}_challenge`, '0']),
 ]);
+// GASPARD N'A PAS DE COMPTE, MAIS IL A UNE BOUILLE. « 0n0000…0 », ce sont les
+// douze paires en base 62 d'une frutibouille : la première vaut 0×62 + 23,
+// soit la FAMILLE 23 (public/fbouille/famille23.swf, le rouquin à la feuille),
+// et tout le reste à zéro. C'est la fiche que le SWF reçoit quand il demande
+// « Gaspard » ; on la garde ici, et c'est elle qui sert partout.
 const HARDCODED_FRUTIZ = {
   Gaspard: { x: 9999999, f: '0n0000000000000000000000' },
 };
+const GASPARD_NOM = 'Gaspard';
+const GASPARD_ADRESSE = 'Gaspard@frutiparc.com';
+function gaspardBouille() { return HARDCODED_FRUTIZ.Gaspard.f; }
+function estGaspard(nom) {
+  return String(nom || '').split('@')[0].toLowerCase() === GASPARD_NOM.toLowerCase();
+}
 
 function hardcodedMeAttrs(name) {
   const d = HARDCODED_FRUTIZ[String(name || '')] || HARDCODED_FRUTIZ.Gaspard;
@@ -19544,6 +19555,12 @@ function bureauObjetEnrichi(user, it) {
   const adresse = normalizeContactAddress(it.u) || it.u;
   const local = String(adresse).split('@')[0];
   if (!local) return null;
+  // Gaspard n'est pas un compte : sa bouille vient de HARDCODED_FRUTIZ.
+  if (estGaspard(local)) {
+    return Object.assign({
+      uid: it.u, type: 'contact', desc: [adresse, gaspardBouille()], name: GASPARD_NOM,
+    }, place);
+  }
   const compte = users[local] || users[getDisplayName(local)];
   return Object.assign({
     uid: it.u, type: 'contact',

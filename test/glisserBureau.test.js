@@ -100,7 +100,9 @@ test('le raccourci : bouille pour un contact, jaquette pour un disque, sans éti
 
 test('le clic : la fiche pour un contact, RIEN pour un disque', () => {
   const racc = /function raccourciBureau\(o\) \{[\s\S]*?\n    return d;\n  \}/.exec(JS)[0];
-  assert.match(racc, /if \(o\.type === 'contact'\) ouvrirFiche\(o\.name \|\| o\.desc\[0\]\);/);
+  // Un contact ouvre sa fiche — SAUF Gaspard, que `openFunctions.as` renvoie
+  // sur `chatNow`, donc sur sa propre fenêtre (cf. test/gaspardIcone).
+  assert.match(racc, /if \(estGaspard\(o\.name \|\| o\.desc\[0\]\)\) ouvrirGaspard\(\);\s*\n\s*else ouvrirFiche\(o\.name \|\| o\.desc\[0\]\);/);
   assert.match(racc, /else if \(o\.type === 'folder'\) ouvrirDossierBureau\(o\);/);
   // Aucune branche pour « disc » : d'époque `openFunctions.as` a la sienne en
   // commentaire, et le clic d'un disque ne fait rien.
