@@ -340,6 +340,7 @@
 <script src="/js/bouille-avm.js"></script>
 <script src="/js/bouille-moteur.js"></script>
 <script src="/js/bouille-vignette.js"></script>
+<script src="/js/bouille-custom.js"></script>
 <!-- Pré-réchauffage du cache PNG des bouilles (bouton « Réchauffer » + auto-import). -->
 <script src="/js/bouille-thumb.js"></script>
 <!-- Palette de couleurs + noms d'accessoires (sélecteur visuel de l'éditeur d'accessoires). -->
@@ -544,6 +545,29 @@
   <h3 style="margin:18px 0 4px">Feutres spéciaux — image de boutique</h3>
   <p style="color:#888;font-size:12px;margin:0 0 8px">Image inédite affichée dans l'aperçu de la fiche boutique (PNG, JPEG, GIF ou WEBP). Stockée en base.</p>
   <div id="feutre-assets"></div>
+
+  <h3 style="margin:22px 0 4px">Accessoires maison (SVG d'un graphiste)</h3>
+  <p style="color:#888;font-size:12px;margin:0 0 10px">Un accessoire dessiné dans l'<a href="/bouille-accessoire.html" target="_blank">atelier</a>, retravaillé dans Illustrator, puis déposé ici. Il devient portable par les frutiz. Le fond « repère » du SVG est ignoré — seul le dessin est gardé.</p>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+    <div style="border:1px solid #cfe0b3;border-radius:8px;padding:12px;min-width:300px">
+      <label style="font-size:12px;color:#555;display:block;margin-bottom:8px">SVG retravaillé :
+        <input type="file" id="am-fichier" accept=".svg,image/svg+xml"></label>
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <span style="display:block;width:96px;height:96px;flex:0 0 96px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden" id="am-apercu-hote"></span>
+        <div style="flex:1">
+          <label style="font-size:12px;color:#555;display:block">Nom<input id="am-nom" type="text" maxlength="60" style="width:100%;box-sizing:border-box"></label>
+          <label style="font-size:12px;color:#555;display:block;margin-top:6px">Prix (K)<input id="am-prix" type="number" min="0" step="10" value="60" style="width:90px"></label>
+          <button class="btn-success" id="am-creer" style="margin-top:8px" disabled onclick="creerAccMaison()">Créer l'accessoire</button>
+          <div id="am-etat" style="font-size:11px;color:#777;margin-top:4px"></div>
+        </div>
+      </div>
+    </div>
+    <div style="flex:1;min-width:280px">
+      <div class="toolbar"><button class="btn btn-sm" onclick="loadAccMaison()">Rafraîchir</button><span id="am-count" style="font-size:12px;color:#888"></span></div>
+      <table><thead><tr><th>Aperçu</th><th>Nom</th><th>Prix</th><th>Aplats</th><th></th></tr></thead>
+      <tbody id="am-body"></tbody></table>
+    </div>
+  </div>
 </div>
 
 <div class="content" id="tab-purchases" style="display:none">
@@ -1338,7 +1362,7 @@ function switchTab(name) {
     if (el) el.style.display = t === name ? '' : 'none';
   });
   if (name === 'scores' && !$('#ranking-select').dataset.loaded) loadScores();
-  if (name === 'shop' && !$('#shop-body').dataset.loaded) loadShop();
+  if (name === 'shop' && !$('#shop-body').dataset.loaded) { loadShop(); loadAccMaison(); }
   if (name === 'purchases') loadPurchases();
   if (name === 'wallpapers') loadWallpapers();
   if (name === 'custompictos') loadCustomPictos();
@@ -4035,6 +4059,82 @@ async function toggleBouilleEdit(username, allow) {
     : `Bouille de ${username} verrouillée`);
   loadDetail();
 }
+
+// ── Accessoires maison (SVG d'un graphiste) ──
+// La tête témoin des aperçus : famille 0, coiffure 8, accessoire SWF « Rien ».
+const AM_TETE = '000300080002070000000000';
+let amPaths = null;
+
+function amApercu(canvas, paths) {
+  FPBouilleSwf.charger('/fbouille/famille' + FPBouilleMoteur.familleDe(AM_TETE) + '.swf')
+    .then(function (defs) {
+      new FPBouilleMoteur.Bouille(canvas, defs, { etat: AM_TETE, anime: false, accessoireCustom: paths });
+    }).catch(function () {});
+}
+
+function amCharger(svgTexte) {
+  try { amPaths = FPBouilleCustom.charger(svgTexte); } catch (e) { amPaths = null; }
+  const etat = $('#am-etat'), bouton = $('#am-creer');
+  if (!amPaths || !amPaths.length) { etat.textContent = 'SVG illisible ou sans dessin.'; bouton.disabled = true; return; }
+  etat.textContent = amPaths.length + ' aplat(s) lu(s).';
+  bouton.disabled = false;
+  const hote = $('#am-apercu-hote');
+  hote.innerHTML = '<canvas width="1" height="1" style="width:100%;height:100%;display:block"></canvas>';
+  amApercu(hote.querySelector('canvas'), amPaths);
+}
+
+async function creerAccMaison() {
+  if (!amPaths || !amPaths.length) return;
+  const nom = $('#am-nom').value.trim(), prix = Number($('#am-prix').value) || 0;
+  if (!nom) { $('#am-etat').textContent = 'Donne un nom.'; return; }
+  const h = hdr(); h['Content-Type'] = 'application/octet-stream';
+  const body = new Blob([JSON.stringify({ name: nom, price: prix, paths: amPaths })], { type: 'application/octet-stream' });
+  try {
+    const r = await fetch('/api/admin/acc-maison', { method: 'POST', headers: h, body: body });
+    const j = await r.json();
+    if (j.ok) {
+      $('#am-etat').textContent = 'Créé : ' + j.id;
+      $('#am-nom').value = ''; amPaths = null; $('#am-creer').disabled = true;
+      $('#am-apercu-hote').innerHTML = ''; $('#am-fichier').value = '';
+      loadAccMaison();
+    } else $('#am-etat').textContent = 'Erreur : ' + (j.error || '?');
+  } catch (e) { $('#am-etat').textContent = 'Erreur réseau.'; }
+}
+
+async function loadAccMaison() {
+  try {
+    const r = await fetch('/api/admin/acc-maison', { headers: hdr() });
+    if (!r.ok) return;
+    const liste = await r.json();
+    $('#am-count').textContent = liste.length + ' accessoire(s)';
+    const body = $('#am-body'); body.innerHTML = '';
+    liste.forEach(function (a) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td><span style="display:block;width:56px;height:56px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden">'
+        + FPBouilleVignette.html(AM_TETE + '|' + a.id) + '</span></td>'
+        + '<td>' + esc(a.name) + '</td><td>' + (a.price || 0) + ' K</td><td>' + a.nb + '</td>'
+        + '<td><button class="btn btn-sm" onclick="supprimerAccMaison(\'' + a.id + '\')">Suppr.</button></td>';
+      body.appendChild(tr);
+    });
+    FPBouilleVignette.brancher(body);
+  } catch (e) { /* silencieux */ }
+}
+
+async function supprimerAccMaison(id) {
+  if (!confirm('Supprimer cet accessoire maison ? Ceux qui le portent le perdront.')) return;
+  try { await fetch('/api/admin/acc-maison/' + encodeURIComponent(id), { method: 'DELETE', headers: hdr() }); } catch (e) {}
+  loadAccMaison();
+}
+
+(function () {
+  const inp = document.getElementById('am-fichier');
+  if (inp) inp.addEventListener('change', function () {
+    const f = this.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = function () { amCharger(String(r.result)); };
+    r.readAsText(f);
+  });
+})();
 
 // ── Shop / Boutique ──
 let shopPacks = [];

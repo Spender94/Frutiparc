@@ -71,11 +71,36 @@
     return t;
   }
 
+  // ── ACCESSOIRES MAISON ─────────────────────────────────────────────────────
+  // Une bouille peut porter un accessoire dessiné en SVG : la chaîne prend alors
+  // la forme « <état 24>|<id> ». On sépare l'id, et on va chercher ses aplats
+  // (une fois par id, mis en cache) pour les passer au moteur (accessoireCustom).
+  var customCache = {};   // id → Promise<paths|null>
+  var customPret = {};    // id → paths|null (résolu — pour un accès synchrone)
+  function separer(etat) {
+    var raw = String(etat == null ? '' : etat);
+    var i = raw.indexOf('|');
+    var cid = i >= 0 ? raw.slice(i + 1).replace(/[^0-9A-Za-z]/g, '').slice(0, 24) : '';
+    return { s: nettoyer(i >= 0 ? raw.slice(0, i) : raw), cid: cid };
+  }
+  function paquetCustom(id) {
+    if (!id) return Promise.resolve(null);
+    if (Object.prototype.hasOwnProperty.call(customPret, id)) return Promise.resolve(customPret[id]);
+    if (!customCache[id]) {
+      customCache[id] = global.fetch('/api/light/acc-maison/' + encodeURIComponent(id))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { var p = (j && j.ok) ? j.paths : null; customPret[id] = p; return p; })
+        .catch(function () { customPret[id] = null; return null; });
+    }
+    return customCache[id];
+  }
+
   /** Le HTML d'une bouille : un canevas qui remplit sa boîte. */
   function html(etat, o) {
-    var s = nettoyer(etat);
+    var sp = separer(etat);
     var e = (o && o.humeur) ? Number(o.humeur) : 0;
-    return '<canvas class="fp-bvig" data-s="' + s + '" data-e="' + e + '"'
+    return '<canvas class="fp-bvig" data-s="' + sp.s + '" data-e="' + e + '"'
+      + (sp.cid ? ' data-custom="' + sp.cid + '"' : '')
       + ((o && o.anime) ? ' data-anime="1"' : '')
       + ' width="1" height="1" aria-hidden="true"'
       + ' style="width:100%;height:100%;display:block"></canvas>';
@@ -121,16 +146,18 @@
     var s = c.getAttribute('data-s') || '';
     var e = Number(c.getAttribute('data-e') || 0);
     var anime = c.getAttribute('data-anime') === '1';
+    var cid = c.getAttribute('data-custom') || '';
     var tour = (tours.get(c) || 0) + 1;
     tours.set(c, tour);
-    p = famille(M.familleDe(s)).then(function (defs) {
+    p = Promise.all([famille(M.familleDe(s)), paquetCustom(cid)]).then(function (r) {
+      var defs = r[0], paths = r[1];
       if (!c.isConnected || tours.get(c) !== tour) { promesses.delete(c); return null; }
       // Sans `anime`, le moteur tranche tout seul : image fixe si l'arbre n'a
       // rien à jouer, pellicule sinon. `data-anime="1"` (la scène de réaction
       // du chat) annonce qu'on va lui demander des animations : elle garde
       // alors la finesse de mouvement entre deux réactions.
       var b = new M.Bouille(c, defs, { etat: s, humeur: e,
-        anime: anime ? true : undefined });
+        anime: anime ? true : undefined, accessoireCustom: paths });
       posees.set(c, b);
       c.setAttribute('data-prete', '1');
       return b;
@@ -178,16 +205,31 @@
    */
   function rafraichir(c, etat, humeur) {
     var avant = c.getAttribute('data-s') || '';
-    var s = etat === undefined ? avant : nettoyer(etat);
+    var avantCid = c.getAttribute('data-custom') || '';
+    var sp = etat === undefined ? { s: avant, cid: avantCid } : separer(etat);
+    var s = sp.s;
     var e = humeur === undefined ? Number(c.getAttribute('data-e') || 0) : (Number(humeur) || 0);
     c.setAttribute('data-s', s);
     c.setAttribute('data-e', String(e));
+    if (sp.cid) c.setAttribute('data-custom', sp.cid); else c.removeAttribute('data-custom');
     var b = posees.get(c);
     if (b && M.familleDe(s) === M.familleDe(avant)) {
+      // L'accessoire maison est posé AVANT le rendu (definir rerend) : on prend
+      // ses aplats dans le cache résolu s'ils y sont, sinon on rerend au retour.
+      var pret = Object.prototype.hasOwnProperty.call(customPret, sp.cid) ? customPret[sp.cid] : undefined;
+      if (sp.cid && pret !== undefined) b.moteur.accessoireCustom = pret || null;
+      else if (!sp.cid) b.moteur.accessoireCustom = null;
       b.definir(s);
       // `humeur(0)` est le visage NEUTRE, pas « pas d'humeur » : le tester
       // interdisait tout retour au calme — une bouille fâchée le restait.
       b.humeur(e);
+      if (sp.cid && pret === undefined) {
+        paquetCustom(sp.cid).then(function (paths) {
+          if (c.getAttribute('data-custom') !== sp.cid || posees.get(c) !== b) return; // périmé
+          b.moteur.accessoireCustom = paths || null;
+          b.rendre();
+        });
+      }
       return b;
     }
     // CHANGER DE FAMILLE, C'EST REPARTIR DE ZÉRO — et le remontage est

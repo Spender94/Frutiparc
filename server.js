@@ -1116,9 +1116,15 @@ function dossiersPictos(user) {
 const bouilleCache = {};
 
 function bouilleOf(user, username) {
-  if (user && user.fbouille) return normalizeBouilleState(user.fbouille);
-  if (username && bouilleCache[username]) return normalizeBouilleState(bouilleCache[username]);
-  return DEFAULT_BOUILLE_STATE;
+  let base;
+  if (user && user.fbouille) base = normalizeBouilleState(user.fbouille);
+  else if (username && bouilleCache[username]) base = normalizeBouilleState(bouilleCache[username]);
+  else base = DEFAULT_BOUILLE_STATE;
+  // Un accessoire maison voyage AVEC la bouille : « <état>|<id> ». Le lecteur JS
+  // (FPBouilleVignette) le reconnaît et va chercher ses aplats ; le SWF ne lit
+  // que les 24 premiers caractères, donc le suffixe lui est transparent.
+  const id = user && user.accMaisonId;
+  return (id && accessoiresMaison[id]) ? base + '|' + id : base;
 }
 
 // ─────────────────────────────────────────────
@@ -5411,6 +5417,51 @@ const SHOP_PACKS_DEFAULT = [
   ...SHOP_FEUTRES_DEFAULT,
 ];
 const SHOP_PACKS = [...SHOP_PACKS_DEFAULT];
+
+// ─────────────────────────────────────────────
+// ACCESSOIRES MAISON — des accessoires dessinés en SVG par un graphiste, posés
+// sur la bouille par le moteur JS (public/js/bouille-custom.js). Ils ne passent
+// PAS par la chaîne d'état de 24 caractères : chacun a un id, et une bouille les
+// porte via un suffixe « <état>|<id> » que le lecteur JS reconnaît (le SWF, lui,
+// ne lit que les 24 premiers caractères et ignore le reste).
+//
+//   { id, name, price, paths:[…], createdAt }
+// `paths` = les aplats { d, fill, alpha, m, avant } produits par
+// FPBouilleCustom.charger — le fond de repère est retiré, il ne reste que le
+// dessin. Persistés dans data/accessoires-maison.json (hors dépôt).
+const ACC_MAISON_FILE = path.join(__dirname, 'data', 'accessoires-maison.json');
+const accessoiresMaison = {};   // id → { id, name, price, paths, createdAt }
+let accMaisonSeq = 0;
+
+function chargerAccMaison() {
+  try {
+    const brut = JSON.parse(fs.readFileSync(ACC_MAISON_FILE, 'utf8'));
+    for (const a of (brut.liste || [])) if (a && a.id) accessoiresMaison[a.id] = a;
+    accMaisonSeq = brut.seq || 0;
+    console.log(`[ACC-MAISON] ${Object.keys(accessoiresMaison).length} accessoire(s) chargé(s)`);
+  } catch (e) { /* pas de fichier : rien à charger */ }
+}
+function sauverAccMaison() {
+  try {
+    fs.mkdirSync(path.dirname(ACC_MAISON_FILE), { recursive: true });
+    fs.writeFileSync(ACC_MAISON_FILE, JSON.stringify({ seq: accMaisonSeq, liste: Object.values(accessoiresMaison) }));
+  } catch (e) { console.error('[ACC-MAISON] sauvegarde:', e.message); }
+}
+function nextAccMaisonId() { accMaisonSeq += 1; return 'm' + accMaisonSeq; }
+
+// Borne un lot d'aplats importés : compact, sûr, et rien que du tracé.
+function nettoyerPathsMaison(paths) {
+  if (!Array.isArray(paths)) return [];
+  return paths.slice(0, 500).map((p) => {
+    const q = { d: String((p && p.d) || '').slice(0, 20000), fill: String((p && p.fill) || '#000').slice(0, 40) };
+    if (p.alpha != null && p.alpha < 1) q.alpha = Math.max(0, Math.min(1, Number(p.alpha) || 0));
+    if (p.avant === false) q.avant = false;
+    if (p.trait) { q.trait = true; q.largeur = Math.max(0, Math.min(50, Number(p.largeur) || 1)); }
+    if (Array.isArray(p.m) && p.m.length === 6 && p.m.every((n) => isFinite(n))) q.m = p.m.map(Number);
+    return q;
+  }).filter((p) => p.d && /^[Mm]/.test(p.d));
+}
+chargerAccMaison();
 
 // Default accessory description — the two paragraphs the original Frutiparc
 // showed for every accessory. win.Shop.displayItemPage runs
@@ -10378,6 +10429,64 @@ app.post('/api/admin/shop', adminScope('shop'), async (req, res) => {
   if (process.env.DATABASE_URL) db.upsertShopPack(pack).catch(e => console.error('[DB] shop pack save:', e.message));
   console.log(`[ADMIN] Created shop pack ${id}: ${pack.name}`);
   res.json({ ok: true, pack });
+});
+
+// ─────────────────────────────────────────────
+// ACCESSOIRES MAISON — endpoints (catalogue + port)
+// ─────────────────────────────────────────────
+
+// Public : les aplats d'un accessoire, pour que le lecteur JS le pose. C'est ce
+// que FPBouilleVignette va chercher quand une bouille porte « …|<id> ».
+app.get('/api/light/acc-maison/:id', (req, res) => {
+  const a = accessoiresMaison[req.params.id];
+  if (!a) return res.status(404).json({ ok: false });
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.json({ ok: true, id: a.id, name: a.name, paths: a.paths });
+});
+
+// Public : la liste (id + nom), pour le sélecteur « porter un accessoire maison ».
+app.get('/api/light/acc-maison', (req, res) => {
+  res.json({ ok: true, liste: Object.values(accessoiresMaison).map((a) => ({ id: a.id, name: a.name, price: a.price || 0 })) });
+});
+
+// L'utilisateur porte / retire son accessoire maison. id vide ou nul = retirer.
+app.post('/api/light/acc-maison/equip', (req, res) => {
+  const username = resolveUsernameFromSid((req.body && req.body.sid) || req.query.sid || '');
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
+  const id = (req.body && req.body.id) || '';
+  if (id && !accessoiresMaison[id]) return res.status(404).json({ ok: false, error: 'inconnu' });
+  users[username].accMaisonId = id || null;
+  res.json({ ok: true, accMaisonId: id || null });
+});
+
+// Admin : lister, créer (à partir des aplats parsés côté navigateur), supprimer.
+app.get('/api/admin/acc-maison', adminScope('shop'), (req, res) => {
+  res.json(Object.values(accessoiresMaison).map((a) => ({
+    id: a.id, name: a.name, price: a.price || 0, nb: (a.paths || []).length, createdAt: a.createdAt,
+  })));
+});
+// Le corps arrive en application/octet-stream (un Blob JSON) : il échappe ainsi
+// à la limite de 100 ko du parseur JSON global — un accessoire fourni peut peser
+// plusieurs centaines d'aplats.
+app.post('/api/admin/acc-maison', adminScope('shop'),
+  express.raw({ type: 'application/octet-stream', limit: '4mb' }), (req, res) => {
+    let b;
+    try { b = JSON.parse(Buffer.isBuffer(req.body) ? req.body.toString('utf8') : (req.body || '{}')); }
+    catch (e) { return res.status(400).json({ error: 'JSON invalide' }); }
+    const paths = nettoyerPathsMaison(b.paths);
+    if (!b.name || !paths.length) return res.status(400).json({ error: 'name + paths requis (paths non vide)' });
+    const id = nextAccMaisonId();
+    const a = { id, name: String(b.name).slice(0, 60), price: Number(b.price) || 0, paths, createdAt: new Date().toISOString() };
+    accessoiresMaison[id] = a; sauverAccMaison();
+    console.log(`[ACC-MAISON] créé ${id} « ${a.name} » (${paths.length} aplats)`);
+    res.json({ ok: true, id, name: a.name });
+  });
+app.delete('/api/admin/acc-maison/:id', adminScope('shop'), (req, res) => {
+  if (!accessoiresMaison[req.params.id]) return res.status(404).json({ error: 'not found' });
+  delete accessoiresMaison[req.params.id]; sauverAccMaison();
+  // Personne ne le porte plus : on retire l'id des porteurs en mémoire.
+  for (const u of Object.values(users)) if (u && u.accMaisonId === req.params.id) u.accMaisonId = null;
+  res.json({ ok: true });
 });
 
 app.patch('/api/admin/shop/:id', adminScope('shop'), async (req, res) => {
