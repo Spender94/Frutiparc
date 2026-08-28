@@ -126,6 +126,8 @@ test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte',
   // sensible de 13. Réglé au relevé du joueur.
   assert.match(BLOC, /#fiche-fermer \{\s*\n\s*position: absolute; right: 5px; top: 0;/);
   assert.match(BLOC, /#fiche-fermer img \{ width: 18px; height: 18px; display: block; \}/);
+  // La rangée : cinq px entre les boutons, et vingt-deux de haut.
+  assert.match(BLOC, /\.fiche-actions \{\s*\n\s*display: flex; align-items: flex-start; gap: 5px; height: 22px;\s*\n\}/);
   // Le bouton du dépli est CARRÉ : 20 d'art, comme les blancs (x 293..316).
   assert.match(BLOC, /\.fiche-actions button \{\s*\n\s*width: 20px; height: 20px; min-width: 0; min-height: 0;/);
   assert.match(BLOC, /\.fiche-actions button img \{\s*\n\s*width: 20px; height: 20px;[^}]*object-fit: contain;/);

@@ -220,6 +220,14 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
   assert.ok(!/id="fiche-avance"[^>]*disabled/.test(html), 'le bouton rose n\'est plus éteint');
   assert.match(html, /#fiche:not\(\.deploye\) \.fiche-corps \{ display: none; \}/,
     'la fiche se replie');
+  // AU BUREAU, ELLE S'OUVRE REPLIÉE — toujours. `win.Frutiz` montre la carte
+  // courte, et c'est le bouton rose qui déplie le détail ; une fenêtre neuve
+  // ne s'ouvre jamais déjà dépliée, et rien ne se retient d'une fiche à
+  // l'autre. La mémoire (`localStorage`) reste au tactile, où la fiche est
+  // une feuille : le bureau ne la lit pas et ne l'écrit pas.
+  assert.match(html, /if \(surLeBureau\(\)\) return false;/);
+  assert.match(html, /function poserFicheDeployee\(ouvert\) \{[\s\S]*?if \(surLeBureau\(\)\) return;\s*\n\s*try \{ localStorage\.setItem\(FICHE_DEPLOYE_KEY/);
+  assert.match(html, /function surLeBureau\(\) \{\s*\n\s*return !!\(document\.body && document\.body\.classList\.contains\("bureau-frutiz"\)\);/);
   assert.match(html, /poserFicheDeployee\(!\$\("#fiche"\)\.classList\.contains\("deploye"\)\)/,
     'et le bouton rose bascule');
   assert.match(html, /localStorage\.setItem\(FICHE_DEPLOYE_KEY/, 'le choix se retient');

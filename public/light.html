@@ -7615,7 +7615,16 @@
   // fiche, ici il la déplie ou la replie. Le choix se retient — qui préfère la
   // carte compacte la retrouve compacte au tap suivant.
   var FICHE_DEPLOYE_KEY = "fp_fiche_deploye";
+  function surLeBureau() {
+    return !!(document.body && document.body.classList.contains("bureau-frutiz"));
+  }
   function ficheDeployee() {
+    // AU BUREAU, ELLE S'OUVRE TOUJOURS REPLIÉE. `win.Frutiz` montre la carte
+    // courte, et c'est le bouton rose (`butPushSmallPink`, le triangle) qui
+    // déplie le détail — la fenêtre ne s'ouvre jamais déjà dépliée. Le choix
+    // ne se retient pas non plus d'une fiche à l'autre : chaque `openFrutizInfo`
+    // construit une boîte neuve.
+    if (surLeBureau()) return false;
     var v; try { v = localStorage.getItem(FICHE_DEPLOYE_KEY); } catch (e) { v = null; }
     return v !== "0";                       // dépliée par défaut sur mobile
   }
@@ -7623,6 +7632,10 @@
     $("#fiche").classList.toggle("deploye", !!ouvert);
     $("#fiche-avance").classList.toggle("ouvert", !!ouvert);
     $("#fiche-avance").setAttribute("aria-expanded", ouvert ? "true" : "false");
+    // Le bureau ne retient rien : sa préférence est « repliée », toujours. La
+    // mémoire est une commodité du tactile, où la fiche est une feuille et
+    // non une fenêtre — on ne la lui vole pas depuis ici.
+    if (surLeBureau()) return;
     try { localStorage.setItem(FICHE_DEPLOYE_KEY, ouvert ? "1" : "0"); } catch (e) {}
   }
   $("#fiche-avance").addEventListener("click", function () {

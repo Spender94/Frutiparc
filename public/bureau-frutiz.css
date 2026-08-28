@@ -2320,8 +2320,16 @@ body.bureau-frutiz .fen #chat-panel #messages .msg.emote:not(.blue):not(.shout) 
    maintenant sur le salon $t » vient du `<i>` de la table de langue, pas du
    composant —, pas de gras, et Flash ne souligne pas les `<a>`. Le light en
    avait fait un lien de navigateur : gras, souligné, italique. */
+/* ET IL S'ALIGNE À GAUCHE, comme le reste du fil. C'est un `<button>`, et un
+   bouton centre son texte : tant qu'il tient sur une ligne cela ne se voit
+   pas, mais la fenêtre d'un salon fait 220 px par défaut — le lien y passe
+   sur DEUX lignes (relevé au banc : champ de 180 px, bouton de 34 px de
+   haut), et ses deux lignes se centraient au milieu d'un fil aligné à
+   gauche. D'époque il n'y a pas de bouton du tout : `addText` écrit un `<a>`
+   dans le champ, qui suit l'alignement du champ. */
 body.bureau-frutiz .fen #chat-panel #messages .sys-lien {
   font-style: normal; font-weight: normal; text-decoration: none; color: inherit;
+  text-align: left;
 }
 
 /* ── Les TROIS PANNEAUX du salon ────────────────────────────────────────────
@@ -3196,7 +3204,7 @@ body.bureau-frutiz #fiche .fiche-nom-ligne .meta { padding-right: 18px; }
    "start"`), le bouton rose au BOUT (`x.align "end"`). Chacun porte le
    contour de deux pixels que `butPush` dessine. */
 body.bureau-frutiz #fiche .fiche-actions {
-  display: flex; align-items: flex-start; gap: 6px; height: 22px;
+  display: flex; align-items: flex-start; gap: 5px; height: 22px;
 }
 body.bureau-frutiz #fiche .fiche-actions button {
   width: 20px; height: 20px; min-width: 0; min-height: 0; box-sizing: border-box;

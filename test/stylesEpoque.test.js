@@ -52,6 +52,13 @@ const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
 
 test('le lien des logs est une ligne comme une autre', () => {
   assert.match(CSS, /#messages \.sys-lien \{\s*\n\s*font-style: normal; font-weight: normal; text-decoration: none; color: inherit;/);
+  // ET ALIGNÉE À GAUCHE. Le portage en a fait un `<button>`, et un bouton
+  // CENTRE son texte : tant qu'il tient sur une ligne cela ne se voit pas,
+  // mais la fenêtre d'un salon fait 220 px de large par défaut. Relevé au
+  // banc à cette largeur : champ de 180 px, bouton de deux lignes, et
+  // `text-align` calculé à « center » quand tout le fil est à « start ».
+  // D'époque il n'y a pas de bouton : `addText` écrit un `<a>` dans le champ.
+  assert.match(CSS, /#messages \.sys-lien \{[\s\S]*?text-align: left;/);
   // Le tiroir mobile garde son lien de navigateur.
   assert.match(LIGHT, /\.sys-lien \{[\s\S]{0,200}text-decoration: underline;/);
 });
