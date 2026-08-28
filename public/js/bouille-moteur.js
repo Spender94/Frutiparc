@@ -1024,6 +1024,10 @@
       // on applique sa matrice `m` par-dessus le repère scène→canevas. L'export,
       // lui, émet déjà en repère scène (pas de m) — les deux passent par ici.
       if (p.m) ctx.transform(p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5]);
+      // Mode de fusion : une ombre en « multiply » assombrit ce qu'il y a
+      // dessous, une lumière en « screen » l'éclaircit — quel que soit le
+      // coloris. (save/restore remet source-over ensuite.)
+      if (p.blend) ctx.globalCompositeOperation = p.blend;
       ctx.globalAlpha = (p.alpha == null ? 1 : p.alpha);
       // Un tracé « à niveau » (slot 1/2/3) prend la couleur du niveau si elle est
       // fournie ; sinon il garde la sienne.

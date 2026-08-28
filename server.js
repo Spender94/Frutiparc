@@ -5453,6 +5453,12 @@ function sauverAccMaison() {
 }
 function nextAccMaisonId() { accMaisonSeq += 1; return 'm' + accMaisonSeq; }
 
+// Les modes de fusion acceptés (mêmes noms côté CSS et côté canevas).
+const BLENDS_MAISON = new Set([
+  'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn',
+  'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity',
+]);
+
 // Borne un lot d'aplats importés : compact, sûr, et rien que du tracé.
 function nettoyerPathsMaison(paths) {
   if (!Array.isArray(paths)) return [];
@@ -5461,6 +5467,7 @@ function nettoyerPathsMaison(paths) {
     if (p.alpha != null && p.alpha < 1) q.alpha = Math.max(0, Math.min(1, Number(p.alpha) || 0));
     if (p.avant === false) q.avant = false;
     if (p.slot === 1 || p.slot === 2 || p.slot === 3) q.slot = p.slot;   // niveau de couleur
+    if (typeof p.blend === 'string' && BLENDS_MAISON.has(p.blend)) q.blend = p.blend; // ombre/lumière
     if (p.trait) { q.trait = true; q.largeur = Math.max(0, Math.min(50, Number(p.largeur) || 1)); }
     if (Array.isArray(p.m) && p.m.length === 6 && p.m.every((n) => isFinite(n))) q.m = p.m.map(Number);
     return q;

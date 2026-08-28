@@ -104,6 +104,11 @@
       + "    « couleur1 », « couleur2 » ou « couleur3 » (dans l'un ou l'autre calque).\n"
       + "    Ces zones se recolorent ensuite depuis l'admin (3 niveaux, palette du parc) ;\n"
       + "    le reste garde sa couleur. Dessine-les en aplats — la teinte les remplace.\n"
+      + "    OMBRES & LUMIÈRES : garde-les à part. Une ombre = une forme noire en mode\n"
+      + "    « Produit » (multiply), une lumière = une forme blanche en « Superposition\n"
+      + "    d'écran » (screen), avec l'opacité que tu veux (sur la forme OU le calque).\n"
+      + "    Posées PAR-DESSUS une zone de couleur, elles la foncent / l'éclaircissent\n"
+      + "    quel que soit le coloris — donc le relief suit la recolorisation.\n"
       + "    · Repère = le carré du visage (" + sc.w + "×" + sc.h + "). N'agrandis pas le plan de travail.\n"
       + "  -->\n"
       + '  <g id="accessoire-arriere">\n' + arriere + "\n  </g>\n"
@@ -159,11 +164,33 @@
     return v;
   }
 
-  function opaciteDe(win, el) {
+  // Opacité EFFECTIVE : celle de la forme ET de tous ses groupes parents.
+  // Illustrator pose souvent l'opacité sur un CALQUE d'ombre entier, pas sur
+  // chaque forme — `getComputedStyle(el).opacity` ne rend que celle de l'élément.
+  function opaciteAncetres(win, el, racine) {
+    var o = 1;
+    for (var n = el; n && n.nodeType === 1 && n !== racine.parentNode; n = n.parentNode) {
+      var v = parseFloat(win.getComputedStyle(n).opacity);
+      if (!isNaN(v)) o *= v;
+    }
+    return o;
+  }
+  function opaciteDe(win, el, racine) {
     var cs = win.getComputedStyle(el);
-    var o = parseFloat(cs.opacity); if (isNaN(o)) o = 1;
     var fo = parseFloat(cs.fillOpacity); if (isNaN(fo)) fo = 1;
-    return { fill: o * fo, stroke: o * (parseFloat(cs.strokeOpacity) || 1) };
+    var so = parseFloat(cs.strokeOpacity); if (isNaN(so)) so = 1;
+    var oc = opaciteAncetres(win, el, racine);
+    return { fill: oc * fo, stroke: oc * so };
+  }
+  // Le mode de fusion (multiply pour une ombre, screen pour une lumière…) : on
+  // remonte les groupes, car Illustrator le pose souvent sur un CALQUE entier.
+  // On prend le premier non-« normal » rencontré. Le canevas comprend les mêmes noms.
+  function fusionDe(win, el, racine) {
+    for (var n = el; n && n.nodeType === 1 && n !== racine.parentNode; n = n.parentNode) {
+      var m = win.getComputedStyle(n).mixBlendMode;
+      if (m && m !== "normal") return m;
+    }
+    return null;
   }
 
   /**
@@ -198,10 +225,11 @@
         }
         return 0;
       }
-      function faire(d, fill, alpha, m, avant, slot, trait, largeur) {
+      function faire(d, fill, alpha, m, avant, slot, trait, largeur, blend) {
         var p = { d: d, fill: fill, alpha: alpha, m: m };
         if (!avant) p.avant = false;
         if (slot) p.slot = slot;
+        if (blend) p.blend = blend;
         if (trait) { p.trait = true; p.largeur = largeur; }
         return p;
       }
@@ -215,15 +243,16 @@
         if (!d) continue;
         var ctm = el.getCTM();                                // élément → viewBox (scène)
         var m = ctm ? [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f] : null;
-        var op = opaciteDe(global, el);
+        var op = opaciteDe(global, el, vivant);
+        var blend = fusionDe(global, el, vivant);
         var avant = !(gArr && gArr.contains(el));
         var slot = slotDe(el);
         var fill = couleur(global, el, "fill");
         var stroke = couleur(global, el, "stroke");
-        if (fill) out.push(faire(d, fill, op.fill, m, avant, slot, false, 0));
+        if (fill) out.push(faire(d, fill, op.fill, m, avant, slot, false, 0, blend));
         if (stroke) {
           var lw = parseFloat(global.getComputedStyle(el).strokeWidth) || 1;
-          out.push(faire(d, stroke, op.stroke, m, avant, slot, true, lw));
+          out.push(faire(d, stroke, op.stroke, m, avant, slot, true, lw, blend));
         }
       }
     } finally {

@@ -71,9 +71,15 @@
       <canvas id="apercu" class="preview" width="440" height="440"></canvas>
       <button class="btn plein" id="dl">⬇ Télécharger le SVG de l'accessoire</button>
       <div class="aide">
-        Dans Illustrator : dessine <b>uniquement</b> dans le calque <code>accessoire</code>.
+        Dans Illustrator : dessine <b>uniquement</b> dans le calque <code>accessoire</code>
+        (et <code>accessoire-arriere</code> pour ce qui passe derrière la frange).
         Le calque <code>repere</code> (la tête) n'est qu'un fond — verrouille-le, il est ignoré
-        au retour. Ne change pas la taille du plan de travail.
+        au retour. Ne change pas la taille du plan de travail.<br>
+        <b>Zones recolorables&nbsp;:</b> un groupe <code>couleur1</code>/<code>couleur2</code>/<code>couleur3</code>
+        se recolore depuis l'admin (dessine-les en aplats).<br>
+        <b>Ombres&nbsp;/ lumières&nbsp;:</b> une forme noire en <i>Produit</i> (multiply),
+        une blanche en <i>Superposition d'écran</i> (screen), l'opacité que tu veux — elles
+        foncent&nbsp;/ éclaircissent quel que soit le coloris.
       </div>
     </div>
 
