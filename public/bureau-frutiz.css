@@ -3122,7 +3122,7 @@ body.bureau-frutiz #fiche {
    x 43..69 / y 15..37, « NIV n » en x 43..72 / y 41..48, reflet en x 70..73 —
    sur l'ÉCRAN, pas sur la bouille.) */
 body.bureau-frutiz #fiche .fiche-haut {
-  align-items: flex-start; gap: 9px; padding: 5px 12px 5px 5px;
+  align-items: flex-start; gap: 6px; padding: 3px 3px 2px 3px;
 }
 /* LA SEULE EXCEPTION à ce qui précède : la plaque n'a pas de remplissage.
    `frutiScreen` cerne ses deux panneaux à même le liseré — le fond vert ne se
@@ -3176,7 +3176,7 @@ body.bureau-frutiz #fiche .fiche-droite {
 /* La ligne d'identité : le voyant, le pseudo à la couleur de son GENRE,
    l'âge et le pays poussés à droite, la croix au bout. */
 body.bureau-frutiz #fiche .fiche-nom-ligne {
-  display: flex; align-items: center; gap: 5px; height: 20px;
+  display: flex; align-items: center; gap: 5px; height: 15px;
 }
 body.bureau-frutiz #fiche #fiche-pseudo {
   font: 700 11px Verdana, Arial, sans-serif; color: #242169;

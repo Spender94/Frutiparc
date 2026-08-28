@@ -407,6 +407,40 @@
   .bo-etat.ok { color: #2f6b16; font-weight: bold; }
   .bo-etat.err { color: #b23b2e; font-weight: bold; }
 
+  /* Popin de confirmation Frutiparc (façon win.Alert de main.swf) — remplace le
+     window.confirm() du navigateur : cartouche clair à liseré, bandeau-titre
+     avec pictogramme, message centré, deux pilules roses. */
+  #fp-popin-backdrop {
+    position: fixed; inset: 0; z-index: 2000; display: none;
+    align-items: center; justify-content: center; padding: 16px;
+    background: rgba(0, 0, 0, .34);
+  }
+  #fp-popin-backdrop.show { display: flex; }
+  .fp-popin {
+    width: 100%; max-width: 320px; background: #FBFDF6; overflow: hidden;
+    border: 1px solid #B9C6A0; border-radius: 10px;
+    box-shadow: 0 12px 34px rgba(44, 74, 15, .38);
+    font-family: Verdana, Arial, sans-serif;
+  }
+  .fp-popin-tete {
+    display: flex; align-items: center; gap: 6px; padding: 7px 12px;
+    background: #EFF7DF; border-bottom: 1px solid #CFE0A8;
+    font-weight: bold; font-size: 13px; color: #2C4A0F;
+  }
+  .fp-popin-tete img { width: 16px; height: 16px; display: block; flex: 0 0 auto; }
+  .fp-popin-corps {
+    padding: 15px 15px 8px; font-size: 12.5px; color: #335511;
+    line-height: 1.45; text-align: center;
+  }
+  .fp-popin-pieds { display: flex; gap: 12px; padding: 10px 15px 15px; justify-content: center; }
+  .fp-popin-btn {
+    flex: 1 1 0; max-width: 132px; padding: 7px 10px; cursor: pointer;
+    border: 2px solid #E78690; border-radius: 999px;
+    background: #F6A4AD; color: #7A1326; font-weight: bold; font-size: 12.5px;
+  }
+  .fp-popin-btn:active { background: #EF8F9B; }
+  .fp-popin-btn.ghost { background: #FFF; }
+
   /* ── "Ma Frutibouille" : éditeur de visage (auto-affiché si needsBouille) ──
      Look calqué sur l'editbouille de main.swf : cadre arrondi vert clair,
      onglet-titre, preview, lignes yeux/iris/cheveux/bouche + barres couleur
@@ -4296,35 +4330,69 @@
       });
   }
 
+  // Popin de confirmation Frutiparc — remplace window.confirm() du navigateur.
+  // opts : { title, icon?, message (HTML de confiance), okLabel, cancelLabel }.
+  // Renvoie une Promise<boolean> (true = bouton de droite).
+  function frutiConfirm(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      var bd = document.getElementById("fp-popin-backdrop");
+      if (!bd) { bd = document.createElement("div"); bd.id = "fp-popin-backdrop"; document.body.appendChild(bd); }
+      var icon = opts.icon ? '<img src="' + opts.icon + '" alt="">' : "";
+      bd.innerHTML =
+        '<div class="fp-popin" role="dialog" aria-modal="true" aria-label="' + xmlEscape(opts.title || "Frutiparc") + '">'
+        + '<div class="fp-popin-tete">' + icon + '<span>' + xmlEscape(opts.title || "Frutiparc") + '</span></div>'
+        + '<div class="fp-popin-corps">' + (opts.message || "") + '</div>'
+        + '<div class="fp-popin-pieds">'
+        + '<button type="button" class="fp-popin-btn ghost" data-a="cancel">' + xmlEscape(opts.cancelLabel || "Annuler") + '</button>'
+        + '<button type="button" class="fp-popin-btn" data-a="ok">' + xmlEscape(opts.okLabel || "OK") + '</button>'
+        + '</div></div>';
+      bd.classList.add("show");
+      function close(v) { bd.classList.remove("show"); bd.innerHTML = ""; resolve(v); }
+      bd.querySelector('[data-a="ok"]').addEventListener("click", function () { close(true); });
+      bd.querySelector('[data-a="cancel"]').addEventListener("click", function () { close(false); });
+      bd.addEventListener("click", function (e) { if (e.target === bd) close(false); });
+    });
+  }
+
   function buyShopItem(btn) {
     var it = boArticleCourant();
     if (!it || it.owned) return;
-    if (!window.confirm("Acheter « " + it.name + " » pour " + it.price + " kikooz ?")) return;
-    btn.disabled = true; btn.textContent = "…";
-    fetch("/api/light/shop/buy", {
-      method: "POST", cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sid: state.sid, id: it.id }),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (d && d.ok) {
-          setShopWallet(d.kikooz);
-          // Un pass se cumule : on relit la boutique pour rafraîchir son compte.
-          if (it.cumulable) { loadShop(); return; }
-          it.owned = true;
-          renderShop();
-          boEtat("✓ « " + it.name + " » acheté !", "ok");
-        } else {
-          if (d && d.kikooz !== undefined) setShopWallet(d.kikooz);
-          renderShop();
-          boEtat((d && d.error) || "Achat impossible.", "err");
-        }
+    frutiConfirm({
+      title: "Boutique",
+      icon: "/fb/icone_kikooz.svg",
+      message: "Êtes-vous sûr de vouloir acheter<br>« <strong>" + xmlEscape(it.name)
+        + "</strong> » pour <strong>" + (Number(it.price) || 0) + "</strong> kikooz ?",
+      okLabel: "Acheter",
+      cancelLabel: "Annuler",
+    }).then(function (ok) {
+      if (!ok) return;
+      btn.disabled = true; btn.textContent = "…";
+      fetch("/api/light/shop/buy", {
+        method: "POST", cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sid: state.sid, id: it.id }),
       })
-      .catch(function () {
-        renderShop();
-        boEtat("Erreur réseau, réessaie.", "err");
-      });
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.ok) {
+            setShopWallet(d.kikooz);
+            // Un pass se cumule : on relit la boutique pour rafraîchir son compte.
+            if (it.cumulable) { loadShop(); return; }
+            it.owned = true;
+            renderShop();
+            boEtat("✓ « " + it.name + " » acheté !", "ok");
+          } else {
+            if (d && d.kikooz !== undefined) setShopWallet(d.kikooz);
+            renderShop();
+            boEtat((d && d.error) || "Achat impossible.", "err");
+          }
+        })
+        .catch(function () {
+          renderShop();
+          boEtat("Erreur réseau, réessaie.", "err");
+        });
+    });
   }
   function openShopSheet() {
     openMenu(false);
