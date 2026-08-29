@@ -398,12 +398,51 @@
         if (trait) { p.trait = true; p.largeur = largeur; }
         return p;
       }
+
+      /*
+       * LES MASQUES D'ÉCRÊTAGE. Illustrator en pose dès qu'on demande « masque
+       * d'écrêtage », et le gabarit lui-même en rend deux (la casquette 25, le
+       * type 16). Sans rien faire, le tracé du masque partait comme un aplat de
+       * plus — un grand rectangle noir sur l'accessoire — et ce qu'il rognait
+       * débordait.
+       *
+       * Le tracé d'un `clipPath` n'est pas rendu : il n'a donc pas de matrice à
+       * lire. On en CLONE une copie en tête du groupe qui s'y réfère — là où son
+       * repère est justement celui du masque — le temps de la mesure. La copie
+       * vient donc en premier dans l'ordre du document, ce que l'injection attend.
+       */
+      var DESSINABLES = "path,rect,circle,ellipse,line,polygon,polyline";
+      var nDec = 0;
+      var clones = [];
+      var refs = vivant.querySelectorAll("[clip-path]");
+      for (var r = 0; r < refs.length; r++) {
+        var url = /url\(['"]?#([^)'"]+)/.exec(refs[r].getAttribute("clip-path") || "");
+        var cp = url && vivant.querySelector('clipPath[id="' + url[1] + '"]');
+        if (!cp) continue;
+        var id = "d" + (++nDec);
+        refs[r].setAttribute("data-decoupe", id);
+        var tracés = cp.querySelectorAll(DESSINABLES);
+        for (var t = tracés.length - 1; t >= 0; t--) {
+          var copie = tracés[t].cloneNode(true);
+          copie.setAttribute("data-est-decoupe", id);
+          refs[r].insertBefore(copie, refs[r].firstChild);
+          clones.push(copie);
+        }
+      }
+      function decoupeDe(el) {
+        for (var n = el; n && n !== vivant.parentNode; n = n.parentNode) {
+          if (n.getAttribute && n.getAttribute("data-decoupe")) return n.getAttribute("data-decoupe");
+        }
+        return null;
+      }
+
       // Une seule passe sur tous les dessinables (hors repère) : l'ordre du
       // document = l'ordre de peinture.
-      var els = vivant.querySelectorAll("path,rect,circle,ellipse,line,polygon,polyline");
+      var els = vivant.querySelectorAll(DESSINABLES);
       for (var i = 0; i < els.length; i++) {
         var el = els[i];
         if (repere && repere.contains(el)) continue;          // le fond, jamais
+        if (el.closest && el.closest("clipPath")) continue;   // l'original, jamais
         var d = elementVersD(el);
         if (!d) continue;
         // élément → viewBox, puis viewBox → scène : le dessin retrouve sa taille
@@ -424,11 +463,29 @@
         var deg = null;
         var ref = fill && /^url\(['"]?#([^)'"]+)/.exec(fill);
         if (ref) { deg = degradeDe(el, ref[1], vivant.ownerDocument || global.document); if (!deg) fill = null; }
-        if (fill) out.push(faire(d, deg ? 'rgb(136,136,136)' : fill, op.fill, m, avant, slot, false, 0, blend, deg));
+        var dec = decoupeDe(el);
+        var estDec = el.getAttribute && el.getAttribute("data-est-decoupe");
+        if (estDec) {
+          // Le tracé du masque : sa forme seule compte. Ni couleur, ni contour.
+          var q = faire(d, "rgb(0,0,0)", 1, m, avant, 0, false, 0, null, null);
+          q.decoupe = estDec; q.estDecoupe = true;
+          out.push(q);
+          continue;
+        }
+        if (fill) {
+          var pf = faire(d, deg ? 'rgb(136,136,136)' : fill, op.fill, m, avant, slot, false, 0, blend, deg);
+          if (dec) pf.decoupe = dec;
+          out.push(pf);
+        }
         if (stroke) {
           var lw = parseFloat(global.getComputedStyle(el).strokeWidth) || 1;
-          out.push(faire(d, stroke, op.stroke, m, avant, slot, true, lw, blend));
+          var ps = faire(d, stroke, op.stroke, m, avant, slot, true, lw, blend);
+          if (dec) ps.decoupe = dec;
+          out.push(ps);
         }
+      }
+      for (var q2 = 0; q2 < clones.length; q2++) {
+        if (clones[q2].parentNode) clones[q2].parentNode.removeChild(clones[q2]);
       }
     } finally {
       global.document.body.removeChild(hote);

@@ -5568,6 +5568,13 @@ function nettoyerPathsMaison(paths) {
     if (g) q.degrade = g;
     if (p.trait) { q.trait = true; q.largeur = Math.max(0, Math.min(50, Number(p.largeur) || 1)); }
     if (Array.isArray(p.m) && p.m.length === 6 && p.m.every((n) => isFinite(n))) q.m = p.m.map(Number);
+    // Un MASQUE D'ÉCRÊTAGE : « decoupe » nomme le masque, « estDecoupe » désigne
+    // son tracé. Les laisser tomber, c'était laisser déborder ce qu'ils rognent.
+    if (p.decoupe) {
+      q.decoupe = String(p.decoupe).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24);
+      if (!q.decoupe) delete q.decoupe;
+      else if (p.estDecoupe) q.estDecoupe = true;
+    }
     return q;
   }).filter((p) => p.d && /^[Mm]/.test(p.d));
 }
@@ -5630,11 +5637,21 @@ function chargerVariantes() {
     if (variantesAcc.length) console.log(`[VARIANTES] ${variantesAcc.length} variante(s) d'accessoire chargée(s)`);
   } catch (e) { /* pas de fichier */ }
 }
+// LE CATALOGUE VIT EN BASE. Le fichier ne reste qu'un filet pour le développement
+// sans base : le disque du conteneur est ÉPHÉMÈRE, et un joueur peut avoir ACHETÉ
+// l'accessoire. L'article de boutique et sa possession étaient bien en base, mais
+// le DESSIN, lui, ne l'était pas — un déploiement suffisait à le faire
+// disparaître, et l'accessoire acheté ne montrait plus rien.
 function sauverVariantes() {
   try {
     fs.mkdirSync(path.dirname(VARIANTES_FILE), { recursive: true });
     fs.writeFileSync(VARIANTES_FILE, JSON.stringify({ seq: variantesSeq, liste: variantesAcc }));
-  } catch (e) { console.error('[VARIANTES] sauvegarde:', e.message); }
+  } catch (e) { console.error('[VARIANTES] sauvegarde fichier:', e.message); }
+  if (process.env.DATABASE_URL) {
+    variantesAcc.forEach((v, rang) => {
+      db.upsertBouilleVariante(v, rang).catch((e) => console.error('[VARIANTES] base:', e.message));
+    });
+  }
 }
 chargerVariantes();
 
@@ -21439,6 +21456,36 @@ async function boot() {
         TROMBINOSCOPE = await db.loadTrombinoscope();
         if (TROMBINOSCOPE.length) console.log(`[DB] Loaded ${TROMBINOSCOPE.length} trombinoscope entries`);
       } catch (e) { console.error('[DB] Trombinoscope load error:', e.message); }
+      try {
+        /*
+         * LES VARIANTES D'ACCESSOIRE, depuis la BASE.
+         *
+         * Elles ne vivaient que dans data/ — or le disque du conteneur est
+         * éphémère, et un joueur peut avoir ACHETÉ l'accessoire : l'article et sa
+         * possession survivaient (ils sont en base), mais le DESSIN disparaissait
+         * au déploiement, et l'accessoire acheté ne montrait plus rien.
+         *
+         * La base fait FOI. Ce qui traîne dans le fichier et qu'elle ne connaît
+         * pas encore y est versé — c'est la reprise des variantes publiées avant
+         * ce changement, faite une fois, sans rien perdre.
+         */
+        const enBase = await db.loadBouilleVariantes();
+        const connus = new Set(enBase.map((v) => v.id));
+        const orphelines = variantesAcc.filter((v) => !connus.has(v.id));
+        variantesAcc.length = 0;
+        for (const v of enBase) variantesAcc.push(v);
+        for (const v of orphelines) variantesAcc.push(v);
+        // La suite des identifiants doit repartir au-dessus de tout ce qui existe.
+        for (const v of variantesAcc) {
+          const n = parseInt(String(v.id).replace(/^v/, ''), 10);
+          if (Number.isFinite(n) && n > variantesSeq) variantesSeq = n;
+        }
+        if (orphelines.length) {
+          console.log(`[VARIANTES] ${orphelines.length} variante(s) du fichier versée(s) en base`);
+          sauverVariantes();
+        }
+        if (variantesAcc.length) console.log(`[DB] Loaded ${variantesAcc.length} variante(s) d'accessoire`);
+      } catch (e) { console.error('[DB] Variantes load error:', e.message); }
       try {
         // Chat banned words: on first run (empty table), seed defaults.
         let bw = await db.loadChatBannedWords();

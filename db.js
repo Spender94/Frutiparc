@@ -376,6 +376,30 @@ async function initSchema() {
         updated_at  TIMESTAMPTZ DEFAULT now()
       );
 
+      -- VARIANTES D'ACCESSOIRE de frutibouille, dessinées par un graphiste et
+      -- injectées au chargement par le lecteur JS. Même raison que les maps
+      -- ci-dessus, et conséquence plus grave : le disque du conteneur est
+      -- ÉPHÉMÈRE, or un joueur ACHÈTE l'accessoire. L'article de boutique et sa
+      -- possession vivent en base, mais le DESSIN vivait dans un fichier — un
+      -- déploiement suffisait à le faire disparaître, et l'accessoire acheté ne
+      -- montrait plus rien.
+      --
+      -- La colonne idx est la place DÉFINITIVE de la variante dans le rouleau : elle est
+      -- attribuée à la publication et ne change jamais, sinon les bouilles qui
+      -- la portent désigneraient un autre accessoire.
+      CREATE TABLE IF NOT EXISTS bouille_variantes (
+        id          TEXT PRIMARY KEY,
+        nom         TEXT NOT NULL DEFAULT '',
+        famille     INTEGER NOT NULL DEFAULT 0,
+        type        INTEGER NOT NULL,
+        idx         INTEGER,
+        coiffure    INTEGER NOT NULL DEFAULT 8,
+        paths       TEXT NOT NULL DEFAULT '[]',
+        retire      BOOLEAN NOT NULL DEFAULT FALSE,
+        rang        INTEGER NOT NULL DEFAULT 0,
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- Map challenge du jour de Mini-Wave, pour la même raison que celle de
       -- MotionBall : la graine est stable (elle vient de la date), mais les
       -- NIVEAUX sont l'œuvre d'un générateur qu'on fait évoluer. Sans cette
@@ -2995,7 +3019,35 @@ async function loadAllPushSubscriptions() {
   return rows;
 }
 
+// ── VARIANTES D'ACCESSOIRE ────────────────────────────────────────────────
+// Le catalogue vit en BASE, pas sur le disque : le conteneur est éphémère, et un
+// joueur peut avoir ACHETÉ l'accessoire. Le rang conserve l'ordre de publication
+// (les variantes d'avant l'index explicite s'empilent encore par cet ordre).
+async function loadBouilleVariantes() {
+  const { rows } = await pool.query(
+    'SELECT * FROM bouille_variantes ORDER BY rang ASC, created_at ASC');
+  return rows.map((r) => ({
+    id: r.id, nom: r.nom, famille: r.famille, type: r.type,
+    index: (r.idx == null ? undefined : r.idx),
+    coiffureRef: r.coiffure, retire: !!r.retire,
+    paths: (() => { try { return JSON.parse(r.paths); } catch (e) { return []; } })(),
+    createdAt: r.created_at,
+  }));
+}
+async function upsertBouilleVariante(v, rang) {
+  await pool.query(
+    'INSERT INTO bouille_variantes (id, nom, famille, type, idx, coiffure, paths, retire, rang)' +
+    ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)' +
+    ' ON CONFLICT (id) DO UPDATE SET nom = EXCLUDED.nom, idx = EXCLUDED.idx,' +
+    ' paths = EXCLUDED.paths, retire = EXCLUDED.retire, rang = EXCLUDED.rang',
+    [v.id, v.nom || '', v.famille || 0, v.type,
+     (v.index == null ? null : v.index), v.coiffureRef || 8,
+     JSON.stringify(v.paths || []), !!v.retire, rang || 0]);
+}
+
 module.exports = {
+  loadBouilleVariantes,
+  upsertBouilleVariante,
   pool,
   initSchema,
   loadVapidKeys,

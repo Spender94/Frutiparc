@@ -145,7 +145,7 @@
       var r = V.repere(defs, type, 8);
       if (!r) return 0;
       var n = 0;
-      for (var v = 0; v < r.variantes; v++) if (V.exporter(defs, type, v, 8).length > 1) n++;
+      for (var v = 0; v < r.variantes; v++) if (V.dessinee(defs, type, v, 8)) n++;
       return n;
     }
     function remplirTypes() {
@@ -180,8 +180,8 @@
       sel.innerHTML = "";
       if (!r) return;
       for (var v = 0; v < r.variantes; v++) {
+        if (!V.dessinee(defs, t, v, co)) continue;   // image vide (ou simple marqueur)
         var n = V.exporter(defs, t, v, co).length;
-        if (n <= 1) continue;                        // image vide (ou simple marqueur)
         var o = document.createElement("option");
         o.value = v; o.textContent = "variante " + v + " — " + n + " tracés";
         sel.appendChild(o);

@@ -32,12 +32,33 @@
   blanc rend la couleur pleine, les gris en donnent les ombres. Le relief vient
   donc du dessin lui-même, et il suit la couleur choisie.
 
-  ── CE QU'ON NE FAIT PAS (encore) ──────────────────────────────────────────────
+  ── LE GABARIT SE LIT SUR L'ÉCRAN, PAS SUR LA PELLICULE ────────────────────────
+
+  L'export marche l'arbre que `definir()` vient de monter, dans l'ordre exact où
+  `dessinerClip` le peint. Refaire à côté la lecture des pellicules, c'était
+  refaire aussi les exceptions d'époque — et il y en a six, toutes trouvées à
+  l'usage, toutes invisibles jusqu'à ce qu'un accessoire les révèle :
+
+    · une POSE peut teindre ce qu'elle porte (le casque-mouche est un dessin
+      blanc verdi par son placement, les verres de lunettes un dessin assombri) ;
+    · une forme peut être MORPHÉE (les branches d'une paire de lunettes) ;
+    · un MASQUE d'écrêtage découpe ce qui le suit (la casquette 25, le type 16) ;
+    · un accessoire a parfois DEUX rouleaux, `acc` et `acc2`, à des profondeurs
+      différentes, tous deux suivant la variante ;
+    · la dernière image d'un rouleau est un MARQUEUR d'atelier, un aplat de la
+      taille de la scène, que le rendu saute déjà ;
+    · et quand deux sous-clips portent le même nom, `apply()` n'en teint qu'UN,
+      le dernier posé (l'accessoire 9 variante 5 en dépend).
+
+  Quel niveau de couleur porte quel clip, on ne le redit pas non plus : on monte
+  la bouille témoin avec trois couleurs SENTINELLES, et le clip qu'`apply()` a
+  choisi de teindre se reconnaît à l'identité de sa teinte.
+
+  ── CE QU'ON NE FAIT PAS ───────────────────────────────────────────────────────
 
   Les variantes injectées sont STATIQUES : pas de script d'image, donc pas de
-  pièce qui tourne comme la variante 25 de la casquette. Le reste — masque,
-  superposition, placement par coiffure — vient de la mécanique d'époque, pas de
-  nous.
+  pièce qui tourne toute seule. Une variante d'époque animée s'exporte dans la
+  pose où on la prend.
 
   Rien de tout cela ne touche au .swf : on enrichit l'arbre que le lecteur JS a
   monté en mémoire (`defs`), après chargement.
@@ -101,25 +122,71 @@
 
     var face = mo.racine.face;
     if (!face) return null;
-    var Mx = mul(ID, face.matrice());
-    var cur = face, accEnt = null;
-    var noms = ["ca", "c", "acc"];
-    for (var i = 0; i < noms.length; i++) {
-      var ent = null;
-      cur.enfants.forEach(function (e) { if (e.nom === noms[i]) ent = e; });
-      if (!ent) return null;
-      Mx = mul(Mx, ent.objet ? ent.objet.matrice() : (ent.M || ID));
-      accEnt = ent;
-      cur = ent.objet;
-      if (!cur) break;
+
+    /*
+     * DEUX COUCHES, PAS UNE — ET SOUS CHACUNE, PLUSIEURS ROULEAUX.
+     *
+     * Un accessoire vit sur `ca` (devant les cheveux) ET sur `cb` (derrière la
+     * tête) : deux caractères distincts. Onze types sur seize ont une partie
+     * arrière — les bananes qui pendent dans le dos, l'arrière d'un chapeau, un
+     * bandeau qui fait le tour. Ne suivre que l'avant, c'était livrer au
+     * graphiste un gabarit amputé, sans le dire.
+     *
+     * Et sous `c`, il n'y a pas toujours un seul rouleau. Trois types portent un
+     * SECOND `acc2`, qui suit la même variante et se peint à sa propre
+     * profondeur : au-dessus pour le bonnet de bain (type 2) et le type 15, en
+     * dessous pour la casquette (type 3). L'ignorer coûtait deux fois — le
+     * gabarit y perdait une pièce, et une variante ajoutée au-delà de sa longueur
+     * s'y BORNAIT, héritant du bandeau rose du bonnet de bain sans l'avoir
+     * demandé. On les relève donc tous, dans l'ordre où ils se peignent.
+     */
+    function suivre(cote) {
+      var Mx = mul(ID, face.matrice());
+      var cur = face;
+      var noms = [cote, "c"];
+      for (var i = 0; i < noms.length; i++) {
+        var trouve = null;
+        cur.enfants.forEach(function (e) { if (e.nom === noms[i]) trouve = e; });
+        if (!trouve || !trouve.objet) return null;
+        Mx = mul(Mx, trouve.objet.matrice());
+        cur = trouve.objet;
+      }
+      // Les rouleaux de l'accessoire : `acc`, et ses compagnons `acc2`, `acc3`…
+      // Tout le reste sous `c` (la coiffure elle-même, posée en `col`) n'est pas
+      // de l'accessoire et ne se touche pas.
+      var reels = [];
+      cur.enfants.forEach(function (e, prof) {
+        if (!e.nom || !/^acc\d*$/.test(e.nom) || !e.objet) return;
+        var sp = defs.sprites.get(e.ch);
+        if (!sp) return;
+        var Mr = mul(Mx, e.objet.matrice());
+        reels.push({ nom: e.nom, id: e.ch, sprite: sp, prof: prof,
+          versScene: Mr, versAcc: inverse(Mr) });
+      });
+      reels.sort(function (a, b) { return a.prof - b.prof; });
+      var principal = null;
+      for (var k = 0; k < reels.length; k++) if (reels[k].nom === "acc") principal = reels[k];
+      if (!principal) return null;
+      return { id: principal.id, sprite: principal.sprite,
+        versScene: principal.versScene, versAcc: principal.versAcc, reels: reels };
     }
-    if (!accEnt || !accEnt.objet) return null;
-    var sprite = defs.sprites.get(accEnt.ch);
-    if (!sprite) return null;
+
+    var av = suivre("ca");
+    if (!av) return null;
+    var ar = suivre("cb");
+    // UN SEUL ROULEAU POUR LES DEUX CÔTÉS, parfois : le type 13 pose le même
+    // caractère devant et derrière. Il n'y a alors pas de couche arrière à
+    // distinguer — la prendre pour telle, c'était exporter chaque tracé en
+    // double, puis écraser l'image qu'on venait d'injecter en croyant écrire
+    // derrière.
+    if (ar && ar.id === av.id) ar = null;
     return {
-      accId: accEnt.ch, sprite: sprite,
-      versScene: Mx, versAcc: inverse(Mx),
-      variantes: sprite.n,
+      accId: av.id, sprite: av.sprite,
+      versScene: av.versScene, versAcc: av.versAcc,
+      variantes: av.sprite.n, reels: av.reels,
+      // L'arrière : absent pour cinq types (lunettes, nez…), c'est normal.
+      arriere: ar ? { accId: ar.id, sprite: ar.sprite, versScene: ar.versScene,
+        versAcc: ar.versAcc, variantes: ar.sprite.n, reels: ar.reels } : null,
     };
   }
 
@@ -134,91 +201,197 @@
    * @returns {Array<{d,fill,alpha,m,slot}>} en repère scène
    */
   function exporter(defs, type, variante, coiffureRef) {
+    var M = moteur();
     var rep = repere(defs, type, coiffureRef);
     if (!rep) return [];
-    var etats = etatsDe(defs, rep.sprite);
-    var liste = etats[Math.max(0, Math.min(variante, etats.length - 1))];
-    if (!liste) return [];
 
-    var SLOTS = { col: 1, col2: 2, col3: 3 };
-    var out = [];
-    // On descend chaque calque posé par l'image de la variante. Un sous-clip
-    // nommé col/col2/col3 marque le NIVEAU DE COULEUR de tout ce qu'il contient.
-    function descendre(ch, Mparent, slot, prof) {
-      if (prof > 6) return;
-      var sp = defs.sprites.get(ch);
-      if (sp) {
-        var st = etatsDe(defs, sp)[0] || new Map();
-        var profs = [];
-        st.forEach(function (v, k) { profs.push(k); });
-        profs.sort(function (a, b) { return a - b; });
-        for (var i = 0; i < profs.length; i++) {
-          var e = st.get(profs[i]);
-          var s2 = SLOTS[e.nom] || slot;
-          descendre(e.ch, mul(Mparent, e.M || ID), s2, prof + 1);
-        }
-        return;
-      }
-      var f = defs.formes.get(ch);
-      if (!f) return;
+    /*
+     * ON LIT L'ARBRE MONTÉ, PAS LES PELLICULES.
+     *
+     * Refaire à côté ce que le rendu fait déjà, c'était refaire aussi ses
+     * exceptions — et il y en a. En huit essais, l'exportateur « structurel »
+     * a manqué : les transformations de couleur d'une pose (le casque-mouche
+     * est un dessin BLANC verdi par son placement), les formes MORPHÉES, les
+     * MASQUES, le second rouleau `acc2`, le marqueur d'atelier, et la règle du
+     * DERNIER `col` posé. On marche donc l'arbre que `definir()` vient de
+     * monter, dans l'ordre exact où `dessinerClip` le peint.
+     *
+     * Reste à savoir quel niveau de couleur porte quel clip. Plutôt que de
+     * redire la règle, on la LIT : on monte la bouille avec trois couleurs
+     * SENTINELLES, et le clip qu'`apply()` a choisi de teindre se reconnaît à
+     * l'identité de sa teinte. C'est vrai par construction.
+     */
+    var p = function (n) { return M.encode62(n, 2); };
+    var co = (coiffureRef == null) ? 8 : coiffureRef;
+    var S = [1, 3, 4];                   // trois index de palette, tous distincts
+    var mo = new M.Moteur(defs, { alea: function () { return 0.5; } });
+    mo.creerVisage();
+    mo.definir(p(0) + p(3) + p(0) + p(co) + p(0) + p(2) + p(7) + p(type)
+      + p(variante) + p(S[0]) + p(S[1]) + p(S[2]));
+    var PAL = M.PALETTE;
+    var sentinelles = [PAL[S[0]] || PAL[0], PAL[S[1]] || PAL[0], PAL[S[2]] || PAL[0]];
+    var face = mo.racine.face;
+    if (!face) return [];
+
+    var out = [], nDecoupe = 0;
+    marcher(face, ID, null, 1, 0, "r", true, null, false, null);
+    return out;
+
+    function slotDe(clip) {
+      var t = clip && clip.teinte;
+      if (!t) return 0;
+      for (var i = 0; i < 3; i++) if (t === sentinelles[i]) return i + 1;
+      return 0;
+    }
+
+    function emettre(ch, Mx, cx, alpha, ratio, slot, avant, decoupe, estDecoupe, reel) {
+      var t = mo.formeDe(ch, ratio);
+      if (!t) return;
+      var f = t.f;
       for (var k = 0; k < f.couches.length; k++) {
         var c = f.couches[k];
+        // Un tracé de DÉCOUPE ne se peint pas : seule sa forme compte. Un trait
+        // n'y découpe rien (le rendu ne retient que les pleins).
+        if (estDecoupe && c.trait) continue;
         // Un dégradé n'a pas de couleur unique : on le transporte tel quel, et
-        //  ne sert plus que de repli pour un lecteur qui l'ignorerait.
-        if (!c.rgb && !c.degrade) continue;
-        var repli = c.rgb || (c.degrade.arrets[0] && c.degrade.arrets[0].rgb) || [136, 136, 136];
-        out.push({
+        // `fill` ne sert plus que de repli pour un lecteur qui l'ignorerait.
+        if (!c.rgb && !c.degrade && !estDecoupe) continue;
+        var a = opacite(c.alpha == null ? 1 : c.alpha, cx) * alpha;
+        if (a <= 0 && !estDecoupe) continue;
+        var repli = c.rgb || (c.degrade && c.degrade.arrets[0] && c.degrade.arrets[0].rgb)
+          || [136, 136, 136];
+        var p = {
           d: c.d,
-          fill: "rgb(" + repli[0] + "," + repli[1] + "," + repli[2] + ")",
-          degrade: c.degrade || null,
-          alpha: (c.alpha == null ? 1 : c.alpha),
-          m: [Mparent.a, Mparent.b, Mparent.c, Mparent.d, Mparent.e, Mparent.f],
+          fill: M.teindre(repli, cx),
+          degrade: c.degrade ? teindreDegrade(c.degrade, cx) : null,
+          alpha: Math.round(a * 1000) / 1000,
+          m: [Mx.a, Mx.b, Mx.c, Mx.d, Mx.e, Mx.f],
           slot: slot || 0,
+          avant: avant,
           trait: !!c.trait, largeur: c.largeur || 0,
-        });
+          // De quel rouleau vient ce tracé. Le gabarit s'en moque — tout ira dans
+          // `acc` — mais savoir si le rouleau PRINCIPAL a dessiné quelque chose,
+          // c'est savoir si la variante existe : le type 15 déclare seize images
+          // et n'en dessine que deux, les autres ne montrant que le reliquat
+          // d'`acc2` qui s'y borne.
+          reel: reel || null,
+        };
+        if (decoupe) {
+          p.decoupe = decoupe;
+          if (estDecoupe) { p.estDecoupe = true; p.alpha = 1; p.slot = 0; }
+        }
+        out.push(p);
       }
     }
-    var profs = [];
-    liste.forEach(function (v, k) { profs.push(k); });
-    profs.sort(function (a, b) { return a - b; });
-    for (var i = 0; i < profs.length; i++) {
-      var e = liste.get(profs[i]);
-      descendre(e.ch, mul(rep.versScene, e.M || ID), SLOTS[e.nom] || 0, 0);
+
+    function poser(e, Mi, cxi, ai, s, ctxt, avant, decoupe, estDecoupe, reel) {
+      var sous = ctxt, av = avant, rl = reel;
+      if (ctxt === "r" && (e.nom === "ca" || e.nom === "cb")) {
+        sous = "C"; av = e.nom === "ca";
+      } else if (ctxt === "C" && e.nom === "c") sous = "A";
+      else if (ctxt === "A" && e.nom && /^acc\d*$/.test(e.nom)) { sous = "R"; rl = e.nom; }
+      if (e.objet) marcher(e.objet, Mi, cxi, ai, s, sous, av, decoupe, estDecoupe, rl);
+      else if (ctxt.charAt(0) === "R") {
+        emettre(e.ch, M.composerM(Mi, e.M), M.composerCx(cxi, e.cx || null),
+          ai, e.ratio, s, av, decoupe, estDecoupe, rl);
+      }
+    }
+
+    /*
+     * Le même parcours que `dessinerClip`, à deux choses près :
+     *   · on ne peint que ce qui est DANS un rouleau d'accessoire (`ctxt` en R) ;
+     *   · la teinte du joueur ne s'exporte pas — elle devient un NIVEAU, pour que
+     *     le graphiste retrouve des gris qu'il pourra faire recolorer.
+     *
+     * LES DÉCOUPES SE TRANSPORTENT. Deux variantes d'époque en portent une (la
+     * casquette 25 et le type 16 variante 1). L'exporter sans elle laissait la
+     * lueur rouge du micro s'étaler sur tout le visage ; la sauter emportait les
+     * plumes bleues avec. Chaque découpe reçoit donc un numéro : son tracé part
+     * marqué `estDecoupe`, ce qu'elle rogne part marqué du même numéro, et le
+     * SVG les rend en `<clipPath>` — ce qu'Illustrator appelle un masque
+     * d'écrêtage, et que le graphiste peut donc faire aussi.
+     */
+    function marcher(clip, Mx, cx, alpha, slot, ctxt, avant, decoupe, estDecoupe, reel) {
+      if (!clip.visible || clip.marqueur) return;
+      var dedans = ctxt.charAt(0) === "R";
+      // Un clip teint remplace sa transformation de placement par la teinte :
+      // c'est ce que fait le rendu, et l'une exclut donc l'autre.
+      var mc = clip.teinte ? null : clip.cxPlacement;
+      var cxi = M.composerCx(cx, mc || null);
+      var ai = alpha * (clip.alpha / 100);
+      if (ai <= 0) return;
+      var Mi = M.composerM(Mx, clip.matrice());
+      var s = dedans ? (slotDe(clip) || slot) : 0;
+      var profs = Array.from(clip.enfants.keys()).sort(function (a, b) { return a - b; });
+      var i = 0;
+      while (i < profs.length) {
+        var e = clip.enfants.get(profs[i]);
+        if (e.masque && !decoupe) {
+          var mid = "d" + (++nDecoupe);
+          poser(e, Mi, cxi, ai, s, ctxt, avant, mid, true, reel);
+          i++;
+          while (i < profs.length && profs[i] <= e.masque) {
+            poser(clip.enfants.get(profs[i]), Mi, cxi, ai, s, ctxt, avant, mid, false, reel);
+            i++;
+          }
+          continue;
+        }
+        poser(e, Mi, cxi, ai, s, ctxt, avant, decoupe, estDecoupe, reel);
+        i++;
+      }
+    }
+  }
+
+  /**
+   * Cette variante EXISTE-T-ELLE VRAIMENT ?
+   *
+   * Un rouleau déclare souvent plus d'images qu'il n'en dessine — le type 15 en
+   * annonce seize et n'en peint que deux, le type 1 trente-deux pour huit. Les
+   * images de queue ne portent rien, ou seulement le reliquat d'un rouleau
+   * compagnon qui s'y borne : les proposer comme gabarit, c'était promettre un
+   * dessin qui n'existe pas. On demande donc au rouleau PRINCIPAL s'il a peint.
+   */
+  function dessinee(defs, type, variante, coiffureRef) {
+    var l = exporter(defs, type, variante, coiffureRef);
+    // C'EST L'AVANT QUI DÉCIDE — comme `apply()`, qui ne teste que la visibilité
+    // de `ca.c.acc` et fait suivre l'arrière. Le rouleau arrière de la casquette
+    // n'a qu'une image, servie à ses trente-huit variantes ET à sa queue vide :
+    // s'y fier, c'était compter des variantes qui ne montrent rien.
+    for (var i = 0; i < l.length; i++) {
+      if (l[i].reel === "acc" && l[i].avant !== false) return true;
+    }
+    return false;
+  }
+
+  // L'opacité d'un aplat sous une transformation de couleur, comme le moteur la
+  // calcule (le multiplicateur est en 8.8, l'ajout en 0-255).
+  function opacite(a, cx) {
+    if (!cx) return a;
+    return Math.max(0, Math.min(1, a * cx.ma / 256 + cx.aa / 255));
+  }
+
+  // Un dégradé teint : chaque arrêt subit la transformation, comme au rendu.
+  function teindreDegrade(g, cx) {
+    if (!cx) return g;
+    var M = moteur();
+    var out = { type: g.type, matrice: g.matrice, etalement: g.etalement, arrets: [] };
+    for (var i = 0; i < g.arrets.length; i++) {
+      var a = g.arrets[i], rgb = M.teindre(a.rgb, cx);
+      var n = /(\d+),(\d+),(\d+)/.exec(rgb);
+      out.arrets.push({
+        pos: a.pos,
+        rgb: n ? [+n[1], +n[2], +n[3]] : a.rgb,
+        alpha: opacite(a.alpha == null ? 1 : a.alpha, cx),
+      });
     }
     return out;
   }
 
-  // `etatsDe` du moteur n'est pas exporté : on refait la même résolution (une
-  // image = la liste d'affichage laissée par les précédentes), et on la range
-  // sur la pellicule pour ne la calculer qu'une fois.
-  function etatsDe(defs, def) {
-    if (def._etatsVar) return def._etatsVar;
-    var etats = [], courant = new Map();
-    for (var i = 0; i < def.images.length; i++) {
-      courant = new Map(courant);
-      var ordres = def.images[i];
-      for (var j = 0; j < ordres.length; j++) {
-        var o = ordres[j];
-        if (o.t === "retire") courant.delete(o.prof);
-        else if (o.t === "pose") {
-          var avant = courant.get(o.prof);
-          var ch = o.ch, M = o.M, nom = o.nom;
-          if (o.deplace || ch < 0) {
-            if (!avant) { if (ch < 0) continue; } else {
-              if (ch < 0) ch = avant.ch;
-              if (M === null) M = avant.M;
-              if (nom === null) nom = avant.nom;
-            }
-          }
-          if (ch < 0) continue;
-          courant.set(o.prof, { ch: ch, M: M || ID, nom: nom || null });
-        }
-      }
-      etats.push(courant);
-    }
-    def._etatsVar = etats;
-    return etats;
-  }
+  // La résolution d'une pellicule (une image = la liste d'affichage laissée par
+  // les précédentes) est celle du MOTEUR, pas une seconde écriture : la nôtre
+  // oubliait la transformation de couleur, le masque et le ratio de morph — trois
+  // choses qui font la différence entre le dessin d'époque et notre copie.
+  function etatsDe(defs, def) { return moteur().etatsDe(def); }
 
   /**
    * INJECTE une nouvelle variante dans le caractère `acc` du type demandé.
@@ -238,151 +411,260 @@
    *
    * @returns {{variante:number, accId:number}|null} l'index à mettre en positions 16-17
    */
-  function injecter(defs, opts) {
-    opts = opts || {};
-    var type = (opts.type == null) ? 3 : opts.type;
-    var paths = opts.paths || [];
-    // `vide` : une image SANS rien, qui ne sert qu'à garder sa place. Une variante
-    // retirée du catalogue s'injecte ainsi — sinon toutes celles publiées après
-    // elle reculeraient d'un cran, et les joueurs qui les portent verraient un
-    // autre accessoire.
-    if (!paths.length && !opts.vide) return null;
-    var rep = repere(defs, type, opts.coiffureRef);
-    if (!rep) return null;
-
-    /*
-     * L'ORDRE DE PEINTURE EST TOUT — et il ne se regroupe pas par couleur.
-     *
-     * La casquette d'époque alterne : le fond, puis `col`, puis une pièce fixe,
-     * puis `col2`, puis le micro PAR-DESSUS. Regrouper d'abord tout ce qui garde
-     * sa couleur, ensuite les niveaux, cachait le micro sous la calotte.
-     *
-     * On garde donc l'ordre du dessin, profondeur par profondeur : chaque tracé
-     * à couleur fixe est posé TEL QUEL (une forme se pose aussi bien qu'un clip),
-     * et chaque niveau de couleur est un sous-clip UNIQUE — `apply()` le retrouve
-     * par son nom, et deux clips du même nom se voleraient la teinte — posé à la
-     * profondeur de sa PREMIÈRE apparition.
-     */
+  /*
+   * Les calques d'une couche : une forme par tracé, un sous-clip par niveau de
+   * couleur. Sortie commune à l'avant et à l'arrière — c'est le même travail des
+   * deux côtés, seule la matrice « scène → acc » change.
+   *
+   * L'ORDRE DE PEINTURE EST TOUT, et il ne se regroupe pas par couleur. La
+   * casquette d'époque alterne : le fond, puis `col`, une pièce fixe, `col2`,
+   * puis le micro PAR-DESSUS. Regrouper d'abord les couleurs fixes cachait le
+   * micro sous la calotte. Chaque tracé fixe est donc posé tel quel, à sa
+   * profondeur ; chaque niveau est un sous-clip UNIQUE (deux clips du même nom se
+   * voleraient la teinte) posé à la profondeur de sa première apparition.
+   */
+  function construirePoses(defs, paths, versAcc) {
     var NOMS = { 1: "col", 2: "col2", 3: "col3" };
-    var sousClips = {};     // slot → { img: [ordres], prof: profondeur de pose }
-    var poses = [];
-    for (var i = 0; i < paths.length; i++) {
-      var p = paths[i];
-      if (!p || !p.d) continue;
-      var slot = (p.slot === 1 || p.slot === 2 || p.slot === 3) ? p.slot : 0;
+    var poses = [], serie = null;
+    // Une profondeur PAIRE par tracé, dans l'ordre : les impaires restent libres
+    // pour les masques, qui doivent se glisser JUSTE sous ce qu'ils rognent.
+    var prof = function (i) { return (i + 1) * 2; };
+
+    function formeDe(p) {
       var rgb = versRgb(p.fill);
-      if (!rgb) continue;
+      if (!rgb) return 0;
       var fid = prochainId(defs);
       defs.formes.set(fid, {
         id: fid,
         bounds: { x: 0, y: 0, w: 1, h: 1 },     // informatif : le rendu n'en dépend pas
         couches: [{
           d: p.d, rgb: rgb, alpha: (p.alpha == null ? 1 : p.alpha),
-          // Un dégradé EN GRIS se teinte comme un aplat, ombres comprises :
-          // c'est la façon la plus directe de donner du volume à une zone
-          // recolorable.  reste là pour les lecteurs qui l'ignorent.
+          // Un dégradé EN GRIS se teinte comme un aplat, ombres comprises : c'est
+          // la façon la plus directe de donner du volume à une zone recolorable.
           trait: !!p.trait, largeur: p.largeur || 1, degrade: p.degrade || null,
         }],
       });
-      // scène → acc, puis la matrice propre du tracé.
+      return fid;
+    }
+    function matriceDe(p) {
       var mp = Array.isArray(p.m)
         ? { a: p.m[0], b: p.m[1], c: p.m[2], d: p.m[3], e: p.m[4], f: p.m[5] } : ID;
-      var Mfinal = mul(rep.versAcc, mp);
-      var prof = (i + 1) * 2;
-      if (!slot) {
-        poses.push({ t: "pose", ch: fid, prof: prof, M: Mfinal,
-          nom: null, masque: 0, cx: null, deplace: false });
-      } else {
-        if (!sousClips[slot]) sousClips[slot] = { img: [], prof: prof };
-        var sc = sousClips[slot];
-        // Dans le sous-clip, la matrice est déjà celle de l'acc : le clip lui-même
-        // est posé sans transformation, ses membres portent la leur.
-        sc.img.push({ t: "pose", ch: fid, prof: sc.img.length + 1, M: Mfinal,
-          nom: null, masque: 0, cx: null, deplace: false });
-      }
+      return mul(versAcc, mp);
     }
-    for (var s in sousClips) {
-      if (!Object.prototype.hasOwnProperty.call(sousClips, s)) continue;
-      var g = sousClips[s];
-      var sid = prochainId(defs);
-      defs.sprites.set(sid, { n: 1, labels: {}, images: [g.img] });
-      poses.push({ t: "pose", ch: sid, prof: g.prof, M: ID,
-        nom: NOMS[s], masque: 0, cx: null, deplace: false });
-    }
-    if (!poses.length && !opts.vide) return null;
 
-    // L'image neuve : on efface d'abord TOUS les calques que les variantes
-    // précédentes ont pu laisser (une pellicule garde ce que l'image d'avant a
-    // posé), puis on pose les nôtres.
-    /*
-     * EFFACER TOUT CE QUE LE ROULEAU PEUT PORTER — pas seulement nos propres
-     * calques.
-     *
-     * Une pellicule GARDE ce que l'image précédente a posé. Notre image doit donc
-     * faire table rase avant de poser la sienne. On ne bornait l'effacement qu'à
-     * nos propres profondeurs (au moins 64) : une variante à quarante tracés
-     * montant jusqu'à la profondeur 80, la variante suivante — plus courte —
-     * héritait de ses huit derniers calques. D'où des accessoires qui se
-     * mélangeaient en production, alors que l'atelier, où une seule variante est
-     * injectée, n'avait rien à hériter et montrait le bon dessin.
-     *
-     * On balaie donc jusqu'à la profondeur la plus haute que le rouleau ait
-     * jamais utilisée, variantes déjà injectées comprises.
-     */
-    var maxProf = 64;
-    for (var q = 0; q < poses.length; q++) if (poses[q].prof > maxProf) maxProf = poses[q].prof;
-    for (var im = 0; im < rep.sprite.images.length; im++) {
-      var ordres = rep.sprite.images[im];
-      for (var oi = 0; oi < ordres.length; oi++) {
-        if (ordres[oi].prof > maxProf) maxProf = ordres[oi].prof;
+    var i = 0, decoupeEnCours = null;
+    while (i < paths.length) {
+      var p = paths[i];
+      if (!p || !p.d) { i++; continue; }
+      // Entrer ou sortir d'une découpe ferme la série de couleur en cours : son
+      // clip est posé à une profondeur, et cette profondeur est rognée ou non.
+      if ((p.decoupe || null) !== decoupeEnCours) {
+        decoupeEnCours = p.decoupe || null;
+        serie = null;
       }
+
+      /*
+       * UN MASQUE D'ÉCRÊTAGE. Son tracé va dans un clip à lui — il peut en compter
+       * plusieurs, chacun avec sa matrice — posé sur une profondeur IMPAIRE juste
+       * sous ce qu'il rogne, et sa profondeur de découpe va jusqu'au dernier tracé
+       * rogné. C'est le mécanisme d'époque, celui que `dessinerClip` applique déjà.
+       */
+      if (p.estDecoupe && p.decoupe) {
+        var id = p.decoupe, img = [], k = i;
+        while (k < paths.length && paths[k] && paths[k].estDecoupe && paths[k].decoupe === id) {
+          var fd = paths[k].d ? formeDe(paths[k]) : 0;
+          if (fd) {
+            img.push({ t: "pose", ch: fd, prof: img.length + 1, M: matriceDe(paths[k]),
+              nom: null, masque: 0, cx: null, deplace: false });
+          }
+          k++;
+        }
+        var fin = k;
+        while (fin < paths.length && paths[fin] && paths[fin].decoupe === id && !paths[fin].estDecoupe) fin++;
+        if (img.length && fin > k) {
+          var mid = prochainId(defs);
+          defs.sprites.set(mid, { n: 1, labels: {}, images: [img] });
+          poses.push({ t: "pose", ch: mid, prof: prof(i) - 1, M: ID,
+            nom: null, masque: prof(fin - 1), cx: null, deplace: false });
+        }
+        serie = null;                       // un masque coupe la série de couleur
+        i = k;
+        continue;
+      }
+
+      var slot = (p.slot === 1 || p.slot === 2 || p.slot === 3) ? p.slot : 0;
+      var fid = formeDe(p);
+      if (!fid) { i++; continue; }
+      var Mfinal = matriceDe(p);
+      if (!slot) {
+        serie = null;
+        poses.push({ t: "pose", ch: fid, prof: prof(i), M: Mfinal,
+          nom: null, masque: 0, cx: null, deplace: false });
+        i++;
+        continue;
+      }
+      // UNE SÉRIE, UN CLIP. Un même niveau qui revient après autre chose — le
+      // type 15 peint du niveau 2, une ombre, puis encore du niveau 2 — ouvre un
+      // NOUVEAU clip à sa place dans la pile. Tout regrouper sous un seul clip,
+      // comme on le faisait, ramenait la seconde série à la place de la première
+      // et faisait passer l'ombre par-dessus. Le moteur teint tous nos clips.
+      if (!serie || serie.slot !== slot) {
+        var sous = [];
+        var sid = prochainId(defs);
+        defs.sprites.set(sid, { n: 1, labels: {}, images: [sous], varTeinte: slot });
+        poses.push({ t: "pose", ch: sid, prof: prof(i), M: ID,
+          nom: NOMS[slot], masque: 0, cx: null, deplace: false });
+        serie = { slot: slot, img: sous };
+      }
+      serie.img.push({ t: "pose", ch: fid, prof: serie.img.length + 1, M: Mfinal,
+        nom: null, masque: 0, cx: null, deplace: false });
+      i++;
     }
-    var retires = [];
-    for (var pr = 1; pr <= maxProf; pr++) retires.push({ t: "retire", prof: pr });
+    return poses;
+  }
+
+  /*
+   * EFFACER TOUT CE QUE LE ROULEAU PEUT PORTER — pas seulement nos propres
+   * calques. Une pellicule GARDE ce que l'image précédente a posé : une variante
+   * de quarante tracés monte jusqu'à la profondeur 80, et la suivante, plus
+   * courte, héritait de ses derniers calques. On balaie donc jusqu'à la plus
+   * haute profondeur que le rouleau ait jamais utilisée.
+   */
+  function effacements(sprite, poses) {
+    var max = 64;
+    for (var q = 0; q < poses.length; q++) if (poses[q].prof > max) max = poses[q].prof;
+    for (var im = 0; im < sprite.images.length; im++) {
+      var o = sprite.images[im];
+      for (var oi = 0; oi < o.length; oi++) if (o[oi].prof > max) max = o[oi].prof;
+    }
+    var out = [];
+    for (var pr = 1; pr <= max; pr++) out.push({ t: "retire", prof: pr });
+    return out;
+  }
+
+  /*
+   * L'état où un rouleau se BORNE — celui que voient les variantes dont l'index
+   * dépasse sa longueur (`allerImage` borne à la dernière image).
+   *
+   * Il faut le connaître pour allonger un rouleau ARRIÈRE sans rien casser :
+   * la casquette n'a qu'une image d'arrière, partagée par ses trente-huit
+   * variantes. L'allonger avec des images VIDES ferait disparaître l'arrière de
+   * toutes celles qui s'y bornaient. On comble donc avec une copie de cet état.
+   */
+  function etatDeBornage(sprite) {
+    if (sprite._bornage) return sprite._bornage;
+    var st = etatsDe(null, sprite)[sprite.images.length - 1] || new Map();
+    var poses = [];
+    var profs = [];
+    st.forEach(function (v, k) { profs.push(k); });
+    profs.sort(function (a, b) { return a - b; });
+    for (var i = 0; i < profs.length; i++) {
+      var e = st.get(profs[i]);
+      poses.push({ t: "pose", ch: e.ch, prof: profs[i], M: e.M || ID,
+        nom: e.nom || null, masque: 0, cx: null, deplace: false });
+    }
+    sprite._bornage = poses;
+    return poses;
+  }
+
+  function injecter(defs, opts) {
+    opts = opts || {};
+    var type = (opts.type == null) ? 3 : opts.type;
+    var tous = opts.paths || [];
+    // `vide` : une image SANS rien, qui ne sert qu'à garder sa place. Une variante
+    // retirée du catalogue s'injecte ainsi — sinon toutes celles publiées après
+    // elle reculeraient d'un cran, et les joueurs qui les portent verraient un
+    // autre accessoire.
+    if (!tous.length && !opts.vide) return null;
+    var rep = repere(defs, type, opts.coiffureRef);
+    if (!rep) return null;
+
+    // Deux couches : ce qui passe devant les cheveux, et ce qui passe derrière la
+    // tête. Le gabarit les sépare en calques ; on les renvoie chacune dans SON
+    // rouleau, à la même place.
+    var devant = [], derriere = [];
+    for (var k = 0; k < tous.length; k++) {
+      (tous[k] && tous[k].avant === false ? derriere : devant).push(tous[k]);
+    }
+
+    var poses = construirePoses(defs, devant, rep.versAcc);
+    // Un accessoire qui ne se voit QUE derrière la tête reste un accessoire : il
+    // occupe une image du rouleau de devant, vide, pour tenir sa place — le refuser
+    // aurait été refuser une queue de cheval ou une écharpe qui pend dans le dos.
+    if (!poses.length && !derriere.length && !opts.vide) return null;
+    var retires = effacements(rep.sprite, poses);
+
     /*
      * L'INDEX EST UN FAIT, PAS UNE CONSÉQUENCE.
      *
-     * Une variante valait par son RANG d'injection : le troisième publié tombait
-     * à l'index 40 parce que deux autres étaient passés avant. Tout écart entre
-     * ce qu'un client avait injecté et ce que le serveur savait donnait alors un
-     * AUTRE accessoire — silencieusement. C'est la cause des « les autres ne
-     * voient pas mon accessoire » et des accessoires qui s'échangent.
-     *
-     * `index` met fin à cette dépendance : on comble le rouleau d'images vides
-     * jusqu'à la place demandée, puis on pose la nôtre. Une variante tombe donc
-     * TOUJOURS au même index, quel que soit le nombre de variantes qu'un client
-     * a pu charger avant elle, et dans quel ordre.
+     * Une variante valait par son RANG d'injection : la troisième publiée tombait
+     * à l'index 40 parce que deux autres étaient passées avant. Tout écart entre
+     * ce qu'un client avait chargé et ce que le serveur savait donnait alors un
+     * AUTRE accessoire — silencieusement. On comble donc le rouleau jusqu'à la
+     * place demandée, et la variante y tombe toujours.
      */
     var cible = (opts.index == null) ? rep.sprite.n : Math.max(rep.sprite.n, Math.floor(opts.index));
-    while (rep.sprite.images.length < cible) {
-      // Une place tenue, qui ne dessine rien : le même effacement, sans pose.
-      rep.sprite.images.push(retires.slice());
-    }
+    while (rep.sprite.images.length < cible) rep.sprite.images.push(retires.slice());
     rep.sprite.images.push(retires.concat(poses));
     rep.sprite.n = rep.sprite.images.length;
-    // Les états résolus sont mis en cache par le moteur ET par nous : les deux
-    // caches parlent d'une pellicule qui vient de changer.
     delete rep.sprite._etats;
-    delete rep.sprite._etatsVar;
+    var index = rep.sprite.n - 1;
 
-    return { variante: rep.sprite.n - 1, accId: rep.accId };
+    /*
+     * L'ARRIÈRE, dès qu'il y a un rouleau pour l'accueillir — MÊME SANS DESSIN.
+     *
+     * Une variante neuve dont le graphiste n'a rien mis derrière la tête doit
+     * n'avoir rien derrière la tête. Ne pas toucher au rouleau arrière, comme on
+     * le faisait, la laissait s'y BORNER : le bonnet de bain prêtait son arrière
+     * d'époque à un accessoire qui ne le demandait pas. On y écrit donc toujours,
+     * quitte à n'y écrire que du vide.
+     */
+    if (rep.arriere) {
+      var spAr = rep.arriere.sprite;
+      var bornage = etatDeBornage(spAr);
+      var posesAr = construirePoses(defs, derriere, rep.arriere.versAcc);
+      var retiresAr = effacements(spAr, posesAr.concat(bornage));
+      // L'arrière doit tomber au MÊME index que l'avant. Deux cas :
+      //  · le rouleau arrière est plus court — on le comble jusque-là, puis on
+      //    pose (le bonnet de nuit, la casquette : une seule image d'arrière) ;
+      //  · il est plus LONG que l'index — le bonnet type 1 a seize images devant
+      //    et vingt-cinq derrière. Les images d'arrière au-delà de la longueur de
+      //    l'avant ne sont JAMAIS choisies (`apply` cale les deux sur le même
+      //    numéro) : on écrit donc par-dessus, sans rien retirer à personne.
+      //    Ajouter à la fin, comme on le faisait, décalait l'arrière de neuf
+      //    crans — l'accessoire perdait sa partie arrière.
+      while (spAr.images.length < index) spAr.images.push(retiresAr.concat(bornage));
+      if (spAr.images.length > index) spAr.images[index] = retiresAr.concat(posesAr);
+      else spAr.images.push(retiresAr.concat(posesAr));
+      spAr.n = spAr.images.length;
+      delete spAr._etats;
+    }
+
+    // LES ROULEAUX COMPAGNONS SE TAISENT à notre index. Tout le dessin part dans
+    // `acc` ; si `acc2` gardait son mot à dire, il se bornerait à sa dernière
+    // image et poserait le bandeau du bonnet de bain sur une variante qui ne l'a
+    // jamais demandé. On le comble jusqu'à nous avec son état de bornage — c'est
+    // le comportement d'époque, dû aux variantes d'origine — et on le vide À notre
+    // place, à la nôtre seulement.
+    taire(rep, index);
+    if (rep.arriere) taire(rep.arriere, index);
+
+    return { variante: index, accId: rep.accId };
   }
 
-  // « rgb(1,2,3) », « #abc », « #aabbcc » → [r,g,b]. Rien d'autre n'est accepté :
-  // une couleur qu'on ne sait pas lire ne doit pas devenir un tracé noir.
-  function versRgb(v) {
-    var s = String(v == null ? "" : v).trim();
-    var m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(s);
-    if (m) return [Math.round(+m[1]), Math.round(+m[2]), Math.round(+m[3])];
-    m = /^#([0-9a-f]{3})$/i.exec(s);
-    if (m) {
-      return [parseInt(m[1][0] + m[1][0], 16), parseInt(m[1][1] + m[1][1], 16), parseInt(m[1][2] + m[1][2], 16)];
+  function taire(r, index) {
+    var reels = r.reels || [];
+    for (var i = 0; i < reels.length; i++) {
+      var sp = reels[i].sprite;
+      if (sp === r.sprite) continue;              // le rouleau principal, lui, parle
+      var vide = effacements(sp, []);
+      var bornage = etatDeBornage(sp);
+      while (sp.images.length < index) sp.images.push(vide.concat(bornage));
+      if (sp.images.length > index) sp.images[index] = vide.slice();
+      else sp.images.push(vide.slice());
+      sp.n = sp.images.length;
+      delete sp._etats;
     }
-    m = /^#([0-9a-f]{6})$/i.exec(s);
-    if (m) {
-      return [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16)];
-    }
-    return null;
   }
 
   /*
@@ -416,7 +698,7 @@
 
     // Les tracés, dans l'ordre de peinture, groupés par SÉRIES de même niveau :
     // un calque nommé par série, pour qu'Illustrator montre des calques parlants.
-    var corps = [], i = 0;
+    var corps = [];
     /*
      * LES DÉGRADÉS, dans l'autre sens.
      *
@@ -428,7 +710,7 @@
      * même repère que le `d` du tracé — et la transformation du tracé s'applique
      * ensuite aux deux, comme il se doit.
      */
-    var defsGrad = [];
+    var defsGrad = [], defsDecoupe = [];
     function refDegrade(g) {
       var E = { a: g.M.a / 20, b: g.M.b / 20, c: g.M.c / 20, d: g.M.d / 20, e: g.M.e / 20, f: g.M.f / 20 };
       var R = function (v) { return Math.round(v * 100) / 100; };
@@ -462,14 +744,47 @@
       var op = (p.alpha != null && p.alpha < 1) ? ' opacity="' + (Math.round(p.alpha * 1000) / 1000) + '"' : "";
       return '      <path d="' + p.d + '"' + peint + op + t + " />";
     }
-    while (i < paths.length) {
-      var s = paths[i].slot || 0, j = i;
-      while (j < paths.length && (paths[j].slot || 0) === s) j++;
-      var bloc = paths.slice(i, j).map(ligne).join("\n");
-      if (s) corps.push('    <g id="' + NOMS[s] + '">\n' + bloc + "\n    </g>");
-      else corps.push(bloc);
-      i = j;
+    // Les tracés d'UNE couche, groupés par séries de même niveau de couleur.
+    function serieDe(liste) {
+      var out = [], i = 0;
+      while (i < liste.length) {
+        var s = liste[i].slot || 0, j = i;
+        while (j < liste.length && (liste[j].slot || 0) === s) j++;
+        var bloc = liste.slice(i, j).map(ligne).join("\n");
+        if (s) out.push('    <g id="' + NOMS[s] + '">\n' + bloc + "\n    </g>");
+        else out.push(bloc);
+        i = j;
+      }
+      return out.join("\n");
     }
+    // Une DÉCOUPE devient un masque d'écrêtage : le tracé va dans un `clipPath`,
+    // ce qu'il rogne dans le groupe qui s'y réfère. Illustrator ouvre et rend
+    // l'un et l'autre, et un graphiste qui crée son propre masque d'écrêtage
+    // repassera par le même chemin au retour.
+    function corpsDe(liste) {
+      var out = [], i = 0;
+      while (i < liste.length) {
+        var dec = liste[i].decoupe || null, j = i;
+        while (j < liste.length && (liste[j].decoupe || null) === dec) j++;
+        var bloc = liste.slice(i, j);
+        if (!dec) out.push(serieDe(bloc));
+        else {
+          var tracé = bloc.filter(function (p) { return p.estDecoupe; });
+          var rogné = bloc.filter(function (p) { return !p.estDecoupe; });
+          defsDecoupe.push('    <clipPath id="' + dec + '">\n'
+            + tracé.map(function (p) { return "  " + ligne(p); }).join("\n") + "\n    </clipPath>");
+          out.push('    <g clip-path="url(#' + dec + ')">\n' + serieDe(rogné) + "\n    </g>");
+        }
+        i = j;
+      }
+      return out.join("\n");
+    }
+    // DEUX CALQUES, comme sur la bouille : ce qui passe derrière la tête et ce
+    // qui passe devant. Tout mettre dans « accessoire » — ce qu'on faisait —
+    // ramenait la partie arrière devant au réimport : les bananes qui pendent
+    // derrière la tête se retrouvaient plaquées sur le visage.
+    var corpsArriere = corpsDe(paths.filter(function (p) { return p.avant === false; }));
+    var corpsAvant = corpsDe(paths.filter(function (p) { return p.avant !== false; }));
 
     var fond = opts.fondTete || "";
     var image = fond
@@ -504,12 +819,20 @@
       + "    L'ORDRE DES CALQUES EST L'ORDRE DE PEINTURE. Un même niveau ne doit\n"
       + "    apparaître qu'à UN endroit de la pile.\n"
       + "\n"
+      + "    DEUX CALQUES DE DESSIN, de bas en haut :\n"
+      + "      · « accessoire-arriere » : ce qui passe DERRIÈRE la tête (la mèche d'un\n"
+      + "        bonnet, ce qui pend dans le dos). Souvent vide.\n"
+      + "      · « accessoire »         : ce qui passe DEVANT. C'est le calque habituel.\n"
+      + "    Un tracé rangé dans le mauvais des deux ressortira du mauvais côté du visage.\n"
+      + "\n"
       + "    « repere » (la tête) n'est qu'un fond : verrouille-le, il est ignoré au retour.\n"
       + "    Ne change pas la taille du plan de travail (" + sc.w + "×" + sc.h + ").\n"
       + "  -->\n"
-      + (defsGrad.length ? "  <defs>\n" + defsGrad.join("\n") + "\n  </defs>\n" : "")
+      + ((defsGrad.length || defsDecoupe.length)
+        ? "  <defs>\n" + defsGrad.concat(defsDecoupe).join("\n") + "\n  </defs>\n" : "")
+      + '  <g id="accessoire-arriere">\n' + corpsArriere + "\n  </g>\n"
       + '  <g id="repere" opacity="0.9" style="pointer-events:none">\n' + image + "\n  </g>\n"
-      + '  <g id="accessoire">\n' + corps.join("\n") + "\n  </g>\n"
+      + '  <g id="accessoire">\n' + corpsAvant + "\n  </g>\n"
       + "</svg>\n";
   }
 
@@ -528,8 +851,25 @@
     } catch (e) { return ""; }
   }
 
+  // « rgb(1,2,3) », « #abc », « #aabbcc » → [r,g,b]. Rien d'autre n'est accepté :
+  // une couleur qu'on ne sait pas lire ne doit pas devenir un tracé noir.
+  function versRgb(v) {
+    var s = String(v == null ? "" : v).trim();
+    var m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(s);
+    if (m) return [Math.round(+m[1]), Math.round(+m[2]), Math.round(+m[3])];
+    m = /^#([0-9a-f]{3})$/i.exec(s);
+    if (m) {
+      return [parseInt(m[1][0] + m[1][0], 16), parseInt(m[1][1] + m[1][1], 16), parseInt(m[1][2] + m[1][2], 16)];
+    }
+    m = /^#([0-9a-f]{6})$/i.exec(s);
+    if (m) {
+      return [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16)];
+    }
+    return null;
+  }
+
   var API = { repere: repere, exporter: exporter, exporterSVG: exporterSVG,
-    fondTete: fondTete, injecter: injecter, versRgb: versRgb };
+    dessinee: dessinee, fondTete: fondTete, injecter: injecter, versRgb: versRgb };
   if (typeof module === "object" && module.exports) module.exports = API;
   else global.FPBouilleVariante = API;
 })(typeof globalThis !== "undefined" ? globalThis : this);
