@@ -77,6 +77,12 @@ window.BureauFrutiz = (function () {
                   min: minFenetre(300, 200) },
     historique: { panneau: '#evt-panel',       titre: 'Mon historique', l: 314, h: 246, fixe: true,
                   min: minFenetre(300, 200) },
+    // `box.KikoozLog` (0x8b46e) : un TROISIÈME journal, du même `win.Log` que
+    // les deux autres — d'où le même panneau et le même gabarit. Son titre est
+    // celui de la table (`kikooz_log.title`), et il n'a pas de raccourci : on
+    // y entre par le petit bouton blanc du haut de la boutique.
+    kikoozlog:  { panneau: '#evt-panel',       titre: 'Historique Kikooz', l: 314, h: 246, fixe: true,
+                  min: minFenetre(300, 200) },
     trombi:     { panneau: '#trombi-panel',    titre: 'Bouilloscope',   l: 780, h: 620 },
     // `win.Pref` (sprite#831) : l'arbre des rubriques (menuFrame min 140×60)
     // et le panneau de droite (showFrame min 200×200), côte à côte. Le titre
@@ -4128,8 +4134,17 @@ window.BureauFrutiz = (function () {
     // main qui en donne.
     var barre = document.createElement('div');
     barre.className = 'bq-icones';
-    [['shop-ico-journal', 'Journal des kikooz', function () {
-      window.open('/club/', '_blank');           // le journal vit au Club
+    // Le premier bouton ouvre l'HISTORIQUE KIKOOZ — `box.KikoozLog` (0x8b46e),
+    // `uniqWinMng.open("kikoozLog")`, titre `kikooz_log.title`. Il renvoyait
+    // vers le Club, faute de fenêtre ; c'en est une maintenant, la même que
+    // les deux autres journaux.
+    // On passe par `activateTab`, PAS par `ouvrirFenetre` : c'est lui qui
+    // déclenche le chargement du journal (`loadJournal`) avant de nous rendre
+    // la main par `apresActivateTab`. Ouvrir la fenêtre directement montrerait
+    // le panneau du journal précédent, ou un panneau vide.
+    [['shop-ico-journal', 'Historique Kikooz', function () {
+      if (window.activateTab) window.activateTab('kikoozlog');
+      else ouvrirFenetre('kikoozlog');
     }], ['shop-ico-kikooz', 'Obtenir des kikooz', function () {
       window.open('/kikooz', '_blank');
     }]].forEach(function (d) {

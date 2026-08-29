@@ -4003,7 +4003,9 @@
     $("#reglages-panel").classList.toggle("active", tab === "reglages");
     if (tab === "reglages") majReglages();
     $("#mail-panel").classList.toggle("active", tab === "mail");
-    $("#evt-panel").classList.toggle("active", tab === "evenements" || tab === "historique");
+    // #evt-panel sert les TROIS journaux (`win.Log` : Événements, Historique,
+    // Historique Kikooz) : la table fait foi, on n'y réénumère pas les clés.
+    $("#evt-panel").classList.toggle("active", !!JOURNAUX[tab]);
     // Chargements paresseux (1re ouverture, gardés en mémoire ensuite). On reste
     // sur /light, donc la socket de chat de la page parente n'est jamais coupée
     // pendant qu'on consulte le forum / joue / regarde les scores.
@@ -4077,7 +4079,7 @@
     // un loadMail ici le remplacerait aussitôt par la liste).
     if (tab === "mail" && !mailVersRedaction) loadMail();
     // Ces journaux bougent à tout moment : on recharge à chaque ouverture.
-    if (tab === "evenements" || tab === "historique") loadJournal(tab);
+    if (JOURNAUX[tab]) loadJournal(tab);
     // Sur le bureau façon Frutiz, la rubrique s'ouvre en FENÊTRE — et les
     // panneaux déjà fenêtrés restent visibles (l'invariant « un seul actif »
     // du plein écran ne vaut plus là-bas).
@@ -5276,18 +5278,42 @@
       repli: "histo_kick",
       vide: "Ton historique est vide pour l'instant.<br>Niveaux, pictos et médailles viendront s'y inscrire.",
     },
+    /*
+     * L'HISTORIQUE KIKOOZ — `box.KikoozLog` (0x8b46e).
+     *
+     * C'est un JOURNAL comme les deux autres : `winType = "winKikoozLog"`,
+     * `title = Lang.fv("kikooz_log.title")` — « Historique Kikooz » —, et une
+     * fenêtre `win.Log` par-dessus. Il n'a pas de raccourci sur le bureau : on
+     * y entre par le petit bouton blanc du haut de la boutique
+     * (`butPushSmallWhite` image 20, tipId « shop_kikooz_log »).
+     *
+     * Le libellé du vide est celui de la table, mot pour mot.
+     *
+     * La CLÉ est le nom de rubrique (`kikoozlog`, comme `winType =
+     * "winKikoozLog"`) et la ROUTE reste `kikooz` : c'est la clé qui voyage
+     * dans `activateTab`, et le bureau nomme sa fenêtre pareil.
+     */
+    kikoozlog: {
+      titre: "Historique Kikooz", route: "kikooz", raccourci: null, unite: "entrée",
+      // Bande `icoKikoozLog` (#594) : l'image 1 (« kcall ») est le repli, comme
+      // l'expulsion l'est pour l'historique et l'information pour les annonces.
+      repli: "kikooz_kcall",
+      vide: "Aucune entrée ou sortie de kikooz à afficher pour le moment.",
+    },
   };
   // État par journal : compteur du voyant, dernier listing, et « au moins un
   // chargement réussi » (pour ne pas réafficher « Chargement… » à chaque retour).
   var journalEtat = { evenements: { nonLus: 0, liste: [], charge: false, page: 0 },
-                      historique: { nonLus: 0, liste: [], charge: false, page: 0 } };
+                      historique: { nonLus: 0, liste: [], charge: false, page: 0 },
+                      kikoozlog:  { nonLus: 0, liste: [], charge: false, page: 0 } };
   var journalCourant = "evenements";
 
   function setJournalNonLus(cle, n) {
     var e = journalEtat[cle], v = Math.max(0, Number(n) || 0);
     if (!e || v === e.nonLus) return;
     e.nonLus = v;
-    majVoyant(JOURNAUX[cle].raccourci, v);
+    // L'Historique Kikooz n'a pas de raccourci sur le bureau — rien à allumer.
+    if (JOURNAUX[cle].raccourci) majVoyant(JOURNAUX[cle].raccourci, v);
   }
   // « 2026-08-01 21:35:00 » → « sam 1 aout 21:35 », exactement comme le bureau.
   // Les deux tables viennent du SWF (clés `day_short` et `month_short`) : quatre
@@ -5357,8 +5383,8 @@
       var it = el("div", "evt-item" + (e.nouveau ? " neuf" : ""));
       // Un visuel manquant ne doit pas laisser un trou : on retombe sur celui du
       // journal, jamais sur une image cassée.
-      it.innerHTML = '<div class="vis"><img src="/fb/' + xmlEscape(e.kind || def.repli)
-        + "." + xmlEscape(e.kindExt || "svg") + '" alt="" '
+      var src = "/fb/" + (e.kind || def.repli) + "." + (e.kindExt || "svg");
+      it.innerHTML = '<div class="vis"><img src="' + xmlEscape(src) + '" alt="" '
         + 'onerror="this.onerror=null;this.src=\'/fb/' + def.repli + '.svg\'"></div>'
         + '<div class="txt"><span class="quand">' + xmlEscape(journalDate(e.date))
         // Le tiret vit dans son propre élément : le bureau met la date sur sa
@@ -5450,8 +5476,15 @@
   }
   // Interrogation des compteurs (au démarrage et à la reconnexion : rien n'a été
   // poussé pendant que la socket était coupée).
+  // Seuls les journaux qui ALLUMENT quelque chose sont interrogés : l'Historique
+  // Kikooz n'a ni voyant ni trame de poussée (rien dans `win.Log` d'époque ne
+  // signale un mouvement de kikooz), il se charge quand on l'ouvre — sinon on
+  // paierait une requête de plus à chaque reconnexion pour un compteur que
+  // personne ne lit.
   function rafraichirCompteursJournaux() {
-    Object.keys(JOURNAUX).forEach(rafraichirCompteurJournal);
+    Object.keys(JOURNAUX).forEach(function (cle) {
+      if (JOURNAUX[cle].raccourci) rafraichirCompteurJournal(cle);
+    });
   }
   // Les entrées d'historique arrivent en rafale (l'ident rejoue tout le non-lu) :
   // on groupe les rafraîchissements plutôt que d'enchaîner les requêtes.

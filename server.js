@@ -3399,13 +3399,25 @@ async function referralRewardedCountForIp(ip) {
 }
 
 // Crédite la récompense de parrainage (kikooz) à un joueur (parrain ou filleul).
-function grantReferralReward(username, role) {
+// `filleul` : le nom du filleul, quand c'est le PARRAIN qu'on crédite.
+//
+// L'Historique Kikooz d'époque a un nœud à lui pour ce cas — `<g f="…">`, lu
+// par `box.KikoozLog.onLog` (0x8b630) et rendu « $k kikooz obtenus grâce à
+// votre filleul $f. », avec l'image 10 de la bande `icoKikoozLog`. On écrivait
+// les DEUX côtés en `<c c="parrainage">` : le parrain lisait « … obtenus par
+// parrainage », sans savoir LEQUEL de ses filleuls venait de passer le palier,
+// et le nœud `g` n'était jamais produit. Le filleul, lui, garde bien `c` :
+// c'est le parrainage qui le paie, il n'a pas de filleul à nommer.
+function grantReferralReward(username, role, filleul) {
   const user = users[username];
   if (!user) return;
   user.kikooz = (Number(user.kikooz) || 0) + REFERRAL.kikooz;
   if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser kikooz parrainage'));
   if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
-  user.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: REFERRAL.kikooz, c: 'parrainage' });
+  const quand = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  user.kikoozLog.unshift(filleul
+    ? { type: 'g', t: quand, k: REFERRAL.kikooz, f: getDisplayName(filleul) }
+    : { type: 'c', t: quand, k: REFERRAL.kikooz, c: 'parrainage' });
   if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
   notifyKikoozUpdate(username, user.kikooz);
   addAndNotifyUserLog(username, { type: USER_LOG_TYPE.GODSON, content: `Parrainage (${role}) : +${REFERRAL.kikooz} kikooz !` });
@@ -3438,7 +3450,7 @@ async function maybeUnlockReferral(filleulName, oldLevel, newLevel) {
   filleul.referralState = 'rewarded';
   if (filleul._dbId) db.updateUser(filleulName, { referral_state: 'rewarded' }).catch(dbErr('referral rewarded'));
   grantReferralReward(filleulName, 'Filleul');
-  if (parrain) grantReferralReward(parrainName, 'Parrain');
+  if (parrain) grantReferralReward(parrainName, 'Parrain', filleulName);
   console.log(`[REFERRAL] rewarded ${filleulName} + parrain ${parrainName}`);
 }
 
@@ -7399,7 +7411,7 @@ app.post('/api/admin/referrals/:username/:action', adminAuth, async (req, res) =
     grantReferralReward(username, 'Filleul');
     let parrain = users[u.referredBy];
     if (!parrain && process.env.DATABASE_URL) { try { const row = await db.findUserByUsername(u.referredBy); if (row) { await hydrateUserFromDb(u.referredBy, row); parrain = users[u.referredBy]; } } catch (e) {} }
-    if (parrain) grantReferralReward(u.referredBy, 'Parrain');
+    if (parrain) grantReferralReward(u.referredBy, 'Parrain', username);
     return res.json({ ok: true, state: 'rewarded' });
   }
   if (action === 'reject') {
@@ -19959,6 +19971,92 @@ app.post('/api/light/history/read', (req, res) => {
   if (!username) return res.status(401).json({ ok: false, error: 'auth' });
   lightLogMarkRead(users[username], 'userLog', 'user');
   res.json({ ok: true, unread: 0 });
+});
+
+/* ─────────────────────────────────────────────
+ * ENDPOINT: /api/light/kikooz — l'Historique Kikooz, en JSON
+ *
+ * `box.KikoozLog` (0x8b46e, winType « winKikoozLog », titre
+ * `kikooz_log.title` = « Historique Kikooz ») demande `ft/log` en XML, dont la
+ * racine `<l>` porte quatre sortes de nœuds — c'est `onLog` (0x8b630) qui les
+ * distingue, et chacun choisit sa CLÉ DE PHRASE et son NUMÉRO D'IMAGE :
+ *
+ *   <b n= k= t=/>  kikooz_log.buy        image 20
+ *   <c c= k= t=/>  kikooz_log.kcall      image  1
+ *   <g f= k= t=/>  kikooz_log.godfather  image 10
+ *   <a f= k= t=/>  kikooz_log.anim       image  1
+ *
+ * `onLog` empile ensuite { time, content, type } dans l'ordre du document et
+ * appelle `window.setLog(list)` — pas de tri, pas de renversement : l'ordre
+ * affiché est celui du XML, et `user.kikoozLog` est déjà rangé du plus récent
+ * au plus ancien (unshift). Vide, la fenêtre affiche `kikooz_log.empty` par
+ * `displayError` au lieu d'une liste.
+ *
+ * `/ft/log` sert déjà ce XML au SWF ; ce miroir JSON le donne au light, qui
+ * range l'historique dans la MÊME fenêtre que ses deux autres journaux
+ * (`win.Log`) — c'est bien ce qu'est `box.KikoozLog`, un journal de plus.
+ * ───────────────────────────────────────────── */
+/*
+ * Les phrases sont celles de la table d'époque, mot pour mot
+ * (frutiparc/lang_french.as, § KikoozLog) : `Lang.fv("kikooz_log." + clé, o)`
+ * substitue $n, $k, $c et $f par les attributs du nœud.
+ *
+ * L'image, elle, vient de la bande `icoKikoozLog` — sprite #594, que
+ * `win.Log.updatePage` (0x5779d) pose en `gfxList` sur la frame numérotée par
+ * `type`. Ses trois frames sont étiquetées, et chacune pose une forme :
+ *
+ *     f1   « kcall »      #589 → #588   le kikooz, flèche ROSE pointée dessus
+ *     f10  « godfather »  #591 → #590   le même, flèche VERTE
+ *     f20  « buy »        #593 → #592   la PASTÈQUE — la marchandise, pas la
+ *                                       monnaie : c'est un achat
+ *
+ *   node scripts/inspect-swf.js legacy/main.swf sprite 594
+ *   node scripts/extract-swf-shapes.js legacy/main.swf public/fb 588 590 592
+ *
+ * (Les trois SVG sortent avec les mêmes identifiants de dégradé — g1, g2… Ils
+ * ne se marchent dessus que si on les INLINE tous les trois dans une même
+ * page ; chargés en <img>, chacun a son document. Le journal les charge en
+ * <img>, comme les deux autres.)
+ *
+ * Comme les deux autres journaux, c'est le SERVEUR qui nomme le fichier : les
+ * deux bouts ne peuvent pas diverger sur la correspondance type → image.
+ */
+const LIGHT_KIKOOZ_KINDS = {
+  b: { type: 20, icone: 'kikooz_buy',
+       phrase: (e) => `Achat du produit "${e.n || ''}" pour ${Number(e.k) || 0} kikooz.` },
+  c: { type: 1,  icone: 'kikooz_kcall',
+       phrase: (e) => `${Number(e.k) || 0} kikooz obtenus par ${e.c || ''}.` },
+  g: { type: 10, icone: 'kikooz_godfather',
+       phrase: (e) => `${Number(e.k) || 0} kikooz obtenus grâce à votre filleul ${e.f || ''}.` },
+  // `anim` partage l'image 1 avec `kcall` : d'époque aussi, ce sont les mêmes
+  // kikooz qui entrent — seule la phrase change.
+  a: { type: 1,  icone: 'kikooz_kcall',
+       phrase: (e) => `${Number(e.k) || 0} kikooz offerts par ${e.f || ''}.` },
+};
+
+app.get('/api/light/kikooz', (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username) return res.status(401).json({ error: 'auth' });
+  const user = users[username] || {};
+  const brut = Array.isArray(user.kikoozLog) ? user.kikoozLog : [];
+  // Un nœud d'un type inconnu est IGNORÉ, pas affiché en clair : `onLog` fait
+  // pareil (son dernier `else` saute le `push` et passe au frère suivant).
+  const events = brut.map((e) => {
+    const d = LIGHT_KIKOOZ_KINDS[e.type];
+    if (!d) return null;
+    return {
+      date: e.t || '',
+      text: d.phrase(e),
+      type: d.type,
+      kind: d.icone,
+      kindExt: 'svg',
+      // L'Historique Kikooz n'a jamais eu de voyant : rien n'y est « non lu »
+      // (aucune trame ne le pousse, aucun raccourci ne l'annonce), on ne
+      // relance donc personne avec.
+      nouveau: false,
+    };
+  }).filter(Boolean);
+  res.json({ ok: true, events, unread: 0, solde: Number(user.kikooz) || 0 });
 });
 
 // Profil mobile (/light) : tout ce qu'affiche la « main bar » de l'accueil —

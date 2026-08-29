@@ -259,7 +259,12 @@ test('le client mobile affiche, signale et date les événements', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
 
   assert.match(html, /name: "Événements", go: "evenements"/, 'le raccourci est branché');
-  assert.match(html, /tab === "evenements"/, 'le panneau est piloté par activateTab');
+  // Le panneau est piloté par activateTab — depuis l'Historique Kikooz, c'est
+  // la table JOURNAUX qui décide (elle en sert trois), plus une liste de noms.
+  assert.match(html, /\$\("#evt-panel"\)\.classList\.toggle\("active", !!JOURNAUX\[tab\]\);/,
+    'le panneau est piloté par activateTab');
+  assert.match(html, /evenements: \{\n\s+titre: "Événements", route: "events"/,
+    'et « evenements » est bien une de ses clés');
   assert.match(html, /id="evt-liste"/, 'la liste existe');
   assert.match(html, /function renderJournal/, 'le rendu existe');
 
@@ -306,7 +311,10 @@ test('le client mobile affiche, signale et date les événements', () => {
 
   // Le visuel vient du SERVEUR (e.kind) : c'est ce qui empêche les deux bouts de
   // diverger sur la correspondance type → image.
-  assert.match(html, /\/fb\/' \+ xmlEscape\(e\.kind/, 'le visuel est celui annoncé par le serveur');
+  assert.match(html, /var src = "\/fb\/" \+ \(e\.kind \|\| def\.repli\) \+ "\." \+ \(e\.kindExt \|\| "svg"\);/,
+    'le visuel est celui annoncé par le serveur');
+  assert.match(html, /'<div class="vis"><img src="' \+ xmlEscape\(src\)/,
+    'et il passe par l’échappement avant d’entrer dans le HTML');
   assert.match(html, /repli: "evt_info"/, 'un visuel de repli couvre les types inconnus');
   assert.match(html, /def\.repli \+ '\.svg/, 'et il sert aussi quand le fichier manque');
 

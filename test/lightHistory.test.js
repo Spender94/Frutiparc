@@ -352,15 +352,19 @@ test('le client mobile sert les deux journaux avec un seul code', () => {
   assert.match(html, /voyant: "HistoriqueAlerte"/, 'avec son icône d\'alerte');
 
   // Un seul gabarit, un seul panneau : deux copies auraient fini par diverger.
-  assert.match(html, /var JOURNAUX = \{/, 'les deux rubriques sont décrites côte à côte');
+  // Ils sont TROIS depuis l'Historique Kikooz, et c'est la table qui les décrit
+  // tous — `activateTab` n'énumère plus les clés à la main.
+  assert.match(html, /var JOURNAUX = \{/, 'les rubriques sont décrites côte à côte');
   assert.match(html, /route: "history"/, 'celle de l\'historique pointe la bonne route');
-  assert.match(html, /tab === "evenements" \|\| tab === "historique"/,
-    'le même panneau sert les deux');
+  assert.match(html, /\$\("#evt-panel"\)\.classList\.toggle\("active", !!JOURNAUX\[tab\]\);/,
+    'le même panneau les sert toutes');
+  assert.match(html, /historique: \{\n\s+titre: "Historique", route: "history"/,
+    'et « historique » est bien une de ses clés');
   assert.match(html, /function loadJournal\(cle\)/, 'un seul chargement');
   assert.match(html, /function renderJournal\(cle\)/, 'un seul rendu');
 
   // L'extension vient du serveur : le totoché est un PNG, pas un SVG.
-  assert.match(html, /xmlEscape\(e\.kindExt \|\| "svg"\)/,
+  assert.match(html, /\(e\.kindExt \|\| "svg"\)/,
     'le client suit l\'extension annoncée par le serveur');
 
   // La trame <aw> est rejouée à l'ident : on redemande le compte au serveur au
