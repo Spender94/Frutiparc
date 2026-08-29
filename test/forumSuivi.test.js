@@ -28,6 +28,7 @@ const assert = require('node:assert');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { Client } = require(path.join(__dirname, '..', 'node_modules', 'pg'));
+const WebSocket = require(path.join(__dirname, '..', 'node_modules', 'ws'));
 
 const ROOT = path.join(__dirname, '..');
 const PORT = 3431;
@@ -99,6 +100,36 @@ async function inscrire(pseudo) {
   return j.sid;
 }
 const compte = async (sid) => (await json(await fetch(`${BASE}/api/light/profile?sid=${sid}`))).forumUnread;
+
+// Une socket de chat, pour écouter la trame `<ay>` que le serveur pousse
+// quand un sujet bouge.
+async function socket(pseudo, sid) {
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/`);
+  const trames = [];
+  let tampon = '';
+  ws.on('message', (d) => {
+    tampon += d.toString('utf8');
+    const bouts = tampon.split('\0');
+    tampon = bouts.pop();
+    for (const b of bouts) if (b.trim()) trames.push(b.trim());
+  });
+  await new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); });
+  ws.send(`<k l="${pseudo}" s="${sid}" />\0`);
+  const c = {
+    trames, ws,
+    attendre: async (pred, ms = 5000) => {
+      for (let i = 0; i < ms / 50; i++) {
+        const t = trames.find(pred);
+        if (t) return t;
+        await wait(50);
+      }
+      return null;
+    },
+    fermer: () => { try { ws.close(); } catch { /* déjà fermée */ } },
+  };
+  await c.attendre((t) => t.startsWith('<k'));
+  return c;
+}
 const poserMode = (sid, v) => fetch(`${BASE}/api/light/prefs`, {
   method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ sid, prefs: { forum_notify: String(v) } }),
@@ -252,4 +283,52 @@ test('la préférence se relit telle qu’elle a été posée', async (t) => {
   assert.ok(rows.length, 'le compte est en base');
   // Il ne reste QUE `ch_dsp_h` : id 9, longueur 1, valeur N.
   assert.equal(rows[0].prefs, '0901N', 'seul l’écart subsiste dans la chaîne');
+});
+
+test('devant son écran, on est prévenu PAR NOM du sujet qu’on suit', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+
+  // C'est le cœur du signalement : « je suis notifié seulement pour mes
+  // sujets suivis » — mais la poussée sur le téléphone ne part QUE pour un
+  // absent (`estJoignableEnDirect`). Présent, il ne restait que le voyant
+  // générique du raccourci Forum, que le light n'écoutait même pas.
+  const sidA = await inscrire('suiviecran');    // celui qui suit, et qui est là
+  const sidB = await inscrire('suivirepond');
+  const sidC = await inscrire('suivipasse');    // il ne suit rien
+  const liste = await salons(sidA);
+  const board = liste.find((b) => /frutiz/i.test(b.name) && !/jeux/i.test(b.name)) || liste[liste.length - 1];
+
+  const cree = await json(await fetch(`${BASE}/api/forum/topic`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid: sidA, boardId: board.id, title: 'Mon fil préféré',
+      content: 'Le sujet que je vais suivre, avec assez de texte pour passer.' }),
+  }));
+  await fetch(`${BASE}/api/forum/topic/${cree.topicId}/follow`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid: sidA, follow: true }),
+  });
+  await poserMode(sidA, 2);
+
+  const a = await socket('suiviecran', sidA);
+  const c = await socket('suivipasse', sidC);
+  try {
+    await fetch(`${BASE}/api/forum/post`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: sidB, topicId: cree.topicId,
+        content: 'Une réponse, qui doit se voir tout de suite à l’écran.' }),
+    });
+    // A suit le sujet : sa trame le NOMME.
+    const t1 = await a.attendre((x) => x.startsWith('<ay'));
+    assert.ok(t1, 'A doit recevoir la trame du forum');
+    assert.match(t1, /s="1"/, 'elle dit que le sujet est suivi');
+    assert.match(t1, new RegExp('i="' + cree.topicId + '"'), 'et elle porte son identifiant');
+    assert.match(t1, /t="Mon fil préféré"/, 'et son titre');
+    assert.match(t1, /u="suivirepond"/, 'et qui a répondu');
+    // C ne le suit pas : il garde le drapeau NU d'époque.
+    const t2 = await c.attendre((x) => x.startsWith('<ay'));
+    assert.ok(t2, 'C reçoit le drapeau, il est en mode « tous les sujets »');
+    assert.equal(t2.replace(/\s+/g, ''), '<ay/>', 'mais nu, sans le nom du sujet');
+  } finally {
+    a.fermer(); c.fermer();
+  }
 });

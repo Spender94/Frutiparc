@@ -198,10 +198,13 @@ test('les trois lecteurs du voyant passent le mode', () => {
 });
 
 test('le voyant poussé par un nouveau message respecte le réglage de CHACUN', () => {
-  const f = /function notifyForumNews\(authorUsername, suiveurs\) \{[\s\S]*?\n\}/.exec(SERVEUR);
+  // (Le troisième paramètre, `sujet`, est venu ensuite : il NOMME le fil pour
+  // ceux qui le suivent — cf. modérationLight.test.js.)
+  const f = /function notifyForumNews\(authorUsername, suiveurs, sujet\) \{[\s\S]*?\n\}/.exec(SERVEUR);
   assert.ok(f, 'notifyForumNews doit connaître les suiveurs');
   assert.match(f[0], /if \(mode === FORUM_NOTIFY_AUCUNE\) continue;/);
-  assert.match(f[0], /if \(mode === FORUM_NOTIFY_SUIVIS && !suivi\.has\(qui\)\) continue;/);
+  assert.match(f[0], /const leSuit = suivi\.has\(qui\);/);
+  assert.match(f[0], /if \(mode === FORUM_NOTIFY_SUIVIS && !leSuit\) continue;/);
   assert.match(f[0], /if \(qui === auteur\) continue;/, 'et jamais son auteur');
 });
 
@@ -216,7 +219,7 @@ test('une réponse prévient ceux qui suivent le sujet', () => {
   assert.match(f[0], /PUSH_TTL\.forum/);
   // La liste est lue UNE fois par message, et partagée avec le voyant.
   assert.match(SERVEUR, /const suiveurs = process\.env\.DATABASE_URL\n\s+\? await db\.forumTopicFollowers\(topicId\)\.catch\(\(\) => \[\]\)/);
-  assert.match(SERVEUR, /notifyForumNews\(username, suiveurs\);/);
+  assert.match(SERVEUR, /notifyForumNews\(username, suiveurs, \{ id: topicId, titre: topic\.title \}\);/);
   assert.match(SERVEUR, /pousserNotifSuiviForum\(username, topicId, topic\.title, suiveurs\)/);
 });
 

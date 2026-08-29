@@ -4722,18 +4722,32 @@ function notifyNewMail(targetUsername, mail) {
 // pour eux, et celui qui a tout coupé ne le voit jamais. Sans liste (base
 // absente, sujet tout neuf que personne ne suit encore), le mode 2 se tait :
 // c'est bien ce qu'il demande.
-function notifyForumNews(authorUsername, suiveurs) {
+function notifyForumNews(authorUsername, suiveurs, sujet) {
   const auteur = String(authorUsername || '').toLowerCase();
   const suivi = new Set((suiveurs || []).map((n) => String(n || '').toLowerCase()));
-  const xml = `<${CMD.newforummsg} />`;
+  const nu = `<${CMD.newforummsg} />`;
+  // LA TRAME NOMME LE SUJET quand elle part pour quelqu'un qui le SUIT.
+  //
+  // `<ay/>` d'époque est un simple drapeau : il allume le voyant du raccourci,
+  // rien de plus. C'est assez pour « il se passe quelque chose sur le forum »,
+  // mais pas pour « on vient de répondre sur TON sujet » — or c'est
+  // exactement ce que demande le mode « seulement mes sujets suivis », y
+  // compris quand on est devant son écran (la poussée sur le téléphone, elle,
+  // ne part que pour un absent). On ajoute donc l'identifiant et le titre :
+  // un client qui ne les lit pas retrouve le drapeau nu d'avant.
+  const nomme = sujet && sujet.id
+    ? `<${CMD.newforummsg} s="1" i="${Number(sujet.id)}" t="${escapeXml(String(sujet.titre || ''))}"`
+      + ` u="${escapeXml(getDisplayName(authorUsername))}" />`
+    : nu;
   for (const [sock, cl] of xmlSocketClients) {
     if (!cl || !cl.logged || !cl.username) continue;
     const qui = String(cl.username).toLowerCase();
     if (qui === auteur) continue;
     const mode = forumNotifyModeDe(qui);
     if (mode === FORUM_NOTIFY_AUCUNE) continue;
-    if (mode === FORUM_NOTIFY_SUIVIS && !suivi.has(qui)) continue;
-    sendToClient(sock, xml);
+    const leSuit = suivi.has(qui);
+    if (mode === FORUM_NOTIFY_SUIVIS && !leSuit) continue;
+    sendToClient(sock, leSuit ? nomme : nu);
   }
 }
 
@@ -18612,7 +18626,7 @@ app.post('/api/forum/post', async (req, res) => {
     const suiveurs = process.env.DATABASE_URL
       ? await db.forumTopicFollowers(topicId).catch(() => [])
       : [];
-    notifyForumNews(username, suiveurs);
+    notifyForumNews(username, suiveurs, { id: topicId, titre: topic.title });
     // Et si elle CITE quelqu'un ([quote=…]), le cité absent est prévenu sur
     // son téléphone, avec le sujet en lien direct.
     pousserNotifCitationsForum(username, topicId, topic.title, content);
@@ -20003,6 +20017,20 @@ app.get('/api/light/profile', async (req, res) => {
     // Sujets du forum qui ont du nouveau depuis la dernière visite. Sans base,
     // il n'y a pas de forum du tout : zéro, et le voyant reste éteint.
     forumUnread,
+    // TOTOCHÉ : jusqu'à quand, en millisecondes depuis l'époque.
+    //
+    // Le totoché survit à un rechargement de page — c'est `users[].mutedUntil`
+    // qui fait foi, pas la session du navigateur. Sans cette ligne, un joueur
+    // réduit au silence rouvrait /light avec un champ de saisie tout neuf, et
+    // ne redécouvrait sa peine qu'en voyant ses messages avalés en silence.
+    //
+    // On envoie un HORODATAGE plutôt que la chaîne d'époque : celle-ci
+    // (« 2026-08-29.12:34:29 ») est de l'UTC sans marqueur, que le client
+    // lirait comme une heure locale. Un nombre ne se trompe pas de fuseau.
+    mutedUntil: (() => {
+      const d = u.mutedUntil ? new Date(String(u.mutedUntil).replace('.', 'T') + 'Z') : null;
+      return (d && !Number.isNaN(d.getTime()) && d.getTime() > Date.now()) ? d.getTime() : 0;
+    })(),
     // Feutres spéciaux possédés (pour afficher la pastille dédiée dans la palette).
     ownedFeutres: Array.isArray(u.ownedFeutres) ? u.ownedFeutres.slice() : [],
   });
@@ -20505,7 +20533,11 @@ app.get('/api/light/fiche', async (req, res) => {
     if (d.section !== 'C' || !d.internal) continue;
     const info = getUserScore(u, d.internal);
     if (info.score <= 0 && info.pos <= 0) continue;
-    classements.push({ titre: d.rn, jeu: d.g, score: info.score, pos: info.pos, type: d.ty });
+    // `rk` : l'identifiant INTERNE du classement, celui que
+    // `/api/light/challenge` pose en `id` sur chaque jeu. C'est par lui que le
+    // clic sur une ligne de la fiche retrouve le bon onglet du tableau des
+    // scores — sans lui, il faudrait deviner d'après le libellé.
+    classements.push({ titre: d.rn, jeu: d.g, rk: d.internal, score: info.score, pos: info.pos, type: d.ty });
   }
 
   // Les médailles de la veille, une par jeu — la même règle qu'`awarduser`.

@@ -988,6 +988,11 @@
     color: #446531; text-align: center; padding: 3px 4px;
     display: flex; align-items: center; justify-content: center; gap: 8px;
   }
+  /* Une ligne de score MÈNE à son tableau : le curseur et le survol le disent,
+     sans en faire un bouton — la fiche n'en a pas d'autre. */
+  .fiche-jour.cliquable { cursor: pointer; border-radius: 4px; }
+  .fiche-jour.cliquable:hover,
+  .fiche-jour.cliquable:focus-visible { background: rgba(255,255,255,.45); outline: none; }
   /* L'icône du jeu, à gauche de son nom : son VOYANT (public/fb/voyant_*.png,
      le clip 246 de main.swf), celui-là même que le bureau pose sur ses lignes
      de scores et à côté d'un joueur en partie. */
@@ -2723,6 +2728,10 @@
     room: "",
     ws: null,
     connected: false,
+    // TOTOCHÉ : l'échéance en millisecondes, 0 quand on peut parler. Vient du
+    // profil au chargement (`mutedUntil`) et de la trame `<bb>` en cours de
+    // route ; c'est elle qui ferme les saisies (cf. `majMuselage`).
+    mutedUntil: 0,
     reconnectTimer: null,
     coupureTimer: null,   // annonce différée de « Connexion perdue » (4 s)
     intentionalClose: false,
@@ -3583,6 +3592,9 @@
           setJournalNonLus("evenements", d.eventsUnread);    // …événements…
           setJournalNonLus("historique", d.historyUnread);   // …et historique
           state.ownedFeutres = Array.isArray(d.ownedFeutres) ? d.ownedFeutres : [];
+          // Un totoché qui recharge la page reste totoché : c'est le compte qui
+          // porte la peine, pas l'onglet du navigateur.
+          if (typeof poserMuselage === "function") poserMuselage(Number(d.mutedUntil) || 0);
           if (d.bouille) state.bouilleByUser[state.userLower] = d.bouille;
           var lv = $("#home-level"); if (lv) lv.textContent = homeProfile.level;
           var rk = $("#home-rank"); if (rk) rk.textContent = (homeProfile.rank != null) ? homeProfile.rank : "—";
@@ -4498,6 +4510,44 @@
   var scoresGameIdx = 0;        // classement sélectionné
   var scoresJour = "";          // jour affiché (vide = aujourd'hui)
 
+  /*
+   * OUVRIR LE TABLEAU DES SCORES SUR UN CLASSEMENT PRÉCIS.
+   *
+   * La fiche d'un frutiz liste ses scores du jour ; cliquer l'un d'eux doit
+   * mener au tableau correspondant — c'est le geste qu'on attend d'une ligne
+   * qui porte un nom de jeu et un rang.
+   *
+   * `rk` est l'identifiant INTERNE du classement (`snake3_classic`…), celui
+   * que `/api/light/challenge` pose en `id`. Burning Kiwi fait exception : son
+   * onglet suit le circuit du jour (`bkiwi_track<N>_challenge`) alors que la
+   * fiche cite le descripteur d'époque — d'où le repli par nom de JEU, qui
+   * retombe sur le bon onglet quel que soit le circuit.
+   */
+  function ouvrirScoresSur(rk, jeu) {
+    var viser = function () {
+      var jeux = (challengeScores && challengeScores.games) || [];
+      var i = jeux.findIndex(function (g) { return rk && g.id === rk; });
+      if (i < 0 && jeu) i = jeux.findIndex(function (g) { return g.game === jeu; });
+      if (i < 0) return false;
+      if (i !== scoresGameIdx) {
+        scoresGameIdx = i;
+        scoresDebut = 0;                 // un autre classement repart en tête
+        renderScoresListe();
+        renderScoresBody();
+      }
+      return true;
+    };
+    activateTab("scores");
+    // Le tableau peut n'être pas encore chargé : on retente le temps que
+    // `loadChallengeScores` réponde, puis on abandonne (l'onglet est ouvert,
+    // c'est déjà l'essentiel).
+    if (viser()) return;
+    var essais = 0;
+    var t = setInterval(function () {
+      if (viser() || ++essais > 20) clearInterval(t);
+    }, 200);
+  }
+
   function loadChallengeScores() {
     var t = $("#sc-table");
     if (t && !challengeScores) t.innerHTML = '<div class="sc-vide">Chargement…</div>';
@@ -4701,6 +4751,23 @@
           + '<span>' + xmlEscape(g.name) + '</span></button>';
       });
     });
+    // L'ARBRE NE SE REFAIT QUE S'IL CHANGE.
+    //
+    // `cp.Tree.addPhysElement` anime une entrée quand elle est AJOUTÉE à
+    // l'arbre — une fois, à l'ouverture de la fenêtre. Le portage, lui,
+    // reconstruisait tout le HTML à chaque clic (pour déplacer la classe
+    // `.on`), et rejouait donc la glissade des dix-huit lignes chaque fois
+    // qu'on changeait de jeu. La liste des classements, elle, ne bouge pas :
+    // seule la SÉLECTION change. On compare la liste à celle qui est déjà à
+    // l'écran, et si c'est la même on se contente de déplacer le `.on`.
+    var signature = jeux.map(function (g) { return g.id || g.name; }).join("|");
+    if (box.getAttribute("data-sig") === signature && box.querySelector(".sc-rk")) {
+      Array.prototype.forEach.call(box.querySelectorAll(".sc-rk"), function (b) {
+        b.classList.toggle("on", Number(b.getAttribute("data-i")) === scoresGameIdx);
+      });
+      return;
+    }
+    box.setAttribute("data-sig", signature);
     box.innerHTML = html;
     // `cp.Tree.addPhysElement` : chaque entrée naît au milieu de la précédente
     // et glisse à sa place. Le bureau sait le faire ; le mobile n'a pas d'arbre.
@@ -5620,6 +5687,67 @@
     ["#compose-input", "#compose-send", "#accent-toggle"].forEach(function (sel) {
       Array.prototype.forEach.call(document.querySelectorAll(sel), function (n) { n.disabled = !on; });
     });
+    // Reconnecté en étant toujours totoché : la muselière se repose.
+    if (on) majMuselage();
+  }
+
+  /* ══ LE TOTOCHÉ ═══════════════════════════════════════════════════════════
+   * `box.Chat` d'époque n'a pas besoin de garde-fou : `onMute` (listener/
+   * main.as) pose `_global.me.mutedUntil` et la boîte de saisie s'éteint.
+   * Le light, lui, ne faisait qu'écrire une ligne — le champ restait ouvert,
+   * chaque message partait, et le serveur le renvoyait en silence sous forme
+   * d'un nouveau `<bb>`. De l'extérieur, on ne voyait rien : « le message
+   * s'affiche mais la personne n'est pas totochée ».
+   *
+   * Le serveur, lui, faisait son travail depuis le début (relevé au banc :
+   * `<bb>` part à la victime, l'annonce au salon, et le message suivant est
+   * refusé). Tout ce qui manquait était côté client.
+   */
+  var muselageTimer = null;
+
+  // « 2026-08-29.12:34:29 » (ou avec un espace, comme `<z mu>`) est de l'UTC
+  // SANS marqueur : `new Date` le lirait en heure locale. On repose le « T »
+  // et le « Z » avant de dater.
+  function dateMuselage(brut) {
+    var s = String(brut || "").trim();
+    if (!s) return 0;
+    var d = new Date(s.replace(" ", "T").replace(".", "T") + "Z");
+    var ms = d.getTime();
+    return isNaN(ms) ? 0 : ms;
+  }
+
+  function poserMuselage(jusqua) {
+    state.mutedUntil = Number(jusqua) || 0;
+    majMuselage();
+  }
+
+  // Éteint (ou rallume) TOUTES les saisies — celle du panneau mobile et celles
+  // des fenêtres de salon du bureau —, et arme la levée automatique.
+  function majMuselage() {
+    if (muselageTimer) { clearTimeout(muselageTimer); muselageTimer = null; }
+    var reste = (state.mutedUntil || 0) - Date.now();
+    var mut = reste > 0;
+    Array.prototype.forEach.call(document.querySelectorAll("#compose-input"), function (inp) {
+      inp.disabled = mut || !state.connected;
+      if (mut) {
+        if (!inp.getAttribute("data-placeholder")) inp.setAttribute("data-placeholder", inp.placeholder || "");
+        inp.placeholder = "Totoché — encore " + Math.ceil(reste / 60000) + " min";
+        inp.value = "";
+      } else if (inp.getAttribute("data-placeholder") !== null) {
+        inp.placeholder = inp.getAttribute("data-placeholder") || "Message…";
+        inp.removeAttribute("data-placeholder");
+      }
+    });
+    ["#compose-send", "#accent-toggle"].forEach(function (sel) {
+      Array.prototype.forEach.call(document.querySelectorAll(sel), function (n) {
+        n.disabled = mut || !state.connected;
+      });
+    });
+    if (!mut) return;
+    // Une minute de plus que le reste : le champ se rouvre tout seul, sans
+    // qu'il faille recharger la page. (Le serveur, lui, laisse repasser dès
+    // l'échéance : `mutedUntil <= now` n'est plus un muselage.)
+    muselageTimer = setTimeout(majMuselage, Math.min(reste + 500, 60000));
   }
   function connectWs() {
     var ws;
@@ -6338,8 +6466,52 @@
         break;
       }
 
-      case "bb": // onmute: <bb u=".." mu=".." />
-        systemLine("Tu as été réduit au silence (totoché).");
+      case "bb": { // onmute: <bb u=".." mt=".." mu=".." />
+        // Le serveur renvoie CE MÊME `<bb>` chaque fois qu'un message est
+        // refusé : sans ce garde-fou, la ligne se répéterait à chaque touche
+        // sur « Envoyer ».
+        var mJusqua = dateMuselage(attr(xml, "mu") || attr(xml, "mt"));
+        var mNeuf = !state.mutedUntil || mJusqua > (state.mutedUntil + 1000);
+        poserMuselage(mJusqua);
+        if (mNeuf) {
+          var mMin = Math.max(1, Math.ceil((mJusqua - Date.now()) / 60000));
+          systemLine("Tu as été réduit au silence (totoché) pour " + mMin + " minutes.");
+        }
+        break;
+      }
+
+      /*
+       * NOUVEAU MESSAGE SUR LE FORUM (`ay`, newforummsg).
+       *
+       * Le light ne l'écoutait PAS : le voyant du raccourci Forum n'était
+       * relu qu'au prochain passage sur `/api/light/profile`, c'est-à-dire
+       * bien plus tard. D'où « je suis des sujets, ils ont du nouveau, je ne
+       * suis jamais notifié » : le serveur envoyait, personne n'écoutait.
+       *
+       * Quand la trame NOMME un sujet (`s="1"`), c'est qu'elle vient d'un fil
+       * qu'on suit : on le dit, avec un lien qui y mène. La poussée sur le
+       * téléphone, elle, ne part que si l'on est ABSENT — devant l'écran,
+       * c'est cette ligne-ci qui prévient.
+       */
+      case "ay": {
+        setForumNonLus(forumNonLus + 1);
+        if (attr(xml, "s") === "1") {
+          var fSujet = Number(attr(xml, "i")) || 0;
+          var fTitre = xmlUnescape(attr(xml, "t")) || "un sujet que tu suis";
+          var fQui = xmlUnescape(attr(xml, "u"));
+          systemAction((fQui ? fQui + " a répondu sur " : "Du nouveau sur ")
+            + "« " + fTitre + " »", "… ouvrir le sujet …", function () {
+            routerOuverture("forum", null, fSujet);
+          });
+        }
+        break;
+      }
+
+      case "bc": // endmute: la peine est levée (par un modérateur ou l'heure)
+        if (state.mutedUntil) {
+          poserMuselage(0);
+          systemLine("Tu peux de nouveau parler.");
+        }
         break;
 
       // Kick (ag = onkick, /kick) and ban (ah = onban, fiche) are broadcast to
@@ -6350,15 +6522,30 @@
         var kWho = attr(xml, "u");
         var kBy = attr(xml, "by");
         var kVerb = (tag === "ah") ? "banni" : "expulsé";
+        // LE SALON DE LA TRAME, pas celui qu'on regarde. Sur le bureau chaque
+        // conversation a sa fenêtre : expulser quelqu'un du salon Poire depuis
+        // sa fenêtre ne doit toucher NI la liste NI le fil du salon Pomme.
+        var kOu = attr(xml, "g") || state.room;
         // `ch_dsp_kick` / `ch_dsp_ban` masquent la ligne quand elle concerne
         // QUELQU'UN D'AUTRE. Se faire expulser soi-même se dit toujours : la
         // préférence règle le bruit de fond du salon, pas ce qui vous arrive.
         var kDire = (tag === "ah") ? PREFS_CHAT.bannissements : PREFS_CHAT.expulsions;
+        if (state.usersByRoom[kOu]) delete state.usersByRoom[kOu][kWho];
         if (sameName(kWho, state.user)) {
-          systemLine("Tu as été " + kVerb + " du salon" + (kBy ? " par " + kBy : "") + ".");
+          systemLine("Tu as été " + kVerb + " du salon" + (kBy ? " par " + kBy : "") + ".", kOu);
+          // ON SORT VRAIMENT. `box.Chat.onKick` (le SWF) ferme la fenêtre de la
+          // conversation : `channelMng.rm(this.group)`. Le light se contentait
+          // d'écrire la ligne — l'expulsé restait dans « son » salon, voyait la
+          // liste des connectés d'avant, tapait des messages que le serveur
+          // avalait (erreur 220, jamais affichée). D'où « la personne n'est pas
+          // kickée » : elle l'était côté serveur, mais rien ne le montrait.
+          //
+          // On laisse la ligne s'afficher avant de refermer : sinon elle
+          // partirait avec le fil.
+          setTimeout(function () { sortirDuSalon(kOu); }, 1200);
         } else {
-          if (state.usersByRoom[state.room]) { delete state.usersByRoom[state.room][kWho]; renderUsers(); }
-          if (kDire) systemLine(kWho + " a été " + kVerb + " du salon" + (kBy ? " par " + kBy : "") + ".");
+          majSalonPartout(kOu);
+          if (kDire) systemLine(kWho + " a été " + kVerb + " du salon" + (kBy ? " par " + kBy : "") + ".", kOu);
         }
         break;
       }
@@ -6724,7 +6911,12 @@
     var form = dansCadre(c, "compose-form");
     var envoi = dansCadre(c, "compose-send");
     var acc = dansCadre(c, "accent-toggle");
-    [inp, envoi, acc].forEach(function (n) { if (n) n.disabled = !state.connected; });
+    // Une fenêtre de salon ouverte PENDANT un totoché naît muselée elle aussi :
+    // sans cela, il suffirait d'en ouvrir une nouvelle pour reparler.
+    var muet = (state.mutedUntil || 0) > Date.now();
+    [inp, envoi, acc].forEach(function (n) { if (n) n.disabled = !state.connected || muet; });
+    if (muet && inp) inp.placeholder = "Totoché — encore "
+      + Math.ceil((state.mutedUntil - Date.now()) / 60000) + " min";
     if (inp) inp.style.color = penColorFor(state.pen) || "#2C4A0F";
     if (form) form.addEventListener("submit", function (ev) {
       ev.preventDefault();
@@ -6827,6 +7019,36 @@
     if (c) majConnectesCadre(c);
     if (salon === state.room) renderUsers();
     if (window.BureauFrutiz && BureauFrutiz.majSalons) BureauFrutiz.majSalons();
+  }
+
+  /*
+   * QUITTER UN SALON PARCE QUE LE SERVEUR NOUS EN A SORTI.
+   *
+   * `box.Chat.onKick` referme la conversation — `channelMng.rm(this.group)` —
+   * et le bureau perd la fenêtre. Le light se contentait d'écrire une ligne :
+   * l'expulsé restait dans le salon d'où il venait d'être chassé, avec sa
+   * liste d'avant, et ses messages suivants mouraient côté serveur sans un
+   * mot (erreur 220, que le light n'affiche pas).
+   *
+   * Ce n'est PAS `fermerCadreSalon` tout court : sur le bureau, c'est la
+   * FENÊTRE qui commande le cadre, et la fermer par le haut fait le reste.
+   */
+  function sortirDuSalon(salon) {
+    if (!salon) return;
+    delete state.usersByRoom[salon];
+    if (cadres[salon] && window.BureauFrutiz && BureauFrutiz.fermerSalon) {
+      BureauFrutiz.fermerSalon(salon);          // la fenêtre emporte son cadre
+      return;
+    }
+    if (cadres[salon]) { fermerCadreSalon(salon); return; }
+    // Le mobile n'a qu'une conversation à l'écran : on repart sur un autre
+    // salon plutôt que de laisser un fil orphelin. Le serveur nous a déjà
+    // retiré du canal, il n'y a pas de `<y>` à envoyer.
+    if (state.room !== salon) { renderRoomOptions(); return; }
+    state.room = "";
+    var repli = (ROOMS[0] && ROOMS[0][0]) || "";
+    renderRoomOptions();
+    if (repli) switchRoom(repli); else renderUsers();
   }
 
   function cleanTime(h) {
@@ -7681,6 +7903,19 @@
           var ls = el("div", "fiche-lignes");
           sc.classements.forEach(function (c) {
             var l = el("div", "fiche-jour");
+            // LA LIGNE MÈNE À SON TABLEAU. Voir « 12 400 (3ᵉ) » à côté d'un
+            // nom de jeu appelle le geste : on ouvre le classement.
+            if (c.rk || c.jeu) {
+              l.classList.add("cliquable");
+              l.setAttribute("role", "button");
+              l.setAttribute("tabindex", "0");
+              l.title = "Voir le classement " + c.titre;
+              var allerAuScore = function () { fermerFiche(); ouvrirScoresSur(c.rk, c.jeu); };
+              l.addEventListener("click", allerAuScore);
+              l.addEventListener("keydown", function (ev) {
+                if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); allerAuScore(); }
+              });
+            }
             // Le VOYANT du jeu, comme au bureau — la même icône que celle qui
             // signale un joueur en partie. Sans PNG pour ce jeu-là, on
             // n'affiche pas de cadre vide : la ligne se referme sur son nom.

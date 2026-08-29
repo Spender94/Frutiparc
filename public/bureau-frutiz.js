@@ -7344,6 +7344,12 @@ window.BureauFrutiz = (function () {
     // La même, mais RANGÉE : une invitation reçue s'ouvre en onglet qui
     // clignote, sans prendre le bureau (`chatMng.open(…, trashSlot)`).
     ouvrirSalonEnFond: function (salon) { ouvrirSalon(salon, true); },
+    // ET SON CONTRAIRE : quand le SERVEUR nous met dehors (une expulsion, un
+    // bannissement), la fenêtre doit partir comme si on l'avait fermée —
+    // `box.Chat.onKick` fait `channelMng.rm(this.group)`. `fermerFenetre`
+    // rappelle `SalonsBureau.fermerCadre` au passage : le cadre, le journal et
+    // la liste des connectés s'en vont avec elle.
+    fermerSalon: function (salon) { fermerFenetre('salon:' + salon); },
     // GASPARD, la première icône de l'encart : `select(0)` d'époque.
     ouvrirGaspard: ouvrirGaspard,
     // Les deux explorateurs : « Mes disques » et « Inventaire ».
