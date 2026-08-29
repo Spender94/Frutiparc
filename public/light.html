@@ -1021,6 +1021,37 @@
     text-align: center; color: #446531; font-family: Verdana, Arial, sans-serif;
     font-size: 11px; padding: 26px 0;
   }
+  /* ── LA FRUTICARD ────────────────────────────────────────────────────────
+     La section « Fruticard ! » de l'onglet Scores : une ligne par jeu, en gras
+     et centrée, comme le `getMenuLine` d'époque les pose (`big:1`, `sid:1`,
+     `textFormat: { bold:true, align:"center" }`). */
+  .fiche-cartes { display: flex; flex-direction: column; }
+  .fiche-carte-lien {
+    font-family: Verdana, Arial, sans-serif; font-size: 11.5px; font-weight: bold;
+    color: #446531; text-align: center; padding: 3px 4px; cursor: pointer;
+    border-radius: 4px;
+  }
+  .fiche-carte-lien:hover,
+  .fiche-carte-lien:focus-visible { background: rgba(255,255,255,.45); outline: none; }
+  /* La CARTE elle-même. `cpDocument` empile des rangées : une rangée est une
+     ligne de boîtes, un `spacer` extensible pousse ses voisines, une `page`
+     est une colonne de largeur fixe. Tout tient dans ces trois règles. */
+  .fiche-fcard { font-family: Verdana, Arial, sans-serif; font-size: 11px; color: #335511; }
+  .fiche-fcard .fc-rangee { display: flex; align-items: center; flex-wrap: nowrap; }
+  /* `flex: 0 1 auto` : la largeur d'époque est tenue tant qu'il y a la place,
+     et cède plutôt que de pousser la carte hors du cadre — les 300 px d'une
+     phrase de Frutisnake ne tiennent pas dans la feuille d'un téléphone. */
+  .fiche-fcard .fc-colonne { display: flex; flex-direction: column; flex: 0 1 auto; min-width: 0; }
+  .fiche-fcard .fc-texte { font-size: 11px; line-height: 15px; flex: 0 1 auto; max-width: 100%; }
+  /* `sid` 2 : le style des titres — gras, l'encre de l'onglet courant. */
+  .fiche-fcard .fc-titre { font-weight: bold; color: #842929; }
+  .fiche-fcard .fc-blanc { flex: 1 1 0; min-width: 0; }
+  .fiche-fcard .fc-filet { flex: 1 1 0; min-width: 6px; height: 2px; background: #ADE76B; }
+  .fiche-fcard .fc-air { flex: 0 0 auto; width: 100%; }
+  .fiche-fcard .fc-image {
+    flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .fiche-fcard .fc-image img { display: block; max-width: 100%; }
   /* Le pseudo d'un message se touche : il ouvre la fiche, comme au bureau. */
   #messages .from { cursor: pointer; }
 
@@ -7924,6 +7955,151 @@
   function fermerToutesLesFiches() {
     Object.keys(fichesOuvertes).forEach(function (k) { fermerFiche(fichesOuvertes[k]); });
   }
+  /* ══════════════════════════════════════════════════════════════════════════
+     LES FRUTICARDS — `Standard.getFrutiCardLines` (main.swf 0x5c370)
+
+     La carte d'un jeu est une LISTE DE LIGNES décrites par le serveur (cf.
+     `fruticard.js`, la transcription du bytecode) ; ici on ne fait que les
+     poser. Le vocabulaire est celui de `cpDocument` :
+
+        { list: [ … ] }         une RANGÉE ; ses éléments se suivent en ligne
+        { height: n }           n pixels d'air (une rangée peut porter les deux)
+        { type:"page", width:w, lineList:[ … ] }   une COLONNE de w pixels
+        { type:"text", width:w, param:{ sid, text, textFormat } }
+        { type:"url",  param:{ url, min, param } } + `src` résolu par le serveur
+        { type:"line", size:n }  un filet
+        { type:"spacer", big:n | width:w }  un blanc, extensible (`big`) ou fixe
+        { big: n }               un blanc de fin (getEndLine)
+
+     `sid` est le style du texte : 2 pour les titres (gras, l'encre des onglets
+     actifs), 1 pour le corps. `big` fait un `flex-grow` — c'est ainsi que les
+     lignes se centrent et que les valeurs se poussent à droite. */
+  function dessinerLignes(lignes, dans) {
+    (lignes || []).forEach(function (l) {
+      if (!l || typeof l !== "object") return;
+      if (l.list) {
+        var r = el("div", "fc-rangee");
+        if (l.height) r.style.minHeight = l.height + "px";
+        dessinerLignes(l.list, r);
+        dans.appendChild(r);
+        return;
+      }
+      if (l.type === "page") {
+        var col = el("div", "fc-colonne");
+        if (l.width) col.style.width = l.width + "px";
+        dessinerLignes(l.lineList, col);
+        dans.appendChild(col);
+        return;
+      }
+      if (l.type === "text") {
+        var t = el("span", "fc-texte" + (Number(l.param && l.param.sid) === 2 ? " fc-titre" : ""));
+        var pf = (l.param && l.param.textFormat) || {};
+        if (l.width) t.style.width = l.width + "px";
+        if (pf.align) t.style.textAlign = pf.align;
+        // `textFormat.color` est un entier 0xRRGGBB — celui du Frutisnake est
+        // le rose #E76B6B (15168875).
+        if (pf.color !== undefined && pf.color !== null) {
+          t.style.color = "#" + ("000000" + Number(pf.color).toString(16)).slice(-6);
+        }
+        t.textContent = (l.param && l.param.text) || "";
+        dans.appendChild(t);
+        return;
+      }
+      if (l.type === "url") {
+        // Le dessin peut manquer (une bibliothèque pas encore sortie du SWF) :
+        // la place reste, l'image ne s'y met pas — comme pour un voyant de jeu
+        // sans PNG.
+        var boite = el("span", "fc-image");
+        var min = (l.param && l.param.min) || {};
+        if (min.w) boite.style.minWidth = min.w + "px";
+        if (min.h) boite.style.minHeight = min.h + "px";
+        if (l.dx) boite.style.marginLeft = l.dx + "px";
+        if (l.dy) boite.style.marginTop = l.dy + "px";
+        var a = (l.param && l.param.param && l.param.param._alpha);
+        if (a !== undefined && a !== null) boite.style.opacity = (Number(a) / 100).toFixed(2);
+        if (l.src) {
+          var im = document.createElement("img");
+          im.src = l.src;
+          im.alt = "";
+          im.onerror = function () { im.remove(); };
+          boite.appendChild(im);
+        }
+        dans.appendChild(boite);
+        return;
+      }
+      if (l.type === "line") {
+        var f = el("span", "fc-filet");
+        if (l.size) f.style.height = l.size + "px";
+        dans.appendChild(f);
+        return;
+      }
+      if (l.type === "spacer" || l.big !== undefined) {
+        var s = el("span", "fc-blanc");
+        if (l.width !== undefined) { s.style.width = l.width + "px"; s.style.flex = "0 0 auto"; }
+        if (l.big) s.style.flexGrow = String(l.big);
+        dans.appendChild(s);
+        return;
+      }
+      if (l.height) {                       // une hauteur seule : de l'air
+        var h = el("div", "fc-air");
+        h.style.height = l.height + "px";
+        dans.appendChild(h);
+      }
+    });
+    return dans;
+  }
+
+  function dessinerCarte(carte) {
+    var boite = el("div", "fiche-fcard");
+    // ÉCART ASSUMÉ : l'époque ne NOMME pas la carte. `onFrutiCard` met le
+    // `getMenuLine` puis les lignes du jeu, et rien d'autre — on sait ce qu'on
+    // regarde parce qu'on vient de cliquer dessus. Ici la carte arrive après un
+    // aller-retour au serveur et peut être remplacée par une autre d'un clic :
+    // on garde son nom en tête, dans le même filet que les autres titres.
+    var t = el("div", "fiche-titre");
+    t.textContent = carte.titre || "";
+    boite.appendChild(t);
+    if (carte.chargement) {
+      boite.appendChild(el("div", "fiche-vide")).textContent = "Chargement…";
+      return boite;
+    }
+    if (carte.erreur) {
+      boite.appendChild(el("div", "fiche-vide")).textContent = carte.erreur;
+      return boite;
+    }
+    if (!carte.lignes || !carte.lignes.length) {
+      boite.appendChild(el("div", "fiche-vide")).textContent = "Aucune fruticard pour ce jeu.";
+      return boite;
+    }
+    dessinerLignes(carte.lignes, boite);
+    return boite;
+  }
+
+  // `loadFrutiCard(gameName)` : le SWF demande la sauvegarde publique au
+  // serveur et se la dessine. Ici le serveur rend la carte déjà décrite.
+  function chargerCarte(g) {
+    var f = ficheEtat;
+    if (!f || !f.pseudo) return;
+    f.carte = { jeu: g.id, titre: g.nom || g.id, chargement: true };
+    renderFiche();
+    fetch("/api/light/fruticard?sid=" + encodeURIComponent(state.sid)
+      + "&u=" + encodeURIComponent(f.pseudo) + "&g=" + encodeURIComponent(g.id),
+      { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!f.carte || f.carte.jeu !== g.id) return;      // on a changé d'avis
+        f.carte = (d && d.ok)
+          ? { jeu: g.id, titre: d.titre || g.nom, lignes: d.lignes || [] }
+          : { jeu: g.id, titre: g.nom || g.id, erreur: "Fruticard indisponible" };
+        avecFiche(f, renderFiche);
+      })
+      .catch(function () {
+        if (!f.carte || f.carte.jeu !== g.id) return;
+        f.carte = { jeu: g.id, titre: g.nom || g.id, erreur: "Fruticard indisponible" };
+        avecFiche(f, renderFiche);
+      });
+  }
+
   function ligneFiche(lib, val) {
     var l = el("div", "fiche-ligne");
     var a = el("span", "lib"); a.textContent = lib + " :"; l.appendChild(a);
@@ -8006,6 +8182,18 @@
     page.innerHTML = "";
     if (!d) { page.appendChild(el("div", "fiche-vide")).textContent = "Chargement…"; return; }
     if (d.erreur) { page.appendChild(el("div", "fiche-vide")).textContent = d.erreur; return; }
+
+    /* UNE FRUTICARD EN COURS remplace la page, comme `onFrutiCard` remplace la
+       sienne : elle pose un `pageObj` neuf, précédé du seul `getMenuLine` —
+       les quatre catégories, AUCUNE en surbrillance. On refait exactement ça :
+       plus d'onglet actif, et un clic sur n'importe lequel ramène sa page. */
+    if (ficheEtat.carte) {
+      Array.prototype.forEach.call(fq("fiche-onglets").children, function (b) {
+        b.classList.remove("actif");
+      });
+      page.appendChild(dessinerCarte(ficheEtat.carte));
+      return;
+    }
 
     if (ficheEtat.onglet === "frutiz") {
       var t = el("div", "fiche-titre"); t.textContent = "FrutiSigne"; page.appendChild(t);
@@ -8109,6 +8297,32 @@
           });
           page.appendChild(ls);
         }
+      }
+      /* « Fruticard ! » — la troisième section de l'onglet, après les médailles
+         et les scores du jour (0x5b040). Un titre, puis UNE LIGNE PAR JEU :
+         `Lang.gameName(g)` en gras centré, cliquable, qui appelle
+         `loadFrutiCard(g)`. Elle est là même quand le joueur n'a jamais lancé
+         le jeu — le SWF liste tous les jeux, pas seulement ceux qui ont une
+         sauvegarde, et la carte d'un jeu jamais joué est simplement vide. */
+      var cartes = (d.scores && d.scores.fcards) || [];
+      if (cartes.length) {
+        var tf = el("div", "fiche-titre"); tf.textContent = "Fruticard !"; page.appendChild(tf);
+        var lf = el("div", "fiche-cartes");
+        var laFicheC = ficheEtat;
+        cartes.forEach(function (g) {
+          var b = el("div", "fiche-carte-lien");
+          b.setAttribute("role", "button");
+          b.setAttribute("tabindex", "0");
+          b.textContent = g.nom || g.id;
+          b.title = "Voir la fruticard " + (g.nom || g.id);
+          var ouvrir = function () { avecFiche(laFicheC, function () { chargerCarte(g); }); };
+          b.addEventListener("click", ouvrir);
+          b.addEventListener("keydown", function (ev) {
+            if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); ouvrir(); }
+          });
+          lf.appendChild(b);
+        });
+        page.appendChild(lf);
       }
     } else if (ficheEtat.onglet === "bonus") {
       var com = d.bonus && d.bonus.commentaire;
@@ -8405,7 +8619,8 @@
     var onglet = b.getAttribute("data-onglet");
     if (!geste && !onglet) return;
     avecFiche(f, function () {
-      if (onglet) { f.onglet = onglet; renderFiche(); return; }
+      // Un onglet quitte la fruticard : `getMenuLine` rend la main à sa page.
+      if (onglet) { f.onglet = onglet; f.carte = null; renderFiche(); return; }
       var p = f.pseudo;
       switch (geste) {
         case "fiche-avance":

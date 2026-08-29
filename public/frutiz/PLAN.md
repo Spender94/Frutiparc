@@ -4333,13 +4333,76 @@ Deux argent, deux or, socles orange/gris/vert/violet :
                                                               d'époque (un L)
     getTitleLine("collection")
     ligne centrée : "<n> sur 322 ont été découverts"
-    ligne centrée : "( <n ÷ 322, arrondi au dixième> % )"
+    ligne centrée sid 1, largeur 300 : "( <pct> )" où pct = round(n÷322×1000)÷10
+                                       + "%"  ← le « % » est COLLÉ au chiffre
     { height:10 }
-    getRecordLines("le plus gros fruit", …)
+    getRecordLines("le plus gros fruit", <barème(imax)> + " points")
     { big:1 }
 
-**Ce qui reste à faire.** Le serveur sert déjà les données au visualiseur AS2
-(`FCARD_GAMES`, `patchSlot0`, `fcardgetpublicslot`) ; ce qui manque, c'est le
-rendu dans la fiche du bureau et du light. À noter : la carte lit
-`$ts[i].$totalCar` et `$ts[i].$fcTotal` là où `patchSlot0` ne garnit que `$bc`
-et `$bl` — il faudra compléter le rembourrage avant de dessiner les circuits.
+`$fruits` est **indexé par fruit**, pas empilé : la case d'un fruit jamais vu
+est vide, celle d'un fruit découvert porte ses points. La carte balaie 343
+cases (et non 322), compte les pleines, ADDITIONNE leur contenu — c'est ce
+total qui donne « a ramassé N fruits ! », un nombre de POINTS —, et retient
+l'indice du dernier découvert d'indice ≤ 300 : les pourris (321-342, aux points
+négatifs) ne peuvent donc pas être « le plus gros fruit ». Le barème est celui
+du jeu, `Const.fruit_points` (public/snake3/const.js), refait à l'identique dans
+le bytecode.
+
+**Swapou 2** — 0x5d532 : les sept persos en CERCLE (`dx = cos(6.28·i/7 − 2)×60`,
+`dy = 80 + sin(…)×60`), verrouillés à l'image `i + 10` ; puis, dans une colonne
+de 140, `getRecordLines` pour `normal`, `classic` et `swaps`.
+
+**MotionBall 2** — 0x5d9cd : les cinq donjons (`sd/mb2/<n>[_done].png`) en
+rangée de 44, avec un quirk — le CINQUIÈME est inséré à l'indice 5
+(`list.splice(5, 0, …)`), donc il se pose entre le deuxième et le troisième ;
+`getTitleLine("course")` puis, par couleur (jaune, vert, rouge, orange, bleu,
+métal, violet), le PREMIER record qui n'est pas un `$c` (challenge) ;
+`getRecordLines("classic", $classic_score + " niveaux")`.
+
+**Kaluga** — 0x5df1a : trois sections passées à `getKalugaModeLines`, qui se
+TAIT quand elle n'a rien à dire (un niveau à 0 ou à 600000 ne compte pas, et un
+tableau réduit à son titre est jeté) —
+
+    "épreuve"    essai / triathlon / heptathlon, en points
+    "olympique"  les sept épreuves, chacune avec le tzongre qui a fait le mieux,
+                 en centimètres
+    "mode chrono / survie / invasion / piste", en temps ; le CHRONO se
+                 recompose (chaque niveau est une liste de temps dont on garde
+                 le dernier, et seulement si `$mode[2][j]` le débloque)
+
+puis `getTitleLine("panier")`, « `<$stat.$fruit>` fruits ! » et le panier à
+l'image `floor(fruits^0.3)`.
+
+**MiniWave** — 0x5e868 : le grade (`miniwave_rank`, image `$lvl`), les
+vaisseaux (`_alpha = 20 + $ship[i]×80`), l'arcade, les bonus de mission, les
+modes spéciaux — chaque section vide REPREND son titre (`lines.pop()`) — et le
+tableau de chasse, qui s'arrête à `$badsKill.length − 1` : le dernier compteur
+n'est jamais montré, c'est ainsi dans le bytecode.
+
+**MiniPixiz** — 0x5f285 : le grade tiré de `min($stat.$run^0.16, 8)`, les cinq
+diamants et l'étoile, la fée courante (portrait teinté par `$skin`, six
+caractéristiques en deux colonnes de 90, les sorts dépilés huit par rangée et
+trois rangées au plus), les statistiques, le tableau de chasse et la Luz.
+
+**Où c'est porté.** `fruticard.js` transcrit les sept branches et le décor
+commun ; `GET /api/light/fruticard?u=&g=` rend la carte déjà décrite (mêmes
+champs que le bytecode, plus un `src` d'image résolu) ; `light.html` la dessine
+dans l'onglet Scores, sous la section « Fruticard ! » que le SWF y met
+lui-même (0x5b040). Le bureau d'époque n'est pas touché : il a déjà son moteur.
+
+**Ce qui reste à sortir du SWF.** Cinq bibliothèques de `/sd/` ne sont pas
+encore extraites, et leurs lignes `url` gardent leur place sans image :
+`miniwave_rank`, `miniwave_ship`, `miniwave_bads`, `kaluga_panier`,
+`minipixiz_award` / `minipixiz_spell` / `minipixiz_faeries`. Ce ne sont pas des
+feuilles à une forme par image comme `bkiwi_cup` : ce sont des CLIPS COMPOSÉS
+(plusieurs formes placées par matrice, par image), qu'il faut composer avant de
+rendre — et la fée est en plus TEINTÉE à l'exécution (`col1..col3`).
+`minipixiz_luz.swf` manque carrément de `public/sd/`.
+
+**Ce que `patchSlot0` ne peut pas inventer.** La carte de Burning Kiwi lit
+`$ts[i].$fcLap` et `$ts[i].$fcTotal` (meilleur tour, meilleure course) là où le
+serveur n'archive que `$bc` / `$bl`. On ne garnit donc que les deux INDICES
+d'écurie (`$lapCar`, `$totalCar`) : un temps qu'on n'a pas enregistré ne
+s'invente pas, et la carte saute d'elle-même un circuit dont `$fcLap` n'est pas
+un nombre fini. Les circuits reviennent dès que le joueur lance le jeu Flash,
+qui écrit sa propre sauvegarde.

@@ -82,7 +82,7 @@ test('les gestes sont DÉLÉGUÉS, chacun sur SA fiche', () => {
   // pas ses branchements. Un seul écouteur remonte à la boîte cliquée.
   assert.match(LIGHT, /function ficheDuClic\(ev\) \{[\s\S]*?closest\("\.fiche-boite"\)[\s\S]*?getAttribute\("data-fiche-de"\)/);
   assert.match(LIGHT, /var geste = \["fiche-avance", "fiche-fermer", "fiche-mp", "fiche-mail",\s*\n\s*"fiche-kick", "fiche-ban", "fiche-totoche"\]/);
-  assert.match(LIGHT, /avecFiche\(f, function \(\) \{\s*\n\s*if \(onglet\) \{ f\.onglet = onglet; renderFiche\(\); return; \}/);
+  assert.match(LIGHT, /avecFiche\(f, function \(\) \{[\s\S]{0,120}if \(onglet\) \{ f\.onglet = onglet; f\.carte = null; renderFiche\(\); return; \}/);
 });
 
 /* ── LE BUREAU EN FAIT DES FENÊTRES ────────────────────────────────────────*/

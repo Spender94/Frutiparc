@@ -20801,7 +20801,70 @@ app.get('/api/light/fiche', async (req, res) => {
       // sans commentaire ni site — c'est souvent la seule chose qu'on cherche.
       derniereConnexion: ud.lastLogin || '',
     },
-    scores: { classements, medailles },
+    // `box.Frutiz` liste sous « Fruticard ! » les jeux dont ce joueur a une
+    // carte publique (`fcardlist`), et un clic la charge. Le light reçoit la
+    // même liste, dans le même ordre, pour poser les mêmes liens.
+    scores: { classements, medailles,
+      fcards: FCARD_DESSINABLES.map((g) => ({ id: g, nom: FCard.nomJeu(g) })) },
+  });
+});
+
+/*
+ * LA FRUTICARD D'UN JEU — `fcardgetpublicslot` + `getFrutiCardLines`, en une
+ * requête. Le SWF fait les deux en deux temps (il demande la sauvegarde, puis
+ * la dessine lui-même) ; le light n'a pas le moteur de dessin, alors le
+ * serveur lui rend la carte DÉJÀ DÉCRITE — la même liste de lignes, avec les
+ * dessins résolus en images.
+ */
+app.get('/api/light/fruticard', async (req, res) => {
+  const demandeur = resolveUsernameFromSid(req.query.sid || '');
+  if (!demandeur) return res.status(401).json({ ok: false, error: 'auth' });
+  const jeu = String(req.query.g || '').trim();
+  if (!FCard.aUneCarte(jeu)) return res.status(400).json({ ok: false, error: 'jeu' });
+  const u = String(req.query.u || demandeur).toLowerCase().trim();
+  if (!u) return res.status(400).json({ ok: false, error: 'pseudo' });
+
+  // La sauvegarde : en mémoire si le joueur est là, en base sinon — les mêmes
+  // trois sources que `fcardgetpublicslot`, pour que les deux cartes soient la
+  // même carte.
+  let brut = '';
+  let ctx = null;
+  const tu = users[u];
+  if (tu) {
+    if (tu.frutiSlots && tu.frutiSlots[jeu] && tu.frutiSlots[jeu]['0']) {
+      brut = tu.frutiSlots[jeu]['0'];
+    } else if (tu._dbId) {
+      try {
+        const slots = await db.getFrutiSlots(tu._dbId, jeu);
+        if (slots && slots['0']) {
+          if (!tu.frutiSlots) tu.frutiSlots = {};
+          tu.frutiSlots[jeu] = slots;
+          brut = slots['0'];
+        }
+      } catch (e) { /* la carte se dessinera vide */ }
+    }
+  } else {
+    try {
+      const row = await db.findUserByUsername(u);
+      if (!row || !row.id) return res.status(404).json({ ok: false, error: 'inconnu' });
+      const [slots, sc, items] = await Promise.all([
+        db.getFrutiSlots(row.id, jeu).catch(() => null),
+        db.loadScoresForUser(row.id).catch(() => ({})),
+        db.getUserGameItems(row.id).catch(() => []),
+      ]);
+      if (slots && slots['0']) brut = slots['0'];
+      ctx = { gameItems: items || [], scores: sc || {}, jamaPlayCount: 0 };
+    } catch (e) {
+      console.warn(`[FCARD] chargement hors ligne impossible (${u}/${jeu}) : ${e.message}`);
+    }
+  }
+  let carte = {};
+  try { carte = JSON.parse(patchSlot0(u, jeu, brut, ctx)) || {}; } catch (e) { carte = {}; }
+  res.json({
+    ok: true,
+    jeu,
+    titre: FCard.nomJeu(jeu),
+    lignes: FCard.lignes(jeu, carte, getDisplayName(u)),
   });
 });
 
@@ -23441,6 +23504,13 @@ function modAttr(username, channelName) {
 // the score rankings, not in a FrutiCard slot).
 const FCARD_GAMES = ['bkiwi', 'snake3', 'swapou2', 'kaluga', 'mb2', 'miniwave', 'jamajama', 'minipixiz'];
 
+// Le DESSIN de ces cartes — `Standard.getFrutiCardLines` (main.swf 0x5c370),
+// transcrite. Le SWF la porte déjà ; le light ne l'avait pas.
+const FCard = require('./fruticard.js');
+// Les jeux dont le MOTEUR sait faire une carte. `jamajama` a un slot mais pas
+// de branche dans le `switch` d'époque : il n'a donc pas de carte non plus ici.
+const FCARD_DESSINABLES = FCARD_GAMES.filter((g) => FCard.aUneCarte(g));
+
 // Convert a JSON string (or JS value) to Motion-Twin serialization format (2004).
 // MTSerialization.unserialize in the AS2 profile viewer expects this format.
 // Format: N<num>, S<str>, B0/B1, U, [elem;elem;], {key:val;key:val;}
@@ -23509,13 +23579,31 @@ function patchSlot0(username, game, existingData, ctx) {
         const rkL = scores[`bkiwi_track${t}_challenge`];
         if (saved.$ts[key].$bc === undefined) saved.$ts[key].$bc = rkC ? rkC.score : 0;
         if (saved.$ts[key].$bl === undefined) saved.$ts[key].$bl = rkL ? rkL.score : 0;
+        // La CARTE lit d'autres champs que le tableau des scores : `$fcLap` et
+        // `$fcTotal` (meilleur tour, meilleure course) et l'écurie qui les a
+        // faits. On ne garnit que les DEUX INDICES : un temps qu'on n'a pas
+        // enregistré ne s'invente pas, et la carte saute d'elle-même un
+        // circuit dont `$fcLap` n'est pas un nombre (`isFinite`).
+        if (saved.$ts[key].$lapCar === undefined) saved.$ts[key].$lapCar = 0;
+        if (saved.$ts[key].$totalCar === undefined) saved.$ts[key].$totalCar = 0;
       }
       return JSON.stringify(saved);
     }
     case 'snake3': {
       if (!Array.isArray(saved.$fruits)) {
+        // `$fruits` est indexé PAR FRUIT, pas empilé : la carte d'époque
+        // (0x5cde6) balaie les 343 cases, compte celles qui ne sont pas vides
+        // et ADDITIONNE leur contenu — les points du fruit. Une liste dense
+        // d'identifiants lui faisait donc dire « 5 fruits ramassés » là où le
+        // joueur en avait des milliers, et « le plus gros fruit » se trompait
+        // de case. Le barème est celui du jeu (`Const.fruit_points`).
         const gi = Array.isArray(ud.gameItems) ? ud.gameItems : [];
-        saved.$fruits = gi.filter(it => /^Fruit \d+$/.test(it)).map(it => Number(it.replace('Fruit ', '')));
+        const trouves = gi.filter(it => /^Fruit \d+$/.test(it))
+          .map(it => Number(it.replace('Fruit ', '')));
+        saved.$fruits = [];
+        for (const id of trouves) {
+          if (id >= 0 && id < 343) saved.$fruits[id] = FCard.pointsFruit(id);
+        }
       }
       if (saved.$record === undefined || saved.$record === null) {
         const rkC = scores.snake3_classic;
