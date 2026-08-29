@@ -43,7 +43,7 @@ test('rien ne s’assombrit derrière : c’est une FENÊTRE', () => {
   assert.match(BLOC, /#fiche-backdrop \{[\s\S]*?background: none;[\s\S]*?pointer-events: none;/);
   assert.match(BLOC, /#fiche-backdrop\.show \{ display: block; \}/);
   // Et la fiche, elle, reçoit les clics.
-  assert.match(BLOC, /#fiche \{[\s\S]*?pointer-events: auto;/);
+  assert.match(BLOC, /\.fiche-boite \{[\s\S]*?pointer-events: auto;/);
   // Le mobile n'est pas touché : son voile reste là.
   assert.match(LIGHT, /#fiche-backdrop \{[\s\S]*?background: rgba\(20, 32, 8, \.45\);/);
 });
@@ -52,19 +52,20 @@ test('elle se pose DANS LE COIN et se glisse par son cadre', () => {
   // `win.Frutiz` (sprite#819) ne se donne pas de `pos` et n'appelle pas
   // `moveToCenter` : c'est `recal` qui la place, donc (cornerX, cornerY).
   // L'escalier qu'on avait ici était une invention.
-  assert.match(JS, /function poserFiche\(\) \{[\s\S]*?f\.style\.setProperty\('--fx', CORNER_X \+ 'px'\);/);
+  assert.match(JS, /function poserFiche\(cle, racine, pseudo\) \{[\s\S]*?f\.style\.setProperty\('--fx', CORNER_X \+ 'px'\);/);
   assert.match(JS, /f\.style\.setProperty\('--fy', CORNER_Y \+ 'px'\);/);
   assert.doesNotMatch(JS, /ficheRang/);
   // `initDrag` : on l'attrape par le cadre, pas par un bouton ni la feuille.
   assert.match(JS, /if \(ev\.target\.closest\('button, a, input, \.fiche-corps'\)\) return;/);
-  assert.match(BLOC, /#fiche \{\s*\n\s*position: absolute; left: var\(--fx, 220px\); top: var\(--fy, 120px\);/);
-  // Le light prévient le bureau à l'ouverture.
-  assert.match(LIGHT, /if \(window\.BureauFrutiz && BureauFrutiz\.poserFiche\) BureauFrutiz\.poserFiche\(\);/);
+  assert.match(BLOC, /\.fiche-boite \{\s*\n\s*position: absolute; left: var\(--fx, 220px\); top: var\(--fy, 120px\);/);
+  // Le light prévient le bureau à l'ouverture, en NOMMANT la fiche : il y en a
+  // une par joueur, et c'est ce nom qui la retrouve à la fermeture.
+  assert.match(LIGHT, /BureauFrutiz\.poserFiche\(cle, f\.racine, p\);/);
 });
 
 test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte', () => {
-  assert.match(BLOC, /#fiche \{[\s\S]*?width: 324px;/);
-  assert.match(BLOC, /#fiche \{[\s\S]*?background: #FFFFFF;/);
+  assert.match(BLOC, /\.fiche-boite \{[\s\S]*?width: 324px;/);
+  assert.match(BLOC, /\.fiche-boite \{[\s\S]*?background: #FFFFFF;/);
   // LE GABARIT DE LA PLAQUE EST CELUI DU MOBILE — décision assumée, pas un
   // oubli. Le relevé d'époque (`frutiScreen`, `fix { w: base + 36, h: base }`
   // = 76 × 42) tient la bouille dans 35 × 31 et le « NIV n » dans huit pixels
@@ -84,13 +85,13 @@ test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte',
   //   · l'afficheur à sept segments, qui est un glyphe plein de la Verdana
   //     pixel du SWF, centré dans une colonne fixe (le champ #430 déclare
   //     `align centre`).
-  assert.match(BLOC, /body\.bureau-frutiz #fiche \.fiche-plaque \{ padding: 0; \}/);
-  assert.match(BLOC, /#fiche \.fiche-plaque \{\s*\n\s*gap: 1px; border-color: #888888;\s*\n\s*\}/);
-  assert.match(BLOC, /#fiche \.fiche-plaque \.fa-progress \{ width: 27px; gap: 1px; \}/);
-  assert.match(BLOC, /#fiche \.fiche-plaque \.fa-progress i \{ height: 2px; background: #A2EB56; \}/);
-  assert.match(BLOC, /#fiche \.fiche-plaque \.fa-niv img \{ height: 17\.4px; width: 14\.2px; \}/);
-  assert.match(BLOC, /#fiche \.fiche-plaque \.fa-niv b \{[\s\S]*?font-family: 'ImpactSwf'/);
-  assert.match(BLOC, /#fiche \.fiche-plaque \.fa-niv b \{[\s\S]*?flex: 0 0 12\.7px; text-align: center;/);
+  assert.match(BLOC, /body\.bureau-frutiz \.fiche-boite \.fiche-plaque \{ padding: 0; \}/);
+  assert.match(BLOC, /\.fiche-boite \.fiche-plaque \{\s*\n\s*gap: 1px; border-color: #888888;\s*\n\s*\}/);
+  assert.match(BLOC, /\.fiche-boite \.fiche-plaque \.fa-progress \{ width: 27px; gap: 1px; \}/);
+  assert.match(BLOC, /\.fiche-boite \.fiche-plaque \.fa-progress i \{ height: 2px; background: #A2EB56; \}/);
+  assert.match(BLOC, /\.fiche-boite \.fiche-plaque \.fa-niv img \{ height: 17\.4px; width: 14\.2px; \}/);
+  assert.match(BLOC, /\.fiche-boite \.fiche-plaque \.fa-niv b \{[\s\S]*?font-family: 'ImpactSwf'/);
+  assert.match(BLOC, /\.fiche-boite \.fiche-plaque \.fa-niv b \{[\s\S]*?flex: 0 0 12\.7px; text-align: center;/);
   // Et ce sont EXACTEMENT les valeurs de la main bar : les deux blocs ne
   // peuvent plus diverger sans qu'on s'en aperçoive.
   //
@@ -119,13 +120,13 @@ test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte',
   assert.match(LIGHT, /\.fiche-plaque \.fa-niv b \{\s*\n\s*font-family: 'DSEG7'/);
   // Le bouton du dépli porte son VRAI dessin — la plaque #359 et le triangle
   // #369, qui ne fait que huit de côté et reste centré.
-  assert.match(BLOC, /#fiche-avance \{[\s\S]*?fiche-rose\.svg'\) center \/ 20px 20px/);
-  assert.match(BLOC, /#fiche-avance img \{[\s\S]*?fiche-rose-tri\.svg'\);\s*\n\s*width: 9px; height: 9px;/);
+  assert.match(BLOC, /\.fiche-avance \{[\s\S]*?fiche-rose\.svg'\) center \/ 20px 20px/);
+  assert.match(BLOC, /\.fiche-avance img \{[\s\S]*?fiche-rose-tri\.svg'\);\s*\n\s*width: 9px; height: 9px;/);
   // La croix est au coin HAUT-DROIT de la fenêtre, pas au bout d'une ligne —
   // et tout en haut (`top: 0`), avec un DESSIN de 18 qui déborde sa zone
   // sensible de 13. Réglé au relevé du joueur.
-  assert.match(BLOC, /#fiche-fermer \{\s*\n\s*position: absolute; right: 5px; top: 0;/);
-  assert.match(BLOC, /#fiche-fermer img \{ width: 18px; height: 18px; display: block; \}/);
+  assert.match(BLOC, /\.fiche-fermer \{\s*\n\s*position: absolute; right: 5px; top: 0;/);
+  assert.match(BLOC, /\.fiche-fermer img \{ width: 18px; height: 18px; display: block; \}/);
   // La rangée : cinq px entre les boutons, et vingt-deux de haut.
   assert.match(BLOC, /\.fiche-actions \{\s*\n\s*display: flex; align-items: flex-start; gap: 5px; height: 22px;\s*\n\}/);
   // Le bouton du dépli est CARRÉ : 20 d'art, comme les blancs (x 293..316).
@@ -153,13 +154,14 @@ test('la rangée d’icônes suit box.Frutiz.getIconList', () => {
   }
   // L'ORDRE d'époque : chat, courrier, blog, carnet, liste noire, puis la
   // modération. Le mobile n'avait que les deux premiers.
-  assert.match(JS, /\{ id: 'fiche-mp', +art: 'fiche-ico-chat' \}/);
-  assert.match(JS, /\{ id: 'fiche-blog', +art: 'fiche-ico-blog'/);
-  assert.match(JS, /\{ id: 'fiche-contact', +art: 'fiche-ico-contact'/);
-  assert.match(JS, /\{ id: 'fiche-noire', +art: 'fiche-ico-noire'/);
-  // Les trois manquants sont montés à leur place, après le courrier.
+  assert.match(JS, /\{ cls: 'fiche-mp', +art: 'fiche-ico-chat' \}/);
+  assert.match(JS, /\{ cls: 'fiche-blog', +art: 'fiche-ico-blog'/);
+  assert.match(JS, /\{ cls: 'fiche-contact', +art: 'fiche-ico-contact'/);
+  assert.match(JS, /\{ cls: 'fiche-noire', +art: 'fiche-ico-noire'/);
+  // Les trois manquants sont montés à leur place, après le courrier — et
+  // cherchés SOUS LA RACINE de leur fiche, par classe : un clone n'a pas d'id.
   assert.match(JS, /if \(apres && apres\.parentNode === rangee\) rangee\.insertBefore\(b, apres\.nextSibling\);/);
-  assert.match(JS, /var apres = \$\('#fiche-mail'\);/);
+  assert.match(JS, /var apres = racine\.querySelector\('\.fiche-mail'\);/);
 });
 
 test('les rangées : dix-neuf et demi de pas, et un filet qui les ferme', () => {
@@ -168,7 +170,7 @@ test('les rangées : dix-neuf et demi de pas, et un filet qui les ferme', () => 
   // Le bloc s'ouvre sur un filet (#ADE76B en 180-181) et se FERME sur un
   // autre (277-278) — c'est celui-là qui manquait.
   assert.match(BLOC, /\.fiche-lignes \{\s*\n\s*padding-bottom: 6px; border-bottom: 2px solid #ADE76B;/);
-  assert.match(BLOC, /\.fiche-signes,\s*\nbody\.bureau-frutiz #fiche \.fiche-medailles \{ border-bottom: 2px solid #ADE76B; \}/);
+  assert.match(BLOC, /\.fiche-signes,\s*\nbody\.bureau-frutiz \.fiche-boite \.fiche-medailles \{ border-bottom: 2px solid #ADE76B; \}/);
 });
 
 test('les quatre onglets : colonnes égales, texte gras, le courant en #842929', () => {
@@ -182,18 +184,18 @@ test('les quatre onglets : colonnes égales, texte gras, le courant en #842929',
 });
 
 test('les encres relevées, genre compris', () => {
-  assert.match(BLOC, /#fiche-pseudo \{\s*\n\s*font: 700 11px Verdana[^;]*; color: #242169;/);
+  assert.match(BLOC, /\.fiche-pseudo \{\s*\n\s*font: 700 11px Verdana[^;]*; color: #242169;/);
   assert.match(BLOC, /\.fiche-nom-ligne \.meta \{[\s\S]*?color: #404040;/);
-  assert.match(BLOC, /\.fiche-ligne \.lib,\s*\nbody\.bureau-frutiz #fiche \.fiche-ligne \.val \{ color: #335511; \}/);
+  assert.match(BLOC, /\.fiche-ligne \.lib,\s*\nbody\.bureau-frutiz \.fiche-boite \.fiche-ligne \.val \{ color: #335511; \}/);
   // `UserSlot.onInfoBasic` (0x63a51) : le pseudo prend la couleur du GENRE, et
   // la règle vaut pour LES DEUX mises en page — elle vit donc dans light.html,
   // avec les valeurs exactes du bytecode (celle qui était ici disait #BB4A44,
   // un chiffre de travers). Le bureau n'a plus rien à guetter : `renderFiche`
   // pose l'attribut au moment où il écrit le pseudo.
-  assert.match(LIGHT, /#fiche-pseudo\[data-genre="M"\] \{ color: #242169; \}/);
-  assert.match(LIGHT, /#fiche-pseudo\[data-genre="F"\] \{ color: #BB4444; \}/);
+  assert.match(LIGHT, /\.fiche-pseudo\[data-genre="M"\] \{ color: #242169; \}/);
+  assert.match(LIGHT, /\.fiche-pseudo\[data-genre="F"\] \{ color: #BB4444; \}/);
   assert.match(LIGHT, /var fg = \(d && d\.basic && d\.basic\.sexe === "F"\) \? "F" : \(d && d\.basic \? "M" : ""\);/);
-  assert.doesNotMatch(BLOC, /#fiche\.elle/);
+  assert.doesNotMatch(BLOC, /\.fiche-boite\.elle/);
   assert.doesNotMatch(JS, /function majGenreFiche|majGenreFiche\(f\);/);
 });
 
@@ -202,7 +204,9 @@ test('la bouille de la fiche est dessinée en JS, pas jouée par Ruffle', () => 
   // (ruffle.html dans une iframe) n'a plus rien à faire ici. Un seul moteur
   // pour toutes les bouilles du site : accueil, salons, fiche.
   assert.match(LIGHT, /function previewIframe\(state\) \{\s*\n\s*return FPBouilleVignette\.html\(state \|\| DEFAULT_BOUILLE\);/);
-  assert.match(LIGHT, /\$\("#fiche-avatar"\)\.innerHTML = \(d && d\.bouille\) \? previewIframe\(d\.bouille\) : "";\s*\n\s*brancherApercus\(\$\("#fiche-avatar"\)\);/);
+  // `fq` et non `$` : la vignette est cherchée SOUS la racine de la fiche
+  // qu'on rend — il y en a plusieurs à l'écran, et un clone n'a pas d'id.
+  assert.match(LIGHT, /fq\("fiche-avatar"\)\.innerHTML = \(d && d\.bouille\) \? previewIframe\(d\.bouille\) : "";\s*\n\s*brancherApercus\(fq\("fiche-avatar"\)\);/);
   assert.doesNotMatch(LIGHT, /rendue par Ruffle comme partout ailleurs/);
 });
 

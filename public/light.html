@@ -793,7 +793,13 @@
     background: rgba(20, 32, 8, .45); padding: 16px;
   }
   #fiche-backdrop.show { display: flex; }
-  #fiche {
+  /* LA FICHE SE VISE PAR CLASSE, PAS PAR ID. Le bureau peut en ouvrir
+     plusieurs : les suivantes sont des CLONES du même gabarit, et un clone ne
+     peut pas emporter les ids de l'original. Tout ce qui habillait `#fiche` et
+     ses enfants passe donc en classes jumelles — `.fiche-boite`, `.fiche-avance`,
+     `.fiche-fermer`, `.fiche-pseudo` — pour valoir sur l'original comme sur ses
+     copies. Les ids restent sur l'original, ils ne servent plus qu'au mobile. */
+  .fiche-boite {
     position: relative;
     width: min(340px, 94vw); max-height: 92vh; overflow-y: auto;
     background: #fff; border: 1.5px solid #545454; border-radius: 8px;
@@ -875,20 +881,22 @@
     overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto;
   }
   /* La croix du bureau — butGroupWinTop, image 1. */
-  #fiche-fermer {
+  .fiche-fermer {
     flex: 0 0 auto; border: 0; background: transparent; cursor: pointer; padding: 0 0 0 3px;
   }
-  #fiche-fermer img { width: 20px; height: 20px; display: block; }
+  .fiche-fermer img { width: 20px; height: 20px; display: block; }
   .fiche-actions { display: flex; align-items: center; gap: 5px; }
   /* Le bouton ROSE du mode avancé, au bout de la rangée : la tuile
      (butPushSmallPink) en fond, son triangle (image 13) posé dedans. */
-  #fiche-avance {
+  /* Deux classes, pour continuer de l'emporter sur `.fiche-actions button` —
+     l'id le faisait tout seul, une classe seule n'y suffirait plus. */
+  .fiche-actions .fiche-avance {
     margin-left: auto; flex: 0 0 auto; width: 28px; height: 28px;
     border: 0; padding: 0; cursor: pointer;
     background: url('/fb/fiche/bouton_rose.png') no-repeat center / 100% 100%;
     display: flex; align-items: center; justify-content: center;
   }
-  #fiche-avance img { width: 15px; height: 15px; object-fit: contain; display: block; }
+  .fiche-actions .fiche-avance img { width: 15px; height: 15px; object-fit: contain; display: block; }
   /* Les glyphes du bureau (la feuille `icon` du sprite 500), posés dans le
      halo gris clair de l'intégration plutôt que dans un cadre plein. */
   .fiche-actions button {
@@ -911,7 +919,7 @@
     margin-top: 8px; background: #E0F4C5;
     border: 2px solid #a7dc6b; border-radius: 2px; box-shadow: 0 0 0 2px #DDDDDD;
   }
-  #fiche:not(.deploye) .fiche-corps { display: none; }
+  .fiche-boite:not(.deploye) .fiche-corps { display: none; }
   .fiche-onglets { display: flex; justify-content: space-around; border-bottom: 2px solid #a7dc6b; }
   .fiche-onglets button {
     flex: 1 1 0; border: 0; background: transparent; font-weight: bold;
@@ -1110,8 +1118,8 @@
   .u.mp[data-genre="F"]:active .nom, .sl-contact[data-genre="F"]:active .nom { color: #FEABAB; }
   /* Le pseudo de la FICHE est un `userSlot` lui aussi — mais un champ mort :
      il n'a que sa couleur de base. */
-  #fiche-pseudo[data-genre="M"] { color: #242169; }
-  #fiche-pseudo[data-genre="F"] { color: #BB4444; }
+  .fiche-pseudo[data-genre="M"] { color: #242169; }
+  .fiche-pseudo[data-genre="F"] { color: #BB4444; }
 
   /* Un pseudo sur lequel on peut appuyer pour écrire en privé. L'enveloppe dit
      ce que le simple texte ne disait pas : que la ligne est un bouton. */
@@ -2488,18 +2496,18 @@
     <!-- La FICHE d'un frutiz (winFrutizInfo du bureau). Ouverte en touchant un
          pseudo — dans un salon, la liste des connectés ou le trombinoscope. -->
     <div id="fiche-backdrop">
-      <div id="fiche" class="deploye" role="dialog" aria-modal="true" aria-label="Fiche du frutiz">
+      <div id="fiche" class="deploye fiche-boite" role="dialog" aria-modal="true" aria-label="Fiche du frutiz">
         <div class="fiche-haut">
           <!-- La plaque verte : la bouille et l'écran de niveau dans un seul
                encart, avec les dessins de la mainbar (cadre, reflets, NIV). -->
           <div class="fiche-plaque">
             <img class="reflet-niv" src="/fb/reflet_niveau.svg" alt="">
             <div class="fa-frame">
-              <div class="stage" id="fiche-avatar"></div>
+              <div class="stage fiche-avatar" id="fiche-avatar"></div>
             </div>
             <div class="fa-jauge">
-              <div class="fa-progress" id="fiche-barres"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-              <div class="fa-niv"><img src="/fb/Niveau.svg" alt="NIV"><b id="fiche-niveau">1</b></div>
+              <div class="fa-progress fiche-barres" id="fiche-barres"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="fa-niv"><img src="/fb/Niveau.svg" alt="NIV"><b id="fiche-niveau" class="fiche-niveau">1</b></div>
             </div>
             <!-- Le cadre et le reflet de la mainbar, posés sur la PLAQUE : le
                  cadre en fait toute la largeur, le reflet se pose dans le coin
@@ -2513,9 +2521,9 @@
                bout, le bouton rose. -->
           <div class="fiche-droite">
             <div class="fiche-nom-ligne">
-              <img class="statut" id="fiche-statut" src="/fb/fiche/statut_absent.png" alt=""><b id="fiche-pseudo">…</b>
-              <span class="meta" id="fiche-meta"></span>
-              <button type="button" id="fiche-fermer" aria-label="Fermer"><img src="/fb/fiche/croix_fermer.png" alt="Fermer"></button>
+              <img class="statut fiche-statut" id="fiche-statut" src="/fb/fiche/statut_absent.png" alt=""><b id="fiche-pseudo" class="fiche-pseudo">…</b>
+              <span class="meta fiche-meta" id="fiche-meta"></span>
+              <button type="button" id="fiche-fermer" class="fiche-fermer" aria-label="Fermer"><img src="/fb/fiche/croix_fermer.png" alt="Fermer"></button>
             </div>
             <!-- La rangée du bureau (box.Frutiz.getIconList), avec les VRAIS
                  glyphes de main.swf — la feuille `icon` de butPushSmallWhite.
@@ -2526,15 +2534,15 @@
                  ROSE (butPushSmallPink + son triangle) : au bureau il ouvre la
                  partie détaillée, ici il déplie la fiche. -->
             <div class="fiche-actions">
-              <button type="button" id="fiche-mp" title="Discuter en privé"><img src="/fb/fiche/ico_chat.png" alt=""></button>
-              <button type="button" id="fiche-mail" title="Lui écrire un message"><img src="/fb/fiche/ico_mail.png" alt=""></button>
+              <button type="button" id="fiche-mp" class="fiche-mp" title="Discuter en privé"><img src="/fb/fiche/ico_chat.png" alt=""></button>
+              <button type="button" id="fiche-mail" class="fiche-mail" title="Lui écrire un message"><img src="/fb/fiche/ico_mail.png" alt=""></button>
               <!-- Sur SA fiche, le bureau remplace ces deux boutons par
                    « modifier ma fiche » (win.EditInfo). Ici aussi. -->
-              <button type="button" id="fiche-editer" title="Modifier ma fiche" hidden><img src="/fb/fiche/ico_edite.png" alt=""></button>
-              <button type="button" id="fiche-kick" class="modo" title="Éjecter du salon" hidden><img src="/fb/fiche/ico_kick.png" alt=""></button>
-              <button type="button" id="fiche-ban" class="modo" title="Bannir" hidden><img src="/fb/fiche/ico_ban.png" alt=""></button>
-              <button type="button" id="fiche-totoche" class="modo" title="Totocher (rendre muet)" hidden><img src="/fb/fiche/ico_totoche.png" alt=""></button>
-              <button type="button" id="fiche-avance" title="Afficher ou masquer le détail" aria-expanded="true"><img src="/fb/fiche/ico_avance.png" alt=""></button>
+              <button type="button" id="fiche-editer" class="fiche-editer" title="Modifier ma fiche" hidden><img src="/fb/fiche/ico_edite.png" alt=""></button>
+              <button type="button" id="fiche-kick" class="modo fiche-kick" title="Éjecter du salon" hidden><img src="/fb/fiche/ico_kick.png" alt=""></button>
+              <button type="button" id="fiche-ban" class="modo fiche-ban" title="Bannir" hidden><img src="/fb/fiche/ico_ban.png" alt=""></button>
+              <button type="button" id="fiche-totoche" class="modo fiche-totoche" title="Totocher (rendre muet)" hidden><img src="/fb/fiche/ico_totoche.png" alt=""></button>
+              <button type="button" id="fiche-avance" class="fiche-avance" title="Afficher ou masquer le détail" aria-expanded="true"><img src="/fb/fiche/ico_avance.png" alt=""></button>
             </div>
           </div>
         </div>
@@ -7740,7 +7748,49 @@
   // le bureau il y a une fenêtre par salon : prendre `state.room` éjectait du
   // salon « courant » — pas forcément celui qu'on regardait — et le serveur
   // répondait 403 quand on n'y était pas staff.
-  var ficheEtat = { pseudo: null, data: null, onglet: "frutiz", salon: null };
+  /* ══════════════════════════════════════════════════════════════════════════
+     PLUSIEURS FICHES À LA FOIS — `box.Frutiz` est une instance PAR JOUEUR.
+
+     Le portage n'en avait qu'UNE : un panneau `#fiche` unique et un `ficheEtat`
+     global. Ouvrir la fiche de quelqu'un écrasait la précédente, alors que le
+     bureau d'époque en empile autant qu'on veut — comme les conversations
+     (`Slot.addBox` en tient une liste, cf. `ouvrirSalon`).
+
+     Trois pièces, donc :
+
+       `fichesOuvertes`  une entrée par pseudo — { pseudo, data, onglet, salon,
+                         racine }. `racine` est le NŒUD de cette fiche-là : le
+                         `#fiche` d'origine pour la première, un clone ensuite.
+       `ficheEtat`       celle que le code de rendu vise EN CE MOMENT. Elle
+                         reste, parce que tout le rendu s'y réfère ; c'est
+                         `avecFiche` qui la fait pointer sur la bonne.
+       la DÉLÉGATION     les boutons d'une fiche clonée n'ont pas d'écouteur à
+                         eux : un seul écouteur remonte à `.fiche-boite` et
+                         retrouve son état par `data-fiche-de`.
+
+     Le MOBILE ne change pas : il n'ouvre jamais qu'une fiche, celle du nœud
+     d'origine, et `fermerFiche` la referme comme avant. */
+  var fichesOuvertes = {};
+  var ficheEtat = { pseudo: null, data: null, onglet: "frutiz", salon: null,
+                    racine: null };
+  // La racine du rendu courant. Sans fiche visée (mobile au repos), c'est le
+  // panneau d'origine — le code qui tourne avant la première ouverture y écrit,
+  // comme avant.
+  function ficheRacine() {
+    return (ficheEtat && ficheEtat.racine) || $("#fiche");
+  }
+  // La poignée d'une pièce de la fiche COURANTE. Les ids sont dupliqués sur un
+  // clone : c'est la classe jumelle qui sert, et toujours sous la racine.
+  function fq(cls) { return ficheRacine().querySelector("." + cls); }
+  // Rend `f` courante le temps d'un geste, puis remet celle d'avant : deux
+  // fiches ouvertes ne doivent pas se marcher dessus quand l'une répond à une
+  // requête pendant qu'on regarde l'autre.
+  function avecFiche(f, faire) {
+    var avant = ficheEtat;
+    ficheEtat = f;
+    try { return faire(); } finally { ficheEtat = avant; }
+  }
+  var ficheCle = function (p) { return String(p || "").toLowerCase(); };
   // ATTENTION : cette table s'appelait `MOIS_COURTS`, comme celle des
   // journaux — même portée, donc la SECONDE déclaration écrasait la première
   // et le « Mon historique » datait en « août » là où le bureau écrit
@@ -7776,34 +7826,103 @@
     }
     return String(score);
   }
+  /*
+   * LE NŒUD d'une fiche. La première prend le panneau d'origine ; les
+   * suivantes en sont des CLONES — même gabarit, mêmes classes, et des ids
+   * qu'on ne regarde plus (c'est `fq` qui vise par classe, sous la racine).
+   * Un clone naît hors du fond sombre : c'est le bureau qui le prend et le
+   * met en fenêtre.
+   */
+  function ficheNoeud(cle) {
+    var origine = $("#fiche");
+    // Le nœud d'origine sert à la PREMIÈRE fiche ouverte, et le reste du
+    // temps à celle du mobile — qui n'en ouvre jamais deux.
+    var pris = Object.keys(fichesOuvertes).some(function (k) {
+      return fichesOuvertes[k].racine === origine;
+    });
+    if (!pris) return origine;
+    var clone = origine.cloneNode(true);
+    clone.removeAttribute("id");
+    clone.classList.add("fiche-clone");
+    clone.setAttribute("data-fiche-de", cle);
+    // Les ids du gabarit ne peuvent pas être uniques deux fois : on les retire
+    // du clone, sinon `document.getElementById` tomberait sur le mauvais.
+    Array.prototype.forEach.call(clone.querySelectorAll("[id]"), function (n) {
+      n.removeAttribute("id");
+    });
+    // Il naît RANGÉ, dans le fond — d'où le bureau viendra le prendre pour en
+    // faire une fenêtre. (Sur le bureau, une fiche rangée là ne se voit pas ;
+    // le mobile, lui, ne clone jamais.)
+    $("#fiche-backdrop").appendChild(clone);
+    return clone;
+  }
+
   function ouvrirFiche(pseudo, salon) {
     var p = String(pseudo || "").trim();
     if (!p) return;
-    ficheEtat = { pseudo: p, data: null, onglet: "frutiz", salon: salon || state.room || null };
+    var cle = ficheCle(p);
+    var f = fichesOuvertes[cle];
+    if (!f) {
+      // Sur MOBILE, une fiche remplace l'autre : le fond sombre n'en montre
+      // qu'une, et empiler des panneaux hors écran n'aurait pas de sens.
+      if (!document.body.classList.contains("bureau-frutiz")) fermerToutesLesFiches();
+      f = { pseudo: p, data: null, onglet: "frutiz",
+            salon: salon || state.room || null, racine: null };
+      f.racine = ficheNoeud(cle);
+      f.racine.setAttribute("data-fiche-de", cle);
+      fichesOuvertes[cle] = f;
+    } else if (salon) {
+      f.salon = salon;
+    }
+    ficheEtat = f;
     poserFicheDeployee(ficheDeployee());
     $("#fiche-backdrop").classList.add("show");
     renderFiche();
-    // Au bureau, `win.Frutiz` est une FENÊTRE : elle se pose en escalier et
-    // se glisse par son cadre, et rien ne s'assombrit derrière elle.
-    if (window.BureauFrutiz && BureauFrutiz.poserFiche) BureauFrutiz.poserFiche();
+    // Au bureau, `win.Frutiz` est une FENÊTRE : elle se pose dans le coin et
+    // se glisse par son cadre, et rien ne s'assombrit derrière elle. On la
+    // nomme, pour qu'il y en ait une PAR joueur — et qu'un clic sur celle du
+    // dessous la ramène devant, comme n'importe quelle fenêtre.
+    if (window.BureauFrutiz && BureauFrutiz.poserFiche) {
+      BureauFrutiz.poserFiche(cle, f.racine, p);
+    }
     fetch("/api/light/fiche?sid=" + encodeURIComponent(state.sid) + "&u=" + encodeURIComponent(p),
       { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (ficheEtat.pseudo !== p) return;
-        ficheEtat.data = (d && d.ok) ? d : { erreur: (d && d.error === "inconnu")
+        if (fichesOuvertes[cle] !== f) return;   // refermée entre-temps
+        f.data = (d && d.ok) ? d : { erreur: (d && d.error === "inconnu")
           ? "Aucun frutiz n'a ce nom d'utilisateur" : "Fiche indisponible" };
-        renderFiche();
+        avecFiche(f, renderFiche);
       })
       .catch(function () {
-        if (ficheEtat.pseudo !== p) return;
-        ficheEtat.data = { erreur: "Fiche indisponible" };
-        renderFiche();
+        if (fichesOuvertes[cle] !== f) return;
+        f.data = { erreur: "Fiche indisponible" };
+        avecFiche(f, renderFiche);
       });
   }
-  function fermerFiche() {
-    $("#fiche-backdrop").classList.remove("show");
-    ficheEtat = { pseudo: null, data: null, onglet: "frutiz", salon: null };
+  // Refermer UNE fiche : la sienne s'en va, les autres restent.
+  function fermerFiche(f) {
+    if (!f) f = ficheEtat;
+    var cle = f && f.pseudo ? ficheCle(f.pseudo) : null;
+    if (cle && fichesOuvertes[cle] === f) delete fichesOuvertes[cle];
+    if (f && f.racine) {
+      f.racine.removeAttribute("data-fiche-de");
+      // Le bureau reprend SA fenêtre ; le clone repart avec elle.
+      if (window.BureauFrutiz && BureauFrutiz.fermerFiche) BureauFrutiz.fermerFiche(cle);
+      if (f.racine.classList.contains("fiche-clone")) f.racine.remove();
+    }
+    if (ficheEtat === f) {
+      // On revient sur une fiche encore ouverte, s'il en reste une.
+      var reste = Object.keys(fichesOuvertes);
+      ficheEtat = reste.length ? fichesOuvertes[reste[reste.length - 1]]
+        : { pseudo: null, data: null, onglet: "frutiz", salon: null, racine: null };
+    }
+    if (!Object.keys(fichesOuvertes).length) {
+      $("#fiche-backdrop").classList.remove("show");
+    }
+  }
+  function fermerToutesLesFiches() {
+    Object.keys(fichesOuvertes).forEach(function (k) { fermerFiche(fichesOuvertes[k]); });
   }
   function ligneFiche(lib, val) {
     var l = el("div", "fiche-ligne");
@@ -7815,20 +7934,20 @@
   }
   function renderFiche() {
     var d = ficheEtat.data;
-    var fp = $("#fiche-pseudo");
+    var fp = fq("fiche-pseudo");
     fp.textContent = (d && d.pseudo) || ficheEtat.pseudo || "…";
     // Le pseudo de la fiche est un `userSlot` lui aussi : même encre.
     var fg = (d && d.basic && d.basic.sexe === "F") ? "F" : (d && d.basic ? "M" : "");
     if (fg) fp.setAttribute("data-genre", fg); else fp.removeAttribute("data-genre");
     // L'avatar : la vraie bouille, dessinée par le moteur JS (FPBouilleVignette)
     // — pas par Ruffle. C'est le même rendu partout : accueil, salons, fiche.
-    $("#fiche-avatar").innerHTML = (d && d.bouille) ? previewIframe(d.bouille) : "";
-    brancherApercus($("#fiche-avatar"));
-    $("#fiche-niveau").textContent = (d && d.basic) ? d.basic.niveau : "–";
+    fq("fiche-avatar").innerHTML = (d && d.bouille) ? previewIframe(d.bouille) : "";
+    brancherApercus(fq("fiche-avatar"));
+    fq("fiche-niveau").textContent = (d && d.basic) ? d.basic.niveau : "–";
     // Les NEUF barres de l'écran de niveau : la même règle que l'encart de
     // l'accueil (levelProgress = UserMng.xpLevelCompletionRate, remplissage du
     // bas vers le haut, barre par barre).
-    var barres = $("#fiche-barres").querySelectorAll("i");
+    var barres = fq("fiche-barres").querySelectorAll("i");
     var prog = (d && d.basic) ? levelProgress(d.basic.xp, d.basic.niveau) : 0;
     var nb = barres.length || 9;
     for (var bi = 0; bi < barres.length; bi++) {
@@ -7846,7 +7965,7 @@
      * après. C'est la même icône que la liste pose à côté du pseudo, et que le
      * bureau pose à côté du sien.
      */
-    var st = $("#fiche-statut");
+    var st = fq("fiche-statut");
     var jeuFiche = (d && d.jeu) || "";
     if (jeuFiche && VOYANTS_NOM[jeuFiche]) {
       st.src = "/fb/voyant_" + jeuFiche + ".png";
@@ -7864,26 +7983,26 @@
       if (d.basic.age !== null && d.basic.age !== undefined) meta = d.basic.age + " ans";
       if (d.basic.ville) meta += (meta ? " - " : "") + d.basic.ville;
     }
-    $("#fiche-meta").textContent = meta;
+    fq("fiche-meta").textContent = meta;
     // Se parler à soi-même n'a pas de sens : le bureau non plus ne le fait pas
     // (box.Frutiz montre alors le seul bouton « modifier ma fiche »).
     var moi = ficheEtat.pseudo && ficheEtat.pseudo.toLowerCase() === state.userLower;
-    ["#fiche-mp", "#fiche-mail"]
-      .forEach(function (s) { $(s).style.display = moi ? "none" : ""; });
+    ["fiche-mp", "fiche-mail"]
+      .forEach(function (s) { fq(s).style.display = moi ? "none" : ""; });
     // …et à leur place, « modifier ma fiche » — comme box.Frutiz.
-    $("#fiche-editer").hidden = !moi;
+    fq("fiche-editer").hidden = !moi;
     // La vue modérateur : kick, ban, totoché — aux modérateurs seulement.
     var modo = !moi && d && d.vous && d.vous.moderateur;
     // L'animateur est staff de SON salon (pomme) : il peut éjecter — mais ni
     // totocher ni bannir, qui restent aux modérateurs.
     var animIci = !moi && d && d.vous && d.vous.animateur && state.room === SALON_ANIM;
-    $("#fiche-kick").hidden = !(modo || animIci);
-    ["#fiche-ban", "#fiche-totoche"].forEach(function (s) { $(s).hidden = !modo; });
-    Array.prototype.forEach.call($("#fiche-onglets").children, function (b) {
+    fq("fiche-kick").hidden = !(modo || animIci);
+    ["fiche-ban", "fiche-totoche"].forEach(function (s) { fq(s).hidden = !modo; });
+    Array.prototype.forEach.call(fq("fiche-onglets").children, function (b) {
       b.classList.toggle("actif", b.getAttribute("data-onglet") === ficheEtat.onglet);
     });
 
-    var page = $("#fiche-page");
+    var page = fq("fiche-page");
     page.innerHTML = "";
     if (!d) { page.appendChild(el("div", "fiche-vide")).textContent = "Chargement…"; return; }
     if (d.erreur) { page.appendChild(el("div", "fiche-vide")).textContent = d.erreur; return; }
@@ -7960,7 +8079,12 @@
               l.setAttribute("role", "button");
               l.setAttribute("tabindex", "0");
               l.title = "Voir le classement " + c.titre;
-              var allerAuScore = function () { fermerFiche(); ouvrirScoresSur(c.rk, c.jeu); };
+              // On ferme CELLE-CI, celle qu'on est en train de dessiner — pas
+              // « la » fiche courante, qui sera peut-être une autre au moment
+              // du clic. (`ficheEtat` est juste, ici : `renderFiche` tourne
+              // toujours sous `avecFiche`.)
+              var laFiche = ficheEtat;
+              var allerAuScore = function () { fermerFiche(laFiche); ouvrirScoresSur(c.rk, c.jeu); };
               l.addEventListener("click", allerAuScore);
               l.addEventListener("keydown", function (ev) {
                 if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); allerAuScore(); }
@@ -8179,7 +8303,7 @@
       remplirAccMaison(accMaisonListe, id);   // resurligne la sélection
     }).catch(function () {});
   }
-  $("#fiche-editer").addEventListener("click", ouvrirProfil);
+  fq("fiche-editer").addEventListener("click", ouvrirProfil);
   $("#profil-sheet-close").addEventListener("click", fermerProfil);
   $("#profil-sheet-backdrop").addEventListener("click", fermerProfil);
   $("#prof-enregistrer").addEventListener("click", function () {
@@ -8214,8 +8338,13 @@
     }).then(function (r) {
       if (!r.ok) throw new Error("smi");
       $("#prof-etat").textContent = "Fiche enregistrée.";
-      // La fiche affichée derrière doit montrer les nouvelles valeurs.
-      if (ficheEtat.pseudo) ouvrirFiche(ficheEtat.pseudo);
+      // La fiche affichée derrière doit montrer les nouvelles valeurs — LA
+      // MIENNE, puisque c'est elle qu'on vient de modifier. (Sur le bureau il
+      // y en a plusieurs à l'écran : rafraîchir « la » fiche courante rechargeait
+      // celle de n'importe qui.)
+      var mienne = fichesOuvertes[ficheCle(state.user)];
+      if (mienne) ouvrirFiche(mienne.pseudo);
+      else if (ficheEtat.pseudo) ouvrirFiche(ficheEtat.pseudo);
       setTimeout(function () { fermerProfil(); $("#prof-etat").textContent = ""; }, 700);
     }).catch(function () {
       $("#prof-etat").textContent = "Enregistrement impossible.";
@@ -8240,61 +8369,85 @@
     return v !== "0";                       // dépliée par défaut sur mobile
   }
   function poserFicheDeployee(ouvert) {
-    $("#fiche").classList.toggle("deploye", !!ouvert);
-    $("#fiche-avance").classList.toggle("ouvert", !!ouvert);
-    $("#fiche-avance").setAttribute("aria-expanded", ouvert ? "true" : "false");
+    ficheRacine().classList.toggle("deploye", !!ouvert);
+    fq("fiche-avance").classList.toggle("ouvert", !!ouvert);
+    fq("fiche-avance").setAttribute("aria-expanded", ouvert ? "true" : "false");
     // Le bureau ne retient rien : sa préférence est « repliée », toujours. La
     // mémoire est une commodité du tactile, où la fiche est une feuille et
     // non une fenêtre — on ne la lui vole pas depuis ici.
     if (surLeBureau()) return;
     try { localStorage.setItem(FICHE_DEPLOYE_KEY, ouvert ? "1" : "0"); } catch (e) {}
   }
-  $("#fiche-avance").addEventListener("click", function () {
-    poserFicheDeployee(!$("#fiche").classList.contains("deploye"));
-  });
-  $("#fiche-fermer").addEventListener("click", fermerFiche);
-  $("#fiche-backdrop").addEventListener("click", function (ev) {
-    if (ev.target === this) fermerFiche();
-  });
-  $("#fiche-onglets").addEventListener("click", function (ev) {
-    var b = ev.target.closest("button[data-onglet]");
+  /*
+   * LES GESTES D'UNE FICHE, EN DÉLÉGATION.
+   *
+   * Les boutons d'une fiche CLONÉE n'ont pas d'écouteur à eux : le clone est
+   * une copie du gabarit, pas de ses branchements. Un seul écouteur, posé sur
+   * le document, remonte donc à la `.fiche-boite` du bouton cliqué et retrouve
+   * son état par `data-fiche-de`. Chaque geste agit alors sur SA fiche — celle
+   * qu'on a cliquée — et non sur « la » fiche courante, qui pourrait être une
+   * autre si l'on a plusieurs fenêtres ouvertes.
+   */
+  function ficheDuClic(ev) {
+    var boite = ev.target.closest ? ev.target.closest(".fiche-boite") : null;
+    if (!boite) return null;
+    var cle = boite.getAttribute("data-fiche-de");
+    return (cle && fichesOuvertes[cle]) || null;
+  }
+  document.addEventListener("click", function (ev) {
+    var f = ficheDuClic(ev);
+    if (!f) return;
+    var b = ev.target.closest("button, [data-onglet]");
     if (!b) return;
-    ficheEtat.onglet = b.getAttribute("data-onglet");
-    renderFiche();
+    var geste = ["fiche-avance", "fiche-fermer", "fiche-mp", "fiche-mail",
+                 "fiche-kick", "fiche-ban", "fiche-totoche"]
+      .filter(function (c) { return b.classList.contains(c); })[0];
+    var onglet = b.getAttribute("data-onglet");
+    if (!geste && !onglet) return;
+    avecFiche(f, function () {
+      if (onglet) { f.onglet = onglet; renderFiche(); return; }
+      var p = f.pseudo;
+      switch (geste) {
+        case "fiche-avance":
+          poserFicheDeployee(!f.racine.classList.contains("deploye"));
+          break;
+        case "fiche-fermer":
+          fermerFiche(f);
+          break;
+        case "fiche-mp":
+          fermerFiche(f); openDrawer(false); ouvrirPrive(p);
+          break;
+        // Le courrier du bureau, destinataire prérempli — la vraie messagerie.
+        case "fiche-mail":
+          fermerFiche(f); ecrireMail(p, "");
+          break;
+        // La vue modérateur — les mêmes fils que le bureau (box.Frutiz) : kick
+        // sur le salon courant, ban global, totoché. Confirmation d'abord : un
+        // doigt glisse plus vite qu'une souris.
+        case "fiche-kick": {
+          var ou = f.salon || state.room || "";
+          if (!window.confirm("Éjecter " + p + " du salon ?")) return;
+          wsSend('<l u="' + xmlEscape(p) + '" g="' + xmlEscape(ou) + '" />');
+          fermerFiche(f);
+          break;
+        }
+        case "fiche-ban":
+          if (!window.confirm("Bannir " + p + " ?")) return;
+          wsSend('<m u="' + xmlEscape(p) + '" g="0" />');
+          fermerFiche(f);
+          break;
+        case "fiche-totoche":
+          if (!window.confirm("Totocher " + p + " (dix minutes de silence) ?")) return;
+          wsSend('<az u="' + xmlEscape(p) + '" />');
+          fermerFiche(f);
+          break;
+      }
+    });
   });
-  $("#fiche-mp").addEventListener("click", function () {
-    var p = ficheEtat.pseudo;
-    fermerFiche();
-    openDrawer(false);
-    ouvrirPrive(p);
-  });
-  // Le courrier du bureau, destinataire prérempli — la vraie messagerie.
-  $("#fiche-mail").addEventListener("click", function () {
-    var p = ficheEtat.pseudo;
-    fermerFiche();
-    ecrireMail(p, "");
-  });
-  // La vue modérateur — les mêmes fils que le bureau (box.Frutiz) : kick sur
-  // le salon courant, ban global, totoché. Confirmation d'abord : un doigt
-  // glisse plus vite qu'une souris.
-  $("#fiche-kick").addEventListener("click", function () {
-    var p = ficheEtat.pseudo;
-    var ou = ficheEtat.salon || state.room || "";
-    if (!window.confirm("Éjecter " + p + " du salon ?")) return;
-    wsSend('<l u="' + xmlEscape(p) + '" g="' + xmlEscape(ou) + '" />');
-    fermerFiche();
-  });
-  $("#fiche-ban").addEventListener("click", function () {
-    var p = ficheEtat.pseudo;
-    if (!window.confirm("Bannir " + p + " ?")) return;
-    wsSend('<m u="' + xmlEscape(p) + '" g="0" />');
-    fermerFiche();
-  });
-  $("#fiche-totoche").addEventListener("click", function () {
-    var p = ficheEtat.pseudo;
-    if (!window.confirm("Totocher " + p + " (dix minutes de silence) ?")) return;
-    wsSend('<az u="' + xmlEscape(p) + '" />');
-    fermerFiche();
+  // Le fond sombre du MOBILE : le toucher referme. (Au bureau il n'y a pas de
+  // fond — les fiches y sont des fenêtres, et rien ne s'assombrit derrière.)
+  $("#fiche-backdrop").addEventListener("click", function (ev) {
+    if (ev.target === this) fermerToutesLesFiches();
   });
 
   function ligneConnecte(pseudo, lieu, staff, jeu) {

@@ -82,7 +82,7 @@ body.bureau-frutiz { letter-spacing: -0.007em; }
    de la fonte elle-même, sans arrondi à corriger. */
 body.bureau-frutiz #bureau-coin .enc-trophy .val,
 body.bureau-frutiz #bureau-coin .enc-niv .lvl,
-body.bureau-frutiz #fiche .fiche-plaque .fa-niv b { letter-spacing: normal; }
+body.bureau-frutiz .fiche-boite .fiche-plaque .fa-niv b { letter-spacing: normal; }
 
 /* ── Le bureau lui-même ─────────────────────────────────────────────────── */
 body.bureau-frutiz #app { position: relative; }
@@ -1396,22 +1396,22 @@ body.bureau-frutiz .fen.pliee { min-width: 220px; }
    approximations. Chaque fenêtre pose donc ses deux variables ; les règles
    ci-dessous ne font que les lire. */
 body.bureau-frutiz .fen,
-body.bureau-frutiz #fiche {
+body.bureau-frutiz .fiche-boite {
   --asc-glissiere: #ADE76B;            /* colorSet.green.shade */
   --asc-liseret:   #94DB39;            /* colorSet.green.dark  */
 }
 body.bureau-frutiz .fen *::-webkit-scrollbar,
-body.bureau-frutiz #fiche *::-webkit-scrollbar {
+body.bureau-frutiz .fiche-boite *::-webkit-scrollbar {
   width: 18px; height: 18px; background: transparent;
 }
 body.bureau-frutiz .fen *::-webkit-scrollbar-track,
-body.bureau-frutiz #fiche *::-webkit-scrollbar-track {
+body.bureau-frutiz .fiche-boite *::-webkit-scrollbar-track {
   background-color: var(--asc-glissiere); background-clip: padding-box;
   border: 4px solid transparent; border-left-width: 2px; border-right-width: 2px;
   border-radius: 9px; box-shadow: inset 0 0 0 1px var(--asc-liseret);
 }
 body.bureau-frutiz .fen *::-webkit-scrollbar-thumb,
-body.bureau-frutiz #fiche *::-webkit-scrollbar-thumb {
+body.bureau-frutiz .fiche-boite *::-webkit-scrollbar-thumb {
   min-height: 16px; min-width: 16px;
   background-color: #FFFFFF; background-clip: padding-box;
   border: 4px solid transparent; border-left-width: 2px; border-right-width: 2px;
@@ -1447,9 +1447,9 @@ body.bureau-frutiz .fen:has(.fb-dossier-panneau) {
 }
 /* Ni flèches ni coin : `sb.Round` n'en dessine aucun. */
 body.bureau-frutiz .fen *::-webkit-scrollbar-button,
-body.bureau-frutiz #fiche *::-webkit-scrollbar-button { display: none; }
+body.bureau-frutiz .fiche-boite *::-webkit-scrollbar-button { display: none; }
 body.bureau-frutiz .fen *::-webkit-scrollbar-corner,
-body.bureau-frutiz #fiche *::-webkit-scrollbar-corner { background: transparent; }
+body.bureau-frutiz .fiche-boite *::-webkit-scrollbar-corner { background: transparent; }
 /* Firefox ne sait pas dessiner la gélule : on lui donne au moins les encres —
    mais SOUS `@supports`, et c'est capital. Depuis Chrome 121, poser
    `scrollbar-color` (ou `scrollbar-width`) fait basculer l'élément sur la
@@ -1458,7 +1458,7 @@ body.bureau-frutiz #fiche *::-webkit-scrollbar-corner { background: transparent;
    light.html pour `.fiche-page` et `#trombi-body` ; on s'y range. */
 @supports not selector(::-webkit-scrollbar) {
   body.bureau-frutiz .fen *,
-  body.bureau-frutiz #fiche * {
+  body.bureau-frutiz .fiche-boite * {
     scrollbar-color: #FFFFFF var(--asc-glissiere); scrollbar-width: thin;
   }
 }
@@ -3111,7 +3111,14 @@ body.bureau-frutiz #fiche-backdrop {
   pointer-events: none;                /* le bureau reste vivant DERRIÈRE */
 }
 body.bureau-frutiz #fiche-backdrop.show { display: block; }
-body.bureau-frutiz #fiche {
+/* Une fiche POSÉE a quitté ce fond : elle vit dans `#bureau-fenetres`, à son
+   étage de la pile des fenêtres. Ce qui reste ici est RANGÉ — le panneau
+   d'origine entre deux ouvertures, un clone qui attend d'être pris — et ne se
+   montre pas. Sans cette règle, refermer la première de deux fiches y
+   ramènerait sa dépouille, que le `.show` du fond (encore allumé pour l'autre)
+   laisserait flotter sur le bureau. */
+body.bureau-frutiz #fiche-backdrop > .fiche-boite { display: none; }
+body.bureau-frutiz .fiche-boite {
   position: absolute; left: var(--fx, 220px); top: var(--fy, 120px);
   width: 324px; max-height: none; overflow: visible;
   pointer-events: auto;
@@ -3140,7 +3147,7 @@ body.bureau-frutiz #fiche {
    panneau de bouille #D6F7B5 en x 8..42 / y 9..39, rayures de l'écran en
    x 43..69 / y 15..37, « NIV n » en x 43..72 / y 41..48, reflet en x 70..73 —
    sur l'ÉCRAN, pas sur la bouille.) */
-body.bureau-frutiz #fiche .fiche-haut {
+body.bureau-frutiz .fiche-boite .fiche-haut {
   align-items: flex-start; gap: 6px; padding: 3px 3px 2px 3px;
 }
 /* LA SEULE EXCEPTION à ce qui précède : la plaque n'a pas de remplissage.
@@ -3151,19 +3158,19 @@ body.bureau-frutiz #fiche .fiche-haut {
 
    Une règle de bureau, donc, et pas une retouche de `.fiche-plaque` : le
    gabarit tactile ne bouge pas d'un pixel. */
-body.bureau-frutiz #fiche .fiche-plaque { padding: 0; }
+body.bureau-frutiz .fiche-boite .fiche-plaque { padding: 0; }
 /* LES ESPACEMENTS DE LA PLAQUE, au relevé.
    `frutiScreen` colle ses deux panneaux : la bouille finit en x 42, les
    rayures de l'écran commencent en x 43 — UN pixel, pas cinq. Et sous les
    rayures (y 37) le « NIV n » commence en y 41 : quatre. Le liseré, lui, est
    `#888888` et non le `#666` de la feuille tactile. */
-body.bureau-frutiz #fiche .fiche-plaque {
+body.bureau-frutiz .fiche-boite .fiche-plaque {
   gap: 1px; border-color: #888888;
 }
 /* Les deux blocs de l'écran commencent au MÊME bord (x 43 d'époque, pour les
    rayures comme pour « NIV n ») : calés à gauche, pas centrés l'un sur
    l'autre — c'est déjà ce que fait la main bar. */
-body.bureau-frutiz #fiche .fiche-plaque .fa-jauge {
+body.bureau-frutiz .fiche-boite .fiche-plaque .fa-jauge {
   padding-top: 5px; padding-right: 2px; align-items: flex-start;
 }
 /* LES BARRES ET LE NIVEAU : ceux de la MAIN BAR, à l'identique.
@@ -3178,80 +3185,87 @@ body.bureau-frutiz #fiche .fiche-plaque .fa-jauge {
      · le chiffre en Verdana pixel du SWF, `#73B01E`, CENTRÉ dans une colonne
        fixe de 12,7 px (le champ #430 déclare `align centre`) — sans quoi
        « NIV 13 » pousse vers la droite et « NIV 1 » flotte. */
-body.bureau-frutiz #fiche .fiche-plaque .fa-progress { width: 27px; gap: 1px; }
-body.bureau-frutiz #fiche .fiche-plaque .fa-progress i { height: 2px; background: #A2EB56; }
-body.bureau-frutiz #fiche .fiche-plaque .fa-progress i::before { background: #73B01E; }
-body.bureau-frutiz #fiche .fiche-plaque .fa-niv { gap: 0.95px; align-items: flex-start; }
-body.bureau-frutiz #fiche .fiche-plaque .fa-niv img { height: 17.4px; width: 14.2px; }
-body.bureau-frutiz #fiche .fiche-plaque .fa-niv b {
+body.bureau-frutiz .fiche-boite .fiche-plaque .fa-progress { width: 27px; gap: 1px; }
+body.bureau-frutiz .fiche-boite .fiche-plaque .fa-progress i { height: 2px; background: #A2EB56; }
+body.bureau-frutiz .fiche-boite .fiche-plaque .fa-progress i::before { background: #73B01E; }
+body.bureau-frutiz .fiche-boite .fiche-plaque .fa-niv { gap: 0.95px; align-items: flex-start; }
+body.bureau-frutiz .fiche-boite .fiche-plaque .fa-niv img { height: 17.4px; width: 14.2px; }
+body.bureau-frutiz .fiche-boite .fiche-plaque .fa-niv b {
   font-family: 'ImpactSwf', Impact, sans-serif; font-size: 11px; font-weight: normal;
   color: #73B01E; flex: 0 0 12.7px; text-align: center; line-height: 13.4px;
   margin-top: 2px;
 }
-body.bureau-frutiz #fiche .fiche-droite {
+body.bureau-frutiz .fiche-boite .fiche-droite {
   display: flex; flex-direction: column; justify-content: space-between;
   min-width: 0; flex: 1;
 }
 /* La ligne d'identité : le voyant, le pseudo à la couleur de son GENRE,
    l'âge et le pays poussés à droite, la croix au bout. */
-body.bureau-frutiz #fiche .fiche-nom-ligne {
+body.bureau-frutiz .fiche-boite .fiche-nom-ligne {
   display: flex; align-items: center; gap: 5px; height: 15px;
 }
-body.bureau-frutiz #fiche #fiche-pseudo {
+body.bureau-frutiz .fiche-boite .fiche-pseudo {
   font: 700 11px Verdana, Arial, sans-serif; color: #242169;
 }
-/* (Le pseudo de la fiche prend la couleur du GENRE — `UserSlot.onInfoBasic`,
-   0x63a51. La règle vit maintenant dans light.html, où elle vaut pour les deux
-   mises en page, et avec les valeurs exactes du bytecode : #242169 et
-   #BB4444. Celle qui était ici disait #BB4A44, un chiffre de travers.) */
-body.bureau-frutiz #fiche .fiche-nom-ligne .meta {
+/* Le pseudo de la fiche prend la couleur du GENRE — `UserSlot.onInfoBasic`,
+   0x63a51 : #242169 pour un garçon, #BB4444 pour une fille.
+
+   La règle vit dans light.html, où elle vaut pour les deux mises en page. Mais
+   elle n'y PESAIT pas assez : `[data-genre="F"]` seul perdait contre la règle
+   de base ci-dessus, plus profondément qualifiée — et le pseudo d'une fille
+   restait bleu au bureau. (Relevé au banc : `getComputedStyle` rendait
+   rgb(36,33,105) dans les deux cas.) On la redit donc ICI, au même poids que
+   la base, ce qui la remet devant. La valeur, elle, reste celle du bytecode. */
+body.bureau-frutiz .fiche-boite .fiche-pseudo[data-genre="M"] { color: #242169; }
+body.bureau-frutiz .fiche-boite .fiche-pseudo[data-genre="F"] { color: #BB4444; }
+body.bureau-frutiz .fiche-boite .fiche-nom-ligne .meta {
   margin-left: auto; font: 400 11px Verdana, Arial, sans-serif; color: #404040;
   white-space: nowrap;
 }
 /* LA CROIX : `WinStandard` la pose au coin HAUT-DROIT de la fenêtre, pas au
    bout d'une ligne de texte. */
-body.bureau-frutiz #fiche #fiche-fermer {
+body.bureau-frutiz .fiche-boite .fiche-fermer {
   position: absolute; right: 5px; top: 0; z-index: 4;
   width: 13px; height: 13px; padding: 0; border: 0; background: none;
   cursor: pointer;
 }
 /* Le DESSIN déborde sa case : la croix fait 18 px dans une zone sensible de
    13, comme sur le rendu d'époque. */
-body.bureau-frutiz #fiche #fiche-fermer img { width: 18px; height: 18px; display: block; }
-body.bureau-frutiz #fiche .fiche-nom-ligne .meta { padding-right: 18px; }
+body.bureau-frutiz .fiche-boite .fiche-fermer img { width: 18px; height: 18px; display: block; }
+body.bureau-frutiz .fiche-boite .fiche-nom-ligne .meta { padding-right: 18px; }
 /* La rangée d'actions : les boutons blancs collés à GAUCHE (`x.align
    "start"`), le bouton rose au BOUT (`x.align "end"`). Chacun porte le
    contour de deux pixels que `butPush` dessine. */
-body.bureau-frutiz #fiche .fiche-actions {
+body.bureau-frutiz .fiche-boite .fiche-actions {
   display: flex; align-items: flex-start; gap: 5px; height: 22px;
 }
-body.bureau-frutiz #fiche .fiche-actions button {
+body.bureau-frutiz .fiche-boite .fiche-actions button {
   width: 20px; height: 20px; min-width: 0; min-height: 0; box-sizing: border-box;
   padding: 0; border: 0; flex: 0 0 20px; align-self: flex-start;
   border-radius: 4px; box-shadow: 0 0 0 2px #DDDDDD; background: #FFFFFF;
   cursor: pointer; overflow: hidden;
 }
-body.bureau-frutiz #fiche .fiche-actions button img {
+body.bureau-frutiz .fiche-boite .fiche-actions button img {
   width: 20px; height: 20px; display: block; margin: 0; object-fit: contain;
 }
 /* `butPushSmallPink` (#378) : sa PLAQUE est un dessin, pas une couleur — la
    forme #359. Le triangle vient de sa propre bande `icon` (#374) à l'image 13,
    la forme #369. Relevé en x 293..316 et y 28..51 : vingt d'art, deux de
    contour de chaque côté. */
-body.bureau-frutiz #fiche .fiche-actions #fiche-avance {
+body.bureau-frutiz .fiche-boite .fiche-actions .fiche-avance {
   margin-left: auto;
   background: url('/frutiz/sprites/fiche-rose.svg') center / 20px 20px no-repeat;
 }
 /* Le triangle ne fait que 8,15 × 8,75 dans son cadre : posé sur les vingt de
    la plaque il doit rester petit et CENTRÉ, pas la remplir. */
-body.bureau-frutiz #fiche .fiche-actions #fiche-avance img {
+body.bureau-frutiz .fiche-boite .fiche-actions .fiche-avance img {
   content: url('/frutiz/sprites/fiche-rose-tri.svg');
   width: 9px; height: 9px; margin: 5.5px auto;
 }
 /* LE BAS : la feuille verte (`frSheet`), sous le haut blanc — avec deux
    pixels de blanc tout autour, comme la plaque d'une fenêtre qui laisse voir
    son liseré. Collée aux bords, elle donnait l'impression de déborder. */
-body.bureau-frutiz #fiche .fiche-corps {
+body.bureau-frutiz .fiche-boite .fiche-corps {
   margin: 0 2px 2px; border: 0; border-radius: 0 0 5px 5px;
   background: linear-gradient(to bottom, rgba(255,255,255,.55) 0, rgba(255,255,255,0) 8px), #CCF599;
   box-shadow: inset 0 2px 0 #ADE76B, inset 0 -2px 0 #ADE76B,
@@ -3260,46 +3274,46 @@ body.bureau-frutiz #fiche .fiche-corps {
 }
 /* LES ONGLETS : quatre colonnes ÉGALES de texte gras centré, séparées du
    corps par le filet #ADE76B relevé en y 79-80. */
-body.bureau-frutiz #fiche .fiche-onglets {
+body.bureau-frutiz .fiche-boite .fiche-onglets {
   display: grid; grid-template-columns: repeat(4, 1fr);
   margin: 2px 2px 0; padding: 4px 0 3px; border: 0;
   border-bottom: 2px solid #ADE76B; background: none;
 }
-body.bureau-frutiz #fiche .fiche-onglets button {
+body.bureau-frutiz .fiche-boite .fiche-onglets button {
   border: 0; background: none; cursor: pointer; padding: 2px 0;
   font: 700 12px Verdana, Arial, sans-serif; color: #335511; text-align: center;
   text-transform: lowercase;         /* `categoryList` : "frutiz", "perso"… */
 }
-body.bureau-frutiz #fiche .fiche-onglets button.actif { color: #842929; }
-body.bureau-frutiz #fiche .fiche-onglets button:hover { color: #E7756B; }
+body.bureau-frutiz .fiche-boite .fiche-onglets button.actif { color: #842929; }
+body.bureau-frutiz .fiche-boite .fiche-onglets button:hover { color: #E7756B; }
 /* LA PAGE : `getPageObj` la borne à 250 × 240 ; la fenêtre en fait 324, on
    garde la hauteur et on laisse la largeur suivre. */
-body.bureau-frutiz #fiche .fiche-page {
+body.bureau-frutiz .fiche-boite .fiche-page {
   height: 240px; padding: 8px 6px 6px; overflow-y: auto;
   font: 400 11px Verdana, Arial, sans-serif; color: #335511;
 }
-body.bureau-frutiz #fiche .fiche-titre {
+body.bureau-frutiz .fiche-boite .fiche-titre {
   color: #335511; font-size: 12px; text-transform: lowercase;
 }
-body.bureau-frutiz #fiche .fiche-titre::before,
-body.bureau-frutiz #fiche .fiche-titre::after { background: #ADE76B; height: 2px; }
-body.bureau-frutiz #fiche .fiche-signes,
-body.bureau-frutiz #fiche .fiche-medailles { border-bottom: 2px solid #ADE76B; }
+body.bureau-frutiz .fiche-boite .fiche-titre::before,
+body.bureau-frutiz .fiche-boite .fiche-titre::after { background: #ADE76B; height: 2px; }
+body.bureau-frutiz .fiche-boite .fiche-signes,
+body.bureau-frutiz .fiche-boite .fiche-medailles { border-bottom: 2px solid #ADE76B; }
 /* Le pas d'une rangée, relevé sur les cinq lignes de l'onglet « frutiz » :
    l'encre des libellés tombe en 187, 208, 227, 244 et 265 — dix-neuf et demi
    d'une rangée à l'autre. */
-body.bureau-frutiz #fiche .fiche-ligne {
+body.bureau-frutiz .fiche-boite .fiche-ligne {
   font-size: 11px; padding: 0; height: 19.5px; align-items: center; line-height: 1;
 }
 /* Et le bloc des rangées se FERME sur un filet, comme il s'était ouvert :
    #ADE76B en y 180-181 au-dessus, en 277-278 au-dessous. */
-body.bureau-frutiz #fiche .fiche-lignes {
+body.bureau-frutiz .fiche-boite .fiche-lignes {
   padding-bottom: 6px; border-bottom: 2px solid #ADE76B;
 }
-body.bureau-frutiz #fiche .fiche-ligne .lib,
-body.bureau-frutiz #fiche .fiche-ligne .val { color: #335511; }
-body.bureau-frutiz #fiche .fiche-jour { color: #335511; }
-body.bureau-frutiz #fiche .fiche-jour .pts { color: #5A7D33; }
+body.bureau-frutiz .fiche-boite .fiche-ligne .lib,
+body.bureau-frutiz .fiche-boite .fiche-ligne .val { color: #335511; }
+body.bureau-frutiz .fiche-boite .fiche-jour { color: #335511; }
+body.bureau-frutiz .fiche-boite .fiche-jour .pts { color: #5A7D33; }
 
 /* ── LA BOUTIQUE (`win.Shop`, `box.Shop`) ─────────────────────────────────
    `initFrameSet` monte la fenêtre en DEUX colonnes :

@@ -4604,26 +4604,83 @@ window.BureauFrutiz = (function () {
 
   function ouvrirFiche(pseudo) {
     if (!window.ouvrirFicheJoueur) return;
+    // C'est le light qui tient la liste des fiches ouvertes : il crée (ou
+    // rappelle) celle de ce pseudo, puis nous rend la main par `poserFiche`.
     window.ouvrirFicheJoueur(pseudo);
-    if (actif) poserFiche();
   }
 
-  // La fiche est une fenêtre comme les autres : `win.Frutiz` (sprite#819) ne
-  // se donne pas de `pos` et n'appelle pas `moveToCenter`, donc `recal` la pose
-  // DANS LE COIN, comme tout ce qui s'ouvre sur le bureau. (Elle y arrivait en
-  // escalier : c'était une invention, au même titre que celui des fenêtres.)
-  function poserFiche() {
-    var f = $('#fiche');
+  /* ── PLUSIEURS FICHES À LA FOIS ────────────────────────────────────────────
+   *
+   * `box.Frutiz` est une instance PAR JOUEUR : le bureau d'époque en empile
+   * autant qu'on veut, comme il empile les conversations. Chacune est une
+   * `win.Frutiz extends WinStandard` de plus dans le MÊME `slotList`, d'où
+   * deux conséquences qu'on reprend telles quelles :
+   *
+   *   • UNE SEULE PILE DE PROFONDEUR, partagée avec les autres fenêtres.
+   *     `WinStandard.initInterface` branche `mcInterface.onPress` sur
+   *     `this._parent.box.activate()`, et `Box.activate` (0x232f4) fait un
+   *     `swapDepths` : le dernier cliqué passe devant, que ce soit une fiche
+   *     ou une fenêtre. La fiche quitte donc `#fiche-backdrop` — une couche à
+   *     part, au-dessus de tout — pour rejoindre `#bureau-fenetres`, et prend
+   *     son étage du même compteur `zCourant` que les fenêtres.
+   *   • ELLES SE POSENT TOUTES DANS LE COIN. `win.Frutiz` n'écrit pas de `pos`
+   *     et n'appelle pas `moveToCenter` : `recal` en fait (cornerX, cornerY).
+   *     Il n'y a pas d'escalier d'ouverture dans main.swf — pas plus pour les
+   *     fiches que pour les fenêtres (cf. la note d'`ouvrirFenetre`). La
+   *     seconde couvre donc la première, et on l'écarte à la souris.
+   *
+   * Le bureau ne garde ici que ce qui le regarde : le NŒUD de chaque fiche
+   * posée, pour la borner au redimensionnement et la rendre au fond sombre du
+   * mobile quand elle se referme.
+   */
+  var fichesPosees = {};
+
+  function poserFiche(cle, racine, pseudo) {
+    if (!actif) return;                    // sur mobile, la feuille suffit
+    var f = racine || $('#fiche');
     if (!f) return;
-    if (!f.dataset.posee) {
+    cle = cle || 'fiche';
+    if (!fichesPosees[cle]) {
+      fichesPosees[cle] = { cle: cle, fen: f, pseudo: pseudo || '' };
+      var couche = $('#bureau-fenetres');
+      if (couche && f.parentNode !== couche) couche.appendChild(f);
       f.style.setProperty('--fx', CORNER_X + 'px');
       f.style.setProperty('--fy', CORNER_Y + 'px');
-      f.dataset.posee = '1';
-      glisserFiche(f);
+      // Le CÂBLAGE est du ressort du nœud, pas de la fiche : le panneau
+      // d'origine sert tour à tour à plusieurs joueurs, on ne lui rebranche
+      // pas ses écouteurs à chaque fois. (Une propriété, pas un `data-` : un
+      // clone recopie les attributs, mais pas les propriétés — sans quoi il
+      // se croirait câblé et resterait immobile.)
+      if (!f._ficheCablee) {
+        f._ficheCablee = true;
+        glisserFiche(f);
+        // `box.activate()` : un clic n'importe où sur la fenêtre la ramène
+        // devant — le même écouteur que `batirFenetre` pose sur les siennes.
+        f.addEventListener('pointerdown', function () { premierPlan(f); });
+      }
       var rangee = f.querySelector('.fiche-actions');
-      if (rangee) completerIconesFiche(rangee);
+      if (rangee) completerIconesFiche(f, rangee, pseudo);
     }
-    habillerIconesFiche();
+    habillerIconesFiche(f);
+    // Rouvrir la fiche de quelqu'un dont la fenêtre est déjà là ne la déplace
+    // pas : elle revient simplement au premier plan (`Box.init`, branche
+    // `else` — swapDepths, et `moveToPos` part d'où elle est).
+    premierPlan(f);
+  }
+
+  // La fiche s'en va. Le panneau D'ORIGINE retourne au fond sombre, qui le
+  // garde hors de vue jusqu'à la prochaine ouverture ; les CLONES, eux, sont
+  // détruits par le light — il n'y a rien à leur rendre.
+  function fermerFiche(cle) {
+    var p = fichesPosees[cle || 'fiche'];
+    if (!p) return;
+    delete fichesPosees[cle || 'fiche'];
+    var f = p.fen;
+    if (f && f._glisse) { clearInterval(f._glisse); f._glisse = null; }
+    if (f && f.id === 'fiche') {
+      var fond = $('#fiche-backdrop');
+      if (fond && f.parentNode !== fond) fond.appendChild(f);
+    }
   }
 
   /* `box.Frutiz.getIconList` compose la rangée de boutons blancs, et l'ordre
@@ -4643,65 +4700,75 @@ window.BureauFrutiz = (function () {
      Le light n'en montrait que deux : le mobile avait écarté le blog, le
      carnet et la liste noire faute de place. Au bureau il y a la place, et
      l'époque les met. */
+  /* Tout se vise PAR CLASSE et SOUS LA RACINE de la fiche : les fiches
+     suivantes sont des clones du même gabarit, et un clone ne peut pas
+     emporter les ids de l'original — deux `#fiche-mail` dans le document, et
+     `getElementById` habillerait toujours le premier. */
   var FICHE_ICONES = [
-    { id: 'fiche-mp',       art: 'fiche-ico-chat' },
-    { id: 'fiche-mail',     art: 'fiche-ico-mail' },
-    { id: 'fiche-blog',     art: 'fiche-ico-blog',    titre: 'Son blog' },
-    { id: 'fiche-contact',  art: 'fiche-ico-contact', titre: 'Ajouter à mes contacts' },
-    { id: 'fiche-noire',    art: 'fiche-ico-noire',   titre: 'Mettre en liste noire' },
-    { id: 'fiche-kick',     art: 'fiche-ico-kick' },
-    { id: 'fiche-ban',      art: 'fiche-ico-ban' },
-    { id: 'fiche-totoche',  art: 'fiche-ico-mute' },
-    { id: 'fiche-editer',   art: 'fiche-ico-editer' },
+    { cls: 'fiche-mp',       art: 'fiche-ico-chat' },
+    { cls: 'fiche-mail',     art: 'fiche-ico-mail' },
+    { cls: 'fiche-blog',     art: 'fiche-ico-blog',    titre: 'Son blog' },
+    { cls: 'fiche-contact',  art: 'fiche-ico-contact', titre: 'Ajouter à mes contacts' },
+    { cls: 'fiche-noire',    art: 'fiche-ico-noire',   titre: 'Mettre en liste noire' },
+    { cls: 'fiche-kick',     art: 'fiche-ico-kick' },
+    { cls: 'fiche-ban',      art: 'fiche-ico-ban' },
+    { cls: 'fiche-totoche',  art: 'fiche-ico-mute' },
+    { cls: 'fiche-editer',   art: 'fiche-ico-editer' },
   ];
 
-  // Les trois que le mobile n'a pas : on les monte une fois, à leur place
-  // d'époque, et on les câble sur ce que le light sait faire.
-  function completerIconesFiche(rangee) {
+  // Les trois que le mobile n'a pas : on les monte à leur place d'époque, et
+  // on les câble sur ce que le light sait faire. Un CLONE les porte déjà (il
+  // copie le gabarit) mais sans leurs écouteurs — on les retrouve alors au
+  // lieu de les rebâtir, et on ne recâble que ce qui manque.
+  function completerIconesFiche(racine, rangee, pseudoDeLaFiche) {
     var pseudo = function () {
-      var e = $('#fiche-pseudo');
+      if (pseudoDeLaFiche) return pseudoDeLaFiche;
+      var e = racine.querySelector('.fiche-pseudo');
       return e ? e.textContent.trim() : '';
     };
-    var neuf = function (id, art, titre, faire) {
-      if ($('#' + id)) return null;
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.id = id;
-      b.title = titre;
-      b.innerHTML = '<img src="/frutiz/sprites/' + art + '.svg" alt="">';
+    var neuf = function (cls, art, titre, faire) {
+      var b = racine.querySelector('.' + cls);
+      if (!b) {
+        b = document.createElement('button');
+        b.type = 'button';
+        b.className = cls;
+        b.title = titre;
+        b.innerHTML = '<img src="/frutiz/sprites/' + art + '.svg" alt="">';
+        // `getIconList` les pousse APRÈS le courrier et AVANT la modération.
+        var apres = racine.querySelector('.fiche-mail');
+        if (apres && apres.parentNode === rangee) rangee.insertBefore(b, apres.nextSibling);
+        else rangee.appendChild(b);
+      }
       b.addEventListener('click', faire);
       return b;
     };
-    var blog = neuf('fiche-blog', 'fiche-ico-blog', 'Son blog', function () {
-      window.open('/bouilloscope/?u=' + encodeURIComponent(pseudo()), '_blank');
-    });
-    var contact = neuf('fiche-contact', 'fiche-ico-contact', 'Ajouter à mes contacts', function () {
-      var sid = jetonSid(), u = pseudo();
-      if (!sid || !u) return;
-      fetch('/ff/mk?sid=' + encodeURIComponent(sid) + '&folder=mycontact&t=contact&u='
-        + encodeURIComponent(u)).then(function () { chargerContacts(); });
-    });
-    var noire = neuf('fiche-noire', 'fiche-ico-noire', 'Mettre en liste noire', function () {
+    // `getIconList` les veut dans l'ordre blog · carnet · liste noire. Chacun
+    // se glissant juste APRÈS le courrier, on les monte à REBOURS : le dernier
+    // posé finit en tête.
+    neuf('fiche-noire', 'fiche-ico-noire', 'Mettre en liste noire', function () {
       var sid = jetonSid(), u = pseudo();
       if (!sid || !u) return;
       if (!window.confirm('Mettre « ' + u + ' » en liste noire ?')) return;
       fetch('/ff/mk?sid=' + encodeURIComponent(sid) + '&folder=blacklist&t=contact&u='
         + encodeURIComponent(u)).then(function () { chargerContacts(); });
     });
-    // `getIconList` les pousse APRÈS le courrier et AVANT la modération.
-    var apres = $('#fiche-mail');
-    [blog, contact, noire].forEach(function (b) {
-      if (!b) return;
-      if (apres && apres.parentNode === rangee) rangee.insertBefore(b, apres.nextSibling);
-      else rangee.appendChild(b);
-      apres = b;
+    neuf('fiche-contact', 'fiche-ico-contact', 'Ajouter à mes contacts', function () {
+      var sid = jetonSid(), u = pseudo();
+      if (!sid || !u) return;
+      fetch('/ff/mk?sid=' + encodeURIComponent(sid) + '&folder=mycontact&t=contact&u='
+        + encodeURIComponent(u)).then(function () { chargerContacts(); });
+    });
+    neuf('fiche-blog', 'fiche-ico-blog', 'Son blog', function () {
+      window.open('/bouilloscope/?u=' + encodeURIComponent(pseudo()), '_blank');
     });
   }
 
   // Les glyphes d'époque, à la place des PNG du mobile.
-  function habillerIconesFiche() {
+  function habillerIconesFiche(racine) {
+    var r = racine || $('#fiche');
+    if (!r) return;
     FICHE_ICONES.forEach(function (d) {
-      var b = $('#' + d.id);
+      var b = r.querySelector('.' + d.cls);
       if (!b) return;
       var i = b.querySelector('img');
       if (i) i.src = '/frutiz/sprites/' + d.art + '.svg';
@@ -4715,12 +4782,13 @@ window.BureauFrutiz = (function () {
   // écrit le pseudo — il a la donnée sous la main, plus rien à guetter.)
 
   // OÙ LA FICHE SE POSE — dans `--fx`/`--fy`, mais avec la même arithmétique
-  // que `left`/`top` d'une fenêtre.
-  function poserFicheA(x, y) {
-    var f = $('#fiche');
-    if (!f) return;
-    f.style.setProperty('--fx', x + 'px');
-    f.style.setProperty('--fy', y + 'px');
+  // que `left`/`top` d'une fenêtre. Le poseur est fabriqué POUR UN NŒUD : il y
+  // en a plusieurs à l'écran, et `glisserVers` ne passe que des coordonnées.
+  function poseurFiche(f) {
+    return function (x, y) {
+      f.style.setProperty('--fx', x + 'px');
+      f.style.setProperty('--fy', y + 'px');
+    };
   }
 
   /* `initDrag` / `endDrag` : la fiche se déplace COMME UNE FENÊTRE, parce que
@@ -4746,8 +4814,9 @@ window.BureauFrutiz = (function () {
       if (ev.target.closest('button, a, input, .fiche-corps')) return;
       ev.preventDefault();
       var pos = posDe(f);
-      // Le fantôme vit DANS la couche de la fiche : `#bureau-fenetres` est
-      // une couche plus bas, et la silhouette y passerait derrière elle.
+      // Le fantôme naît chez la fiche — c'est-à-dire, depuis qu'elle a rejoint
+      // les fenêtres, dans `#bureau-fenetres` : la même couche pour tout le
+      // monde, et sa silhouette (z-index 1400) par-dessus.
       var fantome = creerFantome(pos, f.parentNode);
       var decalx = ev.clientX, decaly = ev.clientY;
       var glisser = function (e2) {
@@ -4763,24 +4832,27 @@ window.BureauFrutiz = (function () {
           w: pos.w, h: pos.h,
         }, { w: pos.w, h: pos.h });
         fantome.remove();
-        glisserVers(f, cible, poserFicheA);
+        glisserVers(f, cible, poseurFiche(f));
       };
       document.addEventListener('pointermove', glisser);
       document.addEventListener('pointerup', lacher);
     });
   }
 
-  // `main.onResize()` reborne TOUT ce qui est posé sur le bureau — la fiche
-  // comprise. C'est le même appel qui suit `SideList.activate` quand la bande
-  // des contacts s'ouvre et pousse `cornerX` de 9 à 129.
+  // `main.onResize()` reborne TOUT ce qui est posé sur le bureau — les fiches
+  // comprises, TOUTES. C'est le même appel qui suit `SideList.activate` quand
+  // la bande des contacts s'ouvre et pousse `cornerX` de 9 à 129.
   function bornerFiche() {
-    var f = $('#fiche');
-    if (!f || !f.dataset.posee || !f.offsetWidth) return;
+    for (var cle in fichesPosees) bornerUneFiche(fichesPosees[cle].fen);
+  }
+
+  function bornerUneFiche(f) {
+    if (!f || !f.offsetWidth) return;
     var avant = posDe(f);
     var pos = recal(posDe(f), { w: avant.w, h: avant.h });
     if (Math.round(avant.x) === Math.round(pos.x)
       && Math.round(avant.y) === Math.round(pos.y)) return;
-    glisserVers(f, pos, poserFicheA);
+    glisserVers(f, pos, poseurFiche(f));
   }
 
   // ── Le GLISSER-DÉPOSER des icônes du bureau ────────────────────────────
@@ -7380,8 +7452,12 @@ window.BureauFrutiz = (function () {
     // Le forum : ni fenêtre ni cadre, une FENÊTRE DE NAVIGATEUR à part —
     // `win.Forum` ne fait rien d'autre que renvoyer dehors.
     ouvrirForum: ouvrirForum,
-    // La fiche : au bureau c'est une fenêtre, elle se pose et se glisse.
+    // La fiche : au bureau c'est une fenêtre, elle se pose et se glisse — et
+    // il y en a UNE PAR JOUEUR, chacune à son étage de la pile des fenêtres.
+    // Le light nomme la sienne (`cle`) et nous rend son nœud ; à la fermeture
+    // il nous la reprend, pour que le panneau d'origine retrouve son fond.
     poserFiche: poserFiche,
+    fermerFiche: fermerFiche,
     // Les entrées d'un menu arrivent en glissant : le light rappelle ici
     // chaque fois qu'il refait la colonne des scores ou celle de la boutique.
     animerEntrees: animerEntrees,

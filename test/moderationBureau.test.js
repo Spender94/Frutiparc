@@ -73,11 +73,13 @@ test('les trames envoyées sont celles des boutons de la fiche', () => {
 });
 
 test('la fiche retient le salon d’où on l’a ouverte', () => {
-  assert.match(LIGHT, /var ficheEtat = \{ pseudo: null, data: null, onglet: "frutiz", salon: null \};/);
+  // Le salon est retenu PAR FICHE, depuis qu'on peut en ouvrir plusieurs :
+  // chacune garde celui d'où elle a été ouverte, et le kick prend le sien.
+  assert.match(LIGHT, /var ficheEtat = \{ pseudo: null, data: null, onglet: "frutiz", salon: null,\s*\n\s*racine: null \};/);
   assert.match(LIGHT, /function ouvrirFiche\(pseudo, salon\) \{/);
-  assert.match(LIGHT, /ficheEtat = \{ pseudo: p, data: null, onglet: "frutiz", salon: salon \|\| state\.room \|\| null \};/);
+  assert.match(LIGHT, /f = \{ pseudo: p, data: null, onglet: "frutiz",\s*\n\s*salon: salon \|\| state\.room \|\| null, racine: null \};/);
   // …et le kick s'en sert
-  assert.match(LIGHT, /var ou = ficheEtat\.salon \|\| state\.room \|\| "";/);
+  assert.match(LIGHT, /var ou = f\.salon \|\| state\.room \|\| "";/);
   assert.match(LIGHT, /wsSend\('<l u="' \+ xmlEscape\(p\) \+ '" g="' \+ xmlEscape\(ou\) \+ '" \/>'\);/);
   // le clic sur un écran de l'aquarium le lui donne
   assert.match(LIGHT, /ouvrirFiche: function \(pseudo, salon\) \{ ouvrirFiche\(pseudo, salon\); \},/);

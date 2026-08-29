@@ -173,7 +173,7 @@ test('la rangée d\'actions porte les vrais glyphes de main.swf', () => {
 test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   // La CARTE : blanche, liseré sombre fin, coins courts — pas une fenêtre verte.
-  assert.match(html, /#fiche \{[\s\S]{0,400}border: 1\.5px solid #545454; border-radius: 8px;/,
+  assert.match(html, /\.fiche-boite \{[\s\S]{0,400}border: 1\.5px solid #545454; border-radius: 8px;/,
     'la carte blanche à liseré sombre, coins francs');
   // LA PLAQUE : un seul encart vert qui tient la bouille ET l'écran de niveau.
   assert.match(html, /\.fiche-plaque \{[\s\S]{0,400}background: #c8f39a;/, 'la plaque verte');
@@ -186,7 +186,7 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
   assert.match(html, /font-size: 11px; line-height: 1; color: #4E8030;/, 'le niveau aussi');
   assert.match(html, /font-size: 12\.5px; color: #290D64;/, 'et le pseudo au bleu nuit');
   // Les tailles de la rangée d'en-tête, réglées à la demande.
-  assert.match(html, /#fiche-fermer img \{ width: 20px; height: 20px;/, 'la croix en 20 px');
+  assert.match(html, /\.fiche-fermer img \{ width: 20px; height: 20px;/, 'la croix en 20 px');
   assert.match(html, /\.fiche-actions button img \{ width: 20px; height: 20px;/, 'les glyphes en 20 px');
   assert.match(html, /\.fiche-nom-ligne \.statut \{ width: 18px; height: 18px;/, 'le voyant en 18 px');
   // Le cadre et le reflet habillent la PLAQUE, pas la seule vignette — et la
@@ -204,7 +204,9 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
     'le cadre prend toute la largeur de l\'encart');
   assert.match(html, /\.fiche-plaque > \.reflet \{[\s\S]{0,120}right: 3%; top: 4%;/,
     'le reflet se pose dans le coin haut-droit');
-  assert.match(html, /<div class="fa-frame">\s*<div class="stage" id="fiche-avatar"><\/div>\s*<\/div>/,
+  // (La classe jumelle est là pour les CLONES : le bureau ouvre plusieurs
+  // fiches, et un clone ne peut pas emporter l'id de l'original.)
+  assert.match(html, /<div class="fa-frame">\s*<div class="stage fiche-avatar" id="fiche-avatar"><\/div>\s*<\/div>/,
     'la vignette ne contient plus que la bouille');
   // La vignette garde son PROPRE repère (position: relative) — c'est ce qui
   // fait tenir le cadre et le reflet sur la plaque, et non sur elle. Sa taille
@@ -218,7 +220,7 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
     'l\'ombre portée court sur tous les côtés');
   // LE DÉPLIANT : le bouton rose n'est plus mort, il ouvre le détail.
   assert.ok(!/id="fiche-avance"[^>]*disabled/.test(html), 'le bouton rose n\'est plus éteint');
-  assert.match(html, /#fiche:not\(\.deploye\) \.fiche-corps \{ display: none; \}/,
+  assert.match(html, /\.fiche-boite:not\(\.deploye\) \.fiche-corps \{ display: none; \}/,
     'la fiche se replie');
   // AU BUREAU, ELLE S'OUVRE REPLIÉE — toujours. `win.Frutiz` montre la carte
   // courte, et c'est le bouton rose qui déplie le détail ; une fenêtre neuve
@@ -228,7 +230,9 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
   assert.match(html, /if \(surLeBureau\(\)\) return false;/);
   assert.match(html, /function poserFicheDeployee\(ouvert\) \{[\s\S]*?if \(surLeBureau\(\)\) return;\s*\n\s*try \{ localStorage\.setItem\(FICHE_DEPLOYE_KEY/);
   assert.match(html, /function surLeBureau\(\) \{\s*\n\s*return !!\(document\.body && document\.body\.classList\.contains\("bureau-frutiz"\)\);/);
-  assert.match(html, /poserFicheDeployee\(!\$\("#fiche"\)\.classList\.contains\("deploye"\)\)/,
+  // Le bouton rose bascule LA SIENNE : depuis qu'on peut en ouvrir plusieurs,
+  // le geste part de la racine de la fiche cliquée, pas d'un `#fiche` unique.
+  assert.match(html, /poserFicheDeployee\(!f\.racine\.classList\.contains\("deploye"\)\)/,
     'et le bouton rose bascule');
   assert.match(html, /localStorage\.setItem\(FICHE_DEPLOYE_KEY/, 'le choix se retient');
   // Le panneau vert clair, ses onglets et leur rouge d'activité.
@@ -267,7 +271,7 @@ test('l\'en-tête tient sur deux lignes, et la carte ne saute pas d\'un onglet �
     'la rangée d\'actions vit dans la colonne du pseudo');
   assert.ok(droite[1].includes('id="fiche-avance"'),
     'et le bouton rose la termine');
-  assert.match(html, /#fiche-avance \{\s*margin-left: auto;/, 'poussé au bout de la rangée');
+  assert.match(html, /\.fiche-avance \{\s*margin-left: auto;/, 'poussé au bout de la rangée');
   // La HAUTEUR de la fiche dépliée est FIXE : le contenu défile s'il déborde.
   assert.match(html, /\.fiche-page \{ padding: [^;]*; height: \d+px; overflow-y: auto; \}/,
     'le panneau garde sa hauteur d\'un onglet à l\'autre');
@@ -316,7 +320,7 @@ test('le bouton rose est la TUILE nue, le triangle posé dessus', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   assert.match(html, /id="fiche-avance"[^>]*><img src="\/fb\/fiche\/ico_avance\.png"/,
     'le triangle est l\'enfant du bouton');
-  assert.match(html, /#fiche-avance \{[\s\S]{0,200}bouton_rose\.png'\) no-repeat/,
+  assert.match(html, /\.fiche-avance \{[\s\S]{0,200}bouton_rose\.png'\) no-repeat/,
     'et la tuile en est le fond');
 });
 
@@ -352,7 +356,9 @@ test('la vue modérateur : kick, ban et totoché, aux modérateurs seulement', (
   // Le kick porte le salon D'OÙ LA FICHE A ÉTÉ OUVERTE, pas le salon
   // « courant » : sur le bureau il y a une fenêtre par salon (cf.
   // test/moderationBureau.test.js).
-  assert.match(html, /var ou = ficheEtat\.salon \|\| state\.room \|\| "";/,
+  // (`f`, et non `ficheEtat` : le geste est délégué depuis qu'on peut ouvrir
+  // plusieurs fiches, et il agit sur CELLE qu'on a cliquée.)
+  assert.match(html, /var ou = f\.salon \|\| state\.room \|\| "";/,
     'le kick vise le salon de la fiche');
   assert.match(html, /wsSend\('<l u="' \+ xmlEscape\(p\) \+ '" g="' \+ xmlEscape\(ou\) \+ '" \/>'\)/,
     'kick sur ce salon-là');

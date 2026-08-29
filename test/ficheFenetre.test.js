@@ -55,7 +55,9 @@ test('elle se déplace au FANTÔME, comme toutes les autres', () => {
 test('elle est bornée à la ZONE DU BUREAU, pas à zéro', () => {
   const bloc = JS.slice(JS.indexOf('function glisserFiche'), JS.indexOf('function bornerFiche'));
   assert.match(bloc, /var cible = recal\(\{[\s\S]*?w: pos\.w, h: pos\.h,\s*\n\s*\}, \{ w: pos\.w, h: pos\.h \}\);/);
-  assert.match(bloc, /glisserVers\(f, cible, poserFicheA\);/);
+  // Le poseur est fabriqué POUR UN NŒUD : il y a une fiche par joueur à
+  // l'écran, et `glisserVers` ne passe que des coordonnées.
+  assert.match(bloc, /glisserVers\(f, cible, poseurFiche\(f\)\);/);
 });
 
 test('le coin qui bouge la reborne, comme les fenêtres', () => {
@@ -64,9 +66,12 @@ test('le coin qui bouge la reborne, comme les fenêtres', () => {
   // trois appelaient déjà `bornerDansEcran` sur les fenêtres ; la fiche y est.
   const n = (JS.match(/\n\s*bornerFiche\(\);/g) || []).length;
   assert.strictEqual(n, 3, 'les trois recalages du bureau doivent inclure la fiche');
-  assert.match(JS, /function bornerFiche\(\) \{[\s\S]*?glisserVers\(f, pos, poserFicheA\);/);
-  // Rien à reborner tant qu'elle n'a pas été posée.
-  assert.match(JS, /if \(!f \|\| !f\.dataset\.posee \|\| !f\.offsetWidth\) return;/);
+  // Et TOUTES les fiches posées, pas seulement la première.
+  assert.match(JS, /function bornerFiche\(\) \{\s*\n\s*for \(var cle in fichesPosees\) bornerUneFiche\(fichesPosees\[cle\]\.fen\);/);
+  assert.match(JS, /function bornerUneFiche\(f\) \{[\s\S]*?glisserVers\(f, pos, poseurFiche\(f\)\);/);
+  // Rien à reborner d'une fiche qui n'est pas à l'écran. (C'est la table des
+  // fiches POSÉES qui le dit : une fiche refermée n'y est plus.)
+  assert.match(JS, /function bornerUneFiche\(f\) \{\s*\n\s*if \(!f \|\| !f\.offsetWidth\) return;/);
 });
 
 test('`posDe` lit les deux façons de se placer', () => {
@@ -82,15 +87,17 @@ test('`glisserVers` sait écrire ailleurs que dans left/top', () => {
   // Le départ de la glissade se lit par `posDe` : la fiche part donc d'où elle
   // est, et non de (0, 0) comme le ferait `parseFloat(style.left)`.
   assert.match(bloc, /var depart = posDe\(fen\);/);
-  assert.match(JS, /function poserFicheA\(x, y\) \{[\s\S]*?--fx[\s\S]*?--fy/);
+  assert.match(JS, /function poseurFiche\(f\) \{\s*\n\s*return function \(x, y\) \{[\s\S]*?--fx[\s\S]*?--fy/);
 });
 
 test('le fantôme de la fiche vit dans SA couche', () => {
-  // `#bureau-fenetres` est en z-index 10, `#fiche-backdrop` en 70 : une
-  // silhouette posée chez les fenêtres passerait DERRIÈRE la fiche.
+  // La fiche POSÉE a rejoint `#bureau-fenetres` : c'est la même couche pour
+  // tout le monde, et le fantôme y naît chez elle comme chez les fenêtres.
+  // (Sa silhouette est en z-index 1400 : elle passe par-dessus les deux.)
   const CSS = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
   assert.match(CSS, /#bureau-fenetres \{\s*\n\s*position: absolute; inset: 0; z-index: 10;/);
   assert.match(CSS, /#fiche-backdrop \{\s*\n\s*position: fixed; inset: 0; z-index: 70;/);
+  assert.match(CSS, /\.fen-fantome \{\s*\n\s*position: absolute; pointer-events: none; z-index: 1400;/);
   assert.match(JS, /function creerFantome\(pos, hote\) \{/);
   assert.match(JS, /\(hote \|\| \$\('#bureau-fenetres'\)\)\.appendChild\(fantome\);/);
 });

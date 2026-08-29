@@ -27,7 +27,7 @@ const STANDARD = fs.readFileSync(path.join(ROOT, 'frutiparc/Standard.as'), 'lati
 /* ── 1. LA FEUILLE DE LA FICHE ────────────────────────────────────────────── */
 
 test('la feuille verte de la fiche laisse deux pixels de blanc', () => {
-  assert.match(CSS, /#fiche \.fiche-corps \{\s*\n\s*margin: 0 2px 2px;/);
+  assert.match(CSS, /\.fiche-boite \.fiche-corps \{\s*\n\s*margin: 0 2px 2px;/);
 });
 
 /* ── 2. LE VOYANT « EN PARTIE » ───────────────────────────────────────────── */
@@ -140,7 +140,7 @@ test('scrollbar-color reste sous @supports, sinon Chromium jette le reste', () =
   // Depuis Chrome 121, poser `scrollbar-color` bascule l'élément sur la barre
   // STANDARD et met les ::-webkit-scrollbar au rebut — la mise en forme
   // d'époque disparaissait sans un mot. C'est le garde-fou que light.html
-  // utilisait déjà pour `.fiche-page` et `#trombi-body`.
+  // utilisait déjà pour `\.fiche-page` et `#trombi-body`.
   const gardes = [...CSS.matchAll(/@supports not selector\(::-webkit-scrollbar\) \{/g)];
   assert.ok(gardes.length >= 1, 'les scrollbar-color doivent vivre sous @supports');
   for (const m of CSS.matchAll(/^(?!\s*\/).*scrollbar-color:/gm)) {

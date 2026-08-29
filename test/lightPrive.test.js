@@ -181,8 +181,10 @@ test('le client mobile sait ouvrir, router et signaler les discussions privées'
     'elle envoie bien la demande d\'ouverture au serveur');
   assert.ok(/u\.classList\.add\("mp"\)/.test(html) && /ouvrirFiche\(pseudo\)/.test(html),
     'les pseudos de la liste sont cliquables');
-  assert.ok(/\$\("#fiche-mp"\)\.addEventListener\("click"/.test(html)
-    && /ouvrirPrive\(p\)/.test(html),
+  // Le geste est DÉLÉGUÉ depuis qu'on peut ouvrir plusieurs fiches : les
+  // boutons d'un clone n'ont pas d'écouteur à eux, un seul écouteur remonte à
+  // la `.fiche-boite` cliquée et agit sur SA fiche.
+  assert.ok(/case "fiche-mp":\s*\n\s*fermerFiche\(f\); openDrawer\(false\); ouvrirPrive\(p\);/.test(html),
     'la fiche mène au privé en un appui');
   // La même ligne sert aux deux onglets du tiroir : celui du salon et celui de
   // tout le site. Écrire à quelqu'un d'un autre salon doit rester un seul appui.
