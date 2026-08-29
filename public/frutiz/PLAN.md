@@ -4258,3 +4258,88 @@ Elle était dans l'encart (la première des six, `nameList[0]`) mais pas sur le
 BUREAU, où les rubriques ont leur tuile. Elle y est, avec l'icône d'époque
 (`/fb/Aide.svg`, celle-là même de l'encart), et seulement là : `home-tile-bureau`
 la cache sur mobile, qui n'a pas de fenêtre d'aide.
+
+## Les fruticards de la fiche — le relevé
+
+La « fruticard » d'un jeu, c'est sa fiche de sauvegarde (`FruticardSlot.as`,
+champ `fruticard` du SharedObject) — et le SWF sait la DESSINER : les
+informations du jeu complet, records compris.
+
+**Où est le moteur.** Pas dans `frutiparc/Standard.as` : la
+`getFrutiCardLines` qu'on y lit est COMMENTÉE, ne traite que `bkiwi` avec des
+données bidon (« lalatsouiiiiiiiiin! », 3240, « gloups ») et porte l'aveu de son
+auteur — « DEVRAIT ETRE PLACE DANS UN SWF EXTERNE D'UNE MANIERE OU D'UNE
+AUTRE ». La vraie vit dans `main.swf`, à **0x5c370**, et fait 4351 lignes de
+bytecode. Elle traite sept jeux :
+
+    bkiwi 0x5c618 · snake3 0x5cde6 · grapiz/bandas 0x5d4e8 (rien) ·
+    swapou2 0x5d532 · mb2 0x5d9cd · kaluga 0x5df1a · miniwave 0x5e868 ·
+    minipixiz 0x5f285
+
+Grapiz et Frutibandas n'ont PAS de carte : leur branche retombe sur le retour
+commun, ce que `FCARD_GAMES` (server.js) dit déjà de son côté.
+
+**Comment on la lit.** La fonction ne calcule presque rien : elle DÉCRIT. Des
+objets littéraux — `{ type:"text", width:80, param:{…} }` — empilés dans un
+tableau `lines`. `scratchpad/decode-fcard.js` est un évaluateur symbolique de
+la pile AVM1 qui les reconstitue ; le lire à l'œil, c'est se tromper.
+
+**Le décor commun** (méthodes de `Standard`, définies vers 0x5b608) :
+
+    getTitleLine(titre, largeur)  [spacer 14 · line size 2 · text sid 2 centré
+                                   · line size 2 · spacer 14]   largeur par
+                                   défaut = titre.length × 10
+    getSepLine()                  { height:2, list:[ line size 2, marge x.min 28 ] }
+    getEndLine()                  [ { big:1 } ]
+
+**Burning Kiwi** — l'utilisateur avait raison, les coupes sont là :
+
+    { height:10 }
+    ×4  spacer(big 2) + url Path.bkiwi_cup, dy 4, min.w 30,
+        param { frame: i+1, available: card[cle] }
+        cles = ["$wss","$ws","$wcs","$wc"]   (l'ordre des images 1..4)
+    spacer(big 1) ; { height:86, list:[…] }
+    getTitleLine("voitures")
+    ×5  spacer(big 1, width −16) + url Path.bkiwi_team, dy 4,
+        _alpha: 20 + $ac[i] × 80        ← 20 % verrouillée, 100 % gagnée
+        param { data:[ nom ] }
+        ecuries = ["ultra orange","uwe wing","fury hun","sonic brain","kiwix"]
+    spacer(big 1) ; { height:32, list:[…] }
+    ×6  getTitleLine(circuit) puis une ligne :
+        url Path.bkiwi_team (l'écurie de $ts[i].$totalCar, min.w 30)
+        text 120 « meilleur course : »
+        text 80 aligné à droite, MTNumber.getTimeStr($ts[i].$fcTotal, "'", "''")
+        circuits = ["green hill","banana derby","terre grise","solstice",
+                    "jupiter IV","mistral kiwi"]
+    { height:20 } ; getSepLine()
+
+Les quatre coupes viennent de `public/sd/bkiwi_cup.swf` (`Path.bkiwi_cup`),
+sprite #9, quatre images posant #2/#4/#6/#8 — des formes remplies d'un bitmap.
+Deux argent, deux or, socles orange/gris/vert/violet :
+
+    node scripts/inspect-swf.js public/sd/bkiwi_cup.swf sprite 9
+    node scripts/extract-swf-bitmaps.js public/sd/bkiwi_cup.swf public/fb/sd 1 3 5 7
+
+(rangées en `bkiwi_cup_1..4`). Les cinq voitures étaient déjà sorties, en
+`public/fb/sd/bkiwi_car_*.png` — c'est le même `Path.bkiwi_team` que la colonne
+« Écurie » du tableau des scores.
+
+**Frutisnake** — « combien de fruits ramassés, records », mot pour mot :
+
+    ligne centrée, sid 2, couleur #E76B6B :
+        <pseudo> + " a ramassé " + <total> + " fruits !"
+    { height:10 }
+    getRecordLines("meileur score", $record + " points")   ← la faute est
+                                                              d'époque (un L)
+    getTitleLine("collection")
+    ligne centrée : "<n> sur 322 ont été découverts"
+    ligne centrée : "( <n ÷ 322, arrondi au dixième> % )"
+    { height:10 }
+    getRecordLines("le plus gros fruit", …)
+    { big:1 }
+
+**Ce qui reste à faire.** Le serveur sert déjà les données au visualiseur AS2
+(`FCARD_GAMES`, `patchSlot0`, `fcardgetpublicslot`) ; ce qui manque, c'est le
+rendu dans la fiche du bureau et du light. À noter : la carte lit
+`$ts[i].$totalCar` et `$ts[i].$fcTotal` là où `patchSlot0` ne garnit que `$bc`
+et `$bl` — il faudra compléter le rembourrage avant de dessiner les circuits.
