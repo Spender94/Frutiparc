@@ -3,15 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Frutiparc — Atelier d'accessoires</title>
+<title>Frutiparc — Atelier de variantes d'accessoire</title>
 <style>
   :root { --vert:#335511; --vertclair:#ADE76B; --chair:#F3FAE7; --rose:#F6A4AD; --rosef:#E78690; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--chair); color:var(--vert);
     font:14px Verdana, Arial, sans-serif; padding:18px; }
   h1 { font-size:19px; margin:0 0 4px; }
-  .sub { font-size:12px; color:#5A7D33; margin:0 0 16px; max-width:720px; line-height:1.5; }
-  .atelier { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .sub { font-size:12px; color:#5A7D33; margin:0 0 16px; max-width:820px; line-height:1.55; }
+  .sub b { color:var(--vert); }
+  .atelier { display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start; }
   .carte { background:#fff; border:1px solid #B9C6A0; border-radius:12px; padding:14px 16px; }
   .carte h2 { font-size:14px; margin:0 0 12px; color:#000046; }
   label { display:block; font-size:11px; font-weight:bold; margin:10px 0 3px; }
@@ -19,13 +20,13 @@
     border-radius:6px; background:#fff; color:var(--vert); width:100%; }
   .ligne { display:flex; gap:8px; }
   .ligne > div { flex:1; }
-  input[type=range] { width:100%; }
-  .swatchs { display:flex; flex-wrap:wrap; gap:3px; margin-top:3px; }
-  .sw { width:16px; height:16px; border-radius:3px; border:1px solid rgba(0,0,0,.2); cursor:pointer; }
+  .swatchs { display:flex; flex-wrap:wrap; gap:3px; margin-top:2px; align-items:center; }
+  .swatchs .lab { font-size:10px; font-weight:normal; color:#5A7D33; width:52px; flex:0 0 52px; }
+  .sw { width:15px; height:15px; border-radius:3px; border:1px solid rgba(0,0,0,.2); cursor:pointer; }
   .sw.on { outline:2px solid #000046; outline-offset:1px; }
-  canvas.preview { width:220px; height:220px; background:#fff; border:1px solid var(--vertclair);
+  canvas.preview { width:230px; height:230px; background:#fff; border:1px solid var(--vertclair);
     border-radius:10px; display:block; }
-  .btn { border:0; border-radius:9px; padding:9px 16px; cursor:pointer; margin-top:14px;
+  .btn { border:0; border-radius:9px; padding:9px 16px; cursor:pointer; margin-top:12px;
     font:bold 13px Verdana; color:#660000; background:var(--rose); box-shadow: inset 0 0 0 1.5px var(--rosef); }
   .btn:hover { background:var(--rosef); }
   .btn.plein { background:linear-gradient(#DFF7A0,#A7DC6B); color:#2C4A0F; box-shadow:none; }
@@ -34,60 +35,60 @@
   .drop.survol { border-color:var(--rosef); background:#FEF1F3; }
   .grille { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
   .grille figure { margin:0; text-align:center; }
-  .grille canvas { width:110px; height:110px; background:#fff; border:1px solid var(--vertclair);
+  .grille canvas { width:112px; height:112px; background:#fff; border:1px solid var(--vertclair);
     border-radius:8px; display:block; }
-  .grille figcaption { font-size:10px; color:#5A7D33; margin-top:2px; }
-  .aide { font-size:11px; color:#6a8a4a; line-height:1.5; margin-top:10px; max-width:260px; }
+  .grille figcaption { font-size:10px; color:#5A7D33; margin-top:2px; max-width:112px; }
+  .aide { font-size:11px; color:#6a8a4a; line-height:1.55; margin-top:10px; max-width:270px; }
   .aide code { background:#EEF6DD; padding:1px 4px; border-radius:3px; }
-  #etat { font:11px monospace; color:#93a; margin-top:8px; word-break:break-all; }
+  .aide b { color:var(--vert); }
+  #etat, #imp-etat { font:11px monospace; color:#93a; margin-top:8px; word-break:break-all; }
+  .gris { filter:grayscale(1); }
 </style>
 </head>
 <body>
-  <h1>Atelier d'accessoires</h1>
-  <p class="sub">Choisis une forme d'accessoire existante, exporte-la en SVG, retravaille-la dans
-    Illustrator (ajoute des taches, redessine…), puis réimporte ton SVG : le moteur le pose sur la
-    bouille, et il suit la coiffure comme l'accessoire d'origine. Aucun .swf à toucher.</p>
+  <h1>Atelier de variantes d'accessoire</h1>
+  <p class="sub">Pars d'un accessoire qui existe — la <b>casquette nue</b>, par exemple — télécharge son
+    gabarit, pose ton motif dans Illustrator, et redépose-le : il devient une <b>vraie variante</b>,
+    encodée dans la chaîne de la bouille comme celles d'époque. Elle occupe le créneau accessoire (elle
+    ne s'ajoute pas par-dessus), se pose correctement sur <b>les 67 coiffures</b> sans rien adapter, et
+    se recolore par les <b>trois niveaux de couleur</b>.</p>
 
   <div class="atelier">
-    <!-- 1. La forme de départ -->
+    <!-- 1. Le gabarit -->
     <div class="carte">
-      <h2>1 · Forme de départ</h2>
-      <label>Famille</label>
-      <select id="fam"></select>
-      <label>Type d'accessoire</label>
+      <h2>1 · Le gabarit de départ</h2>
+      <label>Accessoire</label>
       <select id="type"></select>
       <div class="ligne">
-        <div><label>Variante</label><input type="number" id="variante" min="0" value="0"></div>
+        <div><label>Variante de départ</label><input type="number" id="variante" min="0" value="0"></div>
         <div><label>Coiffure (aperçu)</label><input type="number" id="coif" min="0" value="8"></div>
       </div>
-      <label>Couleur 1 / 2 / 3</label>
+      <label>Couleurs d'aperçu (niveaux 1 / 2 / 3)</label>
       <div id="cols"></div>
       <div id="etat"></div>
     </div>
 
-    <!-- 2. Aperçu + export -->
+    <!-- 2. Aperçu + téléchargement -->
     <div class="carte">
-      <h2>2 · Aperçu &amp; export</h2>
-      <canvas id="apercu" class="preview" width="440" height="440"></canvas>
-      <button class="btn plein" id="dl">⬇ Télécharger le SVG de l'accessoire</button>
+      <h2>2 · Aperçu &amp; téléchargement</h2>
+      <canvas id="apercu" class="preview" width="460" height="460"></canvas>
+      <button class="btn plein" id="dl">⬇ Télécharger le gabarit SVG</button>
       <div class="aide">
-        Dans Illustrator : dessine <b>uniquement</b> dans le calque <code>accessoire</code>
-        (et <code>accessoire-arriere</code> pour ce qui passe derrière la frange).
-        Le calque <code>repere</code> (la tête) n'est qu'un fond — verrouille-le, il est ignoré
-        au retour. Ne change pas la taille du plan de travail.<br>
-        <b>Zones recolorables&nbsp;:</b> un groupe <code>couleur1</code>/<code>couleur2</code>/<code>couleur3</code>
-        se recolore depuis l'admin (dessine-les en aplats).<br>
-        <b>Ombres&nbsp;/ lumières&nbsp;:</b> une forme noire en <i>Produit</i> (multiply),
-        une blanche en <i>Superposition d'écran</i> (screen), l'opacité que tu veux — elles
-        foncent&nbsp;/ éclaircissent quel que soit le coloris.
+        <b>Dessine les zones recolorables en niveaux de gris.</b> Les calques
+        <code>couleur1/2/3</code> sont teintés par les trois couleurs : le blanc rend la couleur
+        pleine, les gris en donnent les ombres — c'est ainsi que le relief suit la couleur.<br>
+        Tout ce qui est hors de ces calques garde sa teinte (contours noirs, reflets).<br>
+        L'ordre des calques est l'ordre de peinture ; le calque <code>repere</code> (la tête) est
+        un simple fond, à verrouiller.
       </div>
     </div>
 
-    <!-- 3. Import du SVG retravaillé -->
-    <div class="carte" style="flex:1; min-width:320px;">
-      <h2>3 · Réimporter le SVG retravaillé</h2>
-      <div class="drop" id="drop">Dépose ici ton <b>.svg</b> retravaillé<br>(ou clique pour choisir)</div>
+    <!-- 3. Import -->
+    <div class="carte" style="flex:1; min-width:340px;">
+      <h2>3 · Redéposer le SVG retravaillé</h2>
+      <div class="drop" id="drop">Dépose ici ton <b>.svg</b><br>(ou clique pour choisir)</div>
       <input type="file" id="fichier" accept=".svg,image/svg+xml" style="display:none">
+      <div id="imp-etat"></div>
       <div class="grille" id="rendu"></div>
     </div>
   </div>
@@ -97,128 +98,142 @@
   <script src="/js/bouille-avm.js"></script>
   <script src="/js/bouille-moteur.js"></script>
   <script src="/js/bouille-custom.js"></script>
+  <script src="/js/bouille-variante.js"></script>
   <script>
   (function () {
-    var M = window.FPBouilleMoteur, Swf = window.FPBouilleSwf, C = window.FPBouilleCustom, P = window.FPBouille;
+    var M = window.FPBouilleMoteur, Swf = window.FPBouilleSwf;
+    var C = window.FPBouilleCustom, V = window.FPBouilleVariante, P = window.FPBouille;
     var $ = function (s) { return document.querySelector(s); };
-    var FAMILLES = [0, 10, 11, 12, 13, 14, 15, 16, 23, 24];
-    var defsCache = {}, defs = null, dernierSVG = "";
+    var defs = null;                 // la famille 0, telle qu'on l'enrichit
+    var COLS = [29, 19, 24];         // les trois couleurs d'aperçu
 
-    function enc(v) { return M.encode62(v, 2); }
-    function pair(v) { return enc(v); }
-
-    // état courant depuis les contrôles (le reste de la tête est fixe et neutre).
-    function etatCourant() {
-      var fam = +$("#fam").value;
-      var t = +$("#type").value, va = +$("#variante").value, co = +$("#coif").value;
-      var c = COLS;
-      return pair(fam) + pair(3) + pair(0) + pair(co) + pair(0) + pair(2) + pair(7)
-        + pair(t) + pair(va) + pair(c[0]) + pair(c[1]) + pair(c[2]);
+    function pair(v) { return M.encode62(v, 2); }
+    // Une tête neutre qui porte l'accessoire demandé.
+    function etatAvec(type, variante, coiffure, couleurs) {
+      var c = couleurs || COLS;
+      return pair(0) + pair(3) + pair(0) + pair(coiffure) + pair(0) + pair(2) + pair(7)
+        + pair(type) + pair(variante) + pair(c[0]) + pair(c[1]) + pair(c[2]);
     }
 
-    var COLS = [1, 0, 0];
     function construireCouleurs() {
       var hote = $("#cols"); hote.innerHTML = "";
-      [0, 1, 2].forEach(function (slot) {
+      [0, 1, 2].forEach(function (i) {
         var bande = document.createElement("div"); bande.className = "swatchs";
-        P.COLORS.forEach(function (col, i) {
-          var s = document.createElement("span"); s.className = "sw" + (COLS[slot] === i ? " on" : "");
-          s.style.background = col.hex; s.title = col.name; s.dataset.slot = slot; s.dataset.i = i;
-          s.addEventListener("click", function () { COLS[slot] = i; construireCouleurs(); rafraichir(); });
+        var lab = document.createElement("span"); lab.className = "lab";
+        lab.textContent = "niveau " + (i + 1); bande.appendChild(lab);
+        P.COLORS.forEach(function (col, k) {
+          var s = document.createElement("span");
+          s.className = "sw" + (COLS[i] === k ? " on" : "");
+          s.style.background = col.hex; s.title = col.name;
+          s.addEventListener("click", function () { COLS[i] = k; construireCouleurs(); rafraichir(); });
           bande.appendChild(s);
         });
         hote.appendChild(bande);
       });
     }
 
-    function chargerFamille(fam) {
-      if (defsCache[fam]) return Promise.resolve(defsCache[fam]);
-      return Swf.charger("/fbouille/famille" + fam + ".swf").then(function (d) { defsCache[fam] = d; return d; });
-    }
-
-    function bornes(d, etat) {
-      var b = new M.Bouille(document.createElement("canvas"), d, { etat: etat, anime: false, alea: function () { return 0.5; } });
-      var f = b.moteur.racine.face;
-      var e = function (c, n) { return c && c.enfantNomme(n); };
-      var ca = e(f, "ca"), caC = e(ca, "c"), acc = e(caC, "acc");
-      return { cheveux: ca ? ca.def.n - 1 : 1, acc: caC ? caC.def.n - 1 : 1, variante: acc ? acc.def.n - 1 : 1 };
+    // Les accessoires qui ont plusieurs variantes : ce sont eux qu'on peut étendre.
+    function remplirTypes() {
+      var sel = $("#type"); sel.innerHTML = "";
+      P.ACCESSORIES.forEach(function (nom, i) {
+        if (!i) return;                                  // « Rien » n'a pas de variante
+        var r = V.repere(defs, i, 8);
+        if (!r || r.variantes < 2) return;
+        var o = document.createElement("option");
+        o.value = i; o.textContent = i + " — " + nom + " (" + r.variantes + " variantes)";
+        sel.appendChild(o);
+      });
+      sel.value = "3";                                   // la casquette par défaut
     }
 
     function rafraichir() {
-      var etat = etatCourant();
-      $("#etat").textContent = etat;
+      var t = +$("#type").value, v = +$("#variante").value, co = +$("#coif").value;
+      var r = V.repere(defs, t, co);
+      if (r) $("#variante").max = Math.max(0, r.variantes - 1);
+      var etat = etatAvec(t, v, co);
+      $("#etat").textContent = etat + "   (acc #" + (r ? r.accId : "?") + ")";
       new M.Bouille($("#apercu"), defs, { etat: etat, anime: false, alea: function () { return 0.5; } });
     }
 
-    function majFamille() {
-      var fam = +$("#fam").value;
-      chargerFamille(fam).then(function (d) {
-        defs = d;
-        var bo = bornes(d, etatCourant());
-        $("#variante").max = Math.max(0, bo.variante);
-        $("#coif").max = Math.max(0, bo.cheveux);
-        rafraichir();
-      });
-    }
-
-    // ── init contrôles ──
-    FAMILLES.forEach(function (f) { var o = document.createElement("option"); o.value = f; o.textContent = "Famille " + f; $("#fam").appendChild(o); });
-    P.ACCESSORIES.forEach(function (n, i) { var o = document.createElement("option"); o.value = i; o.textContent = i + " — " + n; $("#type").appendChild(o); });
-    $("#type").value = 5;
-    construireCouleurs();
-
-    ["#fam"].forEach(function (s) { $(s).addEventListener("change", majFamille); });
-    ["#type", "#variante", "#coif"].forEach(function (s) { $(s).addEventListener("input", rafraichir); });
-
-    // ── export ──
+    // ── Téléchargement du gabarit ──
     $("#dl").addEventListener("click", function () {
-      if (!defs) return;
-      var b = new M.Bouille(document.createElement("canvas"), defs, { etat: etatCourant(), anime: false, alea: function () { return 0.5; } });
-      var svg = C.exporterSVG(b, { cote: 512, nom: P.ACCESSORIES[+$("#type").value] });
-      dernierSVG = svg;
+      var t = +$("#type").value, v = +$("#variante").value, co = +$("#coif").value;
+      var svg = V.exporterSVG(defs, {
+        type: t, variante: v, coiffure: co,
+        nom: P.ACCESSORIES[t], fondTete: V.fondTete(defs, co, 512),
+      });
       var url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
       var a = document.createElement("a");
-      a.href = url; a.download = "accessoire-" + $("#type").value + "-" + $("#variante").value + ".svg";
+      a.href = url; a.download = "gabarit-" + t + "-var" + v + ".svg";
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
     });
 
-    // ── import ──
+    // ── Import : le SVG retravaillé devient une VRAIE variante ──
     var drop = $("#drop"), fichier = $("#fichier");
     drop.addEventListener("click", function () { fichier.click(); });
-    ["dragover", "dragenter"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("survol"); }); });
-    ["dragleave", "drop"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("survol"); }); });
+    ["dragover", "dragenter"].forEach(function (e) {
+      drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.add("survol"); });
+    });
+    ["dragleave", "drop"].forEach(function (e) {
+      drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.remove("survol"); });
+    });
     drop.addEventListener("drop", function (e) { if (e.dataTransfer.files[0]) lire(e.dataTransfer.files[0]); });
     fichier.addEventListener("change", function () { if (fichier.files[0]) lire(fichier.files[0]); });
-
     function lire(f) {
       var r = new FileReader();
       r.onload = function () { poser(String(r.result)); };
       r.readAsText(f);
     }
 
-    // Aperçu du SVG retravaillé sur plusieurs coiffures et humeurs.
     function poser(svgTexte) {
-      var rendu = $("#rendu"); rendu.innerHTML = "";
-      var t = +$("#type").value, va = +$("#variante").value, c = COLS, fam = +$("#fam").value;
-      var paths = C.charger(svgTexte);
-      var vues = [
-        { co: +$("#coif").value, h: 0, l: "coiffure " + $("#coif").value },
-        { co: 0, h: 0, l: "coiffure 0" }, { co: 20, h: 0, l: "coiffure 20" },
-        { co: 40, h: 0, l: "coiffure 40" }, { co: +$("#coif").value, h: 4, l: "humeur : joie" },
-      ];
-      vues.forEach(function (v) {
-        var fig = document.createElement("figure");
-        var cv = document.createElement("canvas"); cv.width = 220; cv.height = 220;
-        var cap = document.createElement("figcaption"); cap.textContent = v.l;
-        fig.appendChild(cv); fig.appendChild(cap); rendu.appendChild(fig);
-        var etat = pair(fam) + pair(3) + pair(0) + pair(v.co) + pair(0) + pair(2) + pair(7)
-          + pair(t) + pair(va) + pair(c[0]) + pair(c[1]) + pair(c[2]);
-        C.apercu(cv, defs, etat, paths, v.h);
+      var paths = C.charger(svgTexte);            // les aplats, niveaux compris
+      var etat = $("#imp-etat"), rendu = $("#rendu");
+      rendu.innerHTML = "";
+      if (!paths.length) { etat.textContent = "SVG illisible ou sans dessin."; return; }
+      var t = +$("#type").value, co = +$("#coif").value;
+      // On repart d'une famille NEUVE : sans quoi chaque import empilerait une
+      // variante de plus dans le rouleau au fil des essais.
+      Swf.charger("/fbouille/famille0.swf").then(function (neuf) {
+        defs = neuf;
+        var inj = V.injecter(defs, { type: t, paths: paths, coiffureRef: co });
+        if (!inj) { etat.textContent = "Injection impossible (aucun tracé exploitable)."; return; }
+        var niveaux = {};
+        paths.forEach(function (p) { niveaux[p.slot || 0] = (niveaux[p.slot || 0] || 0) + 1; });
+        etat.textContent = paths.length + " tracés · niveaux " + JSON.stringify(niveaux)
+          + " → variante " + inj.variante + " de l'accessoire #" + inj.accId;
+        var vues = [
+          { co: co, c: COLS, l: "coiffure " + co },
+          { co: 0, c: COLS, l: "coiffure 0" },
+          { co: 20, c: COLS, l: "coiffure 20" },
+          { co: 40, c: COLS, l: "coiffure 40" },
+          { co: co, c: [17, 24, 29], l: "autre coloris" },
+          { co: co, c: [37, 2, 51], l: "autre coloris" },
+        ];
+        vues.forEach(function (vue) {
+          var fig = document.createElement("figure");
+          var cv = document.createElement("canvas"); cv.width = 224; cv.height = 224;
+          var cap = document.createElement("figcaption"); cap.textContent = vue.l;
+          fig.appendChild(cv); fig.appendChild(cap); rendu.appendChild(fig);
+          new M.Bouille(cv, defs, {
+            etat: etatAvec(t, inj.variante, vue.co, vue.c),
+            anime: false, alea: function () { return 0.5; },
+          });
+        });
+        rafraichir();
       });
     }
 
-    majFamille();
+    ["#type", "#variante", "#coif"].forEach(function (s) {
+      $(s).addEventListener("input", rafraichir);
+    });
+
+    Swf.charger("/fbouille/famille0.swf").then(function (d) {
+      defs = d;
+      remplirTypes();
+      construireCouleurs();
+      rafraichir();
+    });
   })();
   </script>
 </body>

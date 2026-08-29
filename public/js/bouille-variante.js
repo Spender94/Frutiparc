@@ -334,7 +334,107 @@
     return null;
   }
 
-  var API = { repere: repere, exporter: exporter, injecter: injecter, versRgb: versRgb };
+  /*
+   * LE GABARIT, EN SVG — ce qu'on confie au graphiste.
+   *
+   * La casquette d'époque est bâtie exactement comme on aimerait qu'il travaille :
+   * la variante 0 est la casquette NUE (son corps en niveaux de gris, dans le
+   * calque « couleur1 »), et les variantes 1 à 7 ne font qu'insérer leur décor
+   * dans « couleur3 ». Ajouter une variante, c'est donc reprendre ce gabarit et
+   * y poser son motif.
+   *
+   * Deux choses à savoir, et elles sont dans l'en-tête du fichier :
+   *
+   *   · LES ZONES RECOLORABLES SE DESSINENT EN GRIS. La teinte d'époque est un
+   *     DÉCALAGE (sortie = source + couleur − 255) : le blanc rend la couleur
+   *     pleine, les gris en donnent les ombres. C'est ce qui fait que le relief
+   *     suit la couleur choisie — il ne faut donc surtout pas peindre en couleur.
+   *   · L'ORDRE DES CALQUES EST L'ORDRE DE PEINTURE, et chaque niveau de couleur
+   *     n'existe QU'UNE FOIS à l'écran : si un même niveau revient à deux
+   *     endroits de la pile, tout ce niveau sera peint à la place du premier.
+   *     (C'est la contrainte d'époque : un seul sous-clip `col` par accessoire.)
+   */
+  function exporterSVG(defs, opts) {
+    opts = opts || {};
+    var type = (opts.type == null) ? 3 : opts.type;
+    var variante = opts.variante || 0;
+    var co = (opts.coiffure == null) ? 8 : opts.coiffure;
+    var paths = exporter(defs, type, variante, co);
+    var sc = defs.scene || { x: 0, y: 0, w: 100, h: 100 };
+    var NOMS = { 1: "couleur1", 2: "couleur2", 3: "couleur3" };
+
+    // Les tracés, dans l'ordre de peinture, groupés par SÉRIES de même niveau :
+    // un calque nommé par série, pour qu'Illustrator montre des calques parlants.
+    var corps = [], i = 0;
+    function ligne(p) {
+      var m = p.m || [1, 0, 0, 1, 0, 0];
+      var t = (m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1 && m[4] === 0 && m[5] === 0)
+        ? "" : ' transform="matrix(' + m.map(function (v) { return Math.round(v * 1e4) / 1e4; }).join(",") + ')"';
+      var peint = p.trait
+        ? ' fill="none" stroke="' + p.fill + '" stroke-width="' + (p.largeur || 1) + '" stroke-linejoin="round" stroke-linecap="round"'
+        : ' fill="' + p.fill + '"';
+      var op = (p.alpha != null && p.alpha < 1) ? ' opacity="' + (Math.round(p.alpha * 1000) / 1000) + '"' : "";
+      return '      <path d="' + p.d + '"' + peint + op + t + " />";
+    }
+    while (i < paths.length) {
+      var s = paths[i].slot || 0, j = i;
+      while (j < paths.length && (paths[j].slot || 0) === s) j++;
+      var bloc = paths.slice(i, j).map(ligne).join("\n");
+      if (s) corps.push('    <g id="' + NOMS[s] + '">\n' + bloc + "\n    </g>");
+      else corps.push(bloc);
+      i = j;
+    }
+
+    var fond = opts.fondTete || "";
+    var image = fond
+      ? '    <image x="' + sc.x + '" y="' + sc.y + '" width="' + sc.w + '" height="' + sc.h
+        + '" href="' + fond + '" xlink:href="' + fond + '" />'
+      : "";
+
+    return '<?xml version="1.0" encoding="UTF-8"?>\n'
+      + '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+      + 'viewBox="' + sc.x + " " + sc.y + " " + sc.w + " " + sc.h + '" width="' + sc.w + '" height="' + sc.h + '">\n'
+      + "  <!--\n"
+      + "    Frutiparc — gabarit d'accessoire" + (opts.nom ? " (" + opts.nom + ")" : "")
+      + ", variante " + variante + ".\n"
+      + "\n"
+      + "    DESSINE LES ZONES RECOLORABLES EN NIVEAUX DE GRIS.\n"
+      + "    Les calques « couleur1 », « couleur2 » et « couleur3 » sont teintés par les\n"
+      + "    trois couleurs de l'accessoire. La teinte est un DÉCALAGE : le blanc rend la\n"
+      + "    couleur pleine, les gris en donnent les ombres. Peindre en couleur ici, c'est\n"
+      + "    perdre le relief — et la couleur choisie par le joueur.\n"
+      + "\n"
+      + "    Tout ce qui est HORS de ces calques garde sa couleur telle quelle\n"
+      + "    (les contours noirs, un reflet blanc…).\n"
+      + "\n"
+      + "    L'ORDRE DES CALQUES EST L'ORDRE DE PEINTURE. Un même niveau ne doit\n"
+      + "    apparaître qu'à UN endroit de la pile.\n"
+      + "\n"
+      + "    « repere » (la tête) n'est qu'un fond : verrouille-le, il est ignoré au retour.\n"
+      + "    Ne change pas la taille du plan de travail (" + sc.w + "×" + sc.h + ").\n"
+      + "  -->\n"
+      + '  <g id="repere" opacity="0.9" style="pointer-events:none">\n' + image + "\n  </g>\n"
+      + '  <g id="accessoire">\n' + corps.join("\n") + "\n  </g>\n"
+      + "</svg>\n";
+  }
+
+  /** La tête SEULE (sans accessoire), en PNG : le fond de repère du gabarit. */
+  function fondTete(defs, coiffure, cote) {
+    var M = moteur();
+    if (typeof global.document === "undefined") return "";
+    var p = function (n) { return M.encode62(n, 2); };
+    var co = (coiffure == null) ? 8 : coiffure;
+    var etat = p(0) + p(3) + p(0) + p(co) + p(0) + p(2) + p(7) + p(0) + p(0) + p(0) + p(0) + p(0);
+    var c = global.document.createElement("canvas");
+    c.width = cote || 512; c.height = cote || 512;
+    try {
+      new M.Bouille(c, defs, { etat: etat, anime: false, alea: function () { return 0.5; }, super: 4 });
+      return c.toDataURL("image/png");
+    } catch (e) { return ""; }
+  }
+
+  var API = { repere: repere, exporter: exporter, exporterSVG: exporterSVG,
+    fondTete: fondTete, injecter: injecter, versRgb: versRgb };
   if (typeof module === "object" && module.exports) module.exports = API;
   else global.FPBouilleVariante = API;
 })(typeof globalThis !== "undefined" ? globalThis : this);
