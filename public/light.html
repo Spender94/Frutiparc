@@ -1035,13 +1035,38 @@
   .fiche-carte-lien:focus-visible { background: rgba(255,255,255,.45); outline: none; }
   /* La CARTE elle-même. `cpDocument` empile des rangées : une rangée est une
      ligne de boîtes, un `spacer` extensible pousse ses voisines, une `page`
-     est une colonne de largeur fixe. Tout tient dans ces trois règles. */
-  .fiche-fcard { font-family: Verdana, Arial, sans-serif; font-size: 11px; color: #335511; }
+     est une colonne de largeur fixe. Tout tient dans ces trois règles.
+
+     CE QUE FAIT LA MISE EN PAGE D'ÉPOQUE (`DocPage.updateLine`, main.swf
+     0x661c6, relevé instruction par instruction) :
+
+        largeur = max(élément.min.w, élément.width)   — jamais moins
+        reste   = page.pos.w − Σ largeurs
+        si reste > 0, chaque `big` en reçoit sa part ; sinon PERSONNE ne grandit
+        puis on pose les éléments de gauche à droite, et le masque du document
+        coupe ce qui dépasse
+
+     Rien ne rétrécit, donc : une rangée trop large est simplement TRONQUÉE. Et
+     `page.pos.w` n'est pas le 250 de `onFrutiCard` — `cp.Document.updateSize`
+     (0x4de13) le remplace par la largeur réelle du composant, si bien qu'une
+     fenêtre élargie révèle davantage de la rangée.
+
+     ÉCART ASSUMÉ : au lieu de couper, on laisse la carte DÉFILER de côté. Les
+     médailles de MiniPixiz font 357 px et le portrait de sa fée 363 : dans la
+     fiche d'époque (324 de large) l'étoile et la moitié des caractéristiques
+     tombaient hors du cadre. Sur un téléphone, couper serait pire encore. */
+  .fiche-fcard {
+    font-family: Verdana, Arial, sans-serif; font-size: 11px; color: #335511;
+    overflow-x: auto;
+  }
   .fiche-fcard .fc-rangee { display: flex; align-items: center; flex-wrap: nowrap; }
-  /* `flex: 0 1 auto` : la largeur d'époque est tenue tant qu'il y a la place,
-     et cède plutôt que de pousser la carte hors du cadre — les 300 px d'une
-     phrase de Frutisnake ne tiennent pas dans la feuille d'un téléphone. */
-  .fiche-fcard .fc-colonne { display: flex; flex-direction: column; flex: 0 1 auto; min-width: 0; }
+  /* `flex: 0 0 auto` : une colonne tient sa largeur d'époque. La laisser céder
+     ne la rétrécirait pas vraiment — ses enfants gardent LEUR largeur et
+     déborderaient par-dessus la colonne voisine (le portrait de la fée passait
+     ainsi sur ses caractéristiques). */
+  .fiche-fcard .fc-colonne { display: flex; flex-direction: column; flex: 0 0 auto; }
+  /* Le texte, lui, cède : il se replie sur plusieurs lignes au lieu d'obliger
+     toute la carte à défiler pour les 300 px d'une phrase de Frutisnake. */
   .fiche-fcard .fc-texte { font-size: 11px; line-height: 15px; flex: 0 1 auto; max-width: 100%; }
   /* `sid` 2 : le style des titres — gras, l'encre de l'onglet courant. */
   .fiche-fcard .fc-titre { font-weight: bold; color: #842929; }
@@ -1050,8 +1075,15 @@
   .fiche-fcard .fc-air { flex: 0 0 auto; width: 100%; }
   .fiche-fcard .fc-image {
     flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+    position: relative;
   }
-  .fiche-fcard .fc-image img { display: block; max-width: 100%; }
+  .fiche-fcard .fc-image img, .fiche-fcard .fc-image svg { display: block; max-width: 100%; }
+  /* Le nombre d'étoiles de MiniPixiz : un champ texte planté DANS le dessin de
+     l'étoile, à sa droite — corps 22, encre #547614, relevés dans le SWF. */
+  .fiche-fcard .fc-nombre {
+    position: absolute; left: 100%; top: -2px; font-size: 22px; line-height: 22px;
+    color: #547614; white-space: nowrap;
+  }
   /* Le pseudo d'un message se touche : il ouvre la fiche, comme au bureau. */
   #messages .from { cursor: pointer; }
 
@@ -7974,6 +8006,62 @@
      `sid` est le style du texte : 2 pour les titres (gras, l'encre des onglets
      actifs), 1 pour le corps. `big` fait un `flex-grow` — c'est ainsi que les
      lignes se centrent et que les valeurs se poussent à droite. */
+
+  /* LA FÉE ET SES TROIS COULEURS. `minipixiz_faeries` ne se contente pas d'aller
+     à une image : il REPEINT trois groupes de son dessin — `setColor(pic.f.k*,
+     col1)` les cheveux, `(pic.f.o*.p|cloth, col2)` les yeux et la robe,
+     `(pic.f.w*, col3)` les ailes. Le `setColor` d'époque n'est pas un
+     remplissage mais un DÉCALAGE par canal : la transformation posée est
+     `{ra:100, rb:r−255, …}`, soit `sortie = source + (col − 255)`. Sur du blanc
+     elle rend `col`, sur un gris un `col` d'autant plus sombre — d'où un dessin
+     sorti du SWF en clair, ses trois groupes marqués `t1`/`t2`/`t3`.
+
+     Une image posée en `<img>` ne se teinte pas : il faut coudre le SVG dans la
+     page pour atteindre ses groupes, et poser sur chacun une matrice de couleur
+     qui refait le décalage. */
+  var SVGNS = "http://www.w3.org/2000/svg";
+  var nTeinte = 0;
+  function teinterDessin(boite, l) {
+    fetch(l.src).then(function (r) {
+      return r.ok ? r.text() : null;
+    }).then(function (txt) {
+      if (!txt) return;
+      var n = ++nTeinte;
+      // Les identifiants (masques, filtres) sont locaux au fichier : recousus
+      // tels quels dans la page, deux fées se prendraient les masques l'une de
+      // l'autre.
+      txt = txt.replace(/id="([^"]+)"/g, 'id="$1-' + n + '"')
+        .replace(/url\(#([^)]+)\)/g, "url(#$1-" + n + ")");
+      var berceau = document.createElement("div");
+      berceau.innerHTML = txt;
+      var svg = berceau.querySelector("svg");
+      if (!svg) return;
+      var defs = document.createElementNS(SVGNS, "defs");
+      l.teintes.forEach(function (col, i) {
+        var id = "teinte" + (i + 1) + "-" + n;
+        var f = document.createElementNS(SVGNS, "filter");
+        f.setAttribute("id", id);
+        // Sans quoi le décalage se ferait en linéaire et rendrait des teintes
+        // délavées : Flash travaille sur les octets, donc en sRGB.
+        f.setAttribute("color-interpolation-filters", "sRGB");
+        var m = document.createElementNS(SVGNS, "feColorMatrix");
+        m.setAttribute("type", "matrix");
+        var d = [(col >> 16) & 255, (col >> 8) & 255, col & 255].map(function (v) {
+          return ((v - 255) / 255).toFixed(4);
+        });
+        m.setAttribute("values", "1 0 0 0 " + d[0] + " 0 1 0 0 " + d[1] +
+          " 0 0 1 0 " + d[2] + " 0 0 0 1 0");
+        f.appendChild(m);
+        defs.appendChild(f);
+        Array.prototype.forEach.call(svg.querySelectorAll(".t" + (i + 1)), function (g) {
+          g.setAttribute("filter", "url(#" + id + ")");
+        });
+      });
+      svg.insertBefore(defs, svg.firstChild);
+      boite.appendChild(svg);
+    }).catch(function () { /* dessin injoignable : la place reste, vide */ });
+  }
+
   function dessinerLignes(lignes, dans) {
     (lignes || []).forEach(function (l) {
       if (!l || typeof l !== "object") return;
@@ -8015,14 +8103,28 @@
         if (min.h) boite.style.minHeight = min.h + "px";
         if (l.dx) boite.style.marginLeft = l.dx + "px";
         if (l.dy) boite.style.marginTop = l.dy + "px";
-        var a = (l.param && l.param.param && l.param.param._alpha);
+        var pp = (l.param && l.param.param) || {};
+        var a = pp._alpha;
         if (a !== undefined && a !== null) boite.style.opacity = (Number(a) / 100).toFixed(2);
-        if (l.src) {
+        if (l.src && l.teintes) {
+          teinterDessin(boite, l);            // la fée et ses trois couleurs
+        } else if (l.src) {
           var im = document.createElement("img");
           im.src = l.src;
           im.alt = "";
           im.onerror = function () { im.remove(); };
           boite.appendChild(im);
+        }
+        // L'ÉTOILE DE MINIPIXIZ. La bibliothèque `minipixiz_award` porte, sur
+        // son image « étoile gagnée » seulement, un champ texte que la carte
+        // remplit : `if (num != null) award.field.text = int(num)`. Le champ est
+        // planté À DROITE de l'étoile (x 24, corps 22, encre #547614, relevé
+        // dans le SWF) ; l'étoile éteinte est une silhouette nue, sans champ —
+        // c'est pourquoi le nombre ne s'affiche qu'à `shade` 0.
+        if (pp.num !== undefined && pp.num !== null && Number(pp.shade) !== 1) {
+          var nb = el("span", "fc-nombre");
+          nb.textContent = String(Math.trunc(Number(pp.num) || 0));
+          boite.appendChild(nb);
         }
         dans.appendChild(boite);
         return;

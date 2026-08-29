@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="27.5 3 104 104.46" width="104" height="104.46">
+<style>.mqc,.mqc *{fill:#fff!important;stroke:none!important;opacity:1!important}</style><defs><mask id="mq1" maskUnits="userSpaceOnUse" x="27.5" y="3" width="104" height="104.46"><g class="mqc" transform="matrix(1,0,0,1,0,0)">
+  <defs>
+    <linearGradient id="s4_g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.00103,-0.00031,0,88,27.85)"><stop offset="0.18824" stop-color="#c5be4b"/><stop offset="0.84706" stop-color="#d7d36a"/></linearGradient>
+  </defs>
+  <path d="M82.55 10.95L82.85 10.75L82.85 4.75L76.8 4.4L76.5 4.4Q75.25 4.45 73.9 5.4Q73.4 5.7 73 6.1Q67.75 10.65 63.95 26.75Q61.7 36.15 60.7 46.5L60.45 49.4L59.95 58.25L59.85 62.05L47.6 60.7Q38.7 59.3 35.85 57.5L34.8 56.65Q34.45 56.25 34.45 55.8L34.65 55.2L34.65 -0.95L124.35 -0.95L124.35 56.25L124.1 56.65L123.1 57.5Q120.2 59.3 111.25 60.7Q98.1 62.75 79.45 62.75L72 62.65L72.05 59.35Q72.15 53.95 72.55 48.85L72.8 45.85Q73.55 37.5 75.05 29.95Q77.9 15.15 81.85 11.5L82.55 10.95ZM82.85 10.8L82.85 10.75L82.85 10.8Z" fill="#ff0000" fill-rule="evenodd"/>
+  <path d="M129.45 56.25L129.4 56.25L129.45 55.85L129.45 56.25Z" fill="#dedc85" fill-rule="evenodd"/>
+  <path d="M82.85 10.75L82.85 10.8L82.85 10.75Z" fill="url(#s4_g1)" fill-rule="evenodd"/>
+
+</g></mask></defs>
+<g transform="matrix(4.2677,0,0,0.7969,77.6,99.85)">
+  <path d="M6.75 6.75Q3.95 9.55 0 9.55Q-3.95 9.55 -6.75 6.75Q-9.55 3.95 -9.55 0Q-9.55 -3.95 -6.75 -6.75Q-3.95 -9.55 0 -9.55Q3.95 -9.55 6.75 -6.75Q9.55 -3.95 9.55 0Q9.55 3.95 6.75 6.75Z" fill="#a3e14d" fill-rule="evenodd"/>
+
+</g>
+<g transform="matrix(1,0,0,1,0,0)">
+
+</g>
+</svg>

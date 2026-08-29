@@ -159,9 +159,75 @@ const TZONGRES = ['kaluga', 'piwali', 'nalika', 'gomola', 'makulo'];
 
 function fente(s) { return String(s).toLowerCase().replace(/\s+/g, '-'); }
 
+/* LE MANIFESTE DES BIBLIOTHÈQUES SORTIES DU SWF
+   (`scripts/extract-fruticard-sd.js`). Chaque état y renvoie vers son
+   FICHIER : un dessin peut servir à plusieurs états — `picFace` a
+   soixante-cinq images pour six fées, Flash gardant le dernier placement — et
+   c'est le manifeste qui refait le lien plutôt que soixante-cinq copies. */
+let MANIFESTE = {};
+try {
+  MANIFESTE = require('./public/fb/sd/manifeste.json');
+} catch (e) {
+  console.warn('[FCARD] manifeste des dessins /sd/ illisible : ' + e.message);
+}
+
+// Les états NUMÉRIQUES connus d'une bibliothèque, en ordre, mis en cache : il
+// faut leurs bornes pour serrer un `gotoAndStop` hors scénario.
+const BORNES = {};
+function bornes(lib) {
+  if (!BORNES[lib]) {
+    const n = Object.keys(MANIFESTE)
+      .filter((k) => MANIFESTE[k].lib === lib)
+      .map((k) => Number(k.slice(lib.length + 1)))
+      .filter((v) => Number.isFinite(v));
+    BORNES[lib] = n.length ? { min: Math.min(...n), max: Math.max(...n) } : null;
+  }
+  return BORNES[lib];
+}
+
+/* L'adresse d'un état, à travers le manifeste. Un état qu'on n'a pas sorti rend
+   `null` : la ligne garde sa place et n'y met pas d'image.
+
+   LE SERRAGE. `gotoAndStop` d'AVM1 ne sort jamais du scénario : au-delà de la
+   dernière image il s'arrête sur la dernière, en deçà de la première sur la
+   première. Une fiche abîmée (un `$lvl` de 25 pour douze grades) montre donc le
+   dernier rang, pas un trou — on refait le même serrage plutôt que d'inventer
+   un vide que l'époque n'avait pas. */
+function viaManifeste(lib, etat) {
+  let d = MANIFESTE[lib + '_' + etat];
+  if (!d && typeof etat === 'number') {
+    const b = bornes(lib);
+    if (!b) return null;
+    etat = Math.max(b.min, Math.min(b.max, etat));
+    d = MANIFESTE[lib + '_' + etat];
+  }
+  if (!d) return null;
+  return '/fb/sd/' + lib + '_' + (d.etat === undefined ? etat : d.etat) + '.svg';
+}
+
 function resoudre(lib, param) {
   const p = param || {};
   switch (lib) {
+    /* `this.gotoAndStop(10 + frame)` — la règle que ces quatre SWF portent à
+       leur image 1, désassemblée à l'identique. Les dix premières images sont
+       un état d'attente (un carré blanc) : le décalage n'est pas décoratif. */
+    case 'miniwave_rank':
+    case 'miniwave_ship':
+    case 'miniwave_bads':
+    case 'kaluga_panier':
+      return viaManifeste(lib, 10 + (Number(p.frame) || 0));
+    /* `var f = 1 ; if (shade == 1) f += 1 ; if (frame == null) f += 2`
+       puis `award.gotoAndStop(f)` et, quand `frame` est donné,
+       `award.sub.gotoAndStop(frame)`. D'où deux familles : les cinq diamants
+       (`frame` = leur rang) et l'étoile (`num` = combien). */
+    case 'minipixiz_award':
+      return (p.frame === undefined || p.frame === null)
+        ? viaManifeste(lib, 'e' + (Number(p.shade) === 1 ? 1 : 0))
+        : viaManifeste(lib, 'd' + (Number(p.frame) || 1) + '_' + (Number(p.shade) === 1 ? 1 : 0));
+    // `ball.symbol.gotoAndStop(frame)` · `pic.gotoAndStop(frame)`
+    case 'minipixiz_spell':
+    case 'minipixiz_faeries':
+      return viaManifeste(lib, Number(p.frame) || 1);
     // Les quatre coupes : image 1..4 du sprite#9 de `/sd/bkiwi_cup.swf`.
     case 'bkiwi_cup': {
       const n = Math.max(1, Math.min(4, Number(p.frame) || 1));
@@ -195,11 +261,29 @@ function resoudre(lib, param) {
   }
 }
 
-// Une ligne `url` d'époque, augmentée de son `src`.
+/* Une ligne `url` d'époque, augmentée de son `src`.
+
+   LES TEINTES. `minipixiz_faeries` ne se contente pas d'aller à une image : il
+   REPEINT trois groupes de son dessin, ceux que `$skin` fait varier d'une fée
+   à l'autre — `setColor(pic.f.k0|k1|k2, col1)` les CHEVEUX, `(pic.f.o0.p|o1.p|
+   cloth, col2)` les YEUX et la ROBE, `(pic.f.w0|w1, col3)` les AILES. Le teint
+   du visage, lui, est peint dans le dessin : toutes les fées ont le même. Le
+   dessin extrait marque donc ses trois groupes d'une classe `t1`/`t2`/`t3`, et
+   la ligne emporte les couleurs : c'est le light qui pose les filtres,
+   puisqu'une image posée en `<img>` ne se teinte pas.
+
+   On regarde la PRÉSENCE des clés, pas leur valeur : une fée sans `$skin` passe
+   `col1: undefined`, et l'époque en tire `undefined >> 16 & 255` = 0, donc un
+   décalage de −255 sur les trois canaux — une silhouette noire. La carte doit
+   montrer la même chose, pas une fée en niveaux de gris. */
 function urlLigne(lib, param, extra) {
   const l = Object.assign({ type: 'url' }, extra || {});
   l.param = Object.assign({ url: lib }, param || {});
-  l.src = resoudre(lib, (param && param.param) || param);
+  const p = (param && param.param) || param || {};
+  l.src = resoudre(lib, p);
+  if ('col1' in p || 'col2' in p || 'col3' in p) {
+    l.teintes = [Number(p.col1) || 0, Number(p.col2) || 0, Number(p.col3) || 0];
+  }
   return l;
 }
 
@@ -603,12 +687,12 @@ function carteMinipixiz(c) {
   medailles.list.push({ type: 'spacer', width: 75 });
   for (let i = 0; i < 5; i++) {
     medailles.list.push(urlLigne('minipixiz_award',
-      { param: { frame: i + 1, shade: i < (Number(c.$diam) || 0) ? 1 : 0 } }));
+      { param: { frame: i + 1, shade: i < (Number(c.$diam) || 0) ? 0 : 1 } }));
     medailles.list.push({ type: 'spacer', width: 24 });
   }
   medailles.list.push({ type: 'spacer', width: 18 });
   medailles.list.push(urlLigne('minipixiz_award',
-    { param: { num: Number(c.$star) || 0, shade: (Number(c.$star) || 0) === 0 ? 0 : 1 } }));
+    { param: { num: Number(c.$star) || 0, shade: (Number(c.$star) || 0) === 0 ? 1 : 0 } }));
   lignes.push(medailles);
 
   const fees = Array.isArray(c.$faerie) ? c.$faerie : [];

@@ -322,5 +322,1325 @@
   "data": ":",
   "w": 20,
   "h": 20
+ },
+ "miniwave_rank_1": {
+  "lib": "miniwave_rank",
+  "etat": "1",
+  "w": 47.05,
+  "h": 10
+ },
+ "miniwave_rank_2": {
+  "lib": "miniwave_rank",
+  "etat": "1",
+  "w": 47.05,
+  "h": 10
+ },
+ "miniwave_rank_3": {
+  "lib": "miniwave_rank",
+  "etat": "1",
+  "w": 47.05,
+  "h": 10
+ },
+ "miniwave_rank_4": {
+  "lib": "miniwave_rank",
+  "etat": "1",
+  "w": 47.05,
+  "h": 10
+ },
+ "miniwave_rank_5": {
+  "lib": "miniwave_rank",
+  "etat": "1",
+  "w": 47.05,
+  "h": 10
+ },
+ "miniwave_rank_6": {
+  "lib": "miniwave_rank",
+  "etat": "1",
+  "w": 47.05,
+  "h": 10
+ },
+ "miniwave_rank_7": {
+  "lib": "miniwave_rank",
+  "etat": "1",
+  "w": 47.05,
+  "h": 10
+ },
+ "miniwave_rank_8": {
+  "lib": "miniwave_rank",
+  "etat": "1",
+  "w": 47.05,
+  "h": 10
+ },
+ "miniwave_rank_9": {
+  "lib": "miniwave_rank",
+  "etat": "1",
+  "w": 47.05,
+  "h": 10
+ },
+ "miniwave_rank_10": {
+  "lib": "miniwave_rank",
+  "etat": "10",
+  "w": 46.05,
+  "h": 9
+ },
+ "miniwave_rank_11": {
+  "lib": "miniwave_rank",
+  "etat": "11",
+  "w": 46.05,
+  "h": 40.95
+ },
+ "miniwave_rank_12": {
+  "lib": "miniwave_rank",
+  "etat": "12",
+  "w": 46.05,
+  "h": 44.5
+ },
+ "miniwave_rank_13": {
+  "lib": "miniwave_rank",
+  "etat": "13",
+  "w": 46.05,
+  "h": 49
+ },
+ "miniwave_rank_14": {
+  "lib": "miniwave_rank",
+  "etat": "14",
+  "w": 46.05,
+  "h": 51.25
+ },
+ "miniwave_rank_15": {
+  "lib": "miniwave_rank",
+  "etat": "15",
+  "w": 46.05,
+  "h": 53.1
+ },
+ "miniwave_rank_16": {
+  "lib": "miniwave_rank",
+  "etat": "16",
+  "w": 50,
+  "h": 53.5
+ },
+ "miniwave_rank_17": {
+  "lib": "miniwave_rank",
+  "etat": "17",
+  "w": 69.9,
+  "h": 53.5
+ },
+ "miniwave_rank_18": {
+  "lib": "miniwave_rank",
+  "etat": "18",
+  "w": 84.8,
+  "h": 53.5
+ },
+ "miniwave_rank_19": {
+  "lib": "miniwave_rank",
+  "etat": "19",
+  "w": 84.8,
+  "h": 53.5
+ },
+ "miniwave_rank_20": {
+  "lib": "miniwave_rank",
+  "etat": "20",
+  "w": 84.8,
+  "h": 54.35
+ },
+ "miniwave_rank_21": {
+  "lib": "miniwave_rank",
+  "etat": "21",
+  "w": 84.8,
+  "h": 54.35
+ },
+ "miniwave_ship_1": {
+  "lib": "miniwave_ship",
+  "etat": "1",
+  "w": 17,
+  "h": 17
+ },
+ "miniwave_ship_2": {
+  "lib": "miniwave_ship",
+  "etat": "1",
+  "w": 17,
+  "h": 17
+ },
+ "miniwave_ship_3": {
+  "lib": "miniwave_ship",
+  "etat": "1",
+  "w": 17,
+  "h": 17
+ },
+ "miniwave_ship_4": {
+  "lib": "miniwave_ship",
+  "etat": "1",
+  "w": 17,
+  "h": 17
+ },
+ "miniwave_ship_5": {
+  "lib": "miniwave_ship",
+  "etat": "1",
+  "w": 17,
+  "h": 17
+ },
+ "miniwave_ship_6": {
+  "lib": "miniwave_ship",
+  "etat": "1",
+  "w": 17,
+  "h": 17
+ },
+ "miniwave_ship_7": {
+  "lib": "miniwave_ship",
+  "etat": "1",
+  "w": 17,
+  "h": 17
+ },
+ "miniwave_ship_8": {
+  "lib": "miniwave_ship",
+  "etat": "1",
+  "w": 17,
+  "h": 17
+ },
+ "miniwave_ship_9": {
+  "lib": "miniwave_ship",
+  "etat": "1",
+  "w": 17,
+  "h": 17
+ },
+ "miniwave_ship_10": {
+  "lib": "miniwave_ship",
+  "etat": "10",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_ship_11": {
+  "lib": "miniwave_ship",
+  "etat": "11",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_ship_12": {
+  "lib": "miniwave_ship",
+  "etat": "12",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_ship_13": {
+  "lib": "miniwave_ship",
+  "etat": "13",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_ship_14": {
+  "lib": "miniwave_ship",
+  "etat": "14",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_ship_15": {
+  "lib": "miniwave_ship",
+  "etat": "15",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_10": {
+  "lib": "miniwave_bads",
+  "etat": "10",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_11": {
+  "lib": "miniwave_bads",
+  "etat": "11",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_12": {
+  "lib": "miniwave_bads",
+  "etat": "12",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_13": {
+  "lib": "miniwave_bads",
+  "etat": "13",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_14": {
+  "lib": "miniwave_bads",
+  "etat": "14",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_15": {
+  "lib": "miniwave_bads",
+  "etat": "15",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_16": {
+  "lib": "miniwave_bads",
+  "etat": "16",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_17": {
+  "lib": "miniwave_bads",
+  "etat": "17",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_18": {
+  "lib": "miniwave_bads",
+  "etat": "18",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_19": {
+  "lib": "miniwave_bads",
+  "etat": "19",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_20": {
+  "lib": "miniwave_bads",
+  "etat": "20",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_21": {
+  "lib": "miniwave_bads",
+  "etat": "21",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_22": {
+  "lib": "miniwave_bads",
+  "etat": "22",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_23": {
+  "lib": "miniwave_bads",
+  "etat": "23",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_24": {
+  "lib": "miniwave_bads",
+  "etat": "24",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_25": {
+  "lib": "miniwave_bads",
+  "etat": "25",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_26": {
+  "lib": "miniwave_bads",
+  "etat": "26",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_27": {
+  "lib": "miniwave_bads",
+  "etat": "27",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_28": {
+  "lib": "miniwave_bads",
+  "etat": "28",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_29": {
+  "lib": "miniwave_bads",
+  "etat": "29",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_30": {
+  "lib": "miniwave_bads",
+  "etat": "30",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_31": {
+  "lib": "miniwave_bads",
+  "etat": "31",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_32": {
+  "lib": "miniwave_bads",
+  "etat": "32",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_33": {
+  "lib": "miniwave_bads",
+  "etat": "33",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_34": {
+  "lib": "miniwave_bads",
+  "etat": "34",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_35": {
+  "lib": "miniwave_bads",
+  "etat": "35",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_36": {
+  "lib": "miniwave_bads",
+  "etat": "36",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_37": {
+  "lib": "miniwave_bads",
+  "etat": "37",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_38": {
+  "lib": "miniwave_bads",
+  "etat": "38",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_39": {
+  "lib": "miniwave_bads",
+  "etat": "39",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_40": {
+  "lib": "miniwave_bads",
+  "etat": "40",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_41": {
+  "lib": "miniwave_bads",
+  "etat": "41",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_42": {
+  "lib": "miniwave_bads",
+  "etat": "42",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_43": {
+  "lib": "miniwave_bads",
+  "etat": "43",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_44": {
+  "lib": "miniwave_bads",
+  "etat": "44",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_45": {
+  "lib": "miniwave_bads",
+  "etat": "45",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_46": {
+  "lib": "miniwave_bads",
+  "etat": "46",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_47": {
+  "lib": "miniwave_bads",
+  "etat": "47",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_48": {
+  "lib": "miniwave_bads",
+  "etat": "48",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_49": {
+  "lib": "miniwave_bads",
+  "etat": "49",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_50": {
+  "lib": "miniwave_bads",
+  "etat": "50",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_51": {
+  "lib": "miniwave_bads",
+  "etat": "51",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_52": {
+  "lib": "miniwave_bads",
+  "etat": "52",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_53": {
+  "lib": "miniwave_bads",
+  "etat": "53",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_54": {
+  "lib": "miniwave_bads",
+  "etat": "54",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_55": {
+  "lib": "miniwave_bads",
+  "etat": "55",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_56": {
+  "lib": "miniwave_bads",
+  "etat": "56",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_57": {
+  "lib": "miniwave_bads",
+  "etat": "57",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_58": {
+  "lib": "miniwave_bads",
+  "etat": "58",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_59": {
+  "lib": "miniwave_bads",
+  "etat": "59",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_60": {
+  "lib": "miniwave_bads",
+  "etat": "60",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_61": {
+  "lib": "miniwave_bads",
+  "etat": "60",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_62": {
+  "lib": "miniwave_bads",
+  "etat": "60",
+  "w": 18,
+  "h": 18
+ },
+ "miniwave_bads_63": {
+  "lib": "miniwave_bads",
+  "etat": "60",
+  "w": 18,
+  "h": 18
+ },
+ "kaluga_panier_3": {
+  "lib": "kaluga_panier",
+  "etat": "3",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_4": {
+  "lib": "kaluga_panier",
+  "etat": "3",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_5": {
+  "lib": "kaluga_panier",
+  "etat": "3",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_6": {
+  "lib": "kaluga_panier",
+  "etat": "3",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_7": {
+  "lib": "kaluga_panier",
+  "etat": "3",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_8": {
+  "lib": "kaluga_panier",
+  "etat": "3",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_9": {
+  "lib": "kaluga_panier",
+  "etat": "3",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_10": {
+  "lib": "kaluga_panier",
+  "etat": "10",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_11": {
+  "lib": "kaluga_panier",
+  "etat": "11",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_12": {
+  "lib": "kaluga_panier",
+  "etat": "12",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_13": {
+  "lib": "kaluga_panier",
+  "etat": "13",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_14": {
+  "lib": "kaluga_panier",
+  "etat": "14",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_15": {
+  "lib": "kaluga_panier",
+  "etat": "15",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_16": {
+  "lib": "kaluga_panier",
+  "etat": "16",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_17": {
+  "lib": "kaluga_panier",
+  "etat": "17",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_18": {
+  "lib": "kaluga_panier",
+  "etat": "18",
+  "w": 104,
+  "h": 104.46
+ },
+ "kaluga_panier_19": {
+  "lib": "kaluga_panier",
+  "etat": "19",
+  "w": 104,
+  "h": 110.34
+ },
+ "kaluga_panier_20": {
+  "lib": "kaluga_panier",
+  "etat": "20",
+  "w": 104,
+  "h": 112.14
+ },
+ "kaluga_panier_21": {
+  "lib": "kaluga_panier",
+  "etat": "21",
+  "w": 130.5,
+  "h": 116.42
+ },
+ "kaluga_panier_22": {
+  "lib": "kaluga_panier",
+  "etat": "22",
+  "w": 132.75,
+  "h": 116.42
+ },
+ "kaluga_panier_23": {
+  "lib": "kaluga_panier",
+  "etat": "23",
+  "w": 132.75,
+  "h": 116.78
+ },
+ "kaluga_panier_24": {
+  "lib": "kaluga_panier",
+  "etat": "24",
+  "w": 134.29,
+  "h": 123.13
+ },
+ "kaluga_panier_25": {
+  "lib": "kaluga_panier",
+  "etat": "25",
+  "w": 157.77,
+  "h": 123.73
+ },
+ "kaluga_panier_26": {
+  "lib": "kaluga_panier",
+  "etat": "26",
+  "w": 157.77,
+  "h": 123.73
+ },
+ "kaluga_panier_27": {
+  "lib": "kaluga_panier",
+  "etat": "27",
+  "w": 164.41,
+  "h": 123.73
+ },
+ "kaluga_panier_28": {
+  "lib": "kaluga_panier",
+  "etat": "28",
+  "w": 164.41,
+  "h": 123.73
+ },
+ "kaluga_panier_29": {
+  "lib": "kaluga_panier",
+  "etat": "29",
+  "w": 164.41,
+  "h": 123.73
+ },
+ "kaluga_panier_30": {
+  "lib": "kaluga_panier",
+  "etat": "30",
+  "w": 164.41,
+  "h": 130.27
+ },
+ "minipixiz_spell_1": {
+  "lib": "minipixiz_spell",
+  "etat": "1",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_2": {
+  "lib": "minipixiz_spell",
+  "etat": "2",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_3": {
+  "lib": "minipixiz_spell",
+  "etat": "3",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_4": {
+  "lib": "minipixiz_spell",
+  "etat": "4",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_5": {
+  "lib": "minipixiz_spell",
+  "etat": "5",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_6": {
+  "lib": "minipixiz_spell",
+  "etat": "6",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_7": {
+  "lib": "minipixiz_spell",
+  "etat": "7",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_8": {
+  "lib": "minipixiz_spell",
+  "etat": "8",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_9": {
+  "lib": "minipixiz_spell",
+  "etat": "9",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_10": {
+  "lib": "minipixiz_spell",
+  "etat": "10",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_11": {
+  "lib": "minipixiz_spell",
+  "etat": "11",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_12": {
+  "lib": "minipixiz_spell",
+  "etat": "12",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_13": {
+  "lib": "minipixiz_spell",
+  "etat": "13",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_14": {
+  "lib": "minipixiz_spell",
+  "etat": "14",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_15": {
+  "lib": "minipixiz_spell",
+  "etat": "15",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_16": {
+  "lib": "minipixiz_spell",
+  "etat": "16",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_17": {
+  "lib": "minipixiz_spell",
+  "etat": "17",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_18": {
+  "lib": "minipixiz_spell",
+  "etat": "17",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_19": {
+  "lib": "minipixiz_spell",
+  "etat": "17",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_20": {
+  "lib": "minipixiz_spell",
+  "etat": "17",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_21": {
+  "lib": "minipixiz_spell",
+  "etat": "21",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_22": {
+  "lib": "minipixiz_spell",
+  "etat": "22",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_23": {
+  "lib": "minipixiz_spell",
+  "etat": "23",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_24": {
+  "lib": "minipixiz_spell",
+  "etat": "24",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_spell_25": {
+  "lib": "minipixiz_spell",
+  "etat": "25",
+  "w": 22.6,
+  "h": 22.6
+ },
+ "minipixiz_faeries_1": {
+  "lib": "minipixiz_faeries",
+  "etat": "1",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_2": {
+  "lib": "minipixiz_faeries",
+  "etat": "2",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_3": {
+  "lib": "minipixiz_faeries",
+  "etat": "3",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_4": {
+  "lib": "minipixiz_faeries",
+  "etat": "4",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_5": {
+  "lib": "minipixiz_faeries",
+  "etat": "5",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_6": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_7": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_8": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_9": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_10": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_11": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_12": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_13": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_14": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_15": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_16": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_17": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_18": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_19": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_20": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_21": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_22": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_23": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_24": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_25": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_26": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_27": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_28": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_29": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_30": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_31": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_32": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_33": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_34": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_35": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_36": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_37": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_38": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_39": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_40": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_41": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_42": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_43": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_44": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_45": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_46": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_47": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_48": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_49": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_50": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_51": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_52": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_53": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_54": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_55": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_56": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_57": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_58": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_59": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_60": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_61": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_62": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_63": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_64": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_faeries_65": {
+  "lib": "minipixiz_faeries",
+  "etat": "6",
+  "w": 100,
+  "h": 100
+ },
+ "minipixiz_award_d1_0": {
+  "lib": "minipixiz_award",
+  "etat": "d1_0",
+  "w": 24.32,
+  "h": 20.5
+ },
+ "minipixiz_award_d2_0": {
+  "lib": "minipixiz_award",
+  "etat": "d2_0",
+  "w": 24.32,
+  "h": 20.5
+ },
+ "minipixiz_award_d3_0": {
+  "lib": "minipixiz_award",
+  "etat": "d3_0",
+  "w": 24.32,
+  "h": 20.5
+ },
+ "minipixiz_award_d4_0": {
+  "lib": "minipixiz_award",
+  "etat": "d4_0",
+  "w": 24.32,
+  "h": 20.5
+ },
+ "minipixiz_award_d5_0": {
+  "lib": "minipixiz_award",
+  "etat": "d5_0",
+  "w": 24.32,
+  "h": 20.5
+ },
+ "minipixiz_award_e0": {
+  "lib": "minipixiz_award",
+  "etat": "e0",
+  "w": 23.63,
+  "h": 23.15
+ },
+ "minipixiz_award_d1_1": {
+  "lib": "minipixiz_award",
+  "etat": "d1_1",
+  "w": 24.32,
+  "h": 20.5
+ },
+ "minipixiz_award_d2_1": {
+  "lib": "minipixiz_award",
+  "etat": "d1_1",
+  "w": 24.32,
+  "h": 20.5
+ },
+ "minipixiz_award_d3_1": {
+  "lib": "minipixiz_award",
+  "etat": "d1_1",
+  "w": 24.32,
+  "h": 20.5
+ },
+ "minipixiz_award_d4_1": {
+  "lib": "minipixiz_award",
+  "etat": "d1_1",
+  "w": 24.32,
+  "h": 20.5
+ },
+ "minipixiz_award_d5_1": {
+  "lib": "minipixiz_award",
+  "etat": "d1_1",
+  "w": 24.32,
+  "h": 20.5
+ },
+ "minipixiz_award_e1": {
+  "lib": "minipixiz_award",
+  "etat": "e1",
+  "w": 23.63,
+  "h": 23.15
  }
 }

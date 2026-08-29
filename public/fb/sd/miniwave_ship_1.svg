@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0.5 0.5 17 17" width="17" height="17">
+<g transform="matrix(1,0,0,1,0,0)">
+  <path d="M1 9Q1 5.65 3.3 3.3Q5.65 1 9 1Q12.35 1 14.65 3.3Q17 5.65 17 9Q17 12.35 14.65 14.65Q12.35 17 9 17Q5.65 17 3.3 14.65Q1 12.35 1 9Z" fill="#ffffff" fill-opacity="0.2" fill-rule="evenodd"/>
+  <path d="M1 9Q1 5.65 3.3 3.3Q5.65 1 9 1Q12.35 1 14.65 3.3Q17 5.65 17 9Q17 12.35 14.65 14.65Q12.35 17 9 17Q5.65 17 3.3 14.65Q1 12.35 1 9" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+
+</g>
+</svg>

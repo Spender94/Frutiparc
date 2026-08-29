@@ -347,12 +347,82 @@ test('les dessins déjà sortis du SWF sont sur le disque', () => {
   assert.ok(fs.existsSync(path.join(ROOT, 'public/sd/mb2/1_done.png')));
 });
 
-test('ce qui n’est pas extrait rend `null`, pas une adresse morte', () => {
-  // Cinq bibliothèques de `/sd/` restent à sortir : ce sont des clips COMPOSÉS,
-  // pas des feuilles à une forme par image. Leurs lignes gardent leur place.
-  for (const lib of ['miniwave_rank', 'miniwave_ship', 'miniwave_bads',
-    'kaluga_panier', 'minipixiz_award', 'minipixiz_spell', 'minipixiz_faeries',
-    'minipixiz_luz']) {
-    assert.strictEqual(FC.resoudre(lib, { frame: 1 }), null, lib);
+test('les bibliothèques composées de `/sd/` sont sorties du SWF', () => {
+  // Ce ne sont pas des feuilles à une forme par image : `award` promène un
+  // `sub` sur sa PROPRE image, `faeries` superpose un portrait et son ombre.
+  // `scripts/extract-fruticard-sd.js` les aplatit état par état et écrit un
+  // manifeste ; `resoudre` s'y adresse. Un état de trop (l'époque en demande
+  // plus qu'il n'y a d'images) retombe sur la dernière image, comme le
+  // `gotoAndStop` d'AVM1.
+  const cas = [
+    ['miniwave_rank', { frame: 0 }], ['miniwave_rank', { frame: 20 }],
+    ['miniwave_ship', { frame: 0 }], ['miniwave_ship', { frame: 14 }],
+    ['miniwave_bads', { frame: 41 }], ['kaluga_panier', { frame: 3 }],
+    ['minipixiz_spell', { frame: 12 }], ['minipixiz_faeries', { frame: 1 }],
+    ['minipixiz_award', { frame: 3, shade: 0 }],   // le troisième diamant
+    ['minipixiz_award', { frame: 3, shade: 1 }],   // le même, éteint
+    ['minipixiz_award', { num: 4, shade: 0 }],     // l'étoile, gagnée
+    ['minipixiz_award', { num: 0, shade: 1 }],     // l'étoile, éteinte
+  ];
+  for (const [lib, p] of cas) {
+    const src = FC.resoudre(lib, p);
+    const dit = lib + ' ' + JSON.stringify(p);
+    assert.ok(src, dit + ' : pas d’adresse');
+    assert.ok(fs.existsSync(path.join(ROOT, 'public', src)), dit + ' → ' + src + ' manque');
   }
+  // Le serrage, nommément : `miniwave_rank` va de l'état 1 à l'état 21 (soit
+  // `10 + frame` pour douze grades). Un `$lvl` aberrant reste sur le dernier.
+  assert.strictEqual(FC.resoudre('miniwave_rank', { frame: 11 }),
+    FC.resoudre('miniwave_rank', { frame: 99 }));
+});
+
+test('la Luz n’a pas de dessin : la ligne garde sa place, vide', () => {
+  // `public/swf/sd/minipixiz_luz.swf` est un fichier VIDE de 17 octets — comme
+  // `insertDisc.swf` et `mb2_ball.swf`. Il n'y a rien à en tirer : la carte
+  // d'époque réserve la hauteur et n'affiche rien.
+  assert.strictEqual(FC.resoudre('minipixiz_luz', { star: 3 }), null);
+  assert.ok(fs.statSync(path.join(ROOT, 'public/swf/sd/minipixiz_luz.swf')).size < 32);
+});
+
+test('la fée emporte ses trois couleurs, le décalage `setColor` d’époque', () => {
+  // `setColor(pic.f.k*, col1)` pose `{ra:100, rb:r−255, …}` : un DÉCALAGE par
+  // canal, pas un remplissage. Le dessin sort du SWF en clair, ses groupes
+  // marqués `t1`/`t2`/`t3` ; la ligne emporte les couleurs, le light filtre.
+  const carte = FC.lignes('minipixiz', {
+    $stat: { $run: 1 }, $current: 0,
+    $faerie: [{ $name: 'Zéphyr', $level: 2, $skin: [0, 0xFF8080, 0x4040FF, 0xFFFFFF],
+      $carac: [1, 2, 3, 4, 5, 6], $spell: [] }],
+  }, 'moi');
+  const fee = images(carte).find((l) => l.param.url === 'minipixiz_faeries');
+  assert.ok(fee, 'la fée courante doit être dessinée');
+  assert.deepStrictEqual(fee.teintes, [0xFF8080, 0x4040FF, 0xFFFFFF]);
+  assert.ok(/minipixiz_faeries_1\.svg$/.test(fee.src), fee.src);
+  // Le dessin marque bien les trois groupes que `setColor` repeint.
+  const svg = fs.readFileSync(path.join(ROOT, 'public/fb/sd/minipixiz_faeries_1.svg'), 'utf8');
+  for (const c of ['t1', 't2', 't3']) assert.ok(svg.includes('class="' + c + '"'), c);
+});
+
+test('l’étoile de MiniPixiz porte son nombre, et le light le pose', () => {
+  // `if (num != null) award.field.text = int(num)` : un champ texte qui n'existe
+  // QUE sur l'image « étoile gagnée » (l'étoile éteinte est une silhouette nue).
+  const carte = FC.lignes('minipixiz', { $stat: {}, $star: 7, $diam: 2 }, 'moi');
+  const etoile = images(carte).find((l) => l.param.param && l.param.param.num !== undefined);
+  assert.ok(etoile, 'l’étoile doit être dessinée');
+  assert.strictEqual(etoile.param.param.num, 7);
+  assert.strictEqual(etoile.param.param.shade, 0);      // gagnée : pas éteinte
+  assert.match(LIGHT, /if \(pp\.num !== undefined && pp\.num !== null && Number\(pp\.shade\) !== 1\)/);
+  assert.match(LIGHT, /\.fiche-fcard \.fc-nombre \{/);
+});
+
+test('le light coud la fée dans la page pour la teinter', () => {
+  // Une `<img>` ne se teinte pas : il faut le SVG dans le document. Et ses
+  // identifiants sont locaux au fichier — recousus tels quels, deux fées se
+  // prendraient les masques l'une de l'autre.
+  assert.match(LIGHT, /function teinterDessin\(boite, l\) \{/);
+  assert.match(LIGHT, /if \(l\.src && l\.teintes\) \{\n\s+teinterDessin\(boite, l\);/);
+  assert.match(LIGHT, /id="\$1-' \+ n \+ '"/);
+  assert.match(LIGHT, /url\\\(#\(\[\^\)\]\+\)\\\)/);
+  // Le décalage : (col − 255) / 255 sur chaque canal, en sRGB comme Flash.
+  assert.match(LIGHT, /\(\(v - 255\) \/ 255\)\.toFixed\(4\)/);
+  assert.match(LIGHT, /"color-interpolation-filters", "sRGB"/);
 });

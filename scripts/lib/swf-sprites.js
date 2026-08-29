@@ -163,6 +163,14 @@ function ouvrir(chemin, options) {
   }
 
   // Le contenu image par image de chaque sprite, liste d'affichage tenue à jour.
+  //
+  // LA RACINE COMPTE POUR UN SPRITE, sous le numéro 0. Les petites
+  // bibliothèques de `/sd/` (miniwave_rank, kaluga_panier…) n'ont pas de clip
+  // exporté : leur dessin EST le scénario principal, et leur image 1 se
+  // contente d'un `gotoAndStop(10 + frame)`. Les ignorer laissait
+  // `parSprite.get(0)` vide et il n'y avait rien à en tirer. Rien ne change
+  // pour les autres extracteurs : ils demandent un identifiant précis, et
+  // `aplatir` ne cherche jamais le caractère 0.
   const parSprite = new Map();
   {
     const listes = new Map();                          // sprite → profondeur → {ch, M}
@@ -174,7 +182,7 @@ function ouvrir(chemin, options) {
       parSprite.get(id).set(frame, [...l.keys()].sort((x, y) => x - y).map((d) => l.get(d)));
     };
     parcourir((code, corps, len, id, frame) => {
-      if (!id) return;
+      if (id === undefined || id === null) return;
       if (!listes.has(id)) listes.set(id, new Map());
       const l = listes.get(id);
       if (code === 1) { photographier(id, frame); derniere.set(id, frame); return; }

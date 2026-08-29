@@ -4390,14 +4390,60 @@ champs que le bytecode, plus un `src` d'image résolu) ; `light.html` la dessine
 dans l'onglet Scores, sous la section « Fruticard ! » que le SWF y met
 lui-même (0x5b040). Le bureau d'époque n'est pas touché : il a déjà son moteur.
 
-**Ce qui reste à sortir du SWF.** Cinq bibliothèques de `/sd/` ne sont pas
-encore extraites, et leurs lignes `url` gardent leur place sans image :
-`miniwave_rank`, `miniwave_ship`, `miniwave_bads`, `kaluga_panier`,
-`minipixiz_award` / `minipixiz_spell` / `minipixiz_faeries`. Ce ne sont pas des
-feuilles à une forme par image comme `bkiwi_cup` : ce sont des CLIPS COMPOSÉS
-(plusieurs formes placées par matrice, par image), qu'il faut composer avant de
-rendre — et la fée est en plus TEINTÉE à l'exécution (`col1..col3`).
-`minipixiz_luz.swf` manque carrément de `public/sd/`.
+**Les bibliothèques composées de `/sd/`.** Sept des dessins de la carte ne sont
+pas des feuilles à une forme par image comme `bkiwi_cup` : ce sont des CLIPS
+COMPOSÉS, plusieurs formes placées par matrice, et à des images DIFFÉRENTES à
+chaque étage (`award` sur la sienne, `award.sub` sur une autre).
+`scripts/extract-fruticard-sd.js` les aplatit état par état — **129 dessins**
+dans `public/fb/sd/`, plus un `manifeste.json` qui dit quel fichier sert à quel
+état (un même dessin sert souvent à plusieurs : `picFace` a 65 images pour six
+fées, Flash gardant le dernier placement).
+
+    miniwave_rank    21 états → 13 dessins   this.gotoAndStop(10 + frame)
+    miniwave_ship    15 →  7                 idem
+    miniwave_bads    54 → 51                 idem
+    kaluga_panier    28 → 22                 idem
+    minipixiz_spell  25 → 22                 ball.symbol.gotoAndStop(frame)
+    minipixiz_faeries 65 → 6                 pic + shade, puis trois setColor
+    minipixiz_award  12 →  8                 award + award.sub + un champ texte
+
+`minipixiz_luz.swf` n'a rien à donner : le fichier fait **17 octets** — un SWF
+vide, comme `insertDisc.swf` et `mb2_ball.swf`. Sa ligne garde sa hauteur de
+100 px et reste vide, ce que faisait déjà l'époque.
+
+**La teinte de la fée.** `minipixiz_faeries` ne se contente pas d'aller à une
+image : il repeint trois groupes, ceux que `$skin` fait varier —
+`setColor(pic.f.k0|k1|k2, col1)` les CHEVEUX, `(pic.f.o0.p|o1.p|cloth, col2)`
+les YEUX et la ROBE, `(pic.f.w0|w1, col3)` les AILES. Le teint du visage est
+peint dans le dessin : toutes les fées de la carte ont le même. Et `setColor`
+n'est pas un remplissage mais un DÉCALAGE par canal — la transformation posée
+est `{ra:100, ga:100, ba:100, aa:100, rb:r−255, gb:g−255, bb:b−255, ab:0}`,
+soit `sortie = source + (col − 255)`. Les trois groupes restent donc en niveaux
+de gris dans le dessin extrait, marqués d'une classe `t1`/`t2`/`t3` ; le light
+coud le SVG dans la page (une `<img>` ne se teinte pas) et pose sur chaque
+groupe un `feColorMatrix` qui refait le décalage, en `sRGB` comme Flash.
+
+**L'étoile de MiniPixiz.** `minipixiz_award` porte, sur son image « étoile
+gagnée » seulement, un champ texte que la carte remplit : `if (num != null)
+award.field.text = int(num)`. Le champ est planté à DROITE de l'étoile (x 24,
+corps 22, encre `#547614`, relevés dans le `DefineEditText` du SWF), et n'existe
+pas sur l'étoile éteinte, qui est une silhouette nue.
+
+**Comment `cpDocument` met en page** (`DocPage.updateLine`, 0x661c6) :
+
+    largeur = max(élément.min.w, élément.width)   — jamais moins
+    reste   = page.pos.w − Σ largeurs
+    si reste > 0, chaque `big` en reçoit sa part ; sinon PERSONNE ne grandit
+    puis on pose de gauche à droite, et le masque du document coupe le reste
+
+Rien ne rétrécit : une rangée trop large est simplement TRONQUÉE. Et le 250 de
+`onFrutiCard` n'est qu'un point de départ — `cp.Document.updateSize` (0x4de13)
+remplace `page.pos.w` par la largeur RÉELLE du composant, si bien qu'une fenêtre
+élargie révèle davantage de la rangée. Les médailles de MiniPixiz font 357 px et
+le bloc de sa fée 363 : dans la fiche d'époque (324 de large) l'étoile et la
+moitié des caractéristiques tombaient dehors. **ÉCART ASSUMÉ** : le light laisse
+la carte défiler de côté au lieu de couper — sur un téléphone, couper serait
+pire.
 
 **Ce que `patchSlot0` ne peut pas inventer.** La carte de Burning Kiwi lit
 `$ts[i].$fcLap` et `$ts[i].$fcTotal` (meilleur tour, meilleure course) là où le
