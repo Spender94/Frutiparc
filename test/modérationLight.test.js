@@ -156,7 +156,9 @@ test('une ligne de score de la fiche ouvre son classement', () => {
   // l'identifiant du descripteur. D'où le repli par nom de JEU.
   assert.match(o[0], /if \(i < 0 && jeu\) i = jeux\.findIndex\(function \(g\) \{ return g\.game === jeu; \}\);/);
   assert.match(o[0], /activateTab\("scores"\);/);
-  assert.match(LIGHT, /var allerAuScore = function \(\) \{ fermerFiche\(\); ouvrirScoresSur\(c\.rk, c\.jeu\); \};/);
+  // On ferme LA FICHE QU'ON DESSINE, pas « la » fiche courante : depuis qu'on
+  // peut en ouvrir plusieurs, elle ne sera peut-être plus la même au clic.
+  assert.match(LIGHT, /var laFiche = ficheEtat;\s*\n\s*var allerAuScore = function \(\) \{ fermerFiche\(laFiche\); ouvrirScoresSur\(c\.rk, c\.jeu\); \};/);
   assert.match(LIGHT, /\.fiche-jour\.cliquable \{ cursor: pointer;/);
 });
 
