@@ -61,6 +61,58 @@ test('le repère de la casquette : un caractère PARTAGÉ, une matrice constante
   assert.ok(refs[0].variantes > 30, 'la casquette a déjà de nombreuses variantes');
 });
 
+test('le mécanisme vaut pour LES SEIZE types d\'accessoire, pas seulement la casquette', async () => {
+  const defs = await lire('famille0.swf');
+  const COIFS = [0, 8, 20, 40, 66];
+  const soucis = [];
+  for (let type = 1; type <= 16; type++) {
+    const reps = COIFS.map((co) => Variante.repere(defs, type, co)).filter(Boolean);
+    if (reps.length !== COIFS.length) { soucis.push(type + ' : repère manquant'); continue; }
+    // LE POINT QUI REND TOUT POSSIBLE : le caractère `acc` est le même pour
+    // toutes les coiffures. Une image ajoutée vaut donc pour les 67 coupes.
+    const ids = new Set(reps.map((r) => r.accId));
+    if (ids.size !== 1) soucis.push(type + ' : acc non partagé (' + [...ids].join(',') + ')');
+    // Et l'aller-retour tient sur la première variante DESSINÉE de ce type.
+    let vu = -1;
+    for (let v = 0; v < reps[0].variantes && vu < 0; v++) {
+      if (Variante.exporter(defs, type, v, 8).length > 1) vu = v;
+    }
+    if (vu < 0) { soucis.push(type + ' : aucune variante dessinée'); continue; }
+    const gab = Variante.exporter(defs, type, vu, 8);
+    const inj = Variante.injecter(defs, { type, paths: gab, coiffureRef: 8 });
+    if (!inj) { soucis.push(type + ' : injection refusée'); continue; }
+    const copie = Variante.exporter(defs, type, inj.variante, 8);
+    const cle = (p) => p.d.length + ':' + p.fill + ':' + p.slot;
+    if (JSON.stringify(copie.map(cle)) !== JSON.stringify(gab.map(cle))) {
+      soucis.push(type + ' : aller-retour différent');
+    }
+  }
+  assert.deepStrictEqual(soucis, [], 'chaque type se prête à une nouvelle variante');
+});
+
+test('les images VIDES de fin de rouleau se distinguent des vraies variantes', async () => {
+  const defs = await lire('famille0.swf');
+  // Un rouleau traîne une queue d'images vides — reliquat d'atelier d'époque.
+  // Le bonnet type 3 (15) en déclare seize et n'en dessine que deux : proposer
+  // les autres comme gabarit promettrait un dessin qui n'existe pas.
+  const rep = Variante.repere(defs, 15, 8);
+  assert.ok(rep.variantes > 10, 'le rouleau déclare beaucoup d\'images (' + rep.variantes + ')');
+  let dessinees = 0;
+  for (let v = 0; v < rep.variantes; v++) {
+    if (Variante.exporter(defs, 15, v, 8).length > 1) dessinees++;
+  }
+  assert.strictEqual(dessinees, 2, 'mais deux seulement portent un dessin');
+
+  // La queue n'occupe que des profondeurs BASSES : l'effacement que pose une
+  // variante injectée (1..64 au minimum) la couvre donc entièrement — rien de
+  // l'image précédente ne peut transparaître sous une variante neuve.
+  let maxProf = 0;
+  for (const img of rep.sprite.images) {
+    for (const o of img) if (o.prof > maxProf) maxProf = o.prof;
+  }
+  assert.ok(maxProf <= 64, 'profondeurs du rouleau dans la portée de l\'effacement (max ' + maxProf + ')');
+});
+
 test('le gabarit : l\'art d\'une variante, en scène, avec ses niveaux de couleur', async () => {
   const defs = await lire('famille0.swf');
   const gab = Variante.exporter(defs, CASQUETTE, 34, 8);

@@ -60,7 +60,7 @@
       <label>Accessoire</label>
       <select id="type"></select>
       <div class="ligne">
-        <div><label>Variante de départ</label><input type="number" id="variante" min="0" value="0"></div>
+        <div><label>Variante de départ</label><select id="variante"></select></div>
         <div><label>Coiffure (aperçu)</label><input type="number" id="coif" min="0" value="8"></div>
       </div>
       <label>Couleurs d'aperçu (niveaux 1 / 2 / 3)</label>
@@ -132,24 +132,70 @@
       });
     }
 
-    // Les accessoires qui ont plusieurs variantes : ce sont eux qu'on peut étendre.
+    // Combien de variantes un accessoire DESSINE-T-IL vraiment ? Les rouleaux
+    // traînent une queue d'images vides — le bonnet type 3 en déclare seize et
+    // n'en dessine que deux, le chapeau chinois trente-deux pour huit. Annoncer
+    // le nombre déclaré ferait chercher des dessins qui n'existent pas. (Le
+    // recensement complet coûte ~50 ms : on peut se le permettre au démarrage.)
+    function nbDessinees(type) {
+      var r = V.repere(defs, type, 8);
+      if (!r) return 0;
+      var n = 0;
+      for (var v = 0; v < r.variantes; v++) if (V.exporter(defs, type, v, 8).length > 1) n++;
+      return n;
+    }
     function remplirTypes() {
       var sel = $("#type"); sel.innerHTML = "";
       P.ACCESSORIES.forEach(function (nom, i) {
         if (!i) return;                                  // « Rien » n'a pas de variante
         var r = V.repere(defs, i, 8);
-        if (!r || r.variantes < 2) return;
+        if (!r || r.variantes < 1) return;
+        var n = nbDessinees(i);
         var o = document.createElement("option");
-        o.value = i; o.textContent = i + " — " + nom + " (" + r.variantes + " variantes)";
+        o.value = i;
+        o.textContent = i + " — " + nom + " (" + n + " variante" + (n > 1 ? "s" : "") + " dessinée" + (n > 1 ? "s" : "") + ")";
         sel.appendChild(o);
       });
       sel.value = "3";                                   // la casquette par défaut
     }
 
+    /*
+     * LES VARIANTES RÉELLEMENT DESSINÉES.
+     *
+     * Un rouleau d'accessoires traîne une longue QUEUE D'IMAGES VIDES — un
+     * reliquat d'atelier d'époque. Le bonnet type 3 déclare seize images mais
+     * n'en dessine que deux ; la casquette en déclare trente-huit. Proposer les
+     * images vides comme gabarit de départ, c'est promettre un dessin qui
+     * n'existe pas. On ne liste donc que celles qui portent quelque chose, avec
+     * le nombre de tracés — le graphiste voit du premier coup ce qu'il reprend.
+     */
+    function remplirVariantes() {
+      var t = +$("#type").value, co = +$("#coif").value;
+      var sel = $("#variante"), garde = sel.value;
+      var r = V.repere(defs, t, co);
+      sel.innerHTML = "";
+      if (!r) return;
+      for (var v = 0; v < r.variantes; v++) {
+        var n = V.exporter(defs, t, v, co).length;
+        if (n <= 1) continue;                        // image vide (ou simple marqueur)
+        var o = document.createElement("option");
+        o.value = v; o.textContent = "variante " + v + " — " + n + " tracés";
+        sel.appendChild(o);
+      }
+      if (!sel.options.length) {
+        var vide = document.createElement("option");
+        vide.value = "0"; vide.textContent = "(aucune variante dessinée)";
+        sel.appendChild(vide);
+      }
+      // On garde le choix courant s'il existe encore.
+      var ok = false;
+      for (var k = 0; k < sel.options.length; k++) if (sel.options[k].value === garde) ok = true;
+      sel.value = ok ? garde : sel.options[0].value;
+    }
+
     function rafraichir() {
       var t = +$("#type").value, v = +$("#variante").value, co = +$("#coif").value;
       var r = V.repere(defs, t, co);
-      if (r) $("#variante").max = Math.max(0, r.variantes - 1);
       var etat = etatAvec(t, v, co);
       $("#etat").textContent = etat + "   (acc #" + (r ? r.accId : "?") + ")";
       new M.Bouille($("#apercu"), defs, { etat: etat, anime: false, alea: function () { return 0.5; } });
@@ -224,14 +270,16 @@
       });
     }
 
-    ["#type", "#variante", "#coif"].forEach(function (s) {
-      $(s).addEventListener("input", rafraichir);
+    $("#variante").addEventListener("change", rafraichir);
+    ["#type", "#coif"].forEach(function (s) {
+      $(s).addEventListener("input", function () { remplirVariantes(); rafraichir(); });
     });
 
     Swf.charger("/fbouille/famille0.swf").then(function (d) {
       defs = d;
       remplirTypes();
       construireCouleurs();
+      remplirVariantes();
       rafraichir();
     });
   })();
