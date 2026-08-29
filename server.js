@@ -1672,8 +1672,17 @@ function buildLegacyGameScoreInfo(gs) {
 // même chemin que le bureau : le descripteur d'époque donne le `gs`, le `gs`
 // donne le gabarit. Burning Kiwi n'a pas de descripteur par circuit — ses
 // classements empruntent celui de rk '0', comme partout ailleurs.
+//
+// KALUGA a le même besoin depuis qu'il a DEUX classements. `LEGACY_RANKINGS`
+// ne connaît que `kaluga_classic` (rk 4) — c'est le seul qui existait en 2005.
+// « Freestyle », né du partage avec/sans grappe, n'y est pas : il n'avait donc
+// AUCUNE colonne, et le tzongre n'apparaissait pas sur ce tableau-là. Il joue
+// la même partie et porte la même donnée : il emprunte le même descripteur.
 function scoreDataSpecFor(rankingId) {
-  const cle = /^bkiwi_/.test(String(rankingId || '')) ? 'bkiwi_track5_classic' : rankingId;
+  const id = String(rankingId || '');
+  const cle = /^bkiwi_/.test(id) ? 'bkiwi_track5_classic'
+    : /^kaluga_/.test(id) ? 'kaluga_classic'
+      : id;
   const d = LEGACY_RANKINGS.find((x) => x.internal === cle);
   return (d && SCORE_DATA_SPEC[Number(d.gs)]) || null;
 }
@@ -2144,6 +2153,12 @@ function formatRankingExtraData(rankingId, rawData, scoreHint) {
     }
     const v = parseMtSerializedPrimitive(raw);
     if (typeof v === 'string' && v) return `S${v.toLowerCase()}:`;
+    // Aucune des formes connues. Le tableau retombera sur l'image « inconnu »
+    // de `kaluga_tz` — qui est VIDE d'époque (`error = true` → image 10), donc
+    // la case reste blanche et l'on croit la colonne cassée. On le DIT dans la
+    // trace, avec la donnée brute : c'est la seule façon de reconnaître une
+    // forme qu'on n'attendait pas, et de l'ajouter aux branches ci-dessus.
+    if (raw) console.warn(`[KALUGA] donnée de tzongre non reconnue (${rankingId}) : ${JSON.stringify(raw).slice(0, 120)}`);
     return raw;
   }
 

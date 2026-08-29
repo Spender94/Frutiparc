@@ -1730,12 +1730,28 @@ body.bureau-frutiz .fen #recherche-panel {
 
    et `Standard.getStyleSheet()` peint tous les liens en `#344D67`, SANS
    soulignement — il n'apparaît qu'au survol (`a:hover`). */
+/* LA PREMIÈRE RANGÉE EST DÉFINIE, ET C'EST TOUT LE SUJET DE L'INDEX.
+   Elle était en `auto`. Or `.gs-page` l'ENJAMBE (rangées 1 et 2), et une piste
+   `auto` qu'on enjambe se laisse gonfler par le contenu de celui qui
+   l'enjambe : la page poussait la grille au-delà de la fenêtre au lieu de
+   défiler dedans, et son `overflow-y: auto` ne mordait jamais. Ses liens
+   finissaient peints sous la barre de saisie, puis carrément hors du cadre —
+   relevé au banc, `elementFromPoint` sur le deuxième lien renvoyait
+   `div#bureau`. Cliquer un lien de l'index ne faisait donc rien : le clic
+   n'atteignait pas le lien, l'écouteur n'y était pour rien.
+   La rangée 1 ne sert qu'à la colonne d'icônes COUCHÉE (`gs-a-ecrans`, 24 px
+   de haut) ; debout, elle enjambe tout et la rangée ne sert à personne. On la
+   fixe donc à 0 puis à 24 : la géométrie ne bouge pas d'un pixel dans les deux
+   états, mais plus rien ne peut la faire grandir. */
 body.bureau-frutiz .fen #gaspard-panel {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: 0 minmax(0, 1fr) auto;
   column-gap: 0; row-gap: 0;
   padding: 2px 2px 0; background: transparent; gap: 0; min-height: 0;
+}
+body.bureau-frutiz .fen #gaspard-panel.gs-a-ecrans {
+  grid-template-rows: 24px minmax(0, 1fr) auto;
 }
 /* Le corps se serre comme celui du salon : 2 px de blanc de chaque côté, 4 en
    bas — c'est la même écorce de dialogue. */
@@ -2882,20 +2898,23 @@ body.bureau-frutiz .fen #evt-panel .evt-item .vis {
 body.bureau-frutiz .fen #evt-panel .evt-item .vis img { max-width: 60px; max-height: 56px; }
 /* LA TYPO. Le 12 px relevé sur la carte d'époque tassait le texte dans une
    case de 60 : la ligne y passait au ras du bord et la date mangeait le
-   début du message. On descend à 9 px, et la DATE prend sa propre ligne —
-   le message commence alors toujours au même endroit, quelle que soit la
-   longueur de « mar 25 aout 23:16 ». Le tiret qui les séparait n'a plus
-   d'objet : il est masqué (il reste pour le mobile, qui garde la ligne). */
+   début du message. On était descendu à 9 px, et la DATE prend sa propre
+   ligne — le message commence alors toujours au même endroit, quelle que soit
+   la longueur de « mar 25 aout 23:16 ». Le tiret qui les séparait n'a plus
+   d'objet : il est masqué (il reste pour le mobile, qui garde la ligne).
+   ÉCART ASSUMÉ : 10 px, pas les 12 d'époque ni les 9 du premier portage. À 9
+   la ligne se lisait mal ; à 12 elle déborde de la case de 60. Le pixel de
+   plus se paie sur l'interligne (13), qui garde trois lignes dans la case. */
 body.bureau-frutiz .fen #evt-panel .evt-item .txt {
   flex: 1 1 auto; min-width: 0; overflow: hidden;
-  font-size: 9px; line-height: 12px; font-weight: 400;
+  font-size: 10px; line-height: 13px; font-weight: 400;
   color: #335511; word-break: normal; overflow-wrap: break-word;
 }
 body.bureau-frutiz .fen #evt-panel .evt-item .quand { font-weight: 700; display: block; }
 body.bureau-frutiz .fen #evt-panel .evt-item .quand i { display: none; }
 /* Une entrée NEUVE a toute sa ligne en gras — et rien de plus : le SWF ne
    l'agrandit pas (c'était une liberté du mobile, qui la garde). */
-body.bureau-frutiz .fen #evt-panel .evt-item.neuf .txt { font-weight: 700; font-size: 9px; }
+body.bureau-frutiz .fen #evt-panel .evt-item.neuf .txt { font-weight: 700; font-size: 10px; }
 /* LE PIED : les deux gélules aux extrémités, le compte au milieu. Le dessin
    est celui du SWF (/fb/fleche_*.svg), en 16 px, ceint de 2 px `#DDDDDD`
    comme toutes les gélules du bureau. */

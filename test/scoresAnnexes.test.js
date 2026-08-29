@@ -71,10 +71,16 @@ test('le gabarit des colonnes est UNIQUE : le bureau et le light y puisent', () 
   assert.doesNotMatch(SERVEUR, /inner \+= '<desc n="Ecurie"/);
 });
 
-test('Burning Kiwi emprunte le descripteur de rk « 0 », circuit du jour compris', () => {
+test('Burning Kiwi et Kaluga empruntent le descripteur de leur rk d’époque', () => {
   // Le light classe sur `bkiwi_track<N>_challenge` : sans cette normalisation,
   // aucun de ces classements n'aurait de colonne.
-  assert.match(SERVEUR, /function scoreDataSpecFor\(rankingId\) \{[\s\S]*?\/\^bkiwi_\/\.test\(String\(rankingId \|\| ''\)\) \? 'bkiwi_track5_classic' : rankingId;/);
+  // KALUGA a le même besoin depuis qu'il a deux classements : « Freestyle »,
+  // né du partage avec/sans grappe, n'est dans aucun descripteur d'époque et
+  // n'avait donc pas de colonne Tzongre du tout.
+  const f = /function scoreDataSpecFor\(rankingId\) \{[\s\S]*?\n\}/.exec(SERVEUR);
+  assert.ok(f, 'scoreDataSpecFor doit exister');
+  assert.match(f[0], /\/\^bkiwi_\/\.test\(id\) \? 'bkiwi_track5_classic'/);
+  assert.match(f[0], /\/\^kaluga_\/\.test\(id\) \? 'kaluga_classic'/);
   assert.match(SERVEUR, /return \(d && SCORE_DATA_SPEC\[Number\(d\.gs\)\]\) \|\| null;/);
 });
 

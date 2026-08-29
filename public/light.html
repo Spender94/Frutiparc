@@ -1594,6 +1594,13 @@
     grid-template-columns: 18px 20px minmax(0,1fr) auto var(--sc-annexes, ) 38px;
     align-items: center; gap: 4px; font-size: 11px; color: #433005; min-height: 19px;
   }
+  /* Un classement PERMANENT n'a pas d'heure (cf. `avecHeure`) : sa dernière
+     piste de 38 px n'aurait plus rien à porter, et le score flotterait à
+     38 px du bord droit. On la retire avec la colonne. */
+  #sc-table.sans-heure .sc-entete,
+  #sc-table.sans-heure .sc-ligne {
+    grid-template-columns: 18px 20px minmax(0,1fr) auto var(--sc-annexes, );
+  }
   .sc-entete .d, .sc-ligne .d { text-align: center; }
   .sc-ligne .d { line-height: 0; }
   .sc-ligne .d img.sd { display: inline-block; vertical-align: middle; }
@@ -4814,6 +4821,16 @@
     } else {
       box.style.removeProperty("--sc-annexes");
     }
+    /* L'HEURE N'A DE SENS QUE POUR UN CHALLENGE.
+       Elle dit à quel moment de la JOURNÉE le score est tombé — la journée
+       étant celle du tableau, remise à zéro à minuit. Un classement permanent
+       (kikooz, Championnat, Expérience, Consécration, tournoi Frutisnake)
+       n'a pas de journée : le serveur y envoie une heure VIDE, et la colonne
+       n'affichait qu'un en-tête « Heure » suivi de blancs. On ne la pose donc
+       plus du tout — `allTime` est le drapeau que le serveur met sur ces
+       classements-là. */
+    var avecHeure = !g.allTime;
+    box.classList.toggle("sans-heure", !avecHeure);
 
     var html = "";
     // Les médaillés de la veille, en tête — la rangée de médailles du bureau.
@@ -4856,7 +4873,7 @@
         + annexes.map(function (c) {
           return '<span class="d">' + xmlEscape(c.n) + '</span>';
         }).join("")
-        + '<span class="h">Heure</span></div>';
+        + (avecHeure ? '<span class="h">Heure</span>' : "") + '</div>';
       scPage(g).forEach(function (s, i) {
         html += '<div class="sc-ligne' + (s.isMe ? " moi" : "") + '">'
           + '<span class="r">' + (s.pos || (i + 1)) + '</span>'
@@ -4873,7 +4890,7 @@
           + annexes.map(function (c) {
             return '<span class="d">' + vignetteScoreData(c.lib, s.extra) + '</span>';
           }).join("")
-          + '<span class="h">' + xmlEscape(s.time || "") + '</span>'
+          + (avecHeure ? '<span class="h">' + xmlEscape(s.time || "") + '</span>' : "")
           + '</div>';
       });
       html += scPagination(g);

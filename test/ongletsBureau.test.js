@@ -250,11 +250,13 @@ test('sur le bureau, le rangement mobile des tuiles ne s’arme pas', () => {
   assert.match(LIGHT, /if \(window\.BureauFrutiz && BureauFrutiz\.actif && BureauFrutiz\.actif\(\)\) return;/);
 });
 
-test('le journal : 9 px, et la date sur sa propre ligne', () => {
-  assert.match(CSS, /#evt-panel \.evt-item \.txt \{[\s\S]*?font-size: 9px;/);
+// Le 9 px du premier portage se lisait mal : le lot de retours a demandé un
+// pixel de plus. On est à 10 (l'écart au relevé est nommé dans la feuille).
+test('le journal : 10 px, et la date sur sa propre ligne', () => {
+  assert.match(CSS, /#evt-panel \.evt-item \.txt \{[\s\S]*?font-size: 10px;/);
   assert.match(CSS, /#evt-panel \.evt-item \.quand \{ font-weight: 700; display: block; \}/);
   assert.match(CSS, /#evt-panel \.evt-item \.quand i \{ display: none; \}/);
-  assert.match(CSS, /#evt-panel \.evt-item\.neuf \.txt \{ font-weight: 700; font-size: 9px; \}/);
+  assert.match(CSS, /#evt-panel \.evt-item\.neuf \.txt \{ font-weight: 700; font-size: 10px; \}/);
   // Le tiret vit dans son propre élément : le mobile le garde, le bureau le
   // masque — une seule chaîne pour les deux mises en page.
   assert.match(LIGHT, /\+ '<i> - <\/i><\/span>' \+ xmlEscape\(e\.text \|\| ""\)/);
