@@ -4177,7 +4177,8 @@ async function loadVariantes() {
         + '<td>' + esc(FPBouille.accName(v.type)) + '</td>'
         + '<td><code>' + (bases[cle] + v.rang) + '</code></td>'
         + '<td>' + v.nb + '</td>'
-        + '<td>' + (v.retire ? '' : '<button class="btn btn-sm" onclick="retirerVariante(\'' + v.id + '\')">Retirer</button>') + '</td>';
+        + '<td>' + (v.retire ? '' : '<button class="btn-success btn-sm" onclick="variantEnBoutique(\'' + v.id + '\',' + v.type + ',' + (bases[cle] + v.rang) + ',this.dataset.nom)" data-nom="' + esc(v.nom) + '">→ Boutique</button> '
+          + '<button class="btn btn-sm" onclick="retirerVariante(\'' + v.id + '\')">Retirer</button>') + '</td>';
       body.appendChild(tr);
     });
     // Les aperçus : une famille par ligne, avec TOUTES les variantes injectées
@@ -4203,6 +4204,47 @@ async function loadVariantes() {
         anime: false, alea: () => 0.5 });
     });
   } catch (e) { /* silencieux */ }
+}
+
+/*
+ * D'UNE VARIANTE À UN ARTICLE DE BOUTIQUE.
+ *
+ * C'est le dernier maillon : une variante publiée est portable, mais l'éditeur
+ * « Ma Frutibouille » ne choisit PAS les accessoires — ils s'achètent en boutique
+ * et se posent depuis l'inventaire. Il faut donc en faire un article.
+ *
+ * Rien à inventer pour cela : un article d'accessoire n'est qu'un `suffix9`, et
+ * une variante s'y écrit comme les autres —
+ *
+ *     type '0' variante '0' couleur1 '0' couleur2 '0' couleur3
+ *
+ * (la valeur est portée par le premier caractère de chaque paire, le second
+ * reste un séparateur). On ouvre donc le formulaire d'accessoire EXISTANT, déjà
+ * pourvu de son constructeur de suffix9 et de son aperçu, avec le type et la
+ * variante pré-remplis : il ne reste qu'à choisir les couleurs et le prix.
+ *
+ * LIMITE À CONNAÎTRE : le suffix9 code la variante sur UN caractère base62 —
+ * l'index doit donc rester ≤ 61.
+ */
+function variantEnBoutique(id, type, index, nom) {
+  if (index > 61) {
+    alert('Cette variante porte l\'index ' + index + ', or un article de boutique ne peut en coder que jusqu\'à 61 '
+      + '(le suffix9 réserve un seul caractère base62 à la variante). Il faudra élargir l\'encodage pour aller au-delà.');
+    return;
+  }
+  openAddPack();
+  // Un identifiant libre, dans une plage réservée aux articles issus d'une
+  // variante — pour ne croiser ni les articles d'origine ni ceux de la vitrine.
+  const pris = new Set((shopPacks || []).map(function (p) { return p.id; }));
+  let nouvel = 700000;
+  while (pris.has(nouvel)) nouvel++;
+  $('#pack-id').value = nouvel;
+  $('#pack-name').value = nom || (FPBouille.accName(type) + ' — variante ' + index);
+  $('#pack-category').value = 'Accessoires';
+  // type · variante · trois couleurs (au départ celles de l'aperçu de la liste).
+  const e = FPBouille.enc;
+  $('#pack-suffix9').value = e(type) + '0' + e(index) + '0' + e(29) + '0' + e(19) + '0' + e(24);
+  updatePackPreview();
 }
 
 async function retirerVariante(id) {
