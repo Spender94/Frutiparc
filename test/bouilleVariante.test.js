@@ -214,6 +214,53 @@ test('RETIRER une variante ne décale pas les suivantes', async () => {
     'la variante retirée n\'affiche aucun tracé');
 });
 
+test('une variante LONGUE ne déborde pas sur la suivante', async () => {
+  // Une pellicule GARDE ce que l'image précédente a posé : chaque variante doit
+  // donc faire table rase. On ne balayait que nos propres profondeurs (64 au
+  // minimum) — une variante de quarante tracés montant jusqu'à 80, la suivante,
+  // plus courte, héritait de ses derniers calques. En production les accessoires
+  // se mélangeaient ; dans l'atelier, où une seule variante est injectée, il n'y
+  // avait rien à hériter et tout semblait juste.
+  const defs = await lire('famille0.swf');
+  const longue = [];
+  for (let i = 0; i < 40; i++) {
+    longue.push({ d: 'M' + (10 + i) + ' 20h3v3h-3Z', fill: 'rgb(200,60,60)', m: [1, 0, 0, 1, 0, 0] });
+  }
+  const courte = [{ d: 'M40 20h10v10h-10Z', fill: 'rgb(60,60,200)', m: [1, 0, 0, 1, 0, 0] }];
+
+  const a = Variante.injecter(defs, { type: CASQUETTE, paths: longue, coiffureRef: 8 });
+  const b = Variante.injecter(defs, { type: CASQUETTE, paths: courte, coiffureRef: 8 });
+  assert.strictEqual(Variante.exporter(defs, CASQUETTE, a.variante, 8).length, 40, 'la longue est entière');
+  assert.strictEqual(Variante.exporter(defs, CASQUETTE, b.variante, 8).length, 1,
+    'la courte ne porte QUE son tracé — rien de la précédente');
+});
+
+test('l\'INDEX d\'une variante ne dépend pas de ce qui a été injecté avant', async () => {
+  // Une variante valait par son RANG d'injection : le troisième publié tombait à
+  // l'index 40 parce que deux autres étaient passés avant. Tout écart entre ce
+  // qu'un client avait chargé et ce que le serveur savait donnait alors un AUTRE
+  // accessoire, sans rien dire. `index` en fait un FAIT : on comble le rouleau
+  // jusqu'à la place demandée, et la variante y tombe toujours.
+  const art = [{ d: 'M20 20h20v10h-20Z', fill: 'rgb(10,200,90)', m: [1, 0, 0, 1, 0, 0] }];
+  const autre = [{ d: 'M60 20h5v5h-5Z', fill: 'rgb(9,9,9)', m: [1, 0, 0, 1, 0, 0] }];
+
+  const seul = await lire('famille0.swf');
+  const r1 = Variante.injecter(seul, { type: CASQUETTE, paths: art, coiffureRef: 8, index: 42 });
+
+  const apres = await lire('famille0.swf');
+  Variante.injecter(apres, { type: CASQUETTE, paths: autre, coiffureRef: 8, index: 38 });
+  Variante.injecter(apres, { type: CASQUETTE, paths: autre, coiffureRef: 8, index: 39 });
+  const r2 = Variante.injecter(apres, { type: CASQUETTE, paths: art, coiffureRef: 8, index: 42 });
+
+  assert.strictEqual(r1.variante, 42, 'seule, elle tombe à la place demandée');
+  assert.strictEqual(r2.variante, 42, 'et à la MÊME place une fois deux autres passées avant');
+  assert.strictEqual(Variante.exporter(seul, CASQUETTE, 42, 8).length, 1, 'avec son dessin');
+  assert.strictEqual(Variante.exporter(apres, CASQUETTE, 42, 8).length, 1, 'des deux côtés');
+  // Les places comblées entre-temps ne dessinent rien.
+  assert.strictEqual(Variante.exporter(seul, CASQUETTE, 40, 8).length, 0,
+    'une place tenue reste vide — elle ne montre pas la variante d\'à côté');
+});
+
 test('les DÉGRADÉS survivent à l\'aller-retour, et le gabarit les écrit en SVG', async () => {
   const defs = await lire('famille0.swf');
   // Vingt-trois couches de la famille 0 sont peintes en dégradé. L'export les

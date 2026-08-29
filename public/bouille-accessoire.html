@@ -242,10 +242,27 @@
       rendu.innerHTML = "";
       if (!paths.length) { etat.textContent = "SVG illisible ou sans dessin."; return; }
       var t = +$("#type").value, co = +$("#coif").value;
-      // On repart d'une famille NEUVE : sans quoi chaque import empilerait une
-      // variante de plus dans le rouleau au fil des essais.
-      Swf.charger("/fbouille/famille0.swf").then(function (neuf) {
-        defs = neuf;
+      // On repart d'une famille NEUVE — sans quoi chaque import empilerait une
+      // variante de plus au fil des essais — ET on y rejoue d'abord le CATALOGUE
+      // PUBLIÉ. Sans lui, l'atelier montrait un rouleau où la variante essayée
+      // était la seule : elle ne pouvait rien hériter, là où la production, elle,
+      // en avait d'autres avant. L'aperçu ne disait donc pas la vérité.
+      Promise.all([
+        Swf.charger("/fbouille/famille0.swf"),
+        fetch("/api/light/variantes", { cache: "no-store" })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (j) { return (j && j.ok) ? j.liste : []; })
+          .catch(function () { return []; }),
+      ]).then(function (r) {
+        defs = r[0];
+        (r[1] || []).forEach(function (pub) {
+          if ((pub.famille || 0) !== 0) return;
+          try {
+            V.injecter(defs, { type: pub.type, paths: pub.paths || [],
+              coiffureRef: pub.coiffureRef, index: (pub.index == null ? undefined : pub.index),
+              vide: !(pub.paths && pub.paths.length) });
+          } catch (e) { /* une variante fautive n'empêche pas l'essai */ }
+        });
         var inj = V.injecter(defs, { type: t, paths: paths, coiffureRef: co });
         if (!inj) { etat.textContent = "Injection impossible (aucun tracé exploitable)."; return; }
         var niveaux = {};

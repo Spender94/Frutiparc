@@ -4175,7 +4175,12 @@ async function publierVariante() {
   const type = Number($('#va-type').value) || 3;
   if (!nom) { $('#va-etat').textContent = 'Donne un nom.'; return; }
   const h = hdr(); h['Content-Type'] = 'application/octet-stream';
-  const corps = JSON.stringify({ nom, famille: 0, type, coiffureRef: 8, paths: vaPaths });
+  // La BASE : le nombre d'images d'origine du rouleau. Le serveur ne peut pas la
+  // connaître (elle est dans le SWF) et en a besoin pour attribuer un index qui
+  // ne recouvre aucune variante d'époque.
+  const repBase = FPBouilleVariante.repere(await FPBouilleSwf.charger('/fbouille/famille0.swf'), type, 8);
+  const corps = JSON.stringify({ nom, famille: 0, type, coiffureRef: 8,
+    base: repBase ? repBase.variantes : 0, paths: vaPaths });
   try {
     const r = await fetch('/api/admin/variantes', { method: 'POST', headers: h,
       body: new Blob([corps], { type: 'application/octet-stream' }) });
@@ -4223,7 +4228,7 @@ async function loadVariantes() {
         + '" style="display:block;width:56px;height:56px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden"></span></td>'
         + '<td>' + esc(v.nom) + (v.retire ? ' <em>(retirée)</em>' : '') + '</td>'
         + '<td>' + esc(FPBouille.accName(v.type)) + '</td>'
-        + '<td><code>' + (bases[cle] + v.rang) + '</code></td>'
+        + '<td><code>' + (v.index != null ? v.index : (bases[cle] + v.rang)) + '</code></td>'
         + '<td>' + v.nb + '</td>'
         + '<td>' + (v.retire ? '' : '<button class="btn-success btn-sm" onclick="variantEnBoutique(\'' + v.id + '\',' + v.type + ',' + (bases[cle] + v.rang) + ',this.dataset.nom)" data-nom="' + esc(v.nom) + '">→ Boutique</button> '
           + '<button class="btn btn-sm" onclick="retirerVariante(\'' + v.id + '\')">Retirer</button>') + '</td>';

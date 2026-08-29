@@ -314,10 +314,50 @@
     // L'image neuve : on efface d'abord TOUS les calques que les variantes
     // précédentes ont pu laisser (une pellicule garde ce que l'image d'avant a
     // posé), puis on pose les nôtres.
+    /*
+     * EFFACER TOUT CE QUE LE ROULEAU PEUT PORTER — pas seulement nos propres
+     * calques.
+     *
+     * Une pellicule GARDE ce que l'image précédente a posé. Notre image doit donc
+     * faire table rase avant de poser la sienne. On ne bornait l'effacement qu'à
+     * nos propres profondeurs (au moins 64) : une variante à quarante tracés
+     * montant jusqu'à la profondeur 80, la variante suivante — plus courte —
+     * héritait de ses huit derniers calques. D'où des accessoires qui se
+     * mélangeaient en production, alors que l'atelier, où une seule variante est
+     * injectée, n'avait rien à hériter et montrait le bon dessin.
+     *
+     * On balaie donc jusqu'à la profondeur la plus haute que le rouleau ait
+     * jamais utilisée, variantes déjà injectées comprises.
+     */
     var maxProf = 64;
     for (var q = 0; q < poses.length; q++) if (poses[q].prof > maxProf) maxProf = poses[q].prof;
+    for (var im = 0; im < rep.sprite.images.length; im++) {
+      var ordres = rep.sprite.images[im];
+      for (var oi = 0; oi < ordres.length; oi++) {
+        if (ordres[oi].prof > maxProf) maxProf = ordres[oi].prof;
+      }
+    }
     var retires = [];
     for (var pr = 1; pr <= maxProf; pr++) retires.push({ t: "retire", prof: pr });
+    /*
+     * L'INDEX EST UN FAIT, PAS UNE CONSÉQUENCE.
+     *
+     * Une variante valait par son RANG d'injection : le troisième publié tombait
+     * à l'index 40 parce que deux autres étaient passés avant. Tout écart entre
+     * ce qu'un client avait injecté et ce que le serveur savait donnait alors un
+     * AUTRE accessoire — silencieusement. C'est la cause des « les autres ne
+     * voient pas mon accessoire » et des accessoires qui s'échangent.
+     *
+     * `index` met fin à cette dépendance : on comble le rouleau d'images vides
+     * jusqu'à la place demandée, puis on pose la nôtre. Une variante tombe donc
+     * TOUJOURS au même index, quel que soit le nombre de variantes qu'un client
+     * a pu charger avant elle, et dans quel ordre.
+     */
+    var cible = (opts.index == null) ? rep.sprite.n : Math.max(rep.sprite.n, Math.floor(opts.index));
+    while (rep.sprite.images.length < cible) {
+      // Une place tenue, qui ne dessine rien : le même effacement, sans pose.
+      rep.sprite.images.push(retires.slice());
+    }
     rep.sprite.images.push(retires.concat(poses));
     rep.sprite.n = rep.sprite.images.length;
     // Les états résolus sont mis en cache par le moteur ET par nous : les deux

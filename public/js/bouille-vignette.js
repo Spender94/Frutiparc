@@ -159,8 +159,14 @@
       try {
         // Une variante retirée : on injecte quand même, sans tracé, pour que le
         // rouleau grandisse et que les rangs suivants restent à leur place.
+        //  : la place DÉFINITIVE de la variante, décidée à la publication.
+        // Le rouleau est comblé jusque-là — une variante tombe donc au même
+        // endroit chez tout le monde, quel que soit ce qui a été chargé avant.
+        // (Sans index — les variantes d'avant ce changement — on empile, comme
+        // auparavant : l'ordre du catalogue suffit à les retrouver.)
         V.injecter(defs, { type: v.type, paths: v.paths || [],
-          coiffureRef: v.coiffureRef, vide: !(v.paths && v.paths.length) });
+          coiffureRef: v.coiffureRef, index: (v.index == null ? undefined : v.index),
+          vide: !(v.paths && v.paths.length) });
       } catch (e) { /* une variante fautive n'empêche pas les autres */ }
     }
     return defs;

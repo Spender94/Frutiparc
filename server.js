@@ -10731,6 +10731,7 @@ app.get('/api/light/variantes', (req, res) => {
     ok: true,
     liste: variantesAcc.map((v) => ({
       famille: v.famille || 0, type: v.type, coiffureRef: v.coiffureRef || 8,
+      index: (Number.isFinite(v.index) ? v.index : null),
       paths: v.retire ? [] : v.paths, retire: !!v.retire,
     })),
   });
@@ -10747,7 +10748,8 @@ app.get('/api/admin/variantes', adminScope('shop'), (req, res) => {
     rangs.set(cle, rang + 1);
     return {
       id: v.id, nom: v.nom, famille: v.famille || 0, type: v.type,
-      rang, nb: (v.paths || []).length, retire: !!v.retire, createdAt: v.createdAt,
+      rang, index: (Number.isFinite(v.index) ? v.index : null),
+      nb: (v.paths || []).length, retire: !!v.retire, createdAt: v.createdAt,
     };
   }));
 });
@@ -10763,17 +10765,26 @@ app.post('/api/admin/variantes', adminScope('shop'),
       return res.status(400).json({ error: 'nom + type (1-16) + paths requis' });
     }
     variantesSeq += 1;
+    // L'INDEX EST ATTRIBUÉ ICI, UNE FOIS POUR TOUTES. Il ne dépend plus du rang
+    // d'injection : le client comble le rouleau jusqu'à cette place. Une variante
+    // garde donc le même index quoi qu'il arrive ensuite au catalogue.
+    //  est le nombre d'images d'origine du rouleau, que seul le client
+    // connaît (il est dans le SWF) ; il nous le dit en publiant.
+    const memeRouleau = variantesAcc.filter((x) => (x.famille || 0) === (Number(b.famille) || 0) && x.type === type);
+    const suivant = memeRouleau.reduce((m, x) => Math.max(m, Number(x.index) >= 0 ? x.index + 1 : 0), 0);
+    const index = Math.max(Number(b.base) || 0, suivant);
     const v = {
       id: 'v' + variantesSeq, nom: String(b.nom).slice(0, 60),
       famille: Number(b.famille) || 0, type: type,
       coiffureRef: Number(b.coiffureRef) || 8,
+      index,
       paths, createdAt: new Date().toISOString(),
     };
     variantesAcc.push(v);
     sauverVariantes();
     const rang = variantesAcc.filter((x) => (x.famille || 0) === v.famille && x.type === v.type).length - 1;
     console.log(`[VARIANTES] publiée ${v.id} « ${v.nom} » (type ${v.type}, rang ${rang}, ${paths.length} tracés)`);
-    res.json({ ok: true, id: v.id, rang });
+    res.json({ ok: true, id: v.id, rang, index: v.index });
   });
 
 // On ne SUPPRIME pas : on retire les tracés en gardant la place. Sans quoi les
