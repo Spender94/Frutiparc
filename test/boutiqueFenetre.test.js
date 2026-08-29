@@ -246,6 +246,25 @@ test('la fenêtre du light est bâtie comme celle du bureau', () => {
     'le corps de la fenêtre Boutique est blanc');
 });
 
+test('un article déjà acquis n\'a pas de bouton, mais la phrase à la place du prix', () => {
+  // `win.Shop.setItem` (main.swf 0x7a8d0) ne met l'entrée d'achat au menu que
+  // `if (!item.alreadyBuy)` — il n'existe donc AUCUN bouton pour un article
+  // possédé, ni actif ni grisé. Et `displayItemPage("description")` (0x7a9be)
+  // écrit, exactement là où irait le prix et dans le même style `s="3"` :
+  //
+  //     if (item.alreadyBuy) page += Lang.fv('shop.already_have')
+  //     else                 page += Lang.fv('shop.price', { p: item.price })
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  const f = /function renderShopFiche\(\) \{[\s\S]*?\n  \}/.exec(html);
+  assert.ok(f, 'renderShopFiche doit exister');
+  assert.match(f[0], /\? '<button type="button" class="bo-acheter" id="bo-acheter">Acheter<\/button>'\s*\n\s*: ''\)/,
+    'pas de bouton quand l\'article est déjà là');
+  assert.doesNotMatch(f[0], /<button[^>]*bo-acheter[^>]*disabled/,
+    'et surtout pas de bouton grisé qui le dirait');
+  assert.match(f[0], /\(achetable \? 'Prix : ' \+ prix \+ ' kikooz' : 'Vous possédez déjà ce produit'\)/,
+    'la ligne de prix devient la phrase');
+});
+
 /*
  * Les trois retouches de look de la fenêtre.
  *

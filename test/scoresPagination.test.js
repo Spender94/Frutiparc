@@ -144,19 +144,65 @@ test('le classement XP montre le NIVEAU, et le tri reste sur l’XP', () => {
     .exec(SERVEUR) || /const xp = \[\.\.\.fusion\.entries\(\)\][\s\S]*?games\.push\(permanent\('_xp'[^\n]*\);/
     .exec(SERVEUR);
   assert.ok(m, 'le classement XP doit exister côté serveur');
-  assert.match(m[0], /label: 'niveau ' \+ getLevelForXp\(s\)/, 'l’étiquette porte le niveau');
+  // « Niv. 95, 31% » : `Standard.displayScoreType(v, 'xp')` (0x25b84) écrit le
+  // niveau ET l'avancement dedans. Le portage n'écrivait que « niveau 95 ».
+  assert.match(m[0], /label: displayScoreType\(s, 'xp'\)/, 'l’étiquette est celle d’époque');
   assert.ok(!/toLocaleString\('fr-FR'\) \+ ' xp'/.test(m[0]),
     'et plus le compte d’expérience');
   assert.match(m[0], /xp\.sort\(\(a, b\) => b\.s - a\.s/, 'le tri, lui, reste sur l’XP');
-  // La colonne porte le bon titre.
+  // La colonne porte le bon titre — celui de `score.score_type.<ty>`.
   const t = /function titreColonneScore\(g\) \{[\s\S]*?\n  \}/.exec(LIGHT);
   assert.ok(t, 'le titre de colonne doit exister');
   // eslint-disable-next-line no-new-func
   const titre = new Function(t[0] + '; return titreColonneScore;')();
-  assert.strictEqual(titre({ id: '_xp' }), 'Niveau');
+  assert.strictEqual(titre({ id: '_xp' }), 'Expérience');
   assert.strictEqual(titre({ id: '_rate' }), 'Consécration');
   assert.strictEqual(titre({ id: 'mb2_classic', lowerIsBetter: true }), 'Temps');
   assert.strictEqual(titre({ id: 'snake3_classic' }), 'Score');
+});
+
+test('un score s’écrit comme `Standard.displayScoreType`', () => {
+  /* main.swf 0x25a56, branche par branche — c'est le `ty` du descripteur qui
+     choisit, et `FENumber.toStringL` (0x128a1) remplit de zéros à gauche.
+     Le portage avait ses propres formats : « 1:01.23 » pour un temps (deux
+     centièmes au lieu de trois millièmes, et deux-points au lieu de la
+     ponctuation d'époque), le compte d'XP brut, la consécration à quatre
+     décimales suivie d'une espace. */
+  const f = /function displayScoreType\(score, ty\) \{[\s\S]*?\n\}/.exec(SERVEUR);
+  assert.ok(f, 'displayScoreType doit exister côté serveur');
+  const pad = /function padZ\(n, l\) \{[\s\S]*?\n\}/.exec(SERVEUR);
+  const lvl = /function getLevelForXp\(xp\) \{[\s\S]*?\n\}/.exec(SERVEUR);
+  const xpl = /function xpForLevel\(level\) \{[\s\S]*?\n\}/.exec(SERVEUR);
+  const rate = /function xpLevelCompletionRate\(xp\) \{[\s\S]*?\n\}/.exec(SERVEUR);
+  // eslint-disable-next-line no-new-func
+  const d = new Function(pad[0] + xpl[0] + lvl[0] + rate[0] + f[0]
+    + '; return displayScoreType;')();
+
+  // millisecond : `m + "'" + pad(s,2) + '"' + pad(ms,3)`, la minute seulement
+  // si elle existe.
+  assert.strictEqual(d(61234, 'millisecond'), '1\'01"234');
+  assert.strictEqual(d(45678, 'millisecond'), '45"678');
+  assert.strictEqual(d(704, 'millisecond'), '0"704');
+  // xp : niveau 1 à 0 d'expérience, et 10 000 ouvre le niveau 2.
+  assert.strictEqual(d(0, 'xp'), 'Niv. 1, 00%');
+  assert.strictEqual(d(10000, 'xp'), 'Niv. 2, 00%');
+  assert.strictEqual(d(5000, 'xp'), 'Niv. 1, 50%');
+  // rate : deux décimales au plus, le % collé.
+  assert.strictEqual(d(31.4159, 'rate'), '31.42%');
+  assert.strictEqual(d(50, 'rate'), '50%');
+  // ptmb2 : le pourcentage seul en dessous de cent, le boss devant au-delà.
+  assert.strictEqual(d(42, 'ptmb2'), '43%');
+  assert.strictEqual(d(305, 'ptmb2'), '3, 6%');
+  // le défaut rend le nombre
+  assert.strictEqual(d(4321, 'point'), '4321');
+
+  // Et le light écrit pareil dans la fiche.
+  const s = /function scoreLisible\(score, type\) \{[\s\S]*?\n  \}/.exec(LIGHT);
+  assert.ok(s, 'scoreLisible doit exister');
+  // eslint-disable-next-line no-new-func
+  const l = new Function(s[0] + '; return scoreLisible;')();
+  assert.strictEqual(l(61234, 'millisecond'), '1\'01"234');
+  assert.strictEqual(l(42, 'ptmb2'), '43%');
 });
 
 test('« Je ne suis pas classé pour le moment » — la phrase de lang_french.as', () => {

@@ -3331,6 +3331,61 @@ function getLevelForXp(xp) {
   return Math.floor(Math.sqrt(Math.max(0, xp) / 10000) + 1);
 }
 
+// `UserMng.xpLevelCompletionRate` (main.swf 0x26455) : où l'on en est DANS son
+// niveau, entre 0 et 1 — ce que le tableau des scores affiche après le niveau.
+function xpLevelCompletionRate(xp) {
+  const l = getLevelForXp(xp);
+  const bas = xpForLevel(l);
+  const haut = xpForLevel(l + 1);
+  return haut > bas ? (Math.max(0, xp) - bas) / (haut - bas) : 0;
+}
+
+/* COMMENT L'ÉPOQUE ÉCRIT UN SCORE — `Standard.displayScoreType(score, ty)`
+   (main.swf 0x25a56), transcrit branche par branche. C'est le `ty` du
+   descripteur de classement (`LEGACY_RANKINGS`) qui choisit :
+
+     millisecond  m > 0 ? m + "'" + pad(s,2) : s   puis  '"' + pad(ms,3)
+     xp           "Niv. " + niveau + ", " + pad(floor(taux × 100), 2) + "%"
+     rate         round(v × 100) / 100 + "%"
+     ptmb2        v < 100 ? (v+1) + "%"
+                          : floor(v/100) + ", " + (v%100 + 1) + "%"
+     (défaut)     le nombre, tel quel
+
+   `pad` est `FENumber.toStringL(n, l)` (0x128a1) : un remplissage de ZÉROS à
+   gauche jusqu'à la longueur `l`, NaN et undefined valant 0.
+
+   Le portage écrivait ailleurs ses propres formats — « 1:01.23 » pour un temps,
+   le compte d'XP brut, la consécration à quatre décimales. Les deux clients
+   lisent le même classement : ils doivent l'écrire pareil. */
+function padZ(n, l) {
+  let s = String(Math.trunc(Number(n) || 0));
+  while (s.length < l) s = '0' + s;
+  return s;
+}
+function displayScoreType(score, ty) {
+  const v = Number(score);
+  if (!Number.isFinite(v)) return String(score == null ? '' : score);
+  switch (ty) {
+    case 'millisecond': {
+      const ms = v % 1000;
+      const s = Math.floor(v / 1000) % 60;
+      const m = Math.floor(v / 60000);
+      return (m > 0 ? m + "'" + padZ(s, 2) : String(s)) + '"' + padZ(ms, 3);
+    }
+    case 'xp':
+      return 'Niv. ' + getLevelForXp(v) + ', '
+        + padZ(Math.floor(xpLevelCompletionRate(v) * 100), 2) + '%';
+    case 'rate':
+      return (Math.round(v * 100) / 100) + '%';
+    case 'ptmb2':
+      return v < 100
+        ? (v + 1) + '%'
+        : Math.floor(v / 100) + ', ' + ((v % 100) + 1) + '%';
+    default:
+      return String(v);
+  }
+}
+
 // Award XP to all active users (called during midnight rollover,
 // before challenge scores are cleared from memory)
 async function awardDailyXp() {
@@ -19486,17 +19541,16 @@ function formatChallengeScoreLabel(rankingId, score, data) {
     }
     return n.toLocaleString('fr-FR');
   }
-  if (meta.game === 'bkiwi') {
-    const pad = (x) => (x < 10 ? '0' + x : '' + x);
-    const minutes = Math.floor(n / 60000);
-    const seconds = Math.floor((n % 60000) / 1000);
-    const cs = Math.floor((n % 1000) / 10);
-    return minutes + ':' + pad(seconds) + '.' + pad(cs);
-  }
+  // Les deux types d'époque qui ne sont pas des points : le chrono de Burning
+  // Kiwi et le score empilé de MotionBall. `displayScoreType` les écrit comme
+  // le SWF — `1'01"234` et non `1:01.23`, et le boss de MB2 retrouve sa place
+  // au-dessus de cent (le portage n'en gardait que le pourcentage).
+  if (meta.game === 'bkiwi') return displayScoreType(n, 'millisecond');
   if (rankingId === 'mb2_classic' || rankingId === 'mb2_challenge') {
-    const pct = (Math.max(0, Math.trunc(n)) % 100) + 1;
-    return pct + '%';
+    return displayScoreType(Math.max(0, Math.trunc(n)), 'ptmb2');
   }
+  // ÉCART ASSUMÉ sur les points : l'époque rend le nombre nu, on le groupe par
+  // milliers. Un score à sept chiffres se lit, celui de 2005 se déchiffre.
   return n.toLocaleString('fr-FR');
 }
 
@@ -19742,18 +19796,23 @@ app.get('/api/light/challenge', async (req, res) => {
     for (const [u, ud] of Object.entries(users)) {
       if (ud && Number.isFinite(ud.xp) && ud.xp > 0) fusion.set(u, Number(ud.xp));
     }
-    // LE CLASSEMENT XP MONTRE LE NIVEAU, pas le compte d'expérience : c'est le
-    // niveau qu'on lit partout ailleurs (l'encart, la fiche, la bande de la
-    // main bar), et un nombre à six chiffres ne dit rien à personne. Le TRI
-    // reste sur l'XP — deux joueurs de niveau 13 ne sont pas à égalité.
+    // LE CLASSEMENT XP MONTRE LE NIVEAU, pas le compte d'expérience — et c'est
+    // l'ÉPOQUE qui le veut : `Standard.displayScoreType(score, 'xp')` écrit
+    // « Niv. 95, 31% », le niveau puis l'avancement dedans. Le portage écrivait
+    // « niveau 95 » et perdait la seconde moitié. Le TRI reste sur l'XP — deux
+    // joueurs de niveau 13 ne sont pas à égalité.
     const xp = [...fusion.entries()].map(([u, s]) => ({
-      u, s, label: 'niveau ' + getLevelForXp(s),
+      u, s, label: displayScoreType(s, 'xp'),
     }));
     xp.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
     games.push(permanent('_xp', 'Classement XP', 'xp', xp));
   } catch (e) { console.error('[LIGHT] xp ranking error:', e.message); }
   try {
-    const cons = (await getConsecrationLeaderboard()).map((e) => ({ u: e.u, s: e.s, label: e.s + ' %' }));
+    // La consécration : `displayScoreType(v, 'rate')` — deux décimales au plus
+    // et le `%` collé. Le portage servait `e.s + ' %'`, donc les quatre
+    // décimales du calcul et une espace de trop.
+    const cons = (await getConsecrationLeaderboard())
+      .map((e) => ({ u: e.u, s: e.s, label: displayScoreType(e.s, 'rate') }));
     games.push(permanent('_rate', 'Class. consécration', 'consecration', cons));
   } catch (e) { console.error('[LIGHT] consecration ranking error:', e.message); }
 

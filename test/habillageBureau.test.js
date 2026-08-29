@@ -39,13 +39,14 @@ test('le voyant tient dans la bande de 18 du userSlot', () => {
   // `cp.UserList` monte le même `userSlot` dans les deux.
   assert.match(CSS, /#users-drawer \.u,\s*\n\s*body\.bureau-frutiz #gaspard-panel \.gs-ul-defile \.u \{[\s\S]*?height: 18px; min-height: 18px;/);
   // Le voyant est POSÉ, pas rangé dans un flux : `UserSlot.init` (0x63541)
-  // attache le champ du pseudo à `_x = 20` et laisse les vingt pixels de
-  // gauche au clip `icon`. Le pseudo, lui, part de la gauche.
+  // attache le champ du pseudo à `_x = 20` et laisse les pixels de gauche au
+  // clip `icon`. Le pseudo, lui, part de la gauche. Douze et non trois : la
+  // bande `user-slot` a son propre décrochement, et le voyant se posait dessus.
   const bloc = /#users-drawer \.u \.voyant,[\s\S]*?\.u \.voyant \{([\s\S]*?)\n\}/.exec(CSS);
   assert.ok(bloc, 'la règle du voyant doit exister');
-  assert.match(bloc[1], /position: absolute; left: 3px; top: 2px;/);
+  assert.match(bloc[1], /position: absolute; left: 12px; top: 2px;/);
   assert.match(bloc[1], /width: 14px; height: 14px; flex: 0 0 14px;/);
-  assert.match(CSS, /#users-drawer \.u,\s*\n\s*body\.bureau-frutiz #gaspard-panel \.gs-ul-defile \.u \{[\s\S]*?padding: 0 4px 0 22px;/);
+  assert.match(CSS, /#users-drawer \.u,\s*\n\s*body\.bureau-frutiz #gaspard-panel \.gs-ul-defile \.u \{[\s\S]*?padding: 0 4px 0 30px;/);
   assert.match(CSS, /#users-drawer \.u,\s*\n\s*body\.bureau-frutiz #gaspard-panel \.gs-ul-defile \.u \{[\s\S]*?justify-content: flex-start;/);
   // Le mobile, lui, garde ses 22 : la tuile y est assez grande.
   assert.match(LIGHT, /#users-drawer \.u \.voyant \{ width: 22px; height: 22px;/);

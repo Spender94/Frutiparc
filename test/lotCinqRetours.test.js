@@ -46,7 +46,9 @@ test('un classement permanent n’a pas de colonne « Heure »', () => {
   assert.match(LIGHT, /\+ \(avecHeure \? '<span class="h">Heure<\/span>' : ""\) \+ '<\/div>';/);
   assert.match(LIGHT, /\+ \(avecHeure \? '<span class="h">' \+ xmlEscape\(s\.time \|\| ""\) \+ '<\/span>' : ""\)/);
   // …et la piste de 38 px avec elles, sinon le score flotterait loin du bord.
-  assert.match(LIGHT, /#sc-table\.sans-heure \.sc-entete,\n\s+#sc-table\.sans-heure \.sc-ligne \{\n\s+grid-template-columns: 18px 20px minmax\(0,1fr\) auto var\(--sc-annexes, \);/);
+  // (La première piste est `--sc-rang` : 25, 35 ou 45 px selon le plus grand
+  // rang de la page, comme `win.Score.display` le calcule — cf. 0xc3132.)
+  assert.match(LIGHT, /#sc-table\.sans-heure \.sc-entete,\n\s+#sc-table\.sans-heure \.sc-ligne \{\n\s+grid-template-columns: var\(--sc-rang, 25px\) 20px minmax\(0,1fr\) auto var\(--sc-annexes, \);/);
 });
 
 /* ── 3. LE TZONGRE DE KALUGA ──────────────────────────────────────────────── */

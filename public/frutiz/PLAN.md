@@ -4452,3 +4452,67 @@ d'écurie (`$lapCar`, `$totalCar`) : un temps qu'on n'a pas enregistré ne
 s'invente pas, et la carte saute d'elle-même un circuit dont `$fcLap` n'est pas
 un nombre fini. Les circuits reviennent dès que le joueur lance le jeu Flash,
 qui écrit sa propre sauvegarde.
+
+## Comment un SCORE s'écrit — `Standard.displayScoreType` (0x25a56)
+
+C'est le `ty` du descripteur de classement (`LEGACY_RANKINGS`) qui choisit la
+plume, et le portage en avait inventé d'autres. La fonction d'époque, branche
+par branche :
+
+    millisecond   m > 0 ? m + "'" + pad(s,2) : s   puis  '"' + pad(ms,3)
+    xp            "Niv. " + niveau + ", " + pad(floor(taux × 100), 2) + "%"
+    rate          round(v × 100) / 100 + "%"
+    ptmb2         v < 100 ? (v+1) + "%"
+                          : floor(v/100) + ", " + (v%100 + 1) + "%"
+    (défaut)      le nombre, tel quel
+
+`pad` est `FENumber.toStringL(n, l)` (0x128a1) : un remplissage de ZÉROS à
+gauche, NaN et undefined valant 0. Le niveau et son avancement viennent de
+`UserMng.xpToLevel` (0x26384) et `xpLevelCompletionRate` (0x26455) :
+
+    xpToLevel(xp) = floor(sqrt(max(xp,0) / 10000) + 1)
+    levelToXp(l)  = (max(l,1) − 1)² × 10000
+    taux(xp)      = (xp − levelToXp(L)) / (levelToXp(L+1) − levelToXp(L))
+
+D'où « Niv. 95, 31% » au Classement XP — le niveau ET l'avancement dedans, là
+où le portage n'écrivait que « niveau 95 ». La consécration passe de quatre
+décimales suivies d'une espace à `31.42%`, et le chrono de Burning Kiwi de
+`1:01.23` à `1'01"234`. **ÉCART ASSUMÉ** sur les points : on les groupe par
+milliers (`toLocaleString('fr-FR')`) là où l'époque rend le nombre nu — un
+score à sept chiffres se lit, celui de 2005 se déchiffre.
+
+## Les colonnes du tableau des scores — `win.Score.display` (0xc30fa..0xc35e5)
+
+L'en-tête et la ligne portent les mêmes largeurs, et le même ordre :
+
+    rang          `currentStart + nbResult < 100 ? 25 : < 1000 ? 35 : 45`
+                  texte aligné à GAUCHE, en gras (sid 1 + `bold: true`)
+    frutibouille  un `link` de 20
+    Frutiz        `big: 1`, `min.w = 100` — elle prend le reste
+    Score         85, aligné à droite (sid 2 en tête, sid 1 dans les lignes)
+    <annexes>     les `dataSpec` du descripteur (Écurie 60, Rang 60…)
+    Heure         60
+
+Tous les champs de l'en-tête sont en `sid: 2`, ceux des lignes en `sid: 1`. Le
+style lui-même vient de `frScoreLight` (0x4972f), où les TROIS `sid` partagent
+`colorSet.orange` : en-tête et lignes ont donc la même encre, et seul le rang
+est gras. `colorSet` n'est pas défini dans main.swf — sa valeur exacte reste à
+trouver ; les teintes du portage sont celles relevées au pixel sur un rendu.
+
+Et `cpDocument` ne met AUCUNE gouttière entre ses éléments (chaque champ porte
+sa marge de 2 px) : les 4 px de `gap` du portage ajoutaient 24 px à une rangée
+qui tient déjà tout juste dans les 610 de la fenêtre, et tronquaient la colonne
+« Heure » de Burning Kiwi. Sur un téléphone, la grille reste souple : 25 + 20 +
+100 + 85 + 60 ne tiendrait pas dans 360.
+
+## La boutique : un article déjà acquis
+
+`win.Shop.setItem` (0x7a8d0) ne met l'entrée d'achat au menu que
+`if (!item.alreadyBuy)` — il n'existe donc AUCUN bouton pour un article
+possédé, ni actif ni grisé. Et `displayItemPage("description")` (0x7a9be) écrit,
+exactement là où irait le prix et dans le même style `s="3"` :
+
+    if (item.alreadyBuy) page += Lang.fv('shop.already_have')
+    else                 page += Lang.fv('shop.price', { p: item.price })
+
+soit « Vous possédez déjà ce produit » à la place de « Prix : N kikooz ».

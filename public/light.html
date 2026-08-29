@@ -420,6 +420,8 @@
     font-weight: bold; font-size: 12px; cursor: pointer;
   }
   .bo-acheter:active { background: #5E9416; }
+  /* Pas de bouton grisé : un article déjà acquis n'en a AUCUN (cf. la note de
+     `renderShopFiche`). La règle reste pour l'attente d'un achat en cours. */
   .bo-acheter[disabled] { background: #BFD8A0; border-color: #A9BE8A; color: #4A5F30; cursor: default; }
   .bo-etat { font-size: 11px; color: #4E7128; margin-top: 6px; }
   .bo-etat.ok { color: #2f6b16; font-weight: bold; }
@@ -1659,10 +1661,25 @@
   /* rang · frutibouille · Frutiz · Score · <colonnes annexes> · Heure — l'ordre
      de `cp.Score`. `--sc-annexes` porte les largeurs d'époque des colonnes
      annexes (« 60px 60px » pour Burning Kiwi) ; sans elles, la piste est vide
-     et la grille est celle d'avant, au pixel près. */
+     et la grille est celle d'avant, au pixel près.
+
+     LES LARGEURS D'ÉPOQUE, relevées dans `win.Score.display` (main.swf
+     0xc30fa..0xc35e5) — la ligne d'en-tête et la ligne de score portent les
+     mêmes :
+
+        rang        `currentStart + nbResult < 100 ? 25 : < 1000 ? 35 : 45`
+                    et son texte est aligné à GAUCHE, en gras (sid 1 + bold)
+        frutibouille  un `link` de 20
+        Frutiz      `big: 1`, `min.w = 100` — c'est elle qui prend le reste
+        Score       85, aligné à droite (sid 2 en tête, sid 1 dans les lignes)
+        Heure       60
+
+     `--sc-rang` porte la première ; le reste ne vaut que sur le BUREAU, où la
+     fenêtre a la largeur d'époque. Un téléphone de 360 px ne tiendrait pas
+     25 + 20 + 100 + 85 + 60 : il garde sa grille souple. */
   .sc-entete, .sc-ligne {
     display: grid;
-    grid-template-columns: 18px 20px minmax(0,1fr) auto var(--sc-annexes, ) 38px;
+    grid-template-columns: var(--sc-rang, 25px) 20px minmax(0,1fr) auto var(--sc-annexes, ) 38px;
     align-items: center; gap: 4px; font-size: 11px; color: #433005; min-height: 19px;
   }
   /* Un classement PERMANENT n'a pas d'heure (cf. `avecHeure`) : sa dernière
@@ -1670,7 +1687,20 @@
      38 px du bord droit. On la retire avec la colonne. */
   #sc-table.sans-heure .sc-entete,
   #sc-table.sans-heure .sc-ligne {
-    grid-template-columns: 18px 20px minmax(0,1fr) auto var(--sc-annexes, );
+    grid-template-columns: var(--sc-rang, 25px) 20px minmax(0,1fr) auto var(--sc-annexes, );
+  }
+  /* Et SANS gouttière : `cpDocument` pose ses éléments bout à bout, chaque
+     champ portant sa propre marge de 2 px. Les 4 px de gap ajoutaient 24 px à
+     une rangée qui tient déjà tout juste dans les 610 de la fenêtre — la
+     colonne « Heure » de Burning Kiwi s'en trouvait tronquée. */
+  body.bureau-frutiz #sc-table .sc-entete,
+  body.bureau-frutiz #sc-table .sc-ligne {
+    grid-template-columns: var(--sc-rang, 25px) 20px minmax(100px,1fr) 85px var(--sc-annexes, ) 60px;
+    gap: 0;
+  }
+  body.bureau-frutiz #sc-table.sans-heure .sc-entete,
+  body.bureau-frutiz #sc-table.sans-heure .sc-ligne {
+    grid-template-columns: var(--sc-rang, 25px) 20px minmax(100px,1fr) 85px var(--sc-annexes, );
   }
   .sc-entete .d, .sc-ligne .d { text-align: center; }
   .sc-ligne .d { line-height: 0; }
@@ -1681,7 +1711,9 @@
   .sc-entete .f { grid-column: 3; }
   .sc-entete .s { text-align: right; }
   .sc-entete .h { text-align: right; }
-  .sc-ligne .r { font-weight: bold; text-align: right; }
+  /* `textFormat: { align: 'left', bold: true }` — le rang est le SEUL texte
+     que la ligne met en gras, et il est calé à gauche de sa piste. */
+  .sc-ligne .r { font-weight: bold; text-align: left; }
   .sc-ligne .b { width: 18px; height: 18px; }
   .sc-ligne .b img, .sc-ligne .b canvas { width: 18px; height: 18px; display: block; }
   .sc-ligne .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -4458,17 +4490,28 @@
     // le descriptif dessous. Il a 630 px de large ; le téléphone en a 240, donc
     // seul le TITRE tient à côté de l'aperçu — les deux textes passent en pleine
     // largeur au lieu d'être étranglés dans une colonne de 130 px.
+    // UN ARTICLE DÉJÀ ACQUIS N'A PAS DE BOUTON. `win.Shop.setItem` (0x7a8d0) ne
+    // met l'entrée d'achat au menu que `if (!item.alreadyBuy)`, et
+    // `displayItemPage("description")` (0x7a9be) écrit, EXACTEMENT LÀ OÙ IRAIT
+    // LE PRIX :
+    //
+    //     if (item.alreadyBuy) page += '<l><t s="3">' + Lang.fv('shop.already_have')
+    //     else                 page += '<l><t s="3">' + Lang.fv('shop.price', …)
+    //
+    // Un bouton grisé « Possédé » n'existe donc nulle part : c'est la ligne de
+    // prix qui devient la phrase, et rien ne s'offre au clic.
     var html = '<div class="bo-tete">'
       + '<div class="bo-vue"><div class="cadre">' + boApercu(it) + '</div>'
       + (achetable
         ? '<button type="button" class="bo-acheter" id="bo-acheter">Acheter</button>'
-        : '<button type="button" class="bo-acheter" disabled>'
-          + (it.offert ? "Offert" : "Possédé") + '</button>')
+        : '')
       + '</div>'
       + '<div class="bo-txt"><div class="bo-titre">' + xmlEscape(it.name) + '</div></div></div>'
       + (it.comment ? '<div class="bo-accroche">' + xmlEscape(it.comment) + '</div>' : '')
       + (it.description ? '<div class="bo-texte">' + xmlEscape(it.description) + '</div>' : '')
-      + '<div class="bo-prix">Prix : ' + prix + ' kikooz</div>'
+      + '<div class="bo-prix">'
+      + (achetable ? 'Prix : ' + prix + ' kikooz' : 'Vous possédez déjà ce produit')
+      + '</div>'
       + (it.pass
         ? '<div class="bo-etat">Tu en possèdes ' + it.pass.possede
           + ' → ' + it.pass.parJour + ' parties par jour.</div>'
@@ -4906,6 +4949,12 @@
     } else {
       box.style.removeProperty("--sc-annexes");
     }
+    // La piste du RANG s'élargit avec le plus grand rang de la page — c'est la
+    // règle d'époque, au chiffre près (0xc3132) :
+    //   reg36 = currentStart + nbResult ; < 100 → 25, < 1000 → 35, sinon 45.
+    var plusGrandRang = scoresDebut + SC_PAR_PAGE;
+    box.style.setProperty("--sc-rang",
+      (plusGrandRang < 100 ? 25 : plusGrandRang < 1000 ? 35 : 45) + "px");
     /* L'HEURE N'A DE SENS QUE POUR UN CHALLENGE.
        Elle dit à quel moment de la JOURNÉE le score est tombé — la journée
        étant celle du tableau, remise à zéro à minuit. Un classement permanent
@@ -5046,13 +5095,12 @@
      et pour les deux classements joueur « Expérience » et « Consécration ».
      Le portage écrivait « Score » partout.
 
-     ÉCART ASSUMÉ sur l'XP : la colonne annonce « Niveau », pas
-     « Expérience », parce que c'est le NIVEAU qu'on y lit désormais — un
-     compte d'expérience à six chiffres ne dit rien, et le niveau est ce que
-     le reste du site affiche (l'encart, la fiche, la main bar). Le tri, lui,
-     reste sur l'XP : deux joueurs de niveau 13 ne sont pas à égalité. */
+     « Expérience » et non « Niveau » : la colonne annonçait le niveau parce
+     que le portage n'affichait que lui. L'époque écrit les DEUX —
+     `displayScoreType(v, 'xp')` rend « Niv. 95, 31% », le niveau puis
+     l'avancement dedans —, et l'en-tête d'époque reprend donc sa place. */
   function titreColonneScore(g) {
-    if (g.id === '_xp') return "Niveau";
+    if (g.id === '_xp') return "Expérience";
     if (g.id === '_rate') return "Consécration";
     if (g.lowerIsBetter) return "Temps";
     return "Score";
@@ -7900,12 +7948,30 @@
     if (jours === 1) return "hier à " + hm;
     return jourCourt(iso) + " à " + hm;
   }
+  /* `Standard.displayScoreType(score, ty)` (main.swf 0x25a56), la même que le
+     serveur applique aux étiquettes du tableau des scores :
+
+       millisecond  m > 0 ? m + "'" + pad(s,2) : s   puis  '"' + pad(ms,3)
+       ptmb2        v < 100 ? (v+1) + "%"
+                            : floor(v/100) + ", " + (v%100 + 1) + "%"
+       (défaut)     le nombre
+
+     ÉCART ASSUMÉ, le même qu'au tableau : les points sont groupés par milliers.
+     Le chrono, lui, reprend la ponctuation d'époque — `1'01"234`, pas
+     « 1:01.234 » : c'est ainsi que Burning Kiwi écrit ses temps depuis 2005. */
   function scoreLisible(score, type) {
+    var v = Number(score);
+    if (!isFinite(v)) return String(score == null ? "" : score);
+    var pad = function (n, l) { return String(Math.trunc(n) || 0).padStart(l, "0"); };
     if (type === "millisecond") {
-      var s = Math.floor(score / 1000), ms = score % 1000;
-      return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") + "." + String(ms).padStart(3, "0");
+      var ms = v % 1000, s = Math.floor(v / 1000) % 60, m = Math.floor(v / 60000);
+      return (m > 0 ? m + "'" + pad(s, 2) : String(s)) + '"' + pad(ms, 3);
     }
-    return String(score);
+    if (type === "ptmb2") {
+      var n = Math.max(0, Math.trunc(v));
+      return n < 100 ? (n + 1) + "%" : Math.floor(n / 100) + ", " + ((n % 100) + 1) + "%";
+    }
+    return v.toLocaleString("fr-FR");
   }
   /*
    * LE NŒUD d'une fiche. La première prend le panneau d'origine ; les

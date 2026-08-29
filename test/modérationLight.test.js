@@ -148,7 +148,10 @@ test('un sujet SUIVI se nomme, et la ligne y mène', () => {
 test('une ligne de score de la fiche ouvre son classement', () => {
   // Le serveur donne l'identifiant interne du classement, celui que
   // `/api/light/challenge` pose en `id` sur chaque jeu.
-  assert.match(SERVEUR, /classements\.push\(\{ titre: d\.rn, jeu: d\.g, rk: d\.internal,/);
+  // `rkId` et non `d.internal` : Burning Kiwi a six classements pour un onglet,
+  // et la fiche doit lire celui du circuit du jour, comme le tableau.
+  assert.match(SERVEUR, /classements\.push\(\{ titre: d\.rn, jeu: d\.g, rk: rkId,/);
+  assert.match(SERVEUR, /const rkId = \/\^bkiwi_\/\.test\(d\.internal\) \? bkiwiDuJour : d\.internal;/);
   const o = /function ouvrirScoresSur\(rk, jeu\) \{[\s\S]*?\n  \}/.exec(LIGHT);
   assert.ok(o, 'ouvrirScoresSur doit exister');
   assert.match(o[0], /var i = jeux\.findIndex\(function \(g\) \{ return rk && g\.id === rk; \}\);/);

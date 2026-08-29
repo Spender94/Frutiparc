@@ -129,11 +129,14 @@ test('l’écurie se retourne au clic — la voiture, puis l’écusson', () => 
 /* ── 3. LA COLONNE DANS LA GRILLE ─────────────────────────────────────────── */
 
 test('les colonnes annexes se glissent entre le score et l’heure', () => {
-  assert.match(LIGHT, /grid-template-columns: 18px 20px minmax\(0,1fr\) auto var\(--sc-annexes, \) 38px;/);
+  assert.match(LIGHT, /grid-template-columns: var\(--sc-rang, 25px\) 20px minmax\(0,1fr\) auto var\(--sc-annexes, \) 38px;/);
+  // Sur le BUREAU, les largeurs d'époque au pixel (`win.Score.display`) : le
+  // score à 85, l'heure à 60, le pseudo à 100 au minimum, et pas de gouttière.
+  assert.match(LIGHT, /body\.bureau-frutiz #sc-table \.sc-entete,\n\s+body\.bureau-frutiz #sc-table \.sc-ligne \{\n\s+grid-template-columns: var\(--sc-rang, 25px\) 20px minmax\(100px,1fr\) 85px var\(--sc-annexes, \) 60px;\n\s+gap: 0;/);
   // L'en-tête et la ligne portent les mêmes cellules, au même rang.
   // Le titre de la colonne n'est plus le mot « Score » en dur : il vient de
   // `score.score_type.<t>` (lang_french.as) — « Temps » pour un chrono,
-  // « Consécration » pour la consécration, « Niveau » pour l'XP.
+  // « Consécration » pour la consécration, « Expérience » pour l'XP.
   assert.match(LIGHT, /\+ '<span class="s">' \+ xmlEscape\(titreColonneScore\(g\)\) \+ '<\/span>'\s*\n\s*\+ annexes\.map/);
   assert.match(LIGHT, /\+ '<span class="s">' \+ xmlEscape\(s\.label\) \+ '<\/span>'\s*\n\s*\+ annexes\.map/);
 });
