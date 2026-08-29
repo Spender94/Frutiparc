@@ -163,10 +163,14 @@
       if (!f) return;
       for (var k = 0; k < f.couches.length; k++) {
         var c = f.couches[k];
-        if (!c.rgb) continue;                       // dégradés : hors périmètre v1
+        // Un dégradé n'a pas de couleur unique : on le transporte tel quel, et
+        //  ne sert plus que de repli pour un lecteur qui l'ignorerait.
+        if (!c.rgb && !c.degrade) continue;
+        var repli = c.rgb || (c.degrade.arrets[0] && c.degrade.arrets[0].rgb) || [136, 136, 136];
         out.push({
           d: c.d,
-          fill: "rgb(" + c.rgb[0] + "," + c.rgb[1] + "," + c.rgb[2] + ")",
+          fill: "rgb(" + repli[0] + "," + repli[1] + "," + repli[2] + ")",
+          degrade: c.degrade || null,
           alpha: (c.alpha == null ? 1 : c.alpha),
           m: [Mparent.a, Mparent.b, Mparent.c, Mparent.d, Mparent.e, Mparent.f],
           slot: slot || 0,
@@ -274,7 +278,10 @@
         bounds: { x: 0, y: 0, w: 1, h: 1 },     // informatif : le rendu n'en dépend pas
         couches: [{
           d: p.d, rgb: rgb, alpha: (p.alpha == null ? 1 : p.alpha),
-          trait: !!p.trait, largeur: p.largeur || 1, degrade: null,
+          // Un dégradé EN GRIS se teinte comme un aplat, ombres comprises :
+          // c'est la façon la plus directe de donner du volume à une zone
+          // recolorable.  reste là pour les lecteurs qui l'ignorent.
+          trait: !!p.trait, largeur: p.largeur || 1, degrade: p.degrade || null,
         }],
       });
       // scène → acc, puis la matrice propre du tracé.
@@ -370,13 +377,48 @@
     // Les tracés, dans l'ordre de peinture, groupés par SÉRIES de même niveau :
     // un calque nommé par série, pour qu'Illustrator montre des calques parlants.
     var corps = [], i = 0;
+    /*
+     * LES DÉGRADÉS, dans l'autre sens.
+     *
+     * Le moteur peint un dégradé dans un carré de 32768 unités centré sur
+     * l'origine, envoyé par la matrice du style (divisée par 20 au dessin). Pour
+     * l'écrire en SVG, on renvoie les deux bouts de ce carré par cette même
+     * matrice : ils donnent l'axe du `linearGradient`, ou le centre et le rayon
+     * du `radialGradient`. En `userSpaceOnUse`, ces coordonnées vivent dans le
+     * même repère que le `d` du tracé — et la transformation du tracé s'applique
+     * ensuite aux deux, comme il se doit.
+     */
+    var defsGrad = [];
+    function refDegrade(g) {
+      var E = { a: g.M.a / 20, b: g.M.b / 20, c: g.M.c / 20, d: g.M.d / 20, e: g.M.e / 20, f: g.M.f / 20 };
+      var R = function (v) { return Math.round(v * 100) / 100; };
+      var id = "grad" + (defsGrad.length + 1);
+      var arrets = g.arrets.map(function (a) {
+        var c = "rgb(" + a.rgb[0] + "," + a.rgb[1] + "," + a.rgb[2] + ")";
+        var o = (a.alpha == null || a.alpha >= 1) ? "" : ' stop-opacity="' + (Math.round(a.alpha * 1000) / 1000) + '"';
+        return '      <stop offset="' + (Math.round(a.ratio / 255 * 1000) / 1000) + '" stop-color="' + c + '"' + o + " />";
+      }).join("\n");
+      if (g.radial) {
+        var r = 16384 * Math.sqrt(E.a * E.a + E.b * E.b);
+        defsGrad.push('    <radialGradient id="' + id + '" gradientUnits="userSpaceOnUse" cx="'
+          + R(E.e) + '" cy="' + R(E.f) + '" r="' + R(r) + '"'
+          + (g.focale ? ' fx="' + R(E.e + g.focale * r) + '"' : "") + ">\n" + arrets + "\n    </radialGradient>");
+      } else {
+        var x1 = E.a * -16384 + E.e, y1 = E.b * -16384 + E.f;
+        var x2 = E.a * 16384 + E.e, y2 = E.b * 16384 + E.f;
+        defsGrad.push('    <linearGradient id="' + id + '" gradientUnits="userSpaceOnUse" x1="'
+          + R(x1) + '" y1="' + R(y1) + '" x2="' + R(x2) + '" y2="' + R(y2) + '">\n' + arrets + "\n    </linearGradient>");
+      }
+      return id;
+    }
     function ligne(p) {
       var m = p.m || [1, 0, 0, 1, 0, 0];
       var t = (m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1 && m[4] === 0 && m[5] === 0)
         ? "" : ' transform="matrix(' + m.map(function (v) { return Math.round(v * 1e4) / 1e4; }).join(",") + ')"';
+      var teinte = p.degrade ? ("url(#" + refDegrade(p.degrade) + ")") : p.fill;
       var peint = p.trait
-        ? ' fill="none" stroke="' + p.fill + '" stroke-width="' + (p.largeur || 1) + '" stroke-linejoin="round" stroke-linecap="round"'
-        : ' fill="' + p.fill + '"';
+        ? ' fill="none" stroke="' + teinte + '" stroke-width="' + (p.largeur || 1) + '" stroke-linejoin="round" stroke-linecap="round"'
+        : ' fill="' + teinte + '"';
       var op = (p.alpha != null && p.alpha < 1) ? ' opacity="' + (Math.round(p.alpha * 1000) / 1000) + '"' : "";
       return '      <path d="' + p.d + '"' + peint + op + t + " />";
     }
@@ -408,8 +450,16 @@
       + "    couleur pleine, les gris en donnent les ombres. Peindre en couleur ici, c'est\n"
       + "    perdre le relief — et la couleur choisie par le joueur.\n"
       + "\n"
-      + "    Tout ce qui est HORS de ces calques garde sa couleur telle quelle\n"
-      + "    (les contours noirs, un reflet blanc…).\n"
+      + "    LES DÉGRADÉS SONT ACCEPTÉS, et c'est même le moyen le plus direct de donner\n"
+      + "    du volume : un dégradé de GRIS dans un calque « couleurN » se teinte comme\n"
+      + "    un aplat, ombres comprises, quel que soit le coloris. Linéaires et radiaux,\n"
+      + "    avec transparence si tu veux.\n"
+      + "\n"
+      + "    DES COULEURS EN DUR ? Tout ce qui est HORS des calques « couleurN » garde sa\n"
+      + "    couleur telle quelle — un contour noir, un reflet blanc, un logo. Un dessin\n"
+      + "    entièrement peint hors de ces calques donne donc un accessoire à couleurs\n"
+      + "    FIXES, que les trois niveaux ne modifieront pas. Les deux se mélangent\n"
+      + "    librement dans un même accessoire.\n"
       + "\n"
       + "    L'ORDRE DES CALQUES EST L'ORDRE DE PEINTURE. Un même niveau ne doit\n"
       + "    apparaître qu'à UN endroit de la pile.\n"
@@ -417,6 +467,7 @@
       + "    « repere » (la tête) n'est qu'un fond : verrouille-le, il est ignoré au retour.\n"
       + "    Ne change pas la taille du plan de travail (" + sc.w + "×" + sc.h + ").\n"
       + "  -->\n"
+      + (defsGrad.length ? "  <defs>\n" + defsGrad.join("\n") + "\n  </defs>\n" : "")
       + '  <g id="repere" opacity="0.9" style="pointer-events:none">\n' + image + "\n  </g>\n"
       + '  <g id="accessoire">\n' + corps.join("\n") + "\n  </g>\n"
       + "</svg>\n";

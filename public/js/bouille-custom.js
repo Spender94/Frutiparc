@@ -119,6 +119,137 @@
 
   // ── IMPORT ────────────────────────────────────────────────────────────────
 
+  /*
+   * LES DÉGRADÉS — et pourquoi un dégradé EN GRIS vaut mieux qu'un aplat.
+   *
+   * La teinte d'époque est un DÉCALAGE appliqué à chaque couleur du tracé. Un
+   * dégradé de gris teinté rend donc un dégradé de la couleur choisie, ombres
+   * comprises : c'est le moyen le plus direct de donner du volume à une zone
+   * recolorable, sans calque d'ombre séparé.
+   *
+   * Le moteur peint un dégradé dans SON repère — un carré de 32768 unités centré
+   * sur l'origine, envoyé par la matrice du style — et non dans celui du tracé.
+   * Traduire un `<linearGradient>` revient donc à trouver la matrice qui mène de
+   * ce carré à l'axe que le graphiste a tiré : direction et longueur de l'axe
+   * donnent la partie linéaire, son milieu la translation. (La matrice est
+   * ensuite divisée par 20 au dessin — les translations d'un SWF sont en twips —
+   * d'où le facteur qu'on applique ici.)
+   */
+  // « rgb(1,2,3) », « #abc », « #aabbcc » → [r,g,b]. Local : l'ordre de chargement
+  // des scripts n'est pas le même sur toutes les pages.
+  function versRgb(v) {
+    var s = String(v == null ? "" : v).trim();
+    var m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(s);
+    if (m) return [Math.round(+m[1]), Math.round(+m[2]), Math.round(+m[3])];
+    m = /^#([0-9a-f]{3})$/i.exec(s);
+    if (m) return [parseInt(m[1][0]+m[1][0],16), parseInt(m[1][1]+m[1][1],16), parseInt(m[1][2]+m[1][2],16)];
+    m = /^#([0-9a-f]{6})$/i.exec(s);
+    if (m) return [parseInt(m[1].slice(0,2),16), parseInt(m[1].slice(2,4),16), parseInt(m[1].slice(4,6),16)];
+    return null;
+  }
+  function lireArrets(g) {
+    var out = [], stops = g.querySelectorAll("stop");
+    for (var i = 0; i < stops.length; i++) {
+      var s = stops[i];
+      var off = String(s.getAttribute("offset") || "0").trim();
+      var r = off.slice(-1) === "%" ? parseFloat(off) / 100 : parseFloat(off);
+      if (!isFinite(r)) r = 0;
+      var cs = global.getComputedStyle(s);
+      var col = cs.stopColor || s.getAttribute("stop-color") || "#000";
+      var op = parseFloat(cs.stopOpacity);
+      if (isNaN(op)) op = parseFloat(s.getAttribute("stop-opacity"));
+      if (isNaN(op)) op = 1;
+      var rgb = versRgb(col);
+      if (!rgb) continue;
+      out.push({ ratio: Math.max(0, Math.min(255, Math.round(r * 255))), rgb: rgb, alpha: op });
+    }
+    return out;
+  }
+  // Illustrator écrit souvent les arrêts dans un dégradé et la géométrie dans un
+  // autre, relié par `href` : on suit le lien pour l'un comme pour l'autre.
+  function attrHerite(g, nom, doc, prof) {
+    if (!g || (prof || 0) > 4) return null;
+    if (g.hasAttribute(nom)) return g.getAttribute(nom);
+    var h = g.getAttribute("href") || g.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+    if (!h || h.charAt(0) !== "#") return null;
+    return attrHerite(doc.getElementById(h.slice(1)), nom, doc, (prof || 0) + 1);
+  }
+  function arretsHerites(g, doc, prof) {
+    if (!g || (prof || 0) > 4) return [];
+    var a = lireArrets(g);
+    if (a.length) return a;
+    var h = g.getAttribute("href") || g.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+    if (!h || h.charAt(0) !== "#") return [];
+    return arretsHerites(doc.getElementById(h.slice(1)), doc, (prof || 0) + 1);
+  }
+  function matriceDe(txt) {
+    var m = /matrix\(\s*([-\d.eE]+)[\s,]+([-\d.eE]+)[\s,]+([-\d.eE]+)[\s,]+([-\d.eE]+)[\s,]+([-\d.eE]+)[\s,]+([-\d.eE]+)/.exec(txt || "");
+    if (m) return { a: +m[1], b: +m[2], c: +m[3], d: +m[4], e: +m[5], f: +m[6] };
+    var t = /translate\(\s*([-\d.eE]+)(?:[\s,]+([-\d.eE]+))?/.exec(txt || "");
+    if (t) return { a: 1, b: 0, c: 0, d: 1, e: +t[1], f: +(t[2] || 0) };
+    return null;
+  }
+  /** Un `url(#id)` → la structure de dégradé que le moteur sait peindre. */
+  function degradeDe(el, ref, doc) {
+    var g = doc.getElementById(ref);
+    if (!g) return null;
+    var tag = g.tagName.toLowerCase();
+    var radial = tag === "radialgradient";
+    if (!radial && tag !== "lineargradient") return null;
+    var arrets = arretsHerites(g, doc, 0);
+    if (arrets.length < 2) return null;
+
+    // Les coordonnées : en fraction de la BOÎTE du tracé par défaut, en unités
+    // du dessin si `userSpaceOnUse`.
+    var surBoite = (attrHerite(g, "gradientUnits", doc, 0) || "objectBoundingBox") !== "userSpaceOnUse";
+    var bb = { x: 0, y: 0, width: 1, height: 1 };
+    if (surBoite) { try { bb = el.getBBox(); } catch (e) { return null; } }
+    var lire = function (nom, defaut) {
+      var v = attrHerite(g, nom, doc, 0);
+      if (v == null || v === "") return defaut;
+      var s = String(v).trim();
+      return s.slice(-1) === "%" ? parseFloat(s) / 100 : parseFloat(s);
+    };
+    var pt = function (fx, fy) {
+      return surBoite ? { x: bb.x + fx * bb.width, y: bb.y + fy * bb.height } : { x: fx, y: fy };
+    };
+    var gt = matriceDe(attrHerite(g, "gradientTransform", doc, 0));
+    var app = function (p) {
+      if (!gt) return p;
+      return { x: gt.a * p.x + gt.c * p.y + gt.e, y: gt.b * p.x + gt.d * p.y + gt.f };
+    };
+
+    var E;                                    // repère du dégradé → repère du tracé
+    if (!radial) {
+      var p1 = app(pt(lire("x1", 0), lire("y1", 0)));
+      var p2 = app(pt(lire("x2", 1), lire("y2", 0)));
+      var dx = p2.x - p1.x, dy = p2.y - p1.y;
+      var L = Math.sqrt(dx * dx + dy * dy);
+      if (!L) return null;
+      var s = L / 32768, ux = dx / L, uy = dy / L;
+      E = { a: ux * s, b: uy * s, c: -uy * s, d: ux * s, e: (p1.x + p2.x) / 2, f: (p1.y + p2.y) / 2 };
+    } else {
+      var ce = app(pt(lire("cx", 0.5), lire("cy", 0.5)));
+      var bord = app(pt(lire("cx", 0.5) + lire("r", 0.5), lire("cy", 0.5)));
+      var ray = Math.sqrt(Math.pow(bord.x - ce.x, 2) + Math.pow(bord.y - ce.y, 2));
+      if (!ray) return null;
+      var sr = ray / 16384;
+      E = { a: sr, b: 0, c: 0, d: sr, e: ce.x, f: ce.y };
+    }
+    // Le moteur divise la matrice par 20 au dessin : on lui donne donc ×20.
+    var M = { a: E.a * 20, b: E.b * 20, c: E.c * 20, d: E.d * 20, e: E.e * 20, f: E.f * 20 };
+    var foc = 0;
+    if (radial) {
+      var fx = attrHerite(g, "fx", doc, 0);
+      if (fx != null) {
+        var cxv = lire("cx", 0.5), rv = lire("r", 0.5);
+        var fxv = String(fx).slice(-1) === "%" ? parseFloat(fx) / 100 : parseFloat(fx);
+        if (rv) foc = Math.max(-1, Math.min(1, (fxv - cxv) / rv));
+      }
+    }
+    return { radial: radial, focale: foc, M: M, arrets: arrets };
+  }
+
   // Un élément dessinable → un `d` de tracé. On ne « cuit » pas la matrice : le
   // moteur l'appliquera (chaque tracé porte sa `m`, lue par getCTM).
   function elementVersD(el) {
@@ -258,8 +389,9 @@
         }
         return 0;
       }
-      function faire(d, fill, alpha, m, avant, slot, trait, largeur, blend) {
+      function faire(d, fill, alpha, m, avant, slot, trait, largeur, blend, degrade) {
         var p = { d: d, fill: fill, alpha: alpha, m: m };
+        if (degrade) p.degrade = degrade;
         if (!avant) p.avant = false;
         if (slot) p.slot = slot;
         if (blend) p.blend = blend;
@@ -286,7 +418,13 @@
         var slot = slotDe(el);
         var fill = couleur(global, el, "fill");
         var stroke = couleur(global, el, "stroke");
-        if (fill) out.push(faire(d, fill, op.fill, m, avant, slot, false, 0, blend));
+        // Un remplissage « url(#id) » désigne un DÉGRADÉ : on le traduit dans le
+        // repère du moteur. En niveaux de gris dans un calque couleurN, il se
+        // teinte comme un aplat — ombres comprises.
+        var deg = null;
+        var ref = fill && /^url\(['"]?#([^)'"]+)/.exec(fill);
+        if (ref) { deg = degradeDe(el, ref[1], vivant.ownerDocument || global.document); if (!deg) fill = null; }
+        if (fill) out.push(faire(d, deg ? 'rgb(136,136,136)' : fill, op.fill, m, avant, slot, false, 0, blend, deg));
         if (stroke) {
           var lw = parseFloat(global.getComputedStyle(el).strokeWidth) || 1;
           out.push(faire(d, stroke, op.stroke, m, avant, slot, true, lw, blend));

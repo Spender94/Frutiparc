@@ -214,6 +214,57 @@ test('RETIRER une variante ne décale pas les suivantes', async () => {
     'la variante retirée n\'affiche aucun tracé');
 });
 
+test('les DÉGRADÉS survivent à l\'aller-retour, et le gabarit les écrit en SVG', async () => {
+  const defs = await lire('famille0.swf');
+  // Vingt-trois couches de la famille 0 sont peintes en dégradé. L'export les
+  // jetait — un « bout du dessin » disparaissait sans rien dire. Elles font
+  // maintenant l'aller-retour, et un dégradé de GRIS se teinte comme un aplat :
+  // c'est ce qui donne du volume à une zone recolorable.
+  let trouve = null;
+  for (let type = 1; type <= 16 && !trouve; type++) {
+    const rep = Variante.repere(defs, type, 8);
+    if (!rep) continue;
+    for (let v = 0; v < rep.variantes; v++) {
+      const g = Variante.exporter(defs, type, v, 8);
+      if (g.some((p) => p.degrade)) { trouve = { type, v, paths: g }; break; }
+    }
+  }
+  assert.ok(trouve, 'au moins un accessoire d\'époque porte un dégradé');
+
+  const deg = trouve.paths.filter((p) => p.degrade);
+  for (const p of deg) {
+    assert.ok(p.degrade.arrets.length >= 2, 'un dégradé a au moins deux arrêts');
+    assert.ok(p.degrade.M && isFinite(p.degrade.M.a), 'et une matrice exploitable');
+    assert.ok(p.fill, 'un repli de couleur reste, pour un lecteur qui l\'ignorerait');
+  }
+
+  // Réinjecté, le dégradé arrive tel quel jusqu'à la couche du moteur.
+  const inj = Variante.injecter(defs, { type: trouve.type, paths: trouve.paths, coiffureRef: 8 });
+  const copie = Variante.exporter(defs, trouve.type, inj.variante, 8);
+  assert.strictEqual(copie.filter((p) => p.degrade).length, deg.length,
+    'la copie porte autant de dégradés que l\'original');
+});
+
+test('un dessin HORS des calques « couleurN » garde ses couleurs', async () => {
+  const defs = await lire('famille0.swf');
+  // Le graphiste doit pouvoir livrer un accessoire à couleurs FIXES : il lui
+  // suffit de ne rien mettre dans « couleur1/2/3 ». Les tracés sans niveau
+  // gardent alors leur teinte, que la recolorisation ne touche pas.
+  const cuits = [
+    { d: 'M10 10h20v20h-20Z', fill: 'rgb(230,120,10)', m: [1, 0, 0, 1, 0, 0] },
+    { d: 'M40 10h20v20h-20Z', fill: '#3269AF', m: [1, 0, 0, 1, 0, 0] },
+  ];
+  const inj = Variante.injecter(defs, { type: CASQUETTE, paths: cuits, coiffureRef: 8 });
+  assert.ok(inj, 'une variante entièrement à couleurs fixes s\'injecte');
+
+  const relu = Variante.exporter(defs, CASQUETTE, inj.variante, 8);
+  assert.strictEqual(relu.length, 2, 'les deux tracés sont là');
+  for (const p of relu) assert.strictEqual(p.slot, 0, 'aucun niveau de couleur : rien à recolorer');
+  const fills = relu.map((p) => p.fill).sort();
+  assert.deepStrictEqual(fills, ['rgb(230,120,10)', 'rgb(50,105,175)'].sort(),
+    'chaque tracé a gardé EXACTEMENT sa couleur');
+});
+
 test('un SVG dont le plan de travail a changé revient À L\'ÉCHELLE', async () => {
   // Le gabarit part en 100 × 100, mais un aller-retour par Illustrator n'en
   // revient pas toujours ainsi : ré-exporter en « pixels » donne couramment un

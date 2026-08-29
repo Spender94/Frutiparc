@@ -5564,10 +5564,34 @@ function nettoyerPathsMaison(paths) {
     if (p.avant === false) q.avant = false;
     if (p.slot === 1 || p.slot === 2 || p.slot === 3) q.slot = p.slot;   // niveau de couleur
     if (typeof p.blend === 'string' && BLENDS_MAISON.has(p.blend)) q.blend = p.blend; // ombre/lumière
+    const g = nettoyerDegrade(p.degrade);
+    if (g) q.degrade = g;
     if (p.trait) { q.trait = true; q.largeur = Math.max(0, Math.min(50, Number(p.largeur) || 1)); }
     if (Array.isArray(p.m) && p.m.length === 6 && p.m.every((n) => isFinite(n))) q.m = p.m.map(Number);
     return q;
   }).filter((p) => p.d && /^[Mm]/.test(p.d));
+}
+
+// Un DÉGRADÉ, borné : au plus seize arrêts, une matrice finie, des couleurs
+// entières. Un dégradé en niveaux de gris se teinte comme un aplat — c'est ce
+// qui donne du volume à une zone recolorable.
+function nettoyerDegrade(g) {
+  if (!g || typeof g !== 'object') return null;
+  const M = g.M;
+  if (!M || !['a','b','c','d','e','f'].every((k) => Number.isFinite(Number(M[k])))) return null;
+  const arrets = Array.isArray(g.arrets) ? g.arrets.slice(0, 16).map((a) => ({
+    ratio: Math.max(0, Math.min(255, Math.round(Number(a && a.ratio) || 0))),
+    rgb: Array.isArray(a && a.rgb) && a.rgb.length === 3
+      ? a.rgb.map((v) => Math.max(0, Math.min(255, Math.round(Number(v) || 0)))) : null,
+    alpha: Math.max(0, Math.min(1, a && a.alpha == null ? 1 : Number(a.alpha))),
+  })).filter((a) => a.rgb) : [];
+  if (arrets.length < 2) return null;
+  return {
+    radial: !!g.radial,
+    focale: Math.max(-1, Math.min(1, Number(g.focale) || 0)),
+    M: { a: +M.a, b: +M.b, c: +M.c, d: +M.d, e: +M.e, f: +M.f },
+    arrets,
+  };
 }
 
 // Les trois niveaux de couleur d'un accessoire : jusqu'à trois hex #rrggbb.
