@@ -110,7 +110,9 @@ test('le forum prévient son cadre ET son ouvreur', () => {
 });
 
 test('le light écoute ce message et éteint le voyant', () => {
-  assert.match(LIGHT, /if \(!d \|\| d\.forum !== "toutLu"\) return;\s*\n\s*setForumNonLus\(d\.restant\);/);
+  // Deux messages depuis le forum, pas un : « tout marquer comme lu »
+  // (`toutLu`) et l'ouverture d'un sujet (`nonLus`), qui recompte aussi.
+  assert.match(LIGHT, /if \(!d \|\| \(d\.forum !== "toutLu" && d\.forum !== "nonLus"\)\) return;\s*\n\s*setForumNonLus\(d\.restant\);/);
   assert.match(LIGHT, /function setForumNonLus\(n\) \{[\s\S]{0,220}?majVoyant\("Forum", forumNonLus\);/);
 });
 

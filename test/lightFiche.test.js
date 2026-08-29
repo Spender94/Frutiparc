@@ -104,6 +104,32 @@ test('un score de championnat apparaît dans l\'onglet scores', async () => {
   }
 });
 
+test('Burning Kiwi apparaît : la fiche lit le circuit DU JOUR', async () => {
+  // Burning Kiwi a six classements pour un seul onglet. `routeRankingForSave`
+  // ancre le défi sur `bkiwi_track{jour}_challenge`, et c'est ce que le tableau
+  // du bureau et `/api/light/challenge` montrent. La fiche lisait
+  // `bkiwi_track5_classic` — le record de toujours sur Mistral Kiwi, que ces
+  // trois-là n'alimentent pas : elle n'affichait Burning Kiwi presque jamais.
+  const nom = joueur('fichebk');
+  const sid = await sidFor(nom);
+  await fetch(`${BASE}/api/saveScore`, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ sid, game: 'bkiwi', score: '61234', mode: '1' }),
+  });
+  const info = await (await fetch(`${BASE}/api/light/fiche?sid=${encodeURIComponent(sid)}&u=${nom}`)).json();
+  assert.equal(info.ok, true);
+  const bk = info.scores.classements.find((c) => c.jeu === 'bkiwi');
+  assert.ok(bk, 'Burning Kiwi doit figurer dans les scores de la fiche');
+  assert.equal(bk.titre, 'Burning kiwi', 'le libellé reste celui du descripteur d’époque');
+  assert.equal(bk.type, 'millisecond', 'et son gabarit de temps avec');
+  // `rk` sert au CLIC : c'est l'identifiant que `/api/light/challenge` pose en
+  // `id` sur l'onglet. Il doit donc désigner le circuit du jour, pas track5.
+  assert.match(bk.rk, /^bkiwi_track\d_challenge$/, bk.rk);
+  const ch = await (await fetch(`${BASE}/api/light/challenge?sid=${encodeURIComponent(sid)}`)).json();
+  const onglet = (ch.jeux || []).find((j) => j.jeu === 'bkiwi' || j.game === 'bkiwi');
+  if (onglet) assert.equal(bk.rk, onglet.id, 'le même onglet des deux côtés');
+});
+
 test('la fiche refuse sans session, et dit quand le frutiz n\'existe pas', async () => {
   const r1 = await fetch(`${BASE}/api/light/fiche?u=quelquun`);
   assert.equal(r1.status, 401);

@@ -554,33 +554,39 @@ body.bureau-frutiz .fb-onglet .ot-menu button {
 }
 body.bureau-frutiz .fb-onglet .ot-menu button:hover { color: #E7756B; }
 body.bureau-frutiz .fb-onglet .ot-menu button:active { color: #DDDDDD; }
-/* L'AVERTISSEMENT d'un slot (`MainBarTab.warning`) : un message est arrivé
-   dans une conversation qu'on ne regarde pas. `addColorFlash` alterne toutes
-   les 500 ms entre `FEMC.setColor` et `FEMC.killColor` — soit une teinte de
-   `0xFFB1AB` à 30 %, une demi-seconde sur deux. Une teinte, pas un
-   clignotement de luminosité : le calque rose à 30 % d'opacité donne
-   exactement `fond × 0,7 + rose × 0,3`, et le masque le confine au DESSIN
-   (l'onglet garde ses coins transparents). */
+/* L'AVERTISSEMENT d'un slot (`MainBarTab.warning`, 0x6f703) : un message est
+   arrivé dans une conversation qu'on ne regarde pas.
+
+      warning = function () {
+        animList.addColorFlash('warning', this,
+          { color: 16755627, alpha: 30, tempo: 500 });
+      }
+
+   `colorFlash` (0x520f0) alterne toutes les 500 ms entre `FEMC.setColor(tab,
+   obj)` et `FEMC.killColor(tab)`. Et `FEMC.setColor` (0x4a81c) N'EST PAS UN
+   VOILE : hors `negFlag`, il pose
+
+      { ra:100, ga:100, ba:100, rb:r−255, gb:g−255, bb:b−255 }
+
+   c'est-à-dire un DÉCALAGE par canal, `sortie = source + (col − 255)`. Avec
+   `16755627` = 0xFFABAB cela vaut `source + (0, −84, −84)` : le rouge ne bouge
+   pas, le vert et le bleu tombent de 84. Le vert de l'onglet (#ADE76B) vire
+   donc à l'olive (173, 147, 23), et seul ce qui est CLAIR ressort rose — d'où
+   l'impression de rose, sur un mécanisme qui assombrit. (`alpha: 30` finit en
+   `ab: 30`, un décalage d'alpha sur 255 : sur un onglet déjà opaque, invisible.)
+
+   On posait jusqu'ici un calque rose à 30 % d'opacité : il ÉCLAIRCIT là où
+   l'époque assombrit, et la teinte relevée (#FFB1AB) était fausse de deux
+   points. La vraie matrice est dans `#fb-onglet-flash` (light.html).
+
+   Elle s'applique aux calques du dessin ET au libellé — `setColor` prend le
+   clip entier —, mais PAS au menu déroulant : il ne fait pas partie du
+   `MainBarTab` d'époque, où le menu est une popup à part. */
 @keyframes fb-onglet-clignote {
-  0%, 49.99% { opacity: 0; }
-  50%, 100%  { opacity: .3; }
+  0%, 49.99% { filter: none; }
+  50%, 100%  { filter: url('#fb-onglet-flash'); }
 }
-body.bureau-frutiz .fb-onglet .ot-teinte {
-  background: #FFB1AB; opacity: 0; z-index: 4;
-  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
-  -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
-}
-body.bureau-frutiz .fb-onglet .ot-teinte.ot-barre {
-  -webkit-mask-image: url('/frutiz/sprites/onglet_barre.svg');
-  mask-image: url('/frutiz/sprites/onglet_barre.svg');
-  background-image: none;
-}
-body.bureau-frutiz .fb-onglet .ot-teinte.ot-pied {
-  -webkit-mask-image: url('/frutiz/sprites/onglet_pied.svg');
-  mask-image: url('/frutiz/sprites/onglet_pied.svg');
-  background-image: none;
-}
-body.bureau-frutiz .fb-onglet.clignote .ot-teinte {
+body.bureau-frutiz .fb-onglet.clignote > *:not(.ot-menu) {
   animation: fb-onglet-clignote 1s steps(1, end) infinite;
 }
 
@@ -2724,8 +2730,9 @@ body.bureau-frutiz .fen #chat-panel #users-drawer .u,
 body.bureau-frutiz #gaspard-panel .gs-ul-defile .u {
   position: relative;
   height: 18px; min-height: 18px; width: 120px; margin: 0; border: 0;
-  /* 22 à gauche : les 20 du voyant, plus la gouttière du champ. */
-  padding: 0 4px 0 22px;
+  /* 30 à gauche : le voyant est posé à 12 (cf. plus bas), il en fait 14, et la
+     gouttière du champ suit. Relevé sur la superposition avec le SWF. */
+  padding: 0 4px 0 30px;
   background: url('/frutiz/sprites/user-slot.svg') left top / 120px 18px no-repeat;
   font: 700 10px Verdana, Arial, sans-serif; color: #22224A;
   font-weight: 700; font-size: 10px; text-shadow: none;
@@ -2771,8 +2778,10 @@ body.bureau-frutiz #gaspard-panel .gs-ul-defile .u .badge { display: none; }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u .voyant,
 body.bureau-frutiz #gaspard-panel .gs-ul-defile .u .voyant {
   /* Il occupe SA place, celle que `_x = 20` laisse au clip `icon` : posé en
-     absolu dans les vingt pixels réservés, il ne pousse plus le pseudo. */
-  position: absolute; left: 3px; top: 2px;
+     absolu dans la gouttière réservée, il ne pousse plus le pseudo. Douze, et
+     non trois : la bande `user-slot` a son propre décrochement à gauche, et le
+     voyant se posait dessus. */
+  position: absolute; left: 12px; top: 2px;
   width: 14px; height: 14px; flex: 0 0 14px; object-fit: contain;
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u .lieu {

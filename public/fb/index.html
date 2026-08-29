@@ -2195,6 +2195,16 @@ async function loadTopic(topicId, page) {
   currentTopicData = data;
   if (!data.topic) { app.innerHTML = '<div class="empty">Sujet introuvable.</div>'; return; }
 
+  // LIRE UN SUJET ÉTEINT LE VOYANT, quand il ne reste rien. Le serveur pose la
+  // marque de lecture et recompte ; on relaie le chiffre à la page qui nous
+  // héberge, exactement comme le fait « Tout marquer comme lu ». Sans cela le
+  // voyant du raccourci Forum restait allumé toute la session — un joueur réglé
+  // sur « seulement mes sujets suivis » lisait ses fils favoris et devait
+  // quand même passer par le bouton.
+  if (typeof data.restantNonLus === 'number') {
+    prevenirLHote({ forum: 'nonLus', restant: data.restantNonLus });
+  }
+
   setBreadcrumb([
     { text: data.topic.boardName, href: "navigate('board'," + data.topic.boardId + ");return false" },
     { text: data.topic.title },

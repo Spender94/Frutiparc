@@ -5252,9 +5252,10 @@ window.BureauFrutiz = (function () {
     // La COUTURE (#205, profondeur 13) : la bande grise qui recoud l'onglet au
     // liseré de la barre, par-dessus la plaque comme par-dessus le pied.
     o.appendChild(pieceOnglet('ot-couture'));
-    // Les deux calques de `warning()` : une teinte rose masquée par le dessin.
-    o.appendChild(pieceOnglet('ot-teinte ot-barre'));
-    o.appendChild(pieceOnglet('ot-teinte ot-pied'));
+    // `warning()` ne pose PAS de calque : `FEMC.setColor` décale les canaux du
+    // clip entier (cf. `#fb-onglet-flash` et la note de bureau-frutiz.css).
+    // Les deux teintes masquées qui vivaient ici éclaircissaient là où
+    // l'époque assombrit ; elles ont été retirées.
     o.addEventListener('click', function () { activerSlot(id); });
     // Le clic droit ouvre le même menu : commodité du portage, sans coût.
     o.addEventListener('contextmenu', function (e) {

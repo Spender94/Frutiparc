@@ -314,6 +314,28 @@ test('le forum porte le bouton, et /light écoute son extinction', () => {
   assert.match(light, /setForumNonLus\(d\.restant\)/, '…et éteint son voyant sans attendre');
 });
 
+test('LIRE un sujet éteint le voyant, sans passer par « tout marquer »', () => {
+  // Le voyant du bureau est un LOQUET : le serveur l'allume à la connexion
+  // (`<ay/>`) et rien ne l'abaissait en cours de session. Un joueur réglé sur
+  // « seulement mes sujets suivis » lisait ses fils favoris et gardait son
+  // voyant allumé — il fallait le bouton, alors qu'il n'y avait plus rien à
+  // marquer. Ouvrir un sujet recompte maintenant, et le forum relaie.
+  const serveur = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(serveur, /await db\.forumMarkTopicRead\(currentUser, topicId\);/,
+    'la marque de lecture est ATTENDUE (elle ne part plus au vent)');
+  assert.match(serveur, /restantNonLus = await db\.forumCountUnread\(currentUser, forumNotifyModeDe\(currentUser\)\)/,
+    'et le reste est recompté, filtré par la préférence');
+  assert.match(serveur, /^\s+restantNonLus,$/m, 'la réponse du sujet le porte');
+
+  const forum = fs.readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
+  assert.match(forum, /prevenirLHote\(\{ forum: 'nonLus', restant: data\.restantNonLus \}\)/,
+    'et le forum le relaie à la page qui l\'héberge');
+
+  const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(light, /d\.forum !== "toutLu" && d\.forum !== "nonLus"/,
+    '/light accepte les DEUX messages');
+});
+
 test('le bureau ENDORT son voyant forum quand la fenêtre du forum s\'ouvre', () => {
   // main.swf n'avait que l'allumage : `onNewForumMsg → digitalScreen.unSleep(1)`,
   // et RIEN n'appelait jamais `sleep(1)` — le voyant du bureau restait allumé

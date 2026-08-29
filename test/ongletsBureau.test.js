@@ -166,16 +166,27 @@ test('les libellés du menu : Verdana 10 MAIGRE noir, rose au survol', () => {
   assert.match(CSS, /\.ot-menu button:active \{ color: #DDDDDD; \}/);
 });
 
-test('l’onglet d’une conversation CLIGNOTE rose à l’arrivée d’un message', () => {
-  // `MainBarTab.warning` : addColorFlash("warning", this, { color: 16755627,
-  // alpha: 30, tempo: 500 }) — 0xFFB1AB à 30 %, et `colorFlash` alterne
+test('l’onglet d’une conversation CLIGNOTE à l’arrivée d’un message', () => {
+  // `MainBarTab.warning` (0x6f703) : addColorFlash("warning", this,
+  // { color: 16755627, alpha: 30, tempo: 500 }), et `colorFlash` alterne
   // `setColor`/`killColor` à chaque top : une demi-seconde sur deux.
-  assert.match(CSS, /@keyframes fb-onglet-clignote \{\s*\n\s*0%, 49\.99% \{ opacity: 0; \}\s*\n\s*50%, 100%\s*\{ opacity: \.3; \}/);
-  assert.match(CSS, /\.ot-teinte \{\s*\n\s*background: #FFB1AB; opacity: 0; z-index: 4;/);
-  assert.match(CSS, /\.fb-onglet\.clignote \.ot-teinte \{\s*\n\s*animation: fb-onglet-clignote 1s steps\(1, end\) infinite;/);
-  // Une TEINTE, pas un clignotement de luminosité : le calque rose est masqué
-  // par le dessin, pour que l'onglet garde ses coins transparents.
-  assert.match(CSS, /\.ot-teinte\.ot-pied \{\s*\n\s*-webkit-mask-image: url\('\/frutiz\/sprites\/onglet_pied\.svg'\);/);
+  //
+  // 16755627 = 0xFFABAB — et `FEMC.setColor` (0x4a81c) n'est PAS un voile :
+  // hors `negFlag` il pose { ra:100, ga:100, ba:100, rb:r−255, … }, soit
+  // `sortie = source + (col − 255)` = `source + (0, −84, −84)`. Un calque rose
+  // à 30 % éclaircissait là où l'époque assombrit ; on pose la vraie matrice.
+  const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(light, /<filter id="fb-onglet-flash" color-interpolation-filters="sRGB">/,
+    'le filtre est déclaré, en sRGB comme Flash');
+  assert.match(light, /0 1 0 0 -0\.32941/, 'le vert tombe de 84/255…');
+  assert.match(light, /0 0 1 0 -0\.32941/, '…et le bleu autant');
+  assert.match(light, /values="1 0 0 0 0/, 'le rouge, lui, ne bouge pas');
+  assert.match(CSS, /@keyframes fb-onglet-clignote \{\s*\n\s*0%, 49\.99% \{ filter: none; \}\s*\n\s*50%, 100%\s*\{ filter: url\('#fb-onglet-flash'\); \}/);
+  // `setColor` prend le clip ENTIER — le dessin et le libellé. Mais pas le
+  // menu déroulant : d'époque, c'est une popup à part du `MainBarTab`.
+  assert.match(CSS, /\.fb-onglet\.clignote > \*:not\(\.ot-menu\) \{\s*\n\s*animation: fb-onglet-clignote 1s steps\(1, end\) infinite;/);
+  assert.doesNotMatch(CSS, /background: #FFB1AB/, 'la fausse teinte a disparu');
+  assert.doesNotMatch(JS, /pieceOnglet\('ot-teinte/, 'et les calques qui la portaient aussi');
   // `Slot.warning` : un slot ACTIF n'avertit jamais, et un slot déjà en alerte
   // ne relance pas l'animation.
   assert.match(JS, /function avertirSlot\(id\) \{\s*\n\s*if \(!actif \|\| !id \|\| id === slotActif\) return false;/);

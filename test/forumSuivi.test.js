@@ -230,9 +230,13 @@ test('le voyant suit les trois positions de forum_notify', async (t) => {
   assert.equal(await compte(sidB), 1, 'mode 2 : seulement le sujet suivi');
 
   // Et le sujet suivi, une fois lu, s'éteint comme les autres. Ouvrir le sujet
-  // pose la marque de lecture : `/api/forum/topic/:id` le fait au passage.
-  await fetch(`${BASE}/api/forum/topic/${ids[0]}?sid=${sidB}`);
-  await wait(300);                    // la marque part en tâche de fond
+  // pose la marque de lecture : `/api/forum/topic/:id` le fait au passage — et
+  // RECOMPTE derrière, pour que le client puisse éteindre son voyant sans
+  // attendre un rechargement. C'est ce qui manquait : le voyant du bureau est
+  // un loquet, allumé à la connexion, que seul « Tout marquer comme lu »
+  // rabaissait.
+  const lu = await json(await fetch(`${BASE}/api/forum/topic/${ids[0]}?sid=${sidB}`));
+  assert.equal(lu.restantNonLus, 0, 'la réponse rend le reste à lire');
   assert.equal(await compte(sidB), 0, 'lu : le voyant retombe');
 
   // Retour au mode 1 : l'autre sujet, jamais ouvert, réapparaît. La

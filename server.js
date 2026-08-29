@@ -18295,12 +18295,22 @@ app.get('/api/forum/topic/:id', async (req, res) => {
     const currentUser = forumAuth(req);
     // Stamp the read marker for the viewer so the topic (and its parent
     // board) flip back to "no unread" once they've actually loaded it.
-    // Fire-and-forget — never let a stuck read write block the topic
-    // response.
+    //
+    // ON L'ATTEND, désormais, et on RECOMPTE derrière. Le voyant forum du
+    // bureau est un LOQUET : le serveur l'allume à la connexion (`<ay/>`) et
+    // rien ne l'éteignait en cours de session — seul « Tout marquer comme lu »
+    // renvoyait un compte à la page qui héberge le forum. Un joueur réglé sur
+    // « seulement mes sujets suivis » lisait donc ses fils favoris et gardait
+    // son voyant allumé jusqu'au rechargement. Le compte qui repart ici sert au
+    // client à prévenir son hôte, exactement comme le bouton.
+    let restantNonLus = null;
     if (currentUser) {
-      db.forumMarkTopicRead(currentUser, topicId).catch((e) => {
+      try {
+        await db.forumMarkTopicRead(currentUser, topicId);
+        restantNonLus = await db.forumCountUnread(currentUser, forumNotifyModeDe(currentUser));
+      } catch (e) {
         console.error(`[FORUM] forumMarkTopicRead(${currentUser}, ${topicId}) failed: ${e.message}`);
-      });
+      }
     }
     const currentIsMod = currentUser && users[currentUser] && users[currentUser].isModerator;
     const postsOut = posts.map(p => ({
@@ -18348,6 +18358,10 @@ app.get('/api/forum/topic/:id', async (req, res) => {
       poll, canManagePoll,
       followed,
       forumNotify: currentUser ? forumNotifyModeDe(currentUser) : FORUM_NOTIFY_TOUS,
+      // Ce qu'il reste de non lu APRÈS cette lecture — de quoi éteindre le
+      // voyant du raccourci Forum sans attendre un rechargement. `null` quand
+      // on n'a pas pu compter (pas de session, base muette).
+      restantNonLus,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -20706,16 +20720,27 @@ app.get('/api/light/fiche', async (req, res) => {
 
   // Les classements de la section C — ceux que la fiche du bureau interroge
   // (listrankings ty="C" puis userresult) ; on ne garde que ceux où il figure.
+  //
+  // BURNING KIWI a SIX classements pour un seul onglet. `LEGACY_RANKINGS` fige
+  // rk '0' sur `bkiwi_track5_classic` — le record de toujours sur Mistral Kiwi
+  // — parce que c'est le descripteur d'époque, celui d'où sortent le libellé et
+  // le gabarit de colonnes. Mais le CLASSEMENT montré, lui, est partout ailleurs
+  // celui du circuit du jour : `routeRankingForSave` y ancre chaque score,
+  // `/api/light/challenge` y range l'onglet, et le tableau du bureau l'affiche.
+  // La fiche lisait la seule ligne que ces trois-là n'alimentent pas : elle ne
+  // montrait Burning Kiwi qu'aux rares joueurs ayant couru Mistral Kiwi.
   const classements = [];
+  const bkiwiDuJour = `bkiwi_track${getBkiwiDailyTrack()}_challenge`;
   for (const d of LEGACY_RANKINGS) {
     if (d.section !== 'C' || !d.internal) continue;
-    const info = getUserScore(u, d.internal);
+    const rkId = /^bkiwi_/.test(d.internal) ? bkiwiDuJour : d.internal;
+    const info = getUserScore(u, rkId);
     if (info.score <= 0 && info.pos <= 0) continue;
     // `rk` : l'identifiant INTERNE du classement, celui que
     // `/api/light/challenge` pose en `id` sur chaque jeu. C'est par lui que le
     // clic sur une ligne de la fiche retrouve le bon onglet du tableau des
     // scores — sans lui, il faudrait deviner d'après le libellé.
-    classements.push({ titre: d.rn, jeu: d.g, rk: d.internal, score: info.score, pos: info.pos, type: d.ty });
+    classements.push({ titre: d.rn, jeu: d.g, rk: rkId, score: info.score, pos: info.pos, type: d.ty });
   }
 
   // Les médailles de la veille, une par jeu — la même règle qu'`awarduser`.
