@@ -5485,6 +5485,39 @@ function nettoyerCouleursMaison(c) {
 }
 chargerAccMaison();
 
+// ─────────────────────────────────────────────
+// VARIANTES D'ACCESSOIRE — de vraies variantes, injectées dans la famille par
+// le lecteur JS (public/js/bouille-variante.js). Contrairement aux accessoires
+// « maison » ci-dessus, elles ne se posent pas par-dessus la bouille : elles
+// ajoutent une image au rouleau de l'accessoire, et s'encodent donc dans la
+// chaîne de 24 caractères comme celles d'époque.
+//
+// L'ORDRE DE CETTE LISTE EST UN CONTRAT. Une variante vaut par son INDEX dans le
+// rouleau, et cet index vient de son rang d'injection. Réordonner la liste, ou
+// en retirer une, décalerait toutes les suivantes : les joueurs qui les portent
+// verraient un autre accessoire du jour au lendemain. On n'enlève donc jamais
+// une entrée — on la marque `retire`, et le client injecte une image VIDE à sa
+// place pour que les rangs suivants ne bougent pas.
+const VARIANTES_FILE = path.join(__dirname, 'data', 'variantes-accessoire.json');
+const variantesAcc = [];      // ordonné : le rang EST l'index (à la base près)
+let variantesSeq = 0;
+
+function chargerVariantes() {
+  try {
+    const brut = JSON.parse(fs.readFileSync(VARIANTES_FILE, 'utf8'));
+    for (const v of (brut.liste || [])) if (v && v.id) variantesAcc.push(v);
+    variantesSeq = brut.seq || 0;
+    if (variantesAcc.length) console.log(`[VARIANTES] ${variantesAcc.length} variante(s) d'accessoire chargée(s)`);
+  } catch (e) { /* pas de fichier */ }
+}
+function sauverVariantes() {
+  try {
+    fs.mkdirSync(path.dirname(VARIANTES_FILE), { recursive: true });
+    fs.writeFileSync(VARIANTES_FILE, JSON.stringify({ seq: variantesSeq, liste: variantesAcc }));
+  } catch (e) { console.error('[VARIANTES] sauvegarde:', e.message); }
+}
+chargerVariantes();
+
 // Qui porte quoi — persisté à part (data/acc-maison-equip.json), indépendamment
 // de la base : un accessoire porté survit à un redémarrage même en mode mémoire.
 // { usernameMinuscule → idAccessoire }
@@ -10491,6 +10524,76 @@ app.get('/api/light/acc-maison/:id', (req, res) => {
   if (!a) return res.status(404).json({ ok: false });
   res.setHeader('Cache-Control', 'public, max-age=300');
   res.json({ ok: true, id: a.id, name: a.name, paths: a.paths, couleurs: a.couleurs || null });
+});
+
+// ─────────────────────────────────────────────
+// VARIANTES D'ACCESSOIRE — endpoints
+// ─────────────────────────────────────────────
+
+// Public : TOUTES les variantes, DANS L'ORDRE. Chaque client les injecte dans
+// cet ordre au chargement de la famille — c'est ce qui fait qu'un index veut
+// dire la même chose partout. Une variante retirée garde sa place (sans tracés) :
+// le client injecte alors une image vide, et les rangs suivants ne bougent pas.
+app.get('/api/light/variantes', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.json({
+    ok: true,
+    liste: variantesAcc.map((v) => ({
+      famille: v.famille || 0, type: v.type, coiffureRef: v.coiffureRef || 8,
+      paths: v.retire ? [] : v.paths, retire: !!v.retire,
+    })),
+  });
+});
+
+// Admin : lister (avec de quoi s'y retrouver), publier, retirer.
+app.get('/api/admin/variantes', adminScope('shop'), (req, res) => {
+  // Le rang PARMI LES VARIANTES DE MÊME (famille, type) : c'est lui qui, ajouté
+  // au nombre d'images d'origine du rouleau, donne l'index réel.
+  const rangs = new Map();
+  res.json(variantesAcc.map((v) => {
+    const cle = (v.famille || 0) + ':' + v.type;
+    const rang = rangs.get(cle) || 0;
+    rangs.set(cle, rang + 1);
+    return {
+      id: v.id, nom: v.nom, famille: v.famille || 0, type: v.type,
+      rang, nb: (v.paths || []).length, retire: !!v.retire, createdAt: v.createdAt,
+    };
+  }));
+});
+
+app.post('/api/admin/variantes', adminScope('shop'),
+  express.raw({ type: 'application/octet-stream', limit: '4mb' }), (req, res) => {
+    let b;
+    try { b = JSON.parse(Buffer.isBuffer(req.body) ? req.body.toString('utf8') : (req.body || '{}')); }
+    catch (e) { return res.status(400).json({ error: 'JSON invalide' }); }
+    const paths = nettoyerPathsMaison(b.paths);
+    const type = Number(b.type);
+    if (!b.nom || !paths.length || !(type >= 1 && type <= 16)) {
+      return res.status(400).json({ error: 'nom + type (1-16) + paths requis' });
+    }
+    variantesSeq += 1;
+    const v = {
+      id: 'v' + variantesSeq, nom: String(b.nom).slice(0, 60),
+      famille: Number(b.famille) || 0, type: type,
+      coiffureRef: Number(b.coiffureRef) || 8,
+      paths, createdAt: new Date().toISOString(),
+    };
+    variantesAcc.push(v);
+    sauverVariantes();
+    const rang = variantesAcc.filter((x) => (x.famille || 0) === v.famille && x.type === v.type).length - 1;
+    console.log(`[VARIANTES] publiée ${v.id} « ${v.nom} » (type ${v.type}, rang ${rang}, ${paths.length} tracés)`);
+    res.json({ ok: true, id: v.id, rang });
+  });
+
+// On ne SUPPRIME pas : on retire les tracés en gardant la place. Sans quoi les
+// variantes publiées après celle-ci changeraient d'index chez tous les joueurs.
+app.delete('/api/admin/variantes/:id', adminScope('shop'), (req, res) => {
+  const v = variantesAcc.find((x) => x.id === req.params.id);
+  if (!v) return res.status(404).json({ error: 'not found' });
+  v.retire = true; v.paths = [];
+  sauverVariantes();
+  console.log(`[VARIANTES] retirée ${v.id} (sa place est conservée : les index suivants ne bougent pas)`);
+  res.json({ ok: true });
 });
 
 // Public : la liste (id + nom), pour le sélecteur « porter un accessoire maison ».

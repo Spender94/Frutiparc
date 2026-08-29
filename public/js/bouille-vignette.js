@@ -111,11 +111,58 @@
       + ' style="width:100%;height:100%;display:block"></canvas>';
   }
 
+  /*
+   * LES VARIANTES PUBLIÉES — et pourquoi elles s'injectent ICI.
+   *
+   * Une variante d'accessoire créée à l'atelier n'existe pas dans le SWF : c'est
+   * une image ajoutée au rouleau, au chargement, par bouille-variante.js. Une
+   * bouille qui la porte la désigne par son INDEX dans ce rouleau — index qui
+   * vient du RANG d'injection. Pour qu'un même index veuille dire la même chose
+   * sur tous les écrans, il faut donc que tout le monde injecte LES MÊMES
+   * variantes DANS LE MÊME ORDRE, et une seule fois par famille.
+   *
+   * D'où ce point de passage : `famille()` est le seul endroit du site où une
+   * famille est chargée pour être affichée, et sa promesse est mise en cache —
+   * l'injection s'y fait donc exactement une fois. Une variante retirée garde sa
+   * place (une image vide) pour ne pas décaler celles d'après.
+   *
+   * Si le catalogue ne répond pas, on rend la famille telle quelle : mieux vaut
+   * une bouille sans le dernier accessoire qu'une page sans bouilles.
+   */
+  var catalogue = null;
+  function variantes() {
+    if (!catalogue) {
+      catalogue = (typeof global.fetch === 'function')
+        ? global.fetch('/api/light/variantes')
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (j) { return (j && j.ok) ? j.liste : []; })
+          .catch(function () { return []; })
+        : Promise.resolve([]);
+    }
+    return catalogue;
+  }
+  function injecterVariantes(defs, n, liste) {
+    var V = global.FPBouilleVariante;
+    if (!V || !liste || !liste.length) return defs;
+    for (var i = 0; i < liste.length; i++) {
+      var v = liste[i];
+      if ((v.famille || 0) !== n) continue;
+      try {
+        // Une variante retirée : on injecte quand même, sans tracé, pour que le
+        // rouleau grandisse et que les rangs suivants restent à leur place.
+        V.injecter(defs, { type: v.type, paths: v.paths || [],
+          coiffureRef: v.coiffureRef, vide: !(v.paths && v.paths.length) });
+      } catch (e) { /* une variante fautive n'empêche pas les autres */ }
+    }
+    return defs;
+  }
+
   function famille(n) {
     if (!chargements[n]) {
       chargements[n] = FAMILLES.indexOf(n) < 0
         ? Promise.reject(new Error('famille ' + n + ' absente'))
-        : Swf.charger(DOSSIER + 'famille' + n + '.swf');
+        : Promise.all([Swf.charger(DOSSIER + 'famille' + n + '.swf'), variantes()])
+          .then(function (r) { return injecterVariantes(r[0], n, r[1]); });
       // Une famille introuvable ne doit pas laisser traîner un rejet non
       // rattrapé dans la console à chaque bouille.
       chargements[n].catch(function () {});

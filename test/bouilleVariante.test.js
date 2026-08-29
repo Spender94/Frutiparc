@@ -135,6 +135,33 @@ test('le micro de la casquette reste PAR-DESSUS la calotte', async () => {
   assert.ok(cFixe > cCol, 'la copie garde cet ordre : le micro passe toujours au-dessus');
 });
 
+test('RETIRER une variante ne décale pas les suivantes', async () => {
+  // Le contrat du catalogue : une variante vaut par son INDEX, et cet index vient
+  // de son rang d'injection. Si retirer la première faisait reculer la seconde,
+  // tous les joueurs qui portent la seconde changeraient d'accessoire du jour au
+  // lendemain. Une variante retirée s'injecte donc VIDE, et garde sa place.
+  const gab = Variante.exporter(await lire('famille0.swf'), CASQUETTE, 34, 8);
+
+  // Cas 1 — les deux variantes publiées.
+  const defsA = await lire('famille0.swf');
+  const base = Variante.repere(defsA, CASQUETTE, 8).variantes;
+  Variante.injecter(defsA, { type: CASQUETTE, paths: gab, coiffureRef: 8 });
+  const bAvant = Variante.injecter(defsA, { type: CASQUETTE, paths: gab, coiffureRef: 8 });
+  assert.strictEqual(bAvant.variante, base + 1, 'la seconde est juste après la première');
+
+  // Cas 2 — la première est retirée : sa place reste tenue par une image vide.
+  const defsB = await lire('famille0.swf');
+  const vide = Variante.injecter(defsB, { type: CASQUETTE, paths: [], coiffureRef: 8, vide: true });
+  assert.ok(vide, 'une variante vide s\'injecte quand même');
+  const bApres = Variante.injecter(defsB, { type: CASQUETTE, paths: gab, coiffureRef: 8 });
+  assert.strictEqual(bApres.variante, bAvant.variante,
+    'la seconde garde EXACTEMENT le même index qu\'avant le retrait');
+
+  // Et la place tenue ne dessine rien.
+  assert.strictEqual(Variante.exporter(defsB, CASQUETTE, vide.variante, 8).length, 0,
+    'la variante retirée n\'affiche aucun tracé');
+});
+
 test('une variante injectée se sélectionne par la chaîne de 24 caractères', async () => {
   const defs = await lire('famille0.swf');
   const gab = Variante.exporter(defs, CASQUETTE, 34, 8);

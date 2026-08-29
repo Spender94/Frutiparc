@@ -238,7 +238,11 @@
     opts = opts || {};
     var type = (opts.type == null) ? 3 : opts.type;
     var paths = opts.paths || [];
-    if (!paths.length) return null;
+    // `vide` : une image SANS rien, qui ne sert qu'à garder sa place. Une variante
+    // retirée du catalogue s'injecte ainsi — sinon toutes celles publiées après
+    // elle reculeraient d'un cran, et les joueurs qui les portent verraient un
+    // autre accessoire.
+    if (!paths.length && !opts.vide) return null;
     var rep = repere(defs, type, opts.coiffureRef);
     if (!rep) return null;
 
@@ -298,7 +302,7 @@
       poses.push({ t: "pose", ch: sid, prof: g.prof, M: ID,
         nom: NOMS[s], masque: 0, cx: null, deplace: false });
     }
-    if (!poses.length) return null;
+    if (!poses.length && !opts.vide) return null;
 
     // L'image neuve : on efface d'abord TOUS les calques que les variantes
     // précédentes ont pu laisser (une pellicule garde ce que l'image d'avant a

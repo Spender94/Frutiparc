@@ -339,6 +339,7 @@
 <script src="/js/bouille-swf.js"></script>
 <script src="/js/bouille-avm.js"></script>
 <script src="/js/bouille-moteur.js"></script>
+<script src="/js/bouille-variante.js"></script>
 <script src="/js/bouille-vignette.js"></script>
 <script src="/js/bouille-custom.js"></script>
 <!-- Pré-réchauffage du cache PNG des bouilles (bouton « Réchauffer » + auto-import). -->
@@ -545,6 +546,30 @@
   <h3 style="margin:18px 0 4px">Feutres spéciaux — image de boutique</h3>
   <p style="color:#888;font-size:12px;margin:0 0 8px">Image inédite affichée dans l'aperçu de la fiche boutique (PNG, JPEG, GIF ou WEBP). Stockée en base.</p>
   <div id="feutre-assets"></div>
+
+  <h3 style="margin:22px 0 4px">Variantes d'accessoire (natives)</h3>
+  <p style="color:#888;font-size:12px;margin:0 0 10px">Une variante créée dans l'<a href="/bouille-accessoire.html" target="_blank">atelier</a> devient un accessoire d'époque à part entière : elle s'encode dans la chaîne de la bouille, se pose sur les 67 coiffures et se recolore par les trois niveaux. <b>L'ordre de la liste est un contrat</b> — une variante publiée n'est jamais supprimée, seulement retirée (sa place est conservée), sinon les suivantes changeraient d'index chez les joueurs.</p>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+    <div style="border:1px solid #cfe0b3;border-radius:8px;padding:12px;min-width:330px">
+      <label style="font-size:12px;color:#555;display:block;margin-bottom:8px">SVG retravaillé :
+        <input type="file" id="va-fichier" accept=".svg,image/svg+xml"></label>
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <span style="display:block;width:96px;height:96px;flex:0 0 96px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden" id="va-apercu-hote"></span>
+        <div style="flex:1">
+          <label style="font-size:12px;color:#555;display:block">Nom<input id="va-nom" type="text" maxlength="60" style="width:100%;box-sizing:border-box"></label>
+          <label style="font-size:12px;color:#555;display:block;margin-top:6px">Accessoire de base
+            <select id="va-type" style="width:100%;box-sizing:border-box"></select></label>
+          <button class="btn-success" id="va-publier" style="margin-top:8px" disabled onclick="publierVariante()">Publier la variante</button>
+          <div id="va-etat" style="font-size:11px;color:#777;margin-top:4px"></div>
+        </div>
+      </div>
+    </div>
+    <div style="flex:1;min-width:300px">
+      <div class="toolbar"><button class="btn btn-sm" onclick="loadVariantes()">Rafraîchir</button><span id="va-count" style="font-size:12px;color:#888"></span></div>
+      <table><thead><tr><th>Aperçu</th><th>Nom</th><th>Base</th><th>Index</th><th>Tracés</th><th></th></tr></thead>
+      <tbody id="va-body"></tbody></table>
+    </div>
+  </div>
 
   <h3 style="margin:22px 0 4px">Accessoires maison (SVG d'un graphiste)</h3>
   <p style="color:#888;font-size:12px;margin:0 0 10px">Un accessoire dessiné dans l'<a href="/bouille-accessoire.html" target="_blank">atelier</a>, retravaillé dans Illustrator, puis déposé ici. Il devient portable par les frutiz. Le fond « repère » du SVG est ignoré — seul le dessin est gardé.</p>
@@ -1363,7 +1388,7 @@ function switchTab(name) {
     if (el) el.style.display = t === name ? '' : 'none';
   });
   if (name === 'scores' && !$('#ranking-select').dataset.loaded) loadScores();
-  if (name === 'shop' && !$('#shop-body').dataset.loaded) { loadShop(); loadAccMaison(); }
+  if (name === 'shop' && !$('#shop-body').dataset.loaded) { loadShop(); loadAccMaison(); loadVariantes(); }
   if (name === 'purchases') loadPurchases();
   if (name === 'wallpapers') loadWallpapers();
   if (name === 'custompictos') loadCustomPictos();
@@ -4060,6 +4085,156 @@ async function toggleBouilleEdit(username, allow) {
     : `Bouille de ${username} verrouillée`);
   loadDetail();
 }
+
+// ── Variantes d'accessoire (natives) ──
+//
+// Une variante publiée n'est PAS un dessin posé sur la bouille : c'est une image
+// ajoutée au rouleau de l'accessoire, que chaque client injecte au chargement de
+// la famille, dans l'ordre du catalogue. Son INDEX vient donc de son rang — d'où
+// le fait qu'on ne supprime jamais une entrée (on la retire, sa place reste).
+let vaPaths = null;
+let vaDefs = null;
+
+function vaFamille() {
+  if (vaDefs) return Promise.resolve(vaDefs);
+  return FPBouilleSwf.charger('/fbouille/famille0.swf').then(function (d) { vaDefs = d; return d; });
+}
+// L'aperçu d'une variante : on l'injecte dans une famille NEUVE (pour ne pas
+// empiler les essais) et on rend la bouille qui la porte.
+function vaApercu(canvas, paths, type) {
+  return FPBouilleSwf.charger('/fbouille/famille0.swf').then(function (defs) {
+    const inj = FPBouilleVariante.injecter(defs, { type: type, paths: paths, coiffureRef: 8 });
+    if (!inj) return null;
+    const p = (v) => FPBouilleMoteur.encode62(v, 2);
+    const etat = p(0) + p(3) + p(0) + p(8) + p(0) + p(2) + p(7) + p(type) + p(inj.variante) + p(29) + p(19) + p(24);
+    new FPBouilleMoteur.Bouille(canvas, defs, { etat: etat, anime: false, alea: () => 0.5 });
+    return inj;
+  });
+}
+
+function vaCharger(svgTexte) {
+  try { vaPaths = FPBouilleCustom.charger(svgTexte); } catch (e) { vaPaths = null; }
+  const etat = $('#va-etat'), bouton = $('#va-publier');
+  if (!vaPaths || !vaPaths.length) { etat.textContent = 'SVG illisible ou sans dessin.'; bouton.disabled = true; return; }
+  const niv = {};
+  vaPaths.forEach(function (p) { niv[p.slot || 0] = (niv[p.slot || 0] || 0) + 1; });
+  etat.textContent = vaPaths.length + ' tracés · niveaux ' + JSON.stringify(niv);
+  bouton.disabled = false;
+  const hote = $('#va-apercu-hote');
+  hote.innerHTML = '<canvas width="1" height="1" style="width:100%;height:100%;display:block"></canvas>';
+  vaApercu(hote.querySelector('canvas'), vaPaths, Number($('#va-type').value) || 3);
+}
+
+async function publierVariante() {
+  if (!vaPaths || !vaPaths.length) return;
+  const nom = $('#va-nom').value.trim();
+  const type = Number($('#va-type').value) || 3;
+  if (!nom) { $('#va-etat').textContent = 'Donne un nom.'; return; }
+  const h = hdr(); h['Content-Type'] = 'application/octet-stream';
+  const corps = JSON.stringify({ nom, famille: 0, type, coiffureRef: 8, paths: vaPaths });
+  try {
+    const r = await fetch('/api/admin/variantes', { method: 'POST', headers: h,
+      body: new Blob([corps], { type: 'application/octet-stream' }) });
+    const j = await r.json();
+    if (!j.ok) { $('#va-etat').textContent = 'Erreur : ' + (j.error || '?'); return; }
+    $('#va-etat').textContent = 'Publiée (' + j.id + ')';
+    $('#va-nom').value = ''; vaPaths = null; $('#va-publier').disabled = true;
+    $('#va-apercu-hote').innerHTML = ''; $('#va-fichier').value = '';
+    loadVariantes();
+  } catch (e) { $('#va-etat').textContent = 'Erreur réseau.'; }
+}
+
+// Deux passes concurrentes se marchaient dessus : ouvrir l'onglet en lance une,
+// publier une variante en lance une autre, et la plus lente vidait le tableau
+// que la plus rapide venait de remplir — il manquait alors des aperçus. Chaque
+// passe porte donc son NUMÉRO DE TOUR, et rend la main si elle n'est plus la
+// dernière (même remède que le lecteur de bouilles).
+let vaTour = 0;
+async function loadVariantes() {
+  const tour = ++vaTour;
+  try {
+    const r = await fetch('/api/admin/variantes', { headers: hdr() });
+    if (!r.ok || tour !== vaTour) return;
+    const liste = await r.json();
+    if (tour !== vaTour) return;
+    $('#va-count').textContent = liste.length + ' variante(s)';
+    const body = $('#va-body'); body.innerHTML = '';
+    const defs = await vaFamille();
+    if (tour !== vaTour) return;
+    // L'index réel = le nombre d'images d'origine du rouleau + le rang.
+    const bases = {};
+    liste.forEach(function (v) {
+      const cle = v.famille + ':' + v.type;
+      if (bases[cle] === undefined) {
+        const rep = FPBouilleVariante.repere(defs, v.type, 8);
+        bases[cle] = rep ? rep.variantes : 0;
+      }
+      const tr = document.createElement('tr');
+      if (v.retire) tr.style.opacity = '.5';
+      tr.innerHTML = '<td><span class="va-vig" data-type="' + v.type + '" data-id="' + v.id
+        + '" style="display:block;width:56px;height:56px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden"></span></td>'
+        + '<td>' + esc(v.nom) + (v.retire ? ' <em>(retirée)</em>' : '') + '</td>'
+        + '<td>' + esc(FPBouille.accName(v.type)) + '</td>'
+        + '<td><code>' + (bases[cle] + v.rang) + '</code></td>'
+        + '<td>' + v.nb + '</td>'
+        + '<td>' + (v.retire ? '' : '<button class="btn btn-sm" onclick="retirerVariante(\'' + v.id + '\')">Retirer</button>') + '</td>';
+      body.appendChild(tr);
+    });
+    // Les aperçus : une famille par ligne, avec TOUTES les variantes injectées
+    // dans l'ordre — c'est ainsi que le site les voit.
+    const pub = await (await fetch('/api/light/variantes')).json();
+    if (tour !== vaTour) return;
+    const neuf = await FPBouilleSwf.charger('/fbouille/famille0.swf');
+    if (tour !== vaTour) return;
+    const index = {};
+    (pub.liste || []).forEach(function (v, i) {
+      const inj = FPBouilleVariante.injecter(neuf, { type: v.type, paths: v.paths || [],
+        coiffureRef: v.coiffureRef, vide: !(v.paths && v.paths.length) });
+      if (inj) index[i] = inj.variante;
+    });
+    Array.prototype.forEach.call(body.querySelectorAll('.va-vig'), function (sp, i) {
+      const v = liste[i]; if (!v || v.retire || index[i] === undefined) return;
+      const c = document.createElement('canvas'); c.width = 112; c.height = 112;
+      c.style.cssText = 'width:100%;height:100%;display:block';
+      sp.appendChild(c);
+      const p = (x) => FPBouilleMoteur.encode62(x, 2);
+      new FPBouilleMoteur.Bouille(c, neuf, {
+        etat: p(0) + p(3) + p(0) + p(8) + p(0) + p(2) + p(7) + p(v.type) + p(index[i]) + p(29) + p(19) + p(24),
+        anime: false, alea: () => 0.5 });
+    });
+  } catch (e) { /* silencieux */ }
+}
+
+async function retirerVariante(id) {
+  if (!confirm('Retirer cette variante ? Sa place est conservée (les index des suivantes ne bougent pas), mais elle n\'affichera plus rien.')) return;
+  try { await fetch('/api/admin/variantes/' + encodeURIComponent(id), { method: 'DELETE', headers: hdr() }); } catch (e) {}
+  loadVariantes();
+}
+
+(function () {
+  const inp = document.getElementById('va-fichier');
+  if (inp) inp.addEventListener('change', function () {
+    const f = this.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = function () { vaCharger(String(r.result)); };
+    r.readAsText(f);
+  });
+  // Les accessoires extensibles : ceux qui ont déjà plusieurs variantes.
+  const sel = document.getElementById('va-type');
+  if (sel) {
+    vaFamille().then(function (defs) {
+      FPBouille.ACCESSORIES.forEach(function (nom, i) {
+        if (!i) return;
+        const rep = FPBouilleVariante.repere(defs, i, 8);
+        if (!rep || rep.variantes < 2) return;
+        const o = document.createElement('option');
+        o.value = i; o.textContent = i + ' — ' + nom + ' (' + rep.variantes + ')';
+        sel.appendChild(o);
+      });
+      sel.value = '3';
+    });
+  }
+})();
 
 // ── Accessoires maison (SVG d'un graphiste) ──
 // La tête témoin des aperçus : famille 0, coiffure 8, accessoire SWF « Rien ».
