@@ -306,12 +306,17 @@
     if (b && M.familleDe(s) === M.familleDe(avant)) {
       // L'accessoire maison est posé AVANT le rendu (definir rerend) : on prend
       // ses aplats dans le cache résolu s'ils y sont, sinon on rerend au retour.
+      // Poser (ou retirer) l'accessoire maison ne doit pas EXIGER un moteur :
+      // `rafraichir` sert aussi à des bouilles réduites, et le nettoyage d'un
+      // accessoire absent n'a aucune raison de faire tomber le rendu.
       var pret = Object.prototype.hasOwnProperty.call(customPret, sp.cid) ? customPret[sp.cid] : undefined;
-      if (sp.cid && pret !== undefined) {
-        b.moteur.accessoireCustom = pret ? pret.paths : null;
-        b.moteur.accessoireCouleurs = pret ? pret.couleurs : null;
-      } else if (!sp.cid) {
-        b.moteur.accessoireCustom = null; b.moteur.accessoireCouleurs = null;
+      if (b.moteur) {
+        if (sp.cid && pret !== undefined) {
+          b.moteur.accessoireCustom = pret ? pret.paths : null;
+          b.moteur.accessoireCouleurs = pret ? pret.couleurs : null;
+        } else if (!sp.cid) {
+          b.moteur.accessoireCustom = null; b.moteur.accessoireCouleurs = null;
+        }
       }
       b.definir(s);
       // `humeur(0)` est le visage NEUTRE, pas « pas d'humeur » : le tester

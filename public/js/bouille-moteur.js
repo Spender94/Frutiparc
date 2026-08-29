@@ -550,6 +550,37 @@
     return face;
   };
 
+  /*
+   * Ce clip ne contient-il QUE le marqueur d'atelier ?
+   *
+   * Le marqueur est un aplat qui couvre exactement la scène — c'est ce qui le
+   * distingue d'un accessoire, toujours plus petit que le visage. On le
+   * reconnaît donc à sa BOÎTE, sans coder en dur l'identifiant d'une famille.
+   * « Que » le marqueur : s'il y a autre chose à côté, on ne touche à rien.
+   */
+  function couvreLaScene(f, sc) {
+    if (!f || !f.bounds || !sc) return false;
+    const b = f.bounds, pres = (a, x) => Math.abs(a - x) < 0.51;
+    return pres(b.x, sc.x) && pres(b.y, sc.y) && pres(b.w, sc.w) && pres(b.h, sc.h);
+  }
+  function marqueurSeul(moteur, clip) {
+    const sc = moteur.defs.scene;
+    if (!clip || !clip.enfants || !clip.enfants.size) return false;
+    let marqueur = false, autre = false;
+    const regarder = (e, prof) => {
+      if (prof > 2) { autre = true; return; }
+      const f = moteur.defs.formes.get(e.ch);
+      if (f) { if (couvreLaScene(f, sc)) marqueur = true; else autre = true; return; }
+      if (e.objet && e.objet.enfants) { e.objet.enfants.forEach((s) => regarder(s, prof + 1)); return; }
+      // NI forme NI clip : ce caractère ne dessine rien. C'est le cas du
+      // `DefineText` que le lecteur ne sait pas lire (#63 de la famille 0, la
+      // seule inscription du fichier) — il accompagne justement le marqueur.
+      // Le compter comme du contenu, c'était laisser passer le marqueur.
+    };
+    clip.enfants.forEach((e) => regarder(e, 0));
+    return marqueur && !autre;
+  }
+
   // ── apply(s) — le décodage d'époque, au mot près ─────────────────────────
   Moteur.prototype.definir = function (s) {
     s = String(s || '');
@@ -582,6 +613,32 @@
     const cbAcc = cbC && cbC.enfantNomme('acc'), cbAcc2 = cbC && cbC.enfantNomme('acc2');
     aller(caAcc, accSecId + 1); aller(caAcc2, accSecId + 1); aller(cbAcc, accSecId + 1);
     // cb.c.acc2 n'est PAS calé : bogue d'origine, conservé (cf. en-tête).
+
+    /*
+     * LE MARQUEUR D'ATELIER, ET LA BOUILLE QUI DISPARAISSAIT.
+     *
+     * Un rouleau d'accessoires traîne une queue d'images qu'on croyait vides.
+     * Elles ne le sont pas : elles posent un MARQUEUR — un clip dont la seule
+     * forme est un aplat couvrant EXACTEMENT la scène, dans le vert pâle du parc
+     * (#E8F8D3). Il sert de repère d'atelier ; posé sur une bouille, il la
+     * recouvre entièrement.
+     *
+     * On tombe dessus dès qu'un accessoire demande une variante que le rouleau
+     * n'a pas : `allerImage` borne à la dernière image, et c'est justement une
+     * de ces images-là. Le symptôme est spectaculaire — la bouille disparaît
+     * derrière un rectangle — et rien ne le signale.
+     *
+     * Il n'a rien à faire à l'écran : on ne le dessine pas. Une variante
+     * introuvable rend donc une tête SANS accessoire, ce qui se comprend, au
+     * lieu d'une tête effacée, qui ne se comprend pas.
+     */
+    // On ne touche PAS à `visible` : `apply()` s'en sert pour décider quelles
+    // couches teinter (`if (face.ca.c.acc._visible)`). Le marqueur porte donc
+    // son propre drapeau, que seul le dessin regarde.
+    const masquerMarqueur = (c) => { if (c) c.marqueur = marqueurSeul(this, c); };
+    masquerMarqueur(caC); masquerMarqueur(cbC);
+    masquerMarqueur(caAcc); masquerMarqueur(cbAcc);
+    masquerMarqueur(caAcc2); masquerMarqueur(cbAcc2);
 
     aller(oa, eyeId + 1); aller(ob, eyeId + 1);
     const oaO = oa && oa.enfantNomme('o'), obO = ob && ob.enfantNomme('o');
@@ -914,6 +971,9 @@
   // Dessine un clip : ses enfants par profondeur croissante, avec les masques.
   Moteur.prototype.dessinerClip = function (ctx, clip, M, cx, alpha) {
     if (!clip.visible) return;
+    // Le marqueur d'atelier ne se dessine pas (cf. definir) : il couvrirait
+    // toute la bouille d'un aplat.
+    if (clip.marqueur) return;
     const mc = clip.teinte ? cxTeinte(clip.teinte) : clip.cxPlacement;
     const cxi = composerCx(cx, mc || null);
     const ai = alpha * (clip.alpha / 100);

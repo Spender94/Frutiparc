@@ -41,6 +41,11 @@ function canevas(etat) {
     width: 1, height: 1,
     getAttribute: (n) => (n in attrs ? attrs[n] : null),
     setAttribute: (n, v) => { attrs[n] = String(v); },
+    // Un vrai canevas sait aussi RETIRER un attribut, et le lecteur s'en sert
+    // (`data-custom` disparaît quand la bouille n'a plus d'accessoire maison).
+    // Sans lui, le faux canevas trébuchait sur du code qui n'a rien à voir
+    // avec ce que ce test surveille.
+    removeAttribute: (n) => { delete attrs[n]; },
     getContext: () => ({ clearRect() {} }),
     _attrs: attrs,
   };
