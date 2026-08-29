@@ -390,6 +390,33 @@ function dessinerZoneBombe(ctx, partie, bombes) {
       ctx.lineWidth = 5.5;
       ctx.strokeStyle = t.trait;
       ctx.stroke();
+      /*
+       * LE DÉCOMPTE, au centre du cercle.
+       *
+       * L'arc dit « bientôt » ; il ne dit pas « dans deux secondes ». Or c'est
+       * le chiffre qu'on lit d'un coup d'œil quand on décide de traverser ou
+       * de contourner — et c'est ce qui manquait.
+       *
+       * Ce sont les CHIFFRES DU JEU (asml.NumberMC, les mêmes clips que le
+       * score et les bulles de points), pas une police du navigateur, et ils
+       * prennent la couleur du danger : verts tant que rien n'est menacé,
+       * jaunes quand la queue va tomber, rouges quand c'est la tête. On
+       * arrondit VERS LE HAUT — « 1 » couvre la dernière seconde, et le zéro
+       * n'apparaît jamais avant que ça saute.
+       */
+      const secondes = Math.max(1, Math.ceil(b.meche || 0));
+      const police = d.niveau === 2 ? 'chiffresRouge'
+        : (d.niveau === 1 ? 'chiffresJaune' : 'chiffresVert');
+      if (!b._compte || b._compte.police !== police) {
+        b._compte = new D.Nombre(police);
+        b._compte.police = police;
+        b._compte.centre = true;
+      }
+      b._compte.poserVal(secondes);
+      // Il grossit sur la dernière seconde : le dernier battement se voit sans
+      // qu'on ait à lire.
+      const k = 2.4 + (reste < 1 / C.TIME_BOMBE ? (1 - reste * C.TIME_BOMBE) * 1.4 : 0);
+      b._compte.dessiner(ctx, b.x, b.y, k);
     }
     ctx.restore();
   }

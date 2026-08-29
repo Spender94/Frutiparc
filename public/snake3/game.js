@@ -375,6 +375,21 @@ class VuePartie {
     partie.entree = this.jeu.entreesPartie();
     partie.main(tmod, deltaT);
 
+    /*
+     * LA PAUSE ARRÊTE TOUT — pas seulement le moteur.
+     *
+     * `partie.main` rend la main tout de suite quand `pause` est vrai, mais ce
+     * qui suit ici ne le consultait pas : la MÈCHE DES BOMBES continuait de
+     * brûler pendant la pause (l'assistant se vidait, et la bombe pouvait
+     * même exploser à l'écran figé), les enrobages, les bulles de points, les
+     * particules et les clips des cases avançaient aussi.
+     *
+     * En Flash, la pause arrête le clip : rien ne joue derrière le voile. On
+     * s'arrête au même endroit — juste après `partie.main`, qui garde la main
+     * sur la touche qui LÈVE la pause.
+     */
+    if (partie.pause) return;
+
     if (this.trouFx) {
       this.trouFx.main(tmod);
       if (this.trouFx.z < 3) this.trouFx = null;
@@ -963,7 +978,21 @@ class Jeu {
     // un 60 Hz cela tournait une fois et demie trop vite, sur un 120 Hz deux
     // fois. Le dessin, lui, reste à la cadence de l'écran.
     const PAS = 1 / C.SWF_FPS;
-    const RATTRAPAGE = Math.ceil(C.MAX_DELTA_TIME * C.SWF_FPS);
+    /*
+     * COMBIEN DE PAS PEUT-ON RATTRAPER D'UN COUP ?
+     *
+     * Il y en avait vingt (`MAX_DELTA_TIME × 40`). Une machine qui perdait un
+     * demi-seconde les jouait tous AVANT de dessiner : le serpent traversait
+     * un demi-écran d'un bond, puis repartait. C'est ce que les joueurs
+     * décrivent — « comme s'il y avait du ping », et toujours en fin de
+     * partie, quand l'image coûte le plus cher.
+     *
+     * Flash ne rattrape pas : quand `wantedFPS` n'est pas tenu, le jeu tourne
+     * simplement AU RALENTI — une image, un pas, et tant pis pour le temps
+     * perdu. Trois pas suffisent à absorber un hoquet (75 ms) sans jamais
+     * téléporter ; au-delà, on renonce au retard, comme le lecteur d'origine.
+     */
+    const RATTRAPAGE = 3;
     let avant = performance.now();
     let retard = 0;                   // le temps de jeu pas encore joué
     const pas = (dt) => {
@@ -989,7 +1018,22 @@ class Jeu {
       while (retard >= PAS && n < RATTRAPAGE) { retard -= PAS; n++; pas(PAS); }
       if (n === RATTRAPAGE) retard = 0;   // machine dépassée : on renonce au reste
 
-      this.dessiner();
+      /*
+       * ON NE DESSINE QUE CE QUI A CHANGÉ.
+       *
+       * Le dessin suivait la cadence de l'ÉCRAN : sur un 60 Hz, soixante
+       * images par seconde pour quarante états — vingt d'entre elles
+       * répétaient la précédente, et la séquence 2-1-2-1 se voyait (c'est le
+       * « moins fluide que sur Flash » : le SWF, lui, affiche quarante images
+       * toutes différentes). Sur un 120 Hz, deux images sur trois étaient du
+       * travail perdu — et c'est ce travail-là qui manquait pour tenir les
+       * quarante pas en fin de partie, quand le serpent est long.
+       *
+       * Une image quand l'état a bougé, pas avant : la cadence retombe
+       * exactement sur celle du lecteur d'origine, et le reste du temps
+       * revient au jeu.
+       */
+      if (n > 0) this.dessiner();
       requestAnimationFrame(cadre);
     };
     requestAnimationFrame(cadre);
