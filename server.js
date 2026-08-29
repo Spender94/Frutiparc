@@ -10696,7 +10696,13 @@ app.get('/api/light/acc-maison/:id', (req, res) => {
 // dire la même chose partout. Une variante retirée garde sa place (sans tracés) :
 // le client injecte alors une image vide, et les rangs suivants ne bougent pas.
 app.get('/api/light/variantes', (req, res) => {
-  res.setHeader('Cache-Control', 'public, max-age=60');
+  // PAS de `max-age` ici. Une variante publiée doit paraître au prochain
+  // chargement de page, chez tout le monde, sans vider quoi que ce soit — or un
+  // `max-age=60` faisait reservir par le navigateur la liste d'AVANT, et
+  // l'accessoire manquait sans que rien ne le dise. `no-cache` n'interdit pas le
+  // cache : il impose de REVALIDER, et l'ETag d'Express répond alors 304 tant
+  // que le catalogue n'a pas bougé — la fraîcheur sans le poids.
+  res.setHeader('Cache-Control', 'no-cache');
   res.json({
     ok: true,
     liste: variantesAcc.map((v) => ({

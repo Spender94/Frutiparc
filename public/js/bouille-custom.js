@@ -198,7 +198,7 @@
    * @param {string} svgTexte
    * @returns {Array<{d,fill,alpha,m,trait,largeur}>}
    */
-  function charger(svgTexte) {
+  function charger(svgTexte, opts) {
     var doc = new global.DOMParser().parseFromString(svgTexte, "image/svg+xml");
     var svg = doc.documentElement;
     if (!svg || svg.tagName.toLowerCase() !== "svg") return [];
@@ -209,6 +209,39 @@
     var vivant = global.document.importNode(svg, true);
     hote.appendChild(vivant);
     global.document.body.appendChild(hote);
+
+    /*
+     * REMETTRE LE DESSIN À L'ÉCHELLE DE LA SCÈNE.
+     *
+     * Le gabarit part en 100 × 100 — le carré du visage — mais un aller-retour
+     * par Illustrator n'en revient pas toujours ainsi : ré-exporter en « pixels »
+     * donne couramment un plan de travail de 1000, viewBox comprise. Les tracés
+     * arrivent alors DIX FOIS trop grands, et un accessoire qui couvre tout le
+     * canevas ressemble à une bouille disparue — sans la moindre erreur pour le
+     * dire. (Constaté : x −31..871 au lieu de −3..87.)
+     *
+     * On ne se fie donc plus à `width`/`height` : on lit la VIEWBOX, on force le
+     * SVG greffé à ses dimensions (ainsi `getCTM` rend des coordonnées de
+     * viewBox), et on compose le passage viewBox → scène. Un gabarit resté en
+     * 100 × 100 traverse sans rien changer ; un plan de travail redimensionné
+     * revient à sa place tout seul.
+     */
+    var SCENE = (opts && opts.scene) || 100;      // la scène d'une bouille : 100 × 100
+    var vb = String(svg.getAttribute("viewBox") || "").trim().split(/[\s,]+/).map(Number);
+    var aVb = vb.length === 4 && vb.every(function (n) { return isFinite(n); }) && vb[2] > 0 && vb[3] > 0;
+    if (aVb) {
+      vivant.setAttribute("width", vb[2]);
+      vivant.setAttribute("height", vb[3]);
+    }
+    var sx = aVb ? SCENE / vb[2] : 1, sy = aVb ? SCENE / vb[3] : 1;
+    var versScene = { a: sx, b: 0, c: 0, d: sy, e: aVb ? -vb[0] * sx : 0, f: aVb ? -vb[1] * sy : 0 };
+    function composer(P, E) {
+      return {
+        a: P.a * E.a + P.c * E.b, b: P.b * E.a + P.d * E.b,
+        c: P.a * E.c + P.c * E.d, d: P.b * E.c + P.d * E.d,
+        e: P.a * E.e + P.c * E.f + P.e, f: P.b * E.e + P.d * E.f + P.f,
+      };
+    }
 
     var out = [];
     try {
@@ -241,8 +274,12 @@
         if (repere && repere.contains(el)) continue;          // le fond, jamais
         var d = elementVersD(el);
         if (!d) continue;
-        var ctm = el.getCTM();                                // élément → viewBox (scène)
-        var m = ctm ? [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f] : null;
+        // élément → viewBox, puis viewBox → scène : le dessin retrouve sa taille
+        // quel que soit le plan de travail dont il revient.
+        var ctm = el.getCTM();
+        var mm = ctm ? composer(versScene, { a: ctm.a, b: ctm.b, c: ctm.c, d: ctm.d, e: ctm.e, f: ctm.f })
+                     : versScene;
+        var m = [mm.a, mm.b, mm.c, mm.d, mm.e, mm.f];
         var op = opaciteDe(global, el, vivant);
         var blend = fusionDe(global, el, vivant);
         var avant = !(gArr && gArr.contains(el));

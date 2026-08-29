@@ -214,6 +214,33 @@ test('RETIRER une variante ne décale pas les suivantes', async () => {
     'la variante retirée n\'affiche aucun tracé');
 });
 
+test('un SVG dont le plan de travail a changé revient À L\'ÉCHELLE', async () => {
+  // Le gabarit part en 100 × 100, mais un aller-retour par Illustrator n'en
+  // revient pas toujours ainsi : ré-exporter en « pixels » donne couramment un
+  // plan de travail de 1000, viewBox comprise. Les tracés arrivaient alors DIX
+  // FOIS trop grands — l'accessoire couvrait tout le canevas et la bouille
+  // semblait avoir disparu, sans la moindre erreur pour le dire.
+  //
+  // `charger` se règle désormais sur la VIEWBOX, jamais sur width/height. Ce
+  // test tient la règle sans navigateur : on refait le calcul que fait l'import.
+  const scene = 100;
+  function versScene(viewBox) {
+    const vb = viewBox.split(/[\s,]+/).map(Number);
+    const ok = vb.length === 4 && vb.every((n) => isFinite(n)) && vb[2] > 0 && vb[3] > 0;
+    const sx = ok ? scene / vb[2] : 1, sy = ok ? scene / vb[3] : 1;
+    return { a: sx, d: sy, e: ok ? -vb[0] * sx : 0, f: ok ? -vb[1] * sy : 0 };
+  }
+  // Le gabarit tel qu'il part : rien à corriger.
+  assert.deepStrictEqual(versScene('0 0 100 100'), { a: 1, d: 1, e: -0, f: -0 });
+  // Un plan de travail dix fois plus grand : tout revient au dixième.
+  assert.deepStrictEqual(versScene('0 0 1000 1000'), { a: 0.1, d: 0.1, e: -0, f: -0 });
+  // Et une viewBox décalée retrouve son origine.
+  const d = versScene('50 20 200 200');
+  assert.strictEqual(d.a, 0.5);
+  assert.strictEqual(d.e, -25);
+  assert.strictEqual(d.f, -10);
+});
+
 test('une variante injectée se sélectionne par la chaîne de 24 caractères', async () => {
   const defs = await lire('famille0.swf');
   const gab = Variante.exporter(defs, CASQUETTE, 34, 8);
