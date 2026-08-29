@@ -130,10 +130,19 @@
    * une bouille sans le dernier accessoire qu'une page sans bouilles.
    */
   var catalogue = null;
+  // Le catalogue est servi avec un `max-age` : les pages ordinaires le prennent
+  // dans le cache du navigateur, et c'est très bien — une variante qui met une
+  // minute à paraître ne gêne personne. Mais l'admin qui vient de PUBLIER, si :
+  // vider notre cache ne servait à rien tant que le navigateur reservait la
+  // réponse d'avant. Après un oubli explicite, on redemande donc sans cache.
+  var contournerCache = false;
   function variantes() {
     if (!catalogue) {
+      var url = '/api/light/variantes' + (contournerCache ? ('?t=' + Date.now()) : '');
+      var opts = contournerCache ? { cache: 'no-store' } : undefined;
+      contournerCache = false;
       catalogue = (typeof global.fetch === 'function')
-        ? global.fetch('/api/light/variantes')
+        ? global.fetch(url, opts)
           .then(function (r) { return r.ok ? r.json() : null; })
           .then(function (j) { return (j && j.ok) ? j.liste : []; })
           .catch(function () { return []; })
@@ -155,6 +164,34 @@
       } catch (e) { /* une variante fautive n'empêche pas les autres */ }
     }
     return defs;
+  }
+
+  /*
+   * OUBLIER LES FAMILLES — après qu'une variante a été publiée.
+   *
+   * Une famille est chargée UNE FOIS, variantes injectées, puis gardée : c'est
+   * ce qui garantit qu'un index veut dire la même chose partout. Mais l'admin,
+   * lui, publie une variante SANS recharger la page — et sa famille en cache
+   * reste alors celle d'AVANT. L'index tout juste attribué n'y existe pas, et
+   * `allerImage` le ramène à la dernière image du rouleau : souvent une image
+   * vide, d'où un accessoire qui disparaît de l'aperçu sans un mot d'erreur.
+   *
+   * On jette donc tout : le catalogue, les familles, et les bouilles déjà
+   * montées (qui tiennent l'ancienne famille par la main). Les WeakMap ne se
+   * vident pas — on les remplace. Le prochain rendu repart d'un chargement neuf.
+   *
+   * Réservé à l'admin : sur le site, une page qui vit longtemps garde sa
+   * famille, et c'est très bien ainsi.
+   */
+  function oublierFamilles() {
+    chargements = {};
+    catalogue = null;
+    contournerCache = true;
+    posees = new WeakMap();
+    promesses = new WeakMap();
+    guettes = new WeakSet();
+    tours = new WeakMap();
+    return true;
   }
 
   function famille(n) {
@@ -363,6 +400,12 @@
   global.FPBouilleVignette = {
     html: html, brancher: brancher, rafraichir: rafraichir,
     jouer: jouer, stopper: stopper, bouilleDe: bouilleDe, oublier: oublier,
-    FAMILLES: FAMILLES, familles: chargements,
+    // À rappeler quand le catalogue des variantes a CHANGÉ (l'admin qui publie) :
+    // sans cela la page garde la famille d'avant, où l'index neuf n'existe pas.
+    oublierFamilles: oublierFamilles,
+    FAMILLES: FAMILLES,
+    //  est REMPLACÉ par oublierFamilles : on l'expose par une
+    // fonction, sinon on servirait pour toujours la première table.
+    familles: function () { return chargements; },
   };
 })(typeof window !== 'undefined' ? window : globalThis);

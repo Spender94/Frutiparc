@@ -4182,6 +4182,10 @@ async function publierVariante() {
     const j = await r.json();
     if (!j.ok) { $('#va-etat').textContent = 'Erreur : ' + (j.error || '?'); return; }
     $('#va-etat').textContent = 'Publiée (' + j.id + ')';
+    // La famille que la vignette garde en cache ne connaît pas encore cet
+    // index : sans cet oubli, l'aperçu de boutique retomberait sur la dernière
+    // image du rouleau — souvent une image vide, donc un accessoire disparu.
+    if (window.FPBouilleVignette && FPBouilleVignette.oublierFamilles) FPBouilleVignette.oublierFamilles();
     $('#va-nom').value = ''; vaPaths = null; $('#va-publier').disabled = true;
     $('#va-apercu-hote').innerHTML = ''; $('#va-fichier').value = '';
     loadVariantes();
@@ -4294,6 +4298,7 @@ function variantEnBoutique(id, type, index, nom) {
 async function retirerVariante(id) {
   if (!confirm('Retirer cette variante ? Sa place est conservée (les index des suivantes ne bougent pas), mais elle n\'affichera plus rien.')) return;
   try { await fetch('/api/admin/variantes/' + encodeURIComponent(id), { method: 'DELETE', headers: hdr() }); } catch (e) {}
+  if (window.FPBouilleVignette && FPBouilleVignette.oublierFamilles) FPBouilleVignette.oublierFamilles();
   loadVariantes();
 }
 
