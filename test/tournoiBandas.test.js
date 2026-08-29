@@ -255,3 +255,79 @@ test('une manche jouée AILLEURS qu\'au Championnat ne compte pas pour le tourno
     'une partie de challenge ne remplit aucune affiche');
   A.ws.close(); B.ws.close();
 });
+
+/*
+ * L'ARBITRAGE — quand le jeu a compté une manche de travers.
+ *
+ * « Un joueur a abandonné une partie Frutibandas par mégarde, le score est donc
+ *   faussé. »
+ *
+ * Le jeu ne sait pas distinguer un abandon délibéré d'un doigt qui glisse : il
+ * voit une partie quittée, il la compte pour l'autre. L'affiche était en
+ * lecture seule — le point injuste restait, et s'il pliait le match, le mauvais
+ * joueur passait au tour suivant. L'arbitre repose donc les manches.
+ */
+test('l’arbitre corrige une affiche faussée par un abandon involontaire', async (t) => {
+  if (!dispo) return t.skip('Postgres de test indisponible');
+  const sidA = await inscrire('ignace'), sidB = await inscrire('jocelyne');
+  const cree = await post('/api/admin/tournaments', {
+    name: 'Tournoi arbitré', format: 'duel', poule_size: 2, qualif_par_poule: 1, win_by: 2,
+  });
+  const id = cree.tournament.id;
+  await post(`/api/admin/tournaments/${id}/duel/players`, { players: 'ignace\njocelyne' });
+  await post(`/api/admin/tournaments/${id}/duel/poules`);
+
+  const A = await connecter('ignace', sidA), B = await connecter('jocelyne', sidB);
+  let etat = await get(`/api/admin/tournaments/${id}`);
+  const aff = etat.matches[0];
+  const premier = A.pseudo === aff.player1 ? A : B;
+  const second = premier === A ? B : A;
+
+  // Le drame : DEUX parties quittées par mégarde. Le match se plie à 2-0 pour
+  // l'adversaire, qui n'a rien gagné du tout.
+  await manche(premier, second);
+  await manche(premier, second);
+  etat = await get(`/api/admin/tournaments/${id}`);
+  let m = etat.matches.find((x) => Number(x.id) === Number(aff.id));
+  assert.deepStrictEqual([Number(m.score1), Number(m.score2)], [2, 0], 'le faux 2-0 est bien enregistré');
+  assert.strictEqual(m.status, 'done', 'et l’affiche est close');
+
+  // L'arbitre ramène à 0-1 : l'affiche se ROUVRE, le vainqueur est effacé, et
+  // les manches suivantes reprendront à partir de là.
+  const corr = await post(`/api/admin/tournaments/${id}/duel/match/${aff.id}`, { score1: 0, score2: 1 });
+  assert.ok(corr.ok, JSON.stringify(corr));
+  assert.strictEqual(corr.fini, false, 'un d’écart : le match repart');
+  etat = await get(`/api/admin/tournaments/${id}`);
+  m = etat.matches.find((x) => Number(x.id) === Number(aff.id));
+  assert.deepStrictEqual([Number(m.score1), Number(m.score2)], [0, 1]);
+  assert.strictEqual(m.status, 'pending', 'l’affiche est rouverte');
+  assert.ok(!m.winner, 'et n’a plus de vainqueur');
+
+  // Rouverte VRAIMENT : une manche jouée ensuite se compte de nouveau.
+  await manche(second, premier);
+  etat = await get(`/api/admin/tournaments/${id}`);
+  m = etat.matches.find((x) => Number(x.id) === Number(aff.id));
+  assert.deepStrictEqual([Number(m.score1), Number(m.score2)], [0, 2], 'la manche suivante s’ajoute');
+  assert.strictEqual(m.status, 'done', 'et 0-2 replie le match');
+  assert.strictEqual(String(m.winner).toLowerCase(), String(aff.player2).toLowerCase());
+
+  // « Remettre à 0 » ramène l'affiche à son état d'origine.
+  const zero = await post(`/api/admin/tournaments/${id}/duel/match/${aff.id}`, { reset: true });
+  assert.ok(zero.ok && zero.fini === false, JSON.stringify(zero));
+  etat = await get(`/api/admin/tournaments/${id}`);
+  m = etat.matches.find((x) => Number(x.id) === Number(aff.id));
+  assert.deepStrictEqual([Number(m.score1), Number(m.score2)], [0, 0]);
+  assert.strictEqual(m.status, 'pending');
+
+  // Ce qui n'est PAS accepté : des manches qui n'en sont pas.
+  for (const mauvais of [{ score1: -1, score2: 0 }, { score1: 1.5, score2: 0 },
+                         { score1: 200, score2: 0 }, { score1: 'x', score2: 0 }]) {
+    const r = await post(`/api/admin/tournaments/${id}/duel/match/${aff.id}`, mauvais);
+    assert.ok(!r.ok, 'refusé : ' + JSON.stringify(mauvais) + ' → ' + JSON.stringify(r));
+  }
+  // …et une affiche qui n'est pas de ce tournoi.
+  const ailleurs = await post(`/api/admin/tournaments/${id}/duel/match/999999`, { score1: 1, score2: 0 });
+  assert.strictEqual(ailleurs.error, 'match_not_found');
+
+  A.ws.close(); B.ws.close();
+});

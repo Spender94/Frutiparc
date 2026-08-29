@@ -106,6 +106,44 @@ test('une manche hors affiche ne touche à rien', () => {
   assert.strictEqual(T.manche(m, [0], 'ana', 'bo', 'ana', 2), null, 'match déjà plié');
 });
 
+// ── L'ARBITRAGE ─────────────────────────────────────────────────────────────
+//
+// « Un joueur a abandonné une partie par mégarde, le score est donc faussé. »
+// L'arbitre repose les manches à la main ; `issue` est la règle qu'il applique
+// — LA MÊME que celle des manches jouées, sortie de `manche` pour qu'il n'y en
+// ait qu'une. Deux copies auraient fini par conclure différemment.
+
+test('l’arbitrage conclut comme une manche jouée', () => {
+  const m = { player1: 'Ana', player2: 'Bo' };
+  assert.deepStrictEqual(T.issue(m, 2, 0, 2), { score1: 2, score2: 0, fini: true, winner: 'ana' });
+  assert.deepStrictEqual(T.issue(m, 1, 3, 2), { score1: 1, score2: 3, fini: true, winner: 'bo' });
+  // Sous l'écart, le match reste OUVERT : les manches suivantes reprendront.
+  assert.deepStrictEqual(T.issue(m, 1, 1, 2), { score1: 1, score2: 1, fini: false, winner: null });
+  assert.deepStrictEqual(T.issue(m, 0, 0, 2), { score1: 0, score2: 0, fini: false, winner: null });
+  // Le vainqueur sort en minuscules — la clé du serveur, comme partout ailleurs.
+  assert.strictEqual(T.issue({ player1: 'MajoMagic', player2: 'bo' }, 3, 0, 3).winner, 'majomagic');
+});
+
+test('l’arbitrage assainit ce qu’on lui donne', () => {
+  const m = { player1: 'ana', player2: 'bo' };
+  // Un écart absent retombe sur celui d'époque, pas sur zéro (qui plierait tout).
+  assert.strictEqual(T.issue(m, 1, 1, undefined).fini, false);
+  assert.strictEqual(T.issue(m, 2, 0, undefined).fini, true, 'ECART_DEFAUT = ' + T.ECART_DEFAUT);
+  // Négatifs et décimales ne passent pas : des manches se comptent en entiers.
+  assert.deepStrictEqual([T.issue(m, -3, 1.7, 2).score1, T.issue(m, -3, 1.7, 2).score2], [0, 1]);
+});
+
+test('manche et arbitrage sont bien la MÊME règle', () => {
+  // Le même 1-0 amené à 2-0 : par une manche jouée d'un côté, par l'arbitre de
+  // l'autre. Les deux doivent rendre le même verdict, jusqu'au vainqueur.
+  const affiche = { round: 0, slot: 0, player1: 'Ana', player2: 'Bo', status: 'pending', score1: 1, score2: 0 };
+  const jouee = T.manche([affiche], [0], 'ana', 'bo', 'ana', 2);
+  const arbitree = T.issue(affiche, 2, 0, 2);
+  assert.deepStrictEqual(
+    { score1: jouee.score1, score2: jouee.score2, fini: jouee.fini, winner: jouee.winner },
+    arbitree);
+});
+
 test('le classement d\'une poule : matchs gagnés, puis la confrontation directe', () => {
   const j = [{ username: 'ana' }, { username: 'bo' }, { username: 'cyd' }];
   // ana bat cyd, bo bat ana, cyd bat bo : tout le monde à 1 victoire.

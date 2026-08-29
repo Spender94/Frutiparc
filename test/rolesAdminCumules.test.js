@@ -249,3 +249,52 @@ test('un animateur arrive sur les Salons, pas sur MikeHorny', async (t) => {
   })).json();
   assert.equal(me.accueil, 'channels', 'le contexte le porte aussi');
 });
+
+// ── L'ORGANISATEUR DE TOURNOIS ─────────────────────────────────────────────
+//
+// « J'aimerais ajouter un rôle à attribuer dans l'admin donnant accès à
+//   l'organisation de tournois. »
+//
+// Les tournois n'étaient joignables que par la casquette d'ANIMATEUR, qui
+// ouvre aussi MikeHorny, les salons, le trombinoscope et le registre des dons.
+// Confier un tournoi à quelqu'un revenait donc à lui confier la modération des
+// salons. Le rôle `tournoi` n'ouvre que les tournois.
+
+test('l\'organisateur de tournois n\'ouvre QUE les tournois', async (t) => {
+  if (!dispo) return t.skip('pas de base PostgreSQL de test disponible');
+  const pseudo = 'arbitre' + RUN;
+  await inscrire(pseudo);
+  assert.equal(await donnerRoles(pseudo, ['tournoi']), 200);
+
+  const { statut, corps } = await seConnecter(pseudo);
+  assert.equal(statut, 200, 'connexion admin acceptée : ' + JSON.stringify(corps).slice(0, 160));
+  assert.deepEqual(corps.roles, ['tournoi']);
+  assert.equal(corps.label, 'Organisateur de tournois');
+  assert.deepEqual(corps.tabs, ['tournoi'], 'les tournois, et rien d\'autre');
+  assert.equal(corps.accueil, 'tournoi', 'et il y atterrit');
+
+  // La porte des tournois s'ouvre…
+  assert.equal(await ouvre(corps.token, '/api/admin/tournaments'), 200);
+  assert.equal(await ouvre(corps.token, '/api/admin/snake3-tournoi'), 200,
+    'le tournoi Frutisnake aussi — c\'est le même onglet');
+  // …et aucune des autres.
+  for (const [role, porte] of Object.entries(PORTES)) {
+    assert.equal(await ouvre(corps.token, porte), 403, `${porte} (${role}) reste fermé`);
+  }
+});
+
+test('la casquette de tournoi s\'ajoute sans déplacer l\'arrivée d\'un animateur', async (t) => {
+  if (!dispo) return t.skip('pas de base PostgreSQL de test disponible');
+  // `adminRoleAccueil` prend le PREMIER rôle (ordre canonique) qui réclame un
+  // onglet d'arrivée. `tournoi` est rangé APRÈS `animateur` dans la table pour
+  // cette raison précise : un animateur qui prend aussi les tournois doit
+  // continuer d'atterrir sur les Salons, là où son travail commence.
+  const pseudo = 'animtour' + RUN;
+  await inscrire(pseudo);
+  await donnerRoles(pseudo, ['animateur', 'tournoi']);
+  const { corps } = await seConnecter(pseudo);
+  assert.deepEqual(corps.roles, ['animateur', 'tournoi'], 'ordre canonique');
+  assert.equal(corps.accueil, 'channels', 'il arrive toujours aux Salons');
+  assert.ok(corps.tabs.includes('tournoi'));
+  assert.ok(corps.tabs.includes('kiloute'), 'ses onglets d\'animateur tiennent');
+});

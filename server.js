@@ -7190,6 +7190,12 @@ const ADMIN_ROLES = {
   animateur: { label: 'Animateur', accueil: 'channels', tabs: ['kiloute', 'channels', 'tournoi', 'trombinoscope', 'dons'] },
   // Chapelier : crée et met en boutique des accessoires (onglet Boutique).
   chapelier: { label: 'Chapelier', tabs: ['shop'] },
+  // Organisateur de tournois : monte, arbitre et clôture les tournois — sans
+  // les autres casquettes de l'animateur (MikeHorny, salons, dons, trombi).
+  // Placé EN DERNIER dans la table : l'ordre des clés est l'ordre canonique,
+  // dont dépend `adminRoleAccueil`. Devant `animateur`, il aurait déplacé
+  // l'arrivée des animateurs des salons vers les tournois.
+  tournoi: { label: 'Organisateur de tournois', accueil: 'tournoi', tabs: ['tournoi'] },
 };
 // UN COMPTE, PLUSIEURS CASQUETTES. Le même bénévole peut tenir les scores, la
 // boutique et l'animation — il fallait choisir, on cumule désormais. La colonne
@@ -7872,6 +7878,65 @@ app.post('/api/admin/tournaments/:id/duel/next-round', tournoiScope, async (req,
     await db.addTournamentMatches(t.id, TD.tirerTour(restants, tour + 1));
     await db.updateTournament(t.id, { current_round: tour + 1 });
     res.json({ ok: true, tour: tour + 1, joueurs: restants });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/*
+ * CORRIGER UNE AFFICHE — l'arbitrage.
+ *
+ * Les manches arrivent du jeu (`tournoiDuelManche`), et le jeu ne sait pas
+ * distinguer un abandon délibéré d'un doigt qui glisse : « un joueur a
+ * abandonné une partie par mégarde, le score est donc faussé ». Le match était
+ * jusqu'ici en lecture seule — un 2-0 injuste ne se rattrapait pas, et si
+ * l'écart était atteint, l'affiche était close avec le mauvais vainqueur.
+ *
+ * L'arbitre pose donc les manches à la main. La règle de clôture n'est PAS
+ * réécrite ici : `TD.issue` est celle-là même que `TD.manche` applique aux
+ * manches jouées — un 2-0 corrigé se plie exactement comme un 2-0 joué, et un
+ * match ramené à 1-1 se ROUVRE (statut `pending`, vainqueur effacé), donc les
+ * manches suivantes reprennent où elles en étaient.
+ *
+ * Corps : { score1, score2 } pour poser les manches, ou { reset: true } pour
+ * remettre l'affiche à 0-0.
+ *
+ * Ce qui n'est PAS fait ici, et volontairement : rien ne se propage. Corriger
+ * une poule ne re-qualifie personne (c'est `close-poules` qui tire la sortie
+ * des poules) et corriger un match de coupe ne redessine pas le tour suivant
+ * (c'est `next-round`). L'arbitre corrige, puis relance l'étape lui-même —
+ * sinon une frappe malheureuse effacerait un tour entier de matchs joués.
+ */
+app.post('/api/admin/tournaments/:id/duel/match/:mid', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t || t.format !== 'duel') return res.status(404).json({ error: 'not_found' });
+    const matchs = await db.getTournamentMatches(t.id);
+    const match = matchs.find((m) => Number(m.id) === Number(req.params.mid));
+    if (!match) return res.status(404).json({ error: 'match_not_found' });
+    // Une exemption n'a pas de manches à corriger : elle n'a qu'un joueur.
+    if (!match.player2) return res.status(400).json({ error: 'match_exempt', message: 'Cette affiche est une exemption.' });
+    const b = req.body || {};
+    let s1, s2;
+    if (b.reset) { s1 = 0; s2 = 0; }
+    else {
+      s1 = Number(b.score1); s2 = Number(b.score2);
+      if (!Number.isInteger(s1) || !Number.isInteger(s2) || s1 < 0 || s2 < 0) {
+        return res.status(400).json({ error: 'bad_score', message: 'Deux nombres de manches entiers et positifs.' });
+      }
+      // Garde-fou de saisie : un score à trois chiffres est une faute de frappe,
+      // pas un match — la série se plie à `win_by` d'écart, elle ne s'éternise pas.
+      if (s1 > 99 || s2 > 99) {
+        return res.status(400).json({ error: 'bad_score', message: 'Nombre de manches invraisemblable (max 99).' });
+      }
+    }
+    const r = TD.issue(match, s1, s2, t.win_by);
+    await db.updateTournamentMatch(match.id, {
+      score1: r.score1, score2: r.score2,
+      winner: r.winner, status: r.fini ? 'done' : 'pending',
+    });
+    console.log(`[TOURNOI] #${t.id} affiche ${match.id} corrigée : ${match.player1} ${r.score1}-${r.score2} ${match.player2}`
+      + (r.fini ? ` → ${r.winner}` : ' (rouverte)') + ` par ${(req.admin && req.admin.user) || 'clé maître'}`);
+    res.json({ ok: true, score1: r.score1, score2: r.score2, fini: r.fini, winner: r.winner });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

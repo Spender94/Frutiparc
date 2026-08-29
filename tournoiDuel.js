@@ -257,7 +257,6 @@ function tourTermine(matchs, tour) {
  *          concurrents, manche jouée hors tournoi…).
  */
 function manche(matchs, tours, a, b, gagnant, ecart) {
-  const e = Math.max(1, Math.floor(ecart) || ECART_DEFAUT);
   const ouverts = matchs.filter((m) => m.status !== 'done'
     && tours.indexOf(Number(m.round)) >= 0
     && ((memeJoueur(m.player1, a) && memeJoueur(m.player2, b))
@@ -272,10 +271,29 @@ function manche(matchs, tours, a, b, gagnant, ecart) {
     else if (memeJoueur(m.player2, gagnant)) s2++;
     else return null;
   }
+  return { match: m, ...issue(m, s1, s2, ecart) };
+}
+
+/**
+ * L'ISSUE D'UN MATCH pour un tableau de manches donné : est-il plié, et par qui ?
+ *
+ * Sortie de `manche` pour être appelée AUSSI par la correction manuelle
+ * (l'arbitre rectifie un 2-1 devenu faux parce qu'un joueur a quitté une partie
+ * par mégarde). Les deux chemins doivent conclure pareil : un match corrigé à
+ * 2-0 est plié exactement comme s'il s'était joué ainsi, et un match ramené à
+ * 1-1 se rouvre. Deux copies de la règle auraient fini par diverger.
+ *
+ * @returns {{ score1, score2, fini, winner }} `winner` en minuscules (la clé du
+ *          joueur), null tant que l'écart n'est pas atteint.
+ */
+function issue(match, score1, score2, ecart) {
+  const e = Math.max(1, Math.floor(ecart) || ECART_DEFAUT);
+  const s1 = Math.max(0, Math.floor(Number(score1) || 0));
+  const s2 = Math.max(0, Math.floor(Number(score2) || 0));
   const fini = Math.abs(s1 - s2) >= e;
   return {
-    match: m, score1: s1, score2: s2, fini,
-    winner: fini ? (s1 > s2 ? clef(m.player1) : clef(m.player2)) : null,
+    score1: s1, score2: s2, fini,
+    winner: fini ? (s1 > s2 ? clef(match.player1) : clef(match.player2)) : null,
   };
 }
 
@@ -294,6 +312,6 @@ module.exports = {
   ECART_DEFAUT, POULE_DEFAUT, TOUR_POULES, TOUR_REPECHAGE, LETTRES,
   melanger, tirerPoules, affichesPoule, matchsDeGroupes,
   classementPoule, poulesTerminees, sortieDesPoules,
-  tirerTour, vainqueursDuTour, tourTermine, manche, nomDuTour,
+  tirerTour, vainqueursDuTour, tourTermine, manche, issue, nomDuTour,
   clef, memeJoueur,
 };

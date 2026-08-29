@@ -2090,13 +2090,49 @@ function toLocalInput(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(
 const TD_STATUT = { draft:'Brouillon', scheduled:'Programmé', poules:'Phase de poules',
   bracket:'Coupe', finished:'Terminé', cancelled:'Annulé' };
 function tdNom(u){ return u ? esc(u) : '<span style="color:#bbb">à déterminer</span>'; }
-function tdMatch(m) {
+// Une affiche du tournoi en duel. Le crayon ouvre l'ARBITRAGE : les manches se
+// reposent à la main quand le jeu en a compté une de travers (un joueur quitte
+// une partie par mégarde, elle est comptée pour l'autre). La règle de clôture
+// reste au serveur — on lui envoie deux nombres, il dit si le match est plié.
+function tdMatch(m, tid) {
   const fini = m.status === 'done';
   const g = (u) => fini && m.winner && String(m.winner).toLowerCase() === String(u||'').toLowerCase();
-  const cote = (u, sc) => `<span style="${g(u)?'font-weight:bold;color:#2f8f2f':''}">${tdNom(u)}</span>`;
+  const cote = (u) => `<span style="${g(u)?'font-weight:bold;color:#2f8f2f':''}">${tdNom(u)}</span>`;
   if (!m.player2) return `<div style="padding:3px 0">${cote(m.player1)} <span style="color:#888">— exempt</span></div>`;
-  return `<div style="padding:3px 0">${cote(m.player1)} <b style="margin:0 6px">${Number(m.score1)||0} – ${Number(m.score2)||0}</b> ${cote(m.player2)}`
-    + (fini ? '' : ' <span style="color:#c90;font-size:12px">en cours</span>') + '</div>';
+  const s1 = Number(m.score1)||0, s2 = Number(m.score2)||0;
+  return `<div style="padding:3px 0" id="tdm-${m.id}">${cote(m.player1)} <b style="margin:0 6px">${s1} – ${s2}</b> ${cote(m.player2)}`
+    + (fini ? '' : ' <span style="color:#c90;font-size:12px">en cours</span>')
+    + ` <a href="#" title="Corriger les manches" style="text-decoration:none"
+         onclick="tdEditerMatch(event, ${tid}, ${m.id}, ${s1}, ${s2})">✎</a>`
+    + `<span id="tdm-form-${m.id}"></span></div>`;
+}
+// Le formulaire d'arbitrage, ouvert sous l'affiche.
+function tdEditerMatch(ev, tid, mid, s1, s2) {
+  ev.preventDefault();
+  const box = document.getElementById('tdm-form-' + mid);
+  if (!box) return;
+  if (box.innerHTML) { box.innerHTML = ''; return; }   // second clic : on referme
+  box.innerHTML = `<span style="margin-left:8px">
+      <input id="tdm-s1-${mid}" type="number" min="0" max="99" value="${s1}" style="width:48px">
+      <span style="margin:0 3px">–</span>
+      <input id="tdm-s2-${mid}" type="number" min="0" max="99" value="${s2}" style="width:48px">
+      <button class="btn btn-sm" onclick="tdPoserManches(${tid}, ${mid})">Corriger</button>
+      <button class="btn btn-sm" onclick="tdPoserManches(${tid}, ${mid}, true)">Remettre à 0</button>
+    </span>`;
+}
+async function tdPoserManches(tid, mid, reset) {
+  const body = reset ? { reset: true } : {
+    score1: Number(($('#tdm-s1-' + mid) || {}).value),
+    score2: Number(($('#tdm-s2-' + mid) || {}).value),
+  };
+  try {
+    const r = await fetch('/api/admin/tournaments/' + tid + '/duel/match/' + mid,
+      { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!d || !d.ok) { toast('Erreur: ' + ((d && (d.message || d.error)) || r.status)); return; }
+    toast(d.fini ? ('Affiche corrigée — ' + d.winner + ' l\'emporte') : 'Affiche corrigée et rouverte');
+    openTournament(tid);
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 function renderTournoiDuel(d) {
   const t = d.tournament;
@@ -2111,7 +2147,7 @@ function renderTournoiDuel(d) {
   const tours = (d.tours || []).map(x => `
     <div style="min-width:250px">
       <h4 style="margin:0 0 4px">${esc(x.nom)}</h4>
-      ${x.matchs.map(tdMatch).join('') || '<p style="color:#999">—</p>'}
+      ${x.matchs.map(m => tdMatch(m, t.id)).join('') || '<p style="color:#999">—</p>'}
     </div>`).join('');
 
   let actions = '';
@@ -2148,6 +2184,11 @@ function renderTournoiDuel(d) {
         Les joueurs se retrouvent dans la salle <b>Championnat</b> de Frutibandas et se défient.
         Chaque partie gagnée compte pour leur match ; il se plie tout seul à ${t.win_by} d'écart.
         Le tableau public est à <a href="/api/tournaments/duel" target="_blank">/api/tournaments/duel</a>.
+        <div style="margin-top:5px">
+          Le <b>✎</b> d'une affiche rouvre les manches : c'est là qu'on rattrape une partie
+          quittée par mégarde, comptée pour l'adversaire. Corriger ne propage rien —
+          après coup, reclique « Clôturer les poules » ou « Tour suivant » pour retirer l'étape.
+        </div>
       </div>
       <div style="margin-bottom:10px">${actions}</div>
       ${poules ? `<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px">${poules}</div>` : ''}
@@ -3996,10 +4037,13 @@ async function toggleMod(username, setMod) {
 // Le même bénévole peut tenir les scores, la boutique ET l'animation : ses
 // onglets sont la réunion de ceux de ses rôles. La colonne admin_role porte la
 // liste, séparée par des virgules.
+// La liste doit rester alignée sur ADMIN_ROLES (server.js) : c'est le serveur
+// qui décide des onglets, celle-ci n'est que le libellé du menu.
 const ROLES_ADMIN = [
   { id: 'scores', label: 'Responsable des scores (Scores + Challenge)' },
   { id: 'animateur', label: 'Animateur (MikeHorny + Salons + Tournois)' },
   { id: 'chapelier', label: 'Chapelier (Boutique)' },
+  { id: 'tournoi', label: 'Organisateur de tournois (Tournois seuls)' },
 ];
 const rolesDe = (user) => String(user.admin_role || '').split(',').map((s) => s.trim()).filter(Boolean);
 
