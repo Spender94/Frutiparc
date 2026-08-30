@@ -332,7 +332,7 @@ test('le dessinateur parle le vocabulaire de `cpDocument`', () => {
   assert.match(f[0], /Number\(l\.param && l\.param\.sid\) === 2 \? " fc-titre" : ""/);
   assert.match(f[0], /if \(l\.big\) s\.style\.flexGrow = String\(l\.big\);/);
   // Une bibliothèque pas encore extraite laisse la PLACE, pas une image cassée.
-  assert.match(f[0], /im\.onerror = function \(\) \{ im\.remove\(\); \};/);
+  assert.match(f[0], /im\.onerror = function \(\) \{ im\.remove\(\); recalerCarte\(boite\); \};/);
   // Et l'écart assumé est nommé.
   assert.match(LIGHT, /ÉCART ASSUMÉ : l'époque ne NOMME pas la carte/);
 });
@@ -425,4 +425,71 @@ test('le light coud la fée dans la page pour la teinter', () => {
   // Le décalage : (col − 255) / 255 sur chaque canal, en sRGB comme Flash.
   assert.match(LIGHT, /\(\(v - 255\) \/ 255\)\.toFixed\(4\)/);
   assert.match(LIGHT, /"color-interpolation-filters", "sRGB"/);
+});
+
+test('la fée est ENTIÈRE : le masque du document ne suit pas la matrice', () => {
+  /* Le masque de cent pixels était posé sur le groupe qui porte DÉJÀ sa
+     matrice. En SVG, `mask` s'évalue dans l'espace utilisateur établi par la
+     transformation de l'élément qui le référence : le cadre partait donc avec
+     la pièce. Les cheveux de la fée, placés à (50, 48), ne gardaient que le
+     quart bas-droit de leur dessin — six fées chauves. Le masque va désormais
+     sur un groupe ENGLOBANT, sans transformation.
+
+     La vérité terrain est le rendu Ruffle de `minipixiz_faeries.swf` : la fée 1
+     a une chevelure pleine qui encadre le visage. */
+  const gen = fs.readFileSync(path.join(ROOT, 'scripts/extract-fruticard-sd.js'), 'utf8');
+  assert.match(gen, /if \(d\.sousMasque\) el = `<g mask="url\(#mq\$\{d\.sousMasque\}\)">` \+ el \+ '<\/g>';/);
+  assert.doesNotMatch(gen, /\(d\.sousMasque \? ` mask="url/);
+
+  for (let i = 1; i <= 6; i++) {
+    const svg = fs.readFileSync(path.join(ROOT, 'public/fb/sd/minipixiz_faeries_' + i + '.svg'), 'utf8');
+    // Un groupe masqué n'a plus de matrice à lui, et la matrice n'a plus de
+    // masque : les deux ne se mélangent plus.
+    assert.doesNotMatch(svg, /<g transform="matrix\([^"]*\)"[^>]*mask="url\(#mq/,
+      'fée ' + i + ' : masque et matrice sur le même groupe');
+    assert.match(svg, /<g mask="url\(#mq\d+\)"><g transform=/, 'fée ' + i);
+  }
+  // Les cheveux (`k0`, forme 18) sont bien la chevelure entière et non une
+  // mèche : 8 remplissages, 70,5 × 99,5 dans le SWF.
+  const f1 = fs.readFileSync(path.join(ROOT, 'public/fb/sd/minipixiz_faeries_1.svg'), 'utf8');
+  const t1 = /<g class="t1"><g mask="url\(#mq\d+\)"><g transform="matrix\(0\.9984,0,0,0\.9988,50\.1612,48\.5282\)">([\s\S]*?)<\/g><\/g><\/g>/.exec(f1);
+  assert.ok(t1, 'le groupe des cheveux doit être là, la découpe AU-DESSUS de la matrice');
+  assert.strictEqual((t1[1].match(/<path /g) || []).length, 8,
+    'les huit remplissages de la forme 18 — une mèche seule n’en aurait qu’un');
+});
+
+test('sur le bureau, la fruticard ne défile pas de côté : la fenêtre s’élargit', () => {
+  /* `DocPage.updateLine` (0x661c6) ne fait rétrécir personne et le masque du
+     document COUPE ce qui dépasse — l'époque ne défile jamais de côté. Le
+     joueur tirait la poignée, et `cp.Document.updateSize` (0x4de13) révélait
+     la rangée entière. On tire la poignée à sa place. */
+  const CSS = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
+  assert.match(CSS, /body\.bureau-frutiz \.fiche-boite \.fiche-fcard \{ overflow-x: hidden; \}/);
+  // Sur téléphone, la carte garde son défilement : on ne peut pas élargir.
+  assert.match(LIGHT, /\.fiche-fcard \{[\s\S]*?overflow-x: auto;/);
+  assert.match(LIGHT, /function largeurCarte\(carte\) \{/);
+  assert.match(LIGHT, /if \(!carte \|\| !document\.body\.classList\.contains\("bureau-frutiz"\)\) return;/);
+  assert.match(LIGHT, /carte\.style\.width = "max-content";/);
+  // Une case d'image sans `min.w` ne fait rien de large tant que le fichier
+  // n'est pas là : chaque dessin qui arrive redemande la mesure.
+  assert.match(LIGHT, /function recalerCarte\(noeud\) \{/);
+  assert.match(LIGHT, /im\.onload = function \(\) \{ recalerCarte\(boite\); \};/);
+  assert.match(LIGHT, /boite\.appendChild\(svg\);\n\s+recalerCarte\(boite\);/);
+  // Et hors carte, la fiche retrouve les 324 d'époque.
+  assert.match(LIGHT, /ficheRacine\(\)\.style\.width = "";/);
+});
+
+test('l’ascenseur de la fiche est le `sb.Round` d’époque, pas la gélule du mobile', () => {
+  /* La fiche du bureau est une fenêtre : son ascenseur doit être celui du SWF
+     — glissière plate #ADE76B cerclée #94DB39, curseur BLANC cerclé #DDDDDD.
+     Les règles du mobile posaient un `background-image` en dégradé et une
+     marge que celles du bureau ne redisaient pas : le curseur sortait vert. */
+  assert.match(LIGHT, /body:not\(\.bureau-frutiz\) \.fiche-page::-webkit-scrollbar \{/);
+  assert.match(LIGHT, /body:not\(\.bureau-frutiz\) \.fiche-page::-webkit-scrollbar-thumb \{/);
+  assert.match(LIGHT, /@supports not selector\(::-webkit-scrollbar\) \{\n\s+body:not\(\.bureau-frutiz\) \.fiche-page \{/);
+  const CSS = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
+  // Le raccourci `background` remet l'image à `none` ; `margin: 0` chasse celle
+  // de la gélule.
+  assert.match(CSS, /::-webkit-scrollbar-thumb \{\n\s+min-height: 16px; min-width: 16px;\n\s+background: #FFFFFF; background-clip: padding-box; margin: 0;/);
+  assert.match(CSS, /::-webkit-scrollbar-track \{\n\s+background: var\(--asc-glissiere\); background-clip: padding-box; margin: 0;/);
 });

@@ -91,8 +91,13 @@ test('l’ascenseur reprend le tracé de sb.Round, encres comprises', () => {
   // (`initMask`, 0x460e2) impose size 14 et margin { top: 4, side: 2 }.
   // `shadeSpace = 1`, `curve = size / 2 = 7`, `minSquareSize = 16`.
   assert.match(CSS, /\.fen \*::-webkit-scrollbar,[\s\S]{0,80}\{\s*\n\s*width: 18px; height: 18px;/);
-  assert.match(CSS, /::-webkit-scrollbar-track,[\s\S]{0,90}\{\s*\n\s*background-color: var\(--asc-glissiere\);[\s\S]*?border: 4px solid transparent; border-left-width: 2px; border-right-width: 2px;[\s\S]*?box-shadow: inset 0 0 0 1px var\(--asc-liseret\);/);
-  assert.match(CSS, /::-webkit-scrollbar-thumb,[\s\S]{0,90}\{\s*\n\s*min-height: 16px;[\s\S]*?background-color: #FFFFFF;[\s\S]*?box-shadow: inset 0 0 0 1px #DDDDDD;/);
+  // `background` en RACCOURCI et non `background-color` : une feuille d'à côté
+  // peut poser sur le même ascenseur un `background-image` que ces règles ne
+  // redisent pas — la gélule verte du mobile se glissait ainsi sous le curseur
+  // d'époque et le rendait vert dégradé. Le raccourci remet l'image à `none`,
+  // et `margin: 0` chasse la marge de glissière de la gélule.
+  assert.match(CSS, /::-webkit-scrollbar-track,[\s\S]{0,90}\{\s*\n\s*background: var\(--asc-glissiere\); background-clip: padding-box; margin: 0;[\s\S]*?border: 4px solid transparent; border-left-width: 2px; border-right-width: 2px;[\s\S]*?box-shadow: inset 0 0 0 1px var\(--asc-liseret\);/);
+  assert.match(CSS, /::-webkit-scrollbar-thumb,[\s\S]{0,90}\{\s*\n\s*min-height: 16px;[\s\S]*?background: #FFFFFF; background-clip: padding-box; margin: 0;[\s\S]*?box-shadow: inset 0 0 0 1px #DDDDDD;/);
   // Ni flèches ni coin : `sb.Round` n'en dessine aucun.
   assert.match(CSS, /::-webkit-scrollbar-button,[\s\S]{0,90}\{ display: none; \}/);
 

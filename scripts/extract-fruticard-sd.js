@@ -294,16 +294,23 @@ function composer(swf, pieces, formes, teintes) {
     }
     defs += '</mask>';
   }
+  /* LA DÉCOUPE VA SUR UN GROUPE À PART, au-dessus de celui qui porte la
+     matrice. En SVG, `mask` s'évalue dans l'espace utilisateur ÉTABLI PAR la
+     transformation de l'élément qui le référence : posé sur le même groupe, le
+     cadre de cent pixels partait avec la pièce. Les cheveux de la fée, placés à
+     (50, 48), ne gardaient donc que le quart bas-droit de leur dessin — d'où
+     six fées chauves. Les matrices des masques, elles, sont déjà absolues. */
   for (const d of dessins) {
     if (d.masque) continue;
     const f = formes.get(d.shape);
     const fc = filtreCx(swf, d.cx);
     if (fc) defs += fc.def;
     const cl = classeDe(d.chemin, teintes);
-    corps += `<g transform="matrix(${mat(d.M)})"`
-      + (fc ? ` filter="url(#${fc.id})"` : '')
-      + (d.sousMasque ? ` mask="url(#mq${d.sousMasque})"` : '')
-      + (cl ? ` class="${cl}"` : '') + '>' + f.corps + '</g>\n';
+    let el = `<g transform="matrix(${mat(d.M)})"`
+      + (fc ? ` filter="url(#${fc.id})"` : '') + '>' + f.corps + '</g>';
+    if (d.sousMasque) el = `<g mask="url(#mq${d.sousMasque})">` + el + '</g>';
+    if (cl) el = `<g class="${cl}">` + el + '</g>';
+    corps += el + '\n';
   }
   const style = parMasque.size
     ? '<style>.mqc,.mqc *{fill:#fff!important;stroke:none!important;opacity:1!important}</style>'

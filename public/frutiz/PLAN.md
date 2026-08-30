@@ -4441,9 +4441,44 @@ Rien ne rétrécit : une rangée trop large est simplement TRONQUÉE. Et le 250 
 remplace `page.pos.w` par la largeur RÉELLE du composant, si bien qu'une fenêtre
 élargie révèle davantage de la rangée. Les médailles de MiniPixiz font 357 px et
 le bloc de sa fée 363 : dans la fiche d'époque (324 de large) l'étoile et la
-moitié des caractéristiques tombaient dehors. **ÉCART ASSUMÉ** : le light laisse
-la carte défiler de côté au lieu de couper — sur un téléphone, couper serait
-pire.
+moitié des caractéristiques tombaient dehors, et il fallait tirer la poignée
+pour les voir.
+
+**ÉCART ASSUMÉ, et il n'est pas le même des deux côtés.** Sur TÉLÉPHONE, qu'on
+ne peut pas élargir, la carte défile de côté — couper serait pire. Sur le
+BUREAU, la fiche est une fenêtre : `largeurCarte` (light.html) tire la poignée à
+la place du joueur. Elle mesure la carte en `max-content` — ce qui donne
+exactement la somme d'époque, les `spacer` fixes comptés, les `big` à zéro tant
+qu'il n'y a pas de reste —, prend la plus large des rangées et pose cette
+largeur sur la fenêtre, bornée en bas par les 324 d'époque. La carte, elle, est
+en `overflow-x: hidden` : plus de barre horizontale, et plus rien à couper.
+Deux détails qui ont coûté cher : une case d'image SANS `min.w` (les médailles)
+ne fait rien de large tant que le fichier n'est pas arrivé — chaque dessin
+redemande donc la mesure (`recalerCarte`) —, et le nombre d'étoiles est planté
+hors de sa case (`left: 100%`) alors que d'époque il fait partie du clip
+`award` : on l'ajoute à la main au calcul.
+
+**L'ascenseur de la fiche.** Sur le bureau c'est le `sb.Round` d'époque
+(glissière plate `#ADE76B` cerclée `#94DB39`, curseur BLANC cerclé `#DDDDDD`),
+pas la gélule verte du mobile. Les deux jeux de règles se mélangeaient : le
+bureau gagnait sur `background-color` mais la gélule posait un
+`background-image` en dégradé et une marge de glissière que le bureau ne
+redisait pas — il en sortait un curseur vert dégradé qui n'est ni l'un ni
+l'autre. Les règles du mobile sont désormais sous `body:not(.bureau-frutiz)`,
+et celles du bureau écrivent `background` en RACCOURCI (l'image repasse à
+`none`) avec `margin: 0`.
+
+**Le masque ne suit pas la matrice.** Dans le SVG composé, `mask` était posé sur
+le groupe qui porte déjà sa transformation. En SVG, un masque s'évalue dans
+l'espace utilisateur ÉTABLI PAR cette transformation : le cadre de cent pixels
+partait donc avec la pièce. Les cheveux de la fée, placés à (50, 48), ne
+gardaient que le quart bas-droit de leur dessin — six fées chauves, et des yeux
+sans iris. La découpe va sur un groupe ENGLOBANT, sans transformation
+(`<g mask><g transform>…`), et les matrices des masques, elles, sont déjà
+absolues. La vérité terrain a été obtenue en faisant JOUER `minipixiz_faeries.swf`
+par Ruffle en tête-à-tête (`scratchpad/ruffle-fee.js` : un petit serveur, la
+page `ruffle-player`, `frame`/`col1`/`col2`/`col3` en flashvars, capture) —
+méthode à reprendre chaque fois qu'un doute porte sur un dessin d'époque.
 
 **Ce que `patchSlot0` ne peut pas inventer.** La carte de Burning Kiwi lit
 `$ts[i].$fcLap` et `$ts[i].$fcTotal` (meilleur tour, meilleure course) là où le

@@ -1410,16 +1410,21 @@ body.bureau-frutiz .fen *::-webkit-scrollbar,
 body.bureau-frutiz .fiche-boite *::-webkit-scrollbar {
   width: 18px; height: 18px; background: transparent;
 }
+/* `background` en RACCOURCI, et `margin: 0` : une feuille d'à côté peut poser
+   sur le même ascenseur un `background-image` ou une marge que ces règles-ci
+   ne redisent pas — la gélule verte du mobile se glissait ainsi sous le
+   curseur d'époque et le rendait vert dégradé. Le raccourci remet l'image à
+   `none` ; `background-clip` se redit APRÈS, puisqu'il le réinitialise aussi. */
 body.bureau-frutiz .fen *::-webkit-scrollbar-track,
 body.bureau-frutiz .fiche-boite *::-webkit-scrollbar-track {
-  background-color: var(--asc-glissiere); background-clip: padding-box;
+  background: var(--asc-glissiere); background-clip: padding-box; margin: 0;
   border: 4px solid transparent; border-left-width: 2px; border-right-width: 2px;
   border-radius: 9px; box-shadow: inset 0 0 0 1px var(--asc-liseret);
 }
 body.bureau-frutiz .fen *::-webkit-scrollbar-thumb,
 body.bureau-frutiz .fiche-boite *::-webkit-scrollbar-thumb {
   min-height: 16px; min-width: 16px;
-  background-color: #FFFFFF; background-clip: padding-box;
+  background: #FFFFFF; background-clip: padding-box; margin: 0;
   border: 4px solid transparent; border-left-width: 2px; border-right-width: 2px;
   border-radius: 9px; box-shadow: inset 0 0 0 1px #DDDDDD;
 }
@@ -3301,6 +3306,15 @@ body.bureau-frutiz .fiche-boite .fiche-page {
   height: 240px; padding: 8px 6px 6px; overflow-y: auto;
   font: 400 11px Verdana, Arial, sans-serif; color: #335511;
 }
+/* UNE FRUTICARD NE DÉFILE PAS DE CÔTÉ. `DocPage.updateLine` (0x661c6) ne fait
+   jamais rétrécir personne : une rangée trop large est TRONQUÉE par le masque
+   du document, et le joueur d'époque tirait la poignée pour voir le reste —
+   `cp.Document.updateSize` (0x4de13) remplaçant alors `page.pos.w` par la
+   largeur réelle. Sur le bureau on tire la poignée à sa place (`largeurCarte`,
+   light.html) : la fenêtre prend la largeur que la carte demande, et il ne
+   reste rien à faire défiler. La barre horizontale du mobile n'a donc plus
+   lieu d'être ici. */
+body.bureau-frutiz .fiche-boite .fiche-fcard { overflow-x: hidden; }
 body.bureau-frutiz .fiche-boite .fiche-titre {
   color: #335511; font-size: 12px; text-transform: lowercase;
 }

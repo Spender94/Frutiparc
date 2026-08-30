@@ -937,18 +937,28 @@
   /* Barre de défilement « gélule » verte, aux teintes de la carte — la même
      facture que celle du bouilloscope, dans la gamme de la fiche. Chromium et
      WebKit par ::-webkit-scrollbar ; Firefox par scrollbar-* sous @supports,
-     car le poser sur Chromium désactiverait les pseudo-éléments. */
+     car le poser sur Chromium désactiverait les pseudo-éléments.
+
+     HORS BUREAU. Cette gélule est celle du MOBILE. Sur le bureau Frutiz la
+     fiche est une fenêtre comme une autre et son ascenseur doit être le
+     `sb.Round` d'époque (bureau-frutiz.css) : glissière plate #ADE76B cerclée
+     de #94DB39, curseur BLANC cerclé de #DDDDDD. Les deux jeux de règles se
+     mélangeaient — le bureau gagnait sur `background-color`, la gélule sur
+     `background-image` et sur la marge de la glissière, et il en sortait un
+     curseur vert dégradé qui n'est ni l'un ni l'autre. D'où le `:not`. */
   @supports not selector(::-webkit-scrollbar) {
-    .fiche-page { scrollbar-width: thin; scrollbar-color: #8FC451 #DDF2BC; }
+    body:not(.bureau-frutiz) .fiche-page { scrollbar-width: thin; scrollbar-color: #8FC451 #DDF2BC; }
   }
-  .fiche-page::-webkit-scrollbar { width: 12px; }
-  .fiche-page::-webkit-scrollbar-track { background: #DDF2BC; border-radius: 999px; margin: 4px 2px; }
-  .fiche-page::-webkit-scrollbar-thumb {
+  body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar { width: 12px; }
+  body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-track {
+    background: #DDF2BC; border-radius: 999px; margin: 4px 2px;
+  }
+  body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb {
     border-radius: 999px; border: 3px solid transparent; background-clip: padding-box;
     background-image: linear-gradient(90deg, #6FA436 0%, #CDEB9A 48%, #A7DC6B 56%, #6FA436 100%);
     box-shadow: inset 0 0 0 1px rgba(68,101,49,.30);
   }
-  .fiche-page::-webkit-scrollbar-thumb:hover {
+  body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
     background-image: linear-gradient(90deg, #628F30 0%, #DAF3B4 48%, #B7E585 56%, #628F30 100%);
   }
   /* Le titre de section, centré entre deux filets — le « FrutiSigne » de
@@ -1053,10 +1063,17 @@
      (0x4de13) le remplace par la largeur réelle du composant, si bien qu'une
      fenêtre élargie révèle davantage de la rangée.
 
-     ÉCART ASSUMÉ : au lieu de couper, on laisse la carte DÉFILER de côté. Les
-     médailles de MiniPixiz font 357 px et le portrait de sa fée 363 : dans la
-     fiche d'époque (324 de large) l'étoile et la moitié des caractéristiques
-     tombaient hors du cadre. Sur un téléphone, couper serait pire encore. */
+     ÉCART ASSUMÉ, SUR TÉLÉPHONE : au lieu de couper, on laisse la carte
+     DÉFILER de côté. Les médailles de MiniPixiz font 357 px et le bloc de sa
+     fée 363 : dans la fiche d'époque (324 de large) l'étoile et la moitié des
+     caractéristiques tombaient hors du cadre. Sur un écran de téléphone, qu'on
+     ne peut pas élargir, couper serait pire.
+
+     SUR LE BUREAU, c'est l'autre bout qu'on prend : la fiche est une fenêtre
+     qu'on peut tirer, et l'époque révélait le reste de la rangée dès qu'on
+     l'élargissait (`cp.Document.updateSize`, 0x4de13). `largeurCarte` tire la
+     poignée à la place du joueur, et la carte ne défile plus — voir la règle
+     `overflow-x: hidden` de bureau-frutiz.css. */
   .fiche-fcard {
     font-family: Verdana, Arial, sans-serif; font-size: 11px; color: #335511;
     overflow-x: auto;
@@ -8143,6 +8160,7 @@
       });
       svg.insertBefore(defs, svg.firstChild);
       boite.appendChild(svg);
+      recalerCarte(boite);
     }).catch(function () { /* dessin injoignable : la place reste, vide */ });
   }
 
@@ -8196,7 +8214,8 @@
           var im = document.createElement("img");
           im.src = l.src;
           im.alt = "";
-          im.onerror = function () { im.remove(); };
+          im.onerror = function () { im.remove(); recalerCarte(boite); };
+          im.onload = function () { recalerCarte(boite); };
           boite.appendChild(im);
         }
         // L'ÉTOILE DE MINIPIXIZ. La bibliothèque `minipixiz_award` porte, sur
@@ -8233,6 +8252,69 @@
       }
     });
     return dans;
+  }
+
+  /* LA FENÊTRE PREND LA LARGEUR DE LA CARTE — bureau seulement.
+     `DocPage.updateLine` (0x661c6) donne à chaque élément `max(min.w, width)`
+     et ne partage que le reste POSITIF : rien ne rétrécit, et une rangée trop
+     large est coupée par le masque du document. Le joueur d'époque tirait
+     alors la poignée, et `cp.Document.updateSize` (0x4de13) remplaçait
+     `page.pos.w` par la largeur réelle du composant — la rangée réapparaissait
+     entière. On refait ce geste tout seul.
+
+     `max-content` DONNE la somme d'époque : les `spacer` fixes comptent leur
+     largeur, les `big` (base zéro) ne comptent pas tant qu'il n'y a pas de
+     reste, exactement comme la règle du SWF. On mesure les RANGÉES et non la
+     boîte : le nombre d'étoiles de MiniPixiz est planté hors de sa case
+     (`left: 100%`) et gonflerait un `scrollWidth`.
+
+     Bornes : jamais moins que les 324 d'époque, jamais plus que ce que le
+     bureau peut montrer. */
+  function largeurCarte(carte) {
+    if (!carte || !document.body.classList.contains("bureau-frutiz")) return;
+    var page = carte.parentNode;
+    var boite = page && page.closest ? page.closest(".fiche-boite") : null;
+    if (!boite || !page.classList || !page.classList.contains("fiche-page")) return;
+    var avant = carte.style.width;
+    carte.style.width = "max-content";
+    var rangees = carte.querySelectorAll(".fc-rangee, .fiche-titre");
+    var large = 0;
+    Array.prototype.forEach.call(rangees, function (r) {
+      large = Math.max(large, r.getBoundingClientRect().width);
+    });
+    // Le nombre d'étoiles est planté HORS de sa case (`left: 100%`), alors que
+    // d'époque il fait partie du dessin — le clip `award` porte son champ
+    // texte à x 24, donc dans sa largeur. On le rattrape ici.
+    var gauche = carte.getBoundingClientRect().left;
+    Array.prototype.forEach.call(carte.querySelectorAll(".fc-nombre"), function (nb) {
+      large = Math.max(large, nb.getBoundingClientRect().right - gauche);
+    });
+    carte.style.width = avant;
+    if (!large) return;
+    // Le décor autour de la carte (marges de la page, ascenseur, cadre) : on
+    // ne le suppose pas, on le déduit de ce que la fenêtre mesure aujourd'hui.
+    var cs = getComputedStyle(page);
+    var utile = page.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    var autour = boite.getBoundingClientRect().width - utile;
+    var voulu = Math.ceil(large + autour);
+    var large2 = Math.max(324, (window.innerWidth || 1024) - 80);
+    var w = Math.max(324, Math.min(voulu, large2));
+    boite.style.width = w + "px";
+    // Une fiche ouverte près du bord droit s'en irait dehors en s'élargissant :
+    // on la ramène, comme le bureau ramène une fenêtre qu'on redimensionne.
+    var g = boite.getBoundingClientRect().left;
+    var deborde = g + w - (window.innerWidth || 1024) + 8;
+    if (deborde > 0) boite.style.left = Math.max(0, g - deborde) + "px";
+  }
+
+  /* UN DESSIN QUI ARRIVE CHANGE LA MESURE. Une case d'image sans `min.w` — les
+     médailles de MiniPixiz en sont — ne fait RIEN de large tant que le fichier
+     n'est pas là : mesurée trop tôt, la rangée des cinq diamants comptait pour
+     zéro. Chaque image (et chaque fée teintée) redemande donc la mesure en
+     arrivant. */
+  function recalerCarte(noeud) {
+    var c = noeud && noeud.closest ? noeud.closest(".fiche-fcard") : null;
+    if (c) largeurCarte(c);
   }
 
   function dessinerCarte(carte) {
@@ -8366,6 +8448,11 @@
 
     var page = fq("fiche-page");
     page.innerHTML = "";
+    // Hors fruticard, la fiche retrouve sa largeur d'époque ET sa place :
+    // c'est la carte, et elle seule, qui peut écarter la fenêtre et la ramener
+    // du bord (voir `largeurCarte`).
+    ficheRacine().style.width = "";
+    ficheRacine().style.left = "";
     if (!d) { page.appendChild(el("div", "fiche-vide")).textContent = "Chargement…"; return; }
     if (d.erreur) { page.appendChild(el("div", "fiche-vide")).textContent = d.erreur; return; }
 
@@ -8377,7 +8464,8 @@
       Array.prototype.forEach.call(fq("fiche-onglets").children, function (b) {
         b.classList.remove("actif");
       });
-      page.appendChild(dessinerCarte(ficheEtat.carte));
+      var carte = page.appendChild(dessinerCarte(ficheEtat.carte));
+      largeurCarte(carte);
       return;
     }
 
