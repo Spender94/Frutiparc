@@ -600,15 +600,29 @@
      * Une variante valait par son RANG d'injection : la troisième publiée tombait
      * à l'index 40 parce que deux autres étaient passées avant. Tout écart entre
      * ce qu'un client avait chargé et ce que le serveur savait donnait alors un
-     * AUTRE accessoire — silencieusement. On comble donc le rouleau jusqu'à la
-     * place demandée, et la variante y tombe toujours.
+     * AUTRE accessoire — silencieusement. La variante tombe donc à la place
+     * demandée, et à celle-là seulement.
+     *
+     * ON Y ÉCRIT MÊME SI LE ROULEAU EST DÉJÀ PLUS LONG. On comblait jusqu'à la
+     * place demandée puis on AJOUTAIT À LA FIN — ce qui revient au même tant que
+     * le catalogue n'avance que par index croissants, mais plus du tout dès qu'une
+     * variante d'AVANT l'index (il n'y en avait pas alors) a déjà allongé le
+     * rouleau : la place 38 demandée devenait 40, et l'accessoire que les joueurs
+     * portaient sous le numéro 38 n'existait plus. On écrit donc PAR-DESSUS.
+     *
+     * Un plancher, tout de même : jamais en dessous des images d'époque. Un index
+     * fautif ne doit pas pouvoir effacer la casquette de tout le monde.
      */
-    var cible = (opts.index == null) ? rep.sprite.n : Math.max(rep.sprite.n, Math.floor(opts.index));
+    if (rep.sprite._varDebut == null) rep.sprite._varDebut = rep.sprite.images.length;
+    var cible = (opts.index == null)
+      ? rep.sprite.images.length
+      : Math.max(rep.sprite._varDebut, Math.floor(opts.index));
     while (rep.sprite.images.length < cible) rep.sprite.images.push(retires.slice());
-    rep.sprite.images.push(retires.concat(poses));
+    if (rep.sprite.images.length > cible) rep.sprite.images[cible] = retires.concat(poses);
+    else rep.sprite.images.push(retires.concat(poses));
     rep.sprite.n = rep.sprite.images.length;
     delete rep.sprite._etats;
-    var index = rep.sprite.n - 1;
+    var index = cible;
 
     /*
      * L'ARRIÈRE, dès qu'il y a un rouleau pour l'accueillir — MÊME SANS DESSIN.

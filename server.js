@@ -10788,8 +10788,24 @@ app.post('/api/admin/variantes', adminScope('shop'),
     //  est le nombre d'images d'origine du rouleau, que seul le client
     // connaît (il est dans le SWF) ; il nous le dit en publiant.
     const memeRouleau = variantesAcc.filter((x) => (x.famille || 0) === (Number(b.famille) || 0) && x.type === type);
-    const suivant = memeRouleau.reduce((m, x) => Math.max(m, Number(x.index) >= 0 ? x.index + 1 : 0), 0);
-    const index = Math.max(Number(b.base) || 0, suivant);
+    /*
+     * LA PREMIÈRE PLACE LIBRE — en comptant AUSSI les variantes sans index.
+     *
+     * Elles datent d'avant l'index explicite et n'en portent donc pas ; le client
+     * les empile à la suite, dans l'ordre du catalogue. On ne les comptait pas
+     * ici : la variante suivante recevait un index DÉJÀ OCCUPÉ par l'une d'elles,
+     * et se retrouvait poussée plus loin à l'injection. Le serveur annonçait 38,
+     * le client posait 40 — et l'accessoire que les joueurs portaient sous le
+     * numéro 38 n'était plus le leur. On refait donc ici le compte exact que le
+     * client fera : sans index, la place suivante ; avec index, la sienne.
+     */
+    const base = Math.max(0, Math.floor(Number(b.base) || 0));
+    let libre = base;
+    for (const x of memeRouleau) {
+      const place = Number.isFinite(x.index) ? Math.max(base, x.index) : libre;
+      if (place >= libre) libre = place + 1;
+    }
+    const index = libre;
     const v = {
       id: 'v' + variantesSeq, nom: String(b.nom).slice(0, 60),
       famille: Number(b.famille) || 0, type: type,

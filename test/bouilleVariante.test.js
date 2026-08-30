@@ -533,3 +533,43 @@ test('les identifiants du gabarit sont UNIQUES — un doublon coûtait le niveau
     assert.match(n, /^couleur[123]/, 'un nom de niveau commence par son niveau : ' + n);
   }
 });
+
+test('une variante tombe à SA place, même si le rouleau est déjà plus long', async () => {
+  /*
+   * Le client comblait le rouleau jusqu'à la place demandée puis AJOUTAIT À LA
+   * FIN. Tant que le catalogue n'avance que par index croissants, cela revient
+   * au même ; mais une variante d'AVANT l'index explicite (elle n'en porte pas,
+   * et s'empile donc à la suite) allonge le rouleau la première. La suivante
+   * demandait alors la place 38 et se retrouvait à la 40 : le serveur annonçait
+   * 38, le client posait 40, et l'accessoire que les joueurs portaient sous le
+   * numéro 38 n'était plus le leur.
+   */
+  const defs = await lire('famille0.swf');
+  const depart = Variante.repere(defs, CASQUETTE, 8).variantes;
+  const carre = (d) => [{ d: d, fill: 'rgb(255,255,255)', slot: 1, m: [1, 0, 0, 1, 0, 0] }];
+
+  // Deux « anciennes » sans index : elles s'empilent.
+  const a = Variante.injecter(defs, { type: CASQUETTE, coiffureRef: 8, paths: carre('M10 10h6v6h-6Z') });
+  const b = Variante.injecter(defs, { type: CASQUETTE, coiffureRef: 8, paths: carre('M20 20h6v6h-6Z') });
+  assert.strictEqual(a.variante, depart, 'la première prend la place suivante');
+  assert.strictEqual(b.variante, depart + 1, 'la deuxième aussi');
+
+  // Une variante qui RÉCLAME une place déjà dépassée doit l'obtenir.
+  const c = Variante.injecter(defs, {
+    type: CASQUETTE, coiffureRef: 8, index: depart, paths: carre('M30 30h6v6h-6Z'),
+  });
+  assert.strictEqual(c.variante, depart, 'elle tombe à la place demandée, pas à la fin');
+  const pose = devant(Variante.exporter(defs, CASQUETTE, depart, 8));
+  assert.strictEqual(pose.length, 1, 'et c\'est bien son dessin qui s\'y trouve');
+  assert.match(pose[0].d, /^M30 30/, 'le tracé est celui de la variante réclamante');
+
+  // Mais JAMAIS en dessous des images d'époque : un index fautif ne doit pas
+  // pouvoir effacer la casquette de tout le monde.
+  const avant = Variante.exporter(defs, CASQUETTE, 0, 8).map((p) => p.d.length).join(',');
+  const d = Variante.injecter(defs, {
+    type: CASQUETTE, coiffureRef: 8, index: 0, paths: carre('M40 40h6v6h-6Z'),
+  });
+  assert.ok(d.variante >= depart, 'l\'index est ramené au plancher (' + d.variante + ')');
+  assert.strictEqual(Variante.exporter(defs, CASQUETTE, 0, 8).map((p) => p.d.length).join(','),
+    avant, 'la variante 0 d\'époque est intacte');
+});
