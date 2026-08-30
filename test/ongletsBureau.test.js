@@ -257,6 +257,39 @@ test('le glisser d’une icône ne déclenche plus la sélection du navigateur',
   assert.match(bloc, /var app = bureau\.getBoundingClientRect\(\);\s*\n\s*tuile\.style\.left/);
 });
 
+test('une tuile POSÉE se déplace encore, et se retrouve à sa place', () => {
+  /*
+   * L'écoute était sur la GRILLE. Une tuile déposée en sort — elle devient
+   * enfant du bureau, en position absolue — et le `pointerdown` suivant ne
+   * remontait donc plus jusqu'à l'écouteur : on ne pouvait la déplacer QU'UNE
+   * FOIS, après quoi elle était figée. On écoute donc le BUREAU, qui contient
+   * la grille comme les tuiles posées.
+   */
+  assert.match(JS, /bureau\.addEventListener\('pointerdown', function \(ev\) \{\s*\n\s*var tuile = ev\.target\.closest\('\.home-tile'\);/,
+    'le bureau écoute, pas la grille');
+  assert.doesNotMatch(JS, /grille\.addEventListener\('pointerdown'/,
+    'la grille n\'écoute plus : elle ne voit pas les tuiles posées');
+  assert.match(JS, /if \(tuile\.parentNode !== grille && tuile\.parentNode !== bureau\) return;/,
+    'et seules les tuiles du bureau ou de la grille répondent');
+
+  // La disposition se GARDE — sinon ranger son bureau ne sert à rien. Elle
+  // rejoint `desktop_items`, la liste que le serveur tient déjà, sous le type
+  // `tuile` : rien à migrer, et elle suit le compte d'un écran à l'autre.
+  assert.match(JS, /dernierGlisse = Date\.now\(\);\s*\n\s*retenirTuile\(tuile\);/,
+    'le dépôt retient la place');
+  assert.match(JS, /ecrireObjetBureau\(\{ action: 'make', type: 'tuile', uid: go, parent: 'root', pos: pos \}\);/,
+    'et l\'envoie au serveur');
+  assert.match(JS, /tuilesPosees = d\.tuiles \|\| \{\};/, 'au chargement, on relit les places');
+  assert.match(JS, /if \(g && b2\) reposerTuiles\(g, b2\);/, 'et on repose les tuiles');
+
+  // Côté serveur : le type est accepté, et ressort À PART des objets — sans
+  // quoi le bureau dessinerait un raccourci en plus de la tuile.
+  const SRV = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(SRV, /if \(corps\.type === 'tuile'\) \{/, 'le serveur accepte le type tuile');
+  assert.match(SRV, /\.filter\(\(it\) => it && it\.t !== 'tuile'\)/, 'et ne les mêle pas aux objets');
+  assert.match(SRV, /if \(it && it\.t === 'tuile'\) tuiles\[it\.u\]/, 'il les sert sous « tuiles »');
+});
+
 test('sur le bureau, le rangement mobile des tuiles ne s’arme pas', () => {
   // Deux gestes visaient la même tuile : celui du bureau (bureau-frutiz.js) et
   // le rangement par appui long du mobile (light.html). Ce dernier volait la

@@ -20672,10 +20672,18 @@ app.get('/api/light/bureau/objets', (req, res) => {
   const username = resolveUsernameFromSid(req.query.sid || '');
   if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
   const user = users[username];
-  const objets = ensureDesktopItems(user)
+  const tout = ensureDesktopItems(user);
+  const objets = tout
+    .filter((it) => it && it.t !== 'tuile')
     .map((it) => bureauObjetEnrichi(user, it))
     .filter(Boolean);
-  res.json({ ok: true, objets });
+  // Les TUILES à part : ce sont des raccourcis de rubrique, pas des objets du
+  // gestionnaire de fichiers. On n'en garde que la place.
+  const tuiles = {};
+  for (const it of tout) {
+    if (it && it.t === 'tuile') tuiles[it.u] = { x: Number(it.x) || 0, y: Number(it.y) || 0 };
+  }
+  res.json({ ok: true, objets, tuiles });
 });
 
 app.post('/api/light/bureau/objets', (req, res) => {
@@ -20692,6 +20700,21 @@ app.post('/api/light/bureau/objets', (req, res) => {
   const parent = String(corps.parent || 'root').slice(0, 64) || 'root';
 
   if (action === 'make') {
+    /*
+     * LE TYPE « tuile » : où le joueur a rangé un RACCOURCI DE RUBRIQUE.
+     *
+     * Les tuiles du bureau (Scores, Boutique, Salons…) ne sont pas des objets
+     * du gestionnaire de fichiers — ce sont des raccourcis fixes. Mais leur
+     * POSITION se range comme celle des autres, et la liste `desktop_items`
+     * l'accueille sans qu'on ait à migrer quoi que ce soit. Elle en ressort à
+     * part (`tuiles`), pour que le bureau ne les dessine pas deux fois.
+     */
+    if (corps.type === 'tuile') {
+      const go = String(corps.uid || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 32);
+      if (!go || !pos) return res.status(400).json({ ok: false, error: 'tuile' });
+      desktopAdd(username, user, go, 'tuile', pos, { parent: 'root' });
+      return res.json({ ok: true });
+    }
     const type = ['contact', 'disc', 'folder'].includes(corps.type) ? corps.type : null;
     if (!type) return res.status(400).json({ ok: false, error: 'type' });
     if (ensureDesktopItems(user).length >= 120) return res.status(409).json({ ok: false, error: 'plein' });

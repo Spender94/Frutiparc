@@ -1760,7 +1760,15 @@ window.BureauFrutiz = (function () {
     return out;
   }
 
-  function ouvrirDossier(cle, uid, titre) {
+  /*
+   * `silencieux` : on RELIT le même dossier, on ne l'ouvre pas.
+   *
+   * Éjecter un disque, en poser un sur le bureau — tout cela relit « Mes
+   * disques ». Et relire, c'était vider le champ, afficher l'attente, puis
+   * refaire les quinze pastilles : à chaque geste, toute la fenêtre clignotait.
+   * Un rafraîchissement ne doit rien effacer avant d'avoir la réponse.
+   */
+  function ouvrirDossier(cle, uid, titre, silencieux) {
     var etat = exEtats[cle];
     if (!etat) return;
     etat.uid = uid;
@@ -1768,8 +1776,10 @@ window.BureauFrutiz = (function () {
     retitrer(etat.panneau.id, etat.titre);
     var sid = (window.state && window.state.sid) || '';
     var champ = etat.panneau.querySelector('.ex-champ');
-    champ.textContent = '';
-    champ.classList.add('attente');
+    if (!silencieux) {
+      champ.textContent = '';
+      champ.classList.add('attente');
+    }
     Promise.all([
       chargerArbre(),
       fetch('/ff/ls?uid=' + encodeURIComponent(uid) + '&sid=' + encodeURIComponent(sid),
@@ -1820,7 +1830,6 @@ window.BureauFrutiz = (function () {
 
     var champ = etat.panneau.querySelector('.ex-champ');
     champ.classList.remove('attente');
-    champ.textContent = '';
     // `fileMng.frusionOn` : le disque QUI TOURNE n'est plus dans la boîte —
     // il est dans le lecteur. Il y revient quand on l'éjecte.
     // Et `fileMng.move` : un disque POSÉ AILLEURS — sur le bureau, dans un
@@ -1836,9 +1845,45 @@ window.BureauFrutiz = (function () {
     entrees = entrees.slice().sort(function (a, b) {
       return String(nomDe(a)).toLowerCase().localeCompare(String(nomDe(b)).toLowerCase(), 'fr');
     });
-    // Un dossier vide reste VIDE : le bureau d'époque n'écrit rien dans le
-    // champ, c'est le bandeau d'avertissement qui parle à sa place.
-    for (var i = 0; i < entrees.length; i++) champ.appendChild(caseDe(cle, entrees[i]));
+    /*
+     * ON RÉUTILISE LES CASES QUI N'ONT PAS CHANGÉ.
+     *
+     * Le champ était vidé puis refait de zéro à chaque lecture : éjecter un
+     * disque refaisait les quinze, avec leur jaquette à recharger et leur
+     * survol perdu. On garde donc les nœuds par CLÉ (le type et l'uid), on ne
+     * crée que ce qui manque, on ne retire que ce qui est parti — et l'ordre
+     * se rétablit en déplaçant, ce qui ne coûte pas un nouveau dessin.
+     *
+     * Un dossier vide reste VIDE : le bureau d'époque n'écrit rien dans le
+     * champ, c'est le bandeau d'avertissement qui parle à sa place.
+     */
+    var connues = {};
+    var vieilles = champ.children;
+    for (var v = 0; v < vieilles.length; v++) {
+      var k = vieilles[v].getAttribute('data-cle');
+      if (k && !connues[k]) connues[k] = vieilles[v];
+    }
+    var gardees = {};
+    var precedent = null;
+    for (var i = 0; i < entrees.length; i++) {
+      var cleCase = entrees[i].type + ':' + (entrees[i].uid || nomDe(entrees[i]));
+      var noeud = connues[cleCase];
+      if (!noeud) {
+        noeud = caseDe(cle, entrees[i]);
+        noeud.setAttribute('data-cle', cleCase);
+      }
+      gardees[cleCase] = true;
+      // `insertBefore` sur un nœud DÉJÀ placé au bon endroit ne fait rien de
+      // visible : pas de rechargement d'image, pas de survol perdu.
+      champ.insertBefore(noeud, precedent ? precedent.nextSibling : champ.firstChild);
+      precedent = noeud;
+    }
+    for (var k2 in connues) {
+      if (!gardees[k2] && connues[k2].parentNode === champ) champ.removeChild(connues[k2]);
+    }
+    // Ce qui traîne sans clé (un message « dossier indisponible ») s'en va.
+    var restes = champ.querySelectorAll(':scope > :not([data-cle])');
+    for (var r2 = 0; r2 < restes.length; r2++) restes[r2].remove();
   }
 
   function nomDe(e) { return e.desc[0] || ''; }
@@ -2095,8 +2140,11 @@ window.BureauFrutiz = (function () {
       .then(function (d) {
         if (!d || !d.ok) return;
         objetsBureau = d.objets || [];
+        tuilesPosees = d.tuiles || {};
         bureauCharge = true;
         rafraichirBureau();
+        var g = $('#home-grid'), b2 = $('#bureau');
+        if (g && b2) reposerTuiles(g, b2);
       });
   }
 
@@ -2242,7 +2290,7 @@ window.BureauFrutiz = (function () {
   function relireExplorateurs() {
     for (var cle in exEtats) {
       var e = exEtats[cle];
-      if (e && e.uid) ouvrirDossier(cle, e.uid, e.titre);
+      if (e && e.uid) ouvrirDossier(cle, e.uid, e.titre, true);
     }
   }
 
@@ -2980,7 +3028,7 @@ window.BureauFrutiz = (function () {
   // quitte, le disque éjecté y rentre.
   function rafraichirDisques() {
     var e = exEtats.disques;
-    if (e && e.uid && $(EXPLORATEURS.disques.panneau)) ouvrirDossier('disques', e.uid, e.titre);
+    if (e && e.uid && $(EXPLORATEURS.disques.panneau)) ouvrirDossier('disques', e.uid, e.titre, true);
     rafraichirBureau();
   }
 
@@ -4932,6 +4980,54 @@ window.BureauFrutiz = (function () {
   var ICONE_SAUT_X = 9, ICONE_SAUT_Y = 6;
   var dernierGlisse = 0;
 
+  /*
+   * OÙ LE JOUEUR A RANGÉ SES ICÔNES — et pourquoi ça se garde en compte.
+   *
+   * Une tuile déposée restait où on l'avait mise… jusqu'au rechargement, où
+   * elle retournait dans la rangée. Ranger son bureau pour le retrouver en
+   * désordre à chaque visite, ce n'est pas ranger.
+   *
+   * Les positions rejoignent donc `desktop_items`, la liste que le serveur tient
+   * déjà pour les raccourcis posés — sous le type `tuile`, l'identifiant étant
+   * la rubrique (`data-go`). Rien de neuf à migrer, et la disposition suit le
+   * COMPTE : on la retrouve d'un ordinateur à l'autre.
+   */
+  var tuilesPosees = {};                // data-go → { x, y }
+
+  function retenirTuile(tuile) {
+    var go = tuile.getAttribute('data-go');
+    if (!go) return;
+    var pos = { x: Math.round(parseFloat(tuile.style.left) || 0),
+      y: Math.round(parseFloat(tuile.style.top) || 0) };
+    tuilesPosees[go] = pos;
+    ecrireObjetBureau({ action: 'make', type: 'tuile', uid: go, parent: 'root', pos: pos });
+  }
+
+  // Au montage du bureau : on repose chaque tuile là où elle était. Celles
+  // qu'on n'a jamais bougées restent dans la rangée, à leur place native.
+  function reposerTuiles(grille, bureau) {
+    for (var go in tuilesPosees) {
+      if (!Object.prototype.hasOwnProperty.call(tuilesPosees, go)) continue;
+      var t = grille.querySelector('.home-tile[data-go="' + go + '"]')
+        || bureau.querySelector('.home-tile[data-go="' + go + '"]');
+      if (!t) continue;
+      // La case libérée reste ouverte, comme lors du glissé : sans l'espaceur,
+      // la rangée se refermerait et tout le reste se décalerait.
+      if (!t.classList.contains('posee')) {
+        var boite = t.getBoundingClientRect();
+        var trou = document.createElement('div');
+        trou.className = 'home-trou';
+        trou.style.width = boite.width + 'px';
+        trou.style.height = boite.height + 'px';
+        if (t.parentNode === grille) grille.insertBefore(trou, t);
+      }
+      t.classList.add('posee');
+      t.style.left = tuilesPosees[go].x + 'px';
+      t.style.top = tuilesPosees[go].y + 'px';
+      bureau.appendChild(t);
+    }
+  }
+
   function rendreIconesDeplacables(grille, bureau) {
     // Un glissé ne doit pas OUVRIR la rubrique. On ne peut pas s'appuyer sur
     // le clic de fin de geste : la tuile ayant changé de parent en cours de
@@ -4944,9 +5040,22 @@ window.BureauFrutiz = (function () {
       ev.preventDefault();
     }, true);
 
-    grille.addEventListener('pointerdown', function (ev) {
+    /*
+     * L'ÉCOUTE EST SUR LE BUREAU, PAS SUR LA GRILLE.
+     *
+     * Elle était sur la grille — et une tuile déposée en SORT : elle devient
+     * enfant du bureau, en position absolue. Le `pointerdown` suivant ne
+     * remontait donc plus jusqu'à l'écouteur, et la tuile ne bougeait plus
+     * jamais. C'est le « on ne peut la déplacer qu'une fois » : la première
+     * marchait parce que la tuile était encore dans la grille.
+     *
+     * Le bureau contient la grille ET les tuiles posées : il les voit toutes,
+     * avant comme après le premier voyage.
+     */
+    bureau.addEventListener('pointerdown', function (ev) {
       var tuile = ev.target.closest('.home-tile');
       if (!tuile || ev.button !== 0) return;
+      if (tuile.parentNode !== grille && tuile.parentNode !== bureau) return;
       // Sans cela le navigateur démarre une SÉLECTION DE TEXTE : le libellé
       // et tout ce que le geste balaie virent au bleu pendant le glissé. Le
       // même remède que pour les disques de la Frusion.
@@ -5005,6 +5114,7 @@ window.BureauFrutiz = (function () {
         tuile.style.left = (parseFloat(tuile.style.left) + ICONE_SAUT_X) + 'px';
         tuile.style.top = (parseFloat(tuile.style.top) + ICONE_SAUT_Y) + 'px';
         dernierGlisse = Date.now();
+        retenirTuile(tuile);
       };
 
       // Sur le DOCUMENT, et la capture par-dessus : les deux se complètent.

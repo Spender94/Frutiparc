@@ -174,7 +174,14 @@ test('les deux fenêtres ont le gabarit et la pastille d’époque', () => {
 test('la navigation se fait SUR PLACE, et le retour existe', () => {
   // `IconFileBox.click` : un dossier appelle box.getList(uid) — pas de fenêtre
   // de plus. Et `flUp` pose le bouton qui rappelle box.getParent.
-  assert.match(JS, /function ouvrirDossier\(cle, uid, titre\)/);
+  // (`silencieux` a rejoint la signature : RELIRE le dossier — après une
+  // éjection, après un disque posé sur le bureau — ne doit plus vider le champ
+  // ni afficher l'attente, sinon toute la fenêtre clignote à chaque geste.)
+  assert.match(JS, /function ouvrirDossier\(cle, uid, titre, silencieux\)/);
+  assert.match(JS, /if \(!silencieux\) \{\s*\n\s*champ\.textContent = '';\s*\n\s*champ\.classList\.add\('attente'\);/);
+  // Et le dessin RÉUTILISE les cases inchangées, au lieu de tout refaire.
+  assert.match(JS, /var cleCase = entrees\[i\]\.type \+ ':' \+ \(entrees\[i\]\.uid \|\| nomDe\(entrees\[i\]\)\);/);
+  assert.match(JS, /champ\.insertBefore\(noeud, precedent \? precedent\.nextSibling : champ\.firstChild\);/);
   assert.match(JS, /retitrer\(etat\.panneau\.id, etat\.titre\)/);
   assert.match(JS, /boutonNav\('up'/);
   assert.match(JS, /typeDeDossier/);

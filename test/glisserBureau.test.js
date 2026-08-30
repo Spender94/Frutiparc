@@ -116,7 +116,10 @@ test('le serveur partage LE MÊME bureau que le client Flash', () => {
   // Pas de second magasin : on lit et on écrit `user.desktopItems`.
   assert.match(SRV, /app\.get\('\/api\/light\/bureau\/objets'/);
   assert.match(SRV, /app\.post\('\/api\/light\/bureau\/objets'/);
-  assert.match(SRV, /const objets = ensureDesktopItems\(user\)\s*\n\s*\.map\(\(it\) => bureauObjetEnrichi\(user, it\)\)/);
+  // (Les positions des TUILES vivent dans la même liste, sous le type `tuile` :
+  // on les écarte des objets, sans quoi le bureau dessinerait un raccourci en
+  // plus de la tuile qu'il a déjà.)
+  assert.match(SRV, /const tout = ensureDesktopItems\(user\);\s*\n\s*const objets = tout\s*\n\s*\.filter\(\(it\) => it && it\.t !== 'tuile'\)\s*\n\s*\.map\(\(it\) => bureauObjetEnrichi\(user, it\)\)/);
   assert.match(SRV, /desktopAdd\(username, user, uid, type, pos, \{ parent \}\);/);
   // La POSITION, que le modèle d'origine ne retenait pas.
   assert.match(SRV, /if \(Number\.isFinite\(x\) && Number\.isFinite\(y\) && x >= 0 && y >= 0 && x < 4000 && y < 4000\)/);
