@@ -434,8 +434,10 @@ test('le client : un salon public ne clignote que pour ce qui s\'adresse à moi'
     'le clignotement sait pour QUI il clignote');
   assert.match(src, /if \(pourMoi === false\) return;/,
     'et se tait quand la ligne ne me concerne pas');
-  assert.match(src, /var pourMoi = meMentionne\(nommes\) \|\| attr\(xml, "st"\) === "r";/,
-    'une mention OU un cri de modérateur, et rien d\'autre');
+  // « et rien d'autre » — pas même une ligne REJOUÉE : l'historique de la
+  // reconnexion s'écrit sans réveiller personne (cf. bouilleClignote).
+  assert.match(src, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| attr\(xml, "st"\) === "r"\);/,
+    'une mention OU un cri de modérateur, et rien d\'autre — jamais un rejeu');
   assert.match(src, /avertirOngletChat\(ty, salon, true\);/,
     'une conversation privée avertit toujours');
   // Et le lien de la notification ouvre le BON salon — sinon il faudrait

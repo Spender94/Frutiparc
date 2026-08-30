@@ -6591,14 +6591,25 @@
           }
           break;
         }
+        /*
+         * `rj="1"` : LA LIGNE EST UN REJEU — l'historique que le serveur
+         * renvoie à chaque (re)connexion (changer d'onglet sur mobile coupe
+         * la socket). Elle S'ÉCRIT, c'est son rôle ; mais elle ne fait RÉAGIR
+         * personne : pas d'animation de bouille, pas d'onglet qui clignote,
+         * pas de non-lus. Rejouer les réactions envoyait une RAFALE d'émotions
+         * à la scène du chat avant que son premier montage ait fini — c'est là
+         * que deux bouilles finissaient vivantes sur le même canevas, et que
+         * le visage du locuteur clignotait avec celui d'un autre.
+         */
+        var enRejeu = attr(xml, "rj") === "1";
         // Ce qui s'adresse à MOI dans cette ligne : une @mention que le serveur
         // a reconnue, ou le cri rouge d'un modérateur. C'est cela — et cela
         // seul — qui fait clignoter l'onglet d'un salon public.
         var nommes = mentionsDeTrame(xml);
-        var pourMoi = meMentionne(nommes) || attr(xml, "st") === "r";
+        var pourMoi = !enRejeu && (meMentionne(nommes) || attr(xml, "st") === "r");
         if (salon && salon !== state.room && !aSonJournal(salon)) {
           var conv = state.prives[salon];
-          if (conv && !(conv.sourdineJusqua > Date.now())) {
+          if (conv && !enRejeu && !(conv.sourdineJusqua > Date.now())) {
             conv.nonLus += 1;
             renderRoomOptions();
             majPastilleMp();
@@ -6610,7 +6621,7 @@
           break;
         }
         // Le salon qu'on regarde — mais dont l'onglet, lui, peut être rangé.
-        avertirOngletChat(ty, salon, pourMoi);
+        if (!enRejeu) avertirOngletChat(ty, salon, pourMoi);
         var from = attr(xml, "u");
         var h = attr(xml, "h");
         var body = bodyOf(xml);
@@ -6622,7 +6633,7 @@
           var emWho = xmlUnescape(attr(xml, "eu")) || from;
           var emLabel = xmlUnescape(attr(xml, "el")) || (ANIM_LABEL[emAnim] || "parle");
           addEmoteMessage({ from: emWho, time: h, label: emLabel, salon: salon });
-          if (emWho) showBouilleOverlay(emWho, emAnim, emLabel, salon);
+          if (emWho && !enRejeu) showBouilleOverlay(emWho, emAnim, emLabel, salon);
           break;
         }
         // Image frames (the /image command + MikeHorny's image quizzes) carry an
@@ -6729,7 +6740,7 @@
         } else {
           addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor, salon: salon, mentions: nommes });
         }
-        if (from && !isAdmin) showBouilleOverlay(from, em.anim, em.label, salon);
+        if (from && !isAdmin && !enRejeu) showBouilleOverlay(from, em.anim, em.label, salon);
         break;
       }
 

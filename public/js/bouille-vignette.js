@@ -238,6 +238,23 @@
   function dessiner(c) {
     var p = promesses.get(c);
     if (p) return p;
+    /*
+     * UNE BOUILLE DÉJÀ MONTÉE NE SE RECOUVRE PAS.
+     *
+     * `posees` et `promesses` doivent vivre et mourir ensemble ; s'ils se
+     * désaccordent — une bouille montée dont la promesse a disparu —, monter
+     * par-dessus fabrique DEUX bouilles vivantes sur un canevas, chacune
+     * peignant la sienne : le clignotement où le visage du locuteur alterne
+     * avec celui d'un autre. C'est arrivé (cf. le tampon du garde ci-dessous) ;
+     * quoi qu'il arrive encore, on RÉADOPTE la bouille en place au lieu d'en
+     * remonter une seconde.
+     */
+    var enPlace = posees.get(c);
+    if (enPlace) {
+      p = Promise.resolve(enPlace);
+      promesses.set(c, p);
+      return p;
+    }
     var s = c.getAttribute('data-s') || '';
     var e = Number(c.getAttribute('data-e') || 0);
     var anime = c.getAttribute('data-anime') === '1';
@@ -246,7 +263,23 @@
     tours.set(c, tour);
     p = Promise.all([famille(M.familleDe(s)), paquetCustom(cid)]).then(function (r) {
       var defs = r[0], paq = r[1];
-      if (!c.isConnected || tours.get(c) !== tour) { promesses.delete(c); return null; }
+      /*
+       * LE TAMPON D'UN MONTAGE ÉCARTÉ NE VAUT QUE POUR LUI.
+       *
+       * Il faisait `promesses.delete(c)` sans regarder À QUI est la promesse
+       * dans la carte. Or dans une rafale — le REJEU d'historique à la
+       * connexion joue plusieurs émotions d'un coup, avant que le premier
+       * montage ait fini —, chaque `oublier` + `dessiner` remplace la
+       * promesse : quand les montages écartés rentraient enfin, le premier
+       * d'entre eux SUPPRIMAIT LA PROMESSE DU SURVIVANT. Restait une bouille
+       * montée sans promesse ; le `jouer` suivant remontait par-dessus, et
+       * l'on avait deux bouilles vivantes sur la scène du chat — celle du
+       * locuteur en alternance avec celle du dernier locuteur du rejeu.
+       */
+      if (!c.isConnected || tours.get(c) !== tour) {
+        if (promesses.get(c) === p) promesses.delete(c);
+        return null;
+      }
       // Sans `anime`, le moteur tranche tout seul : image fixe si l'arbre n'a
       // rien à jouer, pellicule sinon. `data-anime="1"` (la scène de réaction
       // du chat) annonce qu'on va lui demander des animations : elle garde

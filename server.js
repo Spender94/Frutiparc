@@ -25488,7 +25488,18 @@ case 'join': {
   //        le salon. On n'envoie qu'à cette socket, et seulement si elle a
   //        demandé l'historique (lc="1") — le SWF desktop n'est pas concerné.
   if (client.wantsChatHistory) {
-    for (const frame of getChannelHistory(g)) sendToClient(socket, frame);
+    // `rj="1"` : la trame est un REJEU, pas une parole neuve. Le client light
+    // écrit la ligne mais n'y réagit pas — pas d'animation de bouille, pas
+    // d'onglet qui clignote, pas de non-lus. Sans la marque, une reconnexion
+    // (changer d'onglet sur mobile suffit) rejouait AUSSI les réactions : la
+    // scène du chat encaissait toute la rafale d'un coup, et c'est dans cette
+    // rafale que deux bouilles finissaient montées sur le même canevas — le
+    // clignotement entre deux visages que les joueurs voyaient. Le SWF, lui,
+    // ne reçoit jamais ce rejeu (lc="1"), et un attribut inconnu ne le
+    // gênerait pas davantage.
+    for (const frame of getChannelHistory(g)) {
+      sendToClient(socket, frame.replace(/^<t(?=[\s>])/, '<t rj="1"'));
+    }
   }
 
   // 3 ter. Un sondage est ouvert dans ce salon : le nouvel arrivant (Light) le

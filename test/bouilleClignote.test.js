@@ -175,3 +175,89 @@ test('la bouille d’un inconnu se demande au serveur, une seule fois', () => {
   const jouer = /function overlayJouer\(pseudo, anim, c\) \{[\s\S]*?\n  \}/.exec(LIGHT)[0];
   assert.match(jouer, /if \(!connue\) reclamerBouille\(cle\);/);
 });
+
+/*
+ * LE CLIGNOTEMENT ENTRE DEUX VRAIS JOUEURS — l'aquarium du salon.
+ *
+ * « La bouille du user alterne avec celle d'un autre user connecté sur le
+ * salon, qui ne parle pas nécessairement en même temps. »
+ *
+ * Le numéro de tour avait fermé la porte du double montage — mais pas celle
+ * du DÉSACCORD entre `posees` et `promesses`. Dans une RAFALE (le rejeu
+ * d'historique à la connexion joue plusieurs émotions d'un coup, avant que le
+ * premier montage ait fini), chaque `jouer` repartait de zéro : `oublier` +
+ * `dessiner` remplaçaient la promesse à chaque message. Quand les montages
+ * écartés rentraient enfin, le premier d'entre eux faisait
+ * `promesses.delete(c)` — il SUPPRIMAIT LA PROMESSE DU SURVIVANT.
+ *
+ * Restait une bouille montée sans promesse. Le `jouer` suivant la réutilisait
+ * (`rafraichir`, chemin rapide) puis, ne trouvant pas de promesse, en MONTAIT
+ * UNE SECONDE par-dessus — sans jamais arrêter la première. Deux bouilles
+ * vivantes, deux visages en alternance à quarante images par seconde : la
+ * zombie garde le dernier locuteur du rejeu — quelqu'un du salon qui ne parle
+ * plus.
+ */
+test('une rafale de locuteurs ne laisse ni zombie ni promesse orpheline', async () => {
+  const { V, familles, montees } = monter();
+  const c = canevas(SAC);
+  // La rafale : cinq locuteurs de la MÊME famille, d'un coup, avant que le
+  // fichier soit arrivé — le rejeu d'historique à la connexion.
+  const GENS = ['000100020103000300010203', '000400070208010600040506',
+    '000100020103000300010203', '000400070208010600040506',
+    '000100020103000300010203'];
+  for (const g of GENS) V.jouer(c, g, 1, 0);
+  // La famille 0 rentre : tous les `.then` en attente s'exécutent, dans
+  // l'ordre où ils ont été accrochés.
+  for (const [, resoudre] of familles) resoudre({});
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  const vivantes = montees.filter((b) => b.vivante);
+  assert.strictEqual(vivantes.length, 1,
+    'UNE seule bouille vivante après la rafale (relevé : ' + vivantes.length + ')');
+  assert.strictEqual(vivantes[0].etat, GENS[GENS.length - 1], 'celle du dernier locuteur');
+
+  // ET LA CARTE EST RESTÉE COHÉRENTE : le locuteur suivant réutilise l'arbre
+  // en place — aucun montage de plus, donc aucun second lecteur possible.
+  const dAvant = montees.length;
+  V.jouer(c, GENS[1], 1, 0);
+  await new Promise((r) => setImmediate(r));
+  assert.strictEqual(montees.length, dAvant,
+    'aucune nouvelle bouille : la promesse du survivant n’a pas été supprimée');
+  assert.strictEqual(vivantes[0].etat, GENS[1], 'le même arbre a changé d’état');
+});
+
+test('une bouille montée sans promesse se RÉADOPTE, elle ne se recouvre pas', async () => {
+  // Le filet, pour tout chemin qui désaccorderait encore les deux cartes : si
+  // `posees` tient une bouille et `promesses` rien, `dessiner` doit rendre la
+  // bouille en place — jamais en monter une seconde par-dessus.
+  const src = /function dessiner\(c\) \{[\s\S]*?\n  \}/.exec(SRC)[0];
+  assert.match(src, /var enPlace = posees\.get\(c\);/);
+  assert.match(src, /p = Promise\.resolve\(enPlace\);\s*\n\s*promesses\.set\(c, p\);\s*\n\s*return p;/);
+  // Et le tampon d'un montage écarté ne vaut que pour LUI : il ne supprime la
+  // promesse que si c'est encore la sienne.
+  assert.match(src, /if \(promesses\.get\(c\) === p\) promesses\.delete\(c\);/);
+});
+
+test('le rejeu d’historique s’écrit mais ne fait RÉAGIR personne', () => {
+  /*
+   * La rafale qui armait le bug est celle du REJEU : à chaque (re)connexion —
+   * changer d'onglet sur mobile coupe la socket — le serveur renvoie cinq
+   * minutes de salon, et le client rejouait AUSSI les réactions : émotions en
+   * rafale sur la scène, onglets qui clignotent, non-lus recomptés. D'époque,
+   * rien ne rejoue. Le serveur marque donc ces trames (`rj="1"`) et le client
+   * les écrit sans y réagir.
+   */
+  const SRV = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(SRV, /sendToClient\(socket, frame\.replace\(\/\^<t\(\?=\[\\s>\]\)\/, '<t rj="1"'\)\);/,
+    'le serveur marque chaque trame rejouée');
+  const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(LIGHT, /var enRejeu = attr\(xml, "rj"\) === "1";/);
+  // Ni animation…
+  assert.match(LIGHT, /if \(emWho && !enRejeu\) showBouilleOverlay/);
+  assert.match(LIGHT, /if \(from && !isAdmin && !enRejeu\) showBouilleOverlay/);
+  // …ni clignotement d'onglet ou de mention…
+  assert.match(LIGHT, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| attr\(xml, "st"\) === "r"\);/);
+  assert.match(LIGHT, /if \(!enRejeu\) avertirOngletChat\(ty, salon, pourMoi\);/);
+  // …ni non-lus d'une conversation privée.
+  assert.match(LIGHT, /if \(conv && !enRejeu && !\(conv\.sourdineJusqua > Date\.now\(\)\)\)/);
+});
