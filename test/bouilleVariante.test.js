@@ -490,3 +490,46 @@ test('le MARQUEUR d\'atelier ne fait pas un gabarit', async () => {
   assert.ok(!Variante.dessinee(defs, CASQUETTE, r.variantes - 1, 8), 'et ne compte pas pour une variante');
   assert.ok(Variante.dessinee(defs, CASQUETTE, 0, 8), 'la variante 0, elle, est bien dessinée');
 });
+
+test('les identifiants du gabarit sont UNIQUES — un doublon coûtait le niveau 1', async () => {
+  /*
+   * Un niveau de couleur revient souvent à deux endroits de la pile : le niveau 1
+   * presque toujours (une fois derrière la tête, une fois devant). On écrivait
+   * alors deux fois `id="couleur1"` — ce qu'un document XML n'autorise pas.
+   * Illustrator tranchait : il gardait le premier, celui de l'ARRIÈRE, et rendait
+   * le groupe de devant sans nom. Au retour, tout le devant du niveau 1 revenait
+   * en couleur FIXE, en gris. Le niveau 1 seulement, jamais les autres — parce
+   * que c'est lui que les deux couches partagent.
+   *
+   * (La lecture, elle, se vérifie en navigateur : elle demande DOMParser et
+   * getCTM. Ce test tient le côté qui produit.)
+   */
+  const defs = await lire('famille0.swf');
+  const soucis = [];
+  let gabarits = 0;
+  for (let type = 1; type <= 16; type++) {
+    const r = Variante.repere(defs, type, 8);
+    if (!r) continue;
+    for (let v = 0; v < r.variantes; v++) {
+      if (!Variante.dessinee(defs, type, v, 8)) continue;
+      gabarits++;
+      const svg = Variante.exporterSVG(defs, { type, variante: v, coiffure: 8 });
+      const ids = (svg.match(/ id="([^"]+)"/g) || []).map((s) => s.slice(5, -1));
+      const vus = new Set(), doubles = new Set();
+      for (const id of ids) { if (vus.has(id)) doubles.add(id); vus.add(id); }
+      if (doubles.size) soucis.push(`type ${type} v${v} : ${[...doubles].join(', ')}`);
+    }
+  }
+  assert.ok(gabarits > 100, 'on a bien passé tous les gabarits en revue (' + gabarits + ')');
+  assert.deepStrictEqual(soucis, [], 'aucun identifiant en double');
+
+  // Et le nom d'un niveau qui revient reste LISIBLE comme ce niveau : le lecteur
+  // n'en regarde que le début, donc « couleur1-2 » vaut « couleur1 ».
+  const svg = Variante.exporterSVG(defs, { type: CASQUETTE, variante: 0, coiffure: 8 });
+  const niveaux = (svg.match(/ id="(couleur[^"]*)"/g) || []).map((s) => s.slice(5, -1));
+  assert.ok(niveaux.length > 1, 'la casquette porte le niveau 1 des deux côtés');
+  assert.strictEqual(niveaux[0], 'couleur1', 'le premier garde le nom simple');
+  for (const n of niveaux) {
+    assert.match(n, /^couleur[123]/, 'un nom de niveau commence par son niveau : ' + n);
+  }
+});

@@ -696,6 +696,29 @@
     var sc = defs.scene || { x: 0, y: 0, w: 100, h: 100 };
     var NOMS = { 1: "couleur1", 2: "couleur2", 3: "couleur3" };
 
+    /*
+     * UN IDENTIFIANT NE SERT À RIEN S'IL N'EST PAS UNIQUE.
+     *
+     * Un niveau de couleur peut revenir à plusieurs endroits de la pile : le
+     * niveau 1 presque toujours (une fois derrière la tête, une fois devant), le
+     * niveau 2 quand un accessoire l'emploie en deux fois. On écrivait alors deux
+     * fois `id="couleur1"` — ce qu'un document XML n'autorise pas. Illustrator
+     * tranchait à sa façon : il gardait le premier, celui de l'ARRIÈRE, et
+     * laissait le groupe de devant sans nom. Au retour, tout le devant du niveau 1
+     * revenait donc en couleur FIXE — les gris du dessin, que la couleur du joueur
+     * ne touchait plus. C'était toujours le niveau 1, jamais les autres, et rien
+     * ne le disait.
+     *
+     * Le premier garde le nom simple ; les suivants sont numérotés. Le lecteur ne
+     * regarde que le début du nom, donc `couleur1-2` vaut `couleur1`.
+     */
+    var pris = {};
+    function nomDeNiveau(s) {
+      var base = NOMS[s];
+      pris[base] = (pris[base] || 0) + 1;
+      return pris[base] === 1 ? base : base + "-" + pris[base];
+    }
+
     // Les tracés, dans l'ordre de peinture, groupés par SÉRIES de même niveau :
     // un calque nommé par série, pour qu'Illustrator montre des calques parlants.
     var corps = [];
@@ -751,7 +774,7 @@
         var s = liste[i].slot || 0, j = i;
         while (j < liste.length && (liste[j].slot || 0) === s) j++;
         var bloc = liste.slice(i, j).map(ligne).join("\n");
-        if (s) out.push('    <g id="' + NOMS[s] + '">\n' + bloc + "\n    </g>");
+        if (s) out.push('    <g id="' + nomDeNiveau(s) + '">\n' + bloc + "\n    </g>");
         else out.push(bloc);
         i = j;
       }
@@ -816,8 +839,12 @@
       + "    FIXES, que les trois niveaux ne modifieront pas. Les deux se mélangent\n"
       + "    librement dans un même accessoire.\n"
       + "\n"
-      + "    L'ORDRE DES CALQUES EST L'ORDRE DE PEINTURE. Un même niveau ne doit\n"
-      + "    apparaître qu'à UN endroit de la pile.\n"
+      + "    L'ORDRE DES CALQUES EST L'ORDRE DE PEINTURE. Un même niveau peut revenir\n"
+      + "    à plusieurs endroits de la pile ; comme deux calques ne peuvent pas porter\n"
+      + "    le même nom, les suivants sont NUMÉROTÉS : « couleur1 », « couleur1-2 »…\n"
+      + "    Seul le début du nom compte, tu peux donc en créer d'autres sur ce modèle.\n"
+      + "    Un calque de niveau qui perd son nom perd son niveau : son dessin revient en\n"
+      + "    gris, en couleur fixe.\n"
       + "\n"
       + "    DEUX CALQUES DE DESSIN, de bas en haut :\n"
       + "      · « accessoire-arriere » : ce qui passe DERRIÈRE la tête (la mèche d'un\n"

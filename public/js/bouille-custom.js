@@ -376,15 +376,35 @@
 
     var out = [];
     try {
-      var repere = vivant.querySelector("#repere");
-      var gArr = vivant.querySelector("#accessoire-arriere");
+      /*
+       * LES NOMS DE CALQUE, TELS QU'ILLUSTRATOR LES REND.
+       *
+       * Un nom de calque devient un identifiant XML, et ce qui n'y est pas
+       * permis est échappé : « Couleur 1 » ressort en « Couleur_x20_1 ». On rend
+       * donc leur valeur aux échappements avant de lire le nom, et on ne lit que
+       * son DÉBUT — un doublon numéroté (« couleur1-2 », « couleur1_1_ ») désigne
+       * le même niveau.
+       */
+      function nomDe(el) {
+        return String((el && el.id) || "").replace(/_x([0-9a-f]{2,4})_/gi,
+          function (_, h) { return String.fromCharCode(parseInt(h, 16)); });
+      }
+      function premier(prefixe) {
+        var tous = vivant.querySelectorAll("[id]");
+        for (var i = 0; i < tous.length; i++) {
+          if (nomDe(tous[i]).toLowerCase().indexOf(prefixe) === 0) return tous[i];
+        }
+        return null;
+      }
+      var repere = premier("repere");
+      var gArr = premier("accessoire-arriere");
       // L'AVANT / ARRIÈRE vient du calque de tête (« accessoire-arriere »). Le
       // NIVEAU DE COULEUR (1, 2 ou 3) vient d'un groupe ancêtre nommé
-      // « couleur1/2/3 » (Illustrator peut y accoler un « _1 » : on tolère). Un
-      // tracé sans un tel ancêtre garde sa couleur fixe (niveau 0).
+      // « couleur1/2/3 » — le premier trouvé en remontant. Un tracé sans un tel
+      // ancêtre garde sa couleur fixe (niveau 0).
       function slotDe(el) {
         for (var n = el; n && n !== vivant.parentNode; n = n.parentNode) {
-          var m = /^couleur([123])/i.exec(n.id || "");
+          var m = /^\s*couleur\s*([123])/i.exec(nomDe(n));
           if (m) return Number(m[1]);
         }
         return 0;
