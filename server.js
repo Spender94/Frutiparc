@@ -6341,6 +6341,64 @@ async function resoudreMentionEnBase(mot) {
   return null;
 }
 
+/*
+ * L'ANNUAIRE DES @MENTIONS, pour le client qui écrit et pour celui qui lit.
+ *
+ * Deux questions, un seul point d'entrée, parce que c'est la MÊME résolution
+ * qui doit répondre aux deux — sinon le forum met en gras des pseudos que le
+ * serveur ne notifiera pas, ou l'inverse :
+ *
+ *   ?q=car          « quels pseudos commencent par là ? »  → l'autocomplétion
+ *   ?n=a,b,c        « lesquels de ceux-ci existent ? »      → la mise en gras
+ *
+ * On rend les noms D'AFFICHAGE : ce sont eux qu'il faut écrire, et eux que
+ * `mentionsDe` reconnaît. Le Bouilloscope ne pouvait pas servir à cela — c'est
+ * une collection de bouilles, pas un registre de comptes.
+ */
+app.get('/api/light/pseudos', async (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  res.setHeader('Cache-Control', 'no-store');
+
+  // Mode « lesquels existent » : on passe par la MÊME résolution que la
+  // notification (mémoire, puis base), pour que les deux disent la même chose.
+  const brut = String(req.query.n || '').trim();
+  if (brut) {
+    const mots = brut.split(',').map((s) => s.trim())
+      .filter((s) => /^[A-Za-z0-9_.-]{2,32}$/.test(s)).slice(0, 60);
+    const connus = {};
+    for (const mot of mots) {
+      const cible = await resoudreMentionEnBase(mot);
+      if (cible) connus[mot] = getDisplayName(cible);
+    }
+    return res.json({ ok: true, connus });
+  }
+
+  const q = String(req.query.q || '').trim().toLowerCase();
+  if (!/^[a-z0-9_.-]{1,32}$/.test(q)) return res.json({ ok: true, pseudos: [] });
+  const vus = new Set();
+  const out = [];
+  // La mémoire d'abord — les gens connectés, ceux qu'on nomme le plus souvent.
+  for (const nom of Object.keys(users)) {
+    if (nom.indexOf(q) !== 0 || NPC_USERNAMES.has(nom)) continue;
+    if (vus.has(nom)) continue;
+    vus.add(nom); out.push(getDisplayName(nom));
+    if (out.length >= 10) break;
+  }
+  if (out.length < 10 && process.env.DATABASE_URL) {
+    try {
+      for (const nom of await db.searchUsernames(q, 20)) {
+        const bas = String(nom).toLowerCase();
+        if (vus.has(bas) || NPC_USERNAMES.has(bas)) continue;
+        vus.add(bas); out.push(nom);
+        if (out.length >= 10) break;
+      }
+    } catch (e) { /* la mémoire suffira */ }
+  }
+  out.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase(), 'fr'));
+  res.json({ ok: true, pseudos: out });
+});
+
 function retenirMention(cible, auteur, vus, sortie) {
   if (!cible || vus.has(cible)) return;
   if (cible === String(auteur || '').toLowerCase() || NPC_USERNAMES.has(cible)) return;
@@ -17925,9 +17983,29 @@ app.get(['/ff/cp', '/cp'], (req, res) => {
 
 // ─────────────────────────────────────────────
 // ENDPOINT: ff/erb — Empty recycle bin
-// Returns XML
+//
+// `FPFileMng.emptyRecycleBin` (frutiparc/FPFileMng.as) appelle `ff/erb` sans
+// paramètre et attend `<r k="0" />` ; toute autre valeur de `k` ouvre l'alerte
+// « La corbeille n'a pas pu être vidée complètement ». Puis il prévient ses
+// écoutants, qui relisent le dossier.
+//
+// Le point d'entrée existait et ne VIDAIT RIEN : il rendait le succès sans
+// toucher à quoi que ce soit, si bien que la corbeille se remplissait sans
+// jamais pouvoir se vider. Ce qu'elle contient, ce sont les courriers jetés
+// (`recyclebin` est l'un des MAIL_FOLDERS) : on les efface pour de bon, comme
+// `ff/dm` le fait pour les autres boîtes.
 // ─────────────────────────────────────────────
 app.get('/ff/erb', (req, res) => {
+  const auth = requireAuthBySid(req.query.sid, res, 'text/xml');
+  if (!auth) return;
+  const { user, username } = auth;
+  ensureMails(user);
+  const jetes = user.mails.filter((m) => m.folder === 'recyclebin').map((m) => m.uid);
+  if (jetes.length) {
+    user.mails = user.mails.filter((m) => m.folder !== 'recyclebin');
+    if (user._dbId) db.deleteMails(jetes).catch(dbErr('deleteMails'));
+    console.log(`[FF/ERB] ${username} vide sa corbeille (${jetes.length} courrier(s))`);
+  }
   res.type('text/xml').send('<r k="0" />');
 });
 
@@ -18245,7 +18323,12 @@ function getMuteInfoForUser(username) {
   const u = username && users[username];
   if (!u || !u.mutedUntil) return { muted: false, until: null, untilDisplay: null };
   const raw = String(u.mutedUntil);
-  const d = new Date(raw.replace('.', ' '));
+  // « 2026-08-29.12:34:29 » est de l'UTC SANS marqueur — c'est ce que fabrique
+  // `new Date().toISOString().replace('T','.')`. Le lire sans le « Z », c'est
+  // le lire en heure LOCALE : sur un serveur à Paris la peine finissait deux
+  // heures trop tard l'été. (Le même calcul, correct, vit dans
+  // /api/light/profile ; on l'aligne.)
+  const d = new Date(raw.replace('.', 'T') + 'Z');
   if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) {
     return { muted: false, until: null, untilDisplay: null };
   }
@@ -23578,6 +23661,77 @@ function broadcastToChannel(channelName, xmlStr, excludeSocket = null) {
   }
 }
 
+/*
+ * UNE ANNONCE DE MODÉRATION NE SE REJOUE PAS.
+ *
+ * « X a été totoché » n'est pas un message : c'est un ÉVÉNEMENT, au même titre
+ * qu'une arrivée, un départ ou une expulsion — et `recordChannelHistory` écarte
+ * déjà ceux-là. Il ne s'en distingue que par sa forme : pour que le SWF le
+ * rende en italique sans horodatage, il est habillé en `<t u="admin">`, et se
+ * retrouvait donc RANGÉ AVEC LES MESSAGES.
+ *
+ * Conséquence, celle que le joueur a vue : le client light demande les cinq
+ * dernières minutes du salon à chaque (re)connexion (`lc="1"`) — et sur
+ * téléphone, changer d'onglet coupe la socket. La ligne repartait donc à
+ * chaque retour, comme si la sanction venait d'être reprononcée. Le bureau
+ * d'époque, lui, n'a pas de rejeu du tout : l'annonce se dit une fois.
+ */
+function annonceModeration(channelName, corps) {
+  const channel = channels[channelName];
+  if (!channel) return;
+  const xmlStr = `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(channelName)}" h="" d="">${corps}</${CMD.send}>`;
+  for (const [sock, client] of xmlSocketClients) {
+    if (client.channels.has(channelName)) sendToClient(sock, xmlStr);
+  }
+}
+
+/*
+ * LA FIN DE LA PEINE, À LA SECONDE OÙ ELLE TOMBE.
+ *
+ * `mutedUntil` était posé et plus jamais touché : à l'échéance, plus rien ne se
+ * passait côté serveur. Le client levait sa muselière tout seul (une minuterie),
+ * mais personne ne lui DISAIT que c'était fini, et la pastille du totoché
+ * restait accrochée à son nom dans la liste des présents jusqu'au prochain
+ * `trace`. « Quand une totoche est finie, elle est terminée. »
+ *
+ * On programme donc la levée : on efface la marque, on envoie `endmute` (la
+ * trame qu'attend `onEndMute` — c'est elle qui écrit « Tu peux de nouveau
+ * parler »), et on rediffuse le statut dans les salons où la personne se
+ * trouve, comme le fait `/unmute`.
+ */
+const finsDeTotoche = new Map();               // username → Timeout
+function programmerFinDeTotoche(username) {
+  const u = users[username];
+  const ancien = finsDeTotoche.get(username);
+  if (ancien) { clearTimeout(ancien); finsDeTotoche.delete(username); }
+  if (!u || !u.mutedUntil) return;
+  const d = new Date(String(u.mutedUntil).replace('.', 'T') + 'Z');
+  const reste = d.getTime() - Date.now();
+  if (Number.isNaN(d.getTime())) return;
+  const t = setTimeout(() => {
+    finsDeTotoche.delete(username);
+    const user = users[username];
+    if (!user || !user.mutedUntil) return;
+    // Une peine reposée entre-temps (plus longue) n'est pas celle-ci.
+    const fin = new Date(String(user.mutedUntil).replace('.', 'T') + 'Z').getTime();
+    if (Number.isFinite(fin) && fin > Date.now() + 1000) return programmerFinDeTotoche(username);
+    delete user.mutedUntil;
+    for (const sock of getSocketsForUsername(username)) {
+      sendToClient(sock, `<${CMD.endmute} u="${escapeXml(getDisplayName(username))}" />`);
+    }
+    for (const [chanName, channel] of Object.entries(channels)) {
+      if (channel && channel.users && channel.users.has(username)) {
+        broadcastToChannel(chanName,
+          `<${CMD.trace} u="${escapeXml(getDisplayName(username))}" p="1"`
+          + ` s="${getStatusCode(user, username)}" mu="${getMuteValue(user)}"`
+          + ` f="${bouilleOf(user)}" />`);
+      }
+    }
+  }, Math.max(0, reste) + 500);
+  if (t.unref) t.unref();
+  finsDeTotoche.set(username, t);
+}
+
 function getSocketsForUsername(username) {
   const sockets = [];
   for (const [sock, cl] of xmlSocketClients) {
@@ -24564,7 +24718,8 @@ function normalizeClientIp(rawIp) {
 function getMuteValue(user) {
   const raw = user && user.mutedUntil ? String(user.mutedUntil) : '';
   if (!raw) return '0000-00-00 00:00:00';
-  const d = new Date(raw.replace('.', ' '));
+  // UTC sans marqueur, comme partout ailleurs (cf. `getMuteInfoForUser`).
+  const d = new Date(raw.replace('.', 'T') + 'Z');
   if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) return '0000-00-00 00:00:00';
   return raw.includes('.') ? raw.replace('.', ' ') : raw;
 }
@@ -25738,6 +25893,7 @@ case 'send': {
       && !text.startsWith('/') && !isModerator(client.username) && chatHasBannedWord(text)) {
     const until = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
     if (users[client.username]) users[client.username].mutedUntil = until;
+    programmerFinDeTotoche(client.username);
     for (const s of getSocketsForUsername(client.username)) {
       sendToClient(s, `<${CMD.onmute} u="${escapeXml(getDisplayName(client.username))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
     }
@@ -25745,7 +25901,7 @@ case 'send': {
     if (process.env.DATABASE_URL) db.addModerationLog(client.username, 'auto', 'totoche', 'mots interdits').catch(e => console.error('[DB] modlog error:', e.message));
     const announce = `<![CDATA[${escapeXml(getDisplayName(client.username))} a été totoché]]>`;
     if (channels[g] && channels[g].users && channels[g].users.has(client.username)) {
-      broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="" d="">${announce}</${CMD.send}>`);
+      annonceModeration(g, announce);
     }
     break;
   }
@@ -25808,6 +25964,7 @@ case 'send': {
         }
         const until = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
         target.mutedUntil = until;
+        programmerFinDeTotoche(targetUser);
         for (const targetSock of getSocketsForUsername(targetUser)) {
           sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
         }
@@ -25816,10 +25973,11 @@ case 'send': {
         // Render exactly like userkicked/userjoined/userleaved: plain italic,
         // no timestamp, default color.  chat.msg_admin = "$h<i>$m</i>" so we
         // pass empty h/d and a plain body — the SWF wraps it in <i>…</i>.
+        // Et c'est un ÉVÉNEMENT : il ne part pas dans l'historique du salon.
         const announceTotoche = `<![CDATA[${escapeXml(getDisplayName(targetUser))} a été totoché]]>`;
         for (const [chanName, channel] of Object.entries(channels)) {
           if (channel && channel.users && channel.users.has(targetUser)) {
-            broadcastToChannel(chanName, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(chanName)}" h="" d="">${announceTotoche}</${CMD.send}>`);
+            annonceModeration(chanName, announceTotoche);
           }
         }
       }
@@ -26430,6 +26588,7 @@ case 'send': {
       }
       const until = msg.attrs.e || new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
       target.mutedUntil = until;
+      programmerFinDeTotoche(targetUser);
       for (const targetSock of getSocketsForUsername(targetUser)) {
         sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
       }
@@ -26440,7 +26599,7 @@ case 'send': {
       const announceTotoche = `<![CDATA[${escapeXml(getDisplayName(targetUser))} a été totoché]]>`;
       for (const [chanName, channel] of Object.entries(channels)) {
         if (channel && channel.users && channel.users.has(targetUser)) {
-          broadcastToChannel(chanName, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(chanName)}" h="" d="">${announceTotoche}</${CMD.send}>`);
+          annonceModeration(chanName, announceTotoche);
           broadcastToChannel(chanName, `<${CMD.trace} u="${escapeXml(getDisplayName(targetUser))}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
         }
       }
@@ -26456,6 +26615,7 @@ case 'send': {
       const target = users[targetUser];
       if (!targetUser || !target) break;
       delete target.mutedUntil;
+      programmerFinDeTotoche(targetUser);      // la levée programmée n'a plus lieu d'être
       for (const targetSock of getSocketsForUsername(targetUser)) {
         sendToClient(targetSock, `<${CMD.endmute} u="${escapeXml(getDisplayName(targetUser))}" />`);
       }

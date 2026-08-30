@@ -879,6 +879,31 @@ async function findUserByUsername(username) {
   return rows[0] || null;
 }
 
+/*
+ * LES PSEUDOS QUI COMMENCENT PAR… — l'annuaire des @mentions.
+ *
+ * Le chat complétait sur les gens du salon, et à défaut sur le Bouilloscope :
+ * une collection de bouilles, pas un registre de comptes. Un joueur qui n'y
+ * figure pas ne se proposait donc jamais, et le forum, où l'on nomme des gens
+ * qui ne sont pas là, n'avait rien du tout.
+ *
+ * `username` porte l'index primaire et n'a que des minuscules à l'écriture :
+ * le préfixe se compare tel quel, sans `LOWER()` qui empêcherait l'index de
+ * servir. `display_name` garde la casse choisie par le joueur — c'est elle
+ * qu'on rend, puisque c'est elle qu'il faut écrire.
+ */
+async function searchUsernames(prefix, limit = 10) {
+  const p = String(prefix || '').toLowerCase();
+  if (!p) return [];
+  const { rows } = await pool.query(
+    `SELECT username, display_name FROM users
+      WHERE username LIKE $1 || '%'
+      ORDER BY username LIMIT $2`,
+    [p, Math.max(1, Math.min(50, Number(limit) || 10))]
+  );
+  return rows.map((r) => String(r.display_name || r.username));
+}
+
 // Case-insensitive email lookup for password reset. Returns the first match
 // (emails are stored lowercased on register, but be tolerant of legacy rows).
 async function findUserByEmail(email) {
@@ -3074,6 +3099,7 @@ module.exports = {
   getTournamentsByStatus,
   rankingHasActiveTournament,
   findUserByUsername,
+  searchUsernames,
   findUserByEmail,
   createPasswordReset,
   findValidPasswordReset,

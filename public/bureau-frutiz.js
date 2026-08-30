@@ -156,6 +156,11 @@ window.BureauFrutiz = (function () {
                        l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
     'ex-noire':      { panneau: '#ex-noire-panel',      titre: 'Liste noire',  fruit: 'winExplorer',
                        l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
+    // LA CORBEILLE — encore le même `win.Explorer`, sur `fileMng.recyclebin`.
+    // Sa peau est `frFileTrash`, le VERT, et sa barre d'outils porte le seul
+    // bouton qu'elle ait : `flRemoveAll`, « Vider la corbeille ».
+    'ex-corbeille':  { panneau: '#ex-corbeille-panel',  titre: 'Corbeille',    fruit: 'winExplorer',
+                       l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
   };
 
   /* `gotoAndStop(type)` SUR LA BANDE #198, et rien d'autre : une étiquette que
@@ -1545,6 +1550,10 @@ window.BureauFrutiz = (function () {
     // 0x930be). Le pourpre est donc porté par la fenêtre, pas par la classe.
     noire:      { panneau: '#ex-noire-panel',      uid: 'blacklist',     titre: 'Liste noire',
                   style: 'noire' },
+    // `frFileTrash` : le VERT. Même règle que la liste noire — c'est le
+    // dossier qui donne sa peau à la liste.
+    corbeille:  { panneau: '#ex-corbeille-panel',  uid: 'recyclebin',    titre: 'Corbeille',
+                  style: 'corbeille' },
   };
   var exEtats = {};                      // clé → { uid, panneau, liste, titre }
 
@@ -1788,6 +1797,19 @@ window.BureauFrutiz = (function () {
           + 'il suffit de le faire glisser vers la fenêtre du chat.';
       }
     }
+    /*
+     * LA CORBEILLE. `box.Explorer.onLoadList` ne lui donne AUCUNE phrase : son
+     * bandeau reste vide d'époque, et son seul mot est l'infobulle du bouton
+     * (« Vider la corbeille »). Le portage, lui, a une chose à dire que
+     * l'époque n'avait pas à dire — le bureau Flash se jette au clavier
+     * (`Key.isDown(DELETEKEY)`) ou par le menu contextuel, gestes qu'un
+     * portage n'offre pas ; ici on jette EN GLISSANT. Une corbeille vide le
+     * rappelle, et se tait dès qu'elle a servi.
+     */
+    if (uid === 'recyclebin' && !n) {
+      return 'Pour jeter quelque chose, faites-le glisser sur la corbeille : '
+        + 'un frutiz de vos contacts, un raccourci du bureau, un courrier.';
+    }
     return '';
   }
 
@@ -1894,6 +1916,19 @@ window.BureauFrutiz = (function () {
         : boutonNav('new_folder', 'La création de dossiers n’est pas ouverte sur le revival', null);
       nav.appendChild(b);
     }
+    if (t.flRemoveAll) {
+      // `explorer.empty_recyclebin` — l'infobulle, puis la question, mot pour
+      // mot (lang_french.as). `fileMng.emptyRecycleBin` appelle `ff/erb` et
+      // prévient ses écoutants ; on fait les deux.
+      nav.appendChild(boutonNav('empty_recyclebin', 'Vider la corbeille', function () {
+        if (!window.confirm('Etes-vous sûr de vouloir vider votre corbeille ?')) return;
+        var sid = (window.state && window.state.sid) || '';
+        fetch('/ff/erb?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
+          .then(function (r) { return r.text(); })
+          .then(function () { ouvrirDossier(cle, uid, etat.titre, true); })
+          .catch(function () { ouvrirDossier(cle, uid, etat.titre, true); });
+      }));
+    }
     nav.hidden = !nav.firstChild;
 
     var alerte = etat.panneau.querySelector('.ex-alerte');
@@ -1997,6 +2032,16 @@ window.BureauFrutiz = (function () {
     }
     if (e.type === 'disc') return caseDisque(e);
     if (e.type === 'contact') return caseContact(cle, e);
+    if (e.type === 'mail') {
+      // UN COURRIER JETÉ. `encodeMailDesc` : expéditeur, sujet, destinataires,
+      // corps — c'est le SUJET qui nomme l'icône (`FPFileMng.getName` rend
+      // `desc[1]` pour un mail), et le dessin est celui d'un document.
+      var sujet = (e.desc[1] || '').trim() || '(sans sujet)';
+      return caseExplorateur({
+        nom: sujet, dessin: dessinStandard('ico_text'),
+        titre: sujet + (e.desc[0] ? ' — de ' + e.desc[0] : ''),
+      });
+    }
     if (e.type === 'bouille') {
       return caseExplorateur({
         nom: nomDe(e), dessin: dessinBouille(e.desc[1]), classe: 'ex-slot-bouille',
@@ -2274,6 +2319,9 @@ window.BureauFrutiz = (function () {
     else if (quoi === 'dossier') pris = deposerDansDossier(info, boite.getAttribute('data-uid'));
     // Un SOUS-DOSSIER du carnet : `IconFileBox.onDrop` prend son uid pour cible.
     else if (quoi === 'dossier-carnet') pris = deposerDansCarnet(info, boite.getAttribute('data-uid'));
+    // LA CORBEILLE DU BUREAU : son icône est un `dropBox` comme les autres
+    // dossiers, et ce qu'on y lâche part à `fileMng.recyclebin`.
+    else if (quoi === 'corbeille') pris = jeter(info);
     else if (quoi === 'explorateur') pris = deposerDansExplorateur(info, boite.getAttribute('data-cle'));
     else if (quoi === 'bureau' || (!boite && surLeBureau(cible))) pris = deposerSurBureau(info, x, y, ctrl);
     // `IconFileBox.onEndDrag` note l'heure (`IconFileBox.dragEnd = getTimer()`)
@@ -2516,10 +2564,41 @@ window.BureauFrutiz = (function () {
       return deposerDansCarnet(info,
         (exEtats[cle] && exEtats[cle].uid) || EXPLORATEURS[cle].uid);
     }
+    if (cle === 'corbeille') return jeter(info);
     if (cle !== 'disques' || info.type !== 'disc') return false;
     var dedans = info.uid && trouverObjet(info.uid);
     if (dedans) retirerObjetBureau(dedans.uid);
     return true;
+  }
+
+  /*
+   * JETER — `fileMng.moveToRecycleBin(uid)`, c'est-à-dire `move(uid, "recyclebin")`.
+   *
+   * C'est le geste de la corbeille d'époque, et le SEUL moyen de supprimer quoi
+   * que ce soit au bureau : on lâche le fichier sur son icône (ou dans sa
+   * fenêtre), et `IconFileBox.onDrop` fait le déplacement. Le portage n'avait
+   * pas de corbeille du tout — un raccourci ne se retirait que par le menu du
+   * clic droit.
+   *
+   * Ce qui vit SUR LE BUREAU (raccourcis, disques, dossiers posés) quitte le
+   * bureau ; ce qui vit dans le gestionnaire de fichiers (un contact, un
+   * courrier) part au serveur. Souvent les deux : un frutiz posé sur le fond
+   * est un raccourci ET une entrée du carnet.
+   */
+  function jeter(info) {
+    if (!info) return false;
+    var pose = objetDeLIcone(info);
+    if (pose) retirerObjetBureau(pose.uid);
+    if (info.type === 'contact') {
+      var adresse = (info.desc || [])[0] || info.uid;
+      if (info.uid && info.uid !== 'new') deplacerFichier(info.uid, 'recyclebin');
+      else if (adresse) deplacerFichier(adresse, 'recyclebin');
+      return true;
+    }
+    // Un disque ne se DÉTRUIT pas : il retourne au catalogue, comme d'époque
+    // (`/ff/ls?uid=disccollector` le reliste dès qu'il n'est plus posé).
+    if (info.type === 'disc') { relireExplorateurs(); return !!pose; }
+    return !!pose;
   }
 
   /*
@@ -7981,6 +8060,7 @@ window.BureauFrutiz = (function () {
     ouvrirInventaire: function () { ouvrirExplorateur('inventaire'); },
     ouvrirContacts: function () { ouvrirExplorateur('contacts'); },
     ouvrirListeNoire: function () { ouvrirExplorateur('noire'); },
+    ouvrirCorbeille: function () { ouvrirExplorateur('corbeille'); },
     /*
      * ATTRAPER UN FRUTIZ LÀ OÙ IL PARAÎT (`UserSlot.initButtons`).
      *

@@ -328,13 +328,63 @@ test('le dessinateur parle le vocabulaire de `cpDocument`', () => {
   assert.match(f[0], /if \(l\.type === "url"\) \{/);
   assert.match(f[0], /if \(l\.type === "line"\) \{/);
   assert.match(f[0], /if \(l\.type === "spacer" \|\| l\.big !== undefined\) \{/);
-  // `sid` 2 = le style des titres ; `big` = un `flex-grow`, ce qui centre.
+  // `sid` 2 = le style des titres.
   assert.match(f[0], /Number\(l\.param && l\.param\.sid\) === 2 \? " fc-titre" : ""/);
-  assert.match(f[0], /if \(l\.big\) s\.style\.flexGrow = String\(l\.big\);/);
+  // CHAQUE NŒUD EMPORTE SA FICHE D'ÉPOQUE. La largeur ne se déduit pas du
+  // contenu : elle se CALCULE (`poserCarte`), à partir de `width`, `min.w` et
+  // `big`. Le dessinateur ne fait donc que poser le DOM et garder la ligne.
+  assert.match(f[0], /r\._fc = l;/);
+  assert.match(f[0], /col\._fc = l;/);
+  assert.match(f[0], /t\._fc = l;/);
+  assert.match(f[0], /boite\._fc = l;/);
   // Une bibliothèque pas encore extraite laisse la PLACE, pas une image cassée.
-  assert.match(f[0], /im\.onerror = function \(\) \{ im\.remove\(\); recalerCarte\(boite\); \};/);
+  assert.match(f[0], /im\.onerror = function \(\) \{ im\.remove\(\); \};/);
   // Et l'écart assumé est nommé.
   assert.match(LIGHT, /ÉCART ASSUMÉ : l'époque ne NOMME pas la carte/);
+});
+
+test('`DocPage.updateLine`, au chiffre près — le partage des largeurs', () => {
+  /* 0x661c6, désassemblé :
+       passe 1  w = (min.w défini) ? max(min.w, width) : width  ;  total += w
+                gros += big
+       reste = pos.w − total   ;  libre = pos.w
+       passe 2  w = min(libre, width)  ;  si min.w : w = max(min.w, w)
+                si big et reste > 0 et gros ≠ 0 : w += big / gros × reste
+                on pose à cur.x  ;  cur.x += w  ;  libre −= w */
+  const p = /function poserCarte\(hote, largeur\) \{[\s\S]*?\n  \}/.exec(LIGHT);
+  assert.ok(p, 'poserCarte doit exister');
+  assert.match(p[0], /var reste = largeur - total;/);
+  assert.match(p[0], /var libre = largeur;/);
+  // BORNÉ PAR CE QUI RESTE : c'est ce qui tronque une rangée trop longue au
+  // lieu d'élargir la fenêtre.
+  assert.match(p[0], /var w = Math\.min\(libre, Number\(f\.width\) \|\| 0\);/);
+  assert.match(p[0], /w = Math\.max\(Number\(min\.w\) \|\| 0, w\);/);
+  assert.match(p[0], /reste > 0 && gros !== 0/);
+  assert.match(p[0], /w \+= \(Number\(f\.big\) \|\| 0\) \/ gros \* reste;/);
+  assert.match(p[0], /libre -= w;/);
+  // Une colonne rejoue la règle chez elle, dans la case qu'elle a reçue.
+  assert.match(p[0], /if \(c\.classList\.contains\("fc-colonne"\)\) poserCarte\(c, w\);/);
+  // La HAUTEUR ne compte pas les dessins : `getLineHeight` (0x66537) ne
+  // regarde que `line.height` et les `min.h`.
+  const h = /function hauteurRangee\(r, enfants\) \{[\s\S]*?\n  \}/.exec(LIGHT);
+  assert.ok(h, 'hauteurRangee doit exister');
+  assert.match(h[0], /var h = Number\(f\.height\) \|\| 0;/);
+  assert.match(h[0], /if \(min\.h !== undefined && min\.h !== null\) h = Math\.max\(h, Number\(min\.h\) \|\| 0\);/);
+});
+
+test('les titres portent l’encre du CORPS, pas celle des onglets', () => {
+  /* `Standard.getDocStyle` (0x49894) bâtit les styles du document à partir du
+     `colorSet` de la fenêtre. La fiche est en `frSheet`, dont `color[0]` est
+     le VERT — et les deux styles que les fruticards emploient y puisent :
+
+        s[1] (corps)  color = green.overdark #335511, size 11
+        s[2] (titres) color = green.overdark #335511, size 12, bold
+
+     Le portage peignait les titres en #842929 (pink.darkest, l'encre des
+     onglets) : c'est l'écart qu'on voyait entre le rendu Flash et le nôtre. */
+  assert.match(LIGHT, /\.fiche-fcard \.fc-titre \{ font-weight: bold; font-size: 12px; \}/);
+  assert.match(LIGHT, /\.fiche-fcard \{[\s\S]{0,160}color: #335511;/);
+  assert.doesNotMatch(LIGHT, /\.fc-titre \{[^}]*#842929/);
 });
 
 test('les dessins déjà sortis du SWF sont sur le disque', () => {
@@ -458,23 +508,29 @@ test('la fée est ENTIÈRE : le masque du document ne suit pas la matrice', () =
     'les huit remplissages de la forme 18 — une mèche seule n’en aurait qu’un');
 });
 
-test('sur le bureau, la fruticard ne défile pas de côté : la fenêtre s’élargit', () => {
-  /* `DocPage.updateLine` (0x661c6) ne fait rétrécir personne et le masque du
-     document COUPE ce qui dépasse — l'époque ne défile jamais de côté. Le
-     joueur tirait la poignée, et `cp.Document.updateSize` (0x4de13) révélait
-     la rangée entière. On tire la poignée à sa place. */
+test('la fruticard ne défile pas de côté et n’élargit RIEN', () => {
+  /* `DocPage.updateLine` (0x661c6) borne chaque case à ce qui RESTE de la
+     largeur du document : une rangée trop longue voit sa queue se replier sur
+     zéro, et le masque coupe. La fiche garde donc ses dimensions — sur le
+     bureau comme au téléphone.
+
+     Le portage tirait la poignée de la fenêtre à la place du joueur
+     (`largeurCarte`), si bien que la carte de MiniPixiz faisait passer la
+     fiche de 324 à plus de 600 : c'est l'écart que le relevé montrait. */
   const CSS = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
-  assert.match(CSS, /body\.bureau-frutiz \.fiche-boite \.fiche-fcard \{ overflow-x: hidden; \}/);
-  // Sur téléphone, la carte garde son défilement : on ne peut pas élargir.
-  assert.match(LIGHT, /\.fiche-fcard \{[\s\S]*?overflow-x: auto;/);
-  assert.match(LIGHT, /function largeurCarte\(carte\) \{/);
-  assert.match(LIGHT, /if \(!carte \|\| !document\.body\.classList\.contains\("bureau-frutiz"\)\) return;/);
-  assert.match(LIGHT, /carte\.style\.width = "max-content";/);
-  // Une case d'image sans `min.w` ne fait rien de large tant que le fichier
-  // n'est pas là : chaque dessin qui arrive redemande la mesure.
-  assert.match(LIGHT, /function recalerCarte\(noeud\) \{/);
-  assert.match(LIGHT, /im\.onload = function \(\) \{ recalerCarte\(boite\); \};/);
-  assert.match(LIGHT, /boite\.appendChild\(svg\);\n\s+recalerCarte\(boite\);/);
+  assert.match(CSS, /body\.bureau-frutiz \.fiche-boite \.fiche-fcard \{ overflow: hidden; \}/);
+  assert.match(LIGHT, /\.fiche-fcard \{[\s\S]*?overflow: hidden;/);
+  assert.doesNotMatch(LIGHT, /function largeurCarte\(/);
+  assert.doesNotMatch(LIGHT, /carte\.style\.width = "max-content";/);
+  // Une case d'image ne mesure PAS son dessin : sans `min.w` elle fait zéro et
+  // le dessin déborde. Rien à remesurer quand un fichier arrive en retard.
+  assert.doesNotMatch(LIGHT, /function recalerCarte\(/);
+  assert.match(LIGHT, /LA CASE D'UN DESSIN NE LE CONTIENT PAS/);
+  assert.match(LIGHT, /\.fiche-fcard \.fc-image \{ overflow: visible; \}/);
+  // La largeur du document suit la fenêtre — `cp.Document.updateSize` est
+  // rappelé à chaque `onResize` d'époque, on s'abonne à la taille de la page.
+  assert.match(LIGHT, /function calerCarte\(carte\) \{/);
+  assert.match(LIGHT, /new ResizeObserver\(poser\)/);
   // Et hors carte, la fiche retrouve les 324 d'époque.
   assert.match(LIGHT, /ficheRacine\(\)\.style\.width = "";/);
 });

@@ -1067,57 +1067,59 @@
      est une colonne de largeur fixe. Tout tient dans ces trois règles.
 
      CE QUE FAIT LA MISE EN PAGE D'ÉPOQUE (`DocPage.updateLine`, main.swf
-     0x661c6, relevé instruction par instruction) :
+     0x661c6) est repris À LA LETTRE en JavaScript — voir `poserCarte` : la
+     largeur de chaque case s'y calcule, la feuille de style ne fait que la
+     porter. D'où l'absolu ci-dessous plutôt qu'un `flex` : le SWF pose ses
+     composants à `cur.x`, et un dessin qui déborde de sa case ne pousse pas
+     son voisin, il passe PAR-DESSUS.
 
-        largeur = max(élément.min.w, élément.width)   — jamais moins
-        reste   = page.pos.w − Σ largeurs
-        si reste > 0, chaque `big` en reçoit sa part ; sinon PERSONNE ne grandit
-        puis on pose les éléments de gauche à droite, et le masque du document
-        coupe ce qui dépasse
+     LES COULEURS viennent de `Standard.getDocStyle` (0x49894), qui bâtit les
+     vingt styles du document à partir du `colorSet` de la fenêtre. La fiche
+     est en `frSheet`, dont `color[0]` est le VERT :
 
-     Rien ne rétrécit, donc : une rangée trop large est simplement TRONQUÉE. Et
-     `page.pos.w` n'est pas le 250 de `onFrutiCard` — `cp.Document.updateSize`
-     (0x4de13) le remplace par la largeur réelle du composant, si bien qu'une
-     fenêtre élargie révèle davantage de la rangée.
+        s[1]  (le corps)  color = green.overdark  #335511, corps 11, marge 4
+        s[2]  (les titres) color = green.overdark #335511, corps 12, GRAS
 
-     ÉCART ASSUMÉ, SUR TÉLÉPHONE : au lieu de couper, on laisse la carte
-     DÉFILER de côté. Les médailles de MiniPixiz font 357 px et le bloc de sa
-     fée 363 : dans la fiche d'époque (324 de large) l'étoile et la moitié des
-     caractéristiques tombaient hors du cadre. Sur un écran de téléphone, qu'on
-     ne peut pas élargir, couper serait pire.
-
-     SUR LE BUREAU, c'est l'autre bout qu'on prend : la fiche est une fenêtre
-     qu'on peut tirer, et l'époque révélait le reste de la rangée dès qu'on
-     l'élargissait (`cp.Document.updateSize`, 0x4de13). `largeurCarte` tire la
-     poignée à la place du joueur, et la carte ne défile plus — voir la règle
-     `overflow-x: hidden` de bureau-frutiz.css. */
+     Les titres ne sont donc pas rouges : ils ont l'encre du corps, en gras et
+     d'un point plus gros. (Le portage les peignait en `pink.darkest` — le
+     #842929 des onglets — et c'est l'écart qu'on voyait d'un rendu à l'autre.)
+     Seul `s[4]`, qu'aucune fruticard n'emploie, va chercher `color[2]`. */
   .fiche-fcard {
     font-family: Verdana, Arial, sans-serif; font-size: 11px; color: #335511;
-    overflow-x: auto;
+    /* La fiche a des dimensions FIXES : une rangée trop longue est TRONQUÉE
+       par le masque du document, elle n'élargit rien et ne défile pas. */
+    overflow: hidden;
   }
-  .fiche-fcard .fc-rangee { display: flex; align-items: center; flex-wrap: nowrap; }
-  /* `flex: 0 0 auto` : une colonne tient sa largeur d'époque. La laisser céder
-     ne la rétrécirait pas vraiment — ses enfants gardent LEUR largeur et
-     déborderaient par-dessus la colonne voisine (le portrait de la fée passait
-     ainsi sur ses caractéristiques). */
-  .fiche-fcard .fc-colonne { display: flex; flex-direction: column; flex: 0 0 auto; }
-  /* Le texte, lui, cède : il se replie sur plusieurs lignes au lieu d'obliger
-     toute la carte à défiler pour les 300 px d'une phrase de Frutisnake. */
-  .fiche-fcard .fc-texte { font-size: 11px; line-height: 15px; flex: 0 1 auto; max-width: 100%; }
-  /* `sid` 2 : le style des titres — gras, l'encre de l'onglet courant. */
-  .fiche-fcard .fc-titre { font-weight: bold; color: #842929; }
-  .fiche-fcard .fc-blanc { flex: 1 1 0; min-width: 0; }
-  .fiche-fcard .fc-filet { flex: 1 1 0; min-width: 6px; height: 2px; background: #ADE76B; }
-  .fiche-fcard .fc-air { flex: 0 0 auto; width: 100%; }
-  .fiche-fcard .fc-image {
-    flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-    position: relative;
+  /* Une rangée est un repère, pas une boîte flexible : `poserCarte` donne à
+     chaque enfant son `left` et sa `width`. La hauteur, elle, reste au
+     contenu — `getLineHeight` (0x66537) ne fixe qu'un plancher. */
+  .fiche-fcard .fc-rangee { position: relative; }
+  .fiche-fcard .fc-rangee > * { position: absolute; top: 0; }
+  /* Une COLONNE (`type: page`) empile ses rangées dans la case qu'elle a
+     reçue ; elle est donc en flux normal chez elle. */
+  .fiche-fcard .fc-colonne { position: absolute; top: 0; }
+  .fiche-fcard .fc-colonne > .fc-rangee { position: relative; }
+  .fiche-fcard .fc-texte { font-size: 11px; line-height: 15px; }
+  /* `sid` 2 : le style des titres — gras, corps 12, la MÊME encre que le
+     corps (green.overdark). */
+  .fiche-fcard .fc-titre { font-weight: bold; font-size: 12px; }
+  .fiche-fcard .fc-blanc { height: 1px; }
+  /* Le filet du titre porte la marge `y: {min: 8, ratio: 1}` — de l'air en
+     haut comme en bas, à parts égales : il court donc à MI-HAUTEUR de la
+     rangée, au milieu du texte qu'il encadre. */
+  .fiche-fcard .fc-filet {
+    top: 50%; margin-top: -1px; height: 2px; background: #ADE76B;
   }
-  .fiche-fcard .fc-image img, .fiche-fcard .fc-image svg { display: block; max-width: 100%; }
+  .fiche-fcard .fc-air { width: 100%; }
+  /* LA CASE D'UN DESSIN NE LE CONTIENT PAS. Sans `min.w`, elle fait ZÉRO et
+     le dessin déborde à droite — c'est ce qui serre les cinq diamants de
+     MiniPixiz les uns contre les autres sur le rendu d'époque. */
+  .fiche-fcard .fc-image { overflow: visible; }
+  .fiche-fcard .fc-image img, .fiche-fcard .fc-image svg { display: block; }
   /* Le nombre d'étoiles de MiniPixiz : un champ texte planté DANS le dessin de
-     l'étoile, à sa droite — corps 22, encre #547614, relevés dans le SWF. */
+     l'étoile, à sa droite — x 24, corps 22, encre #547614, relevés dans le SWF. */
   .fiche-fcard .fc-nombre {
-    position: absolute; left: 100%; top: -2px; font-size: 22px; line-height: 22px;
+    position: absolute; left: 24px; top: -2px; font-size: 22px; line-height: 22px;
     color: #547614; white-space: nowrap;
   }
   /* Le pseudo d'un message se touche : il ouvre la fiche, comme au bureau. */
@@ -2308,6 +2310,12 @@
            frutiz. -->
       <button class="home-tile home-tile-bureau" data-go="contacts"><span class="ico"><img src="/frutiz/sprites/ico_dossier_mycontact.svg" alt="" onerror="this.replaceWith(document.createTextNode('👤'))"></span><span class="lbl">Mes contacts</span></button>
       <button class="home-tile home-tile-bureau" data-go="noire"><span class="ico"><img src="/frutiz/sprites/ico_dossier_blacklist.svg" alt="" onerror="this.replaceWith(document.createTextNode('🚫'))"></span><span class="lbl">Liste noire</span></button>
+      <!-- LA CORBEILLE. Sixième icône de la rangée d'époque, et le seul moyen
+           d'y supprimer quoi que ce soit : `IconFileBox.onDrop` en fait un
+           `dropBox` (d'où le `data-depot`) et `fileMng.moveToRecycleBin` fait
+           le reste. Un clic l'ouvre dans le même explorateur que les autres
+           dossiers, avec son unique bouton — « Vider la corbeille ». -->
+      <button class="home-tile home-tile-bureau" data-go="corbeille" data-depot="corbeille"><span class="ico"><img src="/frutiz/sprites/ico_dossier_recyclebin.svg" alt="" onerror="this.replaceWith(document.createTextNode('🗑️'))"></span><span class="lbl">Corbeille</span></button>
     </div>
 
     <!-- Le compte, et la sortie. Le bureau Flash n'offre « Se déconnecter »
@@ -3878,6 +3886,10 @@
       }
       if (go === "noire") {
         if (surBureau && BureauFrutiz.ouvrirListeNoire) BureauFrutiz.ouvrirListeNoire();
+        return;
+      }
+      if (go === "corbeille") {
+        if (surBureau && BureauFrutiz.ouvrirCorbeille) BureauFrutiz.ouvrirCorbeille();
         return;
       }
       if (go === "club") return window.open("/club/", "_blank");
@@ -6097,11 +6109,25 @@
         n.disabled = mut || !state.connected;
       });
     });
-    if (!mut) return;
+    if (!mut) {
+      // « Quand une totoche est finie, elle est terminée » : la ligne qui
+      // l'annonçait s'en va avec elle. Elle disait « encore N minutes » — la
+      // laisser au fil, c'est laisser une peine qui n'existe plus.
+      oublierLeMuselage();
+      return;
+    }
     // Une minute de plus que le reste : le champ se rouvre tout seul, sans
     // qu'il faille recharger la page. (Le serveur, lui, laisse repasser dès
     // l'échéance : `mutedUntil <= now` n'est plus un muselage.)
     muselageTimer = setTimeout(majMuselage, Math.min(reste + 500, 60000));
+  }
+
+  // Les lignes du fil qui parlent de la peine en cours. On les marque en les
+  // écrivant (`data-totoche`) pour pouvoir les retirer quand elle tombe —
+  // partout, car le bureau tient un fil par salon.
+  function oublierLeMuselage() {
+    Array.prototype.forEach.call(
+      document.querySelectorAll("[data-totoche]"), function (n) { n.remove(); });
   }
   function connectWs() {
     var ws;
@@ -6831,11 +6857,16 @@
         // refusé : sans ce garde-fou, la ligne se répéterait à chaque touche
         // sur « Envoyer ».
         var mJusqua = dateMuselage(attr(xml, "mu") || attr(xml, "mt"));
+        // Une peine DÉJÀ ÉCHUE n'en est plus une : le serveur peut renvoyer la
+        // dernière connue (au rejeu, à la reconnexion), on ne remuselle pas
+        // pour un horodatage passé.
+        if (mJusqua <= Date.now()) { poserMuselage(0); break; }
         var mNeuf = !state.mutedUntil || mJusqua > (state.mutedUntil + 1000);
         poserMuselage(mJusqua);
         if (mNeuf) {
           var mMin = Math.max(1, Math.ceil((mJusqua - Date.now()) / 60000));
-          systemLine("Tu as été réduit au silence (totoché) pour " + mMin + " minutes.");
+          systemLine("Tu as été réduit au silence (totoché) pour " + mMin + " minutes.",
+            null, { totoche: true });
         }
         break;
       }
@@ -7488,13 +7519,16 @@
       ecrireCorps(bd, o.body, o.mentions);
       row.appendChild(bd);
     }
+    // `o.totoche` : une ligne qui parle de la peine en cours. Elle porte une
+    // marque pour pouvoir disparaître quand la peine tombe (oublierLeMuselage).
+    if (o.totoche) row.setAttribute("data-totoche", "1");
     fil.appendChild(row);
     // Cap DOM size for long sessions.
     while (fil.childNodes.length > 400) fil.removeChild(fil.firstChild);
     if (stick) scrollDown(fil);
   }
-  function systemLine(text, salon) {
-    addMessage({ kind: "system", body: text, salon: salon });
+  function systemLine(text, salon, opts) {
+    addMessage(Object.assign({ kind: "system", body: text, salon: salon }, opts || {}));
   }
 
   // ── Sondages en direct (/poll) ──
@@ -8057,7 +8091,8 @@
      niveau du document, et la liste se rattache à celle qui a le curseur.
      ══════════════════════════════════════════════════════════════════════════ */
   var mentionBoite = null, mentionSaisie = null, mentionChoix = [], mentionSel = 0, mentionDebut = 0;
-  var mentionTrombi = null;             // les pseudos du parc, chargés une fois
+  var mentionParc = {};                 // préfixe → les pseudos que le serveur a rendus
+  var mentionEnVol = null;              // le préfixe en cours de demande
 
   // Le mot en cours d'écriture, s'il commence par « @ » et touche le curseur.
   function mentionEnCours(inp) {
@@ -8081,12 +8116,12 @@
       vus[b] = true; dansLeSalon.push(p);
     });
     // Le reste du parc : seulement quand on a commencé à écrire, sinon la
-    // liste serait celle de tout Frutiparc.
-    if (bas.length >= 2 && mentionTrombi) {
-      mentionTrombi.forEach(function (p) {
+    // liste serait celle de tout Frutiparc. Le serveur a déjà fait le tri par
+    // préfixe — on ne garde que ce qu'on n'a pas déjà dans le salon.
+    if (bas.length >= 2 && mentionParc[bas]) {
+      mentionParc[bas].forEach(function (p) {
         var b = p.toLowerCase();
         if (b === moi || vus[b]) return;
-        if (b.indexOf(bas) !== 0) return;
         vus[b] = true; ailleurs.push(p);
       });
     }
@@ -8139,16 +8174,22 @@
   function mentionMaj(inp) {
     var m = mentionEnCours(inp);
     if (!m) { mentionFermer(); return; }
-    // Le trombinoscope se charge à la première frappe utile, puis se garde.
-    if (m.mot.length >= 2 && !mentionTrombi) {
-      mentionTrombi = [];
-      fetch("/api/trombinoscope", { cache: "no-store" })
+    // LE RESTE DU PARC, demandé au serveur — et gardé par préfixe. C'est le
+    // même annuaire que le forum, et c'est le registre des COMPTES : le
+    // Bouilloscope, qu'on interrogeait ici, est une collection de bouilles, si
+    // bien qu'un joueur qui n'y figure pas ne se proposait jamais.
+    var bas = m.mot.toLowerCase();
+    if (bas.length >= 2 && mentionParc[bas] === undefined && mentionEnVol !== bas) {
+      mentionEnVol = bas;
+      fetch("/api/light/pseudos?sid=" + encodeURIComponent(state.sid)
+        + "&q=" + encodeURIComponent(bas), { cache: "no-store" })
         .then(function (r) { return r.json(); })
         .then(function (j) {
-          mentionTrombi = (j && j.entries || []).map(function (e) { return e.pseudo; }).filter(Boolean);
-          if (mentionSaisie === inp) mentionMaj(inp);
+          mentionParc[bas] = (j && j.pseudos) || [];
+          mentionEnVol = null;
+          if (mentionSaisie === inp || document.activeElement === inp) mentionMaj(inp);
         })
-        .catch(function () { mentionTrombi = []; });
+        .catch(function () { mentionParc[bas] = []; mentionEnVol = null; });
     }
     var choix = mentionCandidats(m.mot);
     if (!choix.length) { mentionFermer(); return; }
@@ -8522,23 +8563,72 @@
       });
       svg.insertBefore(defs, svg.firstChild);
       boite.appendChild(svg);
-      recalerCarte(boite);
+      // Rien à remesurer : la case du dessin ne dépend PAS du dessin (cf.
+      // `poserCarte`, conséquence n° 2). Un fichier qui arrive en retard se
+      // pose dans une place déjà faite.
     }).catch(function () { /* dessin injoignable : la place reste, vide */ });
   }
 
+  /* ══════════════════════════════════════════════════════════════════════════
+     `DocPage.updateLine(line, lineHeight)` — 0x661c6, LE PARTAGE DES LARGEURS
+
+     Une rangée n'est pas une boîte flexible : c'est une RÈGLE, et la voici
+     entière, désassemblée.
+
+       PASSE 1 — la somme des largeurs demandées et celle des `big` :
+           w = (min.w défini) ? max(min.w, e.width) : e.width
+           total += w  ;  gros += e.big
+       reste = pos.w − total          ← la marge à partager (peut être négative)
+       libre = pos.w                  ← ce qui n'est pas encore posé
+
+       PASSE 2 — de gauche à droite :
+           w = min(libre, e.width)              ← BORNÉ PAR CE QUI RESTE
+           si min.w défini : w = max(min.w, w)
+           si e.big et reste > 0 et gros ≠ 0 : w += e.big / gros × reste
+           on pose l'élément à `cur.x`, largeur w ; cur.x += w ; libre −= w
+
+     TROIS CONSÉQUENCES, et ce sont exactement les trois écarts relevés entre
+     le rendu Flash et le nôtre :
+
+     1. LA RANGÉE NE DÉBORDE JAMAIS. `libre` décroît, si bien qu'une rangée
+        trop longue voit sa queue se replier sur zéro — elle est TRONQUÉE, elle
+        n'élargit rien. La fiche garde donc ses dimensions, toujours ; c'est
+        pour cela que `largeurCarte`, qui tirait la poignée de la fenêtre à la
+        place du joueur, n'est plus là.
+
+     2. UN DESSIN NE COMPTE PAS SA PROPRE LARGEUR. Une ligne `url` n'a ni
+        `width` ni, le plus souvent, `min.w` : sa case fait ZÉRO et le dessin
+        DÉBORDE par-dessus la suite. C'est pourquoi les cinq diamants de
+        MiniPixiz se touchent presque sur le rendu d'époque — leur écartement
+        ne vient que des `{spacer, width: 24}` entre eux — alors que le portage
+        les espaçait de leur propre largeur EN PLUS. Et c'est pourquoi l'auteur
+        d'époque prend soin d'écrire `min: {w: 30}` là où il ne VEUT pas de
+        chevauchement (les coupes de Burning Kiwi, les tuiles de MotionBall).
+
+     3. `big` NE PARTAGE QUE DU POSITIF. Une rangée déjà pleine ne pousse
+        rien : les `spacer big` s'effacent au lieu de centrer.
+
+     La HAUTEUR, elle, reste au contenu : `getLineHeight` (0x66537) rend
+     `line.height` s'il est donné, sinon le plus grand `min.h` de la rangée —
+     puis chaque composant grandit sa boîte dans son `update()`. On garde donc
+     `line.height` comme plancher et on laisse le texte respirer. */
+
+  // Le DOM d'abord : chaque nœud emporte sa fiche d'époque (`_fc`), et
+  // `poserCarte` fera le calcul quand on connaîtra la largeur du document.
   function dessinerLignes(lignes, dans) {
     (lignes || []).forEach(function (l) {
       if (!l || typeof l !== "object") return;
       if (l.list) {
         var r = el("div", "fc-rangee");
         if (l.height) r.style.minHeight = l.height + "px";
+        r._fc = l;
         dessinerLignes(l.list, r);
         dans.appendChild(r);
         return;
       }
       if (l.type === "page") {
         var col = el("div", "fc-colonne");
-        if (l.width) col.style.width = l.width + "px";
+        col._fc = l;
         dessinerLignes(l.lineList, col);
         dans.appendChild(col);
         return;
@@ -8546,7 +8636,7 @@
       if (l.type === "text") {
         var t = el("span", "fc-texte" + (Number(l.param && l.param.sid) === 2 ? " fc-titre" : ""));
         var pf = (l.param && l.param.textFormat) || {};
-        if (l.width) t.style.width = l.width + "px";
+        t._fc = l;
         if (pf.align) t.style.textAlign = pf.align;
         // `textFormat.color` est un entier 0xRRGGBB — celui du Frutisnake est
         // le rose #E76B6B (15168875).
@@ -8563,7 +8653,7 @@
         // sans PNG.
         var boite = el("span", "fc-image");
         var min = (l.param && l.param.min) || {};
-        if (min.w) boite.style.minWidth = min.w + "px";
+        boite._fc = l;
         if (min.h) boite.style.minHeight = min.h + "px";
         if (l.dx) boite.style.marginLeft = l.dx + "px";
         if (l.dy) boite.style.marginTop = l.dy + "px";
@@ -8576,8 +8666,7 @@
           var im = document.createElement("img");
           im.src = l.src;
           im.alt = "";
-          im.onerror = function () { im.remove(); recalerCarte(boite); };
-          im.onload = function () { recalerCarte(boite); };
+          im.onerror = function () { im.remove(); };
           boite.appendChild(im);
         }
         // L'ÉTOILE DE MINIPIXIZ. La bibliothèque `minipixiz_award` porte, sur
@@ -8596,14 +8685,14 @@
       }
       if (l.type === "line") {
         var f = el("span", "fc-filet");
+        f._fc = l;
         if (l.size) f.style.height = l.size + "px";
         dans.appendChild(f);
         return;
       }
       if (l.type === "spacer" || l.big !== undefined) {
         var s = el("span", "fc-blanc");
-        if (l.width !== undefined) { s.style.width = l.width + "px"; s.style.flex = "0 0 auto"; }
-        if (l.big) s.style.flexGrow = String(l.big);
+        s._fc = l;
         dans.appendChild(s);
         return;
       }
@@ -8616,67 +8705,103 @@
     return dans;
   }
 
-  /* LA FENÊTRE PREND LA LARGEUR DE LA CARTE — bureau seulement.
-     `DocPage.updateLine` (0x661c6) donne à chaque élément `max(min.w, width)`
-     et ne partage que le reste POSITIF : rien ne rétrécit, et une rangée trop
-     large est coupée par le masque du document. Le joueur d'époque tirait
-     alors la poignée, et `cp.Document.updateSize` (0x4de13) remplaçait
-     `page.pos.w` par la largeur réelle du composant — la rangée réapparaissait
-     entière. On refait ce geste tout seul.
-
-     `max-content` DONNE la somme d'époque : les `spacer` fixes comptent leur
-     largeur, les `big` (base zéro) ne comptent pas tant qu'il n'y a pas de
-     reste, exactement comme la règle du SWF. On mesure les RANGÉES et non la
-     boîte : le nombre d'étoiles de MiniPixiz est planté hors de sa case
-     (`left: 100%`) et gonflerait un `scrollWidth`.
-
-     Bornes : jamais moins que les 324 d'époque, jamais plus que ce que le
-     bureau peut montrer. */
-  function largeurCarte(carte) {
-    if (!carte || !document.body.classList.contains("bureau-frutiz")) return;
-    var page = carte.parentNode;
-    var boite = page && page.closest ? page.closest(".fiche-boite") : null;
-    if (!boite || !page.classList || !page.classList.contains("fiche-page")) return;
-    var avant = carte.style.width;
-    carte.style.width = "max-content";
-    var rangees = carte.querySelectorAll(".fc-rangee, .fiche-titre");
-    var large = 0;
-    Array.prototype.forEach.call(rangees, function (r) {
-      large = Math.max(large, r.getBoundingClientRect().width);
-    });
-    // Le nombre d'étoiles est planté HORS de sa case (`left: 100%`), alors que
-    // d'époque il fait partie du dessin — le clip `award` porte son champ
-    // texte à x 24, donc dans sa largeur. On le rattrape ici.
-    var gauche = carte.getBoundingClientRect().left;
-    Array.prototype.forEach.call(carte.querySelectorAll(".fc-nombre"), function (nb) {
-      large = Math.max(large, nb.getBoundingClientRect().right - gauche);
-    });
-    carte.style.width = avant;
-    if (!large) return;
-    // Le décor autour de la carte (marges de la page, ascenseur, cadre) : on
-    // ne le suppose pas, on le déduit de ce que la fenêtre mesure aujourd'hui.
-    var cs = getComputedStyle(page);
-    var utile = page.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    var autour = boite.getBoundingClientRect().width - utile;
-    var voulu = Math.ceil(large + autour);
-    var large2 = Math.max(324, (window.innerWidth || 1024) - 80);
-    var w = Math.max(324, Math.min(voulu, large2));
-    boite.style.width = w + "px";
-    // Une fiche ouverte près du bord droit s'en irait dehors en s'élargissant :
-    // on la ramène, comme le bureau ramène une fenêtre qu'on redimensionne.
-    var g = boite.getBoundingClientRect().left;
-    var deborde = g + w - (window.innerWidth || 1024) + 8;
-    if (deborde > 0) boite.style.left = Math.max(0, g - deborde) + "px";
+  // La largeur demandée d'un élément, PASSE 1.
+  function largeurVoulue(f) {
+    var min = (f && f.param && f.param.min) || (f && f.min) || {};
+    var w = Number(f && f.width) || 0;
+    return (min.w !== undefined && min.w !== null) ? Math.max(Number(min.w) || 0, w) : w;
   }
 
-  /* UN DESSIN QUI ARRIVE CHANGE LA MESURE. Une case d'image sans `min.w` — les
-     médailles de MiniPixiz en sont — ne fait RIEN de large tant que le fichier
-     n'est pas là : mesurée trop tôt, la rangée des cinq diamants comptait pour
-     zéro. Chaque image (et chaque fée teintée) redemande donc la mesure en
-     arrivant. */
-  function recalerCarte(noeud) {
-    var c = noeud && noeud.closest ? noeud.closest(".fiche-fcard") : null;
-    if (c) largeurCarte(c);
+  /* `poserCarte(hote, largeur)` — la passe 2, sur le DOM.
+     Les enfants d'une rangée sont posés en ABSOLU : c'est ce que fait le SWF
+     (`path.pos = {x: cur.x, …}`), et c'est la seule façon de laisser un dessin
+     déborder de sa case sans pousser son voisin. */
+  function poserCarte(hote, largeur) {
+    var rangees = [];
+    for (var n = hote.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 1 && n.classList.contains("fc-rangee")) rangees.push(n);
+    }
+    rangees.forEach(function (r) {
+      var enfants = [];
+      for (var c = r.firstChild; c; c = c.nextSibling) if (c.nodeType === 1) enfants.push(c);
+      var total = 0, gros = 0;
+      enfants.forEach(function (c) {
+        var f = c._fc || {};
+        total += largeurVoulue(f);
+        if (f.big !== undefined && f.big !== null) gros += Number(f.big) || 0;
+      });
+      var reste = largeur - total;
+      var libre = largeur;
+      var x = 0;
+      enfants.forEach(function (c) {
+        var f = c._fc || {};
+        var min = (f.param && f.param.min) || f.min || {};
+        var w = Math.min(libre, Number(f.width) || 0);
+        if (min.w !== undefined && min.w !== null) w = Math.max(Number(min.w) || 0, w);
+        if (f.big !== undefined && f.big !== null && reste > 0 && gros !== 0) {
+          w += (Number(f.big) || 0) / gros * reste;
+        }
+        c.style.left = x + "px";
+        c.style.width = w + "px";
+        x += w;
+        libre -= w;
+        // Une COLONNE (`type: page`) rejoue la règle chez elle, dans la case
+        // qu'elle vient de recevoir — c'est `DocPage` dans `DocPage`.
+        if (c.classList.contains("fc-colonne")) poserCarte(c, w);
+      });
+      r.style.height = hauteurRangee(r, enfants) + "px";
+    });
+  }
+
+  /* `getLineHeight(line)` — 0x66537 : `line.height` s'il est donné, sinon le
+     plus grand `min.h` de la rangée. LA HAUTEUR D'UN DESSIN N'Y ENTRE PAS —
+     c'est pourquoi toutes les rangées d'images de l'époque portent un `height`
+     en dur (30 pour les médailles, 120 pour le bloc de la fée, 20 pour une
+     rangée de sorts) : le dessin déborde vers le bas comme il déborde à
+     droite. Ne s'ajoutent à cela que les composants qui SE MESURENT dans leur
+     `update()` — un champ de texte, une sous-page. */
+  function hauteurRangee(r, enfants) {
+    var f = r._fc || {};
+    var h = Number(f.height) || 0;
+    enfants.forEach(function (c) {
+      var e = c._fc || {};
+      var min = (e.param && e.param.min) || e.min || {};
+      if (min.h !== undefined && min.h !== null) h = Math.max(h, Number(min.h) || 0);
+      if (c.classList.contains("fc-texte") || c.classList.contains("fc-colonne")) {
+        h = Math.max(h, c.offsetHeight + (parseFloat(c.style.marginTop) || 0));
+      }
+    });
+    return h;
+  }
+
+  /* La largeur utile du document : le dedans de la page de la fiche. C'est le
+     `pos.w` que `cp.Document.updateSize` (0x4de13) donne à la page — la
+     fenêtre décide, la carte s'y range.
+
+     ET ELLE PEUT CHANGER : sur le bureau la fiche est une FENÊTRE, montée puis
+     posée, si bien qu'au moment du rendu sa page ne mesure encore rien ; et le
+     joueur peut la redimensionner. `updateSize` est justement rappelé à chaque
+     `onResize` d'époque — on s'abonne donc à la taille de la page plutôt que
+     de la lire une fois pour toutes. */
+  function calerCarte(carte) {
+    if (!carte || !carte.parentNode) return;
+    var page = carte.parentNode;
+    var poser = function () {
+      if (!carte.parentNode) return;
+      var cs = getComputedStyle(page);
+      var large = page.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      if (!(large > 0)) return;
+      if (carte._large === large) return;      // rien n'a bougé
+      carte._large = large;
+      poserCarte(carte, large);
+    };
+    poser();
+    if (window.ResizeObserver) {
+      var ro = new ResizeObserver(poser);
+      ro.observe(page);
+    } else {
+      window.addEventListener("resize", poser);
+    }
   }
 
   function dessinerCarte(carte) {
@@ -8810,9 +8935,10 @@
 
     var page = fq("fiche-page");
     page.innerHTML = "";
-    // Hors fruticard, la fiche retrouve sa largeur d'époque ET sa place :
-    // c'est la carte, et elle seule, qui peut écarter la fenêtre et la ramener
-    // du bord (voir `largeurCarte`).
+    // La fiche a des dimensions FIXES, carte ou pas : `DocPage.updateLine`
+    // tronque une rangée trop longue au lieu d'élargir quoi que ce soit.
+    // (Le portage tirait la poignée de la fenêtre à la place du joueur ; il
+    // n'en reste que ce ménage, pour les fiches ouvertes avant le correctif.)
     ficheRacine().style.width = "";
     ficheRacine().style.left = "";
     if (!d) { page.appendChild(el("div", "fiche-vide")).textContent = "Chargement…"; return; }
@@ -8827,7 +8953,7 @@
         b.classList.remove("actif");
       });
       var carte = page.appendChild(dessinerCarte(ficheEtat.carte));
-      largeurCarte(carte);
+      calerCarte(carte);
       return;
     }
 

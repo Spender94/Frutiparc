@@ -1188,6 +1188,29 @@
     margin-top: 3px;
   }
 
+  /* ── LES @MENTIONS ─────────────────────────────────────────────────────
+     En GRAS dans le message, comme au chat ; celle qui nous nomme porte en
+     plus le fond doré, pour retrouver d'un coup d'œil pourquoi le voyant du
+     forum s'est allumé. Mêmes teintes que `light.html`. */
+  .post-content .mention, .post-signature .mention { color: #2C4A0F; font-weight: bold; }
+  .post-content .mention.moi, .post-signature .mention.moi {
+    color: #660000; background: #FFE9A8; border-radius: 4px;
+    padding: 0 3px; box-shadow: inset 0 0 0 1px #E8C87A;
+  }
+  /* La liste des pseudos proposés pendant qu'on écrit. Elle se pose SOUS le
+     curseur : dans un forum la zone de saisie est haute, une liste ancrée au
+     bord du champ tomberait loin du mot qu'on est en train de taper. */
+  .mention-liste {
+    position: fixed; z-index: 9000; background: #fff; border: 1px solid #B9C6A0;
+    border-radius: 9px; box-shadow: 0 6px 18px rgba(0,0,0,.18);
+    font: 13px Verdana, Arial, sans-serif; max-height: 210px; overflow-y: auto;
+  }
+  .mention-item {
+    padding: 6px 10px; cursor: pointer; color: #2C4A0F; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .mention-item.on, .mention-item:hover { background: #EEF6DD; }
+
   /* Emoticon palette: a 4-wide grid under the "Emoticons" label (left column).
      editPost's wider wrap layout is untouched. */
   .editor-label-cell .emoticons-row {
@@ -1754,6 +1777,98 @@ function escapeHtml(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   LES @MENTIONS DU FORUM
+
+   Le serveur les reconnaît déjà et les notifie (`notifierMentionsForum`) : un
+   voyant, une entrée d'historique « Tu as été mentionné(e) sur le forum, dans
+   « … », par … », et une poussée sur le téléphone. Il ne manquait au forum que
+   les deux gestes qui se voient — ÉCRIRE une mention sans se tromper de
+   pseudo, et la LIRE d'un coup d'œil.
+
+   LE MÊME ANNUAIRE POUR LES DEUX, et c'est celui du SERVEUR :
+   `/api/light/pseudos` répond aux deux questions — « quels pseudos commencent
+   par là ? » (on complète) et « lesquels de ceux-ci existent ? » (on met en
+   gras) — par la MÊME résolution que celle qui décide d'envoyer la notif. Un
+   `@mot` qui ne désigne personne reste donc du texte ordinaire, et un pseudo
+   proposé est un pseudo qui sera notifié.
+
+   Les noms résolus sont GARDÉS d'une page à l'autre : un fil nomme souvent les
+   mêmes gens, et un aller-retour suffit pour toute une page. */
+var mentionRoster = {};                 // pseudo en minuscules → pseudo affiché
+var mentionInconnus = {};               // ceux qu'on a demandés en vain
+
+// La session du forum : `SID`, lue une fois de l'adresse (cf. plus haut).
+function sidCourant() { return SID; }
+
+/* Ce qui, dans un lot de messages, RESSEMBLE à une mention. C'est la même
+   lecture lexicale que `jetonsMention` côté serveur : un mot précédé d'un
+   blanc (ou d'une parenthèse) et commençant par « @ ». */
+function jetonsMentionDe(textes) {
+  var vus = {};
+  var out = [];
+  var re = /(^|[\s(])@([A-Za-z0-9_.-]{2,32})/g;
+  textes.forEach(function (t) {
+    var m;
+    re.lastIndex = 0;
+    while ((m = re.exec(String(t || ''))) !== null) {
+      // La ponctuation de queue ne fait pas partie du pseudo : on demande le
+      // mot ET ses troncatures, comme `candidatsMention` les essaie.
+      var mot = m[2];
+      while (mot.length >= 2) {
+        var b = mot.toLowerCase();
+        if (!vus[b]) { vus[b] = true; out.push(mot); }
+        if (!/[._,;:!?)-]$/.test(mot)) break;
+        mot = mot.slice(0, -1);
+      }
+    }
+  });
+  return out;
+}
+
+// Demande au serveur lesquels existent, et n'interroge que les inconnus.
+function resoudreMentions(textes) {
+  var mots = jetonsMentionDe(textes).filter(function (m) {
+    var b = m.toLowerCase();
+    return !mentionRoster[b] && !mentionInconnus[b];
+  });
+  if (!mots.length) return Promise.resolve(mentionRoster);
+  return fetch('/api/light/pseudos?sid=' + encodeURIComponent(sidCourant())
+    + '&n=' + encodeURIComponent(mots.slice(0, 60).join(',')), { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var connus = (j && j.connus) || {};
+      mots.forEach(function (m) {
+        var vrai = connus[m];
+        if (vrai) mentionRoster[m.toLowerCase()] = vrai;
+        else mentionInconnus[m.toLowerCase()] = true;
+      });
+      return mentionRoster;
+    })
+    // Serveur muet : on ne met rien en gras plutôt que de tout mettre. Une
+    // mention non signalée reste lisible ; un faux positif, non.
+    .catch(function () { return mentionRoster; });
+}
+
+/* La mise en gras, sur du HTML DÉJÀ ÉCHAPPÉ.
+   Le caractère qui précède doit être un blanc, une parenthèse ou la fin d'une
+   balise : on ne mord donc ni dans une entité `&amp;`, ni dans un attribut, ni
+   au milieu d'une adresse. Celle qui NOUS nomme porte en plus `.moi`. */
+function marquerMentions(html) {
+  var moi = String(currentUser || '').toLowerCase();
+  return html.replace(/(^|[\s(>])@([A-Za-z0-9_.-]{2,32})/g, function (tout, avant, mot) {
+    var reste = '';
+    var nom = mot;
+    while (nom.length >= 2 && !mentionRoster[nom.toLowerCase()]) {
+      reste = nom.slice(-1) + reste;
+      nom = nom.slice(0, -1);
+    }
+    if (!mentionRoster[nom.toLowerCase()]) return tout;
+    var cls = 'mention' + (nom.toLowerCase() === moi ? ' moi' : '');
+    return avant + '<span class="' + cls + '">@' + nom + '</span>' + reste;
+  });
+}
+
 // Extrait l'identifiant (11 car.) d'une vidéo YouTube depuis les formats usuels
 // (watch?v=, youtu.be/, /embed/, /shorts/) ou un ID nu. Le contenu ayant déjà
 // été HTML-échappé, on rétablit &amp;→& avant l'analyse.
@@ -1844,6 +1959,9 @@ function renderBBCode(s) {
   // longer codes are matched first so ":smile:" doesn't get partially eaten
   // by a shorter alternative.
   out = replaceEmoticonsInline(out);
+  // Les @mentions, en gras — après les BBCode pour ne pas couper une balise en
+  // deux, avant les sauts de ligne pour qu'un pseudo en début de ligne compte.
+  out = marquerMentions(out);
   out = out.replace(/\n/g, '<br>');
   return out;
 }
@@ -2192,6 +2310,14 @@ async function loadTopic(topicId, page) {
   app.innerHTML = '<div class="loading">Chargement...</div>';
 
   var data = await apiFetch('/api/forum/topic/' + topicId + '?page=' + pageParam);
+  // QUELLES @MENTIONS DE CETTE PAGE SONT DE VRAIS PSEUDOS. Un seul
+  // aller-retour pour toute la page, et AVANT le rendu : les mentions
+  // naissent en gras au lieu de s'y mettre après coup.
+  if (data && data.posts) {
+    await resoudreMentions(data.posts.flatMap(function (p) {
+      return [p.content || '', p.signature || ''];
+    }));
+  }
   currentTopicData = data;
   if (!data.topic) { app.innerHTML = '<div class="empty">Sujet introuvable.</div>'; return; }
 
@@ -3412,6 +3538,186 @@ async function init() {
   if (sujetDemande > 0) { loadTopic(sujetDemande); return; }
   loadIndex();
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   L'AUTOCOMPLÉTION DES @MENTIONS, DANS TOUTES LES ZONES DE SAISIE
+
+   Le forum en compte plusieurs, créées et détruites au fil de la navigation :
+   la réponse rapide, l'éditeur d'un nouveau sujet, celui d'un message qu'on
+   modifie, la signature. On n'accroche donc rien à chacune — on écoute au
+   niveau du document, et la liste se rattache au champ qui a le curseur.
+   C'est le même parti que le mode light, avec une différence : ici la zone de
+   saisie est HAUTE, et une liste posée au bord du champ tomberait loin du mot
+   qu'on écrit. On la pose donc sous le CURSEUR, mesuré par un calque miroir.
+
+   Le clavier d'abord : ↑ et ↓ choisissent, Tab et Entrée insèrent, Échap
+   referme. Dans un textarea, Entrée insère normalement un saut de ligne — tant
+   qu'une proposition est en surbrillance, elle complète à la place. */
+(function () {
+  var boite = null, saisie = null, choix = [], sel = 0, debut = 0;
+
+  function estUneSaisie(el) {
+    return !!el && (el.tagName === 'TEXTAREA'
+      || (el.tagName === 'INPUT' && /^(text|search)$/i.test(el.type || 'text')))
+      && !el.readOnly && !el.disabled;
+  }
+
+  // Le mot en cours d'écriture, s'il commence par « @ » et touche le curseur.
+  function motEnCours(inp) {
+    var pos = (typeof inp.selectionStart === 'number') ? inp.selectionStart : inp.value.length;
+    var avant = inp.value.slice(0, pos);
+    var m = /(^|[\s(])@([A-Za-z0-9_.-]{0,32})$/.exec(avant);
+    if (!m) return null;
+    return { debut: pos - m[2].length - 1, mot: m[2], fin: pos };
+  }
+
+  /* LES PROPOSITIONS VIENNENT DU SERVEUR — c'est lui qui tient le registre des
+     comptes, et lui qui décidera d'envoyer la notification. On garde la
+     dernière réponse par préfixe : taper « c », « ca », « car » ne fait pas
+     trois fois la même question, et revenir en arrière ne fait rien du tout. */
+  var cache = {};                                  // préfixe → [pseudos]
+  var enCours = null;
+
+  function candidats(mot) {
+    var bas = mot.toLowerCase();
+    var moi = String(currentUser || '').toLowerCase();
+    return (cache[bas] || []).filter(function (p) { return p.toLowerCase() !== moi; });
+  }
+
+  function demander(mot, suite) {
+    var bas = mot.toLowerCase();
+    if (cache[bas]) { suite(); return; }
+    if (enCours === bas) return;
+    enCours = bas;
+    fetch('/api/light/pseudos?sid=' + encodeURIComponent(sidCourant())
+      + '&q=' + encodeURIComponent(bas), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        cache[bas] = (j && j.pseudos) || [];
+        // Ce que le serveur nous apprend sert AUSSI à la mise en gras : un
+        // pseudo qu'il propose est un pseudo qui existe.
+        cache[bas].forEach(function (p) { mentionRoster[p.toLowerCase()] = p; });
+        enCours = null;
+        suite();
+      })
+      .catch(function () { cache[bas] = []; enCours = null; suite(); });
+  }
+
+  /* OÙ EST LE CURSEUR, EN PIXELS. Un textarea ne le dit pas : on recopie son
+     texte jusqu'au curseur dans un calque invisible taillé à l'identique, et
+     l'on mesure où tombe le repère. C'est la méthode habituelle, et la seule
+     qui marche quand le champ a défilé. */
+  function pointDuCurseur(inp) {
+    var r = inp.getBoundingClientRect();
+    if (inp.tagName !== 'TEXTAREA') return { x: r.left + 6, y: r.bottom };
+    var cs = getComputedStyle(inp);
+    var miroir = document.createElement('div');
+    ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+      'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+      'borderTopWidth', 'borderLeftWidth', 'textIndent'].forEach(function (p) {
+      miroir.style[p] = cs[p];
+    });
+    miroir.style.position = 'absolute';
+    miroir.style.visibility = 'hidden';
+    miroir.style.whiteSpace = 'pre-wrap';
+    miroir.style.wordWrap = 'break-word';
+    miroir.style.width = inp.clientWidth + 'px';
+    miroir.style.left = '0'; miroir.style.top = '0';
+    var pos = (typeof inp.selectionStart === 'number') ? inp.selectionStart : inp.value.length;
+    miroir.textContent = inp.value.slice(0, pos);
+    var repere = document.createElement('span');
+    repere.textContent = '​';
+    miroir.appendChild(repere);
+    document.body.appendChild(miroir);
+    var rr = repere.getBoundingClientRect();
+    var mm = miroir.getBoundingClientRect();
+    var x = r.left + (rr.left - mm.left) - inp.scrollLeft;
+    var y = r.top + (rr.bottom - mm.top) - inp.scrollTop;
+    miroir.remove();
+    // Le curseur peut être hors du champ après un défilement : on borne.
+    return { x: Math.min(Math.max(x, r.left), r.right - 20),
+      y: Math.min(Math.max(y, r.top), r.bottom) };
+  }
+
+  function fermer() {
+    if (boite) { boite.remove(); boite = null; }
+    saisie = null; choix = []; sel = 0;
+  }
+
+  function dessiner(inp, liste, dbt) {
+    saisie = inp; choix = liste; debut = dbt;
+    if (sel >= liste.length) sel = 0;
+    if (!boite) { boite = document.createElement('div'); boite.className = 'mention-liste'; document.body.appendChild(boite); }
+    boite.innerHTML = '';
+    liste.forEach(function (p, i) {
+      var b = document.createElement('div');
+      b.className = 'mention-item' + (i === sel ? ' on' : '');
+      b.textContent = p;
+      // `mousedown` et non `click` : la saisie ne doit pas perdre le curseur.
+      b.addEventListener('mousedown', function (ev) { ev.preventDefault(); sel = i; poser(); });
+      boite.appendChild(b);
+    });
+    var pt = pointDuCurseur(inp);
+    boite.style.width = 'auto';
+    boite.style.left = Math.round(Math.min(pt.x, (window.innerWidth || 800) - 200)) + 'px';
+    // Sous le curseur s'il y a la place, au-dessus sinon.
+    var h = boite.offsetHeight;
+    var bas = pt.y + 4;
+    boite.style.top = Math.round(bas + h > (window.innerHeight || 600) - 8
+      ? Math.max(4, pt.y - h - 18) : bas) + 'px';
+  }
+
+  function poser() {
+    if (!saisie || !choix.length) return;
+    var inp = saisie, pseudo = choix[sel];
+    var pos = (typeof inp.selectionStart === 'number') ? inp.selectionStart : inp.value.length;
+    var avant = inp.value.slice(0, debut);
+    var apres = inp.value.slice(pos);
+    inp.value = avant + '@' + pseudo + ' ' + apres;
+    var curseur = (avant + '@' + pseudo + ' ').length;
+    try { inp.setSelectionRange(curseur, curseur); } catch (e) {}
+    fermer();
+    inp.focus();
+    // La signature a un aperçu qui suit la frappe : on le prévient.
+    if (typeof inp.oninput === 'function') inp.oninput();
+  }
+
+  function majuscule(inp) {
+    var m = motEnCours(inp);
+    // Un « @ » tout seul ne demande rien : la liste s'ouvre dès la première
+    // lettre, sinon elle proposerait tout le parc.
+    if (!m || m.mot.length < 1) { fermer(); return; }
+    demander(m.mot, function () {
+      if (document.activeElement !== inp) return;
+      var encore = motEnCours(inp);
+      if (!encore || encore.mot.toLowerCase() !== m.mot.toLowerCase()) return;
+      var l = candidats(m.mot);
+      if (!l.length) { fermer(); return; }
+      dessiner(inp, l, m.debut);
+    });
+  }
+
+  document.addEventListener('input', function (ev) {
+    if (!estUneSaisie(ev.target)) { return; }
+    sel = 0;
+    majuscule(ev.target);
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (!boite || !saisie || ev.target !== saisie) return;
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      sel = (sel + (ev.key === 'ArrowDown' ? 1 : choix.length - 1)) % choix.length;
+      dessiner(saisie, choix, debut);
+      return;
+    }
+    if (ev.key === 'Enter' || ev.key === 'Tab') { ev.preventDefault(); poser(); return; }
+    if (ev.key === 'Escape') { ev.preventDefault(); fermer(); }
+  }, true);
+  document.addEventListener('focusout', function (ev) {
+    if (saisie && ev.target === saisie) setTimeout(fermer, 120);
+  });
+  window.addEventListener('scroll', function () { if (boite) fermer(); }, true);
+})();
 
 init();
 </script>

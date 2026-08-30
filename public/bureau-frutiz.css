@@ -3332,15 +3332,12 @@ body.bureau-frutiz .fiche-boite .fiche-page {
   height: 240px; padding: 8px 6px 6px; overflow-y: auto;
   font: 400 11px Verdana, Arial, sans-serif; color: #335511;
 }
-/* UNE FRUTICARD NE DÉFILE PAS DE CÔTÉ. `DocPage.updateLine` (0x661c6) ne fait
-   jamais rétrécir personne : une rangée trop large est TRONQUÉE par le masque
-   du document, et le joueur d'époque tirait la poignée pour voir le reste —
-   `cp.Document.updateSize` (0x4de13) remplaçant alors `page.pos.w` par la
-   largeur réelle. Sur le bureau on tire la poignée à sa place (`largeurCarte`,
-   light.html) : la fenêtre prend la largeur que la carte demande, et il ne
-   reste rien à faire défiler. La barre horizontale du mobile n'a donc plus
-   lieu d'être ici. */
-body.bureau-frutiz .fiche-boite .fiche-fcard { overflow-x: hidden; }
+/* UNE FRUTICARD NE DÉFILE PAS DE CÔTÉ et N'ÉLARGIT RIEN. `DocPage.updateLine`
+   (0x661c6) borne chaque case à ce qui RESTE de la largeur du document : une
+   rangée trop longue voit sa queue se replier sur zéro, elle est tronquée par
+   le masque. La fiche garde donc ses dimensions, ici comme au téléphone —
+   c'est `poserCarte` (light.html) qui fait le calcul. */
+body.bureau-frutiz .fiche-boite .fiche-fcard { overflow: hidden; }
 body.bureau-frutiz .fiche-boite .fiche-titre {
   color: #335511; font-size: 12px; text-transform: lowercase;
 }
@@ -4255,6 +4252,25 @@ body.bureau-frutiz .fen .ex-panel.ex-noire .ex-slot:focus-visible { outline-colo
 body.bureau-frutiz .fen:has(.ex-panel.ex-noire) {
   --asc-glissiere: #BF9ED1; --asc-liseret: #A679C1;
 }
+
+/* LA PEAU DE LA CORBEILLE — `frFileTrash`, que `getWinStyle` donne en
+   [green, green]. La même famille que le bureau lui-même :
+   main #CCF599, shade #ADE76B, dark #94DB39, darkest #558811. */
+body.bureau-frutiz .fen .ex-panel.ex-corbeille .ex-champ {
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,.6) 2px, rgba(255,255,255,0) 10px),
+    #CCF599;
+  border-color: #ADE76B;
+}
+body.bureau-frutiz .fen .ex-panel.ex-corbeille .ex-lbl,
+body.bureau-frutiz .fen .ex-panel.ex-corbeille .ex-vide { color: #558811; }
+body.bureau-frutiz .fen .ex-panel.ex-corbeille .ex-slot:focus-visible { outline-color: #558811; }
+body.bureau-frutiz .fen:has(.ex-panel.ex-corbeille) {
+  --asc-glissiere: #ADE76B; --asc-liseret: #94DB39;
+}
+/* La tuile CORBEILLE du bureau est un `dropBox` : elle se marque quand on
+   promène un fichier au-dessus, comme toute cible d'époque. */
+body.bureau-frutiz .home-tile[data-depot="corbeille"] { cursor: pointer; }
 
 /* ══ LA PAGE DE CHARGEMENT — `loadingProcess` (#154) ═══════════════════════
  *

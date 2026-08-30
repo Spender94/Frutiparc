@@ -394,7 +394,7 @@ test('on n\'a plus à savoir écrire le pseudo : la liste le propose', () => {
    * Certains pseudos ne s'écrivent pas de mémoire — une majuscule au milieu, un
    * point, un chiffre. « @ » suivi de deux lettres ouvre donc une liste. Les
    * noms viennent d'abord du SALON (ceux qu'on nomme neuf fois sur dix, et
-   * qu'on a déjà sous la main), puis du trombinoscope, chargé une seule fois.
+   * qu'on a déjà sous la main), puis du PARC, que le serveur cherche.
    *
    * Le geste se vérifie dans un navigateur ; on tient ici le câblage.
    */
@@ -404,8 +404,11 @@ test('on n\'a plus à savoir écrire le pseudo : la liste le propose', () => {
     'la mention se lit devant le curseur, en début de mot');
   // Le salon d'abord, le parc ensuite — et jamais soi-même.
   assert.match(src, /var ici = state\.usersByRoom\[state\.room\] \|\| \{\};/, 'les présents du salon');
-  assert.match(src, /if \(bas\.length >= 2 && mentionTrombi\)/, 'le parc, à partir de deux lettres');
-  assert.match(src, /fetch\("\/api\/trombinoscope"/, 'et il vient du trombinoscope');
+  assert.match(src, /if \(bas\.length >= 2 && mentionParc\[bas\]\)/, 'le parc, à partir de deux lettres');
+  // Et il vient du REGISTRE DES COMPTES, pas du Bouilloscope : celui-ci est une
+  // collection de bouilles, un joueur qui n'y figure pas ne se proposait jamais.
+  assert.match(src, /fetch\("\/api\/light\/pseudos\?sid="/, 'le parc vient de /api/light/pseudos');
+  assert.doesNotMatch(src, /mentionTrombi/, 'le trombinoscope ne sert plus d’annuaire');
   assert.match(src, /return dansLeSalon\.sort\(tri\)\.concat\(ailleurs\.sort\(tri\)\)\.slice\(0, 8\);/,
     'le salon passe devant, et la liste est bornée');
   // Le clavier : ↑↓ choisissent, Entrée et Tab insèrent, Échap referme. Tant
@@ -441,4 +444,70 @@ test('le client : un salon public ne clignote que pour ce qui s\'adresse à moi'
   assert.match(src, /if \(salon !== state\.room\) switchRoom\(salon\);/, 'et y bascule');
   const sw = fs.readFileSync(path.join(ROOT, 'public', 'light-sw.js'), 'utf8');
   assert.match(sw, /salon: p\.get\('salon'\) \|\| ''/, 'le service worker fait suivre le salon');
+});
+
+test('l\'annuaire des @mentions : chercher un préfixe, résoudre une liste', async (t) => {
+  if (!dispo) return t.skip('PostgreSQL de test indisponible');
+  /*
+   * `/api/light/pseudos` répond aux DEUX questions du client — « quels pseudos
+   * commencent par là ? » (on complète) et « lesquels de ceux-ci existent ? »
+   * (on met en gras) — par la MÊME résolution que celle qui décide d'envoyer
+   * la notification. Sinon le forum souligne des pseudos que le serveur ne
+   * notifiera pas, ou l'inverse.
+   *
+   * Ce qu'on interrogeait avant, `/api/trombinoscope`, est une collection de
+   * BOUILLES : un joueur qui n'y figure pas ne se proposait jamais.
+   */
+  const q = async (params) => (await (await fetch(BASE + '/api/light/pseudos?sid='
+    + encodeURIComponent(sidAuteur) + '&' + params)).json());
+
+  // Le préfixe : le pseudo de B doit sortir, et pas celui du demandeur seul.
+  const parPrefixe = await q('q=' + encodeURIComponent(NOMME.slice(0, 6)));
+  assert.strictEqual(parPrefixe.ok, true);
+  assert.ok(parPrefixe.pseudos.some((p) => p.toLowerCase() === NOMME.toLowerCase()),
+    'le pseudo cherché doit être proposé — ' + JSON.stringify(parPrefixe.pseudos));
+
+  // La résolution : ce qui existe revient avec sa CASSE d'affichage, le reste
+  // ne revient pas du tout.
+  const resolu = await q('n=' + encodeURIComponent([NOMME, 'zzintrouvable'].join(',')));
+  assert.ok(resolu.connus[NOMME], 'un vrai pseudo est reconnu');
+  assert.ok(!resolu.connus.zzintrouvable, 'un pseudo inventé ne l’est pas');
+
+  // Sans session, rien : l'annuaire n'est pas public.
+  const sansSid = await fetch(BASE + '/api/light/pseudos?q=a');
+  assert.strictEqual(sansSid.status, 401);
+});
+
+test('le forum : les @mentions se complètent et se lisent en gras', () => {
+  /* Le serveur les notifiait déjà (voyant, historique, poussée) ; il manquait
+     les deux gestes qui se voient — écrire une mention sans se tromper de
+     pseudo, et la lire d'un coup d'œil. */
+  const FB = fs.readFileSync(path.join(ROOT, 'public', 'fb', 'index.html'), 'utf8');
+  // LA LECTURE. Le marquage passe APRÈS les BBCode (pour ne pas couper une
+  // balise) et n'accepte un `@mot` que si le serveur l'a reconnu.
+  assert.match(FB, /out = marquerMentions\(out\);/);
+  assert.match(FB, /function marquerMentions\(html\) \{/);
+  assert.match(FB, /if \(!mentionRoster\[nom\.toLowerCase\(\)\]\) return tout;/,
+    'un @mot qui ne désigne personne reste du texte');
+  assert.match(FB, /'mention' \+ \(nom\.toLowerCase\(\) === moi \? ' moi' : ''\)/,
+    'et la sienne se voit davantage, comme au chat');
+  // Un seul aller-retour par page, AVANT le rendu : les mentions naissent en
+  // gras au lieu de s'y mettre après coup.
+  assert.match(FB, /await resoudreMentions\(data\.posts\.flatMap/);
+  assert.match(FB, /\/api\/light\/pseudos\?sid='[\s\S]{0,120}'&n='/);
+  // La ponctuation de queue ne fait pas partie du pseudo — même règle que
+  // `candidatsMention` côté serveur.
+  assert.match(FB, /if \(!\/\[\._,;:!\?\)-\]\$\/\.test\(mot\)\) break;/);
+
+  // L'ÉCRITURE. Toutes les zones de saisie du forum, et le clavier d'abord.
+  assert.match(FB, /function estUneSaisie\(el\) \{/);
+  assert.match(FB, /'&q=' \+ encodeURIComponent\(bas\)/, 'les propositions viennent du serveur');
+  assert.match(FB, /if \(ev\.key === 'Enter' \|\| ev\.key === 'Tab'\) \{ ev\.preventDefault\(\); poser\(\); return; \}/);
+  assert.match(FB, /if \(ev\.key === 'Escape'\) \{ ev\.preventDefault\(\); fermer\(\); \}/);
+  // La liste se pose sous le CURSEUR : dans un forum la zone est haute, une
+  // liste ancrée au bord du champ tomberait loin du mot qu'on tape.
+  assert.match(FB, /function pointDuCurseur\(inp\) \{/);
+  assert.match(FB, /miroir\.style\.whiteSpace = 'pre-wrap';/);
+  // Et le gras a ses couleurs, celles du chat.
+  assert.match(FB, /\.post-content \.mention, \.post-signature \.mention \{ color: #2C4A0F; font-weight: bold; \}/);
 });
