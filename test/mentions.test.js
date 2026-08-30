@@ -389,6 +389,38 @@ test('le forum trouve aussi quelqu\'un que la mémoire ne connaît pas', async (
   assert.match(trouve.content, /On cherche un absent/, 'la ligne nomme le sujet : ' + trouve.content);
 });
 
+test('on n\'a plus à savoir écrire le pseudo : la liste le propose', () => {
+  /*
+   * Certains pseudos ne s'écrivent pas de mémoire — une majuscule au milieu, un
+   * point, un chiffre. « @ » suivi de deux lettres ouvre donc une liste. Les
+   * noms viennent d'abord du SALON (ceux qu'on nomme neuf fois sur dix, et
+   * qu'on a déjà sous la main), puis du trombinoscope, chargé une seule fois.
+   *
+   * Le geste se vérifie dans un navigateur ; on tient ici le câblage.
+   */
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'light.html'), 'utf8');
+  // Le mot en cours doit TOUCHER le curseur, et commencer un mot.
+  assert.match(src, /var m = \/\(\^\|\\s\)@\(\[A-Za-z0-9_\.-\]\{0,32\}\)\$\/\.exec\(avant\);/,
+    'la mention se lit devant le curseur, en début de mot');
+  // Le salon d'abord, le parc ensuite — et jamais soi-même.
+  assert.match(src, /var ici = state\.usersByRoom\[state\.room\] \|\| \{\};/, 'les présents du salon');
+  assert.match(src, /if \(bas\.length >= 2 && mentionTrombi\)/, 'le parc, à partir de deux lettres');
+  assert.match(src, /fetch\("\/api\/trombinoscope"/, 'et il vient du trombinoscope');
+  assert.match(src, /return dansLeSalon\.sort\(tri\)\.concat\(ailleurs\.sort\(tri\)\)\.slice\(0, 8\);/,
+    'le salon passe devant, et la liste est bornée');
+  // Le clavier : ↑↓ choisissent, Entrée et Tab insèrent, Échap referme. Tant
+  // qu'une proposition est en main, Entrée ne POSTE pas — elle complète.
+  assert.match(src, /if \(ev\.key === "Enter" \|\| ev\.key === "Tab"\) \{ ev\.preventDefault\(\); mentionPoser\(\); return; \}/,
+    'Entrée complète au lieu d\'envoyer');
+  assert.match(src, /if \(ev\.key === "Escape"\) \{ ev\.preventDefault\(\); mentionFermer\(\); \}/);
+  // Une espace après le pseudo : on enchaîne sur la phrase sans y penser.
+  assert.match(src, /inp\.value = avant \+ "@" \+ pseudo \+ " " \+ apres;/);
+  // Il y a PLUSIEURS saisies à l'écran (le panneau mobile, une par fenêtre de
+  // salon) et toutes portent le même identifiant : on écoute le document.
+  assert.match(src, /document\.addEventListener\("input", function \(ev\) \{\s*\n\s*if \(!ev\.target \|\| ev\.target\.id !== "compose-input"\) return;/,
+    'l\'écoute est déléguée au document');
+});
+
 test('le client : un salon public ne clignote que pour ce qui s\'adresse à moi', () => {
   // La règle vit dans le client (public/light.html) : `avertirOngletChat` reçoit
   // désormais un troisième argument, et le salon public le calcule à partir de

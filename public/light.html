@@ -629,6 +629,16 @@
   /* Emote line ("pseudo éclate de rire") — the whole row is italic, like desktop. */
   /* Une @mention se voit dans la ligne — la sienne se voit davantage : c'est
      ce qui permet de retrouver d'un coup d'œil pourquoi l'onglet clignotait. */
+  /* La liste des pseudos proposés, au-dessus de la barre de composition. */
+  .mention-liste {
+    position: fixed; z-index: 9000; background: #fff; border: 1px solid #B9C6A0;
+    border-radius: 9px; box-shadow: 0 6px 18px rgba(0,0,0,.18); overflow: hidden;
+    font: 13px Verdana, Arial, sans-serif; max-height: 210px; overflow-y: auto;
+  }
+  .mention-item { padding: 7px 10px; cursor: pointer; color: #2C4A0F; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .mention-item.on, .mention-item:hover { background: #EEF6DD; }
+
   .msg .mention { color: #2C4A0F; font-weight: bold; }
   .msg .mention.moi {
     color: #660000; background: #FFE9A8; border-radius: 4px;
@@ -7998,6 +8008,146 @@
     }
     return false;
   }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     L'AUTOCOMPLÉTION DES @MENTIONS
+
+     Certains pseudos ne s'écrivent pas de mémoire — une majuscule au milieu, un
+     point, un chiffre. Taper « @ » puis deux lettres ouvre donc une liste, et
+     l'on choisit. Le serveur reste seul juge de ce qui est une mention : on ne
+     fait ici qu'aider à écrire le nom juste.
+
+     D'OÙ VIENNENT LES NOMS. D'abord CEUX DU SALON — ce sont eux qu'on nomme
+     neuf fois sur dix, et ils ne coûtent rien (`state.usersByRoom`). Ensuite le
+     trombinoscope, qui connaît tout le parc ; il n'est chargé qu'à la première
+     ouverture de la liste, et gardé ensuite.
+
+     LE CLAVIER D'ABORD. ↑ et ↓ choisissent, Tab et Entrée insèrent, Échap
+     referme. Tant qu'une proposition est en surbrillance, Entrée ne poste pas :
+     elle complète — c'est ce qu'attend la main qui vient de taper « @mir ».
+
+     IL Y A PLUSIEURS SAISIES À L'ÉCRAN (le panneau mobile, et une par fenêtre
+     de salon sur le bureau), toutes avec le même identifiant. On écoute donc au
+     niveau du document, et la liste se rattache à celle qui a le curseur.
+     ══════════════════════════════════════════════════════════════════════════ */
+  var mentionBoite = null, mentionSaisie = null, mentionChoix = [], mentionSel = 0, mentionDebut = 0;
+  var mentionTrombi = null;             // les pseudos du parc, chargés une fois
+
+  // Le mot en cours d'écriture, s'il commence par « @ » et touche le curseur.
+  function mentionEnCours(inp) {
+    if (!inp || inp.disabled) return null;
+    var pos = (typeof inp.selectionStart === "number") ? inp.selectionStart : inp.value.length;
+    var avant = inp.value.slice(0, pos);
+    var m = /(^|\s)@([A-Za-z0-9_.-]{0,32})$/.exec(avant);
+    if (!m) return null;
+    return { debut: pos - m[2].length - 1, mot: m[2] };
+  }
+
+  function mentionCandidats(mot) {
+    var bas = mot.toLowerCase();
+    var vus = {}, dansLeSalon = [], ailleurs = [];
+    var moi = state.userLower;
+    var ici = state.usersByRoom[state.room] || {};
+    Object.keys(ici).forEach(function (p) {
+      var b = p.toLowerCase();
+      if (b === moi || vus[b]) return;
+      if (bas && b.indexOf(bas) !== 0) return;
+      vus[b] = true; dansLeSalon.push(p);
+    });
+    // Le reste du parc : seulement quand on a commencé à écrire, sinon la
+    // liste serait celle de tout Frutiparc.
+    if (bas.length >= 2 && mentionTrombi) {
+      mentionTrombi.forEach(function (p) {
+        var b = p.toLowerCase();
+        if (b === moi || vus[b]) return;
+        if (b.indexOf(bas) !== 0) return;
+        vus[b] = true; ailleurs.push(p);
+      });
+    }
+    var tri = function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase(), "fr"); };
+    return dansLeSalon.sort(tri).concat(ailleurs.sort(tri)).slice(0, 8);
+  }
+
+  function mentionFermer() {
+    if (mentionBoite) { mentionBoite.remove(); mentionBoite = null; }
+    mentionSaisie = null; mentionChoix = []; mentionSel = 0;
+  }
+
+  function mentionDessiner(inp, choix, debut) {
+    mentionSaisie = inp; mentionChoix = choix; mentionDebut = debut;
+    if (mentionSel >= choix.length) mentionSel = 0;
+    if (!mentionBoite) {
+      mentionBoite = el("div", "mention-liste");
+      document.body.appendChild(mentionBoite);
+    }
+    mentionBoite.innerHTML = "";
+    choix.forEach(function (p, i) {
+      var b = el("div", "mention-item" + (i === mentionSel ? " on" : ""));
+      b.textContent = p;
+      // `mousedown` et non `click` : la saisie ne doit pas perdre le curseur.
+      b.addEventListener("mousedown", function (ev) { ev.preventDefault(); mentionSel = i; mentionPoser(); });
+      mentionBoite.appendChild(b);
+    });
+    var r = inp.getBoundingClientRect();
+    mentionBoite.style.left = Math.round(r.left) + "px";
+    mentionBoite.style.width = Math.round(Math.min(260, Math.max(160, r.width))) + "px";
+    // Au-dessus de la saisie : c'est là qu'il reste de la place, la barre de
+    // composition étant en bas de l'écran.
+    mentionBoite.style.top = Math.round(r.top - mentionBoite.offsetHeight - 6) + "px";
+  }
+
+  function mentionPoser() {
+    if (!mentionSaisie || !mentionChoix.length) return;
+    var inp = mentionSaisie, pseudo = mentionChoix[mentionSel];
+    var pos = (typeof inp.selectionStart === "number") ? inp.selectionStart : inp.value.length;
+    var avant = inp.value.slice(0, mentionDebut);
+    var apres = inp.value.slice(pos);
+    // Une espace après le pseudo : on enchaîne sur la phrase sans y penser.
+    inp.value = avant + "@" + pseudo + " " + apres;
+    var curseur = (avant + "@" + pseudo + " ").length;
+    try { inp.setSelectionRange(curseur, curseur); } catch (e) {}
+    mentionFermer();
+    inp.focus();
+  }
+
+  function mentionMaj(inp) {
+    var m = mentionEnCours(inp);
+    if (!m) { mentionFermer(); return; }
+    // Le trombinoscope se charge à la première frappe utile, puis se garde.
+    if (m.mot.length >= 2 && !mentionTrombi) {
+      mentionTrombi = [];
+      fetch("/api/trombinoscope", { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          mentionTrombi = (j && j.entries || []).map(function (e) { return e.pseudo; }).filter(Boolean);
+          if (mentionSaisie === inp) mentionMaj(inp);
+        })
+        .catch(function () { mentionTrombi = []; });
+    }
+    var choix = mentionCandidats(m.mot);
+    if (!choix.length) { mentionFermer(); return; }
+    mentionDessiner(inp, choix, m.debut);
+  }
+
+  document.addEventListener("input", function (ev) {
+    if (!ev.target || ev.target.id !== "compose-input") return;
+    mentionSel = 0;
+    mentionMaj(ev.target);
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (!mentionBoite || !mentionSaisie || ev.target !== mentionSaisie) return;
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      mentionSel = (mentionSel + (ev.key === "ArrowDown" ? 1 : mentionChoix.length - 1)) % mentionChoix.length;
+      mentionDessiner(mentionSaisie, mentionChoix, mentionDebut);
+      return;
+    }
+    if (ev.key === "Enter" || ev.key === "Tab") { ev.preventDefault(); mentionPoser(); return; }
+    if (ev.key === "Escape") { ev.preventDefault(); mentionFermer(); }
+  }, true);
+  document.addEventListener("focusout", function (ev) {
+    if (mentionSaisie && ev.target === mentionSaisie) setTimeout(mentionFermer, 120);
+  });
 
   // ── Compose ──
   $("#compose-form").addEventListener("submit", function (ev) {
