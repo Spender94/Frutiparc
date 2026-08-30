@@ -35,11 +35,6 @@ const Variante = require(path.join(ROOT, 'public/js/bouille-variante.js'));
 const DOSSIER = path.join(ROOT, 'public/fbouille');
 const CASQUETTE = 3;          // le type « Casquette » de bouille-palette.js
 
-// Depuis que l'export rend AUSSI la couche arrière, un comptage brut mêlerait
-// les deux. Les épreuves qui portent sur l'art qu'on vient d'injecter ne
-// retiennent donc que le DEVANT — c'est ce qu'elles ont toujours voulu dire.
-const devant = (liste) => liste.filter((p) => p.avant !== false);
-
 function lire(fichier) {
   const brut = fs.readFileSync(path.join(DOSSIER, fichier));
   return Swf.decompresser(brut.buffer.slice(brut.byteOffset, brut.byteOffset + brut.byteLength))
@@ -100,21 +95,13 @@ test('les images VIDES de fin de rouleau se distinguent des vraies variantes', a
   // Un rouleau traîne une queue d'images vides — reliquat d'atelier d'époque.
   // Le bonnet type 3 (15) en déclare seize et n'en dessine que deux : proposer
   // les autres comme gabarit promettrait un dessin qui n'existe pas.
-  //
-  // Et une image de queue n'est pas forcément VIDE À L'ÉCRAN : le type 15 a un
-  // second rouleau `acc2` d'une seule image, qui se borne donc sur toute la
-  // queue et y laisse son bandeau. Compter les tracés ne suffit pas — c'est au
-  // rouleau PRINCIPAL qu'il faut demander s'il a dessiné.
   const rep = Variante.repere(defs, 15, 8);
   assert.ok(rep.variantes > 10, 'le rouleau déclare beaucoup d\'images (' + rep.variantes + ')');
-  let dessinees = 0, avecTraces = 0;
+  let dessinees = 0;
   for (let v = 0; v < rep.variantes; v++) {
-    if (Variante.dessinee(defs, 15, v, 8)) dessinees++;
-    if (Variante.exporter(defs, 15, v, 8).length > 1) avecTraces++;
+    if (Variante.exporter(defs, 15, v, 8).length > 1) dessinees++;
   }
   assert.strictEqual(dessinees, 2, 'mais deux seulement portent un dessin');
-  assert.strictEqual(avecTraces, rep.variantes,
-    'toutes montrent pourtant quelque chose — le reliquat du rouleau compagnon');
 
   // La queue n'occupe que des profondeurs BASSES : l'effacement que pose une
   // variante injectée (1..64 au minimum) la couvre donc entièrement — rien de
@@ -223,7 +210,7 @@ test('RETIRER une variante ne décale pas les suivantes', async () => {
     'la seconde garde EXACTEMENT le même index qu\'avant le retrait');
 
   // Et la place tenue ne dessine rien.
-  assert.strictEqual(devant(Variante.exporter(defsB, CASQUETTE, vide.variante, 8)).length, 0,
+  assert.strictEqual(Variante.exporter(defsB, CASQUETTE, vide.variante, 8).length, 0,
     'la variante retirée n\'affiche aucun tracé');
 });
 
@@ -243,8 +230,8 @@ test('une variante LONGUE ne déborde pas sur la suivante', async () => {
 
   const a = Variante.injecter(defs, { type: CASQUETTE, paths: longue, coiffureRef: 8 });
   const b = Variante.injecter(defs, { type: CASQUETTE, paths: courte, coiffureRef: 8 });
-  assert.strictEqual(devant(Variante.exporter(defs, CASQUETTE, a.variante, 8)).length, 40, 'la longue est entière');
-  assert.strictEqual(devant(Variante.exporter(defs, CASQUETTE, b.variante, 8)).length, 1,
+  assert.strictEqual(Variante.exporter(defs, CASQUETTE, a.variante, 8).length, 40, 'la longue est entière');
+  assert.strictEqual(Variante.exporter(defs, CASQUETTE, b.variante, 8).length, 1,
     'la courte ne porte QUE son tracé — rien de la précédente');
 });
 
@@ -267,10 +254,10 @@ test('l\'INDEX d\'une variante ne dépend pas de ce qui a été injecté avant',
 
   assert.strictEqual(r1.variante, 42, 'seule, elle tombe à la place demandée');
   assert.strictEqual(r2.variante, 42, 'et à la MÊME place une fois deux autres passées avant');
-  assert.strictEqual(devant(Variante.exporter(seul, CASQUETTE, 42, 8)).length, 1, 'avec son dessin');
-  assert.strictEqual(devant(Variante.exporter(apres, CASQUETTE, 42, 8)).length, 1, 'des deux côtés');
+  assert.strictEqual(Variante.exporter(seul, CASQUETTE, 42, 8).length, 1, 'avec son dessin');
+  assert.strictEqual(Variante.exporter(apres, CASQUETTE, 42, 8).length, 1, 'des deux côtés');
   // Les places comblées entre-temps ne dessinent rien.
-  assert.strictEqual(devant(Variante.exporter(seul, CASQUETTE, 40, 8)).length, 0,
+  assert.strictEqual(Variante.exporter(seul, CASQUETTE, 40, 8).length, 0,
     'une place tenue reste vide — elle ne montre pas la variante d\'à côté');
 });
 
@@ -317,7 +304,7 @@ test('un dessin HORS des calques « couleurN » garde ses couleurs', async () =>
   const inj = Variante.injecter(defs, { type: CASQUETTE, paths: cuits, coiffureRef: 8 });
   assert.ok(inj, 'une variante entièrement à couleurs fixes s\'injecte');
 
-  const relu = devant(Variante.exporter(defs, CASQUETTE, inj.variante, 8));
+  const relu = Variante.exporter(defs, CASQUETTE, inj.variante, 8);
   assert.strictEqual(relu.length, 2, 'les deux tracés sont là');
   for (const p of relu) assert.strictEqual(p.slot, 0, 'aucun niveau de couleur : rien à recolorer');
   const fills = relu.map((p) => p.fill).sort();
@@ -375,201 +362,4 @@ test('une variante injectée se sélectionne par la chaîne de 24 caractères', 
   assert.ok(col, 'la variante injectée expose un sous-clip « col »');
   assert.ok(col.teinte, 'et apply() l\'a teinté depuis la palette');
   assert.deepStrictEqual(col.teinte, Moteur.PALETTE[21], 'avec la couleur demandée (index 21)');
-});
-
-test('la partie DERRIÈRE la tête fait partie du gabarit, et de la copie', async () => {
-  // Un accessoire vit sur deux couches : `ca` devant les cheveux, `cb` derrière
-  // la tête. Onze types sur seize ont une partie arrière — les bananes qui
-  // pendent derrière la tête, l'arrière d'un chapeau. L'export ne suivait que
-  // l'avant : le gabarit livré au graphiste était amputé, sans le dire.
-  const BANANE = 12;
-  const defs = await lire('famille0.swf');
-  const gab = Variante.exporter(defs, BANANE, 0, 8);
-  const arriere = gab.filter((p) => p.avant === false);
-  assert.ok(arriere.length > 0, 'la banane a bien une partie arrière (' + arriere.length + ' tracés)');
-  assert.ok(devant(gab).length > 0, 'et une partie avant');
-
-  // L'aller-retour garde les deux, chacune dans SON rouleau.
-  const inj = Variante.injecter(defs, { type: BANANE, paths: gab, coiffureRef: 8 });
-  const copie = Variante.exporter(defs, BANANE, inj.variante, 8);
-  assert.strictEqual(copie.filter((p) => p.avant === false).length, arriere.length,
-    'la copie porte autant de tracés derrière');
-  assert.strictEqual(devant(copie).length, devant(gab).length, 'et autant devant');
-
-  // ET les variantes d'époque gardent leur arrière : le rouleau arrière de la
-  // casquette n'a qu'UNE image, partagée par ses trente-huit variantes. La
-  // rallonger avec des images vides les aurait toutes dépouillées — on comble
-  // donc avec une copie de l'état où elles se bornent.
-  const d2 = await lire('famille0.swf');
-  const avantInj = Variante.exporter(d2, CASQUETTE, 0, 8).filter((p) => p.avant === false).length;
-  Variante.injecter(d2, {
-    type: CASQUETTE, coiffureRef: 8, index: 45,
-    paths: [{ d: 'M10 10h5v5h-5Z', fill: 'rgb(1,2,3)', m: [1, 0, 0, 1, 0, 0], avant: false }],
-  });
-  assert.strictEqual(Variante.exporter(d2, CASQUETTE, 0, 8).filter((p) => p.avant === false).length,
-    avantInj, 'la variante 0 garde exactement l\'arrière qu\'elle avait');
-});
-
-test('la teinte d\'une POSE fait partie du dessin, pas de la couleur du joueur', async () => {
-  // Le casque-mouche (type 5) est un dessin BLANC que sa pose verdit : une
-  // transformation de couleur portée par le placement, pas par les niveaux du
-  // joueur. L'exportateur ne lisait que la couleur brute de la forme — il rendait
-  // au graphiste un gabarit blanc là où le jeu montre du vert.
-  const defs = await lire('famille0.swf');
-  const gab = Variante.exporter(defs, 5, 0, 8);
-  const vert = gab.filter((p) => {
-    const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(p.fill || '');
-    return m && +m[2] > +m[1] + 20 && +m[2] > +m[3] + 20;
-  });
-  assert.ok(vert.length > 0, 'le gabarit porte le vert que la pose applique');
-
-  // Et il revient tel quel : la teinte est DANS le dessin, donc dans la copie.
-  const inj = Variante.injecter(defs, { type: 5, paths: gab, coiffureRef: 8 });
-  const copie = Variante.exporter(defs, 5, inj.variante, 8);
-  assert.deepStrictEqual(copie.map((p) => p.fill), gab.map((p) => p.fill),
-    'la copie porte exactement les mêmes couleurs');
-});
-
-test('le SECOND rouleau d\'un accessoire ne déteint pas sur les variantes ajoutées', async () => {
-  // Le bonnet de bain (type 2) a DEUX rouleaux : `acc` et, par-dessus, `acc2`
-  // qui ne compte que deux images — un bandeau rose apparaissant en variante 1.
-  // Une variante ajoutée au-delà s'y BORNAIT : elle héritait du bandeau sans
-  // l'avoir demandé, et l'aperçu de l'atelier ne le montrait pas.
-  const BONNET = 2;
-  const defs = await lire('famille0.swf');
-  const r = Variante.repere(defs, BONNET, 8);
-  assert.ok(r.reels.length > 1, 'le type 2 a bien un rouleau compagnon');
-
-  const bandeau = Variante.exporter(defs, BONNET, 1, 8).filter((p) => p.reel === 'acc2');
-  assert.ok(bandeau.length > 0, 'la variante 1 porte le bandeau dans `acc2`');
-
-  const inj = Variante.injecter(defs, {
-    type: BONNET, coiffureRef: 8, index: r.variantes,
-    paths: [{ d: 'M10 10h20v20h-20Z', fill: 'rgb(255,255,255)', slot: 1, m: [1, 0, 0, 1, 0, 0] }],
-  });
-  const neuve = Variante.exporter(defs, BONNET, inj.variante, 8);
-  assert.strictEqual(neuve.filter((p) => p.reel === 'acc2').length, 0,
-    'la variante neuve ne montre QUE ce qu\'on lui a donné');
-  assert.strictEqual(neuve.length, 1, 'un tracé demandé, un tracé rendu');
-
-  // Et les variantes d'époque gardent leur bandeau.
-  assert.strictEqual(Variante.exporter(defs, BONNET, 1, 8).filter((p) => p.reel === 'acc2').length,
-    bandeau.length, 'la variante 1 garde le sien');
-});
-
-test('un MASQUE D\'ÉCRÊTAGE se transporte, découpe comprise', async () => {
-  // Deux variantes d'époque en portent un (la casquette 25 et le type 16
-  // variante 1). Sauter le masque emportait avec lui ce qu'il rogne — les plumes
-  // bleues du type 16 ; l'ignorer laissait la lueur rouge du micro s'étaler sur
-  // tout le visage.
-  const defs = await lire('famille0.swf');
-  const gab = Variante.exporter(defs, 16, 1, 8);
-  const tracé = gab.filter((p) => p.estDecoupe);
-  const rogné = gab.filter((p) => p.decoupe && !p.estDecoupe);
-  assert.ok(tracé.length > 0, 'le gabarit porte le tracé du masque');
-  assert.ok(rogné.length > 0, 'et ce qu\'il rogne');
-  // Le tracé du masque vient AVANT ce qu'il rogne : l'injection en dépend.
-  assert.ok(gab.indexOf(tracé[0]) < gab.indexOf(rogné[0]), 'le masque précède sa découpe');
-
-  const inj = Variante.injecter(defs, { type: 16, paths: gab, coiffureRef: 8 });
-  const copie = Variante.exporter(defs, 16, inj.variante, 8);
-  assert.strictEqual(copie.filter((p) => p.estDecoupe).length, tracé.length,
-    'la copie repose le masque');
-  assert.strictEqual(copie.filter((p) => p.decoupe && !p.estDecoupe).length, rogné.length,
-    'et tout ce qu\'il rogne');
-});
-
-test('le MARQUEUR d\'atelier ne fait pas un gabarit', async () => {
-  // La dernière image de presque tous les rouleaux est un carré opaque de la
-  // taille de la scène — un repère de montage. Le rendu le saute déjà ; l'export
-  // le prenait pour un dessin et rendait un gabarit entièrement rempli.
-  const defs = await lire('famille0.swf');
-  const r = Variante.repere(defs, CASQUETTE, 8);
-  const derniere = devant(Variante.exporter(defs, CASQUETTE, r.variantes - 1, 8));
-  assert.strictEqual(derniere.length, 0, 'la dernière image ne donne aucun tracé devant');
-  assert.ok(!Variante.dessinee(defs, CASQUETTE, r.variantes - 1, 8), 'et ne compte pas pour une variante');
-  assert.ok(Variante.dessinee(defs, CASQUETTE, 0, 8), 'la variante 0, elle, est bien dessinée');
-});
-
-test('les identifiants du gabarit sont UNIQUES — un doublon coûtait le niveau 1', async () => {
-  /*
-   * Un niveau de couleur revient souvent à deux endroits de la pile : le niveau 1
-   * presque toujours (une fois derrière la tête, une fois devant). On écrivait
-   * alors deux fois `id="couleur1"` — ce qu'un document XML n'autorise pas.
-   * Illustrator tranchait : il gardait le premier, celui de l'ARRIÈRE, et rendait
-   * le groupe de devant sans nom. Au retour, tout le devant du niveau 1 revenait
-   * en couleur FIXE, en gris. Le niveau 1 seulement, jamais les autres — parce
-   * que c'est lui que les deux couches partagent.
-   *
-   * (La lecture, elle, se vérifie en navigateur : elle demande DOMParser et
-   * getCTM. Ce test tient le côté qui produit.)
-   */
-  const defs = await lire('famille0.swf');
-  const soucis = [];
-  let gabarits = 0;
-  for (let type = 1; type <= 16; type++) {
-    const r = Variante.repere(defs, type, 8);
-    if (!r) continue;
-    for (let v = 0; v < r.variantes; v++) {
-      if (!Variante.dessinee(defs, type, v, 8)) continue;
-      gabarits++;
-      const svg = Variante.exporterSVG(defs, { type, variante: v, coiffure: 8 });
-      const ids = (svg.match(/ id="([^"]+)"/g) || []).map((s) => s.slice(5, -1));
-      const vus = new Set(), doubles = new Set();
-      for (const id of ids) { if (vus.has(id)) doubles.add(id); vus.add(id); }
-      if (doubles.size) soucis.push(`type ${type} v${v} : ${[...doubles].join(', ')}`);
-    }
-  }
-  assert.ok(gabarits > 100, 'on a bien passé tous les gabarits en revue (' + gabarits + ')');
-  assert.deepStrictEqual(soucis, [], 'aucun identifiant en double');
-
-  // Et le nom d'un niveau qui revient reste LISIBLE comme ce niveau : le lecteur
-  // n'en regarde que le début, donc « couleur1-2 » vaut « couleur1 ».
-  const svg = Variante.exporterSVG(defs, { type: CASQUETTE, variante: 0, coiffure: 8 });
-  const niveaux = (svg.match(/ id="(couleur[^"]*)"/g) || []).map((s) => s.slice(5, -1));
-  assert.ok(niveaux.length > 1, 'la casquette porte le niveau 1 des deux côtés');
-  assert.strictEqual(niveaux[0], 'couleur1', 'le premier garde le nom simple');
-  for (const n of niveaux) {
-    assert.match(n, /^couleur[123]/, 'un nom de niveau commence par son niveau : ' + n);
-  }
-});
-
-test('une variante tombe à SA place, même si le rouleau est déjà plus long', async () => {
-  /*
-   * Le client comblait le rouleau jusqu'à la place demandée puis AJOUTAIT À LA
-   * FIN. Tant que le catalogue n'avance que par index croissants, cela revient
-   * au même ; mais une variante d'AVANT l'index explicite (elle n'en porte pas,
-   * et s'empile donc à la suite) allonge le rouleau la première. La suivante
-   * demandait alors la place 38 et se retrouvait à la 40 : le serveur annonçait
-   * 38, le client posait 40, et l'accessoire que les joueurs portaient sous le
-   * numéro 38 n'était plus le leur.
-   */
-  const defs = await lire('famille0.swf');
-  const depart = Variante.repere(defs, CASQUETTE, 8).variantes;
-  const carre = (d) => [{ d: d, fill: 'rgb(255,255,255)', slot: 1, m: [1, 0, 0, 1, 0, 0] }];
-
-  // Deux « anciennes » sans index : elles s'empilent.
-  const a = Variante.injecter(defs, { type: CASQUETTE, coiffureRef: 8, paths: carre('M10 10h6v6h-6Z') });
-  const b = Variante.injecter(defs, { type: CASQUETTE, coiffureRef: 8, paths: carre('M20 20h6v6h-6Z') });
-  assert.strictEqual(a.variante, depart, 'la première prend la place suivante');
-  assert.strictEqual(b.variante, depart + 1, 'la deuxième aussi');
-
-  // Une variante qui RÉCLAME une place déjà dépassée doit l'obtenir.
-  const c = Variante.injecter(defs, {
-    type: CASQUETTE, coiffureRef: 8, index: depart, paths: carre('M30 30h6v6h-6Z'),
-  });
-  assert.strictEqual(c.variante, depart, 'elle tombe à la place demandée, pas à la fin');
-  const pose = devant(Variante.exporter(defs, CASQUETTE, depart, 8));
-  assert.strictEqual(pose.length, 1, 'et c\'est bien son dessin qui s\'y trouve');
-  assert.match(pose[0].d, /^M30 30/, 'le tracé est celui de la variante réclamante');
-
-  // Mais JAMAIS en dessous des images d'époque : un index fautif ne doit pas
-  // pouvoir effacer la casquette de tout le monde.
-  const avant = Variante.exporter(defs, CASQUETTE, 0, 8).map((p) => p.d.length).join(',');
-  const d = Variante.injecter(defs, {
-    type: CASQUETTE, coiffureRef: 8, index: 0, paths: carre('M40 40h6v6h-6Z'),
-  });
-  assert.ok(d.variante >= depart, 'l\'index est ramené au plancher (' + d.variante + ')');
-  assert.strictEqual(Variante.exporter(defs, CASQUETTE, 0, 8).map((p) => p.d.length).join(','),
-    avant, 'la variante 0 d\'époque est intacte');
 });

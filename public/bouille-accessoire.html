@@ -42,9 +42,6 @@
   .aide code { background:#EEF6DD; padding:1px 4px; border-radius:3px; }
   .aide b { color:var(--vert); }
   #etat, #imp-etat { font:11px monospace; color:#93a; margin-top:8px; word-break:break-all; }
-  #imp-avert { font:11px Verdana,sans-serif; color:#8a4b00; background:#FFF6DC;
-               border:1px solid #E8C87A; border-radius:6px; padding:7px 9px; margin-top:8px;
-               line-height:1.45; }
   .gris { filter:grayscale(1); }
 </style>
 </head>
@@ -96,7 +93,6 @@
       <div class="drop" id="drop">Dépose ici ton <b>.svg</b><br>(ou clique pour choisir)</div>
       <input type="file" id="fichier" accept=".svg,image/svg+xml" style="display:none">
       <div id="imp-etat"></div>
-      <div id="imp-avert" style="display:none"></div>
       <div class="grille" id="rendu"></div>
     </div>
   </div>
@@ -149,7 +145,7 @@
       var r = V.repere(defs, type, 8);
       if (!r) return 0;
       var n = 0;
-      for (var v = 0; v < r.variantes; v++) if (V.dessinee(defs, type, v, 8)) n++;
+      for (var v = 0; v < r.variantes; v++) if (V.exporter(defs, type, v, 8).length > 1) n++;
       return n;
     }
     function remplirTypes() {
@@ -184,8 +180,8 @@
       sel.innerHTML = "";
       if (!r) return;
       for (var v = 0; v < r.variantes; v++) {
-        if (!V.dessinee(defs, t, v, co)) continue;   // image vide (ou simple marqueur)
         var n = V.exporter(defs, t, v, co).length;
+        if (n <= 1) continue;                        // image vide (ou simple marqueur)
         var o = document.createElement("option");
         o.value = v; o.textContent = "variante " + v + " — " + n + " tracés";
         sel.appendChild(o);
@@ -273,40 +269,6 @@
         paths.forEach(function (p) { niveaux[p.slot || 0] = (niveaux[p.slot || 0] || 0) + 1; });
         etat.textContent = paths.length + " tracés · niveaux " + JSON.stringify(niveaux)
           + " → variante " + inj.variante + " de l'accessoire #" + inj.accId;
-        /*
-         * DIRE TOUT DE SUITE QUAND UN NIVEAU S'EST PERDU.
-         *
-         * Un calque « couleurN » qui perd son nom en route ne casse rien : son
-         * dessin revient simplement en couleur FIXE, dans ses gris. Ça ne se voit
-         * qu'à la recoloration — c'est-à-dire trop tard, en boutique. Le gabarit
-         * sait quels niveaux il portait ; s'il en manque au retour, on le dit ici.
-         */
-        // On compare CALQUE PAR CALQUE, pas globalement : le niveau 1 vit
-        // presque toujours des deux côtés de la tête, et c'est justement le côté
-        // DEVANT qui se perdait — le niveau restait « présent » derrière, et un
-        // comptage d'ensemble n'y voyait rien.
-        var cle = function (p) { return p.slot + (p.avant === false ? " (derrière)" : " (devant)"); };
-        var attendus = {}, recus = {};
-        paths.forEach(function (p) { if (p.slot) recus[cle(p)] = true; });
-        try {
-          V.exporter(defs, t, +$("#variante").value, co).forEach(function (p) {
-            if (p.slot) attendus[cle(p)] = true;
-          });
-        } catch (e) { /* le gabarit de départ n'est qu'une indication */ }
-        var perdus = Object.keys(attendus).filter(function (k) { return !recus[k]; });
-        var avert = $("#imp-avert");
-        if (perdus.length) {
-          var pl = perdus.length > 1;
-          avert.textContent = "⚠ " + (pl ? "Niveaux " : "Niveau ") + perdus.join(", ")
-            + (pl ? " introuvables : ces calques ont perdu leur nom. Leur dessin restera"
-                  : " introuvable : ce calque a perdu son nom. Son dessin restera")
-            + " en gris — la couleur du joueur ne le touchera pas."
-            + (pl ? " Renomme-les" : " Renomme-le")
-            + " : seul le début du nom compte, donc « couleur1 », « couleur1-2 »… conviennent tous.";
-          avert.style.display = "";
-        } else {
-          avert.textContent = ""; avert.style.display = "none";
-        }
         var vues = [
           { co: co, c: COLS, l: "coiffure " + co },
           { co: 0, c: COLS, l: "coiffure 0" },

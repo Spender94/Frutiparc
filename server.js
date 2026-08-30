@@ -5568,13 +5568,6 @@ function nettoyerPathsMaison(paths) {
     if (g) q.degrade = g;
     if (p.trait) { q.trait = true; q.largeur = Math.max(0, Math.min(50, Number(p.largeur) || 1)); }
     if (Array.isArray(p.m) && p.m.length === 6 && p.m.every((n) => isFinite(n))) q.m = p.m.map(Number);
-    // Un MASQUE D'ÉCRÊTAGE : « decoupe » nomme le masque, « estDecoupe » désigne
-    // son tracé. Les laisser tomber, c'était laisser déborder ce qu'ils rognent.
-    if (p.decoupe) {
-      q.decoupe = String(p.decoupe).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24);
-      if (!q.decoupe) delete q.decoupe;
-      else if (p.estDecoupe) q.estDecoupe = true;
-    }
     return q;
   }).filter((p) => p.d && /^[Mm]/.test(p.d));
 }
@@ -10788,24 +10781,8 @@ app.post('/api/admin/variantes', adminScope('shop'),
     //  est le nombre d'images d'origine du rouleau, que seul le client
     // connaît (il est dans le SWF) ; il nous le dit en publiant.
     const memeRouleau = variantesAcc.filter((x) => (x.famille || 0) === (Number(b.famille) || 0) && x.type === type);
-    /*
-     * LA PREMIÈRE PLACE LIBRE — en comptant AUSSI les variantes sans index.
-     *
-     * Elles datent d'avant l'index explicite et n'en portent donc pas ; le client
-     * les empile à la suite, dans l'ordre du catalogue. On ne les comptait pas
-     * ici : la variante suivante recevait un index DÉJÀ OCCUPÉ par l'une d'elles,
-     * et se retrouvait poussée plus loin à l'injection. Le serveur annonçait 38,
-     * le client posait 40 — et l'accessoire que les joueurs portaient sous le
-     * numéro 38 n'était plus le leur. On refait donc ici le compte exact que le
-     * client fera : sans index, la place suivante ; avec index, la sienne.
-     */
-    const base = Math.max(0, Math.floor(Number(b.base) || 0));
-    let libre = base;
-    for (const x of memeRouleau) {
-      const place = Number.isFinite(x.index) ? Math.max(base, x.index) : libre;
-      if (place >= libre) libre = place + 1;
-    }
-    const index = libre;
+    const suivant = memeRouleau.reduce((m, x) => Math.max(m, Number(x.index) >= 0 ? x.index + 1 : 0), 0);
+    const index = Math.max(Number(b.base) || 0, suivant);
     const v = {
       id: 'v' + variantesSeq, nom: String(b.nom).slice(0, 60),
       famille: Number(b.famille) || 0, type: type,
