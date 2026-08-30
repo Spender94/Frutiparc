@@ -88,11 +88,32 @@ test('les explorateurs et la boîte d’alerte sont les seuls à se centrer', ()
   // posé sur le fond sont tous des `win.Explorer`. La boutique se centre aussi
   // (`win.Shop`), et `win.Alert` (sprite#812) finit son `init` par
   // `moveToCenter()` comme les autres boîtes de dialogue.
-  const centres = JS.match(/centre: true/g) || [];
-  assert.strictEqual(centres.length, 6, 'six fenêtres seulement se centrent');
-  for (const m of JS.matchAll(/l: (\d+), h: (\d+)[^\n]*centre: true/g)) {
-    assert.ok(['402', '476', '260'].includes(m[1]), 'gabarit inattendu : ' + m[0]);
+  // Le compte n'est PAS la garantie — il bouge dès qu'un dossier de plus
+  // s'ouvre en fenêtre (« Mes contacts » et « Liste noire » sont deux
+  // `win.Explorer` de plus). Ce qui compte, c'est qu'aucune fenêtre ne se
+  // centre en dehors des trois gabarits qui le font d'époque :
+  //
+  //     402 × 402   win.Explorer   (courrier, disques, inventaire, carnet,
+  //                                 liste noire, dossier du bureau)
+  //     476 × 404   win.Shop       404 × 470   win.EditInfo
+  //     260 × 130   win.Alert
+  // Le gabarit ne tient pas toujours sur la ligne du `centre: true` (la boîte
+  // de réception l'écrit une ligne plus haut) : on remonte donc jusqu'au
+  // dernier `l:` déclaré avant lui.
+  const gabarits = [];
+  for (const m of JS.matchAll(/centre: true/g)) {
+    const avant = JS.slice(Math.max(0, m.index - 240), m.index);
+    const l = [...avant.matchAll(/\bl: (\d+), h: (\d+)/g)].pop();
+    assert.ok(l, 'une fenêtre centrée sans gabarit : ' + avant.slice(-90));
+    gabarits.push(l[1]);
   }
+  for (const l of gabarits) {
+    assert.ok(['402', '412', '476', '404', '260'].includes(l), 'gabarit inattendu : ' + l);
+  }
+  // Et les explorateurs sont bien les plus nombreux : c'est la fenêtre que le
+  // bureau rouvre pour chaque dossier.
+  assert.ok(gabarits.filter((l) => l === '402').length >= 5,
+    'les dossiers du bureau s’ouvrent dans un win.Explorer centré');
 });
 
 /* ── 3. LA TAILLE ─────────────────────────────────────────────────────────── */

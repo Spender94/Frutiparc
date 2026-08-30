@@ -141,6 +141,21 @@ window.BureauFrutiz = (function () {
                        l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
     'ex-inventaire': { panneau: '#ex-inventaire-panel', titre: 'Inventaire',  fruit: 'winExplorer',
                        l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
+    // LE CARNET et LA LISTE NOIRE — le MÊME `win.Explorer` que les deux
+    // au-dessus : d'époque il n'existe pas de fenêtre de contacts à part,
+    // « Mes contacts » est un DOSSIER (`fileMng.mycontact`) qu'on ouvre dans
+    // l'explorateur, et la liste noire un autre (`FPFileMng.onLoadDesktop`
+    // pose son icône sur le bureau : `{type:"folder", uid:"blacklist",
+    // desc:["Liste noire","blacklist"]}`).
+    //
+    // Seule la PEAU de la liste change : `box.Explorer` prend
+    // `mainStyleName = folderType.styleName`, et le dossier « blacklist »
+    // porte `frFileBlackList` — la famille POURPRE de `_global.colorSet`,
+    // là où tous les autres dossiers portent le jaune `frFileStandard`.
+    'ex-contacts':   { panneau: '#ex-contacts-panel',   titre: 'Mes contacts', fruit: 'winExplorer',
+                       l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
+    'ex-noire':      { panneau: '#ex-noire-panel',      titre: 'Liste noire',  fruit: 'winExplorer',
+                       l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
   };
 
   /* `gotoAndStop(type)` SUR LA BANDE #198, et rien d'autre : une étiquette que
@@ -1519,18 +1534,24 @@ window.BureauFrutiz = (function () {
   var EX_LARGEUR = EX_CASE - 2 * EX_BX;  // 74
   var EX_R4 = EX_LARGEUR / 2;            // 37 — hauteur de l'icône ET y du titre
 
-  // Les dossiers de l'inventaire et la boîte à disques : les racines que le
-  // bureau ouvre depuis ses icônes.
+  // Les dossiers de l'inventaire, la boîte à disques, le carnet et la liste
+  // noire : les racines que le bureau ouvre depuis ses icônes.
   var EXPLORATEURS = {
     disques:    { panneau: '#ex-disques-panel',    uid: 'disccollector', titre: 'Mes disques' },
     inventaire: { panneau: '#ex-inventaire-panel', uid: 'inventory',     titre: 'Inventaire' },
+    contacts:   { panneau: '#ex-contacts-panel',   uid: 'mycontact',     titre: 'Mes contacts' },
+    // `styleName` : la liste de l'explorateur ne déclare pas sa peau en dur,
+    // elle prend celle du DOSSIER (`mainStyleName = folderType.styleName`,
+    // 0x930be). Le pourpre est donc porté par la fenêtre, pas par la classe.
+    noire:      { panneau: '#ex-noire-panel',      uid: 'blacklist',     titre: 'Liste noire',
+                  style: 'noire' },
   };
   var exEtats = {};                      // clé → { uid, panneau, liste, titre }
 
   function panneauExplorateur(cle) {
     var conf = EXPLORATEURS[cle];
     var p = document.createElement('section');
-    p.className = 'panel ex-panel';
+    p.className = 'panel ex-panel' + (conf.style ? ' ex-' + conf.style : '');
     p.id = conf.panneau.slice(1);
     // `box.Explorer` EST un `dropBox` : `IconFileBox.onDrop` prend l'uid du
     // dossier affiché pour cible et appelle `fileMng.move`. Le portage n'en
@@ -1701,7 +1722,11 @@ window.BureauFrutiz = (function () {
   }
 
   // `window.displayAlert` — la phrase du dossier, mot pour mot (lang_french.as).
-  function alerteDossier(uid, entrees) {
+  // `tirage` : le `random(100)` du carnet, tiré À L'OUVERTURE et gardé tant
+  // qu'on reste dans le dossier — sans quoi la phrase du glisser-déposer
+  // clignoterait à chaque relecture silencieuse (un contact déplacé en relit
+  // deux, celle d'où il part et celle où il arrive).
+  function alerteDossier(uid, entrees, tirage) {
     var n = entrees.length;
     if (uid === 'disccollector') {
       var noir = entrees.some(function (e) { return e.type === 'disc' && e.desc[0] === '0'; });
@@ -1725,6 +1750,43 @@ window.BureauFrutiz = (function () {
     if ((uid === 'inventory' || String(uid).indexOf('inv') === 0) && n < 2) {
       return 'Vous trouverez dans votre inventaire des objets achetés dans la boutique '
         + 'ou accumulés en jouant.';
+    }
+    /*
+     * LE CARNET ET LA LISTE NOIRE — `box.Explorer.onLoadList` (0x8831c…),
+     * branche par branche, avec les phrases de lang_french.as :
+     *
+     *   uid == blacklist                            → alert.blacklist
+     *   uid == mycontact && listSize() < 3
+     *                    && !checkFolderInList()     → alert.create_contact
+     *   uid == mycontact && getNbContactInList() > 15 → alert.too_much_contact
+     *   uid == mycontact && random(100) < 10        → alert.invite_contact
+     *
+     * La dernière est un CLIN D'ŒIL : une fois sur dix, l'explorateur rappelle
+     * qu'on invite quelqu'un en le glissant sur une fenêtre de chat. On garde
+     * le tirage — c'est ce que fait le bureau d'époque, à l'appel de
+     * `random` près.
+     */
+    if (uid === 'blacklist') {
+      return 'Vous pouvez refuser les discussions privées et invitations des contacts '
+        + 'qui sont dans votre liste noire (voir préférences). Les emails reçus sont '
+        + 'placés dans le dossier "Boite noire".';
+    }
+    if (uid === 'mycontact') {
+      var aDossier = entrees.some(function (e) { return e.type === 'folder'; });
+      if (n < 3 && !aDossier) {
+        return 'Vous pouvez ajouter un contact depuis la fiche d’un frutiz, en faisant '
+          + 'glisser un frutiz depuis un salon ou les scores vers ce répertoire ou en '
+          + 'cliquant sur une adresse e-mail.';
+      }
+      var nbContacts = entrees.filter(function (e) { return e.type === 'contact'; }).length;
+      if (nbContacts > 15) {
+        return 'Pour créer un dossier, il vous suffit de cliquer sur le bouton avec '
+          + 'une étoile ci-dessus.';
+      }
+      if ((tirage === undefined ? Math.random() * 100 : tirage) < 10) {
+        return 'Pour inviter un de vos contacts dans une discussion privée ou un salon, '
+          + 'il suffit de le faire glisser vers la fenêtre du chat.';
+      }
     }
     return '';
   }
@@ -1760,6 +1822,10 @@ window.BureauFrutiz = (function () {
     return out;
   }
 
+  // Les deux explorateurs qui montrent des CONTACTS : le carnet et la liste
+  // noire. Ce sont les seuls à avoir besoin des bouilles.
+  function contactsDe(cle) { return cle === 'contacts' || cle === 'noire'; }
+
   /*
    * `silencieux` : on RELIT le même dossier, on ne l'ouvre pas.
    *
@@ -1773,6 +1839,7 @@ window.BureauFrutiz = (function () {
     if (!etat) return;
     etat.uid = uid;
     etat.titre = titre || EXPLORATEURS[cle].titre;
+    if (!silencieux || etat.tirage === undefined) etat.tirage = Math.random() * 100;
     retitrer(etat.panneau.id, etat.titre);
     var sid = (window.state && window.state.sid) || '';
     var champ = etat.panneau.querySelector('.ex-champ');
@@ -1784,6 +1851,9 @@ window.BureauFrutiz = (function () {
       chargerArbre(),
       fetch('/ff/ls?uid=' + encodeURIComponent(uid) + '&sid=' + encodeURIComponent(sid),
         { cache: 'no-store' }).then(function (r) { return r.text(); }),
+      // Le carnet donne à chaque contact son visage — le listing, lui, ne
+      // porte que l'adresse (cf. `IconFileBox`/`atrace` plus bas).
+      contactsDe(cle) ? carnetPret() : null,
     ])
       .then(function (r) {
         if (etat.uid !== uid) return;     // un autre dossier a été demandé entre-temps
@@ -1815,16 +1885,19 @@ window.BureauFrutiz = (function () {
       }));
     }
     if (t.flNewDirectory) {
-      // D'époque ce bouton déplie un champ « nouveau dossier ». Le serveur du
-      // revival ne crée pas de dossier dans la boîte à disques : le bouton est
-      // là parce qu'il fait partie de la fenêtre, mais il n'a rien à appeler.
-      var b = boutonNav('new_folder', 'La création de dossiers n’est pas ouverte sur le revival', null);
+      // L'ÉTOILE. D'époque elle déplie un champ « nouveau dossier » et appelle
+      // `fileMng.make({type:"folder", desc:[nom]}, uid)`. Le serveur ne sait en
+      // créer que dans « Mes contacts » (/ff/mk, branche `folder` + `mycontact`)
+      // — ailleurs le bouton reste là, comme d'époque, mais sans rien à faire.
+      var b = uid === 'mycontact'
+        ? boutonNav('new_folder', 'nouveau dossier', function () { nouveauDossierCarnet(cle); })
+        : boutonNav('new_folder', 'La création de dossiers n’est pas ouverte sur le revival', null);
       nav.appendChild(b);
     }
     nav.hidden = !nav.firstChild;
 
     var alerte = etat.panneau.querySelector('.ex-alerte');
-    var phrase = alerteDossier(uid, entrees);
+    var phrase = alerteDossier(uid, entrees, etat.tirage);
     alerte.textContent = phrase;
     alerte.hidden = !phrase;
 
@@ -1894,12 +1967,36 @@ window.BureauFrutiz = (function () {
       var typeDossier = e.desc[1] || 'default';
       var nomIco = cadresExplorateur()['ico_dossier_' + typeDossier]
         ? 'ico_dossier_' + typeDossier : 'ico_dossier_default';
-      return caseExplorateur({
+      var dossier = caseExplorateur({
         nom: nomDe(e), dessin: dessinStandard(nomIco), titre: nomDe(e),
         faire: function () { ouvrirDossier(cle, e.uid, nomDe(e)); },
       });
+      // `IconFileBox.onDrop` : une icône de DOSSIER est un `dropBox` qui prend
+      // SON PROPRE uid pour cible —
+      //
+      //     if(this.type == "folder"){ var destUid = this.uid; }
+      //     ...
+      //     _global.fileMng.move(ico.uid, destUid);
+      //
+      // C'est ce qui range un contact dans un sous-dossier du carnet sans
+      // avoir à l'ouvrir : on le lâche SUR le dossier.
+      if (contactsDe(cle)) {
+        dossier.setAttribute('data-depot', 'dossier-carnet');
+        dossier.setAttribute('data-uid', e.uid);
+        // `getFileContextMenu` : le clic droit propose de JETER le fichier.
+        // Un sous-dossier du carnet jeté rend ses contacts à la racine — c'est
+        // ce que fait le serveur (branche `recyclebin` + `isCustomContactFolder`).
+        dossier.addEventListener('contextmenu', function (ev) {
+          ev.preventDefault();
+          if (!window.confirm('Supprimer le dossier « ' + nomDe(e) + ' » ?\n'
+            + 'Ses contacts reviendront dans « Mes contacts ».')) return;
+          deplacerFichier(e.uid, 'recyclebin');
+        });
+      }
+      return dossier;
     }
     if (e.type === 'disc') return caseDisque(e);
+    if (e.type === 'contact') return caseContact(cle, e);
     if (e.type === 'bouille') {
       return caseExplorateur({
         nom: nomDe(e), dessin: dessinBouille(e.desc[1]), classe: 'ex-slot-bouille',
@@ -1934,6 +2031,113 @@ window.BureauFrutiz = (function () {
     var m = /fp_openPopup\('([^']*)'\s*,\s*'([^']*)'\s*,\s*'([^']*)'/.exec(String(commande || ''));
     if (!m) return null;
     return function () { window.open(m[1], m[2], m[3]); };
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     UN CONTACT DANS UNE FENÊTRE (`but.Icon`, type « contact »)
+
+     `FPFileMng.getName` donne l'étiquette : l'adresse moins « @frutiparc.com ».
+     Le DESSIN, lui, n'est pas dans le listing — `IconFileBox` s'abonne au
+     statut du frutiz (`mainCnx.atrace`) et `onStatusObj` pose sa frutibouille
+     à la place de l'icône, avec `icoRatio = 1`. Ici c'est le carnet
+     (`/api/light/contacts`) qui la fournit, d'un coup pour tout le monde.
+
+     Le CLIC suit `openFunctions.as`, mot pour mot :
+
+         case "contact":
+           if(obj.name.indexOf("@") < 0){
+             if(obj.name.toLowerCase() == Lang.fv("help.name").toLowerCase()){
+               _global.chatNow(obj.name);            ← GASPARD
+             }else{
+               _global.frutizInfMng.open(obj.name, _global.desktop);
+             }
+           }                                          ← la FICHE du frutiz  */
+  function nomDeContact(e) {
+    var a = String(nomDe(e) || e.uid || '');
+    return /@frutiparc\.com$/i.test(a) ? a.slice(0, -14) : a;
+  }
+
+  function caseContact(cle, e) {
+    var adresse = nomDe(e) || (e.uid + '@frutiparc.com');
+    var f = ficheDe(adresse) || ficheDe(e.uid);
+    var nom = (f && f.pseudo) || nomDeContact(e);
+    var bouille = (f && f.bouille) || '';
+    var c = caseExplorateur({
+      nom: nom, dessin: dessinBouille(bouille), classe: 'ex-slot-contact',
+      titre: nom + (f && f.jeu ? ' — ' + libelleJeu(f.jeu)
+        : (f && f.enLigne ? ' — en ligne' : ' — hors ligne')),
+      faire: function () {
+        if (Date.now() - dernierDepot < 250) return;   // c'était un GLISSÉ
+        if (estGaspard(nom)) ouvrirGaspard(); else ouvrirFiche(nom);
+      },
+    });
+    // L'encre du pseudo suit le GENRE, comme partout ailleurs
+    // (`UserSlot.onInfoBasic`) — même règle que la bande latérale.
+    if (f && f.genre) c.setAttribute('data-genre', f.genre);
+    if (f && f.enLigne) c.classList.add('en-ligne');
+    // `getFileContextMenu` : jeter le contact. À la corbeille il quitte le
+    // carnet (ou la liste noire) — c'est la branche `recyclebin` de /ff/mv.
+    c.addEventListener('contextmenu', function (ev) {
+      ev.preventDefault();
+      var ou = cle === 'noire' ? 'de votre liste noire' : 'de vos contacts';
+      if (!window.confirm('Retirer « ' + nom + ' » ' + ou + ' ?')) return;
+      deplacerFichier(e.uid, 'recyclebin');
+    });
+    rendreAttrapable(c, {
+      uid: e.uid, type: 'contact', desc: [adresse, bouille], name: nom,
+      // `parent` : `IconFileBox.onDrop` s'en sert quand on lâche SUR une icône
+      // qui n'est pas un dossier — le dépôt file alors au dossier qui la tient.
+      parent: (exEtats[cle] && exEtats[cle].uid) || EXPLORATEURS[cle].uid,
+    }, function () { return dessinBouille(bouille); });
+    return c;
+  }
+
+  /*
+   * `fileMng.move(file, newFolder)` — le seul verbe du carnet.
+   *
+   * Ranger un contact dans un sous-dossier, le passer en liste noire, l'en
+   * sortir, le jeter : d'époque tout cela est UN déplacement de fichier, et
+   * `/ff/mv` du serveur les tient déjà tous (il tient même la suppression d'un
+   * sous-dossier, qui rend ses contacts à la racine). Le portage n'avait
+   * simplement aucune fenêtre pour l'appeler.
+   */
+  function deplacerFichier(file, dossier) {
+    var sid = (window.state && window.state.sid) || '';
+    var q = '/ff/mv?sid=' + encodeURIComponent(sid) + '&f=' + encodeURIComponent(file)
+      + (dossier && dossier !== 'root' ? '&folder=' + encodeURIComponent(dossier) : '');
+    return fetch(q, { cache: 'no-store' })
+      .then(function (r) { return r.text(); })
+      .then(function () { relireCarnet(); return true; })
+      .catch(function () { relireCarnet(); return false; });
+  }
+
+  // `callListeners` : tout ce qui montre le carnet se relit — les deux
+  // fenêtres et la bande latérale (que `lireCarnet` redessine au passage).
+  function relireCarnet() {
+    lireCarnet().then(function () {
+      ['contacts', 'noire'].forEach(function (cle) {
+        var e = exEtats[cle];
+        if (e && e.uid && $(EXPLORATEURS[cle].panneau)) ouvrirDossier(cle, e.uid, e.titre, true);
+      });
+    });
+  }
+
+  // L'ÉTOILE de la barre d'outils : `explorer_new_folder`. D'époque le champ
+  // se déplie dans la fenêtre ; le portage demande le nom comme il le fait
+  // déjà pour un dossier du bureau.
+  function nouveauDossierCarnet(cle) {
+    var nom = window.prompt('Nom du dossier ?', 'nouveau dossier');
+    if (!nom) return;
+    var sid = (window.state && window.state.sid) || '';
+    fetch('/ff/mk?sid=' + encodeURIComponent(sid) + '&t=folder&folder=mycontact'
+      + '&d=' + encodeURIComponent(nom.slice(0, 40)), { cache: 'no-store' })
+      .then(function (r) { return r.text(); })
+      .then(function () {
+        // L'arbre porte le NOM et le TYPE des dossiers : il vient de changer.
+        arbre = null; arbreEnCours = null;
+        relireCarnet();
+      })
+      .catch(function () {});
   }
 
   // LES DISQUES. `but.icon.Full` ne met pas d'étiquette : le disque se
@@ -2068,6 +2272,8 @@ window.BureauFrutiz = (function () {
     var pris = false;
     if (quoi === 'frusion') pris = frusion.deposer(info);
     else if (quoi === 'dossier') pris = deposerDansDossier(info, boite.getAttribute('data-uid'));
+    // Un SOUS-DOSSIER du carnet : `IconFileBox.onDrop` prend son uid pour cible.
+    else if (quoi === 'dossier-carnet') pris = deposerDansCarnet(info, boite.getAttribute('data-uid'));
     else if (quoi === 'explorateur') pris = deposerDansExplorateur(info, boite.getAttribute('data-cle'));
     else if (quoi === 'bureau' || (!boite && surLeBureau(cible))) pris = deposerSurBureau(info, x, y, ctrl);
     // `IconFileBox.onEndDrag` note l'heure (`IconFileBox.dragEnd = getTimer()`)
@@ -2240,7 +2446,7 @@ window.BureauFrutiz = (function () {
     }, 'root');
 
     // Un objet DÉJÀ du bureau ne se recrée pas : il se repositionne.
-    var dedans = info.uid && trouverObjet(info.uid);
+    var dedans = objetDeLIcone(info);
     if (dedans && !ctrl) {
       dedans.pos = { x: pos.x, y: pos.y };
       dedans.parent = 'root';
@@ -2251,9 +2457,31 @@ window.BureauFrutiz = (function () {
     return creerObjetBureau(info, 'root', pos);
   }
 
+  /*
+   * L'OBJET DU BUREAU QUE DÉSIGNE UNE ICÔNE GLISSÉE.
+   *
+   * Un contact ne porte pas le même identifiant selon d'où on l'attrape : le
+   * bureau le range sous son ADRESSE (c'est l'uid que `fileMng` lui donne), la
+   * fenêtre du carnet sous son nom court (`<e u="bob">bob@frutiparc.com</e>`),
+   * et la bande latérale sous « new ». Chercher `info.uid` tel quel ne trouvait
+   * donc rien : reposer sur le bureau un frutiz qui y était déjà retombait sur
+   * la branche « création », que `creerObjetBureau` refuse en doublon — l'icône
+   * revenait à sa place sans rien dire.
+   */
+  function objetDeLIcone(info) {
+    if (!info) return null;
+    if (info.uid && info.uid !== 'new') {
+      var o = trouverObjet(info.uid);
+      if (o) return o;
+    }
+    if (info.type !== 'contact') return null;
+    var adresse = (info.desc || [])[0];
+    return (adresse && trouverObjet(adresse)) || null;
+  }
+
   function deposerDansDossier(info, uid) {
     if (!uid) return false;
-    var dedans = info.uid && trouverObjet(info.uid);
+    var dedans = objetDeLIcone(info);
     if (dedans) {
       if (dedans.uid === uid) return false;         // un dossier dans lui-même
       dedans.parent = uid;
@@ -2279,9 +2507,56 @@ window.BureauFrutiz = (function () {
    * `box.Explorer.specialClick`), il n'y a donc rien à lui rendre.
    */
   function deposerDansExplorateur(info, cle) {
-    if (cle !== 'disques' || !info || info.type !== 'disc') return false;
+    if (!info) return false;
+    // LE CARNET ET LA LISTE NOIRE reçoivent des CONTACTS, et la cible est le
+    // dossier AFFICHÉ — `box.Explorer` est un `dropBox` dont l'uid est celui
+    // de la liste ouverte (`IconFileBox.onDrop` → `fileMng.move(ico.uid, uid)`).
+    if (contactsDe(cle)) {
+      if (info.type !== 'contact') return false;
+      return deposerDansCarnet(info,
+        (exEtats[cle] && exEtats[cle].uid) || EXPLORATEURS[cle].uid);
+    }
+    if (cle !== 'disques' || info.type !== 'disc') return false;
     var dedans = info.uid && trouverObjet(info.uid);
     if (dedans) retirerObjetBureau(dedans.uid);
+    return true;
+  }
+
+  /*
+   * DÉPOSER UN CONTACT DANS UN DOSSIER DU CARNET.
+   *
+   * Trois provenances, une seule règle — celle d'`IconFileBox.onDrop` :
+   *
+   *     if(ico.uid == "new"){ fileMng.make(ico, destUid); }
+   *     else                { fileMng.move(ico.uid, destUid); }
+   *
+   * « new » est ce que porte un frutiz attrapé dans un salon, dans les scores
+   * ou dans la bande latérale (`UserSlot.initButtons`) : il n'a pas encore de
+   * fichier, on le CRÉE. Un contact venu d'une fenêtre ou du bureau, lui, en a
+   * un : on le DÉPLACE. Et l'icône du bureau suit — un contact passé en liste
+   * noire ou jeté quitte le bureau, comme le fait `desktopRemove` côté serveur.
+   */
+  function deposerDansCarnet(info, dossier) {
+    if (!info || info.type !== 'contact' || !dossier) return false;
+    var adresse = (info.desc || [])[0] || (info.uid + '@frutiparc.com');
+    var sid = (window.state && window.state.sid) || '';
+    if (info.uid === 'new' || !info.uid) {
+      fetch('/ff/mk?sid=' + encodeURIComponent(sid) + '&t=contact'
+        + '&folder=' + encodeURIComponent(dossier)
+        + '&d=' + encodeURIComponent(adresse), { cache: 'no-store' })
+        .then(function (r) { return r.text(); })
+        .then(function () { relireCarnet(); })
+        .catch(function () { relireCarnet(); });
+      return true;
+    }
+    // Un contact posé sur le bureau ET rendu au carnet : le raccourci s'en va
+    // seulement s'il change de camp (liste noire, corbeille) — sinon il reste,
+    // car un frutiz du bureau est un RACCOURCI, pas un déménagement.
+    if (dossier === 'blacklist' || dossier === 'recyclebin') {
+      var pose = objetDeLIcone(info);
+      if (pose) retirerObjetBureau(pose.uid);
+    }
+    deplacerFichier(info.uid, dossier);
     return true;
   }
 
@@ -3697,38 +3972,91 @@ window.BureauFrutiz = (function () {
     return t;
   }
 
-  function chargerContacts() {
-    var liste = $('#side-list .sl-liste');
-    if (!liste) return;
+  /*
+   * LE CARNET, LU UNE FOIS POUR TOUS CEUX QUI L'AFFICHENT.
+   *
+   * D'époque, un contact ne porte PAS sa bouille dans le listing : `/ff/ls`
+   * ne rend que l'adresse, et `IconFileBox` va chercher le reste au fil de
+   * l'eau —
+   *
+   *     if(this.type == "contact" && this.name.indexOf("@") < 0){
+   *       _global.mainCnx.atrace(this.name, this, "onStatusObj", false);
+   *     }
+   *
+   * — un abonnement au statut de chacun sur la socket du chat, qui rend
+   * `{fbouille, status, presence}` et fait vivre l'icône. Le portage n'a pas
+   * cette poussée : il lit `/api/light/contacts`, qui donne la même chose
+   * d'un coup pour tout le carnet ET la liste noire. Une seule requête sert
+   * donc la bande latérale et les deux fenêtres.
+   */
+  var carnet = { dossiers: [], contacts: [], noire: [] };
+  var fiches = {};                       // adresse en minuscules → la fiche
+
+  function noterFiches(d) {
+    fiches = {};
+    var tout = (d.contacts || []).concat(d.noire || []);
+    (d.dossiers || []).forEach(function (f) { tout = tout.concat(f.contacts || []); });
+    tout.forEach(function (c) {
+      if (c && c.addr) fiches[String(c.addr).toLowerCase()] = c;
+      if (c && c.pseudo) fiches[String(c.pseudo).toLowerCase() + '@frutiparc.com'] = c;
+    });
+  }
+
+  // La fiche d'une adresse OU d'un pseudo — c'est l'un ou l'autre selon d'où
+  // vient l'icône (`<e u="bob">bob@frutiparc.com</e>` porte les deux).
+  function ficheDe(qui) {
+    var s = String(qui || '').toLowerCase();
+    return fiches[s] || fiches[s.split('@')[0] + '@frutiparc.com'] || null;
+  }
+
+  var carnetEnCours = null;
+  function lireCarnet() {
     var sid = (window.state && window.state.sid) || '';
-    fetch('/api/light/contacts?sid=' + encodeURIComponent(sid))
+    carnetEnCours = fetch('/api/light/contacts?sid=' + encodeURIComponent(sid),
+      { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        // `element.open` survit à `buildList` : un dossier replié le reste
-        // quand la liste se refait. On note donc l'état avant de tout jeter.
-        var replies = {};
-        Array.prototype.forEach.call(liste.querySelectorAll('.sl-dossier'), function (b) {
-          if (b.classList.contains('replie')) replies[b.getAttribute('data-nom')] = true;
-        });
-        liste.textContent = '';
-        if (!d || !d.ok) return;
-        // Carnet vide : la bande reste BLANCHE, sans un mot. C'est ce que fait
-        // le SWF — `buildList` ne parcourt rien et n'écrit rien.
-        (d.dossiers || []).forEach(function (f) {
-          var bloc = document.createElement('div');
-          bloc.className = 'sl-dossier';
-          bloc.setAttribute('data-nom', f.nom);
-          if (replies[f.nom]) bloc.classList.add('replie');
-          var contenu = document.createElement('div');
-          contenu.className = 'sl-contenu';
-          (f.contacts || []).forEach(function (c) { contenu.appendChild(ligneContact(c)); });
-          bloc.appendChild(enTeteDossier(f.nom, bloc));
-          bloc.appendChild(contenu);
-          liste.appendChild(bloc);
-        });
-        (d.contacts || []).forEach(function (c) { liste.appendChild(ligneContact(c)); });
+        carnetEnCours = null;
+        if (d && d.ok) { carnet = d; noterFiches(d); }
+        dessinerCarnetLateral(carnet);
+        return carnet;
       })
-      .catch(function () {});
+      .catch(function () { carnetEnCours = null; return carnet; });
+    return carnetEnCours;
+  }
+
+  // Un seul aller-retour à la fois : deux fenêtres qui s'ouvrent coup sur coup
+  // n'en demandent pas deux.
+  function carnetPret() { return carnetEnCours || lireCarnet(); }
+
+  function chargerContacts() { lireCarnet(); }
+
+  function dessinerCarnetLateral(d) {
+    var liste = $('#side-list .sl-liste');
+    if (!liste) return;
+    // `element.open` survit à `buildList` : un dossier replié le reste quand
+    // la liste se refait. On note donc l'état avant de tout jeter.
+    var replies = {};
+    Array.prototype.forEach.call(liste.querySelectorAll('.sl-dossier'), function (b) {
+      if (b.classList.contains('replie')) replies[b.getAttribute('data-nom')] = true;
+    });
+    liste.textContent = '';
+    if (!d) return;
+    // Carnet vide : la bande reste BLANCHE, sans un mot. C'est ce que fait le
+    // SWF — `buildList` ne parcourt rien et n'écrit rien.
+    (d.dossiers || []).forEach(function (f) {
+      var bloc = document.createElement('div');
+      bloc.className = 'sl-dossier';
+      bloc.setAttribute('data-nom', f.nom);
+      if (replies[f.nom]) bloc.classList.add('replie');
+      var contenu = document.createElement('div');
+      contenu.className = 'sl-contenu';
+      (f.contacts || []).forEach(function (c) { contenu.appendChild(ligneContact(c)); });
+      bloc.appendChild(enTeteDossier(f.nom, bloc));
+      bloc.appendChild(contenu);
+      liste.appendChild(bloc);
+    });
+    (d.contacts || []).forEach(function (c) { liste.appendChild(ligneContact(c)); });
   }
 
 
@@ -7647,9 +7975,34 @@ window.BureauFrutiz = (function () {
     fermerSalon: function (salon) { fermerFenetre('salon:' + salon); },
     // GASPARD, la première icône de l'encart : `select(0)` d'époque.
     ouvrirGaspard: ouvrirGaspard,
-    // Les deux explorateurs : « Mes disques » et « Inventaire ».
+    // Les explorateurs : « Mes disques », « Inventaire », le carnet et la
+    // liste noire — la même fenêtre jaune, quatre dossiers de départ.
     ouvrirDisques: function () { ouvrirExplorateur('disques'); },
     ouvrirInventaire: function () { ouvrirExplorateur('inventaire'); },
+    ouvrirContacts: function () { ouvrirExplorateur('contacts'); },
+    ouvrirListeNoire: function () { ouvrirExplorateur('noire'); },
+    /*
+     * ATTRAPER UN FRUTIZ LÀ OÙ IL PARAÎT (`UserSlot.initButtons`).
+     *
+     * Un frutiz n'est pas un fichier : il n'a pas d'uid. `UserSlot` en fait
+     * donc une icône « à naître » —
+     *
+     *     createDragIcon({ uid: "new", type: "contact",
+     *                      desc: [userName + "@frutiparc.com"],
+     *                      name: userName, fbouille: this.fbouille })
+     *
+     * — et c'est cet uid « new » qui fait prendre la branche `fileMng.make`
+     * au dépôt : glissé sur « Mes contacts », le frutiz s'y AJOUTE ; glissé
+     * sur le bureau, il y pose son raccourci. C'est le geste que le bandeau
+     * du carnet annonce (« en faisant glisser un frutiz depuis un salon »).
+     * Le carnet le fait déjà pour SES lignes ; on ouvre la même porte à la
+     * liste des connectés d'un salon.
+     */
+    attraperFrutiz: function (el, pseudo, bouille) {
+      if (!el || !pseudo || el._fbAttrape) return;
+      el._fbAttrape = true;
+      attraperContact(el, { pseudo: String(pseudo), bouille: bouille || '' });
+    },
     // La boutique : une FENÊTRE sur le bureau, la feuille du mobile ailleurs.
     ouvrirBoutique: ouvrirBoutique,
     // « Modifier ma fiche » (`win.EditInfo`) : une FENÊTRE aussi. Le light

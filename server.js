@@ -20807,8 +20807,19 @@ app.get('/api/light/contacts', (req, res) => {
     contacts: (parDossier[f.uid] || []).map(fiche),
   }));
 
+  // LA LISTE NOIRE, servie ici AUSSI. Elle n'est pas dans la barre latérale —
+  // `SideList` ne montre que « Mes contacts » — mais c'est un dossier du même
+  // carnet (`FPFileMng.loadBlackList` la lit par le même `/ff/ls`), et la
+  // fenêtre du bureau a besoin de la MÊME fiche pour chacun : sans bouille, un
+  // banni n'aurait qu'une icône vide alors que `but.Icon.display` lui dessine
+  // son visage comme à tout contact.
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, dossiers, contacts: (parDossier.mycontact || []).map(fiche) });
+  res.json({
+    ok: true,
+    dossiers,
+    contacts: (parDossier.mycontact || []).map(fiche),
+    noire: (user.blacklist || []).map(fiche),
+  });
 });
 
 // « Je joue / j'ai fini » — la balise des jeux NATIFS (mobile et portages).

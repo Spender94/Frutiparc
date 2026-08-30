@@ -2292,6 +2292,22 @@
            paraît QUE sur le bureau : le mobile n'a pas de fenêtre d'aide, et
            son accueil ne change pas. -->
       <button class="home-tile home-tile-bureau" data-go="gaspard"><span class="ico"><img src="/fb/Aide.svg" alt="" onerror="this.replaceWith(document.createTextNode('❓'))"></span><span class="lbl">Gaspard</span></button>
+      <!-- MES CONTACTS et LA LISTE NOIRE. D'époque ce sont deux DOSSIERS de la
+           rangée d'icônes (les 5e et 8e des quinze, cf. PLAN.md) : « Mes
+           contacts » vient du listing de la racine, « Liste noire » est poussée
+           par le client lui-même —
+
+               l.push({type:"folder", uid:"blacklist",
+                       desc:["Liste noire","blacklist"]});     (FPFileMng)
+
+           et chacune ouvre le MÊME `win.Explorer` que les disques et
+           l'inventaire, sur son dossier. Les icônes sont celles du bureau,
+           sorties de fileIcon.swf par extract-frutiz-explorer.js. Les deux
+           tuiles ne paraissent que sur le bureau : sur mobile le carnet vit
+           dans la liste des salons, et la liste noire dans la fiche d'un
+           frutiz. -->
+      <button class="home-tile home-tile-bureau" data-go="contacts"><span class="ico"><img src="/frutiz/sprites/ico_dossier_mycontact.svg" alt="" onerror="this.replaceWith(document.createTextNode('👤'))"></span><span class="lbl">Mes contacts</span></button>
+      <button class="home-tile home-tile-bureau" data-go="noire"><span class="ico"><img src="/frutiz/sprites/ico_dossier_blacklist.svg" alt="" onerror="this.replaceWith(document.createTextNode('🚫'))"></span><span class="lbl">Liste noire</span></button>
     </div>
 
     <!-- Le compte, et la sortie. Le bureau Flash n'offre « Se déconnecter »
@@ -3853,6 +3869,16 @@
       if (go === "inventaire") {
         if (surBureau && BureauFrutiz.ouvrirInventaire) return BureauFrutiz.ouvrirInventaire();
         return openBouilleSheet();
+      }
+      // LE CARNET et LA LISTE NOIRE — deux dossiers de plus dans la même
+      // fenêtre d'explorateur. Tuiles du bureau uniquement (home-tile-bureau).
+      if (go === "contacts") {
+        if (surBureau && BureauFrutiz.ouvrirContacts) BureauFrutiz.ouvrirContacts();
+        return;
+      }
+      if (go === "noire") {
+        if (surBureau && BureauFrutiz.ouvrirListeNoire) BureauFrutiz.ouvrirListeNoire();
+        return;
       }
       if (go === "club") return window.open("/club/", "_blank");
       // LE FORUM. Sur le bureau, `win.Forum` n'ouvre pas de fenêtre du bureau :
@@ -9309,6 +9335,16 @@
     u.addEventListener("click", function () {
       ouvrirFiche(pseudo);
     });
+    // Et il s'ATTRAPE : `UserSlot.initButtons` branche `createDragIcon` sur
+    // `onDragOut`, si bien qu'un frutiz du salon se glisse sur « Mes
+    // contacts » (il s'y ajoute) ou sur le bureau (il y pose son raccourci).
+    // C'est le geste que le bandeau du carnet annonce. Bureau seulement : au
+    // doigt, tirer sur la liste la fait défiler, ce n'est pas un glissé.
+    if (window.BureauFrutiz && BureauFrutiz.actif && BureauFrutiz.actif()
+        && BureauFrutiz.attraperFrutiz) {
+      BureauFrutiz.attraperFrutiz(u, pseudo,
+        state.bouilleByUser && state.bouilleByUser[String(pseudo).toLowerCase()]);
+    }
     if (lieu) { var l = el("div", "lieu"); l.textContent = lieu; u.appendChild(l); }
     return u;
   }

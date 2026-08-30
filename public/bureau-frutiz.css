@@ -1446,10 +1446,10 @@ body.bureau-frutiz .fen:has(#scores-panel) {
      mainStyleName = folderType.styleName
 
    soit `frFileStandard` — le jaune — pour un dossier ordinaire. (La corbeille
-   vaudrait `frFileTrash`, le vert, et la liste noire `frFileBlackList`, le
-   violet : ni l'une ni l'autre n'a encore de fenêtre sur le bureau.) L'arbre de
-   gauche, lui, est en `frSystem` et le volet d'info en `frSheet` — mais ils ne
-   défilent pas. */
+   vaudrait `frFileTrash`, le vert : elle n'a pas encore de fenêtre sur le
+   bureau. La liste noire, elle, en a une — voir sa peau POURPRE plus bas.)
+   L'arbre de gauche, lui, est en `frSystem` et le volet d'info en `frSheet` —
+   mais ils ne défilent pas. */
 body.bureau-frutiz .fen:has(#mail-panel),
 body.bureau-frutiz .fen:has(.ex-panel),
 body.bureau-frutiz .fen:has(.fb-dossier-panneau) {
@@ -4209,6 +4209,52 @@ body.bureau-frutiz .fen .ex-panel .ex-vide {
   font: normal 10px Verdana, Arial, sans-serif; color: #5A5A00;
 }
 body.bureau-frutiz .fen .ex-panel .ex-champ.attente { cursor: progress; }
+
+/* ══ LE CARNET ET LA LISTE NOIRE ═══════════════════════════════════════════
+ *
+ * UN CONTACT est un `but.icon.Standard` comme les autres, à ceci près que
+ * `but.Icon.display` remplace son dessin par une FRUTIBOUILLE et met
+ * `icoRatio` à 1 : la même géométrie que l'accessoire de l'inventaire. Il
+ * s'attrape (`IconFileBox.createDragIcon`) — le curseur le dit.
+ *
+ * L'ENCRE DU PSEUDO suit le GENRE, comme partout ailleurs
+ * (`UserSlot.onInfoBasic`, 0x63a51) ; sans genre connu, l'étiquette garde
+ * l'encre du dossier. */
+body.bureau-frutiz .fen .ex-panel .ex-slot-contact { cursor: grab; }
+body.bureau-frutiz .fen .ex-panel .ex-slot-contact[data-genre="M"] .ex-lbl { color: #242169; }
+body.bureau-frutiz .fen .ex-panel .ex-slot-contact[data-genre="F"] .ex-lbl { color: #BB4444; }
+/* Hors ligne, la bouille reste dessinée mais s'éteint — c'est ce que fait la
+   pastille de `UserSlot` (présence 0 → saumon), portée ici sur le dessin
+   lui-même faute d'un coin où poser la pastille dans une case de 80. */
+body.bureau-frutiz .fen .ex-panel .ex-slot-contact:not(.en-ligne) .ex-bouille { opacity: .55; }
+
+/* LA PEAU DE LA LISTE NOIRE — `frFileBlackList`.
+ *
+ * `box.Explorer` ne déclare pas sa peau en dur : il prend celle du DOSSIER
+ * (`mainStyleName = folderType.styleName`, 0x930be), et le dossier
+ * « blacklist » porte `frFileBlackList`, dont `getWinStyle` donne les deux
+ * couleurs — `[purple, purple]`. La famille est écrite en clair dans
+ * frutiparc/global.as :
+ *
+ *     purple : lighter #ECDEED, light #DBC6E3, main #D0B5DC, shade #BF9ED1,
+ *              dark #A679C1, darker #8E55B3, darkest #6E3C8D, overdark #432353
+ *
+ * Le champ se peint donc comme le jaune, cran pour cran : le liseré est
+ * `shade`, la chair `main`, l'encre des étiquettes `darkest`. */
+body.bureau-frutiz .fen .ex-panel.ex-noire .ex-champ {
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,.6) 2px, rgba(255,255,255,0) 10px),
+    #D0B5DC;
+  border-color: #BF9ED1;
+}
+body.bureau-frutiz .fen .ex-panel.ex-noire .ex-lbl,
+body.bureau-frutiz .fen .ex-panel.ex-noire .ex-vide { color: #6E3C8D; }
+body.bureau-frutiz .fen .ex-panel.ex-noire .ex-slot:focus-visible { outline-color: #6E3C8D; }
+/* La glissière suit le composant (cf. « LES DEUX JEUX DE COULEURS ») :
+   `back` vient du STYLE DU COMPOSANT, donc pourpre ici. */
+body.bureau-frutiz .fen:has(.ex-panel.ex-noire) {
+  --asc-glissiere: #BF9ED1; --asc-liseret: #A679C1;
+}
 
 /* ══ LA PAGE DE CHARGEMENT — `loadingProcess` (#154) ═══════════════════════
  *

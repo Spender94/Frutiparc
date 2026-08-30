@@ -46,8 +46,16 @@ test('le bureau reçoit ce qui n’a pas trouvé de dropBox', () => {
 
 test('les trois branches d’onDrop, Ctrl compris', () => {
   // Déjà du bureau → on repositionne, et rien d'autre.
-  assert.match(JS, /var dedans = info\.uid && trouverObjet\(info\.uid\);\s*\n\s*if \(dedans && !ctrl\) \{/);
+  assert.match(JS, /var dedans = objetDeLIcone\(info\);\s*\n\s*if \(dedans && !ctrl\) \{/);
   assert.match(JS, /ecrireObjetBureau\(\{ action: 'move', uid: dedans\.uid, parent: 'root', pos: dedans\.pos \}\)/);
+  // Un contact ne porte pas le même identifiant selon d'où on l'attrape : le
+  // bureau le range sous son ADRESSE, la fenêtre du carnet sous son nom court.
+  // Sans cette résolution, reposer sur le bureau un frutiz qui y était déjà
+  // repartait en création, et `creerObjetBureau` la refusait en doublon.
+  const parIcone = /function objetDeLIcone\(info\) \{[\s\S]*?\n  \}/.exec(JS)[0];
+  assert.match(parIcone, /if \(info\.type !== 'contact'\) return null;/);
+  assert.match(parIcone, /var adresse = \(info\.desc \|\| \[\]\)\[0\];/);
+  assert.match(parIcone, /trouverObjet\(adresse\)/);
   // `Key.isDown(17)` : la touche Ctrl est relue à chaque pas et au lâcher.
   assert.match(JS, /glisseur\.ctrl = !!\(e\.ctrlKey \|\| e\.metaKey\);/);
   assert.match(JS, /var ctrl = glisseur\.ctrl;\s+\/\/ `Key\.isDown\(17\)`/);
