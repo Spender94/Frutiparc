@@ -326,7 +326,14 @@ test('le disque Minipixiz est dans la pochette de /light', () => {
   assert.match(html, /tab: "miniwave", img: "\/fb\/fd_miniwave\.png\?v=\d+", name: "Mini-Wave"/,
     'celui de Mini-Wave aussi');
   assert.match(html, /id="minipixiz-panel"/, 'et son panneau existe');
-  assert.match(html, /"\/minipixiz\/\?sid="/, 'qui charge le jeu avec la session');
+  // L'adresse du jeu vit dans la table `ADRESSES_JEU`, qui sert AUX DEUX
+  // usages — le cadre de l'onglet et la fenêtre déportée —, et `adresseJeu`
+  // y accroche la session : sans elle le jeu tourne mais n'enregistre rien.
+  assert.match(html, /minipixiz: "\/minipixiz\/"/, 'son adresse est dans la table');
+  assert.match(html, /return a \? a \+ "\?sid=" \+ encodeURIComponent\(state\.sid \|\| ""\) : null;/,
+    'et la session l’accompagne');
+  assert.match(html, /cadreJeu\.setAttribute\("src", adresseJeu\(tab\)\);/,
+    'c’est elle que le cadre reçoit');
 
   // Les deux jaquettes sont des DESSINS déposés dans le dépôt, au gabarit des
   // trois autres (~93×93 px) : les scripts qui avaient composé les premières

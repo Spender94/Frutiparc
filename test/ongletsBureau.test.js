@@ -401,3 +401,44 @@ test('une fenêtre VIENT DU COIN, et y met le temps du SWF', () => {
   assert.ok(!/fen\.style\.left = Math\.round\(pos\.x\)/.test(borne),
     'plus de saut dans le cadre');
 });
+
+test('un onglet de JEU gagne « Déporter », au-dessus de « Fermer »', () => {
+  /* ÉCART ASSUMÉ, et c'est un choix OFFERT : le jeu s'ouvre comme d'habitude
+     dans le corps de la page — l'onglet d'époque —, et « Déporter » le fait
+     passer dans une fenêtre de navigateur à lui, comme les trois jeux restés
+     en Flash le font depuis toujours. Rien ne part en fenêtre tout seul.
+
+     LA PLACE : `_y = −(i × tabMenuSpace + 16)` met l'index 0 EN BAS. Poussée
+     en fin de tableau, l'entrée se dessine donc TOUT EN HAUT, au-dessus de
+     « Fermer » — c'est là qu'elle était demandée. */
+  assert.match(JS, /if \(jeu\) m\.push\(\{ titre: 'Déporter', faire: function \(\) \{ deporterJeu\(jeu\); \} \}\);/);
+  // Elle n'existe que pour un onglet qui PORTE un jeu.
+  assert.match(JS, /function jeuDuSlot\(idOnglet\) \{/);
+  assert.match(JS, /if \(rub && rub\.panneau === '#' \+ s\.panneau\) return tab;/);
+  // Le jeu QUITTE la page : deux instances écriraient la même sauvegarde.
+  const d = JS.slice(JS.indexOf('function deporterJeu(tab) {'),
+    JS.indexOf('function deporterJeu(tab) {') + 800);
+  assert.match(d, /if \(!P\.deporter\(tab, rub\.l, rub\.h\)\)/);
+  assert.match(d, /if \(panneau && fenetres\[panneau\.id\]\) fermerFenetre\(panneau\.id\);/);
+  assert.match(d, /frusion\.jeu = null; frusion\.jeuDeporte = tab;/);
+  // Éjecter le disque referme sa fenêtre, comme il referme celle de Ruffle.
+  assert.match(JS, /if \(this\.jeuDeporte\) \{\s*\n\s*if \(window\.JeuxPortes\) window\.JeuxPortes\.refermer\(\);/);
+});
+
+test('`JeuxPortes` : une adresse par jeu, et une seule fenêtre à la fois', () => {
+  const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  // La table des adresses sert AUX DEUX usages — le cadre de l'onglet et la
+  // fenêtre déportée. Deux listes qui divergent, c'est un jeu qui s'ouvre à
+  // vide d'un côté.
+  assert.match(LIGHT, /var ADRESSES_JEU = \{\s*\n\s*grapiz: "\/grapiz\/", bandas: "\/bandas\/", swapou: "\/swapou\/",/);
+  assert.match(LIGHT, /cadreJeu\.setAttribute\("src", adresseJeu\(tab\)\);/);
+  // Les huit jeux ont bien leur adresse ET leur cadre.
+  const t = /var ADRESSES_JEU = \{([\s\S]*?)\};/.exec(LIGHT)[1];
+  for (const j of ['grapiz', 'bandas', 'swapou', 'miniwave', 'minipixiz', 'snake3',
+    'minifever', 'jamajama']) {
+    assert.ok(new RegExp(j + ':').test(t), j + ' doit avoir son adresse');
+  }
+  // Une seule fenêtre : le même NOM de fenêtre, que le navigateur recycle.
+  assert.match(LIGHT, /window\.__jeuPopup = window\.open\(url, "frutiparc_jeu", traits\);/);
+  assert.match(LIGHT, /if \(!window\.__jeuPopup\) return false;/);
+});

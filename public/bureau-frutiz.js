@@ -114,7 +114,11 @@ window.BureauFrutiz = (function () {
     // dessous n'est donc que celui de la fenêtre VIDE, à l'ouverture.
     // `winType = "winSearchFrutiz"` : une étiquette que la bande de fruits
     // #198 ne connaît pas, donc l'ORANGE par défaut en pastille.
-    recherche:  { panneau: '#recherche-panel', titre: 'Recherche', fruit: 'winSearchFrutiz',
+    // Le TITRE est celui du fichier de langue, au mot près :
+    // `_global.langText.search.title = "Recherche de frutiz"`
+    // (frutiparc/lang_french.as), que `box.Search` lit par
+    // `Lang.fv("search.title")` (0x9854c).
+    recherche:  { panneau: '#recherche-panel', titre: 'Recherche de frutiz', fruit: 'winSearchFrutiz',
                   l: 284, h: 84, fixe: true, min: minFenetre(270, 20 + 24) },
     // GASPARD — `box.Help` / `win.Help` (0xbd7db). C'est une fenêtre de
     // DIALOGUE, comme un salon : `win.Help` étend `win.Dialog`, et
@@ -139,7 +143,18 @@ window.BureauFrutiz = (function () {
                        l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
   };
 
-  function fruitUrl(nom) { return '/frutiz/sprites/fruit_' + (nom || 'default') + '.svg'; }
+  /* `gotoAndStop(type)` SUR LA BANDE #198, et rien d'autre : une étiquette que
+     la bande ne connaît pas laisse le clip sur sa PREMIÈRE image, l'orange.
+     Le portage bâtissait l'adresse à partir du nom sans vérifier qu'il en
+     existe un dessin — `winSearchFrutiz`, qui n'est pas dans la bande, donnait
+     un fichier absent et la fenêtre de recherche n'avait plus de pastille du
+     tout. La liste ci-dessous est celle des images ÉTIQUETÉES, telle que
+     `scripts/extract-frutiz-bureau.js` les sort. */
+  var FRUITS_CONNUS = ['winDebug', 'winChat', 'winExplorer', 'winShop', 'winAlert'];
+  function fruitUrl(nom) {
+    var n = FRUITS_CONNUS.indexOf(String(nom || '')) >= 0 ? nom : 'default';
+    return '/frutiz/sprites/fruit_' + n + '.svg';
+  }
 
   var actif = false;
   var fenetres = {};                    // id de panneau → { fen, corps, panneau, origine, txt, pastille }
@@ -1168,28 +1183,34 @@ window.BureauFrutiz = (function () {
    * des régions, titre compris, et `updateRegionCombo` (0x867be) le repose sur
    * sa première entrée.
    *
-   * Les libellés des trois titres viennent du fichier de langue du SERVEUR
-   * (`search.country_combo_title`, `search.region_combo_title`,
-   * `search.choose_country_first`) : il n'est pas dans le SWF. Un seul est
-   * connu au mot près — `win.search.Frutiz.init` (0x861e9) écrit en dur
-   * « Choisissez un pays ! » comme valeur de repli d'`infoRegion`, et c'est
-   * donc bien la phrase d'époque pour la liste des régions AVANT tout choix de
-   * pays. Les deux autres sont reconstruits sur ce modèle ; le seul point non
-   * reconstruit du titre des régions est sa SUBSTITUTION : `fv(clé, {n:
+   * Les libellés des trois titres viennent du fichier de langue, et ils ne
+   * sont plus reconstruits : `frutiparc/lang_french.as` les porte au mot près.
+   *
+   *     search.country_combo_title  = "Tout Pays..."
+   *     search.region_combo_title   = "Tout(e) $n..."
+   *     search.region_combo_none    = "non disponible"
+   *     search.choose_country_first = "Choisissez votre pays en premier..."
+   *
+   * La SUBSTITUTION du titre des régions est `fv(clé, {n:
    * regionName.toLowerCase()})`, où `regionName` est l'attribut `tn` de la
    * table <ct>. Il ne vaut « département » que pour la France — les quatre
    * autres pays y portent leur propre code (« be », « lu », « ca », « ch »).
-   * C'est la donnée d'origine, on ne la corrige pas.
+   * C'est la donnée d'origine, on ne la corrige pas : le Canada affiche donc
+   * « Tout(e) ca... », et c'était bien ainsi en 2005.
    */
-  var RC_TITRE_PAYS = 'Choisissez un pays';
-  var RC_TITRE_AVANT_PAYS = 'Choisissez un pays !';
-  var RC_TITRE_SANS_REGION = 'Aucune région';
+  var RC_TITRE_PAYS = 'Tout Pays...';
+  var RC_TITRE_AVANT_PAYS = 'Choisissez votre pays en premier...';
+  var RC_TITRE_SANS_REGION = 'non disponible';
   function chargerCombosPays() {
     var P = pontRecherche();
     if (!P || !P.tablePays || rcEtat.pays) { majComboPays(); return; }
     P.tablePays(function (table) {
       rcEtat.pays = table || [];
       majComboPays();
+      // La table peut arriver APRÈS une première page de résultats (elle passe
+      // par le réseau) : les entrées déjà posées porteraient « Inconnu » pour
+      // toujours. On les redessine, elles seules.
+      if (rcEtat.resultats.length) redessinerResultats();
       ajusterFenetreRecherche();
     });
   }
@@ -1223,7 +1244,7 @@ window.BureauFrutiz = (function () {
       sel.appendChild(optionRecherche('', RC_TITRE_SANS_REGION));
     } else {
       var n = String(pays.nomRegion || '').toLowerCase();
-      sel.appendChild(optionRecherche('', 'Choisissez un ' + (n || 'lieu')));
+      sel.appendChild(optionRecherche('', 'Tout(e) ' + (n || 'lieu') + '...'));
       pays.regions.forEach(function (r) {
         // `displayCode` : « 01 - Ain » plutôt que « Ain » tout court.
         sel.appendChild(optionRecherche(r.code,
@@ -1264,13 +1285,18 @@ window.BureauFrutiz = (function () {
     }
     if (total !== null && total !== undefined) rcEtat.total = Number(total) || 0;
     rcEtat.resultats = liste || [];
-    var zone = rcPanneau.querySelector('.rc-liste');
-    zone.textContent = '';
-    rcEtat.resultats.forEach(function (info) { zone.appendChild(blocRecherche(info)); });
+    redessinerResultats();
     var nbPages = Math.ceil(rcEtat.total / RC_BLOC_MAX);
     texteDePage(page + '/' + nbPages + ' - ' + rcEtat.total
       + ' réponse' + (rcEtat.total > 1 ? 's' : ''));
     ajusterFenetreRecherche();
+  }
+  function redessinerResultats() {
+    if (!rcPanneau) return;
+    var zone = rcPanneau.querySelector('.rc-liste');
+    if (!zone) return;
+    zone.textContent = '';
+    rcEtat.resultats.forEach(function (info) { zone.appendChild(blocRecherche(info)); });
   }
   function texteDePage(t) {
     if (!rcPanneau) return;
@@ -1398,7 +1424,15 @@ window.BureauFrutiz = (function () {
         else ajusterFenetreRecherche();
       });
     }
-    if (rcEtat.avance) chargerCombosPays();
+    /* LA TABLE <ct> SE CHARGE DÈS L'OUVERTURE, et pas seulement quand la
+       recherche avancée se déplie. Les deux menus déroulants n'en sont pas les
+       seuls clients : chaque ENTRÉE du listing y lit le nom de sa région
+       (`cp.SearchSlot.initDoc` affiche `regionName`, pas l'index). Sans elle,
+       `nomRegion` ne trouvait rien et tout le monde était « Inconnu » — le
+       Québec de 3l_Professor comme le reste. `box.Search` d'époque la tient
+       depuis son constructeur (`langText.countries`), donc bien avant tout
+       résultat. */
+    chargerCombosPays();
     ajusterFenetreRecherche();
     var champ = rcPanneau.querySelector('.rc-pseudo');
     if (champ) champ.focus();
@@ -2821,6 +2855,9 @@ window.BureauFrutiz = (function () {
     var tab = JEUX_LIGHT[String(info.desc[1] || '').toLowerCase()];
     this.jeu = null;
     this.jeuFlash = null;
+    // Un jeu déporté par un disque précédent n'a plus rien à voir avec
+    // celui-ci : sa fenêtre est déjà partie avec l'éjection.
+    this.jeuDeporte = null;
     // LES TROIS DISQUES QUI SONT ENCORE EN FLASH : pas d'onglet, une FENÊTRE
     // À PART (game-popup.html + Ruffle) — celle que la Frusion d'époque
     // ouvrait déjà pour eux depuis `ruffle.html`.
@@ -2856,6 +2893,12 @@ window.BureauFrutiz = (function () {
       if (window.JeuxFlash) window.JeuxFlash.fermer();
       this.jeuFlash = null;
     }
+    // Un jeu DÉPORTÉ non plus : il est parti dans une fenêtre de navigateur,
+    // et éjecter son disque doit la refermer comme elle refermerait l'onglet.
+    if (this.jeuDeporte) {
+      if (window.JeuxPortes) window.JeuxPortes.refermer();
+      this.jeuDeporte = null;
+    }
     this.stopDisc('releaseDisc');
   };
 
@@ -2865,6 +2908,17 @@ window.BureauFrutiz = (function () {
     if (this.disque && !this.jeu && this.jeuFlash) {
       var f = this.jeuFlash;
       if (window.JeuxFlash) { window.JeuxFlash.fermer(); window.JeuxFlash.ouvrir(f); }
+      return;
+    }
+    // Un jeu déporté redémarre dans SA fenêtre : on la recharge, comme on
+    // rouvre celle de Ruffle.
+    if (this.disque && !this.jeu && this.jeuDeporte) {
+      var d = this.jeuDeporte;
+      var rd = RUBRIQUES[d];
+      if (window.JeuxPortes) {
+        window.JeuxPortes.refermer();
+        window.JeuxPortes.deporter(d, rd && rd.l, rd && rd.h);
+      }
       return;
     }
     if (!this.disque || !this.jeu) return;
@@ -5495,14 +5549,57 @@ window.BureauFrutiz = (function () {
         { titre: 'Recherche', faire: ouvrirRecherche },
       ];
     }
-    return [
+    var m = [
       { titre: 'Vers bureau', faire: function () { versBureau(idOnglet); } },
       { titre: 'Fermer', faire: function () {
-        var s = null;
-        for (var i = 0; i < slots.length; i++) if (slots[i].id === idOnglet) s = slots[i];
+        var s = slotDe(idOnglet);
         if (s) fermerFenetre(s.panneau);
       } },
     ];
+    /* « DÉPORTER » — l'index le plus GRAND se dessine le plus HAUT (`_y =
+       −(i × tabMenuSpace + 16)`), l'entrée arrive donc au-dessus de
+       « Fermer », comme demandé. Elle n'existe que pour les onglets qui
+       PORTENT UN JEU : c'est le seul contenu qui vaille d'être vu seul, à sa
+       taille, sur son écran. Les trois jeux restés en Flash n'en ont pas
+       besoin — ils s'ouvrent DÉJÀ ainsi et n'ont pas d'onglet. */
+    var jeu = jeuDuSlot(idOnglet);
+    if (jeu) m.push({ titre: 'Déporter', faire: function () { deporterJeu(jeu); } });
+    return m;
+  }
+
+  function slotDe(idOnglet) {
+    for (var i = 0; i < slots.length; i++) if (slots[i].id === idOnglet) return slots[i];
+    return null;
+  }
+  /** La rubrique de jeu que porte cet onglet, s'il en porte une. */
+  function jeuDuSlot(idOnglet) {
+    var s = slotDe(idOnglet);
+    if (!s) return null;
+    for (var cle in JEUX_LIGHT) {
+      if (!Object.prototype.hasOwnProperty.call(JEUX_LIGHT, cle)) continue;
+      var tab = JEUX_LIGHT[cle];
+      var rub = RUBRIQUES[tab];
+      if (rub && rub.panneau === '#' + s.panneau) return tab;
+    }
+    return null;
+  }
+  /*
+   * Le jeu passe dans une fenêtre de navigateur, et QUITTE la page : deux
+   * instances du même jeu écriraient la même sauvegarde chacune de son côté.
+   * On referme donc sa fenêtre du bureau — et la Frusion le sait, pour que
+   * l'éjection du disque referme la bonne chose.
+   */
+  function deporterJeu(tab) {
+    var P = window.JeuxPortes;
+    var rub = RUBRIQUES[tab];
+    if (!P || !P.deporter || !rub) return;
+    if (!P.deporter(tab, rub.l, rub.h)) {
+      alerte('Fenêtre bloquée : ', 'le navigateur a refusé d’ouvrir la fenêtre du jeu.');
+      return;
+    }
+    var panneau = $(rub.panneau);
+    if (panneau && fenetres[panneau.id]) fermerFenetre(panneau.id);
+    if (frusion && frusion.jeu === tab) { frusion.jeu = null; frusion.jeuDeporte = tab; }
   }
 
   // `FPDesktop.logout` : on part. La confirmation en deux temps est une

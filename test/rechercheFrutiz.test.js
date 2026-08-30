@@ -68,7 +68,10 @@ const SERVEUR = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 test('la fenêtre reprend les constantes de `win.Search.init`', () => {
   // mWidth = 270 → 284 de fenêtre (la même loi que le journal : 300 → 314),
   // et `flResizable = false` → pas de poignée.
-  assert.match(JS, /recherche:\s*\{ panneau: '#recherche-panel', titre: 'Recherche', fruit: 'winSearchFrutiz',\s*\n\s*l: 284, h: \d+, fixe: true, min: minFenetre\(270, 20 \+ 24\) \}/);
+  // Le TITRE est celui du fichier de langue, au mot près :
+  // `_global.langText.search.title = "Recherche de frutiz"` (lang_french.as),
+  // que `box.Search` lit par `Lang.fv("search.title")` (0x9854c).
+  assert.match(JS, /recherche:\s*\{ panneau: '#recherche-panel', titre: 'Recherche de frutiz', fruit: 'winSearchFrutiz',\s*\n\s*l: 284, h: \d+, fixe: true, min: minFenetre\(270, 20 \+ 24\) \}/);
   assert.match(JS, /var RC_LARGEUR = 270;/);
   assert.match(JS, /var RC_BLOC_MAX = 6;/);
   assert.match(JS, /var RC_TH = 44, RC_MLEFT = 24;/);
@@ -305,8 +308,14 @@ test('les menus pays/région suivent `box.onCountryChange`', () => {
   assert.match(m, /pays\.afficherCode \? \(r\.code \+ ' - ' \+ r\.nom\) : r\.nom/);
   // `updateRegionCombo` finit par `valSetTo(0)`.
   assert.match(m, /sel\.selectedIndex = 0;/);
-  // La seule phrase connue au mot près (repli codé en dur dans `init`).
-  assert.match(JS, /var RC_TITRE_AVANT_PAYS = 'Choisissez un pays !';/);
+  // Les trois titres viennent du fichier de langue, au mot près
+  // (frutiparc/lang_french.as, `_global.langText.search.*`) : ils ne sont plus
+  // reconstruits. La substitution du titre des régions est `$n` =
+  // `regionName.toLowerCase()`, l'attribut `tn` de la table <ct>.
+  assert.match(JS, /var RC_TITRE_PAYS = 'Tout Pays\.\.\.';/);
+  assert.match(JS, /var RC_TITRE_AVANT_PAYS = 'Choisissez votre pays en premier\.\.\.';/);
+  assert.match(JS, /var RC_TITRE_SANS_REGION = 'non disponible';/);
+  assert.match(m, /'Tout\(e\) ' \+ \(n \|\| 'lieu'\) \+ '\.\.\.'/);
 });
 
 test('le serveur sert `tn` et `d`, et garde l’ORDRE du fichier de langue', () => {
@@ -356,4 +365,50 @@ test('les dessins sortis du SWF sont là', () => {
   assert.deepStrictEqual(man.pays.codes, ['fr', 'be', 'lu', 'ca', 'ch', 'ot']);
   // ch222 n'a que TROIS images : hors ligne, en ligne, invisible.
   assert.strictEqual(man.presence.images.length, 3);
+});
+
+test('la pastille du bandeau retombe sur l’ORANGE, faute de fruit `winSearchFrutiz`', () => {
+  /* `gotoAndStop(type)` sur la bande de fruits #198 : une étiquette que la
+     bande ne connaît pas laisse le clip sur sa PREMIÈRE image, l'orange.
+     `winSearchFrutiz` n'y est pas — le portage bâtissait pourtant l'adresse à
+     partir du nom, sans vérifier qu'il en existe un dessin, et la fenêtre de
+     recherche n'avait plus de pastille du tout. */
+  assert.match(JS, /var FRUITS_CONNUS = \['winDebug', 'winChat', 'winExplorer', 'winShop', 'winAlert'\];/);
+  assert.match(JS, /var n = FRUITS_CONNUS\.indexOf\(String\(nom \|\| ''\)\) >= 0 \? nom : 'default';/);
+  // Et les cinq dessins sont bien là, plus l'orange par défaut.
+  for (const f of ['default', 'winDebug', 'winChat', 'winExplorer', 'winShop', 'winAlert']) {
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/frutiz/sprites/fruit_' + f + '.svg')), f);
+  }
+  assert.ok(!fs.existsSync(path.join(ROOT, 'public/frutiz/sprites/fruit_winSearchFrutiz.svg')),
+    'la bande n’a pas ce fruit — le test veut qu’on le sache');
+});
+
+test('la table des pays se charge dès l’OUVERTURE : sinon la région est « Inconnu »', () => {
+  /* Chaque entrée du listing lit le nom de sa région dans la table <ct>
+     (`cp.SearchSlot.initDoc` affiche `regionName`, pas l'index) : elle ne sert
+     pas qu'aux deux menus déroulants de la recherche avancée. Chargée trop
+     tard, `nomRegion` ne trouvait rien et tout le monde était « Inconnu ». */
+  const o = JS.slice(JS.indexOf('function ouvrirRechercheFenetre()'),
+    JS.indexOf('function ouvrirRechercheFenetre()') + 1800);
+  assert.match(o, /\n    chargerCombosPays\(\);/);
+  assert.doesNotMatch(o, /if \(rcEtat\.avance\) chargerCombosPays\(\);/);
+  // Et si elle arrive APRÈS une première page, les entrées se redessinent.
+  assert.match(JS, /if \(rcEtat\.resultats\.length\) redessinerResultats\(\);/);
+  assert.match(JS, /function redessinerResultats\(\) \{/);
+});
+
+test('la bouille d’une entrée est un ÉCRAN, pas une image nue', () => {
+  /* `cp.FrutiScreen` (0x61a22) empile `inside.bg` = `frutiScreenBackGround`
+     (#139) en profondeur 10, la bouille, le masque en 40, et
+     `frutiScreenLight` (#395) en 50 — hors du masque. `drawScreen` cerne le
+     tout d'un liseré de 2 px `white.shade` (#DDDDDD) et d'un anneau intérieur
+     de 1 px `white.darker` (#888888), rayon 6. */
+  const b = CSS.slice(CSS.indexOf('#recherche-panel .rc-slot .rc-bouille {'),
+    CSS.indexOf('/* LA PLAQUE, derrière le document'));
+  assert.match(b, /background: url\('\/frutiz\/sprites\/ecran-fond\.svg'\) 0 0 \/ 100% 100% no-repeat;/);
+  assert.match(b, /box-shadow: 0 0 0 2px #DDDDDD;/);
+  assert.match(b, /box-shadow: inset 0 0 0 1px #888888;/);
+  assert.match(b, /background: url\('\/frutiz\/sprites\/ecran-reflet\.svg'\) 0 0 \/ 42\.7px 31\.8px no-repeat;/);
+  // Le reflet ne s'étire pas : même dessin sur un écran de 44 que de 100.
+  assert.match(b, /width: 42\.7px; height: 31\.8px;/);
 });

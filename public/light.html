@@ -4079,6 +4079,20 @@
     snake3: "#snake3-frame",
     minifever: "#minifever-frame", jamajama: "#jamajama-frame",
   };
+  /* CHAQUE JEU EST UNE PAGE À PART. Le cadre ne fait que l'héberger : le jeu
+     lui-même vit à son adresse, et c'est elle que `?sid=` accompagne. Une
+     seule table pour les deux usages — le chargement paresseux de l'onglet, et
+     le DÉPORT en fenêtre de navigateur (voir `JeuxPortes` plus bas) : deux
+     listes qui divergent, c'est un jeu qui s'ouvre à vide d'un côté. */
+  var ADRESSES_JEU = {
+    grapiz: "/grapiz/", bandas: "/bandas/", swapou: "/swapou/",
+    miniwave: "/miniwave/", minipixiz: "/minipixiz/", snake3: "/snake3/",
+    minifever: "/minifever/", jamajama: "/jamajama/",
+  };
+  function adresseJeu(tab) {
+    var a = ADRESSES_JEU[tab];
+    return a ? a + "?sid=" + encodeURIComponent(state.sid || "") : null;
+  }
   function donnerFocusAuJeu(tab) {
     var sel = CADRES_JEU[tab];
     if (!sel) return;
@@ -4159,52 +4173,12 @@
         fr.setAttribute("src", "/fb/?sid=" + encodeURIComponent(state.sid) + "&from=light");
       }
     }
-    if (tab === "grapiz") {
-      var gf = $("#grapiz-frame");
-      if (gf && !gf.getAttribute("src") && state.sid) {
-        gf.setAttribute("src", "/grapiz/?sid=" + encodeURIComponent(state.sid));
-      }
-    }
-    if (tab === "bandas") {
-      var bf = $("#bandas-frame");
-      if (bf && !bf.getAttribute("src") && state.sid) {
-        bf.setAttribute("src", "/bandas/?sid=" + encodeURIComponent(state.sid));
-      }
-    }
-    if (tab === "swapou") {
-      var sf = $("#swapou-frame");
-      if (sf && !sf.getAttribute("src") && state.sid) {
-        sf.setAttribute("src", "/swapou/?sid=" + encodeURIComponent(state.sid));
-      }
-    }
-    if (tab === "miniwave") {
-      var mf = $("#miniwave-frame");
-      if (mf && !mf.getAttribute("src") && state.sid) {
-        mf.setAttribute("src", "/miniwave/?sid=" + encodeURIComponent(state.sid));
-      }
-    }
-    if (tab === "minipixiz") {
-      var pf = $("#minipixiz-frame");
-      if (pf && !pf.getAttribute("src") && state.sid) {
-        pf.setAttribute("src", "/minipixiz/?sid=" + encodeURIComponent(state.sid));
-      }
-    }
-    if (tab === "snake3") {
-      var kf = $("#snake3-frame");
-      if (kf && !kf.getAttribute("src") && state.sid) {
-        kf.setAttribute("src", "/snake3/?sid=" + encodeURIComponent(state.sid));
-      }
-    }
-    if (tab === "minifever") {
-      var ff = $("#minifever-frame");
-      if (ff && !ff.getAttribute("src") && state.sid) {
-        ff.setAttribute("src", "/minifever/?sid=" + encodeURIComponent(state.sid));
-      }
-    }
-    if (tab === "jamajama") {
-      var jf = $("#jamajama-frame");
-      if (jf && !jf.getAttribute("src") && state.sid) {
-        jf.setAttribute("src", "/jamajama/?sid=" + encodeURIComponent(state.sid));
+    // Le cadre du jeu se remplit À LA PREMIÈRE OUVERTURE, et une seule fois :
+    // huit branches identiques, devenues une boucle sur la table des adresses.
+    if (CADRES_JEU[tab] && state.sid) {
+      var cadreJeu = $(CADRES_JEU[tab]);
+      if (cadreJeu && !cadreJeu.getAttribute("src")) {
+        cadreJeu.setAttribute("src", adresseJeu(tab));
       }
     }
     // Un jeu dans une IFRAME ne reçoit le clavier que s'il a le focus. Ouvrir
@@ -4336,6 +4310,55 @@
         if (DISCS[i].flash && DISCS[i].jaquette === l) return DISCS[i];
       }
       return null;
+    },
+  };
+
+  /* ══════════════════════════════════════════════════════════════════════
+     JOUER DANS UNE FENÊTRE À PART — les jeux PORTÉS, comme les trois Flash.
+
+     Les huit portages JS s'ouvrent dans le corps de la page : c'est ainsi
+     que le bureau d'époque lance un disque, et c'est le défaut. Mais les
+     trois jeux restés en Flash, eux, s'ouvrent depuis toujours dans une
+     fenêtre de navigateur à part (`ruffle.html` faisait déjà ainsi), et
+     certains joueurs préfèrent cela — le jeu à sa taille, sur son écran, et
+     le chat qui continue de vivre à côté.
+
+     ÉCART ASSUMÉ, et c'est un choix offert, pas imposé : l'entrée
+     « Déporter » du menu de l'onglet fait passer le jeu d'un mode à l'autre.
+     Rien ne s'ouvre en fenêtre tout seul.
+
+     UNE SEULE FENÊTRE DE JEU À LA FOIS, comme pour les SWF : deux instances
+     du même jeu écriraient la même sauvegarde chacune de son côté, et la
+     dernière à finir gagnerait. On réutilise donc le même nom de fenêtre
+     (`frutiparc_jeu`), ce qui fait que le navigateur RECYCLE la fenêtre
+     ouverte au lieu d'en empiler une seconde. */
+  window.JeuxPortes = {
+    adresse: adresseJeu,
+    // Le jeu part dans sa fenêtre. `l` et `h` sont le gabarit que le bureau
+    // donne déjà à la fenêtre du jeu (RUBRIQUES) : la fenêtre de navigateur
+    // reprend la même, faute de mieux que ce que le jeu demande lui-même.
+    deporter: function (tab, l, h) {
+      var url = adresseJeu(tab);
+      if (!url) return false;
+      var traits = "width=" + Math.max(320, Math.round(l || 900))
+        + ",height=" + Math.max(240, Math.round(h || 660))
+        + ",resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no";
+      try {
+        if (window.__jeuPopup && !window.__jeuPopup.closed) window.__jeuPopup.close();
+      } catch (e) { /* déjà fermée */ }
+      window.__jeuPopup = window.open(url, "frutiparc_jeu", traits);
+      if (!window.__jeuPopup) return false;   // bloquée par le navigateur
+      try { window.__jeuPopup.focus(); } catch (e) { /* refusé */ }
+      return true;
+    },
+    refermer: function () {
+      try {
+        if (window.__jeuPopup && !window.__jeuPopup.closed) window.__jeuPopup.close();
+      } catch (e) { /* déjà fermée */ }
+      window.__jeuPopup = null;
+    },
+    ouverte: function () {
+      try { return !!(window.__jeuPopup && !window.__jeuPopup.closed); } catch (e) { return false; }
     },
   };
   function renderDiscs() {

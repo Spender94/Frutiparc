@@ -496,8 +496,12 @@ test('/light lance Miniwave comme les autres disques', () => {
   assert.match(html, /classList\.toggle\("active", tab === "miniwave"\)/, 'activateTab le montre');
   // La session DOIT être transmise : sans elle le jeu tourne, mais n'enregistre
   // rien — ni pictos ni consécration.
-  assert.match(html, /"\/miniwave\/\?sid=" \+ encodeURIComponent\(state\.sid\)/,
+  // L'adresse vit dans `ADRESSES_JEU` — une seule table pour le cadre de
+  // l'onglet ET la fenêtre déportée — et `adresseJeu` y accroche la session.
+  assert.match(html, /miniwave: "\/miniwave\/"/, 'son adresse est dans la table');
+  assert.match(html, /return a \? a \+ "\?sid=" \+ encodeURIComponent\(state\.sid \|\| ""\) : null;/,
     'le cadre reçoit la session du joueur');
+  assert.match(html, /cadreJeu\.setAttribute\("src", adresseJeu\(tab\)\);/);
   // La jaquette porte un numéro de version : les images sont servies sous leur
   // propre nom, et un navigateur qui tient encore l'ancienne ne la relit pas.
   assert.match(html, /\{ tab: "miniwave", img: "\/fb\/fd_miniwave\.png\?v=\d+", name: "Mini-Wave" \}/,

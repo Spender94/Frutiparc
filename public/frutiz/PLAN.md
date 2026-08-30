@@ -2116,6 +2116,25 @@ descend, et les entrées prennent la place libérée. `FPTab.getMenu` rend
 de haut en bas, **« Fermer » puis « Vers bureau »** — exactement ce que montre
 le rendu d'époque.
 
+**ÉCART ASSUMÉ — « Déporter », et c'est un choix offert.** Un onglet qui porte
+un JEU gagne une troisième entrée, poussée en fin de tableau donc dessinée tout
+en HAUT, au-dessus de « Fermer ». Elle fait passer le jeu dans une fenêtre de
+navigateur à lui — celle-là même que les trois jeux restés en Flash ouvrent
+depuis toujours (`ruffle.html`, puis `game-popup.html`). Le défaut ne change
+pas : un disque lancé s'ouvre dans le corps de la page, comme le bureau
+d'époque le fait ; c'est au joueur de déporter s'il préfère, et rien ne part en
+fenêtre tout seul.
+
+Le jeu QUITTE la page en partant : deux instances du même jeu écriraient la
+même sauvegarde chacune de son côté, et la dernière à finir gagnerait — la même
+raison qui fait que `ruffle.html` n'ouvre qu'une fenêtre de jeu à la fois. La
+Frusion le sait (`frusion.jeuDeporte`) : éjecter le disque referme la fenêtre
+comme il refermait l'onglet, et `reset` la recharge. La fenêtre reprend le
+gabarit que `RUBRIQUES` donne déjà à la fenêtre du jeu (880 × 740 pour
+Frutisnake, 900 × 660 pour Grapiz…), et son adresse vient de `ADRESSES_JEU`
+(light.html) — la MÊME table que le cadre de l'onglet, pour qu'un jeu ne puisse
+pas s'ouvrir à vide d'un côté.
+
 ### Replier ne veut pas dire afficher
 
 ```
@@ -3503,7 +3522,36 @@ après chaque `displayBloc`. Le portage recalcule la hauteur au même moment
 → 314 de fenêtre), soit **284**.
 
 `winType = "winSearchFrutiz"` — une étiquette que la bande de fruits #198 ne
-connaît pas : la pastille reste l'ORANGE par défaut.
+connaît pas : la pastille reste l'ORANGE par défaut. Encore faut-il que le
+portage RETOMBE dessus : il bâtissait l'adresse du dessin à partir du nom sans
+vérifier qu'il en existe un, et la fenêtre n'avait plus de pastille du tout.
+`fruitUrl` ne connaît donc que les cinq étiquettes que la bande porte
+(`winDebug`, `winChat`, `winExplorer`, `winShop`, `winAlert`) ; tout le reste
+est l'orange, exactement comme `gotoAndStop` sur une image sans étiquette.
+
+**Le titre, et les trois autres mots.** Ils sont dans `frutiparc/lang_french.as`,
+au mot près — le portage les avait reconstruits :
+
+    search.title                = "Recherche de frutiz"
+    search.country_combo_title  = "Tout Pays..."
+    search.region_combo_title   = "Tout(e) $n..."      ($n = l'attribut `tn`)
+    search.region_combo_none    = "non disponible"
+    search.choose_country_first = "Choisissez votre pays en premier..."
+
+**La table `<ct>` se charge à l'OUVERTURE**, pas au dépliage de la recherche
+avancée : chaque ENTRÉE du listing y lit le nom de sa région
+(`cp.SearchSlot.initDoc` affiche `regionName`, pas l'index). Chargée trop tard,
+tout le monde était « Inconnu ». Et si elle arrive après une première page, les
+entrées se redessinent.
+
+**La bouille d'une entrée est un ÉCRAN.** `cp.FrutiScreen` (0x61a22) empile
+`inside.bg` = `frutiScreenBackGround` (#139) en profondeur 10, la bouille, le
+masque en 40, et `frutiScreenLight` (#395) en 50 — hors du masque, donc
+par-dessus tout. `drawScreen` cerne l'ensemble d'un liseré de 2 px
+`white.shade` (#DDDDDD) et d'un anneau intérieur de 1 px `white.darker`
+(#888888), rayon 6. Le portage ne posait que la bouille : sans fond vert ni
+cadre, la tête paraissait deux fois trop grosse faute de rien autour. C'est le
+même montage que l'écran d'un salon et que la plaque de la main bar.
 
 ### Le formulaire (`getSearchLines` 0x862c9, `getAdvanceSearchLines` 0x8646d)
 

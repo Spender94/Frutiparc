@@ -2068,14 +2068,40 @@ body.bureau-frutiz #recherche-panel .rc-slot .rc-voyant .jeu { width: 16px; heig
 body.bureau-frutiz #recherche-panel .rc-slot .rc-drapeau {
   position: absolute; left: 3px; top: 23px; width: 16px; height: 16px;
 }
-/* La bouille : `frutiScreen` en `fix: {w: th, h: th}`, posée à `_x = mLeft`. */
+/* La bouille : `frutiScreen` en `fix: {w: th, h: th}`, posée à `_x = mLeft`.
+
+   ET C'EST UN ÉCRAN, pas une image nue. `cp.FrutiScreen` (0x61a22) empile
+   quatre choses dans son `content` : `inside.bg` = le dessin
+   `frutiScreenBackGround` (#139) à la profondeur 10, la bouille par-dessus,
+   le `mask` en 40, et `light` = `frutiScreenLight` (#395) en 50 — donc HORS
+   du masque, par-dessus tout. `drawScreen` cerne l'ensemble d'un liseré de
+   2 px `white.shade` (#DDDDDD) et d'un anneau intérieur de 1 px
+   `white.darker` (#888888), rayon 6. Le portage ne posait ici que la bouille :
+   le fond vert manquait, le cadre aussi, et la tête paraissait deux fois trop
+   grosse faute de rien autour. C'est le même montage que l'écran d'un salon et
+   que la plaque de la main bar — mêmes dessins, mêmes valeurs. */
 body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille {
   position: absolute; left: 24px; top: 0; width: 44px; height: 44px;
-  overflow: hidden;
+  overflow: hidden; border-radius: 6px;
+  background: url('/frutiz/sprites/ecran-fond.svg') 0 0 / 100% 100% no-repeat;
+  box-shadow: 0 0 0 2px #DDDDDD;
 }
 body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille canvas,
 body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille img {
   width: 44px; height: 44px; display: block;
+}
+/* L'anneau sombre par-dessus la bouille (elle est un ENFANT de la boîte : une
+   ombre interne posée sur la boîte passerait dessous). */
+body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille::after {
+  content: ""; position: absolute; inset: 0; border-radius: 6px;
+  box-shadow: inset 0 0 0 1px #888888; z-index: 6; pointer-events: none;
+}
+/* Le reflet : calé à 2 px du bord droit et 2 px du haut, et il NE S'ÉTIRE PAS
+   — 42,7 × 31,8, la même taille sur un écran de 44 que sur celui de 100. */
+body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille::before {
+  content: ""; position: absolute; right: 2px; top: 2px;
+  width: 42.7px; height: 31.8px; z-index: 7; pointer-events: none;
+  background: url('/frutiz/sprites/ecran-reflet.svg') 0 0 / 42.7px 31.8px no-repeat;
 }
 /* LA PLAQUE, derrière le document : `updateInfoBackground` (0xc8026) la trace
    en x = th + mLeft + 6 = 74, large de `width − (74 + 2)` = 194, haute de th,
