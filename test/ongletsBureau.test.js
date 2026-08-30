@@ -199,13 +199,18 @@ test('l’onglet d’une conversation CLIGNOTE à l’arrivée d’un message', 
   assert.match(JS, /function avertirConversation\(salon\) \{[\s\S]*?return avertirSlot\(f\.onglet \|\| 'bureau'\);/);
   assert.match(JS, /var f = salon \? fenetres\['salon:' \+ salon\] : null;/);
   assert.match(JS, /avertirConversation: avertirConversation,/);
-  // Côté light : salons ET discussions privées, mais ni les annonces (t="b")
-  // ni les images (t="i") — le garde-fou d'`onSend`.
-  assert.match(LIGHT, /function avertirOngletChat\(ty, salon\) \{\s*\n\s*if \(ty === "b" \|\| ty === "i"\) return;/);
+  // Côté light : ni les annonces (t="b") ni les images (t="i") — le garde-fou
+  // d'`onSend`. Et, depuis les @mentions, un troisième argument : un salon
+  // PUBLIC ne s'agite plus que pour ce qui s'adresse à vous (une mention, ou le
+  // cri rouge d'un modérateur), là où il clignotait pour tout ce qui passait et
+  // ne s'éteignait donc jamais. Une conversation PRIVÉE, elle, avertit
+  // toujours — un message privé est adressé par construction.
+  assert.match(LIGHT, /function avertirOngletChat\(ty, salon, pourMoi\) \{\s*\n\s*if \(ty === "b" \|\| ty === "i"\) return;\s*\n\s*if \(pourMoi === false\) return;/);
   const t = LIGHT.indexOf('case "t":');
   const bloc = LIGHT.slice(t, LIGHT.indexOf('var from = attr(xml, "u");', t));
-  assert.match(bloc, /conv\.nonLus \+= 1;[\s\S]*?avertirOngletChat\(ty, salon\);/);      // en privé
-  assert.match(bloc, /\/\/ Le salon qu'on regarde[\s\S]*?avertirOngletChat\(ty, salon\);/); // en salon
+  assert.match(bloc, /var pourMoi = meMentionne\(nommes\) \|\| attr\(xml, "st"\) === "r";/);
+  assert.match(bloc, /conv\.nonLus \+= 1;[\s\S]*?avertirOngletChat\(ty, salon, true\);/);      // en privé
+  assert.match(bloc, /\/\/ Le salon qu'on regarde[\s\S]*?avertirOngletChat\(ty, salon, pourMoi\);/); // en salon
 });
 
 test('les états de survol sont préchargés — plus de clignotement', () => {

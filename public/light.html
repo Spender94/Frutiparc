@@ -627,6 +627,13 @@
   .msg.blue .time { font-size: 11px; }
   .msg.blue .body { white-space: pre-line; }
   /* Emote line ("pseudo éclate de rire") — the whole row is italic, like desktop. */
+  /* Une @mention se voit dans la ligne — la sienne se voit davantage : c'est
+     ce qui permet de retrouver d'un coup d'œil pourquoi l'onglet clignotait. */
+  .msg .mention { color: #2C4A0F; font-weight: bold; }
+  .msg .mention.moi {
+    color: #660000; background: #FFE9A8; border-radius: 4px;
+    padding: 0 3px; box-shadow: inset 0 0 0 1px #E8C87A;
+  }
   .msg.emote { font-style: italic; color: #4f7b1f; }
   .msg.emote .from { color: #4f7b1f; }
   .msg.emote .from.me { color: #E3756A; }
@@ -1405,6 +1412,12 @@
     font-weight: bold; font-size: 13px; color: #40305c;
   }
   .fen-ico { width: 15px; height: 15px; display: block; }
+
+  .reg-choix { margin-top: 10px; display: flex; flex-direction: column; gap: 9px; }
+  .reg-bascule { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .reg-bascule input { width: 18px; height: 18px; flex: 0 0 18px; accent-color: #7CB342; }
+  .reg-bascule .lib { font-size: 13px; }
+  .reg-choix .reg-etat { font-size: 11px; }
 
   /* ── Réglages de l'appli ──
      Des cartes claires sur le vert de la fenêtre, comme les événements : on y
@@ -2545,6 +2558,14 @@
         </div>
 
         <div class="reg-carte">
+          <div class="reg-titre">Mentions</div>
+          <div class="reg-texte">Quand quelqu'un écrit «&nbsp;@ton pseudo&nbsp;», tu es
+            prévenu : l'onglet de la conversation clignote, le voyant du forum s'allume,
+            et le téléphone sonne si tu n'es pas devant l'écran.</div>
+          <div id="reg-mentions" class="reg-choix">…</div>
+        </div>
+
+        <div class="reg-carte">
           <div class="reg-titre">L'appli</div>
           <div class="reg-texte" id="reg-install">…</div>
         </div>
@@ -3352,11 +3373,19 @@
   try {
     var pUrl = new URLSearchParams(window.location.search);
     if (pUrl.get("ouvre")) {
-      lienProfond = { ouvre: pUrl.get("ouvre"), avec: pUrl.get("avec") || "", sujet: pUrl.get("sujet") || "" };
+      lienProfond = { ouvre: pUrl.get("ouvre"), avec: pUrl.get("avec") || "",
+        sujet: pUrl.get("sujet") || "", salon: pUrl.get("salon") || "" };
     }
   } catch (e) { /* pas de lien */ }
-  function routerOuverture(ouvre, avec, sujet) {
+  function routerOuverture(ouvre, avec, sujet, salon) {
     if (ouvre === "prive" && avec) { activateTab("chat"); openMenu(false); ouvrirPrive(avec); return; }
+    // Une @mention mène AU SALON où elle a été écrite : ouvrir le chat sur une
+    // autre conversation obligerait à chercher soi-même où l'on a été appelé.
+    if (ouvre === "chat" && salon) {
+      activateTab("chat"); openMenu(false);
+      if (salon !== state.room) switchRoom(salon);
+      return;
+    }
     if (ouvre === "mail" || ouvre === "evenements" || ouvre === "historique") { activateTab(ouvre); return; }
     // Une citation sur le forum mène AU SUJET : on (re)charge le cadre avec le
     // sujet demandé — le forum s'ouvre dessus au lieu de l'accueil. Sur le
@@ -3383,7 +3412,7 @@
   function appliquerLienProfond() {
     if (!lienProfond) return;
     var l = lienProfond; lienProfond = null;
-    routerOuverture(l.ouvre, l.avec, l.sujet);
+    routerOuverture(l.ouvre, l.avec, l.sujet, l.salon);
   }
 
   // ── Navigation : le MENU est un TIROIR (overlay) ──
@@ -3723,6 +3752,16 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && !d.error) {
+          // LE NOM D'AFFICHAGE FAIT FOI. La connexion rend le LOGIN ; le chat,
+          // lui, nomme les gens par leur nom d'affichage — et les @mentions
+          // avec lui. Les deux se confondent presque toujours, mais pas pour
+          // qui en a changé : sans cette reprise, ni « c'est moi » ni les
+          // mentions ne se reconnaissaient jusqu'au rechargement suivant.
+          if (d.user && String(d.user).toLowerCase() !== state.userLower) {
+            state.user = d.user;
+            state.userLower = String(d.user).toLowerCase();
+            saveSession();
+          }
           homeProfile.bouille = d.bouille || DEFAULT_BOUILLE;
           homeProfile.level = Number(d.level) || 1;
           homeProfile.xp = Number(d.xp) || 0;
@@ -5752,7 +5791,7 @@
     // nous souffle le lien profond au lieu de recharger.
     navigator.serviceWorker.addEventListener("message", function (e) {
       var d = e.data || {};
-      if (d.ouvre) routerOuverture(d.ouvre, d.avec || "", d.sujet || "");
+      if (d.ouvre) routerOuverture(d.ouvre, d.avec || "", d.sujet || "", d.salon || "");
     });
   }
 
@@ -5848,8 +5887,60 @@
   // notifications (déjà tenu par majLigneNotifs), celui de l'INSTALLATION, et
   // ce que le serveur croit savoir de notre présence — la réponse à « pourquoi
   // mon téléphone n'a pas sonné ? ».
+  /*
+   * LES DEUX INTERRUPTEURS DES MENTIONS.
+   *
+   * Ils vivent dans la table des préférences d'époque (`mention_chat`,
+   * `mention_forum`), au même endroit que « Notifications du forum » : le
+   * bureau les montre déjà dans sa fenêtre « Mes préférences », et cette carte
+   * les rend accessibles au téléphone, qui n'a pas cette fenêtre.
+   *
+   * On lit et on écrit par `/api/light/prefs` — donc en base 62 comme le reste
+   * de la chaîne : « Y » ou « N », jamais un booléen.
+   */
+  var REG_MENTIONS = [
+    { nom: "mention_chat",  lib: "Dans les salons de discussion" },
+    { nom: "mention_forum", lib: "Sur le forum" },
+  ];
+  function majMentions() {
+    var hote = $("#reg-mentions");
+    if (!hote || !state.sid) return;
+    fetch("/api/light/prefs?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.ok) { hote.textContent = "Réglages indisponibles."; return; }
+        hote.innerHTML = "";
+        REG_MENTIONS.forEach(function (p) {
+          var lab = el("label", "reg-bascule");
+          var box = document.createElement("input");
+          box.type = "checkbox";
+          box.checked = (j.values[p.nom] || "Y") !== "N";
+          var txt = el("span", "lib"); txt.textContent = p.lib;
+          lab.appendChild(box); lab.appendChild(txt);
+          var etat = el("span", "reg-etat");
+          lab.appendChild(etat);
+          box.addEventListener("change", function () {
+            var envoi = {}; envoi[p.nom] = box.checked ? "Y" : "N";
+            etat.textContent = "…";
+            fetch("/api/light/prefs", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sid: state.sid, prefs: envoi }),
+            }).then(function (r) { return r.json(); })
+              .then(function (k) {
+                etat.textContent = (k && k.ok) ? "enregistré" : "non enregistré";
+                setTimeout(function () { etat.textContent = ""; }, 1800);
+              })
+              .catch(function () { etat.textContent = "hors ligne"; });
+          });
+          hote.appendChild(lab);
+        });
+      })
+      .catch(function () { hote.textContent = "Réglages indisponibles."; });
+  }
+
   function majReglages() {
     majLigneNotifs();
+    majMentions();
     var inst = $("#reg-install");
     if (inst) {
       if (estInstallee()) {
@@ -6438,6 +6529,11 @@
           }
           break;
         }
+        // Ce qui s'adresse à MOI dans cette ligne : une @mention que le serveur
+        // a reconnue, ou le cri rouge d'un modérateur. C'est cela — et cela
+        // seul — qui fait clignoter l'onglet d'un salon public.
+        var nommes = mentionsDeTrame(xml);
+        var pourMoi = meMentionne(nommes) || attr(xml, "st") === "r";
         if (salon && salon !== state.room && !aSonJournal(salon)) {
           var conv = state.prives[salon];
           if (conv && !(conv.sourdineJusqua > Date.now())) {
@@ -6445,13 +6541,14 @@
             renderRoomOptions();
             majPastilleMp();
             // Une discussion privée en arrière-plan avertit elle aussi : c'est
-            // le « cmode == "private" » de `onSend`.
-            avertirOngletChat(ty, salon);
+            // le « cmode == "private" » de `onSend`. Elle avertit TOUJOURS —
+            // un message privé est adressé par construction.
+            avertirOngletChat(ty, salon, true);
           }
           break;
         }
         // Le salon qu'on regarde — mais dont l'onglet, lui, peut être rangé.
-        avertirOngletChat(ty, salon);
+        avertirOngletChat(ty, salon, pourMoi);
         var from = attr(xml, "u");
         var h = attr(xml, "h");
         var body = bodyOf(xml);
@@ -6554,7 +6651,7 @@
         if (/^\s*</.test(stripped)) {
           var plain = htmlToText(stripped);
           var isShout = (attr(xml, "st") === "r");
-          if (plain) addMessage({ from: from, time: h, kind: isShout ? "shout" : "admin", noFrom: true, body: plain, salon: salon });
+          if (plain) addMessage({ from: from, time: h, kind: isShout ? "shout" : "admin", noFrom: true, body: plain, salon: salon, mentions: nommes });
           break;
         }
         // Emotes travel as ordinary text (e.g. "mdr"). To keep the experience
@@ -6568,7 +6665,7 @@
         if (em.isEmote) {
           addEmoteMessage({ from: from, time: h, label: em.label, salon: salon });
         } else {
-          addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor, salon: salon });
+          addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor, salon: salon, mentions: nommes });
         }
         if (from && !isAdmin) showBouilleOverlay(from, em.anim, em.label, salon);
         break;
@@ -7287,6 +7384,39 @@
     var m2 = String(h || "").match(/(\d{2}):(\d{2})/);
     return m2 ? "[" + m2[1] + ":" + m2[2] + "]" : "";
   }
+  /*
+   * LE CORPS D'UNE LIGNE, AVEC SES @MENTIONS EN ÉVIDENCE.
+   *
+   * On ne cherche pas les pseudos nous-mêmes : `noms` vient de l'attribut `mn`,
+   * donc du serveur, qui seul sait où s'arrête un pseudo et lequel désigne un
+   * compte. Ici on ne fait que retrouver ces mots dans le texte pour les
+   * habiller — et le texte reste du TEXTE (des nœuds, jamais du HTML) : une
+   * ligne de chat ne doit pas pouvoir écrire dans la page.
+   */
+  function ecrireCorps(hote, texte, noms) {
+    var corps = String(texte == null ? "" : texte);
+    if (!noms || !noms.length) { hote.textContent = corps; return; }
+    var bas = corps.toLowerCase();
+    var pos = 0;
+    while (pos < corps.length) {
+      // La prochaine mention, quel qu'en soit le pseudo : la plus proche gagne,
+      // et à égalité la plus LONGUE (« @jean » ne doit pas manger « @jean-luc »).
+      var ou = -1, quoi = "";
+      for (var i = 0; i < noms.length; i++) {
+        var k = bas.indexOf("@" + noms[i].toLowerCase(), pos);
+        if (k < 0) continue;
+        if (ou < 0 || k < ou || (k === ou && noms[i].length > quoi.length)) { ou = k; quoi = noms[i]; }
+      }
+      if (ou < 0) break;
+      if (ou > pos) hote.appendChild(document.createTextNode(corps.substring(pos, ou)));
+      var m = el("span", "mention" + (quoi.toLowerCase() === state.userLower ? " moi" : ""));
+      m.textContent = corps.substr(ou, quoi.length + 1);
+      hote.appendChild(m);
+      pos = ou + quoi.length + 1;
+    }
+    if (pos < corps.length) hote.appendChild(document.createTextNode(corps.substring(pos)));
+  }
+
   function addMessage(o) {
     // `o.salon` dit dans QUEL fil la ligne va. Sans lui — les annonces
     // globales, le courrier, les dons — c'est celui qu'on regarde.
@@ -7319,7 +7449,7 @@
       }
       var bd = el("span", "body" + (o.emote ? " emote" : "") + (o.multicolor ? " mc-text" : ""));
       if (o.pen && !o.multicolor) bd.style.color = o.pen;     // feutre colour (mc-text porte son propre dégradé)
-      bd.textContent = o.body;
+      ecrireCorps(bd, o.body, o.mentions);
       row.appendChild(bd);
     }
     fil.appendChild(row);
@@ -7408,15 +7538,48 @@
     if (stick) scrollDown(fil);
   }
 
-  // `box.Chat.onSend` : une trame de conversation AVERTIT son slot — mais pas
-  // toutes. Le SWF encadre l'appel d'un « if (t != "b" && t != "i") » : ni les
-  // annonces, ni les images ne font clignoter l'onglet. Sur le bureau light,
-  // c'est celui de la fenêtre des salons qui se teinte de rose (ou celui du
-  // bureau si elle y est restée) ; ailleurs, l'appel ne fait rien.
-  function avertirOngletChat(ty, salon) {
+  /*
+   * `box.Chat.onSend` : une trame de conversation AVERTIT son slot — mais pas
+   * toutes. Le SWF encadre l'appel d'un « if (t != "b" && t != "i") » : ni les
+   * annonces, ni les images ne font clignoter l'onglet. Sur le bureau light,
+   * c'est celui de la fenêtre des salons qui se teinte de rose (ou celui du
+   * bureau si elle y est restée) ; ailleurs, l'appel ne fait rien.
+   *
+   * UN SALON PUBLIC N'AVERTIT PLUS À CHAQUE LIGNE. Il clignotait pour tout ce
+   * qui passait — dans un salon vivant, l'onglet ne s'éteignait jamais et ne
+   * voulait donc plus rien dire. Il ne s'allume désormais que pour ce qui
+   * s'adresse à vous : une @mention, ou un cri de modérateur (le rouge gras,
+   * `st="r"`, qui est justement fait pour être vu de tous).
+   *
+   * Une conversation PRIVÉE, elle, avertit toujours : un message privé est
+   * adressé par construction. C'est `pourMoi` qui porte la différence.
+   */
+  function avertirOngletChat(ty, salon, pourMoi) {
     if (ty === "b" || ty === "i") return;
+    if (pourMoi === false) return;
     // `salon` désigne la fenêtre à avertir : chaque conversation a la sienne.
     if (window.BureauFrutiz && BureauFrutiz.avertirConversation) BureauFrutiz.avertirConversation(salon);
+  }
+
+  /*
+   * QUI EST NOMMÉ DANS CETTE LIGNE. L'attribut `mn` de la trame porte les
+   * pseudos que le SERVEUR a reconnus, séparés par des virgules et écrits comme
+   * ils s'affichent. On ne redevine donc rien ici : ni la casse, ni les points
+   * d'un pseudo, ni la ponctuation qui suit — le serveur a déjà tranché.
+   */
+  function mentionsDeTrame(xml) {
+    var brut = attr(xml, "mn");
+    if (!brut) return [];
+    return xmlUnescape(brut).split(",")
+      .map(function (n) { return n.trim(); })
+      .filter(Boolean);
+  }
+  function meMentionne(noms) {
+    if (!state.userLower) return false;
+    for (var i = 0; i < noms.length; i++) {
+      if (noms[i].toLowerCase() === state.userLower) return true;
+    }
+    return false;
   }
 
   // ── Blindtest ──

@@ -249,6 +249,9 @@ const USER_LOG_TYPE = {
   // 4: reserved (no visual)
   PICTO:       10,   // unlocked a new game picto / titem
   CHAT:        20,   // chat-related notification (NPC reveal, etc.)
+  // Une @mention. Elle vit à côté du chat parce que c'est la même chose vue de
+  // l'autre bout : quelqu'un s'est adressé à toi nommément.
+  MENTION:     21,
   LEVEL_UP:    30,
   LEVEL_DOWN:  31,
   INSCRIPTION: 40,   // first entry on a freshly-registered account
@@ -4534,6 +4537,13 @@ const prefDefs = [
   //   1 · tous les sujets (le comportement d'avant, et le défaut)
   //   2 · seulement les sujets suivis (le ❤️ posé sur un fil)
   { id: 14, type: 'i', name: 'forum_notify',             def: encode62(1) },
+  // LES @MENTIONS, elles non plus, n'existaient pas en 2005 : on prolonge donc
+  // la table de la même façon, aux deux identifiants libres suivants. Une
+  // mention est un message ADRESSÉ — le défaut est donc « oui » des deux
+  // côtés ; qui trouve cela envahissant coupe ici, et rien ne le prévient plus,
+  // ni l'onglet qui clignote, ni le voyant, ni le téléphone.
+  { id: 15, type: 'b', name: 'mention_chat',             def: 'Y' },
+  { id: 16, type: 'b', name: 'mention_forum',            def: 'Y' },
 ];
 
 // Les trois modes de `forum_notify`, nommés pour ne pas semer des 0/1/2 nus.
@@ -6254,6 +6264,199 @@ function usernameDepuisNomAffiche(nom) {
     if (u && u.displayName && String(u.displayName).toLowerCase() === bas) return k;
   }
   return null;
+}
+
+/*
+ * ── LES @MENTIONS ────────────────────────────────────────────────────────────
+ *
+ * « @pseudo » dans un salon public ou dans un message du forum : la personne
+ * nommée est prévenue. Trois choses à savoir avant de lire le code.
+ *
+ * UN PSEUDO NE FINIT PAS OÙ LA PONCTUATION COMMENCE. L'inscription autorise
+ * chiffres, points, tirets et soulignés ; « @jean-luc, tu viens ? » désigne donc
+ * jean-luc, pas « jean-luc, ». On essaie le plus LONG d'abord, puis on rogne
+ * caractère par caractère jusqu'à tomber sur un compte. Faute de quoi il n'y a
+ * pas de mention du tout : « @home » n'est adressé à personne.
+ *
+ * ON NE BALAIE LA TABLE DES JOUEURS QU'UNE FOIS PAR MENTION. Le pseudo direct
+ * est une clé (`users[bas]`), gratuite ; le nom d'AFFICHAGE, lui, demande un
+ * parcours. On tente donc les trente-deux longueurs par la clé, et le nom
+ * d'affichage une seule fois, sur le mot entier. Et on s'arrête à huit « @ »
+ * par message : un pavé qui en aligne cinquante n'est pas cinquante urgences.
+ *
+ * ON NE SE MENTIONNE PAS SOI-MÊME, et les NPC n'ont pas de téléphone.
+ */
+const MENTION_MAX = 5;              // mentions retenues par message
+const MENTION_JETONS_MAX = 8;       // « @mot » examinés par message
+
+/*
+ * LES PSEUDOS QUE « @mot » PEUT DÉSIGNER, du plus probable au moins.
+ *
+ * Le mot capturé peut emporter de la ponctuation qui appartient à la phrase :
+ * « @bob. » et « @bob.alors » commencent tous deux par un pseudo qui s'arrête
+ * avant le point. On rend donc le mot entier, puis le mot débarrassé de sa
+ * ponctuation de queue, puis chaque tronçon délimité par un point, un tiret ou
+ * un souligné. Une poignée de candidats, jamais trente-deux — c'est ce qui
+ * permet d'aller les chercher EN BASE sans y passer la journée.
+ */
+function candidatsMention(mot) {
+  const out = [];
+  const ajouter = (v) => { if (v && v.length >= 2 && out.indexOf(v) < 0) out.push(v); };
+  ajouter(mot);
+  ajouter(mot.replace(/[._-]+$/, ''));
+  for (let i = mot.length - 1; i >= 2; i--) {
+    if (/[._-]/.test(mot[i])) ajouter(mot.slice(0, i));
+  }
+  return out;
+}
+
+// En MÉMOIRE seulement : le chat diffuse en direct, il ne peut pas attendre la
+// base. Les joueurs qu'on mentionne dans un salon y sont, ou en sortent — ils
+// sont donc chargés.
+function resoudreMention(mot) {
+  for (const c of candidatsMention(mot)) {
+    if (users[c.toLowerCase()]) return c.toLowerCase();
+  }
+  return usernameDepuisNomAffiche(mot);
+}
+
+/*
+ * EN BASE, quand la mémoire ne connaît pas — le cas du FORUM.
+ *
+ * `users` ne garde que les comptes récemment touchés : mentionner quelqu'un qui
+ * n'est pas passé depuis le dernier redémarrage ne trouvait personne, et c'est
+ * exactement celui qu'il fallait prévenir. On redemande donc à la base, sur la
+ * poignée de candidats — jamais sur les trente-deux longueurs.
+ */
+async function resoudreMentionEnBase(mot) {
+  const enMemoire = resoudreMention(mot);
+  if (enMemoire) return enMemoire;
+  if (!process.env.DATABASE_URL) return null;
+  for (const c of candidatsMention(mot)) {
+    try {
+      const row = await db.findUserByUsername(c.toLowerCase());
+      if (row) return String(row.username || c).toLowerCase();
+    } catch (e) { return null; }
+  }
+  return null;
+}
+
+function retenirMention(cible, auteur, vus, sortie) {
+  if (!cible || vus.has(cible)) return;
+  if (cible === String(auteur || '').toLowerCase() || NPC_USERNAMES.has(cible)) return;
+  vus.add(cible);
+  sortie.push(cible);
+}
+
+function jetonsMention(texte) {
+  const brut = String(texte || '').replace(/<[^>]*>/g, ' ');
+  const re = /@([A-Za-z0-9_.-]{2,32})/g;
+  const out = [];
+  let m;
+  while ((m = re.exec(brut)) !== null && out.length < MENTION_JETONS_MAX) out.push(m[1]);
+  return out;
+}
+
+function mentionsDe(texte, auteur) {
+  const vus = new Set(), sortie = [];
+  for (const mot of jetonsMention(texte)) {
+    if (sortie.length >= MENTION_MAX) break;
+    retenirMention(resoudreMention(mot), auteur, vus, sortie);
+  }
+  return sortie;
+}
+
+async function mentionsDeEnBase(texte, auteur) {
+  const vus = new Set(), sortie = [];
+  for (const mot of jetonsMention(texte)) {
+    if (sortie.length >= MENTION_MAX) break;
+    retenirMention(await resoudreMentionEnBase(mot), auteur, vus, sortie);
+  }
+  return sortie;
+}
+
+function mentionActive(username, nomPref) {
+  const u = users[String(username || '').toLowerCase()];
+  return u ? prefBool(u, nomPref) : true;
+}
+
+/*
+ * UNE MENTION DANS UN SALON PUBLIC.
+ *
+ * Le clignotement de l'onglet, lui, est l'affaire du client : la trame porte
+ * `mn="…"` et il sait s'il y est. Ici on ne s'occupe que du téléphone, et
+ * seulement pour un absent — quelqu'un qui a le salon sous les yeux voit déjà
+ * la ligne s'écrire.
+ */
+function pousserNotifMentionChat(g, auteur, texteBrut, cibles) {
+  if (!pushPret || !cibles || !cibles.length) return;
+  const extrait = String(texteBrut || '').replace(/<[^>]*>/g, '').slice(0, 90);
+  for (const cible of cibles) {
+    if (!mentionActive(cible, 'mention_chat')) {
+      noterDecisionPush(cible, 'mention', false, 'mentions des salons coupées (mention_chat = N)');
+      continue;
+    }
+    if (estJoignableEnDirect(cible)) {
+      noterDecisionPush(cible, 'mention', false, 'présent (socket fraîche au premier plan)');
+      continue;
+    }
+    noterDecisionPush(cible, 'mention', true, 'absent → envoyé');
+    pousserNotif(cible, {
+      t: `💬 ${getDisplayName(auteur)} t'a mentionné`,
+      c: extrait,
+      u: '/light?ouvre=chat&salon=' + encodeURIComponent(g),
+      tag: 'mention_' + String(g || ''),
+    }, PUSH_TTL.mp);
+  }
+}
+
+/*
+ * UNE MENTION SUR LE FORUM — trois façons de le dire, une seule préférence.
+ *
+ * Le VOYANT du raccourci s'allume, quoi qu'ait réglé le mentionné dans
+ * `forum_notify` : « seulement mes sujets suivis » parle des messages qui
+ * passent, pas de ceux qui s'adressent à lui. C'est `mention_forum` qui
+ * commande ici, et lui seul.
+ *
+ * L'HISTORIQUE garde une ligne — c'est ce qui reste quand la notification est
+ * partie et que le voyant s'est éteint.
+ *
+ * LE TÉLÉPHONE ne sonne que pour un absent, comme partout ailleurs.
+ */
+async function notifierMentionsForum(auteur, topicId, titre, contenu) {
+  const cibles = await mentionsDeEnBase(contenu, auteur);
+  if (!cibles.length) return cibles;
+  const nomAuteur = getDisplayName(auteur);
+  const sujet = String(titre || 'un sujet');
+  for (const cible of cibles) {
+    if (!mentionActive(cible, 'mention_forum')) {
+      noterDecisionPush(cible, 'mention_forum', false, 'mentions du forum coupées (mention_forum = N)');
+      continue;
+    }
+    addAndNotifyUserLog(cible, {
+      type: USER_LOG_TYPE.MENTION,
+      content: `Tu as été mentionné(e) sur le forum, dans « ${sujet} », par ${nomAuteur}.`,
+    });
+    // Le voyant du raccourci, pour lui seul — la trame nommée, celle qui porte
+    // le sujet, pour que le clic mène au bon fil.
+    const trame = topicId
+      ? `<${CMD.newforummsg} s="1" i="${Number(topicId)}" t="${escapeXml(sujet)}" u="${escapeXml(nomAuteur)}" />`
+      : `<${CMD.newforummsg} />`;
+    for (const sock of getSocketsForUsername(cible)) sendToClient(sock, trame);
+    if (!pushPret) continue;
+    if (estJoignableEnDirect(cible)) {
+      noterDecisionPush(cible, 'mention_forum', false, 'présent (socket fraîche au premier plan)');
+      continue;
+    }
+    noterDecisionPush(cible, 'mention_forum', true, 'absent → envoyé');
+    pousserNotif(cible, {
+      t: `✏️ ${nomAuteur} t'a mentionné sur le forum`,
+      c: sujet,
+      u: '/light?ouvre=forum&sujet=' + Number(topicId || 0),
+      tag: 'forum_' + Number(topicId || 0),
+    }, PUSH_TTL.forum);
+  }
+  return cibles;
 }
 
 function pousserNotifCitationsForum(auteur, topicId, titre, contenu) {
@@ -16160,6 +16363,12 @@ const PREF_LABELS = {
                                [FORUM_NOTIFY_SUIVIS, 'Seulement mes sujets suivis (❤)'],
                                [FORUM_NOTIFY_AUCUNE, 'Jamais'],
                              ] },
+  mention_chat:            { label: 'Mentions dans les salons',
+                             desc: 'Être prévenu quand quelqu\'un écrit « @ton pseudo » dans un salon public : '
+                               + 'l\'onglet de la conversation clignote, et le téléphone sonne si tu es absent.' },
+  mention_forum:           { label: 'Mentions sur le forum',
+                             desc: 'Être prévenu quand quelqu\'un te mentionne dans un message du forum : '
+                               + 'voyant du raccourci, ligne dans l\'historique, et notification sur le téléphone.' },
 };
 
 const PREF_CATEGORIES = [
@@ -16168,6 +16377,7 @@ const PREF_CATEGORIES = [
   { name: 'Mail',    ids: [2] },
   { name: 'Invitations', ids: [3, 4] },
   { name: 'Forum',   ids: [14] },
+  { name: 'Mentions', ids: [15, 16] },
   { name: 'Apparence',   ids: [5] },
 ];
 
@@ -18576,6 +18786,10 @@ app.post('/api/forum/topic', async (req, res) => {
     // Le voyant forum du bureau s'éveille chez les autres connectés — le
     // pendant exact du compteur forumUnread que /light relit à son rythme.
     notifyForumNews(username);
+    // Le PREMIER message d'un sujet mentionne comme les autres : c'est souvent
+    // là qu'on appelle quelqu'un (« @untel, tu en penses quoi ? »).
+    notifierMentionsForum(username, topic.id, title, content)
+      .catch((e) => console.error('[FORUM] notifierMentionsForum:', e.message));
     res.json({ ok: true, topicId: topic.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -18849,6 +19063,9 @@ app.post('/api/forum/post', async (req, res) => {
     // Et si elle CITE quelqu'un ([quote=…]), le cité absent est prévenu sur
     // son téléphone, avec le sujet en lien direct.
     pousserNotifCitationsForum(username, topicId, topic.title, content);
+    // Une @mention, elle, s'adresse nommément : voyant, historique, téléphone.
+    notifierMentionsForum(username, topicId, topic.title, content)
+      .catch((e) => console.error('[FORUM] notifierMentionsForum:', e.message));
     // Ceux qui ont posé un ❤ sur ce sujet et demandé à n'être prévenus que
     // pour ceux-là reçoivent la leur. Le forum ne doit pas attendre l'envoi
     // des notifications pour répondre : on laisse filer.
@@ -20097,6 +20314,9 @@ const LIGHT_HISTORY_KINDS = {
   4:  { icone: 'histo_boum',       titre: 'Alerte' },
   10: { icone: 'histo_picto',      titre: 'Picto' },
   20: { icone: 'histo_chat',       titre: 'Salons' },
+  // Une mention emprunte l'image des salons : c'est la même idée — on t'a
+  // parlé — et le SWF n'a pas de dessin pour le forum côté historique.
+  21: { icone: 'histo_chat',       titre: 'Mention' },
   30: { icone: 'histo_niveau',     titre: 'Niveau gagné' },
   31: { icone: 'histo_niveau_bas', titre: 'Niveau perdu' },
   // Même image que côté événements (c'est la même dans le SWF) : un seul
@@ -25997,6 +26217,21 @@ case 'send': {
 
     let safeText = escapeXml(unescapeXml(text));
 
+    /*
+     * LES @MENTIONS DU SALON, relevées une fois pour les trois sorties.
+     *
+     * Elles ne valent que dans un salon PUBLIC : en privé, tout message est
+     * déjà adressé, et `pousserNotifMpSiAbsent` s'en charge depuis toujours.
+     * La trame emporte `mn="Pseudo1,Pseudo2"` — des noms d'AFFICHAGE, ceux que
+     * le client voit. Un client qui ne connaît pas l'attribut l'ignore : le SWF
+     * d'époque en fait autant de `st` et de `d`.
+     */
+    const salonPublic = !!g && !/^pm2?_/.test(String(g));
+    const mentionnes = salonPublic ? mentionsDe(text, client.username) : [];
+    const mn = mentionnes.length
+      ? ` mn="${escapeXml(mentionnes.map((u) => getDisplayName(u)).join(','))}"`
+      : '';
+
     // Le CRI rouge gras — un seul droit (être staff DU salon : modérateur
     // partout, animateur sur le sien), deux chemins pour l'exercer :
     //  · le client Light envoie « !message » tel quel (préfixe « ! ») ;
@@ -26013,8 +26248,9 @@ case 'send': {
         const body = `<![CDATA[<font color="#C10000"><b>${inner}</b></font>]]>`;
         const redStamp = `<font color="#C10000">${timeAttrs.h.trim()}</font> `;
         broadcastToChannel(g,
-          `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${escapeXml(redStamp)}" d="${timeAttrs.d}" st="r">${body}</${CMD.send}>`
+          `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${escapeXml(redStamp)}" d="${timeAttrs.d}" st="r"${mn}>${body}</${CMD.send}>`
         );
+        pousserNotifMentionChat(g, client.username, shout, mentionnes);
         break;
       }
       if (type === 'w') break;
@@ -26090,18 +26326,20 @@ case 'send': {
       const hOpen = escapeXml(`${ts.html}<font color="${pseudoColor}">`);
       const rainbow = `<![CDATA[</font><b>${rainbowSpan(unescapeXml(text), ts.next + 1).html}</b>]]>`;
       broadcastToChannel(g,
-        `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="" g="${escapeXml(g)}" h="${hOpen}" d="${timeAttrs.d}" st="mc">${rainbow}</${CMD.send}>`
+        `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="" g="${escapeXml(g)}" h="${hOpen}" d="${timeAttrs.d}" st="mc"${mn}>${rainbow}</${CMD.send}>`
       );
       pousserNotifMpSiAbsent(g, client.username, unescapeXml(text));
+      pousserNotifMentionChat(g, client.username, unescapeXml(text), mentionnes);
       trackXpAction(client.username, 'chatMsg');
       kilouteCheckAnswer(g, client.username, text);
       kilouteSessionCheckAnswer(g, client.username, text);
       break;
     }
 
-    const xml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
+    const xml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}"${mn}>${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
     if (type === 'm') pousserNotifMpSiAbsent(g, client.username, unescapeXml(text));
+    if (type === 'm') pousserNotifMentionChat(g, client.username, unescapeXml(text), mentionnes);
     trackXpAction(client.username, 'chatMsg');
     // MikeHorny's "Question à 60 kikooz" (daily single) AND the live quiz event:
     // react if this line is the answer to whichever is running.

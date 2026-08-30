@@ -77,7 +77,9 @@ test('chaque salon a SON fil, et les lignes vont dans le fil de LEUR salon', () 
   const bloc = LIGHT.slice(t, LIGHT.indexOf('case "r":', t));
   assert.match(bloc, /addEmoteMessage\(\{ from: emWho, time: h, label: emLabel, salon: salon \}\);/);
   assert.match(bloc, /showBouilleOverlay\(from, em\.anim, em\.label, salon\);/);
-  assert.match(bloc, /kind: isAdmin \? "admin" : "normal", noFrom: isAdmin, pen: penColor, salon: salon \}\);/);
+  // (`mentions` a rejoint la ligne avec les @mentions : le corps met en évidence
+  // les pseudos que le serveur a reconnus, et le salon reste porté par `salon`.)
+  assert.match(bloc, /kind: isAdmin \? "admin" : "normal", noFrom: isAdmin, pen: penColor, salon: salon, mentions: nommes \}\);/);
   // Les arrivées et les départs aussi : chaque fenêtre tient le compte de ses
   // propres allées et venues.
   // (Les mots sont ceux de `chat.userjoined`, sans point final — cf.
