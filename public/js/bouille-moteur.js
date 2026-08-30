@@ -675,6 +675,24 @@
      * quand même, et l'inverse aussi. Six `setColor` par jeu, sous une seule
      * condition — celle de l'avant.
      */
+    /*
+     * ET POUR LES VARIANTES INJECTÉES, TOUS LES CLIPS DU NOM, pas seulement le
+     * dernier posé.
+     *
+     * L'époque n'en teint qu'un par nom, et ce sont les DEUX rouleaux (`acc` et
+     * `acc2`) qui lui donnent deux jeux de couleurs quand un accessoire en a
+     * besoin — le type 15 peint du niveau 2, puis une ombre, puis encore du
+     * niveau 2. Une variante que nous injectons n'a qu'un rouleau : elle pose
+     * donc un clip par SÉRIE, et ceux-là se teignent tous. Les clips d'époque,
+     * eux, gardent la règle du dernier posé (accessoire 9 variante 5 en dépend).
+     */
+    const teinterNotres = (acc) => {
+      const par = [null, accColor1, accColor2, accColor3];
+      for (const e of acc.enfants.values()) {
+        const s = e.objet && e.objet.def && e.objet.def.varTeinte;
+        if (s) teinter(e.objet, par[s]);
+      }
+    };
     const jeu = (avant, arriere) => {
       if (!avant || !avant.visible) return;
       for (const acc of [avant, arriere]) {
@@ -682,6 +700,7 @@
         teinter(acc.enfantNomme('col'), accColor1);
         teinter(acc.enfantNomme('col2'), accColor2);
         teinter(acc.enfantNomme('col3'), accColor3);
+        teinterNotres(acc);
       }
     };
     jeu(caAcc, cbAcc);
@@ -1076,9 +1095,13 @@
   Moteur.prototype.dessinerAccessoireCustom = function (ctx, paths) {
     paths = paths || this.accessoireCustom;
     if (!paths || !paths.length) return;
-    for (let i = 0; i < paths.length; i++) {
-      const p = paths[i];
-      if (!p._p2d) { try { p._p2d = new global.Path2D(p.d); } catch (e) { continue; } }
+    const couleurs = this.accessoireCouleurs;
+    const chemin = (p) => {
+      if (!p._p2d) { try { p._p2d = new global.Path2D(p.d); } catch (e) { p._p2d = null; } }
+      return p._p2d;
+    };
+    function peindre(p) {
+      if (!chemin(p)) return;
       ctx.save();
       // Un tracé importé garde SON repère (celui de ses groupes Illustrator) :
       // on applique sa matrice `m` par-dessus le repère scène→canevas. L'export,
@@ -1091,8 +1114,7 @@
       ctx.globalAlpha = (p.alpha == null ? 1 : p.alpha);
       // Un tracé « à niveau » (slot 1/2/3) prend la couleur du niveau si elle est
       // fournie ; sinon il garde la sienne.
-      const teinte = (p.slot && this.accessoireCouleurs && this.accessoireCouleurs[p.slot - 1])
-        ? this.accessoireCouleurs[p.slot - 1] : p.fill;
+      const teinte = (p.slot && couleurs && couleurs[p.slot - 1]) ? couleurs[p.slot - 1] : p.fill;
       if (p.trait) {
         ctx.strokeStyle = teinte; ctx.lineWidth = p.largeur || 1;
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
@@ -1102,6 +1124,35 @@
         ctx.fill(p._p2d, 'evenodd');
       }
       ctx.restore();
+    }
+    let i = 0;
+    while (i < paths.length) {
+      const p = paths[i];
+      /*
+       * UN MASQUE D'ÉCRÊTAGE, comme Illustrator en pose. Son tracé ne se peint
+       * pas : il DÉCOUPE ce qui le suit et porte son numéro. Sans ce détour, le
+       * masque partait comme un aplat noir de plus et ce qu'il rognait débordait.
+       */
+      if (p.estDecoupe && p.decoupe) {
+        const id = p.decoupe, coupe = new global.Path2D();
+        let k = i;
+        while (k < paths.length && paths[k].estDecoupe && paths[k].decoupe === id) {
+          const q = paths[k], c = chemin(q);
+          if (c) {
+            coupe.addPath(c, q.m ? new global.DOMMatrix([q.m[0], q.m[1], q.m[2], q.m[3], q.m[4], q.m[5]])
+              : new global.DOMMatrix());
+          }
+          k++;
+        }
+        ctx.save();
+        ctx.clip(coupe, 'evenodd');
+        while (k < paths.length && paths[k].decoupe === id && !paths[k].estDecoupe) peindre(paths[k++]);
+        ctx.restore();
+        i = k;
+        continue;
+      }
+      peindre(p);
+      i++;
     }
     ctx.globalAlpha = 1;
   };

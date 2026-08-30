@@ -5568,6 +5568,13 @@ function nettoyerPathsMaison(paths) {
     if (g) q.degrade = g;
     if (p.trait) { q.trait = true; q.largeur = Math.max(0, Math.min(50, Number(p.largeur) || 1)); }
     if (Array.isArray(p.m) && p.m.length === 6 && p.m.every((n) => isFinite(n))) q.m = p.m.map(Number);
+    // Un MASQUE D'ÉCRÊTAGE : « decoupe » nomme le masque, « estDecoupe » désigne
+    // son tracé. Les laisser tomber, c'était laisser déborder ce qu'ils rognent.
+    if (p.decoupe) {
+      q.decoupe = String(p.decoupe).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24);
+      if (!q.decoupe) delete q.decoupe;
+      else if (p.estDecoupe) q.estDecoupe = true;
+    }
     return q;
   }).filter((p) => p.d && /^[Mm]/.test(p.d));
 }

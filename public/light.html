@@ -1794,22 +1794,6 @@
   }
   #app.menu-open #home-backdrop { display: block; }
 
-  /* ── L'ACCUEIL DU TÉLÉPHONE NE DÉPEND PLUS DU JAVASCRIPT ──────────────────
-     Sur téléphone, c'est l'accueil qu'on doit voir en arrivant : la grille des
-     rubriques, pas le salon nu. Or c'était `openMenu(true)` — la DERNIÈRE ligne
-     du démarrage — qui l'ouvrait. Tout ce qui échouait avant, n'importe où dans
-     le démarrage, laissait donc le téléphone sur la disposition du BUREAU : le
-     chat plein écran, sans accueil, sans rubriques.
-     Sous 768 px, le tiroir est donc ouvert PAR DÉFAUT, par la feuille de style.
-     Le script ne fait plus que le FERMER (`menu-ferme`) — et s'il ne tourne pas
-     du tout, le téléphone garde son accueil. */
-  @media (max-width: 767px) {
-    #home-panel { transform: translateX(0); }
-    #home-backdrop { display: block; }
-    #app.menu-ferme #home-panel { transform: translateX(-100%); }
-    #app.menu-ferme #home-backdrop { display: none; }
-  }
-
   /* Police « radio-réveil » (sept segments) pour le numéro de niveau. */
   @font-face {
     font-family: 'DSEG7';
@@ -3476,29 +3460,9 @@
     if (vueLightForcee()) return false;
     try { return window.matchMedia("(min-width: 768px)").matches; } catch (e) { return false; }
   }
-  /*
-   * OUVERT / FERMÉ, EN DEUX CLASSES.
-   *
-   * Le tiroir d'accueil est ouvert par défaut sous 768 px — c'est la feuille de
-   * style qui le dit, pour que le téléphone garde son accueil même si le
-   * démarrage échoue en route. Le script pose donc les DEUX états : `menu-open`
-   * pour l'ouvrir (c'est ainsi que le grand écran l'ouvre), `menu-ferme` pour le
-   * fermer (c'est ainsi que le téléphone le referme). Sans classe, l'état est
-   * celui de la feuille de style : ouvert sur téléphone, fermé sur grand écran.
-   */
-  function menuOuvert() {
-    var a = $("#app");
-    if (a.classList.contains("menu-ferme")) return false;
-    if (a.classList.contains("menu-open")) return true;
-    return !isDesktop();
-  }
-  function openMenu(open) {
-    var a = $("#app");
-    a.classList.toggle("menu-open", open !== false);
-    a.classList.toggle("menu-ferme", open === false);
-  }
-  function closeMenu() { openMenu(false); }
-  function toggleMenu() { openMenu(!menuOuvert()); }
+  function openMenu(open) { $("#app").classList.toggle("menu-open", open !== false); }
+  function closeMenu() { $("#app").classList.remove("menu-open"); }
+  function toggleMenu() { $("#app").classList.toggle("menu-open"); }
   function goHome() { openMenu(true); } // compat : « accueil » = ouvrir le tiroir
   $("#menu-btn").addEventListener("click", toggleMenu);
   $("#home-backdrop").addEventListener("click", closeMenu);
