@@ -69,8 +69,11 @@ test('les quatre entrées de tout le monde, dans l’ordre du bytecode', () => {
   const re = /\{ titre: (?:'([^']+)'|repli\.actif \? '([^']+)' : '([^']+)')/g;
   let m;
   while ((m = re.exec(MENU)) !== null) noms.push(m[1] || m[3]);
+  /* « Mode Flash » occupe la place de « Mode light » : les deux modes ont
+     échangé leurs rôles. Se connecter mène au portage natif, et c'est vers
+     main.swf — la vérité historique — que l'entrée renvoie maintenant. */
   assert.deepStrictEqual(noms.slice(0, 4),
-    ['Se déconnecter', 'Mode light', 'Mode rapide', 'Recherche']);
+    ['Se déconnecter', 'Mode Flash', 'Mode rapide', 'Recherche']);
 });
 
 test('« flHalfHide » ne décide que du libellé', () => {
@@ -94,10 +97,42 @@ test('chaque entrée repasse par ce qui existait déjà', () => {
   assert.match(JS, /\.sl-recherche'\)\.addEventListener\('click', ouvrirRechercheFenetre\);/);
 });
 
-test('« Mode light » passe par l’URL, sans rien retenir', () => {
-  assert.match(JS, /p\.set\('vue', 'light'\);/);
+test('« Mode Flash » emporte le sid, seul moyen d’entrer dans /legacy', () => {
+  /* `/legacy` vérifie le sid côté serveur et renvoie à l'accueil sans lui. On
+     le prend là où le light le range : `window.state`, ou le `localStorage`
+     de la reprise de session. */
+  assert.match(JS, /window\.location\.href = '\/legacy' \+ \(sid \? '\?sid=' \+ encodeURIComponent\(sid\) : ''\);/);
+  assert.match(JS, /JSON\.parse\(localStorage\.getItem\('fp_light_session'\) \|\| '\{\}'\)/);
+  assert.match(LIGHT, /var SESS_KEY = "fp_light_session";/);
+  // La présentation mobile reste joignable par l'adresse : c'est elle que les
+  // petits écrans reçoivent d'office.
   assert.match(LIGHT, /function vueLightForcee\(\) \{[\s\S]{0,200}?get\("vue"\) === "light";/);
   assert.match(LIGHT, /function isDesktop\(\) \{\s*\n\s*if \(vueLightForcee\(\)\) return false;/);
+});
+
+test('se connecter mène au LIGHT, et le Flash reste à un clic', () => {
+  const SRV = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const LOGIN = fs.readFileSync(path.join(ROOT, 'public/login-bis.html'), 'utf8');
+  assert.match(SRV, /redirect: `\/light\?sid=\$\{encodeURIComponent\(sid\)\}`/);
+  assert.doesNotMatch(SRV, /redirect: `\/legacy\?sid=/);
+  assert.match(LOGIN, /: \(data\.redirect \|\| '\/light'\);/);
+  // Le Flash n'est pas retiré, il est déplacé : pied de page et menu du bureau.
+  assert.match(LOGIN, /<a href="\/legacy"[^>]*>Version Flash<\/a>/);
+  // Et la pop-in qui invitait au light n'a plus d'objet : on y va d'office.
+  assert.doesNotMatch(LOGIN, /mobile-popup/);
+  assert.match(SRV, /app\.get\('\/legacy', \(req, res\) => \{/, 'la route Flash existe toujours');
+});
+
+test('suivre « Version Flash » AVANT de se connecter mène quand même au Flash', () => {
+  /* `/legacy` sans session renvoyait sèchement sur `/` : depuis que la
+     connexion mène au light, le lien du pied de page faisait un clic sans
+     effet, puis une connexion qui atterrissait ailleurs. Il emporte
+     maintenant `vers=flash`, et la page de connexion finit le voyage. */
+  const SRV = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const LOGIN = fs.readFileSync(path.join(ROOT, 'public/login-bis.html'), 'utf8');
+  assert.match(SRV, /return res\.redirect\('\/\?vers=flash'\);/);
+  assert.match(LOGIN, /const vers = new URLSearchParams\(location\.search\)\.get\('vers'\);/);
+  assert.match(LOGIN, /\(vers === 'flash' && data\.sid\)\s*\n\s*\? '\/legacy\?sid=' \+ encodeURIComponent\(data\.sid\)/);
 });
 
 /* ── LE VOYANT DU FORUM ───────────────────────────────────────────────────── */

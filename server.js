@@ -6009,7 +6009,15 @@ const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbo
 app.get('/legacy', (req, res) => {
   const sid = req.query.sid;
   if (!resolveUsernameFromSid(sid)) {
-    return res.redirect('/');
+    /*
+     * SANS SESSION, ON PASSE PAR L'ACCUEIL — mais on n'oublie pas où l'on
+     * allait. Depuis que la connexion mène au portage natif, `/legacy` est un
+     * lien qu'on suit AVANT de se connecter (le pied de page de l'accueil, la
+     * page de garde) : le renvoyer sèchement sur `/` faisait un clic sans
+     * effet, puis une connexion qui atterrissait ailleurs. `vers=flash` dit à
+     * la page de connexion de finir le voyage.
+     */
+    return res.redirect('/?vers=flash');
   }
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
@@ -7192,7 +7200,21 @@ app.post('/api/auth/login', async (req, res) => {
   if (userId) {
     db.createSession(sid, userId).catch((e) => console.error('[DB] session save error:', e.message));
   }
-  return res.json({ ok: true, sid, username: getDisplayName(username), redirect: `/legacy?sid=${encodeURIComponent(sid)}` });
+  /*
+   * LA PORTE D'ENTRÉE EST LE LIGHT.
+   *
+   * Elle a longtemps été `/legacy`, c'est-à-dire main.swf sous Ruffle. Le
+   * portage natif en est aujourd'hui assez près pour prendre la relève : il
+   * démarre sans plugin, sans WASM de dix mégaoctets, et tient sur un
+   * téléphone. Le Flash reste servi — c'est la vérité historique, et le menu
+   * de l'onglet Bureau y renvoie d'un clic (« Mode Flash ») — mais ce n'est
+   * plus ce qu'on ouvre en se connectant.
+   *
+   * `/light` reçoit le sid dans l'adresse et le range aussitôt dans son
+   * `localStorage` : le rechargement suivant reprend la session sans repasser
+   * par ici. `/legacy` lit le même paramètre, à l'identique.
+   */
+  return res.json({ ok: true, sid, username: getDisplayName(username), redirect: `/light?sid=${encodeURIComponent(sid)}` });
 });
 
 // ─────────────────────────────────────────────

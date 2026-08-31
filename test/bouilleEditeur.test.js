@@ -116,12 +116,99 @@ test('l\'éditeur s\'ouvre sur un visage VISIBLE, jamais sous le sac', () => {
     'sous le sac, l\'ouverture bascule sur le crâne nu');
 });
 
-test('le compteur se lit sur les coiffures PROPOSÉES (1/64, pas 2/67)', () => {
-  // Le libellé compte la place dans la liste offerte : sans ça, il sauterait
-  // des numéros au passage du sac.
+/* ══ LA FENÊTRE, AU CHIFFRE PRÈS ══════════════════════════════════════════
+ *
+ * `win.EditFrutibouille` (0xa2e4d) n'est qu'un empilement de composants ; ce
+ * sont leurs mesures qu'on vérifie ici, avec les dessins qu'ils demandent.
+ */
+
+test('la ligne ne porte que le NOM de la partie, comme la console d’époque', () => {
+  /* `cp.FBConsole.attachText` (0x90c86) pose `field.text = info[id].name` UNE
+     FOIS, à la construction : la console ne réécrit jamais son champ. Le
+     portage y ajoutait « cheveux · 13/64 » ; ce n'est pas d'époque. */
   const src = LIGHT.substring(LIGHT.indexOf('function fbRefreshLabel'),
     LIGHT.indexOf('function fbRefreshLabels'));
-  assert.match(src, /fbChoix\(part\)/, 'le libellé passe par la liste offerte');
-  assert.match(src, /choix\.length/, 'et le total est celui de cette liste');
-  assert.ok(!/part\.max \+ 1/.test(src), 'plus le total brut du sprite');
+  assert.match(src, /l\.textContent = part\.label;/);
+  assert.ok(!/choix\.length/.test(src), 'plus de compteur dans le libellé');
+});
+
+test('les six lignes portent les noms du tableau `info` de la famille', () => {
+  /* `Frutibouille.getInfo` (0x7eea9) rend `face.info`, que `updateInfo`
+     (famille0.swf) construit en douze entrées poussées à l'envers :
+     0 famille · 1 yeux · 2 iris · 3 cheveux · 4 bouche · 5 couleur1 ·
+     6 couleur2 · 7 accessoire · 8 accessoire2 · 9..11 acc couleur1..3.
+     L'ID d'une ligne est l'INDICE DE LA PAIRE, d'où `pos = 2 × id`. */
+  const e = editeur();
+  assert.deepEqual(e.FB_PARTS.map((p) => p.label),
+    ['yeux', 'iris', 'cheveux', 'bouche', 'couleur1', 'couleur2']);
+  assert.deepEqual(e.FB_PARTS.map((p) => p.id), [1, 2, 3, 4, 5, 6]);
+  for (const p of e.FB_PARTS) {
+    assert.equal(p.pos, p.id * 2, p.label + ' : la paire suit l’identifiant');
+  }
+  // Les deux dernières sont de `type: "color"` — un échantillon, pas un texte.
+  assert.deepEqual(e.FB_PARTS.map((p) => !!p.color),
+    [false, false, false, false, true, true]);
+});
+
+test('la fenêtre reprend les mesures du bytecode', () => {
+  const css = LIGHT.substring(LIGHT.indexOf('#fb-editor-backdrop'),
+    LIGHT.indexOf('/* ── Generic panel ── */'));
+  // L'écran : `frutiScreen` en `fix {w:100, h:100}`, et sa marge basse de 10
+  // (`margin.y = {ratio: 0, min: 10}` dans `initFrameSet`).
+  assert.match(css, /\.fb-ecran \{[\s\S]*?width: 100px; height: 100px; margin: 6px 0 10px;/);
+  // C'est le MÊME écran que l'aquarium du salon : mêmes dessins, mêmes liserés.
+  assert.match(css, /url\('\/frutiz\/sprites\/ecran-fond\.svg'\)/);
+  assert.match(css, /url\('\/frutiz\/sprites\/ecran-reflet\.svg'\)/);
+  // La ligne : `min {w: 140, h: 26}`, et des flèches CARRÉES de la hauteur
+  // (`right._x = width − height`).
+  assert.match(css, /\.fb-row \{[\s\S]*?height: 26px;/);
+  assert.match(css, /\.fb-arrow \{\s*\n\s*flex: 0 0 26px; width: 26px; height: 26px;/);
+  // Les deux images de `butPushSmallPink`, sorties du SWF.
+  assert.match(css, /\.fb-arrow\.lft \{ background-image: url\('\/frutiz\/sprites\/fb-fleche-gauche\.svg'\); \}/);
+  assert.match(css, /\.fb-arrow\.rgt \{ background-image: url\('\/frutiz\/sprites\/fb-fleche-droite\.svg'\); \}/);
+  // Le bouton : la gélule `butPushStandard` (#465), 16 px de haut.
+  assert.match(css, /\.fb-valider \{[\s\S]*?height: 16px;[\s\S]*?background: #FFAAAD; box-shadow: inset 0 0 0 1\.5px #F28687;/);
+  assert.match(css, /\.fb-valider \{[\s\S]*?color: #660000;/);
+  // Et les vieilles images bricolées ont disparu.
+  assert.ok(!/icone_fleche_gauche\.png|icone_fleche_droite\.png/.test(LIGHT),
+    'plus de flèches hors SWF');
+});
+
+test('les deux dessins de flèche sortent bien du SWF', () => {
+  const SPRITES = path.join(ROOT, 'public/frutiz/sprites');
+  for (const n of ['fb-fleche-gauche.svg', 'fb-fleche-droite.svg']) {
+    const p = path.join(SPRITES, n);
+    assert.ok(fs.existsSync(p), n + ' manque — lancer extract-editeur-bouille.js');
+  }
+  /* L'image 11 est l'image 10 RETOURNÉE : même forme (#367), échelle en x
+     niée. C'est ce que la bande #374 fait à ses deux images. */
+  const g = fs.readFileSync(path.join(SPRITES, 'fb-fleche-gauche.svg'), 'utf8');
+  const d = fs.readFileSync(path.join(SPRITES, 'fb-fleche-droite.svg'), 'utf8');
+  assert.match(g, /matrix\(-1,0,0,1\.0045,10,10\)/);
+  assert.match(d, /matrix\(1,0,0,1\.0045,10,10\)/);
+  // À la matrice près, les deux dessins sont le même.
+  assert.equal(g.replace(/matrix\([^)]*\)/g, ''), d.replace(/matrix\([^)]*\)/g, ''));
+  const man = JSON.parse(fs.readFileSync(path.join(SPRITES, 'bureau.json'), 'utf8'));
+  assert.ok(man.editeurBouille, 'le manifeste du bureau garde la trace de l’extraction');
+  assert.equal(man.editeurBouille['fb-fleche-gauche'].image, 11);
+  assert.equal(man.editeurBouille['fb-fleche-droite'].image, 10);
+  // Et l'extraction n'a pas écrasé le reste du manifeste, qui est COMMUN.
+  assert.ok(man.boutons, 'les boutons de bandeau sont toujours là');
+});
+
+test('l’échantillon de couleur refait le DÉCALAGE de `setColor`', () => {
+  /* `updateSampleColor` (0x90d34) dessine du blanc bordé de `#BBBBBB`, puis
+     `setColor(colorSample, generalPalette[val])`. `FEMC.setColor` (0x4a81c)
+     pose `sortie = source + (col − 255)` : le blanc rend la couleur, le gris
+     la même en plus sombre de 68 par canal. Un liseré assorti, jamais noir. */
+  const src = LIGHT.substring(LIGHT.indexOf('function fbDecale'),
+    LIGHT.indexOf('function fbRefreshBars'));
+  assert.match(src, /var s = 255 - source;/);
+  assert.match(src, /b\.style\.borderColor = fbDecale\(hex, 0xBB\);/);
+  // Et la valeur, en clair : un rouge vif garde sa teinte, en plus sombre.
+  const f = new Function(LIGHT.substring(LIGHT.indexOf('function fbDecale'),
+    LIGHT.indexOf('function fbRefreshBar(')) + '\nreturn fbDecale;')();
+  assert.equal(f('#FFFFFF', 0xBB), '#bbbbbb');
+  assert.equal(f('#FF0000', 0xBB), '#bb0000');
+  assert.equal(f('#404040', 0xBB), '#000000', 'le décalage se borne à zéro');
 });

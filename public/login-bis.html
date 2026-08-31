@@ -383,37 +383,10 @@
   </style>
 </head>
 <body>
-  <style>
-    #mobile-popup {
-      position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
-      background: rgba(0,0,0,.45); padding: 20px;
-    }
-    #mobile-popup.hidden { display: none; }
-    #mobile-popup .mp-card {
-      background: #fff; border: 2px solid #2C4A0F; border-radius: 16px; max-width: 360px; width: 100%;
-      padding: 22px 20px; text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,.35);
-    }
-    #mobile-popup .mp-emoji { font-size: 40px; line-height: 1; margin-bottom: 6px; }
-    #mobile-popup h3 { margin: 0 0 8px; color: #2C4A0F; font-size: 18px; }
-    #mobile-popup p { margin: 0 0 16px; color: #4f7b1f; font-size: 14px; line-height: 1.45; }
-    #mobile-popup .mp-go {
-      display: block; background: #2C4A0F; color: #CFF599; text-decoration: none; font-weight: bold;
-      padding: 12px; border-radius: 10px; font-size: 15px;
-    }
-    #mobile-popup .mp-stay {
-      display: block; width: 100%; margin-top: 10px; background: transparent; border: 0;
-      color: #2f6b16; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 8px;
-    }
-  </style>
-  <div id="mobile-popup" class="hidden" role="dialog" aria-modal="true" aria-label="Version mobile disponible">
-    <div class="mp-card">
-      <div class="mp-emoji">📱</div>
-      <h3>Version mobile disponible</h3>
-      <p>Frutiparc a une version <strong>mobile light</strong> (chat &amp; forum), plus rapide et adaptée à ton téléphone. Tu veux l'essayer ?</p>
-      <a class="mp-go" href="/light" id="mobile-popup-go">Passer en version mobile</a>
-      <button class="mp-stay" type="button" id="mobile-popup-stay">Rester sur la version classique</button>
-    </div>
-  </div>
+  <!-- LA POP-IN « version mobile » N'A PLUS LIEU D'ÊTRE : se connecter
+       MÈNE au portage natif, elle proposait donc d'aller là où l'on va
+       déjà. Le Flash, lui, se rejoint par le lien du pied de page ou par
+       « Mode Flash » dans le menu de l'onglet Bureau. -->
   <header class="topbar" id="topbar">
     <img class="logo" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/logo.gif" alt="Frutiparc" />
     <form id="login-form" class="login-form" autocomplete="on">
@@ -483,13 +456,15 @@
   <section id="welcome-user" class="loading hidden">
     <h2>Bienvenue sur le bureau Frutiz</h2>
     <p id="welcome-user-text"></p>
-    <p><a href="/legacy">Entrer dans Frutiparc</a></p>
+    <p><a href="/light">Entrer dans Frutiparc</a></p>
   </section>
 
   <div class="status" id="status" aria-live="polite"></div>
 
   <footer>
-    <div class="footer-top">Aide (Gaspard) · <a href="#" id="forgot-link" style="color:inherit;text-decoration:underline">Oubli de code secret</a> · <a href="/light" style="color:inherit;text-decoration:underline">Version mobile</a></div>
+    <!-- Se connecter mène au portage natif ; le Flash reste à un clic, ici et
+         dans le menu de l'onglet Bureau (« Mode Flash »). -->
+    <div class="footer-top">Aide (Gaspard) · <a href="#" id="forgot-link" style="color:inherit;text-decoration:underline">Oubli de code secret</a> · <a href="/legacy" style="color:inherit;text-decoration:underline">Version Flash</a></div>
 
     <!-- Forgot-password inline form (revealed by the footer link) -->
     <div id="forgot-box" class="hidden" style="max-width:360px;margin:10px auto 0;background:#fff;border:1px solid #5a8a20;border-radius:10px;padding:14px;text-align:left">
@@ -653,7 +628,14 @@
       try {
         const data = await postJson('/api/auth/login', body);
         localStorage.setItem('currentUser', JSON.stringify({ username: body.username }));
-        window.location.href = data.redirect || '/legacy';
+        /* Le serveur renvoie `/light?sid=…` — la porte d'entrée. On n'en
+           dévie que si l'on venait EXPRÈS du Flash : `/legacy` sans session
+           renvoie ici avec `?vers=flash`, et c'est là qu'on finit le voyage
+           plutôt que de laisser le visiteur repartir de zéro. */
+        const vers = new URLSearchParams(location.search).get('vers');
+        window.location.href = (vers === 'flash' && data.sid)
+          ? '/legacy?sid=' + encodeURIComponent(data.sid)
+          : (data.redirect || '/light');
       } catch (error) {
         setStatus(error.message || 'Les identifiants sont incorrects.', true);
       }
@@ -706,41 +688,6 @@
         }
       });
     }
-
-    // À l'arrivée, on propose la version mobile « light » — mais UNIQUEMENT sur
-    // petit écran / appareil tactile (inutile et hors sujet sur desktop, où la
-    // pop-in « s'affichait mal »). Mémorisée pour la session (sessionStorage) :
-    // elle réapparaît à chaque nouvelle visite mais ne harcèle pas dans la même
-    // session. Ré-évaluée après stabilisation du viewport et à la rotation, car
-    // certains navigateurs mobiles renvoient une largeur erronée au 1er rendu
-    // (ce qui faisait que la pop-in « ne s'affichait pas systématiquement »).
-    (function () {
-      const popup = document.getElementById('mobile-popup');
-      if (!popup) return;
-      function isMobileViewport() {
-        try {
-          return window.matchMedia('(max-width: 820px)').matches
-            || (window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(max-width: 1024px)').matches);
-        } catch (e) { return (window.innerWidth || 9999) <= 820; }
-      }
-      function dismissed() { try { return sessionStorage.getItem('fp_mobile_popup') === '1'; } catch (e) { return false; } }
-      function remember() { try { sessionStorage.setItem('fp_mobile_popup', '1'); } catch (e) {} }
-      function close() { popup.classList.add('hidden'); remember(); }
-      let shown = false;
-      function maybeShow() {
-        if (shown || dismissed() || !isMobileViewport()) return;
-        shown = true;
-        popup.classList.remove('hidden');
-      }
-      const stay = document.getElementById('mobile-popup-stay');
-      const go = document.getElementById('mobile-popup-go');
-      if (stay) stay.addEventListener('click', close);
-      if (go) go.addEventListener('click', remember);            // mémorise avant d'aller sur /light
-      popup.addEventListener('click', (e) => { if (e.target === popup) close(); }); // clic sur le fond = fermer
-      maybeShow();
-      setTimeout(maybeShow, 400);                                 // viewport stabilisé
-      window.addEventListener('orientationchange', function () { setTimeout(maybeShow, 200); });
-    })();
 
     renderGames();
   </script>

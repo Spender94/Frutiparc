@@ -461,62 +461,166 @@
   .fp-popin-btn:active { background: #EF8F9B; }
   .fp-popin-btn.ghost { background: #FFF; }
 
-  /* ── "Ma Frutibouille" : éditeur de visage (auto-affiché si needsBouille) ──
-     Look calqué sur l'editbouille de main.swf : cadre arrondi vert clair,
-     onglet-titre, preview, lignes yeux/iris/cheveux/bouche + barres couleur
-     encadrées de flèches roses, bouton "valider". Modal non fermable : le
-     joueur doit valider (= mirror du forçage côté Flash). */
+  /* ══ « MA FRUTIBOUILLE » — `win.EditFrutibouille` (main.swf 0xa2e4d) ══════
+   *
+   * La fenêtre qu'on reçoit tant qu'on n'a pas fait sa tête. Elle ne dessine
+   * rien elle-même : elle EMPILE trois choses, et c'est cet empilement qu'on
+   * refait ici, au chiffre près.
+   *
+   *   initFrameSet()      un compo `screenFrame`, lien `frutiScreen`,
+   *                       min {w:200, h:100}, args {fix:{w:100, h:100}},
+   *                       marge y {ratio:0, min:10}
+   *   initControlPanel()  un compo `console<i>` par entrée de `modifList`,
+   *                       lien `cpFBConsole`, min {w:140, h:26}
+   *                       puis un `cpDocument` de 140 × 22 portant
+   *                       <b t="valider" l="butPushStandard" o="win" m="validate"/>
+   *
+   * UNE LIGNE, c'est `cp.FBConsole` (0x9097b) : deux `butPushSmallPink` aux
+   * bouts — images 11 (gauche) et 10 (droite) de la bande #374 —, et entre eux
+   * soit le NOM de la partie, centré, soit un ÉCHANTILLON DE COULEUR.
+   * `updateSize` les cale : `right._x = width − height`, `field._x = height`,
+   * `field._width = width − 2 × height`. Les flèches sont donc CARRÉES, du
+   * côté de la HAUTEUR de la ligne — 26 px.
+   *
+   * L'échantillon, lui, se dessine en deux temps (0x90d34) :
+   *   drawSmoothSquare(this, {x: h+10, y: 2, w: w−2h−20, h: h−4},
+   *                    style.global.color.inline, curve 12)
+   *   puis, rentré de 2, drawCustomSquare(colorSample, r,
+   *     {outline:0, inline:2, curve:10, color:{main:#FFFFFF, inline:#BBBBBB}})
+   *   et setColor(colorSample, generalPalette[val]) — un DÉCALAGE par canal,
+   *   `sortie = source + (col − 255)` : le blanc donne la couleur, le gris
+   *   son ombre. D'où le liseré plus sombre que le fond, de la même teinte.
+   *
+   * CE QUI RESTE DU PORTAGE, et pourquoi : la fenêtre est posée au MILIEU et
+   * ne se traîne pas. D'époque elle est `desktopable` — mais elle est aussi
+   * `tryToClose → false`, donc impossible à fermer tant qu'on n'a pas validé.
+   * Sur un téléphone, où le bureau n'existe pas, un panneau centré est la
+   * seule mise en page possible ; on la garde des deux côtés plutôt que
+   * d'entretenir deux éditeurs.
+   */
   #fb-editor-backdrop {
     position: fixed; inset: 0; background: rgba(0, 0, 0, .45);
     display: none; z-index: 60;
   }
   #fb-editor-backdrop.show { display: block; }
+  /* La fenêtre : blanche, coins arrondis, l'ombre portée des fenêtres du
+     bureau. Sa largeur utile est celle de la RANGÉE — 214 px, relevés sur la
+     capture d'époque (les `min` du bytecode sont des minima : la fenêtre
+     s'ouvre à la largeur de son plus large composant). */
   #fb-editor {
     position: fixed; z-index: 61; left: 50%; top: 50%;
     transform: translate(-50%, -50%) scale(.96);
-    width: min(92vw, 320px); box-sizing: border-box;
-    /* Sur petit écran, le contenu scrolle dans le cadre — le bouton
-       « valider » reste toujours atteignable. */
+    width: 234px; box-sizing: border-box;
+    /* Sur petit écran, le contenu défile dans le cadre : « valider » reste
+       toujours atteignable. */
     max-height: 92vh; max-height: 92dvh; overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    background: #fff; border: 2px solid #aacf86; border-radius: 18px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, .35);
-    padding: 12px 14px 18px; display: none; opacity: 0;
+    background: #FFFFFF; border-radius: 6px;
+    box-shadow: 0 0 0 1px #999999, 0 6px 18px rgba(0, 0, 0, .35);
+    padding: 3px 10px 10px; display: none; opacity: 0;
     transition: opacity .18s ease, transform .18s ease;
-    font-family: Verdana, Geneva, sans-serif;
+    font-family: Verdana, Arial, sans-serif;
   }
   #fb-editor.show { display: block; opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  .fb-titletab {
-    display: inline-flex; align-items: center; gap: 6px;
-    color: #2f8f86; font-weight: bold; font-size: 13px; margin: 0 0 8px 2px;
+  /* LE BANDEAU, celui de toutes les fenêtres : la pastille (un fruit de la
+     bande #198, l'orange par défaut) et le titre `Lang.fv("my_frutibouille")`
+     en Verdana gras 11 sur `#444444`. Pas de boutons : `tryToClose` rend
+     `false` — on ne referme pas cette fenêtre, on la valide. */
+  .fb-titre {
+    display: flex; align-items: center; gap: 0;
+    height: 16px; padding: 0 0 0 3px;
+    font: 700 11px Verdana, Arial, sans-serif; color: #444444;
+    user-select: none; -webkit-user-select: none;
   }
-  .fb-titletab img { width: 18px; height: 18px; display: block; }
-  .fb-preview {
-    width: 132px; height: 132px; margin: 2px auto 6px; border-radius: 14px;
-    overflow: hidden; background: #cfe6a3; border: 1px solid #aacf86;
+  .fb-pastille {
+    width: 16px; height: 15px; flex-shrink: 0; margin-right: 4px;
+    background: url('/frutiz/sprites/fruit_default.svg') center / contain no-repeat;
   }
-  .fb-preview iframe, .fb-preview canvas { width: 100%; height: 100%; border: 0; display: block; }
-  .fb-rows { display: flex; flex-direction: column; gap: 9px; margin: 8px 2px 14px; }
-  .fb-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  /* Flèches = icônes fournies (normal + pressed au tap), au lieu des boutons CSS. */
+  /* L'APERÇU — `frutiScreen` en `fix {w:100, h:100}`, le même écran que
+     l'aquarium du salon et la pile de Gaspard : le fond dessiné du SWF
+     (`frutiScreenBackground` #139), le liseré clair, l'anneau sombre, et le
+     reflet `frutiScreenLight` (#395) par-dessus tout. La marge du dessous est
+     celle du compo : `margin.y = {ratio: 0, min: 10}`. */
+  .fb-ecran {
+    position: relative; width: 100px; height: 100px; margin: 6px 0 10px;
+    background: url('/frutiz/sprites/ecran-fond.svg') 0 0 / 100% 100% no-repeat;
+    border-radius: 6px; box-shadow: 0 0 0 2px #DDDDDD; overflow: hidden;
+  }
+  .fb-ecran::before {
+    content: ""; position: absolute; right: 2px; top: 2px;
+    width: 42.7px; height: 31.8px; z-index: 7; pointer-events: none;
+    background: url('/frutiz/sprites/ecran-reflet.svg') 0 0 / 42.7px 31.8px no-repeat;
+  }
+  .fb-ecran::after {
+    content: ""; position: absolute; inset: 0; border-radius: 6px;
+    box-shadow: inset 0 0 0 1px #888888; z-index: 6; pointer-events: none;
+  }
+  .fb-ecran iframe, .fb-ecran canvas {
+    position: relative; z-index: 2; display: block;
+    width: 98px; height: 98px; margin: 1px; border: 0; background: transparent;
+  }
+  /* LES RANGÉES. Hauteur 26 (le `min.h` du compo), deux pixels entre elles —
+     la marge que `newElement` donne par défaut. */
+  .fb-rows { display: flex; flex-direction: column; gap: 2px; }
+  .fb-row { display: flex; align-items: center; height: 26px; }
+  /* Les flèches : `butPushSmallPink` (#378), images 11 et 10 de sa bande
+     #374 — la même forme, retournée. Carrées, du côté de la hauteur. */
   .fb-arrow {
-    flex: 0 0 auto; width: 46px; height: 40px; padding: 0; border: 0; cursor: pointer;
-    background: transparent no-repeat center / contain;
-    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+    flex: 0 0 26px; width: 26px; height: 26px; padding: 0; border: 0;
+    /* La plaque REMPLIT sa case : `but.Push` redessine son art à la taille du
+       bouton, et la case fait 26 — la hauteur de la ligne. Relevé sur la
+       capture d'époque : 25 px de plaque dans 26 de case. */
+    cursor: pointer; background: transparent no-repeat center / 25px 25px;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
   }
-  .fb-arrow.lft { background-image: url('/fb/icone_fleche_gauche.png'); }
-  .fb-arrow.rgt { background-image: url('/fb/icone_fleche_droite.png'); }
-  .fb-arrow.lft:active { background-image: url('/fb/icone_gauche_pressed.png'); }
-  .fb-arrow.rgt:active { background-image: url('/fb/icone_fleche_droite_pressed.png'); }
-  .fb-label { flex: 1 1 auto; text-align: center; color: #7b7b7b; font-size: 14px; }
-  /* Barre couleur (peau / cheveux) : montre la vraie couleur ; ◄ ► font défiler. */
-  .fb-bar { flex: 1 1 auto; height: 22px; border-radius: 9px; border: 1px solid rgba(0, 0, 0, .18); cursor: default; }
+  .fb-arrow.lft { background-image: url('/frutiz/sprites/fb-fleche-gauche.svg'); }
+  .fb-arrow.rgt { background-image: url('/frutiz/sprites/fb-fleche-droite.svg'); }
+  /* `but.Push` fonce sa plaque à l'appui — un décalage, pas un voile. */
+  .fb-arrow:active { filter: brightness(.9); }
+  /* LE NOM DE LA PARTIE, centré entre les deux flèches (`field._x = height`,
+     `_width = width − 2 × height`). C'est le texte du style système de la
+     fenêtre — Verdana 11, l'encre des fenêtres. */
+  .fb-label {
+    flex: 1 1 auto; min-width: 0; text-align: center;
+    font: 11px Verdana, Arial, sans-serif; color: #333333;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* L'ÉCHANTILLON DE COULEUR : la boîte extérieure porte la marge de 10 de
+     chaque côté et le liseré clair du style, l'intérieure la couleur. */
+  .fb-sample {
+    flex: 1 1 auto; min-width: 0; height: 22px; margin: 0 10px;
+    /* `curve` vaut 12 dehors et 10 dedans, pour 22 et 18 de haut : les deux
+       gélules sont donc rondes aux bouts, plafonnées à la demi-hauteur. */
+    border-radius: 11px; box-shadow: inset 0 0 0 1px #DDDDDD;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .fb-bar {
+    width: calc(100% - 4px); height: 18px; border-radius: 9px;
+    border: 2px solid transparent; box-sizing: border-box; cursor: default;
+  }
+  /* LE PIED — un `cpDocument` de 140 × 22 dont la seule ligne est
+     `<s b="1"/><b t="valider" l="butPushStandard"/><s b="1"/>` : deux espaces
+     élastiques, donc un bouton CENTRÉ.
+
+     `butPushStandard` (#465) est une GÉLULE de 16 px : anneau `#F28687` de
+     1,5 px, fond `#FFAAAD`, encre `#660000`, et un éclat `#FFEAEC` qui longe
+     le bord haut puis s'enroule autour du bout droit. Les mêmes valeurs que
+     le bouton « créer un salon » — c'est le même dessin. */
+  .fb-doc { height: 22px; display: flex; align-items: center; justify-content: center; margin-top: 8px; }
   .fb-valider {
-    display: block; margin: 2px auto 0; padding: 7px 32px;
-    border: 1px solid #e29b9b; border-radius: 16px; background: #f3a9a9;
-    color: #b5455f; font-weight: bold; font-size: 14px; cursor: pointer;
+    position: relative; height: 16px; padding: 0 14px; border: 0;
+    border-radius: 8px; background: #FFAAAD; box-shadow: inset 0 0 0 1.5px #F28687;
+    font: 700 10px Verdana, Arial, sans-serif; color: #660000;
+    cursor: pointer; white-space: nowrap;
   }
-  .fb-valider:active { background: #ec9a9a; }
+  .fb-valider::after {
+    content: ""; position: absolute; inset: 1.5px; pointer-events: none;
+    border-radius: 6.5px;
+    border-top: 1px solid #FFEAEC; border-right: 1px solid #FFEAEC;
+    border-left: 0; border-bottom: 0;
+  }
+  .fb-valider:active { background: #F49B9E; }
 
   /* ── Generic panel ── */
   .panel { flex: 1; min-height: 0; display: none; flex-direction: column; }
@@ -2807,14 +2911,19 @@
     </div>
   </div>
 
-  <!-- "Ma Frutibouille" : éditeur de visage (auto-affiché tant que needsBouille).
-       Rows + valider sont construits/branchés en JS (openFbEditor). -->
+  <!-- « Ma Frutibouille » — `win.EditFrutibouille` (main.swf 0xa2e4d), montée
+       tant que le serveur réclame une bouille. Le bandeau et sa pastille, puis
+       l'écran (`frutiScreen`, fix 100 × 100), puis une rangée `cpFBConsole`
+       par partie, puis le `cpDocument` du bouton. Les rangées sont construites
+       en JS (`fbBuildRows`) : leur nombre suit `modifList`. -->
   <div id="fb-editor-backdrop"></div>
   <div id="fb-editor" role="dialog" aria-modal="true" aria-label="Ma Frutibouille">
-    <div class="fb-titletab"><img src="/fb/icone_bouille.png" alt="">Ma Frutibouille</div>
-    <div class="fb-preview" id="fb-editor-preview"></div>
+    <div class="fb-titre"><span class="fb-pastille"></span>Ma Frutibouille</div>
+    <div class="fb-ecran" id="fb-editor-preview"></div>
     <div class="fb-rows" id="fb-editor-rows"></div>
-    <button class="fb-valider" id="fb-editor-valider" type="button">valider</button>
+    <div class="fb-doc">
+      <button class="fb-valider" id="fb-editor-valider" type="button">valider</button>
+    </div>
   </div>
 </div>
 
@@ -10783,14 +10892,38 @@
   // un sac restent intactes et s'affichent partout comme avant : on retire
   // l'option, pas le dessin.
   var FB_SAC = [1, 2, 3];
+  /* LES RANGÉES, ET LEURS NOMS.
+   *
+   * `win.EditFrutibouille.init` pose `modifList = [1,2,3,4,5,6,7,8]` par
+   * défaut, et `initControlPanel` monte une ligne par entrée : l'ID est
+   * l'INDICE DE LA PAIRE dans l'état, et le nom vient de `Frutibouille.getInfo`
+   * — qui n'est autre que le tableau `info` de la famille (`updateInfo` dans
+   * famille0.swf, douze entrées poussées à l'envers) :
+   *
+   *   0 famille · 1 yeux · 2 iris · 3 cheveux · 4 bouche · 5 couleur1 ·
+   *   6 couleur2 · 7 accessoire · 8 accessoire2 · 9..11 acc couleur1..3
+   *
+   * Les noms ci-dessous sont ceux de ce tableau, mot pour mot. Les deux
+   * dernières lignes sont de `type: "color"` : la console y met un échantillon
+   * au lieu d'un texte.
+   *
+   * ON S'ARRÊTE À SIX. L'éditeur d'époque monte aussi `accessoire` et
+   * `accessoire2` quand `modifList` les contient — mais ici les accessoires se
+   * GAGNENT (boutique, packs) et se posent depuis l'inventaire : les proposer
+   * ici laisserait choisir ce qu'on ne possède pas. C'est d'ailleurs ce que
+   * montre la capture de main.swf sur un compte neuf : six lignes, pas huit.
+   *
+   * `max` = `_totalframes − 1` du clip visé dans la famille, relevé dans les
+   * SWF ; `saute` retire du choix les coiffures qui sont le SAC À PATATE.
+   */
   var FB_PARTS = [
-    { key: "yeux",    label: "yeux",    pos: 2,  max: 8,  count: true },
-    { key: "iris",    label: "iris",    pos: 4,  max: 17, count: true },
-    { key: "cheveux", label: "cheveux", pos: 6,  max: 66, count: true, saute: FB_SAC },
-    { key: "bouche",  label: "bouche",  pos: 8,  max: 4,  count: true },
-    // Couleurs : sélecteur de palette (53 couleurs, cf. /js/bouille-palette.js).
-    { key: "peau",    label: "couleur peau",    pos: 10, max: 52, color: true },
-    { key: "colch",   label: "couleur cheveux", pos: 12, max: 52, color: true },
+    { key: "yeux",    label: "yeux",    id: 1, pos: 2,  max: 8 },
+    { key: "iris",    label: "iris",    id: 2, pos: 4,  max: 17 },
+    { key: "cheveux", label: "cheveux", id: 3, pos: 6,  max: 66, saute: FB_SAC },
+    { key: "bouche",  label: "bouche",  id: 4, pos: 8,  max: 4 },
+    // `generalPalette` : 53 couleurs (cf. /js/bouille-palette.js).
+    { key: "peau",    label: "couleur1", id: 5, pos: 10, max: 52, color: true },
+    { key: "colch",   label: "couleur2", id: 6, pos: 12, max: 52, color: true },
   ];
   var fbState = DEFAULT_BOUILLE;   // l'état 24-car. en cours d'édition
   var fbRowsBuilt = false;
@@ -10858,29 +10991,39 @@
     else fbRefreshLabel(part);
     fbRenderPreviewSoon();
   }
-  // Ligne élément (yeux, cheveux, accessoire…) : « cheveux · 13/64 » pour se
-  // repérer dans les longues listes — la place se compte parmi les coiffures
-  // PROPOSÉES, sac exclu, sinon le compte sauterait des numéros.
+  /* Ligne élément : `field.text = parent.info[id].name` (0x90cdc), et RIEN
+     d'autre. Le portage y ajoutait un compteur — « cheveux · 13/64 » — pour
+     se repérer dans les soixante-sept coiffures. Ce n'est pas d'époque : la
+     console ne réécrit même pas son champ quand la valeur change, elle ne le
+     pose qu'une fois. On garde le nom seul, et le compte se lit sur l'écran. */
   function fbRefreshLabel(part) {
     var l = document.getElementById("fb-lbl-" + part.key);
-    if (!l) return;
-    var texte = part.label;
-    if (part.count) {
-      var choix = fbChoix(part);
-      var ici = choix.indexOf(fbGet(part.pos));
-      texte += " · " + (ici >= 0 ? ici + 1 : "–") + "/" + choix.length;
-    }
-    l.textContent = texte;
+    if (l) l.textContent = part.label;
   }
   function fbRefreshLabels() { FB_PARTS.forEach(function (p) { if (!p.color) fbRefreshLabel(p); }); }
-  // Ligne couleur (peau / cheveux) = barre montrant la VRAIE couleur courante ;
-  // ◄ ► font défiler la palette (53 couleurs), fidèle au modèle mobile d'origine.
+  /* Ligne couleur : `updateSampleColor` dessine une gélule BLANCHE bordée de
+     `#BBBBBB` sur 2 px, puis `setColor(colorSample, generalPalette[val])` la
+     teint. Et `FEMC.setColor` (0x4a81c) n'est pas un remplissage : hors
+     `negFlag` il pose `{ra:100, ga:100, ba:100, rb:r−255, …}`, soit
+     `sortie = source + (col − 255)`. Le blanc rend donc la couleur telle
+     quelle, et le gris `#BBBBBB` la même en plus sombre de 68 par canal —
+     d'où le liseré assorti, jamais noir. */
+  function fbDecale(hex, source) {
+    var v = parseInt(String(hex).replace("#", ""), 16) || 0;
+    var s = 255 - source;                       // ce que `setColor` retranche
+    var c = [16, 8, 0].map(function (d) {
+      return Math.max(0, Math.min(255, ((v >> d) & 255) - s));
+    });
+    return "#" + c.map(function (n) { return ("0" + n.toString(16)).slice(-2); }).join("");
+  }
   function fbRefreshBar(part) {
     var b = document.getElementById("fb-bar-" + part.key);
     if (!b) return;
     var idx = fbGet(part.pos);
-    b.style.background = FPBouille.colorHex(idx);
-    b.title = FPBouille.colorName(idx) + " (" + idx + ")";
+    var hex = FPBouille.colorHex(idx);
+    b.style.background = hex;                                   // le blanc teinté
+    b.style.borderColor = fbDecale(hex, 0xBB);                  // le gris teinté
+    b.parentNode.title = FPBouille.colorName(idx) + " (" + idx + ")";
   }
   function fbRefreshBars() { FB_PARTS.forEach(function (p) { if (p.color) fbRefreshBar(p); }); }
   function fbBuildRows() {
@@ -10892,10 +11035,11 @@
       var right = el("button", "fb-arrow rgt"); right.type = "button"; right.setAttribute("aria-label", "suivant");
       var center;
       if (part.color) {
-        center = el("div", "fb-bar"); center.id = "fb-bar-" + part.key;
-        var idx = fbGet(part.pos);
-        center.style.background = FPBouille.colorHex(idx);
-        center.title = FPBouille.colorName(idx) + " (" + idx + ")";
+        // Deux boîtes, comme les deux tracés de `updateSampleColor` : le cadre
+        // au liseré du style, et l'échantillon teinté à l'intérieur.
+        center = el("div", "fb-sample");
+        var bar = el("div", "fb-bar"); bar.id = "fb-bar-" + part.key;
+        center.appendChild(bar);
       } else {
         center = el("div", "fb-label"); center.id = "fb-lbl-" + part.key;
       }
@@ -10906,6 +11050,7 @@
     });
     fbRowsBuilt = true;
     fbRefreshLabels();
+    fbRefreshBars();
   }
 
   function openFbEditor(initial) {

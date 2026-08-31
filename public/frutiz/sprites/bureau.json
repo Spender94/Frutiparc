@@ -1140,5 +1140,22 @@
     "h": 32.15
    }
   }
+ },
+ "editeurBouille": {
+  "cadre": {
+   "x": 0,
+   "y": 0,
+   "w": 20,
+   "h": 20
+  },
+  "notes": "cp.FBConsole : butPushSmallPink #378, images 10 (droite) et 11 (gauche) de la bande #374 — le triangle #367, retourné pour la gauche",
+  "fb-fleche-droite": {
+   "fichier": "fb-fleche-droite.svg",
+   "image": 10
+  },
+  "fb-fleche-gauche": {
+   "fichier": "fb-fleche-gauche.svg",
+   "image": 11
+  }
  }
 }

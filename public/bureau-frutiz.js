@@ -6055,6 +6055,11 @@ window.BureauFrutiz = (function () {
    * monde, et chacune existait déjà ailleurs dans le portage — il ne manquait
    * que de les rassembler là où l'époque les mettait.
    *
+   * UNE SEULE A CHANGÉ DE SENS. « Mode light » menait du bureau Flash à la
+   * version légère ; les deux ont échangé leurs rôles — se connecter mène
+   * désormais au portage natif — et l'entrée dit donc « Mode Flash » et ouvre
+   * main.swf. La place dans le menu, elle, ne bouge pas.
+   *
    * C'est aussi le menu du CLIC DROIT sur le fond d'écran (cf. `menuDuBureau`,
    * qui n'y ajoute que « Nouveau dossier »).
    */
@@ -6062,7 +6067,9 @@ window.BureauFrutiz = (function () {
     if (idOnglet === 'bureau') {
       return [
         { titre: 'Se déconnecter', faire: deconnecter },
-        { titre: 'Mode light', faire: passerEnLight },
+        // L'entrée d'époque menait au light ; les deux ont échangé leurs
+        // rôles (cf. `passerEnFlash`) et c'est main.swf qu'elle ouvre.
+        { titre: 'Mode Flash', faire: passerEnFlash },
         // `flHalfHide` décide du libellé, pas de l'action : c'est la même
         // bascule dans les deux sens.
         { titre: repli.actif ? 'Afficher barre' : 'Mode rapide',
@@ -6134,14 +6141,30 @@ window.BureauFrutiz = (function () {
     b.click();
   }
 
-  // `FPDesktop.golight` : quitter le bureau pour la version légère. Elle est
-  // ICI la même page, en présentation mobile — `isDesktop()` décide, et
-  // `?vue=light` le lui interdit. Revenir au bureau, c'est rouvrir /light.html
-  // sans le paramètre : rien n'est retenu nulle part.
-  function passerEnLight() {
-    var p = new URLSearchParams(window.location.search);
-    p.set('vue', 'light');
-    window.location.href = window.location.pathname + '?' + p.toString();
+  /*
+   * `FPDesktop.golight`, DANS L'AUTRE SENS.
+   *
+   * D'époque, l'entrée menait du bureau Flash à la version légère : le Flash
+   * était la porte d'entrée, le light la sortie de secours. Les deux ont
+   * échangé leurs rôles — se connecter mène désormais ici, au portage natif —
+   * et l'entrée mène donc à main.swf, la vérité historique, pour qui veut
+   * continuer d'y jouer.
+   *
+   * On emporte le SID dans l'adresse : `/legacy` le vérifie côté serveur et
+   * renvoie à l'accueil sans lui. Il vit dans le `localStorage` du light
+   * (`fp_light_session`), là où la reprise de session le range.
+   */
+  function passerEnFlash() {
+    var sid = '';
+    try {
+      var s = window.state && window.state.sid;
+      if (!s) {
+        var j = JSON.parse(localStorage.getItem('fp_light_session') || '{}');
+        s = j && j.sid;
+      }
+      sid = s || '';
+    } catch (e) { sid = ''; }
+    window.location.href = '/legacy' + (sid ? '?sid=' + encodeURIComponent(sid) : '');
   }
 
   // `uniqWinMng.open("search")` : la fenêtre de recherche, celle-là même que le
