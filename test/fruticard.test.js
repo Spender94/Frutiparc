@@ -123,7 +123,9 @@ test('Burning Kiwi : les quatre coupes, les cinq voitures, les circuits', () => 
   const carte = FC.lignes('bkiwi', {
     $wss: true, $ws: false, $wcs: false, $wc: true,
     $ac: [true, false, false, false, false],
-    $ts: { $t0: { $fcLap: 61230, $fcTotal: 187400, $lapCar: 1, $totalCar: 4 } },
+    // `$ts` est indexé par le RANG du circuit, pas par un nom : 0x5caad lit
+    // `card.$ts[i]` où `i` est le compteur de la boucle des six circuits.
+    $ts: { 0: { $fcLap: 61230, $fcTotal: 187400, $lapCar: 1, $totalCar: 4 } },
   }, 'Zorro');
   const im = images(carte);
   // Les coupes viennent EN PREMIER, images 1 à 4, dans l'ordre des clés
@@ -291,11 +293,20 @@ test('`patchSlot0` garnit `$fruits` PAR FRUIT', () => {
   // Une liste dense d'identifiants faisait dire « 5 fruits ramassés » à un
   // joueur qui en avait des milliers, et trompait « le plus gros fruit ».
   assert.match(SERVEUR, /saved\.\$fruits = \[\];\s*\n\s*for \(const id of trouves\) \{\s*\n\s*if \(id >= 0 && id < 343\) saved\.\$fruits\[id\] = FCard\.pointsFruit\(id\);/);
-  // Et Burning Kiwi reçoit ses deux indices d'écurie, mais pas de temps
-  // inventé : la carte saute d'elle-même un circuit sans `$fcLap`.
-  assert.match(SERVEUR, /if \(saved\.\$ts\[key\]\.\$lapCar === undefined\) saved\.\$ts\[key\]\.\$lapCar = 0;/);
-  assert.match(SERVEUR, /if \(saved\.\$ts\[key\]\.\$totalCar === undefined\) saved\.\$ts\[key\]\.\$totalCar = 0;/);
-  assert.doesNotMatch(SERVEUR, /\$fcLap = /);
+  /* Et Burning Kiwi garnit SES SIX CIRCUITS, indexés par leur rang.
+     On les garnissait sous les clés `$t0`…`$t5`, que le SWF ne lit pas — il
+     demande `card.$ts[i]` (0x5caad) —, et seulement avec `$bc`/`$bl`, les
+     champs du TABLEAU DES SCORES, là où la carte veut `$fcLap` et `$fcTotal`.
+     Les six circuits ne paraissaient donc jamais. Les deux temps sont les deux
+     classements du jeu : `challenge` chronomètre LE TOUR, `classic` LA COURSE. */
+  assert.match(SERVEUR, /if \(!saved\.\$ts\[t\] \|\| typeof saved\.\$ts\[t\] !== 'object'\) saved\.\$ts\[t\] = \{\};/);
+  assert.match(SERVEUR, /if \(piste\.\$fcLap === undefined && rkL && Number\(rkL\.score\) > 0\) piste\.\$fcLap = Number\(rkL\.score\);/);
+  assert.match(SERVEUR, /if \(piste\.\$fcTotal === undefined && rkC && Number\(rkC\.score\) > 0\) piste\.\$fcTotal = Number\(rkC\.score\);/);
+  // L'écurie vient du PREMIER champ des données annexes du classement.
+  assert.match(SERVEUR, /if \(piste\.\$lapCar === undefined\) piste\.\$lapCar = ecurieDe\(rkL\);/);
+  assert.match(SERVEUR, /if \(piste\.\$totalCar === undefined\) piste\.\$totalCar = ecurieDe\(rkC\);/);
+  // Une sauvegarde déjà garnie sous l'ancienne clé est reprise, pas perdue.
+  assert.match(SERVEUR, /const vieux = saved\.\$ts\[`\$t\$\{t\}`\];/);
 });
 
 /* ── LE LIGHT ─────────────────────────────────────────────────────────────── */
@@ -364,12 +375,16 @@ test('`DocPage.updateLine`, au chiffre près — le partage des largeurs', () =>
   assert.match(p[0], /libre -= w;/);
   // Une colonne rejoue la règle chez elle, dans la case qu'elle a reçue.
   assert.match(p[0], /if \(c\.classList\.contains\("fc-colonne"\)\) poserCarte\(c, w\);/);
-  // La HAUTEUR ne compte pas les dessins : `getLineHeight` (0x66537) ne
-  // regarde que `line.height` et les `min.h`.
+  /* LA HAUTEUR : `getLineHeight` (0x66537) prend `line.height` s'il est donné,
+     sinon le plus grand des composants — et `updateLine` mesure CHACUN d'eux,
+     le dessin d'une ligne `url` compris, une fois chargé. Chaque hauteur se
+     compte À SA PLACE : un dessin poussé de `dy` occupe jusqu'à `dy + h`. */
   const h = /function hauteurRangee\(r, enfants\) \{[\s\S]*?\n  \}/.exec(LIGHT);
   assert.ok(h, 'hauteurRangee doit exister');
   assert.match(h[0], /var h = Number\(f\.height\) \|\| 0;/);
-  assert.match(h[0], /if \(min\.h !== undefined && min\.h !== null\) h = Math\.max\(h, Number\(min\.h\) \|\| 0\);/);
+  assert.match(h[0], /var dy = parseFloat\(c\.style\.marginTop\) \|\| 0;/);
+  assert.match(h[0], /if \(min\.h !== undefined && min\.h !== null\) h = Math\.max\(h, \(Number\(min\.h\) \|\| 0\) \+ dy\);/);
+  assert.match(h[0], /if \(e\.h > 0\) h = Math\.max\(h, Number\(e\.h\) \+ dy\);/);
 });
 
 test('les titres portent l’encre du CORPS, pas celle des onglets', () => {
@@ -424,6 +439,83 @@ test('les bibliothèques composées de `/sd/` sont sorties du SWF', () => {
   // `10 + frame` pour douze grades). Un `$lvl` aberrant reste sur le dernier.
   assert.strictEqual(FC.resoudre('miniwave_rank', { frame: 11 }),
     FC.resoudre('miniwave_rank', { frame: 99 }));
+});
+
+test('un dessin porte sa taille et son ÉCART À L’ORIGINE', () => {
+  /* `DocPage.updateLine` charge le SWF dans un clip et lui pose `_x`/`_y` :
+     c'est l'ORIGINE du dessin qui atterrit sur `dx`/`dy`, jamais son coin.
+     Une bibliothèque ne dessine pas forcément à partir de (0,0) — le panier de
+     Kaluga commence à droite et en bas de la sienne, les personnages de Swapou
+     sont CENTRÉS dessus. Une `<img>`, elle, se pose par son coin : sans cet
+     écart, le cercle de Swapou penchait vers le bas-droit d'un demi-personnage.
+
+     La taille compte aussi : les vignettes rendues sous Ruffle sortent à DEUX
+     FOIS leur taille (rendu ×4, réduit à ×2, pour les écrans denses). Posées à
+     la taille du FICHIER, la voiture de Burning Kiwi s'affichait à 40 px pour
+     un dessin de 20 — « trop grosses » d'un côté, « floues » de l'autre. */
+  const l = FC.urlLigne('swapou_chars', { param: { frame: 0 } }, { dx: 10, dy: 20 });
+  assert.ok(l.w > 0 && l.h > 0, 'la taille logique voyage avec la ligne');
+  assert.ok(l.ox < 0 && l.oy < 0, 'un dessin centré a un écart négatif : '
+    + JSON.stringify({ ox: l.ox, oy: l.oy }));
+  // Le dessin est CENTRÉ à peu de chose près sur l'origine : son écart vaut
+  // grosso modo la moitié de sa taille, en négatif.
+  assert.ok(Math.abs(l.oy + l.h / 2) < 2, 'centré verticalement sur l’origine');
+  // Une voiture, elle, part de son coin : pas d'écart du tout.
+  const v = FC.urlLigne('bkiwi_team', { param: { data: ['ultra orange'] } }, {});
+  assert.strictEqual(v.ox, undefined);
+  assert.strictEqual(v.w, 20, 'la voiture fait vingt pixels, pas quarante');
+});
+
+test('Swapou prend ses personnages à la bonne bibliothèque', () => {
+  /* La carte tire son cercle de `/sd/swapou_chars.swf`. Ses images 20 à 26
+     reposent le même personnage sous une transformation de couleur —
+     multiplicateurs (0,0,0), addition (114,153,40) : un aplat vert, celui-là
+     même du médaillon, donc un médaillon VIDE. C'est ça, un personnage pas
+     encore découvert.
+
+     On les prenait à `swapou_score_chars`, la bibliothèque du TABLEAU DES
+     SCORES : vingt pixels de côté (étirés à quarante-huit sur la fiche, d'où
+     le flou) et un état « inconnu » qui est une CROIX ROUGE. Quatre croix dans
+     le cercle, là où l'époque montre quatre silhouettes. */
+  assert.strictEqual(FC.resoudre('swapou_chars', { frame: 3 }), '/fb/sd/swapou_carte_3.png');
+  assert.strictEqual(FC.resoudre('swapou_chars', { frame: 13 }), '/fb/sd/swapou_carte_v3.png');
+  for (let i = 0; i <= 6; i++) {
+    for (const n of ['swapou_carte_' + i, 'swapou_carte_v' + i]) {
+      assert.ok(fs.existsSync(path.join(ROOT, 'public/fb/sd', n + '.png')), n + ' manque');
+    }
+  }
+  // Et le tableau des scores garde LES SIENS : deux bibliothèques, deux jeux
+  // de dessins (`vignetteSd` du light s'adresse toujours aux premiers).
+  assert.ok(fs.existsSync(path.join(ROOT, 'public/fb/sd/swapou_char_inconnu.png')));
+  assert.match(LIGHT, /"swapou_char_inconnu" : "swapou_char_" \+ \(f - 2\)/);
+});
+
+test('le panier de Kaluga est PHOTOGRAPHIÉ, pas aplati', () => {
+  /* Son osier — la corbeille et son anse — est un BITMAP (`DefineBitsJPEG3`,
+     le seul du fichier) : l'aplatisseur, qui remonte des formes vectorielles,
+     n'en sortait que les fruits et l'ombre, fendus en deux par le vide où
+     passe l'anse. Un tas de fraises flottant au-dessus d'une flaque verte. */
+  const src = FC.resoudre('kaluga_panier', { frame: 7 });
+  assert.strictEqual(src, '/fb/sd/kaluga_panier_17.png');
+  assert.ok(fs.existsSync(path.join(ROOT, 'public', src)));
+  assert.strictEqual(fs.existsSync(path.join(ROOT, 'public/fb/sd/kaluga_panier_17.svg')), false,
+    'l’aplatissement incomplet ne traîne plus');
+  // Les deux extracteurs se partagent le manifeste : l'aplatisseur ne doit
+  // plus prétendre au panier ni aux personnages de Swapou.
+  const APL = fs.readFileSync(path.join(ROOT, 'scripts/extract-fruticard-sd.js'), 'utf8');
+  assert.doesNotMatch(APL, /\{ lib: 'kaluga_panier', swf:/);
+  assert.doesNotMatch(APL, /\{ lib: 'swapou_chars', swf:/);
+});
+
+test('le light pose le dessin à l’écart près', () => {
+  const bloc = LIGHT.slice(LIGHT.indexOf('if (l.type === "url") {'),
+    LIGHT.indexOf('if (l.type === "line") {'));
+  assert.match(bloc, /var mx = \(Number\(l\.dx\) \|\| 0\) \+ \(Number\(l\.ox\) \|\| 0\);/);
+  assert.match(bloc, /var my = \(Number\(l\.dy\) \|\| 0\) \+ \(Number\(l\.oy\) \|\| 0\);/);
+  assert.match(bloc, /if \(mx\) boite\.style\.marginLeft = mx \+ "px";/);
+  assert.match(bloc, /if \(my\) boite\.style\.marginTop = my \+ "px";/);
+  // Et la taille LOGIQUE, pas celle du fichier.
+  assert.match(bloc, /if \(l\.w > 0 && l\.h > 0\) \{ im\.style\.width = l\.w \+ "px"; im\.style\.height = l\.h \+ "px"; \}/);
 });
 
 test('la Luz n’a pas de dessin : la ligne garde sa place, vide', () => {

@@ -1216,6 +1216,16 @@ body.bureau-frutiz #bureau .home-tile[data-go="chat"]       .ico img { max-width
 body.bureau-frutiz #bureau .home-tile[data-go="scores"]     .ico img { max-width: 35px; max-height: 38px; }
 body.bureau-frutiz #bureau .home-tile[data-go="shop"]       .ico img { max-width: 36px; max-height: 32px; }
 body.bureau-frutiz #bureau .home-tile[data-go="trombi"]     .ico img { max-width: 42px; max-height: 42px; }
+/* LES TROIS DOSSIERS de la rangée — contacts, liste noire, corbeille. Leurs
+   dessins sortent de la MÊME feuille que le courrier et l'historique
+   (fileIcon.swf, `ico_dossier_*`) : ils suivent donc la même règle, 0,60 de
+   leur taille native — 58,1 × 43,1 pour le carnet, 51,4 × 58,4 pour les deux
+   autres. Ils retombaient sur la contrainte générique (42 × 42), qui les
+   étirait d'un bon tiers : c'étaient les trois plus grosses icônes de la
+   rangée, et elles n'avaient aucune raison de l'être. */
+body.bureau-frutiz #bureau .home-tile[data-go="contacts"]   .ico img { max-width: 35px; max-height: 26px; }
+body.bureau-frutiz #bureau .home-tile[data-go="noire"]      .ico img { max-width: 31px; max-height: 35px; }
+body.bureau-frutiz #bureau .home-tile[data-go="corbeille"]  .ico img { max-width: 31px; max-height: 35px; }
 /* GASPARD N'A PAS DE DESSIN : c'est un CONTACT dans la liste d'époque
    (`<e u="Gaspard" t="contact">`), et `but.Icon.display` remplace le dessin
    d'un contact par sa FRUTIBOUILLE. Sa tuile portait le point d'interrogation
@@ -4220,10 +4230,11 @@ body.bureau-frutiz .fen .ex-panel .ex-champ.attente { cursor: progress; }
 body.bureau-frutiz .fen .ex-panel .ex-slot-contact { cursor: grab; }
 body.bureau-frutiz .fen .ex-panel .ex-slot-contact[data-genre="M"] .ex-lbl { color: #242169; }
 body.bureau-frutiz .fen .ex-panel .ex-slot-contact[data-genre="F"] .ex-lbl { color: #BB4444; }
-/* Hors ligne, la bouille reste dessinée mais s'éteint — c'est ce que fait la
-   pastille de `UserSlot` (présence 0 → saumon), portée ici sur le dessin
-   lui-même faute d'un coin où poser la pastille dans une case de 80. */
-body.bureau-frutiz .fen .ex-panel .ex-slot-contact:not(.en-ligne) .ex-bouille { opacity: .55; }
+/* UNE BOUILLE NE S'ÉTEINT PAS. `but.Icon.display` remplace l'icône d'un
+   contact par sa frutibouille et n'y touche plus : la présence se lit sur la
+   PASTILLE de `UserSlot`, jamais sur le visage. Le portage pâlissait les
+   absents à 55 % — la moitié d'un carnet à moitié transparente, alors que rien
+   d'époque ne le fait. */
 
 /* LA PEAU DE LA LISTE NOIRE — `frFileBlackList`.
  *

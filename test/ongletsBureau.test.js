@@ -208,7 +208,12 @@ test('l’onglet d’une conversation CLIGNOTE à l’arrivée d’un message', 
   assert.match(LIGHT, /function avertirOngletChat\(ty, salon, pourMoi\) \{\s*\n\s*if \(ty === "b" \|\| ty === "i"\) return;\s*\n\s*if \(pourMoi === false\) return;/);
   const t = LIGHT.indexOf('case "t":');
   const bloc = LIGHT.slice(t, LIGHT.indexOf('var from = attr(xml, "u");', t));
-  assert.match(bloc, /var pourMoi = meMentionne\(nommes\) \|\| attr\(xml, "st"\) === "r";/);
+  /* Et un REJEU n'agite rien. Les cinq dernières minutes d'un salon sont
+     renvoyées à qui le rejoint : ces trames-là sont marquées `rj="1"` et
+     n'avertissent pas — sans quoi l'onglet clignotait à chaque entrée dans un
+     salon, pour des messages déjà lus. */
+  assert.match(bloc, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| attr\(xml, "st"\) === "r"\);/);
+  assert.match(bloc, /var enRejeu = attr\(xml, "rj"\) === "1";/);
   assert.match(bloc, /conv\.nonLus \+= 1;[\s\S]*?avertirOngletChat\(ty, salon, true\);/);      // en privé
   assert.match(bloc, /\/\/ Le salon qu'on regarde[\s\S]*?avertirOngletChat\(ty, salon, pourMoi\);/); // en salon
 });

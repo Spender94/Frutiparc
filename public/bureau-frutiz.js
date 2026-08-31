@@ -2700,7 +2700,11 @@ window.BureauFrutiz = (function () {
   // contact par sa FRUTIBOUILLE.
   function dessinObjet(o) {
     if (o.type === 'disc') return dessinDisque(o.desc[0], o.desc[1] || '');
-    if (o.type === 'folder') return dessinStandard('ico_folder');
+    // `ico_dossier_default` — le dossier jaune ordinaire. On demandait
+    // « ico_folder », qui n'existe dans aucune feuille : l'image ne se
+    // chargeait pas, et un dossier posé sur le bureau n'avait pas de dessin
+    // du tout (juste son étiquette).
+    if (o.type === 'folder') return dessinStandard('ico_dossier_default');
     return dessinBouille(o.desc[1] || '');
   }
 

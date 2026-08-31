@@ -319,7 +319,7 @@ function composer(swf, pieces, formes, teintes) {
     svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${arr(x0)} ${arr(y0)} ${arr(l)} ${arr(h)}"`
       + ` width="${arr(l)}" height="${arr(h)}">\n` + style
       + (defs ? '<defs>' + defs + '</defs>\n' : '') + corps + '</svg>\n',
-    w: +arr(l), h: +arr(h),
+    w: +arr(l), h: +arr(h), x: +arr(x0), y: +arr(y0),
   };
 }
 
@@ -373,7 +373,14 @@ const BIBLIOS = [
   { lib: 'miniwave_rank', swf: 'miniwave_rank.swf', racine: true },
   { lib: 'miniwave_ship', swf: 'miniwave_ship.swf', racine: true },
   { lib: 'miniwave_bads', swf: 'miniwave_bads.swf', racine: true },
-  { lib: 'kaluga_panier', swf: 'kaluga_panier.swf', racine: true },
+  /* PAS `kaluga_panier` ICI non plus. L'osier de la corbeille et son anse sont
+     UN BITMAP (`DefineBitsJPEG3`, le seul du fichier) : il n'en sortait que
+     les fruits et l'ombre, fendus en deux par le vide où passe l'anse. Lui
+     aussi passe par `extract-scores-sd.js`. */
+  /* PAS `swapou_chars` ICI. Les sept personnages de la fruticard sont des
+     BITMAPS posés autour de l'origine, deux choses que cet aplatisseur ne sait
+     pas rendre : il n'en sortait qu'un disque vert, le fond du dessin. Ils
+     passent par `extract-scores-sd.js`, qui les photographie sous Ruffle. */
   // `ball.symbol.gotoAndStop(frame)` : le scénario reste à sa dernière image.
   { lib: 'minipixiz_spell', swf: 'minipixiz_spell.swf',
     etats: (swf) => {
@@ -442,7 +449,15 @@ for (const bib of BIBLIOS) {
       faits.push(e.nom);
       ecrits++;
     }
-    manifeste[bib.lib + '_' + e.nom] = { lib: bib.lib, etat, w: r.w, h: r.h };
+    /* `x`/`y` — LE COIN DU DESSIN VU DE L'ORIGINE DU SWF, et non de son cadre.
+       Une bibliothèque ne dessine pas forcément à partir de (0,0) : le panier de
+       Kaluga commence à (27.5, 3), les personnages de Swapou sont CENTRÉS sur
+       l'origine et vont donc de (−24, −24) à (24, 24). L'époque chargeait le SWF
+       dans un clip et posait `_x`/`_y` : c'est l'ORIGINE qui atterrit sur le
+       point demandé, pas le coin du dessin. Une image posée par son coin
+       haut-gauche décale donc de tout ce que vaut ce couple — un demi-dessin
+       pour Swapou. La ligne emporte l'écart, le light le retranche. */
+    manifeste[bib.lib + '_' + e.nom] = { lib: bib.lib, etat, w: r.w, h: r.h, x: r.x, y: r.y };
   }
   console.log(`${bib.lib.padEnd(18)} ${faits.length} dessin(s) pour ${etats.length} état(s) : `
     + faits.slice(0, 12).join(' ') + (faits.length > 12 ? ' …' : ''));

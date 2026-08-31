@@ -108,9 +108,14 @@ test('le gabarit : 324 de large, un HAUT blanc de base = 42, une feuille verte',
   // La barre EN COURS reste une boîte : c'est la seule qui soit partielle.
   assert.match(CSS, /#bureau-coin \.enc-progress::before \{[\s\S]*?width: var\(--xp-part\); height: 2px; background: #73B01E;/);
   assert.match(CSS, /#bureau-coin \.enc-niv \.niv-img \{ height: 17\.4px; width: 14\.2px; \}/);
-  // Et le haut s'aligne comme sur le mobile : les deux blocs par le HAUT, neuf
-  // pixels entre la plaque et la colonne de droite.
-  assert.match(BLOC, /\.fiche-haut \{\s*\n\s*align-items: flex-start; gap: 9px;/);
+  /* Et le haut s'aligne comme sur le mobile : les deux blocs par le HAUT. Le
+     PAS, lui, est resserré dans la fenêtre — six pixels entre la plaque et la
+     colonne de droite, et un remplissage de trois. Les neuf pixels du mobile
+     et sa gouttière de douze viennent d'une feuille tactile, où la fiche prend
+     toute la largeur de l'écran ; dans une fenêtre de 324 ils repoussent la
+     colonne de droite sous la croix. */
+  assert.match(BLOC, /\.fiche-haut \{\s*\n\s*align-items: flex-start; gap: 6px; padding: 3px 3px 2px 3px;/);
+  assert.match(LIGHT, /\.fiche-haut \{ display: flex; align-items: flex-start; gap: 9px; \}/);
   // Le gabarit mobile, lui, reste celui de light.html : neuf barres de 30 et
   // le chiffre en afficheur à segments. La VIGNETTE, en revanche, est commune
   // aux deux mises en page — le joueur l'a réglée à 48 sur relevé (elle valait

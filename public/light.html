@@ -8573,6 +8573,8 @@
         });
       });
       svg.insertBefore(defs, svg.firstChild);
+      // La même règle que pour une image : c'est la taille de SCÈNE qui compte.
+      if (l.w > 0 && l.h > 0) { svg.style.width = l.w + "px"; svg.style.height = l.h + "px"; }
       boite.appendChild(svg);
       // Rien à remesurer : la case du dessin ne dépend PAS du dessin (cf.
       // `poserCarte`, conséquence n° 2). Un fichier qui arrive en retard se
@@ -8666,17 +8668,45 @@
         var min = (l.param && l.param.min) || {};
         boite._fc = l;
         if (min.h) boite.style.minHeight = min.h + "px";
-        if (l.dx) boite.style.marginLeft = l.dx + "px";
-        if (l.dy) boite.style.marginTop = l.dy + "px";
+        /*
+         * `ox`/`oy` — LE DESSIN N'EST PAS FORCÉMENT À L'ORIGINE DE SON SWF.
+         *
+         * `DocPage.updateLine` charge le SWF dans un clip et pose `_x`/`_y` :
+         * c'est l'ORIGINE qui atterrit sur `dx`/`dy`. Le panier de Kaluga
+         * commence à (27.5, 3) de la sienne, les personnages de Swapou sont
+         * CENTRÉS dessus — ils vont de (−33, −24.5) à (24, 24). Une `<img>`,
+         * elle, se pose par son coin : sans cet écart, le cercle de Swapou
+         * penchait vers le bas-droit d'un demi-personnage. `ox`/`oy` viennent
+         * du manifeste, par `tailleDe` (fruticard.js).
+         */
+        var mx = (Number(l.dx) || 0) + (Number(l.ox) || 0);
+        var my = (Number(l.dy) || 0) + (Number(l.oy) || 0);
+        if (mx) boite.style.marginLeft = mx + "px";
+        if (my) boite.style.marginTop = my + "px";
         var pp = (l.param && l.param.param) || {};
         var a = pp._alpha;
         if (a !== undefined && a !== null) boite.style.opacity = (Number(a) / 100).toFixed(2);
+        /*
+         * LA TAILLE DU DESSIN EST CELLE DE LA SCÈNE, pas celle du fichier.
+         *
+         * Les vignettes rendues sous Ruffle sortent à DEUX FOIS leur taille
+         * (`extract-scores-sd.js` : rendu ×4, réduit à ×2) pour rester nettes
+         * sur les écrans denses. Posées à la taille du fichier, la voiture de
+         * Burning Kiwi s'affichait à 40 px au lieu de 20 et le personnage de
+         * Swapou à 40 pour un dessin de 20 — d'où « trop grosses » d'un côté
+         * et « floues » de l'autre : c'était le même écart.
+         *
+         * `l.w`/`l.h` viennent du manifeste (cf. `tailleDe`, fruticard.js) :
+         * pour un SVG ils valent la taille du fichier — rien ne bouge ; pour
+         * un PNG rendu, ils le ramènent à sa vraie stature.
+         */
         if (l.src && l.teintes) {
           teinterDessin(boite, l);            // la fée et ses trois couleurs
         } else if (l.src) {
           var im = document.createElement("img");
           im.src = l.src;
           im.alt = "";
+          if (l.w > 0 && l.h > 0) { im.style.width = l.w + "px"; im.style.height = l.h + "px"; }
           im.onerror = function () { im.remove(); };
           boite.appendChild(im);
         }
@@ -8765,21 +8795,28 @@
   }
 
   /* `getLineHeight(line)` — 0x66537 : `line.height` s'il est donné, sinon le
-     plus grand `min.h` de la rangée. LA HAUTEUR D'UN DESSIN N'Y ENTRE PAS —
-     c'est pourquoi toutes les rangées d'images de l'époque portent un `height`
-     en dur (30 pour les médailles, 120 pour le bloc de la fée, 20 pour une
-     rangée de sorts) : le dessin déborde vers le bas comme il déborde à
-     droite. Ne s'ajoutent à cela que les composants qui SE MESURENT dans leur
-     `update()` — un champ de texte, une sous-page. */
+     plus grand `min.h` de la rangée. Puis `updateLine` appelle `update()` sur
+     CHAQUE composant, et chacun s'y mesure : un champ de texte, une sous-page,
+     et le dessin d'une ligne `url` une fois chargé.
+
+     On ne comptait que les textes et les colonnes. Une rangée SANS `height` —
+     les deux lignes de chaque circuit de Burning Kiwi, par exemple — prenait
+     alors la hauteur de son texte, quinze pixels, et la voiture de vingt
+     débordait sur la ligne d'en dessous : deux voitures l'une dans l'autre, et
+     le titre du circuit suivant à cheval. Les rangées à `height` explicite ne
+     bougent pas d'un pixel : le dessin y est toujours plus petit que la
+     hauteur annoncée — c'est bien pour cela qu'elle est annoncée. */
   function hauteurRangee(r, enfants) {
     var f = r._fc || {};
     var h = Number(f.height) || 0;
     enfants.forEach(function (c) {
       var e = c._fc || {};
       var min = (e.param && e.param.min) || e.min || {};
-      if (min.h !== undefined && min.h !== null) h = Math.max(h, Number(min.h) || 0);
+      var dy = parseFloat(c.style.marginTop) || 0;
+      if (min.h !== undefined && min.h !== null) h = Math.max(h, (Number(min.h) || 0) + dy);
+      if (e.h > 0) h = Math.max(h, Number(e.h) + dy);
       if (c.classList.contains("fc-texte") || c.classList.contains("fc-colonne")) {
-        h = Math.max(h, c.offsetHeight + (parseFloat(c.style.marginTop) || 0));
+        h = Math.max(h, c.offsetHeight + dy);
       }
     });
     return h;
@@ -8800,7 +8837,19 @@
     var poser = function () {
       if (!carte.parentNode) return;
       var cs = getComputedStyle(page);
-      var large = page.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      /*
+       * L'ASCENSEUR NE ROGNE PAS LE DOCUMENT.
+       *
+       * D'époque il est POSÉ À CÔTÉ de la page (`cpDocument` monte sa barre
+       * hors du masque) : `page.pos.w` ne perd rien. `clientWidth`, lui,
+       * retranche la gouttière du navigateur — huit pixels de moins, et la
+       * dernière coupe de Burning Kiwi, qui d'époque finit pile au bord de la
+       * rangée, se retrouvait tronquée. On mesure donc la boîte PLEINE :
+       * l'ascenseur passe par-dessus, comme dans le SWF.
+       */
+      var large = page.offsetWidth
+        - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
+        - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth);
       if (!(large > 0)) return;
       if (carte._large === large) return;      // rien n'a bougé
       carte._large = large;

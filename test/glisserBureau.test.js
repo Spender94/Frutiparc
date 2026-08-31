@@ -82,8 +82,13 @@ test('un contact du carnet part sur onDragOut, sans seuil, avec l’uid « new �
   assert.match(attraper, /desc: \[c\.pseudo \+ '@frutiparc\.com', c\.bouille \|\| ''\]/);
   // Le slot RESTE en place — c'est un raccourci qu'on crée, pas un déménagement.
   assert.match(attraper, /glisseur\.source = null;\s+\/\/ le slot RESTE en place/);
-  // Et le serveur donne la bouille du contact, comme `onStatusObj` d'époque.
-  assert.match(SRV, /if \(compte\) o\.bouille = bouilleOf\(compte, local\);/);
+  /* Et le serveur donne la bouille du contact, comme `onStatusObj` d'époque —
+     y compris pour un contact ABSENT. On ne la donnait qu'aux comptes chargés
+     en mémoire, c'est-à-dire à ceux qui s'étaient connectés depuis le dernier
+     démarrage ; les autres arrivaient sans bouille et le carnet les dessinait
+     en sac à patates. `bouilleOf` se rabat sur `bouilleCache`, que le
+     démarrage remplit avec toutes les bouilles de la base. */
+  assert.match(SRV, /o\.bouille = bouilleOf\(compte, String\(local\)\.toLowerCase\(\)\);/);
 });
 
 test('un fichier, lui, attend d’avoir bougé de plus de dragDistMin', () => {

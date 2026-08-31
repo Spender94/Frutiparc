@@ -20743,18 +20743,66 @@ function bureauObjetEnrichi(user, it) {
       uid: it.u, type: 'contact', desc: [adresse, gaspardBouille()], name: GASPARD_NOM,
     }, place);
   }
-  const compte = users[local] || users[getDisplayName(local)];
+  // Le raccourci du bureau porte le VISAGE du frutiz, connecté ou non :
+  // `bouilleOf` se rabat sur `bouilleCache` (toutes les bouilles de la base,
+  // chargées au démarrage) quand le compte n'est pas en mémoire.
+  const compte = users[local] || users[getDisplayName(local)] || null;
   return Object.assign({
     uid: it.u, type: 'contact',
-    desc: [adresse, compte ? bouilleOf(compte, local) : ''],
+    desc: [adresse, bouilleOf(compte, String(local).toLowerCase())],
     name: getDisplayName(local),
   }, place);
 }
 
+/*
+ * LE BUREAU SE RANGE À CHAQUE CONNEXION.
+ *
+ * On garde TOUT ce que le joueur y a posé — ses frutiz, ses disques, ses
+ * dossiers — mais la DISPOSITION repart de la grille : un bureau qu'on a
+ * remué pendant des mois finissait en désordre, et rien ne permettait de le
+ * remettre d'aplomb.
+ *
+ * Ranger, ici, c'est simplement OUBLIER LES PLACES : `dessinerObjetsBureau`
+ * donne alors à chacun la première case libre, ligne par ligne — c'est
+ * `cp.DragIconList.getNextAvailablePos` d'époque, et l'ordre est celui où le
+ * joueur les a posés, donc stable d'un rechargement à l'autre. Les tuiles de
+ * rubrique, elles, retournent dans leur rangée.
+ *
+ * UNE FOIS PAR SESSION, pas à chaque lecture : en cours de session, déplacer
+ * une icône la garde où on l'a mise, rechargement compris. C'est la prochaine
+ * CONNEXION qui remet tout au carré.
+ */
+const bureauxRanges = new Set();          // sid → déjà rangé pour cette session
+
+function rangerBureau(username, user) {
+  const liste = ensureDesktopItems(user);
+  let touche = false;
+  for (let i = liste.length - 1; i >= 0; i--) {
+    const it = liste[i];
+    if (!it) continue;
+    if (it.t === 'tuile') { liste.splice(i, 1); touche = true; continue; }
+    if (it.x !== undefined || it.y !== undefined) {
+      delete it.x; delete it.y; touche = true;
+    }
+  }
+  if (touche) desktopPersist(username, user);
+  return touche;
+}
+
 app.get('/api/light/bureau/objets', (req, res) => {
-  const username = resolveUsernameFromSid(req.query.sid || '');
+  const sid = String(req.query.sid || '');
+  const username = resolveUsernameFromSid(sid);
   if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
   const user = users[username];
+  if (sid && !bureauxRanges.has(sid)) {
+    bureauxRanges.add(sid);
+    // Le jeu de sessions vivantes est borné, mais une session par jour pendant
+    // un an ferait un ensemble inutilement gros : on le purge de loin en loin.
+    if (bureauxRanges.size > 5000) bureauxRanges.clear();
+    if (rangerBureau(username, user)) {
+      console.log(`[BUREAU] ${username} : disposition remise sur la grille (nouvelle session)`);
+    }
+  }
   const tout = ensureDesktopItems(user);
   const objets = tout
     .filter((it) => it && it.t !== 'tuile')
@@ -20861,11 +20909,23 @@ app.get('/api/light/contacts', (req, res) => {
     const local = String(addr).split('@')[0];
     const nom = enLigne.get(local.toLowerCase());
     const o = { pseudo: getDisplayName(local), addr: String(addr), enLigne: !!nom };
-    // La BOUILLE du contact. `UserSlot` la tient de `onStatusObj` et la passe
-    // telle quelle à `createDragIcon` — c'est elle qui devient le dessin du
-    // raccourci quand on lâche le contact sur le bureau.
-    const compte = users[local] || users[getDisplayName(local)];
-    if (compte) o.bouille = bouilleOf(compte, local);
+    /*
+     * LA BOUILLE DU CONTACT — même s'il n'est PAS LÀ.
+     *
+     * `UserSlot` la tient de `onStatusObj` et la passe telle quelle à
+     * `createDragIcon` : c'est elle qui devient le dessin du raccourci quand on
+     * lâche le contact sur le bureau, et le visage de son icône dans le carnet.
+     *
+     * On ne la donnait qu'aux comptes CHARGÉS EN MÉMOIRE — c'est-à-dire à ceux
+     * qui se sont connectés depuis le démarrage du serveur. Tous les autres
+     * repartaient sans bouille, et le carnet les dessinait en sac à patates :
+     * un carnet de trente contacts n'en montrait que trois ou quatre vrais
+     * visages. Or `bouilleOf` sait déjà se rabattre sur `bouilleCache`, que le
+     * démarrage remplit avec TOUTES les bouilles de la base : il suffisait de
+     * l'appeler.
+     */
+    const compte = users[local] || users[getDisplayName(local)] || null;
+    o.bouille = bouilleOf(compte, String(local).toLowerCase());
     // Le GENRE : c'est lui qui donne au pseudo son encre. `UserSlot` pose
     // `displayType = "gender"` par défaut (0x6352f) et `onInfoBasic` (0x63a51)
     // colore en bleu ou en rouge — le carnet est le même composant que la
@@ -24151,21 +24211,52 @@ function patchSlot0(username, game, existingData, ctx) {
       if (saved.$wc === undefined) saved.$wc = false;
       if (saved.$wcs === undefined) saved.$wcs = false;
       if (!Array.isArray(saved.$ac)) saved.$ac = [false, false, false, false, false];
+      /*
+       * LES SIX CIRCUITS — `card.$ts[i]`, indexé par son RANG.
+       *
+       *     0x5caad  Push reg3 · "$ts" · GetMember · Push reg10 · GetMember
+       *
+       * On garnissait `$t0`…`$t5`, des clés NOMMÉES que le SWF ne lit pas — et
+       * seulement `$bc`/`$bl`, les champs du tableau des scores, là où la carte
+       * demande `$fcLap` (meilleur tour) et `$fcTotal` (meilleure course).
+       * Résultat : `isFinite($fcLap)` était toujours faux et la carte de
+       * Burning Kiwi s'arrêtait aux coupes et aux voitures. Ses six circuits
+       * n'ont jamais paru.
+       *
+       * On a ces deux temps : ce sont exactement les deux classements du jeu —
+       * `classic` (type C) chronomètre LA COURSE, `challenge` (type L) LE TOUR.
+       * Et l'écurie qui les a faits est le premier champ des données annexes
+       * (`saveScore` de BKiwi envoie `[carName, perfectsRank, posRank]`).
+       */
       if (!saved.$ts || typeof saved.$ts !== 'object') saved.$ts = {};
+      // Les sauvegardes déjà garnies portent la mauvaise clé : on les reprend.
       for (let t = 0; t < 6; t++) {
-        const key = `$t${t}`;
-        if (!saved.$ts[key] || typeof saved.$ts[key] !== 'object') saved.$ts[key] = {};
-        const rkC = scores[`bkiwi_track${t}_classic`];
-        const rkL = scores[`bkiwi_track${t}_challenge`];
-        if (saved.$ts[key].$bc === undefined) saved.$ts[key].$bc = rkC ? rkC.score : 0;
-        if (saved.$ts[key].$bl === undefined) saved.$ts[key].$bl = rkL ? rkL.score : 0;
-        // La CARTE lit d'autres champs que le tableau des scores : `$fcLap` et
-        // `$fcTotal` (meilleur tour, meilleure course) et l'écurie qui les a
-        // faits. On ne garnit que les DEUX INDICES : un temps qu'on n'a pas
-        // enregistré ne s'invente pas, et la carte saute d'elle-même un
-        // circuit dont `$fcLap` n'est pas un nombre (`isFinite`).
-        if (saved.$ts[key].$lapCar === undefined) saved.$ts[key].$lapCar = 0;
-        if (saved.$ts[key].$totalCar === undefined) saved.$ts[key].$totalCar = 0;
+        const vieux = saved.$ts[`$t${t}`];
+        if (vieux && typeof vieux === 'object') {
+          saved.$ts[t] = Object.assign({}, vieux, saved.$ts[t] || {});
+          delete saved.$ts[`$t${t}`];
+        }
+      }
+      const ecurieDe = (rk) => {
+        const brut = rk && rk.data;
+        if (!brut) return 0;
+        const premier = String(Array.isArray(brut) ? brut[0] : brut).split(':')[0].trim();
+        const i = FCard.ECURIES_BKIWI.indexOf(premier.toLowerCase());
+        return i < 0 ? 0 : i;
+      };
+      for (let t = 0; t < 6; t++) {
+        if (!saved.$ts[t] || typeof saved.$ts[t] !== 'object') saved.$ts[t] = {};
+        const piste = saved.$ts[t];
+        const rkC = scores[`bkiwi_track${t}_classic`];      // la COURSE
+        const rkL = scores[`bkiwi_track${t}_challenge`];    // le TOUR
+        if (piste.$bc === undefined) piste.$bc = rkC ? rkC.score : 0;
+        if (piste.$bl === undefined) piste.$bl = rkL ? rkL.score : 0;
+        // Un temps qu'on n'a pas ne s'invente pas : sans meilleur tour, la
+        // carte saute le circuit d'elle-même — c'est la règle d'époque.
+        if (piste.$fcLap === undefined && rkL && Number(rkL.score) > 0) piste.$fcLap = Number(rkL.score);
+        if (piste.$fcTotal === undefined && rkC && Number(rkC.score) > 0) piste.$fcTotal = Number(rkC.score);
+        if (piste.$lapCar === undefined) piste.$lapCar = ecurieDe(rkL);
+        if (piste.$totalCar === undefined) piste.$totalCar = ecurieDe(rkC);
       }
       return JSON.stringify(saved);
     }

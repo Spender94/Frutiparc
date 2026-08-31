@@ -202,7 +202,11 @@ function viaManifeste(lib, etat) {
     d = MANIFESTE[lib + '_' + etat];
   }
   if (!d) return null;
-  return '/fb/sd/' + lib + '_' + (d.etat === undefined ? etat : d.etat) + '.svg';
+  // `.svg` pour un dessin APLATI, `.png` pour un dessin PHOTOGRAPHIÉ sous
+  // Ruffle : le panier de Kaluga est passé du premier au second (son osier est
+  // un bitmap, que l'aplatisseur laissait tomber).
+  return '/fb/sd/' + lib + '_' + (d.etat === undefined ? etat : d.etat)
+    + '.' + (d.ext || 'svg');
 }
 
 function resoudre(lib, param) {
@@ -228,7 +232,12 @@ function resoudre(lib, param) {
     case 'minipixiz_spell':
     case 'minipixiz_faeries':
       return viaManifeste(lib, Number(p.frame) || 1);
-    // Les quatre coupes : image 1..4 du sprite#9 de `/sd/bkiwi_cup.swf`.
+    /* Les quatre coupes : image 1..4 du clip `cup` de `/sd/bkiwi_cup.swf`.
+       Leurs quatre tailles diffèrent (37 × 69, 64 × 80, 48 × 73, 64 × 79) et
+       c'est le DESSIN qui le veut — quatre coupes de formes différentes,
+       vérifié en aplatissant le clip. Elles sont posées à 1:1, donc sans
+       entrée de manifeste : `tailleDe` rend `null` et l'image garde sa taille
+       de fichier, qui est déjà celle de la scène. */
     case 'bkiwi_cup': {
       const n = Math.max(1, Math.min(4, Number(p.frame) || 1));
       return '/fb/sd/bkiwi_cup_' + n + (n === 4 ? '.svg' : '.png');
@@ -247,12 +256,25 @@ function resoudre(lib, param) {
       const nom = TZONGRES[n];
       return '/fb/sd/kaluga_tz_' + (nom || 'inconnu') + '.png';
     }
+    /* `_xscale = _yscale = scale ; gotoAndStop(10 + frame)` — le scénario
+       racine de `/sd/swapou_chars.swf`, désassemblé. La carte passe `frame = i`
+       pour un personnage DÉBLOQUÉ et `frame = i + 10` pour un VERROUILLÉ : ce
+       sont les images 10 à 16 et 20 à 26.
+
+       Les images 20 à 26 reposent le MÊME personnage sous une transformation
+       de couleur — multiplicateurs (0, 0, 0), addition (114, 153, 40) : un
+       aplat vert, exactement celui du médaillon, donc un médaillon VIDE. C'est
+       ça, un personnage pas encore découvert.
+
+       On les prenait à `swapou_score_chars`, la bibliothèque du TABLEAU DES
+       SCORES — un autre SWF, aux vignettes de vingt pixels de côté (étirées à
+       quarante-huit sur la fiche, d'où le flou) et dont l'état « inconnu » est
+       une CROIX ROUGE. */
     case 'swapou_chars': {
       const n = Number(p.frame) || 0;
-      // Au-delà des sept persos, l'image `frame + 10` est la silhouette
-      // VERROUILLÉE — une seule vignette « inconnu » côté light.
-      if (n >= 10) return '/fb/sd/swapou_char_inconnu.png';
-      return '/fb/sd/swapou_char_' + Math.max(0, Math.min(6, n)) + '.png';
+      const verrou = n >= 10;
+      const i = Math.max(0, Math.min(6, verrou ? n - 10 : n));
+      return '/fb/sd/swapou_carte_' + (verrou ? 'v' : '') + i + '.png';
     }
     // Les cinq donjons de MotionBall sont servis tels quels : le SWF n'y
     // touchait pas, c'est déjà une adresse de PNG.
@@ -276,11 +298,54 @@ function resoudre(lib, param) {
    `col1: undefined`, et l'époque en tire `undefined >> 16 & 255` = 0, donc un
    décalage de −255 sur les trois canaux — une silhouette noire. La carte doit
    montrer la même chose, pas une fée en niveaux de gris. */
+/*
+ * LA TAILLE VRAIE D'UN DESSIN — celle qu'il a DANS LA SCÈNE, pas celle du
+ * fichier.
+ *
+ * Les vignettes rendues sous Ruffle (`extract-scores-sd.js` : les voitures de
+ * Burning Kiwi, les tzongres de Kaluga, les personnages de Swapou) sortent à
+ * DEUX FOIS leur taille — `ZOOM = 4`, réduit à `FINAL = 2` — pour rester
+ * nettes sur les écrans denses. Le light, lui, les posait à la taille du
+ * FICHIER : une voiture de vingt pixels s'affichait à quarante, un tzongre de
+ * dix-huit à trente-six. D'où trois symptômes qui n'en faisaient qu'un — des
+ * dessins trop gros chez Burning Kiwi, des personnages flous chez Swapou (un
+ * dessin de vingt pixels étiré au double), et des rangées qui se chevauchaient
+ * parce que l'image dépassait de partout.
+ *
+ * Le manifeste porte la taille LOGIQUE de chaque dessin : on la fait voyager
+ * avec la ligne. Pour un SVG, elle vaut déjà celle du fichier — la poser ne
+ * change rien ; pour un PNG rendu, elle le ramène à sa vraie stature.
+ */
+/*
+ * `x`/`y` — L'ÉCART ENTRE L'ORIGINE DU SWF ET LE COIN DE SON DESSIN.
+ *
+ * `DocPage.updateLine` charge le SWF dans un clip et lui pose `_x`/`_y` : c'est
+ * l'ORIGINE du dessin qui atterrit sur `dx`/`dy`, jamais son coin. Or une
+ * bibliothèque ne dessine pas forcément à partir de (0,0) — le panier de Kaluga
+ * commence à (27.5, 3) et les personnages de Swapou sont CENTRÉS sur l'origine,
+ * de (−33, −24.5) à (24, 24). Une image posée par son coin haut-gauche, comme
+ * le fait `<img>`, se décale donc de tout ce que vaut ce couple : la moitié
+ * d'un dessin pour Swapou, dont le cercle partait en biais.
+ */
+function tailleDe(src) {
+  if (!src) return null;
+  const cle = String(src).split('/').pop().replace(/\.(svg|png)$/i, '');
+  const d = MANIFESTE[cle];
+  if (!d || !(Number(d.w) > 0) || !(Number(d.h) > 0)) return null;
+  return { w: Number(d.w), h: Number(d.h), x: Number(d.x) || 0, y: Number(d.y) || 0 };
+}
+
 function urlLigne(lib, param, extra) {
   const l = Object.assign({ type: 'url' }, extra || {});
   l.param = Object.assign({ url: lib }, param || {});
   const p = (param && param.param) || param || {};
   l.src = resoudre(lib, p);
+  const t = tailleDe(l.src);
+  if (t) {
+    l.w = t.w; l.h = t.h;
+    if (t.x) l.ox = t.x;
+    if (t.y) l.oy = t.y;
+  }
   if ('col1' in p || 'col2' in p || 'col3' in p) {
     l.teintes = [Number(p.col1) || 0, Number(p.col2) || 0, Number(p.col3) || 0];
   }
@@ -332,9 +397,21 @@ function carteBkiwi(c) {
     voitures.list.push({ type: 'spacer', big: 1 });
   }
   lignes.push(voitures);
+  /*
+   * `card.$ts[i]` — UN INDEX, PAS UNE CLÉ NOMMÉE.
+   *
+   *     0x5caad  Push reg3 · "$ts" · GetMember · Push reg10 · GetMember
+   *
+   * `reg10` est le compteur de la boucle (0 à 5) : le SWF indexe le tableau
+   * des circuits par leur RANG. On y cherchait `$t0`, `$t1`… — une clé qui
+   * n'existe dans aucune sauvegarde, si bien que `isFinite($fcLap)` était
+   * toujours faux et que la carte de Burning Kiwi perdait ses six circuits :
+   * elle s'arrêtait aux coupes et aux voitures. C'est l'information qui
+   * manquait.
+   */
   const ts = (c.$ts && typeof c.$ts === 'object') ? c.$ts : {};
   for (let t = 0; t < 6; t++) {
-    const piste = ts['$t' + t] || {};
+    const piste = ts[t] || {};
     if (!isFinite(Number(piste.$fcLap))) continue;
     lignes.push(getTitleLine(circuits[t]));
     for (let k = 0; k < 2; k++) {
@@ -841,6 +918,7 @@ module.exports = {
   tempsStr,
   pointsFruit,
   resoudre,
+  urlLigne,
   getTitleLine,
   getSepLine,
   getRecordLines,

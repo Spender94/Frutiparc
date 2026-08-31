@@ -166,8 +166,13 @@ test('la fenêtre d’explorateur reçoit ce qu’on lui apporte', () => {
   assert.match(JS, /p\.setAttribute\('data-depot', 'explorateur'\);\s*\n\s*p\.setAttribute\('data-cle', cle\);/);
   assert.match(JS, /else if \(quoi === 'explorateur'\) pris = deposerDansExplorateur\(info, boite\.getAttribute\('data-cle'\)\);/);
   const d = JS.slice(JS.indexOf('function deposerDansExplorateur'), JS.indexOf('// `fileMng.addListener`'));
-  // « Mes disques » seulement : l'inventaire n'a rien à recevoir.
-  assert.match(d, /if \(cle !== 'disques' \|\| !info \|\| info\.type !== 'disc'\) return false;/);
+  /* CHAQUE LISTE REÇOIT CE QUI LA REGARDE, et rien d'autre — l'uid du dossier
+     affiché est la cible, comme `IconFileBox.onDrop` → `fileMng.move`. Le
+     carnet et la liste noire prennent des CONTACTS, la corbeille prend tout,
+     « Mes disques » prend un disque ; l'inventaire, lui, n'a rien à recevoir. */
+  assert.match(d, /if \(contactsDe\(cle\)\) \{\s*\n\s*if \(info\.type !== 'contact'\) return false;/);
+  assert.match(d, /if \(cle === 'corbeille'\) return jeter\(info\);/);
+  assert.match(d, /if \(cle !== 'disques' \|\| info\.type !== 'disc'\) return false;/);
   assert.match(d, /if \(dedans\) retirerObjetBureau\(dedans\.uid\);/);
   assert.match(d, /return true;/);
 });

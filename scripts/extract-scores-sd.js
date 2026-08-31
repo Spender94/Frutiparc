@@ -99,7 +99,58 @@ for (let c = 0; c <= 6; c++) {
   PLANS.push({ lib: 'swapou_score_chars', data: c + ':', nom: 'swapou_char_' + c });
 }
 PLANS.push({ lib: 'swapou_score_chars', data: ':', nom: 'swapou_char_inconnu' });
-
+/* ── LES PERSONNAGES DE LA FRUTICARD, qui ne sont PAS ceux du tableau ──────
+ *
+ * La fiche de Swapou 2 (0x5d532) tire son cercle de `/sd/swapou_chars.swf`,
+ * une AUTRE bibliothèque que `swapou_score_chars` :
+ *
+ *     this._xscale = scale ; this._yscale = scale ;
+ *     gotoAndStop(10 + frame)
+ *
+ * Les images 10 à 16 sont les sept personnages, les images 20 à 26 les mêmes
+ * sous une TRANSFORMATION DE COULEUR (`PlaceObject2` y porte le drapeau
+ * CxForm) : c'est la silhouette d'un personnage non débloqué. On prenait
+ * jusqu'ici les vignettes du tableau des scores, où l'état inconnu est une
+ * CROIX ROUGE — quatre croix dans le cercle, là où l'époque montre quatre
+ * silhouettes, et des dessins de vingt pixels pour des cases de quarante-huit.
+ *
+ * POURQUOI IL FAUT ÉLARGIR LA SCÈNE. Le cadre déclaré va de (0,0) à (48,48),
+ * mais les formes sont CENTRÉES SUR L'ORIGINE — de (−24,−24) à (24,24) — et
+ * la timeline les pose sans translation. Photographier la scène telle quelle
+ * n'en prend donc que le quart bas-droit. On réécrit le cadre de l'en-tête sur
+ * une boîte symétrique assez large, et on RECADRE ensuite sur ce qui est
+ * vraiment peint : `x`/`y` gardent l'écart à l'origine, que le light retranche
+ * pour reposer le dessin là où le clip d'époque le mettait.
+ */
+const CADRE_SWAPOU = { x0: -48, y0: -48, x1: 48, y1: 48 };
+for (let c = 0; c <= 6; c++) {
+  // `frame` est ici l'image ABSOLUE : le `10 +` du SWF est mis à zéro, faute de
+  // pouvoir passer un nombre par FlashVars (cf. `zeroLitteral`).
+  PLANS.push({ lib: 'swapou_chars', params: { frame: String(10 + c) },
+    cadre: CADRE_SWAPOU, zero: true, rogner: true, nom: 'swapou_carte_' + c });
+  PLANS.push({ lib: 'swapou_chars', params: { frame: String(20 + c) },
+    cadre: CADRE_SWAPOU, zero: true, rogner: true, nom: 'swapou_carte_v' + c });
+}
+/* ── LE PANIER DE KALUGA ───────────────────────────────────────────────────
+ *
+ * `kaluga_panier` porte le même `gotoAndStop(10 + frame)` que ses voisins de
+ * MiniWave, et la fiche lui passe le remplissage du panier. Mais son osier —
+ * la corbeille et son anse — est UN BITMAP (`DefineBitsJPEG3`, le seul du
+ * fichier) : l'aplatisseur, qui remonte des formes vectorielles, n'en sortait
+ * que les fruits et l'ombre, séparés par le vide en coin où passe l'anse. Un
+ * tas de fraises fendu en deux, flottant au-dessus d'une flaque verte.
+ *
+ * On le photographie donc sous Ruffle, comme les voitures et les tzongres. La
+ * scène déclarée (0..160 × 0..130) rogne les paniers les plus larges de deux
+ * pixels : on l'élargit un peu, et le recadrage rend sa taille exacte à
+ * chacun des vingt-deux dessins.
+ */
+const CADRE_PANIER = { x0: -16, y0: -16, x1: 180, y1: 148 };
+for (const f of [3].concat(Array.from({ length: 21 }, (v, i) => 10 + i))) {
+  PLANS.push({ lib: 'kaluga_panier', params: { frame: String(f) },
+    cadre: CADRE_PANIER, zero: true, rogner: true, etat: String(f),
+    nom: 'kaluga_panier_' + f });
+}
 // ── L'ÉCUSSON de bkiwi_team, que seul un clic montre ──────────────────────
 //
 // Les deux dessins d'une écurie sont sur la scène en même temps : la voiture
@@ -166,6 +217,113 @@ function patcherDoAction(body, deb, fin) {
     touche++;
   }
   return touche;
+}
+
+/* ── ÉLARGIR LA SCÈNE D'UN SWF ─────────────────────────────────────────────
+ *
+ * On ne touche qu'au cadre de l'en-tête (le RECT qui suit la longueur), pour
+ * le remplacer par une boîte carrée centrée sur l'origine. Rien d'autre ne
+ * bouge : les tags gardent leurs offsets, puisque le RECT est AVANT eux et que
+ * la longueur annoncée est recalculée. Le fichier du dépôt n'est pas touché —
+ * la copie ne vit que le temps de la séance.
+ */
+function encoderRect(x0, x1, y0, y1) {
+  const v = [x0, x1, y0, y1];
+  let n = 1;
+  while (v.some((k) => k < -(2 ** (n - 1)) || k > 2 ** (n - 1) - 1)) n++;
+  const bits = [];
+  const pousser = (val, larg) => {
+    for (let i = larg - 1; i >= 0; i--) bits.push((val >> i) & 1);
+  };
+  pousser(n, 5);
+  for (const k of v) pousser(k < 0 ? k + (1 << n) : k, n);
+  while (bits.length % 8) bits.push(0);
+  const out = Buffer.alloc(bits.length / 8);
+  bits.forEach((b, i) => { if (b) out[i >> 3] |= 1 << (7 - (i & 7)); });
+  return out;
+}
+
+/* LE `10 +` DE `gotoAndStop(10 + frame)`, mis à zéro.
+ *
+ * L'époque ne passait pas ses paramètres dans l'adresse : `DocPage.updateLine`
+ * charge le SWF puis POSE les clés de `param` sur le clip, si bien que `frame`
+ * y est un vrai NOMBRE et que `10 + frame` est une addition. Un lecteur, lui,
+ * ne sait donner ses paramètres que par FlashVars, donc en CHAÎNES : `Add2`
+ * bascule alors en concaténation, `10 + "6"` vaut « 106 », et les quatorze
+ * états tombaient tous sur la même image (la dernière, faute de mieux).
+ *
+ * Plutôt que d'écrire un SWF hôte pour poser une variable numérique, on met le
+ * littéral à zéro : « 0 » + « 16 » vaut « 016 », que `GotoFrame2` lit comme
+ * l'image 16 après avoir cherché en vain une étiquette de ce nom. Le plan
+ * porte alors le numéro d'image ABSOLU. Quatre octets, dans une copie qui ne
+ * vit que le temps de la séance.
+ *
+ *   96 ll 00 · 07 0a 00 00 00 · <"frame"> · 1c · 47 · 9f 01 00 00
+ *   Push       ↑ 10 (int32)                 Get  Add  GotoFrame2
+ *
+ * Le nom se pousse de deux façons selon le SWF — par renvoi à la table des
+ * chaînes (`08 xx`, deux octets, `swapou_chars`) ou en toutes lettres
+ * (`00 f r a m e 00`, sept octets, `kaluga_panier`). On ne fixe donc que le
+ * début et la fin, et on tolère entre eux quelques octets de nom.
+ */
+function zeroLitteral(body) {
+  const av = Buffer.from([0x07, 0x0a, 0x00, 0x00, 0x00]);
+  const ap = Buffer.from([0x1c, 0x47, 0x9f, 0x01, 0x00, 0x00]);
+  let touche = 0;
+  for (let k = 3; k + av.length <= body.length; k++) {
+    if (body[k - 3] !== 0x96 || body[k - 1] !== 0x00) continue;   // ActionPush
+    if (body.compare(av, 0, av.length, k, k + av.length) !== 0) continue;
+    for (let q = k + av.length; q <= k + av.length + 16; q++) {
+      if (body.compare(ap, 0, ap.length, q, q + ap.length) !== 0) continue;
+      body[k + 1] = 0;                       // le 10 de `10 + frame`
+      touche++;
+      break;
+    }
+  }
+  if (touche !== 1) throw new Error('gotoAndStop(10 + frame) : ' + touche + ' site(s), 1 attendu');
+}
+
+function swfCadre(fichier, boite, zero) {
+  const { lireSwf } = require('./lib/swf-greffe.js');
+  const { sig, version, body } = lireSwf(fichier);
+  if (zero) zeroLitteral(body);
+  const vieux = Math.ceil((5 + ((body[0] >> 3) & 0x1f) * 4) / 8);
+  const tw = (v) => Math.round(v * 20);
+  const neuf = Buffer.concat([
+    encoderRect(tw(boite.x0), tw(boite.x1), tw(boite.y0), tw(boite.y1)),
+    body.slice(vieux)]);
+  const charge = sig === 'CWS' ? zlib.deflateSync(neuf, { level: 9 }) : neuf;
+  const out = Buffer.alloc(8 + charge.length);
+  out.write(sig, 0, 'ascii');
+  out.writeUInt8(version, 3);
+  out.writeUInt32LE(8 + neuf.length, 4);
+  charge.copy(out, 8);
+  return out;
+}
+
+/* ── RECADRER sur ce qui est vraiment peint ────────────────────────────────
+ * Rend l'image serrée sur ses pixels non transparents, et l'écart en pixels
+ * (à l'échelle de l'image) entre son coin et celui de la scène.
+ */
+function rogner(img) {
+  let x0 = img.w, y0 = img.h, x1 = -1, y1 = -1;
+  for (let y = 0; y < img.h; y++) {
+    for (let x = 0; x < img.w; x++) {
+      if (img.px[(y * img.w + x) * 4 + 3] === 0) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < x0) return { w: 1, h: 1, px: Buffer.alloc(4), dx: 0, dy: 0 };
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  const px = Buffer.alloc(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    img.px.copy(px, y * w * 4, ((y + y0) * img.w + x0) * 4,
+      ((y + y0) * img.w + x0 + w) * 4);
+  }
+  return { w, h, px, dx: x0, dy: y0 };
 }
 
 // ── La scène de chaque bibliothèque, lue dans son en-tête ─────────────────
@@ -311,7 +469,7 @@ const PAGE = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 </head><body><div id="scene"></div>
 <script>
 window.pret = false;
-window.poser = async function (lib, data, w, h, z) {
+window.poser = async function (lib, params, w, h, z) {
   const scene = document.getElementById('scene');
   scene.style.width = (w * z) + 'px';
   scene.style.height = (h * z) + 'px';
@@ -323,7 +481,7 @@ window.poser = async function (lib, data, w, h, z) {
     autoplay: 'on', quality: 'best', scale: 'exactFit',
     backgroundColor: null, wmode: 'transparent',
     allowScriptAccess: true, allowNetworking: 'all',
-    parameters: { data: data },
+    parameters: params,
   });
   window.pret = true;
 };
@@ -362,11 +520,29 @@ function servir(virtuels) {
 const ZOOM = 4;      // rendu ×4 …
 const FINAL = 2;     // … réduit à ×2 (écrans denses)
 
+// Le SWF réellement servi à Ruffle : le fichier du dépôt, ou la copie dont on
+// a élargi la scène. Le nom de la BIBLIOTHÈQUE, lui, ne change pas — c'est lui
+// que le manifeste garde, et dont `bornes()` tire les états d'une famille.
+function servi(p) {
+  return p.cadre ? (p.swf || p.lib) + '_cadre' : p.lib;
+}
+
 async function principal() {
   for (const d of [SORTIE, TRAVAIL]) fs.mkdirSync(d, { recursive: true });
-  const srv = await servir({ '/sd/bkiwi_team_ecusson.swf': swfEcusson() });
+  /* Les SWF SERVIS À LA PLACE des vrais : l'écusson de Burning Kiwi, et une
+     copie de `swapou_chars` dont la scène est élargie autour de l'origine. */
+  const virtuels = { '/sd/bkiwi_team_ecusson.swf': swfEcusson() };
+  // Une copie retouchée PAR BIBLIOTHÈQUE, pas par état : les quatorze Swapou
+  // partagent la même, et les vingt-deux paniers de même — seul le FlashVars
+  // `frame` change d'un plan à l'autre.
+  for (const p of PLANS) {
+    if (!p.cadre || virtuels['/sd/' + servi(p) + '.swf']) continue;
+    virtuels['/sd/' + servi(p) + '.swf'] =
+      swfCadre(path.join(SD, (p.swf || p.lib) + '.swf'), p.cadre, p.zero);
+  }
+  const srv = await servir(virtuels);
   const base = 'http://127.0.0.1:' + srv.address().port + '/';
-  const { chromium } = require('playwright');
+  const { chromium } = require('playwright-core');
   const nav = await chromium.launch({
     executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
     args: ['--no-sandbox'],
@@ -375,22 +551,50 @@ async function principal() {
   page.on('pageerror', (e) => console.warn('!! page :', e.message));
 
   const scenes = {};
-  const manifeste = {};
+  /* LE MANIFESTE EST COMMUN aux deux extracteurs — celui-ci et
+     `extract-fruticard-sd.js` écrivent dans le même fichier. On le RELIT donc
+     avant d'y ajouter : reparti d'un objet vide, ce script effaçait d'un coup
+     les cent trente entrées de l'autre, et toutes les fruticards perdaient
+     leurs dessins (MiniWave et MiniPixiz les prennent toutes de là). */
+  const chemin = path.join(SORTIE, 'manifeste.json');
+  let manifeste = {};
+  try { manifeste = JSON.parse(fs.readFileSync(chemin, 'utf8')) || {}; } catch (e) { manifeste = {}; }
   for (const p of PLANS) {
-    const source = p.swf || p.lib;
-    if (!scenes[source]) scenes[source] = tailleScene(path.join(SD, source + '.swf'));
-    const sc = scenes[source];
+    const source = servi(p);                       // ce que Ruffle charge
+    const fichier = p.swf || p.lib;                 // ce qui existe sur le disque
+    const cle2 = p.cadre ? fichier + '@' + JSON.stringify(p.cadre) : fichier;
+    if (!scenes[cle2]) {
+      scenes[cle2] = p.cadre
+        ? { w: p.cadre.x1 - p.cadre.x0, h: p.cadre.y1 - p.cadre.y0,
+          x0: p.cadre.x0, y0: p.cadre.y0 }
+        : Object.assign({ x0: 0, y0: 0 }, tailleScene(path.join(SD, fichier + '.swf')));
+    }
+    const sc = scenes[cle2];
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction('!!(window.RufflePlayer && window.RufflePlayer.newest)');
-    await page.evaluate(([lib, data, w, h, z]) => window.poser(lib, data, w, h, z),
-      [p.lib, p.data, sc.w, sc.h, ZOOM]);
+    await page.evaluate(([lib, params, w, h, z]) => window.poser(lib, params, w, h, z),
+      [source, p.params || { data: p.data }, sc.w, sc.h, ZOOM]);
     await page.waitForFunction('window.pret === true');
     const scene = page.locator('#scene');
     const brut = await stabiliser(scene);
-    const img = reduire(lirePng(brut), ZOOM / FINAL);
+    let img = reduire(lirePng(brut), ZOOM / FINAL);
+    // `x`/`y` : le coin du dessin VU DE L'ORIGINE du SWF, en pixels logiques.
+    // C'est l'origine que l'époque posait sur le point demandé, pas le coin.
+    let x = sc.x0, y = sc.y0, w = sc.w, h = sc.h;
+    if (p.rogner) {
+      const r = rogner(img);
+      x = sc.x0 + r.dx / FINAL; y = sc.y0 + r.dy / FINAL;
+      w = r.w / FINAL; h = r.h / FINAL;
+      img = r;
+    }
     ecrirePng(path.join(SORTIE, p.nom + '.png'), img.w, img.h, img.px);
-    manifeste[p.nom] = { lib: p.lib, data: p.data, w: sc.w, h: sc.h };
-    console.log(p.nom + '.png  (' + img.w + '×' + img.h + ')');
+    // `etat` et `ext` : de quoi laisser `viaManifeste` (fruticard.js) retrouver
+    // le fichier d'un état, que le dessin vienne d'ici en PNG ou de
+    // l'aplatisseur en SVG.
+    manifeste[p.nom] = { lib: p.lib, data: p.data, params: p.params, w, h, x, y };
+    if (p.etat !== undefined) { manifeste[p.nom].etat = p.etat; manifeste[p.nom].ext = 'png'; }
+    console.log(p.nom + '.png  (' + img.w + '×' + img.h + ' → ' + w + '×' + h
+      + ' à ' + x + ',' + y + ')');
   }
   fs.writeFileSync(path.join(SORTIE, 'manifeste.json'),
     JSON.stringify(manifeste, null, 1) + '\n');
