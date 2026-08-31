@@ -41,6 +41,18 @@
   .aide { font-size:11px; color:#6a8a4a; line-height:1.55; margin-top:10px; max-width:270px; }
   .aide code { background:#EEF6DD; padding:1px 4px; border-radius:3px; }
   .aide b { color:var(--vert); }
+  /* L'encart de récolte : une vignette par pièce, plus serrée que la grille
+     d'import — il y en a une trentaine. */
+  .recolte { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .recolte figure { margin:0; text-align:center; width:96px; }
+  .recolte canvas { width:96px; height:96px; background:#fff; border:1px solid var(--vertclair);
+    border-radius:8px; display:block; cursor:pointer; }
+  .recolte figcaption { font-size:10px; color:#5A7D33; margin-top:2px; line-height:1.3; }
+  .recolte .prendre { border:0; border-radius:6px; padding:3px 6px; margin-top:3px; cursor:pointer;
+    font:bold 10px Verdana; color:#2C4A0F; background:linear-gradient(#DFF7A0,#A7DC6B); }
+  .recolte .prendre:hover { background:linear-gradient(#EAFBC0,#B8E683); }
+  #rec-etat { font:11px Verdana,sans-serif; color:#5A7D33; margin-top:8px; }
+  #rec-sans { font:11px Verdana,sans-serif; color:#6a8a4a; margin-top:3px; font-style:italic; }
   #etat, #imp-etat { font:11px monospace; color:#93a; margin-top:8px; word-break:break-all; }
   #imp-avert { font:11px Verdana,sans-serif; color:#8a4b00; background:#FFF6DC;
                border:1px solid #E8C87A; border-radius:6px; padding:7px 9px; margin-top:8px;
@@ -98,6 +110,25 @@
       <div id="imp-etat"></div>
       <div id="imp-avert" style="display:none"></div>
       <div class="grille" id="rendu"></div>
+    </div>
+
+    <!-- 4. La récolte dans les autres familles -->
+    <div class="carte" style="flex-basis:100%;">
+      <h2>4 · Puiser dans les autres familles</h2>
+      <p class="sub" style="margin:0 0 10px; max-width:none;">
+        Les incarnations de boutique — le ninja, le hippo, l'elfe, le champignon… — ont leur
+        propre jeu de dessins. Ceux qui vivent dans un <b>vrai rouleau d'accessoire</b> se
+        récupèrent tels quels : chaque vignette ci-dessous est la pièce d'origine
+        <b>greffée sur une bouille classique</b>, à sa place et à sa taille. Le bouton la
+        télécharge au format du gabarit — il n'y a plus qu'à la retravailler et à la
+        redéposer dans l'encart 3.
+      </p>
+      <div class="ligne" style="max-width:420px">
+        <div><label>Famille</label><select id="rec-famille"></select></div>
+      </div>
+      <div id="rec-etat">Recensement en cours…</div>
+      <div id="rec-sans"></div>
+      <div class="recolte" id="rec-grille"></div>
     </div>
   </div>
 
@@ -329,10 +360,195 @@
       });
     }
 
+    /* ══ 4 · PUISER DANS LES AUTRES FAMILLES ═══════════════════════════════
+     *
+     * Les incarnations de boutique sont des familles à part entière : leur
+     * SWF porte tout le personnage — tête, cheveux, yeux —, et le moteur y
+     * cherche les mêmes clips que dans la famille 0. La question était donc :
+     * portent-elles, elles aussi, un ROULEAU D'ACCESSOIRE dont on pourrait
+     * reprendre les dessins ?
+     *
+     * Recensement fait sur les neuf : une seule le porte. Le ninja (famille
+     * 12) a la chaîne complète `ca → c → acc` avec vingt-cinq casquettes et
+     * huit chapeaux, plus onze images derrière la tête. Les autres — hippo,
+     * orc, elfe, explorateur, champignon… — n'ont pas de rouleau
+     * d'accessoire du tout : leur couvre-chef est DESSINÉ DANS LEUR
+     * COIFFURE, à même le rouleau `ca`, et il n'y a rien à en détacher qui
+     * ne soit aussi la tête. (La famille 16 range bien un `acc` sous `ca`,
+     * mais hors de la chaîne, et son unique image est vide.)
+     *
+     * ON NE MONTRE DONC QUE CE QUI EXISTE : le recensement est refait à
+     * l'ouverture de la page plutôt qu'écrit en dur, pour que la liste reste
+     * vraie si les SWF changent.
+     *
+     * LES DOUBLONS. Onze des seize types de la famille 12 pointent sur le
+     * même dessin — leur rouleau ne compte qu'une image, et `gotoAndStop` s'y
+     * borne. Les annoncer comme onze pièces, c'est promettre onze dessins
+     * qu'on n'a pas : on les rassemble par empreinte, et il reste
+     * trente-quatre pièces réellement distinctes.
+     *
+     * L'HÔTE EST NEUF À CHAQUE PASSE. Greffer, c'est AJOUTER une variante au
+     * rouleau de la famille 0 : garder le même hôte d'un rendu à l'autre
+     * l'allongerait de trente-quatre à chaque changement de coiffure. On
+     * recharge donc la famille 0 pour la récolte — et jamais celle de
+     * l'atelier, qui a ses propres essais.
+     */
+    var FAMILLES = [10, 11, 12, 13, 14, 15, 16, 23, 24];
+    var recolte = [];              // [{ f, type, variante, nom, paths }]
+    var sources = {};              // famille → defs, gardées pour l'export SVG
+
+    // L'empreinte d'un dessin : ce qui le distingue d'un autre, sans le peser.
+    function empreinte(paths) {
+      return paths.map(function (p) {
+        return [p.slot, p.avant, p.fill, (p.d || "").length, (p.d || "").slice(0, 48)].join("|");
+      }).join("¶");
+    }
+
+    function recenser() {
+      var reste = FAMILLES.slice();
+      function suivante() {
+        if (!reste.length) return Promise.resolve();
+        var f = reste.shift();
+        return Swf.charger("/fbouille/famille" + f + ".swf").then(function (src) {
+          var vues = {};
+          for (var t = 1; t < P.ACCESSORIES.length; t++) {
+            var r = null;
+            try { r = V.repere(src, t, 8); } catch (e) { r = null; }
+            if (!r || r.variantes < 1) continue;
+            for (var v = 0; v < r.variantes; v++) {
+              var paths = null;
+              try {
+                if (!V.dessinee(src, t, v, 8)) continue;
+                paths = V.exporter(src, t, v, 8);
+              } catch (e) { continue; }
+              if (!paths || !paths.length) continue;
+              var emp = empreinte(paths);
+              if (vues[emp]) continue;                    // le même dessin, déjà pris
+              vues[emp] = true;
+              recolte.push({ f: f, type: t, variante: v, nom: P.ACCESSORIES[t], paths: paths });
+            }
+          }
+          if (recolte.some(function (x) { return x.f === f; })) sources[f] = src;
+        }).catch(function () { /* une famille absente n'arrête pas le recensement */ })
+          .then(suivante);
+      }
+      return suivante();
+    }
+
+    function remplirFamilles() {
+      var sel = $("#rec-famille"); sel.innerHTML = "";
+      var avec = FAMILLES.filter(function (f) {
+        return recolte.some(function (x) { return x.f === f; });
+      });
+      // DIRE CE QU'ON A REGARDÉ, et pas seulement ce qu'on a trouvé : sans
+      // cela, on croit à un oubli là où il n'y a rien à prendre.
+      var sans = FAMILLES.filter(function (f) { return avec.indexOf(f) < 0; });
+      var note = $("#rec-sans");
+      note.textContent = sans.length
+        ? "Recensé aussi, sans rouleau d'accessoire : famille" + (sans.length > 1 ? "s " : " ")
+          + sans.join(", ") + ". Leur couvre-chef est dessiné DANS leur coiffure — on ne peut"
+          + " pas l'en détacher sans emporter la tête avec."
+        : "";
+      avec.forEach(function (f) {
+        var n = recolte.filter(function (x) { return x.f === f; }).length;
+        var o = document.createElement("option");
+        o.value = f;
+        o.textContent = "famille " + f + " — " + n + " pièce" + (n > 1 ? "s" : "");
+        sel.appendChild(o);
+      });
+      if (!avec.length) {
+        var o2 = document.createElement("option");
+        o2.textContent = "(aucune autre famille n'a de rouleau d'accessoire)";
+        sel.appendChild(o2); sel.disabled = true;
+      }
+      return avec;
+    }
+
+    function rendreRecolte() {
+      var sel = $("#rec-famille");
+      var f = +sel.value;
+      var lot = recolte.filter(function (x) { return x.f === f; });
+      var grille = $("#rec-grille"), etat = $("#rec-etat");
+      grille.innerHTML = "";
+      if (!lot.length) { etat.textContent = "Rien à puiser dans cette famille."; return; }
+      var co = +$("#coif").value;
+      etat.textContent = "Greffe de " + lot.length + " pièces sur une bouille classique…";
+      // Un hôte NEUF : chaque greffe allonge le rouleau de la famille 0.
+      return Swf.charger("/fbouille/famille0.swf").then(function (hote) {
+        var poses = 0;
+        lot.forEach(function (piece) {
+          var inj = null;
+          try { inj = V.injecter(hote, { type: piece.type, paths: piece.paths, coiffureRef: co }); }
+          catch (e) { inj = null; }
+          if (!inj) return;
+          poses++;
+          var fig = document.createElement("figure");
+          var cv = document.createElement("canvas"); cv.width = 192; cv.height = 192;
+          cv.title = "Cliquer pour reprendre ce gabarit";
+          var cap = document.createElement("figcaption");
+          cap.textContent = piece.nom.toLowerCase() + " · var " + piece.variante;
+          var bt = document.createElement("button");
+          bt.className = "prendre"; bt.type = "button"; bt.textContent = "⬇ gabarit";
+          fig.appendChild(cv); fig.appendChild(cap); fig.appendChild(bt);
+          grille.appendChild(fig);
+          new M.Bouille(cv, hote, {
+            etat: etatAvec(piece.type, inj.variante, co),
+            anime: false, alea: function () { return 0.5; },
+          });
+          var prendre = function () { telechargerPiece(piece, co); };
+          bt.addEventListener("click", prendre);
+          cv.addEventListener("click", prendre);
+        });
+        etat.textContent = poses + " pièce" + (poses > 1 ? "s" : "") + " de la famille " + f
+          + ", greffée" + (poses > 1 ? "s" : "") + " sur une bouille classique"
+          + " (coiffure " + co + ").";
+      });
+    }
+
+    /* LE GABARIT D'UNE PIÈCE RÉCOLTÉE. Les tracés viennent de SA famille, mais
+       la tête du fond vient de la famille 0 : c'est sur une bouille classique
+       qu'on va l'adapter, autant la voir dessous en travaillant.
+     *
+     * ET ON CALE L'ENCART 1 SUR LE MÊME TYPE. L'import de l'encart 3 écrit
+     * dans le créneau choisi là-haut, pas dans celui d'où vient le dessin :
+     * prendre un chapeau cowboy puis le redéposer sans y penser le rangeait
+     * parmi les casquettes, sans un mot. On pose donc le bon type à la
+     * reprise — il reste changeable, c'est une intention, pas une contrainte. */
+    function telechargerPiece(piece, co) {
+      var src = sources[piece.f];
+      if (!src) return;
+      var sel = $("#type");
+      if (sel.value !== String(piece.type)) {
+        for (var i = 0; i < sel.options.length; i++) {
+          if (sel.options[i].value === String(piece.type)) {
+            sel.value = String(piece.type);
+            remplirVariantes(); rafraichir();
+            break;
+          }
+        }
+      }
+      var svg = V.exporterSVG(src, {
+        type: piece.type, variante: piece.variante, coiffure: co,
+        nom: "f" + piece.f + " — " + P.ACCESSORIES[piece.type],
+        fondTete: V.fondTete(defs, co, 512),
+      });
+      var url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "famille" + piece.f + "-acc" + piece.type + "-var" + piece.variante + ".svg";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    }
+
+    $("#rec-famille").addEventListener("change", rendreRecolte);
+
     $("#variante").addEventListener("change", rafraichir);
     ["#type", "#coif"].forEach(function (s) {
       $(s).addEventListener("input", function () { remplirVariantes(); rafraichir(); });
     });
+    // La coiffure d'aperçu vaut aussi pour la récolte — mais on ne regreffe
+    // pas à chaque frappe : seulement quand le champ est posé.
+    $("#coif").addEventListener("change", function () { if (recolte.length) rendreRecolte(); });
 
     Swf.charger("/fbouille/famille0.swf").then(function (d) {
       defs = d;
@@ -340,6 +556,17 @@
       construireCouleurs();
       remplirVariantes();
       rafraichir();
+      // Le recensement des autres familles vient APRÈS : il coûte une seconde
+      // (neuf SWF à lire), et l'atelier lui-même n'a pas à l'attendre.
+      return recenser().then(function () {
+        var avec = remplirFamilles();
+        if (!avec.length) {
+          $("#rec-etat").textContent = "Aucune autre famille ne porte de rouleau d'accessoire :"
+            + " leur couvre-chef est dessiné dans leur coiffure.";
+          return;
+        }
+        return rendreRecolte();
+      });
     });
   })();
   </script>
