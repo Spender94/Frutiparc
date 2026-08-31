@@ -87,3 +87,76 @@ test('la fiche retient le salon d’où on l’a ouverte', () => {
   // Gaspard : le nom est lu une fois, le salon reste celui de la fenêtre.
   assert.match(JS, /if \(S && S\.ouvrirFiche\) S\.ouvrirFiche\(nom, panneau\.getAttribute\('data-salon'\)\);/);
 });
+
+/* ══ L'APPEL AU MODÉRATEUR — `box.whining` (main.swf 0x313e5) ═══════════════
+ *
+ * Le quatrième bouton de la colonne d'un salon. Il pose TROIS questions avant
+ * d'envoyer quoi que ce soit :
+ *
+ *   · « Cette action n'est disponible que sur les salons publics. »
+ *   · « Un ou plusieurs modérateurs sont déjà présents sur ce salon. »
+ *   · « Vous venez de prévenir les modérateurs ! » — une minute de repos
+ *     (`now − lastCallModerator < 60000`).
+ *
+ * puis l'alerte d'époque (`chat.call_moderator`), et `callModerator`
+ * (0x3166a) envoie `cmd("callmoderator", {g})`.
+ *
+ * Le code de trame était déclaré côté serveur (`bo`) mais AUCUNE branche ne
+ * l'écoutait : le bouton était dessiné, désactivé, et disait qu'il l'était.
+ * Il est branché des deux côtés, avec les deux phrases d'époque —
+ * `chat.moderator_called_channel` dans le salon, `chat.moderator_called` à
+ * chaque modérateur en ligne.
+ */
+
+test('le bouton d’appel est branché, et repose les trois questions', () => {
+  const w = JS.slice(JS.indexOf('function appelerLesModerateurs(salon)'),
+    JS.indexOf('function enTeteDossier'));
+  assert.ok(w, 'la fonction d’appel doit exister');
+  assert.match(w, /Cette action n'est disponible que sur les salons publics\./);
+  assert.match(w, /Un ou plusieurs modérateurs sont déjà présents sur ce salon\./);
+  assert.match(w, /Vous venez de prévenir les modérateurs !/);
+  assert.match(JS, /var APPEL_MODO_REPOS = 60000;/);
+  // Le bouton n'est plus mort.
+  const b = JS.slice(JS.indexOf('function warningSalon(salon)'), JS.indexOf('function appelerLesModerateurs'));
+  assert.ok(!/b\.disabled = true/.test(b), 'le bouton n’est plus désactivé');
+  assert.match(b, /b\.addEventListener\('click', function \(\) \{ appelerLesModerateurs\(salon\); \}\);/);
+});
+
+test('le light sait poser la question et envoyer la trame', () => {
+  // `chat.call_moderator`, mot pour mot.
+  assert.match(JS, /Etes-vous sûr de vouloir prévenir les modérateurs qu'il y a un problème/);
+  assert.match(JS, /Attention !<\/b> à n'utiliser qu'en cas de véritable/);
+  assert.match(JS, /okLabel: 'Oui', cancelLabel: 'Non',/);
+  // `callModerator` : la trame, et rien de plus.
+  assert.match(LIGHT, /wsSend\('<bo g="' \+ xmlEscape\(String\(id \|\| state\.room \|\| ""\)\) \+ '" \/>'\);/);
+  // `userList.modePresent()` et le salon public, pour refuser avant d'envoyer.
+  assert.match(LIGHT, /moderateurPresent: function \(id\) \{/);
+  assert.match(LIGHT, /estPublic: function \(id\) \{ return !!id && !state\.prives\[id\]; \}/);
+});
+
+test('le serveur repose les mêmes questions, et prévient les deux côtés', () => {
+  const c = SERVEUR.slice(SERVEUR.indexOf("case 'callmoderator': {"),
+    SERVEUR.indexOf("// ── status: update user status ──"));
+  assert.ok(c, 'la branche du serveur doit exister');
+  // Un client ne se vérifie pas lui-même : les trois gardes sont ici aussi.
+  assert.match(c, /channels\[g\]\.private \|\| \/\^pm2\?_\/\.test\(g\)/);
+  assert.match(c, /if \(isChannelStaff\(cl\.username, g\)\) \{ modeLa = true; break; \}/);
+  assert.match(c, /t - client\.dernierAppelModo < 60000/);
+  // `chat.moderator_called_channel` : le salon voit qui a appelé, en rouge.
+  assert.match(c, /indique qu'il y a des problèmes sur ce salon !/);
+  assert.match(c, /st="r"/);
+  // `chat.moderator_called` : chaque modérateur EN LIGNE, où qu'il soit.
+  assert.match(c, /if \(!cl\.username \|\| !isModerator\(cl\.username\)\) continue;/);
+  assert.match(c, /\$\{CMD\.moderatorcalled\}/);
+});
+
+test('les deux trames de retour ont leur branche dans le light', () => {
+  // `bo` revient à qui a appelé — `k="1"` porte le refus.
+  assert.match(LIGHT, /case "bo": \{/);
+  assert.match(LIGHT, /if \(attr\(xml, "k"\) === "1"\) \{/);
+  // `bp` va aux modérateurs : « …rejoindre le salon ? »
+  assert.match(LIGHT, /case "bp": \{/);
+  assert.match(LIGHT, /indique qu'il y a des problèmes sur "\s*\n?\s*\+ xmlEscape\(bpF\)/);
+  assert.match(LIGHT, /okLabel: "Oui", cancelLabel: "Non",/);
+  assert.match(LIGHT, /window\.SalonsBureau\.rejoindre\(bpG\);/);
+});

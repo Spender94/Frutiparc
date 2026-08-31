@@ -459,39 +459,92 @@
   .bo-etat.ok { color: #2f6b16; font-weight: bold; }
   .bo-etat.err { color: #b23b2e; font-weight: bold; }
 
-  /* Popin de confirmation Frutiparc (façon win.Alert de main.swf) — remplace le
-     window.confirm() du navigateur : cartouche clair à liseré, bandeau-titre
-     avec pictogramme, message centré, deux pilules roses. */
+  /* ══ `win.Alert` (main.swf 0x82c45) — LA POPIN DE TOUT LE PARC ═══════════
+   *
+   * `_global.openAlert(texte, titre)` monte une `box.Alert`, et `win.Alert
+   * extends WinStandard` : ce n'est pas un cartouche à part, c'est UNE FENÊTRE
+   * de plus, avec le bandeau et le liseré des autres. C'est elle qu'on voit à
+   * l'achat en boutique, à l'arrivée d'une demande de discussion privée, et
+   * partout où le parc pose une question.
+   *
+   *   init()      flResizable = false ; topIconList.splice(0, 3) — pas un
+   *               bouton dans le bandeau : on répond, on ne referme pas.
+   *               puis setAlert(info) et moveToCenter().
+   *   setAlert()  DEUX documents empilés :
+   *                 `frameDoc`    cpDocument, style frSystem, min {w:200,h:80},
+   *                               une seule ligne de 80 portant le texte
+   *                               (`fieldProperty.html`, donc le message peut
+   *                               porter sa mise en forme) ;
+   *                 `frameButton` cpDocument, min {w:200,h:24}, marge
+   *                               y {min:8, ratio:1}, dont la ligne est
+   *                               `spacer(big 1)` puis, POUR CHAQUE bouton,
+   *                               un `butPushStandard` suivi d'un autre
+   *                               `spacer(big 1)` — deux boutons se répartissent
+   *                               donc entre trois espaces élastiques.
+   *
+   * `butPushStandard` (#465) est la gélule de 16 px : anneau `#F28687`, fond
+   * `#FFAAAD`, encre `#660000`, éclat `#FFEAEC` en haut et à droite. La même
+   * que « valider » de l'éditeur de bouille et « créer un salon ».
+   *
+   * CE QUI A CHANGÉ. Le portage avait un cartouche à lui — coins de 10, bandeau
+   * vert clair, deux grosses pilules bordées, message centré en gras et vert.
+   * Rien de tout cela n'est d'époque ; et comme la même popin sert partout, la
+   * refaire juste ici la remet d'aplomb partout.
+   */
   #fp-popin-backdrop {
     position: fixed; inset: 0; z-index: 2000; display: none;
     align-items: center; justify-content: center; padding: 16px;
-    background: rgba(0, 0, 0, .34);
+    /* D'époque rien ne s'assombrit derrière une fenêtre — mais l'alerte, elle,
+       ATTEND une réponse : le voile dit qu'on ne peut rien faire d'autre, et
+       il n'empêche pas de la voir. Il est donc très léger. */
+    background: rgba(0, 0, 0, .18);
   }
   #fp-popin-backdrop.show { display: flex; }
   .fp-popin {
-    width: 100%; max-width: 320px; background: #FBFDF6; overflow: hidden;
-    border: 1px solid #B9C6A0; border-radius: 10px;
-    box-shadow: 0 12px 34px rgba(44, 74, 15, .38);
+    width: 224px; box-sizing: border-box;         /* 200 de contenu + 2 × 12 */
+    background: #FFFFFF; border-radius: 6px;
+    box-shadow: 0 0 0 1px #999999, 0 6px 18px rgba(0, 0, 0, .35);
+    padding: 3px 12px 10px;
     font-family: Verdana, Arial, sans-serif;
   }
+  /* Le bandeau des fenêtres : la pastille (un fruit de la bande #198) et le
+     titre en Verdana gras 11 sur `#444444`. Sans boutons : `topIconList` est
+     vidé — on répond à l'alerte, on ne la referme pas d'une croix. */
   .fp-popin-tete {
-    display: flex; align-items: center; gap: 6px; padding: 7px 12px;
-    background: #EFF7DF; border-bottom: 1px solid #CFE0A8;
-    font-weight: bold; font-size: 13px; color: #2C4A0F;
+    display: flex; align-items: center; height: 16px; padding: 0 0 0 3px;
+    font: 700 11px Verdana, Arial, sans-serif; color: #444444;
+    user-select: none; -webkit-user-select: none;
   }
-  .fp-popin-tete img { width: 16px; height: 16px; display: block; flex: 0 0 auto; }
+  .fp-popin-tete img {
+    width: 16px; height: 15px; display: block; flex: 0 0 auto; margin-right: 4px;
+  }
+  /* `frameDoc` : 200 × 80, le texte du message. Le style système de la
+     fenêtre — Verdana 11, l'encre des fenêtres. */
   .fp-popin-corps {
-    padding: 15px 15px 8px; font-size: 12.5px; color: #335511;
-    line-height: 1.45; text-align: center;
+    min-height: 80px; display: flex; align-items: center; justify-content: center;
+    padding: 6px 0 0; font: 11px Verdana, Arial, sans-serif; color: #333333;
+    line-height: 1.5; text-align: center;
   }
-  .fp-popin-pieds { display: flex; gap: 12px; padding: 10px 15px 15px; justify-content: center; }
+  /* `frameButton` : 200 × 24, huit pixels plus bas, et des espaces élastiques
+     autour de chaque bouton — d'où la répartition régulière. */
+  .fp-popin-pieds {
+    display: flex; height: 24px; margin-top: 8px;
+    align-items: center; justify-content: space-evenly;
+  }
+  /* `butPushStandard` (#465), la gélule de 16 px. */
   .fp-popin-btn {
-    flex: 1 1 0; max-width: 132px; padding: 7px 10px; cursor: pointer;
-    border: 2px solid #E78690; border-radius: 999px;
-    background: #F6A4AD; color: #7A1326; font-weight: bold; font-size: 12.5px;
+    position: relative; height: 16px; padding: 0 14px; border: 0;
+    border-radius: 8px; background: #FFAAAD; box-shadow: inset 0 0 0 1.5px #F28687;
+    font: 700 10px Verdana, Arial, sans-serif; color: #660000;
+    cursor: pointer; white-space: nowrap;
   }
-  .fp-popin-btn:active { background: #EF8F9B; }
-  .fp-popin-btn.ghost { background: #FFF; }
+  .fp-popin-btn::after {
+    content: ""; position: absolute; inset: 1.5px; pointer-events: none;
+    border-radius: 6.5px;
+    border-top: 1px solid #FFEAEC; border-right: 1px solid #FFEAEC;
+    border-left: 0; border-bottom: 0;
+  }
+  .fp-popin-btn:active { background: #F49B9E; }
 
   /* ══ « MA FRUTIBOUILLE » — `win.EditFrutibouille` (main.swf 0xa2e4d) ══════
    *
@@ -1871,14 +1924,28 @@
      champ portant sa propre marge de 2 px. Les 4 px de gap ajoutaient 24 px à
      une rangée qui tient déjà tout juste dans les 610 de la fenêtre — la
      colonne « Heure » de Burning Kiwi s'en trouvait tronquée. */
+  /* LA COLONNE DES SCORES PART DE 85 ET S'ÉTIRE. C'est la largeur d'époque, et
+     elle suffit à un nombre — c'est tout ce que le SWF y met. Deux de nos
+     classements y écrivent davantage : Mini-Fever raconte d'où viennent les
+     points (« 2 370 · 79 épreuves en difficile ») et MiniWave y ajoute le
+     niveau atteint, parce que le gabarit d'époque `gs='1'` n'a pas de colonne
+     annexe où les mettre. Cent soixante pixels de texte dans une case de
+     quatre-vingt-cinq, et le libellé passait PAR-DESSUS l'heure : deux textes
+     l'un sur l'autre, illisibles.
+
+     `max-content` rend à la piste ce que son contenu demande ; la colonne
+     Frutiz, qui prend le reste, cède d'autant. Un score court ne bouge donc
+     pas d'un pixel — la mesure d'époque tient tant qu'elle suffit. */
   body.bureau-frutiz #sc-table .sc-entete,
   body.bureau-frutiz #sc-table .sc-ligne {
-    grid-template-columns: var(--sc-rang, 25px) 20px minmax(100px,1fr) 85px var(--sc-annexes, ) 60px;
+    grid-template-columns: var(--sc-rang, 25px) 20px minmax(100px,1fr)
+      minmax(85px, max-content) var(--sc-annexes, ) 60px;
     gap: 0;
   }
   body.bureau-frutiz #sc-table.sans-heure .sc-entete,
   body.bureau-frutiz #sc-table.sans-heure .sc-ligne {
-    grid-template-columns: var(--sc-rang, 25px) 20px minmax(100px,1fr) 85px var(--sc-annexes, );
+    grid-template-columns: var(--sc-rang, 25px) 20px minmax(100px,1fr)
+      minmax(85px, max-content) var(--sc-annexes, );
   }
   .sc-entete .d, .sc-ligne .d { text-align: center; }
   .sc-ligne .d { line-height: 0; }
@@ -3385,6 +3452,9 @@
     // compteur « en ligne » de la frusion ne s'actualisait jamais.
     window.state = state;
     window.ouvrirFicheJoueur = ouvrirFiche;
+    // `win.Alert` : une seule implémentation pour les deux présentations — le
+    // bureau s'en sert pour l'appel au modérateur, le light pour la boutique.
+    window.frutiConfirm = frutiConfirm;
     // Et le ROUTEUR de rubriques : c'est lui que la Frusion appelle quand un
     // disque descend dans le tiroir — `frusionMng.launchDisc` puis
     // `FPSlotList.addSlot`, côté bureau d'époque.
@@ -3469,6 +3539,21 @@
         var n = state.roomCounts[id];
         return typeof n === 'number' ? n : null;
       },
+      /* `callModerator` (0x3166a) : `cmd("callmoderator", {g})`, et rien de
+         plus — le serveur repose les trois questions et répond par `bo`. */
+      appelerModerateur: function (id) {
+        wsSend('<bo g="' + xmlEscape(String(id || state.room || "")) + '" />');
+      },
+      // `userList.modePresent()` (0x32678) : un présent porte-t-il `flMode` ?
+      moderateurPresent: function (id) {
+        var set = state.usersByRoom[id] || {};
+        for (var n in set) {
+          if (Object.prototype.hasOwnProperty.call(set, n) && set[n] && set[n].staff) return true;
+        }
+        return false;
+      },
+      // Un salon PUBLIC : ni discussion privée, ni salon protégé.
+      estPublic: function (id) { return !!id && !state.prives[id]; },
       // Les membres d'un salon avec leur bouille — de quoi remplir la colonne
       // d'écrans de SA fenêtre (`cp.ScreenList`), qui en montre UN par
       // personne.
@@ -4833,13 +4918,20 @@
         + '<div class="fp-popin-tete">' + icon + '<span>' + xmlEscape(opts.title || "Frutiparc") + '</span></div>'
         + '<div class="fp-popin-corps">' + (opts.message || "") + '</div>'
         + '<div class="fp-popin-pieds">'
-        + '<button type="button" class="fp-popin-btn ghost" data-a="cancel">' + xmlEscape(opts.cancelLabel || "Annuler") + '</button>'
+        // `setAlert` empile les boutons DANS L'ORDRE DE `butList`, chacun suivi
+        // d'un espace élastique — ils portent tous le même dessin, il n'y en a
+        // pas un de « secondaire ». Une alerte qui n'a rien à demander
+        // (`openErrorAlert`) n'en porte qu'UN : `butList` fait un seul tour.
+        + (opts.sansAnnuler ? ''
+          : '<button type="button" class="fp-popin-btn" data-a="cancel">'
+            + xmlEscape(opts.cancelLabel || "Annuler") + '</button>')
         + '<button type="button" class="fp-popin-btn" data-a="ok">' + xmlEscape(opts.okLabel || "OK") + '</button>'
         + '</div></div>';
       bd.classList.add("show");
       function close(v) { bd.classList.remove("show"); bd.innerHTML = ""; resolve(v); }
       bd.querySelector('[data-a="ok"]').addEventListener("click", function () { close(true); });
-      bd.querySelector('[data-a="cancel"]').addEventListener("click", function () { close(false); });
+      var annuler = bd.querySelector('[data-a="cancel"]');
+      if (annuler) annuler.addEventListener("click", function () { close(false); });
       bd.addEventListener("click", function (e) { if (e.target === bd) close(false); });
     });
   }
@@ -4850,8 +4942,12 @@
     frutiConfirm({
       title: "Boutique",
       icon: "/fb/icone_kikooz.svg",
-      message: "Êtes-vous sûr de vouloir acheter<br>« <strong>" + xmlEscape(it.name)
-        + "</strong> » pour <strong>" + (Number(it.price) || 0) + "</strong> kikooz ?",
+      // `shop.confirm_buy` (lang_french.as 505), mot pour mot :
+      //   « Êtes-vous sûr de vouloir acheter "$n" pour $p kikooz ? »
+      // Des guillemets droits autour du nom, et rien en gras : le portage
+      // mettait le nom en vert et le prix en gras, ce qui n'est pas d'époque.
+      message: 'Êtes-vous sûr de vouloir acheter "' + xmlEscape(it.name)
+        + '" pour ' + (Number(it.price) || 0) + ' kikooz ?',
       okLabel: "Acheter",
       cancelLabel: "Annuler",
     }).then(function (ok) {
@@ -7027,6 +7123,54 @@
           systemLine("Tu as été réduit au silence (totoché) pour " + mMin + " minutes.",
             null, { totoche: true });
         }
+        break;
+      }
+
+      /*
+       * L'APPEL AU MODÉRATEUR — les deux trames de `box.whining`.
+       *
+       * `bo` revient à QUI A APPELÉ : `k="1"` porte le refus (salon privé,
+       * modérateur déjà là, moins d'une minute depuis le dernier appel),
+       * `k="0"` l'accusé. `openErrorAlert` d'époque : une alerte, pas une
+       * ligne dans le fil.
+       */
+      case "bo": {
+        var boTxt = String(xml.textContent || "").trim();
+        if (attr(xml, "k") === "1") {
+          frutiConfirm({ title: "Erreur", message: xmlEscape(boTxt),
+            okLabel: "OK", sansAnnuler: true });
+        } else {
+          var boN = Number(attr(xml, "n") || 0);
+          frutiConfirm({ title: "Salon",
+            message: boN
+              ? "Les modérateurs ont été prévenus."
+              : "Aucun modérateur n'est connecté pour le moment ; ton appel reste"
+                + " affiché dans le salon.",
+            okLabel: "OK", sansAnnuler: true });
+        }
+        break;
+      }
+
+      /*
+       * `bp` va aux MODÉRATEURS : « $u indique qu'il y a des problèmes sur $f
+       * [$g], rejoindre le salon ? » (`chat.moderator_called`). Répondre oui,
+       * c'est rejoindre le salon — ce que fait `switchToGroup` d'époque.
+       */
+      case "bp": {
+        var bpU = attr(xml, "u") || "?";
+        var bpG = attr(xml, "g") || "";
+        var bpF = attr(xml, "f") || bpG;
+        frutiConfirm({
+          title: "Modération",
+          message: xmlEscape(bpU) + " indique qu'il y a des problèmes sur "
+            + xmlEscape(bpF) + " [" + xmlEscape(bpG) + "], rejoindre le salon ?",
+          okLabel: "Oui", cancelLabel: "Non",
+        }).then(function (ok) {
+          if (!ok || !bpG) return;
+          if (window.BureauFrutiz && window.SalonsBureau && window.SalonsBureau.rejoindre) {
+            window.SalonsBureau.rejoindre(bpG);
+          } else { switchRoom(bpG); }
+        });
         break;
       }
 
@@ -10071,7 +10215,12 @@
     add("question", "se pose des questions", [":?", "question", "curieux", "oO"]); // id 9
     add("miam", "se régale", ["miam", "slurp", "bave", "regale"]);            // id 10
     add("pleurer", "pleure", [':-"(', ";((", "pleure", "ouin"]);              // id 11
-    add("pleurer", "laisse couler une larme", [":'(", ";(", "larme", "snif"]); // id 12
+    /* CE SONT DEUX ANIMATIONS, PAS UNE. `actionList` en compte treize, et les
+       deux dernières ne se ressemblent pas : la 11 (`pleurer`) est la grosse
+       crise — les yeux fermés, le compteur à quatre tours — et la 12 (`larme`)
+       une seule larme, l'œil triste, jouée une fois. On les envoyait toutes
+       deux sur la 11 : « larme » donnait donc un sanglot. */
+    add("larme", "laisse couler une larme", [":'(", ";(", "larme", "snif"]);  // id 12
   })();
   function detectEmote(text) {
     var key = String(text == null ? "" : text).trim();   // whole-message, case-sensitive
@@ -10184,12 +10333,12 @@
 
   // anim id → l'indice de playAnim, celui que le moteur attend (FPBouilleVignette.jouer).
   var ANIM_INDEX = { parle:1, rire:2, mdr:3, langue:4, rougir:5, regard:6,
-    sifflote:7, gum:8, question:9, miam:10, pleurer:11 };
+    sifflote:7, gum:8, question:9, miam:10, pleurer:11, larme:12 };
   // Caption phrases for the bouille overlay — the EXACT desktop wording
-  // (lang_french.as chat.action). A specific emote can override this (the two
-  // cry emotes share the "pleurer" animation but read differently).
+  // (lang_french.as chat.action, entrées 2 à 12).
   var ANIM_LABEL = { parle:"parle", rire:"rigole", mdr:"éclate de rire",
-    pleurer:"pleure", langue:"tire la langue", miam:"se régale",
+    pleurer:"pleure", larme:"laisse couler une larme",
+    langue:"tire la langue", miam:"se régale",
     question:"se pose des questions", rougir:"rougit", sifflote:"sifflote",
     gum:"fait une bulle de chewing-gum", regard:"regarde ailleurs" };
   /*

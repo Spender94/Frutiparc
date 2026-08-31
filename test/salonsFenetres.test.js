@@ -125,7 +125,10 @@ test('chaque fenêtre a SA colonne d’icônes, SES connectés, SA colonne de bo
   assert.match(LIGHT, /var barre = \$\("#topbar"\)\.cloneNode\(true\);/);
   assert.match(LIGHT, /\["#menu-btn", "#room-select"\]\.forEach\(function \(s\) \{/);
   // Le bureau n'y ajoute que son quatrième bouton (`chat_warning`).
-  assert.match(JS, /if \(topbar && !topbar\.querySelector\('#chat-warning'\)\) topbar\.appendChild\(warningSalon\(\)\);/);
+  /* Le quatrième bouton — l'appel au modérateur — appartient lui aussi à la
+     fenêtre, et il emporte SON salon : `box.whining` appelle sur `this.group`,
+     pas sur celui qu'on regarde. */
+  assert.match(JS, /if \(topbar && !topbar\.querySelector\('#chat-warning'\)\) topbar\.appendChild\(warningSalon\(rub\.salon\)\);/);
   // Et tout ce qui lisait « le » panneau du chat lit désormais LE panneau
   // qu'on lui donne.
   assert.match(JS, /function minSalon\(p\) \{/);

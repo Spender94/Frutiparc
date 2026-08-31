@@ -4033,16 +4033,62 @@ window.BureauFrutiz = (function () {
     if (scene && col) { scene.classList.remove('joue'); col.appendChild(scene); }
   }
 
-  // Un bouton par fenêtre de conversation : la colonne d'icônes appartient à
-  // la fenêtre, pas au bureau.
-  function warningSalon() {
+  /*
+   * Un bouton par fenêtre de conversation : la colonne d'icônes appartient à
+   * la fenêtre, pas au bureau.
+   *
+   * `box.whining` (0x313e5) pose TROIS questions avant d'envoyer quoi que ce
+   * soit, et l'on repose les mêmes ici — le serveur les repose de son côté,
+   * mais autant dire non tout de suite plutôt que d'aller le demander :
+   *
+   *   · salon public seulement ;
+   *   · pas d'appel si un modérateur est déjà là (`userList.modePresent`) ;
+   *   · une minute de repos entre deux appels.
+   *
+   * Puis l'alerte d'époque et ses trois boutons — « Oui », « Non »,
+   * « C'est quoi ? » (qui ouvre l'aide à la rubrique « appel »).
+   */
+  var APPEL_MODO_REPOS = 60000;         // `now − lastCallModerator < 60000`
+  var dernierAppelModo = 0;
+
+  function warningSalon(salon) {
     var b = document.createElement('button');
     b.type = 'button';
     b.id = 'chat-warning';
     b.className = 'icon-btn bare';
-    b.disabled = true;
-    b.title = 'L’appel au modérateur n’est pas ouvert sur le revival';
+    b.title = 'Prévenir les modérateurs';
+    b.addEventListener('click', function () { appelerLesModerateurs(salon); });
     return b;
+  }
+
+  function appelerLesModerateurs(salon) {
+    var S = window.SalonsBureau;
+    if (!S || !S.appelerModerateur) return;
+    var g = salon || (S.courant && S.courant());
+    if (!S.estPublic || !S.estPublic(g)) {
+      return alerte('Erreur', "Cette action n'est disponible que sur les salons publics.");
+    }
+    if (S.moderateurPresent && S.moderateurPresent(g)) {
+      return alerte('Erreur', 'Un ou plusieurs modérateurs sont déjà présents sur ce salon.');
+    }
+    if (dernierAppelModo && Date.now() - dernierAppelModo < APPEL_MODO_REPOS) {
+      return alerte('Erreur', 'Vous venez de prévenir les modérateurs !');
+    }
+    // `chat.call_moderator`, mot pour mot. La popin est celle du light —
+    // `win.Alert`, la même partout (cf. `frutiConfirm`).
+    var demander = window.frutiConfirm;
+    if (!demander) { dernierAppelModo = Date.now(); S.appelerModerateur(g); return; }
+    demander({
+      title: 'Salon',
+      message: "Etes-vous sûr de vouloir prévenir les modérateurs qu'il y a un problème"
+        + " sur ce salon ?<br><b>Attention !</b> à n'utiliser qu'en cas de véritable"
+        + ' problème. Tout abus sera puni.',
+      okLabel: 'Oui', cancelLabel: 'Non',
+    }).then(function (ok) {
+      if (!ok) return;
+      dernierAppelModo = Date.now();
+      S.appelerModerateur(g);
+    });
   }
 
   function enTeteDossier(nom, bloc) {
@@ -6853,12 +6899,35 @@ window.BureauFrutiz = (function () {
    * pixel sur la fenêtre de salon (12 de cadre, 16 de bandeau) : c'est la même
    * écorce. Nue, la fenêtre s'ouvre donc à 240 × 248.
    */
+  /*
+   * LA FENÊTRE S'OUVRE À LA TAILLE DE SA PAGE, pas à celle du gabarit nu.
+   *
+   * `win.Help` ne pose ni `pos` ni `moveToCenter` : `recal` en fait le MINIMUM
+   * de son contenu, et le `cpDocument` de l'aide annonce 200 × 200. Ces deux
+   * cents pixels tenaient le texte d'époque ; ils ne tiennent pas le NÔTRE —
+   * l'aide du portage vit en base, l'administration l'écrit, et l'index y fait
+   * trois cents pixels de haut. Ses six liens de rubrique tombaient donc SOUS
+   * le bord de la page : elle défilait bien, mais rien ne le disait (sur les
+   * plateformes à ascenseur superposé — macOS, et Windows sur demande — la
+   * barre ne se montre qu'en cours de défilement). D'où le symptôme :
+   * « cliquer sur les liens de l'index ne fait rien » — il n'y avait aucun
+   * lien à cliquer, ils étaient hors du cadre.
+   *
+   * `gsHauteurPage` porte donc la hauteur de la page RENDUE, et la fenêtre
+   * s'ouvre dessus. Deux garde-fous : jamais moins que les 200 d'époque, et
+   * jamais plus que `GS_PAGE_MAX` — une rubrique très longue défile, comme
+   * elle doit, plutôt que d'occuper l'écran.
+   */
+  var GS_PAGE_MAX = 420;
+  var gsHauteurPage = 0;
+
   function minGaspard() {
     var p = gsPanneau;
     var ecrans = !!(p && p.classList.contains('gs-a-ecrans'));
     var users = !!(p && p.classList.contains('gs-a-users'));
     var gauche = { w: ecrans ? 112 : 32, h: ecrans ? 30 + 200 + 12 : 4 + GS_ICONE * 2 };
-    var milieu = { w: 200, h: 200 + 6 + 14 };
+    var page = Math.max(200, Math.min(GS_PAGE_MAX, gsHauteurPage || 0));
+    var milieu = { w: 200, h: page + 6 + 14 };
     var droite = { w: users ? 134 : 0, h: users ? 100 : 0 };
     return {
       w: Math.max(202, 8 + gauche.w + milieu.w + droite.w),
@@ -7140,6 +7209,19 @@ window.BureauFrutiz = (function () {
     if (o.retour) ligneGaspard(page, 'gs-retour', GS_RETOUR);
     page.scrollTop = 0;
     titrerGaspard(o.titre);
+    ajusterGaspard(page);
+  }
+
+  /* La page vient de changer : la fenêtre se remet à sa taille (cf.
+     `minGaspard`). `appliquerMinimum` ne fait que GRANDIR — une fenêtre que
+     le joueur a agrandie garde sa taille, et une page plus courte ne la
+     rétrécit pas sous ses doigts. */
+  function ajusterGaspard(page) {
+    if (!page) return;
+    // `scrollHeight` compte le remplissage ; les bordures, non — d'où les 4.
+    gsHauteurPage = page.scrollHeight + 4;
+    var f = fenetres['gaspard-panel'];
+    if (f) { f.minimum = minGaspard(); appliquerMinimum(f); }
   }
   // `displayResult({nb, method, list})` (0xbe3c0) : l'intertitre porte le
   // COMPTE, et la méthode dit s'il est exact — `m == "e"`, la lettre seule.
@@ -7150,6 +7232,7 @@ window.BureauFrutiz = (function () {
     for (var i = 0; i < liste.length; i++) ligneGaspard(page, 'gs-lien', lienGaspard(liste[i]));
     ligneGaspard(page, 'gs-retour', GS_RETOUR);
     page.scrollTop = 0;
+    ajusterGaspard(page);
   }
   // `displayNoResult` (0xbe6b0) : l'excuse, le conseil, puis le retour.
   function sansResultatGaspard() {
@@ -7354,7 +7437,7 @@ window.BureauFrutiz = (function () {
         // s'ouvre. Le cadre l'apporte déjà, en tête de panneau ; le bureau n'y
         // ajoute que son quatrième bouton.
         var topbar = panneau.querySelector('#topbar');
-        if (topbar && !topbar.querySelector('#chat-warning')) topbar.appendChild(warningSalon());
+        if (topbar && !topbar.querySelector('#chat-warning')) topbar.appendChild(warningSalon(rub.salon));
         brancherBouillesSalon(f);
       }
     } else if (f.onglet) {

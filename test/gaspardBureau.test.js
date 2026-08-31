@@ -193,8 +193,24 @@ test('les deux panneaux s’ouvrent fermés, et relèvent le minimum', () => {
   const min = /function minGaspard\(\) \{[\s\S]*?\n  \}/.exec(JS);
   assert.ok(min, 'minGaspard doit exister');
   assert.match(min[0], /ecrans \? 112 : 32/, 'cpScreenList 100 + 12 de marge, sinon la colonne (32)');
-  assert.match(min[0], /w: 200, h: 200 \+ 6 \+ 14/, 'showFrame 200×200, saisie 14 + 6 de marge');
+  /* LA HAUTEUR SUIT LA PAGE. Le `showFrame` d'époque annonce 200 × 200, et ces
+     deux cents pixels tenaient le texte d'époque ; ils ne tiennent pas le
+     nôtre — l'aide du portage vit en base, et son index fait trois cents
+     pixels. Ses six liens de rubrique tombaient donc SOUS le bord de la page :
+     elle défilait bien, mais rien ne le disait (sur les plateformes à
+     ascenseur superposé la barre ne se montre qu'en cours de défilement), et
+     l'on croyait les liens morts. On garde le 200 comme PLANCHER et l'on
+     s'ouvre à la taille de la page rendue, plafonnée. */
+  assert.match(min[0], /var page = Math\.max\(200, Math\.min\(GS_PAGE_MAX, gsHauteurPage \|\| 0\)\);/);
+  assert.match(min[0], /w: 200, h: page \+ 6 \+ 14/, 'showFrame 200 de large, saisie 14 + 6 de marge');
   assert.match(min[0], /users \? 134 : 0/, 'cpUserList 122 + 12 de marge');
+  assert.match(JS, /var GS_PAGE_MAX = 420;/);
+  // Et la fenêtre se remet à sa taille à CHAQUE page — index compris.
+  const aj = /function ajusterGaspard\(page\) \{[\s\S]*?\n  \}/.exec(JS);
+  assert.ok(aj, 'ajusterGaspard doit exister');
+  assert.match(aj[0], /gsHauteurPage = page\.scrollHeight \+ 4;/);
+  assert.match(aj[0], /f\.minimum = minGaspard\(\); appliquerMinimum\(f\);/);
+  assert.match(JS, /titrerGaspard\(o\.titre\);\s*\n\s*ajusterGaspard\(page\);/);
 });
 
 test('les présents sont deux : le joueur, puis Gaspard', () => {

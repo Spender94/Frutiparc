@@ -2285,9 +2285,12 @@ body.bureau-frutiz .fen #topbar #users-btn {
 body.bureau-frutiz .fen #topbar #pen-btn {
   order: 2; background-image: url('/frutiz/sprites/chat-but-penlist.svg');
 }
+/* Le quatrième bouton de la colonne : l'appel au modérateur (`box.whining`).
+   Il était dessiné mais mort — le serveur n'écoutait pas `callmoderator` — et
+   portait donc un curseur de repos. Il est branché : c'est un bouton. */
 body.bureau-frutiz .fen #topbar #chat-warning {
   order: 3; background-image: url('/frutiz/sprites/chat-but-warning.svg');
-  cursor: default;
+  cursor: pointer;
 }
 /* Le panneau du salon remplit ce qui reste, sans marge à lui. */
 /* Le panneau se rentre de 2 px : c'est la place que prend le CONTOUR de la

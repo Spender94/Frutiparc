@@ -130,9 +130,19 @@ test('l’écurie se retourne au clic — la voiture, puis l’écusson', () => 
 
 test('les colonnes annexes se glissent entre le score et l’heure', () => {
   assert.match(LIGHT, /grid-template-columns: var\(--sc-rang, 25px\) 20px minmax\(0,1fr\) auto var\(--sc-annexes, \) 38px;/);
-  // Sur le BUREAU, les largeurs d'époque au pixel (`win.Score.display`) : le
-  // score à 85, l'heure à 60, le pseudo à 100 au minimum, et pas de gouttière.
-  assert.match(LIGHT, /body\.bureau-frutiz #sc-table \.sc-entete,\n\s+body\.bureau-frutiz #sc-table \.sc-ligne \{\n\s+grid-template-columns: var\(--sc-rang, 25px\) 20px minmax\(100px,1fr\) 85px var\(--sc-annexes, \) 60px;\n\s+gap: 0;/);
+  /* Sur le BUREAU, les largeurs d'époque au pixel (`win.Score.display`) : le
+     score à 85, l'heure à 60, le pseudo à 100 au minimum, et pas de gouttière.
+
+     LE SCORE PART DE 85 ET S'ÉTIRE. Ces quatre-vingt-cinq pixels suffisent à
+     un nombre — c'est tout ce que le SWF y met. Deux de nos classements y
+     écrivent davantage : Mini-Fever raconte d'où viennent les points
+     (« 2 370 · 79 épreuves en difficile ») et MiniWave y ajoute le niveau
+     atteint, faute de colonne annexe dans le gabarit `gs='1'`. Cent soixante
+     pixels de texte dans une case de quatre-vingt-cinq, et le libellé passait
+     PAR-DESSUS l'heure. `max-content` rend à la piste ce que son contenu
+     demande ; la colonne Frutiz, qui prend le reste, cède d'autant — un score
+     court ne bouge donc pas d'un pixel. */
+  assert.match(LIGHT, /body\.bureau-frutiz #sc-table \.sc-entete,\n\s+body\.bureau-frutiz #sc-table \.sc-ligne \{\n\s+grid-template-columns: var\(--sc-rang, 25px\) 20px minmax\(100px,1fr\)\n\s+minmax\(85px, max-content\) var\(--sc-annexes, \) 60px;\n\s+gap: 0;/);
   // L'en-tête et la ligne portent les mêmes cellules, au même rang.
   // Le titre de la colonne n'est plus le mot « Score » en dur : il vient de
   // `score.score_type.<t>` (lang_french.as) — « Temps » pour un chrono,

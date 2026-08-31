@@ -26800,6 +26800,73 @@ case 'trace': {
       break;
     }
 
+    /* ── callmoderator : L'APPEL AU MODÉRATEUR ─────────────────────────────
+     *
+     * `box.whining` (0x313e5) — le quatrième bouton de la colonne d'un salon.
+     * Il pose trois questions AVANT d'envoyer quoi que ce soit, et le client
+     * les repose de son côté ; on les revérifie ici, parce qu'un client ne se
+     * vérifie pas lui-même :
+     *
+     *   · « Cette action n'est disponible que sur les salons publics. »
+     *   · « Un ou plusieurs modérateurs sont déjà présents sur ce salon. »
+     *   · « Vous venez de prévenir les modérateurs ! » — une minute de repos
+     *     (`now − lastCallModerator < 60000`).
+     *
+     * Puis `callModerator` (0x3166a) envoie `cmd("callmoderator", {g})`. Le
+     * serveur du revival ne l'écoutait pas : le code de trame était déclaré,
+     * la branche manquait, et le bouton était désactivé faute de fil au bout.
+     *
+     * Ce qu'on en fait, ce sont les deux phrases d'époque :
+     *   `chat.moderator_called_channel` — le salon voit qui a appelé ;
+     *   `chat.moderator_called`        — chaque modérateur EN LIGNE reçoit
+     *                                    `moderatorcalled` et son alerte.
+     */
+    case 'callmoderator': {
+      const g = String(msg.attrs.g || client.channel || '');
+      const refus = (txt) => sendToClient(socket,
+        `<${CMD.callmoderator} k="1" g="${escapeXml(g)}">${escapeXml(txt)}</${CMD.callmoderator}>`);
+      if (!g || !channels[g] || channels[g].private || /^pm2?_/.test(g)) {
+        refus("Cette action n'est disponible que sur les salons publics.");
+        break;
+      }
+      // « Un ou plusieurs modérateurs sont déjà présents » — le même `flMode`
+      // que la liste des présents affiche (`modAttr`).
+      let modeLa = false;
+      for (const [, cl] of xmlSocketClients) {
+        if (!cl.channels || !cl.channels.has(g)) continue;
+        if (isChannelStaff(cl.username, g)) { modeLa = true; break; }
+      }
+      if (modeLa) {
+        refus('Un ou plusieurs modérateurs sont déjà présents sur ce salon.');
+        break;
+      }
+      const t = Date.now();
+      if (client.dernierAppelModo && t - client.dernierAppelModo < 60000) {
+        refus('Vous venez de prévenir les modérateurs !');
+        break;
+      }
+      client.dernierAppelModo = t;
+      const qui = getDisplayName(client.username);
+      const nomSalon = (channels[g] && channels[g].desc) || g;
+      // Dans le salon : la phrase d'époque, en rouge gras comme un cri.
+      const corps = `<![CDATA[<font color="#C10000"><b>${escapeXml(qui)} indique qu'il y a des problèmes sur ce salon !</b></font>]]>`;
+      broadcastToChannel(g,
+        `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="" d="" st="r">${corps}</${CMD.send}>`);
+      // Et à chaque modérateur en ligne, où qu'il soit.
+      let prevenus = 0;
+      for (const [sock2, cl] of xmlSocketClients) {
+        if (!cl.username || !isModerator(cl.username)) continue;
+        if (cl.username === client.username) continue;
+        sendToClient(sock2, `<${CMD.moderatorcalled} u="${escapeXml(qui)}" `
+          + `g="${escapeXml(g)}" f="${escapeXml(nomSalon)}" />`);
+        prevenus++;
+      }
+      console.log(`[MODO] ${client.username} appelle sur « ${g} » — ${prevenus} modérateur(s) prévenu(s)`);
+      sendToClient(socket,
+        `<${CMD.callmoderator} k="0" g="${escapeXml(g)}" n="${prevenus}" />`);
+      break;
+    }
+
     // ── status: update user status ──
     case 'status': {
       // Persist on the live client so getStatusCode() can pick it up,
