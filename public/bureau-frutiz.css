@@ -640,6 +640,14 @@ body.bureau-frutiz.fb-onglet-actif .fen:not(.fen-onglet-vue) { display: none; }
    ci-dessus, qui n'en a qu'un. C'est pourtant elle que `onDeactivate` retire
    en premier — `iconList.removeMovieClip()`. */
 body.bureau-frutiz.fb-onglet-actif #bureau #home-grid { display: none; }
+/* LES FICHES S'ESCAMOTENT AVEC LE BUREAU, elles aussi.
+   Elles ne sont pas des `.fen` — ce sont des `win.Frutiz`, un autre habit —,
+   et leur couche `#bureau-fenetres` est FRÈRE de `#bureau`, pas son enfant :
+   ni la règle des `> *` ni celle des fenêtres ne les touchait. Une fiche
+   ouverte depuis une conversation en plein écran restait donc posée PAR-DESSUS
+   la conversation, dans son coin, alors que d'époque elle attend sur le bureau
+   qu'on vienne l'y chercher (l'onglet Bureau clignote, cf. `poserFiche`). */
+body.bureau-frutiz.fb-onglet-actif #bureau-fenetres > [data-fiche-de] { display: none; }
 
 /* ── LE LECTEUR FRUSION (clip `frusion` #324, aplati tel quel) ────────────
    Ce n'est pas un conteneur vide : sa première image porte TOUT le meuble —

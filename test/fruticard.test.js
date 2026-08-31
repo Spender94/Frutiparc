@@ -354,6 +354,58 @@ test('le dessinateur parle le vocabulaire de `cpDocument`', () => {
   assert.match(LIGHT, /ÉCART ASSUMÉ : l'époque ne NOMME pas la carte/);
 });
 
+test('la rangée des coupes tient dans le document, et se centre', () => {
+  /* LA MESURE MANQUANTE. Les quatre coupes ne sortent d'aucun extracteur —
+     elles sont dans le dépôt depuis toujours — et n'avaient donc pas de
+     largeur : la mise en page retombait sur le `min.w` de la ligne, trente
+     pixels, là où les dessins font 37, 64, 48 et 64.
+
+     La rangée réservait ainsi quatre cases de 30 et répartissait le reste en
+     espaces élastiques : les coupes 2 et 3 se chevauchaient, la quatrième
+     sortait du document, et l'ensemble paraissait poussé d'une trentaine de
+     pixels vers la droite. (À la largeur d'époque, 324, la dernière finit
+     pile au bord ; nos 308 ne le pardonnent pas.) */
+  const carte = FC.lignes('bkiwi', { $wss: true, $ws: true, $wcs: true, $wc: true }, 'Zorro');
+  const coupes = images(carte).slice(0, 4);
+  assert.deepStrictEqual(coupes.map((x) => x.w), [37, 64, 48, 64]);
+  assert.deepStrictEqual(coupes.map((x) => x.h), [69, 80, 73, 79]);
+  // Le `min.w` d'époque reste ce qu'il est : c'est la mise en page qui prend
+  // désormais le plus grand des deux.
+  assert.deepStrictEqual(coupes.map((x) => x.param.min.w), [30, 30, 30, 30]);
+
+  /* Et la rangée, posée à 308, ne déborde plus. On rejoue les deux passes de
+     `updateLine` sur la ligne telle que la carte la décrit. */
+  const rangee = carte.find((l) => l.list && l.list.some((x) => x.type === 'url'));
+  const W = 308;
+  const voulue = (f) => {
+    const min = (f.param && f.param.min) || f.min || {};
+    const w = Number(f.width) || 0;
+    if (min.w === undefined || min.w === null) return w;
+    return Math.max(Number(min.w) || 0, w, Number(f.w) || 0);
+  };
+  let total = 0, gros = 0;
+  for (const f of rangee.list) { total += voulue(f); gros += Number(f.big) || 0; }
+  const reste = W - total;
+  let x = 0;
+  const poses = [];
+  for (const f of rangee.list) {
+    let w = voulue(f);
+    if (f.big !== undefined && reste > 0 && gros) w += (Number(f.big) || 0) / gros * reste;
+    if (f.type === 'url') poses.push({ g: x, d: x + f.w });
+    x += w;
+  }
+  assert.equal(poses.length, 4);
+  assert.ok(poses[3].d <= W, 'la quatrième coupe tient : ' + poses[3].d.toFixed(1) + ' ≤ ' + W);
+  for (let i = 1; i < 4; i++) {
+    assert.ok(poses[i].g >= poses[i - 1].d, 'les coupes ' + i + ' et ' + (i + 1) + ' ne se chevauchent pas');
+  }
+  /* L'écart de GAUCHE vaut le double de celui de droite : c'est le bytecode
+     (`spacer big:2` devant la rangée, `big:1` entre les coupes et derrière). */
+  const gauche = poses[0].g, droite = W - poses[3].d;
+  assert.ok(Math.abs(gauche - 2 * droite) < 0.01,
+    'marge gauche ' + gauche.toFixed(1) + ' = 2 × ' + droite.toFixed(1));
+});
+
 test('`DocPage.updateLine`, au chiffre près — le partage des largeurs', () => {
   /* 0x661c6, désassemblé :
        passe 1  w = (min.w défini) ? max(min.w, width) : width  ;  total += w
@@ -369,10 +421,21 @@ test('`DocPage.updateLine`, au chiffre près — le partage des largeurs', () =>
   // BORNÉ PAR CE QUI RESTE : c'est ce qui tronque une rangée trop longue au
   // lieu d'élargir la fenêtre.
   assert.match(p[0], /var w = Math\.min\(libre, Number\(f\.width\) \|\| 0\);/);
-  assert.match(p[0], /w = Math\.max\(Number\(min\.w\) \|\| 0, w\);/);
+  assert.match(p[0], /w = Math\.max\(Number\(min\.w\) \|\| 0, w, Number\(f\.w\) \|\| 0\);/);
   assert.match(p[0], /reste > 0 && gros !== 0/);
   assert.match(p[0], /w \+= \(Number\(f\.big\) \|\| 0\) \/ gros \* reste;/);
   assert.match(p[0], /libre -= w;/);
+  /* ÉCART ASSUMÉ : la LARGEUR DU DESSIN entre dans le calcul. D'époque,
+     `updateLine` s'exécute avant que le petit SWF de la ligne soit chargé et
+     ne connaît que le `min.w` écrit dans la carte ; le light, lui, sait la
+     taille du dessin avant de poser quoi que ce soit. Sans cela, les coupes de
+     Burning Kiwi (37 à 64 de large pour un `min.w` de 30) se chevauchaient et
+     débordaient du document. Seulement là où un `min.w` est ÉCRIT : une ligne
+     qui n'en a pas garde sa largeur nulle, comme d'époque. */
+  assert.match(p[0], /w = Math\.max\(Number\(min\.w\) \|\| 0, w, Number\(f\.w\) \|\| 0\);/);
+  const lv = /function largeurVoulue\(f\) \{[\s\S]*?\n  \}/.exec(LIGHT)[0];
+  assert.match(lv, /if \(min\.w === undefined \|\| min\.w === null\) return w;/);
+  assert.match(lv, /return Math\.max\(Number\(min\.w\) \|\| 0, w, Number\(f && f\.w\) \|\| 0\);/);
   // Une colonne rejoue la règle chez elle, dans la case qu'elle a reçue.
   assert.match(p[0], /if \(c\.classList\.contains\("fc-colonne"\)\) poserCarte\(c, w\);/);
   /* LA HAUTEUR : `getLineHeight` (0x66537) prend `line.height` s'il est donné,

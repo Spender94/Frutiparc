@@ -156,3 +156,27 @@ test('sur le bureau, le forum s’ouvre bien dans une fenêtre à part', () => {
   assert.match(JS, /popupForum = window\.open\(url, 'frutiparc_forum', FORUM_FENETRE\);/);
   assert.doesNotMatch(JS, /noopener/);
 });
+
+test('on ne voit jamais le formulaire du light entre les deux', () => {
+  /* Se connecter sur l'accueil mène ici avec `?sid=…`, et la reprise de
+     session valide ce jeton auprès du serveur avant de démarrer l'appli. Le
+     temps de cet aller-retour, la page affichait son PROPRE formulaire : on
+     venait d'en remplir un, on en voyait un second passer, puis la barre de
+     chargement. On tranche AVANT LE PREMIER RENDU — le script est en tête de
+     document — et le formulaire ne s'affiche pas du tout. */
+  const tete = LIGHT.slice(0, LIGHT.indexOf('<style>'));
+  assert.match(tete, /aSid = \/\[\?&\]sid=\[\^&\]\/\.test\(location\.search\);/);
+  assert.match(tete, /localStorage\.getItem\("fp_light_session"\)/);
+  assert.match(tete, /document\.documentElement\.classList\.add\("fp-reprise"\)/);
+  assert.match(LIGHT, /html\.fp-reprise #login-screen \{ display: none !important; \}/);
+  // Le script est bien AVANT la feuille de style et le corps : sans quoi il
+  // arriverait après le premier rendu, et le clignotement resterait.
+  assert.ok(LIGHT.indexOf('fp-reprise') < LIGHT.indexOf('<style>'),
+    'le verdict se rend avant la moindre peinture');
+  // Et si la reprise ÉCHOUE, le formulaire reprend sa place.
+  assert.match(LIGHT, /function rendreLeFormulaire\(\) \{\s*\n\s*document\.documentElement\.classList\.remove\("fp-reprise"\);/);
+  const reprise = LIGHT.slice(LIGHT.indexOf('function tryResumeSession'),
+    LIGHT.indexOf('function rendreLeFormulaire'));
+  assert.match(reprise, /clearSession\(\);\s*\n\s*state\.sid = "";\s*\n\s*rendreLeFormulaire\(\);/);
+  assert.match(reprise, /\.catch\(function \(\) \{ rendreLeFormulaire\(\); cb\(false\); \}\);/);
+});

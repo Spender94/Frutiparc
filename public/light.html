@@ -16,7 +16,39 @@
 <meta name="apple-mobile-web-app-title" content="Frutiparc">
 <link rel="apple-touch-icon" href="/images/appli/icone-180.png">
 <title>Frutiparc — Mobile</title>
+<script>
+/*
+ * ON NE MONTRE PAS LE FORMULAIRE À QUELQU'UN QUI ARRIVE DÉJÀ CONNECTÉ.
+ *
+ * Se connecter sur frutiparc-revival.com mène ici avec `?sid=…`, et la
+ * reprise de session (`tryResumeSession`) valide ce jeton auprès du serveur
+ * avant de démarrer l'appli. Le temps de cet aller-retour, la page affichait
+ * son PROPRE formulaire de connexion : on venait d'en remplir un, on en
+ * voyait un second passer, puis la barre de chargement. Un clignotement
+ * d'un tiers de seconde, mais qui donnait l'impression d'avoir raté sa
+ * connexion.
+ *
+ * On tranche AVANT LE PREMIER RENDU : ce script est en tête de document, il
+ * s'exécute avant que quoi que ce soit soit peint. S'il y a une session à
+ * reprendre — dans l'adresse ou dans le `localStorage` —, le formulaire ne
+ * s'affiche pas du tout, et l'on passe du fond vert à la barre de chargement.
+ * Si la reprise ÉCHOUE (jeton périmé, session close), `tryResumeSession`
+ * retire la classe et le formulaire reprend sa place.
+ */
+(function () {
+  try {
+    var aSid = /[?&]sid=[^&]/.test(location.search);
+    if (!aSid) {
+      var raw = localStorage.getItem("fp_light_session");
+      aSid = !!(raw && (JSON.parse(raw) || {}).sid);
+    }
+    if (aSid) document.documentElement.classList.add("fp-reprise");
+  } catch (e) { /* pas de stockage : on montre le formulaire, comme avant */ }
+})();
+</script>
 <style>
+  /* Cf. le script ci-dessus : une session à reprendre, pas de formulaire. */
+  html.fp-reprise #login-screen { display: none !important; }
   /* Frutiparc green palette — same family as forum / admin / Club. */
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
@@ -3236,10 +3268,17 @@
         } else {
           clearSession();
           state.sid = "";
+          rendreLeFormulaire();
           cb(false);
         }
       })
-      .catch(function () { cb(false); });
+      .catch(function () { rendreLeFormulaire(); cb(false); });
+  }
+
+  // La reprise a échoué : on rend au formulaire la place que le script d'en
+  // tête lui avait retirée (cf. « ON NE MONTRE PAS LE FORMULAIRE… »).
+  function rendreLeFormulaire() {
+    document.documentElement.classList.remove("fp-reprise");
   }
 
   // Shared login: POST credentials then resume the app. Reused by the login
@@ -8855,11 +8894,35 @@
     return dans;
   }
 
-  // La largeur demandée d'un élément, PASSE 1.
+  /*
+   * La largeur demandée d'un élément, PASSE 1 :
+   *   `w = (min.w défini) ? max(min.w, width) : width`
+   *
+   * ÉCART ASSUMÉ — LA LARGEUR DU DESSIN COMPTE AUSSI. D'époque, `updateLine`
+   * s'exécute AVANT que le petit SWF de la ligne soit chargé : elle ne peut
+   * rien savoir de sa taille et ne dispose que du `min.w` écrit dans la
+   * carte. Celui de Burning Kiwi vaut 30 pour quatre coupes qui font 37, 64,
+   * 48 et 64 — le dessin déborde de sa case et empiète sur l'espace élastique
+   * qui suit. À la largeur d'époque, 324, la dernière coupe finit pile au bord
+   * et l'illusion tient. Nos 308 ne le pardonnent pas : les coupes 2 et 3 se
+   * chevauchaient, la quatrième sortait du document, et la rangée entière
+   * paraissait poussée d'une trentaine de pixels vers la droite.
+   *
+   * Le light, lui, CONNAÎT la taille du dessin avant de poser quoi que ce soit
+   * (`tailleDe`, fruticard.js). On la fait entrer dans le calcul, et la rangée
+   * se range d'elle-même à n'importe quelle largeur : l'écart de gauche
+   * redevient le double de l'écart entre deux coupes, ce que dit le bytecode
+   * (`spacer big:2` devant, `big:1` entre).
+   *
+   * Seulement là où un `min.w` est ÉCRIT : une ligne qui n'en a pas garde sa
+   * largeur nulle, comme d'époque — c'est ce qui laisse les sorts de MiniPixiz
+   * et les fées se chevaucher à dessein.
+   */
   function largeurVoulue(f) {
     var min = (f && f.param && f.param.min) || (f && f.min) || {};
     var w = Number(f && f.width) || 0;
-    return (min.w !== undefined && min.w !== null) ? Math.max(Number(min.w) || 0, w) : w;
+    if (min.w === undefined || min.w === null) return w;
+    return Math.max(Number(min.w) || 0, w, Number(f && f.w) || 0);
   }
 
   /* `poserCarte(hote, largeur)` — la passe 2, sur le DOM.
@@ -8887,7 +8950,12 @@
         var f = c._fc || {};
         var min = (f.param && f.param.min) || f.min || {};
         var w = Math.min(libre, Number(f.width) || 0);
-        if (min.w !== undefined && min.w !== null) w = Math.max(Number(min.w) || 0, w);
+        // Le même écart qu'en passe 1 : la case ne peut pas être plus étroite
+        // que le dessin qu'elle porte, sans quoi les deux passes se
+        // contrediraient et la rangée déborderait de ce qu'elle a réservé.
+        if (min.w !== undefined && min.w !== null) {
+          w = Math.max(Number(min.w) || 0, w, Number(f.w) || 0);
+        }
         if (f.big !== undefined && f.big !== null && reste > 0 && gros !== 0) {
           w += (Number(f.big) || 0) / gros * reste;
         }

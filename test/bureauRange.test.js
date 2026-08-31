@@ -74,19 +74,20 @@ test('un bureau déjà rangé n’est pas réécrit', () => {
   assert.deepStrictEqual(persistes, [], 'rien à écrire, rien d’écrit');
 });
 
-test('le rangement se fait UNE FOIS PAR SESSION, pas à chaque lecture', () => {
-  /* En cours de session, déplacer une icône la garde où on l'a mise —
-     rechargement compris. C'est la prochaine CONNEXION qui remet au carré :
-     sans ce garde-fou, une icône déplacée reprenait sa case au premier
-     rafraîchissement, et le glisser-déposer ne servait plus à rien. */
-  assert.match(SRV, /const bureauxRanges = new Set\(\);/);
-  assert.match(SRV, /if \(sid && !bureauxRanges\.has\(sid\)\) \{\s*\n\s*bureauxRanges\.add\(sid\);/);
-  // Le jeu de sessions ne grossit pas sans fin.
-  assert.match(SRV, /if \(bureauxRanges\.size > 5000\) bureauxRanges\.clear\(\);/);
-  // Et c'est bien la LECTURE du bureau qui le déclenche, pas une route à part.
+test('le rangement se fait à CHAQUE CHARGEMENT — un F5 range aussi', () => {
+  /* Le bureau ne lit cette route qu'à son MONTAGE : `chargerObjetsBureau` est
+     appelée une seule fois. Une lecture vaut donc un chargement de page, et
+     ranger à chaque lecture, c'est ranger à chaque F5 comme à chaque
+     connexion. En cours de session rien ne relit la route : une icône
+     déplacée reste où on l'a mise. */
   const route = SRV.slice(SRV.indexOf("app.get('/api/light/bureau/objets'"),
     SRV.indexOf("app.post('/api/light/bureau/objets'"));
-  assert.match(route, /rangerBureau\(username, user\)/);
+  assert.match(route, /if \(rangerBureau\(username, user\)\) \{/);
+  // Plus de garde-fou par session : il ne rangeait qu'à la première lecture.
+  assert.doesNotMatch(SRV, /bureauxRanges/);
+  // Et le bureau ne lit bien cette route qu'une fois, à son montage.
+  assert.equal((JS.match(/chargerObjetsBureau\(\);/g) || []).length, 1,
+    'un seul appel : le montage');
 });
 
 test('reposerTuiles : une tuile sans place retrouve sa rangée', () => {
@@ -97,6 +98,23 @@ test('reposerTuiles : une tuile sans place retrouve sa rangée', () => {
   assert.match(r, /for \(var go in tuilesPosees\)/);
   assert.match(r, /var t = grille\.querySelector\('\.home-tile\[data-go="' \+ go \+ '"\]'\)/);
   assert.match(r, /if \(!t\) continue;/);
+});
+
+test('l’espaceur d’une tuile partie garde SON RANG dans la rangée', () => {
+  /* La rangée est une boîte flexible ordonnée par `order` : le DOM garde
+     l'ordre du mobile, la feuille du bureau impose celui d'époque. Un
+     espaceur nu vaut `order: 0` et se posait donc EN TÊTE, pas dans la case
+     libérée — traîner le forum poussait les six tuiles d'avant d'une case
+     vers la droite. Il prend maintenant l'`order` de la tuile qu'il remplace. */
+  assert.match(JS, /trou\.style\.order = getComputedStyle\(tuile\)\.order;/);
+  // Un seul endroit fabrique l'espaceur : les deux chemins (le glissé et le
+  // remontage au chargement) passent par lui.
+  assert.equal((JS.match(/className = 'home-trou'/g) || []).length, 1);
+  assert.equal((JS.match(/espaceurDeTuile\(/g) || []).length, 3,
+    'la fabrique, plus ses deux appels');
+  // Et les `order` de la feuille sont bien ceux de l'ordre d'époque.
+  assert.match(CSS, /home-tile\[data-go="mail"\]\s*\{ order: 0; \}/);
+  assert.match(CSS, /home-tile\[data-go="forum"\]\s*\{ order: 3; \}/);
 });
 
 /* ── 2. LES BOUILLES DU CARNET ────────────────────────────────────────────── */

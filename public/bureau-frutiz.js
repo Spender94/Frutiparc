@@ -5179,6 +5179,19 @@ window.BureauFrutiz = (function () {
     // pas : elle revient simplement au premier plan (`Box.init`, branche
     // `else` — swapDepths, et `moveToPos` part d'où elle est).
     premierPlan(f);
+    /*
+     * OUVERTE DEPUIS UN ONGLET, LA FICHE ATTEND SUR LE BUREAU.
+     *
+     * `win.Frutiz` est `desktopable` et se pose dans le coin du BUREAU — pas
+     * dans l'onglet d'où l'on vient. Cliquer un pseudo dans une conversation
+     * en plein écran ne fait donc rien VOIR : la fiche est là, deux clics plus
+     * loin. C'est à quoi sert l'avertissement d'un slot (`Slot.warning`) —
+     * l'onglet Bureau clignote, on y va, on la trouve posée.
+     *
+     * `avertirSlot` se garde tout seul du cas où l'on y est déjà : un slot
+     * ACTIF n'avertit jamais.
+     */
+    avertirSlot('bureau');
   }
 
   // La fiche s'en va. Le panneau D'ORIGINE retourne au fond sombre, qui le
@@ -5416,6 +5429,31 @@ window.BureauFrutiz = (function () {
 
   // Au montage du bureau : on repose chaque tuile là où elle était. Celles
   // qu'on n'a jamais bougées restent dans la rangée, à leur place native.
+  /*
+   * L'ESPACEUR QUI TIENT LA CASE D'UNE TUILE PARTIE SUR LE BUREAU.
+   *
+   * ET SON `order`, SANS QUOI IL NE TIENT RIEN. La rangée est une boîte
+   * flexible, et les tuiles y sont rangées par `order` : le DOM garde l'ordre
+   * du mobile, la feuille du bureau impose celui d'époque (mail 0, disques 1,
+   * inventaire 2, forum 3…). Les quatre rubriques que le light n'a pas —
+   * Gaspard, Mes contacts, Corbeille, Liste noire — n'ont pas de règle et
+   * valent donc 0, comme tout ce qui n'en a pas.
+   *
+   * Un espaceur nu vaut 0 lui aussi : il ne se posait PAS dans la case
+   * libérée mais au début de la rangée, dans le groupe des zéros. Traîner le
+   * forum poussait donc les six tuiles d'avant d'une case vers la droite — ce
+   * qu'aucun geste ne devrait faire. On lui donne l'`order` de la tuile qu'il
+   * remplace, et il reste exactement là où elle était.
+   */
+  function espaceurDeTuile(tuile, boite) {
+    var trou = document.createElement('div');
+    trou.className = 'home-trou';
+    trou.style.width = boite.width + 'px';
+    trou.style.height = boite.height + 'px';
+    trou.style.order = getComputedStyle(tuile).order;
+    return trou;
+  }
+
   function reposerTuiles(grille, bureau) {
     for (var go in tuilesPosees) {
       if (!Object.prototype.hasOwnProperty.call(tuilesPosees, go)) continue;
@@ -5426,11 +5464,7 @@ window.BureauFrutiz = (function () {
       // la rangée se refermerait et tout le reste se décalerait.
       if (!t.classList.contains('posee')) {
         var boite = t.getBoundingClientRect();
-        var trou = document.createElement('div');
-        trou.className = 'home-trou';
-        trou.style.width = boite.width + 'px';
-        trou.style.height = boite.height + 'px';
-        if (t.parentNode === grille) grille.insertBefore(trou, t);
+        if (t.parentNode === grille) grille.insertBefore(espaceurDeTuile(t, boite), t);
       }
       t.classList.add('posee');
       t.style.left = tuilesPosees[go].x + 'px';
@@ -5492,10 +5526,7 @@ window.BureauFrutiz = (function () {
           // largeur, sinon la rangée se refermerait — d'époque elle ne le
           // fait pas. Une tuile DÉJÀ posée a laissé le sien au premier voyage.
           if (!tuile.classList.contains('posee')) {
-            trou = document.createElement('div');
-            trou.className = 'home-trou';
-            trou.style.width = boite.width + 'px';
-            trou.style.height = boite.height + 'px';
+            trou = espaceurDeTuile(tuile, boite);
             grille.insertBefore(trou, tuile);
           }
           tuile.classList.add('posee', 'en-main');

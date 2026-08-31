@@ -235,9 +235,8 @@ function resoudre(lib, param) {
     /* Les quatre coupes : image 1..4 du clip `cup` de `/sd/bkiwi_cup.swf`.
        Leurs quatre tailles diffèrent (37 × 69, 64 × 80, 48 × 73, 64 × 79) et
        c'est le DESSIN qui le veut — quatre coupes de formes différentes,
-       vérifié en aplatissant le clip. Elles sont posées à 1:1, donc sans
-       entrée de manifeste : `tailleDe` rend `null` et l'image garde sa taille
-       de fichier, qui est déjà celle de la scène. */
+       vérifié en aplatissant le clip. Elles sont posées à 1:1 ; leurs mesures
+       sont dans `TAILLES_FIXES`, faute d'un extracteur qui les ait produites. */
     case 'bkiwi_cup': {
       const n = Math.max(1, Math.min(4, Number(p.frame) || 1));
       return '/fb/sd/bkiwi_cup_' + n + (n === 4 ? '.svg' : '.png');
@@ -327,10 +326,35 @@ function resoudre(lib, param) {
  * le fait `<img>`, se décale donc de tout ce que vaut ce couple : la moitié
  * d'un dessin pour Swapou, dont le cercle partait en biais.
  */
+/*
+ * LES DESSINS QUE LE MANIFESTE NE CONNAÎT PAS.
+ *
+ * Les quatre coupes de Burning Kiwi ne sortent d'aucun extracteur : elles
+ * sont dans le dépôt depuis toujours. Elles n'avaient donc PAS DE LARGEUR
+ * pour la mise en page, qui retombait sur le `min.w` de la ligne — trente
+ * pixels, là où les dessins font 37, 64, 48 et 64. La rangée dimensionnait
+ * donc quatre cases de 30 et répartissait le reste en espaces élastiques :
+ * les coupes 2 et 3 se chevauchaient, la quatrième dépassait du document, et
+ * la rangée entière était poussée d'une trentaine de pixels vers la droite.
+ * (À la largeur d'époque, 324, la dernière finissait pile au bord ; nos 308
+ * ne le pardonnent pas.)
+ *
+ * Avec leurs vraies mesures, `largeurVoulue` rend `max(min.w, w)` et la
+ * rangée se range d'elle-même : plus de chevauchement, plus de débordement,
+ * et l'écart de gauche revient au double de l'écart entre deux coupes — ce
+ * que dit le bytecode (`spacer big:2` devant, `big:1` entre).
+ */
+const TAILLES_FIXES = {
+  bkiwi_cup_1: { w: 37, h: 69 },
+  bkiwi_cup_2: { w: 64, h: 80 },
+  bkiwi_cup_3: { w: 48, h: 73 },
+  bkiwi_cup_4: { w: 64, h: 79 },
+};
+
 function tailleDe(src) {
   if (!src) return null;
   const cle = String(src).split('/').pop().replace(/\.(svg|png)$/i, '');
-  const d = MANIFESTE[cle];
+  const d = MANIFESTE[cle] || TAILLES_FIXES[cle];
   if (!d || !(Number(d.w) > 0) || !(Number(d.h) > 0)) return null;
   return { w: Number(d.w), h: Number(d.h), x: Number(d.x) || 0, y: Number(d.y) || 0 };
 }

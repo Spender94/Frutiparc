@@ -20777,7 +20777,7 @@ function bureauObjetEnrichi(user, it) {
 }
 
 /*
- * LE BUREAU SE RANGE À CHAQUE CONNEXION.
+ * LE BUREAU SE RANGE À CHAQUE CHARGEMENT.
  *
  * On garde TOUT ce que le joueur y a posé — ses frutiz, ses disques, ses
  * dossiers — mais la DISPOSITION repart de la grille : un bureau qu'on a
@@ -20790,12 +20790,12 @@ function bureauObjetEnrichi(user, it) {
  * joueur les a posés, donc stable d'un rechargement à l'autre. Les tuiles de
  * rubrique, elles, retournent dans leur rangée.
  *
- * UNE FOIS PAR SESSION, pas à chaque lecture : en cours de session, déplacer
- * une icône la garde où on l'a mise, rechargement compris. C'est la prochaine
- * CONNEXION qui remet tout au carré.
+ * À CHAQUE LECTURE DE CETTE ROUTE, et non plus une fois par session : le
+ * bureau ne la lit qu'à son montage (`chargerObjetsBureau`, appelée une seule
+ * fois), si bien qu'une lecture vaut un CHARGEMENT DE PAGE. Un F5 range donc,
+ * comme une connexion. En cours de session, en revanche, déplacer une icône
+ * la garde où on l'a mise : rien ne relit cette route entre deux montages.
  */
-const bureauxRanges = new Set();          // sid → déjà rangé pour cette session
-
 function rangerBureau(username, user) {
   const liste = ensureDesktopItems(user);
   let touche = false;
@@ -20816,14 +20816,8 @@ app.get('/api/light/bureau/objets', (req, res) => {
   const username = resolveUsernameFromSid(sid);
   if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
   const user = users[username];
-  if (sid && !bureauxRanges.has(sid)) {
-    bureauxRanges.add(sid);
-    // Le jeu de sessions vivantes est borné, mais une session par jour pendant
-    // un an ferait un ensemble inutilement gros : on le purge de loin en loin.
-    if (bureauxRanges.size > 5000) bureauxRanges.clear();
-    if (rangerBureau(username, user)) {
-      console.log(`[BUREAU] ${username} : disposition remise sur la grille (nouvelle session)`);
-    }
+  if (rangerBureau(username, user)) {
+    console.log(`[BUREAU] ${username} : disposition remise sur la grille`);
   }
   const tout = ensureDesktopItems(user);
   const objets = tout

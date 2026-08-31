@@ -221,3 +221,38 @@ test('rien de tout cela ne touche le mobile', () => {
     .filter((s) => !/^body\.bureau-frutiz/.test(s) && !/^@/.test(s));
   assert.deepStrictEqual(mauvaises, [], 'des règles échappent au cloisonnement mobile');
 });
+
+/* ── OUVERTE DEPUIS UN ONGLET, LA FICHE ATTEND SUR LE BUREAU ───────────────
+ *
+ * `win.Frutiz` est `desktopable` : elle se pose dans le coin du BUREAU, pas
+ * dans l'onglet d'où l'on vient. Cliquer un pseudo dans une conversation en
+ * plein écran ne faisait donc rien voir de bon — la fiche s'affichait
+ * PAR-DESSUS la conversation, parce que sa couche `#bureau-fenetres` est
+ * FRÈRE de `#bureau` et échappait à l'escamotage des onglets. Et rien ne
+ * disait qu'elle était là.
+ */
+
+test('une fiche s’escamote avec le bureau quand un onglet a la main', () => {
+  /* Les deux règles d'escamotage ne la touchaient pas : celle des `> *` parce
+     que sa couche n'est pas dans `#bureau`, celle des fenêtres parce qu'une
+     fiche n'est pas une `.fen` mais une `win.Frutiz`. */
+  assert.match(CSS,
+    /body\.bureau-frutiz\.fb-onglet-actif #bureau-fenetres > \[data-fiche-de\] \{ display: none; \}/);
+  // La marque est bien posée sur CHAQUE fiche ouverte, clones compris.
+  assert.match(LIGHT, /f\.racine\.setAttribute\("data-fiche-de", cle\);/);
+  // Et la couche est bien hors de `#bureau` — c'est ce qui rendait la règle
+  // des `> *` inopérante.
+  assert.match(CSS, /body\.bureau-frutiz\.fb-onglet-actif #bureau > \*,/);
+});
+
+test('et l’onglet Bureau CLIGNOTE pour dire qu’elle est arrivée', () => {
+  /* `Slot.warning` : un slot réclame l'attention. Il se garde tout seul du cas
+     où l'on y est déjà — « un slot ACTIF n'avertit jamais » —, donc ouvrir sa
+     propre fiche depuis le bureau ne fait rien clignoter. */
+  const p = JS.slice(JS.indexOf('function poserFiche(cle, racine, pseudo)'),
+    JS.indexOf('// La fiche s\'en va.'));
+  assert.match(p, /avertirSlot\('bureau'\);/);
+  assert.match(JS, /function avertirSlot\(id\) \{\s*\n\s*if \(!actif \|\| !id \|\| id === slotActif\) return false;/);
+  // Aller sur l'onglet éteint l'avertissement (`Slot.onActivate`).
+  assert.match(JS, /if \(neuf\) neuf\.classList\.remove\('clignote'\);/);
+});
