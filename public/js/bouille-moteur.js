@@ -1095,10 +1095,32 @@
   Moteur.prototype.dessinerAccessoireCustom = function (ctx, paths) {
     paths = paths || this.accessoireCustom;
     if (!paths || !paths.length) return;
+    const self = this;
     const couleurs = this.accessoireCouleurs;
     const chemin = (p) => {
       if (!p._p2d) { try { p._p2d = new global.Path2D(p.d); } catch (e) { p._p2d = null; } }
       return p._p2d;
+    };
+    /*
+     * LE TRACÉ D'UN DÉGRADÉ, dans le repère du dégradé.
+     *
+     * Un dégradé se peint dans SON carré — 32768 twips centrés sur l'origine,
+     * envoyé par la matrice du style. On y entre, et le tracé doit donc faire
+     * le chemin inverse. C'est le même détour que `dessinerForme` pour les
+     * dégradés du SWF ; ici la matrice vient de l'import SVG (`degradeDe`),
+     * qui la donne déjà en vingtièmes pour que les deux chemins se ressemblent.
+     */
+    const cheminDegrade = (p, G) => {
+      if (!p._p2dDeg) {
+        const det = (G.a * G.d - G.b * G.c) / 400;
+        const m = det
+          ? new global.DOMMatrix([G.a / 20, G.b / 20, G.c / 20, G.d / 20, G.e / 20, G.f / 20]).inverse()
+          : new global.DOMMatrix();
+        const q = new global.Path2D();
+        q.addPath(chemin(p), m);
+        p._p2dDeg = q;
+      }
+      return p._p2dDeg;
     };
     function peindre(p) {
       if (!chemin(p)) return;
@@ -1114,11 +1136,37 @@
       ctx.globalAlpha = (p.alpha == null ? 1 : p.alpha);
       // Un tracé « à niveau » (slot 1/2/3) prend la couleur du niveau si elle est
       // fournie ; sinon il garde la sienne.
-      const teinte = (p.slot && couleurs && couleurs[p.slot - 1]) ? couleurs[p.slot - 1] : p.fill;
+      const niveau = (p.slot && couleurs && couleurs[p.slot - 1]) ? couleurs[p.slot - 1] : null;
+      const teinte = niveau || p.fill;
       if (p.trait) {
         ctx.strokeStyle = teinte; ctx.lineWidth = p.largeur || 1;
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
         ctx.stroke(p._p2d);
+      } else if (p.degrade && !niveau) {
+        /*
+         * UN DÉGRADÉ SE PEINT COMME UN DÉGRADÉ.
+         *
+         * `charger()` traduit un `fill="url(#…)"` en structure de dégradé
+         * (arrêts, matrice, focale) ET pose un aplat de repli — `rgb(136,136,136)`
+         * — pour les rendus qui ne savent pas le peindre. Ce peintre-ci lisait
+         * le repli et jetait la structure : toute lumière dessinée en dégradé
+         * (une brillance blanche qui s'éteint, la façon la plus ordinaire d'en
+         * poser une) sortait en GRIS MOYEN OPAQUE. Une lumière peinte en gris
+         * sombre sur une couleur claire, ce n'est plus une lumière : c'est une
+         * ombre. Le défaut se voyait sur les accessoires de l'inventaire, et
+         * seulement là — les variantes injectées, elles, passent par
+         * `dessinerForme`, qui peint les dégradés depuis toujours
+         * (`construirePoses` leur transmet `degrade`).
+         *
+         * Un tracé À NIVEAU garde le comportement documenté de l'atelier : la
+         * couleur du niveau remplace la sienne, dégradé compris.
+         */
+        ctx.save();
+        const G = p.degrade.M;
+        ctx.transform(G.a / 20, G.b / 20, G.c / 20, G.d / 20, G.e / 20, G.f / 20);
+        ctx.fillStyle = self.degrade(ctx, p.degrade, null);
+        ctx.fill(cheminDegrade(p, G), 'evenodd');
+        ctx.restore();
       } else {
         ctx.fillStyle = teinte;
         ctx.fill(p._p2d, 'evenodd');
