@@ -2425,9 +2425,43 @@ function isMb2Ranking(rankingId) {
   return rankingId === 'mb2_challenge' || rankingId === 'mb2_classic';
 }
 
+/*
+ * À SCORE ÉGAL, C'EST LE PREMIER ARRIVÉ QUI RESTE DEVANT.
+ *
+ * La règle est celle du jeu d'origine, et c'est celle de toutes les salles
+ * d'arcade : égaler le meilleur score ne double personne. Celui qui l'a posé
+ * le premier garde sa place ; le suivant se range derrière, et il lui faut
+ * FAIRE MIEUX pour passer devant.
+ *
+ * Le comparateur ne triait que sur le score : à égalité, l'ordre était celui
+ * — arbitraire — dans lequel la liste avait été construite (l'ordre des clés
+ * du magasin JSON, ou celui que la base rend sans ORDER BY, où une ligne
+ * réécrite se retrouve en fin de tas). Deux joueurs à égalité pouvaient donc
+ * changer de place d'un rechargement à l'autre, et le dernier arrivé passer
+ * devant.
+ *
+ * L'horodatage est celui de `persistScore` (`updatedAt`), c'est-à-dire le
+ * moment où le score a été ATTEINT — un score qui ne s'améliore pas ne
+ * réécrit rien, la date du record tient donc. Les listes le portent sous
+ * `at` (le tableau des scores) ou `updatedAt` (le livre des records) : on lit
+ * les deux. Une entrée SANS date est plus vieille que l'horodatage lui-même :
+ * elle passe donc devant.
+ */
+function horodatageScore(e) {
+  const v = (e && (e.at || e.updatedAt)) || '';
+  return typeof v === 'string' ? v : String(v);
+}
+function comparerAnciennete(a, b) {
+  const ta = horodatageScore(a), tb = horodatageScore(b);
+  if (ta === tb) return 0;
+  if (!ta) return -1;
+  if (!tb) return 1;
+  return ta < tb ? -1 : 1;      // les ISO se comparent dans l'ordre du temps
+}
 function scoreComparator(rankingId) {
-  if (isMb2Ranking(rankingId)) return mb2Comparator;
-  return isLowerBetter(rankingId) ? (a, b) => a.s - b.s : (a, b) => b.s - a.s;
+  const parScore = isMb2Ranking(rankingId) ? mb2Comparator
+    : (isLowerBetter(rankingId) ? (a, b) => a.s - b.s : (a, b) => b.s - a.s);
+  return (a, b) => parScore(a, b) || comparerAnciennete(a, b);
 }
 
 // "Is the new (score, data) tuple better than the existing one for this
@@ -2468,7 +2502,14 @@ function persistScore(username, rankingId, score, data) {
     scoresData.users[username][rankingId] = {
       score: scoreImproved ? n : oldScore,
       data: (scoreImproved || !oldData) ? newData : oldData,
-      updatedAt: new Date().toISOString(),
+      // LA DATE EST CELLE DU RECORD, pas de la dernière écriture. Un rattrapage
+      // de donnée annexe (`shouldBackfillData` : même score, une donnée qui
+      // manquait) ne fait pas de ce score un score neuf — le redater ferait
+      // reculer le joueur derrière ceux qui l'ont égalé depuis, alors que la
+      // règle veut que le premier arrivé reste devant (cf. scoreComparator).
+      updatedAt: scoreImproved
+        ? new Date().toISOString()
+        : ((prev && prev.updatedAt) || new Date().toISOString()),
     };
     updated = true;
     saveScoresFile();
@@ -2552,8 +2593,14 @@ function captureTournamentScore(username, rankingId, score, data) {
 function rankTournamentRoundScores(rankingId, rows) {
   const cmp = scoreComparator(rankingId);
   return rows
-    .map((r) => ({ username: r.username, score: Number(r.score) || 0, data: r.data || '' }))
-    .sort((a, b) => cmp({ s: a.score, data: a.data }, { s: b.score, data: b.data }));
+    .map((r) => ({
+      username: r.username, score: Number(r.score) || 0, data: r.data || '',
+      // Le seed d'un tournoi se joue parfois à égalité parfaite : le premier
+      // qualifié garde alors sa place, comme dans n'importe quel classement.
+      at: r.updated_at ? new Date(r.updated_at).toISOString() : '',
+    }))
+    .sort((a, b) => cmp({ s: a.score, data: a.data, at: a.at },
+      { s: b.score, data: b.data, at: b.at }));
 }
 
 // Boot : rouvre les fenêtres des tournois actifs + recharge leur cache de scores.
@@ -2783,7 +2830,9 @@ function computePosition(rankingId, username) {
   const all = [];
   for (const [u, rlist] of Object.entries(scoresData.users || {})) {
     if (rlist && rlist[rankingId] && Number.isFinite(Number(rlist[rankingId].score))) {
-      all.push({ u, s: Number(rlist[rankingId].score), data: rlist[rankingId].data });
+      // `at` : l'heure du record — c'est elle qui départage deux scores égaux.
+      all.push({ u, s: Number(rlist[rankingId].score), data: rlist[rankingId].data,
+        at: rlist[rankingId].updatedAt || '' });
     }
   }
   all.sort(scoreComparator(rankingId));
@@ -4098,7 +4147,9 @@ function collectTop3ForRanking(rankingId) {
   const all = [];
   for (const [u, rlist] of Object.entries(scoresData.users || {})) {
     if (rlist && rlist[rankingId] && Number.isFinite(Number(rlist[rankingId].score))) {
-      all.push({ u, s: Number(rlist[rankingId].score), data: rlist[rankingId].data });
+      // `at` : l'heure du record — c'est elle qui départage deux scores égaux.
+      all.push({ u, s: Number(rlist[rankingId].score), data: rlist[rankingId].data,
+        at: rlist[rankingId].updatedAt || '' });
     }
   }
   all.sort(scoreComparator(rankingId));
@@ -12461,7 +12512,11 @@ app.get('/api/admin/challenge/archive', adminScope('challenge'), async (req, res
     if (day && ranking) {
       const scores = await db.getArchivedScores(ranking, day);
       const cmp = scoreComparator(ranking);
-      scores.sort((a, b) => cmp({ s: Number(a.score) }, { s: Number(b.score) }));
+      // L'archive porte `updated_at` : le classement d'un jour passé se relit
+      // dans le MÊME ordre qu'il avait ce jour-là, égalités comprises.
+      const dat = (r) => (r.updated_at ? new Date(r.updated_at).toISOString() : '');
+      scores.sort((a, b) => cmp({ s: Number(a.score), at: dat(a) },
+        { s: Number(b.score), at: dat(b) }));
       res.json({ day, ranking, scores });
     } else {
       const days = await db.getArchiveDays();
@@ -16742,7 +16797,13 @@ app.get('/api/check-ejected', (req, res) => {
   //
   // Après la réponse d'éjection, pas avant : sinon on rallumerait la place que
   // la fenêtre s'apprête à quitter.
-  if (joueur) marquerEnPartie(joueur, game);
+  //
+  // `actif=0` : le jeu bat encore, mais il n'est PLUS À L'ÉCRAN — un cadre du
+  // light que le joueur a quitté pour le salon (light.html, `veillerSurLesJeux`).
+  // Il garde son guet d'éjection, il ne garde pas sa place « en partie » : sans
+  // cela le voyant restait allumé sur un joueur qui ne jouait plus. Une vraie
+  // fenêtre de jeu n'envoie jamais ce drapeau.
+  if (joueur && String(req.query.actif || '1') !== '0') marquerEnPartie(joueur, game);
   return res.json({ ejected: false, fd });
 });
 
@@ -19672,7 +19733,9 @@ app.get('/api/club/records', async (req, res) => {
       updatedAt: v.updatedAt || '',
     }));
     const cmp = scoreComparator(rkId);
-    all.sort((a, b) => cmp({ s: a.score, data: a.data }, { s: b.score, data: b.data }));
+    // La date VOYAGE avec le score : à égalité, c'est elle qui décide.
+    all.sort((a, b) => cmp({ s: a.score, data: a.data, at: a.updatedAt },
+      { s: b.score, data: b.data, at: b.updatedAt }));
     const entry = {
       id: rkId,
       name: meta.name,
@@ -20158,9 +20221,10 @@ app.get('/api/light/challenge', async (req, res) => {
     for (const [u, rlist] of Object.entries(scoresData.users || {})) {
       const s = rlist && rlist.bandas_champion;
       if (!s || !Number.isFinite(Number(s.score))) continue;
-      bd.push({ u, s: Number(s.score), label: Number(s.score).toLocaleString('fr-FR') });
+      bd.push({ u, s: Number(s.score), at: s.updatedAt || '',
+        label: Number(s.score).toLocaleString('fr-FR') });
     }
-    bd.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
+    bd.sort(scoreComparator('bandas_champion'));
     games.push(permanent('bandas_champion',
       nomBureau('bandas_champion', 'Frutibandas'), 'bandas', bd));
   } catch (e) { console.error('[LIGHT] bandas champion ranking error:', e.message); }
@@ -20174,9 +20238,10 @@ app.get('/api/light/challenge', async (req, res) => {
       for (const [u, rlist] of Object.entries(scoresData.users || {})) {
         const s = rlist && rlist.snake3_tournoi;
         if (!s || !Number.isFinite(Number(s.score))) continue;
-        tt.push({ u, s: Number(s.score), label: Number(s.score).toLocaleString('fr-FR') });
+        tt.push({ u, s: Number(s.score), at: s.updatedAt || '',
+          label: Number(s.score).toLocaleString('fr-FR') });
       }
-      tt.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
+      tt.sort(scoreComparator('snake3_tournoi'));
       games.push(permanent('snake3_tournoi',
         nomBureau('snake3_tournoi', 'Snake tournoi'), 'snake3', tt));
     }
@@ -26009,17 +26074,21 @@ case 'send': {
       sendToClient(socket, `<${CMD.error} k="220" />`);
       break;
     }
-    // Broadcasting a desktop window to a whole salon is a staff power (the SWF
-    // itself gates /image behind flAnimator); defend it server-side too.
-    // Modérateurs partout ; animateurs sur LEUR salon seulement — et le SWF
-    // laisse l'animateur taper la commande PARTOUT (flAnimator est global), il
-    // faut donc lui dire pourquoi elle ne part pas ailleurs qu'un silence.
-    if (!isChannelStaff(client.username, g)) {
-      if (isAnimator(client.username)) {
-        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>L'affichage d'images est réservé au salon Pomme.</i>]]></${CMD.send}>`);
-      }
-      break;
-    }
+    /*
+     * `/image` (et son abréviation `/img`) EST OUVERTE À TOUT LE MONDE.
+     *
+     * C'était un pouvoir d'animateur, des deux côtés : le SWF ne laissait
+     * même pas partir la commande (`flAnimator`, rouvert par
+     * scripts/patch-main-image-tous.js) et le serveur la refusait ici à qui
+     * n'était pas staff DU salon. Partager une image au salon n'est pas un
+     * acte de modération : c'est une façon de parler, et le parc la rend à
+     * tout le monde.
+     *
+     * Ce qui reste, et qui n'a rien à voir avec le grade : le silence
+     * (`onmute` plus haut coupe la parole avant d'arriver ici), l'adhésion au
+     * salon, la syntaxe, les bornes de taille, et le passage par le relais
+     * d'images de même origine.
+     */
     const xmlUnescape = (s) => String(s || '')
       .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
@@ -26079,14 +26148,12 @@ case 'send': {
       if (targetUser) kickUserFromChannel(g, targetUser, client.username, 'kick');
       break;
     }
-    // /image en TEXTE — le chemin du client Light (le SWF, lui, envoie une
-    // trame t="i" interceptée plus haut). Même droit (staff du salon), mêmes
-    // bornes et même relais proxifié que la trame du bureau.
-    if (!canModHere && isAnimator(client.username) && /^\/(image|img)\s/i.test(text)) {
-      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>L'affichage d'images est réservé au salon Pomme.</i>]]></${CMD.send}>`);
-      break;
-    }
-    if (canModHere && /^\/(image|img)\s/i.test(text)) {
+    // /image en TEXTE — le chemin de repli, pour un client qui enverrait la
+    // ligne telle quelle (le SWF et le light, eux, composent la trame t="i"
+    // interceptée plus haut). Mêmes bornes et même relais proxifié, et depuis
+    // que la commande est ouverte à tous, plus de portillon de grade ici non
+    // plus : les deux chemins doivent dire OUI aux mêmes gens.
+    if (/^\/(image|img)\s/i.test(text)) {
       const morceaux = unescapeXml(text).trim().split(/\s+/);
       const largeur = parseInt(morceaux[1], 10) || 0;
       const hauteur = parseInt(morceaux[2], 10) || 0;

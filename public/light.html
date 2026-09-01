@@ -4464,6 +4464,121 @@
     } catch (e) { /* cadre d'une autre origine, ou pas encore prêt */ }
   }
 
+  /* ══════════════════════════════════════════════════════════════════════════
+     UN JEU HORS DE L'ÉCRAN N'EST PLUS UNE PARTIE
+
+     Le voyant « en partie » ne vient pas du jeu mais de son GUETTEUR
+     D'ÉJECTION (public/js/eject-watch.js) : toutes les secondes et demie il
+     demande au serveur si le disque a quitté la Frusion, et ce battement
+     renouvelle au passage la place « en partie » du joueur (server.js,
+     /api/check-ejected).
+
+     Or un cadre de jeu, ici, n'est chargé QU'UNE FOIS et n'est jamais vidé :
+     quitter l'onglet ne fait que le cacher. Le guetteur continuait donc de
+     battre depuis un jeu que plus personne ne regardait, et le voyant restait
+     allumé — sur un joueur revenu bavarder au salon depuis un quart d'heure.
+     C'est le « voyant qui ne correspond pas à l'état actuel » : il disait vrai
+     du cadre, pas du joueur.
+
+     On rend donc au cadre la seule chose qu'il ne peut pas savoir tout seul :
+     est-il À L'ÉCRAN ? Une iframe cachée par `display:none` a bien un
+     document vivant, mais plus aucun rectangle — `getClientRects()` le dit
+     sans ambiguïté, et il le dit sur les DEUX présentations : le panneau du
+     tiroir mobile qui perd sa classe `active` comme la fenêtre du bureau
+     qu'on vient de fermer.
+
+     Deux gestes à la bascule, et rien entre-temps :
+       · on prévient le cadre (`__fpSurEcran`), pour que son battement cesse
+         de réclamer la place ;
+       · on éteint le voyant TOUT DE SUITE (`/api/jeu/fenetre?ouvert=0`),
+         plutôt que d'attendre l'expiration de la place — quarante-cinq
+         secondes de voyant faux, c'est encore quarante-cinq de trop.
+     Au retour, le battement suivant rallume de lui-même en moins de deux
+     secondes.
+     ══════════════════════════════════════════════════════════════════════════ */
+  var jeuxSurEcran = {};              // onglet → dernier état connu
+
+  function cadreAffiche(cadre) {
+    try { return !!(cadre && cadre.getClientRects().length); } catch (e) { return false; }
+  }
+
+  function direAuCadre(cadre, surEcran) {
+    try {
+      var w = cadre && cadre.contentWindow;
+      if (w) w.__fpSurEcran = surEcran;
+    } catch (e) { /* cadre pas prêt */ }
+  }
+
+  /*
+   * Éteindre la place SUR-LE-CHAMP. C'est la route par laquelle le bureau
+   * rapporte déjà l'état de sa fenêtre de jeu (`ouvert=0` → `marquerFinDePartie`).
+   *
+   * On n'envoie QUE l'extinction : le rallumage, lui, se fait tout seul au
+   * battement suivant du guetteur, avec le nom de jeu que le SERVEUR connaît
+   * (le `swfName` du disque, pas le nom d'onglet du light — « swapou » ici,
+   * « swapou2 » là-bas). Une seule source pour l'allumage, pas deux qui
+   * divergent.
+   */
+  function eteindreLaPlace() {
+    if (!state.sid) return;
+    fetch("/api/jeu/fenetre?sid=" + encodeURIComponent(state.sid) + "&ouvert=0",
+      { cache: "no-store" }).catch(function () {});
+  }
+
+  // Reste-t-il un jeu CHARGÉ et VISIBLE ? Tant qu'il y en a un, on ne touche
+  // pas à la place : c'est son battement qui dit à quoi le joueur joue.
+  function unJeuALecran() {
+    for (var tab in CADRES_JEU) {
+      if (!Object.prototype.hasOwnProperty.call(CADRES_JEU, tab)) continue;
+      var cadre = $(CADRES_JEU[tab]);
+      if (cadre && cadre.getAttribute("src") && cadreAffiche(cadre)) return true;
+    }
+    return false;
+  }
+
+  function veillerSurLesJeux() {
+    var quitte = false;
+    for (var tab in CADRES_JEU) {
+      if (!Object.prototype.hasOwnProperty.call(CADRES_JEU, tab)) continue;
+      var cadre = $(CADRES_JEU[tab]);
+      if (!cadre || !cadre.getAttribute("src")) continue;   // pas encore joué
+      var vu = cadreAffiche(cadre);
+      direAuCadre(cadre, vu);
+      if (jeuxSurEcran[tab] !== vu) {
+        jeuxSurEcran[tab] = vu;
+        if (!vu) quitte = true;
+      }
+    }
+    // Un jeu vient de quitter l'écran et plus aucun n'y est : la place n'a plus
+    // lieu d'être, on l'éteint sans attendre son expiration.
+    if (quitte && !unJeuALecran()) eteindreLaPlace();
+  }
+  // À chaque bascule d'onglet, puis en filet toutes les deux secondes : le
+  // bureau ouvre et ferme ses fenêtres sans passer par `activateTab`.
+  setInterval(veillerSurLesJeux, 2000);
+
+  /*
+   * DÉCHARGER un cadre de jeu — c'est-à-dire arrêter le jeu pour de bon.
+   *
+   * `about:blank` d'abord (c'est LUI qui décharge le document ; retirer
+   * l'attribut ne fait rien au document déjà là), puis on retire l'attribut
+   * pour que la prochaine ouverture de l'onglet le recharge.
+   */
+  function dechargerJeu(tab) {
+    var sel = CADRES_JEU[tab];
+    var cadre = sel && $(sel);
+    if (!cadre || !cadre.getAttribute("src")) return false;
+    lacherCommandes(tab);
+    direAuCadre(cadre, false);
+    jeuxSurEcran[tab] = false;
+    cadre.setAttribute("src", "about:blank");
+    cadre.removeAttribute("src");
+    // Le cadre déchargé ne bat plus : c'est à nous d'éteindre la place — et
+    // seulement s'il ne reste aucun autre jeu à l'écran.
+    if (!unJeuALecran()) eteindreLaPlace();
+    return true;
+  }
+
   function activateTab(tab) {
     // Choisir une rubrique referme le tiroir (le contenu choisi occupe l'écran).
     closeMenu();
@@ -4513,6 +4628,11 @@
     // le joueur croyait le clavier ignoré (rapporté sur Mini-Wave). Le jeu le
     // réclame aussi de son côté au premier clic ; ici on lui évite le détour.
     donnerFocusAuJeu(tab);
+    // Le panneau qu'on vient de quitter n'est plus à l'écran : son voyant
+    // « en partie » doit s'éteindre avant que quiconque l'ait lu de travers.
+    // (Après le basculement des classes, pour que la mesure porte sur l'état
+    // qui vient d'être posé.)
+    veillerSurLesJeux();
     // Les scores évoluent toute la journée : on rafraîchit à chaque ouverture.
     if (tab === "scores") loadChallengeScores();
     if (tab === "trombi") loadTrombi();
@@ -4675,14 +4795,36 @@
       } catch (e) { /* déjà fermée */ }
       window.__jeuPopup = window.open(url, "frutiparc_jeu", traits);
       if (!window.__jeuPopup) return false;   // bloquée par le navigateur
+      /*
+       * ET LE CADRE DU BUREAU S'ARRÊTE.
+       *
+       * Déporter, c'est déplacer un jeu, pas en ouvrir un second. Le bureau
+       * refermait bien sa FENÊTRE, mais le cadre qu'elle contenait gardait son
+       * adresse : le jeu continuait de tourner derrière, avec sa socket et sa
+       * place dans le salon. Sur Frutibandas — un jeu à plusieurs — cela
+       * donnait deux clients pour le même compte, chacun dans sa partie ; sur
+       * les autres, deux sauvegardes qui s'écrasent l'une l'autre. C'est
+       * exactement ce que le commentaire de `deporterJeu` (bureau-frutiz.js)
+       * disait vouloir éviter, et que la seule fermeture de la fenêtre ne
+       * suffisait pas à faire.
+       *
+       * Reprendre l'onglet plus tard rechargera le jeu : `activateTab` remplit
+       * un cadre vide.
+       */
+      dechargerJeu(tab);
       try { window.__jeuPopup.focus(); } catch (e) { /* refusé */ }
       return true;
     },
     refermer: function () {
+      var etait = false;
       try {
-        if (window.__jeuPopup && !window.__jeuPopup.closed) window.__jeuPopup.close();
+        etait = !!(window.__jeuPopup && !window.__jeuPopup.closed);
+        if (etait) window.__jeuPopup.close();
       } catch (e) { /* déjà fermée */ }
       window.__jeuPopup = null;
+      // La fenêtre déportée s'en va sans rien dire : c'est à nous d'éteindre
+      // la place, sans quoi le voyant survivrait le temps de son expiration.
+      if (etait && !unJeuALecran()) eteindreLaPlace();
     },
     ouverte: function () {
       try { return !!(window.__jeuPopup && !window.__jeuPopup.closed); } catch (e) { return false; }
@@ -8411,10 +8553,47 @@
     }
   }
 
+  /*
+   * `/image` et `/img` — PARTAGER UNE IMAGE AU SALON.
+   *
+   * Le bureau intercepte la commande avant de l'envoyer : `sendImage(w, h,
+   * url, titre)` compose une trame `send` de type « i » dont le CORPS est un
+   * nœud `<i w= h= u=>titre</i>`, et le serveur la rediffuse telle quelle. Le
+   * light savait déjà RECEVOIR ces trames (`addImageMessage`) — il ne savait
+   * pas les émettre, et `/img` tapé depuis le téléphone repartait en
+   * « Commande inconnue ».
+   *
+   * On refait donc le même chemin, avec la même syntaxe et la même trame,
+   * pour qu'une image partagée du téléphone s'ouvre sur le bureau d'un joueur
+   * resté sur main.swf — et l'inverse.
+   */
+  var CMD_IMAGE = ["/image", "/img"];
+  var SYNTAXE_IMAGE = "Syntaxe : /image <largeur> <hauteur> <adresse> [titre]"
+    + " — exemple : /image 320 240 https://exemple.fr/photo.jpg Ma photo";
+  function commandeImage(mots, salon) {
+    var ou = salon || state.room;
+    var l = Math.round(Number(mots[1]));
+    var h = Math.round(Number(mots[2]));
+    var url = mots[3] || "";
+    if (!isFinite(l) || !isFinite(h) || l <= 0 || h <= 0 || !/^https?:\/\//i.test(url)) {
+      systemLine(SYNTAXE_IMAGE, ou);
+      return;
+    }
+    // Les mêmes bornes que le serveur (10 à 600) : autant le dire tout de
+    // suite plutôt que de laisser la fenêtre s'ouvrir à une autre taille.
+    l = Math.min(Math.max(l, 10), 600);
+    h = Math.min(Math.max(h, 10), 600);
+    var titre = mots.slice(4).join(" ");
+    wsSend('<t g="' + xmlEscape(ou) + '" t="i" p="' + xmlEscape(state.pen) + '">'
+      + '<i w="' + l + '" h="' + h + '" u="' + xmlEscape(url) + '">'
+      + xmlEscape(titre) + '</i></t>');
+  }
+
   function traiterCommande(texte, salon) {
     var mots = texte.trim().split(/\s+/);
     var cmd = mots[0].toLowerCase();
     if (CMD_DON.indexOf(cmd) !== -1) { commandeDon(mots, texte.trim(), salon); return true; }
+    if (CMD_IMAGE.indexOf(cmd) !== -1) { commandeImage(mots, salon); return true; }
     if (CMD_QUOTA.indexOf(cmd) !== -1) { commandeQuota(salon); return true; }
     if (CMD_KICK.indexOf(cmd) !== -1 || CMD_TOTOCHE.indexOf(cmd) !== -1) {
       commandeModeration(cmd, mots, salon);

@@ -171,7 +171,17 @@ test('salon pomme : les quatre droits de l\'animateur, et leurs refus ailleurs',
     const criSwf = await temoin.attendre((x) => x.includes('le cri du bureau'), 'le t="w" sur pomme');
     assert.match(criSwf, /st="r"/, 'rendu comme le « ! » du client Light');
 
-    // ── 3. /image : la fenêtre pour tout le salon, depuis pomme seulement. ──
+    /*
+     * ── 3. /image : la fenêtre pour tout le salon, DE PARTOUT ET PAR TOUS. ──
+     *
+     * C'était un droit d'animateur, réservé au salon Pomme. Ce n'en est plus
+     * un : partager une image n'est pas un acte de modération, c'est une
+     * façon de parler. Les deux chemins — la commande en texte et la trame
+     * `t="i"` que composent le bureau et le light — passent donc dans
+     * n'importe quel salon, pour n'importe qui. Ce qui reste, et qui n'a rien
+     * à voir avec le grade : être connecté, être DANS le salon, la syntaxe,
+     * les bornes de taille et le relais de même origine.
+     */
     // a) le chemin du client LIGHT : la commande en texte.
     anim.envoyer('<t g="pomme" t="m" p="">/image 200 150 https://exemple.test/a.png La preuve</t>');
     const img = await temoin.attendre((x) => x.includes('t="i"') && x.includes('La preuve'), 'la trame image');
@@ -179,24 +189,29 @@ test('salon pomme : les quatre droits de l\'animateur, et leurs refus ailleurs',
     assert.match(img, new RegExp(`u="${ANIM}"`), 'et elle est signée de l\'animateur');
     assert.match(img, /g="pomme"/, 'diffusée SUR le salon — donc à tout le monde');
 
-    // b) le chemin du BUREAU : la trame t="i" que sendImage compose. Le SWF la
-    //    laisse partir de n'importe où (flAnimator est global) ; c'est le
-    //    serveur qui la retient ailleurs que sur pomme.
+    // b) le chemin du BUREAU et du LIGHT : la trame t="i" que sendImage compose.
     temoin.trames.length = 0;
     anim.envoyer('<t g="pomme" t="i" p=""><i w="240" h="180" u="https://exemple.test/b.png">Depuis le bureau</i></t>');
     const imgSwf = await temoin.attendre((x) => x.includes('Depuis le bureau'), 'la trame image du bureau');
     assert.match(imgSwf, /t="i"/, 'relayée telle quelle en t="i"');
     assert.match(imgSwf, /\/api\/imgproxy\?url=/, 'proxifiée elle aussi');
 
-    // c) ailleurs, les deux chemins sont muets — et l'animateur sait pourquoi.
+    // c) AILLEURS AUSSI : plus de salon réservé.
     temoin.trames.length = 0;
-    anim.envoyer('<t g="poire" t="i" p=""><i w="240" h="180" u="https://exemple.test/c.png">Hors salon</i></t>');
-    await anim.attendre((x) => x.includes('réservé au salon Pomme'), 'le refus expliqué (bureau)');
-    anim.envoyer('<t g="poire" t="m" p="">/image 200 150 https://exemple.test/a.png Refusée</t>');
-    await anim.attendre((x) => x.includes('réservé au salon Pomme'), 'le refus expliqué (light)');
-    await wait(400);
-    assert.ok(!temoin.trames.some((x) => x.includes('Hors salon') || x.includes('Refusée')),
-      'et personne n\'a rien vu passer sur poire');
+    anim.envoyer('<t g="poire" t="i" p=""><i w="240" h="180" u="https://exemple.test/c.png">Sur poire</i></t>');
+    const imgPoire = await temoin.attendre((x) => x.includes('Sur poire'), 'la trame image sur poire');
+    assert.match(imgPoire, /g="poire"/, 'diffusée sur poire');
+    assert.match(imgPoire, /\/api\/imgproxy\?url=/, 'proxifiée comme les autres');
+
+    // d) ET PAR UN JOUEUR SANS AUCUN GRADE : le témoin, qui n'est ni
+    //    animateur ni modérateur, partage la sienne — c'est tout l'objet du
+    //    changement.
+    anim.trames.length = 0;
+    temoin.envoyer('<t g="poire" t="m" p="">/img 200 150 https://exemple.test/d.png Par un simple joueur</t>');
+    const imgQuidam = await anim.attendre((x) => x.includes('Par un simple joueur'),
+      'l\'image d\'un joueur ordinaire');
+    assert.match(imgQuidam, /t="i"/, 'la commande en texte compose bien la trame image');
+    assert.match(imgQuidam, new RegExp(`u="${TEMOIN}"`), 'et elle est signée de lui');
 
     // ── 4. /kick : l'éjection marche sur pomme… ──
     const cible = await client(CIBLE, sidCible);

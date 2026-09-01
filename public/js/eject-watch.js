@@ -39,6 +39,25 @@
   var adresse = '/api/check-ejected?fd=0&sid=' + encodeURIComponent(sid)
     + '&game=' + encodeURIComponent(jeu);
 
+  /*
+   * LE BATTEMENT DIT AUSSI SI L'ON JOUE ENCORE.
+   *
+   * Ce sondage est le seul signe de vie qu'une fenêtre de jeu donne au
+   * serveur : c'est lui qui renouvelle la place « en partie » et tient le
+   * voyant allumé à côté du pseudo. Dans une FENÊTRE, la question ne se pose
+   * pas — elle est là ou elle est fermée. Dans un CADRE du light, si : le jeu
+   * reste chargé quand on passe au salon, et il continuait de battre depuis un
+   * onglet que personne ne regardait. Le voyant restait allumé sur un joueur
+   * qui n'était plus en partie.
+   *
+   * La page hôte pose donc `window.__fpSurEcran` sur le cadre (light.html,
+   * `veillerSurLesJeux`). Absent — une vraie fenêtre, un jeu ouvert à la main —
+   * on est à l'écran : c'est le cas d'origine, et il ne change pas.
+   */
+  function surEcran() {
+    return window.__fpSurEcran === undefined ? true : !!window.__fpSurEcran;
+  }
+
   // Fermer peut échouer — le navigateur refuse parfois de fermer une fenêtre
   // qu'il ne considère pas comme ouverte par script. On ne peut pas laisser le
   // jeu tourner pour autant : il continuerait d'écrire ses sauvegardes
@@ -61,7 +80,10 @@
   }
 
   var minuteur = setInterval(function () {
-    fetch(adresse)
+    // On continue de guetter l'éjection même hors écran (le disque peut partir
+    // pendant qu'on bavarde), mais `actif=0` dit au serveur de ne PAS
+    // renouveler la place : le voyant s'éteint, la surveillance reste.
+    fetch(adresse + (surEcran() ? '' : '&actif=0'))
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j || !j.ejected) return;

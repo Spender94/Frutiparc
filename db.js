@@ -2996,8 +2996,10 @@ async function upsertRoundScore(tid, round, username, score, data) {
     [tid, round, username, score, data || '']);
 }
 async function getRoundScores(tid, round) {
+  // `updated_at` : à score égal, c'est le PREMIER arrivé qui reste devant
+  // (scoreComparator, server.js) — la ligne doit donc porter sa date.
   const { rows } = await pool.query(
-    `SELECT username, score, data FROM tournament_round_scores WHERE tournament_id = $1 AND round = $2`, [tid, round]);
+    `SELECT username, score, data, updated_at FROM tournament_round_scores WHERE tournament_id = $1 AND round = $2`, [tid, round]);
   return rows;
 }
 async function getActiveTournaments() {

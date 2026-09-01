@@ -49,8 +49,11 @@ test('/kick et /eject sont les deux noms d’époque', () => {
 });
 
 test('`flMode && words[1].length` — les deux, sinon rien', () => {
-  const bloc = LIGHT.slice(LIGHT.indexOf('function commandeModeration'),
-    LIGHT.indexOf('function traiterCommande'));
+  // La seule fonction qui compte ici : on s'arrête à la SUIVANTE, et non au
+  // routeur — d'autres commandes se sont glissées entre les deux depuis
+  // (`commandeImage`, qui rappelle sa syntaxe, elle).
+  const debut = LIGHT.indexOf('function commandeModeration');
+  const bloc = LIGHT.slice(debut, LIGHT.indexOf('\n  function ', debut + 10));
   assert.match(bloc, /if \(!jeSuisStaff\(ou\)\) return;/);
   assert.match(bloc, /if \(!cible\) return;/);
   // aucune ligne d'erreur : le SWF avale la commande en silence
