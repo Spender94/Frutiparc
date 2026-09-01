@@ -1076,10 +1076,13 @@
   .fiche-nom-ligne { display: flex; align-items: center; gap: 5px; }
   /* Le point de présence du bureau (clip status : vert présent, anneau éteint). */
   .fiche-nom-ligne .statut { width: 18px; height: 18px; object-fit: contain; flex: 0 0 auto; }
-  /* Le voyant de jeu prend la place du point quand le frutiz est en partie. Il
-     est dessiné plus large que le point (22 px dans la liste des connectés) :
-     on lui rend ses proportions plutôt que de l'écraser dans 18 px. */
-  .fiche-nom-ligne .statut.en-partie { width: 22px; height: 22px; }
+  /* Le voyant de jeu prend LA PLACE du point quand le frutiz est en partie —
+     et donc sa taille. `UserSlot.onStatusObj` fait `icon.gotoAndStop(jeu)` :
+     c'est la MÊME icône, dans le MÊME cadre de 17, remplie moins son liseré.
+     Le portage lui donnait 22 pour « lui rendre ses proportions » : il
+     ressortait d'un cinquième au-dessus de la pastille qu'il remplace, et
+     débordait de la ligne du pseudo. */
+  .fiche-nom-ligne .statut.en-partie { width: 18px; height: 18px; }
   .fiche-nom-ligne b {
     font-family: Verdana, Arial, sans-serif; font-size: 12.5px; color: #290D64;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto;
@@ -1221,8 +1224,9 @@
   .fiche-jour.cliquable:focus-visible { background: rgba(255,255,255,.45); outline: none; }
   /* L'icône du jeu, à gauche de son nom : son VOYANT (public/fb/voyant_*.png,
      le clip 246 de main.swf), celui-là même que le bureau pose sur ses lignes
-     de scores et à côté d'un joueur en partie. */
-  .fiche-jour .jeu-ico { width: 20px; height: 20px; flex: 0 0 auto; display: block; }
+     de scores et à côté d'un joueur en partie. Seize pixels, comme partout
+     ailleurs : le cadre d'époque en fait dix-sept, liseré compris. */
+  .fiche-jour .jeu-ico { width: 16px; height: 16px; flex: 0 0 auto; display: block; }
   /* Le score reste lisible à côté du nom, sans voler la vedette — le bureau
      n'affiche que le nom, mais un onglet « scores » sans chiffre serait
      avare sur un écran qui a la place. */
@@ -2905,7 +2909,7 @@
                bout, le bouton rose. -->
           <div class="fiche-droite">
             <div class="fiche-nom-ligne">
-              <img class="statut fiche-statut" id="fiche-statut" src="/fb/fiche/statut_absent.png" alt=""><b id="fiche-pseudo" class="fiche-pseudo">…</b>
+              <img class="statut fiche-statut" id="fiche-statut" src="/frutiz/sprites/sl-presence-0.svg" alt=""><b id="fiche-pseudo" class="fiche-pseudo">…</b>
               <span class="meta fiche-meta" id="fiche-meta"></span>
               <button type="button" id="fiche-fermer" class="fiche-fermer" aria-label="Fermer"><img src="/fb/fiche/croix_fermer.png" alt="Fermer"></button>
             </div>
@@ -3147,6 +3151,9 @@
     // de survol d'une bouille SANS aller redemander quoi que ce soit.
     infoByUser: {},
     jeuByUser: {}, // lowercased pseudo -> bouille state string "f"
+    // Le STATUT D'ABSENCE de chacun (`/status work`) — le PREMIER caractère de
+    // la même chaîne, traduit en nom (cf. STATUTS_ABSENCE).
+    absenceByUser: {},
     // L'HUMEUR de chacun. `StatusMng.send` (0x33eb0) empile TROIS champs en
     // base 62 dans le même attribut `s` — external, internal, ET emote — que
     // le serveur reconstruit sur quatre caractères : `[ext][internal×2][emote]`.
@@ -4749,6 +4756,8 @@
   var boRubrique = 0;           // rubrique dépliée (-1 = toutes repliées)
   var boChoixR = 0;             // rubrique de l'article montré
   var boArticle = 0;            // article montré, dans cette rubrique
+  // Armé à l'OUVERTURE de la fenêtre seulement (cf. `renderShopRubriques`).
+  var boAnimerColonne = false;
   var BO_RUBRIQUE_DEFAUT = 0;   // à l'ouverture : le premier rayon, les Accessoires
 
   function setShopWallet(k) {
@@ -4797,10 +4806,45 @@
           + xmlEscape(it.name) + '</button>';
       });
     });
+    /*
+     * LA COLONNE NE SE REFAIT QUE SI ELLE CHANGE.
+     *
+     * `renderShop` repeint tout à chaque clic — y compris quand on choisit un
+     * ARTICLE, qui ne change que la fiche de droite. La colonne se rebâtissait
+     * donc à l'identique et rejouait son animation d'arrivée : la liste
+     * entière glissait à chaque clic. On la compare d'abord à ce qu'elle
+     * montre déjà (`data-sig`, la même garde que la liste des classements) et
+     * l'on se contente de déplacer le `.on` quand rien d'autre n'a bougé.
+     */
+    var sig = boRubrique + '|' + shopCategories.map(function (c, i) {
+      return c.name + (i === boRubrique ? ':' + (c.items || []).map(function (x) {
+        return x.name + (x.owned ? '*' : '');
+      }).join(',') : '');
+    }).join('|');
+    if (box.getAttribute('data-sig') === sig && box.querySelector('.bo-art')) {
+      Array.prototype.forEach.call(box.querySelectorAll('[data-r]'), function (b) {
+        var r = Number(b.getAttribute('data-r')) || 0;
+        b.classList.toggle('on', b.hasAttribute('data-a')
+          ? (r === boChoixR && Number(b.getAttribute('data-a')) === boArticle)
+          : (r === boRubrique));
+      });
+      return;
+    }
+    box.setAttribute('data-sig', sig);
     box.innerHTML = html;
-    // Les rubriques et leurs articles arrivent en glissant, comme l'arbre du
-    // bureau d'époque (`cp.Tree`). Sur un téléphone, rien ne bouge.
-    if (window.BureauFrutiz && BureauFrutiz.animerEntrees) BureauFrutiz.animerEntrees(box);
+    /*
+     * ET ELLE N'ARRIVE EN GLISSANT QU'UNE FOIS, à l'ouverture de la fenêtre.
+     *
+     * D'époque, `cp.Tree.addPhysElement` anime CHAQUE entrée qu'on ajoute :
+     * ouvrir un rayon fait donc glisser ses articles. Vu du parc, une colonne
+     * qui repart en mouvement à chaque rayon qu'on déplie est surtout
+     * fatigante — on garde l'arrivée pour ce qu'elle raconte, l'ouverture de
+     * la boutique, et le reste se pose net. C'est un écart assumé.
+     */
+    if (boAnimerColonne && window.BureauFrutiz && BureauFrutiz.animerEntrees) {
+      BureauFrutiz.animerEntrees(box);
+    }
+    boAnimerColonne = false;
     Array.prototype.forEach.call(box.querySelectorAll("[data-r]"), function (b) {
       b.addEventListener("click", function () {
         var r = Number(b.getAttribute("data-r")) || 0;
@@ -4997,7 +5041,13 @@
   // Ouverture via la tuile « Boutique » de l'accueil (cf. home-tile[data-go]).
   // Ce dont le bureau a besoin pour piloter la boutique : il rejoue les mêmes
   // gestes que le mobile, sans onglets ni feuille.
-  window.MagasinLight = { charger: loadShop, acheter: buyShopItem };
+  /* Le bureau appelle `charger` à l'OUVERTURE de la fenêtre : c'est là, et là
+     seulement, que la colonne arrive en glissant. Un achat qui relit la
+     boutique (un pass cumulable) la repose net, comme un simple clic. */
+  window.MagasinLight = {
+    charger: function () { boAnimerColonne = true; loadShop(); },
+    acheter: buyShopItem,
+  };
   $("#shop-sheet-close").addEventListener("click", closeShopSheet);
   $("#shop-sheet-backdrop").addEventListener("click", closeShopSheet);
 
@@ -6711,6 +6761,7 @@
             presence: Number(attr(f, "p")) || 0,
             // `StatusMng.analyseStr` : absence(1) + JEU(2) + émote(1) en base 62.
             jeu: st ? (VOYANTS_JEU[decode62(String(st).substring(1, 3))] || "") : "",
+            absence: st ? (STATUTS_ABSENCE[decode62(String(st).substring(0, 1))] || "") : "",
             humeur: st && st.length > 3 ? decode62(String(st).substring(3, 4)) : 0,
           });
         }
@@ -9279,14 +9330,41 @@
      */
     var st = fq("fiche-statut");
     var jeuFiche = (d && d.jeu) || "";
+    var absFiche = (d && d.absence) || "";
     if (jeuFiche && VOYANTS_NOM[jeuFiche]) {
       st.src = "/fb/voyant_" + jeuFiche + ".png";
       st.title = jeuFiche === "forum"
         ? "Lit le forum"
         : "En partie — " + VOYANTS_NOM[jeuFiche];
       st.classList.add("en-partie");
+    } else if (absFiche && STATUTS_NOM[absFiche]) {
+      /*
+       * LE STATUT D'ABSENCE (`/status eat`), à la place de la pastille.
+       * `UserSlot.display` (0xc8241) essaie `internal`, puis `external`, et ne
+       * retombe sur la présence qu'à défaut des deux : un joueur en partie
+       * montre sa partie, un joueur « au travail » son panneau, et les autres
+       * leur pastille. La classe est la même que celle du voyant de jeu — même
+       * emplacement, même taille.
+       */
+      st.src = absenceUrl(absFiche);
+      st.title = STATUTS_NOM[absFiche];
+      st.classList.add("en-partie");
     } else {
-      st.src = "/fb/fiche/" + ((d && d.enLigne) ? "statut_present" : "statut_absent") + ".png";
+      /*
+       * HORS LIGNE, LA PASTILLE EST ROUGE — pas un cadre vide.
+       *
+       * La bande `status` (#222) a trois images, et `ico.gotoAndStop(presence
+       * + 1)` choisit : image 1 la pastille SAUMON `#E3756A` à reflet
+       * (présence 0), image 2 la VERTE `#ADE76B` (présence 1), image 3 une
+       * grise que le carnet n'utilise pas. La fiche prenait pour « absent »
+       * le FOND de l'icône (#216) — le carré arrondi vide au liseré
+       * `#CCCCCC` —, c'est-à-dire le cadre et non le voyant : un joueur hors
+       * ligne n'avait pas de pastille du tout, juste un trou gris.
+       *
+       * Ce sont les dessins que la bande des contacts pose déjà (`sl-presence-
+       * 0/1`) : une seule source pour les deux endroits.
+       */
+      st.src = "/frutiz/sprites/sl-presence-" + ((d && d.enLigne) ? "1" : "0") + ".svg";
       st.title = (d && d.enLigne) ? "En ligne" : "Hors ligne";
       st.classList.remove("en-partie");
     }
@@ -9812,14 +9890,23 @@
     var u = el("div", "u");
     var contenu = u;
     if (lieu) { u.classList.add("avec-lieu"); contenu = el("div", "haut"); u.appendChild(contenu); }
-    // Le voyant de jeu, avant le pseudo — la même icône que le bureau.
+    // Le voyant de jeu, avant le pseudo — la même icône que le bureau. Et à
+    // défaut de partie, le STATUT D'ABSENCE : `UserSlot.display` essaie
+    // `internal` puis `external`, dans cet ordre.
     if (jeu === undefined) jeu = voyantDe(pseudo);
+    var abs = absenceDe(pseudo);
     if (jeu && VOYANTS_NOM[jeu]) {
       var vj = el("img", "voyant");
       vj.src = "/fb/voyant_" + jeu + ".png";
       vj.alt = "";
       vj.title = libelleActivite(jeu);
       contenu.appendChild(vj);
+    } else if (abs && STATUTS_NOM[abs]) {
+      var va = el("img", "voyant");
+      va.src = absenceUrl(abs);
+      va.alt = "";
+      va.title = STATUTS_NOM[abs];
+      contenu.appendChild(va);
     }
     var nm = el("span", "nom"); nm.textContent = pseudo;
     contenu.appendChild(nm);
@@ -10114,6 +10201,33 @@
   function libelleActivite(jeu) {
     return jeu === "forum" ? "Lit le forum" : "Joue à " + VOYANTS_NOM[jeu];
   }
+  /*
+   * LES STATUTS D'ABSENCE — `/status work`, `/status eat`, `/status off`…
+   *
+   * C'est le PREMIER caractère de la chaîne de statut, un index dans
+   * `StatusMng.externalList` (main.swf, 0x33f6c) :
+   *
+   *     [ ∅, eat, work, zzz, phone, away ]
+   *
+   * `analyseStr` (0x33b53) n'en rend pas l'index mais le NOM, et
+   * `UserSlot.display` (0xc8241) fait ensuite
+   *
+   *     icon.gotoAndStop("external");
+   *     icon.ico.gotoAndStop(status.external);
+   *
+   * — un `gotoAndStop` PAR ÉTIQUETTE dans la bande #252, dont les cinq
+   * dessins sortent en PNG sous ces mêmes noms
+   * (scripts/extract-statuts-absence.js).
+   *
+   * L'ORDRE compte, et c'est celui du bureau : le voyant de JEU d'abord,
+   * l'absence ensuite, la pastille de présence seulement à défaut des deux.
+   * Un joueur qui se met « au travail » puis lance une partie montre donc sa
+   * partie — c'est ce que `display` fait, dans cet ordre-là.
+   */
+  var STATUTS_ABSENCE = { 1: "eat", 2: "work", 3: "zzz", 4: "phone", 5: "away" };
+  var STATUTS_NOM = { away: "Absent", phone: "Au téléphone", zzz: "Dort",
+    work: "Au travail", eat: "À table" };
+  function absenceUrl(nom) { return "/fb/statut_" + nom + ".png"; }
   var BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   function decode62(s) {
     var r = 0;
@@ -10151,6 +10265,14 @@
     var avantEm = state.humeurByUser[cle] || 0;
     state.humeurByUser[cle] = em;
     if (avantEm !== em) majBouillesPartout();
+    // ET LE STATUT D'ABSENCE, premier caractère. `/status work` le pose côté
+    // serveur, qui rediffuse une trace `<z>` à tous les salons du joueur : il
+    // arrive donc par le même chemin que le voyant de jeu, et se voit au même
+    // endroit — à la place de la pastille, quand aucune partie ne l'occupe.
+    var avantAbs = state.absenceByUser[cle] || "";
+    var abs = STATUTS_ABSENCE[decode62(String(s).substring(0, 1))] || "";
+    state.absenceByUser[cle] = abs;
+    if (avantAbs !== abs && drawerVue === "salon") renderUsers();
     // Quand c'est MOI que le serveur décrit, on retient le statut entier : le
     // prochain changement d'humeur ne doit pas effacer le voyant du jeu en
     // cours, qui vit dans les deux caractères du milieu.
@@ -10160,6 +10282,7 @@
     }
   }
   function voyantDe(pseudo) { return state.jeuByUser[String(pseudo).toLowerCase()] || ""; }
+  function absenceDe(pseudo) { return state.absenceByUser[String(pseudo).toLowerCase()] || ""; }
   function humeurDe(pseudo) { return state.humeurByUser[String(pseudo).toLowerCase()] || 0; }
 
   /*

@@ -185,15 +185,27 @@ function sortir(nom, morceaux, formes) {
     if (!f) { console.warn('!! type de fichier inconnu :', t); continue; }
     aSortir.push({ nom: 'ico_' + t, morceaux: swf.aplatir(ICONGFX, swf.IDENTITE, 0, f) });
   }
-  // Les types de dossiers (le coffre de l'inventaire, la boîte à disques…).
+  /*
+   * Les types de dossiers (le coffre de l'inventaire, la boîte à disques…).
+   *
+   * On aplatit chaque PLACEMENT de l'image, et non l'image entière : le
+   * numéro passé à `aplatir` DESCEND dans les clips imbriqués, et l'image
+   * d'un type de dossier pose justement un clip de quinze images — celui que
+   * le survol fait jouer (`ico.s1.s2`, cf. extract-icones-animees.js). Demander
+   * « draftBox » (image 10 de la bande) rendait donc l'image 10 de CE clip
+   * là : un dossier à moitié ouvert, saisi en pleine animation, pour l'icône
+   * au repos des Brouillons. Les autres types s'en tiraient par chance —
+   * leur image dépasse les quinze du clip, qui retombait sur la première.
+   */
   for (const t of ['default', 'inventory', 'disccollector', 'recyclebin', 'mycontact',
     'inbox', 'outbox', 'draftBox', 'blackbox', 'messages', 'blacklist']) {
     const f = labelsDossier.get(t);
     if (!f) { console.warn('!! type de dossier inconnu :', t); continue; }
-    aSortir.push({
-      nom: 'ico_dossier_' + t,
-      morceaux: swf.aplatir(BANDE_DOSSIERS, poseFolder.M, 0, f),
-    });
+    const morceaux = [];
+    for (const p of (swf.parSprite.get(BANDE_DOSSIERS).get(f) || [])) {
+      morceaux.push(...swf.aplatir(p.ch, swf.composer(poseFolder.M, p.M)));
+    }
+    aSortir.push({ nom: 'ico_dossier_' + t, morceaux });
   }
   const ids = new Set();
   for (const s of aSortir) for (const m of s.morceaux) ids.add(m.shape);

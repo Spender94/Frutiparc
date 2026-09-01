@@ -421,6 +421,26 @@ function statusExternalIndex(word) {
   if (canon === undefined) return null;            // unknown word
   return { canon, idx: canon ? (STATUS_EXTERNAL_INDEX[canon] || 0) : 0 };
 }
+// Le chemin inverse — l'index du fil → le NOM. C'est ce que StatusMng.analyseStr
+// rend au bureau (`externalList[i]`, pas `i`), et c'est bien un nom qu'il faut :
+// l'affichage fait `icon.ico.gotoAndStop(status.external)`, donc un
+// gotoAndStop PAR ÉTIQUETTE dans la bande #252 — d'où les dessins que
+// scripts/extract-statuts-absence.js sort sous ces mêmes noms.
+const STATUS_EXTERNAL_NAME = Object.fromEntries(
+  Object.entries(STATUS_EXTERNAL_INDEX).map(([nom, i]) => [i, nom]));
+// Le statut d'absence d'un joueur, ou '' — le miroir de statusInternalOf. Les
+// listes servies en HTTP (la fiche, le carnet, les connectés) n'ont pas la
+// chaîne de statut sous la main : elles lisent par ici, comme elles lisent le
+// voyant de jeu.
+function statusExternalOf(username) {
+  if (!username) return '';
+  for (const [, cl] of xmlSocketClients) {
+    if (cl && cl.username === username && cl.logged && cl.statusStr) {
+      return STATUS_EXTERNAL_NAME[decode62(String(cl.statusStr).substring(0, 1))] || '';
+    }
+  }
+  return '';
+}
 
 const DEFAULT_BOUILLE_STATE = '000000010000000000000000';
 const ALL_PEN_ITEM_IDS = [315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 599, 600, 601, 602];
@@ -20718,6 +20738,11 @@ app.get('/api/light/online', (req, res) => {
       // du pseudo. On le traduit en nom de jeu pour l'icône du mobile.
       const jeu = STATUS_INTERNAL_JEU[statusInternalOf(e.nom)];
       if (jeu) o.jeu = jeu;
+      // Et le statut d'ABSENCE (`/status work`), que le bureau montre à la
+      // même place quand il n'y a pas de partie — `UserSlot.display` essaie
+      // `internal` d'abord, `external` ensuite, la présence en dernier.
+      const absence = statusExternalOf(e.nom);
+      if (absence) o.absence = absence;
       return o;
     })
     .sort((a, b) => String(a.pseudo).localeCompare(String(b.pseudo), 'fr', { sensitivity: 'base' }));
@@ -20950,6 +20975,10 @@ app.get('/api/light/contacts', (req, res) => {
     if (nom) {
       const jeu = STATUS_INTERNAL_JEU[statusInternalOf(nom)];
       if (jeu) o.jeu = jeu;
+      // Le statut d'absence — même emplacement que le voyant de jeu dans le
+      // clip `status`, et même ordre de priorité (le jeu d'abord).
+      const absence = statusExternalOf(nom);
+      if (absence) o.absence = absence;
     }
     return o;
   };
@@ -21319,6 +21348,10 @@ app.get('/api/light/fiche', async (req, res) => {
   // présence : un joueur en pleine partie se voit d'un coup d'œil — ce qui
   // permet, entre autres, de ne pas redémarrer le serveur sous ses pieds.
   const jeu = enLigne ? (STATUS_INTERNAL_JEU[statusInternalOf(u)] || '') : '';
+  // Et le STATUT D'ABSENCE (`/status eat`), qui prend la même place quand il
+  // n'y a pas de partie : `UserSlot.display` (0xc8241) essaie `internal`,
+  // puis `external`, et ne retombe sur la présence qu'à défaut des deux.
+  const absence = enLigne ? statusExternalOf(u) : '';
   const lieuDit = nomsPaysRegion(ud);
   res.json({
     ok: true,
@@ -21326,6 +21359,7 @@ app.get('/api/light/fiche', async (req, res) => {
     bouille: bouilleOf(ud, u),
     enLigne,
     jeu,
+    absence,
     staff: { moderateur: !!ud.isModerator, animateur: !!ud.isAnimator },
     // Les droits du REGARDEUR : la vue modérateur (kick, ban, totoché) ne se
     // montre qu'aux modérateurs, comme box.Frutiz le fait avec me.flMode.
@@ -21988,10 +22022,13 @@ async function boot() {
                 },
                 {
                   title: "Les commandes de chat",
-                  keywords: 'commande slash aide topic fiche donne kick',
+                  keywords: 'commande slash aide topic fiche donne kick statut status absent',
                   body: "Quelques commandes utiles dans le chat&#160;:<br/>"
                     + "&#8226; <i>/aide</i> ou <i>/help</i>&#160;: ouvre cette fen&#234;tre<br/>"
                     + "&#8226; <i>/fiche pseudo</i>&#160;: affiche la fiche d&#8217;un Frutiz<br/>"
+                    + "&#8226; <i>/status away</i>, <i>phone</i>, <i>zzz</i>, <i>work</i>, <i>eat</i>&#160;: "
+                    + "remplace votre pastille verte par une petite ic&#244;ne qui dit ce que vous faites "
+                    + "(<i>/status off</i> pour l&#8217;enlever)<br/>"
                     + "&#8226; <i>/donne nombre pseudo</i>&#160;: offre des Kikooz (le nombre d&#8217;abord&#160;!)<br/>"
                     + "&#8226; <i>/d6</i>, <i>/d20</i>&#8230;&#160;: lance un d&#233; devant tout le salon<br/>"
                     + "&#8226; <i>/topic ...</i>&#160;: change le sujet du salon (mod&#233;rateurs)",

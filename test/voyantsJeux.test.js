@@ -257,12 +257,17 @@ test('le voyant remplace le point de présence, sans l\'écraser', () => {
     'la même icône que la liste des connectés');
   assert.match(light, /st\.title = jeuFiche === "forum"\s*\?\s*"Lit le forum"\s*:\s*"En partie — " \+ VOYANTS_NOM\[jeuFiche\];/,
     'et elle dit à quoi il joue — ou qu\'il lit le forum');
-  // Sans partie, le point revient — et il dit lui aussi ce qu'il montre.
-  assert.match(light, /st\.src = "\/fb\/fiche\/" \+ \(\(d && d\.enLigne\) \? "statut_present" : "statut_absent"\) \+ "\.png";/);
+  // Sans partie, le point revient — et il dit lui aussi ce qu'il montre. Ce
+  // sont les DESSINS DE LA BANDE `status` (#222) que le carnet pose déjà :
+  // image 1 la pastille saumon (hors ligne), image 2 la verte. La fiche
+  // prenait pour « absent » le FOND de l'icône (#216), un cadre vide — un
+  // joueur hors ligne n'avait donc pas de pastille du tout.
+  assert.match(light, /st\.src = "\/frutiz\/sprites\/sl-presence-" \+ \(\(d && d\.enLigne\) \? "1" : "0"\) \+ "\.svg";/);
   assert.match(light, /st\.title = \(d && d\.enLigne\) \? "En ligne" : "Hors ligne";/);
-  // Le voyant est dessiné plus large que le point : on lui rend ses 22 px
-  // plutôt que de l'écraser dans les 18 du point.
-  assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 22px; height: 22px; \}/);
+  // Le voyant est dessiné plus large que le point : on lui rend ses 18 px
+  // plutôt que de l'écraser dans les 15 du point. (22 auparavant : mesuré
+  // contre main.swf, la fiche les faisait d'un cinquième trop gros.)
+  assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 18px; height: 18px; \}/);
 });
 
 test('Swapou retrouve son voyant : swapou2 côté SWF, swapou côté assets', () => {
@@ -292,4 +297,46 @@ test('Swapou retrouve son voyant : swapou2 côté SWF, swapou côté assets', ()
     const f = path.join(ROOT, 'public/fb/voyant_' + nom + '.png');
     assert.ok(fs.existsSync(f), 'voyant_' + nom + '.png existe');
   }
+});
+
+/* ── LA TAILLE DES VOYANTS, ET LA COULEUR DU POINT ÉTEINT ──────────────────
+ *
+ * Deux relevés contre main.swf.
+ *
+ * LA TAILLE. Le voyant ne s'ajoute pas au point de présence : il PREND SA
+ * PLACE (`UserSlot.onStatusObj` fait `icon.gotoAndStop("internal")` sur le
+ * même clip `status`), et donc sa taille — le cadre d'époque fait dix-sept
+ * pixels, liseré compris. Le portage lui en donnait vingt-deux « pour lui
+ * rendre ses proportions » : il ressortait d'un cinquième au-dessus de la
+ * pastille qu'il remplace et débordait de la ligne du pseudo.
+ *
+ * LA COULEUR. La bande `status` (#222) a trois images, et
+ * `ico.gotoAndStop(presence + 1)` choisit : image 1 la pastille SAUMON
+ * `#E3756A` (présence 0), image 2 la VERTE `#ADE76B` (présence 1), image 3
+ * une grise que le carnet n'utilise pas. La fiche prenait pour « absent » le
+ * FOND de l'icône (#216) — le carré arrondi vide au liseré `#CCCCCC` —,
+ * c'est-à-dire le cadre et non le voyant : un joueur hors ligne n'avait pas
+ * de pastille du tout, juste un trou gris.
+ */
+
+test('le voyant fait la taille du point qu’il remplace, et le point éteint est rouge', () => {
+  // Dix-sept d'époque, dix-huit dans la ligne du pseudo : la MÊME que le point.
+  assert.match(light, /\.fiche-nom-ligne \.statut \{ width: 18px; height: 18px;/);
+  assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 18px; height: 18px; \}/);
+  // Les lignes de scores du jour portent le même voyant, à seize.
+  assert.match(light, /\.fiche-jour \.jeu-ico \{ width: 16px; height: 16px;/);
+  // Les trois dessins de la bande de présence existent, et le saumon est
+  // bien un DESSIN (deux formes composées) et non le cadre vide.
+  for (const n of ['sl-presence-0', 'sl-presence-1', 'sl-presence-2']) {
+    const p = path.join(ROOT, 'public/frutiz/sprites/' + n + '.svg');
+    assert.ok(fs.existsSync(p), n + '.svg manque');
+  }
+  const saumon = fs.readFileSync(path.join(ROOT, 'public/frutiz/sprites/sl-presence-0.svg'), 'utf8');
+  assert.match(saumon, /#E3756A/i, 'la pastille éteinte est saumon, pas un cadre gris');
+  const vert = fs.readFileSync(path.join(ROOT, 'public/frutiz/sprites/sl-presence-1.svg'), 'utf8');
+  assert.match(vert, /#ADE76B/i, 'et la pastille allumée est verte');
+  // Le carnet latéral les pose déjà : une seule source pour les deux endroits.
+  const bureau = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
+  assert.match(bureau, /sl-presence-0\.svg/);
+  assert.match(bureau, /sl-presence-1\.svg/);
 });

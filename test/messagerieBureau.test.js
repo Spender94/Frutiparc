@@ -122,8 +122,9 @@ test('le light passe la main au bureau, sans rien changer pour le mobile', () =>
 
 test('la bande des contacts montre le VOYANT DU JEU', () => {
   // `UserSlot.onStatusObj` : présence 0 → la pastille saumon ; `status
-  // .internal` → l'icône du jeu À SA PLACE ; sinon la pastille verte.
-  assert.match(JS, /if \(c\.enLigne && c\.jeu\) \{/);
+  // .internal` → l'icône du jeu À SA PLACE ; `status.external` → le statut
+  // d'absence, à la même place ; sinon la pastille verte.
+  assert.match(JS, /if \(\(c\.enLigne && c\.jeu\) \|\| absence\) \{/);
   assert.match(JS, /v\.classList\.add\('jeu'\);/);
   assert.match(JS, /voyantUrl\(c\.jeu\)[\s\S]{0,80}?sl-icone-fond\.svg/);
   assert.match(JS, /function voyantUrl\(jeu\) \{\s*\n\s*return '\/fb\/voyant_' \+ \(jeu === 'swapou2' \? 'swapou' : jeu\)/);
@@ -214,6 +215,9 @@ test('LA BOUTIQUE : deux colonnes, et les pièces sorties du SWF', () => {
   assert.match(CSS, /\.bq-pied \{[\s\S]*?justify-content: flex-end;/);
   // Sur le bureau la boutique est une FENÊTRE ; sur mobile, la feuille.
   assert.match(LIGHT, /if \(surBureau && BureauFrutiz\.ouvrirBoutique\) return BureauFrutiz\.ouvrirBoutique\(\);/);
-  assert.match(LIGHT, /window\.MagasinLight = \{ charger: loadShop, acheter: buyShopItem \};/);
+  // `charger` arme l'animation d'entrée avant de lire la boutique : elle ne
+  // se joue donc qu'à L'OUVERTURE de la fenêtre, pas à chaque clic (cf.
+  // test/boutiqueAnimation.test.js).
+  assert.match(LIGHT, /window\.MagasinLight = \{\s*\n\s*charger: function \(\) \{ boAnimerColonne = true; loadShop\(\); \},\s*\n\s*acheter: buyShopItem,?\s*\n\s*\};/);
   assert.match(JS, /ouvrirBoutique: ouvrirBoutique,/);
 });

@@ -173,9 +173,13 @@ test('la rangée d\'actions porte les vrais glyphes de main.swf', () => {
   assert.match(html, /box-shadow: 0 0 0 1\.5px #DDDDDD;/, 'le halo gris des boutons, par code');
   assert.match(html, /\/fb\/fiche\/bouton_rose\.png/, 'le chrome rose du mode avancé');
   assert.match(html, /\/fb\/fiche\/croix_fermer\.png/, 'la croix du bureau (butGroupWinTop)');
-  // L'en-tête : le point de présence, et l'écran de niveau à barres.
-  assert.match(html, /statut_present/, 'présent en vert');
-  assert.match(html, /statut_absent/, 'éteint sinon');
+  // L'en-tête : le point de présence, et l'écran de niveau à barres. Le point
+  // n'est plus une paire de PNG maison mais les DESSINS DE LA BANDE `status`
+  // (#222) que le carnet latéral pose déjà — image 1 saumon, image 2 verte.
+  assert.match(html, /sl-presence-" \+ \(\(d && d\.enLigne\) \? "1" : "0"\)/,
+    'image 2 en ligne (verte), image 1 sinon (saumon)');
+  assert.match(html, /src="\/frutiz\/sprites\/sl-presence-0\.svg"/,
+    'et le balisage part sur la saumon, avant toute lecture');
   // L'écran de niveau est la mainbar de l'accueil en miniature : NEUF barres,
   // remplies par la même règle (levelProgress = UserMng.xpLevelCompletionRate).
   const barres = /id="fiche-barres">((?:<i><\/i>)+)</.exec(html);

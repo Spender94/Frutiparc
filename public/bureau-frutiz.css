@@ -1234,6 +1234,18 @@ body.bureau-frutiz #bureau .home-tile[data-go="trombi"]     .ico img { max-width
 body.bureau-frutiz #bureau .home-tile[data-go="contacts"]   .ico img { max-width: 35px; max-height: 26px; }
 body.bureau-frutiz #bureau .home-tile[data-go="noire"]      .ico img { max-width: 31px; max-height: 35px; }
 body.bureau-frutiz #bureau .home-tile[data-go="corbeille"]  .ico img { max-width: 31px; max-height: 35px; }
+/* LES TROIS QUI BOUGENT — la boîte aux lettres, la boîte à disques et le
+   carnet. Leur dessin n'est plus une image mais les huit d'un clip
+   (`ico_anim_*`, cf. `animerTuilesBureau`), toutes rendues dans le MÊME cadre :
+   celui de l'union, plus haut que le dessin au repos de tout ce que le drapeau
+   se réserve en se levant. C'est le script qui pose leur boîte, au dixième de
+   pixel, et des marges NÉGATIVES rendent le débord à la case — sans quoi elle
+   centrerait le cadre et non le dessin. Les `max-*` ci-dessus le rogneraient :
+   ici la taille est déjà la bonne, et la règle vient APRÈS pour l'emporter à
+   spécificité égale. */
+body.bureau-frutiz #bureau .home-tile .ico img.ico-anim {
+  max-width: none; max-height: none;
+}
 /* GASPARD N'A PAS DE DESSIN : c'est un CONTACT dans la liste d'époque
    (`<e u="Gaspard" t="contact">`), et `but.Icon.display` remplace le dessin
    d'un contact par sa FRUTIBOUILLE. Sa tuile portait le point d'interrogation

@@ -574,18 +574,21 @@ window.BureauFrutiz = (function () {
     var b = document.createElement('button');
     b.type = 'button';
     b.className = 'sl-contact ' + (c.enLigne ? 'en-ligne' : 'hors-ligne');
+    var absence = (c.enLigne && !c.jeu && ABSENCE_NOM[c.absence]) ? c.absence : '';
     b.title = c.pseudo + (c.jeu ? ' — ' + libelleJeu(c.jeu)
-      : (c.enLigne ? ' — en ligne' : ' — hors ligne'));
+      : (absence ? ' — ' + ABSENCE_NOM[absence].toLowerCase()
+        : (c.enLigne ? ' — en ligne' : ' — hors ligne')));
     b.innerHTML = '<span class="voyant"></span><span class="nom"></span>';
     b.querySelector('.nom').textContent = c.pseudo;
     // L'encre du pseudo suit le GENRE (`UserSlot.onInfoBasic`, 0x63a51) : les
     // règles vivent dans light.html, elles valent pour le carnet comme pour la
     // liste des connectés — c'est le même `userSlot`.
     if (c.genre) b.setAttribute('data-genre', c.genre);
-    if (c.enLigne && c.jeu) {
+    if ((c.enLigne && c.jeu) || absence) {
       var v = b.querySelector('.voyant');
       v.classList.add('jeu');
-      v.style.backgroundImage = "url('" + voyantUrl(c.jeu) + "'), "
+      v.style.backgroundImage = "url('"
+        + (c.jeu ? voyantUrl(c.jeu) : absenceUrl(absence)) + "'), "
         + "url('/frutiz/sprites/sl-icone-fond.svg')";
     }
     b.addEventListener('click', function () {
@@ -648,6 +651,16 @@ window.BureauFrutiz = (function () {
   function voyantUrl(jeu) {
     return '/fb/voyant_' + (jeu === 'swapou2' ? 'swapou' : jeu) + '.png';
   }
+  /*
+   * Le STATUT D'ABSENCE (`/status work`) : l'autre chose que le clip `status`
+   * peut poser à la place de la pastille. `UserSlot.display` (0xc8241) essaie
+   * `internal` — le jeu —, puis `external` — l'absence —, et ne retombe sur la
+   * présence qu'à défaut des deux. Les cinq dessins sortent de la bande #252
+   * par scripts/extract-statuts-absence.js, sous leurs étiquettes d'origine.
+   */
+  function absenceUrl(nom) { return '/fb/statut_' + nom + '.png'; }
+  var ABSENCE_NOM = { away: 'Absent', phone: 'Au téléphone', zzz: 'Dort',
+    work: 'Au travail', eat: 'À table' };
   var JEUX_NOM = {
     forum: 'Forum', bkiwi: 'Burning Kiwi', mb2: 'MotionBall 2', swapou: 'Swapou',
     swapou2: 'Swapou', snake3: 'Frutisnake', bandas: 'Frutibandas', grapiz: 'Grapiz',
@@ -1335,7 +1348,7 @@ window.BureauFrutiz = (function () {
     // Le voyant. `bg.gotoAndStop(2)` puis `updateStatus` (0xc818a) :
     //   presence == 0                → image « presence », ico = presence + 1
     //   status.internal défini       → image « internal », ico = le jeu
-    //   status.external défini       → image « external » (jamais émise ici)
+    //   status.external défini       → image « external », ico = l'absence
     //   sinon                        → image « presence », ico = presence + 1
     var voyant = document.createElement('span');
     voyant.className = 'rc-voyant';
@@ -1344,6 +1357,13 @@ window.BureauFrutiz = (function () {
       ico.src = voyantUrl(info.jeu);
       ico.className = 'jeu';
       voyant.title = libelleJeu(info.jeu);
+    } else if (info.presence !== 0 && ABSENCE_NOM[info.absence]) {
+      // L'étiquette « external » du même clip. Le commentaire ci-dessus disait
+      // « jamais émise ici » : elle l'est, depuis que `/status` existe — la
+      // recherche reçoit la chaîne de statut entière, absence comprise.
+      ico.src = absenceUrl(info.absence);
+      ico.className = 'jeu';
+      voyant.title = ABSENCE_NOM[info.absence];
     } else {
       // Le pip de `presence` : 0 rouge (hors ligne), 1 vert (en ligne),
       // 2 gris (invisible). Flash borne au-delà de la troisième image.
@@ -1613,8 +1633,11 @@ window.BureauFrutiz = (function () {
 
   // Le dessin d'une icône « standard » : le SVG sorti du SWF, à l'échelle du
   // bureau (r4 × icoRatio) et posé sur l'origine de son clip.
-  function dessinStandard(nom, ratio) {
-    var c = cadresExplorateur()[nom];
+  // `cadre` permet d'imposer une autre boîte que celle du manifeste : c'est
+  // par lui que les icônes ANIMÉES passent, dont le cadre est l'union des huit
+  // images et non celui de la seule image au repos.
+  function dessinStandard(nom, ratio, cadre) {
+    var c = cadre || cadresExplorateur()[nom];
     var img = document.createElement('img');
     img.className = 'ex-img';
     img.alt = '';
@@ -1627,6 +1650,66 @@ window.BureauFrutiz = (function () {
     // c'est l'origine du dessin qui décide du reste.
     img.style.top = (EX_BY + c.y * e) + 'px';
     return img;
+  }
+
+  /* ── LES ICÔNES QUI S'ANIMENT AU SURVOL ──────────────────────────────────
+   *
+   * `but.Icon` ne change pas de dessin au passage de la souris : il fait
+   * JOUER le clip qui vit sous l'icône (`ico.s1.s2`, quinze images) —
+   *
+   *     playAnimRollOver : animList.addPlayFrame(mc.ico.s1.s2, "move_"+id,
+   *                          { end: 8, sens:  1, speed: 2 })
+   *     playAnimRollOut  :                      { end: 1, sens: -1, speed: 2 }
+   *
+   * et `AnimList.playFrame` (0x51bd3) avance de `Math.round(speed × tmod)`
+   * images toutes les 25 ms. Deux images par battement, de la 1 à la 8 : la
+   * boîte aux lettres lève son drapeau en une centaine de millisecondes, la
+   * boîte à disques soulève son couvercle, le carnet s'entrouvre. Toutes les
+   * icônes n'en ont pas — la corbeille, le coffre et la liste noire sont des
+   * formes nues dans fileIcon.swf, et elles ne bougeaient pas non plus
+   * d'époque. Le manifeste dit lesquelles bougent
+   * (scripts/extract-icones-animees.js).
+   */
+  var ANIMEES = null;
+  function cadresAnimes() {
+    if (ANIMEES) return ANIMEES;
+    ANIMEES = { images: 8, intervalle: 25, pas: 2, types: {}, cadres: {}, repos: {} };
+    var x = new XMLHttpRequest();
+    try {
+      x.open('GET', '/frutiz/sprites/icones-animees.json', false);
+      x.send(null);
+      if (x.status >= 200 && x.status < 300) ANIMEES = JSON.parse(x.responseText);
+    } catch (e) { /* pas d'animation : les icônes restent au repos */ }
+    return ANIMEES;
+  }
+
+  // Le jeu d'images d'un TYPE DE DOSSIER, ou rien s'il n'en a pas.
+  function jeuAnime(type) { return cadresAnimes().types[type] || null; }
+
+  function fichierAnime(jeu, n) { return '/frutiz/sprites/ico_anim_' + jeu + '_' + n + '.svg'; }
+
+  /*
+   * Branche l'animation : `zone` reçoit le survol (le bouton tout entier,
+   * comme `but.Icon`), `img` porte le dessin. Les huit images sont demandées
+   * tout de suite — sans quoi le premier survol montrerait des trous, le temps
+   * que chaque fichier arrive.
+   */
+  function animerIcone(zone, img, jeu) {
+    var man = cadresAnimes();
+    if (!zone || !img || !man.cadres[jeu]) return;
+    for (var p = 2; p <= man.images; p++) (new Image()).src = fichierAnime(jeu, p);
+    var n = 1, minuteur = 0;
+    function jouer(fin, pas) {
+      if (minuteur) { clearInterval(minuteur); minuteur = 0; }
+      if (n === fin) return;
+      minuteur = setInterval(function () {
+        n = pas > 0 ? Math.min(n + pas, fin) : Math.max(n + pas, fin);
+        img.src = fichierAnime(jeu, n);
+        if (n === fin) { clearInterval(minuteur); minuteur = 0; }
+      }, man.intervalle);
+    }
+    zone.addEventListener('pointerenter', function () { jouer(man.images, man.pas); });
+    zone.addEventListener('pointerleave', function () { jouer(1, -man.pas); });
   }
 
   // LE DISQUE, tel que `but.icon.Full` le dessine : pas d'étiquette, l'anneau
@@ -2002,10 +2085,20 @@ window.BureauFrutiz = (function () {
       var typeDossier = e.desc[1] || 'default';
       var nomIco = cadresExplorateur()['ico_dossier_' + typeDossier]
         ? 'ico_dossier_' + typeDossier : 'ico_dossier_default';
+      // Un dossier qui BOUGE au survol se dessine dans le cadre de son
+      // animation — l'union des huit images. Le manifeste garantit que
+      // l'image au repos y occupe EXACTEMENT la boîte du dessin fixe : posée
+      // par l'origine du clip, elle tombe au pixel près au même endroit, et
+      // le débord ne sert qu'au drapeau qui se lève.
+      var jeu = jeuAnime(typeDossier);
+      var ico = jeu
+        ? dessinStandard('ico_anim_' + jeu + '_1', undefined, cadresAnimes().cadres[jeu])
+        : dessinStandard(nomIco);
       var dossier = caseExplorateur({
-        nom: nomDe(e), dessin: dessinStandard(nomIco), titre: nomDe(e),
+        nom: nomDe(e), dessin: ico, titre: nomDe(e),
         faire: function () { ouvrirDossier(cle, e.uid, nomDe(e)); },
       });
+      if (jeu) animerIcone(dossier, ico, jeu);
       // `IconFileBox.onDrop` : une icône de DOSSIER est un `dropBox` qui prend
       // SON PROPRE uid pour cible —
       //
@@ -2823,6 +2916,52 @@ window.BureauFrutiz = (function () {
     ico._gsHabille = true;
     ico.textContent = '';
     ico.appendChild(dessinBouille(GS_BOUILLE));
+  }
+
+  /*
+   * LES TUILES QUI S'ANIMENT. Trois des rubriques du bureau sont, d'époque,
+   * des DOSSIERS de la rangée d'icônes, et leur dessin porte donc le clip que
+   * `playAnimRollOver` fait jouer : la boîte aux lettres (`mail`), la boîte à
+   * disques (`disccollector`) et le carnet de contacts (`mycontact`). Les
+   * autres tuiles du portage sont des raccourcis (`linkScore`, `linkShop`…) ou
+   * des formes nues (la corbeille, la liste noire) : rien à jouer.
+   *
+   * La tuile CENTRE son dessin dans une case de 64 × 44 (`.ico`, en flex),
+   * quand l'explorateur, lui, le pose par l'origine du clip. Le cadre d'une
+   * animation étant l'union des huit images, il déborde du dessin au repos —
+   * vers le haut pour le drapeau qui se lève. Centré tel quel, le dessin
+   * descendrait de la moitié de ce débord. Les MARGES NÉGATIVES le rendent :
+   * la case mesure alors l'image au repos, exactement comme avant, et le
+   * débord s'étale par-dessus sans rien pousser.
+   */
+  // « 0,60 de leur taille native » — la règle des dessins de fileIcon.swf sur
+  // le bureau, celle que la feuille de style applique déjà aux autres tuiles.
+  var TUILE_ECHELLE = 0.6;
+  var TUILES_ANIMEES = { mail: 'mail', disques: 'disccollector', contacts: 'contact' };
+
+  function animerTuilesBureau(grille) {
+    if (!grille) return;
+    var man = cadresAnimes();
+    for (var go in TUILES_ANIMEES) {
+      if (!Object.prototype.hasOwnProperty.call(TUILES_ANIMEES, go)) continue;
+      var jeu = TUILES_ANIMEES[go];
+      var cadre = man.cadres[jeu], repos = man.repos[jeu];
+      if (!cadre || !repos) continue;
+      var tuile = grille.querySelector('.home-tile[data-go="' + go + '"]');
+      var img = tuile && tuile.querySelector('.ico img');
+      if (!img || img._anime) continue;
+      img._anime = true;
+      img.classList.add('ico-anim');
+      img.src = fichierAnime(jeu, 1);
+      var k = TUILE_ECHELLE;
+      img.style.width = (cadre.w * k) + 'px';
+      img.style.height = (cadre.h * k) + 'px';
+      img.style.marginTop = (-(repos.y - cadre.y) * k) + 'px';
+      img.style.marginBottom = (-(cadre.y + cadre.h - repos.y - repos.h) * k) + 'px';
+      img.style.marginLeft = (-(repos.x - cadre.x) * k) + 'px';
+      img.style.marginRight = (-(cadre.x + cadre.w - repos.x - repos.w) * k) + 'px';
+      animerIcone(tuile, img, jeu);
+    }
   }
 
   var dernierDepot = 0;
@@ -8148,6 +8287,7 @@ window.BureauFrutiz = (function () {
     var grille = $('#home-grid');
     if (grille) { bureau.appendChild(grille); rendreIconesDeplacables(grille, bureau); }
     habillerIconeGaspard();
+    animerTuilesBureau(grille);
     // LA LIGNE DU COMPTE RESTE AU TIROIR. Le bureau d'époque n'a pas de pied de
     // page : « Se déconnecter » y vit dans le MENU DU FOND D'ÉCRAN (cf.
     // `menuDuBureau`), et la confidentialité n'a rien à faire sur un bureau.
