@@ -18,11 +18,15 @@ const path = require('path');
 const vm = require('vm');
 
 // ── arguments ────────────────────────────────────────────────────────────
-const args = { games: 10, char: 0, seed: 1, tmod: 6, 'max-turns': 20000, progress: false, trace: 0, weights: null, depth2: false, samples: 3, topk: 8 };
+const args = { games: 10, char: 0, seed: 1, tmod: 6, 'max-turns': 20000, progress: false, trace: 0, weights: null, depth2: false, samples: 3, topk: 8,
+  // L'ANALYSEUR (analyse.js) à la place du bot : tout le faisceau à la
+  // profondeur 2 sous budget (ses valeurs par défaut, cf. DEFAUTS).
+  analyse: false, budget: 1500, prof: 2, k1: 400, k2: 10, k3: 6 };
 for (let i = 2; i < process.argv.length; i++) {
   const a = process.argv[i];
   if (a === '--progress') args.progress = true;
   else if (a === '--depth2') args.depth2 = true;
+  else if (a === '--analyse') args.analyse = true;
   else if (a === '--weights') args.weights = process.argv[++i];
   else if (a.startsWith('--')) args[a.slice(2)] = Number(process.argv[++i]);
 }
@@ -48,13 +52,14 @@ const sandbox = {
 sandbox.self = sandbox;
 sandbox.window = sandbox;
 vm.createContext(sandbox);
-['engine.js', 'assets.js', 'ui.js', 'data.js', 'game.js', 'screens.js', 'bot.js'].forEach(function (f) {
+['engine.js', 'assets.js', 'ui.js', 'data.js', 'game.js', 'screens.js', 'bot.js', 'analyse.js'].forEach(function (f) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, f), 'utf8'), sandbox, { filename: f });
 });
 
 const SW = sandbox.SW;
 const E = sandbox.SwapouEngine;
 const Bot = sandbox.SwapouBot;
+const Analyse = sandbox.SwapouAnalyse;
 const Manager = SW.Manager;
 
 function pump(n) {
@@ -99,6 +104,8 @@ function playGame(seed) {
   const t0 = Date.now();
 
   let turns = 0, defends = 0, maxH = 0, reason = 'gameover';
+  let analyseMs = 0, analyseN = 0, preparations = 0;
+  const analyseProf = {};
   let stuckRetries = 0;
   let frames = 0;
   const FRAME_GUARD = 4000000;
@@ -107,7 +114,7 @@ function playGame(seed) {
     if (frames++ > FRAME_GUARD) { reason = 'frame-guard'; break; }
     if (!chal.lock && !chal.pause.activated()) {
       if (turns >= args['max-turns']) { reason = 'max-turns'; break; }
-      const mv = Bot.choose(chal.player.level, {
+      const etat = {
         charId: CHAR,
         canDefend: chal.player.canDefend() && chal.interf.pl[0].power >= E.DEFENSE_STARS[CHAR],
         stars: chal.player.star_counter,
@@ -115,7 +122,20 @@ function playGame(seed) {
         depth2: args.depth2,
         samples: args.samples | 0,
         topK: args.topk | 0,
-      });
+      };
+      let mv;
+      if (args.analyse) {
+        // --weights a déjà posé ses poids sur Bot.WEIGHTS : on ne laisse pas
+        // l'analyseur les écraser par les siens.
+        const opt = { budgetMs: args.budget, profondeur: args.prof,
+          K1: args.k1, K2: args.k2, K3: args.k3, S: args.samples | 0 || 3 };
+        if (args.weights) opt.poids = null;
+        mv = Analyse.choisir(chal.player.level, etat, opt);
+        if (mv.tempsMs !== undefined) { analyseMs += mv.tempsMs; analyseN++; analyseProf[mv.profondeur] = (analyseProf[mv.profondeur] || 0) + 1; }
+        if (mv.nature === 'preparation') preparations++;
+      } else {
+        mv = Bot.choose(chal.player.level, etat);
+      }
       if (mv.type === 'none') { reason = 'stuck'; break; }
       if (mv.type === 'defend') {
         chal.interf.defend();
@@ -159,6 +179,8 @@ function playGame(seed) {
   return {
     seed: seed, score: score, turns: turns, defends: defends,
     maxH: maxH, ncoups: chal.ncoups, reason: reason, secs: secs,
+    msParCoup: analyseN ? Math.round(analyseMs / analyseN) : 0,
+    preparations: preparations, profondeurs: analyseProf,
   };
 }
 
@@ -187,7 +209,9 @@ for (let i = 0; i < args.games; i++) {
   results.push(r);
   console.log('  partie ' + (i + 1) + ' (graine ' + r.seed + ') : score=' + r.score +
     ' tours=' + r.turns + ' défenses=' + r.defends + ' hmax=' + r.maxH +
-    ' fin=' + r.reason + ' (' + r.secs.toFixed(1) + 's)');
+    ' fin=' + r.reason + ' (' + r.secs.toFixed(1) + 's)' +
+    (args.analyse ? ' · ' + r.msParCoup + ' ms/coup, préparations=' + r.preparations
+      + ', profondeurs=' + JSON.stringify(r.profondeurs) : ''));
 }
 
 const scores = results.map(function (r) { return r.score; }).sort(function (a, b) { return a - b; });

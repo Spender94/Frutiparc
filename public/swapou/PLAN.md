@@ -113,6 +113,44 @@ Résultats (140 parties en profondeur 2, graines variées) :
 Pistes au-delà : profondeur 3/MCTS (préparation de chaînes à 2 tours),
 optimisation automatique des poids (CMA-ES), ferme à chaînes dédiée.
 
+## L'analyse en partie (`analyse.js`) — l'IA qui conseille le joueur
+
+`analyse.js` (module pur, bâti sur le simulateur de `bot.js`) rend les
+meilleurs coups d'une position de Challenge, chacun avec sa **nature** —
+combo, coup silencieux (préparation), attente, défense — et sa **raison**
+en une ligne. `analyse.worker.js` le fait tourner à côté du jeu ;
+`AnalyseChallenge` (game.js) dessine le conseil par-dessus le plateau, en
+Challenge seulement. L'option `swapouAnalyse` ne se vend pas : l'admin
+l'accorde par la fiche joueur (route `game-feature`), et `/api/features` la
+rend au client. Tests : `analyse.test.js` (décisions) et
+`test/swapouAnalyse.test.js` (branchement).
+
+**Ce que la mesure a dit** (harnais `bot.run.js --analyse`, Natacha, poids du
+record, quatre graines) — et qui a renversé le plan de départ :
+
+| réglage (profondeur 2, S = 3 sauf mention) | moyenne | meilleure |
+|---|---|---|
+| faisceau 12 (le bot) | 21 200 | 23 500 |
+| faisceau 30 | 29 300 | 38 200 |
+| faisceau 80 | 41 750 | 52 060 |
+| faisceau 150 (deux graines) | 48 000 | 52 165 |
+| faisceau 30 + **profondeur 3** | 32 500 | — (20× plus cher) |
+| **tout le faisceau, entrelacé, budget 1,5 s** (défaut) | **44 800** | **50 960** |
+
+La profondeur n'était pas le levier, la **largeur** l'était : le bot triait
+ses ~310 échanges à un coup avant d'en approfondir douze, et un coup
+silencieux, qui ne marque rien à un coup, finissait toujours hors du faisceau
+— jamais regardé. Élargir le faisceau, c'est enfin juger les préparations à
+deux coups, là où elles valent quelque chose. La profondeur 3 ajoute du bruit
+d'échantillonnage sans rien voir de plus. Sous budget, combos et coups
+silencieux sont approfondis en alternance pour qu'une coupe ne retrouve pas
+le défaut. Coût : ~550 ms par coup en Node (tout le faisceau) — ce qu'un
+humain ne remarque pas, puisque l'analyse tourne pendant qu'il réfléchit.
+
+Repères donnés par le propriétaire : un bon score en Challenge c'est 35 000 ;
+le record absolu, 52 400. Les quatre parties de validation : 50 960, 42 565,
+44 275, 41 355.
+
 ## Correspondances sons (SWF id → linkage)
 
 | id | nom | id | nom |

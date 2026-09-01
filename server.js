@@ -5133,9 +5133,20 @@ const GAME_FEATURES = {
     name: 'Pack de Swapou',
     label: 'cadrans de Swapou',
   },
+  // L'ANALYSE EN PARTIE de Swapou (public/swapou/analyse.js) : le meilleur
+  // coup, sa nature et sa raison, dessinés par-dessus le plateau du mode
+  // Challenge. PAS EN BOUTIQUE — pas de shopId, donc rien à acheter ni à
+  // lister — : c'est l'admin qui l'accorde à la main, pour l'essayer
+  // (fiche joueur, « IA de Swapou »). Un joueur assisté joue au classement
+  // comme les autres : c'est voulu, le temps des essais.
+  swapouAnalyse: {
+    name: 'IA de Swapou',
+    label: 'analyse en partie de Swapou',
+  },
 };
+// Seules les options VENDUES ont un numéro d'article.
 const GAME_FEATURE_BY_SHOPID = Object.fromEntries(
-  Object.entries(GAME_FEATURES).map(([k, v]) => [v.shopId, k]));
+  Object.entries(GAME_FEATURES).filter(([, v]) => v.shopId).map(([k, v]) => [v.shopId, k]));
 
 function userOwnsGameFeature(user, key) {
   return !!(user && Array.isArray(user.ownedFeatures) && user.ownedFeatures.includes(key));
@@ -15433,7 +15444,12 @@ function userHasFeature(username, feature) {
 app.get('/api/features', (req, res) => {
   const username = resolveUsernameFromSid(String(req.query.sid || ''));
   const out = {};
-  for (const name of Object.keys(FEATURE_TESTERS)) out[name] = userHasFeature(username, name);
+  // Toutes les options connues — vendues (GAME_FEATURES) ou réservées aux
+  // testeurs —, pas seulement celles qui ont un testeur nommé : sans cela une
+  // option accordée par l'admin mais sans testeur (l'IA de Swapou) n'aurait
+  // jamais été rendue au client.
+  const noms = new Set([...Object.keys(GAME_FEATURES), ...Object.keys(FEATURE_TESTERS)]);
+  for (const name of noms) out[name] = userHasFeature(username, name);
   res.json({ ok: true, username: username || null, features: out });
 });
 

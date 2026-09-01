@@ -1990,6 +1990,212 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.particules.draw(ctx);
   };
 
+  /* ── L'ANALYSE EN PARTIE (option admin `swapouAnalyse`) ──────────────────
+   *
+   * Le meilleur coup, dessiné par-dessus le plateau : un cadre pulsant sur la
+   * paire à échanger (ou un anneau sur l'icône de défense), et un petit
+   * panneau qui dit sa NATURE et sa RAISON — « combo, 9 fruits en 3 phases :
+   * +540 », « coup silencieux : prépare 610 pts ». Le calcul (analyse.js,
+   * une seconde environ) tourne dans un Worker : le jeu ne se fige jamais.
+   *
+   * Trois règles :
+   *   · CHALLENGE SEULEMENT — le mode Classique, qui partage ce code, n'a
+   *     pas l'option (AnalyseChallenge.active regarde le mode) ;
+   *   · ON DEMANDE quand le plateau est stable — au départ, puis à chaque fin
+   *     de tour, une fois la ligne montée et le verrou levé ;
+   *   · ON JETTE ce qui est périmé — chaque demande porte un numéro, et une
+   *     réponse arrivée après le coup suivant est ignorée.
+   *
+   * L'option ne se vend pas : c'est l'admin qui l'accorde (fiche joueur), et
+   * elle ne vaut que sur ce compte-là — le serveur ne la rend qu'à lui.
+   */
+  function AnalyseChallenge(game) {
+    this.game = game;
+    this.worker = null;
+    this.serie = 0;             // numéro de la demande en cours
+    this.conseil = null;        // { coups, meilleur, profondeur, tempsMs }
+    this.enCours = false;
+    this.panne = false;         // Worker refusé ou planté : on se tait
+    this.pulse = 0;
+  }
+  SW.AnalyseChallenge = AnalyseChallenge;
+
+  AnalyseChallenge.active = function () {
+    const c = SW.Manager && SW.Manager.client;
+    return SW.Data.gameMode === SW.Data.CHALLENGE
+      && !!(c && c.features && c.features.swapouAnalyse)
+      && typeof Worker === 'function';
+  };
+
+  // La grille légère de l'analyseur ({t, s, fl} ou null), sans les sprites.
+  AnalyseChallenge.prototype.grille = function () {
+    const lvl = this.game.player.level;
+    const g = [];
+    for (let x = 0; x < lvl.width; x++) {
+      g[x] = [];
+      for (let y = 0; y < lvl.height; y++) {
+        const f = lvl.fruits[x][y];
+        g[x][y] = f == null ? null : { t: f.t, s: f.save_t, fl: f.flags };
+      }
+    }
+    return g;
+  };
+  AnalyseChallenge.prototype.etat = function () {
+    const p = this.game.player, id = SW.Data.players[0];
+    return {
+      charId: id,
+      canDefend: p.canDefend() && this.game.interf.pl[0].power >= E.DEFENSE_STARS[id],
+      stars: p.star_counter,
+      ncoups: this.game.ncoups,
+    };
+  };
+
+  AnalyseChallenge.prototype.demander = function () {
+    if (this.panne) return;
+    if (!this.worker) {
+      const me = this;
+      try {
+        this.worker = new Worker('analyse.worker.js');
+      } catch (e) { this.panne = true; return; }
+      this.worker.onmessage = function (ev) {
+        const m = ev.data || {};
+        if (m.id !== me.serie) return;          // périmée : un coup a été joué depuis
+        me.conseil = (m.resultat && m.resultat.meilleur) ? m.resultat : null;
+        me.enCours = false;
+      };
+      this.worker.onerror = function () { me.panne = true; me.enCours = false; me.conseil = null; };
+    }
+    this.serie++;
+    this.conseil = null;
+    this.enCours = true;
+    this.worker.postMessage({
+      id: this.serie, grille: this.grille(), etat: this.etat(), options: { budgetMs: 1500 },
+    });
+  };
+  // Le coup vient d'être joué : ce qui était conseillé ne vaut plus rien.
+  AnalyseChallenge.prototype.oublier = function () {
+    this.serie++;
+    this.conseil = null;
+    this.enCours = false;
+  };
+  AnalyseChallenge.prototype.destroy = function () {
+    if (this.worker) { try { this.worker.terminate(); } catch (e) { /* déjà mort */ } }
+    this.worker = null;
+    this.conseil = null;
+    this.enCours = false;
+  };
+  AnalyseChallenge.prototype.main = function (tmod) { this.pulse += 0.12 * tmod; };
+
+  const IA_COULEURS = { combo: '#5ee06a', preparation: '#5fb8ff', attente: '#e0d8a0', defense: '#ff9d3f' };
+  const IA_NOMS = { combo: 'COMBO', preparation: 'COUP SILENCIEUX', attente: 'SANS COMBO', defense: 'DÉFENSE' };
+  // Le panneau : la zone libre du panneau de gauche, entre le parchemin des
+  // coups (qui finit vers y = 158) et le visage (qui commence à 357), à
+  // gauche de l'icône de défense (x = 106) et de la colonne d'étoiles.
+  const IA_PANNEAU = { x: 6, y: 176, w: 94, h: 118 };
+
+  AnalyseChallenge.prototype.draw = function (ctx) {
+    if (this.panne) return;
+    const c = this.conseil, m = c && c.meilleur;
+    if (m && !this.game.lock) {
+      if (m.type === 'swap' && m.pair) this.drawPaire(ctx, m);
+      else if (m.type === 'defend') this.drawDefense(ctx);
+    }
+    this.drawPanneau(ctx, c);
+  };
+
+  // Même géométrie que U.Rollover.setPair : le cadre part du fruit de gauche
+  // (ou du haut) et tourne de 90° pour une paire verticale.
+  AnalyseChallenge.prototype.drawPaire = function (ctx, m) {
+    const lvl = this.game.player.level, p = m.pair;
+    const f1 = lvl.getFruit(p.x, p.y), f2 = lvl.getFruit(p.x + p.dx, p.y + p.dy);
+    if (!f1 || !f2 || !f1.spr || !f2.spr) return;
+    let tx = f1.spr.x, ty = f1.spr.y, rot = 0;
+    if (p.dy > 0) { rot = 90; tx += D.FRUIT_HEIGHT; }
+    ctx.save();
+    ctx.translate(tx, ty);
+    ctx.rotate(rot * Math.PI / 180);
+    ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(this.pulse));
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = IA_COULEURS[m.nature] || '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 4;
+    U.roundRect(ctx, 1, 1, D.FRUIT_WIDTH * 2 - 2, D.FRUIT_HEIGHT - 2, 8);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(D.FRUIT_WIDTH, 4);
+    ctx.lineTo(D.FRUIT_WIDTH, D.FRUIT_HEIGHT - 4);
+    ctx.stroke();
+    ctx.restore();
+  };
+  // L'icône de défense se dessine à (−23,5 ; −17,5) de son point : un anneau
+  // centré sur le point la cerne.
+  AnalyseChallenge.prototype.drawDefense = function (ctx) {
+    const ic = this.game.interf.defenseIcon;
+    if (!ic || ic.visible === false) return;
+    ctx.save();
+    ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(this.pulse));
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = IA_COULEURS.defense;
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.arc(ic.x, ic.y, 27, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  };
+  AnalyseChallenge.prototype.drawPanneau = function (ctx, c) {
+    const P = IA_PANNEAU;
+    ctx.save();
+    ctx.globalAlpha = 0.82;
+    ctx.fillStyle = '#2b1a0a';
+    U.roundRect(ctx, P.x, P.y, P.w, P.h, 7);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#a8803a';
+    U.roundRect(ctx, P.x + 0.5, P.y + 0.5, P.w - 1, P.h - 1, 7);
+    ctx.stroke();
+    ctx.restore();
+    const x = P.x + 6, tx = P.x + P.w / 2;
+    U.text(ctx, 'IA', x, P.y + 12, { size: 10, color: '#ffd23f', align: 'left' });
+    const m = c && c.meilleur;
+    if (this.enCours && !m) {
+      U.text(ctx, 'réflexion…', tx, P.y + 40, { size: 10, color: '#d8ccb0', bold: false });
+      return;
+    }
+    if (!m) return;
+    U.text(ctx, IA_NOMS[m.nature] || '', tx, P.y + 28, { size: 9, color: IA_COULEURS[m.nature] || '#fff' });
+    const g = m.gain || {};
+    let l1 = '', l2 = '';
+    if (m.nature === 'combo') {
+      l1 = '+' + g.score;
+      l2 = g.pieces + ' fruits · ' + g.phases + ' phase' + (g.phases > 1 ? 's' : '');
+    } else if (m.nature === 'preparation') {
+      l1 = m.suite ? 'prépare ' + m.suite.score : 'range';
+      l2 = m.suite ? (m.suite.pieces + ' fruits · ' + m.suite.phases + ' ph.') : '';
+    } else if (m.nature === 'defense') {
+      l1 = g.score > 0 ? '+' + g.score : 'pouvoir';
+      l2 = g.cracked > 0 ? g.cracked + ' armure' + (g.cracked > 1 ? 's' : '') : '';
+    } else {
+      l1 = 'aucun combo';
+      l2 = m.suite ? 'suite : ' + m.suite.score : '';
+    }
+    U.text(ctx, l1, tx, P.y + 48, { size: 15, color: '#fff' });
+    if (l2) U.text(ctx, l2, tx, P.y + 64, { size: 8, color: '#d8ccb0', bold: false });
+    // les deux suivants, en petit : de quoi comparer
+    let y = P.y + 82;
+    for (let i = 1; i < Math.min(3, c.coups.length); i++) {
+      const a = c.coups[i];
+      const s = (i + 1) + '. ' + (a.nature === 'combo' ? '+' + a.gain.score
+        : a.nature === 'preparation' ? 'prép. ' + (a.suite ? a.suite.score : '')
+          : a.nature === 'defense' ? 'défense' : 'sans combo');
+      U.text(ctx, s, x, y, { size: 8, color: IA_COULEURS[a.nature] || '#ccc', align: 'left', bold: false });
+      y += 12;
+    }
+    if (c.tempsMs !== undefined)
+      U.text(ctx, c.tempsMs + ' ms', P.x + P.w - 6, P.y + P.h - 9, { size: 7, color: '#8a7a5a', align: 'right', bold: false });
+  };
+
   // ── Challenge (Challenge.as) ─────────────────────────────────────────────
   function Challenge() {
     A.playMusic(A.MUSIC_CHALLENGE);
@@ -2007,6 +2213,9 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.lock = false;
     this.setLock(false);
     this.gameInit();
+    // L'analyse en partie, si l'admin l'a accordée — et en Challenge seulement.
+    this.analyse = AnalyseChallenge.active() ? new AnalyseChallenge(this) : null;
+    if (this.analyse) this.analyse.demander();
   }
   SW.Challenge = Challenge;
 
@@ -2046,6 +2255,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   Challenge.prototype.destroy = function () {
     this.interf.destroy();
     this.player.destroy();
+    if (this.analyse) { this.analyse.destroy(); this.analyse = null; }
   };
   Challenge.prototype.sendFruits = function () {};
   Challenge.prototype.turnDone = function () {
@@ -2069,6 +2279,8 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       else this.interf.pl[0].face.normal();
       if (this.player.combo_score > D.CHALLENGE_HAPPY_SCORE)
         this.interf.pl[0].face.setHappy(D.CHALLENGE_HAPPY_TIME);
+      // Le plateau est stable et la ligne a monté : c'est LÀ qu'on analyse.
+      if (this.analyse) this.analyse.demander();
     }
   };
   Challenge.prototype.gameClick = function () {
@@ -2080,6 +2292,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       this.ncoups++;
       this.nmoves = (this.nmoves || 0) + 1;   // compteur affichable (cf. drawFront)
       this.setLock(true);
+      if (this.analyse) this.analyse.oublier();
     }
   };
   Challenge.prototype.defend = function () {
@@ -2087,6 +2300,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       this.setLock(true);
       this.special_power = true;
       this.player.defend();
+      if (this.analyse) this.analyse.oublier();
     }
   };
   Challenge.prototype.iaAttack = function () {};
@@ -2099,6 +2313,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.interf.displayPair(fpair);
     this.player.main(tmod, deltaT);
     this.interf.main(tmod);
+    if (this.analyse) this.analyse.main(tmod);
   };
   Challenge.prototype.draw = function (ctx) {
     this.interf.drawBack(ctx);
@@ -2106,6 +2321,8 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.player.animator.particules.draw(ctx);
     this.interf.drawFront(ctx);
     if (this.player.animator.drawOverlays) this.player.animator.drawOverlays(ctx);
+    // Le conseil de l'IA, par-dessus tout — sauf la pause.
+    if (this.analyse) this.analyse.draw(ctx);
     this.drawExtra(ctx);
     SW.drawPauseButton(ctx);
     this.pause.draw(ctx);
