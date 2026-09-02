@@ -2397,6 +2397,11 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     }
     U.text(ctx, l1, tx, P.y + 48, { size: 15, color: '#fff' });
     if (l2) U.text(ctx, l2, tx, P.y + 64, { size: 8, color: '#d8ccb0', bold: false });
+    // Pourquoi MAINTENANT : une défense à plateau bas surprend, sauf si la
+    // banque est pleine — la prochaine étoile serait perdue.
+    if (m.nature === 'defense' && (m.pleine || m.crise))
+      U.text(ctx, m.pleine ? 'banque pleine : à dépenser' : 'plateau au plafond', tx, P.y + 74,
+        { size: 7, color: '#ffd23f', bold: false });
     // les deux suivants, en petit : de quoi comparer
     let y = P.y + 82;
     for (let i = 1; i < Math.min(3, c.coups.length); i++) {
