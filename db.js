@@ -812,6 +812,32 @@ async function initSchema() {
       CREATE INDEX IF NOT EXISTS idx_kikooz_gifts_date ON kikooz_gifts(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_kikooz_gifts_week ON kikooz_gifts(giver, week_key);
 
+      -- L'HISTORIQUE KIKOOZ DU JOUEUR (box.KikoozLog, /ft/log, /api/light/kikooz).
+      -- Il ne vivait qu'en mémoire (user.kikoozLog) : chaque redémarrage
+      -- l'effaçait, et le don reçu la veille avait disparu le lendemain. Une
+      -- ligne par nœud d'époque — b (achat), c (kikooz reçus), g (filleul),
+      -- a (offerts par l'animation ou l'équipe) —, relue à l'hydratation.
+      CREATE TABLE IF NOT EXISTS kikooz_log (
+        id          SERIAL PRIMARY KEY,
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        entry_type  TEXT NOT NULL,
+        amount      INTEGER NOT NULL DEFAULT 0,
+        label       TEXT NOT NULL DEFAULT '',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_kikooz_log_user ON kikooz_log(user_id, created_at DESC);
+
+      -- Les scores de Swapou joués AVEC l'analyse en partie (l'« IA »). Ils ne
+      -- vont dans aucun classement : ils se rangent ici, pour l'admin seulement.
+      CREATE TABLE IF NOT EXISTS swapou_ia_scores (
+        id          SERIAL PRIMARY KEY,
+        username    TEXT NOT NULL,
+        score       INTEGER NOT NULL DEFAULT 0,
+        data        TEXT NOT NULL DEFAULT '',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_swapou_ia_scores_user ON swapou_ia_scores(LOWER(username), created_at DESC);
+
       -- Chat auto-moderation: words triggering an instant totoché. Matched
       -- case-insensitively on the accent-stripped message, with word
       -- boundaries (so "pdf" doesn't hit "pd"). Edited live from /admin.
@@ -1630,6 +1656,55 @@ async function sumKikoozGiftsForWeek(weekKey) {
   return par;
 }
 
+// ── L'historique kikooz du joueur (box.KikoozLog, /ft/log, /api/light/kikooz) ──
+//
+// Une ligne par nœud d'époque : b (achat, label = le produit), c (kikooz reçus,
+// label = qui les a donnés), g (le filleul), a (offerts par l'animation ou
+// l'équipe). Relu à l'hydratation, du plus récent au plus ancien.
+async function addKikoozLogEntry(userId, entry) {
+  if (!userId || !entry) return;
+  await pool.query(
+    `INSERT INTO kikooz_log (user_id, entry_type, amount, label, created_at)
+     VALUES ($1, $2, $3, $4, COALESCE($5, now()))`,
+    [userId, String(entry.type || 'c').slice(0, 1), Math.round(Number(entry.k) || 0),
+      String(entry.label || '').slice(0, 120), entry.at || null]
+  );
+}
+// La même chose pour un joueur HORS LIGNE, désigné par son pseudo.
+async function addKikoozLogEntryByUsername(username, entry) {
+  if (!username || !entry) return;
+  await pool.query(
+    `INSERT INTO kikooz_log (user_id, entry_type, amount, label)
+     SELECT id, $2, $3, $4 FROM users WHERE LOWER(username) = LOWER($1)`,
+    [String(username), String(entry.type || 'c').slice(0, 1),
+      Math.round(Number(entry.k) || 0), String(entry.label || '').slice(0, 120)]
+  );
+}
+async function getKikoozLog(userId, limit = 200) {
+  const { rows } = await pool.query(
+    `SELECT entry_type, amount, label, created_at FROM kikooz_log
+     WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2`,
+    [userId, Math.max(1, Math.min(Number(limit) || 200, 1000))]
+  );
+  return rows;
+}
+
+// ── Les scores de Swapou joués avec l'IA : rangés à part, jamais classés ──
+async function addSwapouIaScore(username, score, data) {
+  await pool.query(
+    'INSERT INTO swapou_ia_scores (username, score, data) VALUES ($1, $2, $3)',
+    [String(username || ''), Math.round(Number(score) || 0), String(data || '').slice(0, 200)]
+  );
+}
+async function listSwapouIaScores(username, limit = 50) {
+  const { rows } = await pool.query(
+    `SELECT id, username, score, data, created_at FROM swapou_ia_scores
+     WHERE LOWER(username) = LOWER($1) ORDER BY created_at DESC, id DESC LIMIT $2`,
+    [String(username || ''), Math.max(1, Math.min(Number(limit) || 50, 500))]
+  );
+  return rows;
+}
+
 async function loadShopPacks() {
   const { rows } = await pool.query('SELECT * FROM shop_packs ORDER BY id');
   return rows.map(r => {
@@ -2428,10 +2503,33 @@ async function forumGetTopics(boardId, page, perPage, username = null) {
  * sujet qu'on avait lu jusqu'au bout ne doit pas le rendre non lu.
  */
 async function forumMarkTopicRead(username, topicId, jusquAPostId) {
+  /*
+   * LE DERNIER MESSAGE LU EST LE DERNIER DU SUJET → LE SUJET EST LU.
+   *
+   * Le voyant compare `forum_topics.last_post_at` à la marque. Or cette date
+   * était posée par un `now()` À PART, juste après l'insertion du message :
+   * quelques microsecondes de plus que le `created_at` du message lui-même.
+   * Une marque à `created_at` restait donc TOUJOURS en deçà, et un sujet lu
+   * jusqu'au bout restait « non lu » — seul « tout marquer comme lu » (qui
+   * pose now()) l'éteignait. C'est ce que les joueurs décrivaient.
+   *
+   * Quand le message marqué est le dernier du sujet, la marque prend donc le
+   * plus grand des deux : sa date, ou celle que le sujet porte — et le sujet
+   * s'éteint. Un message marqué qui N'EST PAS le dernier laisse la marque à
+   * sa date : ce qui suit reste à lire, et la page « nonlu » s'y ouvrira.
+   */
   await pool.query(
     `INSERT INTO forum_topic_reads (username, topic_id, read_at)
      SELECT $1, $2, COALESCE(
-       (SELECT created_at FROM forum_posts WHERE id = $3::int AND topic_id = $2),
+       (SELECT CASE
+                 WHEN NOT EXISTS (SELECT 1 FROM forum_posts p2
+                                   WHERE p2.topic_id = $2
+                                     AND (p2.created_at, p2.id) > (p.created_at, p.id))
+                 THEN GREATEST(p.created_at, t.last_post_at)
+                 ELSE p.created_at
+               END
+          FROM forum_posts p JOIN forum_topics t ON t.id = p.topic_id
+         WHERE p.id = $3::int AND p.topic_id = $2),
        now())
      ON CONFLICT (username, topic_id) DO UPDATE
        SET read_at = GREATEST(forum_topic_reads.read_at, EXCLUDED.read_at)`,
@@ -2543,9 +2641,12 @@ async function forumCreatePost(topicId, username, content, bouille, mood) {
      VALUES ($1, $2, $3, $4, $5) RETURNING *`,
     [topicId, username, content, bouille || null, mood == null ? null : mood]
   );
+  // La date du sujet est CELLE DU MESSAGE, pas un second now() quelques
+  // microsecondes plus tard : c'est elle que la marque de lecture doit
+  // rejoindre pour éteindre le voyant (cf. forumMarkTopicRead).
   await pool.query(
-    'UPDATE forum_topics SET last_post_at = now(), last_post_by = $2 WHERE id = $1',
-    [topicId, username]
+    'UPDATE forum_topics SET last_post_at = $3, last_post_by = $2 WHERE id = $1',
+    [topicId, username, rows[0].created_at]
   );
   return rows[0];
 }
@@ -3349,6 +3450,11 @@ module.exports = {
   addKikoozGift,
   listKikoozGifts,
   sumKikoozGiftsForWeek,
+  addKikoozLogEntry,
+  addKikoozLogEntryByUsername,
+  getKikoozLog,
+  addSwapouIaScore,
+  listSwapouIaScores,
   getModerationLogs,
   listGaspardHelpTopics,
   getGaspardHelpTopic,

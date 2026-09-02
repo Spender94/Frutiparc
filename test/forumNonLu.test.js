@@ -69,10 +69,20 @@ test('la marque de lecture s’arrête au dernier message VU, et n’avance jama
   assert.match(DB, /async function forumMarkTopicRead\(username, topicId, jusquAPostId\) \{/);
   // L'identifiant, pas la date : SQL relit `created_at` lui-même et garde la
   // microseconde (cf. l'en-tête de ce fichier).
-  assert.match(DB, /\(SELECT created_at FROM forum_posts WHERE id = \$3::int AND topic_id = \$2\)/);
+  assert.match(DB, /FROM forum_posts p JOIN forum_topics t ON t\.id = p\.topic_id\s*\n\s*WHERE p\.id = \$3::int AND p\.topic_id = \$2\)/);
+  // Le dernier message du sujet lu → le sujet est lu : la marque prend le plus
+  // grand de sa date et de celle que le sujet porte (`last_post_at`, posée par
+  // un now() à part, quelques microsecondes APRÈS le message — sans quoi un fil
+  // lu jusqu'au bout restait « non lu » et seul « tout marquer comme lu »
+  // l'éteignait). Un message qui n'est pas le dernier laisse la marque à sa date.
+  assert.match(DB, /THEN GREATEST\(p\.created_at, t\.last_post_at\)\s*\n\s*ELSE p\.created_at/);
+  assert.match(DB, /AND \(p2\.created_at, p2\.id\) > \(p\.created_at, p\.id\)\)/);
   assert.match(DB, /SET read_at = GREATEST\(forum_topic_reads\.read_at, EXCLUDED\.read_at\)/);
   // Sans argument — « tout marquer comme lu » — c'est bien `now()`.
   assert.match(DB, /now\(\)\)\s*\n\s*ON CONFLICT/);
+  // Et le sujet, lui, porte désormais la date DU MESSAGE (plus un now() à
+  // part) : les deux horloges ne peuvent plus se manquer d'une microseconde.
+  assert.match(DB, /'UPDATE forum_topics SET last_post_at = \$3, last_post_by = \$2 WHERE id = \$1',\s*\n\s*\[topicId, username, rows\[0\]\.created_at\]/);
   // Et la route passe l'identifiant du dernier message de la page ouverte.
   assert.match(SERVEUR, /const dernierVu = posts\.length \? posts\[posts\.length - 1\]\.id : null;/);
   assert.match(SERVEUR, /await db\.forumMarkTopicRead\(currentUser, topicId, dernierVu\);/);

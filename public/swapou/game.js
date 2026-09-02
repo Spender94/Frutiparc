@@ -188,7 +188,11 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     s.$swap = this.nswaps;
     this.saveSlot(0);
     this.saveScore(score, 0, function (j) {
-      if (j && j.ok)
+      // `iaNonClasse` : le joueur a l'analyse en partie, le serveur a rangé
+      // le score à part (fiche admin) et ne l'a classé nulle part.
+      if (j && j.ok && j.iaNonClasse)
+        SW.Manager.scoreSaved(score, oldRecord, 0, 0, 'partie jouée avec l\'IA : score non classé');
+      else if (j && j.ok)
         SW.Manager.scoreSaved(score, j.oldScore || 0, j.oldPos || 0, j.newPos || 0);
       else
         SW.Manager.scoreSaved(score, oldRecord, 0, 0);

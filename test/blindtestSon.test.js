@@ -25,6 +25,8 @@
  *   3. Le bouton dit ce que le LECTEUR répond, pas ce que nous espérions ; et
  *      s'il ne répond jamais, alors seulement on retombe sur l'ancienne
  *      méthode — recharger l'iframe avec le son, celle que Firefox honore.
+ *      (Au mobile, depuis : dès qu'il ne confirme pas qu'il JOUE avec le son —
+ *      Chrome, Brave et Edge répondent « toujours muet » —, cf. § 4.)
  *
  * Le déroulé complet (vrai serveur, vrai navigateur, faux lecteur YouTube qui
  * parle le protocole du widget) a été joué à la main : lecteur bavard →
@@ -95,10 +97,11 @@ test('les deux clients lancent le lecteur dès l\'arrivée de l\'extrait', () =>
 // ── 3. Le bouton dit ce que le LECTEUR répond ─────────────────────────────
 
 test('le bouton suit la parole du lecteur, jamais notre intention', () => {
-  // Mobile.
+  // Mobile. « Ça sonne » = le lecteur joue (ou charge) SANS être muet : un
+  // lecteur démuté mais en pause — ce que fait Chrome — ne sonne pas.
   assert.match(BLOC_LIGHT,
-    /function btSonne\(\) \{ return blindtest\.repond \? !blindtest\.muet : blindtest\.arme; \}/,
-    'tant que le lecteur parle, c\'est lui qui décide de l\'étiquette');
+    /function btSonne\(\) \{ return blindtest\.repond \? \(!blindtest\.muet && \(blindtest\.etat === 1 \|\| blindtest\.etat === 3\)\) : blindtest\.arme; \}/,
+    'tant que le lecteur parle, c\'est lui qui décide de l\'étiquette — et il faut qu\'il joue');
   assert.match(BLOC_LIGHT, /bouton\.textContent = btSonne\(\) \? "Couper" : "Écouter"/,
     'et l\'étiquette en découle');
   // Bureau.
@@ -123,9 +126,16 @@ test('le clic demande le son au lecteur déjà lancé — muet, volume, lecture'
     assert.match(plat, new RegExp(cmd + '\\("unMute"\\); ?' + cmd
       + '\\("setVolume", \\[100\\]\\); ?' + cmd + '\\("playVideo"\\);'),
     nom + ' : les trois demandes partent ensemble');
-    // Elles doivent partir DU CLIC : c'est là qu'est le geste.
-    assert.match(b, /addEventListener\("click", function \(\) \{[\s\S]{0,600}?(?:btDemanderSon|demanderSon)\(\);/,
-      nom + ' : la demande de son est dans le gestionnaire de clic');
+    // Elles doivent partir DU CLIC : c'est là qu'est le geste. Le mobile a
+    // plusieurs bannières (une par fil du salon) qui partagent le même geste.
+    if (nom === 'mobile') {
+      assert.match(b, /addEventListener\("click", btClic\)/, nom + ' : chaque bouton mène au même geste');
+      assert.match(b, /function btClic\(\) \{[\s\S]{0,600}?btDemanderSon\(\);/,
+        nom + ' : la demande de son est dans le gestionnaire de clic');
+    } else {
+      assert.match(b, /addEventListener\("click", function \(\) \{[\s\S]{0,600}?(?:btDemanderSon|demanderSon)\(\);/,
+        nom + ' : la demande de son est dans le gestionnaire de clic');
+    }
     // Et le lecteur qu'on relance quand le navigateur l'a mis en pause en le
     // démuetant — sans quoi le bouton dirait « Couper » sur un silence.
     assert.match(b, /=== 2\) (?:btCommande|commande)\("playVideo"\)/,
@@ -135,21 +145,58 @@ test('le clic demande le son au lecteur déjà lancé — muet, volume, lecture'
 
 // ── 4. Le dernier recours, et lui seul ────────────────────────────────────
 
-test('le rechargement avec le son ne sert QUE si le lecteur n\'a jamais répondu', () => {
-  for (const [nom, b, appel] of [
-    ['mobile', BLOC_LIGHT, 'lancerCadre(true)'], ['bureau', BLOC_BUREAU, 'cadre(true)']]) {
-    const plat = b.replace(/\s+/g, ' ');
-    // La condition entière : extrait en cours, son voulu, et lecteur MUET DE
-    // NAISSANCE. S'il a répondu, on le croit — recharger ne ferait que casser
-    // la lecture muette, qui elle était au moins synchrone.
-    assert.match(plat, new RegExp(
-      'if \\(![a-z]+\\.jeton \\|\\| ![a-z]+\\.arme \\|\\| [a-z]+\\.repond\\) return; '
-        + appel.replace(/[()]/g, '\\$&')),
-    nom + ' : le recours est réservé au lecteur muré');
-    // Et il recharge AVEC le son : c'est tout son intérêt.
-    assert.match(plat, /\(avecSon \? "&m=0" : ""\)/,
-      nom + ' : le recours redemande un lecteur sonore');
+test('le rechargement avec le son : au bureau si le lecteur n\'a jamais répondu, au mobile dès qu\'il ne joue pas', () => {
+  // Bureau (ruffle.html) : la règle d'origine — extrait en cours, son voulu,
+  // et lecteur MUET DE NAISSANCE.
+  {
+    const plat = BLOC_BUREAU.replace(/\s+/g, ' ');
+    assert.match(plat, /if \(![a-z]+\.jeton \|\| ![a-z]+\.arme \|\| [a-z]+\.repond\) return; cadre\(true\)/,
+      'bureau : le recours est réservé au lecteur muré');
+    assert.match(plat, /\(avecSon \? "&m=0" : ""\)/, 'bureau : le recours redemande un lecteur sonore');
   }
+  // Mobile : Chrome, Brave et Edge RÉPONDENT — « toujours muet », ou « en
+  // pause » — sans jamais démuter un lecteur né muet sur un geste venu de la
+  // page du dessus. Croire un lecteur qui répond, c'était rester muet chez
+  // eux. Le recours part donc dès que le lecteur n'a pas confirmé qu'il joue
+  // avec le son — une seule fois par extrait (`recharge`).
+  {
+    const plat = BLOC_LIGHT.replace(/\s+/g, ' ');
+    assert.match(plat,
+      /if \(!blindtest\.jeton \|\| !blindtest\.arme \|\| blindtest\.recharge\) return; (?:\/\/[^/]*? )?if \(blindtest\.repond && !blindtest\.muet && blindtest\.etat === 1\) return; lancerCadre\(true\);/,
+      'mobile : un lecteur qui ne joue pas avec le son est remplacé par un lecteur sonore');
+    assert.match(plat, /\(avecSon \? "&m=0" : ""\)/, 'mobile : le recours redemande un lecteur sonore');
+    // Un lecteur neuf n'a rien dit : on oublie la parole de l'ancien, et on
+    // note qu'on a rechargé — pas deux fois.
+    assert.match(plat, /blindtest\.muet = true; blindtest\.repond = false; blindtest\.etat = -1; blindtest\.recharge = !!avecSon;/,
+      'mobile : un seul rechargement par extrait, et la parole de l\'ancien lecteur oubliée');
+    // Et s'il dit encore qu'il ne joue pas après ça, c'est le navigateur qui
+    // bloque : la bannière le dit, au lieu de laisser croire qu'on écoute.
+    assert.match(BLOC_LIGHT, /blindtest\.bloque = blindtest\.repond && \(blindtest\.muet \|\| \(blindtest\.etat !== 1 && blindtest\.etat !== 3\)\);/,
+      'mobile : le blocage se constate sur la parole du lecteur');
+    assert.match(BLOC_LIGHT, /son bloqué par le navigateur/, 'mobile : et se dit');
+  }
+});
+
+// ── 4 bis. La bannière est partout où le salon se lit ─────────────────────
+
+test('la bannière se pose dans chaque fil du salon — fenêtres du bureau comprises', () => {
+  // Elle n'allait que devant le `#messages` du panneau mobile — caché sur le
+  // bureau, où chaque fenêtre de salon a le sien : « y'a pas le bidule
+  // Écouter/Couper ». Le lecteur, lui, reste unique, hors des bannières.
+  assert.match(BLOC_LIGHT, /function btFils\(\) \{[\s\S]*?journaux\[blindtest\.salon\]/,
+    'la fenêtre de salon du bureau a son fil, et donc sa bannière');
+  assert.match(BLOC_LIGHT, /#chat-panel:not\(\[data-salon\]\) #messages/,
+    'le panneau mobile aussi — l\'original, pas ses clones');
+  assert.match(BLOC_LIGHT, /cadre\.id = "bt-cadre";\s*document\.body\.appendChild\(cadre\);/,
+    'un seul lecteur, au bout du document');
+  assert.match(LIGHT, /blindtest\.salon === salon\) blindtestBoite\(\);/,
+    'une fenêtre ouverte pendant l\'extrait la reçoit en naissant');
+  // … et n'hérite pas de celle du panneau mobile, que le clone emporterait
+  // avec lui — boutons sans geste, et pour un extrait d'un autre salon.
+  assert.match(LIGHT, /p\.querySelectorAll\("\.blindtest"\), function \(b\) \{ b\.remove\(\); \}/,
+    'le clone du panneau mobile est débarrassé de la bannière');
+  assert.match(LIGHT, /jouerBlindtest\(attr\(xml, "bk"\), Number\(attr\(xml, "bd"\)\) \|\| 0, Number\(attr\(xml, "ba"\)\) \|\| 0, salon\);/,
+    'la trame dit de quel salon vient l\'extrait');
 });
 
 test('la poignée de main est répétée : le lecteur ne s\'abonne qu\'une fois prêt', () => {

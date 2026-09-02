@@ -798,8 +798,11 @@
     border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer;
     background: #fff; color: #000046; font-weight: bold; font-size: 12px;
   }
-  .blindtest .bt-cadre { width: 1px; height: 1px; overflow: hidden; opacity: .01; }
-  .blindtest .bt-cadre iframe { width: 320px; height: 180px; border: 0; }
+  .blindtest .bt-aide { font-weight: normal; font-size: 11px; opacity: .85; }
+  /* Le lecteur est UNIQUE et hors des bannières (une par fil de salon) : au
+     bout du document, réduit à un point. */
+  .bt-cadre { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; overflow: hidden; opacity: .01; pointer-events: none; }
+  .bt-cadre iframe { width: 320px; height: 180px; border: 0; }
 
   /* Ligne animateur / mode bleu (t="c") — la typo du bureau, à la valeur près.
      main.swf compose ces lignes en `<font size="14"><b>…</b></font>` teintées
@@ -3497,6 +3500,17 @@
     // courant, et de quoi en rejoindre un. Les discussions privées n'y sont
     // PAS — le bureau d'époque ne les liste pas dans cette fenêtre-là.
     window.SalonsBureau = {
+      // Les bouilles du salon : le bureau intercepte le clic sur l'icône (il
+      // ouvre la colonne d'écrans) avant qu'il n'atteigne le bouton du light —
+      // une préférence « masquées » posée un jour sur le téléphone y restait
+      // donc pour toujours : icône blanchie, colonne ouverte, personne dedans.
+      // Ouvrir la colonne rallume les bouilles par ici.
+      bouillesActives: function () { return !!state.bouillesEnabled; },
+      activerBouilles: function (on) {
+        state.bouillesEnabled = !!on;
+        try { localStorage.setItem(BOUILLE_PREF_KEY, on ? "1" : "0"); } catch (e) {}
+        applyBouillePref();
+      },
       liste: function () {
         var l = ROOMS.map(function (r) {
           return { id: r[0], nom: roomLabel(r[0]), nbUser: state.roomCounts[r[0]] || 0 };
@@ -6558,7 +6572,10 @@
     Array.prototype.forEach.call(document.querySelectorAll("#compose-input"), function (inp) {
       inp.disabled = mut || !state.connected;
       if (mut) {
-        if (!inp.getAttribute("data-placeholder")) inp.setAttribute("data-placeholder", inp.placeholder || "");
+        // `=== null`, pas « faux » : un placeholder d'origine VIDE était
+        // réécrasé au tour suivant par le texte de la totoche lui-même, qui
+        // devenait alors le placeholder « d'origine » rendu à la levée.
+        if (inp.getAttribute("data-placeholder") === null) inp.setAttribute("data-placeholder", inp.placeholder || "");
         inp.placeholder = "Totoché — encore " + Math.ceil(reste / 60000) + " min";
         inp.value = "";
       } else if (inp.getAttribute("data-placeholder") !== null) {
@@ -7137,7 +7154,7 @@
         // part — plus la durée et l'instant de départ, dont le lecteur se sert
         // pour tomber sur la même seconde que tout le monde.
         if (ty === "bt") {
-          jouerBlindtest(attr(xml, "bk"), Number(attr(xml, "bd")) || 0, Number(attr(xml, "ba")) || 0);
+          jouerBlindtest(attr(xml, "bk"), Number(attr(xml, "bd")) || 0, Number(attr(xml, "ba")) || 0, salon);
           break;
         }
         // Lignes animateur / mode bleu (/blueon) : type "c". Le desktop les rend
@@ -7220,6 +7237,10 @@
           if (refus === "201" && avecQui) {
             systemAction(avecQui + " n'est pas connecté(e) pour le moment.",
               "Lui écrire un courrier", function () { ecrireMail(avecQui, ""); });
+          } else if (refus === "206") {
+            // Sa liste noire, ou sa préférence « Invitation chat privé » — le
+            // serveur ne dit pas laquelle, et c'est voulu.
+            systemLine((avecQui || "Ce joueur") + " ne reçoit pas les discussions privées pour le moment.");
           } else {
             systemLine(refus === "201"
               ? "Ce joueur n'est pas connecté(e) pour le moment."
@@ -7761,6 +7782,10 @@
       .forEach(function (s) { var n = p.querySelector(s); if (n) { n.innerHTML = ""; n.classList.remove("show"); } });
     var ov = p.querySelector("#bouille-overlay");
     if (ov) ov.classList.remove("show", "leaving");
+    // La bannière d'un blindtest en cours dans le panneau mobile ne se copie
+    // pas — ses boutons perdraient leur geste, et l'extrait n'est peut-être pas
+    // celui de ce salon : `creerCadreSalon` la remet s'il y a lieu.
+    Array.prototype.forEach.call(p.querySelectorAll(".blindtest"), function (b) { b.remove(); });
     ["#pen-btn", "#users-btn", "#accent-toggle"].forEach(function (s) {
       var n = p.querySelector(s); if (n) n.classList.remove("on");
     });
@@ -7774,6 +7799,9 @@
     journaux[salon] = c.fil;
     brancherCadre(c);
     systemLine(phraseEntree(salon), salon);
+    // Un extrait de blindtest en cours dans ce salon : la fenêtre qui s'ouvre
+    // reçoit sa bannière, comme celles déjà ouvertes.
+    if (typeof blindtestBoite === "function" && blindtest.jeton && blindtest.salon === salon) blindtestBoite();
     // `box.Chat.init` finit par rejoindre — sauf pour un salon où l'on est
     // déjà : celui qu'on regardait, ou une discussion privée à laquelle le
     // serveur nous a abonnés (`<s>`). `usersByRoom` ne porte une liste que
@@ -7828,8 +7856,14 @@
     // sans cela, il suffirait d'en ouvrir une nouvelle pour reparler.
     var muet = (state.mutedUntil || 0) > Date.now();
     [inp, envoi, acc].forEach(function (n) { if (n) n.disabled = !state.connected || muet; });
-    if (muet && inp) inp.placeholder = "Totoché — encore "
-      + Math.ceil((state.mutedUntil - Date.now()) / 60000) + " min";
+    if (muet && inp) {
+      // Le placeholder d'origine est mis de côté, comme le fait majMuselage :
+      // sans cela, la fenêtre ouverte PENDANT la peine gardait « Totoché —
+      // encore N min » après sa levée (rien à restaurer, donc rien restauré).
+      if (inp.getAttribute("data-placeholder") === null) inp.setAttribute("data-placeholder", inp.placeholder || "");
+      inp.placeholder = "Totoché — encore "
+        + Math.ceil((state.mutedUntil - Date.now()) / 60000) + " min";
+    }
     if (inp) inp.style.color = penColorFor(state.pen) || "#2C4A0F";
     if (form) form.addEventListener("submit", function (ev) {
       ev.preventDefault();
@@ -8207,16 +8241,33 @@
   //    Et s'il ne répond pas du tout — dialogue coupé, extension, vieux
   //    navigateur —, on retombe en dernier recours sur l'ancienne méthode,
   //    celle que Firefox honore : recharger l'iframe avec le son.
+  //
+  //  · Et quand le lecteur RÉPOND « toujours muet » (ou « en pause ») après la
+  //    demande, on ne le croit pas sur parole plus d'une seconde : Chrome,
+  //    Brave et Edge refusent de démuter un lecteur né muet sur un geste venu
+  //    de la page du dessus, même délégué. On repart alors d'un lecteur NEUF,
+  //    avec le son — le clic vient d'avoir lieu, allow="autoplay" le lui
+  //    délègue, et il démarre sonore à la seconde où en est l'extrait. C'est le
+  //    « ça ne marche pas sur Brave » des joueurs.
+  //  · La bannière se pose dans CHAQUE fil où le salon se lit : le panneau
+  //    mobile, et chaque fenêtre de salon du bureau (qui n'en avait pas — elle
+  //    n'allait que dans le panneau mobile, caché là-bas : « y'a pas le bidule
+  //    Écouter/Couper »). Le lecteur, lui, reste unique.
   var blindtest = {
     jeton: "", fin: 0, minuteur: null,
+    salon: "",         // le salon de l'extrait — celui dont les fils portent la bannière
     arme: false,       // ce que le JOUEUR veut (retenu d'un extrait à l'autre)
     muet: true,        // ce que le LECTEUR dit
-    etat: -1,          // ... et où il en est (1 = joue, 2 = en pause)
+    etat: -1,          // ... et où il en est (1 = joue, 2 = en pause, 3 = charge)
     repond: false,     // a-t-il seulement répondu une fois ?
-    recours: null, poignee: null,
+    recharge: false,   // a-t-on déjà relancé un lecteur sonore pour cet extrait ?
+    bloque: false,     // ... et, après ça, dit-il encore qu'il ne joue pas ?
+    recours: null, poignee: null, blocage: null,
   };
-  // Ce qu'affiche le bouton : la parole du lecteur si on l'a, sinon la nôtre.
-  function btSonne() { return blindtest.repond ? !blindtest.muet : blindtest.arme; }
+  // Ce qu'affiche le bouton : la parole du lecteur si on l'a — et « ça sonne »
+  // veut dire qu'il JOUE sans être muet (démuté mais en pause, ou jamais parti,
+  // ne sonne pas) —, sinon la nôtre.
+  function btSonne() { return blindtest.repond ? (!blindtest.muet && (blindtest.etat === 1 || blindtest.etat === 3)) : blindtest.arme; }
 
   // Le dialogue avec le lecteur YouTube — sans sa bibliothèque, qui exigerait
   // de connaître l'identifiant de la vidéo (et donc la réponse du blindtest).
@@ -8254,56 +8305,100 @@
     majBlindtest();
   });
 
+  // Les fils où l'extrait se lit : la fenêtre de salon du bureau (`journaux`)
+  // et le panneau mobile — l'original, pas ses clones : chaque fenêtre du
+  // bureau copie `#chat-panel`, et seul l'original n'a pas de `data-salon`.
+  function btFils() {
+    var fils = [];
+    var f = journaux[blindtest.salon];
+    if (f) fils.push(f);
+    var m = document.querySelector("#chat-panel:not([data-salon]) #messages");
+    if (m && fils.indexOf(m) < 0 && (!f || blindtest.salon === state.room)) fils.push(m);
+    return fils;
+  }
   function blindtestBoite() {
-    var b = document.getElementById("blindtest");
-    if (b) return b;
-    b = el("div", "blindtest");
-    b.id = "blindtest";
-    b.innerHTML = '<span class="bt-titre">Blindtest</span>'
-      + '<span class="bt-temps" id="bt-temps"></span>'
-      + '<button class="bt-bouton" id="bt-bouton"></button>'
-      + '<div class="bt-cadre" id="bt-cadre"></div>';
-    var av = document.getElementById("messages");
-    av.parentNode.insertBefore(b, av);
-    document.getElementById("bt-bouton").addEventListener("click", function () {
-      // Le geste, c'est ICI : la demande de son doit partir du clic lui-même,
-      // sans quoi elle perd le droit qu'il lui donne.
-      if (btSonne()) {
-        blindtest.arme = false;
-        blindtest.muet = true;
-        try { localStorage.removeItem("fp_bt_son"); } catch (e) {}
-        btCommande("mute");
-      } else {
-        blindtest.arme = true;
-        try { localStorage.setItem("fp_bt_son", "1"); } catch (e) {}
-        btDemanderSon();
-        btArmerRecours();
-      }
-      majBlindtest();
+    var cadre = document.getElementById("bt-cadre");
+    if (!cadre) {
+      cadre = el("div", "bt-cadre");
+      cadre.id = "bt-cadre";
+      document.body.appendChild(cadre);
+    }
+    btFils().forEach(function (fil) {
+      var deja = fil.previousElementSibling;
+      if (deja && deja.classList && deja.classList.contains("blindtest")) return;
+      var b = el("div", "blindtest");
+      b.innerHTML = '<span class="bt-titre">Blindtest</span>'
+        + '<span class="bt-aide"></span>'
+        + '<span class="bt-temps"></span>'
+        + '<button class="bt-bouton" type="button"></button>';
+      fil.parentNode.insertBefore(b, fil);
+      b.querySelector(".bt-bouton").addEventListener("click", btClic);
     });
-    return b;
+    majBlindtest();
+    return cadre;
+  }
+  // Le geste, c'est ICI : la demande de son doit partir du clic lui-même,
+  // sans quoi elle perd le droit qu'il lui donne.
+  function btClic() {
+    if (btSonne()) {
+      blindtest.arme = false;
+      blindtest.muet = true;
+      blindtest.bloque = false;
+      try { localStorage.removeItem("fp_bt_son"); } catch (e) {}
+      // Un lecteur qui ne répond pas ne se coupe pas par la parole : on le
+      // remplace par un lecteur muet — l'extrait continue, en silence.
+      if (blindtest.repond) btCommande("mute"); else lancerCadre(false);
+    } else {
+      blindtest.arme = true;
+      try { localStorage.setItem("fp_bt_son", "1"); } catch (e) {}
+      btDemanderSon();
+      btArmerRecours();
+    }
+    majBlindtest();
   }
 
-  // Dernier recours, et lui seul : si le lecteur n'a JAMAIS répondu, le
-  // dialogue ne passe pas et nos demandes tombent dans le vide. On recharge
-  // alors l'iframe avec le son — l'ancienne méthode, celle que Firefox honore.
-  // Le droit au son est ACQUIS à la page (le joueur y a cliqué), pas transitoire :
-  // ce rechargement tardif vaut donc autant que celui d'autrefois.
-  // Quand le lecteur répond, en revanche, on le croit : recharger ne ferait
-  // que casser la lecture muette qui, elle, était au moins synchrone.
+  // LE RECOURS : recharger l'iframe AVEC le son.
+  //
+  // Une seconde après la demande, si le lecteur n'a pas confirmé qu'il JOUE
+  // avec le son — qu'il n'ait jamais répondu (dialogue muré), ou qu'il réponde
+  // « toujours muet » ou « en pause » : Chrome, Brave et Edge refusent de
+  // démuter un lecteur né muet sur un geste venu de la page du dessus —, on
+  // repart d'un lecteur neuf, sonore. Le clic vient d'avoir lieu, et
+  // allow="autoplay" lui délègue ce geste : il démarre avec le son, à la
+  // seconde où en est l'extrait (le serveur la recalcule). Une seule fois par
+  // extrait : s'il reste muet après ça, c'est le navigateur qui refuse, et la
+  // bannière le dit (btSurveillerBlocage).
   function btArmerRecours() {
     if (blindtest.recours) clearTimeout(blindtest.recours);
     blindtest.recours = setTimeout(function () {
       blindtest.recours = null;
-      if (!blindtest.jeton || !blindtest.arme || blindtest.repond) return;
+      if (!blindtest.jeton || !blindtest.arme || blindtest.recharge) return;
+      // Il joue, et le dit : rien à faire.
+      if (blindtest.repond && !blindtest.muet && blindtest.etat === 1) return;
       lancerCadre(true);
-    }, 2000);
+    }, 1200);
+  }
+  // Après le lecteur sonore : s'il répond qu'il ne joue toujours pas, c'est le
+  // navigateur qui bloque la lecture automatique — on ne peut plus rien pour
+  // lui que le dire. (Un lecteur muet — qui ne répond pas — ne se juge pas.)
+  function btSurveillerBlocage() {
+    if (blindtest.blocage) clearTimeout(blindtest.blocage);
+    blindtest.blocage = setTimeout(function () {
+      blindtest.blocage = null;
+      if (!blindtest.jeton || !blindtest.arme) return;
+      blindtest.bloque = blindtest.repond && (blindtest.muet || (blindtest.etat !== 1 && blindtest.etat !== 3));
+      majBlindtest();
+    }, 2500);
   }
 
   function lancerCadre(avecSon) {
     var cadre = document.getElementById("bt-cadre");
     if (!cadre || !blindtest.jeton) return;
     if (blindtest.poignee) { clearInterval(blindtest.poignee); blindtest.poignee = null; }
+    // Un lecteur neuf n'a encore rien dit : on oublie la parole de l'ancien.
+    blindtest.muet = true; blindtest.repond = false; blindtest.etat = -1;
+    blindtest.recharge = !!avecSon;
+    blindtest.bloque = false;
     cadre.innerHTML = '<iframe title="extrait" allow="autoplay" frameborder="0"'
       + ' src="/api/blindtest/embed?k=' + encodeURIComponent(blindtest.jeton)
       + (avecSon ? "&m=0" : "")
@@ -8324,29 +8419,38 @@
       }, 300);
       // Consentement retenu : on TENTE le son sans attendre un nouveau clic.
       // Si le navigateur refuse — il en a le droit —, le lecteur dira qu'il est
-      // resté muet et le bouton redeviendra « Écouter ».
+      // resté muet, et le recours prendra le relais.
       if (blindtest.arme && !avecSon) { btDemanderSon(); btArmerRecours(); }
+      if (avecSon) btSurveillerBlocage();
     });
   }
 
   function majBlindtest() {
-    var t = document.getElementById("bt-temps");
-    var bouton = document.getElementById("bt-bouton");
-    if (!t || !bouton) return;
     var reste = Math.max(0, Math.ceil((blindtest.fin - Date.now()) / 1000));
-    t.textContent = reste + " s";
-    bouton.textContent = btSonne() ? "Couper" : "Écouter";
-    if (reste <= 0) arreterBlindtest(false);
+    if (blindtest.jeton && reste <= 0) { arreterBlindtest(false); return; }
+    // Toutes les bannières disent la même chose : une par fil du salon.
+    Array.prototype.forEach.call(document.querySelectorAll(".blindtest"), function (b) {
+      var t = b.querySelector(".bt-temps"), bouton = b.querySelector(".bt-bouton"), aide = b.querySelector(".bt-aide");
+      if (t) t.textContent = reste + " s";
+      if (aide) aide.textContent = blindtest.bloque ? "(son bloqué par le navigateur)" : "";
+      if (bouton) bouton.textContent = btSonne() ? "Couper" : "Écouter";
+    });
   }
 
   function arreterBlindtest(parLeJoueur) {
     if (blindtest.minuteur) { clearInterval(blindtest.minuteur); blindtest.minuteur = null; }
     if (blindtest.poignee) { clearInterval(blindtest.poignee); blindtest.poignee = null; }
     if (blindtest.recours) { clearTimeout(blindtest.recours); blindtest.recours = null; }
+    if (blindtest.blocage) { clearTimeout(blindtest.blocage); blindtest.blocage = null; }
     blindtest.jeton = "";
+    blindtest.salon = "";
     blindtest.muet = true; blindtest.repond = false; blindtest.etat = -1;
-    var b = document.getElementById("blindtest");
-    if (b) b.parentNode.removeChild(b);
+    blindtest.recharge = false; blindtest.bloque = false;
+    Array.prototype.forEach.call(document.querySelectorAll(".blindtest"), function (b) {
+      if (b.parentNode) b.parentNode.removeChild(b);
+    });
+    var cadre = document.getElementById("bt-cadre");
+    if (cadre && cadre.parentNode) cadre.parentNode.removeChild(cadre);
     // Couper soi-même retire le consentement : on ne veut pas que le suivant
     // reparte dans les oreilles de quelqu'un qui vient de dire non.
     if (parLeJoueur) {
@@ -8355,11 +8459,12 @@
     }
   }
 
-  function jouerBlindtest(jeton, duree, depart) {
+  function jouerBlindtest(jeton, duree, depart, salon) {
     arreterBlindtest(false);
     if (!jeton || !duree) return;                 // jeton vide = /blindstop
     try { blindtest.arme = localStorage.getItem("fp_bt_son") === "1"; } catch (e) {}
     blindtest.jeton = jeton;
+    blindtest.salon = salon || state.room;
     // `depart` est l'horloge du SERVEUR ; on la ramène à la nôtre en gardant
     // le temps déjà écoulé, ce qui absorbe un décalage d'horloge.
     var ecoule = Math.max(0, Math.min(Date.now() - depart, duree * 1000));
@@ -10309,12 +10414,15 @@
   // (localStorage). When turned off we also hide any overlay already on screen.
   var BOUILLE_PREF_KEY = "fp_light_bouilles";
   function applyBouillePref() {
-    var btn = $("#bouille-toggle");
-    if (btn) {
+    // TOUS les boutons — celui du panneau mobile, et celui de chaque fenêtre
+    // de salon du bureau, qui en clone la barre (classe `off` comprise) :
+    // l'icône ne doit pas rester blanchie dans une fenêtre quand la
+    // préférence a changé ailleurs.
+    Array.prototype.forEach.call(document.querySelectorAll("#bouille-toggle"), function (btn) {
       btn.classList.toggle("off", !state.bouillesEnabled);
       btn.setAttribute("aria-pressed", state.bouillesEnabled ? "true" : "false");
       btn.title = state.bouillesEnabled ? "Masquer les bouilles" : "Afficher les bouilles";
-    }
+    });
     if (!state.bouillesEnabled) {
       hideBouilleOverlay(null);
       cadresOuverts().forEach(function (sn) { hideBouilleOverlay(cadres[sn]); });
@@ -10327,6 +10435,8 @@
     applyBouillePref();
   });
   applyBouillePref();
+  // (Le bureau, qui intercepte le clic sur l'icône, rallume les bouilles par
+  // `SalonsBureau.activerBouilles` — définie avec les autres portes du bureau.)
 
   // ── Bouille overlay ──────────────────────────────────────────────────────
   // Remember each speaker's bouille state (carried by <p>/<v>/<z> frames), so

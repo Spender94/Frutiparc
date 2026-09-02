@@ -889,8 +889,15 @@
     this.frame = 1;
     this.text = txt;
   };
-  GameOver.prototype.scoreSaved = function (score, oldScore, oldRank, newRank) {
+  GameOver.prototype.scoreSaved = function (score, oldScore, oldRank, newRank, note) {
     this.netUnlock();
+    // Une partie jouée avec l'analyse (l'« IA ») n'est classée nulle part :
+    // le serveur le dit, et l'écran de fin le répète — sans rang, sans record
+    // battu, juste le score.
+    if (note) {
+      this.setText(DATA.TXT_VOTRE_SCORE(score) + '\n' + note + '\n');
+      return;
+    }
     let text = DATA.TXT_VOTRE_SCORE(score) + '\n';
     if (score > oldScore && (oldRank > 0 || Manager.client.isWhite()))
       text += DATA.TXT_SCORE_BATTU + '\n';
@@ -1088,9 +1095,9 @@
       }
       return g;
     },
-    scoreSaved: function (score, oldScore, oldRank, newRank) {
+    scoreSaved: function (score, oldScore, oldRank, newRank, note) {
       if (Manager.mode && Manager.mode.scoreSaved)
-        Manager.mode.scoreSaved(score, oldScore, oldRank, newRank);
+        Manager.mode.scoreSaved(score, oldScore, oldRank, newRank, note);
     },
   };
   SW.Manager = Manager;

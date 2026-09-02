@@ -3076,6 +3076,7 @@ async function hydrateUserFromDb(username, dbUser) {
         db.getUserLogEntries(dbUser.id, 'user', 200).catch(() => []),
         db.getUserLogEntries(dbUser.id, 'site', 200).catch(() => []),
         db.getContactFolders(dbUser.id).catch(() => []),
+        db.getKikoozLog(dbUser.id, 200).catch(() => []),
       ]);
       break;
     } catch (e) {
@@ -3092,7 +3093,7 @@ async function hydrateUserFromDb(username, dbUser) {
   // L'accessoire maison porté est persisté hors base : on le rétablit ici.
   mem.accMaisonId = accMaisonEquip[String(username).toLowerCase()] || null;
   users[username] = mem; // atomique : seulement après un chargement COMPLET
-  const [items, accs, dbScores, dbContacts, dbBlacklist, dbMails, dbGameItems, dbUserLog, dbSiteLog, dbContactFolders] = loaded;
+  const [items, accs, dbScores, dbContacts, dbBlacklist, dbMails, dbGameItems, dbUserLog, dbSiteLog, dbContactFolders, dbKikoozLog] = loaded;
 
   if (items.length > 0) users[username].items = withDefaultPens(items);
   if (accs.length > 0) users[username].customAccessories = accs;
@@ -3121,6 +3122,11 @@ async function hydrateUserFromDb(username, dbUser) {
   users[username].contactFolders = Array.isArray(dbContactFolders) ? dbContactFolders : [];
   users[username].blacklist = Array.isArray(dbBlacklist) ? dbBlacklist : [];
   users[username].mails = Array.isArray(dbMails) ? dbMails : [];
+  // L'Historique Kikooz revient de la base — il ne vivait qu'en mémoire, et
+  // chaque redémarrage l'effaçait. Un journal encore vide se reconstitue une
+  // fois depuis les achats et les dons déjà enregistrés.
+  users[username].kikoozLog = kikoozLogDepuisBase(dbKikoozLog);
+  if (!users[username].kikoozLog.length) reconstituerHistoriqueKikooz(username, users[username]);
 
   // Restore persistent history (userLog + siteLog) from DB
   const toMemoryEntry = (row) => {
@@ -3555,14 +3561,101 @@ function grantReferralReward(username, role, filleul) {
   if (!user) return;
   user.kikooz = (Number(user.kikooz) || 0) + REFERRAL.kikooz;
   if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser kikooz parrainage'));
-  if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
   const quand = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  user.kikoozLog.unshift(filleul
+  journalKikooz(user, filleul
     ? { type: 'g', t: quand, k: REFERRAL.kikooz, f: getDisplayName(filleul) }
     : { type: 'c', t: quand, k: REFERRAL.kikooz, c: 'parrainage' });
-  if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
   notifyKikoozUpdate(username, user.kikooz);
   addAndNotifyUserLog(username, { type: USER_LOG_TYPE.GODSON, content: `Parrainage (${role}) : +${REFERRAL.kikooz} kikooz !` });
+}
+
+// ── L'HISTORIQUE KIKOOZ : UN SEUL GUICHET ───────────────────────────────────
+//
+// Tout ce qui fait bouger le solde et mérite une ligne dans box.KikoozLog
+// passe ici — achats, kikooz reçus, filleuls, dons de l'animation ou de
+// l'équipe. L'entrée prend la tête de la liste (du plus récent au plus ancien,
+// l'ordre dans lequel /ft/log la sert), la liste est bornée à 200, et la ligne
+// part en base (kikooz_log) : l'historique ne vivait qu'en mémoire, et chaque
+// redémarrage l'effaçait — « les dons n'apparaissent pas dans l'historique ».
+//
+//   { type: 'b', k, n }   achat du produit n
+//   { type: 'c', k, c }   k kikooz obtenus par c
+//   { type: 'g', k, f }   k kikooz obtenus grâce au filleul f
+//   { type: 'a', k, f }   k kikooz offerts par f (animation, /don, équipe)
+function journalKikooz(user, entry) {
+  if (!user || !entry) return;
+  if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
+  if (!entry.t) entry.t = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  user.kikoozLog.unshift(entry);
+  if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+  if (user._dbId && process.env.DATABASE_URL) {
+    db.addKikoozLogEntry(user._dbId, {
+      type: entry.type, k: entry.k, label: entry.n || entry.c || entry.f || '',
+    }).catch(dbErr('kikooz_log'));
+  }
+}
+
+// Les lignes de la base, remises dans la forme que /ft/log et /api/light/kikooz
+// connaissent (le libellé retrouve son attribut d'époque selon le type).
+function kikoozLogDepuisBase(rows) {
+  const out = [];
+  for (const r of (Array.isArray(rows) ? rows : [])) {
+    const type = String(r.entry_type || 'c');
+    const d = r.created_at instanceof Date ? r.created_at : new Date(r.created_at || Date.now());
+    const e = {
+      type,
+      t: (Number.isNaN(d.getTime()) ? new Date() : d).toISOString().replace('T', ' ').substring(0, 19),
+      k: Number(r.amount) || 0,
+    };
+    const label = String(r.label || '');
+    if (type === 'b') e.n = label; else if (type === 'c') e.c = label; else e.f = label;
+    out.push(e);
+  }
+  return out;
+}
+
+// Avant la table `kikooz_log`, deux registres persistaient déjà : les achats
+// (shop_purchases) et les dons reçus (kikooz_gifts). Un joueur dont le journal
+// est vide en base en refait ses lignes d'époque, une fois, et les range —
+// ainsi les dons d'hier ne sont pas perdus pour lui.
+const reconstitutionsKikooz = new Set();
+async function reconstituerHistoriqueKikooz(username, user) {
+  if (!process.env.DATABASE_URL || !user || !user._dbId) return;
+  const cle = String(username).toLowerCase();
+  if (reconstitutionsKikooz.has(cle)) return;
+  reconstitutionsKikooz.add(cle);
+  try {
+    const [achats, dons] = await Promise.all([
+      db.listShopPurchases({ username, limit: 200 }).catch(() => []),
+      db.listKikoozGifts({ recipient: username }, 200).catch(() => []),
+    ]);
+    const lignes = [];
+    for (const a of achats) {
+      lignes.push({ at: a.created_at, type: 'b', k: Number(a.price) || 0, label: String(a.pack_name || '') });
+    }
+    for (const d of dons) {
+      // L'enveloppe de l'équipe (/don) se lit « offerts par » ; l'argent
+      // personnel (/donne), « obtenus par ».
+      lignes.push({ at: d.created_at, type: d.source === 'enveloppe' ? 'a' : 'c',
+        k: Number(d.amount) || 0, label: getDisplayName(d.giver) });
+    }
+    if (!lignes.length) return;
+    lignes.sort((x, y) => new Date(y.at) - new Date(x.at));
+    lignes.length = Math.min(lignes.length, 200);
+    for (const l of lignes) await db.addKikoozLogEntry(user._dbId, l);
+    const refaites = kikoozLogDepuisBase(lignes.map((l) => ({
+      entry_type: l.type, amount: l.k, label: l.label, created_at: l.at,
+    })));
+    // Ce qui est arrivé PENDANT la reconstitution reste devant.
+    if (users[username] === user) {
+      user.kikoozLog = (Array.isArray(user.kikoozLog) ? user.kikoozLog : []).concat(refaites).slice(0, 200);
+    }
+    console.log(`[KIKOOZ] historique de ${username} reconstitué : ${refaites.length} ligne(s)`);
+  } catch (e) {
+    console.error('[KIKOOZ] reconstitution :', e.message);
+  } finally {
+    reconstitutionsKikooz.delete(cle);
+  }
 }
 
 // Débloque la récompense quand le filleul atteint le palier, sauf signal de
@@ -3709,9 +3802,7 @@ function awardDailyLoginKikooz(username) {
   // reboot) — sinon la série repartait de 1 après chaque redémarrage. Avec
   // RETRY : perdre cette écriture un jour J casserait la série (bonus 7 jours).
   dbUpdateUserCritical(username, { daily_kikooz_day: today, daily_streak: streak, kikooz: user.kikooz }, 'série de connexion');
-  if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
-  user.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: reward, c: 'connexion quotidienne' });
-  if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+  journalKikooz(user, { type: 'c', k: reward, c: 'connexion quotidienne' });
   notifyKikoozUpdate(username, user.kikooz);
   const serie = streak > 1 ? ` (série de ${streak} jours)` : '';
   addUserHistoryEntry(user, {
@@ -4214,13 +4305,14 @@ function awardMedalKikooz(username, reward, reason) {
   const user = users[username];
   if (user) {
     user.kikooz = (Number(user.kikooz) || 0) + reward;
-    if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
-    user.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: reward, c: reason });
-    if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+    journalKikooz(user, { type: 'c', k: reward, c: reason });
     if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser medal kikooz'));
     notifyKikoozUpdate(username, user.kikooz);
   } else if (process.env.DATABASE_URL) {
     db.incrementKikooz(username, reward).catch(dbErr('incrementKikooz medal'));
+    // Hors ligne, la ligne d'historique part directement en base : le joueur
+    // la lira à sa prochaine connexion, avec les autres.
+    db.addKikoozLogEntryByUsername(username, { type: 'c', k: reward, label: reason }).catch(dbErr('kikooz_log medal'));
   }
 }
 
@@ -4788,6 +4880,57 @@ function unreadInboxCount(user) {
   return user.mails.filter((m) => m.folder === 'inbox' && !m.read).length;
 }
 
+// ── LA LISTE NOIRE ───────────────────────────────────────────────────────────
+//
+// D'époque, elle ne vivait que dans le client. `openFunctions.as`
+// (chooseInviteBehavior) refusait, selon les préférences « Invitation chat
+// privé » et « Invitation salon », les discussions privées et les invitations
+// des frutiz de la liste noire — mode 1 par défaut, « accepter, refuser mes
+// indésirables » —, et leur courrier partait dans la Boîte noire. Le client
+// light n'a jamais eu cette logique : la liste se remplissait, et rien n'en
+// découlait — « la liste noire ne fonctionne pas ». Le serveur tient donc la
+// règle, pour tout le monde, SWF compris. Les modérateurs passent toujours :
+// ils doivent pouvoir écrire à n'importe qui.
+//
+// Les entrées sont des adresses « pseudo@frutiparc.com » (fileMng.make) : on
+// compare la partie locale, sans la casse, au pseudo comme au nom affiché.
+function estDansLaListe(liste, pseudo) {
+  if (!pseudo || !Array.isArray(liste) || !liste.length) return false;
+  const cibles = new Set([String(pseudo).toLowerCase()]);
+  const affiche = getDisplayName(pseudo);
+  if (affiche) cibles.add(String(affiche).toLowerCase());
+  return liste.some((a) => cibles.has(String(a || '').split('@')[0].trim().toLowerCase()));
+}
+function estEnListeNoire(user, pseudo) { return !!user && estDansLaListe(user.blacklist, pseudo); }
+function estContact(user, pseudo) { return !!user && estDansLaListe(user.contacts, pseudo); }
+
+// `_global.chooseInviteBehavior(pref, user)`, mot pour mot : A (accepter),
+// P (demander) ou R (refuser). Le serveur n'applique que les REFUS —
+// « demander » reste l'affaire du client (le SWF pose la question, le light
+// accepte).
+function comportementInvitation(user, prefName, demandeur) {
+  if (!user) return 'A';
+  const mode = prefEntier(user, prefName);
+  const noire = estEnListeNoire(user, demandeur);
+  const contact = estContact(user, demandeur);
+  switch (mode) {
+    case 0: return 'A';
+    case 1: return noire ? 'R' : 'A';
+    case 2: return noire ? 'P' : 'A';
+    case 3: return 'P';
+    case 4: return noire ? 'R' : 'P';
+    case 5: return contact ? 'A' : 'P';
+    case 6: return 'R';
+    case 7: return contact ? 'A' : 'R';
+    case 8: return contact ? 'P' : 'R';
+    default: return 'A';
+  }
+}
+function refuseInvitation(user, prefName, demandeur) {
+  if (!user || !demandeur || isModerator(demandeur)) return false;
+  return comportementInvitation(user, prefName, demandeur) === 'R';
+}
+
 // Deliver a mail to each known recipient: copies the mail (new uid) into the
 // recipient's inbox and notifies them via CBee if they are connected.
 // senderUsername is the human-readable username of the sender (for logging /
@@ -4810,10 +4953,13 @@ async function deliverMailToRecipients(mail, senderUsername) {
 
     ensureMails(recipientUser);
 
-    // Spam-folder routing if recipient blacklisted the sender.
+    // La Boîte noire : le courrier d'un expéditeur en liste noire y va tout
+    // droit — reconnu par son pseudo comme par son adresse (l'entrée est une
+    // adresse, et la casse du pseudo peut différer).
     const senderAddr = mail.fromAddr || (senderUsername + '@frutiparc.com');
-    const blacklisted = Array.isArray(recipientUser.blacklist)
-      && recipientUser.blacklist.some((a) => String(a).toLowerCase() === senderAddr.toLowerCase());
+    const blacklisted = estEnListeNoire(recipientUser, senderUsername)
+      || (Array.isArray(recipientUser.blacklist)
+        && recipientUser.blacklist.some((a) => String(a).toLowerCase() === senderAddr.toLowerCase()));
     const destFolder = blacklisted ? 'blackbox' : 'inbox';
 
     const delivered = {
@@ -4834,7 +4980,9 @@ async function deliverMailToRecipients(mail, senderUsername) {
         .catch((e) => console.error('[DB] mail deliver save error:', e.message));
     }
 
-    notifyNewMail(target, delivered);
+    // Un courrier rangé dans la Boîte noire ne sonne pas : prévenir le
+    // destinataire, c'est justement ce que la liste noire promettait d'éviter.
+    if (!blacklisted) notifyNewMail(target, delivered);
     console.log(`[Mail] Delivered ${mail.uid} → ${target}/${destFolder} (as ${delivered.uid})`);
   }
 }
@@ -5137,8 +5285,9 @@ const GAME_FEATURES = {
   // coup, sa nature et sa raison, dessinés par-dessus le plateau du mode
   // Challenge. PAS EN BOUTIQUE — pas de shopId, donc rien à acheter ni à
   // lister — : c'est l'admin qui l'accorde à la main, pour l'essayer
-  // (fiche joueur, « IA de Swapou »). Un joueur assisté joue au classement
-  // comme les autres : c'est voulu, le temps des essais.
+  // (fiche joueur, « IA de Swapou »). Les scores joués avec l'IA ne vont dans
+  // AUCUN classement : handleSaveScore les range dans swapou_ia_scores, que
+  // seule la fiche admin relit.
   swapouAnalyse: {
     name: 'IA de Swapou',
     label: 'analyse en partie de Swapou',
@@ -7501,6 +7650,22 @@ async function handleSaveScore(req, res) {
       return res.status(400).json({ ok: false, error: 'implausible_score', rankingId, raison: refus });
     }
   }
+  // ── L'IA DE SWAPOU NE SE CLASSE PAS ───────────────────────────────────────
+  // Le joueur à qui l'admin a accordé l'analyse en partie (`swapouAnalyse`)
+  // joue avec le meilleur coup dessiné sous ses yeux : son score n'a rien à
+  // faire au classement Challenge — ni ailleurs. Il se range dans une table à
+  // part, que seule la fiche admin relit ; rien n'est classé, donc aucun FD
+  // n'est consommé.
+  if (/^swapou2/.test(rankingId) && userOwnsGameFeature(users[username], 'swapouAnalyse')) {
+    if (process.env.DATABASE_URL) {
+      db.addSwapouIaScore(username, scoreVal, scoreData).catch(dbErr('swapou_ia_scores'));
+    }
+    console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} NON classé (IA de Swapou) → swapou_ia_scores`);
+    return res.json({
+      ok: true, updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0,
+      rankingId, fdBlocked: false, iaNonClasse: true,
+    });
+  }
   let extraResult = null;
   let extraRankingId = null;
   let routedInfo = null;
@@ -8470,7 +8635,10 @@ app.get('/api/admin/users/:username', adminAuth, async (req, res) => {
     if (!gameItems) {
       try { gameItems = await db.getUserGameItems(row.id) || []; } catch { gameItems = []; }
     }
-    res.json({ user: row, items, accessories: accs, scores, gameItems, ban: banInfoFromUntil(row.banned_until) });
+    // Les parties de Swapou jouées avec l'IA : classées nulle part, lisibles ici.
+    let iaScores = [];
+    try { iaScores = await db.listSwapouIaScores(row.username || u, 100); } catch { iaScores = []; }
+    res.json({ user: row, items, accessories: accs, scores, gameItems, iaScores, ban: banInfoFromUntil(row.banned_until) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -9377,6 +9545,8 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
     // them redo their bouille on next connect; /do/eb clears it on save.
     if (body.needs_bouille !== undefined) fields.needs_bouille = !!body.needs_bouille;
     if (body.xp !== undefined) fields.xp = Number(body.xp);
+    // Le solde AVANT, pour journaliser un crédit comme un don (voir plus bas).
+    const kikoozAvant = users[u] ? (Number(users[u].kikooz) || 0) : (Number(row.kikooz) || 0);
     if (body.kikooz !== undefined) fields.kikooz = Number(body.kikooz);
     if (body.password !== undefined) {
       fields.password = await hashPassword(String(body.password));
@@ -9453,6 +9623,14 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
     }
     if (Object.keys(fields).length > 0) {
       await db.updateUser(u, fields);
+      // Un crédit posé par l'admin est un DON comme un autre : il prend sa
+      // ligne dans l'Historique Kikooz du joueur — « offerts par l'équipe » —,
+      // qu'il soit en ligne ou non.
+      if (fields.kikooz !== undefined && Number.isFinite(fields.kikooz) && fields.kikooz > kikoozAvant) {
+        const don = { type: 'a', k: fields.kikooz - kikoozAvant, label: 'l\'équipe Frutiparc' };
+        if (users[u]) journalKikooz(users[u], { type: 'a', k: don.k, f: don.label });
+        else db.addKikoozLogEntry(row.id, don).catch(dbErr('kikooz_log admin'));
+      }
       if (users[u]) {
         Object.assign(users[u], fields);
         if (fields.is_moderator !== undefined) users[u].isModerator = fields.is_moderator;
@@ -11781,6 +11959,36 @@ app.delete('/api/admin/kiloute/questions/:id', adminScope('kiloute'), async (req
   }
   console.log(`[ADMIN] Kiloute question #${id} supprimée`);
   res.json({ ok: true });
+});
+
+// Import en masse de questions quotidiennes (« Question à 60 kikooz ») au
+// format JSON : une question, un tableau de questions, ou { "questions": [...] },
+// chacune au format des questions de quiz — { q, a, r, image }, avec
+// question/answers/reveal acceptés aussi. Même normalisation que l'import de
+// quizz (normalizeQuizQuestions) ; chaque question rejoint la file du backlog,
+// à la suite, et vaut 60 kikooz comme les autres.
+app.post('/api/admin/kiloute/questions/import', adminScope('kiloute'), async (req, res) => {
+  const b = req.body || {};
+  const list = Array.isArray(b) ? b
+    : Array.isArray(b.questions) ? b.questions
+    : (b && (b.q !== undefined || b.question !== undefined)) ? [b] : null;
+  if (!Array.isArray(list) || !list.length) {
+    return res.status(400).json({ error: 'JSON attendu : une question, un tableau de questions, ou { "questions": [...] }.' });
+  }
+  const created = [], errors = [];
+  for (let i = 0; i < list.length; i++) {
+    const [q] = normalizeQuizQuestions([list[i]]);
+    if (!q) { errors.push(`#${i + 1} : énoncé ou réponses manquants`); continue; }
+    let id = KILOUTE_QUESTIONS.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
+    if (process.env.DATABASE_URL) {
+      try { id = await db.insertKilouteQuestion(q.q, q.a, q.r, KILOUTE_QUESTIONS.length, q.image); }
+      catch (e) { console.error('[KILOUTE] import question:', e.message); errors.push(`#${i + 1} : erreur base de données`); continue; }
+    }
+    KILOUTE_QUESTIONS.push({ id, q: q.q, a: q.a, r: q.r, image: q.image });
+    created.push({ id, q: q.q });
+  }
+  console.log(`[ADMIN] Import de questions quotidiennes : ${created.length} ajoutée(s), ${errors.length} erreur(s)`);
+  res.json({ ok: true, count: created.length, created, errors });
 });
 
 // ── Images de quiz (upload + service same-origin pour les quizz "image") ──
@@ -16299,14 +16507,7 @@ app.all('/do/give', (req, res) => {
   const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
   // Log in recipient's kikooz history (type "c" = kcall / received kikooz)
-  if (!Array.isArray(target.kikoozLog)) target.kikoozLog = [];
-  target.kikoozLog.unshift({
-    type: 'c',
-    t: nowStr,
-    k: amount,
-    c: username,
-  });
-  if (target.kikoozLog.length > 200) target.kikoozLog.length = 200;
+  journalKikooz(target, { type: 'c', t: nowStr, k: amount, c: getDisplayName(username) });
 
   // Push the new balances live so both parties' boutique/kikooz counters
   // refresh without a manual reload (matches the original auto-update).
@@ -17304,9 +17505,7 @@ function purchaseShopPack(user, username, packIdRaw) {
   if (pack.fdPassGame) {
     const passes = fdGrantPass(username, user, pack.fdPassGame);
     const nowStrP = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
-    user.kikoozLog.unshift({ type: 'b', t: nowStrP, k: pack.price, n: pack.name });
-    if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+    journalKikooz(user, { type: 'b', t: nowStrP, k: pack.price, n: pack.name });
     notifyKikoozUpdate(username, user.kikooz);
     addAndNotifyUserLog(username, {
       type: USER_LOG_TYPE.CHAT,
@@ -17321,9 +17520,7 @@ function purchaseShopPack(user, username, packIdRaw) {
   if (pack.feutrePen) {
     grantFeutre(username, user, pack.feutrePen);
     const nowStrF = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
-    user.kikoozLog.unshift({ type: 'b', t: nowStrF, k: pack.price, n: pack.name });
-    if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+    journalKikooz(user, { type: 'b', t: nowStrF, k: pack.price, n: pack.name });
     notifyKikoozUpdate(username, user.kikooz);
     addAndNotifyUserLog(username, {
       type: USER_LOG_TYPE.CHAT,
@@ -17338,9 +17535,7 @@ function purchaseShopPack(user, username, packIdRaw) {
   if (pack.gameFeature) {
     grantGameFeature(username, user, pack.gameFeature);
     const nowStrG = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
-    user.kikoozLog.unshift({ type: 'b', t: nowStrG, k: pack.price, n: pack.name });
-    if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+    journalKikooz(user, { type: 'b', t: nowStrG, k: pack.price, n: pack.name });
     notifyKikoozUpdate(username, user.kikooz);
     const opt = GAME_FEATURES[pack.gameFeature];
     addAndNotifyUserLog(username, {
@@ -17369,9 +17564,7 @@ function purchaseShopPack(user, username, packIdRaw) {
   if (user._dbId) db.addAccessory(user._dbId, accEntry).catch(dbErr('addAccessory'));
 
   // Record a "buy" entry in the kikooz history (box.KikoozLog / /ft/log)
-  if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
-  user.kikoozLog.unshift({ type: 'b', t: nowStr, k: pack.price, n: pack.name });
-  if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+  journalKikooz(user, { type: 'b', t: nowStr, k: pack.price, n: pack.name });
 
   console.log(`[ft/buy] ${username} bought pack #${pack.id} (${pack.name}) — kikooz now ${user.kikooz}`);
   return { ok: true, kikooz: user.kikooz, bouille: bouilleStr, isWallpaper, pack, accEntry };
@@ -23474,9 +23667,8 @@ function kilouteAwardKikooz(username, amount, quizName) {
   if (!u) return;
   u.kikooz = (typeof u.kikooz === 'number' ? u.kikooz : 0) + amount;
   if (u._dbId) db.updateUser(username, { kikooz: u.kikooz }).catch((e) => console.error('[KILOUTE] kikooz save:', e.message));
-  if (!Array.isArray(u.kikoozLog)) u.kikoozLog = [];
-  u.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: amount, c: ANIM_NAME });
-  if (u.kikoozLog.length > 200) u.kikoozLog.length = 200;
+  // Le nœud <a> d'époque — « $k kikooz offerts par $f » — est celui de l'animation.
+  journalKikooz(u, { type: 'a', k: amount, f: ANIM_NAME });
   const name = (typeof quizName === 'string' && quizName.trim()) ? quizName.trim() : '';
   const content = name
     ? `Tu as gagné ${amount} kikooz au quiz « ${name} » de ${ANIM_NAME} !`
@@ -25364,6 +25556,17 @@ async function handleCBeeMessage(socket, rawXml) {
     break;
   }
 
+  // Sa liste noire (préférence « Invitation salon ») refuse : le demandeur
+  // lit ce que le client d'époque lui montrait — `chat.onrefuse` —, et rien
+  // ne part chez l'autre.
+  if (refuseInvitation(users[invTargetName], 'invite_channel_behavior', inviter)) {
+    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTargetName)}" r="${escapeXml(invReqId)}" />`);
+    const ta = buildChatTimeAttrs();
+    sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(invGroup)}" h="${ta.h}" d="${ta.d}"><![CDATA[<i>${escapeXml(getDisplayName(invTargetName))} a refusé l'invitation à rejoindre ce salon</i>]]></${CMD.send}>`);
+    console.log(`[CBee]  ${inviter} invite ${invTargetName} → refused (liste noire / préférence)`);
+    break;
+  }
+
   // Success: acknowledge to sender
   sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTargetName)}" r="${escapeXml(invReqId)}" />`);
 
@@ -26154,7 +26357,12 @@ case 'send': {
   const pen = (msg.attrs.p !== undefined) ? msg.attrs.p : '';
   const timeAttrs = buildChatTimeAttrs();
   const senderData = users[client.username] || {};
-  const mutedUntil = senderData.mutedUntil ? new Date(senderData.mutedUntil) : null;
+  // La date est stockée « AAAA-MM-JJ.HH:MM:SS » EN UTC : sans le marqueur,
+  // V8 la lisait en heure locale — le portillon de la parole ne s'ouvrait
+  // pas à la même seconde que la fin programmée (programmerFinDeTotoche) ni
+  // que le compte à rebours du client. Même lecture que partout ailleurs.
+  const mutedUntil = senderData.mutedUntil
+    ? new Date(String(senderData.mutedUntil).replace('.', 'T') + 'Z') : null;
   if (mutedUntil && !Number.isNaN(mutedUntil.getTime()) && mutedUntil.getTime() > Date.now()) {
     sendToClient(socket, `<${CMD.onmute} u="${escapeXml(getDisplayName(client.username))}" mt="${escapeXml(senderData.mutedUntil)}" mu="${escapeXml(senderData.mutedUntil)}" />`);
     break;
@@ -26248,6 +26456,17 @@ case 'send': {
     if (!channel || !client.channels.has(g) || !channel.users.has(client.username)) {
       sendToClient(socket, `<${CMD.error} k="220" />`);
       break;
+    }
+    // Une discussion privée reste fermée à qui est en liste noire : refuser
+    // l'ouverture ne vaudrait rien si une fenêtre déjà ouverte laissait passer.
+    // (La liste noire seule joue ici, pas la préférence : une conversation
+    // qu'on a soi-même ouverte se poursuit, comme d'époque.)
+    if (channel.private && isPrivateChannel(g) && !isModerator(client.username)) {
+      const ferme = [...channel.users].find((u) => u !== client.username && estEnListeNoire(users[u], client.username));
+      if (ferme) {
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(getDisplayName(ferme))} ne reçoit pas les messages privés pour le moment.</i>]]></${CMD.send}>`);
+        break;
+      }
     }
     const canModHere = isModerator(client.username) || (isAnimator(client.username) && g === ANIM_CHANNEL);
     // Animator-style commands (/blueon, /blueoff, quiz) are usable by both
@@ -26703,9 +26922,10 @@ case 'send': {
       }
       target.kikooz = (Number(target.kikooz) || 0) + amount;
       if (target._dbId) db.updateUser(targetName, { kikooz: target.kikooz }).catch(dbErr('updateUser kikooz don'));
-      if (!Array.isArray(target.kikoozLog)) target.kikoozLog = [];
-      target.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: amount, c: getDisplayName(client.username) });
-      if (target.kikoozLog.length > 200) target.kikoozLog.length = 200;
+      // Dans l'Historique Kikooz de la boutique, comme tout don — sous le nœud
+      // <a> de l'animation (« offerts par »), puisque c'est l'enveloppe de
+      // l'équipe qui paie, pas la poche du donateur. Persisté avec le reste.
+      journalKikooz(target, { type: 'a', k: amount, f: getDisplayName(client.username) });
       notifyKikoozUpdate(targetName, target.kikooz);
       addAndNotifyUserLog(targetName, { type: USER_LOG_TYPE.CHAT, content: `${getDisplayName(client.username)} t'a offert ${amount} kikooz !` });
       npcSay(client.username, g, `offre ${amount} kikooz à ${getDisplayName(targetName)} !`, 'c');
@@ -27289,6 +27509,16 @@ case 'createchannel': {
     break;
   }
 
+  // Sa liste noire — ou sa préférence « Invitation chat privé » — ferme la
+  // porte. Au SWF on répond « pas connecté » (201), le seul refus qu'il sache
+  // rendre ; le light a son propre mot (206) : discret, mais vrai.
+  if (refuseInvitation(users[otherUser], 'invite_chat_behavior', requester)) {
+    const k = client.estLight ? '206' : '201';
+    sendToClient(socket, `<${CMD.createchannel} k="${k}" u="${escapeXml(getDisplayName(otherUser))}" r="${escapeXml(reqId)}" />`);
+    console.log(`[CBee]  Private chat ${requester} → ${otherUser} refused (liste noire / préférence)`);
+    break;
+  }
+
   const sortedUsers = [requester.toLowerCase(), otherUser.toLowerCase()].sort();
   const privateGroup = buildPrivateGroupName(sortedUsers[0], sortedUsers[1]);
   const privatePass = `pw_${sortedUsers[0].slice(0, 4)}_${sortedUsers[1].slice(0, 4)}`;
@@ -27384,6 +27614,13 @@ case 'createchannel': {
         break;
       }
 
+      // Sa liste noire (préférence « Invitation chat privé ») ferme la porte :
+      // rien ne part, et il n'entre pas dans la discussion.
+      const cibleInvitee = resolveKnownUsername(normalizeUsername(targetUser)) || targetUser;
+      if (refuseInvitation(users[cibleInvitee], 'invite_chat_behavior', requester)) {
+        console.log(`[CBee]  invitechat ${requester} → ${targetUser} refused (liste noire / préférence)`);
+        break;
+      }
       const pass = msg.attrs.p || channel.pass || '';
       channel.users.add(requester);
       channel.users.add(targetUser);

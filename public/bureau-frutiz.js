@@ -2427,6 +2427,10 @@ window.BureauFrutiz = (function () {
     }
     prevenirGlisser(info.type, 'fin');
     if (!pris && glisseur.source) glisseur.source.style.visibility = '';
+    // Un disque REPRIS DU LECTEUR (`comeFromFrusion`) et lâché nulle part n'a
+    // plus d'icône source à faire réapparaître : il quittait l'écran jusqu'au
+    // F5 suivant. Il retourne dans le tiroir, d'où on l'a pris.
+    if (!pris && info.comeFromFrusion) frusion.reprendre(info);
     glisseur.source = null;
   }
 
@@ -2474,6 +2478,7 @@ window.BureauFrutiz = (function () {
 
   function jetonSid() { return (window.state && window.state.sid) || ''; }
 
+  var essaisBureau = 0;
   function chargerObjetsBureau() {
     var sid = jetonSid();
     if (!sid) return;
@@ -2485,7 +2490,14 @@ window.BureauFrutiz = (function () {
       .then(function (r) { return r.json(); })
       .catch(function () { return null; })   // hors ligne : rien à lire
       .then(function (d) {
-        if (!d || !d.ok) return;
+        // Une lecture RATÉE au démarrage (réseau, serveur qui redémarre)
+        // laissait le bureau sans mémoire pour toute la session : tout ce
+        // qu'on y reposait ensuite passait pour neuf, et le serveur — qui,
+        // lui, savait — répondait « déjà là ». On réessaie, trois fois.
+        if (!d || !d.ok) {
+          if (++essaisBureau < 4) setTimeout(chargerObjetsBureau, 2000 * essaisBureau);
+          return;
+        }
         objetsBureau = d.objets || [];
         tuilesPosees = d.tuiles || {};
         bureauCharge = true;
@@ -2625,10 +2637,17 @@ window.BureauFrutiz = (function () {
     var dedans = objetDeLIcone(info);
     if (dedans) {
       if (dedans.uid === uid) return false;         // un dossier dans lui-même
+      var avant = { parent: dedans.parent, pos: dedans.pos };
       dedans.parent = uid;
       dedans.pos = caseLibreBureau(uid);
       rafraichirBureau();
-      ecrireObjetBureau({ action: 'move', uid: dedans.uid, parent: uid, pos: dedans.pos });
+      ecrireObjetBureau({ action: 'move', uid: dedans.uid, parent: uid, pos: dedans.pos })
+        .then(function (d) {
+          // Le serveur ne connaît PAS cet objet (bureau et base désaccordés) :
+          // l'icône revient d'où elle vient, plutôt que d'afficher un
+          // rangement que le F5 suivant démentirait.
+          if (d && d.ok === false) { dedans.parent = avant.parent; dedans.pos = avant.pos; rafraichirBureau(); }
+        });
       return true;
     }
     return creerObjetBureau(info, uid, caseLibreBureau(uid));
@@ -2765,12 +2784,23 @@ window.BureauFrutiz = (function () {
       desc: provisoire.desc, name: provisoire.name, pos: provisoire.pos,
     }).then(function (d) {
       var i = objetsBureau.indexOf(provisoire);
-      if (!d || !d.ok) { if (i >= 0) objetsBureau.splice(i, 1); rafraichirBureau(); return; }
-      // Le serveur refuse le doublon d'un contact : l'icône revient à sa
-      // place, comme d'époque quand `fileMng` renvoie une erreur.
-      if (d.deja) { if (i >= 0) objetsBureau.splice(i, 1); rafraichirBureau(); return; }
+      if (!d || !d.ok || !d.objet) { if (i >= 0) objetsBureau.splice(i, 1); rafraichirBureau(); return; }
+      /*
+       * « DÉJÀ LÀ » N'EST PAS UN REFUS.
+       *
+       * Quand le serveur connaissait déjà l'objet, on retirait l'icône — comme
+       * si `fileMng` avait renvoyé une erreur. Or `desktopAdd` ne refuse rien :
+       * il REPLACE l'objet là où on vient de le lâcher, et le renvoie. Le cas
+       * se produit quand le bureau a perdu l'objet de vue (lecture ratée au
+       * démarrage, réponse avalée par le réseau) : le disque repris du lecteur
+       * et posé dans « Jeux » disparaissait alors de l'écran… pour réapparaître
+       * dans le dossier au F5 suivant, puisque la base, elle, avait tout noté.
+       * On prend donc la version du serveur, dans tous les cas.
+       */
       if (i >= 0) objetsBureau[i] = d.objet;
+      else if (!trouverObjet(d.objet.uid)) objetsBureau.push(d.objet);
       rafraichirBureau();
+      if (d.deja && d.objet.type === 'disc') relireExplorateurs();
     });
     return true;
   }
@@ -3520,6 +3550,22 @@ window.BureauFrutiz = (function () {
     rafraichirDisques();
   };
 
+  // Le disque revient dans le tiroir OUVERT, tel qu'il y était après
+  // l'éjection : rendu à ses dossiers, et attrapable à nouveau. C'est le
+  // geste manqué (`takeDisc` sans dépôt) qui l'y ramène.
+  frusion.reprendre = function (info) {
+    if (!info || info.type !== 'disc' || this.disque) return;
+    this.disque = info;
+    this.rendu = true;
+    this.disqueEl.textContent = '';
+    this.disqueEl.appendChild(dessinDisque(info.desc[0], info.desc[1]));
+    this.disqueEl.classList.add('plein', 'reprenable');
+    this.disqueEl.classList.remove('file');
+    this.file = false;
+    if (!this.ouvert) this.openSlot();
+    rafraichirDisques();
+  };
+
   // TOUS les écoutants de `fileMng` suivent l'état du lecteur : la fenêtre
   // « Mes disques », le bureau, et les dossiers ouverts. Le disque inséré les
   // quitte, le disque éjecté y rentre.
@@ -3600,6 +3646,22 @@ window.BureauFrutiz = (function () {
         var t = panneau.querySelector('#topbar');
         var ouvert = panneau.classList.toggle('bouilles-ouvertes');
         if (t) t.classList.toggle('en-rangee', ouvert);
+        /*
+         * OUVRIR LA COLONNE, C'EST VOULOIR LES BOUILLES.
+         *
+         * Le light a une préférence « masquer les bouilles » (l'icône du
+         * mobile, retenue dans localStorage). Sur le bureau, ce clic-ci
+         * l'intercepte AVANT le bouton : la préférence n'était plus jamais
+         * remise à « oui » — et un joueur qui l'avait coupée un jour sur son
+         * téléphone (même navigateur) gardait, sur le bureau, une icône
+         * blanchie, une colonne qui s'ouvrait… et des écrans où personne
+         * n'apparaissait, ni en parlant ni en émotant : `showBouilleOverlay`
+         * s'arrêtait à la porte. Ouvrir la colonne rallume donc les bouilles.
+         */
+        if (ouvert && window.SalonsBureau && SalonsBureau.activerBouilles
+            && SalonsBureau.bouillesActives && !SalonsBureau.bouillesActives()) {
+          SalonsBureau.activerBouilles(true);
+        }
         // La fenêtre grandit D'ABORD s'il le faut : c'est sa hauteur qui dit
         // combien d'écrans tiennent, donc lequel des deux visages la zone
         // prend.
@@ -5432,8 +5494,23 @@ window.BureauFrutiz = (function () {
   // copie le gabarit) mais sans leurs écouteurs — on les retrouve alors au
   // lieu de les rebâtir, et on ne recâble que ce qui manque.
   function completerIconesFiche(racine, rangee, pseudoDeLaFiche) {
+    /*
+     * UN SEUL ÉCOUTEUR PAR BOUTON, QUI LIT LE PSEUDO AU MOMENT DU CLIC.
+     *
+     * Le panneau d'origine (#fiche) sert tour à tour à tous les joueurs qu'on
+     * ouvre : on lui rebranchait un écouteur À CHAQUE ouverture, chacun tenant
+     * le pseudo de SA fiche dans sa fermeture. Après avoir regardé A, B puis
+     * C, un clic sur « Ajouter à mes contacts » envoyait TROIS demandes — A, B
+     * et C — et la liste noire faisait de même (trois confirmations, trois
+     * bannis). C'est le « ça ajoute parfois d'autres users » des joueurs.
+     *
+     * Le pseudo se pose donc SUR LE NŒUD, refait à chaque ouverture, et le
+     * bouton n'est câblé qu'une fois : il lit ce que la fiche montre à
+     * l'instant du clic.
+     */
+    racine._fichePseudo = pseudoDeLaFiche || '';
     var pseudo = function () {
-      if (pseudoDeLaFiche) return pseudoDeLaFiche;
+      if (racine._fichePseudo) return racine._fichePseudo;
       var e = racine.querySelector('.fiche-pseudo');
       return e ? e.textContent.trim() : '';
     };
@@ -5450,7 +5527,12 @@ window.BureauFrutiz = (function () {
         if (apres && apres.parentNode === rangee) rangee.insertBefore(b, apres.nextSibling);
         else rangee.appendChild(b);
       }
-      b.addEventListener('click', faire);
+      // (Une propriété, pas un `data-` : un clone recopie les attributs et se
+      // croirait câblé — cf. _ficheCablee.)
+      if (!b._ficheClic) {
+        b._ficheClic = true;
+        b.addEventListener('click', faire);
+      }
       return b;
     };
     // `getIconList` les veut dans l'ordre blog · carnet · liste noire. Chacun

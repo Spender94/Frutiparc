@@ -94,13 +94,57 @@ const SwapouUI = (function () {
      * quatre coins passés par la matrice courante — et l'on ne travaille que
      * là. Le calque est gardé d'un appel à l'autre et ne fait que grandir.
      */
+    /*
+     * LA SILHOUETTE COLORÉE, AJOUTÉE AU DESSIN.
+     *
+     * On ajoutait la couleur sur toute la boîte du calque (« lighter »), puis
+     * on redécoupait à la forme du dessin (« destination-in » en redessinant).
+     * Or cette découpe n'opère pas : Chrome ne tient pas compte du mode de
+     * composition quand l'image dessinée est un SVG. La boîte ENTIÈRE du
+     * bouton se peignait donc en doré opaque pendant les onze images de la
+     * pulsation, et redevenait normale deux images — c'est le clignotement
+     * que les joueurs voyaient sur les boutons du menu et les tuiles de
+     * personnages.
+     *
+     * On fait l'inverse, avec un seul remplissage : le dessin est peint une
+     * seconde fois sur un calque frère, réduit à sa forme par un remplissage
+     * « source-in » de la couleur (un rectangle, pas une image : ce mode-là
+     * est sûr), et cette silhouette s'AJOUTE au dessin (« lighter »). La
+     * couleur ne va que là où il y a du dessin, et sa transparence suit celle
+     * des bords.
+     */
     peindreSurCalque(ctx, x, y, w, h, dessiner, function (c, bx, by, bw, bh) {
+      const bis = calqueBis(c);
+      bis.setTransform(c.getTransform());
+      bis.globalCompositeOperation = 'source-over';
+      bis.globalAlpha = 1;
+      dessiner(bis);
+      bis.globalCompositeOperation = 'source-in';
+      bis.fillStyle = 'rgb(' + Math.round(r) + ',' + Math.round(v) + ',' + Math.round(b) + ')';
+      bis.fillRect(bx, by, bw, bh);
+      bis.globalCompositeOperation = 'source-over';
+      c.save();
+      c.setTransform(1, 0, 0, 1, 0, 0);
       c.globalCompositeOperation = 'lighter';
-      c.fillStyle = 'rgb(' + Math.round(r) + ',' + Math.round(v) + ',' + Math.round(b) + ')';
-      c.fillRect(bx, by, bw, bh);
-      c.globalCompositeOperation = 'destination-in';
-      dessiner(c);
+      c.drawImage(bis.canvas, 0, 0);
+      c.restore();
     });
+  }
+
+  // Le calque frère du calque de travail : même taille, vidé à chaque appel.
+  let calque2 = null, calque2Ctx = null;
+  function calqueBis(c) {
+    const l = c.canvas.width, h = c.canvas.height;
+    if (!calque2) { calque2 = document.createElement('canvas'); calque2Ctx = null; }
+    if (calque2.width !== l || calque2.height !== h) {
+      calque2.width = l;
+      calque2.height = h;
+      calque2Ctx = calque2.getContext('2d');
+    }
+    if (!calque2Ctx) calque2Ctx = calque2.getContext('2d');
+    calque2Ctx.setTransform(1, 0, 0, 1, 0, 0);
+    calque2Ctx.clearRect(0, 0, l, h);
+    return calque2Ctx;
   }
 
   /*

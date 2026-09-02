@@ -76,7 +76,7 @@
       <select id="type"></select>
       <div class="ligne">
         <div><label>Variante de départ</label><select id="variante"></select></div>
-        <div><label>Coiffure (aperçu)</label><input type="number" id="coif" min="0" value="8"></div>
+        <div><label>Coiffure (aperçu)</label><select id="coif"></select></div>
       </div>
       <label>Couleurs d'aperçu (niveaux 1 / 2 / 3)</label>
       <div id="cols"></div>
@@ -182,6 +182,21 @@
       var n = 0;
       for (var v = 0; v < r.variantes; v++) if (V.dessinee(defs, type, v, 8)) n++;
       return n;
+    }
+    // La coiffure d'aperçu se choisit comme l'accessoire et la variante : une
+    // liste, avec la même flèche — et non plus un champ numérique et ses deux
+    // flèches de navigateur, qui juraient à côté des deux autres sélecteurs.
+    // Les 67 coiffures de la famille classique, la huitième par défaut.
+    var NB_COIFFURES = 67;
+    function remplirCoiffures() {
+      var sel = $("#coif"), garde = sel.value || "8";
+      sel.innerHTML = "";
+      for (var i = 0; i < NB_COIFFURES; i++) {
+        var o = document.createElement("option");
+        o.value = i; o.textContent = "coiffure " + i;
+        sel.appendChild(o);
+      }
+      sel.value = garde;
     }
     function remplirTypes() {
       var sel = $("#type"); sel.innerHTML = "";
@@ -552,6 +567,7 @@
 
     Swf.charger("/fbouille/famille0.swf").then(function (d) {
       defs = d;
+      remplirCoiffures();
       remplirTypes();
       construireCouleurs();
       remplirVariantes();
