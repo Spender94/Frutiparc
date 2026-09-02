@@ -79,32 +79,93 @@ const SwapouUI = (function () {
     // Sans décalage — ou sans DOM pour tenir le calque — on peint tel quel.
     if ((r < 0.5 && v < 0.5 && b < 0.5) || typeof document === 'undefined'
       || !ctx.getTransform) { dessiner(ctx); return; }
+    /*
+     * LE CALQUE NE FAIT QUE LA TAILLE DU DESSIN.
+     *
+     * Il faisait celle du CANEVAS, et les trois opérations de composition
+     * (peindre, ajouter la couleur, découper) balayaient donc 700 × 480 fois
+     * la densité d'écran — plus d'un million de pixels, trois fois, pour un
+     * bouton de 161 × 35. Sur le menu, cela coûtait une image sur trois : la
+     * pulsation du survol avançait par à-coups et le bouton semblait
+     * CLIGNOTER, alors que le calcul, lui, était juste. (Mesuré : 28 images
+     * sur 85 au-delà de 25 ms sous la souris, zéro ailleurs.)
+     *
+     * On calcule donc la boîte du dessin dans le repère du canevas — les
+     * quatre coins passés par la matrice courante — et l'on ne travaille que
+     * là. Le calque est gardé d'un appel à l'autre et ne fait que grandir.
+     */
+    peindreSurCalque(ctx, x, y, w, h, dessiner, function (c, bx, by, bw, bh) {
+      c.globalCompositeOperation = 'lighter';
+      c.fillStyle = 'rgb(' + Math.round(r) + ',' + Math.round(v) + ',' + Math.round(b) + ')';
+      c.fillRect(bx, by, bw, bh);
+      c.globalCompositeOperation = 'destination-in';
+      dessiner(c);
+    });
+  }
+
+  /*
+   * L'ÉCLAT BLANC — la transformation de couleur des « flashs » du SWF.
+   *
+   * Flash l'écrit en multiplicateur + terme additif ; relevée sur la
+   * comboStar (sprite #81), la paire vaut toujours `m + a ≈ 256` — autrement
+   * dit une interpolation VERS LE BLANC, de rapport `1 − m/256`. On la refait
+   * telle quelle : le dessin, puis du blanc en `source-atop`, qui ne peint que
+   * là où il y a déjà quelque chose.
+   */
+  function avecEclat(ctx, t, x, y, w, h, dessiner) {
+    if (t <= 0.002 || typeof document === 'undefined' || !ctx.getTransform) {
+      dessiner(ctx); return;
+    }
+    peindreSurCalque(ctx, x, y, w, h, dessiner, function (c, bx, by, bw, bh) {
+      c.globalCompositeOperation = 'source-atop';
+      c.globalAlpha = Math.min(1, t);
+      c.fillStyle = '#ffffff';
+      c.fillRect(bx, by, bw, bh);
+      c.globalAlpha = 1;
+    });
+  }
+
+  // Le calque de travail, borné au dessin (cf. avecDecalage) : `dessiner` peint
+  // dedans, `finir` y applique l'effet, et le tout est recollé sur la scène.
+  function peindreSurCalque(ctx, x, y, w, h, dessiner, finir) {
     const cible = ctx.canvas;
-    if (!calque || calque.width !== cible.width || calque.height !== cible.height) {
-      calque = document.createElement('canvas');
-      calque.width = cible.width;
-      calque.height = cible.height;
+    const m = ctx.getTransform();
+    const marge = 8;
+    const bx = x - marge, by = y - marge, bw = w + marge * 2, bh = h + marge * 2;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [px, py] of [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]]) {
+      const dx = m.a * px + m.c * py + m.e;
+      const dy = m.b * px + m.d * py + m.f;
+      if (dx < x0) x0 = dx;
+      if (dy < y0) y0 = dy;
+      if (dx > x1) x1 = dx;
+      if (dy > y1) y1 = dy;
+    }
+    x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0));
+    x1 = Math.min(cible.width, Math.ceil(x1)); y1 = Math.min(cible.height, Math.ceil(y1));
+    const lw = x1 - x0, lh = y1 - y0;
+    if (lw <= 0 || lh <= 0) return;              // hors écran : rien à peindre
+    if (!calque) { calque = document.createElement('canvas'); calqueCtx = null; }
+    if (calque.width < lw || calque.height < lh) {
+      calque.width = Math.max(calque.width, lw);
+      calque.height = Math.max(calque.height, lh);
       calqueCtx = calque.getContext('2d');
     }
-    const m = ctx.getTransform();
+    if (!calqueCtx) calqueCtx = calque.getContext('2d');
     calqueCtx.setTransform(1, 0, 0, 1, 0, 0);
-    calqueCtx.clearRect(0, 0, calque.width, calque.height);
-    calqueCtx.setTransform(m);
+    calqueCtx.clearRect(0, 0, lw, lh);
+    // Le repère du dessin, décalé pour que la boîte tombe en (0,0) du calque.
+    calqueCtx.setTransform(m.a, m.b, m.c, m.d, m.e - x0, m.f - y0);
     calqueCtx.globalCompositeOperation = 'source-over';
     calqueCtx.globalAlpha = 1;
     dessiner(calqueCtx);
-    const marge = 8;
-    calqueCtx.globalCompositeOperation = 'lighter';
-    calqueCtx.fillStyle = 'rgb(' + Math.round(r) + ',' + Math.round(v) + ',' + Math.round(b) + ')';
-    calqueCtx.fillRect(x - marge, y - marge, w + marge * 2, h + marge * 2);
-    calqueCtx.globalCompositeOperation = 'destination-in';
-    dessiner(calqueCtx);
+    finir(calqueCtx, bx, by, bw, bh);
     calqueCtx.globalCompositeOperation = 'source-over';
     ctx.save();
     const a = ctx.globalAlpha;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = a;
-    ctx.drawImage(calque, 0, 0);
+    ctx.drawImage(calque, 0, 0, lw, lh, x0, y0, lw, lh);
     ctx.restore();
   }
 
@@ -907,7 +968,7 @@ const SwapouUI = (function () {
     getLod: function () { return lod; },
     setLod: function (v) { lod = v; },
     random: random, roundRect: roundRect, drawCentered: drawCentered,
-    text: text, wrapText: wrapText,
+    text: text, wrapText: wrapText, avecEclat: avecEclat,
     Particules: Particules, sinManager: sinManager,
     Face: Face, drawFaceMedallion: drawFaceMedallion,
     Rotator: Rotator, RotatorButton: RotatorButton, RotatorFace: RotatorFace,

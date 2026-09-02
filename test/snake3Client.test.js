@@ -45,19 +45,53 @@ test('le manifeste porte tous les clips que le client consomme', () => {
 });
 
 test('les clips de l\'ARÈNE sont préchargés (sinon le premier effet est perdu)', () => {
-  // Une image n'est chargée qu'au premier appel à rendreFichier, qui renvoie
-  // null en attendant : le tout premier effet d'un clip non préchargé ne se
-  // peint PAS. C'est ce qui rendait la première dynamite d'une partie
-  // invisible (les débris `qparticule` ne durent que dix images) — et « ça
-  // marchait ensuite », l'image étant alors en cache.
+  /*
+   * Une image n'est chargée qu'au premier appel à rendreFichier, qui renvoie
+   * null en attendant : le tout premier effet d'un clip non préchargé ne se
+   * peint PAS. C'est ce qui rendait la première dynamite d'une partie
+   * invisible (les débris `qparticule` ne durent que dix images) — et « ça
+   * marchait ensuite », l'image étant alors en cache.
+   *
+   * Ils ne sont plus attendus AVANT LE MENU, parce que les vingt-sept clips
+   * faisaient 821 fichiers et quatre secondes et demie d'écran vide. Ils sont
+   * attendus avant L'ARÈNE : chargés en fond dès l'ouverture du menu, et le
+   * rideau de transition tient tant qu'ils ne sont pas là. La garantie est la
+   * même, l'attente n'est plus au même endroit — c'est ce que ce test vérifie
+   * maintenant, des deux côtés.
+   */
   const src = fs.readFileSync(path.join(RACINE, 'public/snake3/game.js'), 'utf8');
-  const bloc = /D\.precharger\(\[([\s\S]*?)\]\)/.exec(src);
-  assert.ok(bloc, 'la liste de préchargement est là');
-  const preches = new Set((bloc[1].match(/'([^']+)'/g) || []).map((s) => s.slice(1, -1)));
+  const liste = (nom) => {
+    const b = new RegExp('const ' + nom + ' = \\[([\\s\\S]*?)\\];').exec(src);
+    assert.ok(b, 'la liste ' + nom + ' est là');
+    return new Set((b[1].match(/'([^']+)'/g) || []).map((s) => s.slice(1, -1)));
+  };
+  const menu = liste('DESSINS_MENU');
+  const jeu = liste('DESSINS_JEU');
+  // Chaque clip de l'arène est attendu quelque part — et aucun ne manque.
   for (const cle of ['qparticule', 'bombe', 'sonnette', 'langue', 'trou', 'beurk',
     'snakeMask', 'barSide', 'barMid', 'fbarre', 'tete', 'fruits', 'options', 'slot']) {
-    assert.ok(preches.has(cle), 'clip d\'arène non préchargé : ' + cle);
+    assert.ok(menu.has(cle) || jeu.has(cle), 'clip d\'arène non préchargé : ' + cle);
   }
+  // Les deux listes ne se recouvrent pas : un clip attendu deux fois serait un
+  // clip qu'on croit rapide et qui ne l'est pas.
+  for (const cle of jeu) assert.ok(!menu.has(cle), cle + ' est dans les deux listes');
+  // Ce que le MENU dessine doit être dans sa propre liste : lui, personne ne
+  // l'attend derrière un rideau.
+  const srcMenu = fs.readFileSync(path.join(RACINE, 'public/snake3/menu.js'), 'utf8');
+  for (const m of srcMenu.matchAll(/D\.(?:poser|poserAnim|rendre|cadre)\(\s*(?:ctx,\s*)?'([a-zA-Z]+)'/g))
+    assert.ok(menu.has(m[1]), 'le menu dessine ' + m[1] + ', qui n\'est pas dans DESSINS_MENU');
+  // Et la planche des fruits — 429 fichiers à elle seule, plus de la moitié du
+  // total — ne doit JAMAIS retourner dans le chemin bloquant.
+  assert.ok(!menu.has('fruits'), 'les fruits bloquent de nouveau l\'ouverture du menu');
+  assert.ok(jeu.has('fruits') && jeu.has('screens') && jeu.has('screensSans'),
+    'les trois planches lourdes sont bien dans la liste de fond');
+
+  // LE RIDEAU TIENT. Sans cette garde, le mode s'ouvrirait sur des dessins
+  // absents — le défaut qu'on voulait éviter, déplacé d'un cran.
+  assert.match(src, /if \(!this\.jeu\.pretPour\(this\.jeu\.next_mode\)\) \{ this\.taille = 0; return; \}/);
+  assert.match(src, /pretPour\(i\) \{\s*\n\s*return this\.dessinsJeuPrets === true \|\| MODES_MENU\.indexOf\(i\) >= 0;/);
+  assert.match(src, /const MODES_MENU = \[0, 3, 5\];/);
+  assert.match(src, /jeu\.pretJeu = D\.precharger\(DESSINS_JEU\)\.then/);
 });
 
 test('les mesures du moteur et des vues sont là', () => {

@@ -147,11 +147,25 @@
         if (!this.lock) this.onEnd();
         break;
     }
-    // `<= 0` et non `< 0` : à cadence nominale tmod vaut exactement 1, le
-    // compte à rebours tombait pile sur zéro sans jamais passer en dessous —
-    // et le logo restait alors affiché par-dessus tout le menu.
-    if (this.logoHide > 0) this.logoHide -= tmod;
-    if (this.logoHide <= 0) { this.logoHide = 0; this.logoVisible = false; }
+    /*
+     * LE LOGO S'ÉTEINT QUAND ON L'ÉTEINT, PAS AVANT.
+     *
+     * Le compte à rebours et l'extinction étaient DEUX tests séparés, et le
+     * second ne demandait pas si une extinction était seulement en cours :
+     * `logoHide` valant zéro tant qu'on n'a pas cliqué, il éteignait le logo
+     * à l'image SUIVANT celle qui venait de l'allumer (phase 0). Le logo
+     * n'était donc jamais visible une seule image : l'écran d'accueil montrait
+     * les deux personnages et rien d'autre, sans le moindre signe qu'il fallait
+     * cliquer pour entrer — c'est le clic que `Menu.as` attend (`waitClick()`
+     * en phase 0), et le logo est ce qui le dit.
+     *
+     * Le `<= 0` et non `< 0` reste : à cadence nominale tmod vaut exactement 1
+     * et le compte à rebours tombe pile sur zéro sans jamais passer dessous.
+     */
+    if (this.logoHide > 0) {
+      this.logoHide -= tmod;
+      if (this.logoHide <= 0) { this.logoHide = 0; this.logoVisible = false; }
+    }
 
     for (let i = 0; i < this.titles.length; i++) {
       const t = this.titles[i];

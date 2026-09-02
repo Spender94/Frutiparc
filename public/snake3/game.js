@@ -126,6 +126,12 @@ class Transition {
     this.taille -= tmod * 15;
     if (this.mode && this.mode.main) this.mode.main(tmod, deltaT);
     if (!this.reversed && this.taille < 0) {
+      // LE RIDEAU ATTEND SES DESSINS. À `taille` nul le rideau couvre tout
+      // l'écran : c'est le seul instant où l'on peut retenir la bascule sans
+      // rien montrer d'incomplet. L'arène se charge en fond depuis
+      // l'ouverture du menu (cf. DESSINS_JEU) ; on ne tient ici que le joueur
+      // qui se rue sur « jouer » avant qu'elle n'arrive.
+      if (!this.jeu.pretPour(this.jeu.next_mode)) { this.taille = 0; return; }
       this.reversed = true;
       if (this.mode && this.mode.close) this.mode.close();
       this.mode = this.jeu.modeSuivant();
@@ -828,6 +834,12 @@ class Jeu {
     }
   }
 
+  // Les dessins du mode visé sont-ils là ? Les menus n'attendent rien ;
+  // l'arène, la bataille et l'encyclopédie attendent DESSINS_JEU.
+  pretPour(i) {
+    return this.dessinsJeuPrets === true || MODES_MENU.indexOf(i) >= 0;
+  }
+
   poserModeSuivant(i) {
     if (this.next_mode === -1) {
       this.mode = new Transition(this, this.mode);
@@ -1097,6 +1109,37 @@ class Jeu {
   }
 }
 
+/* ── LE DÉMARRAGE, EN DEUX TEMPS ───────────────────────────────────────────
+ *
+ * Le jeu attendait TOUT avant d'ouvrir son menu : les vingt-sept clips
+ * préchargés font 821 fichiers SVG et 4,4 Mo, et le navigateur ne tire que
+ * six requêtes à la fois — mesuré, quatre secondes et demie sur la machine
+ * même, avant que le titre n'apparaisse. Or le menu n'en dessine que cinq
+ * (`menu`, `title`, `menuBackground`, `fleche`, `optionPanel`) ; le reste est
+ * l'ARÈNE et l'ENCYCLOPÉFRUIT — et à elle seule, la planche des fruits pèse
+ * 429 fichiers, plus de la moitié du total.
+ *
+ * On sépare donc les deux. Le menu attend ce qu'il montre, l'arène charge
+ * derrière, et le rideau de transition (`Transition.main`) tient jusqu'à ce
+ * qu'elle soit prête — c'est le seul moment où l'attente pourrait se voir, et
+ * elle s'y voit comme un rideau, pas comme un dessin manquant.
+ *
+ * (Le décodage paresseux ne suffirait pas : `rendreFichier` rend null tant
+ * qu'une image n'est pas là, et le premier effet d'un clip non chargé ne se
+ * peint donc PAS — la première dynamite d'une partie n'aurait pas de débris,
+ * la première bombe pas de souffle. C'est pour cela que ces clips étaient
+ * attendus, et c'est pour cela qu'on les attend encore : plus tard.)
+ */
+const DESSINS_MENU = ['menu', 'title', 'menuBackground', 'fleche', 'optionPanel',
+  'pan', 'background', 'snakeMask', 'barSide', 'barMid', 'fbarre', 'barreScore',
+  'slot'];
+const DESSINS_JEU = ['screens', 'screensSans', 'fruits', 'options', 'tete',
+  'chiffresVert', 'chiffresRouge', 'chiffresJaune', 'qparticule', 'bombe',
+  'sonnette', 'langue', 'trou', 'beurk'];
+// Les modes qui n'ont besoin QUE du menu : l'accueil, les options, le sous-menu
+// Battle. Tous les autres — l'arène, la bataille, l'encyclopédie — attendent.
+const MODES_MENU = [0, 3, 5];
+
 // ── Le démarrage ──────────────────────────────────────────────────────────
 window.SnakeJeu = { Jeu, Ecran, VuePartie, VueBataille };
 
@@ -1111,23 +1154,23 @@ window.demarrerFrutisnake = function (options) {
     const jeu = new Jeu(canvas, plateforme, sons);
     jeu.appliquerPrefs();
     if (opts.pad) jeu.pad = opts.pad;
-    // Tout ce que l'ARÈNE dessine passe ici. Une image n'est chargée qu'au
-    // premier appel à rendreFichier, qui renvoie null en attendant : le tout
-    // premier effet d'un clip non préchargé ne se peint donc PAS. Les débris
-    // d'explosion (`qparticule`) durent dix images — la première dynamite de
-    // la partie n'avait aucun effet visuel, et « ça marchait ensuite » parce
-    // que l'image était alors en cache. Même histoire pour le souffle de la
-    // première bombe, la cloche de la sonnette, le terrier du départ et le
-    // rideau de la première transition. Ces clips-là pèsent 90 ko en tout :
-    // on les attend avec le reste plutôt que de sacrifier un effet par partie.
-    return D.precharger(['menu', 'title', 'menuBackground', 'fleche', 'screens',
-      'screensSans', 'pan', 'background', 'tete', 'fruits', 'options', 'slot',
-      'barreScore', 'chiffresVert', 'chiffresRouge', 'chiffresJaune',
-      'qparticule', 'bombe', 'sonnette', 'langue', 'trou', 'beurk',
-      'snakeMask', 'barSide', 'barMid', 'fbarre', 'optionPanel']).then(() => {
-      // Les suites d'animation (fioles, ciseaux) partent en fond : le menu
-      // n'a pas à les attendre, elles seront prêtes à la première partie.
-      D.amorcerAnimations(['options', 'slot']);
+    // On n'attend QUE le menu (75 fichiers) ; l'arène part en fond.
+    return D.precharger(DESSINS_MENU).then(() => {
+      /*
+       * L'ARÈNE ET L'ENCYCLOPÉFRUIT ARRIVENT DERRIÈRE.
+       *
+       * `pretJeu` est tenue par le rideau de transition : `Transition.main`
+       * garde le rideau FERMÉ tant que les dessins du mode visé ne sont pas
+       * là (cf. `Jeu.pretPour`). Le joueur ne voit donc jamais une arène
+       * amputée — au pire un rideau qui s'attarde une fraction de seconde,
+       * et seulement s'il se rue sur « jouer ».
+       */
+      jeu.pretJeu = D.precharger(DESSINS_JEU).then(() => {
+        jeu.dessinsJeuPrets = true;
+        // Les suites d'animation (fioles, ciseaux) : elles ne servent qu'aux
+        // objets réellement posés et se décodent d'elles-mêmes au besoin.
+        D.amorcerAnimations(['options', 'slot']);
+      });
       jeu.demarrer();
       window.__frutisnake = jeu;      // la poignée des tests de bout en bout
       return jeu;
