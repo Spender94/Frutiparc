@@ -1093,6 +1093,12 @@
   .fiche-nom-ligne .statut {
     width: 18px; height: 18px; box-sizing: border-box; padding: 5px;
     object-fit: contain; flex: 0 0 auto;
+    /* LE CADRE derrière le voyant : le fond de l'icône d'époque (forme #216,
+       `iconBackgroundId = 2`) — un carré arrondi de dix-sept, vide, au
+       liseré `#CCCCCC`. C'est lui que la fiche Flash montre derrière la
+       pastille, et que le carnet latéral pose déjà ; la fiche light l'avait
+       perdu en passant de la planche PNG au SVG de la seule pastille. */
+    background: url('/frutiz/sprites/sl-icone-fond.svg') center center / 17px 17px no-repeat;
   }
   /* Le voyant de jeu prend LA PLACE du point quand le frutiz est en partie —
      et donc sa taille. `UserSlot.onStatusObj` fait `icon.gotoAndStop(jeu)` :
@@ -1100,7 +1106,9 @@
      Le portage lui donnait 22 pour « lui rendre ses proportions » : il
      ressortait d'un cinquième au-dessus de la pastille qu'il remplace, et
      débordait de la ligne du pseudo. Lui remplit le cadre : pas de marge. */
-  .fiche-nom-ligne .statut.en-partie { width: 18px; height: 18px; padding: 0; }
+  /* …et le voyant de jeu ou d'absence remplit ce cadre, moins son liseré :
+     quinze dans dix-sept, comme au carnet (`.voyant.jeu`). */
+  .fiche-nom-ligne .statut.en-partie { width: 18px; height: 18px; padding: 1.5px; }
   .fiche-nom-ligne b {
     font-family: Verdana, Arial, sans-serif; font-size: 12.5px; color: #290D64;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto;

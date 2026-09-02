@@ -266,7 +266,7 @@ test('le voyant remplace le point de présence, sans l\'écraser', () => {
   assert.match(light, /st\.title = \(d && d\.enLigne\) \? "En ligne" : "Hors ligne";/);
   // Le voyant de JEU remplit le cadre — c'est lui, l'icône ; la pastille, elle,
   // n'en occupe que le centre (cf. le test de la taille, plus bas).
-  assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 18px; height: 18px; padding: 0; \}/);
+  assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 18px; height: 18px; padding: 1\.5px; \}/);
 });
 
 test('Swapou retrouve son voyant : swapou2 côté SWF, swapou côté assets', () => {
@@ -329,10 +329,14 @@ test('Swapou retrouve son voyant : swapou2 côté SWF, swapou côté assets', ()
 
 test('le voyant fait la taille du point qu’il remplace, et le point éteint est rouge', () => {
   // La CASE ne bouge pas — dix-sept d'époque, dix-huit dans la ligne du pseudo.
-  assert.match(light, /\.fiche-nom-ligne \.statut \{\s*\n\s*width: 18px; height: 18px; box-sizing: border-box; padding: 5px;\s*\n\s*object-fit: contain; flex: 0 0 auto;\s*\n\s*\}/);
+  assert.match(light, /\.fiche-nom-ligne \.statut \{\s*\n\s*width: 18px; height: 18px; box-sizing: border-box; padding: 5px;\s*\n\s*object-fit: contain; flex: 0 0 auto;/);
+  // Et derrière la pastille, LE CADRE d'époque (forme #216, dix-sept, liseré
+  // gris) — celui que la fiche Flash montre et que le carnet pose déjà.
+  assert.match(light, /\.fiche-nom-ligne \.statut \{[^}]*background: url\('\/frutiz\/sprites\/sl-icone-fond\.svg'\) center center \/ 17px 17px no-repeat;/);
   // Le DESSIN de la pastille, lui, retombe à huit : 18 − 2 × 5. (Mesuré au
   // navigateur : case 18 × 18, dessin 8 × 8, ligne du pseudo intacte.)
-  assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 18px; height: 18px; padding: 0; \}/);
+  // Le voyant de jeu remplit le cadre moins son liseré : quinze dans dix-sept.
+  assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 18px; height: 18px; padding: 1\.5px; \}/);
   // Et c'est la taille que la bande des contacts pose, elle, sans détour.
   const cbureau = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
   assert.match(cbureau, /sl-presence-0\.svg'\) center center \/ 8px 8px no-repeat/);
@@ -348,6 +352,13 @@ test('le voyant fait la taille du point qu’il remplace, et le point éteint es
   assert.match(saumon, /#E3756A/i, 'la pastille éteinte est saumon, pas un cadre gris');
   const vert = fs.readFileSync(path.join(ROOT, 'public/frutiz/sprites/sl-presence-1.svg'), 'utf8');
   assert.match(vert, /#ADE76B/i, 'et la pastille allumée est verte');
+  // Chaque image de la bande #222 porte le REFLET blanc (#219) par-dessus la
+  // pastille : la verte et la grise sortaient sans lui — plates, ce n'était
+  // pas la pastille du bureau Flash.
+  const reflet = /fill="#ffffff"/;
+  assert.match(saumon, reflet, 'la saumon a son reflet');
+  assert.match(vert, reflet, 'la verte aussi');
+  assert.match(fs.readFileSync(path.join(ROOT, 'public/frutiz/sprites/sl-presence-2.svg'), 'utf8'), reflet, 'et la grise');
   // Le carnet latéral les pose déjà : une seule source pour les deux endroits.
   const bureau = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
   assert.match(bureau, /sl-presence-0\.svg/);

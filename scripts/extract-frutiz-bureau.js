@@ -921,19 +921,26 @@ function principal() {
     }
   }
 
-  // La présence PAR DÉFAUT réunit deux formes sur la même image : on les
-  // compose sur leur cadre commun, comme le fait le lecteur.
+  // CHAQUE image de la bande de présence réunit DEUX formes : la pastille
+  // (#218 saumon, #220 verte, #221 grise) et, par-dessus, le REFLET blanc
+  // (#219, 2,3 × 1,95, posé en haut à droite). On ne composait que l'image 1 ;
+  // la verte et la grise sortaient sans leur reflet — d'où une pastille « en
+  // ligne » plate, qui n'était pas celle du bureau Flash. On compose les
+  // trois sur leur cadre commun, comme le fait le lecteur.
   {
-    const morceaux = [];
-    for (const pose of placementsFrame1(222)) {
-      if (!corpsFormes.has(pose.ch)) continue;
-      morceaux.push({ shape: pose.ch, M: pose.M, cx: pose.cx });
-    }
-    if (morceaux.length) {
+    const images = swf.parSprite.get(222) || new Map();
+    for (let img = 1; img <= 3; img++) {
+      const morceaux = [];
+      for (const pose of (images.get(img) || []).slice().sort((a, bb) => a.prof - bb.prof)) {
+        if (!corpsFormes.has(pose.ch)) continue;
+        morceaux.push({ shape: pose.ch, M: pose.M, cx: pose.cx });
+      }
+      if (!morceaux.length) continue;
+      const cle = 'sl-presence-' + (img - 1);
       const svg = svgCompose(morceaux);
-      fs.writeFileSync(path.join(SORTIE, 'sl-presence-0.svg'), svg.svg, 'utf8');
-      manifeste.contacts["sl-presence-0"] = { fichier: "sl-presence-0.svg", ids: morceaux.map((m) => m.shape), cadre: svg.cadre };
-      console.log('sl-presence-0.svg', JSON.stringify(svg.cadre));
+      fs.writeFileSync(path.join(SORTIE, cle + '.svg'), svg.svg, 'utf8');
+      manifeste.contacts[cle] = { fichier: cle + '.svg', ids: morceaux.map((m) => m.shape), cadre: svg.cadre };
+      console.log(cle + '.svg', JSON.stringify(svg.cadre), 'formes', morceaux.map((m) => '#' + m.shape).join('+'));
     }
   }
 
