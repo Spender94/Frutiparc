@@ -2399,11 +2399,13 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     if (l2) U.text(ctx, l2, tx, P.y + 64, { size: 8, color: '#d8ccb0', bold: false });
     // Pourquoi MAINTENANT : une défense à plateau bas surprend, sauf si la
     // banque est pleine — la prochaine étoile serait perdue.
-    if (m.nature === 'defense' && (m.pleine || m.crise))
+    const indice = m.nature === 'defense' && (m.pleine || m.crise);
+    if (indice)
       U.text(ctx, m.pleine ? 'banque pleine : à dépenser' : 'plateau au plafond', tx, P.y + 74,
         { size: 7, color: '#ffd23f', bold: false });
-    // les deux suivants, en petit : de quoi comparer
-    let y = P.y + 82;
+    // les deux suivants, en petit : de quoi comparer (un peu plus bas quand
+    // l'indice occupe la ligne au-dessus)
+    let y = P.y + (indice ? 87 : 82);
     for (let i = 1; i < Math.min(3, c.coups.length); i++) {
       const a = c.coups[i];
       const s = (i + 1) + '. ' + (a.nature === 'combo' ? '+' + a.gain.score
