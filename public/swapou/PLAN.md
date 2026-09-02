@@ -151,6 +151,68 @@ Repères donnés par le propriétaire : un bon score en Challenge c'est 35 000 ;
 le record absolu, 52 400. Les quatre parties de validation : 50 960, 42 565,
 44 275, 41 355.
 
+### Les étoiles, et les sept pouvoirs (septembre 2026)
+
+« L'IA est très forte pour maximiser les combos mais moins forte pour
+utiliser les étoiles, qu'elle a tendance à dilapider dans des situations non
+critiques. » Trois causes, dont une invisible :
+
+1. **Le prix d'une étoile était fixe** (`defendBase × coût`), quelle que soit
+   la hauteur du plateau. Il suit maintenant le moment (`bot.js`,
+   `prixDefense`) : nul au plafond des six étoiles (la suivante serait perdue)
+   et en crise (hauteur ≥ 12), triple sous la hauteur 9, et une **réserve**
+   hors crise — on ne lâche pas sa dernière défense.
+2. **Une étoile récoltée au plafond est perdue** (`Player.as` plafonne à six),
+   mais l'analyseur la valorisait 500 quand même. On ne compte que celles qui
+   ont une place.
+3. **Trois pouvoirs n'étaient pas simulés** — Moïse (Sel), Glissement
+   (Wasabi), Colorant E21 (Moutarde) : `simulateDefense` rendait null et l'IA
+   ne les proposait jamais. Ces persos mouraient à 6★ sans avoir défendu une
+   seule fois. Simulés depuis en équivalence exacte avec le moteur
+   (`bot.test.js`, 120 grilles ; le Colorant sur l'espérance de ses six tirages).
+
+**Mesure** (harnais `bot.run.js --analyse`, mêmes graines avant/après, budget
+non contraignant) :
+
+| perso | pouvoir | ancienne IA | nouvelle IA (12 parties) | appariées |
+|---|---|---|---|---|
+| Sel | Moïse 2★ | 38 663 (4) | **51 284** — médiane 52 k, meilleure 63 010 | +13 053 (4) |
+| Wasabi | Glissement 2★ | 38 320 (12) | **46 597** — meilleure 62 055 | +12 663 (8) |
+| TomTom | Ramollissement 5★ | 32 819 (4) | 45 001 | +7 398 (4) |
+| Poivre | Combos 2★ | 37 218 (4) | 44 434 | +8 918 (4) |
+| Dimitri | Effondrement 1★ | 42 426 (12) | 44 338 — 212 tours | +4 466 (8) |
+| Moutarde | Colorant 4★ | 44 375 (4) | 43 208 — meilleure 64 180 | −1 674 (4) |
+| Natacha | Coupure 2★ | 44 628 (12) | 42 982 | −1 719 (8) |
+
+(Moyennes ; entre parenthèses, le nombre de parties. Écart-type ≈ 7 500 par
+partie, donc ± 2 200 sur une moyenne de douze : l'avance de Sel est nette,
+Wasabi/TomTom/Dimitri/Poivre ne se séparent pas, Natacha et Moutarde sont
+dans le bruit.) Toutes IA confondues : ≈ 40 700 → ≈ 45 400.
+
+**Ce que les fins de partie disent** : plus personne ne meurt avec une défense
+en banque (0 ou 1★ partout, sauf les pouvoirs à 4 et 5★) ; et toutes les
+parties passent 50 à 120 tours à hauteur ≥ 12 — la « crise » est l'état
+normal de la seconde moitié, et y tirer ses étoiles n'est pas les dilapider,
+c'est respirer. Le vrai dilapidage était ailleurs : le tour 80 de la partie de
+référence (hauteur 8, cinq étoiles), et la course aux étoiles à banque pleine.
+
+**Lecture des pouvoirs** :
+- *Moïse* (Sel) : le seul qui RETAILLE le plateau — les deux colonnes du bord
+  tombent (jusqu'à 28 fruits pour 2★) et le milieu se creuse de deux colonnes
+  que les lignes suivantes remplissent par le bas. Parties les plus longues
+  (220 tours). Tire surtout à banque pleine, et c'est juste.
+- *Glissement* (Wasabi) : rien n'est détruit, mais un plateau nivelé ne meurt
+  pas d'une colonne isolée et garde sa mobilité. Utilisé à 10-11 en prévention,
+  puis en crise. Inutilisé avant : 38 k ; utilisé : 49 k.
+- *Effondrement* (Dimitri) : une ligne par étoile, onze fois par partie,
+  presque toujours au plafond — l'oxygène. Sûr, jamais structurel.
+- *Coupure* (Natacha) : deux rangées pleines sur un plateau plat, presque rien
+  sur un plateau bosselé — c'est un pouvoir de plateau plat au plafond.
+- *Colorant* (Moutarde) : un pari — geler un tiers du plateau sous une autre
+  couleur, pour la cascade quand tout se fend. Plus gros score isolé, plus
+  grand écart.
+
+
 ## Correspondances sons (SWF id → linkage)
 
 | id | nom | id | nom |
