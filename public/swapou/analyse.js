@@ -119,14 +119,23 @@
     if (etat.canDefend) {
       const sim = B.simulateDefense(g0, E.DEFENSE_PLAYERS[etat.charId]);
       if (sim != null) {
-        const rises = B.noMoreLine(sim.grid) ? 1 : 0;
-        let v = B.evaluate(sim.grid, rises, sim);
-        if (etat.stars < E.MAX_POWER)
-          v -= B.WEIGHTS.defendBase * E.DEFENSE_STARS[etat.charId];
+        // Le prix de l'étoile suit le moment (bot.js, prixDefense) : rien au
+        // plafond ni en crise, cher quand le plateau est bas.
+        const prix = B.prixDefense(etat, etat.hMax);
+        // Le Colorant tire ses couleurs au sort : la valeur est l'ESPÉRANCE
+        // sur les six tirages, et la grille montrée celle du tirage médian.
+        const variantes = sim.variantes || [sim];
+        const notees = variantes.map(function (s) {
+          const rises = B.noMoreLine(s.grid) ? 1 : 0;
+          return { sim: s, rises: rises, v: B.evaluate(s.grid, rises, s) };
+        }).sort(function (a, b) { return a.v - b.v; });
+        const moy = notees.reduce(function (t, n) { return t + n.v; }, 0) / notees.length;
+        const rep = notees[Math.floor(notees.length / 2)];
         candidats.push({
-          type: 'defend', pair: null, grid: sim.grid,
-          gained: { score: sim.score, stars: sim.stars, cracked: sim.cracked, pieces: 0, phases: 0 },
-          v: v, rises: rises,
+          type: 'defend', pair: null, grid: rep.sim.grid,
+          gained: { score: rep.sim.score, stars: rep.sim.stars, cracked: rep.sim.cracked, pieces: 0, phases: 0 },
+          v: moy - prix, rises: rep.rises, prix: prix,
+          variantes: variantes.length > 1 ? notees.map(function (n) { return n.sim; }) : null,
         });
       }
     }
@@ -158,13 +167,25 @@
   // Le gain immédiat d'un coup, dans l'unité de l'évaluation.
   function gainImmediat(c, etat) {
     const Wt = B.WEIGHTS;
-    let g = Wt.score * c.gained.score + Wt.starGain * c.gained.stars +
+    // Une étoile récoltée au plafond est PERDUE (Player.as plafonne le
+    // compteur à MAX_POWER) : on ne compte que celles qui ont encore une
+    // place. Sinon l'IA courait après des étoiles qui ne valent rien.
+    const place = Math.max(0, E.MAX_POWER - (etat.stars || 0));
+    let g = Wt.score * c.gained.score + Wt.starGain * Math.min(c.gained.stars, place) +
       Wt.crack * c.gained.cracked + Wt.pieces * (c.gained.pieces || 0);
-    if (c.type === 'defend' && etat.stars < E.MAX_POWER)
-      g -= Wt.defendBase * E.DEFENSE_STARS[etat.charId];
+    if (c.type === 'defend') g -= c.prix || 0;
     return g;
   }
   function monte(c) { return c.type === 'defend' ? c.rises : 1; }
+  // La valeur à deux coups d'un candidat : pour le Colorant, l'espérance sur
+  // ses tirages ; pour les autres, la grille unique.
+  function valeur2(c, ncoups, S) {
+    if (!c.variantes) return B.depth2Value(c.grid, monte(c), ncoups, S);
+    let total = 0;
+    for (const s of c.variantes)
+      total += B.depth2Value(s.grid, B.noMoreLine(s.grid) ? 1 : 0, ncoups, S);
+    return total / c.variantes.length;
+  }
 
   // ── Profondeur 3 ─────────────────────────────────────────────────────────
   // La meilleure riposte sur une grille (après la montée), jugée elle-même à
@@ -311,6 +332,12 @@
     etat = Object.assign({ charId: 0, canDefend: false, stars: 0, ncoups: 50 }, etat || {});
 
     const g0 = B.cloneGrid(grille);
+    // La hauteur du plateau sert deux fois : à la panique, et au prix de
+    // l'étoile (prixDefense) — on la mesure avant d'énumérer.
+    const hs = B.heights(g0);
+    let hMax = 0;
+    for (let x = 0; x < W; x++) if (hs[x] > hMax) hMax = hs[x];
+    etat.hMax = hMax;
     const candidats = enumerer(g0, etat);
     if (candidats.length === 0) {
       return { coups: [], meilleur: null, profondeur: 0, tempsMs: maintenant() - t0, nb: 0 };
@@ -319,9 +346,6 @@
     let profondeur = 1;
 
     // panique : le plateau touche presque le plafond
-    const hs = B.heights(g0);
-    let hMax = 0;
-    for (let x = 0; x < W; x++) if (hs[x] > hMax) hMax = hs[x];
     const panique = hMax >= 11;
     const K1 = Math.min(panique ? o.paniqueK1 : o.K1, candidats.length);
     const K2 = Math.min(panique ? o.paniqueK2 : o.K2, K1);
@@ -352,7 +376,7 @@
       let juges = 0;
       for (const c of ordre) {
         if (juges >= 8 && maintenant() >= fin) break;   // au moins huit, budget ou pas
-        c.v2 = gainImmediat(c, etat) + B.depth2Value(c.grid, monte(c), ncoups, S);
+        c.v2 = gainImmediat(c, etat) + valeur2(c, ncoups, S);
         juges++;
       }
       // Ce qui a été jugé à deux coups passe devant, dans cet ordre ; le reste
@@ -395,7 +419,7 @@
         gain: { score: c.gained.score, pieces: c.gained.pieces || 0,
           phases: c.gained.phases || 0, stars: c.gained.stars, cracked: c.gained.cracked },
       };
-      if (c.type === 'defend') out.nature = 'defense';
+      if (c.type === 'defend') { out.nature = 'defense'; out.prix = c.prix || 0; }
       else if (c.gained.score > 0) out.nature = 'combo';
       else {
         // seuls les premiers du classement méritent qu'on cherche leur suite

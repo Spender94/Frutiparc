@@ -231,6 +231,75 @@
       const r = resolve(g, 0);
       return { grid: g, score: r.score, stars: r.stars, cracked: r.cracked };
     }
+    /*
+     * LES TROIS QUI MANQUAIENT. Sans elles, l'analyseur ne proposait JAMAIS
+     * la défense de Sel, de Wasabi ni de Moutarde : `simulateDefense` rendait
+     * null, le candidat n'existait pas, et les étoiles s'entassaient jusqu'au
+     * plafond sans servir — pour Wasabi, l'un des persos les plus joués.
+     */
+    if (defenseId === 0) { // MOÏSE (Sel) : les deux moitiés s'écartent
+      // Player.defend, cas 0 : la moitié gauche glisse d'une case vers le
+      // mur, la droite aussi ; les colonnes 0 et W−1 tombent du plateau
+      // (explosées sans rien rapporter), les deux du milieu restent VIDES.
+      const dw = Math.floor(W / 2);
+      for (let y = 0; y < H; y++) {
+        for (let x = 1; x < dw; x++) g[x - 1][y] = g[x][y];
+        g[dw - 1][y] = null;
+        for (let x = W - 2; x >= dw; x--) g[x + 1][y] = g[x][y];
+        g[dw][y] = null;
+      }
+      const r = resolve(g, 0);
+      return { grid: g, score: r.score, stars: r.stars, cracked: r.cracked };
+    }
+    if (defenseId === 1) { // GLISSEMENT (Wasabi) : les hautes donnent aux basses
+      // Player.defend, cas 1 : colonnes triées par hauteur ; la plus basse
+      // reçoit, PAR LE BAS, le fruit du bas de la plus haute — et ainsi de
+      // suite, six paires au plus, tant que la basse est vraiment plus basse.
+      // Rien n'est détruit : le plateau se nivelle.
+      const hs = heights(g);
+      const cols = [];
+      for (let x = 0; x < W; x++) cols.push({ x: x, h: hs[x] });
+      cols.sort(function (a, b) { return a.h - b.h; });
+      const dw = Math.floor(W / 2);
+      for (let i = 0; i < dw; i++) {
+        const basse = cols[i], haute = cols[W - 1 - i];
+        if (basse.h >= haute.h) break;
+        // popBottomFruit : la pile de la haute descend d'une case
+        const f = g[haute.x][H - 1];
+        let y = H - 2;
+        while (y >= 0 && g[haute.x][y] != null) { g[haute.x][y + 1] = g[haute.x][y]; y--; }
+        g[haute.x][y + 1] = null;
+        // pushBottomFruit : la basse monte d'une case et reçoit le fruit en bas
+        // (Fruit.init(save_t, flags) : gelé s'il l'était, sinon sa couleur)
+        for (let yy = 1; yy < H; yy++) g[basse.x][yy - 1] = g[basse.x][yy];
+        g[basse.x][H - 1] = f == null ? null
+          : { t: (f.fl & ARM) !== 0 ? -1 : f.s, s: f.s, fl: f.fl };
+      }
+      const r = resolve(g, 0);
+      return { grid: g, score: r.score, stars: r.stars, cracked: r.cracked };
+    }
+    if (defenseId === 4) { // COLORANT E21 (Moutarde) : une couleur devient GEL d'une autre
+      // Player.defend, cas 4 : src et dst tirés au sort (3 couleurs en
+      // Challenge), et tout fruit de couleur src devient une ARMURE dont la
+      // couleur cachée est dst — étoile et métal perdus au passage (les
+      // drapeaux sont REMPLACÉS). Six tirages possibles : on les rend tous,
+      // c'est à l'appelant d'en faire l'espérance.
+      const variantes = [];
+      for (let src = 0; src < E.CHALLENGE_MAX_COLORS; src++)
+        for (let dst = 0; dst < E.CHALLENGE_MAX_COLORS; dst++) {
+          if (dst === src) continue;
+          const v = cloneGrid(g0);
+          for (let x = 0; x < W; x++)
+            for (let y = 0; y < H; y++) {
+              const c = v[x][y];
+              if (c != null && c.s === src) { c.s = dst; c.fl = ARM; c.t = -1; }
+            }
+          const r = resolve(v, 0);
+          variantes.push({ grid: v, score: r.score, stars: r.stars, cracked: r.cracked });
+        }
+      const p = variantes[0];
+      return { grid: p.grid, score: p.score, stars: p.stars, cracked: p.cracked, variantes: variantes };
+    }
     return null;
   }
 
@@ -266,7 +335,43 @@
     mobility: 9,        // nb d'échanges créant un combo au tour suivant
     mobNext: 0,         // taille du meilleur combo disponible ensuite
     defendBase: 350,    // réticence à dépenser une étoile…
+    // …et son CALME : le prix d'une étoile est multiplié par ce facteur
+    // quand le plateau est bas (cf. prixDefense), et par rien du tout quand
+    // il touche le plafond.
+    calme: 3,
+    // La RÉSERVE : hors crise, on ne descend pas sous le prix d'une défense
+    // — ce qui reste après la dépense doit encore permettre de tirer une
+    // fois. Sinon, ce surcoût.
+    reserve: 1600,
   };
+
+  /*
+   * LE PRIX D'UNE ÉTOILE DÉPEND DU MOMENT.
+   *
+   * Il était fixe — `defendBase × coût` — quelle que soit la hauteur du
+   * plateau. Or une étoile n'a qu'une valeur : celle du coup qu'elle permet
+   * quand l'alternative est la mort. Dépensée à hauteur 7 pour éviter une
+   * ligne, elle rapporte douze fruits de marge ; gardée pour la hauteur 13,
+   * elle rapporte la partie. Le prix fixe ne voyait pas la différence, et
+   * l'IA « dilapidait » : un pouvoir pas cher (Dimitri, une étoile) partait
+   * dès qu'il rapportait plus que 140 points d'équivalent.
+   *
+   *   · au plafond (six étoiles), rien à payer : la suivante serait perdue ;
+   *   · en crise (hauteur ≥ 12), rien non plus : c'est maintenant qu'elles
+   *     servent ;
+   *   · entre les deux, un prix qui MONTE quand le plateau descend — jusqu'à
+   *     `calme` fois le prix de base sous la hauteur 9 ;
+   *   · et hors crise, la RÉSERVE : ne jamais lâcher sa dernière défense.
+   */
+  function prixDefense(state, hMax) {
+    const cout = E.DEFENSE_STARS[state.charId];
+    if (state.stars >= E.MAX_POWER) return 0;
+    if (hMax >= 12) return 0;
+    const k = hMax >= 11 ? 0.35 : hMax >= 10 ? 1 : hMax >= 9 ? 2 : WEIGHTS.calme;
+    let prix = WEIGHTS.defendBase * cout * k;
+    if (state.stars - cout < cout && hMax < 11) prix += WEIGHTS.reserve;
+    return prix;
+  }
 
   function evaluate(g, willRise, gained) {
     const hs = heights(g);
@@ -450,16 +555,17 @@
         }
       }
 
+    const hsRoot = heights(g0);
+    const hMaxRoot = Math.max.apply(null, hsRoot);
+    const prixEtoiles = prixDefense(state, hMaxRoot);
     if (state.canDefend) {
       const defenseId = E.DEFENSE_PLAYERS[state.charId];
       const sim = simulateDefense(g0, defenseId);
       if (sim != null) {
         const rises = noMoreLine(sim.grid) ? 1 : 0;
-        let v = evaluate(sim.grid, rises, sim);
-        // dépenser une étoile a un coût… sauf si la réserve est pleine
-        // (toute étoile gagnée au plafond est perdue)
-        if (state.stars < E.MAX_POWER)
-          v -= WEIGHTS.defendBase * E.DEFENSE_STARS[state.charId];
+        // Le prix de l'étoile suit le moment (prixDefense) : rien au plafond
+        // ni en crise, cher quand le plateau est bas.
+        const v = evaluate(sim.grid, rises, sim) - prixEtoiles;
         candidates.push({ type: 'defend', grid: sim.grid, gained: sim, v: v });
       }
     }
@@ -472,11 +578,9 @@
       // expectimax : V = gains immédiats + E_lignes[ max riposte ]
       // (la position est jugée aux feuilles de profondeur 2)
       // élargissement panique : plateau haut → recherche plus large/profonde
-      const hs0 = heights(g0);
-      const hMax0 = Math.max.apply(null, hs0);
       let K = Math.min(state.topK || 8, candidates.length);
       let S = state.samples || 3;
-      if (hMax0 >= 11) {
+      if (hMaxRoot >= 11) {
         K = Math.min(Math.max(K, 18), candidates.length);
         S = Math.max(S, 5);
       }
@@ -489,8 +593,7 @@
         const rises = c.type === 'defend' ? (noMoreLine(c.grid) ? 1 : 0) : 1;
         const ncoups = (state.ncoups || 50) + (c.type === 'swap' ? 1 : 0);
         c.v = gain1 + depth2Value(c.grid, rises, ncoups, S) -
-          (c.type === 'defend' && state.stars < E.MAX_POWER
-            ? WEIGHTS.defendBase * E.DEFENSE_STARS[state.charId] : 0);
+          (c.type === 'defend' ? prixEtoiles : 0);
       }
       candidates.length = K;
       candidates.sort(function (a, b) { return b.v - a.v; });
@@ -513,7 +616,7 @@
     // exposés pour les tests
     copyGrid: copyGrid, cloneGrid: cloneGrid, resolve: resolve,
     findGroups: findGroups, gravity: gravity, heights: heights,
-    simulateDefense: simulateDefense, noMoreLine: noMoreLine,
+    simulateDefense: simulateDefense, noMoreLine: noMoreLine, prixDefense: prixDefense,
     evaluate: evaluate, mobility: mobility, mobilityInfo: mobilityInfo,
     simGenLine: simGenLine, bestReply: bestReply, depth2Value: depth2Value,
     WEIGHTS: WEIGHTS,

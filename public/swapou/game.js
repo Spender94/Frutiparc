@@ -2373,7 +2373,13 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       return;
     }
     if (!m) return;
-    U.text(ctx, IA_NOMS[m.nature] || '', tx, P.y + 28, { size: 9, color: IA_COULEURS[m.nature] || '#fff' });
+    // Une défense se nomme par son POUVOIR et son prix — « GLISSEMENT 2★ » —
+    // plutôt que par un « DÉFENSE » qui ne dit ni quoi ni combien.
+    const id = SW.Data.players[0];
+    const titre = m.nature === 'defense'
+      ? E.DEFENSE_NAMES[E.DEFENSE_PLAYERS[id]].trim() + ' ' + E.DEFENSE_STARS[id] + '★'
+      : (IA_NOMS[m.nature] || '');
+    U.text(ctx, titre, tx, P.y + 28, { size: 9, color: IA_COULEURS[m.nature] || '#fff' });
     const g = m.gain || {};
     let l1 = '', l2 = '';
     if (m.nature === 'combo') {

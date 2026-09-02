@@ -224,4 +224,84 @@ function levelFromRows(rows) {
   assert(B.noMoreLine(g) === false, 'deux adjacents → ligne montera');
 }
 
+
+// ── 3) les trois défenses ajoutées, en équivalence avec le moteur ──────────
+// Moïse (Sel), Glissement (Wasabi) et Colorant E21 (Moutarde) n'étaient pas
+// simulées : l'analyseur ne les proposait jamais. On rejoue chacune sur des
+// grilles aléatoires par le MOTEUR (Player.defend → swapDone) et par le
+// simulateur, et l'on exige la même grille, le même score, les mêmes étoiles.
+{
+  const rng = lcg(7);
+  let n = 0;
+  for (let iter = 0; iter < 120; iter++) {
+    const cells = randomCells(rng, 0.3 + (iter % 6) * 0.11);
+    // MOÏSE : les deux moitiés s'écartent, les colonnes 0 et 11 tombent.
+    {
+      const lvl = makeEngineLevel(cells);
+      E.defenseEcarteur(lvl);
+      const ref = refResolve(lvl);
+      const sim = B.simulateDefense(makeBotGrid(cells), 0);
+      assert(sim.score === ref.score && sim.stars === ref.stars && sim.cracked === ref.cracked,
+        'Moïse itér ' + iter + ' : ' + JSON.stringify([sim.score, sim.stars, sim.cracked])
+        + ' ≠ ' + JSON.stringify([ref.score, ref.stars, ref.cracked]));
+      sameState(lvl, sim.grid, 'Moïse itér ' + iter + ' :');
+      assert(sim.grid[5].every(function (c) { return c == null; })
+        && sim.grid[6].every(function (c) { return c == null; }) || ref.score > 0,
+        'Moïse itér ' + iter + ' : les deux colonnes du milieu sont vides');
+    }
+    // GLISSEMENT : les colonnes hautes donnent leur fruit du bas aux basses.
+    {
+      const lvl = makeEngineLevel(cells);
+      const avant = lvl.columnHighs().reduce(function (a, b) { return a + b; }, 0);
+      E.defenseEgaliseur(lvl);
+      const apres = lvl.columnHighs().reduce(function (a, b) { return a + b; }, 0);
+      assert(avant === apres, 'Glissement itér ' + iter + ' : rien n’est détruit');
+      const ref = refResolve(lvl);
+      const sim = B.simulateDefense(makeBotGrid(cells), 1);
+      assert(sim.score === ref.score && sim.stars === ref.stars && sim.cracked === ref.cracked,
+        'Glissement itér ' + iter + ' : ' + JSON.stringify([sim.score, sim.stars, sim.cracked])
+        + ' ≠ ' + JSON.stringify([ref.score, ref.stars, ref.cracked]));
+      sameState(lvl, sim.grid, 'Glissement itér ' + iter + ' :');
+    }
+    // COLORANT : chacun des six tirages (src, dst), imposés au moteur.
+    {
+      const sim = B.simulateDefense(makeBotGrid(cells), 4);
+      assert(sim.variantes && sim.variantes.length === 6, 'Colorant : six tirages');
+      let k = 0;
+      for (let src = 0; src < 3; src++)
+        for (let dst = 0; dst < 3; dst++) {
+          if (dst === src) continue;
+          const lvl = makeEngineLevel(cells);
+          const seq = [src, dst];
+          let i = 0;
+          E.defenseConvertisseur(lvl, function () { return seq[i++]; });
+          const ref = refResolve(lvl);
+          const v = sim.variantes[k++];
+          assert(v.score === ref.score && v.stars === ref.stars && v.cracked === ref.cracked,
+            'Colorant ' + src + '→' + dst + ' itér ' + iter + ' : score/étoiles/armures');
+          sameState(lvl, v.grid, 'Colorant ' + src + '→' + dst + ' itér ' + iter + ' :');
+        }
+    }
+    n++;
+  }
+  assert(n === 120, '120 grilles, trois défenses, en équivalence');
+}
+
+// ── 4) le prix de l'étoile suit le moment ──────────────────────────────────
+{
+  const P = B.prixDefense;
+  // Dimitri, une étoile : cher quand le plateau est bas, gratuit en crise.
+  assert(P({ charId: 0, stars: 3 }, 12) === 0, 'en crise, l’étoile ne coûte rien');
+  assert(P({ charId: 0, stars: 6 }, 5) === 0, 'au plafond, la suivante serait perdue : rien à payer');
+  assert(P({ charId: 0, stars: 3 }, 6) > P({ charId: 0, stars: 3 }, 10),
+    'plus le plateau est bas, plus l’étoile est chère');
+  assert(P({ charId: 0, stars: 3 }, 10) > P({ charId: 0, stars: 3 }, 11),
+    'et le prix baisse encore à l’approche du plafond');
+  // La réserve : lâcher sa DERNIÈRE défense hors crise coûte le surcoût.
+  assert(P({ charId: 1, stars: 2 }, 8) - P({ charId: 1, stars: 4 }, 8) === B.WEIGHTS.reserve,
+    'Natacha à deux étoiles paie la réserve, à quatre non');
+  assert(P({ charId: 1, stars: 2 }, 11) === P({ charId: 1, stars: 4 }, 11),
+    'à hauteur 11, plus de réserve : on tire');
+}
+
 console.log('OK — ' + nassert + ' assertions (bot)');
