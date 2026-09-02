@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Comment l'IA du mode Challenge de Swapou choisit ses coups et gère ses étoiles.">
+<style>
+  html { color-scheme: light dark; }
+  body { margin: 0; }
+  img { max-width: 100%; }
+</style>
+<title>L'IA de Swapou</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Asap:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap">
+
+<style>
+  /* ── Palette : celle du jeu lui-même ──────────────────────────────────────
+     Le vert de scène de swapou.swf (#ADE76B), le bois des plaquettes
+     (#9F673A / #C9945F), le parchemin du parchemin de score, l'or des étoiles
+     de pouvoir, et le saumon de la pastille « hors ligne ». Les neutres sont
+     tirés vers le chaud, jamais gris purs. */
+  :root {
+    --fond:        #FBF6E9;
+    --surface:     #FFFFFF;
+    --parchemin:   #F4E9CE;
+    --encre:       #2C2718;
+    --encre-douce: #6E6650;
+    --trait:       #E0D3B2;
+    --trait-fort:  #C9B78D;
+    --parc:        #4C7A20;   /* vert lisible sur clair */
+    --parc-vif:    #8CC93F;   /* le vert du parc, pour les aplats */
+    --etoile:      #C98A0B;
+    --etoile-vif:  #FFC83D;
+    --bois:        #9F673A;
+    --saumon:      #C24C3B;
+    --ombre:       0 1px 0 rgba(44, 39, 24, .06), 0 2px 10px rgba(44, 39, 24, .05);
+    --texture:     rgba(255, 255, 255, .30);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fond:        #171C0F;
+      --surface:     #212816;
+      --parchemin:   #2C351D;
+      --encre:       #EEF3DF;
+      --encre-douce: #A7B291;
+      --trait:       #3A452A;
+      --trait-fort:  #55643C;
+      --parc:        #ADE76B;
+      --parc-vif:    #8CC93F;
+      --etoile:      #FFC83D;
+      --etoile-vif:  #FFC83D;
+      --bois:        #CE9A66;
+      --saumon:      #E3756A;
+      --ombre:       0 1px 0 rgba(0, 0, 0, .25), 0 2px 12px rgba(0, 0, 0, .30);
+      --texture:     rgba(0, 0, 0, .22);
+    }
+  }
+  :root[data-theme="dark"] {
+    --fond:        #171C0F;
+    --surface:     #212816;
+    --parchemin:   #2C351D;
+    --encre:       #EEF3DF;
+    --encre-douce: #A7B291;
+    --trait:       #3A452A;
+    --trait-fort:  #55643C;
+    --parc:        #ADE76B;
+    --parc-vif:    #8CC93F;
+    --etoile:      #FFC83D;
+    --etoile-vif:  #FFC83D;
+    --bois:        #CE9A66;
+    --saumon:      #E3756A;
+    --ombre:       0 1px 0 rgba(0, 0, 0, .25), 0 2px 12px rgba(0, 0, 0, .30);
+    --texture:     rgba(0, 0, 0, .22);
+  }
+
+  body {
+    background: var(--fond);
+    color: var(--encre);
+    font: 400 17px/1.65 Asap, "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+
+  .page { max-width: 1080px; margin: 0 auto; padding: 0 22px 90px; }
+  .colonne { max-width: 63ch; }
+
+  h1, h2, h3 { font-family: "Baloo 2", Asap, system-ui, sans-serif; text-wrap: balance; margin: 0; }
+  h1 { font-weight: 800; font-size: clamp(38px, 6vw, 60px); line-height: 1.04; letter-spacing: -.015em; }
+  h2 { font-weight: 800; font-size: clamp(25px, 3.4vw, 33px); line-height: 1.15; }
+  h3 { font-weight: 600; font-size: 19px; line-height: 1.3; }
+  p { margin: 0; }
+
+  .oeil {
+    font: 500 12px/1 "DM Mono", ui-monospace, monospace;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--encre-douce);
+  }
+
+  /* ── L'en-tête : le motif à écailles du fond de scène ─────────────────── */
+  .bandeau {
+    background-color: var(--parc-vif);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='18' viewBox='0 0 36 18'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='.34' stroke-width='1.3'%3E%3Ccircle cx='0' cy='18' r='16'/%3E%3Ccircle cx='0' cy='18' r='10'/%3E%3Ccircle cx='0' cy='18' r='4.5'/%3E%3Ccircle cx='18' cy='18' r='16'/%3E%3Ccircle cx='18' cy='18' r='10'/%3E%3Ccircle cx='18' cy='18' r='4.5'/%3E%3Ccircle cx='36' cy='18' r='16'/%3E%3Ccircle cx='36' cy='18' r='10'/%3E%3Ccircle cx='36' cy='18' r='4.5'/%3E%3Ccircle cx='9' cy='0' r='16'/%3E%3Ccircle cx='9' cy='0' r='10'/%3E%3Ccircle cx='9' cy='0' r='4.5'/%3E%3Ccircle cx='27' cy='0' r='16'/%3E%3Ccircle cx='27' cy='0' r='10'/%3E%3Ccircle cx='27' cy='0' r='4.5'/%3E%3C/g%3E%3C/svg%3E");
+    border-bottom: 3px solid var(--parc);
+    margin-bottom: 52px;
+  }
+  .bandeau .dedans {
+    max-width: 1080px; margin: 0 auto; padding: 46px 22px 40px;
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .bandeau .oeil { color: #2E4A0E; }
+  .bandeau h1 { color: #22380A; max-width: 15ch; }
+  .chapeau {
+    max-width: 54ch; font-size: 19.5px; line-height: 1.55; color: #2E4A0E; font-weight: 500;
+  }
+
+  /* Les trois repères sous le titre : chiffres mesurés, pas décoratifs. */
+  .reperes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+  .repere {
+    background: rgba(255, 255, 255, .72); border: 1px solid rgba(34, 56, 10, .18);
+    border-radius: 4px; padding: 8px 13px; display: flex; align-items: baseline; gap: 8px;
+  }
+  .repere b {
+    font: 500 19px/1 "DM Mono", monospace; color: #22380A; font-variant-numeric: tabular-nums;
+  }
+  .repere span { font-size: 13.5px; color: #3D5A18; }
+
+  section { margin-bottom: 58px; }
+  section > h2 { margin-bottom: 8px; }
+  .sous { color: var(--encre-douce); max-width: 60ch; margin-bottom: 26px; }
+  .colonne p + p { margin-top: 16px; }
+  .colonne p + h3 { margin-top: 30px; }
+  .colonne h3 + p { margin-top: 8px; }
+
+  em { font-style: italic; }
+  strong { font-weight: 600; }
+  .terme { color: var(--parc); font-weight: 600; }
+
+  /* ── Le tour de l'IA : quatre temps, dans l'ordre — donc numérotés ────── */
+  .temps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .temps li {
+    display: grid; grid-template-columns: 46px 1fr; gap: 18px; align-items: start;
+    padding: 20px 0; border-top: 1px solid var(--trait);
+  }
+  .temps li:last-child { border-bottom: 1px solid var(--trait); }
+  .temps .n {
+    font: 500 15px/38px "DM Mono", monospace; text-align: center;
+    color: var(--parc); border: 2px solid var(--parc); border-radius: 50%;
+    width: 38px; height: 38px;
+  }
+  .temps h3 { margin-bottom: 5px; }
+  .temps p { max-width: 58ch; color: var(--encre-douce); }
+  .temps p b { color: var(--encre); font-weight: 600; }
+
+  /* ── L'échelle des priorités : un tableau de valeurs, en points ───────── */
+  .bloc-parchemin {
+    background: var(--parchemin); border: 1px solid var(--trait-fort);
+    border-radius: 5px; padding: 26px 26px 22px; box-shadow: var(--ombre);
+  }
+  .bloc-parchemin > .oeil { display: block; margin-bottom: 14px; }
+  .echelle { width: 100%; border-collapse: collapse; }
+  .echelle caption {
+    text-align: left; color: var(--encre-douce); font-size: 14.5px;
+    padding-bottom: 14px; max-width: 58ch;
+  }
+  .echelle th {
+    text-align: left; font: 500 12px/1 "DM Mono", monospace; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--encre-douce);
+    padding: 0 0 9px; border-bottom: 1px solid var(--trait-fort);
+  }
+  .echelle th:last-child { text-align: right; }
+  .echelle td { padding: 11px 0; border-bottom: 1px solid var(--trait); vertical-align: baseline; }
+  .echelle tr:last-child td { border-bottom: 0; }
+  .echelle td:last-child {
+    text-align: right; white-space: nowrap; padding-left: 18px;
+    font: 500 16px/1.3 "DM Mono", monospace; font-variant-numeric: tabular-nums;
+  }
+  .plus  { color: var(--parc); }
+  .moins { color: var(--saumon); }
+  .fatal { color: var(--saumon); font-weight: 500; }
+  .echelle .quoi { font-size: 16px; }
+  .echelle .quoi small { display: block; color: var(--encre-douce); font-size: 13.5px; line-height: 1.4; }
+
+  /* ── Les quatre sortes de coups : pas une séquence, donc pas de numéros ── */
+  .coups { display: grid; grid-template-columns: repeat(auto-fit, minmax(228px, 1fr)); gap: 14px; }
+  .coup {
+    background: var(--surface); border: 1px solid var(--trait); border-radius: 5px;
+    padding: 18px 18px 20px; display: flex; flex-direction: column; gap: 9px;
+    border-top: 3px solid var(--tc, var(--trait-fort));
+  }
+  .coup .nom {
+    font: 500 12px/1 "DM Mono", monospace; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--tc);
+  }
+  .coup p { font-size: 15.5px; line-height: 1.55; color: var(--encre-douce); }
+  .coup p b { color: var(--encre); font-weight: 600; }
+  .c-combo { --tc: var(--parc); }
+  .c-silence { --tc: #3E8FCB; }
+  .c-attente { --tc: var(--encre-douce); }
+  .c-defense { --tc: var(--bois); }
+
+  /* ── La démonstration du score : deux colonnes comparées ─────────────── */
+  .duel {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px; align-items: stretch;
+  }
+  .duel > div {
+    border: 1px solid var(--trait); border-radius: 5px; padding: 20px;
+    background: var(--surface); display: flex; flex-direction: column; gap: 10px;
+  }
+  .duel .gagne { border-color: var(--parc); background: color-mix(in srgb, var(--parc-vif) 12%, var(--surface)); }
+  .duel .quoi { font-weight: 600; font-size: 16.5px; }
+  .duel .detail { font-size: 14.5px; color: var(--encre-douce); line-height: 1.5; }
+  .duel .total {
+    margin-top: auto; font: 500 30px/1 "DM Mono", monospace;
+    font-variant-numeric: tabular-nums; color: var(--encre);
+  }
+  .duel .gagne .total { color: var(--parc); }
+  .duel .total small { font-family: Asap, sans-serif; font-size: 14px; font-weight: 500; color: var(--encre-douce); }
+
+  /* ── Les étoiles : la table des prix, par hauteur ─────────────────────── */
+  .prix { width: 100%; border-collapse: collapse; }
+  .prix th {
+    text-align: left; font: 500 12px/1 "DM Mono", monospace; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--encre-douce); padding: 0 14px 10px 0;
+    border-bottom: 1px solid var(--trait-fort);
+  }
+  .prix td { padding: 13px 14px 13px 0; border-bottom: 1px solid var(--trait); vertical-align: middle; }
+  .prix tr:last-child td { border-bottom: 0; }
+  .prix .h { font: 500 15px/1 "DM Mono", monospace; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .prix .verdict { font-weight: 600; white-space: nowrap; }
+  .prix .pourquoi { color: var(--encre-douce); font-size: 15px; }
+  /* La jauge : la hauteur du plateau, dessinée. Quatorze cases, comme le jeu. */
+  .jauge { display: flex; gap: 2px; align-items: flex-end; height: 26px; }
+  .jauge i { width: 5px; background: var(--trait-fort); border-radius: 1px; height: 40%; }
+  .jauge i.pleine { background: var(--parc-vif); }
+  .jauge i.chaud  { background: var(--etoile-vif); }
+  .jauge i.rouge  { background: var(--saumon); }
+
+  .encart {
+    border-left: 3px solid var(--etoile); background: var(--surface);
+    border-radius: 0 5px 5px 0; padding: 16px 20px; margin-top: 22px;
+    font-size: 16px; color: var(--encre-douce); max-width: 62ch;
+  }
+  .encart b { color: var(--encre); font-weight: 600; }
+
+  /* ── Les sept personnages : moyenne mesurée, meilleure partie en repère ── */
+  .persos { display: grid; gap: 0; }
+  .persos .entete, .persos .ligne {
+    display: grid; grid-template-columns: 132px 158px 1fr 96px; gap: 16px; align-items: center;
+  }
+  .persos .entete {
+    font: 500 12px/1 "DM Mono", monospace; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--encre-douce); padding-bottom: 10px; border-bottom: 1px solid var(--trait-fort);
+  }
+  .persos .entete span:last-child { text-align: right; }
+  .persos .ligne { padding: 13px 0; border-bottom: 1px solid var(--trait); }
+  .persos .nom { font-weight: 600; font-size: 16.5px; }
+  .persos .pouvoir { font-size: 14px; color: var(--encre-douce); }
+  .persos .pouvoir b { color: var(--etoile); font-weight: 500; font-family: "DM Mono", monospace; }
+  .persos .val {
+    text-align: right; font: 500 16px/1 "DM Mono", monospace; font-variant-numeric: tabular-nums;
+  }
+  .piste { position: relative; height: 22px; }
+  .piste .barre {
+    position: absolute; left: 0; top: 4px; height: 14px; border-radius: 2px;
+    background: var(--parc-vif);
+  }
+  .piste .best {
+    position: absolute; top: 1px; width: 2px; height: 20px; background: var(--bois);
+  }
+  .piste .reglure { position: absolute; top: 0; width: 1px; height: 22px; background: var(--trait-fort); }
+  .legende-piste {
+    display: grid; grid-template-columns: 132px 158px 1fr 96px; gap: 16px;
+    margin-top: 10px; font-size: 13px; color: var(--encre-douce);
+  }
+  .legende-piste .marques { position: relative; height: 18px; }
+  .legende-piste .marques span { position: absolute; top: 0; white-space: nowrap; transform: translateX(-50%); }
+  .cle { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 26px; font-size: 14px; color: var(--encre-douce); }
+  .cle span { display: flex; align-items: center; gap: 7px; }
+  .cle i { display: inline-block; width: 16px; height: 10px; border-radius: 2px; background: var(--parc-vif); }
+  .cle i.trait { width: 2px; height: 16px; border-radius: 0; background: var(--bois); }
+
+  /* ── Les limites : une liste, pas des cartes ──────────────────────────── */
+  .limites { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+  .limites li { padding: 16px 0 16px 30px; border-bottom: 1px solid var(--trait); position: relative; max-width: 66ch; }
+  .limites li:first-child { border-top: 1px solid var(--trait); }
+  .limites li::before {
+    content: ""; position: absolute; left: 4px; top: 25px;
+    width: 8px; height: 8px; border-radius: 50%; background: var(--saumon);
+  }
+  .limites b { font-weight: 600; }
+  .limites span { color: var(--encre-douce); }
+
+  footer {
+    border-top: 1px solid var(--trait); padding-top: 22px; margin-top: 10px;
+    font-size: 14.5px; color: var(--encre-douce); max-width: 66ch;
+  }
+  footer p + p { margin-top: 10px; }
+
+  .defile { overflow-x: auto; }
+  @media (max-width: 660px) {
+    .persos .entete, .persos .ligne, .legende-piste { grid-template-columns: 118px 1fr 78px; }
+    .persos .pouvoir { display: none; }
+    .legende-piste .vide2 { display: none; }
+  }
+</style>
+</head>
+<body>
+<header class="bandeau">
+  <div class="dedans">
+    <span class="oeil">Swapou 2 · mode Challenge</span>
+    <h1>Comment joue l'IA de Swapou</h1>
+    <p class="chapeau">
+      Elle n'essaie pas de faire le plus gros combo. Elle essaie de laisser le
+      plateau dans le meilleur état possible — et c'est très différent.
+    </p>
+    <div class="reperes">
+      <div class="repere"><b>84</b><span>parties mesurées</span></div>
+      <div class="repere"><b>45 400</b><span>points en moyenne</span></div>
+      <div class="repere"><b>64 180</b><span>sa meilleure partie</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="page">
+
+  <section>
+    <div class="colonne">
+      <h2>L'idée en une minute</h2>
+      <p class="sous">Ce qu'elle fait à chaque coup, sans jargon.</p>
+      <p>
+        À chaque fois que c'est à vous de jouer, l'IA essaie <strong>tous les
+        échanges possibles</strong> — il y en a environ trois cents sur un
+        plateau plein — et, pour chacun, elle déroule dans sa tête ce qui se
+        passerait : les fruits qui explosent, la glace qui se fend, les fruits
+        qui retombent, les nouvelles explosions que cette chute provoque.
+      </p>
+      <p>
+        Puis elle regarde le plateau obtenu et lui met une note. Pas une note
+        « combien de points j'ai gagné », mais une note <strong>« dans quel
+        état je laisse le terrain »</strong> : est-ce que je suis loin du
+        plafond, est-ce qu'il reste de la glace, est-ce que les couleurs sont
+        bien rangées pour la suite.
+      </p>
+      <p>
+        Enfin — et c'est là qu'elle devient forte — elle <strong>joue aussi le
+        tour suivant</strong> dans sa tête. Elle fait monter une ligne, cherche
+        le meilleur coup d'après, recommence trois fois avec trois lignes
+        différentes, et fait la moyenne. Le coup qu'elle vous conseille est
+        celui dont la <em>suite</em> est la meilleure.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Un tour, en quatre temps</h2>
+    <p class="sous">
+      Le même enchaînement à chaque coup. Il dure environ six dixièmes de
+      seconde, dans un fil séparé — le jeu ne ralentit jamais.
+    </p>
+    <ol class="temps">
+      <li>
+        <span class="n">1</span>
+        <div>
+          <h3>Elle essaie tout</h3>
+          <p>
+            Les <b>~300 échanges</b> possibles, plus <b>le pouvoir du
+            personnage</b> si les étoiles suffisent. Rien n'est écarté d'avance :
+            c'est ce qui lui permet de voir des coups qui ne rapportent rien
+            tout de suite.
+          </p>
+        </div>
+      </li>
+      <li>
+        <span class="n">2</span>
+        <div>
+          <h3>Elle déroule la cascade</h3>
+          <p>
+            Exactement comme le vrai jeu : groupes de trois et plus qui
+            explosent, glace fendue par contact, chute, et on recommence tant
+            qu'il y a des groupes. <b>Sa simulation est vérifiée coup pour
+            coup</b> contre le moteur du jeu.
+          </p>
+        </div>
+      </li>
+      <li>
+        <span class="n">3</span>
+        <div>
+          <h3>Elle note le plateau</h3>
+          <p>
+            La hauteur d'abord, puis la glace, les étoiles, le rangement des
+            couleurs. <b>Le tableau ci-dessous donne son barème exact.</b>
+          </p>
+        </div>
+      </li>
+      <li>
+        <span class="n">4</span>
+        <div>
+          <h3>Elle joue le tour d'après</h3>
+          <p>
+            Elle fait monter la ligne suivante — <b>tirée au sort comme dans le
+            vrai jeu</b>, avec la glace et le métal qui deviennent plus
+            fréquents au fil de la partie — puis cherche la meilleure réponse.
+            Trois lignes différentes, et on garde la moyenne.
+          </p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Son barème</h2>
+    <p class="sous">
+      Tout est ramené à une seule unité : <strong>le point de score</strong>.
+      Voilà ce que valent les choses, pour elle.
+    </p>
+    <div class="bloc-parchemin">
+      <span class="oeil">Ce qu'elle gagne et ce qu'elle perd</span>
+      <div class="defile">
+      <table class="echelle">
+        <caption>
+          Lu du haut vers le bas : la survie écrase tout le reste, puis viennent
+          les étoiles, puis la propreté du plateau.
+        </caption>
+        <thead>
+          <tr><th>Ce qu'elle voit sur le plateau</th><th>Ce que ça vaut pour elle</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="quoi">Une colonne qui touchera le plafond
+              <small>La partie est finie : aucun gain ne rattrape ça.</small></td>
+            <td class="fatal">− 100 000</td>
+          </tr>
+          <tr>
+            <td class="quoi">Une colonne montée à 13 sur 14
+              <small>Chaque case au-dessus de 8 coûte de plus en plus cher.</small></td>
+            <td class="moins">− 320</td>
+          </tr>
+          <tr><td class="quoi">Une colonne montée à 12</td><td class="moins">− 205</td></tr>
+          <tr><td class="quoi">Une colonne montée à 10</td><td class="moins">− 51</td></tr>
+          <tr>
+            <td class="quoi">Une étoile ramassée
+              <small>C'est le carburant du pouvoir : elle la paie cher.</small></td>
+            <td class="plus">+ 200</td>
+          </tr>
+          <tr>
+            <td class="quoi">Un fruit-étoile encore sur le plateau
+              <small>Une étoile à venir, qu'il ne faut pas gaspiller.</small></td>
+            <td class="plus">+ 32</td>
+          </tr>
+          <tr><td class="quoi">Une armure de glace fendue</td><td class="plus">+ 6</td></tr>
+          <tr>
+            <td class="quoi">Une case encore gelée
+              <small>Le double de malus si elle est en haut du plateau : dure à atteindre.</small></td>
+            <td class="moins">− 6</td>
+          </tr>
+          <tr><td class="quoi">Un fruit en métal (inéchangeable)</td><td class="moins">− 2</td></tr>
+          <tr>
+            <td class="quoi">Deux fruits de même couleur côte à côte
+              <small>Du combo en préparation.</small></td>
+            <td class="plus">+ 1</td>
+          </tr>
+          <tr>
+            <td class="quoi">Un fruit de moins sur le plateau
+              <small>Moins de fruits, plus de marge.</small></td>
+            <td class="plus">+ 1</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+    <div class="encart">
+      <b>À retenir :</b> une étoile vaut deux cents points à ses yeux. Une
+      colonne montée à 12 lui coûte à peu près autant. C'est pour ça qu'elle
+      accepte de rater un petit combo pour aplatir une colonne — et qu'elle
+      refuse de brader une étoile quand tout va bien.
+    </div>
+  </section>
+
+  <section>
+    <h2>Les quatre sortes de coups</h2>
+    <p class="sous">
+      Le panneau vous dit toujours de quelle sorte est le coup conseillé.
+    </p>
+    <div class="coups">
+      <div class="coup c-combo">
+        <span class="nom">Combo</span>
+        <p>Ça explose <b>tout de suite</b>. Le panneau affiche les points, le
+          nombre de fruits et le nombre de vagues de la cascade.</p>
+      </div>
+      <div class="coup c-silence">
+        <span class="nom">Coup silencieux</span>
+        <p>Rien maintenant, <b>une grosse cascade au tour d'après</b>. C'est le
+          coup que la plupart des joueurs ne voient pas, et c'est là que l'IA
+          gagne ses points.</p>
+      </div>
+      <div class="coup c-attente">
+        <span class="nom">Sans combo</span>
+        <p>Rien maintenant et rien après. Un <b>coup de survie</b> : il n'y
+          avait rien de mieux à faire.</p>
+      </div>
+      <div class="coup c-defense">
+        <span class="nom">Défense</span>
+        <p>Dépenser des étoiles pour le <b>pouvoir du personnage</b>. Le panneau
+          nomme le pouvoir, son prix, et dit pourquoi c'est le moment.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pourquoi elle prépare au lieu de foncer</h2>
+    <p class="sous">
+      Parce que le jeu paie les cascades, pas les fruits. Le même nombre de
+      fruits rapporte le double s'ils partent en chaîne.
+    </p>
+    <div class="duel">
+      <div>
+        <span class="quoi">Cinq combos de trois fruits</span>
+        <span class="detail">Joués l'un après l'autre, chacun sur un tour. Quinze
+          fruits nettoyés en cinq coups.</span>
+        <span class="total">75 <small>points</small></span>
+      </div>
+      <div class="gagne">
+        <span class="quoi">Une chaîne de quinze fruits en cinq vagues</span>
+        <span class="detail">Un seul coup : ça explose, ça retombe, ça
+          réexplose, cinq fois. Chaque vague compte plus que la précédente.</span>
+        <span class="total">150 <small>points</small></span>
+      </div>
+    </div>
+    <div class="encart">
+      <b>La règle du jeu, en clair :</b> chaque vague d'une même cascade
+      multiplie les points. Un coup qui ne rapporte rien mais qui met en place
+      une chaîne de cinq vagues vaut donc mieux que deux petits combos. L'IA
+      voit un tour à l'avance — juste assez pour repérer ces coups-là.
+    </div>
+  </section>
+
+  <section>
+    <h2>Sa stratégie pour les étoiles</h2>
+    <p class="sous">
+      C'est la partie la plus intéressante, et la plus contre-intuitive : elle
+      thésaurise quand tout va bien, et vide sa banque quand ça brûle.
+    </p>
+    <div class="colonne">
+      <p>
+        Un fruit-étoile tombe environ <strong>toutes les huit lignes</strong>.
+        L'exploser donne une étoile ; on peut en garder <strong>six au
+        maximum</strong>. Le pouvoir du personnage en coûte de une à cinq selon
+        qui vous jouez.
+      </p>
+      <p>
+        Le principe de l'IA tient en une phrase : <strong>une étoile ne vaut que
+        ce qu'elle sauve</strong>. Dépensée sur un plateau bas, elle vous fait
+        gagner douze fruits de marge. Gardée pour le moment où le plateau touche
+        le haut, elle vous fait gagner la partie. Elle facture donc l'étoile
+        très cher quand tout va bien, et gratuitement quand ça va mal.
+      </p>
+    </div>
+    <div style="margin-top: 26px" class="defile">
+      <table class="prix">
+        <thead>
+          <tr>
+            <th>Hauteur du plateau</th><th>Plateau</th><th>Ce qu'elle fait</th><th>Pourquoi</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="h">8 cases ou moins</td>
+            <td><span class="jauge" aria-hidden="true"><i class="pleine" style="height:57%"></i><i class="pleine" style="height:50%"></i><i class="pleine" style="height:57%"></i><i class="pleine" style="height:43%"></i><i class="pleine" style="height:57%"></i><i class="pleine" style="height:50%"></i></span></td>
+            <td class="verdict">Elle garde</td>
+            <td class="pourquoi">Prix triplé. Rien ne presse, et la crise viendra.</td>
+          </tr>
+          <tr>
+            <td class="h">9 cases</td>
+            <td><span class="jauge" aria-hidden="true"><i class="pleine" style="height:64%"></i><i class="pleine" style="height:57%"></i><i class="pleine" style="height:64%"></i><i class="pleine" style="height:57%"></i><i class="pleine" style="height:64%"></i><i class="pleine" style="height:57%"></i></span></td>
+            <td class="verdict">Elle garde plutôt</td>
+            <td class="pourquoi">Prix doublé. Il faut un vrai bénéfice pour la décider.</td>
+          </tr>
+          <tr>
+            <td class="h">10 cases</td>
+            <td><span class="jauge" aria-hidden="true"><i class="chaud" style="height:71%"></i><i class="pleine" style="height:64%"></i><i class="chaud" style="height:71%"></i><i class="pleine" style="height:64%"></i><i class="chaud" style="height:71%"></i><i class="pleine" style="height:64%"></i></span></td>
+            <td class="verdict">Prix normal</td>
+            <td class="pourquoi">Le pouvoir doit rapporter plus qu'il ne coûte, point.</td>
+          </tr>
+          <tr>
+            <td class="h">11 cases</td>
+            <td><span class="jauge" aria-hidden="true"><i class="chaud" style="height:79%"></i><i class="chaud" style="height:71%"></i><i class="chaud" style="height:79%"></i><i class="chaud" style="height:71%"></i><i class="chaud" style="height:79%"></i><i class="chaud" style="height:71%"></i></span></td>
+            <td class="verdict">Elle dépense volontiers</td>
+            <td class="pourquoi">Prix divisé par trois. On approche du point de non-retour.</td>
+          </tr>
+          <tr>
+            <td class="h">12 cases et plus</td>
+            <td><span class="jauge" aria-hidden="true"><i class="rouge" style="height:93%"></i><i class="rouge" style="height:86%"></i><i class="rouge" style="height:100%"></i><i class="rouge" style="height:86%"></i><i class="rouge" style="height:93%"></i><i class="rouge" style="height:86%"></i></span></td>
+            <td class="verdict">Gratuit — elle tire</td>
+            <td class="pourquoi">C'est la crise. Une étoile gardée est une étoile perdue avec la partie.</td>
+          </tr>
+          <tr>
+            <td class="h">Banque pleine (6 ★)</td>
+            <td><span class="jauge" aria-hidden="true"><i class="pleine" style="height:50%"></i><i class="pleine" style="height:57%"></i><i class="pleine" style="height:43%"></i><i class="pleine" style="height:57%"></i><i class="pleine" style="height:50%"></i><i class="pleine" style="height:43%"></i></span></td>
+            <td class="verdict">Gratuit — elle tire</td>
+            <td class="pourquoi">La prochaine étoile ramassée serait perdue : autant convertir celle-ci.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="encart">
+      <b>Et une dernière règle, la plus utile :</b> hors crise, elle ne descend
+      jamais sous le prix d'une défense. Autrement dit, <b>elle ne lâche jamais
+      sa dernière étoile tant que le plateau n'est pas au plafond</b> — parce
+      qu'un plateau qui monte d'un coup sans pouvoir en réserve, c'est une
+      partie finie.
+    </div>
+  </section>
+
+  <section>
+    <h2>Les sept personnages</h2>
+    <p class="sous">
+      Douze parties complètes par personnage, jouées de bout en bout par l'IA.
+      Un pouvoir n'est fort que si l'IA a une bonne raison de le sortir.
+    </p>
+    <div class="persos">
+      <div class="entete">
+        <span>Personnage</span><span>Pouvoir</span><span>Comparaison</span><span>Moyenne</span>
+      </div>
+      <div class="ligne">
+        <span class="nom">Sel</span>
+        <span class="pouvoir">Moïse · <b>2★</b></span>
+        <span class="piste">
+          <i class="reglure" style="left:53.8%"></i><i class="reglure" style="left:80.6%"></i>
+          <i class="barre" style="width:78.9%"></i><i class="best" style="left:96.9%"></i>
+        </span>
+        <span class="val">51 284</span>
+      </div>
+      <div class="ligne">
+        <span class="nom">Wasabi</span>
+        <span class="pouvoir">Glissement · <b>2★</b></span>
+        <span class="piste">
+          <i class="reglure" style="left:53.8%"></i><i class="reglure" style="left:80.6%"></i>
+          <i class="barre" style="width:71.7%"></i><i class="best" style="left:95.5%"></i>
+        </span>
+        <span class="val">46 596</span>
+      </div>
+      <div class="ligne">
+        <span class="nom">TomTom</span>
+        <span class="pouvoir">Ramollissement · <b>5★</b></span>
+        <span class="piste">
+          <i class="reglure" style="left:53.8%"></i><i class="reglure" style="left:80.6%"></i>
+          <i class="barre" style="width:69.2%"></i><i class="best" style="left:87.8%"></i>
+        </span>
+        <span class="val">45 001</span>
+      </div>
+      <div class="ligne">
+        <span class="nom">Poivre</span>
+        <span class="pouvoir">Combos classiques · <b>2★</b></span>
+        <span class="piste">
+          <i class="reglure" style="left:53.8%"></i><i class="reglure" style="left:80.6%"></i>
+          <i class="barre" style="width:68.4%"></i><i class="best" style="left:80.0%"></i>
+        </span>
+        <span class="val">44 433</span>
+      </div>
+      <div class="ligne">
+        <span class="nom">Dimitri</span>
+        <span class="pouvoir">Effondrement · <b>1★</b></span>
+        <span class="piste">
+          <i class="reglure" style="left:53.8%"></i><i class="reglure" style="left:80.6%"></i>
+          <i class="barre" style="width:68.2%"></i><i class="best" style="left:85.1%"></i>
+        </span>
+        <span class="val">44 338</span>
+      </div>
+      <div class="ligne">
+        <span class="nom">Moutarde</span>
+        <span class="pouvoir">Colorant E21 · <b>4★</b></span>
+        <span class="piste">
+          <i class="reglure" style="left:53.8%"></i><i class="reglure" style="left:80.6%"></i>
+          <i class="barre" style="width:66.5%"></i><i class="best" style="left:98.7%"></i>
+        </span>
+        <span class="val">43 208</span>
+      </div>
+      <div class="ligne">
+        <span class="nom">Natacha</span>
+        <span class="pouvoir">Coupure · <b>2★</b></span>
+        <span class="piste">
+          <i class="reglure" style="left:53.8%"></i><i class="reglure" style="left:80.6%"></i>
+          <i class="barre" style="width:66.1%"></i><i class="best" style="left:90.8%"></i>
+        </span>
+        <span class="val">42 982</span>
+      </div>
+      <div class="legende-piste">
+        <span></span><span class="vide2"></span>
+        <span class="marques">
+          <span style="left:53.8%">35 000 · bon score</span>
+          <span style="left:80.6%">52 400 · record humain</span>
+        </span>
+        <span></span>
+      </div>
+    </div>
+    <div class="cle">
+      <span><i></i> moyenne sur douze parties</span>
+      <span><i class="trait"></i> sa meilleure partie</span>
+      <span>Échelle de 0 à 65 000 points</span>
+    </div>
+
+    <div class="colonne" style="margin-top: 34px">
+      <h3>Ce qui distingue vraiment les pouvoirs</h3>
+      <p>
+        Un seul écart est net : <strong>Sel</strong> devance tout le monde d'un
+        bon cran. Les cinq suivants tiennent dans deux mille points, c'est-à-dire
+        dans la marge d'erreur — <em>ils se valent</em>. Voilà ce que chaque
+        pouvoir fait, en clair.
+      </p>
+      <p>
+        <span class="terme">Sel — Moïse.</span> Le seul pouvoir qui
+        <strong>retaille le plateau</strong> : les deux moitiés s'écartent, les
+        colonnes des bords tombent (jusqu'à vingt-huit fruits d'un coup) et deux
+        colonnes vides s'ouvrent au milieu. Les parties les plus longues, et de
+        loin les meilleurs scores.
+      </p>
+      <p>
+        <span class="terme">Wasabi — Glissement.</span> Rien n'est détruit : les
+        colonnes hautes donnent leur fruit du bas aux colonnes basses. Un
+        plateau <strong>nivelé</strong> ne meurt pas d'une colonne isolée et
+        garde ses combos. À sortir en prévention, dès que ça monte.
+      </p>
+      <p>
+        <span class="terme">Dimitri — Effondrement.</span> Une ligne effacée
+        pour une seule étoile : <strong>bon marché, donc jouable dix fois par
+        partie</strong>. C'est de l'oxygène, jamais un coup structurant.
+      </p>
+      <p>
+        <span class="terme">Natacha — Coupure.</span> Elle rabote les pics.
+        Redoutable sur un plateau plat et haut, <strong>presque inutile sur un
+        plateau bosselé</strong> — c'est ce qui la rend irrégulière.
+      </p>
+      <p>
+        <span class="terme">Poivre — Combos classiques.</span> Tous les groupes
+        de deux explosent d'un coup. Un grand nettoyage régulier, sans surprise.
+      </p>
+      <p>
+        <span class="terme">TomTom — Ramollissement.</span> Toute la glace se
+        fend d'un coup. Cinq étoiles, c'est très cher — mais quand le plateau
+        est couvert de glace, ça vaut une partie.
+      </p>
+      <p>
+        <span class="terme">Moutarde — Colorant E21.</span> Un pari : une couleur
+        entière se change en glace d'une autre couleur. C'est <strong>lui qui
+        signe la plus grosse partie de toute la série</strong> (64 180) et aussi
+        les plus mauvaises.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Ce qu'elle ne sait pas faire</h2>
+    <p class="sous">Pour lire ses conseils sans les prendre pour parole d'évangile.</p>
+    <ul class="limites">
+      <li>
+        <b>Elle ne voit qu'un tour à l'avance.</b>
+        <span>Une chaîne que vous montez patiemment en trois ou quatre coups lui
+        échappe : elle ne la verra qu'au dernier moment.</span>
+      </li>
+      <li>
+        <b>Elle ne connaît pas la ligne qui va monter.</b>
+        <span>Elle en imagine trois au hasard et fait la moyenne. Sur un coup
+        donné, elle peut se tromper simplement parce que la vraie ligne était
+        méchante.</span>
+      </li>
+      <li>
+        <b>Elle ne joue que le Challenge.</b>
+        <span>Ni le mode Classique, ni le Duel : les règles y sont différentes,
+        et son barème ne vaudrait rien.</span>
+      </li>
+      <li>
+        <b>Elle conseille, elle ne joue pas.</b>
+        <span>Le coup n'est joué que si vous appuyez sur le bouton
+        <em>Jouer</em>. Le reste du temps, elle se contente de montrer et
+        d'expliquer.</span>
+      </li>
+      <li>
+        <b>Elle n'est pas imbattable.</b>
+        <span>Sa moyenne est de 45 400 points et sa meilleure partie de 64 180 —
+        au-dessus du record humain, mais avec des parties à 28 000 quand la
+        chance tourne.</span>
+      </li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>
+      Les chiffres de cette page viennent de 84 parties complètes de Challenge,
+      jouées de bout en bout par l'IA dans le vrai moteur du jeu, douze par
+      personnage, avec un tirage aléatoire reproductible. L'écart entre deux
+      parties est grand — sept mille points d'écart-type — ce qui donne environ
+      deux mille points d'incertitude sur chaque moyenne du tableau.
+    </p>
+    <p>
+      Repères de comparaison : un bon score humain en Challenge tourne autour de
+      35 000 points, et le record absolu du parc est de 52 400.
+    </p>
+  </footer>
+
+</div>
+</body>
+</html>
