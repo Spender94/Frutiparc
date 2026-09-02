@@ -94,7 +94,7 @@ test('la mèche des bombes ne brûle plus derrière le voile', () => {
     'la mèche est derrière le garde-fou');
   assert.ok(f[0].indexOf('if (partie.pause) return;') < f[0].indexOf('this.particules.main(tmod);'),
     'les particules aussi');
-  assert.ok(f[0].indexOf('if (partie.pause) return;') < f[0].indexOf('for (const p of this.popups) p.main(deltaT);'),
+  assert.ok(f[0].indexOf('if (partie.pause) return;') < f[0].indexOf('p.main(deltaT);'),
     'et les bulles de points');
 });
 

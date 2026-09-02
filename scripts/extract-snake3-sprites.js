@@ -853,6 +853,10 @@ manifeste.notes.sons = affectations;
 
 fs.writeFileSync(path.join(SORTIE, 'sprites.json'), JSON.stringify(manifeste));
 console.log('manifeste écrit — clips :', Object.keys(manifeste.clips).length);
+// Les LOTS (lots/*.json, public/snake3/lots.js) sont bâtis sur ces fichiers :
+// ils se regénèrent après chaque extraction, sans quoi le client servirait
+// d'anciens dessins sous de nouveaux noms.
+console.log('→ regénérer les lots : node scripts/build-snake3-lots.js');
 
 // Le dossier de travail des formes brutes ne part pas au dépôt.
 fs.rmSync(path.join(SORTIE, '_formes'), { recursive: true, force: true });

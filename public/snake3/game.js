@@ -194,6 +194,59 @@ class Transition {
   }
 }
 
+/* ── LE DÉCOR DE L'ARÈNE, PEINT UNE FOIS ────────────────────────────────────
+ *
+ * Chaque image posait QUATRE pleins écrans : l'aplat du portail, celui de la
+ * scène, la bordure (700 × 480, opaque — elle recouvre l'aplat de la scène
+ * en entier) et le champ. Sur un téléphone le tampon fait deux millions de
+ * pixels : c'est huit millions de pixels remplis quarante fois par seconde,
+ * pour un décor qui ne change pas d'une image à l'autre.
+ *
+ * On le compose donc UNE FOIS, à la taille exacte du tampon, dans un canvas
+ * gardé — et chaque image n'en fait qu'une recopie, en pixels physiques,
+ * sans mise à l'échelle. Il se recompose quand le tampon change (taille,
+ * netteté) ou le terrain (le tableau du pack qui agrandit la scène).
+ */
+const fondArene = { c: null, cle: '' };
+function dessinerFondArene(ctx, jeu, niveau) {
+  const pf = D.manifeste.cadres.playField;
+  const bordure = D.rendreFichier('backgroundBord.svg', pf.bord, 1);
+  const champ = D.rendreFichier('backgroundField.svg', pf.champ, 1);
+  const cv = jeu.canvas;
+  const cle = cv.width + 'x' + cv.height + '@' + jeu.nettete + '/' + jeu.scene.w + 'x' + jeu.scene.h
+    + '/' + niveau.corner.x + ',' + niveau.corner.y + ',' + niveau.width + ',' + niveau.height;
+  if (fondArene.cle !== cle && bordure && champ && typeof document !== 'undefined') {
+    const c = fondArene.c || document.createElement('canvas');
+    c.width = cv.width;
+    c.height = cv.height;
+    const t = c.getContext('2d');
+    t.setTransform(jeu.nettete, 0, 0, jeu.nettete, 0, 0);
+    t.fillStyle = C.FOND_PORTAIL;
+    t.fillRect(0, 0, jeu.scene.w, jeu.scene.h);
+    t.fillStyle = C.FOND_SCENE;
+    t.fillRect(0, 0, C.WIDTH, C.HEIGHT);
+    t.drawImage(bordure.c, 0, 0, C.WIDTH, C.HEIGHT);
+    t.drawImage(champ.c, niveau.corner.x, niveau.corner.y, niveau.width, niveau.height);
+    fondArene.c = c;
+    fondArene.cle = cle;
+  }
+  if (fondArene.cle === cle) {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(fondArene.c, 0, 0);
+    ctx.restore();
+    return;
+  }
+  // Pas encore de quoi composer (dessins en cours de décodage, ou banc sans
+  // DOM) : le chemin image par image.
+  ctx.fillStyle = C.FOND_PORTAIL;
+  ctx.fillRect(0, 0, jeu.scene.w, jeu.scene.h);
+  ctx.fillStyle = C.FOND_SCENE;
+  ctx.fillRect(0, 0, C.WIDTH, C.HEIGHT);
+  if (bordure) ctx.drawImage(bordure.c, 0, 0, C.WIDTH, C.HEIGHT);
+  if (champ) ctx.drawImage(champ.c, niveau.corner.x, niveau.corner.y, niveau.width, niveau.height);
+}
+
 // ── La partie classique, côté écran (Game.as) ─────────────────────────────
 // `opts.tournoi` : la même partie, jouée sur la CARTE partagée (carte.js) —
 // les options tombent aux instants du script, le score part au classement
@@ -209,9 +262,11 @@ class VuePartie {
     this.serpentsNoirs = [];
     this.trouFx = null;
     this.filmsSlot = new Map();       // case → images écoulées sur son icône
+    this.image = 0;                   // le compteur d'images (les cases vues)
     this.ecran = null;                // l'écran par-dessus (sauvegarde, gameOver…)
     this.scoreMc = new D.Nombre('chiffresVert');
     this.finie = false;
+    this.peintToutLeFond = true;      // le décor composé inclut les deux aplats
 
     const sons = jeu.sons;
     sons.setVolume(C.CHANNEL_MUSIC_2, 0);
@@ -409,32 +464,41 @@ class VuePartie {
       e.main(deltaT);
       if (e.mort) this.enrobages.delete(e.objet);
     }
-    for (const b of this.bombes) {
+    // (Les listes se nettoient SUR PLACE : recopier trois tableaux et un
+    // ensemble à chaque image nourrissait le ramasse-miettes — dix pour cent
+    // du fil principal au profil, et ce sont ses pauses qu'on sent.)
+    for (let i = 0; i < this.bombes.length; i++) {
+      const b = this.bombes[i];
       // La mèche brûle pendant TIME_BOMBE (5 s) sur les premières images du
       // clip ; le souffle jaillit à l'explosion et joue jusqu'au bout.
       if (b.explose) {
         b.frame += deltaT * C.SWF_FPS;
-        if (b.frame > 22) b.mort = true;
+        if (b.frame > 22) { this.bombes.splice(i, 1); i--; }
       } else {
         b.meche -= deltaT;
       }
     }
-    this.bombes = this.bombes.filter((b) => !b.mort);
 
     // Les icônes de la rangée de cases : le clip est figé sur l'image de son
     // objet, mais le sous-clip dessus continue de jouer. Changer d'image le
     // recharge — la boucle repart alors de zéro, comme en Flash.
-    const vues = new Set();
-    for (const s of [...partie.slots, ...partie.unique_slots]) {
-      vues.add(s);
-      let e = this.filmsSlot.get(s);
-      if (!e || e.frame !== s.slotFrame) { e = { frame: s.slotFrame, t: 0 }; this.filmsSlot.set(s, e); }
+    const image = ++this.image;
+    const films = this.filmsSlot;
+    const avancer = (s) => {
+      let e = films.get(s);
+      if (!e || e.frame !== s.slotFrame) { e = { frame: s.slotFrame, t: 0, vu: 0 }; films.set(s, e); }
       e.t += deltaT * C.SWF_FPS;
-    }
-    for (const s of [...this.filmsSlot.keys()]) if (!vues.has(s)) this.filmsSlot.delete(s);
+      e.vu = image;
+    };
+    for (const s of partie.slots) avancer(s);
+    for (const s of partie.unique_slots) avancer(s);
+    for (const [s, e] of films) if (e.vu !== image) films.delete(s);
 
-    for (const p of this.popups) p.main(deltaT);
-    this.popups = this.popups.filter((p) => !p.mort);
+    for (let i = 0; i < this.popups.length; i++) {
+      const p = this.popups[i];
+      p.main(deltaT);
+      if (p.mort) { this.popups.splice(i, 1); i--; }
+    }
     this.particules.main(tmod);
     if (this.ecran) this.ecran.main(tmod);
   }
@@ -443,16 +507,10 @@ class VuePartie {
     const partie = this.partie;
     const jeu = this.jeu;
 
-    // Le décor : la bordure, puis le champ étiré au rectangle de jeu
-    // (Level.as : playField posé au coin, _width/_height au terrain).
-    const pf = D.manifeste.cadres.playField;
-    const bordure = D.rendreFichier('backgroundBord.svg', pf.bord, 1);
-    if (bordure) ctx.drawImage(bordure.c, 0, 0, C.WIDTH, C.HEIGHT);
-    const champ = D.rendreFichier('backgroundField.svg', pf.champ, 1);
-    if (champ) {
-      const n = partie.niveau;
-      ctx.drawImage(champ.c, n.corner.x, n.corner.y, n.width, n.height);
-    }
+    // Le décor : les deux aplats, la bordure, puis le champ étiré au rectangle
+    // de jeu (Level.as : playField posé au coin, _width/_height au terrain) —
+    // composés une fois, recopiés à chaque image.
+    dessinerFondArene(ctx, jeu, partie.niveau);
 
     // L'assistant de bombe du pack : l'empreinte du souffle, au sol, sous
     // tout le reste.
@@ -473,13 +531,14 @@ class VuePartie {
     }
 
     // La langue, si elle est sortie (PLAN_LANGUE — sous le serpent).
-    for (const s of [...partie.slots, ...partie.unique_slots]) {
-      if (s.langue) {
-        const l = s.langue;
-        // Le clip langue : la base s'étire en x (xscale %), le col au bout.
-        D.poser(ctx, 'langue', 1, l.x, l.y, l.xscale / 100, 1, l.ang);
-      }
-    }
+    const langue = (s) => {
+      if (!s.langue) return;
+      const l = s.langue;
+      // Le clip langue : la base s'étire en x (xscale %), le col au bout.
+      D.poser(ctx, 'langue', 1, l.x, l.y, l.xscale / 100, 1, l.ang);
+    };
+    for (const s of partie.slots) langue(s);
+    for (const s of partie.unique_slots) langue(s);
 
     // Les serpents noirs de la potion (PLAN_SNAKE).
     for (const s of this.serpentsNoirs) {
@@ -514,12 +573,13 @@ class VuePartie {
     this.dessinerFbarre(ctx, 10, C.HEIGHT - 10);
 
     // La rangée de cases (PLAN_SLOTS) : i·50+30, 30.
-    const rangee = [...partie.slots, ...partie.unique_slots];
-    for (const s of rangee) {
+    const caseDe = (s) => {
       const film = this.filmsSlot.get(s);
       D.poserAnim(ctx, 'slot', s.slotFrame, film ? film.t : 0, s.pos * 50 + 30, 30, 1, 1, 0);
       if (s.compteur != null) this.dessinerMunitions(ctx, s.pos * 50 + 30, 30, s.compteur);
-    }
+    };
+    for (const s of partie.slots) caseDe(s);
+    for (const s of partie.unique_slots) caseDe(s);
 
     // Les nombres qui sautent, puis l'écran éventuel (PLAN_DUMMIES dessus).
     for (const p of this.popups) p.dessiner(ctx);
@@ -602,6 +662,7 @@ class VueBataille {
     this.jeu = jeu;
     this.particules = new R.Particules(hasard);
     this.ecran = null;
+    this.peintToutLeFond = true;
     this.jeu.tmodForce = 1;           // Std.tmod = 1 « reset because slow menu »
 
     const sons = jeu.sons;
@@ -636,14 +697,7 @@ class VueBataille {
   dessiner(ctx) {
     const jeu = this.jeu;
     const b = this.bataille;
-    const pf = D.manifeste.cadres.playField;
-    const bordure = D.rendreFichier('backgroundBord.svg', pf.bord, 1);
-    if (bordure) ctx.drawImage(bordure.c, 0, 0, C.WIDTH, C.HEIGHT);
-    const champ = D.rendreFichier('backgroundField.svg', pf.champ, 1);
-    if (champ) {
-      const n = b.niveau;
-      ctx.drawImage(champ.c, n.corner.x, n.corner.y, n.width, n.height);
-    }
+    dessinerFondArene(ctx, jeu, b.niveau);
 
     const tous = [...b.serpents, ...b.destroys];
     for (const s of tous) {
@@ -835,9 +889,12 @@ class Jeu {
   }
 
   // Les dessins du mode visé sont-ils là ? Les menus n'attendent rien ;
-  // l'arène, la bataille et l'encyclopédie attendent DESSINS_JEU.
+  // l'arène et la bataille attendent DESSINS_JEU ; l'encyclopéfruit attend en
+  // plus son livre (le lot `encyclo`, chargé en fond après le reste).
   pretPour(i) {
-    return this.dessinsJeuPrets === true || MODES_MENU.indexOf(i) >= 0;
+    if (MODES_MENU.indexOf(i) >= 0) return true;
+    if (i === 4) return this.dessinsJeuPrets === true && this.encycloPret === true;
+    return this.dessinsJeuPrets === true;
   }
 
   poserModeSuivant(i) {
@@ -1058,13 +1115,19 @@ class Jeu {
   dessiner() {
     const ctx = this.ctx;
     ctx.setTransform(this.nettete, 0, 0, this.nettete, 0, 0);
-    ctx.fillStyle = C.FOND_PORTAIL;
-    ctx.fillRect(0, 0, this.scene.w, this.scene.h);
-    ctx.fillStyle = C.FOND_SCENE;
-    ctx.fillRect(0, 0, C.WIDTH, C.HEIGHT);
+    // Les deux aplats — sauf quand le mode peint lui-même tout le décor
+    // (l'arène, la bataille : leur fond composé les porte déjà, cf.
+    // dessinerFondArene). Pendant un fondu, c'est la transition qui est le
+    // mode : les aplats se posent, et le rideau découpe par-dessus.
+    if (!(this.mode && this.mode.peintToutLeFond)) {
+      ctx.fillStyle = C.FOND_PORTAIL;
+      ctx.fillRect(0, 0, this.scene.w, this.scene.h);
+      ctx.fillStyle = C.FOND_SCENE;
+      ctx.fillRect(0, 0, C.WIDTH, C.HEIGHT);
+    }
     if (this.mode && this.mode.dessiner) this.mode.dessiner(ctx);
     this.cadreScene(ctx);
-    if (this.pack) this.pack.dessiner(ctx, this.releve());
+    if (this.pack) this.pack.dessiner(ctx, this.releve(), this.nettete);
   }
 
   // Le caractère 697 du SWF : un anneau blanc de deux points autour de la
@@ -1133,7 +1196,21 @@ class Jeu {
 const DESSINS_MENU = ['menu', 'title', 'menuBackground', 'fleche', 'optionPanel',
   'pan', 'background', 'snakeMask', 'barSide', 'barMid', 'fbarre', 'barreScore',
   'slot'];
-const DESSINS_JEU = ['screens', 'screensSans', 'fruits', 'options', 'tete',
+/* ── NE CHARGER QUE CE QUI SERT ─────────────────────────────────────────────
+ *
+ * Les deux planches d'écrans font cent quarante fichiers, dont SIX sont jamais
+ * affichés (ECRANS : la pause vient de `screens`, le reste de `screensSans`).
+ * La planche des fruits en fait quatre cent vingt-neuf, et le Challenge tire
+ * ses premiers fruits dans 1..FRUIT_BASE (60) — les suivants viennent à mesure
+ * que la frutibarre monte, plus les pourris (321..342). Le rideau n'attend donc
+ * que ceux-là ; les autres arrivent derrière (le lot `fruits2`), bien avant
+ * que la barre ne les appelle.
+ */
+const FRUITS_DEPART = [];
+for (let i = 1; i <= C.FRUIT_BASE; i++) FRUITS_DEPART.push(i);
+for (let i = 321; i <= 321 + C.FRUIT_POURRIS_MAX; i++) FRUITS_DEPART.push(i);
+const DESSINS_JEU = [['screens', [ECRANS.pause]], ['screensSans', Object.values(ECRANS)],
+  ['fruits', FRUITS_DEPART], 'options', 'tete',
   'chiffresVert', 'chiffresRouge', 'chiffresJaune', 'qparticule', 'bombe',
   'sonnette', 'langue', 'trou', 'beurk'];
 // Les modes qui n'ont besoin QUE du menu : l'accueil, les options, le sous-menu
@@ -1154,8 +1231,12 @@ window.demarrerFrutisnake = function (options) {
     const jeu = new Jeu(canvas, plateforme, sons);
     jeu.appliquerPrefs();
     if (opts.pad) jeu.pad = opts.pad;
-    // On n'attend QUE le menu (75 fichiers) ; l'arène part en fond.
-    return D.precharger(DESSINS_MENU).then(() => {
+    // On n'attend QUE le menu — son lot (une requête), puis ses images ;
+    // l'arène part en fond.
+    return D.chargerLot('menu').then(() => D.precharger(DESSINS_MENU)).then(() => {
+      // Les sons partent maintenant : ils ne font plus la queue devant les
+      // dessins du menu (le premier geste les demande aussi, au cas où).
+      sons.charger();
       /*
        * L'ARÈNE ET L'ENCYCLOPÉFRUIT ARRIVENT DERRIÈRE.
        *
@@ -1164,13 +1245,19 @@ window.demarrerFrutisnake = function (options) {
        * là (cf. `Jeu.pretPour`). Le joueur ne voit donc jamais une arène
        * amputée — au pire un rideau qui s'attarde une fraction de seconde,
        * et seulement s'il se rue sur « jouer ».
+       *
+       * Puis, l'un après l'autre pour ne pas se disputer le réseau : les
+       * fruits tardifs, les suites d'animation (fioles, ciseaux — elles ne
+       * servent qu'aux objets réellement posés, l'image figée tient la place
+       * en attendant), et le livre de l'encyclopéfruit.
        */
-      jeu.pretJeu = D.precharger(DESSINS_JEU).then(() => {
+      jeu.pretJeu = D.chargerLot('arene').then(() => D.precharger(DESSINS_JEU)).then(() => {
         jeu.dessinsJeuPrets = true;
-        // Les suites d'animation (fioles, ciseaux) : elles ne servent qu'aux
-        // objets réellement posés et se décodent d'elles-mêmes au besoin.
+        return D.chargerLot('fruits2');
+      }).then(() => D.chargerLot('suites')).then(() => {
         D.amorcerAnimations(['options', 'slot']);
-      });
+        return D.chargerLot('encyclo');
+      }).then(() => { jeu.encycloPret = true; });
       jeu.demarrer();
       window.__frutisnake = jeu;      // la poignée des tests de bout en bout
       return jeu;

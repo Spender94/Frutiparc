@@ -20,7 +20,17 @@ const C = sousNode ? require('./const.js') : racine.SnakeConst;
 const D = sousNode ? require('./dessin.js') : racine.SnakeDessin;
 const B = sousNode ? require('./bonus.js') : racine.SnakeBonus;
 
-const rgb = (n) => '#' + (n & 0xFFFFFF).toString(16).padStart(6, '0');
+// La couleur en texte CSS — mise en cache : rebâtir la chaîne à chaque
+// segment et chaque image nourrissait le ramasse-miettes pour rien.
+const couleursCss = new Map();
+const rgb = (n) => {
+  let s = couleursCss.get(n);
+  if (s === undefined) {
+    s = '#' + (n & 0xFFFFFF).toString(16).padStart(6, '0');
+    couleursCss.set(n, s);
+  }
+  return s;
+};
 
 // Les échelles de l'enfant `f` des clips snake3_fruit (451) et snake3_bonus
 // (450), image par image — lues dans le SWF (PlaceObject2, a=d uniformes).
@@ -178,81 +188,262 @@ function pointFile(q, k, delta) {
  * tangente des voisins : le trait suit donc exactement les points que la tête
  * a semés, sans cassure nulle part, joints compris. Le serpent ne bouge pas
  * d'un pouce là où il allait droit ; en virage, il suit sa propre trace.
+ *
+ * ── ET EN DEUX REMPLISSAGES, PAS EN 2·len TRAITS ──────────────────────────
+ *
+ * Mesuré au banc (scratchpad, rendu logiciel, échelle 2) : à soixante
+ * segments, ces deux passes de traits épais à bouts ronds coûtaient DIX
+ * MILLISECONDES par image sur un ordinateur de bureau — cinq à dix fois plus
+ * sur un téléphone — quand tout le reste de l'image en coûtait 0,06. Le
+ * serpent était tout le coût : cent vingt tracés de courbes larges, dont
+ * chacun oblige le moteur de dessin à calculer le contour du trait puis à le
+ * remplir, tous les vingt-cinquièmes de seconde. C'est la « lenteur » de fin
+ * de partie, quand le corps est long.
+ *
+ * Un trait épais à bouts ronds n'est pourtant qu'un tube. On le construit
+ * donc DIRECTEMENT : pour chaque point de file, le point décalé à gauche et le
+ * point décalé à droite de la demi-largeur du segment, le long de la normale
+ * de la courbe (celle-là même que les cubiques prennent chez les voisins) ; un
+ * demi-disque à chaque bout ; et l'on remplit ce contour d'un coup. Deux
+ * remplissages — la bordure, puis le corps — au lieu de cent vingt traits.
+ * Mêmes largeurs aux mêmes points, mêmes bouts ronds, même tube ; là où les
+ * traits du fichier se recouvrent (le serpent qui se croise), les deux passes
+ * entières donnaient déjà le même aplat que deux remplissages.
+ *
+ * Ce que le remplissage ne sait pas faire seul reste au trait, tel quel :
+ *   · la pointe de la queue qui S'EFFACE (potion verte, alpha_val < 100) :
+ *     ce segment-là est tracé à part, avec son alpha ;
+ *   · le CURSEUR des ciseaux (color_qpos) : son segment est retracé par-dessus
+ *     dans sa couleur ;
+ *   · le GONDOLEMENT de la potion violette (distort), qui décale chaque
+ *     segment d'un delta propre — les traits du fichier, le temps qu'il dure.
  */
 function dessinerSerpent(ctx, s, tmod, temps) {
   if (s.len <= 0 || s.queue.length === 0) return;
-  const scale = Math.min(10, s.len + 3) / 10;
   // Snake.draw pose `time` avant de tracer ; on note aussi la branche choisie.
   // C'est cette forme-là que le hitTest du corps interrogera (toucheLeCorps).
   s.time = temps;
   s.tmod_dessin = tmod;
 
-  const passe = (couleur, lsize) => {
-    const q = s.queue;
-    let n = q.length - 1;
-    let p = q[n];
-    const ss = scale * 15 / s.len;
-    const eatFlag = s.eat > 0;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    let px = p.x, py = p.y;
-    if (tmod < 1.7) {
-      for (let i = s.len; i > 0; i--) {
-        const qf = eatFlag ? Math.max(1, 2 - (i - s.eat) * (i - s.eat) / 2) : 1;
-        const c = (i === s.color_qpos) ? s.color_val : couleur;
-        const a = (i === 1) ? s.alpha_val : 100;
-        const delta = s.distort
-          ? Math.cos(i + temps) * Math.min(6, s.len - i) * s.distort_val : 0;
-        ctx.beginPath();
-        ctx.moveTo(px, py);
-        ctx.lineWidth = i * ss * qf + lsize;
-        ctx.strokeStyle = rgb(c);
-        ctx.globalAlpha = Math.max(0, a / 100);
-        // Une cubique par POINT DE FILE, tangente donnée par les voisins.
-        let av = pointFile(q, n + 1, delta);
-        let ici = { x: px, y: py };
-        for (let j = 1; j <= 5; j++) {
-          const suiv = pointFile(q, n - j, delta);
-          const apres = pointFile(q, n - j - 1, delta);
-          ctx.bezierCurveTo(
-            ici.x + (suiv.x - av.x) / 6, ici.y + (suiv.y - av.y) / 6,
-            suiv.x - (apres.x - ici.x) / 6, suiv.y - (apres.y - ici.y) / 6,
-            suiv.x, suiv.y);
-          av = ici; ici = suiv;
-        }
-        px = ici.x; py = ici.y;
-        ctx.stroke();
-        n -= 5;
-      }
-    } else {
-      // La voie rapide du fichier quand la machine peine : des segments.
-      for (let i = s.len; i > 0; i--) {
-        n -= 5;
-        p = q[Math.max(0, n)];
-        const qf = eatFlag ? Math.max(1, 2 - (i - s.eat) * (i - s.eat) / 2) : 1;
-        const c = (i === s.color_qpos) ? s.color_val : couleur;
-        const a = (i === 1) ? s.alpha_val : 100;
-        ctx.beginPath();
-        ctx.moveTo(px, py);
-        ctx.lineWidth = i * ss * qf + lsize;
-        ctx.strokeStyle = rgb(c);
-        ctx.globalAlpha = Math.max(0, a / 100);
-        if (s.distort) {
-          const delta = Math.cos(i + temps) * Math.min(6, s.len - i) * s.distort_val;
-          ctx.lineTo(p.x + delta, p.y - delta);
-          px = p.x + delta; py = p.y - delta;
-        } else {
-          ctx.lineTo(p.x, p.y);
-          px = p.x; py = p.y;
-        }
-        ctx.stroke();
-      }
-    }
-    ctx.globalAlpha = 1;
-  };
+  if (s.distort) {
+    passeTraits(ctx, s, s.border_color, 8, tmod, temps);
+    passeTraits(ctx, s, s.color, 5, tmod, temps);
+    return;
+  }
 
-  passe(s.border_color, 8);
-  passe(s.color, 5);
+  const courbe = tmod < 1.7;
+  const queueAPart = s.alpha_val < 100;
+  // Les segments du tube : de la tête (len) à `derniere` — 2 quand la pointe
+  // s'efface à part, 1 sinon.
+  const derniere = (queueAPart && s.len > 1) ? 2 : 1;
+  const geo = geometrieCorps(s, derniere);
+  ctx.globalAlpha = 1;
+  remplirTube(ctx, geo, rgb(s.border_color), 8);
+  remplirTube(ctx, geo, rgb(s.color), 5);
+
+  const q = s.queue;
+  const n0 = q.length - 1;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (queueAPart) {
+    // Le segment 1 (la pointe), avec son alpha — ses deux passes, comme dans
+    // le fichier. Quand il est seul (len 1), c'est tout le serpent.
+    const n = n0 - 5 * (s.len - 1);
+    ctx.globalAlpha = Math.max(0, s.alpha_val / 100);
+    tracerSegment(ctx, q, n, courbe);
+    ctx.lineWidth = geo.largeur(1) + 8;
+    ctx.strokeStyle = rgb(s.border_color);
+    ctx.stroke();
+    ctx.lineWidth = geo.largeur(1) + 5;
+    ctx.strokeStyle = rgb(s.color);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  if (s.color_qpos > 0 && s.color_qpos <= s.len) {
+    // Le curseur des ciseaux : les deux passes du fichier le peignent de la
+    // même couleur, la bordure (la plus large) décide de la forme.
+    const i = s.color_qpos;
+    tracerSegment(ctx, q, n0 - 5 * (s.len - i), courbe);
+    ctx.lineWidth = geo.largeur(i) + 8;
+    ctx.strokeStyle = rgb(s.color_val);
+    ctx.stroke();
+  }
+}
+
+// Le trait d'UN segment de corps, tel que le fichier le trace (moins le
+// gondolement) : cinq cubiques de Catmull-Rom, une par point de file, la
+// tangente donnée par les voisins — ou une corde droite quand la machine
+// peine (tmod ≥ 1,7, la voie rapide du fichier).
+function tracerSegment(ctx, q, n, courbe) {
+  const p0 = pointFile(q, n, 0);
+  ctx.beginPath();
+  ctx.moveTo(p0.x, p0.y);
+  if (!courbe) {
+    const p1 = pointFile(q, n - 5, 0);
+    ctx.lineTo(p1.x, p1.y);
+    return;
+  }
+  let av = pointFile(q, n + 1, 0);
+  let ici = p0;
+  for (let j = 1; j <= 5; j++) {
+    const suiv = pointFile(q, n - j, 0);
+    const apres = pointFile(q, n - j - 1, 0);
+    ctx.bezierCurveTo(
+      ici.x + (suiv.x - av.x) / 6, ici.y + (suiv.y - av.y) / 6,
+      suiv.x - (apres.x - ici.x) / 6, suiv.y - (apres.y - ici.y) / 6,
+      suiv.x, suiv.y);
+    av = ici; ici = suiv;
+  }
+}
+
+/* La géométrie du tube : un point par point de file, de la tête (j = 0) au
+ * bout du segment `derniere` (j = M), sa normale, et la part VARIABLE de la
+ * largeur du segment qui le porte (i·s·q — la bordure ajoute 8, le corps 5).
+ * Aux joints, c'est le plus large des deux segments qui gagne, comme le bout
+ * rond du trait le plus épais recouvrait l'autre. Les tampons sont réutilisés
+ * d'une image à l'autre : rien n'est alloué en régime de croisière. */
+const geo = {
+  M: 0, x: new Float64Array(64), y: new Float64Array(64),
+  nx: new Float64Array(64), ny: new Float64Array(64), base: new Float64Array(64),
+  ss: 0, eat: 0, eatFlag: false,
+  largeur(i) {
+    const qf = this.eatFlag ? Math.max(1, 2 - (i - this.eat) * (i - this.eat) / 2) : 1;
+    return i * this.ss * qf;
+  },
+};
+function geometrieCorps(s, derniere) {
+  const q = s.queue;
+  const n0 = q.length - 1;
+  const segments = s.len - derniere + 1;
+  const M = 5 * segments;
+  if (geo.x.length < M + 1) {
+    const n = Math.max(M + 1, geo.x.length * 2);
+    geo.x = new Float64Array(n); geo.y = new Float64Array(n);
+    geo.nx = new Float64Array(n); geo.ny = new Float64Array(n); geo.base = new Float64Array(n);
+  }
+  geo.M = M;
+  geo.ss = Math.min(10, s.len + 3) / 10 * 15 / s.len;
+  geo.eat = s.eat;
+  geo.eatFlag = s.eat > 0;
+  const x = geo.x, y = geo.y, nx = geo.nx, ny = geo.ny, base = geo.base;
+  for (let j = 0; j <= M; j++) {
+    const k = n0 - j;
+    const p = q[k < 0 ? 0 : k];
+    x[j] = p.x; y[j] = p.y;
+    // Le segment qui porte le point : len pour j = 0, puis un de moins tous
+    // les cinq points ; aux joints, le plus large des deux.
+    const fin = j === 0 ? s.len : s.len - Math.ceil(j / 5) + 1;
+    let b = geo.largeur(fin);
+    if (j > 0 && j % 5 === 0 && fin - 1 >= derniere) b = Math.max(b, geo.largeur(fin - 1));
+    base[j] = b;
+  }
+  // Les normales : la tangente de chaque point est celle des cubiques du
+  // trait — la corde entre ses deux voisins. Là où la file se répète (elle
+  // est bornée à son premier point), on garde la normale précédente.
+  let pnx = 1, pny = 0;
+  for (let j = 0; j <= M; j++) {
+    const a = j > 0 ? j - 1 : 0, b = j < M ? j + 1 : M;
+    const tx = x[a] - x[b], ty = y[a] - y[b];     // vers la tête
+    const l = Math.sqrt(tx * tx + ty * ty);
+    if (l > 1e-6) { pnx = -ty / l; pny = tx / l; }
+    nx[j] = pnx; ny[j] = pny;
+  }
+  return geo;
+}
+
+// Le contour du tube, rempli : le flanc gauche de la tête à la queue, le
+// demi-disque de la queue, le flanc droit de la queue à la tête, le
+// demi-disque de la tête.
+function remplirTube(ctx, g, couleur, lsize) {
+  const M = g.M;
+  const x = g.x, y = g.y, nx = g.nx, ny = g.ny, base = g.base;
+  ctx.fillStyle = couleur;
+  ctx.beginPath();
+  for (let j = 0; j <= M; j++) {
+    const r = (base[j] + lsize) / 2;
+    if (j === 0) ctx.moveTo(x[0] + nx[0] * r, y[0] + ny[0] * r);
+    else ctx.lineTo(x[j] + nx[j] * r, y[j] + ny[j] * r);
+  }
+  // La normale est le quart de tour de la tangente (qui pointe vers la
+  // tête) : de +N, un demi-tour d'angle passe par −T — le bout de la queue.
+  const rq = (base[M] + lsize) / 2, aq = Math.atan2(ny[M], nx[M]);
+  ctx.arc(x[M], y[M], rq, aq, aq + Math.PI, false);
+  for (let j = M - 1; j >= 0; j--) {
+    const r = (base[j] + lsize) / 2;
+    ctx.lineTo(x[j] - nx[j] * r, y[j] - ny[j] * r);
+  }
+  const rt = (base[0] + lsize) / 2, at = Math.atan2(ny[0], nx[0]);
+  ctx.arc(x[0], y[0], rt, at + Math.PI, at + 2 * Math.PI, false);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Les deux passes de traits du fichier, segment par segment — gardées pour le
+// gondolement de la potion violette, qui décale chaque segment d'un delta
+// propre (les bouts ronds comblent les écarts entre segments voisins).
+function passeTraits(ctx, s, couleur, lsize, tmod, temps) {
+  const scale = Math.min(10, s.len + 3) / 10;
+  const q = s.queue;
+  let n = q.length - 1;
+  let p = q[n];
+  const ss = scale * 15 / s.len;
+  const eatFlag = s.eat > 0;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  let px = p.x, py = p.y;
+  if (tmod < 1.7) {
+    for (let i = s.len; i > 0; i--) {
+      const qf = eatFlag ? Math.max(1, 2 - (i - s.eat) * (i - s.eat) / 2) : 1;
+      const c = (i === s.color_qpos) ? s.color_val : couleur;
+      const a = (i === 1) ? s.alpha_val : 100;
+      const delta = s.distort
+        ? Math.cos(i + temps) * Math.min(6, s.len - i) * s.distort_val : 0;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineWidth = i * ss * qf + lsize;
+      ctx.strokeStyle = rgb(c);
+      ctx.globalAlpha = Math.max(0, a / 100);
+      // Une cubique par POINT DE FILE, tangente donnée par les voisins.
+      let av = pointFile(q, n + 1, delta);
+      let ici = { x: px, y: py };
+      for (let j = 1; j <= 5; j++) {
+        const suiv = pointFile(q, n - j, delta);
+        const apres = pointFile(q, n - j - 1, delta);
+        ctx.bezierCurveTo(
+          ici.x + (suiv.x - av.x) / 6, ici.y + (suiv.y - av.y) / 6,
+          suiv.x - (apres.x - ici.x) / 6, suiv.y - (apres.y - ici.y) / 6,
+          suiv.x, suiv.y);
+        av = ici; ici = suiv;
+      }
+      px = ici.x; py = ici.y;
+      ctx.stroke();
+      n -= 5;
+    }
+  } else {
+    // La voie rapide du fichier quand la machine peine : des segments.
+    for (let i = s.len; i > 0; i--) {
+      n -= 5;
+      p = q[Math.max(0, n)];
+      const qf = eatFlag ? Math.max(1, 2 - (i - s.eat) * (i - s.eat) / 2) : 1;
+      const c = (i === s.color_qpos) ? s.color_val : couleur;
+      const a = (i === 1) ? s.alpha_val : 100;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineWidth = i * ss * qf + lsize;
+      ctx.strokeStyle = rgb(c);
+      ctx.globalAlpha = Math.max(0, a / 100);
+      if (s.distort) {
+        const delta = Math.cos(i + temps) * Math.min(6, s.len - i) * s.distort_val;
+        ctx.lineTo(p.x + delta, p.y - delta);
+        px = p.x + delta; py = p.y - delta;
+      } else {
+        ctx.lineTo(p.x, p.y);
+        px = p.x; py = p.y;
+      }
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
 }
 
 // La tête : image du clip `tete` (1 verte, 2 grise invincible, 3 noire,
@@ -497,6 +688,7 @@ function dessinerQueueCondamnee(ctx, serpent, bombes) {
 
 const API = {
   rgb, PopupPoints, Particules, dessinerSerpent, dessinerTete,
+  geometrieCorps, remplirTube, tracerSegment, passeTraits,
   Enrobage, dessinerEnrobe, teinter,
   dangerBombe, dessinerZoneBombe, dessinerQueueCondamnee, ASSIST,
   ECHELLES_FRUIT, ECHELLES_BONUS,

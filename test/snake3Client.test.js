@@ -89,9 +89,10 @@ test('les clips de l\'ARÈNE sont préchargés (sinon le premier effet est perdu
   // LE RIDEAU TIENT. Sans cette garde, le mode s'ouvrirait sur des dessins
   // absents — le défaut qu'on voulait éviter, déplacé d'un cran.
   assert.match(src, /if \(!this\.jeu\.pretPour\(this\.jeu\.next_mode\)\) \{ this\.taille = 0; return; \}/);
-  assert.match(src, /pretPour\(i\) \{\s*\n\s*return this\.dessinsJeuPrets === true \|\| MODES_MENU\.indexOf\(i\) >= 0;/);
+  assert.match(src, /pretPour\(i\) \{\s*\n\s*if \(MODES_MENU\.indexOf\(i\) >= 0\) return true;\s*\n\s*if \(i === 4\) return this\.dessinsJeuPrets === true && this\.encycloPret === true;\s*\n\s*return this\.dessinsJeuPrets === true;/);
   assert.match(src, /const MODES_MENU = \[0, 3, 5\];/);
-  assert.match(src, /jeu\.pretJeu = D\.precharger\(DESSINS_JEU\)\.then/);
+  // L'arène arrive par son LOT (une requête), puis ses images sont attendues.
+  assert.match(src, /jeu\.pretJeu = D\.chargerLot\('arene'\)\.then\(\(\) => D\.precharger\(DESSINS_JEU\)\)\.then/);
 });
 
 test('les mesures du moteur et des vues sont là', () => {

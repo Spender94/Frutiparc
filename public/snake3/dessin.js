@@ -27,9 +27,71 @@ const rendus = new Map();             // fichier@k → { c, dx, dy, lw, lh }
 let DENSITE = 1;                      // pixels physiques par pixel logique (1..4)
 
 function chargerManifeste() {
-  return fetch(BASE + 'sprites.json')
+  // Le manifeste versionné par lots.js (sprites.json?v=empreinte) : le
+  // dossier des sprites est servi avec un cache long, un manifeste regénéré
+  // doit changer d'adresse pour être revu.
+  const L = racine.SnakeLots;
+  return fetch(BASE + ((L && L.manifeste) || 'sprites.json'))
     .then((r) => r.json())
     .then((m) => { manifeste = m; return m; });
+}
+
+/* ── LES LOTS (scripts/build-snake3-lots.js) ────────────────────────────────
+ *
+ * Le jeu est fait de 1 247 fichiers SVG que le client chargeait UN PAR UN : à
+ * six connexions et quarante millisecondes d'aller-retour, l'arène mettait
+ * huit secondes et demie à venir la première fois, quatorze au téléphone —
+ * le temps du NOMBRE de requêtes, pas du poids (577 ko sur le fil).
+ *
+ * Un lot est un JSON { fichier → texte SVG } : une requête au lieu de
+ * centaines. Chaque texte devient une Image par un blob — le même objet, dans
+ * le même registre, que si le fichier était venu du réseau : rendreFichier ne
+ * voit pas la différence. Les images se créent par paquets de quarante entre
+ * deux tours de boucle, pour que le menu reste vif pendant que l'arène se
+ * décode derrière lui.
+ *
+ * Sans lots.js — ou si un lot manque, ou si un fichier n'est dans aucun lot —
+ * image() va chercher le fichier comme avant : rien ne casse, c'est seulement
+ * plus lent.
+ */
+const lots = new Map();               // nom → Promise<bool>
+function chargerLot(nom) {
+  const L = racine.SnakeLots;
+  if (!L || !L.lots || !L.lots[nom] || typeof fetch === 'undefined') return Promise.resolve(false);
+  if (lots.has(nom)) return lots.get(nom);
+  const pr = fetch(BASE + L.lots[nom])
+    .then((r) => (r.ok ? r.json() : null))
+    .then((lot) => (lot ? poserLot(lot) : false))
+    .catch(() => false);
+  lots.set(nom, pr);
+  return pr;
+}
+
+function poserLot(lot) {
+  if (typeof Image === 'undefined' || typeof Blob === 'undefined'
+    || typeof URL === 'undefined' || !URL.createObjectURL) return Promise.resolve(false);
+  const noms = Object.keys(lot).filter((f) => !images.has(f));
+  return new Promise((resoudre) => {
+    let i = 0, restants = 0, fini = false;
+    const un = () => { restants--; if (fini && restants === 0) resoudre(true); };
+    const paquet = () => {
+      const fin = Math.min(noms.length, i + 40);
+      for (; i < fin; i++) {
+        const f = noms[i];
+        const im = new Image();
+        const url = URL.createObjectURL(new Blob([lot[f]], { type: 'image/svg+xml' }));
+        restants++;
+        const fait = () => { URL.revokeObjectURL(url); un(); };
+        im.addEventListener('load', fait);
+        im.addEventListener('error', fait);
+        im.src = url;
+        images.set(f, im);
+      }
+      if (i < noms.length) setTimeout(paquet, 0);
+      else { fini = true; if (restants === 0) resoudre(true); }
+    };
+    paquet();
+  });
 }
 
 // Pour les tests sous Node : injecter le manifeste sans fetch ni DOM.
@@ -48,18 +110,28 @@ function image(fichier) {
   return im;
 }
 
-// Précharge les images d'un jeu de clés (avant d'ouvrir le jeu). Les SUITES
-// d'animation (voir plus bas) restent en dehors : elles pèsent le double du
-// reste et ne servent qu'aux objets réellement posés — elles se décodent au
-// premier besoin, l'image figée tenant la place en attendant.
+// Précharge les images d'un jeu de clés (avant d'ouvrir le jeu). Une entrée
+// est une clé — toutes ses images — ou [clé, [images]] pour n'attendre que
+// celles-là (les six écrans affichés sur cent quarante, les soixante premiers
+// fruits). Les SUITES d'animation (voir plus bas) restent en dehors : elles
+// pèsent le double du reste et ne servent qu'aux objets réellement posés —
+// elles se décodent au premier besoin, l'image figée tenant la place.
 function precharger(cles) {
   const promesses = [];
-  for (const cle of cles) {
+  for (const entree of cles) {
+    const cle = Array.isArray(entree) ? entree[0] : entree;
+    const seules = Array.isArray(entree) ? new Set(entree[1]) : null;
     const clip = manifeste.clips[cle];
     if (!clip) continue;
-    for (const f of Object.values(clip.frames)) {
+    for (const [n, f] of Object.entries(clip.frames)) {
+      if (seules && !seules.has(Number(n))) continue;
       const im = image(f.fichier);
-      if (!im.complete) promesses.push(new Promise((res) => { im.onload = res; im.onerror = res; }));
+      if (!im.complete) {
+        promesses.push(new Promise((res) => {
+          im.addEventListener('load', res);
+          im.addEventListener('error', res);
+        }));
+      }
     }
   }
   return Promise.all(promesses);
@@ -88,15 +160,46 @@ function rendre(cle, frame, k) {
   return rendreFichier(f.fichier, f.cadre, k);
 }
 
-function rendreFichier(fichier, cadre, k) {
-  k = k || 1;
-  const clefK = Math.max(0.05, Math.round(k * 20) / 20);
-  const clef = fichier + '@' + clefK;
-  let r = rendus.get(clef);
-  if (r) return r;
+/* ── LES PALIERS DE RASTERISATION ──────────────────────────────────────────
+ *
+ * On rasterisait une fois par VINGTIÈME d'échelle demandée. Or un fruit qui
+ * apparaît passe par vingt-trois échelles (son clip d'enrobage rebondit de
+ * 0,1 à 1,2 avant de se poser, puis s'efface en huit pas) : vingt-trois
+ * peintures du SVG sur le fil principal, vingt-trois canvas gardés — pour un
+ * seul fruit, sans compter son ombre teintée. Trois cents fruits, trente-sept
+ * options : la mémoire montait par dizaines de mégaoctets au fil d'une partie,
+ * et chaque apparition coûtait sa rafale de peintures.
+ *
+ * On rasterise par PALIER — une, deux ou quatre fois la taille du SWF, à la
+ * densité de l'écran — et c'est le contexte qui met à l'échelle : au plus
+ * trois tampons par dessin, un seul dans la vie ordinaire d'un fruit. Réduire
+ * un tampon net ne se voit pas ; l'agrandir d'un quart, le temps d'un rebond,
+ * non plus. Les GRANDS dessins (écrans, pages, fonds : plus de 300 pixels)
+ * restent au palier 1 — un écran à 1,1 (le rebond d'entrée) tiré d'un tampon
+ * double ferait trente mégaoctets pour trois images.
+ */
+function palier(k, im) {
+  if (k <= 1.25) return 1;
+  if (im.naturalWidth * DENSITE > 300 || im.naturalHeight * DENSITE > 300) return 1;
+  return k <= 2.5 ? 2 : 4;
+}
+
+// L'image et la clef de cache d'un fichier à l'échelle k — null tant que
+// l'image n'est pas décodée.
+function clefRaster(fichier, k) {
   const im = image(fichier);
   if (!im.complete || !im.naturalWidth) return null;
-  const kd = clefK * DENSITE;
+  const kp = palier(k || 1, im);
+  return { im, kp, clef: fichier + '@' + kp };
+}
+
+function rendreFichier(fichier, cadre, k) {
+  const cr = clefRaster(fichier, k);
+  if (!cr) return null;
+  let r = rendus.get(cr.clef);
+  if (r) return r;
+  const im = cr.im;
+  const kd = cr.kp * DENSITE;
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.ceil(im.naturalWidth * kd));
   c.height = Math.max(1, Math.ceil(im.naturalHeight * kd));
@@ -105,10 +208,10 @@ function rendreFichier(fichier, cadre, k) {
     c,
     dx: cadre.x,
     dy: cadre.y,
-    lw: c.width / DENSITE / clefK,
-    lh: c.height / DENSITE / clefK,
+    lw: c.width / DENSITE / cr.kp,
+    lh: c.height / DENSITE / cr.kp,
   };
-  rendus.set(clef, r);
+  rendus.set(cr.clef, r);
   return r;
 }
 
@@ -172,7 +275,7 @@ function rendreAnim(cle, frame, tick, k) {
 function rendreTeinteFichier(fichier, cadre, k, couleur) {
   const base = rendreFichier(fichier, cadre, k);
   if (!base) return null;
-  const clef = fichier + '@' + Math.max(0.05, Math.round((k || 1) * 20) / 20) + '/' + couleur;
+  const clef = clefRaster(fichier, k).clef + '/' + couleur;
   let r = rendus.get(clef);
   if (r) return r;
   const c = document.createElement('canvas');
@@ -211,7 +314,8 @@ function rendreMultiplie(cle, frame, k, mr, mv, mb) {
   if (mr === 1 && mv === 1 && mb === 1) return rendre(cle, frame, k);
   const base = rendre(cle, frame, k);
   if (!base) return null;
-  const clef = cle + '#' + frame + '@' + k + '*' + mr + ',' + mv + ',' + mb;
+  const f = manifeste.clips[cle].frames[frame] || manifeste.clips[cle].frames[1];
+  const clef = clefRaster(f.fichier, k).clef + '*' + mr + ',' + mv + ',' + mb;
   let r = rendus.get(clef);
   if (r) return r;
   const c = document.createElement('canvas');
@@ -349,7 +453,7 @@ class Nombre {
 }
 
 const API = {
-  chargerManifeste, poserManifeste, precharger, poserDensite, cadre, rendre, rendreFichier,
+  chargerManifeste, chargerLot, poserManifeste, precharger, poserDensite, cadre, rendre, rendreFichier,
   rendreTeinte, rendreTeinteFichier, rendreTeinteAnim, rendreMultiplie,
   imageAnim, rendreAnim, amorcerAnimations, poser, poserAnim, image, PopupFX, Nombre,
   get manifeste() { return manifeste; },

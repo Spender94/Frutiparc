@@ -34,7 +34,21 @@ class Sons {
     this.fondus = [];                 // { de, vers, duree, t, volDepart }
     this.ctx = null;
     this.master = null;
+    this.chargeLance = false;
 
+    const ouvrir = () => this.ouvrir();
+    window.addEventListener('pointerdown', ouvrir, { capture: true });
+    window.addEventListener('keydown', ouvrir, { capture: true });
+  }
+
+  // Le téléchargement des vingt-deux MP3. Il partait dès la construction, et
+  // faisait la queue devant les dessins du menu — sur six connexions, c'est un
+  // menu qui vient plus tard. Le jeu l'appelle une fois le menu prêt (et le
+  // premier geste l'appelle aussi, au cas où) : un son demandé avant son
+  // arrivée part dès qu'il est décodé (enAttente).
+  charger() {
+    if (this.chargeLance) return;
+    this.chargeLance = true;
     for (const nom of NOMS) {
       fetch(BASE + nom + '.mp3')
         .then((r) => (r.ok ? r.arrayBuffer() : null))
@@ -45,13 +59,10 @@ class Sons {
         })
         .catch(() => {});
     }
-
-    const ouvrir = () => this.ouvrir();
-    window.addEventListener('pointerdown', ouvrir, { capture: true });
-    window.addEventListener('keydown', ouvrir, { capture: true });
   }
 
   ouvrir() {
+    this.charger();
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;

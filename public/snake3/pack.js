@@ -102,6 +102,7 @@ class Pack {
   constructor() {
     this.paysage = false;
     this.sup = { l: 0, h: 0 };         // ce que le panneau ajoute à la scène
+    this.cellules = new Map();         // relevé → sa case rendue, tant qu'elle ne change pas
   }
 
   // La scène complète, pour une aire d'affichage donnée (pixels CSS).
@@ -120,7 +121,10 @@ class Pack {
 
   poserSens(paysage) { this.paysage = !!paysage; }
 
-  dessiner(ctx, releve) {
+  // `nettete` : les pixels physiques par point de scène, pour rendre les cases
+  // nettes hors écran (cf. cellule).
+  dessiner(ctx, releve, nettete) {
+    this.nettete = nettete || 1;
     const v = valeurs(releve);
     // La boîte chevauche le liseré du jeu : le trait du cadre est partagé, les
     // deux n'en font plus qu'une.
@@ -162,9 +166,38 @@ class Pack {
     ctx.restore();
   }
 
-  // Une case : l'intitulé au-dessus, le nombre posé sur sa jauge — le gabarit
-  // du disque, le même dans les deux dispositions.
+  /* Une case : l'intitulé au-dessus, le nombre posé sur sa jauge — le gabarit
+   * du disque, le même dans les deux dispositions.
+   *
+   * Elle est RENDUE HORS ÉCRAN et gardée tant que rien n'y change : peinte à
+   * chaque image, elle coûtait deux mesures de texte, un dégradé, un texte
+   * CONTOURÉ (le plus cher des tracés de glyphes) et un texte plein — cinq
+   * cases, quarante fois par seconde, pour des valeurs qui ne bougent que
+   * quand on mange. Mesuré au banc : le tableau doublait le coût d'une image.
+   * Maintenant : une recopie par case, et la peinture seulement quand la
+   * valeur, la place ou la netteté change. */
   cellule(ctx, x, y, l, h, ligne, valeur) {
+    const k = this.nettete || 1;
+    const clef = l.toFixed(2) + '|' + h.toFixed(2) + '|' + valeur + '|' + k;
+    let c = this.cellules.get(ligne.cle);
+    if (!c || c.clef !== clef) {
+      c = { clef, canvas: null };
+      if (typeof document !== 'undefined') {
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(1, Math.ceil(l * k));
+        cv.height = Math.max(1, Math.ceil(h * k));
+        const t = cv.getContext('2d');
+        t.scale(k, k);
+        this.peindreCellule(t, 0, 0, l, h, ligne, valeur);
+        c.canvas = cv;
+      }
+      this.cellules.set(ligne.cle, c);
+    }
+    if (c.canvas) ctx.drawImage(c.canvas, x, y, l, h);
+    else this.peindreCellule(ctx, x, y, l, h, ligne, valeur);
+  }
+
+  peindreCellule(ctx, x, y, l, h, ligne, valeur) {
     const tLab = Math.max(10, Math.round(h * 0.3));
     const tNb = Math.max(12, Math.round(h * 0.56));
     ctx.font = 'bold ' + tLab + 'px Verdana, Geneva, sans-serif';
