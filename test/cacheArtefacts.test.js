@@ -41,6 +41,11 @@ test('les dossiers d’artefacts se gardent une semaine', () => {
     ["'/frutiz/sprites'", "'public', 'frutiz', 'sprites'"],
     ["'/frutiz/fontes'", "'public', 'frutiz', 'fontes'"],
     ["'/snake3/fontes'", "'public', 'snake3', 'fontes'"],
+    // Les 1 229 dessins de Frutisnake étaient restés sur le montage général.
+    // Mesuré depuis le bureau light, à 40 ms d'aller-retour : 1 214 requêtes
+    // et 8,5 s avant l'arène, à froid comme à chaud — puis, une fois gardés
+    // sept jours, 1 176 servis du cache et l'arène en 1,8 s.
+    ["'/snake3/sprites'", "'public', 'snake3', 'sprites'"],
     ["'/fb'", "'public', 'fb'"],
   ]) {
     const re = new RegExp('app\\.use\\(' + route.replace(/[/]/g, '\\/')
@@ -71,7 +76,7 @@ test('la page et ses scripts, eux, restent frais', () => {
     assert.ok(!/'public'\)\)/.test(m), 'le dossier public entier ne doit pas être figé');
     assert.ok(!/light\.html|bureau-frutiz/.test(m), 'ni la page ni ses scripts : ' + m);
   }
-  assert.strictEqual(montages.length, 4, 'quatre dossiers, pas un de plus');
+  assert.strictEqual(montages.length, 5, 'cinq dossiers, pas un de plus');
 });
 
 test('la compression des textes est toujours là', () => {

@@ -21789,6 +21789,14 @@ app.use('/frutiz/fontes',
   express.static(path.join(__dirname, 'public', 'frutiz', 'fontes'), CACHE_ARTEFACTS));
 app.use('/snake3/fontes',
   express.static(path.join(__dirname, 'public', 'snake3', 'fontes'), CACHE_ARTEFACTS));
+// Les DESSINS de Frutisnake — 1 229 SVG sortis du SWF par
+// scripts/extract-snake3-sprites.js — étaient restés sur le montage générique,
+// donc à `max-age=0` : chacun redemandé à CHAQUE visite. Mesuré (bureau
+// light, 40 ms d'aller-retour, six connexions) : 1 214 requêtes et dix
+// secondes avant l'arène, à froid comme à chaud — le cache ne servait à
+// rien. Même nature, même règle que les fontes juste au-dessus.
+app.use('/snake3/sprites',
+  express.static(path.join(__dirname, 'public', 'snake3', 'sprites'), CACHE_ARTEFACTS));
 // `/fb` : les dessins de bouille, les icônes et les jaquettes. Même nature —
 // ils sortent des SWF ou d'un script de composition — et c'est déjà là que le
 // light incrémente son `?v=` quand il en remplace un.
