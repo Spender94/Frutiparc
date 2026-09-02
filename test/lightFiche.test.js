@@ -218,7 +218,11 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
   // Les tailles de la rangée d'en-tête, réglées à la demande.
   assert.match(html, /\.fiche-fermer img \{ width: 20px; height: 20px;/, 'la croix en 20 px');
   assert.match(html, /\.fiche-actions button img \{ width: 20px; height: 20px;/, 'les glyphes en 20 px');
-  assert.match(html, /\.fiche-nom-ligne \.statut \{ width: 18px; height: 18px;/, 'le voyant en 18 px');
+  // Le voyant garde sa CASE de 18 — la pastille, elle, n'en occupe que huit
+  // (cf. voyantsJeux : la marge intérieure lui rend le cadre que l'ancienne
+  // planche portait avec elle).
+  assert.match(html, /\.fiche-nom-ligne \.statut \{\s*\n\s*width: 18px; height: 18px; box-sizing: border-box; padding: 5px;/,
+    'le voyant en 18 px, la pastille en 8');
   // Le cadre et le reflet habillent la PLAQUE, pas la seule vignette — et la
   // bouille garde son carré de 52 px, avec son propre repère.
   // Le cadre ET le reflet doivent être DANS la plaque — pas seulement quelque

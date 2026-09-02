@@ -264,10 +264,9 @@ test('le voyant remplace le point de présence, sans l\'écraser', () => {
   // joueur hors ligne n'avait donc pas de pastille du tout.
   assert.match(light, /st\.src = "\/frutiz\/sprites\/sl-presence-" \+ \(\(d && d\.enLigne\) \? "1" : "0"\) \+ "\.svg";/);
   assert.match(light, /st\.title = \(d && d\.enLigne\) \? "En ligne" : "Hors ligne";/);
-  // Le voyant est dessiné plus large que le point : on lui rend ses 18 px
-  // plutôt que de l'écraser dans les 15 du point. (22 auparavant : mesuré
-  // contre main.swf, la fiche les faisait d'un cinquième trop gros.)
-  assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 18px; height: 18px; \}/);
+  // Le voyant de JEU remplit le cadre — c'est lui, l'icône ; la pastille, elle,
+  // n'en occupe que le centre (cf. le test de la taille, plus bas).
+  assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 18px; height: 18px; padding: 0; \}/);
 });
 
 test('Swapou retrouve son voyant : swapou2 côté SWF, swapou côté assets', () => {
@@ -317,12 +316,26 @@ test('Swapou retrouve son voyant : swapou2 côté SWF, swapou côté assets', ()
  * FOND de l'icône (#216) — le carré arrondi vide au liseré `#CCCCCC` —,
  * c'est-à-dire le cadre et non le voyant : un joueur hors ligne n'avait pas
  * de pastille du tout, juste un trou gris.
+ *
+ * ET LA PASTILLE NE FAIT PAS LE CADRE. Changer de dessin a changé sa taille
+ * sans que personne ne touche à la règle : l'ancien `statut_present.png`
+ * était une PLANCHE de 58 × 54 où la pastille n'occupait que 25 × 24, et
+ * `object-fit: contain` la ramenait donc à 7,8 px dans sa case de dix-huit.
+ * Le SVG de la bande, lui, est cadré au ras de la pastille — au même
+ * dix-huit, elle se dessinait plus de deux fois trop grosse. La marge
+ * intérieure lui rend le cadre que la planche portait avec elle : huit
+ * pixels, exactement ce que le carnet latéral pose déjà.
  */
 
 test('le voyant fait la taille du point qu’il remplace, et le point éteint est rouge', () => {
-  // Dix-sept d'époque, dix-huit dans la ligne du pseudo : la MÊME que le point.
-  assert.match(light, /\.fiche-nom-ligne \.statut \{ width: 18px; height: 18px;/);
-  assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 18px; height: 18px; \}/);
+  // La CASE ne bouge pas — dix-sept d'époque, dix-huit dans la ligne du pseudo.
+  assert.match(light, /\.fiche-nom-ligne \.statut \{\s*\n\s*width: 18px; height: 18px; box-sizing: border-box; padding: 5px;\s*\n\s*object-fit: contain; flex: 0 0 auto;\s*\n\s*\}/);
+  // Le DESSIN de la pastille, lui, retombe à huit : 18 − 2 × 5. (Mesuré au
+  // navigateur : case 18 × 18, dessin 8 × 8, ligne du pseudo intacte.)
+  assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 18px; height: 18px; padding: 0; \}/);
+  // Et c'est la taille que la bande des contacts pose, elle, sans détour.
+  const cbureau = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
+  assert.match(cbureau, /sl-presence-0\.svg'\) center center \/ 8px 8px no-repeat/);
   // Les lignes de scores du jour portent le même voyant, à seize.
   assert.match(light, /\.fiche-jour \.jeu-ico \{ width: 16px; height: 16px;/);
   // Les trois dessins de la bande de présence existent, et le saumon est
