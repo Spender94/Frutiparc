@@ -56,6 +56,13 @@ const SwapouAssets = (function () {
     menuBouton: '/swapou/ui/bouton-vert.svg',
     menuBoutonRetour: '/swapou/ui/bouton-orange.svg',
     menuTitre: '/swapou/ui/titre.svg',
+    // Les pièces de la PARTIE sorties du SWF (scripts/extract-swapou-jeu.js) :
+    // le « max ! » de la jauge d'étoiles, et les deux images des fonds de
+    // visage animés — la spirale du « touché », le soleil de la joie et de la
+    // colère.
+    max: '/swapou/ui/max.svg',
+    spirale: '/swapou/ui/spirale.png',
+    soleil: '/swapou/ui/soleil.png',
     scene6_temple: 'character/bitmap/cinematique/scene6/temple.png',
     scene6_brume: 'character/bitmap/cinematique/scene6/brume.png',
     scene6_poteau: 'character/bitmap/cinematique/scene6/poteau.png',

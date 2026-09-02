@@ -247,3 +247,39 @@ coupeAncestrale (paliers `COMBOS = [3,4,5,6,7,9,11,13,15,18,21]`).
 - [ ] Finitions éventuelles après retours en conditions réelles (positions
       pixel-perfect des écrans annexes, sons des cinématiques
       sprite-embarqués type cri de Wasabii).
+
+## Le Challenge au plus près du Flash (septembre 2026)
+
+Relevé image par image des clips du SWF (`scratchpad/timeline.js` sur
+`swf-sprites.js` : matrices, transformations de couleur, scripts d'image
+désassemblés) confronté au portage. Les noms d'export du fichier sont
+obfusqués ; chaque clip a été identifié par sa structure (nombre d'images,
+enfants nommés `sub`, `txtField`, `shine`, `flying`…).
+
+| clip (id)            | ce que fait le fichier                                  | où c'est repris        |
+|----------------------|---------------------------------------------------------|------------------------|
+| swapLeft/Right/Up/Down (#189-192) | 12 images : blanchiment, étirement au double vers l'arrivée, rétraction | `ui.js` SWAP, `Animator.swap` |
+| explosion (#70)      | disque #67 (anneau #68 pour une armure), 8 images en tournant | `ui.js` EXPLOSION |
+| particule (#66)      | 9 formes : blanc, jaune/orange, roches, glace           | `ui.js` FORMES.particule1..9 |
+| scorePop (#138)      | 30 images, plaque noire 35 %, DooM 13                   | `ui.js` SCORE_POP |
+| defense (#361)       | plaque #358 + Impact 16, 9 images, PINGPONG             | `ui.js` BANDEAU |
+| strike (#389)        | trois barres blanches, 13 images                        | `ui.js` STRIKE |
+| flyingStar (#368)    | étoile blanche qui tourne (jamais dessinée avant)       | `Interf.drawFx` |
+| getPowerStar (#369)  | étoile blanche × 2,75 qui s'efface                      | `ui.js` GET_POWER_STAR |
+| maxIndicator (#372)  | « max ! » vectoriel, 13 images en boucle (clignote)     | `ui/max.svg`, MAX_IMAGES |
+| powerIcon (#378)     | centré sur l'ancrage, survol = jaune + étoile           | `ui.js` IconButton |
+| comboStar (#81)      | 21 images + scripts : maintien 60 puis retrait ; DooM 43/25, « pts », 10,5° | CS_IMAGES |
+| comboName (#129)     | maintien de 60 images entre la chute et la sortie       | `AnimatorChallenge.main` |
+| leftPanel/rightPanel (#37/#45) | glissent en place en 7 / 6 images             | PANNEAU_GAUCHE/DROIT |
+| scoreTxt (#29)       | fonte « cipher » 24, brun, étirée × 1,6143 ; « pts »    | `dessinerScore` |
+| shine (#172/#182)    | reflet des fruits étoile / gelés après une attente au hasard | ECLAT_* |
+| face bg (#231)       | dégradés sombre→clair, fake blanc, spirales / soleil / rayons | `ui.js` dessinerFondVisage |
+| sdLimit (#421)       | bitmap en (0, −2), pleine opacité                       | `drawBg` |
+| pauseBox (#458)      | l'image seule, sans voile ni texte                      | `Pause.draw` |
+| swapou2_fruit (#188) | bitmap 38 × 38 posé en (0, 0) dans la case              | `drawFruit` |
+
+Assets : `scripts/extract-swapou-jeu.js` (max.svg, spirale.png, soleil.png,
+cipher.woff, doom.woff). Tests : `test/swapouFidelite.test.js`.
+
+Le plafond des étoiles est bien à 6, dans la logique (`Player.star_counter`)
+comme dans la jauge (`Interf.pl[0].power`) — vérifié par simulation.

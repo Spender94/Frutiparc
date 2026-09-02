@@ -41,6 +41,20 @@
     src: url("fontes/impact.woff") format("woff");
     font-display: block;
   }
+  /* Les deux fontes de CHIFFRES de la partie (scripts/extract-swapou-jeu.js) :
+     « cipher » pour le score sur le parchemin, « DooM » pour le compte de la
+     chaîne dans l'étoile de combo, le score flottant et le compteur du
+     blocage. Quatorze glyphes chacune — les chiffres et guère plus. */
+  @font-face {
+    font-family: "Cipher SW";
+    src: url("fontes/cipher.woff") format("woff");
+    font-display: block;
+  }
+  @font-face {
+    font-family: "DooM SW";
+    src: url("fontes/doom.woff") format("woff");
+    font-display: block;
+  }
   #stage {
     position: fixed;
     left: 50%; top: 50%;
@@ -274,6 +288,8 @@
     return Promise.all([
       document.fonts.load('16px "PT Banana Split"'),
       document.fonts.load('16px "Impact SW"'),
+      document.fonts.load('16px "Cipher SW"'),
+      document.fonts.load('16px "DooM SW"'),
     ]).catch(function () {});
   }).then(function () {
     attente = null;

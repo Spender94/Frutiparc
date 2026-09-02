@@ -320,13 +320,21 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   Animator.prototype.swap = function (f1, f2) {
     A.play(A.SWAP);
     this.setPhase(D.A_SWAP);
+    // Un clip PAR FRUIT (swapLeft/Right/Up/Down), posé sur le fruit avec sa
+    // peau, qui joue ses douze images (la pellicule est dans ui.js, SWAP) ;
+    // les fruits eux-mêmes restent cachés jusqu'à ce que les deux clips soient
+    // morts, plus trois images (cf. A_SWAP dans main).
+    let s1 = null, s2 = null;
+    if (f1.spr.x > f2.spr.x) { s1 = 'gauche'; s2 = 'droite'; }
+    if (f1.spr.x < f2.spr.x) { s1 = 'droite'; s2 = 'gauche'; }
+    if (f1.spr.y > f2.spr.y) { s1 = 'haut'; s2 = 'bas'; }
+    if (f1.spr.y < f2.spr.y) { s1 = 'bas'; s2 = 'haut'; }
     this.hideMC(f1);
     this.hideMC(f2);
-    this.particules.attachFx('swapAnim', 0, 0, {
-      totalFrames: 7,
-      img1: A.fruitImage(f1), img2: A.fruitImage(f2),
-      x1: f1.spr.x, y1: f1.spr.y, x2: f2.spr.x, y2: f2.spr.y,
-    });
+    this.particules.attachFx('swapFruit', f1.spr.x, f1.spr.y,
+      { totalFrames: 12, img: A.fruitImage(f1), table: U.SWAP[s1] });
+    this.particules.attachFx('swapFruit', f2.spr.x, f2.spr.y,
+      { totalFrames: 12, img: A.fruitImage(f2), table: U.SWAP[s2] });
     const x = f2.spr.x, y = f2.spr.y;
     f2.spr.x = f1.spr.x; f2.spr.y = f1.spr.y;
     f1.spr.x = x; f1.spr.y = y;
@@ -360,10 +368,12 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   };
 
   Animator.prototype.explodeFruit = function (f) {
-    this.particules.explodeFruit(f.spr.x, f.spr.y, U.FRUIT_COLORS[f.save_t] || '#e8542c');
+    // Trois éclats BLANCS (le clip particule, image 1 — pas la couleur du
+    // fruit), et le disque de l'explosion, huit images (cf. EXPLOSION, ui.js).
+    this.particules.explodeFruit(f.spr.x, f.spr.y);
     this.particules.attachFx('explosion',
       Math.round(f.spr.x + D.FRUIT_WIDTH / 2), Math.round(f.spr.y + D.FRUIT_HEIGHT / 2),
-      { totalFrames: 6 });
+      { totalFrames: 8 });
     f.spr.dead = true;
   };
 
@@ -400,6 +410,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
 
   Animator.prototype.main = function (tmod) {
     this.particules.main(tmod);
+    this.animerReflets(tmod);
 
     for (let i = 0; i < this.suddens.length; i++) {
       const f = this.suddens[i];
@@ -571,7 +582,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
 
   Animator.prototype.showBanner = function (txt) {
     const width = this.player.getLevelWidth() * D.FRUIT_WIDTH;
-    const mc = this.particules.attachFx('defense', this.pos_x + width / 2, D.SPECIAL_Y, { totalFrames: 8, text: txt + ' !' });
+    const mc = this.particules.attachFx('defense', this.pos_x + width / 2, D.SPECIAL_Y, { totalFrames: 9, text: txt + ' !' });
     mc.animMode = D.PINGPONG;
     A.play(A.COMBO);
   };
@@ -880,9 +891,10 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       const mc = data.converts[i];
       mc.spr.timer -= tmod;
       if (mc.spr.timer <= 0) {
+        // L'anneau de l'explosion (sub.gotoAndStop(2)) : c'est une armure.
         this.particules.attachFx('explosion',
           Math.round(mc.spr.x + D.FRUIT_WIDTH / 2), Math.round(mc.spr.y + D.FRUIT_HEIGHT / 2),
-          { totalFrames: 6 });
+          { totalFrames: 8, gel: true });
         mc.spr.overrideImg = null; // updateSkin
         data.converts.splice(i, 1); i--;
       }
@@ -895,9 +907,10 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       const mc = data.mcs[i];
       mc.spr.timer -= tmod;
       if (mc.spr.timer <= 0) {
+        // L'anneau de l'explosion (sub.gotoAndStop(2)) : c'est une armure.
         this.particules.attachFx('explosion',
           Math.round(mc.spr.x + D.FRUIT_WIDTH / 2), Math.round(mc.spr.y + D.FRUIT_HEIGHT / 2),
-          { totalFrames: 6 });
+          { totalFrames: 8, gel: true });
         this.particules.explodeFrozen(mc.spr.x, mc.spr.y);
         mc.spr.overrideImg = null;
         data.mcs.splice(i, 1); i--;
@@ -917,7 +930,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     data.timer -= tmod;
     if (data.timer <= 0) {
       this.particules.attachFx('strike',
-        this.pos_x + (data.fruits.length * D.FRUIT_WIDTH) / 2, 0, { totalFrames: 10 });
+        this.pos_x + (data.fruits.length * D.FRUIT_WIDTH) / 2, 0, { totalFrames: 13 });
       data.timer = 999999;
     }
     for (let i = 0; i < data.left.length; i++) {
@@ -985,10 +998,89 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       const g = this.explosions.armors[i];
       ctx.save();
       ctx.globalAlpha = Math.max(0, g.alpha / 100);
-      if (g.img) ctx.drawImage(g.img, g.x - 1.5, g.y - 1.5, 38, 38);
+      if (g.img) ctx.drawImage(g.img, g.x, g.y, 38, 38);
       ctx.restore();
     }
   };
+
+  /* ── LES REFLETS DES FRUITS ÉTOILE ET GELÉS ────────────────────────────────
+   *
+   * Les peaux 40-42 (étoile) et 60-62 (gelé) du clip du fruit portent un
+   * sous-clip `shine` que Fruit.updateSkin ne fige QU'en qualité basse ou hors
+   * Challenge : en Challenge, il joue. Il attend un temps au hasard — 50 à 400
+   * images pour l'étoile (#172), 50 à 350 pour le gel (#182) —, puis un trait
+   * blanc balaie le fruit en diagonale, découpé par sa silhouette ; le gel y
+   * ajoute un flash rond qui s'efface. Puis il attend de nouveau.
+   *
+   * Le sous-clip est posé en (17,9 ; 18,1) dans le fruit étoile, (18 ; 18,75)
+   * dans le fruit gelé. [dx, dy, rotation] du trait, image par image.
+   */
+  const ECLAT_ETOILE = [[-11.85, -17.4, 0], [-11.45, -16.75, 0.5], [-10.15, -14.8, 2.3],
+    [-8.05, -11.5, 5.3], [-5.1, -6.95, 9.3], [-1.35, -1, 14.6], [3.3, 6.15, 21.1],
+    [8.75, 14.65, 28.8], [15.1, 24.4, 37.6]];
+  const ECLAT_GEL_TRAIT = [[-11.85, -17.4], [-11.25, -16.65], [-9.4, -14.35], [-6.3, -10.5],
+    [-2, -5.1], [3.55, 1.8], [10.35, 10.2], [18.35, 20.2], [18.35, 20.2], [18.35, 20.2]];
+  const ECLAT_GEL_FLASH = [null, null, null, [1, 1], [0.964, 0.64], [0.936, 0.36],
+    [0.916, 0.16], [0.904, 0.04], [0.9, 0], [0.9, 0]];   // [échelle, alpha], dès l'image 6
+  const ECLAT_ATTENTE = { etoile: 350, gel: 300 };
+
+  Animator.prototype.animerReflets = function (tmod) {
+    if (this.lod !== D.HIGH || SW.Data.gameMode !== SW.Data.CHALLENGE) return;
+    const fruits = this.player.level.fruits;
+    for (let x = 0; x < fruits.length; x++)
+      for (let y = 0; y < fruits[x].length; y++) {
+        const f = fruits[x][y];
+        if (!f || !f.spr) continue;
+        const etoile = (f.flags & E.FLAG_STAR) !== 0;
+        if (!etoile && (f.flags & E.FLAG_ARMURE) === 0) { f.spr.eclat = null; continue; }
+        const duree = etoile ? ECLAT_ETOILE.length : ECLAT_GEL_TRAIT.length;
+        let e = f.spr.eclat;
+        if (!e) e = f.spr.eclat = { wait: random(etoile ? ECLAT_ATTENTE.etoile : ECLAT_ATTENTE.gel) + 50, frame: 0 };
+        if (e.frame <= 0) {
+          e.wait -= tmod;
+          if (e.wait <= 0) e.frame = 1;
+        } else {
+          e.frame += tmod;
+          if (e.frame >= duree + 1) {
+            e.frame = 0;
+            e.wait = random(etoile ? ECLAT_ATTENTE.etoile : ECLAT_ATTENTE.gel) + 50;
+          }
+        }
+      }
+  };
+
+  function dessinerReflet(ctx, f, x, y, frame) {
+    const i = Math.floor(frame) - 1;
+    if ((f.flags & E.FLAG_STAR) !== 0) {
+      const e = ECLAT_ETOILE[i];
+      if (!e) return;
+      ctx.save();
+      ctx.translate(x + 17.9, y + 18.1);
+      U.decouperForme(ctx, U.FORMES.eclatMasqueEtoile);
+      ctx.translate(e[0], e[1]);
+      ctx.rotate(e[2] * Math.PI / 180);
+      U.tracerForme(ctx, U.FORMES.eclatTrait);
+      ctx.restore();
+    } else {
+      const t = ECLAT_GEL_TRAIT[i];
+      if (!t) return;
+      ctx.save();
+      ctx.translate(x + 18, y + 18.75);
+      U.decouperForme(ctx, U.FORMES.eclatMasqueGel);
+      ctx.save();
+      ctx.translate(t[0], t[1]);
+      U.tracerForme(ctx, U.FORMES.eclatTrait);
+      ctx.restore();
+      const fl = ECLAT_GEL_FLASH[i];
+      if (fl && fl[1] > 0) {
+        ctx.globalAlpha *= fl[1];
+        ctx.translate(-0.6, -0.3);
+        ctx.scale(fl[0], fl[0]);
+        U.tracerForme(ctx, U.FORMES.eclatFlash);
+      }
+      ctx.restore();
+    }
+  }
 
   function drawFruit(ctx, f) {
     const s = f.spr;
@@ -999,7 +1091,12 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     if (a <= 0) return;
     ctx.save();
     ctx.globalAlpha = Math.min(1, a);
-    ctx.drawImage(img, s.x + s.subx - 1.5, s.y + s.suby - 1.5, 38, 38);
+    // Le bitmap de 38 × 38 est posé EN (0, 0) dans le clip du fruit, dont
+    // l'ancrage est le coin haut-gauche de la case de 35 : il déborde de trois
+    // pixels à droite et en bas, il n'est pas centré sur la case.
+    ctx.drawImage(img, s.x + s.subx, s.y + s.suby, 38, 38);
+    if (s.eclat && s.eclat.frame > 0 && !s.overrideImg)
+      dessinerReflet(ctx, f, s.x + s.subx, s.y + s.suby, s.eclat.frame);
     ctx.restore();
   }
   SW.drawFruit = drawFruit;
@@ -1017,26 +1114,42 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   /* ── L'ÉTOILE DE COMBO, RELEVÉE SUR SA PELLICULE ────────────────────────
    *
    * `comboStar` est le sprite #81 du SWF : vingt et une images, l'étiquette
-   * « flash » à la septième. Le portage n'en gardait rien — il posait
-   * l'image, et marquait le flash d'un coup d'échelle de 1,18. Il manquait
-   * donc les deux choses qui font l'effet :
+   * « flash » à la septième, et trois scripts d'image. Ce que le clip fait :
    *
-   *   · LE JAILLISSEMENT. L'étoile naît à 0,277, dépasse à 1,2 puis retombe à
-   *     1 en dix images ; « flash » rejoue le sommet (image 7) à chaque
-   *     explosion de la chaîne. C'est ce rebond qui donne son coup de poing au
-   *     combo.
-   *   · L'ÉCLAT BLANC. Chaque image porte une transformation de couleur
-   *     (`mr,mv,mb` qui descendent, `ar,av,ab` qui montent) dont la somme fait
-   *     toujours 256 : une interpolation VERS LE BLANC, jusqu'à 52 % au
-   *     sommet. L'étoile blanchit en jaillissant, et redevient dorée.
+   *   · LE JAILLISSEMENT (images 1 à 10). L'étoile naît à 0,28, légèrement
+   *     décalée et penchée de 8,7°, dépasse à 1,2 puis retombe à 1 ;
+   *     « flash » rejoue le sommet (image 7) à chaque explosion de la chaîne.
+   *     C'est ce rebond qui donne son coup de poing au combo.
+   *   · L'ÉCLAT BLANC. Chaque image porte une transformation de couleur dont
+   *     multiplicateur et terme additif font toujours 256 : une interpolation
+   *     VERS LE BLANC, jusqu'à 52 % au sommet.
+   *   · LE MAINTIEN. L'image 9 arme une attente de 60 ; l'image 11 boucle sur
+   *     10-11 tant que la chaîne court (`done` faux), puis, le score final
+   *     affiché, décompte l'attente — une seconde et demie — et laisse filer
+   *   · LE RETRAIT (images 12 à 21) : l'étoile rapetisse en cinq images, puis
+   *     s'efface en cinq. L'image 22 retire le clip.
    *
-   * Les onze premières images seulement : la douzième entame le retrait
-   * (l'étoile rapetisse puis s'efface), or `swap()` la retire lui-même au coup
-   * suivant — le SWF s'arrête donc là.
+   * Dans l'étoile, `sub` (#80) a deux images : la 2 pendant la chaîne — le
+   * compte des explosions en DooM 43, jaune —, la 1 pour le score final — en
+   * DooM 25, suivi de « pts » —, les deux champs inclinés de 10,5°.
+   *
+   * [dx, dy, échelle, rotation, part de blanc, alpha] pour chaque image.
    */
-  const CS_ECHELLE = [0.277, 0.558, 0.789, 0.969, 1.097, 1.174, 1.2, 1.178, 1.111, 1, 1];
-  const CS_BLANC = [0, 0.160, 0.289, 0.391, 0.461, 0.504, 0.520, 0.461, 0.289, 0, 0];
+  const CS_IMAGES = [
+    [2.55, -4.2, 0.2807, -8.7, 0, 1], [1.85, -3.1, 0.5614, -6.3, 0.160, 1],
+    [1.3, -2.15, 0.7911, -4.3, 0.289, 1], [0.85, -1.4, 0.97, -2.6, 0.391, 1],
+    [0.55, -0.85, 1.0977, -1.5, 0.461, 1], [0.3, -0.55, 1.1743, -0.8, 0.504, 1],
+    [0.3, -0.45, 1.1999, -0.8, 0.520, 1], [0.25, -0.45, 1.1777, -0.5, 0.461, 1],
+    [0.15, -0.25, 1.1111, -0.3, 0.289, 1], [0, 0, 1, 0, 0, 1], [0, 0, 1, 0, 0, 1],
+    [0.45, -0.9, 0.8564, -1.8, 0, 1], [0.9, -1.8, 0.7128, -3.6, 0, 1],
+    [1.35, -2.65, 0.5692, -5.5, 0, 1], [1.8, -3.55, 0.4257, -7.3, 0, 1],
+    [2.25, -4.45, 0.2824, -9.3, 0, 1], [2.25, -4.45, 0.2823, -9.3, 0, 0.801],
+    [2.25, -4.45, 0.2823, -9.3, 0, 0.602], [2.25, -4.45, 0.2823, -9.3, 0, 0.398],
+    [2.25, -4.45, 0.2823, -9.3, 0, 0.199], [2.25, -4.45, 0.2824, -9.3, 0, 0],
+  ];
   const CS_FLASH = 7;                 // l'étiquette « flash » du sprite #81
+  const CS_ATTENTE = 60;              // le script de l'image 9
+  const CS_FIN = 22;                  // l'image qui retire le clip
   // Les trois étoiles qui tournent DERRIÈRE la grande (sprite `flying` #74) :
   // trois copies de `powerStar` à 120°, sur un cercle de 56,5, qui avancent
   // d'un tiers de tour en quinze images — 8° par image. Elles n'apparaissent
@@ -1044,12 +1157,10 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   const CS_ORBITE = 56.5, CS_VITESSE = 8;
 
   function csAnim(t) {
-    const f = Math.max(0, Math.min(CS_ECHELLE.length - 1.001, (t || 1) - 1));
+    const f = Math.max(0, Math.min(CS_IMAGES.length - 1.001, (t || 1) - 1));
     const i = Math.floor(f), k = f - i;
-    return {
-      s: CS_ECHELLE[i] + (CS_ECHELLE[i + 1] - CS_ECHELLE[i]) * k,
-      blanc: CS_BLANC[i] + (CS_BLANC[i + 1] - CS_BLANC[i]) * k,
-    };
+    const m = (n) => CS_IMAGES[i][n] + (CS_IMAGES[i + 1][n] - CS_IMAGES[i][n]) * k;
+    return { x: m(0), y: m(1), s: m(2), rot: m(3), blanc: m(4), alpha: m(5) };
   }
 
   /* ── L'ANNONCE DU COMBO — l'encart, le nom, l'image ────────────────────────
@@ -1133,7 +1244,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   AnimatorChallenge.prototype.attachComboStar = function () {
     this.comboStar = {
       value: this.comboId, scale: D.COMBOSTAR_SCALE,
-      anim: 1, tourne: 0, distort: false, animCpt: 0, flying: false, done: false,
+      anim: 1, wait: 0, tourne: 0, distort: false, animCpt: 0, flying: false, done: false,
     };
   };
   AnimatorChallenge.prototype.swap = function (f1, f2) {
@@ -1155,19 +1266,41 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     Animator.prototype.main.call(this, tmod);
     const cs = this.comboStar;
     if (cs != null) {
-      // La pellicule de l'étoile avance jusqu'à sa onzième image, et s'y tient.
-      if (cs.anim < CS_ECHELLE.length) cs.anim = Math.min(CS_ECHELLE.length, cs.anim + tmod);
-      if (cs.flying) cs.tourne += tmod;
-      if (cs.distort) {
-        cs.animCpt += tmod * 0.4;
-        cs.scaleX = 100 + Math.cos(cs.animCpt) * 5;
-        cs.scaleY = 100 + Math.sin(cs.animCpt) * 5;
+      // La pellicule du clip #81 et ses scripts d'image (cf. CS_IMAGES) : la 9
+      // arme l'attente, la 11 retient tant que la chaîne court, puis tant que
+      // l'attente dure ; au-delà, le retrait file jusqu'à l'image 22.
+      const avant = cs.anim;
+      cs.anim += tmod;
+      if (avant < 9 && cs.anim >= 9) cs.wait = CS_ATTENTE;
+      if (avant <= 11 && cs.anim > 11) {
+        if (!cs.done) cs.anim = 11;
+        else { cs.wait -= tmod; if (cs.wait > 0) cs.anim = 11; }
       }
+      if (cs.anim >= CS_FIN) this.comboStar = null;
+      else {
+        if (cs.flying) cs.tourne += tmod;
+        if (cs.distort) {
+          cs.animCpt += tmod * 0.4;
+          cs.scaleX = 100 + Math.cos(cs.animCpt) * 5;
+          cs.scaleY = 100 + Math.sin(cs.animCpt) * 5;
+        }
+      }
+    }
+    const cn = this.comboName;
+    if (cn != null) {
+      // Le clip #129 : l'image 12 arme une attente de 60, la 14 boucle sur
+      // 13-14 tant qu'elle court — l'annonce SE TIENT une seconde et demie —,
+      // puis la sortie file ; l'image 20 retire le clip.
+      const avant = cn.frame;
+      cn.frame += tmod;
+      if (avant < 12 && cn.frame >= 12) cn.wait = CS_ATTENTE;
+      if (avant <= 14 && cn.frame > 14) { cn.wait -= tmod; if (cn.wait > 0) cn.frame = 14; }
+      if (cn.frame >= CN_IMAGES.length + 1) this.comboName = null;
     }
   };
   AnimatorChallenge.prototype.comboScore = function (score, nbCombos) {
     const mc = this.particules.attachFx('scorePop', this.explosions.x, this.explosions.y,
-      { totalFrames: 24, text: score, big: score >= 1000 });
+      { totalFrames: 30, text: score, big: score >= 1000 });
     if (U.getLod() === D.HIGH) mc.managers.push(U.sinManager);
     if (nbCombos > 0 && this.comboStar != null) {
       const scale = (nbCombos / E.COMBOS[E.COMBOS.length - 2]) * (100 - D.COMBOSTAR_SCALE);
@@ -1195,48 +1328,68 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
         if (i > 0) TItem.addCombo(i - 1);
       }
       if (i > 0)
-        this.comboName = { idx: i - 1, classic: SW.Data.gameMode === SW.Data.CLASSIC, frame: 1 };
+        this.comboName = { idx: i - 1, classic: SW.Data.gameMode === SW.Data.CLASSIC, frame: 1, wait: 0 };
     }
   };
+  // L'étoile de combo — profondeur DP_INTERF : sous les effets.
   AnimatorChallenge.prototype.drawOverlays = function (ctx) {
     const cs = this.comboStar;
-    if (cs != null) {
-      const a = csAnim(cs.anim);
-      ctx.save();
-      ctx.translate(D.COMBOSTAR_X, D.COMBOSTAR_Y);
-      // Deux échelles qui se multiplient, comme les deux clips du SWF : celle
-      // de l'étoile (#81, que `distort` fait onduler et que la longueur de la
-      // chaîne fait grandir) et celle de sa pellicule interne (`sub` #80).
-      const sx = (cs.scaleX || cs.scale) / 100 * a.s;
-      const sy = (cs.scaleY || cs.scale) / 100 * a.s;
-      ctx.scale(sx, sy);
-      U.avecEclat(ctx, a.blanc, -70, -75, 140, 150, function (c) {
-        // Les trois étoiles qui tournent passent DERRIÈRE (profondeur 1 dans
-        // le SWF, contre 7 pour l'étoile) : le super combo se signale par une
-        // ronde qui déborde de la grande étoile.
-        if (cs.flying) {
-          const ps = A.img('powerStar');
-          if (ps) {
-            for (let i = 0; i < 3; i++) {
-              const ang = (-CS_VITESSE * cs.tourne + 60 + i * 120) * Math.PI / 180;
-              c.drawImage(ps, CS_ORBITE * Math.cos(ang) - 18,
-                CS_ORBITE * Math.sin(ang) - 18.5, 36, 37);
-            }
+    if (cs == null) return;
+    const a = csAnim(cs.anim);
+    ctx.save();
+    ctx.globalAlpha *= a.alpha;
+    ctx.translate(D.COMBOSTAR_X, D.COMBOSTAR_Y);
+    // Deux clips emboîtés, comme dans le SWF : l'étoile (#81, que `distort`
+    // fait onduler et que la longueur de la chaîne fait grandir), puis sa
+    // pellicule interne (`sub` #80) — décalage, rotation et échelle de
+    // l'image courante.
+    ctx.scale((cs.scaleX || cs.scale) / 100, (cs.scaleY || cs.scale) / 100);
+    ctx.translate(a.x, a.y);
+    ctx.rotate(a.rot * Math.PI / 180);
+    ctx.scale(a.s, a.s);
+    const incliner = (c, x, y) => { c.translate(x, y); c.rotate(10.5 * Math.PI / 180); };
+    U.avecEclat(ctx, a.blanc, -70, -75, 140, 150, function (c) {
+      // Les trois étoiles qui tournent passent DERRIÈRE (profondeur 1 dans
+      // le SWF, contre 7 pour l'étoile) : le super combo se signale par une
+      // ronde qui déborde de la grande étoile.
+      if (cs.flying) {
+        const ps = A.img('powerStar');
+        if (ps) {
+          for (let i = 0; i < 3; i++) {
+            const ang = (-CS_VITESSE * cs.tourne + 60 + i * 120) * Math.PI / 180;
+            c.drawImage(ps, CS_ORBITE * Math.cos(ang) - 18,
+              CS_ORBITE * Math.sin(ang) - 18.5, 36, 37);
           }
         }
-        U.drawCentered(c, A.img('comboStar'), 0, 0, 1);
-        U.text(c, String(cs.value), 0, 6, {
-          size: cs.done ? 22 : 30, color: '#a04000', stroke: '#fff7d0', strokeWidth: 4,
-        });
-      });
-      ctx.restore();
-    }
-    const cn = this.comboName;
-    if (cn != null) {
-      cn.frame += SW.tmod;
-      if (cn.frame >= CN_IMAGES.length) this.comboName = null;
-      else dessinerAnnonce(ctx, cn);
-    }
+      }
+      U.drawCentered(c, A.img('comboStar'), 0, 0, 1);
+      if (cs.done) {
+        // Image 1 de `sub` : le score final (champ #77, DooM 25) et « pts »
+        // (texte #78, DooM 20), inclinés de 10,5° autour de leur ancrage.
+        c.save();
+        incliner(c, -46, -32.9);
+        U.text(c, String(cs.value), 50, 26.3,
+          { size: 25, color: '#fffd58', font: 'doom', baseline: 'alphabetic' });
+        c.restore();
+        c.save();
+        incliner(c, -49.95, -11.8);
+        U.text(c, 'pts', 28, 21,
+          { size: 20, color: '#fcd256', font: 'doom', align: 'left', baseline: 'alphabetic' });
+        c.restore();
+      } else {
+        // Image 2 : le compte de la chaîne (champ #79, DooM 43).
+        c.save();
+        incliner(c, -44.05, -35.95);
+        U.text(c, String(cs.value), 48.25, 45.2,
+          { size: 43, color: '#fffd58', font: 'doom', baseline: 'alphabetic' });
+        c.restore();
+      }
+    });
+    ctx.restore();
+  };
+  // L'annonce du cocktail — profondeur DP_LAST : par-dessus tout.
+  AnimatorChallenge.prototype.drawAnnonce = function (ctx) {
+    if (this.comboName != null) dessinerAnnonce(ctx, this.comboName);
   };
 
   // ── Player (Player.as) ───────────────────────────────────────────────────
@@ -1658,14 +1811,11 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   };
   Pause.prototype.draw = function (ctx) {
     if (!this.flag) return;
-    ctx.save();
-    ctx.fillStyle = 'rgba(20,40,10,0.35)';
-    ctx.fillRect(0, 0, D.DOCWIDTH, D.DOCHEIGHT);
+    // Pause.as ne pose que le clip `pauseBox` (#458) : son image, qui porte
+    // déjà le mot — pas de voile sur le jeu, pas de texte en plus.
     const img = A.img('pauseBox');
     const x = D.DOCWIDTH / 2 + this.xOffset, y = D.DOCHEIGHT / 2;
     if (img) ctx.drawImage(img, x - 53.5, y - 23);
-    U.text(ctx, 'pause', x, y, { size: 17, color: '#3a7a1a', stroke: '#fff3d8', strokeWidth: 3 });
-    ctx.restore();
   };
 
   // bouton pause tactile (ajout mobile — Échap reste actif au clavier)
@@ -1692,6 +1842,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.powerFx = [];
     this.lock = false;
     this.starScale = 0;
+    this.maxFrame = 0;     // la pellicule du clip « max ! » (13 images en boucle)
     this.rollover = new U.Rollover();
   }
   SW.Interf = Interf;
@@ -1725,6 +1876,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       const mc = this.powerFx[i];
       mc.x += mc.dx * tmod;
       mc.y += mc.dy * tmod;
+      mc.spin = (mc.spin || 0) + tmod;     // le clip flyingStar tourne en volant
       if ((mc.dx < 0 && mc.x <= mc.tx) || (mc.dx > 0 && mc.x >= mc.tx)) {
         this.particules.attachFx('getPowerStar', mc.tx, mc.ty, { totalFrames: 10 });
         this.particules.heavyExplosion(mc.tx, mc.ty, mc.dx, mc.dy);
@@ -1733,6 +1885,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
         i--;
       }
     }
+    this.maxFrame += tmod;
     this.particules.main(tmod);
   };
 
@@ -1757,7 +1910,11 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       player.powerList.splice(player.oldPower, 1);
       player.oldPower--;
     }
-    player.maxIndicator = player.power === D.MAX_POWER;
+    // L'indicateur « max ! » est ATTACHÉ quand la jauge se remplit : sa
+    // pellicule repart de la première image (le flash blanc).
+    const plein = player.power === D.MAX_POWER;
+    if (plein && !player.maxIndicator) this.maxFrame = 0;
+    player.maxIndicator = plein;
   };
 
   Interf.prototype.addPower = function (plId, fruit) {
@@ -1816,6 +1973,15 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     if (this.doDefend(0)) this.game.defend();
   };
 
+  // « maxIndicator » (#372) : le « max ! » vectoriel (forme #370, 39,75 × 13,25
+  // centrée) posé au-dessus de la sixième étoile. Le clip n'a pas de stop :
+  // ses treize images BOUCLENT — un flash blanc à 1,29 fois qui retombe en
+  // huit images, puis cinq images de repos — le libellé clignote toutes les
+  // 0,33 s. [échelle, part de blanc]
+  const MAX_IMAGES = [[1.2889, 1], [1.2212, 0.762], [1.1625, 0.559], [1.1129, 0.391],
+    [1.0722, 0.25], [1.0406, 0.141], [1.0181, 0.0625], [1.0045, 0.0156],
+    [1, 0], [1, 0], [1, 0], [1, 0], [1, 0]];
+
   Interf.prototype.drawPowerStars = function (ctx) {
     const img = A.img('powerStar');
     for (let p = 0; p < this.pl.length; p++) {
@@ -1831,10 +1997,34 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
         ctx.restore();
       }
       if (player.maxIndicator) {
-        U.text(ctx, 'max !', player.powerX, player.powerY - D.POWER_HEIGHT * player.power - 16,
-          { size: 13, color: '#fff04a', stroke: '#7a3000', strokeWidth: 3 });
+        const im = MAX_IMAGES[Math.floor(this.maxFrame) % MAX_IMAGES.length];
+        const max = A.img('max');
+        ctx.save();
+        ctx.translate(player.powerX, player.powerY - D.POWER_HEIGHT * player.power);
+        ctx.scale(im[0], im[0]);
+        U.avecEclat(ctx, im[1], -19, -6.3, 39.75, 13.25, function (c) {
+          if (max && max.naturalWidth) c.drawImage(max, -19, -6.3, 39.75, 13.25);
+        });
+        ctx.restore();
       }
     }
+  };
+
+  // Les effets de l'interface, à la profondeur DP_FX : les étoiles EN VOL
+  // (le clip flyingStar, #368 — l'étoile blanche qui tourne d'un cinquième de
+  // tour en six images) et leurs éclats à l'arrivée. Le portage déplaçait ces
+  // étoiles sans jamais les dessiner.
+  Interf.prototype.drawFx = function (ctx) {
+    for (let i = 0; i < this.powerFx.length; i++) {
+      const mc = this.powerFx[i];
+      const e = U.FLYING_STAR[Math.floor(mc.spin || 0) % U.FLYING_STAR.length];
+      ctx.save();
+      ctx.translate(mc.x + e[0], mc.y + e[1]);
+      ctx.rotate(e[2] * Math.PI / 180);
+      U.tracerForme(ctx, U.FORMES.etoile);
+      ctx.restore();
+    }
+    this.particules.draw(ctx);
   };
 
   Interf.prototype.destroy = function () { this.particules.destroy(); };
@@ -1849,13 +2039,12 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       ctx.fillStyle = '#7da33c';
       ctx.fillRect(0, 0, D.DOCWIDTH, D.DOCHEIGHT);
     }
+    // La ligne de mort subite (`sdLimit`, #421) : le bitmap de 700 × 2 est posé
+    // en (0, −2) dans son clip, et le clip à SUDDEN_Y — la ligne occupe donc
+    // les pixels 28 et 29, à pleine opacité (l'image est déjà à moitié
+    // transparente).
     const sd = A.img('sd');
-    if (sd) {
-      ctx.save();
-      ctx.globalAlpha = 0.7;
-      ctx.drawImage(sd, 0, D.SUDDEN_Y);
-      ctx.restore();
-    }
+    if (sd) ctx.drawImage(sd, 0, D.SUDDEN_Y - 2);
   }
   SW.drawBg = drawBg;
 
@@ -1871,12 +2060,15 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.pl[0].powerX = D.POWER_X;
     this.pl[0].powerY = D.POWER_Y;
     this.pl[0].face = new U.Face(SW.Data.players[0]);
+    // L'icône est COLLÉE au panneau par son centre (InterfChallenge.as :
+    // glue(leftPanel.sub, defenseIcon, ATTDEF_ICON_X, POWER_Y − (coût − 1) × 27)).
     this.defenseIcon = new U.IconButton('powerDef', this.defend.bind(this));
     this.defenseIcon.x = D.ATTDEF_ICON_X;
-    this.defenseIcon.y = D.POWER_Y - (E.DEFENSE_STARS[SW.Data.players[0]] - 1) * D.POWER_HEIGHT - 17;
+    this.defenseIcon.y = D.POWER_Y - (E.DEFENSE_STARS[SW.Data.players[0]] - 1) * D.POWER_HEIGHT;
     this.score = 0;
     this.viewScore = 0;
     this.classicModeOn = false;
+    this.intro = 0;        // l'entrée des panneaux, en images (cf. PANNEAU_GAUCHE)
   }
   InterfChallenge.prototype = Object.create(Interf.prototype);
   SW.InterfChallenge = InterfChallenge;
@@ -1889,6 +2081,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
 
   InterfChallenge.prototype.main = function (tmod) {
     Interf.prototype.main.call(this, tmod);
+    this.intro += tmod;
     this.defenseIcon.update(tmod);
     this.defenseIcon.isOver = this.defenseIcon.hitTest(SW.mouse.x, SW.mouse.y);
     if (this.viewScore < this.score) {
@@ -1955,17 +2148,62 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     return this.movesEnabled() && !(this.classicModeOn || this.classic);
   };
 
+  /* ── L'ENTRÉE DES PANNEAUX ─────────────────────────────────────────────────
+   *
+   * À l'ouverture de la partie, les deux panneaux GLISSENT en place : le
+   * gauche vient de 177 px hors champ en sept images (clip #37), le droit de
+   * 104 px en six (#45) — un cinquième de seconde. Tout ce qui est collé au
+   * panneau gauche (Interf.glue : les feuilles, le visage, l'icône de pouvoir)
+   * et ce qu'il contient (le score) le suivent. Les étoiles de pouvoir, elles,
+   * sont posées en absolu — mais il n'y en a pas encore.
+   */
+  const PANNEAU_GAUCHE = [-177, -122.9, -78.65, -44.25, -19.65, -4.9, 0];
+  const PANNEAU_DROIT = [104, 66.55, 37.45, 16.65, 4.15, 0];
+  function glissement(table, t) {
+    return table[Math.max(0, Math.min(table.length - 1, Math.floor(t)))];
+  }
+  /* LE SCORE, tel que le champ `scoreTxt` l'écrit : la fonte « cipher » en 24,
+   * centrée sur son champ, et le champ ÉTIRÉ EN HAUTEUR par sa matrice
+   * (× 1,6143 en Challenge, × 1,2235 en Classique) — d'où ces chiffres hauts
+   * et serrés. La ligne de base est à 2 px de gutter plus l'ascendante de la
+   * fonte (1006/1024) sous le haut du champ. */
+  function dessinerScore(ctx, valeur, cx, haut, etirement, couleur) {
+    ctx.save();
+    ctx.translate(0, haut);
+    ctx.scale(1, etirement);
+    U.text(ctx, String(valeur), cx, 23.58,
+      { size: 24, color: couleur, font: 'cipher', baseline: 'alphabetic' });
+    ctx.restore();
+  }
+
   InterfChallenge.prototype.drawBack = function (ctx) {
     drawBg(ctx, this.classicModeOn || this.classic ? 'bgClassic' : 'bg');
+    const dx = glissement(PANNEAU_GAUCHE, this.intro);
     const lp = A.img(this.classicModeOn || this.classic ? 'leftPanelClassic' : 'leftPanel');
-    if (lp) ctx.drawImage(lp, 0, 0);
-    if (this.movesEnabled()) this.drawMovePanel(ctx);
+    if (lp) ctx.drawImage(lp, dx, 0);
+    if (this.movesEnabled()) {
+      ctx.save();
+      ctx.translate(dx, 0);
+      this.drawMovePanel(ctx);
+      ctx.restore();
+    }
     const rp = A.img(this.classicModeOn || this.classic ? 'rightPanelClassic' : 'rightPanel');
-    if (rp) ctx.drawImage(rp, D.DOCWIDTH - rp.naturalWidth, 0);
+    if (rp) ctx.drawImage(rp, D.DOCWIDTH - rp.naturalWidth + glissement(PANNEAU_DROIT, this.intro), 0);
   };
+  // Ce qui est posé aux profondeurs DP_INTERF et DP_INTERFTOP — sous les
+  // effets de la partie, qui viennent après (Challenge.draw).
   InterfChallenge.prototype.drawFront = function (ctx) {
-    // score sur le parchemin
-    U.text(ctx, String(this.viewScore), 88, 38, { size: 20, color: '#5a3a10', align: 'center' });
+    const classique = this.classicModeOn || this.classic;
+    ctx.save();
+    ctx.translate(glissement(PANNEAU_GAUCHE, this.intro), 0);
+    // Le score sur le parchemin (champ #29, brun ; #35 en Classique, jaune),
+    // et son « pts » (texte #30, cipher 12).
+    if (classique) dessinerScore(ctx, this.viewScore, 84.45, 16.85, 1.2235, '#fddf43');
+    else {
+      dessinerScore(ctx, this.viewScore, 68.4, 9.15, 1.6143, '#aa724b');
+      U.text(ctx, 'pts', 61.7, 56.25,
+        { size: 12, color: '#b37851', font: 'cipher', align: 'left', baseline: 'alphabetic' });
+    }
     // Compteur de coups : sur SON parchemin, à la même place relative que le
     // score sur le sien, surmonté de son étiquette. N'apparaît que si le serveur
     // accorde l'option au joueur.
@@ -1981,12 +2219,12 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       U.text(ctx, String(e), 88, 42 + ETOILE_DY, { size: 20, color: '#5a3a10', align: 'center' });
     }
     if (!this.classicModeOn) drawLeaves(ctx, D.LEAVES_X, D.LEAVES_Y);
-    this.drawPowerStars(ctx);
-    this.defenseIcon.draw(ctx);
-    this.rollover.draw(ctx);
     if (this.pl[0].face.visible)
       this.pl[0].face.draw(ctx, D.FACE_X, D.FACE_Y, D.FACE_WIDTH);
-    this.particules.draw(ctx);
+    this.defenseIcon.draw(ctx);
+    ctx.restore();
+    this.rollover.draw(ctx);
+    this.drawPowerStars(ctx);
   };
 
   // ── Interf2P (Interf2P.as) ───────────────────────────────────────────────
@@ -1999,12 +2237,13 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.pl[1].powerY = D.POWER_Y;
     this.pl[1].face = new U.Face(SW.Data.players[1]);
     this.pl[1].face.flip();
+    // Icônes collées au panneau par leur CENTRE (Interf2P.as, glue).
     this.attackIcon = new U.IconButton('powerAtt', this.attack.bind(this));
     this.attackIcon.x = D.DUEL_ATTDEF_ICON_X;
-    this.attackIcon.y = D.POWER_Y - (E.ATTACK_STARS[SW.Data.players[0]] - 1) * D.POWER_HEIGHT - 17;
+    this.attackIcon.y = D.POWER_Y - (E.ATTACK_STARS[SW.Data.players[0]] - 1) * D.POWER_HEIGHT;
     this.defenseIcon = new U.IconButton('powerDef', this.defend.bind(this));
     this.defenseIcon.x = D.DUEL_ATTDEF_ICON_X;
-    this.defenseIcon.y = D.POWER_Y - (E.DEFENSE_STARS[SW.Data.players[0]] - 1) * D.POWER_HEIGHT - 17;
+    this.defenseIcon.y = D.POWER_Y - (E.DEFENSE_STARS[SW.Data.players[0]] - 1) * D.POWER_HEIGHT;
     this.arrowRot = 90;
     this.pool = [];      // items visuels {x,y,scale,targetScale,scaleSpeed,timer,img}
     this.pool_temp = [];
@@ -2142,7 +2381,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     const fs = D.FACE_WIDTH * D.DUEL_FACE_SCALE;
     this.pl[0].face.draw(ctx, D.DUEL_FACE_X, D.DUEL_FACE_Y, fs);
     this.pl[1].face.draw(ctx, D.DUEL_FACE_IA_X, D.DUEL_FACE_Y, fs);
-    this.particules.draw(ctx);
+    this.drawFx(ctx);
   };
 
   /* ── L'ANALYSE EN PARTIE (option admin `swapouAnalyse`) ──────────────────
@@ -2542,12 +2781,18 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.interf.main(tmod);
     if (this.analyse) this.analyse.main(tmod);
   };
+  // Dans l'ordre des profondeurs du SWF : le fond et les panneaux (DP_BG), les
+  // fruits (DP_FRUITS), l'interface et l'étoile de combo (DP_INTERF, DP_INTERFTOP),
+  // les effets de la partie et de l'interface (DP_FX, DP_FXTOP), l'annonce du
+  // cocktail (DP_LAST).
   Challenge.prototype.draw = function (ctx) {
     this.interf.drawBack(ctx);
     this.player.animator.drawFruits(ctx, this.player.level);
-    this.player.animator.particules.draw(ctx);
     this.interf.drawFront(ctx);
     if (this.player.animator.drawOverlays) this.player.animator.drawOverlays(ctx);
+    this.player.animator.particules.draw(ctx);
+    this.interf.drawFx(ctx);
+    if (this.player.animator.drawAnnonce) this.player.animator.drawAnnonce(ctx);
     // Le conseil de l'IA, par-dessus tout — sauf la pause.
     if (this.analyse) this.analyse.draw(ctx);
     this.drawExtra(ctx);

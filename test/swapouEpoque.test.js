@@ -77,9 +77,11 @@ test('l’annonce de combo retrouve son encart, son nom et sa chute', () => {
   assert.strictEqual((chal.match(/\['combo\d+/g) || []).length, 11, 'onze paliers en Challenge');
   const clas = JEU.slice(JEU.indexOf('const CN_CLASSIC'), JEU.indexOf('const CN_IMAGES'));
   assert.strictEqual((clas.match(/\['comboClassic'/g) || []).length, 9, 'neuf paliers en Classique');
-  // LA CHUTE : les dix-neuf images du clip, et le retrait à la vingtième.
+  // LA CHUTE : les dix-neuf images du clip, et le retrait à la vingtième —
+  // après le MAINTIEN d'une seconde et demie que les scripts des images 12 et
+  // 14 imposent (cf. swapouFidelite.test.js).
   assert.match(JEU, /const CN_IMAGES = \[\s*\n\s*\[-166\.75, 1\], \[-122\.5, 1\], \[-85\.05, 1\], \[-54\.45, 1\], \[-30\.65, 1\], \[-13\.6, 1\],/);
-  assert.match(JEU, /if \(cn\.frame >= CN_IMAGES\.length\) this\.comboName = null;/);
+  assert.match(JEU, /if \(cn\.frame >= CN_IMAGES\.length \+ 1\) this\.comboName = null;/);
   assert.ok(!/timer: 90/.test(JEU), 'plus de minuterie inventée de 90 images');
   // L'ORDRE DES VIGNETTES, relevé sur les masques alpha du SWF : la quatrième
   // est la crème, la sixième les kiwis. Trois rangs étaient permutés.

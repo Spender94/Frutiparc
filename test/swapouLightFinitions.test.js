@@ -88,21 +88,23 @@ test('le décalage de couleur ne repeint plus tout l’écran', () => {
 });
 
 test('l’étoile de combo jaillit, blanchit, et fait tourner sa ronde', () => {
-  // Les onze premières images du sprite #81, relevées telles quelles.
-  assert.match(JEU, /const CS_ECHELLE = \[0\.277, 0\.558, 0\.789, 0\.969, 1\.097, 1\.174, 1\.2, 1\.178, 1\.111, 1, 1\];/);
-  assert.match(JEU, /const CS_BLANC = \[0, 0\.160, 0\.289, 0\.391, 0\.461, 0\.504, 0\.520, 0\.461, 0\.289, 0, 0\];/);
+  // Les vingt et une images du sprite #81, relevées telles quelles — le
+  // jaillissement (échelle 0,28 → 1,2 → 1, blanc jusqu'à 52 %), puis le
+  // retrait (cf. swapouFidelite.test.js pour le maintien et la sortie).
+  assert.match(JEU, /const CS_IMAGES = \[\s*\n\s*\[2\.55, -4\.2, 0\.2807, -8\.7, 0, 1\], \[1\.85, -3\.1, 0\.5614, -6\.3, 0\.160, 1\],/);
+  assert.match(JEU, /\[0\.3, -0\.45, 1\.1999, -0\.8, 0\.520, 1\], \[0\.25, -0\.45, 1\.1777, -0\.5, 0\.461, 1\],/);
   assert.match(JEU, /const CS_FLASH = 7;/, 'l’étiquette « flash » du sprite');
   // Chaque explosion de la chaîne rejoue le sommet — c'est le coup de poing.
   const flashs = (JEU.match(/\.anim = CS_FLASH;/g) || []).length;
   assert.strictEqual(flashs, 3, 'explode, comboScore et finalComboScore rejouent le flash');
-  assert.match(JEU, /if \(cs\.anim < CS_ECHELLE\.length\) cs\.anim = Math\.min\(CS_ECHELLE\.length, cs\.anim \+ tmod\);/);
   // L'éclat : une interpolation vers le blanc, pas une addition — la paire
   // (multiplicateur, terme additif) du SWF fait toujours 256.
   assert.match(UI, /function avecEclat\(ctx, t, x, y, w, h, dessiner\) \{/);
   assert.match(UI, /c\.globalCompositeOperation = 'source-atop';/);
   assert.match(JEU, /U\.avecEclat\(ctx, a\.blanc, -70, -75, 140, 150, function \(c\) \{/);
-  // Les deux échelles se multiplient, comme les deux clips du SWF.
-  assert.match(JEU, /const sx = \(cs\.scaleX \|\| cs\.scale\) \/ 100 \* a\.s;/);
+  // Les deux clips emboîtés, comme dans le SWF : l'échelle de l'étoile, puis
+  // la pose de sa pellicule interne (décalage, rotation, échelle).
+  assert.match(JEU, /ctx\.scale\(\(cs\.scaleX \|\| cs\.scale\) \/ 100, \(cs\.scaleY \|\| cs\.scale\) \/ 100\);\s*\n\s*ctx\.translate\(a\.x, a\.y\);\s*\n\s*ctx\.rotate\(a\.rot \* Math\.PI \/ 180\);\s*\n\s*ctx\.scale\(a\.s, a\.s\);/);
   // LA RONDE : trois `powerStar` à 120°, cercle de 56,5, un tiers de tour en
   // quinze images. Elle passe DERRIÈRE l'étoile (profondeur 1 contre 7).
   assert.match(JEU, /const CS_ORBITE = 56\.5, CS_VITESSE = 8;/);

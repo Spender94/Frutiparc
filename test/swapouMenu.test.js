@@ -229,8 +229,10 @@ test('les tuiles de personnage portent le cadre à feuilles et le portrait d’o
   assert.ok(ctx.images.includes('menuFaceTop'),
     'le cadre du menu (bois + feuilles vertes) est posé : ' + ctx.images.join(','));
   assert.ok(ctx.images.includes('face0_0'), 'et le portrait du personnage');
-  // Fond du symbole `face` : le dégradé olive de la forme #211, pas un ciel bleu.
-  assert.deepEqual(ctx.grad.stops.slice(0, 2), ['#b1c26b', '#87913e']);
+  // Fond du symbole `face` : le dégradé olive de la forme #211, pas un ciel
+  // bleu — et dans le sens du fichier : sombre en haut, clair en bas, trois
+  // arrêts (0 ; 0,204 ; 1).
+  assert.deepEqual(ctx.grad.stops.slice(0, 3), ['#87913e', '#8ba544', '#b1c26b']);
 });
 
 test('un personnage verrouillé est un aplat vert, pas une case vide', () => {
