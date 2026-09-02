@@ -321,7 +321,10 @@ test('LIRE un sujet éteint le voyant, sans passer par « tout marquer »', () =
   // voyant allumé — il fallait le bouton, alors qu'il n'y avait plus rien à
   // marquer. Ouvrir un sujet recompte maintenant, et le forum relaie.
   const serveur = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  assert.match(serveur, /await db\.forumMarkTopicRead\(currentUser, topicId\);/,
+  // ATTENDUE, et non lancée au vent : le recompte qui suit doit la voir. Le
+  // troisième argument est le dernier message affiché — la marque s'arrête là
+  // plutôt qu'à `now()` (cf. forumNonLu.test.js).
+  assert.match(serveur, /await db\.forumMarkTopicRead\(currentUser, topicId, dernierVu\);/,
     'la marque de lecture est ATTENDUE (elle ne part plus au vent)');
   assert.match(serveur, /restantNonLus = await db\.forumCountUnread\(currentUser, forumNotifyModeDe\(currentUser\)\)/,
     'et le reste est recompté, filtré par la préférence');

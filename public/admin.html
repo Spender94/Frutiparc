@@ -4472,6 +4472,7 @@ async function loadShop() {
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="editPack(${p.id})">Modifier</button>
         <button class="btn-success btn-sm" onclick="pushPackAll(${p.id},'${esc(p.name)}')">Pousser à tous</button>
+        <button class="btn-danger btn-sm" onclick="retirerPackTous(${p.id},'${esc(p.name)}')" title="Reprend cet accessoire à TOUS les joueurs, et le retire de la tête de ceux qui le portent. « Désactiver » ne fait que le retirer de la vente.">Retirer à tous</button>
         ${p.disabled
           ? `<button class="btn-success btn-sm" onclick="toggleShopDisabled(${p.id},'${esc(p.name)}',false)">Réactiver</button>`
           : `<button class="btn btn-sm" onclick="toggleShopDisabled(${p.id},'${esc(p.name)}',true)">Désactiver</button>`}
@@ -4801,6 +4802,21 @@ async function pushPackAll(id, name) {
   const data = await r.json();
   if (!r.ok) { toast('Erreur: ' + (data.error || 'inconnu')); return; }
   toast(`"${name}" poussé à ${data.pushed} joueurs (${data.skipped} avaient déjà)`);
+}
+
+// Le symétrique : on reprend l'accessoire à tout le monde, et on le retire de
+// la tête de ceux qui le portaient (sinon ils continueraient de l'afficher
+// sans l'avoir dans leur armoire).
+async function retirerPackTous(id, name) {
+  if (!confirm(`Retirer "${name}" à TOUS les joueurs ?\n\n`
+    + `Il disparaît de leur inventaire, et de la tête de ceux qui le portent.\n`
+    + `C'est irréversible : ceux qui l'avaient acheté ne seront pas remboursés.\n\n`
+    + `(Pour seulement le retirer de la vente, utilisez « Désactiver ».)`)) return;
+  toast('Retrait en cours…');
+  const r = await fetch(`/api/admin/shop/${id}/retirer-a-tous`, { method: 'POST', headers: hdr() });
+  const data = await r.json();
+  if (!r.ok) { toast('Erreur: ' + (data.error || 'inconnu')); return; }
+  toast(`"${name}" retiré à ${data.retires} joueurs (${data.deshabilles} le portaient)`);
 }
 
 // ── Challenge ──

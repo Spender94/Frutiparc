@@ -12177,6 +12177,62 @@ app.post('/api/admin/shop/:id/push-all', adminScope('shop'), async (req, res) =>
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/*
+ * « RETIRER À TOUS » — le symétrique exact de « Pousser à tous ».
+ *
+ * « Désactiver » ne fait que retirer un article de la VENTE : ceux qui l'ont
+ * acheté le gardent, et c'est voulu. Il manquait le geste d'après — reprendre
+ * un accessoire distribué par erreur, ou qu'on ne veut plus voir porté.
+ *
+ * Deux choses à défaire, pas une. L'inventaire, évidemment ; mais aussi la
+ * BOUILLE de ceux qui le PORTENT : les neuf derniers caractères d'une
+ * frutibouille sont son accessoire (le `suffix9` de l'article), et retirer la
+ * ligne d'inventaire sans y toucher laisserait le joueur porter un accessoire
+ * qu'il ne possède plus — visible de tous, impossible à retrouver dans son
+ * armoire, et qui reviendrait au premier enregistrement de sa bouille. On le
+ * remplace donc par l'accessoire « Rien » du dessin par défaut.
+ *
+ * Les fonds d'écran (les articles à `wallpaperId`) n'ont pas de suffixe : pour
+ * eux, seule la ligne d'inventaire part.
+ */
+app.post('/api/admin/shop/:id/retirer-a-tous', adminScope('shop'), async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  const pack = SHOP_PACKS.find(p => p.id === Number(req.params.id));
+  if (!pack) return res.status(404).json({ error: 'pack not found' });
+  try {
+    const allUsers = await db.listAllUsers();
+    // L'accessoire « Rien » : les neuf derniers caractères de la bouille par
+    // défaut (cf. DEFAULT_BOUILLE_STATE).
+    const RIEN9 = DEFAULT_BOUILLE_STATE.substring(15);
+    let retires = 0, deshabilles = 0;
+    for (const row of allUsers) {
+      const accs = await db.getUserAccessories(row.id);
+      const miennes = accs.filter(a => a.shopId === pack.id);
+      // `dbRowId` et non `id` : `getUserAccessories` rend l'identifiant
+      // LOGIQUE de l'article (« shop_101 ») sous `id`, et la clé de la ligne
+      // sous `dbRowId` — c'est elle que `deleteAccessory` attend.
+      for (const a of miennes) await db.deleteAccessory(a.dbRowId);
+      if (miennes.length) retires++;
+
+      // Le porte-t-il en ce moment ?
+      const bouille = row.fbouille || '';
+      if (!pack.wallpaperId && pack.suffix9 && bouille.length >= 24
+          && bouille.substring(15) === pack.suffix9) {
+        const neuve = bouille.substring(0, 15) + RIEN9;
+        await db.updateUser(row.username, { fbouille: neuve });
+        if (users[row.username]) users[row.username].fbouille = neuve;
+        deshabilles++;
+      }
+      if (miennes.length && users[row.username]) {
+        users[row.username].customAccessories = await db.getUserAccessories(row.id);
+      }
+    }
+    console.log(`[ADMIN] Retiré le pack ${pack.id} (${pack.name}) à ${retires} joueurs`
+      + ` (${deshabilles} le portaient)`);
+    res.json({ ok: true, retires, deshabilles });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─────────────────────────────────────────────
 // Moderation word lists (chat banned words + forum censorship)
 //
@@ -18803,8 +18859,32 @@ app.get('/api/forum/topic/:id', async (req, res) => {
     if (staffOnly && !isForumStaff(currentUserForGate)) {
       return res.status(404).json({ error: 'topic not found' });
     }
-    let page;
-    if (pageParam === 'last') {
+    /*
+     * OÙ S'OUVRE UN SUJET.
+     *
+     * « last » ouvrait sur les messages les plus récents — le réflexe des
+     * forums — mais dans un sujet qu'on n'a JAMAIS lu, c'est commencer par la
+     * fin : on tombe au milieu d'une conversation dont on n'a pas le début.
+     *
+     * « nonlu » ouvre sur la page du PREMIER message qu'on n'a pas encore lu,
+     * et rend son identifiant pour que le client y défile. La marque de
+     * lecture se pose plus bas, APRÈS ce calcul — sans quoi on se déclarerait
+     * à jour avant d'avoir cherché. Tout lu (ou visiteur anonyme, qui n'a pas
+     * de marque) : on retombe sur la dernière page, comme avant.
+     */
+    let page, premierNonLu = null;
+    if (pageParam === 'nonlu') {
+      const nonLu = currentUserForGate
+        ? await db.forumFirstUnreadPost(currentUserForGate, topicId).catch(() => null)
+        : null;
+      if (nonLu) {
+        page = Math.max(1, Math.ceil(nonLu.rang / FORUM_POSTS_PER_PAGE));
+        premierNonLu = nonLu.id;
+      } else {
+        const totalPosts = await db.forumCountPosts(topicId);
+        page = Math.max(1, Math.ceil(totalPosts / FORUM_POSTS_PER_PAGE));
+      }
+    } else if (pageParam === 'last') {
       const totalPosts = await db.forumCountPosts(topicId);
       page = Math.max(1, Math.ceil(totalPosts / FORUM_POSTS_PER_PAGE));
     } else {
@@ -18831,7 +18911,13 @@ app.get('/api/forum/topic/:id', async (req, res) => {
     let restantNonLus = null;
     if (currentUser) {
       try {
-        await db.forumMarkTopicRead(currentUser, topicId);
+        // JUSQU'OÙ, et non « à l'instant » : la marque s'arrête au dernier
+        // message de la page ouverte. Lire la page 1 d'un fil de trois pages
+        // ne déclare donc plus lues les deux qu'on n'a pas vues. (On passe
+        // son IDENTIFIANT : une date arrondie par JavaScript retomberait
+        // juste sous lui — cf. forumMarkTopicRead.)
+        const dernierVu = posts.length ? posts[posts.length - 1].id : null;
+        await db.forumMarkTopicRead(currentUser, topicId, dernierVu);
         restantNonLus = await db.forumCountUnread(currentUser, forumNotifyModeDe(currentUser));
       } catch (e) {
         console.error(`[FORUM] forumMarkTopicRead(${currentUser}, ${topicId}) failed: ${e.message}`);
@@ -18874,6 +18960,9 @@ app.get('/api/forum/topic/:id', async (req, res) => {
         lastPostBy: String(topic.last_post_by || '').toLowerCase(),
       },
       posts: postsOut, total, page, perPage: FORUM_POSTS_PER_PAGE,
+      // Le message par lequel la lecture reprend (cf. « nonlu » plus haut) :
+      // le client y défile et l'entoure. Absent quand tout est lu.
+      premierNonLu,
       currentIsMod: !!currentIsMod,
       // Staff = modérateur OU animateur : autorisé à poster à la suite (double-post).
       currentIsStaff: isForumStaff(currentUser),

@@ -2407,15 +2407,35 @@ async function forumGetTopics(boardId, page, perPage, username = null) {
   return { topics: rows, total: Number(countRows[0].total) };
 }
 
-// Marks a topic as read for the given user. Called whenever the topic page
-// is opened — if the user later returns and no new post has arrived, the
-// topic stays "read" because last_post_at has not changed.
-async function forumMarkTopicRead(username, topicId) {
+/*
+ * JUSQU'OÙ ce joueur a lu ce sujet. Posé à chaque ouverture d'une page.
+ *
+ * `jusquAPostId` est le DERNIER message effectivement affiché. C'est ce qui
+ * rend la marque juste sur un sujet long : lire la page 1 d'un fil de trois
+ * pages posait jusqu'ici `now()`, et déclarait donc lues les deux pages qu'on
+ * n'avait pas ouvertes — le sujet s'éteignait dans les non-lus, et
+ * `forumFirstUnreadPost` n'avait plus rien à trouver. Sans argument (« tout
+ * marquer comme lu »), on garde `now()`.
+ *
+ * ON PASSE L'IDENTIFIANT, PAS LA DATE. `created_at` est un TIMESTAMPTZ, donc
+ * précis à la microseconde ; une date qui fait l'aller-retour par JavaScript
+ * revient arrondie à la MILLISECONDE, donc légèrement AVANT l'originale. La
+ * marque tombait ainsi juste sous le dernier message lu, qui se retrouvait
+ * « non lu » au rechargement — la page ne bougeait plus d'un cran. En laissant
+ * SQL relire la date lui-même, elle garde toute sa précision.
+ *
+ * GREATEST : la marque n'avance jamais à reculons. Revenir à la page 1 d'un
+ * sujet qu'on avait lu jusqu'au bout ne doit pas le rendre non lu.
+ */
+async function forumMarkTopicRead(username, topicId, jusquAPostId) {
   await pool.query(
     `INSERT INTO forum_topic_reads (username, topic_id, read_at)
-     VALUES ($1, $2, now())
-     ON CONFLICT (username, topic_id) DO UPDATE SET read_at = now()`,
-    [username, topicId]
+     SELECT $1, $2, COALESCE(
+       (SELECT created_at FROM forum_posts WHERE id = $3::int AND topic_id = $2),
+       now())
+     ON CONFLICT (username, topic_id) DO UPDATE
+       SET read_at = GREATEST(forum_topic_reads.read_at, EXCLUDED.read_at)`,
+    [username, topicId, jusquAPostId || null]
   );
 }
 
@@ -2446,10 +2466,44 @@ async function forumGetTopic(topicId) {
   return rows[0] || null;
 }
 
+/**
+ * LE PREMIER MESSAGE QU'UN JOUEUR N'A PAS LU, et son rang dans le sujet.
+ *
+ * `forum_topic_reads` garde une date de lecture par sujet et par joueur. Un
+ * sujet jamais ouvert n'y a pas de ligne : il vaut alors « lu à l'époque
+ * zéro », et son premier message non lu est le premier message tout court —
+ * ce qui est exactement ce qu'on veut, puisqu'ouvrir un sujet neuf sur sa
+ * DERNIÈRE page fait commencer la lecture par la fin.
+ *
+ * Le rang est compté dans l'ordre d'affichage (cf. forumGetPosts juste en
+ * dessous, même ORDER BY) : l'appelant en déduit la page.
+ */
+async function forumFirstUnreadPost(username, topicId) {
+  if (!username) return null;
+  const { rows } = await pool.query(
+    `WITH marque AS (
+       SELECT COALESCE(MAX(read_at), TIMESTAMP 'epoch') AS lu
+         FROM forum_topic_reads WHERE username = $1 AND topic_id = $2
+     ), classes AS (
+       SELECT id, created_at,
+              ROW_NUMBER() OVER (ORDER BY created_at ASC, id ASC) AS rang
+         FROM forum_posts WHERE topic_id = $2
+     )
+     SELECT c.id, c.rang FROM classes c, marque m
+      WHERE c.created_at > m.lu
+      ORDER BY c.rang ASC LIMIT 1`,
+    [username, topicId]
+  );
+  return rows[0] ? { id: Number(rows[0].id), rang: Number(rows[0].rang) } : null;
+}
+
 async function forumGetPosts(topicId, page, perPage) {
   const offset = (page - 1) * perPage;
+  // `id` en second : deux messages à la même microseconde tomberaient sinon
+  // dans un ordre libre, et le rang calculé par forumFirstUnreadPost ne
+  // désignerait plus la même page que celle-ci.
   const { rows } = await pool.query(
-    'SELECT * FROM forum_posts WHERE topic_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3',
+    'SELECT * FROM forum_posts WHERE topic_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3',
     [topicId, perPage, offset]
   );
   const { rows: countRows } = await pool.query(
@@ -3257,6 +3311,7 @@ module.exports = {
   forumDeletePost,
   forumIncrementViews,
   forumMarkTopicRead,
+  forumFirstUnreadPost,
   forumMarkAllRead,
   forumSetTopicFollow,
   forumIsTopicFollowed,

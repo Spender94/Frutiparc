@@ -255,6 +255,18 @@
   .post.post-alt .post-header {
     background: #C3EF93;
   }
+  /* LÀ OÙ LA LECTURE REPREND (cf. allerAuNonLu) : le premier message non lu
+     porte un liseré le temps qu'on le repère dans une page de vingt. Un
+     LISERÉ et non un fond : les deux fonds de la page alternent déjà, en
+     repeindre un ferait perdre le rythme des lignes. */
+  .post.post-nonlu {
+    outline: 2px solid #4A8B1F;
+    outline-offset: -2px;
+    scroll-margin-top: 12px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .post.post-nonlu { outline-color: #2F5C12; }
+  }
   .post .post-header {
     display: flex;
     justify-content: space-between;
@@ -2299,12 +2311,18 @@ function boardPage(p) { pousserHistoire('board', currentBoardId, p); loadBoard(c
 var currentTopicId = null;
 var currentTopicData = null;
 async function loadTopic(topicId, page) {
-  // Opening a topic without an explicit page (from a board list / breadcrumb /
-  // new-topic redirect) jumps to the LAST page — where the most recent posts
-  // are — like a classic forum. The server resolves "last" from the real post
-  // count. Pagination clicks and post-action reloads pass a number, so they
-  // keep their exact page.
-  var pageParam = (page == null) ? 'last' : page;
+  /*
+   * Ouvrir un sujet sans page explicite (depuis la liste d'un forum, un fil
+   * d'Ariane, la création d'un sujet) mène AU PREMIER MESSAGE NON LU.
+   *
+   * On sautait jusqu'ici à la dernière page, le réflexe des forums — mais
+   * dans un sujet qu'on n'a jamais ouvert, cela revient à commencer par la
+   * fin. Le serveur résout « nonlu » avec la marque de lecture du joueur, et
+   * retombe sur la dernière page quand il n'y a rien de neuf. Les clics de
+   * pagination et les rechargements après action passent un numéro : ils
+   * gardent leur page exacte.
+   */
+  var pageParam = (page == null) ? 'nonlu' : page;
   currentTopicId = topicId;
   var app = document.getElementById('app');
   app.innerHTML = '<div class="loading">Chargement...</div>';
@@ -2429,6 +2447,39 @@ async function loadTopic(topicId, page) {
 
   app.innerHTML = html;
   brancherBouilles(app);       // les avatars des messages
+  if (data.premierNonLu) allerAuNonLu(data.premierNonLu);
+}
+
+/*
+ * LÀ OÙ LA LECTURE REPREND.
+ *
+ * Le serveur a ouvert la page qui contient le premier message non lu ; encore
+ * faut-il le TROUVER sur une page qui en porte vingt. On y défile, et on le
+ * marque d'un liseré le temps qu'on le repère — la marque s'efface d'elle-même
+ * au premier geste, elle ne doit pas rester à traîner.
+ *
+ * `block: 'start'` et non 'center' : les messages sont hauts, et l'on veut
+ * voir le DÉBUT du message, pas son milieu.
+ */
+function allerAuNonLu(postId) {
+  var el = document.getElementById('post-' + postId);
+  if (!el) return;
+  el.classList.add('post-nonlu');
+  // Après la mise en page (les bouilles arrivent en différé et poussent le
+  // contenu) : deux images d'avance, sinon on vise une position périmée.
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+  var oter = function () {
+    el.classList.remove('post-nonlu');
+    window.removeEventListener('click', oter, true);
+    window.removeEventListener('keydown', oter, true);
+  };
+  window.addEventListener('click', oter, true);
+  window.addEventListener('keydown', oter, true);
+  setTimeout(oter, 8000);
 }
 function topicPage(p) { pousserHistoire('topic', currentTopicId, p); loadTopic(currentTopicId, p); }
 

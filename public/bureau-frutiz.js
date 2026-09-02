@@ -6970,15 +6970,29 @@ window.BureauFrutiz = (function () {
       if (page.scrollHeight <= page.clientHeight) return;
       ev.stopPropagation();
     });
-    // Un lien de la page : une rubrique, le précédent, ou l'index.
+    // Un lien de la page : une rubrique, le précédent, l'index, une fiche.
     page.addEventListener('click', function (ev) {
-      var a = ev.target.closest ? ev.target.closest('a[data-gs]') : null;
-      if (!a) return;
-      ev.preventDefault();
-      var quoi = a.getAttribute('data-gs');
-      if (quoi === 'precedent') pagePrecedenteGaspard();
-      else if (quoi === 'index') contenuGaspard();
-      else contenuGaspard(Number(quoi));
+      if (!ev.target.closest) return;
+      var a = ev.target.closest('a[data-gs]');
+      if (a) {
+        ev.preventDefault();
+        var quoi = a.getAttribute('data-gs');
+        if (quoi === 'precedent') pagePrecedenteGaspard();
+        else if (quoi === 'index') contenuGaspard();
+        else contenuGaspard(Number(quoi));
+        return;
+      }
+      var f = ev.target.closest('a[data-gs-fiche]');
+      if (f) { ev.preventDefault(); ouvrirFiche(f.getAttribute('data-gs-fiche')); return; }
+      /*
+       * LE GARDE-FOU. `traduireLiensGaspard` traite le corps qui nous arrive
+       * du serveur ; celui-ci ne traite pas ce qu'un animateur écrirait
+       * demain, ni les schémas que Flash connaissait et pas le navigateur.
+       * Un lien qu'on ne sait pas suivre ne doit JAMAIS partir dans la barre
+       * d'adresse : il ne ferait rien, et salirait la console.
+       */
+      var mort = ev.target.closest('a[data-gs-inerte], a[href^="asfunction:"], a[href^="FSCommand:"]');
+      if (mort) ev.preventDefault();
     });
     // Les deux gélules.
     icones.addEventListener('click', function (ev) {
@@ -7317,6 +7331,50 @@ window.BureauFrutiz = (function () {
   function lienGaspard(l) {
     return '<a href="#" data-gs="' + l.i + '">' + echapperGaspard(l.n) + '</a>';
   }
+
+  /*
+   * LE CORPS D'UNE RUBRIQUE PARLE ENCORE FLASH.
+   *
+   * Les liens que le portage FABRIQUE portent `data-gs` et fonctionnent. Mais
+   * le CORPS d'une rubrique est de l'HTML libre, écrit par l'animateur — et
+   * celui d'époque, recopié du Frutiparc de 2005, est truffé de
+   *
+   *     <a href="asfunction:win.box.getContent,5">…</a>
+   *
+   * `asfunction:` est une invention de Flash : le lecteur y voyait un appel de
+   * méthode sur le champ de texte. Un navigateur, lui, n'y voit qu'un schéma
+   * d'URL inconnu — il refuse la navigation et l'écrit dans la console
+   * (« Failed to launch 'asfunction:…' because the scheme does not have a
+   * registered handler »), et le clic ne fait RIEN. C'est le symptôme rapporté :
+   * « je clique sur une entrée de l'index et rien ne se passe ».
+   *
+   * On traduit donc les trois appels que l'aide employait, vers le vocabulaire
+   * du portage. Ce qu'on ne sait pas traduire est neutralisé plutôt que laissé
+   * à la barre d'adresse (cf. le garde-fou du gestionnaire de clic).
+   *
+   *     getContent,<id>          → la rubrique <id>
+   *     getContent               → l'index
+   *     getPrevious              → la page précédente
+   *     openFrutizInfo,<pseudo>  → la fiche du joueur
+   */
+  function traduireLiensGaspard(html) {
+    return String(html || '').replace(
+      /href\s*=\s*(["'])\s*asfunction:([^"']*)\1/gi,
+      function (tout, guillemet, appel) {
+        var bouts = appel.split(',');
+        var methode = (bouts[0] || '').replace(/^.*\./, '').trim();
+        var arg = bouts.length > 1 ? bouts.slice(1).join(',').trim() : '';
+        if (methode === 'getContent') {
+          var id = parseInt(arg, 10);
+          return 'href="#" data-gs="' + (Number.isFinite(id) && id > 0 ? id : 'index') + '"';
+        }
+        if (methode === 'getPrevious') return 'href="#" data-gs="precedent"';
+        if (methode === 'openFrutizInfo' && arg) {
+          return 'href="#" data-gs-fiche="' + echapperGaspard(arg).replace(/"/g, '&quot;') + '"';
+        }
+        return 'href="#" data-gs-inerte="1"';
+      });
+  }
   // `help.link_back` : DEUX liens séparés d'un tiret — `getPrevious` et
   // `getContent` sans argument, qui ramène à l'index.
   var GS_RETOUR = '<a href="#" data-gs="precedent">Précédent</a> - '
@@ -7337,7 +7395,10 @@ window.BureauFrutiz = (function () {
   function afficherGaspard(o) {
     var page = pageGaspard();
     ligneGaspard(page, 'gs-titre', echapperGaspard(o.titre));
-    ligneGaspard(page, 'gs-corps', o.corps || '');
+    // Le corps est de l'HTML libre, souvent recopié du Frutiparc d'époque :
+    // ses liens `asfunction:` deviennent ici des liens que le portage sait
+    // suivre (cf. traduireLiensGaspard).
+    ligneGaspard(page, 'gs-corps', traduireLiensGaspard(o.corps || ''));
     for (var i = 0; i < o.ordre.length; i++) {
       var t = o.ordre[i];
       var g = o.groupes[t];
