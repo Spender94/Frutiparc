@@ -303,6 +303,10 @@
       const morceaux = ['défense'];
       if (g.score > 0) morceaux.push('+' + g.score);
       if (g.cracked > 0) morceaux.push(pluriel(g.cracked, 'armure') + ' fendue' + (g.cracked > 1 ? 's' : ''));
+      // Pourquoi MAINTENANT : une défense à plateau bas surprend, sauf si la
+      // banque est pleine — la prochaine étoile serait perdue.
+      if (c.pleine) morceaux.push('banque pleine, la prochaine étoile serait perdue');
+      else if (c.crise) morceaux.push('plateau au plafond');
       return morceaux.join(' · ');
     }
     if (c.nature === 'combo') {
@@ -419,7 +423,11 @@
         gain: { score: c.gained.score, pieces: c.gained.pieces || 0,
           phases: c.gained.phases || 0, stars: c.gained.stars, cracked: c.gained.cracked },
       };
-      if (c.type === 'defend') { out.nature = 'defense'; out.prix = c.prix || 0; }
+      if (c.type === 'defend') {
+        out.nature = 'defense'; out.prix = c.prix || 0;
+        out.pleine = etat.stars >= E.MAX_POWER;
+        out.crise = hMax >= 12;
+      }
       else if (c.gained.score > 0) out.nature = 'combo';
       else {
         // seuls les premiers du classement méritent qu'on cherche leur suite
