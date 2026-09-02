@@ -1052,6 +1052,84 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     };
   }
 
+  /* ── L'ANNONCE DU COMBO — l'encart, le nom, l'image ────────────────────────
+   *
+   * `AnimatorChallenge.as` attache le clip `comboName` et fait
+   * `comboName.sub.gotoAndStop(i)` : `sub` (sprite #128) a trente-neuf images,
+   * et CHACUNE en pose trois — l'ENCART au fond (la forme #83, qui n'est autre
+   * que `versusBox.png`, 368 × 100), le NOM du cocktail par-dessus, et le
+   * DESSIN du cocktail à gauche. Le portage ne posait que le dessin : d'où
+   * l'impression, juste, qu'il manquait quelque chose.
+   *
+   * Les onze premières images sont les paliers du Challenge, les images 31 à
+   * 39 ceux du Classique (`gotoAndStop(i+30)`) — et là, c'est la même vignette
+   * (`classic.png`) qu'on décale d'un palier à l'autre.
+   *
+   * Tout ce qui suit est relevé sur le fichier : la position du dessin est
+   * celle de sa forme (chaque cocktail est cadré différemment dans son
+   * bitmap), et chaque ligne de nom porte son propre décalage et sa propre
+   * hauteur — la « recette crêmeuse » est écrite plus gros, le « suprême
+   * crême-orange » plus petit, faute de place.
+   */
+  const CN_ENCART = { x: -179.65, y: -50, w: 368, h: 100 };
+  // { img, ix, iy, [texte, tx, ty, taille] … }
+  const CN_CHALLENGE = [
+    ['combo0', -121.05, -54, ['confiture ', -41.15, -10.65, 40], ['de fraise', -41.15, 25.35, 40]],
+    ['combo1', -141.95, -55, ['confiture ', -62.05, -11.65, 40], ['aux abricots', -62.05, 24.35, 40]],
+    ['combo2', -152.55, -53.4, ['tarte aux ', -59.5, -13.25, 40], ['fruits rouges', -59.5, 22.75, 40]],
+    ['combo3', -135.35, -53.4, ['recette ', -38.3, -9.25, 45], ['crêmeuse', -38.3, 21.75, 45]],
+    ['combo4', -154.65, -53, ['suprême', -57.6, -13.35, 38], ['crême-orange', -57.6, 20.65, 38]],
+    ['combo5', -141, -53, ['kiwi-ti-kiwi', -43.95, 7.2, 40]],
+    ['combo6', -106.15, -52, ['orange', -9.1, -12.65, 40], ["folie's", -9.1, 23.35, 40]],
+    ['combo7', -121, -49.65, ['douceur', -22.05, -12.65, 40], ['pistache', -22.05, 23.35, 40]],
+    ['combo8', -125, -49, ['éclair', -21.4, -12.65, 40], ['suprême', -21.4, 23.35, 40]],
+    ['combo9', -119.85, -52, ['iceberg', -22.8, -12.65, 40], ['de fruits', -22.8, 23.35, 40]],
+    ['combo10', -136.35, -52, ['cocktail', -39.3, -12.65, 40], ['swapolotof', -39.3, 23.35, 40]],
+  ];
+  // Le Classique : une seule vignette, posée à un x différent par palier.
+  const CN_CLASSIC = [
+    ['comboClassic', -126.45, -54, ['mini fruti', -36.45, 11.15, 40]],
+    ['comboClassic', -134.5, -54, ['super fruti', -44.5, 11.15, 40]],
+    ['comboClassic', -133.4, -54, ['mega fruti', -43.4, 11.15, 40]],
+    ['comboClassic', -127.7, -54, ['maxi pulp', -37.7, 11.15, 40]],
+    ['comboClassic', -120.55, -54, ['confiture', -30.55, -10.65, 40], ['combo', -30.55, 25.35, 40]],
+    ['comboClassic', -96.65, -54, ['tarte ', -6.65, -11.65, 40], ['combo', -6.65, 24.35, 40]],
+    ['comboClassic', -117.1, -54, ['vitamine', -27.1, -9.65, 40], ['combo', -27.1, 26.35, 40]],
+    ['comboClassic', -110.05, -54, ['cocktail', -20.05, -10.65, 40], ['fruti', -20.05, 25.35, 40]],
+    ['comboClassic', -133.55, -54, ['cocktail', -43.55, -10.65, 40], ['ancestral !', -43.55, 25.35, 40]],
+  ];
+  /* La chute, le rebond, la sortie — les dix-neuf images du clip `comboName`
+   * (sprite #129) : il TOMBE du haut de l'écran en huit images, se gonfle d'un
+   * douzième et revient en quatre, se tient deux, puis remonte et s'efface.
+   * L'image vingt fait `this.removeMovieClip()` : l'annonce dure une
+   * demi-seconde, pas les deux secondes et quart que le portage lui donnait. */
+  const CN_IMAGES = [
+    [-166.75, 1], [-122.5, 1], [-85.05, 1], [-54.45, 1], [-30.65, 1], [-13.6, 1],
+    [-3.4, 1], [0, 1], [0, 1.04], [0, 1.08], [0, 1.0533], [0, 1.0267], [0, 1],
+    [0, 1], [-6.25, 1], [-25.05, 1], [-56.4, 1], [-100.3, 1], [-156.7, 1],
+  ];
+
+  function dessinerAnnonce(ctx, cn) {
+    const table = cn.classic ? CN_CLASSIC : CN_CHALLENGE;
+    const e = table[cn.idx];
+    if (!e) return;
+    const f = Math.max(0, Math.min(CN_IMAGES.length - 1, Math.floor(cn.frame) - 1));
+    const [dy, ech] = CN_IMAGES[f];
+    ctx.save();
+    ctx.translate(D.COMBO_X + D.CHALLENGE_X, D.COMBO_Y + dy);
+    ctx.scale(ech, ech);
+    const boite = A.img('versusBox');
+    if (boite) ctx.drawImage(boite, CN_ENCART.x, CN_ENCART.y, CN_ENCART.w, CN_ENCART.h);
+    const vignette = A.img(e[0]);
+    if (vignette) ctx.drawImage(vignette, e[1], e[2], 85, 100);
+    for (let i = 3; i < e.length; i++) {
+      // Les repères du fichier donnent la LIGNE DE BASE, pas le milieu.
+      U.text(ctx, e[i][0], e[i][1], e[i][2],
+        { size: e[i][3], color: '#ffffff', align: 'left', baseline: 'alphabetic', font: 'banana' });
+    }
+    ctx.restore();
+  }
+
   AnimatorChallenge.prototype.attachComboStar = function () {
     this.comboStar = {
       value: this.comboId, scale: D.COMBOSTAR_SCALE,
@@ -1117,7 +1195,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
         if (i > 0) TItem.addCombo(i - 1);
       }
       if (i > 0)
-        this.comboName = { idx: i - 1, classic: SW.Data.gameMode === SW.Data.CLASSIC, timer: 90 };
+        this.comboName = { idx: i - 1, classic: SW.Data.gameMode === SW.Data.CLASSIC, frame: 1 };
     }
   };
   AnimatorChallenge.prototype.drawOverlays = function (ctx) {
@@ -1155,18 +1233,9 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     }
     const cn = this.comboName;
     if (cn != null) {
-      cn.timer -= SW.tmod;
-      if (cn.timer <= 0) this.comboName = null;
-      else {
-        const img = cn.classic ? A.img('comboClassic') : A.img('combo' + cn.idx);
-        const k = Math.min(1, (90 - cn.timer) / 5);
-        ctx.save();
-        ctx.globalAlpha = Math.min(1, cn.timer / 15);
-        ctx.translate(D.COMBO_X + D.CHALLENGE_X, D.COMBO_Y);
-        ctx.scale(k, k);
-        U.drawCentered(ctx, img, 0, 20, 1);
-        ctx.restore();
-      }
+      cn.frame += SW.tmod;
+      if (cn.frame >= CN_IMAGES.length) this.comboName = null;
+      else dessinerAnnonce(ctx, cn);
     }
   };
 
@@ -2172,12 +2241,65 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   };
   AnalyseChallenge.prototype.main = function (tmod) { this.pulse += 0.12 * tmod; };
 
+  /* ── JOUER LE COUP CONSEILLÉ ──────────────────────────────────────────────
+   *
+   * Le panneau disait le coup ; il le JOUE maintenant. Le bouton ne répond
+   * que lorsqu'il y a un conseil et que le plateau est rendu (`lock` levé) —
+   * exactement les conditions dans lesquelles le joueur pourrait le jouer
+   * lui-même. Ce n'est pas un raccourci : c'est le même coup, par le même
+   * chemin (`jouerPaire` / `defend`), donc les mêmes compteurs, le même verrou
+   * et le même oubli du conseil.
+   */
+  AnalyseChallenge.prototype.jouable = function () {
+    const m = this.conseil && this.conseil.meilleur;
+    if (!m || this.game.lock || this.game.pause.activated()) return null;
+    if (m.type === 'defend') return m;
+    return (m.type === 'swap' && m.pair) ? m : null;
+  };
+  AnalyseChallenge.prototype.surLeBouton = function (x, y) {
+    const b = IA_BOUTON;
+    return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+  };
+  AnalyseChallenge.prototype.clic = function (x, y) {
+    if (this.panne || !this.surLeBouton(x, y)) return false;
+    const m = this.jouable();
+    if (!m) return true;                 // le bouton est là, mais il attend
+    if (m.type === 'defend') { this.game.defend(); return true; }
+    // La paire de l'analyseur est en cases ; le jeu la veut avec ses fruits.
+    const lvl = this.game.player.level, p = m.pair;
+    const col2 = lvl.fruits[p.x + p.dx];
+    this.game.jouerPaire({
+      x: p.x, y: p.y, dx: p.dx, dy: p.dy,
+      f1: lvl.fruits[p.x] ? lvl.fruits[p.x][p.y] : null,
+      f2: col2 ? (col2[p.y + p.dy] === undefined ? null : col2[p.y + p.dy]) : null,
+    });
+    return true;
+  };
+  AnalyseChallenge.prototype.dessinerBouton = function (ctx) {
+    const b = IA_BOUTON;
+    const pret = !!this.jouable();
+    const survol = pret && this.surLeBouton(SW.mouse.x, SW.mouse.y);
+    ctx.save();
+    U.roundRect(ctx, b.x, b.y, b.w, b.h, 5);
+    ctx.fillStyle = pret ? (survol ? '#ffd23f' : '#c8931f') : '#4a3a22';
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = pret ? '#ffe9a0' : '#6a5636';
+    U.roundRect(ctx, b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, 5);
+    ctx.stroke();
+    ctx.restore();
+    U.text(ctx, 'JOUER', b.x + b.w / 2, b.y + b.h / 2 + 1,
+      { size: 11, color: pret ? '#3a2200' : '#8a7a5a' });
+  };
+
   const IA_COULEURS = { combo: '#5ee06a', preparation: '#5fb8ff', attente: '#e0d8a0', defense: '#ff9d3f' };
   const IA_NOMS = { combo: 'COMBO', preparation: 'COUP SILENCIEUX', attente: 'SANS COMBO', defense: 'DÉFENSE' };
   // Le panneau : la zone libre du panneau de gauche, entre le parchemin des
   // coups (qui finit vers y = 158) et le visage (qui commence à 357), à
   // gauche de l'icône de défense (x = 106) et de la colonne d'étoiles.
-  const IA_PANNEAU = { x: 6, y: 176, w: 94, h: 118 };
+  const IA_PANNEAU = { x: 6, y: 176, w: 94, h: 140 };
+  // Le bouton « JOUER CE COUP », au bas du panneau.
+  const IA_BOUTON = { x: 13, y: 286, w: 80, h: 22 };
 
   AnalyseChallenge.prototype.draw = function (ctx) {
     if (this.panne) return;
@@ -2245,6 +2367,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     const x = P.x + 6, tx = P.x + P.w / 2;
     U.text(ctx, 'IA', x, P.y + 12, { size: 10, color: '#ffd23f', align: 'left' });
     const m = c && c.meilleur;
+    this.dessinerBouton(ctx);
     if (this.enCours && !m) {
       U.text(ctx, 'réflexion…', tx, P.y + 40, { size: 10, color: '#d8ccb0', bold: false });
       return;
@@ -2278,8 +2401,9 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       U.text(ctx, s, x, y, { size: 8, color: IA_COULEURS[a.nature] || '#ccc', align: 'left', bold: false });
       y += 12;
     }
+    // Le temps de calcul, en haut à droite : le bas du panneau est au bouton.
     if (c.tempsMs !== undefined)
-      U.text(ctx, c.tempsMs + ' ms', P.x + P.w - 6, P.y + P.h - 9, { size: 7, color: '#8a7a5a', align: 'right', bold: false });
+      U.text(ctx, c.tempsMs + ' ms', P.x + P.w - 6, P.y + 12, { size: 7, color: '#8a7a5a', align: 'right', bold: false });
   };
 
   // ── Challenge (Challenge.as) ─────────────────────────────────────────────
@@ -2369,17 +2493,21 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       if (this.analyse) this.analyse.demander();
     }
   };
+  // Un échange, d'où qu'il vienne : la souris, le doigt, ou le bouton de l'IA.
+  Challenge.prototype.jouerPaire = function (fpair) {
+    if (!this.player.swapPair(fpair)) return false;
+    SW.Manager.client.nswaps++;
+    this.ncoups++;
+    this.nmoves = (this.nmoves || 0) + 1;     // compteur affichable (cf. drawFront)
+    this.setLock(true);
+    if (this.analyse) this.analyse.oublier();
+    return true;
+  };
   Challenge.prototype.gameClick = function () {
     if (this.lock || this.pause.activated()) return;
     if (this.interf.handleClick(SW.mouse.x, SW.mouse.y)) return;
-    const fpair = SW.pickPair(this.player);
-    if (this.player.swapPair(fpair)) {
-      SW.Manager.client.nswaps++;
-      this.ncoups++;
-      this.nmoves = (this.nmoves || 0) + 1;   // compteur affichable (cf. drawFront)
-      this.setLock(true);
-      if (this.analyse) this.analyse.oublier();
-    }
+    if (this.analyse && this.analyse.clic(SW.mouse.x, SW.mouse.y)) return;
+    this.jouerPaire(SW.pickPair(this.player));
   };
   Challenge.prototype.defend = function () {
     if (!this.lock && this.player.canDefend()) {

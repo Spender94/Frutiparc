@@ -187,15 +187,18 @@ class Serpent {
   /*
    * gfx.hitTest(x, y, true) — le point contre le dessin du corps.
    *
-   * Le dessin : pour chaque segment i (de len à 1), une COURBE QUADRATIQUE de
-   * la file [n] à la file [n-5], de point de contrôle la file [n-2], tracée
+   * Le dessin : pour chaque segment i (de len à 1), une courbe de la file [n]
+   * à la file [n-5] qui PASSE PAR les points intermédiaires (cinq cubiques de
+   * Catmull-Rom, cf. rendu.js — le fichier n'en traçait qu'une quadratique,
+   * qui coupait le virage de près de trois pixels et cassait la tangente de
+   * 27° à chaque joint), tracée
    * deux fois — bordure large de `i·s·q + 8`, corps large de `i·s·q + 5`. Le
    * test « forme » de Flash voit l'union : la bordure, la plus large, décide.
    * Les traits de Flash ont bouts et joints ronds : géométriquement, être
    * touché = être à moins d'une demi-largeur d'un point de la ligne.
    *
    * On suit donc EXACTEMENT la même géométrie que le tracé (rendu.js) : les
-   * deux branches de draw_queue selon tmod, le point de contrôle, et le
+   * deux branches de draw_queue selon tmod, les points de file, et le
    * gondolement `distort`. On approchait naguère chaque segment par sa CORDE
    * droite — 25 px d'un bout à l'autre — et la corde coupe le virage : elle
    * passe DEDANS, si bien qu'un point à l'intérieur d'une boucle se retrouvait
@@ -228,13 +231,16 @@ class Serpent {
       const p = q[Math.max(0, n - 5)];
       const bx = p.x + delta, by = p.y - delta;
       if (courbe) {
-        const p2 = q[Math.max(0, n - 2)];
-        const cx = p2.x + delta, cy = p2.y - delta;
+        // Le trait passe désormais PAR chaque point de file (cf. rendu.js) :
+        // on suit donc la file, point à point. Entre deux points voisins —
+        // cinq pixels — la cubique s'écarte de sa corde de moins d'un tiers de
+        // pixel à plein braquage ; l'ancienne quadratique, elle, s'écartait du
+        // vrai chemin de 2,83. Le test colle donc au dessin de bien plus près
+        // qu'avant, pour le même travail.
         let vx = x0, vy = y0;
         for (let k = 1; k <= SOUS_PAS_CORPS; k++) {
-          const t = k / SOUS_PAS_CORPS, u = 1 - t;
-          const wx = u * u * x0 + 2 * u * t * cx + t * t * bx;
-          const wy = u * u * y0 + 2 * u * t * cy + t * t * by;
+          const w = q[Math.max(0, n - k)];
+          const wx = w.x + delta, wy = w.y - delta;
           if (distanceSegment2(px, py, vx, vy, wx, wy) <= r2) return true;
           vx = wx; vy = wy;
         }

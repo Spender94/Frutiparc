@@ -149,7 +149,36 @@ class Particules {
   }
 }
 
-// Snake.draw_queue, trait pour trait.
+/* Un point de la file, borné aux deux bouts et décalé par le gondolement de
+ * la potion violette. Le bornage sert aux VOISINS : la première cubique du
+ * corps veut un point avant la tête, la dernière un point après la pointe. */
+function pointFile(q, k, delta) {
+  const p = q[k < 0 ? 0 : (k >= q.length ? q.length - 1 : k)];
+  return delta ? { x: p.x + delta, y: p.y - delta } : p;
+}
+
+/* ── LE CORPS, TRAIT POUR TRAIT (Snake.draw_queue) ─────────────────────────
+ *
+ * Le fichier trace UNE quadratique par segment : de la file [n] à la file
+ * [n−5], point de contrôle la file [n−2]. Deux conséquences, invisibles sur
+ * une ligne droite et criantes en virage :
+ *
+ *   · la courbe ne passe PAS par les points intermédiaires — elle coupe le
+ *     virage. Mesuré à plein braquage (7,16°/image, 3,3 px/image, soit 54° de
+ *     virage par segment) : jusqu'à 2,83 px entre le trait et le chemin que
+ *     le serpent a réellement suivi ;
+ *   · et deux segments voisins ne se raccordent qu'en POSITION. La tangente,
+ *     elle, saute — mesuré : 27° à CHAQUE joint. Le corps devenait une
+ *     enfilade d'arcs à angles vifs. C'est le « saccadé » des virages.
+ *
+ * On garde tout le reste — les mêmes segments, les mêmes largeurs, les mêmes
+ * couleurs, les mêmes bouts ronds, la même voie rapide au-delà de 1,7 de tmod
+ * — et l'on remplace la seule quadratique par CINQ cubiques de Catmull-Rom,
+ * une par point de file. Chacune passe par ses deux extrémités et prend sa
+ * tangente des voisins : le trait suit donc exactement les points que la tête
+ * a semés, sans cassure nulle part, joints compris. Le serpent ne bouge pas
+ * d'un pouce là où il allait droit ; en virage, il suit sa propre trace.
+ */
 function dessinerSerpent(ctx, s, tmod, temps) {
   if (s.len <= 0 || s.queue.length === 0) return;
   const scale = Math.min(10, s.len + 3) / 10;
@@ -169,24 +198,29 @@ function dessinerSerpent(ctx, s, tmod, temps) {
     let px = p.x, py = p.y;
     if (tmod < 1.7) {
       for (let i = s.len; i > 0; i--) {
-        p = q[Math.max(0, n - 5)];
-        const p2 = q[Math.max(0, n - 2)];
         const qf = eatFlag ? Math.max(1, 2 - (i - s.eat) * (i - s.eat) / 2) : 1;
         const c = (i === s.color_qpos) ? s.color_val : couleur;
         const a = (i === 1) ? s.alpha_val : 100;
+        const delta = s.distort
+          ? Math.cos(i + temps) * Math.min(6, s.len - i) * s.distort_val : 0;
         ctx.beginPath();
         ctx.moveTo(px, py);
         ctx.lineWidth = i * ss * qf + lsize;
         ctx.strokeStyle = rgb(c);
         ctx.globalAlpha = Math.max(0, a / 100);
-        if (s.distort) {
-          const delta = Math.cos(i + temps) * Math.min(6, s.len - i) * s.distort_val;
-          ctx.quadraticCurveTo(p2.x + delta, p2.y - delta, p.x + delta, p.y - delta);
-          px = p.x + delta; py = p.y - delta;
-        } else {
-          ctx.quadraticCurveTo(p2.x, p2.y, p.x, p.y);
-          px = p.x; py = p.y;
+        // Une cubique par POINT DE FILE, tangente donnée par les voisins.
+        let av = pointFile(q, n + 1, delta);
+        let ici = { x: px, y: py };
+        for (let j = 1; j <= 5; j++) {
+          const suiv = pointFile(q, n - j, delta);
+          const apres = pointFile(q, n - j - 1, delta);
+          ctx.bezierCurveTo(
+            ici.x + (suiv.x - av.x) / 6, ici.y + (suiv.y - av.y) / 6,
+            suiv.x - (apres.x - ici.x) / 6, suiv.y - (apres.y - ici.y) / 6,
+            suiv.x, suiv.y);
+          av = ici; ici = suiv;
         }
+        px = ici.x; py = ici.y;
         ctx.stroke();
         n -= 5;
       }

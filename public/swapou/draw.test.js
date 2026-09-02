@@ -54,6 +54,7 @@ function makeCtx() {
     beginPath: function () {}, closePath: function () {},
     moveTo: function () {}, lineTo: function () {}, arc: function () {},
     arcTo: function () {}, ellipse: function () {}, rect: function () {},
+    quadraticCurveTo: function () {}, bezierCurveTo: function () {},
     fill: function () {}, stroke: function () {}, clip: function () {},
     fillRect: function () { calls++; }, strokeRect: function () {},
     clearRect: function () {},

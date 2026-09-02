@@ -46,6 +46,8 @@ const SwapouAssets = (function () {
     powerDef: 'images/powerDef.png',
     powerStar: 'images/powerStar.png',
     comboStar: 'images/comboStar.png',
+    // Le petit crâne de la plaquette de blocage (le `v` de fruitRollOver).
+    cursed: 'images/cursed.png',
     fullDimitri: 'character/bitmap/menu/dimitri.png',
     fullNatacha: 'character/bitmap/menu/natacha.png',
     // Pièces du menu sorties du SWF (scripts/extract-swapou-menu.js) : les
@@ -68,9 +70,16 @@ const SwapouAssets = (function () {
     MANIFEST['metal' + i] = 'images/fruits/metal-' + n + '.png';
     MANIFEST['star' + i] = 'images/fruits/star-' + n + '.png';
   });
-  // combos (ordre des paliers — déduit des pictos combo_NN.gif)
-  const COMBO_IMGS = ['confiture', 'confitureOrange', 'tarte', 'tarteKiwis',
-    'tarteCreme', 'tarteCremeOrange', 'tarteOranges', 'eclair', 'eclairExtra',
+  /* Les combos, dans l'ordre des paliers.
+   *
+   * Il était naguère « déduit des pictos combo_NN.gif », et trois rangs
+   * étaient permutés. Il est maintenant RELEVÉ : le clip d'annonce du SWF
+   * (sprite #128) donne une image par palier, et son masque alpha — zlib,
+   * donc intact d'un format à l'autre — désigne sans ambiguïté le fichier
+   * source de chacune. La quatrième est bien la « recette crêmeuse », la
+   * sixième le « kiwi-ti-kiwi ». */
+  const COMBO_IMGS = ['confiture', 'confitureOrange', 'tarte', 'tarteCreme',
+    'tarteCremeOrange', 'tarteKiwis', 'tarteOranges', 'eclair', 'eclairExtra',
     'coupeGlace', 'coupeAncestrale'];
   COMBO_IMGS.forEach(function (n, i) { MANIFEST['combo' + i] = 'images/combos/' + n + '.png'; });
   MANIFEST.comboClassic = 'images/combos/classic.png';

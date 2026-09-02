@@ -906,13 +906,80 @@ const SwapouUI = (function () {
     ctx.restore();
   };
 
-  // ── indicateur de paire (fruitRollOver) ──────────────────────────────────
+  /* ── L'INDICATEUR DE PAIRE (fruitRollOver, sprite #56) ─────────────────────
+   *
+   * Le portage en dessinait une idée : un cadre arrondi jaune, un trait au
+   * milieu et une croix rouge quand l'échange est interdit. Le clip d'époque
+   * est tout autre, et ce sont ses trois pièces qu'on retrouve ici :
+   *
+   *   `sub`  (#50)  L'ANNEAU — un rectangle à bouts ronds ÉVIDÉ, 72,4 × 37,55,
+   *                 posé en (31,95 ; 17,25) dans le clip. Deux images : BLANC
+   *                 quand l'échange est possible, ROUGE quand il ne l'est pas
+   *                 (`sub.gotoAndStop(1)` / `(2)` dans `Interf.displayPair`).
+   *                 Pas de trait au milieu, pas de croix.
+   *
+   *   `mask` (#47)  SEPT BANDES EN BIAIS qui masquent l'anneau et GLISSENT :
+   *                 le clip anime leur x de 24,15 à 46,15 en dix images, et
+   *                 recommence. Les bandes font 10,9 de large et se répètent
+   *                 tous les 21,8 — d'où l'anneau en pointillé oblique qui
+   *                 défile, la vraie signature du sélecteur.
+   *
+   *   `v`    (#55)  LE COMPTEUR de blocage horizontal (la Coupure) : une
+   *                 plaquette brune à liseré noir, le petit crâne, et le
+   *                 nombre de coups restants. Caché le reste du temps.
+   *
+   * Les chemins ci-dessous sont ceux des formes du fichier, au centième.
+   */
+  const ANNEAU = cheminSwf('M35.15 0Q35.15 -6.65 30.5 -11.3Q25.8 -16 19.15 -16L-16.05 -16'
+    + 'Q-22.5 -15.85 -27 -11.3Q-31.7 -6.65 -31.7 0Q-31.7 6.65 -27 11.3Q-22.35 16 -15.7 16'
+    + 'L-15.7 16.05L19.15 16.05L19.15 16Q25.8 16 30.5 11.3Q35.15 6.65 35.15 0Z'
+    + 'M32.45 -13.25Q37.9 -7.75 37.95 0.05Q37.9 7.8 32.45 13.3Q26.95 18.8 19.15 18.8'
+    + 'L-16.05 18.8L-17.25 18.75Q-24.05 18.25 -28.95 13.3Q-34.45 7.8 -34.45 0.05'
+    + 'Q-34.45 -7.75 -28.95 -13.25Q-24.05 -18.2 -17.25 -18.7L-16.05 -18.75L19.15 -18.75'
+    + 'Q26.95 -18.75 32.45 -13.25Z');
+  const BANDES = cheminSwf('M20.25 -20.2L-20.15 20.2L-31.05 20.2L9.35 -20.2L20.25 -20.2Z'
+    + 'M54.15 -10.5L23.45 20.2L12.55 20.2L52.95 -20.2L54.15 -20.2L54.15 -10.5Z'
+    + 'M42.05 -20.2L1.65 20.2L-9.25 20.2L31.15 -20.2L42.05 -20.2Z'
+    + 'M-54.15 -11.2L-54.15 -20.2L-45.15 -20.2L-54.15 -11.2Z'
+    + 'M-54.15 -0.3L-34.25 -20.2L-23.35 -20.2L-54.15 10.6L-54.15 -0.3Z'
+    + 'M-1.55 -20.2L-41.95 20.2L-52.85 20.2L-12.45 -20.2L-1.55 -20.2Z'
+    + 'M34.35 20.2L54.15 0.4L54.15 11.3L45.25 20.2L34.35 20.2Z');
+  const RO_ANNEAU = { x: 31.95, y: 17.25 };
+  const RO_MASQUE = { x0: 24.15, y: 17.7, course: 22, periode: 21.8, images: 9 };
+  const RO_V = { x: 34.85, y: 8.5 };
+
+  /* Un chemin de forme SWF — M, L, Q, Z et rien d'autre — mis en commandes
+   * une fois pour toutes, puis rejoué sur le contexte. (Path2D ferait l'affaire
+   * dans un navigateur ; le banc de rendu, lui, n'a qu'un contexte factice.) */
+  function cheminSwf(d) {
+    const cmds = [];
+    const re = /([MLQZ])([^MLQZ]*)/g;
+    let m;
+    while ((m = re.exec(d)) !== null) {
+      const n = m[2].trim().length
+        ? m[2].trim().split(/[\s,]+/).map(Number) : [];
+      cmds.push([m[1]].concat(n));
+    }
+    return cmds;
+  }
+  function tracerChemin(ctx, cmds, dx, dy) {
+    ctx.beginPath();
+    for (let i = 0; i < cmds.length; i++) {
+      const c = cmds[i];
+      if (c[0] === 'M') ctx.moveTo(dx + c[1], dy + c[2]);
+      else if (c[0] === 'L') ctx.lineTo(dx + c[1], dy + c[2]);
+      else if (c[0] === 'Q') ctx.quadraticCurveTo(dx + c[1], dy + c[2], dx + c[3], dy + c[4]);
+      else ctx.closePath();
+    }
+  }
+
   function Rollover() {
     this.visible = false;
     this.x = 0; this.y = 0; this.rot = 0;
     this.tx = 0; this.ty = 0; this.tr = 0;
     this.blocked = false;
     this.lockText = null;
+    this.phase = 0;                   // le défilement des bandes, en pixels
   }
   Rollover.prototype.setPair = function (p, geo, hlock) {
     if (p == null || p.f1 == null || p.f2 == null) { this.visible = false; return; }
@@ -937,30 +1004,44 @@ const SwapouUI = (function () {
   };
   Rollover.prototype.draw = function (ctx) {
     if (!this.visible) return;
+    // Les bandes défilent : 22 px en neuf pas d'époque, et le motif se répète
+    // tous les 21,8 — la boucle du clip est donc invisible, à deux dixièmes.
+    const tmod = (typeof SW !== 'undefined' && SW.tmod) || 1;
+    this.phase = (this.phase + tmod * (RO_MASQUE.course / RO_MASQUE.images))
+      % RO_MASQUE.periode;
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.rot * Math.PI / 180);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = this.blocked ? 'rgba(190,190,190,0.9)' : '#ffd23f';
-    ctx.shadowColor = 'rgba(0,0,0,0.45)';
-    ctx.shadowBlur = 3;
-    roundRect(ctx, 1, 1, D.FRUIT_WIDTH * 2 - 2, D.FRUIT_HEIGHT - 2, 8);
+    ctx.save();
+    tracerChemin(ctx, BANDES, RO_MASQUE.x0 + this.phase, RO_MASQUE.y);
+    ctx.clip('evenodd');
+    tracerChemin(ctx, ANNEAU, RO_ANNEAU.x, RO_ANNEAU.y);
+    ctx.fillStyle = this.blocked ? '#ff0000' : '#ffffff';
+    ctx.fill('evenodd');
+    ctx.restore();
+    if (this.lockText != null) this.dessinerCompteur(ctx);
+    ctx.restore();
+  };
+  // `v` : la plaquette du blocage horizontal (55,3 de large, y 4,6 à 25,7),
+  // le crâne à gauche et le compte à droite.
+  Rollover.prototype.dessinerCompteur = function (ctx) {
+    ctx.save();
+    ctx.translate(RO_V.x, RO_V.y);
+    roundRect(ctx, -27.15, 4.6, 54.3, 21.1, 2);
+    ctx.fillStyle = '#9f673a';
+    ctx.fill();
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1;
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(D.FRUIT_WIDTH, 3);
-    ctx.lineTo(D.FRUIT_WIDTH, D.FRUIT_HEIGHT - 3);
-    ctx.stroke();
-    if (this.blocked) {
-      ctx.strokeStyle = 'rgba(220,60,60,0.95)';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(8, 8); ctx.lineTo(D.FRUIT_WIDTH * 2 - 8, D.FRUIT_HEIGHT - 8);
-      ctx.moveTo(D.FRUIT_WIDTH * 2 - 8, 8); ctx.lineTo(8, D.FRUIT_HEIGHT - 8);
-      ctx.stroke();
-    }
+    ctx.rect(-25.15, 4.9, 50.3, 3.1);
+    ctx.fillStyle = '#c9945f';
+    ctx.fill();
+    const cr = A.img('cursed');
+    if (cr) ctx.drawImage(cr, -24, 5.2, 20, 20);
+    text(ctx, this.lockText, 6, 15.5,
+      { size: 15, color: '#ffffff', stroke: '#000000', strokeWidth: 3 });
     ctx.restore();
-    if (this.lockText != null)
-      text(ctx, this.lockText, this.x + D.FRUIT_WIDTH, this.y - 10, { size: 14, color: '#ff5050', stroke: '#400000', strokeWidth: 3 });
   };
 
   return {

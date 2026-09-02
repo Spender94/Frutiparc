@@ -1395,11 +1395,14 @@ test('la bouche s\'élargit quand la tête tourne, comme le cadre d\'un clip tou
   }
 });
 
-// Le corps, lui, est tracé en COURBES quadratiques (draw_queue : contrôle
-// queue[n-2], fin queue[n-5]). On approchait chaque segment par sa corde
-// droite — 25 px d'un bout à l'autre — et la corde coupe le virage : elle
-// passe DEDANS. Un point à l'intérieur d'une boucle se retrouvait donc plus
-// près d'elle que du trait réel : on mourait en FRÔLANT sa propre queue.
+// Le corps, lui, est tracé en COURBES. On approchait naguère chaque segment
+// par sa corde droite — 25 px d'un bout à l'autre — et la corde coupe le
+// virage : elle passe DEDANS. Un point à l'intérieur d'une boucle se
+// retrouvait donc plus près d'elle que du trait réel : on mourait en FRÔLANT
+// sa propre queue. Le repère du test reste la quadratique d'époque : le tracé
+// actuel passe par les points de file, donc PLUS À L'EXTÉRIEUR encore du
+// virage — ce qui est hors de la quadratique l'est a fortiori du trait réel,
+// et ce qui est sur la quadratique reste dans le trait.
 
 test('le corps tue selon sa courbe tracée, pas selon la corde qui coupe le virage', () => {
   const S = require('../public/snake3/serpent.js');

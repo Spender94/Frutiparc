@@ -18,7 +18,8 @@
 <style>
   html, body {
     margin: 0; padding: 0; height: 100%;
-    background: #24330e;
+    /* Le fond de scène du SWF (SetBackgroundColor) : le vert du parc. */
+    background: #ADE76B;
     overflow: hidden;
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
@@ -47,24 +48,9 @@
     transform-origin: 0 0;
     image-rendering: auto;
   }
-  #loader {
-    position: fixed; inset: 0;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    color: #cfe8a0; font-family: Verdana, Arial, sans-serif;
-    gap: 14px; z-index: 10;
-  }
-  #loader .bar {
-    width: 240px; height: 12px;
-    border: 2px solid #cfe8a0; border-radius: 7px;
-    overflow: hidden;
-  }
-  #loader .bar > div {
-    height: 100%; width: 0%;
-    background: #9fce30;
-    transition: width .15s;
-  }
-  #loader .t { font-size: 13px; letter-spacing: 1px; }
+  /* L'attente se peint DANS le canevas (cf. « l'écran de chargement »
+     ci-dessous) : c'est celui du SWF, au pixel près, et il se met à l'échelle
+     et pivote avec le jeu. Rien à styler ici. */
   /* invitation à tenir le téléphone à l'horizontale (mode portrait) */
   #rotate-hint {
     position: fixed; left: 50%; top: 14px;
@@ -82,11 +68,6 @@
 <body>
 <canvas id="stage" width="700" height="480"></canvas>
 <div id="rotate-hint"><span class="ph">📱</span> Tournez votre téléphone</div>
-<div id="loader">
-  <div class="t">SWAPOU 2</div>
-  <div class="bar"><div id="loadbar"></div></div>
-  <div class="t" id="loadtxt">chargement…</div>
-</div>
 
 <script src="engine.js"></script>
 <script src="assets.js"></script>
@@ -98,9 +79,6 @@
 (function () {
   'use strict';
   var canvas = document.getElementById('stage');
-  var loader = document.getElementById('loader');
-  var loadbar = document.getElementById('loadbar');
-  var loadtxt = document.getElementById('loadtxt');
   var rotateHint = document.getElementById('rotate-hint');
 
   // sid : ?sid=… puis session /light en secours (même logique que Grapiz)
@@ -113,6 +91,7 @@
   var scale = 1;
   var rotated = false;
   var hintDismissed = false;
+  var attente = null;   // l'écran de chargement, tant qu'il tient la scène
   function resize() {
     var w = window.innerWidth, h = window.innerHeight;
     rotated = h > w; // portrait → le jeu pivote (téléphone tenu en paysage)
@@ -140,6 +119,9 @@
       canvas.style.transform = 'scale(' + s + ') translate(' + (-350 * k) + 'px,' + (-240 * k) + 'px)';
 
     rotateHint.style.display = (rotated && !hintDismissed) ? 'block' : 'none';
+    // Redimensionner un canevas l'EFFACE : tant que le jeu n'a pas démarré,
+    // c'est à l'écran d'attente de se repeindre.
+    if (attente) attente();
   }
   // Rotation de l'appareil : sur mobile, 'resize' / 'orientationchange' se
   // déclenchent souvent AVANT que innerWidth/innerHeight ne reflètent la
@@ -228,11 +210,63 @@
   // premier geste → déverrouille l'audio (politique mobile)
   window.addEventListener('pointerdown', function () { SwapouAssets.unlock(); }, { once: true });
 
+  /* ── L'ÉCRAN DE CHARGEMENT — celui du SWF, et rien d'autre ──────────────
+   *
+   * swapou.swf a quatre images à sa racine, et les deux premières SONT le
+   * préchargeur : l'image 1 pose le clip `bg` (le fond vert à écailles,
+   * bitmap #18 = images/bg.jpg, RÉPÉTÉ en largeur — la forme #19 est un
+   * remplissage bitmap de type 0x40 sur 700 × 480) et un texte statique
+   * (#24) ; l'image 2 boucle en arrière tant que `ifFrameLoaded` dit non,
+   * puis saute à l'étiquette « main ».
+   *
+   * Le texte est « chargement... » — treize glyphes de la fonte 23,
+   * « PT Banana Split », en blanc, hauteur 30. Il se pose à (19,1 ; 440,9),
+   * la matrice du texte le décale de −12,85 et le premier enregistrement
+   * porte un dy de 25 : la LIGNE DE BASE tombe donc en (6,25 ; 465,9).
+   * Pas de barre, pas de pourcentage — le jeu d'origine n'en montrait aucun.
+   *
+   * On le peint sur le canevas du jeu, donc à la même échelle et dans la
+   * même rotation : sur un téléphone tenu à la verticale, l'attente pivote
+   * comme le jeu qu'elle annonce.
+   */
+  function ecranDeChargement() {
+    var ctx = canvas.getContext('2d');
+    var fond = new Image();
+    var pret = false;
+    fond.onload = function () { pret = true; peindre(); };
+    fond.onerror = function () { peindre(); };
+    fond.src = '/games/swapou2/images/bg.jpg';   // la base de SwapouAssets
+    function peindre() {
+      var k = SW.canvasScale;
+      ctx.setTransform(k, 0, 0, k, 0, 0);
+      ctx.fillStyle = '#ADE76B';              // SetBackgroundColor du fichier
+      ctx.fillRect(0, 0, 700, 480);
+      if (pret && fond.naturalWidth) {
+        // Le remplissage RÉPÉTÉ de la forme #19 : la tuile fait 105 × 480 et
+        // se pose à l'échelle 1, six fois et deux tiers.
+        for (var x = 0; x < 700; x += fond.naturalWidth)
+          ctx.drawImage(fond, x, 0, fond.naturalWidth, 480);
+      }
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '30px "PT Banana Split", Verdana, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText('chargement...', 6.25, 465.9);
+    }
+    peindre();
+    return peindre;
+  }
+  attente = ecranDeChargement();
+  // La fonte du texte d'attente : sans elle, `ctx.font` retombe en silence sur
+  // la police de secours. On repeint dès qu'elle arrive.
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('30px "PT Banana Split"').then(function () {
+      if (attente) attente();
+    }).catch(function () {});
+  }
+
   // ── chargement puis démarrage ──
-  SwapouAssets.loadImages(function (n, total) {
-    loadbar.style.width = Math.round(n * 100 / total) + '%';
-    loadtxt.textContent = 'chargement… ' + n + '/' + total;
-  }).then(function () {
+  SwapouAssets.loadImages().then(function () {
     // Le canvas ne sait pas attendre une fonte : `ctx.font` retombe sans bruit
     // sur la police de secours si le WOFF n'est pas encore là. On les charge
     // donc explicitement — et on démarre quand même si ça échoue.
@@ -242,7 +276,7 @@
       document.fonts.load('16px "Impact SW"'),
     ]).catch(function () {});
   }).then(function () {
-    loader.style.display = 'none';
+    attente = null;
     SW.boot(canvas, sid);
   });
 })();
