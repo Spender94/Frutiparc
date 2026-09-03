@@ -273,6 +273,54 @@ coût : 1,9 × le temps d'un coup, sur ces positions seulement ; le troisième
 être coupé par le budget déjà entamé — et, coupé quand même, il ne compte
 pas (on ne mélange pas des valeurs de profondeurs différentes).
 
+### Les étoiles, seconde passe : pouvoir par pouvoir (septembre 2026)
+
+« Certains pouvoirs, comme celui de Dimitri, sortent bien d'une position
+critique ; celui de Moutarde peut s'utiliser autrement, ou avant d'arriver
+dans une position intenable. » Ce que les pouvoirs FONT, d'abord, mesuré sur
+des plateaux de fin de partie stabilisés (hauteur ≈ 10, 45 % de glace) :
+
+| pouvoir | fruits retirés | hauteur max | la ligne monte après ? |
+|---|---|---|---|
+| Effondrement (Dimitri, 1★) | 10 | −1 | non |
+| Moïse (Sel, 2★) | 14 | −1,3 | non |
+| Glissement (Wasabi, 2★) | 0 (14 par les combos qu'il déclenche) | −1,6 | non |
+| Colorant (Moutarde, 4★) | 0 | 0 | non |
+
+Aucune défense ne fait monter la ligne (`Challenge.turnDone` ne relance
+`genLine` que si la rangée du bas n'a plus deux fruits voisins — jamais après
+ces quatre-là) : chaque pouvoir est aussi UN TOUR GRATUIT, sans `ncoups`
+qui avance. L'Effondrement est un cran de moins pour une étoile, et rien
+d'autre — attendre le plafond pour le tirer est donc juste, c'est de
+l'oxygène ; le relevé de référence le montre tiré à 14 dans la moitié des
+cas, onze fois par partie, et personne ne meurt avec une défense en banque.
+
+**La réserve** (ne jamais lâcher sa dernière défense hors crise) était
+facturée au Colorant (4★) et au Ramollissement (5★), qui ne pourront JAMAIS
+garder une seconde défense dans une banque de six : elle les interdisait
+hors crise, pour rien. Elle ne s'applique plus qu'aux pouvoirs à 1–3★.
+
+**La prévention** (`WEIGHTS.prevention`, un facteur sur le prix entre les
+hauteurs 9 et 11) : 64 positions relevées à hauteur 10–11 avec le pouvoir en
+banque, deux par partie de référence, rejouées 50 tours sous chaque
+facteur ; puis la réserve elle-même (800, 0). Écarts appariés, n = 16 par
+personnage :
+
+| | prix ÷ 2 | prix ÷ 5 | prix × 2 | réserve 800 | réserve 0 |
+|---|---|---|---|---|---|
+| Dimitri | +288 ± 489 | −267 ± 531 | +164 ± 402 | −169 ± 588 | +27 ± 434 |
+| Sel | +144 ± 567 | +526 ± 453 | +723 ± 420 | −82 ± 433 | +571 ± 435 |
+| Wasabi | **+1 242 ± 505** | +720 ± 351 | +784 ± 516 | +1 022 ± 488 | +523 ± 465 |
+| Moutarde | −1 472 ± 537 | −285 ± 571 | −920 ± 605 | −53 ± 616 | +147 ± 924 |
+
+Rien de net pour Effondrement, Moïse et Colorant : le simulateur voit déjà
+ce que chaque pouvoir retire, et le prix par hauteur fait le reste. Le
+Glissement, lui, gagne à toutes les variantes — sa référence est la plus
+mauvaise des six — et le plus à moitié prix (douze positions gagnées sur
+seize) : un plateau nivelé avant la crise garde ses combos, et ne rien
+détruire ne coûte rien. C'est le seul facteur posé (`prevention[1] = 0.5`) ;
+la réserve reste à 1 600.
+
 ## Correspondances sons (SWF id → linkage)
 
 | id | nom | id | nom |
