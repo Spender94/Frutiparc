@@ -783,10 +783,13 @@ body.bureau-frutiz .fb-raccourci .ex-disque img.jaquette {
   width: 61px; height: 61px; left: 1px; top: 1px;
 }
 /* L'étiquette du bureau prend la couleur que `displayIconList` calcule : celle
-   du fond d'écran s'il en impose une, sinon `colorSet.green.overdark`. */
+   du fond d'écran s'il en impose une, sinon `colorSet.green.overdark`.
+   Et la MÊME graisse que les tuiles de la rangée (`.home-tile .lbl`) : c'est
+   le même clip `fileIconStandard` qui étiquette les deux — un pseudo posé sur
+   le bureau n'est pas en gras. */
 body.bureau-frutiz .fb-raccourci .fb-r-lbl {
   position: absolute; left: 3px; top: 41px; width: 74px;
-  font: 700 11px Verdana, Arial, sans-serif; text-align: center;
+  font: 400 11px Verdana, Arial, sans-serif; text-align: center;
   color: var(--fond-txt, #2C4A0F); line-height: 1.15;
   text-shadow: 0 0 3px rgba(var(--fond-halo, 255,255,255), .9);
   overflow: hidden; word-break: break-word;

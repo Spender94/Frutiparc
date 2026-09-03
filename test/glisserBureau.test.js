@@ -107,6 +107,10 @@ test('le raccourci : bouille pour un contact, jaquette pour un disque, sans éti
   assert.match(CSS, /\.fb-raccourci \{[\s\S]*?width: 80px; height: 80px;/);
   assert.match(CSS, /\.fb-raccourci \.ex-bouille \{ width: 37px; height: 37px; \}/);
   assert.match(CSS, /\.fb-raccourci \.fb-r-lbl \{[\s\S]*?top: 41px; width: 74px;/);
+  // Et la même graisse que les tuiles de la rangée : le pseudo d'une bouille
+  // posée sur le bureau n'est pas en gras.
+  assert.match(CSS, /\.fb-raccourci \.fb-r-lbl \{[\s\S]*?font: 400 11px Verdana/);
+  assert.match(CSS, /\.home-tile \.lbl \{\s*\n\s*font: normal 11px Verdana/);
   // Le disque : 63 px de côté, 7 sous le haut de la case.
   assert.match(CSS, /\.fb-raccourci \.ex-disque \{[\s\S]*?top: 7px;[\s\S]*?width: 63px; height: 63px;/);
 });
