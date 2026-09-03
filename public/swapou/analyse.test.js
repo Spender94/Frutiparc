@@ -197,8 +197,14 @@ function paireLegale(lvl, p) {
   assert(tot.nb === 0 || tot.profondeur === 2, 'à quarante coups, deux étages (' + tot.profondeur + ')');
   const tard = A.analyser(lvl, { charId: 1, canDefend: false, stars: 0, ncoups: 150 }, opt);
   assert(tard.nb === 0 || tard.profondeur === 3, 'à cent cinquante coups, le troisième étage (' + tard.profondeur + ')');
-  const sans = A.analyser(lvl, { charId: 1, canDefend: false, stars: 0, ncoups: 150 }, { budgetMs: 8000 });
-  assert(sans.nb === 0 || sans.profondeur === 2, 'sans l’option, deux étages (' + sans.profondeur + ')');
+  const sans = A.analyser(lvl, { charId: 1, canDefend: false, stars: 0, ncoups: 150 }, { budgetMs: 8000, tard: null });
+  assert(sans.nb === 0 || sans.profondeur === 2, 'l’option éteinte, deux étages (' + sans.profondeur + ')');
+  // Et le RÉGLAGE PAR DÉFAUT l'allume — c'est lui que le jeu utilise : passé
+  // cent coups, trois étages ; avant, deux.
+  const def = A.analyser(lvl, { charId: 1, canDefend: false, stars: 0, ncoups: 150 }, { budgetMs: 8000 });
+  assert(def.nb === 0 || def.profondeur === 3, 'par défaut, trois étages passé cent coups (' + def.profondeur + ')');
+  const defTot = A.analyser(lvl, { charId: 1, canDefend: false, stars: 0, ncoups: 60 }, { budgetMs: 8000 });
+  assert(defTot.nb === 0 || defTot.profondeur === 2, 'par défaut, deux étages avant (' + defTot.profondeur + ')');
 }
 {
   // Une défense conseillée AVANT la crise se dit « en prévention » : un plateau

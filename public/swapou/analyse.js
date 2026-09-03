@@ -82,8 +82,25 @@
     paniqueK1: 400, paniqueK2: 10, paniqueS: 5,
     // LA FIN DE PARTIE : passé `ncoups` coups (ou à partir de la hauteur
     // `hMax`), le troisième étage de la recherche s'allume sur les `K2`
-    // meilleurs candidats — `K3` ripostes, `S` lignes tirées. Null : jamais.
-    tard: null,
+    // meilleurs candidats — `K3` ripostes, `S` lignes tirées —, avec son
+    // propre supplément de temps. Null : jamais.
+    //
+    // CE QUE LES REJEUX ONT DIT (32 positions relevées entre le 106ᵉ et le
+    // 113ᵉ coup, rejouées 60 tours sous chaque réglage, mêmes graines) : la
+    // glace couvre alors le tiers du plateau, et ce qui manquait n'était pas
+    // un terme d'évaluation — les groupes latents sous la glace et les coups
+    // en réserve n'ont rien changé (+125 ± 717) — mais UN TOUR DE PLUS : juger
+    // la riposte à la lumière de ce qui vient après elle.
+    //
+    //   troisième étage sur 8 candidats, 5 ripostes    +1 520 ± 769, survie 78 → 84 %
+    //   sur 12 candidats, 6 ripostes (retenu)          +2 156 ± 643, survie 78 → 94 %
+    //   sur 5 candidats, 4 ripostes                    +1 434 ± 991
+    //   sur 8, avec cinq lignes tirées                 +1 871 ± 802
+    //
+    // (points marqués en 60 tours, écart apparié, n = 32 ; +2 156 sur une
+    // base de 11 900, soit + 18 %.) Le coût : 1,9 × le temps d'un coup, sur
+    // les positions de fin de partie seulement.
+    tard: { ncoups: 100, hMax: 12, K2: 12, K3: 6, S: 3, budgetMs: 1500 },
     // Les poids qui ont donné le record du bot (PLAN.md) : le score pèse
     // lourd, les étoiles encore en jeu aussi.
     poids: { score: 2.5, starsBoard: 80 },
