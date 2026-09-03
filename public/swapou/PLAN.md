@@ -321,6 +321,20 @@ seize) : un plateau nivelé avant la crise garde ses combos, et ne rien
 détruire ne coûte rien. C'est le seul facteur posé (`prevention[1] = 0.5`) ;
 la réserve reste à 1 600.
 
+**Moutarde, à part.** Le Colorant ne retire rien et ne baisse rien : c'est
+un pari — un tiers du plateau gelé sous une autre couleur, pour la cascade
+quand tout se fend — plus le tour gratuit. En crise, ce tour gratuit suffit
+à le faire tirer dès qu'il est en banque (les seize positions rejouées le
+tirent entre le 2ᵉ et le 8ᵉ tour, sous tous les réglages), et c'est le
+personnage aux parties les plus courtes (162 tours contre 181 à 209). Valoriser
+la cascade latente pour le décider autrement ne l'aide pas : −1 203 ± 850
+(latent 6) et −904 ± 703 (latent 14) sur ses seize positions — la glace
+ajoutée coûte plus que la cascade promise, que le troisième étage, lui, sait
+voir (+2 063 pour Moutarde dans la série de fin de partie, +753 ± 692 sur ces
+positions-ci). Piste non explorée : lui interdire le tir de crise et garder le
+pari pour un plateau bas où une couleur domine — il faudrait, pour la juger,
+des positions à hauteur 8–10 avec quatre étoiles, rares dans les relevés.
+
 ## Correspondances sons (SWF id → linkage)
 
 | id | nom | id | nom |
