@@ -213,6 +213,66 @@ référence (hauteur 8, cinq étoiles), et la course aux étoiles à banque plei
   grand écart.
 
 
+### La fin de partie (septembre 2026)
+
+« Son niveau est très bon en calcul pur de combo, beaucoup moins en late
+game où les cascades sont plus difficiles à réaliser. » Le relevé tour par
+tour (`bot.run.js --trace-json`, douze parties de référence, Dimitri, Sel,
+Wasabi, Moutarde) le confirme et le chiffre :
+
+| tours | pts/tour | phases par combo | glace | combos disponibles | hauteur max |
+|---|---|---|---|---|---|
+| 1–50 | 259 | 8,1 | 8 % | 70 | 9,9 |
+| 51–100 | 248 | 6,2 | 23 % | 34 | 11,4 |
+| 101–150 | 237 | 7,9 | 34 % | 17 | 11,1 |
+| 151–200 | 203 | 6,7 | 44 % | 9 | 11,8 |
+| 201–250 | 166 | 5,2 | 49 % | 6 | 11,9 |
+
+La cause est la glace : `random(130) < random(ncoups)` fait arriver une
+ligne sur deux gelée vers le 130ᵉ coup, deux sur trois vers le 200ᵉ. Le
+plateau devient une masse d'armures percée de poches de fruits libres, la
+crise (hauteur ≥ 12) est l'état normal, et les cascades ne viennent plus des
+fruits qu'on voit mais de ceux qu'on fend.
+
+**La méthode.** Des parties entières ne départagent rien : sept mille points
+d'écart-type par partie, donc ± 2 700 sur une moyenne de huit — deux réglages
+à 46 200 et 45 200 sont indiscernables (c'est ce qu'ont donné les essais E1
+et base8, 32 parties chacun). Le harnais sait donc REJOUER DES POSITIONS
+(`--positions`, le champ `g` du relevé) : 32 positions relevées entre le
+106ᵉ et le 113ᵉ coup, rejouées 60 tours sous chaque réglage avec les mêmes
+graines, comparées position par position (scratchpad `ia-rollout.js`). La
+variance de départ disparaît, et ± 650 points suffisent.
+
+**Ce qui n'a rien donné.** Deux termes d'évaluation pour la glace — les
+groupes LATENTS (trois fruits ou plus de même vraie couleur, armures
+comprises : la cascade qui attend qu'on la fende) et les COUPS EN RÉSERVE à
+la feuille (le nombre de combos jouables après la ligne) — +125 ± 717 ;
+plus fort, −551 ± 755. Cinq lignes tirées au lieu de trois : +193 ± 728. Les
+poids `latent` et `mobLeaf` restent dans `bot.js`, à zéro.
+
+**Ce qui a marché : un tour de plus.** Le troisième étage de la recherche
+(`DEFAUTS.tard`), allumé à partir du 100ᵉ coup ou de la hauteur 12 : les K2
+meilleurs candidats sont rejugés par leurs K3 meilleures ripostes, chacune
+jugée elle-même par la ligne d'après et la riposte suivante (expectimax à
+deux tours, PLAN plus haut : la profondeur 3 sur tout le faisceau était
+trop bruitée ; ici elle ne s'applique qu'à la tête d'un faisceau déjà jugé à
+deux coups, et seulement quand chaque coup pèse).
+
+| réglage (points en 60 tours, écart apparié, n = 32) | Δ | survie |
+|---|---|---|
+| référence (deux étages, 11 872) | — | 78 % |
+| troisième étage sur 8 candidats, 5 ripostes | +1 520 ± 769 | 84 % |
+| **sur 12 candidats, 6 ripostes** (retenu) | **+2 156 ± 643** | **94 %** |
+| sur 5 candidats, 4 ripostes | +1 434 ± 991 | 81 % |
+| sur 8, avec cinq lignes tirées | +1 871 ± 802 | 81 % |
+
+Soit + 18 % de points sur la fin de partie, et les quatre personnages
+gagnent (Dimitri +1 773, Sel +2 099, Wasabi +2 690, Moutarde +2 063). Le
+coût : 1,9 × le temps d'un coup, sur ces positions seulement ; le troisième
+étage a son propre supplément de temps (`tard.budgetMs`, 1,5 s) pour ne pas
+être coupé par le budget déjà entamé — et, coupé quand même, il ne compte
+pas (on ne mélange pas des valeurs de profondeurs différentes).
+
 ## Correspondances sons (SWF id → linkage)
 
 | id | nom | id | nom |
