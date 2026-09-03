@@ -321,6 +321,24 @@ seize) : un plateau nivelé avant la crise garde ses combos, et ne rien
 détruire ne coûte rien. C'est le seul facteur posé (`prevention[1] = 0.5`) ;
 la réserve reste à 1 600.
 
+**Parties entières, réglage final** (troisième étage en fin de partie,
+réserve des pouvoirs à 1–3★, Glissement à moitié prix ; 8 parties par
+personnage, mêmes graines avant/après, budget non contraignant) :
+
+| perso | avant | après | tours | points après le 150ᵉ tour | meilleure |
+|---|---|---|---|---|---|
+| Dimitri | 45 771 | **52 338** | 199 → 219 | 10 294 → 14 019 | 65 365 |
+| Sel | 50 997 | **60 188** | 209 → 238 | 12 237 → 18 967 | 68 825 |
+| Wasabi | 42 943 | **50 608** | 181 → 202 | 6 579 → 11 259 | 62 200 |
+| Moutarde | 40 998 | **45 359** | 162 → 181 | 4 266 → 9 000 | 62 675 |
+| toutes | 45 177 ± 1 470 | **52 123 ± 1 800** | | | |
+
+Soit + 15 % sur la partie, et presque le double après le 150ᵉ tour — la
+phase visée. Points par tour, avant → après : 259 → 267 (1–50), 248 → 275
+(51–100), 237 → 245 (101–150), 203 → 215 (151–200), 166 → 229 (201–250). Le
+coût, sur ce banc à quatre processus : 1,65 s par coup en moyenne sur toute
+la partie (0,5 s avant).
+
 **Moutarde, à part.** Le Colorant ne retire rien et ne baisse rien : c'est
 un pari — un tiers du plateau gelé sous une autre couleur, pour la cascade
 quand tout se fend — plus le tour gratuit. En crise, ce tour gratuit suffit
