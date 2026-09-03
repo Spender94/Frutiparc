@@ -2700,8 +2700,10 @@ async function submitReply() {
 }
 
 // Comprehensive BBCode toolbar matching the original Frutiparc editor.
-// Two rows: Gras|Italique|Souligné|Taille▼|Couleur▼|Liste|Code
-//           Citation|Lien|Pictos
+// Two rows: Gras|Italique|Souligné|Barré|Taille▼|Couleur▼|Liste|Code
+//           Citation|Lien|Image|YouTube|Pictos
+// (Le BARRÉ : `renderBBCode` rendait déjà [s]…[/s], mais aucun bouton ne
+// l'écrivait — il fallait connaître la balise.)
 function bbcodeToolbarHtml(targetId) {
   var sizeOpts = [
     { v: '', label: 'Taille' },
@@ -2748,6 +2750,7 @@ function bbcodeToolbarHtml(targetId) {
   html += '<button type="button" class="bb-btn" style="font-weight:bold" onclick="bbToggleTag(\'' + targetId + '\',\'b\')" title="Gras">Gras</button>';
   html += '<button type="button" class="bb-btn" style="font-style:italic" onclick="bbToggleTag(\'' + targetId + '\',\'i\')" title="Italique">Italique</button>';
   html += '<button type="button" class="bb-btn" style="text-decoration:underline" onclick="bbToggleTag(\'' + targetId + '\',\'u\')" title="Souligné">Souligné</button>';
+  html += '<button type="button" class="bb-btn" style="text-decoration:line-through" onclick="bbToggleTag(\'' + targetId + '\',\'s\')" title="Barré">Barré</button>';
   html += selHtml('size',  sizeOpts,  'bbInsertSizeFromSelect(\'' + targetId + '\', this)');
   html += selHtml('color', colorOpts, 'bbInsertColorFromSelect(\'' + targetId + '\', this)');
   html += '<button type="button" class="bb-btn" onclick="bbInsertList(\'' + targetId + '\')" title="Liste">Liste</button>';
@@ -2859,16 +2862,21 @@ function _ensureStack(targetId) {
   return _openTagStacks[targetId];
 }
 
-function bbWrap(targetId, tag) {
+// Entoure la sélection de ses balises — et la GARDE sélectionnée, sans les
+// balises. Le curseur se posait après le texte : pour mettre une phrase en
+// italique PUIS en gras, il fallait la reprendre à la souris entre les deux.
+// Comme sur les autres forums, la sélection reste tant qu'on ne la défait pas
+// soi-même : italique, gras, couleur s'enchaînent sur le même texte.
+// `ouvrante`/`fermante` servent aux balises à paramètre ([color=…], [taille=…]).
+function bbWrap(targetId, tag, ouvrante, fermante) {
   var ta = document.getElementById(targetId);
   if (!ta) return;
   var start = ta.selectionStart, end = ta.selectionEnd;
   var sel = ta.value.substring(start, end);
-  var open = '[' + tag + ']', close = '[/' + tag + ']';
+  var open = ouvrante || ('[' + tag + ']'), close = fermante || ('[/' + tag + ']');
   ta.value = ta.value.substring(0, start) + open + sel + close + ta.value.substring(end);
   ta.focus();
-  var cursor = start + open.length + sel.length;
-  ta.setSelectionRange(cursor, cursor);
+  ta.setSelectionRange(start + open.length, start + open.length + sel.length);
 }
 
 // Insert open tag only at cursor (push to stack) or wrap selection if any.
@@ -2919,8 +2927,9 @@ function bbInsertUrl(targetId) {
   var ta = document.getElementById(targetId);
   if (!ta) return;
   var start = ta.selectionStart, end = ta.selectionEnd;
-  var sel = ta.value.substring(start, end) || url;
-  var insert = '[url=' + url + ']' + sel + '[/url]';
+  var sel = ta.value.substring(start, end);
+  if (sel) { bbWrap(targetId, 'url', '[url=' + url + ']', '[/url]'); return; }
+  var insert = '[url=' + url + ']' + url + '[/url]';
   ta.value = ta.value.substring(0, start) + insert + ta.value.substring(end);
   ta.focus();
   ta.setSelectionRange(start + insert.length, start + insert.length);
@@ -2952,10 +2961,7 @@ function bbInsertColorFromSelect(targetId, sel) {
   var start = ta.selectionStart, end = ta.selectionEnd;
   var s = ta.value.substring(start, end);
   if (s) {
-    var open = '[color=' + color + ']', close = '[/color]';
-    ta.value = ta.value.substring(0, start) + open + s + close + ta.value.substring(end);
-    var cursor = start + open.length + s.length;
-    ta.setSelectionRange(cursor, cursor);
+    bbWrap(targetId, 'color', '[color=' + color + ']', '[/color]');
   } else {
     var open2 = '[color=' + color + ']';
     ta.value = ta.value.substring(0, start) + open2 + ta.value.substring(end);
@@ -2975,10 +2981,7 @@ function bbInsertSizeFromSelect(targetId, sel) {
   var start = ta.selectionStart, end = ta.selectionEnd;
   var s = ta.value.substring(start, end);
   if (s) {
-    var open = '[taille=' + size + ']', close = '[/taille]';
-    ta.value = ta.value.substring(0, start) + open + s + close + ta.value.substring(end);
-    var cursor = start + open.length + s.length;
-    ta.setSelectionRange(cursor, cursor);
+    bbWrap(targetId, 'taille', '[taille=' + size + ']', '[/taille]');
   } else {
     var open2 = '[taille=' + size + ']';
     ta.value = ta.value.substring(0, start) + open2 + ta.value.substring(end);
@@ -2994,8 +2997,8 @@ function bbInsertList(targetId) {
   if (!ta) return;
   var start = ta.selectionStart, end = ta.selectionEnd;
   var sel = ta.value.substring(start, end);
-  var body = sel ? sel : 'Premier élément\n[*]Deuxième élément';
-  var insert = '[liste]\n[*]' + body + '\n[/liste]';
+  if (sel) { bbWrap(targetId, 'liste', '[liste]\n[*]', '\n[/liste]'); return; }
+  var insert = '[liste]\n[*]Premier élément\n[*]Deuxième élément\n[/liste]';
   ta.value = ta.value.substring(0, start) + insert + ta.value.substring(end);
   ta.focus();
   ta.setSelectionRange(start + insert.length, start + insert.length);
@@ -3006,15 +3009,11 @@ function bbInsertCode(targetId) {
   if (!ta) return;
   var start = ta.selectionStart, end = ta.selectionEnd;
   var sel = ta.value.substring(start, end);
-  var insert = '[code]' + sel + '[/code]';
+  if (sel) { bbWrap(targetId, 'code'); return; }
+  var insert = '[code][/code]';
   ta.value = ta.value.substring(0, start) + insert + ta.value.substring(end);
   ta.focus();
-  if (sel) {
-    var cursor = start + insert.length;
-    ta.setSelectionRange(cursor, cursor);
-  } else {
-    ta.setSelectionRange(start + 6, start + 6);
-  }
+  ta.setSelectionRange(start + 6, start + 6);
 }
 
 // Image button: pick a local file, upload it to our server, then drop an
