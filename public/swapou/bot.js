@@ -361,7 +361,15 @@
     // dans la zone où l'on peut encore agir avant la crise (hauteurs 9 à 11).
     // Indexé par DEFENSE_PLAYERS (0 Moïse, 1 Glissement, 2 Coupure,
     // 3 Effondrement, 4 Colorant, 5 Ramollissement, 6 Combos) ; absent = 1.
-    prevention: {},
+    //
+    // Mesuré sur 64 positions à hauteur 10–11 avec le pouvoir en banque,
+    // rejouées 50 tours (scratchpad ia-rollout.js, mêmes graines) : le prix
+    // de la zone ne déplace rien pour Effondrement, Moïse et Colorant (± 500
+    // points, dans le bruit). Seul le GLISSEMENT y gagne — à moitié prix,
+    // +1 242 ± 505 sur 16 positions, douze gagnées sur seize : un plateau
+    // nivelé avant la crise garde ses combos, et ne rien détruire ne coûte
+    // rien. C'est le seul facteur posé.
+    prevention: { 1: 0.5 },
   };
 
   // Les groupes LATENTS : ce qui exploserait si la glace tombait. Un groupe se

@@ -311,7 +311,12 @@ function levelFromRows(rows) {
   assert(P({ charId: 1, stars: 2 }, 8) === B.WEIGHTS.defendBase * 2 * B.WEIGHTS.calme + B.WEIGHTS.reserve,
     'Natacha, elle, la paie');
   // La PRÉVENTION, pouvoir par pouvoir : un facteur sur le prix entre les
-  // hauteurs 9 et 11, et rien ailleurs.
+  // hauteurs 9 et 11, et rien ailleurs. Le Glissement (Wasabi) est le seul à
+  // en porter un par défaut : moitié prix.
+  assert(B.WEIGHTS.prevention[1] === 0.5, 'Wasabi tire en prévention à moitié prix');
+  assert(Object.keys(B.WEIGHTS.prevention).length === 1, 'et lui seul');
+  const defaut = B.WEIGHTS.prevention[1];
+  delete B.WEIGHTS.prevention[1];
   const bas = P({ charId: 6, stars: 4 }, 8), dix = P({ charId: 6, stars: 4 }, 10), onze = P({ charId: 6, stars: 4 }, 11);
   B.WEIGHTS.prevention[1] = 0.5;                      // Glissement (Wasabi)
   assert(P({ charId: 6, stars: 4 }, 10) === dix / 2, 'Glissement à 10 : prix divisé par deux');
@@ -319,7 +324,7 @@ function levelFromRows(rows) {
   assert(P({ charId: 6, stars: 4 }, 8) === bas, 'sous 9, rien ne change');
   assert(P({ charId: 6, stars: 4 }, 12) === 0, 'en crise, toujours gratuit');
   assert(P({ charId: 2, stars: 4 }, 10) === dix, 'et Moïse (Sel) n’est pas concerné par le facteur de Glissement');
-  delete B.WEIGHTS.prevention[1];
+  B.WEIGHTS.prevention[1] = defaut;
 }
 
 // ── 5) la fin de partie sous la glace : groupes latents, coups en réserve ──
