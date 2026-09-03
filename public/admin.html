@@ -557,6 +557,7 @@
         <span style="display:block;width:96px;height:96px;flex:0 0 96px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden" id="va-apercu-hote"></span>
         <div style="flex:1">
           <label style="font-size:12px;color:#555;display:block">Nom<input id="va-nom" type="text" maxlength="60" style="width:100%;box-sizing:border-box"></label>
+          <label style="font-size:12px;color:#555;display:block;margin-top:6px" title="Le pseudo du graphiste : l'article de boutique le reprend, et il touche 10 % de chaque vente.">Auteur (pseudo)<input id="va-auteur" type="text" maxlength="40" style="width:100%;box-sizing:border-box"></label>
           <label style="font-size:12px;color:#555;display:block;margin-top:6px">Accessoire de base
             <select id="va-type" style="width:100%;box-sizing:border-box"></select></label>
           <button class="btn-success" id="va-publier" style="margin-top:8px" disabled onclick="publierVariante()">Publier la variante</button>
@@ -565,8 +566,9 @@
       </div>
     </div>
     <div style="flex:1;min-width:300px">
-      <div class="toolbar"><button class="btn btn-sm" onclick="loadVariantes()">Rafraîchir</button><span id="va-count" style="font-size:12px;color:#888"></span></div>
-      <table><thead><tr><th>Aperçu</th><th>Nom</th><th>Base</th><th>Index</th><th>Tracés</th><th></th></tr></thead>
+      <div class="toolbar"><button class="btn btn-sm" onclick="loadVariantes()">Rafraîchir</button><span id="va-count" style="font-size:12px;color:#888"></span>
+        <button class="btn btn-sm" style="margin-left:auto" onclick="purgerVariantesRetirees()" title="Efface de cette liste les variantes retirées (les essais). Leur place dans le rouleau reste prise : les index des autres ne bougent pas.">Purger les retirées</button></div>
+      <table><thead><tr><th>Aperçu</th><th>Nom</th><th>Auteur</th><th>Base</th><th>Index</th><th>Tracés</th><th></th></tr></thead>
       <tbody id="va-body"></tbody></table>
     </div>
   </div>
@@ -1161,6 +1163,7 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
         <label><span>ID :</span> <input id="pack-id" type="number" placeholder="105"></label>
         <label><span>Nom :</span> <input id="pack-name" placeholder="Lunettes de soleil"></label>
         <label><span>Catégorie :</span> <input id="pack-category" value="Accessoires"></label>
+        <label><span>Auteur (pseudo) :</span> <input id="pack-auteur" placeholder="vide = accessoire d'époque" title="Le graphiste qui a dessiné l'accessoire : il touche 10 % de chaque vente, et l'article va au rayon « Accessoires maison »."></label>
         <label><span>Prix (Kikooz) :</span> <input id="pack-price" type="number" value="60"></label>
         <label><span>Suffix9 :</span> <input id="pack-suffix9" placeholder="a0b0c0d0e" maxlength="9" oninput="updatePackPreview()"></label>
         <label><span>Desc. niveau 1 (gras) :</span> <input id="pack-desc1" placeholder="Vide = texte commun par défaut"></label>
@@ -4249,6 +4252,7 @@ async function publierVariante() {
   // ne recouvre aucune variante d'époque.
   const repBase = FPBouilleVariante.repere(await FPBouilleSwf.charger('/fbouille/famille0.swf'), type, 8);
   const corps = JSON.stringify({ nom, famille: 0, type, coiffureRef: 8,
+    auteur: ($('#va-auteur').value || '').trim(),
     base: repBase ? repBase.variantes : 0, paths: vaPaths });
   try {
     const r = await fetch('/api/admin/variantes', { method: 'POST', headers: h,
@@ -4296,10 +4300,14 @@ async function loadVariantes() {
       tr.innerHTML = '<td><span class="va-vig" data-type="' + v.type + '" data-id="' + v.id
         + '" style="display:block;width:56px;height:56px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden"></span></td>'
         + '<td>' + esc(v.nom) + (v.retire ? ' <em>(retirée)</em>' : '') + '</td>'
+        + '<td>' + esc(v.auteur || '') + '</td>'
         + '<td>' + esc(FPBouille.accName(v.type)) + '</td>'
         + '<td><code>' + (v.index != null ? v.index : (bases[cle] + v.rang)) + '</code></td>'
         + '<td>' + v.nb + '</td>'
-        + '<td>' + (v.retire ? '' : '<button class="btn-success btn-sm" onclick="variantEnBoutique(\'' + v.id + '\',' + v.type + ',' + (bases[cle] + v.rang) + ',this.dataset.nom)" data-nom="' + esc(v.nom) + '">→ Boutique</button> '
+        + '<td style="white-space:nowrap">' + (v.retire
+          ? '<button class="btn-danger btn-sm" onclick="purgerVariante(\'' + v.id + '\')" title="L\'effacer de cette liste ; sa place dans le rouleau reste prise.">Purger</button>'
+          : '<button class="btn-success btn-sm" onclick="variantEnBoutique(\'' + v.id + '\',' + v.type + ',' + (v.index != null ? v.index : (bases[cle] + v.rang)) + ',this.dataset.nom,this.dataset.auteur)" data-nom="' + esc(v.nom) + '" data-auteur="' + esc(v.auteur || '') + '">→ Boutique</button> '
+          + '<button class="btn btn-sm" onclick="remplacerVariante(\'' + v.id + '\')" title="Déposer un nouveau SVG à la place de celui-ci : même index, même article, les porteurs voient le nouveau dessin.">Remplacer le SVG</button> '
           + '<button class="btn btn-sm" onclick="retirerVariante(\'' + v.id + '\')">Retirer</button>') + '</td>';
       body.appendChild(tr);
     });
@@ -4348,7 +4356,7 @@ async function loadVariantes() {
  * LIMITE À CONNAÎTRE : le suffix9 code la variante sur UN caractère base62 —
  * l'index doit donc rester ≤ 61.
  */
-function variantEnBoutique(id, type, index, nom) {
+function variantEnBoutique(id, type, index, nom, auteur) {
   if (index > 61) {
     alert('Cette variante porte l\'index ' + index + ', or un article de boutique ne peut en coder que jusqu\'à 61 '
       + '(le suffix9 réserve un seul caractère base62 à la variante). Il faudra élargir l\'encodage pour aller au-delà.');
@@ -4363,6 +4371,8 @@ function variantEnBoutique(id, type, index, nom) {
   $('#pack-id').value = nouvel;
   $('#pack-name').value = nom || (FPBouille.accName(type) + ' — variante ' + index);
   $('#pack-category').value = 'Accessoires';
+  // L'auteur suit la variante : commission à chaque vente, rayon « maison ».
+  $('#pack-auteur').value = auteur || '';
   // type · variante · trois couleurs (au départ celles de l'aperçu de la liste).
   const e = FPBouille.enc;
   $('#pack-suffix9').value = e(type) + '0' + e(index) + '0' + e(29) + '0' + e(19) + '0' + e(24);
@@ -4373,6 +4383,70 @@ async function retirerVariante(id) {
   if (!confirm('Retirer cette variante ? Sa place est conservée (les index des suivantes ne bougent pas), mais elle n\'affichera plus rien.')) return;
   try { await fetch('/api/admin/variantes/' + encodeURIComponent(id), { method: 'DELETE', headers: hdr() }); } catch (e) {}
   if (window.FPBouilleVignette && FPBouilleVignette.oublierFamilles) FPBouilleVignette.oublierFamilles();
+  loadVariantes();
+}
+
+// Un fichier SVG choisi à la volée, lu et rendu en aplats — pour remplacer
+// le dessin d'une variante ou d'un accessoire maison sans rien recréer.
+function choisirSvg() {
+  return new Promise(function (resolve) {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.svg,image/svg+xml'; inp.style.display = 'none';
+    document.body.appendChild(inp);
+    inp.addEventListener('change', function () {
+      const f = inp.files[0];
+      inp.remove();
+      if (!f) return resolve(null);
+      const r = new FileReader();
+      r.onload = function () {
+        let paths = null;
+        try { paths = FPBouilleCustom.charger(String(r.result)); } catch (e) { paths = null; }
+        resolve(paths && paths.length ? paths : null);
+      };
+      r.onerror = function () { resolve(null); };
+      r.readAsText(f);
+    });
+    inp.click();
+  });
+}
+
+/*
+ * REMPLACER LE SVG d'une variante publiée — pour les artistes qui retouchent
+ * sans fin. La variante garde son identifiant et son index : l'article de
+ * boutique et les têtes qui la portent montrent le nouveau dessin.
+ */
+async function remplacerVariante(id) {
+  const paths = await choisirSvg();
+  if (!paths) { toast('SVG illisible ou sans dessin.'); return; }
+  const h = hdr(); h['Content-Type'] = 'application/octet-stream';
+  try {
+    const r = await fetch('/api/admin/variantes/' + encodeURIComponent(id), { method: 'PUT', headers: h,
+      body: new Blob([JSON.stringify({ paths })], { type: 'application/octet-stream' }) });
+    const j = await r.json();
+    if (!j.ok) { toast('Erreur : ' + (j.error || '?')); return; }
+    toast('Dessin remplacé (' + j.nb + ' tracés, index ' + j.index + ')');
+  } catch (e) { toast('Erreur réseau.'); return; }
+  if (window.FPBouilleVignette && FPBouilleVignette.oublierFamilles) FPBouilleVignette.oublierFamilles();
+  loadVariantes();
+}
+
+// Purger : effacer de la liste une variante déjà retirée (un essai). Sa place
+// reste prise, les index des autres ne bougent pas.
+async function purgerVariante(id) {
+  if (!confirm('Effacer cette variante retirée de la liste ? Sa place dans le rouleau reste prise.')) return;
+  try { await fetch('/api/admin/variantes/' + encodeURIComponent(id) + '/purger', { method: 'POST', headers: hdr() }); } catch (e) {}
+  loadVariantes();
+}
+async function purgerVariantesRetirees() {
+  let liste = [];
+  try { liste = await (await fetch('/api/admin/variantes', { headers: hdr() })).json(); } catch (e) { return; }
+  const retirees = liste.filter(function (v) { return v.retire; });
+  if (!retirees.length) { toast('Aucune variante retirée à purger.'); return; }
+  if (!confirm('Effacer de la liste les ' + retirees.length + ' variante(s) retirée(s) ? Leur place dans le rouleau reste prise.')) return;
+  for (const v of retirees) {
+    try { await fetch('/api/admin/variantes/' + encodeURIComponent(v.id) + '/purger', { method: 'POST', headers: hdr() }); } catch (e) {}
+  }
+  toast(retirees.length + ' variante(s) purgée(s)');
   loadVariantes();
 }
 
@@ -4486,11 +4560,27 @@ async function loadAccMaison() {
       tr.innerHTML = '<td><span style="display:block;width:56px;height:56px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden">'
         + FPBouilleVignette.html(AM_TETE + '|' + a.id) + '</span></td>'
         + '<td>' + esc(a.name) + '</td><td>' + (a.price || 0) + ' K</td><td>' + a.nb + '</td>'
-        + '<td><button class="btn btn-sm" onclick="supprimerAccMaison(\'' + a.id + '\')">Suppr.</button></td>';
+        + '<td style="white-space:nowrap"><button class="btn btn-sm" onclick="remplacerAccMaison(\'' + a.id + '\')" title="Déposer un nouveau SVG à la place : même accessoire, ceux qui le portent voient le nouveau dessin.">Remplacer le SVG</button> '
+        + '<button class="btn btn-sm" onclick="supprimerAccMaison(\'' + a.id + '\')">Suppr.</button></td>';
       body.appendChild(tr);
     });
     FPBouilleVignette.brancher(body);
   } catch (e) { /* silencieux */ }
+}
+
+// Le même geste que pour une variante : un nouveau SVG, le même identifiant.
+async function remplacerAccMaison(id) {
+  const paths = await choisirSvg();
+  if (!paths) { toast('SVG illisible ou sans dessin.'); return; }
+  const h = hdr(); h['Content-Type'] = 'application/octet-stream';
+  try {
+    const r = await fetch('/api/admin/acc-maison/' + encodeURIComponent(id), { method: 'PUT', headers: h,
+      body: new Blob([JSON.stringify({ paths })], { type: 'application/octet-stream' }) });
+    const j = await r.json();
+    if (!j.ok) { toast('Erreur : ' + (j.error || '?')); return; }
+    toast('Dessin remplacé (' + j.nb + ' aplats)');
+  } catch (e) { toast('Erreur réseau.'); return; }
+  loadAccMaison();
 }
 
 async function supprimerAccMaison(id) {
@@ -4522,7 +4612,7 @@ async function loadShop() {
     const tb = $('#shop-body');
     tb.innerHTML = shopPacks.map(p => `<tr style="${p.disabled ? 'opacity:.5' : ''}">
       <td>${p.id}</td>
-      <td>${esc(p.name)}${p.disabled ? ' <span style="background:#999;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;vertical-align:middle">désactivé</span>' : ''}</td>
+      <td>${esc(p.name)}${p.auteur ? ` <span style="color:#6f8a45;font-size:11px" title="Accessoire maison : 10 % de chaque vente à son auteur">— par ${esc(p.auteur)}</span>` : ''}${p.disabled ? ' <span style="background:#999;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;vertical-align:middle">désactivé</span>' : ''}</td>
       <td>${esc(p.category || '')}</td>
       <td>${p.price} K</td>
       <td><code>${esc(p.suffix9)}</code></td>
@@ -4749,6 +4839,7 @@ function openAddPack() {
   $('#pack-id').disabled = false;
   $('#pack-name').value = '';
   $('#pack-category').value = 'Accessoires';
+  $('#pack-auteur').value = '';
   $('#pack-price').value = 60;
   $('#pack-suffix9').value = '';
   $('#pack-desc1').value = '';
@@ -4769,6 +4860,7 @@ function editPack(id) {
   $('#pack-id').disabled = true;
   $('#pack-name').value = p.name;
   $('#pack-category').value = p.category || 'Accessoires';
+  $('#pack-auteur').value = p.auteur || '';
   $('#pack-price').value = p.price;
   $('#pack-suffix9').value = p.suffix9;
   (function () {
@@ -4804,6 +4896,7 @@ async function saveAddPack() {
     id: Number($('#pack-id').value),
     name: $('#pack-name').value,
     category: $('#pack-category').value,
+    auteur: $('#pack-auteur').value.trim(),
     price: Number($('#pack-price').value),
     suffix9: $('#pack-suffix9').value,
     description: packDescFromFields(false),
@@ -4821,6 +4914,7 @@ async function saveEditPack() {
   const body = {
     name: $('#pack-name').value,
     category: $('#pack-category').value,
+    auteur: $('#pack-auteur').value.trim(),
     price: Number($('#pack-price').value),
     suffix9: $('#pack-suffix9').value,
     description: packDescFromFields(!!(shopPacks.find(x => x.id === editingPackId) || {}).wallpaperId),

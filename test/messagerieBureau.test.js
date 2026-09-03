@@ -218,6 +218,6 @@ test('LA BOUTIQUE : deux colonnes, et les pièces sorties du SWF', () => {
   // `charger` arme l'animation d'entrée avant de lire la boutique : elle ne
   // se joue donc qu'à L'OUVERTURE de la fenêtre, pas à chaque clic (cf.
   // test/boutiqueAnimation.test.js).
-  assert.match(LIGHT, /window\.MagasinLight = \{\s*\n\s*charger: function \(\) \{ boAnimerColonne = true; loadShop\(\); \},\s*\n\s*acheter: buyShopItem,?\s*\n\s*\};/);
+  assert.match(LIGHT, /window\.MagasinLight = \{[\s\S]{0,400}charger: function \(reposer\) \{\s*\n\s*if \(reposer\) reposerBoutique\(\);\s*\n\s*boAnimerColonne = true;\s*\n\s*loadShop\(\);\s*\n\s*\},\s*\n\s*acheter: buyShopItem,?\s*\n\s*\};/);
   assert.match(JS, /ouvrirBoutique: ouvrirBoutique,/);
 });

@@ -299,6 +299,25 @@ async function initSchema() {
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS wallpaper_id TEXT DEFAULT NULL;
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS picto TEXT DEFAULT NULL;
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS disabled BOOLEAN DEFAULT FALSE;
+      -- L'AUTEUR d'un article : le pseudo du joueur qui a dessiné l'accessoire
+      -- (une variante publiée depuis l'atelier). C'est lui qui touche la
+      -- commission à chaque vente, et c'est ce qui range l'article au rayon
+      -- « Accessoires maison ». Vide pour les accessoires d'époque.
+      ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS auteur TEXT DEFAULT '';
+
+      -- LES REVENTES. Un joueur rend un accessoire à la boutique contre la
+      -- moitié de ce qu'il l'a payé — ou trente kikooz s'il l'a reçu. Une
+      -- ligne par revente ; comparée aux achats du même article, elle dit si
+      -- l'exemplaire qu'il détient encore a été acheté ou offert.
+      CREATE TABLE IF NOT EXISTS shop_sales (
+        id          SERIAL PRIMARY KEY,
+        username    TEXT NOT NULL,
+        pack_id     INTEGER,
+        pack_name   TEXT,
+        price       INTEGER,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_shop_sales_user ON shop_sales(LOWER(username), pack_id);
 
       -- Notifications push (Web Push, appli mobile /light). Un abonnement par
       -- APPAREIL : l'endpoint est l'adresse que le navigateur a donnée, unique
@@ -399,6 +418,12 @@ async function initSchema() {
         rang        INTEGER NOT NULL DEFAULT 0,
         created_at  TIMESTAMPTZ DEFAULT now()
       );
+      -- L'auteur (le pseudo du graphiste), repris par l'article de boutique.
+      ALTER TABLE bouille_variantes ADD COLUMN IF NOT EXISTS auteur TEXT NOT NULL DEFAULT '';
+      -- PURGÉE : une variante retirée que l'admin a effacée de sa liste. La
+      -- ligne reste — son index est un contrat, la place ne se libère jamais —
+      -- mais elle ne se montre plus.
+      ALTER TABLE bouille_variantes ADD COLUMN IF NOT EXISTS purge BOOLEAN NOT NULL DEFAULT FALSE;
 
       -- Map challenge du jour de Mini-Wave, pour la même raison que celle de
       -- MotionBall : la graine est stable (elle vient de la date), mais les
@@ -1720,17 +1745,18 @@ async function loadShopPacks() {
     if (r.wallpaper_id) p.wallpaperId = r.wallpaper_id;
     if (r.picto) p.picto = r.picto;
     if (r.disabled) p.disabled = true;
+    if (r.auteur) p.auteur = r.auteur;
     return p;
   });
 }
 
 async function upsertShopPack(pack) {
   await pool.query(
-    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment, wallpaper_id, picto, disabled)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment, wallpaper_id, picto, disabled, auteur)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      ON CONFLICT (id) DO UPDATE SET
-       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7, wallpaper_id = $8, picto = $9, disabled = $10`,
-    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '', pack.wallpaperId || null, pack.picto || null, !!pack.disabled]
+       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7, wallpaper_id = $8, picto = $9, disabled = $10, auteur = $11`,
+    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '', pack.wallpaperId || null, pack.picto || null, !!pack.disabled, String(pack.auteur || '')]
   );
 }
 
@@ -1750,6 +1776,43 @@ async function insertShopPurchase(p) {
 // Sert à RECONSTRUIRE les pass quotidiens d'après l'historique d'achats quand
 // l'état FD d'un joueur a été perdu (les pass sont payés en kikooz : la vérité
 // de ce qui est dû se trouve ici).
+// ── Les reventes ──
+async function insertShopSale(s) {
+  await pool.query(
+    `INSERT INTO shop_sales (username, pack_id, pack_name, price) VALUES ($1, $2, $3, $4)`,
+    [s.username, s.packId ?? null, s.packName || '', Number(s.price) || 0]
+  );
+}
+// Ce qu'un joueur a acheté et revendu d'un article, et le dernier prix payé :
+// un exemplaire encore en poche a été ACHETÉ si les achats dépassent les
+// reventes, OFFERT sinon (poussé par l'admin, gagné, accordé avec un rôle).
+async function bilanAchatsRevente(username, packId) {
+  const u = String(username || ''), id = Number(packId);
+  const a = await pool.query(
+    `SELECT COUNT(*)::int AS n, MAX(created_at) AS dernier FROM shop_purchases
+      WHERE LOWER(username) = LOWER($1) AND pack_id = $2`, [u, id]);
+  const v = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM shop_sales WHERE LOWER(username) = LOWER($1) AND pack_id = $2`, [u, id]);
+  const p = await pool.query(
+    `SELECT price FROM shop_purchases WHERE LOWER(username) = LOWER($1) AND pack_id = $2
+      ORDER BY created_at DESC, id DESC LIMIT 1`, [u, id]);
+  return {
+    achats: a.rows[0] ? a.rows[0].n : 0,
+    ventes: v.rows[0] ? v.rows[0].n : 0,
+    dernierPrix: p.rows[0] ? (Number(p.rows[0].price) || 0) : 0,
+  };
+}
+// Retire UN exemplaire d'un article de l'inventaire (le plus récent) : la
+// ligne poussée à l'achat n'a pas encore sa clé en mémoire, on vise l'article.
+async function deleteAccessoryByShopId(userId, shopId) {
+  const r = await pool.query(
+    `DELETE FROM user_accessories WHERE id = (
+       SELECT id FROM user_accessories WHERE user_id = $1 AND shop_id = $2
+        ORDER BY created_at DESC, id DESC LIMIT 1)`,
+    [userId, Number(shopId)]);
+  return r.rowCount || 0;
+}
+
 async function countPurchasesByUserAndPack(packIds) {
   if (!Array.isArray(packIds) || !packIds.length) return [];
   const { rows } = await pool.query(
@@ -3211,25 +3274,30 @@ async function loadBouilleVariantes() {
   return rows.map((r) => ({
     id: r.id, nom: r.nom, famille: r.famille, type: r.type,
     index: (r.idx == null ? undefined : r.idx),
-    coiffureRef: r.coiffure, retire: !!r.retire,
+    coiffureRef: r.coiffure, retire: !!r.retire, purge: !!r.purge,
+    auteur: r.auteur || '',
     paths: (() => { try { return JSON.parse(r.paths); } catch (e) { return []; } })(),
     createdAt: r.created_at,
   }));
 }
 async function upsertBouilleVariante(v, rang) {
   await pool.query(
-    'INSERT INTO bouille_variantes (id, nom, famille, type, idx, coiffure, paths, retire, rang)' +
-    ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)' +
+    'INSERT INTO bouille_variantes (id, nom, famille, type, idx, coiffure, paths, retire, rang, auteur, purge)' +
+    ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)' +
     ' ON CONFLICT (id) DO UPDATE SET nom = EXCLUDED.nom, idx = EXCLUDED.idx,' +
-    ' paths = EXCLUDED.paths, retire = EXCLUDED.retire, rang = EXCLUDED.rang',
+    ' paths = EXCLUDED.paths, retire = EXCLUDED.retire, rang = EXCLUDED.rang,' +
+    ' auteur = EXCLUDED.auteur, purge = EXCLUDED.purge',
     [v.id, v.nom || '', v.famille || 0, v.type,
      (v.index == null ? null : v.index), v.coiffureRef || 8,
-     JSON.stringify(v.paths || []), !!v.retire, rang || 0]);
+     JSON.stringify(v.paths || []), !!v.retire, rang || 0, String(v.auteur || ''), !!v.purge]);
 }
 
 module.exports = {
   loadBouilleVariantes,
   upsertBouilleVariante,
+  insertShopSale,
+  bilanAchatsRevente,
+  deleteAccessoryByShopId,
   pool,
   initSchema,
   loadVapidKeys,

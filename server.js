@@ -6100,16 +6100,55 @@ function shopCategoryOwnedByDefault(category) {
   return !(n.startsWith('accessoir') || n.startsWith('fond') || n.startsWith('pass'));
 }
 
+/*
+ * « ACCESSOIRES MAISON » — le rayon des accessoires dessinés par les joueurs.
+ *
+ * Un article issu d'une variante de l'atelier (identifiant à partir de
+ * 700000, hors des plages d'origine et de la vitrine hebdomadaire) ou signé
+ * d'un AUTEUR quitte le rayon des accessoires d'époque pour le sien, juste à
+ * côté. Le nom du rayon commence par « accessoir » : il reste PAYANT aux yeux
+ * de `shopCategoryOwnedByDefault`. Les fonds d'écran et les pictos, même
+ * signés, ne bougent pas — ce ne sont pas des accessoires.
+ */
+const ARTICLE_MAISON_ID_BASE = 700000;
+const RUBRIQUE_MAISON = 'Accessoires maison';
+function estPackMaison(p) {
+  if (!p || p.wallpaperId || p.picto) return false;
+  if (String(p.auteur || '').trim()) return true;
+  return Number(p.id) >= ARTICLE_MAISON_ID_BASE && Number(p.id) < VITRINE_ID_BASE;
+}
+function rubriqueBoutique(p) {
+  const n = String(p.category || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  return (estPackMaison(p) && n.startsWith('accessoir')) ? RUBRIQUE_MAISON : p.category;
+}
+// Les articles groupés par rayon, dans l'ordre du catalogue — sauf le rayon
+// maison, qui vient juste après les accessoires d'époque (ses identifiants
+// hauts l'auraient relégué en queue, derrière les Packs).
+function rayonsBoutique(packs) {
+  const par = new Map();
+  for (const p of packs) {
+    const r = rubriqueBoutique(p);
+    if (!par.has(r)) par.set(r, []);
+    par.get(r).push(p);
+  }
+  if (!par.has(RUBRIQUE_MAISON)) return par;
+  const maison = par.get(RUBRIQUE_MAISON);
+  par.delete(RUBRIQUE_MAISON);
+  const out = new Map();
+  for (const [k, v] of par) {
+    out.set(k, v);
+    if (k === 'Accessoires') out.set(RUBRIQUE_MAISON, maison);
+  }
+  if (!out.has(RUBRIQUE_MAISON)) out.set(RUBRIQUE_MAISON, maison);
+  return out;
+}
+
 function buildShopTreeXml(user) {
   // Group packs by category. Disabled packs are hidden from the boutique tree
   // (an admin can re-enable them); getShopPack still resolves them so a player
   // who already owns a now-disabled accessory keeps seeing/wearing it.
   const visible = SHOP_PACKS.filter((p) => !p.disabled);
-  const byCategory = new Map();
-  for (const pack of visible) {
-    if (!byCategory.has(pack.category)) byCategory.set(pack.category, []);
-    byCategory.get(pack.category).push(pack);
-  }
+  const byCategory = rayonsBoutique(visible);
   const defaultId = visible.length ? visible[0].id : '';
   let inner = '';
   for (const [cat, packs] of byCategory) {
@@ -11252,6 +11291,8 @@ app.post('/api/admin/shop', adminScope('shop'), async (req, res) => {
     suffix9: String(b.suffix9),
     comment: String(b.comment || b.description || ''),
   };
+  // Le pseudo du graphiste : commission à chaque vente, rayon « maison ».
+  if (b.auteur !== undefined && String(b.auteur).trim()) pack.auteur = String(b.auteur).trim().slice(0, 40);
   SHOP_PACKS.push(pack);
   if (process.env.DATABASE_URL) db.upsertShopPack(pack).catch(e => console.error('[DB] shop pack save:', e.message));
   console.log(`[ADMIN] Created shop pack ${id}: ${pack.name}`);
@@ -11300,7 +11341,9 @@ app.get('/api/light/variantes', (req, res) => {
 // Admin : lister (avec de quoi s'y retrouver), publier, retirer.
 app.get('/api/admin/variantes', adminScope('shop'), (req, res) => {
   // Le rang PARMI LES VARIANTES DE MÊME (famille, type) : c'est lui qui, ajouté
-  // au nombre d'images d'origine du rouleau, donne l'index réel.
+  // au nombre d'images d'origine du rouleau, donne l'index réel. Les variantes
+  // PURGÉES comptent dans le rang (leur place est prise) mais ne se listent
+  // plus : l'admin les a effacées de sa vue.
   const rangs = new Map();
   res.json(variantesAcc.map((v) => {
     const cle = (v.famille || 0) + ':' + v.type;
@@ -11309,9 +11352,51 @@ app.get('/api/admin/variantes', adminScope('shop'), (req, res) => {
     return {
       id: v.id, nom: v.nom, famille: v.famille || 0, type: v.type,
       rang, index: (Number.isFinite(v.index) ? v.index : null),
-      nb: (v.paths || []).length, retire: !!v.retire, createdAt: v.createdAt,
+      nb: (v.paths || []).length, retire: !!v.retire, purge: !!v.purge,
+      auteur: v.auteur || '', createdAt: v.createdAt,
     };
-  }));
+  }).filter((v) => !v.purge));
+});
+
+/*
+ * REMPLACER LE DESSIN D'UNE VARIANTE — pour les artistes qui ne peuvent pas
+ * s'arrêter de retoucher. La variante garde son identifiant, son type et
+ * surtout son INDEX : les joueurs qui la portent, et l'article de boutique
+ * qui la vend, voient le nouveau dessin sans rien changer. Le nom et l'auteur
+ * se corrigent au passage. Une variante retirée qui reçoit un dessin revient
+ * en service.
+ */
+app.put('/api/admin/variantes/:id', adminScope('shop'),
+  express.raw({ type: 'application/octet-stream', limit: '4mb' }), (req, res) => {
+    const v = variantesAcc.find((x) => x.id === req.params.id);
+    if (!v || v.purge) return res.status(404).json({ error: 'not found' });
+    let b;
+    try { b = JSON.parse(Buffer.isBuffer(req.body) ? req.body.toString('utf8') : (req.body || '{}')); }
+    catch (e) { return res.status(400).json({ error: 'JSON invalide' }); }
+    if (b.paths !== undefined) {
+      const paths = nettoyerPathsMaison(b.paths);
+      if (!paths.length) return res.status(400).json({ error: 'paths vide' });
+      v.paths = paths;
+      v.retire = false;
+    }
+    if (b.nom !== undefined && String(b.nom).trim()) v.nom = String(b.nom).trim().slice(0, 60);
+    if (b.auteur !== undefined) v.auteur = String(b.auteur).trim().slice(0, 40);
+    sauverVariantes();
+    console.log(`[VARIANTES] remplacée ${v.id} « ${v.nom} » (${(v.paths || []).length} tracés, index ${v.index})`);
+    res.json({ ok: true, id: v.id, index: v.index, nb: (v.paths || []).length });
+  });
+
+// PURGER une variante retirée : elle disparaît de la liste de l'admin. La
+// ligne reste en base, marquée — son index est un contrat, la place ne se
+// libère jamais, et le site continue d'y injecter une image vide.
+app.post('/api/admin/variantes/:id/purger', adminScope('shop'), (req, res) => {
+  const v = variantesAcc.find((x) => x.id === req.params.id);
+  if (!v) return res.status(404).json({ error: 'not found' });
+  if (!v.retire) return res.status(400).json({ error: 'seule une variante retirée se purge' });
+  v.purge = true; v.paths = [];
+  sauverVariantes();
+  console.log(`[VARIANTES] purgée ${v.id} (sa place reste prise)`);
+  res.json({ ok: true });
 });
 
 app.post('/api/admin/variantes', adminScope('shop'),
@@ -11338,6 +11423,8 @@ app.post('/api/admin/variantes', adminScope('shop'),
       famille: Number(b.famille) || 0, type: type,
       coiffureRef: Number(b.coiffureRef) || 8,
       index,
+      // Le pseudo du graphiste : l'article de boutique le reprendra.
+      auteur: String(b.auteur || '').trim().slice(0, 40),
       paths, createdAt: new Date().toISOString(),
     };
     variantesAcc.push(v);
@@ -11396,6 +11483,27 @@ app.post('/api/admin/acc-maison', adminScope('shop'),
     console.log(`[ACC-MAISON] créé ${id} « ${a.name} » (${paths.length} aplats)`);
     res.json({ ok: true, id, name: a.name });
   });
+// Remplacer le dessin (et corriger nom, prix, couleurs) d'un accessoire maison
+// déjà déposé : même identifiant, ceux qui le portent voient le nouveau.
+app.put('/api/admin/acc-maison/:id', adminScope('shop'),
+  express.raw({ type: 'application/octet-stream', limit: '4mb' }), (req, res) => {
+    const a = accessoiresMaison[req.params.id];
+    if (!a) return res.status(404).json({ error: 'not found' });
+    let b;
+    try { b = JSON.parse(Buffer.isBuffer(req.body) ? req.body.toString('utf8') : (req.body || '{}')); }
+    catch (e) { return res.status(400).json({ error: 'JSON invalide' }); }
+    if (b.paths !== undefined) {
+      const paths = nettoyerPathsMaison(b.paths);
+      if (!paths.length) return res.status(400).json({ error: 'paths vide' });
+      a.paths = paths;
+    }
+    if (b.couleurs !== undefined) a.couleurs = nettoyerCouleursMaison(b.couleurs);
+    if (b.name !== undefined && String(b.name).trim()) a.name = String(b.name).trim().slice(0, 60);
+    if (b.price !== undefined) a.price = Number(b.price) || 0;
+    sauverAccMaison();
+    console.log(`[ACC-MAISON] remplacé ${a.id} « ${a.name} » (${(a.paths || []).length} aplats)`);
+    res.json({ ok: true, id: a.id, name: a.name, nb: (a.paths || []).length });
+  });
 app.delete('/api/admin/acc-maison/:id', adminScope('shop'), (req, res) => {
   if (!accessoiresMaison[req.params.id]) return res.status(404).json({ error: 'not found' });
   delete accessoiresMaison[req.params.id]; sauverAccMaison();
@@ -11416,6 +11524,10 @@ app.patch('/api/admin/shop/:id', adminScope('shop'), async (req, res) => {
   if (b.price !== undefined) pack.price = Number(b.price);
   if (b.description !== undefined) { pack.description = String(b.description); pack.comment = String(b.description); }
   if (b.suffix9 !== undefined) pack.suffix9 = String(b.suffix9);
+  if (b.auteur !== undefined) {
+    const auteur = String(b.auteur).trim().slice(0, 40);
+    if (auteur) pack.auteur = auteur; else delete pack.auteur;
+  }
   // Soft enable/disable: a disabled pack is hidden from the boutique (and can't
   // be bought) but is NOT removed — players who already own it keep it, and an
   // admin can re-enable it at any time.
@@ -17565,9 +17677,78 @@ function purchaseShopPack(user, username, packIdRaw) {
 
   // Record a "buy" entry in the kikooz history (box.KikoozLog / /ft/log)
   journalKikooz(user, { type: 'b', t: nowStr, k: pack.price, n: pack.name });
+  // Et sa part au graphiste, si l'accessoire est l'œuvre d'un joueur.
+  verserCommission(pack, username);
 
   console.log(`[ft/buy] ${username} bought pack #${pack.id} (${pack.name}) — kikooz now ${user.kikooz}`);
   return { ok: true, kikooz: user.kikooz, bouille: bouilleStr, isWallpaper, pack, accEntry };
+}
+
+/*
+ * LA COMMISSION DU CRÉATEUR — dix pour cent de chaque vente.
+ *
+ * Un accessoire dessiné par un joueur (une variante publiée depuis l'atelier,
+ * dont l'article porte son pseudo en `auteur`) rapporte à son auteur un
+ * dixième du prix à chaque achat, arrondi à l'entier inférieur — rien sous
+ * dix kikooz. La part s'ajoute à ce que l'acheteur paie ; elle n'en est pas
+ * retranchée : c'est la boutique qui rémunère l'artiste, pas le client.
+ * L'auteur qui achète sa propre création ne se paie pas lui-même.
+ */
+const COMMISSION_CREATEUR = 0.10;
+function verserCommission(pack, acheteur) {
+  const auteur = String(pack.auteur || '').trim();
+  if (!auteur) return 0;
+  const nom = resolveKnownUsername(auteur);
+  const createur = users[nom];
+  if (!createur || nom.toLowerCase() === String(acheteur || '').toLowerCase()) return 0;
+  const part = Math.floor((Number(pack.price) || 0) * COMMISSION_CREATEUR);
+  if (part <= 0) return 0;
+  createur.kikooz = (typeof createur.kikooz === 'number' ? createur.kikooz : 0) + part;
+  if (createur._dbId) db.updateUser(nom, { kikooz: createur.kikooz }).catch(dbErr('updateUser'));
+  // Dans son historique, du côté des kikooz REÇUS : « k kikooz obtenus par … ».
+  journalKikooz(createur, { type: 'c', k: part, c: `la vente de "${pack.name}" à ${getDisplayName(acheteur)}` });
+  notifyKikoozUpdate(nom, createur.kikooz);
+  console.log(`[commission] ${nom} +${part} kikooz — "${pack.name}" acheté par ${acheteur}`);
+  return part;
+}
+
+/*
+ * REVENDRE UN ACCESSOIRE — l'inventaire n'est plus à sens unique.
+ *
+ * Un joueur rend un accessoire à la boutique (double-clic sur l'article
+ * possédé, puis la question « Voulez-vous vendre … ? ») : l'exemplaire quitte
+ * son inventaire, et il touche
+ *   · la MOITIÉ de ce qu'il l'a payé, s'il l'a acheté ;
+ *   · TRENTE kikooz sinon — reçu d'une poussée de l'admin, gagné, accordé.
+ * Acheté ou offert se lit dans les registres : plus d'achats que de reventes
+ * de cet article par ce joueur, et l'exemplaire en poche est un achat. Ni les
+ * fonds d'écran, ni les feutres, ni les pass, ni les options de jeu ne se
+ * rendent ; ni ce qui est offert à tous.
+ */
+const REVENTE_OFFERT = 30;
+const REVENTE_PART = 0.5;
+const reventeLibelle = (pack) => `la revente de "${pack.name}"`;
+function accessoireRevendable(user, pack) {
+  if (!user || !pack || pack.wallpaperId || pack.picto || pack.fdPassGame || pack.feutrePen || pack.gameFeature) return null;
+  if (shopCategoryOwnedByDefault(pack.category) && !pack.notDefault) return null;
+  const inv = Array.isArray(user.customAccessories) ? user.customAccessories : [];
+  return inv.find((a) => a && Number(a.shopId) === Number(pack.id)) || null;
+}
+async function offreDeRevente(user, username, pack) {
+  let achete = false, paye = 0;
+  if (process.env.DATABASE_URL) {
+    const b = await db.bilanAchatsRevente(username, pack.id);
+    achete = b.achats > b.ventes;
+    paye = b.dernierPrix;
+  } else {
+    // Sans base, le journal en mémoire sait ce qui a été acheté (et revendu).
+    const log = Array.isArray(user.kikoozLog) ? user.kikoozLog : [];
+    const achats = log.filter((e) => e && e.type === 'b' && e.n === pack.name);
+    const ventes = log.filter((e) => e && e.type === 'c' && e.c === reventeLibelle(pack));
+    achete = achats.length > ventes.length;
+    paye = achats.length ? (Number(achats[0].k) || 0) : 0;
+  }
+  return { prix: achete ? Math.floor(paye * REVENTE_PART) : REVENTE_OFFERT, achete };
 }
 
 app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
@@ -21866,7 +22047,7 @@ app.get('/api/light/shop', (req, res) => {
     const a = {
       id: p.id,
       name: p.name,
-      category: p.category,
+      category: rubriqueBoutique(p),
       price: Number(p.price) || 0,
       description: niv ? niv.l2 : (p.description || ''),
       comment: niv ? niv.l1 : (p.comment || ''),
@@ -21875,6 +22056,12 @@ app.get('/api/light/shop', (req, res) => {
       kind: wp ? 'fond' : feutre ? 'feutre' : p.picto ? 'picto' : 'accessoire',
       suffix9: p.suffix9 || '000000000',
     };
+    // Un accessoire maison dit qui l'a dessiné ; la fiche l'écrit.
+    if (p.auteur) a.auteur = String(p.auteur);
+    if (estPackMaison(p)) a.maison = true;
+    // Un accessoire qu'on possède se REVEND (double-clic sur l'article) ; pas
+    // un fond, un feutre, un pass ni une option de jeu.
+    if (a.owned && !offert && a.kind === 'accessoire' && !p.fdPassGame) a.revendable = true;
     if (wp) a.wallpaper = wp.url.startsWith('/') ? wp.url : '/' + wp.url;
     if (feutre) a.feutre = Number(feutre[1]);
     else if (p.picto) a.picto = BOUTIQUE_PICTO_IMG(p.picto);
@@ -21889,10 +22076,7 @@ app.get('/api/light/shop', (req, res) => {
   };
 
   const parRubrique = new Map();
-  for (const p of visible) {
-    if (!parRubrique.has(p.category)) parRubrique.set(p.category, []);
-    parRubrique.get(p.category).push(article(p));
-  }
+  for (const [name, packs] of rayonsBoutique(visible)) parRubrique.set(name, packs.map(article));
   const categories = [...parRubrique.entries()].map(([name, items]) => ({ name, items }));
   res.json({
     kikooz: Number(user.kikooz) || 0,
@@ -22028,6 +22212,58 @@ app.post('/api/light/shop/buy', (req, res) => {
     return res.json({ ok: false, code: r.code, error, kikooz: Number(user.kikooz) || 0 });
   }
   res.json({ ok: true, kikooz: r.kikooz, bouille: r.bouille, name: r.pack.name });
+});
+
+// L'offre de reprise d'un accessoire possédé : ce que la boutique en donne.
+app.get('/api/light/shop/revente', async (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  const user = users[username];
+  const pack = getShopPack(req.query.id);
+  if (!accessoireRevendable(user, pack)) return res.json({ ok: false, error: 'Cet article ne se revend pas.' });
+  try {
+    const o = await offreDeRevente(user, username, pack);
+    res.json({ ok: true, id: pack.id, name: pack.name, prix: o.prix, achete: o.achete });
+  } catch (e) { res.status(500).json({ ok: false, error: 'Boutique indisponible.' }); }
+});
+
+// La revente elle-même : l'exemplaire s'en va, les kikooz arrivent.
+app.post('/api/light/shop/vendre', async (req, res) => {
+  const sid = (req.body && req.body.sid) || req.query.sid || '';
+  const username = resolveUsernameFromSid(sid);
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  const user = users[username];
+  const pack = getShopPack((req.body && req.body.id) || req.query.id);
+  const ligne = accessoireRevendable(user, pack);
+  if (!ligne) return res.json({ ok: false, error: 'Cet article ne se revend pas.', kikooz: Number(user.kikooz) || 0 });
+  try {
+    const offre = await offreDeRevente(user, username, pack);
+    // L'exemplaire quitte l'inventaire — mémoire, puis base.
+    const idx = user.customAccessories.indexOf(ligne);
+    if (idx >= 0) user.customAccessories.splice(idx, 1);
+    if (user._dbId && process.env.DATABASE_URL) await db.deleteAccessoryByShopId(user._dbId, pack.id);
+    // S'il le portait, il ne le porte plus : l'accessoire « Rien » à la place
+    // (le même geste que « Retirer à tous »).
+    let bouille = null;
+    const actuelle = String(user.fbouille || '');
+    if (pack.suffix9 && actuelle.length >= 24 && actuelle.substring(15) === pack.suffix9) {
+      bouille = actuelle.substring(0, 15) + DEFAULT_BOUILLE_STATE.substring(15);
+      user.fbouille = bouille;
+      if (user._dbId) db.updateUser(username, { fbouille: bouille }).catch(dbErr('updateUser'));
+    }
+    user.kikooz = (typeof user.kikooz === 'number' ? user.kikooz : 0) + offre.prix;
+    if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser'));
+    journalKikooz(user, { type: 'c', k: offre.prix, c: reventeLibelle(pack) });
+    if (process.env.DATABASE_URL) {
+      db.insertShopSale({ username, packId: pack.id, packName: pack.name, price: offre.prix }).catch(dbErr('insertShopSale'));
+    }
+    notifyKikoozUpdate(username, user.kikooz);
+    console.log(`[revente] ${username} rend "${pack.name}" (#${pack.id}) pour ${offre.prix} kikooz${offre.achete ? '' : ' (offert)'} — kikooz now ${user.kikooz}`);
+    res.json({ ok: true, kikooz: user.kikooz, prix: offre.prix, achete: offre.achete, bouille, name: pack.name });
+  } catch (e) {
+    console.error('[revente]', e.message);
+    res.status(500).json({ ok: false, error: 'Revente impossible.' });
+  }
 });
 
 /*
