@@ -33,8 +33,15 @@ for (let i = 2; i < process.argv.length; i++) {
   else if (a === '--trace-json') args.traceJson = process.argv[++i];
   // Les réglages de l'analyseur (au-delà des poids) : '{"tard":{...}}'.
   else if (a === '--options') args.options = process.argv[++i];
+  // REJOUER DES POSITIONS : un fichier JSONL de positions relevées
+  // ({ char, ncoups, stars, g }, cf. le champ `g` du relevé), chacune jouée
+  // `--horizon` tours au plus. Deux réglages partent des MÊMES positions :
+  // c'est ce qui rend une fin de partie comparable, là où des parties
+  // entières ne se départagent qu'au bout de dizaines de graines.
+  else if (a === '--positions') args.positions = process.argv[++i];
   else if (a.startsWith('--')) args[a.slice(2)] = Number(process.argv[++i]);
 }
+if (args.horizon === undefined) args.horizon = 60;
 const CHAR = args.char | 0;
 const TMOD = Number(args.tmod) || 6;
 const DT = TMOD / 40;
@@ -99,13 +106,37 @@ if (args.weights) {
 // boot standalone une fois (client sans réseau)
 Manager.init('');
 
-function playGame(seed) {
+// Une position relevée prend la place du plateau de départ : les fruits sont
+// posés à leur case (sprite compris, comme `Level.attach` le fait), le
+// compteur de coups et les étoiles remis à ce qu'ils étaient.
+function injecter(chal, pos) {
+  const level = chal.player.level;
+  for (let x = 0; x < level.width; x++)
+    for (let y = 0; y < level.height; y++) level.fruits[x][y] = null;
+  let i = 0;
+  for (let x = 0; x < level.width; x++)
+    for (let y = 0; y < level.height; y++) {
+      const ch = pos.g[i++];
+      if (ch === '.' || ch === undefined) continue;
+      const v = ch.charCodeAt(0) - 97;
+      const k = Math.floor(v / 3), color = v % 3;
+      const flags = k === 1 ? E.FLAG_ARMURE : k === 2 ? E.FLAG_NOSWAP : k === 3 ? E.FLAG_STAR : 0;
+      level.fruits[x][y] = level.attach(x, y, color, flags);
+    }
+  chal.ncoups = Number(pos.ncoups) || chal.ncoups;
+  const stars = Math.max(0, Math.min(E.MAX_POWER, Number(pos.stars) || 0));
+  chal.player.star_counter = stars;
+  chal.interf.pl[0].power = stars;
+}
+
+function playGame(seed, pos) {
   rngState = seed >>> 0 || 1;
   SW.Data.gameMode = SW.Data.CHALLENGE;
   SW.Data.players = [CHAR, -1];
   if (Manager.mode) Manager.mode.destroy();
   Manager.mode = new SW.Challenge();
   const chal = Manager.mode;
+  if (pos) { injecter(chal, pos); rngState = seed >>> 0 || 1; }
   const t0 = Date.now();
 
   let turns = 0, defends = 0, maxH = 0, reason = 'gameover';
@@ -157,8 +188,20 @@ function playGame(seed) {
             if ((f.flags & E.FLAG_ARMURE) !== 0) { gel++; if (y <= 4) gelHaut++; }
             else if ((f.flags & E.FLAG_NOSWAP) !== 0) metal++;
           }
+        // La grille, compacte (168 caractères, colonne par colonne, du haut
+        // vers le bas) : « . » vide, sinon un chiffre de base 8 = couleur +
+        // 3 × (0 libre, 1 armure, 2 métal, 3 étoile). De quoi REJOUER la
+        // position (--positions).
+        let grille = '';
+        for (let x = 0; x < chal.player.level.width; x++)
+          for (let y = 0; y < chal.player.level.height; y++) {
+            const f = chal.player.level.fruits[x][y];
+            if (f == null) { grille += '.'; continue; }
+            const k = (f.flags & E.FLAG_ARMURE) ? 1 : (f.flags & E.FLAG_NOSWAP) ? 2 : (f.flags & E.FLAG_STAR) ? 3 : 0;
+            grille += String.fromCharCode(97 + f.save_t + 3 * k);   // a..l
+          }
         releve = {
-          t: turns + 1, score: chal.player.score, ncoups: chal.ncoups,
+          t: turns + 1, score: chal.player.score, ncoups: chal.ncoups, g: grille,
           hmax: Math.max.apply(null, hs), hmoy: Math.round(hs.reduce(function (a, b) { return a + b; }, 0) / hs.length * 10) / 10,
           fruits: fruits, gel: gel, gelHaut: gelHaut, metal: metal,
           etoiles: chal.player.star_counter,
@@ -216,6 +259,7 @@ function playGame(seed) {
     maxH: maxH, ncoups: chal.ncoups, reason: reason, secs: secs,
     msParCoup: analyseN ? Math.round(analyseMs / analyseN) : 0,
     preparations: preparations, profondeurs: analyseProf,
+    position: pos ? (pos.id || (pos.seed + ':' + pos.t)) : undefined,
   };
   if (args.traceJson) {
     fs.appendFileSync(args.traceJson, JSON.stringify(Object.assign({ char: CHAR, tours: traces }, resultat)) + '\n');
@@ -239,6 +283,34 @@ function execSwap(chal, pair) {
 
 const charName = E.CHAR_NAMES[CHAR].trim();
 const defName = E.DEFENSE_NAMES[E.DEFENSE_PLAYERS[CHAR]].trim();
+
+// ── Les positions rejouées ──
+if (args.positions) {
+  const positions = fs.readFileSync(args.positions, 'utf8').split('\n').filter(Boolean)
+    .map(function (l) { return JSON.parse(l); })
+    .filter(function (p) { return p.char === undefined || Number(p.char) === CHAR; });
+  args['max-turns'] = Number(args.horizon);
+  console.log('Positions rejouées — perso ' + CHAR + ' (' + charName + ', « ' + defName + ' » à '
+    + E.DEFENSE_STARS[CHAR] + '★), ' + positions.length + ' positions, ' + args.horizon + ' tours au plus, graine ' + args.seed);
+  const rs = [];
+  positions.forEach(function (p, i) {
+    const r = playGame(Number(args.seed) + i * 7919, p);
+    r.position = p.id || (p.seed + ':' + p.t);
+    r.vivant = r.reason === 'max-turns';
+    rs.push(r);
+    console.log('  ' + r.position + ' (ncoups ' + p.ncoups + ', ' + p.stars + '★) : +' + r.score + ' en ' + r.turns + ' tours'
+      + (r.vivant ? ' — vivant' : ' — mort') + ', défenses=' + r.defends);
+  });
+  const moy = function (f) { return rs.length ? rs.reduce(function (a, r) { return a + f(r); }, 0) / rs.length : 0; };
+  console.log('—');
+  console.log('points moy=' + Math.round(moy(function (r) { return r.score; }))
+    + '  tours moy=' + Math.round(moy(function (r) { return r.turns; }))
+    + '  vivants=' + Math.round(100 * moy(function (r) { return r.vivant ? 1 : 0; })) + '%'
+    + '  défenses moy=' + moy(function (r) { return r.defends; }).toFixed(1)
+    + '  pts/tour=' + Math.round(moy(function (r) { return r.score; }) / Math.max(1, moy(function (r) { return r.turns; }))));
+  process.exit(0);
+}
+
 console.log('Bot Swapou Challenge — perso ' + CHAR + ' (' + charName + ', défense « ' +
   defName + ' » à ' + E.DEFENSE_STARS[CHAR] + '★), ' + args.games + ' parties, graine ' + args.seed);
 
