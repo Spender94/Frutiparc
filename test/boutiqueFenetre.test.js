@@ -282,17 +282,30 @@ test('la barre de titre porte l\'icône de la fenêtre', () => {
   assert.match(html, /\.sheet-head \.sheet-ico \{/, 'et elle a sa taille');
 });
 
-test('la boutique s\'ouvre toujours sur les Accessoires', async () => {
+test('la boutique s\'ouvre tous rayons repliés, et la fiche attend un choix', async () => {
   const d = await boutique(await inscrire(joueur('def')));
   assert.equal((d.categories || [])[0].name, 'Accessoires',
-    'le premier rayon du catalogue est celui des accessoires');
+    'le premier rayon du catalogue reste celui des accessoires');
 
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
-  assert.match(html, /var BO_RUBRIQUE_DEFAUT = 0;/, 'le rayon d\'entrée est nommé');
+  // Elle s'ouvrait sur le PREMIER rayon du catalogue — qui, selon ce que
+  // l'admin a désactivé, pouvait être les fonds d'écran. Plus de rayon
+  // d'entrée : tout est replié, la fiche dit d'ouvrir un rayon.
+  assert.match(html, /var BO_RUBRIQUE_DEFAUT = -1;/, 'aucun rayon déplié à l\'ouverture');
+  assert.match(html, /function reposerBoutique\(\) \{\s*\n\s*boRubrique = BO_RUBRIQUE_DEFAUT;\s*\n\s*boChoixR = -1;\s*\n\s*boArticle = 0;/,
+    'l\'état de départ : rien de déplié, rien de montré');
   // L'ouverture REPOSE l'état : sans ça, on retombait sur la rubrique de la
-  // visite précédente.
-  assert.match(html, /function openShopSheet\(\) \{[\s\S]{0,400}boRubrique = BO_RUBRIQUE_DEFAUT;[\s\S]{0,200}boArticle = 0;/,
-    'chaque ouverture repart des Accessoires');
+  // visite précédente — la feuille du mobile comme la fenêtre du bureau.
+  assert.match(html, /function openShopSheet\(\) \{[\s\S]{0,300}reposerBoutique\(\);/,
+    'chaque ouverture de la feuille repart repliée');
+  assert.match(html, /charger: function \(reposer\) \{\s*\n\s*if \(reposer\) reposerBoutique\(\);/,
+    'le bureau peut demander la même chose');
+  const bureau = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.js'), 'utf8');
+  assert.match(bureau, /var neuve = !fenetres\['shop-sheet'\];\s*\n\s*ouvrirFenetre\('boutique'\);\s*\n\s*if \(window\.MagasinLight && MagasinLight\.charger\) MagasinLight\.charger\(neuve\);/,
+    'une fenêtre neuve s\'ouvre repliée ; rappelée, elle garde son rayon');
+  assert.match(html, /var r = boChoixR >= 0 \? shopCategories\[boChoixR\] : null;/,
+    'sans choix, pas d\'article courant');
+  assert.match(html, /Ouvrez un rayon dans la colonne de gauche\./, 'et la fiche le dit');
 });
 
 test('un dossier se replie quand on le rappuie, sans vider la fiche', () => {
@@ -303,8 +316,8 @@ test('un dossier se replie quand on le rappuie, sans vider la fiche', () => {
   assert.match(html, /boRubrique = -1;\s*\/\/ \(la fiche reste, elle\)/,
     'et la fiche reste affichée');
   // Deux états distincts : le dossier déplié et l'article montré.
-  assert.match(html, /var boChoixR = 0;/, 'la fiche a sa propre rubrique');
-  assert.match(html, /function boArticleCourant\(\) \{\s*var r = shopCategories\[boChoixR\];/,
+  assert.match(html, /var boChoixR = -1;/, 'la fiche a sa propre rubrique');
+  assert.match(html, /function boArticleCourant\(\) \{\s*var r = boChoixR >= 0 \? shopCategories\[boChoixR\] : null;/,
     'la fiche lit boChoixR, pas le dossier déplié');
   // L'état est annoncé aux lecteurs d'écran.
   assert.match(html, /aria-expanded="' \+ \(ouverte \? "true" : "false"\)/,

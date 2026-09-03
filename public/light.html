@@ -5019,12 +5019,21 @@
   var shopItems = [];           // les accessoires seuls (compat : achat/aperçu)
   // Deux états distincts : le dossier DÉPLIÉ (l'arborescence) et l'article
   // MONTRÉ (la fiche). Replier un dossier ne doit pas vider la fiche.
-  var boRubrique = 0;           // rubrique dépliée (-1 = toutes repliées)
-  var boChoixR = 0;             // rubrique de l'article montré
+  var boRubrique = -1;          // rubrique dépliée (-1 = toutes repliées)
+  var boChoixR = -1;            // rubrique de l'article montré (-1 = aucun)
   var boArticle = 0;            // article montré, dans cette rubrique
   // Armé à l'OUVERTURE de la fenêtre seulement (cf. `renderShopRubriques`).
   var boAnimerColonne = false;
-  var BO_RUBRIQUE_DEFAUT = 0;   // à l'ouverture : le premier rayon, les Accessoires
+  // À l'ouverture, TOUS LES RAYONS SONT REPLIÉS et la fiche attend un choix.
+  // La boutique s'ouvrait sur le premier rayon du catalogue — qui, selon ce
+  // que l'admin a désactivé, pouvait être les fonds d'écran : on entrait dans
+  // une boutique d'accessoires par le rayon des papiers peints.
+  var BO_RUBRIQUE_DEFAUT = -1;
+  function reposerBoutique() {
+    boRubrique = BO_RUBRIQUE_DEFAUT;
+    boChoixR = -1;
+    boArticle = 0;
+  }
 
   function setShopWallet(k) {
     var w = $("#shop-wallet");
@@ -5046,7 +5055,7 @@
     e.textContent = msg || "";
   }
   function boArticleCourant() {
-    var r = shopCategories[boChoixR];
+    var r = boChoixR >= 0 ? shopCategories[boChoixR] : null;
     return r ? (r.items || [])[boArticle] : null;
   }
 
@@ -5153,7 +5162,11 @@
     var box = $("#bo-fiche");
     if (!box) return;
     var it = boArticleCourant();
-    if (!it) { box.innerHTML = '<div class="bo-etat">Rubrique vide.</div>'; return; }
+    if (!it) {
+      box.innerHTML = '<div class="bo-etat">' + (boChoixR < 0
+        ? 'Ouvrez un rayon dans la colonne de gauche.' : 'Rubrique vide.') + '</div>';
+      return;
+    }
     var achetable = !it.owned;
     var prix = Number(it.price) || 0;
     // Le bureau met le titre à droite de l'aperçu, puis l'accroche en gras et
@@ -5206,7 +5219,7 @@
         shopCategories = (d && d.categories) || [];
         shopItems = (d && d.items) || [];
         if (boRubrique >= shopCategories.length) boRubrique = BO_RUBRIQUE_DEFAUT;
-        if (boChoixR >= shopCategories.length) { boChoixR = BO_RUBRIQUE_DEFAUT; boArticle = 0; }
+        if (boChoixR >= shopCategories.length) { boChoixR = -1; boArticle = 0; }
         renderShop();
       })
       .catch(function () {
@@ -5291,11 +5304,9 @@
   }
   function openShopSheet() {
     openMenu(false);
-    // La boutique s'ouvre TOUJOURS sur les Accessoires, comme le bureau : le
-    // rayon où l'on rentre ne dépend pas de la dernière visite.
-    boRubrique = BO_RUBRIQUE_DEFAUT;
-    boChoixR = BO_RUBRIQUE_DEFAUT;
-    boArticle = 0;
+    // La boutique s'ouvre TOUJOURS rayons repliés : l'état où l'on rentre ne
+    // dépend pas de la dernière visite.
+    reposerBoutique();
     $("#shop-sheet-backdrop").classList.add("show");
     $("#shop-sheet").classList.add("show");
     loadShop();
@@ -5311,7 +5322,14 @@
      seulement, que la colonne arrive en glissant. Un achat qui relit la
      boutique (un pass cumulable) la repose net, comme un simple clic. */
   window.MagasinLight = {
-    charger: function () { boAnimerColonne = true; loadShop(); },
+    // `reposer` : la fenêtre vient de s'ouvrir — rayons repliés, comme la
+    // feuille du mobile. Rappelée sur une fenêtre déjà ouverte, la boutique
+    // se relit sans perdre le rayon où l'on est.
+    charger: function (reposer) {
+      if (reposer) reposerBoutique();
+      boAnimerColonne = true;
+      loadShop();
+    },
     acheter: buyShopItem,
   };
   $("#shop-sheet-close").addEventListener("click", closeShopSheet);

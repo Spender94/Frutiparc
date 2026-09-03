@@ -4935,8 +4935,11 @@ window.BureauFrutiz = (function () {
 
   /** La boutique s'ouvre en FENÊTRE sur le bureau, pas en feuille. */
   function ouvrirBoutique() {
+    // Une fenêtre NEUVE s'ouvre rayons repliés ; rappeler la tuile sur une
+    // boutique déjà ouverte la remet au premier plan sans la replier.
+    var neuve = !fenetres['shop-sheet'];
     ouvrirFenetre('boutique');
-    if (window.MagasinLight && MagasinLight.charger) MagasinLight.charger();
+    if (window.MagasinLight && MagasinLight.charger) MagasinLight.charger(neuve);
   }
 
   /* ══════════════════════════════════════════════════════════════════════════

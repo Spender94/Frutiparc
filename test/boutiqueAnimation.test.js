@@ -44,8 +44,9 @@ test('l’animation d’arrivée ne se joue qu’à l’ouverture de la fenêtre
   assert.match(LIGHT,
     /if \(boAnimerColonne && window\.BureauFrutiz && BureauFrutiz\.animerEntrees\) \{\s*\n\s*BureauFrutiz\.animerEntrees\(box\);\s*\n\s*\}\s*\n\s*boAnimerColonne = false;/,
     'elle se désarme aussitôt jouée');
-  // La SEULE porte qui l'arme : celle qui ouvre la boutique.
-  assert.match(LIGHT, /charger: function \(\) \{ boAnimerColonne = true; loadShop\(\); \},/);
+  // La SEULE porte qui l'arme : celle qui ouvre la boutique (et qui, sur une
+  // fenêtre neuve, replie aussi les rayons).
+  assert.match(LIGHT, /charger: function \(reposer\) \{\s*\n\s*if \(reposer\) reposerBoutique\(\);\s*\n\s*boAnimerColonne = true;\s*\n\s*loadShop\(\);\s*\n\s*\},/);
   const armements = (LIGHT.match(/boAnimerColonne = true/g) || []).length;
   assert.strictEqual(armements, 1, 'une seule porte arme l’animation');
 });
