@@ -99,7 +99,10 @@
     //
     // (points marqués en 60 tours, écart apparié, n = 32 ; +2 156 sur une
     // base de 11 900, soit + 18 %.) Le coût : 1,9 × le temps d'un coup, sur
-    // les positions de fin de partie seulement.
+    // les positions de fin de partie seulement. Sur parties entières (8 par
+    // perso, mêmes graines) : 45 177 → 52 123. Allumé dès le premier coup
+    // (ncoups: 0, hMax: 0) : 55 325, un cran de plus dans le bruit, pour un
+    // conseil deux fois plus lent dès le début — l'option, pas le défaut.
     tard: { ncoups: 100, hMax: 12, K2: 12, K3: 6, S: 3, budgetMs: 1500 },
     // Les poids qui ont donné le record du bot (PLAN.md) : le score pèse
     // lourd, les étoiles encore en jeu aussi.

@@ -337,7 +337,15 @@ Soit + 15 % sur la partie, et presque le double après le 150ᵉ tour — la
 phase visée. Points par tour, avant → après : 259 → 267 (1–50), 248 → 275
 (51–100), 237 → 245 (101–150), 203 → 215 (151–200), 166 → 229 (201–250). Le
 coût, sur ce banc à quatre processus : 1,65 s par coup en moyenne sur toute
-la partie (0,5 s avant).
+la partie (0,5 s avant) — la crise (hauteur ≥ 12) occupant la moitié des
+tours, le troisième étage y tourne déjà presque tout le temps.
+
+Et le troisième étage SUR TOUTE LA PARTIE (`tard: { ncoups: 0, hMax: 0 }`,
+mêmes graines) : 55 325 ± 1 516, soit + 3 200 de plus (Dimitri +1 472,
+Wasabi +5 681, Moutarde +7 889, Sel −2 233 ; meilleure partie 74 375), pour
+1,9 s par coup. Un cran de plus, dans le bruit d'une mesure à 32 parties, et
+qui coûte son temps dès le premier coup, là où le conseil doit être rapide :
+la valeur par défaut reste la fin de partie ; l'option est là.
 
 **Moutarde, à part.** Le Colorant ne retire rien et ne baisse rien : c'est
 un pari — un tiers du plateau gelé sous une autre couleur, pour la cascade
