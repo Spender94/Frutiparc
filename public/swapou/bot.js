@@ -343,7 +343,59 @@
     // — ce qui reste après la dépense doit encore permettre de tirer une
     // fois. Sinon, ce surcoût.
     reserve: 1600,
+    // ── LA FIN DE PARTIE SOUS LA GLACE ──
+    // Passé cent coups, une ligne sur deux arrive gelée, puis deux sur
+    // trois : le plateau devient une masse d'armures percée de poches de
+    // fruits libres, et les cascades ne viennent plus des fruits qu'on voit
+    // mais de ceux qu'on FEND. Deux termes disent ce que la glace cache :
+    //   · latent — les groupes de trois ou plus formés sur la VRAIE couleur
+    //     (armures comprises) : une cascade en attente, qui part dès qu'une
+    //     explosion voisine fend ses armures ;
+    //   · mobLeaf — le nombre de combos jouables sur la grille d'arrivée,
+    //     compté à la feuille de la recherche : une position qui garde des
+    //     coups en réserve résiste à la ligne suivante, une position qui n'en
+    //     a qu'un meurt de sécheresse.
+    latent: 0,
+    mobLeaf: 0,
+    // La PRÉVENTION, pouvoir par pouvoir : un facteur sur le prix de l'étoile
+    // dans la zone où l'on peut encore agir avant la crise (hauteurs 9 à 11).
+    // Indexé par DEFENSE_PLAYERS (0 Moïse, 1 Glissement, 2 Coupure,
+    // 3 Effondrement, 4 Colorant, 5 Ramollissement, 6 Combos) ; absent = 1.
+    prevention: {},
   };
+
+  // Les groupes LATENTS : ce qui exploserait si la glace tombait. Un groupe se
+  // compte sur `s` (la vraie couleur), armures et métal compris ; seuls ceux
+  // qui tiennent au moins une armure comptent — un groupe entièrement libre
+  // aurait déjà explosé. Chaque fruit au-delà du troisième pèse un point :
+  // c'est la taille de la cascade, pas son existence, qui vaut.
+  function latentGroups(g) {
+    const seen = new Array(W * H);
+    let total = 0;
+    for (let x = 0; x < W; x++)
+      for (let y = 0; y < H; y++) {
+        const c = g[x][y];
+        if (c == null || seen[x * H + y]) continue;
+        seen[x * H + y] = true;
+        const s = c.s;
+        let n = 0, gel = 0;
+        const stack = [[x, y]];
+        while (stack.length) {
+          const [cx, cy] = stack.pop();
+          n++;
+          if ((g[cx][cy].fl & ARM) !== 0) gel++;
+          for (const [nx, ny] of neigh(cx, cy)) {
+            const m = g[nx][ny];
+            if (m != null && !seen[nx * H + ny] && m.s === s) {
+              seen[nx * H + ny] = true;
+              stack.push([nx, ny]);
+            }
+          }
+        }
+        if (n >= 3 && gel > 0) total += n - 2;
+      }
+    return total;
+  }
 
   /*
    * LE PRIX D'UNE ÉTOILE DÉPEND DU MOMENT.
@@ -369,7 +421,15 @@
     if (hMax >= 12) return 0;
     const k = hMax >= 11 ? 0.35 : hMax >= 10 ? 1 : hMax >= 9 ? 2 : WEIGHTS.calme;
     let prix = WEIGHTS.defendBase * cout * k;
-    if (state.stars - cout < cout && hMax < 11) prix += WEIGHTS.reserve;
+    if (hMax >= 9) {
+      const f = WEIGHTS.prevention[E.DEFENSE_PLAYERS[state.charId]];
+      if (f !== undefined) prix *= f;
+    }
+    // La réserve n'a de sens que si DEUX défenses tiennent dans la banque :
+    // le Colorant (4★) et le Ramollissement (5★) ne pourront jamais garder
+    // la seconde — leur facturer la réserve, c'était les interdire hors
+    // crise, pour rien.
+    if (state.stars - cout < cout && hMax < 11 && 2 * cout <= E.MAX_POWER) prix += WEIGHTS.reserve;
     return prix;
   }
 
@@ -408,6 +468,7 @@
     v -= WEIGHTS.frozen * frozen + WEIGHTS.frozenTop * frozenTop + WEIGHTS.metal * metal;
     v += WEIGHTS.pairs * pairs + WEIGHTS.starsBoard * starsBoard;
     v -= WEIGHTS.count * count;
+    if (WEIGHTS.latent) v += WEIGHTS.latent * latentGroups(g);
     v += WEIGHTS.score * gained.score + WEIGHTS.starGain * gained.stars +
       WEIGHTS.crack * gained.cracked + WEIGHTS.pieces * (gained.pieces || 0);
     return v;
@@ -480,6 +541,7 @@
     let best = -Infinity;
     const none = { score: 0, stars: 0, cracked: 0, pieces: 0 };
     best = evaluate(g, 1, none); // riposte « attente » (aucun combo joué)
+    let combos = 0;
     for (let x = 0; x < W; x++)
       for (let y = 0; y < H; y++) {
         const c = g[x][y];
@@ -491,6 +553,7 @@
           if (d == null || (d.fl & MET) !== 0) continue;
           g[x][y] = d; g[nx][ny] = c;
           if (makesCombo(g, x, y, nx, ny)) {
+            combos++;
             const g2 = cloneGrid(g);
             const r2 = resolve(g2, 0);
             const v2 = evaluate(g2, 1, r2);
@@ -499,6 +562,9 @@
           g[x][y] = c; g[nx][ny] = d;
         }
       }
+    // Les coups en réserve à la feuille (cf. WEIGHTS.mobLeaf) : au-delà de
+    // huit, on ne manque de rien.
+    if (WEIGHTS.mobLeaf) best += WEIGHTS.mobLeaf * Math.min(combos, 8);
     return best;
   }
 
@@ -619,6 +685,7 @@
     simulateDefense: simulateDefense, noMoreLine: noMoreLine, prixDefense: prixDefense,
     evaluate: evaluate, mobility: mobility, mobilityInfo: mobilityInfo,
     simGenLine: simGenLine, bestReply: bestReply, depth2Value: depth2Value,
+    latentGroups: latentGroups,
     WEIGHTS: WEIGHTS,
   };
 });

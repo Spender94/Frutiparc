@@ -80,6 +80,10 @@
     profondeur: 2,
     K1: 400, K2: 10, K3: 6, S: 3,
     paniqueK1: 400, paniqueK2: 10, paniqueS: 5,
+    // LA FIN DE PARTIE : passé `ncoups` coups (ou à partir de la hauteur
+    // `hMax`), le troisième étage de la recherche s'allume sur les `K2`
+    // meilleurs candidats — `K3` ripostes, `S` lignes tirées. Null : jamais.
+    tard: null,
     // Les poids qui ont donné le record du bot (PLAN.md) : le score pèse
     // lourd, les étoiles encore en jeu aussi.
     poids: { score: 2.5, starsBoard: 80 },
@@ -304,9 +308,11 @@
       if (g.score > 0) morceaux.push('+' + g.score);
       if (g.cracked > 0) morceaux.push(pluriel(g.cracked, 'armure') + ' fendue' + (g.cracked > 1 ? 's' : ''));
       // Pourquoi MAINTENANT : une défense à plateau bas surprend, sauf si la
-      // banque est pleine — la prochaine étoile serait perdue.
+      // banque est pleine — la prochaine étoile serait perdue — ou si c'est
+      // de la prévention : le pouvoir vaut plus que l'étoile avant la crise.
       if (c.pleine) morceaux.push('banque pleine, la prochaine étoile serait perdue');
       else if (c.crise) morceaux.push('plateau au plafond');
+      else if (c.prevention) morceaux.push('en prévention, avant la crise (hauteur ' + c.hauteur + ')');
       return morceaux.join(' · ');
     }
     if (c.nature === 'combo') {
@@ -396,19 +402,28 @@
     }
 
     // ── profondeur 3 (à faisceau, sous budget) ──
-    if (o.profondeur >= 3 && maintenant() < fin) {
+    // Toujours si on la demande ; sinon en FIN DE PARTIE seulement (o.tard),
+    // là où la glace rend chaque coup lourd de conséquences et où juger la
+    // riposte à la lumière de ce qui vient après elle change le choix.
+    const tard = o.tard && (
+      (etat.ncoups || 0) >= (o.tard.ncoups === undefined ? Infinity : o.tard.ncoups)
+      || hMax >= (o.tard.hMax === undefined ? Infinity : o.tard.hMax));
+    if ((o.profondeur >= 3 || tard) && maintenant() < fin) {
+      const K2t = tard ? Math.min(o.tard.K2 || K2, candidats.length) : K2;
+      const K3t = tard ? (o.tard.K3 || o.K3) : o.K3;
+      const St = tard ? (o.tard.S || S) : S;
       let complet = true;
-      for (let i = 0; i < K2; i++) {
+      for (let i = 0; i < K2t; i++) {
         if (maintenant() >= fin) { complet = false; break; }
         const c = candidats[i];
-        c.v3 = gainImmediat(c, etat) + valeur3(c.grid, monte(c), ncoups, S, o.K3);
+        c.v3 = gainImmediat(c, etat) + valeur3(c.grid, monte(c), ncoups, St, K3t);
       }
       // Une itération interrompue ne compte pas : mélanger des valeurs de
       // profondeur 3 et 2 fausserait le classement. On ne garde le troisième
       // étage que s'il a jugé tout le faisceau.
       if (complet) {
-        const tete = candidats.slice(0, K2).sort(function (a, b) { return b.v3 - a.v3; });
-        for (let i = 0; i < K2; i++) { candidats[i] = tete[i]; candidats[i].v = tete[i].v3; }
+        const tete = candidats.slice(0, K2t).sort(function (a, b) { return b.v3 - a.v3; });
+        for (let i = 0; i < K2t; i++) { candidats[i] = tete[i]; candidats[i].v = tete[i].v3; }
         profondeur = 3;
       }
     }
@@ -427,6 +442,8 @@
         out.nature = 'defense'; out.prix = c.prix || 0;
         out.pleine = etat.stars >= E.MAX_POWER;
         out.crise = hMax >= 12;
+        out.hauteur = hMax;
+        out.prevention = !out.pleine && !out.crise && hMax >= 9;
       }
       else if (c.gained.score > 0) out.nature = 'combo';
       else {

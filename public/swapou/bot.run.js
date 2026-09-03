@@ -28,6 +28,11 @@ for (let i = 2; i < process.argv.length; i++) {
   else if (a === '--depth2') args.depth2 = true;
   else if (a === '--analyse') args.analyse = true;
   else if (a === '--weights') args.weights = process.argv[++i];
+  // Le relevé tour par tour, en JSON (une ligne par partie), pour étudier
+  // les phases de la partie — début, milieu, fin — hors du bruit du terminal.
+  else if (a === '--trace-json') args.traceJson = process.argv[++i];
+  // Les réglages de l'analyseur (au-delà des poids) : '{"tard":{...}}'.
+  else if (a === '--options') args.options = process.argv[++i];
   else if (a.startsWith('--')) args[a.slice(2)] = Number(process.argv[++i]);
 }
 const CHAR = args.char | 0;
@@ -105,6 +110,7 @@ function playGame(seed) {
 
   let turns = 0, defends = 0, maxH = 0, reason = 'gameover';
   let analyseMs = 0, analyseN = 0, preparations = 0;
+  const traces = [];
   const analyseProf = {};
   let stuckRetries = 0;
   let frames = 0;
@@ -130,11 +136,39 @@ function playGame(seed) {
         const opt = { budgetMs: args.budget, profondeur: args.prof,
           K1: args.k1, K2: args.k2, K3: args.k3, S: args.samples | 0 || 3 };
         if (args.weights) opt.poids = null;
+        if (args.options) Object.assign(opt, JSON.parse(args.options));
         mv = Analyse.choisir(chal.player.level, etat, opt);
         if (mv.tempsMs !== undefined) { analyseMs += mv.tempsMs; analyseN++; analyseProf[mv.profondeur] = (analyseProf[mv.profondeur] || 0) + 1; }
         if (mv.nature === 'preparation') preparations++;
       } else {
         mv = Bot.choose(chal.player.level, etat);
+      }
+      // Le relevé du tour AVANT qu'il soit joué : la position, et ce qu'on y
+      // décide (l'hauteur, la glace et le métal sont ceux que l'IA a vus).
+      let releve = null;
+      if (args.traceJson) {
+        const hs = Bot.heights(Bot.copyGrid(chal.player.level));
+        let gel = 0, gelHaut = 0, metal = 0, fruits = 0;
+        for (let x = 0; x < chal.player.level.width; x++)
+          for (let y = 0; y < chal.player.level.height; y++) {
+            const f = chal.player.level.fruits[x][y];
+            if (f == null) continue;
+            fruits++;
+            if ((f.flags & E.FLAG_ARMURE) !== 0) { gel++; if (y <= 4) gelHaut++; }
+            else if ((f.flags & E.FLAG_NOSWAP) !== 0) metal++;
+          }
+        releve = {
+          t: turns + 1, score: chal.player.score, ncoups: chal.ncoups,
+          hmax: Math.max.apply(null, hs), hmoy: Math.round(hs.reduce(function (a, b) { return a + b; }, 0) / hs.length * 10) / 10,
+          fruits: fruits, gel: gel, gelHaut: gelHaut, metal: metal,
+          etoiles: chal.player.star_counter,
+          mob: Bot.mobility(Bot.copyGrid(chal.player.level)),
+          coup: mv.type, nature: mv.nature || null,
+          gain: mv.gained ? (mv.gained.score || 0) : 0,
+          phases: mv.gained ? (mv.gained.phases || 0) : 0,
+          pieces: mv.gained ? (mv.gained.pieces || 0) : 0,
+          v: mv.v === undefined ? null : Math.round(mv.v),
+        };
       }
       if (mv.type === 'none') { reason = 'stuck'; break; }
       if (mv.type === 'defend') {
@@ -152,6 +186,7 @@ function playGame(seed) {
       } else {
         stuckRetries = 0;
         turns++;
+        if (releve) traces.push(releve);
         const h = maxHeight(chal.player.level);
         if (h > maxH) maxH = h;
         if (args.progress && turns % 100 === 0)
@@ -176,12 +211,16 @@ function playGame(seed) {
     pump(30);
     Manager.mode.onClickDown();
   }
-  return {
+  const resultat = {
     seed: seed, score: score, turns: turns, defends: defends,
     maxH: maxH, ncoups: chal.ncoups, reason: reason, secs: secs,
     msParCoup: analyseN ? Math.round(analyseMs / analyseN) : 0,
     preparations: preparations, profondeurs: analyseProf,
   };
+  if (args.traceJson) {
+    fs.appendFileSync(args.traceJson, JSON.stringify(Object.assign({ char: CHAR, tours: traces }, resultat)) + '\n');
+  }
+  return resultat;
 }
 
 function execSwap(chal, pair) {

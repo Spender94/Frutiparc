@@ -186,4 +186,30 @@ function paireLegale(lvl, p) {
   assert(juges.length >= 8, 'au moins huit coups jugés');
 }
 
+// ── 4) la fin de partie ─────────────────────────────────────────────────────
+{
+  // Le troisième étage s'allume TARD (o.tard), et seulement tard : à quarante
+  // coups, deux étages ; à cent cinquante, trois — et sans l'option, jamais.
+  const rng = lcg(21);
+  const lvl = levelAleatoire(rng, 0.7);
+  const opt = { budgetMs: 8000, tard: { ncoups: 120, hMax: 12, K2: 4, K3: 3, S: 2 } };
+  const tot = A.analyser(lvl, { charId: 1, canDefend: false, stars: 0, ncoups: 40 }, opt);
+  assert(tot.nb === 0 || tot.profondeur === 2, 'à quarante coups, deux étages (' + tot.profondeur + ')');
+  const tard = A.analyser(lvl, { charId: 1, canDefend: false, stars: 0, ncoups: 150 }, opt);
+  assert(tard.nb === 0 || tard.profondeur === 3, 'à cent cinquante coups, le troisième étage (' + tard.profondeur + ')');
+  const sans = A.analyser(lvl, { charId: 1, canDefend: false, stars: 0, ncoups: 150 }, { budgetMs: 8000 });
+  assert(sans.nb === 0 || sans.profondeur === 2, 'sans l’option, deux étages (' + sans.profondeur + ')');
+}
+{
+  // Une défense conseillée AVANT la crise se dit « en prévention » : un plateau
+  // plat à dix (le Glissement n'y déplace rien, mais il est proposé), Wasabi
+  // avec quatre étoiles.
+  const lvl = damier(4);
+  const r = A.analyser(lvl, { charId: 6, canDefend: true, stars: 4, ncoups: 60 }, { budgetMs: 3000 });
+  const d = r.coups.find(function (c) { return c.type === 'defend'; });
+  assert(d, 'la défense est un candidat');
+  assert(d.prevention === true && d.hauteur === 10, 'à hauteur 10, hors crise, c’est de la prévention');
+  assert(/en prévention, avant la crise \(hauteur 10\)/.test(d.raison), 'et la raison le dit (' + d.raison + ')');
+}
+
 console.log('OK — ' + nassert + ' assertions (analyse)');

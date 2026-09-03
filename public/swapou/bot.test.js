@@ -302,6 +302,77 @@ function levelFromRows(rows) {
     'Natacha à deux étoiles paie la réserve, à quatre non');
   assert(P({ charId: 1, stars: 2 }, 11) === P({ charId: 1, stars: 4 }, 11),
     'à hauteur 11, plus de réserve : on tire');
+  // La réserve n'a de sens que si deux défenses tiennent dans la banque : le
+  // Colorant (4★) et le Ramollissement (5★) ne la paient jamais.
+  assert(P({ charId: 4, stars: 4 }, 8) === B.WEIGHTS.defendBase * 4 * B.WEIGHTS.calme,
+    'Moutarde à quatre étoiles ne paie pas la réserve');
+  assert(P({ charId: 5, stars: 5 }, 8) === B.WEIGHTS.defendBase * 5 * B.WEIGHTS.calme,
+    'TomTom non plus');
+  assert(P({ charId: 1, stars: 2 }, 8) === B.WEIGHTS.defendBase * 2 * B.WEIGHTS.calme + B.WEIGHTS.reserve,
+    'Natacha, elle, la paie');
+  // La PRÉVENTION, pouvoir par pouvoir : un facteur sur le prix entre les
+  // hauteurs 9 et 11, et rien ailleurs.
+  const bas = P({ charId: 6, stars: 4 }, 8), dix = P({ charId: 6, stars: 4 }, 10), onze = P({ charId: 6, stars: 4 }, 11);
+  B.WEIGHTS.prevention[1] = 0.5;                      // Glissement (Wasabi)
+  assert(P({ charId: 6, stars: 4 }, 10) === dix / 2, 'Glissement à 10 : prix divisé par deux');
+  assert(P({ charId: 6, stars: 4 }, 11) === onze / 2, 'à 11 aussi');
+  assert(P({ charId: 6, stars: 4 }, 8) === bas, 'sous 9, rien ne change');
+  assert(P({ charId: 6, stars: 4 }, 12) === 0, 'en crise, toujours gratuit');
+  assert(P({ charId: 2, stars: 4 }, 10) === dix, 'et Moïse (Sel) n’est pas concerné par le facteur de Glissement');
+  delete B.WEIGHTS.prevention[1];
+}
+
+// ── 5) la fin de partie sous la glace : groupes latents, coups en réserve ──
+{
+  // Trois fruits de même VRAIE couleur en ligne, dont une armure au milieu :
+  // rien n'explose (l'armure ne matche pas), mais la cascade attend.
+  const g = [];
+  for (let x = 0; x < W; x++) g[x] = new Array(H).fill(null);
+  g[3][H - 1] = { t: 0, s: 0, fl: 0 };
+  g[4][H - 1] = { t: -1, s: 0, fl: E.FLAG_ARMURE };
+  g[5][H - 1] = { t: 0, s: 0, fl: 0 };
+  assert(B.resolve(B.cloneGrid(g), 0).score === 0, 'la glace bloque le trio');
+  assert(B.latentGroups(g) === 1, 'un groupe latent de trois vaut un point (' + B.latentGroups(g) + ')');
+  g[6][H - 1] = { t: 0, s: 0, fl: 0 };
+  g[7][H - 1] = { t: -1, s: 0, fl: E.FLAG_ARMURE };
+  assert(B.latentGroups(g) === 3, 'cinq fruits : trois points (' + B.latentGroups(g) + ')');
+  // Un groupe entièrement libre ne compte pas — il aurait déjà explosé ; le
+  // métal, lui, compte : il explose, il ne s'échange pas.
+  const h = [];
+  for (let x = 0; x < W; x++) h[x] = new Array(H).fill(null);
+  h[0][H - 1] = { t: 1, s: 1, fl: 0 };
+  h[1][H - 1] = { t: 1, s: 1, fl: 0 };
+  h[2][H - 1] = { t: 1, s: 1, fl: E.FLAG_NOSWAP };
+  assert(B.latentGroups(h) === 0, 'sans armure, rien de latent');
+  h[2][H - 1] = { t: -1, s: 1, fl: E.FLAG_ARMURE };
+  h[3][H - 1] = { t: 1, s: 1, fl: E.FLAG_NOSWAP };
+  assert(B.latentGroups(h) === 2, 'quatre dont une armure et un métal : deux points (' + B.latentGroups(h) + ')');
+  // Le poids : nul, l'évaluation ne bouge pas ; posé, la cascade latente vaut.
+  const rien = { score: 0, stars: 0, cracked: 0, pieces: 0 };
+  const sans = B.evaluate(B.cloneGrid(g), 0, rien);
+  const oldLatent = B.WEIGHTS.latent;
+  B.WEIGHTS.latent = 10;
+  const avec = B.evaluate(B.cloneGrid(g), 0, rien);
+  B.WEIGHTS.latent = oldLatent;
+  assert(Math.abs((avec - sans) - 30) < 1e-6, 'trois points latents à 10 : +30 (' + (avec - sans) + ')');
+
+  // Les coups en réserve à la feuille : bestReply compte les échanges qui
+  // font un combo — le même compte que mobility() — et les paie mobLeaf
+  // chacun, jusqu'à huit.
+  const rng = lcg(5);
+  for (let iter = 0; iter < 6; iter++) {
+    const grille = makeBotGrid(randomCells(rng, 0.6));
+    B.resolve(grille, 0);                                 // stabilisée
+    const m = B.mobility(B.cloneGrid(grille));
+    const oldMob = B.WEIGHTS.mobLeaf;
+    B.WEIGHTS.mobLeaf = 0;
+    const v0 = B.bestReply(B.cloneGrid(grille));
+    B.WEIGHTS.mobLeaf = 5;
+    const v5 = B.bestReply(B.cloneGrid(grille));
+    B.WEIGHTS.mobLeaf = oldMob;
+    assert(Math.abs((v5 - v0) - 5 * Math.min(m, 8)) < 1e-6,
+      'itér ' + iter + ' : ' + m + ' combos en réserve → +' + (5 * Math.min(m, 8)) + ' (' + (v5 - v0) + ')');
+  }
 }
 
 console.log('OK — ' + nassert + ' assertions (bot)');
