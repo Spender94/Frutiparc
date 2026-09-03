@@ -4513,12 +4513,13 @@
      renouvelle au passage la place « en partie » du joueur (server.js,
      /api/check-ejected).
 
-     Or un cadre de jeu, ici, n'est chargé QU'UNE FOIS et n'est jamais vidé :
-     quitter l'onglet ne fait que le cacher. Le guetteur continuait donc de
-     battre depuis un jeu que plus personne ne regardait, et le voyant restait
-     allumé — sur un joueur revenu bavarder au salon depuis un quart d'heure.
-     C'est le « voyant qui ne correspond pas à l'état actuel » : il disait vrai
-     du cadre, pas du joueur.
+     Or un cadre de jeu, ici, reste chargé quand on quitte son onglet : ne
+     faire que le cacher, c'est ce qui permet de revenir à sa partie après un
+     détour par le salon. Le guetteur continuait donc de battre depuis un jeu
+     que plus personne ne regardait, et le voyant restait allumé — sur un
+     joueur revenu bavarder au salon depuis un quart d'heure. C'est le
+     « voyant qui ne correspond pas à l'état actuel » : il disait vrai du
+     cadre, pas du joueur.
 
      On rend donc au cadre la seule chose qu'il ne peut pas savoir tout seul :
      est-il À L'ÉCRAN ? Une iframe cachée par `display:none` a bien un
@@ -4576,6 +4577,59 @@
     return false;
   }
 
+  /*
+   * UN JEU CACHÉ NE DESSINE PLUS.
+   *
+   * Un cadre caché par `display:none` garde un document vivant — et sa boucle
+   * de jeu avec : `requestAnimationFrame` y bat toujours à soixante images
+   * par seconde (mesuré, Chromium : 61 images/s dans un cadre sans rectangle).
+   * Un joueur qui enchaîne les jeux gardait ainsi chaque jeu quitté à plein
+   * régime derrière le suivant ; à cinq jeux, le fil principal était pris à
+   * 90 % et le jeu visible tombait à sept images par seconde. C'est le « de
+   * plus en plus lent » rapporté : les parties d'avant n'étaient pas fermées.
+   *
+   * Deux remèdes. Le premier est ailleurs : UN SEUL JEU CHARGÉ À LA FOIS
+   * (`dechargerLesAutresJeux`), et le bureau décharge le jeu dont il ferme la
+   * fenêtre. Le second est ici : le jeu qu'on garde chargé mais qu'on ne
+   * regarde pas — parti au salon depuis le tiroir mobile, rangé dans un onglet
+   * du bureau — est mis en veille COMME LE FAIT UN ONGLET D'ARRIÈRE-PLAN du
+   * navigateur : ses demandes d'image sont retenues, et rendues d'un coup
+   * quand il revient à l'écran. Les jeux savent déjà vivre cela (un onglet
+   * caché ne reçoit plus d'image non plus) ; aucun n'attrape la fonction par
+   * référence, tous la rappellent par son nom à chaque image — la substitution
+   * sur leur `window` suffit. `cancelAnimationFrame` retire une demande
+   * retenue, pour qu'un jeu qui s'arrête et repart en veille ne se dédouble
+   * pas au réveil. Un cadre rechargé entre-temps n'a plus la substitution : la
+   * veille se repose à chaque passage, c'est voulu.
+   */
+  function suspendreRendu(cadre) {
+    var w;
+    try { w = cadre && cadre.contentWindow; } catch (e) { return; }
+    if (!w || w.__fpRendu) return;
+    var s = { raf: w.requestAnimationFrame, caf: w.cancelAnimationFrame, attente: [], n: 0 };
+    if (typeof s.raf !== "function") return;
+    w.__fpRendu = s;
+    w.requestAnimationFrame = function (cb) { s.attente.push({ id: ++s.n, cb: cb }); return -s.n; };
+    w.cancelAnimationFrame = function (id) {
+      for (var i = 0; i < s.attente.length; i++) {
+        if (-s.attente[i].id === id) { s.attente.splice(i, 1); return; }
+      }
+      try { s.caf.call(w, id); } catch (e) { /* identifiant inconnu */ }
+    };
+  }
+  function reprendreRendu(cadre) {
+    var w;
+    try { w = cadre && cadre.contentWindow; } catch (e) { return; }
+    var s = w && w.__fpRendu;
+    if (!s) return;
+    w.requestAnimationFrame = s.raf;
+    w.cancelAnimationFrame = s.caf;
+    w.__fpRendu = null;
+    for (var i = 0; i < s.attente.length; i++) {
+      try { s.raf.call(w, s.attente[i].cb); } catch (e) { /* le jeu a changé d'avis */ }
+    }
+  }
+
   function veillerSurLesJeux() {
     var quitte = false;
     for (var tab in CADRES_JEU) {
@@ -4584,6 +4638,7 @@
       if (!cadre || !cadre.getAttribute("src")) continue;   // pas encore joué
       var vu = cadreAffiche(cadre);
       direAuCadre(cadre, vu);
+      if (vu) reprendreRendu(cadre); else suspendreRendu(cadre);
       if (jeuxSurEcran[tab] !== vu) {
         jeuxSurEcran[tab] = vu;
         if (!vu) quitte = true;
@@ -4619,12 +4674,31 @@
     return true;
   }
 
+  /*
+   * UN SEUL JEU CHARGÉ À LA FOIS — la règle de la Frusion, qui n'a qu'une
+   * fente : insérer un disque, c'est avoir sorti le précédent.
+   *
+   * Le light gardait tous les jeux ouverts un jour, chacun dans son cadre,
+   * chacun avec sa boucle, son guetteur, son contexte sonore, sa socket. À
+   * force d'enchaîner, on jouait au huitième par-dessus sept autres qui
+   * tournaient encore (voir `suspendreRendu`). Ouvrir un jeu décharge donc
+   * ceux d'avant. Le jeu qu'on quitte pour le salon, lui, reste : c'est le
+   * retour à SA partie qu'on protège, pas la coexistence de plusieurs.
+   */
+  function dechargerLesAutresJeux(garde) {
+    for (var tab in CADRES_JEU) {
+      if (!Object.prototype.hasOwnProperty.call(CADRES_JEU, tab)) continue;
+      if (tab !== garde) dechargerJeu(tab);
+    }
+  }
+
   function activateTab(tab) {
     // Choisir une rubrique referme le tiroir (le contenu choisi occupe l'écran).
     closeMenu();
     if (ongletCourant === "forum" && tab !== "forum") loadHomeProfile();
     if (ongletCourant && ongletCourant !== tab) lacherCommandes(ongletCourant);
     ongletCourant = tab;
+    if (CADRES_JEU[tab]) dechargerLesAutresJeux(tab);
     $("#chat-panel").classList.toggle("active", tab === "chat");
     $("#forum-panel").classList.toggle("active", tab === "forum");
     $("#grapiz-panel").classList.toggle("active", tab === "grapiz");
@@ -4655,14 +4729,6 @@
         fr.setAttribute("src", "/fb/?sid=" + encodeURIComponent(state.sid) + "&from=light");
       }
     }
-    // Le cadre du jeu se remplit À LA PREMIÈRE OUVERTURE, et une seule fois :
-    // huit branches identiques, devenues une boucle sur la table des adresses.
-    if (CADRES_JEU[tab] && state.sid) {
-      var cadreJeu = $(CADRES_JEU[tab]);
-      if (cadreJeu && !cadreJeu.getAttribute("src")) {
-        cadreJeu.setAttribute("src", adresseJeu(tab));
-      }
-    }
     // Un jeu dans une IFRAME ne reçoit le clavier que s'il a le focus. Ouvrir
     // son onglet le lui donne — sans quoi les flèches restaient à cette page et
     // le joueur croyait le clavier ignoré (rapporté sur Mini-Wave). Le jeu le
@@ -4686,6 +4752,18 @@
     // panneaux déjà fenêtrés restent visibles (l'invariant « un seul actif »
     // du plein écran ne vaut plus là-bas).
     if (window.BureauFrutiz) BureauFrutiz.apresActivateTab(tab);
+    // Le cadre du jeu se remplit À LA PREMIÈRE OUVERTURE, et une seule fois :
+    // huit branches identiques, devenues une boucle sur la table des adresses.
+    // APRÈS le bureau, et ce n'est pas un détail : déplacer un cadre dans le
+    // document (le panneau qui entre dans sa fenêtre) recrée son contexte de
+    // navigation — un cadre déjà adressé recharge alors le jeu, et le premier
+    // chargement n'aura servi à rien. Le cadre voyage vide, puis se remplit.
+    if (CADRES_JEU[tab] && state.sid) {
+      var cadreJeu = $(CADRES_JEU[tab]);
+      if (cadreJeu && !cadreJeu.getAttribute("src")) {
+        cadreJeu.setAttribute("src", adresseJeu(tab));
+      }
+    }
   }
 
   // ── Mes disques (feuille de lancement des jeux) ──
@@ -4869,6 +4947,12 @@
     ouverte: function () {
       try { return !!(window.__jeuPopup && !window.__jeuPopup.closed); } catch (e) { return false; }
     },
+    // Le bureau ferme la fenêtre d'un jeu : le jeu s'arrête avec elle.
+    decharger: dechargerJeu,
+    // Et quand il montre ou cache une fenêtre sans passer par `activateTab`
+    // (onglet qui prend la main, fenêtre rangée), il fait mesurer tout de
+    // suite qui est à l'écran — sans attendre le filet des deux secondes.
+    veiller: veillerSurLesJeux,
   };
   function renderDiscs() {
     var grid = $("#disques-grid");

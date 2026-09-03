@@ -6211,6 +6211,7 @@ window.BureauFrutiz = (function () {
       f.fen.classList.toggle('fen-onglet-vue', s.id === id);
     }
     if (avant !== id) dessinerOnglets();
+    veillerSurLesJeux();
   }
 
   /**
@@ -6285,6 +6286,7 @@ window.BureauFrutiz = (function () {
     if (flGo) activerSlot(id);
     dessinerOnglets();
     majBouilles();
+    veillerSurLesJeux();
   }
 
   /** `FPTab.moveToDesktop` : l'onglet rend sa fenêtre au bureau. */
@@ -6307,6 +6309,7 @@ window.BureauFrutiz = (function () {
     activerSlot('bureau');
     dessinerOnglets();
     majBouilles();
+    veillerSurLesJeux();
   }
 
   // ── LE MENU D'UN ONGLET (`MainBarTab.attachMenu`) ─────────────────────
@@ -6397,17 +6400,27 @@ window.BureauFrutiz = (function () {
     for (var i = 0; i < slots.length; i++) if (slots[i].id === idOnglet) return slots[i];
     return null;
   }
-  /** La rubrique de jeu que porte cet onglet, s'il en porte une. */
-  function jeuDuSlot(idOnglet) {
-    var s = slotDe(idOnglet);
-    if (!s) return null;
+  /** La rubrique de jeu que porte ce panneau, s'il en porte une. */
+  function jeuDuPanneau(idPanneau) {
     for (var cle in JEUX_LIGHT) {
       if (!Object.prototype.hasOwnProperty.call(JEUX_LIGHT, cle)) continue;
       var tab = JEUX_LIGHT[cle];
       var rub = RUBRIQUES[tab];
-      if (rub && rub.panneau === '#' + s.panneau) return tab;
+      if (rub && rub.panneau === '#' + idPanneau) return tab;
     }
     return null;
+  }
+  /** La rubrique de jeu que porte cet onglet, s'il en porte une. */
+  function jeuDuSlot(idOnglet) {
+    var s = slotDe(idOnglet);
+    return s ? jeuDuPanneau(s.panneau) : null;
+  }
+  // Le bureau montre ou cache une fenêtre sans passer par `activateTab` : il
+  // fait mesurer tout de suite quels jeux sont à l'écran (light.html,
+  // `veillerSurLesJeux` — le jeu caché se met en veille, le jeu revenu repart).
+  function veillerSurLesJeux() {
+    var P = window.JeuxPortes;
+    if (P && P.veiller) P.veiller();
   }
   /*
    * Le jeu passe dans une fenêtre de navigateur, et QUITTE la page : deux
@@ -6540,6 +6553,21 @@ window.BureauFrutiz = (function () {
       dessinerOnglets();
     }
     f.panneau.classList.remove('active');
+    /*
+     * FERMER LA FENÊTRE D'UN JEU, C'EST L'ARRÊTER.
+     *
+     * Le panneau rendu à sa place emporte son cadre — et déplacer un cadre
+     * dans le document RECRÉE son contexte de navigation : un cadre encore
+     * adressé rechargeait le jeu, caché, derrière le bureau. Il y vivait à
+     * plein régime (boucle d'images, guetteur, sons) jusqu'à la fois
+     * suivante, où l'ouverture le rechargeait encore. Trois chargements par
+     * partie, et les parties d'avant jamais fermées — le « de plus en plus
+     * lent » des joueurs qui enchaînent. On décharge AVANT de déplacer : le
+     * cadre voyage vide, et la prochaine ouverture repart de zéro, comme un
+     * disque qu'on remet dans la Frusion.
+     */
+    var jeuFerme = jeuDuPanneau(idPanneau);
+    if (jeuFerme && window.JeuxPortes && JeuxPortes.decharger) JeuxPortes.decharger(jeuFerme);
     rendre(f.panneau, f.origine);
     f.fen.remove();
     delete fenetres[idPanneau];
@@ -7751,6 +7779,15 @@ window.BureauFrutiz = (function () {
   // actif — l'invariant du plein écran, qui ne vaut plus ici).
   function apresActivateTab(tab) {
     if (!actif) return;
+    // Un seul jeu à la fois, ici comme dans le light (qui vient de décharger
+    // les autres cadres) : la fenêtre d'un autre jeu, encore ouverte, ne
+    // montrerait plus qu'un cadre vide — elle se ferme, disque rendu.
+    if (jeuDuPanneau((RUBRIQUES[tab] && RUBRIQUES[tab].panneau || '').slice(1))) {
+      for (var cle in fenetres) {
+        var autre = jeuDuPanneau(cle);
+        if (autre && autre !== tab) fermerFenetre(cle);
+      }
+    }
     ouvrirFenetre(tab);
     for (var id in fenetres) fenetres[id].panneau.classList.add('active');
   }

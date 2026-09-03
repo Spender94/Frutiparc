@@ -456,8 +456,8 @@ test('un onglet de JEU gagne « Déporter », au-dessus de « Fermer »', () => 
      « Fermer » — c'est là qu'elle était demandée. */
   assert.match(JS, /if \(jeu\) m\.push\(\{ titre: 'Déporter', faire: function \(\) \{ deporterJeu\(jeu\); \} \}\);/);
   // Elle n'existe que pour un onglet qui PORTE un jeu.
-  assert.match(JS, /function jeuDuSlot\(idOnglet\) \{/);
-  assert.match(JS, /if \(rub && rub\.panneau === '#' \+ s\.panneau\) return tab;/);
+  assert.match(JS, /function jeuDuSlot\(idOnglet\) \{\s*\n\s*var s = slotDe\(idOnglet\);\s*\n\s*return s \? jeuDuPanneau\(s\.panneau\) : null;/);
+  assert.match(JS, /if \(rub && rub\.panneau === '#' \+ idPanneau\) return tab;/);
   // Le jeu QUITTE la page : deux instances écriraient la même sauvegarde.
   const d = JS.slice(JS.indexOf('function deporterJeu(tab) {'),
     JS.indexOf('function deporterJeu(tab) {') + 800);
