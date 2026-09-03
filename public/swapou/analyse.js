@@ -408,13 +408,17 @@
     const tard = o.tard && (
       (etat.ncoups || 0) >= (o.tard.ncoups === undefined ? Infinity : o.tard.ncoups)
       || hMax >= (o.tard.hMax === undefined ? Infinity : o.tard.hMax));
-    if ((o.profondeur >= 3 || tard) && maintenant() < fin) {
+    // Le troisième étage a son propre supplément de temps (o.tard.budgetMs) :
+    // sans lui, le budget entamé par le deuxième étage le coupait, et l'IA
+    // retombait à deux coups justement là où le troisième rapporte.
+    const finTard = tard && o.tard.budgetMs ? fin + o.tard.budgetMs : fin;
+    if ((o.profondeur >= 3 || tard) && maintenant() < finTard) {
       const K2t = tard ? Math.min(o.tard.K2 || K2, candidats.length) : K2;
       const K3t = tard ? (o.tard.K3 || o.K3) : o.K3;
       const St = tard ? (o.tard.S || S) : S;
       let complet = true;
       for (let i = 0; i < K2t; i++) {
-        if (maintenant() >= fin) { complet = false; break; }
+        if (maintenant() >= finTard) { complet = false; break; }
         const c = candidats[i];
         c.v3 = gainImmediat(c, etat) + valeur3(c.grid, monte(c), ncoups, St, K3t);
       }
