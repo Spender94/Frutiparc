@@ -75,7 +75,13 @@ test('le prix d’une étoile suit le moment : nul en crise, triple au calme, r�
   assert.match(BOT, /function prixDefense\(state, hMax\) \{/);
   assert.match(BOT, /if \(state\.stars >= E\.MAX_POWER\) return 0;/);
   assert.match(BOT, /if \(hMax >= 12\) return 0;/);
-  assert.match(BOT, /if \(state\.stars - cout < cout && hMax < 11\) prix \+= WEIGHTS\.reserve;/);
+  // La réserve, hors crise — et seulement pour les pouvoirs dont une banque
+  // de six peut garder DEUX défenses : le Colorant (4★) et le Ramollissement
+  // (5★) ne la paient jamais, elle les interdisait hors crise pour rien.
+  assert.match(BOT, /if \(state\.stars - cout < cout && hMax < 11 && 2 \* cout <= E\.MAX_POWER\) prix \+= WEIGHTS\.reserve;/);
+  // La prévention, pouvoir par pouvoir, dans la zone 9–11 seulement.
+  assert.match(BOT, /if \(hMax >= 9\) \{\s*\n\s*const f = WEIGHTS\.prevention\[E\.DEFENSE_PLAYERS\[state\.charId\]\];\s*\n\s*if \(f !== undefined\) prix \*= f;/);
+  assert.match(BOT, /prevention: \{ 1: 0\.5 \},/, 'le Glissement de Wasabi, à moitié prix, et lui seul');
   // Et c'est bien ce prix-là que l'analyseur paie — plus le prix fixe.
   assert.match(ANALYSE, /const prix = B\.prixDefense\(etat, etat\.hMax\);/);
   assert.match(ANALYSE, /if \(c\.type === 'defend'\) g -= c\.prix \|\| 0;/);
