@@ -215,8 +215,8 @@ test('garnir à nouveau retire les dix précédents et en pose dix autres', asyn
 });
 
 test('un accessoire acheté reste acquis après son retrait du rayon', async () => {
-  // Le joueur achète l'un des dix du moment (un compte neuf a 60 kikooz, le
-  // prix d'un accessoire — le premier achat d'un Frutiz, en somme).
+  // Le joueur achète l'un des dix du moment — le premier achat d'un Frutiz,
+  // que sa dotation d'inscription (KIKOOZ_INSCRIPTION) couvre largement.
   const sid = await sidPour('achat' + RUN);
   const enRayon = vitrineDe(await catalogue()).filter((p) => !p.disabled);
   const cible = enRayon[0];

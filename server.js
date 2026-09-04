@@ -2920,11 +2920,23 @@ async function getKikoozLeaderboard() {
 loadScores();
 loadChallengeMedals();
 
+/*
+ * LA DOTATION D'INSCRIPTION.
+ *
+ * Un Frutiz neuf arrivait avec 60 kikooz — le prix d'UN accessoire, et rien
+ * d'autre : sa première visite à la boutique était aussi sa dernière avant
+ * longtemps. On monte la mise à 200, de quoi s'habiller et se tromper. La
+ * valeur vit aussi comme DÉFAUT DE COLONNE en base (db.js, `users.kikooz`),
+ * car `createUser` laisse la base la poser ; les deux doivent rester d'accord.
+ * Les comptes déjà créés gardent leur solde : seul le nouveau venu est servi.
+ */
+const KIKOOZ_INSCRIPTION = 200;
+
 function createDefaultUser(pass) {
   return {
     pass,
     xp: 1,
-    kikooz: 60,
+    kikooz: KIKOOZ_INSCRIPTION,
     fbouille: DEFAULT_BOUILLE_STATE,
     items: [],
     gameItems: [],
@@ -17861,9 +17873,18 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     const defaultAccNodes = DEFAULT_ACCESSORIES
       .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${bouillePrefix}${acc.suffix}</e>`)
       .join('');
+    // `v="1"` : la boutique REPREND cet accessoire (double-clic dans la
+    // fenêtre « Inventaire » du bureau, comme dans la grille du mobile). Elle
+    // seule sait lesquels — un accessoire d'époque, un cadeau de rôle ou un
+    // article d'une rubrique offerte ne se revendent pas. Un attribut de plus
+    // sur le nœud : le SWF d'époque ignore ce qu'il ne connaît pas.
     const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
       .filter((acc) => !getAccessoryWallpaper(acc))
-      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
+      .map((acc) => {
+        const vendable = acc.shopId && accessoireRevendable(user, getShopPack(acc.shopId)) ? ' v="1"' : '';
+        return `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0"${vendable}>`
+          + `${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`;
+      })
       .join('');
     return res.type('text/xml').send(`<f u="inv_accessories">${defaultAccNodes}${customAccNodes}</f>`);
   }
@@ -18995,9 +19016,20 @@ app.get('/api/forum/me', (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.json({ user: null });
   const u = users[username] || {};
+  // `shopId` et `revendable` : l'inventaire du light rend un accessoire à la
+  // boutique d'un double-clic (voir /api/light/shop/vendre), et il lui faut
+  // pour cela l'ARTICLE derrière la ligne — un accessoire d'époque, un fond ou
+  // un cadeau de rôle n'en ont pas, et ne se revendent donc pas.
   const accessories = (u.customAccessories || [])
     .filter(a => a && !a.v?.startsWith('wp:'))
-    .map(a => ({ id: a.id, name: a.n, value: a.v }));
+    .map(a => {
+      const e = { id: a.id, name: a.n, value: a.v };
+      if (a.shopId) {
+        e.shopId = a.shopId;
+        if (accessoireRevendable(u, getShopPack(a.shopId))) e.revendable = true;
+      }
+      return e;
+    });
   const defaults = [
     { id: 'bananocle', name: 'Bananocle', suffix: '6010k0w0g' },
     { id: 'beaute',    name: 'Beauté',    suffix: 'b000k0w0g' },
@@ -22059,9 +22091,6 @@ app.get('/api/light/shop', (req, res) => {
     // Un accessoire maison dit qui l'a dessiné ; la fiche l'écrit.
     if (p.auteur) a.auteur = String(p.auteur);
     if (estPackMaison(p)) a.maison = true;
-    // Un accessoire qu'on possède se REVEND (double-clic sur l'article) ; pas
-    // un fond, un feutre, un pass ni une option de jeu.
-    if (a.owned && !offert && a.kind === 'accessoire' && !p.fdPassGame) a.revendable = true;
     if (wp) a.wallpaper = wp.url.startsWith('/') ? wp.url : '/' + wp.url;
     if (feutre) a.feutre = Number(feutre[1]);
     else if (p.picto) a.picto = BOUTIQUE_PICTO_IMG(p.picto);

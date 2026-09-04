@@ -104,6 +104,12 @@ const vendre = async (sid, id) => (await fetch(BASE + '/api/light/shop/vendre', 
   method: 'POST', headers: HDR, body: JSON.stringify({ sid, id }) })).json();
 const acheter = async (sid, id) => (await fetch(BASE + '/api/light/shop/buy', {
   method: 'POST', headers: HDR, body: JSON.stringify({ sid, id }) })).json();
+// L'INVENTAIRE — c'est de là qu'on revend, pas de la boutique. Le mobile le lit
+// par /api/forum/me (`shopId` désigne l'article, `revendable` dit que la
+// boutique le reprend) ; le bureau par /ff/ls, où le même fait s'écrit v="1".
+const inventaire = async (sid) => (await (await fetch(`${BASE}/api/forum/me?sid=${sid}`)).json()).accessories;
+const invLigne = async (sid, id) => (await inventaire(sid)).find((a) => Number(a.shopId) === Number(id));
+const invXml = async (sid) => (await fetch(`${BASE}/ff/ls?sid=${sid}&uid=inv_accessories`)).text();
 
 const PACK = 700900;
 const CREATEUR = 'artiste' + RUN, ACHETEUR = 'client' + RUN, OFFERT = 'cadeau' + RUN;
@@ -148,10 +154,15 @@ test('à l’achat, l’auteur touche dix pour cent', async (t) => {
   const h = await historique(S.createur);
   assert.ok(h.some((e) => e.text === `10 kikooz obtenus par la vente de "Béret d’essai" à ${ACHETEUR}.`),
     'dans son historique, du côté des kikooz reçus : ' + JSON.stringify(h.map((e) => e.text)));
-  // L'acheteur possède l'article : la boutique le dit revendable.
+  // L'acheteur possède l'article : la boutique le dit acquis, et c'est son
+  // INVENTAIRE qui porte la reprise — les deux clients, chacun dans sa langue.
   const art = rayon(await boutique(S.acheteur), 'Accessoires maison').items.find((it) => it.id === PACK);
   assert.equal(art.owned, true);
-  assert.equal(art.revendable, true);
+  assert.ok(!('revendable' in art), 'la boutique ne propose plus la revente : c’est l’inventaire qui la porte');
+  const ligne = await invLigne(S.acheteur, PACK);
+  assert.equal(ligne.revendable, true, 'dans l’inventaire du mobile');
+  assert.match(await invXml(S.acheteur), new RegExp(`<e u="shop_${PACK}" t="bouille" s="10" d="0" a="0" v="1">`),
+    'et dans celui du bureau');
 });
 
 test('revendre un accessoire acheté rend la moitié du prix payé, et l’exemplaire s’en va', async (t) => {
@@ -170,7 +181,8 @@ test('revendre un accessoire acheté rend la moitié du prix payé, et l’exemp
   assert.equal(d.kikooz, 450);
   const art = rayon(d, 'Accessoires maison').items.find((it) => it.id === PACK);
   assert.equal(art.owned, false, 'l’article n’est plus possédé');
-  assert.ok(!art.revendable);
+  assert.equal(await invLigne(S.acheteur, PACK), undefined, 'et il a quitté l’inventaire');
+  assert.doesNotMatch(await invXml(S.acheteur), new RegExp(`u="shop_${PACK}"`), 'y compris pour le bureau');
   assert.ok((await historique(S.acheteur)).some((e) => e.text === '50 kikooz obtenus par la revente de "Béret d’essai".'));
   // On ne vend pas ce qu'on n'a plus.
   const encore = await vendre(S.acheteur, PACK);
@@ -201,10 +213,13 @@ test('un accessoire offert se revend trente kikooz', async (t) => {
   for (const nom of ['Pass', 'Packs', "Fonds d'écran", 'Feutres']) {
     const rub = rayon(d, nom);
     if (!rub) continue;
-    for (const it of rub.items) assert.ok(!it.revendable, `${it.name} ne se revend pas`);
     const refus = await vendre(S.acheteur, rub.items[0].id);
     assert.equal(refus.ok, false, nom + ' : refusé');
   }
+  // Un accessoire d'ÉPOQUE (celui de tout le monde, sans article derrière) n'a
+  // pas de ligne d'inventaire à rendre : rien à revendre non plus.
+  const xml = await invXml(S.acheteur);
+  assert.match(xml, /<e u="bananocle" t="bouille" s="10" d="0" a="0">/, 'les accessoires d’époque restent nus');
 });
 
 test('l’auteur ne se paie pas lui-même, et un article sans auteur ne verse rien', async (t) => {
@@ -271,18 +286,27 @@ test('remplacer le SVG d’une variante garde son index ; purger efface les reti
 test('le double-clic, la popin et l’admin sont branchés dans les pages', () => {
   const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   const ADMIN = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');
-  // Le double-clic sur l'article possédé, dans l'arbre et sur l'aperçu.
-  assert.match(LIGHT, /if \(art && art\.revendable\) b\.addEventListener\("dblclick", function \(\) \{ proposerRevente\(art\); \}\);/);
-  assert.match(LIGHT, /var vue = it\.revendable && box\.querySelector\("\.bo-vue \.cadre"\);\s*\n\s*if \(vue\) vue\.addEventListener\("dblclick", function \(\) \{ proposerRevente\(it\); \}\);/);
+  const BUREAU = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.js'), 'utf8');
+  // ON REVEND DEPUIS SON INVENTAIRE, pas depuis la boutique : le double-clic
+  // est sur la vignette de la grille, et sur la case de la fenêtre du bureau.
+  assert.match(LIGHT, /if \(ac\.revendable\) \{[\s\S]{0,200}item\.addEventListener\("dblclick", function \(\) \{ revendreAccessoire\(ac\); \}\);/);
+  assert.match(BUREAU, /faireDouble: e\.vendable \? function \(\) \{ revendreAccessoire\(e\.uid, nomDe\(e\), e\.desc\[1\]\); \} : null,/);
+  assert.match(BUREAU, /if \(opts\.faireDouble\) d\.addEventListener\('dblclick', opts\.faireDouble\);/);
+  assert.match(BUREAU, /vendable: n\.getAttribute\('v'\) === '1',/);
+  // Et la boutique ne s'en mêle plus.
+  assert.doesNotMatch(LIGHT, /proposerRevente/);
+  assert.doesNotMatch(LIGHT, /bo-revente/);
   // La question, dans la popin d'époque, Oui à droite, Non à gauche.
-  const p = /function proposerRevente\(it\) \{[\s\S]*?\n  \}/.exec(LIGHT)[0];
-  assert.match(p, /message: 'Voulez-vous vendre "' \+ xmlEscape\(it\.name\) \+ '" pour ' \+ \(Number\(o\.prix\) \|\| 0\) \+ ' kikooz \?',/);
+  const p = /function revendreAccessoire\(ac\) \{[\s\S]*?\n  \}/.exec(LIGHT)[0];
+  assert.match(p, /message: 'Voulez-vous vendre "' \+ xmlEscape\(nom\) \+ '" pour ' \+ \(Number\(o\.prix\) \|\| 0\) \+ ' kikooz \?',/);
   assert.match(p, /okLabel: "Oui",\s*\n\s*cancelLabel: "Non",/);
   assert.match(p, /"\/api\/light\/shop\/revente\?sid="/);
   assert.match(p, /fetch\("\/api\/light\/shop\/vendre", \{/);
-  // La fiche garde la phrase d'époque, et dit le geste en dessous.
+  // Le premier clic du double-clic vient peut-être de POSER l'accessoire : on
+  // se découvre aussi côté client, sans attendre que le serveur l'ait vu.
+  assert.match(p, /if \(d\.bouille \|\| accSel\.suffix === ac\.suffix\) \{/);
+  // La fiche de la boutique garde la phrase d'époque, et la signature.
   assert.match(LIGHT, /\(achetable \? 'Prix : ' \+ prix \+ ' kikooz' : 'Vous possédez déjà ce produit'\)/);
-  assert.match(LIGHT, /Double-clic sur l’article pour le revendre à la boutique\./);
   assert.match(LIGHT, /'<div class="bo-auteur">Dessiné par ' \+ xmlEscape\(it\.auteur\) \+ '<\/div>'/);
   // L'admin : l'auteur d'un article et d'une variante, le remplacement, la purge.
   assert.match(ADMIN, /<input id="pack-auteur"/);

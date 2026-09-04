@@ -44,7 +44,7 @@ async function initSchema() {
         username         TEXT UNIQUE NOT NULL,
         password         TEXT NOT NULL,
         xp               INTEGER DEFAULT 1,
-        kikooz           INTEGER DEFAULT 60,
+        kikooz           INTEGER DEFAULT 200,
         fbouille         TEXT DEFAULT '000000010000000000000000',
         gender           TEXT DEFAULT 'M',
         birthday         DATE DEFAULT '1990-05-15',
@@ -70,7 +70,11 @@ async function initSchema() {
       -- Profile columns added after initial schema
       DO $$ BEGIN
         ALTER TABLE users ALTER COLUMN xp SET DEFAULT 1;
-        ALTER TABLE users ALTER COLUMN kikooz SET DEFAULT 60;
+        -- La dotation d'inscription (server.js, KIKOOZ_INSCRIPTION) : c'est la
+        -- base qui la pose, createUser ne cite pas la colonne. Les comptes
+        -- déjà créés gardent leur solde — un DEFAULT ne touche que les
+        -- insertions à venir.
+        ALTER TABLE users ALTER COLUMN kikooz SET DEFAULT 200;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name_public TEXT DEFAULT 'Y';

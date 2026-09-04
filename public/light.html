@@ -235,6 +235,13 @@
     font-size: 10px; color: #2C4A0F; margin-top: 4px; font-weight: bold;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  /* Un accessoire ACHETÉ se rend à la boutique d'un double-clic : sa vignette
+     porte le kikooz, discret dans le coin, pour que le geste se devine. */
+  .acc-item.vendable .thumb::before {
+    content: ""; position: absolute; right: 2px; top: 2px; z-index: 2;
+    width: 12px; height: 12px; opacity: .75;
+    background: url("/fb/icone_kikooz.svg") center/contain no-repeat;
+  }
 
   /* ── Le bureau mobile sous un fond d'écran ───────────────────────────────
      Le bureau teinte le TEXTE de ses étiquettes avec la 2ᵉ couleur de
@@ -445,9 +452,8 @@
   .bo-accroche { font-size: 12px; font-weight: bold; color: #335511; margin-top: 7px; line-height: 1.35; }
   .bo-texte { font-size: 12px; color: #335511; margin-top: 6px; line-height: 1.4; }
   .bo-prix { font-size: 12.5px; font-weight: bold; color: #335511; margin-top: 8px; }
-  /* La signature d'un accessoire maison, et l'invitation à le revendre. */
+  /* La signature d'un accessoire maison. */
   .bo-auteur { font-size: 11px; color: #6f8a45; margin-top: 2px; }
-  .bo-revente { font-size: 11px; color: #6f8a45; margin-top: 4px; font-style: italic; }
   .bo-acheter {
     display: block; width: 100%; margin-top: 6px; padding: 3px 0;
     border: 1px solid #ADE76B; border-radius: 999px;
@@ -5135,67 +5141,7 @@
         }
         renderShopRubriques(); renderShopFiche();
       });
-      // Un accessoire POSSÉDÉ se revend au double-clic (cf. proposerRevente).
-      if (b.hasAttribute("data-a")) {
-        var art = (shopCategories[Number(b.getAttribute("data-r")) || 0] || {}).items;
-        art = art ? art[Number(b.getAttribute("data-a")) || 0] : null;
-        if (art && art.revendable) b.addEventListener("dblclick", function () { proposerRevente(art); });
-      }
     });
-  }
-
-  /*
-   * REVENDRE UN ACCESSOIRE — double-clic sur un article qu'on possède, dans
-   * l'arbre ou sur l'aperçu de sa fiche. La boutique dit d'abord ce qu'elle en
-   * donne (la moitié du prix payé, ou trente kikooz pour un accessoire reçu),
-   * on répond Oui ou Non dans la popin d'époque ; sur Oui l'exemplaire quitte
-   * l'inventaire et les kikooz arrivent. S'il était sur la tête, elle se
-   * découvre.
-   */
-  function proposerRevente(it) {
-    if (!it || !it.revendable) return;
-    fetch("/api/light/shop/revente?sid=" + encodeURIComponent(state.sid) + "&id=" + encodeURIComponent(it.id), { cache: "no-store" })
-      .then(function (r) { return r.json(); })
-      .then(function (o) {
-        if (!o || !o.ok) { boEtat((o && o.error) || "Revente impossible.", "err"); return null; }
-        return frutiConfirm({
-          title: "Boutique",
-          icon: "/fb/icone_kikooz.svg",
-          message: 'Voulez-vous vendre "' + xmlEscape(it.name) + '" pour ' + (Number(o.prix) || 0) + ' kikooz ?',
-          okLabel: "Oui",
-          cancelLabel: "Non",
-        }).then(function (ok) {
-          if (!ok) return null;
-          return fetch("/api/light/shop/vendre", {
-            method: "POST", cache: "no-store",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sid: state.sid, id: it.id }),
-          }).then(function (r) { return r.json(); }).then(function (d) {
-            if (!d || !d.ok) {
-              if (d && d.kikooz !== undefined) setKikoozSolde(d.kikooz);
-              boEtat((d && d.error) || "Revente impossible.", "err");
-              return null;
-            }
-            setKikoozSolde(d.kikooz);
-            it.owned = false; it.revendable = false;
-            // Il le portait : la tête se découvre, ici comme sur l'accueil.
-            if (d.bouille) {
-              var suffixe = String(homeProfile.bouille || "").split("|")[1];
-              var nouv = d.bouille + (suffixe ? "|" + suffixe : "");
-              if (state.bouilleByUser) state.bouilleByUser[state.userLower] = nouv;
-              homeProfile.bouille = nouv;
-              if (!isIncarnation(d.bouille)) myBase = d.bouille;
-              if (typeof refreshHomeAvatar === "function") refreshHomeAvatar();
-            }
-            renderShop();
-            boEtat("✓ « " + it.name + " » vendu pour " + (Number(d.prix) || 0) + " kikooz.", "ok");
-            // L'inventaire se relira : l'exemplaire n'y est plus.
-            if (typeof chargerInventaire === "function") { try { chargerInventaire(true); } catch (e) { /* pas encore ouvert */ } }
-            return null;
-          });
-        });
-      })
-      .catch(function () { boEtat("Erreur réseau, réessaie.", "err"); });
   }
 
   // L'aperçu d'un article, selon son espèce.
@@ -5261,9 +5207,6 @@
       + '<div class="bo-prix">'
       + (achetable ? 'Prix : ' + prix + ' kikooz' : 'Vous possédez déjà ce produit')
       + '</div>'
-      + (it.revendable
-        ? '<div class="bo-revente">Double-clic sur l’article pour le revendre à la boutique.</div>'
-        : '')
       + (it.pass
         ? '<div class="bo-etat">Tu en possèdes ' + it.pass.possede
           + ' → ' + it.pass.parJour + ' parties par jour.</div>'
@@ -5273,9 +5216,6 @@
     brancherApercus(box);
     var b = $("#bo-acheter");
     if (b) b.addEventListener("click", function () { buyShopItem(b); });
-    // L'aperçu d'un accessoire possédé se double-clique aussi.
-    var vue = it.revendable && box.querySelector(".bo-vue .cadre");
-    if (vue) vue.addEventListener("dblclick", function () { proposerRevente(it); });
   }
 
   function renderShop() { renderShopRubriques(); renderShopFiche(); }
@@ -11305,15 +11245,18 @@
           accList.push({ name: def.name, suffix: sfx, fullState: null });
         });
         if (!seen["000000000"]) accList.unshift({ name: "Normal", suffix: "000000000", fullState: null });
-        // Owned accessories (value = full 24-char bouille).
+        // Owned accessories (value = full 24-char bouille). `shopId` désigne
+        // l'ARTICLE de boutique derrière la ligne : c'est lui qui se revend
+        // (cf. revendreAccessoire) — un accessoire d'époque n'en a pas.
         (d && d.accessories || []).forEach(function (a) {
           if (!a.value || a.value.length !== 24) return;
+          var achat = { shopId: a.shopId || null, revendable: !!a.revendable };
           if (isIncarnation(a.value)) {
             var k = "inc:" + a.value;
-            if (!seen[k]) { seen[k] = true; accList.push({ name: a.name, suffix: a.value.substring(15, 24), fullState: a.value }); }
+            if (!seen[k]) { seen[k] = true; accList.push({ name: a.name, suffix: a.value.substring(15, 24), fullState: a.value, shopId: achat.shopId, revendable: achat.revendable }); }
           } else {
             var sfx2 = a.value.substring(15, 24);
-            if (!seen[sfx2]) { seen[sfx2] = true; accList.push({ name: a.name, suffix: sfx2, fullState: null }); }
+            if (!seen[sfx2]) { seen[sfx2] = true; accList.push({ name: a.name, suffix: sfx2, fullState: null, shopId: achat.shopId, revendable: achat.revendable }); }
           }
         });
         // Mark the current selection from the saved bouille.
@@ -11471,14 +11414,104 @@
   function renderAccGrid() {
     var grid = $("#bouille-acc-grid");
     grid.innerHTML = "";
+    var revendables = 0;
     accList.forEach(function (ac, i) {
       var st = ac.fullState ? ac.fullState : buildState(myBase, ac.suffix, null);
-      var item = el("div", "acc-item" + (isAccSelected(ac) ? " sel" : ""));
+      var item = el("div", "acc-item" + (isAccSelected(ac) ? " sel" : "") + (ac.revendable ? " vendable" : ""));
       item.innerHTML = '<div class="thumb">' + previewIframe(st) + '</div><div class="lbl">' + (ac.name || "Accessoire") + '</div>';
       item.addEventListener("click", function () { pickAccessory(i); });
+      // ON REVEND DEPUIS SON INVENTAIRE, pas depuis la boutique : c'est ici
+      // qu'on a ses affaires sous les yeux. Un clic les porte, un DOUBLE-clic
+      // les rend au magasin (voir revendreAccessoire).
+      if (ac.revendable) {
+        revendables++;
+        item.title = "Double-clic pour revendre « " + (ac.name || "Accessoire") + " »";
+        item.addEventListener("dblclick", function () { revendreAccessoire(ac); });
+      }
       grid.appendChild(item);
     });
+    var hint = $("#bouille-sheet-hint");
+    if (hint && !hint._garde) {
+      hint.textContent = revendables
+        ? "Clique pour porter un accessoire, double-clique pour le revendre."
+        : "Choisis un accessoire de ton inventaire :";
+    }
     brancherApercus(grid);
+  }
+
+  // Un mot dans le bandeau de la feuille, le temps qu'on le lise (le prochain
+  // rendu de la grille le laisse en place, puis reprend la main).
+  function invEtat(msg) {
+    var hint = $("#bouille-sheet-hint");
+    if (!hint) return;
+    hint.textContent = msg;
+    hint._garde = true;
+    clearTimeout(hint._minuteur);
+    hint._minuteur = setTimeout(function () { hint._garde = false; renderAccGrid(); }, 6000);
+  }
+
+  /*
+   * REVENDRE UN ACCESSOIRE — double-clic dans l'inventaire.
+   *
+   * La boutique dit d'abord ce qu'elle en donne (la moitié du prix payé, ou
+   * trente kikooz pour un accessoire reçu), on répond Oui ou Non dans la popin
+   * d'époque ; sur Oui l'exemplaire quitte l'inventaire et les kikooz
+   * arrivent. S'il était sur la tête, elle se découvre.
+   */
+  function revendreAccessoire(ac) {
+    if (!ac || !ac.revendable || !ac.shopId) return;
+    var nom = ac.name || "Accessoire";
+    return fetch("/api/light/shop/revente?sid=" + encodeURIComponent(state.sid) + "&id=" + encodeURIComponent(ac.shopId), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (o) {
+        if (!o || !o.ok) { invEtat((o && o.error) || "Cet accessoire ne se revend pas."); return null; }
+        return frutiConfirm({
+          title: "Boutique",
+          icon: "/fb/icone_kikooz.svg",
+          message: 'Voulez-vous vendre "' + xmlEscape(nom) + '" pour ' + (Number(o.prix) || 0) + ' kikooz ?',
+          okLabel: "Oui",
+          cancelLabel: "Non",
+        }).then(function (ok) {
+          if (!ok) return null;
+          return fetch("/api/light/shop/vendre", {
+            method: "POST", cache: "no-store",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sid: state.sid, id: ac.shopId }),
+          }).then(function (r) { return r.json(); }).then(function (d) {
+            if (!d || !d.ok) {
+              if (d && d.kikooz !== undefined) setKikoozSolde(d.kikooz);
+              invEtat((d && d.error) || "Revente impossible.");
+              return null;
+            }
+            setKikoozSolde(d.kikooz);
+            /*
+             * IL NE LE PORTE PLUS. Le serveur découvre la tête s'il voyait
+             * l'accessoire dessus (`d.bouille`) — mais le premier clic du
+             * DOUBLE-clic vient peut-être de le poser, et cet enregistrement-là
+             * peut arriver après la vente. On tranche donc aussi côté client :
+             * si la sélection courante porte ce suffixe, on repasse à « Rien »
+             * et on le fait savoir, sans quoi on garderait sur la tête un
+             * accessoire qu'on ne possède plus.
+             */
+            if (d.bouille || accSel.suffix === ac.suffix) {
+              var nu = d.bouille || buildState(myBase, "000000000", null);
+              if (!isIncarnation(nu)) myBase = nu;
+              accSel = { suffix: nu.substring(15, 24), fullState: null };
+              porterEtat(nu);
+            }
+            // L'inventaire se relit : l'exemplaire n'y est plus. La boutique
+            // aussi, si elle est ouverte — l'article y redevient achetable —
+            // et les fenêtres du bureau, qui listent le même dossier.
+            loadAccessories(function () {
+              invEtat("✓ « " + nom + " » vendu pour " + (Number(d.prix) || 0) + " kikooz.");
+            });
+            if (shopCategories.length) loadShop();
+            if (window.BureauFrutiz && BureauFrutiz.relireExplorateurs) BureauFrutiz.relireExplorateurs();
+            return null;
+          });
+        });
+      })
+      .catch(function () { invEtat("Erreur réseau, réessaie."); });
   }
   function updateSheetPreview() {
     var st = buildState(myBase, accSel.suffix, accSel.fullState);
@@ -11489,27 +11522,35 @@
     $("#bouille-sheet-preview").innerHTML = previewIframe(st);
     brancherApercus($("#bouille-sheet-preview"));
   }
-  function pickAccessory(i) {
-    var ac = accList[i]; if (!ac) return;
-    accSel = { suffix: ac.suffix, fullState: ac.fullState || null };
-    var newState = buildState(myBase, accSel.suffix, accSel.fullState);
-    // Update locally first so the UI reacts instantly.
+  /*
+   * PORTER UN ÉTAT DE BOUILLE — l'affichage d'abord, l'enregistrement ensuite.
+   *
+   * Persist over the open WebSocket via the fbouille command : le serveur
+   * l'enregistre ET diffuse une trace pour que les autres voient la nouvelle
+   * bouille en direct. On retombe sur la route HTTP de l'éditeur si la socket
+   * n'est pas prête. Trois gestes y passent : choisir un accessoire, en poser
+   * un depuis le bureau, et se découvrir après une revente.
+   */
+  function porterEtat(newState) {
     state.bouilleByUser[state.userLower] = newState;
     homeProfile.bouille = newState;
-    refreshHomeAvatar(); // l'avatar de l'accueil suit le nouvel accessoire
+    refreshHomeAvatar();      // l'avatar de l'accueil suit le nouvel accessoire
     renderAccGrid();
     updateSheetPreview();
-    var hint = $("#bouille-sheet-hint");
-    if (hint) { hint.textContent = "✓ " + (ac.name || "Accessoire") + " appliqué !"; }
-    // Persist over the open WebSocket via the fbouille command — the server
-    // saves it AND broadcasts a trace so peers see the new bouille live. Falls
-    // back to the HTTP editor endpoint if the socket isn't ready.
     if (state.ws && state.ws.readyState === 1) {
       wsSend('<ae f="' + xmlEscape(newState) + '" />');
     } else {
       fetch("/do/eb?sid=" + encodeURIComponent(state.sid) + "&b=" + encodeURIComponent(newState), { cache: "no-store" })
         .catch(function () {});
     }
+  }
+
+  function pickAccessory(i) {
+    var ac = accList[i]; if (!ac) return;
+    accSel = { suffix: ac.suffix, fullState: ac.fullState || null };
+    porterEtat(buildState(myBase, accSel.suffix, accSel.fullState));
+    var hint = $("#bouille-sheet-hint");
+    if (hint) { hint.textContent = "✓ " + (ac.name || "Accessoire") + " appliqué !"; }
   }
 
   // LE PONT DE L'INVENTAIRE POUR LE BUREAU.
@@ -11529,22 +11570,28 @@
         ? { suffix: s.substring(15, 24), fullState: s }
         : { suffix: s.substring(15, 24), fullState: null };
       if (!isIncarnation(s)) myBase = s;
-      var newState = buildState(myBase, accSel.suffix, accSel.fullState);
-      state.bouilleByUser[state.userLower] = newState;
-      homeProfile.bouille = newState;
-      refreshHomeAvatar();
-      renderAccGrid();
-      updateSheetPreview();
-      if (state.ws && state.ws.readyState === 1) {
-        wsSend('<ae f="' + xmlEscape(newState) + '" />');
-      } else {
-        fetch("/do/eb?sid=" + encodeURIComponent(state.sid) + "&b=" + encodeURIComponent(newState), { cache: "no-store" })
-          .catch(function () {});
-      }
+      porterEtat(buildState(myBase, accSel.suffix, accSel.fullState));
     },
     // `wallPaper.loadWP(...)` : le fond se pose ET se retient. Un identifiant
     // vide, c'est le retour au thème d'origine.
     poserFond: function (id) { poserFond(id || ""); },
+    /*
+     * RENDRE UN ACCESSOIRE À LA BOUTIQUE, depuis la fenêtre « Inventaire » du
+     * bureau : elle liste les mêmes lignes que la grille du mobile, sous leur
+     * identifiant d'inventaire (`shop_<article>`, que /ff/ls marque `v="1"`
+     * quand la boutique le reprend), et le double-clic y fait la même chose
+     * qu'ici. L'état porté sert à savoir si la tête doit se découvrir.
+     */
+    revendre: function (uid, nom, etat) {
+      var id = /^shop_(\d+)$/.exec(String(uid || ""));
+      if (!id) return false;
+      var s = String(etat || "").replace(/[^0-9A-Za-z]/g, "");
+      revendreAccessoire({
+        shopId: Number(id[1]), name: nom || "Accessoire", revendable: true,
+        suffix: s.length === 24 ? s.substring(15, 24) : null,
+      });
+      return true;
+    },
   };
 
   /* ══════════════════════════════════════════════════════════════════════════

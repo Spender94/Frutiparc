@@ -1621,6 +1621,9 @@ window.BureauFrutiz = (function () {
     } else {
       d.classList.add('inerte');
     }
+    // Un second geste sur la même case (la revente d'un accessoire) : le clic
+    // simple garde son sens, le double en ajoute un.
+    if (opts.faireDouble) d.addEventListener('dblclick', opts.faireDouble);
     if (opts.dessin) d.appendChild(opts.dessin);
     if (opts.nom !== undefined) {
       var l = document.createElement('span');
@@ -1909,6 +1912,10 @@ window.BureauFrutiz = (function () {
         out.push({
           uid: n.getAttribute('u') || '',
           type: n.getAttribute('t') || 'default',
+          // `v="1"` : un accessoire que la boutique REPREND (elle seule le
+          // sait — prix payé, cadeau, rubrique). Attribut ajouté par le
+          // revival ; le SWF d'époque ignore ce qu'il ne connaît pas.
+          vendable: n.getAttribute('v') === '1',
           desc: String(n.textContent || '').split(/\r\n|\r|\n/),
         });
       } else if (n.nodeName === 'f') {
@@ -2136,10 +2143,15 @@ window.BureauFrutiz = (function () {
       });
     }
     if (e.type === 'bouille') {
+      // Un accessoire ACHETÉ se rend à la boutique d'un DOUBLE-clic, ici comme
+      // dans la grille du mobile : c'est l'inventaire qu'on regarde quand on
+      // décide de se séparer de quelque chose, pas le rayon du magasin.
       return caseExplorateur({
         nom: nomDe(e), dessin: dessinBouille(e.desc[1]), classe: 'ex-slot-bouille',
-        titre: 'Porter « ' + nomDe(e) + ' »',
+        titre: 'Porter « ' + nomDe(e) + ' »'
+          + (e.vendable ? ' (double-clic : le revendre à la boutique)' : ''),
         faire: function () { poserAccessoire(nomDe(e), e.desc[1]); },
+        faireDouble: e.vendable ? function () { revendreAccessoire(e.uid, nomDe(e), e.desc[1]); } : null,
       });
     }
     if (e.type === 'wallpaper') {
@@ -2340,6 +2352,11 @@ window.BureauFrutiz = (function () {
   }
   function poserFondInventaire(id) {
     if (window.InventaireBureau && InventaireBureau.poserFond) InventaireBureau.poserFond(id);
+  }
+  // Rendre un accessoire à la boutique : le light tient la question (« Voulez-
+  // vous vendre … ? ») et l'échange, comme pour l'achat.
+  function revendreAccessoire(uid, nom, etat) {
+    if (window.InventaireBureau && InventaireBureau.revendre) InventaireBureau.revendre(uid, nom, etat);
   }
 
   /* ══════════════════════════════════════════════════════════════════════════
@@ -8522,6 +8539,9 @@ window.BureauFrutiz = (function () {
     // liste noire — la même fenêtre jaune, quatre dossiers de départ.
     ouvrirDisques: function () { ouvrirExplorateur('disques'); },
     ouvrirInventaire: function () { ouvrirExplorateur('inventaire'); },
+    // Ce que le light change dans les dossiers (une revente, par exemple) doit
+    // se voir dans les fenêtres ouvertes : elles se relisent.
+    relireExplorateurs: relireExplorateurs,
     ouvrirContacts: function () { ouvrirExplorateur('contacts'); },
     ouvrirListeNoire: function () { ouvrirExplorateur('noire'); },
     ouvrirCorbeille: function () { ouvrirExplorateur('corbeille'); },
