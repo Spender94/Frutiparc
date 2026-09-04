@@ -992,6 +992,19 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
       </div>
     </div>
   </div>
+  <h4>🎂 Les anniversaires du jour</h4>
+  <div style="font-size:11px;color:#5a8030;margin:8px 10px;padding:6px 8px;background:#D6F7B5;border-radius:4px">
+    Chaque matin à <b>9 h</b> (heure de Paris), le site annonce tout seul les frutiz qui fêtent
+    leur anniversaire — un événement comme les autres. Les deux dates <b>posées par défaut</b>
+    (15 mai 1990 à l'inscription, 1<sup>er</sup> janvier 2000 pour un profil jamais rempli) sont
+    exclues : sans quoi ce sont des centaines de comptes qu'on fêterait le même matin.
+  </div>
+  <div class="toolbar">
+    <button class="btn" onclick="loadAnniversaires()">Rafraîchir</button>
+    <button class="btn-success" onclick="annoncerAnniversaires()">Annoncer maintenant</button>
+    <span id="anniv-etat" style="font-size:12px;color:#2C4A0F"></span>
+  </div>
+
   <h4>Événements poussés</h4>
   <div style="font-size:11px;color:#5a8030;margin:8px 10px;padding:6px 8px;background:#D6F7B5;border-radius:4px">
     La suppression retire l'événement du <code>siteLog</code> serveur de tous les joueurs.
@@ -1422,7 +1435,7 @@ function switchTab(name) {
   if (name === 'wallpapers') loadWallpapers();
   if (name === 'custompictos') loadCustomPictos();
   if (name === 'challenge') loadChallengeStatus();
-  if (name === 'events') loadEvents();
+  if (name === 'events') { loadEvents(); loadAnniversaires(); }
   if (name === 'channels') loadChannels();
   if (name === 'gaspard') loadGaspardTopics();
   if (name === 'banwords') loadBanWords();
@@ -5264,6 +5277,30 @@ async function sendBroadcast() {
     $('#evt-message').value = '';
     loadEvents();
   } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+/*
+ * LES ANNIVERSAIRES DU JOUR — ce que le site dira ce matin, et de quoi le
+ * dire tout de suite (une panne à 9 h, un essai). Le serveur refuse la
+ * seconde annonce du même jour ; ce bouton, lui, passe outre.
+ */
+async function loadAnniversaires() {
+  const e = $('#anniv-etat');
+  if (!e) return;
+  try {
+    const d = await (await fetch('/api/admin/anniversaires', { headers: hdr() })).json();
+    if (!d || !d.ok) { e.textContent = 'Lecture impossible.'; return; }
+    e.innerHTML = d.noms.length
+      ? `<b>${d.noms.length}</b> frutiz fêté(s) aujourd'hui : ${esc(d.noms.join(', '))}`
+        + (d.dejaAnnonce ? ' <span style="color:#5a8030">— déjà annoncé</span>' : ' <span style="color:#888">— pas encore annoncé</span>')
+      : 'Personne ne fête son anniversaire aujourd\'hui.';
+  } catch (x) { e.textContent = 'Lecture impossible.'; }
+}
+async function annoncerAnniversaires() {
+  const d = await (await fetch('/api/admin/anniversaires/annoncer', { method: 'POST', headers: hdr() })).json();
+  toast(d && d.annonce ? `Annoncé : ${d.noms.join(', ')}` : 'Personne à fêter aujourd\'hui.');
+  loadAnniversaires();
+  loadEvents();
 }
 
 async function loadEvents() {

@@ -1619,6 +1619,47 @@ async function broadcastSiteLogToAllUsers(entryType, content) {
   );
 }
 
+/*
+ * LES ANNIVERSAIRES DU JOUR.
+ *
+ * Le mois et le quantième, pas l'année : on cherche qui souffle ses bougies
+ * aujourd'hui, pas qui est né en 1990. `exclues` porte les dates POSÉES PAR
+ * DÉFAUT (celle de l'inscription, celle du profil jamais rempli) : sans ce
+ * filtre, le site souhaiterait un bon anniversaire à des centaines de comptes
+ * le même jour, ce qui n'est pas une fête mais un spam.
+ */
+async function anniversairesDuJour(mois, jour, exclues = []) {
+  const { rows } = await pool.query(
+    `SELECT username, display_name, birthday
+       FROM users
+      WHERE birthday IS NOT NULL
+        AND EXTRACT(MONTH FROM birthday) = $1
+        AND EXTRACT(DAY   FROM birthday) = $2
+        AND (to_char(birthday, 'YYYY-MM-DD') <> ALL($3::text[]))
+      ORDER BY username`,
+    [Number(mois), Number(jour), exclues.length ? exclues : ['']]
+  );
+  return rows;
+}
+
+/*
+ * UN ÉVÉNEMENT DU SITE A-T-IL DÉJÀ ÉTÉ DIFFUSÉ AUJOURD'HUI ?
+ *
+ * La preuve durable qu'une annonce quotidienne est faite : sa ligne dans les
+ * journaux. La mémoire du serveur, elle, s'efface à chaque redémarrage — et
+ * un déploiement à midi renverrait l'annonce du matin.
+ */
+async function evenementSiteDuJour(motif, jourParis) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM user_logs
+      WHERE log_type = 'site' AND content LIKE $1
+        AND (created_at AT TIME ZONE 'Europe/Paris')::date = $2::date
+      LIMIT 1`,
+    [String(motif || ''), String(jourParis)]
+  );
+  return rows.length > 0;
+}
+
 async function addModerationLog(targetUsername, moderator, action, detail) {
   await pool.query(
     `INSERT INTO moderation_logs (target_username, moderator, action, detail) VALUES ($1, $2, $3, $4)`,
@@ -3302,6 +3343,8 @@ module.exports = {
   insertShopSale,
   bilanAchatsRevente,
   deleteAccessoryByShopId,
+  anniversairesDuJour,
+  evenementSiteDuJour,
   pool,
   initSchema,
   loadVapidKeys,

@@ -13248,14 +13248,17 @@ app.patch('/api/admin/channels/:name', adminScope('channels'), async (req, res) 
   res.json({ ok: true });
 });
 
-app.post('/api/admin/broadcast', adminAuth, (req, res) => {
-  const message = String(req.body.message || '').trim();
-  if (!message) return res.status(400).json({ ok: false, error: 'message required' });
-
-  const rawType = Number(req.body.type);
-  const type = SITE_LOG_ICONS.includes(rawType) ? rawType : 1;
-  const chatToo = req.body.chat === true || req.body.chat === 'true';
-
+/*
+ * DIFFUSER UN ÉVÉNEMENT DU SITE — la trame, la notification, l'historique.
+ *
+ * Quatre gestes en un, et il faut les quatre : la trame `newsitelog` pour les
+ * connectés, la notification poussée pour les absents, la ligne dans le
+ * `siteLog` de chacun (mémoire et base, pour ceux qui liront plus tard), et
+ * s'il le faut le cri dans tous les salons. L'admin s'en sert pour ses
+ * annonces ; les événements que le site produit tout seul — l'anniversaire du
+ * jour — passent par la même porte.
+ */
+function diffuserEvenementSite({ message, type = 1, chatToo = false }) {
   const eventId = genEventId();
   const time = nowSqlTimestamp();
 
@@ -13291,13 +13294,7 @@ app.post('/api/admin/broadcast', adminAuth, (req, res) => {
     const user = users[username];
     if (!user) continue;
     if (!Array.isArray(user.siteLog)) user.siteLog = [];
-    user.siteLog.unshift({
-      d: time,
-      t: type,
-      c: message,
-      n: 1,
-      bid: eventId,
-    });
+    user.siteLog.unshift({ d: time, t: type, c: message, n: 1, bid: eventId });
     if (user.siteLog.length > 200) user.siteLog.length = 200;
     historyCount++;
   }
@@ -13322,13 +13319,52 @@ app.post('/api/admin/broadcast', adminAuth, (req, res) => {
 
   pushedEvents.unshift({ id: eventId, message, type, time, chat: chatToo, notified, historyCount });
   if (pushedEvents.length > 200) pushedEvents.length = 200;
+  return { id: eventId, notified, historyCount };
+}
 
+app.post('/api/admin/broadcast', adminAuth, (req, res) => {
+  const message = String(req.body.message || '').trim();
+  if (!message) return res.status(400).json({ ok: false, error: 'message required' });
+
+  const rawType = Number(req.body.type);
+  const type = SITE_LOG_ICONS.includes(rawType) ? rawType : 1;
+  const chatToo = req.body.chat === true || req.body.chat === 'true';
+
+  const { id: eventId, notified, historyCount } = diffuserEvenementSite({ message, type, chatToo });
   console.log(`[ADMIN] Push event ${eventId} type=${type} → ${notified} sockets, ${historyCount} users. chat=${chatToo}`);
   res.json({ ok: true, id: eventId, notified, historyCount });
 });
 
+
 app.get('/api/admin/broadcast', adminAuth, (req, res) => {
   res.json({ events: pushedEvents, icons: SITE_LOG_ICONS });
+});
+
+// Les anniversaires du jour : qui sera fêté ce matin, et l'annonce a-t-elle
+// déjà eu lieu. (L'annonce elle-même part toute seule à 9 h — cf. le tick.)
+app.get('/api/admin/anniversaires', adminAuth, async (req, res) => {
+  try {
+    const jour = parisDayKey();
+    const noms = await frutizDuJour();
+    let dejaAnnonce = annivRdv.cle === jour;
+    if (!dejaAnnonce && process.env.DATABASE_URL) {
+      dejaAnnonce = await db.evenementSiteDuJour(ANNIV_MARQUE + '%', jour);
+    }
+    res.json({ ok: true, jour, noms, dejaAnnonce, message: noms.length ? annivMessage(noms) : '' });
+  } catch (e) {
+    console.error('[ANNIV] admin:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/anniversaires/annoncer', adminAuth, async (req, res) => {
+  try {
+    const r = await annoncerAnniversaires({ force: true });
+    res.json({ ok: true, ...r });
+  } catch (e) {
+    console.error('[ANNIV] annonce forcée:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 app.delete('/api/admin/broadcast/:id', adminAuth, (req, res) => {
@@ -16739,7 +16775,11 @@ app.get('/do/gmi', (req, res) => {
 function saveMyInfo(req, res) {
   // Merge query and body — Ruffle may send data in either place
   const source = { ...req.query, ...(req.body && typeof req.body === 'object' ? req.body : {}) };
-  console.log(`[do/smi] method=${req.method} ct=${req.headers['content-type']} rawBody=${typeof req.body === 'string' ? req.body.substring(0, 200) : JSON.stringify(req.body).substring(0, 200)} mergedKeys=${Object.keys(source).join(',')}`);
+  // `JSON.stringify(undefined)` rend `undefined`, pas une chaîne : sur un GET
+  // sans corps — la route les accepte — cette ligne de journal faisait tomber
+  // l'enregistrement du profil tout entier.
+  const corpsBrut = typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? null);
+  console.log(`[do/smi] method=${req.method} ct=${req.headers['content-type']} rawBody=${String(corpsBrut).substring(0, 200)} mergedKeys=${Object.keys(source).join(',')}`);
 
   const sid = getSidFromRequest(req, source);
   const auth = requireAuthBySid(sid, res);
@@ -23728,6 +23768,124 @@ function tickVisiteurs(maintenant = new Date()) {
 }
 setInterval(() => {
   try { tickVisiteurs(); } catch (e) { console.error('[NPC] visiteurs:', e.message); }
+}, 60 * 1000);
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LES ANNIVERSAIRES DU JOUR
+
+   Chaque matin, le site dit qui souffle ses bougies : un événement comme les
+   autres (fenêtre « Évènements », trame `newsitelog` pour les connectés,
+   notification pour les absents), diffusé par la même porte que les annonces
+   de l'équipe.
+
+   LA DATE PAR DÉFAUT EST EXCLUE, et c'est tout l'enjeu. Un compte neuf naît
+   avec le 15 mai 1990 (`createDefaultUser`, et le même défaut en base) ; les
+   profils jamais remplis ont, eux, le 1er janvier 2000 que pose l'éditeur
+   d'époque. Souhaiter un bon anniversaire à ces jours-là, c'est fêter des
+   centaines de comptes le même matin — un spam, pas une fête. Deux dates
+   bannies, donc, et les frutiz qui les portent VRAIMENT n'ont qu'à décaler
+   leur profil d'un jour ou à le remplir : c'est le prix de la tranquillité de
+   tous les autres.
+   ══════════════════════════════════════════════════════════════════════════ */
+const ANNIV_DATES_PAR_DEFAUT = ['1990-05-15', '2000-01-01'];
+const ANNIV_HEURE = 9;                  // l'annonce du matin, heure de Paris
+const ANNIV_MARQUE = '🎂';              // en tête du message : c'est lui qui,
+                                        // relu en base, dit que le jour est fait
+const ANNIV_NOMS_MAX = 12;              // au-delà, on compte les autres
+const annivRdv = { cle: null };         // le jour déjà annoncé (mémoire)
+
+// Le mois et le quantième d'aujourd'hui à Paris — pas l'année : on cherche qui
+// souffle ses bougies, pas qui est né en 1990.
+function annivMoisJour(quand = new Date()) {
+  const [, mois, jour] = parisDayKey(quand).split('-').map(Number);
+  return { mois, jour };
+}
+
+function estDateParDefaut(bd) {
+  const s = bd instanceof Date ? bd.toISOString().substring(0, 10) : String(bd || '').substring(0, 10);
+  return ANNIV_DATES_PAR_DEFAUT.includes(s);
+}
+
+/** Les frutiz dont c'est l'anniversaire, par leur nom d'affichage. */
+async function frutizDuJour(quand = new Date()) {
+  const { mois, jour } = annivMoisJour(quand);
+  let lignes;
+  if (process.env.DATABASE_URL) {
+    lignes = await db.anniversairesDuJour(mois, jour, ANNIV_DATES_PAR_DEFAUT);
+  } else {
+    // Sans base, la mémoire fait foi (développement, et les tests qui n'en ont
+    // pas) : mêmes règles, même résultat.
+    lignes = Object.entries(users)
+      .filter(([, u]) => u && u.birthday && !estDateParDefaut(u.birthday))
+      .filter(([, u]) => {
+        const [, m, j] = String(u.birthday).substring(0, 10).split('-').map(Number);
+        return m === mois && j === jour;
+      })
+      .map(([nom, u]) => ({ username: nom, display_name: u.displayName || '' }));
+  }
+  return lignes
+    // Les habitants du décor (Gaspard, Irma, Gromelin, MikeHorny) ont une date
+    // de naissance pour leur fiche : ils ne fêtent rien.
+    .filter((r) => !NPC_USERNAMES.has(String(r.username).toLowerCase()))
+    .map((r) => r.display_name || getDisplayName(r.username) || r.username);
+}
+
+/** « 🎂 Aujourd'hui, c'est l'anniversaire de Bob et Carol. Joyeux anniversaire ! » */
+function annivMessage(noms) {
+  const parts = noms.slice(0, ANNIV_NOMS_MAX);
+  const reste = noms.length - parts.length;
+  // Le trop-plein compte comme un dernier nom : « …, F12 et 3 autres frutiz ».
+  if (reste > 0) parts.push(`${reste} autre${reste > 1 ? 's' : ''} frutiz`);
+  const qui = parts.length > 1
+    ? parts.slice(0, -1).join(', ') + ' et ' + parts[parts.length - 1]
+    : parts[0];
+  // « l'anniversaire d'Alice », pas « de Alice » : l'élision devant une
+  // voyelle (ou un h muet, dont on ne saura jamais rien — on l'élide aussi,
+  // c'est le cas le plus fréquent).
+  const de = /^[aeiouyàâäéèêëîïôöùûüh]/i.test(qui) ? "d'" : 'de ';
+  return `${ANNIV_MARQUE} Aujourd'hui, c'est l'anniversaire ${de}${qui}. `
+    + (noms.length > 1 ? 'Joyeux anniversaire à eux !' : 'Joyeux anniversaire !');
+}
+
+/**
+ * L'annonce du jour. `force` passe outre le garde-fou (bouton de l'admin).
+ * Sans personne à fêter, rien n'est diffusé — un matin sans anniversaire est
+ * un matin silencieux.
+ */
+async function annoncerAnniversaires({ quand = new Date(), force = false } = {}) {
+  const jour = parisDayKey(quand);
+  // DÉJÀ FAIT AUJOURD'HUI ? La mémoire l'oublie à chaque redémarrage, et un
+  // déploiement à midi renverrait l'annonce du matin. La preuve durable est
+  // dans les journaux eux-mêmes : un événement du jour qui porte la marque.
+  if (!force) {
+    if (annivRdv.cle === jour) return { annonce: false, raison: 'déjà annoncé', noms: [] };
+    if (process.env.DATABASE_URL) {
+      try {
+        if (await db.evenementSiteDuJour(ANNIV_MARQUE + '%', jour)) {
+          annivRdv.cle = jour;
+          return { annonce: false, raison: 'déjà annoncé', noms: [] };
+        }
+      } catch (e) { console.error('[ANNIV] relecture du jour:', e.message); }
+    }
+  }
+  const noms = await frutizDuJour(quand);
+  annivRdv.cle = jour;
+  if (!noms.length) return { annonce: false, raison: 'personne', noms };
+  const message = annivMessage(noms);
+  const { notified, historyCount } = diffuserEvenementSite({ message, type: 1 });
+  console.log(`[ANNIV] ${jour} : ${noms.length} frutiz fêté(s) → ${notified} connectés, ${historyCount} journaux`);
+  return { annonce: true, noms, message };
+}
+
+function tickAnniversaires(maintenant = new Date()) {
+  const { h } = heureParis(maintenant);
+  if (h < ANNIV_HEURE) return;                       // pas encore l'heure
+  if (annivRdv.cle === parisDayKey(maintenant)) return;
+  annoncerAnniversaires({ quand: maintenant })
+    .catch((e) => console.error('[ANNIV]', e.message));
+}
+setInterval(() => {
+  try { tickAnniversaires(); } catch (e) { console.error('[ANNIV] tick:', e.message); }
 }, 60 * 1000);
 
 // ── Gromelin — grumpy visitor, rarer than Irma: storms into the busiest room,
