@@ -540,7 +540,7 @@
     <span id="shop-count"></span>
   </div>
   <table>
-    <thead><tr><th>ID</th><th>Nom</th><th>Catégorie</th><th>Prix</th><th>Suffix9</th><th>Description</th><th>Actions</th></tr></thead>
+    <thead><tr><th>ID</th><th>Nom</th><th>Catégorie</th><th>Auteur</th><th>Prix</th><th>Suffix9</th><th>Description</th><th>Actions</th></tr></thead>
     <tbody id="shop-body"></tbody>
   </table>
   <h3 style="margin:18px 0 4px">Feutres spéciaux — image de boutique</h3>
@@ -583,6 +583,7 @@
         <span style="display:block;width:96px;height:96px;flex:0 0 96px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden" id="am-apercu-hote"></span>
         <div style="flex:1">
           <label style="font-size:12px;color:#555;display:block">Nom<input id="am-nom" type="text" maxlength="60" style="width:100%;box-sizing:border-box"></label>
+          <label style="font-size:12px;color:#555;display:block;margin-top:6px" title="Le pseudo du graphiste : il touche 10 % de chaque vente de l'article de boutique.">Auteur (pseudo)<input id="am-auteur" type="text" maxlength="40" style="width:100%;box-sizing:border-box"></label>
           <label style="font-size:12px;color:#555;display:block;margin-top:6px">Prix (K)<input id="am-prix" type="number" min="0" step="10" value="60" style="width:90px"></label>
           <div id="am-couleurs" style="margin-top:8px"></div>
           <button class="btn-success" id="am-creer" style="margin-top:8px" disabled onclick="creerAccMaison()">Créer l'accessoire</button>
@@ -592,7 +593,7 @@
     </div>
     <div style="flex:1;min-width:280px">
       <div class="toolbar"><button class="btn btn-sm" onclick="loadAccMaison()">Rafraîchir</button><span id="am-count" style="font-size:12px;color:#888"></span></div>
-      <table><thead><tr><th>Aperçu</th><th>Nom</th><th>Prix</th><th>Aplats</th><th></th></tr></thead>
+      <table><thead><tr><th>Aperçu</th><th>Nom</th><th>Auteur</th><th>Prix</th><th>Aplats</th><th></th></tr></thead>
       <tbody id="am-body"></tbody></table>
     </div>
   </div>
@@ -4300,7 +4301,7 @@ async function loadVariantes() {
       tr.innerHTML = '<td><span class="va-vig" data-type="' + v.type + '" data-id="' + v.id
         + '" style="display:block;width:56px;height:56px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden"></span></td>'
         + '<td>' + esc(v.nom) + (v.retire ? ' <em>(retirée)</em>' : '') + '</td>'
-        + '<td>' + esc(v.auteur || '') + '</td>'
+        + '<td style="white-space:nowrap">' + auteurCell(v.auteur, 'changerAuteurVariante(\'' + v.id + '\')') + '</td>'
         + '<td>' + esc(FPBouille.accName(v.type)) + '</td>'
         + '<td><code>' + (v.index != null ? v.index : (bases[cle] + v.rang)) + '</code></td>'
         + '<td>' + v.nb + '</td>'
@@ -4430,6 +4431,22 @@ async function remplacerVariante(id) {
   loadVariantes();
 }
 
+// L'auteur d'une variante : la même route que le remplacement du dessin, qui
+// prend le nom et l'auteur au passage. L'article de boutique déjà créé, lui,
+// garde le sien — c'est une copie, faite au moment du « → Boutique ».
+async function changerAuteurVariante(id) {
+  const liste = await (await fetch('/api/admin/variantes', { headers: hdr() })).json().catch(() => []);
+  const v = (liste || []).find((x) => x.id === id) || {};
+  const auteur = demanderAuteur(v.auteur);
+  if (auteur === null) return;
+  const h = hdr(); h['Content-Type'] = 'application/octet-stream';
+  const r = await fetch('/api/admin/variantes/' + encodeURIComponent(id), { method: 'PUT', headers: h,
+    body: new Blob([JSON.stringify({ auteur })], { type: 'application/octet-stream' }) });
+  if (!r.ok) { toast('Erreur'); return; }
+  toast(auteur ? `Auteur : ${auteur}` : 'Auteur effacé');
+  loadVariantes();
+}
+
 // Purger : effacer de la liste une variante déjà retirée (un essai). Sa place
 // reste prise, les index des autres ne bougent pas.
 async function purgerVariante(id) {
@@ -4535,13 +4552,13 @@ async function creerAccMaison() {
   const nom = $('#am-nom').value.trim(), prix = Number($('#am-prix').value) || 0;
   if (!nom) { $('#am-etat').textContent = 'Donne un nom.'; return; }
   const h = hdr(); h['Content-Type'] = 'application/octet-stream';
-  const body = new Blob([JSON.stringify({ name: nom, price: prix, paths: amPaths, couleurs: amCouleurs })], { type: 'application/octet-stream' });
+  const body = new Blob([JSON.stringify({ name: nom, price: prix, auteur: ($('#am-auteur').value || '').trim(), paths: amPaths, couleurs: amCouleurs })], { type: 'application/octet-stream' });
   try {
     const r = await fetch('/api/admin/acc-maison', { method: 'POST', headers: h, body: body });
     const j = await r.json();
     if (j.ok) {
       $('#am-etat').textContent = 'Créé : ' + j.id;
-      $('#am-nom').value = ''; amPaths = null; amCouleurs = ['', '', '']; $('#am-creer').disabled = true;
+      $('#am-nom').value = ''; $('#am-auteur').value = ''; amPaths = null; amCouleurs = ['', '', '']; $('#am-creer').disabled = true;
       $('#am-apercu-hote').innerHTML = ''; $('#am-couleurs').innerHTML = ''; $('#am-fichier').value = '';
       loadAccMaison();
     } else $('#am-etat').textContent = 'Erreur : ' + (j.error || '?');
@@ -4559,13 +4576,29 @@ async function loadAccMaison() {
       const tr = document.createElement('tr');
       tr.innerHTML = '<td><span style="display:block;width:56px;height:56px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden">'
         + FPBouilleVignette.html(AM_TETE + '|' + a.id) + '</span></td>'
-        + '<td>' + esc(a.name) + '</td><td>' + (a.price || 0) + ' K</td><td>' + a.nb + '</td>'
+        + '<td>' + esc(a.name) + '</td>'
+        + '<td style="white-space:nowrap">' + auteurCell(a.auteur, 'changerAuteurAccMaison(\'' + a.id + '\')') + '</td>'
+        + '<td>' + (a.price || 0) + ' K</td><td>' + a.nb + '</td>'
         + '<td style="white-space:nowrap"><button class="btn btn-sm" onclick="remplacerAccMaison(\'' + a.id + '\')" title="Déposer un nouveau SVG à la place : même accessoire, ceux qui le portent voient le nouveau dessin.">Remplacer le SVG</button> '
         + '<button class="btn btn-sm" onclick="supprimerAccMaison(\'' + a.id + '\')">Suppr.</button></td>';
       body.appendChild(tr);
     });
     FPBouilleVignette.brancher(body);
   } catch (e) { /* silencieux */ }
+}
+
+// L'auteur d'un accessoire maison — même route que le remplacement du dessin.
+async function changerAuteurAccMaison(id) {
+  const liste = await (await fetch('/api/admin/acc-maison', { headers: hdr() })).json().catch(() => []);
+  const a = (liste || []).find((x) => x.id === id) || {};
+  const auteur = demanderAuteur(a.auteur);
+  if (auteur === null) return;
+  const h = hdr(); h['Content-Type'] = 'application/octet-stream';
+  const r = await fetch('/api/admin/acc-maison/' + encodeURIComponent(id), { method: 'PUT', headers: h,
+    body: new Blob([JSON.stringify({ auteur })], { type: 'application/octet-stream' }) });
+  if (!r.ok) { toast('Erreur'); return; }
+  toast(auteur ? `Auteur : ${auteur}` : 'Auteur effacé');
+  loadAccMaison();
 }
 
 // Le même geste que pour une variante : un nouveau SVG, le même identifiant.
@@ -4600,6 +4633,36 @@ async function supprimerAccMaison(id) {
 })();
 
 // ── Shop / Boutique ──
+/*
+ * QUI A DESSINÉ ÇA ? L'auteur d'un accessoire maison se voit dans les trois
+ * listes (articles de boutique, variantes, accessoires maison) et se corrige
+ * d'un clic sur le crayon : c'est lui qui touche dix pour cent de chaque
+ * vente, et une faute de frappe dans un pseudo, c'est une commission qui ne
+ * part nulle part. Une cellule vide se lit « d'époque » — un accessoire du
+ * catalogue d'origine n'a pas d'auteur.
+ */
+function auteurCell(auteur, appel) {
+  const nom = auteur
+    ? `<b style="color:#2C4A0F">${esc(auteur)}</b>`
+    : '<span style="color:#bbb">— d\'époque —</span>';
+  return `${nom} <button class="btn btn-sm" style="padding:0 5px;font-size:11px" title="Changer l'auteur (il touche 10 % de chaque vente)" onclick="${appel}">✎</button>`;
+}
+// Demande le nouveau pseudo. Rendre une chaîne VIDE efface l'auteur (l'article
+// redevient « d'époque ») ; annuler ne touche à rien.
+function demanderAuteur(actuel) {
+  const v = prompt('Auteur (pseudo du graphiste) — vide pour aucun :', actuel || '');
+  return v === null ? null : v.trim();
+}
+async function changerAuteurPack(id) {
+  const p = shopPacks.find((x) => x.id === id);
+  if (!p) return;
+  const auteur = demanderAuteur(p.auteur);
+  if (auteur === null) return;
+  const r = await fetch(`/api/admin/shop/${id}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify({ auteur }) });
+  if (!r.ok) { toast('Erreur'); return; }
+  toast(auteur ? `Auteur : ${auteur}` : 'Auteur effacé');
+  loadShop();
+}
 let shopPacks = [];
 let editingPackId = null;
 
@@ -4612,8 +4675,9 @@ async function loadShop() {
     const tb = $('#shop-body');
     tb.innerHTML = shopPacks.map(p => `<tr style="${p.disabled ? 'opacity:.5' : ''}">
       <td>${p.id}</td>
-      <td>${esc(p.name)}${p.auteur ? ` <span style="color:#6f8a45;font-size:11px" title="Accessoire maison : 10 % de chaque vente à son auteur">— par ${esc(p.auteur)}</span>` : ''}${p.disabled ? ' <span style="background:#999;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;vertical-align:middle">désactivé</span>' : ''}</td>
+      <td>${esc(p.name)}${p.disabled ? ' <span style="background:#999;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;vertical-align:middle">désactivé</span>' : ''}</td>
       <td>${esc(p.category || '')}</td>
+      <td style="white-space:nowrap">${auteurCell(p.auteur, `changerAuteurPack(${p.id})`)}</td>
       <td>${p.price} K</td>
       <td><code>${esc(p.suffix9)}</code></td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.description||'')}">${esc(p.description || '-')}</td>

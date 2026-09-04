@@ -11459,7 +11459,9 @@ app.delete('/api/admin/variantes/:id', adminScope('shop'), (req, res) => {
 
 // Public : la liste (id + nom), pour le sélecteur « porter un accessoire maison ».
 app.get('/api/light/acc-maison', (req, res) => {
-  res.json({ ok: true, liste: Object.values(accessoiresMaison).map((a) => ({ id: a.id, name: a.name, price: a.price || 0 })) });
+  res.json({ ok: true, liste: Object.values(accessoiresMaison).map((a) => ({
+    id: a.id, name: a.name, price: a.price || 0, auteur: a.auteur || '',
+  })) });
 });
 
 // L'utilisateur porte / retire son accessoire maison. id vide ou nul = retirer.
@@ -11475,7 +11477,8 @@ app.post('/api/light/acc-maison/equip', (req, res) => {
 // Admin : lister, créer (à partir des aplats parsés côté navigateur), supprimer.
 app.get('/api/admin/acc-maison', adminScope('shop'), (req, res) => {
   res.json(Object.values(accessoiresMaison).map((a) => ({
-    id: a.id, name: a.name, price: a.price || 0, nb: (a.paths || []).length, createdAt: a.createdAt,
+    id: a.id, name: a.name, price: a.price || 0, auteur: a.auteur || '',
+    nb: (a.paths || []).length, createdAt: a.createdAt,
   })));
 });
 // Le corps arrive en application/octet-stream (un Blob JSON) : il échappe ainsi
@@ -11490,7 +11493,10 @@ app.post('/api/admin/acc-maison', adminScope('shop'),
     if (!b.name || !paths.length) return res.status(400).json({ error: 'name + paths requis (paths non vide)' });
     const id = nextAccMaisonId();
     const couleurs = nettoyerCouleursMaison(b.couleurs);
-    const a = { id, name: String(b.name).slice(0, 60), price: Number(b.price) || 0, paths, couleurs, createdAt: new Date().toISOString() };
+    // L'AUTEUR — le pseudo du graphiste. Il suit l'accessoire jusqu'à l'article
+    // de boutique, où il vaut dix pour cent de chaque vente.
+    const a = { id, name: String(b.name).slice(0, 60), price: Number(b.price) || 0,
+      auteur: String(b.auteur || '').trim().slice(0, 40), paths, couleurs, createdAt: new Date().toISOString() };
     accessoiresMaison[id] = a; sauverAccMaison();
     console.log(`[ACC-MAISON] créé ${id} « ${a.name} » (${paths.length} aplats)`);
     res.json({ ok: true, id, name: a.name });
@@ -11512,6 +11518,7 @@ app.put('/api/admin/acc-maison/:id', adminScope('shop'),
     if (b.couleurs !== undefined) a.couleurs = nettoyerCouleursMaison(b.couleurs);
     if (b.name !== undefined && String(b.name).trim()) a.name = String(b.name).trim().slice(0, 60);
     if (b.price !== undefined) a.price = Number(b.price) || 0;
+    if (b.auteur !== undefined) a.auteur = String(b.auteur).trim().slice(0, 40);
     sauverAccMaison();
     console.log(`[ACC-MAISON] remplacé ${a.id} « ${a.name} » (${(a.paths || []).length} aplats)`);
     res.json({ ok: true, id: a.id, name: a.name, nb: (a.paths || []).length });

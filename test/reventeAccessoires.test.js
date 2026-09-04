@@ -283,6 +283,35 @@ test('remplacer le SVG d’une variante garde son index ; purger efface les reti
   assert.deepEqual({ ok: rem2.ok, nb: rem2.nb }, { ok: true, nb: 4 });
 });
 
+test('l’auteur se voit et se corrige partout : article, variante, accessoire maison', async (t) => {
+  if (!dispo) return t.skip('base indisponible');
+  const trace = (n) => Array.from({ length: n }, (_, i) => ({ d: `M${i} 0h9v9h-9z`, fill: '#123456' }));
+  // Une faute de frappe dans un pseudo, c'est une commission qui ne part
+  // nulle part : les trois listes se corrigent.
+  const art = await (await admin('GET', '/api/admin/shop')).json();
+  assert.equal(art.find((p) => p.id === PACK).auteur, CREATEUR, 'l’article dit son auteur');
+  assert.equal((await admin('PATCH', `/api/admin/shop/${PACK}`, { auteur: OFFERT })).status, 200);
+  assert.equal((await (await admin('GET', '/api/admin/shop')).json()).find((p) => p.id === PACK).auteur, OFFERT);
+  // Vide = plus d'auteur : l'article redevient « d'époque » et sort du rayon
+  // maison… sauf qu'il garde son identifiant de variante, qui l'y range aussi.
+  assert.equal((await admin('PATCH', `/api/admin/shop/${PACK}`, { auteur: '' })).status, 200);
+  assert.equal((await (await admin('GET', '/api/admin/shop')).json()).find((p) => p.id === PACK).auteur, undefined);
+  assert.equal((await admin('PATCH', `/api/admin/shop/${PACK}`, { auteur: CREATEUR })).status, 200);
+
+  const am = await (await adminBrut('POST', '/api/admin/acc-maison',
+    { name: 'Signé', price: 20, auteur: CREATEUR, paths: trace(2) })).json();
+  const lignes = await (await admin('GET', '/api/admin/acc-maison')).json();
+  assert.equal(lignes.find((a) => a.id === am.id).auteur, CREATEUR, 'l’accessoire maison aussi');
+  assert.equal((await adminBrut('PUT', `/api/admin/acc-maison/${am.id}`, { auteur: OFFERT })).status, 200);
+  assert.equal((await (await admin('GET', '/api/admin/acc-maison')).json()).find((a) => a.id === am.id).auteur, OFFERT,
+    'et il se corrige sans toucher au dessin');
+  assert.equal((await (await admin('GET', '/api/admin/acc-maison')).json()).find((a) => a.id === am.id).nb, 2,
+    'le dessin est intact');
+  // Le catalogue public le porte aussi (le sélecteur « porter un accessoire »).
+  const pub = await (await fetch(BASE + '/api/light/acc-maison')).json();
+  assert.equal(pub.liste.find((a) => a.id === am.id).auteur, OFFERT);
+});
+
 test('le double-clic, la popin et l’admin sont branchés dans les pages', () => {
   const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   const ADMIN = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');
@@ -317,5 +346,14 @@ test('le double-clic, la popin et l’admin sont branchés dans les pages', () =
   assert.match(ADMIN, /async function remplacerVariante\(id\) \{/);
   assert.match(ADMIN, /async function remplacerAccMaison\(id\) \{/);
   assert.match(ADMIN, /async function purgerVariantesRetirees\(\) \{/);
+  // L'auteur : une colonne dans les TROIS listes, et le crayon qui la corrige.
+  assert.match(ADMIN, /<th>Catégorie<\/th><th>Auteur<\/th>/);
+  assert.match(ADMIN, /<th>Nom<\/th><th>Auteur<\/th><th>Prix<\/th><th>Aplats<\/th>/);
+  assert.match(ADMIN, /function auteurCell\(auteur, appel\) \{/);
+  assert.match(ADMIN, /auteurCell\(p\.auteur, `changerAuteurPack\(\$\{p\.id\}\)`\)/);
+  assert.match(ADMIN, /auteurCell\(v\.auteur, 'changerAuteurVariante/);
+  assert.match(ADMIN, /auteurCell\(a\.auteur, 'changerAuteurAccMaison/);
+  assert.match(ADMIN, /<input id="am-auteur"/);
+  assert.match(ADMIN, /auteur: \(\$\('#am-auteur'\)\.value \|\| ''\)\.trim\(\)/);
   assert.match(ADMIN, /method: 'PUT', headers: h,\s*\n\s*body: new Blob\(\[JSON\.stringify\(\{ paths \}\)\]/);
 });
