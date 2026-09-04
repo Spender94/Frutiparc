@@ -124,6 +124,38 @@ Games/                Mini-jeux (Burning Kiwi, Kaluga, Frutibandas, etc.)
 | `ff/ls` | Contenu d'un dossier |
 | `ff/mk` `ff/mv` `ff/cp` `ff/erb` `ff/dm` | Opérations sur fichiers |
 
+## Renommer un joueur
+
+Admin → **Utilisateurs** → *Renommer*. Ce qui suit vaut d'être connu avant de
+cliquer.
+
+**Ce qui rend l'opération sûre :** presque tout ce qui appartient à un joueur
+est rangé sous son **numéro de compte** (`user_id`) — scores, accessoires,
+objets, contacts, journaux, courriers reçus, quotas, préférences. Renommer n'y
+touche pas.
+
+**Ce qui est balayé**, parce que la ligne désigne le joueur par son pseudo sans
+lui appartenir : le carnet et la liste noire des **autres**, l'auteur d'un sujet
+ou d'un message du forum, les sujets suivis et lus, l'expéditeur d'un courrier
+(et son adresse, et les listes de destinataires), les médailles, les archives du
+challenge, les achats et reventes en boutique, les dons de kikooz, les tournois,
+le trombinoscope, les abonnements aux notifications, les journaux de modération,
+la signature d'un accessoire maison, et le parrain de ses filleuls. Côté
+serveur : les tables en mémoire et les quatre fichiers de travail
+(`scores.json`, `xp-actions.json`, `challenge-medals.json`,
+`acc-maison-equip.json`). La base fait sa part **en une transaction** —
+`db.renommerJoueur`, dont la liste de colonnes est le contrat ; toute nouvelle
+colonne de pseudo doit y être ajoutée (et à `test/renommage.test.js`).
+
+**Ce qui ne bouge pas :** le **texte**. Un message du forum qui dit « merci
+bob », un courrier, une ligne d'historique (« 10 kikooz obtenus par bob »)
+racontent ce qui s'est passé quand il s'appelait ainsi.
+
+**Deux conséquences à annoncer au joueur :** il est **déconnecté** (il revient
+sous son nouveau nom — c'est ce qui évite de recoudre l'état vivant en vol), et
+son **ancien pseudo est réservé** comme celui d'un compte supprimé : personne ne
+pourra s'en emparer et hériter de son passé aux yeux des autres.
+
 ## Application mobile (/light installable)
 
 `/light` est une PWA : elle s'installe sur l'écran d'accueil et envoie des

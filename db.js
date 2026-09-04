@@ -1471,6 +1471,131 @@ async function getXpRank(xp) {
   return (rows[0] ? rows[0].n : 0) + 1;
 }
 
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * RENOMMER UN JOUEUR — le balayage de la base, d'un seul tenant
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Presque tout ce qui appartient à un joueur est rangé sous son NUMÉRO
+ * (`user_id`) : ses scores, ses accessoires, ses objets, ses contacts, ses
+ * journaux, ses courriers reçus, sa fiche. Renommer ne les touche pas — c'est
+ * ce qui rend l'opération possible.
+ *
+ * Reste ce qui le désigne par son PSEUDO, parce que la ligne ne lui appartient
+ * pas : ce que les autres ont de lui (leur carnet, leur liste noire, l'auteur
+ * d'un sujet, l'expéditeur d'un courrier), et les tables historiques qui
+ * gardent une trace nominative (médailles, archives du challenge, achats,
+ * dons, tournois, trombinoscope). Ce sont ces colonnes-là, et elles seules,
+ * qu'on réécrit ici — dans UNE transaction : un renommage à moitié fait
+ * laisserait un joueur propriétaire de la moitié de son passé.
+ *
+ * CE QU'ON NE TOUCHE PAS, et c'est délibéré : le TEXTE. Un message de forum
+ * qui dit « merci bob », un courrier, une ligne d'historique (« 10 kikooz
+ * obtenus par bob ») content ce qui s'est passé à l'époque où il s'appelait
+ * ainsi. Les réécrire, ce serait réécrire l'histoire — et retrouver un pseudo
+ * dans une phrase, sans se tromper de mot, n'est pas une opération sûre.
+ */
+const RENOMMAGE_COLONNES = [
+  // [table, colonne] — comparaison insensible à la casse, comme partout ailleurs.
+  ['challenge_medals', 'username'],
+  ['challenge_score_archive', 'username'],
+  ['shop_purchases', 'username'],
+  ['shop_sales', 'username'],
+  ['push_subscriptions', 'username'],
+  ['tournaments', 'champion'],
+  ['tournament_players', 'username'],
+  ['tournament_matches', 'player1'],
+  ['tournament_matches', 'player2'],
+  ['tournament_matches', 'winner'],
+  ['tournament_round_scores', 'username'],
+  ['trombinoscope', 'pseudo'],
+  ['forum_topics', 'author_username'],
+  ['forum_topics', 'last_post_by'],
+  ['forum_posts', 'author_username'],
+  ['forum_topic_reads', 'username'],
+  ['forum_topic_follows', 'username'],
+  ['user_mails', 'from_user'],
+  ['moderation_logs', 'target_username'],
+  ['moderation_logs', 'moderator'],
+  ['kikooz_gifts', 'giver'],
+  ['kikooz_gifts', 'recipient'],
+  ['swapou_ia_scores', 'username'],
+  ['shop_packs', 'auteur'],
+  ['users', 'referred_by'],
+];
+/*
+ * Les colonnes qui portent une ADRESSE (« bob@frutiparc.com ») et non un
+ * pseudo nu : le carnet de contacts et la liste noire des AUTRES joueurs, et
+ * l'expéditeur d'un courrier. On n'y remplace que la partie gauche, et
+ * seulement si elle vaut exactement l'ancien pseudo — « bob » ne renomme pas
+ * « bobby ». Une entrée sans arobase (un pseudo nu, que d'anciennes versions
+ * ont pu écrire) est remplacée entière.
+ */
+const RENOMMAGE_ADRESSES = [
+  ['contacts', 'contact_name'],
+  ['blacklist', 'blocked_name'],
+  ['user_mails', 'from_addr'],
+];
+
+async function renommerJoueur(ancien, nouveau, affichage) {
+  const a = String(ancien || '').toLowerCase().trim();
+  const n = String(nouveau || '').toLowerCase().trim();
+  const aff = String(affichage || nouveau || '').trim();
+  if (!a || !n) throw new Error('pseudo manquant');
+  const client = await pool.connect();
+  const touche = {};
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT id FROM users WHERE LOWER(username) = $1', [a]);
+    if (!rows.length) throw new Error('joueur introuvable');
+    const pris = await client.query('SELECT 1 FROM users WHERE LOWER(username) = $1', [n]);
+    if (pris.rows.length) throw new Error('pseudo déjà pris');
+
+    for (const [table, col] of RENOMMAGE_COLONNES) {
+      const r = await client.query(
+        `UPDATE ${table} SET ${col} = $1 WHERE LOWER(${col}) = $2`, [n, a]);
+      if (r.rowCount) touche[`${table}.${col}`] = r.rowCount;
+    }
+    for (const [table, col] of RENOMMAGE_ADRESSES) {
+      const r = await client.query(
+        `UPDATE ${table}
+            SET ${col} = CASE WHEN POSITION('@' IN ${col}) > 0
+                              THEN $1 || '@' || SPLIT_PART(${col}, '@', 2) ELSE $1 END
+          WHERE LOWER(SPLIT_PART(${col}, '@', 1)) = $2`, [n, a]);
+      if (r.rowCount) touche[`${table}.${col}`] = r.rowCount;
+    }
+    // Les DESTINATAIRES d'un courrier vivent en liste (« alice,bob ») : on ne
+    // remplace que l'élément, jamais la sous-chaîne — « bob » ne doit pas
+    // renommer « bobby ». Idem pour les adresses « pseudo@frutiparc.com ».
+    const listes = await client.query(
+      `UPDATE user_mails
+          SET to_users = array_to_string(ARRAY(
+                SELECT CASE WHEN LOWER(TRIM(t)) = $2 THEN $1 ELSE TRIM(t) END
+                  FROM unnest(string_to_array(to_users, ',')) AS t), ','),
+              to_addrs = array_to_string(ARRAY(
+                SELECT CASE WHEN LOWER(SPLIT_PART(TRIM(t), '@', 1)) = $2
+                            THEN $1 || '@' || SPLIT_PART(TRIM(t), '@', 2) ELSE TRIM(t) END
+                  FROM unnest(string_to_array(to_addrs, ',')) AS t), ',')
+        WHERE to_users ILIKE '%' || $2 || '%' OR to_addrs ILIKE '%' || $2 || '%'`,
+      [n, a]);
+    if (listes.rowCount) touche['user_mails.to_users'] = listes.rowCount;
+
+    // Le compte lui-même en dernier : tant qu'il porte l'ancien nom, les
+    // comparaisons ci-dessus restent lisibles.
+    const maj = await client.query(
+      'UPDATE users SET username = $1, display_name = $2, updated_at = now() WHERE id = $3',
+      [n, aff, rows[0].id]);
+    touche['users.username'] = maj.rowCount;
+    await client.query('COMMIT');
+    return { id: rows[0].id, touche };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 // Reserve a (now-deleted) username so it can never be re-registered.
 async function reserveUsername(username, deletedBy = '') {
   const u = String(username || '').toLowerCase().trim();
@@ -3345,6 +3470,9 @@ module.exports = {
   deleteAccessoryByShopId,
   anniversairesDuJour,
   evenementSiteDuJour,
+  renommerJoueur,
+  RENOMMAGE_COLONNES,
+  RENOMMAGE_ADRESSES,
   pool,
   initSchema,
   loadVapidKeys,

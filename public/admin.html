@@ -3375,6 +3375,7 @@ function renderUsers() {
       <td style="font-size:11px">${u.last_login ? fmtDateTime(u.last_login) : '<span style="color:#999">jamais</span>'}</td>
       <td>
         <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}','${esc(u.display_name||u.username)}',${u.fruti_sign ?? -1},${u.fruti_sign_b ?? -1},'${esc(u.frutijob||'')}','${esc(u.email||'')}')">Modifier</button>
+        <button class="btn btn-sm" onclick="renommerJoueur('${esc(u.username)}')" title="Changer le pseudo : le compte, son passé et ce que les autres ont de lui suivent. Le joueur est déconnecté.">Renommer</button>
         <button class="btn-danger btn-sm" onclick="deleteUser('${esc(u.username)}')">Supprimer</button>
       </td>
     </tr>`).join('');
@@ -3419,6 +3420,29 @@ async function saveEditUser() {
   if (!r.ok) { const d = await r.json().catch(() => ({})); toast('Erreur: ' + (d.error || 'inconnu')); return; }
   closeModal('modal-edit-user');
   toast(`${name} mis à jour`);
+  loadUsers();
+}
+
+/*
+ * CHANGER LE PSEUDO D'UN JOUEUR. Le serveur balaie tout ce qui le désigne par
+ * son nom — le compte, ce que les autres ont de lui, ses traces nominatives —
+ * et le déconnecte : il revient sous son nouveau nom. Ce que les MESSAGES
+ * disent de lui (« merci bob ») ne bouge pas : c'est l'histoire, pas une clé.
+ */
+async function renommerJoueur(name) {
+  const nouveau = prompt(`Nouveau pseudo pour ${name} ?\n\n`
+    + '· son compte, ses scores, son passé et ce que les autres ont de lui suivent ;\n'
+    + '· le texte des messages déjà écrits ne change pas ;\n'
+    + `· ${name} est déconnecté et son ancien pseudo est réservé.`, name);
+  if (nouveau === null) return;
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(name)}/renommer`, {
+    method: 'POST', headers: hdr(), body: JSON.stringify({ nouveau: nouveau.trim() }),
+  });
+  const d = await r.json();
+  if (!d.ok) { toast('Renommage refusé : ' + (d.error || '?')); return; }
+  const lignes = Object.entries(d.touche || {}).map(([k, v]) => `${k} : ${v}`);
+  toast(`${d.ancien} → ${d.affichage}` + (lignes.length ? ` (${lignes.length} tables touchées)` : ''));
+  console.log('[renommage]', d);
   loadUsers();
 }
 

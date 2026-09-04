@@ -8748,6 +8748,205 @@ app.post('/api/admin/users/:username/unban', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ══════════════════════════════════════════════════════════════════════════
+   CHANGER LE PSEUDO D'UN JOUEUR
+
+   CE QUI REND LA CHOSE POSSIBLE : presque tout ce qui appartient à un joueur
+   est rangé sous son NUMÉRO de compte (`user_id`) — scores, accessoires,
+   objets, contacts, journaux, courriers reçus, quotas, préférences. Renommer
+   n'y touche pas.
+
+   CE QU'IL FAUT BALAYER, c'est ce qui le désigne par son PSEUDO parce que la
+   ligne ne lui appartient pas : ce que les AUTRES ont de lui (leur carnet,
+   leur liste noire), les traces nominatives (forum, médailles, archives du
+   challenge, achats, reventes, dons, tournois, trombinoscope, notifications),
+   et — côté serveur — les tables en mémoire et les quatre fichiers de
+   travail. La base fait cela en une transaction (db.renommerJoueur) ; cette
+   fonction-ci fait le reste.
+
+   CE QU'ON NE TOUCHE PAS : le TEXTE. Un message du forum qui dit « merci
+   bob », un courrier, une ligne d'historique (« 10 kikooz obtenus par bob »)
+   racontent ce qui s'est passé quand il s'appelait ainsi. Les réécrire serait
+   réécrire l'histoire — et chercher un pseudo dans une phrase sans se tromper
+   de mot n'est pas une opération sûre.
+
+   LE JOUEUR EST DÉCONNECTÉ. Ses sessions tombent, ses sockets se ferment, il
+   quitte ses salons : la moitié de l'état vivant (le nom sur la trame, la
+   liste des connectés, un salon privé dont le nom contient son pseudo) n'a
+   pas à être recousue en vol — il se reconnecte, et tout se rebâtit propre.
+
+   L'ANCIEN PSEUDO EST RÉSERVÉ, comme celui d'un compte supprimé : sans quoi
+   le premier venu s'en emparerait et hériterait, aux yeux de tous, du passé
+   d'un autre.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+// Un contact/une entrée de liste noire vaut « bob@frutiparc.com » — ou, pour
+// les plus anciennes, « bob » tout court.
+function memeAdresse(valeur, pseudo) {
+  const v = String(valeur || '').toLowerCase();
+  return v === pseudo || v.split('@')[0] === pseudo;
+}
+function adresseRenommee(valeur, nouveau) {
+  const s = String(valeur || '');
+  const i = s.indexOf('@');
+  return i < 0 ? nouveau : nouveau + s.substring(i);
+}
+// Déplace la valeur d'une clé à l'autre dans un objet ou une Map, si elle y est.
+function deplacerCle(sac, a, n) {
+  if (sac instanceof Map) {
+    if (!sac.has(a)) return false;
+    sac.set(n, sac.get(a)); sac.delete(a); return true;
+  }
+  if (!sac || !Object.prototype.hasOwnProperty.call(sac, a)) return false;
+  sac[n] = sac[a]; delete sac[a]; return true;
+}
+
+function renommerEnMemoire(a, n, affichage) {
+  const bilan = [];
+  const compte = users[a];
+
+  // 1. On le déconnecte : sessions, sockets, salons.
+  let sessionsCoupees = 0;
+  for (const [sid, s] of Object.entries(sessions)) {
+    if (s && s.user === a) { delete sessions[sid]; sessionsCoupees++; }
+  }
+  if (sessionsCoupees) bilan.push(`${sessionsCoupees} session(s) fermée(s)`);
+  for (const sock of getSocketsForUsername(a)) {
+    try { sock.end(); } catch (e) { /* déjà partie */ }
+    try { sock.destroy(); } catch (e) { /* idem */ }
+  }
+  for (const g of Object.keys(channels)) {
+    if (channels[g].users && channels[g].users.delete(a)) {
+      broadcastToChannel(g, `<${CMD.userleaved} g="${g}" u="${escapeXml(getDisplayName(a))}" />`);
+    }
+  }
+  for (const [sock, cl] of xmlSocketClients) {
+    if (cl && cl.username === a) xmlSocketClients.delete(sock);
+  }
+
+  // 2. Le compte change de clé, et de nom d'affichage.
+  if (compte) {
+    delete users[a];
+    users[n] = compte;
+    compte.displayName = affichage;
+    bilan.push('compte déplacé en mémoire');
+  }
+
+  // 3. Ce que les AUTRES ont de lui : carnet, liste noire, parrainage.
+  let carnets = 0, noires = 0, filleuls = 0;
+  for (const [pseudo, u] of Object.entries(users)) {
+    if (!u) continue;
+    if (Array.isArray(u.contacts)) {
+      u.contacts = u.contacts.map((c) => {
+        if (!memeAdresse(c, a)) return c;
+        carnets++; return adresseRenommee(c, n);
+      });
+    }
+    if (Array.isArray(u.blacklist)) {
+      u.blacklist = u.blacklist.map((c) => {
+        if (!memeAdresse(c, a)) return c;
+        noires++; return adresseRenommee(c, n);
+      });
+    }
+    if (String(u.referredBy || '').toLowerCase() === a) { u.referredBy = n; filleuls++; }
+    // Les courriers gardés en mémoire : l'expéditeur et les destinataires.
+    for (const m of (Array.isArray(u.mails) ? u.mails : [])) {
+      if (!m) continue;
+      if (String(m.from || '').toLowerCase() === a) m.from = affichage;
+      if (memeAdresse(m.fromAddr, a)) m.fromAddr = adresseRenommee(m.fromAddr, n);
+      const remplacer = (v) => (memeAdresse(v, a) ? adresseRenommee(v, n) : v);
+      if (Array.isArray(m.toAddrs)) m.toAddrs = m.toAddrs.map(remplacer);
+      else if (typeof m.toAddrs === 'string') m.toAddrs = m.toAddrs.split(',').map((x) => remplacer(x.trim())).join(',');
+      if (Array.isArray(m.to)) m.to = m.to.map(remplacer);
+      else if (typeof m.to === 'string') m.to = m.to.split(',').map((x) => remplacer(x.trim())).join(',');
+    }
+    if (pseudo === n) continue;
+  }
+  if (carnets) bilan.push(`${carnets} carnet(s) de contacts`);
+  if (noires) bilan.push(`${noires} entrée(s) de liste noire`);
+  if (filleuls) bilan.push(`${filleuls} filleul(s)`);
+
+  // 4. Les tables et les fichiers de travail, tous indexés par pseudo.
+  if (deplacerCle(scoresData.users, a, n)) { saveScoresFile(); bilan.push('scores'); }
+  if (deplacerCle(dailyXpActions, a, n)) { saveXpActions(); bilan.push('actions XP'); }
+  if (deplacerCle(accMaisonEquip, a, n)) { sauverEquip(); bilan.push('accessoire maison porté'); }
+  deplacerCle(bouilleCache, a, n);
+  deplacerCle(partiesEnCours, a, n);
+  deplacerCle(recentlyEjected, a, n);
+  deplacerCle(traceSubscriptions, a, n);
+  deplacerCle(pendingChannelCleanup, a, n);
+  let medailles = 0;
+  for (const jour of Object.keys(challengeMedalsData.medalsByVisibleDay || {})) {
+    if (deplacerCle(challengeMedalsData.medalsByVisibleDay[jour], a, n)) medailles++;
+  }
+  if (deplacerCle(challengeMedalsData.pendingNotifications || {}, a, n)) medailles++;
+  if (medailles) { saveChallengeMedals(); bilan.push(`${medailles} jour(s) de médailles`); }
+  let trombi = 0;
+  for (const e of TROMBINOSCOPE) {
+    if (e && String(e.pseudo || '').toLowerCase() === a) { e.pseudo = affichage; trombi++; }
+  }
+  if (trombi) { persistTrombinoscope(); bilan.push('trombinoscope'); }
+  let articles = 0;
+  for (const p of SHOP_PACKS) {
+    if (p && String(p.auteur || '').toLowerCase() === a) { p.auteur = n; articles++; }
+  }
+  if (articles) bilan.push(`${articles} article(s) signé(s)`);
+  for (const v of variantesAcc) {
+    if (v && String(v.auteur || '').toLowerCase() === a) v.auteur = n;
+  }
+  for (const acc of Object.values(accessoiresMaison)) {
+    if (acc && String(acc.auteur || '').toLowerCase() === a) acc.auteur = n;
+  }
+  sauverVariantes();
+  sauverAccMaison();
+  return bilan;
+}
+
+/**
+ * Le renommage complet : la base, la mémoire, les fichiers, la réservation de
+ * l'ancien pseudo. Renvoie de quoi le raconter.
+ */
+async function renommerJoueurPartout(ancienBrut, nouveauBrut, { par = 'admin' } = {}) {
+  const a = normalizeUsername(ancienBrut);
+  const nAffiche = String(nouveauBrut || '').trim();
+  const n = nAffiche.toLowerCase();
+  if (!users[a] && process.env.DATABASE_URL) {
+    const row = await db.findUserByUsername(a);
+    if (row) await hydrateUserFromDb(a, row);
+  }
+  if (!users[a]) throw Object.assign(new Error('joueur introuvable'), { code: 'introuvable' });
+  if (!isValidUsername(nAffiche)) throw Object.assign(new Error('pseudo invalide'), { code: 'invalide' });
+  if (n === a) throw Object.assign(new Error('c’est déjà son pseudo'), { code: 'identique' });
+  if (users[n] || NPC_USERNAMES.has(n)) throw Object.assign(new Error('pseudo déjà pris'), { code: 'pris' });
+  if (process.env.DATABASE_URL) {
+    if (await db.findUserByUsername(n)) throw Object.assign(new Error('pseudo déjà pris'), { code: 'pris' });
+    if (await db.isUsernameReserved(n)) throw Object.assign(new Error('pseudo réservé (compte supprimé ou ancien pseudo)'), { code: 'reserve' });
+  }
+
+  let touche = {};
+  if (process.env.DATABASE_URL) ({ touche } = await db.renommerJoueur(a, n, nAffiche));
+  const bilan = renommerEnMemoire(a, n, nAffiche);
+  // L'ancien pseudo ne redevient pas libre : il désigne encore un passé.
+  if (process.env.DATABASE_URL) {
+    await db.reserveUsername(a, 'renommage:' + par).catch(dbErr('reserveUsername'));
+  }
+  console.log(`[RENOMMAGE] ${a} → ${nAffiche} (par ${par}) | base : `
+    + (Object.keys(touche).length ? Object.entries(touche).map(([k, v]) => `${k}=${v}`).join(' ') : 'rien')
+    + ` | serveur : ${bilan.join(', ') || 'rien'}`);
+  return { ancien: a, nouveau: n, affichage: nAffiche, touche, bilan };
+}
+
+app.post('/api/admin/users/:username/renommer', adminAuth, async (req, res) => {
+  const nouveau = String((req.body && req.body.nouveau) || req.query.nouveau || '');
+  try {
+    const r = await renommerJoueurPartout(req.params.username, nouveau, { par: 'admin' });
+    res.json({ ok: true, ...r });
+  } catch (e) {
+    const codes = { introuvable: 404, invalide: 400, identique: 400, pris: 409, reserve: 409 };
+    res.status(codes[e.code] || 500).json({ ok: false, error: e.message, code: e.code || 'erreur' });
+  }
+});
+
 app.delete('/api/admin/users/:username', adminAuth, async (req, res) => {
   const u = req.params.username;
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
