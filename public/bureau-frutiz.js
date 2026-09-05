@@ -2302,10 +2302,11 @@ window.BureauFrutiz = (function () {
     miniwaved: 'miniwave', minipixiz: 'minipixiz', minipixizd: 'minipixiz',
     snake3: 'snake3', snake: 'snake3', minifever: 'minifever',
     jama: 'jamajama', jamajama: 'jamajama',
-    // Kaluga a deux disques d'époque, le FD et son aperçu (« kalugaPreview »,
-    // le disque de démonstration) : les deux ouvrent le portage, le serveur
-    // fait la part du Fruit Défendu (classement) comme pour le SWF.
-    kaluga: 'kaluga', kalugapreview: 'kaluga',
+    // Kaluga : le FD noir et le disque light portent le même libellé
+    // (« kaluga »), comme les deux disques de Frutisnake — sur le bureau HTML
+    // les deux ouvrent le portage, et c'est le serveur qui fait la part du
+    // Fruit Défendu au classement. Sous Ruffle, le FD noir joue le SWF.
+    kaluga: 'kaluga',
   };
   /*
    * LES DEUX QUI SONT ENCORE EN FLASH.
@@ -2315,7 +2316,8 @@ window.BureauFrutiz = (function () {
    * d'époque montre tous les disques du joueur — mais les laissait INERTES :
    * pas attrapables, donc impossibles à glisser dans la Frusion, alors que
    * main.swf accepte n'importe quel disque dans sa console. (Kaluga en
-   * faisait partie, avec ses deux pastilles, jusqu'à son portage.)
+   * faisait partie, avec ses deux pastilles, jusqu'à son portage — il n'en a
+   * plus qu'une, le FD noir, à côté de son disque light.)
    *
    * Le catalogue vit dans `light.html` (`window.JeuxFlash`), avec les mêmes
    * dimensions et le même rognage que le bureau donne à `game-popup.html` —

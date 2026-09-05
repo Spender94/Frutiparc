@@ -17525,16 +17525,14 @@ const GAME_DISCS = {
       { u: 'games/kaluga/full.swf' },
     ],
   },
-  kalugademo: {
-    discType: '3',
-    playMode: 'preview',
-    swfName: 'kaluga',
-    gameId: 'games/kaluga/full.swf',
-    props: 'w=640;h=480;ct=20;cb=20;m=i',
-    files: [
-      { u: 'games/kaluga/full.swf' },
-    ],
-  },
+  // Kaluga avait un TROISIÈME disque, `kalugademo` : la DÉMONSTRATION
+  // (anneau rouge, playMode « preview »), qui lançait le même SWF sans rien
+  // classer — c'est la « session blanche » que le menu du jeu appelait
+  // ESSAIS. Le portage rend cet état-là autrement (le premier mode se nomme
+  // ESSAIS de lui-même quand il ne reste plus de Fruit Défendu), et deux
+  // pastilles Kaluga pour le même SWF n'apprenaient rien à personne : il ne
+  // reste que le FD noir ci-dessus et le disque light ci-dessous.
+  //
   // Kaluga en HTML (/kaluga/), sur le modèle de snake3light : anneau rouge
   // jamais consommé, marqueur `light/kaluga` que ruffle.html détourne vers
   // le portage au lieu de Ruffle, et swfName « kaluga » pour que voyant,

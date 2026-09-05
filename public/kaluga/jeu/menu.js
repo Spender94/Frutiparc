@@ -49,7 +49,10 @@ class Menu extends J.Slot {
       { id: 9, name: 'PREPARATION' },
       { id: 7, name: 'OPTIONS' },
     ];
-    if (this.mng.client.isWhite()) this.menuList[0].name = 'ESSAIS';
+    // CHALLENGE quand la partie ira au classement, ESSAIS quand elle n'ira
+    // pas — c'est le renommage d'époque (session blanche = disque de démo),
+    // rendu au quota de Fruits Défendus que le serveur tient (Client.isRanked).
+    if (!this.mng.client.isRanked()) this.menuList[0].name = 'ESSAIS';
     // CASSE MODES
     const modes = this.mng.card.$mode;
     for (let m = 0; m < modes.length; m++) {

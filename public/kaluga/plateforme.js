@@ -59,6 +59,36 @@ class Client {
   isRed() { return false; }
   isAutoDestruct() { return false; }
 
+  /*
+   * LA PARTIE COMPTE-T-ELLE ? — ce qui décide du nom du premier mode.
+   *
+   * D'époque, le menu s'appelait CHALLENGE, sauf en session BLANCHE où il
+   * devenait ESSAIS (Menu.genMenuList) : la session blanche, c'était le
+   * disque de DÉMONSTRATION (`kalugademo`, playMode « preview »), qui jouait
+   * sans rien classer. Le disque noir, lui, consommait un Fruit Défendu et
+   * envoyait le score.
+   *
+   * Ici la progression est TOUJOURS blanche (la fruticard s'enregistre à
+   * chaque partie, `isWhite`), mais le score part toujours lui aussi : c'est
+   * le SERVEUR qui tranche, avec le quota de Fruits Défendus (kaluga est
+   * dans FD_LIMITED_GAMES). On demande donc ce quota, et le menu dit la
+   * vérité au joueur AVANT qu'il joue — CHALLENGE quand la partie ira au
+   * classement, ESSAIS quand elle n'ira pas (plus de FD, ou pas de session).
+   */
+  isRanked() {
+    if (!this.sid) return false;              // ouvert à la main : aucun classement
+    if (!this.fd) return true;                // quota inconnu : le score part quand même
+    if (this.fd.limited === false) return true;
+    return (Number(this.fd.remaining) || 0) > 0;
+  }
+  chargerFd() {
+    if (!this.sid) return Promise.resolve();
+    return fetch('/api/fd/status?sid=' + encodeURIComponent(this.sid) + '&game=kaluga', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j && j.ok) this.fd = j; })
+      .catch(() => {});
+  }
+
   // Un fichier chargé par le jeu (carte, séquence) : la bibliothèque du même nom.
   getFileInfos(f) {
     const nom = String(f || '').replace(/^.*\//, '').replace(/\.swf$/i, '');
@@ -91,7 +121,9 @@ class Client {
         if (brut1) { try { this.slots[1] = JSON.parse(brut1); } catch (e) { this.slots[1] = undefined; } }
       })
       .catch(() => { this.slots = []; this.charge = false; });
-    Promise.all([profil, slots]).then(() => this.onServiceConnect());
+    // Le quota FD arrive avec le reste : le menu se construit juste après, et
+    // c'est lui qui nomme le premier mode.
+    Promise.all([profil, slots, this.chargerFd()]).then(() => this.onServiceConnect());
   }
   onServiceConnect() {
     this.mng.card = this.slots[0];
@@ -112,6 +144,10 @@ class Client {
         bestScorePos: r ? r.newPos : undefined, bestScore: r ? r.newScore : undefined,
         ok: !!(r && r.ok), fdBlocked: !!(r && r.fdBlocked), error: r ? r.error : 'hors_ligne',
       };
+      // La partie vient de consommer un Fruit Défendu (ou de se heurter au
+      // quota vide) : on rafraîchit, pour que le menu suivant dise juste.
+      if (this.fd) this.fd.remaining = (r && r.fdBlocked) ? 0 : Math.max(0, (Number(this.fd.remaining) || 0) - 1);
+      this.chargerFd();
       this.onSaveScore();
     };
     if (!this.sid) { Promise.resolve().then(() => finir(null)); return; }

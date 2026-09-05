@@ -5,7 +5,7 @@ seconde, 2005) en JS natif, **sans rien changer au jeu** — mêmes dessins,
 mêmes fontes, mêmes musiques et sons, mêmes animations de clips, même
 physique et même vitesse — pour le jouer dans `/light` (onglet Kaluga) et sur
 le bureau (fenêtre « Kaluga », disque `kalugalight`). Le SWF d'origine reste
-au catalogue (`kaluga1`, `kalugademo`) et se joue toujours sous Ruffle.
+au catalogue (`kaluga1`) et se joue toujours sous Ruffle.
 
 Sources de fidélité :
 
@@ -186,8 +186,29 @@ scénarios des clips ne sont pas réécrits.
   « Kaluga » de la feuille « Mes disques » (jaquette `kaluga` du SWF) ;
   Kaluga quitte la liste des jeux joués en fenêtre Ruffle.
 - Bureau (`bureau-frutiz.js`) : rubrique `kaluga` (fenêtre 712×506 : la
-  scène à l'échelle 1 plus le cadre), les deux disques d'époque (`kaluga`,
-  `kalugaPreview`) glissés dans la Frusion ouvrent le portage.
+  scène à l'échelle 1 plus le cadre) ; glissé dans la Frusion, un disque
+  Kaluga y ouvre le portage — comme les deux disques de Frutisnake, dont le
+  bureau HTML joue toujours la version HTML. Sous Ruffle, le FD noir joue le
+  SWF et le disque light le portage (`LIGHT_CLIENTS`).
+- **Deux disques, pas trois.** Le catalogue avait le FD noir (`kaluga1`) et
+  sa DÉMONSTRATION (`kalugademo`, anneau rouge, playMode « preview ») : le
+  même SWF, joué sans rien classer — la « session blanche » que le menu du
+  jeu appelait ESSAIS. Le portage rend cet état autrement (voir ci-dessous),
+  et la démo a donc été retirée : il reste `kaluga1` (Flash) et
+  `kalugalight` (portage). Un disque de démo déjà posé sur un bureau cesse
+  simplement de paraître — `desktopNodesXml` saute les identifiants
+  inconnus.
+- **CHALLENGE ou ESSAIS.** D'époque, le premier mode s'appelait CHALLENGE,
+  et ESSAIS en session blanche (`Menu.genMenuList`). Ici la progression est
+  toujours enregistrée et le score part toujours : c'est le SERVEUR qui
+  tranche, avec le quota de Fruits Défendus. Le menu demande donc ce quota
+  (`/api/fd/status`, `Client.isRanked`) et dit la vérité avant la partie —
+  **CHALLENGE** quand elle ira au classement, **ESSAIS** quand elle n'ira
+  pas (plus de FD du jour, ou jeu ouvert sans session). Le quota se
+  rafraîchit après chaque score, donc le menu suivant est juste. Deux
+  entrées SÉPARÉES seraient impossibles sans inventer un dessin : le titre
+  d'une entrée est une image du SWF (`slotTitle`, une par identifiant de
+  mode), comme son ombre et son voyant.
 - Serveur : disque `kalugalight` (anneau rouge, `gameId: 'light/kaluga'`,
   même `swfName` donc même voyant, même `<service>`, même classement et
   même fruticard), que `ruffle.html` (`LIGHT_CLIENTS`) ouvre en fenêtre

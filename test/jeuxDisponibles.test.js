@@ -82,14 +82,55 @@ test('les neuf portages JS sont sur la feuille mobile', () => {
   assert.match(LIGHT, /kaluga: "\/kaluga\/"/);
   assert.match(LIGHT, /\$\("#kaluga-panel"\)\.classList\.toggle\("active", tab === "kaluga"\);/);
   assert.match(LIGHT, /<iframe id="kaluga-frame" title="Kaluga" referrerpolicy="no-referrer"><\/iframe>/);
-  // Le bureau ouvre le même onglet en fenêtre, et ses deux disques d'époque
-  // (le FD et l'aperçu) y mènent.
+  // Le bureau ouvre le même onglet en fenêtre, et le disque y mène.
   assert.match(BUREAU, /kaluga:\s+\{ panneau: '#kaluga-panel',\s+titre: 'Kaluga',/);
-  assert.match(BUREAU, /kaluga: 'kaluga', kalugapreview: 'kaluga',/);
+  assert.match(BUREAU, /kaluga: 'kaluga',/);
   // Et le disque light du catalogue, sur le modèle de snake3light.
   assert.match(SERVEUR, /kalugalight: \{\s*\n\s*discType: '3',\s*\n\s*playMode: 'single',\s*\n\s*swfName: 'kaluga',\s*\n\s*iconName: 'kaluga',\s*\n\s*gameId: 'light\/kaluga',/);
   const RUFFLE = fs.readFileSync(path.join(ROOT, 'public/ruffle.html'), 'utf8');
   assert.match(RUFFLE, /"light\/kaluga": \{ url: "\/kaluga\/", w: \d+, h: \d+ \}/);
+});
+
+/*
+ * KALUGA N'A PLUS QUE DEUX DISQUES.
+ *
+ * Il en avait trois : le FD noir (`kaluga1`), sa DÉMONSTRATION (`kalugademo`,
+ * anneau rouge, playMode « preview » — le même SWF, joué sans rien classer)
+ * et le disque light. La démo est retirée : le portage rend son état
+ * autrement, en nommant son premier mode ESSAIS quand la partie n'ira pas au
+ * classement. Reste une version Flash et une version light.
+ */
+test('Kaluga garde un disque Flash et un disque light, pas de démo', () => {
+  const cles = catalogue().filter((k) => /^kaluga/i.test(k));
+  assert.deepStrictEqual(cles.sort(), ['kaluga1', 'kalugalight']);
+  assert.ok(!SERVEUR.includes('kalugademo:'), 'le disque de démonstration a été retiré');
+  // Le libellé d'icône est le même pour les deux (« kaluga ») : sur le bureau
+  // HTML ils ouvrent donc tous deux le portage, comme les deux disques de
+  // Frutisnake. La correspondance inventée pour l'aperçu a disparu avec lui.
+  assert.match(BUREAU, /kaluga: 'kaluga',/);
+  assert.ok(!/kalugapreview:/.test(BUREAU), 'plus de correspondance pour un disque qui n’existe plus');
+});
+
+/*
+ * LE PREMIER MODE DIT S'IL COMPTE.
+ *
+ * D'époque, Menu.genMenuList renommait CHALLENGE en ESSAIS quand la session
+ * était blanche — c'était le disque de démonstration. Le portage garde les
+ * deux noms, mais les tient du QUOTA de Fruits Défendus que le serveur
+ * possède : la partie ira au classement, ou elle n'ira pas.
+ */
+test('Kaluga : CHALLENGE quand la partie compte, ESSAIS sinon', () => {
+  const MENU = fs.readFileSync(path.join(ROOT, 'public/kaluga/jeu/menu.js'), 'utf8');
+  const PLATEFORME = fs.readFileSync(path.join(ROOT, 'public/kaluga/plateforme.js'), 'utf8');
+  assert.match(MENU, /if \(!this\.mng\.client\.isRanked\(\)\) this\.menuList\[0\]\.name = 'ESSAIS';/);
+  // Le nom ne suit PLUS isWhite : la progression, elle, reste blanche (la
+  // fruticard s'enregistre à chaque partie), et les deux ne doivent pas se
+  // confondre.
+  assert.ok(!/isWhite\(\)\) this\.menuList\[0\]/.test(MENU));
+  assert.match(PLATEFORME, /isRanked\(\) \{/);
+  assert.match(PLATEFORME, /\/api\/fd\/status\?sid=/);
+  // Sans session il n'y a pas de classement : ESSAIS.
+  assert.match(PLATEFORME, /if \(!this\.sid\) return false;/);
 });
 
 test('les deux jeux Flash y sont aussi, en fenêtre à part', () => {
