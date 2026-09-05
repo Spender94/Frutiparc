@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Kaluga — atelier des clips</title>
+<!--
+  L'atelier : chaque symbole du SWF, rejoué par le moteur, seul sur la scène.
+  C'est l'outil de vérification du portage — on y compare un clip à ce que
+  Ruffle en montre, image par image (gotoAndStop), à l'échelle voulue.
+-->
+<style>
+  body { margin: 0; font: 12px Verdana, sans-serif; background: #eee; color: #222; display: flex; height: 100vh; }
+  #liste { width: 220px; overflow: auto; border-right: 1px solid #bbb; background: #f7f7f7; }
+  #liste a { display: block; padding: 2px 8px; text-decoration: none; color: #333; }
+  #liste a:hover, #liste a.actif { background: #ade76b; }
+  #scene { flex: 1; display: flex; flex-direction: column; }
+  #barre { padding: 6px; background: #ddd; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #cadre { flex: 1; overflow: auto; background: repeating-conic-gradient(#e6e6e6 0 25%, #fff 0 50%) 0 0 / 20px 20px; }
+  canvas { display: block; }
+  input[type=number] { width: 60px; }
+</style>
+</head>
+<body>
+<div id="liste"></div>
+<div id="scene">
+  <div id="barre">
+    <label>fichier <select id="fichier"><option>kaluga</option><option>challenge</option><option>mordor</option><option>forest</option><option>field</option><option>olympic_a</option><option>squirrel</option><option>dawn</option><option>credits</option></select></label>
+    <label>échelle <input id="echelle" type="number" value="2" min="0.25" step="0.25"></label>
+    <label>image <input id="image" type="number" value="1" min="1"></label>
+    <button id="stop">stop</button><button id="play">play</button>
+    <span id="info"></span>
+  </div>
+  <div id="cadre"><canvas id="c" width="700" height="480"></canvas></div>
+</div>
+<script src="/kaluga/moteur/formes.js"></script>
+<script src="/kaluga/moteur/flash.js"></script>
+<script src="/kaluga/moteur/texte.js"></script>
+<script src="/kaluga/moteur/son.js"></script>
+<script src="/kaluga/moteur/scripts-images.js"></script>
+<script src="/kaluga/moteur/chargeur.js"></script>
+<script>
+(function () {
+  'use strict';
+  const K = window.KalugaMoteur;
+  const canvas = document.getElementById('c');
+  let scene = null, biblio = null, courant = null;
+
+  function montrer(nom, id) {
+    if (courant) courant.removeMovieClip();
+    const ech = parseFloat(document.getElementById('echelle').value) || 1;
+    courant = scene.racine.attachMovie(nom, 'sujet', 1);
+    if (!courant) { courant = K.instancier(biblio, id); courant.prof = 1; scene.racine.insererEnfant(courant); K.finaliser(courant, null); }
+    // Le sujet à l'origine de la scène, décalé pour voir son quadrant négatif.
+    const c = courant.cadreLocal() || [0, 0, 100, 100];
+    const l = Math.max(64, (c[2] - c[0]) * ech + 20), h = Math.max(64, (c[3] - c[1]) * ech + 20);
+    canvas.width = Math.ceil(l); canvas.height = Math.ceil(h);
+    scene.largeur = l / ech; scene.hauteur = h / ech; scene.echelleCanvas = ech;
+    courant._x = -c[0] + 10 / ech; courant._y = -c[1] + 10 / ech;
+    document.getElementById('image').max = courant._totalframes || 1;
+    document.getElementById('info').textContent = `#${id} ${nom} — ${courant._totalframes || 1} image(s), cadre ${c.map((v) => v.toFixed(1)).join(' ')}`;
+    for (const a of document.querySelectorAll('#liste a')) a.classList.toggle('actif', a.dataset.nom === nom);
+    location.hash = nom;
+  }
+
+  function lister() {
+    const liste = document.getElementById('liste');
+    liste.innerHTML = '';
+    const noms = Object.entries(biblio.symboles).filter(([n]) => !n.startsWith('__')).sort((a, b) => a[0].localeCompare(b[0]));
+    for (const [n, id] of noms) {
+      const a = document.createElement('a');
+      a.href = '#' + n; a.textContent = `${n} (#${id})`; a.dataset.nom = n;
+      a.onclick = (ev) => { ev.preventDefault(); montrer(n, id); };
+      liste.appendChild(a);
+    }
+    // Les clips sans nom (les sous-clips) : par identifiant.
+    const sans = Object.entries(biblio.perso).filter(([id, p]) => p.t === 'clip' && !biblio.nomDe(+id) && +id > 0).map(([id]) => +id);
+    if (sans.length) {
+      const t = document.createElement('div'); t.textContent = '— sans nom —'; t.style.padding = '6px 8px'; t.style.color = '#888'; liste.appendChild(t);
+      for (const id of sans) {
+        const a = document.createElement('a'); a.href = '#' + id; a.textContent = `#${id}`; a.dataset.nom = String(id);
+        a.onclick = (ev) => { ev.preventDefault(); montrer(String(id), id); };
+        liste.appendChild(a);
+      }
+    }
+  }
+
+  function ouvrir(nomFichier) {
+    K.chargerBiblio(nomFichier).then((b) => {
+      biblio = b;
+      if (scene) scene.arreter();
+      scene = new K.Scene(canvas, b, {});
+      scene.fond = 'rgba(0,0,0,0)';
+      scene.demarrer();
+      courant = null;
+      lister();
+      const h = decodeURIComponent(location.hash.slice(1));
+      if (h) { const id = b.idDe(h); if (id !== undefined) montrer(h, id); else if (b.perso[h]) montrer(h, +h); }
+    });
+  }
+
+  document.getElementById('fichier').onchange = (ev) => ouvrir(ev.target.value);
+  document.getElementById('echelle').onchange = () => { if (courant) montrer(courant.$biblio.nomDe(courant.$id) || String(courant.$id), courant.$id); };
+  document.getElementById('image').onchange = (ev) => { if (courant && courant.gotoAndStop) courant.gotoAndStop(parseInt(ev.target.value, 10)); };
+  document.getElementById('stop').onclick = () => { if (courant && courant.stop) courant.stop(); };
+  document.getElementById('play').onclick = () => { if (courant && courant.play) courant.play(); };
+  ouvrir('kaluga');
+})();
+</script>
+</body>
+</html>

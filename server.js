@@ -13725,6 +13725,11 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
         if (tz[i]) addIfNew('$tz' + i);
       }
     }
+    // La kagulga : Manager.connected (kaluga/Manager.as) l'offre quand la
+    // case 8 du mode olympique ($mode[1][8], l'heptathlon débloqué) est
+    // acquise — c'est le TRIATHLON gagné qui la coche (CaterLaunch.initEndGame :
+    // quatre épreuves de plus, l'heptathlon, et `addKagulga`).
+    if (Array.isArray(mode) && Array.isArray(mode[1]) && mode[1][8]) addIfNew('$kagulga');
   } else if (game === 'bkiwi') {
     // Burning Kiwi slot 0 layout (savePublic in code.as):
     //   $ws/$wss/$wc/$wcs — boolean cup-win flags
@@ -17529,6 +17534,21 @@ const GAME_DISCS = {
     files: [
       { u: 'games/kaluga/full.swf' },
     ],
+  },
+  // Kaluga en HTML (/kaluga/), sur le modèle de snake3light : anneau rouge
+  // jamais consommé, marqueur `light/kaluga` que ruffle.html détourne vers
+  // le portage au lieu de Ruffle, et swfName « kaluga » pour que voyant,
+  // <service>, fruticard (extractGameItemsFromSlot) et classement
+  // (kaluga_classic, barrière FD comprise) se comportent exactement comme
+  // pour le disque Flash. 712×506 : la scène de 700×480 plus le cadre.
+  kalugalight: {
+    discType: '3',
+    playMode: 'single',
+    swfName: 'kaluga',
+    iconName: 'kaluga',
+    gameId: 'light/kaluga',
+    props: 'w=712;h=506;m=p',
+    files: [],
   },
   swapou1: {
     discType: '0',

@@ -1509,6 +1509,14 @@
     border: 0; display: block; background: #ADE76B;
     touch-action: none;
   }
+  /* Kaluga : le vert pomme des bandes de sa scène (700×480), pour que le
+     cadre se fonde dans le jeu pendant le chargement comme autour. */
+  #kaluga-panel { padding: 0; }
+  #kaluga-frame {
+    flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
+    border: 0; display: block; background: #ade76b;
+    touch-action: none;
+  }
   /* JamaJama : le jeu tient dans un carré de 384 et se centre sur le brun
      de son propre décor — le cadre prend la couleur du fond du menu pour
      qu'aucun liseré ne tranche autour du plateau. */
@@ -2677,6 +2685,16 @@
        snake3_classic, exactement comme le disque du bureau. -->
   <section class="panel" id="snake3-panel">
     <iframe id="snake3-frame" title="Frutisnake" referrerpolicy="no-referrer"></iframe>
+  </section>
+
+  <!-- Kaluga — portage natif canvas de la tzongre de 2005 (Games/kaluga) :
+       les dessins, fontes, sons et scénarios de clips sont tirés du SWF, la
+       mécanique transcrite des sources AS2 classe par classe. Il lit ?sid=
+       pour la fruticard (tzongres, modes et objets débloqués, records), les
+       préférences (touches, musique, sons, particules) et le classement
+       kaluga_classic, exactement comme le disque du bureau. -->
+  <section class="panel" id="kaluga-panel">
+    <iframe id="kaluga-frame" title="Kaluga" referrerpolicy="no-referrer"></iframe>
   </section>
 
   <!-- Mini-Fever — le jeu de mini-jeux que Motion Twin n'a jamais mis en ligne,
@@ -4452,7 +4470,7 @@
   var CADRES_JEU = {
     grapiz: "#grapiz-frame", bandas: "#bandas-frame", swapou: "#swapou-frame",
     miniwave: "#miniwave-frame", minipixiz: "#minipixiz-frame",
-    snake3: "#snake3-frame",
+    snake3: "#snake3-frame", kaluga: "#kaluga-frame",
     minifever: "#minifever-frame", jamajama: "#jamajama-frame",
   };
   /* CHAQUE JEU EST UNE PAGE À PART. Le cadre ne fait que l'héberger : le jeu
@@ -4463,7 +4481,7 @@
   var ADRESSES_JEU = {
     grapiz: "/grapiz/", bandas: "/bandas/", swapou: "/swapou/",
     miniwave: "/miniwave/", minipixiz: "/minipixiz/", snake3: "/snake3/",
-    minifever: "/minifever/", jamajama: "/jamajama/",
+    kaluga: "/kaluga/", minifever: "/minifever/", jamajama: "/jamajama/",
   };
   function adresseJeu(tab) {
     var a = ADRESSES_JEU[tab];
@@ -4716,6 +4734,7 @@
     $("#miniwave-panel").classList.toggle("active", tab === "miniwave");
     $("#minipixiz-panel").classList.toggle("active", tab === "minipixiz");
     $("#snake3-panel").classList.toggle("active", tab === "snake3");
+    $("#kaluga-panel").classList.toggle("active", tab === "kaluga");
     $("#minifever-panel").classList.toggle("active", tab === "minifever");
     $("#jamajama-panel").classList.toggle("active", tab === "jamajama");
     $("#scores-panel").classList.toggle("active", tab === "scores");
@@ -4808,27 +4827,26 @@
     { tab: "miniwave", img: "/fb/fd_miniwave.png?v=2", name: "Mini-Wave" },
     { tab: "minipixiz", img: "/fb/fd_minipixiz.png?v=2", name: "Minipixiz" },
     { tab: "snake3", jaquette: "snake", name: "Frutisnake" },
+    { tab: "kaluga", jaquette: "kaluga", name: "Kaluga" },
     // Mini-Fever n'a jamais eu de jaquette : la sienne est composée des
     // épreuves portées (scripts/make-minifever-pictos.js), en SVG.
     { tab: "minifever", img: "/fb/fd_minifever.svg", name: "Mini-Fever" },
     { tab: "jamajama", jaquette: "jama", name: "JamaJama" },
     /*
-     * LES TROIS QUI SONT ENCORE EN FLASH.
+     * LES DEUX QUI SONT ENCORE EN FLASH.
      *
      * Ils n'ont pas de portage JS : ils s'ouvrent donc dans une FENÊTRE À PART
      * (game-popup.html + Ruffle), comme le bureau les ouvre — `props` du
      * catalogue serveur (`GAME_DISCS`), au chiffre près :
      *
-     *     bkiwi1  w=350 h=350           kaluga1 w=640 h=480 ct=20 cb=20
-     *     mb2     w=550 h=400
+     *     bkiwi1  w=350 h=350           mb2  w=550 h=400
      *
      * `anneau` suit leur `discType` au catalogue : Motion-Ball 2 est un FD
-     * BLANC (1), les deux autres des FD noirs (0).
+     * BLANC (1), Burning Kiwi un FD noir (0). Kaluga (kaluga1, w=640 h=480
+     * ct=20 cb=20) a quitté cette liste avec son portage (/kaluga/).
      */
     { flash: "bkiwi", swf: "games/burningKiwi/burningkiwi.swf", w: 350, h: 350,
       jaquette: "bkiwi", name: "Burning Kiwi" },
-    { flash: "kaluga", swf: "games/kaluga/full.swf", w: 640, h: 480, ct: 20, cb: 20,
-      jaquette: "kaluga", name: "Kaluga" },
     { flash: "mb2", swf: "games/motionBall2/full.swf", w: 550, h: 400,
       jaquette: "mb2", anneau: "1", name: "Motion-Ball 2" },
   ];

@@ -53,7 +53,7 @@ function catalogue() {
 
 test('le catalogue sert TOUS les disques, sans condition de possession', () => {
   const cles = catalogue();
-  for (const attendu of ['grapiz1', 'bandas1', 'bkiwi1', 'kaluga1', 'mb2',
+  for (const attendu of ['grapiz1', 'bandas1', 'bkiwi1', 'kaluga1', 'kalugalight', 'mb2',
     'swapou1', 'snake3light', 'miniwavelight', 'minipixizlight', 'minifeverlight', 'jamajama']) {
     assert.ok(cles.includes(attendu), attendu + ' manque au catalogue');
   }
@@ -69,24 +69,40 @@ test('un disque rangé dans un dossier disparu revient à « Mes disques »', ()
   assert.match(SERVEUR, /function desktopHasDisc\(user, id\) \{\s*\n\s*const liste = ensureDesktopItems\(user\);\s*\n\s*const dossiers = new Set\(liste\.filter\(\(it\) => it\.t === 'folder'\)\.map\(\(it\) => it\.u\)\);\s*\n\s*return liste\.some\(\(it\) => it\.t === 'disc' && it\.u === id\s*\n\s*&& \(!it\.p \|\| it\.p === 'root' \|\| dossiers\.has\(it\.p\)\)\);/);
 });
 
-test('les huit portages JS sont sur la feuille mobile', () => {
+test('les neuf portages JS sont sur la feuille mobile', () => {
   const noms = listeMobile();
   for (const n of ['Frutibandas', 'Grapiz', 'Swapou', 'Mini-Wave', 'Minipixiz',
-    'Frutisnake', 'Mini-Fever', 'JamaJama']) {
+    'Frutisnake', 'Kaluga', 'Mini-Fever', 'JamaJama']) {
     assert.ok(noms.includes(n), n + ' manque à la feuille mobile');
   }
+  // Kaluga a rejoint les portages : un onglet (/kaluga/), plus une fenêtre Ruffle.
+  assert.match(LIGHT, /\{ tab: "kaluga", jaquette: "kaluga", name: "Kaluga" \}/);
+  assert.doesNotMatch(LIGHT, /\{ flash: "kaluga"/);
+  assert.match(LIGHT, /kaluga: "#kaluga-frame"/);
+  assert.match(LIGHT, /kaluga: "\/kaluga\/"/);
+  assert.match(LIGHT, /\$\("#kaluga-panel"\)\.classList\.toggle\("active", tab === "kaluga"\);/);
+  assert.match(LIGHT, /<iframe id="kaluga-frame" title="Kaluga" referrerpolicy="no-referrer"><\/iframe>/);
+  // Le bureau ouvre le même onglet en fenêtre, et ses deux disques d'époque
+  // (le FD et l'aperçu) y mènent.
+  assert.match(BUREAU, /kaluga:\s+\{ panneau: '#kaluga-panel',\s+titre: 'Kaluga',/);
+  assert.match(BUREAU, /kaluga: 'kaluga', kalugapreview: 'kaluga',/);
+  // Et le disque light du catalogue, sur le modèle de snake3light.
+  assert.match(SERVEUR, /kalugalight: \{\s*\n\s*discType: '3',\s*\n\s*playMode: 'single',\s*\n\s*swfName: 'kaluga',\s*\n\s*iconName: 'kaluga',\s*\n\s*gameId: 'light\/kaluga',/);
+  const RUFFLE = fs.readFileSync(path.join(ROOT, 'public/ruffle.html'), 'utf8');
+  assert.match(RUFFLE, /"light\/kaluga": \{ url: "\/kaluga\/", w: \d+, h: \d+ \}/);
 });
 
-test('les trois jeux Flash y sont aussi, en fenêtre à part', () => {
+test('les deux jeux Flash y sont aussi, en fenêtre à part', () => {
   const noms = listeMobile();
-  for (const n of ['Burning Kiwi', 'Kaluga', 'Motion-Ball 2']) {
+  for (const n of ['Burning Kiwi', 'Motion-Ball 2']) {
     assert.ok(noms.includes(n), n + ' manque à la feuille mobile');
   }
   // Leurs gabarits sont ceux du catalogue serveur, au chiffre près.
   assert.match(LIGHT, /\{ flash: "bkiwi", swf: "games\/burningKiwi\/burningkiwi\.swf", w: 350, h: 350,/);
-  assert.match(LIGHT, /\{ flash: "kaluga", swf: "games\/kaluga\/full\.swf", w: 640, h: 480, ct: 20, cb: 20,/);
   assert.match(LIGHT, /\{ flash: "mb2", swf: "games\/motionBall2\/full\.swf", w: 550, h: 400,/);
   assert.match(SERVEUR, /props: 'w=350;h=350;m=i'/);
+  // Le disque Flash de Kaluga reste au catalogue (le bureau Ruffle le joue
+  // encore), avec son rognage d'époque.
   assert.match(SERVEUR, /props: 'w=640;h=480;ct=20;cb=20;m=i'/);
   assert.match(SERVEUR, /props: 'w=550;h=400;m=i'/);
   // …et l'ouverture reprend l'URL que `ruffle.html` construit pour la Frusion.
@@ -144,12 +160,12 @@ test('Frutisnake et JamaJama portent la jaquette d’époque', () => {
  *
  * « Mes disques » du bureau montre les quinze FD du catalogue, mais ne rendait
  * attrapables que ceux qui ont un portage JS : Burning Kiwi, Kaluga (deux
- * pastilles — le FD et son aperçu) et Motion-Ball 2 restaient INERTES, donc
- * impossibles à glisser dans la Frusion. main.swf, lui, accepte n'importe quel
- * disque dans sa console : c'était un manque du portage, pas une règle
- * d'époque.
+ * pastilles — le FD et son aperçu, jusqu'à son portage) et Motion-Ball 2
+ * restaient INERTES, donc impossibles à glisser dans la Frusion. main.swf,
+ * lui, accepte n'importe quel disque dans sa console : c'était un manque du
+ * portage, pas une règle d'époque.
  */
-test('les trois disques Flash s’attrapent aussi sur le bureau', () => {
+test('les deux disques Flash s’attrapent aussi sur le bureau', () => {
   // Le pont : le catalogue des trois vit dans light.html, le bureau y puise.
   assert.match(LIGHT, /window\.JeuxFlash = \{/);
   assert.match(LIGHT, /parDisque: function \(libelle\)/);

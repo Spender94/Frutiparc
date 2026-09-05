@@ -96,6 +96,9 @@ window.BureauFrutiz = (function () {
     miniwave:   { panneau: '#miniwave-panel',  titre: 'Mini-Wave',      l: 900, h: 700 },
     minipixiz:  { panneau: '#minipixiz-panel', titre: 'MiniPixiz',      l: 900, h: 700 },
     snake3:     { panneau: '#snake3-panel',    titre: 'Frutisnake',     l: 880, h: 740 },
+    // Kaluga : sa scène fait 700×480 (l'en-tête du SWF), et la fenêtre la
+    // montre à l'échelle 1 — 12 et 26 de plus pour le cadre (minFenetre).
+    kaluga:     { panneau: '#kaluga-panel',    titre: 'Kaluga',         l: 712, h: 506 },
     minifever:  { panneau: '#minifever-panel', titre: 'Mini-Fever',     l: 880, h: 760 },
     jamajama:   { panneau: '#jamajama-panel',  titre: 'JamaJama',       l: 620, h: 640 },
     // « Salons publics » — la SEULE fenêtre du bureau qui n'existe pas côté
@@ -2299,21 +2302,24 @@ window.BureauFrutiz = (function () {
     miniwaved: 'miniwave', minipixiz: 'minipixiz', minipixizd: 'minipixiz',
     snake3: 'snake3', snake: 'snake3', minifever: 'minifever',
     jama: 'jamajama', jamajama: 'jamajama',
+    // Kaluga a deux disques d'époque, le FD et son aperçu (« kalugaPreview »,
+    // le disque de démonstration) : les deux ouvrent le portage, le serveur
+    // fait la part du Fruit Défendu (classement) comme pour le SWF.
+    kaluga: 'kaluga', kalugapreview: 'kaluga',
   };
   /*
-   * LES TROIS QUI SONT ENCORE EN FLASH.
+   * LES DEUX QUI SONT ENCORE EN FLASH.
    *
-   * Burning Kiwi, Kaluga et Motion-Ball 2 n'ont pas de portage JS : ils se
-   * lisent sous Ruffle, dans une fenêtre à part. Le bureau les MONTRAIT — le
-   * bureau d'époque montre tous les disques du joueur — mais les laissait
-   * INERTES : pas attrapables, donc impossibles à glisser dans la Frusion.
-   * Quatre pastilles sur quinze qui ne répondaient pas (Kaluga en a deux, le
-   * FD et son aperçu), alors que main.swf accepte n'importe quel disque dans
-   * sa console.
+   * Burning Kiwi et Motion-Ball 2 n'ont pas de portage JS : ils se lisent
+   * sous Ruffle, dans une fenêtre à part. Le bureau les MONTRAIT — le bureau
+   * d'époque montre tous les disques du joueur — mais les laissait INERTES :
+   * pas attrapables, donc impossibles à glisser dans la Frusion, alors que
+   * main.swf accepte n'importe quel disque dans sa console. (Kaluga en
+   * faisait partie, avec ses deux pastilles, jusqu'à son portage.)
    *
    * Le catalogue vit dans `light.html` (`window.JeuxFlash`), avec les mêmes
    * dimensions et le même rognage que le bureau donne à `game-popup.html` —
-   * un seul endroit pour les trois.
+   * un seul endroit pour les deux.
    */
   function jeuFlashDe(jeu) {
     var P = window.JeuxFlash;

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Kaluga</title>
+<!--
+  Kaluga — portage natif JS du jeu Flash de 2005 (700×480, 40 images par
+  seconde), fidèle aux sources AS2 (Games/kaluga/class/). Les dessins sont
+  les formes vectorielles du SWF rejouées sur un canvas par un petit lecteur
+  de liste d'affichage (moteur/), les sons ses MP3 et ADPCM, les fontes ses
+  fontes embarquées, les scénarios de ses clips ceux du fichier d'origine.
+
+  Au clavier (touches modifiables dans OPTIONS) : haut = battre des ailes,
+  gauche/droite = pencher la tzongre, bas = piquer, espace = lancer le fil ;
+  ESC ou P = pause.
+
+  ?sid= pour la persistance Frutiparc (fruticard : tzongres et modes
+  débloqués, records ; préférences ; score du mode Challenge au classement).
+
+  La scène fait 700×480 : en paysage le jeu est bridé par la hauteur, en
+  portrait par la largeur — et les commandes tactiles s'installent sous les
+  pouces, comme pour Frutisnake.
+-->
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #ade76b;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none; -webkit-user-select: none;
+    font-family: Verdana, Arial, sans-serif;
+  }
+  #tout {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    box-sizing: border-box;
+  }
+  #aire { flex: 1 1 0; min-height: 0; min-width: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; image-rendering: auto; outline: none; }
+  #commandes { display: none; width: 100%; box-sizing: border-box; padding: 0 8px 8px; gap: 12px; align-items: stretch; }
+  @media (pointer: coarse) { #commandes { display: flex; } }
+  .cote { display: flex; gap: 8px; min-width: 0; }
+  #cote-gauche { flex: 3 1 0; }
+  #cote-droit { flex: 3 1 0; }
+  .cote .bloc { display: flex; gap: 8px; min-width: 0; flex: 1 1 auto; }
+  .btn {
+    flex: 1 1 0; min-width: 0;
+    height: clamp(50px, 8.5vh, 76px);
+    border: 3px solid #fff; border-radius: 14px;
+    background: #83ca22; color: #fff;
+    font: bold 22px Verdana, sans-serif;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, .18);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden; white-space: nowrap;
+    touch-action: none;
+  }
+  .btn:active, .btn.presse { background: #a7de53; }
+  #b-pause { flex: 0 1 auto; width: 30%; font-size: 13px; background: #6ba81b; }
+  @media (orientation: landscape) {
+    #tout { flex-direction: row; gap: 6px; }
+    #aire { width: auto; height: 100%; order: 5; }
+    .cote { height: 100%; flex-direction: column; justify-content: center; padding: 0 4px; flex: 0 0 auto; }
+    .cote .bloc { flex-direction: column; flex: 0 0 auto; }
+    #cote-gauche { order: 0; flex: 0 0 auto; }
+    #cote-droit { order: 9; flex: 0 0 auto; }
+    .btn { flex: 0 0 auto; width: 54px; height: clamp(42px, 14vh, 60px); font-size: 20px; }
+    #b-pause { width: 54px; height: 34px; }
+  }
+  @media (orientation: landscape) and (pointer: coarse) { #commandes { display: contents; } }
+  #chargement {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #fff; font: bold 14px Verdana, sans-serif; text-shadow: 0 1px 0 rgba(0,0,0,.2);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="tout">
+  <div id="aire"><canvas id="scene" width="700" height="480" tabindex="0"></canvas></div>
+  <div id="commandes">
+    <div class="cote" id="cote-gauche">
+      <div class="bloc">
+        <div class="btn" data-touche="gauche">&#8630;</div>
+        <div class="btn" data-touche="droite">&#8631;</div>
+        <div class="btn" data-touche="haut">&#8593;</div>
+      </div>
+    </div>
+    <div class="cote" id="cote-droit">
+      <div class="bloc">
+        <div class="btn" data-touche="bas">&#8595;</div>
+        <div class="btn" data-touche="fil">fil</div>
+        <div class="btn" id="b-pause" data-touche="echap">pause</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="chargement">Chargement de Kaluga…</div>
+
+<script src="/kaluga/moteur/formes.js"></script>
+<script src="/kaluga/moteur/flash.js"></script>
+<script src="/kaluga/moteur/texte.js"></script>
+<script src="/kaluga/moteur/son.js"></script>
+<script src="/kaluga/moteur/scripts-images.js"></script>
+<script src="/kaluga/moteur/chargeur.js"></script>
+<script src="/kaluga/jeu/base.js"></script>
+<script src="/kaluga/jeu/sprites.js"></script>
+<script src="/kaluga/jeu/game.js"></script>
+<script src="/kaluga/jeu/modes.js"></script>
+<script src="/kaluga/jeu/menu.js"></script>
+<script src="/kaluga/plateforme.js"></script>
+<script src="/kaluga/jeu/manager.js"></script>
+<!-- Le disque sorti de la Frusion ferme le jeu, et le battement tient le
+     voyant « joue à Kaluga » (data-jeu = swfName du disque, GAME_DISCS). -->
+<script src="/js/eject-watch.js" data-jeu="kaluga"></script>
+<script>
+(function () {
+  'use strict';
+  const K = window.KalugaMoteur;
+  const params = new URLSearchParams(location.search);
+  const canvas = document.getElementById('scene');
+
+  // Le canvas prend la place que #aire lui laisse, en gardant 700×480.
+  function adapter() {
+    const aire = document.getElementById('aire');
+    const l = aire.clientWidth, h = aire.clientHeight;
+    const ech = Math.max(0.1, Math.min(l / 700, h / 480));
+    canvas.style.width = Math.floor(700 * ech) + 'px';
+    canvas.style.height = Math.floor(480 * ech) + 'px';
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const px = Math.max(1, Math.round(700 * ech * dpr) / 700);
+    canvas.width = Math.round(700 * px);
+    canvas.height = Math.round(480 * px);
+    if (K.scene) K.scene.echelleCanvas = px;
+  }
+  window.addEventListener('resize', adapter);
+
+  // La manette tactile : chaque touche vaut une touche du clavier configurée.
+  const CODES = { gauche: 37, droite: 39, haut: 38, bas: 40, fil: 32, echap: 27 };
+  document.querySelectorAll('#commandes .btn').forEach(function (b) {
+    const touche = b.dataset.touche;
+    const code = () => (window.KalugaJeu.codeTouche ? window.KalugaJeu.codeTouche(touche) : CODES[touche]);
+    const poser = function (v, ev) {
+      ev.preventDefault();
+      b.classList.toggle('presse', v);
+      if (v) K.Key.presser(code()); else K.Key.relacher(code());
+    };
+    b.addEventListener('pointerdown', function (ev) { poser(true, ev); });
+    b.addEventListener('pointerup', function (ev) { poser(false, ev); });
+    b.addEventListener('pointercancel', function (ev) { poser(false, ev); });
+    b.addEventListener('pointerleave', function (ev) { if (b.classList.contains('presse')) poser(false, ev); });
+    window.addEventListener('pointerup', function () { if (b.classList.contains('presse')) { b.classList.remove('presse'); K.Key.relacher(code()); } });
+  });
+
+  // Quitter l'onglet du light, c'est lâcher les commandes : le panneau passe
+  // en display:none et plus aucun relâchement n'arrive — la touche resterait
+  // enfoncée pour toujours (le contrat `__relacherCommandes` de light.html).
+  const lacherTout = function () {
+    K.Key.toutRelacher();
+    document.querySelectorAll('#commandes .btn.presse').forEach(function (b) { b.classList.remove('presse'); });
+  };
+  window.__relacherCommandes = lacherTout;
+  document.addEventListener('visibilitychange', function () { if (document.hidden) lacherTout(); });
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () {
+      adapter();
+      const b = canvas.getBoundingClientRect();
+      if (!b.width || !b.height) lacherTout();   // une scène à zéro, c'est un panneau caché
+    }).observe(document.getElementById('aire'));
+  }
+
+  adapter();
+  window.demarrerKaluga({ canvas, sid: params.get('sid') || '' }).then(function () {
+    document.getElementById('chargement').remove();
+    adapter();
+    canvas.focus();
+  }).catch(function (e) {
+    document.getElementById('chargement').textContent = 'Kaluga n\'a pas pu démarrer : ' + (e && e.message ? e.message : e);
+    console.error(e);
+  });
+})();
+</script>
+</body>
+</html>
