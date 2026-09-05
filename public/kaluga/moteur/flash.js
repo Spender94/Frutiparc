@@ -98,14 +98,19 @@ class Affichable {
     this.$a = this.$sx * Math.cos(this.$rx); this.$b = this.$sx * Math.sin(this.$rx);
     this.$c = -this.$sy * Math.sin(this.$ry); this.$d = this.$sy * Math.cos(this.$ry);
   }
+  // Une transformation posée par script marque l'objet ($parScript) : dès
+  // lors, les placements du scénario (déplacements d'une interpolation, retour
+  // d'un goto) ne touchent plus ni sa matrice ni sa couleur — c'est la règle
+  // du lecteur Flash, celle qui laisse le voile de l'intro s'effacer par
+  // _alpha alors que son clip boucle sur ses images.
   get _x() { return this.$tx; }
-  set _x(v) { if (typeof v === 'number' && !Number.isNaN(v)) this.$tx = v; }
+  set _x(v) { if (typeof v === 'number' && !Number.isNaN(v)) { this.$tx = v; this.$parScript = true; } }
   get _y() { return this.$ty; }
-  set _y(v) { if (typeof v === 'number' && !Number.isNaN(v)) this.$ty = v; }
+  set _y(v) { if (typeof v === 'number' && !Number.isNaN(v)) { this.$ty = v; this.$parScript = true; } }
   get _xscale() { return this.$sx * 100; }
-  set _xscale(v) { if (typeof v !== 'number' || Number.isNaN(v)) return; this.$sx = v / 100; this.recomposer(); }
+  set _xscale(v) { if (typeof v !== 'number' || Number.isNaN(v)) return; this.$sx = v / 100; this.$parScript = true; this.recomposer(); }
   get _yscale() { return this.$sy * 100; }
-  set _yscale(v) { if (typeof v !== 'number' || Number.isNaN(v)) return; this.$sy = v / 100; this.recomposer(); }
+  set _yscale(v) { if (typeof v !== 'number' || Number.isNaN(v)) return; this.$sy = v / 100; this.$parScript = true; this.recomposer(); }
   get _rotation() {
     let d = this.$rx / RAD;
     while (d > 180) d -= 360;
@@ -117,6 +122,7 @@ class Affichable {
     const r = v * RAD;
     const dr = r - this.$rx;
     this.$rx = r; this.$ry += dr;
+    this.$parScript = true;
     this.recomposer();
   }
   get _alpha() { return this.$cx ? this.$cx[3] / 256 * 100 : 100; }
@@ -124,6 +130,7 @@ class Affichable {
     if (typeof v !== 'number' || Number.isNaN(v)) return;
     if (!this.$cx) this.$cx = [256, 256, 256, 256, 0, 0, 0, 0];
     this.$cx[3] = Math.max(0, v) / 100 * 256;
+    this.$parScript = true;
   }
   get _visible() { return this.$visible; }
   set _visible(v) { this.$visible = !!v; }
@@ -173,7 +180,11 @@ class Affichable {
   }
   contientLocal() { const c = this.cadreLocal(); return !!c; }
 
-  removeMovieClip() { if (this._parent) this._parent.retirerEnfant(this); }
+  // En AVM1, removeMovieClip ne retire que les clips créés par script (profondeur
+  // ≥ 0) : sur une instance posée par le scénario (profondeur négative), c'est
+  // un no-op — les films des séquences comptent dessus (leur masque « retiré »
+  // reste en place).
+  removeMovieClip() { if (this.$prof < 0) return; if (this._parent) this._parent.retirerEnfant(this); }
   swapDepths(cible) {
     if (!this._parent) return;
     if (typeof cible === 'number') { this.$prof = cible; this._parent.trierEnfants(); return; }
@@ -411,9 +422,11 @@ class Clip extends Affichable {
     return etat;
   }
   appliquerEtat(e, s) {
-    if (s.m) e.poserMatrice(s.m);
-    e.$cx = s.cx ? s.cx.slice() : null;
-    if (s.r !== undefined) e.$ratio = s.r;
+    if (!e.$parScript) {                       // transformé par script : le scénario n'y touche plus
+      if (s.m) e.poserMatrice(s.m);
+      e.$cx = s.cx ? s.cx.slice() : null;
+      if (s.r !== undefined) e.$ratio = s.r;
+    }
     if (s.n && e._name !== s.n) { if (e._name && this[e._name] === e) delete this[e._name]; e._name = s.n; this[s.n] = e; }
     e.$masqueJusqua = s.k || 0;
   }
@@ -458,9 +471,11 @@ class Clip extends Affichable {
     }
   }
   appliquerOp(e, op) {
-    if (op.m) e.poserMatrice(op.m);
-    if (op.cx !== undefined) e.$cx = op.cx ? op.cx.slice() : null;
-    if (op.r !== undefined) e.$ratio = op.r;
+    if (!e.$parScript) {                       // transformé par script : le scénario n'y touche plus
+      if (op.m) e.poserMatrice(op.m);
+      if (op.cx !== undefined) e.$cx = op.cx ? op.cx.slice() : null;
+      if (op.r !== undefined) e.$ratio = op.r;
+    }
     if (op.n && e._name !== op.n) { if (e._name && this[e._name] === e) delete this[e._name]; e._name = op.n; this[op.n] = e; }
     if (op.k) e.$masqueJusqua = op.k - DECALAGE_SCENARIO;
   }

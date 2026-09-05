@@ -75,6 +75,7 @@ const SWFS = [
   { nom: 'squirrel', fichier: 'map/squirrel.swf' },
   { nom: 'dawn', fichier: 'map/dawn.swf' },
   { nom: 'credits', fichier: 'anim/credits/credits.swf', sons: true, fontes: true },
+  { nom: 'intro', fichier: 'anim/intro/intro.swf', sons: true, fontes: true },
 ];
 
 // ── Lecture d'un SWF : tags avec sprite et image ──────────────────────────

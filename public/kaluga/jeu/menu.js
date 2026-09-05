@@ -4,11 +4,12 @@
  * puissance et ses cinq barres de caractéristiques, le tableau des options
  * (musique, sons, particules, et les cinq touches).
  *
- * Et l'AnimLoader, le « slot » qui jouait les séquences (intro, crédits) —
- * chargées depuis anim/intro.swf et anim/credits.swf. Leurs scénarios sont
- * des films scriptés à part (code.as de chaque dossier) ; ils ne sont pas
- * encore rejoués ici : le slot affiche le cadre d'époque et rend la main au
- * menu d'un clic.
+ * Et l'AnimLoader, le « slot » qui joue les séquences (intro, crédits) —
+ * chargées d'époque par loadClip depuis anim/intro.swf et anim/credits.swf ;
+ * ici, la bibliothèque extraite du même nom (data/intro.json,
+ * data/credits.json) dont la racine remplace `anim.mc.mc`, et les scripts
+ * d'image des films dans moteur/scripts-sequences.js. Un clic rend la main
+ * au menu, comme le onPress d'origine.
  */
 'use strict';
 
@@ -465,13 +466,38 @@ class AnimLoader extends J.Slot {
     this.anim.mc.setMask(this.anim.mask);
     this.loading._x = Cs.mcw / 2;
     this.loading._y = Cs.mch / 2;
-    // Les séquences ne sont pas encore rejouées : on le dit, et un clic rend la main.
-    this.loading.removeMovieClip();
-    const champ = this.anim.createTextField('info', 5, 0, this.height / 2 - 20, this.width, 40);
-    champ.text = 'Séquence indisponible dans cette version\n(cliquez pour revenir au menu)';
-    champ.setTextFormat({ font: 'Verdana', size: 12, color: 0x637C32, align: 'center' });
+    // MCL : loadClip(name, anim.mc.mc) — le film chargé prend la place du clip
+    // vide (même nom, même profondeur) ; onLoadComplete retire la jauge.
+    const nom = this.mng.client.getFileInfos(this.link).name;
+    this.wantedFPSAvant = K.Std.wantedFPS;
+    K.chargerBiblio(nom).then((b) => {
+      if (!this._parent) return;                          // séquence déjà quittée
+      const conteneur = this.anim.mc;
+      const ancien = conteneur.mc;
+      const film = new K.Clip(b, 0);
+      film.$prof = ancien ? ancien.$prof : 1;
+      if (ancien) conteneur.retirerEnfant(ancien);
+      conteneur.insererEnfant(film);
+      conteneur.nommer(film, 'mc');
+      K.finaliser(film, null);
+      if (this.loading) this.loading.removeMovieClip();
+      K.scene.viderScripts();
+    }).catch((e) => {
+      console.error('[kaluga] séquence introuvable', nom, e);
+      if (this.loading) this.loading.removeMovieClip();
+    });
   }
   update() {}
+  kill() {
+    // Le film part avec son slot : sa musique aussi (un Sound d'un clip retiré
+    // se tait en Flash). Et l'on rend au jeu son wantedFPS : le générique
+    // pose 40 sur le Std partagé, ce qui accélérait le jeu après — un accident
+    // d'époque qu'on ne reproduit pas.
+    const film = this.anim && this.anim.mc && this.anim.mc.mc;
+    if (film && film.music && typeof film.music.stop === 'function') film.music.stop();
+    if (this.wantedFPSAvant !== undefined) K.Std.wantedFPS = this.wantedFPSAvant;
+    super.kill();
+  }
 }
 J.AnimLoader = AnimLoader;
 K.registerClass('animLoader', AnimLoader);

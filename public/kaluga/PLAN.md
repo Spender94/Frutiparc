@@ -89,7 +89,8 @@ scénarios des clips ne sont pas réécrits.
 - `scripts/extract-kaluga.js` (+ `scripts/lib/swf-formes.js`,
   `scripts/lib/swf-sprites.js`) — `node scripts/extract-kaluga.js` écrit
   `public/kaluga/data/` :
-  - `kaluga.json`, `challenge.json`, `forest.json`… : pour chaque SWF, les
+  - `kaluga.json`, `challenge.json`, `forest.json`…, `intro.json`,
+    `credits.json` : pour chaque SWF, les
     **formes** (remplissages unis, dégradés, bitmaps, traits — en listes de
     tracés), les **morphs**, les **textes statiques**, les **champs**, les
     **boutons** (états et zone active), les **scénarios** de chaque clip
@@ -120,6 +121,7 @@ scénarios des clips ne sont pas réécrits.
     geste ;
   - `scripts-images.js` : les scripts d'image du SWF, **transcrits** un par
     un (`stop()`, `gotoAndPlay`, appels au parent, `removeMovieClip`…) ;
+    `scripts-sequences.js` : ceux des deux films (intro, générique) ;
   - `chargeur.js` : lit les JSON, images, sons, fontes.
 - `public/kaluga/jeu/` — les classes AS2, dans le même découpage :
   - `base.js` : `MC`, `Cs`, `Std`, `Stat`, `Numb`, `Bar`, `Slot`, `Panel`
@@ -164,6 +166,9 @@ scénarios des clips ne sont pas réécrits.
 - `gotoAndStop` **réconcilie** la liste d'affichage : les enfants du
   scénario qui subsistent gardent leur état, les autres disparaissent, ceux
   des scripts restent ;
+- `removeMovieClip` ne retire que les clips créés par script (profondeur
+  ≥ 0), et une transformation posée par script soustrait l'objet aux
+  placements du scénario (voir « Les séquences ») ;
 - une propriété lue sur `undefined` ne plante pas : là où l'AS2 tombait dans
   le vide en silence (les yeux de la tzongre écrasée, `optionTable.k5` qui
   n'existe pas, `spriteList` jamais initialisée en 2005, le `unFreeze()`
@@ -219,10 +224,34 @@ scénarios des clips ne sont pas réécrits.
 - `node --test test/*.test.js` : la suite du dépôt (dont
   `jeuxDisponibles`, `kalugaFreestyle`, `fruticard`, `voyantEnPartie`).
 
-## Ce qui n'est pas (encore) rejoué
+## Les séquences (INTRODUCTION, CREDITS)
 
-- Les deux **séquences** (`SEQUENCE` → INTRODUCTION, CREDITS) sont des films
-  à part (`anim/intro/intro.swf`, `anim/credits/credits.swf`) : scénarios
-  scriptés (`code.as`, `clipping.as`) qui défilent des décors en tranches et
-  font traverser les tzongres. Le `AnimLoader` du portage affiche pour
-  l'instant « Séquence indisponible » et rend la main au clic.
+Deux films à part (`anim/intro/intro.swf`, 350×240 ; `anim/credits/
+credits.swf`, 350×135), que le jeu chargeait par `loadClip` dans l'AnimLoader.
+Ils sont extraits comme le reste (`data/intro.json`, `data/credits.json` —
+décors JPEG, chenille et tzongres, la musique du générique) et leurs scripts
+d'image sont portés dans `moteur/scripts-sequences.js` **depuis le bytecode**,
+pas depuis les `code.as` des dossiers, qui ne sont pas ceux qui ont été
+compilés (l'intro du FLA a deux exemplaires de chaque décor, plus de
+chenille attachée par script, un voile qui s'efface par `_alpha`…). Chaque
+film est un clip de quatre images : fonctions définies à l'image 1, `init()`
+à la 2, `main()` à la 3, et la 4 revient à la 3.
+
+Deux règles du lecteur Flash sont venues avec eux :
+
+- `removeMovieClip` **ne retire pas** une instance posée par le scénario
+  (profondeur négative) : les films le font sur leurs masques, sans effet ;
+- une transformation posée par script (`_x`, `_y`, échelle, rotation,
+  `_alpha`) **soustrait l'objet aux placements du scénario** — l'image
+  suivante d'une interpolation, le retour d'un goto — comme dans Flash
+  (Ruffle : `transformed_by_script`). C'est ce qui laisse le voile de
+  l'intro s'effacer alors que son clip boucle sur ses images.
+
+Le `Std` des films est celui du jeu (une seule classe par lecteur), mis à
+jour deux fois par image pendant un film (`Manager.update`, puis `main()`
+du générique) — le générique tourne donc à ce tmod-là (≈ 0,49), comme sur
+le disque. Son `Std.cast(Std).wantedFPS = 40` touche ce Std partagé ;
+l'AnimLoader rétablit 32 en quittant la séquence : on ne reproduit pas
+l'accélération du jeu qui suivait le générique d'époque. (Sous Ruffle, dans
+ce dépôt, ces séquences ne se chargent pas : le disque `kaluga1` ne liste
+pas les films — le portage les rend.)
