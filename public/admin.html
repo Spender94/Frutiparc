@@ -598,6 +598,11 @@
   <div class="toolbar">
     <button class="btn" onclick="loadShop()">Rafraîchir</button>
     <button class="btn-success" onclick="openAddPack()">+ Nouvel accessoire</button>
+    <!-- Les exemplaires d'articles supprimés du temps où la suppression ne
+         touchait pas aux inventaires : leurs propriétaires ne peuvent ni les
+         revendre ni les jeter. Le bouton recense d'abord, puis nettoie. -->
+    <button class="btn btn-sm" onclick="purgerOrphelins()"
+      title="Retirer des inventaires les accessoires dont l'article n'existe plus">Réparer les orphelins</button>
     <span id="shop-count"></span>
   </div>
   <table>
@@ -5145,10 +5150,48 @@ async function saveEditPack() {
   loadShop();
 }
 
+// La suppression emporte AUSSI les exemplaires déjà distribués. Les laisser,
+// c'était les rendre orphelins : le joueur les voyait toujours dans son
+// inventaire, mais ni la revente ni la corbeille ne voulaient les prendre —
+// elles passent par l'article, désormais introuvable.
 async function deletePack(id, name) {
-  if (!confirm(`Supprimer l'accessoire "${name}" (ID ${id}) du catalogue ?\nCela ne retire pas l'accessoire des joueurs qui l'ont déjà.`)) return;
-  await fetch(`/api/admin/shop/${id}`, { method: 'DELETE', headers: hdr() });
-  toast(`Accessoire "${name}" supprimé du catalogue`);
+  if (!confirm(`Supprimer l'accessoire "${name}" (ID ${id}) du catalogue ?\n\n`
+    + `Il disparaît AUSSI de l'inventaire des joueurs qui l'avaient, et de la tête\n`
+    + `de ceux qui le portaient. C'est irréversible, et sans remboursement.\n\n`
+    + `(Pour seulement le retirer de la vente, utilisez « Désactiver ».)`)) return;
+  const r = await fetch(`/api/admin/shop/${id}`, { method: 'DELETE', headers: hdr() });
+  const d = await r.json().catch(() => ({}));
+  toast(`"${name}" supprimé — ${d.exemplaires || 0} exemplaire(s) repris`
+    + ` à ${d.inventaires || 0} joueur(s)`);
+  loadShop();
+}
+
+/*
+ * LES ORPHELINS D'AVANT — les exemplaires d'articles supprimés du temps où la
+ * suppression ne touchait pas aux inventaires. On RECENSE d'abord (on regarde
+ * avant de jeter), et le nettoyage se confirme sur des chiffres.
+ */
+async function recenserOrphelins() {
+  const r = await fetch('/api/admin/shop/orphelins', { headers: hdr() });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.ok) { toast('Recensement impossible'); return null; }
+  return d;
+}
+async function purgerOrphelins() {
+  const d = await recenserOrphelins();
+  if (!d) return;
+  if (!d.exemplaires && !d.enBase) { toast('Aucun accessoire orphelin — rien à réparer.'); return; }
+  const detail = (d.articles || []).slice(0, 12)
+    .map((a) => `  • article ${a.shopId}${a.nom ? ' « ' + a.nom + ' »' : ''} — ${a.porteurs.length} joueur(s)`)
+    .join('\n');
+  if (!confirm(`${d.exemplaires} exemplaire(s) orphelin(s), sur ${(d.articles || []).length} article(s) disparu(s) :\n\n`
+    + detail + ((d.articles || []).length > 12 ? '\n  …' : '')
+    + `\n\nCes accessoires n'existent plus au catalogue : leurs propriétaires ne peuvent\n`
+    + `ni les revendre ni les jeter. Les retirer de leur inventaire ?`)) return;
+  const r = await fetch('/api/admin/shop/orphelins/purger', { method: 'POST', headers: hdr() });
+  const res = await r.json().catch(() => ({}));
+  if (!r.ok || !res.ok) { toast('Erreur : ' + (res.error || 'inconnu')); return; }
+  toast(`${res.exemplaires} exemplaire(s) orphelin(s) retiré(s) de ${res.inventaires} inventaire(s)`);
   loadShop();
 }
 

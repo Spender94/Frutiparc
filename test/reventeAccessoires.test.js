@@ -312,6 +312,67 @@ test('l’auteur se voit et se corrige partout : article, variante, accessoire m
   assert.equal(pub.liste.find((a) => a.id === am.id).auteur, OFFERT);
 });
 
+test('UN ARTICLE SUPPRIMÉ EMPORTE SES EXEMPLAIRES — plus d’orphelins', async (t) => {
+  if (!dispo) return t.skip('base indisponible');
+  /* L'inventaire garde le NUMÉRO D'ARTICLE de chaque pièce. Supprimer l'article
+     sans toucher aux inventaires laissait ces pièces orphelines : le joueur les
+     voyait toujours — la liste se lit dans son inventaire, pas dans le
+     catalogue — mais la revente comme la mise au rebut passent par l'article,
+     introuvable, et refusaient de les prendre. Invendables, indéboulonnables. */
+  const JETABLE = 700931;
+  const sid = await inscrire('jetab' + RUN);
+  assert.equal((await admin('POST', '/api/admin/shop', {
+    id: JETABLE, name: 'À jeter', category: 'Accessoires', price: 10, suffix9: '9020t0b00',
+    description: 'un article de passage',
+  })).status, 200);
+  assert.equal((await acheter(sid, JETABLE)).ok, true, 'acheté');
+  assert.ok(await invLigne(sid, JETABLE), 'l’exemplaire est dans l’inventaire');
+
+  const sup = await (await admin('DELETE', `/api/admin/shop/${JETABLE}`)).json();
+  assert.equal(sup.ok, true);
+  assert.equal(sup.exemplaires, 1, 'un exemplaire repris');
+  assert.equal(sup.inventaires, 1, 'à un joueur');
+  assert.equal(await invLigne(sid, JETABLE), undefined, 'et l’inventaire ne le porte plus');
+});
+
+test('LA RÉPARATION : les orphelins d’avant se recensent puis se purgent', async (t) => {
+  if (!dispo) return t.skip('base indisponible');
+  /* Ceux-là ont été semés du temps où la suppression ne touchait pas aux
+     inventaires. On les fabrique comme l'histoire les a faits — une ligne
+     d'inventaire pointant un article qui n'existe plus — et on vérifie que
+     l'outil les voit, puis les retire. */
+  const sid = await inscrire('orph' + RUN);
+  const c = new Client({ connectionString: DB });
+  await c.connect();
+  const { rows } = await c.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1)', ['orph' + RUN]);
+  const uid = rows[0].id;
+  // Un ORPHELIN : son article n'existe nulle part au catalogue.
+  await c.query(`INSERT INTO user_accessories (user_id, acc_id, shop_id, name, value)
+                 VALUES ($1, 'shop_999777', 999777, 'Fantôme', '000000010000000000000000')`, [uid]);
+  // Et un CADEAU : sans numéro d'article, il n'a jamais eu d'article à
+  // retrouver — ce n'est pas un orphelin, il doit survivre à la purge.
+  await c.query(`INSERT INTO user_accessories (user_id, acc_id, shop_id, name, value)
+                 VALUES ($1, 'cadeau_test', NULL, 'Cadeau', '000000010000000000000000')`, [uid]);
+
+  const avant = await (await admin('GET', '/api/admin/shop/orphelins')).json();
+  assert.equal(avant.ok, true);
+  assert.ok(avant.enBase >= 1, 'la base compte au moins l’orphelin : ' + avant.enBase);
+
+  const purge = await (await admin('POST', '/api/admin/shop/orphelins/purger')).json();
+  assert.equal(purge.ok, true);
+  assert.ok(purge.enBase >= 1, 'la purge en a retiré : ' + purge.enBase);
+
+  const apres = await (await admin('GET', '/api/admin/shop/orphelins')).json();
+  assert.equal(apres.enBase, 0, 'plus aucun orphelin');
+
+  const reste = await c.query('SELECT acc_id FROM user_accessories WHERE user_id = $1', [uid]);
+  const gardes = reste.rows.map((r) => r.acc_id);
+  await c.end();
+  assert.ok(!gardes.includes('shop_999777'), 'le fantôme est parti');
+  assert.ok(gardes.includes('cadeau_test'), 'LE CADEAU RESTE : il n’a pas d’article, il n’est pas orphelin');
+  assert.ok(sid);
+});
+
 test('le double-clic, la popin et l’admin sont branchés dans les pages', () => {
   const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   const ADMIN = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');

@@ -11798,13 +11798,125 @@ app.patch('/api/admin/shop/:id', adminScope('shop'), async (req, res) => {
   res.json({ ok: true, pack });
 });
 
+/*
+ * UN ARTICLE SUPPRIMÉ NE DOIT PAS LAISSER D'EXEMPLAIRES DERRIÈRE LUI.
+ *
+ * L'inventaire d'un joueur (`user.customAccessories`) garde le NUMÉRO
+ * D'ARTICLE de chaque pièce. Supprimer l'article de la boutique sans toucher
+ * aux inventaires laissait ces pièces orphelines : le joueur les voyait
+ * toujours — la liste se lit dans son inventaire, pas dans le catalogue —,
+ * mais la revente (`accessoireRevendable`) comme la mise au rebut passent par
+ * l'article, introuvable, et refusaient de les prendre. Invendables,
+ * indéboulonnables.
+ *
+ * Ce balayage retire les exemplaires visés de la MÉMOIRE, rend sa bouille à
+ * qui portait la pièce, et rend la liste des frutiz touchés. La base se nettoie
+ * à part (une seule requête pour tout le monde).
+ */
+function purgerExemplaires(estVise) {
+  const touches = [];
+  for (const [username, u] of Object.entries(users)) {
+    if (!u || !Array.isArray(u.customAccessories) || !u.customAccessories.length) continue;
+    const garde = [];
+    let partis = 0;
+    for (const acc of u.customAccessories) {
+      const vise = acc && acc.shopId != null && estVise(Number(acc.shopId), acc);
+      if (vise) partis++; else garde.push(acc);
+    }
+    if (!partis) continue;
+    u.customAccessories = garde;
+    touches.push({ username, nb: partis });
+  }
+  return touches;
+}
+// Qui PORTE cette pièce ne la porte plus : la bouille reprend son suffixe par
+// défaut, exactement comme à la revente.
+function deshabillerDuSuffixe(suffixe) {
+  if (!suffixe) return 0;
+  let n = 0;
+  for (const [username, u] of Object.entries(users)) {
+    const actuelle = String((u && u.fbouille) || '');
+    if (actuelle.length >= 24 && actuelle.substring(15) === suffixe) {
+      u.fbouille = actuelle.substring(0, 15) + DEFAULT_BOUILLE_STATE.substring(15);
+      if (u._dbId) db.updateUser(username, { fbouille: u.fbouille }).catch(dbErr('updateUser'));
+      n++;
+    }
+  }
+  return n;
+}
+
 app.delete('/api/admin/shop/:id', adminScope('shop'), async (req, res) => {
   const idx = SHOP_PACKS.findIndex(p => p.id === Number(req.params.id));
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   const removed = SHOP_PACKS.splice(idx, 1)[0];
   if (process.env.DATABASE_URL) db.deleteShopPack(removed.id).catch(e => console.error('[DB] shop pack delete:', e.message));
-  console.log(`[ADMIN] Deleted shop pack ${removed.id}: ${removed.name}`);
-  res.json({ ok: true });
+  // Les exemplaires déjà distribués s'en vont AVEC l'article : sans quoi ils
+  // resteraient dans les inventaires, invendables et indéboulonnables.
+  const touches = purgerExemplaires((shopId) => shopId === removed.id);
+  const deshabilles = deshabillerDuSuffixe(removed.suffix9);
+  let enBase = 0;
+  if (process.env.DATABASE_URL) {
+    try { enBase = await db.supprimerAccessoiresParArticle(removed.id); }
+    catch (e) { console.error('[DB] purge exemplaires:', e.message); }
+  }
+  const exemplaires = touches.reduce((n, t) => n + t.nb, 0);
+  console.log(`[ADMIN] Deleted shop pack ${removed.id}: ${removed.name}`
+    + ` — ${exemplaires} exemplaire(s) retiré(s) de ${touches.length} inventaire(s)`
+    + `, ${enBase} en base, ${deshabilles} bouille(s) rendue(s)`);
+  res.json({ ok: true, exemplaires, inventaires: touches.length, enBase, deshabilles });
+});
+
+/*
+ * LA RÉPARATION D'APRÈS-COUP — les orphelins déjà semés.
+ *
+ * Avant que la suppression ne fasse le ménage, des articles ont disparu en
+ * laissant leurs exemplaires. GET recense (on regarde avant de jeter), POST
+ * nettoie. Un accessoire SANS numéro d'article n'est pas un orphelin : c'est un
+ * cadeau ou une pièce d'époque, il n'a jamais eu d'article.
+ */
+function recenserOrphelinsMemoire() {
+  const connus = new Set(SHOP_PACKS.map((p) => p.id));
+  const par = new Map();
+  for (const [username, u] of Object.entries(users)) {
+    for (const acc of (Array.isArray(u && u.customAccessories) ? u.customAccessories : [])) {
+      if (!acc || acc.shopId == null) continue;
+      const id = Number(acc.shopId);
+      if (connus.has(id)) continue;
+      if (!par.has(id)) par.set(id, { shopId: id, nom: acc.n || '', porteurs: [] });
+      par.get(id).porteurs.push(username);
+    }
+  }
+  return [...par.values()].sort((a, b) => a.shopId - b.shopId);
+}
+
+app.get('/api/admin/shop/orphelins', adminScope('shop'), async (req, res) => {
+  const memoire = recenserOrphelinsMemoire();
+  let base = [];
+  if (process.env.DATABASE_URL) {
+    try { base = await db.listerAccessoiresOrphelins(SHOP_PACKS.map((p) => p.id)); }
+    catch (e) { console.error('[DB] recensement orphelins:', e.message); }
+  }
+  res.json({
+    ok: true,
+    articles: memoire,
+    exemplaires: memoire.reduce((n, a) => n + a.porteurs.length, 0),
+    enBase: base.length,
+  });
+});
+
+app.post('/api/admin/shop/orphelins/purger', adminScope('shop'), async (req, res) => {
+  const connus = new Set(SHOP_PACKS.map((p) => p.id));
+  const avant = recenserOrphelinsMemoire();
+  const touches = purgerExemplaires((shopId) => !connus.has(shopId));
+  let enBase = 0;
+  if (process.env.DATABASE_URL) {
+    try { enBase = await db.supprimerAccessoiresOrphelins([...connus]); }
+    catch (e) { console.error('[DB] purge orphelins:', e.message); }
+  }
+  const exemplaires = touches.reduce((n, t) => n + t.nb, 0);
+  console.log(`[ADMIN] Purge des orphelins : ${avant.length} article(s) disparu(s),`
+    + ` ${exemplaires} exemplaire(s) retiré(s) de ${touches.length} inventaire(s), ${enBase} en base`);
+  res.json({ ok: true, articles: avant, exemplaires, inventaires: touches.length, enBase });
 });
 
 // ── Fonds d'écran (wallpapers) — upload + boutique depuis l'admin ──

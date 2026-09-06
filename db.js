@@ -1983,6 +1983,44 @@ async function deleteAccessoryByShopId(userId, shopId) {
   return r.rowCount || 0;
 }
 
+/*
+ * LES EXEMPLAIRES ORPHELINS.
+ *
+ * Un article supprimé de la boutique laissait ses exemplaires dans les
+ * inventaires : le joueur les voyait toujours, mais la revente comme la mise
+ * au rebut passent par l'ARTICLE — introuvable — et refusaient donc de les
+ * prendre. Ils restaient là, invendables et indéboulonnables.
+ *
+ * `shop_id IS NULL` n'est pas un orphelin : c'est un accessoire qui ne vient
+ * pas de la boutique (cadeau, accessoire d'époque), il n'a aucun article à
+ * retrouver.
+ */
+async function listerAccessoiresOrphelins(idsConnus) {
+  const ids = (Array.isArray(idsConnus) ? idsConnus : []).map(Number).filter(Number.isFinite);
+  const { rows } = await pool.query(
+    `SELECT u.username, a.id, a.acc_id, a.shop_id, a.name
+       FROM user_accessories a JOIN users u ON u.id = a.user_id
+      WHERE a.shop_id IS NOT NULL AND NOT (a.shop_id = ANY($1::int[]))
+      ORDER BY a.shop_id, LOWER(u.username)`,
+    [ids]);
+  return rows;
+}
+async function supprimerAccessoiresOrphelins(idsConnus) {
+  const ids = (Array.isArray(idsConnus) ? idsConnus : []).map(Number).filter(Number.isFinite);
+  const { rowCount } = await pool.query(
+    `DELETE FROM user_accessories
+      WHERE shop_id IS NOT NULL AND NOT (shop_id = ANY($1::int[]))`,
+    [ids]);
+  return rowCount || 0;
+}
+// TOUS les exemplaires d'un article, chez tout le monde — ce que la suppression
+// d'un article de la boutique doit faire pour ne pas semer d'orphelins.
+async function supprimerAccessoiresParArticle(shopId) {
+  const { rowCount } = await pool.query(
+    'DELETE FROM user_accessories WHERE shop_id = $1', [Number(shopId)]);
+  return rowCount || 0;
+}
+
 async function countPurchasesByUserAndPack(packIds) {
   if (!Array.isArray(packIds) || !packIds.length) return [];
   const { rows } = await pool.query(
@@ -3468,6 +3506,9 @@ module.exports = {
   insertShopSale,
   bilanAchatsRevente,
   deleteAccessoryByShopId,
+  listerAccessoiresOrphelins,
+  supprimerAccessoiresOrphelins,
+  supprimerAccessoiresParArticle,
   anniversairesDuJour,
   evenementSiteDuJour,
   renommerJoueur,
