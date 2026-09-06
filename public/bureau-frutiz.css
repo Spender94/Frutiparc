@@ -3460,7 +3460,10 @@ body.bureau-frutiz .fiche-boite .fiche-jour .pts { color: #5A7D33; }
    pose son arbre à 6 de la bordure et sa plaque à 9 du bord droit. */
 body.bureau-frutiz .fen:has(#shop-sheet) .fen-corps { margin: 0 6px 3px 3px; }
 body.bureau-frutiz .fen #shop-sheet {
-  position: static; inset: auto; transform: none; transition: none;
+  /* `visibility` : adoptée par la fenêtre, la feuille n'est plus une feuille —
+     c'est la FENÊTRE qui décide de la montrer, et le `hidden` de l'état clos
+     (celui qui la tient hors de vue sur mobile) n'a plus lieu d'être. */
+  position: static; inset: auto; transform: none; transition: none; visibility: visible;
   max-height: none; border: 0; border-radius: 0; box-shadow: none;
   background: transparent; z-index: auto; padding: 0;
   flex: 1; min-height: 0; display: flex; flex-direction: column;
@@ -4674,7 +4677,10 @@ body.bureau-frutiz .fen #reglages-panel .reg-pied a { color: #558811; }
    ════════════════════════════════════════════════════════════════════════ */
 body.bureau-frutiz .fen:has(#profil-sheet) .fen-corps { margin: 0 4px 4px 4px; }
 body.bureau-frutiz .fen #profil-sheet {
-  position: static; inset: auto; transform: none; transition: none;
+  /* `visibility` : adoptée par la fenêtre, la feuille n'est plus une feuille —
+     c'est la FENÊTRE qui décide de la montrer, et le `hidden` de l'état clos
+     (celui qui la tient hors de vue sur mobile) n'a plus lieu d'être. */
+  position: static; inset: auto; transform: none; transition: none; visibility: visible;
   max-height: none; border: 0; border-radius: 0; box-shadow: none;
   background: transparent; z-index: auto; padding: 0;
   flex: 1; min-height: 0; display: flex; flex-direction: column;

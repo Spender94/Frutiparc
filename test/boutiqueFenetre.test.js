@@ -246,6 +246,56 @@ test('la fenêtre du light est bâtie comme celle du bureau', () => {
     'le corps de la fenêtre Boutique est blanc');
 });
 
+test('UNE FEUILLE FERMÉE EST FERMÉE — et le corps ne porte plus de transform à vide', () => {
+  /* Les feuilles du mobile (Boutique, « Modifier ma fiche », la bouille) se
+     cachaient en glissant hors du bas de l'écran, et rien d'autre : un simple
+     déplacement, qui suppose que « le bas de l'écran » veuille dire quelque
+     chose.
+
+     Or `applyViewport` — le rattrapage du clavier — posait
+     `body.style.transform = translateY(0px)` sur TOUTES les machines : le
+     bureau a `visualViewport` comme le téléphone, et `offsetTop` y vaut zéro.
+     Un transform, même nul, fait du corps le BLOC CONTENEUR de ses descendants
+     en `position: fixed` : le « bas de l'écran » des feuilles devenait le bas
+     du DOCUMENT. Sur une page longue — le forum — elles réapparaissaient donc
+     sous le contenu, ouvertes en apparence, et leur croix ne changeait rien
+     puisqu'elle n'ôte que `.show`, déjà absente.
+
+     Deux verrous : zéro ne pose plus aucun transform, et une feuille close est
+     `visibility: hidden` — ce qui ne dépend d'aucun repère, et tient donc même
+     quand le clavier ramène légitimement le transform. */
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+
+  // 1. Le transform n'est posé que s'il y a vraiment un décalage.
+  assert.match(html, /var decal = vv \? Math\.round\(vv\.offsetTop\) : 0;/);
+  assert.match(html, /document\.body\.style\.transform = decal \? \("translateY\(" \+ decal \+ "px\)"\) : "";/);
+  assert.doesNotMatch(html, /style\.transform = vv \? \("translateY\("/,
+    'plus de translateY(0px) permanent');
+
+  // 2. Fermée, la feuille ne se voit ni ne se clique.
+  const close = /\n  \.sheet \{[\s\S]*?\n  \}/.exec(html);
+  assert.ok(close, 'la règle .sheet');
+  assert.match(close[0], /visibility: hidden;/);
+  assert.match(close[0], /transform: translateY\(110%\)/, 'le glissement reste');
+  // Le délai laisse le glissement de sortie se jouer entier avant l'effacement.
+  assert.match(close[0], /transition: transform \.25s ease, visibility 0s linear \.25s;/);
+  const ouverte = /\n  \.sheet\.show \{[\s\S]*?\n  \}/.exec(html);
+  assert.ok(ouverte, 'la règle .sheet.show');
+  assert.match(ouverte[0], /visibility: visible;/);
+  assert.match(ouverte[0], /transition: transform \.25s ease, visibility 0s;/);
+
+  // 3. AU BUREAU, les deux fenêtres EMPRUNTENT ces feuilles : le `hidden` de
+  //    l'état clos les viderait. Leur remise à plat le lève, là où elle lève
+  //    déjà `position` et `transform`.
+  const css = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
+  for (const id of ['shop-sheet', 'profil-sheet']) {
+    const bloc = new RegExp('body\\.bureau-frutiz \\.fen #' + id + ' \\{[\\s\\S]*?\\n\\}').exec(css);
+    assert.ok(bloc, 'la remise à plat de #' + id);
+    assert.match(bloc[0], /visibility: visible;/, id + ' reste visible dans sa fenêtre');
+    assert.match(bloc[0], /transform: none;/, 'et sans le glissement du mobile');
+  }
+});
+
 test('un article déjà acquis n\'a pas de bouton, mais la phrase à la place du prix', () => {
   // `win.Shop.setItem` (main.swf 0x7a8d0) ne met l'entrée d'achat au menu que
   // `if (!item.alreadyBuy)` — il n'existe donc AUCUN bouton pour un article

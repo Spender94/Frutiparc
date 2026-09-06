@@ -119,14 +119,27 @@
     position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 40; display: none;
   }
   .sheet-backdrop.show { display: block; }
+  /* UNE FEUILLE FERMÉE EST FERMÉE. Elle se cachait en glissant hors du bas de
+     l'écran, et rien d'autre : un simple déplacement. Il a suffi d'un transform
+     sur un ancêtre — le corps, calé sous le clavier — pour que ce « hors de
+     l'écran » se rapporte au DOCUMENT et non à l'écran, et les feuilles closes
+     réapparaissaient au bas des pages longues, ouvertes en apparence et
+     insensibles à leur croix (qui n'ôte que `.show`, déjà absente).
+     `visibility` ne dépend, elle, d'aucun repère : fermée, la feuille ne se
+     voit ni ne se clique. Le délai de 250 ms laisse le glissement de sortie
+     se jouer entier avant qu'elle ne s'efface. */
   .sheet {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
     background: #ffffff; border: 1px solid #6c6c6c;
     border-radius: 10px 10px 0 0; max-height: 76vh; display: flex; flex-direction: column;
-    transform: translateY(110%); transition: transform .25s ease;
+    transform: translateY(110%); visibility: hidden;
+    transition: transform .25s ease, visibility 0s linear .25s;
     box-shadow: 0 0 0 1px #DDDDDD, 0 -8px 24px rgba(44,74,15,.3);
   }
-  .sheet.show { transform: translateY(0); }
+  .sheet.show {
+    transform: translateY(0); visibility: visible;
+    transition: transform .25s ease, visibility 0s;
+  }
   /* Une feuille ouverte DEPUIS la fiche doit passer devant elle (la fiche est
      au-dessus de tout le reste, en 70). */
   .sheet.haut { z-index: 81; }
@@ -12024,9 +12037,27 @@
   function applyViewport() {
     var h = vv ? vv.height : (window.innerHeight || document.documentElement.clientHeight);
     document.documentElement.style.setProperty("--app-h", h + "px");
-    // Pin the fixed body to the top of the visual viewport (handles the case
-    // where the browser offsets the layout viewport under the keyboard).
-    document.body.style.transform = vv ? ("translateY(" + Math.round(vv.offsetTop) + "px)") : "";
+    /*
+     * On cale le corps sur le haut du viewport visible — mais SEULEMENT quand
+     * le navigateur l'a vraiment décalé sous le clavier.
+     *
+     * `visualViewport` existe partout, bureau compris, et `offsetTop` y vaut
+     * zéro le reste du temps : on posait donc `translateY(0px)` en permanence,
+     * sur toutes les machines. Un transform, même nul, fait du corps le BLOC
+     * CONTENEUR de ses descendants en `position: fixed` — qui se calent alors
+     * sur la hauteur du DOCUMENT et non sur l'écran.
+     *
+     * Les feuilles (Boutique, « Modifier ma fiche », la bouille) se cachent en
+     * glissant hors du bas de l'écran (`translateY(110%)`) : rapportées au
+     * document, ce « hors de l'écran » tombait juste sous le contenu, en plein
+     * milieu d'une page longue. On les voyait donc s'empiler au bas du forum,
+     * ouvertes en apparence — et leur croix, qui ne fait qu'ôter `.show`, ne
+     * changeait rien puisqu'elles étaient déjà fermées.
+     *
+     * Zéro, c'est donc PAS DE TRANSFORM DU TOUT.
+     */
+    var decal = vv ? Math.round(vv.offsetTop) : 0;
+    document.body.style.transform = decal ? ("translateY(" + decal + "px)") : "";
     // Keep the latest messages in view above the keyboard.
     if (nearBottom()) scrollDown();
   }
