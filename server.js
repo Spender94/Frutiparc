@@ -11699,6 +11699,30 @@ app.delete('/api/admin/variantes/:id', adminScope('shop'), (req, res) => {
   res.json({ ok: true });
 });
 
+/*
+ * LA BOUILLE D'UN FRUTIZ, POUR L'ESSAYER — juste elle.
+ *
+ * L'aperçu d'un accessoire à l'admin n'avait qu'une poignée de têtes en dur :
+ * on ne voyait donc jamais l'accessoire sur les cheveux, la couleur de peau ou
+ * la coiffure de qui que ce soit d'autre. `/api/admin/users/:username` rend
+ * bien la bouille, mais avec l'inventaire, les scores et les parties d'IA du
+ * joueur — et seulement si une base répond : beaucoup trop pour un aperçu qui
+ * se redessine à la frappe.
+ *
+ * `bouilleOf` sait déjà se rabattre sur le cache des bouilles (rempli au
+ * démarrage depuis la base) : la route marche donc aussi pour un compte qui ne
+ * s'est pas connecté depuis le dernier redémarrage.
+ */
+app.get('/api/admin/bouille/:username', adminAuth, (req, res) => {
+  const demande = String(req.params.username || '').trim();
+  if (!demande) return res.status(400).json({ ok: false, error: 'pseudo' });
+  const connu = resolveKnownUsername(demande);
+  const u = users[connu];
+  const cle = String(connu).toLowerCase();
+  if (!u && !bouilleCache[cle]) return res.status(404).json({ ok: false, error: 'inconnu' });
+  res.json({ ok: true, username: getDisplayName(connu), fbouille: bouilleOf(u, cle) });
+});
+
 // Public : la liste (id + nom), pour le sélecteur « porter un accessoire maison ».
 app.get('/api/light/acc-maison', (req, res) => {
   res.json({ ok: true, liste: Object.values(accessoiresMaison).map((a) => ({

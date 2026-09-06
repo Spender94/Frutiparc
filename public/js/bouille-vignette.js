@@ -85,11 +85,18 @@
   }
   // Résout un id vers { paths, couleurs } (ou null). `couleurs` = les 3 niveaux
   // de couleur (hex) de l'accessoire, pour ses tracés « à niveau ».
+  // Les ids dont le dessin vient de changer : on les redemande SANS le cache du
+  // navigateur (cf. `contournerCache` des variantes — vider notre table ne sert
+  // à rien tant que le navigateur reservit la réponse d'avant).
+  var customFrais = {};
   function paquetCustom(id) {
     if (!id) return Promise.resolve(null);
     if (Object.prototype.hasOwnProperty.call(customPret, id)) return Promise.resolve(customPret[id]);
     if (!customCache[id]) {
-      customCache[id] = global.fetch('/api/light/acc-maison/' + encodeURIComponent(id))
+      var neuf = !!customFrais[id];
+      delete customFrais[id];
+      var url = '/api/light/acc-maison/' + encodeURIComponent(id) + (neuf ? ('?t=' + Date.now()) : '');
+      customCache[id] = global.fetch(url, neuf ? { cache: 'no-store' } : undefined)
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (j) {
           var p = (j && j.ok) ? { paths: j.paths, couleurs: j.couleurs || null } : null;
@@ -98,6 +105,24 @@
         .catch(function () { customPret[id] = null; return null; });
     }
     return customCache[id];
+  }
+  /*
+   * OUBLIER LE DESSIN D'UN ACCESSOIRE MAISON.
+   *
+   * Le dessin est mis en cache PAR IDENTIFIANT, et un accessoire dont on
+   * remplace le SVG GARDE le sien : « même identifiant, ceux qui le portent
+   * voient le nouveau ». La table, elle, servait donc l'ancien dessin — l'admin
+   * déposait un fichier et revoyait le précédent, à la ligne du bon accessoire.
+   * C'est le pendant d'`oublierFamilles` pour les variantes.
+   */
+  function oublierCustom(id) {
+    if (id) {
+      delete customCache[id]; delete customPret[id]; customFrais[id] = true;
+      return;
+    }
+    for (var k in customPret) customFrais[k] = true;
+    for (var k2 in customCache) customFrais[k2] = true;
+    customCache = {}; customPret = {};
   }
 
   /** Le HTML d'une bouille : un canevas qui remplit sa boîte. */
@@ -447,6 +472,9 @@
     // À rappeler quand le catalogue des variantes a CHANGÉ (l'admin qui publie) :
     // sans cela la page garde la famille d'avant, où l'index neuf n'existe pas.
     oublierFamilles: oublierFamilles,
+    // Idem pour le dessin d'un accessoire MAISON dont on vient de remplacer le
+    // SVG : même identifiant, dessin neuf. Sans argument, on oublie tout.
+    oublierCustom: oublierCustom,
     FAMILLES: FAMILLES,
     //  est REMPLACÉ par oublierFamilles : on l'expose par une
     // fonction, sinon on servirait pour toujours la première table.

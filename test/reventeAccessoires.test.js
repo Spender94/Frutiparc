@@ -373,6 +373,65 @@ test('LA RÉPARATION : les orphelins d’avant se recensent puis se purgent', as
   assert.ok(sid);
 });
 
+test('L’APERÇU SUIT LE DESSIN : un SVG remplacé ne resert pas l’ancien', () => {
+  /* Le dessin d'un accessoire maison est mis en cache PAR IDENTIFIANT — et un
+     accessoire dont on remplace le SVG garde le sien, c'est même tout
+     l'intérêt (« même identifiant, ceux qui le portent voient le nouveau »).
+     La table des vignettes servait donc l'ancien dessin, à la ligne du bon
+     accessoire : on déposait un fichier et l'on revoyait le précédent. */
+  const VIG = fs.readFileSync(path.join(ROOT, 'public/js/bouille-vignette.js'), 'utf8');
+  const ADMIN = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');
+  assert.match(VIG, /function oublierCustom\(id\) \{/);
+  assert.match(VIG, /oublierCustom: oublierCustom,/, 'et il est exposé');
+  // Vider notre table ne suffit pas : le navigateur reservirait sa réponse.
+  assert.match(VIG, /customFrais\[id\] = true;/);
+  assert.match(VIG, /neuf \? \{ cache: 'no-store' \} : undefined/);
+  // L'admin l'appelle aux trois gestes qui changent (ou retirent) un dessin.
+  assert.match(ADMIN, /function oublierDessin\(id\) \{/);
+  for (const f of ['creerAccMaison', 'remplacerAccMaison', 'supprimerAccMaison']) {
+    const bloc = new RegExp('async function ' + f + '\\([^)]*\\) \\{[\\s\\S]*?\\n\\}').exec(ADMIN);
+    assert.ok(bloc, f);
+    assert.match(bloc[0], /oublierDessin\(/, f + ' doit oublier le dessin');
+  }
+  // L'aperçu de l'éditeur porte son NUMÉRO DE TOUR : une demande dépassée ne
+  // peint plus par-dessus la neuve avec les réglages d'après.
+  assert.match(ADMIN, /const tour = \+\+amTour;/);
+  assert.match(ADMIN, /if \(tour !== amTour \|\| !canvas\.isConnected\) return;/);
+  assert.match(ADMIN, /const teintes = \(couleurs \|\| amCouleurs\)\.slice\(\);/,
+    'les couleurs sont saisies AU DÉPART, pas lues au retour');
+});
+
+test('ESSAYER UN ACCESSOIRE SUR LA BOUILLE D’UN FRUTIZ', async (t) => {
+  if (!dispo) return t.skip('base indisponible');
+  // Six têtes en dur ne disent rien de ce que l'accessoire donne sur une vraie
+  // coiffure — et la première portait le nom d'un joueur qui n'était pas le
+  // sien. On va chercher la bouille du frutiz nommé.
+  const pseudo = 'tete' + RUN;
+  await inscrire(pseudo);
+  const r = await admin('GET', '/api/admin/bouille/' + pseudo);
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.equal(d.ok, true);
+  assert.equal(typeof d.fbouille, 'string');
+  assert.ok(d.fbouille.split('|')[0].length >= 24, 'une bouille entière : ' + d.fbouille);
+  // La casse ne compte pas — on tape un pseudo à la main.
+  assert.equal((await admin('GET', '/api/admin/bouille/' + pseudo.toUpperCase())).status, 200);
+  // Un inconnu se dit, il ne casse pas ; et la route reste fermée sans la clé.
+  assert.equal((await admin('GET', '/api/admin/bouille/personne' + RUN)).status, 404);
+  assert.equal((await fetch(BASE + '/api/admin/bouille/' + pseudo)).status, 403);
+
+  const ADMIN = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');
+  assert.match(ADMIN, /async function essayerSurFrutiz\(\) \{/);
+  assert.match(ADMIN, /'\/api\/admin\/bouille\/' \+ encodeURIComponent\(pseudo\)/);
+  // Les quinze premiers caractères font la base ; les neuf derniers, c'est
+  // l'accessoire, que l'aperçu remplace. Et un accessoire maison suffixé
+  // (« <état>|<id> ») ne doit pas polluer la base.
+  assert.match(ADMIN, /String\(d\.fbouille \|\| ''\)\.split\('\|'\)\[0\]\.substring\(0, 15\)/);
+  // L'étiquette ne prête plus le nom d'un joueur à un état écrit en dur.
+  assert.match(ADMIN, /<option value="0004060h0407000">Tête témoin \(famille 0\)<\/option>/);
+  assert.doesNotMatch(ADMIN, /Kasparov \(défaut\)/);
+});
+
 test('le double-clic, la popin et l’admin sont branchés dans les pages', () => {
   const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   const ADMIN = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');

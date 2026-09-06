@@ -1249,14 +1249,29 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
         <label><span>Desc. niveau 1 (gras) :</span> <input id="pack-desc1" placeholder="Vide = texte commun par défaut"></label>
         <label><span>Desc. niveau 2 (petit) :</span> <input id="pack-desc2" placeholder="Vide = texte commun par défaut"></label>
         <div style="margin-top:8px">
+          <!-- L'étiquette disait « Kasparov » : ce n'est la bouille de personne
+               en particulier, juste une tête témoin de la famille 0. On ne
+               prête plus le nom d'un joueur à un état écrit en dur. -->
           <label style="font-size:11px"><span>Base aperçu :</span> <select id="pack-base" onchange="updatePackPreview()" style="width:160px">
-            <option value="0004060h0407000">Kasparov (défaut)</option>
+            <option value="0004060h0407000">Tête témoin (famille 0)</option>
             <option value="0n0000000000000">Gaspard (famille 23)</option>
             <option value="000000010000000">Oeuf (non personnalisé)</option>
             <option value="0a04060h0407000">Famille 10</option>
             <option value="0b04060h0407000">Famille 11</option>
             <option value="0o04060h0407000">Famille 24</option>
           </select></label>
+        </div>
+        <!-- ESSAYER SUR LA BOUILLE DE QUELQU'UN. Six têtes en dur ne disent
+             rien de ce que l'accessoire donne sur une vraie coiffure, une vraie
+             couleur de peau. On tape un pseudo, et la tête du frutiz devient la
+             base de l'aperçu — elle s'ajoute au menu pour qu'on puisse y
+             revenir. -->
+        <div style="margin-top:6px">
+          <label style="font-size:11px"><span>… ou sur un frutiz :</span>
+            <input id="pack-base-pseudo" placeholder="pseudo" style="width:110px"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();essayerSurFrutiz();}"></label>
+          <button class="btn btn-sm" type="button" onclick="essayerSurFrutiz()">Essayer</button>
+          <span id="pack-base-etat" style="font-size:11px;color:#666;margin-left:6px"></span>
         </div>
       </div>
       <div style="flex:0 0 200px;text-align:center">
@@ -4658,17 +4673,44 @@ const AM_TETE = '000300080002070000000000';
 let amPaths = null;
 let amCouleurs = ['', '', ''];   // les 3 niveaux de couleur choisis (hex)
 
-function amApercu(canvas, paths) {
+/*
+ * LE DESSIN D'UN ACCESSOIRE MAISON EST MIS EN CACHE PAR IDENTIFIANT.
+ *
+ * Et un accessoire dont on remplace le SVG GARDE le sien — c'est même tout
+ * l'intérêt : « même identifiant, ceux qui le portent voient le nouveau ». La
+ * table des vignettes servait donc l'ancien dessin, à la ligne du bon
+ * accessoire : on déposait un fichier et l'on revoyait le précédent. C'est le
+ * pendant d'`oublierFamilles`, que les variantes ont déjà.
+ */
+function oublierDessin(id) {
+  if (window.FPBouilleVignette && FPBouilleVignette.oublierCustom) FPBouilleVignette.oublierCustom(id);
+}
+
+/*
+ * L'APERÇU DE L'ÉDITEUR — et son NUMÉRO DE TOUR.
+ *
+ * Charger la famille, c'est aller chercher un fichier : entre la demande et la
+ * réponse il se passe le temps du réseau. On lisait `amCouleurs` AU RETOUR, pas
+ * au départ : changer deux couleurs coup sur coup, ou choisir un autre fichier
+ * pendant le chargement, et c'est la demande d'avant qui peignait — avec les
+ * réglages d'après. Le tour courant tranche : une demande dépassée rend la main
+ * sans rien dessiner. (Même remède que `dessiner` dans bouille-vignette.js.)
+ */
+let amTour = 0;
+function amApercu(canvas, paths, couleurs) {
+  const tour = ++amTour;
+  const teintes = (couleurs || amCouleurs).slice();
   FPBouilleSwf.charger('/fbouille/famille' + FPBouilleMoteur.familleDe(AM_TETE) + '.swf')
     .then(function (defs) {
+      if (tour !== amTour || !canvas.isConnected) return;
       new FPBouilleMoteur.Bouille(canvas, defs, { etat: AM_TETE, anime: false,
-        accessoireCustom: paths, accessoireCouleurs: amCouleurs });
+        accessoireCustom: paths, accessoireCouleurs: teintes });
     }).catch(function () {});
 }
 function amRepreview() {
   const hote = $('#am-apercu-hote');
   hote.innerHTML = '<canvas width="1" height="1" style="width:100%;height:100%;display:block"></canvas>';
-  amApercu(hote.querySelector('canvas'), amPaths);
+  amApercu(hote.querySelector('canvas'), amPaths, amCouleurs);
 }
 // Une rangée de pastilles de palette pour CHAQUE niveau de couleur présent dans
 // le SVG (un groupe « couleur1/2/3 »). Sans niveau, rien à régler.
@@ -4720,6 +4762,9 @@ async function creerAccMaison() {
       $('#am-etat').textContent = 'Créé : ' + j.id;
       $('#am-nom').value = ''; $('#am-auteur').value = ''; amPaths = null; amCouleurs = ['', '', '']; $('#am-creer').disabled = true;
       $('#am-apercu-hote').innerHTML = ''; $('#am-couleurs').innerHTML = ''; $('#am-fichier').value = '';
+      // Un identifiant tout neuf ne peut pas être en cache — sauf s'il reprend
+      // celui d'un accessoire supprimé. On oublie, c'est gratuit.
+      oublierDessin(j.id);
       loadAccMaison();
     } else $('#am-etat').textContent = 'Erreur : ' + (j.error || '?');
   } catch (e) { $('#am-etat').textContent = 'Erreur réseau.'; }
@@ -4773,12 +4818,17 @@ async function remplacerAccMaison(id) {
     if (!j.ok) { toast('Erreur : ' + (j.error || '?')); return; }
     toast('Dessin remplacé (' + j.nb + ' aplats)');
   } catch (e) { toast('Erreur réseau.'); return; }
+  // MÊME IDENTIFIANT, DESSIN NEUF : sans cet oubli la vignette resservait
+  // l'ancien, à la ligne du bon accessoire.
+  oublierDessin(id);
   loadAccMaison();
 }
 
 async function supprimerAccMaison(id) {
   if (!confirm('Supprimer cet accessoire maison ? Ceux qui le portent le perdront.')) return;
   try { await fetch('/api/admin/acc-maison/' + encodeURIComponent(id), { method: 'DELETE', headers: hdr() }); } catch (e) {}
+  // Le dessin d'un accessoire disparu n'a plus à traîner dans la table.
+  oublierDessin(id);
   loadAccMaison();
 }
 
@@ -4957,6 +5007,46 @@ function updatePackPreview() {
   const state = base + suffix;
   FPBouilleVignette.rafraichir($('#pack-preview-canvas'), state);
   renderSuffixEditor(suffix);
+}
+
+/*
+ * ESSAYER L'ACCESSOIRE SUR LA BOUILLE DE QUELQU'UN.
+ *
+ * Six têtes écrites en dur ne disent rien de ce que l'accessoire donne sur une
+ * vraie coiffure ou une vraie couleur de peau — et la première portait même le
+ * nom d'un joueur qui n'était pas le sien. On va donc chercher la bouille du
+ * frutiz nommé : ses QUINZE premiers caractères sont la base (le reste, ce sont
+ * les neuf de l'accessoire, que l'aperçu remplace). Elle s'ajoute au menu, pour
+ * qu'on puisse comparer d'une tête à l'autre sans la retaper.
+ */
+async function essayerSurFrutiz() {
+  const champ = $('#pack-base-pseudo');
+  const etat = $('#pack-base-etat');
+  const pseudo = (champ.value || '').trim();
+  if (!pseudo) { etat.textContent = 'Donne un pseudo.'; return; }
+  etat.textContent = '…';
+  let d = {};
+  try {
+    const r = await fetch('/api/admin/bouille/' + encodeURIComponent(pseudo), { headers: hdr() });
+    d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) { etat.textContent = r.status === 404 ? 'Frutiz inconnu.' : 'Erreur.'; return; }
+  } catch (e) { etat.textContent = 'Erreur réseau.'; return; }
+  // `bouilleOf` peut suffixer un accessoire maison (« <état>|<id> ») : l'aperçu
+  // ne veut que l'état, et ses quinze premiers caractères.
+  const base = String(d.fbouille || '').split('|')[0].substring(0, 15);
+  if (base.length < 15) { etat.textContent = 'Bouille illisible.'; return; }
+  const sel = $('#pack-base');
+  const valeur = base;
+  let opt = Array.from(sel.options).find((o) => o.value === valeur);
+  if (!opt) {
+    opt = document.createElement('option');
+    opt.value = valeur;
+    sel.appendChild(opt);
+  }
+  opt.textContent = d.username + ' (frutiz)';
+  sel.value = valeur;
+  etat.textContent = 'Bouille de ' + d.username;
+  updatePackPreview();
 }
 
 // La valeur d'un slot est portée par le PREMIER caractère du groupe (position
