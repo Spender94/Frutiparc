@@ -20984,15 +20984,29 @@ app.get('/api/light/challenge', async (req, res) => {
   const me = resolveUsernameFromSid(req.query.sid || '');
   const meLower = me ? String(me).toLowerCase() : '';
   const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 20));
-  const dailyTrack = getBkiwiDailyTrack();
   // Le jour demandé (navigation par flèches, comme le bas de la fenêtre du
   // bureau). Aujourd'hui par défaut ; un jour passé se lit dans l'archive.
   const jourDemande = String(req.query.day || '').slice(0, 10);
   const aujourdhui = parisDayKey();
   const jour = /^\d{4}-\d{2}-\d{2}$/.test(jourDemande) ? jourDemande : aujourdhui;
   const passe = jour !== aujourdhui;
-  // Burning Kiwi : le bureau range rk '0' sur le circuit du jour ; le mobile
-  // faisait déjà ce choix, on le garde (c'est le classement qui bouge).
+  /*
+   * LE CIRCUIT DE BURNING KIWI TOURNE AVEC LE JOUR.
+   *
+   * Ses six circuits se relaient (`getBkiwiDailyTrack` : le quantième modulo
+   * six), et le classement du jour vit sous `bkiwi_track<N>_challenge` — un
+   * identifiant par circuit. L'archive garde donc chaque journée sous le
+   * circuit qui se courait CE JOUR-LÀ.
+   *
+   * Le circuit se calculait ici sans regarder le jour demandé : reculer d'un
+   * jour interrogeait l'archive sous le circuit d'AUJOURD'HUI, qui n'y a
+   * évidemment aucune ligne — l'onglet Burning Kiwi restait vide pour tous les
+   * jours passés, seul de tous les jeux (les autres n'ont qu'un classement,
+   * dont le nom ne change pas). Le chemin du bureau, lui, le faisait déjà :
+   * `resolveInternalRankingId(rk, dt)` résout rk '0' avec la date. Même
+   * midi-UTC que lui, pour ne pas trébucher sur un changement d'heure.
+   */
+  const dailyTrack = getBkiwiDailyTrack(new Date(jour + 'T12:00:00Z'));
   const GAMES = [
     { game: 'bkiwi',   ranking: `bkiwi_track${dailyTrack}_challenge` },
     { game: 'snake3',  ranking: 'snake3_classic' },

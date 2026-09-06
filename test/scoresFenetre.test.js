@@ -183,6 +183,46 @@ test('un jour passé se demande par sa date, et n\'affiche pas les médailles du
   assert.equal(bancal.past, false);
 });
 
+test('BURNING KIWI suit le circuit DU JOUR DEMANDÉ, pas celui d\'aujourd\'hui', async () => {
+  /* Ses six circuits se relaient (le quantième modulo six) et chacun a son
+     classement — `bkiwi_track<N>_challenge`. L'archive garde donc chaque
+     journée sous le circuit qui se courait CE JOUR-LÀ.
+
+     Le circuit se calculait sans regarder le jour demandé : reculer d'un jour
+     interrogeait l'archive sous le circuit d'AUJOURD'HUI, qui n'y a aucune
+     ligne. L'onglet Burning Kiwi restait vide pour tous les jours passés —
+     seul de tous les jeux, les autres n'ayant qu'un classement dont le nom ne
+     change pas. */
+  const sid = await inscrire(joueur('bk'));
+  const aujourdhui = (await tableau(sid)).day;
+  const idDeBkiwi = (d) => (d.games || []).find((g) => g.game === 'bkiwi').id;
+
+  // Le quantième modulo six, comme `getBkiwiDailyTrack` — recalculé ici pour
+  // que le test ne se contente pas de répéter le code du serveur.
+  const circuitDe = (cle) => {
+    const p = new Date(cle + 'T12:00:00Z');
+    const debut = Date.UTC(p.getUTCFullYear(), 0, 0, 12);
+    return Math.floor((p.getTime() - debut) / 86400000) % 6;
+  };
+
+  const vus = new Set();
+  for (let n = 0; n < 6; n++) {
+    const d = new Date(aujourdhui + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() - n);
+    const cle = d.toISOString().slice(0, 10);
+    const rep = await tableau(sid, '&day=' + cle);
+    assert.equal(idDeBkiwi(rep), `bkiwi_track${circuitDe(cle)}_challenge`,
+      `le ${cle} se courait sur le circuit ${circuitDe(cle)}`);
+    vus.add(idDeBkiwi(rep));
+    // L'onglet garde son nom : c'est le CLASSEMENT qui change, pas le jeu.
+    assert.equal((rep.games || []).find((g) => g.game === 'bkiwi').name,
+      (await tableau(sid)).games.find((g) => g.game === 'bkiwi').name);
+  }
+  // Six jours d'affilée, ce sont bien les six circuits — et donc jamais deux
+  // fois le même classement.
+  assert.equal(vus.size, 6, 'six jours, six circuits : ' + [...vus].join(' '));
+});
+
 // ── Les images de la fenêtre ──────────────────────────────────────────────
 
 test('les trois icônes de la fenêtre existent, découpées du rendu du bureau', () => {
