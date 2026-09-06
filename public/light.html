@@ -4028,6 +4028,12 @@
       ? encode62(champs.interne, 2) : s.substring(1, 3);
     var em = champs && champs.emote !== undefined
       ? encode62(champs.emote, 1) : s.charAt(3);
+    // L'humeur 7 (« Totoché ») n'a PAS de bouton dans la barre : elle n'est
+    // jamais un choix, seulement le masque que le serveur pose pendant la
+    // peine. La relire ici et la renvoyer, c'est la faire enregistrer comme
+    // mienne — et la garder sur la bouille une fois la peine levée. Quand on
+    // ne touche pas à l'humeur, on ne renvoie donc jamais un 7 hérité.
+    if (em === "7" && !(champs && champs.emote !== undefined)) em = "0";
     var neuf = ext + inter + em;
     if (neuf === state.statutMien) return;
     state.statutMien = neuf;
@@ -10723,9 +10729,23 @@
     // Quand c'est MOI que le serveur décrit, on retient le statut entier : le
     // prochain changement d'humeur ne doit pas effacer le voyant du jeu en
     // cours, qui vit dans les deux caractères du milieu.
+    //
+    // UNE EXCEPTION : LA TOTOCHE. Pendant la peine, `getStatusCode` force
+    // l'humeur 7 sur ma bouille — c'est la totoche, pas une humeur que j'ai
+    // choisie. L'adopter comme mienne, c'était la renvoyer au serveur au
+    // premier changement de voyant (`envoyerMonStatut` relit les champs qu'on
+    // ne touche pas), qui l'enregistrait alors comme mon humeur VRAIE : à la
+    // levée, la bouille restait totochée pour toujours. On garde donc mon
+    // quatrième caractère à moi, et la totoche reste ce qu'elle est — un
+    // masque, posé par le serveur, qui tombe avec la peine.
     if (cle === state.userLower) {
       var mien = String(s).replace(/[^0-9A-Za-z]/g, "").substring(0, 4);
-      if (mien.length === 4) state.statutMien = mien;
+      if (mien.length === 4) {
+        if ((state.mutedUntil || 0) > Date.now()) {
+          mien = mien.substring(0, 3) + String(state.statutMien || "0000").charAt(3);
+        }
+        state.statutMien = mien;
+      }
     }
   }
   function voyantDe(pseudo) { return state.jeuByUser[String(pseudo).toLowerCase()] || ""; }

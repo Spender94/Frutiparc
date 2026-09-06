@@ -24925,6 +24925,40 @@ function annonceModeration(channelName, corps) {
 }
 
 /*
+ * LA TOTOCHE SE VOIT — TOUT DE SUITE, ET PARTOUT.
+ *
+ * Le totoché porte une bouille à part : `getStatusCode` force l'humeur 7
+ * (« Totoché ») tant que `mutedUntil` court, et c'est ce chiffre-là que les
+ * clients lisent pour dessiner la tête. Encore faut-il qu'on le leur DISE :
+ * le statut ne se redemande pas tout seul, il se pousse.
+ *
+ * Or on ne le poussait qu'à la LEVÉE de la peine (et, pour le `mute` du
+ * panneau de modération, à sa pose). La totoche prononcée depuis le chat
+ * — `/totoch`, l'auto-modération sur mot interdit — ne prévenait personne :
+ * le salon gardait l'humeur d'avant, et la totoche n'apparaissait qu'au
+ * prochain `trace` de hasard (un changement de statut, une entrée dans le
+ * salon…) — souvent jamais, donc jamais pendant les dix minutes.
+ *
+ * D'où cette diffusion unique, appelée aux deux bouts de la peine : elle
+ * envoie le statut courant dans TOUS les salons où la personne se trouve.
+ * (Un seul salon ne suffit pas : on est présent dans plusieurs à la fois, et
+ * les autres resteraient sur l'ancienne bouille.)
+ */
+function diffuserStatut(username) {
+  const user = users[username];
+  if (!user && !bouilleCache[username]) return;
+  const ud = user || {};
+  const xml = `<${CMD.trace} u="${escapeXml(getDisplayName(username))}" p="1"`
+    + ` s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}"`
+    + ` f="${bouilleOf(ud, username)}" />`;
+  for (const [chanName, channel] of Object.entries(channels)) {
+    if (channel && channel.users && channel.users.has(username)) {
+      broadcastToChannel(chanName, xml);
+    }
+  }
+}
+
+/*
  * LA FIN DE LA PEINE, À LA SECONDE OÙ ELLE TOMBE.
  *
  * `mutedUntil` était posé et plus jamais touché : à l'échéance, plus rien ne se
@@ -24958,14 +24992,7 @@ function programmerFinDeTotoche(username) {
     for (const sock of getSocketsForUsername(username)) {
       sendToClient(sock, `<${CMD.endmute} u="${escapeXml(getDisplayName(username))}" />`);
     }
-    for (const [chanName, channel] of Object.entries(channels)) {
-      if (channel && channel.users && channel.users.has(username)) {
-        broadcastToChannel(chanName,
-          `<${CMD.trace} u="${escapeXml(getDisplayName(username))}" p="1"`
-          + ` s="${getStatusCode(user, username)}" mu="${getMuteValue(user)}"`
-          + ` f="${bouilleOf(user)}" />`);
-      }
-    }
+    diffuserStatut(username);                    // la bouille reprend son humeur
   }, Math.max(0, reste) + 500);
   if (t.unref) t.unref();
   finsDeTotoche.set(username, t);
@@ -27204,6 +27231,7 @@ case 'send': {
     if (channels[g] && channels[g].users && channels[g].users.has(client.username)) {
       annonceModeration(g, announce);
     }
+    diffuserStatut(client.username);              // la totoche se met sur la bouille
     break;
   }
 
@@ -27290,6 +27318,7 @@ case 'send': {
             annonceModeration(chanName, announceTotoche);
           }
         }
+        diffuserStatut(targetUser);               // la totoche se met sur la bouille
       }
       break;
     }
@@ -27557,9 +27586,11 @@ case 'send': {
     }
 
     // ── /d<n> : le lancer de dé, pour TOUT LE MONDE, dans tous les salons ──
-    // `/d6` tire entre 0 et 6, `/d20` entre 0 et 20 — bornes COMPRISES, donc
-    // n+1 résultats possibles. Le tirage est diffusé à tout le salon : un dé
-    // que le lanceur serait seul à voir n'animerait rien.
+    // `/d6` tire entre 1 et 6, `/d20` entre 1 et 20 — comme un vrai dé, dont
+    // aucune face ne porte zéro. (Il tirait de 0 à n : sept résultats sur un
+    // dé à six faces, et un zéro qui n'existe nulle part.) Le tirage est
+    // diffusé à tout le salon : un dé que le lanceur serait seul à voir
+    // n'animerait rien.
     //
     // Il était réservé aux animateurs, sur le seul salon Pomme — c'était en
     // faire un outil d'animation. Un dé est un JEU DE SALON : il vaut pour la
@@ -27574,9 +27605,9 @@ case 'send': {
           sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Syntaxe : /d6, /d20… (de 1 à 1000).</i>]]></${CMD.send}>`);
           break;
         }
-        const tire = Math.floor(Math.random() * (faces + 1));
+        const tire = 1 + Math.floor(Math.random() * faces);
         const qui = escapeXml(getDisplayName(client.username));
-        const corps = `<![CDATA[<b><font color="#C10000">${qui}</font></b> lance un dé (0–${faces}) : <b><font color="#C10000">${tire}</font></b>]]>`;
+        const corps = `<![CDATA[<b><font color="#C10000">${qui}</font></b> lance un dé (1–${faces}) : <b><font color="#C10000">${tire}</font></b>]]>`;
         broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${corps}</${CMD.send}>`);
         break;
       }
@@ -27911,9 +27942,9 @@ case 'send': {
       for (const [chanName, channel] of Object.entries(channels)) {
         if (channel && channel.users && channel.users.has(targetUser)) {
           annonceModeration(chanName, announceTotoche);
-          broadcastToChannel(chanName, `<${CMD.trace} u="${escapeXml(getDisplayName(targetUser))}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
         }
       }
+      diffuserStatut(targetUser);                 // la totoche se met sur la bouille
       break;
     }
 
@@ -27931,10 +27962,9 @@ case 'send': {
         sendToClient(targetSock, `<${CMD.endmute} u="${escapeXml(getDisplayName(targetUser))}" />`);
       }
       sendToClient(socket, `<${CMD.unmute} u="${escapeXml(getDisplayName(targetUser))}" />`);
-      const g = pickActiveChannel(client, msg.attrs);
-      if (g) {
-        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(getDisplayName(targetUser))}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
-      }
+      // Tous les salons où il se trouve, pas seulement celui du modérateur :
+      // ailleurs, la bouille serait restée totochée jusqu'à la Saint-Glinglin.
+      diffuserStatut(targetUser);
       break;
     }
 

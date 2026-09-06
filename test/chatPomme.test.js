@@ -397,10 +397,12 @@ test('les logs survivent au redémarrage du serveur', async (t) => {
 
 // ── Le lancer de dé, à la table de tout le monde ──────────────────────────
 //
-// `/d6` tire entre 0 et 6, `/d20` entre 0 et 20 — bornes comprises. Il était
-// réservé aux animateurs, sur le seul salon Pomme : c'était en faire un outil
-// d'animation. Un dé est un JEU DE SALON — il appartient à qui veut jouer, où
-// qu'il joue. Ne restent que les bornes du bon sens (1 à 1000 faces).
+// `/d6` tire entre 1 et 6, `/d20` entre 1 et 20 — comme un vrai dé, dont aucune
+// face ne porte zéro. (Il tirait de 0 à n : sept résultats sur un dé à six
+// faces.) Il était aussi réservé aux animateurs, sur le seul salon Pomme :
+// c'était en faire un outil d'animation. Un dé est un JEU DE SALON — il
+// appartient à qui veut jouer, où qu'il joue. Ne restent que les bornes du bon
+// sens (1 à 1000 faces).
 
 test('/dN : le dé roule pour tout le monde, dans n\'importe quel salon', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
@@ -417,27 +419,37 @@ test('/dN : le dé roule pour tout le monde, dans n\'importe quel salon', async 
     temoin.envoyer('<o g="pomme" />');
     await temoin.attendre((x) => x.startsWith('<p') && x.includes('g="pomme"'), 'pomme (témoin)');
 
-    // ── 1. Le tirage est DIFFUSÉ, et il tombe dans [0, n]. ──
+    // ── 1. Le tirage est DIFFUSÉ, et il tombe dans [1, n]. Jamais zéro : un
+    //      dé à six faces en a six, et aucune n'est vide.
     const vus = new Set();
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 30; i++) {
       temoin.trames.length = 0;
       anim.envoyer('<t g="pomme" t="m" p="">/d6</t>');
       const ligne = await temoin.attendre((x) => /lance un dé/.test(x), 'le tirage diffusé');
-      const m = /lance un dé \(0–6\) : <b><font color="#C10000">(\d+)<\/font><\/b>/.exec(ligne);
+      const m = /lance un dé \(1–6\) : <b><font color="#C10000">(\d+)<\/font><\/b>/.exec(ligne);
       assert.ok(m, 'la ligne dit le dé et son résultat : ' + ligne.slice(0, 200));
       const n = Number(m[1]);
-      assert.ok(n >= 0 && n <= 6, 'le tirage ' + n + ' tient dans [0, 6]');
+      assert.ok(n >= 1 && n <= 6, 'le tirage ' + n + ' tient dans [1, 6]');
       vus.add(n);
       assert.match(ligne, /animde/, 'et il porte le nom du lanceur');
     }
-    assert.ok(vus.size >= 3, 'douze lancers donnent plusieurs valeurs (' + [...vus].join(',') + ')');
+    assert.ok(vus.size >= 3, 'trente lancers donnent plusieurs valeurs (' + [...vus].join(',') + ')');
+    // Trente lancers sans un seul zéro : la probabilité d'en manquer un par
+    // hasard, si le zéro était encore tirable, serait de (6/7)^30 ≈ 0,9 %.
+    assert.ok(!vus.has(0), 'et jamais le zéro');
 
     // ── 2. Les grands dés marchent aussi. ──
     temoin.trames.length = 0;
     anim.envoyer('<t g="pomme" t="m" p="">/d20</t>');
     const vingt = await temoin.attendre((x) => /lance un dé/.test(x), 'le d20');
-    const m20 = /\(0–20\) : <b><font color="#C10000">(\d+)<\/font><\/b>/.exec(vingt);
-    assert.ok(m20 && Number(m20[1]) >= 0 && Number(m20[1]) <= 20, 'entre 0 et 20');
+    const m20 = /\(1–20\) : <b><font color="#C10000">(\d+)<\/font><\/b>/.exec(vingt);
+    assert.ok(m20 && Number(m20[1]) >= 1 && Number(m20[1]) <= 20, 'entre 1 et 20');
+
+    // ── 2 bis. Le dé à UNE face ne peut donner que 1. ──
+    temoin.trames.length = 0;
+    anim.envoyer('<t g="pomme" t="m" p="">/d1</t>');
+    const un = await temoin.attendre((x) => /lance un dé/.test(x), 'le d1');
+    assert.match(un, /\(1–1\) : <b><font color="#C10000">1<\/font><\/b>/, 'un dé à une face donne 1');
 
     // ── 3. AILLEURS QU'À POMME : le dé roule pareil. ──
     anim.envoyer('<o g="poire" />');
@@ -458,7 +470,7 @@ test('/dN : le dé roule pour tout le monde, dans n\'importe quel salon', async 
     temoin.envoyer('<t g="poire" t="m" p="">/d10</t>');
     const duJoueur = await anim.attendre((x) => /lance un dé/.test(x), 'le tirage du frutiz');
     assert.match(duJoueur, /temoinde/, 'la ligne porte SON nom');
-    assert.match(duJoueur, /\(0–10\)/, 'et son dé à dix faces');
+    assert.match(duJoueur, /\(1–10\)/, 'et son dé à dix faces');
 
     // ── 5. Les bornes du bon sens tiennent toujours. ──
     temoin.trames.length = 0;

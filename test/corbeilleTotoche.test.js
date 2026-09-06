@@ -173,7 +173,7 @@ test('à l’échéance, la peine se lève d’elle-même', () => {
   assert.ok(p, 'programmerFinDeTotoche doit exister');
   assert.match(p[0], /delete user\.mutedUntil;/);
   assert.match(p[0], /CMD\.endmute/, 'elle envoie `bc` — « Tu peux de nouveau parler »');
-  assert.match(p[0], /CMD\.trace/, 'et rediffuse le statut au salon');
+  assert.match(p[0], /diffuserStatut\(username\)/, 'et rediffuse le statut aux salons');
   // Une peine reposée entre-temps n'est pas celle-ci.
   assert.match(p[0], /if \(Number\.isFinite\(fin\) && fin > Date\.now\(\) \+ 1000\) return programmerFinDeTotoche\(username\);/);
   // Les quatre endroits qui posent ou lèvent une peine la programment.
@@ -192,6 +192,49 @@ test('l’horodatage de la peine est de l’UTC, et se lit comme tel', () => {
   const v = /function getMuteValue\(user\) \{[\s\S]*?\n\}/.exec(SRV);
   assert.ok(v);
   assert.match(v[0], /new Date\(raw\.replace\('\.', 'T'\) \+ 'Z'\)/);
+});
+
+test('la totoche se met sur la bouille DÈS qu’elle tombe, et dans tous les salons', () => {
+  /* `getStatusCode` force l'humeur 7 (« Totoché ») tant que la peine court —
+     mais un statut ne se redemande pas tout seul, il se POUSSE. Seule la
+     commande `mute` de la fiche le poussait ; `/totoch` et l'auto-modération,
+     elles, ne prévenaient personne : le salon gardait l'humeur d'avant, et la
+     totoche n'apparaissait qu'au prochain `trace` de hasard — souvent jamais,
+     donc jamais pendant les dix minutes. */
+  const d = /function diffuserStatut\(username\) \{[\s\S]*?\n\}/.exec(SRV);
+  assert.ok(d, 'diffuserStatut doit exister');
+  assert.match(d[0], /CMD\.trace/, 'elle pousse une trace');
+  assert.match(d[0], /getStatusCode\(ud, username\)/, 'avec le statut qui porte l’humeur 7');
+  // TOUS les salons où la personne se trouve : on est présent dans plusieurs à
+  // la fois, et les autres resteraient sur l'ancienne bouille.
+  assert.match(d[0], /for \(const \[chanName, channel\] of Object\.entries\(channels\)\)/);
+  assert.match(d[0], /channel\.users\.has\(username\)/);
+
+  // Les deux bouts de la peine, aux quatre endroits : l'auto-modération,
+  // /totoch, la commande `mute` de la fiche, la levée `unmute`, et l'échéance.
+  assert.ok((SRV.match(/diffuserStatut\(/g) || []).length >= 6,
+    'la fonction, ses trois poses, la levée manuelle et l’échéance');
+  const auto = /Auto-moderation: forbidden words[\s\S]*?\n    break;\n  \}/.exec(SRV);
+  assert.ok(auto, 'la branche d’auto-modération');
+  assert.match(auto[0], /diffuserStatut\(client\.username\)/);
+  const cmd = /if \(isModerator\(client\.username\) && text\.startsWith\('\/totoch '\)\) \{[\s\S]*?\n      break;\n    \}/.exec(SRV);
+  assert.ok(cmd, 'la commande /totoch');
+  assert.match(cmd[0], /diffuserStatut\(targetUser\)/);
+});
+
+test('l’humeur 7 est un MASQUE : le light ne la reprend pas à son compte', () => {
+  /* Le light garde le dernier statut que le serveur dit de lui (`statutMien`)
+     pour ne pas effacer le voyant de jeu au changement d'humeur suivant.
+     Pendant la peine, ce statut porte le 7 forcé : le renvoyer, c'était le
+     faire enregistrer comme l'humeur VRAIE du joueur — et laisser la bouille
+     totochée une fois la peine levée. L'humeur 7 n'a d'ailleurs pas de bouton
+     dans la barre : elle n'est jamais un choix. */
+  assert.match(LIGHT, /if \(\(state\.mutedUntil \|\| 0\) > Date\.now\(\)\) \{\s*\n\s*mien = mien\.substring\(0, 3\) \+ String\(state\.statutMien \|\| "0000"\)\.charAt\(3\);/);
+  assert.match(LIGHT, /if \(em === "7" && !\(champs && champs\.emote !== undefined\)\) em = "0";/);
+  // Et la barre ne propose bien que les humeurs 0 à 6.
+  const barre = /var HOME_EMOTES = \[[\s\S]*?\n  \];/.exec(LIGHT);
+  assert.ok(barre, 'la barre d’humeurs');
+  assert.doesNotMatch(barre[0], /e: 7/, '« Totoché » n’a pas de bouton');
 });
 
 test('côté client, la ligne de la peine s’en va avec la peine', () => {
