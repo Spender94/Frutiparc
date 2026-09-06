@@ -136,7 +136,11 @@ test('on jette EN GLISSANT — sur la tuile comme dans la fenêtre', () => {
   // Ce qui vit sur le bureau quitte le bureau ; ce qui vit au gestionnaire de
   // fichiers part au serveur. Souvent les deux.
   assert.match(j[0], /if \(pose\) retirerObjetBureau\(pose\.uid\);/);
-  assert.match(j[0], /deplacerFichier\(info\.uid, 'recyclebin'\)/);
+  // Et le move DIT d'où il vient (`info.parent`) : le carnet et la liste noire
+  // montrent parfois le même nom, et le serveur doit savoir laquelle vider.
+  // Un raccourci du bureau n'a pas de dossier d'origine — `info.parent` est
+  // alors vide, et le serveur retire des deux listes.
+  assert.match(j[0], /deplacerFichier\(info\.uid, 'recyclebin', info\.parent\)/);
   // Un disque ne se DÉTRUIT pas : il retourne au catalogue.
   assert.match(j[0], /if \(info\.type === 'disc'\)/);
   // Et la tuile n'existe que sur le bureau.
