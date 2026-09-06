@@ -92,8 +92,10 @@ after(() => {
 const q = (chemin, params) => `${BASE}${chemin}?sid=${encodeURIComponent(sid)}`
   + Object.entries(params || {}).map(([k, v]) => `&${k}=${encodeURIComponent(v)}`).join('');
 const ls = async (uid) => (await fetch(q('/ff/ls', { uid }))).text();
-const mv = async (f, folder) => (await fetch(q('/ff/mv', { f, folder }))).text();
+// `p` — la PROVENANCE, celle que `FPFileMng.move` connaît. Facultative.
+const mv = async (f, folder, p) => (await fetch(q('/ff/mv', p ? { f, folder, p } : { f, folder }))).text();
 const mk = async (params) => (await fetch(q('/ff/mk', params))).text();
+const dedans = (xml, qui) => new RegExp(`<e u="${qui}" t="contact"`).test(xml);
 
 // ══ LA SOURCE ═════════════════════════════════════════════════════════════
 
@@ -124,6 +126,73 @@ test('d’une fenêtre à l’autre : le carnet → la liste noire, et retour', 
   await mv(AMI, 'mycontact');
   assert.match(await ls('mycontact'), new RegExp(`<e u="${AMI}" t="contact"`));
   assert.doesNotMatch(await ls('blacklist'), new RegExp(`<e u="${AMI}" t="contact"`));
+});
+
+test('LE BOUTON DE LA FICHE déménage lui aussi : on n’est pas des deux côtés', async () => {
+  /* Un contact est un FICHIER : il vit dans un dossier, et un seul. `/ff/mv`
+     (le glisser-déposer) le savait ; `/ff/mk` (les deux boutons de la fiche)
+     se contentait d'AJOUTER. Bannir un contact depuis sa fiche le laissait
+     donc au carnet ET en liste noire — il restait dans la fenêtre et dans la
+     bande latérale alors qu'on venait de le bannir. */
+  await mk({ t: 'contact', folder: 'mycontact', u: AMI });
+  assert.ok(dedans(await ls('mycontact'), AMI), 'ajouté au carnet');
+
+  await mk({ t: 'contact', folder: 'blacklist', u: AMI });
+  assert.ok(dedans(await ls('blacklist'), AMI), 'et le voilà banni');
+  assert.ok(!dedans(await ls('mycontact'), AMI), 'il a QUITTÉ le carnet');
+
+  // Et dans l'autre sens : le reprendre en contact le sort de la liste noire.
+  await mk({ t: 'contact', folder: 'mycontact', u: AMI });
+  assert.ok(dedans(await ls('mycontact'), AMI), 'de retour au carnet');
+  assert.ok(!dedans(await ls('blacklist'), AMI), 'et plus en liste noire');
+
+  // Le pseudo court et l'adresse longue sont le MÊME frutiz : pas de doublon.
+  await mk({ t: 'contact', folder: 'mycontact', u: AMI + '@frutiparc.com' });
+  const xml = await ls('mycontact');
+  assert.strictEqual((xml.match(new RegExp(`<e u="${AMI}"`, 'g')) || []).length, 1,
+    'une seule entrée pour une seule personne');
+});
+
+test('à la corbeille, on retire de LA BONNE liste — et rien ne reste derrière', async () => {
+  /* La corbeille regardait le carnet PUIS, seulement s'il n'y était pas, la
+     liste noire (`else if`). Pour qui figurait aux deux — l'état que `/ff/mk`
+     fabriquait —, « Retirer de votre liste noire » le retirait du carnet et
+     laissait la liste noire intacte. On lit maintenant `p`, la provenance, et
+     à défaut on vide les deux. */
+  // On refabrique l'état bancal par la porte de derrière : `/ff/mv` sait
+  // ajouter en liste noire sans passer par la règle d'exclusivité de `/ff/mk`.
+  await mk({ t: 'contact', folder: 'mycontact', u: AMI });
+  await mk({ t: 'contact', folder: 'blacklist', u: AMI });
+  await mk({ t: 'contact', folder: 'mycontact', u: AMI });
+  await mv(AMI, 'blacklist', 'nulle-part');
+  await mk({ t: 'contact', folder: 'mycontact', u: AMI });
+  assert.ok(dedans(await ls('mycontact'), AMI), 'au carnet');
+
+  // `p=mycontact` : on ne touche qu'au carnet.
+  await mk({ t: 'contact', folder: 'blacklist', u: AMI });
+  await mv(AMI, 'mycontact', 'blacklist');           // il repasse au carnet
+  await mv(AMI, 'recyclebin', 'mycontact');
+  assert.ok(!dedans(await ls('mycontact'), AMI), 'retiré du carnet');
+  assert.ok(!dedans(await ls('blacklist'), AMI), 'et la liste noire est nette');
+
+  // Sans provenance, un contact jeté ne laisse RIEN — ni ici ni là.
+  await mk({ t: 'contact', folder: 'blacklist', u: AMI });
+  await mv(AMI, 'recyclebin');
+  assert.ok(!dedans(await ls('blacklist'), AMI), 'la liste noire se vide aussi');
+  assert.ok(!dedans(await ls('mycontact'), AMI));
+
+  // On remet l'ami au carnet : les tests suivants comptent sur lui.
+  await mk({ t: 'contact', folder: 'mycontact', u: AMI });
+});
+
+test('le client DIT d’où vient l’icône — `p` de FPFileMng.move', () => {
+  // Sans `p`, le serveur devait deviner entre les deux listes.
+  assert.match(JS, /function deplacerFichier\(file, dossier, depuis\)/);
+  assert.match(JS, /\(depuis \? '&p=' \+ encodeURIComponent\(depuis\) : ''\)/);
+  // Le clic droit d'un contact nomme SA fenêtre.
+  assert.match(JS, /deplacerFichier\(e\.uid, 'recyclebin',\s*\n\s*\(exEtats\[cle\] && exEtats\[cle\]\.uid\) \|\| EXPLORATEURS\[cle\]\.uid\);/);
+  // Le glisser-déposer passe le dossier qui tenait l'icône.
+  assert.match(JS, /deplacerFichier\(info\.uid, dossier, info\.parent\);/);
 });
 
 test('l’étoile crée un sous-dossier, et un contact s’y range', async () => {
@@ -200,7 +269,10 @@ test('les trois cibles de dépôt du carnet : la fenêtre, un sous-dossier, le b
   const dep = /function deposerDansCarnet\(info, dossier\) \{[\s\S]*?\n  \}/.exec(JS)[0];
   assert.match(dep, /if \(info\.uid === 'new' \|\| !info\.uid\) \{/);
   assert.match(dep, /\/ff\/mk\?sid=/);
-  assert.match(dep, /deplacerFichier\(info\.uid, dossier\);/);
+  // …et le move DIT d'où il vient : `info.parent`, le dossier qui tenait
+  // l'icône attrapée. Sans lui, la corbeille devait deviner entre les deux
+  // listes du carnet.
+  assert.match(dep, /deplacerFichier\(info\.uid, dossier, info\.parent\);/);
   // Banni ou jeté, il quitte AUSSI le bureau — comme `desktopRemove` d'époque.
   assert.match(dep, /if \(dossier === 'blacklist' \|\| dossier === 'recyclebin'\)/);
 });

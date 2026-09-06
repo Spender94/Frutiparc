@@ -4916,6 +4916,49 @@ function estDansLaListe(liste, pseudo) {
 function estEnListeNoire(user, pseudo) { return !!user && estDansLaListe(user.blacklist, pseudo); }
 function estContact(user, pseudo) { return !!user && estDansLaListe(user.contacts, pseudo); }
 
+/*
+ * LE CARNET ET LA LISTE NOIRE S'EXCLUENT.
+ *
+ * D'époque, un contact est un FICHIER : il vit dans un dossier, et un seul.
+ * `fileMng.move` le fait passer de « Mes contacts » à « Liste noire », il ne
+ * l'inscrit pas aux deux. Le portage, lui, avait deux chemins : `/ff/mv` (le
+ * glisser-déposer) qui déménageait bien, et `/ff/mk` (le bouton de la fiche)
+ * qui se contentait d'AJOUTER. Blacklister un contact depuis sa fiche le
+ * laissait donc dans les deux listes à la fois — il restait dans le carnet et
+ * dans la bande latérale alors qu'on venait de le bannir.
+ *
+ * Pire au retrait : la corbeille regardait le carnet PUIS, seulement s'il n'y
+ * était pas, la liste noire. Pour qui figurait aux deux, « Retirer de votre
+ * liste noire » le retirait du carnet et laissait la liste noire intacte.
+ *
+ * Ces deux fonctions donnent aux deux routes la même arithmétique : trouver
+ * l'entrée qui désigne quelqu'un (« bob » et « bob@frutiparc.com » sont le
+ * même frutiz), et l'ôter de la liste qu'on nomme — base comprise.
+ */
+function entreeDeLaListe(liste, adresse) {
+  if (!Array.isArray(liste) || !liste.length) return undefined;
+  const norm = normalizeContactAddress(adresse);
+  const local = String(norm).split('@')[0].toLowerCase();
+  if (!local) return undefined;
+  return liste.find((a) => a === norm || String(a).split('@')[0].toLowerCase() === local);
+}
+function retirerDuCarnet(user, quelle, adresse) {
+  if (!user) return null;
+  ensureContactLists(user);
+  const noire = quelle === 'blacklist';
+  const trouve = entreeDeLaListe(noire ? user.blacklist : user.contacts, adresse);
+  if (!trouve) return null;
+  if (noire) {
+    user.blacklist = user.blacklist.filter((a) => a !== trouve);
+    if (user._dbId) db.removeBlacklist(user._dbId, trouve).catch((e) => console.error('[DB] blacklist remove error:', e.message));
+  } else {
+    user.contacts = user.contacts.filter((a) => a !== trouve);
+    if (user.contactFolderMap) delete user.contactFolderMap[trouve];
+    if (user._dbId) db.removeContact(user._dbId, trouve).catch((e) => console.error('[DB] contact remove error:', e.message));
+  }
+  return trouve;
+}
+
 // `_global.chooseInviteBehavior(pref, user)`, mot pour mot : A (accepter),
 // P (demander) ou R (refuser). Le serveur n'applique que les REFUS —
 // « demander » reste l'affaire du client (le SWF pose la question, le light
@@ -18557,8 +18600,12 @@ app.all(['/ff/mk', '/mk'], async (req, res) => {
     }
 
     const addr = normalizeContactAddress(contactRaw);
+    // Un contact vit dans UN dossier : entrer dans l'un, c'est sortir de
+    // l'autre — ce que `/ff/mv` faisait déjà et que ce chemin-ci ignorait.
+    // (Il faut relire la liste APRÈS : `retirerDuCarnet` la remplace.)
+    if (addr) retirerDuCarnet(user, folder === 'blacklist' ? 'mycontact' : 'blacklist', addr);
     const list = folder === 'blacklist' ? user.blacklist : user.contacts;
-    if (addr && !list.includes(addr)) list.push(addr);
+    if (addr && !entreeDeLaListe(list, addr)) list.push(addr);
     if (addr && user._dbId) {
       const persist = folder === 'blacklist'
         ? db.addBlacklist(user._dbId, addr)
@@ -18770,15 +18817,21 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
   const inBlacklist = user.blacklist.find((a) => a === normalizedFileAddr || a.split('@')[0] === local);
 
   if (folder === 'recyclebin') {
-    if (inContacts) {
+    // D'OÙ VIENT L'ICÔNE ? `p` le dit quand le client le sait — et on ne
+    // touche alors qu'à cette liste-là, la seule que le joueur regarde. Quand
+    // il se tait, on vide LES DEUX : un contact jeté ne doit rien laisser
+    // derrière lui. (C'était un `else if` : pour qui figurait au carnet ET en
+    // liste noire, « Retirer de votre liste noire » le retirait du carnet et
+    // laissait la liste noire intacte.)
+    const venuDe = oldFolder === 'blacklist' ? 'blacklist'
+      : (oldFolder === 'mycontact' || isCustomContactFolder(user, oldFolder)) ? 'mycontact' : '';
+    if (inContacts && venuDe !== 'blacklist') {
       oldFolder = getContactFolder(user, inContacts);
-      user.contacts = user.contacts.filter((a) => a !== inContacts);
-      delete user.contactFolderMap[inContacts];
-      if (user._dbId) db.removeContact(user._dbId, inContacts).catch((e) => console.error('[DB] contact remove error:', e.message));
-    } else if (inBlacklist) {
-      user.blacklist = user.blacklist.filter((a) => a !== inBlacklist);
-      oldFolder = 'blacklist';
-      if (user._dbId) db.removeBlacklist(user._dbId, inBlacklist).catch((e) => console.error('[DB] blacklist remove error:', e.message));
+      retirerDuCarnet(user, 'mycontact', inContacts);
+    }
+    if (inBlacklist && venuDe !== 'mycontact') {
+      if (!inContacts || venuDe === 'blacklist') oldFolder = 'blacklist';
+      retirerDuCarnet(user, 'blacklist', inBlacklist);
     }
   } else if (folder === 'blacklist') {
     const addr = inContacts || normalizedFileAddr || file;
@@ -18788,7 +18841,10 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
       delete user.contactFolderMap[inContacts];
       if (user._dbId) db.removeContact(user._dbId, inContacts).catch((e) => console.error('[DB] contact move error:', e.message));
     }
-    if (addr && !user.blacklist.includes(addr)) {
+    // `includes` seul laissait passer un doublon dès que les deux listes ne
+    // s'écrivaient pas pareil (« bob » d'un côté, « bob@frutiparc.com » de
+    // l'autre) : on compare la personne, pas la chaîne.
+    if (addr && !entreeDeLaListe(user.blacklist, addr)) {
       user.blacklist.push(addr);
       if (user._dbId) db.addBlacklist(user._dbId, addr).catch((e) => console.error('[DB] blacklist add error:', e.message));
     }
@@ -18801,7 +18857,7 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
     } else if (inContacts) {
       oldFolder = getContactFolder(user, inContacts);
     }
-    if (addr && !user.contacts.includes(addr)) {
+    if (addr && !entreeDeLaListe(user.contacts, addr)) {
       user.contacts.push(addr);
       if (user._dbId) db.addContact(user._dbId, addr, 'mycontact').catch((e) => console.error('[DB] contact add error:', e.message));
     } else if (addr && user.contactFolderMap[addr] !== undefined) {

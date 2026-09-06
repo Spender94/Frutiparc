@@ -2234,7 +2234,10 @@ window.BureauFrutiz = (function () {
       ev.preventDefault();
       var ou = cle === 'noire' ? 'de votre liste noire' : 'de vos contacts';
       if (!window.confirm('Retirer « ' + nom + ' » ' + ou + ' ?')) return;
-      deplacerFichier(e.uid, 'recyclebin');
+      // La fenêtre d'où l'on retire, pour que le serveur touche à CETTE
+      // liste-là : le carnet et la liste noire montrent parfois le même nom.
+      deplacerFichier(e.uid, 'recyclebin',
+        (exEtats[cle] && exEtats[cle].uid) || EXPLORATEURS[cle].uid);
     });
     rendreAttrapable(c, {
       uid: e.uid, type: 'contact', desc: [adresse, bouille], name: nom,
@@ -2254,10 +2257,15 @@ window.BureauFrutiz = (function () {
    * sous-dossier, qui rend ses contacts à la racine). Le portage n'avait
    * simplement aucune fenêtre pour l'appeler.
    */
-  function deplacerFichier(file, dossier) {
+  function deplacerFichier(file, dossier, depuis) {
     var sid = (window.state && window.state.sid) || '';
+    // `p`, LA PROVENANCE — `FPFileMng.move` la connaît, nous la taisions. Sans
+    // elle, jeter à la corbeille quelqu'un qui figure au carnet ET en liste
+    // noire laissait au serveur le soin de deviner : il retirait du carnet, et
+    // la liste noire ne bougeait pas. On la dit quand on la sait.
     var q = '/ff/mv?sid=' + encodeURIComponent(sid) + '&f=' + encodeURIComponent(file)
-      + (dossier && dossier !== 'root' ? '&folder=' + encodeURIComponent(dossier) : '');
+      + (dossier && dossier !== 'root' ? '&folder=' + encodeURIComponent(dossier) : '')
+      + (depuis ? '&p=' + encodeURIComponent(depuis) : '');
     return fetch(q, { cache: 'no-store' })
       .then(function (r) { return r.text(); })
       .then(function () { relireCarnet(); return true; })
@@ -2728,8 +2736,11 @@ window.BureauFrutiz = (function () {
     if (pose) retirerObjetBureau(pose.uid);
     if (info.type === 'contact') {
       var adresse = (info.desc || [])[0] || info.uid;
-      if (info.uid && info.uid !== 'new') deplacerFichier(info.uid, 'recyclebin');
-      else if (adresse) deplacerFichier(adresse, 'recyclebin');
+      // Un raccourci du bureau n'a pas de dossier d'origine : `info.parent` est
+      // alors vide, et le serveur le retire des deux listes — ce qui est bien
+      // ce qu'on veut d'une icône jetée sans autre précision.
+      if (info.uid && info.uid !== 'new') deplacerFichier(info.uid, 'recyclebin', info.parent);
+      else if (adresse) deplacerFichier(adresse, 'recyclebin', info.parent);
       return true;
     }
     // Un disque ne se DÉTRUIT pas : il retourne au catalogue, comme d'époque
@@ -2772,7 +2783,8 @@ window.BureauFrutiz = (function () {
       var pose = objetDeLIcone(info);
       if (pose) retirerObjetBureau(pose.uid);
     }
-    deplacerFichier(info.uid, dossier);
+    // `info.parent` : le dossier qui tenait l'icône attrapée (`rendreAttrapable`).
+    deplacerFichier(info.uid, dossier, info.parent);
     return true;
   }
 
