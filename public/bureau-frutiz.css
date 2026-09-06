@@ -1108,8 +1108,19 @@ body.bureau-frutiz #side-list .sl-contact:not([data-genre]):active .nom { color:
    et Flash rentre le texte de 2 px dans ce rectangle : la zone utile va donc,
    rapportée au cadre du dessin, de x 16,05 à 87,45 et de y 1,7 à 13,75. Le mot
    était jusqu'ici collé à gauche, contre la loupe. */
+/* LE BOUTON « RECHERCHE », COLLÉ EN BAS.
+   `butSearch._y = 770` est une constante en dur, calée sur la scène de 800 px
+   de l'époque — comme le `_y = 800` de la poignée, que le portage avait déjà
+   traduit en `bottom: 0`. Celui-ci était resté en `top: 770.65px` : sur toute
+   fenêtre plus courte que 793 px (un portable en 1366×768, un navigateur qui
+   n'est pas en plein écran), il tombait sous le bord et devenait INTROUVABLE —
+   « il manque le bouton Rechercher en bas de la liste de contacts ».
+   Son bord bas était à 792,67 sur les 800 de la scène : 7,33 px du bas, à
+   toute hauteur désormais. La liste, elle, s'arrête déjà à `hSearch` (24 px)
+   du bas — le léger chevauchement est celui d'époque, et le masque de
+   `buildList` le cache. */
 body.bureau-frutiz #side-list .sl-recherche {
-  position: absolute; left: 9.95px; top: 770.65px; width: 95.9px; height: 22.02px;
+  position: absolute; left: 9.95px; bottom: 7.33px; width: 95.9px; height: 22.02px;
   display: none; align-items: flex-start; justify-content: center;
   padding: 1.7px 8.45px 0 16.05px; box-sizing: border-box;
   border: 0; background: url('/frutiz/sprites/recherche.svg') left top / 95.9px 22.02px no-repeat;

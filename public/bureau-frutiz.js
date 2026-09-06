@@ -8483,8 +8483,12 @@ window.BureauFrutiz = (function () {
     // quel, collé en bas comme `butContact._y = 800`.
     var bande = document.createElement('div');
     bande.id = 'side-list';
+    // Le libellé est celui d'époque — `_global.langText.help.search`
+    // (lang_french.as) —, et l'infobulle le titre de la fenêtre qu'il ouvre,
+    // `langText.search.title`. Le dessin (la gélule grise et sa loupe) est le
+    // bouton du SWF extrait tel quel : recherche.svg.
     bande.innerHTML = '<div class="sl-liste"></div>'
-      + '<button type="button" class="sl-recherche" title="Chercher un joueur">recherche</button>';
+      + '<button type="button" class="sl-recherche" title="Recherche de frutiz">Recherche</button>';
     var ombre = document.createElement('div');
     ombre.id = 'side-list-ombre';
     var languette = document.createElement('button');

@@ -109,6 +109,32 @@ test('le mot du bouton est un CHAMP, centré et blanc (DefineEditText #438)', ()
   assert.match(b, /font: 700 10px\/12px Verdana/);
   // La zone utile du champ, gouttière de 2 px comprise : x 16,05..87,45.
   assert.match(b, /padding: 1\.7px 8\.45px 0 16\.05px;/);
+  // Et le mot est celui d'époque : `_global.langText.help.search`.
+  assert.match(JS, /class="sl-recherche" title="Recherche de frutiz">Recherche<\/button>/);
+});
+
+test('le bouton est COLLÉ EN BAS — sinon on ne le voit pas d’une fenêtre courte', () => {
+  /* `butSearch._y = 770` est une constante en dur, calée sur la scène de
+     800 px de l'époque, tout comme le `_y = 800` de la poignée. La poignée
+     avait été traduite en `bottom: 0` ; le bouton, lui, était resté en
+     `top: 770.65px`. Sur toute fenêtre plus courte que 793 px — un portable en
+     1366×768, un navigateur qui n'est pas en plein écran — il tombait sous le
+     bord et devenait introuvable : « il manque le bouton Rechercher en bas de
+     la liste de contacts ». */
+  const b = CSS.slice(CSS.indexOf('body.bureau-frutiz #side-list .sl-recherche {'),
+    CSS.indexOf('body.bureau-frutiz.contacts-ouverts #side-list .sl-recherche'));
+  assert.doesNotMatch(b, /top: 770/, 'plus de calage sur la scène de 800 px');
+  // 800 − (770,65 + 22,02) = 7,33 : la MÊME place qu'à l'époque, à toute hauteur.
+  assert.match(b, /bottom: 7\.33px;/);
+  assert.match(b, /height: 22\.02px;/, 'et la taille du DefineButton2 extrait');
+  // La poignée, elle, l'était déjà : les deux constantes se lisent pareil.
+  assert.match(CSS, /body\.bureau-frutiz #languette-contacts \{[\s\S]*?bottom: 0;/);
+  // La liste s'arrête à `hSearch` (24 px) du bas — le masque de `buildList`.
+  assert.match(CSS, /body\.bureau-frutiz #side-list \.sl-liste \{[\s\S]*?bottom: 24px;/);
+  // Le dessin du bouton est bien celui du SWF, extrait tel quel.
+  assert.match(b, /url\('\/frutiz\/sprites\/recherche\.svg'\)/);
+  assert.ok(fs.existsSync(path.join(ROOT, 'public/frutiz/sprites/recherche.svg')),
+    'la gélule grise et sa loupe');
 });
 
 /* ── LE FORMULAIRE ────────────────────────────────────────────────────────── */
