@@ -137,6 +137,8 @@ scénarios des clips ne sont pas réécrits.
     épreuves olympiques, le tournoi ;
   - `menu.js` : `Menu` (portrait, barres, entrées, options, console),
     `Console`, `AnimLoader` ;
+  - `BacASable` (dans `modes.js`) : le **bac à sable**, seul mode qui ne soit
+    pas d'époque — voir plus bas ;
   - `manager.js` : `Manager` (slots, fruticard — `reparerCard` complète les
     fiches anciennes —, préférences, sons, `demarrerKaluga`).
 - `public/kaluga/plateforme.js` — `Client` : `/api/loadFrutiSlots` et
@@ -244,6 +246,54 @@ scénarios des clips ne sont pas réécrits.
   celles du Flash.
 - `node --test test/*.test.js` : la suite du dépôt (dont
   `jeuxDisponibles`, `kalugaFreestyle`, `fruticard`, `voyantEnPartie`).
+
+## Le bac à sable — le mode d'essai du portage
+
+Le seul mode qui ne soit pas d'époque. C'est une partie de Challenge
+**dépeuplée**, faite pour VOIR le portage se comporter — les huit papillons,
+les fourmis, les vers, l'écureuil, la grenouille, le corbeau — sans devoir
+jouer une vraie partie pour les faire venir. Il emprunte au Challenge tout ce
+qui fait naître les bestioles (mêmes classes, mêmes positions, même
+physique) : ce qu'on observe là est ce qui se passe en partie.
+
+- **Il ne compte jamais** : le type `$bac` n'entre pas dans la branche de
+  `Game.initEndGame` qui envoie le score, le mode réécrit `initEndGame` sans
+  l'écriture de fiche, et il pose le **verrou d'écriture du slot 0**
+  (`client.lockList[0]`, le mécanisme d'époque) le temps de l'essai. Sans
+  score envoyé, aucun Fruit Défendu n'est consommé.
+- **Il ne paraît que si on l'ouvre** : `data/kaluga-bac.json`, servi par
+  `/api/kaluga/bac`, réglé depuis le panneau d'administration (onglet
+  Tournois). Fermé, le menu du jeu n'en montre rien.
+- **Population de départ** : décor (les quatre cartes plates — challenge,
+  forest, field, mordor), tzongre, pommes, pomme d'or, chute des pommes,
+  papillons (un par case cochée), fourmis, vers, écureuils, grenouilles,
+  corbeaux. Le serveur borne chaque nombre.
+- **Touches, pendant la partie** : `1`…`8` les huit papillons, `9` une pomme,
+  `0` une pomme d'or, `F` fourmi, `V` ver, `E` écureuil, `G` grenouille,
+  `C` corbeau. Deux contraintes ont dicté ce choix : **P et ÉCHAP sont la
+  pause** du jeu (`Manager.update`) — une touche du bac ne peut pas s'y
+  poser —, et les lettres retenues gardent leur place entre AZERTY et QWERTY.
+  La légende reste affichée en bas de l'écran pendant l'essai.
+- L'entrée du menu porte un identifiant hors de la plage d'époque (99) et
+  nomme son image de titre (la neuvième de la bande, que le SWF n'avait
+  jamais servie) : le `switch` de `selectSlot` et les images des autres
+  entrées restent ceux de 2005.
+- Le lecteur a appris à attacher **une classe sans dessin** (`attachMovie`
+  d'un lien absent de la bibliothèque mais enregistré par `registerClass`) :
+  les modes du SWF ont tous leur symbole, celui-ci n'en a pas.
+
+### Ce que le bac a mis au jour
+
+Un défaut de dessin qui touchait TOUT le portage : dans un clip, le masque de
+scénario ne se refermait jamais. Le témoin « aucun masque en cours » valait
+`-1`, alors que les profondeurs de scénario sont **toutes négatives**
+(p − 16384) : la comparaison `finMasque >= 0` était toujours fausse, le
+`ctx.save()` du masque restait ouvert, et tout ce qui se dessinait ensuite
+partait avec la transformation du clip masqué. En clair : dès qu'une
+grenouille était à l'écran (son clip porte un masque), la barre de score, le
+feuillage et le bandeau des messages disparaissaient. Corrigé dans
+`moteur/flash.js` (témoin `null`), avec un test de non-régression
+(`test/kalugaBac.test.js`).
 
 ## Les séquences (INTRODUCTION, CREDITS)
 

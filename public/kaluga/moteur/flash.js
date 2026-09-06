@@ -507,8 +507,14 @@ class Clip extends Affichable {
 
   attachMovie(lien, nom, prof, init) {
     const id = this.$biblio.idDe(lien);
-    if (id === undefined) { console.warn('[kaluga] attachMovie : lien inconnu', lien); return undefined; }
-    const e = K.instancier(this.$biblio, id);
+    if (id === undefined && !K.classes[lien]) { console.warn('[kaluga] attachMovie : lien inconnu', lien); return undefined; }
+    // Un lien SANS dessin, mais avec une classe : un symbole « exporté pour
+    // ActionScript » qui ne porterait qu'un clip vide. Le SWF n'en a pas —
+    // ses modes sont tous dessinés —, mais le portage en ajoute (le bac à
+    // sable), et le jeu les attache comme les autres.
+    const e = id === undefined
+      ? new K.classes[lien](this.$biblio, null)
+      : K.instancier(this.$biblio, id);
     e.$prof = prof;
     e.$tickNaissance = K.scene ? K.scene.numeroTick : -1;
     const avant = this.parProf(prof);
@@ -593,10 +599,19 @@ class Clip extends Affichable {
       const d = this.$trace.dessin();
       if (d) { ctx.globalAlpha = a; K.dessinerDessin(ctx, d, null, a); }
     }
-    let finMasque = -1;
+    // Le masque de scénario couvre les profondeurs jusqu'à `$masqueJusqua`.
+    // ATTENTION au témoin « aucun masque en cours » : il ne peut pas être un
+    // nombre négatif, car les profondeurs du scénario le sont TOUTES (elles
+    // valent p − 16384). Avec -1, la comparaison ne se faisait jamais : le
+    // masque ne se refermait pas, et le `save` restait ouvert — tout ce qui
+    // se dessinait ensuite (la barre de score après une grenouille, par
+    // exemple) partait avec la transformation du clip masqué.
+    let finMasque = null;
     for (const e of this.$enfants) {
-      if (finMasque >= 0 && e.$prof > finMasque) { ctx.restore(); finMasque = -1; }
+      if (finMasque !== null && e.$prof > finMasque) { ctx.restore(); finMasque = null; }
       if (e.$masqueJusqua) {
+        // Deux masques ne se chevauchent pas : le nouveau ferme le précédent.
+        if (finMasque !== null) { ctx.restore(); finMasque = null; }
         ctx.save();
         const chemin = new Path2D();
         e.ajouterAuMasque(chemin, new DOMMatrix());
@@ -606,7 +621,7 @@ class Clip extends Affichable {
       }
       e.dessinerDans(ctx, a);
     }
-    if (finMasque >= 0) ctx.restore();
+    if (finMasque !== null) ctx.restore();
   }
 }
 K.Clip = Clip;

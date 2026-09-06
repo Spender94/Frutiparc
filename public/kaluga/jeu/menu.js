@@ -49,6 +49,12 @@ class Menu extends J.Slot {
       { id: 9, name: 'PREPARATION' },
       { id: 7, name: 'OPTIONS' },
     ];
+    // LE BAC À SABLE — hors d'époque, et hors classement : il ne paraît que
+    // si l'administration l'a ouvert. Son identifiant sort de la plage du
+    // jeu (le switch de selectSlot est celui de 2005), et son image de titre
+    // est la neuvième de la bande, que le SWF n'avait jamais servie.
+    const bac = this.mng.client.bac;
+    if (bac && bac.actif) this.menuList.push({ id: 99, frame: 9, name: 'BAC A SABLE' });
     // CHALLENGE quand la partie ira au classement, ESSAIS quand elle n'ira
     // pas — c'est le renommage d'époque (session blanche = disque de démo),
     // rendu au quota de Fruits Défendus que le serveur tient (Client.isRanked).
@@ -89,7 +95,11 @@ class Menu extends J.Slot {
     const mc = this.menuBar.menu['slot' + d];
     mc._x = this.menuBar.shadow._x;
     mc.attachMovie('slotTitle', 'title', 100);
-    mc.title.gotoAndStop(info.id + 1);
+    // L'image du titre suit l'identifiant du mode (une par entrée, dessinée
+    // dans le SWF). Une entrée qui n'est PAS d'époque — le bac à sable —
+    // nomme la sienne : la bande en porte une neuvième, jamais servie.
+    const image = info.frame != null ? info.frame : info.id + 1;
+    mc.title.gotoAndStop(image);
     mc.title.title.text = info.name;
     mc.attachMovie('transp', 'but', 110);
     mc.but._xscale = 232;
@@ -101,8 +111,8 @@ class Menu extends J.Slot {
     mc.but.onDragOut = mc.but.onRollOut;
     this.menuBar.shadow.attachMovie('slotShadow', 'shadow' + d, 10 + d);
     mc.shadow = this.menuBar.shadow['shadow' + d];
-    mc.shadow.gotoAndStop(info.id + 1);
-    mc.title.light.gotoAndStop(info.id + 1);
+    mc.shadow.gotoAndStop(image);
+    mc.title.light.gotoAndStop(image);
     mc.title.light.alpha = 0;
     mc.title.light._alpha = 0;
     mc.title.light._visible = false;
@@ -149,6 +159,7 @@ class Menu extends J.Slot {
       case 50: case 51: case 52: case 53: this.launchGame('gameRing', { level: id - 50 }); break;
       case 60: this.launchAnim('animLoader', { link: 'anim/intro.swf', width: 350, height: 240 }); break;
       case 61: this.launchAnim('animLoader', { link: 'anim/credits.swf', width: 350, height: 135 }); break;
+      case 99: this.launchGame('gameBac', { bac: this.mng.client.bac }); break;
       default: break;
     }
   }

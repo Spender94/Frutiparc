@@ -512,6 +512,67 @@
     </div>
     <div id="snaketournoi-apercu" style="margin-top:10px"></div>
   </div>
+
+  <!-- Kaluga : le bac à sable (mode d'essai du portage) -->
+  <div style="border:1px solid #cde0cd;border-radius:8px;padding:12px 14px;margin-top:22px;background:#f7fbf5">
+    <h3 style="margin:0 0 4px">🪰 Kaluga — bac à sable</h3>
+    <p style="color:#777;font-size:12px;margin:0 0 10px;max-width:820px">
+      Un mode d'<b>essai</b> pour vérifier le portage : une partie de Challenge dépeuplée, dont on
+      règle ici la population de départ. Elle ne compte <b>jamais</b> — pas de score au classement,
+      pas de fruticard écrite, pas de Fruit Défendu consommé. Ouvert, il ajoute l'entrée
+      « <b>BAC A SABLE</b> » au menu du jeu, pour tout le monde ; fermé, personne ne la voit.
+      Pendant la partie, des touches font naître à volonté :
+      <b>1</b> à <b>8</b> les huit papillons, <b>9</b> une pomme, <b>0</b> une pomme d'or,
+      <b>F</b> fourmi, <b>V</b> ver, <b>E</b> écureuil, <b>G</b> grenouille, <b>C</b> corbeau.
+      (P et Échap restent la <b>pause</b> du jeu.)
+    </p>
+    <div id="kalugabac-etat" style="font-size:13px;margin-bottom:10px">Chargement…</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+      <label style="font-size:12px;color:#555">Décor :<br>
+        <select id="kalugabac-carte" style="padding:4px;min-width:130px"></select>
+      </label>
+      <label style="font-size:12px;color:#555">Tzongre :<br>
+        <select id="kalugabac-tz" style="padding:4px;min-width:110px"></select>
+      </label>
+      <label style="font-size:12px;color:#555">Pommes au sol :<br>
+        <input type="number" id="kalugabac-pommes" min="0" max="30" style="width:70px;padding:4px">
+      </label>
+      <label style="font-size:12px;color:#555">Fourmis :<br>
+        <input type="number" id="kalugabac-fourmis" min="0" max="30" style="width:70px;padding:4px">
+      </label>
+      <label style="font-size:12px;color:#555">Vers :<br>
+        <input type="number" id="kalugabac-vers" min="0" max="30" style="width:70px;padding:4px">
+      </label>
+      <label style="font-size:12px;color:#555">Écureuils :<br>
+        <input type="number" id="kalugabac-ecureuils" min="0" max="30" style="width:70px;padding:4px">
+      </label>
+      <label style="font-size:12px;color:#555">Grenouilles :<br>
+        <input type="number" id="kalugabac-grenouilles" min="0" max="30" style="width:70px;padding:4px">
+      </label>
+      <label style="font-size:12px;color:#555">Corbeaux :<br>
+        <input type="number" id="kalugabac-corbeaux" min="0" max="30" style="width:70px;padding:4px">
+      </label>
+    </div>
+    <div style="margin-top:10px">
+      <div style="font-size:12px;color:#555;margin-bottom:4px">
+        <b>Papillons au départ</b> — un bonus par case cochée (elles se cumulent) :
+      </div>
+      <div id="kalugabac-papillons" style="display:flex;gap:12px;flex-wrap:wrap"></div>
+    </div>
+    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <label style="font-size:12px;color:#555">
+        <input type="checkbox" id="kalugabac-or"> Une pomme d'or
+      </label>
+      <label style="font-size:12px;color:#555"
+        title="Éteint, l'arbre ne lâche plus rien : le bac reste tel qu'on l'a posé.">
+        <input type="checkbox" id="kalugabac-chute"> Les pommes continuent de tomber de l'arbre
+      </label>
+      <label style="font-size:12px;color:#555;font-weight:bold">
+        <input type="checkbox" id="kalugabac-actif"> Ouvert (l'entrée paraît au menu du jeu)
+      </label>
+      <button class="btn-success" style="margin-left:auto" onclick="enregistrerKalugaBac()">Enregistrer</button>
+    </div>
+  </div>
 </div>
 
 <div class="content" id="tab-shop" style="display:none">
@@ -1443,7 +1504,7 @@ function switchTab(name) {
   if (name === 'kiloute' && !$('#kiloute-body').dataset.loaded) loadKiloute();
   if (name === 'trombinoscope') loadTrombinoscope();
   if (name === 'referrals') loadReferrals();
-  if (name === 'tournoi') { loadTournaments(); loadSnakeTournoi(); }
+  if (name === 'tournoi') { loadTournaments(); loadSnakeTournoi(); loadKalugaBac(); }
   if (name === 'dons') loadDons();
 }
 
@@ -2058,6 +2119,63 @@ async function viderSnakeTournoi() {
   try {
     const d = await (await fetch('/api/admin/snake3-tournoi/vider', { method: 'POST', headers: hdr() })).json();
     if (d.ok) { toast(`Classement vidé (${d.vides} en mémoire, ${d.enBase} en base)`); loadSnakeTournoi(); }
+    else toast('Erreur : ' + (d.error || '?'));
+  } catch (e) { toast('Erreur : ' + e.message); }
+}
+
+// ─── Kaluga : le bac à sable (mode d'essai du portage) ───
+// Une partie de Challenge dépeuplée, dont on pose ici la population de
+// départ. Elle ne compte pas : ni classement, ni fruticard, ni Fruit Défendu.
+let kalugaBacPapillons = [];
+async function loadKalugaBac() {
+  try {
+    const d = await (await fetch('/api/admin/kaluga-bac', { headers: hdr() })).json();
+    if (!d.ok) { $('#kalugabac-etat').textContent = 'Erreur : ' + (d.error || '?'); return; }
+    const b = d.bac;
+    kalugaBacPapillons = d.papillons || [];
+    $('#kalugabac-carte').innerHTML = (d.cartes || []).map((c) =>
+      `<option value="${esc(c)}"${c === b.carte ? ' selected' : ''}>${esc(c)}</option>`).join('');
+    $('#kalugabac-tz').innerHTML = (d.tzongres || []).map((t, i) =>
+      `<option value="${i}"${i === b.tz ? ' selected' : ''}>${esc(t)}</option>`).join('');
+    $('#kalugabac-papillons').innerHTML = kalugaBacPapillons.map((nom, i) =>
+      `<label style="font-size:12px;color:#555"><input type="checkbox" class="kalugabac-pap" value="${i}"`
+      + `${(b.papillons || []).includes(i) ? ' checked' : ''}> ${i + 1}. ${esc(nom)}</label>`).join('');
+    for (const [id, val] of [['pommes', b.pommes], ['fourmis', b.fourmis], ['vers', b.vers],
+      ['ecureuils', b.ecureuils], ['grenouilles', b.grenouilles], ['corbeaux', b.corbeaux]]) {
+      $('#kalugabac-' + id).value = val;
+      $('#kalugabac-' + id).max = d.max;
+    }
+    $('#kalugabac-or').checked = !!b.or;
+    $('#kalugabac-chute').checked = !!b.chute;
+    $('#kalugabac-actif').checked = !!b.actif;
+    $('#kalugabac-etat').innerHTML = `Bac <b style="color:${b.actif ? '#2f8f2f' : '#b31111'}">`
+      + `${b.actif ? 'OUVERT' : 'fermé'}</b> — décor « <b>${esc(b.carte)}</b> ».`
+      + ' Réglages gardés sur le disque du serveur (un redéploiement peut les oublier : on rouvre en deux clics).';
+  } catch (e) { $('#kalugabac-etat').textContent = 'Erreur : ' + e.message; }
+}
+async function enregistrerKalugaBac() {
+  const papillons = Array.from(document.querySelectorAll('.kalugabac-pap'))
+    .filter((c) => c.checked).map((c) => Number(c.value));
+  const corps = {
+    actif: $('#kalugabac-actif').checked,
+    carte: $('#kalugabac-carte').value,
+    tz: Number($('#kalugabac-tz').value) || 0,
+    pommes: Number($('#kalugabac-pommes').value) || 0,
+    or: $('#kalugabac-or').checked,
+    chute: $('#kalugabac-chute').checked,
+    papillons,
+    fourmis: Number($('#kalugabac-fourmis').value) || 0,
+    vers: Number($('#kalugabac-vers').value) || 0,
+    ecureuils: Number($('#kalugabac-ecureuils').value) || 0,
+    grenouilles: Number($('#kalugabac-grenouilles').value) || 0,
+    corbeaux: Number($('#kalugabac-corbeaux').value) || 0,
+  };
+  try {
+    const d = await (await fetch('/api/admin/kaluga-bac', {
+      method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()),
+      body: JSON.stringify(corps),
+    })).json();
+    if (d.ok) { toast(d.bac.actif ? 'Bac enregistré et ouvert — l\'entrée est au menu du jeu.' : 'Bac enregistré (fermé).'); loadKalugaBac(); }
     else toast('Erreur : ' + (d.error || '?'));
   } catch (e) { toast('Erreur : ' + e.message); }
 }

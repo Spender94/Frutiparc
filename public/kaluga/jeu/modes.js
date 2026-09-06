@@ -1589,4 +1589,197 @@ class FrogRun extends Trial {
 }
 K.registerClass('gameFrogRun', FrogRun);
 
+/* ── Bac à sable — le mode d'ESSAI ────────────────────────────────────────
+ *
+ * Un mode qui ne compte pas : aucun score envoyé, aucune fiche écrite, aucun
+ * Fruit Défendu consommé. Il sert à VOIR le portage se comporter — les huit
+ * papillons, les fourmis, les vers, l'écureuil, la grenouille, le corbeau —
+ * sans devoir jouer une vraie partie pour les faire venir.
+ *
+ * Ce n'est PAS un mode d'époque : le jeu de 2005 n'en avait pas. Il ne
+ * paraît au menu que si l'administration l'a ouvert (data/kaluga-bac.json,
+ * servi par /api/kaluga/bac), et il emprunte au Challenge tout ce qui fait
+ * naître les bestioles — mêmes classes, mêmes positions, même physique :
+ * ce qu'on observe ici est ce qui se passe en partie.
+ *
+ * Deux façons de peupler :
+ *   · la POPULATION DE DÉPART, réglée depuis le panneau d'administration ;
+ *   · les TOUCHES, pendant la partie — 1 à 8 pour les huit papillons,
+ *     9 une pomme, 0 une pomme d'or, F fourmi, V ver, E écureuil,
+ *     G grenouille, C corbeau.
+ *
+ * Le clavier a deux contraintes. P et ÉCHAP sont la PAUSE du jeu
+ * (Manager.update) : aucune touche d'ici ne doit s'y poser. Et les lettres
+ * choisies (C, E, F, G, V) gardent leur place entre AZERTY et QWERTY, comme
+ * la rangée des chiffres — ce qui n'est le cas ni de A, ni de Z, ni de M.
+ */
+const BAC_CARTES = {
+  challenge: { sol: 'challenge', feuillage: 'challenge', porte: true },
+  forest: {},
+  field: { sol: 'field' },
+  mordor: { sol: 'empty' },
+};
+// Les huit papillons, dans l'ordre de Tzongre.catchButterFly.
+const BAC_PAPILLONS = ['Multi', 'Chaîne', 'Puissance', 'Armure', 'Super',
+  'Pluie de pommes', 'Pommes en moins', 'Pousse'];
+const BAC_TOUCHES = {
+  49: ['papillon', 0], 50: ['papillon', 1], 51: ['papillon', 2], 52: ['papillon', 3],
+  53: ['papillon', 4], 54: ['papillon', 5], 55: ['papillon', 6], 56: ['papillon', 7],
+  57: ['pomme'], 48: ['or'],
+  70: ['fourmi'], 86: ['ver'], 69: ['ecureuil'], 71: ['grenouille'], 67: ['corbeau'],
+};
+
+class BacASable extends Classic {
+  init() {
+    this.type = '$bac';
+    const bac = this.bac || {};
+    this.carte = BAC_CARTES[bac.carte] ? bac.carte : 'challenge';
+    const decor = BAC_CARTES[this.carte];
+    this.mapInfo = {
+      skinLink: this.mng.client.getFileInfos('map/' + this.carte + '.swf').name,
+      width: 700, height: 480,
+    };
+    if (decor.sol) this.mapInfo.groundLabel = decor.sol;
+    this.initOptionProba();
+    // Classic.init impose la carte du Challenge : on va droit à Game.init.
+    J.Game.prototype.init.call(this);
+    this.step = 0;
+    // Rien de cet essai ne doit atteindre la fruticard : le verrou d'écriture
+    // du slot 0 est celui du client d'époque, que saveSlot respecte.
+    this.mng.client.lockList[0] = true;
+  }
+  initDefault() {
+    super.initDefault();
+    if (this.bac == null) this.bac = {};
+    // Les pommes ne retombent de l'arbre que si on l'a demandé : un bac
+    // tranquille vaut mieux pour observer une bestiole en particulier.
+    this.flFruitFalling = !!this.bac.chute;
+  }
+  initGame() {
+    J.Game.prototype.initGame.call(this);
+    const decor = BAC_CARTES[this.carte];
+    if (decor.feuillage) this.initFeuillage(decor.feuillage);
+  }
+  // PAS de panneau de départ : un bac s'ouvre et l'on joue. Ceux du SWF
+  // portent tous leur consigne — dessinée (le Challenge, sur deux pages) ou
+  // dans un champ d'une seule ligne (le Chrono) : la nôtre en fait trois et
+  // n'y entrerait pas. Elle est posée à l'écran par `afficherAide`.
+  initStartPanel() { this.fadeTo(0, { obj: this, method: 'startGame' }); }
+  initSprites() {
+    J.Game.prototype.initSprites.call(this);
+    this.genPanier();
+    const bac = this.bac;
+    for (let i = 0; i < (bac.pommes | 0); i++) this.genGroundFruit();
+    if (bac.or) this.genPommeOr();
+    for (const id of (Array.isArray(bac.papillons) ? bac.papillons : [])) this.genButterfly(id);
+    for (let i = 0; i < (bac.fourmis | 0); i++) this.genAnt();
+    for (let i = 0; i < (bac.vers | 0); i++) this.genCaterpillar();
+    for (let i = 0; i < (bac.ecureuils | 0); i++) this.genSquirrel();
+    // Grenouilles et corbeaux visent la tzongre : ils attendent qu'elle soit là.
+    this.aVenir = { grenouilles: bac.grenouilles | 0, corbeaux: bac.corbeaux | 0 };
+  }
+  startGame() {
+    this.masterStep = 1;
+    this.kilo = 0;
+    this.initScroller();
+    this.kiloPanel.setCoef(0);
+    this.afficherAide();
+    // La porte n'existe que sur la carte du Challenge : ailleurs, la tzongre
+    // entre par le milieu du ciel.
+    const porte = this.map.bg && this.map.bg.animPorte;
+    if (porte) { porte.play(); this.step = 1; } else { this.entrerTzongre(); }
+    this.toucheListener = { jeu: this };
+    this.toucheListener.onKeyDown = function () { this.jeu.surTouche(Key.getCode()); };
+    Key.addListener(this.toucheListener);
+  }
+  // La légende des touches, posée EN BAS pour toute la partie : en haut à
+  // gauche passent les messages du jeu (« Multi up! »), en haut à droite la
+  // barre de score. Le bandeau ne conviendrait pas pour la porter : son champ
+  // est taillé pour deux mots, pas pour trois lignes.
+  afficherAide() {
+    const champ = this.createTextField('aide', this.dp_debugDraw + 1, 8, Cs.mch - 46, 480, 44);
+    champ.multiline = true;
+    champ.selectable = false;
+    champ.text = 'BAC À SABLE — rien de cette partie ne compte\n'
+      + '1 à 8 : les papillons  ·  9 : une pomme  ·  0 : une pomme d’or\n'
+      + 'F fourmi  ·  V ver  ·  E écureuil  ·  G grenouille  ·  C corbeau';
+    champ.setTextFormat({ font: 'Verdana', size: 10, color: 0xFFFFFF, bold: true });
+  }
+  entrerTzongre() {
+    this.step = 2;
+    this.genTzongre();
+    this.tzongre.unFreeze();
+    for (let i = 0; i < this.aVenir.grenouilles; i++) this.genFrog();
+    for (let i = 0; i < this.aVenir.corbeaux; i++) this.genCorbeau();
+  }
+  genTzongre() {
+    if (this.map.bg && this.map.bg.animPorte) { super.genTzongre(); return; }
+    const initObj = this.tzongreInfo;
+    initObj.x = Cs.mcw / 2; initObj.y = Cs.mch / 2; initObj.vity = -4;
+    this.tzongre = this.newTzongre(initObj);
+    this.tzongre.endUpdate();
+  }
+  update() {
+    // On saute la montée en difficulté du Challenge (levelUp, corbeau
+    // d'ambiance, fin de partie quand il ne reste plus de pomme) : ici la
+    // population est celle qu'on a demandée, et rien d'autre.
+    J.Game.prototype.update.call(this);
+    if (this.step === 1 && this.map.bg.animPorte._currentframe > 70) this.entrerTzongre();
+    if (this.step === 2 && this.flFruitFalling && this.fruitList.length < this.fruitBase) this.genTreeFruit();
+  }
+  genPommeOr() {
+    const mc = this.newFruit({ x: 40 + random(Cs.mcw - 80), weight: 1.5, flGold: true });
+    mc.y = this.map.height - (this.map.groundLevel + mc.ray);
+    mc.endUpdate();
+    return mc;
+  }
+  genCorbeau() { return this.newBird({ hitPoint: 40 }); }
+  // Ce que fait naître une touche — et la population de départ.
+  poser(quoi, id) {
+    switch (quoi) {
+      case 'papillon': return this.genButterfly(id == null ? random(8) : id);
+      case 'fourmi': return this.genAnt();
+      case 'ver': return this.genCaterpillar();
+      case 'ecureuil': return this.genSquirrel();
+      case 'grenouille': return this.genFrog();
+      case 'corbeau': return this.genCorbeau();
+      case 'pomme': return this.genGroundFruit();
+      case 'or': return this.genPommeOr();
+      default: return undefined;
+    }
+  }
+  surTouche(code) {
+    if (this.masterStep !== 1 || this.step !== 2 || this.flEndingGame) return;
+    const ordre = BAC_TOUCHES[code];
+    if (!ordre) return;
+    this.poser(ordre[0], ordre[1]);
+  }
+  // La fin d'un essai : le panneau, ses statistiques, et rien d'envoyé.
+  initEndGame(timer) {
+    if (timer == null) timer = 0;
+    this.endTimer = timer;
+    this.flEndingGame = true;
+    this.scoreSaved();
+  }
+  scoreSaved() {
+    let name = '', score = '';
+    name += '<b>Général:</b>\n'; score += '\n';
+    name += this.stat.getList('name'); score += this.stat.getList('score');
+    name += '<b>Combo:</b>\n'; score += '\n';
+    name += this.statCombo.getList('name'); score += this.statCombo.getList('score');
+    this.endPanelMiddle.push({ list: [
+      { type: 'bigScore', frame: 1, score: this.score },
+      { type: 'stats', box: { x: 82, y: 16, w: 280, h: 200 }, name, score },
+    ] });
+  }
+  reset() { super.reset({ bac: this.bac }); }
+  kill() {
+    if (this.toucheListener) Key.removeListener(this.toucheListener);
+    this.mng.client.lockList[0] = false;
+    super.kill();
+  }
+}
+J.BacASable = BacASable;
+K.registerClass('gameBac', BacASable);
+
 })(typeof window !== 'undefined' ? window : globalThis);

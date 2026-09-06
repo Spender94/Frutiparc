@@ -16696,6 +16696,115 @@ app.post('/api/admin/snake3-tournoi/vider', tournoiScope, async (req, res) => {
   res.json({ ok: true, vides, enBase });
 });
 
+// ─────────────────────────────────────────────
+// KALUGA — LE BAC À SABLE (mode d'essai)
+//
+// Un mode d'ESSAI pour le portage : une partie de Challenge dépeuplée, dont
+// on choisit ici la population de départ — le décor, la tzongre, les pommes,
+// et les bestioles qu'on veut voir se comporter (les huit papillons, les
+// fourmis, les vers, l'écureuil, la grenouille, le corbeau). Pendant la
+// partie, des touches en font naître d'autres à volonté.
+//
+// Il ne compte JAMAIS : le jeu n'envoie pas de score et verrouille l'écriture
+// de la fruticard le temps de l'essai (public/kaluga/jeu/modes.js), et sans
+// score envoyé aucun Fruit Défendu n'est consommé.
+//
+// L'état vit en mémoire et sur le disque — pas en base : c'est un outil de
+// vérification, qu'on rouvre en deux clics si un redéploiement l'oublie.
+// ─────────────────────────────────────────────
+const KALUGA_BAC_FILE = path.join(SCORES_DIR, 'kaluga-bac.json');
+// Les décors PLATS du jeu (700×480). Les autres cartes défilent ou montent
+// (olympic_a fait 10 000 de large, squirrel 2 820 de haut) : elles n'ont pas
+// leur place dans un bac où l'on regarde une bestiole marcher.
+const KALUGA_BAC_CARTES = ['challenge', 'forest', 'field', 'mordor'];
+const KALUGA_BAC_TZ = ['Kaluga', 'Piwali', 'Nalika', 'Gomola', 'Makulo'];
+// Les huit papillons, dans l'ordre de Tzongre.catchButterFly (kaluga/sp).
+const KALUGA_BAC_PAPILLONS = ['Multi', 'Chaîne', 'Puissance', 'Armure', 'Super',
+  'Pluie de pommes', 'Pommes en moins', 'Pousse'];
+const KALUGA_BAC_MAX = 30;                 // par espèce : un bac, pas une invasion
+let kalugaBacEtat = null;
+
+function kalugaBacDefaut() {
+  return {
+    actif: false, carte: 'challenge', tz: 0,
+    pommes: 4, or: false, chute: false,
+    papillons: [], fourmis: 0, vers: 0, ecureuils: 0, grenouilles: 0, corbeaux: 0,
+  };
+}
+function kalugaBacLire() {
+  if (kalugaBacEtat) return kalugaBacEtat;
+  try {
+    if (fs.existsSync(KALUGA_BAC_FILE)) {
+      const surDisque = JSON.parse(fs.readFileSync(KALUGA_BAC_FILE, 'utf8'));
+      if (surDisque && typeof surDisque === 'object') {
+        kalugaBacEtat = Object.assign(kalugaBacDefaut(), surDisque);
+        return kalugaBacEtat;
+      }
+    }
+  } catch (e) { console.error('[KALUGA BAC] lecture:', e.message); }
+  kalugaBacEtat = kalugaBacDefaut();
+  return kalugaBacEtat;
+}
+function kalugaBacEcrire(bac) {
+  kalugaBacEtat = bac;
+  try {
+    if (!fs.existsSync(SCORES_DIR)) fs.mkdirSync(SCORES_DIR, { recursive: true });
+    const tmp = KALUGA_BAC_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(bac, null, 2));
+    fs.renameSync(tmp, KALUGA_BAC_FILE);
+  } catch (e) { console.error('[KALUGA BAC] écriture:', e.message); }
+}
+// Ce que l'admin envoie, ramené dans les clous : un bac mal réglé ne doit pas
+// pouvoir faire naître trois cents fourmis dans le navigateur d'un joueur.
+function kalugaBacNettoyer(brut) {
+  const b = brut && typeof brut === 'object' ? brut : {};
+  const n = (v, max) => Math.max(0, Math.min(max, Math.trunc(Number(v)) || 0));
+  const papillons = Array.isArray(b.papillons)
+    ? b.papillons.map((x) => Math.trunc(Number(x)))
+      .filter((x) => x >= 0 && x < KALUGA_BAC_PAPILLONS.length)
+      .slice(0, KALUGA_BAC_MAX)
+    : [];
+  return {
+    actif: !!b.actif,
+    carte: KALUGA_BAC_CARTES.includes(String(b.carte)) ? String(b.carte) : 'challenge',
+    tz: n(b.tz, KALUGA_BAC_TZ.length - 1),
+    pommes: n(b.pommes, KALUGA_BAC_MAX),
+    or: !!b.or,
+    chute: !!b.chute,
+    papillons,
+    fourmis: n(b.fourmis, KALUGA_BAC_MAX),
+    vers: n(b.vers, KALUGA_BAC_MAX),
+    ecureuils: n(b.ecureuils, KALUGA_BAC_MAX),
+    grenouilles: n(b.grenouilles, KALUGA_BAC_MAX),
+    corbeaux: n(b.corbeaux, KALUGA_BAC_MAX),
+  };
+}
+
+// Ce que le JEU demande à la connexion : fermé, il n'y a rien à voir.
+app.get('/api/kaluga/bac', (req, res) => {
+  const username = resolveUsernameFromSid(String(req.query.sid || ''));
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  res.json({ ok: true, bac: kalugaBacLire() });
+});
+
+app.get('/api/admin/kaluga-bac', adminAuth, (req, res) => {
+  res.json({
+    ok: true, bac: kalugaBacLire(),
+    cartes: KALUGA_BAC_CARTES, tzongres: KALUGA_BAC_TZ,
+    papillons: KALUGA_BAC_PAPILLONS, max: KALUGA_BAC_MAX,
+  });
+});
+
+app.post('/api/admin/kaluga-bac', adminAuth, (req, res) => {
+  const bac = kalugaBacNettoyer(req.body);
+  kalugaBacEcrire(bac);
+  console.log(`[KALUGA BAC] ${bac.actif ? 'ouvert' : 'fermé'} — carte ${bac.carte}, `
+    + `${bac.pommes} pomme(s), ${bac.papillons.length} papillon(s), ${bac.fourmis} fourmi(s), `
+    + `${bac.vers} ver(s), ${bac.ecureuils} écureuil(s), ${bac.grenouilles} grenouille(s), `
+    + `${bac.corbeaux} corbeau(x)`);
+  res.json({ ok: true, bac });
+});
+
 app.get('/api/fd/status', (req, res) => {
   const username = resolveUsernameFromSid(String(req.query.sid || ''));
   if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });

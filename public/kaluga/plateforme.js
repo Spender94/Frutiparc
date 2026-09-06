@@ -89,6 +89,21 @@ class Client {
       .catch(() => {});
   }
 
+  /*
+   * LE BAC À SABLE — le mode d'essai, réglé depuis le panneau
+   * d'administration (data/kaluga-bac.json). Fermé, le menu n'en montre
+   * rien ; ouvert, il ajoute une entrée qui ne compte ni au classement ni à
+   * la fruticard. C'est un outil de vérification du portage, pas un mode de
+   * jeu : le Kaluga de 2005 n'en avait pas.
+   */
+  chargerBac() {
+    if (!this.sid) return Promise.resolve();
+    return fetch('/api/kaluga/bac?sid=' + encodeURIComponent(this.sid), { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j && j.ok) this.bac = j.bac; })
+      .catch(() => {});
+  }
+
   // Un fichier chargé par le jeu (carte, séquence) : la bibliothèque du même nom.
   getFileInfos(f) {
     const nom = String(f || '').replace(/^.*\//, '').replace(/\.swf$/i, '');
@@ -121,9 +136,10 @@ class Client {
         if (brut1) { try { this.slots[1] = JSON.parse(brut1); } catch (e) { this.slots[1] = undefined; } }
       })
       .catch(() => { this.slots = []; this.charge = false; });
-    // Le quota FD arrive avec le reste : le menu se construit juste après, et
-    // c'est lui qui nomme le premier mode.
-    Promise.all([profil, slots, this.chargerFd()]).then(() => this.onServiceConnect());
+    // Le quota FD et le bac à sable arrivent avec le reste : le menu se
+    // construit juste après, et c'est lui qui nomme le premier mode et qui
+    // décide de montrer, ou non, l'entrée d'essai.
+    Promise.all([profil, slots, this.chargerFd(), this.chargerBac()]).then(() => this.onServiceConnect());
   }
   onServiceConnect() {
     this.mng.card = this.slots[0];
