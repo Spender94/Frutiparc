@@ -3532,11 +3532,18 @@ body.bureau-frutiz .fen #shop-sheet #bo-rubriques {
 /* Une RUBRIQUE est un `capsDir` de niveau 0 : puce `shopBullet` image 2 — le
    dossier ROSE —, texte de 16, rangée de 16 + 6 = 22. Le mobile pose sa
    propre vignette : elle fait double emploi. */
+/* LE LIBELLÉ VA AU BOUT, QUITTE À PRENDRE DEUX LIGNES.
+   La colonne fait 148 px et le texte 16 : « Accessoires officiels », un pack
+   au nom un peu long, se faisait couper net — sans même des points de suite,
+   donc sans qu'on sache qu'il manquait quelque chose. La fenêtre, elle, est un
+   relevé 1:1 (476 × 404) qu'on ne va pas élargir pour si peu : c'est la RANGÉE
+   qui s'étire. Sa hauteur d'époque (16 + 6) devient un minimum, et une rangée
+   d'une seule ligne mesure exactement ce qu'elle mesurait. */
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques button {
-  display: flex; align-items: center; gap: 4px; width: 100%; height: 22px;
+  display: flex; align-items: center; gap: 4px; width: 100%; min-height: 22px;
   padding: 0 4px 0 3px; border: 0; background: none; cursor: pointer;
   font: normal 16px Verdana, Arial, sans-serif; color: #000000;
-  text-align: left; white-space: nowrap; overflow: hidden;
+  text-align: left; white-space: normal; overflow-wrap: break-word;
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-rub img { display: none; }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-rub::before {
@@ -3547,7 +3554,7 @@ body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-rub::before {
    plus petite —, texte de 10, rangée de 16, et un niveau d'indentation
    (`tree.offset = 8`). */
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art {
-  height: 16px; padding-left: 11px;
+  min-height: 16px; padding-left: 11px;
   font-size: 10px; color: #000000;
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art::before {

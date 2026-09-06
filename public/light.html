@@ -421,7 +421,11 @@
     font: inherit; font-size: 12px; color: #000000; text-align: left;
   }
   .bo-rub img { width: 20px; height: 18px; flex: 0 0 auto; }
-  .bo-rub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Le libellé va au bout, quitte à prendre deux lignes — comme les noms
+     d'articles juste dessous. Les points de suite disaient bien qu'il manquait
+     quelque chose, mais ne disaient pas QUOI : sur 118 px, deux rubriques
+     voisines finissaient par se ressembler. */
+  .bo-rub span { overflow-wrap: break-word; min-width: 0; }
   .bo-rub.on { background: #ECF8DC; font-weight: bold; }
   /* Les articles d'une rubrique, sous son dossier — l'arbre du bureau déplié. */
   /* Les noms d'articles vont au bout de la ligne : le bureau les rogne, mais il
@@ -8579,6 +8583,7 @@
   function majBlindtest() {
     var reste = Math.max(0, Math.ceil((blindtest.fin - Date.now()) / 1000));
     if (blindtest.jeton && reste <= 0) { arreterBlindtest(false); return; }
+    if (blindtest.jeton) btNommerLecteur(true);
     // Toutes les bannières disent la même chose : une par fil du salon.
     Array.prototype.forEach.call(document.querySelectorAll(".blindtest"), function (b) {
       var t = b.querySelector(".bt-temps"), bouton = b.querySelector(".bt-bouton"), aide = b.querySelector(".bt-aide");
@@ -8588,7 +8593,36 @@
     });
   }
 
+  /*
+   * LE TITRE QUI PASSAIT PAR LA PORTE DE DERRIÈRE.
+   *
+   * Rien n'affiche le titre de la vidéo : l'iframe fait un pixel sur un, à un
+   * centième d'opacité. Mais un lecteur qui joue du son renseigne la SESSION
+   * MÉDIA du navigateur — et c'est le système qui l'affiche alors : la
+   * notification Android, l'écran de verrouillage, la pastille « média en
+   * cours » de Chrome. Le blindtest annonçait donc sa réponse dans la barre de
+   * notifications du téléphone.
+   *
+   * La page du dessus a le dernier mot sur ces métadonnées : on les écrase par
+   * les nôtres, qui ne disent rien. (`mediaSession` manque encore à quelques
+   * navigateurs, et `MediaMetadata` peut jeter : les deux sont gardés.)
+   */
+  var btAnonyme = null;
+  function btNommerLecteur(actif) {
+    if (!("mediaSession" in navigator)) return;
+    try {
+      if (!btAnonyme && window.MediaMetadata) {
+        btAnonyme = new window.MediaMetadata({ title: "Blindtest", artist: "Frutiparc", album: "" });
+      }
+      // Le lecteur YouTube pose SES métadonnées quand la lecture démarre, donc
+      // après nous : on repose les nôtres à chaque battement du décompte, ce
+      // qui ne coûte qu'une affectation (l'objet, lui, est fabriqué une fois).
+      navigator.mediaSession.metadata = actif ? (btAnonyme || null) : null;
+    } catch (e) { /* pas de session média : tant pis, rien à masquer */ }
+  }
+
   function arreterBlindtest(parLeJoueur) {
+    btNommerLecteur(false);
     if (blindtest.minuteur) { clearInterval(blindtest.minuteur); blindtest.minuteur = null; }
     if (blindtest.poignee) { clearInterval(blindtest.poignee); blindtest.poignee = null; }
     if (blindtest.recours) { clearTimeout(blindtest.recours); blindtest.recours = null; }

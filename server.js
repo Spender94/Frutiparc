@@ -25832,7 +25832,10 @@ const blueModeUsers = new Set();
 // ─────────────────────────────────────────────
 
 const BLIND_DUREE_DEFAUT = 30;        // secondes — la longueur d'un extrait
-const BLIND_DUREE_MAX = 300;
+// DIX MINUTES. Le plafond de cinq ne tenait qu'à l'idée qu'un blindtest est
+// une poignée de secondes ; les animateurs en font aussi des séances entières,
+// où l'extrait tourne le temps qu'on cherche. C'est l'animateur qui décide.
+const BLIND_DUREE_MAX = 600;
 const blindtestState = {};            // salon -> { id, debut, duree, jeton, par, aMs }
 const blindtestParJeton = new Map();  // jeton -> salon
 

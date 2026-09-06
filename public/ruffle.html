@@ -292,14 +292,38 @@
                 });
             }
             function retirer() {
+                nommerLecteur(false);
                 if (etat.boite && etat.boite.parentNode) etat.boite.parentNode.removeChild(etat.boite);
                 if (etat.poignee) { clearInterval(etat.poignee); etat.poignee = null; }
                 if (etat.recours) { clearTimeout(etat.recours); etat.recours = null; }
                 etat.boite = null; etat.jeton = "";
                 etat.muet = true; etat.repond = false; etat.pEtat = -1;
             }
+            /*
+             * LE TITRE QUI PASSAIT PAR LA PORTE DE DERRIÈRE.
+             *
+             * Rien n'affiche le titre de la vidéo : le cadre fait un pixel sur
+             * un. Mais un lecteur qui joue du son renseigne la SESSION MÉDIA du
+             * navigateur, et c'est le système qui l'affiche alors — la pastille
+             * « média en cours », la notification, l'écran de verrouillage. Le
+             * blindtest annonçait donc sa réponse hors de la page. La page du
+             * dessus a le dernier mot : on pose les nôtres, qui ne disent rien.
+             */
+            var anonyme = null;
+            function nommerLecteur(actif) {
+                if (!("mediaSession" in navigator)) return;
+                try {
+                    if (!anonyme && window.MediaMetadata) {
+                        anonyme = new window.MediaMetadata({ title: "Blindtest", artist: "Frutiparc", album: "" });
+                    }
+                    // YouTube pose les siennes au démarrage de la lecture, donc
+                    // après nous : on repose les nôtres à chaque battement.
+                    navigator.mediaSession.metadata = actif ? (anonyme || null) : null;
+                } catch (e) { /* pas de session média : rien à masquer */ }
+            }
             function tic() {
                 if (!etat.jeton) return;
+                nommerLecteur(true);
                 var reste = Math.max(0, Math.ceil((etat.fin - Date.now()) / 1000));
                 var t = document.getElementById("bt-b-temps");
                 var bo = document.getElementById("bt-b-bouton");

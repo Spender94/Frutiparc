@@ -59,6 +59,36 @@ function bloc(source, depart, fin) {
 const BLOC_LIGHT = bloc(LIGHT, '// ── Blindtest ──', '// Ligne système suivie');
 const BLOC_BUREAU = bloc(BUREAU, 'var etat = {', '(function () {\n            var badge');
 
+test('un extrait peut durer DIX MINUTES', () => {
+  // Le plafond de cinq minutes ne tenait qu'à l'idée qu'un blindtest est une
+  // poignée de secondes ; les animateurs en font aussi des séances entières.
+  assert.match(SERVEUR, /const BLIND_DUREE_MAX = 600;/);
+  assert.match(SERVEUR, /const BLIND_DUREE_DEFAUT = 30;/, 'le défaut ne bouge pas');
+  // Le plancher de trois secondes et le plafond s'appliquent au même endroit.
+  assert.match(SERVEUR, /Math\.max\(3, Math\.min\(\s*\n\s*args\.length > 2[\s\S]*?BLIND_DUREE_MAX\)\);/);
+});
+
+test('LE TITRE NE SORT PAS NON PLUS PAR LA SESSION MÉDIA', () => {
+  /* Rien n'affiche le titre de la vidéo : l'iframe fait un pixel sur un. Mais
+     un lecteur qui joue du son renseigne la session média du navigateur, et
+     c'est le SYSTÈME qui l'affiche alors — notification Android, écran de
+     verrouillage, pastille « média en cours ». Le blindtest annonçait donc sa
+     réponse hors de la page. La page du dessus a le dernier mot : on pose des
+     métadonnées qui ne disent rien. */
+  for (const [nom, bloc] of [['light', BLOC_LIGHT], ['bureau', BLOC_BUREAU]]) {
+    assert.match(bloc, /"mediaSession" in navigator/, nom + ' : la garde de compatibilité');
+    assert.match(bloc, /new window\.MediaMetadata\(\{ title: "Blindtest", artist: "Frutiparc", album: "" \}\)/,
+      nom + ' : des métadonnées muettes');
+    // Reposées à chaque battement : YouTube pose les siennes au démarrage de
+    // la lecture, donc APRÈS nous.
+    assert.match(bloc, /metadata = actif \? \((?:btAnonyme|anonyme) \|\| null\) : null;/, nom + ' : et effacées à l’arrêt');
+  }
+  // Le cadre reste invisible des deux côtés : la session média n'est qu'une
+  // fuite de plus, pas la seule défense.
+  assert.match(LIGHT, /\.bt-cadre \{[^}]*width: 1px; height: 1px; overflow: hidden;/);
+  assert.match(BUREAU, /id="bt-b-cadre" style="width:1px;height:1px;overflow:hidden/);
+});
+
 test('le serveur sert un lecteur muet, pilotable, et qui sait à qui il parle', () => {
   const embed = bloc(SERVEUR, "app.get('/api/blindtest/embed'", 'res.redirect(302');
   assert.match(embed, /mute: String\(req\.query\.m\) === '0' \? '0' : '1'/,
