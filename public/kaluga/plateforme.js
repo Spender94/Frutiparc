@@ -153,6 +153,10 @@ class Client {
   saveScore(score, data) {
     const tz = data && data.tz != null ? data.tz : 0;
     const gOr = data && data.gOr != null ? data.gOr : 0;
+    // La plus grosse grappe de la partie : c'est elle qui range le score au
+    // classement Grappe ou Freestyle. Le disque Flash n'envoie que le OU des
+    // tailles (« tz:gOr ») ; le portage ajoute le maximum en troisième champ.
+    const gMax = data && data.gMax != null ? data.gMax : 0;
     const finir = (r) => {
       this.ranking = {
         rankingScore: score, rankingData: data,
@@ -167,7 +171,7 @@ class Client {
       this.onSaveScore();
     };
     if (!this.sid) { Promise.resolve().then(() => finir(null)); return; }
-    const p = new URLSearchParams({ sid: this.sid, game: 'kaluga', m: '0', score: String(Math.max(0, Math.floor(score))), data: tz + ':' + gOr });
+    const p = new URLSearchParams({ sid: this.sid, game: 'kaluga', m: '0', score: String(Math.max(0, Math.floor(score))), data: tz + ':' + gOr + ':' + gMax });
     fetch('/api/saveScore?' + p.toString())
       .then((r) => r.json().catch(() => null).then((j) => (j && typeof j === 'object' ? j : { ok: r.ok, error: 'reseau' })))
       .catch(() => ({ ok: false, error: 'reseau' }))

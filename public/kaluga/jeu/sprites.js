@@ -184,28 +184,42 @@ class Phys extends Sprite {
       mc.parentLink = undefined;
     }
   }
-  search(combo) {
-    if (this.searchTimer <= 0) {
-      let link;
-      let max = this.nbTake;
-      if (this.linkList.length < this.range) {
-        for (const mc of this.game.physList) {
-          if (mc.parentLink == null && mc !== this && !mc.flPanier && !mc.flTree && mc.linkList.length === 0 && mc.flLinkable) {
-            const difx = mc.x - this.x, dify = mc.y - this.y;
-            const dist = Math.abs(difx) + Math.abs(dify);
-            if (dist < max) { link = mc; max = dist; }
-          }
-        }
-        if (link != null) {
-          this.linkTo(link);
-          this.searchTimer = 12;
-          link.searchTimer = 12;
-          link.onLink(this);
-        }
+  /*
+   * La recherche d'un fil DIRECT — la pomme libre la plus proche à portée
+   * (`nbTake`), s'il reste une place (`range`). C'est le corps de `search`
+   * d'époque, sorti tel quel pour que la tzongre puisse le réemployer avec sa
+   * propre règle d'ordre (voir Tzongre.search).
+   *
+   * Rend `true` si un fil est parti, `false` si l'on a cherché sans rien
+   * trouver, et `undefined` si l'on n'a PAS cherché (recharge de douze temps
+   * après un accrochage, ou plus de place) — la différence compte pour la
+   * tzongre, qui n'allonge ses chaînes que quand ses fils directs sont servis.
+   */
+  chercherDirect() {
+    if (this.searchTimer > 0) { this.searchTimer -= Cs.tmod; return undefined; }
+    if (this.linkList.length >= this.range) return undefined;
+    let link;
+    let max = this.nbTake;
+    for (const mc of this.game.physList) {
+      if (mc.parentLink == null && mc !== this && !mc.flPanier && !mc.flTree && mc.linkList.length === 0 && mc.flLinkable) {
+        const difx = mc.x - this.x, dify = mc.y - this.y;
+        const dist = Math.abs(difx) + Math.abs(dify);
+        if (dist < max) { link = mc; max = dist; }
       }
-    } else {
-      this.searchTimer -= Cs.tmod;
     }
+    if (link == null) return false;
+    this.linkTo(link);
+    this.searchTimer = 12;
+    link.searchTimer = 12;
+    link.onLink(this);
+    return true;
+  }
+  // Le nombre de pommes suspendues à ce nœud, lui compris.
+  chainLength() { let n = 1; for (const l of this.linkList) n += l.chainLength(); return n; }
+  // `sp.Phys.search` d'époque, au mot près : un fil direct si l'on peut, puis
+  // chaque pomme accrochée cherche à son tour, `combo` niveaux plus loin.
+  search(combo) {
+    this.chercherDirect();
     for (const link of this.linkList) if (combo > 0) link.search(combo - 1);
   }
   initPhysMode() { this.flPhys = true; }
@@ -238,6 +252,7 @@ class Tzongre extends Phys {
     this.coolDownShoot = 0;
     this.bonusMulti = 0; this.bonusCombo = 0; this.bonusPower = 0; this.bonusDodge = 0; this.bonusFilMax = 0;
     this.bzzz = 0; this.lNum = 0; this.pitch = 0; this.cBoost = 1; this.searchTimer = 0;
+    this.flDirectVide = false;
     this.thrustCoef = 1 / Math.pow(this.nbFrict, 8);
     super.init();
     this.setSkin();
@@ -495,6 +510,48 @@ class Tzongre extends Phys {
   updatePower() { this.power = this.nbPower + this.nbBoost * (1 - this.cBoost) + this.bonusPower; }
   updateRange() { this.range = this.nbMulti + this.bonusMulti + 1; }
   updateTake() { this.nbTake = (this.nbFilMax + this.bonusFilMax) * 0.7; }
+  /*
+   * LE FIL DE LA TZONGRE : LES FILS DIRECTS D'ABORD, ET DES CHAÎNES ÉGALES.
+   *
+   * ÉCART ASSUMÉ avec 2005. Le `search` d'époque (gardé tel quel dans Phys,
+   * c'est celui des pommes) fait deux choses à chaque image : un fil direct si
+   * la tzongre a encore une place (le papillon JAUNE, « Multi up », en donne),
+   * puis chaque pomme accrochée cherche à son tour, `combo` niveaux plus loin
+   * (le papillon ORANGE, « Chain up »). Or un accrochage coûte douze temps de
+   * recharge à qui accroche : pendant que la tzongre attend pour lancer son
+   * deuxième fil, la PREMIÈRE pomme, elle, a déjà fini d'attendre et allonge sa
+   * chaîne — puis la seconde, en retard d'un cran, et ainsi de suite. Avec un
+   * papillon jaune, huit pommes partaient en 3 + 5 ; avec deux, en 1-2-5. Le
+   * jeu favorisait l'orange : la chaîne mangeait ce qui aurait dû faire un
+   * fil de plus, et les fils n'avaient jamais la même longueur.
+   *
+   * Deux règles, à la place de l'ordre du hasard :
+   *   1. Les fils directs se servent EN PREMIER. Tant qu'il reste une place et
+   *      que la dernière recherche directe a trouvé quelque chose, les chaînes
+   *      attendent. (Si elle n'a rien trouvé — plus de pomme à portée de la
+   *      tzongre —, les chaînes repartent : sinon une seule pomme en vue
+   *      n'aurait jamais permis de chaîner.)
+   *   2. Seules les chaînes LES PLUS COURTES s'allongent. Deux chaînes égales
+   *      poussent ensemble ; une chaîne en avance attend que l'autre l'ait
+   *      rattrapée. Huit pommes font 4 + 4, puis 3-3-2 avec deux jaunes.
+   *
+   * Les temps de recharge, la portée, la mesure de distance : rien d'autre ne
+   * change — les pommes cherchent exactement comme avant, c'est l'ORDRE que la
+   * tzongre leur impose qui est nouveau.
+   */
+  search(combo) {
+    if (this.linkList.length === 0) this.flDirectVide = false;
+    const direct = this.chercherDirect();
+    if (direct === true) this.flDirectVide = false;
+    else if (direct === false) this.flDirectVide = true;
+    if (combo <= 0 || this.linkList.length === 0) return;
+    if (this.linkList.length < this.range && !this.flDirectVide) return;
+    const tailles = this.linkList.map((l) => l.chainLength());
+    const min = Math.min.apply(null, tailles);
+    for (let i = 0; i < this.linkList.length; i++) {
+      if (tailles[i] <= min) this.linkList[i].search(combo - 1);
+    }
+  }
   groundCrash() {
     const titleList = ['Splorch!', 'Sbleurch!', 'Ploush!', 'Skonk!'];
     const msgList = [
@@ -871,7 +928,8 @@ class Panier extends Phys {
     if (this.game.endingGame) return;
     if (this.game.type === '$classic') {
       if (fruit.flScoreAble && fruit.antList.length === 0) {
-        let point = Math.round((fruit.weight - fruit.crunch) * 100) * (fruit.flGold ? 10 : 1);
+        let point = Math.round((fruit.weight - fruit.crunch) * 100);
+        if (fruit.flGold) point = this.pointsPommeOr(point);
         if (point > 0) {
           this.addScore(point);
           const bonus = this.checkCombo(fruit);
@@ -938,6 +996,10 @@ class Panier extends Phys {
     // Le témoin de grappe du disque rustiné (scripts/patch-kaluga-grappe.js) :
     // le OU binaire des tailles rencontrées, engrangées ou non.
     this.game.gOr = (this.game.gOr | 0) | this.grappe;
+    // Et la PLUS GROSSE grappe de la partie, telle quelle : c'est elle qui
+    // décide du classement (Grappe ou Freestyle) — le OU ne sait pas dire
+    // « une grappe de sept » (3|4 fait sept aussi), le maximum, si.
+    this.game.gMax = Math.max(this.game.gMax | 0, this.grappe);
     this.grappe = 0;
   }
   turnOutScore(mc) {
@@ -961,9 +1023,37 @@ class Panier extends Phys {
     if (fruit.flScDirect) { b += 4; name += 'direct '; }
     for (const [search, rep] of COMBOS) name = this.replace(name, search, rep);
     b *= 10;
-    if (b > 0) this.game.scroller.put(name, '+' + b);
+    if (b > 0) {
+      this.game.scroller.put(name, '+' + b);
+      // Pour la pomme d'or : la somme et le compte des combos — hors grappe,
+      // qui est une autre affaire (removeScore) et n'entre pas dans la moyenne.
+      this.game.comboSomme = (this.game.comboSomme | 0) + b;
+      this.game.comboNb = (this.game.comboNb | 0) + 1;
+    }
     if (name !== '') this.game.statCombo.incVal(name, 1);
     return b;
+  }
+  /*
+   * LA POMME D'OR VAUT DIX FOIS LA MOYENNE DES COMBOS.
+   *
+   * ÉCART ASSUMÉ avec 2005, où elle valait dix fois son poids — et son poids,
+   * c'est le RESTE du kilo après le dernier fruit tombé : un tirage. Deux
+   * parties égales pouvaient finir à cinq cents points d'écart sur la seule
+   * grosseur de la dernière pomme.
+   *
+   * Elle vaut maintenant dix fois la moyenne des combos réalisés dans la
+   * partie, grappes exclues : que des granites (200) → une pomme d'or à 2000 ;
+   * des combos plus fins → une pomme d'or plus grosse. Le hasard sort du
+   * calcul, et c'est la finesse du jeu qui la fait monter. Sans aucun combo
+   * avant elle, elle vaut ce que vaut une pomme — le multiplicateur se gagne.
+   * Son propre combo, s'il y en a un, s'ajoute ensuite comme pour toute pomme.
+   */
+  pointsPommeOr(base) {
+    const nb = this.game.comboNb | 0;
+    if (!nb) return base;
+    const p = Math.round((this.game.comboSomme | 0) / nb) * 10;
+    this.game.stat.setVal("Pomme d'or", p);
+    return p;
   }
   replace(str, search, rep) {
     if (search.length === 1) return str.split(search).join(rep);

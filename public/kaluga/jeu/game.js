@@ -187,6 +187,11 @@ class Game extends J.Slot {
     this.fadeTo(60, { obj: this, method: 'initStartPanel' });
     this.stat = new J.Stat();
     this.statCombo = new J.Stat();
+    // Les témoins de grappe (le OU des tailles pour le disque rustiné, le
+    // maximum pour le classement) et la moyenne des combos (la pomme d'or)
+    // repartent de zéro avec la partie.
+    this.gOr = 0; this.gMax = 0;
+    this.comboSomme = 0; this.comboNb = 0;
     this.flEndGame = false;
     this.flEndingGame = false;
     this.initList();
@@ -572,7 +577,7 @@ class Game extends J.Slot {
   }
   saveScore(score) {
     this.flSavingScore = true;
-    this.mng.client.saveScore(score, { tz: this.tzongreInfo.id, gOr: this.gOr | 0 });
+    this.mng.client.saveScore(score, { tz: this.tzongreInfo.id, gOr: this.gOr | 0, gMax: this.gMax | 0 });
     this.endPanelStart.push({ label: 'basic', wait: { o: this, v: 'flSavingScore' }, list: [{ type: 'msg', title: '', msg: 'sauvegarde du score...' }] });
   }
   genEndGamePanel() { this.attachMovie('endGamePanel', 'endGamePanel', this.dp_endGamePanel); }

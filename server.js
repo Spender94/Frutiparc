@@ -1414,7 +1414,16 @@ const RANKINGS = {
   bkiwi_track4_classic: { name: 'Burning Kiwi - Jupiter IV', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 4 },
   bkiwi_track5_classic: { name: 'Burning Kiwi - Mistral Kiwi', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 5 },
   snake3_classic:   { name: 'Frutisnake - Classique',  game: 'snake3',   type: 'C' },
-  kaluga_classic:   { name: 'Kaluga - Classique',      game: 'kaluga',   type: 'C' },
+  // KALUGA A DEUX DÉFIS DU JOUR. Une grosse grappe tient de la chance (les
+  // bons papillons au bon moment) et vaut énormément : 2^taille × 10 points.
+  // Des joueurs s'en affranchissent ; ils ont leur tableau. La règle de
+  // partage : dès qu'une grappe de PLUS DE MILLE POINTS est passée dans la
+  // partie — la taille 7, la « Mega-grappe » à 1280 —, le score va au tableau
+  // Grappe ; sinon au Freestyle. C'est la donnée de score qui le dit
+  // (kalugaAvecGrappe), et routeRankingForSave qui aiguille. Deux tableaux,
+  // deux podiums, deux jeux de médailles chaque nuit — section C tous les deux.
+  kaluga_classic:   { name: 'Kaluga - Grappe',         game: 'kaluga',   type: 'C' },
+  kaluga_freestyle_classic: { name: 'Kaluga - Freestyle', game: 'kaluga', type: 'C' },
   swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
   mb2_classic:      { name: 'MotionBall - Classique',  game: 'mb2',      type: 'C', lowerIsBetter: true },
   jamajama_classic: { name: 'JamaJama - Classique',    game: 'jamajama', type: 'C', lowerIsBetter: true },
@@ -1457,12 +1466,10 @@ const RANKINGS = {
   bkiwi_track5_challenge: { name: 'Burning Kiwi - Mistral Kiwi', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 5 },
   snake3_challenge:   { name: 'Frutisnake - Challenge',   game: 'snake3',   type: 'L' },
   kaluga_challenge:   { name: 'Kaluga - Challenge',       game: 'kaluga',   type: 'L' },
-  // Le record SANS grappe — le « freestyle » que des joueurs revendiquent :
-  // une partie n'y entre que si le jeu certifie qu'aucune grappe encaissée n'a
-  // dépassé le seuil (une grappe vaut 2^taille × 10 ; la première au-dessus de
-  // 2000 points est la taille 8, l'« Atomique-grappe » à 2560). Le témoin
-  // vient du SWF patché (scripts/patch-kaluga-grappe.js) dans la donnée de
-  // score « tz:g » — sans témoin (vieux SWF en cache), la partie est
+  // Le RECORD permanent sans grappe — le pendant, pour le Freestyle, de ce
+  // qu'est kaluga_challenge pour le jeu à grappe. Une partie n'y entre que si
+  // le jeu certifie qu'aucune grappe de plus de mille points n'est passée
+  // (kalugaAvecGrappe) ; sans témoin (vieux SWF en cache), la partie est
   // inclassable ici et ne touche qu'aux classements historiques.
   kaluga_freestyle:   { name: 'Kaluga - Freestyle',       game: 'kaluga',   type: 'L' },
   swapou2_challenge:  { name: 'Swapou - Challenge',       game: 'swapou2',  type: 'L' },
@@ -1515,7 +1522,11 @@ const LEGACY_RANKINGS = [
   { rk: '1', internal: 'snake3_classic',   ty: 'point',       rn: 'Frutisnake 2', gs: '1', g: 'snake3', section: 'C' },
   { rk: '2', internal: 'mb2_classic',      ty: 'ptmb2',       rn: 'Motion Ball 2',gs: '2', g: 'mb2',    section: 'C' },
   { rk: '3', internal: 'swapou2_classic',  ty: 'point',       rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'C' },
-  { rk: '4', internal: 'kaluga_classic',   ty: 'point',       rn: 'Kaluga',       gs: '4', g: 'kaluga', section: 'C' },
+  // Kaluga : DEUX onglets Challenge — le jeu à grappe et le freestyle (cf.
+  // RANKINGS). Même gabarit gs='4' (la colonne du tzongre), même jaquette.
+  // rk '17' pour le second : 10/11/12 restent réservés (cf. plus bas).
+  { rk: '4', internal: 'kaluga_classic',   ty: 'point',       rn: 'Kaluga grappe', gs: '4', g: 'kaluga', section: 'C' },
+  { rk: '17', internal: 'kaluga_freestyle_classic', ty: 'point', rn: 'Kaluga freestyle', gs: '4', g: 'kaluga', section: 'C' },
   // Frutibandas & Grapiz : la série de victoires se classe en "Challenge"
   // (section C), pas en "Championnat" (section L). On adosse donc rk '5'/'6'
   // (section C) à bandas_challenge/grapiz_challenge.
@@ -1752,8 +1763,9 @@ function parseMtSerializedPrimitive(raw) {
 
 function parseKalugaTzId(raw) {
   const s = String(raw || '').trim();
-  // La donnée du SWF patché (« tz:g ») : le tzongre est la première moitié.
-  const paire = s.match(/^(-?\d+):(\d+)$/);
+  // La donnée du SWF patché (« tz:g ») ou du portage (« tz:g:max ») : le
+  // tzongre est le premier champ.
+  const paire = s.match(/^(-?\d+):(\d+)(?::(\d+))?$/);
   if (paire) return Number(paire[1]);
   if (!s) return null;
   const directNum = Number(s);
@@ -1766,35 +1778,54 @@ function parseKalugaTzId(raw) {
 }
 
 /*
- * Le témoin de grappe du Kaluga patché (scripts/patch-kaluga-grappe.js).
+ * Le témoin de grappe de Kaluga — et ce qu'il sait dire.
  *
- * La donnée de score arrive en « tz:g » : le tzongre joué, puis le OU BINAIRE
- * des tailles de grappes encaissées pendant la partie. Une grappe de taille k
- * rapporte 2^min(11,k) × 10 points (kaluga.game — la classe des grappes) :
- * 10, 20, 40 … 1280 (Mega), 2560 (Atomique), 5120, 10240, 20480. Le OU de
- * tailles toutes < 8 reste < 8, et toute taille ≥ 8 allume le bit 3 : le test
- * « g ≥ 8 » dit donc exactement « une grappe d'au moins 2560 points est
- * passée » — la première marche au-dessus des 2000 points retenus.
+ * Une grappe de taille k rapporte 2^min(11,k) × 10 points (kaluga.game — la
+ * classe des grappes) : 10, 20, 40 … 640 (Super, k=6), 1280 (Mega, k=7), 2560
+ * (Atomique, k=8), 5120, 10240, 20480. LA RÈGLE DE PARTAGE des deux tableaux :
+ * une partie « à grappe » est une partie où une grappe de PLUS DE MILLE POINTS
+ * est passée — la taille 7 est la première.
+ *
+ * La donnée de score porte le tzongre, puis un ou deux témoins :
+ *   · « tz:g » — le disque Flash rustiné (scripts/patch-kaluga-grappe.js) :
+ *     g est le OU BINAIRE des tailles encaissées. Il ne sait pas dire « une
+ *     grappe de sept » — 3|4 fait sept aussi. Ce qu'il sait dire exactement,
+ *     c'est « au moins une taille ≥ 8 » (le bit 3 ne s'allume pas autrement) :
+ *     pour lui, la marche reste donc l'Atomique à 2560, la seule lisible.
+ *   · « tz:g:max » — le portage : le troisième champ est la PLUS GROSSE grappe
+ *     de la partie, telle quelle. Lui se lit à la taille près, à sept.
  *
  * Les données d'avant le patch (« [object Object] », MT sérialisé, tz=1…)
- * n'ont pas de témoin : null — la partie est inclassable en freestyle.
+ * n'ont pas de témoin : null — la partie est inclassable en freestyle, et
+ * reste au tableau Grappe (celui d'avant le partage).
  */
-const KALUGA_GRAPPE_SEUIL = 8;
+const KALUGA_GRAPPE_TAILLE = 7;      // > 1000 points : la Mega-grappe (1280)
+const KALUGA_GRAPPE_SEUIL = 8;       // ce que le OU du disque Flash sait certifier
 function parseKalugaGrappe(raw) {
-  const m = String(raw || '').trim().match(/^(-?\d+):(\d+)$/);
-  return m ? Number(m[2]) : null;
+  const m = String(raw || '').trim().match(/^(-?\d+):(\d+)(?::(\d+))?$/);
+  if (!m) return null;
+  return { ou: Number(m[2]), max: m[3] !== undefined ? Number(m[3]) : null };
+}
+// true = une grappe de plus de mille points est passée ; false = partie sans ;
+// null = pas de témoin (la partie est inclassable en freestyle).
+function kalugaAvecGrappe(raw) {
+  const t = parseKalugaGrappe(raw);
+  if (!t) return null;
+  if (t.max !== null) return t.max >= KALUGA_GRAPPE_TAILLE;
+  return t.ou >= KALUGA_GRAPPE_SEUIL;
 }
 
-// La partie de Kaluga SANS grappe nourrit aussi le record « Freestyle ».
-// Même verdict FD que l'écriture principale (aucune consommation en plus) ;
-// une donnée muette ne classe rien — pas de faux records freestyle.
+// La partie de Kaluga SANS grappe nourrit aussi le RECORD permanent
+// « Freestyle » — d'où qu'elle vienne : le défi du jour Freestyle (qui n'y
+// range que des parties sans grappe, par construction), ou le Championnat
+// (m=1). Même verdict FD que l'écriture principale (aucune consommation en
+// plus) ; une donnée muette ne classe rien — pas de faux records freestyle.
 function persistKalugaFreestyle(username, rankingId, fdDirect, scoreVal, scoreData, voie) {
   if (!fdDirect) return null;
-  if (rankingId !== 'kaluga_classic' && rankingId !== 'kaluga_challenge') return null;
-  const grappe = parseKalugaGrappe(scoreData);
-  if (grappe === null || grappe >= KALUGA_GRAPPE_SEUIL) return null;
+  if (rankingId !== 'kaluga_freestyle_classic' && rankingId !== 'kaluga_classic' && rankingId !== 'kaluga_challenge') return null;
+  if (kalugaAvecGrappe(scoreData) !== false) return null;
   const r = persistScore(username, 'kaluga_freestyle', scoreVal, scoreData);
-  console.log(`[${voie}] ${username} kaluga_freestyle: ${r.oldScore} -> ${r.newScore} (updated=${r.updated}, sans grappe, g=${grappe})`);
+  console.log(`[${voie}] ${username} kaluga_freestyle: ${r.oldScore} -> ${r.newScore} (updated=${r.updated}, sans grappe, témoin=${scoreData})`);
   return r;
 }
 
@@ -2075,7 +2106,15 @@ function getBkiwiDailyTrack(date = new Date()) {
 //     rk=0 as bkiwi_track{daily}_challenge — anchoring the save there keeps the
 //     score visible even when track detection is stale or biased.
 //   • MB2: the same packed time+pct score feeds the all-time and daily rankings.
-function routeRankingForSave(rankingId, username) {
+function routeRankingForSave(rankingId, username, scoreData) {
+  // KALUGA : le défi du jour se partage en deux d'après la donnée de score.
+  // Une partie où une grappe de plus de mille points est passée va au tableau
+  // Grappe (kaluga_classic, celui d'avant le partage) ; une partie sans va au
+  // Freestyle. Une donnée muette (vieux client) reste au tableau Grappe : on
+  // ne certifie pas un freestyle sur une absence de témoin.
+  if (rankingId === 'kaluga_classic' && kalugaAvecGrappe(scoreData) === false) {
+    return { rankingId: 'kaluga_freestyle_classic', extraRankingId: null, hint: undefined, daily: undefined };
+  }
   if (rankingId && rankingId.startsWith('bkiwi_')) {
     const u = users[username];
     const hint = u && Number.isFinite(u.bkiwiCurrentTrack) ? u.bkiwiCurrentTrack : undefined;
@@ -2116,7 +2155,7 @@ function formatRankingExtraData(rankingId, rawData, scoreHint) {
   if (!raw) {
     if (rankingId.startsWith('bkiwi_track')) return 'Skiwix:5:1:';
     if (rankingId === 'swapou2_classic' || rankingId === 'swapou2_challenge') return 'S0:';
-    if (rankingId === 'kaluga_classic' || rankingId === 'kaluga_freestyle') return 'Skaluga:';
+    if (/^kaluga_/.test(rankingId)) return 'Skaluga:';
     // MB2 falls through to the body so the score-derived pct (computed at
     // the bottom from scoreHint) is emitted even when no `data` was stored.
     if (rankingId !== 'mb2_challenge' && rankingId !== 'mb2_classic') return '';
@@ -2147,11 +2186,11 @@ function formatRankingExtraData(rankingId, rawData, scoreHint) {
     return raw;
   }
 
-  if (rankingId === 'kaluga_classic' || rankingId === 'kaluga_freestyle'
-    || rankingId === 'kaluga_challenge') {
-    // La donnée du SWF patché : « tz:g » — le tzongre d'abord, le témoin de
-    // grappe ensuite (il ne s'affiche pas, il classe).
-    const paire = raw.match(/^(-?\d+):(\d+)$/);
+  if (/^kaluga_/.test(rankingId)) {
+    // La donnée du SWF patché (« tz:g ») ou du portage (« tz:g:max ») — le
+    // tzongre d'abord, le ou les témoins de grappe ensuite (ils ne s'affichent
+    // pas, ils classent). Les quatre cuves Kaluga partagent ce rendu.
+    const paire = raw.match(/^(-?\d+):(\d+)(?::(\d+))?$/);
     if (paire) {
       const tzNum = Number(paire[1]);
       return KALUGA_TZONGRE_BY_ID[tzNum] !== undefined
@@ -3867,7 +3906,13 @@ const FD_CLASSIC_GATED = new Set(['snake3', 'swapou2', 'mb2', 'kaluga']);
 function fdGatedBucketGame(rankingId) {
   const g = fdGameFromRanking(rankingId);
   if (!fdGameIsLimited(g)) return null;
-  return (FD_CLASSIC_GATED.has(g) && rankingId === g + '_classic') ? g : null;
+  if (!FD_CLASSIC_GATED.has(g)) return null;
+  // La cuve du défi du jour — et pour Kaluga, SES DEUX cuves : le Freestyle est
+  // un défi du jour de plein droit, il se rationne comme le tableau Grappe.
+  // Sans quoi une partie sans grappe passait sous le quota.
+  if (rankingId === g + '_classic') return g;
+  if (g === 'kaluga' && rankingId === 'kaluga_freestyle_classic') return g;
+  return null;
 }
 
 function fdGameIsLimited(game) {
@@ -7767,7 +7812,7 @@ async function handleSaveScore(req, res) {
     // Single source of truth for BKiwi/MB2 routing (see routeRankingForSave):
     // BKiwi daily challenge always lands on today's track so the fiche + table
     // (both read rk=0 -> bkiwi_track{daily}_challenge) actually show the score.
-    const routed = routeRankingForSave(rankingId, username);
+    const routed = routeRankingForSave(rankingId, username, scoreData);
     rankingId = routed.rankingId;
     extraRankingId = routed.extraRankingId;
     routedInfo = routed;
@@ -21148,7 +21193,9 @@ app.get('/api/light/challenge', async (req, res) => {
     { game: 'snake3',  ranking: 'snake3_classic' },
     { game: 'mb2',     ranking: 'mb2_classic' },
     { game: 'swapou2', ranking: 'swapou2_classic' },
+    // Les deux défis du jour de Kaluga : à grappe, puis freestyle.
     { game: 'kaluga',  ranking: 'kaluga_classic' },
+    { game: 'kaluga',  ranking: 'kaluga_freestyle_classic' },
     { game: 'bandas',  ranking: 'bandas_challenge' },
     { game: 'grapiz',  ranking: 'grapiz_challenge' },
     // Les deux pilotes de l'animation (cf. RANKINGS).
@@ -26784,7 +26831,7 @@ async function handleCBeeMessage(socket, rawXml) {
           // Single source of truth for BKiwi/MB2 routing (see
           // routeRankingForSave). The daily challenge is anchored to today's
           // track so it matches what the fiche + ranking table read (rk=0).
-          const routed = routeRankingForSave(rankingId, username);
+          const routed = routeRankingForSave(rankingId, username, scoreData);
           rankingId = routed.rankingId;
           extraRankingId = routed.extraRankingId;
           routedInfo = routed;

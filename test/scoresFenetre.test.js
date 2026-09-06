@@ -85,7 +85,9 @@ test('la liste des classements est celle du bureau : ordre, libellés, sections'
 
   const challenge = (d.games || []).filter((g) => g.section === 'C').map((g) => g.name);
   assert.deepEqual(challenge, [
-    'Burning kiwi', 'Frutisnake 2', 'Motion Ball 2', 'Swapou 2', 'Kaluga',
+    // Kaluga a DEUX défis du jour : le jeu à grappe, puis le freestyle (une
+    // partie sans grappe de plus de mille points) — cf. kalugaAvecGrappe.
+    'Burning kiwi', 'Frutisnake 2', 'Motion Ball 2', 'Swapou 2', 'Kaluga grappe', 'Kaluga freestyle',
     'Frutibandas', 'Grapiz', 'MiniPixiz', 'MiniWave',
     // Mini-Fever ferme la marche, sous Challenge comme les autres jeux — mais
     // son tableau unique est un RECORD permanent, écarté de la remise à zéro

@@ -45,10 +45,12 @@ selon les cartes.
   au-dessus de la boîte. Le fil : tension `fil.tensionMax`, les pommes liées
   tirent (`updateLink`), une chaîne se casse au-delà de `nbFilMax`.
 - **Score** (`sp/Panier`) : une pomme déposée vaut la grappe qu'elle ferme ;
-  le témoin de grappe `gOr` (OU binaire des tailles encaissées, rustine
-  `scripts/patch-kaluga-grappe.js` du disque Flash) part avec le score
-  (`data = "tz:gOr"`) : le serveur en fait la part classement Kaluga /
-  record Freestyle.
+  deux témoins de grappe partent avec le score (`data = "tz:gOr:gMax"`) : le
+  OU binaire des tailles encaissées (`gOr`, celui de la rustine
+  `scripts/patch-kaluga-grappe.js` du disque Flash) et la PLUS GROSSE grappe
+  (`gMax`, le portage seul). Le serveur en fait le partage entre les deux
+  défis du jour — Grappe / Freestyle — et le record Freestyle (voir « Trois
+  règles qui s'écartent de 2005 »).
 - **Modes** (`game/`) : Challenge (`Classic`, chronométré, le seul classé),
   Chrono, Survie (le corbeau), Invasion (les fourmis), Piste (`Ring`, les
   anneaux), et les épreuves olympiques — Lancer de vers (`CaterLaunch`),
@@ -294,6 +296,48 @@ grenouille était à l'écran (son clip porte un masque), la barre de score, le
 feuillage et le bandeau des messages disparaissaient. Corrigé dans
 `moteur/flash.js` (témoin `null`), avec un test de non-régression
 (`test/kalugaBac.test.js`).
+
+## Trois règles qui s'écartent de 2005 (à la demande, version light)
+
+Le portage reproduit le Flash au mot près ; ces trois points sont des
+**écarts voulus**, et il faut qu'on sache qu'ils sont là. Le disque Flash,
+lui, joue toujours les règles de 2005. `test/kalugaRegles.test.js` les épingle.
+
+1. **Le fil : les fils directs d'abord, et des chaînes égales**
+   (`Tzongre.search`, sprites.js). Le `search` d'époque — gardé tel quel dans
+   `Phys`, c'est celui des pommes — fait deux choses à chaque image : un fil
+   direct si la tzongre a une place (le papillon **jaune**, « Multi up »), puis
+   chaque pomme accrochée cherche à son tour, `combo` niveaux plus loin (le
+   papillon **orange**, « Chain up »). Or un accrochage coûte douze temps de
+   recharge à qui accroche : pendant que la tzongre attend pour lancer son
+   deuxième fil, la première pomme a déjà fini d'attendre et allonge sa
+   chaîne — puis la seconde, en retard d'un cran. Huit pommes partaient en
+   3 + 5 avec un jaune, en 1-2-5 avec deux : le jeu favorisait l'orange. Deux
+   règles à la place : les fils directs se servent en premier (tant qu'il
+   reste une place et que la dernière recherche directe a trouvé — si elle
+   n'a rien trouvé, les chaînes repartent, sinon une seule pomme en vue ne
+   chaînerait jamais), et seules les chaînes **les plus courtes** s'allongent.
+   Huit pommes font 4 + 4, puis 3-3-2 avec deux jaunes. Recharges, portée,
+   distance : rien d'autre ne change.
+
+2. **La pomme d'or vaut dix fois la moyenne des combos, grappes exclues**
+   (`Panier.pointsPommeOr`). En 2005 elle valait dix fois son poids — et son
+   poids est le *reste* du kilo après le dernier fruit : un tirage. Que des
+   granites (200) → une pomme d'or à 2000 ; des combos plus fins → plus. Sans
+   aucun combo avant elle, elle vaut ce que vaut une pomme. Son propre combo
+   s'ajoute ensuite comme pour toute pomme. Le panneau de fin l'affiche.
+
+3. **Deux défis du jour : Grappe et Freestyle** (serveur, `kalugaAvecGrappe`,
+   `routeRankingForSave`). Dès qu'une grappe de **plus de mille points** est
+   passée (la Mega, taille 7, 1280), la partie va au tableau Grappe
+   (`kaluga_classic`, celui d'avant le partage) ; sinon au Freestyle
+   (`kaluga_freestyle_classic`). Les deux sont des défis de plein droit :
+   remise à zéro chaque nuit, médailles, quota FD. Le portage envoie la plus
+   grosse grappe (`gMax`) et se lit à la taille près ; le disque Flash n'envoie
+   que le OU des tailles, qui ne sait certifier qu'« une taille ≥ 8 » : pour
+   lui, la marche reste l'Atomique (2560). Une partie sans témoin reste au
+   tableau Grappe. Le record permanent `kaluga_freestyle` est nourri par toute
+   partie certifiée sans grappe.
 
 ## Les séquences (INTRODUCTION, CREDITS)
 

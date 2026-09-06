@@ -1,24 +1,31 @@
 /*
- * Kaluga « Freestyle » — le classement SANS grappe du Club.
+ * Kaluga « Freestyle » — jouer SANS grappe, et être classé pour ça.
  *
  * Réaliser une grosse grappe tient souvent de la chance (les bons papillons au
  * bon moment) et rapporte énormément : une grappe de taille k vaut
  * 2^min(11,k) × 10 points — 1280 pour la Mega (k=7), 2560 pour l'Atomique
- * (k=8), 20480 pour la Maestro. Des joueurs revendiquent le « freestyle »
- * (jouer sans grappe) : on distingue donc deux records.
+ * (k=8), 20480 pour la Maestro. Des joueurs s'en affranchissent : ils ont
+ * leurs tableaux.
  *
- * La chaîne complète :
- *   · le SWF patché (scripts/patch-kaluga-grappe.js) accumule
- *     « jeu.gOr |= taille » à chaque fin de grappe et envoie la donnée de
- *     score « tz:gOr » — le OU binaire des tailles rend le test « ≥ 8 »
- *     équivalent à « une grappe de plus de 2000 points est passée » (la
- *     première marche au-dessus est 2560) ;
- *   · le serveur (parseKalugaGrappe) classe la partie : témoin < 8 → le score
- *     nourrit AUSSI kaluga_freestyle ; témoin ≥ 8 ou donnée d'avant le patch
- *     (« [object Object] », tz=1…) → classements historiques seulement ;
- *   · le Club (bureau : LEGACY_RANKINGS rk '12', section L comme les Contest —
- *     record permanent, pas de médailles quotidiennes en plus ; light : le
- *     livre des records qui itère RANKINGS) montre la nouvelle cuve.
+ * LA RÈGLE DE PARTAGE : dès qu'une grappe de PLUS DE MILLE POINTS est passée
+ * dans la partie (la Mega, taille 7), la partie est « à grappe » ; sinon elle
+ * est freestyle. Deux témoins la portent, dans la donnée de score :
+ *   · « tz:g » — le disque Flash rustiné (scripts/patch-kaluga-grappe.js) :
+ *     g est le OU binaire des tailles encaissées. Il ne sait pas dire « une
+ *     grappe de sept » (3|4 fait sept aussi) ; ce qu'il certifie exactement,
+ *     c'est « une taille ≥ 8 » — sa marche reste donc l'Atomique (2560) ;
+ *   · « tz:g:max » — le portage : la PLUS GROSSE grappe, telle quelle. Lui
+ *     se lit à la taille près.
+ *
+ * Et deux étages de classement :
+ *   · le DÉFI DU JOUR se partage en deux tableaux, section C tous les deux
+ *     (remise à zéro chaque nuit, médailles, quota FD) : kaluga_classic, le
+ *     tableau Grappe — celui d'avant le partage — et kaluga_freestyle_classic ;
+ *     c'est routeRankingForSave qui aiguille, d'après kalugaAvecGrappe ;
+ *   · le RECORD permanent kaluga_freestyle (section L, comme kaluga_challenge
+ *     pour le jeu à grappe), nourri par toute partie certifiée sans grappe —
+ *     du défi du jour Freestyle ou du Championnat (m=1). Une donnée muette
+ *     (vieux SWF, vieux format) reste au tableau Grappe et ne certifie rien.
  */
 'use strict';
 
@@ -106,39 +113,66 @@ const scoreDe = (cuve, pseudo) => {
 
 // ── La règle de classement, de bout en bout ───────────────────────────────
 
-test('une partie sans grappe entre au freestyle, une partie à grappe non', async () => {
+test('une partie sans grappe va au défi Freestyle (et au record) ; une partie à grappe au tableau Grappe', async () => {
   const sid = await sidFor(pseudo('freestyleuse'));
 
-  // Témoin 0 : aucune grappe — les deux cuves.
+  // Témoin 0 : aucune grappe — le défi du jour Freestyle ET le record permanent,
+  // et RIEN au tableau Grappe : c'est un partage, pas un doublon.
   let r = await enregistrer(sid, B + 10, '4:0');
   assert.equal(r.ok, true, 'le score passe');
+  assert.equal(r.rankingId, 'kaluga_freestyle_classic', 'aiguillé vers le défi Freestyle');
   let c = await cuves();
-  assert.ok(c.kaluga_freestyle, 'la cuve freestyle existe');
-  assert.equal(c.kaluga_freestyle.name, 'Kaluga - Freestyle');
-  assert.equal(scoreDe(c.kaluga_classic, pseudo('freestyleuse')), B + 10, 'le classement historique');
-  assert.equal(scoreDe(c.kaluga_freestyle, pseudo('freestyleuse')), B + 10, 'et le freestyle');
+  assert.ok(c.kaluga_freestyle_classic, 'le défi du jour Freestyle existe');
+  assert.equal(c.kaluga_freestyle_classic.name, 'Kaluga - Freestyle');
+  assert.equal(c.kaluga_classic.name, 'Kaluga - Grappe', 'et le tableau d’avant s’appelle par son nom');
+  assert.equal(scoreDe(c.kaluga_freestyle_classic, pseudo('freestyleuse')), B + 10, 'le défi Freestyle');
+  assert.equal(scoreDe(c.kaluga_freestyle, pseudo('freestyleuse')), B + 10, 'et le record permanent');
+  assert.equal(scoreDe(c.kaluga_classic, pseudo('freestyleuse')), null, 'rien au tableau Grappe');
 
-  // Témoin 9 = 8|1 : une Atomique (2560 points) est passée — freestyle intact.
+  // Témoin 9 = 8|1 : une Atomique (2560 points) est passée — tableau Grappe,
+  // et les deux cuves freestyle ne bougent pas.
   r = await enregistrer(sid, B + 50, '4:9');
   assert.equal(r.ok, true);
+  assert.equal(r.rankingId, 'kaluga_classic', 'aiguillé vers le tableau Grappe');
   c = await cuves();
-  assert.equal(scoreDe(c.kaluga_classic, pseudo('freestyleuse')), B + 50, 'le record général monte');
-  assert.equal(scoreDe(c.kaluga_freestyle, pseudo('freestyleuse')), B + 10, 'le freestyle ne bouge pas');
+  assert.equal(scoreDe(c.kaluga_classic, pseudo('freestyleuse')), B + 50, 'le tableau Grappe');
+  assert.equal(scoreDe(c.kaluga_freestyle_classic, pseudo('freestyleuse')), B + 10, 'le défi Freestyle ne bouge pas');
+  assert.equal(scoreDe(c.kaluga_freestyle, pseudo('freestyleuse')), B + 10, 'le record non plus');
 
-  // Plus de fruit défendu : la partie n'est plus classée — freestyle non plus.
+  // Plus de fruit défendu : la partie n'est plus classée — nulle part. C'est
+  // aussi la preuve que le défi Freestyle est RATIONNÉ comme l'autre : sans
+  // portillon, ce troisième score serait passé.
   r = await enregistrer(sid, B + 90, '4:0');
   c = await cuves();
-  assert.equal(scoreDe(c.kaluga_classic, pseudo('freestyleuse')), B + 50, 'le quota tient le général');
-  assert.equal(scoreDe(c.kaluga_freestyle, pseudo('freestyleuse')), B + 10, 'et tient le freestyle du même verdict');
+  assert.equal(scoreDe(c.kaluga_freestyle_classic, pseudo('freestyleuse')), B + 10, 'le quota tient le défi Freestyle');
+  assert.equal(scoreDe(c.kaluga_classic, pseudo('freestyleuse')), B + 50, 'et le tableau Grappe');
+  assert.equal(scoreDe(c.kaluga_freestyle, pseudo('freestyleuse')), B + 10, 'et le record, du même verdict');
 });
 
-test('le témoin en dessous du seuil : une Mega (1280 points) reste du freestyle', async () => {
+test('le OU du disque Flash : une Mega (7 = 4|2|1) reste du freestyle, il ne sait pas mieux', async () => {
   const sid = await sidFor(pseudo('megajoueuse'));
-  // 7 = 4|2|1 : des grappes jusqu'à la Mega — toutes sous 2000 points.
-  await enregistrer(sid, B + 25, '2:7');
+  // 7 = 4|2|1 : des tailles toutes < 8 gardent le OU < 8 — le disque ne peut
+  // pas distinguer « une Mega » de « une Grappe et une Grosse-grappe ».
+  const r = await enregistrer(sid, B + 25, '2:7');
+  assert.equal(r.rankingId, 'kaluga_freestyle_classic');
   const c = await cuves();
-  assert.equal(scoreDe(c.kaluga_freestyle, pseudo('megajoueuse')), B + 25,
-    'des tailles toutes < 8 gardent le OU < 8');
+  assert.equal(scoreDe(c.kaluga_freestyle_classic, pseudo('megajoueuse')), B + 25);
+  assert.equal(scoreDe(c.kaluga_freestyle, pseudo('megajoueuse')), B + 25);
+});
+
+test('le portage dit LA PLUS GROSSE grappe : la taille 7 est du Grappe, la 6 du Freestyle — quoi que dise le OU', async () => {
+  // « tz:g:max » — le troisième champ est le maximum, et c'est lui qui tranche.
+  const sid = await sidFor(pseudo('portageuse'));
+  let r = await enregistrer(sid, B + 60, '0:7:7');            // une Mega : 1280 > 1000
+  assert.equal(r.rankingId, 'kaluga_classic', 'taille 7 → tableau Grappe');
+  // OU = 12 (8|4) ferait croire à une Atomique ; le maximum, lui, dit 6 : que
+  // des grappes de 640 au plus — freestyle.
+  r = await enregistrer(sid, B + 61, '0:12:6');
+  assert.equal(r.rankingId, 'kaluga_freestyle_classic', 'taille 6 → défi Freestyle, le maximum l’emporte sur le OU');
+  const c = await cuves();
+  assert.equal(scoreDe(c.kaluga_classic, pseudo('portageuse')), B + 60);
+  assert.equal(scoreDe(c.kaluga_freestyle_classic, pseudo('portageuse')), B + 61);
+  assert.equal(scoreDe(c.kaluga_freestyle, pseudo('portageuse')), B + 61, 'et le record permanent suit');
 });
 
 test('les données d\'avant le patch sont inclassables en freestyle', async () => {
@@ -147,9 +181,13 @@ test('les données d\'avant le patch sont inclassables en freestyle', async () =
   const sid2 = await sidFor(pseudo('vieuxobjet'));
   await enregistrer(sid2, B + 40, '[object Object]'); // la sérialisation d'époque
   const c = await cuves();
-  assert.equal(scoreDe(c.kaluga_classic, pseudo('vieuxclient')), B + 30, 'le général les garde');
+  // Sans témoin, on ne certifie rien : la partie reste au tableau Grappe —
+  // celui d'avant le partage —, et le freestyle (défi comme record) n'invente rien.
+  assert.equal(scoreDe(c.kaluga_classic, pseudo('vieuxclient')), B + 30, 'le tableau Grappe les garde');
   assert.equal(scoreDe(c.kaluga_classic, pseudo('vieuxobjet')), B + 40);
-  assert.equal(scoreDe(c.kaluga_freestyle, pseudo('vieuxclient')), null, 'le freestyle n\'invente rien');
+  assert.equal(scoreDe(c.kaluga_freestyle_classic, pseudo('vieuxclient')), null, 'le défi Freestyle n\'invente rien');
+  assert.equal(scoreDe(c.kaluga_freestyle_classic, pseudo('vieuxobjet')), null);
+  assert.equal(scoreDe(c.kaluga_freestyle, pseudo('vieuxclient')), null, 'le record non plus');
   assert.equal(scoreDe(c.kaluga_freestyle, pseudo('vieuxobjet')), null);
 });
 
@@ -172,8 +210,14 @@ test('le freestyle vit dans les records, pas dans le tableau des scores', async 
   // … mais AUCUNE ligne de la table du bureau ne la porte : décision
   // d'exploitation, pour garder le tableau des scores lisible pendant
   // l'animation des classements pilotes.
-  assert.doesNotMatch(src, /\{ rk: '\d+', internal: 'kaluga_freestyle'/,
+  assert.doesNotMatch(src, /\{ rk: '\d+', internal: 'kaluga_freestyle',/,
     'pas d\'onglet dans le tableau des scores du bureau');
+  // Le DÉFI DU JOUR Freestyle, lui, a son onglet — rk '17', section C, le
+  // gabarit du tzongre et la jaquette de Kaluga, comme le tableau Grappe.
+  assert.match(src, /\{ rk: '17', internal: 'kaluga_freestyle_classic', ty: 'point', rn: 'Kaluga freestyle', gs: '4', g: 'kaluga', section: 'C' \}/,
+    'le défi Freestyle a son onglet au bureau');
+  assert.match(src, /\{ rk: '4', internal: 'kaluga_classic',\s+ty: 'point',\s+rn: 'Kaluga grappe', gs: '4', g: 'kaluga', section: 'C' \}/,
+    'et le tableau d’avant dit maintenant « grappe »');
   // La preuve par l'usage : les scores freestyle sont bien là où on les
   // attend — au livre des records — même sans onglet au bureau.
   const c = await cuves();
@@ -185,12 +229,19 @@ test('le freestyle vit dans les records, pas dans le tableau des scores', async 
     'DAILY_RESET_RANKING_SET ne prend que la section C');
 });
 
-test('l\'affichage du tzongre comprend le nouveau format « tz:g »', () => {
+test('l\'affichage du tzongre comprend les deux formats « tz:g » et « tz:g:max »', () => {
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  assert.match(src, /rankingId === 'kaluga_classic' \|\| rankingId === 'kaluga_freestyle'\n\s*\|\| rankingId === 'kaluga_challenge'/,
-    'les trois cuves kaluga partagent le rendu');
-  assert.match(src, /const KALUGA_GRAPPE_SEUIL = 8;/, 'le seuil : taille 8 = 2560 points');
-  assert.match(src, /function parseKalugaGrappe\(raw\)/, 'et son lecteur');
+  assert.match(src, /if \(\/\^kaluga_\/\.test\(rankingId\)\) \{\n\s*\/\/ La donnée du SWF patché/,
+    'les quatre cuves kaluga partagent le rendu');
+  assert.match(src, /const paire = raw\.match\(\/\^\(-\?\\d\+\):\(\\d\+\)\(\?::\(\\d\+\)\)\?\$\/\);/,
+    'et lisent le troisième champ');
+  // Les deux marches : sept pour le maximum (le portage), huit pour le OU (le
+  // disque Flash, qui ne sait pas mieux).
+  assert.match(src, /const KALUGA_GRAPPE_TAILLE = 7;/, 'la Mega : plus de mille points');
+  assert.match(src, /const KALUGA_GRAPPE_SEUIL = 8;/, 'ce que le OU certifie');
+  assert.match(src, /function kalugaAvecGrappe\(raw\)/, 'et le juge');
+  assert.match(src, /if \(t\.max !== null\) return t\.max >= KALUGA_GRAPPE_TAILLE;\n\s*return t\.ou >= KALUGA_GRAPPE_SEUIL;/,
+    'le maximum d’abord, le OU à défaut');
 });
 
 // ── Le SWF : le témoin est bien embarqué ──────────────────────────────────
