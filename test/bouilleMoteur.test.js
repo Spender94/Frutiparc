@@ -30,6 +30,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
 const Swf = require(path.join(ROOT, 'public/js/bouille-swf.js'));
@@ -206,8 +207,15 @@ test('BOGUE D’ÉPOQUE conservé : cb.c.acc2 n’est pas calé', () => {
 test('emoteList et actionList sont celles du script racine', async () => {
   assert.deepStrictEqual(Moteur.HUMEURS,
     [[0, 0], [1, 2], [2, 1], [0, 3], [3, 4], [1, 4], [2, 3], [2, 6]]);
-  assert.deepStrictEqual(Moteur.ANIMATIONS, ['stop', 'parle', 'rire', 'mdr', 'langue',
+  // `actionList` du script racine s'arrête à « larme » : ce sont les TREIZE de
+  // 2005, et c'est cette tranche-là qui doit rester intacte. Ce qui vient
+  // après est de nous — « beurk » (cf. jouerAnim id 13) — et ne s'intercale
+  // pas : un indice d'époque garde son sens sur le fil et dans les relevés.
+  assert.deepStrictEqual(Moteur.ANIMATIONS.slice(0, 13), ['stop', 'parle', 'rire', 'mdr', 'langue',
     'rougir', 'regard', 'siffle', 'gum', 'question', 'miam', 'pleure', 'larme']);
+  assert.deepStrictEqual(Moteur.ANIMATIONS.slice(13), ['beurk']);
+  assert.strictEqual(Moteur.NOMS_ANIMATIONS.length, Moteur.ANIMATIONS.length,
+    'chaque animation a son nom');
   const defs = await lire('famille0.swf');
   const mo = new Moteur.Moteur(defs, { alea: () => 0.5 });
   const face = mo.creerVisage();
@@ -463,4 +471,86 @@ test('plus une seule bouille de tout le site ne passe par Flash', () => {
   }
   assert.ok(banc.includes('/fbouille/') || banc.includes('bouille-preview'),
     'le banc compare bien au SWF d’époque');
+});
+
+/* ══ « BEURK », LA QUATORZIÈME ═════════════════════════════════════════════
+ *
+ * « J'aimerais créer une émote beurk — n'inventons rien, reprenons des choses
+ * existantes. La bouille devient triste (émotion tristesse) et on récupère
+ * l'animation "rougit" (juste la partie colorée) en remplaçant le rouge par
+ * le vert. »
+ *
+ * Elle n'ajoute donc aucun dessin. Elle prend la PELLICULE de « rougir » —
+ * dont le seul apport est le fard des joues — lui met le visage de l'humeur 2
+ * (Triste), et peint ce fard en vert.
+ */
+test('« beurk » emprunte la pellicule de « rougir » et le visage de la tristesse', async () => {
+  const defs = await lire('famille0.swf');
+  const mo = new Moteur.Moteur(defs, { alea: () => 0.5 });
+  const face = mo.creerVisage();
+  mo.definir(etat([0, 1, 0, 5, 1, 15, 22, 0, 0, 0, 0, 0]));
+  const oeil = () => face.enfantNomme('oa').enfantNomme('o').frame;
+  const bouche = () => face.enfantNomme('b').enfantNomme('b').frame;
+
+  mo.jouerAnim(0);
+  mo.jouerAnim(13);
+  // Même point d'entrée que « rougir » : c'est la même pellicule.
+  assert.strictEqual(face.frame, face.def.labels.rougir, 'la pellicule de rougir');
+  assert.strictEqual(mo.racine.flStop, false, 'et elle joue');
+
+  // Le visage est celui de l'humeur 2 (Triste) — les clips suivent d'une image.
+  const [oeilTriste, boucheTriste] = Moteur.HUMEURS[2];
+  assert.strictEqual(oeil(), oeilTriste + 1, 'l’œil de la tristesse');
+  assert.strictEqual(bouche(), boucheTriste + 1, 'la bouche de la tristesse');
+
+  // C'est LÀ que « beurk » se sépare de « rougir » : même œil, autre bouche.
+  mo.jouerAnim(0);
+  mo.jouerAnim(5);
+  assert.strictEqual(oeil(), oeilTriste + 1, 'rougir a déjà l’œil triste');
+  assert.notStrictEqual(bouche(), boucheTriste + 1, 'mais garde la bouche neutre');
+});
+
+test('le fard passe au vert pendant « beurk », et seulement pendant', async () => {
+  const defs = await lire('famille0.swf');
+  const mo = new Moteur.Moteur(defs, { alea: () => 0.5 });
+  mo.creerVisage();
+  mo.definir(etat([0, 1, 0, 5, 1, 15, 22, 0, 0, 0, 0, 0]));
+
+  mo.jouerAnim(13);
+  assert.strictEqual(mo.fardVert, true, 'beurk lève le drapeau');
+  mo.jouerAnim(5);
+  assert.strictEqual(mo.fardVert, false, 'rougir rougit encore');
+  mo.jouerAnim(13);
+  mo.jouerAnim(0);
+  assert.strictEqual(mo.fardVert, false, 'le repos le range');
+
+  // LE FARD, C'EST LE MORPH — et rien d'autre. Deux par bouille, les deux
+  // joues, en rouge pur : c'est ce qui autorise à viser « un morph » plutôt
+  // qu'un numéro de forme, qui change d'une famille à l'autre.
+  assert.strictEqual(defs.morphs.size, 2, 'les deux joues, pas une de plus');
+  for (const [, m] of defs.morphs) {
+    for (const s of m.styles || []) {
+      for (const a of s.arrets || []) {
+        assert.deepStrictEqual([a.c0.r, a.c0.v, a.c0.b], [255, 0, 0], 'du rouge pur');
+      }
+    }
+  }
+});
+
+test('la transformation qui verdit le fard : le rouge s’éteint, le vert se pose', () => {
+  // `teindre` calcule `canal × m / 256 + a`. Sur du rouge pur, la
+  // transformation de « beurk » doit rendre du vert pur — et laisser l'alpha,
+  // seul porteur de la forme du dégradé, intact.
+  const src = fs.readFileSync(path.join(ROOT, 'public/js/bouille-moteur.js'), 'utf8');
+  const m = /const CX_FARD_VERT = \{[^}]*\};/.exec(src);
+  assert.ok(m, 'la transformation doit être nommée');
+  const cx = vm.runInNewContext('(' + m[0].replace(/^const CX_FARD_VERT = /, '').replace(/;$/, '') + ')');
+  const canal = (v, mul, add) => Math.max(0, Math.min(255, Math.round(v * mul / 256 + add)));
+  assert.strictEqual(canal(255, cx.mr, cx.ar), 0, 'le rouge s’éteint');
+  assert.strictEqual(canal(0, cx.mv, cx.av), 255, 'le vert se pose');
+  assert.strictEqual(canal(0, cx.mb, cx.ab), 0, 'le bleu ne bouge pas');
+  assert.strictEqual(cx.ma, 256, 'l’alpha passe intact');
+  assert.strictEqual(cx.aa, 0);
+  // Et le dessin ne teinte QUE les morphs, quand le drapeau est levé.
+  assert.match(src, /if \(this\.fardVert && this\.defs\.morphs && this\.defs\.morphs\.has\(id\)\) \{\s*\n\s*cx = composerCx\(cx, CX_FARD_VERT\);/);
 });

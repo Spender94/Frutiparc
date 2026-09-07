@@ -10858,6 +10858,12 @@
        une seule larme, l'œil triste, jouée une fois. On les envoyait toutes
        deux sur la 11 : « larme » donnait donc un sanglot. */
     add("larme", "laisse couler une larme", [":'(", ";(", "larme", "snif"]);  // id 12
+    /* LA QUATORZIÈME, ET LA SEULE QUI NE VIENNE PAS DE 2005. `actionInfo` en
+       comptait treize ; « beurk » s'ajoute au bout, sans rien inventer de
+       dessiné : la tristesse (humeur 2) et le fard de « rougir » repeint en
+       vert. Un desktop d'époque ne la connaît pas — il imprimera le mot, comme
+       il le fait déjà de tout ce qu'il ne sait pas jouer. */
+    add("beurk", "fait la grimace", ["beurk", "berk", "bwark"]);              // id 13
   })();
   function detectEmote(text) {
     var key = String(text == null ? "" : text).trim();   // whole-message, case-sensitive
@@ -10970,14 +10976,19 @@
 
   // anim id → l'indice de playAnim, celui que le moteur attend (FPBouilleVignette.jouer).
   var ANIM_INDEX = { parle:1, rire:2, mdr:3, langue:4, rougir:5, regard:6,
-    sifflote:7, gum:8, question:9, miam:10, pleurer:11, larme:12 };
+    sifflote:7, gum:8, question:9, miam:10, pleurer:11, larme:12,
+    // La quatorzième n'est pas d'époque : elle emprunte la pellicule de
+    // « rougir » et lui met le visage de la tristesse, le fard passé au vert
+    // (cf. jouerAnim id 13, public/js/bouille-moteur.js).
+    beurk:13 };
   // Caption phrases for the bouille overlay — the EXACT desktop wording
   // (lang_french.as chat.action, entrées 2 à 12).
   var ANIM_LABEL = { parle:"parle", rire:"rigole", mdr:"éclate de rire",
     pleurer:"pleure", larme:"laisse couler une larme",
     langue:"tire la langue", miam:"se régale",
     question:"se pose des questions", rougir:"rougit", sifflote:"sifflote",
-    gum:"fait une bulle de chewing-gum", regard:"regarde ailleurs" };
+    gum:"fait une bulle de chewing-gum", regard:"regarde ailleurs",
+    beurk:"fait la grimace" };
   /*
    * LA RÉACTION QUI PASSE SUR LE CHAT.
    *

@@ -97,15 +97,19 @@
 
   // emoteList et actionList du script racine des familles.
   const HUMEURS = [[0, 0], [1, 2], [2, 1], [0, 3], [3, 4], [1, 4], [2, 3], [2, 6]];
+  // `actionList` s'arrête à « larme » (indice 12) — les treize du parc de 2005.
+  // « beurk » est la QUATORZIÈME, la seule qui ne vienne pas du SWF : elle ne
+  // dessine rien de neuf, elle rassemble (cf. jouerAnim, id 13).
   const ANIMATIONS = ['stop', 'parle', 'rire', 'mdr', 'langue', 'rougir', 'regard',
-    'siffle', 'gum', 'question', 'miam', 'pleure', 'larme'];
+    'siffle', 'gum', 'question', 'miam', 'pleure', 'larme', 'beurk'];
   // Les noms tels que le parc les affiche déjà — ceux du forum (EXPRESSIONS,
   // public/fb/index.html) et de la page de démonstration. Le SWF, lui, ne
   // nomme pas ses humeurs : emoteList n'est qu'un tableau de couples.
   const NOMS_HUMEURS = ['Neutre', 'Colère', 'Triste', 'Sourire', 'Joie',
     'Déterminé', 'Embarrassé', 'Totoché'];
   const NOMS_ANIMATIONS = ['Repos', 'Parler', 'Rire', 'MDR', 'Langue', 'Rougir',
-    'Regard', 'Sifflote', 'Chewing-gum', 'Question', 'Miam', 'Pleurer', 'Larme'];
+    'Regard', 'Sifflote', 'Chewing-gum', 'Question', 'Miam', 'Pleurer', 'Larme',
+    'Beurk'];
   // actionList nomme « siffle » et « pleure » ce que la pellicule étiquette
   // « sifflote » et « pleurer ». playAnim() vise les étiquettes.
   const ETIQUETTES = { siffle: 'sifflote', pleure: 'pleurer' };
@@ -122,6 +126,25 @@
       ab: P.mb * E.ab / 256 + P.ab, aa: P.ma * E.aa / 256 + P.aa,
     };
   }
+  /*
+   * LE FARD DE « BEURK », OU COMMENT PEINDRE EN VERT CE QUI EST ROUGE.
+   *
+   * L'émote « beurk » ne dessine rien de neuf : elle emprunte le FARD de
+   * « rougir » — les deux morphs posés sur les joues — et le passe au vert.
+   *
+   * Ce fard est du ROUGE PUR partout dans le corpus (255, 0, 0, avec l'alpha
+   * pour tout modelé : c'est un dégradé radial qui s'efface sur les bords).
+   * Une transformation de couleur Flash suffit donc, sans toucher au dessin :
+   * `teindre` calcule `canal × m / 256 + a`, alors on éteint le rouge (mr = 0)
+   * et l'on pose le vert à plat (av = 255). Le 255 du rouge devient 0, le 0 du
+   * vert devient 255, l'alpha — le seul porteur de la forme — passe intact.
+   *
+   * On ne vise pas les morphs par leur NUMÉRO : il change d'une famille à
+   * l'autre. On les vise par ce qu'ils sont — un morph, et il n'y en a que
+   * deux par bouille, les deux joues (vérifié sur les dix familles du parc).
+   */
+  const CX_FARD_VERT = { mr: 0, mv: 256, mb: 256, ma: 256, ar: 0, av: 255, ab: 0, aa: 0 };
+
   // Une teinte FEMC.setColor exprimée en transformation de couleur.
   function cxTeinte(rgb) {
     return { mr: 256, mv: 256, mb: 256, ma: 256,
@@ -749,6 +772,9 @@
     const oeilJoue = (ca, cb) => { if (oaO) oaO.allerImage(ca, true); if (obO) obO.allerImage(cb, true); };
     const oeilCompt = (v) => { if (oaO) oaO.vars.compt = v; if (obO) obO.vars.compt = v; };
     const muet = () => { if (bb) bb.vars.flMute = true; };
+    // Le fard vert n'appartient qu'à « beurk » : toute autre animation
+    // — le retour au repos compris — le range.
+    this.fardVert = (id === 13);
 
     if (id === 0) {
       r.endAnim();
@@ -833,6 +859,27 @@
       oeil('triste');
       muet();
       if (bb) bb.allerImage(2, false);
+    } else if (id === 13) {
+      /*
+       * BEURK — la seule animation qui ne soit pas dans le SWF.
+       *
+       * Elle n'invente rien : elle emprunte la PELLICULE de « rougir », dont
+       * le seul apport est le fard des joues, et lui met le visage de la
+       * TRISTESSE — l'humeur 2, `HUMEURS[2] = [2, 1]`, l'œil triste et la
+       * bouche en coin. « Rougir » y mettait le même œil (3 = 2 + 1) mais
+       * gardait la bouche neutre : c'est là, et là seulement, que les deux
+       * se séparent. Le fard, lui, passe au vert (cf. CX_FARD_VERT).
+       *
+       * On lit l'humeur dans HUMEURS plutôt que d'écrire 3 et 2 : si la
+       * table bouge, la grimace suit.
+       */
+      const triste = HUMEURS[2];
+      r.flStop = false; r.next = 0;
+      face.allerImage('rougir', true);
+      oeil(triste[0] + 1);
+      muet();
+      if (bb) bb.allerImage(triste[1] + 1, false);
+      face.vars.compt = 40;
     }
     return this;
   };
@@ -912,6 +959,13 @@
     const t = this.formeDe(id, ratio);
     if (!t) return;
     const f = t.f, id2 = t.cle;
+    // LE FARD PASSE AU VERT pendant « beurk ». Un morph sur une bouille, c'est
+    // le fard des joues et rien d'autre — les dix familles du parc n'en ont
+    // jamais que deux, les deux joues, en rouge pur. On teinte donc là, au
+    // dernier moment, sans toucher ni à la pellicule ni au placement.
+    if (this.fardVert && this.defs.morphs && this.defs.morphs.has(id)) {
+      cx = composerCx(cx, CX_FARD_VERT);
+    }
     ctx.save();
     ctx.transform(M.a, M.b, M.c, M.d, M.e, M.f);
     const raccord = this.antiCouture === false ? 0 : LISERE / echelleDe(ctx);
