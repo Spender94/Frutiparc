@@ -240,7 +240,24 @@ class Classic extends J.Game {
     }
     this.endPanelMiddle.push(obj);
   }
-  checkFruit() { if (this.fruitList.length === 0) this.initEndGame(120); }
+  /*
+   * LA FIN DE LA PARTIE NE SE DÉCLENCHE QU'UNE FOIS.
+   *
+   * ÉCART ASSUMÉ avec 2005 — un vrai défaut d'époque, pas une adaptation.
+   * Quand la dernière pomme est au panier, `fruitList` reste vide : ce test
+   * passait alors à CHAQUE IMAGE, et `initEndGame` n'est pas gardé. Chaque
+   * appel remettait `endTimer` à 120 — juste après que la boucle l'eut
+   * décrémenté —, si bien que le compte à rebours ne descendait jamais sous
+   * zéro et que le panneau de fin n'arrivait pas. Chaque appel rearmait aussi
+   * `flSavingScore` et empilait une page « sauvegarde du score… » de plus :
+   * même une fois le panneau ouvert, il restait collé sur cette page-là.
+   * (C'est la même rafale que le serveur doit déjà absorber côté quota — voir
+   * FD_RAFALE_MS : la partie menée à son terme réenvoyait son score cent fois.)
+   *
+   * `endGame` est la porte GARDÉE (`if (!this.flEndingGame)`), et elle existe
+   * pour ça : la fin se prononce une fois, la partie se termine.
+   */
+  checkFruit() { if (this.fruitList.length === 0) this.endGame(120); }
 }
 J.Classic = Classic;
 K.registerClass('gameClassic', Classic);
