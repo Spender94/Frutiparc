@@ -4391,15 +4391,93 @@ function vaFamille() {
   if (vaDefs) return Promise.resolve(vaDefs);
   return FPBouilleSwf.charger('/fbouille/famille0.swf').then(function (d) { vaDefs = d; return d; });
 }
-// L'aperçu d'une variante : on l'injecte dans une famille NEUVE (pour ne pas
-// empiler les essais) et on rend la bouille qui la porte.
+/*
+ * L'APERÇU D'UNE VARIANTE — ET LES TROIS FAÇONS QU'IL AVAIT DE MENTIR.
+ *
+ * « Les aperçus d'accessoires dans l'admin juste après import du SVG ne sont
+ * pas bons : ils ne correspondent pas visuellement à l'accessoire chargé.
+ * Pire, ils changent en fonction du type d'accessoire choisi, indépendamment
+ * du .svg chargé. »
+ *
+ *  1. IL NE SE REFAISAIT QU'AU CHARGEMENT DU FICHIER. « Accessoire de base »
+ *     est un CHOIX, pas une donnée du SVG : le changer après coup laissait à
+ *     l'écran l'injection dans l'accessoire d'AVANT, pendant que le bouton
+ *     publiait dans le nouveau. On regardait donc une chose et l'on en
+ *     publiait une autre — et reprendre le fichier faisait « changer »
+ *     l'aperçu sans qu'on ait touché au dessin.
+ *
+ *  2. IL PARTAIT D'UNE FAMILLE NUE. Le tableau des variantes, lui, rejoue
+ *     TOUTES les publiées avant de rendre ses vignettes — « c'est ainsi que
+ *     le site les voit », et c'est aussi ce que fait l'atelier. L'aperçu
+ *     d'import s'en dispensait : son index n'était pas celui que la variante
+ *     aurait, et son voisinage dans le rouleau non plus.
+ *
+ *  3. IL SE TAISAIT QUAND L'INJECTION ÉCHOUAIT. `injecter` rend `null` quand
+ *     aucun tracé ne tombe dans le gabarit visé ; on rendait alors la main
+ *     sans rien peindre. Restait un cadre vide — ou, pire, la vignette
+ *     précédente — et un bouton « Publier » toujours actif.
+ *
+ * Le NUMÉRO DE TOUR vient avec : maintenant que le sélecteur relance l'aperçu,
+ * deux demandes peuvent se croiser (charger la famille, c'est le réseau), et
+ * la plus lente ne doit pas peindre par-dessus la plus récente. Même remède
+ * que `dessiner` (bouille-vignette.js) et `amApercu`.
+ */
+let vaApercuTour = 0;
+// Les variantes déjà publiées, comme le site les voit. Une seule demande.
+let vaPubliees = null;
+function vaCatalogue() {
+  if (vaPubliees) return vaPubliees;
+  vaPubliees = fetch('/api/light/variantes')
+    .then(function (r) { return r.json(); })
+    .then(function (d) { return (d && d.liste) || []; })
+    .catch(function () { return []; });
+  return vaPubliees;
+}
 function vaApercu(canvas, paths, type) {
-  return FPBouilleSwf.charger('/fbouille/famille0.swf').then(function (defs) {
-    const inj = FPBouilleVariante.injecter(defs, { type: type, paths: paths, coiffureRef: 8 });
-    if (!inj) return null;
-    const p = (v) => FPBouilleMoteur.encode62(v, 2);
-    const etat = p(0) + p(3) + p(0) + p(8) + p(0) + p(2) + p(7) + p(type) + p(inj.variante) + p(29) + p(19) + p(24);
-    new FPBouilleMoteur.Bouille(canvas, defs, { etat: etat, anime: false, alea: () => 0.5 });
+  const tour = ++vaApercuTour;
+  return Promise.all([FPBouilleSwf.charger('/fbouille/famille0.swf'), vaCatalogue()])
+    .then(function (r) {
+      const defs = r[0], deja = r[1];
+      if (tour !== vaApercuTour || !canvas.isConnected) return null;
+      // Les publiées d'abord, dans l'ordre : la nôtre tombe après elles, là où
+      // elle tombera vraiment.
+      deja.forEach(function (v) {
+        try {
+          FPBouilleVariante.injecter(defs, { type: v.type, paths: v.paths || [],
+            coiffureRef: v.coiffureRef, index: (v.index == null ? undefined : v.index),
+            vide: !(v.paths && v.paths.length) });
+        } catch (e) { /* une variante fautive n'empêche pas l'essai */ }
+      });
+      const inj = FPBouilleVariante.injecter(defs, { type: type, paths: paths, coiffureRef: 8 });
+      if (!inj) return null;
+      const p = (v) => FPBouilleMoteur.encode62(v, 2);
+      const etat = p(0) + p(3) + p(0) + p(8) + p(0) + p(2) + p(7) + p(type) + p(inj.variante) + p(29) + p(19) + p(24);
+      new FPBouilleMoteur.Bouille(canvas, defs, { etat: etat, anime: false, alea: () => 0.5 });
+      return inj;
+    });
+}
+
+// L'aperçu se refait : à l'import du fichier, ET à chaque changement de base.
+function vaRepreview() {
+  const hote = $('#va-apercu-hote'), etat = $('#va-etat'), bouton = $('#va-publier');
+  if (!hote) return Promise.resolve(null);
+  if (!vaPaths || !vaPaths.length) { hote.innerHTML = ''; return Promise.resolve(null); }
+  const type = Number($('#va-type').value) || 3;
+  hote.innerHTML = '<canvas width="1" height="1" style="width:100%;height:100%;display:block"></canvas>';
+  const niv = {};
+  vaPaths.forEach(function (p) { niv[p.slot || 0] = (niv[p.slot || 0] || 0) + 1; });
+  return vaApercu(hote.querySelector('canvas'), vaPaths, type).then(function (inj) {
+    if (!inj) {
+      hote.innerHTML = '';
+      etat.textContent = 'Aucun tracé ne tombe dans le gabarit de « '
+        + FPBouille.accName(type) + ' » : rien à injecter. Reprendre le gabarit dans l’atelier.';
+      bouton.disabled = true;
+      return null;
+    }
+    // L'index annoncé est celui qu'elle AURA : les publiées sont déjà en place.
+    etat.textContent = vaPaths.length + ' tracés · niveaux ' + JSON.stringify(niv)
+      + ' → variante ' + inj.variante + ' de l’accessoire #' + inj.accId;
+    bouton.disabled = false;
     return inj;
   });
 }
@@ -4407,14 +4485,12 @@ function vaApercu(canvas, paths, type) {
 function vaCharger(svgTexte) {
   try { vaPaths = FPBouilleCustom.charger(svgTexte); } catch (e) { vaPaths = null; }
   const etat = $('#va-etat'), bouton = $('#va-publier');
-  if (!vaPaths || !vaPaths.length) { etat.textContent = 'SVG illisible ou sans dessin.'; bouton.disabled = true; return; }
-  const niv = {};
-  vaPaths.forEach(function (p) { niv[p.slot || 0] = (niv[p.slot || 0] || 0) + 1; });
-  etat.textContent = vaPaths.length + ' tracés · niveaux ' + JSON.stringify(niv);
-  bouton.disabled = false;
-  const hote = $('#va-apercu-hote');
-  hote.innerHTML = '<canvas width="1" height="1" style="width:100%;height:100%;display:block"></canvas>';
-  vaApercu(hote.querySelector('canvas'), vaPaths, Number($('#va-type').value) || 3);
+  if (!vaPaths || !vaPaths.length) {
+    etat.textContent = 'SVG illisible ou sans dessin.'; bouton.disabled = true;
+    $('#va-apercu-hote').innerHTML = '';
+    return;
+  }
+  vaRepreview();
 }
 
 async function publierVariante() {
@@ -4454,6 +4530,9 @@ async function publierVariante() {
 let vaTour = 0;
 async function loadVariantes() {
   const tour = ++vaTour;
+  // Le catalogue que l'aperçu d'import rejoue vient de vieillir : toute
+  // publication, tout retrait, tout remplacement passe par ici.
+  vaPubliees = null;
   try {
     const r = await fetch('/api/admin/variantes', { headers: hdr() });
     if (!r.ok || tour !== vaTour) return;
@@ -4664,6 +4743,8 @@ async function purgerVariantesRetirees() {
       });
       sel.value = '3';
     });
+    // Changer de base REFAIT l'aperçu : on publie ce qu'on voit.
+    sel.addEventListener('change', function () { vaRepreview(); });
   }
 })();
 

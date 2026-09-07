@@ -533,3 +533,78 @@ test('les identifiants du gabarit sont UNIQUES — un doublon coûtait le niveau
     assert.match(n, /^couleur[123]/, 'un nom de niveau commence par son niveau : ' + n);
   }
 });
+
+/* ══ L'APERÇU D'IMPORT DE L'ADMIN ══════════════════════════════════════════
+ *
+ * « Les aperçus d'accessoires dans l'admin juste après import du SVG ne sont
+ * pas bons : ils ne correspondent pas visuellement à l'accessoire chargé.
+ * Pire, ils changent en fonction du type d'accessoire choisi, indépendamment
+ * du .svg chargé. »
+ *
+ * Trois défauts d'un même aperçu, et le troisième explique les deux premiers.
+ */
+const ADMIN = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');
+
+test('l’aperçu d’import se refait quand on change d’accessoire de base', () => {
+  // « Accessoire de base » est un CHOIX, pas une donnée du SVG. L'aperçu ne
+  // se refaisait qu'au chargement du fichier : on regardait l'injection dans
+  // l'accessoire d'AVANT pendant que le bouton publiait dans le nouveau.
+  assert.match(ADMIN, /sel\.addEventListener\('change', function \(\) \{ vaRepreview\(\); \}\);/);
+  assert.match(ADMIN, /function vaRepreview\(\) \{/);
+  // Et le chargement du fichier passe par la même porte.
+  const ch = /function vaCharger\(svgTexte\) \{[\s\S]*?\n\}/.exec(ADMIN);
+  assert.ok(ch, 'vaCharger');
+  assert.match(ch[0], /vaRepreview\(\);/);
+});
+
+test('l’aperçu d’import rejoue les variantes déjà publiées', async () => {
+  // Le tableau des variantes le fait déjà — « c'est ainsi que le site les
+  // voit » — et l'atelier aussi. L'aperçu d'import partait d'une famille NUE :
+  // sa variante tombait à l'index de la PREMIÈRE déjà publiée, dans un
+  // voisinage qui n'est pas celui du site.
+  const ap = /function vaApercu\(canvas, paths, type\) \{[\s\S]*?\n\}/.exec(ADMIN);
+  assert.ok(ap, 'vaApercu');
+  assert.match(ap[0], /vaCatalogue\(\)/);
+  assert.match(ap[0], /deja\.forEach\(/);
+  assert.match(ap[0], /index: \(v\.index == null \? undefined : v\.index\)/);
+  assert.match(ap[0], /vide: !\(v\.paths && v\.paths\.length\)/);
+  // La demande du catalogue ne part qu'une fois, et toute publication ou tout
+  // retrait la périme (loadVariantes est le passage obligé).
+  assert.match(ADMIN, /function vaCatalogue\(\) \{[\s\S]*?fetch\('\/api\/light\/variantes'\)/);
+  const lv = /async function loadVariantes\(\) \{[\s\S]*?\n  vaPubliees = null;/.exec(ADMIN);
+  assert.ok(lv, 'loadVariantes doit périmer le catalogue');
+
+  // ET LA DIFFÉRENCE EST RÉELLE : sur une famille nue la casquette tombe à
+  // l'index de base ; après le rejeu de N publiées, elle tombe à base + N.
+  const defs = await lire('famille0.swf');
+  const traces = Variante.exporter(defs, 3, 1, 8);
+  const base = Variante.repere(await lire('famille0.swf'), 3, 8).variantes;
+  const nue = await lire('famille0.swf');
+  assert.strictEqual(Variante.injecter(nue, { type: 3, paths: traces, coiffureRef: 8 }).variante,
+    base, 'sans rejeu : la place de la première publiée');
+  // Trois publiées de plus, et la nôtre recule d'autant.
+  const pleine = await lire('famille0.swf');
+  for (let i = 0; i < 3; i++) {
+    Variante.injecter(pleine, { type: 3, paths: traces, coiffureRef: 8 });
+  }
+  assert.strictEqual(Variante.injecter(pleine, { type: 3, paths: traces, coiffureRef: 8 }).variante,
+    base + 3, 'avec rejeu : après elles');
+});
+
+test('une injection impossible se DIT, et ferme la publication', () => {
+  // `injecter` rend `null` quand aucun tracé ne tombe dans le gabarit visé.
+  // On rendait la main sans rien peindre : restait un cadre vide — ou la
+  // vignette précédente — et un bouton « Publier » toujours actif.
+  const rp = /function vaRepreview\(\) \{[\s\S]*?\n\}/.exec(ADMIN);
+  assert.ok(rp, 'vaRepreview');
+  assert.match(rp[0], /if \(!inj\) \{/);
+  assert.match(rp[0], /Aucun tracé ne tombe dans le gabarit/);
+  assert.match(rp[0], /bouton\.disabled = true;/);
+  // Et quand elle réussit, l'état annonce l'index RÉEL, celui du rejeu.
+  assert.match(rp[0], /→ variante ' \+ inj\.variante \+ ' de l’accessoire #' \+ inj\.accId/);
+  // Un NUMÉRO DE TOUR, puisque le sélecteur peut relancer l'aperçu : la
+  // demande lente ne doit pas peindre par-dessus la récente.
+  assert.match(ADMIN, /let vaApercuTour = 0;/);
+  assert.match(ADMIN, /const tour = \+\+vaApercuTour;/);
+  assert.match(ADMIN, /if \(tour !== vaApercuTour \|\| !canvas\.isConnected\) return null;/);
+});
