@@ -23,6 +23,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const { spawn } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
@@ -250,4 +251,102 @@ test('côté client, la ligne de la peine s’en va avec la peine', () => {
   assert.match(LIGHT, /systemLine\("Tu as été réduit au silence \(totoché\) pour " \+ mMin \+ " minutes\.",\s*\n\s*null, \{ totoche: true \}\);/);
   // Une peine DÉJÀ ÉCHUE n'en est plus une : un `bb` au passé ne remuselle pas.
   assert.match(LIGHT, /if \(mJusqua <= Date\.now\(\)\) \{ poserMuselage\(0\); break; \}/);
+});
+
+/* ══ LE MASQUE NE DEVIENT PAS UNE HUMEUR ══════════════════════════════════
+ *
+ * « Quand un user n'est plus totoché et qu'il parle dans un salon, sa bouille
+ * clignote et affiche la bouille totochée une frame sur deux. »
+ *
+ * `getStatusCode` force l'humeur 7 tant que la peine court, puis rend la main
+ * à ce que le CLIENT a dit de lui-même (`cl.statusStr`, quatrième caractère).
+ * Deux trous s'ouvraient là :
+ *
+ *   · le client RÉÉMETTAIT le 7 qu'on venait de lui pousser — le client
+ *     d'époque relit son statut avant d'en changer un morceau — et le serveur
+ *     l'enregistrait comme l'humeur choisie. La peine levée, la bouille
+ *     restait totochée. Le light refusait déjà d'émettre ce 7, mais un
+ *     correctif dans UN client ne protège pas des autres ;
+ *
+ *   · une trame `<status>` n'écrivait que sur SA socket, quand `getStatusCode`
+ *     lit la PREMIÈRE socket qui porte un statut. Deux onglets — le cas
+ *     courant, on ouvre le bureau sans fermer le light — et l'un gardait le
+ *     masque quand l'autre était repassé à son humeur : le salon voyait
+ *     l'un ou l'autre selon la trame. C'est le clignotement.
+ *
+ * Ces deux tests EXÉCUTENT `enregistrerStatut`, sortie de server.js et jouée
+ * dans un bac à sable : on lui donne des sockets en carton et l'on regarde ce
+ * qu'elle retient.
+ */
+function bacAStatut() {
+  const src = /function getMuteValue\(user\) \{[\s\S]*?\n\}/.exec(SRV);
+  const enr = /function enregistrerStatut\(client, brut\) \{[\s\S]*?\n\}/.exec(SRV);
+  assert.ok(src && enr, 'getMuteValue et enregistrerStatut doivent exister');
+  const bac = { users: {}, xmlSocketClients: new Map(), Date };
+  vm.createContext(bac);
+  vm.runInContext(src[0] + '\n' + enr[0], bac);
+  return bac;
+}
+// Une peine qui court : `getMuteValue` lit « AAAA-MM-JJ.hh:mm:ss » en UTC.
+const echeance = (msPlusTard) => new Date(Date.now() + msPlusTard)
+  .toISOString().replace('T', '.').substring(0, 19);
+
+test('pendant la peine, le 7 renvoyé par le client n’est PAS retenu', () => {
+  const bac = bacAStatut();
+  bac.users.bob = { mutedUntil: echeance(10 * 60 * 1000) };
+  const socket = { username: 'bob', logged: true, statusStr: '0003' };  // il sourit
+  bac.xmlSocketClients.set('s1', socket);
+
+  // Le client réémet le masque. Le serveur garde le sourire.
+  const retenu = bac.enregistrerStatut(socket, '0007');
+  assert.strictEqual(retenu.charAt(3), '3', 'l’humeur vraie est gardée');
+  assert.strictEqual(socket.statusStr.charAt(3), '3');
+
+  // Et une humeur VOULUE, elle, passe : la peine ne bâillonne que le 7.
+  assert.strictEqual(bac.enregistrerStatut(socket, '0001').charAt(3), '1');
+
+  // Sans peine, le 7 n'a plus rien de spécial (il n'a pas de bouton, mais
+  // rien n'oblige le serveur à s'en mêler).
+  delete bac.users.bob.mutedUntil;
+  assert.strictEqual(bac.enregistrerStatut(socket, '0007').charAt(3), '7');
+});
+
+test('les deux onglets d’une même personne disent la MÊME humeur', () => {
+  const bac = bacAStatut();
+  bac.users.bob = {};
+  const light = { username: 'bob', logged: true, statusStr: '0007' };   // resté sur le masque
+  const bureau = { username: 'bob', logged: true, statusStr: '0007' };
+  const autre = { username: 'alice', logged: true, statusStr: '0005' };
+  bac.xmlSocketClients.set('s1', light);
+  bac.xmlSocketClients.set('s2', bureau);
+  bac.xmlSocketClients.set('s3', autre);
+
+  // Un seul onglet repasse au sourire — et les deux suivent.
+  bac.enregistrerStatut(bureau, '0003');
+  assert.strictEqual(bureau.statusStr.charAt(3), '3');
+  assert.strictEqual(light.statusStr.charAt(3), '3',
+    'l’autre onglet ne doit plus porter le masque : c’est lui que getStatusCode lisait');
+  assert.strictEqual(autre.statusStr, '0005', 'et personne d’autre n’est touché');
+});
+
+test('le VOYANT de jeu reste propre à chaque socket', () => {
+  // Les deux chiffres du milieu disent la partie en cours ; ils n'ont rien à
+  // voir avec l'humeur, et `setUserInternalStatus` les repose de son côté.
+  const bac = bacAStatut();
+  bac.users.bob = {};
+  const light = { username: 'bob', logged: true, statusStr: '0A70' };   // il joue
+  const bureau = { username: 'bob', logged: true, statusStr: '0000' };
+  bac.xmlSocketClients.set('s1', light);
+  bac.xmlSocketClients.set('s2', bureau);
+  bac.enregistrerStatut(bureau, '0002');
+  assert.strictEqual(light.statusStr, '0A72', 'son voyant lui reste, son humeur suit');
+  assert.strictEqual(bureau.statusStr, '0002');
+});
+
+test('la trame `status` passe par enregistrerStatut, pas par une affectation nue', () => {
+  const cas = /case 'status': \{[\s\S]*?\n      break;\n    \}/.exec(SRV);
+  assert.ok(cas, 'la branche `status`');
+  assert.match(cas[0], /const s = enregistrerStatut\(client, String\(msg\.attrs\.s \|\| '0000'\)\);/);
+  assert.doesNotMatch(cas[0], /client\.statusStr = s;/,
+    'plus d’enregistrement direct : le masque passerait par-dessous');
 });

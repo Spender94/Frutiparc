@@ -26299,6 +26299,60 @@ function getStatusCode(user, username) {
   return `${encode62(ext, 1)}${encode62(internal, 2)}${encode62(emote, 1)}`;
 }
 
+/*
+ * LA TOTOCHE EST UN MASQUE, PAS UNE HUMEUR — ET LE SERVEUR SEUL EN DÉCIDE.
+ *
+ * `getStatusCode` force l'humeur 7 tant que `mutedUntil` court, puis rend la
+ * main à ce que le CLIENT a dit de lui-même — `cl.statusStr`, quatrième
+ * caractère. Deux trous s'ouvraient là, et le second explique le
+ * clignotement :
+ *
+ *  1. UN CLIENT RÉÉMET CE QU'IL A REÇU. Le 7 qu'on lui a poussé lui revenait
+ *     dans son propre `<status>` (le client d'époque relit son statut avant
+ *     d'en changer un morceau), et le serveur l'ENREGISTRAIT comme l'humeur
+ *     choisie. À la levée de la peine, `getStatusCode` retrouvait donc un 7
+ *     dans `statusStr` : la bouille restait totochée pour toujours. Le light
+ *     refusait déjà d'émettre ce 7 (`envoyerMonStatut`), mais un correctif
+ *     dans UN client ne protège pas des autres — ni d'un onglet resté ouvert
+ *     sur une ancienne page. La règle se pose donc ici, où elle vaut pour
+ *     tout le monde.
+ *
+ *  2. DEUX SOCKETS D'UNE MÊME PERSONNE NE DISAIENT PAS LA MÊME CHOSE. Une
+ *     trame `<status>` n'écrivait que sur SA socket ; `getStatusCode`, lui,
+ *     lit la PREMIÈRE socket qui porte un `statusStr`. Deux onglets — le cas
+ *     courant : on ouvre le bureau, on garde le light — et l'un gardait le 7
+ *     du masque quand l'autre était repassé à 0. Le salon voyait alors
+ *     l'humeur de l'un ou de l'autre selon la trame, et la bouille battait
+ *     entre le visage totoché et le vrai. C'est le clignotement rapporté.
+ *
+ * On aligne donc TOUTES les sockets de la personne sur le statut qu'on vient
+ * d'accepter, comme `setUserInternalStatus` le fait déjà pour le voyant.
+ * Rend la chaîne réellement retenue.
+ */
+function enregistrerStatut(client, brut) {
+  let s = String(brut || '0000');
+  while (s.length < 4) s += '0';
+  s = s.substring(0, 4);
+  const username = client && client.username;
+  const ud = (username && users[username]) || {};
+  // Le masque ne se laisse pas enregistrer : on garde l'humeur d'avant.
+  if (getMuteValue(ud) !== '0000-00-00 00:00:00' && s.charAt(3) === '7') {
+    const avant = String(client.statusStr || '0000').charAt(3) || '0';
+    s = s.substring(0, 3) + (avant === '7' ? '0' : avant);
+  }
+  client.statusStr = s;
+  if (!username) return s;
+  for (const [, cl] of xmlSocketClients) {
+    if (!cl || cl === client || cl.username !== username || !cl.logged) continue;
+    // Le voyant du milieu reste propre à chaque socket (`setUserInternalStatus`
+    // le repose partout de son côté) ; c'est l'humeur et l'absence qui doivent
+    // s'accorder, puisque `getStatusCode` n'en lit qu'une.
+    const vieux = String(cl.statusStr || '0000');
+    cl.statusStr = s.charAt(0) + (vieux.substring(1, 3) || '00') + s.charAt(3);
+  }
+  return s;
+}
+
 // Build the <u> attribute set the SWF's UserMng.formatInfoBasic expects.
 // Used both for the initial userlist dump and for <userjoined> broadcasts —
 // without these attrs, the chat shows the user with a black pseudo and the
@@ -28352,8 +28406,7 @@ case 'trace': {
       // then broadcast a trace update to every channel the user is in.
       // The "internal" digit drives the icon (forum/snake3/kaluga/...) shown
       // next to the pseudo in the userlist and in the contacts bar.
-      const s = String(msg.attrs.s || '0000');
-      client.statusStr = s;
+      const s = enregistrerStatut(client, String(msg.attrs.s || '0000'));
       // Ce que le bureau dit de son propre voyant (forum, essentiellement),
       // rangé à part : une partie en cours le couvre sans l'effacer.
       client.internClient = decode62(s.substring(1, 3)) || 0;
