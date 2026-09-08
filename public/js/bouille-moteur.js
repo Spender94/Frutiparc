@@ -892,7 +892,31 @@
       r.flStop = false; r.next = 0;
       face.allerImage('langue', true);
       oeil(2);
-      if (bb) { bb.allerImage('langue', true); bb.vars.flMute = true; bb.vars.compt = 10; }
+      /*
+       * LES DRAPEAUX AVANT LE SAUT — et pas après, comme le SWF les écrit.
+       *
+       * « Lorsqu'on joue :p, la bouille siffle et se régale dans la foulée. »
+       *
+       * La bouche tient sa propre boucle. Son image 54, à la fin de
+       * `langueLoop`, dit : « si `flMute`, ne rien faire », sinon décompter
+       * `compt` et reboucler, et à zéro rendre la main au visage
+       * (`_parent._parent.play()`). Ne rien faire, c'est laisser la tête de
+       * lecture continuer tout droit — et tout droit, après `langueLoop`,
+       * il y a `siffle` (image 60) puis `bave` (80). D'où le sifflet et la
+       * bavette qui suivaient la langue.
+       *
+       * Le script racine écrit `gotoAndPlay("langue")` PUIS `flMute = true`.
+       * Sous Flash les deux ordres se valent : le script d'une image ne
+       * s'exécute qu'au rendu suivant, si bien que l'image 46 — qui pose
+       * `flMute = false` — passe APRÈS, et la boucle fonctionne. Ici les
+       * scripts d'image partent tout de suite, dans `allerImage` : l'ordre
+       * du SWF donnait donc l'inverse, un `flMute` resté vrai, et la boucle
+       * sautée. On pose les drapeaux d'abord ; l'étiquette les corrige
+       * ensuite, exactement comme d'époque. C'est d'ailleurs ce que font
+       * déjà toutes les autres animations (`muet()` vient avant le saut) —
+       * la 4 était la seule à l'écrire dans l'autre sens.
+       */
+      if (bb) { bb.vars.flMute = true; bb.vars.compt = 10; bb.allerImage('langue', true); }
     } else if (id === 5) {
       r.flStop = false; r.next = 0;
       face.allerImage('rougir', true);

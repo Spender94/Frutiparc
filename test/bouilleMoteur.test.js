@@ -574,3 +574,47 @@ test('la transformation qui kakise le fard : le rouge s’éteint, le kaki se po
   assert.match(src, /if \(this\.fardKaki && this\.defs\.morphs && this\.defs\.morphs\.has\(id\)\) \{\s*\n\s*cx = composerCx\(cx, CX_FARD_KAKI\);/);
 });
 
+/* ══ « :p » NE SIFFLE PAS, ET NE BAVE PAS ══════════════════════════════════
+ *
+ * « Lorsqu'on joue :p (tire la langue), la bouille siffle et se régale dans
+ * la foulée. »
+ *
+ * La bouche tient sa propre boucle. Son image 54, à la fin de `langueLoop`,
+ * dit : « si `flMute`, ne rien faire », sinon décompter `compt` et reboucler.
+ * Ne rien faire, c'est laisser la tête de lecture continuer tout droit — et
+ * tout droit, après `langueLoop`, il y a `siffle` (image 60) puis `bave`
+ * (80). Or le script racine écrit `gotoAndPlay("langue")` PUIS
+ * `flMute = true` : sous Flash le script de l'étiquette — qui remet `flMute`
+ * à faux — passe APRÈS, mais ici il part tout de suite, dans `allerImage`.
+ * L'ordre du SWF donnait donc l'inverse de son intention.
+ */
+test('« tire la langue » s’arrête à la langue', async () => {
+  const defs = await lire('famille0.swf');
+  const mo = new Moteur.Moteur(defs, { alea: () => 0.5 });
+  const face = mo.creerVisage();
+  mo.definir(etat([0, 1, 0, 4, 1, 15, 22, 0, 0, 0, 0, 0]));
+  const bb = face.enfantNomme('b').enfantNomme('b');
+
+  // Les étiquettes de la bouche, dans l'ordre : `langueLoop` est suivie de
+  // `siffle`, `siffleLoop`, `souffle` puis `bave`. C'est là que ça débordait.
+  const suite = Object.entries(bb.def.labels).sort((a, b) => a[1] - b[1]).map((x) => x[0]);
+  assert.deepStrictEqual(suite.slice(suite.indexOf('langueLoop'), suite.indexOf('bave') + 1),
+    ['langueLoop', 'siffle', 'siffleLoop', 'souffle', 'bave']);
+
+  const par = {};
+  Object.entries(bb.def.labels).forEach(([n, i]) => { (par[i] = par[i] || []).push(n); });
+  mo.jouerAnim(4);
+  const vues = new Set();
+  let precedente = -1, k = 0;
+  for (; k < 900; k++) {
+    if (bb.frame !== precedente && par[bb.frame]) par[bb.frame].forEach((n) => vues.add(n));
+    precedente = bb.frame;
+    if (!face.peutBouger() && !bb.peutBouger() && k > 3) break;
+    mo.avancer();
+  }
+  assert.ok(k < 900, 'l’animation doit revenir au repos');
+  assert.deepStrictEqual([...vues].sort(), ['langue', 'langueLoop'],
+    'la bouche ne traverse QUE la langue');
+  assert.strictEqual(bb.vars.flMute, false,
+    'le drapeau est celui que pose l’étiquette, pas celui de l’appelant');
+});
