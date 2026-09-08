@@ -19,6 +19,12 @@
 // Le troisième point (Frutisnake, « la 3e partie n'enregistre pas le score »)
 // n'était PAS un défaut : le quota gratuit est de deux parties par jour. C'est
 // l'absence d'avertissement qui trompait le joueur, d'où le préavis testé ici.
+//
+// LES PARTIES DE KALUGA PORTENT UN VRAI TÉMOIN DE GRAPPE (« 1:0:0 » — une
+// partie sans grappe). Depuis que le tableau du jour se partage en deux, une
+// donnée muette n'entre dans aucun des deux et ne consomme donc rien : la
+// prendre pour véhicule ne mesurerait plus le quota. Le témoin choisi range
+// ces parties au Freestyle, dont le compte est celui qu'on éprouve ici.
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
@@ -75,24 +81,34 @@ test('une partie ne coûte qu\'un disque, même renvoyée en rafale', async () =
   const sid = await sidFor('kalugafin');
   const depart = await quota(sid, 'kaluga');
   assert.equal(depart.limited, true, 'Kaluga est bien rationné');
-  assert.equal(depart.remaining, 2, 'deux parties gratuites par jour');
+  // DEUX PARTIES PAR TABLEAU, et Kaluga en a deux (le défi Grappe — qui partage
+  // son seau avec le Championnat — et le défi Freestyle) : le compte annoncé au
+  // joueur est la somme. Épuiser l'un ne ferme pas l'autre.
+  assert.equal(depart.remaining, 4, 'deux parties gratuites par tableau du jour');
 
   // Une partie terminée : Kaluga renvoie le MÊME score en boucle.
-  for (let i = 0; i < 25; i++) await enregistrer(sid, 'kaluga', 4200, 'tz=1');
+  for (let i = 0; i < 25; i++) await enregistrer(sid, 'kaluga', 4200, '1:0:0');
   const apres = await quota(sid, 'kaluga');
   assert.equal(apres.used, 1, `rafale de 25 renvois → ${apres.used} disque(s) consommé(s) au lieu d'un`);
-  assert.equal(apres.remaining, 1, 'il reste bien une partie');
+  assert.equal(apres.remaining, 3, 'il reste bien trois parties');
 });
 
 test('deux parties DIFFÉRENTES coûtent bien deux disques', async () => {
   // Le garde anti-rafale ne doit pas offrir de parties : dès que le score
   // change, c'est une autre partie.
   const sid = await sidFor('kalugadeux');
-  await enregistrer(sid, 'kaluga', 100, 'tz=1');
-  await enregistrer(sid, 'kaluga', 250, 'tz=1');
+  await enregistrer(sid, 'kaluga', 100, '1:0:0');
+  await enregistrer(sid, 'kaluga', 250, '1:0:0');
   const q = await quota(sid, 'kaluga');
   assert.equal(q.used, 2, 'deux scores distincts = deux parties');
-  assert.equal(q.remaining, 0, 'quota épuisé');
+  /* CES PARTIES SONT DU CHAMPIONNAT (« m=1 ») : elles visent `kaluga_challenge`,
+     qui n'est pas partagé en deux et se compte donc dans le seau du jeu. Le
+     défi du jour Freestyle, lui, garde ses deux parties — c'est tout l'objet du
+     compte par tableau : épuiser l'un n'a jamais à fermer l'autre. */
+  assert.equal(q.remaining, 2, 'le défi Freestyle reste ouvert');
+  const parTableau = q.seaux || [];
+  assert.deepEqual(parTableau.map((x) => [x.seau, x.remaining]),
+    [['kaluga', 0], ['kaluga:freestyle', 2]], 'le détail le dit tableau par tableau');
 });
 
 test('passé le quota, le score n\'est plus classé — et le joueur n\'est prévenu qu\'une fois', async () => {
@@ -120,11 +136,11 @@ test('le score reste refusé sur toute la rafale d\'une partie hors quota', asyn
   // Une fois le quota épuisé, la rafale d'une partie terminée ne doit pas non
   // plus classer le score « par erreur » au deuxième renvoi.
   const sid = await sidFor('kalugavide');
-  await enregistrer(sid, 'kaluga', 11, 'tz=1');
-  await enregistrer(sid, 'kaluga', 22, 'tz=1');
-  assert.equal((await quota(sid, 'kaluga')).remaining, 0, 'quota épuisé');
+  await enregistrer(sid, 'kaluga', 11, '1:0:0');
+  await enregistrer(sid, 'kaluga', 22, '1:0:0');
+  assert.equal((await quota(sid, 'kaluga')).remaining, 2, 'le seau du Championnat est à sec, celui du Freestyle non');
   const renvois = [];
-  for (let i = 0; i < 10; i++) renvois.push(await enregistrer(sid, 'kaluga', 33, 'tz=1'));
+  for (let i = 0; i < 10; i++) renvois.push(await enregistrer(sid, 'kaluga', 33, '1:0:0'));
   assert.ok(renvois.every((r) => r.fdBlocked === true), 'tous les renvois refusés');
   assert.equal((await quota(sid, 'kaluga')).used, 2, 'aucun disque supplémentaire débité');
 });

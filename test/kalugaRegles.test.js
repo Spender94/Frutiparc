@@ -172,8 +172,11 @@ test('le portage envoie la plus grosse grappe, en troisième champ', () => {
   assert.match(r, /this\.game\.gMax = Math\.max\(this\.game\.gMax \| 0, this\.grappe\);/, 'et le maximum s’y ajoute');
   assert.match(GAME, /saveScore\(score, \{ tz: this\.tzongreInfo\.id, gOr: this\.gOr \| 0, gMax: this\.gMax \| 0 \}\)/);
   assert.match(PLATEFORME, /data: tz \+ ':' \+ gOr \+ ':' \+ gMax/, '« tz:g:max »');
-  // Côté serveur, le partage se fait sur ce maximum quand il est là.
-  assert.match(SERVEUR, /if \(rankingId === 'kaluga_classic' && kalugaAvecGrappe\(scoreData\) === false\) \{\n\s*return \{ rankingId: 'kaluga_freestyle_classic'/);
+  // Côté serveur, le partage se fait sur ce maximum quand il est là — et une
+  // partie SANS TÉMOIN n'entre dans aucun des deux tableaux plutôt que d'aller
+  // au jugé dans celui des grappes.
+  assert.match(SERVEUR, /const grappe = kalugaAvecGrappe\(scoreData\);\n\s*if \(grappe === false\) \{\n\s*return \{ rankingId: 'kaluga_freestyle_classic'/);
+  assert.match(SERVEUR, /if \(grappe === null\) \{\n\s*return \{ rankingId: null,[\s\S]*?sansTemoin: true \};/);
   // Et le défi Freestyle est rationné comme l'autre.
   assert.match(SERVEUR, /if \(g === 'kaluga' && rankingId === 'kaluga_freestyle_classic'\) return g;/);
   // Les deux défis du jour, dans le tableau du light.

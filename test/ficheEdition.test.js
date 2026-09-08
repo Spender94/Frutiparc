@@ -161,7 +161,11 @@ test('chaque ligne de scores porte le voyant de son jeu', async () => {
   const u = 'fsco' + RUN;
   const sid = await sidPour(u);
   await fetch(`${BASE}/api/saveScore?sid=${sid}&game=snake3&score=4242&m=0`);
-  await fetch(`${BASE}/api/saveScore?sid=${sid}&game=kaluga&score=1200&m=0`);
+  // Kaluga porte un TÉMOIN DE GRAPPE (« 1:0:0 » — une partie sans grappe) :
+  // son défi du jour se partage en deux tableaux, et une partie muette n'entre
+  // dans aucun des deux (cf. routeRankingForSave). Sans témoin, elle ne
+  // paraîtrait donc pas sur la fiche.
+  await fetch(`${BASE}/api/saveScore?sid=${sid}&game=kaluga&score=1200&m=0&data=1%3A0%3A0`);
 
   const f = await fiche(sid, u);
   const jeux = f.scores.classements.map((c) => c.jeu);

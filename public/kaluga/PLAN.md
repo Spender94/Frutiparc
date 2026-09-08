@@ -328,16 +328,40 @@ lui, joue toujours les règles de 2005. `test/kalugaRegles.test.js` les épingle
    s'ajoute ensuite comme pour toute pomme. Le panneau de fin l'affiche.
 
 3. **Deux défis du jour : Grappe et Freestyle** (serveur, `kalugaAvecGrappe`,
-   `routeRankingForSave`). Dès qu'une grappe de **plus de mille points** est
-   passée (la Mega, taille 7, 1280), la partie va au tableau Grappe
-   (`kaluga_classic`, celui d'avant le partage) ; sinon au Freestyle
+   `routeRankingForSave`). Dès qu'une grappe atteint **la taille 8** —
+   l'Atomique, 2560 points —, la partie va au tableau Grappe (`kaluga_classic`,
+   celui d'avant le partage) ; sinon au Freestyle
    (`kaluga_freestyle_classic`). Les deux sont des défis de plein droit :
-   remise à zéro chaque nuit, médailles, quota FD. Le portage envoie la plus
-   grosse grappe (`gMax`) et se lit à la taille près ; le disque Flash n'envoie
-   que le OU des tailles, qui ne sait certifier qu'« une taille ≥ 8 » : pour
-   lui, la marche reste l'Atomique (2560). Une partie sans témoin reste au
-   tableau Grappe. Le record permanent `kaluga_freestyle` est nourri par toute
-   partie certifiée sans grappe.
+   remise à zéro chaque nuit, médailles, quota FD.
+
+   **Une seule marche, et c'est huit.** Le portage envoie la plus grosse
+   grappe (`gMax`) et sait donc lire n'importe quelle taille ; le disque Flash
+   n'envoie que le OU des tailles, qui ne peut certifier qu'« une taille ≥ 8 »
+   (le OU de tailles toutes < 8 reste ≤ 7). Deux marches — sept pour l'un,
+   huit pour l'autre — classaient la même partie ici ou là selon la façon de
+   la lancer ; on garde donc la seule que les deux savent dire.
+   `KALUGA_GRAPPE_SEUIL` la tient à lui seul.
+
+   Ce n'est pas qu'une mise en accord : le compteur `grappe` du jeu monte à
+   **chaque fruit encaissé** et ne retombe qu'une seconde après le premier —
+   c'est le nombre de fruits attrapés dans une seconde et demie, pas la taille
+   d'un amas. Sept dans ce laps de temps, c'est une bonne série ordinaire ;
+   huit demande une vraie bousculade. De là venaient les fausses grappes.
+
+   **Sans témoin, aucun des deux.** Une partie muette allait au tableau Grappe
+   « puisqu'on ne certifie pas un freestyle sur une absence » — mais c'était
+   certifier une grappe sur cette même absence. Chacun des deux tableaux dit
+   quelque chose de précis ; une partie qu'on ne sait pas lire n'a rien à y
+   prouver. Elle garde son record permanent.
+
+   **Le quota se compte par TABLEAU** (`fdSeauDuClassement`, `FD_SEAUX_PAR_JEU`).
+   Ce n'est pas le joueur qui choisit son tableau — c'est sa partie qui le
+   décide, à l'arrivée : deux parties à grappe et le Freestyle serait resté
+   fermé pour la journée. Chacun a donc ses deux parties gratuites, le Pass
+   restant attaché au JEU (on n'en achète pas un par tableau).
+
+   Le record permanent `kaluga_freestyle` est nourri par toute partie certifiée
+   sans grappe.
 
 ## Les séquences (INTRODUCTION, CREDITS)
 

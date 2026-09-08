@@ -1796,22 +1796,45 @@ function parseKalugaTzId(raw) {
  *     de la partie, telle quelle. Lui se lit à la taille près, à sept.
  *
  * Les données d'avant le patch (« [object Object] », MT sérialisé, tz=1…)
- * n'ont pas de témoin : null — la partie est inclassable en freestyle, et
- * reste au tableau Grappe (celui d'avant le partage).
+ * n'ont pas de témoin : null. Une partie sans témoin n'entre dans AUCUN des
+ * deux tableaux du jour — cf. `routeRankingForSave`.
+ *
+ * ══ UNE SEULE MARCHE, ET POURQUOI C'EST HUIT ══════════════════════════════
+ *
+ * « Certains scores tombent dans grappe alors qu'aucune grappe n'a été
+ * réalisée pendant la partie. »
+ *
+ * Les deux témoins ne se lisaient pas à la même hauteur : le portage à SEPT
+ * (la Mega-grappe, 1280 points), le disque à HUIT (l'Atomique, 2560) — parce
+ * que son OU ne sait rien certifier en dessous. La même partie changeait donc
+ * de tableau selon qu'on la jouait en JavaScript ou sous Ruffle. Une seule
+ * marche, forcément la plus haute des deux : le disque ne peut pas descendre.
+ *
+ * ET CE N'EST PAS QU'UNE MISE EN ACCORD. Le compteur `grappe` du jeu monte à
+ * CHAQUE FRUIT ENCAISSÉ (kaluga.game, `addScore`), et il ne retombe qu'une
+ * seconde après le premier — sa valeur est donc le nombre de fruits attrapés
+ * dans une seconde et demie, pas la taille d'un amas. Sept fruits dans ce
+ * laps de temps, c'est une bonne série ordinaire ; huit demande une vraie
+ * bousculade. C'est de là que venaient les fausses grappes.
+ *
+ * Une marche, un seul endroit : bouger `KALUGA_GRAPPE_SEUIL` bouge les deux
+ * témoins ensemble, et rien d'autre n'a son mot à dire.
  */
-const KALUGA_GRAPPE_TAILLE = 7;      // > 1000 points : la Mega-grappe (1280)
-const KALUGA_GRAPPE_SEUIL = 8;       // ce que le OU du disque Flash sait certifier
+const KALUGA_GRAPPE_SEUIL = 8;       // l'Atomique-grappe : 2^8 × 10 = 2560 points
 function parseKalugaGrappe(raw) {
   const m = String(raw || '').trim().match(/^(-?\d+):(\d+)(?::(\d+))?$/);
   if (!m) return null;
   return { ou: Number(m[2]), max: m[3] !== undefined ? Number(m[3]) : null };
 }
-// true = une grappe de plus de mille points est passée ; false = partie sans ;
-// null = pas de témoin (la partie est inclassable en freestyle).
+// true = une grappe assez grosse est passée ; false = partie sans ;
+// null = pas de témoin (la partie n'entre dans aucun des deux tableaux).
 function kalugaAvecGrappe(raw) {
   const t = parseKalugaGrappe(raw);
   if (!t) return null;
-  if (t.max !== null) return t.max >= KALUGA_GRAPPE_TAILLE;
+  // Le maximum se lit à la taille près ; le OU, lui, ne peut allumer le bit 3
+  // qu'avec une taille ≥ 8 (le OU de tailles toutes < 8 reste ≤ 7). Les deux
+  // disent donc la même chose à la même marche.
+  if (t.max !== null) return t.max >= KALUGA_GRAPPE_SEUIL;
   return t.ou >= KALUGA_GRAPPE_SEUIL;
 }
 
@@ -2107,13 +2130,33 @@ function getBkiwiDailyTrack(date = new Date()) {
 //     score visible even when track detection is stale or biased.
 //   • MB2: the same packed time+pct score feeds the all-time and daily rankings.
 function routeRankingForSave(rankingId, username, scoreData) {
-  // KALUGA : le défi du jour se partage en deux d'après la donnée de score.
-  // Une partie où une grappe de plus de mille points est passée va au tableau
-  // Grappe (kaluga_classic, celui d'avant le partage) ; une partie sans va au
-  // Freestyle. Une donnée muette (vieux client) reste au tableau Grappe : on
-  // ne certifie pas un freestyle sur une absence de témoin.
-  if (rankingId === 'kaluga_classic' && kalugaAvecGrappe(scoreData) === false) {
-    return { rankingId: 'kaluga_freestyle_classic', extraRankingId: null, hint: undefined, daily: undefined };
+  /*
+   * KALUGA : le défi du jour se partage en deux d'après le témoin de grappe.
+   * Grappe assez grosse → le tableau Grappe (kaluga_classic, celui d'avant le
+   * partage) ; partie sans → le Freestyle.
+   *
+   * ET SANS TÉMOIN, NI L'UN NI L'AUTRE. Une donnée muette restait au tableau
+   * Grappe, « puisqu'on ne certifie pas un freestyle sur une absence » — mais
+   * c'était certifier une GRAPPE sur cette même absence, et y ranger des
+   * parties qui n'en avaient pas fait. Les deux tableaux disent quelque chose
+   * de précis : le premier qu'une grappe est passée, le second qu'aucune ne
+   * l'est. Une partie qu'on ne sait pas lire n'a rien à prouver ni dans l'un
+   * ni dans l'autre. Elle garde son record permanent (kaluga_freestyle et le
+   * Championnat ne passent pas par ici) ; c'est le défi du jour qu'elle rate.
+   *
+   * Le cas est rare et le devient : les deux clients envoient leur témoin,
+   * le portage en trois champs, le disque rustiné en deux. Seul un SWF resté
+   * en cache depuis avant la rustine arrive muet.
+   */
+  if (rankingId === 'kaluga_classic') {
+    const grappe = kalugaAvecGrappe(scoreData);
+    if (grappe === false) {
+      return { rankingId: 'kaluga_freestyle_classic', extraRankingId: null, hint: undefined, daily: undefined };
+    }
+    if (grappe === null) {
+      return { rankingId: null, extraRankingId: null, hint: undefined, daily: undefined,
+        sansTemoin: true };
+    }
   }
   if (rankingId && rankingId.startsWith('bkiwi_')) {
     const u = users[username];
@@ -3915,8 +3958,10 @@ function fdGatedBucketGame(rankingId) {
   return null;
 }
 
+// Accepte un SEAU autant qu'un jeu (« kaluga:freestyle » vaut « kaluga ») :
+// c'est le jeu qui porte la limite, ses tableaux n'en sont que les comptes.
 function fdGameIsLimited(game) {
-  return FD_LIMITED_GAMES.has(String(game || '').toLowerCase());
+  return FD_LIMITED_GAMES.has(fdJeuDuSeau(String(game || '').toLowerCase()));
 }
 
 function parseFdState(raw) {
@@ -3939,6 +3984,41 @@ function fdEnsureToday(user) {
   if (!st.p || typeof st.p !== 'object') st.p = {};
   return st;
 }
+/*
+ * ══ UN JEU, PARFOIS DEUX TABLEAUX — ET DEUX COMPTES ═══════════════════════
+ *
+ * « Si un joueur a un score enregistré dans un des classements, il doit
+ * pouvoir concourir dans l'autre classement. »
+ *
+ * Le quota se comptait par JEU. Kaluga ayant depuis deux défis du jour — le
+ * Grappe et le Freestyle —, ses deux parties quotidiennes se partageaient
+ * entre eux : deux parties à grappe, et le Freestyle restait fermé pour la
+ * journée, sans que le joueur ait jamais eu l'occasion d'y entrer. Or ce
+ * n'est pas lui qui choisit son tableau — c'est sa partie qui le décide, à
+ * l'arrivée.
+ *
+ * Le compte des parties JOUÉES se tient donc par TABLEAU. Le reste ne bouge
+ * pas : le Pass s'achète pour le JEU et vaut pour ses deux tableaux (on n'en
+ * a pas acheté deux), et l'affichage du light annonce le meilleur des deux —
+ * dire « plus de FD » à quelqu'un qui peut encore entrer au Freestyle serait
+ * lui mentir.
+ */
+function fdSeauDuClassement(rankingId) {
+  const r = String(rankingId || '');
+  if (r === 'kaluga_freestyle_classic') return 'kaluga:freestyle';
+  return null;
+}
+// Les seaux d'un jeu — le sien, plus ceux de ses tableaux à part.
+const FD_SEAUX_PAR_JEU = { kaluga: ['kaluga', 'kaluga:freestyle'] };
+function fdSeauxDuJeu(game) {
+  const g = String(game || '').toLowerCase();
+  return FD_SEAUX_PAR_JEU[g] || [g];
+}
+// Le jeu d'un seau : c'est lui qui porte le Pass et la limite gratuite.
+function fdJeuDuSeau(seau) {
+  const i = String(seau || '').indexOf(':');
+  return i < 0 ? String(seau || '') : String(seau).slice(0, i);
+}
 function fdGameEntry(user, game) {
   const st = fdEnsureToday(user);
   const key = String(game || '').toLowerCase();
@@ -3952,9 +4032,11 @@ function fdPassCount(user, game) {
 }
 // Parties challenge autorisées aujourd'hui = gratuites + pass (+ d'éventuels FD
 // « du jour » crédités par l'ancien modèle d'achat à l'unité, champ b hérité).
+// `game` accepte un SEAU (« kaluga:freestyle ») : la limite gratuite et le
+// Pass se lisent alors sur le jeu, le crédit hérité `b` sur le seau.
 function fdAllowance(user, game) {
   const e = fdGameEntry(user, game);
-  return FD_FREE_PER_DAY + fdPassCount(user, game) + Math.max(0, Number(e.b) || 0);
+  return FD_FREE_PER_DAY + fdPassCount(user, fdJeuDuSeau(game)) + Math.max(0, Number(e.b) || 0);
 }
 function fdRemaining(user, game) {
   const e = fdGameEntry(user, game);
@@ -4026,16 +4108,19 @@ function fdGameFromRanking(rankingId) { return String(rankingId || '').split('_'
 // sécurité UNIVERSEL : tout score challenge passe par persistScore(challenge),
 // quel que soit le chemin (socket ou HTTP). Le SWF patché, lui, réserve la
 // partie AVANT la course via /do/fdclaim (jeton) — voir fdGrantPlayToken.
-function fdGateChallengeScore(username, user, game) {
+function fdGateChallengeScore(username, user, game, rankingId) {
   if (!user || !fdGameIsLimited(game)) return true;
-  if (fdConsume(username, user, game)) return true;
+  // Le compte se tient par TABLEAU quand le jeu en a plusieurs : avoir épuisé
+  // le Grappe ne doit pas fermer le Freestyle (cf. fdSeauDuClassement).
+  const seau = fdSeauDuClassement(rankingId) || game;
+  if (fdConsume(username, user, seau)) return true;
   // UNE SEULE notification par jeu et par jour. Le message est une information,
   // pas un événement à archiver : le répéter à chaque partie refusée noyait
   // l'historique du joueur (et un jeu qui ré-enregistre son score en boucle en
   // engendrait des dizaines d'affilée). Le drapeau vit dans l'entrée FD du jour,
   // donc il se remet à zéro tout seul au changement de journée et survit à un
   // redémarrage comme le reste du quota.
-  const e = fdGameEntry(user, game);
+  const e = fdGameEntry(user, seau);
   if (!e.n) {
     e.n = 1;
     fdPersist(username, user);
@@ -4044,7 +4129,7 @@ function fdGateChallengeScore(username, user, game) {
       content: `Plus de FD pour le challenge « ${fdGameLabel(game)} » aujourd'hui : tes prochains scores ne seront pas classés. Le Pass quotidien (Boutique, rubrique Pass) ajoute une partie par jour, pour toujours !`,
     });
   }
-  console.log(`[FD] ${username} : challenge ${game} BLOQUÉ (plus de FD)`);
+  console.log(`[FD] ${username} : challenge ${seau} BLOQUÉ (plus de FD)`);
   return false;
 }
 
@@ -4085,7 +4170,7 @@ function fdAuthorizeChallengeSave(sid, username, game, routed) {
   const hint = routed && routed.hint;
   const daily = routed && routed.daily;
   if (Number.isFinite(hint) && Number.isFinite(daily) && hint !== daily) return 'skip';
-  if (fdGateChallengeScore(username, users[username], game)) return 'ok';
+  if (fdGateChallengeScore(username, users[username], game, routed && routed.rankingId)) return 'ok';
   fdFlagRefusal(sid, game); // le popup de jeu affichera l'overlay d'info
   return 'blocked';
 }
@@ -4232,17 +4317,33 @@ function fdTakeRefusalFlag(sid) {
 }
 
 // Vue lisible de l'état FD d'un jeu (pour les endpoints / l'admin).
+/*
+ * L'ÉTAT DU QUOTA, TEL QUE LE LIGHT L'AFFICHE.
+ *
+ * Un jeu à plusieurs tableaux du jour tient un compte par tableau (cf.
+ * fdSeauDuClassement) : ses chiffres se lisent donc en SOMME. Kaluga, qui a
+ * le Grappe et le Freestyle, offre ainsi deux parties classées de chaque
+ * côté — quatre en tout — et n'en ferme jamais un parce que l'autre est à
+ * sec. Pour tous les autres jeux il n'y a qu'un seau : la somme d'un seul
+ * terme, et rien ne change.
+ */
 function fdSnapshot(user, game) {
   const limited = fdGameIsLimited(game);
-  const e = fdGameEntry(user, game);
+  const seaux = fdSeauxDuJeu(game);
+  const somme = (f) => seaux.reduce((n, s) => n + f(s), 0);
   return {
     game: String(game || '').toLowerCase(),
     limited,
-    free: FD_FREE_PER_DAY,
+    free: FD_FREE_PER_DAY * seaux.length,
     passes: fdPassCount(user, game),
-    allowance: fdAllowance(user, game),
-    used: Number(e.u) || 0,
-    remaining: limited ? fdRemaining(user, game) : null, // null = illimité
+    allowance: somme((s) => fdAllowance(user, s)),
+    used: somme((s) => Number(fdGameEntry(user, s).u) || 0),
+    remaining: limited ? somme((s) => fdRemaining(user, s)) : null, // null = illimité
+    // Le détail par tableau, pour qui veut l'afficher (Kaluga en a deux).
+    seaux: seaux.length > 1
+      ? seaux.map((s) => ({ seau: s, used: Number(fdGameEntry(user, s).u) || 0,
+        remaining: fdRemaining(user, s) }))
+      : undefined,
     passPrice: FD_PASS_PRICE,
   };
 }
@@ -7818,6 +7919,16 @@ async function handleSaveScore(req, res) {
     routedInfo = routed;
     if (routed.daily !== undefined) {
       console.log(`[HTTP]  bkiwi route hint=${routed.hint} daily=${routed.daily} -> classic:${rankingId} challenge:${extraRankingId}`);
+    }
+    // Kaluga sans témoin de grappe : aucun des deux tableaux du jour ne peut
+    // l'accueillir sans mentir (cf. routeRankingForSave). On ne consomme rien
+    // et l'on ne classe rien — le joueur garde sa partie et son quota.
+    if (routed.sansTemoin) {
+      console.log(`[HTTP]  saveScore ${username} kaluga ${scoreVal} NON classé — pas de témoin de grappe (data="${scoreData}")`);
+      return res.json({
+        ok: true, updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0,
+        rankingId: null, fdBlocked: false, sansTemoin: true,
+      });
     }
   }
 
@@ -13835,10 +13946,23 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
     console.log(`[SWF-SCORE] unknown ranking game="${gameName}" sid="${effectiveSid}" user="${username}"`);
     return res.type('text/plain').send('ok=0');
   }
-  // Same BKiwi/MB2 routing as the other save paths (single source of truth), so
-  // a score arriving via this loadVariables fallback lands in the same rankings
-  // — including the daily challenge anchored to today's track.
-  const routed = routeRankingForSave(rankingId, username);
+  /*
+   * Même routage que les deux autres chemins de save (une seule source de
+   * vérité), pour qu'un score arrivé par ce repli `loadVariables` tombe dans
+   * les mêmes classements — défi du jour ancré au circuit d'aujourd'hui inclus.
+   *
+   * CE CHEMIN N'A PAS DE DONNÉE DE SCORE, et il faut le dire : l'URL ne porte
+   * que le score. On passait `undefined`, ce qui, pour Kaluga, revenait à
+   * envoyer TOUTES ces parties au tableau Grappe — sans le moindre témoin.
+   * On passe donc la chaîne vide explicitement : `routeRankingForSave` en tire
+   * « pas de témoin », et la partie n'entre dans aucun des deux tableaux du
+   * jour plutôt que d'en polluer un.
+   */
+  const routed = routeRankingForSave(rankingId, username, '');
+  if (routed.sansTemoin) {
+    console.log(`[SWF-SCORE] ${username} kaluga ${scoreVal} NON classé — ce chemin ne porte pas de témoin de grappe`);
+    return res.type('text/plain').send('ok=0');
+  }
   rankingId = routed.rankingId;
   // Portillon FD, identique aux deux autres chemins de save : un seul verdict par
   // partie (fdApplyToSave), qui décide de classer la cuve directe et/ou le miroir.
@@ -26891,6 +27015,13 @@ async function handleCBeeMessage(socket, rawXml) {
           routedInfo = routed;
           if (routed.daily !== undefined) {
             console.log(`[FSCORE] bkiwi route hint=${routed.hint} daily=${routed.daily} -> classic:${rankingId} challenge:${extraRankingId}`);
+          }
+          // Kaluga sans témoin : ni Grappe ni Freestyle (cf. routeRankingForSave).
+          // `rankingId` est nul, la garde plus bas suffit — mais elle serait
+          // muette, et un score qui ne se classe pas doit se lire dans le
+          // journal.
+          if (routed.sansTemoin) {
+            console.log(`[FSCORE] ${username} kaluga ${scoreVal} NON classé — pas de témoin de grappe (data="${scoreData}")`);
           }
         }
         // Persist if we have a valid ranking + user.
