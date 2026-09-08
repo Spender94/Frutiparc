@@ -109,11 +109,11 @@ test('« larme » joue la larme, pas le sanglot', () => {
   assert.match(LIGHT, /add\("larme", "laisse couler une larme", \[":'\(", ";\(", "larme", "snif"\]\);/);
   assert.match(LIGHT, /add\("pleurer", "pleure", \[':-"\(', ";\(\(", "pleure", "ouin"\]\);/);
   // L'indice de `playAnim` : 11 pour l'un, 12 pour l'autre. (La table s'est
-  // allongée d'une quatorzième émote, « beurk » ; ces deux-là ne bougent pas.)
+  // allongée depuis — beurk, jutsu, tousse ; ces deux-là ne bougent pas.)
   assert.match(LIGHT, /pleurer:11, larme:12,/);
   assert.match(LIGHT, /pleurer:"pleure", larme:"laisse couler une larme",/);
   // Et le moteur connaît bien les deux pellicules.
   const MOTEUR = fs.readFileSync(path.join(ROOT, 'public/js/bouille-moteur.js'), 'utf8');
-  assert.match(MOTEUR, /'miam', 'pleure', 'larme', 'beurk'\];/);
+  assert.match(MOTEUR, /'miam', 'pleure', 'larme', 'beurk'/);
   assert.match(MOTEUR, /face\.allerImage\('larme', false\);/);
 });

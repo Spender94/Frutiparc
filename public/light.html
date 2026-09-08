@@ -10864,6 +10864,13 @@
        vert. Un desktop d'époque ne la connaît pas — il imprimera le mot, comme
        il le fait déjà de tout ce qu'il ne sait pas jouer. */
     add("beurk", "a la nausée", ["beurk", "berk", "bwark"]);              // id 13
+    /* LES DEUX EMPRUNTÉES. « jutsu » est la chute d'hiko (famille 12) : la
+       tête part en fumée et il ne reste qu'un chocapic. « tousse » est la
+       quinte de la famille 15, sans sa bulle de chewing-gum. Leurs dessins
+       sont récoltés dans public/fbouille/emotes.json — jusqu'ici elles ne
+       jouaient que sur la famille qui les portait. */
+    add("jutsu", "chocapic no jutsu", ["jutsu", "chocapic"]);             // id 14
+    add("tousse", "tousse", ["tousse", "cough", "keuf"]);                // id 15
   })();
   function detectEmote(text) {
     var key = String(text == null ? "" : text).trim();   // whole-message, case-sensitive
@@ -10977,10 +10984,11 @@
   // anim id → l'indice de playAnim, celui que le moteur attend (FPBouilleVignette.jouer).
   var ANIM_INDEX = { parle:1, rire:2, mdr:3, langue:4, rougir:5, regard:6,
     sifflote:7, gum:8, question:9, miam:10, pleurer:11, larme:12,
-    // La quatorzième n'est pas d'époque : elle emprunte la pellicule de
-    // « rougir » et lui met le visage de la tristesse, le fard passé au vert
-    // (cf. jouerAnim id 13, public/js/bouille-moteur.js).
-    beurk:13 };
+    // Les trois dernières ne sont pas d'époque : « beurk » emprunte la
+    // pellicule de « rougir » et lui met le visage de la tristesse, le fard
+    // passé au kaki ; « jutsu » et « tousse » empruntent leur chute à une
+    // autre famille (cf. jouerAnim, public/js/bouille-moteur.js).
+    beurk:13, jutsu:14, tousse:15 };
   // Caption phrases for the bouille overlay — the EXACT desktop wording
   // (lang_french.as chat.action, entrées 2 à 12).
   var ANIM_LABEL = { parle:"parle", rire:"rigole", mdr:"éclate de rire",
@@ -10988,7 +10996,7 @@
     langue:"tire la langue", miam:"se régale",
     question:"se pose des questions", rougir:"rougit", sifflote:"sifflote",
     gum:"fait une bulle de chewing-gum", regard:"regarde ailleurs",
-    beurk:"a la nausée" };
+    beurk:"a la nausée", jutsu:"chocapic no jutsu", tousse:"tousse" };
   /*
    * LA RÉACTION QUI PASSE SUR LE CHAT.
    *

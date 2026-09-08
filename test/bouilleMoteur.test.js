@@ -209,11 +209,12 @@ test('emoteList et actionList sont celles du script racine', async () => {
     [[0, 0], [1, 2], [2, 1], [0, 3], [3, 4], [1, 4], [2, 3], [2, 6]]);
   // `actionList` du script racine s'arrête à « larme » : ce sont les TREIZE de
   // 2005, et c'est cette tranche-là qui doit rester intacte. Ce qui vient
-  // après est de nous — « beurk » (cf. jouerAnim id 13) — et ne s'intercale
-  // pas : un indice d'époque garde son sens sur le fil et dans les relevés.
+  // après est de nous — « beurk », puis les deux chutes empruntées à
+  // d'autres familles — et ne s'intercale pas : un indice d'époque garde son
+  // sens sur le fil et dans les relevés.
   assert.deepStrictEqual(Moteur.ANIMATIONS.slice(0, 13), ['stop', 'parle', 'rire', 'mdr', 'langue',
     'rougir', 'regard', 'siffle', 'gum', 'question', 'miam', 'pleure', 'larme']);
-  assert.deepStrictEqual(Moteur.ANIMATIONS.slice(13), ['beurk']);
+  assert.deepStrictEqual(Moteur.ANIMATIONS.slice(13), ['beurk', 'jutsu', 'tousse']);
   assert.strictEqual(Moteur.NOMS_ANIMATIONS.length, Moteur.ANIMATIONS.length,
     'chaque animation a son nom');
   const defs = await lire('famille0.swf');
@@ -572,3 +573,4 @@ test('la transformation qui kakise le fard : le rouge s’éteint, le kaki se po
   // Et le dessin ne teinte QUE les morphs, quand le drapeau est levé.
   assert.match(src, /if \(this\.fardKaki && this\.defs\.morphs && this\.defs\.morphs\.has\(id\)\) \{\s*\n\s*cx = composerCx\(cx, CX_FARD_KAKI\);/);
 });
+

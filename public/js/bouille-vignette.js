@@ -239,6 +239,27 @@
   }
 
   /*
+   * LES ÉMOTES QUI VIENNENT D'AILLEURS.
+   *
+   * Deux animations empruntent leurs dessins à une autre famille — la fumée
+   * et le chocapic du jutsu (famille 12) — et une troisième une courbe de
+   * mouvement (la toux de la famille 15). Tout cela tient dans un fichier
+   * récolté, `emotes.json`, qu'on ne va chercher QUE si quelqu'un joue une
+   * de ces émotes : les vingt-cinq kilo-octets ne pèsent sur personne
+   * d'autre. Une fois là, il sert toutes les bouilles de la page.
+   */
+  var EMOTES_GREFFEES = [14, 15];
+  var paquetEmotes = null;
+  function emotes() {
+    if (!paquetEmotes) {
+      paquetEmotes = fetch(DOSSIER + 'emotes.json')
+        .then(function (r) { if (!r.ok) throw new Error('emotes.json introuvable'); return r.json(); })
+        .catch(function () { return null; });   // sans elles, l'émote ne fait rien
+    }
+    return paquetEmotes;
+  }
+
+  /*
    * Monte la bouille sur ce canevas. Rend une promesse, mise en cache.
    *
    * LE NUMÉRO DE TOUR, ET POURQUOI IL N'EST PAS DÉCORATIF.
@@ -440,8 +461,20 @@
   function jouer(c, etat, anim, humeur) {
     c.setAttribute('data-anime', '1');
     if (etat !== undefined) rafraichir(c, etat, humeur);
+    var n = Number(anim) || 1;
+    // Une émote greffée attend son paquet : le monter à moitié ne donnerait
+    // qu'une tête effacée sans rien à sa place.
+    if (EMOTES_GREFFEES.indexOf(n) >= 0) {
+      return Promise.all([dessiner(c), emotes()]).then(function (r) {
+        var b = r[0];
+        if (!b) return null;
+        if (r[1] && b.moteur) b.moteur.greffer(r[1]);
+        b.animer(n);
+        return b;
+      });
+    }
     return dessiner(c).then(function (b) {
-      if (b) b.animer(Number(anim) || 1);
+      if (b) b.animer(n);
       return b;
     });
   }

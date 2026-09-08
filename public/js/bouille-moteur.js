@@ -97,11 +97,25 @@
 
   // emoteList et actionList du script racine des familles.
   const HUMEURS = [[0, 0], [1, 2], [2, 1], [0, 3], [3, 4], [1, 4], [2, 3], [2, 6]];
-  // `actionList` s'arrête à « larme » (indice 12) — les treize du parc de 2005.
-  // « beurk » est la QUATORZIÈME, la seule qui ne vienne pas du SWF : elle ne
-  // dessine rien de neuf, elle rassemble (cf. jouerAnim, id 13).
+  /*
+   * `actionList` s'arrête à « larme » (indice 12) — les treize du parc de 2005.
+   * Ce qui suit est de nous, et se range AU BOUT : un indice d'époque garde
+   * son sens sur le fil, dans les relevés et sur les planches d'images.
+   *
+   *   13 beurk    « rougir » avec le visage de la tristesse, le fard en kaki ;
+   *   14 jutsu    la chute d'hiko (famille 12) : la tête part en fumée et il
+   *               ne reste qu'un chocapic ;
+   *   15 tousse   la quinte de la famille 15 : la tête sursaute deux fois,
+   *               les yeux fermés.
+   *
+   * Les deux dernières viennent d'AUTRES FAMILLES. Leurs dessins — la fumée
+   * et le chocapic — sont récoltés dans public/fbouille/emotes.json
+   * (scripts/extract-emotes-bouille.js) et greffés par `greffer()` ; leur
+   * déroulé, lui, est rejoué ici plutôt que copié, parce que la pellicule
+   * d'hiko n'existe pas dans les autres familles.
+   */
   const ANIMATIONS = ['stop', 'parle', 'rire', 'mdr', 'langue', 'rougir', 'regard',
-    'siffle', 'gum', 'question', 'miam', 'pleure', 'larme', 'beurk'];
+    'siffle', 'gum', 'question', 'miam', 'pleure', 'larme', 'beurk', 'jutsu', 'tousse'];
   // Les noms tels que le parc les affiche déjà — ceux du forum (EXPRESSIONS,
   // public/fb/index.html) et de la page de démonstration. Le SWF, lui, ne
   // nomme pas ses humeurs : emoteList n'est qu'un tableau de couples.
@@ -109,7 +123,7 @@
     'Déterminé', 'Embarrassé', 'Totoché'];
   const NOMS_ANIMATIONS = ['Repos', 'Parler', 'Rire', 'MDR', 'Langue', 'Rougir',
     'Regard', 'Sifflote', 'Chewing-gum', 'Question', 'Miam', 'Pleurer', 'Larme',
-    'Beurk'];
+    'Beurk', 'Jutsu', 'Tousse'];
   // actionList nomme « siffle » et « pleure » ce que la pellicule étiquette
   // « sifflote » et « pleurer ». playAnim() vise les étiquettes.
   const ETIQUETTES = { siffle: 'sifflote', pleure: 'pleurer' };
@@ -752,6 +766,73 @@
       if (oo) oo.allerImage(r.emoteEye + 1, false);
     }
   };
+  /*
+   * LA GREFFE DES ÉMOTES D'AILLEURS.
+   *
+   * `emotes.json` porte les dessins récoltés dans les autres familles — la
+   * fumée et le chocapic du jutsu — renumérotés au-delà de la plage d'un SWF
+   * pour ne heurter aucun caractère de la famille d'accueil. On les verse
+   * dans ses tables, une fois : le moteur les dessine ensuite comme les
+   * siens, `formeDe` et `dessinerClip` ne voient pas la différence.
+   *
+   * Idempotent, et sans effet sur une famille qui les a déjà : c'est la même
+   * `defs` qui sert toutes les bouilles d'une page.
+   */
+  Moteur.prototype.greffer = function (paquet) {
+    if (!paquet || !this.defs) return this;
+    this.emotes = paquet;
+    if (this.defs._emotesGreffees) return this;
+    Object.entries(paquet.formes || {}).forEach(([id, f]) => {
+      const n = Number(id);
+      if (!this.defs.formes.has(n)) this.defs.formes.set(n, f);
+    });
+    Object.entries(paquet.sprites || {}).forEach(([id, sp]) => {
+      const n = Number(id);
+      if (!this.defs.sprites.has(n)) this.defs.sprites.set(n, sp);
+    });
+    this.defs._emotesGreffees = true;
+    return this;
+  };
+
+  /*
+   * LES DEUX CHUTES, RYTHMÉES À LA MAIN.
+   *
+   * Relevé sur les pellicules d'époque, en battements de quarante par seconde
+   * comptés depuis le début de l'animation :
+   *
+   *   JUTSU (famille 12, étiquette `jutsu2`). La fumée et le chocapic
+   *   paraissent ensemble ; la fumée s'efface de cinq pour cent par battement
+   *   — c'est la boucle de l'image 133 — et disparaît au vingtième ; le
+   *   chocapic reste jusqu'au bout. On ne rejoue PAS le « regarde ailleurs »
+   *   qui la précède chez hiko : ici la chute commence à la fumée.
+   *
+   *   TOUX (famille 15, étiquette `tousse`). Deux sursauts de six battements
+   *   sur la courbe relevée (`emotes.json`, `toux.secousse`), séparés de
+   *   quatre battements de calme ; la bouche s'ouvre au début de chaque
+   *   sursaut et se referme à sa fin ; les yeux restent clos du début à la
+   *   fin. On ne rejoue pas la bulle de chewing-gum qui l'amène chez elle.
+   */
+  const JUTSU_FUMEE = 20;              // battements pendant lesquels la fumée tient
+  const JUTSU_FIN = 129;               // de `jutsu2` au retour au repos
+  /*
+   * QUATRE SURSAUTS, ET NON DEUX — le seul écart assumé avec le relevé.
+   *
+   * La famille 15 en fait deux, à dix battements d'intervalle, et referme en
+   * vingt-cinq. C'est court parce que ce n'est pas elle qui porte la quinte :
+   * chez elle, la bulle de chewing-gum vient d'éclater et un gros nuage
+   * couvre la tête pendant tout ce temps — la secousse ne fait qu'accompagner
+   * le nuage. On nous demande la toux SANS la bulle : il ne reste que la
+   * secousse, et elle est discrète (deux degrés, trois pixels sur deux cent
+   * quarante). Deux sursauts en six dixièmes de seconde passeraient inaperçus.
+   *
+   * On garde donc la courbe et le rythme d'époque — rien n'est amplifié,
+   * chaque sursaut est celui du relevé, au dixième de degré près — et l'on
+   * prolonge la quinte à quatre, un peu plus d'une seconde. C'est une toux,
+   * plus un hoquet.
+   */
+  const TOUX_SURSAUTS = [0, 10, 20, 30];
+  const TOUX_FIN = 45;
+
   Moteur.prototype.humeur = function (id) {
     const h = HUMEURS[id] || HUMEURS[0];
     this.racine.emoteEye = h[0];
@@ -783,6 +864,8 @@
     // Le fard kaki n'appartient qu'à « beurk » : toute autre animation
     // — le retour au repos compris — le range.
     this.fardKaki = (id === 13);
+    // Et les deux chutes ne durent que le temps de la leur.
+    if (id !== 14 && id !== 15) this.chute = null;
 
     if (id === 0) {
       r.endAnim();
@@ -888,16 +971,118 @@
       muet();
       if (bb) bb.allerImage(triste[1] + 1, false);
       face.vars.compt = 40;
+    } else if (id === 14) {
+      /*
+       * JUTSU — la chute d'hiko, sans son « regarde ailleurs ».
+       *
+       * Le visage ne joue rien : il DISPARAÎT (cf. `dessiner`), comme
+       * l'image 132 d'hiko qui met les huit profondeurs du visage à
+       * l'alpha zéro. Restent la fumée puis le chocapic, posés par le
+       * moteur — les deux seuls dessins de la chute, greffés depuis la
+       * famille 12.
+       *
+       * Sans la greffe, on ne fait rien : mieux vaut une bouille qui ne
+       * bouge pas qu'une tête effacée et rien à sa place.
+       */
+      const paq = this.emotes;
+      if (!paq || !paq.jutsu) return this;
+      r.flStop = false; r.next = 0;
+      face.allerImage(1, false);
+      oeil(r.emoteEye + 1);
+      muet();
+      if (bb) bb.allerImage(r.emoteMouth + 1, false);
+      // Un clip neuf n'a encore rien monté : sa liste d'affichage se remplit
+      // au passage de l'image 1. Sans ce coup d'envoi, le chocapic — qui n'a
+      // qu'une image et n'avance jamais — ne poserait jamais son dessin.
+      const monter = (ch) => {
+        const c = new Clip(this, this.defs.sprites.get(ch), null);
+        c.allerImage(1, true);
+        return c;
+      };
+      this.chute = {
+        quoi: 'jutsu', t: 0,
+        fumee: monter(paq.jutsu.fumee.ch),
+        chocapic: monter(paq.jutsu.chocapic.ch),
+      };
+    } else if (id === 15) {
+      /*
+       * TOUSSE — la quinte de la famille 15, sans sa bulle de chewing-gum.
+       *
+       * Ce qu'elle emprunte tient en trois gestes, relevés sur ses images
+       * 90 et 97 : les yeux se ferment, la bouche s'ouvre à chaque sursaut,
+       * et la tête entière recule sur la courbe de `toux.secousse`. Aucun
+       * dessin n'est en jeu — la secousse se compose au repère du visage,
+       * dans `dessiner`.
+       */
+      r.flStop = false; r.next = 0;
+      face.allerImage(1, false);
+      oeil('ferme');
+      muet();
+      if (bb) bb.allerImage('parle1', true);
+      this.chute = { quoi: 'toux', t: 0 };
     }
     return this;
   };
 
   Moteur.prototype.avancer = function () {
-    return this.racine.face ? this.racine.face.avancer() : false;
+    const bouge = this.racine.face ? this.racine.face.avancer() : false;
+    return this.avancerChute() || bouge;
+  };
+
+  /*
+   * LE BATTEMENT D'UNE CHUTE.
+   *
+   * Elle ne vit pas dans une pellicule — la famille d'accueil n'a pas ses
+   * images — mais elle avance au même rythme, un cran par appel, et elle rend
+   * VRAI tant qu'elle a quelque chose à montrer : c'est ce qui tient la boucle
+   * de rendu éveillée et ce qui fait redessiner.
+   */
+  Moteur.prototype.avancerChute = function () {
+    const ch = this.chute;
+    if (!ch) return false;
+    ch.t++;
+    if (ch.quoi === 'jutsu') {
+      // La fumée joue sa propre pellicule tant qu'elle est là.
+      if (ch.t < JUTSU_FUMEE && ch.fumee) ch.fumee.avancer();
+      if (ch.t >= JUTSU_FIN) { this.chute = null; this.jouerAnim(0); }
+      return true;
+    }
+    if (ch.quoi === 'toux') {
+      const face = this.racine.face;
+      const bb = face && face.enfantNomme('b') && face.enfantNomme('b').enfantNomme('b');
+      // La bouche s'ouvre au départ d'un sursaut, se referme à sa fin.
+      const secousse = (this.emotes && this.emotes.toux && this.emotes.toux.secousse) || [];
+      if (bb) {
+        if (TOUX_SURSAUTS.indexOf(ch.t) >= 0) bb.allerImage('parle1', true);
+        else if (TOUX_SURSAUTS.indexOf(ch.t - secousse.length + 1) >= 0) bb.allerImage(1, false);
+      }
+      if (ch.t >= TOUX_FIN) { this.chute = null; this.jouerAnim(0); }
+      return true;
+    }
+    return false;
+  };
+
+  /*
+   * L'ÉCART DE LA TÊTE pendant une quinte, ou rien.
+   *
+   * Les sursauts partent aux battements de `TOUX_SURSAUTS` et durent le temps
+   * de la courbe relevée ; entre eux, la tête est à sa place.
+   */
+  Moteur.prototype.secousseToux = function () {
+    const ch = this.chute;
+    if (!ch || ch.quoi !== 'toux') return null;
+    const pas = (this.emotes && this.emotes.toux && this.emotes.toux.secousse) || null;
+    if (!pas || !pas.length) return null;
+    for (let i = 0; i < TOUX_SURSAUTS.length; i++) {
+      const k = ch.t - TOUX_SURSAUTS[i];
+      if (k >= 0 && k < pas.length) return pas[k];
+    }
+    return null;
   };
 
   /** VRAI tant que l'arbre a une pellicule en marche (cf. Clip.peutBouger). */
   Moteur.prototype.enMouvement = function () {
+    if (this.chute) return true;
     return this.racine.face ? this.racine.face.peutBouger() : false;
   };
 
@@ -1112,6 +1297,36 @@
   Moteur.prototype.dessiner = function (ctx, M) {
     const face = this.racine.face;
     if (!face) return;
+    const ch = this.chute;
+    /*
+     * LE JUTSU EFFACE LA TÊTE. D'époque, l'image 132 pose l'alpha zéro sur
+     * les huit profondeurs du visage : c'est tout le gag, on disparaît. Ici
+     * on ne dessine simplement pas le visage — ni l'accessoire maison, qui
+     * s'en irait avec lui. Restent le chocapic, puis la fumée par-dessus :
+     * l'ordre des profondeurs d'hiko, 19 sous 23.
+     */
+    if (ch && ch.quoi === 'jutsu' && this.emotes && this.emotes.jutsu) {
+      /*
+       * LE REPÈRE EST CELUI DU VISAGE, pas celui de la scène. Chez hiko la
+       * fumée et le chocapic sont posés DANS le visage, aux profondeurs 23
+       * et 19 : leurs matrices se lisent donc dans le repère du visage, et
+       * c'est là qu'il faut les remettre — sinon le dessin part se ranger
+       * dans un coin, à la taille près.
+       */
+      const base = composerM(M || IDENTITE, face.matrice());
+      const j = this.emotes.jutsu;
+      if (ch.chocapic) this.dessinerClip(ctx, ch.chocapic, composerM(base, j.chocapic.M), null, 1);
+      if (ch.fumee && ch.t < JUTSU_FUMEE) {
+        // « smoke._alpha -= 5 » à chaque battement (image 133 d'hiko).
+        const a = Math.max(0, 1 - ch.t * 0.05);
+        if (a > 0) this.dessinerClip(ctx, ch.fumee, composerM(base, j.fumee.M), null, a);
+      }
+      return;
+    }
+    // LA TOUX secoue la tête ENTIÈRE : l'écart relevé se compose au repère du
+    // visage, et tout ce qu'il porte suit — cheveux et accessoires compris.
+    const secousse = this.secousseToux();
+    if (secousse) M = composerM(M || IDENTITE, secousse);
     const ac = this.accessoireCustom;
     // Un accessoire « maison » a deux couches, comme celui d'époque : l'ARRIÈRE
     // (p.avant === false) passe DERRIÈRE les cheveux de devant, l'AVANT par-

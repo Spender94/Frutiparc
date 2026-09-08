@@ -74,11 +74,11 @@ test('l’indice envoyé au moteur est le 13, au bout et pas ailleurs', () => {
 test('le moteur connaît « beurk », et le nomme', () => {
   const anims = /const ANIMATIONS = \[[\s\S]*?\];/.exec(MOTEUR);
   assert.ok(anims, 'la liste des animations');
-  // Au bout de `actionList`, après « larme ».
-  assert.match(anims[0], /'larme', 'beurk'\]/);
+  // Juste après `actionList`, qui s'arrête à « larme ».
+  assert.match(anims[0], /'larme', 'beurk'/);
   const noms = /const NOMS_ANIMATIONS = \[[\s\S]*?\];/.exec(MOTEUR);
   assert.ok(noms, 'la liste des noms');
-  assert.match(noms[0], /'Beurk'\]/);
+  assert.match(noms[0], /'Beurk'/);
 });
 
 test('la branche 13 emprunte « rougir » et l’humeur 2, sans rien coder en dur', () => {
