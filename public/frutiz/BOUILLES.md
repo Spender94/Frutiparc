@@ -654,6 +654,47 @@ boîte carrée le décalage vaut zéro, donc rien ne bouge ailleurs.
 encore, pour son bouton « Réchauffer les bouilles » — dont l'infobulle dit
 maintenant que le cache ne sert qu'à un éventuel retour en arrière.
 
+## 11 bis. Les PRUNELLES — des iris qui viennent d'une autre famille
+
+L'iris est le clip `p` de `oa.o` (et `ob.o`) : un simple **rouleau** que
+`definir` cale sur `eyeSc`, la valeur des caractères 4-5. La famille 0 en a
+dix-huit ; hiko (famille 12) en a **dix-neuf**, et ses deux premières ne
+ressemblent à rien d'autre au parc — une paire rouge et noir, et une paire
+**animée** (un clip de vingt images, qui tourne). On les vend au rayon
+« Prunelles » de la boutique, sous les noms *Hiko's eyes* et *Hiko's eyes #2*.
+
+- **La récolte** : `scripts/extract-prunelles-bouille.js` →
+  `public/fbouille/prunelles.json` (8 Ko : cinq formes, un clip, et les ordres
+  de pose des deux images). Les identifiants sont décalés de **300 000** —
+  au-delà de ce qu'un SWF peut porter, et distincts des 100 000 des émotes.
+- **L'index est FIGÉ à la récolte**, pas déduit à l'exécution. Une bouille
+  désigne sa prunelle par un NUMÉRO inscrit dans sa chaîne d'état et vendu tel
+  quel en boutique : il doit vouloir dire la même chose sur tous les écrans,
+  pour toujours. Le script relève la longueur du rouleau de la famille 0 (18)
+  et écrit les index obtenus — 18 et 19 — dans le paquet.
+- **La greffe** (`FPBouilleMoteur.grefferPrunelles`) ne porte que les POSES ;
+  les ordres de **retrait** se calculent chez l'hôte, qui seul sait ce que sa
+  dernière image laisse en place — une image de rouleau est un *delta*, pas un
+  état complet. Elle n'écrase **jamais** un iris existant : on n'ajoute
+  qu'au-delà de ce que la famille a déjà (sans quoi la place 18 remplacerait
+  un des iris de hiko chez ceux qui portent son incarnation).
+- **Où elle se fait** : dans `FPBouilleVignette.famille()`, au même point de
+  passage que les variantes d'accessoire et pour la même raison — c'est le seul
+  endroit du site où une famille est chargée pour être affichée, et sa promesse
+  est en cache. Une fois par page, pour toutes les bouilles.
+- **Un seul rouleau pour tout l'œil** : `oa` a une image par forme d'œil (neuf
+  dans la famille 0), chacune pose son `o`, et les neuf `o` partagent le même
+  `p`. `rouleauxIris` descend les trois niveaux et dédoublonne — greffer une
+  image la fait donc paraître sur les deux yeux et les neuf formes d'un coup.
+- **Côté serveur** : l'article de boutique porte `prunelle: '<clé>'` au lieu de
+  `suffix9`, et `bouilleAvecPrunelle` remplace les caractères 4-5 — rien
+  d'autre ne bouge, l'accessoire compris. La table des index est lue **dans le
+  même `prunelles.json`** : aucun numéro n'est recopié à la main.
+- **L'inventaire** a un rayon pour elles des deux côtés : l'onglet
+  « Prunelles » du light et le dossier `inv_prunelles` du bureau. On en sort
+  par « Ma Frutibouille », dont la ligne « iris » propose les dix-huit
+  d'origine (et elles seules : `max: 17`, les prunelles s'achètent).
+
 ## 12. Ce qui reste à faire
 
 * **Retirer le cache PNG** : `/bouille-img`, `scripts/warm-bouilles.js`,

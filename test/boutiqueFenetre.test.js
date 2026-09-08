@@ -73,10 +73,13 @@ test('la boutique exige une session', async () => {
   assert.equal(r.status, 401, 'sans sid, pas de catalogue');
 });
 
-test('les cinq rubriques du bureau sont servies, dans l\'ordre du catalogue', async () => {
+test('les rubriques du bureau sont servies, dans l\'ordre du catalogue', async () => {
   const d = await boutique(await inscrire(joueur('rub')));
+  // Cinq rayons d'époque, plus les PRUNELLES — les paires d'iris venues d'une
+  // autre famille, qui ne sont pas des accessoires (elles vivent aux
+  // caractères 4-5 de l'état, au milieu du visage).
   assert.deepEqual((d.categories || []).map((c) => c.name),
-    ['Accessoires', "Fonds d'écran", 'Pass', 'Feutres', 'Packs'],
+    ['Accessoires', 'Prunelles', "Fonds d'écran", 'Pass', 'Feutres', 'Packs'],
     'l\'arbre entier, pas seulement les accessoires');
   for (const c of d.categories) {
     assert.ok((c.items || []).length > 0, `la rubrique « ${c.name} » n'est pas vide`);

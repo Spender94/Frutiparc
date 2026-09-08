@@ -794,6 +794,144 @@
     return this;
   };
 
+  /* ── LES PRUNELLES ────────────────────────────────────────────────────────
+   *
+   * L'iris d'une bouille, c'est le clip `p` de `oa.o` (et son jumeau `ob.o`) :
+   * un ROULEAU que `definir` cale par `gotoAndStop(eyeSc + 1)`. Greffer une
+   * prunelle, c'est donc AJOUTER UNE IMAGE à ce rouleau — pas plus.
+   *
+   * Ce qu'il faut savoir pour le faire proprement :
+   *
+   *   · UNE IMAGE DE ROULEAU EST UN DELTA. Elle ne pose pas tout : elle
+   *     modifie ce que la précédente a laissé. Poser l'iris d'hiko au bout du
+   *     rouleau, c'est donc d'abord RETIRER ce que la dernière image de la
+   *     famille d'accueil laisse traîner, puis poser ce qu'hiko pose. Le
+   *     paquet récolté ne porte que les poses ; les retraits se calculent ici,
+   *     où l'on connaît l'hôte.
+   *
+   *   · L'INDEX EST DONNÉ, pas déduit. Une bouille désigne sa prunelle par un
+   *     NUMÉRO inscrit dans sa chaîne d'état et vendu comme tel en boutique :
+   *     il doit vouloir dire la même chose partout, pour toujours. Le paquet
+   *     porte l'index de chacune ; on comble le rouleau jusque-là si la
+   *     famille d'accueil est plus courte que celle du relevé.
+   */
+
+  // TOUS les sprites qu'un clip pose sous un NOM d'instance donné — lus à même
+  // les définitions, sans monter le moteur. Il y en a plusieurs quand le clip
+  // est un rouleau : l'œil `oa` porte neuf formes d'œil, une par image, toutes
+  // nommées `o`.
+  function sousSprites(defs, sp, nom) {
+    const out = [];
+    if (!sp) return out;
+    for (const im of (sp.images || [])) {
+      for (const o of (im || [])) {
+        if (o.t !== 'pose' || o.nom !== nom || !(o.ch >= 0)) continue;
+        const s = defs.sprites.get(o.ch);
+        if (s && out.indexOf(s) < 0) out.push(s);
+      }
+    }
+    return out;
+  }
+  // Le VISAGE, sur la racine — la règle de `creerVisage`, sans instancier.
+  function spriteVisage(defs) {
+    const etats = etatsDe(defs.racine);
+    const dernier = etats[etats.length - 1] || new Map();
+    let cible = null;
+    for (const p of dernier.values()) {
+      if (p.nom === 'face') { cible = p; break; }
+      if (!cible && defs.sprites.has(p.ch)) cible = p;
+    }
+    return cible ? (defs.sprites.get(cible.ch) || null) : null;
+  }
+  /**
+   * Les rouleaux d'iris d'une famille — les `p` de `oa.o` et `ob.o`.
+   *
+   * Trois niveaux de rouleau s'emboîtent, et il faut les descendre tous :
+   * `oa` a une image par forme d'œil (neuf dans la famille 0), chacune pose
+   * son `o`, et chaque `o` porte le `p` des iris. En pratique les deux yeux
+   * partagent leur clip et les neuf formes partagent leur rouleau d'iris — on
+   * dédoublonne donc, et il n'en reste qu'un. Mais on ne le SUPPOSE pas : une
+   * famille qui séparerait ses rouleaux serait greffée quand même.
+   */
+  function rouleauxIris(defs) {
+    const face = spriteVisage(defs);
+    const out = [];
+    for (const cote of ['oa', 'ob']) {
+      for (const oeil of sousSprites(defs, face, cote)) {
+        for (const o of sousSprites(defs, oeil, 'o')) {
+          for (const p of sousSprites(defs, o, 'p')) {
+            if (out.indexOf(p) < 0) out.push(p);
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  // Ce qu'un rouleau laisse posé à l'image n : profondeur → ordre de pose.
+  function etatDuRouleau(sp, n) {
+    const par = new Map();
+    for (let i = 1; i <= n && i <= sp.images.length; i++) {
+      (sp.images[i - 1] || []).forEach((o) => {
+        if (o.t === 'retire') par.delete(o.prof);
+        else if (o.t === 'pose') par.set(o.prof, o);
+      });
+    }
+    return par;
+  }
+
+  /**
+   * Greffe les prunelles récoltées (`public/fbouille/prunelles.json`) dans une
+   * famille. Idempotent : la même `defs` sert toutes les bouilles d'une page.
+   * Rend la table `{ cle: index }` des prunelles disponibles.
+   */
+  function grefferPrunelles(defs, paquet) {
+    if (!defs || !paquet) return (defs && defs._prunelles) || {};
+    if (defs._prunelles) return defs._prunelles;
+    Object.entries(paquet.formes || {}).forEach(([id, f]) => {
+      const n = Number(id);
+      if (!defs.formes.has(n)) defs.formes.set(n, f);
+    });
+    Object.entries(paquet.sprites || {}).forEach(([id, sp]) => {
+      const n = Number(id);
+      if (!defs.sprites.has(n)) defs.sprites.set(n, sp);
+    });
+    const rouleaux = rouleauxIris(defs);
+    const table = {};
+    for (const iris of (paquet.iris || [])) {
+      const index = Number(iris.index);
+      if (!(index >= 0)) continue;
+      for (const r of rouleaux) {
+        /*
+         * ON N'ÉCRASE JAMAIS UN IRIS EXISTANT. L'index est le même pour toutes
+         * les familles — c'est ce qui fait qu'une chaîne d'état veut dire la
+         * même chose partout —, mais une famille peut avoir un rouleau plus
+         * long que celui du relevé : hiko en a dix-neuf. Y poser la greffe
+         * remplacerait un de ses propres iris chez ceux qui le portent. On
+         * n'ajoute donc qu'AU-DELÀ de ce que la famille a déjà.
+         */
+        if (index < r.images.length) continue;
+        // On comble jusqu'à la place voulue : une image vide ne change rien à
+        // ce qui est posé, et personne ne la désigne.
+        while (r.images.length < index) r.images.push([]);
+        const restant = etatDuRouleau(r, r.images.length);
+        const poses = iris.ordres || [];
+        const gardees = new Set(poses.map((o) => o.prof));
+        const ordres = [];
+        for (const prof of restant.keys()) if (!gardees.has(prof)) ordres.push({ t: 'retire', prof });
+        for (const o of poses) ordres.push(Object.assign({}, o));
+        r.images[index] = ordres;
+        r.n = r.images.length;
+        // Le moteur mémorise l'état de chaque image d'un rouleau : la mémoire
+        // est périmée dès qu'on y ajoute quoi que ce soit.
+        delete r._etats;
+      }
+      table[iris.cle] = index;
+    }
+    defs._prunelles = table;
+    return table;
+  }
+
   /*
    * LES DEUX CHUTES, RYTHMÉES À LA MAIN.
    *
@@ -1864,6 +2002,9 @@
     Moteur, Bouille, Clip,
     PALETTE, HUMEURS, ANIMATIONS, NOMS_HUMEURS, NOMS_ANIMATIONS, ETIQUETTES,
     decode62, encode62, teindre, cxTeinte, composerCx, composerM, etatsDe, facteurPour,
+    // Les prunelles : le rouleau d'iris d'une famille, et la greffe de celles
+    // qu'on récolte ailleurs (cf. scripts/extract-prunelles-bouille.js).
+    rouleauxIris, grefferPrunelles,
     /** Famille d'une chaîne d'état : les deux premiers caractères, en base 62. */
     familleDe: function (s) { return decode62(String(s || '00').substring(0, 2)); },
     /** Attache une bouille à un canevas, la famille étant chargée à la volée. */

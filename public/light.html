@@ -2927,6 +2927,9 @@
     </div>
     <div class="inv-onglets" id="inv-onglets">
       <button class="inv-onglet on" data-rub="accessoires">Accessoires</button>
+      <!-- Les PRUNELLES ont leur rayon : une paire d'iris n'est pas un
+           accessoire, elle fait partie du visage (caractères 4-5 de l'état). -->
+      <button class="inv-onglet" data-rub="prunelles">Prunelles</button>
       <button class="inv-onglet" data-rub="fonds">Fonds d'écran</button>
       <button class="inv-onglet" data-rub="pictos">Pictos</button>
     </div>
@@ -2936,6 +2939,16 @@
         <div class="sheet-preview"><div id="bouille-sheet-preview"></div></div>
         <div class="sheet-hint" id="bouille-sheet-hint">Choisis un accessoire de ton inventaire :</div>
         <div id="bouille-acc-grid" class="acc-grid"></div>
+      </div>
+      <!-- Prunelles : les paires d'iris achetées, posées sur SA bouille. On en
+           sort par « Ma Frutibouille », où les dix-huit iris d'origine se
+           choisissent — c'est le même réglage, à la même place qu'en 2005. -->
+      <div class="inv-rubrique" data-rub="prunelles" hidden>
+        <div class="sheet-hint" id="inv-prunelles-hint">Tes paires d'iris :</div>
+        <div id="inv-prunelles-grid" class="acc-grid"></div>
+        <div class="sheet-hint" style="margin-top:10px">
+          <button type="button" id="inv-prunelles-retour" class="fb-valider">retrouver mes iris</button>
+        </div>
       </div>
       <!-- Fonds d'écran : la vignette est le fond lui-même, cadré comme il le
            sera sur le bureau. « Aucun » rend le vert d'origine. -->
@@ -5209,6 +5222,10 @@
     if (it.kind === "picto" && it.picto) {
       return '<img src="' + xmlEscape(it.picto) + '" alt="" loading="lazy">';
     }
+    // Une PRUNELLE ne se compose pas d'un suffixe : le serveur envoie l'état
+    // complet — la bouille du joueur avec cette paire d'iris —, on le pose tel
+    // quel. (L'iris animé tourne dans l'aperçu, comme il tournera partout.)
+    if (it.kind === "prunelle" && it.etat) return previewIframe(it.etat);
     // Accessoire : posé sur la bouille du joueur, comme l'aperçu du bureau.
     return previewIframe(buildState(myBase, it.suffix9, null));
   }
@@ -11216,6 +11233,7 @@
   var invFonds = [];            // [{id, nom, url, color}]
   var invFondActuel = null;     // {url, color} ou null
   var invPictos = [];           // [{id, nom, jeu, url}]
+  var invPrunelles = [];        // [{id, nom, cle, etat}]
   var invCharge = false;
 
   function montrerRubrique(nom) {
@@ -11231,7 +11249,18 @@
   }
   $("#inv-onglets").addEventListener("click", function (e) {
     var b = e.target.closest(".inv-onglet");
-    if (b) montrerRubrique(b.getAttribute("data-rub"));
+    if (!b) return;
+    var rub = b.getAttribute("data-rub");
+    montrerRubrique(rub);
+    // Les prunelles se dessinent sur SA bouille : elle a pu changer depuis le
+    // dernier passage (un accessoire posé, une coiffure retouchée).
+    if (rub === "prunelles") rendrePrunelles();
+  });
+  // « Retrouver mes iris » : les dix-huit d'origine se choisissent dans « Ma
+  // Frutibouille », à la ligne « iris ». On y va, plutôt que d'en recopier le
+  // réglage ici — un seul endroit pour changer de visage.
+  $("#inv-prunelles-retour").addEventListener("click", function () {
+    openFbEditor(state.bouilleByUser[state.userLower] || myBase);
   });
 
   function chargerInventaire(force) {
@@ -11243,9 +11272,11 @@
         invCharge = true;
         invFonds = d.fonds || [];
         invPictos = d.pictos || [];
+        invPrunelles = d.prunelles || [];
         invFondActuel = d.fond || null;
         rendreFonds();
         rendrePictos();
+        rendrePrunelles();
         appliquerFond(invFondActuel);
       })
       .catch(function () {
@@ -11280,6 +11311,58 @@
       it.addEventListener("click", function () { poserFond(f.id); });
       grille.appendChild(it);
     });
+  }
+
+  /*
+   * LES PRUNELLES — les paires d'iris achetées.
+   *
+   * Une prunelle vit aux caractères 4 et 5 de la chaîne d'état, au milieu du
+   * VISAGE : ce n'est pas un accessoire qu'on pose au bout, c'est un morceau
+   * de la bouille qu'on remplace. La vignette la montre donc sur SA bouille
+   * d'aujourd'hui — coiffure, couleurs et accessoire du moment.
+   *
+   * POUR EN SORTIR : « Ma Frutibouille ». Les dix-huit iris d'origine s'y
+   * choisissent depuis toujours, à la ligne « iris » — c'est le même réglage,
+   * au même endroit, et le bouton ci-dessous n'est qu'un raccourci vers lui.
+   */
+  function rendrePrunelles() {
+    var grille = $("#inv-prunelles-grid");
+    if (!grille) return;
+    grille.innerHTML = "";
+    var courant = fbPad(state.bouilleByUser[state.userLower] || myBase).substring(4, 6);
+    if (!invPrunelles.length) {
+      var rien = el("div", "sheet-hint");
+      rien.textContent = "Aucune paire pour l'instant — il y en a à la boutique.";
+      rien.style.gridColumn = "1 / -1";
+      grille.appendChild(rien);
+      return;
+    }
+    invPrunelles.forEach(function (p) {
+      var iris = String(p.etat || "").substring(4, 6);
+      var base = fbPad(myBase);
+      var etat = base.substring(0, 4) + iris + base.substring(6, 24);
+      var it = el("div", "acc-item" + (courant === iris ? " sel" : ""));
+      it.innerHTML = '<div class="thumb">' + previewIframe(etat) + '</div>'
+        + '<div class="lbl">' + xmlEscape(p.nom || "Prunelles") + "</div>";
+      it.addEventListener("click", function () { porterPrunelle(iris, p.nom); });
+      grille.appendChild(it);
+    });
+    brancherApercus(grille);
+  }
+
+  function porterPrunelle(iris, nom) {
+    // On CHANGE L'IRIS DE CE QU'ON PORTE, rien d'autre : deux caractères
+    // remplacés, la coiffure, les couleurs et l'accessoire à leur place. (Ne
+    // pas recomposer depuis `accSel` : sa valeur vient d'un autre chargement,
+    // qui peut n'être pas encore arrivé — l'accessoire s'y perdait.)
+    var poser = function (s) { s = fbPad(s); return s.substring(0, 4) + iris + s.substring(6, 24); };
+    myBase = poser(myBase);                       // l'iris appartient au visage
+    var neuf = poser(state.bouilleByUser[state.userLower] || myBase);
+    accSel = { suffix: neuf.substring(15, 24), fullState: isIncarnation(neuf) ? neuf : null };
+    porterEtat(neuf);
+    rendrePrunelles();
+    var h = $("#inv-prunelles-hint");
+    if (h) h.textContent = "✓ " + (nom || "Prunelles") + " — te voilà avec d'autres yeux.";
   }
 
   function rendrePictos() {

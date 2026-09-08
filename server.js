@@ -5866,6 +5866,28 @@ const SHOP_PACKS_DEFAULT = [
   // Casquette Anim (suffix9 30y0t0j00) is no longer purchasable — it is now
   // auto-granted to users with is_animator=true via grantAnimatorAccessory
   // (mirroring the Badge Modérateur flow). See ANIM_ACCESSORY_* constants.
+  /*
+   * LES PRUNELLES — un rayon à part, parce que ce n'est pas un accessoire.
+   *
+   * Une paire d'iris ne se POSE pas sur la bouille : elle en fait partie. Le
+   * moteur la lit à la place `eyeSc` de la chaîne d'état (caractères 4 et 5),
+   * là où l'accessoire vit dans les neuf derniers. D'où `prunelle` plutôt que
+   * `suffix9` — la clé d'une paire récoltée dans `public/fbouille/
+   * prunelles.json` —, et une rubrique à elle, que `shopCategoryOwnedByDefault`
+   * range parmi les rayons PAYANTS.
+   */
+  { id: 301, name: "Hiko's eyes", category: 'Prunelles', price: 120,
+    prunelle: 'hiko1', suffix9: '000000000',
+    comment: 'Le regard de hiko, rouge et noir.',
+    description: 'Deux prunelles qu’aucun Frutiz du parc ne portait : elles viennent de '
+      + 'la famille de hiko. Elles remplacent tes iris et ne touchent à rien d’autre — '
+      + 'tu retrouves les tiens quand tu veux, dans « Ma Frutibouille ».' },
+  { id: 302, name: "Hiko's eyes #2", category: 'Prunelles', price: 200,
+    prunelle: 'hiko2', suffix9: '000000000',
+    comment: 'Le regard de hiko, celui qui tourne.',
+    description: 'La paire ANIMÉE : les prunelles tournent sans jamais s’arrêter, sur le '
+      + 'chat comme sur ta fiche. Elles remplacent tes iris et ne touchent à rien '
+      + 'd’autre — tu retrouves les tiens quand tu veux, dans « Ma Frutibouille ».' },
   // Wallpapers
   { id: 201, name: 'Chevalier moutarde',    category: "Fonds d'écran", price: 0, description: 'Un fond chevaleresque aux tons moutarde.',     suffix9: '000000000', wallpaperId: 'moutarde' },
   { id: 202, name: 'Chorale Frutiparc',     category: "Fonds d'écran", price: 0, description: 'La grande chorale de Frutiparc !',             suffix9: '000000000', wallpaperId: 'chorale' },
@@ -5959,6 +5981,57 @@ const SHOP_PACKS_DEFAULT = [
   ...SHOP_FEUTRES_DEFAULT,
 ];
 const SHOP_PACKS = [...SHOP_PACKS_DEFAULT];
+
+/*
+ * LES PRUNELLES — les iris venus d'une autre famille.
+ *
+ * L'iris d'une bouille, c'est le clip `p` de `oa.o` : un rouleau que le moteur
+ * cale sur `eyeSc`, la valeur des caractères 4 et 5 de la chaîne d'état. La
+ * famille 0 en a dix-huit ; `scripts/extract-prunelles-bouille.js` en récolte
+ * deux de plus chez hiko (famille 12) et les range dans
+ * `public/fbouille/prunelles.json`, avec l'INDEX que chacune occupera une fois
+ * greffée. Le lecteur du site (`FPBouilleVignette.famille`) fait la greffe au
+ * chargement de la famille, pour tout le monde et une fois par page.
+ *
+ * Le serveur, lui, n'a besoin que des index : ce sont eux qu'il écrit dans la
+ * chaîne d'état quand on achète une paire. Il les lit dans le MÊME fichier —
+ * une seule source, aucun numéro recopié à la main.
+ */
+const PRUNELLES_FILE = path.join(__dirname, 'public', 'fbouille', 'prunelles.json');
+const PRUNELLES = {};      // cle → { cle, nom, description, eyeSc }
+(function chargerPrunelles() {
+  try {
+    const p = JSON.parse(fs.readFileSync(PRUNELLES_FILE, 'utf8'));
+    for (const i of (p.iris || [])) {
+      if (!i || !i.cle || !(Number(i.index) >= 0)) continue;
+      PRUNELLES[i.cle] = {
+        cle: i.cle, nom: i.nom || i.cle,
+        description: i.description || '', eyeSc: Number(i.index),
+      };
+    }
+    console.log(`[PRUNELLES] ${Object.keys(PRUNELLES).length} paire(s) chargée(s)`);
+  } catch (e) {
+    console.error('[PRUNELLES] lecture impossible :', e.message);
+  }
+})();
+
+// Une bouille dont on remplace la paire d'iris. `eyeSc` occupe les caractères
+// 4 et 5 ; tout le reste — famille, forme d'œil, coiffure, couleurs, accessoire
+// — appartient au joueur et ne bouge pas.
+function bouilleAvecPrunelle(etat, eyeSc) {
+  const s = normalizeBouilleState(String(etat || '').split('|')[0]);
+  return s.substring(0, 4) + encode62(Math.max(0, Number(eyeSc) || 0), 2) + s.substring(6, 24);
+}
+
+// La prunelle d'une entrée d'inventaire, ou null. On la reconnaît à son
+// ARTICLE : le `v` d'une prunelle est une bouille comme une autre, rien dans
+// la chaîne ne dit qu'elle a été achetée pour ses yeux.
+function getAccessoryPrunelle(acc) {
+  if (!acc || acc.shopId == null) return null;
+  const pack = getShopPack(acc.shopId);
+  const cle = pack && pack.prunelle;
+  return (cle && PRUNELLES[cle]) ? PRUNELLES[cle] : null;
+}
 
 // ─────────────────────────────────────────────
 // ACCESSOIRES MAISON — des accessoires dessinés en SVG par un graphiste, posés
@@ -6298,7 +6371,10 @@ function userOwnsShopPack(user, id) {
 // Accent/case-insensitive so DB category labels match.
 function shopCategoryOwnedByDefault(category) {
   const n = String(category || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-  return !(n.startsWith('accessoir') || n.startsWith('fond') || n.startsWith('pass'));
+  // Les prunelles s'achètent comme les accessoires : ce sont des cosmétiques,
+  // pas un rayon offert d'office.
+  return !(n.startsWith('accessoir') || n.startsWith('fond') || n.startsWith('pass')
+    || n.startsWith('prunelle'));
 }
 
 /*
@@ -6458,6 +6534,7 @@ const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbo
   <f u="disccollector" n="Mes disques" t="disccollector" />
   <f u="inventory" n="Inventaire" t="inventory">
     <f u="inv_accessories" n="Accessoires" t="inventory" />
+    <f u="inv_prunelles" n="Prunelles" t="inventory" />
     <f u="inv_wallpapers" n="Fonds d&apos;écran" t="inventory" />
     <f u="inv_pictos" n="Pictos" t="inventory" />
   </f>
@@ -18466,9 +18543,14 @@ function purchaseShopPack(user, username, packIdRaw) {
   const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const isWallpaper = !!pack.wallpaperId;
   const wp = isWallpaper ? WALLPAPER_BY_ID[pack.wallpaperId] : null;
+  // Une PRUNELLE ne se pose pas au bout de la chaîne comme un accessoire : elle
+  // remplace la paire d'iris, aux caractères 4 et 5.
+  const prunelle = pack.prunelle ? PRUNELLES[pack.prunelle] : null;
   const bouilleStr = isWallpaper
     ? `wp:${wp.url}:${wp.color}`
-    : bouilleOf(user).substring(0, 15) + pack.suffix9;
+    : prunelle
+      ? bouilleAvecPrunelle(bouilleOf(user, username), prunelle.eyeSc)
+      : bouilleOf(user).substring(0, 15) + pack.suffix9;
   if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
   const accEntry = {
     id: isWallpaper ? ('wp_' + pack.wallpaperId) : ('shop_' + pack.id),
@@ -18655,10 +18737,35 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     return res.type('text/xml').send(
       `<f u="inventory">` +
       `<f u="inv_accessories" n="Accessoires" t="folder" />` +
+      `<f u="inv_prunelles" n="Prunelles" t="folder" />` +
       `<f u="inv_wallpapers" n="Fonds d'écran" t="folder" />` +
       `<f u="inv_pictos" n="Pictos" t="folder" />` +
       `</f>`
     );
+  }
+
+  /*
+   * LES PRUNELLES — leur dossier à elles.
+   *
+   * Une paire d'iris n'est pas un accessoire : elle vit aux caractères 4 et 5
+   * de la chaîne d'état, au milieu du visage, là où l'accessoire occupe les
+   * neuf derniers. Le nœud reste un `t="bouille"` — le bureau l'ouvre comme
+   * les autres, `InventaireBureau.porterAccessoire` porte l'état complet —,
+   * mais l'état est calculé sur la bouille D'AUJOURD'HUI : entre-temps le
+   * joueur a pu changer de tête.
+   */
+  if (uid === 'inv_prunelles') {
+    const nodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
+      .map((acc) => ({ acc, pru: getAccessoryPrunelle(acc) }))
+      .filter((x) => x.pru)
+      .map(({ acc, pru }) => {
+        const vendable = acc.shopId && accessoireRevendable(user, getShopPack(acc.shopId)) ? ' v="1"' : '';
+        const etat = bouilleAvecPrunelle(bouilleOf(user, auth.username), pru.eyeSc);
+        return `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0"${vendable}>`
+          + `${escapeXml(acc.n || pru.nom)}\n${escapeXml(etat)}</e>`;
+      })
+      .join('');
+    return res.type('text/xml').send(`<f u="inv_prunelles">${nodes || '<i />'}</f>`);
   }
 
   if (uid === 'inv_accessories') {
@@ -18672,7 +18779,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     // article d'une rubrique offerte ne se revendent pas. Un attribut de plus
     // sur le nœud : le SWF d'époque ignore ce qu'il ne connaît pas.
     const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
-      .filter((acc) => !getAccessoryWallpaper(acc))
+      .filter((acc) => !getAccessoryWallpaper(acc) && !getAccessoryPrunelle(acc))
       .map((acc) => {
         const vendable = acc.shopId && accessoireRevendable(user, getShopPack(acc.shopId)) ? ' v="1"' : '';
         return `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0"${vendable}>`
@@ -19031,7 +19138,7 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
 
   const PROTECTED_UIDS = new Set([
     'root', 'messages', 'inbox', 'outbox', 'blackbox', 'draftbox',
-    'disccollector', 'inventory', 'inv_accessories', 'inv_wallpapers', 'inv_pictos',
+    'disccollector', 'inventory', 'inv_accessories', 'inv_prunelles', 'inv_wallpapers', 'inv_pictos',
     'shop', 'accessories', 'mycontact', 'recyclebin', 'blacklist',
     'linkForum', 'linkChat', 'linkHisto', 'linkPreference',
     'linkScore', 'linkShop', 'linkBlogs', 'linkClub',
@@ -22918,8 +23025,9 @@ app.get('/api/light/shop', (req, res) => {
   const article = (p) => {
     const feutre = /^feutre,(\d+)$/.exec(String(p.picto || ''));
     const wp = p.wallpaperId ? WALLPAPER_BY_ID[p.wallpaperId] : null;
+    const prunelle = p.prunelle ? PRUNELLES[p.prunelle] : null;
     const offert = shopCategoryOwnedByDefault(p.category) && !p.notDefault;
-    const accessoire = !wp && !p.picto;
+    const accessoire = !wp && !p.picto && !prunelle;
     // Un ACCESSOIRE n'a pas de `comment` : le bureau lui compose sa fiche en
     // deux niveaux (resolveAccessoryLevels → l1 en gras, l2 en texte courant),
     // avec les deux paragraphes communs quand rien n'est personnalisé. Le
@@ -22934,9 +23042,17 @@ app.get('/api/light/shop', (req, res) => {
       comment: niv ? niv.l1 : (p.comment || ''),
       owned: offert || userOwnsShopPack(user, p.id),
       offert,
-      kind: wp ? 'fond' : feutre ? 'feutre' : p.picto ? 'picto' : 'accessoire',
+      kind: wp ? 'fond' : feutre ? 'feutre' : p.picto ? 'picto'
+        : prunelle ? 'prunelle' : 'accessoire',
       suffix9: p.suffix9 || '000000000',
     };
+    // Une PRUNELLE ne se compose pas d'un suffixe : le client ne saurait pas la
+    // dessiner à partir du seul article. On lui envoie donc l'état COMPLET —
+    // sa bouille, avec cette paire d'iris —, prêt à afficher en aperçu.
+    if (prunelle) {
+      a.prunelle = prunelle.cle;
+      a.etat = bouilleAvecPrunelle(bouilleOf(user, username), prunelle.eyeSc);
+    }
     // Un accessoire maison dit qui l'a dessiné ; la fiche l'écrit.
     if (p.auteur) a.auteur = String(p.auteur);
     if (estPackMaison(p)) a.maison = true;
@@ -22994,10 +23110,23 @@ app.get('/api/light/inventaire', (req, res) => {
     vus.add(acc.suffix);
     accessoires.push({ id: acc.u, nom: acc.n, etat: base + acc.suffix });
   }
+  // Les prunelles ont leur propre rayon : une paire d'iris n'est pas un
+  // accessoire, elle fait partie du visage. On les met de côté ici pour ne pas
+  // les retrouver deux fois.
+  const prunelles = [];
   for (const acc of perso) {
     if (getAccessoryWallpaper(acc)) continue;            // c'est un fond, pas un accessoire
     const v = String(acc.v || '');
-    if (v.length !== 24 || vus.has(v)) continue;
+    if (v.length !== 24) continue;
+    const pru = getAccessoryPrunelle(acc);
+    if (pru) {
+      // La paire posée sur la bouille D'AUJOURD'HUI, pas sur celle du jour de
+      // l'achat : entre-temps le joueur a pu changer de tête.
+      prunelles.push({ id: acc.id, nom: acc.n || pru.nom, cle: pru.cle,
+        etat: bouilleAvecPrunelle(bouilleOf(user, username), pru.eyeSc) });
+      continue;
+    }
+    if (vus.has(v)) continue;
     vus.add(v);
     accessoires.push({ id: acc.id, nom: acc.n || 'Accessoire', etat: v });
   }
@@ -23029,7 +23158,7 @@ app.get('/api/light/inventaire', (req, res) => {
     getPrefValue(reparerFondDeLaPref(username, user), PREF_ID_WALLPAPER));
   res.json({
     ok: true,
-    accessoires, fonds, pictos,
+    accessoires, fonds, pictos, prunelles,
     fond: courant ? {
       url: '/' + courant.url.replace(/^\/+/, ''),
       urlMobile: wallpaperMobileUrl(wallpaperParUrl(courant.url)),
@@ -23279,6 +23408,10 @@ async function boot() {
           // Idem option de jeu : sans gameFeature/notDefault réappliqués, le
           // produit redeviendrait « offert » et n'accorderait rien.
           if (def && def.gameFeature) { p.gameFeature = def.gameFeature; p.notDefault = def.notDefault; if (def.picto) p.picto = def.picto; }
+          // Idem prunelle : la clé de la paire d'iris n'a pas de colonne. Sans
+          // elle, l'article redeviendrait un accessoire au suffixe vide — donc
+          // une bouille sans rien, et des yeux inchangés.
+          if (def && def.prunelle) p.prunelle = def.prunelle;
           if (existingIds.has(p.id)) {
             const idx = SHOP_PACKS.findIndex(x => x.id === p.id);
             SHOP_PACKS[idx] = p;

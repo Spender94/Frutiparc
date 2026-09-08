@@ -225,12 +225,44 @@
     return true;
   }
 
+  /*
+   * LES PRUNELLES — les iris d'ailleurs, greffés à toutes les familles.
+   *
+   * Une bouille qui en porte une la désigne par son NUMÉRO dans le rouleau
+   * d'iris (`eyeSc`), inscrit dans sa chaîne d'état de vingt-quatre
+   * caractères. Ce numéro doit vouloir dire la même chose partout : la greffe
+   * se fait donc ICI, au même point de passage que les variantes d'accessoire
+   * et pour la même raison — `famille()` est le seul endroit du site où une
+   * famille est chargée pour être affichée, et sa promesse est en cache.
+   *
+   * Contrairement aux émotes, on ne peut pas attendre que quelqu'un les
+   * demande : on ne sait qu'une bouille en porte une qu'APRÈS avoir lu son
+   * état, et il serait alors trop tard pour aller chercher un fichier. Le
+   * paquet est petit (huit kilo-octets, cinq formes et un clip), et il ne
+   * part qu'une fois par page.
+   */
+  var paquetPrunelles = null;
+  function prunelles() {
+    if (!paquetPrunelles) {
+      paquetPrunelles = (typeof global.fetch === 'function')
+        ? global.fetch(DOSSIER + 'prunelles.json')
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .catch(function () { return null; })     // sans elles, l'iris d'origine
+        : Promise.resolve(null);
+    }
+    return paquetPrunelles;
+  }
+
   function famille(n) {
     if (!chargements[n]) {
       chargements[n] = FAMILLES.indexOf(n) < 0
         ? Promise.reject(new Error('famille ' + n + ' absente'))
-        : Promise.all([Swf.charger(DOSSIER + 'famille' + n + '.swf'), variantes()])
-          .then(function (r) { return injecterVariantes(r[0], n, r[1]); });
+        : Promise.all([Swf.charger(DOSSIER + 'famille' + n + '.swf'), variantes(), prunelles()])
+          .then(function (r) {
+            try { if (r[2]) M.grefferPrunelles(r[0], r[2]); }
+            catch (e) { /* une greffe fautive n'empêche pas la bouille */ }
+            return injecterVariantes(r[0], n, r[1]);
+          });
       // Une famille introuvable ne doit pas laisser traîner un rejet non
       // rattrapé dans la console à chaque bouille.
       chargements[n].catch(function () {});
@@ -509,6 +541,9 @@
     // SVG : même identifiant, dessin neuf. Sans argument, on oublie tout.
     oublierCustom: oublierCustom,
     FAMILLES: FAMILLES,
+    // La famille chargée, variantes injectées et prunelles greffées — le seul
+    // point de passage, pour que les index veuillent dire la même chose partout.
+    famille: famille,
     //  est REMPLACÉ par oublierFamilles : on l'expose par une
     // fonction, sinon on servirait pour toujours la première table.
     familles: function () { return chargements; },
