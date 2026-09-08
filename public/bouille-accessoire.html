@@ -429,7 +429,31 @@
           for (var t = 1; t < P.ACCESSORIES.length; t++) {
             var r = null;
             try { r = V.repere(src, t, 8); } catch (e) { r = null; }
-            if (!r || r.variantes < 1) continue;
+            /*
+             * L'ACCESSOIRE SANS ROULEAU DE VARIANTES.
+             *
+             * Deux types d'hiko — le 1 et le 5 — posent leur dessin à même le
+             * clip `c`, à l'image de leur type : pas de sous-clip `acc`, donc
+             * pas de variantes, donc `repere` les refuse. Il a raison pour
+             * l'injection (on n'ajoute pas une variante à un rouleau qui
+             * n'existe pas), mais pas pour la RÉCOLTE : c'est un dessin comme
+             * un autre, dans le même repère, et sa coiffe blanche vaut d'être
+             * reprise. On les prend donc par la porte de lecture.
+             */
+            if (!r) {
+              var brut = null;
+              try { brut = V.exporterBrut(src, t, 8); } catch (e) { brut = null; }
+              if (brut && brut.length) {
+                var empB = empreinte(brut);
+                if (!vues[empB]) {
+                  vues[empB] = true;
+                  recolte.push({ f: f, type: t, variante: null, nom: P.ACCESSORIES[t],
+                    paths: brut, brut: true });
+                }
+              }
+              continue;
+            }
+            if (r.variantes < 1) continue;
             for (var v = 0; v < r.variantes; v++) {
               var paths = null;
               try {
@@ -501,7 +525,8 @@
           var cv = document.createElement("canvas"); cv.width = 192; cv.height = 192;
           cv.title = "Cliquer pour reprendre ce gabarit";
           var cap = document.createElement("figcaption");
-          cap.textContent = piece.nom.toLowerCase() + " · var " + piece.variante;
+          cap.textContent = piece.nom.toLowerCase()
+            + (piece.brut ? " · sans variante" : " · var " + piece.variante);
           var bt = document.createElement("button");
           bt.className = "prendre"; bt.type = "button"; bt.textContent = "⬇ gabarit";
           fig.appendChild(cv); fig.appendChild(cap); fig.appendChild(bt);
@@ -543,7 +568,8 @@
         }
       }
       var svg = V.exporterSVG(src, {
-        type: piece.type, variante: piece.variante, coiffure: co,
+        type: piece.type, variante: piece.variante || 0, coiffure: co,
+        brut: !!piece.brut,
         nom: "f" + piece.f + " — " + P.ACCESSORIES[piece.type],
         fondTete: V.fondTete(defs, co, 512),
       });

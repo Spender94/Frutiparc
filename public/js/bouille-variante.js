@@ -200,10 +200,16 @@
    *
    * @returns {Array<{d,fill,alpha,m,slot}>} en repère scène
    */
-  function exporter(defs, type, variante, coiffureRef) {
+  /*
+   * @param {{brut?:boolean}} [opts] — `brut` exporte un accessoire QUI N'A PAS
+   *   DE ROULEAU DE VARIANTES : son dessin est posé à même le clip `c`, à
+   *   l'image de son type. Voir `exporterBrut`.
+   */
+  function exporter(defs, type, variante, coiffureRef, opts) {
     var M = moteur();
+    var brut = !!(opts && opts.brut);
     var rep = repere(defs, type, coiffureRef);
-    if (!rep) return [];
+    if (!rep && !brut) return [];
 
     /*
      * ON LIT L'ARBRE MONTÉ, PAS LES PELLICULES.
@@ -290,8 +296,20 @@
         sous = "C"; av = e.nom === "ca";
       } else if (ctxt === "C" && e.nom === "c") sous = "A";
       else if (ctxt === "A" && e.nom && /^acc\d*$/.test(e.nom)) { sous = "R"; rl = e.nom; }
+      /*
+       * L'ACCESSOIRE SANS ROULEAU. Deux types d'hiko — le 1 et le 5 — ne
+       * portent pas de sous-clip `acc` : leur dessin est posé à même `c`, à
+       * l'image de leur type, et l'image efface la coiffure au passage. Il
+       * n'y a donc rien à distinguer sous `c` — sauf les couches `col*`, qui
+       * sont la teinte de la coiffure et pas de l'accessoire.
+       */
+      else if (brut && ctxt === "A" && !(e.nom && /^col\d*$/.test(e.nom))) { sous = "R"; rl = "acc"; }
       if (e.objet) marcher(e.objet, Mi, cxi, ai, s, sous, av, decoupe, estDecoupe, rl);
-      else if (ctxt.charAt(0) === "R") {
+      // `sous` et non `ctxt` : une FORME posée à même `c` — l'accessoire sans
+      // rouleau — entre dans le rouleau à son propre passage, pas à celui de
+      // son parent. Pour tout le reste les deux disent la même chose, un
+      // caractère nommé `acc` étant toujours un clip.
+      else if (sous.charAt(0) === "R") {
         emettre(e.ch, M.composerM(Mi, e.M), M.composerCx(cxi, e.cx || null),
           ai, e.ratio, s, av, decoupe, estDecoupe, rl);
       }
@@ -692,7 +710,7 @@
     var type = (opts.type == null) ? 3 : opts.type;
     var variante = opts.variante || 0;
     var co = (opts.coiffure == null) ? 8 : opts.coiffure;
-    var paths = exporter(defs, type, variante, co);
+    var paths = exporter(defs, type, variante, co, { brut: !!opts.brut });
     var sc = defs.scene || { x: 0, y: 0, w: 100, h: 100 };
     var NOMS = { 1: "couleur1", 2: "couleur2", 3: "couleur3" };
 
@@ -895,7 +913,29 @@
     return null;
   }
 
-  var API = { repere: repere, exporter: exporter, exporterSVG: exporterSVG,
+  /*
+   * L'ACCESSOIRE QUI N'A PAS DE ROULEAU.
+   *
+   * Seize types d'accessoire, et tous n'ont pas de sous-clip `acc` : chez hiko
+   * (famille 12), les types 1 et 5 posent leur dessin À MÊME le clip `c`, à
+   * l'image de leur type. Pas de variantes, donc — un dessin, et c'est tout.
+   * `repere` les refuse, et il a raison : on ne peut pas ajouter une variante
+   * à un rouleau qui n'existe pas, et `injecter` doit continuer de le dire.
+   *
+   * Mais les EXPORTER, si. C'est un dessin comme un autre, dans le même repère
+   * que les autres, et le graphiste qui veut le reprendre pour la famille 0 a
+   * besoin de son gabarit. D'où cette porte, réservée à la lecture.
+   *
+   * Rend un tableau vide quand le type a bien un rouleau — dans ce cas c'est
+   * `exporter` qu'il faut, et lui seul sait quelle variante prendre.
+   */
+  function exporterBrut(defs, type, coiffureRef) {
+    if (repere(defs, type, coiffureRef)) return [];
+    return exporter(defs, type, 0, coiffureRef, { brut: true });
+  }
+
+  var API = { repere: repere, exporter: exporter, exporterBrut: exporterBrut,
+    exporterSVG: exporterSVG,
     dessinee: dessinee, fondTete: fondTete, injecter: injecter, versRgb: versRgb };
   if (typeof module === "object" && module.exports) module.exports = API;
   else global.FPBouilleVariante = API;

@@ -214,3 +214,60 @@ test('l’atelier recense pour de vrai, et ne salit pas son propre rouleau', () 
   // Le gabarit montre une tête CLASSIQUE dessous : c'est là qu'on l'adapte.
   assert.match(PAGE, /fondTete: V\.fondTete\(defs, co, 512\),/);
 });
+
+/* ── L'ACCESSOIRE SANS ROULEAU DE VARIANTES ────────────────────────────────
+ *
+ * « J'aimerais pouvoir récupérer le svg [de l'accessoire que porte hiko] dans
+ * bouille-accessoire.html pour pouvoir le remanier pour la famille 0. »
+ *
+ * Deux types d'hiko — le 1 et le 5 — n'ont PAS de sous-clip `acc` : leur
+ * dessin est posé à même le clip `c`, à l'image de leur type, et cette image
+ * efface la coiffure au passage. `repere` les refuse, et il a raison pour
+ * l'injection : on n'ajoute pas une variante à un rouleau qui n'existe pas.
+ * Mais pour la RÉCOLTE, c'est un dessin comme un autre, dans le même repère.
+ */
+test('un accessoire sans rouleau s’exporte quand même, par la porte de lecture', async () => {
+  const d12 = await lire('famille12.swf');
+  // Le 5, c'est la coiffe blanche d'hiko — celle de l'état
+  // « 0c000009010m0405050o0002 », qu'on nous a demandé de récupérer.
+  assert.strictEqual(Variante.repere(d12, 5, 8), null,
+    'le type 5 n’a pas de rouleau : repere le refuse, et doit continuer de le refuser');
+  const brut = Variante.exporterBrut(d12, 5, 8);
+  assert.ok(brut.length > 20, 'et pourtant il y a un dessin : ' + brut.length + ' tracés');
+  // Les deux couches, comme n'importe quel accessoire.
+  assert.ok(brut.some((p) => p.avant !== false), 'de l’avant');
+  assert.ok(brut.some((p) => p.avant === false), 'et de l’arrière');
+
+  // ELLE NE S'OUVRE QUE LÀ. Un type qui a bien un rouleau doit passer par
+  // `exporter`, qui seul sait quelle variante prendre.
+  assert.ok(Variante.repere(d12, 3, 8), 'le type 3, lui, a son rouleau');
+  assert.deepStrictEqual(Variante.exporterBrut(d12, 3, 8), [],
+    'exporterBrut se tait quand exporter a quelque chose à dire');
+});
+
+test('le gabarit d’un accessoire sans rouleau se GREFFE sur la famille 0', async () => {
+  // On exporte la coiffe d'hiko et on l'injecte dans la famille 0 comme une
+  // variante ordinaire. (La relecture du SVG, elle, demande DOMParser : elle se
+  // vérifie en navigateur, comme le reste de `bouille-custom`.)
+  const d12 = await lire('famille12.swf');
+  const svg = Variante.exporterSVG(d12, { type: 5, coiffure: 8, brut: true, nom: 'coiffe' });
+  assert.match(svg, /<svg /, 'c’est un SVG');
+  assert.match(svg, /id="accessoire"/, 'avec le calque de devant');
+  assert.match(svg, /id="accessoire-arriere"/, 'et celui de derrière');
+  assert.ok((svg.match(/<path /g) || []).length > 20, 'et il porte le dessin');
+
+  const d0 = await lire('famille0.swf');
+  const inj = Variante.injecter(d0, { type: 3, paths: Variante.exporterBrut(d12, 5, 8), coiffureRef: 8 });
+  assert.ok(inj, 'il s’injecte sur une bouille classique');
+  assert.ok(inj.variante > 0, 'à une place à lui');
+});
+
+test('l’atelier propose ces pièces-là, dites « sans variante »', () => {
+  const ATELIER = fs.readFileSync(path.join(ROOT, 'public/bouille-accessoire.html'), 'utf8');
+  // Le recensement les prend quand `repere` a dit non.
+  assert.match(ATELIER, /brut = V\.exporterBrut\(src, t, 8\)/);
+  assert.match(ATELIER, /recolte\.push\(\{ f: f, type: t, variante: null, nom: P\.ACCESSORIES\[t\],\s*\n\s*paths: brut, brut: true \}\)/);
+  // La légende le dit, et le téléchargement passe le drapeau.
+  assert.match(ATELIER, /piece\.brut \? " · sans variante"/);
+  assert.match(ATELIER, /brut: !!piece\.brut,/);
+});
