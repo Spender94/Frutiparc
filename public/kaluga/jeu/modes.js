@@ -666,6 +666,270 @@ class Ring extends J.Game {
 J.Ring = Ring;
 K.registerClass('gameRing', Ring);
 
+
+/* ── ÉPREUVES (les défis à figures) ────────────────────────────────────────
+ *
+ * Un mode qui n'est pas de 2005. Comme la Survie ou l'Invasion, il demande
+ * de réussir quelque chose AVANT LA FIN DU TEMPS ; ce qu'il demande, en
+ * revanche, ce ne sont pas des points mais des FIGURES — les combos que le
+ * panier nomme déjà (`Panier.checkCombo`).
+ *
+ *   FACILE     dix pommes sur le terrain, une minute, dix dunks.
+ *   MOYEN      huit pommes, une minute trente, dix granites. Le panier est
+ *              posé au bord, ce qui ouvre le granite à rebond — la « du
+ *              mammouth », qu'on accepte au même titre.
+ *   DIFFICILE  huit pommes, deux minutes, le panier au bord et un écureuil
+ *              sur le terrain. Deux granites, un triple-impact, une
+ *              double-bande et une figure avec écureuil — et huit pommes au
+ *              panier en tout, figure imposée ou non.
+ *
+ * « N POMMES SUR LE TERRAIN » EST UNE POPULATION, pas un stock : le terrain se
+ * regarnit à mesure qu'on encaisse, comme le Challenge le fait depuis son
+ * arbre. Il le faut : le moyen demande dix granites et ne pose que huit
+ * pommes. Sur le difficile, « les autres doivent être mises dans le panier »
+ * devient donc un COMPTE — huit pommes encaissées en tout, dont les cinq
+ * figures imposées : rater une figure coûte une pomme, pas la partie.
+ *
+ * LE POIDS DES POMMES EST BORNÉ sur les deux niveaux à granites. Une pomme
+ * vaut `(poids − croqué) × 100` points ; en tirer au hasard entre 80 et 230
+ * garde le granite jouable, là où une pomme trop lourde ou trop légère le
+ * rend affaire de chance.
+ *
+ * UNE FIGURE, UNE CASE. Sur le niveau difficile, chaque pomme encaissée coche
+ * AU PLUS un objectif, et le plus exigeant de ceux qu'elle satisfait encore.
+ * Sans cette règle un seul triple-impact — qui est une double-bande plus une
+ * tête — en cocherait deux d'un coup. On lit les DRAPEAUX du fruit, pas le nom
+ * composé : « granite » s'écrit `tete dunk`, mais « pure tete dunk » s'appelle
+ * « pure granite » et reste un granite.
+ */
+const DEFI_NIVEAUX = [
+  {
+    nom: 'FACILE', pommes: 10, temps: 60000, poids: null,
+    panierAuBord: false, ecureuil: false,
+    consigne: 'Réalisez dix dunks avant la fin du temps !',
+    objectifs: [{ cle: 'dunk', label: 'Dunk', n: 10, test: (f) => !!f.flScDunk }],
+  },
+  {
+    nom: 'MOYEN', pommes: 8, temps: 90000, poids: [0.8, 2.3],
+    panierAuBord: true, ecureuil: false,
+    consigne: 'Réalisez dix granites avant la fin du temps !\n'
+      + 'Le panier est au bord : le granite à rebond (« du mammouth ») compte aussi.',
+    objectifs: [{ cle: 'granite', label: 'Granite', n: 10, test: estGranite }],
+  },
+  {
+    nom: 'DIFFICILE', pommes: 8, temps: 120000, poids: [0.8, 2.3],
+    panierAuBord: true, ecureuil: true,
+    consigne: 'Deux granites, un triple-impact, une double-bande et une figure\n'
+      + "avec l'écureuil — et huit pommes au panier en tout !",
+    toutAuPanier: true,
+    // Du plus exigeant au moins exigeant : c'est l'ordre où l'on coche.
+    objectifs: [
+      { cle: 'triple', label: 'Triple-impact', n: 1,
+        test: (f) => !!(f.flScSide && f.flScBound && f.flScHead) },
+      { cle: 'granite', label: 'Granite', n: 2, test: estGranite },
+      { cle: 'ecureuil', label: 'Écureuil', n: 1, test: (f) => !!f.flScSquirrel },
+      { cle: 'bande', label: 'Double-bande', n: 1,
+        test: (f) => !!(f.flScSide && f.flScBound) },
+    ],
+  },
+];
+// Le granite, c'est tête + dunk. La « du mammouth » est le même geste avec la
+// rondade en plus (`tete déviée dunk`) : le panier au bord la rend presque
+// inévitable, et la refuser serait punir ce qu'on vient de demander.
+function estGranite(f) { return !!(f.flScHead && f.flScDunk); }
+
+class Defi extends J.Game {
+  constructeur() { super.constructeur(); this.init(); }
+  init() {
+    this.type = '$defi';
+    this.mapInfo = { skinLink: this.mng.client.getFileInfos('map/forest.swf').name, width: 700, height: 480 };
+    super.init();
+    this.initScroller();
+  }
+  initDefault() {
+    super.initDefault();
+    if (this.level == null) this.level = 0;
+  }
+  get regle() { return DEFI_NIVEAUX[this.level] || DEFI_NIVEAUX[0]; }
+  initGame() {
+    super.initGame();
+    this.step = 2;
+    // L'état des objectifs : un compteur par case, remis à zéro avec la partie.
+    this.fait = {};
+    for (const o of this.regle.objectifs) this.fait[o.cle] = 0;
+    this.pommesAuPanier = 0;
+  }
+  initStartPanel() {
+    super.initStartPanel();
+    this.startPanel.toRead = 1;
+    this.startPanel.text = this.regle.consigne + '\n'
+      + 'Temps imparti : ' + temps(this.regle.temps) + '.';
+  }
+  startGame() {
+    super.startGame();
+    this.barTimer = this.infoBar.addElement('barTimer');
+    this.barTimer.startTimer();
+  }
+  initSprites() {
+    super.initSprites();
+    this.genTzongre();
+    this.genPanier();
+    // LE PANIER AU BORD : c'est lui qui ouvre le rebond sur le mur, donc le
+    // granite dévié. `genPanier` le pose au hasard ; on le rapproche.
+    if (this.regle.panierAuBord) {
+      this.panier.x = this.panier.openRay + 6;
+      this.panier.endUpdate();
+    }
+    if (this.regle.ecureuil) {
+      this.ecureuil = this.newSquirrel({ x: Cs.mcw - 60, y: this.map.height - this.map.groundLevel });
+      this.ecureuil.endUpdate();
+    }
+    for (let i = 0; i < this.regle.pommes; i++) this.genGroundFruit();
+  }
+  genGroundFruit() {
+    const b = this.regle.poids;
+    // Une pomme vaut `(poids − croqué) × 100` : borner le poids, c'est borner
+    // ce qu'elle rapporte, et garder la figure demandée à portée.
+    const w = b ? (b[0] + (random(Math.round((b[1] - b[0]) * 100)) / 100)) : (1 + random(80) / 100);
+    const r = w * 12;
+    // PAS DANS LE PANIER. Le terrain se regarnit en cours de partie, et le
+    // panier est posé au bord sur deux niveaux : sans cette garde, les pommes
+    // s'empilent dessus. Une posée au sol n'y tombe pas (il faut traverser
+    // l'ouverture par le haut), mais elle s'y voit — et elle s'y coince.
+    let x = 0;
+    for (let essai = 0; essai < 12; essai++) {
+      x = r + random(Cs.mcw - (2 * r));
+      if (!this.panier || Math.abs(x - this.panier.x) > this.panier.openRay + r) break;
+    }
+    const mc = this.newFruit({ x, weight: w });
+    mc.y = this.map.height - (this.map.groundLevel + mc.ray);
+    mc.endUpdate();
+  }
+  genTzongre() {
+    const initObj = this.tzongreInfo;
+    initObj.x = Cs.mcw / 2; initObj.y = Cs.mch / 2; initObj.vity = -4;
+    this.tzongre = this.newTzongre(initObj);
+    this.tzongre.endUpdate();
+  }
+  /*
+   * UNE POMME ENCAISSÉE : elle coche au plus une case, la plus exigeante de
+   * celles qu'elle satisfait encore. `Panier.checkCombo` nous la passe avec
+   * son nom composé ; ce sont les DRAPEAUX qu'on lit.
+   */
+  onCombo(nom, bonus, fruit) {
+    if (this.masterStep !== 1 || this.step !== 2) return;
+    for (const o of this.regle.objectifs) {
+      if (this.fait[o.cle] >= o.n) continue;
+      if (!o.test(fruit)) continue;
+      this.fait[o.cle]++;
+      this.scroller.put(o.label, this.fait[o.cle] + '/' + o.n);
+      return;
+    }
+    // Aucune case cochée : on nomme quand même la figure. Le mode ne compte pas
+    // de points, `checkCombo` ne tourne donc pas — sans cela le joueur ne
+    // saurait jamais ce qu'il vient de réussir.
+    if (nom) this.scroller.put(nom, '');
+  }
+  onAddFruit() {
+    this.pommesAuPanier++;
+    if (this.regle.toutAuPanier && this.masterStep === 1 && this.step === 2) {
+      this.scroller.put('Panier', Math.min(this.pommesAuPanier, this.regle.pommes)
+        + '/' + this.regle.pommes);
+    }
+  }
+  objectifsRemplis() {
+    for (const o of this.regle.objectifs) if ((this.fait[o.cle] || 0) < o.n) return false;
+    if (this.regle.toutAuPanier && this.pommesAuPanier < this.regle.pommes) return false;
+    return true;
+  }
+  update() {
+    super.update();
+    if (this.masterStep === 1 && this.step === 2) {
+      // Le terrain se regarnit : c'est une population qu'on tient, pas un
+      // stock qu'on épuise (cf. l'en-tête du mode).
+      while (this.fruitList.length < this.regle.pommes) this.genGroundFruit();
+      this.barTimer.update();
+      if (this.objectifsRemplis()) {
+        this.barTimer.stopTimer();
+        this.score = this.barTimer.time;
+        this.reussite();
+        this.step = 3;
+        this.endGame();
+      } else if (this.barTimer.time > this.regle.temps) {
+        this.tempsEcoule();
+      }
+    }
+  }
+  /*
+   * Le détail des cases, pour les deux panneaux de fin. En `littleScore` : le
+   * `msg` d'une page n'a qu'un champ de titre et un de texte, plusieurs `msg`
+   * s'écraseraient l'un l'autre — `littleScore` attache une ligne par case.
+   */
+  tableauObjectifs() {
+    const lignes = [{ type: 'margin', value: 8 }];
+    for (const o of this.regle.objectifs) {
+      lignes.push({ type: 'littleScore', title: o.label + ' :',
+        score: Math.min(this.fait[o.cle] || 0, o.n) + ' / ' + o.n });
+    }
+    if (this.regle.toutAuPanier) {
+      lignes.push({ type: 'littleScore', title: 'Pommes au panier :',
+        score: Math.min(this.pommesAuPanier, this.regle.pommes) + ' / ' + this.regle.pommes });
+    }
+    return lignes;
+  }
+  reussite() {
+    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Réussi !',
+      msg: this.tzongre.name + ' a relevé le défi en ' + temps(this.score) + '.' }] });
+    this.endPanelMiddle.push({ list: this.tableauObjectifs() });
+    // LE NIVEAU SUIVANT S'OUVRE, sur la fruticard, comme les modes d'époque.
+    const carte = this.mng.card;
+    if (carte && carte.$defi && this.level < DEFI_NIVEAUX.length - 1 && !carte.$defi[this.level + 1]) {
+      carte.$defi[this.level + 1] = 1;
+      this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat',
+        text: 'Vous avez débloqué le défi ' + DEFI_NIVEAUX[this.level + 1].nom + ' !!\n', id: 10 }] });
+    }
+    /*
+     * LE DIFFICILE DONNE L'ACCESSOIRE. On passe par `giveAccessory`, le crochet
+     * que le jeu d'époque appelait déjà pour la Kagulga : c'est le SERVEUR qui
+     * accorde — une récompense de compte ne se décide pas dans le navigateur —
+     * et lui seul sait si le joueur l'a déjà.
+     *
+     * Le panneau de fin, lui, est figé au moment où il s'ouvre
+     * (`Game.setEndGamePanel` recopie les pages) : une réponse qui arrive après
+     * ne s'y ajouterait plus. On annonce donc d'après la FRUTICARD, comme le
+     * fait le jeu pour les tzongres, et l'on n'y revient pas — la carte ne
+     * garde la marque que lorsque la pièce est bien au vestiaire, si bien
+     * qu'une victoire perdue en route se rattrape à la suivante.
+     */
+    if (this.level === DEFI_NIVEAUX.length - 1) {
+      if (carte && !carte.$makulo) {
+        this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', id: 4,
+          text: 'Vous avez gagné le Makulo !\nIl vous attend dans votre inventaire '
+            + 'd’accessoires.' }] });
+      }
+      this.mng.client.giveAccessory('$makulo', (reponse) => {
+        // Accordée à l'instant, ou déjà possédée : la marque est méritée.
+        // L'article encore à dessiner (« absent ») la laisse à zéro — la
+        // prochaine victoire réessaiera.
+        if (!carte || carte.$makulo || !reponse || reponse.absent) return;
+        carte.$makulo = 1;
+        this.mng.client.saveSlot(0);
+      });
+    }
+    this.mng.client.saveSlot(0);
+  }
+  tempsEcoule() {
+    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Trops tard!',
+      msg: this.tzongre.name + " n'a pas relevé le défi dans les temps." }] });
+    this.endPanelMiddle.push({ list: this.tableauObjectifs() });
+    this.step = 3;
+    this.endGame();
+  }
+  reset() { super.reset({ level: this.level }); }
+}
+J.Defi = Defi;
+K.registerClass('gameDefi', Defi);
+
 // ── Train (Préparation) ───────────────────────────────────────────────────
 class Train extends J.Game {
   constructeur() { super.constructeur(); this.init(); }

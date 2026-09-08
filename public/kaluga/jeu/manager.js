@@ -113,6 +113,13 @@ class Manager {
     if (!Array.isArray(c.$seq)) c.$seq = [1, 0];
     if (!Array.isArray(c.$bonus)) c.$bonus = [0, 0];
     if (!Array.isArray(c.$mode)) c.$mode = [1, [1, 1, 1, 0, 0, 0, 0, 1, 0], [1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0]];
+    /* LES ÉPREUVES — hors d'époque : une fiche de 2005 ne les connaît pas, et
+       une fiche déjà commencée non plus. Le premier niveau est ouvert, les
+       deux autres se gagnent. */
+    if (!Array.isArray(c.$defi)) c.$defi = [1, 0, 0];
+    // La marque du Makulo : posée quand le SERVEUR a répondu, elle dit à la
+    // victoire suivante de ne pas réannoncer une récompense déjà touchée.
+    if (c.$makulo == null) c.$makulo = 0;
     if (!c.$stat) c.$stat = { $fruit: 0 };
     if (!c.$classic) c.$classic = { $s: 0 };
     if (!c.$trial) c.$trial = { $st: 1, $tria: { $s: 0 }, $hept: { $s: 0 }, $list: [] };
@@ -150,6 +157,8 @@ class Manager {
     this.card.$seq = [1, 0];
     this.card.$bonus = [0, 0];
     this.card.$mode = [1, [1, 1, 1, 0, 0, 0, 0, 1, 0], [1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0]];
+    this.card.$defi = [1, 0, 0];
+    this.card.$makulo = 0;
     this.card.$stat = { $fruit: 0 };
     this.card.$classic = { $s: 0 };
     this.card.$trial = { $st: 1, $tria: { $s: 0 }, $hept: { $s: 0 }, $list: [] };

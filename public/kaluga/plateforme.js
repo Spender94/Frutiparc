@@ -192,7 +192,28 @@ class Client {
   }
   // Les pictos se déduisent de la fruticard côté serveur, à chaque sauvegarde.
   giveItem() {}
-  giveAccessory() {}
+  /*
+   * UNE RÉCOMPENSE D'ACCESSOIRE.
+   *
+   * Le crochet est d'époque — `Manager.patchFruticard` l'appelle déjà pour la
+   * Kagulga — mais le portage l'avait laissé vide : rien n'était accordé. Il
+   * mène maintenant au serveur, qui seul tient l'inventaire et sait si le
+   * joueur possède déjà la pièce. Le jeu, lui, ne fait qu'annoncer la bonne
+   * nouvelle quand elle arrive.
+   *
+   * Sans session (page ouverte à la main), il n'y a pas de compte à récompenser
+   * et l'on ne fait rien — comme le reste des services.
+   */
+  giveAccessory(cle, retour) {
+    if (!this.sid || !cle) return;
+    fetch('/api/kaluga/accessoire', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: this.sid, cle: String(cle) }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j && j.ok && retour) retour(j); })
+      .catch(() => {});
+  }
 }
 J.Client = Client;
 

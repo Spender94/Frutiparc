@@ -139,8 +139,8 @@ scénarios des clips ne sont pas réécrits.
     épreuves olympiques, le tournoi ;
   - `menu.js` : `Menu` (portrait, barres, entrées, options, console),
     `Console`, `AnimLoader` ;
-  - `BacASable` (dans `modes.js`) : le **bac à sable**, seul mode qui ne soit
-    pas d'époque — voir plus bas ;
+  - `Defi` et `BacASable` (dans `modes.js`) : les **Épreuves** et le **bac à
+    sable**, les deux seuls modes qui ne soient pas d'époque — voir plus bas ;
   - `manager.js` : `Manager` (slots, fruticard — `reparerCard` complète les
     fiches anciennes —, préférences, sons, `demarrerKaluga`).
 - `public/kaluga/plateforme.js` — `Client` : `/api/loadFrutiSlots` et
@@ -296,6 +296,73 @@ grenouille était à l'écran (son clip porte un masque), la barre de score, le
 feuillage et le bandeau des messages disparaissaient. Corrigé dans
 `moteur/flash.js` (témoin `null`), avec un test de non-régression
 (`test/kalugaBac.test.js`).
+
+## Les Épreuves — le mode à figures, et l'accessoire qui se gagne
+
+Le second mode hors d'époque. Comme la Survie ou l'Invasion, il demande de
+réussir quelque chose **avant la fin du temps** ; ce qu'il demande, ce ne sont
+pas des points mais des **figures** — les combos que le panier nomme déjà
+(`Panier.checkCombo`).
+
+| | pommes | temps | à réussir | terrain |
+|---|---|---|---|---|
+| **FACILE** | 10 | 1'00 | 10 dunks | panier au hasard |
+| **MOYEN** | 8 | 1'30 | 10 granites | panier au bord |
+| **DIFFICILE** | 8 | 2'00 | 2 granites, 1 triple-impact, 1 double-bande, 1 figure avec l'écureuil, **et 8 pommes au panier** | panier au bord, un écureuil |
+
+- **« N pommes sur le terrain » est une population, pas un stock** : le terrain
+  se regarnit à mesure qu'on encaisse, comme le Challenge le fait depuis son
+  arbre. Il le faut — le moyen demande dix granites et ne pose que huit
+  pommes. Sur le difficile, « les autres doivent être mises dans le panier »
+  devient donc un **compte** : huit pommes encaissées en tout, dont les cinq
+  figures imposées. Rater une figure coûte une pomme, pas la partie.
+- **Le poids des pommes est borné** entre 0,8 et 2,3 (soit 80 à 230 points) sur
+  les deux niveaux à granites : une pomme trop lourde ou trop légère rend le
+  granite affaire de chance.
+- **Le panier au bord** ouvre le granite à rebond — la « du mammouth »
+  (`tete déviée dunk`) —, acceptée au même titre que le granite droit.
+- **Une figure, une case** : chaque pomme encaissée coche **au plus un**
+  objectif, le plus exigeant de ceux qu'elle satisfait encore. Sans cette
+  règle un seul triple-impact — qui est une double-bande plus une tête — en
+  cocherait deux d'un coup. On lit les **drapeaux** du fruit, jamais le nom
+  composé : « granite » s'écrit `tete dunk`, mais la table des noms le renomme
+  (« pure granite », « du mammouth »).
+- **Le crochet vit dans `Panier.addFruit`, pas dans `checkCombo`** :
+  `checkCombo` ne tourne que sous `$classic`, le seul mode qui compte des
+  points. Le nom de la figure se calcule à part (`Panier.figureDe`), et
+  `addFruit` appelle `game.onCombo(nom, bonus, fruit)` pour tout mode qui
+  l'écoute, avec les gardes d'époque (une pomme croquée jusqu'au trognon ou
+  emportée par les fourmis ne vaut pas figure).
+- **Rien ne part au classement** : le type `$defi` n'entre pas dans la branche
+  de `Game.initEndGame` qui envoie le score — donc aucun Fruit Défendu
+  consommé. La progression vit sur la fruticard (`$defi = [1, 0, 0]`, un
+  niveau ouvert par victoire) et l'entrée du menu porte l'identifiant 19, ses
+  niveaux 70 à 72 : hors de la plage de 2005, comme le bac à sable.
+
+### L'accessoire
+
+Gagner le difficile donne le **Makulo**. Le jeu ne fait que demander, par le
+crochet d'époque `client.giveAccessory` — celui que `Manager.patchFruticard`
+appelait déjà pour la Kagulga, et que le portage avait laissé vide :
+
+- `POST /api/kaluga/accessoire` `{ sid, cle }` → `{ ok, accorde, nom }`. Le
+  serveur seul tient l'inventaire et sait si le joueur l'a déjà.
+- La table (`KALUGA_RECOMPENSES`) ne connaît qu'un **numéro d'article de
+  boutique** (`$makulo` → #88888). La pièce est donc dessinée, nommée, tarifée
+  et remplaçable **depuis l'admin** ; l'entrée d'inventaire est exactement
+  celle de `purchaseShopPack`, `shopId` compris, si bien que la possession,
+  l'essai, la revente et les purges marchent sans un mot de plus.
+- Rien n'est débité et **rien n'est versé** : une récompense n'est pas une
+  vente, la commission du graphiste ne se déclenche pas.
+- L'article retiré du rayon (ou pas encore créé) **ne casse pas la partie
+  gagnée** : la réponse dit `absent`, le serveur le journalise, et la
+  fruticard ne garde pas la marque — la prochaine victoire réessaiera.
+- L'annonce, elle, se lit sur la fruticard (`$makulo`) : `setEndGamePanel`
+  **recopie** les pages au moment où le panneau s'ouvre, une réponse arrivée
+  après ne s'y ajouterait plus.
+
+`$kagulga` reste débranché : son article n'existe pas encore. Le jour où il
+sera dessiné, une ligne de la table suffira.
 
 ## Trois règles qui s'écartent de 2005 (à la demande, version light)
 

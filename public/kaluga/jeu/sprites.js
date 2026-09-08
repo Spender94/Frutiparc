@@ -926,6 +926,20 @@ class Panier extends Phys {
   addFruit(fruit) {
     this.game.onAddFruit();
     if (this.game.endingGame) return;
+    /*
+     * LE MODE ÉPREUVES ÉCOUTE ICI. C'est le seul endroit qui sache ce qu'une
+     * pomme vient de réussir, et il faut le lui dire pour TOUS les modes :
+     * `checkCombo` ne tourne que sous le Challenge, qui seul compte des points.
+     * On lui passe le nom composé ET le fruit, parce que le nom efface les
+     * drapeaux (« tete dunk » devient « granite »).
+     *
+     * Une pomme croquée jusqu'au trognon, ou emportée par les fourmis, ne vaut
+     * pas figure — c'est déjà la règle du Challenge, ce sont les mêmes gardes.
+     */
+    if (this.game.onCombo && fruit.flScoreAble && fruit.antList.length === 0) {
+      const fig = this.figureDe(fruit);
+      this.game.onCombo(fig.name, fig.b, fruit);
+    }
     if (this.game.type === '$classic') {
       if (fruit.flScoreAble && fruit.antList.length === 0) {
         let point = Math.round((fruit.weight - fruit.crunch) * 100);
@@ -1009,7 +1023,15 @@ class Panier extends Phys {
     mc._yscale = 100 - mc.rot / 2;
     if (mc.rot > 200) { K.clearInterval(mc.animId); mc.removeMovieClip(); }
   }
-  checkCombo(fruit) {
+  /*
+   * LA FIGURE D'UNE POMME — son nom composé et ce qu'elle vaut.
+   *
+   * Sortie de `checkCombo` parce qu'un mode peut vouloir SAVOIR ce que la
+   * pomme vient de réussir sans qu'elle rapporte quoi que ce soit : les
+   * Épreuves comptent des dunks et des granites, pas des points, et
+   * `checkCombo` ne tourne que pour le Challenge.
+   */
+  figureDe(fruit) {
     let b = 0;
     let name = '';
     if (fruit.flScNoLink) { b += 2; name += 'pure '; }
@@ -1022,7 +1044,10 @@ class Panier extends Phys {
     if (fruit.flScDunk) { b += 10; name += 'dunk '; }
     if (fruit.flScDirect) { b += 4; name += 'direct '; }
     for (const [search, rep] of COMBOS) name = this.replace(name, search, rep);
-    b *= 10;
+    return { name, b: b * 10 };
+  }
+  checkCombo(fruit) {
+    const { name, b } = this.figureDe(fruit);
     if (b > 0) {
       this.game.scroller.put(name, '+' + b);
       // Pour la pomme d'or : la somme et le compte des combos — hors grappe,

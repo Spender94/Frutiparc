@@ -157,9 +157,13 @@ test('la pomme d’or vaut dix fois la moyenne des combos, grappes exclues', () 
   // Et tout repart de zéro avec la partie.
   assert.match(GAME, /this\.gOr = 0; this\.gMax = 0;\n\s*this\.comboSomme = 0; this\.comboNb = 0;/);
   // L'exemple de la demande : que des granites (200) → 2000. Un granite =
-  // « tete dunk » = (10 + 10) × 10.
-  assert.match(c, /if \(fruit\.flScHead\) \{ b \+= 10; name \+= 'tete '; \}/);
-  assert.match(c, /if \(fruit\.flScDunk\) \{ b \+= 10; name \+= 'dunk '; \}/);
+  // « tete dunk » = (10 + 10) × 10. Le barème vit dans `figureDe`, sorti de
+  // `checkCombo` pour que les Épreuves puissent nommer une figure sans
+  // qu'elle rapporte quoi que ce soit (cf. test/kalugaEpreuves.test.js).
+  const f = methode(SPRITES, 'Panier extends Phys', 'figureDe');
+  assert.match(f, /if \(fruit\.flScHead\) \{ b \+= 10; name \+= 'tete '; \}/);
+  assert.match(f, /if \(fruit\.flScDunk\) \{ b \+= 10; name \+= 'dunk '; \}/);
+  assert.match(f, /return \{ name, b: b \* 10 \};/);
   assert.match(SPRITES, /\['tete dunk ', 'granite '\]/);
   assert.equal(Math.round((200 + 200 + 200) / 3) * 10, 2000);
 });

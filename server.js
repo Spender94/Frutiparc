@@ -17153,6 +17153,78 @@ app.post('/api/admin/kaluga-bac', adminAuth, (req, res) => {
   res.json({ ok: true, bac });
 });
 
+/*
+ * KALUGA — L'ACCESSOIRE QUI SE GAGNE
+ *
+ * Le jeu d'époque savait déjà récompenser : `Manager.patchFruticard` et
+ * `Game.endGame` appellent `client.giveAccessory("$kagulga")` quand tous les
+ * modes sont bouclés. Le crochet a survécu au portage, mais il ne menait nulle
+ * part — le disque Flash parlait à un serveur qui n'existe plus.
+ *
+ * Il mène ici. Le jeu ne connaît qu'un NOM de récompense ; le serveur, lui, ne
+ * connaît qu'un NUMÉRO D'ARTICLE. La pièce est un article de boutique ordinaire
+ * — dessiné, nommé, tarifé et remplaçable depuis l'admin —, simplement gagné au
+ * lieu d'être payé : l'entrée d'inventaire est celle de `purchaseShopPack`,
+ * `shopId` compris, si bien que la possession, l'essai, la revente et les
+ * purges d'admin marchent sans un mot de plus.
+ *
+ * Conséquences voulues :
+ *   · l'article retiré du rayon (`disabled`) ne se gagne plus, et l'article
+ *     redessiné change chez tout le monde — c'est l'admin qui décide, pas ce
+ *     fichier ;
+ *   · rien n'est débité et RIEN N'EST VERSÉ : une récompense n'est pas une
+ *     vente, la commission du graphiste ne se déclenche donc pas ;
+ *   · l'article manquant ne fait pas d'erreur — la partie a été gagnée, le jeu
+ *     ne doit pas s'arrêter là-dessus : on répond « rien à accorder » et on le
+ *     journalise, pour que l'admin s'en aperçoive.
+ *
+ * `$kagulga` n'est pas de la partie : l'article de la Kagulga d'époque n'existe
+ * pas encore. Le jour où il sera dessiné, une ligne suffira.
+ */
+const KALUGA_RECOMPENSES = {
+  '$makulo': { packId: 88888 },      // « Makulo » — créé depuis l'admin
+};
+
+app.post('/api/kaluga/accessoire', (req, res) => {
+  const sid = String((req.body && req.body.sid) || req.query.sid || '');
+  const username = resolveUsernameFromSid(sid);
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const user = users[username];
+  if (!user) return res.status(503).json({ ok: false, error: 'user_not_loaded' });
+
+  const cle = String((req.body && req.body.cle) || '');
+  const recompense = KALUGA_RECOMPENSES[cle];
+  if (!recompense) return res.status(404).json({ ok: false, error: 'unknown_reward' });
+
+  const pack = getShopPack(recompense.packId);
+  if (!pack || pack.disabled) {
+    console.warn(`[KALUGA] ${username} a gagné ${cle} mais l'article #${recompense.packId} est absent du rayon`);
+    return res.json({ ok: true, accorde: false, nom: '', absent: true });
+  }
+  if (userOwnsShopPack(user, pack.id)) {
+    // Le jeu rappelle le crochet à chaque victoire : une deuxième Makulo
+    // n'aurait aucun sens.
+    return res.json({ ok: true, accorde: false, nom: pack.name });
+  }
+
+  const entry = {
+    id: 'shop_' + pack.id,
+    shopId: pack.id,
+    n: pack.name,
+    v: bouilleOf(user, username).substring(0, 15) + pack.suffix9,
+    at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+  };
+  if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
+  user.customAccessories.push(entry);
+  if (user._dbId) db.addAccessory(user._dbId, entry).catch(dbErr('addAccessory'));
+  addAndNotifyUserLog(username, {
+    type: USER_LOG_TYPE.PICTO,
+    content: `Épreuves de Kaluga : bravo ! L'accessoire ${pack.name} t'attend dans ton inventaire.`,
+  });
+  console.log(`[KALUGA] ${username} gagne l'accessoire #${pack.id} (${pack.name}) — ${cle}`);
+  res.json({ ok: true, accorde: true, nom: pack.name, accessoire: entry });
+});
+
 app.get('/api/fd/status', (req, res) => {
   const username = resolveUsernameFromSid(String(req.query.sid || ''));
   if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });

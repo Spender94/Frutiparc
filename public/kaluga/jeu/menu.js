@@ -46,6 +46,15 @@ class Menu extends J.Slot {
       { id: 4, name: 'INVASION', list: [{ id: 40, name: 'FACILE' }, { id: 41, name: 'STANDARD' }, { id: 42, name: 'DIFFICILE' }, { id: 43, name: 'INFERNAL' }] },
       { id: 5, name: 'PISTE', list: [{ id: 50, name: 'FACILE' }, { id: 51, name: 'STANDARD' }, { id: 52, name: 'DIFFICILE' }, { id: 53, name: 'INFERNAL' }] },
       { id: 6, name: 'SEQUENCE', list: [{ id: 60, name: 'INTRODUCTION' }, { id: 61, name: 'CREDITS' }] },
+      /* LES ÉPREUVES — hors d'époque, comme le bac à sable. Ses identifiants
+         (70-72) sortent de la plage de 2005, et son image de titre est la
+         neuvième de la bande, celle que le SWF n'a jamais servie : deux
+         entrées qui ne viennent pas du disque, une même image pour le dire. */
+      { id: 19, frame: 9, name: 'EPREUVES', list: [
+        // Les images des trois niveaux sont celles des autres modes : la bande
+        // n'en a qu'une par rang, et un rang de plus n'en aurait pas.
+        { id: 70, frame: 21, name: 'FACILE' }, { id: 71, frame: 22, name: 'MOYEN' },
+        { id: 72, frame: 23, name: 'DIFFICILE' }] },
       { id: 9, name: 'PREPARATION' },
       { id: 7, name: 'OPTIONS' },
     ];
@@ -72,6 +81,15 @@ class Menu extends J.Slot {
         }
         if (!visible) this.menuList[m] = undefined;
       }
+    }
+    // CASSE ÉPREUVES — les niveaux se gagnent l'un après l'autre, comme les
+    // difficultés d'époque, mais leur progression vit dans `$defi` : le
+    // « CASSE MODES » ci-dessus ne parcourt que les six modes de 2005.
+    const defi = this.mng.card.$defi || [1, 0, 0];
+    const epreuves = this.menuList.find((x) => x && x.id === 19);
+    if (epreuves) {
+      for (let i = 0; i < epreuves.list.length; i++) if (!defi[i]) epreuves.list[i] = undefined;
+      if (!epreuves.list.some((x) => x)) this.menuList[this.menuList.indexOf(epreuves)] = undefined;
     }
     // CASSE SEQ
     const seq = this.mng.card.$seq;
@@ -140,6 +158,9 @@ class Menu extends J.Slot {
     this.mng.sfx.play('sClic');
     switch (id) {
       case 1: case 2: case 3: case 4: case 5: case 6: this.toggle(id); break;
+      // Les Épreuves : un sous-menu de plus, dont l'identifiant sort de la
+      // plage de 2005 (le 8 est déjà pris par « retour au menu »).
+      case 19: this.toggle(id); break;
       case 9: this.launchGame('gameTrain'); break;
       case 7: this.displayOption(); break;
       case 8: this.displayMenu(); break;
@@ -157,6 +178,7 @@ class Menu extends J.Slot {
       case 30: case 31: case 32: case 33: this.launchGame('gameSurvival', { level: id - 30 }); break;
       case 40: case 41: case 42: case 43: this.launchGame('gameInvasion', { level: id - 40 }); break;
       case 50: case 51: case 52: case 53: this.launchGame('gameRing', { level: id - 50 }); break;
+      case 70: case 71: case 72: this.launchGame('gameDefi', { level: id - 70 }); break;
       case 60: this.launchAnim('animLoader', { link: 'anim/intro.swf', width: 350, height: 240 }); break;
       case 61: this.launchAnim('animLoader', { link: 'anim/credits.swf', width: 350, height: 135 }); break;
       case 99: this.launchGame('gameBac', { bac: this.mng.client.bac }); break;
