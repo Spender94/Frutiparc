@@ -42,7 +42,7 @@ test('le mot tapé dans le chat mène à l’émote, et à elle seule', () => {
   // d'époque (`MeMng.fbouilleActionStr`). « je dis beurk » reste du texte.
   const bloc = /var EMOTE_MAP = \{\};[\s\S]*?\n  \}\)\(\);/.exec(LIGHT);
   assert.ok(bloc, 'la table des déclencheurs');
-  assert.match(bloc[0], /add\("beurk", "fait la grimace", \["beurk", "berk", "bwark"\]\);/);
+  assert.match(bloc[0], /add\("beurk", "a la nausée", \["beurk", "berk", "bwark"\]\);/);
   // Et les treize d'époque sont toujours là, inchangés.
   for (const [anim, phrase] of [['rire', 'rigole'], ['mdr', 'éclate de rire'],
     ['langue', 'tire la langue'], ['rougir', 'rougit'], ['regard', 'regarde ailleurs'],
@@ -68,7 +68,7 @@ test('l’indice envoyé au moteur est le 13, au bout et pas ailleurs', () => {
   // La légende de la scène, celle qui passe sous la bouille.
   const lab = /var ANIM_LABEL = \{[\s\S]*?\};/.exec(LIGHT);
   assert.ok(lab, 'la table des légendes');
-  assert.match(lab[0], /beurk:"fait la grimace"/);
+  assert.match(lab[0], /beurk:"a la nausée"/);
 });
 
 test('le moteur connaît « beurk », et le nomme', () => {
@@ -93,9 +93,9 @@ test('la branche 13 emprunte « rougir » et l’humeur 2, sans rien coder en du
   assert.doesNotMatch(br[0], /oeil\(3\)|allerImage\(2, false\)/,
     'ni l’œil ni la bouche ne sont écrits en chiffres');
 
-  // Le drapeau du fard vert se pose au SEUL endroit qui décide de l'animation
+  // Le drapeau du fard kaki se pose au SEUL endroit qui décide de l'animation
   // — donc toute autre animation, et le repos, le rangent.
-  assert.match(MOTEUR, /this\.fardVert = \(id === 13\);/);
+  assert.match(MOTEUR, /this\.fardKaki = \(id === 13\);/);
 });
 
 test('la page de démonstration la propose aussi', () => {

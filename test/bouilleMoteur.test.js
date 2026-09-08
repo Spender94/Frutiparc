@@ -510,19 +510,19 @@ test('« beurk » emprunte la pellicule de « rougir » et le visage de la trist
   assert.notStrictEqual(bouche(), boucheTriste + 1, 'mais garde la bouche neutre');
 });
 
-test('le fard passe au vert pendant « beurk », et seulement pendant', async () => {
+test('le fard passe au kaki pendant « beurk », et seulement pendant', async () => {
   const defs = await lire('famille0.swf');
   const mo = new Moteur.Moteur(defs, { alea: () => 0.5 });
   mo.creerVisage();
   mo.definir(etat([0, 1, 0, 5, 1, 15, 22, 0, 0, 0, 0, 0]));
 
   mo.jouerAnim(13);
-  assert.strictEqual(mo.fardVert, true, 'beurk lève le drapeau');
+  assert.strictEqual(mo.fardKaki, true, 'beurk lève le drapeau');
   mo.jouerAnim(5);
-  assert.strictEqual(mo.fardVert, false, 'rougir rougit encore');
+  assert.strictEqual(mo.fardKaki, false, 'rougir rougit encore');
   mo.jouerAnim(13);
   mo.jouerAnim(0);
-  assert.strictEqual(mo.fardVert, false, 'le repos le range');
+  assert.strictEqual(mo.fardKaki, false, 'le repos le range');
 
   // LE FARD, C'EST LE MORPH — et rien d'autre. Deux par bouille, les deux
   // joues, en rouge pur : c'est ce qui autorise à viser « un morph » plutôt
@@ -537,20 +537,38 @@ test('le fard passe au vert pendant « beurk », et seulement pendant', async ()
   }
 });
 
-test('la transformation qui verdit le fard : le rouge s’éteint, le vert se pose', () => {
-  // `teindre` calcule `canal × m / 256 + a`. Sur du rouge pur, la
-  // transformation de « beurk » doit rendre du vert pur — et laisser l'alpha,
-  // seul porteur de la forme du dégradé, intact.
+test('la transformation qui kakise le fard : le rouge s’éteint, le kaki se pose', () => {
+  // `teindre` calcule `canal × m / 256 + a`. Les trois multiplicateurs à zéro
+  // effacent la couleur d'origine, et les décalages posent la teinte à plat :
+  // sur n'importe quelle couleur, la transformation de « beurk » doit rendre
+  // le kaki — et laisser l'alpha, seul porteur de la forme du dégradé, intact.
   const src = fs.readFileSync(path.join(ROOT, 'public/js/bouille-moteur.js'), 'utf8');
-  const m = /const CX_FARD_VERT = \{[^}]*\};/.exec(src);
-  assert.ok(m, 'la transformation doit être nommée');
-  const cx = vm.runInNewContext('(' + m[0].replace(/^const CX_FARD_VERT = /, '').replace(/;$/, '') + ')');
+  const m = /const KAKI = \[[^\]]*\];[\s\S]{0,200}?const CX_FARD_KAKI = \{[\s\S]*?\};/.exec(src);
+  assert.ok(m, 'la teinte et la transformation doivent être nommées');
+  // `vm` rend des tableaux d'un AUTRE royaume : leur prototype n'est pas le
+  // nôtre, et `deepStrictEqual` compare les prototypes. On les rapatrie.
+  const bac = vm.runInNewContext(m[0] + '; ({ KAKI, CX_FARD_KAKI })');
+  const KAKI = Array.from(bac.KAKI);
+  const cx = bac.CX_FARD_KAKI;
   const canal = (v, mul, add) => Math.max(0, Math.min(255, Math.round(v * mul / 256 + add)));
-  assert.strictEqual(canal(255, cx.mr, cx.ar), 0, 'le rouge s’éteint');
-  assert.strictEqual(canal(0, cx.mv, cx.av), 255, 'le vert se pose');
-  assert.strictEqual(canal(0, cx.mb, cx.ab), 0, 'le bleu ne bouge pas');
+  // C'EST LE VERT KAKI DU PARC — #729236, le onzième feutre du chat. Un vert
+  // pur donnait un citron vif : lumineux, pas écœuré.
+  assert.deepStrictEqual(KAKI, [114, 146, 54], 'le feutre « Vert kaki », #729236');
+  const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(LIGHT, /\{ i: 11,\s*name: "Vert kaki",\s*color: "#729236" \}/,
+    'et cette couleur reste celle du feutre : les deux doivent rester d’accord');
+
+  // Le fard est du rouge pur ; on vérifie aussi qu'une autre couleur d'entrée
+  // donnerait le même kaki — la teinte est POSÉE, pas mélangée.
+  for (const source of [[255, 0, 0], [12, 200, 90], [255, 255, 255]]) {
+    assert.deepStrictEqual([
+      canal(source[0], cx.mr, cx.ar),
+      canal(source[1], cx.mv, cx.av),
+      canal(source[2], cx.mb, cx.ab),
+    ], KAKI, 'le kaki se pose sur rgb(' + source.join(',') + ')');
+  }
   assert.strictEqual(cx.ma, 256, 'l’alpha passe intact');
   assert.strictEqual(cx.aa, 0);
   // Et le dessin ne teinte QUE les morphs, quand le drapeau est levé.
-  assert.match(src, /if \(this\.fardVert && this\.defs\.morphs && this\.defs\.morphs\.has\(id\)\) \{\s*\n\s*cx = composerCx\(cx, CX_FARD_VERT\);/);
+  assert.match(src, /if \(this\.fardKaki && this\.defs\.morphs && this\.defs\.morphs\.has\(id\)\) \{\s*\n\s*cx = composerCx\(cx, CX_FARD_KAKI\);/);
 });

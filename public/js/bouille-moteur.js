@@ -127,7 +127,7 @@
     };
   }
   /*
-   * LE FARD DE « BEURK », OU COMMENT PEINDRE EN VERT CE QUI EST ROUGE.
+   * LE FARD DE « BEURK », OU COMMENT PEINDRE EN KAKI CE QUI EST ROUGE.
    *
    * L'émote « beurk » ne dessine rien de neuf : elle emprunte le FARD de
    * « rougir » — les deux morphs posés sur les joues — et le passe au vert.
@@ -135,15 +135,23 @@
    * Ce fard est du ROUGE PUR partout dans le corpus (255, 0, 0, avec l'alpha
    * pour tout modelé : c'est un dégradé radial qui s'efface sur les bords).
    * Une transformation de couleur Flash suffit donc, sans toucher au dessin :
-   * `teindre` calcule `canal × m / 256 + a`, alors on éteint le rouge (mr = 0)
-   * et l'on pose le vert à plat (av = 255). Le 255 du rouge devient 0, le 0 du
-   * vert devient 255, l'alpha — le seul porteur de la forme — passe intact.
+   * `teindre` calcule `canal × m / 256 + a`, et le multiplicateur du rouge à
+   * zéro efface la couleur d'origine — il ne reste que les trois décalages,
+   * qui posent la teinte à plat. L'alpha, seul porteur de la forme, passe
+   * intact : le dégradé garde son modelé, il change de couleur.
+   *
+   * ET CETTE TEINTE EST LE VERT KAKI DU PARC — #729236, le onzième feutre du
+   * chat (public/light.html, table FEUTRES). Un vert PUR donnait un citron
+   * vif : lumineux, pas écœuré. Le kaki, lui, dit la nausée — et c'est une
+   * couleur que Frutiparc a déjà, pas une de plus.
    *
    * On ne vise pas les morphs par leur NUMÉRO : il change d'une famille à
    * l'autre. On les vise par ce qu'ils sont — un morph, et il n'y en a que
    * deux par bouille, les deux joues (vérifié sur les dix familles du parc).
    */
-  const CX_FARD_VERT = { mr: 0, mv: 256, mb: 256, ma: 256, ar: 0, av: 255, ab: 0, aa: 0 };
+  const KAKI = [114, 146, 54];                     // #729236, le feutre « Vert kaki »
+  const CX_FARD_KAKI = { mr: 0, mv: 0, mb: 0, ma: 256,
+    ar: KAKI[0], av: KAKI[1], ab: KAKI[2], aa: 0 };
 
   // Une teinte FEMC.setColor exprimée en transformation de couleur.
   function cxTeinte(rgb) {
@@ -772,9 +780,9 @@
     const oeilJoue = (ca, cb) => { if (oaO) oaO.allerImage(ca, true); if (obO) obO.allerImage(cb, true); };
     const oeilCompt = (v) => { if (oaO) oaO.vars.compt = v; if (obO) obO.vars.compt = v; };
     const muet = () => { if (bb) bb.vars.flMute = true; };
-    // Le fard vert n'appartient qu'à « beurk » : toute autre animation
+    // Le fard kaki n'appartient qu'à « beurk » : toute autre animation
     // — le retour au repos compris — le range.
-    this.fardVert = (id === 13);
+    this.fardKaki = (id === 13);
 
     if (id === 0) {
       r.endAnim();
@@ -868,7 +876,7 @@
        * TRISTESSE — l'humeur 2, `HUMEURS[2] = [2, 1]`, l'œil triste et la
        * bouche en coin. « Rougir » y mettait le même œil (3 = 2 + 1) mais
        * gardait la bouche neutre : c'est là, et là seulement, que les deux
-       * se séparent. Le fard, lui, passe au vert (cf. CX_FARD_VERT).
+       * se séparent. Le fard, lui, passe au kaki (cf. CX_FARD_KAKI).
        *
        * On lit l'humeur dans HUMEURS plutôt que d'écrire 3 et 2 : si la
        * table bouge, la grimace suit.
@@ -959,12 +967,12 @@
     const t = this.formeDe(id, ratio);
     if (!t) return;
     const f = t.f, id2 = t.cle;
-    // LE FARD PASSE AU VERT pendant « beurk ». Un morph sur une bouille, c'est
+    // LE FARD PASSE AU KAKI pendant « beurk ». Un morph sur une bouille, c'est
     // le fard des joues et rien d'autre — les dix familles du parc n'en ont
     // jamais que deux, les deux joues, en rouge pur. On teinte donc là, au
     // dernier moment, sans toucher ni à la pellicule ni au placement.
-    if (this.fardVert && this.defs.morphs && this.defs.morphs.has(id)) {
-      cx = composerCx(cx, CX_FARD_VERT);
+    if (this.fardKaki && this.defs.morphs && this.defs.morphs.has(id)) {
+      cx = composerCx(cx, CX_FARD_KAKI);
     }
     ctx.save();
     ctx.transform(M.a, M.b, M.c, M.d, M.e, M.f);
