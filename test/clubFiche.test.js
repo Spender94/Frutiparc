@@ -198,6 +198,60 @@ test('les médailles se rangent par mois puis par jeu — MotionBall compris', a
   assert.ok(e.medailles.rang > d.medailles.rang, 'et il passe après le champion');
 });
 
+/*
+ * LE TOP MÉDAILLÉS, JEU PAR JEU.
+ *
+ * Chaque médaille sait de quel jeu elle vient : la ventiler ne demande qu'un
+ * filtre. Sans paramètre, c'est le tableau général d'avant — la vue par défaut
+ * ne change pas. Le serveur énumère en plus les jeux QUI ONT MÉDAILLÉ, pour
+ * que le sélecteur du Club se remplisse tout seul.
+ */
+test('le top médaillés se ventile par jeu, et le sélecteur se remplit tout seul', async () => {
+  const tous = await (await fetch(BASE + '/api/club/medalists')).json();
+  assert.equal(tous.game, 'all', 'sans paramètre, tous les jeux');
+  assert.ok(tous.medalists.length >= 2, 'le champion et son dauphin y sont');
+  assert.ok(Array.isArray(tous.games) && tous.games.length >= 2,
+    'et la liste des jeux médaillés est fournie');
+  const parId = Object.fromEntries(tous.games.map((g) => [g.id, g]));
+  assert.ok(parId.snake3, 'Frutisnake a médaillé');
+  assert.equal(parId.snake3.nom, 'Frutisnake', 'avec son nom d’affichage');
+  assert.equal(tous.games.reduce((n, g) => n + g.total, 0), tous.totalMedals,
+    'les comptes par jeu totalisent le compte général');
+  // Trié par nom : le sélecteur se lit sans chercher.
+  const noms = tous.games.map((g) => g.nom);
+  assert.deepEqual(noms, noms.slice().sort((a, b) => a.localeCompare(b, 'fr')));
+
+  // Un jeu : le même tableau, réduit à ses médailles.
+  const snake = await (await fetch(BASE + '/api/club/medalists?game=snake3')).json();
+  assert.equal(snake.game, 'snake3');
+  assert.equal(snake.totalMedals, parId.snake3.total, 'le compte suit le jeu demandé');
+  assert.ok(snake.totalMedals < tous.totalMedals, 'et il est plus petit que le général');
+  for (const m of snake.medalists) {
+    assert.ok(m.gold + m.silver + m.bronze === m.total, 'les trois métaux font le compte');
+  }
+  // La liste des jeux ne bouge pas avec le filtre : le sélecteur reste entier.
+  assert.deepEqual(snake.games, tous.games);
+
+  // Un jeu qui n'a jamais médaillé : un tableau vide, pas une erreur. (Les
+  // fichiers de données survivent d'une suite à l'autre : on prend un nom que
+  // le serveur vient de dire ABSENT plutôt que d'en parier un.)
+  const inconnu = 'jeu-qui-nexiste-pas-' + RUN;
+  assert.ok(!tous.games.some((g) => g.id === inconnu));
+  const vide = await (await fetch(BASE + '/api/club/medalists?game=' + inconnu)).json();
+  assert.deepEqual(vide.medalists, []);
+  assert.equal(vide.totalMedals, 0);
+  assert.deepEqual(vide.games, tous.games, 'et le sélecteur reste entier');
+});
+
+test('la page du Club porte le sélecteur de jeu du top médaillés', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/club/index.html'), 'utf8');
+  assert.match(html, /<select id="medalist-game" onchange="loadMedalists\(\)">/);
+  assert.match(html, /<option value="all">Tous les jeux<\/option>/, 'le choix par défaut');
+  assert.match(html, /fetch\('\/api\/club\/medalists\?game=' \+ encodeURIComponent\(jeu\)\)/);
+  assert.match(html, /function majSelecteurJeux\(games, choix\)/,
+    'la liste se remplit de ce que le serveur rend');
+});
+
 test('un joueur sans médaille reçoit une fiche vide, pas une erreur', async () => {
   const seul = 'clubfc' + RUN;
   await semer(seul, 'swapou2_contest', 42);

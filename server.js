@@ -20903,11 +20903,30 @@ function metalDe(medal) {
   return 'bronze';
 }
 
+/*
+ * LE TOP MÉDAILLÉS — tous jeux confondus, ou UN SEUL.
+ *
+ * Chaque médaille sait de quel jeu elle vient (`game`) : la ventiler ne
+ * demande qu'un filtre. `?game=<clé>` ne compte que celui-là ; sans paramètre
+ * (ou `game=all`), c'est le tableau général d'avant, inchangé.
+ *
+ * La réponse porte AUSSI `games` — les jeux qui ont réellement distribué des
+ * médailles, avec leur nom d'affichage et leur compte. Le sélecteur du Club
+ * s'en remplit tout seul : un jeu qui n'a jamais médaillé personne n'a pas de
+ * ligne à montrer, et un jeu qui s'y met paraîtra sans qu'on touche à rien.
+ */
 app.get('/api/club/medalists', async (req, res) => {
   try {
     const medals = await toutesLesMedailles();
+    const demande = String(req.query.game || '').trim().toLowerCase();
+    const jeu = (demande && demande !== 'all') ? demande : '';
+
+    const parJeu = {};
     const counts = {};
     for (const m of medals) {
+      const g = String(m.game || '').toLowerCase();
+      if (g) parJeu[g] = (parJeu[g] || 0) + 1;
+      if (jeu && g !== jeu) continue;
       const u = m.username;
       if (!counts[u]) counts[u] = { user: getDisplayName(u), gold: 0, silver: 0, bronze: 0, total: 0 };
       const metal = metalDe(m.medal);
@@ -20919,7 +20938,15 @@ app.get('/api/club/medalists', async (req, res) => {
     const list = Object.values(counts).sort(
       (a, b) => b.gold - a.gold || b.silver - a.silver || b.bronze - a.bronze || a.user.localeCompare(b.user)
     );
-    res.json({ medalists: list, totalMedals: medals.length });
+    const games = Object.keys(parJeu)
+      .map((g) => ({ id: g, nom: GAME_DISPLAY_NAMES[g] || g, total: parJeu[g] }))
+      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    res.json({
+      medalists: list,
+      totalMedals: list.reduce((n, m) => n + m.total, 0),
+      game: jeu || 'all',
+      games,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

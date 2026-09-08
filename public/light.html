@@ -4791,7 +4791,12 @@
     // qui vient d'être posé.)
     veillerSurLesJeux();
     // Les scores évoluent toute la journée : on rafraîchit à chaque ouverture.
-    if (tab === "scores") loadChallengeScores();
+    // ET L'ON REVIENT AU JOUR MÊME. Le jour consulté (`scoresJour`) et la page
+    // (`scoresDebut`) vivaient d'une ouverture à l'autre : qui remontait au 3
+    // mars, fermait le tableau et le rouvrait, le retrouvait au 3 mars — sans
+    // rien pour lui dire que ce n'étaient pas les scores d'aujourd'hui. Le pied
+    // de fenêtre reste le seul chemin vers les jours passés.
+    if (tab === "scores") { scoresJour = ""; scoresDebut = 0; loadChallengeScores(); }
     if (tab === "trombi") loadTrombi();
     // Messagerie : on recharge à l'ouverture SAUF si on vient d'y basculer pour
     // écrire (ecrireMail passe par activateTab avant d'afficher son formulaire —

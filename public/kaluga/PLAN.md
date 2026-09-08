@@ -335,9 +335,18 @@ pas des points mais des **figures** — les combos que le panier nomme déjà
   emportée par les fourmis ne vaut pas figure).
 - **Rien ne part au classement** : le type `$defi` n'entre pas dans la branche
   de `Game.initEndGame` qui envoie le score — donc aucun Fruit Défendu
-  consommé. La progression vit sur la fruticard (`$defi = [1, 0, 0]`, un
-  niveau ouvert par victoire) et l'entrée du menu porte l'identifiant 19, ses
-  niveaux 70 à 72 : hors de la plage de 2005, comme le bac à sable.
+  consommé. L'entrée du menu porte l'identifiant 19, ses niveaux 70 à 72 :
+  hors de la plage de 2005, comme le bac à sable.
+- **Tout vit sur la fruticard**, et rien qu'elle : `$defi = [1, 0, 0]` (un
+  niveau ouvert par victoire), `$defiScore = { $st: 2, $level: [{ $s, $t }…] }`
+  (le meilleur temps par niveau, `$s` en millisecondes — 0 = jamais réussi —
+  et `$t` la tzongre qui l'a fait), `$makulo` (la marque de la récompense).
+  `saveSlot(0)` les écrit chez le serveur (`/api/saveFrutiSlot`, table
+  `fruti_slots`) : ils survivent à la session comme au redémarrage.
+  `fruticard.js` (`carteKaluga`) les rend en « mode épreuves », à la suite des
+  quatre modes d'époque et avec le même dessin — un chronomètre par niveau,
+  précédé de la tzongre. Le panneau de fin montre le temps du jour et le
+  record ; l'échec montre le record seul, pour qu'on sache ce qu'on visait.
 
 ### L'accessoire
 

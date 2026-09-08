@@ -877,10 +877,32 @@ class Defi extends J.Game {
     }
     return lignes;
   }
+  // Le record du niveau, tel qu'il vit sur la fruticard.
+  recordDuNiveau() {
+    const c = this.mng.card;
+    const r = c && c.$defiScore && Array.isArray(c.$defiScore.$level)
+      ? c.$defiScore.$level[this.level] : null;
+    return r || null;
+  }
   reussite() {
     this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Réussi !',
       msg: this.tzongre.name + ' a relevé le défi en ' + temps(this.score) + '.' }] });
-    this.endPanelMiddle.push({ list: this.tableauObjectifs() });
+    /*
+     * LE RECORD DU NIVEAU. Il ne part nulle part : les Épreuves n'ont pas de
+     * classement, elles ont une CARTE — le meilleur temps par niveau et la
+     * tzongre qui l'a fait, rangés sur la fruticard comme ceux du Chrono, de
+     * la Survie ou de la Piste. `saveSlot(0)`, plus bas, les écrit chez le
+     * serveur : ils survivent à la session comme au redémarrage.
+     */
+    const rec = this.recordDuNiveau();
+    const ancien = Number(rec && rec.$s) || 0;
+    const battu = !!rec && (!ancien || this.score < ancien);
+    if (battu) { rec.$s = this.score; rec.$t = Number(this.tzongreInfo.id) || 0; }
+    this.endPanelMiddle.push({ list: [
+      { type: 'bigScore', frame: 3, score: temps(this.score) },
+      { type: 'bigScore', frame: 2, score: temps(battu ? this.score : ancien) },
+      { type: 'margin', value: 10 },
+    ].concat(this.tableauObjectifs()) });
     // LE NIVEAU SUIVANT S'OUVRE, sur la fruticard, comme les modes d'époque.
     const carte = this.mng.card;
     if (carte && carte.$defi && this.level < DEFI_NIVEAUX.length - 1 && !carte.$defi[this.level + 1]) {
@@ -921,7 +943,13 @@ class Defi extends J.Game {
   tempsEcoule() {
     this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Trops tard!',
       msg: this.tzongre.name + " n'a pas relevé le défi dans les temps." }] });
-    this.endPanelMiddle.push({ list: this.tableauObjectifs() });
+    // Le temps à battre reste affiché : on sait ce qu'on visait.
+    const page = this.tableauObjectifs();
+    const rec = this.recordDuNiveau();
+    const ancien = Number(rec && rec.$s) || 0;
+    if (ancien) page.unshift({ type: 'bigScore', frame: 2, score: temps(ancien) },
+      { type: 'margin', value: 10 });
+    this.endPanelMiddle.push({ list: page });
     this.step = 3;
     this.endGame();
   }

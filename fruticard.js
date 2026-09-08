@@ -610,6 +610,10 @@ const KALUGA_MODES = [
   { cle: '$ring', nom: 'mode piste' },
 ];
 const KALUGA_DIFF = ['facile', 'standard', 'difficile', 'infernal'];
+/* LES ÉPREUVES — hors d'époque (le mode à figures du portage). Elles n'ont pas
+   de classement : leur trace, c'est cette carte. Trois niveaux, trois noms à
+   elles, et le même rendu que les autres modes chronométrés. */
+const KALUGA_DEFIS = ['facile', 'moyen', 'difficile'];
 
 function carteKaluga(c) {
   let lignes = [];
@@ -661,6 +665,14 @@ function carteKaluga(c) {
     }
     lignes = lignes.concat(getKalugaModeLines(KALUGA_MODES[i].nom, mode, 'time'));
   }
+
+  // Les Épreuves, à la suite des modes d'époque : même rendu, noms à elles.
+  const defis = { $level: [] };
+  const rec = (c.$defiScore && Array.isArray(c.$defiScore.$level)) ? c.$defiScore.$level : [];
+  for (let i = 0; i < rec.length && i < KALUGA_DEFIS.length; i++) {
+    defis.$level.push(Object.assign({}, rec[i], { $name: KALUGA_DEFIS[i] }));
+  }
+  lignes = lignes.concat(getKalugaModeLines('mode épreuves', defis, 'time'));
 
   lignes.push(getTitleLine('panier'));
   const fruits = Number((c.$stat || {}).$fruit) || 0;

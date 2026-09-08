@@ -165,6 +165,49 @@ test('l’entrée du menu sort de la plage de 2005 sans rien y cogner', () => {
   assert.match(MODES, /K\.registerClass\('gameDefi', Defi\);/);
 });
 
+// ── Les records ────────────────────────────────────────────────────────────
+
+test('le meilleur temps de chaque niveau se range sur la fruticard', () => {
+  // Rangés comme les records des modes d'époque : un `$level` par niveau,
+  // `$s` le temps (0 = jamais réussi), `$t` la tzongre qui l'a fait.
+  assert.match(MANAGER, /if \(!c\.\$defiScore \|\| !Array\.isArray\(c\.\$defiScore\.\$level\)\) c\.\$defiScore = \{ \$st: 2, \$level: \[\] \};/);
+  assert.match(MANAGER, /for \(let i = 0; i < 3; i\+\+\) if \(!c\.\$defiScore\.\$level\[i\]\) c\.\$defiScore\.\$level\[i\] = \{ \$s: 0, \$t: 0 \};/);
+  assert.match(MANAGER, /this\.card\.\$defiScore = \{ \$st: 2, \$level: \[\{ \$s: 0, \$t: 0 \}, \{ \$s: 0, \$t: 0 \}, \{ \$s: 0, \$t: 0 \}\] \};/);
+  // Le plus COURT gagne, et la première réussite s'inscrit toujours.
+  assert.match(DEFI[0], /const battu = !!rec && \(!ancien \|\| this\.score < ancien\);/);
+  assert.match(DEFI[0], /if \(battu\) \{ rec\.\$s = this\.score; rec\.\$t = Number\(this\.tzongreInfo\.id\) \|\| 0; \}/);
+  // Et c'est `saveSlot(0)` qui les envoie au serveur — le même chemin que les
+  // tzongres et les modes : ils survivent au redémarrage.
+  assert.match(DEFI[0], /this\.mng\.client\.saveSlot\(0\);/);
+  assert.match(PLATEFORME, /fetch\('\/api\/saveFrutiSlot'/);
+});
+
+test('la fruticard montre les Épreuves comme un mode chronométré', () => {
+  const FCARD = lire('fruticard.js');
+  assert.match(FCARD, /const KALUGA_DEFIS = \['facile', 'moyen', 'difficile'\];/);
+  assert.match(FCARD, /lignes = lignes\.concat\(getKalugaModeLines\('mode épreuves', defis, 'time'\)\);/);
+  // Et elle rend vraiment ce qu'on lui donne : le niveau jamais réussi ($s = 0)
+  // ne paraît pas, les autres en minutes'secondes''centièmes.
+  const F = require(path.join(ROOT, 'fruticard.js'));
+  const carte = { $vs: 1, $tz: [1, 0, 0, 0, 0], $stat: { $fruit: 0 },
+    $defiScore: { $st: 2, $level: [{ $s: 61250, $t: 0 }, { $s: 87400, $t: 4 }, { $s: 0, $t: 0 }] } };
+  const texte = F.lignes('kaluga', carte)
+    .map((l) => (l.list || []).map((p) => (p.param && p.param.text) || '').join(' ')).join('\n');
+  assert.match(texte, /mode épreuves/);
+  assert.match(texte, /facile\s+1'01''25/);
+  assert.match(texte, /moyen\s+1'27''40/);
+  assert.doesNotMatch(texte, /difficile/, 'le niveau jamais réussi ne paraît pas');
+});
+
+test('les Épreuves n’ont AUCUN classement : ni cuve, ni ligne d’époque', () => {
+  // La demande est explicite : les scores vont sur la fruticard, pas au
+  // Challenge. Aucune cuve `$defi` ne doit exister côté serveur.
+  assert.doesNotMatch(SERVEUR, /kaluga_defi|kaluga_epreuve/);
+  // Et le mode ne demande jamais de score : `saveScore` est réservé à
+  // `$classic` (cf. le test « rien ne part au classement »).
+  assert.match(DEFI[0], /this\.score = this\.barTimer\.time;/, 'le score du mode est un TEMPS');
+});
+
 // ── L'accessoire ───────────────────────────────────────────────────────────
 
 test('le jeu ne fait que DEMANDER : c’est le serveur qui accorde', () => {

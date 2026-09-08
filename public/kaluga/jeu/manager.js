@@ -117,6 +117,12 @@ class Manager {
        une fiche déjà commencée non plus. Le premier niveau est ouvert, les
        deux autres se gagnent. */
     if (!Array.isArray(c.$defi)) c.$defi = [1, 0, 0];
+    // Et leurs RECORDS, rangés comme ceux des modes d'époque : un `$level` par
+    // niveau, `$s` le meilleur temps (0 = jamais réussi), `$t` la tzongre qui
+    // l'a fait. Ils ne partent nulle part — les Épreuves n'ont pas de
+    // classement — mais la fruticard les lit.
+    if (!c.$defiScore || !Array.isArray(c.$defiScore.$level)) c.$defiScore = { $st: 2, $level: [] };
+    for (let i = 0; i < 3; i++) if (!c.$defiScore.$level[i]) c.$defiScore.$level[i] = { $s: 0, $t: 0 };
     // La marque du Makulo : posée quand le SERVEUR a répondu, elle dit à la
     // victoire suivante de ne pas réannoncer une récompense déjà touchée.
     if (c.$makulo == null) c.$makulo = 0;
@@ -158,6 +164,7 @@ class Manager {
     this.card.$bonus = [0, 0];
     this.card.$mode = [1, [1, 1, 1, 0, 0, 0, 0, 1, 0], [1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0]];
     this.card.$defi = [1, 0, 0];
+    this.card.$defiScore = { $st: 2, $level: [{ $s: 0, $t: 0 }, { $s: 0, $t: 0 }, { $s: 0, $t: 0 }] };
     this.card.$makulo = 0;
     this.card.$stat = { $fruit: 0 };
     this.card.$classic = { $s: 0 };

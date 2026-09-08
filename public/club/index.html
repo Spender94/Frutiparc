@@ -420,6 +420,13 @@
   <div id="panel-medalists" class="panel">
     <div class="toolbar">
       <button class="btn" onclick="loadMedalists()">Actualiser</button>
+      <!-- Le sélecteur de jeu : « Tous les jeux » d'abord, puis ceux qui ont
+           réellement distribué des médailles (le serveur les énumère). -->
+      <label>Jeu&nbsp;:
+        <select id="medalist-game" onchange="loadMedalists()">
+          <option value="all">Tous les jeux</option>
+        </select>
+      </label>
       <span id="medalist-summary" class="summary"></span>
     </div>
     <div id="medalists-content" class="loading">Chargement…</div>
@@ -522,21 +529,47 @@
       + escapeHtml(u) + '</a>';
   }
 
+  /*
+   * LE SÉLECTEUR DE JEU. Le serveur énumère les jeux QUI ONT MÉDAILLÉ : on
+   * remplit la liste avec ce qu'il rend, en gardant le choix courant. Un jeu
+   * qui s'y met un jour paraîtra tout seul ; un jeu sans médaille n'encombre
+   * pas la liste.
+   */
+  function majSelecteurJeux(games, choix) {
+    const sel = document.getElementById('medalist-game');
+    if (!sel) return;
+    const total = (games || []).reduce((n, g) => n + g.total, 0);
+    let html = '<option value="all">Tous les jeux (' + total + ')</option>';
+    (games || []).forEach(function (g) {
+      html += '<option value="' + escapeHtml(g.id) + '">'
+        + escapeHtml(g.nom) + ' (' + g.total + ')</option>';
+    });
+    sel.innerHTML = html;
+    sel.value = (games || []).some(function (g) { return g.id === choix; }) ? choix : 'all';
+  }
+
   async function loadMedalists() {
     const root = document.getElementById('medalists-content');
+    const sel = document.getElementById('medalist-game');
+    const jeu = (sel && sel.value) || 'all';
     root.className = 'loading';
     root.textContent = 'Chargement…';
     try {
-      const r = await fetch('/api/club/medalists');
+      const r = await fetch('/api/club/medalists?game=' + encodeURIComponent(jeu));
       const data = await r.json();
       const list = data.medalists || [];
+      majSelecteurJeux(data.games, data.game || 'all');
+      const nomJeu = (data.games || []).find(function (g) { return g.id === data.game; });
       document.getElementById('medalist-summary').textContent =
         list.length + ' joueur' + (list.length > 1 ? 's' : '') +
-        ' • ' + (data.totalMedals || 0) + ' médaille' + ((data.totalMedals || 0) > 1 ? 's' : '') + ' attribuée' + ((data.totalMedals || 0) > 1 ? 's' : '');
+        ' • ' + (data.totalMedals || 0) + ' médaille' + ((data.totalMedals || 0) > 1 ? 's' : '') + ' attribuée' + ((data.totalMedals || 0) > 1 ? 's' : '')
+        + (nomJeu ? ' sur ' + nomJeu.nom : '');
 
       if (!list.length) {
         root.className = 'loading';
-        root.textContent = 'Aucune médaille attribuée pour le moment.';
+        root.textContent = nomJeu
+          ? 'Aucune médaille attribuée sur ' + nomJeu.nom + ' pour le moment.'
+          : 'Aucune médaille attribuée pour le moment.';
         return;
       }
       root.className = '';

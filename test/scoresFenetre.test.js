@@ -325,6 +325,27 @@ test('le sélecteur de jour est celui du bureau : sous la liste, entre deux bout
   }
 });
 
+/*
+ * ROUVRIR, C'EST REVENIR AU JOUR MÊME.
+ *
+ * Le jour consulté (`scoresJour`) et la page (`scoresDebut`) vivaient d'une
+ * ouverture à l'autre : qui remontait au 3 mars, fermait le tableau et le
+ * rouvrait, le retrouvait au 3 mars — sans rien pour lui dire que ce n'étaient
+ * pas les scores d'aujourd'hui. Le pied de fenêtre reste le seul chemin vers
+ * les jours passés.
+ */
+test('le tableau rouvre sur le jour même, quel que soit le jour quitté', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  // L'ouverture de la rubrique remet les deux curseurs à zéro AVANT de charger.
+  assert.match(html,
+    /if \(tab === "scores"\) \{ scoresJour = ""; scoresDebut = 0; loadChallengeScores\(\); \}/,
+    'activateTab("scores") repart du jour et de la première page');
+  // Le jour vide, c'est aujourd'hui : la requête ne porte alors pas de `day`.
+  assert.match(html, /\(scoresJour \? "&day=" \+ encodeURIComponent\(scoresJour\) : ""\)/);
+  // Et le pied de fenêtre garde son droit de remonter le temps.
+  assert.match(html, /scoresJour = scDecale\(challengeScores\.day, -1\);/);
+});
+
 test('les bouilles du tableau n’ont plus de carré vert à détourer', () => {
   // C'était une capture PNG peinte sur le vert des cartes du forum (#E8F8D3) :
   // posée sur le panneau doré de la fenêtre, le carré sautait aux yeux, et il
