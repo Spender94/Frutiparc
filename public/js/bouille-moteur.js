@@ -806,11 +806,14 @@
    *   chocapic reste jusqu'au bout. On ne rejoue PAS le « regarde ailleurs »
    *   qui la précède chez hiko : ici la chute commence à la fumée.
    *
-   *   TOUX (famille 15, étiquette `tousse`). Deux sursauts de six battements
-   *   sur la courbe relevée (`emotes.json`, `toux.secousse`), séparés de
-   *   quatre battements de calme ; la bouche s'ouvre au début de chaque
-   *   sursaut et se referme à sa fin ; les yeux restent clos du début à la
-   *   fin. On ne rejoue pas la bulle de chewing-gum qui l'amène chez elle.
+   *   TOUX (famille 15, étiquettes `gumNext` et `tousse`). Le NUAGE se pose
+   *   d'abord, aux trois quarts d'opacité, et s'efface de cinq pour cent par
+   *   battement — vingt battements, la boucle de son image 93. Par-dessus,
+   *   les sursauts : six battements sur la courbe relevée (`emotes.json`,
+   *   `toux.secousse`), la bouche qui s'ouvre au début de chacun et se
+   *   referme à sa fin, les yeux clos du début à la fin. On ne rejoue pas la
+   *   BULLE de chewing-gum qui l'amène chez elle — mais le nuage, lui, reste :
+   *   c'est lui qui fait la quinte.
    */
   const JUTSU_FUMEE = 20;              // battements pendant lesquels la fumée tient
   const JUTSU_FIN = 129;               // de `jutsu2` au retour au repos
@@ -832,6 +835,7 @@
    */
   const TOUX_SURSAUTS = [0, 10, 20, 30];
   const TOUX_FIN = 45;
+  const TOUX_NUAGE = 20;               // « _alpha -= 5 » vingt fois, chez elle
 
   Moteur.prototype.humeur = function (id) {
     const h = HUMEURS[id] || HUMEURS[0];
@@ -1032,18 +1036,26 @@
       /*
        * TOUSSE — la quinte de la famille 15, sans sa bulle de chewing-gum.
        *
-       * Ce qu'elle emprunte tient en trois gestes, relevés sur ses images
-       * 90 et 97 : les yeux se ferment, la bouche s'ouvre à chaque sursaut,
-       * et la tête entière recule sur la courbe de `toux.secousse`. Aucun
-       * dessin n'est en jeu — la secousse se compose au repère du visage,
-       * dans `dessiner`.
+       * Ce qu'elle emprunte est relevé sur ses images 90 et 97 : les yeux se
+       * ferment, la bouche s'ouvre à chaque sursaut, la tête entière recule
+       * sur la courbe de `toux.secousse` — et le NUAGE se pose par-dessus
+       * tout, à sa profondeur 45, aux trois quarts d'opacité. C'est la bulle
+       * qu'on laisse chez elle, pas le nuage.
        */
       r.flStop = false; r.next = 0;
       face.allerImage(1, false);
       oeil('ferme');
       muet();
       if (bb) bb.allerImage('parle1', true);
-      this.chute = { quoi: 'toux', t: 0 };
+      this.chute = { quoi: 'toux', t: 0, nuage: null };
+      // Le nuage, s'il est là. Sans lui la quinte joue quand même — elle est
+      // seulement plus discrète.
+      const nu = this.emotes && this.emotes.toux && this.emotes.toux.nuage;
+      const defNu = nu && this.defs.sprites.get(nu.ch);
+      if (defNu) {
+        this.chute.nuage = new Clip(this, defNu, null);
+        this.chute.nuage.allerImage(1, true);
+      }
     }
     return this;
   };
@@ -1072,6 +1084,7 @@
       return true;
     }
     if (ch.quoi === 'toux') {
+      if (ch.t < TOUX_NUAGE && ch.nuage) ch.nuage.avancer();
       const face = this.racine.face;
       const bb = face && face.enfantNomme('b') && face.enfantNomme('b').enfantNomme('b');
       // La bouche s'ouvre au départ d'un sursaut, se referme à sa fin.
@@ -1349,8 +1362,9 @@
     }
     // LA TOUX secoue la tête ENTIÈRE : l'écart relevé se compose au repère du
     // visage, et tout ce qu'il porte suit — cheveux et accessoires compris.
+    const repos = M || IDENTITE;            // le repère AVANT la secousse
     const secousse = this.secousseToux();
-    if (secousse) M = composerM(M || IDENTITE, secousse);
+    if (secousse) M = composerM(repos, secousse);
     const ac = this.accessoireCustom;
     // Un accessoire « maison » a deux couches, comme celui d'époque : l'ARRIÈRE
     // (p.avant === false) passe DERRIÈRE les cheveux de devant, l'AVANT par-
@@ -1364,6 +1378,23 @@
     if (ac) {
       const avant = ac.filter((p) => p.avant !== false);
       if (avant.length) this.dessinerAccessoireCustom(ctx, avant);
+    }
+    /*
+     * ET LE NUAGE DE LA TOUX PAR-DESSUS TOUT — la profondeur 45 de la
+     * famille 15, au-dessus de la tête et de ce qu'elle porte. Il ne suit pas
+     * la secousse : chez elle il est posé dans le visage, mais il sort de la
+     * bouche, pas du crâne ; on le laisse donc immobile pendant que la tête
+     * sursaute sous lui.
+     */
+    if (ch && ch.quoi === 'toux' && ch.nuage && ch.t < TOUX_NUAGE
+      && this.emotes && this.emotes.toux && this.emotes.toux.nuage) {
+      const nu = this.emotes.toux.nuage;
+      // Trois quarts d'opacité à la pose, puis « _alpha -= 5 » par battement.
+      const a = (nu.alpha === undefined ? 1 : nu.alpha) * Math.max(0, 1 - ch.t * 0.05);
+      if (a > 0) {
+        const base = composerM(repos, face.matrice());
+        this.dessinerClip(ctx, ch.nuage, composerM(base, nu.M), null, a);
+      }
     }
   };
 

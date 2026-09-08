@@ -202,8 +202,45 @@ const arrondir = (M) => {
   const choco = poses.find((o) => o !== fumee);
   if (!fumee || !choco) throw new Error('famille 12 : la fumée ou le chocapic manque');
 
-  const recolte = recolter(d12, [fumee.ch, choco.ch]);
   const d15 = await lire('famille15.swf');
+  const face15 = visageDe(d15).sp;
+
+  /*
+   * LE NUAGE DE LA TOUX. « Je veux garder le nuage pour la toux, c'est ce qui
+   * fait tout le charme de l'animation. »
+   *
+   * Il se pose chez elle à `gumNext` — l'image où la bulle de chewing-gum
+   * éclate — sous le nom `smoke`, à trois quarts d'opacité (`ma` = 192). On
+   * le récolte sans la bulle : c'est le nuage qu'on veut, pas ce qui le
+   * provoque. C'est un clip de treize images, six dessins qui se relaient,
+   * comme la fumée d'hiko.
+   */
+  const GUM = face15.labels.gumNext;
+  const nuage = (face15.images[GUM - 1] || [])
+    .find((o) => o.t === 'pose' && o.ch >= 0 && o.nom === 'smoke');
+  if (!nuage) throw new Error('famille 15 : le nuage de la toux est introuvable');
+
+  const recolte = recolter(d12, [fumee.ch, choco.ch]);
+  const recolte15 = recolter(d15, [nuage.ch]);
+  // Les deux récoltes vivent dans le même paquet : les numéros ne peuvent pas
+  // se heurter, un même décalage appliqué à deux familles pouvant retomber sur
+  // le même. On pousse la seconde d'une plage de plus.
+  const DECALE15 = DECALAGE;
+  const glisser = (table) => {
+    const out = {};
+    Object.entries(table).forEach(([id, v]) => { out[Number(id) + DECALE15] = v; });
+    return out;
+  };
+  const renumeroter = (sprites) => {
+    const out = {};
+    Object.entries(sprites).forEach(([id, sp]) => {
+      out[Number(id) + DECALE15] = Object.assign({}, sp, {
+        images: sp.images.map((im) => im.map((o) => (o.ch >= 0
+          ? Object.assign({}, o, { ch: o.ch + DECALE15 }) : o))),
+      });
+    });
+    return out;
+  };
 
   const paquet = {
     // De quoi retrouver la source si l'on doit refaire la récolte.
@@ -213,13 +250,18 @@ const arrondir = (M) => {
       outil: 'scripts/extract-emotes-bouille.js',
       decalage: DECALAGE,
     },
-    formes: recolte.formes,
-    sprites: recolte.sprites,
+    formes: Object.assign({}, recolte.formes, glisser(recolte15.formes)),
+    sprites: Object.assign({}, recolte.sprites, renumeroter(recolte15.sprites)),
     jutsu: {
       fumee: poseDe(face12, JUTSU, fumee.ch),
       chocapic: poseDe(face12, JUTSU, choco.ch),
     },
-    toux: { secousse: secousse(d15) },
+    toux: {
+      secousse: secousse(d15),
+      // Le nuage, avec sa pose ET son opacité : trois quarts, comme chez elle.
+      nuage: { ch: nuage.ch + DECALAGE + DECALE15, M: nuage.M,
+        alpha: nuage.cx ? nuage.cx.ma / 256 : 1 },
+    },
   };
 
   fs.writeFileSync(SORTIE, JSON.stringify(paquet) + '\n');

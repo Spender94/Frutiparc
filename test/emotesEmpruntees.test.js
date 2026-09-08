@@ -18,9 +18,10 @@
  *   (six formes qui se relaient) et le chocapic — et ils n'existent que dans
  *   famille12.swf : c'est eux, et eux seuls, qu'on récolte.
  *
- *   TOUSSE (famille 15). Elle ne dessine RIEN : c'est la tête entière qui
- *   sursaute, sur une courbe de six images. On n'emporte donc que les six
- *   matrices — et pas la bulle de chewing-gum qui l'amène chez elle.
+ *   TOUSSE (famille 15). La tête entière sursaute sur une courbe de six
+ *   images, et un NUAGE la couvre — « c'est ce qui fait tout le charme de
+ *   l'animation ». On emporte donc les six matrices ET le nuage ; c'est la
+ *   BULLE de chewing-gum qu'on laisse chez elle, pas ce qu'elle produit.
  *
  * CE QU'ON N'EMPORTE PAS : les pellicules. La chute d'hiko vit dans les
  * images 129 à 148 de SON visage, avec ses scripts et ses boucles d'attente ;
@@ -63,9 +64,10 @@ function monter(defs) {
 // ══ LA RÉCOLTE ════════════════════════════════════════════════════════════
 
 test('la récolte ne prend que les dessins de la chute, et les renumérote', () => {
-  // Deux clips — la fumée et le chocapic — et les sept formes qu'ils portent.
-  assert.strictEqual(Object.keys(PAQUET.sprites).length, 2, 'deux clips');
-  assert.strictEqual(Object.keys(PAQUET.formes).length, 7, 'sept formes');
+  // Trois clips — la fumée d'hiko, son chocapic, le nuage de la toux — et les
+  // treize formes qu'ils portent.
+  assert.strictEqual(Object.keys(PAQUET.sprites).length, 3, 'trois clips');
+  assert.strictEqual(Object.keys(PAQUET.formes).length, 13, 'treize formes');
   // AU-DELÀ DE LA PLAGE D'UN SWF. Un caractère d'hiko porte un numéro sur
   // seize bits, et la famille d'accueil a le sien au même : #415 est le
   // chocapic chez hiko et tout autre chose dans la famille 0.
@@ -85,11 +87,11 @@ test('les dessins récoltés sont bien ceux d’hiko, au tracé près', async ()
   let compares = 0;
   Object.entries(PAQUET.formes).forEach(([id, forme]) => {
     const origine = d12.formes.get(Number(id) - dec);
-    assert.ok(origine, 'la forme ' + id + ' doit exister dans famille12.swf');
+    if (!origine) return;                    // celles de la famille 15, plus loin
     assert.deepStrictEqual(forme, origine, 'la forme ' + id + ' est recopiée telle quelle');
     compares++;
   });
-  assert.strictEqual(compares, 7);
+  assert.strictEqual(compares, 7, 'les sept formes du jutsu viennent d’hiko');
   // La fumée est bien une pellicule (six dessins qui se relaient), le chocapic
   // une seule image.
   assert.strictEqual(PAQUET.sprites[PAQUET.jutsu.chocapic.ch].n, 1, 'le chocapic ne bouge pas');
@@ -208,8 +210,8 @@ test('la greffe est idempotente et ne recouvre rien', async () => {
   mo.creerVisage();
   mo.greffer(PAQUET);
   const apresF = defs.formes.size, apresS = defs.sprites.size;
-  assert.strictEqual(apresF, avantF + 7, 'sept formes de plus');
-  assert.strictEqual(apresS, avantS + 2, 'deux clips de plus');
+  assert.strictEqual(apresF, avantF + 13, 'treize formes de plus');
+  assert.strictEqual(apresS, avantS + 3, 'trois clips de plus');
   // La même famille sert toutes les bouilles d'une page : la deuxième greffe
   // ne doit rien refaire.
   const mo2 = new Moteur.Moteur(defs, { alea: () => 0.5 });
@@ -248,4 +250,59 @@ test('le paquet ne se charge QUE pour les émotes qui en ont besoin', () => {
   assert.match(j[0], /b\.moteur\.greffer\(r\[1\]\)/);
   // Et l'échec du chargement ne casse rien : `emotes()` rend null.
   assert.match(VIGNETTE, /\.catch\(function \(\) \{ return null; \}\);/);
+});
+
+/* ── LE NUAGE DE LA TOUX ───────────────────────────────────────────────────
+ *
+ * « Attention, je veux garder le nuage pour la toux, c'est ce qui fait tout le
+ * charme de l'animation. »
+ *
+ * Il se pose chez elle à `gumNext` — l'image où la bulle éclate — aux trois
+ * quarts d'opacité, et s'efface de cinq pour cent par battement. On le prend,
+ * on laisse la bulle.
+ */
+test('le nuage de la toux vient de la famille 15, avec son opacité', async () => {
+  const d15 = await lire('famille15.swf');
+  const nu = PAQUET.toux.nuage;
+  assert.ok(nu, 'le nuage est récolté');
+  assert.strictEqual(nu.alpha, 0.75, 'trois quarts d’opacité, comme à la pose');
+  const def = PAQUET.sprites[nu.ch];
+  assert.ok(def, 'et son clip est du voyage');
+  assert.strictEqual(def.n, 13, 'treize images, six dessins qui se relaient');
+  // Ses formes sont bien celles de la famille 15, au tracé près.
+  let vues = 0;
+  def.images.forEach((im) => im.forEach((o) => {
+    if (!(o.ch >= 0)) return;
+    const forme = PAQUET.formes[o.ch];
+    if (!forme) return;
+    // Le décalage est appliqué deux fois pour la seconde famille : une plage
+    // par source, pour que deux numéros identiques ne se heurtent pas.
+    const origine = d15.formes.get(o.ch - 2 * PAQUET.source.decalage);
+    assert.ok(origine, 'la forme ' + o.ch + ' doit exister dans famille15.swf');
+    assert.deepStrictEqual(forme, origine);
+    vues++;
+  }));
+  assert.ok(vues >= 6, 'les six dessins du nuage sont là');
+});
+
+test('le nuage couvre la quinte, s’efface, et ne suit pas la secousse', async () => {
+  const mo = monter(await lire('famille0.swf'));
+  mo.jouerAnim(15);
+  assert.ok(mo.chute.nuage, 'le nuage est monté dès le premier battement');
+  assert.ok(mo.chute.nuage.enfants.size > 0, 'et il a son dessin');
+  // Il tient vingt battements — la boucle de l'image 93 de la famille 15 —
+  // pendant que la quinte, elle, en dure quarante-cinq.
+  let n = 0, avecNuage = 0;
+  while (mo.enMouvement() && n < 400) {
+    if (mo.chute && mo.chute.t < 20) avecNuage++;
+    mo.avancer(); n++;
+  }
+  assert.strictEqual(avecNuage, 20, 'vingt battements de nuage');
+  assert.strictEqual(n, 45, 'quarante-cinq de quinte');
+
+  // LA SECOUSSE NE L'EMPORTE PAS : le nuage sort de la bouche, pas du crâne.
+  // `dessiner` le compose donc au repère d'AVANT la secousse.
+  const MOTEUR = fs.readFileSync(path.join(ROOT, 'public/js/bouille-moteur.js'), 'utf8');
+  assert.match(MOTEUR, /const repos = M \|\| IDENTITE;\s+\/\/ le repère AVANT la secousse/);
+  assert.match(MOTEUR, /const base = composerM\(repos, face\.matrice\(\)\);\s*\n\s*this\.dessinerClip\(ctx, ch\.nuage/);
 });
