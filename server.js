@@ -5905,10 +5905,78 @@ const SHOP_FEUTRES_DEFAULT = [
   picto: `feutre,${i}`, description: FEUTRE_DESC, comment,
 }));
 
+/*
+ * LES PRUNELLES — les iris venus d'une autre famille.
+ *
+ * L'iris d'une bouille, c'est le clip `p` de `oa.o` : un rouleau que le moteur
+ * cale sur `eyeSc`, la valeur des caractères 4 et 5 de la chaîne d'état. La
+ * famille 0 en a dix-huit ; `scripts/extract-prunelles-bouille.js` en récolte
+ * deux de plus chez hiko (famille 12) et les range dans
+ * `public/fbouille/prunelles.json`, avec l'INDEX que chacune occupera une fois
+ * greffée. Le lecteur du site (`FPBouilleVignette.famille`) fait la greffe au
+ * chargement de la famille, pour tout le monde et une fois par page.
+ *
+ * Le serveur, lui, n'a besoin que des index : ce sont eux qu'il écrit dans la
+ * chaîne d'état quand on achète une paire. Il les lit dans le MÊME fichier —
+ * une seule source, aucun numéro recopié à la main.
+ */
+const PRUNELLES_FILE = path.join(__dirname, 'public', 'fbouille', 'prunelles.json');
+const PRUNELLES = {};      // cle → { cle, nom, description, teinte, eyeSc }
+(function chargerPrunelles() {
+  try {
+    const p = JSON.parse(fs.readFileSync(PRUNELLES_FILE, 'utf8'));
+    for (const i of (p.iris || [])) {
+      if (!i || !i.cle || !(Number(i.index) >= 0)) continue;
+      PRUNELLES[i.cle] = {
+        cle: i.cle, nom: i.nom || i.cle,
+        description: i.description || '',
+        // La couleur de la déclinaison, vide pour les deux originales.
+        teinte: i.teinte || '', eyeSc: Number(i.index),
+      };
+    }
+    console.log(`[PRUNELLES] ${Object.keys(PRUNELLES).length} paire(s) chargée(s)`);
+  } catch (e) {
+    console.error('[PRUNELLES] lecture impossible :', e.message);
+  }
+})();
+
 // La plage réservée aux INCARNATIONS livrées avec le code (cf. le rayon plus
 // bas) : au-delà de ce que l'admin numérote à la main, sous les accessoires
 // maison (700 000) et la vitrine (900 000).
 const INCARNATION_ID_BASE = 600000;
+
+/*
+ * LE RAYON DES PRUNELLES S'ÉCRIT TOUT SEUL.
+ *
+ * Chaque paire récoltée est un article, et il n'y a rien à décider : le nom, la
+ * description et l'index viennent du paquet. Une teinte ajoutée à la récolte
+ * paraît en boutique au redémarrage suivant, sans qu'on recopie un numéro.
+ *
+ * L'IDENTIFIANT SE DÉDUIT DE L'INDEX, qui est figé pour toujours (une chaîne
+ * d'état le porte, un inventaire aussi) : `600000 + eyeSc − 17`. Les deux
+ * premières gardent ainsi les numéros qu'elles avaient — 600001 et 600002 —,
+ * ce qui n'est pas un détail : elles sont vendues, et un inventaire les
+ * désigne par là.
+ *
+ * LE PRIX suit le modèle : la fixe vaut ce que valait la fixe, l'animée ce que
+ * valait l'animée. Une teinte ne se paie pas plus cher que l'original.
+ */
+const INCARNATIONS_DEFAULT = Object.values(PRUNELLES)
+  .sort((a, b) => a.eyeSc - b.eyeSc)
+  .map((p) => ({
+    id: INCARNATION_ID_BASE + p.eyeSc - 17,
+    name: p.nom,
+    category: 'Incarnations',
+    price: /hiko2/.test(p.cle) ? 200 : 120,
+    prunelle: p.cle,
+    suffix9: '000000000',
+    comment: p.teinte
+      ? 'Le regard de hiko, en ' + p.teinte + '.'
+      : (/hiko2/.test(p.cle) ? 'Le regard de hiko, celui qui tourne.'
+        : 'Le regard de hiko, rouge et noir.'),
+    description: (p.description ? p.description + ' ' : '')
+      + 'Tu les enfiles, tu les retires — ta bouille t’attend dessous, intacte.',
+  }));
 
 const SHOP_PACKS_DEFAULT = [
   {
@@ -5964,18 +6032,9 @@ const SHOP_PACKS_DEFAULT = [
    * livrée avec le code doit donc vivre dans une plage où personne ne va
    * taper : au-delà de 600 000, sous la plage des accessoires maison (700 000).
    */
-  { id: INCARNATION_ID_BASE + 1, name: "Hiko's eyes", category: 'Incarnations', price: 120,
-    prunelle: 'hiko1', suffix9: '000000000',
-    comment: 'Le regard de hiko, rouge et noir.',
-    description: 'Deux prunelles qu’aucun Frutiz du parc ne portait : elles viennent de '
-      + 'la famille de hiko. Tu les enfiles, tu les retires — ta bouille t’attend '
-      + 'dessous, intacte.' },
-  { id: INCARNATION_ID_BASE + 2, name: "Hiko's eyes #2", category: 'Incarnations', price: 200,
-    prunelle: 'hiko2', suffix9: '000000000',
-    comment: 'Le regard de hiko, celui qui tourne.',
-    description: 'La paire ANIMÉE : les prunelles tournent sans jamais s’arrêter, sur le '
-      + 'chat comme sur ta fiche. Tu les enfiles, tu les retires — ta bouille '
-      + 't’attend dessous, intacte.' },
+  // Les quatorze paires de prunelles, engendrées depuis la récolte
+  // (cf. INCARNATIONS_DEFAULT) : deux originales et leurs six teintes chacune.
+  ...INCARNATIONS_DEFAULT,
   // Wallpapers
   { id: 201, name: 'Chevalier moutarde',    category: "Fonds d'écran", price: 0, description: 'Un fond chevaleresque aux tons moutarde.',     suffix9: '000000000', wallpaperId: 'moutarde' },
   { id: 202, name: 'Chorale Frutiparc',     category: "Fonds d'écran", price: 0, description: 'La grande chorale de Frutiparc !',             suffix9: '000000000', wallpaperId: 'chorale' },
@@ -6070,38 +6129,6 @@ const SHOP_PACKS_DEFAULT = [
 ];
 const SHOP_PACKS = [...SHOP_PACKS_DEFAULT];
 
-/*
- * LES PRUNELLES — les iris venus d'une autre famille.
- *
- * L'iris d'une bouille, c'est le clip `p` de `oa.o` : un rouleau que le moteur
- * cale sur `eyeSc`, la valeur des caractères 4 et 5 de la chaîne d'état. La
- * famille 0 en a dix-huit ; `scripts/extract-prunelles-bouille.js` en récolte
- * deux de plus chez hiko (famille 12) et les range dans
- * `public/fbouille/prunelles.json`, avec l'INDEX que chacune occupera une fois
- * greffée. Le lecteur du site (`FPBouilleVignette.famille`) fait la greffe au
- * chargement de la famille, pour tout le monde et une fois par page.
- *
- * Le serveur, lui, n'a besoin que des index : ce sont eux qu'il écrit dans la
- * chaîne d'état quand on achète une paire. Il les lit dans le MÊME fichier —
- * une seule source, aucun numéro recopié à la main.
- */
-const PRUNELLES_FILE = path.join(__dirname, 'public', 'fbouille', 'prunelles.json');
-const PRUNELLES = {};      // cle → { cle, nom, description, eyeSc }
-(function chargerPrunelles() {
-  try {
-    const p = JSON.parse(fs.readFileSync(PRUNELLES_FILE, 'utf8'));
-    for (const i of (p.iris || [])) {
-      if (!i || !i.cle || !(Number(i.index) >= 0)) continue;
-      PRUNELLES[i.cle] = {
-        cle: i.cle, nom: i.nom || i.cle,
-        description: i.description || '', eyeSc: Number(i.index),
-      };
-    }
-    console.log(`[PRUNELLES] ${Object.keys(PRUNELLES).length} paire(s) chargée(s)`);
-  } catch (e) {
-    console.error('[PRUNELLES] lecture impossible :', e.message);
-  }
-})();
 
 // Une bouille dont on remplace la paire d'iris. `eyeSc` occupe les caractères
 // 4 et 5 ; tout le reste — famille, forme d'œil, coiffure, couleurs, accessoire

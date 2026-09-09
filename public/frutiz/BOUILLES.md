@@ -722,6 +722,58 @@ chose — la chaîne d'état ne porte qu'UNE bouille, celle qu'on montre.
 - **L'éditeur** ne propose que les dix-huit iris d'origine (`max:
   IRIS_ORIGINE_MAX`) : les autres s'achètent.
 
+### Les quatorze paires : deux modèles, six teintes chacun
+
+**La couleur d'un iris est dans le DESSIN, pas dans un réglage.** `definir()`
+pose une teinte sur la peau, la bouche, les cheveux et les accessoires ; pour
+l'œil il se contente d'un `gotoAndStop(eyeSc + 1)`. Les dix-huit iris de la
+famille 0 sont donc dix-huit dessins — dont sept (2 à 8) sont manifestement le
+même œil repeint, quatre couches toujours dans le même rapport de clarté :
+
+    2 brun   #996600 · #795200 · #241600 · #644100 (trait)
+    3 bleu   #3399cc · #2b82ac · #113948 · #206688
+    5 vert   #2cc523 · #23a31d · #164d0d · #1a7812
+
+On décline donc les prunelles d'hiko de la même façon : **on repeint**. Six
+couleurs et non sept — le rouge de la famille 0 (`#cf1612`) est à un cheveu de
+celui d'hiko, ce serait un doublon.
+
+* **« Hiko's eyes »** a quatre couches, dont **une seule** est colorée (le
+  rouge `#e20303`) ; les trois autres sont le noir et les deux blancs du reflet.
+* **« Hiko's eyes #2 »** porte sa couleur dans un **dégradé radial à deux
+  arrêts** (`#e21d1d` clair, `#710202` sombre). Le disque noir qui tourne de
+  19° par image et les blancs ne se repeignent pas : c'est le mouvement, pas la
+  teinte.
+
+**La règle de repeinte garde le modelé** : chaque couche colorée passe à la
+couleur cible, réduite du même rapport de clarté qu'elle avait vis-à-vis du
+rouge d'origine. Le sombre reste sombre, le reflet reste blanc, la roue reste
+noire. `colore()` écarte le noir, le blanc et les gris (`max − min ≤ 24`).
+
+**Le disque coloré sort du mouvement.** L'iris animé est un clip de vingt
+images ; le recopier pour chaque teinte coûterait 4 Ko pièce sur un fichier que
+*toute page affichant une bouille* va chercher. Le clip ne porte donc plus que
+la rotation — partagé par les sept — et chaque teinte pose **son** disque
+dessous : profondeur 1 le disque, 2 le mouvement, 8 le reflet. Le paquet passe
+de 8,5 à **28 Ko** au lieu des 46 qu'aurait coûtés la copie. Le rendu ne change
+pas : le disque était à l'identité dans un clip lui-même posé à l'identité.
+*Vérifié pixel à pixel sur cinq images de la rotation, avant et après.*
+
+**Les index sont figés, et les deux premiers ne bougent pas** — ils sont
+vendus, et une chaîne d'état les porte :
+
+| eyeSc | clé | article |
+|---|---|---|
+| 18 | `hiko1` | 600001 — Hiko's eyes (120 kikooz) |
+| 19 | `hiko2` | 600002 — Hiko's eyes #2 (200 kikooz) |
+| 20-25 | `hiko1-{brun,bleu,cyan,vert,violet,orange}` | 600003-600008 (120) |
+| 26-31 | `hiko2-{…}` | 600009-600014 (200) |
+
+**Le rayon s'écrit tout seul** : `INCARNATIONS_DEFAULT` engendre les articles
+depuis `PRUNELLES`, l'identifiant se déduisant de l'index (`600000 + eyeSc −
+17`) et le prix du modèle. Une teinte ajoutée à la récolte paraît en boutique
+au redémarrage suivant, sans qu'on recopie un numéro.
+
 ## 11 ter. Le chewing-gum d'hiko (« gumm », animation 16)
 
 Troisième emprunt à une autre famille, et le plus simple des trois — parce que

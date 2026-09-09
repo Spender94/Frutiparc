@@ -92,17 +92,32 @@ async function joueur(nom, etat) {
 
 // ── La récolte ─────────────────────────────────────────────────────────────
 
-test('la récolte porte les deux paires, et leur place est FIGÉE', () => {
-  assert.equal(PAQUET.iris.length, 2);
+test('la récolte porte les quatorze paires, et leur place est FIGÉE', () => {
+  // Deux modèles — la fixe et l'animée — et six teintes chacun : les couleurs
+  // de pupille que la famille 0 a déjà (le rouge est écarté, il ferait doublon
+  // avec celui d'hiko).
+  assert.equal(PAQUET.iris.length, 14);
   const parCle = Object.fromEntries(PAQUET.iris.map((i) => [i.cle, i]));
   assert.ok(parCle.hiko1 && parCle.hiko2);
   assert.equal(parCle.hiko1.nom, "Hiko's eyes");
   assert.equal(parCle.hiko2.nom, "Hiko's eyes #2");
-  // La famille 0 a dix-huit iris : les deux nouvelles prennent 18 et 19. Ces
-  // deux nombres sont vendus en boutique et inscrits dans des chaînes d'état —
-  // les changer, c'est changer les yeux de tous ceux qui les portent.
+  const TEINTES = ['brun', 'bleu', 'cyan', 'vert', 'violet', 'orange'];
+  for (const modele of ['hiko1', 'hiko2']) {
+    for (const t of TEINTES) {
+      const d = parCle[modele + '-' + t];
+      assert.ok(d, modele + '-' + t + ' est récoltée');
+      assert.ok(d.teinte, 'et elle dit sa couleur');
+      assert.ok(d.nom.startsWith(parCle[modele].nom + ' — '), 'nommée d’après son modèle');
+    }
+  }
+  // La famille 0 a dix-huit iris : les deux ORIGINALES prennent 18 et 19, les
+  // douze déclinaisons 20 à 31. Ces nombres sont vendus en boutique et inscrits
+  // dans des chaînes d'état — les changer, c'est changer les yeux de tous ceux
+  // qui les portent.
   assert.equal(parCle.hiko1.index, 18);
   assert.equal(parCle.hiko2.index, 19);
+  assert.deepEqual(PAQUET.iris.map((i) => i.index),
+    [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
   // Chaque paire porte ses ORDRES DE POSE, jamais de retrait : ce qu'il faut
   // retirer dépend de la famille d'accueil, la greffe le calcule.
   for (const i of PAQUET.iris) {
@@ -116,6 +131,78 @@ test('la récolte porte les deux paires, et leur place est FIGÉE', () => {
   for (const id of ids) assert.ok(id >= 300000, 'identifiant décalé : ' + id);
 });
 
+test('le disque coloré sort du mouvement — sinon le paquet triple', () => {
+  /*
+   * L'iris animé est un clip de vingt images : un DISQUE coloré posé une fois,
+   * et par-dessus une roue noire qui tourne de 19° par image. Recopier le clip
+   * pour chaque teinte coûterait quatre kilo-octets pièce, sur un fichier que
+   * TOUTE PAGE affichant une bouille va chercher. On sort donc le disque du
+   * clip : le clip ne porte plus que le mouvement, partagé par les sept, et
+   * chaque teinte pose SON disque dessous.
+   */
+  assert.equal(Object.keys(PAQUET.sprites).length, 1, 'un seul clip pour les sept animées');
+  const clip = PAQUET.sprites[Object.keys(PAQUET.sprites)[0]];
+  assert.equal(clip.n, 20, 'les vingt images de la rotation');
+  // Aucune image du clip ne pose de dégradé : la couleur n'y est plus.
+  for (const im of clip.images) {
+    for (const o of (im || [])) {
+      const f = o.ch >= 0 ? PAQUET.formes[o.ch] : null;
+      if (f) assert.ok(!(f.couches || []).some((c) => c.degrade),
+        'le disque coloré ne doit plus vivre dans le clip');
+    }
+  }
+  // Chaque animée pose son disque SOUS le mouvement, et le reflet par-dessus.
+  for (const i of PAQUET.iris.filter((x) => x.cle.startsWith('hiko2'))) {
+    const profs = i.ordres.map((o) => o.prof);
+    assert.deepEqual(profs, [1, 2, 8], 'disque, mouvement, reflet — dans cet ordre');
+    const disque = PAQUET.formes[i.ordres[0].ch];
+    assert.ok(disque && (disque.couches || []).some((c) => c.degrade),
+      'le premier ordre pose bien un disque à dégradé');
+  }
+  // Et le paquet reste raisonnable : sept clips auraient coûté le triple.
+  const ko = fs.statSync(path.join(ROOT, 'public/fbouille/prunelles.json')).size / 1024;
+  assert.ok(ko < 40, 'le paquet pèse ' + ko.toFixed(1) + ' Ko, il doit rester sous 40');
+});
+
+test('les teintes sont celles de la famille 0, et le modelé est gardé', () => {
+  /*
+   * On repeint, on ne teinte pas : le moteur ne pose aucune teinte sur l'iris
+   * (`definir` n'en met que sur la peau, la bouche, les cheveux et les
+   * accessoires). Chaque couche colorée passe à la couleur cible, réduite du
+   * même rapport de clarté qu'elle avait vis-à-vis du rouge d'hiko — le sombre
+   * reste sombre, et le noir comme les blancs ne bougent pas.
+   */
+  const parCle = Object.fromEntries(PAQUET.iris.map((i) => [i.cle, i]));
+  const couches = (cle) => {
+    const o = parCle[cle].ordres.find((x) => PAQUET.formes[x.ch]
+      && (PAQUET.formes[x.ch].couches || []).length);
+    return PAQUET.formes[o.ch].couches;
+  };
+  const rouge = couches('hiko1');
+  const cyan = couches('hiko1-cyan');
+  assert.equal(rouge.length, cyan.length, 'même nombre de couches');
+  const gris = (c) => Math.max(...c.rgb) - Math.min(...c.rgb) <= 24;
+  let repeintes = 0;
+  rouge.forEach((c, i) => {
+    if (!c.rgb) return;
+    if (gris(c)) {
+      assert.deepEqual(cyan[i].rgb, c.rgb, 'le noir et les blancs ne bougent pas');
+    } else {
+      assert.notDeepEqual(cyan[i].rgb, c.rgb, 'la couche colorée change');
+      // Le cyan de la famille 0, #00ccff : plus de bleu que de rouge.
+      assert.ok(cyan[i].rgb[2] > cyan[i].rgb[0], 'et vire au cyan');
+      repeintes++;
+    }
+  });
+  assert.equal(repeintes, 1, "« Hiko's eyes » n’a qu’une couche colorée");
+  // L'animée, elle, porte sa couleur dans un dégradé à deux arrêts.
+  const arrets = couches('hiko2-vert')[0].degrade.arrets;
+  assert.equal(arrets.length, 2);
+  arrets.forEach((a) => assert.ok(a.rgb[1] > a.rgb[0] && a.rgb[1] > a.rgb[2],
+    'les deux arrêts virent au vert : ' + a.couleur));
+  assert.ok(arrets[0].rgb[1] > arrets[1].rgb[1], 'et le second reste le plus sombre');
+});
+
 test('l’outil de récolte refait le même paquet', () => {
   // On ne relance pas le script (il écrit dans public/) : on vérifie qu'il est
   // là, et que le paquet dit d'où il vient — de quoi refaire la récolte.
@@ -123,6 +210,7 @@ test('l’outil de récolte refait le même paquet', () => {
   assert.equal(PAQUET.source.outil, 'scripts/extract-prunelles-bouille.js');
   assert.match(PAQUET.source.iris, /famille12\.swf/);
   assert.match(PAQUET.source.hote, /famille0\.swf, oa\.o\.p, 18 images/);
+  assert.match(PAQUET.source.teintes, /couleurs de pupille de la famille 0/);
 });
 
 // ── La greffe ──────────────────────────────────────────────────────────────
@@ -143,17 +231,19 @@ test('la greffe AJOUTE au bout, sans toucher aux iris d’origine', async () => 
   const r = M.rouleauxIris(defs)[0];
   const avant = r.images.slice(0, 18).map((im) => JSON.stringify(im));
   const table = M.grefferPrunelles(defs, PAQUET);
-  assert.deepEqual(table, { hiko1: 18, hiko2: 19 });
-  assert.equal(r.images.length, 20, 'deux images de plus');
+  assert.equal(table.hiko1, 18);
+  assert.equal(table.hiko2, 19);
+  assert.equal(Object.keys(table).length, 14, 'les quatorze paires sont greffées');
+  assert.equal(r.images.length, 32, 'quatorze images de plus');
   assert.deepEqual(r.images.slice(0, 18).map((im) => JSON.stringify(im)), avant,
     'les dix-huit d’origine sont intactes');
-  assert.equal(r.n, 20, 'et le compte du rouleau suit');
+  assert.equal(r.n, 32, 'et le compte du rouleau suit');
   // Les formes et les clips récoltés sont entrés dans les tables.
   for (const id of Object.keys(PAQUET.formes)) assert.ok(defs.formes.has(Number(id)));
   for (const id of Object.keys(PAQUET.sprites)) assert.ok(defs.sprites.has(Number(id)));
   // Idempotente : la même `defs` sert toutes les bouilles d'une page.
   assert.deepEqual(M.grefferPrunelles(defs, PAQUET), table);
-  assert.equal(r.images.length, 20, 'une seconde greffe n’ajoute rien');
+  assert.equal(r.images.length, 32, 'une seconde greffe n’ajoute rien');
 });
 
 test('la greffe se TAIT là où la famille a déjà un iris', async () => {
@@ -161,15 +251,16 @@ test('la greffe se TAIT là où la famille a déjà un iris', async () => {
    * Hiko a dix-neuf iris — les places 0 à 18 sont prises, la 19 est libre.
    * Y poser la greffe à la 18 remplacerait un de ses propres iris chez ceux
    * qui portent son incarnation : la règle est donc « on n'ajoute qu'au-delà
-   * de ce que la famille a déjà ». La 18 reste à lui, la 19 accueille.
+   * de ce que la famille a déjà ». La 18 reste à lui ; les treize autres,
+   * dont la place est libre chez lui, s'y posent normalement.
    */
   const d12 = await lireFamille(12);
   const r = M.rouleauxIris(d12)[0];
   const avant = r.images.map((im) => JSON.stringify(im));
   M.grefferPrunelles(d12, PAQUET);
-  assert.equal(r.images.length, 20, 'seule la place libre (19) a été prise');
+  assert.equal(r.images.length, 32, 'jusqu’à la dernière place du paquet');
   assert.deepEqual(r.images.slice(0, 19).map((im) => JSON.stringify(im)), avant,
-    'aucun des dix-neuf iris de hiko n’a bougé');
+    'aucun des dix-neuf iris de hiko n’a bougé — la place 18 lui reste');
 });
 
 test('une image greffée RETIRE ce que la famille laissait, puis pose', async () => {
@@ -192,10 +283,14 @@ test('les incarnations ont leur rayon, et il est PAYANT', async () => {
   const s = await (await fetch(BASE + '/api/light/shop?sid=' + sid)).json();
   const rayon = (s.categories || []).find((c) => c.name === 'Incarnations');
   assert.ok(rayon, 'le rayon « Incarnations » existe');
-  assert.equal(rayon.items.length, 2);
+  assert.equal(rayon.items.length, 14, 'les deux originales et leurs six teintes chacune');
   // Une plage RÉSERVÉE : un article créé depuis l'admin prend le numéro qu'on
   // lui donne, et ne doit pas pouvoir se poser sur celui d'une incarnation.
-  assert.deepEqual(rayon.items.map((a) => a.id).sort(), [HIKO1, HIKO2]);
+  const ids = rayon.items.map((a) => a.id).sort((x, y) => x - y);
+  assert.equal(ids[0], HIKO1, 'la première garde son numéro — elle est vendue');
+  assert.equal(ids[1], HIKO2, 'la seconde aussi');
+  assert.equal(new Set(ids).size, 14, 'quatorze numéros distincts');
+  assert.ok(ids.every((i) => i >= 600001 && i <= 600014), 'tous dans la plage réservée');
   for (const a of rayon.items) {
     assert.equal(a.kind, 'incarnation');
     assert.equal(a.offert, false, 'un rayon payant, comme les accessoires');
@@ -210,7 +305,14 @@ test('les incarnations ont leur rayon, et il est PAYANT', async () => {
   }
   // Les deux index vendus sont ceux du paquet.
   const yeux = rayon.items.map((a) => M.decode62(a.etat.substring(4, 6))).sort((x, y) => x - y);
-  assert.deepEqual(yeux, [18, 19]);
+  assert.deepEqual(yeux, [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
+  // Le PRIX suit le modèle, pas la teinte : une couleur ne se paie pas plus
+  // cher que l'originale.
+  const prix = {};
+  rayon.items.forEach((a) => { prix[/#2/.test(a.name) ? 'animee' : 'fixe'] = new Set(); });
+  rayon.items.forEach((a) => prix[/#2/.test(a.name) ? 'animee' : 'fixe'].add(a.price));
+  assert.deepEqual([...prix.fixe], [120], 'les sept fixes au même prix');
+  assert.deepEqual([...prix.animee], [200], 'les sept animées aussi');
 });
 
 test('acheter une incarnation ne change QUE les yeux', async () => {
@@ -334,7 +436,12 @@ test('l’admin peut créer, modifier et défaire une incarnation', async () => 
   // Le menu des paires : de quoi remplir la liste sans rien taper.
   const dispo = await (await fetch(BASE + '/api/admin/prunelles', { headers: hdr })).json();
   assert.equal(dispo.ok, true);
-  assert.deepEqual(dispo.prunelles.map((p) => p.cle).sort(), ['hiko1', 'hiko2']);
+  // Les quatorze paires, originales et déclinaisons — c'est le menu que
+  // l'admin déroule pour poser un article sans taper un numéro.
+  assert.equal(dispo.prunelles.length, 14);
+  const cles = dispo.prunelles.map((p) => p.cle);
+  assert.ok(cles.includes('hiko1') && cles.includes('hiko2'));
+  assert.ok(cles.includes('hiko1-cyan') && cles.includes('hiko2-violet'));
   for (const p of dispo.prunelles) assert.ok(p.eyeSc >= 0 && p.nom, 'chaque paire se nomme et se place');
 
   // On en crée une : pas de suffix9 à donner, la clé suffit.
@@ -409,4 +516,68 @@ test('le lecteur greffe les prunelles au chargement de la famille', () => {
   assert.match(vig, /global\.fetch\(DOSSIER \+ 'prunelles\.json'\)/);
   // Un fichier absent ne doit pas empêcher les bouilles de paraître.
   assert.match(vig, /\.catch\(function \(\) \{ return null; \}\)/);
+});
+
+/* ── LES DOUZE DÉCLINAISONS, RENDUES ───────────────────────────────────────
+ *
+ * « Avons-nous la main pour les décliner dans les différentes couleurs de
+ * pupilles déjà existantes pour la famille 0 ? »
+ *
+ * Oui — mais pas par un réglage : le moteur ne teinte pas l'iris, la couleur
+ * est DANS le dessin. On repeint donc à la récolte, et ce test vérifie que la
+ * repeinte arrive jusqu'au tracé que le moteur dessinera.
+ */
+test('chaque teinte se retrouve dans le tracé, et les originales ne bougent pas', async () => {
+  const defs = await lireFamille(0);
+  M.grefferPrunelles(defs, PAQUET);
+  const parCle = Object.fromEntries(PAQUET.iris.map((i) => [i.cle, i]));
+
+  // La couleur dominante d'une paire, telle qu'elle sera dessinée.
+  const dominante = (cle) => {
+    for (const o of parCle[cle].ordres) {
+      const f = defs.formes.get(o.ch);
+      if (!f) continue;
+      for (const c of (f.couches || [])) {
+        if (c.degrade && c.degrade.arrets && c.degrade.arrets[0]) return c.degrade.arrets[0].rgb;
+        if (c.rgb && Math.max(...c.rgb) - Math.min(...c.rgb) > 24) return c.rgb;
+      }
+    }
+    return null;
+  };
+  // Le canal qui doit dominer, pour chacune des six couleurs de la famille 0.
+  const ATTENDU = {
+    brun: (c) => c[0] > c[1] && c[1] > c[2],
+    bleu: (c) => c[2] > c[1] && c[1] > c[0],
+    cyan: (c) => c[2] > c[0] && c[1] > c[0],
+    vert: (c) => c[1] > c[0] && c[1] > c[2],
+    violet: (c) => c[0] > c[1] && c[2] > c[1],
+    orange: (c) => c[0] > c[1] && c[1] > c[2],
+  };
+  for (const modele of ['hiko1', 'hiko2']) {
+    // L'originale reste ROUGE : elle est vendue, son dessin ne bouge pas.
+    const rouge = dominante(modele);
+    assert.ok(rouge && rouge[0] > rouge[1] && rouge[0] > rouge[2],
+      modele + ' garde son rouge : ' + rouge);
+    for (const [t, test] of Object.entries(ATTENDU)) {
+      const c = dominante(modele + '-' + t);
+      assert.ok(c, modele + '-' + t + ' a une couleur dominante');
+      assert.ok(test(c), modele + '-' + t + ' vire bien au ' + t + ' : ' + c);
+    }
+  }
+  // Et le rouleau les porte toutes, à leur place.
+  const r = M.rouleauxIris(defs)[0];
+  for (const i of PAQUET.iris) {
+    assert.ok(Array.isArray(r.images[i.index]) && r.images[i.index].length,
+      'la place ' + i.index + ' est occupée');
+  }
+});
+
+test('l’éditeur ne propose toujours que les iris d’origine', () => {
+  // Les prunelles s'ACHÈTENT ; on ne les dessine pas dans l'atelier. Quatorze
+  // paires greffées ne doivent pas allonger le sélecteur de « Ma Frutibouille ».
+  const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(light, /var IRIS_ORIGINE_MAX = 17;/);
+  assert.match(light, /max: IRIS_ORIGINE_MAX/);
+  const serveur = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(serveur, /const IRIS_ORIGINE_MAX = 17;/);
 });
