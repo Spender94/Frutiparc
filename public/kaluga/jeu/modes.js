@@ -1246,11 +1246,28 @@ class Trial extends J.Game {
       }
     }
   }
-  updateResult(player) {
+  /*
+   * LE CALCUL COMMUN D'UN RÉSULTAT : la base arrondie au dixième, puis le
+   * coefficient de l'épreuve.
+   *
+   * Il vit à part, et il le faut. Chaque épreuve REMPLACE `updateResult` — elle
+   * a sa propre table d'adversaires — et l'appelle donc à travers `resultatIA`.
+   * Celui-ci ne peut revenir ici ni par `this.updateResult` (ce serait une
+   * récursion sans fin) ni par `super.updateResult` : `super`, dans `Trial`,
+   * désigne `Game`, où la méthode n'a jamais existé.
+   *
+   * C'est ce qu'il faisait, et cela JETAIT — « (intermediate value).updateResult
+   * is not a function » — à la fin de la première épreuve d'un triathlon, dans
+   * `updateTournament`. L'exception laissait le tableau des résultats à moitié
+   * rempli, `eventId` jamais incrémenté et le panneau de fin jamais posé : la
+   * partie s'arrêtait là. C'est le « je plante le ver et ça gèle » des joueurs.
+   */
+  poserResultat(player) {
     const results = player.results[this.tournament.eventId];
     results.base = Math.round(results.base * 10) / 10;
     results.score = results.base * results.coef;
   }
+  updateResult(player) { this.poserResultat(player); }
   getEndPanelObj() {}
   attachMeterLog(x, y, text) {
     this.fxNum++;
@@ -1268,7 +1285,7 @@ class Trial extends J.Game {
     score *= facteur || 1;
     score *= this.tournament.difCoef / 10;
     player.results[this.tournament.eventId].base = score;
-    super.updateResult(player);
+    this.poserResultat(player);
   }
 }
 J.Trial = Trial;

@@ -408,6 +408,27 @@ appelait déjà pour la Kagulga, et que le portage avait laissé vide :
 `$kagulga` reste débranché : son article n'existe pas encore. Le jour où il
 sera dessiné, une ligne de la table suffira.
 
+### Le triathlon gelait à la fin de la première épreuve
+
+`resultatIA` — la performance simulée d'une tzongre adverse — finissait par
+`super.updateResult(player)`. Or `super`, dans `Trial`, désigne `J.Game`, où la
+méthode n'a jamais existé : la fin de la première épreuve jetait
+`(intermediate value).updateResult is not a function`, dans `updateTournament`.
+L'exception laissait le tableau des résultats à moitié rempli, `eventId` jamais
+incrémenté et **le panneau de fin jamais posé** : la partie s'arrêtait là,
+tzongre immobile et rien qui réponde. C'est le « je plante le ver et ça gèle »
+des joueurs — le ver, c'est `CaterLaunch`, la première des trois.
+
+Pourquoi `super` : chaque épreuve **remplace** `updateResult` (chacune a sa
+table d'adversaires) et passe par `resultatIA` ; revenir au calcul commun par
+`this.updateResult` serait une récursion sans fin. Il fallait un point d'appui
+hors de la chaîne des surcharges — c'est **`poserResultat`**, que la surcharge
+par défaut et `resultatIA` appellent tous deux.
+
+Relevé au navigateur : avant, `CaterLaunch` reste à `masterStep 1`, waitList
+intacte ; après, `masterStep 2` (le panneau), puis `SquirrelLaunch` se lance et
+la waitList tombe à `['gamePlant']`.
+
 ## Trois règles qui s'écartent de 2005 (à la demande, version light)
 
 Le portage reproduit le Flash au mot près ; ces trois points sont des
