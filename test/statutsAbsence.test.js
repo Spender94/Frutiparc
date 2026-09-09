@@ -91,13 +91,15 @@ test('le mobile lit le PREMIER caractère et pose l’icône à la place du poin
   // Il arrive par la même trame que le voyant de jeu : `<z>`, `<v>`, `<k>`.
   assert.match(LIGHT, /var abs = STATUTS_ABSENCE\[decode62\(String\(s\)\.substring\(0, 1\)\)\] \|\| "";/);
   assert.match(LIGHT, /state\.absenceByUser\[cle\] = abs;/);
-  assert.match(LIGHT, /if \(avantAbs !== abs && drawerVue === "salon"\) renderUsers\(\);/);
+  // Un panneau qui change se voit PARTOUT — la liste du salon, la fiche
+  // ouverte, la bande des contacts (cf. test/statutsVivants.test.js).
+  assert.match(LIGHT, /if \(avantAbs !== abs\) majStatutsPartout\(cle\);/);
   // L'ORDRE de `UserSlot.display` : le jeu d'abord, l'absence ensuite.
   assert.match(LIGHT, /\} else if \(abs && STATUTS_NOM\[abs\]\) \{\s*\n\s*var va = el\("img", "voyant"\);/);
-  // La fiche suit la même règle.
-  assert.match(LIGHT, /var absFiche = \(d && d\.absence\) \|\| "";/);
-  assert.match(LIGHT, /\} else if \(absFiche && STATUTS_NOM\[absFiche\]\) \{/);
-  assert.match(LIGHT, /st\.src = absenceUrl\(absFiche\);/);
+  // La fiche suit la même règle, sur la même table.
+  assert.match(LIGHT, /var s = statutDe\(ficheEtat\.pseudo\);/);
+  assert.match(LIGHT, /\} else if \(s\.absence && STATUTS_NOM\[s\.absence\]\) \{/);
+  assert.match(LIGHT, /st\.src = absenceUrl\(s\.absence\);/);
   // La recherche reçoit la chaîne entière : elle sait la lire aussi.
   assert.match(LIGHT, /absence: st \? \(STATUTS_ABSENCE\[decode62\(String\(st\)\.substring\(0, 1\)\)\] \|\| ""\) : "",/);
 });
@@ -107,8 +109,8 @@ test('le bureau le montre au carnet et dans la recherche', () => {
   assert.match(BUREAU, /var ABSENCE_NOM = \{ away: 'Absent', phone: 'Au téléphone', zzz: 'Dort',\s*\n\s*work: 'Au travail', eat: 'À table' \};/);
   // Le carnet : le jeu passe devant, l'absence vient ensuite, et hors ligne
   // rien du tout — une socket fermée n'a pas d'humeur.
-  assert.match(BUREAU, /var absence = \(c\.enLigne && !c\.jeu && ABSENCE_NOM\[c\.absence\]\) \? c\.absence : '';/);
-  assert.match(BUREAU, /\+ \(c\.jeu \? voyantUrl\(c\.jeu\) : absenceUrl\(absence\)\) \+ "'\), "/);
+  assert.match(BUREAU, /var absence = \(enLigne && !jeu && ABSENCE_NOM\[a\.absence\]\) \? a\.absence : '';/);
+  assert.match(BUREAU, /\+ \(jeu \? voyantUrl\(jeu\) : absenceUrl\(absence\)\) \+ "'\), "/);
   // La recherche : la même règle, sur son propre voyant.
   assert.match(BUREAU, /\} else if \(info\.presence !== 0 && ABSENCE_NOM\[info\.absence\]\) \{/);
   assert.match(BUREAU, /ico\.src = absenceUrl\(info\.absence\);/);

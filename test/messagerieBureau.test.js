@@ -124,13 +124,18 @@ test('la bande des contacts montre le VOYANT DU JEU', () => {
   // `UserSlot.onStatusObj` : présence 0 → la pastille saumon ; `status
   // .internal` → l'icône du jeu À SA PLACE ; `status.external` → le statut
   // d'absence, à la même place ; sinon la pastille verte.
-  assert.match(JS, /if \(\(c\.enLigne && c\.jeu\) \|\| absence\) \{/);
+  assert.match(JS, /if \(jeu \|\| absence\) \{/);
   assert.match(JS, /v\.classList\.add\('jeu'\);/);
-  assert.match(JS, /voyantUrl\(c\.jeu\)[\s\S]{0,80}?sl-icone-fond\.svg/);
+  assert.match(JS, /voyantUrl\(jeu\)[\s\S]{0,80}?sl-icone-fond\.svg/);
   assert.match(JS, /function voyantUrl\(jeu\) \{\s*\n\s*return '\/fb\/voyant_' \+ \(jeu === 'swapou2' \? 'swapou' : jeu\)/);
   // L'icône remplit le cadre de 17, moins son liseré.
   assert.match(CSS, /\.sl-contact \.voyant\.jeu \{\s*\n\s*background-size: 15px 15px, 17px 17px;/);
-  // Et la bande se relit : le light n'a pas la poussée de statut hors salon.
+  // CE QU'ELLE MONTRE VIENT DU FIL, plus de la page : `StatutsLight.de` est la
+  // table que les trames du serveur tiennent à jour, la même que lisent la
+  // fiche et la liste d'un salon (cf. test/statutsVivants.test.js). La
+  // relecture des trente secondes reste, en filet — elle ramasse aussi les
+  // contacts ajoutés ailleurs —, mais ce n'est plus elle qui fait les voyants.
+  assert.match(JS, /function activiteDe\(c\) \{[\s\S]*?StatutsLight\.de\(c\.pseudo\)/);
   assert.match(JS, /contactsMinuteur = setInterval\(chargerContacts, 30000\);/);
   // Un dossier replié le reste quand la liste se refait (`element.open`).
   assert.match(JS, /if \(replies\[f\.nom\]\) bloc\.classList\.add\('replie'\);/);

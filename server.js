@@ -4975,6 +4975,19 @@ function getContactFolder(user, addr) {
   return (user.contactFolderMap && user.contactFolderMap[addr]) || 'mycontact';
 }
 
+/*
+ * QUELQU'UN EST-IL DÉJÀ À MON CARNET ? Les contacts s'y rangent par ADRESSE
+ * (« bob@frutiparc.com »), en sous-dossiers ou non — c'est la partie gauche
+ * qui porte le pseudo. La question se pose à chaque fiche qu'on ouvre :
+ * `box.Frutiz.getIconList` ne montre le cœur QUE si la réponse est non.
+ */
+function estDejaContact(user, username) {
+  if (!user || !username) return false;
+  const cible = String(username).toLowerCase();
+  return (user.contacts || []).some((addr) =>
+    String(addr).split('@')[0].toLowerCase() === cible);
+}
+
 function isCustomContactFolder(user, uid) {
   if (!uid || uid === 'mycontact' || uid === 'blacklist') return false;
   return Array.isArray(user.contactFolders) &&
@@ -23048,7 +23061,13 @@ app.get('/api/light/fiche', async (req, res) => {
     staff: { moderateur: !!ud.isModerator, animateur: !!ud.isAnimator },
     // Les droits du REGARDEUR : la vue modérateur (kick, ban, totoché) ne se
     // montre qu'aux modérateurs, comme box.Frutiz le fait avec me.flMode.
-    vous: { moderateur: !!moi.isModerator, animateur: !!moi.isAnimator },
+    //
+    // Et son CARNET. `box.Frutiz.getIconList` ne pose l'image 4
+    // (`frutiz_add_to_contact`) que « si pas déjà au carnet » : on n'ajoute
+    // pas deux fois la même personne, et un bouton qui ne peut rien faire n'a
+    // pas à s'afficher. C'est au serveur de le dire — lui seul tient la liste.
+    vous: { moderateur: !!moi.isModerator, animateur: !!moi.isAnimator,
+      contact: estDejaContact(moi, u) },
     basic: { niveau: getLevelForXp(ud.xp || 0), xp: ud.xp || 0, age,
       ville: ud.city || '', sexe: ud.gender || 'M' },
     frutiz: {

@@ -176,7 +176,10 @@ test('la rangée d\'actions porte les vrais glyphes de main.swf', () => {
   // L'en-tête : le point de présence, et l'écran de niveau à barres. Le point
   // n'est plus une paire de PNG maison mais les DESSINS DE LA BANDE `status`
   // (#222) que le carnet latéral pose déjà — image 1 saumon, image 2 verte.
-  assert.match(html, /sl-presence-" \+ \(\(d && d\.enLigne\) \? "1" : "0"\)/,
+  // (`s` = `statutDe(pseudo)` : la présence vient de la table que le fil tient
+  // à jour, la même que lisent le carnet et la liste d'un salon — cf.
+  // test/statutsVivants.test.js.)
+  assert.match(html, /sl-presence-" \+ \(s\.enLigne \? "1" : "0"\)/,
     'image 2 en ligne (verte), image 1 sinon (saumon)');
   assert.match(html, /src="\/frutiz\/sprites\/sl-presence-0\.svg"/,
     'et le balisage part sur la saumon, avant toute lecture');
@@ -401,7 +404,10 @@ test('la vue modérateur : kick, ban et totoché, aux modérateurs seulement', (
   assert.ok((html.match(/window\.confirm\(/g) || []).length >= 3, 'trois confirmations');
   // Et le serveur dit les droits du regardeur.
   const serveur = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  assert.match(serveur, /vous: \{ moderateur: !!moi\.isModerator, animateur: !!moi\.isAnimator \}/,
+  // `vous` porte tout ce que la fiche doit savoir DU REGARDEUR : ses droits de
+  // modération, et si le frutiz regardé est déjà à son carnet (c'est ce qui
+  // décide du cœur — cf. test/statutsVivants.test.js).
+  assert.match(serveur, /vous: \{ moderateur: !!moi\.isModerator, animateur: !!moi\.isAnimator,\s*\n\s*contact: estDejaContact\(moi, u\) \}/,
     'la fiche porte `vous`');
 });
 

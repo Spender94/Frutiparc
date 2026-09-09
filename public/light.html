@@ -3237,6 +3237,21 @@
     // Le STATUT D'ABSENCE de chacun (`/status work`) — le PREMIER caractère de
     // la même chaîne, traduit en nom (cf. STATUTS_ABSENCE).
     absenceByUser: {},
+    /*
+     * ET LA PRÉSENCE — le `p` des trames, qu'on ne lisait pas.
+     *
+     * Les trois endroits qui montrent un voyant (la fiche, la bande des
+     * contacts, la liste d'un salon) le tiraient de trois sources
+     * différentes : la fiche d'un `fetch` unique, jamais relu ; le carnet d'un
+     * `fetch` toutes les trente secondes ; le salon, seul, des trames du fil.
+     * D'où des voyants qui se contredisaient d'une fenêtre à l'autre.
+     *
+     * Ils lisent maintenant tous CETTE table-ci (`statutDe`), et le fil la
+     * tient à jour pour tout le monde : les trames `<z>` portent déjà présence,
+     * jeu et absence, et `suivreStatuts` demande au serveur de nous les pousser
+     * pour les gens qu'on affiche — même hors salon commun.
+     */
+    presenceByUser: {},
     // L'HUMEUR de chacun. `StatusMng.send` (0x33eb0) empile TROIS champs en
     // base 62 dans le même attribut `s` — external, internal, ET emote — que
     // le serveur reconstruit sur quatre caractères : `[ext][internal×2][emote]`.
@@ -3542,6 +3557,20 @@
     // compteur « en ligne » de la frusion ne s'actualisait jamais.
     window.state = state;
     window.ouvrirFicheJoueur = ouvrirFiche;
+    /*
+     * L'ACTIVITÉ DE CHACUN, POUR LE BUREAU AUSSI.
+     *
+     * La bande des contacts et la liste d'un salon sont le même clip d'époque
+     * (`userSlot`) ; elles doivent donc dire la même chose au même instant.
+     * Le light tient les tables et reçoit les poussées du serveur — il les
+     * ouvre ici, plutôt que de laisser le bureau relire une page toutes les
+     * trente secondes de son côté.
+     */
+    window.StatutsLight = {
+      de: statutDe,             // { enLigne, jeu, absence, connu }
+      suivre: suivreStatuts,    // abonne le fil aux gens qu'on affiche
+      amorcer: amorcerStatut,   // ce qu'une réponse HTTP nous apprend
+    };
     // `win.Alert` : une seule implémentation pour les deux présentations — le
     // bureau s'en sert pour l'appel au modérateur, le light pour la boutique.
     window.frutiConfirm = frutiConfirm;
@@ -6923,6 +6952,9 @@
           rejoindreSalon(state.room);
         }
         rejoindreLesPrives();
+        // Le serveur a oublié nos abonnements de statut avec la socket : on
+        // les refait, comme on refait les salons (cf. `suivreStatuts`).
+        resuivreStatuts();
         requestChannelList();
         startChannelListPolling();
         // L'ident vient de créditer (le cas échéant) la récompense quotidienne :
@@ -7009,6 +7041,8 @@
             // bureau (UserListMng).
             set[uname] = { staff: attr(frag, "m") === "1" };
             rememberBouille(uname, attr(frag, "f"));
+            // Figurer dans la liste d'un salon, c'est être là.
+            rememberPresence(uname, 1);
             rememberStatut(uname, attr(frag, "s"));
             rememberInfoBasic(frag);
           }
@@ -7140,12 +7174,17 @@
           zTrouve = true;
           var zf = "<u " + zm[1] + "/>";
           rememberBouille(attr(zf, "u"), attr(zf, "f"));
+          // `p` : la PRÉSENCE, qu'on jetait. C'est elle qui dit si la personne
+          // est là — la seule chose que la bande des contacts et la fiche
+          // allaient encore redemander en HTTP.
+          rememberPresence(attr(zf, "u"), attr(zf, "p"));
           rememberStatut(attr(zf, "u"), attr(zf, "s"));
         }
         // La trace vient aussi sous forme directe (<z u=".." s=".." f=".."/>) :
         // c'est elle qui porte les changements de voyant en direct.
         if (!zTrouve && attr(xml, "u")) {
           rememberBouille(attr(xml, "u"), attr(xml, "f"));
+          rememberPresence(attr(xml, "u"), attr(xml, "p"));
           rememberStatut(attr(xml, "u"), attr(xml, "s"));
         }
         break;
@@ -7159,6 +7198,12 @@
           // sans le lire, un joueur qui revenait gardait le voyant de jeu qu'on
           // avait mis en cache avant son départ — « il joue à Grapiz » alors
           // qu'il a fini depuis longtemps.
+          //
+          // Et entrer dans un salon, c'est ÊTRE LÀ : la présence n'a pas besoin
+          // d'être annoncée, elle se déduit. (Sortir, en revanche, ne prouve
+          // rien — on quitte un salon sans quitter le site ; c'est la trace qui
+          // dit les départs.)
+          rememberPresence(uj, 1);
           rememberStatut(uj, attr(xml, "s"));
           rememberInfoBasic(xml);
           if (!state.usersByRoom[rj]) state.usersByRoom[rj] = {};
@@ -9320,6 +9365,10 @@
     if (window.BureauFrutiz && BureauFrutiz.poserFiche) {
       BureauFrutiz.poserFiche(cle, f.racine, p);
     }
+    // Une fiche ouverte SUIT son frutiz : tant qu'elle est là, le serveur nous
+    // pousse ses changements d'activité (cf. `suivreStatuts`). Sans cela elle
+    // gardait pour toujours le voyant qu'elle avait à l'ouverture.
+    suivreStatuts([p]);
     fetch("/api/light/fiche?sid=" + encodeURIComponent(state.sid) + "&u=" + encodeURIComponent(p),
       { cache: "no-store" })
       .then(function (r) { return r.json(); })
@@ -9327,6 +9376,9 @@
         if (fichesOuvertes[cle] !== f) return;   // refermée entre-temps
         f.data = (d && d.ok) ? d : { erreur: (d && d.error === "inconnu")
           ? "Aucun frutiz n'a ce nom d'utilisateur" : "Fiche indisponible" };
+        // La réponse AMORCE les tables — le fil prend le relais ensuite. Elle
+        // ne les écrase pas si le fil a déjà parlé : lui est plus frais.
+        if (d && d.ok) amorcerStatut(p, d.enLigne, d.jeu, d.absence);
         avecFiche(f, renderFiche);
       })
       .catch(function () {
@@ -9809,6 +9861,64 @@
     l.appendChild(b);
     return l;
   }
+  /*
+   * LE POINT DE PRÉSENCE DE LA FICHE — ou, si le frutiz est EN PARTIE, le
+   * voyant du jeu à sa place.
+   *
+   * Le point ne dit que « connecté / pas connecté », ce que la liste des
+   * connectés dit déjà. Le voyant, lui, dit quelque chose qu'on ne peut lire
+   * nulle part ailleurs sur la fiche : qu'il est au milieu d'une partie. Un
+   * animateur qui s'apprête à redémarrer le serveur veut le savoir avant, pas
+   * après. C'est la même icône que la liste pose à côté du pseudo, et que le
+   * bureau pose à côté du sien.
+   *
+   * Il se peint À PART du reste de la fiche : le reste ne change pas une fois
+   * chargé, l'activité, elle, change tout le temps — et une fiche laissée
+   * ouverte montrait pour toujours le statut qu'elle avait à l'ouverture.
+   * `majStatutsPartout` rappelle donc cette fonction-ci, et elle seule, à
+   * chaque trame reçue.
+   */
+  function peindreStatutFiche() {
+    var st = fq("fiche-statut");
+    if (!st) return;
+    var s = statutDe(ficheEtat.pseudo);
+    if (s.jeu && VOYANTS_NOM[s.jeu]) {
+      st.src = "/fb/voyant_" + s.jeu + ".png";
+      st.title = s.jeu === "forum" ? "Lit le forum" : "En partie — " + VOYANTS_NOM[s.jeu];
+      st.classList.add("en-partie");
+    } else if (s.absence && STATUTS_NOM[s.absence]) {
+      /*
+       * LE STATUT D'ABSENCE (`/status eat`), à la place de la pastille.
+       * `UserSlot.display` (0xc8241) essaie `internal`, puis `external`, et ne
+       * retombe sur la présence qu'à défaut des deux : un joueur en partie
+       * montre sa partie, un joueur « au travail » son panneau, et les autres
+       * leur pastille. La classe est la même que celle du voyant de jeu — même
+       * emplacement, même taille.
+       */
+      st.src = absenceUrl(s.absence);
+      st.title = STATUTS_NOM[s.absence];
+      st.classList.add("en-partie");
+    } else {
+      /*
+       * HORS LIGNE, LA PASTILLE EST ROUGE — pas un cadre vide.
+       *
+       * La bande `status` (#222) a trois images, et `ico.gotoAndStop(presence
+       * + 1)` choisit : image 1 la pastille SAUMON `#E3756A` à reflet
+       * (présence 0), image 2 la VERTE `#ADE76B` (présence 1), image 3 une
+       * grise que le carnet n'utilise pas. La fiche prenait pour « absent »
+       * le FOND de l'icône (#216) — le carré arrondi vide au liseré
+       * `#CCCCCC` —, c'est-à-dire le cadre et non le voyant : un joueur hors
+       * ligne n'avait pas de pastille du tout, juste un trou gris.
+       *
+       * Ce sont les dessins que la bande des contacts pose déjà (`sl-presence-
+       * 0/1`) : une seule source pour les deux endroits.
+       */
+      st.src = "/frutiz/sprites/sl-presence-" + (s.enLigne ? "1" : "0") + ".svg";
+      st.title = s.enLigne ? "En ligne" : "Hors ligne";
+      st.classList.remove("en-partie");
+    }
+  }
+
   function renderFiche() {
     var d = ficheEtat.data;
     var fp = fq("fiche-pseudo");
@@ -9831,57 +9941,7 @@
       var fb = Math.max(0, Math.min(1, prog * nb - (nb - 1 - bi)));
       barres[bi].style.setProperty("--f", (fb * 100).toFixed(1) + "%");
     }
-    /*
-     * Le point de présence — ou, si le frutiz est EN PARTIE, le voyant du jeu
-     * à sa place.
-     *
-     * Le point ne dit que « connecté / pas connecté », ce que la liste des
-     * connectés dit déjà. Le voyant, lui, dit quelque chose qu'on ne peut lire
-     * nulle part ailleurs sur la fiche : qu'il est au milieu d'une partie. Un
-     * animateur qui s'apprête à redémarrer le serveur veut le savoir avant, pas
-     * après. C'est la même icône que la liste pose à côté du pseudo, et que le
-     * bureau pose à côté du sien.
-     */
-    var st = fq("fiche-statut");
-    var jeuFiche = (d && d.jeu) || "";
-    var absFiche = (d && d.absence) || "";
-    if (jeuFiche && VOYANTS_NOM[jeuFiche]) {
-      st.src = "/fb/voyant_" + jeuFiche + ".png";
-      st.title = jeuFiche === "forum"
-        ? "Lit le forum"
-        : "En partie — " + VOYANTS_NOM[jeuFiche];
-      st.classList.add("en-partie");
-    } else if (absFiche && STATUTS_NOM[absFiche]) {
-      /*
-       * LE STATUT D'ABSENCE (`/status eat`), à la place de la pastille.
-       * `UserSlot.display` (0xc8241) essaie `internal`, puis `external`, et ne
-       * retombe sur la présence qu'à défaut des deux : un joueur en partie
-       * montre sa partie, un joueur « au travail » son panneau, et les autres
-       * leur pastille. La classe est la même que celle du voyant de jeu — même
-       * emplacement, même taille.
-       */
-      st.src = absenceUrl(absFiche);
-      st.title = STATUTS_NOM[absFiche];
-      st.classList.add("en-partie");
-    } else {
-      /*
-       * HORS LIGNE, LA PASTILLE EST ROUGE — pas un cadre vide.
-       *
-       * La bande `status` (#222) a trois images, et `ico.gotoAndStop(presence
-       * + 1)` choisit : image 1 la pastille SAUMON `#E3756A` à reflet
-       * (présence 0), image 2 la VERTE `#ADE76B` (présence 1), image 3 une
-       * grise que le carnet n'utilise pas. La fiche prenait pour « absent »
-       * le FOND de l'icône (#216) — le carré arrondi vide au liseré
-       * `#CCCCCC` —, c'est-à-dire le cadre et non le voyant : un joueur hors
-       * ligne n'avait pas de pastille du tout, juste un trou gris.
-       *
-       * Ce sont les dessins que la bande des contacts pose déjà (`sl-presence-
-       * 0/1`) : une seule source pour les deux endroits.
-       */
-      st.src = "/frutiz/sprites/sl-presence-" + ((d && d.enLigne) ? "1" : "0") + ".svg";
-      st.title = (d && d.enLigne) ? "En ligne" : "Hors ligne";
-      st.classList.remove("en-partie");
-    }
+    peindreStatutFiche();
     var meta = "";
     if (d && d.basic) {
       if (d.basic.age !== null && d.basic.age !== undefined) meta = d.basic.age + " ans";
@@ -9895,6 +9955,24 @@
       .forEach(function (s) { fq(s).style.display = moi ? "none" : ""; });
     // …et à leur place, « modifier ma fiche » — comme box.Frutiz.
     fq("fiche-editer").hidden = !moi;
+    /*
+     * LE CŒUR NE PARAÎT QUE S'IL PEUT SERVIR.
+     *
+     * `box.Frutiz.getIconList` pose l'image 4 (`frutiz_add_to_contact`)
+     * « si pas déjà au carnet » : on n'ajoute pas deux fois la même personne,
+     * et un bouton qui ne ferait rien invite à cliquer pour rien. Le portage
+     * le montrait toujours. C'est le SERVEUR qui répond (`vous.contact`) —
+     * lui seul tient la liste.
+     *
+     * Le bouton est monté par le BUREAU (`completerIconesFiche`) : sur
+     * mobile il n'existe pas, d'où la garde. Et tant que la réponse n'est pas
+     * là, il ne paraît pas : mieux vaut un cœur qui arrive d'un quart de
+     * seconde en retard qu'un cœur qui s'affiche puis se retire.
+     */
+    var boutonContact = fq("fiche-contact");
+    if (boutonContact) {
+      boutonContact.hidden = !d || moi || !!(d.vous && d.vous.contact);
+    }
     // La vue modérateur : kick, ban, totoché — aux modérateurs seulement.
     var modo = !moi && d && d.vous && d.vous.moderateur;
     // L'animateur est staff de SON salon (pomme) : il peut éjecter — mais ni
@@ -10768,12 +10846,14 @@
   function rememberStatut(pseudo, s) {
     if (!pseudo || s === null || s === undefined) return;
     var cle = String(pseudo).toLowerCase();
+    poussesRecues[cle] = true;
     var interne = decode62(String(s).substring(1, 3));
     var avant = state.jeuByUser[cle];
     var jeu = VOYANTS_JEU[interne] || "";
     state.jeuByUser[cle] = jeu;
-    // Un voyant qui s'allume ou s'éteint se voit tout de suite dans la liste.
-    if (avant !== jeu && drawerVue === "salon") renderUsers();
+    // Un voyant qui s'allume ou s'éteint se voit tout de suite — dans la liste
+    // du salon, sur la fiche ouverte, et dans la bande des contacts.
+    if (avant !== jeu) majStatutsPartout(cle);
     // ET L'HUMEUR, quatrième caractère. `getStatusCode` (server.js) assemble
     // `encode62(ext,1) + encode62(internal,2) + encode62(emote,1)`, exactement
     // comme `StatusMng.send` d'époque. Elle voyage donc avec chaque arrivée
@@ -10791,7 +10871,7 @@
     var avantAbs = state.absenceByUser[cle] || "";
     var abs = STATUTS_ABSENCE[decode62(String(s).substring(0, 1))] || "";
     state.absenceByUser[cle] = abs;
-    if (avantAbs !== abs && drawerVue === "salon") renderUsers();
+    if (avantAbs !== abs) majStatutsPartout(cle);
     // Quand c'est MOI que le serveur décrit, on retient le statut entier : le
     // prochain changement d'humeur ne doit pas effacer le voyant du jeu en
     // cours, qui vit dans les deux caractères du milieu.
@@ -10817,6 +10897,104 @@
   function voyantDe(pseudo) { return state.jeuByUser[String(pseudo).toLowerCase()] || ""; }
   function absenceDe(pseudo) { return state.absenceByUser[String(pseudo).toLowerCase()] || ""; }
   function humeurDe(pseudo) { return state.humeurByUser[String(pseudo).toLowerCase()] || 0; }
+
+  /* ── L'ACTIVITÉ DE QUELQU'UN, EN UN SEUL ENDROIT ──────────────────────────
+   *
+   * `UserSlot.onStatusObj` (0xc8241) donne l'ordre, et il vaut PARTOUT — la
+   * fiche, la bande des contacts, la liste d'un salon sont le même clip :
+   *
+   *     présence 0        → la pastille saumon (hors ligne)
+   *     status.internal   → l'icône du JEU, à la place de la pastille
+   *     status.external   → celle de l'absence
+   *     sinon             → la pastille verte
+   *
+   * Chacun le calculait de son côté, sur des données d'âges différents. Ils
+   * appellent maintenant `statutDe`, qui lit les tables que le fil tient à
+   * jour — et qui ne connaît qu'une seule vérité à la fois.
+   */
+  // Qui le FIL nous a décrit : sa parole prime sur celle d'une page HTTP, qui
+  // peut dater de trente secondes.
+  var poussesRecues = {};
+  function rememberPresence(pseudo, p) {
+    if (!pseudo || p === null || p === undefined || p === "") return;
+    var cle = String(pseudo).toLowerCase();
+    poussesRecues[cle] = true;
+    // `p` vaut 0 (hors ligne), 1 (en ligne) ou 2 (invisible) — et un invisible
+    // se montre hors ligne, comme le bureau le fait.
+    var la = Number(p) === 1;
+    if (state.presenceByUser[cle] === la) return;
+    state.presenceByUser[cle] = la;
+    majStatutsPartout(cle);
+  }
+  /*
+   * L'AMORCE HTTP. La fiche et le carnet arrivent par `fetch` ; ils remplissent
+   * les tables pour que le premier dessin soit juste, mais s'effacent devant
+   * le fil dès qu'il a parlé de cette personne — une page a pu être lue avant
+   * un changement que le fil, lui, a déjà transmis.
+   */
+  function amorcerStatut(pseudo, enLigne, jeu, absence) {
+    var cle = String(pseudo || "").toLowerCase();
+    if (!cle || poussesRecues[cle]) return;
+    var avant = statutDe(cle);
+    state.presenceByUser[cle] = !!enLigne;
+    state.jeuByUser[cle] = enLigne ? (jeu || "") : "";
+    state.absenceByUser[cle] = enLigne ? (absence || "") : "";
+    var apres = statutDe(cle);
+    if (avant.enLigne !== apres.enLigne || avant.jeu !== apres.jeu
+        || avant.absence !== apres.absence) majStatutsPartout(cle);
+  }
+  function statutDe(pseudo) {
+    var cle = String(pseudo || "").toLowerCase();
+    var la = state.presenceByUser[cle];
+    return {
+      enLigne: !!la,
+      connu: la !== undefined,
+      // Hors ligne, ni voyant ni panneau : on ne joue pas quand on n'est pas là.
+      jeu: la ? (state.jeuByUser[cle] || "") : "",
+      absence: la ? (state.absenceByUser[cle] || "") : "",
+    };
+  }
+  /*
+   * SUIVRE QUELQU'UN QU'ON AFFICHE. Le serveur pousse déjà les statuts dans
+   * les salons ; hors salon, il faut les DEMANDER — c'est ce que fait la trame
+   * `trace` (`<z>`), qui abonne la socket et répond aussitôt avec l'état
+   * courant (server.js, `subscribeTrace`). Le portage ne l'avait jamais
+   * envoyée : le carnet en était réduit à relire une page toutes les trente
+   * secondes, et la fiche à ne rien relire du tout.
+   *
+   * `suivis` retient QUI L'ON VEUT SUIVRE, pas ce qu'on a déjà demandé : une
+   * reconnexion efface les abonnements du serveur, et une trame envoyée
+   * pendant que la socket est fermée se perd. On redemande donc à chaque fois
+   * — la trame est minuscule, le serveur dédoublonne (`subscribeTrace` range
+   * dans un ensemble), et la réponse rafraîchit au passage ce qu'on affiche.
+   */
+  var suivis = {};
+  function suivreStatuts(liste) {
+    var qui = [];
+    (liste || []).forEach(function (p) {
+      var cle = String(p || "").toLowerCase();
+      if (!cle || cle === state.userLower) return;
+      suivis[cle] = true;
+      qui.push(cle);
+    });
+    if (!qui.length) return;
+    // Une seule trame pour tout le carnet : `trace` accepte une liste d'enfants.
+    var xml = "<z>";
+    qui.forEach(function (c) { xml += '<u u="' + xmlEscape(c) + '" />'; });
+    wsSend(xml + "</z>");
+  }
+  // Après une coupure, le serveur a tout oublié : on redemande tout.
+  function resuivreStatuts() { suivreStatuts(Object.keys(suivis)); }
+  /*
+   * ET QUAND ÇA CHANGE, TOUT LE MONDE LE VOIT. Une seule fonction prévient les
+   * trois surfaces : la liste du salon, les fiches ouvertes, la bande des
+   * contacts du bureau.
+   */
+  function majStatutsPartout(cle) {
+    if (drawerVue === "salon") renderUsers();
+    if (fichesOuvertes[cle]) avecFiche(fichesOuvertes[cle], peindreStatutFiche);
+    if (window.BureauFrutiz && BureauFrutiz.majStatutContact) BureauFrutiz.majStatutContact(cle);
+  }
 
   /*
    * LA BOUILLE D'UN SALON DOIT SUIVRE SON PROPRIÉTAIRE.

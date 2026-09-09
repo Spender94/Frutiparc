@@ -838,6 +838,62 @@ dp_scrollBar 40, dp_element 100.
   sert la même lecture en JSON, sans rien réordonner — l'ordre d'insertion est
   celui que le joueur voit d'époque.
 
+### Le voyant dit la vérité, et il la dit partout
+
+`UserSlot` est le MÊME clip aux trois endroits qui montrent quelqu'un — la
+bande des contacts, la liste d'un salon, l'en-tête d'une fiche — et
+`onStatusObj` lui donne un seul ordre de lecture :
+
+    présence 0        → la pastille saumon (hors ligne)
+    status.internal   → l'icône du JEU, à la place de la pastille
+    status.external   → celle de l'absence (`/status work`)
+    sinon             → la pastille verte
+
+Le portage l'appliquait bien, mais sur **trois sources d'âges différents** : le
+salon suivait les trames du fil (vivant, mais réservé aux salons partagés), le
+carnet relisait `/api/light/contacts` toutes les trente secondes, et la fiche
+un `fetch` unique, jamais relu. La même personne pouvait donc être « en
+partie » dans le salon, « en ligne » dans la bande et « hors ligne » sur sa
+fiche.
+
+**La mécanique manquante existait déjà côté serveur.** La trame `trace`
+(`<z>`, `CMD.trace`) abonne une socket au statut de qui l'on veut —
+`subscribeTrace`, *« independent of shared channels »* — et répond aussitôt
+avec l'état courant ; `notifyTraceSubscribers` pousse ensuite chaque
+changement (voyant de jeu, panneau d'absence, connexion, déconnexion). Le
+light ne l'avait **jamais envoyée**.
+
+Désormais :
+
+- **une seule table** (`statutDe` dans light.html) porte présence, jeu et
+  absence ; la fiche, la bande et la liste d'un salon la lisent toutes trois,
+  et rien d'autre ;
+- **on s'abonne à ce qu'on affiche** : `suivreStatuts` envoie un `<z>` pour la
+  fiche qu'on ouvre et pour tout le carnet à son chargement — une seule trame,
+  `trace` acceptant une liste d'enfants. `suivis` retient qui l'on veut
+  suivre, et l'ident d'une reconnexion redemande tout (le serveur oublie ses
+  abonnements avec la socket) ;
+- **la présence arrive par le fil** : les trames portaient déjà `p` (0 hors
+  ligne, 1 en ligne, 2 invisible — l'invisible se montre hors ligne) et
+  personne ne le lisait. Figurer dans un salon vaut présence ; en sortir ne
+  prouve rien, on quitte un salon sans quitter le site ;
+- **un changement se voit partout** : `majStatutsPartout` repeint la liste du
+  salon, les fiches ouvertes et les lignes du carnet (que le bureau retrouve
+  par `data-frutiz`) ;
+- **le `fetch` amorce, le fil tranche** : une page peut dater, une trame non —
+  `amorcerStatut` ne s'impose donc pas à qui le fil a déjà décrit. La
+  relecture des trente secondes reste, en filet : elle ramasse aussi les
+  contacts ajoutés ailleurs.
+
+### Le cœur ne s'offre pas deux fois
+
+`box.Frutiz.getIconList` ne pose l'image 4 (`frutiz_add_to_contact`) que
+**« si pas déjà au carnet »** — on n'ajoute pas deux fois la même personne, et
+un bouton qui ne ferait rien invite à cliquer pour rien. Le portage le
+montrait toujours. `/api/light/fiche` répond maintenant `vous.contact` (le
+serveur seul tient la liste), et le bouton se retire aussi dès qu'on l'a
+cliqué, sans attendre la relecture du carnet.
+
 ## « Salons publics » (`win.RoomList` 0xbebb6, `cp.RoomList` 0x70733)
 
 La première fenêtre du bureau qui n'a PAS d'équivalent mobile : côté light on
@@ -2073,6 +2129,16 @@ qu'un jeu d'anneaux flous.
   plus ;
 - `pushReset` n'a pas le canal du Frusion Server : le portage refait ce qu'on
   en voit — le jeu se referme et se relance sur le même disque.
+
+**Redémarrer n'est pas éjecter**, et c'est tout le sens des deux boutons ronds.
+Fermer la fenêtre d'un jeu REND le disque — d'époque, c'est
+`FrusionSlot.onReadyToClose` qui prévient le lecteur, et le portage le
+reproduit à la fin de `fermerFenetre`. Or `pushReset` passait par là pour
+relancer : le tiroir sortait, le disque redevenait attrapable, et le jeu
+repartait 80 ms plus tard sur une console vide. Le lecteur se retire donc le
+jeu (`this.jeu = null`) AVANT de fermer sa fenêtre : la fermeture ne le
+reconnaît plus, le disque reste dedans, et `lancer` le repose — on revient à
+l'écran de menu du jeu, disque en place.
 
 Le CLIC sur un disque ne fait RIEN, comme d'époque : la branche `case "disc"`
 est commentée dans `openFunctions.as`, et le bandeau de la fenêtre le dit —

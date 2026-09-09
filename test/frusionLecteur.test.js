@@ -121,6 +121,32 @@ test('le jeu prend un ONGLET, et le fermer éjecte', () => {
   assert.match(JS, /frusion\.takeDisc = function/);
 });
 
+test('« redémarrer le jeu » RELANCE, il n’éjecte pas', () => {
+  /*
+   * Les deux boutons ronds ne font pas la même chose, et le portage les avait
+   * confondus. `fermerFenetre` rend le disque dès qu'elle reconnaît la fenêtre
+   * du jeu en cours — c'est la règle du test ci-dessus, « fermer le jeu, c'est
+   * éjecter ». Or `pushReset` PASSE PAR LÀ pour relancer : le tiroir sortait,
+   * le disque redevenait attrapable, et le jeu repartait 80 ms plus tard sur
+   * une console vide.
+   *
+   * Le lecteur se retire donc le jeu AVANT de fermer sa fenêtre : la fermeture
+   * ne le reconnaît plus, le disque reste dedans, et `lancer` le repose.
+   */
+  const reset = /frusion\.pushReset = function \(\) \{[\s\S]*?\n  \};/.exec(JS);
+  assert.ok(reset, 'frusion.pushReset');
+  assert.match(reset[0], /this\.jeu = null;\n\s*if \(panneau && fenetres\[panneau\.id\]\) fermerFenetre\(panneau\.id\);/,
+    'le jeu est retiré au lecteur AVANT la fermeture');
+  // Et rien, dans le redémarrage, ne rend le disque.
+  assert.doesNotMatch(reset[0], /stopDisc|releaseDisc|removeDisc/,
+    'redémarrer ne touche pas au disque');
+  // La fermeture, elle, garde sa règle : c'est bien elle qui éjecte.
+  const fermer = /function fermerFenetre\(idPanneau\) \{[\s\S]*?\n  \}/.exec(JS);
+  assert.match(fermer[0], /if \(frusion && frusion\.jeu\) \{[\s\S]*?frusion\.stopDisc\('releaseDisc'\);/);
+  // Le disque relancé est le MÊME : `lancer` repart de `this.disque`.
+  assert.match(reset[0], /setTimeout\(function \(\) \{ self\.lancer\(self\.disque\); \}, 80\);/);
+});
+
 /*
  * `fileMng.frusionOn(info)` / `frusionOff()` — LE DISQUE QUI TOURNE N'EST
  * NULLE PART AILLEURS.

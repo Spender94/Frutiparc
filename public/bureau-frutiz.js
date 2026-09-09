@@ -573,27 +573,50 @@ window.BureauFrutiz = (function () {
   // Et le carnet passe `statusDspMode: "all"` (SideList.buildElement) : il
   // montre TOUT, hors ligne compris. C'est le même clip `userSlot` que la
   // liste des connectés d'un salon — seul le voyant de jeu manquait ici.
+  /*
+   * CE QUE PORTE UNE LIGNE — et ce qui change quand l'activité change.
+   *
+   * L'ÉTAT VIENT DU FIL, PAS DE LA PAGE. Le carnet arrivait par `/api/light/
+   * contacts`, relu toutes les trente secondes : la même personne pouvait
+   * donc être « en ligne » dans la bande, « en partie » dans le salon et
+   * « hors ligne » sur sa fiche, chacun ayant lu à un moment différent. Les
+   * trois lisent maintenant `StatutsLight.de`, que les trames du serveur
+   * tiennent à jour — la réponse HTTP ne fait plus qu'AMORCER la table.
+   */
+  function habillerLigneContact(b, c) {
+    var a = activiteDe(c);
+    var enLigne = a.enLigne, jeu = a.jeu;
+    var absence = (enLigne && !jeu && ABSENCE_NOM[a.absence]) ? a.absence : '';
+    b.classList.toggle('en-ligne', enLigne);
+    b.classList.toggle('hors-ligne', !enLigne);
+    b.title = c.pseudo + (jeu ? ' — ' + libelleJeu(jeu)
+      : (absence ? ' — ' + ABSENCE_NOM[absence].toLowerCase()
+        : (enLigne ? ' — en ligne' : ' — hors ligne')));
+    var v = b.querySelector('.voyant');
+    if (jeu || absence) {
+      v.classList.add('jeu');
+      v.style.backgroundImage = "url('"
+        + (jeu ? voyantUrl(jeu) : absenceUrl(absence)) + "'), "
+        + "url('/frutiz/sprites/sl-icone-fond.svg')";
+    } else {
+      v.classList.remove('jeu');
+      v.style.backgroundImage = '';
+    }
+  }
+
   function ligneContact(c) {
     var b = document.createElement('button');
     b.type = 'button';
-    b.className = 'sl-contact ' + (c.enLigne ? 'en-ligne' : 'hors-ligne');
-    var absence = (c.enLigne && !c.jeu && ABSENCE_NOM[c.absence]) ? c.absence : '';
-    b.title = c.pseudo + (c.jeu ? ' — ' + libelleJeu(c.jeu)
-      : (absence ? ' — ' + ABSENCE_NOM[absence].toLowerCase()
-        : (c.enLigne ? ' — en ligne' : ' — hors ligne')));
+    b.className = 'sl-contact';
+    b.setAttribute('data-frutiz', String(c.pseudo || '').toLowerCase());
     b.innerHTML = '<span class="voyant"></span><span class="nom"></span>';
     b.querySelector('.nom').textContent = c.pseudo;
     // L'encre du pseudo suit le GENRE (`UserSlot.onInfoBasic`, 0x63a51) : les
     // règles vivent dans light.html, elles valent pour le carnet comme pour la
     // liste des connectés — c'est le même `userSlot`.
     if (c.genre) b.setAttribute('data-genre', c.genre);
-    if ((c.enLigne && c.jeu) || absence) {
-      var v = b.querySelector('.voyant');
-      v.classList.add('jeu');
-      v.style.backgroundImage = "url('"
-        + (c.jeu ? voyantUrl(c.jeu) : absenceUrl(absence)) + "'), "
-        + "url('/frutiz/sprites/sl-icone-fond.svg')";
-    }
+    b._fbFiche = c;
+    habillerLigneContact(b, c);
     b.addEventListener('click', function () {
       if (Date.now() - dernierDepot < 250) return;   // c'était un GLISSÉ
       ouvrirFiche(c.pseudo);
@@ -2217,8 +2240,6 @@ window.BureauFrutiz = (function () {
     var bouille = (f && f.bouille) || '';
     var c = caseExplorateur({
       nom: nom, dessin: dessinBouille(bouille), classe: 'ex-slot-contact',
-      titre: nom + (f && f.jeu ? ' — ' + libelleJeu(f.jeu)
-        : (f && f.enLigne ? ' — en ligne' : ' — hors ligne')),
       faire: function () {
         if (Date.now() - dernierDepot < 250) return;   // c'était un GLISSÉ
         if (estGaspard(nom)) ouvrirGaspard(); else ouvrirFiche(nom);
@@ -2227,7 +2248,11 @@ window.BureauFrutiz = (function () {
     // L'encre du pseudo suit le GENRE, comme partout ailleurs
     // (`UserSlot.onInfoBasic`) — même règle que la bande latérale.
     if (f && f.genre) c.setAttribute('data-genre', f.genre);
-    if (f && f.enLigne) c.classList.add('en-ligne');
+    // Et l'activité vient de la même table que la bande et les salons : la
+    // fenêtre du carnet ne dit pas autre chose que la bande d'à côté.
+    c.setAttribute('data-frutiz', String(nom).toLowerCase());
+    c._fbFiche = f || { pseudo: nom };
+    habillerCaseContact(c, c._fbFiche);
     // `getFileContextMenu` : jeter le contact. À la corbeille il quitte le
     // carnet (ou la liste noire) — c'est la branche `recyclebin` de /ff/mv.
     c.addEventListener('contextmenu', function (ev) {
@@ -3540,6 +3565,18 @@ window.BureauFrutiz = (function () {
     var jeu = this.jeu;
     var rub = RUBRIQUES[jeu];
     var panneau = rub && $(rub.panneau);
+    /*
+     * REDÉMARRER N'EST PAS ÉJECTER — et c'est tout le sens des deux boutons.
+     *
+     * `fermerFenetre` rend le disque dès qu'elle reconnaît la fenêtre du jeu
+     * en cours (« fermer le jeu, c'est éjecter » : d'époque, c'est
+     * `FrusionSlot.onReadyToClose` qui prévient le lecteur). Le remise à zéro
+     * passait par là : le tiroir s'ouvrait, le disque ressortait, et le jeu se
+     * relançait 80 ms plus tard sur une console vide. On retire donc le jeu au
+     * lecteur AVANT de fermer sa fenêtre — la fermeture ne le reconnaît plus,
+     * le disque reste dedans, et `lancer` le repose.
+     */
+    this.jeu = null;
     if (panneau && fenetres[panneau.id]) fermerFenetre(panneau.id);
     var self = this;
     setTimeout(function () { self.lancer(self.disque); }, 80);
@@ -4369,6 +4406,59 @@ window.BureauFrutiz = (function () {
     });
   }
 
+  /*
+   * LE CARNET SE MET À L'ÉCOUTE. D'époque le serveur pousse le statut de chaque
+   * contact (`onStatusObj`) et `userSlot` change d'icône sur-le-champ. Le
+   * portage n'avait jamais demandé cette poussée — d'où la relecture toutes
+   * les trente secondes, et des voyants en retard d'une demi-minute. La trame
+   * `trace` existe pour ça : elle abonne, et répond aussitôt avec l'état
+   * courant. On lui donne tout le carnet, liste noire comprise.
+   */
+  function suivreLeCarnet(d) {
+    if (!window.StatutsLight) return;
+    var noms = [];
+    var prendre = function (c) {
+      if (!c || !c.pseudo) return;
+      noms.push(c.pseudo);
+      StatutsLight.amorcer(c.pseudo, c.enLigne, c.jeu, c.absence);
+    };
+    (d.contacts || []).forEach(prendre);
+    (d.noire || []).forEach(prendre);
+    (d.dossiers || []).forEach(function (f) { (f.contacts || []).forEach(prendre); });
+    StatutsLight.suivre(noms);
+  }
+
+  // L'ACTIVITÉ D'UN CONTACT, telle que le fil la connaît — et à défaut, telle
+  // que la dernière page l'a dite.
+  function activiteDe(c) {
+    var st = (window.StatutsLight && c && c.pseudo) ? StatutsLight.de(c.pseudo) : null;
+    if (st && st.connu) return st;
+    return { enLigne: !!(c && c.enLigne), jeu: (c && c.jeu) || '',
+      absence: (c && c.absence) || '' };
+  }
+
+  // La case du carnet en fenêtre : elle n'a ni voyant ni pastille, seulement
+  // l'infobulle et le liseré des connectés — mais elle dit la même chose.
+  function habillerCaseContact(c, f) {
+    var a = activiteDe(f);
+    var nom = (f && f.pseudo) || '';
+    c.title = nom + (a.jeu ? ' — ' + libelleJeu(a.jeu)
+      : (a.absence && ABSENCE_NOM[a.absence] ? ' — ' + ABSENCE_NOM[a.absence].toLowerCase()
+        : (a.enLigne ? ' — en ligne' : ' — hors ligne')));
+    c.classList.toggle('en-ligne', a.enLigne);
+  }
+
+  // Un voyant a bougé : on rhabille ce que cette personne occupe à l'écran —
+  // la bande latérale, et les fenêtres du carnet si elles sont ouvertes.
+  function majStatutContact(cle) {
+    var sel = '[data-frutiz="' + String(cle).replace(/"/g, '') + '"]';
+    Array.prototype.forEach.call(document.querySelectorAll(sel), function (n) {
+      if (!n._fbFiche) return;
+      if (n.classList.contains('sl-contact')) habillerLigneContact(n, n._fbFiche);
+      else habillerCaseContact(n, n._fbFiche);
+    });
+  }
+
   // La fiche d'une adresse OU d'un pseudo — c'est l'un ou l'autre selon d'où
   // vient l'icône (`<e u="bob">bob@frutiparc.com</e>` porte les deux).
   function ficheDe(qui) {
@@ -4384,7 +4474,7 @@ window.BureauFrutiz = (function () {
       .then(function (r) { return r.json(); })
       .then(function (d) {
         carnetEnCours = null;
-        if (d && d.ok) { carnet = d; noterFiches(d); }
+        if (d && d.ok) { carnet = d; noterFiches(d); suivreLeCarnet(d); }
         dessinerCarnetLateral(carnet);
         return carnet;
       })
@@ -5585,9 +5675,14 @@ window.BureauFrutiz = (function () {
       fetch('/ff/mk?sid=' + encodeURIComponent(sid) + '&folder=blacklist&t=contact&u='
         + encodeURIComponent(u)).then(function () { chargerContacts(); });
     });
-    neuf('fiche-contact', 'fiche-ico-contact', 'Ajouter à mes contacts', function () {
+    neuf('fiche-contact', 'fiche-ico-contact', 'Ajouter à mes contacts', function (ev) {
       var sid = jetonSid(), u = pseudo();
       if (!sid || !u) return;
+      // AJOUTÉ, IL DISPARAÎT. `getIconList` ne pose le cœur que « si pas déjà
+      // au carnet » : une fois la personne dedans, il n'a plus rien à faire.
+      // On ne l'attend pas — la fiche ne se relit pas d'elle-même, et la
+      // réponse ne changera pas ce qu'on vient de demander.
+      if (ev && ev.currentTarget) ev.currentTarget.hidden = true;
       fetch('/ff/mk?sid=' + encodeURIComponent(sid) + '&folder=mycontact&t=contact&u='
         + encodeURIComponent(u)).then(function () { chargerContacts(); });
     });
@@ -8566,6 +8661,9 @@ window.BureauFrutiz = (function () {
     // Ce que le light change dans les dossiers (une revente, par exemple) doit
     // se voir dans les fenêtres ouvertes : elles se relisent.
     relireExplorateurs: relireExplorateurs,
+    // Un voyant qui change : le light nous prévient, la bande des contacts se
+    // rhabille sans relire quoi que ce soit.
+    majStatutContact: majStatutContact,
     ouvrirContacts: function () { ouvrirExplorateur('contacts'); },
     ouvrirListeNoire: function () { ouvrirExplorateur('noire'); },
     ouvrirCorbeille: function () { ouvrirExplorateur('corbeille'); },
