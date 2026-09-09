@@ -113,7 +113,16 @@
       return s.join('');
     };
 
-    Swf.charger('/fbouille/famille' + M.familleDe(base) + '.swf').then(function (defs) {
+    // LES ÉMOTES GREFFÉES viennent avec : jutsu, toux et gum d'hiko empruntent
+    // leurs dessins à d'autres familles (public/fbouille/emotes.json). Sans ce
+    // paquet, `?planche=anim&a=14/15/16` ne montrerait que la pellicule
+    // d'accueil — et l'atelier ne saurait pas dire à quoi ressemble la greffe.
+    Promise.all([
+      Swf.charger('/fbouille/famille' + M.familleDe(base) + '.swf'),
+      fetch('/fbouille/emotes.json').then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; }),
+    ]).then(function (chargement) {
+      var defs = chargement[0], paquetEmotes = chargement[1];
       // Une bouille témoin, pour lire les bornes réelles de cette famille.
       // Le tirage au sort du moteur est CALÉ : « parle » choisit sa bouche par
       // random(4), le chewing-gum sa taille par random(150). &alea= permet au
@@ -187,6 +196,7 @@
         fig.appendChild(c); fig.appendChild(cap); hote.appendChild(fig);
         var b = new M.Bouille(c, defs, { etat: t.etat, anime: false, alea: tirage,
           super: SUPER, antiCouture: COUTURE });
+        if (paquetEmotes) b.moteur.greffer(paquetEmotes);
         if (t.humeur) b.moteur.humeur(t.humeur);
         if (t.anim) {
           b.moteur.jouerAnim(0);

@@ -107,15 +107,32 @@
    *               ne reste qu'un chocapic ;
    *   15 tousse   la quinte de la famille 15 : la tête sursaute deux fois,
    *               les yeux fermés.
+   *   16 gumm     le chewing-gum d'hiko : la même bulle, mais elle éclate EN
+   *               PLEINE FIGURE — un aplat jaune sur toute la tête, là où la
+   *               famille 0 ne prend qu'une pastille sur la joue.
    *
-   * Les deux dernières viennent d'AUTRES FAMILLES. Leurs dessins — la fumée
-   * et le chocapic — sont récoltés dans public/fbouille/emotes.json
-   * (scripts/extract-emotes-bouille.js) et greffés par `greffer()` ; leur
-   * déroulé, lui, est rejoué ici plutôt que copié, parce que la pellicule
-   * d'hiko n'existe pas dans les autres familles.
+   * Les trois dernières viennent d'AUTRES FAMILLES. Leurs dessins — la fumée
+   * et le chocapic du jutsu, le nuage de la toux, l'éclatement du gum d'hiko —
+   * sont récoltés dans public/fbouille/emotes.json
+   * (scripts/extract-emotes-bouille.js) et greffés par `greffer()`.
+   *
+   * Leur DÉROULÉ, en revanche, ne se copie pas de la même façon. Le jutsu et
+   * la toux sont rejoués ici, ligne à ligne, parce que la pellicule d'hiko
+   * n'existe pas dans les autres familles. Le gum, lui, EXISTE PARTOUT et de
+   * la même forme : `gum` puis `gumNext` trois images plus loin, douze en
+   * tout, et une fin qui pose deux images d'éclatement puis une « tache ». On
+   * ne rejoue donc rien — on laisse la pellicule d'accueil tourner et l'on
+   * SUBSTITUE les trois dessins de la fin (cf. `remplacements`).
+   *
+   * Ce qui CHANGE d'une famille à l'autre, ce sont les constantes de la
+   * boucle : la famille 0 laisse sa bulle enfler jusqu'à `random(150) + 30`,
+   * hiko jusqu'à `random(80)`, la 14 jusqu'à `random(500)`. On n'y touche
+   * pas — la bulle reste celle de la famille, avec son rythme ; c'est ce
+   * qu'elle devient en éclatant qu'on emprunte.
    */
   const ANIMATIONS = ['stop', 'parle', 'rire', 'mdr', 'langue', 'rougir', 'regard',
-    'siffle', 'gum', 'question', 'miam', 'pleure', 'larme', 'beurk', 'jutsu', 'tousse'];
+    'siffle', 'gum', 'question', 'miam', 'pleure', 'larme', 'beurk', 'jutsu', 'tousse',
+    'gumm'];
   // Les noms tels que le parc les affiche déjà — ceux du forum (EXPRESSIONS,
   // public/fb/index.html) et de la page de démonstration. Le SWF, lui, ne
   // nomme pas ses humeurs : emoteList n'est qu'un tableau de couples.
@@ -123,7 +140,7 @@
     'Déterminé', 'Embarrassé', 'Totoché'];
   const NOMS_ANIMATIONS = ['Repos', 'Parler', 'Rire', 'MDR', 'Langue', 'Rougir',
     'Regard', 'Sifflote', 'Chewing-gum', 'Question', 'Miam', 'Pleurer', 'Larme',
-    'Beurk', 'Jutsu', 'Tousse'];
+    'Beurk', 'Jutsu', 'Tousse', 'Gum d’hiko'];
   // actionList nomme « siffle » et « pleure » ce que la pellicule étiquette
   // « sifflote » et « pleurer ». playAnim() vise les étiquettes.
   const ETIQUETTES = { siffle: 'sifflote', pleure: 'pleurer' };
@@ -1008,6 +1025,9 @@
     this.fardKaki = (id === 13);
     // Et les deux chutes ne durent que le temps de la leur.
     if (id !== 14 && id !== 15) this.chute = null;
+    // Comme les substitutions de dessins : elles ne valent que pour l'émote
+    // qui les a posées (cf. `remplacements`).
+    if (id !== 16) this.remplacements = null;
 
     if (id === 0) {
       r.endAnim();
@@ -1194,8 +1214,70 @@
         this.chute.nuage = new Clip(this, defNu, null);
         this.chute.nuage.allerImage(1, true);
       }
+    } else if (id === 16) {
+      /*
+       * LE GUM D'HIKO — la même pellicule, d'autres dessins.
+       *
+       * On ne rejoue rien : c'est l'animation 8, à la lettre. La bulle est
+       * celle de la famille (c'est la sienne qu'on mâche), elle enfle sur le
+       * même tirage au sort, et la pellicule d'accueil mène la fin — la
+       * tache qui reste, puis s'efface. Ce qu'on change, ce sont les TROIS
+       * DESSINS de cette fin : les deux images de l'éclatement et la tache
+       * passent à celles d'hiko, qui lui couvrent toute la figure.
+       *
+       * Sans la greffe (emotes.json absent) ou dans une famille dont la
+       * pellicule ne pose pas de « tache », rien n'est substitué : on joue le
+       * gum ordinaire, ce qui est le pire qui puisse arriver.
+       */
+      this.remplacements = this.remplacementsDuGum();
+      r.flStop = false; r.next = 0;
+      face.allerImage('gum', true);
+      oeil(r.emoteEye + 1);
+      muet();
+      if (bb) bb.allerImage('souffle', false);
     }
     return this;
+  };
+
+  /*
+   * QUI REMPLACE QUI, pour le gum d'hiko.
+   *
+   * La fin du chewing-gum tient dans les trois images qui suivent `gumNext`,
+   * et la pellicule est la même dans toutes les familles : les poses SANS NOM
+   * sont l'éclatement, dans l'ordre, et celle qui s'appelle « tache » est ce
+   * qui reste sur la figure. On lit donc la famille d'accueil comme la récolte
+   * a lu hiko (scripts/extract-emotes-bouille.js, `finDuGum`), et l'on apparie
+   * dans l'ordre.
+   *
+   * La MATRICE reste celle de l'accueil : les deux dessins sont tracés dans le
+   * même repère de visage — c'est le même gabarit d'une famille à l'autre —,
+   * et garder le placement d'origine évite de faire dépendre la greffe d'un
+   * relevé de plus.
+   */
+  Moteur.prototype.remplacementsDuGum = function () {
+    const paq = this.emotes && this.emotes.gum;
+    const face = this.racine.face;
+    if (!paq || !face || !face.def || !face.def.labels) return null;
+    const deb = face.def.labels.gumNext;
+    if (!deb) return null;
+    const eclats = [];
+    let tache = null;
+    for (let i = deb; i < deb + 3; i++) {
+      for (const o of (face.def.images[i - 1] || [])) {
+        if (o.t !== 'pose' || !(o.ch >= 0)) continue;
+        if (o.nom === 'tache') tache = o.ch; else eclats.push(o.ch);
+      }
+    }
+    if (tache === null || !eclats.length) return null;
+    const table = new Map();
+    // L'éclatement d'hiko a deux images comme partout ; s'il en manquait une,
+    // la dernière sert pour les suivantes plutôt que de laisser un trou.
+    eclats.forEach((ch, i) => {
+      const src = paq.eclats[Math.min(i, paq.eclats.length - 1)];
+      if (src) table.set(ch, src.ch);
+    });
+    table.set(tache, paq.tache.ch);
+    return table;
   };
 
   Moteur.prototype.avancer = function () {
@@ -1445,8 +1527,55 @@
   };
 
   Moteur.prototype.dessinerEnfant = function (ctx, e, M, cx, alpha) {
+    /*
+     * LA SUBSTITUTION D'UN DESSIN (le gum d'hiko, cf. `remplacementsDuGum`).
+     *
+     * La pellicule d'accueil pose ce qu'elle a toujours posé ; on dessine
+     * autre chose à la place, au même endroit, avec la même opacité — c'est la
+     * pellicule qui fait descendre l'alpha de la tache, et l'échange doit se
+     * laisser porter par elle.
+     *
+     * Un clip substitué garde l'ÉTAT de celui qu'il remplace (son alpha, son
+     * échelle, sa rotation) : on lui prête donc la matrice et la teinte du
+     * clip d'accueil plutôt que de monter une instance de plus.
+     */
+    const rem = this.remplacements;
+    if (rem && rem.has(e.ch)) {
+      const cible = rem.get(e.ch);
+      const c = e.objet;                       // l'état posé par la pellicule
+      const sp = this.defs.sprites.get(cible);
+      if (sp) {
+        const clip = this.clipGreffe(cible, sp);
+        clip.M = c ? c.M : (e.M || IDENTITE);
+        clip.alpha = c ? c.alpha : 100;
+        clip.echX = c ? c.echX : 1; clip.echY = c ? c.echY : 1;
+        clip.dx = c ? c.dx : 0; clip.dy = c ? c.dy : 0; clip.drot = c ? c.drot : 0;
+        this.dessinerClip(ctx, clip, M, cx, alpha);
+        return;
+      }
+      if (this.defs.formes.has(cible)) {
+        const Mi = c ? composerM(M, c.matrice()) : composerM(M, e.M || IDENTITE);
+        this.dessinerForme(ctx, cible, Mi, composerCx(cx, e.cx || null),
+          alpha * (c ? c.alpha / 100 : 1), e.ratio);
+        return;
+      }
+    }
     if (e.objet) this.dessinerClip(ctx, e.objet, M, cx, alpha);
     else this.dessinerForme(ctx, e.ch, composerM(M, e.M), composerCx(cx, e.cx || null), alpha, e.ratio);
+  };
+
+  // Un clip greffé, monté une fois pour toutes : il n'a qu'une image et ne
+  // bouge pas, mais sa liste d'affichage ne se remplit qu'au passage de
+  // l'image 1 (cf. le chocapic du jutsu).
+  Moteur.prototype.clipGreffe = function (ch, def) {
+    if (!this._greffes) this._greffes = new Map();
+    let c = this._greffes.get(ch);
+    if (!c) {
+      c = new Clip(this, def, null);
+      c.allerImage(1, true);
+      this._greffes.set(ch, c);
+    }
+    return c;
   };
 
   // Accumule le TRACÉ d'un masque (toutes ses formes, matrices comprises) dans

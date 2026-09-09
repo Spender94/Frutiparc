@@ -11068,6 +11068,12 @@
        jouaient que sur la famille qui les portait. */
     add("jutsu", "chocapic no jutsu", ["jutsu", "chocapic"]);             // id 14
     add("tousse", "tousse", ["tousse", "cough", "keuf"]);                // id 15
+    /* ET LE GUM D'HIKO. C'est la MÊME animation que la 8 — la pellicule du
+       chewing-gum est identique dans toutes les familles, au bytecode près —,
+       mais avec les dessins de fin d'hiko : là où la famille 0 prend une
+       pastille sur la joue, lui s'en met plein la figure.
+       Le mot « gum » étant déjà pris par la 8, on double la dernière lettre. */
+    add("gumm", "s’en met plein la figure", ["gumm", "gum2"]);           // id 16
   })();
   function detectEmote(text) {
     var key = String(text == null ? "" : text).trim();   // whole-message, case-sensitive
@@ -11181,11 +11187,12 @@
   // anim id → l'indice de playAnim, celui que le moteur attend (FPBouilleVignette.jouer).
   var ANIM_INDEX = { parle:1, rire:2, mdr:3, langue:4, rougir:5, regard:6,
     sifflote:7, gum:8, question:9, miam:10, pleurer:11, larme:12,
-    // Les trois dernières ne sont pas d'époque : « beurk » emprunte la
+    // Les quatre dernières ne sont pas d'époque : « beurk » emprunte la
     // pellicule de « rougir » et lui met le visage de la tristesse, le fard
     // passé au kaki ; « jutsu » et « tousse » empruntent leur chute à une
-    // autre famille (cf. jouerAnim, public/js/bouille-moteur.js).
-    beurk:13, jutsu:14, tousse:15 };
+    // autre famille ; « gumm » rejoue le chewing-gum ordinaire avec les
+    // dessins de fin d'hiko (cf. jouerAnim, public/js/bouille-moteur.js).
+    beurk:13, jutsu:14, tousse:15, gumm:16 };
   // Caption phrases for the bouille overlay — the EXACT desktop wording
   // (lang_french.as chat.action, entrées 2 à 12).
   var ANIM_LABEL = { parle:"parle", rire:"rigole", mdr:"éclate de rire",
@@ -11193,7 +11200,8 @@
     langue:"tire la langue", miam:"se régale",
     question:"se pose des questions", rougir:"rougit", sifflote:"sifflote",
     gum:"fait une bulle de chewing-gum", regard:"regarde ailleurs",
-    beurk:"a la nausée", jutsu:"chocapic no jutsu", tousse:"tousse" };
+    beurk:"a la nausée", jutsu:"chocapic no jutsu", tousse:"tousse",
+    gumm:"s’en met plein la figure" };
   /*
    * LA RÉACTION QUI PASSE SUR LE CHAT.
    *

@@ -273,14 +273,15 @@
   /*
    * LES ÉMOTES QUI VIENNENT D'AILLEURS.
    *
-   * Deux animations empruntent leurs dessins à une autre famille — la fumée
-   * et le chocapic du jutsu (famille 12) — et une troisième une courbe de
-   * mouvement (la toux de la famille 15). Tout cela tient dans un fichier
-   * récolté, `emotes.json`, qu'on ne va chercher QUE si quelqu'un joue une
-   * de ces émotes : les vingt-cinq kilo-octets ne pèsent sur personne
-   * d'autre. Une fois là, il sert toutes les bouilles de la page.
+   * Trois animations empruntent leurs dessins à une autre famille — la fumée
+   * et le chocapic du jutsu (famille 12), l'éclatement du gum d'hiko (la même)
+   * — et une quatrième une courbe de mouvement (la toux de la famille 15).
+   * Tout cela tient dans un fichier récolté, `emotes.json`, qu'on ne va
+   * chercher QUE si quelqu'un joue une de ces émotes : les quarante-sept
+   * kilo-octets ne pèsent sur personne d'autre. Une fois là, il sert toutes
+   * les bouilles de la page.
    */
-  var EMOTES_GREFFEES = [14, 15];
+  var EMOTES_GREFFEES = [14, 15, 16];
   var paquetEmotes = null;
   function emotes() {
     if (!paquetEmotes) {

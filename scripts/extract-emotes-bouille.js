@@ -16,6 +16,16 @@
  *     entier qui sursaute, deux fois, sur une courbe de six images. On
  *     emporte donc les six matrices, pas des tracés.
  *
+ *   · LE CHEWING-GUM D'HIKO (famille 12). Toutes les familles ont un gum, et
+ *     de la MÊME FORME : `gum`, puis `gumNext` trois images plus loin, douze
+ *     en tout, et une fin qui pose deux images d'éclatement suivies d'une
+ *     « tache ». Seuls les DESSINS changent — et les constantes de la boucle
+ *     de croissance —, et c'est là que hiko se distingue : là où la famille 0
+ *     pose une petite tache sur la joue, lui s'en prend une EN PLEINE FIGURE —
+ *     un aplat jaune qui couvre toute la tête, puis se dilue. On emporte donc
+ *     ses trois dessins de fin, que le moteur substitue à ceux de la famille
+ *     d'accueil ; la bulle, elle, reste celle de la famille.
+ *
  * CE QU'ON N'EMPORTE PAS : les pellicules. Le jutsu d'époque tient dans les
  * images 129 à 148 du visage de hiko, avec ses scripts, ses boucles d'attente
  * et son alpha qui descend de cinq en cinq. Rien de tout cela n'a de place
@@ -105,6 +115,38 @@ function poseDe(sp, image, ch) {
   const o = (sp.images[image - 1] || []).find((x) => x.t === 'pose' && x.ch === ch);
   if (!o) throw new Error('pose introuvable : #' + ch + ' à l’image ' + image);
   return { ch: DECALAGE + ch, M: o.M };
+}
+
+/*
+ * LA FIN DU CHEWING-GUM D'UNE FAMILLE : l'éclatement, puis la tache.
+ *
+ * Elle tient dans les trois images qui suivent `gumNext`, et la pellicule est
+ * la même partout — on lit donc la même chose chez tout le monde :
+ *
+ *   · les poses SANS NOM sont les images de l'éclatement, dans leur ordre ;
+ *   · la pose nommée « tache » est ce qui reste sur la figure.
+ *
+ * Une pose qui n'apporte pas de matrice garde celle de la précédente à sa
+ * profondeur (c'est la règle de Flash quand on remplace un caractère sans
+ * toucher au placement) : on la reporte, sinon le dessin partirait à l'origine
+ * de la scène.
+ */
+function finDuGum(sp) {
+  const deb = sp.labels.gumNext;
+  if (!deb) return null;
+  const eclats = [];
+  let tache = null;
+  const dernierM = {};
+  for (let i = deb; i < deb + 3; i++) {
+    for (const o of (sp.images[i - 1] || [])) {
+      if (o.t !== 'pose' || !(o.ch >= 0)) continue;
+      const M = o.M || dernierM[o.prof] || null;
+      if (o.M) dernierM[o.prof] = o.M;
+      if (o.nom === 'tache') tache = { ch: o.ch, M };
+      else eclats.push({ ch: o.ch, M });
+    }
+  }
+  return (eclats.length && tache) ? { eclats, tache } : null;
 }
 
 /*
@@ -220,7 +262,12 @@ const arrondir = (M) => {
     .find((o) => o.t === 'pose' && o.ch >= 0 && o.nom === 'smoke');
   if (!nuage) throw new Error('famille 15 : le nuage de la toux est introuvable');
 
-  const recolte = recolter(d12, [fumee.ch, choco.ch]);
+  // LE GUM D'HIKO : les deux images de l'éclatement, et la tache qui reste.
+  const gum12 = finDuGum(face12);
+  if (!gum12) throw new Error('famille 12 : la fin du chewing-gum est introuvable');
+
+  const recolte = recolter(d12, [fumee.ch, choco.ch]
+    .concat(gum12.eclats.map((e) => e.ch), [gum12.tache.ch]));
   const recolte15 = recolter(d15, [nuage.ch]);
   // Les deux récoltes vivent dans le même paquet : les numéros ne peuvent pas
   // se heurter, un même décalage appliqué à deux familles pouvant retomber sur
@@ -247,6 +294,7 @@ const arrondir = (M) => {
     source: {
       jutsu: 'famille12.swf, visage, image ' + JUTSU + ' (étiquette « jutsu2 »)',
       toux: 'famille15.swf, visage, étiquette « tousse » — six images de secousse',
+      gum: 'famille12.swf, visage, étiquette « gumNext » — l’éclatement et la tache',
       outil: 'scripts/extract-emotes-bouille.js',
       decalage: DECALAGE,
     },
@@ -261,6 +309,11 @@ const arrondir = (M) => {
       // Le nuage, avec sa pose ET son opacité : trois quarts, comme chez elle.
       nuage: { ch: nuage.ch + DECALAGE + DECALE15, M: nuage.M,
         alpha: nuage.cx ? nuage.cx.ma / 256 : 1 },
+    },
+    // La fin du gum d'hiko, prête à remplacer celle de la famille d'accueil.
+    gum: {
+      eclats: gum12.eclats.map((e) => ({ ch: e.ch + DECALAGE, M: e.M })),
+      tache: { ch: gum12.tache.ch + DECALAGE, M: gum12.tache.M },
     },
   };
 

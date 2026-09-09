@@ -64,10 +64,10 @@ function monter(defs) {
 // ══ LA RÉCOLTE ════════════════════════════════════════════════════════════
 
 test('la récolte ne prend que les dessins de la chute, et les renumérote', () => {
-  // Trois clips — la fumée d'hiko, son chocapic, le nuage de la toux — et les
-  // treize formes qu'ils portent.
-  assert.strictEqual(Object.keys(PAQUET.sprites).length, 3, 'trois clips');
-  assert.strictEqual(Object.keys(PAQUET.formes).length, 13, 'treize formes');
+  // Quatre clips — la fumée d'hiko, son chocapic, sa tache de chewing-gum, et
+  // le nuage de la toux — et les seize formes qu'ils portent.
+  assert.strictEqual(Object.keys(PAQUET.sprites).length, 4, 'quatre clips');
+  assert.strictEqual(Object.keys(PAQUET.formes).length, 16, 'seize formes');
   // AU-DELÀ DE LA PLAGE D'UN SWF. Un caractère d'hiko porte un numéro sur
   // seize bits, et la famille d'accueil a le sien au même : #415 est le
   // chocapic chez hiko et tout autre chose dans la famille 0.
@@ -91,7 +91,7 @@ test('les dessins récoltés sont bien ceux d’hiko, au tracé près', async ()
     assert.deepStrictEqual(forme, origine, 'la forme ' + id + ' est recopiée telle quelle');
     compares++;
   });
-  assert.strictEqual(compares, 7, 'les sept formes du jutsu viennent d’hiko');
+  assert.strictEqual(compares, 10, 'les dix formes venues d’hiko sont recopiées telles quelles');
   // La fumée est bien une pellicule (six dessins qui se relaient), le chocapic
   // une seule image.
   assert.strictEqual(PAQUET.sprites[PAQUET.jutsu.chocapic.ch].n, 1, 'le chocapic ne bouge pas');
@@ -210,8 +210,8 @@ test('la greffe est idempotente et ne recouvre rien', async () => {
   mo.creerVisage();
   mo.greffer(PAQUET);
   const apresF = defs.formes.size, apresS = defs.sprites.size;
-  assert.strictEqual(apresF, avantF + 13, 'treize formes de plus');
-  assert.strictEqual(apresS, avantS + 3, 'trois clips de plus');
+  assert.strictEqual(apresF, avantF + 16, 'seize formes de plus');
+  assert.strictEqual(apresS, avantS + 4, 'quatre clips de plus');
   // La même famille sert toutes les bouilles d'une page : la deuxième greffe
   // ne doit rien refaire.
   const mo2 = new Moteur.Moteur(defs, { alea: () => 0.5 });
@@ -240,9 +240,9 @@ test('le chat mène aux deux émotes, et les nomme', () => {
 });
 
 test('le paquet ne se charge QUE pour les émotes qui en ont besoin', () => {
-  // Vingt-cinq kilo-octets qu'on ne fait pas payer à ceux qui ne les jouent
+  // Quarante-sept kilo-octets qu'on ne fait pas payer à ceux qui ne les jouent
   // pas — et une seule fois pour toute la page.
-  assert.match(VIGNETTE, /var EMOTES_GREFFEES = \[14, 15\];/);
+  assert.match(VIGNETTE, /var EMOTES_GREFFEES = \[14, 15, 16\];/);
   assert.match(VIGNETTE, /function emotes\(\) \{[\s\S]*?fetch\(DOSSIER \+ 'emotes\.json'\)/);
   const j = /function jouer\(c, etat, anim, humeur\) \{[\s\S]*?\n  \}/.exec(VIGNETTE);
   assert.ok(j, 'jouer');
@@ -306,3 +306,143 @@ test('le nuage couvre la quinte, s’efface, et ne suit pas la secousse', async 
   assert.match(MOTEUR, /const repos = M \|\| IDENTITE;\s+\/\/ le repère AVANT la secousse/);
   assert.match(MOTEUR, /const base = composerM\(repos, face\.matrice\(\)\);\s*\n\s*this\.dessinerClip\(ctx, ch\.nuage/);
 });
+
+/* ── LE CHEWING-GUM D'HIKO ─────────────────────────────────────────────────
+ *
+ * « Implémenter l'emote "gum" de hiko pour la famille 0. Le déclencheur ne
+ * peut pas être "gum" car déjà utilisé pour le gum classique. »
+ *
+ * Celle-ci ne s'emprunte pas comme les deux autres, et c'est ce qui la rend
+ * simple : LA PELLICULE DU CHEWING-GUM EST LA MÊME PARTOUT. Les images 87 à
+ * 95 du visage portent le même bytecode d'une famille à l'autre — la bulle
+ * enfle jusqu'à une taille tirée au sort, elle éclate, la tache reste puis
+ * s'efface. Seuls les DESSINS de la fin changent, et c'est là que hiko se
+ * distingue : là où la famille 0 pose une pastille sur la joue, lui s'en
+ * prend une en pleine figure.
+ *
+ * On ne rejoue donc rien. On laisse la pellicule d'accueil tourner et l'on
+ * SUBSTITUE ses trois dessins de fin par ceux d'hiko.
+ */
+
+test('la pellicule du gum a partout la MÊME FORME — c’est ce qui autorise l’échange', async () => {
+  /*
+   * Ce qui se ressemble d'une famille à l'autre, ce sont les ÉTIQUETTES et
+   * leur découpe : `gum` puis `gumNext`, douze images jusqu'à `question`, et
+   * une fin qui pose deux dessins d'éclatement sans nom plus un nommé
+   * « tache ». C'est cette forme-là qui rend la substitution possible.
+   *
+   * Ce qui CHANGE, ce sont les constantes de la boucle de croissance : la
+   * famille 0 laisse sa bulle enfler jusqu'à `random(150) + 30`, hiko jusqu'à
+   * `random(80)`, la 14 jusqu'à `random(500)`. On ne les touche pas — la bulle
+   * reste celle de la famille, avec son rythme ; seuls les dessins de la fin
+   * changent.
+   */
+  for (const f of ['famille0.swf', 'famille12.swf', 'famille14.swf', 'famille23.swf']) {
+    const face = visageDe(await lire(f));
+    assert.ok(face.labels.gum && face.labels.gumNext && face.labels.question, f + ' : les étiquettes');
+    assert.strictEqual(face.labels.gumNext - face.labels.gum, 3, f + ' : trois images de bulle');
+    assert.strictEqual(face.labels.question - face.labels.gum, 12, f + ' : douze en tout');
+    // La fin : des poses sans nom (l'éclatement) et une nommée « tache ».
+    const deb = face.labels.gumNext;
+    let sansNom = 0, tache = 0;
+    for (let i = deb; i < deb + 3; i++) {
+      (face.images[i - 1] || []).forEach((o) => {
+        if (o.t !== 'pose' || !(o.ch >= 0)) return;
+        if (o.nom === 'tache') tache++; else sansNom++;
+      });
+    }
+    assert.strictEqual(sansNom, 2, f + ' : deux images d’éclatement');
+    assert.strictEqual(tache, 1, f + ' : une tache');
+  }
+});
+
+test('la récolte emporte l’éclatement d’hiko et sa tache', () => {
+  assert.ok(PAQUET.gum, 'la fin du gum est récoltée');
+  assert.strictEqual(PAQUET.gum.eclats.length, 2, 'deux images d’éclatement');
+  PAQUET.gum.eclats.concat([PAQUET.gum.tache]).forEach((o) => {
+    assert.ok(o.ch > 65535, 'renuméroté hors de la plage d’un SWF : ' + o.ch);
+    assert.ok(o.M, 'et sa matrice de pose est là');
+  });
+  assert.match(PAQUET.source.gum, /famille12\.swf.*gumNext/);
+  // L'éclatement est fait de FORMES, la tache d'un CLIP — comme chez elle.
+  PAQUET.gum.eclats.forEach((e) => assert.ok(PAQUET.formes[e.ch], 'l’éclat ' + e.ch + ' est une forme'));
+  assert.ok(PAQUET.sprites[PAQUET.gum.tache.ch], 'la tache est un clip');
+});
+
+test('« gumm » joue la pellicule du gum, avec les dessins d’hiko', async () => {
+  const defs = await lire('famille0.swf');
+  const mo = monter(defs);
+  const face = mo.racine.face;
+
+  // Le point de départ est celui de l'animation 8, à la lettre.
+  mo.jouerAnim(16);
+  assert.strictEqual(face.frame, face.def.labels.gum, 'on part de « gum »');
+  assert.strictEqual(mo.racine.flStop, false);
+
+  // Et la table de substitution est prête : les dessins de la famille 0
+  // pointent vers ceux d'hiko.
+  assert.ok(mo.remplacements instanceof Map, 'la table est posée');
+  assert.strictEqual(mo.remplacements.size, 3, 'deux éclats et une tache');
+  const cibles = [...mo.remplacements.values()].sort((a, b) => a - b);
+  assert.deepStrictEqual(cibles,
+    PAQUET.gum.eclats.map((e) => e.ch).concat([PAQUET.gum.tache.ch]).sort((a, b) => a - b),
+    'et elle mène exactement aux dessins récoltés');
+  // Les CLÉS sont les dessins de la famille d'accueil, lus sur sa pellicule.
+  const deb = face.def.labels.gumNext;
+  const poses = [];
+  for (let i = deb; i < deb + 3; i++) {
+    (face.def.images[i - 1] || []).forEach((o) => { if (o.t === 'pose' && o.ch >= 0) poses.push(o.ch); });
+  }
+  [...mo.remplacements.keys()].forEach((ch) => assert.ok(poses.indexOf(ch) >= 0,
+    'la clé #' + ch + ' est bien posée par la pellicule du gum'));
+});
+
+test('la substitution ne survit pas à l’animation suivante', async () => {
+  const mo = monter(await lire('famille0.swf'));
+  mo.jouerAnim(16);
+  assert.ok(mo.remplacements, 'posée par « gumm »');
+  mo.jouerAnim(8);
+  assert.strictEqual(mo.remplacements, null, 'et rangée par le gum ordinaire');
+  mo.jouerAnim(16);
+  mo.jouerAnim(0);
+  assert.strictEqual(mo.remplacements, null, 'comme par le retour au repos');
+});
+
+test('sans la récolte, « gumm » n’est que le gum ordinaire', async () => {
+  const defs = await lire('famille0.swf');
+  const mo = new Moteur.Moteur(defs, { alea: () => 0.5 });
+  mo.creerVisage();
+  mo.definir(ETAT);
+  // Pas de greffe : rien à substituer.
+  mo.jouerAnim(16);
+  assert.strictEqual(mo.remplacements, null, 'aucune table');
+  assert.strictEqual(mo.racine.face.frame, mo.racine.face.def.labels.gum,
+    'mais la bulle part quand même');
+});
+
+test('le chat mène au gum d’hiko sous un mot à lui', () => {
+  // « gum » est pris par la 8 : on double la dernière lettre.
+  const bloc = /var EMOTE_MAP = \{\};[\s\S]*?\n  \}\)\(\);/.exec(LIGHT);
+  assert.match(bloc[0], /add\("gumm", "s’en met plein la figure", \["gumm", "gum2"\]\);/);
+  assert.match(bloc[0], /add\("gum", "fait une bulle de chewing-gum", \["gum"\]\);/,
+    'et le gum d’époque garde le sien');
+  const idx = /var ANIM_INDEX = \{[\s\S]*?\};/.exec(LIGHT);
+  assert.match(idx[0], /gum:8,/);
+  assert.match(idx[0], /gumm:16 \}/);
+  const lab = /var ANIM_LABEL = \{[\s\S]*?\};/.exec(LIGHT);
+  assert.match(lab[0], /gumm:"s’en met plein la figure"/);
+  assert.strictEqual(Moteur.ANIMATIONS[16], 'gumm');
+  assert.strictEqual(Moteur.NOMS_ANIMATIONS[16], 'Gum d’hiko');
+});
+
+// Le visage d'une famille : celui qui porte le plus d'étiquettes d'action.
+function visageDe(defs) {
+  const ACTIONS = ['parle', 'rire', 'mdr', 'langue', 'rougir', 'regard', 'sifflote',
+    'gum', 'question', 'miam', 'pleurer', 'larme'];
+  let best = null, score = -1;
+  for (const [, sp] of defs.sprites) {
+    const n = ACTIONS.filter((a) => sp.labels && a in sp.labels).length;
+    if (n > score) { score = n; best = sp; }
+  }
+  return best;
+}

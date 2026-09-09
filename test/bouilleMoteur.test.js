@@ -214,7 +214,7 @@ test('emoteList et actionList sont celles du script racine', async () => {
   // sens sur le fil et dans les relevés.
   assert.deepStrictEqual(Moteur.ANIMATIONS.slice(0, 13), ['stop', 'parle', 'rire', 'mdr', 'langue',
     'rougir', 'regard', 'siffle', 'gum', 'question', 'miam', 'pleure', 'larme']);
-  assert.deepStrictEqual(Moteur.ANIMATIONS.slice(13), ['beurk', 'jutsu', 'tousse']);
+  assert.deepStrictEqual(Moteur.ANIMATIONS.slice(13), ['beurk', 'jutsu', 'tousse', 'gumm']);
   assert.strictEqual(Moteur.NOMS_ANIMATIONS.length, Moteur.ANIMATIONS.length,
     'chaque animation a son nom');
   const defs = await lire('famille0.swf');

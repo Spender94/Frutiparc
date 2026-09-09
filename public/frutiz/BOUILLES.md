@@ -722,6 +722,119 @@ chose — la chaîne d'état ne porte qu'UNE bouille, celle qu'on montre.
 - **L'éditeur** ne propose que les dix-huit iris d'origine (`max:
   IRIS_ORIGINE_MAX`) : les autres s'achètent.
 
+## 11 ter. Le chewing-gum d'hiko (« gumm », animation 16)
+
+Troisième emprunt à une autre famille, et le plus simple des trois — parce que
+**la pellicule du chewing-gum existe partout et de la même forme** : `gum`,
+puis `gumNext` trois images plus loin, douze en tout, et une fin qui pose deux
+images d'éclatement suivies d'une « tache ». On ne rejoue donc rien : la
+pellicule d'accueil tourne, et le moteur **substitue les trois dessins de la
+fin** (`Moteur.remplacementsDuGum`, consulté par `dessinerEnfant`).
+
+Ce qui change d'une famille à l'autre, ce sont les **constantes de la boucle de
+croissance** : la famille 0 laisse sa bulle enfler jusqu'à `random(150) + 30`,
+hiko jusqu'à `random(80)`, la 14 jusqu'à `random(500)`. On n'y touche pas —
+la bulle reste celle de la famille, avec son rythme et son dessin ; c'est ce
+qu'elle devient **en éclatant** qu'on emprunte. Là où la famille 0 pose une
+pastille sur la joue, hiko s'en prend une en pleine figure : un aplat jaune
+sur toute la tête, qui se dilue ensuite.
+
+Le mot `gum` étant pris par l'animation 8, le déclencheur double la dernière
+lettre : **`gumm`** (ou `gum2`), légende « s'en met plein la figure ».
+
+## 11 quater. L'inventaire des familles — ce qu'il reste à prendre
+
+Relevé par `scratchpad/inventaire-pnj.js`, qui ouvre les dix SWF et lit le
+visage de chacun. Deux choses en ressortent, et la seconde est la bonne
+surprise.
+
+### Les étiquettes : presque tout est déjà pris
+
+| famille | poids | images | étiquettes que la famille 0 n'a pas |
+|---|---|---|---|
+| 10 | 32 Ko | 129 | — (mais son `gumNext` dure **40 images** au lieu de 9) |
+| 11 | 8 Ko | 80 | `mdrLoop` (16 images) — famille dégénérée : ni yeux, ni cheveux, ni bouche |
+| 12 (hiko) | 89 Ko | 155 | `jutsu` · `jutsu2` · `jutsu3` · `jutsu4` — **portées** (animation 14) |
+| 13 | 22 Ko | 131 | — |
+| 14 | 40 Ko | 169 | — |
+| 15 | 41 Ko | 192 | `tousse` (25 images) — **portée** (animation 15) |
+| 16 | 38 Ko | 192 | `tousse` — la même que la 15 |
+| 23 | 27 Ko | 169 | — |
+| 24 | 32 Ko | 169 | — |
+
+Le gisement des *étiquettes* est donc épuisé : il ne reste que `mdrLoop` de la
+famille 11 (un MDR qui boucle plus longtemps, sans dessin propre) et le
+`gumNext` de quarante images de la famille 10.
+
+### Les dessins : là, tout reste à faire
+
+Six émotes posent des dessins **qui leur sont propres**, et chaque famille y met
+les siens. C'est ce que le gum d'hiko vient d'exploiter, et la même mécanique
+vaut pour toutes les autres. Comparaison position par position avec la
+famille 0 :
+
+| famille | `rougir` | `gum` | `gumNext` | `question` | `pleurer` | `larme` |
+|---|---|---|---|---|---|---|
+| 10 | = | = | 1/4 diffèrent | — | — | — |
+| 11 | 1/1 | — | — | — | — | — |
+| **12 (hiko)** | = | **1/1** | **3/3** ✔ pris | **1/1** | **4/9** | **1/1** |
+| 13 | 3/3 | — | — | — | — | — |
+| 14 | = | **1/1** | **3/3** | = | = | = |
+| 15 | = | **1/1** | **3/3** | **1/1** | **9/9** | **1/1** |
+| 16 | = | **1/1** | **3/3** | **1/1** | **9/9** | **1/1** |
+| 23 | = | = | = | **1/1** | **9/9** | **1/1** |
+| 24 | = | **1/1** | **3/3** | **1/1** | **9/9** | **1/1** |
+
+(« 3/3 » = trois dessins propres, tous les trois différents de ceux de la
+famille 0. « = » = les mêmes dessins. « — » = l'émote n'a pas de dessin propre
+dans cette famille.)
+
+Ce qui se décline donc, exactement comme `gumm` :
+
+* **la bulle de chewing-gum** (`gum`, 1 dessin) — six familles ont la leur ;
+* **l'éclatement et la tache** (`gumNext`, 3 dessins) — six familles, dont
+  celle d'hiko qu'on vient de prendre, et le **nuage de la famille 15** déjà
+  récolté pour la toux ;
+* **le point d'interrogation** (`question`, 1 dessin) — cinq familles ;
+* **les larmes de la grosse crise** (`pleurer`, 9 dessins) — cinq familles avec
+  neuf dessins entièrement différents, hiko avec quatre ;
+* **la larme unique** (`larme`, 1 dessin) — cinq familles ;
+* **le fard des joues** (`rougir`, 3 morphs) — les familles 11 et 13.
+
+### Les rouleaux : coiffures, accessoires, yeux, iris, bouches
+
+| famille | cheveux | accessoires | acc. 2° | yeux | iris | bouches |
+|---|---|---|---|---|---|---|
+| **0** | **67** | **40** | 0 | **45** | **18** | **98** |
+| 10 | 54 | 1 | 0 | 45 | 9 | 84 |
+| 11 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 12 (hiko) | 10 | 7 | 1 | **49** | **19** | **120** |
+| 13 | 1 | 0 | 0 | **49** | **19** | **112** |
+| 14 | 1 | 1 | 0 | 46 | 1 | **129** |
+| 15 | 1 | 0 | 0 | 45 | 1 | 98 |
+| 16 | 1 | 0 | 0 | 0 | 0 | **129** |
+| 23 | 1 | 0 | 0 | 45 | 1 | **107** |
+| 24 | 3 | 0 | 0 | 48 | 1 | 98 |
+
+Ce que la famille 0 n'a pas :
+
+* **des bouches** — la 14 et la 16 en portent **129** contre 98, la 13 en a 112,
+  la 23 en a 107. Une trentaine de bouches inédites, greffables comme les
+  prunelles (une image de plus au bout d'un rouleau) ;
+* **des formes d'œil** — 49 chez hiko et la 13 contre 45, 48 chez la 24 ;
+* **des iris** — 19 chez hiko et la 13 contre 18 ; les deux d'hiko sont déjà
+  en boutique sous forme d'**incarnations** (§ 11 bis) ;
+* **des coiffures et des accessoires** — les dix coiffures et les sept
+  accessoires d'hiko, les 54 coiffures de la famille 10. Ce sont les seuls
+  éléments qui ne se greffent pas « en ajoutant une image » : ils vivent dans
+  le clip `ca`, dont chaque image pose un jeu de pièces teintables.
+
+Le chemin est le même pour tout : `scripts/extract-*-bouille.js` récolte la
+fermeture d'un caractère et la renumérote au-delà de 65 535 (pour ne heurter
+aucun caractère de la famille d'accueil), le paquet JSON s'ajoute à
+`public/fbouille/`, et `Moteur.greffer` le verse dans les tables — une fois par
+page, pour toutes les bouilles.
+
 ## 12. Ce qui reste à faire
 
 * **Retirer le cache PNG** : `/bouille-img`, `scripts/warm-bouilles.js`,
