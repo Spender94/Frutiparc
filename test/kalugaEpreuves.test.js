@@ -60,7 +60,39 @@ test('les trois niveaux sont ceux demandés', () => {
   assert.match(t, /cle: 'triple'[\s\S]*?n: 1,\s*\n\s*test: \(f\) => !!\(f\.flScSide && f\.flScBound && f\.flScHead\)/);
   assert.match(t, /cle: 'granite', label: 'Granite', n: 2, test: estGranite/);
   assert.match(t, /cle: 'ecureuil', label: 'Écureuil', n: 1, test: \(f\) => !!f\.flScSquirrel/);
-  assert.match(t, /cle: 'bande', label: 'Double-bande', n: 1,\s*\n\s*test: \(f\) => !!\(f\.flScSide && f\.flScBound\)/);
+  // L'ALOUETTE (`ricochet tete`) a remplacé la double-bande : le difficile
+  // était trop dur.
+  assert.match(t, /cle: 'alouette', label: 'Alouette', n: 1,\s*\n\s*test: \(f\) => !!\(f\.flScBound && f\.flScHead\)/);
+  assert.match(SPRITES, /\['ricochet tete ', 'alouette '\]/, 'et c’est bien ce que le panier nomme ainsi');
+  assert.doesNotMatch(t, /Double-bande/, 'la double-bande n’est plus demandée');
+});
+
+test('l’écureuil du difficile COURT, il ne pose pas', () => {
+  /*
+   * On le posait à un point du décor et il y restait : sans `setSens`, son
+   * `sens` n'existe pas, et `x += speed * sens` ne vaut plus rien du tout.
+   * On le lâche comme le Challenge lâche les siens — hors du terrain, tourné
+   * vers lui —, et il le traverse en rebondissant aux marges.
+   */
+  const g = /genEcureuil\(\) \{[\s\S]*?\n  \}/.exec(DEFI[0]);
+  assert.ok(g, 'Defi.genEcureuil');
+  assert.match(g[0], /const cote = random\(2\) \* 2 - 1;/);
+  assert.match(g[0], /mc\.x = demi \+ \(demi \+ 10\) \* cote;/, 'lâché hors du terrain');
+  assert.match(g[0], /mc\.setSens\(-cote\);/, 'et tourné vers lui — sans quoi il ne bouge pas');
+  assert.match(DEFI[0], /if \(this\.regle\.ecureuil\) this\.genEcureuil\(\);/);
+  // C'est le même geste que le Challenge : on ne l'a pas réinventé.
+  assert.match(MODES, /genSquirrel\(side\) \{[\s\S]*?mc\.setSens\(-side\);/);
+  // Et l'écureuil qui court est mis à jour comme les autres bestioles.
+  const GAME = lire('public/kaluga/jeu/game.js');
+  assert.match(GAME, /this\.squirrelList\.push\(mc\); this\.badList\.push\(mc\);/);
+});
+
+test('« Trop tard » s’écrit sans S — la coquille de 2005 reste à 2005', () => {
+  const t = /tempsEcoule\(\) \{[\s\S]*?\n  \}/.exec(DEFI[0])[0];
+  assert.match(t, /title: 'Trop tard !'/);
+  assert.doesNotMatch(t, /Trops tard/);
+  // Les modes d'ÉPOQUE la gardent : c'est le texte du SWF (Chrono.as).
+  assert.match(MODES, /title: 'Trops tard!'/, 'le Chrono garde la sienne');
 });
 
 test('le granite se lit aux DRAPEAUX, pas au nom composé', () => {
@@ -95,7 +127,7 @@ test('le terrain se regarnit, et jamais dans le panier', () => {
 test('le panier au bord et l’écureuil ne paraissent que là où on les demande', () => {
   const s = /initSprites\(\) \{[\s\S]*?\n  \}/.exec(DEFI[0])[0];
   assert.match(s, /if \(this\.regle\.panierAuBord\) \{\s*\n\s*this\.panier\.x = this\.panier\.openRay \+ 6;/);
-  assert.match(s, /if \(this\.regle\.ecureuil\) \{/);
+  assert.match(s, /if \(this\.regle\.ecureuil\) this\.genEcureuil\(\);/);
   assert.match(s, /for \(let i = 0; i < this\.regle\.pommes; i\+\+\) this\.genGroundFruit\(\);/);
 });
 

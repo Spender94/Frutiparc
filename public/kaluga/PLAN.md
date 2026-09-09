@@ -308,7 +308,7 @@ pas des points mais des **figures** — les combos que le panier nomme déjà
 |---|---|---|---|---|
 | **FACILE** | 10 | 1'00 | 10 dunks | panier au hasard |
 | **MOYEN** | 8 | 1'30 | 10 granites | panier au bord |
-| **DIFFICILE** | 8 | 2'00 | 2 granites, 1 triple-impact, 1 double-bande, 1 figure avec l'écureuil, **et 8 pommes au panier** | panier au bord, un écureuil |
+| **DIFFICILE** | 8 | 2'00 | 2 granites, 1 triple-impact, 1 alouette, 1 figure avec l'écureuil, **et 8 pommes au panier** | panier au bord, un écureuil qui court |
 
 - **« N pommes sur le terrain » est une population, pas un stock** : le terrain
   se regarnit à mesure qu'on encaisse, comme le Challenge le fait depuis son
@@ -320,7 +320,12 @@ pas des points mais des **figures** — les combos que le panier nomme déjà
   les deux niveaux à granites : une pomme trop lourde ou trop légère rend le
   granite affaire de chance.
 - **Le panier au bord** ouvre le granite à rebond — la « du mammouth »
-  (`tete déviée dunk`) —, acceptée au même titre que le granite droit.
+  (`tete déviée dunk`) —, acceptée au même titre que le granite droit. Il ouvre
+  aussi l'**alouette** (`ricochet tete`), demandée au difficile.
+- **L'écureuil se lâche comme au Challenge** : hors du terrain, tourné vers lui
+  (`genEcureuil` → `setSens`). Sans `setSens` son `sens` n'existe pas et
+  `x += speed * sens` ne vaut plus rien : il restait planté là où on l'avait
+  posé, et la figure « écureuil » devenait affaire de chance.
 - **Une figure, une case** : chaque pomme encaissée coche **au plus un**
   objectif, le plus exigeant de ceux qu'elle satisfait encore. Sans cette
   règle un seul triple-impact — qui est une double-bande plus une tête — en

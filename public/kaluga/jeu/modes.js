@@ -679,8 +679,8 @@ K.registerClass('gameRing', Ring);
  *              posé au bord, ce qui ouvre le granite à rebond — la « du
  *              mammouth », qu'on accepte au même titre.
  *   DIFFICILE  huit pommes, deux minutes, le panier au bord et un écureuil
- *              sur le terrain. Deux granites, un triple-impact, une
- *              double-bande et une figure avec écureuil — et huit pommes au
+ *              qui COURT sur le terrain. Deux granites, un triple-impact, une
+ *              alouette et une figure avec écureuil — et huit pommes au
  *              panier en tout, figure imposée ou non.
  *
  * « N POMMES SUR LE TERRAIN » EST UNE POPULATION, pas un stock : le terrain se
@@ -721,7 +721,7 @@ const DEFI_NIVEAUX = [
   {
     nom: 'DIFFICILE', pommes: 8, temps: 120000, poids: [0.8, 2.3],
     panierAuBord: true, ecureuil: true,
-    consigne: 'Deux granites, un triple-impact, une double-bande et une figure\n'
+    consigne: 'Deux granites, un triple-impact, une alouette et une figure\n'
       + "avec l'écureuil — et huit pommes au panier en tout !",
     toutAuPanier: true,
     // Du plus exigeant au moins exigeant : c'est l'ordre où l'on coche.
@@ -730,8 +730,10 @@ const DEFI_NIVEAUX = [
         test: (f) => !!(f.flScSide && f.flScBound && f.flScHead) },
       { cle: 'granite', label: 'Granite', n: 2, test: estGranite },
       { cle: 'ecureuil', label: 'Écureuil', n: 1, test: (f) => !!f.flScSquirrel },
-      { cle: 'bande', label: 'Double-bande', n: 1,
-        test: (f) => !!(f.flScSide && f.flScBound) },
+      // L'ALOUETTE : `ricochet tete` dans la table des noms — la pomme rebondit
+      // sur un bord, puis part de la tête au panier.
+      { cle: 'alouette', label: 'Alouette', n: 1,
+        test: (f) => !!(f.flScBound && f.flScHead) },
     ],
   },
 ];
@@ -808,11 +810,29 @@ class Defi extends J.Game {
       this.panier.x = this.panier.openRay + 6;
       this.panier.endUpdate();
     }
-    if (this.regle.ecureuil) {
-      this.ecureuil = this.newSquirrel({ x: Cs.mcw - 60, y: this.map.height - this.map.groundLevel });
-      this.ecureuil.endUpdate();
-    }
+    if (this.regle.ecureuil) this.genEcureuil();
     for (let i = 0; i < this.regle.pommes; i++) this.genGroundFruit();
+  }
+  /*
+   * L'ÉCUREUIL COURT, il ne pose pas.
+   *
+   * On le posait à un point du décor, et il y restait : sans `setSens`, son
+   * `sens` n'existe pas et `x += speed * sens` ne vaut plus rien du tout. Il
+   * se lâche comme dans le Challenge — hors du terrain, tourné vers lui : le
+   * voilà qui traverse, rebondit aux marges et repasse, indéfiniment. C'est
+   * lui qu'il faut viser pour la figure « écureuil », et il fallait bien
+   * qu'il bouge.
+   */
+  genEcureuil() {
+    const cote = random(2) * 2 - 1;
+    const mc = this.newSquirrel();
+    const demi = this.map.width / 2;
+    mc.x = demi + (demi + 10) * cote;
+    mc.y = this.map.height - this.map.groundLevel;
+    mc.setSens(-cote);
+    mc.endUpdate();
+    this.ecureuil = mc;
+    return mc;
   }
   genGroundFruit() {
     const b = this.regle.poids;
@@ -969,7 +989,10 @@ class Defi extends J.Game {
     this.mng.client.saveSlot(0);
   }
   tempsEcoule() {
-    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Trops tard!',
+    // Sans le S. La coquille du SWF de 2005 (Chrono.as) est reproduite telle
+    // quelle dans les modes d'époque ; les Épreuves n'en sont pas, elles
+    // écrivent le français.
+    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Trop tard !',
       msg: this.tzongre.name + " n'a pas relevé le défi dans les temps." }] });
     // Le temps à battre reste affiché : on sait ce qu'on visait.
     const page = this.tableauObjectifs();
