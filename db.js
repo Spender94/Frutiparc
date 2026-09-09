@@ -598,6 +598,17 @@ async function initSchema() {
         PRIMARY KEY (tournament_id, round, username)
       );
 
+      -- Les MARQUES DU SERVEUR : de petits drapeaux durables, qui ne valent pas
+      -- une table à eux seuls. Le premier est « les questions par défaut de
+      -- MikeHorny ont été semées » — sans lui, un backlog vidé jusqu'au bout
+      -- les verrait repousser au redémarrage suivant, et l'animateur reposerait
+      -- des questions déjà posées.
+      CREATE TABLE IF NOT EXISTS app_state (
+        key         TEXT PRIMARY KEY,
+        value       TEXT NOT NULL DEFAULT '',
+        updated_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- MikeHorny "Question à 60 kikooz" backlog (admin-managed)
       CREATE TABLE IF NOT EXISTS kiloute_questions (
         id          SERIAL PRIMARY KEY,
@@ -2330,6 +2341,21 @@ async function findUserByUsernameInsensitive(username) {
   return rows[0] || null;
 }
 
+// ── Les marques du serveur (app_state) ──
+// Un drapeau durable, lu au démarrage. `getAppState` rend null quand la marque
+// n'existe pas — c'est la question qu'on pose : « est-ce la première fois ? »
+async function getAppState(key) {
+  const { rows } = await pool.query('SELECT value FROM app_state WHERE key = $1', [key]);
+  return rows.length ? rows[0].value : null;
+}
+async function setAppState(key, value) {
+  await pool.query(
+    `INSERT INTO app_state (key, value, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()`,
+    [key, String(value == null ? '' : value)]
+  );
+}
+
 // ── MikeHorny quiz questions ──
 function parseAnswersField(s) {
   try { const v = JSON.parse(s); if (Array.isArray(v)) return v.map((x) => String(x)); } catch (e) { /* fall through */ }
@@ -3661,6 +3687,8 @@ module.exports = {
   getQuizImage,
   upsertQuizImage,
   deleteQuizImage,
+  getAppState,
+  setAppState,
   loadKilouteQuestions,
   insertKilouteQuestion,
   updateKilouteQuestion,

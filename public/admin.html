@@ -798,12 +798,19 @@
     le plus fréquenté, avec 60 kikooz à la clé. Réponses acceptées séparées par des virgules ; la détection ignore
     accents, casse et ponctuation. <i>(Distinct des quizz : ici une seule question, automatique, tous les jours.)</i>
   </p>
+  <p style="font-size:12px;color:#666;max-width:790px;background:#FFF8E1;border-left:3px solid #E8B400;padding:7px 10px">
+    <b>Une question tombe une seule fois.</b> C'est une <b>file</b> : MikeHorny prend celle du dessus (marquée ▶) et,
+    une fois posée en salon, elle est <b>retirée définitivement</b> — qu'on ait trouvé la réponse ou non, puisqu'il
+    finit par la donner. Le compte ci-dessus est donc un nombre de <b>soirées d'avance</b>, pas un stock.
+    Un lancer manuel consomme lui aussi la question : pour rejouer une soirée, il faudra la ressaisir ou
+    la réimporter.
+  </p>
   <div class="toolbar" style="margin:4px 0">
-    <label style="font-size:12px">Tester dans le salon :
+    <label style="font-size:12px">Lancer dans le salon :
       <select id="krun-channel" style="padding:4px;min-width:220px"></select>
     </label>
-    <button class="btn-success" onclick="kilouteRunNow()">▶ Lancer une question maintenant</button>
-    <span style="font-size:11px;color:#888">(y compris un 🔒 salon privé où tu es seul)</span>
+    <button class="btn-success" onclick="kilouteRunNow()">▶ Poser la prochaine question maintenant</button>
+    <span style="font-size:11px;color:#888">(y compris un 🔒 salon privé où tu es seul — elle sera consommée)</span>
   </div>
   <table>
     <thead><tr>
@@ -2952,9 +2959,16 @@ async function loadKiloute() {
     const r = await fetch('/api/admin/kiloute/questions', { headers: hdr() });
     kilouteQuestions = await r.json();
     $('#kiloute-body').dataset.loaded = '1';
-    $('#kiloute-count').innerHTML = `<span class="count">${kilouteQuestions.length}</span> questions quotidiennes`;
-    $('#kiloute-body').innerHTML = kilouteQuestions.map(q => `<tr>
-      <td>${q.id}</td>
+    // LE BACKLOG SE VIDE : une question posée en salon est retirée. Le compte
+    // n'est donc pas un inventaire, c'est un NOMBRE DE SOIRÉES qui restent — on
+    // le dit, et on prévient quand la réserve s'épuise.
+    const n = kilouteQuestions.length;
+    const alerte = n === 0
+      ? ' <b style="color:#c00">— vide : plus de question ce soir, réapprovisionne le backlog.</b>'
+      : (n <= 7 ? ` <b style="color:#c60">— ${n} soirée${n > 1 ? 's' : ''} d’avance seulement.</b>` : '');
+    $('#kiloute-count').innerHTML = `<span class="count">${n}</span> question${n > 1 ? 's' : ''} en réserve${alerte}`;
+    $('#kiloute-body').innerHTML = kilouteQuestions.map((q, i) => `<tr>
+      <td>${q.id}${i === 0 ? ' <b title="la prochaine posée">▶</b>' : ''}</td>
       <td style="max-width:300px">${esc(q.q || '')}</td>
       <td style="font-size:11px;white-space:nowrap">${q.image ? '📷 <code>' + esc(q.image) + '</code>' : '—'}</td>
       <td style="max-width:220px"><code style="font-size:11px">${esc((q.a || []).join(', '))}</code></td>
@@ -3278,11 +3292,19 @@ async function kilouteRunNow() {
   const sel = document.getElementById('krun-channel');
   const channel = sel ? sel.value : '';
   const where = channel ? ('#' + channel) : 'le salon le plus fréquenté';
-  if (!confirm('Lancer la Question à 60 kikooz maintenant, dans ' + where + ' ?')) return;
+  // La question sera CONSOMMÉE : on le dit avant, pas après.
+  const prochaine = kilouteQuestions.length ? kilouteQuestions[0] : null;
+  if (!prochaine) { toast('Le backlog est vide : ajoute une question d’abord.'); return; }
+  if (!confirm('Poser « ' + (prochaine.q || '').slice(0, 90) + ' » maintenant, dans ' + where + ' ?'
+    + '\n\nElle sera retirée définitivement du backlog ('
+    + (kilouteQuestions.length - 1) + ' restante(s) après).')) return;
   const r = await fetch('/api/admin/kiloute/run', { method: 'POST', headers: hdr(), body: JSON.stringify({ channel }) });
   const d = await r.json();
   if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
   toast('Question lancée dans #' + d.channel);
+  // Elle part du backlog une fois DITE, après l'introduction : on relit la
+  // liste un peu plus tard pour que le tableau montre la réalité.
+  setTimeout(loadKiloute, 30000);
 }
 async function kilouteForumPost() {
   const body = { board: $('#kf-board').value, title: $('#kf-title').value, content: $('#kf-content').value };

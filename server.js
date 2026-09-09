@@ -23667,15 +23667,39 @@ async function boot() {
       } catch (e) { console.error('[DB] Quiz images load error:', e.message); }
       try {
         const dbq = await db.loadKilouteQuestions();
-        if (dbq.length === 0) {
-          for (let i = 0; i < KILOUTE_DEFAULT_QUESTIONS.length; i++) {
-            const q = KILOUTE_DEFAULT_QUESTIONS[i];
-            await db.insertKilouteQuestion(q.q, q.a, q.r, i);
+        /*
+         * LES QUESTIONS PAR DÉFAUT NE SE SÈMENT QU'UNE FOIS.
+         *
+         * On les semait « quand la table est vide » — ce qui allait tant que la
+         * table ne se vidait jamais. Depuis qu'une question posée est RETIRÉE
+         * du backlog (cf. `kilouteConsommerQuestion`), le vide est un état
+         * normal : la réserve est épuisée, il faut la réapprovisionner. Semer
+         * là, ce serait faire repousser les vingt-deux questions d'origine au
+         * premier redémarrage, et MikeHorny reposerait ce qu'il a déjà posé.
+         *
+         * Une marque durable répond donc à la vraie question : « les a-t-on
+         * déjà semées une fois ? » Elle vaut aussi pour l'admin qui a tout
+         * remplacé par ses propres questions puis supprimé les nôtres.
+         */
+        KILOUTE_QUESTIONS = dbq;
+        if (!await db.getAppState('kiloute_defauts_semes')) {
+          // Première fois QU'ON SE POSE LA QUESTION. Une base qui porte déjà des
+          // questions n'a rien à recevoir — c'est une installation d'avant la
+          // marque, ou un admin qui a saisi les siennes : on pose seulement le
+          // drapeau, pour que le prochain backlog vide reste vide.
+          if (dbq.length === 0) {
+            for (let i = 0; i < KILOUTE_DEFAULT_QUESTIONS.length; i++) {
+              const q = KILOUTE_DEFAULT_QUESTIONS[i];
+              await db.insertKilouteQuestion(q.q, q.a, q.r, i);
+            }
+            KILOUTE_QUESTIONS = await db.loadKilouteQuestions();
+            console.log(`[DB] Seeded ${KILOUTE_QUESTIONS.length} Kiloute questions (defaults)`);
           }
-          KILOUTE_QUESTIONS = await db.loadKilouteQuestions();
-          console.log(`[DB] Seeded ${KILOUTE_QUESTIONS.length} Kiloute questions (defaults)`);
+          await db.setAppState('kiloute_defauts_semes', new Date().toISOString());
+        }
+        if (!KILOUTE_QUESTIONS.length) {
+          console.log('[DB] Kiloute : backlog VIDE — plus de Question à 60 kikooz tant qu’il n’est pas réapprovisionné.');
         } else {
-          KILOUTE_QUESTIONS = dbq;
           console.log(`[DB] Loaded ${KILOUTE_QUESTIONS.length} Kiloute questions`);
         }
       } catch (e) { console.error('[DB] Kiloute questions load error:', e.message); }
@@ -25186,11 +25210,41 @@ function normalizeAnswer(s) {
     .trim();
 }
 
-// Today's question, deterministic so it rotates without repeating for ~a month.
-function kilouteQuestionOfTheDay() {
-  if (!KILOUTE_QUESTIONS.length) return null;
-  const n = Number(parisDayKey().replace(/-/g, '')) || 0; // YYYYMMDD
-  return KILOUTE_QUESTIONS[n % KILOUTE_QUESTIONS.length];
+/*
+ * UNE QUESTION TOMBE UNE SEULE FOIS.
+ *
+ * On tirait la question du jour par la DATE — `YYYYMMDD % nombre de questions`
+ * — et le tour recommençait au bout d'un mois : MikeHorny reposait des
+ * questions dont il avait déjà donné la réponse. Pire, le même jour, un lancer
+ * manuel depuis l'admin retombait forcément sur celle de 19 h : impossible
+ * d'en poser deux dans la même soirée.
+ *
+ * Le backlog est une FILE, pas une roue. On prend celle du dessus — l'ordre est
+ * celui que l'admin a rangé (`sort_order`, puis `id`) — et une fois posée, elle
+ * s'en va : `kilouteConsommerQuestion` la retire de la mémoire ET de la base.
+ * Il n'y a plus de tour à recommencer, seulement une réserve à réapprovisionner
+ * (l'import JSON de l'admin est là pour ça).
+ */
+function kilouteQuestionSuivante() {
+  return KILOUTE_QUESTIONS.length ? KILOUTE_QUESTIONS[0] : null;
+}
+
+// Retire du backlog une question qui vient d'être POSÉE — que quelqu'un l'ait
+// trouvée ou non : dans les deux cas MikeHorny a fini par donner la réponse en
+// salon, elle est brûlée. La mémoire d'abord (c'est elle qui sert au prochain
+// tirage), la base ensuite.
+function kilouteConsommerQuestion(q) {
+  if (!q) return;
+  const i = KILOUTE_QUESTIONS.findIndex((x) => x === q || (x.id != null && x.id === q.id));
+  if (i < 0) return;                          // déjà retirée (double appel)
+  KILOUTE_QUESTIONS.splice(i, 1);
+  console.log(`[KILOUTE] question #${q.id} posée et retirée du backlog — ${KILOUTE_QUESTIONS.length} restante(s)`);
+  if (!KILOUTE_QUESTIONS.length) {
+    console.log('[KILOUTE] le backlog est VIDE : plus de Question à 60 kikooz tant qu’il n’est pas réapprovisionné.');
+  }
+  if (process.env.DATABASE_URL && q.id != null) {
+    db.deleteKilouteQuestion(q.id).catch((e) => console.error('[KILOUTE] db delete:', e.message));
+  }
 }
 
 // Active quiz state (one room at a time), or null when idle.
@@ -25278,7 +25332,7 @@ function kilouteRun(forcedChannel) {
   // Salon imposé (test admin dans un salon précis) sinon le plus fréquenté (planif 19h).
   const channelName = (forcedChannel && channels[forcedChannel]) ? forcedChannel : mostPopulatedChannel();
   if (!channelName) { console.log('[KILOUTE] 19h — personne en ligne, on passe ce soir.'); return; }
-  const q = kilouteQuestionOfTheDay();
+  const q = kilouteQuestionSuivante();
   if (!q) { console.log('[KILOUTE] backlog de questions vide — on passe.'); return; }
   npcJoin('kiloute79', channelName);
   console.log(`[KILOUTE] Question à 60 kikooz dans #${channelName}: ${q.q}`);
@@ -25296,6 +25350,10 @@ function kilouteRun(forcedChannel) {
     const askAndArm = () => {
       if (!kilouteQuiz || kilouteQuiz.answered) return;
       kilouteSay(channelName, q.q);
+      // POSÉE, DONC BRÛLÉE. On la retire ICI et pas au tirage : entre les deux
+      // il y a vingt secondes d'introduction, et une question qu'on n'aurait
+      // finalement pas dite ne doit pas disparaître du backlog.
+      kilouteConsommerQuestion(q);
       kilouteQuiz.timeoutId = setTimeout(() => {
         if (!kilouteQuiz || kilouteQuiz.answered) return;
         npcSaySequence('kiloute79', channelName, [
