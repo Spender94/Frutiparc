@@ -11866,20 +11866,44 @@ app.get('/api/admin/shop', adminScope('shop'), (req, res) => {
   res.json(SHOP_PACKS);
 });
 
+/*
+ * LES PAIRES D'IRIS DISPONIBLES — de quoi remplir le menu de l'admin.
+ *
+ * Un article du rayon « Incarnations » ne porte pas un `suffix9` mais la CLÉ
+ * d'une paire récoltée (`public/fbouille/prunelles.json`). L'admin doit pouvoir
+ * la choisir dans une liste plutôt que la taper : on lui rend ce que le serveur
+ * a chargé, avec l'état d'aperçu déjà composé sur une tête témoin.
+ */
+app.get('/api/admin/prunelles', adminScope('shop'), (req, res) => {
+  res.json({
+    ok: true,
+    prunelles: Object.values(PRUNELLES).map((p) => ({
+      cle: p.cle, nom: p.nom, description: p.description, eyeSc: p.eyeSc,
+    })),
+  });
+});
+
 app.post('/api/admin/shop', adminScope('shop'), async (req, res) => {
   const b = req.body || {};
   const id = Number(b.id);
-  if (!id || !b.name || !b.suffix9) return res.status(400).json({ error: 'missing id, name or suffix9' });
+  // Une INCARNATION se désigne par la clé de sa paire d'iris, pas par un
+  // suffixe d'accessoire : l'un OU l'autre suffit.
+  const prunelle = b.prunelle && PRUNELLES[String(b.prunelle)] ? String(b.prunelle) : '';
+  if (b.prunelle && !prunelle) return res.status(400).json({ error: 'unknown prunelle' });
+  if (!id || !b.name || (!b.suffix9 && !prunelle)) {
+    return res.status(400).json({ error: 'missing id, name or suffix9/prunelle' });
+  }
   if (SHOP_PACKS.find(p => p.id === id)) return res.status(409).json({ error: 'id already exists' });
   const pack = {
     id,
     name: String(b.name),
-    category: String(b.category || 'Accessoires'),
+    category: String(b.category || (prunelle ? 'Incarnations' : 'Accessoires')),
     price: Number(b.price) || 0,
     description: String(b.description || ''),
-    suffix9: String(b.suffix9),
+    suffix9: String(b.suffix9 || '000000000'),
     comment: String(b.comment || b.description || ''),
   };
+  if (prunelle) pack.prunelle = prunelle;
   // Le pseudo du graphiste : commission à chaque vente, rayon « maison ».
   if (b.auteur !== undefined && String(b.auteur).trim()) pack.auteur = String(b.auteur).trim().slice(0, 40);
   SHOP_PACKS.push(pack);
@@ -12144,6 +12168,13 @@ app.patch('/api/admin/shop/:id', adminScope('shop'), async (req, res) => {
   if (b.price !== undefined) pack.price = Number(b.price);
   if (b.description !== undefined) { pack.description = String(b.description); pack.comment = String(b.description); }
   if (b.suffix9 !== undefined) pack.suffix9 = String(b.suffix9);
+  // La paire d'iris d'une incarnation : une clé connue la pose, une chaîne vide
+  // la retire (l'article redevient un accessoire ordinaire).
+  if (b.prunelle !== undefined) {
+    const cle = String(b.prunelle || '');
+    if (cle && !PRUNELLES[cle]) return res.status(400).json({ error: 'unknown prunelle' });
+    if (cle) pack.prunelle = cle; else delete pack.prunelle;
+  }
   if (b.auteur !== undefined) {
     const auteur = String(b.auteur).trim().slice(0, 40);
     if (auteur) pack.auteur = auteur; else delete pack.auteur;
@@ -23532,10 +23563,11 @@ async function boot() {
           // Idem option de jeu : sans gameFeature/notDefault réappliqués, le
           // produit redeviendrait « offert » et n'accorderait rien.
           if (def && def.gameFeature) { p.gameFeature = def.gameFeature; p.notDefault = def.notDefault; if (def.picto) p.picto = def.picto; }
-          // Idem prunelle : la clé de la paire d'iris n'a pas de colonne. Sans
-          // elle, l'article redeviendrait un accessoire au suffixe vide — donc
-          // une bouille sans rien, et des yeux inchangés.
-          if (def && def.prunelle) p.prunelle = def.prunelle;
+          // La paire d'iris d'une incarnation A sa colonne (`shop_packs.prunelle`) :
+          // ce rattrapage ne sert qu'aux lignes écrites AVANT qu'elle existe, et
+          // ne touche jamais un article que la base renseigne déjà — un article
+          // d'admin qui tomberait sur le même numéro reste ce qu'il est.
+          if (def && def.prunelle && !p.prunelle) p.prunelle = def.prunelle;
           if (existingIds.has(p.id)) {
             const idx = SHOP_PACKS.findIndex(x => x.id === p.id);
             SHOP_PACKS[idx] = p;

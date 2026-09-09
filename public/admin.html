@@ -1246,6 +1246,17 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
         <label><span>Auteur (pseudo) :</span> <input id="pack-auteur" placeholder="vide = accessoire d'époque" title="Le graphiste qui a dessiné l'accessoire : il touche 10 % de chaque vente, et l'article va au rayon « Accessoires maison »."></label>
         <label><span>Prix (Kikooz) :</span> <input id="pack-price" type="number" value="60"></label>
         <label><span>Suffix9 :</span> <input id="pack-suffix9" placeholder="a0b0c0d0e" maxlength="9" oninput="updatePackPreview()"></label>
+        <!-- LES INCARNATIONS. Une paire d'iris ne se pose pas au bout de la
+             chaîne comme un accessoire : elle remplace les caractères 4-5 du
+             visage. L'article porte donc la CLÉ d'une paire récoltée
+             (public/fbouille/prunelles.json) au lieu d'un suffixe — et le
+             menu se remplit de ce que le serveur a chargé. « — aucune » rend
+             l'article à sa nature d'accessoire. -->
+        <label><span>Incarnation :</span>
+          <select id="pack-prunelle" onchange="onPackPrunelleChange()" style="width:220px"
+                  title="Une paire d'iris achetée : l'article devient une incarnation, qu'on enfile à la place de sa bouille.">
+            <option value="">— aucune (accessoire ordinaire)</option>
+          </select></label>
         <label><span>Desc. niveau 1 (gras) :</span> <input id="pack-desc1" placeholder="Vide = texte commun par défaut"></label>
         <label><span>Desc. niveau 2 (petit) :</span> <input id="pack-desc2" placeholder="Vide = texte commun par défaut"></label>
         <div style="margin-top:8px">
@@ -4970,7 +4981,11 @@ async function loadShop() {
       <td>${esc(p.category || '')}</td>
       <td style="white-space:nowrap">${auteurCell(p.auteur, `changerAuteurPack(${p.id})`)}</td>
       <td>${p.price} K</td>
-      <td><code>${esc(p.suffix9)}</code></td>
+      <!-- Une INCARNATION n'a pas de suffixe qui veuille dire quelque chose :
+           on montre la paire d'iris qu'elle accorde. -->
+      <td>${p.prunelle
+        ? '<span style="background:#6a3;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px">incarnation</span> <code>' + esc(p.prunelle) + '</code>'
+        : '<code>' + esc(p.suffix9) + '</code>'}</td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.description||'')}">${esc(p.description || '-')}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="editPack(${p.id})">Modifier</button>
@@ -5082,12 +5097,63 @@ const SUFFIX_GROUPS = [
 let packSelectedPos = -1;     // pour les groupes 'raw'
 let packSelectedGroup = -1;   // index du groupe color/accessory ouvert
 
+/*
+ * LES PAIRES D'IRIS DU PARC — chargées une fois, pour le menu de l'article.
+ *
+ * Le serveur les tient (`public/fbouille/prunelles.json`) : on ne recopie donc
+ * ni les noms ni les numéros ici, on demande.
+ */
+let prunellesDispo = null;
+async function chargerPrunelles() {
+  if (prunellesDispo) return prunellesDispo;
+  try {
+    const r = await fetch('/api/admin/prunelles', { headers: hdr() });
+    const d = await r.json();
+    prunellesDispo = (d && d.ok && d.prunelles) || [];
+  } catch (e) { prunellesDispo = []; }
+  const sel = $('#pack-prunelle');
+  if (sel) {
+    const garde = sel.value;
+    sel.innerHTML = '<option value="">— aucune (accessoire ordinaire)</option>'
+      + prunellesDispo.map(p => `<option value="${esc(p.cle)}">${esc(p.nom)}</option>`).join('');
+    sel.value = garde;
+  }
+  return prunellesDispo;
+}
+function prunelleChoisie() {
+  const cle = ($('#pack-prunelle') || {}).value || '';
+  return (prunellesDispo || []).find(p => p.cle === cle) || null;
+}
+// Choisir une paire, c'est changer de nature d'article : le suffixe ne sert
+// plus, et le rayon par défaut n'est plus le même.
+function onPackPrunelleChange() {
+  const p = prunelleChoisie();
+  const cat = $('#pack-category');
+  if (p && /^accessoires?$/i.test((cat.value || '').trim())) cat.value = 'Incarnations';
+  $('#pack-suffix9').disabled = !!p;
+  updatePackPreview();
+}
+
 function updatePackPreview() {
   const base = $('#pack-base').value || '0004060h0407000';
   let suffix = ($('#pack-suffix9').value || '').padEnd(9, '0').substring(0, 9);
-  const state = base + suffix;
+  const p = prunelleChoisie();
+  // Une INCARNATION ne se compose pas d'un suffixe : elle remplace les
+  // caractères 4-5 (l'iris) de la tête témoin, et laisse le reste tel quel.
+  const state = p
+    ? (base + suffix).substring(0, 4) + enc62(p.eyeSc, 2) + (base + suffix).substring(6, 24)
+    : base + suffix;
   FPBouilleVignette.rafraichir($('#pack-preview-canvas'), state);
   renderSuffixEditor(suffix);
+}
+// Deux caractères base62, comme `encode62` du moteur.
+function enc62(n, len) {
+  const B = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let s = '';
+  let v = Math.max(0, Number(n) || 0);
+  do { s = B.charAt(v % 62) + s; v = Math.floor(v / 62); } while (v > 0);
+  while (s.length < len) s = '0' + s;
+  return s;
 }
 
 /*
@@ -5237,6 +5303,9 @@ function openAddPack() {
   $('#pack-auteur').value = '';
   $('#pack-price').value = 60;
   $('#pack-suffix9').value = '';
+  $('#pack-suffix9').disabled = false;
+  $('#pack-prunelle').value = '';
+  chargerPrunelles().then(updatePackPreview);
   $('#pack-desc1').value = '';
   $('#pack-desc2').value = '';
   $('#pack-save-btn').textContent = 'Créer';
@@ -5258,6 +5327,8 @@ function editPack(id) {
   $('#pack-auteur').value = p.auteur || '';
   $('#pack-price').value = p.price;
   $('#pack-suffix9').value = p.suffix9;
+  $('#pack-suffix9').disabled = !!p.prunelle;
+  chargerPrunelles().then(() => { $('#pack-prunelle').value = p.prunelle || ''; updatePackPreview(); });
   (function () {
     let d1 = '', d2 = '';
     const raw = (p.description || '').trim();
@@ -5294,9 +5365,12 @@ async function saveAddPack() {
     auteur: $('#pack-auteur').value.trim(),
     price: Number($('#pack-price').value),
     suffix9: $('#pack-suffix9').value,
+    prunelle: $('#pack-prunelle').value,
     description: packDescFromFields(false),
   };
-  if (!body.id || !body.name || !body.suffix9) { toast('ID, nom et suffix9 requis'); return; }
+  if (!body.id || !body.name || (!body.suffix9 && !body.prunelle)) {
+    toast('ID, nom, et un suffix9 OU une incarnation'); return;
+  }
   const r = await fetch('/api/admin/shop', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
   const data = await r.json();
   if (!r.ok) { toast('Erreur: ' + (data.error || 'inconnu')); return; }
@@ -5312,6 +5386,7 @@ async function saveEditPack() {
     auteur: $('#pack-auteur').value.trim(),
     price: Number($('#pack-price').value),
     suffix9: $('#pack-suffix9').value,
+    prunelle: $('#pack-prunelle').value,
     description: packDescFromFields(!!(shopPacks.find(x => x.id === editingPackId) || {}).wallpaperId),
   };
   const r = await fetch(`/api/admin/shop/${editingPackId}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify(body) });

@@ -712,8 +712,10 @@ const DEFI_NIVEAUX = [
   {
     nom: 'MOYEN', pommes: 8, temps: 90000, poids: [0.8, 2.3],
     panierAuBord: true, ecureuil: false,
+    // Les lignes du panneau de consigne tiennent en une soixantaine de
+    // caractères : au-delà, le champ de texte déborde de sa boîte.
     consigne: 'Réalisez dix granites avant la fin du temps !\n'
-      + 'Le panier est au bord : le granite à rebond (« du mammouth ») compte aussi.',
+      + 'Le panier est au bord : le granite à rebond compte aussi.',
     objectifs: [{ cle: 'granite', label: 'Granite', n: 10, test: estGranite }],
   },
   {
@@ -759,8 +761,34 @@ class Defi extends J.Game {
     for (const o of this.regle.objectifs) this.fait[o.cle] = 0;
     this.pommesAuPanier = 0;
   }
+  /*
+   * LE PANNEAU DE CONSIGNE — et le rouleau qu'il fallait arrêter.
+   *
+   * `Game.initStartPanel` cale le panneau par `pano.gotoAndStop(this.type)`.
+   * Ce rouleau porte UNE IMAGE PAR MODE DE 2005 — treize étiquettes, de
+   * `$classic` à `$train` — et `$defi` n'en fait évidemment pas partie.
+   * `gotoAndStop` d'une étiquette inconnue ne fait RIEN : le clip continuait
+   * donc de jouer, et les treize panneaux du jeu défilaient en clignotant.
+   *
+   * On le cale sur « Contre-la-montre » (`$chrono`), et pas au hasard : c'est
+   * l'image juste — une épreuve est une course contre le temps — et c'est là
+   * que se pose le champ de texte qu'alimente `startPanel.text`. Sa boîte
+   * d'origine ne fait qu'une ligne de haut ; on lui en donne trois, le
+   * panneau est vide en dessous.
+   *
+   * UNE SEULE LECTURE (`toRead = 1`) : une consigne, un appui, on joue.
+   */
   initStartPanel() {
     super.initStartPanel();
+    const pano = this.startPanel.pano;
+    if (pano) {
+      pano.gotoAndStop('$chrono');
+      // Le champ de texte se reconnaît à ce qu'il est le seul à savoir : un
+      // texte sur plusieurs lignes. Pas de profondeur codée en dur.
+      for (const e of (pano.$enfants || [])) {
+        if (e && typeof e.multiline === 'boolean') { e.multiline = true; e._height = 58; }
+      }
+    }
     this.startPanel.toRead = 1;
     this.startPanel.text = this.regle.consigne + '\n'
       + 'Temps imparti : ' + temps(this.regle.temps) + '.';

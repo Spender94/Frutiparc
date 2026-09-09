@@ -66,7 +66,7 @@ before(async () => {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5264', FRUTISCORE_PORT: '5265',
+      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5360', FRUTISCORE_PORT: '5361',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -315,13 +315,63 @@ test('une incarnation ne se confond pas avec une bouille ordinaire', () => {
   assert.match(SERVEUR, /function champsDeLaBouille\(user, etat\) \{[\s\S]*?if \(!estIncarnation\(etat\)\) \{/);
 });
 
-test('la clé d’une prunelle survit au passage par la base', () => {
-  // Les articles sont persistés, et les colonnes ne connaissent pas `prunelle` :
-  // sans réapplication depuis la définition statique, l'article redeviendrait un
-  // accessoire au suffixe vide — une bouille sans rien, et des yeux inchangés.
-  assert.match(SERVEUR, /if \(def && def\.prunelle\) p\.prunelle = def\.prunelle;/);
+test('la clé d’une paire survit au passage par la base', () => {
+  // Elle a sa colonne — sans quoi une incarnation créée depuis l'admin
+  // redeviendrait un accessoire au suffixe vide au premier redémarrage : une
+  // bouille sans rien, et des yeux inchangés.
+  const DB = fs.readFileSync(path.join(ROOT, 'db.js'), 'utf8');
+  assert.match(DB, /ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS prunelle TEXT DEFAULT '';/);
+  assert.match(DB, /if \(r\.prunelle\) p\.prunelle = r\.prunelle;/);
+  assert.match(DB, /disabled = \$10, auteur = \$11, prunelle = \$12/);
+  // Le rattrapage depuis la définition statique ne sert plus qu'aux lignes
+  // écrites avant la colonne, et ne touche pas ce que la base renseigne.
+  assert.match(SERVEUR, /if \(def && def\.prunelle && !p\.prunelle\) p\.prunelle = def\.prunelle;/);
   // Et le rayon reste payant.
   assert.match(SERVEUR, /n\.startsWith\('incarnation'\)\);/);
+});
+
+test('l’admin peut créer, modifier et défaire une incarnation', async () => {
+  // Le menu des paires : de quoi remplir la liste sans rien taper.
+  const dispo = await (await fetch(BASE + '/api/admin/prunelles', { headers: hdr })).json();
+  assert.equal(dispo.ok, true);
+  assert.deepEqual(dispo.prunelles.map((p) => p.cle).sort(), ['hiko1', 'hiko2']);
+  for (const p of dispo.prunelles) assert.ok(p.eyeSc >= 0 && p.nom, 'chaque paire se nomme et se place');
+
+  // On en crée une : pas de suffix9 à donner, la clé suffit.
+  const id = 600900;
+  const cr = await (await fetch(BASE + '/api/admin/shop', {
+    method: 'POST', headers: hdr,
+    body: JSON.stringify({ id, name: 'Essai', price: 10, prunelle: 'hiko2' }),
+  })).json();
+  assert.equal(cr.ok, true);
+  assert.equal(cr.pack.prunelle, 'hiko2');
+  assert.equal(cr.pack.category, 'Incarnations', 'le rayon se devine tout seul');
+
+  // Une clé inconnue est refusée — mieux vaut un refus qu'un article muet.
+  const faux = await fetch(BASE + '/api/admin/shop', {
+    method: 'POST', headers: hdr,
+    body: JSON.stringify({ id: id + 1, name: 'Faux', prunelle: 'nexiste-pas' }),
+  });
+  assert.equal(faux.status, 400);
+
+  // On la change de paire, puis on la défait : l'article redevient ordinaire.
+  const mod = await (await fetch(BASE + '/api/admin/shop/' + id, {
+    method: 'PATCH', headers: hdr, body: JSON.stringify({ prunelle: 'hiko1' }),
+  })).json();
+  assert.equal(mod.pack.prunelle, 'hiko1');
+  const nu = await (await fetch(BASE + '/api/admin/shop/' + id, {
+    method: 'PATCH', headers: hdr, body: JSON.stringify({ prunelle: '' }),
+  })).json();
+  assert.equal(nu.pack.prunelle, undefined, 'la clé retirée, l’article n’est plus une incarnation');
+
+  await fetch(BASE + '/api/admin/shop/' + id, { method: 'DELETE', headers: hdr });
+});
+
+test('la page d’admin propose les paires, et les dessine', () => {
+  const ADMIN = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');
+  assert.match(ADMIN, /id="pack-prunelle"/, 'un menu pour choisir la paire');
+  assert.match(ADMIN, /\/api\/admin\/prunelles/, 'rempli par le serveur');
+  assert.match(ADMIN, /prunelle: \$\('#pack-prunelle'\)\.value/, 'et envoyé à la création');
 });
 
 test('le light range les incarnations à part, et on en sort d’un clic', () => {

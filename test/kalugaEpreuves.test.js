@@ -99,6 +99,33 @@ test('le panier au bord et l’écureuil ne paraissent que là où on les demand
   assert.match(s, /for \(let i = 0; i < this\.regle\.pommes; i\+\+\) this\.genGroundFruit\(\);/);
 });
 
+test('le panneau de consigne est ARRÊTÉ, et il n’y en a qu’un', () => {
+  /*
+   * `Game.initStartPanel` cale le panneau par `pano.gotoAndStop(this.type)`.
+   * Ce rouleau porte une image par mode DE 2005 ; `$defi` n'y est pas, et
+   * `gotoAndStop` d'une étiquette inconnue ne fait rien — le clip continuait
+   * donc de jouer, et les treize panneaux du jeu défilaient en clignotant.
+   */
+  const GAME = lire('public/kaluga/jeu/game.js');
+  assert.match(GAME, /this\.startPanel\.pano\.gotoAndStop\(this\.type\);/,
+    'le cadrage d’époque, par le type du mode');
+  const s = /initStartPanel\(\) \{[\s\S]*?\n  \}/.exec(DEFI[0])[0];
+  assert.match(s, /pano\.gotoAndStop\('\$chrono'\);/,
+    'les Épreuves se calent sur une étiquette QUI EXISTE');
+  assert.match(s, /this\.startPanel\.toRead = 1;/, 'une seule lecture');
+  // Le champ de texte du Contre-la-montre ne fait qu'une ligne de haut : on lui
+  // en donne de quoi porter la consigne entière.
+  assert.match(s, /if \(e && typeof e\.multiline === 'boolean'\) \{ e\.multiline = true; e\._height = 58; \}/);
+  // Et l'étiquette visée est bien une de celles du rouleau.
+  const kaluga = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/kaluga/data/kaluga.json'), 'utf8'));
+  const pano = kaluga.perso[String(kaluga.symboles.startPanel)];
+  assert.ok(pano, 'le panneau de départ est dans la bibliothèque');
+  const etiquettes = [];
+  for (const f of (kaluga.perso['1074'].frames || [])) if (f.lab) etiquettes.push(f.lab);
+  assert.ok(etiquettes.includes('$chrono'), '« $chrono » existe');
+  assert.ok(!etiquettes.includes('$defi'), 'et « $defi » n’existe pas — d’où le calage');
+});
+
 // ── Le comptage ────────────────────────────────────────────────────────────
 
 test('une pomme coche AU PLUS une case, la plus exigeante', () => {
