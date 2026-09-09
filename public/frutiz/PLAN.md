@@ -1395,6 +1395,18 @@ Le cadre d'un écran, on n'a pas eu à le mesurer, on le CALCULE : liseré
 extérieur 2 px `white.shade` `#DDDDDD`, anneau intérieur 1 px `white.darker`
 `#888888`, rayon 6.
 
+**Et 8 % d'air autour de la bouille.** Un écran fait 100 px, la scène d'une
+frutibouille aussi : la fenêtre épousait la scène, et tout ce qu'une famille
+dessine EN DEHORS n'était pas rogné — il n'était jamais peint. Or 69 des 2 815
+tenues de la famille 0 montent au-dessus du bord, la pire (coiffure 30) de sept
+unités : on voyait des crânes tranchés à l'horizontale. `poserBouille` demande
+donc `FPBouilleVignette.MARGE_ECRAN` (0,08) : la vue va de −8 à 108, plus une
+seule tenue n'est coupée par le haut, et la bouille se pose dans le rapport
+100/116 de sa taille d'avant. La scène de l'émotion, qui vient jouer DANS
+l'écran, prend la même marge — sinon le visage changerait de taille le temps de
+la réaction. Détail et relevés : `public/frutiz/BOUILLES.md`, § 8 et § 11
+quinquies.
+
 Le fond, lui, ne vient pas du SWF du bureau mais de la BOUILLE : c'est un
 **dégradé radial**, relevé au pixel — `#D6F7B5` jusqu'à 49 px du centre,
 `#C5F297` de 51 à 60, `#A2E866` au-delà de 64. Rapporté au rayon du coin

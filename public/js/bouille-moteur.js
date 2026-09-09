@@ -1888,6 +1888,24 @@
     this.taille = options.taille || defs.scene.w || 100;
     this.fond = options.fond || null;
     /*
+     * LA MARGE — de l'air autour de la scène.
+     *
+     * La scène d'une bouille fait 100 × 100, et `rendre` l'y cale exactement :
+     * ce qui est dessiné DEHORS est perdu, quelle que soit la taille du canevas.
+     * Or les coiffures les plus hautes de la famille 0 montent jusqu'à −7, et
+     * quelques accessoires jusqu'à 109 en bas : dans l'aquarium d'un salon, on
+     * voyait des mèches coupées net par le haut de l'écran.
+     *
+     * `marge` élargit la FENÊTRE — en fraction de la scène, de chaque côté —
+     * sans rien changer au dessin. À 0,08 la vue va de −8 à 108 : tout ce que
+     * la famille dessine au-dessus de la tête y rentre, et la bouille se pose
+     * simplement un peu plus petite dans sa boîte.
+     *
+     * Zéro par défaut : partout ailleurs (fiche, éditeur, forum, relevés), le
+     * cadrage reste au pixel celui d'avant.
+     */
+    this.marge = Math.max(0, Number(options.marge) || 0);
+    /*
      * LES DEUX FINESSES.
      *
      * `super` est le facteur de suréchantillonnage demandé (cf. plus bas). Une
@@ -2029,14 +2047,18 @@
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, w, h);
     if (this.fond) { ctx.fillStyle = this.fond; ctx.fillRect(0, 0, w, h); }
-    const k = Math.min(w / sc.w, h / sc.h);
+    // La fenêtre, c'est la scène plus la marge (cf. le constructeur) — zéro
+    // partout sauf dans les écrans d'un salon.
+    const mx = sc.w * this.marge, my = sc.h * this.marge;
+    const vw = sc.w + 2 * mx, vh = sc.h + 2 * my;
+    const k = Math.min(w / vw, h / vh);
     // Flash cale la scène au CENTRE de sa fenêtre quand les rapports diffèrent
     // (`scaleMode = "showAll"`). Sans ce décalage, une boîte non carrée — celle
     // de l'aperçu de pack de l'admin fait 160 × 180 — collerait la bouille en
     // haut à gauche et mettrait toute la marge du même côté. Sur une boîte
     // carrée, dx et dy valent zéro : rien ne change.
-    const dx = (w - sc.w * k) / 2, dy = (h - sc.h * k) / 2;
-    ctx.setTransform(k, 0, 0, k, dx - sc.x * k, dy - sc.y * k);
+    const dx = (w - vw * k) / 2, dy = (h - vh * k) / 2;
+    ctx.setTransform(k, 0, 0, k, dx - (sc.x - mx) * k, dy - (sc.y - my) * k);
     this.moteur.dessiner(ctx, IDENTITE);
     if (f > 1) {
       // Réduction par MOITIÉS, d'un tampon vers un autre. Replier un canevas

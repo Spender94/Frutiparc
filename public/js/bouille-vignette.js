@@ -125,13 +125,32 @@
     customCache = {}; customPret = {};
   }
 
+  /*
+   * L'AIR AUTOUR DE LA BOUILLE, DANS UN ÉCRAN DE SALON.
+   *
+   * Un écran (`cp.FrutiScreen`) fait 100 px et la scène d'une bouille 100 × 100 :
+   * la fenêtre épouse la scène, et les coiffures les plus hautes de la famille 0
+   * — jusqu'à sept unités au-dessus du bord — s'y faisaient couper net. On
+   * élargit donc la fenêtre de 8 % de chaque côté : la vue va de −8 à 108, tout
+   * ce que les familles dessinent au-dessus de la tête y rentre (le pire relevé,
+   * sur les 2 815 tenues de la famille 0, est à −7), et la bouille se pose
+   * simplement un peu plus petite dans le même écran.
+   *
+   * Une constante partagée : les écrans du chat, ceux de Gaspard et la scène de
+   * l'émotion — qui vient jouer DANS l'écran — doivent cadrer pareil, sans quoi
+   * le visage changerait de taille le temps d'une réaction.
+   */
+  var MARGE_ECRAN = 0.08;
+
   /** Le HTML d'une bouille : un canevas qui remplit sa boîte. */
   function html(etat, o) {
     var sp = separer(etat);
     var e = (o && o.humeur) ? Number(o.humeur) : 0;
+    var m = (o && Number(o.marge)) || 0;
     return '<canvas class="fp-bvig" data-s="' + sp.s + '" data-e="' + e + '"'
       + (sp.cid ? ' data-custom="' + sp.cid + '"' : '')
       + ((o && o.anime) ? ' data-anime="1"' : '')
+      + (m > 0 ? ' data-marge="' + m + '"' : '')
       + ' width="1" height="1" aria-hidden="true"'
       + ' style="width:100%;height:100%;display:block"></canvas>';
   }
@@ -365,6 +384,9 @@
       // alors la finesse de mouvement entre deux réactions.
       var b = new M.Bouille(c, defs, { etat: s, humeur: e,
         anime: anime ? true : undefined,
+        // `data-marge` reste sur le canevas : une bouille qu'on remplace par
+        // celle d'une autre famille se remonte avec le même cadrage.
+        marge: Number(c.getAttribute('data-marge')) || 0,
         accessoireCustom: paq && paq.paths, accessoireCouleurs: paq && paq.couleurs });
       posees.set(c, b);
       c.setAttribute('data-prete', '1');
@@ -542,6 +564,8 @@
     // SVG : même identifiant, dessin neuf. Sans argument, on oublie tout.
     oublierCustom: oublierCustom,
     FAMILLES: FAMILLES,
+    // L'air à laisser autour d'une bouille posée dans un écran de salon.
+    MARGE_ECRAN: MARGE_ECRAN,
     // La famille chargée, variantes injectées et prunelles greffées — le seul
     // point de passage, pour que les index veuillent dire la même chose partout.
     famille: famille,

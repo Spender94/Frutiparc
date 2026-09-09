@@ -508,6 +508,41 @@ D'où les règles de conduite pour le branchement :
 * le lecteur ne redessine que si une tête de lecture a AVANCÉ (`avancer()` le
   dit) — une bouille dont tous les clips sont arrêtés ne coûte plus rien.
 
+### La fenêtre — et l'air autour (`marge`)
+
+`rendre()` cale la SCÈNE du fichier (100 × 100 pour les onze familles) dans le
+canevas, à la façon de Flash (`scaleMode = "showAll"` : un seul facteur, le petit
+côté commande, le reste est centré). Ce qui est dessiné **hors de cette scène
+n'est pas rogné : il n'est jamais peint** — agrandir la boîte n'y change rien,
+puisque le cadrage est relatif à la scène.
+
+Or les familles dessinent en dehors. Relevé au navigateur sur les **2 815 tenues
+de la famille 0** (67 coiffures × leurs accessoires), cadre réellement dessiné
+contre la scène :
+
+| côté | le pire | tenues qui dépassent de ≥ 1 px | de ≥ 8 px |
+|---|---|---|---|
+| haut | −7 | 69 | 0 |
+| côtés | −17 / 112 | 257 | 89 |
+| bas | 109 | 20 | 13 |
+
+Dans les écrans d'un salon — 100 px de côté, exactement la scène — cela se voyait :
+des mèches coupées net par le bord supérieur.
+
+D'où l'option **`marge`** : une fraction de la scène ajoutée de chaque côté de la
+FENÊTRE, sans rien changer au dessin ni à la géométrie. À `0,08`, la vue va de
+−8 à 108 ; **plus une seule tenue de la famille 0 n'est coupée par le haut**, et
+la bouille se pose simplement dans le rapport 100/116 de sa taille d'avant.
+
+Elle vaut **zéro par défaut** : la fiche, l'éditeur, le trombinoscope, le forum,
+l'admin et les relevés gardent au pixel le cadrage d'avant. Les seuls à la
+demander sont les écrans d'un salon (`FPBouilleVignette.MARGE_ECRAN`, cf. § 11
+quinquies).
+
+Les côtés, eux, restent tels quels : il y faudrait 17 unités, la bouille y
+perdrait un sixième de sa taille, et une mèche qui frôle le bord latéral ne se
+remarque pas comme un crâne coupé à l'horizontale.
+
 ## 9. Les noms
 
 Le SWF ne nomme pas ses humeurs : `emoteList` n'est qu'un tableau de couples. Le
@@ -886,6 +921,33 @@ fermeture d'un caractère et la renumérote au-delà de 65 535 (pour ne heurter
 aucun caractère de la famille d'accueil), le paquet JSON s'ajoute à
 `public/fbouille/`, et `Moteur.greffer` le verse dans les tables — une fois par
 page, pour toutes les bouilles.
+
+## 11 quinquies. Les écrans d'un salon : 8 % d'air
+
+Un écran de salon (`cp.FrutiScreen`) fait 100 px de côté, la scène d'une bouille
+100 × 100 : la fenêtre épousait la scène, et les coiffures les plus hautes de la
+famille 0 s'y faisaient couper net par le haut (cf. le tableau du § 8, « La
+fenêtre — et l'air autour »).
+
+`FPBouilleVignette.MARGE_ECRAN` vaut **0,08**, et une seule valeur sert les trois
+surfaces qui montrent une bouille dans un écran :
+
+| surface | où | comment |
+|---|---|---|
+| les écrans du salon (mode multi ET mode aquarium) | `poserBouille`, `bureau-frutiz.js` | `html(bouille, { marge })` |
+| les écrans de Gaspard | la même fonction | idem |
+| la scène de l'émotion | `overlayIframe`, `light.html` | `html(etat, { anime: true, marge })` |
+
+La scène de l'émotion vient jouer **dans** l'écran de qui s'exprime : sans la
+même marge, le visage changerait de taille le temps de la réaction.
+
+La valeur voyage en `data-marge` sur le canevas — `rafraichir` n'y touche pas,
+si bien qu'un changement de FAMILLE, qui force un remontage, retrouve le même
+cadrage. Partout ailleurs l'attribut est absent et la marge nulle.
+
+Relevé dans un vrai salon, coiffure 30 (celle qui dépasse de 7) : avant, le
+crâne est tranché à l'horizontale par le bord de l'écran ; après, les mèches
+tiennent en entier avec de l'air au-dessus.
 
 ## 12. Ce qui reste à faire
 

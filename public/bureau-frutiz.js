@@ -4169,7 +4169,12 @@ window.BureauFrutiz = (function () {
     // qui se voit derrière la bouille. (Le cache PNG peignait la capture sur le
     // vert plat des cartes du forum, d'où le `detourer` qu'il fallait lui
     // demander — plus rien à détourer ici.)
-    ecran.insertAdjacentHTML('afterbegin', FPBouilleVignette.html(bouille, { humeur: Number(em) }));
+    // ET UN PEU D'AIR AUTOUR. La scène d'une bouille fait 100 × 100 et l'écran
+    // aussi : les coiffures les plus hautes se faisaient couper net par le bord.
+    // `MARGE_ECRAN` élargit la fenêtre de 8 % — la bouille est un peu plus
+    // petite dans l'écran, mais entière (cf. bouille-vignette.js).
+    ecran.insertAdjacentHTML('afterbegin', FPBouilleVignette.html(bouille,
+      { humeur: Number(em), marge: FPBouilleVignette.MARGE_ECRAN }));
     FPBouilleVignette.brancher(ecran);
   }
   // `CSS.escape` n'est pas partout ; un pseudo n'a de toute façon que des

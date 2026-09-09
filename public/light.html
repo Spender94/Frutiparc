@@ -11227,7 +11227,12 @@
     var courant = c ? c.canvas : overlayCanvas;
     if (courant && courant.isConnected) return courant;
     var scene = noeudChat(c, "bouille-overlay-stage");
-    scene.innerHTML = FPBouilleVignette.html(etat || DEFAULT_BOUILLE, { anime: true });
+    // LE MÊME CADRAGE QUE LES ÉCRANS. Sur le bureau, cette scène vient jouer
+    // DANS l'écran de qui s'exprime (cf. plus bas) : sans la même marge, le
+    // visage changerait de taille le temps de la réaction. Et une animation
+    // déborde plus qu'une pose figée — elle y gagne aussi sur mobile.
+    scene.innerHTML = FPBouilleVignette.html(etat || DEFAULT_BOUILLE,
+      { anime: true, marge: FPBouilleVignette.MARGE_ECRAN });
     var cv = scene.querySelector("canvas.fp-bvig");
     if (c) c.canvas = cv; else overlayCanvas = cv;
     return cv;
