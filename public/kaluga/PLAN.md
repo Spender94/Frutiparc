@@ -308,30 +308,49 @@ pas des points mais des **figures** — les combos que le panier nomme déjà
 |---|---|---|---|---|
 | **FACILE** | 10 | 1'00 | 10 dunks | panier au hasard |
 | **MOYEN** | 8 | 1'30 | 10 granites | panier au bord |
-| **DIFFICILE** | 8 | 2'00 | 2 granites, 1 triple-impact, 1 alouette, 1 figure avec l'écureuil, **et 8 pommes au panier** | panier au bord, un écureuil qui court |
+| **DIFFICILE** | 8 | 1'50 | 10 granites | panier au bord, **un corbeau actif** |
 
+- **Le difficile, c'est le moyen sous un corbeau.** Il a d'abord demandé une
+  liste de figures (triple-impact, alouette, figure avec l'écureuil, plus un
+  compte de pommes au panier) : trop dur, et trop dépendant de ce que le
+  terrain voulait bien offrir. On est revenu aux mêmes dix granites, avec vingt
+  secondes de plus et **un oiseau pour toute différence** — le temps en plus
+  n'est pas une faveur, c'est ce qu'il coûte.
+- **Le corbeau revient tant que dure l'épreuve.** `newBird` le rend actif tout
+  seul (il se cherche une cible, tourne, prépare son piqué et fond dessus),
+  mais il ne fond **qu'une fois** : après quoi il remonte et se retire au-dessus
+  de l'écran (`Bird`, mode 3, `kill()` passé −100). Sans relève, les trois
+  quarts de l'épreuve se joueraient au niveau moyen. `Defi.update` en relâche
+  donc un dès que le ciel est vide, après **huit secondes** de souffle
+  (`CORBEAU_REPOS = 320`). Une passe en dure six à sept — le temps qu'il
+  tourne, choisisse et fonde —, si bien que le ciel est libre une fois sur
+  deux : de quoi placer un granite entre deux menaces.
+- **S'il emporte la tzongre, l'épreuve se ferme sur une page qui le dit.**
+  `Game.onTzDeath` clôt la partie sans rien écrire — dans les modes d'époque le
+  panneau de fin s'était rempli en chemin, ici il ne se remplit qu'à l'arrivée,
+  et l'épreuve s'achevait donc sur un panneau muet. Le **faire-part**, lui,
+  existe déjà : `Bird.eat` pousse le sien (« Scrounch ! … n'a pas réussi à
+  esquiver les attaques du corbeau », quatre titres et quatre phrases tirés au
+  sort du SWF). `Defi.onTzDeath` n'en ajoute donc pas un second : il arrête le
+  chrono et pousse la même page d'échec que le temps écoulé (`pageEchec` : le
+  record à battre, puis les cases), avant de laisser la partie se terminer
+  normalement.
 - **« N pommes sur le terrain » est une population, pas un stock** : le terrain
   se regarnit à mesure qu'on encaisse, comme le Challenge le fait depuis son
-  arbre. Il le faut — le moyen demande dix granites et ne pose que huit
-  pommes. Sur le difficile, « les autres doivent être mises dans le panier »
-  devient donc un **compte** : huit pommes encaissées en tout, dont les cinq
-  figures imposées. Rater une figure coûte une pomme, pas la partie.
+  arbre. Il le faut — les deux derniers niveaux demandent dix granites et ne
+  posent que huit pommes. Rater une figure coûte une pomme, pas la partie.
 - **Le poids des pommes est borné** entre 0,8 et 2,3 (soit 80 à 230 points) sur
   les deux niveaux à granites : une pomme trop lourde ou trop légère rend le
   granite affaire de chance.
 - **Le panier au bord** ouvre le granite à rebond — la « du mammouth »
-  (`tete déviée dunk`) —, acceptée au même titre que le granite droit. Il ouvre
-  aussi l'**alouette** (`ricochet tete`), demandée au difficile.
-- **L'écureuil se lâche comme au Challenge** : hors du terrain, tourné vers lui
-  (`genEcureuil` → `setSens`). Sans `setSens` son `sens` n'existe pas et
-  `x += speed * sens` ne vaut plus rien : il restait planté là où on l'avait
-  posé, et la figure « écureuil » devenait affaire de chance.
+  (`tete déviée dunk`) —, acceptée au même titre que le granite droit.
 - **Une figure, une case** : chaque pomme encaissée coche **au plus un**
-  objectif, le plus exigeant de ceux qu'elle satisfait encore. Sans cette
-  règle un seul triple-impact — qui est une double-bande plus une tête — en
-  cocherait deux d'un coup. On lit les **drapeaux** du fruit, jamais le nom
-  composé : « granite » s'écrit `tete dunk`, mais la table des noms le renomme
-  (« pure granite », « du mammouth »).
+  objectif, le plus exigeant de ceux qu'elle satisfait encore. Les trois niveaux
+  n'en demandent aujourd'hui qu'un seul, mais la règle tient la table ouverte :
+  une liste de figures s'y écrit sans qu'un triple-impact — qui est une
+  double-bande plus une tête — en coche deux d'un coup. On lit les **drapeaux**
+  du fruit, jamais le nom composé : « granite » s'écrit `tete dunk`, mais la
+  table des noms le renomme (« pure granite », « du mammouth »).
 - **Le crochet vit dans `Panier.addFruit`, pas dans `checkCombo`** :
   `checkCombo` ne tourne que sous `$classic`, le seul mode qui compte des
   points. Le nom de la figure se calcule à part (`Panier.figureDe`), et
@@ -401,12 +420,39 @@ lui, joue toujours les règles de 2005. `test/kalugaRegles.test.js` les épingle
    Huit pommes font 4 + 4, puis 3-3-2 avec deux jaunes. Recharges, portée,
    distance : rien d'autre ne change.
 
-2. **La pomme d'or vaut dix fois la moyenne des combos, grappes exclues**
-   (`Panier.pointsPommeOr`). En 2005 elle valait dix fois son poids — et son
-   poids est le *reste* du kilo après le dernier fruit : un tirage. Que des
-   granites (200) → une pomme d'or à 2000 ; des combos plus fins → plus. Sans
-   aucun combo avant elle, elle vaut ce que vaut une pomme. Son propre combo
-   s'ajoute ensuite comme pour toute pomme. Le panneau de fin l'affiche.
+2. **La pomme d'or PÈSE ce que vaut le jeu du joueur** (`Classic.poidsPommeOr`).
+   En 2005 elle valait dix fois son poids, et son poids était le *reste* du kilo
+   après le dernier fruit : un tirage. On l'a d'abord payée « dix fois la
+   moyenne des combos, grappes exclues » — le hasard sortait bien du calcul,
+   mais deux choses cassaient. Le prix n'avait plus de plafond : un virtuose à
+   500 de moyenne encaissait **cinq mille** points d'une seule pomme, quand 2005
+   n'en payait jamais plus de mille sept cents. Et la taille ne disait plus
+   rien du prix — un petit pois de quatre pixels pouvait valoir cinq mille
+   points, une belle pomme en valoir mille. D'où les plaintes sur des « pommes
+   d'or trop grosses » : elles ne mentaient pas sur leur valeur par hasard, la
+   valeur ne les regardait tout simplement pas.
+
+   Le **prix** revient donc à la règle d'époque — `Panier.pointsPommeOr(base)`
+   = `base × 10`, soit cent fois le poids, dix fois — et c'est le **poids** qui
+   porte maintenant la finesse du jeu : la moyenne des combos, grappes exclues,
+   sur une rampe d'un gramme pour cinq cents points, **bornée entre 1 et 2**
+   (`POMME_OR_POIDS`). Le rayon d'un fruit valant douze fois son poids, taille
+   et prix disent enfin la même chose :
+
+   | jeu | moyenne | poids | diamètre | valeur |
+   |---|---|---|---|---|
+   | aucun combo | 0 | 1,00 | 24 px | 1000 |
+   | débutant | 120 | 1,24 | 30 px | 1240 |
+   | bon joueur | 266 | 1,53 | 37 px | 1530 |
+   | virtuose | ≥ 500 | 2,00 | 48 px | 2000 |
+
+   Le rapport valeur / rayon est constant à un demi pour cent près — le seul
+   jeu est l'arrondi du score à l'unité. Bien jouer fait **grossir** la pomme
+   d'or, et une grosse pomme d'or vaut cher : on le voit d'un coup d'œil, comme
+   en 2005. Le plancher compte autant que le plafond, puisque la pomme d'or est
+   celle qui *solde* le kilo et n'en pèse souvent qu'une miette. Son propre
+   combo s'ajoute ensuite comme pour toute pomme, et le panneau de fin
+   l'affiche.
 
 3. **Deux défis du jour : Grappe et Freestyle** (serveur, `kalugaAvecGrappe`,
    `routeRankingForSave`). Dès qu'une grappe atteint **la taille 8** —

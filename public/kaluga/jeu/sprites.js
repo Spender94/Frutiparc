@@ -1059,24 +1059,26 @@ class Panier extends Phys {
     return b;
   }
   /*
-   * LA POMME D'OR VAUT DIX FOIS LA MOYENNE DES COMBOS.
+   * LA POMME D'OR VAUT DIX FOIS CE QU'ELLE PÈSE — la règle de 2005.
    *
-   * ÉCART ASSUMÉ avec 2005, où elle valait dix fois son poids — et son poids,
-   * c'est le RESTE du kilo après le dernier fruit tombé : un tirage. Deux
-   * parties égales pouvaient finir à cinq cents points d'écart sur la seule
-   * grosseur de la dernière pomme.
+   * ON L'AVAIT DÉCROCHÉE DE SON POIDS, et c'était une erreur double.
    *
-   * Elle vaut maintenant dix fois la moyenne des combos réalisés dans la
-   * partie, grappes exclues : que des granites (200) → une pomme d'or à 2000 ;
-   * des combos plus fins → une pomme d'or plus grosse. Le hasard sort du
-   * calcul, et c'est la finesse du jeu qui la fait monter. Sans aucun combo
-   * avant elle, elle vaut ce que vaut une pomme — le multiplicateur se gagne.
-   * Son propre combo, s'il y en a un, s'ajoute ensuite comme pour toute pomme.
+   * Elle valait « dix fois la moyenne des combos de la partie » : le hasard
+   * sortait bien du calcul, mais deux choses cassaient. D'une part le prix
+   * n'avait plus de plafond — un virtuose à 500 de moyenne encaissait CINQ
+   * MILLE points sur une seule pomme, quand 2005 n'en donnait jamais plus de
+   * mille sept cents. D'autre part la pomme d'or est celle qui SOLDE le kilo :
+   * son poids est le reste de la barre, souvent une miette. On voyait donc un
+   * petit pois de quatre pixels valoir cinq mille points, et une belle pomme
+   * en valoir mille : la taille ne disait plus rien du prix.
+   *
+   * Le prix revient donc au poids — et c'est le POIDS qui porte maintenant la
+   * finesse du jeu : `Classic.poidsPommeOr` le tire de la moyenne des combos,
+   * borné. Bien jouer fait GROSSIR la pomme d'or, et une grosse pomme d'or
+   * vaut cher : on le voit d'un coup d'œil, comme en 2005.
    */
   pointsPommeOr(base) {
-    const nb = this.game.comboNb | 0;
-    if (!nb) return base;
-    const p = Math.round((this.game.comboSomme | 0) / nb) * 10;
+    const p = base * 10;
     this.game.stat.setVal("Pomme d'or", p);
     return p;
   }

@@ -6,9 +6,11 @@
  * déjà. Ce que ces tests verrouillent, ce sont les promesses du mode :
  *
  *   • LES TROIS RÈGLES sont celles demandées : dix dunks en une minute, dix
- *     granites en une minute trente, puis la liste du difficile — et le poids
- *     des pommes est borné entre 80 et 230 sur les deux niveaux à granites,
- *     sans quoi le granite tient de la chance.
+ *     granites en une minute trente, puis les mêmes dix granites en une minute
+ *     cinquante SOUS UN CORBEAU — et le poids des pommes est borné entre 80 et
+ *     230 sur les deux niveaux à granites, sans quoi le granite tient de la
+ *     chance. Le corbeau est actif : il fond, il vole les pommes, et s'il
+ *     emporte la tzongre l'épreuve se ferme sur une page qui le dit.
  *   • UNE FIGURE, UNE CASE : une pomme coche au plus un objectif, le plus
  *     exigeant de ceux qu'elle satisfait encore. Sans cela un triple-impact —
  *     qui est une double-bande plus une tête — en cocherait deux d'un coup.
@@ -51,40 +53,70 @@ test('les trois niveaux sont ceux demandés', () => {
   // MOYEN — huit pommes, une minute trente, dix granites, poids borné, panier
   // au bord (c'est lui qui ouvre le granite à rebond).
   assert.match(t, /nom: 'MOYEN', pommes: 8, temps: 90000, poids: \[0\.8, 2\.3\]/);
-  assert.match(t, /panierAuBord: true, ecureuil: false/);
+  assert.match(t, /panierAuBord: true, corbeau: false/);
   assert.match(t, /cle: 'granite', label: 'Granite', n: 10, test: estGranite/);
-  // DIFFICILE — huit pommes, panier au bord, un écureuil, et la liste.
-  assert.match(t, /nom: 'DIFFICILE', pommes: 8, temps: 120000, poids: \[0\.8, 2\.3\]/);
-  assert.match(t, /panierAuBord: true, ecureuil: true/);
-  assert.match(t, /toutAuPanier: true/);
-  assert.match(t, /cle: 'triple'[\s\S]*?n: 1,\s*\n\s*test: \(f\) => !!\(f\.flScSide && f\.flScBound && f\.flScHead\)/);
-  assert.match(t, /cle: 'granite', label: 'Granite', n: 2, test: estGranite/);
-  assert.match(t, /cle: 'ecureuil', label: 'Écureuil', n: 1, test: \(f\) => !!f\.flScSquirrel/);
-  // L'ALOUETTE (`ricochet tete`) a remplacé la double-bande : le difficile
-  // était trop dur.
-  assert.match(t, /cle: 'alouette', label: 'Alouette', n: 1,\s*\n\s*test: \(f\) => !!\(f\.flScBound && f\.flScHead\)/);
-  assert.match(SPRITES, /\['ricochet tete ', 'alouette '\]/, 'et c’est bien ce que le panier nomme ainsi');
-  assert.doesNotMatch(t, /Double-bande/, 'la double-bande n’est plus demandée');
+  // DIFFICILE — le moyen avec un CORBEAU : les mêmes dix granites, vingt
+  // secondes de plus, et l'oiseau pour toute différence.
+  assert.match(t, /nom: 'DIFFICILE', pommes: 8, temps: 110000, poids: \[0\.8, 2\.3\]/);
+  assert.match(t, /panierAuBord: true, corbeau: true/);
+  assert.match(t, /Un corbeau rôde/, 'et la consigne le dit');
+  // Une seule case par niveau : ni écureuil, ni liste de figures, ni compte de
+  // pommes au panier — le difficile est le moyen sous la menace.
+  const cases = t.match(/cle: '/g) || [];
+  assert.equal(cases.length, 3, 'un objectif par niveau, pas davantage');
+  assert.doesNotMatch(t, /toutAuPanier|ecureuil|alouette|triple/);
 });
 
-test('l’écureuil du difficile COURT, il ne pose pas', () => {
+test('le CORBEAU du difficile revient, et il est le seul à rôder', () => {
   /*
-   * On le posait à un point du décor et il y restait : sans `setSens`, son
-   * `sens` n'existe pas, et `x += speed * sens` ne vaut plus rien du tout.
-   * On le lâche comme le Challenge lâche les siens — hors du terrain, tourné
-   * vers lui —, et il le traverse en rebondissant aux marges.
+   * `newBird` suffit à le rendre actif : il se cherche une cible, tourne,
+   * prépare son piqué et fond dessus. Mais il ne fond QU'UNE FOIS — après quoi
+   * il remonte et se retire au-dessus de l'écran (`Bird`, mode 3, `kill()`
+   * passé −100). Sans relève, les trois quarts de l'épreuve se joueraient sans
+   * lui, c'est-à-dire au niveau moyen.
    */
-  const g = /genEcureuil\(\) \{[\s\S]*?\n  \}/.exec(DEFI[0]);
-  assert.ok(g, 'Defi.genEcureuil');
-  assert.match(g[0], /const cote = random\(2\) \* 2 - 1;/);
-  assert.match(g[0], /mc\.x = demi \+ \(demi \+ 10\) \* cote;/, 'lâché hors du terrain');
-  assert.match(g[0], /mc\.setSens\(-cote\);/, 'et tourné vers lui — sans quoi il ne bouge pas');
-  assert.match(DEFI[0], /if \(this\.regle\.ecureuil\) this\.genEcureuil\(\);/);
-  // C'est le même geste que le Challenge : on ne l'a pas réinventé.
-  assert.match(MODES, /genSquirrel\(side\) \{[\s\S]*?mc\.setSens\(-side\);/);
-  // Et l'écureuil qui court est mis à jour comme les autres bestioles.
+  const g = /genCorbeau\(\) \{[\s\S]*?\n  \}/.exec(DEFI[0]);
+  assert.ok(g, 'Defi.genCorbeau');
+  assert.match(g[0], /this\.corbeau = this\.newBird\(\{ hitPoint: 40 \}\);/);
+  assert.match(DEFI[0], /if \(this\.regle\.corbeau\) this\.genCorbeau\(\);/, 'un au départ');
+  const u = /update\(\) \{[\s\S]*?\n  \}/.exec(DEFI[0])[0];
+  assert.match(u, /if \(this\.birdList\.length\) this\.corbeauTimer = CORBEAU_REPOS;/);
+  assert.match(u, /else if \(\(this\.corbeauTimer -= Cs\.tmod\) < 0\) this\.genCorbeau\(\);/);
+  // Huit secondes de souffle : une passe en dure six à sept, le ciel est donc
+  // libre une fois sur deux — de quoi placer un granite entre deux menaces.
+  assert.match(MODES, /const CORBEAU_REPOS = 320;/);
+  // L'écureuil du premier jet a disparu avec la liste de figures : plus aucun
+  // niveau n'en demande, donc plus de code pour en poser.
+  assert.doesNotMatch(MODES, /genEcureuil/);
+  assert.doesNotMatch(DEFI[0], /regle\.ecureuil/);
+});
+
+test('le corbeau qui emporte la tzongre ferme l’épreuve sur une vraie page', () => {
+  /*
+   * `Game.onTzDeath` clôt la partie sans rien écrire : dans les modes d'époque
+   * le panneau de fin s'était rempli en chemin, ici il ne se remplit qu'à
+   * l'arrivée — l'épreuve s'achevait donc sur un panneau VIDE.
+   */
   const GAME = lire('public/kaluga/jeu/game.js');
-  assert.match(GAME, /this\.squirrelList\.push\(mc\); this\.badList\.push\(mc\);/);
+  assert.match(GAME, /onTzDeath\(\) \{ this\.endGame\(60\); \}/, 'le crochet d’époque n’écrit rien');
+  const d = /onTzDeath\(\) \{\n[\s\S]*?\n  \}/.exec(DEFI[0]);
+  assert.ok(d, 'Defi.onTzDeath');
+  assert.match(d[0], /if \(this\.step === 2\) \{/, 'une fois, et seulement en partie');
+  assert.match(d[0], /this\.barTimer\.stopTimer\(\);/, 'le temps ne court plus');
+  assert.match(d[0], /this\.endPanelMiddle\.push\(\{ list: this\.pageEchec\(\) \}\);/);
+  assert.match(d[0], /super\.onTzDeath\(\);/, 'et la partie se termine comme partout ailleurs');
+  // L'ANNONCE EST DÉJÀ FAITE : `Bird.eat` pousse la sienne, quatre titres et
+  // quatre phrases tirés au sort du SWF de 2005. On n'en ajoute pas une
+  // seconde — le panneau en montrerait deux à la suite.
+  assert.match(SPRITES, /const titleList = \['Miam!', 'Crunch!', 'Glurps!', 'Scrounch!'\];[\s\S]*?this\.game\.endPanelStart\.push/);
+  assert.doesNotMatch(d[0], /endPanelStart/, 'le Défi n’écrit pas de second faire-part');
+  // La page est la même que celle du chrono écoulé : le temps à battre, puis
+  // les cases. Deux façons de perdre, une seule page.
+  const p = /pageEchec\(\) \{[\s\S]*?\n  \}/.exec(DEFI[0]);
+  assert.ok(p, 'Defi.pageEchec');
+  assert.match(p[0], /const page = this\.tableauObjectifs\(\);/);
+  assert.match(p[0], /if \(ancien\) page\.unshift\(\{ type: 'bigScore', frame: 2, score: temps\(ancien\) \}/);
+  assert.match(DEFI[0], /this\.endPanelMiddle\.push\(\{ list: this\.pageEchec\(\) \}\);[\s\S]*?this\.step = 3;\n\s*this\.endGame\(\);/);
 });
 
 test('« Trop tard » s’écrit sans S — la coquille de 2005 reste à 2005', () => {
@@ -124,10 +156,10 @@ test('le terrain se regarnit, et jamais dans le panier', () => {
   assert.match(g, /Math\.abs\(x - this\.panier\.x\) > this\.panier\.openRay \+ r/);
 });
 
-test('le panier au bord et l’écureuil ne paraissent que là où on les demande', () => {
+test('le panier au bord et le corbeau ne paraissent que là où on les demande', () => {
   const s = /initSprites\(\) \{[\s\S]*?\n  \}/.exec(DEFI[0])[0];
   assert.match(s, /if \(this\.regle\.panierAuBord\) \{\s*\n\s*this\.panier\.x = this\.panier\.openRay \+ 6;/);
-  assert.match(s, /if \(this\.regle\.ecureuil\) this\.genEcureuil\(\);/);
+  assert.match(s, /if \(this\.regle\.corbeau\) this\.genCorbeau\(\);/);
   assert.match(s, /for \(let i = 0; i < this\.regle\.pommes; i\+\+\) this\.genGroundFruit\(\);/);
 });
 
@@ -171,11 +203,12 @@ test('une pomme coche AU PLUS une case, la plus exigeante', () => {
   assert.match(c[0], /if \(this\.masterStep !== 1 \|\| this\.step !== 2\) return;/);
 });
 
-test('le difficile exige AUSSI le compte des pommes au panier', () => {
+test('une épreuve est gagnée quand TOUTES ses cases sont cochées', () => {
   const o = /objectifsRemplis\(\) \{[\s\S]*?\n  \}/.exec(DEFI[0])[0];
   assert.match(o, /for \(const o of this\.regle\.objectifs\) if \(\(this\.fait\[o\.cle\] \|\| 0\) < o\.n\) return false;/);
-  assert.match(o, /if \(this\.regle\.toutAuPanier && this\.pommesAuPanier < this\.regle\.pommes\) return false;/);
-  assert.match(DEFI[0], /onAddFruit\(\) \{\s*\n\s*this\.pommesAuPanier\+\+;/);
+  // Le compte des pommes encaissées est parti avec la liste du difficile :
+  // rien d'autre que les figures ne conditionne la victoire.
+  assert.doesNotMatch(DEFI[0], /pommesAuPanier|toutAuPanier/);
 });
 
 test('le mode ENTEND les figures : le crochet est dans addFruit, pas dans checkCombo', () => {

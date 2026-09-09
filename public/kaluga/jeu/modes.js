@@ -16,6 +16,24 @@ const random = J.random;
 const Key = K.Key;
 const temps = (t) => J.MTNumber.getTimeStr(t, "'", "''");
 
+/*
+ * CE QUE PEUT PESER UNE POMME D'OR — donc ce qu'elle peut valoir (dix fois
+ * cent fois son poids) et la taille qu'elle fait (rayon = douze fois son
+ * poids). Mille points au plancher, deux mille au plafond : 2005 n'a jamais
+ * payé plus de mille sept cents, et au-delà le fil ne la lève plus.
+ */
+const POMME_OR_POIDS = [1, 2];
+
+/*
+ * LE SOUFFLE ENTRE DEUX CORBEAUX, aux Épreuves : huit secondes environ (40
+ * images par seconde, tmod 0,96). Une passe dure six à sept secondes — le
+ * temps qu'il tourne, choisisse et fonde —, si bien que le ciel est libre
+ * une fois sur deux : de quoi placer un granite entre deux menaces. Sans ce
+ * souffle il serait là tout le temps, et la Survie garde le sien pour son
+ * dernier palier.
+ */
+const CORBEAU_REPOS = 320;
+
 // ── Classic (Challenge) ───────────────────────────────────────────────────
 class Classic extends J.Game {
   constructeur() {
@@ -111,6 +129,30 @@ class Classic extends J.Game {
     if (random(ratio * 100) > 40 && random(2) && this.frogList.length < this.frogLimit) this.genFrog();
     if ((this.squirrelList.length + 1) * 10 < this.level && !random(2) && this.squirrelList.length < this.squirrelLimit) this.genSquirrel();
   }
+  /*
+   * LE POIDS DE LA POMME D'OR — c'est lui qui porte la finesse du jeu.
+   *
+   * `Panier.pointsPommeOr` la paie dix fois son poids (la règle de 2005), et
+   * son rayon vaut douze fois ce même poids : le prix et la taille disent donc
+   * la même chose. Reste à décider ce qu'elle pèse, et c'est là qu'entre le
+   * jeu du joueur — la MOYENNE DE SES COMBOS, grappes exclues. Une moyenne de
+   * deux cents (que des granites) fait une pomme de deux : deux mille points.
+   *
+   * BORNÉE des deux côtés. En bas, parce que la pomme d'or solde le kilo et
+   * n'en pèse souvent qu'une miette : sans plancher, on gagnerait un petit
+   * pois. En haut, parce qu'au-delà elle devient une enclume — le fil ne la
+   * lève plus — et parce que 2005 n'a jamais payé plus de mille sept cents.
+   */
+  poidsPommeOr() {
+    const nb = this.comboNb | 0;
+    const moyenne = nb ? (this.comboSomme | 0) / nb : 0;      // en points
+    // Un gramme pour cinq cents points de moyenne : un dunk sec (100) pèse à
+    // peine plus que rien, un jeu de virtuose (500) double la pomme. La rampe
+    // couvre ainsi TOUT l'éventail des combos — de 100 à 760 — au lieu de
+    // saturer dès le granite.
+    const p = POMME_OR_POIDS[0] + moyenne / 500;
+    return Math.max(POMME_OR_POIDS[0], Math.min(POMME_OR_POIDS[1], p));
+  }
   getFruitWeight() {
     let w = 0.5 + random(10 + this.level) / 10;
     const dif = this.kiloMax - (this.kilo + w);
@@ -141,7 +183,8 @@ class Classic extends J.Game {
     const w = this.getFruitWeight();
     const r = w * 12;
     const initObj = { x: r + random(Cs.mcw - (2 * r)), weight: w };
-    if (this.kilo === this.kiloMax) initObj.flGold = true;
+    // La pomme d'or pèse ce que vaut le jeu du joueur, pas le reste du kilo.
+    if (this.kilo === this.kiloMax) { initObj.flGold = true; initObj.weight = this.poidsPommeOr(); }
     const mc = this.newFruit(initObj);
     mc.y = this.map.height - (this.map.groundLevel + mc.ray);
     mc.endUpdate();
@@ -153,7 +196,9 @@ class Classic extends J.Game {
     const w = this.getFruitWeight();
     const r = w * 12;
     const initObj = { x: r + random(Cs.mcw - 2 * r), weight: w, flTree: true, flGround: true };
-    if (this.kilo === this.kiloMax) { initObj.flGold = true; this.newBird(); }
+    if (this.kilo === this.kiloMax) {
+      initObj.flGold = true; initObj.weight = this.poidsPommeOr(); this.newBird();
+    }
     const mc = this.newFruit(initObj);
     mc.y = -1000;
     mc.recal();
@@ -678,40 +723,39 @@ K.registerClass('gameRing', Ring);
  *   MOYEN      huit pommes, une minute trente, dix granites. Le panier est
  *              posé au bord, ce qui ouvre le granite à rebond — la « du
  *              mammouth », qu'on accepte au même titre.
- *   DIFFICILE  huit pommes, deux minutes, le panier au bord et un écureuil
- *              qui COURT sur le terrain. Deux granites, un triple-impact, une
- *              alouette et une figure avec écureuil — et huit pommes au
- *              panier en tout, figure imposée ou non.
+ *   DIFFICILE  le moyen avec un CORBEAU : dix granites encore, une minute
+ *              cinquante, et un oiseau qui fond sur la tzongre. C'est LUI qui
+ *              fait la différence — les vingt secondes de plus sont ce qu'il
+ *              coûte —, et s'il l'emporte, l'épreuve s'arrête là.
  *
  * « N POMMES SUR LE TERRAIN » EST UNE POPULATION, pas un stock : le terrain se
  * regarnit à mesure qu'on encaisse, comme le Challenge le fait depuis son
- * arbre. Il le faut : le moyen demande dix granites et ne pose que huit
- * pommes. Sur le difficile, « les autres doivent être mises dans le panier »
- * devient donc un COMPTE — huit pommes encaissées en tout, dont les cinq
- * figures imposées : rater une figure coûte une pomme, pas la partie.
+ * arbre. Il le faut : les deux derniers niveaux demandent dix granites et ne
+ * posent que huit pommes — rater une figure coûte une pomme, pas la partie.
  *
  * LE POIDS DES POMMES EST BORNÉ sur les deux niveaux à granites. Une pomme
  * vaut `(poids − croqué) × 100` points ; en tirer au hasard entre 80 et 230
  * garde le granite jouable, là où une pomme trop lourde ou trop légère le
  * rend affaire de chance.
  *
- * UNE FIGURE, UNE CASE. Sur le niveau difficile, chaque pomme encaissée coche
- * AU PLUS un objectif, et le plus exigeant de ceux qu'elle satisfait encore.
- * Sans cette règle un seul triple-impact — qui est une double-bande plus une
- * tête — en cocherait deux d'un coup. On lit les DRAPEAUX du fruit, pas le nom
- * composé : « granite » s'écrit `tete dunk`, mais « pure tete dunk » s'appelle
- * « pure granite » et reste un granite.
+ * UNE FIGURE, UNE CASE : chaque pomme encaissée coche AU PLUS un objectif, et
+ * le plus exigeant de ceux qu'elle satisfait encore. Les trois niveaux n'en
+ * demandent aujourd'hui qu'un seul, mais la règle tient la table ouverte : une
+ * liste de figures s'y écrit sans qu'un triple-impact — qui est une
+ * double-bande plus une tête — en coche deux d'un coup. On lit les DRAPEAUX du
+ * fruit, pas le nom composé : « granite » s'écrit `tete dunk`, mais « pure
+ * tete dunk » s'appelle « pure granite » et reste un granite.
  */
 const DEFI_NIVEAUX = [
   {
     nom: 'FACILE', pommes: 10, temps: 60000, poids: null,
-    panierAuBord: false, ecureuil: false,
+    panierAuBord: false, corbeau: false,
     consigne: 'Réalisez dix dunks avant la fin du temps !',
     objectifs: [{ cle: 'dunk', label: 'Dunk', n: 10, test: (f) => !!f.flScDunk }],
   },
   {
     nom: 'MOYEN', pommes: 8, temps: 90000, poids: [0.8, 2.3],
-    panierAuBord: true, ecureuil: false,
+    panierAuBord: true, corbeau: false,
     // Les lignes du panneau de consigne tiennent en une soixantaine de
     // caractères : au-delà, le champ de texte déborde de sa boîte.
     consigne: 'Réalisez dix granites avant la fin du temps !\n'
@@ -719,22 +763,14 @@ const DEFI_NIVEAUX = [
     objectifs: [{ cle: 'granite', label: 'Granite', n: 10, test: estGranite }],
   },
   {
-    nom: 'DIFFICILE', pommes: 8, temps: 120000, poids: [0.8, 2.3],
-    panierAuBord: true, ecureuil: true,
-    consigne: 'Deux granites, un triple-impact, une alouette et une figure\n'
-      + "avec l'écureuil — et huit pommes au panier en tout !",
-    toutAuPanier: true,
-    // Du plus exigeant au moins exigeant : c'est l'ordre où l'on coche.
-    objectifs: [
-      { cle: 'triple', label: 'Triple-impact', n: 1,
-        test: (f) => !!(f.flScSide && f.flScBound && f.flScHead) },
-      { cle: 'granite', label: 'Granite', n: 2, test: estGranite },
-      { cle: 'ecureuil', label: 'Écureuil', n: 1, test: (f) => !!f.flScSquirrel },
-      // L'ALOUETTE : `ricochet tete` dans la table des noms — la pomme rebondit
-      // sur un bord, puis part de la tête au panier.
-      { cle: 'alouette', label: 'Alouette', n: 1,
-        test: (f) => !!(f.flScBound && f.flScHead) },
-    ],
+    // Le difficile, c'est le moyen avec un CORBEAU : dix granites encore, vingt
+    // secondes de plus, et un oiseau qui fond sur la tzongre et lui arrache ses
+    // pommes. Le temps en plus n'est pas une faveur — c'est ce qu'il coûte.
+    nom: 'DIFFICILE', pommes: 8, temps: 110000, poids: [0.8, 2.3],
+    panierAuBord: true, corbeau: true,
+    consigne: 'Réalisez dix granites avant la fin du temps !\n'
+      + 'Un corbeau rôde : il fond sur la tzongre et lui vole ses pommes.',
+    objectifs: [{ cle: 'granite', label: 'Granite', n: 10, test: estGranite }],
   },
 ];
 // Le granite, c'est tête + dunk. La « du mammouth » est le même geste avec la
@@ -761,7 +797,7 @@ class Defi extends J.Game {
     // L'état des objectifs : un compteur par case, remis à zéro avec la partie.
     this.fait = {};
     for (const o of this.regle.objectifs) this.fait[o.cle] = 0;
-    this.pommesAuPanier = 0;
+    this.corbeauTimer = 0;
   }
   /*
    * LE PANNEAU DE CONSIGNE — et le rouleau qu'il fallait arrêter.
@@ -810,29 +846,18 @@ class Defi extends J.Game {
       this.panier.x = this.panier.openRay + 6;
       this.panier.endUpdate();
     }
-    if (this.regle.ecureuil) this.genEcureuil();
+    if (this.regle.corbeau) this.genCorbeau();
     for (let i = 0; i < this.regle.pommes; i++) this.genGroundFruit();
   }
   /*
-   * L'ÉCUREUIL COURT, il ne pose pas.
-   *
-   * On le posait à un point du décor, et il y restait : sans `setSens`, son
-   * `sens` n'existe pas et `x += speed * sens` ne vaut plus rien du tout. Il
-   * se lâche comme dans le Challenge — hors du terrain, tourné vers lui : le
-   * voilà qui traverse, rebondit aux marges et repasse, indéfiniment. C'est
-   * lui qu'il faut viser pour la figure « écureuil », et il fallait bien
-   * qu'il bouge.
+   * LE CORBEAU, ACTIF. `newBird` suffit : il se cherche une cible tout seul
+   * (`findTarget`), tourne, prépare son piqué et fond dessus. Le `hitPoint`
+   * est celui du bac à sable et de la Survie — ce qu'il faut lui mettre pour
+   * l'assommer.
    */
-  genEcureuil() {
-    const cote = random(2) * 2 - 1;
-    const mc = this.newSquirrel();
-    const demi = this.map.width / 2;
-    mc.x = demi + (demi + 10) * cote;
-    mc.y = this.map.height - this.map.groundLevel;
-    mc.setSens(-cote);
-    mc.endUpdate();
-    this.ecureuil = mc;
-    return mc;
+  genCorbeau() {
+    this.corbeau = this.newBird({ hitPoint: 40 });
+    return this.corbeau;
   }
   genGroundFruit() {
     const b = this.regle.poids;
@@ -878,16 +903,8 @@ class Defi extends J.Game {
     // saurait jamais ce qu'il vient de réussir.
     if (nom) this.scroller.put(nom, '');
   }
-  onAddFruit() {
-    this.pommesAuPanier++;
-    if (this.regle.toutAuPanier && this.masterStep === 1 && this.step === 2) {
-      this.scroller.put('Panier', Math.min(this.pommesAuPanier, this.regle.pommes)
-        + '/' + this.regle.pommes);
-    }
-  }
   objectifsRemplis() {
     for (const o of this.regle.objectifs) if ((this.fait[o.cle] || 0) < o.n) return false;
-    if (this.regle.toutAuPanier && this.pommesAuPanier < this.regle.pommes) return false;
     return true;
   }
   update() {
@@ -896,6 +913,17 @@ class Defi extends J.Game {
       // Le terrain se regarnit : c'est une population qu'on tient, pas un
       // stock qu'on épuise (cf. l'en-tête du mode).
       while (this.fruitList.length < this.regle.pommes) this.genGroundFruit();
+      /*
+       * LE CORBEAU REVIENT. Il fond une fois sur la tzongre, remonte, et se
+       * retire au-dessus de l'écran (`Bird`, mode 3, `kill()` passé −100).
+       * Sans relève, les trois quarts de l'épreuve se joueraient sans lui —
+       * or c'est LUI, la difficulté. On en relâche un dès que le ciel est
+       * vide, après un souffle.
+       */
+      if (this.regle.corbeau) {
+        if (this.birdList.length) this.corbeauTimer = CORBEAU_REPOS;
+        else if ((this.corbeauTimer -= Cs.tmod) < 0) this.genCorbeau();
+      }
       this.barTimer.update();
       if (this.objectifsRemplis()) {
         this.barTimer.stopTimer();
@@ -918,10 +946,6 @@ class Defi extends J.Game {
     for (const o of this.regle.objectifs) {
       lignes.push({ type: 'littleScore', title: o.label + ' :',
         score: Math.min(this.fait[o.cle] || 0, o.n) + ' / ' + o.n });
-    }
-    if (this.regle.toutAuPanier) {
-      lignes.push({ type: 'littleScore', title: 'Pommes au panier :',
-        score: Math.min(this.pommesAuPanier, this.regle.pommes) + ' / ' + this.regle.pommes });
     }
     return lignes;
   }
@@ -988,21 +1012,49 @@ class Defi extends J.Game {
     }
     this.mng.client.saveSlot(0);
   }
+  /*
+   * LA PAGE D'UN ÉCHEC. Le temps à battre en tête — on sait ce qu'on visait —
+   * puis les cases, aussi loin qu'on soit allé. Deux façons de perdre s'en
+   * servent : le chrono qui déborde, et le corbeau qui emporte la tzongre.
+   */
+  pageEchec() {
+    const page = this.tableauObjectifs();
+    const rec = this.recordDuNiveau();
+    const ancien = Number(rec && rec.$s) || 0;
+    if (ancien) page.unshift({ type: 'bigScore', frame: 2, score: temps(ancien) },
+      { type: 'margin', value: 10 });
+    return page;
+  }
   tempsEcoule() {
     // Sans le S. La coquille du SWF de 2005 (Chrono.as) est reproduite telle
     // quelle dans les modes d'époque ; les Épreuves n'en sont pas, elles
     // écrivent le français.
     this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Trop tard !',
       msg: this.tzongre.name + " n'a pas relevé le défi dans les temps." }] });
-    // Le temps à battre reste affiché : on sait ce qu'on visait.
-    const page = this.tableauObjectifs();
-    const rec = this.recordDuNiveau();
-    const ancien = Number(rec && rec.$s) || 0;
-    if (ancien) page.unshift({ type: 'bigScore', frame: 2, score: temps(ancien) },
-      { type: 'margin', value: 10 });
-    this.endPanelMiddle.push({ list: page });
+    this.endPanelMiddle.push({ list: this.pageEchec() });
     this.step = 3;
     this.endGame();
+  }
+  /*
+   * LE CORBEAU L'EMPORTE, et l'épreuve s'arrête là.
+   *
+   * L'annonce est déjà faite : `Bird.eat` pousse la sienne — « Scrounch ! …
+   * n'a pas réussi à esquiver les attaques du corbeau » —, quatre titres et
+   * quatre phrases tirés au sort, du SWF de 2005. On n'en ajoute pas une
+   * seconde. Ce qui manque, c'est la SUITE : `Game.onTzDeath` clôt la partie
+   * sans rien d'autre, or dans les modes d'époque le panneau de fin s'est
+   * rempli en chemin, tandis qu'ici il ne se remplit qu'à l'arrivée. Sans
+   * cela, l'épreuve s'achèverait sur un panneau qui ne dit pas où l'on en
+   * était. On arrête donc le chrono — le temps ne court plus pour personne —
+   * et l'on écrit la page de l'échec.
+   */
+  onTzDeath() {
+    if (this.step === 2) {
+      this.barTimer.stopTimer();
+      this.endPanelMiddle.push({ list: this.pageEchec() });
+      this.step = 3;
+    }
+    super.onTzDeath();
   }
   reset() { super.reset({ level: this.level }); }
 }
@@ -2088,7 +2140,8 @@ class BacASable extends Classic {
     if (this.step === 2 && this.flFruitFalling && this.fruitList.length < this.fruitBase) this.genTreeFruit();
   }
   genPommeOr() {
-    const mc = this.newFruit({ x: 40 + random(Cs.mcw - 80), weight: 1.5, flGold: true });
+    // Au bac à sable on n'a pas joué de combo : c'est le plancher qui sort.
+    const mc = this.newFruit({ x: 40 + random(Cs.mcw - 80), weight: this.poidsPommeOr(), flGold: true });
     mc.y = this.map.height - (this.map.groundLevel + mc.ray);
     mc.endUpdate();
     return mc;

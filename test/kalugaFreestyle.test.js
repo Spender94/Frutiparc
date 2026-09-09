@@ -59,8 +59,13 @@ before(async () => {
   }
   throw new Error('serveur indisponible');
 });
-// Les pseudos de ce fichier, pour le ménage de fin.
-const BASES = ['freestyleuse', 'megajoueuse', 'vieuxclient', 'vieuxobjet', 'championne'];
+// Les pseudos de ce fichier, pour le ménage de fin. TOUS, sans exception :
+// « portageuse » y manquait, et comme ce sont ses scores les plus hauts du
+// fichier (B + 60, B + 61), chaque passage en laissait un dans la fenêtre des
+// vingt. Au bout de quelques dizaines d'exécutions elle était pleine de
+// résidus, et « le mode Championnat nourrit aussi le freestyle » — qui joue
+// B + 15 — n'y entrait plus.
+const BASES = ['freestyleuse', 'megajoueuse', 'portageuse', 'vieuxclient', 'vieuxobjet', 'championne'];
 
 after(() => {
   if (serverProc) serverProc.kill('SIGKILL');
