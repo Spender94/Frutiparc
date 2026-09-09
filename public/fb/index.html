@@ -1485,6 +1485,10 @@ let myBouille = null;
 let mySignature = '';   // signature de forum (BBCode), éditable via le bouton « Ma signature »
 let myAccessories = [];
 let myDefaultAccessories = [];
+// Les INCARNATIONS possédées, et la bouille principale : le menu déroulant du
+// formulaire choisit entre les deux (cf. incarnationSelectHtml).
+let myIncarnations = [];
+let myBouillePrincipale = null;
 // Mute status (totoche) for the logged-in user. When true, the topic page
 // and editor pre-disable the "Répondre" button so users don't compose a
 // message that will be rejected on submit. Server still enforces.
@@ -1549,11 +1553,25 @@ function isIncarnationValue(v) {
     && v.substring(0, 2) !== '00' && v.substring(0, 2) !== '01';
 }
 
-// State for the current selection: a full incarnation when one is picked,
-// otherwise the user's base bouille + the chosen accessory suffix.
+/*
+ * LA BOUILLE SUR LAQUELLE ON POSE L'ACCESSOIRE.
+ *
+ * Trois cas, du plus fort au plus faible :
+ *   · un accessoire qui EST une bouille entière (`fullState`) — il gagne, il
+ *     n'y a rien à composer ;
+ *   · une INCARNATION choisie au menu déroulant — c'est elle qui sert de base,
+ *     l'accessoire se pose dessus comme sur n'importe quelle tête ;
+ *   · sinon, sa bouille principale.
+ *
+ * On ne part JAMAIS de `myBouille` (ce que le joueur porte ailleurs) : s'il
+ * arrive au forum déguisé, le menu doit pouvoir le rendre à lui-même.
+ */
+function baseDuFormulaire(sel) {
+  return (sel && sel.incarnation) || myBouillePrincipale || myBouille;
+}
 function resolveBouilleState(sel) {
   if (sel && sel.fullState) return String(sel.fullState);
-  return buildBouilleState(myBouille, sel && sel.accSuffix9);
+  return buildBouilleState(baseDuFormulaire(sel), sel && sel.accSuffix9);
 }
 
 // Une bouille = UN CANEVAS, dessiné par le moteur JS quand il approche de
@@ -1691,7 +1709,7 @@ function renderBouilleGrid(formId) {
   var html = '';
   for (var i = 0; i < slice.length; i++) {
     var ac = slice[i];
-    var thumbState = ac.fullState ? ac.fullState : buildBouilleState(myBouille, ac.suffix);
+    var thumbState = ac.fullState ? ac.fullState : buildBouilleState(baseDuFormulaire(sel), ac.suffix);
     var isSel = ac.fullState
       ? (ac.fullState === sel.fullState)
       : (!sel.fullState && ac.suffix === selectedSuffix);
@@ -1729,9 +1747,43 @@ function expressionSelectHtml(formId) {
   return html;
 }
 
+/*
+ * LE MENU DES INCARNATIONS — « Ma bouille », puis celles qu'on possède.
+ *
+ * Il ne paraît que si l'on en a au moins une : sinon c'est une ligne vide de
+ * plus dans un formulaire qui n'en manque pas. Changer d'incarnation refait la
+ * grille — les huit vignettes d'accessoire se dessinent sur la tête choisie.
+ */
+function incarnationSelectHtml(formId) {
+  var sel = _activeBouilleSel[formId] || {};
+  var courant = sel.incarnation || '';
+  var html = '<select class="editor-select" id="inc-sel-' + formId + '" '
+    + 'onchange="bouilleSetIncarnation(\'' + formId + '\', this.value)">';
+  html += '<option value=""' + (courant ? '' : ' selected') + '>Ma bouille</option>';
+  for (var i = 0; i < myIncarnations.length; i++) {
+    var inc = myIncarnations[i];
+    var e = String(inc.etat || '');
+    if (e.length !== 24) continue;
+    html += '<option value="' + escapeHtml(e) + '"' + (courant === e ? ' selected' : '') + '>'
+      + escapeHtml(inc.nom || 'Incarnation') + '</option>';
+  }
+  html += '</select>';
+  return html;
+}
+
+function bouilleSetIncarnation(formId, etat) {
+  _activeBouilleSel[formId] = _activeBouilleSel[formId] || {};
+  _activeBouilleSel[formId].incarnation = (etat && etat.length === 24) ? etat : null;
+  // Une incarnation n'est pas un accessoire : celui qu'on avait choisi reste.
+  refreshBouillePreview(formId);
+  var grid = document.getElementById('bouille-grid-' + formId);
+  if (grid) { grid.innerHTML = renderBouilleGrid(formId); brancherBouilles(grid); }
+}
+
 function bouilleSelHtml(formId) {
   _bouillePage[formId] = 0;
-  _activeBouilleSel[formId] = { accSuffix9: '000000000', mouthId: null, fullState: null };
+  _activeBouilleSel[formId] = { accSuffix9: '000000000', mouthId: null, fullState: null,
+    incarnation: null };
   var all = getAllAccessories();
   var html = '';
 
@@ -1749,6 +1801,14 @@ function bouilleSelHtml(formId) {
   html += '<div class="editor-value-cell">';
   html += '<div class="bouille-grid" id="bouille-grid-' + formId + '">' + renderBouilleGrid(formId) + '</div>';
   html += '</div></div>';
+
+  // Incarnation — seulement pour qui en possède.
+  if (myIncarnations.length) {
+    html += '<div class="editor-row">';
+    html += '<div class="editor-label-cell">Incarnation</div>';
+    html += '<div class="editor-value-cell">' + incarnationSelectHtml(formId) + '</div>';
+    html += '</div>';
+  }
 
   // Expression de la bouille
   html += '<div class="editor-row">';
@@ -3563,6 +3623,8 @@ async function init() {
       mySignature = data.signature || '';
       myAccessories = data.accessories || [];
       myDefaultAccessories = data.defaultAccessories || [];
+      myIncarnations = data.incarnations || [];
+      myBouillePrincipale = data.bouillePrincipale || data.bouille || null;
       myMuted = !!data.muted;
       myMutedUntilDisplay = data.mutedUntilDisplay || null;
       myBanned = !!data.banned;

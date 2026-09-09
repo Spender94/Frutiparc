@@ -1,12 +1,14 @@
 /*
- * LES PRUNELLES — les iris d'hiko, vendus au parc.
+ * LES INCARNATIONS — les bouilles qu'on enfile.
  *
- * L'iris d'une frutibouille, c'est le clip `p` de `oa.o` : un ROULEAU que le
- * moteur cale sur `eyeSc`, la valeur des caractères 4 et 5 de la chaîne
- * d'état. La famille 0 en a dix-huit ; hiko (famille 12) en a deux que
- * personne d'autre ne porte — une paire rouge et noir, et une paire ANIMÉE.
+ * DEUX MOTS À NE PAS CONFONDRE. Une INCARNATION est ce que voit le joueur : une
+ * bouille qu'il porte à la place de la sienne, et qu'il retire pour se
+ * retrouver. Une PRUNELLE est la mécanique des deux premières — une paire
+ * d'iris récoltée chez hiko (famille 12) et greffée au bout du rouleau de la
+ * famille d'accueil. L'iris est le clip `p` de `oa.o`, que le moteur cale sur
+ * `eyeSc`, la valeur des caractères 4 et 5 de la chaîne d'état.
  *
- * Ce fichier tient les quatre promesses de la fonctionnalité :
+ * Ce fichier tient les cinq promesses de la fonctionnalité :
  *
  *   · LA RÉCOLTE est reproductible et FIGÉE. `prunelles.json` porte l'index
  *     que chaque paire occupera : c'est ce numéro qu'une bouille inscrit dans
@@ -18,9 +20,12 @@
  *     portent.
  *   · L'ACHAT ne change QUE les yeux. Deux caractères sur vingt-quatre : la
  *     coiffure, les couleurs et l'accessoire restent à leur place.
+ *   · ON LA PORTE, ON LA RETIRE. La bouille PRINCIPALE est gardée par le
+ *     serveur (`fbouille_base`) : le retour marche encore après une
+ *     reconnexion, alors même que ce que le joueur montre est l'incarnation.
  *   · L'INVENTAIRE a un rayon pour elles, des deux côtés — l'onglet du light
  *     et le dossier du bureau —, et elles ne se retrouvent pas parmi les
- *     accessoires.
+ *     accessoires. Le forum, lui, a son menu déroulant.
  */
 'use strict';
 
@@ -31,9 +36,9 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-const PORT = 3517;
+const PORT = 3518;
 const BASE = `http://127.0.0.1:${PORT}`;
-const CLE = 'cle-de-test-prunelles';
+const CLE = 'cle-de-test-incarnations';
 const RUN = Date.now().toString(36).slice(-5);
 const hdr = { 'Content-Type': 'application/json', 'x-admin-key': CLE };
 
@@ -43,6 +48,11 @@ const M = require('../public/js/bouille-moteur.js');
 const PAQUET = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/fbouille/prunelles.json'), 'utf8'));
 const SERVEUR = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+const FORUM = fs.readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
+
+// Les deux articles livrés avec le code, dans leur plage réservée.
+const HIKO1 = 600001;
+const HIKO2 = 600002;
 
 function lireFamille(n) {
   const b = fs.readFileSync(path.join(ROOT, 'public/fbouille/famille' + n + '.swf'));
@@ -56,7 +66,7 @@ before(async () => {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5262', FRUTISCORE_PORT: '5263',
+      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5264', FRUTISCORE_PORT: '5265',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -177,14 +187,17 @@ test('une image greffée RETIRE ce que la famille laissait, puis pose', async ()
 
 // ── La boutique ────────────────────────────────────────────────────────────
 
-test('les prunelles ont leur rayon, et il est PAYANT', async () => {
+test('les incarnations ont leur rayon, et il est PAYANT', async () => {
   const sid = await joueur('prul' + RUN, '000305070b0f0m09020t0a00');
   const s = await (await fetch(BASE + '/api/light/shop?sid=' + sid)).json();
-  const rayon = (s.categories || []).find((c) => c.name === 'Prunelles');
-  assert.ok(rayon, 'le rayon « Prunelles » existe');
+  const rayon = (s.categories || []).find((c) => c.name === 'Incarnations');
+  assert.ok(rayon, 'le rayon « Incarnations » existe');
   assert.equal(rayon.items.length, 2);
+  // Une plage RÉSERVÉE : un article créé depuis l'admin prend le numéro qu'on
+  // lui donne, et ne doit pas pouvoir se poser sur celui d'une incarnation.
+  assert.deepEqual(rayon.items.map((a) => a.id).sort(), [HIKO1, HIKO2]);
   for (const a of rayon.items) {
-    assert.equal(a.kind, 'prunelle');
+    assert.equal(a.kind, 'incarnation');
     assert.equal(a.offert, false, 'un rayon payant, comme les accessoires');
     assert.equal(a.owned, false);
     assert.ok(a.prunelle, 'l’article nomme sa paire');
@@ -200,11 +213,11 @@ test('les prunelles ont leur rayon, et il est PAYANT', async () => {
   assert.deepEqual(yeux, [18, 19]);
 });
 
-test('acheter une prunelle ne change QUE les yeux', async () => {
+test('acheter une incarnation ne change QUE les yeux', async () => {
   const mienne = '000305070b0f0m09020t0a00';   // avec le bonnet de nuit au bout
   const sid = await joueur('prua' + RUN, mienne);
   const r = await (await fetch(BASE + '/api/light/shop/buy', {
-    method: 'POST', headers: hdr, body: JSON.stringify({ sid, id: 301 }),
+    method: 'POST', headers: hdr, body: JSON.stringify({ sid, id: HIKO1 }),
   })).json();
   assert.equal(r.ok, true);
   assert.equal(r.bouille.length, 24);
@@ -215,7 +228,7 @@ test('acheter une prunelle ne change QUE les yeux', async () => {
   assert.equal(r.bouille.substring(15, 24), '9020t0a00', 'le bonnet est resté');
   // Deux fois, non : c'est un article de boutique comme un autre.
   const encore = await (await fetch(BASE + '/api/light/shop/buy', {
-    method: 'POST', headers: hdr, body: JSON.stringify({ sid, id: 301 }),
+    method: 'POST', headers: hdr, body: JSON.stringify({ sid, id: HIKO1 }),
   })).json();
   assert.equal(encore.ok, false);
   assert.equal(encore.code, 2, 'déjà possédé');
@@ -223,34 +236,84 @@ test('acheter une prunelle ne change QUE les yeux', async () => {
 
 // ── L'inventaire ───────────────────────────────────────────────────────────
 
-test('les prunelles ont leur rayon d’inventaire, et pas celui des accessoires', async () => {
+test('les incarnations ont leur rayon d’inventaire, et pas celui des accessoires', async () => {
   // Un nouveau membre a de quoi s'offrir la première paire (120 kikooz sur les
   // 200 de bienvenue) : c'est assez pour voir où elle se range.
   const sid = await joueur('prui' + RUN, '000305070b0f0m09020t0a00');
   const achat = await (await fetch(BASE + '/api/light/shop/buy', {
-    method: 'POST', headers: hdr, body: JSON.stringify({ sid, id: 301 }),
+    method: 'POST', headers: hdr, body: JSON.stringify({ sid, id: HIKO1 }),
   })).json();
   assert.equal(achat.ok, true, 'la paire est achetée');
 
   const inv = await (await fetch(BASE + '/api/light/inventaire?sid=' + sid)).json();
-  assert.equal(inv.prunelles.length, 1);
-  assert.equal(inv.prunelles[0].nom, "Hiko's eyes");
-  assert.equal(inv.prunelles[0].cle, 'hiko1', 'la ligne nomme sa paire');
-  assert.equal(inv.prunelles[0].etat.length, 24);
+  assert.equal(inv.incarnations.length, 1);
+  assert.equal(inv.incarnations[0].nom, "Hiko's eyes");
+  assert.equal(inv.incarnations[0].cle, 'hiko1', 'la ligne nomme sa paire');
+  assert.equal(inv.incarnations[0].etat.length, 24);
   // Et elle n'est PAS parmi les accessoires : une paire d'iris n'en est pas un.
   const accs = (inv.accessoires || []).map((a) => a.nom);
   assert.ok(!accs.some((n) => /Hiko/.test(n)), 'pas de doublon côté accessoires');
 
   // Le BUREAU a le même rangement : un dossier de plus dans l'Inventaire.
   const arbre = await (await fetch(BASE + '/ff/ls?uid=inventory&sid=' + sid)).text();
-  assert.match(arbre, /<f u="inv_prunelles" n="Prunelles" t="folder" \/>/);
-  const dossier = await (await fetch(BASE + '/ff/ls?uid=inv_prunelles&sid=' + sid)).text();
-  assert.match(dossier, /u="shop_301"[^>]*t="bouille"/);
+  assert.match(arbre, /<f u="inv_incarnations" n="Incarnations" t="folder" \/>/);
+  const dossier = await (await fetch(BASE + '/ff/ls?uid=inv_incarnations&sid=' + sid)).text();
+  // « Ma bouille » d'abord : c'est par elle qu'on retire ce qu'on porte.
+  assert.match(dossier, /u="fb_principale"[^>]*t="bouille"[^>]*>Ma bouille/);
+  assert.match(dossier, new RegExp('u="shop_' + HIKO1 + '"[^>]*t="bouille"'));
   const accessoires = await (await fetch(BASE + '/ff/ls?uid=inv_accessories&sid=' + sid)).text();
-  assert.ok(!/shop_301/.test(accessoires), 'le dossier Accessoires ne la reprend pas');
+  assert.ok(!new RegExp('shop_' + HIKO1).test(accessoires),
+    'le dossier Accessoires ne la reprend pas');
 });
 
 // ── Le code ────────────────────────────────────────────────────────────────
+
+// ── On la porte, on la retire ──────────────────────────────────────────────
+
+test('on enfile une incarnation, on la retire, et sa bouille est intacte', async () => {
+  const mienne = '000305070b0f0m09020t0a00';
+  const sid = await joueur('prup' + RUN, mienne);
+  await fetch(BASE + '/api/light/shop/buy', {
+    method: 'POST', headers: hdr, body: JSON.stringify({ sid, id: HIKO1 }),
+  });
+  const inv = await (await fetch(BASE + '/api/light/inventaire?sid=' + sid)).json();
+  const habit = inv.incarnations[0].etat;
+
+  // On l'enfile — c'est le même chemin d'écriture que le chat et le mobile.
+  await fetch(BASE + '/do/eb?sid=' + sid + '&b=' + encodeURIComponent(habit));
+  const porte = await (await fetch(BASE + '/api/forum/me?sid=' + sid)).json();
+  assert.equal(porte.bouille, habit, 'il montre l’incarnation');
+  assert.equal(porte.bouillePrincipale, mienne,
+    'et le serveur garde SA bouille — c’est elle qu’on lui rendra');
+  assert.equal(porte.incarnations.length, 1, 'la liste sert au forum comme à l’inventaire');
+
+  // L'inventaire dit la même chose, et le dossier du bureau propose le retour.
+  const inv2 = await (await fetch(BASE + '/api/light/inventaire?sid=' + sid)).json();
+  assert.equal(inv2.bouillePrincipale, mienne);
+  const dossier = await (await fetch(BASE + '/ff/ls?uid=inv_incarnations&sid=' + sid)).text();
+  assert.ok(dossier.indexOf(mienne) >= 0, '« Ma bouille » porte l’état d’origine');
+
+  // On la retire.
+  await fetch(BASE + '/do/eb?sid=' + sid + '&b=' + encodeURIComponent(mienne));
+  const nu = await (await fetch(BASE + '/api/forum/me?sid=' + sid)).json();
+  assert.equal(nu.bouille, mienne);
+  assert.equal(nu.bouillePrincipale, mienne);
+});
+
+test('une incarnation ne se confond pas avec une bouille ordinaire', () => {
+  // Deux familles de bouilles sont des incarnations : celles d'une AUTRE
+  // famille, et celles dont l'iris a été acheté (au-delà des dix-huit
+  // d'origine). Serveur et client doivent en juger pareil, sans quoi l'un
+  // écraserait la bouille principale que l'autre s'efforce de garder.
+  assert.match(SERVEUR, /const IRIS_ORIGINE_MAX = 17;/);
+  assert.match(SERVEUR, /return decode62\(s\.substring\(4, 6\)\) > IRIS_ORIGINE_MAX;/);
+  assert.match(LIGHT, /var IRIS_ORIGINE_MAX = 17;/);
+  assert.match(LIGHT, /return fbDecChar\(v\.charAt\(4\)\) \* 62 \+ fbDecChar\(v\.charAt\(5\)\) > IRIS_ORIGINE_MAX;/);
+  // L'éditeur, lui, ne propose que les iris d'origine : les autres s'achètent.
+  assert.match(LIGHT, /\{ key: "iris",\s+label: "iris",\s+id: 2, pos: 4,\s+max: IRIS_ORIGINE_MAX \}/);
+  // Et la bouille principale ne bouge que lorsqu'on montre la sienne.
+  assert.match(SERVEUR, /function champsDeLaBouille\(user, etat\) \{[\s\S]*?if \(!estIncarnation\(etat\)\) \{/);
+});
 
 test('la clé d’une prunelle survit au passage par la base', () => {
   // Les articles sont persistés, et les colonnes ne connaissent pas `prunelle` :
@@ -258,20 +321,33 @@ test('la clé d’une prunelle survit au passage par la base', () => {
   // accessoire au suffixe vide — une bouille sans rien, et des yeux inchangés.
   assert.match(SERVEUR, /if \(def && def\.prunelle\) p\.prunelle = def\.prunelle;/);
   // Et le rayon reste payant.
-  assert.match(SERVEUR, /\|\| n\.startsWith\('prunelle'\)\);/);
+  assert.match(SERVEUR, /n\.startsWith\('incarnation'\)\);/);
 });
 
-test('le light range les prunelles à part, et sait en sortir', () => {
-  assert.match(LIGHT, /<button class="inv-onglet" data-rub="prunelles">Prunelles<\/button>/);
-  assert.match(LIGHT, /id="inv-prunelles-grid"/);
-  assert.match(LIGHT, /function porterPrunelle\(iris, nom\)/);
-  // On change DEUX caractères de ce qu'on porte, pas plus.
-  assert.match(LIGHT, /return s\.substring\(0, 4\) \+ iris \+ s\.substring\(6, 24\);/);
-  // Le retour aux iris d'origine passe par l'éditeur — un seul endroit pour
-  // changer de visage.
-  assert.match(LIGHT, /\$\("#inv-prunelles-retour"\)\.addEventListener\("click", function \(\) \{\s*\n\s*openFbEditor\(/);
-  // Et l'éditeur ne propose PAS les prunelles : elles s'achètent.
-  assert.match(LIGHT, /\{ key: "iris",\s+label: "iris",\s+id: 2, pos: 4,\s+max: 17 \}/);
+test('le light range les incarnations à part, et on en sort d’un clic', () => {
+  assert.match(LIGHT, /<button class="inv-onglet" data-rub="incarnations">Incarnations<\/button>/);
+  assert.match(LIGHT, /id="inv-incarnations-grid"/);
+  // La première case est TOUJOURS « Ma bouille » : c'est le geste de retrait,
+  // le même que « Normal » chez les accessoires.
+  assert.match(LIGHT, /\{ nom: "Ma bouille", etat: fbPad\(myBase\), sienne: true \}/);
+  assert.match(LIGHT, /function porterIncarnation\(c\)/);
+  // `myBase` ne suit PAS l'incarnation : c'est ce qui permet de la retirer.
+  assert.match(LIGHT, /\/\/ `myBase` ne bouge pas : l'incarnation est un habit, pas un visage\./);
+  // Et la bouille principale du serveur fait foi au chargement.
+  assert.match(LIGHT, /if \(d\.bouillePrincipale && !isIncarnation\(d\.bouillePrincipale\)\) myBase = d\.bouillePrincipale;/);
+  // « Ma Frutibouille » édite SA bouille, jamais le déguisement : sinon une
+  // coiffure retouchée disparaîtrait en retirant l'incarnation.
+  assert.match(LIGHT, /if \(isIncarnation\(depart\)\) depart = fbPad\(myBase\);/);
+});
+
+test('le forum a son menu d’incarnation, et seulement pour qui en possède', () => {
+  assert.match(FORUM, /function incarnationSelectHtml\(formId\)/);
+  assert.match(FORUM, /<option value=""' \+ \(courant \? '' : ' selected'\) \+ '>Ma bouille<\/option>/);
+  assert.match(FORUM, /if \(myIncarnations\.length\) \{/, 'pas de ligne vide pour les autres');
+  // L'accessoire se pose SUR l'incarnation choisie — les deux tiennent ensemble.
+  assert.match(FORUM, /function baseDuFormulaire\(sel\) \{\s*\n\s*return \(sel && sel\.incarnation\) \|\| myBouillePrincipale \|\| myBouille;/);
+  assert.match(FORUM, /buildBouilleState\(baseDuFormulaire\(sel\), sel && sel\.accSuffix9\)/);
+  assert.match(FORUM, /myIncarnations = data\.incarnations \|\| \[\];/);
 });
 
 test('le lecteur greffe les prunelles au chargement de la famille', () => {

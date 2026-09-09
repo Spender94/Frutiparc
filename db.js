@@ -146,6 +146,12 @@ async function initSchema() {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS device_token TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_state TEXT DEFAULT 'none';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_flag TEXT DEFAULT '';
+        -- LA BOUILLE PRINCIPALE — celle qu'on retrouve en retirant une
+        -- incarnation. La colonne fbouille porte ce que le joueur MONTRE ;
+        -- quand c'est une incarnation (une autre bouille qu'il a achetée et
+        -- qu'il enfile), la sienne serait perdue au premier rechargement. On
+        -- la garde ici, mise à jour chaque fois qu'il montre sa propre tête.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS fbouille_base TEXT DEFAULT '';
         CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);
       EXCEPTION WHEN OTHERS THEN NULL;
       END $$;

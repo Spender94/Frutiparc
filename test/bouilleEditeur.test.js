@@ -40,6 +40,9 @@ function editeur() {
     throw new Error('fonction ' + nom + ' non refermée');
   };
   const src = [
+    // La borne des iris d'origine : l'éditeur ne propose que ceux-là, les
+    // autres s'achètent (cf. les incarnations).
+    LIGHT.match(/var IRIS_ORIGINE_MAX = \d+;/)[0],
     LIGHT.match(/var FB_SAC = \[[^\]]*\];/)[0],
     LIGHT.match(/var FB_PARTS = \[[\s\S]*?\n {2}\];/)[0],
     'var fbState = "000000010000000000000000";',

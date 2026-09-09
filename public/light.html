@@ -2927,9 +2927,9 @@
     </div>
     <div class="inv-onglets" id="inv-onglets">
       <button class="inv-onglet on" data-rub="accessoires">Accessoires</button>
-      <!-- Les PRUNELLES ont leur rayon : une paire d'iris n'est pas un
-           accessoire, elle fait partie du visage (caractères 4-5 de l'état). -->
-      <button class="inv-onglet" data-rub="prunelles">Prunelles</button>
+      <!-- Les INCARNATIONS ont leur rayon : une bouille qu'on ENFILE n'est pas
+           un accessoire qu'on pose. -->
+      <button class="inv-onglet" data-rub="incarnations">Incarnations</button>
       <button class="inv-onglet" data-rub="fonds">Fonds d'écran</button>
       <button class="inv-onglet" data-rub="pictos">Pictos</button>
     </div>
@@ -2940,15 +2940,12 @@
         <div class="sheet-hint" id="bouille-sheet-hint">Choisis un accessoire de ton inventaire :</div>
         <div id="bouille-acc-grid" class="acc-grid"></div>
       </div>
-      <!-- Prunelles : les paires d'iris achetées, posées sur SA bouille. On en
-           sort par « Ma Frutibouille », où les dix-huit iris d'origine se
-           choisissent — c'est le même réglage, à la même place qu'en 2005. -->
-      <div class="inv-rubrique" data-rub="prunelles" hidden>
-        <div class="sheet-hint" id="inv-prunelles-hint">Tes paires d'iris :</div>
-        <div id="inv-prunelles-grid" class="acc-grid"></div>
-        <div class="sheet-hint" style="margin-top:10px">
-          <button type="button" id="inv-prunelles-retour" class="fb-valider">retrouver mes iris</button>
-        </div>
+      <!-- Incarnations : les bouilles achetées, qu'on enfile à la place de la
+           sienne. La première case est TOUJOURS « Ma bouille » — c'est par elle
+           qu'on retire ce qu'on porte, comme « Normal » chez les accessoires. -->
+      <div class="inv-rubrique" data-rub="incarnations" hidden>
+        <div class="sheet-hint" id="inv-incarnations-hint">Tes incarnations :</div>
+        <div id="inv-incarnations-grid" class="acc-grid"></div>
       </div>
       <!-- Fonds d'écran : la vignette est le fond lui-même, cadré comme il le
            sera sur le bureau. « Aucun » rend le vert d'origine. -->
@@ -5222,10 +5219,10 @@
     if (it.kind === "picto" && it.picto) {
       return '<img src="' + xmlEscape(it.picto) + '" alt="" loading="lazy">';
     }
-    // Une PRUNELLE ne se compose pas d'un suffixe : le serveur envoie l'état
-    // complet — la bouille du joueur avec cette paire d'iris —, on le pose tel
+    // Une INCARNATION ne se compose pas d'un suffixe : le serveur envoie l'état
+    // complet — la bouille principale du joueur, incarnée —, on le pose tel
     // quel. (L'iris animé tourne dans l'aperçu, comme il tournera partout.)
-    if (it.kind === "prunelle" && it.etat) return previewIframe(it.etat);
+    if (it.kind === "incarnation" && it.etat) return previewIframe(it.etat);
     // Accessoire : posé sur la bouille du joueur, comme l'aperçu du bureau.
     return previewIframe(buildState(myBase, it.suffix9, null));
   }
@@ -11187,9 +11184,27 @@
   var accList = [];                       // [{name, suffix, fullState?}]
   var accSel = { suffix: "000000000", fullState: null };
 
+  /*
+   * UNE INCARNATION — une bouille qui n'est PAS la sienne.
+   *
+   * Le parc en vend deux sortes, et elles se reconnaissent l'une comme l'autre
+   * à la chaîne d'état :
+   *
+   *   · une bouille d'une AUTRE FAMILLE (les incarnations d'époque : tout sauf
+   *     « 00 » et « 01 », les familles des joueurs) ;
+   *   · une bouille de la sienne, avec une PAIRE D'IRIS ACHETÉE. Les dix-huit
+   *     iris d'origine vont de 0 à 17 — c'est la borne de l'éditeur et la
+   *     longueur du rouleau ; au-delà, la paire vient de la boutique.
+   *
+   * La distinction sert à une chose : `myBase` ne suit PAS une incarnation.
+   * C'est ce qui permet de la retirer et de retrouver sa tête — ici comme
+   * après une reconnexion, où le serveur rend la bouille principale.
+   */
+  var IRIS_ORIGINE_MAX = 17;
   function isIncarnation(v) {
-    return typeof v === "string" && v.length === 24
-      && v.substring(0, 2) !== "00" && v.substring(0, 2) !== "01";
+    if (typeof v !== "string" || v.length !== 24) return false;
+    if (v.substring(0, 2) !== "00" && v.substring(0, 2) !== "01") return true;
+    return fbDecChar(v.charAt(4)) * 62 + fbDecChar(v.charAt(5)) > IRIS_ORIGINE_MAX;
   }
   function buildState(base, suffix9, fullState) {
     if (fullState) return String(fullState);
@@ -11233,7 +11248,7 @@
   var invFonds = [];            // [{id, nom, url, color}]
   var invFondActuel = null;     // {url, color} ou null
   var invPictos = [];           // [{id, nom, jeu, url}]
-  var invPrunelles = [];        // [{id, nom, cle, etat}]
+  var invIncarnations = [];     // [{id, nom, cle, etat}] — les bouilles achetées
   var invCharge = false;
 
   function montrerRubrique(nom) {
@@ -11252,15 +11267,9 @@
     if (!b) return;
     var rub = b.getAttribute("data-rub");
     montrerRubrique(rub);
-    // Les prunelles se dessinent sur SA bouille : elle a pu changer depuis le
-    // dernier passage (un accessoire posé, une coiffure retouchée).
-    if (rub === "prunelles") rendrePrunelles();
-  });
-  // « Retrouver mes iris » : les dix-huit d'origine se choisissent dans « Ma
-  // Frutibouille », à la ligne « iris ». On y va, plutôt que d'en recopier le
-  // réglage ici — un seul endroit pour changer de visage.
-  $("#inv-prunelles-retour").addEventListener("click", function () {
-    openFbEditor(state.bouilleByUser[state.userLower] || myBase);
+    // Les incarnations se dessinent sur SA bouille : elle a pu changer depuis
+    // le dernier passage (un accessoire posé, une coiffure retouchée).
+    if (rub === "incarnations") rendreIncarnations();
   });
 
   function chargerInventaire(force) {
@@ -11272,11 +11281,14 @@
         invCharge = true;
         invFonds = d.fonds || [];
         invPictos = d.pictos || [];
-        invPrunelles = d.prunelles || [];
+        invIncarnations = d.incarnations || [];
+        // La bouille PRINCIPALE fait foi : si le joueur porte une incarnation,
+        // c'est elle qu'on lui rendra en la retirant.
+        if (d.bouillePrincipale && !isIncarnation(d.bouillePrincipale)) myBase = d.bouillePrincipale;
         invFondActuel = d.fond || null;
         rendreFonds();
         rendrePictos();
-        rendrePrunelles();
+        rendreIncarnations();
         appliquerFond(invFondActuel);
       })
       .catch(function () {
@@ -11314,55 +11326,60 @@
   }
 
   /*
-   * LES PRUNELLES — les paires d'iris achetées.
+   * LES INCARNATIONS — les bouilles achetées, qu'on ENFILE.
    *
-   * Une prunelle vit aux caractères 4 et 5 de la chaîne d'état, au milieu du
-   * VISAGE : ce n'est pas un accessoire qu'on pose au bout, c'est un morceau
-   * de la bouille qu'on remplace. La vignette la montre donc sur SA bouille
-   * d'aujourd'hui — coiffure, couleurs et accessoire du moment.
+   * Une incarnation n'est pas un accessoire qu'on pose au bout de sa chaîne
+   * d'état : c'est une AUTRE BOUILLE, portée à la place de la sienne. Elle se
+   * comporte donc exactement comme un accessoire du point de vue du joueur —
+   * on la met, on l'enlève — mais mécaniquement `myBase` ne la suit jamais :
+   * c'est ce qui permet de retrouver sa tête intacte, ici comme après une
+   * reconnexion (le serveur garde la bouille principale).
    *
-   * POUR EN SORTIR : « Ma Frutibouille ». Les dix-huit iris d'origine s'y
-   * choisissent depuis toujours, à la ligne « iris » — c'est le même réglage,
-   * au même endroit, et le bouton ci-dessous n'est qu'un raccourci vers lui.
+   * La PREMIÈRE case est toujours « Ma bouille » : c'est par elle qu'on retire
+   * ce qu'on porte, le même geste que « Normal » chez les accessoires. Il n'y
+   * a pas d'autre réglage — on ne se promène pas dans les iris du parc, on
+   * choisit entre sa tête et celles qu'on a achetées.
    */
-  function rendrePrunelles() {
-    var grille = $("#inv-prunelles-grid");
+  function rendreIncarnations() {
+    var grille = $("#inv-incarnations-grid");
     if (!grille) return;
     grille.innerHTML = "";
-    var courant = fbPad(state.bouilleByUser[state.userLower] || myBase).substring(4, 6);
-    if (!invPrunelles.length) {
-      var rien = el("div", "sheet-hint");
-      rien.textContent = "Aucune paire pour l'instant — il y en a à la boutique.";
-      rien.style.gridColumn = "1 / -1";
-      grille.appendChild(rien);
-      return;
-    }
-    invPrunelles.forEach(function (p) {
-      var iris = String(p.etat || "").substring(4, 6);
-      var base = fbPad(myBase);
-      var etat = base.substring(0, 4) + iris + base.substring(6, 24);
-      var it = el("div", "acc-item" + (courant === iris ? " sel" : ""));
-      it.innerHTML = '<div class="thumb">' + previewIframe(etat) + '</div>'
-        + '<div class="lbl">' + xmlEscape(p.nom || "Prunelles") + "</div>";
-      it.addEventListener("click", function () { porterPrunelle(iris, p.nom); });
+    var porte = fbPad(state.bouilleByUser[state.userLower] || myBase);
+    var cases = [{ nom: "Ma bouille", etat: fbPad(myBase), sienne: true }]
+      .concat(invIncarnations.map(function (i) {
+        // Toujours redessinée sur SA bouille : elle a pu changer depuis l'achat.
+        var e = fbPad(i.etat);
+        return { nom: i.nom || "Incarnation", etat: fbPad(myBase).substring(0, 4)
+          + e.substring(4, 6) + fbPad(myBase).substring(6, 24) };
+      }));
+    cases.forEach(function (c) {
+      var it = el("div", "acc-item" + (c.etat === porte ? " sel" : ""));
+      it.innerHTML = '<div class="thumb">' + previewIframe(c.etat) + '</div>'
+        + '<div class="lbl">' + xmlEscape(c.nom) + "</div>";
+      it.addEventListener("click", function () { porterIncarnation(c); });
       grille.appendChild(it);
     });
+    var h = $("#inv-incarnations-hint");
+    if (h && !h._garde) {
+      h.textContent = invIncarnations.length
+        ? "Choisis une incarnation, ou reprends ta bouille :"
+        : "Aucune incarnation pour l'instant — il y en a à la boutique.";
+    }
     brancherApercus(grille);
   }
 
-  function porterPrunelle(iris, nom) {
-    // On CHANGE L'IRIS DE CE QU'ON PORTE, rien d'autre : deux caractères
-    // remplacés, la coiffure, les couleurs et l'accessoire à leur place. (Ne
-    // pas recomposer depuis `accSel` : sa valeur vient d'un autre chargement,
-    // qui peut n'être pas encore arrivé — l'accessoire s'y perdait.)
-    var poser = function (s) { s = fbPad(s); return s.substring(0, 4) + iris + s.substring(6, 24); };
-    myBase = poser(myBase);                       // l'iris appartient au visage
-    var neuf = poser(state.bouilleByUser[state.userLower] || myBase);
-    accSel = { suffix: neuf.substring(15, 24), fullState: isIncarnation(neuf) ? neuf : null };
-    porterEtat(neuf);
-    rendrePrunelles();
-    var h = $("#inv-prunelles-hint");
-    if (h) h.textContent = "✓ " + (nom || "Prunelles") + " — te voilà avec d'autres yeux.";
+  function porterIncarnation(c) {
+    // `myBase` ne bouge pas : l'incarnation est un habit, pas un visage.
+    accSel = { suffix: c.etat.substring(15, 24), fullState: c.sienne ? null : c.etat };
+    porterEtat(c.etat);
+    rendreIncarnations();
+    var h = $("#inv-incarnations-hint");
+    if (h) {
+      h.textContent = c.sienne ? "✓ Te revoilà comme avant." : "✓ " + c.nom + " — bien porté !";
+      h._garde = true;
+      clearTimeout(h._minuteur);
+      h._minuteur = setTimeout(function () { h._garde = false; rendreIncarnations(); }, 5000);
+    }
   }
 
   function rendrePictos() {
@@ -11423,11 +11440,17 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.bouille) {
-          // Keep the user's BASE (own family) so suffix swaps work; if their
-          // saved bouille is an incarnation we still expose it as the current.
-          if (!isIncarnation(d.bouille)) myBase = d.bouille;
+          // La BASE du joueur (sa propre bouille), pour que les échanges
+          // d'accessoire marchent. Le serveur la donne — `bouillePrincipale` —
+          // et c'est ce qui permet de retirer une incarnation même après une
+          // reconnexion : sans elle, on ne saurait plus à quoi revenir.
+          var mienne = d.bouillePrincipale && !isIncarnation(d.bouillePrincipale)
+            ? d.bouillePrincipale
+            : (!isIncarnation(d.bouille) ? d.bouille : null);
+          if (mienne) myBase = mienne;
           state.bouilleByUser[state.userLower] = d.bouille;
         }
+        if (d && d.incarnations) invIncarnations = d.incarnations;
         accList = [];
         var seen = {};
         // Defaults (Normal, Bananocle, …) — suffix-only.
@@ -11986,7 +12009,7 @@
    */
   var FB_PARTS = [
     { key: "yeux",    label: "yeux",    id: 1, pos: 2,  max: 8 },
-    { key: "iris",    label: "iris",    id: 2, pos: 4,  max: 17 },
+    { key: "iris",    label: "iris",    id: 2, pos: 4,  max: IRIS_ORIGINE_MAX },
     { key: "cheveux", label: "cheveux", id: 3, pos: 6,  max: 66, saute: FB_SAC },
     { key: "bouche",  label: "bouche",  id: 4, pos: 8,  max: 4 },
     // `generalPalette` : 53 couleurs (cf. /js/bouille-palette.js).
@@ -12122,7 +12145,17 @@
   }
 
   function openFbEditor(initial) {
-    fbState = fbPad(initial && initial.length >= 15 ? initial : DEFAULT_BOUILLE);
+    /*
+     * ON ÉDITE SA BOUILLE, PAS SON DÉGUISEMENT.
+     *
+     * Un joueur qui porte une incarnation et vient retoucher sa coiffure
+     * travaillerait sinon sur l'habit : ses changements ne vivraient que le
+     * temps qu'il le garde, et disparaîtraient en le retirant. On repart donc
+     * de sa bouille principale — valider, c'est reparaître sous ses traits.
+     */
+    var depart = initial && initial.length >= 15 ? initial : DEFAULT_BOUILLE;
+    if (isIncarnation(depart)) depart = fbPad(myBase);
+    fbState = fbPad(depart);
     // On quitte le sac à patate dès l'ouverture : sous le sac, le visage est
     // caché et aucun des choix qu'on propose ne se verrait.
     if (FB_SAC.indexOf(fbGet(6)) >= 0) fbSet(6, 0);

@@ -459,6 +459,61 @@ function normalizeBouilleState(value) {
   return s;
 }
 
+/*
+ * UNE INCARNATION — une bouille qui n'est PAS la sienne.
+ *
+ * Le parc en vend deux sortes, et elles se reconnaissent l'une comme l'autre à
+ * la chaîne d'état :
+ *
+ *   · une bouille d'une AUTRE FAMILLE (les incarnations d'époque : familles 10
+ *     et au-delà, tout sauf « 00 » et « 01 » qui sont celles des joueurs) ;
+ *   · une bouille de la sienne, mais avec une PAIRE D'IRIS ACHETÉE. Les
+ *     dix-huit iris d'origine vont de 0 à 17 (c'est la borne de l'éditeur, et
+ *     la longueur du rouleau de la famille 0) ; au-delà, la paire vient de la
+ *     boutique — cf. `public/fbouille/prunelles.json`.
+ *
+ * La distinction sert à UNE chose, mais elle est essentielle : une incarnation
+ * se PORTE, elle ne se devient pas. Le joueur doit retrouver sa tête en la
+ * retirant, même après s'être déconnecté — d'où `fbouille_base`, la bouille
+ * principale, que l'on ne met à jour que lorsqu'il montre la sienne.
+ */
+const IRIS_ORIGINE_MAX = 17;
+function estIncarnation(etat) {
+  const s = String(etat || '').split('|')[0];
+  if (s.length !== 24) return false;
+  const fam = s.substring(0, 2);
+  if (fam !== '00' && fam !== '01') return true;
+  return decode62(s.substring(4, 6)) > IRIS_ORIGINE_MAX;
+}
+
+/*
+ * ENREGISTRER LA BOUILLE D'UN JOUEUR — et, s'il y a lieu, sa bouille
+ * principale. Les deux chemins d'écriture (`/do/eb` du mobile, la trame `ae`
+ * du chat) passent par ici pour que la mémoire soit la même des deux côtés.
+ * Rend le patch à écrire en base.
+ */
+function champsDeLaBouille(user, etat) {
+  const patch = { fbouille: etat };
+  if (!estIncarnation(etat)) {
+    user.fbouilleBase = etat;
+    patch.fbouille_base = etat;
+  } else if (!user.fbouilleBase) {
+    // Il enfile une incarnation sans qu'on ait jamais vu sa tête (compte
+    // ancien, ou première écriture) : on garde au moins de quoi revenir.
+    user.fbouilleBase = DEFAULT_BOUILLE_STATE;
+    patch.fbouille_base = DEFAULT_BOUILLE_STATE;
+  }
+  return patch;
+}
+
+// La bouille principale d'un joueur : la sienne, jamais une incarnation.
+function bouillePrincipaleDe(user, username) {
+  const portee = normalizeBouilleState((user && user.fbouille) || bouilleCache[username] || DEFAULT_BOUILLE_STATE);
+  if (!estIncarnation(portee)) return portee;
+  const base = normalizeBouilleState((user && user.fbouilleBase) || '');
+  return estIncarnation(base) ? DEFAULT_BOUILLE_STATE : base;
+}
+
 // Forum mood ("humeur"): one of the famille SWF's 8 emote indices (0-7) that
 // the patched preview can render. Out of range / absent → null (normal face).
 function normalizeForumMood(value) {
@@ -3071,6 +3126,8 @@ function dbUserToMemory(row) {
     xp: row.xp ?? 1,
     kikooz: row.kikooz ?? 60,
     fbouille: row.fbouille || DEFAULT_BOUILLE_STATE,
+    // La bouille principale : celle qu'on retrouve en retirant une incarnation.
+    fbouilleBase: row.fbouille_base || '',
     items: withDefaultPens([]),
     gameItems: [],
     desktopItems: [],
@@ -5835,6 +5892,11 @@ const SHOP_FEUTRES_DEFAULT = [
   picto: `feutre,${i}`, description: FEUTRE_DESC, comment,
 }));
 
+// La plage réservée aux INCARNATIONS livrées avec le code (cf. le rayon plus
+// bas) : au-delà de ce que l'admin numérote à la main, sous les accessoires
+// maison (700 000) et la vitrine (900 000).
+const INCARNATION_ID_BASE = 600000;
+
 const SHOP_PACKS_DEFAULT = [
   {
     id: 101,
@@ -5867,27 +5929,40 @@ const SHOP_PACKS_DEFAULT = [
   // auto-granted to users with is_animator=true via grantAnimatorAccessory
   // (mirroring the Badge Modérateur flow). See ANIM_ACCESSORY_* constants.
   /*
-   * LES PRUNELLES — un rayon à part, parce que ce n'est pas un accessoire.
+   * LES INCARNATIONS — un rayon à part, parce que ce ne sont pas des accessoires.
    *
-   * Une paire d'iris ne se POSE pas sur la bouille : elle en fait partie. Le
-   * moteur la lit à la place `eyeSc` de la chaîne d'état (caractères 4 et 5),
-   * là où l'accessoire vit dans les neuf derniers. D'où `prunelle` plutôt que
-   * `suffix9` — la clé d'une paire récoltée dans `public/fbouille/
-   * prunelles.json` —, et une rubrique à elle, que `shopCategoryOwnedByDefault`
-   * range parmi les rayons PAYANTS.
+   * DEUX MOTS À NE PAS CONFONDRE :
+   *   · une INCARNATION est ce que voit le joueur — une bouille qu'il ENFILE à
+   *     la place de la sienne, et qu'il retire pour se retrouver. C'est le nom
+   *     du rayon et celui du dossier d'inventaire.
+   *   · une PRUNELLE est la mécanique — une paire d'iris récoltée dans une
+   *     autre famille (`public/fbouille/prunelles.json`). Elle ne se POSE pas
+   *     sur la bouille comme un accessoire : le moteur la lit à la place
+   *     `eyeSc` de la chaîne d'état (caractères 4-5), là où l'accessoire vit
+   *     dans les neuf derniers. D'où `prunelle` plutôt que `suffix9`.
+   *
+   * Les deux premières incarnations du parc sont des prunelles ; d'autres
+   * pourront être des bouilles entières (les familles d'époque ≥ 10). Le rayon
+   * les accueillera sans changer de nom, et `estIncarnation` les reconnaît
+   * déjà toutes les deux.
+   *
+   * LES IDENTIFIANTS SONT RÉSERVÉS. Un article créé depuis l'admin prend le
+   * numéro qu'on lui donne — 88888 pour le Makulo, par exemple. Une incarnation
+   * livrée avec le code doit donc vivre dans une plage où personne ne va
+   * taper : au-delà de 600 000, sous la plage des accessoires maison (700 000).
    */
-  { id: 301, name: "Hiko's eyes", category: 'Prunelles', price: 120,
+  { id: INCARNATION_ID_BASE + 1, name: "Hiko's eyes", category: 'Incarnations', price: 120,
     prunelle: 'hiko1', suffix9: '000000000',
     comment: 'Le regard de hiko, rouge et noir.',
     description: 'Deux prunelles qu’aucun Frutiz du parc ne portait : elles viennent de '
-      + 'la famille de hiko. Elles remplacent tes iris et ne touchent à rien d’autre — '
-      + 'tu retrouves les tiens quand tu veux, dans « Ma Frutibouille ».' },
-  { id: 302, name: "Hiko's eyes #2", category: 'Prunelles', price: 200,
+      + 'la famille de hiko. Tu les enfiles, tu les retires — ta bouille t’attend '
+      + 'dessous, intacte.' },
+  { id: INCARNATION_ID_BASE + 2, name: "Hiko's eyes #2", category: 'Incarnations', price: 200,
     prunelle: 'hiko2', suffix9: '000000000',
     comment: 'Le regard de hiko, celui qui tourne.',
     description: 'La paire ANIMÉE : les prunelles tournent sans jamais s’arrêter, sur le '
-      + 'chat comme sur ta fiche. Elles remplacent tes iris et ne touchent à rien '
-      + 'd’autre — tu retrouves les tiens quand tu veux, dans « Ma Frutibouille ».' },
+      + 'chat comme sur ta fiche. Tu les enfiles, tu les retires — ta bouille '
+      + 't’attend dessous, intacte.' },
   // Wallpapers
   { id: 201, name: 'Chevalier moutarde',    category: "Fonds d'écran", price: 0, description: 'Un fond chevaleresque aux tons moutarde.',     suffix9: '000000000', wallpaperId: 'moutarde' },
   { id: 202, name: 'Chorale Frutiparc',     category: "Fonds d'écran", price: 0, description: 'La grande chorale de Frutiparc !',             suffix9: '000000000', wallpaperId: 'chorale' },
@@ -6031,6 +6106,32 @@ function getAccessoryPrunelle(acc) {
   const pack = getShopPack(acc.shopId);
   const cle = pack && pack.prunelle;
   return (cle && PRUNELLES[cle]) ? PRUNELLES[cle] : null;
+}
+
+/*
+ * LES INCARNATIONS QU'UN JOUEUR POSSÈDE — la liste, écrite une seule fois.
+ *
+ * Trois endroits la lisent : l'inventaire du light, le dossier « Incarnations »
+ * du bureau et le sélecteur du forum. Chaque ligne porte l'état COMPLET, posé
+ * sur la bouille PRINCIPALE : une incarnation ne s'enfile pas par-dessus une
+ * autre, et l'aperçu doit montrer ce qu'on obtiendra en la choisissant.
+ */
+function incarnationsDe(user, username) {
+  const perso = Array.isArray(user && user.customAccessories) ? user.customAccessories : [];
+  const principale = bouillePrincipaleDe(user, username);
+  const out = [];
+  for (const acc of perso) {
+    const pru = getAccessoryPrunelle(acc);
+    if (!pru) continue;
+    out.push({
+      id: acc.id,
+      shopId: acc.shopId || null,
+      nom: acc.n || pru.nom,
+      cle: pru.cle,
+      etat: bouilleAvecPrunelle(principale, pru.eyeSc),
+    });
+  }
+  return out;
 }
 
 // ─────────────────────────────────────────────
@@ -6371,10 +6472,11 @@ function userOwnsShopPack(user, id) {
 // Accent/case-insensitive so DB category labels match.
 function shopCategoryOwnedByDefault(category) {
   const n = String(category || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-  // Les prunelles s'achètent comme les accessoires : ce sont des cosmétiques,
-  // pas un rayon offert d'office.
+  // Les incarnations s'achètent comme les accessoires : ce sont des
+  // cosmétiques, pas un rayon offert d'office. (« prunelle » reste accepté :
+  // c'est le nom qu'a porté le rayon le temps d'un déploiement.)
   return !(n.startsWith('accessoir') || n.startsWith('fond') || n.startsWith('pass')
-    || n.startsWith('prunelle'));
+    || n.startsWith('prunelle') || n.startsWith('incarnation'));
 }
 
 /*
@@ -6534,7 +6636,7 @@ const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbo
   <f u="disccollector" n="Mes disques" t="disccollector" />
   <f u="inventory" n="Inventaire" t="inventory">
     <f u="inv_accessories" n="Accessoires" t="inventory" />
-    <f u="inv_prunelles" n="Prunelles" t="inventory" />
+    <f u="inv_incarnations" n="Incarnations" t="inventory" />
     <f u="inv_wallpapers" n="Fonds d&apos;écran" t="inventory" />
     <f u="inv_pictos" n="Pictos" t="inventory" />
   </f>
@@ -17401,7 +17503,10 @@ app.all('/do/eb', (req, res) => {
   auth.user.fbouille = bouille;
   auth.user.needsBouille = false; // confirmed a bouille → stop forcing the editor
   bouilleCache[auth.username] = bouille;
-  if (auth.user._dbId) db.updateUser(auth.username, { fbouille: bouille, needs_bouille: false }).catch(dbErr('updateUser'));
+  // La bouille PRINCIPALE suit, sauf si c'est une incarnation qu'on enfile :
+  // celle-là se retire, et il faut pouvoir revenir à la sienne.
+  const patchEb = Object.assign(champsDeLaBouille(auth.user, bouille), { needs_bouille: false });
+  if (auth.user._dbId) db.updateUser(auth.username, patchEb).catch(dbErr('updateUser'));
 
   console.log(`[do/eb] Saved bouille for ${auth.username}: ${bouille}`);
   // Legacy callers consume LoadVars here; include k=0 to avoid error.http.undefined
@@ -18737,7 +18842,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     return res.type('text/xml').send(
       `<f u="inventory">` +
       `<f u="inv_accessories" n="Accessoires" t="folder" />` +
-      `<f u="inv_prunelles" n="Prunelles" t="folder" />` +
+      `<f u="inv_incarnations" n="Incarnations" t="folder" />` +
       `<f u="inv_wallpapers" n="Fonds d'écran" t="folder" />` +
       `<f u="inv_pictos" n="Pictos" t="folder" />` +
       `</f>`
@@ -18754,18 +18859,18 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
    * mais l'état est calculé sur la bouille D'AUJOURD'HUI : entre-temps le
    * joueur a pu changer de tête.
    */
-  if (uid === 'inv_prunelles') {
-    const nodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
-      .map((acc) => ({ acc, pru: getAccessoryPrunelle(acc) }))
-      .filter((x) => x.pru)
-      .map(({ acc, pru }) => {
-        const vendable = acc.shopId && accessoireRevendable(user, getShopPack(acc.shopId)) ? ' v="1"' : '';
-        const etat = bouilleAvecPrunelle(bouilleOf(user, auth.username), pru.eyeSc);
-        return `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0"${vendable}>`
-          + `${escapeXml(acc.n || pru.nom)}\n${escapeXml(etat)}</e>`;
-      })
-      .join('');
-    return res.type('text/xml').send(`<f u="inv_prunelles">${nodes || '<i />'}</f>`);
+  if (uid === 'inv_incarnations') {
+    // Une ligne de plus, en tête : SA BOUILLE. C'est par elle qu'on retire ce
+    // qu'on porte — le même geste que « Normal » chez les accessoires.
+    const principale = bouillePrincipaleDe(user, auth.username);
+    let nodes = `<e u="fb_principale" t="bouille" s="10" d="0" a="0">`
+      + `Ma bouille\n${escapeXml(principale)}</e>`;
+    for (const inc of incarnationsDe(user, auth.username)) {
+      const vendable = inc.shopId && accessoireRevendable(user, getShopPack(inc.shopId)) ? ' v="1"' : '';
+      nodes += `<e u="${escapeXml(inc.id)}" t="bouille" s="10" d="0" a="0"${vendable}>`
+        + `${escapeXml(inc.nom)}\n${escapeXml(inc.etat)}</e>`;
+    }
+    return res.type('text/xml').send(`<f u="inv_incarnations">${nodes}</f>`);
   }
 
   if (uid === 'inv_accessories') {
@@ -19138,7 +19243,7 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
 
   const PROTECTED_UIDS = new Set([
     'root', 'messages', 'inbox', 'outbox', 'blackbox', 'draftbox',
-    'disccollector', 'inventory', 'inv_accessories', 'inv_prunelles', 'inv_wallpapers', 'inv_pictos',
+    'disccollector', 'inventory', 'inv_accessories', 'inv_incarnations', 'inv_wallpapers', 'inv_pictos',
     'shop', 'accessories', 'mycontact', 'recyclebin', 'blacklist',
     'linkForum', 'linkChat', 'linkHisto', 'linkPreference',
     'linkScore', 'linkShop', 'linkBlogs', 'linkClub',
@@ -19934,7 +20039,10 @@ app.get('/api/forum/me', (req, res) => {
   // pour cela l'ARTICLE derrière la ligne — un accessoire d'époque, un fond ou
   // un cadeau de rôle n'en ont pas, et ne se revendent donc pas.
   const accessories = (u.customAccessories || [])
-    .filter(a => a && !a.v?.startsWith('wp:'))
+    // Ni les fonds d'écran, ni les INCARNATIONS : celles-ci ont leur propre
+    // liste (`incarnations` plus bas), et les laisser ici les ferait paraître
+    // deux fois — une fois comme habit, une fois comme accessoire.
+    .filter(a => a && !a.v?.startsWith('wp:') && !getAccessoryPrunelle(a))
     .map(a => {
       const e = { id: a.id, name: a.n, value: a.v };
       if (a.shopId) {
@@ -19960,6 +20068,20 @@ app.get('/api/forum/me', (req, res) => {
     isModerator: !!u.isModerator,
     isAnimator: !!u.isAnimator,
     bouille: bouilleOf(u, username),
+    /*
+     * LA BOUILLE PRINCIPALE, et les INCARNATIONS qu'on possède.
+     *
+     * Une incarnation est une bouille qu'on enfile à la place de la sienne : le
+     * client doit savoir à quoi revenir en la retirant, et la sienne ne se
+     * déduit pas de ce qu'il porte. Le serveur la garde (`fbouille_base`) et
+     * la rend ici — c'est ce qui fait que le retour marche encore après une
+     * reconnexion.
+     *
+     * La liste, elle, sert au sélecteur du forum comme à l'inventaire du light :
+     * deux endroits, une seule source.
+     */
+    bouillePrincipale: bouillePrincipaleDe(u, username),
+    incarnations: incarnationsDe(u, username),
     // Mirror the Flash client's editbouille gating (see the f="0,1,..." attr in
     // onident) so the mobile client can force its own "Ma Frutibouille" editor
     // open under the exact same conditions: the user still has the default
@@ -23043,15 +23165,17 @@ app.get('/api/light/shop', (req, res) => {
       owned: offert || userOwnsShopPack(user, p.id),
       offert,
       kind: wp ? 'fond' : feutre ? 'feutre' : p.picto ? 'picto'
-        : prunelle ? 'prunelle' : 'accessoire',
+        : prunelle ? 'incarnation' : 'accessoire',
       suffix9: p.suffix9 || '000000000',
     };
-    // Une PRUNELLE ne se compose pas d'un suffixe : le client ne saurait pas la
-    // dessiner à partir du seul article. On lui envoie donc l'état COMPLET —
-    // sa bouille, avec cette paire d'iris —, prêt à afficher en aperçu.
+    // Une INCARNATION ne se compose pas d'un suffixe : le client ne saurait pas
+    // la dessiner à partir du seul article. On lui envoie donc l'état COMPLET —
+    // sa bouille principale, avec cette paire d'iris —, prêt à afficher en
+    // aperçu. Sa bouille PRINCIPALE, pas celle qu'il porte : sinon l'aperçu
+    // d'une incarnation se dessinerait par-dessus une autre.
     if (prunelle) {
       a.prunelle = prunelle.cle;
-      a.etat = bouilleAvecPrunelle(bouilleOf(user, username), prunelle.eyeSc);
+      a.etat = bouilleAvecPrunelle(bouillePrincipaleDe(user, username), prunelle.eyeSc);
     }
     // Un accessoire maison dit qui l'a dessiné ; la fiche l'écrit.
     if (p.auteur) a.auteur = String(p.auteur);
@@ -23100,6 +23224,10 @@ app.get('/api/light/inventaire', (req, res) => {
   const user = users[username] || {};
   const perso = Array.isArray(user.customAccessories) ? user.customAccessories : [];
   const base = bouilleOf(user, username).substring(0, 15);
+  // La bouille PRINCIPALE : celle qui reste dessous quand une incarnation est
+  // enfilée. C'est sur elle qu'on dessine les aperçus, et c'est elle qu'on
+  // rend au joueur qui retire son déguisement.
+  const principale = bouillePrincipaleDe(user, username);
 
   // Accessoires : les quatre d'origine (suffixe seul, posé sur SA bouille)
   // puis ceux achetés — dont les incarnations, qui valent une bouille entière.
@@ -23110,23 +23238,16 @@ app.get('/api/light/inventaire', (req, res) => {
     vus.add(acc.suffix);
     accessoires.push({ id: acc.u, nom: acc.n, etat: base + acc.suffix });
   }
-  // Les prunelles ont leur propre rayon : une paire d'iris n'est pas un
-  // accessoire, elle fait partie du visage. On les met de côté ici pour ne pas
-  // les retrouver deux fois.
-  const prunelles = [];
+  // Les INCARNATIONS ont leur propre rayon : une bouille qu'on enfile n'est pas
+  // un accessoire qu'on pose. `incarnationsDe` les liste (la même source que le
+  // forum et le bureau) ; ici on se contente de ne pas les remettre parmi les
+  // accessoires.
+  const incarnations = incarnationsDe(user, username);
   for (const acc of perso) {
     if (getAccessoryWallpaper(acc)) continue;            // c'est un fond, pas un accessoire
+    if (getAccessoryPrunelle(acc)) continue;             // c'est une incarnation
     const v = String(acc.v || '');
-    if (v.length !== 24) continue;
-    const pru = getAccessoryPrunelle(acc);
-    if (pru) {
-      // La paire posée sur la bouille D'AUJOURD'HUI, pas sur celle du jour de
-      // l'achat : entre-temps le joueur a pu changer de tête.
-      prunelles.push({ id: acc.id, nom: acc.n || pru.nom, cle: pru.cle,
-        etat: bouilleAvecPrunelle(bouilleOf(user, username), pru.eyeSc) });
-      continue;
-    }
-    if (vus.has(v)) continue;
+    if (v.length !== 24 || vus.has(v)) continue;
     vus.add(v);
     accessoires.push({ id: acc.id, nom: acc.n || 'Accessoire', etat: v });
   }
@@ -23158,7 +23279,10 @@ app.get('/api/light/inventaire', (req, res) => {
     getPrefValue(reparerFondDeLaPref(username, user), PREF_ID_WALLPAPER));
   res.json({
     ok: true,
-    accessoires, fonds, pictos, prunelles,
+    accessoires, fonds, pictos, incarnations,
+    // La bouille PRINCIPALE et celle qu'on porte : c'est de quoi savoir si une
+    // incarnation est enfilée, et à quoi revenir en la retirant.
+    bouillePrincipale: principale,
     fond: courant ? {
       url: '/' + courant.url.replace(/^\/+/, ''),
       urlMobile: wallpaperMobileUrl(wallpaperParUrl(courant.url)),
@@ -28870,8 +28994,10 @@ case 'fbouille': {
     const definedRealBouille = f && f !== DEFAULT_BOUILLE_STATE && f !== prevBouille;
     const clearNeedsBouille = definedRealBouille && u.needsBouille !== false;
     if (clearNeedsBouille) u.needsBouille = false;
+    // Comme dans /do/eb : la bouille principale ne bouge que lorsque le joueur
+    // montre la SIENNE — une incarnation se porte, elle ne se devient pas.
+    const patch = champsDeLaBouille(u, f);
     if (u._dbId) {
-      const patch = { fbouille: f };
       if (clearNeedsBouille) patch.needs_bouille = false;
       db.updateUser(client.username, patch).catch(dbErr('updateUser fbouille'));
     }

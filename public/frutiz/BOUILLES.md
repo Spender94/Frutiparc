@@ -654,14 +654,43 @@ boîte carrée le décalage vaut zéro, donc rien ne bouge ailleurs.
 encore, pour son bouton « Réchauffer les bouilles » — dont l'infobulle dit
 maintenant que le cache ne sert qu'à un éventuel retour en arrière.
 
-## 11 bis. Les PRUNELLES — des iris qui viennent d'une autre famille
+## 11 bis. Les INCARNATIONS — des bouilles qu'on enfile
+
+**Deux mots à ne pas confondre.** Une **incarnation** est ce que voit le
+joueur : une bouille qu'il porte à la place de la sienne, et qu'il retire pour
+se retrouver. Une **prunelle** est la mécanique des deux premières.
 
 L'iris est le clip `p` de `oa.o` (et `ob.o`) : un simple **rouleau** que
 `definir` cale sur `eyeSc`, la valeur des caractères 4-5. La famille 0 en a
 dix-huit ; hiko (famille 12) en a **dix-neuf**, et ses deux premières ne
 ressemblent à rien d'autre au parc — une paire rouge et noir, et une paire
 **animée** (un clip de vingt images, qui tourne). On les vend au rayon
-« Prunelles » de la boutique, sous les noms *Hiko's eyes* et *Hiko's eyes #2*.
+« Incarnations » de la boutique (identifiants réservés à partir de
+`INCARNATION_ID_BASE` = 600 000), sous les noms *Hiko's eyes* et
+*Hiko's eyes #2*.
+
+### On la porte, on la retire
+
+Une incarnation se comporte **comme un accessoire** du point de vue du joueur :
+il la met, il l'enlève, sa bouille l'attend dessous. Mécaniquement, c'est autre
+chose — la chaîne d'état ne porte qu'UNE bouille, celle qu'on montre.
+
+- `estIncarnation(etat)` (serveur) et `isIncarnation(v)` (light) en jugent
+  **pareil** : une autre famille (≠ `00`/`01`), ou un iris au-delà des dix-huit
+  d'origine (`IRIS_ORIGINE_MAX` = 17, la borne de l'éditeur).
+- Le serveur garde la **bouille principale** dans `users.fbouille_base`, mise à
+  jour uniquement quand le joueur montre la sienne (`champsDeLaBouille`, appelée
+  par `/do/eb` et par la trame `ae` du chat). Sans elle, se reconnecter déguisé
+  ferait perdre sa tête : la chaîne portée est la seule qu'on aurait.
+- Le client ne fait pas suivre `myBase` à une incarnation, et le repose sur
+  `bouillePrincipale` au chargement.
+- L'inventaire du light (onglet « Incarnations ») et le dossier du bureau
+  (`inv_incarnations`) ouvrent tous deux sur **« Ma bouille »** : c'est le geste
+  de retrait, le même que « Normal » chez les accessoires. On ne se promène pas
+  dans les iris du parc — on choisit entre sa tête et celles qu'on a achetées.
+- Le **forum** a son menu déroulant (`incarnationSelectHtml`), qui ne paraît
+  qu'à ceux qui en possèdent : l'accessoire choisi se pose **sur** l'incarnation,
+  les deux tiennent ensemble.
 
 - **La récolte** : `scripts/extract-prunelles-bouille.js` →
   `public/fbouille/prunelles.json` (8 Ko : cinq formes, un clip, et les ordres
@@ -690,10 +719,8 @@ ressemblent à rien d'autre au parc — une paire rouge et noir, et une paire
   `suffix9`, et `bouilleAvecPrunelle` remplace les caractères 4-5 — rien
   d'autre ne bouge, l'accessoire compris. La table des index est lue **dans le
   même `prunelles.json`** : aucun numéro n'est recopié à la main.
-- **L'inventaire** a un rayon pour elles des deux côtés : l'onglet
-  « Prunelles » du light et le dossier `inv_prunelles` du bureau. On en sort
-  par « Ma Frutibouille », dont la ligne « iris » propose les dix-huit
-  d'origine (et elles seules : `max: 17`, les prunelles s'achètent).
+- **L'éditeur** ne propose que les dix-huit iris d'origine (`max:
+  IRIS_ORIGINE_MAX`) : les autres s'achètent.
 
 ## 12. Ce qui reste à faire
 
