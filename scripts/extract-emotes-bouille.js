@@ -266,7 +266,22 @@ const arrondir = (M) => {
   const gum12 = finDuGum(face12);
   if (!gum12) throw new Error('famille 12 : la fin du chewing-gum est introuvable');
 
-  const recolte = recolter(d12, [fumee.ch, choco.ch]
+  /*
+   * ET LA BULLE ELLE-MÊME.
+   *
+   * Chaque famille a la sienne, posée sous le nom `bubble` à l'étiquette
+   * « gum », et c'est un clip d'UNE image : une seule forme, que la pellicule
+   * fait enfler. Celle de la famille 0 est ROSE (contour 142,21,21, dégradé
+   * 255,183,183) quand l'éclatement d'hiko, lui, est JAUNE — on voyait donc une
+   * bulle rose exploser en jaune. On récolte la bulle d'hiko (dégradé
+   * 254,248,182, contour olive à moitié transparent) pour qu'elle soit de la
+   * bonne couleur DÈS LE DÉPART.
+   */
+  const bulle12 = (face12.images[face12.labels.gum - 1] || [])
+    .find((o) => o.t === 'pose' && o.ch >= 0 && o.nom === 'bubble');
+  if (!bulle12) throw new Error('famille 12 : la bulle du chewing-gum est introuvable');
+
+  const recolte = recolter(d12, [fumee.ch, choco.ch, bulle12.ch]
     .concat(gum12.eclats.map((e) => e.ch), [gum12.tache.ch]));
   const recolte15 = recolter(d15, [nuage.ch]);
   // Les deux récoltes vivent dans le même paquet : les numéros ne peuvent pas
@@ -294,7 +309,8 @@ const arrondir = (M) => {
     source: {
       jutsu: 'famille12.swf, visage, image ' + JUTSU + ' (étiquette « jutsu2 »)',
       toux: 'famille15.swf, visage, étiquette « tousse » — six images de secousse',
-      gum: 'famille12.swf, visage, étiquette « gumNext » — l’éclatement et la tache',
+      gum: 'famille12.swf, visage, étiquettes « gum » (la bulle) et « gumNext » '
+        + '(l’éclatement et la tache)',
       outil: 'scripts/extract-emotes-bouille.js',
       decalage: DECALAGE,
     },
@@ -310,8 +326,10 @@ const arrondir = (M) => {
       nuage: { ch: nuage.ch + DECALAGE + DECALE15, M: nuage.M,
         alpha: nuage.cx ? nuage.cx.ma / 256 : 1 },
     },
-    // La fin du gum d'hiko, prête à remplacer celle de la famille d'accueil.
+    // Le gum d'hiko, prêt à remplacer celui de la famille d'accueil : la bulle
+    // (jaune, du premier souffle) puis l'éclatement et la tache.
     gum: {
+      bulle: { ch: bulle12.ch + DECALAGE },
       eclats: gum12.eclats.map((e) => ({ ch: e.ch + DECALAGE, M: e.M })),
       tache: { ch: gum12.tache.ch + DECALAGE, M: gum12.tache.M },
     },

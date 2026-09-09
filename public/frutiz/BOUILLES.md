@@ -821,13 +821,39 @@ fin** (`Moteur.remplacementsDuGum`, consulté par `dessinerEnfant`).
 Ce qui change d'une famille à l'autre, ce sont les **constantes de la boucle de
 croissance** : la famille 0 laisse sa bulle enfler jusqu'à `random(150) + 30`,
 hiko jusqu'à `random(80)`, la 14 jusqu'à `random(500)`. On n'y touche pas —
-la bulle reste celle de la famille, avec son rythme et son dessin ; c'est ce
-qu'elle devient **en éclatant** qu'on emprunte. Là où la famille 0 pose une
-pastille sur la joue, hiko s'en prend une en pleine figure : un aplat jaune
-sur toute la tête, qui se dilue ensuite.
+la bulle garde le **rythme** de la famille ; c'est son **dessin**, et ce qu'elle
+devient **en éclatant**, qu'on emprunte. Là où la famille 0 pose une pastille
+sur la joue, hiko s'en prend une en pleine figure : un aplat jaune sur toute la
+tête, qui se dilue ensuite.
+
+**La bulle aussi est celle d'hiko** — et c'est une correction, pas un choix
+d'origine. Chaque famille pose la sienne sous le nom `bubble` à l'étiquette
+`gum` : un clip d'une seule image, que la pellicule fait enfler. Celle de la
+famille 0 est **rose** (contour `142,21,21`, dégradé vers `255,183,183`) quand
+l'éclatement d'hiko, lui, est **jaune** (dégradé `254,248,182`, contour olive à
+moitié transparent). On regardait donc une bulle rose exploser en jaune. Le clip
+entier est échangé, à la même profondeur et sous la même matrice : quatre
+substitutions au lieu de trois.
 
 Le mot `gum` étant pris par l'animation 8, le déclencheur double la dernière
 lettre : **`gumm`** (ou `gum2`), légende « s'en met plein la figure ».
+
+### Le ralenti des trois émotes empruntées
+
+Le jutsu, la quinte de toux et le gum d'hiko sont les trois qui **racontent**
+quelque chose — une tête qui part en fumée, deux sursauts, une bulle qui enfle
+puis éclate. À quarante images par seconde, l'œil n'avait pas le temps de les
+lire.
+
+`RALENTI_EMOTES` (`bouille-moteur.js`) saute **une image d'horloge sur sept**
+pour les animations 14, 15 et 16 : la même image reste à l'écran un battement de
+plus, l'émote dure un sixième de plus (+17 %), et pas un dessin ni un battement
+ne change. Sauter une image, c'est ne pas bouger : `avancer()` rend `false`, et
+la boucle de rendu s'épargne un redessin identique — sans s'endormir pour
+autant, puisqu'il lui faut quarante battements de calme d'affilée.
+
+Mesuré : la chute du jutsu compte toujours ses 129 battements, mais en prend 150
+à l'horloge ; la quinte, 45 battements pour 52 images.
 
 ## 11 quater. L'inventaire des familles — ce qu'il reste à prendre
 

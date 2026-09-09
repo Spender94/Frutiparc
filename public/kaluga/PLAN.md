@@ -385,6 +385,17 @@ appelait déjà pour la Kagulga, et que le portage avait laissé vide :
   et remplaçable **depuis l'admin** ; l'entrée d'inventaire est exactement
   celle de `purchaseShopPack`, `shopId` compris, si bien que la possession,
   l'essai, la revente et les purges marchent sans un mot de plus.
+- **L'article est livré avec le code** (`SHOP_PACKS_DEFAULT`), et c'est une
+  correction. Il ne vivait qu'en base, « créé depuis l'admin » : sur une
+  installation où personne ne l'avait saisi, le serveur répondait `absent`, le
+  joueur voyait l'annonce — elle se lit sur la fruticard, avant la réponse — et
+  ne recevait rien. C'est ce que les joueurs décrivaient : « le Makulo ne se
+  débloque pas ». Une ligne déjà présente en base **garde la main** (la fusion
+  du démarrage) : un parc qui l'a dessiné à sa façon garde le sien.
+- Il porte `recompense: true`, qui le tient **hors des rayons** : à zéro kikooz
+  dans une rubrique payante, il se ramasserait gratuitement en boutique, et
+  l'épreuve n'aurait plus rien à donner. `purchaseShopPack` le refuse aussi en
+  direct, pour qui taperait son numéro à la main.
 - Rien n'est débité et **rien n'est versé** : une récompense n'est pas une
   vente, la commission du graphiste ne se déclenche pas.
 - L'article retiré du rayon (ou pas encore créé) **ne casse pas la partie

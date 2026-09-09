@@ -130,6 +130,24 @@
       <div id="rec-sans"></div>
       <div class="recolte" id="rec-grille"></div>
     </div>
+
+    <!-- 5. Retélécharger un accessoire maison -->
+    <div class="carte" style="flex-basis:100%;">
+      <h2>5 · Reprendre un accessoire maison</h2>
+      <p class="sub" style="margin:0 0 10px; max-width:none;">
+        Les accessoires déjà publiés se retéléchargent au <b>format du gabarit</b> — mêmes
+        calques, mêmes niveaux de couleur, même tête en repère. De quoi corriger un détail
+        des mois plus tard sans avoir gardé le fichier, ou repartir du travail d'un autre.
+        Le SVG rendu est celui du <b>dessin publié</b> : ce que portent les bouilles.
+      </p>
+      <div class="ligne" style="max-width:520px">
+        <div style="flex:1"><label>Accessoire publié</label><select id="mai-liste"></select></div>
+      </div>
+      <div id="mai-etat" class="aide" style="margin-top:8px"></div>
+      <canvas id="mai-apercu" class="preview" width="300" height="300"
+              style="margin-top:10px"></canvas>
+      <button class="btn plein" id="mai-dl" disabled>⬇ Télécharger le gabarit SVG</button>
+    </div>
   </div>
 
   <script src="/js/bouille-palette.js"></script>
@@ -581,6 +599,102 @@
       setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
     }
 
+    /* ── 5 · REPRENDRE UN ACCESSOIRE MAISON ────────────────────────────────
+     *
+     * Un accessoire publié n'existe nulle part sous forme de fichier : ses
+     * tracés vivent dans le catalogue des variantes, et le graphiste qui a
+     * perdu son SVG n'avait aucun moyen de le retrouver. On le lui rend au
+     * FORMAT DU GABARIT — les mêmes calques, les mêmes niveaux, la même tête en
+     * repère —, si bien qu'il repart d'où il s'était arrêté.
+     *
+     * On ne touche pas au `defs` de l'atelier : chaque reprise part d'une
+     * famille NEUVE où l'on n'injecte que la variante demandée. Son index dans
+     * le rouleau y est donc celui que `injecter` rend, et l'export n'a plus qu'à
+     * le suivre.
+     */
+    var maison = [];                   // les variantes publiées de la famille 0
+    var maisonDefs = null;             // la famille neuve de la reprise
+    var maisonInj = null;              // ce que l'injection a rendu
+    /*
+     * CHAQUE REPRISE PORTE SON NUMÉRO DE TOUR.
+     *
+     * Charger la famille est ASYNCHRONE : changer d'accessoire pendant qu'une
+     * reprise est en route en lance une seconde, et la première, en rentrant,
+     * écrasait `maisonInj` — le bouton téléchargeait alors le dessin d'AVANT
+     * sous le nom du nouveau. Au retour, un tour périmé rend la main.
+     */
+    var maisonTour = 0;
+
+    function remplirMaison() {
+      var sel = $("#mai-liste");
+      sel.innerHTML = "";
+      if (!maison.length) {
+        var vide = document.createElement("option");
+        vide.value = ""; vide.textContent = "(aucun accessoire maison publié)";
+        sel.appendChild(vide);
+        $("#mai-etat").textContent = "";
+        return;
+      }
+      maison.forEach(function (v, i) {
+        var o = document.createElement("option");
+        o.value = String(i);
+        o.textContent = (v.nom || "sans nom")
+          + " — " + (P.ACCESSORIES[v.type] || ("type " + v.type))
+          + " · " + (v.paths || []).length + " tracés"
+          + (v.auteur ? " · " + v.auteur : "");
+        sel.appendChild(o);
+      });
+      sel.value = "0";
+    }
+
+    // Monter la variante choisie sur une famille neuve, et la montrer.
+    function reprendreMaison() {
+      var i = +$("#mai-liste").value;
+      var v = maison[i];
+      $("#mai-dl").disabled = true;
+      maisonInj = null;
+      var tour = ++maisonTour;
+      if (!v) return Promise.resolve();
+      var co = +$("#coif").value;
+      return Swf.charger("/fbouille/famille0.swf").then(function (d) {
+        if (tour !== maisonTour) return;              // une autre reprise a pris la main
+        maisonDefs = d;
+        maisonInj = V.injecter(d, { type: v.type, paths: v.paths || [],
+          coiffureRef: v.coiffureRef, vide: false });
+        if (!maisonInj) {
+          $("#mai-etat").textContent = "Ce dessin ne s'injecte pas (tracés illisibles).";
+          return;
+        }
+        $("#mai-etat").textContent = (v.paths || []).length + " tracés · "
+          + (P.ACCESSORIES[v.type] || ("type " + v.type))
+          + " · coiffure de référence " + (v.coiffureRef == null ? 8 : v.coiffureRef);
+        new M.Bouille($("#mai-apercu"), d,
+          { etat: etatAvec(v.type, maisonInj.variante, co), anime: false,
+            alea: function () { return 0.5; } });
+        $("#mai-dl").disabled = false;
+      });
+    }
+
+    $("#mai-dl").addEventListener("click", function () {
+      var v = maison[+$("#mai-liste").value];
+      if (!v || !maisonInj || !maisonDefs) return;
+      var co = +$("#coif").value;
+      var svg = V.exporterSVG(maisonDefs, {
+        type: v.type, variante: maisonInj.variante, coiffure: co,
+        nom: (v.nom || "accessoire maison") + " — " + (P.ACCESSORIES[v.type] || v.type),
+        fondTete: V.fondTete(defs, co, 512),
+      });
+      var url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "maison-" + String(v.nom || "accessoire").toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".svg";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    });
+
+    $("#mai-liste").addEventListener("change", reprendreMaison);
+
     $("#rec-famille").addEventListener("change", rendreRecolte);
 
     $("#variante").addEventListener("change", rafraichir);
@@ -598,6 +712,18 @@
       construireCouleurs();
       remplirVariantes();
       rafraichir();
+      // Le catalogue des accessoires maison — pour l'encart 5. Il ne coûte
+      // qu'un aller-retour, et l'atelier marche sans lui si le serveur boude.
+      fetch("/api/light/variantes", { cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          maison = ((j && j.liste) || []).filter(function (v) {
+            return (v.famille || 0) === 0 && !v.retire && v.paths && v.paths.length;
+          });
+          remplirMaison();
+          if (maison.length) return reprendreMaison();
+        })
+        .catch(function () { maison = []; remplirMaison(); });
       // Le recensement des autres familles vient APRÈS : il coûte une seconde
       // (neuf SWF à lire), et l'atelier lui-même n'a pas à l'attendre.
       return recenser().then(function () {

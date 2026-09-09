@@ -159,6 +159,31 @@ test('le préavis « tes prochains scores ne seront pas classés » est câblé 
   assert.ok(/averti = true/.test(bloc) && /if \(averti\)/.test(bloc), 'affiché une seule fois');
 });
 
+/*
+ * ET QUAND C'EST FAIT, LE DIRE EN FRANÇAIS.
+ *
+ * « À quoi correspond l'erreur "sans fruit défendu, votre score n'est pas
+ * comptabilisé" sur Frutisnake ? C'est pas clair. »
+ *
+ * Elle ne l'était pas : elle nommait une pièce de mécanique (le Fruit Défendu)
+ * sans dire ce qui manquait, ni que le score était malgré tout gardé, ni
+ * comment en ravoir une. Trois lignes, trois réponses — et trois seulement,
+ * le panneau de fin de Frutisnake les centrant sous celles qui précèdent
+ * (record battu, places gagnées).
+ */
+test('Frutisnake : le message du quota épuisé dit quoi, et quoi faire', () => {
+  const C = require(path.join(ROOT, 'public/snake3/const.js'));
+  const lignes = C.TXT_SCORE_SANS_FD.split('\n');
+  assert.strictEqual(lignes.length, 3, 'trois lignes, pas plus');
+  lignes.forEach((l) => assert.ok(l.length <= 46, 'ligne trop longue pour le panneau : ' + l));
+  assert.match(lignes[0], /parties classées du jour sont épuisées/, 'ce qui manque');
+  assert.match(lignes[1], /reste votre record/, 'ce que le score devient quand même');
+  assert.match(lignes[2], /Pass quotidien \(Boutique\)/, 'et comment en ravoir une');
+  // Le jeu l'affiche bien sur le verdict du serveur, pas au petit bonheur.
+  const game = fs.readFileSync(path.join(ROOT, 'public/snake3/game.js'), 'utf8');
+  assert.match(game, /if \(rep\.fdBlocked\) texte \+= C\.TXT_SCORE_SANS_FD \+ '\\n';/);
+});
+
 test('full.swf : la fin de partie de Kaluga passe par le garde endGame()', () => {
   // Correctif de la CAUSE, dans le bytecode (scripts/patch-kaluga-endgame.js) :
   // checkFruit() appelle endGame(120) — qui teste flEndingGame — au lieu de

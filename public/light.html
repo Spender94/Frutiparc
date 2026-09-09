@@ -7324,6 +7324,25 @@
         var from = attr(xml, "u");
         var h = attr(xml, "h");
         var body = bodyOf(xml);
+        /*
+         * PARLER, C'EST ENTRER DANS L'AQUARIUM — QUEL QUE SOIT LE FEUTRE.
+         *
+         * La bouille n'entrait que par le chemin du texte ORDINAIRE, tout en
+         * bas de ce switch. Or trois façons de parler s'en détournent avant :
+         * le mode bleu (`t="c"`), le cri rouge d'un modérateur (`st="r"`) et le
+         * feutre multicolore (`st="mc"`). Chacune faisait `break` avec son
+         * rendu, et le locuteur restait invisible dans la colonne des écrans —
+         * précisément les gens dont on veut voir la tête.
+         *
+         * Une ligne d'admin (annonce, quiz) n'a personne derrière elle : elle
+         * ne fait entrer personne. Le rejeu non plus, sinon revenir sur l'onglet
+         * rejouerait tout le salon.
+         */
+        var entrerDansLAquarium = function (qui) {
+          var q = qui || from;
+          if (!q || q === "admin" || enRejeu) return;
+          showBouilleOverlay(q, "parle", null, salon);
+        };
         // Émote normalisée côté serveur : e=anim, el=phrase, eu=pseudo. Le SWF
         // affiche le corps htmlText ; ici on rejoue l'action ("pseudo éclate de
         // rire", sans « : », en italique) + l'animation de bouille du pseudo.
@@ -7391,6 +7410,7 @@
           // « < » écrit par un joueur nous parvient échappé, il survit.
           var cBody = htmlToText(stripCdata(body).replace(/<br\s*\/?>/gi, "\n"));
           if (cBody) addMessage({ from: from, time: h, body: cBody, kind: "blue", noFrom: (from === "admin"), salon: salon });
+          entrerDansLAquarium();
           break;
         }
         // Sondage en direct (/poll) : le corps est un JSON. On ouvre — ou on
@@ -7416,6 +7436,7 @@
           // donc on décode d'abord (xmlUnescape → vraies balises) puis htmlToText les
           // retire, pour un horodatage propre « [hh:mm:ss] ».
           if (mcText) addMessage({ from: from, time: htmlToText(xmlUnescape(h)), body: mcText, kind: "normal", multicolor: true, salon: salon });
+          entrerDansLAquarium();
           break;
         }
         // st="r" → cri modérateur ("!texte"), rendu en rouge gras comme desktop.
@@ -7424,6 +7445,9 @@
           var plain = htmlToText(stripped);
           var isShout = (attr(xml, "st") === "r");
           if (plain) addMessage({ from: from, time: h, kind: isShout ? "shout" : "admin", noFrom: true, body: plain, salon: salon, mentions: nommes });
+          // Le cri part en u="admin" (le pseudo est DANS le corps) : c'est `au`
+          // qui dit qui a crié — cf. le commentaire du serveur.
+          if (isShout) entrerDansLAquarium(xmlUnescape(attr(xml, "au")));
           break;
         }
         // Emotes travel as ordinary text (e.g. "mdr"). To keep the experience

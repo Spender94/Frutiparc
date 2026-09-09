@@ -196,9 +196,23 @@ C.TXT_SCORE_PERDU_MOTIF = function (code) {
     default:                 return 'Le serveur n\'a pas répondu.';
   }
 };
-// Le score classique PART bien, mais sans Fruit Défendu il n'entre pas au
-// classement du jour (`fdBlocked`) — même symptôme vu du joueur, autre cause.
-C.TXT_SCORE_SANS_FD = 'Sans Fruit Défendu, ce score ne compte pas au classement.';
+/*
+ * QUAND LE QUOTA DU JOUR EST ÉPUISÉ.
+ *
+ * Le score classique PART bien : il est enregistré, il compte pour le record
+ * personnel et pour les fruits débloqués. Ce qu'il ne fait pas, c'est entrer au
+ * CLASSEMENT DU JOUR — le serveur ne classe que les parties couvertes par un
+ * Fruit Défendu (deux par jour et par jeu, plus un par Pass quotidien possédé).
+ *
+ * L'ancienne phrase — « Sans Fruit Défendu, ce score ne compte pas au
+ * classement » — ne disait ni ce qui manquait, ni comment en ravoir, ni que le
+ * score était malgré tout gardé. Trois lignes, trois réponses — et trois
+ * seulement : le panneau les centre verticalement, et celles qui précèdent
+ * (record battu, places gagnées) peuvent déjà en occuper trois.
+ */
+C.TXT_SCORE_SANS_FD = 'Vos parties classées du jour sont épuisées.\n'
+  + 'Ce score reste votre record, sans classement.\n'
+  + 'Un Pass quotidien (Boutique) en ajoute une.';
 C.TXT_FRUIT_NAME = function (id) {
   if (id >= 320) id -= 20;
   return C.FRUIT_NAMES[id - 1];

@@ -64,10 +64,10 @@ function monter(defs) {
 // ══ LA RÉCOLTE ════════════════════════════════════════════════════════════
 
 test('la récolte ne prend que les dessins de la chute, et les renumérote', () => {
-  // Quatre clips — la fumée d'hiko, son chocapic, sa tache de chewing-gum, et
-  // le nuage de la toux — et les seize formes qu'ils portent.
-  assert.strictEqual(Object.keys(PAQUET.sprites).length, 4, 'quatre clips');
-  assert.strictEqual(Object.keys(PAQUET.formes).length, 16, 'seize formes');
+  // Cinq clips — la fumée d'hiko, son chocapic, sa BULLE de chewing-gum, sa
+  // tache, et le nuage de la toux — et les dix-sept formes qu'ils portent.
+  assert.strictEqual(Object.keys(PAQUET.sprites).length, 5, 'cinq clips');
+  assert.strictEqual(Object.keys(PAQUET.formes).length, 17, 'dix-sept formes');
   // AU-DELÀ DE LA PLAGE D'UN SWF. Un caractère d'hiko porte un numéro sur
   // seize bits, et la famille d'accueil a le sien au même : #415 est le
   // chocapic chez hiko et tout autre chose dans la famille 0.
@@ -91,7 +91,7 @@ test('les dessins récoltés sont bien ceux d’hiko, au tracé près', async ()
     assert.deepStrictEqual(forme, origine, 'la forme ' + id + ' est recopiée telle quelle');
     compares++;
   });
-  assert.strictEqual(compares, 10, 'les dix formes venues d’hiko sont recopiées telles quelles');
+  assert.strictEqual(compares, 11, 'les onze formes venues d’hiko sont recopiées telles quelles');
   // La fumée est bien une pellicule (six dessins qui se relaient), le chocapic
   // une seule image.
   assert.strictEqual(PAQUET.sprites[PAQUET.jutsu.chocapic.ch].n, 1, 'le chocapic ne bouge pas');
@@ -133,15 +133,21 @@ test('« jutsu » commence à la fumée — le « regarde ailleurs » n’est pa
 test('la fumée s’efface, le chocapic reste, et tout rentre au bout', async () => {
   const mo = monter(await lire('famille0.swf'));
   mo.jouerAnim(14);
-  let n = 0;
-  const fumeeVue = [];
+  let n = 0, battements = 0;
+  const fumeeVue = new Set();
   while (mo.enMouvement() && n < 400) {
-    if (mo.chute) fumeeVue.push(mo.chute.t < 20);
+    if (mo.chute) {
+      battements = mo.chute.t;
+      if (mo.chute.t < 20) fumeeVue.add(mo.chute.t);
+    }
     mo.avancer(); n++;
   }
-  // Trois secondes et des poussières, à quarante images par seconde.
-  assert.strictEqual(n, 129, 'la chute dure ce que dure celle d’hiko');
-  assert.strictEqual(fumeeVue.filter(Boolean).length, 20,
+  // La chute compte 129 BATTEMENTS — ce que dure celle d'hiko. À l'horloge,
+  // elle en prend 150 : le ralenti d'une image sur sept (cf. RALENTI_EMOTES)
+  // l'étire d'un sixième, sans changer un seul de ses battements.
+  assert.strictEqual(battements, 128, 'la chute compte les battements d’hiko');
+  assert.strictEqual(n, 150, 'et le ralenti l’étire d’un sixième à l’horloge');
+  assert.strictEqual(fumeeVue.size, 20,
     'la fumée tient vingt battements — « _alpha -= 5 » vingt fois');
   assert.strictEqual(mo.chute, null, 'et la chute se range');
   assert.strictEqual(mo.racine.flStop, true, 'la bouille est revenue au repos');
@@ -158,14 +164,16 @@ test('« tousse » sursaute quatre fois, les yeux fermés, sans rien dessiner', 
   assert.ok(mo.chute && mo.chute.quoi === 'toux');
 
   // Les battements où la tête est hors de sa place : quatre salves de six.
-  const secoue = [];
+  const secoue = new Set();
   let n = 0;
   while (mo.enMouvement() && n < 400) {
-    if (mo.secousseToux()) secoue.push(mo.chute.t);
+    if (mo.secousseToux()) secoue.add(mo.chute.t);
     mo.avancer(); n++;
   }
-  assert.strictEqual(n, 45, 'un peu plus d’une seconde');
-  assert.deepStrictEqual(secoue, [
+  // Quarante-cinq battements de quinte, cinquante-deux images d'horloge : le
+  // ralenti d'une image sur sept (cf. RALENTI_EMOTES).
+  assert.strictEqual(n, 52, 'un peu plus d’une seconde, ralenti compris');
+  assert.deepStrictEqual([...secoue], [
     0, 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15,
     20, 21, 22, 23, 24, 25, 30, 31, 32, 33, 34, 35,
   ], 'quatre sursauts de six battements, dix battements d’écart');
@@ -210,8 +218,8 @@ test('la greffe est idempotente et ne recouvre rien', async () => {
   mo.creerVisage();
   mo.greffer(PAQUET);
   const apresF = defs.formes.size, apresS = defs.sprites.size;
-  assert.strictEqual(apresF, avantF + 16, 'seize formes de plus');
-  assert.strictEqual(apresS, avantS + 4, 'quatre clips de plus');
+  assert.strictEqual(apresF, avantF + 17, 'dix-sept formes de plus');
+  assert.strictEqual(apresS, avantS + 5, 'cinq clips de plus');
   // La même famille sert toutes les bouilles d'une page : la deuxième greffe
   // ne doit rien refaire.
   const mo2 = new Moteur.Moteur(defs, { alea: () => 0.5 });
@@ -292,13 +300,14 @@ test('le nuage couvre la quinte, s’efface, et ne suit pas la secousse', async 
   assert.ok(mo.chute.nuage.enfants.size > 0, 'et il a son dessin');
   // Il tient vingt battements — la boucle de l'image 93 de la famille 15 —
   // pendant que la quinte, elle, en dure quarante-cinq.
-  let n = 0, avecNuage = 0;
+  let n = 0;
+  const avecNuage = new Set();
   while (mo.enMouvement() && n < 400) {
-    if (mo.chute && mo.chute.t < 20) avecNuage++;
+    if (mo.chute && mo.chute.t < 20) avecNuage.add(mo.chute.t);
     mo.avancer(); n++;
   }
-  assert.strictEqual(avecNuage, 20, 'vingt battements de nuage');
-  assert.strictEqual(n, 45, 'quarante-cinq de quinte');
+  assert.strictEqual(avecNuage.size, 20, 'vingt battements de nuage');
+  assert.strictEqual(n, 52, 'quarante-cinq battements de quinte, ralenti compris');
 
   // LA SECOUSSE NE L'EMPORTE PAS : le nuage sort de la bouche, pas du crâne.
   // `dessiner` le compose donc au repère d'AVANT la secousse.
@@ -382,19 +391,101 @@ test('« gumm » joue la pellicule du gum, avec les dessins d’hiko', async () 
   // Et la table de substitution est prête : les dessins de la famille 0
   // pointent vers ceux d'hiko.
   assert.ok(mo.remplacements instanceof Map, 'la table est posée');
-  assert.strictEqual(mo.remplacements.size, 3, 'deux éclats et une tache');
+  assert.strictEqual(mo.remplacements.size, 4, 'la bulle, deux éclats et une tache');
   const cibles = [...mo.remplacements.values()].sort((a, b) => a - b);
   assert.deepStrictEqual(cibles,
-    PAQUET.gum.eclats.map((e) => e.ch).concat([PAQUET.gum.tache.ch]).sort((a, b) => a - b),
+    PAQUET.gum.eclats.map((e) => e.ch)
+      .concat([PAQUET.gum.tache.ch, PAQUET.gum.bulle.ch]).sort((a, b) => a - b),
     'et elle mène exactement aux dessins récoltés');
-  // Les CLÉS sont les dessins de la famille d'accueil, lus sur sa pellicule.
+  // Les CLÉS sont les dessins de la famille d'accueil, lus sur sa pellicule :
+  // la bulle à l'étiquette « gum », la fin aux trois images de « gumNext ».
   const deb = face.def.labels.gumNext;
   const poses = [];
   for (let i = deb; i < deb + 3; i++) {
     (face.def.images[i - 1] || []).forEach((o) => { if (o.t === 'pose' && o.ch >= 0) poses.push(o.ch); });
   }
+  (face.def.images[face.def.labels.gum - 1] || []).forEach((o) => {
+    if (o.t === 'pose' && o.ch >= 0 && o.nom === 'bubble') poses.push(o.ch);
+  });
   [...mo.remplacements.keys()].forEach((ch) => assert.ok(poses.indexOf(ch) >= 0,
     'la clé #' + ch + ' est bien posée par la pellicule du gum'));
+});
+
+/*
+ * LA BULLE ROSE QUI ÉCLATAIT EN JAUNE.
+ *
+ * Chaque famille pose sa bulle sous le nom `bubble` à l'étiquette « gum ». La
+ * famille 0 la dessine ROSE, hiko JAUNE — et c'est l'éclatement d'hiko qu'on
+ * emprunte. On échange donc la bulle elle-même, dès le premier souffle.
+ */
+test('la bulle du gumm est celle d’hiko, jaune du premier souffle', async () => {
+  const d0 = await lire('famille0.swf');
+  const d12 = await lire('famille12.swf');
+  const bulleDe = (defs) => {
+    const face = visageDe(defs);
+    return (face.images[face.labels.gum - 1] || [])
+      .find((o) => o.t === 'pose' && o.ch >= 0 && o.nom === 'bubble');
+  };
+  const b0 = bulleDe(d0), b12 = bulleDe(d12);
+  assert.ok(b0 && b12, 'les deux familles posent une bulle nommée « bubble »');
+
+  // Les deux bulles sont des CLIPS d'une image, qui portent une forme.
+  const formeDe = (defs, ch) => {
+    const sp = defs.sprites.get(ch);
+    const p = (sp.images[0] || []).find((o) => o.t === 'pose' && o.ch >= 0);
+    return defs.formes.get(p.ch);
+  };
+  const rose = formeDe(d0, b0.ch), jaune = formeDe(d12, b12.ch);
+  // Le rose de la famille 0 : un contour rouge sombre et un dégradé rose.
+  const arrets = (f) => f.couches.filter((c) => c.degrade)
+    .flatMap((c) => c.degrade.arrets.map((a) => a.rgb));
+  const moyenne = (l) => l.reduce((s, c) => [s[0] + c[0], s[1] + c[1], s[2] + c[2]], [0, 0, 0])
+    .map((v) => Math.round(v / l.length));
+  const mRose = moyenne(arrets(rose)), mJaune = moyenne(arrets(jaune));
+  assert.ok(mRose[0] > mRose[2] + 40 && mRose[1] < mRose[0] - 40,
+    'la bulle de la famille 0 est bien rose : ' + mRose);
+  assert.ok(mJaune[0] > 200 && mJaune[1] > 200 && mJaune[2] < mJaune[1] - 40,
+    'celle d’hiko est bien jaune : ' + mJaune);
+
+  // Et c'est bien la seconde que le moteur pose à la place de la première.
+  const mo = monter(d0);
+  mo.jouerAnim(16);
+  assert.strictEqual(mo.remplacements.get(b0.ch), PAQUET.gum.bulle.ch,
+    'la bulle de l’hôte mène à celle d’hiko');
+  assert.ok(PAQUET.sprites[PAQUET.gum.bulle.ch], 'et la bulle récoltée est un clip');
+});
+
+/*
+ * LE RALENTI DES TROIS ÉMOTES EMPRUNTÉES.
+ *
+ * Elles racontent quelque chose — une tête qui part en fumée, deux sursauts,
+ * une bulle qui enfle puis éclate — et passaient trop vite pour être lues. On
+ * saute une image d'horloge sur sept : +17 % de durée, pas un dessin changé.
+ */
+test('jutsu, tousse et gumm sautent une image sur sept — les autres non', async () => {
+  const defs = await lire('famille0.swf');
+  const jouer = (id, n) => {
+    const mo = monter(defs);
+    mo.jouerAnim(id);
+    let bouge = 0;
+    for (let i = 0; i < n; i++) if (mo.avancer()) bouge++;
+    return { mo, bouge };
+  };
+  // Quarante-deux images d'horloge : la plus courte des trois (la quinte) en
+  // dure cinquante-deux, on reste donc dans l'émote. Six d'entre elles tombent
+  // sur un multiple de sept et ne font rien avancer.
+  for (const id of [14, 15]) {
+    const { mo } = jouer(id, 42);
+    assert.strictEqual(mo.chute.t, 36,
+      'l’animation ' + id + ' n’a battu que trente-six fois en quarante-deux images');
+  }
+  /*
+   * LE GUM ET LE GUMM JOUENT LA MÊME PELLICULE : c'est ce qui rend la
+   * comparaison exacte. Sur la même fenêtre, le gumm doit avancer SIX FOIS DE
+   * MOINS — les six images qu'il saute —, et pas une de plus.
+   */
+  assert.strictEqual(jouer(8, 42).bouge - jouer(16, 42).bouge, 6,
+    'le gumm saute six images là où le gum d’époque n’en saute aucune');
 });
 
 test('la substitution ne survit pas à l’animation suivante', async () => {

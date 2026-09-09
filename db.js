@@ -377,7 +377,7 @@ async function initSchema() {
       CREATE INDEX IF NOT EXISTS idx_shop_purchases_cat ON shop_purchases(category, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_shop_purchases_user ON shop_purchases(LOWER(username));
 
-      -- L'historique des salons — la fenêtre des logs du staff (six heures).
+      -- L'historique des salons — la fenêtre des logs du staff (24 heures).
       -- La mémoire seule s'efface à chaque redémarrage du serveur : une ligne
       -- par trame <t> diffusée, purgée au-delà de la fenêtre.
       CREATE TABLE IF NOT EXISTS chat_history (
@@ -3247,7 +3247,7 @@ async function forumGetSignatures(usernames) {
   return map;
 }
 
-// ── Historique des salons (fenêtre des logs staff, six heures) ──
+// ── Historique des salons (fenêtre des logs staff, 24 heures) ──
 async function insertChatHistory(channel, atMs, xml) {
   await pool.query(
     'INSERT INTO chat_history (channel, at_ms, xml) VALUES ($1, $2, $3)',

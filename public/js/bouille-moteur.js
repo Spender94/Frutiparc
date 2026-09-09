@@ -127,8 +127,9 @@
    * Ce qui CHANGE d'une famille à l'autre, ce sont les constantes de la
    * boucle : la famille 0 laisse sa bulle enfler jusqu'à `random(150) + 30`,
    * hiko jusqu'à `random(80)`, la 14 jusqu'à `random(500)`. On n'y touche
-   * pas — la bulle reste celle de la famille, avec son rythme ; c'est ce
-   * qu'elle devient en éclatant qu'on emprunte.
+   * pas — la bulle garde le RYTHME de la famille ; c'est son DESSIN, et ce
+   * qu'elle devient en éclatant, qu'on emprunte. (Sans la bulle d'hiko, on
+   * regardait une bulle rose exploser en jaune.)
    */
   const ANIMATIONS = ['stop', 'parle', 'rire', 'mdr', 'langue', 'rougir', 'regard',
     'siffle', 'gum', 'question', 'miam', 'pleure', 'larme', 'beurk', 'jutsu', 'tousse',
@@ -1028,6 +1029,10 @@
     // Comme les substitutions de dessins : elles ne valent que pour l'émote
     // qui les a posées (cf. `remplacements`).
     if (id !== 16) this.remplacements = null;
+    // Quelle émote joue — le ralenti des trois empruntées s'y adosse, et son
+    // compteur repart avec elles (cf. RALENTI_EMOTES).
+    this.animCourante = id;
+    this.ralentiCompteur = 0;
 
     if (id === 0) {
       r.endAnim();
@@ -1260,6 +1265,16 @@
     if (!paq || !face || !face.def || !face.def.labels) return null;
     const deb = face.def.labels.gumNext;
     if (!deb) return null;
+    /*
+     * LA BULLE AUSSI — et dès le premier souffle.
+     *
+     * Chaque famille a la sienne, posée sous le nom `bubble` à l'étiquette
+     * « gum » : un clip d'une seule image que la pellicule fait enfler. Celle
+     * de la famille 0 est ROSE, l'éclatement d'hiko est JAUNE — on regardait
+     * donc une bulle rose exploser en jaune. On échange le clip entier, à la
+     * même profondeur et sous la même matrice : elle enfle comme avant, elle
+     * est simplement de la bonne couleur du début à la fin.
+     */
     const eclats = [];
     let tache = null;
     for (let i = deb; i < deb + 3; i++) {
@@ -1270,6 +1285,12 @@
     }
     if (tache === null || !eclats.length) return null;
     const table = new Map();
+    const gum = face.def.labels.gum;
+    if (paq.bulle && gum) {
+      for (const o of (face.def.images[gum - 1] || [])) {
+        if (o.t === 'pose' && o.ch >= 0 && o.nom === 'bubble') table.set(o.ch, paq.bulle.ch);
+      }
+    }
     // L'éclatement d'hiko a deux images comme partout ; s'il en manquait une,
     // la dernière sert pour les suivantes plutôt que de laisser un trou.
     eclats.forEach((ch, i) => {
@@ -1280,7 +1301,33 @@
     return table;
   };
 
+  /*
+   * LE RALENTI DES TROIS ÉMOTES EMPRUNTÉES.
+   *
+   * Le jutsu, la quinte de toux et le gum d'hiko passent trop vite : ce sont
+   * les trois qui racontent quelque chose — une tête qui part en fumée, deux
+   * sursauts, une bulle qui enfle puis éclate —, et à quarante images par
+   * seconde l'œil n'a pas le temps de les lire.
+   *
+   * On ne touche NI aux dessins NI aux pellicules : on saute simplement une
+   * image d'horloge sur sept, ce qui laisse la même à l'écran un battement de
+   * plus. L'émote dure un sixième de plus (+17 %) et garde exactement son
+   * déroulé — c'est le ralenti le plus discret qu'on puisse faire sans
+   * réécrire une seule image.
+   *
+   * Sauter une image, c'est NE PAS BOUGER : on rend `false`, et la boucle de
+   * rendu s'épargne un redessin identique. Elle ne s'endort pas pour autant —
+   * il lui faut quarante battements de calme d'affilée, et il n'en vient
+   * jamais qu'un.
+   */
+  const RALENTI_EMOTES = { 14: 7, 15: 7, 16: 7 };
+
   Moteur.prototype.avancer = function () {
+    const pas = RALENTI_EMOTES[this.animCourante];
+    if (pas) {
+      this.ralentiCompteur = (this.ralentiCompteur || 0) + 1;
+      if (this.ralentiCompteur % pas === 0) return false;
+    }
     const bouge = this.racine.face ? this.racine.face.avancer() : false;
     return this.avancerChute() || bouge;
   };

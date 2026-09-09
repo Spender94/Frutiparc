@@ -253,7 +253,7 @@ test('salon pomme : les quatre droits de l\'animateur, et leurs refus ailleurs',
   }
 });
 
-test('la fenêtre des logs : six heures de salon, réservées au staff du salon', async (t) => {
+test('la fenêtre des logs : vingt-quatre heures de salon, réservées au staff du salon', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
 
   const sidModo = (await (await fetch(BASE + '/api/auth/login', {
@@ -288,7 +288,18 @@ test('la fenêtre des logs : six heures de salon, réservées au staff du salon'
 
   // Le modérateur lit tout salon ; la page porte les couleurs et les lignes.
   const page = await (await fetch(`${BASE}/api/chat/histo?sid=${sidModo}&g=pomme`)).text();
-  assert.match(page, /6 dernières heures/, 'la fenêtre annonce sa période');
+  assert.match(page, /24 dernières heures/, 'la fenêtre annonce sa période');
+  /*
+   * LA RÉTENTION, ET SON PLAFOND DE LIGNES.
+   *
+   * La fenêtre est passée de six heures à vingt-quatre. Le plafond DOIT suivre :
+   * `history` est un tableau en mémoire, et c'est le plus petit des deux —
+   * l'âge ou le nombre — qui décide de ce qu'on garde. À 4 000 lignes, un salon
+   * animé perdait sa matinée bien avant les vingt-quatre heures.
+   */
+  const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(srv, /const CHAT_HISTORY_MAX_AGE_MS = 24 \* 60 \* 60 \* 1000;/);
+  assert.match(srv, /const CHAT_HISTORY_MAX = 20000;/);
   assert.match(page, /la mémoire du salon/, 'la ligne ordinaire y est');
   assert.match(page, /class="ligne cri"/, 'le cri y est marqué rouge');
   assert.match(page, /#cfec9a/, 'et la fenêtre porte les couleurs de Frutiparc');
@@ -306,7 +317,7 @@ test('les deux clients embarquent le par-salon : tri, lien des logs, fiche', () 
   assert.match(light, /staff: attr\(frag, "m"\) === "1"/, 'la liste retient le m="1" du serveur');
   assert.match(light, /sa - sb/, 'et trie le staff en tête');
   assert.match(light, /montrerLienHisto\(room, set\)/, 'le lien des logs à l\'entrée');
-  assert.match(light, /\/api\/chat\/histo\?sid=/, 'vers la fenêtre des six heures');
+  assert.match(light, /\/api\/chat\/histo\?sid=/, 'vers la fenêtre des vingt-quatre heures');
   assert.match(light, /d\.vous\.animateur && state\.room === SALON_ANIM/,
     'la fiche montre l\'éjection à l\'animateur sur son salon');
   const ruffle = fs.readFileSync(path.join(ROOT, 'public/ruffle.html'), 'utf8');

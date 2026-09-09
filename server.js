@@ -6010,6 +6010,35 @@ const SHOP_PACKS_DEFAULT = [
   // auto-granted to users with is_animator=true via grantAnimatorAccessory
   // (mirroring the Badge Modérateur flow). See ANIM_ACCESSORY_* constants.
   /*
+   * LE MAKULO — UNE RÉCOMPENSE, PAS UN ARTICLE DE RAYON.
+   *
+   * Il se gagne en bouclant le DIFFICILE des Épreuves de Kaluga
+   * (`KALUGA_RECOMPENSES`, `POST /api/kaluga/accessoire`). Il vivait jusqu'ici
+   * uniquement en base, « créé depuis l'admin » : sur une installation où
+   * personne ne l'avait saisi, le serveur répondait `absent`, le joueur voyait
+   * l'annonce — elle se lit sur la fruticard, avant la réponse — et ne recevait
+   * RIEN. C'est le défaut que les joueurs décrivaient : « le Makulo ne se
+   * débloque pas ».
+   *
+   * Il est donc livré avec le code. Une ligne déjà présente en base GAGNE
+   * (cf. la fusion au démarrage) : un parc qui l'a dessiné à sa façon garde le
+   * sien, celui-ci ne sert qu'aux installations qui n'en ont pas.
+   *
+   * `recompense: true` le tient HORS DES RAYONS. Sans quoi un accessoire à zéro
+   * kikooz dans une rubrique payante se ramasserait gratuitement en boutique —
+   * et l'épreuve n'aurait plus rien à donner.
+   */
+  {
+    id: 88888,
+    name: 'Makulo',
+    category: 'Accessoires',
+    price: 0,
+    description: 'La tête de tzongre des Épreuves.',
+    comment: 'Se gagne en bouclant le défi DIFFICILE des Épreuves de Kaluga.',
+    suffix9: '50h0t0j0o',
+    recompense: true,
+  },
+  /*
    * LES INCARNATIONS — un rayon à part, parce que ce ne sont pas des accessoires.
    *
    * DEUX MOTS À NE PAS CONFONDRE :
@@ -6562,11 +6591,20 @@ function rayonsBoutique(packs) {
   return out;
 }
 
+/*
+ * CE QUI S'AFFICHE DANS UN RAYON.
+ *
+ * Deux façons de ne pas y être, et elles ne veulent pas dire la même chose :
+ *   · `disabled` — l'admin a retiré l'article. `getShopPack` le résout encore,
+ *     pour que celui qui le possède continue de le voir et de le porter ;
+ *   · `recompense` — l'article n'a JAMAIS été à vendre : il se gagne (le Makulo
+ *     des Épreuves). Le laisser en rayon à zéro kikooz, dans une rubrique
+ *     payante, reviendrait à l'offrir à tout le monde.
+ */
+function estPackEnRayon(p) { return !p.disabled && !p.recompense; }
+
 function buildShopTreeXml(user) {
-  // Group packs by category. Disabled packs are hidden from the boutique tree
-  // (an admin can re-enable them); getShopPack still resolves them so a player
-  // who already owns a now-disabled accessory keeps seeing/wearing it.
-  const visible = SHOP_PACKS.filter((p) => !p.disabled);
+  const visible = SHOP_PACKS.filter(estPackEnRayon);
   const byCategory = rayonsBoutique(visible);
   const defaultId = visible.length ? visible[0].id : '';
   let inner = '';
@@ -11987,6 +12025,11 @@ app.get('/api/light/variantes', (req, res) => {
       famille: v.famille || 0, type: v.type, coiffureRef: v.coiffureRef || 8,
       index: (Number.isFinite(v.index) ? v.index : null),
       paths: v.retire ? [] : v.paths, retire: !!v.retire,
+      // Le NOM et l'AUTEUR voyagent aussi : l'atelier
+      // (public/bouille-accessoire.html) redonne le gabarit SVG d'un accessoire
+      // maison, et il faut bien le désigner dans la liste. Les deux sont déjà
+      // publics — ils s'affichent en boutique et sur la fiche de l'article.
+      nom: String(v.nom || ''), auteur: String(v.auteur || ''),
     })),
   });
 });
@@ -18652,7 +18695,9 @@ app.get('/ft/pack', (req, res) => {
 // gratuite, 3=kikooz insuffisants.
 function purchaseShopPack(user, username, packIdRaw) {
   const pack = getShopPack(packIdRaw);
-  if (!pack || pack.disabled) return { ok: false, code: 1 };
+  // Une RÉCOMPENSE ne s'achète pas, même en tapant son numéro à la main : elle
+  // n'est dans aucun rayon, et son prix nul la donnerait à qui le demande.
+  if (!pack || pack.disabled || pack.recompense) return { ok: false, code: 1 };
   if (userOwnsShopPack(user, pack.id) || (shopCategoryOwnedByDefault(pack.category) && !pack.notDefault)) {
     return { ok: false, code: 2 };
   }
@@ -22911,9 +22956,9 @@ app.get('/api/chat/histo', (req, res) => {
 </head>
 <body>
 <div class="fenetre">
-  <div class="bandeau">Salon <span class="salon">${esc(g)}</span> — les messages des 6 dernières heures</div>
+  <div class="bandeau">Salon <span class="salon">${esc(g)}</span> — les messages des 24 dernières heures</div>
   <div class="sous">${lignes.length} message${lignes.length > 1 ? 's' : ''} — consultation réservée au staff. Les heures sont celles du chat.</div>
-  <div class="corps">${rendu || '<div class="vide">Aucun message sur ce salon depuis six heures.</div>'}</div>
+  <div class="corps">${rendu || '<div class="vide">Aucun message sur ce salon depuis 24 heures.</div>'}</div>
 </div>
 <script>document.querySelector('.corps').scrollTop = 1e9;</script>
 </body>
@@ -23219,7 +23264,7 @@ app.get('/api/light/shop', (req, res) => {
   const username = resolveUsernameFromSid(req.query.sid || '');
   if (!username) return res.status(401).json({ error: 'auth' });
   const user = users[username] || {};
-  const visible = SHOP_PACKS.filter((p) => !p.disabled);
+  const visible = SHOP_PACKS.filter(estPackEnRayon);
 
   const article = (p) => {
     const feutre = /^feutre,(\d+)$/.exec(String(p.picto || ''));
@@ -23614,6 +23659,10 @@ async function boot() {
           // ne touche jamais un article que la base renseigne déjà — un article
           // d'admin qui tomberait sur le même numéro reste ce qu'il est.
           if (def && def.prunelle && !p.prunelle) p.prunelle = def.prunelle;
+          // Une RÉCOMPENSE n'a pas de colonne en base : sans ce rappel, la ligne
+          // écrite avant que le drapeau existe (le Makulo saisi à la main dans
+          // l'admin) reparaîtrait en rayon — à zéro kikooz, donc offerte.
+          if (def && def.recompense) p.recompense = true;
           if (existingIds.has(p.id)) {
             const idx = SHOP_PACKS.findIndex(x => x.id === p.id);
             SHOP_PACKS[idx] = p;
@@ -23989,7 +24038,7 @@ async function boot() {
         console.log(`[DB] Quota de dons repris pour ${repris} donateur(s) (semaine ${wk})`);
       } catch (e) { console.error('[DB] Kikooz quota load error:', e.message); }
       try {
-        // La fenêtre des logs (six heures) se recharge depuis la base : sans
+        // La fenêtre des logs (24 h) se recharge depuis la base : sans
         // ça, chaque redémarrage vidait « … voir les messages précédents … ».
         const cutoff = Date.now() - CHAT_HISTORY_MAX_AGE_MS;
         const lignes = await db.loadChatHistory(cutoff);
@@ -24007,7 +24056,7 @@ async function boot() {
           }
         }
         db.pruneChatHistory(cutoff).catch(dbErr('pruneChatHistory boot'));
-        console.log(`[DB] ${restaurees} chat-history line(s) restored (6 h window)`);
+        console.log(`[DB] ${restaurees} chat-history line(s) restored (24 h window)`);
       } catch (e) { console.error('[DB] Chat history load error:', e.message); }
     } catch (e) {
       console.error('[DB] Init failed (running without persistence):', e.message);
@@ -25710,11 +25759,18 @@ function sendToClient(socket, data) {
 //  · le REJEU des clients Light qui reviennent (onglet mobile) — cinq
 //    minutes, comme avant ;
 //  · la fenêtre des LOGS du staff (« … voir les messages précédents … ») —
-//    les SIX dernières heures du salon.
+//    les VINGT-QUATRE dernières heures du salon.
 // Desktop is unaffected (replay is opt-in, see client.wantsChatHistory).
-const CHAT_HISTORY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+//
+// LE PLAFOND DE LIGNES SUIT LA FENÊTRE. `history` est un tableau EN MÉMOIRE, et
+// c'est le plus petit des deux — l'âge ou le nombre — qui décide de ce qu'on
+// garde : à 4 000 lignes, un salon animé perdait sa matinée bien avant les
+// vingt-quatre heures. On monte donc le plafond avec la fenêtre. Il ne coûte
+// que ce qu'il porte vraiment : une trame `<t>` pèse ~150 octets, et le tableau
+// ne grandit qu'à mesure qu'on parle.
+const CHAT_HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const CHAT_REPLAY_MAX_AGE_MS = 5 * 60 * 1000;
-const CHAT_HISTORY_MAX = 4000;
+const CHAT_HISTORY_MAX = 20000;
 function recordChannelHistory(channelName, xmlStr) {
   const channel = channels[channelName];
   if (!channel) return;
@@ -25749,7 +25805,7 @@ function getChannelHistory(channelName) {
   return channel.history.filter((e) => e.at >= cutoff).map((e) => e.xml);
 }
 
-// La fenêtre des logs : tout ce que la rétention porte (six heures).
+// La fenêtre des logs : tout ce que la rétention porte (vingt-quatre heures).
 function getChannelHistoryComplete(channelName) {
   const channel = channels[channelName];
   if (!channel || !channel.history) return [];
@@ -28714,8 +28770,13 @@ case 'send': {
         const inner = escapeXml(getDisplayName(client.username) + ': ' + shout);
         const body = `<![CDATA[<font color="#C10000"><b>${inner}</b></font>]]>`;
         const redStamp = `<font color="#C10000">${timeAttrs.h.trim()}</font> `;
+        // `au` — QUI A CRIÉ. La trame part en `u="admin"` (c'est ce qui donne au
+        // SWF son rendu sans préfixe, le pseudo étant DANS le corps) : le client
+        // Light n'avait donc personne à faire entrer dans l'aquarium du salon.
+        // Le SWF ignore les attributs qu'il ne connaît pas ; celui-ci ne coûte
+        // rien et rend au cri sa bouille.
         broadcastToChannel(g,
-          `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${escapeXml(redStamp)}" d="${timeAttrs.d}" st="r"${mn}>${body}</${CMD.send}>`
+          `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${escapeXml(redStamp)}" d="${timeAttrs.d}" st="r" au="${escapeXml(getDisplayName(client.username))}"${mn}>${body}</${CMD.send}>`
         );
         pousserNotifMentionChat(g, client.username, shout, mentionnes);
         break;
