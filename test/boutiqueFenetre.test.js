@@ -74,16 +74,34 @@ test('la boutique exige une session', async () => {
 });
 
 test('les rubriques du bureau sont servies, dans l\'ordre du catalogue', async () => {
-  const d = await boutique(await inscrire(joueur('rub')));
+  const sid = await inscrire(joueur('rub'));
+  const d = await boutique(sid);
   // Cinq rayons d'époque, plus les INCARNATIONS — les bouilles qu'on enfile à
-  // la place de la sienne, qui ne sont pas des accessoires qu'on pose — et
-  // les DÉCORS, l'habillage du parc : un thème ne change rien à ce qu'on joue,
-  // il change ce qu'on voit, il ne pouvait donc pas rejoindre les Packs.
+  // la place de la sienne, qui ne sont pas des accessoires qu'on pose.
   assert.deepEqual((d.categories || []).map((c) => c.name),
-    ['Accessoires', 'Incarnations', "Fonds d'écran", 'Pass', 'Feutres', 'Packs', 'Décors'],
+    ['Accessoires', 'Incarnations', "Fonds d'écran", 'Pass', 'Feutres', 'Packs'],
     'l\'arbre entier, pas seulement les accessoires');
   for (const c of d.categories) {
     assert.ok((c.items || []).length > 0, `la rubrique « ${c.name} » n'est pas vide`);
+  }
+  // Pas de rubrique VIDE : les DÉCORS n'ont pour l'instant qu'un article — le
+  // mode nuit —, et il part retiré du rayon, le temps de le faire essayer.
+  // Ouvrir la vente le fait apparaître, la refermer le fait disparaître : une
+  // rubrique du bureau suit ce qu'elle contient, elle n'est pas une étagère
+  // qu'on laisse en place.
+  const rayon = (ouvert) => fetch(`${BASE}/api/admin/shop/42`,
+    { method: 'PATCH', headers: hdr, body: JSON.stringify({ disabled: !ouvert }) });
+  await rayon(true);
+  try {
+    const ouvert = await boutique(sid);
+    assert.deepEqual((ouvert.categories || []).map((c) => c.name),
+      ['Accessoires', 'Incarnations', "Fonds d'écran", 'Pass', 'Feutres', 'Packs', 'Décors'],
+      'les Décors rejoignent l’arbre quand leur article est en vente');
+    const decors = rubrique(ouvert, 'Décors');
+    assert.equal(decors.items.length, 1);
+    assert.equal(decors.items[0].name, 'Son temps viendra');
+  } finally {
+    await rayon(false);
   }
   // L'ancienne clef survit : d'anciens appels s'y adossent.
   assert.ok(Array.isArray(d.items) && d.items.length > 0, '« items » sert encore les accessoires');

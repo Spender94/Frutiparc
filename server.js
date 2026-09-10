@@ -5715,6 +5715,16 @@ const SHOP_DECOR_PACKS_DEFAULT = [
     price: GAME_FEATURES.modeNuit.price,
     notDefault: true,
     gameFeature: 'modeNuit',
+    // RETIRÉ DU RAYON AU DÉPART. Un thème se juge sur un vrai parc, pas sur
+    // une capture : on veut pouvoir l'essayer à quelques-uns avant de
+    // l'ouvrir à tout le monde. L'admin le met en vente d'un clic — Boutique
+    // → « Réactiver » — et le retire du même geste si quelque chose cloche.
+    //
+    // Retiré du rayon ne veut PAS dire éteint : qui possède déjà l'option
+    // continue d'en profiter (`/api/features` lit `owned_features`, pas le
+    // catalogue), et l'admin en accorde à qui il veut depuis la fiche joueur.
+    // C'est ce qui permet de faire tester sans rien ouvrir.
+    disabled: true,
     picto: 'img,/fb/boutique/nuit.svg',
     description: "Le parc s'éteint : couleurs désaturées, fruits fanés, décor d'ardoise, un bon gros ciel gris nuageux et une lune blafarde. Ta bouille, elle, garde ses couleurs — le monde a viré au gris, pas toi.",
     comment: "S'allume et s'éteint quand tu veux, depuis Réglages, et sur l'appareil de ton choix : nuit sur le téléphone, jour sur l'ordinateur. Les salons, le bureau et le forum s'éteignent ensemble. Achat permanent !",
@@ -6704,6 +6714,24 @@ function rayonsBoutique(packs) {
  *     payante, reviendrait à l'offrir à tout le monde.
  */
 function estPackEnRayon(p) { return !p.disabled && !p.recompense; }
+
+/*
+ * CE QUE L'ACHAT DÉPOSE DANS L'INVENTAIRE — ET CE QUI N'Y VA PAS.
+ *
+ * La plupart des articles créditent un ACCESSOIRE : une pièce dans l'armoire,
+ * qu'on pose sur sa bouille. Quatre familles ne le font pas — l'option de jeu
+ * (`gameFeature`), le feutre spécial (`feutrePen`), le pass quotidien
+ * (`fdPassGame`) et la récompense (`recompense`) : elles accordent un
+ * DROIT, écrit ailleurs (owned_features, owned_feutres, fd_state).
+ *
+ * La distinction n'est pas théorique : « Pousser à tous » et « Retirer à
+ * tous » écrivent dans les inventaires. Appliqués à une option de jeu, ils
+ * déposeraient chez chaque joueur un accessoire fantôme portant le nom de
+ * l'option — sans rien accorder du tout. Les deux routes s'y refusent donc.
+ */
+function accordeUnAccessoire(p) {
+  return !!p && !p.gameFeature && !p.feutrePen && !p.fdPassGame && !p.recompense;
+}
 
 function buildShopTreeXml(user) {
   const visible = SHOP_PACKS.filter(estPackEnRayon);
@@ -13733,6 +13761,11 @@ app.post('/api/admin/shop/:id/push-all', adminScope('shop'), async (req, res) =>
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
   const pack = SHOP_PACKS.find(p => p.id === Number(req.params.id));
   if (!pack) return res.status(404).json({ error: 'pack not found' });
+  if (!accordeUnAccessoire(pack)) {
+    return res.status(400).json({ error: 'cet article n’accorde pas un accessoire : '
+      + 'le pousser déposerait une pièce fantôme dans chaque inventaire, sans rien accorder. '
+      + 'Passer par la fiche joueur (option de jeu, feutre, pass).' });
+  }
   try {
     const allUsers = await db.listAllUsers();
     let pushed = 0;
@@ -13784,6 +13817,11 @@ app.post('/api/admin/shop/:id/retirer-a-tous', adminScope('shop'), async (req, r
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
   const pack = SHOP_PACKS.find(p => p.id === Number(req.params.id));
   if (!pack) return res.status(404).json({ error: 'pack not found' });
+  if (!accordeUnAccessoire(pack)) {
+    return res.status(400).json({ error: 'cet article n’accorde pas un accessoire : '
+      + 'il n’y a rien à reprendre dans les inventaires. '
+      + 'Passer par la fiche joueur (option de jeu, feutre, pass).' });
+  }
   try {
     const allUsers = await db.listAllUsers();
     // L'accessoire « Rien » : les neuf derniers caractères de la bouille par

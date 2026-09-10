@@ -47,6 +47,7 @@ const SERVEUR = lire('server.js');
 const LIGHT = lire('public/light.html');
 const FORUM = lire('public/fb/index.html');
 const BUREAU = lire('public/bureau-frutiz.js');
+const ADMIN = lire('public/admin.html');
 const NUIT = lire('public/nuit.css');
 const NUIT_FORUM = lire('public/fb/nuit.css');
 const GEN = require('../scripts/generer-nuit.js');
@@ -526,4 +527,71 @@ test('une variante orpheline ne produit aucune règle', () => {
     fs.unlinkSync(orphelin);
   }
   assert.ok(!trouvees.has('/frutiz/sprites/nexiste-pas.svg'), 'l’orpheline est ignorée');
+});
+
+// ── Le rayon, ouvert et fermé depuis l'admin ────────────────────────────────
+//
+// Un thème se juge sur un vrai parc, pas sur une capture. L'article part donc
+// RETIRÉ du rayon : l'admin en accorde à quelques joueurs depuis leur fiche,
+// regarde ce que ça donne, puis ouvre la vente d'un clic. Trois pièces, et
+// chacune a sa raison d'être ci-dessous.
+
+test('l’article part retiré du rayon — on le fait essayer avant de le vendre', () => {
+  const bloc = SERVEUR.slice(SERVEUR.indexOf('const SHOP_DECOR_PACKS_DEFAULT = ['),
+    SERVEUR.indexOf('// ── Feutres spéciaux'));
+  assert.match(bloc, /\n\s*disabled: true,/, 'l’article n’est pas en vente au premier démarrage');
+  // Retiré du rayon veut dire INVENDABLE, pas éteint : ces deux-là suffisent.
+  assert.match(SERVEUR, /function estPackEnRayon\(p\) \{ return !p\.disabled && !p\.recompense; \}/);
+  assert.match(SERVEUR, /if \(!pack \|\| pack\.disabled \|\| pack\.recompense\) return \{ ok: false, code: 1 \};/);
+});
+
+test('la bascule de l’admin survit à un redémarrage', () => {
+  // Au démarrage, la ligne persistée en base ÉCRASE la définition statique,
+  // et quelques champs seulement sont réappliqués par-dessus — ceux que la
+  // base ne sait pas porter. `disabled`, lui, A sa colonne : le laisser hors
+  // de ce rappel est ce qui fait qu'un « Réactiver » cliqué tient au reboot.
+  // Sans quoi l'article se retirerait tout seul à chaque relance du serveur.
+  const rappel = /if \(def && def\.gameFeature\) \{ ([^}]*) \}/.exec(SERVEUR);
+  assert.ok(rappel, 'le rappel des options de jeu est toujours là');
+  assert.ok(!/disabled/.test(rappel[1]),
+    'le rappel ne doit pas reposer `disabled` : il annulerait la bascule de l’admin');
+  // La colonne existe, et la bascule l'écrit : c'est ce qui donne à la base le
+  // dernier mot sur ce champ-là.
+  assert.match(lire('db.js'), /ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS disabled BOOLEAN/);
+  assert.match(lire('db.js'), /disabled = \$10/);
+  assert.match(ADMIN, /onclick="toggleShopDisabled\(\$\{p\.id\},'\$\{esc\(p\.name\)\}',false\)">Réactiver/);
+});
+
+test('l’admin accorde le mode nuit depuis la fiche joueur', () => {
+  // C'est ce qui permet de faire tester PENDANT que l'article est retiré : la
+  // possession se lit dans `owned_features`, jamais dans le catalogue.
+  const i = ADMIN.indexOf('Mode nuit (« Son temps viendra »)');
+  assert.ok(i > 0, 'la ligne manque de la fiche joueur');
+  const ligne = ADMIN.slice(i, ADMIN.indexOf('</tr>', i));
+  assert.ok(ligne.includes("\\'modeNuit\\',true"), 'le bouton « Donner » manque');
+  assert.ok(ligne.includes("\\'modeNuit\\',false"), 'le bouton « Retirer » manque');
+  assert.ok(ligne.includes("owned_features"), 'l’état se lit dans owned_features');
+  // Le portillon ne consulte que la possession — le rayon n'y entre pas.
+  assert.match(SERVEUR, /if \(GAME_FEATURES\[feature\]\) \{\s*\n\s*const user = users\[u\];\s*\n\s*if \(userOwnsGameFeature\(user, feature\)\) return true;/);
+  assert.match(SERVEUR, /if \(!GAME_FEATURES\[key\]\) return res\.status\(400\)\.json\(\{ error: 'option inconnue : ' \+ key \}\);/);
+});
+
+test('« Pousser à tous » et « Retirer à tous » se refusent sur une option', () => {
+  // Ces deux routes écrivent dans les INVENTAIRES. Sur un article qui accorde
+  // un droit — option, feutre, pass, récompense —, elles déposeraient chez
+  // chaque joueur une pièce d'armoire au nom de l'option, sans rien accorder.
+  assert.match(SERVEUR, /function accordeUnAccessoire\(p\) \{\s*\n\s*return !!p && !p\.gameFeature && !p\.feutrePen && !p\.fdPassGame && !p\.recompense;\s*\n\}/);
+  for (const route of ['push-all', 'retirer-a-tous']) {
+    const i = SERVEUR.indexOf("'/api/admin/shop/:id/" + route + "'");
+    assert.ok(i > 0, 'la route ' + route + ' existe');
+    const corps = SERVEUR.slice(i, i + 900);
+    assert.match(corps, /if \(!accordeUnAccessoire\(pack\)\) \{\s*\n\s*return res\.status\(400\)/,
+      route + ' laisse passer une option de jeu');
+  }
+  // Et côté admin, les boutons ne s'affichent même pas — avec un badge qui dit
+  // par où passer.
+  assert.match(ADMIN, /function accordeUnAccessoire\(p\) \{/);
+  assert.match(ADMIN, /\$\{accordeUnAccessoire\(p\) \? `\n\s*<button class="btn-success btn-sm" onclick="pushPackAll/);
+  assert.match(ADMIN, /pastille\('option', '#6a4c9c',/);
+  assert.match(ADMIN, /\$\{badgeAccorde\(p\)\}/);
 });

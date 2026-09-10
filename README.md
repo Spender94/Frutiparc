@@ -156,9 +156,9 @@ famille :
 | la famille **rose/rouge** (335°→16°) | **rose** (325°) — vif en texte, glyphe et liseré, prune profonde en aplat | l'accent qui empêche le violet de tourner au monochrome |
 | jaunes, oranges, bleus — les **accents** | teinte gardée | un jaune de kikooz violet ne serait plus un kikooz |
 
-**L'invariant, et il est arithmétique** : aucun fond au-dessus de `0,045` de
-luminance, aucun texte en dessous de `0,3775`. Les deux bornes sont choisies
-pour que le **pire couple possible** tienne 4,5:1 — donc un texte illisible
+**L'invariant, et il est arithmétique** : aucun fond au-dessus de `0,078` de
+luminance, aucun texte en dessous de `0,654`. Les deux bornes sont choisies
+pour que le **pire couple possible** tienne 5,5:1 — donc un texte illisible
 n'est pas improbable, il est *impossible*, y compris pour des couleurs pas
 encore écrites. En **luminance** et non en clarté : `hsl(60 50% 26%)` et
 `hsl(256 30% 26%)` annoncent la même clarté, mais l'œil voit le jaune deux fois
@@ -214,6 +214,34 @@ le JavaScript) et **échappe au filtre**. Aucune liste à tenir, aucun code à
 toucher : le fichier sur le disque *est* la déclaration. Deux règles en
 dessinant : même `viewBox` et mêmes dimensions que l'original, et les états
 `_up`/`_over`/`_down` vont par trois.
+
+### Ouvrir le rayon quand on est prêt
+
+Un thème se juge sur un vrai parc, pas sur une capture. **L'article part donc
+retiré du rayon** (`disabled: true` dans sa définition) : au premier démarrage
+il n'est en vente pour personne. Deux gestes, dans l'admin :
+
+| Où | Quoi | Effet |
+|---|---|---|
+| **Boutique**, ligne `42` | « Réactiver » / « Désactiver » | ouvre ou referme la **vente** |
+| **Détail joueur** → « Mode nuit » | « Donner » / « Retirer » | accorde l'**option** à une personne, sans caisse |
+
+Ce qui permet de faire essayer à quelques-uns pendant que le rayon est encore
+fermé : la possession vit dans `owned_features`, jamais dans le catalogue —
+`/api/features` ne regarde que le compte. Refermer le rayon **ne reprend rien**
+à ceux qui l'ont déjà.
+
+La bascule est persistée (`shop_packs.disabled`) et **survit au redémarrage** :
+au boot, la ligne de la base écrase la définition statique, et seuls les champs
+que la base ne sait pas porter (`gameFeature`, `notDefault`, `picto`) sont
+réappliqués par-dessus. Y ajouter `disabled` referait le rayon tout seul à
+chaque relance — `test/modeNuit.test.js` monte la garde.
+
+Enfin, « Pousser à tous » et « Retirer à tous » **ne s'affichent pas** sur cet
+article, et les deux routes le refusent : elles écrivent dans les inventaires,
+et une option de jeu n'y a rien à faire — elles y déposeraient un accessoire
+fantôme sans rien accorder. Même chose pour les feutres, les pass et les
+récompenses ; une pastille dit par où passer.
 
 ### Le reste
 
