@@ -157,6 +157,34 @@ const MANIFESTE = [
   ...['mandalaGauche', 'mandalaDroite', 'mandalaSwap', 'mandalaValider']
     .flatMap((n) => troisEtats(n)).map((f) => ({ f, teintes: 'gardees' })),
 
+  // ── La barre de contacts ──────────────────────────────────────────────
+  //
+  // Le cadre, la plaque d'un dossier et sa flèche sont du châssis : ils
+  // s'éteignent. Les VOYANTS, non — leur couleur est ce qu'ils disent (saumon
+  // hors ligne, vert en ligne), et le filtre les passait tous les deux au même
+  // gris violet : deux états, une seule couleur, plus de voyant du tout.
+  // `teintes: 'gardees'` garde le signal et n'éteint que le disque neutre
+  // derrière lui — qui devient du coup le liseré clair qui le détache.
+  { f: 'sl-icone-fond.svg', note: 'le cadre de 17 px du voyant' },
+  { f: 'sl-dossier-fond.svg', note: 'la plaque du titre d’un dossier' },
+  { f: 'sl-fleche-1.svg', note: 'la flèche de repli' },
+  ...['sl-presence-0', 'sl-presence-1'].map((n) => ({ f: n + '.svg', teintes: 'gardees' })),
+
+  // ── Les fruits des onglets et des barres-titres ───────────────────────
+  //
+  // Un fruit garde ses couleurs — c'est la règle du thème — mais encore
+  // faut-il qu'on le laisse tranquille. `.fen-pastille` pose son dessin par
+  // `background: url(…)`, donc le générateur y ajoutait le filtre du châssis :
+  // la fraise du salon, la pastèque de la boutique, la banane de
+  // l'explorateur et la prune du carnet sortaient toutes du même gris. (Les
+  // pastilles des ONGLETS y échappaient déjà, leur règle CSS ne portant pas
+  // d'url : deux icônes du même fruit, l'une en couleur et l'autre grise.)
+  //
+  // Leur variante ne repeint donc que le halo — un gris clair, du châssis —
+  // et le fruit ne bouge pas d'un pixel.
+  ...['fruit_default', 'fruit_winChat', 'fruit_winShop', 'fruit_winExplorer',
+    'fruit_winAlert', 'fruit_winDebug'].map((n) => ({ f: n + '.svg', teintes: 'gardees' })),
+
   // ── La boutique ───────────────────────────────────────────────────────
   //
   // La fenêtre était le dernier endroit où le filtre du châssis tenait encore

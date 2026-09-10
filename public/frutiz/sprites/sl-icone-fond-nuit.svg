@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8.5 -8.5 17 17" width="17" height="17">
+<!--
+  ENGENDRÉ par scripts/nuit-svg.js — sl-icone-fond.svg en mode nuit.
+  Le même dessin, ses couleurs de châssis repassées par la conversion du
+  thème (vert et gris au violet, rose gardé en accent, le reste intact).
+  le cadre de 17 px du voyant
+  Pour le reprendre à la main : écraser ce fichier et retirer son entrée du
+  manifeste de scripts/nuit-svg.js.
+-->
+
+  <path d="M8 -6.5L8 6.5Q8 7.1 7.55 7.55Q7.1 8 6.5 8L-6.5 8Q-7.1 8 -7.55 7.55Q-8 7.1 -8 6.5L-8 -6.5Q-8 -7.1 -7.55 -7.55Q-7.1 -8 -6.5 -8L6.5 -8Q7.1 -8 7.55 -7.55Q8 -7.1 8 -6.5" fill="none" stroke="hsl(256 30% 22.4%)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+
+</svg>

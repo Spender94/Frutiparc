@@ -99,9 +99,16 @@ test('le manifeste ne contient que du châssis', () => {
   // picto par mégarde, le mode nuit se mettrait à éteindre des dessins — tout
   // le contraire de ce qu'il fait.
   const SVG = require('../scripts/nuit-svg.js');
-  const INTERDITS = /^(fruit_|ico_|emote_|feutre-|disc_|sl-presence|medal_|signe_)/;
+  // Un DESSIN peut entrer au manifeste — c'est même souvent nécessaire, ne
+  // serait-ce que pour échapper au filtre du châssis —, mais à UNE condition :
+  // qu'il y garde ses couleurs. `teintes: 'gardees'` n'éteint que les neutres.
+  // Sans ce garde-fou, ajouter un fruit à la liste l'éteindrait, et le mode
+  // nuit se mettrait à faire exactement le contraire de ce qu'il promet.
+  const DESSINS = /^(fruit_|ico_|emote_|feutre-|disc_|sl-presence|medal_|signe_)/;
   for (const e of SVG.MANIFESTE) {
-    assert.ok(!INTERDITS.test(e.f), e.f + ' est un dessin, pas du châssis');
+    if (!DESSINS.test(e.f)) continue;
+    assert.strictEqual(e.teintes, 'gardees',
+      e.f + ' est un dessin : il ne peut entrer qu’en gardant ses couleurs');
   }
   // Et chaque entrée désigne un fichier qui existe vraiment — les dessins ne
   // sont pas tous rangés au même endroit (le châssis du bureau dans
@@ -379,22 +386,49 @@ test('seul le châssis s’éteint : les dessins gardent leurs couleurs', () => 
   // bar, le boîtier du Frusion — des surfaces, pas des illustrations.
   assert.match(NUIT, /--nuit-chassis: grayscale\([^)]*\) sepia\([^)]*\) hue-rotate\(202deg\)/);
   const chassis = (NUIT.match(/filter: var\(--nuit-chassis\);/g) || []).length;
-  assert.ok(chassis > 25, 'le générateur teint les sprites de châssis (' + chassis + ' règles)');
-  // Ce nombre est un RESTE À FAIRE, et il doit baisser. Le filtre est un
-  // pis-aller : il ternit tout de la même main. Chaque dessin qui reçoit sa
-  // variante lui échappe — d'où ces trois-là, qui l'ont quittée et ne doivent
-  // pas y retomber.
+  assert.ok(chassis > 0, 'le fanage existe toujours pour les sprites sans variante');
+  /*
+   * CE NOMBRE EST UN RESTE À FAIRE, ET IL BAISSE.
+   *
+   * Le filtre est un pis-aller : il ternit tout de la même main, il écrase les
+   * reliefs, et il ne sait pas qu'un voyant vert et un voyant saumon ne
+   * doivent pas sortir de la même couleur. Chaque dessin qui reçoit sa
+   * variante lui échappe — le compte est passé de 89 à 24.
+   *
+   * On ne fixe donc PAS de plancher : il n'y a pas de bonne valeur, seulement
+   * une direction. Ce qu'on garde, c'est que ceux qui en sont sortis n'y
+   * retombent pas.
+   */
   for (const [quoi, regle] of [
     ['le boîtier du Frusion', /#frusion-boite \.fr-avant \{\s*\n\s*background-image: url\('\/frutiz\/sprites\/frusion-avant-nuit\.svg'\);\s*\n\s*\}/],
     ['le « valider » du frutimandala', /#frutimandala \.md-mandalaValider \{\s*\n\s*background-image: url\('\/frutiz\/sprites\/mandalaValider_up-nuit\.svg'\);\s*\n\s*\}/],
     ['le corps des onglets', /url\("\/frutiz\/sprites\/onglet_corps-nuit\.svg"\)/],
+    ['le fruit d’une barre-titre', /\.fen-pastille \{\s*\n\s*background: url\('\/frutiz\/sprites\/fruit_default-nuit\.svg'\)/],
+    ['le voyant d’un contact', /\.sl-contact \.voyant \{\s*\n\s*background: url\('\/frutiz\/sprites\/sl-presence-0-nuit\.svg'\)/],
   ]) {
     assert.match(NUIT, regle, quoi + ' a sa variante, il n’est plus fané');
   }
-  assert.ok(!/#frusion-boite [^{]*\{\s*\n\s*filter: var\(--nuit-chassis\)/.test(NUIT),
-    'plus une seule pièce du Frusion ne passe par le filtre');
-  assert.ok(!/#frutimandala \.md-mandala[^{]*\{\s*\n\s*filter: var\(--nuit-chassis\)/.test(NUIT),
-    'ni une seule commande du frutimandala');
+  for (const [quoi, regle] of [
+    ['le Frusion', /#frusion-boite [^{]*\{\s*\n\s*filter: var\(--nuit-chassis\)/],
+    ['les commandes du frutimandala', /#frutimandala \.md-mandala[^{]*\{\s*\n\s*filter: var\(--nuit-chassis\)/],
+    ['les voyants de la barre de contacts', /\.sl-contact \.voyant \{\s*\n\s*filter: var\(--nuit-chassis\)/],
+    ['les fruits des barres-titres', /\.fen-pastille \{\s*\n\s*filter: var\(--nuit-chassis\)/],
+  ]) {
+    assert.ok(!regle.test(NUIT), quoi + ' : plus une seule pièce ne passe par le filtre');
+  }
+  // LES DEUX VOYANTS NE DOIVENT PAS SORTIR DE LA MÊME COULEUR. Saumon hors
+  // ligne, vert en ligne : c'est tout ce qu'ils disent. Le filtre les passait
+  // au même gris violet — deux états, une seule couleur, plus de voyant.
+  const lireSp = (f) => lire('public/frutiz/sprites/' + f);
+  assert.match(lireSp('sl-presence-0-nuit.svg'), /="#e3756a"/, 'hors ligne reste saumon');
+  assert.match(lireSp('sl-presence-1-nuit.svg'), /="#ade76b"/, 'en ligne reste vert');
+  // Et les cinq fruits des barres-titres gardent les leurs : c'est à ça qu'on
+  // reconnaît un salon d'un explorateur.
+  for (const [f, couleur] of [['fruit_default', '#ff9900'], ['fruit_winChat', '#eb1a14'],
+    ['fruit_winShop', '#39b315'], ['fruit_winExplorer', '#fefe25']]) {
+    assert.ok(lireSp(f + '-nuit.svg').includes('="' + couleur + '"'),
+      f + ' garde son ' + couleur);
+  }
   // Et la poignée de pièces de châssis qui arrivent par un <img> du HTML.
   assert.match(NUIT, /img\[src\$="\/fb\/cadre_bouille\.svg"\]/);
   // LA ROUE DU FRUTIMANDALA porte ses fruits sur des quartiers verts : aucun

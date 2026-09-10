@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 3 100 12" width="100" height="12">
+<!--
+  ENGENDRÉ par scripts/nuit-svg.js — sl-dossier-fond.svg en mode nuit.
+  Le même dessin, ses couleurs de châssis repassées par la conversion du
+  thème (vert et gris au violet, rose gardé en accent, le reste intact).
+  la plaque du titre d’un dossier
+  Pour le reprendre à la main : écraser ce fichier et retirer son entrée du
+  manifeste de scripts/nuit-svg.js.
+-->
+
+  <path d="M100 15L0 15L0 3L100 3L100 15Z" fill="hsl(256 30% 36.8%)" fill-rule="evenodd"/>
+
+</svg>

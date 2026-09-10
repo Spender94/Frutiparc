@@ -291,7 +291,7 @@ a {
   color: hsl(256 13% 84.9%);
 }
 .fb-pastille {
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/fruit_default-nuit.svg') center / contain no-repeat;
 }
 .fb-ecran {
   background: url('/frutiz/sprites/ecran-fond-nuit.svg') 0 0 / 100% 100% no-repeat;
@@ -568,7 +568,7 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
   color: hsl(256 13% 84.6%);
 }
 .fiche-nom-ligne .statut {
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/sl-icone-fond-nuit.svg') center center / 17px 17px no-repeat;
 }
 .fiche-nom-ligne b {
   color: hsl(259 42% 86.9%);
@@ -1366,16 +1366,18 @@ body.bureau-frutiz #side-list .sl-dossier > .sl-titre {
   color: hsl(256 13% 96%);
 }
 body.bureau-frutiz #side-list .sl-titre .plaque {
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/sl-dossier-fond-nuit.svg') left top / 100% 12px no-repeat;
 }
 body.bureau-frutiz #side-list .sl-titre .bout {
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/sl-fleche-1-nuit.svg') left top / 20.65px 12px no-repeat;
 }
 body.bureau-frutiz #side-list .sl-contact .voyant {
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/sl-presence-0-nuit.svg') center center / 8px 8px no-repeat,
+              url('/frutiz/sprites/sl-icone-fond-nuit.svg') left top / 17px 17px no-repeat;
 }
 body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/sl-presence-1-nuit.svg'),
+                    url('/frutiz/sprites/sl-icone-fond-nuit.svg');
 }
 body.bureau-frutiz #side-list .sl-contact .nom {
   color: hsl(256 13% 84.5%);
@@ -1418,7 +1420,7 @@ body.bureau-frutiz .fen-titre {
   color: hsl(256 13% 84.9%);
 }
 body.bureau-frutiz .fen-pastille {
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/fruit_default-nuit.svg') center / contain no-repeat;
 }
 body.bureau-frutiz .fen-btn.fermer {
   background-image: url('/frutiz/sprites/butWinTop1_up-nuit.svg');
@@ -2374,6 +2376,18 @@ img[src$="/frutiz/sprites/ecran-fond.svg"] { content: url("/frutiz/sprites/ecran
 [style*="/frutiz/sprites/ecran-fond.svg"] { background-image: url("/frutiz/sprites/ecran-fond-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/encart-reflet.svg"] { content: url("/frutiz/sprites/encart-reflet-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/encart-reflet.svg"] { background-image: url("/frutiz/sprites/encart-reflet-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fruit_default.svg"] { content: url("/frutiz/sprites/fruit_default-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/fruit_default.svg"] { background-image: url("/frutiz/sprites/fruit_default-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fruit_winAlert.svg"] { content: url("/frutiz/sprites/fruit_winAlert-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/fruit_winAlert.svg"] { background-image: url("/frutiz/sprites/fruit_winAlert-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fruit_winChat.svg"] { content: url("/frutiz/sprites/fruit_winChat-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/fruit_winChat.svg"] { background-image: url("/frutiz/sprites/fruit_winChat-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fruit_winDebug.svg"] { content: url("/frutiz/sprites/fruit_winDebug-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/fruit_winDebug.svg"] { background-image: url("/frutiz/sprites/fruit_winDebug-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fruit_winExplorer.svg"] { content: url("/frutiz/sprites/fruit_winExplorer-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/fruit_winExplorer.svg"] { background-image: url("/frutiz/sprites/fruit_winExplorer-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fruit_winShop.svg"] { content: url("/frutiz/sprites/fruit_winShop-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/fruit_winShop.svg"] { background-image: url("/frutiz/sprites/fruit_winShop-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/frusion-arriere.svg"] { content: url("/frutiz/sprites/frusion-arriere-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/frusion-arriere.svg"] { background-image: url("/frutiz/sprites/frusion-arriere-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/frusion-avant.svg"] { content: url("/frutiz/sprites/frusion-avant-nuit.svg"); filter: none; }
@@ -2460,6 +2474,16 @@ img[src$="/frutiz/sprites/shop-puce-article.svg"] { content: url("/frutiz/sprite
 [style*="/frutiz/sprites/shop-puce-article.svg"] { background-image: url("/frutiz/sprites/shop-puce-article-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/shop-puce-rubrique.svg"] { content: url("/frutiz/sprites/shop-puce-rubrique-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/shop-puce-rubrique.svg"] { background-image: url("/frutiz/sprites/shop-puce-rubrique-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/sl-dossier-fond.svg"] { content: url("/frutiz/sprites/sl-dossier-fond-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/sl-dossier-fond.svg"] { background-image: url("/frutiz/sprites/sl-dossier-fond-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/sl-fleche-1.svg"] { content: url("/frutiz/sprites/sl-fleche-1-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/sl-fleche-1.svg"] { background-image: url("/frutiz/sprites/sl-fleche-1-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/sl-icone-fond.svg"] { content: url("/frutiz/sprites/sl-icone-fond-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/sl-icone-fond.svg"] { background-image: url("/frutiz/sprites/sl-icone-fond-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/sl-presence-0.svg"] { content: url("/frutiz/sprites/sl-presence-0-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/sl-presence-0.svg"] { background-image: url("/frutiz/sprites/sl-presence-0-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/sl-presence-1.svg"] { content: url("/frutiz/sprites/sl-presence-1-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/sl-presence-1.svg"] { background-image: url("/frutiz/sprites/sl-presence-1-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/user-list-boite.svg"] { content: url("/frutiz/sprites/user-list-boite-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/user-list-boite.svg"] { background-image: url("/frutiz/sprites/user-list-boite-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/user-list-pilule.svg"] { content: url("/frutiz/sprites/user-list-pilule-nuit.svg"); filter: none; }

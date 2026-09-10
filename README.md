@@ -201,7 +201,8 @@ node scripts/nuit-svg.js --verifier   sort 1 si elles sont périmées
 Le **manifeste** en tête du script dit ce qui est du châssis : l'écran de
 l'aquarium, la boîte et les bandes de la liste des connectés, le cadre des
 fenêtres et les onglets, le lecteur Frusion, les quatre boutons du salon, la
-languette CONTACTS, le frutimandala et ses commandes. Ce qui n'y est pas garde
+languette CONTACTS, le frutimandala et ses commandes, la boutique, l'encart de
+la main bar et la barre de contacts. Ce qui n'y est pas garde
 ses couleurs — c'est le bon défaut. Deux exclusions sont délibérées et
 commentées : le reflet de l'écran (deux traits blancs qui font le verre), et
 les **pastilles de présence**, dont la couleur est une *information* et non une
