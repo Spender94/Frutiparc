@@ -448,7 +448,11 @@ const aIgnorer = (tete) => /^@(font-face|import|charset|namespace)\b/i.test(tete
 // les émotions, la roue du frutimandala) arrivent par un <img> ou par le
 // JavaScript, et gardent leurs couleurs : c'est ce qui fait la différence
 // entre un parc éteint et un parc de nuit.
-const RE_FOND_IMAGE = /^\s*background[a-z-]*\s*:[\s\S]*url\(/i;
+// `background` couvre l'essentiel, mais pas tout : la boîte de la liste des
+// connectés est un `border-image` (une bordure de neuf tranches), et deux
+// pseudo-éléments posent leur dessin par `content`. Trois familles, un seul
+// motif — le nom de la propriété, encore.
+const RE_FOND_IMAGE = /^\s*(background[a-z-]*|border-image[a-z-]*|content)\s*:[\s\S]*url\(/i;
 const RE_FILTRE = /^\s*filter\s*:/i;
 function porteUnSprite(enfants) {
   let image = false;

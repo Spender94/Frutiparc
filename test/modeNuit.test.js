@@ -54,10 +54,37 @@ test('les feuilles de nuit sont à jour', () => {
     { cwd: ROOT, stdio: 'pipe' });
 });
 
+test('la roue de nuit du frutimandala suit celle du jour', () => {
+  // Elle est ENGENDRÉE depuis le dessin de jour (mêmes fruits, quartiers
+  // violets) : retoucher la roue de jour sans relancer laisserait la nuit sur
+  // un dessin périmé. Et si quelqu'un redessine la roue à la main, il écrase
+  // le fichier — le test le dira, et il suffira de retirer le script.
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts/nuit-roue-mandala.js'), '--verifier'],
+    { cwd: ROOT, stdio: 'pipe' });
+  // Les fruits n'ont pas bougé : seuls les deux tracés des quartiers changent.
+  const ROUE = require('../scripts/nuit-roue-mandala.js');
+  const jour = fs.readFileSync(ROUE.JOUR, 'utf8');
+  const nuit = fs.readFileSync(ROUE.NUIT, 'utf8');
+  for (const [j, n] of Object.entries(ROUE.QUARTIERS)) {
+    assert.ok(jour.includes(j), 'le quartier ' + j + ' est bien dans le dessin de jour');
+    assert.ok(nuit.includes(n), 'et devient ' + n + ' la nuit');
+  }
+  // Un fruit au hasard, pris dans chaque famille : intact.
+  for (const couleur of ['#dd1c1c', '#ffa004', '#ffcc00', '#b39fd5']) {
+    assert.strictEqual(nuit.split(couleur).length, jour.split(couleur).length,
+      couleur + ' (un fruit) n’a pas bougé');
+  }
+});
+
 // Le générateur recopie les retouches écrites à la main À LA SUITE de ce qu'il
 // produit ; les invariants qui suivent portent sur la partie ENGENDRÉE.
 const MARQUE = 'À la main, à partir d\'ici';
-const engendre = (css) => css.slice(0, css.indexOf(MARQUE));
+// La CONVERSION s'arrête au premier des deux marqueurs : après viennent les
+// variantes de nuit déposées à côté des dessins de jour, puis les retouches
+// écrites à la main. Ni les unes ni les autres ne sortent de la conversion.
+const VARIANTES = 'Les dessins de nuit déposés à côté des dessins de jour';
+const engendre = (css) => css.slice(0, Math.min(
+  ...[VARIANTES, MARQUE].map((m) => (css.includes(m) ? css.indexOf(m) : css.length))));
 
 test('la feuille de nuit ne fait que surcharger : elle ne garde que des couleurs', () => {
   // Une déclaration sans couleur n'a rien à faire dans une surcharge : elle
@@ -259,12 +286,12 @@ test('seul le châssis s’éteint : les dessins gardent leurs couleurs', () => 
   assert.ok(chassis > 60, 'le générateur teint les sprites de châssis (' + chassis + ' règles)');
   // Et la poignée de pièces de châssis qui arrivent par un <img> du HTML.
   assert.match(NUIT, /img\[src\$="\/fb\/cadre_bouille\.svg"\]/);
-  // LA SOURDINE : deux dessins portent leur décor PEINT DANS L'IMAGE (la roue
-  // du frutimandala, les dossiers du forum). On ne peut pas séparer le décor
-  // du sujet au filtre : on baisse les deux sans décolorer.
-  assert.match(NUIT, /--nuit-sourdine: brightness\([^)]*\) saturate\([^)]*\);/);
-  assert.match(NUIT, /#frutimandala \.md-art \{ filter: var\(--nuit-sourdine\); \}/);
-  // Les dossiers du forum vont plus loin encore : baisser leur luminosité
+  // LA ROUE DU FRUTIMANDALA porte ses fruits sur des quartiers verts : aucun
+  // filtre ne sait éteindre le quartier sans le fruit. Elle a donc une vraie
+  // VARIANTE DE NUIT, et c'est elle qui sert ; la règle CSS n'est qu'un filet.
+  assert.match(NUIT, /\[style\*="\/frutiz\/sprites\/frutimandala-roue\.svg"\] \{ background-image: url\("\/frutiz\/sprites\/frutimandala-roue-nuit\.svg"\) !important; filter: none !important; \}/);
+  assert.match(NUIT, /#frutimandala \.md-art \{ filter: brightness\([^)]*\) saturate\([^)]*\); \}/);
+  // Les dossiers du forum, eux, sont des GIF opaques : baisser leur luminosité
   // rendait le vert sombre, pas violet, et la bande restait — en olive. Ce
   // sont les deux seuls dessins qu'on éteint vraiment.
   assert.match(NUIT_FORUM, /\.folder-icon \{ filter: var\(--nuit-chassis\); \}/);

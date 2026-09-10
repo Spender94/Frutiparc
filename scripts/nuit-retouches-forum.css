@@ -10,7 +10,6 @@
 
 :root {
   --nuit-chassis: grayscale(.85) sepia(.6) hue-rotate(202deg) saturate(1.4) brightness(.42);
-  --nuit-sourdine: brightness(.38) saturate(1.2);
   --nuit-ciel:
     radial-gradient(circle at 84% 76%, hsl(48 26% 88%) 0 21px,
                     hsl(48 26% 88% / .20) 22px 38px, transparent 39px),

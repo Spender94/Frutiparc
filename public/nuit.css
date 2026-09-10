@@ -1564,6 +1564,9 @@ body.bureau-frutiz #gaspard-panel .gs-in {
 body.bureau-frutiz #gaspard-panel .gs-ul-fleche {
   filter: var(--nuit-chassis);
 }
+body.bureau-frutiz #gaspard-panel .gs-ul-boite {
+  filter: var(--nuit-chassis);
+}
 body.bureau-frutiz #recherche-panel .rc-form {
   background: hsl(256 30% 10%);
 }
@@ -1725,6 +1728,9 @@ body.bureau-frutiz .bo-tip {
 body.bureau-frutiz .fen #chat-panel #users-drawer .users-scroll {
   filter: var(--nuit-chassis);
 }
+body.bureau-frutiz .fen #chat-panel #users-drawer #users-list {
+  filter: var(--nuit-chassis);
+}
 body.bureau-frutiz .fen #chat-panel #users-drawer .u,
 body.bureau-frutiz #gaspard-panel .gs-ul-defile .u {
   color: hsl(240 30% 73.5%);
@@ -1839,6 +1845,9 @@ body.bureau-frutiz .fiche-boite .fiche-actions button {
 body.bureau-frutiz .fiche-boite .fiche-actions .fiche-avance {
   filter: var(--nuit-chassis);
 }
+body.bureau-frutiz .fiche-boite .fiche-actions .fiche-avance img {
+  filter: var(--nuit-chassis);
+}
 body.bureau-frutiz .fiche-boite .fiche-corps {
   background: linear-gradient(to bottom, hsl(256 30% 10% / 0.55) 0, hsl(256 30% 10% / 0) 8px), hsl(256 30% 22.7%);
   box-shadow: inset 0 2px 0 hsl(256 13% 26%), inset 0 -2px 0 hsl(256 13% 26%),
@@ -1888,6 +1897,9 @@ body.bureau-frutiz .fen #shop-sheet .bo-solde {
   border: 2px solid hsl(29 45% 33.5%);
   box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
   color: hsl(20 30% 76.7%);
+}
+body.bureau-frutiz .fen #shop-sheet .bo-solde img {
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet .bq-ico {
   box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
@@ -2297,6 +2309,12 @@ body.bureau-frutiz .fen #profil-sheet #prof-enregistrer:active {
   background: hsl(325 34% 25.2%);
 }
 
+/* ── Les dessins de nuit déposés à côté des dessins de jour ───────── */
+/* Ils remplacent l’original et échappent au fanage : ils n’ont plus rien */
+/* à cacher. Déposer « nom-nuit.svg » à côté de « nom.svg » suffit.      */
+img[src$="/frutiz/sprites/frutimandala-roue.svg"] { content: url("/frutiz/sprites/frutimandala-roue-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frutimandala-roue.svg"] { background-image: url("/frutiz/sprites/frutimandala-roue-nuit.svg") !important; filter: none !important; }
+
 /* ── À la main, à partir d'ici ────────────────────────────────────── */
 /*
  * LES RETOUCHES DU MODE NUIT — écrites à la main, recopiées à la fin de
@@ -2324,16 +2342,6 @@ body.bureau-frutiz .fen #profil-sheet #prof-enregistrer:active {
      parc ; les éteindre donnait une nuit correcte et sans joie. Un mode
      sombre, pas un mode terne. */
   --nuit-chassis: grayscale(.85) sepia(.6) hue-rotate(202deg) saturate(1.4) brightness(.42);
-
-  /* LA SOURDINE — pour les dessins dont le DÉCOR est peint dans l'image.
-     La roue du frutimandala porte ses fruits sur des quartiers verts ; les
-     dossiers du forum sont des GIF opaques au vert #D6F7B5. Impossible de
-     séparer le décor du sujet avec un filtre : on baisse donc les deux
-     ensemble, sans décolorer. Le vert cesse de crier, l'orange reste orange,
-     la prune reste prune. Ce sont les deux premiers dessins à redessiner —
-     une fois « frutimandala-roue-nuit.svg » posé, cette règle ne les touchera
-     plus. */
-  --nuit-sourdine: brightness(.38) saturate(1.2);
 
   /* « Un bon gros ciel gris nuageux et une lune blafarde. » Quatre dégradés
      et pas un octet d'image : la lune est un cercle, les nuages deux taches
@@ -2363,9 +2371,16 @@ img[src$="/fb/boutique/dossier.png"], img[src$="/fb/boutique/icone.png"] {
   filter: var(--nuit-chassis);
 }
 
-/* La roue du frutimandala : ses fruits sont peints sur des quartiers verts,
-   et c'est le JavaScript qui la pose (le générateur ne la voit donc pas). */
-#frutimandala .md-art { filter: var(--nuit-sourdine); }
+/* LA ROUE DU FRUTIMANDALA A SA VARIANTE DE NUIT, et c'est elle qui sert :
+   `frutimandala-roue-nuit.svg` (produit par scripts/nuit-roue-mandala.js)
+   porte les mêmes fruits sur des quartiers violets, et la règle engendrée
+   plus haut lui retire tout filtre.
+
+   Cette ligne-ci est le FILET : si la variante disparaît, la roue revient au
+   vert pomme — ses fruits sont peints sur ses quartiers, et aucun filtre ne
+   sait éteindre l'un sans l'autre. Faute de mieux on baisse les deux, sans
+   décolorer : le vert cesse de crier, l'orange reste orange. */
+#frutimandala .md-art { filter: brightness(.38) saturate(1.2); }
 
 /* LES DESSINS GARDENT LEURS COULEURS — les fruits du bureau, les bouilles des
    émotions, la roue du frutimandala, les pictos du forum. C'est une décision,

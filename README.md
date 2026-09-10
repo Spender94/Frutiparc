@@ -172,13 +172,20 @@ la main bar, le boîtier du Frusion : des surfaces qui n'illustrent rien. Les
 fruits du bureau, les bouilles des émotions, les pictos du forum et la bouille
 du joueur restent en couleur. Un mode sombre, pas un mode terne.
 
-Deux exceptions, et elles sont matérielles : la roue du frutimandala et les
-deux dossiers du forum portent leur **décor peint dans l'image** (des quartiers
-verts, une plaque `#D6F7B5` opaque). Aucun filtre ne sait séparer le décor du
-sujet : la roue passe en sourdine (`--nuit-sourdine`, on baisse sans
-décolorer), et les dossiers du forum — dont la plaque courait sur toute la
-hauteur de la page — suivent le châssis. Ce sont les trois fichiers que le
-redessin sert le plus.
+Trois dessins portent leur **décor peint dans l'image**, et aucun filtre ne
+sait y séparer le décor du sujet :
+
+- **la roue du frutimandala** — ses fruits sont posés sur douze quartiers vert
+  pomme. Elle a donc une vraie variante, produite depuis le dessin de jour par
+  `node scripts/nuit-roue-mandala.js` : le premier groupe du SVG ne contient
+  que les deux tracés des quartiers, qu'on repasse au violet ; les fruits n'ont
+  pas bougé d'un pixel. C'est ce que le mode nuit ne pouvait pas obtenir par
+  filtre — **une roue sombre, des fruits en couleur** ;
+- **les deux dossiers du forum** (`folder_big.gif`, `folder_big_new.png`) sont
+  des GIF **opaques** au vert `#D6F7B5`, et leur plaque court sur toute la
+  hauteur de la page. Baisser leur luminosité rend le vert sombre, pas violet :
+  ce sont les deux seuls dessins qu'on éteint vraiment. Un
+  `folder_big-nuit.png` **sans fond** règle la question définitivement.
 
 ### Redessiner les assets : `nom-nuit.svg`
 

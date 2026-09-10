@@ -25,16 +25,6 @@
      sombre, pas un mode terne. */
   --nuit-chassis: grayscale(.85) sepia(.6) hue-rotate(202deg) saturate(1.4) brightness(.42);
 
-  /* LA SOURDINE — pour les dessins dont le DÉCOR est peint dans l'image.
-     La roue du frutimandala porte ses fruits sur des quartiers verts ; les
-     dossiers du forum sont des GIF opaques au vert #D6F7B5. Impossible de
-     séparer le décor du sujet avec un filtre : on baisse donc les deux
-     ensemble, sans décolorer. Le vert cesse de crier, l'orange reste orange,
-     la prune reste prune. Ce sont les deux premiers dessins à redessiner —
-     une fois « frutimandala-roue-nuit.svg » posé, cette règle ne les touchera
-     plus. */
-  --nuit-sourdine: brightness(.38) saturate(1.2);
-
   /* « Un bon gros ciel gris nuageux et une lune blafarde. » Quatre dégradés
      et pas un octet d'image : la lune est un cercle, les nuages deux taches
      molles, le ciel un violet qui s'assombrit en descendant vers le parc. */
@@ -63,9 +53,16 @@ img[src$="/fb/boutique/dossier.png"], img[src$="/fb/boutique/icone.png"] {
   filter: var(--nuit-chassis);
 }
 
-/* La roue du frutimandala : ses fruits sont peints sur des quartiers verts,
-   et c'est le JavaScript qui la pose (le générateur ne la voit donc pas). */
-#frutimandala .md-art { filter: var(--nuit-sourdine); }
+/* LA ROUE DU FRUTIMANDALA A SA VARIANTE DE NUIT, et c'est elle qui sert :
+   `frutimandala-roue-nuit.svg` (produit par scripts/nuit-roue-mandala.js)
+   porte les mêmes fruits sur des quartiers violets, et la règle engendrée
+   plus haut lui retire tout filtre.
+
+   Cette ligne-ci est le FILET : si la variante disparaît, la roue revient au
+   vert pomme — ses fruits sont peints sur ses quartiers, et aucun filtre ne
+   sait éteindre l'un sans l'autre. Faute de mieux on baisse les deux, sans
+   décolorer : le vert cesse de crier, l'orange reste orange. */
+#frutimandala .md-art { filter: brightness(.38) saturate(1.2); }
 
 /* LES DESSINS GARDENT LEURS COULEURS — les fruits du bureau, les bouilles des
    émotions, la roue du frutimandala, les pictos du forum. C'est une décision,

@@ -666,6 +666,12 @@ a:hover {
   color: hsl(256 13% 85.3%);
 }
 
+/* ── Les dessins de nuit déposés à côté des dessins de jour ───────── */
+/* Ils remplacent l’original et échappent au fanage : ils n’ont plus rien */
+/* à cacher. Déposer « nom-nuit.svg » à côté de « nom.svg » suffit.      */
+img[src$="/frutiz/sprites/frutimandala-roue.svg"] { content: url("/frutiz/sprites/frutimandala-roue-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frutimandala-roue.svg"] { background-image: url("/frutiz/sprites/frutimandala-roue-nuit.svg") !important; filter: none !important; }
+
 /* ── À la main, à partir d'ici ────────────────────────────────────── */
 /*
  * LES RETOUCHES DU MODE NUIT, CÔTÉ FORUM — recopiées à la fin de
@@ -679,7 +685,6 @@ a:hover {
 
 :root {
   --nuit-chassis: grayscale(.85) sepia(.6) hue-rotate(202deg) saturate(1.4) brightness(.42);
-  --nuit-sourdine: brightness(.38) saturate(1.2);
   --nuit-ciel:
     radial-gradient(circle at 84% 76%, hsl(48 26% 88%) 0 21px,
                     hsl(48 26% 88% / .20) 22px 38px, transparent 39px),
