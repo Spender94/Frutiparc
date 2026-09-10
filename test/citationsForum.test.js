@@ -152,7 +152,7 @@ const jpost = (chemin, corps, cle) => fetch(BASE + chemin, {
 }).then((r) => r.json());
 
 async function sidPour(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const j = await (await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })).json();
   assert.ok(j.sid, 'session pour ' + pseudo);

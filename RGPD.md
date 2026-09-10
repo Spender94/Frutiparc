@@ -162,22 +162,39 @@ contractuelles types). Idem pour Resend (société américaine).
 
 ---
 
-## 3. Par quoi commencer
+## 3. Ce qui a été fait — et ce qui reste à l'humain
 
-Un ordre qui suit l'effet, pas la difficulté :
+Tout ce qui relève du code est en place (commit « mise en conformité RGPD »).
+Point par point, en reprenant la numérotation du § 2 :
 
-1. **YouTube en `nocookie` + chargement au clic** — une heure, et le risque le
-   plus concret disparaît.
-2. **Export et suppression en libre-service** — la fonctionnalité la plus
-   visible pour les joueurs, et celle qui évite les demandes perdues.
-3. **Compléter la politique** : champs de la fiche, tiers, bases légales,
-   durées, droits + CNIL, identité du responsable.
-4. **Date de naissance à l'inscription** et message pour les moins de 15 ans.
-5. **Purges automatiques** (comptes inactifs, IP de parrainage, journaux).
-6. **Registre des traitements** et **procédure de violation** — de la rédaction,
-   pas du code.
+| # | point | état |
+|---|---|---|
+| 1 | YouTube | **fait** — `youtube-nocookie.com`, et le lecteur n'est chargé qu'au clic sur « Écouter » (light et bureau) ; « Couper » retire le lecteur et le consentement |
+| 2 | export et suppression | **fait** — *Réglages → Mes données* : `GET /api/light/mes-donnees` (un JSON, table par table) et `POST /api/light/compte/suppression` (code secret, 7 jours de grâce, une reconnexion annule) ; l'admin et le joueur passent par le même `supprimerJoueurPartout`, qui anonymise ce qui reste (« compte_supprime ») |
+| 3 | bases légales et durées | **fait** — deux tableaux dans `/confidentialite` |
+| 4 | purges | **fait** — `rgpdBalayage()` toutes les heures : comptes inactifs (3 ans, préavis e-mail 35 j avant), IP et jeton d'inscription (6 mois), journaux de modération (1 an), sessions (6 mois), jetons de réinitialisation (7 j). Durées réglables (`RGPD_*_JOURS`, cf. README) ; `POST /api/admin/rgpd/balayage` pour le lancer à la main |
+| 5 | âge | **fait** — date de naissance obligatoire à l'inscription, accord parental sous 15 ans (horodaté), défaut `1990-05-15` supprimé ; l'âge n'est plus montré avant 18 ans, la date de naissance plus jamais (les trames de présence envoyaient la date exacte de chacun) |
+| 6 | responsable | **à faire par vous** — poser `RGPD_RESPONSABLE` (un nom) et `RGPD_CONTACT` (un e-mail) dans l'environnement ; sans eux le serveur l'écrit au démarrage |
+| 7 | registre | **fait** — `rgpd/registre-des-traitements.md` (dix fiches), à relire à chaque nouvelle fonctionnalité |
+| 8 | violation | **fait** — `rgpd/procedure-violation.md` |
+| 9 | transferts | **à vérifier par vous** — la région de l'hébergeur doit être européenne (Render : Frankfurt) ; Resend et le push sont documentés dans le registre |
+| 10 | politique | **fait** — champs de la fiche, tiers, droits, CNIL, mineurs, sécurité |
+
+Trois choses ne peuvent pas venir du code :
+
+1. **`RGPD_RESPONSABLE` et `RGPD_CONTACT`** — dix secondes dans le tableau de
+   bord de l'hébergeur, et c'est le point que la CNIL regarde en premier.
+2. **La région de l'hébergement** — à vérifier une fois.
+3. **Le fichier `rgpd/violations.md`** — à créer le jour où il servira, en
+   suivant la procédure.
+
+Et une décision à garder en tête : l'effacement des comptes inactifs est
+**actif**, à trois ans. Sur un site où les gens reviennent après des années,
+c'est le réglage le plus lourd de conséquences de toute cette liste. Il se
+suspend d'une variable (`RGPD_PURGE_INACTIFS=0`) et s'allonge d'une autre
+(`RGPD_INACTIVITE_JOURS`) — mais la politique de confidentialité annonce trois
+ans, et doit être relue si on en change.
 
 ---
 
-*Dernière revue du code : septembre 2026. Les points 1, 2, 4 et 5 sont du
-travail de développement ; les points 3, 6 à 10 sont de la rédaction.*
+*Dernière revue du code : septembre 2026.*

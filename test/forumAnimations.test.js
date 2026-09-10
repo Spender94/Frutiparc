@@ -93,7 +93,7 @@ const post = (chemin, corps, entetes) => fetch(BASE + chemin, {
 });
 
 async function inscrire(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: jhead, body });
   const j = await (await fetch(BASE + '/api/auth/login', { method: 'POST', headers: jhead, body })).json();
   assert.ok(j.sid, 'session pour ' + pseudo);

@@ -71,7 +71,7 @@ const joueur = (base) => 'gmd' + base + RUN;
 async function semer(username, ranking, score) {
   await fetch(BASE + '/api/auth/register', {
     method: 'POST', headers: hdr,
-    body: JSON.stringify({ username, password: 'secret123' }),
+    body: JSON.stringify({ username, password: 'secret123', birthday: '1990-05-15' }),
   });
   const r = await fetch(`${BASE}/api/admin/scores/${username}/${ranking}`, {
     method: 'PATCH', headers: hdr, body: JSON.stringify({ score }),
@@ -82,7 +82,7 @@ async function semer(username, ranking, score) {
 // Une socket CBee identifiée — le pont /score aboutit au même serveur TCP, on
 // parle donc les codes FrutiScore sur la connexion principale.
 async function socketScore(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: hdr, body });
   const r = await fetch(BASE + '/api/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body });

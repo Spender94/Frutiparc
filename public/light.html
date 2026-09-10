@@ -755,10 +755,14 @@
   }
   label { display: block; font-size: 12px; font-weight: bold; margin: 10px 0 4px; }
   label .opt { font-weight: normal; color: #8aa86a; font-size: 11px; }
-  input[type=text], input[type=password], input[type=email] {
+  input[type=text], input[type=password], input[type=email], input[type=date] {
     width: 100%; padding: 11px 10px; font-size: 16px;
     border: 1px solid #5a8a20; border-radius: 7px; background: #fbfff5; color: #2C4A0F;
   }
+  /* L'accord d'un parent, sous quinze ans : une case, une phrase. */
+  .re-case { display: flex; gap: 8px; align-items: flex-start; font-weight: normal; font-size: 12.5px; line-height: 1.4; margin-top: 10px; }
+  .re-case input { width: 18px; height: 18px; flex: 0 0 18px; margin-top: 1px; accent-color: #2C4A0F; }
+  .re-aide { font-size: 11px; color: #8aa86a; margin-top: 4px; line-height: 1.35; }
   .btn-primary {
     width: 100%; margin-top: 16px; padding: 12px; font-size: 15px; font-weight: bold;
     background: #2C4A0F; color: #CFF599; border: 0; border-radius: 8px;
@@ -1715,6 +1719,11 @@
   }
   .reg-btn:active { transform: translateY(1px); }
   .reg-btn-doux { background: #DCF2B4; color: #2C4A0F; }
+  .reg-btn-danger { background: #b23b2e; color: #fff; }
+  .reg-suppr { margin-top: 10px; padding: 10px; border: 1px solid #e0a39c; border-radius: 9px; background: #fff6f5; }
+  .reg-suppr-champ { display: block; font-size: 12.5px; font-weight: bold; margin: 8px 0; }
+  .reg-suppr-champ input { display: block; width: 100%; margin-top: 4px; padding: 9px 10px; font-size: 16px;
+    border: 1px solid #b23b2e; border-radius: 7px; background: #fff; color: #2C4A0F; }
   .reg-etat { font-size: 12.5px; font-weight: bold; }
   .reg-ok { color: #3d7a15; }
   .reg-pied { text-align: center; font-size: 12px; padding: 4px 0 2px; }
@@ -2445,8 +2454,20 @@
       <input type="password" id="re-pass" autocomplete="new-password" minlength="6" maxlength="80">
       <label for="re-email">E-mail <span class="opt">— pour récupérer ton code</span></label>
       <input type="email" id="re-email" autocomplete="email" maxlength="120" placeholder="(facultatif)">
+      <!-- La date de naissance : le site attire des enfants, et sous quinze
+           ans un compte ne se crée qu'avec l'accord d'un parent (art. 8 du
+           RGPD). Elle sert aussi à l'âge de la fiche — et à rien d'autre. -->
+      <label for="re-naissance">Date de naissance</label>
+      <input type="date" id="re-naissance" autocomplete="bday" required>
+      <div class="re-aide">Pour savoir si tu as 15 ans. Ton âge exact n'est montré à personne avant 18 ans.</div>
+      <label class="re-case hidden" id="re-parent-ligne">
+        <input type="checkbox" id="re-parent">
+        <span>Un de mes parents (ou mon responsable légal) est d'accord pour que je crée ce compte.</span>
+      </label>
       <button type="submit" class="btn-primary" id="re-btn">Créer mon compte</button>
       <div class="err" id="re-err"></div>
+      <div class="re-aide" style="text-align:center;margin-top:8px">En créant un compte, tu acceptes la
+        <a href="/confidentialite" target="_blank" rel="noopener">politique de confidentialité</a>.</div>
     </form>
     <button type="button" class="btn-link hidden" id="show-login">← J'ai déjà un compte</button>
   </div>
@@ -2894,6 +2915,34 @@
           <div class="reg-texte reg-note" id="reg-diag" hidden></div>
         </div>
 
+        <!-- MES DONNÉES — les droits du RGPD, sans avoir à écrire à personne :
+             une copie de tout ce que le serveur tient (art. 15 et 20), et la
+             suppression du compte (art. 17), contre le code secret. -->
+        <div class="reg-carte">
+          <div class="reg-titre">Mes données</div>
+          <div class="reg-texte">Tout ce que le parc garde sur ton compte — fiche,
+            scores, inventaire, courrier, messages du forum — tient dans un fichier
+            que tu peux télécharger. Et si tu veux partir, ton compte se supprime
+            ici, avec tout ce qu'il contient.</div>
+          <div class="reg-actions">
+            <button type="button" id="reg-export-btn" class="reg-btn reg-btn-doux">Télécharger mes données</button>
+            <button type="button" id="reg-suppr-btn" class="reg-btn reg-btn-danger">Supprimer mon compte</button>
+          </div>
+          <div id="reg-suppr" class="reg-suppr" hidden>
+            <div class="reg-texte">Ton compte et tout ce qu'il contient seront effacés
+              <b>dans 7 jours</b>. D'ici là, te reconnecter annule la demande. Tes
+              messages publics (forum, salons) restent, sous le nom
+              «&nbsp;compte_supprime&nbsp;». Ton pseudo ne pourra plus être repris.</div>
+            <label class="reg-suppr-champ">Ton code secret, pour confirmer
+              <input type="password" id="reg-suppr-pass" autocomplete="current-password"></label>
+            <div class="reg-actions">
+              <button type="button" id="reg-suppr-ok" class="reg-btn reg-btn-danger">Oui, supprimer mon compte</button>
+              <button type="button" id="reg-suppr-non" class="reg-btn reg-btn-doux">Annuler</button>
+            </div>
+            <div class="reg-texte reg-note" id="reg-suppr-etat" hidden></div>
+          </div>
+        </div>
+
         <div class="reg-pied">
           <a href="/confidentialite" target="_blank" rel="noopener">Confidentialité</a>
         </div>
@@ -3038,6 +3087,9 @@
       <button id="profil-sheet-close">✕</button>
     </div>
     <div class="sheet-body">
+      <div class="re-aide" style="margin:0 0 8px">Ce que tu remplis ici se voit sur ta fiche, par tous les
+        joueurs — sauf ta date de naissance, dont seul ton âge est montré (et pas avant 18 ans).
+        Tout est facultatif.</div>
       <div class="prof-grille">
         <div class="prof-large prof-accm">
           <div class="prof-accm-lab">Accessoire maison</div>
@@ -3477,6 +3529,14 @@
         state.userLower = String(state.user).toLowerCase();
         saveSession();
         startApp();
+        // Revenir pendant les sept jours de grâce annule la suppression du
+        // compte : le serveur l'a fait, on le dit — sinon le joueur croirait
+        // son compte toujours condamné.
+        if (res.d.suppressionAnnulee) {
+          setTimeout(function () {
+            systemLine("Ta demande de suppression de compte est annulée : tu t'es reconnecté, ton compte reste.");
+          }, 1500);
+        }
       })
       .catch(function () {
         if (btn) { btn.disabled = false; btn.textContent = label; }
@@ -3501,15 +3561,43 @@
   }
   $("#show-register").addEventListener("click", function () { setAuthMode(true); var u = $("#re-user"); if (u) u.focus(); });
   $("#show-login").addEventListener("click", function () { setAuthMode(false); var u = $("#li-user"); if (u) u.focus(); });
+  // L'âge d'après la date saisie — la même règle que le serveur (`ageDepuis`).
+  function ageDeNaissance(s) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s || "")) return null;
+    var p = s.split("-").map(Number), n = new Date();
+    var age = n.getFullYear() - p[0];
+    var m = n.getMonth() + 1;
+    if (m < p[1] || (m === p[1] && n.getDate() < p[2])) age -= 1;
+    return age >= 0 && age < 150 ? age : null;
+  }
+  // La case de l'accord parental ne se montre qu'aux moins de quinze ans.
+  (function () {
+    var n = $("#re-naissance");
+    if (!n) return;
+    n.max = new Date().toISOString().slice(0, 10);
+    n.addEventListener("input", function () {
+      var age = ageDeNaissance(n.value);
+      $("#re-parent-ligne").classList.toggle("hidden", !(age !== null && age < 15));
+    });
+  })();
   registerForm.addEventListener("submit", function (ev) {
     ev.preventDefault();
     var user = $("#re-user").value.trim();
     var pass = $("#re-pass").value;
     var email = $("#re-email").value.trim();
+    var naissance = $("#re-naissance").value;
     var errEl = $("#re-err"); errEl.textContent = "";
     if (!user || !pass) { errEl.textContent = "Pseudo et code secret requis."; return; }
+    var age = ageDeNaissance(naissance);
+    if (age === null || age > 120) { errEl.textContent = "Indique ta date de naissance."; return; }
+    var accord = $("#re-parent").checked;
+    if (age < 15 && !accord) {
+      errEl.textContent = "Avant 15 ans, il faut l'accord d'un parent : coche la case si c'est le cas.";
+      return;
+    }
     var btn = $("#re-btn"); btn.disabled = true; btn.textContent = "Création…";
-    var body = { username: user, password: pass };
+    var body = { username: user, password: pass, birthday: naissance };
+    if (age < 15) body.parental_consent = true;
     if (email) body.email = email;
     fetch("/api/auth/register", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -6682,6 +6770,54 @@
     }
   }
 
+  /*
+   * MES DONNÉES.
+   *
+   * L'export est un simple lien : le navigateur télécharge le JSON que le
+   * serveur signe du pseudo et du jour. La suppression demande le code secret,
+   * puis déconnecte — le serveur a tué toutes les sessions, y compris
+   * celle-ci ; on range la nôtre et on revient à l'accueil, où la page dit ce
+   * qui va se passer.
+   */
+  (function () {
+    var ex = $("#reg-export-btn");
+    if (ex) ex.addEventListener("click", function () {
+      if (!state.sid) return;
+      window.location.href = "/api/light/mes-donnees?sid=" + encodeURIComponent(state.sid);
+    });
+    var ouvrir = $("#reg-suppr-btn"), boite = $("#reg-suppr");
+    if (ouvrir && boite) ouvrir.addEventListener("click", function () {
+      boite.hidden = !boite.hidden;
+      if (!boite.hidden) { var p = $("#reg-suppr-pass"); if (p) { p.value = ""; p.focus(); } }
+    });
+    var non = $("#reg-suppr-non");
+    if (non) non.addEventListener("click", function () { boite.hidden = true; });
+    var ok = $("#reg-suppr-ok");
+    if (ok) ok.addEventListener("click", function () {
+      var etat = $("#reg-suppr-etat"), pass = ($("#reg-suppr-pass") || {}).value || "";
+      etat.hidden = false;
+      if (!pass) { etat.textContent = "Il faut ton code secret."; return; }
+      ok.disabled = true;
+      fetch("/api/light/compte/suppression", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sid: state.sid, password: pass }),
+      }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          ok.disabled = false;
+          if (!res.ok || !res.d || !res.d.ok) {
+            etat.textContent = (res.d && res.d.message) || "Suppression impossible pour l'instant.";
+            return;
+          }
+          var quand = res.d.effaceLe ? jourCourt(String(res.d.effaceLe).slice(0, 10)) : "dans 7 jours";
+          etat.textContent = "C'est noté. Ton compte sera effacé le " + quand
+            + ". Te reconnecter d'ici là l'annule. À bientôt, peut-être.";
+          clearSession();
+          setTimeout(function () { window.location.href = "/"; }, 4000);
+        })
+        .catch(function () { ok.disabled = false; etat.textContent = "Erreur réseau. Réessaie."; });
+    });
+  })();
+
   (function () {
     var b = $("#reg-diag-btn");
     if (!b) return;
@@ -8518,7 +8654,7 @@
     var f = document.querySelector("#bt-cadre iframe");
     if (!f || !f.contentWindow) return;
     try {
-      f.contentWindow.postMessage(JSON.stringify(charge), "https://www.youtube.com");
+      f.contentWindow.postMessage(JSON.stringify(charge), "https://www.youtube-nocookie.com");
     } catch (e) { /* le lecteur n'est pas encore là */ }
   }
   function btCommande(func, args) {
@@ -8535,7 +8671,7 @@
     btCommande("playVideo");
   }
   window.addEventListener("message", function (ev) {
-    if (ev.origin !== "https://www.youtube.com") return;
+    if (ev.origin !== "https://www.youtube-nocookie.com") return;
     var d;
     try { d = JSON.parse(ev.data); } catch (e) { return; }
     if (!d || !d.info) return;
@@ -8580,22 +8716,47 @@
     majBlindtest();
     return cadre;
   }
+  /*
+   * LE LECTEUR NE SE CHARGE QU'AU CLIC — ET C'EST LE RGPD QUI LE VEUT.
+   *
+   * L'iframe YouTube partait pour tout le salon dès que l'animateur lançait
+   * l'extrait, muette, sans que personne n'ait rien demandé : YouTube recevait
+   * l'adresse IP de chacun, et posait ses cookies. On ne monte donc le lecteur
+   * qu'à un GESTE du joueur — le bouton « Écouter » —, et le geste est aussi
+   * ce qui autorise le son : le lecteur naît sonore, à la seconde où en est
+   * l'extrait (le serveur la recalcule). Le consentement est retenu sur
+   * l'appareil (`fp_bt_son`) : l'extrait suivant part sans nouveau clic, et
+   * « Couper » le retire — le lecteur disparaît, plus rien ne part.
+   */
+  function btLecteur() { return document.querySelector("#bt-cadre iframe"); }
+  function btRetirerCadre() {
+    if (blindtest.poignee) { clearInterval(blindtest.poignee); blindtest.poignee = null; }
+    if (blindtest.recours) { clearTimeout(blindtest.recours); blindtest.recours = null; }
+    if (blindtest.blocage) { clearTimeout(blindtest.blocage); blindtest.blocage = null; }
+    var cadre = document.getElementById("bt-cadre");
+    if (cadre) cadre.innerHTML = "";
+    blindtest.muet = true; blindtest.repond = false; blindtest.etat = -1;
+    blindtest.recharge = false; blindtest.bloque = false;
+  }
   // Le geste, c'est ICI : la demande de son doit partir du clic lui-même,
   // sans quoi elle perd le droit qu'il lui donne.
   function btClic() {
     if (btSonne()) {
       blindtest.arme = false;
-      blindtest.muet = true;
-      blindtest.bloque = false;
       try { localStorage.removeItem("fp_bt_son"); } catch (e) {}
-      // Un lecteur qui ne répond pas ne se coupe pas par la parole : on le
-      // remplace par un lecteur muet — l'extrait continue, en silence.
-      if (blindtest.repond) btCommande("mute"); else lancerCadre(false);
+      // Couper, c'est retirer son consentement : le lecteur s'en va, YouTube
+      // ne reçoit plus rien de cet appareil.
+      btRetirerCadre();
     } else {
       blindtest.arme = true;
       try { localStorage.setItem("fp_bt_son", "1"); } catch (e) {}
-      btDemanderSon();
-      btArmerRecours();
+      if (!btLecteur()) {
+        // Pas de lecteur : on en monte un, sonore — le clic vient d'avoir lieu.
+        lancerCadre(true);
+      } else {
+        btDemanderSon();
+        btArmerRecours();
+      }
     }
     majBlindtest();
   }
@@ -8676,7 +8837,9 @@
     Array.prototype.forEach.call(document.querySelectorAll(".blindtest"), function (b) {
       var t = b.querySelector(".bt-temps"), bouton = b.querySelector(".bt-bouton"), aide = b.querySelector(".bt-aide");
       if (t) t.textContent = reste + " s";
-      if (aide) aide.textContent = blindtest.bloque ? "(son bloqué par le navigateur)" : "";
+      // Sans lecteur, on dit ce que le clic va faire : charger YouTube.
+      if (aide) aide.textContent = blindtest.bloque ? "(son bloqué par le navigateur)"
+        : (!btLecteur() ? "(lecteur YouTube chargé au clic)" : "");
       if (bouton) bouton.textContent = btSonne() ? "Couper" : "Écouter";
     });
   }
@@ -8743,9 +8906,10 @@
     var ecoule = Math.max(0, Math.min(Date.now() - depart, duree * 1000));
     blindtest.fin = Date.now() + (duree * 1000 - ecoule);
     blindtestBoite();
-    // Le lecteur part TOUJOURS, muet : ainsi l'extrait tourne à la bonne
-    // seconde pour tout le monde, et le bouton n'a plus qu'à demander le son.
-    lancerCadre(false);
+    // Le lecteur ne part que si le joueur a DÉJÀ dit oui sur cet appareil (cf.
+    // btClic) : muet, à la bonne seconde, et le son lui est demandé aussitôt.
+    // Sinon, rien ne se charge — la bannière attend son clic.
+    if (blindtest.arme) lancerCadre(false);
     majBlindtest();
     blindtest.minuteur = setInterval(majBlindtest, 500);
   }
@@ -10059,7 +10223,9 @@
       var lp = el("div", "fiche-lignes encadre");
       lp.appendChild(ligneFiche("Prénom", d.perso.prenom || ""));
       lp.appendChild(ligneFiche("Nom", d.perso.nom || ""));
-      lp.appendChild(ligneFiche("Date de naissance", jourCourt(d.perso.anniversaire) || ""));
+      // La date de naissance n'est servie qu'à soi-même : aux autres, le
+      // serveur ne donne que l'âge (et rien avant dix-huit ans).
+      if (d.perso.anniversaire) lp.appendChild(ligneFiche("Date de naissance", jourCourt(d.perso.anniversaire) || ""));
       lp.appendChild(ligneFiche("Activité", d.perso.metier || ""));
       lp.appendChild(ligneFiche("Pays", d.perso.pays || ""));
       lp.appendChild(ligneFiche("Région", d.perso.region || ""));

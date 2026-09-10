@@ -53,7 +53,7 @@ after(() => { if (serverProc) serverProc.kill('SIGKILL'); });
 // le journal du site — s'en tenir aux appels HTTP donnerait un compte à moitié
 // né, et les tests parleraient d'autre chose que de ce que voit un joueur.
 async function inscrire(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const j = await r.json();

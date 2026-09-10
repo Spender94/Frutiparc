@@ -58,7 +58,7 @@ before(async () => {
     await wait(250);
   }
   if (!pret) throw new Error('serveur indisponible');
-  const corps = JSON.stringify({ username: USER, password: 'secret123' });
+  const corps = JSON.stringify({ username: USER, password: 'secret123', birthday: '1990-05-15' });
   const entetes = { 'Content-Type': 'application/json' };
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: entetes, body: corps });
   const rep = await (await fetch(BASE + '/api/auth/login', { method: 'POST', headers: entetes, body: corps })).json();

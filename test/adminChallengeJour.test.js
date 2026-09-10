@@ -70,7 +70,7 @@ test('le statut admin donne le classement COMPLET du jour, nommé', async () => 
   // On sème l'entrée du jour par la route records (elle sait créer) — c'est le
   // score qu'un tricheur viendrait de poser.
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: hdr,
-    body: JSON.stringify({ username: JOUEUR, password: 'secret123' }) });
+    body: JSON.stringify({ username: JOUEUR, password: 'secret123', birthday: '1990-05-15' }) });
   const r = await fetch(`${BASE}/api/admin/scores/${JOUEUR}/${RK}`, {
     method: 'PATCH', headers: hdr, body: JSON.stringify({ score: 4200 }),
   });

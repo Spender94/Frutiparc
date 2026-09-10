@@ -81,7 +81,7 @@ before(async () => {
 after(() => { if (proc) proc.kill('SIGKILL'); });
 
 async function inscrire(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const j = await r.json();
@@ -417,7 +417,9 @@ test('le blindtest : un jeton, jamais la vidéo, et tout le monde à la même se
     const r = await fetch(`${BASE}/api/blindtest/embed?k=${jeton}`, { redirect: 'manual' });
     assert.equal(r.status, 302);
     const dest = new URL(r.headers.get('location'));
-    assert.equal(dest.origin + dest.pathname, 'https://www.youtube.com/embed/dQw4w9WgXcQ');
+    // `youtube-nocookie.com` : le même lecteur, sans le cookie publicitaire que
+    // le domaine ordinaire posait à tout le salon sans consentement (RGPD).
+    assert.equal(dest.origin + dest.pathname, 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ');
     assert.ok(Number(dest.searchParams.get('start')) >= 62, 'départ à 1:02');
     assert.equal(dest.searchParams.get('end'), '82', 'et fin vingt secondes plus loin');
     assert.equal(dest.searchParams.get('controls'), '0', 'sans contrôles ni titre à lire');
@@ -662,7 +664,7 @@ test('l\'historique et l\'enveloppe vivent en base, pas en mémoire', async (t) 
       'la reprise au démarrage a bien eu lieu');
     const sid2 = (await (await fetch(BASE2 + '/api/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: PERS, password: 'secret123' }),
+      body: JSON.stringify({ username: PERS, password: 'secret123', birthday: '1990-05-15' }),
     })).json()).sid;
     const quota = await (await fetch(`${BASE2}/do/give?sid=${sid2}`, { cache: 'no-store' })).text();
     assert.match(quota, /a="1530"/, 'et elle est bien entamée de 470 sur le second serveur');

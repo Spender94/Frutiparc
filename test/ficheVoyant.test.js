@@ -45,7 +45,7 @@ after(() => { if (proc) proc.kill('SIGKILL'); });
 
 const json = (r) => r.json();
 async function inscrire(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const j = await json(await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }));
   assert.ok(j.sid, 'session de ' + pseudo);

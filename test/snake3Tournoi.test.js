@@ -412,7 +412,7 @@ const posterScore = (sid, score, graine) => fetch(BASE + '/api/snake3/tournoi/sc
   body: new URLSearchParams({ sid, score: String(score), graine: graine || '' }).toString(),
 });
 async function sidFor(username) {
-  const body = JSON.stringify({ username, password: 'secret123' });
+  const body = JSON.stringify({ username, password: 'secret123', birthday: '1990-05-15' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const j = await r.json();

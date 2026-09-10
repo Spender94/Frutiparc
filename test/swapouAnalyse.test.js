@@ -129,7 +129,7 @@ before(async () => {
 after(() => { if (serverProc) serverProc.kill('SIGKILL'); });
 
 test('accordée à la main, l’option arrive au client — et repart', async () => {
-  const body = JSON.stringify({ username: 'iaswapou', password: 'secret123' });
+  const body = JSON.stringify({ username: 'iaswapou', password: 'secret123', birthday: '1990-05-15' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const login = await (await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })).json();
   assert.ok(login.sid, 'connexion');

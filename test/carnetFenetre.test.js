@@ -70,12 +70,12 @@ before(async () => {
   for (const u of [USER, AMI]) {
     await fetch(BASE + '/api/auth/register', {
       method: 'POST', headers: entetes,
-      body: JSON.stringify({ username: u, password: 'secret123' }),
+      body: JSON.stringify({ username: u, password: 'secret123', birthday: '1990-05-15' }),
     });
   }
   const rep = await (await fetch(BASE + '/api/auth/login', {
     method: 'POST', headers: entetes,
-    body: JSON.stringify({ username: USER, password: 'secret123' }),
+    body: JSON.stringify({ username: USER, password: 'secret123', birthday: '1990-05-15' }),
   })).json();
   sid = rep.sid;
 });

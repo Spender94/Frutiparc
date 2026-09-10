@@ -200,7 +200,7 @@
                 var f = document.querySelector("#bt-b-cadre iframe");
                 if (!f || !f.contentWindow) return;
                 try {
-                    f.contentWindow.postMessage(JSON.stringify(charge), "https://www.youtube.com");
+                    f.contentWindow.postMessage(JSON.stringify(charge), "https://www.youtube-nocookie.com");
                 } catch (e) { /* le lecteur n'est pas encore là */ }
             }
             function commande(func, args) {
@@ -211,7 +211,7 @@
                 commande("unMute"); commande("setVolume", [100]); commande("playVideo");
             }
             window.addEventListener("message", function (ev) {
-                if (ev.origin !== "https://www.youtube.com") return;
+                if (ev.origin !== "https://www.youtube-nocookie.com") return;
                 var d;
                 try { d = JSON.parse(ev.data); } catch (e) { return; }
                 if (!d || !d.info) return;
@@ -247,16 +247,18 @@
                 document.body.appendChild(b);
                 b.querySelector("#bt-b-bouton").addEventListener("click", function () {
                     // Le geste, c'est ICI : la demande de son doit partir du clic.
+                    // Et c'est aussi lui qui CHARGE le lecteur (cf. light.html :
+                    // YouTube ne reçoit rien tant que le joueur n'a pas cliqué) ;
+                    // « Couper » le retire, et retire le consentement avec.
                     if (sonne()) {
                         etat.arme = false;
-                        etat.muet = true;
                         try { localStorage.removeItem("fp_bt_son"); } catch (e) {}
-                        commande("mute");
+                        retirerCadre();
                     } else {
                         etat.arme = true;
                         try { localStorage.setItem("fp_bt_son", "1"); } catch (e) {}
-                        demanderSon();
-                        armerRecours();
+                        if (!document.querySelector("#bt-b-cadre iframe")) cadre(true);
+                        else { demanderSon(); armerRecours(); }
                     }
                     tic();
                 });
@@ -290,6 +292,14 @@
                     // qu'il est resté muet, et le bouton redira « Écouter ».
                     if (etat.arme && !avecSon) { demanderSon(); armerRecours(); }
                 });
+            }
+            // Le lecteur seul : la bannière reste, le bouton redit « Écouter ».
+            function retirerCadre() {
+                var c = document.getElementById("bt-b-cadre");
+                if (c) c.innerHTML = "";
+                if (etat.poignee) { clearInterval(etat.poignee); etat.poignee = null; }
+                if (etat.recours) { clearTimeout(etat.recours); etat.recours = null; }
+                etat.muet = true; etat.repond = false; etat.pEtat = -1;
             }
             function retirer() {
                 nommerLecteur(false);
@@ -343,10 +353,10 @@
                         etat.muet = true; etat.repond = false; etat.pEtat = -1;
                         etat.fin = Date.now() + (Number(d.restant) || 0) * 1000;
                         poser();
-                        // Le lecteur part TOUJOURS, muet : l'extrait tourne à la
-                        // bonne seconde pour tout le monde, et le bouton n'a
-                        // plus qu'à demander le son.
-                        cadre(false);
+                        // Le lecteur ne part que si le joueur a déjà dit oui sur
+                        // cet appareil (muet, à la bonne seconde, le son demandé
+                        // aussitôt) ; sinon rien ne se charge avant son clic.
+                        if (etat.arme) cadre(false);
                         tic();
                     })
                     .catch(function () { /* le bureau continue sans */ });

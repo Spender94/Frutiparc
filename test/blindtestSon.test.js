@@ -101,20 +101,28 @@ test('le serveur sert un lecteur muet, pilotable, et qui sait à qui il parle', 
   assert.match(embed, /playsinline: '1'/, 'et l\'iPhone ne bascule pas en plein écran');
 });
 
-// ── 2. Le lecteur part à l'ARRIVÉE de l'extrait, pas au clic ──────────────
+// ── 2. Le lecteur part à l'arrivée de l'extrait — SI le joueur a déjà dit oui ─
+//
+// C'était « sans condition » : l'iframe YouTube partait pour tout le salon,
+// muette, et YouTube recevait l'adresse IP de chacun sans que personne n'ait
+// rien demandé. Le RGPD (et l'ePrivacy) veulent un geste. Le consentement est
+// retenu sur l'appareil (`fp_bt_son`) : l'extrait suivant part sans nouveau
+// clic — muet, à la bonne seconde, le son demandé aussitôt — et sans lui,
+// rien ne se charge avant « Écouter ».
 
-test('les deux clients lancent le lecteur dès l\'arrivée de l\'extrait', () => {
-  // Mobile : jouerBlindtest pose la bannière PUIS le cadre, sans condition.
+test('les deux clients lancent le lecteur dès l\'arrivée de l\'extrait — si le joueur a déjà dit oui', () => {
   const jouer = bloc(LIGHT, 'function jouerBlindtest(', '\n  }\n');
-  assert.match(jouer, /blindtestBoite\(\);\s*(?:\/\/[^\n]*\n\s*)*lancerCadre\(false\);/,
-    'le mobile pose le lecteur muet sans attendre le moindre clic');
-  assert.ok(!/if \(blindtest\.arme\) lancerCadre/.test(LIGHT),
-    'et plus jamais « seulement si le joueur avait dit oui »');
+  assert.match(jouer, /blindtestBoite\(\);\s*(?:\/\/[^\n]*\n\s*)*if \(blindtest\.arme\) lancerCadre\(false\);/,
+    'le mobile pose le lecteur muet — seulement avec un consentement retenu');
+  // Sans consentement : c'est le clic qui monte le lecteur, sonore.
+  assert.match(BLOC_LIGHT, /if \(!btLecteur\(\)\) \{[\s\S]{0,200}?lancerCadre\(true\);/,
+    'et sinon, le clic monte un lecteur sonore');
 
-  // Bureau : même chose, au retour de /api/blindtest/state.
-  assert.match(BLOC_BUREAU, /poser\(\);\s*(?:\/\/[^\n]*\n\s*)*cadre\(false\);/,
+  // Bureau : même règle, au retour de /api/blindtest/state.
+  assert.match(BLOC_BUREAU, /poser\(\);\s*(?:\/\/[^\n]*\n\s*)*if \(etat\.arme\) cadre\(false\);/,
     'le bureau aussi');
-  assert.ok(!/if \(etat\.arme\) cadre\(\)/.test(BUREAU), 'et lui non plus n\'attend plus');
+  assert.match(BLOC_BUREAU, /if \(!document\.querySelector\("#bt-b-cadre iframe"\)\) cadre\(true\);/,
+    'et lui aussi monte le lecteur au clic');
 
   // Les deux iframes délèguent la permission de jouer : sans allow="autoplay",
   // Chrome ne laisse pas un cadre d'un autre domaine démarrer quoi que ce soit.
@@ -143,7 +151,9 @@ test('le bouton suit la parole du lecteur, jamais notre intention', () => {
   // Ce qu'on écoute, et de qui. Le filtre d'origine n'est pas une formalité :
   // n'importe quelle page ouverte peut poster un message.
   for (const [nom, b] of [['mobile', BLOC_LIGHT], ['bureau', BLOC_BUREAU]]) {
-    assert.match(b, /if \(ev\.origin !== "https:\/\/www\.youtube\.com"\) return;/,
+    // Le lecteur vient de youtube-nocookie.com (pas de cookie publicitaire) :
+    // c'est cette origine-là, et elle seule, qu'on écoute.
+    assert.match(b, /if \(ev\.origin !== "https:\/\/www\.youtube-nocookie\.com"\) return;/,
       nom + ' : seul YouTube est écouté');
     assert.match(b, /\.muted !== undefined\) \{ (?:blindtest|etat)\.repond = true;/,
       nom + ' : la première réponse fait foi à partir de là');
@@ -158,12 +168,14 @@ test('le clic demande le son au lecteur déjà lancé — muet, volume, lecture'
     nom + ' : les trois demandes partent ensemble');
     // Elles doivent partir DU CLIC : c'est là qu'est le geste. Le mobile a
     // plusieurs bannières (une par fil du salon) qui partagent le même geste.
+    // (Depuis que le lecteur ne se charge qu'au clic, le gestionnaire commence
+    // par le monter s'il manque ; la demande de son vient juste après.)
     if (nom === 'mobile') {
       assert.match(b, /addEventListener\("click", btClic\)/, nom + ' : chaque bouton mène au même geste');
-      assert.match(b, /function btClic\(\) \{[\s\S]{0,600}?btDemanderSon\(\);/,
+      assert.match(b, /function btClic\(\) \{[\s\S]{0,900}?btDemanderSon\(\);/,
         nom + ' : la demande de son est dans le gestionnaire de clic');
     } else {
-      assert.match(b, /addEventListener\("click", function \(\) \{[\s\S]{0,600}?(?:btDemanderSon|demanderSon)\(\);/,
+      assert.match(b, /addEventListener\("click", function \(\) \{[\s\S]{0,900}?(?:btDemanderSon|demanderSon)\(\);/,
         nom + ' : la demande de son est dans le gestionnaire de clic');
     }
     // Et le lecteur qu'on relance quand le navigateur l'a mis en pause en le

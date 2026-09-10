@@ -77,6 +77,16 @@ Tu peux déployer ce repo sur **Render Web Service** sans VPS manuel :
    - `PUBLIC_HOST` = ton domaine Render (ex: `mon-app.onrender.com`) ou ton domaine custom
    - `VERBOSE_HTTP_LOGS` = vide (ou `0`)
    - `VERBOSE_SWF_LOGS` = vide (ou `0`)
+   - **RGPD** (voir `RGPD.md` et `rgpd/`) :
+     - `RGPD_RESPONSABLE` = le nom du responsable du traitement (personne ou association) — **obligatoire** pour que `/confidentialite` soit en règle (art. 13)
+     - `RGPD_CONTACT` = l'adresse e-mail où exercer ses droits — **obligatoire** aussi
+     - `RGPD_GRACE_JOURS` (défaut 7) : délai entre la demande de suppression d'un compte et son effacement
+     - `RGPD_INACTIVITE_JOURS` (défaut 1095, soit 3 ans) : un compte sans connexion depuis ce délai est supprimé
+     - `RGPD_PREAVIS_JOURS` (défaut 35) : l'avertissement par e-mail part ce nombre de jours avant
+     - `RGPD_PURGE_INACTIFS` = `0` pour suspendre l'effacement des comptes inactifs (le préavis part quand même)
+     - `RGPD_IP_JOURS` (défaut 183), `RGPD_MODERATION_JOURS` (défaut 365), `RGPD_SESSIONS_JOURS` (défaut 180) : les autres rétentions
+     - Changer une durée impose de relire `public/confidentialite.html`, qui les annonce.
+   - Choisir une **région européenne** (Frankfurt) : les données ne doivent pas quitter l'Union sans garantie.
 5. Déployer et attendre le statut **Live**.
 6. Tester:
    - `https://mon-app.onrender.com/`

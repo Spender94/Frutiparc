@@ -45,6 +45,7 @@
     margin: 0 0 8px;
     color: #2f6b16;
   }
+  .carte h3 { font-size: 13.5px; margin: 12px 0 4px; }
   .carte p { margin: 8px 0; }
   .carte ul { margin: 8px 0; padding-left: 22px; }
   .carte li { margin: 4px 0; }
@@ -52,6 +53,9 @@
     background: #f3fbe7;
     border: 1px solid #cde9a4;
   }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  th, td { text-align: left; vertical-align: top; padding: 5px 6px; border-bottom: 1px solid #e3f0cf; }
+  th { color: #2f6b16; font-size: 12px; }
   .maj {
     text-align: center;
     font-size: 12px;
@@ -69,97 +73,169 @@
     <h1>Politique de confidentialité</h1>
   </header>
 
-  <div class="carte enbref">
+  <section class="carte enbref">
     <h2>En bref</h2>
-    <p>Frutiparc est un site de jeux bénévole et non commercial : la
+    <p>Frutiparc est un site de jeux <b>bénévole et non commercial</b> : la
     reconstitution d'un parc à fruits des années 2000. On ne collecte que ce
-    qu'il faut pour jouer. <strong>Pas de publicité, pas de traqueurs, pas de
-    revente de données — jamais.</strong></p>
-  </div>
+    qu'il faut pour jouer. <b>Pas de publicité, pas de traqueurs, pas de revente
+    de données</b> — jamais. Tu peux télécharger tout ce que le parc sait de
+    toi, et supprimer ton compte toi-même, depuis les réglages de l'appli.</p>
+  </section>
 
-  <div class="carte">
-    <h2>Le compte</h2>
+  <section class="carte">
+    <h2>Qui est responsable</h2>
+    <p>Le responsable du traitement de tes données est <b>{{RESPONSABLE}}</b>.
+    Pour toute question, demande ou réclamation sur tes données, écris à :
+    {{CONTACT}}. On répond dans le mois.</p>
+    <p>Le site n'a pas de délégué à la protection des données : il n'y est pas
+    tenu (ni autorité publique, ni suivi à grande échelle, ni données
+    sensibles), et l'adresse ci-dessus suffit à te répondre.</p>
+  </section>
+
+  <section class="carte">
+    <h2>Ce qu'on collecte, pourquoi, et sur quelle base</h2>
+    <table>
+      <tr><th>Données</th><th>Pourquoi</th><th>Base légale</th></tr>
+      <tr><td>Pseudo, code secret (haché), date de naissance</td>
+          <td>Créer et tenir ton compte</td>
+          <td>Le contrat : sans compte, pas de parc</td></tr>
+      <tr><td>E-mail (facultatif)</td>
+          <td>Récupérer un code secret oublié ; te prévenir avant l'effacement d'un compte inactif</td>
+          <td>Ton consentement — tu le donnes en le renseignant, tu le retires en l'effaçant</td></tr>
+      <tr><td>Ta fiche : prénom, nom, ville, pays, activité, site, commentaire, sexe</td>
+          <td>Te présenter aux autres joueurs</td>
+          <td>Ton consentement — tout est facultatif, et modifiable</td></tr>
+      <tr><td>Tes données de jeu : scores, classements, fruitz, inventaire, accessoires, frutibouille, médailles, progression, kikooz, préférences</td>
+          <td>Que tu retrouves ta vie dans le parc</td>
+          <td>Le contrat</td></tr>
+      <tr><td>Ce que tu écris : salons, messages privés, courrier interne, forum</td>
+          <td>Te les remettre, et faire vivre les espaces publics</td>
+          <td>Le contrat ; la modération relève de l'intérêt légitime (un espace sûr)</td></tr>
+      <tr><td>Adresse IP et jeton d'appareil à l'inscription</td>
+          <td>Empêcher les abus de multi-comptes au parrainage</td>
+          <td>L'intérêt légitime (l'équité du parc)</td></tr>
+      <tr><td>Journaux techniques du serveur</td>
+          <td>Faire tourner le service et le sécuriser</td>
+          <td>L'intérêt légitime</td></tr>
+      <tr><td>Adresse d'envoi des notifications</td>
+          <td>Te prévenir quand tu n'es pas devant l'écran</td>
+          <td>Ton consentement — le bouton « Activer », et « Couper » pour le retirer</td></tr>
+      <tr><td>Sanctions de modération</td>
+          <td>Faire respecter le règlement</td>
+          <td>L'intérêt légitime</td></tr>
+    </table>
+    <p>Le code secret est enregistré <b>haché</b> (bcrypt) : personne, pas même
+    l'équipe, ne peut le lire.</p>
+  </section>
+
+  <section class="carte">
+    <h2>Ce que les autres voient de toi</h2>
+    <p>Ton pseudo, ta frutibouille, ton niveau, tes scores et tes médailles sont
+    publics : c'est le jeu. Ta <b>fiche</b> (prénom, nom, ville, activité, site,
+    commentaire) l'est aussi — tout y est facultatif, et tu la modifies quand tu
+    veux. De ta date de naissance, les autres ne voient que ton <b>âge</b>, et
+    <b>rien du tout avant 18 ans</b>. Ton e-mail, ton adresse IP et ton code
+    secret ne sont jamais montrés.</p>
+  </section>
+
+  <section class="carte">
+    <h2>Les moins de 15 ans</h2>
+    <p>Le parc est ouvert à tous les âges, mais la loi française veut qu'un
+    mineur de <b>moins de 15 ans</b> ne crée son compte qu'avec l'accord d'un
+    de ses parents (ou de son responsable légal). C'est ce que demande la case
+    à cocher de l'inscription — et on garde la date de cet accord. Si tu es
+    parent et que tu veux voir, corriger ou supprimer les données de ton
+    enfant, écris-nous à l'adresse ci-dessus.</p>
+  </section>
+
+  <section class="carte">
+    <h2>Combien de temps on garde</h2>
+    <table>
+      <tr><th>Quoi</th><th>Durée</th></tr>
+      <tr><td>Ton compte et tes données de jeu</td>
+          <td>Tant que tu joues. Un compte <b>sans aucune connexion depuis 3 ans</b> est
+              supprimé, avec un avertissement par e-mail 35 jours avant (si tu as
+              donné un e-mail). Une seule connexion suffit à le garder.</td></tr>
+      <tr><td>Lignes des salons de discussion</td><td>24 heures</td></tr>
+      <tr><td>Messages privés, courrier interne, forum</td><td>Tant que ton compte existe (le forum garde les messages, anonymisés, après la suppression : voir ci-dessous)</td></tr>
+      <tr><td>Adresse IP et jeton d'appareil de l'inscription</td><td>6 mois</td></tr>
+      <tr><td>Sanctions de modération</td><td>1 an</td></tr>
+      <tr><td>Sessions de connexion</td><td>6 mois sans être renouvelées</td></tr>
+      <tr><td>Jetons de récupération de code secret</td><td>7 jours</td></tr>
+      <tr><td>Adresses de notification</td><td>Jusqu'à ce que tu les coupes, ou qu'elles ne répondent plus</td></tr>
+      <tr><td>Journaux techniques</td><td>Ceux de l'hébergeur, quelques semaines</td></tr>
+    </table>
+  </section>
+
+  <section class="carte">
+    <h2>Tes droits, et où les exercer</h2>
     <ul>
-      <li><strong>Pseudo et mot de passe.</strong> Le mot de passe est
-      enregistré sous forme hachée (bcrypt) : personne, pas même l'équipe, ne
-      peut le lire.</li>
-      <li><strong>E-mail — facultatif.</strong> Il ne sert qu'à récupérer un
-      mot de passe oublié. Sans e-mail, le compte fonctionne exactement
-      pareil.</li>
+      <li><b>Accès et portabilité</b> — dans l'appli, <i>Réglages → Mes données →
+        Télécharger mes données</i> : un fichier avec tout ce que le serveur tient
+        sur ton compte, table par table.</li>
+      <li><b>Rectification</b> — ta fiche se modifie à tout moment (<i>Modifier ma
+        fiche</i>) ; pour le pseudo ou l'e-mail, écris-nous.</li>
+      <li><b>Effacement</b> (supprimer son compte) — <i>Réglages → Mes données →
+        Supprimer mon compte</i>,
+        avec ton code secret. Le compte est effacé <b>7 jours</b> plus tard ; te
+        reconnecter d'ici là annule la demande. Tes messages publics (forum,
+        salons) restent lisibles, mais sous le nom « compte_supprime » : ils ne
+        te désignent plus. Ton pseudo est réservé pour toujours, pour que personne
+        ne puisse se faire passer pour toi.</li>
+      <li><b>Opposition et limitation</b> — écris-nous : on ne traite rien qui ne
+        soit nécessaire au jeu, mais chaque demande est examinée.</li>
+      <li><b>Retrait du consentement</b> — efface ton e-mail ou ta fiche, coupe les
+        notifications : l'effet est immédiat.</li>
+      <li><b>Réclamation</b> — si tu estimes que tes droits ne sont pas respectés,
+        tu peux saisir la <b>CNIL</b> (<a href="https://www.cnil.fr/fr/plaintes"
+        rel="noopener" target="_blank">cnil.fr/fr/plaintes</a>). On préférerait
+        que tu nous écrives d'abord, mais c'est ton droit.</li>
     </ul>
-  </div>
+  </section>
 
-  <div class="carte">
-    <h2>Les données de jeu</h2>
-    <p>Tout ce qui fait ta vie dans le parc est gardé pour que tu la
-    retrouves : scores et classements, fruitz, inventaire et accessoires,
-    frutibouille, médailles, progression dans les jeux, préférences.</p>
-  </div>
-
-  <div class="carte">
-    <h2>Ce que tu écris</h2>
-    <p>Les messages des salons de discussion, les messages privés, les
-    courriers et les messages du forum sont enregistrés sur le serveur —
-    c'est ce qui permet de te les remettre. Les espaces publics sont
-    modérés ; le règlement du site s'y applique.</p>
-  </div>
-
-  <div class="carte">
-    <h2>Les données techniques</h2>
+  <section class="carte">
+    <h2>Avec qui ça transite</h2>
+    <p>Les données ne sont ni vendues, ni louées, ni transmises à des tiers pour
+    leur compte. Quatre services techniques les voient passer :</p>
     <ul>
-      <li><strong>Adresse IP d'inscription et jeton d'appareil.</strong>
-      Utilisés uniquement pour empêcher les abus de multi-comptes (le
-      parrainage, notamment). Ils ne servent à rien d'autre.</li>
-      <li><strong>Journaux du serveur.</strong> Journaux techniques
-      classiques, pour le bon fonctionnement et la sécurité du service.</li>
+      <li><b>L'hébergeur</b> du serveur et de sa base de données, sur des serveurs
+        situés dans l'Union européenne.</li>
+      <li><b>Resend</b> (envoi d'e-mails) — ton adresse, uniquement pour le code
+        secret oublié et l'avertissement d'inactivité. Resend est une société
+        américaine : le transfert est couvert par les clauses contractuelles
+        types de la Commission européenne.</li>
+      <li><b>Le service de notifications de ton navigateur</b> (Google, Apple ou
+        Mozilla selon ton appareil) — une adresse d'envoi chiffrée, que lui ne
+        peut pas lire, et seulement si tu as activé les notifications.</li>
+      <li><b>YouTube</b>, pour les blindtests des salons — et <b>seulement si tu
+        cliques sur « Écouter »</b>. Rien n'est chargé avant ton clic. Le lecteur
+        vient de <i>youtube-nocookie.com</i>, qui ne dépose pas de cookies
+        publicitaires ; YouTube reçoit tout de même ton adresse IP le temps de
+        l'extrait. « Couper » retire le lecteur, et ton choix est retenu sur ton
+        appareil jusqu'à ce que tu coupes.</li>
     </ul>
-  </div>
+  </section>
 
-  <div class="carte">
-    <h2>Les notifications</h2>
-    <p>Les notifications (courrier, messages privés, événements) sont
-    <strong>désactivées par défaut</strong> : elles ne s'activent que si tu
-    appuies sur « Activer les notifications » dans l'appli. Ton navigateur
-    fournit alors une adresse d'envoi chiffrée, que le serveur garde pour te
-    prévenir — et seulement quand tu n'es pas connecté. Tu peux les couper à
-    tout moment, dans l'appli ou dans les réglages de ton téléphone : les
-    adresses correspondantes sont alors supprimées.</p>
-  </div>
-
-  <div class="carte">
+  <section class="carte">
     <h2>Sur ton appareil</h2>
-    <p>Le site garde en local (localStorage) ta session de connexion et
-    quelques préférences d'affichage — c'est ce qui t'évite de retaper ton
-    mot de passe. Aucun cookie tiers, aucun outil de mesure d'audience,
-    aucune régie publicitaire.</p>
-  </div>
+    <p>Le site garde en local (<i>localStorage</i>) ta session de connexion,
+    quelques préférences d'affichage, et ton choix pour les blindtests — c'est ce
+    qui t'évite de retaper ton code secret. Ce sont des données strictement
+    nécessaires : aucun bandeau de cookies n'est requis. <b>Aucun cookie tiers,
+    aucun outil de mesure d'audience, aucune régie publicitaire.</b></p>
+  </section>
 
-  <div class="carte">
-    <h2>Le partage</h2>
-    <p>Les données ne sont ni vendues, ni louées, ni transmises à des tiers.
-    Elles ne quittent le serveur du site que dans un cas : l'envoi des
-    notifications, qui transite chiffré par le service de notifications de
-    ton navigateur (celui de ton téléphone), lequel ne peut pas les lire.</p>
-  </div>
+  <section class="carte">
+    <h2>La sécurité</h2>
+    <p>Connexions chiffrées (HTTPS), codes secrets hachés, accès à
+    l'administration réservé à l'équipe et journalisé. En cas de violation de
+    données qui te ferait courir un risque, tu en serais informé, et la CNIL
+    dans les 72 heures.</p>
+  </section>
 
-  <div class="carte">
-    <h2>Supprimer son compte</h2>
-    <p>Sur simple demande, le compte et les données associées sont supprimés.
-    Tu peux aussi demander une copie de tes données. Écris à l'équipe par le
-    courrier interne du site, ou à l'adresse de contact indiquée sur la fiche
-    de l'application.</p>
-  </div>
-
-  <div class="carte">
-    <h2>Contact</h2>
-    <p>Pour toute question sur cette politique ou sur tes données : le
-    courrier interne du site (bouton « Courrier »), le forum, ou l'adresse de
-    contact indiquée sur la fiche de l'application dans le store.</p>
-  </div>
-
-  <p class="maj">Dernière mise à jour : août 2026.</p>
-  <p class="retour"><a href="/light">← Retour au parc</a></p>
-
+  <p class="maj">Dernière mise à jour : septembre 2026. Cette page évolue avec
+  le site ; les changements importants sont annoncés dans le parc.</p>
+  <p class="retour"><a href="/">← Retour au parc</a></p>
 </div>
 </body>
 </html>

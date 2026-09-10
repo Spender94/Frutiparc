@@ -78,7 +78,7 @@ after(() => {
 async function semer(username, ranking, score) {
   await fetch(BASE + '/api/auth/register', {
     method: 'POST', headers: hdr,
-    body: JSON.stringify({ username, password: 'secret123' }),
+    body: JSON.stringify({ username, password: 'secret123', birthday: '1990-05-15' }),
   });
   const r = await fetch(`${BASE}/api/admin/scores/${username}/${ranking}`, {
     method: 'PATCH', headers: hdr, body: JSON.stringify({ score }),

@@ -156,6 +156,29 @@ async function initSchema() {
       EXCEPTION WHEN OTHERS THEN NULL;
       END $$;
 
+      -- ── RGPD ──────────────────────────────────────────────────────────────
+      -- Un bloc À PART : le précédent avale ses erreurs d'un seul tenant, et
+      -- ces colonnes-ci ne doivent dépendre de rien.
+      DO $$ BEGIN
+        -- Le joueur a demandé la suppression de son compte : la date de la
+        -- demande. Sept jours plus tard, le balayage efface pour de bon ; une
+        -- reconnexion entre-temps annule (et remet la colonne à NULL).
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMPTZ;
+        -- Un mineur de moins de quinze ans s'est inscrit avec l'accord d'un
+        -- parent : la date de cet accord (art. 8 du RGPD). NULL sinon.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS parent_consent_at TIMESTAMPTZ;
+        -- Quand le jeton d'appareil a été posé : il ne vit que six mois.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS device_token_at TIMESTAMPTZ;
+        -- Le compte est inactif depuis longtemps et le joueur en a été averti
+        -- par e-mail : la date du préavis. L'effacement attend trente jours.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS inactivity_warned_at TIMESTAMPTZ;
+        -- Une date de naissance INVENTÉE (1990-05-15) était posée d'office sur
+        -- chaque compte. Elle ne voulait rien dire ; l'inscription la demande
+        -- désormais, et un compte qui n'en a pas n'en a pas.
+        ALTER TABLE users ALTER COLUMN birthday DROP DEFAULT;
+      EXCEPTION WHEN OTHERS THEN NULL;
+      END $$;
+
       CREATE TABLE IF NOT EXISTS sessions (
         sid         TEXT PRIMARY KEY,
         user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -1023,17 +1046,24 @@ async function invalidateUserPasswordResets(userId) {
   );
 }
 
-async function createUser(username, password, email = null, referral = {}) {
+async function createUser(username, password, email = null, referral = {}, identite = {}) {
   // referral = { referredBy, registerIp, deviceToken, referralState }. referredBy
   // non nul ⇒ on horodate l'arrivée du filleul (referred_at).
+  // identite = { birthday, parentConsent } : la date de naissance que
+  // l'inscription demande, et l'accord d'un parent quand le joueur a moins de
+  // quinze ans (horodaté — c'est la preuve qu'on garde).
   const r = referral || {};
+  const i = identite || {};
   const referredBy = r.referredBy || null;
+  const birthday = /^\d{4}-\d{2}-\d{2}$/.test(String(i.birthday || '')) ? i.birthday : null;
   const { rows } = await pool.query(
-    `INSERT INTO users (username, password, email, referred_by, register_ip, device_token, referral_state, referred_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, ${referredBy ? 'now()' : 'NULL'})
+    `INSERT INTO users (username, password, email, referred_by, register_ip, device_token, referral_state, referred_at,
+                        birthday, parent_consent_at, device_token_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, ${referredBy ? 'now()' : 'NULL'},
+             $8, ${i.parentConsent ? 'now()' : 'NULL'}, ${r.deviceToken ? 'now()' : 'NULL'})
      ON CONFLICT (username) DO NOTHING
      RETURNING *`,
-    [username, password, email, referredBy, r.registerIp || '', r.deviceToken || '', r.referralState || 'none']
+    [username, password, email, referredBy, r.registerIp || '', r.deviceToken || '', r.referralState || 'none', birthday]
   );
   return rows[0] || null;
 }
@@ -1481,6 +1511,256 @@ async function listAllUsers() {
 
 async function deleteUser(userId) {
   await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+}
+
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * RGPD — ce que le joueur peut demander, et ce que le temps efface
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Quatre choses vivent ici, et rien d'autre :
+ *
+ *   · L'EXPORT (art. 15 et 20) : tout ce que la base tient sur un joueur, table
+ *     par table, dans un seul objet. Le mot de passe haché n'en fait pas
+ *     partie — il ne lui apprendrait rien, et il n'a rien à faire dans un
+ *     fichier qui va traîner dans des téléchargements.
+ *   · LA DEMANDE DE SUPPRESSION (art. 17) : une date posée sur le compte, que
+ *     le balayage lit sept jours plus tard, et qu'une reconnexion efface.
+ *   · L'ANONYMISATION : ce qui reste d'un joueur APRÈS `deleteUser`. Presque
+ *     tout part en cascade (les tables à `user_id`) ; reste ce que les autres
+ *     ont de lui, et les tables historiques qui le nomment par son PSEUDO —
+ *     exactement les colonnes que le renommage réécrit. On y pose une pierre
+ *     tombale, `compte_supprime`, ou l'on retire la ligne quand elle n'a plus
+ *     de sens (le carnet de contacts d'un autre, un abonnement de notification,
+ *     une case du trombinoscope).
+ *   · LES PURGES DE RÉTENTION : les durées que la politique de confidentialité
+ *     annonce, appliquées. Chacune rend le nombre de lignes touchées, pour le
+ *     journal.
+ */
+const PSEUDO_SUPPRIME = 'compte_supprime';
+
+async function deleteSessionsForUser(userId) {
+  const r = await pool.query('DELETE FROM sessions WHERE user_id = $1', [userId]);
+  return r.rowCount;
+}
+
+async function demanderSuppression(userId) {
+  await pool.query(
+    'UPDATE users SET deletion_requested_at = now(), updated_at = now() WHERE id = $1', [userId]);
+}
+async function annulerSuppression(userId) {
+  const r = await pool.query(
+    `UPDATE users SET deletion_requested_at = NULL, updated_at = now()
+      WHERE id = $1 AND deletion_requested_at IS NOT NULL`, [userId]);
+  return r.rowCount > 0;
+}
+// Les comptes dont le délai de grâce est écoulé.
+async function comptesASupprimer(joursDeGrace) {
+  const { rows } = await pool.query(
+    `SELECT id, username, deletion_requested_at FROM users
+      WHERE deletion_requested_at IS NOT NULL
+        AND deletion_requested_at < now() - make_interval(days => $1)
+      ORDER BY deletion_requested_at ASC LIMIT 200`,
+    [Math.max(0, Number(joursDeGrace) || 0)]);
+  return rows;
+}
+
+/*
+ * LES COMPTES INACTIFS. La dernière activité, c'est `last_login` — ou, pour
+ * un compte qui ne s'est jamais connecté depuis que la colonne existe, sa
+ * création. Deux listes :
+ *   · à AVERTIR : inactifs depuis (limite − préavis), qui ont un e-mail et
+ *     n'ont pas encore reçu le mot ;
+ *   · à EFFACER : inactifs depuis la limite, et soit sans e-mail, soit avertis
+ *     depuis au moins le préavis (le mot est parti, le délai a couru).
+ * Un compte qui a demandé sa suppression suit son propre chemin.
+ */
+async function comptesInactifs(joursLimite, joursPreavis) {
+  const lim = Math.max(30, Number(joursLimite) || 0);
+  const pre = Math.max(1, Number(joursPreavis) || 0);
+  const aAvertir = (await pool.query(
+    `SELECT id, username, email, COALESCE(last_login, created_at) AS derniere
+       FROM users
+      WHERE COALESCE(last_login, created_at) < now() - make_interval(days => $1)
+        AND email IS NOT NULL AND email <> ''
+        AND inactivity_warned_at IS NULL
+        AND deletion_requested_at IS NULL
+      ORDER BY derniere ASC LIMIT 200`,
+    [lim - pre])).rows;
+  const aEffacer = (await pool.query(
+    `SELECT id, username, email, COALESCE(last_login, created_at) AS derniere, inactivity_warned_at
+       FROM users
+      WHERE COALESCE(last_login, created_at) < now() - make_interval(days => $1)
+        AND deletion_requested_at IS NULL
+        AND (email IS NULL OR email = ''
+             OR inactivity_warned_at < now() - make_interval(days => $2))
+      ORDER BY derniere ASC LIMIT 200`,
+    [lim, pre])).rows;
+  return { aAvertir, aEffacer };
+}
+async function marquerPreavisInactivite(userId) {
+  await pool.query('UPDATE users SET inactivity_warned_at = now() WHERE id = $1', [userId]);
+}
+// Une reconnexion efface le préavis : le compte n'est plus inactif.
+async function leverPreavisInactivite(userId) {
+  await pool.query(
+    'UPDATE users SET inactivity_warned_at = NULL WHERE id = $1 AND inactivity_warned_at IS NOT NULL', [userId]);
+}
+
+// L'IP et le jeton d'inscription ne servent qu'à l'anti-multi-comptes du
+// parrainage : passé six mois, ils n'ont plus rien à dire.
+async function purgerIdentifiantsInscription(jours) {
+  const j = Math.max(1, Number(jours) || 0);
+  const ip = await pool.query(
+    `UPDATE users SET register_ip = '' WHERE register_ip <> ''
+        AND created_at < now() - make_interval(days => $1)`, [j]);
+  const jeton = await pool.query(
+    `UPDATE users SET device_token = '', device_token_at = NULL WHERE device_token <> ''
+        AND COALESCE(device_token_at, created_at) < now() - make_interval(days => $1)`, [j]);
+  return { ip: ip.rowCount, jeton: jeton.rowCount };
+}
+async function poserJetonAppareil(username, token) {
+  await pool.query(
+    'UPDATE users SET device_token = $2, device_token_at = now() WHERE username = $1',
+    [username, String(token || '')]);
+}
+async function purgerJournauxModeration(jours) {
+  const r = await pool.query(
+    'DELETE FROM moderation_logs WHERE created_at < now() - make_interval(days => $1)',
+    [Math.max(1, Number(jours) || 0)]);
+  return r.rowCount;
+}
+async function purgerSessionsAnciennes(jours) {
+  const r = await pool.query(
+    'DELETE FROM sessions WHERE created_at < now() - make_interval(days => $1)',
+    [Math.max(1, Number(jours) || 0)]);
+  return r.rowCount;
+}
+async function purgerJetonsReset(jours) {
+  const r = await pool.query(
+    `DELETE FROM password_resets
+      WHERE created_at < now() - make_interval(days => $1)`,
+    [Math.max(1, Number(jours) || 0)]);
+  return r.rowCount;
+}
+// Les lignes de salon d'un joueur : la trame porte son pseudo en `u="…"`.
+async function purgerChatDe(username) {
+  const u = String(username || '').trim();
+  if (!u) return 0;
+  const r = await pool.query(
+    `DELETE FROM chat_history WHERE xml ILIKE $1`, ['%u="' + u.replace(/[%_\\]/g, '\\$&') + '"%']);
+  return r.rowCount;
+}
+
+/*
+ * L'ANONYMISATION, avant `deleteUser`. Les tables à `user_id` partent en
+ * cascade avec la ligne du joueur ; ici, ce sont celles qui le nomment.
+ */
+async function anonymiserJoueur(username) {
+  const a = String(username || '').toLowerCase().trim();
+  if (!a) throw new Error('pseudo manquant');
+  const client = await pool.connect();
+  const touche = {};
+  const note = (cle, n) => { if (n) touche[cle] = (touche[cle] || 0) + n; };
+  try {
+    await client.query('BEGIN');
+    // Ce qui n'a plus de sens sans lui : on retire.
+    for (const [table, col, quoi] of [
+      ['push_subscriptions', 'username', 'brut'],
+      ['forum_topic_reads', 'username', 'brut'],
+      ['forum_topic_follows', 'username', 'brut'],
+      ['trombinoscope', 'pseudo', 'brut'],
+      ['contacts', 'contact_name', 'adresse'],
+      ['blacklist', 'blocked_name', 'adresse'],
+    ]) {
+      const r = quoi === 'adresse'
+        ? await client.query(`DELETE FROM ${table} WHERE LOWER(SPLIT_PART(${col}, '@', 1)) = $1`, [a])
+        : await client.query(`DELETE FROM ${table} WHERE LOWER(${col}) = $1`, [a]);
+      note(`${table}.${col}`, r.rowCount);
+    }
+    // Le parrain d'un filleul : le lien tombe, le filleul reste.
+    note('users.referred_by', (await client.query(
+      'UPDATE users SET referred_by = NULL WHERE LOWER(referred_by) = $1', [a])).rowCount);
+    // Tout ce qui le NOMME par ailleurs — l'auteur d'un sujet, d'un message,
+    // d'un courrier, un don, un achat, un tournoi — prend la pierre tombale.
+    const retirees = new Set(['push_subscriptions.username', 'trombinoscope.pseudo',
+      'forum_topic_reads.username', 'forum_topic_follows.username', 'users.referred_by']);
+    for (const [table, col] of RENOMMAGE_COLONNES) {
+      if (retirees.has(`${table}.${col}`)) continue;
+      const r = await client.query(
+        `UPDATE ${table} SET ${col} = $1 WHERE LOWER(${col}) = $2`, [PSEUDO_SUPPRIME, a]);
+      note(`${table}.${col}`, r.rowCount);
+    }
+    // L'expéditeur d'un courrier reçu par un autre : l'adresse suit le pseudo.
+    const adr = await client.query(
+      `UPDATE user_mails
+          SET from_addr = CASE WHEN POSITION('@' IN from_addr) > 0
+                               THEN $1 || '@' || SPLIT_PART(from_addr, '@', 2) ELSE $1 END
+        WHERE LOWER(SPLIT_PART(from_addr, '@', 1)) = $2`, [PSEUDO_SUPPRIME, a]);
+    note('user_mails.from_addr', adr.rowCount);
+    const listes = await client.query(
+      `UPDATE user_mails
+          SET to_users = array_to_string(ARRAY(
+                SELECT CASE WHEN LOWER(TRIM(t)) = $2 THEN $1 ELSE TRIM(t) END
+                  FROM unnest(string_to_array(to_users, ',')) AS t), ','),
+              to_addrs = array_to_string(ARRAY(
+                SELECT CASE WHEN LOWER(SPLIT_PART(TRIM(t), '@', 1)) = $2
+                            THEN $1 || '@' || SPLIT_PART(TRIM(t), '@', 2) ELSE TRIM(t) END
+                  FROM unnest(string_to_array(to_addrs, ',')) AS t), ',')
+        WHERE LOWER(to_users) LIKE $3 OR LOWER(to_addrs) LIKE $3`,
+      [PSEUDO_SUPPRIME, a, '%' + a + '%']);
+    note('user_mails.to_users', listes.rowCount);
+    await client.query('COMMIT');
+    return touche;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/*
+ * L'EXPORT. Une clé par table, les lignes telles qu'elles sont — à trois
+ * exceptions près : le mot de passe (jamais), les clés des abonnements de
+ * notification (elles ne servent qu'au serveur), et les jetons de
+ * réinitialisation (on n'en donne que le nombre).
+ */
+async function exporterDonnees(userId, username) {
+  const id = Number(userId);
+  const u = String(username || '').toLowerCase().trim();
+  const q = async (sql, params) => (await pool.query(sql, params)).rows;
+  const compte = (await q('SELECT * FROM users WHERE id = $1', [id]))[0];
+  if (!compte) return null;
+  delete compte.password;
+  const tables = {
+    inventaire: await q('SELECT item_id FROM user_items WHERE user_id = $1 ORDER BY item_id', [id]),
+    accessoires: await q('SELECT acc_id, shop_id, name, value, quantity, price, created_at FROM user_accessories WHERE user_id = $1 ORDER BY id', [id]),
+    objets_de_jeu: await q('SELECT item_name, created_at FROM user_game_items WHERE user_id = $1 ORDER BY created_at', [id]),
+    scores: await q('SELECT ranking_id, score, data, updated_at FROM scores WHERE user_id = $1 ORDER BY ranking_id', [id]),
+    scores_archives: await q('SELECT day_key, ranking_id, score, data, updated_at FROM challenge_score_archive WHERE LOWER(username) = $1 ORDER BY day_key, ranking_id', [u]),
+    medailles: await q('SELECT ranking_id, game, rank, medal, awarded_day FROM challenge_medals WHERE user_id = $1 ORDER BY awarded_day', [id]),
+    fruticards: await q('SELECT game, slot_id, data, updated_at FROM fruti_slots WHERE user_id = $1 ORDER BY game, slot_id', [id]),
+    contacts: await q('SELECT contact_name, folder, created_at FROM contacts WHERE user_id = $1 ORDER BY created_at', [id]),
+    dossiers_de_contacts: await q('SELECT folder_uid, folder_name, created_at FROM contact_folders WHERE user_id = $1', [id]),
+    liste_noire: await q('SELECT blocked_name, created_at FROM blacklist WHERE user_id = $1 ORDER BY created_at', [id]),
+    historique: await q('SELECT log_type, entry_type, content, created_at FROM user_logs WHERE user_id = $1 ORDER BY created_at', [id]),
+    historique_kikooz: await q('SELECT entry_type, amount, label, created_at FROM kikooz_log WHERE user_id = $1 ORDER BY created_at', [id]),
+    dons_kikooz: await q('SELECT giver, recipient, amount, reason, source, created_at FROM kikooz_gifts WHERE LOWER(giver) = $1 OR LOWER(recipient) = $1 ORDER BY created_at', [u]),
+    achats: await q('SELECT pack_id, pack_name, category, price, created_at FROM shop_purchases WHERE LOWER(username) = $1 ORDER BY created_at', [u]),
+    reventes: await q('SELECT pack_id, pack_name, price, created_at FROM shop_sales WHERE LOWER(username) = $1 ORDER BY created_at', [u]),
+    courrier: await q('SELECT uid, from_user, to_users, subject, body, folder, is_read, date_str FROM user_mails WHERE user_id = $1 ORDER BY created_at', [id]),
+    forum_sujets: await q('SELECT id, board_id, title, created_at FROM forum_topics WHERE LOWER(author_username) = $1 ORDER BY created_at', [u]),
+    forum_messages: await q('SELECT id, topic_id, content, mood, created_at, updated_at FROM forum_posts WHERE LOWER(author_username) = $1 ORDER BY created_at', [u]),
+    forum_suivis: await q('SELECT topic_id, created_at FROM forum_topic_follows WHERE LOWER(username) = $1', [u]),
+    tournois: await q('SELECT tournament_id, seed, qualif_score, status, created_at FROM tournament_players WHERE LOWER(username) = $1', [u]),
+    swapou_ia: await q('SELECT score, data, created_at FROM swapou_ia_scores WHERE LOWER(username) = $1 ORDER BY created_at', [u]),
+    sanctions: await q('SELECT moderator, action, detail, created_at FROM moderation_logs WHERE LOWER(target_username) = $1 ORDER BY created_at', [u]),
+    notifications: await q('SELECT ua, created_at FROM push_subscriptions WHERE LOWER(username) = $1', [u]),
+    sessions: await q('SELECT created_at FROM sessions WHERE user_id = $1 ORDER BY created_at', [id]),
+  };
+  const resets = await q('SELECT COUNT(*)::int AS n FROM password_resets WHERE user_id = $1', [id]);
+  return Object.assign({ compte, reinitialisations_de_mot_de_passe: resets[0] ? resets[0].n : 0 }, tables);
 }
 
 // Rang d'un joueur au classement général par XP (1 = meilleur). On compte les
@@ -3553,6 +3833,23 @@ module.exports = {
   renommerJoueur,
   RENOMMAGE_COLONNES,
   RENOMMAGE_ADRESSES,
+  // RGPD
+  PSEUDO_SUPPRIME,
+  deleteSessionsForUser,
+  demanderSuppression,
+  annulerSuppression,
+  comptesASupprimer,
+  comptesInactifs,
+  marquerPreavisInactivite,
+  leverPreavisInactivite,
+  purgerIdentifiantsInscription,
+  poserJetonAppareil,
+  purgerJournauxModeration,
+  purgerSessionsAnciennes,
+  purgerJetonsReset,
+  purgerChatDe,
+  anonymiserJoueur,
+  exporterDonnees,
   pool,
   initSchema,
   loadVapidKeys,

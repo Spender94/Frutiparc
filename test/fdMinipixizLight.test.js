@@ -156,7 +156,7 @@ const attr = (xml, nom) => (new RegExp(`${nom}="([^"]*)"`).exec(xml) || [])[1];
 // ── Ce que le serveur annonce ─────────────────────────────────────────────
 
 test('tout joueur trouve le disque light dans « Mes disques », en rouge', async () => {
-  const creds = { username: 'fdl' + RUN, password: 'secret123' };
+  const creds = { username: 'fdl' + RUN, password: 'secret123', birthday: '1990-05-15' };
   await fetch(BASE + '/api/auth/register', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(creds),
   });
@@ -197,7 +197,7 @@ test('le disque light livre un marqueur, pas un SWF', async () => {
 
 test('jouer en light se classe comme jouer en Flash', async () => {
   // Le portage poste `game=minipixiz` : même cuve que le disque d'origine.
-  const creds = { username: 'fdlsc' + RUN, password: 'secret123' };
+  const creds = { username: 'fdlsc' + RUN, password: 'secret123', birthday: '1990-05-15' };
   await fetch(BASE + '/api/auth/register', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(creds),
   });

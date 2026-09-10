@@ -89,7 +89,7 @@ const adminBrut = (methode, chemin, corps) => fetch(BASE + chemin, {
   body: JSON.stringify(corps),
 });
 async function inscrire(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: HDR, body });
   const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: HDR, body });
   const sid = (await r.json()).sid;

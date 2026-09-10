@@ -233,12 +233,12 @@ async function creerSession(pseudo) {
   await fetch(BASE + '/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: pseudo, password: 'secret123' }),
+    body: JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' }),
   });
   const r = await fetch(BASE + '/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: pseudo, password: 'secret123' }),
+    body: JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' }),
   });
   const corps = await r.json();
   assert.ok(corps.sid, 'sid de session');

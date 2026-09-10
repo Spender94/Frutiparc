@@ -3081,7 +3081,7 @@ function createDefaultUser(pass) {
     contacts: [],
     blacklist: [],
     gender: 'M',
-    birthday: '1990-05-15',
+    birthday: '',           // l'inscription la pose ; jamais inventée
     country: 'FR',
     region: 'IDF',
     prefs: '',
@@ -3114,7 +3114,9 @@ function createDefaultUser(pass) {
 
 function dbUserToMemory(row) {
   const bday = row.birthday;
-  let birthdayStr = '1990-05-15';
+  // Pas de date, pas de date : l'ancien repli « 1990-05-15 » inventait une
+  // naissance, et donc un âge, à qui n'en avait pas donné.
+  let birthdayStr = '';
   if (bday instanceof Date) {
     birthdayStr = bday.toISOString().substring(0, 10);
   } else if (typeof bday === 'string' && bday.length >= 10) {
@@ -3182,6 +3184,11 @@ function dbUserToMemory(row) {
     lastLoginXpDay: row.last_login_xp_day || '',
     dailyKikoozDay: row.daily_kikooz_day || '',
     dailyStreak: row.daily_streak ?? 0,
+    // RGPD : la demande de suppression en cours (ISO, ou vide), et l'accord
+    // parental d'un mineur de moins de quinze ans.
+    suppressionDemandee: row.deletion_requested_at
+      ? (row.deletion_requested_at instanceof Date ? row.deletion_requested_at.toISOString() : String(row.deletion_requested_at)) : '',
+    accordParental: !!row.parent_consent_at,
     fdState: parseFdState(row.fd_state),
     ownedFeutres: parseOwnedFeutres(row.owned_feutres),
     ownedFeatures: parseOwnedFeutres(row.owned_features),
@@ -4833,6 +4840,57 @@ async function verifyPassword(stored, plain) {
 // flow can look it up case-insensitively.
 function isValidEmail(s) {
   return typeof s === 'string' && s.length <= 120 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
+/*
+ * ── L'ÂGE, ET CE QU'ON EN MONTRE ─────────────────────────────────────────────
+ *
+ * L'âge d'une personne à une date : `null` si la date de naissance manque ou
+ * ne veut rien dire. C'est le SEUL calcul d'âge du serveur — la fiche, la
+ * liste des connectés et l'inscription passent tous par lui.
+ */
+function ageDepuis(birthday, quand = new Date()) {
+  const s = String(birthday || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [an, mois, jour] = s.split('-').map(Number);
+  if (!an || !mois || !jour) return null;
+  let age = quand.getFullYear() - an;
+  const m = quand.getMonth() + 1;
+  if (m < mois || (m === mois && quand.getDate() < jour)) age--;
+  return age >= 0 && age < 150 ? age : null;
+}
+// Le seuil de la majorité numérique en France (loi Informatique et Libertés,
+// art. 45) : en dessous, l'inscription veut l'accord d'un parent.
+const AGE_MAJORITE_NUMERIQUE = 15;
+// Et l'âge à partir duquel on laisse l'âge se voir : avant, la fiche et la
+// liste des connectés n'en disent rien aux autres.
+const AGE_VISIBLE_DES = 18;
+
+/*
+ * LA DATE DE NAISSANCE QU'ON ENVOIE AUX AUTRES.
+ *
+ * Les trames de présence (`<u … bd="…">`) et la fiche du bureau portaient la
+ * date de naissance EXACTE de chacun, à tout le monde — c'est le protocole de
+ * 2005 : le client calcule l'âge lui-même. Or personne n'a besoin de la date
+ * pour afficher « 22 ans ». On envoie donc une date FABRIQUÉE qui donne le
+ * même âge (le quantième d'aujourd'hui, l'année reculée d'autant) : l'âge
+ * s'affiche comme avant, la date, elle, ne sort plus.
+ *
+ * Pour un MINEUR, rien du tout : ni date ni âge. Un enfant de douze ans n'a
+ * pas à voir son âge lu par tout un salon.
+ */
+function bdPublic(ud) {
+  const age = ageDepuis(ud && ud.birthday);
+  if (age === null || age < AGE_VISIBLE_DES) return '';
+  const n = new Date();
+  const mm = String(n.getMonth() + 1).padStart(2, '0');
+  const dd = String(n.getDate()).padStart(2, '0');
+  return `${n.getFullYear() - age}-${mm}-${dd}`;
+}
+// Au format des trames d'époque (`YYYY-MM-DD.HH:MM:SS`), vide si rien à dire.
+function bdPublicXml(ud) {
+  const d = bdPublic(ud);
+  return d ? d + '.00:00:00' : '';
 }
 
 function isDebugNotUser(username) {
@@ -6797,9 +6855,39 @@ app.get('/.well-known/assetlinks.json', (req, res) => {
   }]);
 });
 
-// La politique de confidentialité — la fiche Play Store EXIGE une URL publique.
+/*
+ * La politique de confidentialité — la fiche Play Store EXIGE une URL publique.
+ *
+ * Elle NOMME le responsable du traitement et donne une adresse où lui écrire :
+ * c'est ce que l'article 13 demande en premier, et c'est la seule chose que le
+ * code ne peut pas savoir tout seul. Les deux viennent de l'environnement —
+ * `RGPD_RESPONSABLE` (un nom : personne ou association) et `RGPD_CONTACT`
+ * (une adresse e-mail). Sans eux, la page reste servie, avec un repli honnête
+ * (« l'équipe bénévole », le courrier interne) et un avertissement au
+ * démarrage : un site en règle a les deux.
+ */
+const RGPD_RESPONSABLE = String(process.env.RGPD_RESPONSABLE || '').trim();
+const RGPD_CONTACT = String(process.env.RGPD_CONTACT || '').trim();
+if (!RGPD_RESPONSABLE || !RGPD_CONTACT) {
+  console.warn('[RGPD] RGPD_RESPONSABLE et/ou RGPD_CONTACT manquent : la politique de confidentialité '
+    + 'ne nomme pas le responsable du traitement (art. 13). À poser dans l’environnement.');
+}
+let confidentialiteCache = null;
 app.get('/confidentialite', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'confidentialite.html'));
+  try {
+    if (!confidentialiteCache) {
+      confidentialiteCache = fs.readFileSync(path.join(__dirname, 'public', 'confidentialite.html'), 'utf8');
+    }
+    const contactHtml = RGPD_CONTACT
+      ? `<a href="mailto:${escapeXml(RGPD_CONTACT)}">${escapeXml(RGPD_CONTACT)}</a>`
+      : 'le courrier interne du site (bouton « Courrier », destinataire <b>admin</b>)';
+    const page = confidentialiteCache
+      .replace(/\{\{RESPONSABLE\}\}/g, escapeXml(RGPD_RESPONSABLE || 'l’équipe bénévole de Frutiparc'))
+      .replace(/\{\{CONTACT\}\}/g, contactHtml);
+    res.type('html').send(page);
+  } catch (e) {
+    res.sendFile(path.join(__dirname, 'public', 'confidentialite.html'));
+  }
 });
 
 // ─────────────────────────────────────────────
@@ -7791,6 +7879,30 @@ app.post('/api/auth/register', async (req, res) => {
     }
     email = rawEmail.toLowerCase();
   }
+  /*
+   * LA DATE DE NAISSANCE, ET L'ACCORD D'UN PARENT.
+   *
+   * Le site rejoue un parc pour enfants : il en attire. En France, un mineur
+   * de moins de quinze ans ne peut consentir seul au traitement de ses
+   * données — il faut l'accord d'un titulaire de l'autorité parentale (art. 8
+   * du RGPD, art. 45 de la loi Informatique et Libertés). On demande donc la
+   * date de naissance à tout le monde, et, sous quinze ans, la case « un de
+   * mes parents est d'accord ». La date de l'accord est gardée : c'est la
+   * preuve qu'on doit pouvoir montrer.
+   *
+   * La date est VALIDÉE, pas seulement lue : une naissance dans le futur, ou
+   * il y a plus de cent vingt ans, n'est pas une date de naissance.
+   */
+  const rawBirthday = String((req.body && req.body.birthday) || '').trim();
+  const age = ageDepuis(rawBirthday);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(rawBirthday) || age === null || age > 120) {
+    return res.status(400).json({ ok: false, error: 'birthday_invalid', message: 'Indique ta date de naissance.' });
+  }
+  const accordParental = !!(req.body && (req.body.parental_consent === true || String(req.body.parental_consent) === '1'));
+  if (age < AGE_MAJORITE_NUMERIQUE && !accordParental) {
+    return res.status(400).json({ ok: false, error: 'parental_consent_required',
+      message: 'Avant 15 ans, il faut l’accord d’un parent pour créer un compte.' });
+  }
   if (users[username]) {
     return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
   }
@@ -7839,7 +7951,7 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const dbUser = await db.createUser(username, passwordHash, email, {
       referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState,
-    });
+    }, { birthday: rawBirthday, parentConsent: age < AGE_MAJORITE_NUMERIQUE && accordParental });
     if (!dbUser) {
       return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
     }
@@ -7852,6 +7964,8 @@ app.post('/api/auth/register', async (req, res) => {
     }
     users[username].displayName = rawName;
     users[username].email = email || '';
+    users[username].birthday = rawBirthday;
+    users[username].accordParental = age < AGE_MAJORITE_NUMERIQUE && accordParental;
     Object.assign(users[username], { referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState, referralFlag: ref.referralFlag });
     await db.setUserItems(dbUser.id, users[username].items);
     await db.updateUser(username, { display_name: rawName });
@@ -7864,6 +7978,8 @@ app.post('/api/auth/register', async (req, res) => {
     users[username] = createDefaultUser(passwordHash);
     users[username].displayName = rawName;
     users[username].email = email || '';
+    users[username].birthday = rawBirthday;
+    users[username].accordParental = age < AGE_MAJORITE_NUMERIQUE && accordParental;
     Object.assign(users[username], { referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState, referralFlag: ref.referralFlag });
     recordSuccessfulRegister(ip);
     return res.json({ ok: true, username: rawName });
@@ -7914,12 +8030,30 @@ app.post('/api/auth/login', async (req, res) => {
   // mémoire, ou repli sur erreur) : c'est l'endroit où dater la visite.
   marquerConnexion(username);
 
+  /*
+   * REVENIR, C'EST RESTER. Un compte dont la suppression a été demandée a sept
+   * jours devant lui ; se reconnecter pendant ce délai annule la demande —
+   * c'est la règle qu'on annonce au moment de demander, et l'on le redit ici
+   * (`suppressionAnnulee`) pour que le client l'affiche. Idem pour le préavis
+   * d'inactivité : une visite remet le compteur à zéro.
+   */
+  let suppressionAnnulee = false;
+  const compte = users[username];
+  if (compte && compte.suppressionDemandee) {
+    compte.suppressionDemandee = '';
+    suppressionAnnulee = true;
+    if (compte._dbId) db.annulerSuppression(compte._dbId).catch(dbErr('annulerSuppression'));
+    console.log(`[RGPD] ${username} s'est reconnecté : sa demande de suppression est annulée`);
+  }
+  if (compte && compte._dbId) db.leverPreavisInactivite(compte._dbId).catch(() => {});
+
   // Parrainage : on renseigne le jeton d'appareil des comptes existants qui n'en
   // ont pas (améliore la détection « même appareil » pour leurs futurs filleuls).
+  // Le jeton est daté : il ne vit que six mois (cf. rgpdBalayage).
   const loginDevice = String((req.body && req.body.device_token) || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
   if (loginDevice && users[username] && !users[username].deviceToken) {
     users[username].deviceToken = loginDevice;
-    if (users[username]._dbId) db.updateUser(username, { device_token: loginDevice }).catch(() => {});
+    if (users[username]._dbId) db.poserJetonAppareil(username, loginDevice).catch(() => {});
   }
 
   const sid = crypto.randomBytes(16).toString('hex');
@@ -7942,7 +8076,8 @@ app.post('/api/auth/login', async (req, res) => {
    * `localStorage` : le rechargement suivant reprend la session sans repasser
    * par ici. `/legacy` lit le même paramètre, à l'identique.
    */
-  return res.json({ ok: true, sid, username: getDisplayName(username), redirect: `/light?sid=${encodeURIComponent(sid)}` });
+  return res.json({ ok: true, sid, username: getDisplayName(username), redirect: `/light?sid=${encodeURIComponent(sid)}`,
+    ...(suppressionAnnulee ? { suppressionAnnulee: true } : {}) });
 });
 
 // ─────────────────────────────────────────────
@@ -9403,26 +9538,275 @@ app.post('/api/admin/users/:username/renommer', adminAuth, async (req, res) => {
   }
 });
 
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * SUPPRIMER UN JOUEUR — UN SEUL CHEMIN, que l'admin et le joueur empruntent
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Ce que ça fait, dans l'ordre, et pourquoi dans cet ordre :
+ *   1. l'ANONYMISATION (db.anonymiserJoueur) — ce que les autres ont de lui et
+ *      les tables historiques qui le nomment prennent la pierre tombale, AVANT
+ *      que la ligne du joueur disparaisse (on a encore besoin de son pseudo) ;
+ *   2. ses lignes de salon des dernières vingt-quatre heures, en base et en
+ *      mémoire ;
+ *   3. la ligne `users`, et avec elle, en cascade, tout ce qui porte son
+ *      numéro : scores, inventaire, courrier reçu, journaux, sessions… ;
+ *   4. le pseudo est RÉSERVÉ : personne ne le reprendra, ni pour se faire
+ *      passer pour lui, ni pour hériter de ce qui reste sous ce nom ;
+ *   5. la mémoire du serveur : le joueur, ses sessions, son cache.
+ *
+ * `par` dit qui l'a demandé — « admin » ou « joueur » — et se retrouve dans la
+ * réservation du pseudo et le journal.
+ */
+async function supprimerJoueurPartout(username, { par = 'admin' } = {}) {
+  const u = String(username || '').toLowerCase().trim();
+  if (!u) throw new Error('pseudo manquant');
+  const row = process.env.DATABASE_URL ? await db.findUserByUsername(u) : null;
+  if (!row && !users[u]) return { ok: false, introuvable: true };
+  const journal = { par, pseudo: u };
+  if (row) {
+    try { journal.anonymise = await db.anonymiserJoueur(u); }
+    catch (e) { console.error(`[RGPD] anonymisation de ${u} :`, e.message); journal.anonymisation = e.message; }
+    try { journal.salon = await db.purgerChatDe(getDisplayName(u)); } catch (e) { /* mineur */ }
+    await db.deleteUser(row.id);
+    await db.reserveUsername(row.username, par).catch(dbErr('reserveUsername'));
+  }
+  // Ses lignes encore en mémoire dans les salons : la fenêtre des logs.
+  const nomAff = String(getDisplayName(u) || u).toLowerCase();
+  for (const ch of Object.values(channels)) {
+    if (!ch || !Array.isArray(ch.history)) continue;
+    ch.history = ch.history.filter((e) => !new RegExp(`\\bu="${nomAff.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i').test(e.xml));
+  }
+  if (users[u]) delete users[u];
+  for (const [sid, s] of Object.entries(sessions)) {
+    if (s.user === u) delete sessions[sid];
+  }
+  if (scoresData.users[u]) delete scoresData.users[u];
+  saveScoresFile();
+  delete bouilleCache[u];
+  console.log(`[RGPD] compte supprimé : ${u} (par ${par})`
+    + (journal.anonymise ? ' — anonymisé : ' + JSON.stringify(journal.anonymise) : ''));
+  return { ok: true, ...journal };
+}
+
 app.delete('/api/admin/users/:username', adminAuth, async (req, res) => {
   const u = req.params.username;
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
   try {
-    const row = await db.findUserByUsername(u);
-    if (!row) return res.status(404).json({ error: 'not found' });
-    await db.deleteUser(row.id);
-    // Reserve the pseudo so the deleted account can't be recreated under the
-    // same name (which would also re-bind it to the old forum posts).
-    await db.reserveUsername(row.username, 'admin').catch(dbErr('reserveUsername'));
-    if (users[u]) delete users[u];
-    for (const [sid, s] of Object.entries(sessions)) {
-      if (s.user === u) delete sessions[sid];
-    }
-    if (scoresData.users[u]) delete scoresData.users[u];
-    saveScoresFile();
-    delete bouilleCache[u];
-    console.log(`[ADMIN] Deleted user: ${u}`);
-    res.json({ ok: true });
+    const r = await supprimerJoueurPartout(u, { par: 'admin' });
+    if (r.introuvable) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true, anonymise: r.anonymise || {} });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * RGPD — LES DROITS DU JOUEUR, EN LIBRE-SERVICE, ET CE QUE LE TEMPS EFFACE
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Trois guichets et un balayage :
+ *   · GET  /api/light/mes-donnees          — l'export (art. 15 et 20) ;
+ *   · POST /api/light/compte/suppression   — la demande d'effacement (art. 17),
+ *     contre le mot de passe, avec sept jours de grâce ; se reconnecter annule ;
+ *   · POST /api/admin/rgpd/balayage        — le balayage à la demande, pour
+ *     l'admin et les tests ;
+ *   · rgpdBalayage(), toutes les heures — les suppressions arrivées à
+ *     échéance, les comptes inactifs (préavis par e-mail, puis effacement), et
+ *     les purges de rétention (IP et jeton d'inscription, journaux de
+ *     modération, sessions, jetons de réinitialisation).
+ *
+ * Les durées sont celles que la politique de confidentialité annonce. Elles
+ * se règlent par l'environnement, pour qu'on n'ait pas à toucher au code
+ * pour en changer — mais la politique, elle, doit alors être relue.
+ */
+const RGPD_GRACE_JOURS = Math.max(0, Number(process.env.RGPD_GRACE_JOURS) || 7);
+const RGPD_INACTIVITE_JOURS = Math.max(30, Number(process.env.RGPD_INACTIVITE_JOURS) || 3 * 365);
+const RGPD_PREAVIS_JOURS = Math.max(1, Number(process.env.RGPD_PREAVIS_JOURS) || 35);
+const RGPD_IP_JOURS = Math.max(1, Number(process.env.RGPD_IP_JOURS) || 183);
+const RGPD_MODERATION_JOURS = Math.max(1, Number(process.env.RGPD_MODERATION_JOURS) || 365);
+const RGPD_SESSIONS_JOURS = Math.max(1, Number(process.env.RGPD_SESSIONS_JOURS) || 180);
+const RGPD_RESETS_JOURS = 7;
+// `RGPD_PURGE_INACTIFS=0` suspend l'effacement des comptes inactifs (le
+// préavis part quand même) — pour une migration, une panne d'e-mail…
+const RGPD_PURGE_INACTIFS = String(process.env.RGPD_PURGE_INACTIFS || '1') !== '0';
+
+// Un export par minute et par joueur : c'est un gros JSON, et personne n'en
+// a besoin de dix.
+const exportsRecents = new Map();
+app.get('/api/light/mes-donnees', async (req, res) => {
+  const username = resolveUsernameFromSid(String(req.query.sid || ''));
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const user = users[username];
+  if (!user) return res.status(503).json({ ok: false, error: 'user_not_loaded' });
+  const dernier = exportsRecents.get(username) || 0;
+  if (Date.now() - dernier < 60 * 1000) {
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Un export par minute, le temps de lire le précédent.' });
+  }
+  exportsRecents.set(username, Date.now());
+  try {
+    let donnees;
+    if (user._dbId && process.env.DATABASE_URL) {
+      donnees = await db.exporterDonnees(user._dbId, username);
+    }
+    if (!donnees) {
+      // Sans base : ce que la mémoire porte, mot de passe exclu.
+      const copie = Object.assign({}, user);
+      delete copie.pass; delete copie._dbId;
+      donnees = { compte: copie };
+    }
+    const jour = new Date().toISOString().slice(0, 10);
+    const paquet = {
+      site: 'Frutiparc', pseudo: getDisplayName(username), exporte_le: new Date().toISOString(),
+      note: 'Toutes les données que le serveur tient sur ce compte, table par table. '
+        + 'Le mot de passe n’en fait pas partie (il est haché, personne ne peut le lire).',
+      ...donnees,
+    };
+    res.setHeader('Content-Disposition', `attachment; filename="frutiparc-${username}-${jour}.json"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.type('application/json').send(JSON.stringify(paquet, null, 2));
+  } catch (e) {
+    console.error('[RGPD] export :', e.message);
+    res.status(500).json({ ok: false, error: 'export_failed' });
+  }
+});
+
+app.post('/api/light/compte/suppression', async (req, res) => {
+  const sid = String((req.body && req.body.sid) || req.query.sid || '');
+  const username = resolveUsernameFromSid(sid);
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const user = users[username];
+  if (!user) return res.status(503).json({ ok: false, error: 'user_not_loaded' });
+  // Le mot de passe, toujours : un téléphone laissé ouvert ne doit pas suffire.
+  const password = String((req.body && req.body.password) || '');
+  const { ok } = await verifyPassword(user.pass, password);
+  if (!ok) return res.status(401).json({ ok: false, error: 'invalid_password', message: 'Code secret incorrect.' });
+  user.suppressionDemandee = new Date().toISOString();
+  if (user._dbId && process.env.DATABASE_URL) {
+    await db.demanderSuppression(user._dbId).catch(dbErr('demanderSuppression'));
+    await db.deleteSessionsForUser(user._dbId).catch(dbErr('deleteSessionsForUser'));
+  }
+  // Toutes ses sessions tombent, celle-ci comprise : il repart déconnecté, et
+  // c'est bien ce qu'il a demandé.
+  for (const [s, sess] of Object.entries(sessions)) {
+    if (sess.user === username) delete sessions[s];
+  }
+  const effaceLe = new Date(Date.now() + RGPD_GRACE_JOURS * 86400000).toISOString();
+  console.log(`[RGPD] ${username} demande la suppression de son compte — effacement le ${effaceLe.slice(0, 10)}`);
+  res.json({ ok: true, effaceLe, graceJours: RGPD_GRACE_JOURS });
+});
+
+/*
+ * LE PRÉAVIS D'INACTIVITÉ. Même canal que le mot de passe oublié : Resend si
+ * la clé est là, le journal du serveur sinon (et le compte n'est alors PAS
+ * compté comme averti — on ne fait pas semblant d'avoir prévenu).
+ */
+async function envoyerPreavisInactivite(toEmail, username, dansJours) {
+  const subject = 'Frutiparc — ton compte va être supprimé';
+  const base = PUBLIC_HOST ? `https://${PUBLIC_HOST}` : '';
+  const text =
+    `Salut ${username} !\n\n` +
+    `Tu ne t'es pas connecté au parc depuis longtemps. Comme on ne garde pas les comptes ` +
+    `inactifs plus de ${Math.round(RGPD_INACTIVITE_JOURS / 365)} ans, le tien — et tout ce qu'il ` +
+    `contient : scores, inventaire, bouille, courrier — sera supprimé dans ${dansJours} jours.\n\n` +
+    `Pour le garder, il suffit de te reconnecter une fois${base ? ' : ' + base : ''}.\n\n` +
+    `Si tu ne veux plus de ton compte, tu n'as rien à faire.\n\n— L'équipe Frutiparc`;
+  if (!RESEND_API_KEY) {
+    console.log(`[RGPD] (no RESEND_API_KEY) préavis d'inactivité pour ${username} <${toEmail}> non envoyé`);
+    return false;
+  }
+  try {
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: RESET_FROM, to: [toEmail], subject, text }),
+    });
+    if (!resp.ok) {
+      console.error(`[RGPD] préavis : Resend a refusé (${resp.status})`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('[RGPD] préavis :', e.message);
+    return false;
+  }
+}
+
+let rgpdBalayageEnCours = false;
+async function rgpdBalayage() {
+  if (!process.env.DATABASE_URL || rgpdBalayageEnCours) return null;
+  rgpdBalayageEnCours = true;
+  const bilan = { suppressions: 0, preavis: 0, inactifs: 0, ip: 0, jetons: 0, moderation: 0, sessions: 0, resets: 0, erreurs: [] };
+  try {
+    // 1. Les demandes de suppression arrivées à échéance.
+    for (const r of await db.comptesASupprimer(RGPD_GRACE_JOURS)) {
+      try { await supprimerJoueurPartout(r.username, { par: 'joueur' }); bilan.suppressions++; }
+      catch (e) { bilan.erreurs.push(`suppression ${r.username} : ${e.message}`); }
+    }
+    // 2. Les comptes inactifs : le préavis, puis l'effacement.
+    const { aAvertir, aEffacer } = await db.comptesInactifs(RGPD_INACTIVITE_JOURS, RGPD_PREAVIS_JOURS);
+    for (const r of aAvertir) {
+      try {
+        if (await envoyerPreavisInactivite(r.email, r.username, RGPD_PREAVIS_JOURS)) {
+          await db.marquerPreavisInactivite(r.id);
+          bilan.preavis++;
+        }
+      } catch (e) { bilan.erreurs.push(`préavis ${r.username} : ${e.message}`); }
+    }
+    if (RGPD_PURGE_INACTIFS) {
+      for (const r of aEffacer) {
+        // Un joueur PRÉSENT n'est pas inactif, quoi que dise la colonne.
+        if (getSocketsForUsername(r.username).length) continue;
+        try { await supprimerJoueurPartout(r.username, { par: 'inactivite' }); bilan.inactifs++; }
+        catch (e) { bilan.erreurs.push(`inactif ${r.username} : ${e.message}`); }
+      }
+    }
+    // 3. Les purges de rétention.
+    const ids = await db.purgerIdentifiantsInscription(RGPD_IP_JOURS);
+    bilan.ip = ids.ip; bilan.jetons = ids.jeton;
+    // La mémoire suit : un jeton effacé en base ne doit pas revenir par
+    // un `updateUser` de passage.
+    if (ids.ip || ids.jeton) {
+      const limite = Date.now() - RGPD_IP_JOURS * 86400000;
+      for (const [nom, u] of Object.entries(users)) {
+        const t = Date.parse(u.createdAt || '') || 0;
+        if (t && t < limite) { u.registerIp = ''; u.deviceToken = ''; }
+        void nom;
+      }
+    }
+    bilan.moderation = await db.purgerJournauxModeration(RGPD_MODERATION_JOURS);
+    bilan.sessions = await db.purgerSessionsAnciennes(RGPD_SESSIONS_JOURS);
+    const limiteSess = Date.now() - RGPD_SESSIONS_JOURS * 86400000;
+    for (const [s, sess] of Object.entries(sessions)) {
+      if ((sess.createdAt || 0) < limiteSess) delete sessions[s];
+    }
+    bilan.resets = await db.purgerJetonsReset(RGPD_RESETS_JOURS);
+  } catch (e) {
+    bilan.erreurs.push(e.message);
+  } finally {
+    rgpdBalayageEnCours = false;
+  }
+  const touche = Object.entries(bilan).filter(([k, v]) => k !== 'erreurs' && v).map(([k, v]) => `${k}=${v}`);
+  if (touche.length || bilan.erreurs.length) {
+    console.log(`[RGPD] balayage : ${touche.join(' ') || 'rien'}${bilan.erreurs.length ? ' — erreurs : ' + bilan.erreurs.join(' | ') : ''}`);
+  }
+  return bilan;
+}
+if (process.env.DATABASE_URL) {
+  // Deux minutes après le démarrage — le temps que la base soit là —, puis
+  // toutes les heures.
+  setTimeout(() => { rgpdBalayage().catch((e) => console.error('[RGPD] balayage :', e.message)); }, 2 * 60 * 1000).unref();
+  setInterval(() => { rgpdBalayage().catch((e) => console.error('[RGPD] balayage :', e.message)); }, 60 * 60 * 1000).unref();
+}
+app.post('/api/admin/rgpd/balayage', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, error: 'no db' });
+  try {
+    const bilan = await rgpdBalayage();
+    res.json({ ok: true, bilan, reglages: {
+      graceJours: RGPD_GRACE_JOURS, inactiviteJours: RGPD_INACTIVITE_JOURS, preavisJours: RGPD_PREAVIS_JOURS,
+      ipJours: RGPD_IP_JOURS, moderationJours: RGPD_MODERATION_JOURS, sessionsJours: RGPD_SESSIONS_JOURS,
+      purgeInactifs: RGPD_PURGE_INACTIFS,
+    } });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // Wipe a single game's FrutiCard slot data for one user (DB + in-memory).
@@ -13961,7 +14345,14 @@ app.get('/api/blindtest/embed', (req, res) => {
     enablejsapi: '1',
     origin: buildPublicBase(req),
   });
-  res.redirect(302, `https://www.youtube.com/embed/${b.id}?${p.toString()}`);
+  // `youtube-nocookie.com` : le même lecteur, la même API, mais YouTube n'y
+  // dépose pas ses cookies publicitaires avant que la lecture démarre. Ce
+  // n'est pas rien : le domaine ordinaire posait un traceur à quiconque était
+  // dans le salon, sans clic ni consentement — c'est l'ePrivacy, et c'est ce
+  // que la CNIL sanctionne. L'adresse IP part quand même : on ne charge donc
+  // l'iframe qu'après le clic du joueur (light.html, ruffle.html), et la
+  // politique de confidentialité le dit.
+  res.redirect(302, `https://www.youtube-nocookie.com/embed/${b.id}?${p.toString()}`);
 });
 
 // L'état pour la PAGE HÔTE du bureau (ruffle.html) : le SWF ne saurait pas
@@ -23031,14 +23422,16 @@ app.get('/api/light/fiche', async (req, res) => {
   if (!ud) return res.status(404).json({ ok: false, error: 'inconnu' });
 
   const cons = computeConsecration(u);
-  const naissance = ud.birthday ? new Date(ud.birthday) : null;
-  let age = null;
-  if (naissance && !Number.isNaN(naissance.getTime())) {
-    const now = new Date();
-    age = now.getFullYear() - naissance.getFullYear();
-    const m = now.getMonth() - naissance.getMonth();
-    if (m < 0 || (m === 0 && now.getDate() < naissance.getDate())) age--;
-  }
+  /*
+   * L'ÂGE ET LA DATE DE NAISSANCE : à soi-même, tout ; aux autres, l'âge
+   * seulement — et rien du tout pour un mineur (cf. bdPublic). La fiche
+   * montrait la date de naissance exacte de chacun à tout le salon.
+   */
+  const aSoi = demandeur === u;
+  const ageReel = ageDepuis(ud.birthday);
+  const age = (aSoi || (ageReel !== null && ageReel >= AGE_VISIBLE_DES)) ? ageReel : null;
+  const naissance = aSoi && /^\d{4}-\d{2}-\d{2}/.test(String(ud.birthday || ''))
+    ? new Date(String(ud.birthday).slice(0, 10)) : null;
   const inscription = ud.createdAt ? new Date(ud.createdAt) : null;
   let frutiAgeMois = 0;
   if (inscription && !Number.isNaN(inscription.getTime())) {
@@ -27040,7 +27433,7 @@ function enregistrerStatut(client, brut) {
 // <userinfo> envoie déjà à la fiche.
 function buildUserAttrs(username, present = '1', channelName) {
   const ud = users[username] || {};
-  return `u="${escapeXml(getDisplayName(username))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.countryIndex || '1'}" rg="${ud.regionIndex || '1'}" p="${present}" s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(username, channelName)}`;
+  return `u="${escapeXml(getDisplayName(username))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${bdPublicXml(ud)}" co="${ud.countryIndex || '1'}" rg="${ud.regionIndex || '1'}" p="${present}" s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(username, channelName)}`;
 }
 
 // Update the "internal" portion of a user's status string (used for the
@@ -27752,7 +28145,7 @@ case 'join': {
 
   for (const u of userArr) {
     const ud = users[u] || {};
-    userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.countryIndex || '1'}" rg="${ud.regionIndex || '1'}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, g)} />`;
+    userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${bdPublicXml(ud)}" co="${ud.countryIndex || '1'}" rg="${ud.regionIndex || '1'}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, g)} />`;
   }
 
   const timeAttrs = buildChatTimeAttrs();
@@ -27845,7 +28238,7 @@ case 'join': {
       let userXml = '';
       for (const u of userArr) {
         const ud = users[u] || {};
-        userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.countryIndex || '1'}" rg="${ud.regionIndex || '1'}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, g)} />`;
+        userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${bdPublicXml(ud)}" co="${ud.countryIndex || '1'}" rg="${ud.regionIndex || '1'}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, g)} />`;
       }
       sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
       break;
@@ -29130,7 +29523,7 @@ case 'trace': {
       if (!ud) ud = {};
       const consUserA = computeConsecration(u);
       sendToClient(socket,
-        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(getFrutizBirthday(ud, ''))}" fj="${escapeXml(getFrutizJob(u, ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consUserA.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" lc="${escapeXml(getDerniereConnexion(ud))}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
+        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${bdPublicXml(ud)}" fj="${escapeXml(getFrutizJob(u, ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consUserA.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" lc="${escapeXml(getDerniereConnexion(ud))}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
       );
       break;
     }
@@ -29346,7 +29739,7 @@ case 'createchannel': {
     for (const u of participantNames) {
       const ud = users[u] || {};
       const present = getSocketsForUsername(u).length > 0 ? 1 : 0;
-      userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.countryIndex || '1'}" rg="${ud.regionIndex || '1'}" p="${present}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, privateGroup)} />`;
+      userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${bdPublicXml(ud)}" co="${ud.countryIndex || '1'}" rg="${ud.regionIndex || '1'}" p="${present}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, privateGroup)} />`;
       traceXml += `<u u="${escapeXml(getDisplayName(u))}" p="${present}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, privateGroup)} />`;
     }
     sendToClient(socket, `<${CMD.userlist} g="${privateGroup}">${userXml}</${CMD.userlist}>`);
@@ -29359,7 +29752,7 @@ case 'createchannel': {
   const consOtherUser = computeConsecration(otherUser);
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(getFrutizBirthday(ud, '2000-01-01.00:00:00'))}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consOtherUser.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" lc="${escapeXml(getDerniereConnexion(ud))}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${bdPublicXml(ud)}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consOtherUser.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" lc="${escapeXml(getDerniereConnexion(ud))}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
   );
 
   sendToClient(
@@ -29467,7 +29860,7 @@ case 'createchannel': {
           displayName: getDisplayName(uname),
           xp: ud.xp || 0,
           gender: ud.gender || 'M',
-          birthday: ud.birthday || '2000-01-01',
+          birthday: String(ud.birthday || '').slice(0, 10),
           country: String(ud.countryIndex || '1'),
           region: String(ud.regionIndex || '1'),
           city: ud.city || '',
@@ -29481,7 +29874,7 @@ case 'createchannel': {
           for (const row of rows) {
             const key = row.username.toLowerCase();
             if (candidates.has(key)) continue;
-            let bday = '2000-01-01';
+            let bday = '';
             if (row.birthday instanceof Date) bday = row.birthday.toISOString().substring(0, 10);
             else if (typeof row.birthday === 'string' && row.birthday.length >= 10) bday = row.birthday.substring(0, 10);
             candidates.set(key, {
@@ -29508,6 +29901,8 @@ case 'createchannel': {
         if (fCo && c.country !== fCo) continue;
         if (fRg && c.region !== fRg) continue;
         // Age filters: bdm = oldest birthday allowed (max age); bd = newest birthday allowed (min age)
+        // Un filtre d'âge ne retient que ceux dont on connaît la naissance.
+        if ((fBdm || fBd) && c.birthday.length < 10) continue;
         if (fBdm && c.birthday < fBdm) continue;
         if (fBd && c.birthday > fBd) continue;
         all.push(c);
@@ -29518,7 +29913,9 @@ case 'createchannel': {
       let inner = '';
       for (const c of page) {
         const online = getSocketsForUsername(c.username).length > 0 ? 1 : 0;
-        const bdAttr = c.birthday.length >= 10 ? c.birthday + '.00:00:00' : '2000-01-01.00:00:00';
+        // Une date fabriquée qui donne le même âge, rien pour un mineur (cf.
+        // bdPublic) : la recherche ne dit pas plus que la fiche.
+        const bdAttr = bdPublicXml({ birthday: c.birthday });
         inner += `<u u="${escapeXml(c.displayName)}" x="${c.xp}" sx="${escapeXml(c.gender)}" bd="${escapeXml(bdAttr)}" co="${escapeXml(c.country)}" rg="${escapeXml(c.region)}" ct="${escapeXml(c.city)}" p="${online}" s="${escapeXml(c.status)}" f="${escapeXml(c.fbouille)}" />`;
       }
       sendToClient(socket, `<${CMD.searchuser} s="${start}" l="${limit}" n="${total}">${inner}</${CMD.searchuser}>`);

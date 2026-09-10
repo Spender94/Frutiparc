@@ -47,7 +47,7 @@ after(() => { if (proc) proc.kill('SIGKILL'); });
 let sid = '';
 async function session() {
   if (sid) return sid;
-  const body = JSON.stringify({ username: JOUEUR, password: 'secret123' });
+  const body = JSON.stringify({ username: JOUEUR, password: 'secret123', birthday: '1990-05-15' });
   await fetch(BASE + '/api/auth/register', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const r = await fetch(BASE + '/api/auth/login', {
