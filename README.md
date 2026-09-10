@@ -216,6 +216,7 @@ nuances que le fichier ne peut pas dire tout seul :
 | `teintes: 'gardees'` | seuls les **neutres** s'éteignent, toute couleur reste la sienne | les commandes : triangles rouges, swap jaune, valider vert, croix et « ? » du bandeau de fenêtre |
 | `teinte: 'glyphe'` \| `'voyant'` | le dessin prend une teinte **énoncée** au lieu d'être converti | les pictogrammes de l'encart et leurs voyants (voir plus bas) |
 | `role: 'texte'` | le dessin passe par la courbe du **texte** | « NIV », qui se lit d'un tenant avec le numéro qui le suit |
+| `famille: 'commande'` | le dessin passe par la branche **rose**, celle des boutons | « Acheter » de la boutique : vert le jour, donc rangé avec le châssis, donc violet sombre sur un panneau violet — l'air d'un bouton **désactivé** |
 | `dossier: FB` | le dessin vit dans `public/fb/` et non dans `frutiz/sprites/` | les pièces de la main bar |
 
 **Un voyant s'inverse.** Les six raccourcis de l'encart ont deux états, et le

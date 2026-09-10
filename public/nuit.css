@@ -1899,14 +1899,14 @@ body.bureau-frutiz .fen #shop-sheet .bo-solde {
   color: hsl(256 13% 84.8%);
 }
 body.bureau-frutiz .fen #shop-sheet .bo-solde img {
-  filter: var(--nuit-chassis);
+  content: url('/frutiz/sprites/shop-kikooz-nuit.svg');
 }
 body.bureau-frutiz .fen #shop-sheet .bq-ico {
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/shop-but-blanc-nuit.svg') center / 20px 20px no-repeat;
 }
 body.bureau-frutiz .fen #shop-sheet .bq-ico:hover {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/shop-but-blanc-2-nuit.svg');
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques {
   background: hsl(256 30% 10%);
@@ -1916,13 +1916,13 @@ body.bureau-frutiz .fen #shop-sheet #bo-rubriques button {
   color: hsl(256 13% 84.5%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-rub::before {
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/shop-puce-rubrique-nuit.svg') center / 20px 18px no-repeat;
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art {
   color: hsl(256 13% 84.5%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art::before {
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/shop-puce-article-nuit.svg') center / 12px 12px no-repeat;
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques button:hover {
   background: hsl(256 30% 17.2%);
@@ -1934,10 +1934,10 @@ body.bureau-frutiz .fen #shop-sheet #bo-fiche {
   color: hsl(256 13% 84.4%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-vue .cadre {
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/shop-cadre-nuit.svg') center / 100px 100px no-repeat;
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-vue .cadre::after {
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/shop-cadre-reflet-nuit.svg') 0 0 / 73px 64px no-repeat;
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-titre {
   color: hsl(325 58% 86.5%);
@@ -1953,15 +1953,15 @@ body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-prix {
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-acheter {
   border: 2px solid hsl(256 26% 40.8%);
+  background: url('/frutiz/sprites/shop-but-acheter-nuit.svg') center / 80px 16px no-repeat;
   color: hsl(256 13% 96%);
-  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-acheter[disabled] {
   color: hsl(256 13% 84.7%);
 }
 body.bureau-frutiz .fen #shop-sheet .bq-plus {
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/shop-plus-kikooz-nuit.svg') center / 150px 60px no-repeat;
 }
 body.bureau-frutiz .fen #mail-panel .mx-nav-but {
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
@@ -2438,6 +2438,28 @@ img[src$="/frutiz/sprites/onglet_fondh.svg"] { content: url("/frutiz/sprites/ong
 [style*="/frutiz/sprites/onglet_fondh.svg"] { background-image: url("/frutiz/sprites/onglet_fondh-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/onglet_pied.svg"] { content: url("/frutiz/sprites/onglet_pied-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/onglet_pied.svg"] { background-image: url("/frutiz/sprites/onglet_pied-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-but-acheter.svg"] { content: url("/frutiz/sprites/shop-but-acheter-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/shop-but-acheter.svg"] { background-image: url("/frutiz/sprites/shop-but-acheter-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-but-blanc-2.svg"] { content: url("/frutiz/sprites/shop-but-blanc-2-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/shop-but-blanc-2.svg"] { background-image: url("/frutiz/sprites/shop-but-blanc-2-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-but-blanc.svg"] { content: url("/frutiz/sprites/shop-but-blanc-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/shop-but-blanc.svg"] { background-image: url("/frutiz/sprites/shop-but-blanc-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-cadre-reflet.svg"] { content: url("/frutiz/sprites/shop-cadre-reflet-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/shop-cadre-reflet.svg"] { background-image: url("/frutiz/sprites/shop-cadre-reflet-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-cadre.svg"] { content: url("/frutiz/sprites/shop-cadre-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/shop-cadre.svg"] { background-image: url("/frutiz/sprites/shop-cadre-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-ico-journal.svg"] { content: url("/frutiz/sprites/shop-ico-journal-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/shop-ico-journal.svg"] { background-image: url("/frutiz/sprites/shop-ico-journal-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-ico-kikooz.svg"] { content: url("/frutiz/sprites/shop-ico-kikooz-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/shop-ico-kikooz.svg"] { background-image: url("/frutiz/sprites/shop-ico-kikooz-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-kikooz.svg"] { content: url("/frutiz/sprites/shop-kikooz-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/shop-kikooz.svg"] { background-image: url("/frutiz/sprites/shop-kikooz-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-plus-kikooz.svg"] { content: url("/frutiz/sprites/shop-plus-kikooz-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/shop-plus-kikooz.svg"] { background-image: url("/frutiz/sprites/shop-plus-kikooz-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-puce-article.svg"] { content: url("/frutiz/sprites/shop-puce-article-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/shop-puce-article.svg"] { background-image: url("/frutiz/sprites/shop-puce-article-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-puce-rubrique.svg"] { content: url("/frutiz/sprites/shop-puce-rubrique-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/shop-puce-rubrique.svg"] { background-image: url("/frutiz/sprites/shop-puce-rubrique-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/user-list-boite.svg"] { content: url("/frutiz/sprites/user-list-boite-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/user-list-boite.svg"] { background-image: url("/frutiz/sprites/user-list-boite-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/user-list-pilule.svg"] { content: url("/frutiz/sprites/user-list-pilule-nuit.svg"); filter: none; }
@@ -2502,9 +2524,15 @@ img.reflet, img.fen-ico,
 img[src$="/fb/reflet_bouille.svg"], img[src$="/fb/reflet_niveau.svg"],
 img[src$="/fb/icone_fenetre.svg"], img[src$="/fb/bouton_up.png"],
 img[src$="/fb/fleche_gauche.svg"], img[src$="/fb/fleche_droite.svg"],
-img[src$="/fb/boutique/dossier.png"], img[src$="/fb/boutique/icone.png"] {
+img[src$="/fb/boutique/icone.png"] {
   filter: var(--nuit-chassis);
 }
+/* Le DOSSIER de la boutique mobile en est sorti : c'est le même dossier ROSE
+   que celui du bureau (shop-puce-rubrique.svg), et le rose est l'accent du
+   thème, pas du châssis. Il était dans cette liste depuis avant qu'on décide
+   que les dessins gardent leurs couleurs — le fané le rendait gris au milieu
+   d'une colonne de rubriques. La bille verte voisine, elle, reste : c'est une
+   PUCE de liste, sa couleur est du décor et le décor s'éteint. */
 
 /* LA ROUE DU FRUTIMANDALA A SA VARIANTE DE NUIT, et c'est elle qui sert :
    `frutimandala-roue-nuit.svg` (produit par scripts/nuit-roue-mandala.js)
@@ -2531,6 +2559,21 @@ img[src$="/fb/boutique/dossier.png"], img[src$="/fb/boutique/icone.png"] {
 #home-panel:not(.a-fond) { background: var(--nuit-ciel); }
 
 /* ── Là où la conversion ne pouvait pas deviner ──────────────────────────── */
+
+/* LE BOUTON « ACHETER » DU TIROIR EST UNE COMMANDE.
+   Il est VERT dans le thème de jour — donc rangé avec le châssis, donc
+   ressorti violet sur un panneau violet, avec l'air d'un bouton désactivé. Le
+   thème a pourtant une couleur pour les commandes, et c'est le rose : les
+   quatre boutons du salon, la gélule de la liste des connectés.
+   Son jumeau du bureau est un DESSIN et reçoit le même traitement par le
+   manifeste (`famille: 'commande'` dans scripts/nuit-svg.js) ; celui-ci est du
+   CSS, et une règle de couleur ne peut pas deviner qu'un vert est un appel à
+   l'action. Les trois valeurs sont celles que le dessin a produites. */
+.bo-acheter {
+  border: 1px solid hsl(325 68% 63.3%);
+  background: linear-gradient(180deg, hsl(325 68% 37.2%), hsl(325 68% 26%));
+}
+.bo-acheter:active { background: hsl(325 68% 22%); }
 
 /* L'ARC-EN-CIEL DU FEUTRE MULTICOLORE, rendu tel quel.
    Un arc-en-ciel ne vaut que par la SUITE de ses teintes : chacune est là

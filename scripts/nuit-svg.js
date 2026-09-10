@@ -36,7 +36,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { convertir, hexVersRgb, estRose, estChassis, rgbVersHsl } = require('./generer-nuit.js');
+const { convertir, hexVersRgb, estRose, estChassis, rgbVersHsl, hslVersRgb } = require('./generer-nuit.js');
 
 const RACINE = path.join(__dirname, '..');
 const SPRITES = path.join(RACINE, 'public/frutiz/sprites');
@@ -157,6 +157,34 @@ const MANIFESTE = [
   ...['mandalaGauche', 'mandalaDroite', 'mandalaSwap', 'mandalaValider']
     .flatMap((n) => troisEtats(n)).map((f) => ({ f, teintes: 'gardees' })),
 
+  // ── La boutique ───────────────────────────────────────────────────────
+  //
+  // La fenêtre était le dernier endroit où le filtre du châssis tenait encore
+  // tout : le cadre d'aperçu, le bouton « Acheter », les pastilles, la plaque
+  // « OBTENIR DES KIKOOZ » et jusqu'au kikooz lui-même en sortaient gris.
+  //
+  // La ligne de partage est celle de tout le thème. Le CHÂSSIS s'éteint — le
+  // cadre d'aperçu, le bouton, la plaque blanche des deux commandes. Les
+  // DESSINS gardent leurs couleurs : un kikooz est une pièce d'or, et une
+  // pièce d'or grise n'est plus un kikooz.
+  { f: 'shop-cadre.svg', note: 'le cadre d’aperçu de l’article' },
+  // Le reflet du cadre est un aplat de blanc PUR, sans transparence : sur le
+  // cadre pâle du jour c'est un lustre à peine visible, sur un cadre de nuit
+  // c'était une barre blanche en travers de l'aperçu. Il suit donc son cadre
+  // (`blanc: 'teint'`) et redevient ce qu'il est : un lustre.
+  { f: 'shop-cadre-reflet.svg', blanc: 'teint', note: 'son reflet de verre' },
+  { f: 'shop-but-acheter.svg', famille: 'commande',
+    note: 'le bouton « Acheter » — une commande, donc rose' },
+  { f: 'shop-but-blanc.svg', blanc: 'teint', note: 'la plaque des deux commandes' },
+  { f: 'shop-but-blanc-2.svg', note: 'la même, enfoncée — elle est rose, elle le reste' },
+  // Le journal est un glyphe posé sur cette plaque : olive sur blanc le jour,
+  // il lui faut le violet clair des glyphes sur une plaque de nuit.
+  { f: 'shop-ico-journal.svg', teinte: 'glyphe', note: 'le journal des achats' },
+  // Tout ce qui porte un KIKOOZ garde ses ors : la pièce du solde, celle de la
+  // commande, celle de la plaque, et le cube des articles.
+  ...['shop-kikooz', 'shop-ico-kikooz', 'shop-plus-kikooz', 'shop-puce-article',
+    'shop-puce-rubrique'].map((n) => ({ f: n + '.svg', teintes: 'gardees' })),
+
   // ── L'ENCART DE LA MAIN BAR (public/fb) ───────────────────────────────
   //
   // Le fond de la bouille est le MÊME DESSIN que l'écran de l'aquarium —
@@ -221,6 +249,7 @@ function reteindre(fragment, compteur, entree) {
   const teintesGardees = entree && entree.teintes === 'gardees';
   const imposee = entree && TEINTES[entree.teinte];
   const role = (entree && entree.role) || 'sprite';
+  const famille = entree && entree.famille;
   return fragment.replace(RE_COULEUR, (tout, attr, hex) => {
     // Teinte IMPOSÉE : le dessin est un glyphe d'une seule couleur, le thème
     // dit laquelle. Le blanc reste blanc — c'est encore une marque.
@@ -231,7 +260,7 @@ function reteindre(fragment, compteur, entree) {
     }
     if (estBlancPur(hex) && !blancTeint) { compteur.gardes++; return tout; }
     const [r, g, b, a] = hexVersRgb(hex);
-    const [h, s] = rgbVersHsl(r, g, b);
+    const [h, s, l] = rgbVersHsl(r, g, b);
     // Un ACCENT n'est pas du châssis : on le laisse. C'est ce qui permet de
     // passer un dessin entier sans y perdre ses couleurs propres.
     if (!estRose(h, s) && !estChassis(h, s)) { compteur.gardes++; return tout; }
@@ -244,6 +273,26 @@ function reteindre(fragment, compteur, entree) {
     // devenaient trois boutons identiques). Ces dessins-là ne demandent
     // qu'une chose : que leur SOCLE gris s'éteigne.
     if (teintesGardees && s >= NEUTRE_MAX) { compteur.gardes++; return tout; }
+    /*
+     * `famille: 'commande'` — CE DESSIN EST UN BOUTON D'ACTION.
+     *
+     * Le thème a une couleur pour ça, et c'est le rose : les quatre boutons du
+     * salon, la gélule de la liste des connectés. Le « Acheter » de la
+     * boutique, lui, est VERT dans le thème de jour — donc rangé avec le
+     * châssis, donc ressorti violet sombre sur un panneau violet. Il n'avait
+     * plus l'air d'un bouton, il avait l'air d'un bouton désactivé.
+     *
+     * On fait donc passer ses couleurs par la branche ROSE, celle des
+     * commandes : elles y gardent leur clarté (cf. `roseDeCommande` dans
+     * generer-nuit.js), et le bouton retrouve son relief ET son évidence. La
+     * teinte est envoyée dans la bande rose, le reste ne bouge pas — la règle
+     * est celle du thème, on ne fait que dire à qui elle s'applique.
+     */
+    if (famille === 'commande' && estChassis(h, s)) {
+      const [rr, gg, bb] = hslVersRgb(350, Math.max(s, 30), l);
+      compteur.reteints++;
+      return attr + '="' + convertir(rr, gg, bb, a, role) + '"';
+    }
     compteur.reteints++;
     return attr + '="' + convertir(r, g, b, a, role) + '"';
   });

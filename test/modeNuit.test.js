@@ -654,6 +654,46 @@ test('un dessin tout en couleur reçoit quand même sa variante', () => {
     /="#7aef80"/, 'le point d’interrogation garde son vert');
 });
 
+test('la boutique : le châssis s’éteint, les kikooz gardent leur or', () => {
+  const SVG = require('../scripts/nuit-svg.js');
+  const sp = (f) => lire('public/frutiz/sprites/' + f);
+  const teintes = (svg) => [...svg.matchAll(/(?:fill|stroke)="(#[0-9a-fA-F]{3,8}|hsl\([^"]*\))"/g)]
+    .map((m) => m[1]);
+
+  // Le CHÂSSIS s'éteint : cadre d'aperçu, reflet, plaque des commandes. Le
+  // reflet est un aplat de blanc PUR sans transparence — gardé blanc il
+  // barrait l'aperçu d'un trait laiteux.
+  for (const f of ['shop-cadre.svg', 'shop-cadre-reflet.svg', 'shop-but-blanc.svg']) {
+    const nuit = teintes(sp(f.replace('.svg', '-nuit.svg')));
+    assert.ok(nuit.length && nuit.every((c) => c.startsWith('hsl(256')),
+      f + ' doit être entièrement passé au violet du châssis : ' + nuit.join(' '));
+  }
+
+  // LES DESSINS GARDENT LEURS COULEURS, et un kikooz est une pièce d'or. Une
+  // pièce d'or grise n'est plus un kikooz.
+  for (const f of ['shop-kikooz', 'shop-ico-kikooz', 'shop-plus-kikooz', 'shop-puce-article',
+    'shop-puce-rubrique']) {
+    assert.strictEqual(sp(f + '-nuit.svg').replace(/<!--[\s\S]*?-->\n?/, ''),
+      sp(f + '.svg').replace(/(<svg[^>]*>\n?)/, '$1'),
+      f + ' ne doit pas changer d’un pixel');
+  }
+
+  // « ACHETER » EST UNE COMMANDE. Vert dans le thème de jour, il était rangé
+  // avec le châssis : violet sombre sur un panneau violet, l'air d'un bouton
+  // désactivé. Il passe par la branche ROSE, celle des boutons du salon.
+  const acheter = teintes(sp('shop-but-acheter-nuit.svg'));
+  assert.ok(acheter.length >= 3 && acheter.every((c) => c.startsWith('hsl(325')),
+    'le bouton « Acheter » doit être rose : ' + acheter.join(' '));
+  // Et il garde son RELIEF : un bouton a une face, un liseré et un reflet.
+  assert.strictEqual(new Set(acheter).size, 3, 'ses trois valeurs restent distinctes');
+  // Son jumeau du tiroir est du CSS : la même décision s'y écrit à la main.
+  assert.match(lire('scripts/nuit-retouches.css'),
+    /\.bo-acheter \{\s*\n\s*border: 1px solid hsl\(325 68% 63\.3%\);/);
+  // Le dossier rose de la boutique mobile est un DESSIN : il sort du fanage.
+  assert.ok(!lire('scripts/nuit-retouches.css').includes('/fb/boutique/dossier.png'),
+    'le dossier rose ne doit plus être fané');
+});
+
 test('l’encart de la main bar : plus un vert, et le voyant s’ÉCLAIRE', () => {
   const SVG = require('../scripts/nuit-svg.js');
   const fb = (f) => lire('public/fb/' + f);

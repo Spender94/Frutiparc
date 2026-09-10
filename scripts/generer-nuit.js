@@ -781,6 +781,6 @@ if (require.main === module) main();
 
 module.exports = {
   convertir, teindreValeur, roleDe, surcharge, fabriquer, CIBLES,
-  estRose, estChassis, estParchemin, rgbVersHsl, hexVersRgb, variantesNuit,
+  estRose, estChassis, estParchemin, rgbVersHsl, hslVersRgb, hexVersRgb, variantesNuit,
   VIOLET, ROSE_NUIT,
 };
