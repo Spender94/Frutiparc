@@ -40,9 +40,40 @@ const { convertir, hexVersRgb, estRose, estChassis, rgbVersHsl } = require('./ge
 
 const RACINE = path.join(__dirname, '..');
 const SPRITES = path.join(RACINE, 'public/frutiz/sprites');
+// Les dessins d'époque ne sont pas tous rangés au même endroit : le châssis du
+// bureau vit dans frutiz/sprites, les pièces de la main bar dans fb/.
+const FB = path.join(RACINE, 'public/fb');
+const dossierDe = (entree) => entree.dossier || SPRITES;
 
 // Les états d'un bouton vont par trois : on ne les écrit pas trois fois.
 const troisEtats = (base) => ['up', 'over', 'down'].map((e) => base + '_' + e + '.svg');
+
+/*
+ * LES DEUX NIVEAUX D'UN VOYANT, ÉNONCÉS PLUTÔT QUE CALCULÉS.
+ *
+ * Les six raccourcis de l'encart sont des VOYANTS : une icône au repos, une
+ * seconde qui prend sa place quand il y a du neuf, et les deux alternent. Le
+ * thème de jour signale en FONÇANT — vert clair (#a2eb56) au repos, vert
+ * sombre (#2C4A0F) allumé, sur un panneau vert pâle. Sur un panneau de nuit
+ * c'est l'inverse : on signale en s'éclairant.
+ *
+ * Aucune conversion couleur→couleur ne peut voir ça. Elle regarde une couleur
+ * à la fois, et toutes les courbes du thème gardent la hiérarchie d'origine
+ * (« ce qui était le plus clair reste le plus clair ») : le voyant allumé
+ * serait ressorti plus SOMBRE que le voyant au repos, c'est-à-dire éteint.
+ *
+ * Ces dessins-là n'ont qu'une seule couleur : il n'y a pas de relief à
+ * préserver, rien à convertir — juste une teinte à DONNER. Le thème dit donc
+ * laquelle, et le manifeste dit laquelle pour qui.
+ */
+const TEINTES = {
+  // Un pictogramme de l'encart, et le voyant au repos. Franchement violet —
+  // pas un gris lavande — pour qu'on lise une couleur et non une absence.
+  glyphe: 'hsl(256 34% 74%)',
+  // Le même, ALLUMÉ : presque blanc, avec juste assez de violet pour rester
+  // du parc. C'est le clignotement.
+  voyant: 'hsl(256 60% 95%)',
+};
 
 /*
  * LE MANIFESTE — ce qui est du châssis, et rien d'autre.
@@ -125,6 +156,31 @@ const MANIFESTE = [
   // trois boutons de trois couleurs devenaient trois boutons identiques.
   ...['mandalaGauche', 'mandalaDroite', 'mandalaSwap', 'mandalaValider']
     .flatMap((n) => troisEtats(n)).map((f) => ({ f, teintes: 'gardees' })),
+
+  // ── L'ENCART DE LA MAIN BAR (public/fb) ───────────────────────────────
+  //
+  // Le fond de la bouille est le MÊME DESSIN que l'écran de l'aquarium —
+  // mêmes trois verts, même dégradé — et il passe donc par la même
+  // conversion : les deux ressortent identiques sans qu'on ait à le dire.
+  { f: 'cadre_bouille.svg', dossier: FB,
+    note: 'le fond de la bouille — la teinte de l’aquarium, par construction' },
+
+  // Les six raccourcis et la coupe : des GLYPHES d'une seule couleur, posés
+  // sur le panneau de l'encart. Ils prennent tous la même teinte — c'est ce
+  // qui fait une rangée et non un assortiment (la coupe était d'un vert plus
+  // sombre que les icônes, elle rejoint la rangée).
+  ...['Mail', 'Warning', 'Historique', 'Aide', 'Forum', 'Jeux', 'trophee']
+    .map((n) => ({ f: n + '.svg', dossier: FB, teinte: 'glyphe' })),
+  // Leurs VOYANTS : la même icône, allumée. Presque blanche — voir TEINTES.
+  ...['MailRecu', 'WarningAlerte', 'HistoriqueAlerte', 'ForumAlerte']
+    .map((n) => ({ f: n + '.svg', dossier: FB, teinte: 'voyant' })),
+
+  // « NIV » est un DESSIN, le numéro qui le suit est du TEXTE — et les deux se
+  // lisent d'un seul tenant (« NIV 14 »). Le dessin passe donc par le rôle
+  // `texte`, sur la même couleur d'origine (#73b01e) : la conversion leur
+  // donne alors, par construction, exactement la même teinte de nuit.
+  { f: 'Niveau.svg', dossier: FB, role: 'texte',
+    note: 'accordé au numéro de niveau, qui est du texte' },
 ];
 
 // ── La reteinte ─────────────────────────────────────────────────────────────
@@ -163,7 +219,16 @@ const NEUTRE_MAX = 15;
 function reteindre(fragment, compteur, entree) {
   const blancTeint = entree && entree.blanc === 'teint';
   const teintesGardees = entree && entree.teintes === 'gardees';
+  const imposee = entree && TEINTES[entree.teinte];
+  const role = (entree && entree.role) || 'sprite';
   return fragment.replace(RE_COULEUR, (tout, attr, hex) => {
+    // Teinte IMPOSÉE : le dessin est un glyphe d'une seule couleur, le thème
+    // dit laquelle. Le blanc reste blanc — c'est encore une marque.
+    if (imposee) {
+      if (estBlancPur(hex)) { compteur.gardes++; return tout; }
+      compteur.reteints++;
+      return attr + '="' + imposee + '"';
+    }
     if (estBlancPur(hex) && !blancTeint) { compteur.gardes++; return tout; }
     const [r, g, b, a] = hexVersRgb(hex);
     const [h, s] = rgbVersHsl(r, g, b);
@@ -180,7 +245,7 @@ function reteindre(fragment, compteur, entree) {
     // qu'une chose : que leur SOCLE gris s'éteigne.
     if (teintesGardees && s >= NEUTRE_MAX) { compteur.gardes++; return tout; }
     compteur.reteints++;
-    return attr + '="' + convertir(r, g, b, a, 'sprite') + '"';
+    return attr + '="' + convertir(r, g, b, a, role) + '"';
   });
 }
 
@@ -199,7 +264,7 @@ const ENTETE = (nom, note, intact) => `<!--
 `;
 
 function fabriquer(entree) {
-  const src = fs.readFileSync(path.join(SPRITES, entree.f), 'utf8');
+  const src = fs.readFileSync(path.join(dossierDe(entree), entree.f), 'utf8');
   const compteur = { reteints: 0, gardes: 0 };
   let sortie;
   if (entree.portee === 'premierGroupe') {
@@ -226,7 +291,8 @@ function fabriquer(entree) {
   return { texte, compteur, intact: !compteur.reteints };
 }
 
-const cible = (f) => path.join(SPRITES, f.replace(/\.svg$/, '-nuit.svg'));
+const cible = (entree) =>
+  path.join(dossierDe(entree), entree.f.replace(/\.svg$/, '-nuit.svg'));
 
 function main() {
   const verifier = process.argv.includes('--verifier');
@@ -236,7 +302,7 @@ function main() {
     if (vus.has(entree.f)) continue;          // le manifeste se lit, il ne se compte pas
     vus.add(entree.f);
     const { texte, compteur, intact } = fabriquer(entree);
-    const chemin = cible(entree.f);
+    const chemin = cible(entree);
     const ancien = fs.existsSync(chemin) ? fs.readFileSync(chemin, 'utf8') : null;
     reteints += compteur.reteints; gardes += compteur.gardes;
     if (intact) intacts.push(entree.f);
@@ -263,4 +329,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { MANIFESTE, fabriquer, cible, SPRITES };
+module.exports = { MANIFESTE, fabriquer, cible, SPRITES, FB, TEINTES };

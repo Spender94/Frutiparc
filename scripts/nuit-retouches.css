@@ -38,15 +38,20 @@
 
 /* ── Le châssis que le générateur ne voit pas ────────────────────────────── */
 
-/* Le générateur teint les 89 règles qui posent un sprite en `background-image`.
-   Restent quelques pièces de châssis qui arrivent par un <img> du HTML : le
-   cadre de la bouille et ses reflets, la jauge de niveau, les flèches et les
-   boutons de fenêtre. Ce sont des SURFACES, pas des dessins — elles suivent
-   donc le châssis, pas les fruits. La liste est courte et fermée : tout ce
-   qui n'y est pas garde ses couleurs, ce qui est le bon défaut. */
-img.cadre, img.reflet, img.fen-ico,
-img[src$="/fb/cadre_bouille.svg"], img[src$="/fb/reflet_bouille.svg"],
-img[src$="/fb/reflet_niveau.svg"], img[src$="/fb/Niveau.svg"],
+/* Le générateur teint les règles qui posent un sprite en `background-image`.
+   Restent quelques pièces de châssis qui arrivent par un <img> du HTML : les
+   reflets, les flèches, les boutons de fenêtre. Ce sont des SURFACES, pas des
+   dessins — elles suivent donc le châssis, pas les fruits. La liste est courte
+   et fermée : tout ce qui n'y est pas garde ses couleurs, ce qui est le bon
+   défaut.
+
+   LE FILTRE EST UN PIS-ALLER, et cette liste doit MAIGRIR. Le cadre de la
+   bouille et la jauge « NIV » en sont sortis le jour où ils ont reçu leur
+   vraie variante de nuit (cf. le manifeste de scripts/nuit-svg.js) : les
+   laisser ici aurait annulé le travail, puisque ces retouches sont recopiées
+   APRÈS les règles engendrées et gagnent donc sur leur `filter: none`. */
+img.reflet, img.fen-ico,
+img[src$="/fb/reflet_bouille.svg"], img[src$="/fb/reflet_niveau.svg"],
 img[src$="/fb/icone_fenetre.svg"], img[src$="/fb/bouton_up.png"],
 img[src$="/fb/fleche_gauche.svg"], img[src$="/fb/fleche_droite.svg"],
 img[src$="/fb/boutique/dossier.png"], img[src$="/fb/boutique/icone.png"] {

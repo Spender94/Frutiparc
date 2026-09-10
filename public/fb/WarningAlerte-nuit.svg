@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="2.5 2.15 15.149999999999999 14.85" width="15.149999999999999" height="14.85">
+<!--
+  ENGENDRÉ par scripts/nuit-svg.js — WarningAlerte.svg en mode nuit.
+  Le même dessin, ses couleurs de châssis repassées par la conversion du
+  thème (vert et gris au violet, rose gardé en accent, le reste intact).
+  Pour le reprendre à la main : écraser ce fichier et retirer son entrée du
+  manifeste de scripts/nuit-svg.js.
+-->
+  <path d="M9.9 11.8L9.55 7.6L10.4 7.6L9.9 11.8Z" fill="hsl(256 60% 95%)" fill-rule="evenodd"/>
+  <path d="M10.25 14.3L9.95 14.45L9.65 14.3L9.55 14.05L9.65 13.75L9.95 13.65L10.25 13.75L10.35 14.05L10.25 14.3Z" fill="hsl(256 60% 95%)" fill-rule="evenodd"/>
+  <path d="M10.1 2.9L3.25 16.25L16.9 16.25L10.1 2.9" fill="none" stroke="hsl(256 60% 95%)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M9.9 11.8L9.55 7.6L10.4 7.6L9.9 11.8" fill="none" stroke="hsl(256 60% 95%)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10.25 14.3L9.95 14.45L9.65 14.3L9.55 14.05L9.65 13.75L9.95 13.65L10.25 13.75L10.35 14.05L10.25 14.3" fill="none" stroke="hsl(256 60% 95%)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

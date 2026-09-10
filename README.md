@@ -212,8 +212,26 @@ nuances que le fichier ne peut pas dire tout seul :
 
 | Drapeau | Ce qu'il change | Pour qui |
 |---|---|---|
-| `blanc: 'teint'` | le blanc pur s'éteint au lieu d'être gardé | les onglets, le boîtier du Frusion — là où le blanc est la **face**, pas une marque |
+| `blanc: 'teint'` | le blanc pur s'éteint au lieu d'être gardé | les onglets, la languette CONTACTS, le boîtier du Frusion — là où le blanc est la **face**, pas une marque |
 | `teintes: 'gardees'` | seuls les **neutres** s'éteignent, toute couleur reste la sienne | les commandes : triangles rouges, swap jaune, valider vert, croix et « ? » du bandeau de fenêtre |
+| `teinte: 'glyphe'` \| `'voyant'` | le dessin prend une teinte **énoncée** au lieu d'être converti | les pictogrammes de l'encart et leurs voyants (voir plus bas) |
+| `role: 'texte'` | le dessin passe par la courbe du **texte** | « NIV », qui se lit d'un tenant avec le numéro qui le suit |
+| `dossier: FB` | le dessin vit dans `public/fb/` et non dans `frutiz/sprites/` | les pièces de la main bar |
+
+**Un voyant s'inverse.** Les six raccourcis de l'encart ont deux états, et le
+thème de jour signale en **fonçant** — vert clair au repos, vert sombre allumé,
+sur un panneau vert pâle. Sur un panneau de nuit c'est le contraire : on
+signale en s'éclairant. Aucune conversion couleur→couleur ne peut le voir (elle
+regarde une couleur à la fois, et toutes les courbes gardent la hiérarchie
+d'origine) : le voyant allumé serait ressorti plus *sombre* que le voyant au
+repos, c'est-à-dire éteint. Ces dessins n'ayant qu'une seule couleur, il n'y a
+rien à convertir — juste une teinte à **donner**, et le thème dit laquelle.
+
+Deux accords s'obtiennent alors sans les écrire : le fond de la bouille est le
+**même dessin** que l'écran de l'aquarium (mêmes verts, même dégradé), donc la
+même conversion leur donne la même nuit ; et « NIV », converti au rôle `texte`
+depuis la même couleur d'origine que le numéro qui le suit, en ressort à la
+teinte exacte de ce numéro.
 
 Le premier vient d'un défaut visible : un blanc pur reste blanc par défaut,
 parce que dans ces dessins c'est presque toujours un glyphe ou un liseré — et

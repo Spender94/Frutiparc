@@ -75,9 +75,9 @@ test('la roue du frutimandala : quartiers violets, fruits intacts', () => {
   // fruits sont PEINTS SUR les quartiers. Seuls les deux tracés du premier
   // groupe changent ; tout ce qui suit est laissé au pixel près.
   const SVG = require('../scripts/nuit-svg.js');
-  const nom = 'frutimandala-roue.svg';
-  const jour = fs.readFileSync(path.join(SVG.SPRITES, nom), 'utf8');
-  const nuit = fs.readFileSync(SVG.cible(nom), 'utf8');
+  const entree = SVG.MANIFESTE.find((e) => e.f === 'frutimandala-roue.svg');
+  const jour = fs.readFileSync(path.join(SVG.SPRITES, entree.f), 'utf8');
+  const nuit = fs.readFileSync(SVG.cible(entree), 'utf8');
   // Les quartiers ont viré, et pas sur la même valeur — le frutimandala est
   // une horloge, ses quartiers alternent pour se compter.
   const violets = [...nuit.matchAll(/fill="hsl\(256 30% ([\d.]+)%\)"/g)].map((m) => m[1]);
@@ -103,9 +103,12 @@ test('le manifeste ne contient que du châssis', () => {
   for (const e of SVG.MANIFESTE) {
     assert.ok(!INTERDITS.test(e.f), e.f + ' est un dessin, pas du châssis');
   }
-  // Et chaque entrée désigne un fichier qui existe vraiment.
+  // Et chaque entrée désigne un fichier qui existe vraiment — les dessins ne
+  // sont pas tous rangés au même endroit (le châssis du bureau dans
+  // frutiz/sprites, les pièces de la main bar dans fb/).
   for (const e of SVG.MANIFESTE) {
-    assert.ok(fs.existsSync(path.join(SVG.SPRITES, e.f)), e.f + ' existe');
+    assert.ok(fs.existsSync(path.join(e.dossier || SVG.SPRITES, e.f)), e.f + ' existe');
+    assert.ok(fs.existsSync(SVG.cible(e)), e.f + ' a sa variante de nuit');
   }
 });
 
@@ -649,6 +652,57 @@ test('un dessin tout en couleur reçoit quand même sa variante', () => {
   // conversion aurait rangé avec le châssis.
   assert.match(fs.readFileSync(path.join(ROOT, 'public/frutiz/sprites/butWinTop3_up-nuit.svg'), 'utf8'),
     /="#7aef80"/, 'le point d’interrogation garde son vert');
+});
+
+test('l’encart de la main bar : plus un vert, et le voyant s’ÉCLAIRE', () => {
+  const SVG = require('../scripts/nuit-svg.js');
+  const fb = (f) => lire('public/fb/' + f);
+
+  // 1. Le fond de la bouille est le MÊME DESSIN que l'écran de l'aquarium :
+  //    mêmes verts, même dégradé. Passés par la même conversion, ils doivent
+  //    ressortir identiques — sans qu'aucune règle n'ait à le dire.
+  const couleurs = (svg) => [...svg.matchAll(/(?:fill|stop-color)="(hsl\([^"]*\))"/g)]
+    .map((m) => m[1]).sort();
+  assert.deepStrictEqual(
+    couleurs(fb('cadre_bouille-nuit.svg')),
+    couleurs(lire('public/frutiz/sprites/ecran-fond-nuit.svg')),
+    'le fond de la bouille doit reprendre la teinte de l’aquarium');
+
+  // 2. La coupe prend la teinte des icônes — elle était d'un vert plus sombre,
+  //    et une rangée ne se lit pas si l'un de ses membres est d'une autre
+  //    couleur.
+  const teinte = (svg) => (/fill="(hsl\([^"]*\))"/.exec(svg) || [])[1];
+  for (const n of ['Mail', 'Warning', 'Historique', 'Aide', 'Forum', 'Jeux', 'trophee']) {
+    assert.strictEqual(teinte(fb(n + '-nuit.svg')), SVG.TEINTES.glyphe,
+      n + ' doit être de la teinte des glyphes');
+  }
+
+  // 3. « NIV » est un dessin, le numéro qui le suit est du texte, et ils se
+  //    lisent d'un seul tenant. Même couleur d'origine, même rôle : la
+  //    conversion leur donne la même teinte de nuit, par construction.
+  const duTexte = teint('#73b01e', 'texte');
+  assert.strictEqual(teinte(fb('Niveau-nuit.svg')), duTexte);
+  assert.ok(NUIT.includes('.enc-niv .lvl {\n  color: ' + duTexte + ';\n}'),
+    'le numéro de niveau doit porter exactement la même couleur');
+
+  // 4. LE SENS DU VOYANT S'INVERSE. Le jour, il signale en FONÇANT (vert sombre
+  //    sur vert clair) ; la nuit, en s'éclairant. Aucune conversion ne peut le
+  //    voir — elle garde la hiérarchie d'origine, et le voyant allumé serait
+  //    ressorti plus sombre que le voyant au repos, c'est-à-dire éteint.
+  for (const n of ['MailRecu', 'WarningAlerte', 'HistoriqueAlerte', 'ForumAlerte']) {
+    assert.strictEqual(teinte(fb(n + '-nuit.svg')), SVG.TEINTES.voyant, n + ' est le voyant allumé');
+  }
+  assert.ok(L(SVG.TEINTES.voyant) > L(SVG.TEINTES.glyphe) + 15,
+    'allumé doit être franchement plus clair qu’au repos');
+  assert.ok(L(SVG.TEINTES.voyant) >= 92, 'et presque blanc');
+
+  // 5. Et le FILTRE ne doit plus les toucher : les retouches sont recopiées
+  //    APRÈS les règles engendrées, et gagneraient sur leur `filter: none`.
+  const retouches = lire('scripts/nuit-retouches.css');
+  for (const perime of ['img.cadre,', '/fb/cadre_bouille.svg', '/fb/Niveau.svg']) {
+    assert.ok(!retouches.includes(perime),
+      perime + ' a sa variante : le laisser au filtre annulerait le travail');
+  }
 });
 
 // ── Les fonds d'écran de nuit ───────────────────────────────────────────────

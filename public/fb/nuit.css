@@ -666,6 +666,36 @@ a:hover {
   color: hsl(256 13% 88.7%);
 }
 
+/* ── Les dessins de nuit déposés à côté des dessins de jour ───────── */
+/* Ils remplacent l’original et échappent au fanage : ils n’ont plus rien */
+/* à cacher. Déposer « nom-nuit.svg » à côté de « nom.svg » suffit.      */
+img[src$="/fb/Aide.svg"] { content: url("/fb/Aide-nuit.svg"); filter: none; }
+[style*="/fb/Aide.svg"] { background-image: url("/fb/Aide-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Forum.svg"] { content: url("/fb/Forum-nuit.svg"); filter: none; }
+[style*="/fb/Forum.svg"] { background-image: url("/fb/Forum-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/ForumAlerte.svg"] { content: url("/fb/ForumAlerte-nuit.svg"); filter: none; }
+[style*="/fb/ForumAlerte.svg"] { background-image: url("/fb/ForumAlerte-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Historique.svg"] { content: url("/fb/Historique-nuit.svg"); filter: none; }
+[style*="/fb/Historique.svg"] { background-image: url("/fb/Historique-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/HistoriqueAlerte.svg"] { content: url("/fb/HistoriqueAlerte-nuit.svg"); filter: none; }
+[style*="/fb/HistoriqueAlerte.svg"] { background-image: url("/fb/HistoriqueAlerte-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Jeux.svg"] { content: url("/fb/Jeux-nuit.svg"); filter: none; }
+[style*="/fb/Jeux.svg"] { background-image: url("/fb/Jeux-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Mail.svg"] { content: url("/fb/Mail-nuit.svg"); filter: none; }
+[style*="/fb/Mail.svg"] { background-image: url("/fb/Mail-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/MailRecu.svg"] { content: url("/fb/MailRecu-nuit.svg"); filter: none; }
+[style*="/fb/MailRecu.svg"] { background-image: url("/fb/MailRecu-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Niveau.svg"] { content: url("/fb/Niveau-nuit.svg"); filter: none; }
+[style*="/fb/Niveau.svg"] { background-image: url("/fb/Niveau-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Warning.svg"] { content: url("/fb/Warning-nuit.svg"); filter: none; }
+[style*="/fb/Warning.svg"] { background-image: url("/fb/Warning-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/WarningAlerte.svg"] { content: url("/fb/WarningAlerte-nuit.svg"); filter: none; }
+[style*="/fb/WarningAlerte.svg"] { background-image: url("/fb/WarningAlerte-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/cadre_bouille.svg"] { content: url("/fb/cadre_bouille-nuit.svg"); filter: none; }
+[style*="/fb/cadre_bouille.svg"] { background-image: url("/fb/cadre_bouille-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/trophee.svg"] { content: url("/fb/trophee-nuit.svg"); filter: none; }
+[style*="/fb/trophee.svg"] { background-image: url("/fb/trophee-nuit.svg") !important; filter: none !important; }
+
 /* ── À la main, à partir d'ici ────────────────────────────────────── */
 /*
  * LES RETOUCHES DU MODE NUIT, CÔTÉ FORUM — recopiées à la fin de

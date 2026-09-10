@@ -2312,6 +2312,32 @@ body.bureau-frutiz .fen #profil-sheet #prof-enregistrer:active {
 /* ── Les dessins de nuit déposés à côté des dessins de jour ───────── */
 /* Ils remplacent l’original et échappent au fanage : ils n’ont plus rien */
 /* à cacher. Déposer « nom-nuit.svg » à côté de « nom.svg » suffit.      */
+img[src$="/fb/Aide.svg"] { content: url("/fb/Aide-nuit.svg"); filter: none; }
+[style*="/fb/Aide.svg"] { background-image: url("/fb/Aide-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Forum.svg"] { content: url("/fb/Forum-nuit.svg"); filter: none; }
+[style*="/fb/Forum.svg"] { background-image: url("/fb/Forum-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/ForumAlerte.svg"] { content: url("/fb/ForumAlerte-nuit.svg"); filter: none; }
+[style*="/fb/ForumAlerte.svg"] { background-image: url("/fb/ForumAlerte-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Historique.svg"] { content: url("/fb/Historique-nuit.svg"); filter: none; }
+[style*="/fb/Historique.svg"] { background-image: url("/fb/Historique-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/HistoriqueAlerte.svg"] { content: url("/fb/HistoriqueAlerte-nuit.svg"); filter: none; }
+[style*="/fb/HistoriqueAlerte.svg"] { background-image: url("/fb/HistoriqueAlerte-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Jeux.svg"] { content: url("/fb/Jeux-nuit.svg"); filter: none; }
+[style*="/fb/Jeux.svg"] { background-image: url("/fb/Jeux-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Mail.svg"] { content: url("/fb/Mail-nuit.svg"); filter: none; }
+[style*="/fb/Mail.svg"] { background-image: url("/fb/Mail-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/MailRecu.svg"] { content: url("/fb/MailRecu-nuit.svg"); filter: none; }
+[style*="/fb/MailRecu.svg"] { background-image: url("/fb/MailRecu-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Niveau.svg"] { content: url("/fb/Niveau-nuit.svg"); filter: none; }
+[style*="/fb/Niveau.svg"] { background-image: url("/fb/Niveau-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Warning.svg"] { content: url("/fb/Warning-nuit.svg"); filter: none; }
+[style*="/fb/Warning.svg"] { background-image: url("/fb/Warning-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/WarningAlerte.svg"] { content: url("/fb/WarningAlerte-nuit.svg"); filter: none; }
+[style*="/fb/WarningAlerte.svg"] { background-image: url("/fb/WarningAlerte-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/cadre_bouille.svg"] { content: url("/fb/cadre_bouille-nuit.svg"); filter: none; }
+[style*="/fb/cadre_bouille.svg"] { background-image: url("/fb/cadre_bouille-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/trophee.svg"] { content: url("/fb/trophee-nuit.svg"); filter: none; }
+[style*="/fb/trophee.svg"] { background-image: url("/fb/trophee-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/butContact_down.svg"] { content: url("/frutiz/sprites/butContact_down-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/butContact_down.svg"] { background-image: url("/frutiz/sprites/butContact_down-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/butContact_over.svg"] { content: url("/frutiz/sprites/butContact_over-nuit.svg"); filter: none; }
@@ -2460,15 +2486,20 @@ img[src$="/frutiz/sprites/user-slot.svg"] { content: url("/frutiz/sprites/user-s
 
 /* ── Le châssis que le générateur ne voit pas ────────────────────────────── */
 
-/* Le générateur teint les 89 règles qui posent un sprite en `background-image`.
-   Restent quelques pièces de châssis qui arrivent par un <img> du HTML : le
-   cadre de la bouille et ses reflets, la jauge de niveau, les flèches et les
-   boutons de fenêtre. Ce sont des SURFACES, pas des dessins — elles suivent
-   donc le châssis, pas les fruits. La liste est courte et fermée : tout ce
-   qui n'y est pas garde ses couleurs, ce qui est le bon défaut. */
-img.cadre, img.reflet, img.fen-ico,
-img[src$="/fb/cadre_bouille.svg"], img[src$="/fb/reflet_bouille.svg"],
-img[src$="/fb/reflet_niveau.svg"], img[src$="/fb/Niveau.svg"],
+/* Le générateur teint les règles qui posent un sprite en `background-image`.
+   Restent quelques pièces de châssis qui arrivent par un <img> du HTML : les
+   reflets, les flèches, les boutons de fenêtre. Ce sont des SURFACES, pas des
+   dessins — elles suivent donc le châssis, pas les fruits. La liste est courte
+   et fermée : tout ce qui n'y est pas garde ses couleurs, ce qui est le bon
+   défaut.
+
+   LE FILTRE EST UN PIS-ALLER, et cette liste doit MAIGRIR. Le cadre de la
+   bouille et la jauge « NIV » en sont sortis le jour où ils ont reçu leur
+   vraie variante de nuit (cf. le manifeste de scripts/nuit-svg.js) : les
+   laisser ici aurait annulé le travail, puisque ces retouches sont recopiées
+   APRÈS les règles engendrées et gagnent donc sur leur `filter: none`. */
+img.reflet, img.fen-ico,
+img[src$="/fb/reflet_bouille.svg"], img[src$="/fb/reflet_niveau.svg"],
 img[src$="/fb/icone_fenetre.svg"], img[src$="/fb/bouton_up.png"],
 img[src$="/fb/fleche_gauche.svg"], img[src$="/fb/fleche_droite.svg"],
 img[src$="/fb/boutique/dossier.png"], img[src$="/fb/boutique/icone.png"] {

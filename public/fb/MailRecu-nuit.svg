@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="2.3 3.25 15.599999999999998 14.149999999999999" width="15.599999999999998" height="14.149999999999999">
+<!--
+  ENGENDRÉ par scripts/nuit-svg.js — MailRecu.svg en mode nuit.
+  Le même dessin, ses couleurs de châssis repassées par la conversion du
+  thème (vert et gris au violet, rose gardé en accent, le reste intact).
+  Pour le reprendre à la main : écraser ce fichier et retirer son entrée du
+  manifeste de scripts/nuit-svg.js.
+-->
+  <path d="M17.05 3.8L17.9 10.65L4 17.4L2.3 7.6L2.4 6.65L16.45 3.25L17.05 3.8ZM16.35 10.2L13.6 9L12.25 10.7L10 10.15L7.15 14.55L16.35 10.2ZM14 8.15L16.75 9.05L16.1 6L14 8.15ZM15.55 4.85L5.05 7.25L11.7 9.55L15.55 4.85ZM5.3 15L9.1 9.9L4 7.8L5.3 15Z" fill="hsl(256 60% 95%)" fill-rule="evenodd"/>
+</svg>
