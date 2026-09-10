@@ -7,8 +7,8 @@
   manifeste de scripts/nuit-svg.js.
 -->
 <g transform="matrix(1,0,0,1,0,0)">
-  <path d="M-17.5 2L-17.5 -0.5L91.85 -0.5L91.85 2L-17.5 2Z" fill="hsl(256 30% 35.8%)" fill-rule="evenodd"/>
-  <path d="M91.85 2L91.85 -0.5L105.5 -0.5L104.1 2L91.85 2Z" fill="hsl(256 30% 35.8%)" fill-rule="evenodd"/>
+  <path d="M-17.5 2L-17.5 -0.5L91.85 -0.5L91.85 2L-17.5 2Z" fill="hsl(256 30% 36.8%)" fill-rule="evenodd"/>
+  <path d="M91.85 2L91.85 -0.5L105.5 -0.5L104.1 2L91.85 2Z" fill="hsl(256 30% 36.8%)" fill-rule="evenodd"/>
 
 </g>
 </svg>

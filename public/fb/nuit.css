@@ -12,22 +12,22 @@
  */
 
 body {
-  background: hsl(256 30% 35.6%);
-  color: hsl(256 13% 78.4%);
+  background: hsl(256 30% 34.3%);
+  color: hsl(256 13% 84.4%);
 }
 .forum-shell {
-  background: hsl(256 30% 16%);
+  background: hsl(256 30% 10%);
   border: 1.125px solid hsl(256 26% 56.4%);
   box-shadow: inset 0 0 0 1px hsl(256 26% 34.1%);
 }
 a {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 a:hover {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .topbar .user-info {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .topbar .close-btn {
   background: hsl(325 34% 34.5%);
@@ -37,7 +37,7 @@ a:hover {
   background: hsl(325 34% 34.5%);
 }
 .forum-header {
-  background: hsl(256 30% 16%);
+  background: hsl(256 30% 10%);
 }
 .forum-header .title-link {
   color: hsl(325 58% 88.4%);
@@ -49,7 +49,7 @@ a:hover {
   color: hsl(325 58% 88.4%);
 }
 .forum-header .title-link .bc-current {
-  color: hsl(256 13% 81.3%);
+  color: hsl(256 13% 84.8%);
 }
 .forum-header .title-link a.bc-retour {
   border: 1px solid hsl(325 58% 66%);
@@ -63,80 +63,80 @@ a:hover {
   color: hsl(256 13% 96%);
 }
 .cat-header {
-  background: hsl(256 30% 35.6%);
-  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 34.3%);
+  color: hsl(256 13% 84.8%);
 }
 .cat-header a {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .cat-header a:hover {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .row {
-  background: hsl(256 30% 25.3%);
+  background: hsl(256 30% 21.6%);
 }
 .row.row-alt {
-  background: hsl(256 30% 30.1%);
+  background: hsl(256 30% 27.5%);
 }
 .row .info .title {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .row .info .title a {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .row .info .title a:hover {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .row .info .desc {
-  color: hsl(256 13% 78.4%);
+  color: hsl(256 13% 84.4%);
 }
 .row .info .moderator {
-  color: hsl(256 13% 78.4%);
+  color: hsl(256 13% 84.4%);
 }
 .row .col-num {
-  color: hsl(256 13% 78.4%);
+  color: hsl(256 13% 84.4%);
 }
 .row .col-last {
-  color: hsl(256 13% 78.4%);
+  color: hsl(256 13% 84.4%);
 }
 .row .col-last a {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .row .col-last a:hover {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .row .sticky-tag {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .row .locked-tag {
   color: hsl(256 13% 85.7%);
 }
 .topic-row .info .author {
-  color: hsl(256 13% 78.4%);
+  color: hsl(256 13% 84.4%);
 }
 .topic-row .info .author a {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .post {
-  background: hsl(256 30% 25.3%);
+  background: hsl(256 30% 21.6%);
 }
 .post .post-author {
-  background: hsl(256 30% 25.3%);
+  background: hsl(256 30% 21.6%);
 }
 .post .post-author .avatar {
-  background: hsl(256 30% 22.6%);
+  background: hsl(256 30% 18.2%);
 }
 .post .post-author .username {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .post .post-body {
-  background: hsl(256 30% 25.3%);
+  background: hsl(256 30% 21.6%);
 }
 .post.post-alt,
   .post.post-alt .post-body,
   .post.post-alt .post-author,
   .post.post-alt .post-header {
-  background: hsl(256 30% 30.1%);
+  background: hsl(256 30% 27.5%);
 }
 .post.post-nonlu {
   outline: 2px solid hsl(256 26% 51.3%);
@@ -147,8 +147,8 @@ a:hover {
   }
 }
 .post .post-header {
-  background: hsl(256 30% 25.3%);
-  color: hsl(256 13% 78.4%);
+  background: hsl(256 30% 21.6%);
+  color: hsl(256 13% 84.4%);
 }
 .post .post-header .post-icon {
   filter: var(--nuit-chassis);
@@ -177,7 +177,7 @@ a:hover {
   color: hsl(325 58% 88.4%);
 }
 .shell-left .suivi-btn {
-  color: hsl(256 13% 80.6%);
+  color: hsl(256 13% 84.6%);
 }
 .shell-left .suivi-btn .c {
   color: hsl(256 13% 88.7%);
@@ -186,110 +186,110 @@ a:hover {
   color: hsl(325 58% 88.4%);
 }
 .post .post-content {
-  color: hsl(256 13% 78.4%);
+  color: hsl(256 13% 84.4%);
 }
 .bb-youtube {
   background: hsl(256 30% 0%);
 }
 .post .post-edited {
-  color: hsl(256 13% 81.6%);
+  color: hsl(256 13% 84.6%);
 }
 .post .post-signature {
   border-top: 1px solid hsl(256 26% 37.4%);
-  color: hsl(256 13% 80.9%);
+  color: hsl(256 13% 84.4%);
 }
 .post-content blockquote.quote {
-  background: hsl(256 30% 22.6%);
+  background: hsl(256 30% 18.2%);
   border: 1.5px solid hsl(256 26% 39.4%);
-  color: hsl(256 13% 78.4%);
+  color: hsl(256 13% 84.4%);
 }
 .post-content blockquote.quote blockquote.quote {
-  background: hsl(256 30% 19.8%);
+  background: hsl(256 30% 14.7%);
 }
 .post-content .quote-author {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .post-content a {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .bbcode-toolbar button {
-  background: hsl(256 30% 35.6%);
+  background: hsl(256 30% 34.3%);
   border: 1px solid hsl(256 26% 56.4%);
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .bbcode-toolbar button:hover {
-  background: hsl(256 30% 30.1%);
+  background: hsl(256 30% 27.5%);
 }
 .picto-picker {
-  background: hsl(46 55% 19%);
+  background: hsl(46 55% 13.7%);
   border: 2px solid hsl(256 26% 56.4%);
   box-shadow: 2px 2px 8px hsl(256 13% 0% / 0.25);
 }
 .picto-picker img {
   border: 1px solid hsl(256 26% 36.4%);
-  background: hsl(256 30% 16%);
+  background: hsl(256 30% 10%);
 }
 .picto-picker img:hover {
   border-color: hsl(256 26% 56.4%);
-  background: hsl(256 30% 22%);
+  background: hsl(256 30% 17.5%);
 }
 .picto-picker .picto-empty {
-  color: hsl(256 13% 82.8%);
+  color: hsl(256 13% 84.8%);
 }
 .picto-card {
-  background: hsl(46 55% 19%);
+  background: hsl(46 55% 13.7%);
   border: 1px solid hsl(256 26% 38.6%);
 }
 .picto-card .picto-name {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .picto-card .picto-game {
   color: hsl(256 13% 85.7%);
 }
 .picto-gallery-section h4 {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
   border-bottom: 1px solid hsl(256 26% 38.6%);
 }
 .consecration-banner {
-  background: linear-gradient(135deg, hsl(256 30% 20%), hsl(256 30% 26.7%));
+  background: linear-gradient(135deg, hsl(256 30% 14.9%), hsl(256 30% 23.3%));
   border: 1px solid hsl(256 26% 45.6%);
 }
 .consecration-banner .conse-title {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .consecration-banner .conse-pct {
-  color: hsl(256 13% 80%);
+  color: hsl(256 13% 84.5%);
 }
 .consecration-banner .conse-bar {
-  background: hsl(256 30% 16%);
+  background: hsl(256 30% 10%);
   border: 1px solid hsl(256 26% 45.6%);
 }
 .consecration-banner .conse-fill {
   background: linear-gradient(90deg, hsl(256 30% 36%), hsl(256 30% 36%));
 }
 .consecration-banner .conse-game {
-  background: hsl(256 30% 16%);
+  background: hsl(256 30% 10%);
   border: 1px solid hsl(256 26% 38.6%);
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .consecration-banner .conse-game b {
-  color: hsl(256 13% 80%);
+  color: hsl(256 13% 84.5%);
 }
 .consecration-banner .conse-note {
-  color: hsl(256 13% 81.3%);
+  color: hsl(256 13% 84.8%);
 }
 .picto-bbcode-hint {
-  color: hsl(256 13% 81.3%);
-  background: hsl(48 31% 21.1%);
+  color: hsl(256 13% 84.8%);
+  background: hsl(48 31% 16.4%);
   border: 1px solid hsl(51 30% 36.8%);
 }
 .picto-bbcode-hint code {
-  background: hsl(256 30% 16%);
+  background: hsl(256 30% 10%);
 }
 .post-edit-area textarea {
   border: 1px solid hsl(256 26% 44%);
-  background: hsl(256 30% 30.1%);
-  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 27.5%);
+  color: hsl(256 13% 84.8%);
 }
 .btn {
   color: hsl(256 13% 96%);
@@ -309,46 +309,46 @@ a:hover {
   color: hsl(256 13% 96%);
 }
 .pagination {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .pagination a, .pagination span {
   border: 1px solid hsl(256 26% 56.4%);
-  background: hsl(256 30% 25.3%);
-  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 21.6%);
+  color: hsl(256 13% 84.8%);
 }
 .pagination span.current {
-  background: hsl(256 30% 30.1%);
-  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 27.5%);
+  color: hsl(256 13% 84.8%);
 }
 .form-area {
-  background: hsl(256 30% 25.3%);
+  background: hsl(256 30% 21.6%);
 }
 .form-area h3 {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .form-area label {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .form-area input[type="text"],
   .form-area textarea {
   border: 1px solid hsl(256 26% 51.3%);
-  background: hsl(256 30% 16%);
-  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 10%);
+  color: hsl(256 13% 84.8%);
 }
 .bouille-preview-box {
   border: 1.5px solid hsl(256 26% 56.4%);
-  background: hsl(256 30% 21.8%);
+  background: hsl(256 30% 17.2%);
 }
 .bouille-option-group label {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .expression-grid .expr-btn {
-  background: hsl(256 30% 30.1%);
+  background: hsl(256 30% 27.5%);
   border: 1px solid hsl(256 26% 56.4%);
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .expression-grid .expr-btn:hover {
-  background: hsl(256 30% 35.6%);
+  background: hsl(256 30% 34.3%);
 }
 .expression-grid .expr-btn.active {
   background: hsl(325 34% 34.5%);
@@ -356,12 +356,12 @@ a:hover {
   border-color: hsl(325 58% 66%);
 }
 .acc-grid .acc-btn {
-  background: hsl(256 30% 30.1%);
+  background: hsl(256 30% 27.5%);
   border: 1px solid hsl(256 26% 56.4%);
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .acc-grid .acc-btn:hover {
-  background: hsl(256 30% 35.6%);
+  background: hsl(256 30% 34.3%);
 }
 .acc-grid .acc-btn.active {
   background: hsl(325 34% 34.5%);
@@ -369,25 +369,25 @@ a:hover {
   border-color: hsl(325 58% 66%);
 }
 .toolbar {
-  background: hsl(256 30% 16%);
+  background: hsl(256 30% 10%);
 }
 .bottom-bar {
-  background: hsl(256 30% 35.6%);
-  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 34.3%);
+  color: hsl(256 13% 84.8%);
 }
 .shell-actions {
-  background: hsl(256 30% 16%);
+  background: hsl(256 30% 10%);
 }
 .bottom-bar select {
-  background: hsl(256 30% 30.1%);
-  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 27.5%);
+  color: hsl(256 13% 84.8%);
 }
 .bottom-bar .go-btn {
   background: hsl(325 34% 34.5%);
   color: hsl(256 13% 96%);
 }
 .mod-bar {
-  background: hsl(256 30% 16%);
+  background: hsl(256 30% 10%);
 }
 .mod-bar .mod-btn {
   color: hsl(256 13% 96%);
@@ -397,137 +397,137 @@ a:hover {
   background: hsl(325 34% 34.5%);
 }
 .forum-footer {
-  color: hsl(256 13% 78.3%);
-  background: hsl(256 30% 28.7%);
+  color: hsl(256 13% 84.8%);
+  background: hsl(256 30% 25.8%);
 }
 .forum-footer a {
-  color: hsl(256 13% 79.9%);
+  color: hsl(256 13% 84.9%);
 }
 .loading, .empty {
-  color: hsl(256 13% 78.4%);
-  background: hsl(256 30% 16%);
+  color: hsl(256 13% 84.4%);
+  background: hsl(256 30% 10%);
 }
 .reply-blocked {
-  background: hsl(24 55% 20.2%);
+  background: hsl(24 55% 15.2%);
   border: 1px solid hsl(325 58% 66%);
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .editor-area {
-  background: hsl(256 30% 25.3%);
+  background: hsl(256 30% 21.6%);
 }
 .editor-preview-wrap {
-  background: hsl(256 30% 25.3%);
+  background: hsl(256 30% 21.6%);
 }
 .editor-preview-header {
-  background: hsl(256 30% 35.6%);
-  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 34.3%);
+  color: hsl(256 13% 84.8%);
   border-bottom: 1px solid hsl(256 26% 44%);
 }
 .editor-preview-header .post-icon {
   filter: var(--nuit-chassis);
 }
 .editor-preview-body {
-  background: hsl(256 30% 25.3%);
+  background: hsl(256 30% 21.6%);
 }
 .editor-preview-author .username {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .editor-preview-content {
-  color: hsl(256 13% 78.4%);
+  color: hsl(256 13% 84.4%);
 }
 .editor-form {
-  background: hsl(256 30% 25.3%);
+  background: hsl(256 30% 21.6%);
 }
 .editor-label-cell,
   .editor-value-cell {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .editor-input {
-  background: hsl(256 30% 16%);
-  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 10%);
+  color: hsl(256 13% 84.8%);
   border: 1px solid hsl(256 26% 56.4%);
 }
 .bouille-nav {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .bouille-nav a {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .bouille-nav a:hover {
-  color: hsl(256 13% 80%);
+  color: hsl(256 13% 84.5%);
 }
 .bouille-nav .disabled {
   color: hsl(256 13% 86%);
 }
 .bouille-item .b-name {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .editor-select {
-  background: hsl(256 30% 16%);
-  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 10%);
+  color: hsl(256 13% 84.8%);
   border: 1px solid hsl(256 26% 56.4%);
 }
 .editor-bbcode-toolbar .bb-btn {
-  background: linear-gradient(180deg, hsl(256 30% 17.1%) 0%, hsl(256 30% 25.8%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 11.4%) 0%, hsl(256 30% 22.1%) 100%);
   border: 1px solid hsl(256 26% 44.9%);
-  color: hsl(256 13% 78.5%);
+  color: hsl(256 13% 84.5%);
 }
 .editor-bbcode-toolbar .bb-btn:hover {
-  background: linear-gradient(180deg, hsl(256 30% 16%) 0%, hsl(256 30% 21.9%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 10%) 0%, hsl(256 30% 17.3%) 100%);
 }
 .editor-bbcode-toolbar .bb-btn:active {
-  background: linear-gradient(180deg, hsl(256 30% 25.8%) 0%, hsl(256 30% 17.1%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 22.1%) 0%, hsl(256 30% 11.4%) 100%);
 }
 .editor-bbcode-toolbar .bb-select {
-  background: linear-gradient(180deg, hsl(256 30% 17.1%) 0%, hsl(256 30% 25.8%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 11.4%) 0%, hsl(256 30% 22.1%) 100%);
   border: 1px solid hsl(256 26% 44.9%);
-  color: hsl(256 13% 78.5%);
+  color: hsl(256 13% 84.5%);
 }
 .editor-hint-row {
-  background: hsl(256 30% 30.1%);
+  background: hsl(256 30% 27.5%);
   border: 1px solid hsl(256 26% 44%);
 }
 .editor-hint-row .hint-text {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .editor-hint-row .close-tags-btn {
-  background: linear-gradient(180deg, hsl(256 30% 17.1%) 0%, hsl(256 30% 25.8%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 11.4%) 0%, hsl(256 30% 22.1%) 100%);
   border: 1px solid hsl(256 26% 44.9%);
-  color: hsl(256 13% 78.5%);
+  color: hsl(256 13% 84.5%);
 }
 .editor-hint-row .close-tags-btn:hover {
-  background: linear-gradient(180deg, hsl(256 30% 16%) 0%, hsl(256 30% 21.9%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 10%) 0%, hsl(256 30% 17.3%) 100%);
 }
 .emoticons-row .emo-btn:hover {
   border-color: hsl(256 26% 56.4%);
-  background: hsl(256 30% 22%);
+  background: hsl(256 30% 17.5%);
 }
 .editor-textarea {
-  background: hsl(256 30% 16%);
-  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 10%);
+  color: hsl(256 13% 84.8%);
   border: 1px solid hsl(256 26% 56.4%);
 }
 .post-content .mention, .post-signature .mention {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .post-content .mention.moi, .post-signature .mention.moi {
-  color: hsl(325 58% 80.9%);
-  background: hsl(45 55% 23.4%);
+  color: hsl(325 58% 86.9%);
+  background: hsl(45 55% 22.3%);
   box-shadow: inset 0 0 0 1px hsl(43 39% 39.8%);
 }
 .mention-liste {
-  background: hsl(256 30% 16%);
+  background: hsl(256 30% 10%);
   border: 1px solid hsl(256 26% 39.5%);
   box-shadow: 0 6px 18px hsl(256 13% 0% / 0.18);
 }
 .mention-item {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .mention-item.on, .mention-item:hover {
-  background: hsl(256 30% 20.9%);
+  background: hsl(256 30% 16.1%);
 }
 .editor-actions {
-  background: hsl(256 30% 25.3%);
+  background: hsl(256 30% 21.6%);
 }
 .editor-actions .edit-btn {
   background: hsl(325 34% 34.5%);
@@ -537,12 +537,12 @@ a:hover {
   background: hsl(325 34% 34.5%);
 }
 .post-content pre.bb-code {
-  background: hsl(60 31% 21.1%);
+  background: hsl(60 31% 16.4%);
   border: 1px solid hsl(256 26% 38.6%);
-  color: hsl(256 13% 78.4%);
+  color: hsl(256 13% 84.4%);
 }
 .poll-box {
-  background: hsl(256 30% 25.3%);
+  background: hsl(256 30% 21.6%);
   border-bottom: 1px solid hsl(256 26% 40.8%);
 }
 .poll-box-header {
@@ -553,16 +553,16 @@ a:hover {
   filter: var(--nuit-chassis);
 }
 .poll-question {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .poll-vote-opt {
-  color: hsl(256 13% 78.4%);
+  color: hsl(256 13% 84.4%);
 }
 .poll-vote-opt:hover {
-  background: hsl(256 30% 30.1%);
+  background: hsl(256 30% 27.5%);
 }
 .poll-vote-disabled {
-  color: hsl(256 13% 83.6%);
+  color: hsl(256 13% 84.6%);
 }
 .poll-vote-btn, .poll-close-btn {
   background: hsl(325 34% 34.5%);
@@ -572,45 +572,45 @@ a:hover {
   background: hsl(325 34% 34.5%);
 }
 .poll-peek-link, .poll-results-peek a {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .poll-result-label {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .poll-result-label .poll-check {
   color: hsl(325 58% 88.4%);
 }
 .poll-result-track {
-  background: hsl(256 30% 22.6%);
+  background: hsl(256 30% 18.2%);
   border: 1px solid hsl(256 26% 39.4%);
 }
 .poll-result-fill {
-  background: linear-gradient(180deg, hsl(325 34% 32.1%) 0%, hsl(325 34% 34.5%) 100%);
+  background: linear-gradient(180deg, hsl(325 34% 30%) 0%, hsl(325 34% 34.5%) 100%);
 }
 .poll-result-num {
-  color: hsl(256 13% 80.6%);
+  color: hsl(256 13% 84.6%);
 }
 .poll-total {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .poll-closed-note {
-  color: hsl(325 58% 83.5%);
+  color: hsl(325 58% 86.5%);
 }
 .poll-login-note {
-  color: hsl(256 13% 83.6%);
+  color: hsl(256 13% 84.6%);
 }
 .poll-optional {
-  color: hsl(256 13% 83.6%);
+  color: hsl(256 13% 84.6%);
 }
 .poll-enable {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .poll-fields {
-  background: hsl(256 30% 30.1%);
+  background: hsl(256 30% 27.5%);
   border: 1px solid hsl(256 26% 44%);
 }
 .poll-edit-q label, .poll-edit-opts-label {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .poll-del-btn {
   background: hsl(325 34% 34.5%);
@@ -620,18 +620,18 @@ a:hover {
   background: hsl(325 34% 34.5%);
 }
 .poll-add-btn {
-  background: linear-gradient(180deg, hsl(256 30% 17.1%) 0%, hsl(256 30% 25.8%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 11.4%) 0%, hsl(256 30% 22.1%) 100%);
   border: 1px solid hsl(256 26% 44.9%);
-  color: hsl(256 13% 78.5%);
+  color: hsl(256 13% 84.5%);
 }
 .poll-add-btn:hover {
-  background: linear-gradient(180deg, hsl(256 30% 16%) 0%, hsl(256 30% 21.9%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 10%) 0%, hsl(256 30% 17.3%) 100%);
 }
 .poll-edit-hint {
-  color: hsl(256 13% 80.6%);
+  color: hsl(256 13% 84.6%);
 }
 #back-chat-link, #pictos-link {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .fb-note-grise {
   color: hsl(256 13% 85.7%);
@@ -640,24 +640,24 @@ a:hover {
   color: hsl(325 58% 88.4%);
 }
 .editor-input-fige {
-  background: hsl(256 30% 22%);
+  background: hsl(256 30% 17.5%);
 }
 .sig-modal {
   background: hsl(256 30% 0% / 0.45);
 }
 .sig-boite {
-  background: hsl(256 30% 16%);
+  background: hsl(256 30% 10%);
   border: 2px solid hsl(256 26% 56.4%);
   box-shadow: 0 12px 32px hsl(256 13% 0% / 0.35);
 }
 .sig-titre {
-  color: hsl(256 13% 78.3%);
+  color: hsl(256 13% 84.8%);
 }
 .sig-aide {
-  color: hsl(256 13% 81.6%);
+  color: hsl(256 13% 84.6%);
 }
 .sig-legende {
-  color: hsl(256 13% 81.6%);
+  color: hsl(256 13% 84.6%);
 }
 .sig-apercu {
   border-top: 1px solid hsl(256 26% 37.4%);

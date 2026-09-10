@@ -97,8 +97,24 @@ const MANIFESTE = [
 // remonterait à mi-clarté et le liseré deviendrait un trait lumineux.
 const RE_COULEUR = /(fill|stroke|stop-color|flood-color|lighting-color)="(#[0-9a-fA-F]{3,8})"/g;
 
+/*
+ * LE BLANC PUR RESTE BLANC — c'est le symbole, pas la surface.
+ *
+ * Les quatre boutons du salon sont bâtis pareil : un corps rose, une face
+ * intérieure plus claire, et par-dessus le GLYPHE en blanc — la tête de mort,
+ * les barres, le triangle. Passé à la moulinette du châssis (le blanc est un
+ * gris, donc du châssis), le glyphe virait au violet presque noir : on avait
+ * des boutons roses aveugles. Même chose pour les liserés blancs qui font
+ * briller une gélule ou une boîte.
+ *
+ * Sur un fond de nuit, un blanc pur est toujours ce qu'il faut : c'est ce qui
+ * se lit. On le laisse donc tranquille, comme on laisse un accent.
+ */
+const estBlancPur = (hex) => /^#(fff|ffffff)$/i.test(hex);
+
 function reteindre(fragment, compteur) {
   return fragment.replace(RE_COULEUR, (tout, attr, hex) => {
+    if (estBlancPur(hex)) { compteur.gardes++; return tout; }
     const [r, g, b, a] = hexVersRgb(hex);
     const [h, s] = rgbVersHsl(r, g, b);
     // Un ACCENT n'est pas du châssis : on le laisse. C'est ce qui permet de

@@ -7,9 +7,9 @@
   manifeste de scripts/nuit-svg.js.
 -->
 <g transform="matrix(1,0,0,1,0,0)">
-  <path d="M14.95 6.05L14.95 6L15 6.05L14.95 6.05Z" fill="hsl(325 55% 75.5%)" fill-rule="evenodd"/>
-  <path d="M10.3 0Q14.65 0.1 17.75 3.2L17.8 3.25Q20.7 6.15 21 10.2L21 21L0 21L0 0L10.3 0ZM14.95 6L14.95 6.05L15 6.05L14.95 6Z" fill="hsl(325 55% 55.5%)" fill-opacity="0.5" fill-rule="evenodd"/>
-  <path d="M6 8L9.5 11.5L13 8M13 15L9.5 11.5L6 15" fill="none" stroke="hsl(256 30% 11%)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M14.95 6.05L14.95 6L15 6.05L14.95 6.05Z" fill="hsl(325 68% 81.7%)" fill-rule="evenodd"/>
+  <path d="M10.3 0Q14.65 0.1 17.75 3.2L17.8 3.25Q20.7 6.15 21 10.2L21 21L0 21L0 0L10.3 0ZM14.95 6L14.95 6.05L15 6.05L14.95 6Z" fill="hsl(325 68% 60.1%)" fill-opacity="0.5" fill-rule="evenodd"/>
+  <path d="M6 8L9.5 11.5L13 8M13 15L9.5 11.5L6 15" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 
 </g>
 </svg>

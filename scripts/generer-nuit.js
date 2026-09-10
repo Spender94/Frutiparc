@@ -104,8 +104,8 @@ function hslVersRgb(h, s, l) {
  * donc très bien sur l'un et mal sur l'autre.
  *
  * On plafonne donc les FONDS à une LUMINANCE, pas à une clarté : celle sur
- * laquelle le texte le plus sombre du thème tient encore 4,5:1. Le reste du
- * thème n'a pas à s'en soucier.
+ * laquelle le texte le plus sombre du thème tient encore le rapport visé. Le
+ * reste du thème n'a pas à s'en soucier.
  */
 function luminance(r, g, b) {
   const c = [r, g, b].map((v) => {
@@ -124,7 +124,7 @@ const ROSE_NUIT = 325;       // celle des accents
  *
  * Aucun fond au-dessus de LUM_FOND_MAX, aucun texte en dessous de
  * LUM_TEXTE_MIN, et les deux sont choisies pour que le pire couple possible
- * tienne 4,5:1. Ce n'est alors plus une relecture écran par écran : c'est une
+ * tienne RATIO_VISE. Ce n'est alors plus une relecture écran par écran : c'est
  * garantie arithmétique, valable pour toute couleur du parc, y compris celles
  * qu'on n'a pas encore écrites.
  *
@@ -137,13 +137,18 @@ const ROSE_NUIT = 325;       // celle des accents
 // presque blanc. À 0,045 — la première valeur essayée — les panneaux tombaient
 // quinze points plus bas : le parc paraissait ÉTEINT, pas nocturne. 0,078
 // place le plafond des fonds à ~36 % et remonte d'autant le plancher du texte,
-// puisque les deux sont liés par les 4,5:1.
+// puisque les deux sont liés par RATIO_VISE.
 const LUM_FOND_MAX = 0.078;
-// 4,6 et non 4,5 : les deux bornes sont atteintes par pas d'un demi-point de
-// clarté, puis arrondies au dixième pour être écrites. Viser exactement le
-// seuil, c'est le rater d'un centième une fois sur vingt — le dixième de marge
-// coûte un cheveu de contraste et rend la garantie vraie.
-const LUM_TEXTE_MIN = 4.6 * (LUM_FOND_MAX + 0.05) - 0.05;
+// LE RAPPORT VISÉ, et il est plus haut que le minimum réglementaire. À 4,5
+// pile — le seuil AA — le texte tenait, mais le parc paraissait mou : c'est un
+// plancher d'accessibilité, pas un réglage d'écran. À 5,5 le texte se détache
+// franchement de son panneau, ce qui est aussi ce qu'on voit sur les captures
+// du bureau de nuit. Deux effets d'un seul chiffre : remonter le plancher du
+// texte, et garder de la marge sur les arrondis (les deux bornes s'atteignent
+// par pas d'un demi-point de clarté, puis s'écrivent au dixième — viser le
+// seuil exact, c'est le rater d'un centième une fois sur vingt).
+const RATIO_VISE = 5.5;
+const LUM_TEXTE_MIN = RATIO_VISE * (LUM_FOND_MAX + 0.05) - 0.05;
 
 function plafonnerLuminance(h, s, l) {
   let v = l;
@@ -176,7 +181,7 @@ const COURBES = {
   // Le plafond n'est pas un choix d'esthète : c'est le fond le plus clair sur
   // lequel le texte le plus sombre du thème tient encore 4,5:1 (LUM_FOND_MAX
   // le borne pour de bon, en luminance).
-  fond: (l) => (l <= 20 ? l * 0.85 : Math.min(16 + 58 * (100 - l) / 100, 36)),
+  fond: (l) => (l <= 20 ? l * 0.85 : Math.min(10 + 72 * (100 - l) / 100, 36)),
   // Les bordures se posent entre les deux, et toujours visibles.
   bordure: (l) => 30 + 32 * (100 - l) / 100,                  // 30 % → 62 %
   // Le texte ne se renverse pas : il MONTE, toujours, en gardant sa hiérarchie
@@ -197,7 +202,7 @@ const COURBES = {
    * Celle-ci est donc MONOTONE sur toute la plage utile : elle comprime, mais
    * elle n'écrase jamais deux valeurs voisines l'une sur l'autre.
    */
-  sprite: (l) => Math.min(11 + 0.62 * (100 - l), 38),
+  sprite: (l) => Math.min(8 + 0.72 * (100 - l), 38),
 };
 
 /*
@@ -258,7 +263,7 @@ function convertir(r, g, b, a, role) {
     // Un APLAT rose, lui, reste une prune : il peut porter du texte, et du
     // texte clair sur du rose clair ne se lit pas. Les commandes, elles, ne
     // portent que des glyphes.
-    if (role === 'sprite') { ns = 55; nl = 0.85 * l; }
+    if (role === 'sprite') { ns = 68; nl = 0.92 * l; }
     else if (surface) { ns = 34; nl = Math.max(nl, ROSE_FOND_MIN); }
     else { ns = 58; nl = Math.max(nl, role === 'texte' ? ROSE_TEXTE_MIN : ROSE_ACCENT_MIN); }
   } else if (estChassis(h, s)) {
