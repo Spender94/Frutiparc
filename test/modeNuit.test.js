@@ -403,11 +403,15 @@ test('le fond du bureau et le forum ouvert suivent la bascule', () => {
   // Le fond d'écran est posé en `style=""` : seule une redemande le change.
   assert.match(BUREAU, /rafraichirFond: function \(\) \{ poserFond\(fondCourant\); \}/);
   assert.match(BUREAU, /var nuit = document\.documentElement\.getAttribute\('data-nuit'\) === '1';/);
-  assert.match(BUREAU, /bureau\.style\.background = nuit \? CIEL_DE_NUIT : '#ADE76B';/);
-  // AVEC un fond d'écran choisi, l'image du joueur reste : seule la couleur
-  // autour s'éteint.
+  // SANS fond choisi, le vert pomme laisse la place au décor de nuit : le
+  // dessin du parc endormi, posé sur le ciel de dégradés qui reprend seul si
+  // l'image manque — le mode nuit ne retombe jamais sur le vert.
+  assert.match(BUREAU, /bureau\.style\.background = nuit \? DECOR_DE_NUIT : '#ADE76B';/);
+  assert.match(BUREAU, /var DECOR_DE_NUIT =\s*\n\s*'url\("' \+ FOND_DE_NUIT \+ '"\) center 38% \/ cover no-repeat, ' \+ CIEL_DE_NUIT;/);
+  // AVEC un fond d'écran choisi, l'image du joueur reste — dans son dessin de
+  // nuit s'il en a un ; seule la couleur autour s'éteint.
   assert.match(BUREAU, /bureau\.style\.backgroundColor = nuit \? '#171232' : \(hex\(arr\[0\]\) \|\| '#ADE76B'\);/);
-  assert.match(BUREAU, /bureau\.style\.backgroundImage = 'url\("' \+ fond\.url \+ '"\)';/);
+  assert.match(BUREAU, /bureau\.style\.backgroundImage = 'url\("' \+ source \+ '"\)';/);
   // Le forum est un autre document, même domaine : on lui tend la main plutôt
   // que de le recharger (le joueur y a peut-être un message en cours).
   assert.match(LIGHT, /var cadre = document\.getElementById\("forum-frame"\);/);
@@ -527,6 +531,92 @@ test('une variante orpheline ne produit aucune règle', () => {
     fs.unlinkSync(orphelin);
   }
   assert.ok(!trouvees.has('/frutiz/sprites/nexiste-pas.svg'), 'l’orpheline est ignorée');
+});
+
+// ── Les fonds d'écran de nuit ───────────────────────────────────────────────
+//
+// Même idée que « nom-nuit.svg » pour le châssis : c'est le NOM DU FICHIER qui
+// déclare la variante. Déposer « background_<nom>_dark.jpg » à côté du fond de
+// jour suffit à le faire servir quand le parc s'éteint, sans une ligne de code.
+
+const BOUTIQUE = 'public/fb/boutique';
+const fichiersFonds = () => fs.readdirSync(path.join(ROOT, BOUTIQUE));
+// Les huit fonds du catalogue, tels que server.js les nomme.
+const FONDS = [
+  ['moutarde', 'Chevalier moutarde'], ['chorale', 'Chorale Frutiparc'],
+  ['pixizchristmas', 'Noël Pixiz'], ['snakechristmas', 'Noël Frutisnake'],
+  ['pixiz', 'Mini-Pixiz'], ['nostromo', 'Mini-Wave Nostromo'],
+  ['ministar', 'Mini-Wave Mini-Star'], ['utopiz', 'Utopiz'],
+];
+// La transcription du radical calculé par server.js (baseFond + slugFond).
+const EXCEPTIONS = { ministar: 'background_mini_wave_ministar', nostromo: 'background_mini_wave_nostromodo' };
+const radical = (u, n) => EXCEPTIONS[u] || 'background_' + String(n)
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  .replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+const cherche = (base, suffixe) =>
+  fichiersFonds().find((x) => x.startsWith(base + suffixe + '.')) || null;
+
+test('le radical d’un fond porte tous ses cadrages', () => {
+  // Le refactor qui a introduit `_dark` a raccourci les deux exceptions (elles
+  // portaient « _mobile » en dur). Si la table repart de travers, ce sont les
+  // versions VERTICALES de tous les fonds qui disparaissent d'un coup : on
+  // vérifie donc que chacune se retrouve, une par une.
+  const sansPortrait = [];
+  for (const [u, n] of FONDS) {
+    if (!cherche(radical(u, n), '_mobile')) sansPortrait.push(u);
+  }
+  assert.deepStrictEqual(sansPortrait, ['chorale'],
+    'seule la Chorale n’a pas de version verticale');
+  assert.match(SERVEUR, /ministar: 'background_mini_wave_ministar',/);
+  assert.match(SERVEUR, /nostromo: 'background_mini_wave_nostromodo',/);
+  assert.match(SERVEUR, /return fichierFond\(baseFond\(wp\), vertical \? '_dark_mobile' : '_dark'\);/);
+  assert.match(SERVEUR, /return wp \? fichierFond\(baseFond\(wp\), '_mobile'\) : null;/);
+});
+
+test('Utopiz a son dessin de nuit, et c’est le décor du parc éteint', () => {
+  assert.ok(cherche('background_utopiz', '_dark'), 'le paysage de nuit d’Utopiz est là');
+  // Le décor par défaut : ce n'est pas un article, c'est le ciel du thème.
+  assert.match(SERVEUR, /const FOND_DECOR_NUIT = 'utopiz';/);
+  assert.match(SERVEUR, /decorNuit: decorDeNuit\(\),/);
+  assert.match(BUREAU, /var FOND_DE_NUIT = '\/fb\/boutique\/background_utopiz_dark\.jpg';/);
+  assert.ok(fs.existsSync(path.join(ROOT, BOUTIQUE, 'background_utopiz_dark.jpg')),
+    'le fichier que le bureau nomme en dur existe bien');
+});
+
+test('les deux Mini-Wave sont déjà des ciels de nuit', () => {
+  // Leur couleur de bureau est un bleu nuit : les redessiner n'aurait pas de
+  // sens. On le DIT, pour que l'admin ne les compte pas comme un reste à faire.
+  assert.match(SERVEUR, /const WALLPAPER_NUIT_OK = new Set\(\['nostromo', 'ministar'\]\);/);
+  for (const u of ['nostromo', 'ministar']) {
+    const i = SERVEUR.indexOf(`{ u: '${u}',`);
+    assert.match(SERVEUR.slice(i, i + 130), /color: '000044;'/, u + ' est bien un bleu nuit');
+  }
+});
+
+test('le fond du joueur passe en nuit quand il a un dessin de nuit', () => {
+  // Le serveur annonce les quatre cadrages…
+  assert.match(SERVEUR, /function cadragesDuFond\(url\) \{[\s\S]*?urlNuit: wallpaperNuitUrl\(wp, false\),[\s\S]*?urlNuitMobile: wallpaperNuitUrl\(wp, true\),/);
+  assert.equal((SERVEUR.match(/\.\.\.cadragesDuFond\(/g) || []).length, 3,
+    'les trois charges utiles du light les portent');
+  // …le bureau large prend le paysage de nuit…
+  assert.match(BUREAU, /var source = \(nuit && fond\.urlNuit\) \|\| fond\.url;/);
+  assert.match(BUREAU, /bureau\.style\.background = nuit \? DECOR_DE_NUIT : '#ADE76B';/);
+  // …et le tiroir le portrait de nuit d'abord, le paysage de nuit ensuite, le
+  // dessin de jour en dernier recours : la palette avant le cadrage.
+  assert.match(LIGHT, /\? \(fond\.urlNuitMobile \? \{ src: fond\.urlNuitMobile, vertical: true \}\s*\n\s*: fond\.urlNuit \? \{ src: fond\.urlNuit, vertical: false \}\s*\n\s*: fond\.urlMobile \? \{ src: fond\.urlMobile, vertical: true \}/);
+  // La bascule jour/nuit repeint les deux : le fond est posé en style="".
+  assert.match(LIGHT, /if \(window\.BureauFrutiz && BureauFrutiz\.rafraichirFond\) BureauFrutiz\.rafraichirFond\(\);\s*\n\s*if \(invFondActuel\) appliquerFond\(invFondActuel\);/);
+});
+
+test('l’admin dit quels fonds restent à redessiner', () => {
+  assert.match(SERVEUR, /nuit: etatNuitDuFond\(w\),/);
+  assert.match(SERVEUR, /function etatNuitDuFond\(wp\) \{/);
+  assert.match(SERVEUR, /return WALLPAPER_NUIT_OK\.has\(wp\.u\) \? 'compatible' : 'a-redessiner';/);
+  for (const etat of ['variante', 'compatible', "'a-redessiner'"]) {
+    assert.ok(ADMIN.includes(etat), 'l’état « ' + etat + ' » manque du tableau de bord');
+  }
+  assert.match(ADMIN, /🌙 dessin de nuit/);
+  assert.match(ADMIN, /☀️ à redessiner/);
 });
 
 // ── Le rayon, ouvert et fermé depuis l'admin ────────────────────────────────

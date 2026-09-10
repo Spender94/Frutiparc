@@ -395,8 +395,10 @@ test('une fenêtre en plein écran laisse voir le FOND D’ÉCRAN au-dessus d’
   // La rangée d'icônes est nommée à part : sa règle de pose porte deux
   // identifiants et l'emporterait sur le `> *`.
   assert.match(CSS, /\.fb-onglet-actif #bureau #home-grid \{ display: none; \}/);
-  // Et le fond est bien peint sur `#bureau` lui-même.
-  assert.match(JS, /bureau\.style\.backgroundImage = 'url\("' \+ fond\.url \+ '"\)'/);
+  // Et le fond est bien peint sur `#bureau` lui-même. (`source`, et non
+  // `fond.url` : de nuit c'est le dessin de nuit du fond qui passe — cf.
+  // « Les fonds d'écran de nuit » dans le README.)
+  assert.match(JS, /bureau\.style\.backgroundImage = 'url\("' \+ source \+ '"\)'/);
 });
 
 test('une fenêtre VIENT DU COIN, et y met le temps du SWF', () => {

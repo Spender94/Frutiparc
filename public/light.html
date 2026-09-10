@@ -6834,9 +6834,13 @@
     // La barre du téléphone (PWA) prend la couleur du parc.
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", on ? "#171232" : "#ADE76B");
-    // Le fond d'écran du bureau est posé en `style=""` : lui seul ne suit pas
-    // la feuille, il faut le redemander.
+    // Le fond d'écran est posé en `style=""` : lui seul ne suit pas la
+    // feuille, il faut le redemander — au bureau comme au tiroir, puisque
+    // chacun peut avoir un dessin de nuit à mettre à la place du dessin de
+    // jour. Sans fond posé, `appliquerFond` n'a rien à faire : le ciel du
+    // tiroir est dans /nuit.css et suit tout seul.
     if (window.BureauFrutiz && BureauFrutiz.rafraichirFond) BureauFrutiz.rafraichirFond();
+    if (invFondActuel) appliquerFond(invFondActuel);
     // Le forum est un document à part, dans son iframe — même domaine, donc on
     // peut lui tendre la main plutôt que de le recharger sous les yeux du
     // joueur (il perdrait son brouillon de message).
@@ -11795,6 +11799,9 @@
   // aussi le forum) ; fonds et pictos viennent de /api/light/inventaire.
   var invFonds = [];            // [{id, nom, url, color}]
   var invFondActuel = null;     // {url, color} ou null
+  // Le décor du parc de nuit, annoncé par le serveur : ce n’est pas un objet
+  // d’inventaire, c’est le ciel du thème (cf. decorDeNuit dans server.js).
+  var invDecorNuit = null;      // {url, urlMobile} ou null
   var invPictos = [];           // [{id, nom, jeu, url}]
   var invIncarnations = [];     // [{id, nom, cle, etat}] — les bouilles achetées
   var invCharge = false;
@@ -11834,6 +11841,7 @@
         // c'est elle qu'on lui rendra en la retirant.
         if (d.bouillePrincipale && !isIncarnation(d.bouillePrincipale)) myBase = d.bouillePrincipale;
         invFondActuel = d.fond || null;
+        invDecorNuit = d.decorNuit || null;
         rendreFonds();
         rendrePictos();
         rendreIncarnations();
@@ -12098,37 +12106,77 @@
     var panneau = $("#home-panel");
     if (!panneau) return;
     if (!fond || !fond.url) {
-      panneau.style.background = "";
+      // SANS FOND CHOISI, le tiroir montre le décor du thème : le vert pomme
+      // le jour, le parc endormi la nuit. Le décor de nuit n'est peint ici que
+      // s'il a une version PORTRAIT — le tiroir est étroit, un paysage y
+      // rentrerait en timbre au milieu, moins bien que le ciel de dégradés
+      // que /nuit.css pose déjà (--nuit-ciel). Déposer
+      // « background_utopiz_dark_mobile.jpg » suffit à le remplacer : le
+      // serveur trouve le fichier par son nom et l'annonce en `decorNuit`.
+      var portrait = document.documentElement.getAttribute("data-nuit") === "1"
+        && invDecorNuit && invDecorNuit.urlMobile;
+      panneau.style.background = portrait
+        ? 'url("' + invDecorNuit.urlMobile + '") center center / cover no-repeat #171232' : "";
       panneau.style.removeProperty("--fond-txt");
       panneau.style.removeProperty("--fond-halo");
       panneau.classList.remove("a-fond");
       return;
     }
-    // La version verticale dès qu'elle existe — le bureau de /light est un
-    // tiroir étroit, en portrait, aussi bien sur téléphone que sur écran large.
-    var vertical = !!fond.urlMobile;
-    var image = vertical ? fond.urlMobile : fond.url;
+    // QUEL DESSIN, ET DANS QUEL CADRAGE.
+    //
+    // De jour : la version verticale dès qu'elle existe — le bureau de /light
+    // est un tiroir étroit, en portrait, aussi bien sur téléphone que sur
+    // écran large.
+    //
+    // De NUIT : le dessin de nuit du fond passe devant (« _dark_mobile » en
+    // portrait, « _dark » sinon, cf. cadragesDuFond dans server.js). La
+    // PALETTE d'abord, le cadrage ensuite : une illustration en plein jour au
+    // milieu d'un parc éteint fait un trou dans le thème, alors qu'un paysage
+    // posé en timbre au milieu du tiroir ne fait qu'une bordure. Sans dessin
+    // de nuit, on garde celui du jour — mieux vaut son illustration qu'un
+    // aplat vide.
+    var nuit = document.documentElement.getAttribute("data-nuit") === "1";
+    var choix = nuit
+      ? (fond.urlNuitMobile ? { src: fond.urlNuitMobile, vertical: true }
+        : fond.urlNuit ? { src: fond.urlNuit, vertical: false }
+        : fond.urlMobile ? { src: fond.urlMobile, vertical: true }
+        : { src: fond.url, vertical: false })
+      : (fond.urlMobile ? { src: fond.urlMobile, vertical: true }
+        : { src: fond.url, vertical: false });
+    var vertical = choix.vertical;
+    var image = choix.src;
     var c = couleursFond(fond.color);
     panneau.classList.add("a-fond");
-    panneau.style.backgroundColor = c.bg || "#ADE76B";
+    // La couleur de montage annoncée par le fond vaut de JOUR ; de nuit c'est
+    // celle du parc éteint qui entoure l'image, comme sur le bureau.
+    panneau.style.backgroundColor = nuit ? "#171232" : (c.bg || "#ADE76B");
     panneau.style.backgroundImage = 'url("' + image + '")';
     panneau.style.backgroundRepeat = "no-repeat";
     // `scroll` (et non `local`) : l'image reste collée au cadre du bureau et
     // ne défile pas avec les tuiles.
     panneau.style.backgroundAttachment = "scroll";
-    if (c.txt) panneau.style.setProperty("--fond-txt", c.txt);
-    else panneau.style.removeProperty("--fond-txt");
-    // Un halo contrastant : la couleur du texte est celle du bureau Flash, et
-    // sur un téléphone les tuiles sont POSÉES sur l'illustration, là où le
-    // bureau Flash gardait ses icônes petites. On borde donc un texte clair de
-    // sombre et l'inverse, sans jamais toucher à la couleur elle-même.
-    var halo = "255,255,255";
-    if (c.txt) {
-      var v = parseInt(c.txt.slice(1), 16);
-      var lum = 0.299 * ((v >> 16) & 255) + 0.587 * ((v >> 8) & 255) + 0.114 * (v & 255);
-      if (lum > 140) halo = "0,0,0";
+    // De nuit, l'image ne couvre plus qu'une partie du tiroir et le reste est
+    // presque noir : la légende du fond d'écran, elle, vaut SUR l'image. On
+    // retire donc les deux variables et on laisse parler /nuit.css, qui pose
+    // un repli pâle valable partout — exactement ce que fait le bureau.
+    if (nuit) {
+      panneau.style.removeProperty("--fond-txt");
+      panneau.style.removeProperty("--fond-halo");
+    } else {
+      if (c.txt) panneau.style.setProperty("--fond-txt", c.txt);
+      else panneau.style.removeProperty("--fond-txt");
+      // Un halo contrastant : la couleur du texte est celle du bureau Flash, et
+      // sur un téléphone les tuiles sont POSÉES sur l'illustration, là où le
+      // bureau Flash gardait ses icônes petites. On borde donc un texte clair de
+      // sombre et l'inverse, sans jamais toucher à la couleur elle-même.
+      var halo = "255,255,255";
+      if (c.txt) {
+        var v = parseInt(c.txt.slice(1), 16);
+        var lum = 0.299 * ((v >> 16) & 255) + 0.587 * ((v >> 8) & 255) + 0.114 * (v & 255);
+        if (lum > 140) halo = "0,0,0";
+      }
+      panneau.style.setProperty("--fond-halo", "rgba(" + halo + ",.85)");
     }
-    panneau.style.setProperty("--fond-halo", "rgba(" + halo + ",.85)");
     // La version verticale est composée pour l'écran : plein cadre, main bar
     // comprise, sans mesurer quoi que ce soit. Le sujet est au centre du
     // dessin, donc `cover` centré ne rogne que les marges.
@@ -12161,7 +12209,7 @@
       panneau.style.backgroundSize = "contain";
       panneau.style.backgroundPosition = "center center";
     };
-    img.src = fond.url;
+    img.src = image;
   }
   // Rotation de l'écran / redimensionnement : le bureau recalcule son cadrage
   // (WallPaperMng.onStageResize) — ici l'échelle ET la position dépendent de

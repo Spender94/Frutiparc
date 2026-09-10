@@ -273,7 +273,10 @@ test('poser un fond rend aussi sa version verticale, sans la mettre dans la pré
 test('le client pose la version verticale en plein cadre, et garde la règle du SWF sans elle', () => {
   const fsync = require('node:fs');
   const src = fsync.readFileSync(path.join(ROOT, 'public', 'light.html'), 'utf8');
-  assert.match(src, /var vertical = !!fond\.urlMobile;/,
+  // Le choix se fait en une expression, thème compris : de jour le redessin
+  // vertical dès qu'il existe, quelle que soit la largeur ; de nuit le dessin
+  // de nuit d'abord (cf. « Les fonds d'écran de nuit » dans le README).
+  assert.match(src, /: \(fond\.urlMobile \? \{ src: fond\.urlMobile, vertical: true \}\s*\n\s*: \{ src: fond\.url, vertical: false \}\);/,
     'le redessin est choisi dès qu’il existe, quelle que soit la largeur');
   assert.match(src, /backgroundSize = "cover"/,
     'la version verticale est posée en plein cadre');

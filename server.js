@@ -5512,8 +5512,8 @@ function completerDataMisc(color) {
 // retombe simplement sur le cadrage d'origine.
 const MOBILE_DIR = path.join(__dirname, 'public', 'fb', 'boutique');
 const WALLPAPER_MOBILE_EXCEPTIONS = {
-  ministar: 'background_mini_wave_ministar_mobile',
-  nostromo: 'background_mini_wave_nostromodo_mobile',
+  ministar: 'background_mini_wave_ministar',
+  nostromo: 'background_mini_wave_nostromodo',
 };
 function slugFond(nom) {
   return String(nom || '')
@@ -5530,11 +5530,68 @@ function listeFondsMobiles() {
   try { mobileFiles = fs.readdirSync(MOBILE_DIR); } catch { mobileFiles = []; }
   return mobileFiles;
 }
-function wallpaperMobileUrl(wp) {
-  if (!wp) return null;
-  const base = WALLPAPER_MOBILE_EXCEPTIONS[wp.u] || `background_${slugFond(wp.n)}_mobile`;
-  const f = listeFondsMobiles().find((x) => x.startsWith(base + '.'));
+// Le radical d'un fond : « background_utopiz », « background_mini_wave_ministar ».
+// Les suffixes se composent dessus — _mobile pour le portrait, _dark pour la
+// nuit, _dark_mobile pour les deux.
+function baseFond(wp) {
+  return WALLPAPER_MOBILE_EXCEPTIONS[wp.u] || `background_${slugFond(wp.n)}`;
+}
+const fichierFond = (base, suffixe) => {
+  const f = listeFondsMobiles().find((x) => x.startsWith(base + suffixe + '.'));
   return f ? '/fb/boutique/' + f : null;
+};
+function wallpaperMobileUrl(wp) {
+  return wp ? fichierFond(baseFond(wp), '_mobile') : null;
+}
+
+/*
+ * LES FONDS D'ÉCRAN DE NUIT — même convention, même raison.
+ *
+ * Le mode nuit éteint le parc, pas l'illustration que le joueur a choisie :
+ * un fond d'écran en plein jour au milieu d'un parc de nuit, c'est un trou
+ * dans le thème. On sert donc le DESSIN DE NUIT du fond quand il existe, à la
+ * façon des `nom-nuit.svg` du châssis : c'est le nom du fichier qui déclare
+ * la variante, il n'y a pas de liste à tenir.
+ *
+ *   background_utopiz_dark.jpg          le paysage, de nuit   (bureau large)
+ *   background_utopiz_dark_mobile.jpg   le portrait, de nuit  (tiroir /light)
+ *
+ * Un fond sans variante reste tel quel : mieux vaut une illustration de jour
+ * qu'un aplat vide. `WALLPAPER_NUIT_OK` dit lesquels n'en auront jamais
+ * besoin — les deux Mini-Wave sont déjà des ciels étoilés (leur couleur de
+ * bureau est un bleu nuit, 000044), les redessiner n'aurait aucun sens. Le
+ * reste attend son dessin, et l'admin le dit dans l'onglet « Fonds d'écran ».
+ */
+const WALLPAPER_NUIT_OK = new Set(['nostromo', 'ministar']);
+function wallpaperNuitUrl(wp, vertical) {
+  if (!wp) return null;
+  return fichierFond(baseFond(wp), vertical ? '_dark_mobile' : '_dark');
+}
+/*
+ * LE DÉCOR DU PARC DE NUIT — l'équivalent du vert pomme du jour.
+ *
+ * Ce que le mode nuit pose quand le joueur n'a PAS choisi de fond d'écran.
+ * Ce n'est pas un article et ça ne se possède pas : c'est le ciel du thème,
+ * au même titre que le vert d'origine. Utopiz endormie tient déjà tout ce que
+ * la présentation d'époque promettait — le gros ciel nuageux, la lune
+ * blafarde, et jusqu'aux petits fruits qui dorment.
+ *
+ * Le paysage sert au bureau large ; le portrait, au tiroir de /light. Tant
+ * que le portrait n'est pas dessiné, le tiroir garde son ciel de dégradés
+ * (cf. --nuit-ciel) plutôt qu'un paysage posé en timbre : déposer
+ * « background_utopiz_dark_mobile.jpg » suffira à l'y mettre.
+ */
+const FOND_DECOR_NUIT = 'utopiz';
+function decorDeNuit() {
+  const wp = WALLPAPER_BY_ID[FOND_DECOR_NUIT];
+  return { url: wallpaperNuitUrl(wp, false), urlMobile: wallpaperNuitUrl(wp, true) };
+}
+// Ce qu'il reste à dessiner, pour l'admin : une variante, rien à faire, ou à
+// redessiner.
+function etatNuitDuFond(wp) {
+  if (!wp) return 'a-redessiner';
+  if (wallpaperNuitUrl(wp, false) || wallpaperNuitUrl(wp, true)) return 'variante';
+  return WALLPAPER_NUIT_OK.has(wp.u) ? 'compatible' : 'a-redessiner';
 }
 // Depuis l'url stockée dans la préférence (« wal/ch.jpg »), retrouver le fond
 // du catalogue — la préférence ne porte QUE l'url d'origine, partagée avec
@@ -5542,6 +5599,16 @@ function wallpaperMobileUrl(wp) {
 function wallpaperParUrl(url) {
   const u = String(url || '').replace(/^\/+/, '');
   return Object.values(WALLPAPER_BY_ID).find((w) => String(w.url).replace(/^\/+/, '') === u) || null;
+}
+// Les quatre cadrages d'un fond, tels que le client les reçoit : jour et nuit,
+// paysage et portrait. Le client choisit selon son thème et sa largeur.
+function cadragesDuFond(url) {
+  const wp = wallpaperParUrl(url);
+  return {
+    urlMobile: wallpaperMobileUrl(wp),
+    urlNuit: wallpaperNuitUrl(wp, false),
+    urlNuitMobile: wallpaperNuitUrl(wp, true),
+  };
 }
 
 // ── Quiz images (MikeHorny "image" quizzes, uploaded from the admin) ──
@@ -12979,6 +13046,12 @@ app.get('/api/admin/wallpapers', adminAuth, (req, res) => {
       shopId: pack ? pack.id : null,
       price: pack ? pack.price : null,
       disabled: pack ? !!pack.disabled : null,
+      // Où en est ce fond côté MODE NUIT : « variante » (son dessin de nuit
+      // est là), « compatible » (déjà nocturne, rien à faire), ou
+      // « a-redessiner ». De quoi savoir ce qu'il reste à peindre.
+      nuit: etatNuitDuFond(w),
+      urlNuit: wallpaperNuitUrl(w, false),
+      urlNuitMobile: wallpaperNuitUrl(w, true),
     };
   });
   res.json({ ok: true, wallpapers: list });
@@ -23858,8 +23931,9 @@ app.get('/api/light/inventaire', (req, res) => {
     fonds.push({
       id: acc.id, nom: acc.n || 'Fond',
       url: '/' + String(wp.url).replace(/^\/+/, ''),
-      // La version verticale, quand elle existe : le mobile la préfère.
-      urlMobile: wallpaperMobileUrl(wallpaperParUrl(wp.url)),
+      // Les autres cadrages, quand ils existent : le portrait que le mobile
+      // préfère, et les dessins de nuit qui prennent la place au crépuscule.
+      ...cadragesDuFond(wp.url),
       color: wp.color || '',
     });
   }
@@ -23881,9 +23955,12 @@ app.get('/api/light/inventaire', (req, res) => {
     bouillePrincipale: principale,
     fond: courant ? {
       url: '/' + courant.url.replace(/^\/+/, ''),
-      urlMobile: wallpaperMobileUrl(wallpaperParUrl(courant.url)),
+      ...cadragesDuFond(courant.url),
       color: courant.color,
     } : null,
+    // Le décor du parc de nuit, pour qui n'a pas choisi de fond : ce n'est pas
+    // un objet d'inventaire, c'est le ciel du thème.
+    decorNuit: decorDeNuit(),
     bouille: bouilleOf(user, username),
   });
 });
@@ -23914,7 +23991,7 @@ app.post('/api/light/fond', (req, res) => {
     valeur = wp.url + '|' + (wp.color || '');
     fond = {
       url: '/' + String(wp.url).replace(/^\/+/, ''),
-      urlMobile: wallpaperMobileUrl(wallpaperParUrl(wp.url)),
+      ...cadragesDuFond(wp.url),
       color: wp.color || '',
     };
   }

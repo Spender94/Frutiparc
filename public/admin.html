@@ -2676,12 +2676,28 @@ async function loadWallpapers() {
       const thumb = '/' + w.url;
       const bg = '#' + String(w.color || '000000;').replace(';', '');
       const buyable = (w.shopId != null) ? (w.disabled ? 'retiré de la vente' : `${w.price} kikooz`) : 'non vendu';
+      // MODE NUIT : déposer « background_<nom>_dark.jpg » dans
+      // public/fb/boutique/ (et « _dark_mobile » pour le cadrage vertical)
+      // suffit à donner sa version de nuit à un fond. Le serveur trouve le
+      // fichier par son nom, il n'y a rien à déclarer ici — cette ligne dit
+      // seulement où en est chaque fond, pour savoir ce qu'il reste à peindre.
+      const nuit = {
+        variante: ['🌙 dessin de nuit', '#3b2a63',
+          'Sa version de nuit est là : c’est elle que le parc éteint affiche.'],
+        compatible: ['🌙 déjà nocturne', '#2f4a6b',
+          'Ce fond est déjà un ciel de nuit : il passe tel quel, aucun redessin à faire.'],
+        'a-redessiner': ['☀️ à redessiner', '#9a7b2f',
+          'Pas encore de version de nuit : le parc éteint affiche pour l’instant '
+          + 'le dessin de jour. Déposer background_<nom>_dark.jpg dans public/fb/boutique/.'],
+      }[w.nuit] || ['', '', ''];
       return `<div style="width:170px;border:1px solid #ddd;border-radius:8px;overflow:hidden;background:#fff">
         <div style="height:104px;background:${bg};background-image:url('${thumb}');background-size:cover;background-position:center"></div>
+        ${w.urlNuit || w.urlNuitMobile ? `<div style="height:56px;background:#171232;background-image:url('${esc(w.urlNuit || w.urlNuitMobile)}');background-size:cover;background-position:center;border-top:1px solid #ddd" title="La version de nuit"></div>` : ''}
         <div style="padding:7px">
           <div style="font-weight:bold;font-size:12px">${esc(w.name)}</div>
           <div style="font-size:11px;color:#888"><code>${esc(w.id)}</code></div>
           <div style="font-size:11px;color:#2c4a0f;margin-top:2px">${w.custom ? '🖼️ perso' : 'intégré'} · ${buyable}</div>
+          <div style="margin-top:3px"><span style="background:${nuit[1]};color:#fff;border-radius:4px;padding:1px 6px;font-size:10px" title="${esc(nuit[2])}">${nuit[0]}</span></div>
           ${w.custom ? `<button class="btn-danger btn-sm" style="margin-top:5px" onclick="deleteWallpaper('${esc(w.id)}')">Supprimer</button>` : ''}
         </div>
       </div>`;

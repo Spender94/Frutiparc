@@ -215,6 +215,39 @@ toucher : le fichier sur le disque *est* la déclaration. Deux règles en
 dessinant : même `viewBox` et mêmes dimensions que l'original, et les états
 `_up`/`_over`/`_down` vont par trois.
 
+### Les fonds d'écran de nuit : `background_<nom>_dark.jpg`
+
+Même convention que `nom-nuit.svg`, pour la même raison : **le nom du fichier
+déclare la variante**, il n'y a pas de liste à tenir. Déposer dans
+`public/fb/boutique/` —
+
+| Fichier | Où il sert |
+|---|---|
+| `background_<nom>_dark.jpg` | le **paysage** de nuit — bureau large |
+| `background_<nom>_dark_mobile.jpg` | le **portrait** de nuit — tiroir de `/light` |
+
+— et le fond passe en version nocturne dès que le parc s'éteint. `<nom>` est
+le libellé du fond en minuscules sans accents ni apostrophes (« Ceci n'est pas
+une pipe » → `ceci_nest_pas_une_pipe`), sauf les deux Mini-Wave, nommés
+explicitement dans `WALLPAPER_MOBILE_EXCEPTIONS`.
+
+**Le décor par défaut** — ce que la nuit pose quand le joueur n'a choisi aucun
+fond, l'équivalent du vert pomme du jour — est **Utopiz endormie**
+(`FOND_DECOR_NUIT`). Elle tient déjà tout ce que la présentation d'époque
+promettait : le gros ciel nuageux, la lune blafarde, et jusqu'aux petits fruits
+qui dorment. Le bureau large la pose en `cover`, cadrée un peu haut pour garder
+la lune sur un écran très large ; le ciel de dégradés (`--nuit-ciel`) reste
+dessous et reprend seul si l'image manque. Le tiroir de `/light`, lui, garde ce
+ciel tant que le **portrait** n'est pas dessiné — un paysage y rentrerait en
+timbre au milieu.
+
+Sans variante, un fond reste tel quel : mieux vaut l'illustration de jour qu'un
+aplat vide. Deux exceptions déclarées dans `WALLPAPER_NUIT_OK` : les deux
+**Mini-Wave** sont déjà des ciels étoilés (leur couleur de bureau est un bleu
+nuit), rien à redessiner. L'onglet **Fonds d'écran** de l'admin porte l'état de
+chacun — « dessin de nuit », « déjà nocturne », « à redessiner » — avec la
+vignette de nuit à côté de celle du jour.
+
 ### Ouvrir le rayon quand on est prêt
 
 Un thème se juge sur un vrai parc, pas sur une capture. **L'article part donc

@@ -216,6 +216,25 @@ window.BureauFrutiz = (function () {
     + 'radial-gradient(46% 26% at 62% 46%, hsl(288 22% 23%) 0%, transparent 74%),'
     + 'linear-gradient(hsl(258 32% 17%), hsl(252 30% 9%))';
 
+  /*
+   * LE DÉCOR DU PARC DE NUIT — le vert pomme du jour a son équivalent.
+   *
+   * Les quatre dégradés ci-dessus ont tenu la place le temps qu'on dessine
+   * quelque chose ; c'est fait. Utopiz endormie garde tout ce que la
+   * présentation d'époque promettait — le gros ciel nuageux, la lune blafarde,
+   * et jusqu'aux petits fruits qui dorment sur leur butte.
+   *
+   * Il se pose en `cover` et non « contenu, jamais agrandi » comme un fond
+   * d'écran : ce n'est pas une illustration que le joueur a choisie et qu'on
+   * doit montrer entière, c'est le CIEL du mode nuit, et un ciel remplit
+   * l'écran. Cadré un peu haut (`center 38%`) pour garder la lune et la butte
+   * quand l'écran est très large. Le dégradé reste DESSOUS et reprend seul si
+   * l'image manque : le mode nuit ne retombe jamais sur le vert pomme.
+   */
+  var FOND_DE_NUIT = '/fb/boutique/background_utopiz_dark.jpg';
+  var DECOR_DE_NUIT =
+    'url("' + FOND_DE_NUIT + '") center 38% / cover no-repeat, ' + CIEL_DE_NUIT;
+
   // ── Le fond d'écran du bureau ─────────────────────────────────────────
   // La transcription de WallPaperMng.onStageResize, comme le tiroir mobile —
   // mais en PAYSAGE : l'image d'origine (fond.url), contenue sans jamais être
@@ -225,26 +244,28 @@ window.BureauFrutiz = (function () {
     if (!actif) return;
     var bureau = $('#bureau');
     if (!bureau) return;
-    // LE CIEL DU MODE NUIT. Le fond du bureau est posé ICI, en `style=""` :
+    // LE DÉCOR DU MODE NUIT. Le fond du bureau est posé ICI, en `style=""` :
     // aucune feuille de style ne peut l'atteindre, /nuit.css pas davantage.
-    // Sans fond d'écran choisi, le vert pomme laisse donc place au ciel gris
-    // nuageux et à sa lune blafarde — trois dégradés, aucun dessin. AVEC un
-    // fond d'écran, l'image du joueur reste : il l'a payée, elle passe avant
-    // le décor ; seule la couleur autour s'éteint.
+    // Sans fond d'écran choisi, le vert pomme laisse donc place à Utopiz
+    // endormie, sur son ciel de dégradés. AVEC un fond d'écran, c'est celui du
+    // joueur qui passe — dans son dessin de NUIT s'il en a un (`urlNuit`,
+    // déposé sous « background_<nom>_dark.jpg », cf. server.js), sinon tel
+    // quel : mieux vaut son illustration de jour qu'un aplat vide.
     var nuit = document.documentElement.getAttribute('data-nuit') === '1';
     if (!fond || !fond.url) {
-      bureau.style.background = nuit ? CIEL_DE_NUIT : '#ADE76B';
+      bureau.style.background = nuit ? DECOR_DE_NUIT : '#ADE76B';
       bureau.style.removeProperty('--fond-txt');
       bureau.style.removeProperty('--fond-halo');
       return;
     }
+    var source = (nuit && fond.urlNuit) || fond.url;
     var arr = String(fond.color || '').split(';');
     var hex = function (v) {
       v = String(v || '').trim();
       return /^[0-9a-fA-F]{6}$/.test(v) ? '#' + v : null;
     };
     bureau.style.backgroundColor = nuit ? '#171232' : (hex(arr[0]) || '#ADE76B');
-    bureau.style.backgroundImage = 'url("' + fond.url + '")';
+    bureau.style.backgroundImage = 'url("' + source + '")';
     bureau.style.backgroundRepeat = 'no-repeat';
     // La couleur de légende annoncée par le fond d'écran vaut SUR l'image ;
     // de nuit, l'image ne couvre plus qu'une partie du bureau et le reste est
@@ -285,7 +306,7 @@ window.BureauFrutiz = (function () {
       bureau.style.backgroundSize = 'contain';
       bureau.style.backgroundPosition = 'center center';
     };
-    img.src = fond.url;
+    img.src = source;
   }
 
   // ── Les fenêtres — le protocole FANTÔME de WinStandard ────────────────
@@ -8675,6 +8696,10 @@ window.BureauFrutiz = (function () {
     // light bascule en mode nuit, il redemande donc le MÊME fond — qui se
     // repose alors sous le ciel gris plutôt que sur le vert pomme.
     rafraichirFond: function () { poserFond(fondCourant); },
+    // Le décor du parc de nuit, pour que le tiroir de /light pose le même que
+    // le bureau et qu'il n'existe qu'à un seul endroit.
+    FOND_DE_NUIT: FOND_DE_NUIT,
+    DECOR_DE_NUIT: DECOR_DE_NUIT,
     // La tuile « Salons » du bureau ouvre la LISTE, pas la conversation :
     // c'est le double-clic sur « Les salons » du bureau d'époque.
     ouvrirSalonsPublics: ouvrirSalonsPublics,
