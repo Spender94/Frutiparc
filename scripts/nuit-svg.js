@@ -105,7 +105,11 @@ const MANIFESTE = [
   // ── Les quatre boutons du salon, et la languette CONTACTS ─────────────
   ...['chat-but-bouille', 'chat-but-penlist', 'chat-but-userlist', 'chat-but-warning']
     .map((n) => ({ f: n + '.svg' })),
-  ...troisEtats('butContact').map((f) => ({ f })),
+  // La languette CONTACTS est un onglet couché : sa plaque est blanche, ses
+  // lettres grises, son cerne noir. Même défaut que les onglets du haut —
+  // blanc gardé, plaque en plein jour — et même remède. Le cerne noir devient
+  // le liseré clair qui la détache du fond d'écran.
+  ...troisEtats('butContact').map((f) => ({ f, blanc: 'teint' })),
 
   // ── Le frutimandala ───────────────────────────────────────────────────
   // La roue porte ses douze fruits SUR ses quartiers : seul le premier

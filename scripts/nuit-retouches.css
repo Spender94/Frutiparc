@@ -79,6 +79,23 @@ img[src$="/fb/boutique/dossier.png"], img[src$="/fb/boutique/icone.png"] {
 
 /* ── Là où la conversion ne pouvait pas deviner ──────────────────────────── */
 
+/* L'ARC-EN-CIEL DU FEUTRE MULTICOLORE, rendu tel quel.
+   Un arc-en-ciel ne vaut que par la SUITE de ses teintes : chacune est là
+   parce que la suivante est autre chose. Passé couleur par couleur, il en
+   perdait trois d'un coup — le vert part au violet (c'est la couleur du parc
+   de jour), l'orange et le jaune avec lui depuis qu'on range le parchemin
+   avec le châssis — et il ne restait qu'un dégradé violet, c'est-à-dire plus
+   d'arc-en-ciel du tout. Aucune règle de couleur ne peut voir ça : elle ne
+   regarde qu'une couleur à la fois. On le repose donc entier. */
+.pen-swatch.mc,
+.mc-text {
+  background: linear-gradient(90deg, #FF6600, #EBB601, #20D251, #47B9C9, #6666CC, #6E3C8D, #F986E2);
+}
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc,
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {
+  background: linear-gradient(#FF6600, #EBB601, #5EA523, #47B9C9, #472899, #962761) !important;
+}
+
 /* Le bouton de suppression de compte est le seul rouge FONCTIONNEL du site :
    il prévient d'un geste irréversible. La conversion le range avec la famille
    rose — il devenait donc un accent de plus, du même rose que les pseudos et

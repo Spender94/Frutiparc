@@ -217,16 +217,48 @@ test('le rose reste rose — c’est l’accent, pas une couleur à éteindre', 
   assert.ok(L(teint('#660000', 'sprite')) <= 25, 'le rouge sombre reste un trait');
   assert.ok(L(teint('#FFDFDF', 'sprite')) > L(teint('#F28687', 'sprite')),
     'et la hiérarchie du dessin survit');
-  // L'orange et le jaune ne sont NI châssis NI rose : ils gardent leur teinte.
+  // LE PARCHEMIN — l'autre décor du parc de jour. La fenêtre des Scores est
+  // un parchemin, la Messagerie un bloc-notes jaune, « Mes disques » et
+  // l'inventaire des panneaux crème. Ce n'est pas un accent, c'est un décor :
+  // en CSS il suit le châssis, sinon ces fenêtres-là sortaient OLIVE au milieu
+  // d'un parc violet.
+  for (const hex of ['#FF6600', '#EAEA0F', '#FACE68', '#F8F866', '#FBD888']) {
+    for (const role of ['fond', 'texte', 'bordure']) {
+      const t = teint(hex, role);
+      assert.strictEqual(H(t), GEN.VIOLET, hex + ' (' + role + ') rejoint le châssis : ' + t);
+    }
+  }
+  // MAIS DANS UN DESSIN, un orange est une orange. La petite orange de
+  // l'onglet, le fruit du Frusion, le jaune du bouton « swap » : c'est la
+  // seule différence entre un aplat de fenêtre et une illustration.
   for (const [hex, teinte] of [['#FF6600', 24], ['#EAEA0F', 60], ['#FACE68', 44]]) {
-    const t = teint(hex, 'fond');
-    assert.ok(Math.abs(H(t) - teinte) <= 3, hex + ' garde sa teinte (' + t + ')');
+    const t = teint(hex, 'sprite');
+    assert.ok(Math.abs(H(t) - teinte) <= 3, hex + ' garde sa teinte en dessin (' + t + ')');
     assert.ok(S(t) >= 30, hex + ' reste un accent vivant');
   }
   assert.ok(!GEN.estRose(...GEN.rgbVersHsl(255, 102, 0).slice(0, 2)),
     '#FF6600 n’est pas de la famille rose');
   assert.ok(!GEN.estChassis(...GEN.rgbVersHsl(255, 102, 0).slice(0, 2)),
-    '#FF6600 n’est pas du châssis non plus');
+    '#FF6600 n’est pas du VERT non plus — c’est le parchemin qui le prend');
+  assert.ok(GEN.estParchemin(...GEN.rgbVersHsl(255, 102, 0).slice(0, 2)));
+});
+
+test('les deux décors du parc ressortent au même étage', () => {
+  // Le vert et le parchemin ne sont pas à la même clarté le jour — 78 % de
+  // médiane contre 69 —, et la courbe RENVERSE la clarté : sans correction le
+  // parchemin ressortait plus CLAIR que le vert. Mesuré à l'écran avant
+  // correction : corps de fenêtre à 20 %, grille de l'inventaire à 33 %, dans
+  // la même fenêtre. Les deux aplats de panneau du thème doivent donc tomber
+  // à quelques points l'un de l'autre.
+  const vert = L(teint('#CCF599', 'fond'));       // le corps d'un panneau vert
+  const parchemin = L(teint('#F8F866', 'fond'));  // celui d'un panneau crème
+  assert.ok(Math.abs(vert - parchemin) <= 4,
+    'vert à ' + vert + ' %, parchemin à ' + parchemin + ' % : ils doivent s’accorder');
+  // Et l'arc-en-ciel du feutre multicolore, que nulle règle de couleur ne peut
+  // sauver, est reposé entier à la main.
+  const retouches = lire('scripts/nuit-retouches.css');
+  assert.match(retouches, /linear-gradient\(90deg, #FF6600, #EBB601, #20D251, #47B9C9, #6666CC, #6E3C8D, #F986E2\)/);
+  assert.match(NUIT, /\.pen-swatch\.mc,\s*\n\.mc-text \{/);
 });
 
 test('une ombre reste une ombre, un liseré redevient un liseré', () => {

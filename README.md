@@ -153,8 +153,22 @@ famille :
 | Famille | Ce qu'elle devient | Pourquoi |
 |---|---|---|
 | les verts et les gris — le **châssis** | **violet** (256°) | c'est ce qui fait la nuit *violette* plutôt qu'un parc vert éteint |
+| le **parchemin** (17°→70°), *en CSS seulement* | **violet** aussi, nivelé sur le vert | le parc ne s'habille pas qu'en vert : Scores, Messagerie, Mes disques et l'inventaire sont crème et or. Gardés jaunes, ils sortaient **olive** au milieu d'un parc violet |
 | la famille **rose/rouge** (335°→16°) | **rose** (325°) — vif en texte, glyphe et liseré, prune profonde en aplat | l'accent qui empêche le violet de tourner au monochrome |
-| jaunes, oranges, bleus — les **accents** | teinte gardée | un jaune de kikooz violet ne serait plus un kikooz |
+| les bleus, les cyans — les **accents** | teinte gardée | un voyant bleu violet ne serait plus un voyant |
+| **tout, dans un dessin** | teinte gardée | un orange y est une orange : celle de l'onglet, le fruit du Frusion, le « swap » jaune |
+
+Le parchemin est **nivelé sur le vert** avant conversion : relevé sur les
+aplats des trois feuilles, le vert a une clarté médiane de 78 %, le parchemin
+de 69 %. Comme la courbe *renverse* la clarté, le parchemin — plus sombre le
+jour — ressortait plus **clair** la nuit : corps de fenêtre à 20 %, grille de
+l'inventaire à 33 %, dans la même fenêtre. On le remonte donc de ces neuf
+points avant la courbe, et les deux décors ressortent au même étage.
+
+Une seule chose qu'aucune règle de couleur ne peut sauver : **l'arc-en-ciel du
+feutre multicolore**. Il ne vaut que par la *suite* de ses teintes, et la
+conversion, qui ne regarde qu'une couleur à la fois, en perdait trois d'un
+coup. Il est reposé entier dans `scripts/nuit-retouches.css`.
 
 **L'invariant, et il est arithmétique** : aucun fond au-dessus de `0,078` de
 luminance, aucun texte en dessous de `0,654`. Les deux bornes sont choisies

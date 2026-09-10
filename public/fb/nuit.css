@@ -221,7 +221,7 @@ a:hover {
   background: hsl(256 30% 27.5%);
 }
 .picto-picker {
-  background: hsl(46 55% 13.7%);
+  background: hsl(256 30% 10%);
   border: 2px solid hsl(256 26% 56.4%);
   box-shadow: 2px 2px 8px hsl(256 13% 0% / 0.25);
 }
@@ -237,7 +237,7 @@ a:hover {
   color: hsl(256 13% 84.8%);
 }
 .picto-card {
-  background: hsl(46 55% 13.7%);
+  background: hsl(256 30% 10%);
   border: 1px solid hsl(256 26% 38.6%);
 }
 .picto-card .picto-name {
@@ -280,8 +280,8 @@ a:hover {
 }
 .picto-bbcode-hint {
   color: hsl(256 13% 84.8%);
-  background: hsl(48 31% 16.4%);
-  border: 1px solid hsl(51 30% 36.8%);
+  background: hsl(256 30% 10%);
+  border: 1px solid hsl(256 26% 33.9%);
 }
 .picto-bbcode-hint code {
   background: hsl(256 30% 10%);
@@ -408,7 +408,7 @@ a:hover {
   background: hsl(256 30% 10%);
 }
 .reply-blocked {
-  background: hsl(24 55% 15.2%);
+  background: hsl(256 30% 10%);
   border: 1px solid hsl(325 58% 66%);
   color: hsl(256 13% 84.8%);
 }
@@ -512,8 +512,8 @@ a:hover {
 }
 .post-content .mention.moi, .post-signature .mention.moi {
   color: hsl(325 58% 86.9%);
-  background: hsl(45 55% 22.3%);
-  box-shadow: inset 0 0 0 1px hsl(43 39% 39.8%);
+  background: hsl(256 30% 15.8%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 36.9%);
 }
 .mention-liste {
   background: hsl(256 30% 10%);
@@ -537,7 +537,7 @@ a:hover {
   background: hsl(325 34% 34.5%);
 }
 .post-content pre.bb-code {
-  background: hsl(60 31% 16.4%);
+  background: hsl(256 30% 10%);
   border: 1px solid hsl(256 26% 38.6%);
   color: hsl(256 13% 84.4%);
 }

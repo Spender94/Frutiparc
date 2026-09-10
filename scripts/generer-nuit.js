@@ -251,6 +251,48 @@ const estRose = (h, s) => s > 12 && (h >= ROSE_DE || h <= ROSE_A);
 // les kakis et les olives, sans mordre sur le jaune (60°) ni sur le cyan.
 const estChassis = (h, s) => s < 15 || (h >= 70 && h <= 165);
 
+/*
+ * LE PARCHEMIN — la SECONDE famille de décor du thème de jour.
+ *
+ * Le parc ne s'habille pas qu'en vert. La fenêtre des Scores est un parchemin
+ * (#FACE68, #FBD888, texte #433005), la Messagerie un bloc-notes jaune
+ * (#F8F866, #EAEA0E, texte #5A5A00), « Mes disques », l'inventaire, la grille
+ * des accessoires, le bandeau du jour : tous crème et or. Ce n'est pas un
+ * accent, c'est un DÉCOR — au même titre que le vert.
+ *
+ * La conversion les rangeait pourtant avec les accents, qui gardent leur
+ * teinte : au milieu d'un parc violet, ces fenêtres-là sortaient OLIVE, un
+ * jaune éteint qui ne va avec rien. Elles suivent donc le châssis.
+ *
+ * MAIS SEULEMENT EN CSS. Dans un DESSIN, un orange est une orange : la petite
+ * orange de l'onglet, le fruit du Frusion, le jaune du bouton « swap ». Le
+ * rôle `sprite` échappe donc à cette règle — c'est toute la différence entre
+ * un aplat de fenêtre et une illustration.
+ *
+ * Reste ce qu'aucune règle de couleur ne peut sauver : l'arc-en-ciel du feutre
+ * multicolore, dont l'orange et le jaune ne valent que par leurs voisins. Il
+ * est rendu à la main dans scripts/nuit-retouches.css.
+ */
+const PARCHEMIN_DE = 17, PARCHEMIN_A = 70;
+const estParchemin = (h, s) => s > 20 && h >= PARCHEMIN_DE && h <= PARCHEMIN_A;
+
+/*
+ * ET IL FAUT LE NIVELER SUR LE VERT, sans quoi il reste plus clair.
+ *
+ * Les deux familles ne sont pas au même étage dans le thème de JOUR. Relevé
+ * sur les aplats des trois feuilles : le vert a une clarté médiane de 78 %,
+ * le parchemin de 69 %. Neuf points d'écart, et la courbe RENVERSE la clarté
+ * — le parchemin, plus sombre le jour, ressortait donc plus CLAIR la nuit.
+ * Mesuré à l'écran avant correction : le corps d'une fenêtre à 20 %, la grille
+ * de l'inventaire à 33 %, dans la même fenêtre.
+ *
+ * On remonte donc le parchemin de ces neuf points AVANT la courbe : il
+ * traverse alors la conversion à la place qu'occupe le vert, et les deux
+ * décors ressortent au même étage. L'écart est mesuré sur les FONDS ; sur les
+ * autres rôles il pèse moins d'un point après la courbe.
+ */
+const PARCHEMIN_ECART = 9;
+
 // Un aplat rose ne descend pas aussi bas que le châssis : sous 22 % il ne se
 // distingue plus du violet, et l'accent disparaît.
 const ROSE_FOND_MIN = 22;
@@ -262,7 +304,12 @@ const ROSE_ACCENT_MIN = 66;
 const ROSE_TEXTE_MIN = 74;
 
 function convertir(r, g, b, a, role) {
-  const [h, s, l] = rgbVersHsl(r, g, b);
+  const [h, s, lJour] = rgbVersHsl(r, g, b);
+  // Le parchemin rejoint le châssis — mais en CSS seulement, et nivelé sur le
+  // vert (cf. estParchemin et PARCHEMIN_ECART). Dans un dessin, un orange est
+  // une orange.
+  const parchemin = role !== 'sprite' && estParchemin(h, s);
+  const l = parchemin ? Math.min(100, lJour + PARCHEMIN_ECART) : lJour;
   let nh = h, ns, nl = COURBES[role](l);
   // Un dessin de châssis EST une surface : mêmes teintes et mêmes bornes
   // qu'un aplat, seule sa courbe de clarté diffère (elle ne plafonne pas).
@@ -283,7 +330,7 @@ function convertir(r, g, b, a, role) {
     if (role === 'sprite') { ns = 68; nl = 0.92 * l; }
     else if (surface) { ns = 34; nl = Math.max(nl, ROSE_FOND_MIN); }
     else { ns = 58; nl = Math.max(nl, role === 'texte' ? ROSE_TEXTE_MIN : ROSE_ACCENT_MIN); }
-  } else if (estChassis(h, s)) {
+  } else if (estChassis(h, s) || parchemin) {
     nh = VIOLET;
     // Le châssis est saturé, mais pas également : un fond violet franc, un
     // texte presque blanc — sans quoi tout vire au lilas.
@@ -304,7 +351,7 @@ function convertir(r, g, b, a, role) {
   // trait, un cerne, un glyphe. Le rabattre sous le plafond des fonds, c'est
   // le ramener au niveau de la surface qu'il est censé détacher — et un
   // boîtier sans arêtes n'est plus qu'une tache.
-  const reliefDeDessin = role === 'sprite' && l < 50;
+  const reliefDeDessin = role === 'sprite' && lJour < 50;
   if (surface && !roseDeCommande && !reliefDeDessin) nl = plafonnerLuminance(nh, ns, nl);
   else if (role === 'texte') nl = releverLuminance(nh, ns, nl);
   return hsl(nh, ns, nl, a);
@@ -734,5 +781,6 @@ if (require.main === module) main();
 
 module.exports = {
   convertir, teindreValeur, roleDe, surcharge, fabriquer, CIBLES,
-  estRose, estChassis, rgbVersHsl, hexVersRgb, variantesNuit, VIOLET, ROSE_NUIT,
+  estRose, estChassis, estParchemin, rgbVersHsl, hexVersRgb, variantesNuit,
+  VIOLET, ROSE_NUIT,
 };
