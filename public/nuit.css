@@ -1256,37 +1256,37 @@ body.bureau-frutiz .fb-onglet .ot-menu button:active {
   }
 }
 body.bureau-frutiz #frusion-boite .fr-arriere {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/frusion-arriere-nuit.svg');
 }
 body.bureau-frutiz #frusion-boite .fr-fondslot {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/frusion-fondslot-nuit.svg');
 }
 body.bureau-frutiz #frusion-boite .fr-milieu {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/frusion-milieu-nuit.svg');
 }
 body.bureau-frutiz #frusion-boite .fr-slot {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/frusion-slot-nuit.svg');
 }
 body.bureau-frutiz #frusion-boite .fr-avant {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/frusion-avant-nuit.svg');
 }
 body.bureau-frutiz #frusion-boite .fr-casque {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/frusionCasque_up-nuit.svg');
 }
 body.bureau-frutiz #frusion-boite .fr-casque:hover {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/frusionCasque_over-nuit.svg');
 }
 body.bureau-frutiz #frusion-boite .fr-casque:active {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/frusionCasque_down-nuit.svg');
 }
 body.bureau-frutiz #frusion-boite .fr-eject {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/frusionEject_up-nuit.svg');
 }
 body.bureau-frutiz #frusion-boite .fr-eject:hover {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/frusionEject_over-nuit.svg');
 }
 body.bureau-frutiz #frusion-boite .fr-eject:active {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/frusionEject_down-nuit.svg');
 }
 body.bureau-frutiz .fb-raccourci .fb-r-lbl {
   color: var(--fond-txt, hsl(256 13% 84.8%));
@@ -1314,40 +1314,40 @@ body.bureau-frutiz #frutimandala .md-dessus {
   background: url('/frutiz/sprites/frutimandala-dessus-nuit.svg') left top / 200px 80px no-repeat;
 }
 body.bureau-frutiz #frutimandala .md-mandalaGauche {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/mandalaGauche_up-nuit.svg');
 }
 body.bureau-frutiz #frutimandala .md-mandalaGauche:hover {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/mandalaGauche_over-nuit.svg');
 }
 body.bureau-frutiz #frutimandala .md-mandalaGauche:active {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/mandalaGauche_down-nuit.svg');
 }
 body.bureau-frutiz #frutimandala .md-mandalaDroite {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/mandalaDroite_up-nuit.svg');
 }
 body.bureau-frutiz #frutimandala .md-mandalaDroite:hover {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/mandalaDroite_over-nuit.svg');
 }
 body.bureau-frutiz #frutimandala .md-mandalaDroite:active {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/mandalaDroite_down-nuit.svg');
 }
 body.bureau-frutiz #frutimandala .md-mandalaSwap {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/mandalaSwap_up-nuit.svg');
 }
 body.bureau-frutiz #frutimandala .md-mandalaSwap:hover {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/mandalaSwap_over-nuit.svg');
 }
 body.bureau-frutiz #frutimandala .md-mandalaSwap:active {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/mandalaSwap_down-nuit.svg');
 }
 body.bureau-frutiz #frutimandala .md-mandalaValider {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/mandalaValider_up-nuit.svg');
 }
 body.bureau-frutiz #frutimandala .md-mandalaValider:hover {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/mandalaValider_over-nuit.svg');
 }
 body.bureau-frutiz #frutimandala .md-mandalaValider:active {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/mandalaValider_down-nuit.svg');
 }
 body.bureau-frutiz #mode-rapide {
   color: hsl(256 13% 84.5%);
@@ -1430,13 +1430,13 @@ body.bureau-frutiz .fen-btn.fermer:active {
   background-image: url('/frutiz/sprites/butWinTop1_down-nuit.svg');
 }
 body.bureau-frutiz .fen-btn.plier {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/butWinTop2_up-nuit.svg');
 }
 body.bureau-frutiz .fen-btn.plier:hover {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/butWinTop2_over-nuit.svg');
 }
 body.bureau-frutiz .fen-btn.plier:active {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/butWinTop2_down-nuit.svg');
 }
 body.bureau-frutiz .fen,
 body.bureau-frutiz .fiche-boite {
@@ -2324,6 +2324,12 @@ img[src$="/frutiz/sprites/butWinTop1_over.svg"] { content: url("/frutiz/sprites/
 [style*="/frutiz/sprites/butWinTop1_over.svg"] { background-image: url("/frutiz/sprites/butWinTop1_over-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/butWinTop1_up.svg"] { content: url("/frutiz/sprites/butWinTop1_up-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/butWinTop1_up.svg"] { background-image: url("/frutiz/sprites/butWinTop1_up-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butWinTop2_down.svg"] { content: url("/frutiz/sprites/butWinTop2_down-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/butWinTop2_down.svg"] { background-image: url("/frutiz/sprites/butWinTop2_down-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butWinTop2_over.svg"] { content: url("/frutiz/sprites/butWinTop2_over-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/butWinTop2_over.svg"] { background-image: url("/frutiz/sprites/butWinTop2_over-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butWinTop2_up.svg"] { content: url("/frutiz/sprites/butWinTop2_up-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/butWinTop2_up.svg"] { background-image: url("/frutiz/sprites/butWinTop2_up-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/butWinTop3_down.svg"] { content: url("/frutiz/sprites/butWinTop3_down-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/butWinTop3_down.svg"] { background-image: url("/frutiz/sprites/butWinTop3_down-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/butWinTop3_over.svg"] { content: url("/frutiz/sprites/butWinTop3_over-nuit.svg"); filter: none; }
@@ -2342,10 +2348,56 @@ img[src$="/frutiz/sprites/ecran-fond.svg"] { content: url("/frutiz/sprites/ecran
 [style*="/frutiz/sprites/ecran-fond.svg"] { background-image: url("/frutiz/sprites/ecran-fond-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/encart-reflet.svg"] { content: url("/frutiz/sprites/encart-reflet-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/encart-reflet.svg"] { background-image: url("/frutiz/sprites/encart-reflet-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusion-arriere.svg"] { content: url("/frutiz/sprites/frusion-arriere-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frusion-arriere.svg"] { background-image: url("/frutiz/sprites/frusion-arriere-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusion-avant.svg"] { content: url("/frutiz/sprites/frusion-avant-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frusion-avant.svg"] { background-image: url("/frutiz/sprites/frusion-avant-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusion-fondslot.svg"] { content: url("/frutiz/sprites/frusion-fondslot-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frusion-fondslot.svg"] { background-image: url("/frutiz/sprites/frusion-fondslot-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusion-milieu.svg"] { content: url("/frutiz/sprites/frusion-milieu-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frusion-milieu.svg"] { background-image: url("/frutiz/sprites/frusion-milieu-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusion-slot.svg"] { content: url("/frutiz/sprites/frusion-slot-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frusion-slot.svg"] { background-image: url("/frutiz/sprites/frusion-slot-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusionCasque_down.svg"] { content: url("/frutiz/sprites/frusionCasque_down-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frusionCasque_down.svg"] { background-image: url("/frutiz/sprites/frusionCasque_down-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusionCasque_over.svg"] { content: url("/frutiz/sprites/frusionCasque_over-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frusionCasque_over.svg"] { background-image: url("/frutiz/sprites/frusionCasque_over-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusionCasque_up.svg"] { content: url("/frutiz/sprites/frusionCasque_up-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frusionCasque_up.svg"] { background-image: url("/frutiz/sprites/frusionCasque_up-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusionEject_down.svg"] { content: url("/frutiz/sprites/frusionEject_down-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frusionEject_down.svg"] { background-image: url("/frutiz/sprites/frusionEject_down-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusionEject_over.svg"] { content: url("/frutiz/sprites/frusionEject_over-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frusionEject_over.svg"] { background-image: url("/frutiz/sprites/frusionEject_over-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusionEject_up.svg"] { content: url("/frutiz/sprites/frusionEject_up-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/frusionEject_up.svg"] { background-image: url("/frutiz/sprites/frusionEject_up-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/frutimandala-dessus.svg"] { content: url("/frutiz/sprites/frutimandala-dessus-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/frutimandala-dessus.svg"] { background-image: url("/frutiz/sprites/frutimandala-dessus-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/frutimandala-roue.svg"] { content: url("/frutiz/sprites/frutimandala-roue-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/frutimandala-roue.svg"] { background-image: url("/frutiz/sprites/frutimandala-roue-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaDroite_down.svg"] { content: url("/frutiz/sprites/mandalaDroite_down-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/mandalaDroite_down.svg"] { background-image: url("/frutiz/sprites/mandalaDroite_down-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaDroite_over.svg"] { content: url("/frutiz/sprites/mandalaDroite_over-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/mandalaDroite_over.svg"] { background-image: url("/frutiz/sprites/mandalaDroite_over-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaDroite_up.svg"] { content: url("/frutiz/sprites/mandalaDroite_up-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/mandalaDroite_up.svg"] { background-image: url("/frutiz/sprites/mandalaDroite_up-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaGauche_down.svg"] { content: url("/frutiz/sprites/mandalaGauche_down-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/mandalaGauche_down.svg"] { background-image: url("/frutiz/sprites/mandalaGauche_down-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaGauche_over.svg"] { content: url("/frutiz/sprites/mandalaGauche_over-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/mandalaGauche_over.svg"] { background-image: url("/frutiz/sprites/mandalaGauche_over-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaGauche_up.svg"] { content: url("/frutiz/sprites/mandalaGauche_up-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/mandalaGauche_up.svg"] { background-image: url("/frutiz/sprites/mandalaGauche_up-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaSwap_down.svg"] { content: url("/frutiz/sprites/mandalaSwap_down-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/mandalaSwap_down.svg"] { background-image: url("/frutiz/sprites/mandalaSwap_down-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaSwap_over.svg"] { content: url("/frutiz/sprites/mandalaSwap_over-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/mandalaSwap_over.svg"] { background-image: url("/frutiz/sprites/mandalaSwap_over-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaSwap_up.svg"] { content: url("/frutiz/sprites/mandalaSwap_up-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/mandalaSwap_up.svg"] { background-image: url("/frutiz/sprites/mandalaSwap_up-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaValider_down.svg"] { content: url("/frutiz/sprites/mandalaValider_down-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/mandalaValider_down.svg"] { background-image: url("/frutiz/sprites/mandalaValider_down-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaValider_over.svg"] { content: url("/frutiz/sprites/mandalaValider_over-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/mandalaValider_over.svg"] { background-image: url("/frutiz/sprites/mandalaValider_over-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaValider_up.svg"] { content: url("/frutiz/sprites/mandalaValider_up-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/mandalaValider_up.svg"] { background-image: url("/frutiz/sprites/mandalaValider_up-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/onglet_barre.svg"] { content: url("/frutiz/sprites/onglet_barre-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/onglet_barre.svg"] { background-image: url("/frutiz/sprites/onglet_barre-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/onglet_corps.svg"] { content: url("/frutiz/sprites/onglet_corps-nuit.svg"); filter: none; }

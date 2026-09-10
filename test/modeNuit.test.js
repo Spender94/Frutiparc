@@ -344,7 +344,22 @@ test('seul le châssis s’éteint : les dessins gardent leurs couleurs', () => 
   // bar, le boîtier du Frusion — des surfaces, pas des illustrations.
   assert.match(NUIT, /--nuit-chassis: grayscale\([^)]*\) sepia\([^)]*\) hue-rotate\(202deg\)/);
   const chassis = (NUIT.match(/filter: var\(--nuit-chassis\);/g) || []).length;
-  assert.ok(chassis > 60, 'le générateur teint les sprites de châssis (' + chassis + ' règles)');
+  assert.ok(chassis > 25, 'le générateur teint les sprites de châssis (' + chassis + ' règles)');
+  // Ce nombre est un RESTE À FAIRE, et il doit baisser. Le filtre est un
+  // pis-aller : il ternit tout de la même main. Chaque dessin qui reçoit sa
+  // variante lui échappe — d'où ces trois-là, qui l'ont quittée et ne doivent
+  // pas y retomber.
+  for (const [quoi, regle] of [
+    ['le boîtier du Frusion', /#frusion-boite \.fr-avant \{\s*\n\s*background-image: url\('\/frutiz\/sprites\/frusion-avant-nuit\.svg'\);\s*\n\s*\}/],
+    ['le « valider » du frutimandala', /#frutimandala \.md-mandalaValider \{\s*\n\s*background-image: url\('\/frutiz\/sprites\/mandalaValider_up-nuit\.svg'\);\s*\n\s*\}/],
+    ['le corps des onglets', /url\("\/frutiz\/sprites\/onglet_corps-nuit\.svg"\)/],
+  ]) {
+    assert.match(NUIT, regle, quoi + ' a sa variante, il n’est plus fané');
+  }
+  assert.ok(!/#frusion-boite [^{]*\{\s*\n\s*filter: var\(--nuit-chassis\)/.test(NUIT),
+    'plus une seule pièce du Frusion ne passe par le filtre');
+  assert.ok(!/#frutimandala \.md-mandala[^{]*\{\s*\n\s*filter: var\(--nuit-chassis\)/.test(NUIT),
+    'ni une seule commande du frutimandala');
   // Et la poignée de pièces de châssis qui arrivent par un <img> du HTML.
   assert.match(NUIT, /img\[src\$="\/fb\/cadre_bouille\.svg"\]/);
   // LA ROUE DU FRUTIMANDALA porte ses fruits sur des quartiers verts : aucun
@@ -531,6 +546,77 @@ test('une variante orpheline ne produit aucune règle', () => {
     fs.unlinkSync(orphelin);
   }
   assert.ok(!trouvees.has('/frutiz/sprites/nexiste-pas.svg'), 'l’orpheline est ignorée');
+});
+
+// ── Ce qu'un dessin garde, et ce qu'il rend ─────────────────────────────────
+
+test('la courbe des dessins n’écrase plus la moitié sombre de l’échelle', () => {
+  // Le plafond dur était posé à 38 : de #888888 au noir, TOUTE la moitié basse
+  // de la rampe des gris sortait sur cette seule valeur. Un bouton du Frusion,
+  // c'est un anneau et un pictogramme — les deux en sortaient identiques, et
+  // le pictogramme disparaissait. La courbe doit rester strictement monotone.
+  const rampe = ['#ffffff', '#dddddd', '#bbbbbb', '#999999', '#888888',
+    '#666666', '#444444', '#222222', '#000000'].map((hex) => L(teint(hex, 'sprite')));
+  for (let i = 1; i < rampe.length; i++) {
+    assert.ok(rampe[i] > rampe[i - 1] + 1,
+      'deux gris voisins doivent rester distincts (' + rampe[i - 1] + ' puis ' + rampe[i] + ')');
+  }
+  // Une face éclairée descend bas, un trait sombre remonte haut : c'est ce qui
+  // rend son relief au dessin.
+  assert.ok(rampe[0] < 12, 'le blanc devient la face sombre');
+  assert.ok(rampe[rampe.length - 1] > 55, 'le noir devient le liseré clair');
+});
+
+test('le blanc d’un dessin : glyphe par défaut, face quand on le dit', () => {
+  const SVG = require('../scripts/nuit-svg.js');
+  const lire = (f) => fs.readFileSync(path.join(ROOT, 'public/frutiz/sprites', f), 'utf8');
+  // Le glyphe blanc des boutons du salon reste blanc — sans quoi la tête de
+  // mort et le triangle disparaissent sur leur bouton rose.
+  assert.match(lire('chat-but-warning-nuit.svg'), /="#ffffff"/);
+  // Le blanc d'un onglet, lui, est sa FACE : il s'éteint. C'est le défaut
+  // inverse, et il est écrit dans le manifeste.
+  for (const f of ['onglet_corps.svg', 'onglet_pied.svg', 'onglet_barre.svg']) {
+    const e = SVG.MANIFESTE.find((x) => x.f === f);
+    assert.equal(e && e.blanc, 'teint', f + ' doit déclarer son blanc comme une face');
+    assert.ok(!/="#(fff|ffffff)"/i.test(lire(f.replace('.svg', '-nuit.svg'))),
+      f + ' ne doit plus garder de blanc pur');
+  }
+});
+
+test('une commande garde SA couleur — rouge, jaune, vert', () => {
+  const lire = (f) => fs.readFileSync(path.join(ROOT, 'public/frutiz/sprites', f), 'utf8');
+  // Les trois boutons du frutimandala se distinguent par leur couleur. Le
+  // filtre du châssis les passait toutes au gris violet ; la conversion, elle,
+  // rangeait le rouge avec les roses et le VERT avec le châssis — le parc de
+  // jour est vert. Ils gardent donc leurs teintes, socle gris mis à part.
+  assert.match(lire('mandalaGauche_up-nuit.svg'), /="#df2b2b"/, 'le triangle reste rouge');
+  assert.match(lire('mandalaSwap_up-nuit.svg'), /="#f5ac03"/, 'le swap reste jaune');
+  assert.match(lire('mandalaValider_up-nuit.svg'), /="#72a60f"/, 'le valider reste vert');
+  // Et leur socle, lui, s'éteint : sans quoi ils flotteraient sur une plaque
+  // grise au milieu du cadran violet.
+  assert.match(lire('mandalaValider_up-nuit.svg'), /="hsl\(256 /, 'le socle gris part au violet');
+  // Le petit fruit du Frusion suit la même règle (rouge, jaune, vert).
+  for (const c of ['#ec4242', '#ffcc00', '#8cdb29']) {
+    assert.ok(lire('frusion-avant-nuit.svg').includes('="' + c + '"'),
+      'le fruit du Frusion garde son ' + c);
+  }
+});
+
+test('un dessin tout en couleur reçoit quand même sa variante', () => {
+  // Les trois boutons du bandeau de fenêtre — croix, trait, « ? » — n'ont
+  // aucun gris. Ne rien écrire pour eux les laissait au FILTRE du châssis,
+  // qui les passait au gris violet : le « ? » vert devenait invisible. La
+  // variante à l'identique est ce qui dit « celui-là est réglé ».
+  for (const n of ['butWinTop1_up', 'butWinTop2_up', 'butWinTop3_up']) {
+    const nuit = path.join(ROOT, 'public/frutiz/sprites', n + '-nuit.svg');
+    assert.ok(fs.existsSync(nuit), n + ' doit avoir sa variante');
+    assert.match(fs.readFileSync(nuit, 'utf8'), /Ce dessin n'a AUCUNE couleur de châssis/);
+    assert.match(NUIT, new RegExp('url\\("/frutiz/sprites/' + n + '-nuit\\.svg"\\)'));
+  }
+  // Le « ? » est vert, et il le reste — c'est précisément le vert que la
+  // conversion aurait rangé avec le châssis.
+  assert.match(fs.readFileSync(path.join(ROOT, 'public/frutiz/sprites/butWinTop3_up-nuit.svg'), 'utf8'),
+    /="#7aef80"/, 'le point d’interrogation garde son vert');
 });
 
 // ── Les fonds d'écran de nuit ───────────────────────────────────────────────

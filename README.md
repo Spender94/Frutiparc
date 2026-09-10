@@ -186,11 +186,45 @@ node scripts/nuit-svg.js --verifier   sort 1 si elles sont périmées
 
 Le **manifeste** en tête du script dit ce qui est du châssis : l'écran de
 l'aquarium, la boîte et les bandes de la liste des connectés, le cadre des
-fenêtres, les quatre boutons du salon, la languette CONTACTS, le frutimandala.
-Ce qui n'y est pas garde ses couleurs — c'est le bon défaut. Trois exclusions
-sont délibérées et commentées : les pastilles de titre de fenêtre (des fruits),
-le reflet de l'écran (deux traits blancs qui font le verre), et les **pastilles
-de présence**, dont la couleur est une *information* et non une décoration.
+fenêtres et les onglets, le lecteur Frusion, les quatre boutons du salon, la
+languette CONTACTS, le frutimandala et ses commandes. Ce qui n'y est pas garde
+ses couleurs — c'est le bon défaut. Deux exclusions sont délibérées et
+commentées : le reflet de l'écran (deux traits blancs qui font le verre), et
+les **pastilles de présence**, dont la couleur est une *information* et non une
+décoration.
+
+Un dessin n'est pas qu'une liste de couleurs, et le manifeste porte donc deux
+nuances que le fichier ne peut pas dire tout seul :
+
+| Drapeau | Ce qu'il change | Pour qui |
+|---|---|---|
+| `blanc: 'teint'` | le blanc pur s'éteint au lieu d'être gardé | les onglets, le boîtier du Frusion — là où le blanc est la **face**, pas une marque |
+| `teintes: 'gardees'` | seuls les **neutres** s'éteignent, toute couleur reste la sienne | les commandes : triangles rouges, swap jaune, valider vert, croix et « ? » du bandeau de fenêtre |
+
+Le premier vient d'un défaut visible : un blanc pur reste blanc par défaut,
+parce que dans ces dessins c'est presque toujours un glyphe ou un liseré — et
+c'est ce qui sauve la tête de mort des boutons du salon. Sur un onglet, non :
+la face est blanche, et deux onglets restaient en plein jour au-dessus d'un
+bureau éteint.
+
+Le second vient d'un autre : une **commande se reconnaît à sa couleur**. La
+conversion range le rouge avec les roses (les triangles viraient au magenta) et
+le vert avec le châssis, puisque le vert est la couleur du parc de jour — le
+bouton « valider » virait au violet, et trois boutons de trois couleurs
+devenaient trois boutons identiques. Un dessin qui n'a *que* de la couleur —
+la croix, le trait, le « ? » du bandeau — reçoit tout de même sa variante, à
+l'identique : sans elle, la feuille de nuit le prendrait pour un dessin oublié
+et lui poserait le filtre du châssis.
+
+**La courbe des dessins ne plafonne plus.** Elle était coupée à 38 % de clarté :
+de `#888888` au noir, toute la moitié sombre de la rampe des gris sortait sur
+cette seule valeur. Un bouton du Frusion, c'est un anneau et un pictogramme —
+les deux en sortaient de la même couleur, et le pictogramme disparaissait.
+Au-delà de 38 elle **comprime** désormais au lieu de couper : ce qui était clair
+ne bouge pas d'un cheveu, ce qui était sombre s'étale jusqu'à 61 %. Le trait
+redevient un liseré clair sur une face sombre. Et le relief d'un dessin échappe
+au plafond de luminance des fonds — ce plafond vaut pour une surface qui porte
+du texte, pas pour l'arête censée la détacher.
 
 La **roue du frutimandala** est le cas limite : ses fruits sont peints *sur*
 ses quartiers. Sa portée est donc réduite au premier groupe du SVG — les deux

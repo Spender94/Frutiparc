@@ -69,12 +69,38 @@ const MANIFESTE = [
   { f: 'user-slot.svg', note: 'la bande d’une personne' },
   { f: 'user-list-pilule.svg', note: 'la gélule rose, en haut et en bas' },
 
-  // ── Le cadre des fenêtres ─────────────────────────────────────────────
+  // ── Le cadre des fenêtres et les onglets ──────────────────────────────
+  // `blanc: 'teint'` : sur un onglet le blanc est la FACE, pas une marque —
+  // une plaque de la largeur de l'onglet. La garder blanche laissait deux
+  // onglets en plein jour en haut d'un bureau éteint.
   ...['onglet_barre', 'onglet_corps', 'onglet_couture', 'onglet_fond',
-    'onglet_fondb', 'onglet_fondh', 'onglet_pied'].map((n) => ({ f: n + '.svg' })),
-  ...troisEtats('butWinTop1').map((f) => ({ f })),
-  ...troisEtats('butWinTop2').map((f) => ({ f })),
-  ...troisEtats('butWinTop3').map((f) => ({ f })),
+    'onglet_fondb', 'onglet_fondh', 'onglet_pied'].map((n) => ({ f: n + '.svg', blanc: 'teint' })),
+  // Les trois boutons du bandeau de fenêtre — la croix, le trait, le point
+  // d’interrogation — se distinguent PAR LEUR COULEUR, comme les commandes du
+  // frutimandala : d’où `teintes: 'gardees'`. Le « ? » est vert, et le vert
+  // est la couleur du parc de jour : la conversion le rangeait avec le
+  // châssis et le passait au violet sombre — un point d’interrogation
+  // invisible sur une barre sombre.
+  ...troisEtats('butWinTop1').map((f) => ({ f, teintes: 'gardees' })),
+  ...troisEtats('butWinTop2').map((f) => ({ f, teintes: 'gardees' })),
+  ...troisEtats('butWinTop3').map((f) => ({ f, teintes: 'gardees' })),
+
+  // ── Le lecteur Frusion ────────────────────────────────────────────────
+  // Cinq couches empilées, du fond du boîtier à sa façade. Du blanc partout,
+  // et c'est du BOÎTIER : d'où `blanc: 'teint'`. La façade porte en plus le
+  // petit fruit — rouge, jaune, vert — qui est la seule couleur du lecteur :
+  // `teintes: 'gardees'` le sauve du rangement avec la famille rose.
+  ...['frusion-arriere', 'frusion-fondslot', 'frusion-milieu', 'frusion-slot']
+    .map((n) => ({ f: n + '.svg', blanc: 'teint' })),
+  { f: 'frusion-avant.svg', blanc: 'teint', teintes: 'gardees',
+    note: 'la façade — le petit fruit garde ses couleurs' },
+  // Les deux commandes : un anneau gris et un glyphe. L'anneau s'éteint, le
+  // glyphe reste clair — c'est ce qui les rend lisibles sur le boîtier sombre.
+  // `blanc: 'teint'` ici aussi : leurs blancs ne sont pas un glyphe mais un
+  // REFLET — un dégradé blanc vers transparent posé sur la pastille. Discret
+  // sur un gris clair, il devenait une grosse tache laiteuse sur le violet.
+  ...troisEtats('frusionCasque').map((f) => ({ f, blanc: 'teint' })),
+  ...troisEtats('frusionEject').map((f) => ({ f, blanc: 'teint' })),
 
   // ── Les quatre boutons du salon, et la languette CONTACTS ─────────────
   ...['chat-but-bouille', 'chat-but-penlist', 'chat-but-userlist', 'chat-but-warning']
@@ -88,6 +114,13 @@ const MANIFESTE = [
   { f: 'frutimandala-roue.svg', portee: 'premierGroupe',
     note: 'les quartiers seulement — les fruits gardent leurs couleurs' },
   { f: 'frutimandala-dessus.svg', note: 'le cadran par-dessus' },
+  // Les quatre commandes du cadran — deux triangles rouges, le swap jaune, le
+  // valider vert. Ce sont des COULEURS DE COMMANDE, pas du décor : on n'y
+  // touche pas, on éteint seulement le socle gris sur lequel elles sont
+  // posées. Le filtre du châssis les avait toutes passées au gris violet, et
+  // trois boutons de trois couleurs devenaient trois boutons identiques.
+  ...['mandalaGauche', 'mandalaDroite', 'mandalaSwap', 'mandalaValider']
+    .flatMap((n) => troisEtats(n)).map((f) => ({ f, teintes: 'gardees' })),
 ];
 
 // ── La reteinte ─────────────────────────────────────────────────────────────
@@ -98,37 +131,64 @@ const MANIFESTE = [
 const RE_COULEUR = /(fill|stroke|stop-color|flood-color|lighting-color)="(#[0-9a-fA-F]{3,8})"/g;
 
 /*
- * LE BLANC PUR RESTE BLANC — c'est le symbole, pas la surface.
+ * LE BLANC PUR RESTE BLANC — quand c'est le SYMBOLE, pas la surface.
  *
  * Les quatre boutons du salon sont bâtis pareil : un corps rose, une face
  * intérieure plus claire, et par-dessus le GLYPHE en blanc — la tête de mort,
  * les barres, le triangle. Passé à la moulinette du châssis (le blanc est un
  * gris, donc du châssis), le glyphe virait au violet presque noir : on avait
  * des boutons roses aveugles. Même chose pour les liserés blancs qui font
- * briller une gélule ou une boîte.
+ * briller une gélule, une boîte ou le verre du frutimandala.
  *
- * Sur un fond de nuit, un blanc pur est toujours ce qu'il faut : c'est ce qui
- * se lit. On le laisse donc tranquille, comme on laisse un accent.
+ * C'est le cas COURANT — dans ces dessins-là un blanc pur est presque toujours
+ * une marque posée par-dessus —, donc le défaut. Mais pas toujours : sur un
+ * onglet ou sur le boîtier du Frusion, le blanc est la FACE ÉCLAIRÉE, une
+ * grande surface. La garder blanche laissait des onglets en plein jour au
+ * milieu d'un bureau éteint. Ces dessins-là portent `blanc: 'teint'`.
+ *
+ * On ne devine pas lequel des deux : le fichier ne le dit pas, seul l'œil le
+ * dit. C'est donc écrit dans le manifeste, dessin par dessin.
  */
 const estBlancPur = (hex) => /^#(fff|ffffff)$/i.test(hex);
 
-function reteindre(fragment, compteur) {
+// En dessous, une couleur n'en est plus une : c'est un gris. Le seuil est
+// celui du thème (cf. estChassis dans generer-nuit.js), pour que « neutre »
+// veuille dire la même chose des deux côtés.
+const NEUTRE_MAX = 15;
+
+function reteindre(fragment, compteur, entree) {
+  const blancTeint = entree && entree.blanc === 'teint';
+  const teintesGardees = entree && entree.teintes === 'gardees';
   return fragment.replace(RE_COULEUR, (tout, attr, hex) => {
-    if (estBlancPur(hex)) { compteur.gardes++; return tout; }
+    if (estBlancPur(hex) && !blancTeint) { compteur.gardes++; return tout; }
     const [r, g, b, a] = hexVersRgb(hex);
     const [h, s] = rgbVersHsl(r, g, b);
     // Un ACCENT n'est pas du châssis : on le laisse. C'est ce qui permet de
     // passer un dessin entier sans y perdre ses couleurs propres.
     if (!estRose(h, s) && !estChassis(h, s)) { compteur.gardes++; return tout; }
+    // `teintes: 'gardees'` : seuls les NEUTRES s'éteignent, toute couleur
+    // garde la sienne. Les deux règles du thème gênent ici, chacune à sa
+    // façon — le rouge est rangé avec les roses et poussé sur l'accent (les
+    // triangles du frutimandala viraient au magenta), et le VERT est tenu
+    // pour du châssis, parce que c'est la couleur du parc de jour (le bouton
+    // « valider » virait au violet, et trois boutons de trois couleurs
+    // devenaient trois boutons identiques). Ces dessins-là ne demandent
+    // qu'une chose : que leur SOCLE gris s'éteigne.
+    if (teintesGardees && s >= NEUTRE_MAX) { compteur.gardes++; return tout; }
     compteur.reteints++;
     return attr + '="' + convertir(r, g, b, a, 'sprite') + '"';
   });
 }
 
-const ENTETE = (nom, note) => `<!--
+const ENTETE = (nom, note, intact) => `<!--
   ENGENDRÉ par scripts/nuit-svg.js — ${nom} en mode nuit.
-  Le même dessin, ses couleurs de châssis repassées par la conversion du
-  thème (vert et gris au violet, rose gardé en accent, le reste intact).
+  ${intact
+    ? `Ce dessin n'a AUCUNE couleur de châssis : il est déjà de nuit tel quel,
+  et cette copie n'est là que pour le dire. Sans elle, la feuille de nuit le
+  prendrait pour un dessin de jour oublié et lui poserait le filtre du
+  châssis — un bouton de couleur passé au gris violet.`
+    : `Le même dessin, ses couleurs de châssis repassées par la conversion du
+  thème (vert et gris au violet, rose gardé en accent, le reste intact).`}
   ${note ? note + '\n  ' : ''}Pour le reprendre à la main : écraser ce fichier et retirer son entrée du
   manifeste de scripts/nuit-svg.js.
 -->
@@ -142,39 +202,40 @@ function fabriquer(entree) {
     const debut = src.indexOf('<g ');
     const fin = src.indexOf('</g>', debut);
     if (debut < 0 || fin < 0) throw new Error('pas de premier groupe dans ' + entree.f);
-    sortie = src.slice(0, debut) + reteindre(src.slice(debut, fin), compteur) + src.slice(fin);
+    sortie = src.slice(0, debut) + reteindre(src.slice(debut, fin), compteur, entree) + src.slice(fin);
   } else {
-    sortie = reteindre(src, compteur);
+    sortie = reteindre(src, compteur, entree);
   }
-  // Un dessin peut n'être QUE de l'accent — les boutons de fenêtre sont un
-  // glyphe bleu sur rien. Il n'a alors pas de variante à produire : le
-  // laisser tel quel est déjà la bonne réponse.
-  if (!compteur.reteints) return { texte: null, compteur };
-  const texte = sortie.replace(/(<svg[^>]*>\n?)/, '$1' + ENTETE(entree.f, entree.note));
-  return { texte, compteur };
+  /*
+   * UN DESSIN PEUT N'ÊTRE QUE DE LA COULEUR — les trois boutons du bandeau de
+   * fenêtre sont une croix, un trait et un point d'interrogation, sans un gris
+   * autour. On écrit sa variante QUAND MÊME, à l'identique.
+   *
+   * Ce n'est pas un fichier pour rien. La feuille de nuit fane tout sprite qui
+   * n'a pas de variante (cf. porteUnSprite dans generer-nuit.js) : ne rien
+   * écrire, c'était laisser le filtre du châssis passer ces boutons au gris
+   * violet — précisément ce qu'on veut leur éviter. La variante est ce qui
+   * dit « celui-là est réglé, n'y touche pas ».
+   */
+  const texte = sortie.replace(/(<svg[^>]*>\n?)/,
+    '$1' + ENTETE(entree.f, entree.note, !compteur.reteints));
+  return { texte, compteur, intact: !compteur.reteints };
 }
 
 const cible = (f) => path.join(SPRITES, f.replace(/\.svg$/, '-nuit.svg'));
 
 function main() {
   const verifier = process.argv.includes('--verifier');
-  let perimes = 0, ecrits = 0, gardes = 0, reteints = 0, sansObjet = [];
+  let perimes = 0, ecrits = 0, gardes = 0, reteints = 0, intacts = [];
   const vus = new Set();
   for (const entree of MANIFESTE) {
     if (vus.has(entree.f)) continue;          // le manifeste se lit, il ne se compte pas
     vus.add(entree.f);
-    const { texte, compteur } = fabriquer(entree);
+    const { texte, compteur, intact } = fabriquer(entree);
     const chemin = cible(entree.f);
     const ancien = fs.existsSync(chemin) ? fs.readFileSync(chemin, 'utf8') : null;
     reteints += compteur.reteints; gardes += compteur.gardes;
-    if (texte === null) {
-      sansObjet.push(entree.f);
-      // Une variante laissée d'un passage précédent ne doit pas survivre à un
-      // dessin de jour qui n'a plus rien de châssis.
-      if (!verifier && ancien !== null) { fs.unlinkSync(chemin); ecrits++; }
-      else if (verifier && ancien !== null) { console.error('EN TROP : ' + path.basename(chemin)); perimes++; }
-      continue;
-    }
+    if (intact) intacts.push(entree.f);
     if (verifier) {
       if (ancien !== texte) { console.error('PÉRIMÉ : ' + path.basename(chemin)); perimes++; }
       continue;
@@ -186,14 +247,13 @@ function main() {
       console.error('\nRelancer : node scripts/nuit-svg.js');
       process.exit(1);
     }
-    console.log('Les dessins de nuit sont à jour (' + (vus.size - sansObjet.length) + ' variantes).');
+    console.log('Les dessins de nuit sont à jour (' + vus.size + ' variantes).');
     return;
   }
-  console.log((vus.size - sansObjet.length) + ' variante(s) sur ' + vus.size + ' dessins, '
-    + ecrits + ' réécrite(s) — ' + reteints + ' couleur(s) repeinte(s), '
-    + gardes + ' laissée(s) telles quelles.');
-  if (sansObjet.length) {
-    console.log('Sans objet (que de l’accent, rien de châssis) : ' + sansObjet.join(', '));
+  console.log(vus.size + ' variante(s), ' + ecrits + ' réécrite(s) — '
+    + reteints + ' couleur(s) repeinte(s), ' + gardes + ' laissée(s) telles quelles.');
+  if (intacts.length) {
+    console.log('Copiés à l’identique (que de la couleur, rien de châssis) : ' + intacts.join(', '));
   }
 }
 

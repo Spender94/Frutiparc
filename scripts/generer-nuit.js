@@ -201,8 +201,25 @@ const COURBES = {
    *
    * Celle-ci est donc MONOTONE sur toute la plage utile : elle comprime, mais
    * elle n'écrase jamais deux valeurs voisines l'une sur l'autre.
+   *
+   * LE PLAFOND DUR A SAUTÉ, et c'est ce qui a rendu leur relief aux dessins.
+   * Il était posé à 38 : tout ce qui, dans le dessin de jour, était plus
+   * sombre qu'un gris moyen — les traits, les cernes, les glyphes, TOUTE la
+   * moitié basse de l'échelle — retombait sur cette seule valeur. Un bouton
+   * du Frusion, c'est un anneau et un pictogramme : les deux sortaient de la
+   * même couleur, et le pictogramme disparaissait. Mesuré sur la rampe des
+   * gris : de #888888 à #000000, une seule et même sortie.
+   *
+   * Au-dessus de 38 la courbe COMPRIME donc au lieu de couper (0,55 par point
+   * de clarté). Ce qui était clair ne bouge pas d'un cheveu — les dessins déjà
+   * réglés le restent —, et ce qui était sombre s'étale de 38 à 61 : le trait
+   * redevient un liseré clair sur une face sombre, comme sur un vrai boîtier
+   * de nuit.
    */
-  sprite: (l) => Math.min(8 + 0.72 * (100 - l), 38),
+  sprite: (l) => {
+    const v = 8 + 0.72 * (100 - l);
+    return v <= 38 ? v : 38 + (v - 38) * 0.55;
+  },
 };
 
 /*
@@ -280,7 +297,15 @@ function convertir(r, g, b, a, role) {
   // Le rose d'un dessin échappe au plafond — il ne porte pas de texte, et
   // c'est justement sa clarté qui en fait une commande.
   const roseDeCommande = role === 'sprite' && estRose(h, s);
-  if (surface && !roseDeCommande) nl = plafonnerLuminance(nh, ns, nl);
+  // LE RELIEF D'UN DESSIN N'EST PAS UN FOND. Le plafond existe pour qu'un
+  // aplat porte du texte ; il vaut donc pour la FACE d'un dessin — l'écran de
+  // l'aquarium, le corps d'un onglet, tous nés d'une valeur claire. Mais ce
+  // qui était SOMBRE dans le dessin de jour n'est pas une face : c'est un
+  // trait, un cerne, un glyphe. Le rabattre sous le plafond des fonds, c'est
+  // le ramener au niveau de la surface qu'il est censé détacher — et un
+  // boîtier sans arêtes n'est plus qu'une tache.
+  const reliefDeDessin = role === 'sprite' && l < 50;
+  if (surface && !roseDeCommande && !reliefDeDessin) nl = plafonnerLuminance(nh, ns, nl);
   else if (role === 'texte') nl = releverLuminance(nh, ns, nl);
   return hsl(nh, ns, nl, a);
 }
