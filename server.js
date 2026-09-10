@@ -5619,6 +5619,28 @@ const GAME_FEATURES = {
     name: 'IA de Swapou',
     label: 'analyse en partie de Swapou',
   },
+  // LE MODE NUIT. Ce n'est pas une option de jeu — c'est le site entier qui
+  // s'éteint : couleurs désaturées, fruits fanés, ciel gris et lune blafarde.
+  // Il vit tout de même dans cette table parce qu'elle EST le mécanisme des
+  // options permanentes du parc : achat, possession qui survit au reboot,
+  // retrait par l'admin. Écrire un second mécanisme pour un seul article
+  // n'aurait servi qu'à en avoir deux à maintenir.
+  //
+  // Le nom de l'article est une citation. Un développeur d'époque présentait
+  // ainsi le Frutiparc qu'il aurait fait si on l'avait écouté : « un site aux
+  // couleurs totalement désaturées, avec des petits fruits zombies et des
+  // décors de crypte […]. Mais son temps viendra… ». Il est venu.
+  modeNuit: {
+    shopId: 42,
+    price: 300,
+    name: 'Son temps viendra',
+    label: 'mode nuit',
+    // Les autres options s'allument SEULES en jeu ; celle-ci a un
+    // interrupteur, et le message d'achat doit dire où il est plutôt que de
+    // promettre quelque chose « dès que tu lances une partie ».
+    annonce: 'Son temps viendra ! Le mode nuit s’allume dans Réglages → « Le parc, la nuit », '
+      + 'sur l’appareil de ton choix.',
+  },
 };
 // Seules les options VENDUES ont un numéro d'article.
 const GAME_FEATURE_BY_SHOPID = Object.fromEntries(
@@ -5673,6 +5695,29 @@ const SHOP_GAME_PACKS_DEFAULT = [
     picto: 'pack,14',
     description: 'Deux cadrans de plus sur le panneau de Swapou, gravés comme ceux du jeu : le nombre de coups que tu as joués, et le nombre de fruits qui te séparent de la prochaine étoile de pouvoir.',
     comment: "Deux compteurs en direct pendant une partie Challenge : coups joués et fruits avant la prochaine étoile. S'active tout seul dès l'achat. Permanent !",
+    suffix9: '000000000',
+  },
+];
+
+// ── Rubrique « Décors » : l'habillage du parc ────────────────────────────────
+// Une rubrique à part, parce qu'un thème n'est pas une option de jeu : il ne
+// change rien à ce qu'on joue, il change ce qu'on voit. Elle n'a qu'un article
+// aujourd'hui ; elle est le rayon où en poser d'autres.
+//
+// `notDefault` est OBLIGATOIRE : `shopCategoryOwnedByDefault` ne connaît pas
+// « Décors » et la tiendrait donc pour une rubrique offerte — l'article serait
+// possédé d'office par tout le monde, et l'achat refusé.
+const SHOP_DECOR_PACKS_DEFAULT = [
+  {
+    id: GAME_FEATURES.modeNuit.shopId,
+    name: GAME_FEATURES.modeNuit.name,
+    category: 'Décors',
+    price: GAME_FEATURES.modeNuit.price,
+    notDefault: true,
+    gameFeature: 'modeNuit',
+    picto: 'img,/fb/boutique/nuit.svg',
+    description: "Le parc s'éteint : couleurs désaturées, fruits fanés, décor d'ardoise, un bon gros ciel gris nuageux et une lune blafarde. Ta bouille, elle, garde ses couleurs — le monde a viré au gris, pas toi.",
+    comment: "S'allume et s'éteint quand tu veux, depuis Réglages, et sur l'appareil de ton choix : nuit sur le téléphone, jour sur l'ordinateur. Les salons, le bureau et le forum s'éteignent ensemble. Achat permanent !",
     suffix9: '000000000',
   },
 ];
@@ -6210,6 +6255,7 @@ const SHOP_PACKS_DEFAULT = [
     suffix9: '000000000',
   },
   ...SHOP_GAME_PACKS_DEFAULT,
+  ...SHOP_DECOR_PACKS_DEFAULT,
   ...SHOP_FEUTRES_DEFAULT,
 ];
 const SHOP_PACKS = [...SHOP_PACKS_DEFAULT];
@@ -19135,7 +19181,8 @@ function purchaseShopPack(user, username, packIdRaw) {
     const opt = GAME_FEATURES[pack.gameFeature];
     addAndNotifyUserLog(username, {
       type: USER_LOG_TYPE.CHAT,
-      content: `${pack.name} acheté ! Le ${opt ? opt.label : 'tableau de bord'} s'affiche désormais tout seul dès que tu lances une partie.`,
+      content: (opt && opt.annonce)
+        || `${pack.name} acheté ! Le ${opt ? opt.label : 'tableau de bord'} s'affiche désormais tout seul dès que tu lances une partie.`,
     });
     console.log(`[ft/buy] ${username} bought OPTION #${pack.id} (${pack.gameFeature}) — kikooz now ${user.kikooz}`);
     return { ok: true, kikooz: user.kikooz, isGameFeature: true, feature: pack.gameFeature, pack };
@@ -23639,8 +23686,15 @@ app.get('/api/light/fruticard', async (req, res) => {
  * Pass, lui, reste TOUJOURS achetable : il se cumule.
  */
 const BOUTIQUE_PICTO_IMG = (picto) => {
-  const m = /^(pass|pack),(\d+)$/.exec(String(picto || ''));
-  return m ? `/fb/boutique/${m[1]}_${m[2]}.png` : null;
+  const p = String(picto || '');
+  const m = /^(pass|pack),(\d+)$/.exec(p);
+  if (m) return `/fb/boutique/${m[1]}_${m[2]}.png`;
+  // « img,<chemin> » : une image à nous, pour un article qui n'a pas de
+  // vignette d'époque dans shopitem.swf — le mode nuit, par exemple. Le SWF
+  // ne sait de toute façon pas charger une image externe (cf. le détour des
+  // feutres spéciaux) ; le client light, lui, l'affiche telle quelle.
+  const img = /^img,(\/[\w./-]+)$/.exec(p);
+  return img ? img[1] : null;
 };
 app.get('/api/light/shop', (req, res) => {
   const username = resolveUsernameFromSid(req.query.sid || '');

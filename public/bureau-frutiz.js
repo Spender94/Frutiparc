@@ -204,6 +204,18 @@ window.BureauFrutiz = (function () {
     origine.parent.insertBefore(noeud, suivant);
   }
 
+  // « Avec évidemment un petit arbre mort par ci par là, un bon gros ciel gris
+  // nuageux et une lune blafarde. » L'arbre attendra qu'on le dessine ; le
+  // ciel et la lune, eux, tiennent en quatre dégradés. La lune se pose à
+  // droite et sous la rangée d'icônes : c'est la seule étendue que le bureau
+  // laisse libre quelle que soit la taille de l'écran.
+  var CIEL_DE_NUIT =
+    'radial-gradient(circle at 84% 38%, hsl(52 12% 86%) 0 30px,'
+    + ' hsl(52 12% 86% / .16) 31px 56px, transparent 57px),'
+    + 'radial-gradient(60% 38% at 22% 12%, hsl(200 8% 24%) 0%, transparent 72%),'
+    + 'radial-gradient(46% 26% at 62% 46%, hsl(200 7% 20%) 0%, transparent 74%),'
+    + 'linear-gradient(hsl(205 10% 14%), hsl(140 8% 8%))';
+
   // ── Le fond d'écran du bureau ─────────────────────────────────────────
   // La transcription de WallPaperMng.onStageResize, comme le tiroir mobile —
   // mais en PAYSAGE : l'image d'origine (fond.url), contenue sans jamais être
@@ -213,8 +225,15 @@ window.BureauFrutiz = (function () {
     if (!actif) return;
     var bureau = $('#bureau');
     if (!bureau) return;
+    // LE CIEL DU MODE NUIT. Le fond du bureau est posé ICI, en `style=""` :
+    // aucune feuille de style ne peut l'atteindre, /nuit.css pas davantage.
+    // Sans fond d'écran choisi, le vert pomme laisse donc place au ciel gris
+    // nuageux et à sa lune blafarde — trois dégradés, aucun dessin. AVEC un
+    // fond d'écran, l'image du joueur reste : il l'a payée, elle passe avant
+    // le décor ; seule la couleur autour s'éteint.
+    var nuit = document.documentElement.getAttribute('data-nuit') === '1';
     if (!fond || !fond.url) {
-      bureau.style.background = '#ADE76B';
+      bureau.style.background = nuit ? CIEL_DE_NUIT : '#ADE76B';
       bureau.style.removeProperty('--fond-txt');
       bureau.style.removeProperty('--fond-halo');
       return;
@@ -224,19 +243,27 @@ window.BureauFrutiz = (function () {
       v = String(v || '').trim();
       return /^[0-9a-fA-F]{6}$/.test(v) ? '#' + v : null;
     };
-    bureau.style.backgroundColor = hex(arr[0]) || '#ADE76B';
+    bureau.style.backgroundColor = nuit ? '#141a12' : (hex(arr[0]) || '#ADE76B');
     bureau.style.backgroundImage = 'url("' + fond.url + '")';
     bureau.style.backgroundRepeat = 'no-repeat';
-    var txt = arr.length >= 2 ? (hex(arr[1]) || '#000000') : null;
+    // La couleur de légende annoncée par le fond d'écran vaut SUR l'image ;
+    // de nuit, l'image ne couvre plus qu'une partie du bureau et le reste est
+    // presque noir. On laisse donc parler /nuit.css, qui pose une légende
+    // pâle valable partout — d'où le retrait, et non la pose, des variables.
+    var txt = nuit ? null : (arr.length >= 2 ? (hex(arr[1]) || '#000000') : null);
     if (txt) bureau.style.setProperty('--fond-txt', txt);
     else bureau.style.removeProperty('--fond-txt');
-    var halo = '255,255,255';
-    if (txt) {
-      var v = parseInt(txt.slice(1), 16);
-      var lum = 0.299 * ((v >> 16) & 255) + 0.587 * ((v >> 8) & 255) + 0.114 * (v & 255);
-      if (lum > 140) halo = '0,0,0';
+    if (nuit) {
+      bureau.style.removeProperty('--fond-halo');
+    } else {
+      var halo = '255,255,255';
+      if (txt) {
+        var v = parseInt(txt.slice(1), 16);
+        var lum = 0.299 * ((v >> 16) & 255) + 0.587 * ((v >> 8) & 255) + 0.114 * (v & 255);
+        if (lum > 140) halo = '0,0,0';
+      }
+      bureau.style.setProperty('--fond-halo', 'rgba(' + halo + ',.85)');
     }
-    bureau.style.setProperty('--fond-halo', 'rgba(' + halo + ',.85)');
     var img = new Image();
     img.onload = function () {
       var dispo = bureau.getBoundingClientRect();
@@ -8644,6 +8671,10 @@ window.BureauFrutiz = (function () {
     demarrer: demarrer,
     apresActivateTab: apresActivateTab,
     poserFond: poserFond,
+    // Le fond est posé en `style=""` : aucune feuille ne l'atteint. Quand le
+    // light bascule en mode nuit, il redemande donc le MÊME fond — qui se
+    // repose alors sous le ciel gris plutôt que sur le vert pomme.
+    rafraichirFond: function () { poserFond(fondCourant); },
     // La tuile « Salons » du bureau ouvre la LISTE, pas la conversation :
     // c'est le double-clic sur « Les salons » du bureau d'époque.
     ouvrirSalonsPublics: ouvrirSalonsPublics,

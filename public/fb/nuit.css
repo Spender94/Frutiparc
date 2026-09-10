@@ -1,0 +1,721 @@
+/* ENGENDRÉ — NE PAS MODIFIER À LA MAIN.
+ *
+ * La feuille du mode nuit. Produite par scripts/generer-nuit.js à partir de :
+ *   · public/fb/index.html (son <style>)
+ *
+ * Toute retouche du thème de jour demande de relancer :
+ *   node scripts/generer-nuit.js
+ * (test/modeNuit.test.js échoue si l'on oublie.)
+ *
+ * Les corrections à la main, elles, vivent dans scripts/nuit-retouches*.css
+ * et sont recopiées à la fin de ce fichier — donc elles gagnent.
+ */
+
+body {
+  background: hsl(88 22% 22%);
+  color: hsl(90 20% 67.6%);
+}
+.forum-shell {
+  background: hsl(0 0% 4%);
+  border: 1.125px solid hsl(88 10% 44.7%);
+  box-shadow: inset 0 0 0 1px hsl(240 0% 11.9%);
+}
+a {
+  color: hsl(91 20% 66.9%);
+}
+a:hover {
+  color: hsl(91 20% 66.9%);
+}
+.topbar .user-info {
+  color: hsl(91 20% 66.9%);
+}
+.topbar .close-btn {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+}
+.topbar .close-btn:hover {
+  background: hsl(15 5% 13%);
+}
+.forum-header {
+  background: hsl(0 0% 4%);
+}
+.forum-header .title-link {
+  color: hsl(15 5% 80.3%);
+}
+.forum-header .title-link a {
+  color: hsl(15 5% 80.3%);
+}
+.forum-header .title-link .bc-sep {
+  color: hsl(15 5% 80.3%);
+}
+.forum-header .title-link .bc-current {
+  color: hsl(0 0% 71.3%);
+}
+.forum-header .title-link a.bc-retour {
+  border: 1px solid hsl(15 5% 30.4%);
+}
+.forum-header .title-link a.bc-retour:hover {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+}
+.tbl-header {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+}
+.cat-header {
+  background: hsl(88 22% 22%);
+  color: hsl(91 20% 66.9%);
+}
+.cat-header a {
+  color: hsl(91 20% 66.9%);
+}
+.cat-header a:hover {
+  color: hsl(91 20% 66.9%);
+}
+.row {
+  background: hsl(90 24% 14%);
+}
+.row.row-alt {
+  background: hsl(89 22% 19.1%);
+}
+.row .info .title {
+  color: hsl(91 20% 66.9%);
+}
+.row .info .title a {
+  color: hsl(91 20% 66.9%);
+}
+.row .info .title a:hover {
+  color: hsl(91 20% 66.9%);
+}
+.row .info .desc {
+  color: hsl(90 20% 67.6%);
+}
+.row .info .moderator {
+  color: hsl(90 20% 67.6%);
+}
+.row .col-num {
+  color: hsl(90 20% 67.6%);
+}
+.row .col-last {
+  color: hsl(90 20% 67.6%);
+}
+.row .col-last a {
+  color: hsl(91 20% 66.9%);
+}
+.row .col-last a:hover {
+  color: hsl(91 20% 66.9%);
+}
+.row .sticky-tag {
+  color: hsl(91 20% 66.9%);
+}
+.row .locked-tag {
+  color: hsl(0 0% 76.9%);
+}
+.topic-row .info .author {
+  color: hsl(90 20% 67.6%);
+}
+.topic-row .info .author a {
+  color: hsl(91 20% 66.9%);
+}
+.post {
+  background: hsl(90 24% 14%);
+}
+.post .post-author {
+  background: hsl(90 24% 14%);
+}
+.post .post-author .avatar {
+  background: hsl(90 24% 11.1%);
+}
+.post .post-author .username {
+  color: hsl(91 20% 66.9%);
+}
+.post .post-body {
+  background: hsl(90 24% 14%);
+}
+.post.post-alt,
+  .post.post-alt .post-body,
+  .post.post-alt .post-author,
+  .post.post-alt .post-header {
+  background: hsl(89 22% 19.1%);
+}
+.post.post-nonlu {
+  outline: 2px solid hsl(96 19% 40%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .post.post-nonlu {
+    outline-color: hsl(96 20% 43.5%);
+  }
+}
+.post .post-header {
+  background: hsl(90 24% 14%);
+  color: hsl(90 20% 67.6%);
+}
+.post .post-header .post-icon {
+  filter: var(--nuit-fane);
+}
+.act-btn {
+  color: hsl(0 0% 90%);
+}
+.act-btn-red,
+  .act-btn-green,
+  .act-btn-blue {
+  background: hsl(15 5% 13%);
+}
+.act-btn-red:hover,
+  .act-btn-green:hover,
+  .act-btn-blue:hover {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+}
+.suivi-btn {
+  color: hsl(90 6% 80.7%);
+}
+.suivi-btn:hover {
+  color: hsl(15 5% 80.3%);
+}
+.suivi-btn.on {
+  color: hsl(15 5% 80.3%);
+}
+.shell-left .suivi-btn {
+  color: hsl(86 23% 70.4%);
+}
+.shell-left .suivi-btn .c {
+  color: hsl(90 6% 80.7%);
+}
+.shell-left .suivi-btn.on .c {
+  color: hsl(15 5% 80.3%);
+}
+.post .post-content {
+  color: hsl(90 20% 67.6%);
+}
+.bb-youtube {
+  background: hsl(0 0% 0%);
+}
+.post .post-edited {
+  color: hsl(88 14% 71.7%);
+}
+.post .post-signature {
+  border-top: 1px solid hsl(78 14% 26.9%);
+  color: hsl(81 12% 70.8%);
+}
+.post-content blockquote.quote {
+  background: hsl(90 24% 11.1%);
+  border: 1.5px solid hsl(89 16% 28.8%);
+  color: hsl(90 20% 67.6%);
+}
+.post-content blockquote.quote blockquote.quote {
+  background: hsl(89 24% 8%);
+}
+.post-content .quote-author {
+  color: hsl(97 24% 64.9%);
+}
+.post-content a {
+  color: hsl(91 20% 66.9%);
+}
+.bbcode-toolbar button {
+  background: hsl(88 22% 22%);
+  border: 1px solid hsl(91 20% 44.8%);
+  color: hsl(91 20% 66.9%);
+}
+.bbcode-toolbar button:hover {
+  background: hsl(89 22% 19.1%);
+}
+.picto-picker {
+  background: hsl(46 24% 7.2%);
+  border: 2px solid hsl(91 20% 44.8%);
+  box-shadow: 2px 2px 8px hsl(0 0% 0% / 0.25);
+}
+.picto-picker img {
+  border: 1px solid hsl(0 0% 26%);
+  background: hsl(0 0% 4%);
+}
+.picto-picker img:hover {
+  border-color: hsl(91 20% 44.8%);
+  background: hsl(84 19% 10.4%);
+}
+.picto-picker .picto-empty {
+  color: hsl(0 0% 73.2%);
+}
+.picto-card {
+  background: hsl(46 24% 7.2%);
+  border: 1px solid hsl(76 13% 28.1%);
+}
+.picto-card .picto-name {
+  color: hsl(91 20% 66.9%);
+}
+.picto-card .picto-game {
+  color: hsl(0 0% 76.9%);
+}
+.picto-gallery-section h4 {
+  color: hsl(91 20% 66.9%);
+  border-bottom: 1px solid hsl(76 13% 28.1%);
+}
+.consecration-banner {
+  background: linear-gradient(135deg, hsl(84 23% 8.3%), hsl(82 20% 15.4%));
+  border: 1px solid hsl(84 16% 34.6%);
+}
+.consecration-banner .conse-title {
+  color: hsl(91 20% 66.9%);
+}
+.consecration-banner .conse-pct {
+  color: hsl(87 23% 69.6%);
+}
+.consecration-banner .conse-bar {
+  background: hsl(0 0% 4%);
+  border: 1px solid hsl(84 16% 34.6%);
+}
+.consecration-banner .conse-fill {
+  background: linear-gradient(90deg, hsl(84 16% 22%), hsl(87 23% 22%));
+}
+.consecration-banner .conse-game {
+  background: hsl(0 0% 4%);
+  border: 1px solid hsl(76 13% 28.1%);
+  color: hsl(91 20% 66.9%);
+}
+.consecration-banner .conse-game b {
+  color: hsl(87 23% 69.6%);
+}
+.consecration-banner .conse-note {
+  color: hsl(87 19% 71.3%);
+}
+.picto-bbcode-hint {
+  color: hsl(0 0% 71.3%);
+  background: hsl(48 17% 9.5%);
+  border: 1px solid hsl(51 11% 26.4%);
+}
+.picto-bbcode-hint code {
+  background: hsl(0 0% 4%);
+}
+.post-edit-area textarea {
+  border: 1px solid hsl(93 14% 33.1%);
+  background: hsl(89 22% 19.1%);
+  color: hsl(91 20% 66.9%);
+}
+.btn {
+  color: hsl(0 0% 90%);
+}
+.btn-green {
+  background: hsl(15 5% 13%);
+}
+.btn-green:hover {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+}
+.btn-orange {
+  background: hsl(15 5% 13%);
+}
+.btn-orange:hover {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+}
+.pagination {
+  color: hsl(91 20% 66.9%);
+}
+.pagination a, .pagination span {
+  border: 1px solid hsl(91 20% 44.8%);
+  background: hsl(90 24% 14%);
+  color: hsl(91 20% 66.9%);
+}
+.pagination span.current {
+  background: hsl(89 22% 19.1%);
+  color: hsl(91 20% 66.9%);
+}
+.form-area {
+  background: hsl(90 24% 14%);
+}
+.form-area h3 {
+  color: hsl(91 20% 66.9%);
+}
+.form-area label {
+  color: hsl(91 20% 66.9%);
+}
+.form-area input[type="text"],
+  .form-area textarea {
+  border: 1px solid hsl(0 0% 40%);
+  background: hsl(0 0% 4%);
+  color: hsl(91 20% 66.9%);
+}
+.bouille-preview-box {
+  border: 1.5px solid hsl(88 10% 44.7%);
+  background: hsl(86 22% 10.2%);
+}
+.bouille-option-group label {
+  color: hsl(91 20% 66.9%);
+}
+.expression-grid .expr-btn {
+  background: hsl(89 22% 19.1%);
+  border: 1px solid hsl(88 10% 44.7%);
+  color: hsl(91 20% 66.9%);
+}
+.expression-grid .expr-btn:hover {
+  background: hsl(88 22% 22%);
+}
+.expression-grid .expr-btn.active {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+  border-color: hsl(15 5% 34.9%);
+}
+.acc-grid .acc-btn {
+  background: hsl(89 22% 19.1%);
+  border: 1px solid hsl(88 10% 44.7%);
+  color: hsl(91 20% 66.9%);
+}
+.acc-grid .acc-btn:hover {
+  background: hsl(88 22% 22%);
+}
+.acc-grid .acc-btn.active {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+  border-color: hsl(15 5% 34.9%);
+}
+.toolbar {
+  background: hsl(0 0% 4%);
+}
+.bottom-bar {
+  background: hsl(88 22% 22%);
+  color: hsl(91 20% 66.9%);
+}
+.shell-actions {
+  background: hsl(0 0% 4%);
+}
+.bottom-bar select {
+  background: hsl(89 22% 19.1%);
+  color: hsl(91 20% 66.9%);
+}
+.bottom-bar .go-btn {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+}
+.mod-bar {
+  background: hsl(0 0% 4%);
+}
+.mod-bar .mod-btn {
+  color: hsl(0 0% 90%);
+  background: hsl(15 5% 13%);
+}
+.mod-bar .mod-btn:hover {
+  background: hsl(15 5% 13%);
+}
+.forum-footer {
+  color: hsl(91 20% 66.9%);
+  background: hsl(87 24% 17.6%);
+}
+.forum-footer a {
+  color: hsl(0 0% 69.5%);
+}
+.loading, .empty {
+  color: hsl(90 20% 67.6%);
+  background: hsl(0 0% 4%);
+}
+.reply-blocked {
+  background: hsl(24 24% 8.5%);
+  border: 1px solid hsl(15 5% 30.4%);
+  color: hsl(91 20% 66.9%);
+}
+.editor-area {
+  background: hsl(90 24% 14%);
+}
+.editor-preview-wrap {
+  background: hsl(90 24% 14%);
+}
+.editor-preview-header {
+  background: hsl(88 22% 22%);
+  color: hsl(91 20% 66.9%);
+  border-bottom: 1px solid hsl(93 14% 33.1%);
+}
+.editor-preview-header .post-icon {
+  filter: var(--nuit-fane);
+}
+.editor-preview-body {
+  background: hsl(90 24% 14%);
+}
+.editor-preview-author .username {
+  color: hsl(91 20% 66.9%);
+}
+.editor-preview-content {
+  color: hsl(90 20% 67.6%);
+}
+.editor-form {
+  background: hsl(90 24% 14%);
+}
+.editor-label-cell,
+  .editor-value-cell {
+  color: hsl(91 20% 66.9%);
+}
+.editor-input {
+  background: hsl(0 0% 4%);
+  color: hsl(91 20% 66.9%);
+  border: 1px solid hsl(91 20% 44.8%);
+}
+.bouille-nav {
+  color: hsl(91 20% 66.9%);
+}
+.bouille-nav a {
+  color: hsl(91 20% 66.9%);
+}
+.bouille-nav a:hover {
+  color: hsl(87 23% 69.6%);
+}
+.bouille-nav .disabled {
+  color: hsl(92 7% 77.3%);
+}
+.bouille-item .b-name {
+  color: hsl(91 20% 66.9%);
+}
+.editor-select {
+  background: hsl(0 0% 4%);
+  color: hsl(91 20% 66.9%);
+  border: 1px solid hsl(91 20% 44.8%);
+}
+.editor-bbcode-toolbar .bb-btn {
+  background: linear-gradient(180deg, hsl(0 0% 5.2%) 0%, hsl(0 0% 14.5%) 100%);
+  border: 1px solid hsl(0 0% 34%);
+  color: hsl(0 0% 62%);
+}
+.editor-bbcode-toolbar .bb-btn:hover {
+  background: linear-gradient(180deg, hsl(0 0% 4%) 0%, hsl(0 0% 10.3%) 100%);
+}
+.editor-bbcode-toolbar .bb-btn:active {
+  background: linear-gradient(180deg, hsl(0 0% 14.5%) 0%, hsl(0 0% 5.2%) 100%);
+}
+.editor-bbcode-toolbar .bb-select {
+  background: linear-gradient(180deg, hsl(0 0% 5.2%) 0%, hsl(0 0% 14.5%) 100%);
+  border: 1px solid hsl(0 0% 34%);
+  color: hsl(0 0% 62%);
+}
+.editor-hint-row {
+  background: hsl(89 22% 19.1%);
+  border: 1px solid hsl(93 14% 33.1%);
+}
+.editor-hint-row .hint-text {
+  color: hsl(91 20% 66.9%);
+}
+.editor-hint-row .close-tags-btn {
+  background: linear-gradient(180deg, hsl(0 0% 5.2%) 0%, hsl(0 0% 14.5%) 100%);
+  border: 1px solid hsl(0 0% 34%);
+  color: hsl(0 0% 62%);
+}
+.editor-hint-row .close-tags-btn:hover {
+  background: linear-gradient(180deg, hsl(0 0% 4%) 0%, hsl(0 0% 10.3%) 100%);
+}
+.emoticons-row .emo-btn:hover {
+  border-color: hsl(91 20% 44.8%);
+  background: hsl(84 19% 10.4%);
+}
+.editor-textarea {
+  background: hsl(0 0% 4%);
+  color: hsl(91 20% 66.9%);
+  border: 1px solid hsl(91 20% 44.8%);
+}
+.post-content .mention, .post-signature .mention {
+  color: hsl(91 20% 66.9%);
+}
+.post-content .mention.moi, .post-signature .mention.moi {
+  color: hsl(15 5% 67.6%);
+  background: hsl(45 24% 14.6%);
+  box-shadow: inset 0 0 0 1px hsl(43 21% 22%);
+}
+.mention-liste {
+  background: hsl(0 0% 4%);
+  border: 1px solid hsl(81 8% 28.9%);
+  box-shadow: 0 6px 18px hsl(0 0% 0% / 0.18);
+}
+.mention-item {
+  color: hsl(91 20% 66.9%);
+}
+.mention-item.on, .mention-item:hover {
+  background: hsl(79 17% 9.2%);
+}
+.editor-actions {
+  background: hsl(90 24% 14%);
+}
+.editor-actions .edit-btn {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+}
+.editor-actions .edit-btn:hover {
+  background: hsl(15 5% 13%);
+}
+.post-content pre.bb-code {
+  background: hsl(60 17% 9.5%);
+  border: 1px solid hsl(76 13% 28.1%);
+  color: hsl(0 0% 67.6%);
+}
+.poll-box {
+  background: hsl(90 24% 14%);
+  border-bottom: 1px solid hsl(88 22% 30.1%);
+}
+.poll-box-header {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+}
+.poll-box-header .poll-icon {
+  filter: var(--nuit-fane);
+}
+.poll-question {
+  color: hsl(91 20% 66.9%);
+}
+.poll-vote-opt {
+  color: hsl(90 20% 67.6%);
+}
+.poll-vote-opt:hover {
+  background: hsl(89 22% 19.1%);
+}
+.poll-vote-disabled {
+  color: hsl(91 7% 74.2%);
+}
+.poll-vote-btn, .poll-close-btn {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+}
+.poll-vote-btn:hover, .poll-close-btn:hover {
+  background: hsl(15 5% 13%);
+}
+.poll-peek-link, .poll-results-peek a {
+  color: hsl(91 20% 66.9%);
+}
+.poll-result-label {
+  color: hsl(91 20% 66.9%);
+}
+.poll-result-label .poll-check {
+  color: hsl(15 5% 80.3%);
+}
+.poll-result-track {
+  background: hsl(90 24% 11.1%);
+  border: 1px solid hsl(89 16% 28.8%);
+}
+.poll-result-fill {
+  background: linear-gradient(180deg, hsl(15 5% 13%) 0%, hsl(15 5% 13%) 100%);
+}
+.poll-result-num {
+  color: hsl(92 12% 70.3%);
+}
+.poll-total {
+  color: hsl(91 20% 66.9%);
+}
+.poll-closed-note {
+  color: hsl(15 5% 74.1%);
+}
+.poll-login-note {
+  color: hsl(91 7% 74.2%);
+}
+.poll-optional {
+  color: hsl(91 7% 74.2%);
+}
+.poll-enable {
+  color: hsl(91 20% 66.9%);
+}
+.poll-fields {
+  background: hsl(89 22% 19.1%);
+  border: 1px solid hsl(93 14% 33.1%);
+}
+.poll-edit-q label, .poll-edit-opts-label {
+  color: hsl(91 20% 66.9%);
+}
+.poll-del-btn {
+  background: hsl(15 5% 13%);
+  color: hsl(0 0% 90%);
+}
+.poll-del-btn:hover {
+  background: hsl(15 5% 13%);
+}
+.poll-add-btn {
+  background: linear-gradient(180deg, hsl(0 0% 5.2%) 0%, hsl(0 0% 14.5%) 100%);
+  border: 1px solid hsl(0 0% 34%);
+  color: hsl(0 0% 62%);
+}
+.poll-add-btn:hover {
+  background: linear-gradient(180deg, hsl(0 0% 4%) 0%, hsl(0 0% 10.3%) 100%);
+}
+.poll-edit-hint {
+  color: hsl(92 12% 70.3%);
+}
+#back-chat-link, #pictos-link {
+  color: hsl(91 20% 66.9%);
+}
+.fb-note-grise {
+  color: hsl(0 0% 76.9%);
+}
+.fb-titre-rose {
+  color: hsl(15 5% 80.3%);
+}
+.editor-input-fige {
+  background: hsl(84 19% 10.4%);
+}
+.sig-modal {
+  background: hsl(0 0% 0% / 0.45);
+}
+.sig-boite {
+  background: hsl(0 0% 4%);
+  border: 2px solid hsl(91 20% 44.8%);
+  box-shadow: 0 12px 32px hsl(0 0% 0% / 0.35);
+}
+.sig-titre {
+  color: hsl(91 20% 66.9%);
+}
+.sig-aide {
+  color: hsl(88 14% 71.7%);
+}
+.sig-legende {
+  color: hsl(88 14% 71.7%);
+}
+.sig-apercu {
+  border-top: 1px solid hsl(78 14% 26.9%);
+}
+.sig-vide {
+  color: hsl(0 0% 80.7%);
+}
+
+/* ── À la main, à partir d'ici ────────────────────────────────────── */
+/*
+ * LES RETOUCHES DU MODE NUIT, CÔTÉ FORUM — recopiées à la fin de
+ * public/fb/nuit.css par scripts/generer-nuit.js.
+ *
+ * Le forum est un document à part : il ne voit ni les variables ni les règles
+ * de public/nuit.css. Les deux ou trois choses qu'il partage avec le light
+ * sont donc redites ici. Elles sont peu nombreuses : c'est la même conversion
+ * qui a teint les deux feuilles.
+ */
+
+:root {
+  --nuit-fane: saturate(.26) brightness(.78) contrast(1.06);
+  --nuit-ciel:
+    radial-gradient(circle at 84% 76%, hsl(52 12% 86%) 0 21px,
+                    hsl(52 12% 86% / .20) 22px 38px, transparent 39px),
+    radial-gradient(76% 40% at 24% 3%, hsl(200 8% 25%) 0%, transparent 72%),
+    radial-gradient(54% 30% at 68% 28%, hsl(200 7% 21%) 0%, transparent 74%),
+    linear-gradient(hsl(205 10% 15%), hsl(140 8% 9%));
+}
+
+/* Les pictos, l'orange du fil d'Ariane, les vignettes des messages : les
+   dessins d'époque fanent, ils ne sont pas remplacés. */
+img { filter: var(--nuit-fane); }
+/* Et les sprites posés en `style=""` par le JavaScript du forum. */
+[style*="background-image"] { filter: var(--nuit-fane); }
+
+/* LES DOSSIERS DU FORUM, ET SEULEMENT EUX. Les deux grandes icônes de
+   rubrique (folder_big.gif et folder_big_new.png, 2001) sont OPAQUES : leur
+   vert #D6F7B5 est peint dans l'image, pas derrière. Le fanage ordinaire ne
+   fait que le ternir — on voyait donc une bande claire courir le long des
+   rubriques, seule tache de jour dans un forum éteint. Elles descendent au
+   niveau du fond des lignes ; le fruit y devient une silhouette, ce qui n'est
+   pas pour déplaire à une crypte. */
+.folder-icon { filter: saturate(.22) brightness(.30) contrast(1.2); }
+
+/* LES DEUX BOUTONS DE LA MODALE DE SIGNATURE. Le forum n'habille ses boutons
+   que dans `.editor-actions` — la barre verte sous la zone de saisie ; ceux
+   de la modale sont ailleurs et portent donc le gris par défaut du navigateur,
+   déjà de jour. On ne touche pas au thème de jour pour si peu, mais la nuit
+   ce gris est la seule tache claire de la modale : on l'éteint ici. */
+.sig-modal .edit-btn {
+  background: hsl(15 5% 16%);
+  color: hsl(0 0% 88%);
+  border: 1px solid hsl(0 0% 32%);
+}
+
+/* Le forum flotte sur une page pleine : c'est là qu'on voit le ciel, et la
+   lune. Fixé, pour que la lune ne défile pas avec les messages. */
+body {
+  background: var(--nuit-ciel) fixed;
+  background-color: hsl(150 8% 9%);
+}

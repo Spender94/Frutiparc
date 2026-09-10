@@ -121,6 +121,44 @@ frusion/              Système réseau (client/serveur Flash)
 Games/                Mini-jeux (Burning Kiwi, Kaluga, Frutibandas, etc.)
 ```
 
+## Le mode nuit (« Son temps viendra »)
+
+Un thème sombre pour `/light`, vendu en boutique (rubrique **Décors**, 300
+kikooz, article `42`). Il s'allume dans **Réglages → « Le parc, la nuit »**,
+avec trois positions : Jour, Nuit, Comme mon téléphone. Le choix vit dans le
+`localStorage` (donc **par appareil**) ; la possession, elle, est au compte
+(`owned_features`, option `modeNuit`, lue par `/api/features`).
+
+**La feuille de nuit est engendrée, pas écrite.** Les trois feuilles du site —
+le `<style>` de `public/light.html`, `public/bureau-frutiz.css`, le `<style>`
+de `public/fb/index.html` — comptent près de mille huit cents couleurs en dur
+et pas une variable CSS. `scripts/generer-nuit.js` les relit, fait passer
+chaque couleur par une conversion, et écrit deux feuilles de **surcharge** :
+
+```
+node scripts/generer-nuit.js              écrit public/nuit.css et public/fb/nuit.css
+node scripts/generer-nuit.js --verifier   n'écrit rien, sort 1 si elles sont périmées
+```
+
+> **Toute retouche du thème de jour demande de relancer le générateur.**
+> `test/modeNuit.test.js` échoue si on l'oublie.
+
+La conversion garde la **teinte**, coupe la **saturation**, et renverse la
+**clarté** — mais avec une courbe différente selon le rôle de la couleur, lu
+dans le nom de la propriété : un fond descend, un texte monte, une bordure se
+pose entre les deux, une ombre sombre ne bouge pas. D'où l'invariant que le
+test mesure sur les feuilles produites : **aucun fond au-dessus de 40 % de
+clarté, aucun texte en dessous de 55 %** — un couple texte/fond illisible est
+structurellement impossible. Toute la famille rose/rouge du parc part au
+graphite : c'est ce qui donne à la nuit son air de crypte.
+
+Les corrections que la conversion ne peut pas trouver — les dessins d'époque,
+qui *fanent* au lieu d'être redessinés, le ciel et la lune — vivent dans
+`scripts/nuit-retouches.css` et `scripts/nuit-retouches-forum.css`, recopiées à
+la fin des feuilles engendrées. Ce qui reste **en couleur**, volontairement :
+les bouilles (dessinées dans un `<canvas>`), les fonds d'écran achetés, et les
+jeux — les teinter abîmerait la lisibilité de jeu et la fidélité d'époque.
+
 ## Endpoints HTTP
 
 | Route | Rôle |

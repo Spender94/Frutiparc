@@ -76,9 +76,11 @@ test('la boutique exige une session', async () => {
 test('les rubriques du bureau sont servies, dans l\'ordre du catalogue', async () => {
   const d = await boutique(await inscrire(joueur('rub')));
   // Cinq rayons d'époque, plus les INCARNATIONS — les bouilles qu'on enfile à
-  // la place de la sienne, qui ne sont pas des accessoires qu'on pose.
+  // la place de la sienne, qui ne sont pas des accessoires qu'on pose — et
+  // les DÉCORS, l'habillage du parc : un thème ne change rien à ce qu'on joue,
+  // il change ce qu'on voit, il ne pouvait donc pas rejoindre les Packs.
   assert.deepEqual((d.categories || []).map((c) => c.name),
-    ['Accessoires', 'Incarnations', "Fonds d'écran", 'Pass', 'Feutres', 'Packs'],
+    ['Accessoires', 'Incarnations', "Fonds d'écran", 'Pass', 'Feutres', 'Packs', 'Décors'],
     'l\'arbre entier, pas seulement les accessoires');
   for (const c of d.categories) {
     assert.ok((c.items || []).length > 0, `la rubrique « ${c.name} » n'est pas vide`);

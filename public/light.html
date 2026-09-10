@@ -2400,6 +2400,45 @@
      Le module ne fait RIEN tant que light.html n'appelle pas demarrer(),
      et demarrer() n'est appelé que sur grand écran — le mobile ne change pas. -->
 <link rel="stylesheet" href="/bureau-frutiz.css">
+<script>
+/*
+ * LE MODE NUIT, ALLUMÉ AVANT LE PREMIER RENDU.
+ *
+ * « Si on l'écoutait, Frutiparc serait un site aux couleurs totalement
+ *   désaturées […]. Mais son temps viendra… » — la présentation d'un
+ *   développeur d'époque. C'est ce mode-là, vendu en boutique.
+ *
+ * La feuille /nuit.css est ENGENDRÉE (scripts/generer-nuit.js) à partir des
+ * deux feuilles de jour : elle ne fait que les surcharger. D'où l'endroit de
+ * ce script — juste APRÈS bureau-frutiz.css : ce qu'on ajoute ici à la fin
+ * de <head> vient donc après les deux, et gagne la cascade.
+ *
+ * Le choix est PAR APPAREIL (localStorage), pas par compte : nuit sur le
+ * téléphone le soir, jour sur l'ordinateur. On le lit avant que quoi que ce
+ * soit soit peint, sinon on verrait le parc en vert un dixième de seconde
+ * avant qu'il ne s'éteigne.
+ *
+ * La POSSESSION, elle, est au serveur (option `modeNuit`). On ne l'attend pas
+ * pour peindre — ce serait rendre la page tributaire d'un aller-retour pour
+ * un choix de couleurs. Si la session dit que le compte ne l'a pas, `appliquerNuit`
+ * retire la feuille. Un curieux qui force la clé s'offre un thème sombre et
+ * rien d'autre : il n'y a aucune donnée derrière.
+ */
+(function () {
+  var v; try { v = localStorage.getItem("fp_nuit"); } catch (e) { v = null; }
+  var auto = v === "auto" && window.matchMedia
+    && matchMedia("(prefers-color-scheme: dark)").matches;
+  if (v !== "1" && !auto) return;
+  document.documentElement.setAttribute("data-nuit", "1");
+  var l = document.createElement("link");
+  l.rel = "stylesheet"; l.href = "/nuit.css"; l.id = "nuit-css";
+  document.head.appendChild(l);
+  // La barre du téléphone (appli installée) prend elle aussi la nuit — sinon
+  // un liseré vert pomme surmonte un parc éteint.
+  var m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute("content", "#141a12");
+})();
+</script>
 <script src="/bureau-frutiz.js"></script>
 <!-- LE BOUILLOSCOPE EN JAVASCRIPT — le moteur lit les SWF de famille d'époque
      (public/fbouille) et dessine dans un canevas : plus d'iframe Ruffle par
@@ -2872,6 +2911,22 @@
         <span>Réglages de l'appli</span>
       </div>
       <div id="reg-corps">
+
+        <!-- LE PARC, LA NUIT. L'article « Son temps viendra » (rubrique Décors)
+             s'allume ici. Le choix vaut pour CET APPAREIL — il vit dans le
+             localStorage, pas dans le compte : nuit sur le téléphone le soir,
+             jour sur l'ordinateur, sans avoir à choisir une fois pour toutes.
+             La carte est là pour tout le monde : qui ne possède pas l'article
+             y lit à quoi elle sert, et où l'acheter. -->
+        <div class="reg-carte">
+          <div class="reg-titre">Le parc, la nuit</div>
+          <div class="reg-texte">Le parc s'éteint&nbsp;: couleurs désaturées,
+            fruits fanés, ciel gris nuageux et lune blafarde. Ta bouille, elle,
+            garde ses couleurs. Les salons, le bureau et le forum s'éteignent
+            ensemble&nbsp;; les jeux, non.</div>
+          <div id="reg-nuit" class="reg-choix" hidden></div>
+          <div class="reg-texte reg-note" id="reg-nuit-vendu" hidden></div>
+        </div>
 
         <div class="reg-carte">
           <div class="reg-titre">Notifications</div>
@@ -3618,6 +3673,9 @@
     // compteur « en ligne » de la frusion ne s'actualisait jamais.
     window.state = state;
     window.ouvrirFicheJoueur = ouvrirFiche;
+    // Le mode nuit est déjà peint (amorce en tête de page) : on ne fait ici
+    // que demander au serveur si le compte le possède vraiment.
+    verifierNuit();
     /*
      * L'ACTIVITÉ DE CHACUN, POUR LE BUREAU AUSSI.
      *
@@ -5452,6 +5510,10 @@
             it.owned = true;
             renderShop();
             boEtat("✓ « " + it.name + " » acheté !", "ok");
+            // Le mode nuit s'achète comme un accessoire mais s'allume dans
+            // Réglages : on redemande la liste des options pour que la carte
+            // « Le parc, la nuit » cesse de renvoyer à la boutique.
+            if (d.isGameFeature) verifierNuit();
           } else {
             if (d && d.kikooz !== undefined) setShopWallet(d.kikooz);
             renderShop();
@@ -6726,9 +6788,141 @@
       .catch(function () { hote.textContent = "Réglages indisponibles."; });
   }
 
+  /*
+   * LE PARC, LA NUIT.
+   *
+   * L'article « Son temps viendra » (boutique, rubrique Décors) allume un
+   * thème sombre sur tout le light : les salons, le bureau et le forum. La
+   * feuille /nuit.css est ENGENDRÉE depuis les feuilles de jour par
+   * scripts/generer-nuit.js — elle ne fait que les surcharger, donc éteindre
+   * le mode, c'est retirer une feuille, et rien ne peut casser.
+   *
+   * Trois positions plutôt que deux : « Comme mon téléphone » suit le réglage
+   * du système, qui bascule tout seul le soir sur la plupart des appareils.
+   *
+   * LE CHOIX EST PAR APPAREIL (localStorage), la POSSESSION par compte : on
+   * peut vouloir la nuit sur le téléphone et le jour au bureau, et rien
+   * là-dedans ne mérite un aller-retour serveur à chaque bascule.
+   */
+  var NUIT_CLE = "fp_nuit";
+  var NUIT_POSITIONS = [
+    { v: "0",    lib: "Jour" },
+    { v: "1",    lib: "Nuit" },
+    { v: "auto", lib: "Comme mon téléphone" },
+  ];
+  function nuitChoix() {
+    var v; try { v = localStorage.getItem(NUIT_CLE); } catch (e) { v = null; }
+    return (v === "1" || v === "auto") ? v : "0";
+  }
+  function nuitAllumee(v) {
+    return v === "1" || (v === "auto" && window.matchMedia
+      && matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+  function appliquerNuit(v) {
+    var on = nuitAllumee(v);
+    var lien = document.getElementById("nuit-css");
+    if (on && !lien) {
+      lien = document.createElement("link");
+      lien.rel = "stylesheet"; lien.href = "/nuit.css"; lien.id = "nuit-css";
+      document.head.appendChild(lien);
+    }
+    // On DÉSACTIVE plutôt qu'on ne retire : rebasculer est alors instantané,
+    // sans nouvelle requête ni page blanche le temps du chargement.
+    if (lien) lien.disabled = !on;
+    if (on) document.documentElement.setAttribute("data-nuit", "1");
+    else document.documentElement.removeAttribute("data-nuit");
+    // La barre du téléphone (PWA) prend la couleur du parc.
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", on ? "#141a12" : "#ADE76B");
+    // Le fond d'écran du bureau est posé en `style=""` : lui seul ne suit pas
+    // la feuille, il faut le redemander.
+    if (window.BureauFrutiz && BureauFrutiz.rafraichirFond) BureauFrutiz.rafraichirFond();
+    // Le forum est un document à part, dans son iframe — même domaine, donc on
+    // peut lui tendre la main plutôt que de le recharger sous les yeux du
+    // joueur (il perdrait son brouillon de message).
+    try {
+      var cadre = document.getElementById("forum-frame");
+      var doc = cadre && cadre.contentDocument;
+      if (doc) {
+        var l2 = doc.getElementById("nuit-css");
+        if (on && !l2) {
+          l2 = doc.createElement("link");
+          l2.rel = "stylesheet"; l2.href = "/fb/nuit.css"; l2.id = "nuit-css";
+          doc.head.appendChild(l2);
+        }
+        if (l2) l2.disabled = !on;
+        if (on) doc.documentElement.setAttribute("data-nuit", "1");
+        else doc.documentElement.removeAttribute("data-nuit");
+      }
+    } catch (e) { /* pas de forum ouvert, ou pas encore chargé */ }
+  }
+  function poserNuit(v) {
+    try { localStorage.setItem(NUIT_CLE, v); } catch (e) { /* mode privé */ }
+    appliquerNuit(v);
+  }
+
+  /*
+   * CE QUE LE SERVEUR EN DIT.
+   *
+   * On ne l'attend pas pour peindre — l'amorce en tête de page a déjà tranché
+   * d'après le localStorage, sans quoi le parc clignoterait en vert avant de
+   * s'éteindre. Mais si le compte ne possède pas l'article (achat annulé,
+   * clé recopiée d'un autre navigateur), on rallume le jour ici.
+   */
+  function verifierNuit() {
+    if (!state.sid) return;
+    fetch("/api/features?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        state.nuitPossedee = !!(j && j.features && j.features.modeNuit);
+        if (!state.nuitPossedee && nuitChoix() !== "0") poserNuit("0");
+        majNuit();
+      })
+      .catch(function () { /* hors ligne : on garde ce que l'appareil dit */ });
+  }
+
+  function majNuit() {
+    var hote = $("#reg-nuit"), vendu = $("#reg-nuit-vendu");
+    if (!hote || !vendu) return;
+    if (!state.nuitPossedee) {
+      hote.hidden = true;
+      vendu.hidden = false;
+      vendu.textContent = "À la boutique, rubrique Décors, sous le nom "
+        + "« Son temps viendra ». Achat permanent, valable sur tous tes appareils.";
+      return;
+    }
+    vendu.hidden = true;
+    hote.hidden = false;
+    hote.innerHTML = "";
+    var courant = nuitChoix();
+    NUIT_POSITIONS.forEach(function (p) {
+      var lab = el("label", "reg-bascule");
+      var bouton = document.createElement("input");
+      bouton.type = "radio";
+      bouton.name = "reg-nuit-choix";
+      bouton.checked = p.v === courant;
+      var txt = el("span", "lib"); txt.textContent = p.lib;
+      lab.appendChild(bouton); lab.appendChild(txt);
+      bouton.addEventListener("change", function () {
+        if (bouton.checked) poserNuit(p.v);
+      });
+      hote.appendChild(lab);
+    });
+  }
+
+  // Le système bascule tout seul le soir : « Comme mon téléphone » doit suivre
+  // sans qu'on rouvre l'appli.
+  if (window.matchMedia) {
+    var mq = matchMedia("(prefers-color-scheme: dark)");
+    var suivre = function () { if (nuitChoix() === "auto") appliquerNuit("auto"); };
+    if (mq.addEventListener) mq.addEventListener("change", suivre);
+    else if (mq.addListener) mq.addListener(suivre);
+  }
+
   function majReglages() {
     majLigneNotifs();
     majMentions();
+    majNuit();
     var inst = $("#reg-install");
     if (inst) {
       if (estInstallee()) {

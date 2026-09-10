@@ -1440,15 +1440,63 @@
     /* Le sélecteur de pictos ne dépasse pas l'écran. */
     .picto-picker { max-width: calc(100vw - 32px); }
   }
+
+  /* ── Ce qui vivait dans des attributs `style=""` ─────────────────────────
+     Onze couleurs du forum étaient écrites à même le HTML — dans la barre du
+     haut et dans le code qui fabrique la modale de signature. Un attribut de
+     style l'emporte sur toute feuille : elles restaient donc en plein jour
+     quand le reste du forum s'éteignait. Elles sont remontées ici telles
+     quelles ; le thème de jour n'a pas bougé d'un octet, et le mode nuit les
+     trouve maintenant sur son chemin. */
+  #back-chat-link, #pictos-link { color: #2C4A0F; }
+  .fb-note-grise { font-size: 10px; color: #888; }
+  .fb-titre-rose { font-weight: bold; color: #E3756A; margin-bottom: 6px; }
+  .editor-input-fige { background: #E8F5D4; }
+  .sig-modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000;
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+  }
+  .sig-boite {
+    background: #fff; border: 2px solid #2C4A0F; border-radius: 10px;
+    max-width: 560px; width: 100%; padding: 14px; box-shadow: 0 12px 32px rgba(0,0,0,.35);
+  }
+  .sig-titre { margin: 0 0 6px; color: #2C4A0F; }
+  .sig-aide { margin: 0 0 8px; font-size: 11px; color: #5a8030; }
+  .sig-legende { font-size: 11px; color: #5a8030; margin: 8px 0 2px; }
+  .sig-apercu { margin: 0; border-top: 1px solid #cfe0a8; }
+  .sig-vide { color: #aaa; font-style: italic; }
 </style>
+<script>
+/*
+ * LE MODE NUIT — le forum s'éteint avec le reste du parc.
+ *
+ * Le forum est un document à lui : ouvert seul (/fb/) ou dans l'iframe du
+ * light, c'est la même page, avec sa propre feuille de style. Mais c'est le
+ * MÊME domaine, donc le même localStorage : il lit le réglage posé par
+ * Réglages → « Le parc, la nuit » sans que personne ait à le lui passer.
+ *
+ * fb/nuit.css est engendrée depuis le <style> ci-dessus par
+ * scripts/generer-nuit.js — d'où la place de ce script, juste après lui.
+ */
+(function () {
+  var v; try { v = localStorage.getItem("fp_nuit"); } catch (e) { v = null; }
+  var auto = v === "auto" && window.matchMedia
+    && matchMedia("(prefers-color-scheme: dark)").matches;
+  if (v !== "1" && !auto) return;
+  document.documentElement.setAttribute("data-nuit", "1");
+  var l = document.createElement("link");
+  l.rel = "stylesheet"; l.href = "/fb/nuit.css"; l.id = "nuit-css";
+  document.head.appendChild(l);
+})();
+</script>
 </head>
 <body>
 
 <div class="forum-shell">
   <div class="topbar">
-    <a href="#" id="back-chat-link" onclick="backToChat();return false" style="color:#2C4A0F;font-weight:bold;font-size:12px;margin-right:auto;text-decoration:none;display:none">‹ Salons</a>
+    <a href="#" id="back-chat-link" onclick="backToChat();return false" style="font-weight:bold;font-size:12px;margin-right:auto;text-decoration:none;display:none">‹ Salons</a>
     <div class="user-info" id="user-info"></div>
-    <a href="#" id="pictos-link" onclick="navigate('pictos');return false" style="color:#2C4A0F;font-weight:bold;font-size:11px;margin-right:10px;text-decoration:none;display:none">Mes Pictos</a>
+    <a href="#" id="pictos-link" onclick="navigate('pictos');return false" style="font-weight:bold;font-size:11px;margin-right:10px;text-decoration:none;display:none">Mes Pictos</a>
     <button class="close-btn" onclick="closeForum()">Fermer</button>
   </div>
   <div class="forum-header" id="forum-header">
@@ -2357,7 +2405,7 @@ async function loadBoard(boardId, page) {
       html += '<a href="#" onclick="navigate(\'newTopic\',' + boardId + ');return false" class="img-btn"><img src="/fb/post.gif" alt="Nouveau sujet"></a>';
     }
   }
-  else html += '<span style="font-size:10px;color:#888">Connecte-toi depuis Frutiparc pour poster</span>';
+  else html += '<span class="fb-note-grise">Connecte-toi depuis Frutiparc pour poster</span>';
   html += '</div>';
   html += '<div class="shell-center">';
   html += pagination(data.total, data.perPage, data.page, 'boardPage');
@@ -3317,7 +3365,7 @@ function renderEditor(opts) {
   if (showTitle) {
     html += '<input type="text" class="editor-input" id="' + titleId + '" maxlength="200" value="' + escapeHtml(initialTitle) + '">';
   } else {
-    html += '<input type="text" class="editor-input" id="' + titleId + '" value="' + escapeHtml(initialTitle) + '" readonly style="background:#E8F5D4">';
+    html += '<input type="text" class="editor-input editor-input-fige" id="' + titleId + '" value="' + escapeHtml(initialTitle) + '" readonly>';
   }
   html += '</div></div>';
 
@@ -3373,15 +3421,15 @@ function openSignatureEditor() {
   if (old) old.remove();
   var m = document.createElement('div');
   m.id = 'sig-modal';
-  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.className = 'sig-modal';
   m.innerHTML =
-    '<div style="background:#fff;border:2px solid #2C4A0F;border-radius:10px;max-width:560px;width:100%;padding:14px;box-shadow:0 12px 32px rgba(0,0,0,.35)">'
-    + '<h3 style="margin:0 0 6px;color:#2C4A0F">Ma signature</h3>'
-    + '<p style="margin:0 0 8px;font-size:11px;color:#5a8030">Affichée à la fin de tous tes messages. Codes utilisables&nbsp;: [b]gras[/b], [i]italique[/i], [u]souligné[/u], [color=#cc0000]couleur[/color], [size=14]taille[/size], [url]lien[/url]…</p>'
+    '<div class="sig-boite">'
+    + '<h3 class="sig-titre">Ma signature</h3>'
+    + '<p class="sig-aide">Affichée à la fin de tous tes messages. Codes utilisables&nbsp;: [b]gras[/b], [i]italique[/i], [u]souligné[/u], [color=#cc0000]couleur[/color], [size=14]taille[/size], [url]lien[/url]…</p>'
     + bbcodeToolbarHtml('sig-content')
     + '<textarea id="sig-content" class="editor-textarea" style="width:100%;min-height:84px;box-sizing:border-box" placeholder="Ta signature…" oninput="updateSigPreview()"></textarea>'
-    + '<div style="font-size:11px;color:#5a8030;margin:8px 0 2px">Aperçu&nbsp;:</div>'
-    + '<div id="sig-preview" class="post-signature" style="margin:0;border-top:1px solid #cfe0a8"></div>'
+    + '<div class="sig-legende">Aperçu&nbsp;:</div>'
+    + '<div id="sig-preview" class="post-signature sig-apercu"></div>'
     + '<div style="margin-top:12px;text-align:right">'
     + '<button type="button" class="edit-btn" onclick="saveSignature()">Enregistrer</button> '
     + '<button type="button" class="edit-btn" onclick="closeSignatureEditor()">Annuler</button>'
@@ -3404,7 +3452,7 @@ function updateSigPreview() {
   var ta = document.getElementById('sig-content'), pv = document.getElementById('sig-preview');
   if (!ta || !pv || pv._last === ta.value) return;
   pv._last = ta.value;
-  pv.innerHTML = ta.value.trim() ? renderBBCode(ta.value) : '<span style="color:#aaa;font-style:italic">(vide)</span>';
+  pv.innerHTML = ta.value.trim() ? renderBBCode(ta.value) : '<span class="sig-vide">(vide)</span>';
 }
 async function saveSignature() {
   var ta = document.getElementById('sig-content');
@@ -3505,7 +3553,7 @@ function previewEditor(formId, hasTitle) {
   html += '</div>';
   html += '<div class="editor-preview-content">';
   if (hasTitle && title) {
-    html += '<div style="font-weight:bold;color:#E3756A;margin-bottom:6px">' + escapeHtml(title) + '</div>';
+    html += '<div class="fb-titre-rose">' + escapeHtml(title) + '</div>';
   }
   html += renderBBCode(content);
   html += '</div>';
