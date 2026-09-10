@@ -13,21 +13,30 @@
  */
 
 :root {
-  /* LES FRUITS ZOMBIES, SANS REDESSINER UN SEUL FRUIT. Les icônes du parc
-     sont des PNG et des SVG d'époque ; on ne les remplace pas, on les vide
-     de leur sang. Saturation au quart, un peu plus sombre, un rien plus
-     contrasté pour que le trait tienne. */
-  --nuit-fane: saturate(.26) brightness(.78) contrast(1.06);
+  /* LES DESSINS D'ÉPOQUE, EN ATTENDANT QU'ON LES REDESSINE. On ne les
+     remplace pas : on les décolore, puis on les repasse au violet du parc de
+     nuit. Un simple fanage les laissait gris-brun sur du violet — deux
+     familles de couleur qui se disputaient l'écran ; teintés, ils s'y posent.
+     Un fichier « nom-nuit.svg » déposé à côté de « nom.svg » remplace le
+     dessin ET annule ce filtre (cf. scripts/generer-nuit.js). */
+  --nuit-fane: grayscale(.7) sepia(.5) hue-rotate(202deg) saturate(1.25) brightness(.62);
 
-  /* « Un bon gros ciel gris nuageux et une lune blafarde. » Trois dégradés
+  /* Le même traitement, mais pour une SURFACE et non une icône : le cadre
+     d'une fenêtre, l'écran de la main bar, le plateau du Frusion. Fanés
+     comme des icônes, ils devenaient les taches les plus claires de l'écran ;
+     ils descendent donc au niveau des aplats. Le générateur pose celui-ci sur
+     les 89 règles qui habillent un élément d'un sprite en background-image. */
+  --nuit-fane-fond: grayscale(.85) sepia(.6) hue-rotate(202deg) saturate(1.4) brightness(.42);
+
+  /* « Un bon gros ciel gris nuageux et une lune blafarde. » Quatre dégradés
      et pas un octet d'image : la lune est un cercle, les nuages deux taches
-     molles, le ciel une ardoise qui verdit en descendant vers le parc. */
+     molles, le ciel un violet qui s'assombrit en descendant vers le parc. */
   --nuit-ciel:
-    radial-gradient(circle at 84% 76%, hsl(52 12% 86%) 0 21px,
-                    hsl(52 12% 86% / .20) 22px 38px, transparent 39px),
-    radial-gradient(76% 40% at 24% 3%, hsl(200 8% 25%) 0%, transparent 72%),
-    radial-gradient(54% 30% at 68% 28%, hsl(200 7% 21%) 0%, transparent 74%),
-    linear-gradient(hsl(205 10% 15%), hsl(140 8% 9%));
+    radial-gradient(circle at 84% 76%, hsl(48 26% 88%) 0 21px,
+                    hsl(48 26% 88% / .20) 22px 38px, transparent 39px),
+    radial-gradient(76% 40% at 24% 3%, hsl(272 26% 28%) 0%, transparent 72%),
+    radial-gradient(54% 30% at 68% 28%, hsl(288 22% 24%) 0%, transparent 74%),
+    linear-gradient(hsl(258 32% 18%), hsl(252 30% 10%));
 }
 
 /* ── Les dessins ─────────────────────────────────────────────────────────── */
@@ -37,9 +46,9 @@ img, video { filter: var(--nuit-fane); }
 /* Les quatre règles du thème de jour qui posaient DÉJÀ un filtre sur une
    image : on leur ajoute le fanage au lieu de l'écraser — sans quoi elles
    gagneraient en spécificité et ces images-là resteraient éclatantes. */
-.fd-item .thumb img { filter: drop-shadow(0 2px 3px hsl(91 20% 17.5% / .4)) var(--nuit-fane); }
-.home-tile .ico img { filter: drop-shadow(0 2px 3px hsl(91 20% 17.5% / .35)) var(--nuit-fane); }
-.enc-trophy .tro    { filter: drop-shadow(0 1px 0 hsl(0 0% 4% / .45)) var(--nuit-fane); }
+.fd-item .thumb img { filter: drop-shadow(0 2px 3px hsl(256 30% 6% / .5)) var(--nuit-fane); }
+.home-tile .ico img { filter: drop-shadow(0 2px 3px hsl(256 30% 6% / .45)) var(--nuit-fane); }
+.enc-trophy .tro    { filter: drop-shadow(0 1px 0 hsl(256 30% 4% / .5)) var(--nuit-fane); }
 .users-scroll:active img { filter: brightness(.95) var(--nuit-fane); }
 
 /* Les sprites que le JAVASCRIPT pose : le fruit de l'onglet actif, la roue du
@@ -66,18 +75,18 @@ img, video { filter: var(--nuit-fane); }
 /* ── Là où la conversion ne pouvait pas deviner ──────────────────────────── */
 
 /* Le bouton de suppression de compte est le seul rouge FONCTIONNEL du site :
-   il prévient d'un geste irréversible. Passé au graphite comme le reste de
-   la famille rose, il ne prévenait plus de rien. On lui rend son alerte —
-   en braise plutôt qu'en rouge vif, pour rester dans la nuit. */
+   il prévient d'un geste irréversible. La conversion le range avec la famille
+   rose — il devenait donc un accent de plus, du même rose que les pseudos et
+   les glyphes, et ne prévenait plus de rien. On lui rend sa braise. */
 .reg-btn-danger {
-  background: hsl(6 42% 22%);
-  border-color: hsl(6 46% 38%);
-  color: hsl(10 55% 82%);
+  background: hsl(4 44% 26%);
+  border-color: hsl(4 48% 42%);
+  color: hsl(8 60% 84%);
 }
-.reg-btn-danger:active { background: hsl(6 46% 27%); }
+.reg-btn-danger:active { background: hsl(4 48% 31%); }
 
 /* Le fond d'écran du bureau est posé en `style=""` par bureau-frutiz.js :
    aucune règle ne peut l'atteindre. C'est le JS qui pose le ciel (cf.
    `poserFond`) ; ces deux variables-là lui servent à rendre les légendes
    lisibles par-dessus. */
-#bureau { --fond-txt: hsl(60 6% 84%); --fond-halo: 0,0,0; }
+#bureau { --fond-txt: hsl(258 18% 88%); --fond-halo: 0,0,0; }

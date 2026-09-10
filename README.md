@@ -143,17 +143,45 @@ node scripts/generer-nuit.js --verifier   n'écrit rien, sort 1 si elles sont p�
 > **Toute retouche du thème de jour demande de relancer le générateur.**
 > `test/modeNuit.test.js` échoue si on l'oublie.
 
-La conversion garde la **teinte**, coupe la **saturation**, et renverse la
-**clarté** — mais avec une courbe différente selon le rôle de la couleur, lu
-dans le nom de la propriété : un fond descend, un texte monte, une bordure se
-pose entre les deux, une ombre sombre ne bouge pas. D'où l'invariant que le
-test mesure sur les feuilles produites : **aucun fond au-dessus de 40 % de
-clarté, aucun texte en dessous de 55 %** — un couple texte/fond illisible est
-structurellement impossible. Toute la famille rose/rouge du parc part au
-graphite : c'est ce qui donne à la nuit son air de crypte.
+### La conversion
 
-Les corrections que la conversion ne peut pas trouver — les dessins d'époque,
-qui *fanent* au lieu d'être redessinés, le ciel et la lune — vivent dans
+Elle renverse la **clarté** selon le **rôle** de la couleur, lu dans le nom de
+la propriété : un fond descend, un texte monte, une bordure se pose entre les
+deux, une ombre déjà sombre ne bouge pas. Et elle rejoue la **teinte** par
+famille :
+
+| Famille | Ce qu'elle devient | Pourquoi |
+|---|---|---|
+| les verts et les gris — le **châssis** | **violet** (256°) | c'est ce qui fait la nuit *violette* plutôt qu'un parc vert éteint |
+| la famille **rose/rouge** (335°→16°) | **rose** (325°) — vif en texte, glyphe et liseré, prune profonde en aplat | l'accent qui empêche le violet de tourner au monochrome |
+| jaunes, oranges, bleus — les **accents** | teinte gardée | un jaune de kikooz violet ne serait plus un kikooz |
+
+**L'invariant, et il est arithmétique** : aucun fond au-dessus de `0,045` de
+luminance, aucun texte en dessous de `0,3775`. Les deux bornes sont choisies
+pour que le **pire couple possible** tienne 4,5:1 — donc un texte illisible
+n'est pas improbable, il est *impossible*, y compris pour des couleurs pas
+encore écrites. En **luminance** et non en clarté : `hsl(60 50% 26%)` et
+`hsl(256 30% 26%)` annoncent la même clarté, mais l'œil voit le jaune deux fois
+plus lumineux. Mesuré au navigateur sur huit écrans : **95 textes sous 4,5:1 de
+jour, 0 la nuit**.
+
+### Redessiner les assets : `nom-nuit.svg`
+
+Les dessins d'époque sont teints au violet en attendant mieux — c'est un
+pis-aller. Pour en redessiner un :
+
+> déposer **`nom-nuit.svg` à côté de `nom.svg`**, relancer le générateur.
+
+Il prend la place de l'original partout (CSS, `<img src>`, fonds posés depuis
+le JavaScript) et **échappe au filtre**. Aucune liste à tenir, aucun code à
+toucher : le fichier sur le disque *est* la déclaration. Deux règles en
+dessinant : même `viewBox` et mêmes dimensions que l'original, et les états
+`_up`/`_over`/`_down` vont par trois.
+
+### Le reste
+
+Les corrections que la conversion ne peut pas trouver — le ciel et la lune, qui
+n'existent nulle part dans le thème de jour — vivent dans
 `scripts/nuit-retouches.css` et `scripts/nuit-retouches-forum.css`, recopiées à
 la fin des feuilles engendrées. Ce qui reste **en couleur**, volontairement :
 les bouilles (dessinées dans un `<canvas>`), les fonds d'écran achetés, et les

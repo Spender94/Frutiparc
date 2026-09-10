@@ -86,9 +86,9 @@ const teint = (hex, role) => GEN.convertir(...rgb(hex), role);
 
 test('un fond clair descend, un fond déjà sombre ne se renverse pas', () => {
   // Le vert du parc, le gris des fenêtres, le blanc des cartes.
-  assert.ok(L(teint('#ADE76B', 'fond')) <= 22, 'le vert pomme devient un fond de nuit');
-  assert.ok(L(teint('#DDDDDD', 'fond')) <= 14, 'le gris des fenêtres s’assombrit');
-  assert.ok(L(teint('#FFFFFF', 'fond')) <= 6, 'le blanc devient presque noir');
+  assert.ok(L(teint('#ADE76B', 'fond')) <= 30, 'le vert pomme devient un fond de nuit');
+  assert.ok(L(teint('#DDDDDD', 'fond')) <= 20, 'le gris des fenêtres s’assombrit');
+  assert.ok(L(teint('#FFFFFF', 'fond')) <= 12, 'le blanc devient presque noir');
   // Et l'inverse ne se produit PAS : un voile noir reste noir.
   assert.ok(L(teint('#000000', 'fond')) <= 2, 'un voile noir reste un voile noir');
   // La hiérarchie du jour survit : ce qui était plus clair reste plus clair.
@@ -106,29 +106,52 @@ test('un texte monte toujours, quelle que soit sa clarté d’origine', () => {
   assert.ok(L(teint('#FFFFFF', 'texte')) > L(teint('#2C4A0F', 'texte')));
 });
 
-test('la teinte du parc survit, sa saturation non', () => {
-  const vert = teint('#ADE76B', 'fond');
-  assert.ok(Math.abs(H(vert) - 88) <= 3, 'le vert reste vert (teinte gardée)');
-  assert.ok(S(vert) <= 24, '« couleurs totalement désaturées »');
-  const jaune = teint('#EAEA0F', 'fond');
-  assert.ok(Math.abs(H(jaune) - 60) <= 3, 'le jaune reste jaune');
+test('le châssis du parc part au violet', () => {
+  // Le vert et les gris — les aplats, les fenêtres, le corps du texte —
+  // abandonnent leur teinte : c'est ce qui fait la nuit violette plutôt qu'un
+  // parc vert éteint. C'est le SEUL endroit où la conversion change la teinte
+  // sans y être forcée par un rôle.
+  for (const chassis of ['#ADE76B', '#CCF599', '#335511', '#2C4A0F', '#94DB39',
+    '#DDDDDD', '#888888', '#FFFFFF', '#D6F7B5', '#446531']) {
+    for (const role of ['fond', 'bordure', 'texte']) {
+      assert.strictEqual(H(teint(chassis, role)), GEN.VIOLET,
+        chassis + ' (' + role + ') : le châssis est violet');
+    }
+  }
+  // Et il est SATURÉ : un violet lavé donnerait un thème gris à reflets.
+  assert.ok(S(teint('#ADE76B', 'fond')) >= 25, 'le fond est un violet franc');
+  // Le texte, lui, reste presque blanc : un texte lilas fatiguerait.
+  assert.ok(S(teint('#2C4A0F', 'texte')) <= 16, 'le texte n’est pas lilas');
 });
 
-test('toute la famille rose du parc part au graphite', () => {
-  // « Passer les boutons roses en noir. » Les huit roses et rouges relevés
-  // dans les trois feuilles, plus le saumon du bandeau du forum.
-  for (const rose of ['#D16767', '#F28687', '#FFAAAD', '#FFEAEC', '#E7756B',
-    '#FEABAB', '#660000', '#7A1F1F', '#842929', '#BB4444', '#E3756A', '#d2645a']) {
-    const t = teint(rose, 'fond');
-    assert.ok(S(t) <= 6, rose + ' : plus de rose, du graphite (' + t + ')');
+test('le rose reste rose — c’est l’accent, pas une couleur à éteindre', () => {
+  // Les roses et rouges relevés dans les trois feuilles, plus le saumon du
+  // bandeau du forum. Aucun ne s'éteint : ils changent de FONCTION.
+  const FAMILLE = ['#D16767', '#F28687', '#FFAAAD', '#FFEAEC', '#E7756B',
+    '#FEABAB', '#660000', '#7A1F1F', '#842929', '#BB4444', '#E3756A', '#d2645a'];
+  for (const rose of FAMILLE) {
+    for (const role of ['fond', 'texte', 'bordure']) {
+      const t = teint(rose, role);
+      assert.strictEqual(H(t), GEN.ROSE_NUIT, rose + ' (' + role + ') reste rose');
+      assert.ok(S(t) >= 30, rose + ' (' + role + ') garde de la couleur : ' + t);
+    }
+    // En TEXTE, en GLYPHE, en LISERÉ : vif. C'est le rose des pseudos et des
+    // quatre boutons du salon.
+    assert.ok(L(teint(rose, 'texte')) >= 66, rose + ' en texte est un accent vif');
+    // En APLAT : une prune profonde, sur laquelle du texte clair se lit.
+    const fond = L(teint(rose, 'fond'));
+    assert.ok(fond >= 22 && fond <= 34, rose + ' en fond est une prune (' + fond + ' %)');
   }
-  // Les fonds roses deviennent des NOIRS, pas des gris moyens.
-  assert.ok(L(teint('#D16767', 'fond')) <= 16, 'un bouton rose devient un bouton noir');
-  assert.ok(L(teint('#FFEAEC', 'fond')) <= 8, 'un aplat rose pâle devient presque noir');
-  // Mais l'orange, lui, reste un accent : il est HORS de la bande.
+  // L'orange et le jaune ne sont NI châssis NI rose : ils gardent leur teinte.
+  for (const [hex, teinte] of [['#FF6600', 24], ['#EAEA0F', 60], ['#FACE68', 44]]) {
+    const t = teint(hex, 'fond');
+    assert.ok(Math.abs(H(t) - teinte) <= 3, hex + ' garde sa teinte (' + t + ')');
+    assert.ok(S(t) >= 30, hex + ' reste un accent vivant');
+  }
   assert.ok(!GEN.estRose(...GEN.rgbVersHsl(255, 102, 0).slice(0, 2)),
     '#FF6600 n’est pas de la famille rose');
-  assert.ok(S(teint('#FF6600', 'fond')) > 10, 'l’orange garde sa couleur');
+  assert.ok(!GEN.estChassis(...GEN.rgbVersHsl(255, 102, 0).slice(0, 2)),
+    '#FF6600 n’est pas du châssis non plus');
 });
 
 test('une ombre sombre reste sombre, une ombre claire cesse d’être un halo', () => {
@@ -172,13 +195,70 @@ for (const [nom, css] of [['le light', NUIT], ['le forum', NUIT_FORUM]]) {
   });
 }
 
-test('les dessins d’époque fanent au lieu d’être redessinés', () => {
-  assert.match(NUIT, /--nuit-fane: saturate\(\.26\) brightness\(\.78\) contrast\(1\.06\);/);
+// L'invariant qui compte vraiment n'est pas en clarté mais en LUMINANCE : un
+// jaune et un violet de même clarté ne se voient pas du tout pareil, et c'est
+// le jaune qui rendait le texte illisible. On relit donc chaque fond de la
+// feuille produite, et l'on vérifie que le texte le plus sombre du thème y
+// tient les 4,5:1 — sur la feuille, pas sur la théorie.
+function couleursDe(css, propriete) {
+  const out = [];
+  for (const ligne of css.split('\n')) {
+    if (!new RegExp('^\\s*' + propriete + '\\s*:').test(ligne)) continue;
+    for (const m of ligne.matchAll(/hsl\(([-0-9.]+) ([0-9.]+)% ([0-9.]+)%(?: \/ ([0-9.]+))?\)/g)) {
+      // Un fond translucide se pose sur autre chose : ce n'est pas lui qui
+      // décide de la lisibilité.
+      if (m[4] !== undefined && Number(m[4]) < 0.9) continue;
+      out.push([Number(m[1]), Number(m[2]), Number(m[3])]);
+    }
+  }
+  return out;
+}
+
+for (const [nom, css] of [['le light', NUIT], ['le forum', NUIT_FORUM]]) {
+  test('tout fond porte le texte le plus sombre du thème à 4,5:1 — ' + nom, () => {
+    const lum = (h, s, l) => {
+      const rgb = [0, 8, 4].map((k) => {
+        const hh = ((h % 360) + 360) % 360 / 360, ss = s / 100, ll = l / 100;
+        if (!ss) return ll;
+        const q = ll < 0.5 ? ll * (1 + ss) : ll + ss - ll * ss, p = 2 * ll - q;
+        let x = hh + (k === 0 ? 1 / 3 : k === 8 ? 0 : -1 / 3);
+        if (x < 0) x += 1; if (x > 1) x -= 1;
+        if (x < 1 / 6) return p + (q - p) * 6 * x;
+        if (x < 1 / 2) return q;
+        if (x < 2 / 3) return p + (q - p) * (2 / 3 - x) * 6;
+        return p;
+      });
+      const c = rgb.map((v) => (v <= 0.03928 / 1 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const textes = couleursDe(css, 'color');
+    const pireTexte = textes.reduce((min, c) => Math.min(min, lum(...c)), 1);
+    const mauvais = couleursDe(css, 'background(?:-color)?')
+      .map((c) => [c, (pireTexte + 0.05) / (lum(...c) + 0.05)])
+      .filter(([, r]) => r < 4.5)
+      .map(([c, r]) => `hsl(${c.join(' ')}) → ${r.toFixed(2)}:1`);
+    assert.deepStrictEqual([...new Set(mauvais)], [],
+      'des fonds ne portent pas le texte le plus sombre du thème');
+  });
+}
+
+test('les dessins d’époque sont teints au violet, pas seulement fanés', () => {
+  // Décolorés PUIS repassés au violet : un simple fanage les laissait
+  // gris-brun sur du violet, deux familles de couleur qui se disputaient
+  // l'écran. Le `hue-rotate` est le morceau qui compte.
+  assert.match(NUIT, /--nuit-fane: grayscale\([^)]*\) sepia\([^)]*\) hue-rotate\(202deg\)/);
+  assert.match(NUIT, /--nuit-fane-fond: grayscale\([^)]*\) sepia\([^)]*\) hue-rotate\(202deg\)/);
   assert.match(NUIT, /^img, video \{ filter: var\(--nuit-fane\); \}$/m);
+  // Une SURFACE et une ICÔNE ne se teignent pas au même degré : un cadre de
+  // fenêtre fané comme une icône devenait la tache la plus claire de l'écran.
+  const surface = /--nuit-fane-fond:[^;]*brightness\(\.(\d+)\)/.exec(NUIT);
+  const icone = /--nuit-fane:[^;]*brightness\(\.(\d+)\)/.exec(NUIT);
+  assert.ok(surface && icone && Number(surface[1]) < Number(icone[1]),
+    'les surfaces descendent plus bas que les icônes');
   // Les sprites posés en `background-image` ne sont pas des <img> : le
-  // générateur leur ajoute le fanage règle par règle.
-  const spritees = (NUIT.match(/filter: var\(--nuit-fane\);/g) || []).length;
-  assert.ok(spritees > 60, 'les sprites de fond fanent aussi (' + spritees + ' règles)');
+  // générateur leur ajoute le fanage de surface, règle par règle.
+  const spritees = (NUIT.match(/filter: var\(--nuit-fane-fond\);/g) || []).length;
+  assert.ok(spritees > 60, 'les sprites de fond sont teints aussi (' + spritees + ' règles)');
   // Et ceux que le JavaScript pose, par sélecteur d'attribut — sauf le bureau,
   // dont le fond d'écran appartient au joueur.
   assert.match(NUIT, /\[style\*="background-image"\]:not\(#bureau\) \{ filter: var\(--nuit-fane\); \}/);
@@ -232,7 +312,7 @@ test('le fond du bureau et le forum ouvert suivent la bascule', () => {
   assert.match(BUREAU, /bureau\.style\.background = nuit \? CIEL_DE_NUIT : '#ADE76B';/);
   // AVEC un fond d'écran choisi, l'image du joueur reste : seule la couleur
   // autour s'éteint.
-  assert.match(BUREAU, /bureau\.style\.backgroundColor = nuit \? '#141a12' : \(hex\(arr\[0\]\) \|\| '#ADE76B'\);/);
+  assert.match(BUREAU, /bureau\.style\.backgroundColor = nuit \? '#171232' : \(hex\(arr\[0\]\) \|\| '#ADE76B'\);/);
   assert.match(BUREAU, /bureau\.style\.backgroundImage = 'url\("' \+ fond\.url \+ '"\)';/);
   // Le forum est un autre document, même domaine : on lui tend la main plutôt
   // que de le recharger (le joueur y a peut-être un message en cours).
@@ -291,12 +371,66 @@ test('le forum n’écrit plus ses couleurs dans des attributs `style`', () => {
   assert.match(FORUM, /'<div class="sig-boite">'/);
 });
 
-test('le forum s’éteint : bandeau au graphite, ciel derrière', () => {
-  // Le saumon du bandeau (#E3756A) devient un noir.
+test('le forum s’éteint : ses saumons en prune, ciel derrière', () => {
+  // Le saumon du forum (#E3756A) reste de la famille rose : il devient une
+  // prune profonde, pas un aplat éteint.
+  const bloc = NUIT_FORUM.slice(NUIT_FORUM.indexOf('.topbar .close-btn {'));
+  const fond = /background: hsl\(([-0-9.]+) ([0-9.]+)% ([0-9.]+)%/.exec(bloc);
+  assert.ok(fond, 'le bouton saumon du forum est teint');
+  assert.strictEqual(Number(fond[1]), GEN.ROSE_NUIT, 'il reste de la famille rose');
+  assert.ok(Number(fond[3]) <= 34, 'et c’est un fond de nuit');
+  // Le châssis du forum, lui, part au violet comme celui du light.
   const entete = NUIT_FORUM.slice(NUIT_FORUM.indexOf('.forum-header {'));
-  const fond = /background[^;]*hsl\([-0-9.]+ ([0-9.]+)% ([0-9.]+)%/.exec(entete);
-  assert.ok(fond, 'le bandeau du forum est teint');
-  assert.ok(Number(fond[1]) <= 6, 'plus de saumon : du graphite');
-  assert.ok(Number(fond[2]) <= 22, 'et c’est un fond de nuit');
+  const chassis = /background: hsl\(([-0-9.]+) /.exec(entete);
+  assert.strictEqual(Number(chassis[1]), GEN.VIOLET, 'l’en-tête du forum est violet');
   assert.match(NUIT_FORUM, /background: var\(--nuit-ciel\) fixed;/);
+});
+
+// ── Le chantier de redessin ─────────────────────────────────────────────────
+
+test('déposer « nom-nuit.svg » suffit : le dessin de nuit prend la place', () => {
+  // Le mécanisme se prouve en le faisant. On fabrique une variante le temps du
+  // test, on régénère en mémoire, et on la retire — rien ne reste sur le disque.
+  const jour = path.join(ROOT, 'public/frutiz/sprites/chat-but-penlist.svg');
+  const nuit = path.join(ROOT, 'public/frutiz/sprites/chat-but-penlist-nuit.svg');
+  assert.ok(fs.existsSync(jour), 'le dessin de jour est bien là');
+  fs.copyFileSync(jour, nuit);
+  let feuille;
+  try {
+    feuille = GEN.fabriquer(GEN.CIBLES[0]);
+  } finally {
+    fs.unlinkSync(nuit);
+  }
+  // 1) Partout où le CSS nomme le dessin, il pointe désormais la variante…
+  assert.ok(feuille.includes("url('/frutiz/sprites/chat-but-penlist-nuit.svg')"),
+    'le CSS pointe la variante');
+  assert.ok(!/url\('\/frutiz\/sprites\/chat-but-penlist\.svg'\)/.test(feuille),
+    'et plus une seule fois l’original');
+  // 2) …et la règle n'est PLUS fanée : le dessin est déjà de nuit.
+  const regle = feuille.slice(feuille.indexOf('chat-but-penlist-nuit.svg') - 400,
+    feuille.indexOf('chat-but-penlist-nuit.svg') + 120);
+  const bloc = regle.slice(regle.lastIndexOf('{', regle.indexOf('chat-but-penlist-nuit')));
+  assert.ok(!/--nuit-fane/.test(bloc.slice(0, bloc.indexOf('}'))),
+    'la variante échappe au fanage');
+  // 3) Les <img> et les fonds posés par le JavaScript sont rattrapés par
+  //    sélecteur d'attribut — sans toucher au HTML ni au JS.
+  assert.ok(feuille.includes('img[src$="/frutiz/sprites/chat-but-penlist.svg"] '
+    + '{ content: url("/frutiz/sprites/chat-but-penlist-nuit.svg"); filter: none; }'));
+  assert.ok(feuille.includes('[style*="/frutiz/sprites/chat-but-penlist.svg"] '
+    + '{ background-image: url("/frutiz/sprites/chat-but-penlist-nuit.svg") !important; '
+    + 'filter: none !important; }'));
+});
+
+test('une variante orpheline ne produit aucune règle', () => {
+  // Un « nom-nuit.svg » sans « nom.svg » ne remplace rien : émettre une règle
+  // pour lui ne ferait qu'alourdir la feuille d'un sélecteur mort.
+  const orphelin = path.join(ROOT, 'public/frutiz/sprites/nexiste-pas-nuit.svg');
+  fs.writeFileSync(orphelin, '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  let trouvees;
+  try {
+    trouvees = GEN.variantesNuit();
+  } finally {
+    fs.unlinkSync(orphelin);
+  }
+  assert.ok(!trouvees.has('/frutiz/sprites/nexiste-pas.svg'), 'l’orpheline est ignorée');
 });

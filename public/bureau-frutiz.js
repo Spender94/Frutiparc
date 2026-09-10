@@ -210,11 +210,11 @@ window.BureauFrutiz = (function () {
   // droite et sous la rangée d'icônes : c'est la seule étendue que le bureau
   // laisse libre quelle que soit la taille de l'écran.
   var CIEL_DE_NUIT =
-    'radial-gradient(circle at 84% 38%, hsl(52 12% 86%) 0 30px,'
-    + ' hsl(52 12% 86% / .16) 31px 56px, transparent 57px),'
-    + 'radial-gradient(60% 38% at 22% 12%, hsl(200 8% 24%) 0%, transparent 72%),'
-    + 'radial-gradient(46% 26% at 62% 46%, hsl(200 7% 20%) 0%, transparent 74%),'
-    + 'linear-gradient(hsl(205 10% 14%), hsl(140 8% 8%))';
+    'radial-gradient(circle at 84% 38%, hsl(48 26% 88%) 0 30px,'
+    + ' hsl(48 26% 88% / .16) 31px 56px, transparent 57px),'
+    + 'radial-gradient(60% 38% at 22% 12%, hsl(272 26% 27%) 0%, transparent 72%),'
+    + 'radial-gradient(46% 26% at 62% 46%, hsl(288 22% 23%) 0%, transparent 74%),'
+    + 'linear-gradient(hsl(258 32% 17%), hsl(252 30% 9%))';
 
   // ── Le fond d'écran du bureau ─────────────────────────────────────────
   // La transcription de WallPaperMng.onStageResize, comme le tiroir mobile —
@@ -243,7 +243,7 @@ window.BureauFrutiz = (function () {
       v = String(v || '').trim();
       return /^[0-9a-fA-F]{6}$/.test(v) ? '#' + v : null;
     };
-    bureau.style.backgroundColor = nuit ? '#141a12' : (hex(arr[0]) || '#ADE76B');
+    bureau.style.backgroundColor = nuit ? '#171232' : (hex(arr[0]) || '#ADE76B');
     bureau.style.backgroundImage = 'url("' + fond.url + '")';
     bureau.style.backgroundRepeat = 'no-repeat';
     // La couleur de légende annoncée par le fond d'écran vaut SUR l'image ;

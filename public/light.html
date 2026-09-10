@@ -2436,7 +2436,7 @@
   // La barre du téléphone (appli installée) prend elle aussi la nuit — sinon
   // un liseré vert pomme surmonte un parc éteint.
   var m = document.querySelector('meta[name="theme-color"]');
-  if (m) m.setAttribute("content", "#141a12");
+  if (m) m.setAttribute("content", "#171232");
 })();
 </script>
 <script src="/bureau-frutiz.js"></script>
@@ -6833,7 +6833,7 @@
     else document.documentElement.removeAttribute("data-nuit");
     // La barre du téléphone (PWA) prend la couleur du parc.
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", on ? "#141a12" : "#ADE76B");
+    if (meta) meta.setAttribute("content", on ? "#171232" : "#ADE76B");
     // Le fond d'écran du bureau est posé en `style=""` : lui seul ne suit pas
     // la feuille, il faut le redemander.
     if (window.BureauFrutiz && BureauFrutiz.rafraichirFond) BureauFrutiz.rafraichirFond();
