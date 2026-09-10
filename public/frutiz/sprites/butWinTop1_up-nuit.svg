@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21" width="21" height="21">
+<!--
+  ENGENDRÉ par scripts/nuit-svg.js — butWinTop1_up.svg en mode nuit.
+  Le même dessin, ses couleurs de châssis repassées par la conversion du
+  thème (vert et gris au violet, rose gardé en accent, le reste intact).
+  Pour le reprendre à la main : écraser ce fichier et retirer son entrée du
+  manifeste de scripts/nuit-svg.js.
+-->
+<g transform="matrix(1,0,0,1,0,0)">
+  <path d="M6 8L9.5 11.5L13 8M13 15L9.5 11.5L6 15" fill="none" stroke="hsl(325 34% 25.1%)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+</g>
+</svg>

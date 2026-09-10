@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6.3 -4.35 200 80" width="200" height="80">
+<!--
+  ENGENDRÉ par scripts/nuit-svg.js — frutimandala-dessus.svg en mode nuit.
+  Le même dessin, ses couleurs de châssis repassées par la conversion du
+  thème (vert et gris au violet, rose gardé en accent, le reste intact).
+  le cadran par-dessus
+  Pour le reprendre à la main : écraser ce fichier et retirer son entrée du
+  manifeste de scripts/nuit-svg.js.
+-->
+<g transform="matrix(0.9992,0,0,1,93.15,-36.8)">
+  <defs>
+    <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0.00541,0,0,0.00174,0,68.5)"><stop offset="0" stop-color="hsl(256 30% 29%)" stop-opacity="0"/><stop offset="0.49804" stop-color="hsl(256 30% 29%)" stop-opacity="0.2"/><stop offset="1" stop-color="hsl(256 30% 29%)" stop-opacity="0"/></linearGradient>
+  </defs>
+  <path d="M89.75 40L89.75 39.95L89.45 39.25Q89.15 38.95 88.75 38.95L-88.6 38.95L-89.25 39.2L-89.6 39.7L-89.5 40.4Q-82.4 56.05 -69.2 69.2Q-60.9 77.5 -51.6 83.45Q-28.9 97.85 -0.25 97.95L0.05 97.95Q27.6 97.9 49.7 84.7Q60.1 78.4 69.35 69.2Q82.5 56.05 89.65 40.4L89.75 40ZM93.25 37.05Q85.9 55.5 70.7 70.7Q41.4 99.95 0 100Q-41.4 99.95 -70.7 70.7Q-85.9 55.45 -93.2 37L93.25 37L93.25 37.05Z" fill="hsl(256 30% 13.3%)" fill-rule="evenodd"/>
+  <path d="M88.7 40L88.7 40.05L83.9 43L-83.85 43L-88.65 40Q0.6 38.4 88.7 40Z" fill="hsl(256 30% 6%)" fill-opacity="0.2" fill-rule="evenodd"/>
+  <path d="M-88.65 40L-83.85 43Q-77.3 55.6 -66.45 66.45Q-38.9 93.95 0 94Q38.9 93.95 66.45 66.45Q77.3 55.6 83.9 43L88.7 40.05Q81.6 55.5 68.6 68.55L66.8 70.3Q58.85 78.2 49.2 83.85L49 84L48.35 84.35Q35.85 91.75 22.6 94.55Q12.95 96.75 2.55 97L2.05 97L1.65 97L1.05 97L0.65 97L0.35 97L0 97L-0.25 97Q-28.5 96.9 -50.95 82.75Q-60.25 76.85 -68.55 68.55Q-81.6 55.5 -88.65 40Z" fill="url(#g1)" fill-rule="evenodd"/>
+  <path d="M88.7 40.05L88.7 40Q0.6 38.4 -88.65 40Q-81.6 55.5 -68.55 68.55Q-60.25 76.85 -50.95 82.75Q-28.5 96.9 -0.25 97L0 97L0.35 97L0.65 97L1.05 97L1.65 97L2.05 97L2.55 97Q12.95 96.75 22.6 94.55Q35.85 91.75 48.35 84.35L49 84L49.2 83.85Q58.85 78.2 66.8 70.3L68.6 68.55Q81.6 55.5 88.7 40.05ZM89.75 39.95L89.75 40L89.65 40.4Q82.5 56.05 69.35 69.2Q60.1 78.4 49.7 84.7Q27.6 97.9 0.05 97.95L-0.25 97.95Q-28.9 97.85 -51.6 83.45Q-60.9 77.5 -69.2 69.2Q-82.4 56.05 -89.5 40.4L-89.6 39.7L-89.25 39.2L-88.6 38.95L88.75 38.95Q89.15 38.95 89.45 39.25L89.75 39.95Z" fill="hsl(256 30% 29%)" fill-rule="evenodd"/>
+  <path d="M83.25 44.15L78.75 47.45L78.2 47.5Q76.35 44.95 73.1 44.2L72.3 43.8L72.25 43L83.15 43.45L83.25 44.15Z" fill="hsl(256 30% 6%)" fill-rule="evenodd"/>
+  <path d="M78.75 47.45L83.25 44.15L83.15 43.45L72.25 43L72.3 43.8L73.1 44.2Q76.35 44.95 78.2 47.5L78.75 47.45ZM85.45 42.85L79.1 52.7L77.15 55.6Q73.65 60.55 69.95 63.25L69.2 62.8L70.95 60.05L70.95 59.6Q74.2 56.85 75.85 53.1L76.05 52.7Q76.75 50.85 76.7 49Q72.25 45.25 66.85 43.9Q63.7 43.05 60.2 43.05L39.85 43.15L-34.65 43Q37.55 41.35 47.05 41.9Q57.15 41.5 65.65 41.5L66.85 41.5L84.55 41.5Q86 41.7 85.45 42.85Z" fill="hsl(256 30% 6%)" fill-opacity="0.5" fill-rule="evenodd"/>
+
+</g>
+</svg>

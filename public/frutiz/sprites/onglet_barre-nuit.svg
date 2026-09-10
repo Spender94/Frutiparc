@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -18 120 18" width="120" height="18" preserveAspectRatio="none">
+<!--
+  ENGENDRÉ par scripts/nuit-svg.js — onglet_barre.svg en mode nuit.
+  Le même dessin, ses couleurs de châssis repassées par la conversion du
+  thème (vert et gris au violet, rose gardé en accent, le reste intact).
+  Pour le reprendre à la main : écraser ce fichier et retirer son entrée du
+  manifeste de scripts/nuit-svg.js.
+-->
+<g transform="matrix(1,0,0,1,0,0)">
+  <path d="M3 -18L3 0L0 0L0 -18L3 -18ZM117 0L117 -18L120 -18L120 0L117 0Z" fill="hsl(256 30% 13.3%)" fill-rule="evenodd"/>
+  <path d="M3 0L3 -18L117 -18L117 0L3 0Z" fill="hsl(256 30% 6%)" fill-rule="evenodd"/>
+
+</g>
+</svg>

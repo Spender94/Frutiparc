@@ -7,25 +7,31 @@
  *   les différentes sections. […] Mais son temps viendra… »
  *
  * Le thème sombre du light n'est PAS écrit à la main : il est ENGENDRÉ depuis
- * les feuilles de jour (scripts/generer-nuit.js), qui comptent près de mille
- * huit cents couleurs en dur et pas une variable CSS. D'où trois familles de
- * vérifications, et elles ne se remplacent pas l'une l'autre :
+ * le thème de jour, qui compte près de mille huit cents couleurs en dur et pas
+ * une variable CSS. Deux outils y pourvoient — `generer-nuit.js` pour les
+ * feuilles, `nuit-svg.js` pour les dessins de châssis —, et quatre familles de
+ * vérifications, qui ne se remplacent pas l'une l'autre :
  *
  *   1. LA SYNCHRO. Une retouche du thème de jour sans régénération laisserait
  *      la nuit sur une couleur périmée — invisible en développement (on ne
  *      regarde pas le mode nuit à chaque fois), très visible en production.
- *      Le test relance donc le générateur en mode `--verifier`.
+ *      Les deux outils sont donc relancés en mode `--verifier`.
  *
- *   2. LA RÈGLE. La conversion n'est pas un miroir : la teinte reste, la
- *      saturation tombe, et la clarté suit une courbe DIFFÉRENTE selon le rôle
- *      de la couleur — fond, bordure, texte, ombre. C'est ce qui évite le
- *      travers du thème sombre bricolé : du texte sombre sur un fond sombre.
- *      On l'éprouve sur les couleurs réelles du parc.
+ *   2. LA RÈGLE. La conversion rejoue la teinte PAR FAMILLE (châssis au
+ *      violet, rose gardé en accent, le reste intact) et renverse la clarté
+ *      selon le RÔLE de la couleur — fond, bordure, texte, ombre, dessin.
+ *      C'est ce qui évite le travers du thème sombre bricolé : du texte sombre
+ *      sur un fond sombre. On l'éprouve sur les couleurs réelles du parc.
  *
- *   3. L'INVARIANT. Le corollaire de la règle, mesuré sur la feuille produite :
- *      AUCUN fond au-dessus de 40 % de clarté, AUCUN texte en dessous de 55 %.
- *      Tant qu'il tient, un couple texte/fond illisible est impossible — ce
- *      n'est plus une relecture, c'est une garantie.
+ *   3. L'INVARIANT, mesuré sur les feuilles produites : aucun fond au-dessus
+ *      de LUM_FOND_MAX de luminance, aucun texte en dessous de LUM_TEXTE_MIN,
+ *      les deux choisies pour que le PIRE couple possible tienne 4,5:1. Tant
+ *      qu'il tient, un texte illisible n'est pas improbable : il est
+ *      impossible.
+ *
+ *   4. LA FRONTIÈRE entre châssis et dessin. Le mode nuit éteint le premier et
+ *      garde le second en couleur ; le manifeste de `nuit-svg.js` est l'endroit
+ *      où l'on peut se tromper, donc l'endroit qu'on garde.
  */
 
 const { test } = require('node:test');
@@ -54,25 +60,51 @@ test('les feuilles de nuit sont à jour', () => {
     { cwd: ROOT, stdio: 'pipe' });
 });
 
-test('la roue de nuit du frutimandala suit celle du jour', () => {
-  // Elle est ENGENDRÉE depuis le dessin de jour (mêmes fruits, quartiers
-  // violets) : retoucher la roue de jour sans relancer laisserait la nuit sur
-  // un dessin périmé. Et si quelqu'un redessine la roue à la main, il écrase
-  // le fichier — le test le dira, et il suffira de retirer le script.
-  execFileSync(process.execPath, [path.join(ROOT, 'scripts/nuit-roue-mandala.js'), '--verifier'],
+test('les dessins de châssis de nuit suivent ceux du jour', () => {
+  // Ils sont ENGENDRÉS depuis les dessins de jour, par la conversion du thème :
+  // retoucher un dessin de jour sans relancer laisserait la nuit sur une
+  // version périmée. Et si quelqu'un en reprend un à la main, le test le dira
+  // — il suffira alors de retirer son entrée du manifeste.
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts/nuit-svg.js'), '--verifier'],
     { cwd: ROOT, stdio: 'pipe' });
-  // Les fruits n'ont pas bougé : seuls les deux tracés des quartiers changent.
-  const ROUE = require('../scripts/nuit-roue-mandala.js');
-  const jour = fs.readFileSync(ROUE.JOUR, 'utf8');
-  const nuit = fs.readFileSync(ROUE.NUIT, 'utf8');
-  for (const [j, n] of Object.entries(ROUE.QUARTIERS)) {
-    assert.ok(jour.includes(j), 'le quartier ' + j + ' est bien dans le dessin de jour');
-    assert.ok(nuit.includes(n), 'et devient ' + n + ' la nuit');
+});
+
+test('la roue du frutimandala : quartiers violets, fruits intacts', () => {
+  // Le cas limite du manifeste, et celui qui justifie sa portée réduite : les
+  // fruits sont PEINTS SUR les quartiers. Seuls les deux tracés du premier
+  // groupe changent ; tout ce qui suit est laissé au pixel près.
+  const SVG = require('../scripts/nuit-svg.js');
+  const nom = 'frutimandala-roue.svg';
+  const jour = fs.readFileSync(path.join(SVG.SPRITES, nom), 'utf8');
+  const nuit = fs.readFileSync(SVG.cible(nom), 'utf8');
+  // Les quartiers ont viré, et pas sur la même valeur — le frutimandala est
+  // une horloge, ses quartiers alternent pour se compter.
+  const violets = [...nuit.matchAll(/fill="hsl\(256 30% ([\d.]+)%\)"/g)].map((m) => m[1]);
+  assert.strictEqual(violets.length, 2, 'les deux quartiers, et eux seuls');
+  assert.notStrictEqual(violets[0], violets[1], 'ils gardent leur écart');
+  for (const vert of ['#ade76b', '#8ad524']) {
+    assert.ok(jour.includes(vert), vert + ' est bien un quartier de jour');
+    assert.ok(!nuit.includes(vert), 'et il a disparu de la nuit');
   }
-  // Un fruit au hasard, pris dans chaque famille : intact.
-  for (const couleur of ['#dd1c1c', '#ffa004', '#ffcc00', '#b39fd5']) {
+  // Les fruits, eux, n'ont pas bougé — un par famille de couleur.
+  for (const couleur of ['#dd1c1c', '#ffa004', '#ffcc00', '#b39fd5', '#ffffff']) {
     assert.strictEqual(nuit.split(couleur).length, jour.split(couleur).length,
       couleur + ' (un fruit) n’a pas bougé');
+  }
+});
+
+test('le manifeste ne contient que du châssis', () => {
+  // La garde-fou du chantier : le jour où quelqu'un y ajoute un fruit ou un
+  // picto par mégarde, le mode nuit se mettrait à éteindre des dessins — tout
+  // le contraire de ce qu'il fait.
+  const SVG = require('../scripts/nuit-svg.js');
+  const INTERDITS = /^(fruit_|ico_|emote_|feutre-|disc_|sl-presence|medal_|signe_)/;
+  for (const e of SVG.MANIFESTE) {
+    assert.ok(!INTERDITS.test(e.f), e.f + ' est un dessin, pas du châssis');
+  }
+  // Et chaque entrée désigne un fichier qui existe vraiment.
+  for (const e of SVG.MANIFESTE) {
+    assert.ok(fs.existsSync(path.join(SVG.SPRITES, e.f)), e.f + ' existe');
   }
 });
 
@@ -98,7 +130,9 @@ test('la feuille de nuit ne fait que surcharger : elle ne garde que des couleurs
     .replace(/\s+/g, ' ');
   const fuites = [];
   for (const m of corps.matchAll(/([-a-zA-Z]+)\s*:\s*([^;{}]*?)\s*(?=[;}])/g)) {
-    if (!/hsl\(|var\(--nuit-/.test(m[2])) fuites.push(m[1] + ': ' + m[2]);
+    // Trois raisons d'être là, et pas une de plus : une couleur convertie, le
+    // filtre du châssis, ou l'URL d'un dessin de nuit.
+    if (!/hsl\(|var\(--nuit-|-nuit\.[a-z]/.test(m[2])) fuites.push(m[1] + ': ' + m[2]);
   }
   assert.deepStrictEqual(fuites, [], 'des déclarations sans couleur ont fui dans la surcharge');
 });
@@ -424,8 +458,8 @@ test('le forum s’éteint : ses saumons en prune, ciel derrière', () => {
 test('déposer « nom-nuit.svg » suffit : le dessin de nuit prend la place', () => {
   // Le mécanisme se prouve en le faisant. On fabrique une variante le temps du
   // test, on régénère en mémoire, et on la retire — rien ne reste sur le disque.
-  const jour = path.join(ROOT, 'public/frutiz/sprites/chat-but-penlist.svg');
-  const nuit = path.join(ROOT, 'public/frutiz/sprites/chat-but-penlist-nuit.svg');
+  const jour = path.join(ROOT, 'public/frutiz/sprites/ecran-reflet.svg');
+  const nuit = path.join(ROOT, 'public/frutiz/sprites/ecran-reflet-nuit.svg');
   assert.ok(fs.existsSync(jour), 'le dessin de jour est bien là');
   fs.copyFileSync(jour, nuit);
   let feuille;
@@ -435,22 +469,22 @@ test('déposer « nom-nuit.svg » suffit : le dessin de nuit prend la place', ()
     fs.unlinkSync(nuit);
   }
   // 1) Partout où le CSS nomme le dessin, il pointe désormais la variante…
-  assert.ok(feuille.includes("url('/frutiz/sprites/chat-but-penlist-nuit.svg')"),
+  assert.ok(feuille.includes("url('/frutiz/sprites/ecran-reflet-nuit.svg')"),
     'le CSS pointe la variante');
-  assert.ok(!/url\('\/frutiz\/sprites\/chat-but-penlist\.svg'\)/.test(feuille),
+  assert.ok(!/url\('\/frutiz\/sprites\/ecran-reflet\.svg'\)/.test(feuille),
     'et plus une seule fois l’original');
   // 2) …et la règle n'est PLUS fanée : le dessin est déjà de nuit.
-  const regle = feuille.slice(feuille.indexOf('chat-but-penlist-nuit.svg') - 400,
-    feuille.indexOf('chat-but-penlist-nuit.svg') + 120);
-  const bloc = regle.slice(regle.lastIndexOf('{', regle.indexOf('chat-but-penlist-nuit')));
+  const regle = feuille.slice(feuille.indexOf('ecran-reflet-nuit.svg') - 400,
+    feuille.indexOf('ecran-reflet-nuit.svg') + 120);
+  const bloc = regle.slice(regle.lastIndexOf('{', regle.indexOf('ecran-reflet-nuit')));
   assert.ok(!/--nuit-fane/.test(bloc.slice(0, bloc.indexOf('}'))),
     'la variante échappe au fanage');
   // 3) Les <img> et les fonds posés par le JavaScript sont rattrapés par
   //    sélecteur d'attribut — sans toucher au HTML ni au JS.
-  assert.ok(feuille.includes('img[src$="/frutiz/sprites/chat-but-penlist.svg"] '
-    + '{ content: url("/frutiz/sprites/chat-but-penlist-nuit.svg"); filter: none; }'));
-  assert.ok(feuille.includes('[style*="/frutiz/sprites/chat-but-penlist.svg"] '
-    + '{ background-image: url("/frutiz/sprites/chat-but-penlist-nuit.svg") !important; '
+  assert.ok(feuille.includes('img[src$="/frutiz/sprites/ecran-reflet.svg"] '
+    + '{ content: url("/frutiz/sprites/ecran-reflet-nuit.svg"); filter: none; }'));
+  assert.ok(feuille.includes('[style*="/frutiz/sprites/ecran-reflet.svg"] '
+    + '{ background-image: url("/frutiz/sprites/ecran-reflet-nuit.svg") !important; '
     + 'filter: none !important; }'));
 });
 

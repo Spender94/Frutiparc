@@ -175,6 +175,18 @@ const COURBES = {
   // clarté. Une ombre CLAIRE, elle — les liserés et les reliefs d'époque —,
   // deviendrait un halo lumineux : on la traite comme un fond.
   ombre: (l) => (l <= 40 ? l : COURBES.fond(l)),
+  /*
+   * LES DESSINS DE CHÂSSIS (scripts/nuit-svg.js) — une courbe à part, et
+   * voici pourquoi. Un aplat CSS est seul dans son coin : l'écraser sur le
+   * plafond ne coûte rien. Un sprite, lui, est un DESSIN : un liseré plus
+   * sombre autour d'un fond plus clair, une face éclairée et une face à
+   * l'ombre. La courbe des fonds, qui plafonne, aplatissait ces écarts-là et
+   * rendait une gélule sans bord et une roue sans quartiers.
+   *
+   * Celle-ci est donc MONOTONE sur toute la plage utile : elle comprime, mais
+   * elle n'écrase jamais deux valeurs voisines l'une sur l'autre.
+   */
+  sprite: (l) => Math.min(6 + 0.55 * (100 - l), 30),
 };
 
 /*
@@ -219,22 +231,25 @@ const ROSE_TEXTE_MIN = 74;
 function convertir(r, g, b, a, role) {
   const [h, s, l] = rgbVersHsl(r, g, b);
   let nh = h, ns, nl = COURBES[role](l);
+  // Un dessin de châssis EST une surface : mêmes teintes et mêmes bornes
+  // qu'un aplat, seule sa courbe de clarté diffère (elle ne plafonne pas).
+  const surface = role === 'fond' || role === 'sprite';
   if (estRose(h, s)) {
     nh = ROSE_NUIT;
-    if (role === 'fond') { ns = 34; nl = Math.max(nl, ROSE_FOND_MIN); }
+    if (surface) { ns = 34; nl = Math.max(nl, ROSE_FOND_MIN); }
     else { ns = 58; nl = Math.max(nl, role === 'texte' ? ROSE_TEXTE_MIN : ROSE_ACCENT_MIN); }
   } else if (estChassis(h, s)) {
     nh = VIOLET;
     // Le châssis est saturé, mais pas également : un fond violet franc, un
     // texte presque blanc — sans quoi tout vire au lilas.
-    ns = role === 'fond' ? 30 : role === 'bordure' ? 26 : 13;
+    ns = surface ? 30 : role === 'bordure' ? 26 : 13;
   } else {
     // Un accent garde sa teinte, et une saturation qui le tient éveillé.
     ns = Math.min(Math.max(s * 0.55, 30), 62);
   }
   nl = Math.max(0, Math.min(100, nl));
   // Les deux bornes : un fond porte du texte, un texte se pose sur un fond.
-  if (role === 'fond') nl = plafonnerLuminance(nh, ns, nl);
+  if (surface) nl = plafonnerLuminance(nh, ns, nl);
   else if (role === 'texte') nl = releverLuminance(nh, ns, nl);
   return hsl(nh, ns, nl, a);
 }
@@ -523,12 +538,18 @@ const CIBLES = [
     sources: ['public/light.html (son <style>)', 'public/bureau-frutiz.css'],
     lire: () => [styleDe(P('public/light.html')), fs.readFileSync(P('public/bureau-frutiz.css'), 'utf8')],
     retouches: 'scripts/nuit-retouches.css',
+    // Les documents ENTIERS — HTML et JavaScript compris. Ils ne servent pas
+    // à la conversion (qui ne lit que le CSS) mais à savoir quels dessins ce
+    // client-là emploie : sans ce filtre, la feuille du forum embarquerait
+    // les règles de tous les sprites du bureau, qu'il n'affiche jamais.
+    emploie: () => [P('public/light.html'), P('public/bureau-frutiz.css'), P('public/bureau-frutiz.js')],
   },
   {
     sortie: 'public/fb/nuit.css',
     sources: ['public/fb/index.html (son <style>)'],
     lire: () => [styleDe(P('public/fb/index.html'))],
     retouches: 'scripts/nuit-retouches-forum.css',
+    emploie: () => [P('public/fb/index.html')],
   },
 ];
 
@@ -546,12 +567,21 @@ const CIBLES = [
  * `$=` et non `=` : le JavaScript construit ses URL par concaténation, avec
  * ou sans origine, et l'on ne veut pas dépendre de la forme exacte.
  */
-function blocVariantes() {
-  if (!VARIANTES.size) return '';
+function blocVariantes(cible) {
+  const textes = (cible.emploie ? cible.emploie() : []).map((f) => {
+    try { return fs.readFileSync(f, 'utf8'); } catch (e) { return ''; }
+  }).join('\n');
+  // On filtre sur le DOSSIER, pas sur le chemin complet : le JavaScript
+  // fabrique la plupart de ses URL par concaténation (`'/frutiz/sprites/' +
+  // conf.fichier + '.svg'`), et un filtre exact laisserait donc tomber
+  // justement les dessins qu'il pose — la roue du frutimandala la première.
+  const dossier = (u) => u.slice(0, u.lastIndexOf('/') + 1);
+  const utiles = [...VARIANTES].filter(([jour]) => !textes || textes.includes(dossier(jour)));
+  if (!utiles.length) return '';
   const lignes = ['', '/* ── Les dessins de nuit déposés à côté des dessins de jour ───────── */',
     '/* Ils remplacent l’original et échappent au fanage : ils n’ont plus rien */',
     '/* à cacher. Déposer « nom-nuit.svg » à côté de « nom.svg » suffit.      */'];
-  for (const [jour, nuit] of [...VARIANTES].sort()) {
+  for (const [jour, nuit] of utiles.sort()) {
     lignes.push(
       `img[src$="${jour}"] { content: url("${nuit}"); filter: none; }`,
       `[style*="${jour}"] { background-image: url("${nuit}") !important; filter: none !important; }`);
@@ -563,7 +593,7 @@ function fabriquer(cible) {
   VARIANTES = variantesNuit();
   const corps = cible.lire().map(surcharge).join('\n\n');
   const main = fs.existsSync(P(cible.retouches)) ? fs.readFileSync(P(cible.retouches), 'utf8') : '';
-  return ENTETE(cible.sources) + '\n' + corps + '\n' + blocVariantes() + '\n'
+  return ENTETE(cible.sources) + '\n' + corps + '\n' + blocVariantes(cible) + '\n'
     + '/* ── À la main, à partir d\'ici ────────────────────────────────────── */\n'
     + main.replace(/\s*$/, '') + '\n';
 }

@@ -172,20 +172,36 @@ la main bar, le boîtier du Frusion : des surfaces qui n'illustrent rien. Les
 fruits du bureau, les bouilles des émotions, les pictos du forum et la bouille
 du joueur restent en couleur. Un mode sombre, pas un mode terne.
 
-Trois dessins portent leur **décor peint dans l'image**, et aucun filtre ne
-sait y séparer le décor du sujet :
+### Les dessins de châssis : `nuit-svg.js`
 
-- **la roue du frutimandala** — ses fruits sont posés sur douze quartiers vert
-  pomme. Elle a donc une vraie variante, produite depuis le dessin de jour par
-  `node scripts/nuit-roue-mandala.js` : le premier groupe du SVG ne contient
-  que les deux tracés des quartiers, qu'on repasse au violet ; les fruits n'ont
-  pas bougé d'un pixel. C'est ce que le mode nuit ne pouvait pas obtenir par
-  filtre — **une roue sombre, des fruits en couleur** ;
-- **les deux dossiers du forum** (`folder_big.gif`, `folder_big_new.png`) sont
-  des GIF **opaques** au vert `#D6F7B5`, et leur plaque court sur toute la
-  hauteur de la page. Baisser leur luminosité rend le vert sombre, pas violet :
-  ce sont les deux seuls dessins qu'on éteint vraiment. Un
-  `folder_big-nuit.png` **sans fond** règle la question définitivement.
+Un filtre CSS assombrit un sprite, mais mal : il ternit tout de la même main,
+écrase les reliefs, et ne sait pas qu'un liseré doit rester un liseré. Ces
+dessins-là sont des SVG — leurs couleurs sont donc lisibles, et on peut leur
+appliquer **la conversion du thème elle-même** :
+
+```
+node scripts/nuit-svg.js              écrit les variantes de nuit
+node scripts/nuit-svg.js --verifier   sort 1 si elles sont périmées
+```
+
+Le **manifeste** en tête du script dit ce qui est du châssis : l'écran de
+l'aquarium, la boîte et les bandes de la liste des connectés, le cadre des
+fenêtres, les quatre boutons du salon, la languette CONTACTS, le frutimandala.
+Ce qui n'y est pas garde ses couleurs — c'est le bon défaut. Trois exclusions
+sont délibérées et commentées : les pastilles de titre de fenêtre (des fruits),
+le reflet de l'écran (deux traits blancs qui font le verre), et les **pastilles
+de présence**, dont la couleur est une *information* et non une décoration.
+
+La **roue du frutimandala** est le cas limite : ses fruits sont peints *sur*
+ses quartiers. Sa portée est donc réduite au premier groupe du SVG — les deux
+tracés des quartiers —, et les fruits n'y bougent pas d'un pixel. Roue sombre,
+fruits en couleur : ce qu'aucun filtre ne pouvait donner.
+
+Reste un cas qu'aucun outil ne sauve : **les deux dossiers du forum**
+(`folder_big.gif`, `folder_big_new.png`) sont des GIF **opaques** au vert
+`#D6F7B5`, et leur plaque court sur toute la hauteur de la page. Baisser leur
+luminosité rend le vert sombre, pas violet : ce sont les deux seuls dessins
+qu'on éteint vraiment. Un `folder_big-nuit.png` **sans fond** règle la question.
 
 ### Redessiner les assets : `nom-nuit.svg`
 

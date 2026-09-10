@@ -1,13 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-126.01 -125.99 252.01 252.01" width="252.01" height="252.01">
 <!--
-  ENGENDRÉ par scripts/nuit-roue-mandala.js — la roue du frutimandala, en nuit.
-  Le même dessin que frutimandala-roue.svg, ses douze quartiers repassés au
-  violet du parc de nuit ; les fruits n'ont pas bougé d'un pixel.
-  Pour la redessiner à la main : écraser ce fichier, rien d'autre à changer.
+  ENGENDRÉ par scripts/nuit-svg.js — frutimandala-roue.svg en mode nuit.
+  Le même dessin, ses couleurs de châssis repassées par la conversion du
+  thème (vert et gris au violet, rose gardé en accent, le reste intact).
+  les quartiers seulement — les fruits gardent leurs couleurs
+  Pour le reprendre à la main : écraser ce fichier et retirer son entrée du
+  manifeste de scripts/nuit-svg.js.
 -->
 <g transform="matrix(0.951,0.309,-0.309,0.951,-0.05,0)">
-  <path d="M-31 -95.4Q-20.35 -98.75 -8.7 -99.65L0 -100L0.05 -100Q16.5 -100 31.05 -95.4L0.05 0L81.05 -58.85Q100 -33.35 100.05 0L100.05 0.05L0 0.05L-31 -95.4ZM80.95 58.9Q76.35 65 70.7 70.7Q53.05 88.35 31 95.4L0 0.1L80.95 58.9ZM-30.95 95.4Q-53.05 88.35 -70.7 70.7Q-76.4 65 -80.95 58.85L-0.05 0.05L0 0.05L0 0.1L-30.95 95.4ZM-99.95 0.05L-99.95 0Q-100 -33.35 -81.05 -58.8L-0.05 0.05L-99.95 0.05Z" fill="#2a223f" fill-rule="evenodd"/>
-  <path d="M31.05 -95.4Q53.05 -88.4 70.7 -70.75Q76.45 -65.05 81.05 -58.85L0.05 0L31.05 -95.4ZM100.05 0.05Q100 33.4 80.95 58.9L0 0.1L0 0.05L-0.05 0.05L-80.95 58.85Q-99.95 33.4 -99.95 0.05L-0.05 0.05L-81.05 -58.8Q-76.45 -65 -70.7 -70.75Q-53.05 -88.4 -31 -95.4L0 0.05L100.05 0.05ZM31 95.4Q20.35 98.75 8.75 99.65L0.05 100L0 100Q-16.45 99.95 -30.95 95.4L0 0.1L31 95.4Z" fill="#3b3059" fill-rule="evenodd"/>
+  <path d="M-31 -95.4Q-20.35 -98.75 -8.7 -99.65L0 -100L0.05 -100Q16.5 -100 31.05 -95.4L0.05 0L81.05 -58.85Q100 -33.35 100.05 0L100.05 0.05L0 0.05L-31 -95.4ZM80.95 58.9Q76.35 65 70.7 70.7Q53.05 88.35 31 95.4L0 0.1L80.95 58.9ZM-30.95 95.4Q-53.05 88.35 -70.7 70.7Q-76.4 65 -80.95 58.85L-0.05 0.05L0 0.05L0 0.1L-30.95 95.4ZM-99.95 0.05L-99.95 0Q-100 -33.35 -81.05 -58.8L-0.05 0.05L-99.95 0.05Z" fill="hsl(256 30% 24.5%)" fill-rule="evenodd"/>
+  <path d="M31.05 -95.4Q53.05 -88.4 70.7 -70.75Q76.45 -65.05 81.05 -58.85L0.05 0L31.05 -95.4ZM100.05 0.05Q100 33.4 80.95 58.9L0 0.1L0 0.05L-0.05 0.05L-80.95 58.85Q-99.95 33.4 -99.95 0.05L-0.05 0.05L-81.05 -58.8Q-76.45 -65 -70.7 -70.75Q-53.05 -88.4 -31 -95.4L0 0.05L100.05 0.05ZM31 95.4Q20.35 98.75 8.75 99.65L0.05 100L0 100Q-16.45 99.95 -30.95 95.4L0 0.1L31 95.4Z" fill="hsl(256 30% 29%)" fill-rule="evenodd"/>
 
 </g>
 <g transform="matrix(1,0,0,1,0,0)">

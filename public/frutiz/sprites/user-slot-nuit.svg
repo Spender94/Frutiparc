@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 18" width="120" height="18">
+<!--
+  ENGENDRÉ par scripts/nuit-svg.js — user-slot.svg en mode nuit.
+  Le même dessin, ses couleurs de châssis repassées par la conversion du
+  thème (vert et gris au violet, rose gardé en accent, le reste intact).
+  la bande d’une personne
+  Pour le reprendre à la main : écraser ce fichier et retirer son entrée du
+  manifeste de scripts/nuit-svg.js.
+-->
+<g transform="matrix(1,0,0,1,0,0)">
+  <path d="M120 18L0 18L0 0L120 0L120 18Z" fill="hsl(256 30% 19.8%)" fill-rule="evenodd"/>
+  <path d="M118.5 18L1.5 18L1.5 0L118.5 0L118.5 18Z" fill="hsl(256 30% 14.8%)" fill-rule="evenodd"/>
+
+</g>
+</svg>
