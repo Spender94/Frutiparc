@@ -303,6 +303,30 @@ const ROSE_FOND_MIN = 22;
 const ROSE_ACCENT_MIN = 66;
 const ROSE_TEXTE_MIN = 74;
 
+/*
+ * UN PLANCHER ÉCRASE ; UNE ÉCHELLE GARDE LA HIÉRARCHIE.
+ *
+ * Les deux planchers ci-dessus étaient posés au `Math.max`. Or les courbes du
+ * thème sortent SOUS eux : toutes les valeurs y retombaient, et le rose du
+ * parc de nuit finissait par ne plus s'écrire qu'en deux couleurs. Mesuré sur
+ * la feuille produite : 34 aplats sur exactement `hsl(325 34% 22%)`, 51
+ * accents sur `hsl(325 58% 66%)`.
+ *
+ * Ce n'est pas une nuance d'esthète, c'est de l'information perdue. La liste
+ * des salons y laissait son alternance une ligne sur deux ET son survol ; un
+ * bouton, l'écart entre son repos et son état enfoncé ; une jauge, sa barre.
+ *
+ * On ÉTALE donc au lieu d'écraser : la plage que la courbe produit est
+ * reportée sur celle que le rose a le droit d'occuper. Le plancher est
+ * respecté à la lettre — c'est la borne basse de l'arrivée — et l'ordre du
+ * thème de jour survit.
+ */
+const etaler = (v, de, a, versDe, versA) =>
+  versDe + (Math.max(de, Math.min(a, v)) - de) * (versA - versDe) / (a - de);
+// Ce que chaque courbe produit, et la bande où le rose atterrit.
+const ROSE_FOND_MAX = 36;      // le plafond des aplats, comme le châssis
+const ROSE_ACCENT_MAX = 86;    // un liseré rose peut monter jusque-là
+
 function convertir(r, g, b, a, role) {
   const [h, s, lJour] = rgbVersHsl(r, g, b);
   // Le parchemin rejoint le châssis — mais en CSS seulement, et nivelé sur le
@@ -328,8 +352,12 @@ function convertir(r, g, b, a, role) {
     // texte clair sur du rose clair ne se lit pas. Les commandes, elles, ne
     // portent que des glyphes.
     if (role === 'sprite') { ns = 68; nl = 0.92 * l; }
-    else if (surface) { ns = 34; nl = Math.max(nl, ROSE_FOND_MIN); }
-    else { ns = 58; nl = Math.max(nl, role === 'texte' ? ROSE_TEXTE_MIN : ROSE_ACCENT_MIN); }
+    else if (surface) { ns = 34; nl = etaler(nl, 0, ROSE_FOND_MAX, ROSE_FOND_MIN, ROSE_FOND_MAX); }
+    else if (role === 'texte') { ns = 58; nl = Math.max(nl, ROSE_TEXTE_MIN); }
+    // La courbe des bordures sort entre 30 et 62, c'est-à-dire ENTIÈREMENT
+    // sous le plancher des accents : sans l'échelle, tous les liserés roses du
+    // parc — et ils sont cinquante et un — sortaient de la même couleur.
+    else { ns = 58; nl = etaler(nl, 30, 62, ROSE_ACCENT_MIN, ROSE_ACCENT_MAX); }
   } else if (estChassis(h, s) || parchemin) {
     nh = VIOLET;
     // Le châssis est saturé, mais pas également : un fond violet franc, un

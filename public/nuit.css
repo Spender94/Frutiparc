@@ -27,7 +27,7 @@ a {
   border-bottom: 1px solid hsl(256 26% 34.3%);
 }
 #topbar select {
-  border: 1px solid hsl(325 58% 66%);
+  border: 1px solid hsl(325 58% 69.6%);
   background: hsl(256 30% 10%);
   color: hsl(325 58% 87.5%);
 }
@@ -35,13 +35,13 @@ a {
   color: hsl(325 58% 87.5%);
 }
 #topbar select option:nth-child(odd) {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 28.9%);
 }
 #topbar select option:nth-child(even) {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 27.4%);
 }
 .icon-btn {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 30.6%);
   color: hsl(256 13% 96%);
 }
 .icon-btn.bare.on {
@@ -95,8 +95,8 @@ a {
   color: hsl(256 13% 84.9%);
 }
 .accm-tuile.on {
-  border-color: hsl(325 58% 66%);
-  background: hsl(325 34% 22%);
+  border-color: hsl(325 58% 71.7%);
+  background: hsl(325 34% 26.7%);
 }
 .accm-tuile .accm-vig {
   background: hsl(256 30% 15.6%);
@@ -109,7 +109,7 @@ a {
   background: hsl(256 30% 26.1%);
 }
 .acc-item.sel .thumb {
-  box-shadow: 0 0 0 2px hsl(325 58% 66%);
+  box-shadow: 0 0 0 2px hsl(325 58% 73.8%);
 }
 .acc-item.sel .lbl {
   color: hsl(325 58% 87.5%);
@@ -148,7 +148,7 @@ a {
   background: hsl(256 30% 34.3%) center/contain no-repeat;
 }
 .fond-item.sel .vign {
-  border-color: hsl(325 58% 66%);
+  border-color: hsl(325 58% 73.8%);
 }
 .fond-item .lbl {
   color: hsl(256 13% 84.8%);
@@ -269,16 +269,16 @@ a {
   color: hsl(256 13% 84.4%);
 }
 .fp-popin-btn {
-  background: hsl(325 34% 22%);
-  box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
+  background: hsl(325 34% 30.6%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
   color: hsl(325 58% 86.9%);
 }
 .fp-popin-btn::after {
-  border-top: 1px solid hsl(325 58% 66%);
-  border-right: 1px solid hsl(325 58% 66%);
+  border-top: 1px solid hsl(325 58% 66.8%);
+  border-right: 1px solid hsl(325 58% 66.8%);
 }
 .fp-popin-btn:active {
-  background: hsl(325 34% 25.7%);
+  background: hsl(325 34% 32%);
 }
 #fb-editor-backdrop {
   background: hsl(256 30% 0% / 0.45);
@@ -316,16 +316,16 @@ a {
   box-shadow: inset 0 0 0 1px hsl(256 26% 34.3%);
 }
 .fb-valider {
-  background: hsl(325 34% 22%);
-  box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
+  background: hsl(325 34% 30.6%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
   color: hsl(325 58% 86.9%);
 }
 .fb-valider::after {
-  border-top: 1px solid hsl(325 58% 66%);
-  border-right: 1px solid hsl(325 58% 66%);
+  border-top: 1px solid hsl(325 58% 66.8%);
+  border-right: 1px solid hsl(325 58% 66.8%);
 }
 .fb-valider:active {
-  background: hsl(325 34% 25.7%);
+  background: hsl(325 34% 32%);
 }
 #login-screen .card {
   background: hsl(256 30% 10%);
@@ -459,11 +459,11 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
   color: hsl(256 13% 84.6%);
 }
 .poll-opt.voted {
-  border-color: hsl(325 58% 66%);
-  background: hsl(325 34% 22%);
+  border-color: hsl(325 58% 71.7%);
+  background: hsl(325 34% 26.7%);
 }
 .poll-opt.voted .poll-jauge {
-  background: linear-gradient(hsl(325 34% 22%), hsl(325 34% 23.7%));
+  background: linear-gradient(hsl(325 34% 28.7%), hsl(325 34% 31.2%));
 }
 .poll-opt.voted .poll-opt-val {
   color: hsl(325 58% 87.7%);
@@ -492,9 +492,9 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
   box-shadow: inset 0 1px 0 hsl(256 26% 33.3%);
 }
 .compose button {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 30.6%);
   color: hsl(325 58% 86.9%);
-  border: 1px solid hsl(325 58% 66%);
+  border: 1px solid hsl(325 58% 71.4%);
   box-shadow: 0 0 0 1px hsl(256 26% 34.3%);
 }
 #pen-bar {
@@ -506,7 +506,7 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
   box-shadow: 0 0 0 1px hsl(256 26% 36.4%);
 }
 .pen-swatch.sel {
-  box-shadow: 0 0 0 2px hsl(325 58% 66%);
+  box-shadow: 0 0 0 2px hsl(325 58% 73.8%);
 }
 .pen-swatch.none {
   background: hsl(256 30% 10%);
@@ -534,11 +534,11 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
 #accent-toggle {
   background: hsl(256 30% 10%);
   color: hsl(325 58% 86.9%);
-  border: 1px solid hsl(325 58% 66%);
+  border: 1px solid hsl(325 58% 71.4%);
   box-shadow: 0 0 0 1px hsl(256 26% 34.3%);
 }
 #accent-toggle.on {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 30.6%);
 }
 #bouille-overlay-name {
   color: hsl(256 13% 84.8%);
@@ -687,7 +687,7 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 }
 .dr-onglet.on {
   color: hsl(325 58% 87.5%);
-  border-bottom-color: hsl(325 58% 66%);
+  border-bottom-color: hsl(325 58% 73.8%);
 }
 .dr-onglet:active {
   background: hsl(256 30% 13.5%);
@@ -786,7 +786,7 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
   background: hsl(256 30% 25.8%);
 }
 #mail-head {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 30.6%);
   border-bottom: 1px solid hsl(256 26% 34.3%);
   box-shadow: 0 1px 3px hsl(256 13% 17.5% / 0.18);
 }
@@ -848,7 +848,7 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 }
 .ma-btn {
   color: hsl(325 58% 86.6%);
-  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(325 34% 22%), hsl(325 34% 27.4%));
+  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(325 34% 29.9%), hsl(325 34% 32.6%));
   box-shadow: 0 1px 2px hsl(325 58% 66% / 0.22), inset 0 1px 0 hsl(256 26% 30% / 0.55);
 }
 .ma-btn.primaire {
@@ -858,7 +858,7 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 }
 .ma-btn.danger {
   color: hsl(256 13% 96%);
-  background: linear-gradient(180deg, hsl(325 34% 34.1%), hsl(325 34% 34.5%));
+  background: linear-gradient(180deg, hsl(325 34% 34.8%), hsl(325 34% 34.5%));
 }
 .mail-form label {
   color: hsl(256 13% 84.8%);
@@ -916,11 +916,11 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
   color: hsl(256 13% 96%);
 }
 .reg-suppr {
-  border: 1px solid hsl(325 58% 66%);
-  background: hsl(325 34% 22%);
+  border: 1px solid hsl(325 58% 71.1%);
+  background: hsl(325 34% 26.4%);
 }
 .reg-suppr-champ input {
-  border: 1px solid hsl(325 58% 66%);
+  border: 1px solid hsl(325 58% 77.2%);
   background: hsl(256 30% 10%);
   color: hsl(256 13% 84.8%);
 }
@@ -945,7 +945,7 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 }
 #trombi-head {
   border-bottom: 1px solid hsl(256 26% 34.3%);
-  background: linear-gradient(180deg, hsl(256 30% 10% / 0.5), hsl(256 30% 10% / 0) 46%), linear-gradient(180deg, hsl(325 34% 22%), hsl(325 34% 24.3%));
+  background: linear-gradient(180deg, hsl(256 30% 10% / 0.5), hsl(256 30% 10% / 0) 46%), linear-gradient(180deg, hsl(325 34% 29.9%), hsl(325 34% 31.4%));
   box-shadow: 0 1px 3px hsl(256 13% 17.5% / 0.18);
 }
 #trombi-search {
@@ -963,18 +963,18 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 }
 @supports not selector(::-webkit-scrollbar) {
   #trombi-body {
-    scrollbar-color: hsl(325 58% 66%) hsl(325 58% 66%);
+    scrollbar-color: hsl(325 58% 71.5%) hsl(325 58% 67%);
   }
 }
 #trombi-body::-webkit-scrollbar-track {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 27.3%);
 }
 #trombi-body::-webkit-scrollbar-thumb {
-  background-image: linear-gradient(90deg, hsl(325 34% 33.4%) 0%, hsl(325 34% 22%) 48%, hsl(325 34% 22%) 56%, hsl(325 34% 33.4%) 100%);
-  box-shadow: inset 0 0 0 1px hsl(325 58% 66% / 0.3);
+  background-image: linear-gradient(90deg, hsl(325 34% 34.5%) 0%, hsl(325 34% 28.2%) 48%, hsl(325 34% 30.5%) 56%, hsl(325 34% 34.5%) 100%);
+  box-shadow: inset 0 0 0 1px hsl(325 58% 73.6% / 0.3);
 }
 #trombi-body::-webkit-scrollbar-thumb:hover {
-  background-image: linear-gradient(90deg, hsl(325 34% 34.5%) 0%, hsl(325 34% 22%) 48%, hsl(325 34% 22%) 56%, hsl(325 34% 34.5%) 100%);
+  background-image: linear-gradient(90deg, hsl(325 34% 34.5%) 0%, hsl(325 34% 27.6%) 48%, hsl(325 34% 29.5%) 56%, hsl(325 34% 34.5%) 100%);
 }
 #trombi-search:focus {
   box-shadow: 0 0 0 3px hsl(256 26% 30% / 0.65);
@@ -985,7 +985,7 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 }
 .trombi-pgbtn {
   color: hsl(325 58% 86.6%);
-  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(325 34% 22%), hsl(325 34% 27.4%));
+  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(325 34% 29.9%), hsl(325 34% 32.6%));
   box-shadow: 0 1px 2px hsl(325 58% 66% / 0.22), inset 0 1px 0 hsl(256 26% 30% / 0.55);
 }
 .trombi-pginfo {
@@ -998,11 +998,11 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 }
 .trombi-card {
   background: hsl(256 30% 10%);
-  border: 1px solid hsl(325 58% 66%);
+  border: 1px solid hsl(325 58% 68%);
 }
 @media (hover: hover) {
   .trombi-card:hover {
-    box-shadow: 0 5px 14px hsl(325 58% 66% / 0.28);
+    box-shadow: 0 5px 14px hsl(325 58% 69.8% / 0.28);
   }
 }
 .trombi-card .tb {
@@ -1047,13 +1047,13 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
   color: hsl(256 13% 84.6%);
 }
 .sc-page-btn {
-  background: hsl(325 34% 22%);
-  box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
+  background: hsl(325 34% 30.6%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
   color: hsl(325 58% 86.9%);
 }
 .sc-page-btn::after {
-  border-top: 1px solid hsl(325 58% 66%);
-  border-right: 1px solid hsl(325 58% 66%);
+  border-top: 1px solid hsl(325 58% 66.8%);
+  border-right: 1px solid hsl(325 58% 66.8%);
 }
 .sc-entete, .sc-ligne {
   color: hsl(256 13% 84.6%);
@@ -1128,7 +1128,7 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
   }
 }
 .em-btn.active {
-  background: hsl(325 34% 34.5% / 0.2);
+  background: hsl(325 34% 34.6% / 0.2);
 }
 .home-compte {
   color: hsl(256 13% 84.6%);
@@ -1451,8 +1451,8 @@ body.bureau-frutiz .fiche-boite *::-webkit-scrollbar-thumb {
   box-shadow: inset 0 0 0 1px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen:has(#salons-panel) {
-  --asc-glissiere: hsl(325 58% 66%);
-  --asc-liseret:   hsl(325 58% 66%);
+  --asc-glissiere: hsl(325 58% 69.3%);
+  --asc-liseret:   hsl(325 58% 72.4%);
 }
 body.bureau-frutiz .fen:has(#scores-panel) {
   --asc-glissiere: hsl(256 26% 36.9%);
@@ -1503,26 +1503,26 @@ body.bureau-frutiz .fen #evt-page {
 }
 body.bureau-frutiz #salons-panel .sp-liste {
   border: 2px solid hsl(256 26% 34.3%);
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 30.6%);
 }
 body.bureau-frutiz #salons-panel .sp-salon {
   color: hsl(325 58% 86.5%);
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 28.9%);
 }
 body.bureau-frutiz #salons-panel .sp-salon.paire {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 30.6%);
 }
 body.bureau-frutiz #salons-panel .sp-salon:hover {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 26.6%);
 }
 body.bureau-frutiz #salons-panel .sp-creer {
-  background: hsl(325 34% 22%);
-  box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
+  background: hsl(325 34% 30.6%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
   color: hsl(325 58% 86.9%);
 }
 body.bureau-frutiz #salons-panel .sp-creer::after {
-  border-top: 1px solid hsl(325 58% 66%);
-  border-right: 1px solid hsl(325 58% 66%);
+  border-top: 1px solid hsl(325 58% 66.8%);
+  border-right: 1px solid hsl(325 58% 66.8%);
 }
 body.bureau-frutiz #salons-panel .sp-nom {
   background: hsl(256 30% 19.6%);
@@ -1588,12 +1588,12 @@ body.bureau-frutiz #recherche-panel .rc-but {
   color: hsl(325 58% 86.9%);
 }
 body.bureau-frutiz #recherche-panel .rc-but::before {
-  background: hsl(325 34% 22%);
-  box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
+  background: hsl(325 34% 30.6%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
 }
 body.bureau-frutiz #recherche-panel .rc-but::after {
-  border-top: 1px solid hsl(325 58% 66%);
-  border-right: 1px solid hsl(325 58% 66%);
+  border-top: 1px solid hsl(325 58% 66.8%);
+  border-right: 1px solid hsl(325 58% 66.8%);
 }
 body.bureau-frutiz #recherche-panel .rc-radio {
   color: hsl(256 13% 84.5%);
@@ -1620,8 +1620,8 @@ body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille::before {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #recherche-panel .rc-slot::before {
-  background: linear-gradient(hsl(256 30% 10% / 0.64), hsl(256 30% 10% / 0) 8px), hsl(325 34% 22%);
-  border: 2px solid hsl(325 58% 66%);
+  background: linear-gradient(hsl(256 30% 10% / 0.64), hsl(256 30% 10% / 0) 8px), hsl(325 34% 28.9%);
+  border: 2px solid hsl(325 58% 69.3%);
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz #recherche-panel .rc-slot[data-genre="M"]::before {
@@ -1649,13 +1649,13 @@ body.bureau-frutiz .fen .fb-alerte-doc {
   color: hsl(256 13% 84.4%);
 }
 body.bureau-frutiz .fen .fb-alerte-ok {
-  background: hsl(325 34% 22%);
-  box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
+  background: hsl(325 34% 30.6%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
   color: hsl(325 58% 86.9%);
 }
 body.bureau-frutiz .fen .fb-alerte-ok::after {
-  border-top: 1px solid hsl(325 58% 66%);
-  border-right: 1px solid hsl(325 58% 66%);
+  border-top: 1px solid hsl(325 58% 66.8%);
+  border-right: 1px solid hsl(325 58% 66.8%);
 }
 body.bureau-frutiz .fen #topbar .icon-btn {
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
@@ -2030,20 +2030,20 @@ body.bureau-frutiz .fen #mail-panel #mail-lu-corps {
   color: hsl(256 13% 84.4%);
 }
 body.bureau-frutiz .fen #mail-panel .ma-btn {
-  background: hsl(325 34% 22%);
-  box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
+  background: hsl(325 34% 30.6%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
   color: hsl(325 58% 86.9%);
 }
 body.bureau-frutiz .fen #mail-panel .ma-btn::after {
-  border-top: 1px solid hsl(325 58% 66%);
-  border-right: 1px solid hsl(325 58% 66%);
+  border-top: 1px solid hsl(325 58% 66.8%);
+  border-right: 1px solid hsl(325 58% 66.8%);
 }
 body.bureau-frutiz .fen #mail-panel .ma-btn:active {
-  background: hsl(325 34% 28.9%);
+  background: hsl(325 34% 33.2%);
 }
 body.bureau-frutiz .fen #mail-panel .ma-btn.primaire,
 body.bureau-frutiz .fen #mail-panel .ma-btn.danger {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 30.6%);
   color: hsl(325 58% 86.9%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-de .mx-val {
@@ -2233,16 +2233,16 @@ body.bureau-frutiz .fen #reglages-panel .pf-defaut {
   color: hsl(256 13% 84.6%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-but {
-  background: hsl(325 34% 22%);
-  box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
+  background: hsl(325 34% 30.6%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
   color: hsl(325 58% 86.9%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-but::after {
-  border-top: 1px solid hsl(325 58% 66%);
-  border-right: 1px solid hsl(325 58% 66%);
+  border-top: 1px solid hsl(325 58% 66.8%);
+  border-right: 1px solid hsl(325 58% 66.8%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-but:active {
-  background: hsl(325 34% 28.9%);
+  background: hsl(325 34% 33.2%);
 }
 body.bureau-frutiz .fen #reglages-panel .reg-titre {
   color: hsl(325 58% 86.5%);
@@ -2257,12 +2257,12 @@ body.bureau-frutiz .fen #reglages-panel .reg-etat {
   color: hsl(256 13% 84.4%);
 }
 body.bureau-frutiz .fen #reglages-panel .reg-btn {
-  background: hsl(325 34% 22%);
-  box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
+  background: hsl(325 34% 30.6%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
   color: hsl(325 58% 86.9%);
 }
 body.bureau-frutiz .fen #reglages-panel .reg-btn:active {
-  background: hsl(325 34% 28.9%);
+  background: hsl(325 34% 33.2%);
 }
 body.bureau-frutiz .fen #reglages-panel .reg-pied a {
   color: hsl(256 13% 84.6%);
@@ -2299,16 +2299,16 @@ body.bureau-frutiz .fen #profil-sheet #prof-etat {
   color: hsl(256 13% 84.4%);
 }
 body.bureau-frutiz .fen #profil-sheet #prof-enregistrer {
-  background: hsl(325 34% 22%);
-  box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
+  background: hsl(325 34% 30.6%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
   color: hsl(325 58% 86.9%);
 }
 body.bureau-frutiz .fen #profil-sheet #prof-enregistrer::after {
-  border-top: 1px solid hsl(325 58% 66%);
-  border-right: 1px solid hsl(325 58% 66%);
+  border-top: 1px solid hsl(325 58% 66.8%);
+  border-right: 1px solid hsl(325 58% 66.8%);
 }
 body.bureau-frutiz .fen #profil-sheet #prof-enregistrer:active {
-  background: hsl(325 34% 28.9%);
+  background: hsl(325 34% 33.2%);
 }
 
 /* ── Les dessins de nuit déposés à côté des dessins de jour ───────── */
@@ -2587,6 +2587,63 @@ img[src$="/fb/boutique/icone.png"] {
 #home-panel:not(.a-fond) { background: var(--nuit-ciel); }
 
 /* ── Là où la conversion ne pouvait pas deviner ──────────────────────────── */
+
+/* ── Trois choses que le parc de nuit demande et que le jour n'a pas ────── */
+
+/* LES FEUTRES DU BUREAU ONT BESOIN D'UN BORD.
+   Sur le bureau, un feutre est le DESSIN d'époque : sept pixels de large,
+   capuchon gris clair et fût de couleur, sans cadre — le vert du thème de jour
+   le détache tout seul. Sur une barre de nuit, les capuchons se fondent dans
+   le fond et la rangée devient une bouillie de traits. On leur pose donc un
+   liseré violet clair, et une ombre portée pour que le feutre ait l'air posé
+   plutôt que collé.
+   Le feutre CHOISI garde sa marque à lui — il est décapuchonné, trois pixels
+   plus haut — et le liseré se contente d'y monter d'un ton.
+   Le tiroir mobile, lui, n'affiche pas les dessins mais des PASTILLES rondes
+   qui ont déjà leur cerne : il n'est pas concerné. */
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch {
+  box-shadow: 0 0 0 1px hsl(256 34% 48%), 0 1px 2px hsl(256 30% 6% / .6);
+  border-radius: 2px;
+}
+body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.sel {
+  box-shadow: 0 0 0 1px hsl(256 46% 68%), 0 0 6px hsl(256 46% 52% / .6);
+}
+
+/* LA LUEUR D'UN VOYANT.
+   Un voyant de contact, c'est une petite lampe : de jour elle se lit à sa
+   couleur, de nuit une lampe DIFFUSE. On lui pose donc un halo de sa propre
+   teinte — vert quand la personne est là, saumon quand elle n'y est pas — et
+   la couleur passe par une variable pour que l'état n'ait qu'un endroit où
+   s'écrire, comme `--etat` juste à côté. En PARTIE, la lampe s'éteint : ce
+   qu'on regarde alors est l'icône du jeu, pas la présence. */
+body.bureau-frutiz #side-list .sl-contact .voyant {
+  --lueur: hsl(6 74% 58% / .5);
+  /* Le halo suit la forme de la boîte : ronde, il rayonne comme une lampe ;
+     carré, il ressemblerait à une tuile allumée. Le cadre dessiné, lui, ne
+     change pas de forme — `border-radius` ne découpe que l'ombre. */
+  border-radius: 50%;
+  box-shadow: 0 0 7px 1px var(--lueur);
+}
+body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant { --lueur: hsl(94 70% 52% / .5); }
+body.bureau-frutiz #side-list .sl-contact .voyant.jeu { box-shadow: none; }
+
+/* LA LISTE DES SALONS REJOINT LES AUTRES FENÊTRES.
+   Elle est ROSE dans le thème de jour — la seule liste du parc à l'être, ses
+   sœurs sont vertes — et la conversion la range donc avec les accents : elle
+   ressortait en prune au milieu d'un bureau violet. C'est un DÉCOR, pas un
+   accent : une grande surface qui porte du texte. Elle prend donc le violet
+   des autres fenêtres.
+   L'ALTERNANCE une ligne sur deux est celle d'époque (`bgColor = pal.bg
+   .shade` sur les rangs pairs) ; on l'écarte juste assez pour qu'elle se voie
+   sur un fond sombre, et le survol monte franchement — c'est le seul retour
+   que la liste donne à la souris. */
+body.bureau-frutiz #salons-panel .sp-liste { background: hsl(256 30% 14%); }
+body.bureau-frutiz #salons-panel .sp-salon {
+  background: hsl(256 30% 17%);
+  color: hsl(256 15% 88%);
+}
+body.bureau-frutiz #salons-panel .sp-salon.paire { background: hsl(256 30% 22%); }
+body.bureau-frutiz #salons-panel .sp-salon:hover { background: hsl(256 34% 33%); }
 
 /* LA SILHOUETTE D'UN FRUTISIGNE NON RÉVÉLÉ.
    « La silhouette noire tant que le signe n'est pas révélé » — un noir

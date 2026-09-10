@@ -30,7 +30,7 @@ a:hover {
   color: hsl(256 13% 84.8%);
 }
 .topbar .close-btn {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
 }
 .topbar .close-btn:hover {
@@ -52,14 +52,14 @@ a:hover {
   color: hsl(256 13% 84.8%);
 }
 .forum-header .title-link a.bc-retour {
-  border: 1px solid hsl(325 58% 66%);
+  border: 1px solid hsl(325 58% 72.9%);
 }
 .forum-header .title-link a.bc-retour:hover {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
 }
 .tbl-header {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
 }
 .cat-header {
@@ -159,7 +159,7 @@ a:hover {
 .act-btn-red,
   .act-btn-green,
   .act-btn-blue {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
 }
 .act-btn-red:hover,
   .act-btn-green:hover,
@@ -295,14 +295,14 @@ a:hover {
   color: hsl(256 13% 96%);
 }
 .btn-green {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
 }
 .btn-green:hover {
   background: hsl(325 34% 34.5%);
   color: hsl(256 13% 96%);
 }
 .btn-orange {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
 }
 .btn-orange:hover {
   background: hsl(325 34% 34.5%);
@@ -351,9 +351,9 @@ a:hover {
   background: hsl(256 30% 34.3%);
 }
 .expression-grid .expr-btn.active {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
-  border-color: hsl(325 58% 66%);
+  border-color: hsl(325 58% 76%);
 }
 .acc-grid .acc-btn {
   background: hsl(256 30% 27.5%);
@@ -364,9 +364,9 @@ a:hover {
   background: hsl(256 30% 34.3%);
 }
 .acc-grid .acc-btn.active {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
-  border-color: hsl(325 58% 66%);
+  border-color: hsl(325 58% 76%);
 }
 .toolbar {
   background: hsl(256 30% 10%);
@@ -383,7 +383,7 @@ a:hover {
   color: hsl(256 13% 84.8%);
 }
 .bottom-bar .go-btn {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
 }
 .mod-bar {
@@ -391,7 +391,7 @@ a:hover {
 }
 .mod-bar .mod-btn {
   color: hsl(256 13% 96%);
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
 }
 .mod-bar .mod-btn:hover {
   background: hsl(325 34% 34.5%);
@@ -409,7 +409,7 @@ a:hover {
 }
 .reply-blocked {
   background: hsl(256 30% 10%);
-  border: 1px solid hsl(325 58% 66%);
+  border: 1px solid hsl(325 58% 72.9%);
   color: hsl(256 13% 84.8%);
 }
 .editor-area {
@@ -530,7 +530,7 @@ a:hover {
   background: hsl(256 30% 21.6%);
 }
 .editor-actions .edit-btn {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
 }
 .editor-actions .edit-btn:hover {
@@ -546,7 +546,7 @@ a:hover {
   border-bottom: 1px solid hsl(256 26% 40.8%);
 }
 .poll-box-header {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
 }
 .poll-box-header .poll-icon {
@@ -565,7 +565,7 @@ a:hover {
   color: hsl(256 13% 84.6%);
 }
 .poll-vote-btn, .poll-close-btn {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
 }
 .poll-vote-btn:hover, .poll-close-btn:hover {
@@ -585,7 +585,7 @@ a:hover {
   border: 1px solid hsl(256 26% 39.4%);
 }
 .poll-result-fill {
-  background: linear-gradient(180deg, hsl(325 34% 30%) 0%, hsl(325 34% 34.5%) 100%);
+  background: linear-gradient(180deg, hsl(325 34% 33.7%) 0%, hsl(325 34% 34.6%) 100%);
 }
 .poll-result-num {
   color: hsl(256 13% 84.6%);
@@ -613,7 +613,7 @@ a:hover {
   color: hsl(256 13% 84.8%);
 }
 .poll-del-btn {
-  background: hsl(325 34% 34.5%);
+  background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
 }
 .poll-del-btn:hover {

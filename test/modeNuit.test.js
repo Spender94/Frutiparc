@@ -688,6 +688,70 @@ test('un dessin tout en couleur reçoit quand même sa variante', () => {
     /="#7aef80"/, 'le point d’interrogation garde son vert');
 });
 
+test('un plancher écrase, une échelle garde la hiérarchie', () => {
+  /*
+   * Les deux planchers du rose étaient posés au `Math.max`, et les courbes du
+   * thème sortent SOUS eux : toutes les valeurs y retombaient. Mesuré sur la
+   * feuille produite avant correction : 34 aplats sur exactement
+   * hsl(325 34% 22%), 51 accents sur hsl(325 58% 66%).
+   *
+   * Ce n'est pas une nuance : c'est de l'information perdue. Une liste y
+   * laissait son alternance une ligne sur deux ET son survol, un bouton
+   * l'écart entre son repos et son état enfoncé.
+   */
+  const groupes = {};
+  for (const m of NUIT.matchAll(/hsl\(325 \d+% [\d.]+%/g)) {
+    groupes[m[0]] = (groupes[m[0]] || 0) + 1;
+  }
+  const pire = Math.max(...Object.values(groupes));
+  assert.ok(pire <= 25,
+    'aucune valeur de rose ne doit rassembler tout le monde (la pire en compte ' + pire + ')');
+  // Les trois fonds de la liste des salons sont trois valeurs distinctes —
+  // rang impair, rang pair, survol.
+  const trois = ['#FEC9C9', '#FEABAB', '#FFF2F2'].map((c) => L(teint(c, 'fond')));
+  assert.strictEqual(new Set(trois).size, 3, 'trois aplats voisins restent trois : ' + trois);
+  for (const v of trois) assert.ok(v >= 22, 'et le plancher est respecté (' + v + ')');
+  // Idem pour les liserés, qui sortaient TOUS sur la même valeur.
+  const liserets = ['#F28687', '#FFAAAD', '#D16767', '#660000'].map((c) => L(teint(c, 'bordure')));
+  assert.ok(new Set(liserets).size >= 3, 'les liserés gardent leur hiérarchie : ' + liserets);
+  for (const v of liserets) assert.ok(v >= 66, 'et leur plancher (' + v + ')');
+});
+
+test('les trois retouches du parc éteint : feutres, lueur, liste des salons', () => {
+  const retouches = lire('scripts/nuit-retouches.css');
+  const jour = lire('public/bureau-frutiz.css');
+
+  // 1. LES FEUTRES. Le liseré doit se poser EXACTEMENT là où le thème de jour
+  //    dessine les feutres — même sélecteur, mot pour mot. Ailleurs (le tiroir
+  //    mobile), ce sont des pastilles rondes qui ont déjà leur cerne, et un
+  //    liseré carré les abîmerait.
+  const SEL = 'body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch';
+  assert.ok(jour.includes(SEL + ' {'), 'le thème de jour dessine bien les feutres ici');
+  assert.ok(retouches.includes(SEL + ' {'), 'et la retouche vise le même endroit');
+  assert.ok(retouches.includes(SEL + '.sel {'), 'le feutre choisi aussi');
+  assert.ok(!/^#pen-bar \.pen-swatch/m.test(retouches),
+    'et rien ne vise les pastilles rondes du tiroir');
+
+  // 2. LA LUEUR D'UN VOYANT : sa teinte suit l'état, comme `--etat` juste à
+  //    côté, et elle s'éteint quand l'icône du jeu prend la place.
+  assert.match(retouches, /\.sl-contact \.voyant \{\s*\n\s*--lueur: hsl\(6 74% 58% \/ \.5\);/);
+  assert.match(retouches, /\.sl-contact\.en-ligne \.voyant \{ --lueur: hsl\(94 70% 52% \/ \.5\); \}/);
+  assert.match(retouches, /\.sl-contact \.voyant\.jeu \{ box-shadow: none; \}/);
+
+  // 3. LA LISTE DES SALONS rejoint le violet des autres fenêtres, et son
+  //    alternance se voit : trois valeurs, et le survol au-dessus des deux.
+  const fonds = ['\\.sp-salon \\{\\s*\\n\\s*background: hsl\\(256 30% ([\\d.]+)%\\)',
+    '\\.sp-salon\\.paire \\{ background: hsl\\(256 30% ([\\d.]+)%\\)',
+    '\\.sp-salon:hover \\{ background: hsl\\(256 34% ([\\d.]+)%\\)']
+    .map((r) => Number(new RegExp(r).exec(retouches)[1]));
+  assert.strictEqual(new Set(fonds).size, 3, 'trois valeurs distinctes : ' + fonds);
+  assert.ok(fonds[2] > fonds[0] && fonds[2] > fonds[1], 'le survol s’allume : ' + fonds);
+  assert.ok(Math.abs(fonds[1] - fonds[0]) >= 3, 'l’alternance se voit : ' + fonds);
+  // Et plus une trace de prune sur cette liste-là.
+  assert.ok(!/#salons-panel \.sp-salon[^{]*\{[^}]*hsl\(325/.test(NUIT.slice(NUIT.indexOf(MARQUE))),
+    'la liste des salons ne doit plus rien devoir au rose');
+});
+
 test('un voyant EN PARTIE garde son icône de jeu', () => {
   /*
    * LE PIÈGE DES DEUX COUCHES. Le voyant d'un contact en porte deux : le

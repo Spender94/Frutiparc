@@ -155,6 +155,7 @@ famille :
 | les verts et les gris — le **châssis** | **violet** (256°) | c'est ce qui fait la nuit *violette* plutôt qu'un parc vert éteint |
 | le **parchemin** (17°→70°), *en CSS seulement* | **violet** aussi, nivelé sur le vert | le parc ne s'habille pas qu'en vert : Scores, Messagerie, Mes disques et l'inventaire sont crème et or. Gardés jaunes, ils sortaient **olive** au milieu d'un parc violet |
 | la famille **rose/rouge** (335°→16°) | **rose** (325°) — vif en texte, glyphe et liseré, prune profonde en aplat | l'accent qui empêche le violet de tourner au monochrome |
+| *(le rose a deux bandes réservées, et on y **étale** au lieu d'écraser)* | aplats 22→36 %, accents 66→86 % | posées au `Math.max`, elles rassemblaient 34 aplats sur une seule valeur et 51 liserés sur une autre : une liste y perdait son alternance **et** son survol, un bouton l'écart entre repos et enfoncé |
 | les bleus, les cyans — les **accents** | teinte gardée | un voyant bleu violet ne serait plus un voyant |
 | **tout, dans un dessin** | teinte gardée | un orange y est une orange : celle de l'onglet, le fruit du Frusion, le « swap » jaune |
 
