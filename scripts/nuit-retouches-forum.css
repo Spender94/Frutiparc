@@ -9,8 +9,8 @@
  */
 
 :root {
-  --nuit-fane: grayscale(.7) sepia(.5) hue-rotate(202deg) saturate(1.25) brightness(.62);
-  --nuit-fane-fond: grayscale(.85) sepia(.6) hue-rotate(202deg) saturate(1.4) brightness(.42);
+  --nuit-chassis: grayscale(.85) sepia(.6) hue-rotate(202deg) saturate(1.4) brightness(.42);
+  --nuit-sourdine: brightness(.38) saturate(1.2);
   --nuit-ciel:
     radial-gradient(circle at 84% 76%, hsl(48 26% 88%) 0 21px,
                     hsl(48 26% 88% / .20) 22px 38px, transparent 39px),
@@ -19,20 +19,22 @@
     linear-gradient(hsl(258 32% 18%), hsl(252 30% 10%));
 }
 
-/* Les pictos, l'orange du fil d'Ariane, les vignettes des messages : les
-   dessins d'époque fanent, ils ne sont pas remplacés. */
-img { filter: var(--nuit-fane); }
-/* Et les sprites posés en `style=""` par le JavaScript du forum. */
-[style*="background-image"] { filter: var(--nuit-fane); }
+/* Les pictos, l'orange du fil d'Ariane, les vignettes des messages gardent
+   leurs couleurs, comme les fruits du bureau. */
 
-/* LES DOSSIERS DU FORUM, ET SEULEMENT EUX. Les deux grandes icônes de
-   rubrique (folder_big.gif et folder_big_new.png, 2001) sont OPAQUES : leur
-   vert #D6F7B5 est peint dans l'image, pas derrière. Le fanage ordinaire ne
-   fait que le ternir — on voyait donc une bande claire courir le long des
-   rubriques, seule tache de jour dans un forum éteint. Elles descendent au
-   niveau du fond des lignes ; le fruit y devient une silhouette, ce qui n'est
-   pas pour déplaire à une crypte. */
-.folder-icon { filter: saturate(.22) brightness(.30) contrast(1.2); }
+/* LES DOSSIERS DU FORUM FONT EXCEPTION, et pour une raison matérielle. Les
+   deux grandes icônes de rubrique (folder_big.gif et folder_big_new.png,
+   2001) sont OPAQUES : leur vert #D6F7B5 est peint dans l'image, pas
+   derrière. Les laisser telles quelles, c'est une bande verte qui court le
+   long des rubriques, seule tache de jour dans un forum éteint.
+
+   Et la sourdine n'y suffit pas : baisser la luminosité rend le vert sombre,
+   pas violet — la bande restait, en olive. Ce sont donc les deux SEULS
+   dessins qu'on éteint vraiment, parce que leur plaque court sur toute la
+   hauteur de la page. Le fruit y devient une silhouette ; c'est le prix, et
+   il tombe le jour où `folder_big-nuit.png` existe — un PNG sans fond du
+   tout, où le problème ne se pose plus. */
+.folder-icon { filter: var(--nuit-chassis); }
 
 /* LES DEUX BOUTONS DE LA MODALE DE SIGNATURE. Le forum n'habille ses boutons
    que dans `.editor-actions` — la barre verte sous la zone de saisie ; ceux

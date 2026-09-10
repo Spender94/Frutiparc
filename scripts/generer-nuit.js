@@ -34,9 +34,12 @@
  * l'écrit dans le message) : l'alerte garde donc sa couleur d'alerte sans
  * qu'on ait à la protéger.
  *
- * LES DESSINS D'ÉPOQUE ne sont pas redessinés ici : ils sont teints au violet
- * du parc de nuit, plus ou moins fort selon qu'ils font une SURFACE ou une
- * ICÔNE. Un fichier « nom-nuit.svg » déposé à côté de « nom.svg » prend
+ * LES DESSINS D'ÉPOQUE GARDENT LEURS COULEURS. Les fruits du bureau, les
+ * bouilles des émotions, ceux du frutimandala : ce sont eux qui font le parc,
+ * et une nuit où ils seraient éteints serait une nuit sans parc. Seul le
+ * CHÂSSIS — les cadres de fenêtre, les onglets, l'écran de la main bar, le
+ * boîtier du Frusion — s'assombrit, parce qu'il n'illustre rien : il encadre.
+ * Un fichier « nom-nuit.svg » déposé à côté de « nom.svg » prend
  * automatiquement sa place et échappe au filtre — c'est ainsi que le chantier
  * de redessin avance un fichier à la fois, sans liste à tenir.
  *
@@ -439,11 +442,12 @@ const aIgnorer = (tete) => /^@(font-face|import|charset|namespace)\b/i.test(tete
 // fanage ici, à la source : une règle de plus dans le générateur les prend
 // tous, aujourd'hui comme le jour où l'on en ajoutera un.
 //
-// Et pas le MÊME fanage que les <img> : un sprite posé en fond est une
-// SURFACE — le cadre d'une fenêtre, l'écran de la main bar, le plateau du
-// Frusion —, pas une icône. Fané comme une icône, il devenait la chose la
-// plus claire de l'écran. Il descend donc plus bas (`--nuit-fane-fond`), là
-// où une icône doit rester lisible.
+// Et SEULEMENT eux : un sprite posé en fond est presque toujours une SURFACE
+// — le cadre d'une fenêtre, l'onglet, l'écran de la main bar, le boîtier du
+// Frusion —, pas une illustration. Les dessins, eux (les fruits du bureau,
+// les émotions, la roue du frutimandala) arrivent par un <img> ou par le
+// JavaScript, et gardent leurs couleurs : c'est ce qui fait la différence
+// entre un parc éteint et un parc de nuit.
 const RE_FOND_IMAGE = /^\s*background[a-z-]*\s*:[\s\S]*url\(/i;
 const RE_FILTRE = /^\s*filter\s*:/i;
 function porteUnSprite(enfants) {
@@ -472,7 +476,7 @@ function rendre(noeuds, indent, tout) {
     const k = estKeyframes(nd.tete);
     const dedans = rendre(nd.enfants, indent + '  ', tout || k);
     const sprite = !k && !tout && !nd.tete.startsWith('@') && porteUnSprite(nd.enfants);
-    if (sprite) dedans.push(indent + '  filter: var(--nuit-fane-fond);');
+    if (sprite) dedans.push(indent + '  filter: var(--nuit-chassis);');
     if (!dedans.length) continue;
     out.push(indent + nd.tete + ' {', ...dedans, indent + '}');
   }

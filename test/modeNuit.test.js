@@ -242,33 +242,39 @@ for (const [nom, css] of [['le light', NUIT], ['le forum', NUIT_FORUM]]) {
   });
 }
 
-test('les dessins d’époque sont teints au violet, pas seulement fanés', () => {
-  // Décolorés PUIS repassés au violet : un simple fanage les laissait
-  // gris-brun sur du violet, deux familles de couleur qui se disputaient
-  // l'écran. Le `hue-rotate` est le morceau qui compte.
-  assert.match(NUIT, /--nuit-fane: grayscale\([^)]*\) sepia\([^)]*\) hue-rotate\(202deg\)/);
-  assert.match(NUIT, /--nuit-fane-fond: grayscale\([^)]*\) sepia\([^)]*\) hue-rotate\(202deg\)/);
-  assert.match(NUIT, /^img, video \{ filter: var\(--nuit-fane\); \}$/m);
-  // Une SURFACE et une ICÔNE ne se teignent pas au même degré : un cadre de
-  // fenêtre fané comme une icône devenait la tache la plus claire de l'écran.
-  const surface = /--nuit-fane-fond:[^;]*brightness\(\.(\d+)\)/.exec(NUIT);
-  const icone = /--nuit-fane:[^;]*brightness\(\.(\d+)\)/.exec(NUIT);
-  assert.ok(surface && icone && Number(surface[1]) < Number(icone[1]),
-    'les surfaces descendent plus bas que les icônes');
-  // Les sprites posés en `background-image` ne sont pas des <img> : le
-  // générateur leur ajoute le fanage de surface, règle par règle.
-  const spritees = (NUIT.match(/filter: var\(--nuit-fane-fond\);/g) || []).length;
-  assert.ok(spritees > 60, 'les sprites de fond sont teints aussi (' + spritees + ' règles)');
-  // Et ceux que le JavaScript pose, par sélecteur d'attribut — sauf le bureau,
-  // dont le fond d'écran appartient au joueur.
-  assert.match(NUIT, /\[style\*="background-image"\]:not\(#bureau\) \{ filter: var\(--nuit-fane\); \}/);
+test('seul le châssis s’éteint : les dessins gardent leurs couleurs', () => {
+  // C'EST LA DÉCISION QUI FAIT LE THÈME. Les fruits du bureau, les bouilles
+  // des émotions, les pictos : ce sont eux qui font le parc, et une nuit où
+  // ils seraient éteints serait une nuit sans parc. Un mode sombre, pas un
+  // mode terne. Rien ne doit donc les toucher en masse.
+  assert.ok(!/^img[ ,{]/m.test(engendre(NUIT) + NUIT.slice(NUIT.indexOf(MARQUE))
+    .replace(/img\[src\$=/g, 'X[src$=')),
+    'aucune règle ne teint les <img> en bloc');
+  assert.ok(!/\[style\*="background-image"\][^{]*\{[^}]*filter/.test(NUIT),
+    'ni les fonds que le JavaScript pose');
+  // Seul le CHÂSSIS s'assombrit : les cadres, les onglets, l'écran de la main
+  // bar, le boîtier du Frusion — des surfaces, pas des illustrations.
+  assert.match(NUIT, /--nuit-chassis: grayscale\([^)]*\) sepia\([^)]*\) hue-rotate\(202deg\)/);
+  const chassis = (NUIT.match(/filter: var\(--nuit-chassis\);/g) || []).length;
+  assert.ok(chassis > 60, 'le générateur teint les sprites de châssis (' + chassis + ' règles)');
+  // Et la poignée de pièces de châssis qui arrivent par un <img> du HTML.
+  assert.match(NUIT, /img\[src\$="\/fb\/cadre_bouille\.svg"\]/);
+  // LA SOURDINE : deux dessins portent leur décor PEINT DANS L'IMAGE (la roue
+  // du frutimandala, les dossiers du forum). On ne peut pas séparer le décor
+  // du sujet au filtre : on baisse les deux sans décolorer.
+  assert.match(NUIT, /--nuit-sourdine: brightness\([^)]*\) saturate\([^)]*\);/);
+  assert.match(NUIT, /#frutimandala \.md-art \{ filter: var\(--nuit-sourdine\); \}/);
+  // Les dossiers du forum vont plus loin encore : baisser leur luminosité
+  // rendait le vert sombre, pas violet, et la bande restait — en olive. Ce
+  // sont les deux seuls dessins qu'on éteint vraiment.
+  assert.match(NUIT_FORUM, /\.folder-icon \{ filter: var\(--nuit-chassis\); \}/);
 });
 
 test('la bouille garde ses couleurs', () => {
   // Elle est dessinée dans un <canvas> : aucune règle ne doit la teindre, et
   // aucune ne doit fâcheusement l'attraper par ricochet.
   assert.ok(!/canvas[^{]*\{[^}]*filter/.test(NUIT), 'aucun filtre sur un canevas');
-  assert.match(NUIT, /LA BOUILLE GARDE SES COULEURS/);
+  assert.match(NUIT, /LES DESSINS GARDENT LEURS COULEURS/);
 });
 
 // ── L'allumage ───────────────────────────────────────────────────────────────

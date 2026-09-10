@@ -118,7 +118,7 @@ a {
   color: hsl(256 13% 72.5%);
 }
 .acc-item.vendable .thumb::before {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 #home-panel.a-fond .home-tile .lbl,
   #home-panel.a-fond .home-compte {
@@ -291,23 +291,23 @@ a {
   color: hsl(256 13% 74.9%);
 }
 .fb-pastille {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 .fb-ecran {
   box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 .fb-ecran::before {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 .fb-ecran::after {
   box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
 }
 .fb-arrow.lft {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 .fb-arrow.rgt {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 .fb-label {
   color: hsl(256 13% 73.2%);
@@ -568,7 +568,7 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
   color: hsl(256 13% 77%);
 }
 .fiche-nom-ligne .statut {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 .fiche-nom-ligne b {
   color: hsl(259 42% 73.8%);
@@ -577,7 +577,7 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
   color: hsl(256 13% 74.9%);
 }
 .fiche-actions .fiche-avance {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 .fiche-actions button {
   background: hsl(256 30% 10%);
@@ -1191,13 +1191,13 @@ body.bureau-frutiz #bureau-coin .mb-avatar .frame::after {
   box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
 }
 body.bureau-frutiz #bureau-coin .mb-avatar .frame::before {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #bureau-coin .mb-encart {
   box-shadow: inset 0 0 0 1px hsl(256 13% 26%), 0 0 0 2px hsl(256 13% 17.7%);
 }
 body.bureau-frutiz #bureau-coin .mb-encart::after {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #bureau-coin .enc-progress {
   background:
@@ -1221,19 +1221,19 @@ body.bureau-frutiz #bureau-coin .em-btn {
   box-shadow: 0 0 0 .5px hsl(256 13% 17.7%);
 }
 body.bureau-frutiz .ot-fondh {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .ot-fondb {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .ot-barre {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .ot-pied {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fb-onglet .ot-couture {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fb-onglet span {
   color: hsl(256 13% 68%);
@@ -1256,37 +1256,37 @@ body.bureau-frutiz .fb-onglet .ot-menu button:active {
   }
 }
 body.bureau-frutiz #frusion-boite .fr-arriere {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frusion-boite .fr-fondslot {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frusion-boite .fr-milieu {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frusion-boite .fr-slot {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frusion-boite .fr-avant {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frusion-boite .fr-casque {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frusion-boite .fr-casque:hover {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frusion-boite .fr-casque:active {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frusion-boite .fr-eject {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frusion-boite .fr-eject:hover {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frusion-boite .fr-eject:active {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fb-raccourci .fb-r-lbl {
   color: var(--fond-txt, hsl(256 13% 72.5%));
@@ -1311,49 +1311,49 @@ body.bureau-frutiz .fen .fb-dossier-vide {
   color: hsl(256 13% 77%);
 }
 body.bureau-frutiz #frutimandala .md-dessus {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frutimandala .md-mandalaGauche {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frutimandala .md-mandalaGauche:hover {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frutimandala .md-mandalaGauche:active {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frutimandala .md-mandalaDroite {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frutimandala .md-mandalaDroite:hover {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frutimandala .md-mandalaDroite:active {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frutimandala .md-mandalaSwap {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frutimandala .md-mandalaSwap:hover {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frutimandala .md-mandalaSwap:active {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frutimandala .md-mandalaValider {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frutimandala .md-mandalaValider:hover {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #frutimandala .md-mandalaValider:active {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #mode-rapide {
   color: hsl(256 13% 75.1%);
 }
 body.bureau-frutiz #mode-rapide i {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #side-list {
   background: linear-gradient(to right,
@@ -1366,16 +1366,16 @@ body.bureau-frutiz #side-list .sl-dossier > .sl-titre {
   color: hsl(256 13% 94%);
 }
 body.bureau-frutiz #side-list .sl-titre .plaque {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #side-list .sl-titre .bout {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #side-list .sl-contact .voyant {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #side-list .sl-contact .nom {
   color: hsl(256 13% 68%);
@@ -1388,16 +1388,16 @@ body.bureau-frutiz #side-list .sl-contact:not([data-genre]):active .nom {
 }
 body.bureau-frutiz #side-list .sl-recherche {
   color: hsl(256 13% 94%);
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #languette-contacts {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #languette-contacts:hover {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #languette-contacts:active {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #bureau .home-compte {
   color: var(--fond-txt, hsl(256 13% 73.2%));
@@ -1418,25 +1418,25 @@ body.bureau-frutiz .fen-titre {
   color: hsl(256 13% 74.9%);
 }
 body.bureau-frutiz .fen-pastille {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen-btn.fermer {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen-btn.fermer:hover {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen-btn.fermer:active {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen-btn.plier {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen-btn.plier:hover {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen-btn.plier:active {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen,
 body.bureau-frutiz .fiche-boite {
@@ -1478,7 +1478,7 @@ body.bureau-frutiz .fen-poignee-vue .pv-chair {
   background: hsl(256 30% 10%);
 }
 body.bureau-frutiz .fen-poignee-vue .pv-icone {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen-fantome {
   border: 2px solid hsl(256 26% 26%);
@@ -1534,10 +1534,10 @@ body.bureau-frutiz #gaspard-panel .gs-icones .icon-btn {
   box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
 }
 body.bureau-frutiz #gaspard-panel .gs-icones .gs-but-ecrans {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #gaspard-panel .gs-icones .gs-but-users {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #gaspard-panel .gs-page {
   background:
@@ -1562,7 +1562,7 @@ body.bureau-frutiz #gaspard-panel .gs-in {
   color: hsl(256 13% 73.2%);
 }
 body.bureau-frutiz #gaspard-panel .gs-ul-fleche {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #recherche-panel .rc-form {
   background: hsl(256 30% 10%);
@@ -1602,17 +1602,17 @@ body.bureau-frutiz #recherche-panel .rc-combo {
   color: hsl(256 13% 73.2%);
 }
 body.bureau-frutiz #recherche-panel .rc-slot .rc-voyant {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille {
   box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille::after {
   box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
 }
 body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille::before {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #recherche-panel .rc-slot::before {
   background: linear-gradient(hsl(256 30% 10% / 0.64), hsl(256 30% 10% / 0) 8px), hsl(325 34% 22%);
@@ -1656,16 +1656,16 @@ body.bureau-frutiz .fen #topbar .icon-btn {
   box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
 }
 body.bureau-frutiz .fen #topbar #bouille-toggle {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #topbar #users-btn {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #topbar #pen-btn {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #topbar #chat-warning {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #chat-panel #messages {
   background:
@@ -1705,11 +1705,11 @@ body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {
 body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran,
 body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran {
   box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran::before,
 body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran::before {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran::after,
 body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran::after {
@@ -1723,12 +1723,12 @@ body.bureau-frutiz .bo-tip {
   color: hsl(256 13% 68%);
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .users-scroll {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u,
 body.bureau-frutiz #gaspard-panel .gs-ul-defile .u {
   color: hsl(240 30% 73.5%);
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u:not([data-genre]):hover span:not(.badge),
 body.bureau-frutiz #gaspard-panel .gs-ul-defile .u:not([data-genre]):hover span:not(.badge) {
@@ -1837,7 +1837,7 @@ body.bureau-frutiz .fiche-boite .fiche-actions button {
   background: hsl(256 30% 10%);
 }
 body.bureau-frutiz .fiche-boite .fiche-actions .fiche-avance {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fiche-boite .fiche-corps {
   background: linear-gradient(to bottom, hsl(256 30% 10% / 0.55) 0, hsl(256 30% 10% / 0) 8px), hsl(256 30% 22.7%);
@@ -1891,10 +1891,10 @@ body.bureau-frutiz .fen #shop-sheet .bo-solde {
 }
 body.bureau-frutiz .fen #shop-sheet .bq-ico {
   box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet .bq-ico:hover {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques {
   background: hsl(256 30% 10%);
@@ -1904,13 +1904,13 @@ body.bureau-frutiz .fen #shop-sheet #bo-rubriques button {
   color: hsl(256 13% 68%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-rub::before {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art {
   color: hsl(256 13% 68%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art::before {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques button:hover {
   background: hsl(256 30% 15.8%);
@@ -1922,10 +1922,10 @@ body.bureau-frutiz .fen #shop-sheet #bo-fiche {
   color: hsl(256 13% 73.2%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-vue .cadre {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-vue .cadre::after {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-titre {
   color: hsl(325 58% 76.8%);
@@ -1942,14 +1942,14 @@ body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-prix {
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-acheter {
   border: 2px solid hsl(256 26% 36.1%);
   color: hsl(256 13% 94%);
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-acheter[disabled] {
   color: hsl(256 13% 75.3%);
 }
 body.bureau-frutiz .fen #shop-sheet .bq-plus {
   box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #mail-panel .mx-nav-but {
   box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
@@ -1979,7 +1979,7 @@ body.bureau-frutiz .fen #mail-panel .mx-rang {
   color: hsl(60 55% 72.6%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-rang .mx-ico {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #mail-panel .mx-rang .mx-cell {
   border-right: 2px solid hsl(60 48% 38.4%);
@@ -2051,10 +2051,10 @@ body.bureau-frutiz .fen #mail-panel #mail-texte::placeholder {
   color: hsl(256 13% 82.1%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-flag {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #mail-panel .mx-flag[aria-pressed="true"] {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #mail-panel .mx-taille {
   box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
@@ -2154,17 +2154,17 @@ body.bureau-frutiz #fb-chargement {
 }
 body.bureau-frutiz #fb-chargement .ch-g1,
 body.bureau-frutiz #fb-chargement .ch-g2 {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #fb-chargement .ch-gm {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #fb-chargement .ch-b1,
 body.bureau-frutiz #fb-chargement .ch-b2 {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #fb-chargement .ch-mid {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #fb-chargement .ch-titre,
 body.bureau-frutiz #fb-chargement .ch-champ,
@@ -2180,10 +2180,10 @@ body.bureau-frutiz .fen #reglages-panel .pf-arbre button {
   color: hsl(256 13% 68%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-rub::before {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-pref::before {
-  filter: var(--nuit-fane-fond);
+  filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-arbre button:hover {
   background: hsl(256 30% 13%);
@@ -2313,20 +2313,27 @@ body.bureau-frutiz .fen #profil-sheet #prof-enregistrer:active {
  */
 
 :root {
-  /* LES DESSINS D'ÉPOQUE, EN ATTENDANT QU'ON LES REDESSINE. On ne les
-     remplace pas : on les décolore, puis on les repasse au violet du parc de
-     nuit. Un simple fanage les laissait gris-brun sur du violet — deux
-     familles de couleur qui se disputaient l'écran ; teintés, ils s'y posent.
-     Un fichier « nom-nuit.svg » déposé à côté de « nom.svg » remplace le
-     dessin ET annule ce filtre (cf. scripts/generer-nuit.js). */
-  --nuit-fane: grayscale(.7) sepia(.5) hue-rotate(202deg) saturate(1.25) brightness(.62);
+  /* LE CHÂSSIS, ET LUI SEUL. Les cadres de fenêtre, les onglets, l'écran de
+     la main bar, le boîtier du Frusion : des surfaces d'époque peintes en
+     vert, qui n'illustrent rien — elles encadrent. On les repasse au violet
+     du parc de nuit en attendant qu'elles soient redessinées (déposer
+     « nom-nuit.svg » à côté de « nom.svg » annule ce filtre).
 
-  /* Le même traitement, mais pour une SURFACE et non une icône : le cadre
-     d'une fenêtre, l'écran de la main bar, le plateau du Frusion. Fanés
-     comme des icônes, ils devenaient les taches les plus claires de l'écran ;
-     ils descendent donc au niveau des aplats. Le générateur pose celui-ci sur
-     les 89 règles qui habillent un élément d'un sprite en background-image. */
-  --nuit-fane-fond: grayscale(.85) sepia(.6) hue-rotate(202deg) saturate(1.4) brightness(.42);
+     LES DESSINS, EUX, GARDENT LEURS COULEURS : les fruits du bureau, les
+     bouilles des émotions, ceux du frutimandala. Ce sont eux qui font le
+     parc ; les éteindre donnait une nuit correcte et sans joie. Un mode
+     sombre, pas un mode terne. */
+  --nuit-chassis: grayscale(.85) sepia(.6) hue-rotate(202deg) saturate(1.4) brightness(.42);
+
+  /* LA SOURDINE — pour les dessins dont le DÉCOR est peint dans l'image.
+     La roue du frutimandala porte ses fruits sur des quartiers verts ; les
+     dossiers du forum sont des GIF opaques au vert #D6F7B5. Impossible de
+     séparer le décor du sujet avec un filtre : on baisse donc les deux
+     ensemble, sans décolorer. Le vert cesse de crier, l'orange reste orange,
+     la prune reste prune. Ce sont les deux premiers dessins à redessiner —
+     une fois « frutimandala-roue-nuit.svg » posé, cette règle ne les touchera
+     plus. */
+  --nuit-sourdine: brightness(.38) saturate(1.2);
 
   /* « Un bon gros ciel gris nuageux et une lune blafarde. » Quatre dégradés
      et pas un octet d'image : la lune est un cercle, les nuages deux taches
@@ -2339,31 +2346,32 @@ body.bureau-frutiz .fen #profil-sheet #prof-enregistrer:active {
     linear-gradient(hsl(258 32% 18%), hsl(252 30% 10%));
 }
 
-/* ── Les dessins ─────────────────────────────────────────────────────────── */
+/* ── Le châssis que le générateur ne voit pas ────────────────────────────── */
 
-img, video { filter: var(--nuit-fane); }
+/* Le générateur teint les 89 règles qui posent un sprite en `background-image`.
+   Restent quelques pièces de châssis qui arrivent par un <img> du HTML : le
+   cadre de la bouille et ses reflets, la jauge de niveau, les flèches et les
+   boutons de fenêtre. Ce sont des SURFACES, pas des dessins — elles suivent
+   donc le châssis, pas les fruits. La liste est courte et fermée : tout ce
+   qui n'y est pas garde ses couleurs, ce qui est le bon défaut. */
+img.cadre, img.reflet, img.fen-ico,
+img[src$="/fb/cadre_bouille.svg"], img[src$="/fb/reflet_bouille.svg"],
+img[src$="/fb/reflet_niveau.svg"], img[src$="/fb/Niveau.svg"],
+img[src$="/fb/icone_fenetre.svg"], img[src$="/fb/bouton_up.png"],
+img[src$="/fb/fleche_gauche.svg"], img[src$="/fb/fleche_droite.svg"],
+img[src$="/fb/boutique/dossier.png"], img[src$="/fb/boutique/icone.png"] {
+  filter: var(--nuit-chassis);
+}
 
-/* Les quatre règles du thème de jour qui posaient DÉJÀ un filtre sur une
-   image : on leur ajoute le fanage au lieu de l'écraser — sans quoi elles
-   gagneraient en spécificité et ces images-là resteraient éclatantes. */
-.fd-item .thumb img { filter: drop-shadow(0 2px 3px hsl(256 30% 6% / .5)) var(--nuit-fane); }
-.home-tile .ico img { filter: drop-shadow(0 2px 3px hsl(256 30% 6% / .45)) var(--nuit-fane); }
-.enc-trophy .tro    { filter: drop-shadow(0 1px 0 hsl(256 30% 4% / .5)) var(--nuit-fane); }
-.users-scroll:active img { filter: brightness(.95) var(--nuit-fane); }
+/* La roue du frutimandala : ses fruits sont peints sur des quartiers verts,
+   et c'est le JavaScript qui la pose (le générateur ne la voit donc pas). */
+#frutimandala .md-art { filter: var(--nuit-sourdine); }
 
-/* Les sprites que le JAVASCRIPT pose : le fruit de l'onglet actif, la roue du
-   frutimandala, les pastilles des rubriques… Le générateur ne les voit pas —
-   ils ne sont écrits nulle part dans le CSS — mais le navigateur, lui, les
-   voit dans l'attribut `style`, et un sélecteur d'attribut sait le lire.
-   Le bureau est la seule exception : son fond d'écran est une image que le
-   joueur a choisie, et un filtre posé là casserait le positionnement fixe de
-   tout ce qu'il contient. */
-[style*="background-image"]:not(#bureau) { filter: var(--nuit-fane); }
-
-/* LA BOUILLE GARDE SES COULEURS. Elle est dessinée dans un <canvas>, donc
-   hors d'atteinte du CSS — et c'est voulu : le monde a viré au gris, pas le
-   frutiz. C'est le meilleur du clin d'œil, et il ne coûte rien. On le dit
-   ici pour que personne ne « répare » l'oubli. */
+/* LES DESSINS GARDENT LEURS COULEURS — les fruits du bureau, les bouilles des
+   émotions, la roue du frutimandala, les pictos du forum. C'est une décision,
+   pas un oubli : un mode sombre, pas un mode terne. Et la bouille du joueur
+   avec eux, qui est dessinée dans un <canvas> et donc hors d'atteinte du CSS.
+   Que personne ne « répare » ça. */
 
 /* ── Le ciel ─────────────────────────────────────────────────────────────── */
 

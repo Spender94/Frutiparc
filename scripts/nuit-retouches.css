@@ -13,20 +13,27 @@
  */
 
 :root {
-  /* LES DESSINS D'ÉPOQUE, EN ATTENDANT QU'ON LES REDESSINE. On ne les
-     remplace pas : on les décolore, puis on les repasse au violet du parc de
-     nuit. Un simple fanage les laissait gris-brun sur du violet — deux
-     familles de couleur qui se disputaient l'écran ; teintés, ils s'y posent.
-     Un fichier « nom-nuit.svg » déposé à côté de « nom.svg » remplace le
-     dessin ET annule ce filtre (cf. scripts/generer-nuit.js). */
-  --nuit-fane: grayscale(.7) sepia(.5) hue-rotate(202deg) saturate(1.25) brightness(.62);
+  /* LE CHÂSSIS, ET LUI SEUL. Les cadres de fenêtre, les onglets, l'écran de
+     la main bar, le boîtier du Frusion : des surfaces d'époque peintes en
+     vert, qui n'illustrent rien — elles encadrent. On les repasse au violet
+     du parc de nuit en attendant qu'elles soient redessinées (déposer
+     « nom-nuit.svg » à côté de « nom.svg » annule ce filtre).
 
-  /* Le même traitement, mais pour une SURFACE et non une icône : le cadre
-     d'une fenêtre, l'écran de la main bar, le plateau du Frusion. Fanés
-     comme des icônes, ils devenaient les taches les plus claires de l'écran ;
-     ils descendent donc au niveau des aplats. Le générateur pose celui-ci sur
-     les 89 règles qui habillent un élément d'un sprite en background-image. */
-  --nuit-fane-fond: grayscale(.85) sepia(.6) hue-rotate(202deg) saturate(1.4) brightness(.42);
+     LES DESSINS, EUX, GARDENT LEURS COULEURS : les fruits du bureau, les
+     bouilles des émotions, ceux du frutimandala. Ce sont eux qui font le
+     parc ; les éteindre donnait une nuit correcte et sans joie. Un mode
+     sombre, pas un mode terne. */
+  --nuit-chassis: grayscale(.85) sepia(.6) hue-rotate(202deg) saturate(1.4) brightness(.42);
+
+  /* LA SOURDINE — pour les dessins dont le DÉCOR est peint dans l'image.
+     La roue du frutimandala porte ses fruits sur des quartiers verts ; les
+     dossiers du forum sont des GIF opaques au vert #D6F7B5. Impossible de
+     séparer le décor du sujet avec un filtre : on baisse donc les deux
+     ensemble, sans décolorer. Le vert cesse de crier, l'orange reste orange,
+     la prune reste prune. Ce sont les deux premiers dessins à redessiner —
+     une fois « frutimandala-roue-nuit.svg » posé, cette règle ne les touchera
+     plus. */
+  --nuit-sourdine: brightness(.38) saturate(1.2);
 
   /* « Un bon gros ciel gris nuageux et une lune blafarde. » Quatre dégradés
      et pas un octet d'image : la lune est un cercle, les nuages deux taches
@@ -39,31 +46,32 @@
     linear-gradient(hsl(258 32% 18%), hsl(252 30% 10%));
 }
 
-/* ── Les dessins ─────────────────────────────────────────────────────────── */
+/* ── Le châssis que le générateur ne voit pas ────────────────────────────── */
 
-img, video { filter: var(--nuit-fane); }
+/* Le générateur teint les 89 règles qui posent un sprite en `background-image`.
+   Restent quelques pièces de châssis qui arrivent par un <img> du HTML : le
+   cadre de la bouille et ses reflets, la jauge de niveau, les flèches et les
+   boutons de fenêtre. Ce sont des SURFACES, pas des dessins — elles suivent
+   donc le châssis, pas les fruits. La liste est courte et fermée : tout ce
+   qui n'y est pas garde ses couleurs, ce qui est le bon défaut. */
+img.cadre, img.reflet, img.fen-ico,
+img[src$="/fb/cadre_bouille.svg"], img[src$="/fb/reflet_bouille.svg"],
+img[src$="/fb/reflet_niveau.svg"], img[src$="/fb/Niveau.svg"],
+img[src$="/fb/icone_fenetre.svg"], img[src$="/fb/bouton_up.png"],
+img[src$="/fb/fleche_gauche.svg"], img[src$="/fb/fleche_droite.svg"],
+img[src$="/fb/boutique/dossier.png"], img[src$="/fb/boutique/icone.png"] {
+  filter: var(--nuit-chassis);
+}
 
-/* Les quatre règles du thème de jour qui posaient DÉJÀ un filtre sur une
-   image : on leur ajoute le fanage au lieu de l'écraser — sans quoi elles
-   gagneraient en spécificité et ces images-là resteraient éclatantes. */
-.fd-item .thumb img { filter: drop-shadow(0 2px 3px hsl(256 30% 6% / .5)) var(--nuit-fane); }
-.home-tile .ico img { filter: drop-shadow(0 2px 3px hsl(256 30% 6% / .45)) var(--nuit-fane); }
-.enc-trophy .tro    { filter: drop-shadow(0 1px 0 hsl(256 30% 4% / .5)) var(--nuit-fane); }
-.users-scroll:active img { filter: brightness(.95) var(--nuit-fane); }
+/* La roue du frutimandala : ses fruits sont peints sur des quartiers verts,
+   et c'est le JavaScript qui la pose (le générateur ne la voit donc pas). */
+#frutimandala .md-art { filter: var(--nuit-sourdine); }
 
-/* Les sprites que le JAVASCRIPT pose : le fruit de l'onglet actif, la roue du
-   frutimandala, les pastilles des rubriques… Le générateur ne les voit pas —
-   ils ne sont écrits nulle part dans le CSS — mais le navigateur, lui, les
-   voit dans l'attribut `style`, et un sélecteur d'attribut sait le lire.
-   Le bureau est la seule exception : son fond d'écran est une image que le
-   joueur a choisie, et un filtre posé là casserait le positionnement fixe de
-   tout ce qu'il contient. */
-[style*="background-image"]:not(#bureau) { filter: var(--nuit-fane); }
-
-/* LA BOUILLE GARDE SES COULEURS. Elle est dessinée dans un <canvas>, donc
-   hors d'atteinte du CSS — et c'est voulu : le monde a viré au gris, pas le
-   frutiz. C'est le meilleur du clin d'œil, et il ne coûte rien. On le dit
-   ici pour que personne ne « répare » l'oubli. */
+/* LES DESSINS GARDENT LEURS COULEURS — les fruits du bureau, les bouilles des
+   émotions, la roue du frutimandala, les pictos du forum. C'est une décision,
+   pas un oubli : un mode sombre, pas un mode terne. Et la bouille du joueur
+   avec eux, qui est dessinée dans un <canvas> et donc hors d'atteinte du CSS.
+   Que personne ne « répare » ça. */
 
 /* ── Le ciel ─────────────────────────────────────────────────────────────── */
 

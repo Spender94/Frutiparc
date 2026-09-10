@@ -165,10 +165,24 @@ encore écrites. En **luminance** et non en clarté : `hsl(60 50% 26%)` et
 plus lumineux. Mesuré au navigateur sur huit écrans : **95 textes sous 4,5:1 de
 jour, 0 la nuit**.
 
+### Les dessins gardent leurs couleurs
+
+**Seul le châssis s'éteint** — les cadres de fenêtre, les onglets, l'écran de
+la main bar, le boîtier du Frusion : des surfaces qui n'illustrent rien. Les
+fruits du bureau, les bouilles des émotions, les pictos du forum et la bouille
+du joueur restent en couleur. Un mode sombre, pas un mode terne.
+
+Deux exceptions, et elles sont matérielles : la roue du frutimandala et les
+deux dossiers du forum portent leur **décor peint dans l'image** (des quartiers
+verts, une plaque `#D6F7B5` opaque). Aucun filtre ne sait séparer le décor du
+sujet : la roue passe en sourdine (`--nuit-sourdine`, on baisse sans
+décolorer), et les dossiers du forum — dont la plaque courait sur toute la
+hauteur de la page — suivent le châssis. Ce sont les trois fichiers que le
+redessin sert le plus.
+
 ### Redessiner les assets : `nom-nuit.svg`
 
-Les dessins d'époque sont teints au violet en attendant mieux — c'est un
-pis-aller. Pour en redessiner un :
+Pour remplacer un dessin d'époque :
 
 > déposer **`nom-nuit.svg` à côté de `nom.svg`**, relancer le générateur.
 
