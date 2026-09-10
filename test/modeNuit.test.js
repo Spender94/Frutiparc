@@ -404,7 +404,7 @@ test('seul le châssis s’éteint : les dessins gardent leurs couleurs', () => 
     ['le « valider » du frutimandala', /#frutimandala \.md-mandalaValider \{\s*\n\s*background-image: url\('\/frutiz\/sprites\/mandalaValider_up-nuit\.svg'\);\s*\n\s*\}/],
     ['le corps des onglets', /url\("\/frutiz\/sprites\/onglet_corps-nuit\.svg"\)/],
     ['le fruit d’une barre-titre', /\.fen-pastille \{\s*\n\s*background: url\('\/frutiz\/sprites\/fruit_default-nuit\.svg'\)/],
-    ['le voyant d’un contact', /\.sl-contact \.voyant \{\s*\n\s*background: url\('\/frutiz\/sprites\/sl-presence-0-nuit\.svg'\)/],
+    ['le voyant d’un contact', /\.sl-contact \.voyant \{\s*\n\s*--etat: url\('\/frutiz\/sprites\/sl-presence-0-nuit\.svg'\)/],
   ]) {
     assert.match(NUIT, regle, quoi + ' a sa variante, il n’est plus fané');
   }
@@ -686,6 +686,60 @@ test('un dessin tout en couleur reçoit quand même sa variante', () => {
   // conversion aurait rangé avec le châssis.
   assert.match(fs.readFileSync(path.join(ROOT, 'public/frutiz/sprites/butWinTop3_up-nuit.svg'), 'utf8'),
     /="#7aef80"/, 'le point d’interrogation garde son vert');
+});
+
+test('un voyant EN PARTIE garde son icône de jeu', () => {
+  /*
+   * LE PIÈGE DES DEUX COUCHES. Le voyant d'un contact en porte deux : le
+   * CADRE, et par-dessus ce qui dit l'état — pastille de présence, icône du
+   * jeu en cours, statut d'absence. Le JavaScript ne remplace que la seconde.
+   *
+   * Il l'écrivait en `background-image`, qui est UNE propriété : le cadre y
+   * était donc recopié à chaque fois. Et le mode nuit échange le cadre contre
+   * sa version de nuit par un `!important` sur `[style*=…]` — qui remplaçait
+   * du même geste TOUTE la propriété, icône du jeu comprise. Un joueur en
+   * partie n'avait plus qu'un cadre vide.
+   *
+   * La couche du dessus passe donc par une variable : le JavaScript la pose,
+   * la feuille garde le cadre, et les deux ne se marchent plus dessus.
+   */
+  assert.match(BUREAU, /v\.style\.setProperty\('--etat',\s*\n\s*"url\('" \+ \(jeu \? voyantUrl\(jeu\) : absenceUrl\(absence\)\) \+ "'\)"\);/);
+  assert.match(BUREAU, /v\.style\.removeProperty\('--etat'\);/);
+  const habiller = BUREAU.slice(BUREAU.indexOf('function habillerLigneContact'),
+    BUREAU.indexOf('function ligneContact'));
+  assert.ok(habiller.length > 100, 'la fonction du voyant est toujours là');
+  assert.ok(!/backgroundImage/.test(habiller),
+    'habillerLigneContact ne doit plus réécrire background-image');
+  // La feuille de JOUR porte les deux couches, la variable en tête.
+  const jour = lire('public/bureau-frutiz.css');
+  assert.match(jour, /\.sl-contact \.voyant \{\s*\n\s*--etat: url\('\/frutiz\/sprites\/sl-presence-0\.svg'\);/);
+  assert.match(jour, /background: var\(--etat\) center center \/ 8px 8px no-repeat,\s*\n\s*url\('\/frutiz\/sprites\/sl-icone-fond\.svg'\)/);
+  assert.match(jour, /\.sl-contact\.en-ligne \.voyant \{\s*\n\s*--etat: url\('\/frutiz\/sprites\/sl-presence-1\.svg'\);\s*\n\s*\}/);
+  // Et celle de NUIT change les deux couches, chacune pour sa variante.
+  assert.match(NUIT, /\.sl-contact \.voyant \{\s*\n\s*--etat: url\('\/frutiz\/sprites\/sl-presence-0-nuit\.svg'\);\s*\n\s*background: var\(--etat\)[^\n]*\n\s*url\('\/frutiz\/sprites\/sl-icone-fond-nuit\.svg'\)/);
+});
+
+test('la fiche : le bouton du détail reste une commande, la silhouette se lit', () => {
+  const sp = (f) => lire('public/frutiz/sprites/' + f);
+  // Le bouton ROSE du mode avancé : le filtre le passait au gris — un bouton
+  // d'action qui avait l'air éteint. La conversion sait qu'un rose de DESSIN
+  // est une commande et lui garde sa clarté.
+  for (const f of ['fiche-rose', 'fiche-rose-tri']) {
+    const roses = [...sp(f + '-nuit.svg').matchAll(/="(hsl\(325[^"]*)"/g)].map((m) => m[1]);
+    assert.ok(roses.length, f + ' doit rester rose : ' + sp(f + '-nuit.svg').slice(0, 200));
+  }
+  // Le bureau sert la variante, et il n’y a plus de filtre sur cette règle-là.
+  assert.match(NUIT, /\.fiche-boite \.fiche-actions \.fiche-avance \{\s*\n\s*background: url\('\/frutiz\/sprites\/fiche-rose-nuit\.svg'\)/);
+  assert.match(NUIT, /content: url\('\/frutiz\/sprites\/fiche-rose-tri-nuit\.svg'\);/);
+  const retouches = lire('scripts/nuit-retouches.css');
+  assert.match(retouches, /\.fiche-actions \.fiche-avance,\s*\n\.fiche-actions \.fiche-avance img \{ filter: none; \}/);
+  // LA SILHOUETTE D'UN SIGNE NON RÉVÉLÉ est un noir TRANSLUCIDE : lisible
+  // comme une ombre sur le parchemin du jour, invisible sur un panneau de
+  // nuit. On la renverse — même silhouette, même sens, mais claire.
+  assert.match(retouches, /img\[src\$="\/fb\/signe_mystere\.png"\] \{ filter: invert\(1\) opacity\(\.5\); \}/);
+  // Et SEULEMENT elle : un signe révélé est un fruit en couleur.
+  assert.ok(!/\.fiche-signes img \{[^}]*filter/.test(NUIT),
+    'aucune règle ne renverse les signes révélés');
 });
 
 test('la boutique : le châssis s’éteint, les kikooz gardent leur or', () => {

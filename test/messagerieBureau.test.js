@@ -126,7 +126,12 @@ test('la bande des contacts montre le VOYANT DU JEU', () => {
   // d'absence, à la même place ; sinon la pastille verte.
   assert.match(JS, /if \(jeu \|\| absence\) \{/);
   assert.match(JS, /v\.classList\.add\('jeu'\);/);
-  assert.match(JS, /voyantUrl\(jeu\)[\s\S]{0,80}?sl-icone-fond\.svg/);
+  // Le JS ne pose QUE la couche du dessus (`--etat`) : le cadre reste à la
+  // feuille, qui sait l’échanger contre sa version de nuit sans emporter
+  // l’icône du jeu avec lui.
+  assert.match(JS, /setProperty\('--etat',[\s\S]{0,90}?voyantUrl\(jeu\)/);
+  assert.match(CSS, /--etat: url\('\/frutiz\/sprites\/sl-presence-0\.svg'\);/);
+  assert.match(CSS, /background: var\(--etat\)[\s\S]{0,80}?sl-icone-fond\.svg/);
   assert.match(JS, /function voyantUrl\(jeu\) \{\s*\n\s*return '\/fb\/voyant_' \+ \(jeu === 'swapou2' \? 'swapou' : jeu\)/);
   // L'icône remplit le cadre de 17, moins son liseré.
   assert.match(CSS, /\.sl-contact \.voyant\.jeu \{\s*\n\s*background-size: 15px 15px, 17px 17px;/);

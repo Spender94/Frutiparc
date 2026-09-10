@@ -1372,12 +1372,12 @@ body.bureau-frutiz #side-list .sl-titre .bout {
   background: url('/frutiz/sprites/sl-fleche-1-nuit.svg') left top / 20.65px 12px no-repeat;
 }
 body.bureau-frutiz #side-list .sl-contact .voyant {
-  background: url('/frutiz/sprites/sl-presence-0-nuit.svg') center center / 8px 8px no-repeat,
+  --etat: url('/frutiz/sprites/sl-presence-0-nuit.svg');
+  background: var(--etat) center center / 8px 8px no-repeat,
               url('/frutiz/sprites/sl-icone-fond-nuit.svg') left top / 17px 17px no-repeat;
 }
 body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant {
-  background-image: url('/frutiz/sprites/sl-presence-1-nuit.svg'),
-                    url('/frutiz/sprites/sl-icone-fond-nuit.svg');
+  --etat: url('/frutiz/sprites/sl-presence-1-nuit.svg');
 }
 body.bureau-frutiz #side-list .sl-contact .nom {
   color: hsl(256 13% 84.5%);
@@ -1845,10 +1845,10 @@ body.bureau-frutiz .fiche-boite .fiche-actions button {
   background: hsl(256 30% 10%);
 }
 body.bureau-frutiz .fiche-boite .fiche-actions .fiche-avance {
-  filter: var(--nuit-chassis);
+  background: url('/frutiz/sprites/fiche-rose-nuit.svg') center / 20px 20px no-repeat;
 }
 body.bureau-frutiz .fiche-boite .fiche-actions .fiche-avance img {
-  filter: var(--nuit-chassis);
+  content: url('/frutiz/sprites/fiche-rose-tri-nuit.svg');
 }
 body.bureau-frutiz .fiche-boite .fiche-corps {
   background: linear-gradient(to bottom, hsl(256 30% 10% / 0.55) 0, hsl(256 30% 10% / 0) 8px), hsl(256 30% 25.8%);
@@ -2376,6 +2376,10 @@ img[src$="/frutiz/sprites/ecran-fond.svg"] { content: url("/frutiz/sprites/ecran
 [style*="/frutiz/sprites/ecran-fond.svg"] { background-image: url("/frutiz/sprites/ecran-fond-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/encart-reflet.svg"] { content: url("/frutiz/sprites/encart-reflet-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/encart-reflet.svg"] { background-image: url("/frutiz/sprites/encart-reflet-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fiche-rose-tri.svg"] { content: url("/frutiz/sprites/fiche-rose-tri-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/fiche-rose-tri.svg"] { background-image: url("/frutiz/sprites/fiche-rose-tri-nuit.svg") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fiche-rose.svg"] { content: url("/frutiz/sprites/fiche-rose-nuit.svg"); filter: none; }
+[style*="/frutiz/sprites/fiche-rose.svg"] { background-image: url("/frutiz/sprites/fiche-rose-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/fruit_default.svg"] { content: url("/frutiz/sprites/fruit_default-nuit.svg"); filter: none; }
 [style*="/frutiz/sprites/fruit_default.svg"] { background-image: url("/frutiz/sprites/fruit_default-nuit.svg") !important; filter: none !important; }
 img[src$="/frutiz/sprites/fruit_winAlert.svg"] { content: url("/frutiz/sprites/fruit_winAlert-nuit.svg"); filter: none; }
@@ -2583,6 +2587,26 @@ img[src$="/fb/boutique/icone.png"] {
 #home-panel:not(.a-fond) { background: var(--nuit-ciel); }
 
 /* ── Là où la conversion ne pouvait pas deviner ──────────────────────────── */
+
+/* LA SILHOUETTE D'UN FRUTISIGNE NON RÉVÉLÉ.
+   « La silhouette noire tant que le signe n'est pas révélé » — un noir
+   TRANSLUCIDE, qui se lit comme une ombre sur le parchemin du jour et qui
+   disparaît dans le fond d'un panneau de nuit. On la renverse : même
+   silhouette, même sens, mais claire au lieu de sombre. Les signes RÉVÉLÉS
+   sont des fruits en couleur, et la règle ne les vise pas — elle nomme le
+   seul fichier qui est une ombre. */
+img[src$="/fb/signe_mystere.png"] { filter: invert(1) opacity(.5); }
+
+/* LE BOUTON « DÉTAIL » DE LA FICHE, CÔTÉ TIROIR : la même commande rose que
+   sur le bureau, mais dessinée en PNG (`bouton_rose.png` et son triangle
+   `ico_avance.png`). On ne peut pas les repeindre — un PNG n'a pas de couleur
+   à relire —, et le filtre du châssis les passait au gris : un bouton
+   d'action qui avait l'air éteint. Le rose est l'ACCENT du thème, pas du
+   châssis : on lève donc le fanage et on les laisse tels quels, comme le
+   dossier rose de la boutique. Le jumeau du bureau, lui, est un SVG et reçoit
+   sa vraie variante (`fiche-rose.svg` au manifeste). */
+.fiche-actions .fiche-avance,
+.fiche-actions .fiche-avance img { filter: none; }
 
 /* LE BOUTON « ACHETER » DU TIROIR EST UNE COMMANDE.
    Il est VERT dans le thème de jour — donc rangé avec le châssis, donc

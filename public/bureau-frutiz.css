@@ -1036,14 +1036,24 @@ body.bureau-frutiz #side-list .sl-contact {
   height: 18px; padding: 0; border: 0; background: none;
   cursor: pointer; text-align: left;
 }
+/* DEUX COUCHES, ET SEULE LA PREMIÈRE CHANGE : le CADRE ne bouge jamais, c'est
+   ce qui se pose dessus qui dit l'état — la pastille de présence, l'icône du
+   jeu en cours, celle de l'absence. La couche du dessus passe donc par une
+   variable, que le JavaScript remplace (cf. `habillerLigneContact`).
+
+   Ce n'est pas un détail de style : `background-image` est UNE propriété, et
+   l'écrire en ligne remplace toutes ses couches d'un coup. Le cadre y était
+   donc recopié à chaque fois — et le mode nuit, qui échange le cadre contre sa
+   version de nuit par un `!important`, écrasait du même geste l'icône du jeu.
+   Un joueur en partie n'avait plus qu'un cadre vide. */
 body.bureau-frutiz #side-list .sl-contact .voyant {
+  --etat: url('/frutiz/sprites/sl-presence-0.svg');
   position: absolute; left: .5px; top: .5px; width: 17px; height: 17px;
-  background: url('/frutiz/sprites/sl-presence-0.svg') center center / 8px 8px no-repeat,
+  background: var(--etat) center center / 8px 8px no-repeat,
               url('/frutiz/sprites/sl-icone-fond.svg') left top / 17px 17px no-repeat;
 }
 body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant {
-  background-image: url('/frutiz/sprites/sl-presence-1.svg'),
-                    url('/frutiz/sprites/sl-icone-fond.svg');
+  --etat: url('/frutiz/sprites/sl-presence-1.svg');
 }
 /* EN PARTIE : `onStatusObj` fait `icon.gotoAndStop("internal")` — l'icône du
    JEU remplace la pastille de présence dans le même cadre de 17. Le dessin

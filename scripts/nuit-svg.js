@@ -157,6 +157,21 @@ const MANIFESTE = [
   ...['mandalaGauche', 'mandalaDroite', 'mandalaSwap', 'mandalaValider']
     .flatMap((n) => troisEtats(n)).map((f) => ({ f, teintes: 'gardees' })),
 
+  // ── La fiche d'un frutiz ──────────────────────────────────────────────
+  //
+  // Le bouton ROSE du mode avancé, au bout de la rangée d'actions. C'est la
+  // commande du thème — la même famille que les quatre boutons du salon — et
+  // le filtre la passait au gris : un bouton d'action qui avait l'air éteint.
+  // La conversion, elle, sait qu'un rose de DESSIN est une commande et lui
+  // garde sa clarté.
+  //
+  // Les autres icônes de la rangée (le blog, la liste noire, l'édition…) ne
+  // sont pas ici : ce sont des PNG emballés dans un SVG, sans une couleur
+  // vectorielle à reprendre. Elles arrivent par un <img> sans filtre et
+  // gardent donc leurs couleurs — ce qui est exactement ce qu'on veut.
+  { f: 'fiche-rose.svg', note: 'la tuile du bouton « détail »' },
+  { f: 'fiche-rose-tri.svg', note: 'son triangle' },
+
   // ── La barre de contacts ──────────────────────────────────────────────
   //
   // Le cadre, la plaque d'un dossier et sa flèche sont du châssis : ils

@@ -641,14 +641,16 @@ window.BureauFrutiz = (function () {
       : (absence ? ' — ' + ABSENCE_NOM[absence].toLowerCase()
         : (enLigne ? ' — en ligne' : ' — hors ligne')));
     var v = b.querySelector('.voyant');
+    // On ne remplace QUE la couche du dessus (cf. `--etat` dans la feuille) :
+    // le cadre reste à la feuille, qui sait le changer quand le parc s'éteint.
+    // Réécrire `background-image` ici emportait le cadre avec l'icône.
     if (jeu || absence) {
       v.classList.add('jeu');
-      v.style.backgroundImage = "url('"
-        + (jeu ? voyantUrl(jeu) : absenceUrl(absence)) + "'), "
-        + "url('/frutiz/sprites/sl-icone-fond.svg')";
+      v.style.setProperty('--etat',
+        "url('" + (jeu ? voyantUrl(jeu) : absenceUrl(absence)) + "')");
     } else {
       v.classList.remove('jeu');
-      v.style.backgroundImage = '';
+      v.style.removeProperty('--etat');
     }
   }
 

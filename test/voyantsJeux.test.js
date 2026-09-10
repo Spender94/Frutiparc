@@ -343,7 +343,8 @@ test('le voyant fait la taille du point qu’il remplace, et le point éteint es
   assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 18px; height: 18px; padding: 1\.5px; \}/);
   // Et c'est la taille que la bande des contacts pose, elle, sans détour.
   const cbureau = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
-  assert.match(cbureau, /sl-presence-0\.svg'\) center center \/ 8px 8px no-repeat/);
+  assert.match(cbureau, /--etat: url\('\/frutiz\/sprites\/sl-presence-0\.svg'\);/);
+  assert.match(cbureau, /background: var\(--etat\) center center \/ 8px 8px no-repeat/);
   // Les lignes de scores du jour portent le même voyant, à seize.
   assert.match(light, /\.fiche-jour \.jeu-ico \{ width: 16px; height: 16px;/);
   // Les trois dessins de la bande de présence existent, et le saumon est

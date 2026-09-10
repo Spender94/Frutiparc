@@ -90,6 +90,26 @@ img[src$="/fb/boutique/icone.png"] {
 
 /* ── Là où la conversion ne pouvait pas deviner ──────────────────────────── */
 
+/* LA SILHOUETTE D'UN FRUTISIGNE NON RÉVÉLÉ.
+   « La silhouette noire tant que le signe n'est pas révélé » — un noir
+   TRANSLUCIDE, qui se lit comme une ombre sur le parchemin du jour et qui
+   disparaît dans le fond d'un panneau de nuit. On la renverse : même
+   silhouette, même sens, mais claire au lieu de sombre. Les signes RÉVÉLÉS
+   sont des fruits en couleur, et la règle ne les vise pas — elle nomme le
+   seul fichier qui est une ombre. */
+img[src$="/fb/signe_mystere.png"] { filter: invert(1) opacity(.5); }
+
+/* LE BOUTON « DÉTAIL » DE LA FICHE, CÔTÉ TIROIR : la même commande rose que
+   sur le bureau, mais dessinée en PNG (`bouton_rose.png` et son triangle
+   `ico_avance.png`). On ne peut pas les repeindre — un PNG n'a pas de couleur
+   à relire —, et le filtre du châssis les passait au gris : un bouton
+   d'action qui avait l'air éteint. Le rose est l'ACCENT du thème, pas du
+   châssis : on lève donc le fanage et on les laisse tels quels, comme le
+   dossier rose de la boutique. Le jumeau du bureau, lui, est un SVG et reçoit
+   sa vraie variante (`fiche-rose.svg` au manifeste). */
+.fiche-actions .fiche-avance,
+.fiche-actions .fiche-avance img { filter: none; }
+
 /* LE BOUTON « ACHETER » DU TIROIR EST UNE COMMANDE.
    Il est VERT dans le thème de jour — donc rangé avec le châssis, donc
    ressorti violet sur un panneau violet, avec l'air d'un bouton désactivé. Le

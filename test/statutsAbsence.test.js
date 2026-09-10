@@ -110,7 +110,7 @@ test('le bureau le montre au carnet et dans la recherche', () => {
   // Le carnet : le jeu passe devant, l'absence vient ensuite, et hors ligne
   // rien du tout — une socket fermée n'a pas d'humeur.
   assert.match(BUREAU, /var absence = \(enLigne && !jeu && ABSENCE_NOM\[a\.absence\]\) \? a\.absence : '';/);
-  assert.match(BUREAU, /\+ \(jeu \? voyantUrl\(jeu\) : absenceUrl\(absence\)\) \+ "'\), "/);
+  assert.match(BUREAU, /\+ \(jeu \? voyantUrl\(jeu\) : absenceUrl\(absence\)\) \+ "'\)"/);
   // La recherche : la même règle, sur son propre voyant.
   assert.match(BUREAU, /\} else if \(info\.presence !== 0 && ABSENCE_NOM\[info\.absence\]\) \{/);
   assert.match(BUREAU, /ico\.src = absenceUrl\(info\.absence\);/);
