@@ -177,7 +177,7 @@ test('une question posée disparaît du backlog — mémoire et base', async (t)
 
   // Un joueur dans un salon : MikeHorny ne parle pas à une pièce vide.
   const nom = 'kilu' + String(Date.now()).slice(-6);
-  const corps = JSON.stringify({ username: nom, password: 'secret123', birthday: '1990-05-15' });
+  const corps = JSON.stringify({ username: nom, password: 'secret123' });
   const jh = { 'Content-Type': 'application/json' };
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: jh, body: corps });
   const { sid } = await (await fetch(BASE + '/api/auth/login', { method: 'POST', headers: jh, body: corps })).json();

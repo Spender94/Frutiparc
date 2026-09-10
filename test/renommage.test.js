@@ -79,10 +79,10 @@ after(() => { if (proc) proc.kill('SIGKILL'); });
 const HDR = { 'Content-Type': 'application/json', 'x-admin-key': CLE };
 const jsonPost = (chemin, corps) => fetch(BASE + chemin, { method: 'POST', headers: HDR, body: JSON.stringify(corps) });
 async function inscrire(pseudo, parrain) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15', parrain });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123', parrain });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: HDR, body });
   const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: HDR,
-    body: JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' }) });
+    body: JSON.stringify({ username: pseudo, password: 'secret123' }) });
   const j = await r.json();
   assert.ok(j.sid, 'session de ' + pseudo + ' : ' + JSON.stringify(j));
   return j.sid;
@@ -159,7 +159,7 @@ test('le renommage : le compte suit, et tout ce qui le désigne aussi', async (t
   assert.equal(r.nouveau, BOBBY);
   // Le mot de passe ne change pas : il se reconnecte sous son nouveau nom.
   const echec = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: HDR,
-    body: JSON.stringify({ username: BOB, password: 'secret123', birthday: '1990-05-15' }) });
+    body: JSON.stringify({ username: BOB, password: 'secret123' }) });
   assert.equal(echec.status, 401, 'l’ancien pseudo n’ouvre plus rien');
   const sid = await inscrire(BOBBY);   // (l'inscription échoue, la connexion passe)
   S.bobby = sid;
@@ -209,7 +209,7 @@ test('l’ancien pseudo est réservé, et on ne renomme pas n’importe comment'
   if (!dispo) return t.skip('base indisponible');
   // Personne ne reprend l'ancien nom : il désigne encore un passé.
   const r = await fetch(BASE + '/api/auth/register', { method: 'POST', headers: HDR,
-    body: JSON.stringify({ username: BOB, password: 'secret123', birthday: '1990-05-15' }) });
+    body: JSON.stringify({ username: BOB, password: 'secret123' }) });
   assert.equal(r.status, 409, 'l’ancien pseudo est réservé');
   assert.deepEqual((await sql('SELECT username FROM deleted_usernames')).map((x) => x.username), [BOB]);
   // Un pseudo déjà porté, un pseudo invalide, un joueur inconnu : refusés.

@@ -301,7 +301,9 @@ test('les deux lignes du document, à leurs formats', () => {
   assert.match(s, /\.rc-nom \{\s*\n\s*flex: 0 0 110px; width: 110px;\s*\n\s*font: 700 11px Verdana/);
   assert.match(s, /\.rc-age \{\s*\n\s*flex: 0 0 60px; width: 60px; font: 400 10px Verdana/);
   assert.match(s, /\.rc-reg,[\s\S]{0,80}?\.rc-ville \{\s*\n\s*flex: 1 1 auto; min-width: 0; text-align: right;\s*\n\s*font: 400 10px Verdana/);
-  assert.match(JS, /age\.textContent = info\.age \+ ' ans';/);
+  // Sans date de naissance — elle est facultative —, la case reste vide plutôt
+  // que d'annoncer « 0 ans ».
+  assert.match(JS, /age\.textContent = info\.age \? info\.age \+ ' ans' : '';/);
 });
 
 test('le voyant : le jeu s’il y en a un, sinon le pip de présence', () => {

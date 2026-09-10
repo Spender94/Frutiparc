@@ -9,7 +9,7 @@ variable d'environnement `RGPD_RESPONSABLE` (affichée sur
 **Délégué à la protection des données :** aucun (non requis — art. 37).
 
 Sauf mention contraire, les personnes concernées sont **les joueurs inscrits**
-(dont des mineurs), les destinataires sont **le serveur du site et l'équipe
+(un public adulte — cf. fiche 1), les destinataires sont **le serveur du site et l'équipe
 bénévole** (accès administrateur journalisé), et les mesures de sécurité sont
 celles de la fiche 10.
 
@@ -21,11 +21,18 @@ celles de la fiche 10.
 |---|---|
 | **Finalité** | Créer et tenir un compte, permettre la connexion, retrouver un code secret oublié |
 | **Base légale** | Exécution du contrat (les conditions d'utilisation du parc) ; consentement pour l'e-mail |
-| **Données** | pseudo, code secret (haché bcrypt), date de naissance, e-mail (facultatif), date de création, dernière connexion, accord parental (date, mineurs de moins de 15 ans) |
+| **Données** | pseudo, code secret (haché bcrypt), e-mail (facultatif), date de création, dernière connexion |
 | **Source** | le joueur, à l'inscription et dans ses réglages |
 | **Destinataires** | serveur ; Resend (e-mail) pour le seul envoi des e-mails de récupération et d'inactivité |
 | **Durée** | vie du compte ; effacement après 3 ans sans connexion (préavis 35 j par e-mail) ; sur demande, 7 j après la demande |
-| **Où** | `users` (colonnes `username`, `password`, `email`, `birthday`, `created_at`, `last_login`, `parent_consent_at`, `deletion_requested_at`, `inactivity_warned_at`), `sessions`, `password_resets` |
+| **Où** | `users` (colonnes `username`, `password`, `email`, `created_at`, `last_login`, `deletion_requested_at`, `inactivity_warned_at`), `sessions`, `password_resets` |
+
+**L'âge n'est pas collecté.** Le parc s'adresse à un public adulte (ceux qui
+l'ont connu). Demander une date de naissance à tous pour repérer un mineur
+serait une collecte de plus chez tout le monde, contraire à la minimisation
+(art. 5-1-c) — et l'article 8 ne joue que pour un service offert *directement*
+à des enfants. La règle est donc **déclarée** (écran d'inscription et politique
+de confidentialité : public adulte, accord parental avant 15 ans), pas mesurée.
 
 ## 2. Fiche du joueur (profil public)
 
@@ -33,11 +40,11 @@ celles de la fiche 10.
 |---|---|
 | **Finalité** | Se présenter aux autres joueurs |
 | **Base légale** | Consentement (tous les champs sont facultatifs et modifiables) |
-| **Données** | prénom, nom (et son affichage), sexe, ville, pays, région, activité, site web, commentaire, signature de forum, frutibouille |
+| **Données** | prénom, nom (et son affichage), **date de naissance**, sexe, ville, pays, région, activité, site web, commentaire, signature de forum, frutibouille |
 | **Source** | le joueur |
-| **Destinataires** | tous les visiteurs connectés (fiche publique). L'âge n'est montré qu'à partir de 18 ans ; la date de naissance n'est jamais montrée |
+| **Destinataires** | tous les visiteurs connectés (fiche publique). De la date de naissance, seul l'**âge** sort, et seulement à partir de 18 ans ; la date elle-même n'est jamais montrée (`bdPublic`) |
 | **Durée** | vie du compte |
-| **Où** | `users` (`first_name`, `last_name`, `last_name_public`, `gender`, `city`, `country*`, `region*`, `real_job`, `site_url`, `comment`, `forum_signature`, `fbouille`) |
+| **Où** | `users` (`first_name`, `last_name`, `last_name_public`, `birthday`, `gender`, `city`, `country*`, `region*`, `real_job`, `site_url`, `comment`, `forum_signature`, `fbouille`) |
 
 ## 3. Données de jeu
 
@@ -124,8 +131,9 @@ celles de la fiche 10.
   cas d'échecs répétés.
 - Base de données chez l'hébergeur, dans l'Union européenne, sauvegardée par
   lui.
-- Minimisation : inscription à trois champs, fiche entièrement facultative,
-  date de naissance jamais montrée, âge des mineurs jamais montré.
+- Minimisation : inscription à trois champs (dont un facultatif) et sans âge,
+  fiche entièrement facultative, date de naissance jamais montrée, âge jamais
+  montré en dessous de 18 ans.
 - Purges automatiques des durées ci-dessus (`rgpdBalayage`, toutes les heures).
 - Export et suppression de compte en libre-service (`/api/light/mes-donnees`,
   `/api/light/compte/suppression`).

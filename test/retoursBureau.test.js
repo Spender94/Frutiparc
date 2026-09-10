@@ -68,7 +68,7 @@ after(() => {
 });
 
 async function sidPour(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
   await fetch(BASE + '/api/auth/register',
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const r = await fetch(BASE + '/api/auth/login',

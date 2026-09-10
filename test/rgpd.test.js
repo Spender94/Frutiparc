@@ -5,15 +5,15 @@
  * Un serveur avec sa base, et l'on joue le parcours d'un joueur qui exerce ses
  * droits sans écrire à personne :
  *
- *   · l'INSCRIPTION demande la date de naissance, et l'accord d'un parent
- *     sous quinze ans (art. 8) ;
+ *   · l'INSCRIPTION ne demande NI l'âge ni rien d'autre que trois champs : la
+ *     règle d'âge est déclarée, pas collectée (minimisation, art. 5-1-c) ;
  *   · l'EXPORT (art. 15 et 20) rend un JSON, table par table, sans le mot de
  *     passe ;
  *   · la SUPPRESSION (art. 17) veut le code secret, tue les sessions, laisse
  *     sept jours ; se reconnecter annule ; passé le délai, le balayage efface —
  *     et ce que les autres ont de lui prend la pierre tombale ;
- *   · l'ÂGE : les autres ne voient que l'âge, et rien avant dix-huit ans ; la
- *     date de naissance ne sort plus des trames de présence ;
+ *   · l'ÂGE : facultatif, dans la fiche ; les autres n'en voient que l'âge, et
+ *     rien avant dix-huit ans ; la date ne sort plus des trames de présence ;
  *   · les PURGES : l'IP et le jeton d'inscription au bout de six mois, les
  *     journaux de modération au bout d'un an — et un compte inactif depuis
  *     trois ans disparaît.
@@ -85,43 +85,51 @@ after(() => { if (proc) proc.kill('SIGKILL'); });
 
 const post = (url, body, headers) => fetch(BASE + url, { method: 'POST', headers: headers || H, body: JSON.stringify(body) });
 async function inscrire(pseudo, extra) {
-  const body = Object.assign({ username: pseudo, password: 'secret123', birthday: '1990-05-15' }, extra || {});
+  const body = Object.assign({ username: pseudo, password: 'secret123' }, extra || {});
   const r = await post('/api/auth/register', body);
   return { status: r.status, json: await r.json() };
 }
 async function connecter(pseudo) {
-  const r = await post('/api/auth/login', { username: pseudo, password: 'secret123', birthday: '1990-05-15' });
+  const r = await post('/api/auth/login', { username: pseudo, password: 'secret123' });
   return { status: r.status, json: await r.json() };
 }
 
 // ── L'inscription ─────────────────────────────────────────────────────────
 
-test('sans date de naissance, pas de compte', async (t) => {
+test('l’inscription ne demande que trois champs — et surtout pas l’âge', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
-  const r = await post('/api/auth/register', { username: 'sansdate', password: 'secret123' });
-  assert.strictEqual(r.status, 400);
-  assert.strictEqual((await r.json()).error, 'birthday_invalid');
-  const futur = await inscrire('futur', { birthday: '2999-01-01' });
-  assert.strictEqual(futur.status, 400, 'une naissance dans le futur n’est pas une naissance');
+  // Sans date de naissance : le compte se crée, évidemment.
+  const r = await post('/api/auth/register', { username: 'adulte', password: 'secret123' });
+  assert.strictEqual(r.status, 200, JSON.stringify(await r.json()));
+  const [row] = await sql(`SELECT birthday FROM users WHERE username = 'adulte'`);
+  assert.strictEqual(row.birthday, null, 'et il n’a pas de date de naissance');
+  /*
+   * Une date envoyée quand même — un vieux client, un script — ne doit pas
+   * entrer par la porte de l'inscription : c'est la FICHE qui l'écrit, et elle
+   * seule. Sans quoi la donnée arriverait par un chemin que la politique de
+   * confidentialité ne décrit pas.
+   */
+  const forge = await post('/api/auth/register',
+    { username: 'forgeur', password: 'secret123', birthday: '1990-05-15' });
+  assert.strictEqual(forge.status, 200);
+  const [f] = await sql(`SELECT birthday FROM users WHERE username = 'forgeur'`);
+  assert.strictEqual(f.birthday, null, 'la date envoyée à l’inscription est ignorée');
 });
 
-test('sous quinze ans, l’accord d’un parent — et il est horodaté', async (t) => {
-  if (!dispo) return t.skip('Postgres indisponible sur 5433');
-  const an = new Date().getFullYear() - 12;
-  const sans = await inscrire('enfant', { birthday: `${an}-06-01` });
-  assert.strictEqual(sans.status, 400);
-  assert.strictEqual(sans.json.error, 'parental_consent_required');
-  const avec = await inscrire('enfant', { birthday: `${an}-06-01`, parental_consent: true });
-  assert.strictEqual(avec.status, 200, JSON.stringify(avec.json));
-  // `birthday` est une colonne DATE : pg la rend en objet Date.
-  const [row] = await sql(`SELECT to_char(birthday, 'YYYY-MM-DD') AS naissance, parent_consent_at FROM users WHERE username = 'enfant'`);
-  assert.ok(row.parent_consent_at, 'la date de l’accord est gardée : c’est la preuve');
-  assert.strictEqual(row.naissance, `${an}-06-01`);
-  // Un adulte n'a pas d'accord parental, même s'il coche la case.
-  const adulte = await inscrire('adulte', { parental_consent: true });
-  assert.strictEqual(adulte.status, 200);
-  const [a] = await sql(`SELECT parent_consent_at FROM users WHERE username = 'adulte'`);
-  assert.strictEqual(a.parent_consent_at, null);
+test('la règle d’âge est DÉCLARÉE, pas mesurée', () => {
+  const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  // Plus de champ de date ni de case parentale sur l'écran d'inscription.
+  assert.ok(!/id="re-naissance"/.test(light), 'aucun champ de date à l’inscription');
+  assert.ok(!/id="re-parent"/.test(light), 'aucune case d’accord parental');
+  assert.ok(!/parental_consent/.test(light), 'et rien de tel n’est envoyé');
+  // À la place, la règle, écrite.
+  assert.match(light, /Le parc s'adresse à un public adulte\./);
+  assert.match(light, /Avant 15&nbsp;ans, il faut l'accord d'un parent\./);
+  // Le serveur ne gate rien non plus.
+  const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.ok(!/parental_consent/.test(srv));
+  assert.ok(!/birthday_invalid/.test(srv));
+  assert.ok(!/AGE_MAJORITE_NUMERIQUE/.test(srv));
 });
 
 test('la colonne birthday n’a plus de valeur inventée par défaut', async (t) => {
@@ -135,33 +143,55 @@ test('la colonne birthday n’a plus de valeur inventée par défaut', async (t)
 test('les autres voient l’âge, pas la date ; et rien avant dix-huit ans', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
   await inscrire('regardeur');
-  await inscrire('adulte');                       // déjà là si le test d'avant a tout fait
+  await inscrire('enfant');
   const moi = (await connecter('regardeur')).json.sid;
+  // La date de naissance s'écrit par la FICHE — le seul chemin qui la prend.
+  const sidA = (await connecter('adulte')).json.sid;
+  const sidE = (await connecter('enfant')).json.sid;
+  const an = new Date().getFullYear() - 12;
+  await fetch(`${BASE}/do/smi?sid=${sidA}&d=1990-05-15`);
+  await fetch(`${BASE}/do/smi?sid=${sidE}&d=${an}-06-01`);
+
   // L'adulte : l'âge, sans la date.
   const fa = await (await fetch(`${BASE}/api/light/fiche?sid=${moi}&u=adulte`)).json();
-  assert.strictEqual(fa.basic.age, new Date().getFullYear() - 1990 - (new Date() < new Date(`${new Date().getFullYear()}-05-15`) ? 1 : 0));
+  const attendu = new Date().getFullYear() - 1990
+    - (new Date() < new Date(`${new Date().getFullYear()}-05-15`) ? 1 : 0);
+  assert.strictEqual(fa.basic.age, attendu);
   assert.strictEqual(fa.perso.anniversaire, null, 'la date de naissance ne sort pas');
   // L'enfant : ni l'un ni l'autre.
   const fe = await (await fetch(`${BASE}/api/light/fiche?sid=${moi}&u=enfant`)).json();
   assert.strictEqual(fe.basic.age, null);
   assert.strictEqual(fe.perso.anniversaire, null);
   // Soi-même : tout.
-  const sidE = (await connecter('enfant')).json.sid;
   const fs2 = await (await fetch(`${BASE}/api/light/fiche?sid=${sidE}&u=enfant`)).json();
   assert.strictEqual(fs2.basic.age, 12);
   assert.match(String(fs2.perso.anniversaire), /-06-01$/);
+  // Et celui qui n'a rien renseigné : pas d'âge du tout — plutôt qu'un âge
+  // inventé, comme le faisait le défaut « 1990-05-15 ».
+  const fr = await (await fetch(`${BASE}/api/light/fiche?sid=${moi}&u=regardeur`)).json();
+  assert.strictEqual(fr.basic.age, null);
+});
+
+test('sans date de naissance, les clients n’affichent pas « 0 ans »', () => {
+  const bureau = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.js'), 'utf8');
+  // La ligne de résultat de recherche, et la bulle de survol d'une bouille.
+  assert.match(bureau, /age\.textContent = info\.age \? info\.age \+ ' ans' : '';/);
+  assert.match(bureau, /\(i\.age \? i\.age \+ ' ans, ' : ''\)/);
+  // Le light, lui, ne montrait déjà l'âge que s'il en avait un.
+  const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(light, /if \(d\.basic\.age !== null && d\.basic\.age !== undefined\) meta = d\.basic\.age \+ " ans";/);
 });
 
 test('les trames de présence ne portent plus la date de naissance', () => {
   const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   assert.ok(!/bd="\$\{ud\.birthday/.test(srv), 'plus aucun `bd` tiré de la colonne brute');
-  assert.ok(!/getFrutizBirthday\(ud/.test(srv.replace(/function getFrutizBirthday[\s\S]*?\n\}/, '')),
-    'plus aucune trame ne passe par getFrutizBirthday');
+  // Plus AUCUN APPEL : la fonction qui habillait la date brute a disparu (son
+  // nom ne survit que dans le commentaire qui raconte où elle est passée).
+  assert.ok(!/getFrutizBirthday\(/.test(srv), 'plus aucune trame ne fabrique de date de naissance');
   assert.ok((srv.match(/bd="\$\{bdPublicXml\(ud\)\}"/g) || []).length >= 5, 'toutes par bdPublicXml');
   // bdPublic : rien sous dix-huit ans, une date fabriquée au-dessus.
   assert.match(srv, /if \(age === null \|\| age < AGE_VISIBLE_DES\) return '';/);
   assert.match(srv, /const AGE_VISIBLE_DES = 18;/);
-  assert.match(srv, /const AGE_MAJORITE_NUMERIQUE = 15;/);
 });
 
 // ── L'export ──────────────────────────────────────────────────────────────
@@ -321,7 +351,8 @@ test('la politique nomme le responsable, les tiers, les durées et la CNIL', asy
   const page = await (await fetch(BASE + '/confidentialite')).text();
   assert.match(page, /Association Test/, 'RGPD_RESPONSABLE');
   assert.match(page, /rgpd@example\.test/, 'RGPD_CONTACT');
-  for (const mot of ['Base légale', 'youtube-nocookie', 'Resend', 'CNIL', '3 ans', '24 heures', '6 mois', 'moins de 15 ans', 'Télécharger mes données', 'Supprimer mon compte'])
+  for (const mot of ['Base légale', 'youtube-nocookie', 'Resend', 'CNIL', '3 ans', '24 heures', '6 mois',
+    'moins de 15 ans', 'public adulte', 'facultative', 'Télécharger mes données', 'Supprimer mon compte'])
     assert.ok(page.includes(mot), 'la politique parle de : ' + mot);
 });
 
@@ -332,8 +363,6 @@ test('les réglages de l’appli offrent l’export et la suppression', () => {
   assert.match(light, /id="reg-suppr-btn"/);
   assert.match(light, /window\.location\.href = "\/api\/light\/mes-donnees\?sid=" \+ encodeURIComponent\(state\.sid\);/);
   assert.match(light, /fetch\("\/api\/light\/compte\/suppression", \{/);
-  // L'inscription : la date de naissance, et la case parentale sous quinze ans.
-  assert.match(light, /<input type="date" id="re-naissance" autocomplete="bday" required>/);
-  assert.match(light, /if \(age < 15 && !accord\) \{/);
-  assert.match(light, /if \(age < 15\) body\.parental_consent = true;/);
+  // L'inscription reste à trois champs : c'est ce que la politique annonce.
+  assert.match(light, /var body = \{ username: user, password: pass \};/);
 });

@@ -164,17 +164,15 @@ async function initSchema() {
         -- demande. Sept jours plus tard, le balayage efface pour de bon ; une
         -- reconnexion entre-temps annule (et remet la colonne à NULL).
         ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMPTZ;
-        -- Un mineur de moins de quinze ans s'est inscrit avec l'accord d'un
-        -- parent : la date de cet accord (art. 8 du RGPD). NULL sinon.
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS parent_consent_at TIMESTAMPTZ;
         -- Quand le jeton d'appareil a été posé : il ne vit que six mois.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS device_token_at TIMESTAMPTZ;
         -- Le compte est inactif depuis longtemps et le joueur en a été averti
         -- par e-mail : la date du préavis. L'effacement attend trente jours.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS inactivity_warned_at TIMESTAMPTZ;
         -- Une date de naissance INVENTÉE (1990-05-15) était posée d'office sur
-        -- chaque compte. Elle ne voulait rien dire ; l'inscription la demande
-        -- désormais, et un compte qui n'en a pas n'en a pas.
+        -- chaque compte : tout le monde avait « 36 ans » sur sa fiche sans
+        -- l'avoir jamais dit. Elle est facultative et se renseigne dans la
+        -- fiche ; un compte qui n'en a pas n'en a pas.
         ALTER TABLE users ALTER COLUMN birthday DROP DEFAULT;
       EXCEPTION WHEN OTHERS THEN NULL;
       END $$;
@@ -1046,24 +1044,21 @@ async function invalidateUserPasswordResets(userId) {
   );
 }
 
-async function createUser(username, password, email = null, referral = {}, identite = {}) {
+async function createUser(username, password, email = null, referral = {}) {
   // referral = { referredBy, registerIp, deviceToken, referralState }. referredBy
   // non nul ⇒ on horodate l'arrivée du filleul (referred_at).
-  // identite = { birthday, parentConsent } : la date de naissance que
-  // l'inscription demande, et l'accord d'un parent quand le joueur a moins de
-  // quinze ans (horodaté — c'est la preuve qu'on garde).
+  // L'inscription ne demande QUE pseudo, code secret et e-mail facultatif : la
+  // date de naissance se renseigne plus tard, dans la fiche, si on veut.
   const r = referral || {};
-  const i = identite || {};
   const referredBy = r.referredBy || null;
-  const birthday = /^\d{4}-\d{2}-\d{2}$/.test(String(i.birthday || '')) ? i.birthday : null;
   const { rows } = await pool.query(
     `INSERT INTO users (username, password, email, referred_by, register_ip, device_token, referral_state, referred_at,
-                        birthday, parent_consent_at, device_token_at)
+                        device_token_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, ${referredBy ? 'now()' : 'NULL'},
-             $8, ${i.parentConsent ? 'now()' : 'NULL'}, ${r.deviceToken ? 'now()' : 'NULL'})
+             ${r.deviceToken ? 'now()' : 'NULL'})
      ON CONFLICT (username) DO NOTHING
      RETURNING *`,
-    [username, password, email, referredBy, r.registerIp || '', r.deviceToken || '', r.referralState || 'none', birthday]
+    [username, password, email, referredBy, r.registerIp || '', r.deviceToken || '', r.referralState || 'none']
   );
   return rows[0] || null;
 }

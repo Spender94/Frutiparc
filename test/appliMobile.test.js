@@ -132,7 +132,7 @@ after(() => {
 });
 
 async function sidPour(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
   await fetch(BASE + '/api/auth/register',
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const j = await (await fetch(BASE + '/api/auth/login',
@@ -409,7 +409,7 @@ test('une socket MUETTE finit par compter pour absente : le courrier sonne malgr
     }
     assert.ok(pret, 'serveur à fenêtre courte indisponible');
     const inscrire = async (pseudo) => {
-      const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
+      const body = JSON.stringify({ username: pseudo, password: 'secret123' });
       await fetch(BASE2 + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
       return (await (await fetch(BASE2 + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })).json()).sid;
     };

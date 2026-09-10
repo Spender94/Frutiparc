@@ -89,7 +89,7 @@ before(async () => {
 after(() => { if (proc) proc.kill('SIGKILL'); });
 
 async function inscrire(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: MDP, birthday: '1990-05-15' });
+  const body = JSON.stringify({ username: pseudo, password: MDP });
   await fetch(BASE + '/api/auth/register',
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
 }
@@ -107,7 +107,7 @@ async function donnerRoles(pseudo, roles) {
 async function seConnecter(pseudo) {
   const r = await fetch(BASE + '/api/admin/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: pseudo, password: MDP, birthday: '1990-05-15' }),
+    body: JSON.stringify({ username: pseudo, password: MDP }),
   });
   return { statut: r.status, corps: await r.json() };
 }
@@ -237,7 +237,7 @@ test('un animateur arrive sur les Salons, pas sur MikeHorny', async (t) => {
   await donnerRoles(pseudo, ['animateur']);
   const j = await (await fetch(BASE + '/api/admin/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: pseudo, password: MDP, birthday: '1990-05-15' }),
+    body: JSON.stringify({ username: pseudo, password: MDP }),
   })).json();
   assert.ok(j.ok, 'connexion admin : ' + JSON.stringify(j).slice(0, 140));
   assert.equal(j.accueil, 'channels', 'il atterrit sur les Salons');

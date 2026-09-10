@@ -2454,19 +2454,18 @@
       <input type="password" id="re-pass" autocomplete="new-password" minlength="6" maxlength="80">
       <label for="re-email">E-mail <span class="opt">— pour récupérer ton code</span></label>
       <input type="email" id="re-email" autocomplete="email" maxlength="120" placeholder="(facultatif)">
-      <!-- La date de naissance : le site attire des enfants, et sous quinze
-           ans un compte ne se crée qu'avec l'accord d'un parent (art. 8 du
-           RGPD). Elle sert aussi à l'âge de la fiche — et à rien d'autre. -->
-      <label for="re-naissance">Date de naissance</label>
-      <input type="date" id="re-naissance" autocomplete="bday" required>
-      <div class="re-aide">Pour savoir si tu as 15 ans. Ton âge exact n'est montré à personne avant 18 ans.</div>
-      <label class="re-case hidden" id="re-parent-ligne">
-        <input type="checkbox" id="re-parent">
-        <span>Un de mes parents (ou mon responsable légal) est d'accord pour que je crée ce compte.</span>
-      </label>
       <button type="submit" class="btn-primary" id="re-btn">Créer mon compte</button>
       <div class="err" id="re-err"></div>
-      <div class="re-aide" style="text-align:center;margin-top:8px">En créant un compte, tu acceptes la
+      <!-- L'ÂGE SE DÉCLARE, IL NE SE COLLECTE PAS.
+           Le parc s'adresse à ceux qui l'ont connu : un public adulte. Demander
+           sa date de naissance à tout le monde pour en attraper un mineur
+           reviendrait à collecter une donnée de plus chez tous les autres — le
+           contraire de la minimisation (art. 5). On pose donc la règle, et on
+           ne recueille rien : c'est ce que fait la mention ci-dessous. La date
+           de naissance reste facultative, dans la fiche, pour qui veut son âge
+           affiché. -->
+      <div class="re-aide" style="text-align:center;margin-top:8px">Le parc s'adresse à un public adulte.
+        Avant 15&nbsp;ans, il faut l'accord d'un parent.<br>En créant un compte, tu acceptes la
         <a href="/confidentialite" target="_blank" rel="noopener">politique de confidentialité</a>.</div>
     </form>
     <button type="button" class="btn-link hidden" id="show-login">← J'ai déjà un compte</button>
@@ -3561,43 +3560,17 @@
   }
   $("#show-register").addEventListener("click", function () { setAuthMode(true); var u = $("#re-user"); if (u) u.focus(); });
   $("#show-login").addEventListener("click", function () { setAuthMode(false); var u = $("#li-user"); if (u) u.focus(); });
-  // L'âge d'après la date saisie — la même règle que le serveur (`ageDepuis`).
-  function ageDeNaissance(s) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s || "")) return null;
-    var p = s.split("-").map(Number), n = new Date();
-    var age = n.getFullYear() - p[0];
-    var m = n.getMonth() + 1;
-    if (m < p[1] || (m === p[1] && n.getDate() < p[2])) age -= 1;
-    return age >= 0 && age < 150 ? age : null;
-  }
-  // La case de l'accord parental ne se montre qu'aux moins de quinze ans.
-  (function () {
-    var n = $("#re-naissance");
-    if (!n) return;
-    n.max = new Date().toISOString().slice(0, 10);
-    n.addEventListener("input", function () {
-      var age = ageDeNaissance(n.value);
-      $("#re-parent-ligne").classList.toggle("hidden", !(age !== null && age < 15));
-    });
-  })();
   registerForm.addEventListener("submit", function (ev) {
     ev.preventDefault();
     var user = $("#re-user").value.trim();
     var pass = $("#re-pass").value;
     var email = $("#re-email").value.trim();
-    var naissance = $("#re-naissance").value;
     var errEl = $("#re-err"); errEl.textContent = "";
     if (!user || !pass) { errEl.textContent = "Pseudo et code secret requis."; return; }
-    var age = ageDeNaissance(naissance);
-    if (age === null || age > 120) { errEl.textContent = "Indique ta date de naissance."; return; }
-    var accord = $("#re-parent").checked;
-    if (age < 15 && !accord) {
-      errEl.textContent = "Avant 15 ans, il faut l'accord d'un parent : coche la case si c'est le cas.";
-      return;
-    }
     var btn = $("#re-btn"); btn.disabled = true; btn.textContent = "Création…";
-    var body = { username: user, password: pass, birthday: naissance };
-    if (age < 15) body.parental_consent = true;
+    // Trois champs, dont un facultatif : c'est tout ce que l'inscription
+    // demande, et c'est délibéré (cf. la mention sous le bouton).
+    var body = { username: user, password: pass };
     if (email) body.email = email;
     fetch("/api/auth/register", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),

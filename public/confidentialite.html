@@ -96,13 +96,13 @@
     <h2>Ce qu'on collecte, pourquoi, et sur quelle base</h2>
     <table>
       <tr><th>Données</th><th>Pourquoi</th><th>Base légale</th></tr>
-      <tr><td>Pseudo, code secret (haché), date de naissance</td>
+      <tr><td>Pseudo et code secret (haché)</td>
           <td>Créer et tenir ton compte</td>
           <td>Le contrat : sans compte, pas de parc</td></tr>
       <tr><td>E-mail (facultatif)</td>
           <td>Récupérer un code secret oublié ; te prévenir avant l'effacement d'un compte inactif</td>
           <td>Ton consentement — tu le donnes en le renseignant, tu le retires en l'effaçant</td></tr>
-      <tr><td>Ta fiche : prénom, nom, ville, pays, activité, site, commentaire, sexe</td>
+      <tr><td>Ta fiche : prénom, nom, date de naissance, ville, pays, activité, site, commentaire, sexe</td>
           <td>Te présenter aux autres joueurs</td>
           <td>Ton consentement — tout est facultatif, et modifiable</td></tr>
       <tr><td>Tes données de jeu : scores, classements, fruitz, inventaire, accessoires, frutibouille, médailles, progression, kikooz, préférences</td>
@@ -124,6 +124,9 @@
           <td>Faire respecter le règlement</td>
           <td>L'intérêt légitime</td></tr>
     </table>
+    <p>L'inscription ne demande que <b>trois choses</b> : un pseudo, un code
+    secret, et — si tu veux — un e-mail. Pas de nom, pas d'âge, pas de
+    téléphone. Tout le reste, c'est toi qui décides de le renseigner.</p>
     <p>Le code secret est enregistré <b>haché</b> (bcrypt) : personne, pas même
     l'équipe, ne peut le lire.</p>
   </section>
@@ -133,19 +136,23 @@
     <p>Ton pseudo, ta frutibouille, ton niveau, tes scores et tes médailles sont
     publics : c'est le jeu. Ta <b>fiche</b> (prénom, nom, ville, activité, site,
     commentaire) l'est aussi — tout y est facultatif, et tu la modifies quand tu
-    veux. De ta date de naissance, les autres ne voient que ton <b>âge</b>, et
-    <b>rien du tout avant 18 ans</b>. Ton e-mail, ton adresse IP et ton code
-    secret ne sont jamais montrés.</p>
+    veux. Si tu as renseigné ta date de naissance, les autres n'en voient que
+    ton <b>âge</b> — jamais la date — et rien du tout en dessous de 18 ans. Ton
+    e-mail, ton adresse IP et ton code secret ne sont jamais montrés.</p>
   </section>
 
   <section class="carte">
-    <h2>Les moins de 15 ans</h2>
-    <p>Le parc est ouvert à tous les âges, mais la loi française veut qu'un
-    mineur de <b>moins de 15 ans</b> ne crée son compte qu'avec l'accord d'un
-    de ses parents (ou de son responsable légal). C'est ce que demande la case
-    à cocher de l'inscription — et on garde la date de cet accord. Si tu es
-    parent et que tu veux voir, corriger ou supprimer les données de ton
-    enfant, écris-nous à l'adresse ci-dessus.</p>
+    <h2>L'âge</h2>
+    <p>Frutiparc reconstitue un parc des années 2000 pour ceux qui l'ont connu :
+    il s'adresse à un <b>public adulte</b>. On ne demande donc pas ta date de
+    naissance — ce serait collecter une donnée de plus chez tout le monde, et on
+    préfère ne garder que le strict nécessaire. Elle reste <b>facultative</b>,
+    dans ta fiche, si tu veux que ton âge s'affiche.</p>
+    <p>Cela dit, la loi française veut qu'un mineur de <b>moins de 15 ans</b> ne
+    s'inscrive qu'avec l'accord d'un de ses parents (ou de son responsable
+    légal) : si c'est ton cas, demande-le-lui avant de créer ton compte. Un
+    parent qui veut voir, corriger ou supprimer les données de son enfant peut
+    nous écrire à l'adresse ci-dessus — on répond dans le mois.</p>
   </section>
 
   <section class="carte">

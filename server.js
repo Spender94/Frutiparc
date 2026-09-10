@@ -3184,11 +3184,9 @@ function dbUserToMemory(row) {
     lastLoginXpDay: row.last_login_xp_day || '',
     dailyKikoozDay: row.daily_kikooz_day || '',
     dailyStreak: row.daily_streak ?? 0,
-    // RGPD : la demande de suppression en cours (ISO, ou vide), et l'accord
-    // parental d'un mineur de moins de quinze ans.
+    // RGPD : la demande de suppression en cours (ISO, ou vide).
     suppressionDemandee: row.deletion_requested_at
       ? (row.deletion_requested_at instanceof Date ? row.deletion_requested_at.toISOString() : String(row.deletion_requested_at)) : '',
-    accordParental: !!row.parent_consent_at,
     fdState: parseFdState(row.fd_state),
     ownedFeutres: parseOwnedFeutres(row.owned_feutres),
     ownedFeatures: parseOwnedFeutres(row.owned_features),
@@ -4859,11 +4857,10 @@ function ageDepuis(birthday, quand = new Date()) {
   if (m < mois || (m === mois && quand.getDate() < jour)) age--;
   return age >= 0 && age < 150 ? age : null;
 }
-// Le seuil de la majorité numérique en France (loi Informatique et Libertés,
-// art. 45) : en dessous, l'inscription veut l'accord d'un parent.
-const AGE_MAJORITE_NUMERIQUE = 15;
-// Et l'âge à partir duquel on laisse l'âge se voir : avant, la fiche et la
-// liste des connectés n'en disent rien aux autres.
+// L'âge à partir duquel on laisse l'âge se voir : avant, la fiche et la liste
+// des connectés n'en disent rien aux autres. Le parc s'adresse à des adultes —
+// mais rien n'empêche un joueur de renseigner une naissance qui le met en
+// dessous, et son âge n'a alors pas à s'afficher devant tout un salon.
 const AGE_VISIBLE_DES = 18;
 
 /*
@@ -4876,8 +4873,10 @@ const AGE_VISIBLE_DES = 18;
  * même âge (le quantième d'aujourd'hui, l'année reculée d'autant) : l'âge
  * s'affiche comme avant, la date, elle, ne sort plus.
  *
- * Pour un MINEUR, rien du tout : ni date ni âge. Un enfant de douze ans n'a
- * pas à voir son âge lu par tout un salon.
+ * Rien du tout dans deux cas : le joueur n'a pas renseigné sa naissance — elle
+ * est facultative, dans la fiche —, ou elle le met sous dix-huit ans. Les
+ * clients savent lire une valeur vide : ils n'affichent alors pas d'âge (cf.
+ * `tipEcrire` et la ligne de recherche du bureau).
  */
 function bdPublic(ud) {
   const age = ageDepuis(ud && ud.birthday);
@@ -4930,10 +4929,9 @@ function getFrutizSubscribeDate(user) {
   return formatFrutizDate(user && user.createdAt, '2005-01-01.00:00:00');
 }
 
-// Format birthday for "bd" attribute in DOT format.
-function getFrutizBirthday(user, fallback) {
-  return formatFrutizDate(user && user.birthday, fallback || '2000-01-01.00:00:00');
-}
+// (`getFrutizBirthday` vivait ici : elle habillait la date de naissance BRUTE
+// au format des trames. Plus personne ne l'appelle — c'est `bdPublicXml` qui
+// répond désormais, et elle ne donne qu'un âge.)
 
 // La dernière connexion, au même format que les autres dates de `userinfo`.
 // Vide plutôt qu'une date de repli : mieux vaut ne rien dire que d'inventer une
@@ -7880,29 +7878,24 @@ app.post('/api/auth/register', async (req, res) => {
     email = rawEmail.toLowerCase();
   }
   /*
-   * LA DATE DE NAISSANCE, ET L'ACCORD D'UN PARENT.
+   * L'INSCRIPTION NE DEMANDE PAS L'ÂGE — ET C'EST UN CHOIX DE MINIMISATION.
    *
-   * Le site rejoue un parc pour enfants : il en attire. En France, un mineur
-   * de moins de quinze ans ne peut consentir seul au traitement de ses
-   * données — il faut l'accord d'un titulaire de l'autorité parentale (art. 8
-   * du RGPD, art. 45 de la loi Informatique et Libertés). On demande donc la
-   * date de naissance à tout le monde, et, sous quinze ans, la case « un de
-   * mes parents est d'accord ». La date de l'accord est gardée : c'est la
-   * preuve qu'on doit pouvoir montrer.
+   * On l'a demandé un temps, au motif que le parc rejoue un site pour enfants
+   * et pourrait en attirer. C'était se tromper de risque. Le public est celui
+   * qui l'a connu à l'époque : des adultes. Exiger une date de naissance de
+   * TOUT LE MONDE pour attraper le mineur qui passerait, c'est collecter une
+   * donnée de plus chez tous les autres — exactement ce que l'article 5
+   * interdit (« adéquates, pertinentes et limitées à ce qui est nécessaire »).
+   * Le RGPD n'impose d'ailleurs nulle part de vérifier l'âge : l'article 8 ne
+   * joue que pour un service OFFERT DIRECTEMENT à des enfants, et il demande
+   * des efforts « raisonnables », pas une pièce d'identité.
    *
-   * La date est VALIDÉE, pas seulement lue : une naissance dans le futur, ou
-   * il y a plus de cent vingt ans, n'est pas une date de naissance.
+   * La règle est donc POSÉE, pas mesurée : l'écran d'inscription et la
+   * politique de confidentialité disent que le parc s'adresse aux adultes et
+   * qu'avant quinze ans il faut l'accord d'un parent. La date de naissance
+   * reste facultative, dans la fiche (`/do/smi`), pour qui veut voir son âge
+   * s'afficher — et elle n'est montrée à personne (cf. `bdPublic`).
    */
-  const rawBirthday = String((req.body && req.body.birthday) || '').trim();
-  const age = ageDepuis(rawBirthday);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(rawBirthday) || age === null || age > 120) {
-    return res.status(400).json({ ok: false, error: 'birthday_invalid', message: 'Indique ta date de naissance.' });
-  }
-  const accordParental = !!(req.body && (req.body.parental_consent === true || String(req.body.parental_consent) === '1'));
-  if (age < AGE_MAJORITE_NUMERIQUE && !accordParental) {
-    return res.status(400).json({ ok: false, error: 'parental_consent_required',
-      message: 'Avant 15 ans, il faut l’accord d’un parent pour créer un compte.' });
-  }
   if (users[username]) {
     return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
   }
@@ -7951,7 +7944,7 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const dbUser = await db.createUser(username, passwordHash, email, {
       referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState,
-    }, { birthday: rawBirthday, parentConsent: age < AGE_MAJORITE_NUMERIQUE && accordParental });
+    });
     if (!dbUser) {
       return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
     }
@@ -7964,8 +7957,6 @@ app.post('/api/auth/register', async (req, res) => {
     }
     users[username].displayName = rawName;
     users[username].email = email || '';
-    users[username].birthday = rawBirthday;
-    users[username].accordParental = age < AGE_MAJORITE_NUMERIQUE && accordParental;
     Object.assign(users[username], { referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState, referralFlag: ref.referralFlag });
     await db.setUserItems(dbUser.id, users[username].items);
     await db.updateUser(username, { display_name: rawName });
@@ -7978,8 +7969,6 @@ app.post('/api/auth/register', async (req, res) => {
     users[username] = createDefaultUser(passwordHash);
     users[username].displayName = rawName;
     users[username].email = email || '';
-    users[username].birthday = rawBirthday;
-    users[username].accordParental = age < AGE_MAJORITE_NUMERIQUE && accordParental;
     Object.assign(users[username], { referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState, referralFlag: ref.referralFlag });
     recordSuccessfulRegister(ip);
     return res.json({ ok: true, username: rawName });

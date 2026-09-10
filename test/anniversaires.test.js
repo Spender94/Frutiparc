@@ -52,7 +52,7 @@ after(() => { if (proc) proc.kill('SIGKILL'); });
 
 const HDR = { 'Content-Type': 'application/json', 'x-admin-key': CLE };
 async function inscrire(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: HDR, body });
   const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: HDR, body });
   const sid = (await r.json()).sid;

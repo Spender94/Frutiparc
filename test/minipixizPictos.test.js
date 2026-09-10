@@ -89,7 +89,7 @@ before(async () => {
 after(() => { if (proc) proc.kill('SIGKILL'); });
 
 async function inscrire(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const j = await r.json();

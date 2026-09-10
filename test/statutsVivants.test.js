@@ -65,7 +65,7 @@ after(() => { if (proc) proc.kill('SIGKILL'); });
 
 const JSON_H = { 'Content-Type': 'application/json' };
 async function compte(nom) {
-  const body = JSON.stringify({ username: nom, password: 'secret123', birthday: '1990-05-15' });
+  const body = JSON.stringify({ username: nom, password: 'secret123' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: JSON_H, body });
   const r = await (await fetch(BASE + '/api/auth/login', { method: 'POST', headers: JSON_H, body })).json();
   assert.ok(r.sid, 'connexion → sid');

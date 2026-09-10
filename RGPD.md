@@ -173,12 +173,46 @@ Point par point, en reprenant la numérotation du § 2 :
 | 2 | export et suppression | **fait** — *Réglages → Mes données* : `GET /api/light/mes-donnees` (un JSON, table par table) et `POST /api/light/compte/suppression` (code secret, 7 jours de grâce, une reconnexion annule) ; l'admin et le joueur passent par le même `supprimerJoueurPartout`, qui anonymise ce qui reste (« compte_supprime ») |
 | 3 | bases légales et durées | **fait** — deux tableaux dans `/confidentialite` |
 | 4 | purges | **fait** — `rgpdBalayage()` toutes les heures : comptes inactifs (3 ans, préavis e-mail 35 j avant), IP et jeton d'inscription (6 mois), journaux de modération (1 an), sessions (6 mois), jetons de réinitialisation (7 j). Durées réglables (`RGPD_*_JOURS`, cf. README) ; `POST /api/admin/rgpd/balayage` pour le lancer à la main |
-| 5 | âge | **fait** — date de naissance obligatoire à l'inscription, accord parental sous 15 ans (horodaté), défaut `1990-05-15` supprimé ; l'âge n'est plus montré avant 18 ans, la date de naissance plus jamais (les trames de présence envoyaient la date exacte de chacun) |
+| 5 | âge | **fait, autrement** — l'inscription ne le demande PAS (cf. ci-dessous) : la règle est déclarée, l'écran le dit. Le défaut `1990-05-15`, qui donnait un âge inventé à tout le monde, est supprimé ; la date reste facultative dans la fiche ; l'âge n'est plus montré avant 18 ans, et la date de naissance plus jamais — les trames de présence envoyaient la date exacte de chacun à tout le salon |
 | 6 | responsable | **à faire par vous** — poser `RGPD_RESPONSABLE` (un nom) et `RGPD_CONTACT` (un e-mail) dans l'environnement ; sans eux le serveur l'écrit au démarrage |
 | 7 | registre | **fait** — `rgpd/registre-des-traitements.md` (dix fiches), à relire à chaque nouvelle fonctionnalité |
 | 8 | violation | **fait** — `rgpd/procedure-violation.md` |
 | 9 | transferts | **à vérifier par vous** — la région de l'hébergeur doit être européenne (Render : Frankfurt) ; Resend et le push sont documentés dans le registre |
 | 10 | politique | **fait** — champs de la fiche, tiers, droits, CNIL, mineurs, sécurité |
+
+### L'âge : pourquoi on ne le demande pas
+
+Première version : date de naissance obligatoire à l'inscription et case
+« un parent est d'accord » sous quinze ans. **Retiré**, et c'est plus juste
+ainsi.
+
+Le raisonnement : le parc s'adresse à ceux qui l'ont connu — un public de
+trentenaires et de quarantenaires. Exiger une date de naissance de TOUT LE
+MONDE pour attraper le mineur qui passerait, c'est collecter une donnée de plus
+chez tous les autres — l'inverse de la minimisation, que l'article 5 pose comme
+principe (« adéquates, pertinentes et limitées à ce qui est nécessaire »). Le
+RGPD n'impose d'ailleurs nulle part de VÉRIFIER l'âge : l'article 8 ne joue que
+pour un service **offert directement à des enfants**, et il demande des efforts
+« raisonnables », pas une pièce d'identité. Un site de nostalgie n'est pas dans
+ce cas.
+
+La règle est donc **posée, pas mesurée** : l'écran d'inscription et la politique
+de confidentialité disent que le parc s'adresse aux adultes et qu'avant quinze
+ans il faut l'accord d'un parent. Rien n'est collecté pour le vérifier.
+
+Ce qui reste du travail sur l'âge, et qui vaut la peine :
+
+* la date de naissance est **facultative**, dans la fiche, comme avant ;
+* le défaut `1990-05-15` posé d'office sur chaque compte a disparu — il donnait
+  le même âge inventé à tout le monde ;
+* les autres n'en voient que l'**âge**, jamais la date, et **rien avant
+  18 ans** ;
+* et sans date, les clients n'affichent plus « 0 ans » mais rien du tout.
+
+**Le risque assumé**, pour qu'il soit dit : le parc *ressemble* à un site pour
+enfants, et un regard extérieur pourrait le lire ainsi. Si le public changeait —
+si des enfants s'y inscrivaient vraiment —, la question se reposerait, et la
+réponse serait alors la case, pas la collecte pour tous.
 
 Trois choses ne peuvent pas venir du code :
 

@@ -81,7 +81,7 @@ before(async () => {
 after(() => { if (proc) proc.kill('SIGKILL'); });
 
 async function inscrire(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const j = await r.json();
@@ -664,7 +664,7 @@ test('l\'historique et l\'enveloppe vivent en base, pas en mémoire', async (t) 
       'la reprise au démarrage a bien eu lieu');
     const sid2 = (await (await fetch(BASE2 + '/api/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: PERS, password: 'secret123', birthday: '1990-05-15' }),
+      body: JSON.stringify({ username: PERS, password: 'secret123' }),
     })).json()).sid;
     const quota = await (await fetch(`${BASE2}/do/give?sid=${sid2}`, { cache: 'no-store' })).text();
     assert.match(quota, /a="1530"/, 'et elle est bien entamée de 470 sur le second serveur');

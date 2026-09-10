@@ -77,7 +77,7 @@ before(async () => {
 after(() => { if (proc) proc.kill('SIGKILL'); });
 
 async function inscrire(pseudo) {
-  const body = JSON.stringify({ username: pseudo, password: 'secret123', birthday: '1990-05-15' });
+  const body = JSON.stringify({ username: pseudo, password: 'secret123' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   const j = await r.json();
@@ -258,15 +258,15 @@ test('la fenêtre des logs : vingt-quatre heures de salon, réservées au staff 
 
   const sidModo = (await (await fetch(BASE + '/api/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: MODO, password: 'secret123', birthday: '1990-05-15' }),
+    body: JSON.stringify({ username: MODO, password: 'secret123' }),
   })).json()).sid;
   const sidAnim = (await (await fetch(BASE + '/api/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: ANIM, password: 'secret123', birthday: '1990-05-15' }),
+    body: JSON.stringify({ username: ANIM, password: 'secret123' }),
   })).json()).sid;
   const sidTemoin = (await (await fetch(BASE + '/api/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: TEMOIN, password: 'secret123', birthday: '1990-05-15' }),
+    body: JSON.stringify({ username: TEMOIN, password: 'secret123' }),
   })).json()).sid;
 
   // Un peu de vie sur pomme : une ligne ordinaire, puis un cri.
@@ -366,7 +366,7 @@ test('les logs survivent au redémarrage du serveur', async (t) => {
 
   const login = await fetch(BASE + '/api/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'logsdur', password: 'secret123', birthday: '1990-05-15' }),
+    body: JSON.stringify({ username: 'logsdur', password: 'secret123' }),
   });
   const sid2 = (await login.json()).sid;
   const c = await client('logsdur', sid2);
@@ -388,7 +388,7 @@ test('les logs survivent au redémarrage du serveur', async (t) => {
   await relancer();
   const login2 = await fetch(BASE + '/api/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'logsdur', password: 'secret123', birthday: '1990-05-15' }),
+    body: JSON.stringify({ username: 'logsdur', password: 'secret123' }),
   });
   const sid3 = (await login2.json()).sid;
   // La restauration est asynchrone au boot (l'écoute HTTP ouvre avant) : on

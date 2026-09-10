@@ -1437,7 +1437,11 @@ window.BureauFrutiz = (function () {
     l2.className = 'rc-l2';
     var age = document.createElement('span');
     age.className = 'rc-age';
-    age.textContent = info.age + ' ans';
+    // La date de naissance est FACULTATIVE (elle se renseigne dans la fiche) :
+    // sans elle, `birthdayToAge` rend zéro, et « 0 ans » ne veut rien dire. On
+    // laisse alors la case vide. (Avant, une naissance était posée d'office sur
+    // chaque compte : tout le monde affichait le même âge, inventé.)
+    age.textContent = info.age ? info.age + ' ans' : '';
     var ville = document.createElement('span');
     ville.className = 'rc-ville';
     ville.textContent = info.ville || '';
@@ -3850,8 +3854,10 @@ window.BureauFrutiz = (function () {
     b.textContent = pseudo;
     tipBoite.textContent = '';
     tipBoite.appendChild(b);
+    // L'âge saute quand on ne le connaît pas — la naissance est facultative,
+    // et « 0 ans » n'est pas une information. Le reste de la bulle tient.
     tipBoite.appendChild(document.createTextNode(i
-      ? ' : ' + i.age + ' ans, ' + i.region + ' (' + i.pays + '), niveau ' + i.niveau
+      ? ' : ' + (i.age ? i.age + ' ans, ' : '') + i.region + ' (' + i.pays + '), niveau ' + i.niveau
       : ''));
   }
   function tipCacher() {

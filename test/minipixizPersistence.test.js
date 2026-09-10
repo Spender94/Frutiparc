@@ -64,12 +64,12 @@ async function makeSession(name) {
   await fetch(BASE + '/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: name, password: 'secret123', birthday: '1990-05-15' }),
+    body: JSON.stringify({ username: name, password: 'secret123' }),
   });
   const r = await fetch(BASE + '/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: name, password: 'secret123', birthday: '1990-05-15' }),
+    body: JSON.stringify({ username: name, password: 'secret123' }),
   });
   const j = await r.json();
   assert.ok(j.sid, 'login → sid');

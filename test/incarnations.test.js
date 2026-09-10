@@ -82,7 +82,7 @@ before(async () => {
 after(() => { if (proc) proc.kill('SIGKILL'); });
 
 async function joueur(nom, etat) {
-  const corps = JSON.stringify({ username: nom, password: 'secret123', birthday: '1990-05-15' });
+  const corps = JSON.stringify({ username: nom, password: 'secret123' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: hdr, body: corps });
   const r = await (await fetch(BASE + '/api/auth/login', { method: 'POST', headers: hdr, body: corps })).json();
   assert.ok(r.sid, 'session ouverte pour ' + nom);
