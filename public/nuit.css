@@ -13,36 +13,36 @@
  */
 
 body {
-  background: hsl(256 30% 26%);
-  color: hsl(256 13% 72.5%);
+  background: hsl(256 30% 35.6%);
+  color: hsl(256 13% 78.3%);
 }
 a {
-  color: hsl(256 13% 74.6%);
+  color: hsl(256 13% 79.6%);
 }
 #app {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 #topbar {
-  background: hsl(256 30% 10%);
-  border-bottom: 1px solid hsl(256 26% 30%);
+  background: hsl(256 30% 16%);
+  border-bottom: 1px solid hsl(256 26% 34.3%);
 }
 #topbar select {
   border: 1px solid hsl(325 58% 66%);
-  background: hsl(256 30% 10%);
-  color: hsl(325 58% 83.9%);
+  background: hsl(256 30% 16%);
+  color: hsl(325 58% 87.5%);
 }
 #topbar select option {
-  color: hsl(325 58% 83.9%);
+  color: hsl(325 58% 87.5%);
 }
 #topbar select option:nth-child(odd) {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 22.3%);
 }
 #topbar select option:nth-child(even) {
   background: hsl(325 34% 22%);
 }
 .icon-btn {
-  background: hsl(325 34% 22%);
-  color: hsl(256 13% 94%);
+  background: hsl(325 34% 25.7%);
+  color: hsl(256 13% 96%);
 }
 .icon-btn.bare.on {
   filter: drop-shadow(0 1px 2px hsl(256 13% 0% / 0.3));
@@ -51,124 +51,124 @@ a {
   background: hsl(256 30% 0% / 0.35);
 }
 .sheet {
-  background: hsl(256 30% 10%);
-  border: 1px solid hsl(256 26% 43.3%);
-  box-shadow: 0 0 0 1px hsl(256 13% 17.7%), 0 -8px 24px hsl(256 13% 17.5% / 0.3);
+  background: hsl(256 30% 16%);
+  border: 1px solid hsl(256 26% 48.4%);
+  box-shadow: 0 0 0 1px hsl(256 26% 34.3%), 0 -8px 24px hsl(256 13% 17.5% / 0.3);
 }
 .sheet .sheet-head {
-  color: hsl(256 13% 72.5%);
-  border-bottom: 1px solid hsl(256 26% 30%);
+  color: hsl(256 13% 78.3%);
+  border-bottom: 1px solid hsl(256 26% 34.3%);
 }
 .sheet .sheet-head button {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .sheet .sheet-body {
-  background: hsl(60 50% 16%);
-  border: 1px solid hsl(60 49% 41.4%);
-  box-shadow: 0 0 0 1px hsl(256 13% 17.7%);
+  background: hsl(60 50% 21.2%);
+  border: 1px solid hsl(60 49% 46.4%);
+  box-shadow: 0 0 0 1px hsl(256 26% 34.3%);
 }
 #bouille-sheet-preview {
-  background: hsl(256 30% 10%);
-  border: 2px solid hsl(256 26% 30%);
+  background: hsl(256 30% 16%);
+  border: 2px solid hsl(256 26% 34.3%);
 }
 .sheet-hint {
-  color: hsl(256 13% 73.1%);
+  color: hsl(256 13% 78.4%);
 }
 .prof-grille label {
-  color: hsl(256 13% 73.1%);
+  color: hsl(256 13% 78.4%);
 }
 .prof-grille input[type=text], .prof-grille input[type=url],
   .prof-grille input[type=date], .prof-grille select, .prof-grille textarea {
-  color: hsl(256 13% 72.5%);
-  border: 1px solid hsl(60 49% 43.5%);
-  background: hsl(256 30% 10%);
+  color: hsl(256 13% 78.3%);
+  border: 1px solid hsl(60 49% 48.7%);
+  background: hsl(256 30% 16%);
 }
 #prof-etat {
-  color: hsl(256 13% 73.1%);
+  color: hsl(256 13% 78.4%);
 }
 #prof-enregistrer {
-  color: hsl(256 13% 72.5%);
-  background: linear-gradient(180deg, hsl(256 30% 21.7%), hsl(256 30% 26%));
-  box-shadow: 0 1px 2px hsl(256 13% 17.5% / 0.25), inset 0 1px 0 hsl(256 13% 10% / 0.6);
+  color: hsl(256 13% 78.3%);
+  background: linear-gradient(180deg, hsl(256 30% 27.7%), hsl(256 30% 36%));
+  box-shadow: 0 1px 2px hsl(256 13% 17.5% / 0.25), inset 0 1px 0 hsl(256 26% 30% / 0.6);
 }
 .prof-accm-lab {
-  color: hsl(256 13% 73.1%);
+  color: hsl(256 13% 78.4%);
 }
 .accm-tuile.on {
   border-color: hsl(325 58% 66%);
   background: hsl(325 34% 22%);
 }
 .accm-tuile .accm-vig {
-  background: hsl(256 30% 14.5%);
-  border: 1px solid hsl(256 26% 34.9%);
+  background: hsl(256 30% 20.5%);
+  border: 1px solid hsl(256 26% 39.5%);
 }
 .accm-tuile .accm-nom {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 .acc-grid {
-  background: hsl(60 50% 16%);
+  background: hsl(60 50% 21.2%);
 }
 .acc-item.sel .thumb {
   box-shadow: 0 0 0 2px hsl(325 58% 66%);
 }
 .acc-item.sel .lbl {
-  color: hsl(325 58% 83.9%);
+  color: hsl(325 58% 87.5%);
 }
 .acc-item .lbl {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .acc-item.vendable .thumb::before {
   filter: var(--nuit-chassis);
 }
 #home-panel.a-fond .home-tile .lbl,
   #home-panel.a-fond .home-compte {
-  color: var(--fond-txt, hsl(256 13% 72.5%));
+  color: var(--fond-txt, hsl(256 13% 78.3%));
   text-shadow:
-      0 0 2px var(--fond-halo, hsl(256 13% 10% / 0.85)),
-      0 0 5px var(--fond-halo, hsl(256 13% 10% / 0.85)),
-      0 1px 0 var(--fond-halo, hsl(256 13% 10% / 0.85));
+      0 0 2px var(--fond-halo, hsl(256 13% 16% / 0.85)),
+      0 0 5px var(--fond-halo, hsl(256 13% 16% / 0.85)),
+      0 1px 0 var(--fond-halo, hsl(256 26% 30% / 0.85));
 }
 #home-panel.a-fond .hc-quitter.confirme {
-  color: hsl(325 58% 78.7%);
+  color: hsl(325 58% 83.1%);
 }
 .inv-onglets {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 .inv-onglet {
-  color: hsl(256 13% 72.5%);
-  background: hsl(256 30% 14.1%);
-  border: 1px solid hsl(256 26% 30%);
+  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 20.1%);
+  border: 1px solid hsl(256 26% 34.3%);
 }
 .inv-onglet.on {
-  background: hsl(60 50% 16%);
-  border-color: hsl(60 49% 41.4%);
+  background: hsl(60 50% 21.2%);
+  border-color: hsl(60 49% 46.4%);
 }
 .fond-item .vign {
-  border: 2px solid hsl(256 26% 30%);
-  background: hsl(256 30% 26%) center/contain no-repeat;
+  border: 2px solid hsl(256 26% 34.3%);
+  background: hsl(256 30% 35.6%) center/contain no-repeat;
 }
 .fond-item.sel .vign {
   border-color: hsl(325 58% 66%);
 }
 .fond-item .lbl {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .fond-item.sel .lbl {
-  color: hsl(325 58% 83.9%);
+  color: hsl(325 58% 87.5%);
 }
 .fond-item.vide .vign {
-  background: hsl(256 30% 26%);
-  color: hsl(256 13% 72.5%);
+  background: hsl(256 30% 35.6%);
+  color: hsl(256 13% 78.3%);
 }
 .picto-jeu h4 {
-  color: hsl(256 13% 73.1%);
-  border-bottom: 1px solid hsl(60 49% 41.4%);
+  color: hsl(256 13% 78.4%);
+  border-bottom: 1px solid hsl(60 49% 46.4%);
 }
 .picto-case .lbl {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .fd-grid {
-  background: hsl(60 50% 16%);
+  background: hsl(60 50% 21.2%);
 }
 .fd-item .thumb img {
   filter: drop-shadow(0 2px 3px hsl(256 13% 17.5% / 0.4));
@@ -177,131 +177,131 @@ a {
   filter: drop-shadow(0 2px 3px hsl(256 13% 17.5% / 0.4));
 }
 .fd-item .lbl {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 #bo-corps {
-  background: hsl(256 30% 10%);
-  border-color: hsl(256 26% 30%);
+  background: hsl(256 30% 16%);
+  border-color: hsl(256 26% 34.3%);
 }
 .bo-solde {
-  background: hsl(25 45% 18.4%);
-  border: 1px solid hsl(24 33% 35.2%);
-  color: hsl(41 55% 73.5%);
+  background: hsl(25 45% 24.4%);
+  border: 1px solid hsl(24 33% 39.8%);
+  color: hsl(41 55% 78.6%);
 }
 .bo-solde strong {
-  color: hsl(28 35% 72.6%);
+  color: hsl(28 35% 77.9%);
 }
 #bo-rubriques {
-  background: hsl(256 30% 10%);
-  border: 1px solid hsl(256 26% 28.4%);
+  background: hsl(256 30% 16%);
+  border: 1px solid hsl(256 26% 32.5%);
 }
 .bo-rub {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 .bo-rub.on {
-  background: hsl(256 30% 14.8%);
+  background: hsl(256 30% 20.8%);
 }
 .bo-art {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 .bo-art.on {
-  background: hsl(256 30% 22.7%);
+  background: hsl(256 30% 28.7%);
 }
 .bo-art.eu {
-  color: hsl(256 13% 77.2%);
+  color: hsl(256 13% 81.8%);
 }
 #bo-fiche {
-  background: hsl(256 30% 22.7%);
-  border: 2px solid hsl(256 26% 36.1%);
+  background: hsl(256 30% 28.7%);
+  border: 2px solid hsl(256 26% 40.8%);
 }
 .bo-vue {
-  background: hsl(256 30% 13.6%);
-  border: 2px solid hsl(256 26% 36.1%);
+  background: hsl(256 30% 19.6%);
+  border: 2px solid hsl(256 26% 40.8%);
 }
 .bo-titre {
-  color: hsl(325 58% 76.8%);
+  color: hsl(325 58% 81.5%);
 }
 .bo-accroche {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 .bo-texte {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 .bo-prix {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 .bo-auteur {
-  color: hsl(256 13% 78.6%);
+  color: hsl(256 13% 82.9%);
 }
 .bo-acheter {
-  border: 1px solid hsl(256 26% 36.1%);
-  background: linear-gradient(180deg, hsl(256 30% 26%), hsl(256 30% 26%));
-  color: hsl(256 13% 94%);
+  border: 1px solid hsl(256 26% 40.8%);
+  background: linear-gradient(180deg, hsl(256 30% 36%), hsl(256 30% 36%));
+  color: hsl(256 13% 96%);
 }
 .bo-acheter:active {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 .bo-acheter[disabled] {
-  background: hsl(256 30% 25.2%);
-  border-color: hsl(256 26% 36.7%);
-  color: hsl(256 13% 75.3%);
+  background: hsl(256 30% 31.2%);
+  border-color: hsl(256 26% 41.4%);
+  color: hsl(256 13% 80.2%);
 }
 .bo-etat {
-  color: hsl(256 13% 75.8%);
+  color: hsl(256 13% 80.6%);
 }
 .bo-etat.ok {
-  color: hsl(256 13% 74.6%);
+  color: hsl(256 13% 79.6%);
 }
 .bo-etat.err {
-  color: hsl(325 58% 79.4%);
+  color: hsl(325 58% 83.7%);
 }
 #fp-popin-backdrop {
   background: hsl(256 30% 0% / 0.18);
 }
 .fp-popin {
-  background: hsl(256 30% 10%);
-  box-shadow: 0 0 0 1px hsl(256 13% 26%), 0 6px 18px hsl(256 13% 0% / 0.35);
+  background: hsl(256 30% 16%);
+  box-shadow: 0 0 0 1px hsl(256 26% 42.8%), 0 6px 18px hsl(256 13% 0% / 0.35);
 }
 .fp-popin-tete {
-  color: hsl(256 13% 74.9%);
+  color: hsl(256 13% 79.9%);
 }
 .fp-popin-corps {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 .fp-popin-btn {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 25.7%);
   box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
-  color: hsl(325 58% 74%);
+  color: hsl(325 58% 80.9%);
 }
 .fp-popin-btn::after {
   border-top: 1px solid hsl(325 58% 66%);
   border-right: 1px solid hsl(325 58% 66%);
 }
 .fp-popin-btn:active {
-  background: hsl(325 34% 22.6%);
+  background: hsl(325 34% 28.6%);
 }
 #fb-editor-backdrop {
   background: hsl(256 30% 0% / 0.45);
 }
 #fb-editor {
-  background: hsl(256 30% 10%);
-  box-shadow: 0 0 0 1px hsl(256 13% 26%), 0 6px 18px hsl(256 13% 0% / 0.35);
+  background: hsl(256 30% 16%);
+  box-shadow: 0 0 0 1px hsl(256 26% 42.8%), 0 6px 18px hsl(256 13% 0% / 0.35);
 }
 .fb-titre {
-  color: hsl(256 13% 74.9%);
+  color: hsl(256 13% 79.9%);
 }
 .fb-pastille {
   filter: var(--nuit-chassis);
 }
 .fb-ecran {
   background: url('/frutiz/sprites/ecran-fond-nuit.svg') 0 0 / 100% 100% no-repeat;
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 .fb-ecran::before {
   filter: var(--nuit-chassis);
 }
 .fb-ecran::after {
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 44.9%);
 }
 .fb-arrow.lft {
   filter: var(--nuit-chassis);
@@ -310,453 +310,453 @@ a {
   filter: var(--nuit-chassis);
 }
 .fb-label {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 .fb-sample {
-  box-shadow: inset 0 0 0 1px hsl(256 13% 17.7%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 34.3%);
 }
 .fb-valider {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 25.7%);
   box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
-  color: hsl(325 58% 74%);
+  color: hsl(325 58% 80.9%);
 }
 .fb-valider::after {
   border-top: 1px solid hsl(325 58% 66%);
   border-right: 1px solid hsl(325 58% 66%);
 }
 .fb-valider:active {
-  background: hsl(325 34% 22.6%);
+  background: hsl(325 34% 28.6%);
 }
 #login-screen .card {
-  background: hsl(256 30% 10%);
-  border: 2px solid hsl(256 26% 50.8%);
+  background: hsl(256 30% 16%);
+  border: 2px solid hsl(256 26% 56.4%);
   box-shadow: 0 10px 22px hsl(256 13% 17.5% / 0.22);
 }
 #login-screen .lg-intro {
-  color: hsl(256 13% 73.1%);
+  color: hsl(256 13% 78.4%);
 }
 label .opt {
-  color: hsl(256 13% 82%);
+  color: hsl(256 13% 85.8%);
 }
 input[type=text], input[type=password], input[type=email], input[type=date] {
-  border: 1px solid hsl(256 26% 46%);
-  background: hsl(256 30% 11.1%);
-  color: hsl(256 13% 72.5%);
+  border: 1px solid hsl(256 26% 51.3%);
+  background: hsl(256 30% 17.1%);
+  color: hsl(256 13% 78.3%);
 }
 .re-case input {
   accent-color: hsl(256 30% 14.8%);
 }
 .re-aide {
-  color: hsl(256 13% 82%);
+  color: hsl(256 13% 85.8%);
 }
 .btn-primary {
   background: hsl(256 30% 14.8%);
-  color: hsl(256 13% 88.3%);
+  color: hsl(256 13% 91.2%);
 }
 .btn-link {
-  color: hsl(256 13% 74.6%);
+  color: hsl(256 13% 79.6%);
 }
 .err {
-  color: hsl(325 58% 79.4%);
+  color: hsl(325 58% 83.7%);
 }
 #messages {
-  background: hsl(256 30% 22.7%);
-  border: 1px solid hsl(256 26% 36.1%);
-  box-shadow: 0 0 0 1px hsl(256 13% 17.7%);
+  background: hsl(256 30% 28.7%);
+  border: 1px solid hsl(256 26% 40.8%);
+  box-shadow: 0 0 0 1px hsl(256 26% 34.3%);
 }
 #messages.a-fond-prive {
   background:
       linear-gradient(var(--wp-voile), var(--wp-voile)),
       var(--wp-img) center / cover no-repeat,
-      hsl(256 30% 22.7%);
+      hsl(256 30% 28.7%);
 }
 .msg .time {
-  color: hsl(256 13% 82.2%);
+  color: hsl(256 13% 86%);
 }
 .msg .from {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .msg .from.me {
-  color: hsl(325 58% 85%);
+  color: hsl(325 58% 88.4%);
 }
 .msg.system {
-  color: hsl(256 13% 78.2%);
+  color: hsl(256 13% 82.7%);
 }
 .sys-lien {
-  color: hsl(256 13% 75%);
+  color: hsl(256 13% 79.9%);
 }
 .msg.admin {
-  color: hsl(325 58% 79.4%);
+  color: hsl(325 58% 83.7%);
 }
 .msg .body {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 .msg.shout, .msg.shout .body, .msg.shout .from, .msg.shout .time {
-  color: hsl(325 58% 77.8%);
+  color: hsl(325 58% 82.3%);
 }
 .blindtest {
   background: hsl(240 55% 11.7%);
-  color: hsl(256 13% 94%);
+  color: hsl(256 13% 96%);
 }
 .blindtest .bt-bouton {
-  background: hsl(256 30% 10%);
-  color: hsl(240 55% 76.1%);
+  background: hsl(256 30% 16%);
+  color: hsl(240 55% 84%);
 }
 .msg.blue, .msg.blue .body, .msg.blue .from, .msg.blue .from.me, .msg.blue .time {
-  color: hsl(240 55% 76.1%);
+  color: hsl(240 55% 84%);
 }
 .mention-liste {
-  background: hsl(256 30% 10%);
-  border: 1px solid hsl(256 26% 34.9%);
+  background: hsl(256 30% 16%);
+  border: 1px solid hsl(256 26% 39.5%);
   box-shadow: 0 6px 18px hsl(256 13% 0% / 0.18);
 }
 .mention-item {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .mention-item.on, .mention-item:hover {
-  background: hsl(256 30% 14.9%);
+  background: hsl(256 30% 20.9%);
 }
 .msg .mention {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .msg .mention.moi {
-  color: hsl(325 58% 74%);
-  background: hsl(45 55% 17.9%);
-  box-shadow: inset 0 0 0 1px hsl(43 39% 26%);
+  color: hsl(325 58% 80.9%);
+  background: hsl(45 55% 23.4%);
+  box-shadow: inset 0 0 0 1px hsl(43 39% 39.8%);
 }
 .msg.emote {
-  color: hsl(256 13% 75.9%);
+  color: hsl(256 13% 80.6%);
 }
 .msg.emote .from {
-  color: hsl(256 13% 75.9%);
+  color: hsl(256 13% 80.6%);
 }
 .msg.emote .from.me {
-  color: hsl(325 58% 85%);
+  color: hsl(325 58% 88.4%);
 }
 .msg .body.emote {
-  color: hsl(256 13% 75.9%);
+  color: hsl(256 13% 80.6%);
 }
 .msg.poll {
-  background: hsl(256 30% 14.5%);
-  border: 1px solid hsl(256 26% 34.9%);
-  box-shadow: 0 1px 0 hsl(256 13% 10% / 0.6) inset, 0 1px 2px hsl(256 13% 17.5% / 0.12);
+  background: hsl(256 30% 20.5%);
+  border: 1px solid hsl(256 26% 39.5%);
+  box-shadow: 0 1px 0 hsl(256 26% 30% / 0.6) inset, 0 1px 2px hsl(256 13% 17.5% / 0.12);
 }
 .poll-titre {
-  color: hsl(240 55% 76.1%);
+  color: hsl(240 55% 84%);
 }
 .poll-opt {
-  border: 1px solid hsl(256 26% 33.4%);
-  background: hsl(256 30% 10%);
-  color: hsl(256 13% 73.2%);
+  border: 1px solid hsl(256 26% 37.8%);
+  background: hsl(256 30% 16%);
+  color: hsl(256 13% 78.4%);
 }
 .poll-opt:hover:not(:disabled) {
-  border-color: hsl(256 26% 38.1%);
+  border-color: hsl(256 26% 42.9%);
 }
 .poll-jauge {
-  background: linear-gradient(hsl(256 30% 20.5%), hsl(256 30% 26%));
+  background: linear-gradient(hsl(256 30% 26.5%), hsl(256 30% 32.1%));
 }
 .poll-opt-val {
-  color: hsl(256 13% 75.9%);
+  color: hsl(256 13% 80.6%);
 }
 .poll-opt.voted {
   border-color: hsl(325 58% 66%);
   background: hsl(325 34% 22%);
 }
 .poll-opt.voted .poll-jauge {
-  background: linear-gradient(hsl(325 34% 22%), hsl(325 34% 22%));
+  background: linear-gradient(hsl(325 34% 22%), hsl(325 34% 27%));
 }
 .poll-opt.voted .poll-opt-val {
-  color: hsl(325 58% 84.2%);
+  color: hsl(325 58% 87.7%);
 }
 .poll-opt.win {
-  border-color: hsl(42 42% 39.1%);
+  border-color: hsl(42 42% 43.9%);
 }
 .poll-pied {
-  color: hsl(256 13% 78.8%);
+  color: hsl(256 13% 83.1%);
 }
 .msg.img-msg .chat-img {
-  border: 1px solid hsl(256 26% 50.8% / 0.25);
-  background: hsl(256 30% 10%);
+  border: 1px solid hsl(256 26% 56.4% / 0.25);
+  background: hsl(256 30% 16%);
 }
 .msg.img-msg .img-fail {
-  color: hsl(256 13% 78.2%);
+  color: hsl(256 13% 82.7%);
 }
 .compose {
-  background: hsl(256 30% 10%);
-  border-top: 1px solid hsl(256 26% 30%);
+  background: hsl(256 30% 16%);
+  border-top: 1px solid hsl(256 26% 34.3%);
 }
 .compose input {
-  color: hsl(256 13% 73.2%);
-  border-color: hsl(256 26% 32%) hsl(256 26% 27.5%) hsl(256 26% 27.1%);
-  background: hsl(256 30% 13.9%);
-  box-shadow: inset 0 1px 0 hsl(256 13% 15.9%);
+  color: hsl(256 13% 78.4%);
+  border-color: hsl(256 26% 36.4%) hsl(256 26% 31.6%) hsl(256 26% 31.1%);
+  background: hsl(256 30% 19.9%);
+  box-shadow: inset 0 1px 0 hsl(256 26% 33.3%);
 }
 .compose button {
-  background: hsl(325 34% 22%);
-  color: hsl(325 58% 74%);
+  background: hsl(325 34% 25.7%);
+  color: hsl(325 58% 80.9%);
   border: 1px solid hsl(325 58% 66%);
-  box-shadow: 0 0 0 1px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 1px hsl(256 26% 34.3%);
 }
 #pen-bar {
-  background: hsl(256 30% 10%);
-  border-top: 1px solid hsl(256 26% 30%);
+  background: hsl(256 30% 16%);
+  border-top: 1px solid hsl(256 26% 34.3%);
 }
 .pen-swatch {
-  border: 2px solid hsl(256 26% 26%);
-  box-shadow: 0 0 0 1px hsl(256 13% 21.6%);
+  border: 2px solid hsl(256 26% 30%);
+  box-shadow: 0 0 0 1px hsl(256 26% 36.4%);
 }
 .pen-swatch.sel {
   box-shadow: 0 0 0 2px hsl(325 58% 66%);
 }
 .pen-swatch.none {
-  background: hsl(256 30% 10%);
-  color: hsl(325 58% 83.9%);
+  background: hsl(256 30% 16%);
+  color: hsl(325 58% 87.5%);
 }
 .pen-swatch.mc {
-  background: linear-gradient(90deg, hsl(24 55% 22%), hsl(46 55% 17.5%), hsl(256 30% 26%), hsl(187 30% 20.5%), hsl(240 30% 26%), hsl(277 30% 26%), hsl(312 50% 24.4%));
+  background: linear-gradient(90deg, hsl(24 55% 29%), hsl(46 55% 23%), hsl(256 30% 36%), hsl(187 30% 27%), hsl(240 30% 36%), hsl(277 30% 36%), hsl(312 50% 30.4%));
 }
 .mc-text {
-  background: linear-gradient(90deg, hsl(24 55% 22%), hsl(46 55% 17.5%), hsl(256 30% 26%), hsl(187 30% 20.5%), hsl(240 30% 26%), hsl(277 30% 26%), hsl(312 50% 24.4%));
+  background: linear-gradient(90deg, hsl(24 55% 29%), hsl(46 55% 23%), hsl(256 30% 36%), hsl(187 30% 27%), hsl(240 30% 36%), hsl(277 30% 36%), hsl(312 50% 30.4%));
 }
 #accent-bar {
-  background: hsl(256 30% 10%);
-  border-top: 1px solid hsl(256 26% 30%);
+  background: hsl(256 30% 16%);
+  border-top: 1px solid hsl(256 26% 34.3%);
 }
 .accent-key {
-  border: 1px solid hsl(256 26% 30%);
-  background: hsl(256 30% 12%);
-  color: hsl(256 13% 73.2%);
-  box-shadow: 0 1px 0 hsl(256 13% 15.9%);
+  border: 1px solid hsl(256 26% 34.3%);
+  background: hsl(256 30% 18%);
+  color: hsl(256 13% 78.4%);
+  box-shadow: 0 1px 0 hsl(256 26% 33.3%);
 }
 .accent-key:active {
-  background: hsl(256 30% 15.5%);
+  background: hsl(256 30% 21.5%);
 }
 #accent-toggle {
-  background: hsl(256 30% 10%);
-  color: hsl(325 58% 74%);
+  background: hsl(256 30% 16%);
+  color: hsl(325 58% 80.9%);
   border: 1px solid hsl(325 58% 66%);
-  box-shadow: 0 0 0 1px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 1px hsl(256 26% 34.3%);
 }
 #accent-toggle.on {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 25.7%);
 }
 #bouille-overlay-name {
-  color: hsl(256 13% 72.5%);
-  background: hsl(256 30% 10% / 0.82);
-  border: 1px solid hsl(256 26% 46%);
+  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 16% / 0.82);
+  border: 1px solid hsl(256 26% 51.3%);
 }
 #fiche-backdrop {
   background: hsl(256 30% 6.7% / 0.45);
 }
 .fiche-boite {
-  background: hsl(256 30% 10%);
-  border: 1.5px solid hsl(256 26% 46.1%);
+  background: hsl(256 30% 16%);
+  border: 1.5px solid hsl(256 26% 51.5%);
   box-shadow: 0 0 16px hsl(256 13% 0% / 0.45), 0 4px 10px hsl(256 13% 0% / 0.3);
 }
 .fiche-plaque {
-  background: hsl(256 30% 22.9%);
-  border: 1px solid hsl(256 26% 44%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  background: hsl(256 30% 28.9%);
+  border: 1px solid hsl(256 26% 49.2%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 .fiche-plaque .fa-progress i {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 .fiche-plaque .fa-progress i::before {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 .fiche-plaque .fa-niv b {
-  color: hsl(256 13% 77%);
+  color: hsl(256 13% 81.6%);
 }
 .fiche-nom-ligne .statut {
   filter: var(--nuit-chassis);
 }
 .fiche-nom-ligne b {
-  color: hsl(259 42% 73.8%);
+  color: hsl(259 42% 81.9%);
 }
 .fiche-nom-ligne .meta {
-  color: hsl(256 13% 74.9%);
+  color: hsl(256 13% 79.9%);
 }
 .fiche-actions .fiche-avance {
   filter: var(--nuit-chassis);
 }
 .fiche-actions button {
-  background: hsl(256 30% 10%);
-  box-shadow: 0 0 0 1.5px hsl(256 13% 17.7%);
+  background: hsl(256 30% 16%);
+  box-shadow: 0 0 0 1.5px hsl(256 26% 34.3%);
 }
 .fiche-corps {
-  background: hsl(256 30% 17.8%);
-  border: 2px solid hsl(256 26% 36.8%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  background: hsl(256 30% 23.8%);
+  border: 2px solid hsl(256 26% 41.5%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 .fiche-onglets {
-  border-bottom: 2px solid hsl(256 26% 36.8%);
+  border-bottom: 2px solid hsl(256 26% 41.5%);
 }
 .fiche-onglets button {
-  color: hsl(256 13% 75.6%);
+  color: hsl(256 13% 80.5%);
 }
 .fiche-onglets button.actif {
-  color: hsl(325 58% 76%);
+  color: hsl(325 58% 80.8%);
 }
 @supports not selector(::-webkit-scrollbar) {
   body:not(.bureau-frutiz) .fiche-page {
-    scrollbar-color: hsl(256 26% 39.7%) hsl(256 26% 30.7%);
+    scrollbar-color: hsl(256 26% 44.6%) hsl(256 26% 35%);
   }
 }
 body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-track {
-  background: hsl(256 30% 19.1%);
+  background: hsl(256 30% 25.1%);
 }
 body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb {
-  background-image: linear-gradient(90deg, hsl(256 30% 26%) 0%, hsl(256 30% 23.8%) 48%, hsl(256 30% 26%) 56%, hsl(256 30% 26%) 100%);
-  box-shadow: inset 0 0 0 1px hsl(256 13% 29.4% / 0.3);
+  background-image: linear-gradient(90deg, hsl(256 30% 36%) 0%, hsl(256 30% 29.8%) 48%, hsl(256 30% 36%) 56%, hsl(256 30% 36%) 100%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 52.6% / 0.3);
 }
 body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
-  background-image: linear-gradient(90deg, hsl(256 30% 26%) 0%, hsl(256 30% 19.9%) 48%, hsl(256 30% 26%) 56%, hsl(256 30% 26%) 100%);
+  background-image: linear-gradient(90deg, hsl(256 30% 36%) 0%, hsl(256 30% 25.9%) 48%, hsl(256 30% 32.8%) 56%, hsl(256 30% 36%) 100%);
 }
 .fiche-titre {
-  color: hsl(256 13% 75.6%);
+  color: hsl(256 13% 80.5%);
 }
 .fiche-titre::before, .fiche-titre::after {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 .fiche-signes {
-  border-bottom: 1.5px solid hsl(256 26% 36.8%);
+  border-bottom: 1.5px solid hsl(256 26% 41.5%);
 }
 .fiche-ligne .lib {
-  color: hsl(256 13% 75.6%);
+  color: hsl(256 13% 80.5%);
 }
 .fiche-ligne .val {
-  color: hsl(256 13% 74.9%);
+  color: hsl(256 13% 79.9%);
 }
 .fiche-ligne .val a {
-  color: hsl(256 13% 74.6%);
+  color: hsl(256 13% 79.6%);
 }
 .fiche-medailles {
-  border-bottom: 1.5px solid hsl(256 26% 36.8%);
+  border-bottom: 1.5px solid hsl(256 26% 41.5%);
 }
 .fiche-jour {
-  color: hsl(256 13% 75.6%);
+  color: hsl(256 13% 80.5%);
 }
 .fiche-jour.cliquable:hover,
   .fiche-jour.cliquable:focus-visible {
-  background: hsl(256 30% 10% / 0.45);
+  background: hsl(256 30% 16% / 0.45);
 }
 .fiche-jour .pts {
-  color: hsl(256 13% 79.5%);
+  color: hsl(256 13% 83.7%);
 }
 .fiche-lignes.encadre::before, .fiche-lignes.encadre::after {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 .fiche-com {
-  color: hsl(256 13% 74.9%);
+  color: hsl(256 13% 79.9%);
 }
 .fiche-vide {
-  color: hsl(256 13% 75.6%);
+  color: hsl(256 13% 80.5%);
 }
 .fiche-carte-lien {
-  color: hsl(256 13% 75.6%);
+  color: hsl(256 13% 80.5%);
 }
 .fiche-carte-lien:hover,
   .fiche-carte-lien:focus-visible {
-  background: hsl(256 30% 10% / 0.45);
+  background: hsl(256 30% 16% / 0.45);
 }
 .fiche-fcard {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 .fiche-fcard .fc-filet {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 35.6%);
 }
 .fiche-fcard .fc-nombre {
-  color: hsl(256 13% 75%);
+  color: hsl(256 13% 80%);
 }
 #users-drawer {
-  background: hsl(256 30% 10%);
-  border-left: 1px solid hsl(256 26% 30%);
+  background: hsl(256 30% 16%);
+  border-left: 1px solid hsl(256 26% 34.3%);
   box-shadow: -6px 0 18px hsl(256 13% 17.5% / 0.25);
 }
 #users-drawer h3 {
-  background: hsl(256 30% 10%);
-  color: hsl(325 58% 83.9%);
-  border-bottom: 1px solid hsl(256 26% 30%);
+  background: hsl(256 30% 16%);
+  color: hsl(325 58% 87.5%);
+  border-bottom: 1px solid hsl(256 26% 34.3%);
 }
 #drawer-onglets {
-  background: hsl(256 30% 10%);
-  border-bottom: 1px solid hsl(256 26% 30%);
+  background: hsl(256 30% 16%);
+  border-bottom: 1px solid hsl(256 26% 34.3%);
 }
 .dr-onglet {
-  color: hsl(256 13% 81.6%);
+  color: hsl(256 13% 85.5%);
 }
 .dr-onglet.on {
-  color: hsl(325 58% 83.9%);
+  color: hsl(325 58% 87.5%);
   border-bottom-color: hsl(325 58% 66%);
 }
 .dr-onglet:active {
-  background: hsl(256 30% 12.8%);
+  background: hsl(256 30% 18.8%);
 }
 #users-drawer .u .lieu {
-  color: hsl(256 13% 78.2%);
+  color: hsl(256 13% 82.7%);
 }
 #users-drawer .vide {
-  color: hsl(256 13% 78.2%);
+  color: hsl(256 13% 82.7%);
 }
 #users-drawer .list {
-  background: hsl(256 30% 16%);
-  border: 4px solid hsl(256 26% 33.5%);
-  box-shadow: inset 0 0 0 2px hsl(256 13% 10% / 0.45), 0 0 4px hsl(256 13% 26% / 0.45);
+  background: hsl(256 30% 22%);
+  border: 4px solid hsl(256 26% 38%);
+  box-shadow: inset 0 0 0 2px hsl(256 26% 30% / 0.45), 0 0 4px hsl(256 13% 36% / 0.45);
 }
 #users-drawer .u {
-  background: hsl(256 30% 16%);
-  color: hsl(243 30% 75%);
-  text-shadow: 0 1px 0 hsl(256 13% 10% / 0.25);
+  background: hsl(256 30% 22%);
+  color: hsl(243 30% 81%);
+  text-shadow: 0 1px 0 hsl(256 26% 30% / 0.25);
 }
 #users-drawer .u:nth-child(odd) {
-  background: hsl(256 30% 19.3%);
+  background: hsl(256 30% 25.3%);
 }
 #users-drawer .u .badge {
-  background: hsl(243 30% 26%);
-  color: hsl(256 13% 94%);
+  background: hsl(243 30% 36%);
+  color: hsl(256 13% 96%);
 }
 .u[data-genre="M"] .nom, .sl-contact[data-genre="M"] .nom {
-  color: hsl(243 30% 75%);
+  color: hsl(243 30% 81%);
 }
 .u[data-genre="F"] .nom, .sl-contact[data-genre="F"] .nom {
-  color: hsl(325 58% 81%);
+  color: hsl(325 58% 85%);
 }
 .u.mp[data-genre="M"]:hover .nom,  .sl-contact[data-genre="M"]:hover .nom {
-  color: hsl(231 32% 79.4%);
+  color: hsl(231 32% 83.6%);
 }
 .u.mp[data-genre="M"]:active .nom, .sl-contact[data-genre="M"]:active .nom {
-  color: hsl(228 30% 81.5%);
+  color: hsl(228 30% 85.4%);
 }
 .u.mp[data-genre="F"]:hover .nom,  .sl-contact[data-genre="F"]:hover .nom {
-  color: hsl(325 58% 85.7%);
+  color: hsl(325 58% 89%);
 }
 .u.mp[data-genre="F"]:active .nom, .sl-contact[data-genre="F"]:active .nom {
-  color: hsl(325 58% 89.7%);
+  color: hsl(325 58% 92.3%);
 }
 .fiche-pseudo[data-genre="M"] {
-  color: hsl(243 30% 75%);
+  color: hsl(243 30% 81%);
 }
 .fiche-pseudo[data-genre="F"] {
-  color: hsl(325 58% 81%);
+  color: hsl(325 58% 85%);
 }
 #users-drawer .u.mp:active {
-  background: hsl(256 30% 23.2%);
+  background: hsl(256 30% 29.2%);
 }
 #users-btn.a-lire::after {
-  background: hsl(325 34% 26%);
-  box-shadow: 0 0 0 2px hsl(256 13% 10%);
+  background: hsl(325 34% 34.5%);
+  box-shadow: 0 0 0 2px hsl(256 26% 30%);
 }
 #drawer-backdrop {
   background: hsl(256 30% 0% / 0.25);
 }
 #forum-frame {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 35.6%);
 }
 #grapiz-frame {
-  background: hsl(58 55% 13.3%);
+  background: hsl(58 55% 19.3%);
 }
 #bandas-frame {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 #swapou-frame {
   background: hsl(256 30% 10.8%);
@@ -768,152 +768,152 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
   background: hsl(254 30% 9.2%);
 }
 #snake3-frame {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 35.6%);
 }
 #kaluga-frame {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 35.6%);
 }
 #jamajama-frame {
-  background: hsl(38 30% 21%);
+  background: hsl(38 30% 27.5%);
 }
 #minifever-frame {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 35.6%);
 }
 #scores-panel {
-  background: hsl(256 30% 22.7%);
+  background: hsl(256 30% 28.7%);
 }
 #mail-panel {
-  background: hsl(256 30% 22.7%);
+  background: hsl(256 30% 28.7%);
 }
 #mail-head {
-  background: hsl(325 34% 22%);
-  border-bottom: 1px solid hsl(256 26% 30%);
+  background: hsl(325 34% 25.7%);
+  border-bottom: 1px solid hsl(256 26% 34.3%);
   box-shadow: 0 1px 3px hsl(256 13% 17.5% / 0.18);
 }
 .mail-tab {
-  background: hsl(256 30% 10% / 0.35);
-  color: hsl(325 58% 75.8%);
+  background: hsl(256 30% 16% / 0.35);
+  color: hsl(325 58% 81.1%);
 }
 .mail-tab.active {
-  background: hsl(256 30% 10%);
-  color: hsl(325 58% 83.9%);
+  background: hsl(256 30% 16%);
+  color: hsl(325 58% 87.5%);
   box-shadow: 0 1px 2px hsl(256 13% 17.5% / 0.25);
 }
 .mail-tab .n {
-  background: hsl(256 30% 26%);
-  color: hsl(256 13% 94%);
+  background: hsl(256 30% 36%);
+  color: hsl(256 13% 96%);
 }
 #mail-new {
-  color: hsl(325 58% 75.8%);
-  background: linear-gradient(180deg, hsl(256 30% 10% / 0.75), hsl(256 30% 10% / 0.3));
+  color: hsl(325 58% 81.1%);
+  background: linear-gradient(180deg, hsl(256 30% 16% / 0.75), hsl(256 30% 16% / 0.3));
   box-shadow: 0 1px 2px hsl(325 58% 66% / 0.22);
 }
 .mail-item {
-  border: 1px solid hsl(256 26% 35.2%);
-  background: hsl(256 30% 10%);
-  color: hsl(256 13% 72.5%);
+  border: 1px solid hsl(256 26% 39.9%);
+  background: hsl(256 30% 16%);
+  color: hsl(256 13% 78.3%);
 }
 .mail-item .qui {
-  color: hsl(256 13% 75.4%);
+  color: hsl(256 13% 80.3%);
 }
 .mail-item .quand {
-  color: hsl(256 13% 80.4%);
+  color: hsl(256 13% 84.5%);
 }
 .mail-item .apercu {
-  color: hsl(256 13% 78.9%);
+  color: hsl(256 13% 83.2%);
 }
 .mail-item.neuf {
-  border-color: hsl(256 26% 40.4%);
-  box-shadow: inset 3px 0 0 hsl(256 13% 26%);
+  border-color: hsl(256 26% 45.3%);
+  box-shadow: inset 3px 0 0 hsl(256 26% 45.3%);
 }
 .mail-vide, .mail-charge {
-  color: hsl(256 13% 75.4%);
+  color: hsl(256 13% 80.3%);
 }
 .mail-entete {
-  background: hsl(256 30% 17.6%);
-  border-bottom: 1px solid hsl(256 26% 35.2%);
+  background: hsl(256 30% 23.6%);
+  border-bottom: 1px solid hsl(256 26% 39.9%);
 }
 .ml-sujet {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .ml-meta {
-  color: hsl(256 13% 78.9%);
+  color: hsl(256 13% 83.2%);
 }
 .mail-corps {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .mail-actions {
-  background: hsl(256 30% 10%);
-  border-top: 1px solid hsl(256 26% 30%);
+  background: hsl(256 30% 16%);
+  border-top: 1px solid hsl(256 26% 34.3%);
 }
 .ma-btn {
-  color: hsl(325 58% 75.8%);
-  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(325 34% 22%), hsl(325 34% 24%));
-  box-shadow: 0 1px 2px hsl(325 58% 66% / 0.22), inset 0 1px 0 hsl(256 13% 10% / 0.55);
+  color: hsl(325 58% 81.1%);
+  background: linear-gradient(180deg, hsl(256 30% 16% / 0.55), hsl(256 30% 16% / 0) 52%), linear-gradient(180deg, hsl(325 34% 24.3%), hsl(325 34% 30%));
+  box-shadow: 0 1px 2px hsl(325 58% 66% / 0.22), inset 0 1px 0 hsl(256 26% 30% / 0.55);
 }
 .ma-btn.primaire {
-  color: hsl(256 13% 72.5%);
-  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(256 30% 26%), hsl(256 30% 26%));
-  box-shadow: 0 1px 2px hsl(256 13% 17.5% / 0.22), inset 0 1px 0 hsl(256 13% 10% / 0.55);
+  color: hsl(256 13% 78.3%);
+  background: linear-gradient(180deg, hsl(256 30% 16% / 0.55), hsl(256 30% 16% / 0) 52%), linear-gradient(180deg, hsl(256 30% 35.4%), hsl(256 30% 36%));
+  box-shadow: 0 1px 2px hsl(256 13% 17.5% / 0.22), inset 0 1px 0 hsl(256 26% 30% / 0.55);
 }
 .ma-btn.danger {
-  color: hsl(256 13% 94%);
-  background: linear-gradient(180deg, hsl(325 34% 26%), hsl(325 34% 26%));
+  color: hsl(256 13% 96%);
+  background: linear-gradient(180deg, hsl(325 34% 34.4%), hsl(325 34% 34.5%));
 }
 .mail-form label {
-  color: hsl(256 13% 75.4%);
+  color: hsl(256 13% 80.3%);
 }
 .mail-form input, .mail-form textarea {
-  border: 1px solid hsl(256 26% 35.2%);
-  color: hsl(256 13% 72.5%);
-  background: hsl(256 30% 10%);
+  border: 1px solid hsl(256 26% 39.9%);
+  color: hsl(256 13% 78.3%);
+  background: hsl(256 30% 16%);
 }
 .mail-form input:focus, .mail-form textarea:focus {
-  border-color: hsl(256 26% 40.4%);
-  box-shadow: 0 0 0 3px hsl(256 13% 26% / 0.28);
+  border-color: hsl(256 26% 45.3%);
+  box-shadow: 0 0 0 3px hsl(256 26% 45.3% / 0.28);
 }
 .mail-erreur {
-  color: hsl(325 58% 80%);
+  color: hsl(325 58% 84.1%);
 }
 .mail-erreur.ok {
-  color: hsl(256 13% 75.4%);
+  color: hsl(256 13% 80.3%);
 }
 #evt-panel {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 35.6%);
 }
 .fenetre {
-  background: hsl(256 30% 22.7%);
+  background: hsl(256 30% 28.7%);
   box-shadow: 0 3px 11px hsl(256 13% 0% / 0.42);
 }
 .fen-titre {
-  background: hsl(256 30% 10%);
-  color: hsl(262 30% 75.1%);
+  background: hsl(256 30% 16%);
+  color: hsl(262 30% 80.5%);
 }
 .reg-bascule input {
-  accent-color: hsl(256 30% 26%);
+  accent-color: hsl(256 30% 36%);
 }
 .reg-carte {
-  background: hsl(256 30% 10%);
-  border: 1px solid hsl(256 26% 40.6%);
+  background: hsl(256 30% 16%);
+  border: 1px solid hsl(256 26% 45.6%);
 }
 .reg-titre {
-  color: hsl(262 30% 75.1%);
+  color: hsl(262 30% 80.5%);
 }
 .reg-texte {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .reg-btn {
-  background: hsl(256 30% 26%);
-  color: hsl(256 13% 94%);
-  box-shadow: 0 1px 0 hsl(256 13% 0% / 0.18);
+  background: hsl(256 30% 36%);
+  color: hsl(256 13% 96%);
+  box-shadow: 0 1px 0 hsl(256 26% 62% / 0.18);
 }
 .reg-btn-doux {
-  background: hsl(256 30% 20%);
-  color: hsl(256 13% 72.5%);
+  background: hsl(256 30% 26%);
+  color: hsl(256 13% 78.3%);
 }
 .reg-btn-danger {
-  background: hsl(325 34% 26%);
-  color: hsl(256 13% 94%);
+  background: hsl(325 34% 34.5%);
+  color: hsl(256 13% 96%);
 }
 .reg-suppr {
   border: 1px solid hsl(325 58% 66%);
@@ -921,44 +921,44 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 }
 .reg-suppr-champ input {
   border: 1px solid hsl(325 58% 66%);
-  background: hsl(256 30% 10%);
-  color: hsl(256 13% 72.5%);
+  background: hsl(256 30% 16%);
+  color: hsl(256 13% 78.3%);
 }
 .reg-ok {
-  color: hsl(256 13% 75.3%);
+  color: hsl(256 13% 80.2%);
 }
 .reg-pied a {
-  color: hsl(256 13% 74.6%);
+  color: hsl(256 13% 79.6%);
 }
 .evt-item {
-  background: hsl(256 30% 20%);
-  border: 1px solid hsl(256 26% 40.6%);
+  background: hsl(256 30% 26%);
+  border: 1px solid hsl(256 26% 45.6%);
 }
 .evt-item .txt {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 #evt-page {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .evt-vide, .evt-charge {
-  color: hsl(256 13% 75.4%);
+  color: hsl(256 13% 80.3%);
 }
 #trombi-head {
-  border-bottom: 1px solid hsl(256 26% 30%);
-  background: linear-gradient(180deg, hsl(256 30% 10% / 0.5), hsl(256 30% 10% / 0) 46%), linear-gradient(180deg, hsl(325 34% 22%), hsl(325 34% 22%));
+  border-bottom: 1px solid hsl(256 26% 34.3%);
+  background: linear-gradient(180deg, hsl(256 30% 16% / 0.5), hsl(256 30% 16% / 0) 46%), linear-gradient(180deg, hsl(325 34% 24.3%), hsl(325 34% 27.5%));
   box-shadow: 0 1px 3px hsl(256 13% 17.5% / 0.18);
 }
 #trombi-search {
-  background: hsl(256 30% 10%);
-  color: hsl(256 13% 73.2%);
+  background: hsl(256 30% 16%);
+  color: hsl(256 13% 78.4%);
 }
 .trombi-letter {
-  background: hsl(256 30% 10% / 0.45);
-  color: hsl(325 58% 75.8%);
+  background: hsl(256 30% 16% / 0.45);
+  color: hsl(325 58% 81.1%);
 }
 .trombi-letter.active {
-  background: hsl(256 30% 10%);
-  color: hsl(325 58% 83.9%);
+  background: hsl(256 30% 16%);
+  color: hsl(325 58% 87.5%);
   box-shadow: 0 1px 2px hsl(256 13% 17.5% / 0.25);
 }
 @supports not selector(::-webkit-scrollbar) {
@@ -970,34 +970,34 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
   background: hsl(325 34% 22%);
 }
 #trombi-body::-webkit-scrollbar-thumb {
-  background-image: linear-gradient(90deg, hsl(325 34% 26%) 0%, hsl(325 34% 22%) 48%, hsl(325 34% 22%) 56%, hsl(325 34% 26%) 100%);
+  background-image: linear-gradient(90deg, hsl(325 34% 34.4%) 0%, hsl(325 34% 22%) 48%, hsl(325 34% 25.6%) 56%, hsl(325 34% 34.4%) 100%);
   box-shadow: inset 0 0 0 1px hsl(325 58% 66% / 0.3);
 }
 #trombi-body::-webkit-scrollbar-thumb:hover {
-  background-image: linear-gradient(90deg, hsl(325 34% 26%) 0%, hsl(325 34% 22%) 48%, hsl(325 34% 22%) 56%, hsl(325 34% 26%) 100%);
+  background-image: linear-gradient(90deg, hsl(325 34% 34.5%) 0%, hsl(325 34% 22%) 48%, hsl(325 34% 23.4%) 56%, hsl(325 34% 34.5%) 100%);
 }
 #trombi-search:focus {
-  box-shadow: 0 0 0 3px hsl(256 13% 10% / 0.65);
+  box-shadow: 0 0 0 3px hsl(256 26% 30% / 0.65);
 }
 #trombi-pager {
-  background: hsl(256 30% 10%);
-  border-top: 1px solid hsl(256 26% 28%);
+  background: hsl(256 30% 16%);
+  border-top: 1px solid hsl(256 26% 32.1%);
 }
 .trombi-pgbtn {
-  color: hsl(325 58% 75.8%);
-  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(325 34% 22%), hsl(325 34% 24%));
-  box-shadow: 0 1px 2px hsl(325 58% 66% / 0.22), inset 0 1px 0 hsl(256 13% 10% / 0.55);
+  color: hsl(325 58% 81.1%);
+  background: linear-gradient(180deg, hsl(256 30% 16% / 0.55), hsl(256 30% 16% / 0) 52%), linear-gradient(180deg, hsl(325 34% 24.3%), hsl(325 34% 30%));
+  box-shadow: 0 1px 2px hsl(325 58% 66% / 0.22), inset 0 1px 0 hsl(256 26% 30% / 0.55);
 }
 .trombi-pginfo {
-  color: hsl(325 58% 75.8%);
+  color: hsl(325 58% 81.1%);
 }
 .trombi-badge {
-  background: hsl(256 30% 10%);
-  color: hsl(325 58% 83.9%);
+  background: hsl(256 30% 16%);
+  color: hsl(325 58% 87.5%);
   box-shadow: 0 1px 2px hsl(325 58% 66% / 0.2);
 }
 .trombi-card {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
   border: 1px solid hsl(325 58% 66%);
 }
 @media (hover: hover) {
@@ -1006,110 +1006,110 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
   }
 }
 .trombi-card .tb {
-  border: 1px solid hsl(256 26% 32.3%);
-  background: hsl(256 30% 15.8%);
+  border: 1px solid hsl(256 26% 36.7%);
+  background: hsl(256 30% 21.8%);
 }
 .trombi-card .nm {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .trombi-empty {
-  color: hsl(256 13% 81.9%);
+  color: hsl(256 13% 85.7%);
 }
 #sc-fenetre {
-  border: 4px solid hsl(256 26% 26%);
-  box-shadow: 0 0 0 1px hsl(256 13% 26%), 0 2px 6px hsl(256 13% 0% / 0.25);
-  background: hsl(42 51% 18.5%);
+  border: 4px solid hsl(256 26% 30%);
+  box-shadow: 0 0 0 1px hsl(256 26% 47.6%), 0 2px 6px hsl(256 13% 0% / 0.25);
+  background: hsl(42 51% 24.7%);
 }
 #sc-titre {
-  background: hsl(256 30% 10%);
-  border-bottom: 1px solid hsl(256 26% 30%);
+  background: hsl(256 30% 16%);
+  border-bottom: 1px solid hsl(256 26% 34.3%);
 }
 #sc-titre span {
-  color: hsl(256 13% 74.9%);
+  color: hsl(256 13% 79.9%);
 }
 #sc-liste, #sc-table {
-  background: hsl(42 51% 18.5%) linear-gradient(180deg, hsl(42 51% 16.5%) 0, hsl(42 51% 18.5%) 14px);
-  border: 2px solid hsl(256 26% 26%);
+  background: hsl(42 51% 24.5%) linear-gradient(180deg, hsl(42 51% 22.5%) 0, hsl(42 51% 24.5%) 14px);
+  border: 2px solid hsl(256 26% 30%);
 }
 .sc-section {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 .sc-rk {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 .sc-rk.on {
-  background: hsl(256 30% 10% / 0.55);
+  background: hsl(256 30% 16% / 0.55);
 }
 .sc-pod span {
-  color: hsl(42 47% 71.7%);
+  color: hsl(42 47% 77.1%);
 }
 .sc-moi {
-  color: hsl(42 47% 71.7%);
+  color: hsl(42 47% 77.1%);
 }
 .sc-page-btn {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 25.7%);
   box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
-  color: hsl(325 58% 74%);
+  color: hsl(325 58% 80.9%);
 }
 .sc-page-btn::after {
   border-top: 1px solid hsl(325 58% 66%);
   border-right: 1px solid hsl(325 58% 66%);
 }
 .sc-entete, .sc-ligne {
-  color: hsl(42 47% 71.7%);
+  color: hsl(42 47% 77.1%);
 }
 .sc-ligne.moi {
-  background: hsl(256 30% 10% / 0.5);
+  background: hsl(256 30% 16% / 0.5);
 }
 #sc-jour {
-  color: hsl(42 47% 71.7%);
+  color: hsl(42 47% 77.1%);
 }
 .sc-vide {
-  color: hsl(42 33% 75.7%);
+  color: hsl(42 33% 80.6%);
 }
 .banner {
-  background: hsl(46 55% 15.7%);
-  color: hsl(45 55% 74.2%);
-  border-bottom: 1px solid hsl(46 34% 35.6%);
+  background: hsl(46 55% 21.7%);
+  color: hsl(45 55% 79.3%);
+  border-bottom: 1px solid hsl(46 34% 40.3%);
 }
 #home-panel {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 35.6%);
   box-shadow: 4px 0 18px hsl(256 13% 0% / 0.28);
 }
 .mainbar {
-  background: hsl(256 30% 11.6%);
-  box-shadow: 0 0 0 2px hsl(256 13% 18.6%), 0 0 0 3px hsl(256 13% 26%);
+  background: hsl(256 30% 17.6%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.8%), 0 0 0 3px hsl(256 26% 44.6%);
 }
 .mb-avatar .frame {
-  box-shadow: 0 0 0 1px hsl(256 13% 26%), 0 0 0 3px hsl(256 13% 18.6%);
+  box-shadow: 0 0 0 1px hsl(256 26% 44.6%), 0 0 0 3px hsl(256 26% 34.8%);
 }
 #home-avatar-fiche:active {
-  background: hsl(256 30% 10% / 0.18);
+  background: hsl(256 30% 16% / 0.18);
 }
 .mb-encart {
-  background: hsl(256 30% 22.9%);
-  box-shadow: inset 0 1px 0 hsl(256 13% 10% / 0.7), inset 0 0 0 1px hsl(256 13% 26%),
-                0 0 0 2px hsl(256 13% 18%), 0 1px 2px hsl(256 13% 17.5% / 0.22);
+  background: hsl(256 30% 28.9%);
+  box-shadow: inset 0 1px 0 hsl(256 26% 30% / 0.7), inset 0 0 0 1px hsl(256 26% 43.4%),
+                0 0 0 2px hsl(256 26% 34.4%), 0 1px 2px hsl(256 13% 17.5% / 0.22);
 }
 .enc-divider {
-  background: hsl(256 30% 26%);
-  box-shadow: 0 1px 0 hsl(256 13% 10% / 0.5);
+  background: hsl(256 30% 36%);
+  box-shadow: 0 1px 0 hsl(256 26% 30% / 0.5);
 }
 .enc-progress i {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 .enc-progress i::before {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 .enc-trophy .tro {
-  filter: drop-shadow(0 1px 0 hsl(256 13% 10% / 0.45));
+  filter: drop-shadow(0 1px 0 hsl(256 13% 16% / 0.45));
 }
 .enc-trophy .val {
-  color: hsl(256 13% 78.5%);
-  text-shadow: 0 1px 0 hsl(256 13% 10% / 0.6);
+  color: hsl(256 13% 82.9%);
+  text-shadow: 0 1px 0 hsl(256 26% 30% / 0.6);
 }
 .enc-niv .lvl {
-  color: hsl(256 13% 78.5%);
+  color: hsl(256 13% 82.9%);
 }
 @keyframes sc-allume {
   0%, 50% {
@@ -1128,97 +1128,97 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
   }
 }
 .em-btn.active {
-  background: hsl(325 34% 26% / 0.2);
+  background: hsl(325 34% 34.5% / 0.2);
 }
 .home-compte {
-  color: hsl(256 13% 75.2%);
+  color: hsl(256 13% 80.1%);
 }
 .hc-quitter.confirme {
-  color: hsl(325 58% 78.7%);
+  color: hsl(325 58% 83.1%);
 }
 .daily-banner {
-  background: linear-gradient(135deg, hsl(256 30% 16.5%), hsl(256 30% 23.1%));
-  border: 1px solid hsl(256 26% 35.8%);
-  box-shadow: inset 0 1px 0 hsl(256 13% 10% / 0.7);
+  background: linear-gradient(135deg, hsl(256 30% 22.5%), hsl(256 30% 29.1%));
+  border: 1px solid hsl(256 26% 40.5%);
+  box-shadow: inset 0 1px 0 hsl(256 26% 30% / 0.7);
 }
 .daily-banner .db-main {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .daily-banner .db-main strong {
-  color: hsl(256 13% 74.3%);
+  color: hsl(256 13% 79.3%);
 }
 .daily-banner .db-sub {
-  color: hsl(256 13% 76.7%);
+  color: hsl(256 13% 81.3%);
 }
 .home-tile .ico img {
   filter: drop-shadow(0 2px 3px hsl(256 13% 17.5% / 0.35));
 }
 .home-tile .lbl {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 .tuile-volante {
   filter: drop-shadow(0 6px 10px hsl(256 13% 17.5% / 0.45));
 }
 .home-tile .mp-compte {
-  background: hsl(325 34% 26%);
-  color: hsl(256 13% 94%);
-  box-shadow: 0 0 0 2px hsl(256 13% 10%);
+  background: hsl(325 34% 34.5%);
+  color: hsl(256 13% 96%);
+  box-shadow: 0 0 0 2px hsl(256 26% 30%);
 }
 @media (min-width: 768px) {
   #chat-poignee::before {
-    background: hsl(256 30% 26%);
+    background: hsl(256 30% 36%);
   }
 }
 
 body.bureau-frutiz #bureau {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 35.6%);
 }
 body.bureau-frutiz .fen #topbar {
-  border-bottom: 1px solid hsl(256 26% 30%);
+  border-bottom: 1px solid hsl(256 26% 34.3%);
 }
 body.bureau-frutiz #bureau-coin,
 body.bureau-frutiz #bureau-coin-noir {
-  background: hsl(256 30% 10%);
-  box-shadow: inset 0 0 0 2px hsl(256 13% 17.7%);
+  background: hsl(256 30% 16%);
+  box-shadow: inset 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz #bureau-coin-noir {
-  box-shadow: 0 0 0 2px hsl(256 13% 26.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 53.5%);
 }
 body.bureau-frutiz #bureau-coin .mb-avatar .frame {
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz #bureau-coin .mb-avatar .frame::after {
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 44.9%);
 }
 body.bureau-frutiz #bureau-coin .mb-avatar .frame::before {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #bureau-coin .mb-encart {
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%), 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 43.1%), 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz #bureau-coin .mb-encart::after {
   background: url('/frutiz/sprites/encart-reflet-nuit.svg') left top / 100% 100% no-repeat;
 }
 body.bureau-frutiz #bureau-coin .enc-progress {
   background:
-    repeating-linear-gradient(to top, hsl(256 30% 26%) 0 2px, transparent 2px 3px)
+    repeating-linear-gradient(to top, hsl(256 30% 36%) 0 2px, transparent 2px 3px)
     left bottom / 100% 26px no-repeat;
 }
 body.bureau-frutiz #bureau-coin .enc-progress::after {
-  background: repeating-linear-gradient(to top, hsl(256 30% 26%) 0 2px, transparent 2px 3px);
+  background: repeating-linear-gradient(to top, hsl(256 30% 36%) 0 2px, transparent 2px 3px);
 }
 body.bureau-frutiz #bureau-coin .enc-progress::before {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 body.bureau-frutiz #bureau-coin .enc-trophy .val {
-  color: hsl(256 13% 78.5%);
+  color: hsl(256 13% 82.9%);
 }
 body.bureau-frutiz #bureau-coin .enc-niv .lvl {
-  color: hsl(256 13% 78.5%);
+  color: hsl(256 13% 82.9%);
 }
 body.bureau-frutiz #bureau-coin .em-btn {
-  background: hsl(256 30% 17.7%);
-  box-shadow: 0 0 0 .5px hsl(256 13% 17.7%);
+  background: hsl(256 30% 23.7%);
+  box-shadow: 0 0 0 .5px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .ot-fondh {
   background-image: url('/frutiz/sprites/onglet_fondh-nuit.svg');
@@ -1236,16 +1236,16 @@ body.bureau-frutiz .fb-onglet .ot-couture {
   background-image: url('/frutiz/sprites/onglet_couture-nuit.svg');
 }
 body.bureau-frutiz .fb-onglet span {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fb-onglet .ot-menu button {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fb-onglet .ot-menu button:hover {
-  color: hsl(325 58% 85.2%);
+  color: hsl(325 58% 88.6%);
 }
 body.bureau-frutiz .fb-onglet .ot-menu button:active {
-  color: hsl(256 13% 90.5%);
+  color: hsl(256 13% 93.1%);
 }
 @keyframes fb-onglet-clignote {
   0%, 49.99% {
@@ -1289,26 +1289,26 @@ body.bureau-frutiz #frusion-boite .fr-eject:active {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fb-raccourci .fb-r-lbl {
-  color: var(--fond-txt, hsl(256 13% 72.5%));
+  color: var(--fond-txt, hsl(256 13% 78.3%));
 }
 body.bureau-frutiz .fb-menu-bureau {
-  background: hsl(256 30% 10%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  background: hsl(256 30% 16%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fb-menu-bureau button {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fb-menu-bureau button:hover {
-  color: hsl(325 58% 85.2%);
+  color: hsl(325 58% 88.6%);
 }
 body.bureau-frutiz .fb-menu-bureau button:active {
-  color: hsl(256 13% 90.5%);
+  color: hsl(256 13% 93.1%);
 }
 body.bureau-frutiz .fen .fb-dossier-panneau {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 body.bureau-frutiz .fen .fb-dossier-vide {
-  color: hsl(256 13% 77%);
+  color: hsl(256 13% 81.6%);
 }
 body.bureau-frutiz #frutimandala .md-dessus {
   background: url('/frutiz/sprites/frutimandala-dessus-nuit.svg') left top / 200px 80px no-repeat;
@@ -1350,20 +1350,20 @@ body.bureau-frutiz #frutimandala .md-mandalaValider:active {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #mode-rapide {
-  color: hsl(256 13% 75.1%);
+  color: hsl(256 13% 80%);
 }
 body.bureau-frutiz #mode-rapide i {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #side-list {
   background: linear-gradient(to right,
-    hsl(256 30% 10%) 0 calc(var(--cornerX) - 3px), hsl(256 30% 17.7%) calc(var(--cornerX) - 3px) var(--cornerX));
+    hsl(256 30% 16%) 0 calc(var(--cornerX) - 3px), hsl(256 30% 23.7%) calc(var(--cornerX) - 3px) var(--cornerX));
 }
 body.bureau-frutiz #side-list-ombre {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 body.bureau-frutiz #side-list .sl-dossier > .sl-titre {
-  color: hsl(256 13% 94%);
+  color: hsl(256 13% 96%);
 }
 body.bureau-frutiz #side-list .sl-titre .plaque {
   filter: var(--nuit-chassis);
@@ -1378,16 +1378,16 @@ body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #side-list .sl-contact .nom {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz #side-list .sl-contact:not([data-genre]):hover .nom {
-  color: hsl(325 58% 85.2%);
+  color: hsl(325 58% 88.6%);
 }
 body.bureau-frutiz #side-list .sl-contact:not([data-genre]):active .nom {
-  color: hsl(256 13% 90.5%);
+  color: hsl(256 13% 93.1%);
 }
 body.bureau-frutiz #side-list .sl-recherche {
-  color: hsl(256 13% 94%);
+  color: hsl(256 13% 96%);
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #languette-contacts {
@@ -1400,22 +1400,22 @@ body.bureau-frutiz #languette-contacts:active {
   background-image: url('/frutiz/sprites/butContact_down-nuit.svg');
 }
 body.bureau-frutiz #bureau .home-compte {
-  color: var(--fond-txt, hsl(256 13% 73.2%));
-  text-shadow: 0 0 3px var(--fond-halo, hsl(256 13% 10% / 0.85));
+  color: var(--fond-txt, hsl(256 13% 78.4%));
+  text-shadow: 0 0 3px var(--fond-halo, hsl(256 13% 16% / 0.85));
 }
 body.bureau-frutiz #bureau .home-tile .lbl {
-  color: var(--fond-txt, hsl(256 13% 73.2%));
+  color: var(--fond-txt, hsl(256 13% 78.4%));
 }
 body.bureau-frutiz .fen {
-  background: hsl(256 30% 17.7%);
-  border: 1.35px solid hsl(256 26% 48%);
+  background: hsl(256 30% 23.7%);
+  border: 1.35px solid hsl(256 26% 53.5%);
   box-shadow: 0 0 5px 1.75px hsl(256 13% 0% / 0.4);
 }
 body.bureau-frutiz .fen::before {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 body.bureau-frutiz .fen-titre {
-  color: hsl(256 13% 74.9%);
+  color: hsl(256 13% 79.9%);
 }
 body.bureau-frutiz .fen-pastille {
   filter: var(--nuit-chassis);
@@ -1440,98 +1440,98 @@ body.bureau-frutiz .fen-btn.plier:active {
 }
 body.bureau-frutiz .fen,
 body.bureau-frutiz .fiche-boite {
-  --asc-glissiere: hsl(256 26% 36.1%);
-  --asc-liseret:   hsl(256 26% 39.8%);
+  --asc-glissiere: hsl(256 26% 40.8%);
+  --asc-liseret:   hsl(256 26% 44.7%);
 }
 body.bureau-frutiz .fen *::-webkit-scrollbar-thumb,
 body.bureau-frutiz .fiche-boite *::-webkit-scrollbar-thumb {
-  background: hsl(256 30% 10%);
-  box-shadow: inset 0 0 0 1px hsl(256 13% 17.7%);
+  background: hsl(256 30% 16%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen:has(#salons-panel) {
   --asc-glissiere: hsl(325 58% 66%);
   --asc-liseret:   hsl(325 58% 66%);
 }
 body.bureau-frutiz .fen:has(#scores-panel) {
-  --asc-glissiere: hsl(42 51% 35.2%);
-  --asc-liseret:   hsl(37 51% 37.5%);
+  --asc-glissiere: hsl(42 51% 39.8%);
+  --asc-liseret:   hsl(37 51% 42.2%);
 }
 body.bureau-frutiz .fen:has(#mail-panel),
 body.bureau-frutiz .fen:has(.ex-panel),
 body.bureau-frutiz .fen:has(.fb-dossier-panneau) {
-  --asc-glissiere: hsl(60 48% 41.4%);
-  --asc-liseret:   hsl(60 48% 43.4%);
+  --asc-glissiere: hsl(60 48% 46.4%);
+  --asc-liseret:   hsl(60 48% 48.5%);
 }
 @supports not selector(::-webkit-scrollbar) {
   body.bureau-frutiz .fen *,
   body.bureau-frutiz .fiche-boite * {
-    scrollbar-color: hsl(256 26% 26%) var(--asc-glissiere);
+    scrollbar-color: hsl(256 26% 30%) var(--asc-glissiere);
   }
 }
 body.bureau-frutiz .fen-poignee-vue .pv-anneau {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 body.bureau-frutiz .fen-poignee-vue .pv-ombre {
-  background: hsl(256 30% 17.7%);
+  background: hsl(256 30% 23.7%);
 }
 body.bureau-frutiz .fen-poignee-vue .pv-chair {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 body.bureau-frutiz .fen-poignee-vue .pv-icone {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen-fantome {
-  border: 2px solid hsl(256 26% 26%);
+  border: 2px solid hsl(256 26% 30%);
 }
 body.bureau-frutiz .fen .fenetre {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 body.bureau-frutiz .fen #evt-panel {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 body.bureau-frutiz .fen .evt-item {
-  background: hsl(256 30% 22.7%);
-  border-color: hsl(256 26% 35%);
+  background: hsl(256 30% 28.7%);
+  border-color: hsl(256 26% 39.6%);
 }
 body.bureau-frutiz .fen .evt-item .txt {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #evt-page {
-  color: hsl(256 13% 84.7%);
+  color: hsl(256 13% 88.1%);
 }
 body.bureau-frutiz #salons-panel .sp-liste {
-  border: 2px solid hsl(256 26% 30%);
-  background: hsl(325 34% 22%);
+  border: 2px solid hsl(256 26% 34.3%);
+  background: hsl(325 34% 25.7%);
 }
 body.bureau-frutiz #salons-panel .sp-salon {
-  color: hsl(325 58% 80.9%);
-  background: hsl(325 34% 22%);
+  color: hsl(325 58% 85%);
+  background: hsl(325 34% 22.3%);
 }
 body.bureau-frutiz #salons-panel .sp-salon.paire {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 25.7%);
 }
 body.bureau-frutiz #salons-panel .sp-salon:hover {
   background: hsl(325 34% 22%);
 }
 body.bureau-frutiz #salons-panel .sp-creer {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 25.7%);
   box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
-  color: hsl(325 58% 74%);
+  color: hsl(325 58% 80.9%);
 }
 body.bureau-frutiz #salons-panel .sp-creer::after {
   border-top: 1px solid hsl(325 58% 66%);
   border-right: 1px solid hsl(325 58% 66%);
 }
 body.bureau-frutiz #salons-panel .sp-nom {
-  background: hsl(256 30% 17.7%);
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
-  color: hsl(256 13% 73.2%);
+  background: hsl(256 30% 23.7%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 44.7%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #recherche-panel {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 body.bureau-frutiz #gaspard-panel .gs-icones .icon-btn {
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz #gaspard-panel .gs-icones .gs-but-ecrans {
   background-image: url('/frutiz/sprites/chat-but-bouille-nuit.svg');
@@ -1541,25 +1541,25 @@ body.bureau-frutiz #gaspard-panel .gs-icones .gs-but-users {
 }
 body.bureau-frutiz #gaspard-panel .gs-page {
   background:
-    linear-gradient(to bottom, hsl(256 30% 10% / 0.64) 0, hsl(256 30% 10% / 0) 8px),
-    hsl(256 30% 22.7%);
-  border: 2px solid hsl(256 26% 36.1%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  color: hsl(256 13% 75.8%);
+    linear-gradient(to bottom, hsl(256 30% 16% / 0.64) 0, hsl(256 30% 16% / 0) 8px),
+    hsl(256 30% 28.7%);
+  border: 2px solid hsl(256 26% 40.8%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
+  color: hsl(256 13% 80.6%);
 }
 body.bureau-frutiz #gaspard-panel .gs-titre {
-  color: hsl(325 58% 76.9%);
+  color: hsl(325 58% 81.5%);
 }
 body.bureau-frutiz #gaspard-panel .gs-groupe {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz #gaspard-panel .gs-l a {
-  color: hsl(211 30% 75.9%);
+  color: hsl(211 30% 80.7%);
 }
 body.bureau-frutiz #gaspard-panel .gs-in {
-  background: hsl(256 30% 13.9%);
-  box-shadow: inset 0 1px 0 hsl(256 13% 21.6%);
-  color: hsl(256 13% 73.2%);
+  background: hsl(256 30% 19.9%);
+  box-shadow: inset 0 1px 0 hsl(256 26% 36.4%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz #gaspard-panel .gs-ul-fleche {
   background: url('/frutiz/sprites/user-list-pilule-nuit.svg') center / 100% 20px no-repeat;
@@ -1568,25 +1568,25 @@ body.bureau-frutiz #gaspard-panel .gs-ul-boite {
   border-image: url('/frutiz/sprites/user-list-boite-nuit.svg') 10 fill / 10px stretch;
 }
 body.bureau-frutiz #recherche-panel .rc-form {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 body.bureau-frutiz #recherche-panel .rc-lbl {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz #recherche-panel .rc-in {
-  background: hsl(256 30% 17.7%);
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
-  color: hsl(256 13% 73.2%);
+  background: hsl(256 30% 23.7%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 44.7%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz #recherche-panel .rc-in:focus {
-  outline: 1px solid hsl(256 26% 39.8%);
+  outline: 1px solid hsl(256 26% 44.7%);
 }
 body.bureau-frutiz #recherche-panel .rc-but {
-  background: hsl(256 30% 17.7%);
-  color: hsl(325 58% 74%);
+  background: hsl(256 30% 23.7%);
+  color: hsl(325 58% 80.9%);
 }
 body.bureau-frutiz #recherche-panel .rc-but::before {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 25.7%);
   box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
 }
 body.bureau-frutiz #recherche-panel .rc-but::after {
@@ -1594,69 +1594,69 @@ body.bureau-frutiz #recherche-panel .rc-but::after {
   border-right: 1px solid hsl(325 58% 66%);
 }
 body.bureau-frutiz #recherche-panel .rc-radio {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz #recherche-panel .rc-radio input {
-  accent-color: hsl(256 30% 26%);
+  accent-color: hsl(256 30% 36%);
 }
 body.bureau-frutiz #recherche-panel .rc-combo {
-  background: hsl(256 30% 17.7%);
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
-  color: hsl(256 13% 73.2%);
+  background: hsl(256 30% 23.7%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 44.7%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz #recherche-panel .rc-slot .rc-voyant {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille {
   background: url('/frutiz/sprites/ecran-fond-nuit.svg') 0 0 / 100% 100% no-repeat;
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille::after {
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 44.9%);
 }
 body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille::before {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #recherche-panel .rc-slot::before {
-  background: linear-gradient(hsl(256 30% 10% / 0.64), hsl(256 30% 10% / 0) 8px), hsl(325 34% 22%);
+  background: linear-gradient(hsl(256 30% 16% / 0.64), hsl(256 30% 16% / 0) 8px), hsl(325 34% 22.3%);
   border: 2px solid hsl(325 58% 66%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz #recherche-panel .rc-slot[data-genre="M"]::before {
-  background: linear-gradient(hsl(256 30% 10% / 0.64), hsl(256 30% 10% / 0) 8px), hsl(256 30% 22.7%);
-  border-color: hsl(256 26% 36.1%);
+  background: linear-gradient(hsl(256 30% 16% / 0.64), hsl(256 30% 16% / 0) 8px), hsl(256 30% 28.7%);
+  border-color: hsl(256 26% 40.8%);
 }
 body.bureau-frutiz #recherche-panel .rc-slot .rc-doc {
-  color: hsl(325 58% 80.9%);
+  color: hsl(325 58% 85%);
 }
 body.bureau-frutiz #recherche-panel .rc-slot[data-genre="M"] .rc-doc {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz #recherche-panel .rc-pied {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 body.bureau-frutiz #recherche-panel .rc-page {
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz #recherche-panel .rc-compte {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fen .fb-alerte-doc {
-  border: 2px solid hsl(256 26% 30%);
-  background: hsl(256 30% 10%);
-  color: hsl(256 13% 71.5%);
+  border: 2px solid hsl(256 26% 34.3%);
+  background: hsl(256 30% 16%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen .fb-alerte-ok {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 25.7%);
   box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
-  color: hsl(325 58% 74%);
+  color: hsl(325 58% 80.9%);
 }
 body.bureau-frutiz .fen .fb-alerte-ok::after {
   border-top: 1px solid hsl(325 58% 66%);
   border-right: 1px solid hsl(325 58% 66%);
 }
 body.bureau-frutiz .fen #topbar .icon-btn {
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #topbar #bouille-toggle {
   background-image: url('/frutiz/sprites/chat-but-bouille-nuit.svg');
@@ -1672,43 +1672,43 @@ body.bureau-frutiz .fen #topbar #chat-warning {
 }
 body.bureau-frutiz .fen #chat-panel #messages {
   background:
-    linear-gradient(to bottom, hsl(256 30% 10% / 0.64) 0, hsl(256 30% 10% / 0) 8px),
-    hsl(256 30% 22.7%);
-  border: 2px solid hsl(256 26% 36.1%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+    linear-gradient(to bottom, hsl(256 30% 16% / 0.64) 0, hsl(256 30% 16% / 0) 8px),
+    hsl(256 30% 28.7%);
+  border: 2px solid hsl(256 26% 40.8%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #chat-panel #messages.a-fond-prive {
   background:
-    linear-gradient(to bottom, hsl(256 30% 10% / 0.64) 0, hsl(256 30% 10% / 0) 8px),
+    linear-gradient(to bottom, hsl(256 30% 16% / 0.64) 0, hsl(256 30% 16% / 0) 8px),
     linear-gradient(var(--wp-voile), var(--wp-voile)),
     var(--wp-img) center / cover no-repeat,
-    hsl(256 30% 22.7%);
+    hsl(256 30% 28.7%);
 }
 body.bureau-frutiz .fen #chat-panel .compose input {
-  background: hsl(256 30% 13.9%);
-  box-shadow: inset 0 1px 0 hsl(256 13% 21.6%);
-  color: hsl(256 13% 73.2%);
+  background: hsl(256 30% 19.9%);
+  box-shadow: inset 0 1px 0 hsl(256 26% 36.4%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #chat-panel #messages .msg {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #chat-panel #messages .msg.system {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #chat-panel #messages .msg:not(.blue):not(.shout) .from.me {
-  color: hsl(256 13% 72.5%);
+  color: hsl(256 13% 78.3%);
 }
 body.bureau-frutiz .fen #chat-panel #messages .msg.emote:not(.blue):not(.shout) .from.me {
-  color: hsl(256 13% 75.9%);
+  color: hsl(256 13% 80.6%);
 }
 body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc,
 body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {
-  background: linear-gradient(hsl(24 55% 22%), hsl(46 55% 17.5%), hsl(256 30% 26%), hsl(187 30% 20.5%), hsl(256 32% 26%), hsl(329 32% 26%)) !important;
+  background: linear-gradient(hsl(24 55% 29%), hsl(46 55% 23%), hsl(256 30% 36%), hsl(187 30% 27%), hsl(256 32% 36%), hsl(329 32% 34.5%)) !important;
 }
 body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran,
 body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran {
   background: url('/frutiz/sprites/ecran-fond-nuit.svg') 0 0 / 100% 100% no-repeat;
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran::before,
 body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran::before {
@@ -1716,14 +1716,14 @@ body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran::before {
 }
 body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran::after,
 body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran::after {
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 44.9%);
 }
 body.bureau-frutiz .bo-tip {
-  background: linear-gradient(hsl(256 30% 10% / 0.72), hsl(256 30% 10% / 0) 9px), hsl(256 30% 22.7%);
-  border: 1px solid hsl(256 26% 36.1%);
-  box-shadow: 0 0 0 2px hsl(256 13% 26%), 0 0 0 4px hsl(256 13% 17.7%), 0 0 0 5px hsl(256 13% 40%),
+  background: linear-gradient(hsl(256 30% 16% / 0.72), hsl(256 30% 16% / 0) 9px), hsl(256 30% 28.7%);
+  border: 1px solid hsl(256 26% 40.8%);
+  box-shadow: 0 0 0 2px hsl(256 26% 44.7%), 0 0 0 4px hsl(256 26% 34.3%), 0 0 0 5px hsl(256 26% 49.2%),
               0 1px 5px 5px hsl(256 13% 0% / 0.4);
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .users-scroll {
   background: url('/frutiz/sprites/user-list-pilule-nuit.svg') center / 100% 20px no-repeat;
@@ -1734,113 +1734,113 @@ body.bureau-frutiz .fen #chat-panel #users-drawer #users-list {
 body.bureau-frutiz .fen #chat-panel #users-drawer .u,
 body.bureau-frutiz #gaspard-panel .gs-ul-defile .u {
   background: url('/frutiz/sprites/user-slot-nuit.svg') left top / 120px 18px no-repeat;
-  color: hsl(240 30% 73.5%);
+  color: hsl(240 30% 81.2%);
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u:not([data-genre]):hover span:not(.badge),
 body.bureau-frutiz #gaspard-panel .gs-ul-defile .u:not([data-genre]):hover span:not(.badge) {
-  color: hsl(325 58% 85.2%);
+  color: hsl(325 58% 88.6%);
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u:not([data-genre]):active span:not(.badge),
 body.bureau-frutiz #gaspard-panel .gs-ul-defile .u:not([data-genre]):active span:not(.badge) {
-  color: hsl(256 13% 90.5%);
+  color: hsl(256 13% 93.1%);
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u:hover .lieu,
 body.bureau-frutiz .fen #chat-panel #users-drawer .u:active .lieu {
-  color: hsl(256 13% 78.2%);
+  color: hsl(256 13% 82.7%);
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u .lieu {
-  color: hsl(256 13% 78.2%);
+  color: hsl(256 13% 82.7%);
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .vide {
-  color: hsl(256 13% 78.2%);
+  color: hsl(256 13% 82.7%);
 }
 body.bureau-frutiz .fen #evt-panel #evt-liste {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 body.bureau-frutiz .fen #evt-panel .evt-item {
-  background: linear-gradient(hsl(256 30% 10% / 0.64), hsl(256 30% 10% / 0) 8px), hsl(256 30% 22.7%);
-  border: 2px solid hsl(256 26% 36.1%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  background: linear-gradient(hsl(256 30% 16% / 0.64), hsl(256 30% 16% / 0) 8px), hsl(256 30% 28.7%);
+  border: 2px solid hsl(256 26% 40.8%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #evt-panel .evt-item .txt {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #evt-panel .fen-pied {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 body.bureau-frutiz .fen #evt-panel .fen-page {
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #evt-panel #evt-page {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fen #evt-panel .evt-vide,
 body.bureau-frutiz .fen #evt-panel .evt-charge {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #scores-panel {
-  background: hsl(256 30% 10%);
+  background: hsl(256 30% 16%);
 }
 body.bureau-frutiz .fen #scores-panel #sc-liste,
 body.bureau-frutiz .fen #scores-panel #sc-table {
-  background: linear-gradient(hsl(256 30% 10% / 0.64), hsl(256 30% 10% / 0) 8px), hsl(42 51% 18.5%);
-  border: 2px solid hsl(42 51% 35.2%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  background: linear-gradient(hsl(256 30% 16% / 0.64), hsl(256 30% 16% / 0) 8px), hsl(42 51% 24.5%);
+  border: 2px solid hsl(42 51% 39.8%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #scores-panel #sc-pied button {
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #scores-panel #sc-jour {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fen #scores-panel .sc-section {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fen #scores-panel .sc-rk {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fen #scores-panel #sc-table .sc-entete,
 body.bureau-frutiz .fen #scores-panel #sc-table .sc-vide {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fen #scores-panel #sc-table .sc-ligne {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fen #scores-panel #sc-table .sc-moi,
 body.bureau-frutiz .fen #scores-panel #sc-table .sc-pod span {
-  color: hsl(256 13% 68%);
-}
-body.bureau-frutiz .fiche-boite {
-  background: hsl(256 30% 10%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%), 0 0 0 3px hsl(256 13% 26.7%), 2px 3px 6px hsl(256 13% 0% / 0.35);
-}
-body.bureau-frutiz .fiche-boite .fiche-plaque {
-  border-color: hsl(256 26% 40%);
-}
-body.bureau-frutiz .fiche-boite .fiche-plaque .fa-progress i {
-  background: hsl(256 30% 26%);
-}
-body.bureau-frutiz .fiche-boite .fiche-plaque .fa-progress i::before {
-  background: hsl(256 30% 26%);
-}
-body.bureau-frutiz .fiche-boite .fiche-plaque .fa-niv b {
   color: hsl(256 13% 78.5%);
 }
+body.bureau-frutiz .fiche-boite {
+  background: hsl(256 30% 16%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%), 0 0 0 3px hsl(256 26% 53.5%), 2px 3px 6px hsl(256 13% 0% / 0.35);
+}
+body.bureau-frutiz .fiche-boite .fiche-plaque {
+  border-color: hsl(256 26% 44.9%);
+}
+body.bureau-frutiz .fiche-boite .fiche-plaque .fa-progress i {
+  background: hsl(256 30% 36%);
+}
+body.bureau-frutiz .fiche-boite .fiche-plaque .fa-progress i::before {
+  background: hsl(256 30% 36%);
+}
+body.bureau-frutiz .fiche-boite .fiche-plaque .fa-niv b {
+  color: hsl(256 13% 82.9%);
+}
 body.bureau-frutiz .fiche-boite .fiche-pseudo {
-  color: hsl(243 30% 75%);
+  color: hsl(243 30% 81%);
 }
 body.bureau-frutiz .fiche-boite .fiche-pseudo[data-genre="M"] {
-  color: hsl(243 30% 75%);
+  color: hsl(243 30% 81%);
 }
 body.bureau-frutiz .fiche-boite .fiche-pseudo[data-genre="F"] {
-  color: hsl(325 58% 81%);
+  color: hsl(325 58% 85%);
 }
 body.bureau-frutiz .fiche-boite .fiche-nom-ligne .meta {
-  color: hsl(256 13% 74.5%);
+  color: hsl(256 13% 79.5%);
 }
 body.bureau-frutiz .fiche-boite .fiche-actions button {
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  background: hsl(256 30% 10%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
+  background: hsl(256 30% 16%);
 }
 body.bureau-frutiz .fiche-boite .fiche-actions .fiche-avance {
   filter: var(--nuit-chassis);
@@ -1849,89 +1849,89 @@ body.bureau-frutiz .fiche-boite .fiche-actions .fiche-avance img {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fiche-boite .fiche-corps {
-  background: linear-gradient(to bottom, hsl(256 30% 10% / 0.55) 0, hsl(256 30% 10% / 0) 8px), hsl(256 30% 22.7%);
-  box-shadow: inset 0 2px 0 hsl(256 13% 26%), inset 0 -2px 0 hsl(256 13% 26%),
-              inset 2px 0 0 hsl(256 13% 26%), inset -2px 0 0 hsl(256 13% 26%);
+  background: linear-gradient(to bottom, hsl(256 30% 16% / 0.55) 0, hsl(256 30% 16% / 0) 8px), hsl(256 30% 28.7%);
+  box-shadow: inset 0 2px 0 hsl(256 26% 40.8%), inset 0 -2px 0 hsl(256 26% 40.8%),
+              inset 2px 0 0 hsl(256 26% 40.8%), inset -2px 0 0 hsl(256 26% 40.8%);
 }
 body.bureau-frutiz .fiche-boite .fiche-onglets {
-  border-bottom: 2px solid hsl(256 26% 36.1%);
+  border-bottom: 2px solid hsl(256 26% 40.8%);
 }
 body.bureau-frutiz .fiche-boite .fiche-onglets button {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fiche-boite .fiche-onglets button.actif {
-  color: hsl(325 58% 76.8%);
+  color: hsl(325 58% 81.5%);
 }
 body.bureau-frutiz .fiche-boite .fiche-onglets button:hover {
-  color: hsl(325 58% 85.2%);
+  color: hsl(325 58% 88.6%);
 }
 body.bureau-frutiz .fiche-boite .fiche-page {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fiche-boite .fiche-titre {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fiche-boite .fiche-titre::before,
 body.bureau-frutiz .fiche-boite .fiche-titre::after {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 35.6%);
 }
 body.bureau-frutiz .fiche-boite .fiche-signes,
 body.bureau-frutiz .fiche-boite .fiche-medailles {
-  border-bottom: 2px solid hsl(256 26% 36.1%);
+  border-bottom: 2px solid hsl(256 26% 40.8%);
 }
 body.bureau-frutiz .fiche-boite .fiche-lignes {
-  border-bottom: 2px solid hsl(256 26% 36.1%);
+  border-bottom: 2px solid hsl(256 26% 40.8%);
 }
 body.bureau-frutiz .fiche-boite .fiche-ligne .lib,
 body.bureau-frutiz .fiche-boite .fiche-ligne .val {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fiche-boite .fiche-jour {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fiche-boite .fiche-jour .pts {
-  color: hsl(256 13% 77%);
+  color: hsl(256 13% 81.6%);
 }
 body.bureau-frutiz .fen #shop-sheet .bo-solde {
-  background: hsl(25 45% 18.4%);
-  border: 2px solid hsl(29 45% 33.5%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  color: hsl(20 30% 76.7%);
+  background: hsl(25 45% 24.4%);
+  border: 2px solid hsl(29 45% 38%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
+  color: hsl(20 30% 81.3%);
 }
 body.bureau-frutiz .fen #shop-sheet .bo-solde img {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet .bq-ico {
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet .bq-ico:hover {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques {
-  background: hsl(256 30% 10%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  background: hsl(256 30% 16%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques button {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-rub::before {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art::before {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques button:hover {
-  background: hsl(256 30% 15.8%);
+  background: hsl(256 30% 21.8%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche {
-  background: linear-gradient(to bottom, hsl(256 30% 10% / 0.6) 2px, hsl(256 30% 10% / 0) 12px), hsl(256 30% 22.7%);
-  border: 2px solid hsl(256 26% 36.1%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  color: hsl(256 13% 73.2%);
+  background: linear-gradient(to bottom, hsl(256 30% 16% / 0.6) 2px, hsl(256 30% 16% / 0) 12px), hsl(256 30% 28.7%);
+  border: 2px solid hsl(256 26% 40.8%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-vue .cadre {
   filter: var(--nuit-chassis);
@@ -1940,127 +1940,127 @@ body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-vue .cadre::after {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-titre {
-  color: hsl(325 58% 76.8%);
+  color: hsl(325 58% 81.5%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-accroche {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-texte {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-prix {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-acheter {
-  border: 2px solid hsl(256 26% 36.1%);
-  color: hsl(256 13% 94%);
+  border: 2px solid hsl(256 26% 40.8%);
+  color: hsl(256 13% 96%);
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-acheter[disabled] {
-  color: hsl(256 13% 75.3%);
+  color: hsl(256 13% 80.2%);
 }
 body.bureau-frutiz .fen #shop-sheet .bq-plus {
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #mail-panel .mx-nav-but {
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-champ,
 body.bureau-frutiz .fen #mail-panel #mail-liste {
-  background: linear-gradient(to bottom, hsl(256 30% 10% / 0.6) 2px, hsl(256 30% 10% / 0) 10px), hsl(60 50% 16%);
-  border: 2px solid hsl(60 48% 41.4%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  background: linear-gradient(to bottom, hsl(256 30% 16% / 0.6) 2px, hsl(256 30% 16% / 0) 10px), hsl(60 50% 21.2%);
+  border: 2px solid hsl(60 48% 46.4%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-entete {
-  background: linear-gradient(to bottom, hsl(256 30% 10% / 0.6) 2px, hsl(256 30% 10% / 0) 10px), hsl(60 50% 16%);
-  border: 2px solid hsl(60 48% 41.4%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  background: linear-gradient(to bottom, hsl(256 30% 16% / 0.6) 2px, hsl(256 30% 16% / 0) 10px), hsl(60 50% 21.1%);
+  border: 2px solid hsl(60 48% 46.4%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-col {
-  color: hsl(60 55% 71.3%);
+  color: hsl(60 55% 76.8%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-col.trie .fl {
-  border-bottom: 4px solid hsl(56 55% 49.6%);
+  border-bottom: 4px solid hsl(56 55% 55.2%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-col.trie.desc .fl {
-  border-top: 4px solid hsl(56 55% 49.6%);
+  border-top: 4px solid hsl(56 55% 55.2%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-rang {
-  border-bottom: 1px solid hsl(60 48% 41.4%);
-  color: hsl(60 55% 72.6%);
+  border-bottom: 1px solid hsl(60 48% 46.4%);
+  color: hsl(60 55% 77.9%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-rang .mx-ico {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #mail-panel .mx-rang .mx-cell {
-  border-right: 2px solid hsl(60 48% 38.4%);
+  border-right: 2px solid hsl(60 48% 43.2%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-rang.neuf {
-  color: hsl(60 55% 71.3%);
+  color: hsl(60 55% 76.8%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-rang:hover {
-  background: hsl(256 30% 10% / 0.45);
+  background: hsl(256 30% 16% / 0.45);
 }
 body.bureau-frutiz .fen #mail-panel .mail-vide,
 body.bureau-frutiz .fen #mail-panel .mail-charge {
-  color: hsl(60 55% 72.6%);
+  color: hsl(60 55% 77.9%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-slot {
-  color: hsl(60 55% 72.6%);
+  color: hsl(60 55% 77.9%);
 }
 body.bureau-frutiz .fen:has(#mail-panel.mx-lit),
 body.bureau-frutiz .fen:has(#mail-panel.mx-ecrit) {
-  --asc-glissiere: hsl(256 26% 36.1%);
-  --asc-liseret:   hsl(256 26% 39.8%);
+  --asc-glissiere: hsl(256 26% 40.8%);
+  --asc-liseret:   hsl(256 26% 44.7%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-ligne,
 body.bureau-frutiz .fen #mail-panel .mx-de {
-  color: hsl(256 13% 71.5%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-lab {
-  color: hsl(256 13% 71.5%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #mail-panel #mail-lu-corps {
-  background: linear-gradient(to bottom, hsl(256 30% 10% / 0.64) 0, hsl(256 30% 10% / 0) 8px), hsl(256 30% 22.7%);
-  border: 2px solid hsl(256 26% 36.1%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  color: hsl(256 13% 73.2%);
+  background: linear-gradient(to bottom, hsl(256 30% 16% / 0.64) 0, hsl(256 30% 16% / 0) 8px), hsl(256 30% 28.7%);
+  border: 2px solid hsl(256 26% 40.8%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #mail-panel .ma-btn {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 25.7%);
   box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
-  color: hsl(325 58% 74%);
+  color: hsl(325 58% 80.9%);
 }
 body.bureau-frutiz .fen #mail-panel .ma-btn::after {
   border-top: 1px solid hsl(325 58% 66%);
   border-right: 1px solid hsl(325 58% 66%);
 }
 body.bureau-frutiz .fen #mail-panel .ma-btn:active {
-  background: hsl(325 34% 25.2%);
+  background: hsl(325 34% 31.2%);
 }
 body.bureau-frutiz .fen #mail-panel .ma-btn.primaire,
 body.bureau-frutiz .fen #mail-panel .ma-btn.danger {
-  background: hsl(325 34% 22%);
-  color: hsl(325 58% 74%);
+  background: hsl(325 34% 25.7%);
+  color: hsl(325 58% 80.9%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-de .mx-val {
-  background: hsl(256 30% 10%);
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
+  background: hsl(256 30% 16%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 40.7%);
 }
 body.bureau-frutiz .fen #mail-panel .mail-form label {
-  color: hsl(256 13% 71.5%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #mail-panel #mail-a,
 body.bureau-frutiz .fen #mail-panel #mail-sujet {
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
-  background: hsl(256 30% 17.7%);
-  color: hsl(256 13% 73.2%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 44.7%);
+  background: hsl(256 30% 23.7%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #mail-panel #mail-a::placeholder,
 body.bureau-frutiz .fen #mail-panel #mail-sujet::placeholder,
 body.bureau-frutiz .fen #mail-panel #mail-texte::placeholder {
-  color: hsl(256 13% 82.1%);
+  color: hsl(256 13% 85.9%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-flag {
   filter: var(--nuit-chassis);
@@ -2069,100 +2069,100 @@ body.bureau-frutiz .fen #mail-panel .mx-flag[aria-pressed="true"] {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #mail-panel .mx-taille {
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
-  background: hsl(256 30% 17.7%);
-  color: hsl(256 13% 73.2%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 44.7%);
+  background: hsl(256 30% 23.7%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-copie {
-  color: hsl(256 13% 71.5%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-copie input {
-  background: hsl(256 30% 17.7%);
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
+  background: hsl(256 30% 23.7%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 44.7%);
 }
 body.bureau-frutiz .fen #mail-panel .mx-copie input:checked::after {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 body.bureau-frutiz .fen #mail-panel #mail-texte {
-  background: linear-gradient(to bottom, hsl(256 30% 10% / 0.64) 0, hsl(256 30% 10% / 0) 8px), hsl(256 30% 22.7%);
-  border: 2px solid hsl(256 26% 36.1%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  color: hsl(256 13% 73.2%);
+  background: linear-gradient(to bottom, hsl(256 30% 16% / 0.64) 0, hsl(256 30% 16% / 0) 8px), hsl(256 30% 28.7%);
+  border: 2px solid hsl(256 26% 40.8%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #mail-panel .mail-erreur {
-  color: hsl(325 58% 78.4%);
+  color: hsl(325 58% 82.8%);
 }
 body.bureau-frutiz .fen #mail-panel .mail-erreur.ok {
-  color: hsl(256 13% 76.8%);
+  color: hsl(256 13% 81.4%);
 }
 body.bureau-frutiz .fen .ex-panel .ex-nav-but {
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen .ex-panel .ex-alerte {
-  border: 2px solid hsl(256 26% 30%);
-  background: hsl(256 30% 10%);
-  color: hsl(256 13% 71.5%);
+  border: 2px solid hsl(256 26% 34.3%);
+  background: hsl(256 30% 16%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen .ex-panel .ex-champ {
   background:
     /* le reflet se compte depuis l'INTÉRIEUR du liseré : le fond d'une boîte
        part de son contour, d'où les 2 px d'avance donnés au dégradé */
-    linear-gradient(to bottom, hsl(256 30% 10% / 0.6) 2px, hsl(256 30% 10% / 0) 10px),
-    hsl(60 50% 16%);
-  border: 2px solid hsl(60 48% 41.4%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+    linear-gradient(to bottom, hsl(256 30% 16% / 0.6) 2px, hsl(256 30% 16% / 0) 10px),
+    hsl(60 50% 21.2%);
+  border: 2px solid hsl(60 48% 46.4%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen .ex-panel .ex-slot:focus-visible {
-  outline: 1px dotted hsl(60 55% 50.7%);
+  outline: 1px dotted hsl(60 55% 56.4%);
 }
 body.bureau-frutiz .fen .ex-panel .ex-lbl {
-  color: hsl(60 55% 72.6%);
+  color: hsl(60 55% 77.9%);
 }
 body.bureau-frutiz .fen .ex-panel .ex-vide {
-  color: hsl(60 55% 72.6%);
+  color: hsl(60 55% 77.9%);
 }
 body.bureau-frutiz .fen .ex-panel .ex-slot-contact[data-genre="M"] .ex-lbl {
-  color: hsl(243 30% 75%);
+  color: hsl(243 30% 81%);
 }
 body.bureau-frutiz .fen .ex-panel .ex-slot-contact[data-genre="F"] .ex-lbl {
-  color: hsl(325 58% 81%);
+  color: hsl(325 58% 85%);
 }
 body.bureau-frutiz .fen .ex-panel.ex-noire .ex-champ {
   background:
-    linear-gradient(to bottom, hsl(256 30% 10% / 0.6) 2px, hsl(256 30% 10% / 0) 10px),
-    hsl(282 30% 22.4%);
-  border-color: hsl(279 30% 34.4%);
+    linear-gradient(to bottom, hsl(256 30% 16% / 0.6) 2px, hsl(256 30% 16% / 0) 10px),
+    hsl(282 30% 28.4%);
+  border-color: hsl(279 30% 39%);
 }
 body.bureau-frutiz .fen .ex-panel.ex-noire .ex-lbl,
 body.bureau-frutiz .fen .ex-panel.ex-noire .ex-vide {
-  color: hsl(277 30% 78.2%);
+  color: hsl(277 30% 82.7%);
 }
 body.bureau-frutiz .fen .ex-panel.ex-noire .ex-slot:focus-visible {
-  outline-color: hsl(277 30% 44.2%);
+  outline-color: hsl(277 30% 49.4%);
 }
 body.bureau-frutiz .fen:has(.ex-panel.ex-noire) {
-  --asc-glissiere: hsl(279 30% 34.4%);
-  --asc-liseret: hsl(278 30% 37.5%);
+  --asc-glissiere: hsl(279 30% 39%);
+  --asc-liseret: hsl(278 30% 42.3%);
 }
 body.bureau-frutiz .fen .ex-panel.ex-corbeille .ex-champ {
   background:
-    linear-gradient(to bottom, hsl(256 30% 10% / 0.6) 2px, hsl(256 30% 10% / 0) 10px),
-    hsl(256 30% 22.7%);
-  border-color: hsl(256 26% 36.1%);
+    linear-gradient(to bottom, hsl(256 30% 16% / 0.6) 2px, hsl(256 30% 16% / 0) 10px),
+    hsl(256 30% 28.7%);
+  border-color: hsl(256 26% 40.8%);
 }
 body.bureau-frutiz .fen .ex-panel.ex-corbeille .ex-lbl,
 body.bureau-frutiz .fen .ex-panel.ex-corbeille .ex-vide {
-  color: hsl(256 13% 75.8%);
+  color: hsl(256 13% 80.6%);
 }
 body.bureau-frutiz .fen .ex-panel.ex-corbeille .ex-slot:focus-visible {
-  outline-color: hsl(256 26% 47%);
+  outline-color: hsl(256 26% 52.4%);
 }
 body.bureau-frutiz .fen:has(.ex-panel.ex-corbeille) {
-  --asc-glissiere: hsl(256 26% 36.1%);
-  --asc-liseret: hsl(256 26% 39.8%);
+  --asc-glissiere: hsl(256 26% 40.8%);
+  --asc-liseret: hsl(256 26% 44.7%);
 }
 body.bureau-frutiz #fb-chargement {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 35.6%);
 }
 body.bureau-frutiz #fb-chargement .ch-g1,
 body.bureau-frutiz #fb-chargement .ch-g2 {
@@ -2182,14 +2182,14 @@ body.bureau-frutiz #fb-chargement .ch-titre,
 body.bureau-frutiz #fb-chargement .ch-champ,
 body.bureau-frutiz #fb-chargement .ch-info-titre,
 body.bureau-frutiz #fb-chargement .ch-info {
-  color: hsl(256 13% 75%);
+  color: hsl(256 13% 80%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-arbre {
-  background: hsl(256 30% 10%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
+  background: hsl(256 30% 16%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-arbre button {
-  color: hsl(256 13% 68%);
+  color: hsl(256 13% 78.5%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-rub::before {
   filter: var(--nuit-chassis);
@@ -2198,115 +2198,115 @@ body.bureau-frutiz .fen #reglages-panel .pf-pref::before {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-arbre button:hover {
-  background: hsl(256 30% 13%);
+  background: hsl(256 30% 19%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-feuille {
-  background: linear-gradient(to bottom, hsl(256 30% 10% / 0.6) 2px, hsl(256 30% 10% / 0) 12px), hsl(256 30% 22.7%);
-  border: 2px solid hsl(256 26% 36.1%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  color: hsl(256 13% 73.2%);
+  background: linear-gradient(to bottom, hsl(256 30% 16% / 0.6) 2px, hsl(256 30% 16% / 0) 12px), hsl(256 30% 28.7%);
+  border: 2px solid hsl(256 26% 40.8%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-titre {
-  color: hsl(325 58% 76.8%);
+  color: hsl(325 58% 81.5%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-desc {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-choix {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-choix input {
-  background: hsl(256 30% 17.7%);
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
+  background: hsl(256 30% 23.7%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 44.7%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-choix input:checked::after {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-saisie {
-  background: hsl(256 30% 10%);
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
-  color: hsl(256 13% 73.2%);
+  background: hsl(256 30% 16%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 40.7%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-defaut {
-  color: hsl(256 13% 77%);
+  color: hsl(256 13% 81.6%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-but {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 25.7%);
   box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
-  color: hsl(325 58% 74%);
+  color: hsl(325 58% 80.9%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-but::after {
   border-top: 1px solid hsl(325 58% 66%);
   border-right: 1px solid hsl(325 58% 66%);
 }
 body.bureau-frutiz .fen #reglages-panel .pf-but:active {
-  background: hsl(325 34% 25.2%);
+  background: hsl(325 34% 31.2%);
 }
 body.bureau-frutiz .fen #reglages-panel .reg-titre {
-  color: hsl(325 58% 76.8%);
+  color: hsl(325 58% 81.5%);
 }
 body.bureau-frutiz .fen #reglages-panel .reg-texte {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #reglages-panel .reg-note {
-  color: hsl(256 13% 77%);
+  color: hsl(256 13% 81.6%);
 }
 body.bureau-frutiz .fen #reglages-panel .reg-etat {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #reglages-panel .reg-btn {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 25.7%);
   box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
-  color: hsl(325 58% 74%);
+  color: hsl(325 58% 80.9%);
 }
 body.bureau-frutiz .fen #reglages-panel .reg-btn:active {
-  background: hsl(325 34% 25.2%);
+  background: hsl(325 34% 31.2%);
 }
 body.bureau-frutiz .fen #reglages-panel .reg-pied a {
-  color: hsl(256 13% 75.8%);
+  color: hsl(256 13% 80.6%);
 }
 body.bureau-frutiz .fen #profil-sheet .prof-grille {
-  background: linear-gradient(to bottom, hsl(256 30% 10% / 0.6) 2px, hsl(256 30% 10% / 0) 12px), hsl(256 30% 22.7%);
-  border: 2px solid hsl(256 26% 36.1%);
-  box-shadow: 0 0 0 2px hsl(256 13% 17.7%);
-  color: hsl(256 13% 73.2%);
+  background: linear-gradient(to bottom, hsl(256 30% 16% / 0.6) 2px, hsl(256 30% 16% / 0) 12px), hsl(256 30% 28.7%);
+  border: 2px solid hsl(256 26% 40.8%);
+  box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #profil-sheet .prof-grille label {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #profil-sheet .prof-grille input[type=text],
 body.bureau-frutiz .fen #profil-sheet .prof-grille input[type=url],
 body.bureau-frutiz .fen #profil-sheet .prof-grille input[type=date],
 body.bureau-frutiz .fen #profil-sheet .prof-grille select,
 body.bureau-frutiz .fen #profil-sheet .prof-grille textarea {
-  background: hsl(256 30% 10%);
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
-  color: hsl(256 13% 73.2%);
+  background: hsl(256 30% 16%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 40.7%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #profil-sheet .prof-grille .prof-case {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #profil-sheet .prof-grille .prof-case input {
-  background: hsl(256 30% 17.7%);
-  box-shadow: inset 0 0 0 1px hsl(256 13% 26%);
+  background: hsl(256 30% 23.7%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 44.7%);
 }
 body.bureau-frutiz .fen #profil-sheet .prof-grille .prof-case input:checked::after {
-  background: hsl(256 30% 26%);
+  background: hsl(256 30% 36%);
 }
 body.bureau-frutiz .fen #profil-sheet #prof-etat {
-  color: hsl(256 13% 73.2%);
+  color: hsl(256 13% 78.4%);
 }
 body.bureau-frutiz .fen #profil-sheet #prof-enregistrer {
-  background: hsl(325 34% 22%);
+  background: hsl(325 34% 25.7%);
   box-shadow: inset 0 0 0 1.5px hsl(325 58% 66%);
-  color: hsl(325 58% 74%);
+  color: hsl(325 58% 80.9%);
 }
 body.bureau-frutiz .fen #profil-sheet #prof-enregistrer::after {
   border-top: 1px solid hsl(325 58% 66%);
   border-right: 1px solid hsl(325 58% 66%);
 }
 body.bureau-frutiz .fen #profil-sheet #prof-enregistrer:active {
-  background: hsl(325 34% 25.2%);
+  background: hsl(325 34% 31.2%);
 }
 
 /* ── Les dessins de nuit déposés à côté des dessins de jour ───────── */

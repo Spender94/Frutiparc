@@ -104,8 +104,8 @@ function hslVersRgb(h, s, l) {
  * donc très bien sur l'un et mal sur l'autre.
  *
  * On plafonne donc les FONDS à une LUMINANCE, pas à une clarté : celle sur
- * laquelle le texte le plus sombre (68 % de clarté violette) tient encore
- * 4,5:1. Le reste du thème n'a pas à s'en soucier.
+ * laquelle le texte le plus sombre du thème tient encore 4,5:1. Le reste du
+ * thème n'a pas à s'en soucier.
  */
 function luminance(r, g, b) {
   const c = [r, g, b].map((v) => {
@@ -132,8 +132,18 @@ const ROSE_NUIT = 325;       // celle des accents
  * lavande, tous deux « à 68 % », seraient tenus pour équivalents alors que
  * l'un est deux fois plus sombre que l'autre.
  */
-const LUM_FOND_MAX = 0.045;
-const LUM_TEXTE_MIN = 4.5 * (LUM_FOND_MAX + 0.05) - 0.05;
+// LE NIVEAU DU PARC, ET IL SE MESURE. Relevé sur une capture du bureau de
+// nuit : les panneaux y sont autour de 33 % de clarté violette, le texte
+// presque blanc. À 0,045 — la première valeur essayée — les panneaux tombaient
+// quinze points plus bas : le parc paraissait ÉTEINT, pas nocturne. 0,078
+// place le plafond des fonds à ~36 % et remonte d'autant le plancher du texte,
+// puisque les deux sont liés par les 4,5:1.
+const LUM_FOND_MAX = 0.078;
+// 4,6 et non 4,5 : les deux bornes sont atteintes par pas d'un demi-point de
+// clarté, puis arrondies au dixième pour être écrites. Viser exactement le
+// seuil, c'est le rater d'un centième une fois sur vingt — le dixième de marge
+// coûte un cheveu de contraste et rend la garantie vraie.
+const LUM_TEXTE_MIN = 4.6 * (LUM_FOND_MAX + 0.05) - 0.05;
 
 function plafonnerLuminance(h, s, l) {
   let v = l;
@@ -161,16 +171,17 @@ const COURBES = {
   // 100 % de clarté et se sert d'écarts de deux ou trois points pour séparer
   // une carte de la page. Une courbe creusée écraserait ces écarts-là ; on
   // étale donc le haut de l'échelle sur toute la plage utile de la nuit
-  // (10 % → 30 %), et l'on plafonne. Un fond DÉJÀ sombre, lui, ne se renverse
+  // (16 % → 36 %), et l’on plafonne. Un fond DÉJÀ sombre, lui, ne se renverse
   // pas : un voile noir doit rester noir, pas devenir un voile gris clair.
-  // Le plafond (26 %) n'est pas un choix d'esthète : c'est le fond le plus
-  // clair sur lequel le texte le plus sombre (68 %) tient encore 4,5:1.
-  fond: (l) => (l <= 20 ? l * 0.85 : Math.min(10 + 58 * (100 - l) / 100, 26)),
+  // Le plafond n'est pas un choix d'esthète : c'est le fond le plus clair sur
+  // lequel le texte le plus sombre du thème tient encore 4,5:1 (LUM_FOND_MAX
+  // le borne pour de bon, en luminance).
+  fond: (l) => (l <= 20 ? l * 0.85 : Math.min(16 + 58 * (100 - l) / 100, 36)),
   // Les bordures se posent entre les deux, et toujours visibles.
-  bordure: (l) => 26 + 30 * (100 - l) / 100,                  // 26 % → 56 %
+  bordure: (l) => 30 + 32 * (100 - l) / 100,                  // 30 % → 62 %
   // Le texte ne se renverse pas : il MONTE, toujours, en gardant sa hiérarchie
   // d'origine (ce qui était le plus clair reste le plus clair).
-  texte: (l) => 68 + 26 * (l / 100),                          // 94 % → 68 %
+  texte: (l) => 74 + 22 * (l / 100),                          // 96 % → 74 %
   // Une ombre sombre reste une ombre : on la décolore sans toucher à sa
   // clarté. Une ombre CLAIRE, elle — les liserés et les reliefs d'époque —,
   // deviendrait un halo lumineux : on la traite comme un fond.
@@ -186,7 +197,7 @@ const COURBES = {
    * Celle-ci est donc MONOTONE sur toute la plage utile : elle comprime, mais
    * elle n'écrase jamais deux valeurs voisines l'une sur l'autre.
    */
-  sprite: (l) => Math.min(6 + 0.55 * (100 - l), 30),
+  sprite: (l) => Math.min(11 + 0.62 * (100 - l), 38),
 };
 
 /*
@@ -236,7 +247,19 @@ function convertir(r, g, b, a, role) {
   const surface = role === 'fond' || role === 'sprite';
   if (estRose(h, s)) {
     nh = ROSE_NUIT;
-    if (surface) { ns = 34; nl = Math.max(nl, ROSE_FOND_MIN); }
+    // LE ROSE D'UN DESSIN NE S'ÉTEINT PAS. Les quatre boutons du salon, la
+    // gélule de la liste, la barre de saisie : ce sont des COMMANDES, et le
+    // rose y est ce qui les désigne comme telles. Passées en prune avec les
+    // aplats, elles disparaissaient dans le violet — c'est la différence la
+    // plus visible avec les captures d'époque. Elles gardent donc leur clarté
+    // (à peine baissée), et leur hiérarchie interne avec : un dessin a un
+    // fond et un liseré, pas une seule teinte.
+    //
+    // Un APLAT rose, lui, reste une prune : il peut porter du texte, et du
+    // texte clair sur du rose clair ne se lit pas. Les commandes, elles, ne
+    // portent que des glyphes.
+    if (role === 'sprite') { ns = 55; nl = 0.85 * l; }
+    else if (surface) { ns = 34; nl = Math.max(nl, ROSE_FOND_MIN); }
     else { ns = 58; nl = Math.max(nl, role === 'texte' ? ROSE_TEXTE_MIN : ROSE_ACCENT_MIN); }
   } else if (estChassis(h, s)) {
     nh = VIOLET;
@@ -249,7 +272,10 @@ function convertir(r, g, b, a, role) {
   }
   nl = Math.max(0, Math.min(100, nl));
   // Les deux bornes : un fond porte du texte, un texte se pose sur un fond.
-  if (surface) nl = plafonnerLuminance(nh, ns, nl);
+  // Le rose d'un dessin échappe au plafond — il ne porte pas de texte, et
+  // c'est justement sa clarté qui en fait une commande.
+  const roseDeCommande = role === 'sprite' && estRose(h, s);
+  if (surface && !roseDeCommande) nl = plafonnerLuminance(nh, ns, nl);
   else if (role === 'texte') nl = releverLuminance(nh, ns, nl);
   return hsl(nh, ns, nl, a);
 }
@@ -332,6 +358,48 @@ function teindreValeur(valeur, role) {
 }
 
 const aUneCouleur = (v) => { RE_HEX.lastIndex = 0; RE_RGB.lastIndex = 0; return RE_HEX.test(v) || RE_RGB.test(v); };
+
+/*
+ * UNE OMBRE SANS FLOU N'EST PAS UNE OMBRE : C'EST UN LISERÉ.
+ *
+ * Le thème de jour cerne ses panneaux de `box-shadow: 0 0 0 2px #DDDDDD` —
+ * pas une ombre portée, un trait. Traité comme une ombre, il gardait sa
+ * clarté d'origine, se retrouvait plus clair que le fond de nuit… puis se
+ * faisait rattraper par la règle qui rabat les ombres claires, et
+ * disparaissait. Les panneaux perdaient leur contour, et le bureau son
+ * rétroéclairage — ce halo pâle qui, sur les captures d'époque, détache
+ * chaque cadre du fond.
+ *
+ * On les sépare donc couche par couche : flou nul, c'est une bordure ; flou
+ * non nul, c'est bien une ombre.
+ */
+function couchesDOmbre(valeur) {
+  const couches = [];
+  let profondeur = 0, debut = 0;
+  for (let i = 0; i < valeur.length; i++) {
+    const c = valeur[i];
+    if (c === '(') profondeur++;
+    else if (c === ')') profondeur--;
+    else if (c === ',' && !profondeur) { couches.push(valeur.slice(debut, i)); debut = i + 1; }
+  }
+  couches.push(valeur.slice(debut));
+  return couches;
+}
+
+function estLisere(couche) {
+  // Ce qui précède la couleur : `inset`, puis les longueurs.
+  const avant = couche.split(/#|\brgba?\(|\bhsla?\(/)[0];
+  const longueurs = avant.match(/-?[\d.]+(?:px|em|rem|pt)?/g) || [];
+  if (!longueurs.length) return false;              // `box-shadow: none`, etc.
+  const flou = longueurs.length >= 3 ? parseFloat(longueurs[2]) : 0;
+  return flou === 0;
+}
+
+function teindreOmbre(valeur) {
+  return couchesDOmbre(valeur)
+    .map((couche) => teindreValeur(couche, estLisere(couche) ? 'bordure' : 'ombre'))
+    .join(',');
+}
 
 // Le rôle d'une déclaration, d'après son nom de propriété.
 function roleDe(propriete) {
@@ -438,6 +506,10 @@ function teindreDecl(texte, { tout }) {
   // trois feuilles, mais si l'on en ajoutait un jour, autant le savoir.
   const nom = /(?:^|[\s,(])(white|black|red|green|blue|yellow|orange|purple|pink|gr[ae]y|gold|silver|brown|coral|crimson|tomato|salmon|ivory|beige|olive|navy|teal|lime|aqua|fuchsia|maroon)(?=[\s,)!;]|$)/i.exec(valeur);
   if (nom) inconnues.add(prop.trim() + ': ' + nom[1]);
+  // Une ombre se lit couche par couche : certaines sont des liserés.
+  if (/shadow$/.test(prop.trim().toLowerCase())) {
+    return `${prop.trim()}:${teindreOmbre(valeur)}`;
+  }
   return `${prop.trim()}:${teindreValeur(valeur, roleDe(prop))}`;
 }
 

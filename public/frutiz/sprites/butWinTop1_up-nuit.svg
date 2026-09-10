@@ -7,7 +7,7 @@
   manifeste de scripts/nuit-svg.js.
 -->
 <g transform="matrix(1,0,0,1,0,0)">
-  <path d="M6 8L9.5 11.5L13 8M13 15L9.5 11.5L6 15" fill="none" stroke="hsl(325 34% 25.1%)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M6 8L9.5 11.5L13 8M13 15L9.5 11.5L6 15" fill="none" stroke="hsl(325 55% 55.5%)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 
 </g>
 </svg>

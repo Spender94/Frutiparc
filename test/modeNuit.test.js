@@ -147,9 +147,9 @@ const teint = (hex, role) => GEN.convertir(...rgb(hex), role);
 
 test('un fond clair descend, un fond déjà sombre ne se renverse pas', () => {
   // Le vert du parc, le gris des fenêtres, le blanc des cartes.
-  assert.ok(L(teint('#ADE76B', 'fond')) <= 30, 'le vert pomme devient un fond de nuit');
-  assert.ok(L(teint('#DDDDDD', 'fond')) <= 20, 'le gris des fenêtres s’assombrit');
-  assert.ok(L(teint('#FFFFFF', 'fond')) <= 12, 'le blanc devient presque noir');
+  assert.ok(L(teint('#ADE76B', 'fond')) <= 38, 'le vert pomme devient un fond de nuit');
+  assert.ok(L(teint('#DDDDDD', 'fond')) <= 26, 'le gris des fenêtres s’assombrit');
+  assert.ok(L(teint('#FFFFFF', 'fond')) <= 18, 'le blanc devient un violet profond');
   // Et l'inverse ne se produit PAS : un voile noir reste noir.
   assert.ok(L(teint('#000000', 'fond')) <= 2, 'un voile noir reste un voile noir');
   // La hiérarchie du jour survit : ce qui était plus clair reste plus clair.
@@ -201,8 +201,21 @@ test('le rose reste rose — c’est l’accent, pas une couleur à éteindre', 
     assert.ok(L(teint(rose, 'texte')) >= 66, rose + ' en texte est un accent vif');
     // En APLAT : une prune profonde, sur laquelle du texte clair se lit.
     const fond = L(teint(rose, 'fond'));
-    assert.ok(fond >= 22 && fond <= 34, rose + ' en fond est une prune (' + fond + ' %)');
+    assert.ok(fond >= 22 && fond <= 38, rose + ' en fond est une prune (' + fond + ' %)');
   }
+  // EN DESSIN, le rose ne s'éteint pas : les quatre boutons du salon, la
+  // gélule de la liste sont des COMMANDES, et le rose est ce qui les désigne.
+  // C'est l'écart le plus visible avec les captures d'époque quand on
+  // l'oublie. Un dessin garde donc sa clarté — le remplissage reste clair, et
+  // le trait qui le cerne reste sombre : c'est ce qui fait un bouton et non
+  // une pastille.
+  for (const remplissage of ['#F28687', '#FFAAAD', '#FFC4C4', '#FFDFDF']) {
+    const d = L(teint(remplissage, 'sprite'));
+    assert.ok(d >= 50, remplissage + ' remplit une commande (' + d + ' %)');
+  }
+  assert.ok(L(teint('#660000', 'sprite')) <= 25, 'le rouge sombre reste un trait');
+  assert.ok(L(teint('#FFDFDF', 'sprite')) > L(teint('#F28687', 'sprite')),
+    'et la hiérarchie du dessin survit');
   // L'orange et le jaune ne sont NI châssis NI rose : ils gardent leur teinte.
   for (const [hex, teinte] of [['#FF6600', 24], ['#EAEA0F', 60], ['#FACE68', 44]]) {
     const t = teint(hex, 'fond');
@@ -215,9 +228,22 @@ test('le rose reste rose — c’est l’accent, pas une couleur à éteindre', 
     '#FF6600 n’est pas du châssis non plus');
 });
 
-test('une ombre sombre reste sombre, une ombre claire cesse d’être un halo', () => {
+test('une ombre reste une ombre, un liseré redevient un liseré', () => {
   assert.ok(L(teint('#000000', 'ombre')) <= 2, 'le noir d’une ombre portée ne bouge pas');
-  assert.ok(L(teint('#DDDDDD', 'ombre')) <= 20, 'un liseré clair ne devient pas un halo');
+  assert.ok(L(teint('#DDDDDD', 'ombre')) <= 26, 'une ombre claire ne devient pas un halo');
+  /*
+   * LE RÉTROÉCLAIRAGE. Le thème de jour cerne ses panneaux de
+   * `box-shadow: 0 0 0 2px #DDDDDD` — pas une ombre portée, un TRAIT. Traité
+   * comme une ombre il disparaissait, et les cadres perdaient le halo pâle qui
+   * les détache du fond sur les captures d'époque. Une couche sans flou suit
+   * donc la courbe des bordures, et se retrouve PLUS CLAIRE que le panneau
+   * qu'elle entoure — c'est à ça qu'on la reconnaît.
+   */
+  const anneau = GEN.teindreValeur('0 0 0 2px #DDDDDD', 'bordure');
+  assert.ok(L(anneau) > L(teint('#CCF599', 'fond')) + 4,
+    'le liseré se détache du panneau qu’il entoure');
+  // Et dans la feuille produite, pas seulement en théorie.
+  assert.match(NUIT, /box-shadow: 0 0 0 1px hsl\(256 26% 3[0-9](\.\d)?%\)/);
 });
 
 test('le rôle se lit dans le nom de la propriété', () => {
@@ -445,7 +471,7 @@ test('le forum s’éteint : ses saumons en prune, ciel derrière', () => {
   const fond = /background: hsl\(([-0-9.]+) ([0-9.]+)% ([0-9.]+)%/.exec(bloc);
   assert.ok(fond, 'le bouton saumon du forum est teint');
   assert.strictEqual(Number(fond[1]), GEN.ROSE_NUIT, 'il reste de la famille rose');
-  assert.ok(Number(fond[3]) <= 34, 'et c’est un fond de nuit');
+  assert.ok(Number(fond[3]) <= 38, 'et c’est un fond de nuit');
   // Le châssis du forum, lui, part au violet comme celui du light.
   const entete = NUIT_FORUM.slice(NUIT_FORUM.indexOf('.forum-header {'));
   const chassis = /background: hsl\(([-0-9.]+) /.exec(entete);
