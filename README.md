@@ -330,6 +330,17 @@ le libellé du fond en minuscules sans accents ni apostrophes (« Ceci n'est pas
 une pipe » → `ceci_nest_pas_une_pipe`), sauf les deux Mini-Wave, nommés
 explicitement dans `WALLPAPER_MOBILE_EXCEPTIONS`.
 
+> **Le radical se calcule sur le NOM, pas sur l'identifiant.** « Noël Pixiz »
+> donne `background_noel_pixiz`, « Mini-Pixiz » `background_mini_pixiz` — et
+> un fichier mal nommé ne produit pas d'erreur, il ne produit *rien* : il
+> reste sur le disque sans jamais atteindre un écran. `test/modeNuit.test.js`
+> monte la garde et nomme les radicaux attendus.
+
+Trois fonds ont leur dessin de nuit à ce jour — **Utopiz**, **Mini-Pixiz** et
+**Noël Pixiz** —, tous en paysage. Le tiroir de `/light` les accepte quand
+même (la palette avant le cadrage, cf. plus bas) mais les pose en bande au
+milieu : un `_dark_mobile` en portrait remplirait l'écran.
+
 **Le décor par défaut** — ce que la nuit pose quand le joueur n'a choisi aucun
 fond, l'équivalent du vert pomme du jour — est **Utopiz endormie**
 (`FOND_DECOR_NUIT`). Elle tient déjà tout ce que la présentation d'époque

@@ -947,6 +947,38 @@ test('Utopiz a son dessin de nuit, et c’est le décor du parc éteint', () => 
     'le fichier que le bureau nomme en dur existe bien');
 });
 
+test('aucun dessin de nuit ne dort dans le dossier sans être servi', () => {
+  /*
+   * LE NOM DU FICHIER EST LA DÉCLARATION — c'est toute la convention, et
+   * c'est aussi son seul défaut : un fichier MAL nommé ne produit pas
+   * d'erreur, il ne produit RIEN. Déposé sous « background_noel_dark.jpg »
+   * plutôt que « background_noel_pixiz_dark.jpg », un paysage de nuit reste
+   * sur le disque sans jamais atteindre un écran, et rien ne le dit.
+   *
+   * Ce test est ce qui le dit : tout `…_dark…` du dossier doit retomber sur
+   * le radical d'un fond du catalogue.
+   */
+  const radicaux = FONDS.map(([u, n]) => radical(u, n));
+  const orphelins = fichiersFonds()
+    .filter((f) => /_dark(_mobile)?\.[a-z]+$/i.test(f))
+    .filter((f) => !radicaux.some((r) => f.startsWith(r + '_dark')));
+  assert.deepStrictEqual(orphelins, [],
+    'ces dessins de nuit ne correspondent au radical d’aucun fond — ils ne '
+    + 'seront jamais servis. Radicaux attendus : ' + radicaux.join(', '));
+});
+
+test('trois fonds ont leur dessin de nuit, et la bascule les trouve', () => {
+  // Les fichiers du jour d'un côté, ceux de la nuit de l'autre : c'est la
+  // même image, et le thème choisit. Aucune liste dans le code — on vérifie
+  // donc ici QUE la liste du disque est bien celle qu'on croit.
+  const avecNuit = FONDS.filter(([u, n]) => cherche(radical(u, n), '_dark')).map(([u]) => u);
+  assert.deepStrictEqual(avecNuit.sort(), ['pixiz', 'pixizchristmas', 'utopiz'],
+    'la liste des fonds qui passent en nuit a changé — mettre le README à jour');
+  // Et le serveur les annonce comme tels : c'est `etatNuitDuFond` qui le dit
+  // à l'admin, et `cadragesDuFond` qui le dit au client.
+  assert.match(SERVEUR, /if \(wallpaperNuitUrl\(wp, false\) \|\| wallpaperNuitUrl\(wp, true\)\) return 'variante';/);
+});
+
 test('les deux Mini-Wave sont déjà des ciels de nuit', () => {
   // Leur couleur de bureau est un bleu nuit : les redessiner n'aurait pas de
   // sens. On le DIT, pour que l'admin ne les compte pas comme un reste à faire.
