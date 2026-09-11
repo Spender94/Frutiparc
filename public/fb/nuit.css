@@ -693,6 +693,10 @@ img[src$="/fb/WarningAlerte.svg"] { content: url("/fb/WarningAlerte-nuit.svg"); 
 [style*="/fb/WarningAlerte.svg"] { background-image: url("/fb/WarningAlerte-nuit.svg") !important; filter: none !important; }
 img[src$="/fb/cadre_bouille.svg"] { content: url("/fb/cadre_bouille-nuit.svg"); filter: none; }
 [style*="/fb/cadre_bouille.svg"] { background-image: url("/fb/cadre_bouille-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/fleche_droite.svg"] { content: url("/fb/fleche_droite-nuit.svg"); filter: none; }
+[style*="/fb/fleche_droite.svg"] { background-image: url("/fb/fleche_droite-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/fleche_gauche.svg"] { content: url("/fb/fleche_gauche-nuit.svg"); filter: none; }
+[style*="/fb/fleche_gauche.svg"] { background-image: url("/fb/fleche_gauche-nuit.svg") !important; filter: none !important; }
 img[src$="/fb/trophee.svg"] { content: url("/fb/trophee-nuit.svg"); filter: none; }
 [style*="/fb/trophee.svg"] { background-image: url("/fb/trophee-nuit.svg") !important; filter: none !important; }
 

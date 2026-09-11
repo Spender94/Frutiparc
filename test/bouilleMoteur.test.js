@@ -556,7 +556,7 @@ test('la transformation qui kakise le fard : le rouge s’éteint, le kaki se po
   // pur donnait un citron vif : lumineux, pas écœuré.
   assert.deepStrictEqual(KAKI, [114, 146, 54], 'le feutre « Vert kaki », #729236');
   const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
-  assert.match(LIGHT, /\{ i: 11,\s*name: "Vert kaki",\s*color: "#729236" \}/,
+  assert.match(LIGHT, /\{ i: 11,\s*name: "Vert kaki",\s*color: "#729236",/,
     'et cette couleur reste celle du feutre : les deux doivent rester d’accord');
 
   // Le fard est du rouge pur ; on vérifie aussi qu'une autre couleur d'entrée

@@ -732,11 +732,11 @@ test('les trois retouches du parc éteint : feutres, lueur, liste des salons', (
   assert.ok(!/^#pen-bar \.pen-swatch/m.test(retouches),
     'et rien ne vise les pastilles rondes du tiroir');
 
-  // 2. LA LUEUR D'UN VOYANT : sa teinte suit l'état, comme `--etat` juste à
-  //    côté, et elle s'éteint quand l'icône du jeu prend la place.
-  assert.match(retouches, /\.sl-contact \.voyant \{\s*\n\s*--lueur: hsl\(6 74% 58% \/ \.5\);/);
-  assert.match(retouches, /\.sl-contact\.en-ligne \.voyant \{ --lueur: hsl\(94 70% 52% \/ \.5\); \}/);
-  assert.match(retouches, /\.sl-contact \.voyant\.jeu \{ box-shadow: none; \}/);
+  // 2. PAS DE LUEUR AUTOUR DES VOYANTS. Un halo diffus avait été essayé —
+  //    vert quand la personne est là, saumon sinon — et écarté au rendu : sur
+  //    une colonne de trente contacts, trente petites lampes font une
+  //    guirlande, pas une liste. Le voyant se lit à sa couleur, cela suffit.
+  assert.ok(!/--lueur/.test(retouches), "la lueur des voyants a été retirée, elle ne revient pas");
 
   // 3. LA LISTE DES SALONS rejoint le violet des autres fenêtres, et son
   //    alternance se voit : trois valeurs, et le survol au-dessus des deux.
@@ -1048,4 +1048,163 @@ test('« Pousser à tous » et « Retirer à tous » se refusent sur une option'
   assert.match(ADMIN, /\$\{accordeUnAccessoire\(p\) \? `\n\s*<button class="btn-success btn-sm" onclick="pushPackAll/);
   assert.match(ADMIN, /pastille\('option', '#6a4c9c',/);
   assert.match(ADMIN, /\$\{badgeAccorde\(p\)\}/);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   L'ENCRE DES FEUTRES, ET L'ARBRE DES RÉGLAGES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// Les dix-sept feutres, tels que light.html les tient — couleur de jour et
+// encre de nuit, dans l'ordre du pot.
+const feutresDuLight = () => {
+  const bloc = LIGHT.slice(LIGHT.indexOf('var FEUTRES = ['), LIGHT.indexOf('var FEUTRE_BY_INDEX'));
+  return [...bloc.matchAll(/\{ i: (\d+),\s*name: "([^"]+)",\s*color: "(#[0-9A-Fa-f]{6})",\s*nuit: "([^"]+)"/g)]
+    .map((m) => ({ i: +m[1], nom: m[2], jour: m[3], nuit: m[4] }));
+};
+const hslNombres = (t) => (/hsl\(([\d.]+) ([\d.]+)% ([\d.]+)%/.exec(t) || []).slice(1).map(Number);
+// La luminance d'une couleur écrite en hsl(), par les fonctions du thème.
+const lumDe = (t) => GEN.luminance(...GEN.hslVersRgb(...hslNombres(t)));
+const rapport = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+
+test('l’encre de nuit des dix-sept feutres se recalcule, elle ne se retouche pas', () => {
+  const feutres = feutresDuLight();
+  assert.strictEqual(feutres.length, 17, 'les dix-sept feutres portent tous une encre de nuit');
+  for (const f of feutres) {
+    assert.strictEqual(f.nuit, GEN.encreDeNuit(f.jour),
+      f.nom + ' : l’encre de nuit écrite dans light.html ne sort pas de encreDeNuit(' + f.jour + ')');
+  }
+});
+
+test('chaque feutre garde sa teinte, et aucun ne s’éteint', () => {
+  const feutres = feutresDuLight();
+  // LA TEINTE EST L'IDENTITÉ DU FEUTRE. On a le droit de l'éclaircir, pas de
+  // la déplacer : un « bleu pétrole » qui sort violet n'est plus le feutre
+  // qu'on a choisi. (C'est ce que faisait la conversion `texte` du thème, qui
+  // ramène tout le châssis — donc tous les verts — sur le violet du parc.)
+  for (const f of feutres) {
+    const [hJour] = GEN.rgbVersHsl(...GEN.hexVersRgb(f.jour));
+    const [hNuit, sNuit, lNuit] = hslNombres(f.nuit);
+    assert.ok(Math.abs(Math.round(hJour) - hNuit) <= 1,
+      f.nom + ' : la teinte a bougé (' + Math.round(hJour) + '° → ' + hNuit + '°)');
+    // On RÉCUPÈRE en saturation ce qu'on prend en clarté : une couleur
+    // remontée de trente points sans cela n'est plus qu'un pastel.
+    const [, sJour, lJour] = GEN.rgbVersHsl(...GEN.hexVersRgb(f.jour));
+    assert.ok(lNuit >= lJour - 0.01, f.nom + ' : l’encre ne descend jamais');
+    // (Un feutre déjà saturé à fond — l'orange — n'a plus rien à rendre : la
+    // compensation plafonne à 100, et c'est la seule exception.)
+    if (lNuit - lJour > 0.5 && sJour < 100) {
+      assert.ok(sNuit > sJour, f.nom + ' : remontée sans compensation, elle est délavée');
+    }
+  }
+});
+
+test('les dix-sept encres tiennent le rapport du parc, et restent dix-sept', () => {
+  const feutres = feutresDuLight();
+  // Le fond : le panneau du chat tel que la feuille de nuit le peint.
+  const fond = /^#messages \{\n  background: (hsl\([^)]+\));/m.exec(NUIT);
+  assert.ok(fond, 'le panneau du chat de nuit n’a pas été trouvé dans la feuille');
+  const lf = lumDe(fond[1]);
+  for (const f of feutres) {
+    const r = rapport(lumDe(f.nuit), lf);
+    assert.ok(r >= 5.4, f.nom + ' : ' + r.toFixed(2) + ':1 sur ' + fond[1] + ', c’est trop peu');
+  }
+  // ET DIX-SEPT COULEURS, PAS HUIT. C'est l'autre moitié du problème : un pot
+  // de feutres où l'orange, le kaki et le vert clair s'écrivent pareil n'est
+  // plus un pot de feutres.
+  assert.strictEqual(new Set(feutres.map((f) => f.nuit)).size, 17,
+    'deux feutres sortent de la même encre');
+  // Et pas seulement « différentes au chiffre près » : séparées à l'œil. La
+  // distance est celle des trois axes, la teinte comptée au tiers (un degré
+  // de teinte se voit moins qu'un point de clarté).
+  let pire = { d: Infinity };
+  for (let a = 0; a < feutres.length; a++) {
+    for (let b = a + 1; b < feutres.length; b++) {
+      const A = hslNombres(feutres[a].nuit), B = hslNombres(feutres[b].nuit);
+      let dh = Math.abs(A[0] - B[0]); if (dh > 180) dh = 360 - dh;
+      const d = Math.hypot(dh / 3, A[1] - B[1], A[2] - B[2]);
+      if (d < pire.d) pire = { d, a: feutres[a].nom, b: feutres[b].nom };
+    }
+  }
+  assert.ok(pire.d >= 6, 'les plus proches se confondent : ' + pire.a + ' et ' + pire.b
+    + ' (distance ' + pire.d.toFixed(1) + ')');
+});
+
+test('tout passe par penColorFor, et la nuit repeint ce qui est déjà écrit', () => {
+  // UN SEUL ENTONNOIR. La saisie, les lignes du salon, les pastilles du pot,
+  // l'aperçu de la boutique : si l'un d'eux lisait `f.color` en direct, il
+  // resterait à l'encre du jour une fois la nuit tombée.
+  assert.match(LIGHT, /return \(laNuitEstTombee\(\) && f\.nuit\) \|\| f\.color;/);
+  assert.ok(!/FEUTRES\.map\(function \(f\) \{ return f\.color; \}\)/.test(LIGHT),
+    'l’arc-en-ciel du multicolore lit encore la couleur de jour');
+  assert.match(LIGHT, /sw\.style\.background = penColorFor\(f\.i\);/);
+  assert.match(LIGHT, /: \(penColorFor\(it\.feutre\) \|\| "#888888"\);/);
+
+  // LE VERT DU PARC NE DOIT PLUS FUIR DANS LA SAISIE. Sans feutre, le jour
+  // écrit dans son vert ; la nuit n'écrit rien et laisse la feuille faire.
+  assert.match(LIGHT, /return penColorFor\(pen\) \|\| \(laNuitEstTombee\(\) \? "" : "#2C4A0F"\);/);
+  assert.ok(!/penColorFor\([^)]*\) \|\| "#2C4A0F"/.test(LIGHT),
+    'une saisie écrit encore le vert du jour en dur');
+
+  // ET LES LIGNES D'AVANT. L'encre est posée en `style=""` : basculer en
+  // pleine conversation laissait la moitié du salon à l'encre du jour.
+  assert.match(LIGHT, /row\.setAttribute\("data-feutre", String\(o\.feutre\)\);/);
+  assert.match(LIGHT, /function repeindreLesEncres\(\)/);
+  const bascule = LIGHT.slice(LIGHT.indexOf('function appliquerNuit'),
+    LIGHT.indexOf('function appliquerNuit') + 2400);
+  assert.match(bascule, /repeindreLesEncres\(\);/,
+    'la bascule jour/nuit ne repeint pas les lignes déjà écrites');
+});
+
+test('les flèches de pagination sont roses, et ne sont plus fanées', () => {
+  const retouches = lire('scripts/nuit-retouches.css');
+  const manifeste = lire('scripts/nuit-svg.js');
+  for (const f of ['fleche_gauche', 'fleche_droite']) {
+    assert.ok(!retouches.includes('/fb/' + f + '.svg'),
+      f + ' est encore dans la liste des fanés — le filtre gagnerait sur `filter: none`');
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/fb', f + '-nuit.svg')),
+      f + ' n’a pas de variante de nuit');
+    assert.match(NUIT, new RegExp('img\\[src\\$="/fb/' + f + '\\.svg"\\] \\{ content: url'));
+  }
+  assert.match(manifeste, /\['fleche_gauche', 'fleche_droite'\]/);
+  // Roses de part en part : la conversion garde le rose (`roseDeCommande`),
+  // et la variante ne doit contenir ni violet ni gris.
+  const svg = lire('public/fb/fleche_droite-nuit.svg');
+  for (const c of [...svg.matchAll(/fill="hsl\((\d+) /g)].map((m) => +m[1])) {
+    assert.strictEqual(c, GEN.ROSE_NUIT, 'une flèche a une couleur qui n’est pas l’accent');
+  }
+});
+
+test('l’arbre des réglages du bureau désigne ses cartes par identifiant', () => {
+  /*
+   * LE PIÈGE DU RANG. « Mes préférences » montre les cartes de `#reg-corps`,
+   * et il les désignait par POSITION (`local: 0`). Deux cartes ont été
+   * ajoutées depuis en tête de liste — « Mentions », puis « Le parc, la
+   * nuit » — et chaque ajout décalait tout l'arbre d'un cran : cliquer
+   * « Notifications » ouvrait la carte du voisin, et trois cartes n'étaient
+   * plus atteignables du tout.
+   */
+  assert.ok(!/\{ local: \d+,/.test(BUREAU),
+    'une rubrique désigne encore sa carte par son rang');
+  const entrees = [...BUREAU.matchAll(/\{ local: '([\w-]+)', label: ("[^"]+"|'[^']+')/g)]
+    .map((m) => ({ id: m[1], label: m[2].slice(1, -1) }));
+  assert.strictEqual(entrees.length, 5, 'les cinq cartes de l’appareil sont dans l’arbre');
+  // Chaque identifiant existe dans le HTML, et porte bien le titre annoncé.
+  for (const e of entrees) {
+    const i = LIGHT.indexOf('<div class="reg-carte" id="' + e.id + '">');
+    assert.ok(i > 0, 'la carte ' + e.id + ' n’existe pas dans light.html');
+    const titre = /<div class="reg-titre">([^<]+)</.exec(LIGHT.slice(i, i + 400))[1];
+    assert.strictEqual(titre.replace(/&nbsp;/g, ' '), e.label,
+      e.id + ' : l’arbre annonce « ' + e.label + ' » et ouvre « ' + titre + ' »');
+  }
+  // Le mode nuit y est, et il n'est pas rangé sous les notifications.
+  const nuit = entrees.find((e) => e.id === 'reg-carte-nuit');
+  assert.ok(nuit && nuit.label === 'Le parc, la nuit', 'le mode nuit manque de l’arbre');
+  assert.ok(entrees.indexOf(nuit) < entrees.findIndex((e) => e.label === 'Notifications'),
+    'le mode nuit doit venir AVANT les notifications, pas dedans');
+  // Et c'est bien l'identifiant qui sélectionne la carte affichée.
+  assert.match(BUREAU, /cartes\[k\]\.hidden = \(cartes\[k\]\.id !== p\.local\);/);
+  // Toutes les cartes du HTML portent un identifiant : sans quoi la suivante
+  // qu'on ajoute retombe dans le même piège, invisible depuis le bureau.
+  const sansId = [...LIGHT.matchAll(/<div class="reg-carte"(?! id=)/g)];
+  assert.strictEqual(sansId.length, 0, sansId.length + ' carte(s) de réglages sans identifiant');
 });

@@ -5224,16 +5224,27 @@ window.BureauFrutiz = (function () {
   var prefEtat = null;     // { categories, valeurs, defauts, brouillon, choix }
 
   // Les rubriques que le serveur ne connaît pas : elles ne touchent pas au
-  // compte mais au navigateur qui l'affiche (voir l'ÉCART ASSUMÉ en CSS).
+  // compte mais au navigateur qui l'affiche (voir l'ÉCART ASSUMÉ en CSS) —
+  // sauf la dernière, qui touche au compte mais n'a pas de préférence.
   // Chaque entrée montre une des cartes déjà présentes dans `#reg-corps`.
-  var PF_LOCALES = {
+  //
+  // Elles sont désignées par IDENTIFIANT, pas par rang : une carte ajoutée en
+  // tête de `#reg-corps` décalait toutes les autres, et « Notifications »
+  // ouvrait la carte du voisin. C'est arrivé deux fois.
+  var PF_LOCALES = [{
     name: 'Cet appareil',
     prefs: [
-      { local: 0, label: 'Notifications' },
-      { local: 1, label: "L'appli" },
-      { local: 2, label: 'Rien ne sonne ?' },
+      { local: 'reg-carte-nuit', label: 'Le parc, la nuit' },
+      { local: 'reg-carte-notifs', label: 'Notifications' },
+      { local: 'reg-carte-appli', label: "L'appli" },
+      { local: 'reg-carte-diag', label: 'Rien ne sonne ?' },
     ],
-  };
+  }, {
+    name: 'Mon compte',
+    prefs: [
+      { local: 'reg-carte-donnees', label: 'Mes données' },
+    ],
+  }];
 
   function habillerReglages(panneau) {
     if (!panneau) return;
@@ -5288,7 +5299,7 @@ window.BureauFrutiz = (function () {
       .then(function (j) {
         if (!j || !j.ok) return;
         prefEtat = {
-          categories: (j.categories || []).concat([PF_LOCALES]),
+          categories: (j.categories || []).concat(PF_LOCALES),
           defauts: j.defaults || {},
           // Le BROUILLON : `box.Pref.prefDetails`, la copie de travail que
           // seul « Enregistrer » reverse dans le compte.
@@ -5335,12 +5346,12 @@ window.BureauFrutiz = (function () {
     if (!prefEtat) return;
     var arbre = prefEtat.panneau.querySelector('.pf-arbre');
     if (!arbre) return;
-    var voulu = prefEtat.choix ? (prefEtat.choix.name || ('local' + prefEtat.choix.local)) : null;
+    var voulu = prefEtat.choix ? (prefEtat.choix.name || prefEtat.choix.local) : null;
     var i = 0;
     var boutons = arbre.querySelectorAll('.pf-pref');
     prefEtat.categories.forEach(function (cat) {
       (cat.prefs || []).forEach(function (p) {
-        var cle = p.name || ('local' + p.local);
+        var cle = p.name || p.local;
         if (boutons[i]) boutons[i].classList.toggle('on', cle === voulu);
         i++;
       });
@@ -5371,7 +5382,7 @@ window.BureauFrutiz = (function () {
       // Une rubrique de l'appareil : on ne montre que SA carte.
       if (!corps) return;
       var cartes = corps.querySelectorAll('.reg-carte');
-      for (var k = 0; k < cartes.length; k++) cartes[k].hidden = (k !== p.local);
+      for (var k = 0; k < cartes.length; k++) cartes[k].hidden = (cartes[k].id !== p.local);
       return;
     }
 

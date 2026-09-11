@@ -79,7 +79,10 @@ test('chaque salon a SON fil, et les lignes vont dans le fil de LEUR salon', () 
   assert.match(bloc, /showBouilleOverlay\(from, em\.anim, em\.label, salon\);/);
   // (`mentions` a rejoint la ligne avec les @mentions : le corps met en évidence
   // les pseudos que le serveur a reconnus, et le salon reste porté par `salon`.)
-  assert.match(bloc, /kind: isAdmin \? "admin" : "normal", noFrom: isAdmin, pen: penColor, salon: salon, mentions: nommes \}\);/);
+  // (`feutre` porte le NUMÉRO du feutre à côté de sa couleur : la nuit peut
+  // tomber après coup, et la ligne doit pouvoir se repeindre — cf.
+  // `repeindreLesEncres` dans modeNuit.test.js.)
+  assert.match(bloc, /kind: isAdmin \? "admin" : "normal", noFrom: isAdmin, pen: penColor, feutre: attr\(xml, "p"\), salon: salon, mentions: nommes \}\);/);
   // Les arrivées et les départs aussi : chaque fenêtre tient le compte de ses
   // propres allées et venues.
   // (Les mots sont ceux de `chat.userjoined`, sans point final — cf.

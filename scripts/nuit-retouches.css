@@ -53,10 +53,12 @@
 img.reflet, img.fen-ico,
 img[src$="/fb/reflet_bouille.svg"], img[src$="/fb/reflet_niveau.svg"],
 img[src$="/fb/icone_fenetre.svg"], img[src$="/fb/bouton_up.png"],
-img[src$="/fb/fleche_gauche.svg"], img[src$="/fb/fleche_droite.svg"],
 img[src$="/fb/boutique/icone.png"] {
   filter: var(--nuit-chassis);
 }
+/* Les deux FLÈCHES de pagination en sont sorties à leur tour : elles sont
+   roses de part en part, et le rose est l'accent du thème. Elles ont
+   maintenant leur variante (cf. le manifeste de scripts/nuit-svg.js). */
 /* Le DOSSIER de la boutique mobile en est sorti : c'est le même dossier ROSE
    que celui du bureau (shop-puce-rubrique.svg), et le rose est l'accent du
    thème, pas du châssis. Il était dans cette liste depuis avant qu'on décide
@@ -110,24 +112,6 @@ body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch {
 body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.sel {
   box-shadow: 0 0 0 1px hsl(256 46% 68%), 0 0 6px hsl(256 46% 52% / .6);
 }
-
-/* LA LUEUR D'UN VOYANT.
-   Un voyant de contact, c'est une petite lampe : de jour elle se lit à sa
-   couleur, de nuit une lampe DIFFUSE. On lui pose donc un halo de sa propre
-   teinte — vert quand la personne est là, saumon quand elle n'y est pas — et
-   la couleur passe par une variable pour que l'état n'ait qu'un endroit où
-   s'écrire, comme `--etat` juste à côté. En PARTIE, la lampe s'éteint : ce
-   qu'on regarde alors est l'icône du jeu, pas la présence. */
-body.bureau-frutiz #side-list .sl-contact .voyant {
-  --lueur: hsl(6 74% 58% / .5);
-  /* Le halo suit la forme de la boîte : ronde, il rayonne comme une lampe ;
-     carré, il ressemblerait à une tuile allumée. Le cadre dessiné, lui, ne
-     change pas de forme — `border-radius` ne découpe que l'ombre. */
-  border-radius: 50%;
-  box-shadow: 0 0 7px 1px var(--lueur);
-}
-body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant { --lueur: hsl(94 70% 52% / .5); }
-body.bureau-frutiz #side-list .sl-contact .voyant.jeu { box-shadow: none; }
 
 /* LA LISTE DES SALONS REJOINT LES AUTRES FENÊTRES.
    Elle est ROSE dans le thème de jour — la seule liste du parc à l'être, ses

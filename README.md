@@ -125,9 +125,16 @@ Games/                Mini-jeux (Burning Kiwi, Kaluga, Frutibandas, etc.)
 
 Un thème sombre pour `/light`, vendu en boutique (rubrique **Décors**, 300
 kikooz, article `42`). Il s'allume dans **Réglages → « Le parc, la nuit »**,
-avec trois positions : Jour, Nuit, Comme mon téléphone. Le choix vit dans le
-`localStorage` (donc **par appareil**) ; la possession, elle, est au compte
-(`owned_features`, option `modeNuit`, lue par `/api/features`).
+avec trois positions : Jour, Nuit, Comme mon téléphone — sur le bureau, c'est
+« Mes préférences » → **Cet appareil** → « Le parc, la nuit ». Le choix vit
+dans le `localStorage` (donc **par appareil**) ; la possession, elle, est au
+compte (`owned_features`, option `modeNuit`, lue par `/api/features`).
+
+> Les cartes de `#reg-corps` que l'arbre du bureau montre sont désignées **par
+> identifiant** (`reg-carte-nuit`, `reg-carte-notifs`, …), jamais par rang :
+> elles l'étaient, et chaque carte ajoutée en tête décalait tout l'arbre d'un
+> cran — cliquer « Notifications » ouvrait la carte du voisin. C'est arrivé
+> deux fois. Une carte de réglages **sans identifiant** fait échouer un test.
 
 **La feuille de nuit est engendrée, pas écrite.** Les trois feuilles du site —
 le `<style>` de `public/light.html`, `public/bureau-frutiz.css`, le `<style>`
@@ -170,6 +177,29 @@ Une seule chose qu'aucune règle de couleur ne peut sauver : **l'arc-en-ciel du
 feutre multicolore**. Il ne vaut que par la *suite* de ses teintes, et la
 conversion, qui ne regarde qu'une couleur à la fois, en perdait trois d'un
 coup. Il est reposé entier dans `scripts/nuit-retouches.css`.
+
+**Les dix-sept feutres du chat** ont, eux, leur propre conversion —
+`encreDeNuit()`, exportée par le même script. Ce ne sont pas des couleurs du
+thème mais des couleurs *choisies* : les passer au rôle `texte` les rendait
+toutes lisibles (8 à 9,5:1) et en écrasait **huit sur la même lavande**, parce
+que cette courbe ramène tout le châssis — donc tous les verts — au violet du
+parc. Un pot de feutres où l'orange, le kaki et le vert clair s'écrivent pareil
+n'est plus un pot de feutres. La règle est donc la plus petite possible :
+
+| | |
+|---|---|
+| **la teinte ne bouge pas** | un « bleu pétrole » qui sort violet n'est plus le feutre qu'on a choisi |
+| **la clarté remonte** jusqu'à 5,5:1 sur le panneau du chat de nuit | six feutres sur dix-sept étaient déjà assez clairs et ne bougent pas d'un point |
+| **la saturation compense** ce que la clarté prend (1 pour 1) | sans elle, « Marron » et « Marron foncé » sortaient tous deux sur `rgb(210, 166, 100)` : le parc perdait un feutre |
+
+Résultat mesuré au navigateur, dans un salon de nuit : **17 encres distinctes
+sur 17, la plus faible à 5,49:1**. Les valeurs vivent dans `FEUTRES`
+(`public/light.html`) et sont **recalculées par un test** — elles se
+régénèrent, elles ne se retouchent pas. Tout passe par `penColorFor()` : la
+saisie, les lignes du salon, les pastilles du pot, l'aperçu de la boutique. Et
+comme l'encre est posée en `style=""`, basculer en pleine conversation
+**repeint les lignes déjà écrites** (`repeindreLesEncres`, d'où le
+`data-feutre` que porte chaque ligne teintée).
 
 **L'invariant, et il est arithmétique** : aucun fond au-dessus de `0,078` de
 luminance, aucun texte en dessous de `0,654`. Les deux bornes sont choisies
@@ -353,6 +383,13 @@ n'existent nulle part dans le thème de jour — vivent dans
 la fin des feuilles engendrées. Ce qui reste **en couleur**, volontairement :
 les bouilles (dessinées dans un `<canvas>`), les fonds d'écran achetés, et les
 jeux — les teinter abîmerait la lisibilité de jeu et la fidélité d'époque.
+
+Ces retouches étant les **dernières** de la feuille, elles gagnent sur tout ce
+que la conversion a produit — y compris sur le `filter: none` d'une variante de
+nuit. La liste des `<img>` qu'elles passent encore au filtre du châssis est
+donc un pis-aller qui doit **maigrir** : quatorze écrans passés au crible, il
+n'y reste qu'un reflet de verre, voulu (`scratchpad/nuit-tournee.js` relit les
+fonds CSS, le `content` *et* le `src` nu de chaque `<img>`, et sort la liste).
 
 ## Endpoints HTTP
 

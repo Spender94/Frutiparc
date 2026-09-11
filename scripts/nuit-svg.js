@@ -252,6 +252,15 @@ const MANIFESTE = [
   // donne alors, par construction, exactement la même teinte de nuit.
   { f: 'Niveau.svg', dossier: FB, role: 'texte',
     note: 'accordé au numéro de niveau, qui est du texte' },
+
+  // LES DEUX FLÈCHES DE PAGINATION (« ‹ » et « › » des événements et du
+  // tableau des scores) sont ENTIÈREMENT ROSES : corps, face, chevron, reflet.
+  // Elles étaient pourtant les dernières de la liste des fanés — le filtre du
+  // châssis les passait au gris, faute d'une variante à servir. Le rose est
+  // l'accent du thème : la conversion le garde (`roseDeCommande`), ces deux-là
+  // n'ont donc qu'à passer par le manifeste pour retrouver leur couleur.
+  ...['fleche_gauche', 'fleche_droite'].map((n) => ({ f: n + '.svg', dossier: FB,
+    note: 'une commande rose, et elle le reste' })),
 ];
 
 // ── La reteinte ─────────────────────────────────────────────────────────────

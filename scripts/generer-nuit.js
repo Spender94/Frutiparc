@@ -386,6 +386,56 @@ function convertir(r, g, b, a, role) {
 }
 
 /*
+ * L'ENCRE DES FEUTRES — LE SEUL ENDROIT OÙ LE THÈME NE DÉCIDE PAS DE LA TEINTE.
+ *
+ * Les dix-sept feutres ne sont pas des couleurs du thème : ce sont des
+ * couleurs CHOISIES, et un bleu foncé choisi doit rester un bleu foncé. Les
+ * passer par `convertir(role:'texte')` les rendait tous lisibles — et huit
+ * d'entre eux sortaient sur la MÊME lavande, parce que la courbe du texte
+ * ramène le châssis à sa teinte. Un pot de feutres où l'orange, le kaki et le
+ * vert clair s'écrivent pareil n'est plus un pot de feutres.
+ *
+ * D'où une conversion à part, et la plus petite possible : on garde la teinte,
+ * on ne REMONTE que la clarté — juste assez pour que l'encre tienne le rapport
+ * sur le fond du chat de nuit. Six feutres sur dix-sept étaient déjà assez
+ * clairs : ils ne bougent pas d'un point.
+ *
+ * Avec, en plus, LA COMPENSATION : éclaircir une couleur la délave, et un
+ * marron remonté de trente-sept points n'est plus un marron, c'est du beige.
+ * On rend donc en saturation ce qu'on prend en clarté — proportionnellement à
+ * la montée. Ce n'est pas un embellissement : sans elle, « Marron » et
+ * « Marron foncé » sortaient tous deux sur rgb(210, 166, 100), à trois points
+ * l'un de l'autre, et le parc perdait un feutre.
+ *
+ * Le rapport visé est celui du parc (RATIO_VISE), et il laisse les dix-sept
+ * encres distinctes — c'est vérifié par un test, pas constaté à l'œil.
+ */
+// Le fond sur lequel l'encre se pose : le panneau du chat, tel que la feuille
+// de nuit le peint elle-même — pas un violet recopié à la main qui dériverait
+// le jour où la courbe des fonds bouge.
+const FOND_DU_CHAT = '#CCF599';
+const hslDe = (t) => (/hsl\(([\d.]+) ([\d.]+)% ([\d.]+)%/.exec(t) || []).slice(1).map(Number);
+// Ce qu'on rend en saturation pour cent points de clarté pris.
+const ENCRE_COMPENSATION = 1;
+
+function encreDeNuit(hex) {
+  const lumFond = luminance(...hslVersRgb(...hslDe(convertir(...hexVersRgb(FOND_DU_CHAT), 'fond'))));
+  const [hJour, sJour, lJour] = rgbVersHsl(...hexVersRgb(hex));
+  const h = Math.round(hJour);
+  // Arrondie ici, et pas seulement à l'écriture : le rapport se mesure sur la
+  // couleur qui SORT, pas sur celle qu'on avait en tête avant de l'arrondir.
+  const sPour = (l) => Math.round(Math.min(100, sJour * (1 + ENCRE_COMPENSATION * (l - lJour) / 100)));
+  const contraste = (l) => {
+    const lum = luminance(...hslVersRgb(h, sPour(l), l));
+    return (Math.max(lum, lumFond) + 0.05) / (Math.min(lum, lumFond) + 0.05);
+  };
+  let l = lJour;
+  while (l < 100 && contraste(l) < RATIO_VISE) l += 0.5;
+  l = Math.min(100, l);
+  return hsl(h, sPour(l), l, 1);
+}
+
+/*
  * « nom-nuit.svg » — LE CHANTIER DE REDESSIN, UN FICHIER À LA FOIS.
  *
  * Teindre un dessin d'époque au filtre, c'est un pis-aller : ça l'empêche de
@@ -810,5 +860,5 @@ if (require.main === module) main();
 module.exports = {
   convertir, teindreValeur, roleDe, surcharge, fabriquer, CIBLES,
   estRose, estChassis, estParchemin, rgbVersHsl, hslVersRgb, hexVersRgb, variantesNuit,
-  VIOLET, ROSE_NUIT,
+  encreDeNuit, luminance, VIOLET, ROSE_NUIT,
 };

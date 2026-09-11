@@ -2918,7 +2918,7 @@
              jour sur l'ordinateur, sans avoir à choisir une fois pour toutes.
              La carte est là pour tout le monde : qui ne possède pas l'article
              y lit à quoi elle sert, et où l'acheter. -->
-        <div class="reg-carte">
+        <div class="reg-carte" id="reg-carte-nuit">
           <div class="reg-titre">Le parc, la nuit</div>
           <div class="reg-texte">Le parc s'éteint&nbsp;: couleurs désaturées,
             fruits fanés, ciel gris nuageux et lune blafarde. Ta bouille, elle,
@@ -2928,7 +2928,7 @@
           <div class="reg-texte reg-note" id="reg-nuit-vendu" hidden></div>
         </div>
 
-        <div class="reg-carte">
+        <div class="reg-carte" id="reg-carte-notifs">
           <div class="reg-titre">Notifications</div>
           <div class="reg-texte">Courrier, messages privés, défis à Grapiz ou
             Frutibandas, événements du parc : le téléphone prévient quand tu
@@ -2946,7 +2946,7 @@
             «&nbsp;Sur l'écran d'accueil&nbsp;», puis ouvre l'appli Frutiparc.</div>
         </div>
 
-        <div class="reg-carte">
+        <div class="reg-carte" id="reg-carte-mentions">
           <div class="reg-titre">Mentions</div>
           <div class="reg-texte">Quand quelqu'un écrit «&nbsp;@ton pseudo&nbsp;», tu es
             prévenu : l'onglet de la conversation clignote, le voyant du forum s'allume,
@@ -2954,12 +2954,12 @@
           <div id="reg-mentions" class="reg-choix">…</div>
         </div>
 
-        <div class="reg-carte">
+        <div class="reg-carte" id="reg-carte-appli">
           <div class="reg-titre">L'appli</div>
           <div class="reg-texte" id="reg-install">…</div>
         </div>
 
-        <div class="reg-carte">
+        <div class="reg-carte" id="reg-carte-diag">
           <div class="reg-titre">Rien ne sonne ?</div>
           <div class="reg-texte">Le serveur ne pousse rien tant qu'il te croit
             devant un écran. Ce bouton dit ce qu'il voit.</div>
@@ -2972,7 +2972,7 @@
         <!-- MES DONNÉES — les droits du RGPD, sans avoir à écrire à personne :
              une copie de tout ce que le serveur tient (art. 15 et 20), et la
              suppression du compte (art. 17), contre le code secret. -->
-        <div class="reg-carte">
+        <div class="reg-carte" id="reg-carte-donnees">
           <div class="reg-titre">Mes données</div>
           <div class="reg-texte">Tout ce que le parc garde sur ton compte — fiche,
             scores, inventaire, courrier, messages du forum — tient dans un fichier
@@ -5358,8 +5358,8 @@
       // défiler la teinte à travers les couleurs des autres feutres, on la
       // rend donc en dégradé plutôt qu'en aplat.
       var c = it.feutre === 17
-        ? "linear-gradient(135deg," + FEUTRES.map(function (f) { return f.color; }).join(",") + ")"
-        : (FEUTRE_BY_INDEX[it.feutre] || "#888888");
+        ? "linear-gradient(135deg," + FEUTRES.map(function (f) { return penColorFor(f.i); }).join(",") + ")"
+        : (penColorFor(it.feutre) || "#888888");
       return '<span class="bo-feutre">'
         + '<img src="/fb/boutique/feutre_corps.png" alt="">'
         + '<span class="teinte" style="background:' + c + '"></span></span>';
@@ -6841,6 +6841,8 @@
     // tiroir est dans /nuit.css et suit tout seul.
     if (window.BureauFrutiz && BureauFrutiz.rafraichirFond) BureauFrutiz.rafraichirFond();
     if (invFondActuel) appliquerFond(invFondActuel);
+    // Même raison pour l'encre des feutres : elle est posée en `style=""`.
+    repeindreLesEncres();
     // Le forum est un document à part, dans son iframe — même domaine, donc on
     // peut lui tendre la main plutôt que de le recharger sous les yeux du
     // joueur (il perdrait son brouillon de message).
@@ -7768,7 +7770,7 @@
         if (em.isEmote) {
           addEmoteMessage({ from: from, time: h, label: em.label, salon: salon });
         } else {
-          addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor, salon: salon, mentions: nommes });
+          addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor, feutre: attr(xml, "p"), salon: salon, mentions: nommes });
         }
         if (from && !isAdmin && !enRejeu) showBouilleOverlay(from, em.anim, em.label, salon);
         break;
@@ -8414,7 +8416,7 @@
       inp.placeholder = "Totoché — encore "
         + Math.ceil((state.mutedUntil - Date.now()) / 60000) + " min";
     }
-    if (inp) inp.style.color = penColorFor(state.pen) || "#2C4A0F";
+    if (inp) inp.style.color = encreDeSaisie(state.pen);
     if (form) form.addEventListener("submit", function (ev) {
       ev.preventDefault();
       envoyerDansSalon(c.salon, inp ? inp.value : "", inp);
@@ -8628,6 +8630,12 @@
     // `o.totoche` : une ligne qui parle de la peine en cours. Elle porte une
     // marque pour pouvoir disparaître quand la peine tombe (oublierLeMuselage).
     if (o.totoche) row.setAttribute("data-totoche", "1");
+    // Le NUMÉRO du feutre reste sur la ligne, pas seulement sa couleur : la
+    // nuit peut tomber après coup, et une ligne déjà écrite doit pouvoir
+    // repasser à l'encre de nuit sans qu'on rejoue le salon.
+    if (o.pen && !o.multicolor && o.feutre != null && o.feutre !== "") {
+      row.setAttribute("data-feutre", String(o.feutre));
+    }
     fil.appendChild(row);
     // Cap DOM size for long sessions.
     while (fil.childNodes.length > 400) fil.removeChild(fil.firstChild);
@@ -11452,33 +11460,76 @@
   // d'un feutre est peint sur cinq colonnes, et c'est la deuxième — la plus
   // claire — qui porte la couleur nominale. Les approximations « ISO » d'avant
   // en étaient loin : l'orange est #FF6600, pas #E8732A.
+  //
+  // LA COLONNE « nuit » : la même encre, écrite sur le panneau sombre. Elle
+  // n'est pas choisie à l'œil — `encreDeNuit` (scripts/generer-nuit.js) garde
+  // la teinte, remonte la clarté jusqu'au rapport du parc et rend en
+  // saturation ce qu'elle prend en clarté, pour qu'un marron reste un marron.
+  // Six feutres étaient déjà assez clairs et ne bougent pas. Un test
+  // (test/modeNuit.test.js) recalcule les dix-sept et compare : ces valeurs se
+  // régénèrent, elles ne se retouchent pas à la main.
   var FEUTRES = [
-    { i: 0,  name: "Orange",            color: "#FF6600" },
-    { i: 1,  name: "Bleu",              color: "#6666CC" },
-    { i: 2,  name: "Vert foncé",        color: "#5EA523" },
-    { i: 3,  name: "Bordeaux",          color: "#962761" },
-    { i: 4,  name: "Rose",              color: "#F986E2" },
-    { i: 5,  name: "Jaune",             color: "#EBB601" },
-    { i: 6,  name: "Vert clair",        color: "#20D251" },
-    { i: 7,  name: "Cyan",              color: "#47B9C9" },
-    { i: 8,  name: "Bleu foncé",        color: "#472899" },
-    { i: 9,  name: "Marron",            color: "#A0752E" },
-    { i: 10, name: "Marron foncé",      color: "#66451E" },
-    { i: 11, name: "Vert kaki",         color: "#729236" },
-    { i: 12, name: "Bleu pétrole",      color: "#408877" },
-    { i: 13, name: "Vert",              color: "#5B944B" },
-    { i: 14, name: "Bleu pétrole foncé",color: "#264859" },
-    { i: 15, name: "Orange foncé",      color: "#C8400D" },
-    { i: 16, name: "Violet",            color: "#6E3C8D" },
+    { i: 0,  name: "Orange",            color: "#FF6600", nuit: "hsl(24 100% 64%)" },
+    { i: 1,  name: "Bleu",              color: "#6666CC", nuit: "hsl(240 59% 78.5%)" },
+    { i: 2,  name: "Vert foncé",        color: "#5EA523", nuit: "hsl(93 69% 45.2%)" },
+    { i: 3,  name: "Bordeaux",          color: "#962761", nuit: "hsl(329 81% 75.6%)" },
+    { i: 4,  name: "Rose",              color: "#F986E2", nuit: "hsl(312 91% 75.1%)" },
+    { i: 5,  name: "Jaune",             color: "#EBB601", nuit: "hsl(46 99% 46.3%)" },
+    { i: 6,  name: "Vert clair",        color: "#20D251", nuit: "hsl(137 74% 47.5%)" },
+    { i: 7,  name: "Cyan",              color: "#47B9C9", nuit: "hsl(187 55% 54.8%)" },
+    { i: 8,  name: "Bleu foncé",        color: "#472899", nuit: "hsl(256 83% 79.8%)" },
+    { i: 9,  name: "Marron",            color: "#A0752E", nuit: "hsl(37 65% 57.9%)" },
+    { i: 10, name: "Marron foncé",      color: "#66451E", nuit: "hsl(33 73% 59.4%)" },
+    { i: 11, name: "Vert kaki",         color: "#729236", nuit: "hsl(81 51% 49.2%)" },
+    { i: 12, name: "Bleu pétrole",      color: "#408877", nuit: "hsl(166 42% 55.7%)" },
+    { i: 13, name: "Vert",              color: "#5B944B", nuit: "hsl(107 38% 58.7%)" },
+    { i: 14, name: "Bleu pétrole foncé",color: "#264859", nuit: "hsl(200 56% 64.9%)" },
+    { i: 15, name: "Orange foncé",      color: "#C8400D", nuit: "hsl(16 100% 70.3%)" },
+    { i: 16, name: "Violet",            color: "#6E3C8D", nuit: "hsl(277 55% 75.4%)" },
   ];
   var FEUTRE_BY_INDEX = {};
-  FEUTRES.forEach(function (f) { FEUTRE_BY_INDEX[f.i] = f.color; });
-  // The user's currently selected pen index (default 0 = none/black-ish orange).
-  // null = no pen (default site colour).
+  FEUTRES.forEach(function (f) { FEUTRE_BY_INDEX[f.i] = f; });
+  function laNuitEstTombee() {
+    return document.documentElement.getAttribute("data-nuit") === "1";
+  }
+  // L'encre d'un feutre, celle du moment. TOUT passe par ici — la saisie, les
+  // lignes du salon, les pastilles du mobile, le pot de feutres — de sorte
+  // qu'allumer la nuit change l'encre partout d'un coup.
   function penColorFor(p) {
     var n = parseInt(p, 10);
     if (!Number.isFinite(n)) return null;
-    return FEUTRE_BY_INDEX[n] || null;
+    var f = FEUTRE_BY_INDEX[n];
+    if (!f) return null;
+    return (laNuitEstTombee() && f.nuit) || f.color;
+  }
+  // L'encre de la SAISIE, feutre ou pas. Sans feutre, le parc écrit dans son
+  // vert — mais de nuit on ne pose RIEN : la feuille sombre a déjà sa couleur
+  // pour `.compose input`, et un `style=""` écrit à la main passerait devant
+  // elle. C'était le dernier vert du parc éteint.
+  function encreDeSaisie(pen) {
+    return penColorFor(pen) || (laNuitEstTombee() ? "" : "#2C4A0F");
+  }
+  /**
+   * LA NUIT TOMBE SUR CE QUI EST DÉJÀ ÉCRIT. L'encre d'une ligne est posée en
+   * `style=""` au moment où elle arrive : la feuille de nuit ne peut donc rien
+   * pour les lignes d'avant, et basculer en pleine conversation laissait la
+   * moitié du salon écrite à l'encre du jour sur le panneau sombre. On les
+   * repeint — d'où le `data-feutre` que chaque ligne teintée porte.
+   */
+  function repeindreLesEncres() {
+    Array.prototype.forEach.call(document.querySelectorAll(".msg[data-feutre]"), function (row) {
+      var c = penColorFor(row.getAttribute("data-feutre"));
+      if (!c) return;
+      Array.prototype.forEach.call(row.querySelectorAll(".time, .from, .body"), function (n) {
+        n.style.color = c;
+      });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("#compose-input"), function (inp) {
+      inp.style.color = encreDeSaisie(state.pen);
+    });
+    // Le pot de feutres montre l'encre qu'il va servir : il se refait aussi —
+    // dans TOUS les cadres, le bureau clonant `#chat-panel` par salon ouvert.
+    Array.prototype.forEach.call(document.querySelectorAll("#pen-bar.show"), buildPenBar);
   }
 
   // Build the feutre swatch row once (a "none" chip + the 17 colours). Tapping a
@@ -11493,7 +11544,7 @@
     bar.appendChild(none);
     FEUTRES.forEach(function (f) {
       var sw = el("div", "pen-swatch" + (String(state.pen) === String(f.i) ? " sel" : ""));
-      sw.style.background = f.color; sw.title = f.name;
+      sw.style.background = penColorFor(f.i); sw.title = f.name;
       // Le bureau desktop montre le VRAI feutre — le bitmap #595 de main.swf
       // découpé et teinté (scripts/extract-frutiz-bureau.js). Trois dessins,
       // les trois états du bouton d'époque : au repos le feutre coiffé, au
@@ -11534,7 +11585,7 @@
     });
     // Tint the input so you see your current feutre while typing.
     Array.prototype.forEach.call(document.querySelectorAll("#compose-input"), function (inp) {
-      inp.style.color = penColorFor(idx) || "#2C4A0F";
+      inp.style.color = encreDeSaisie(idx);
     });
   }
   $("#pen-btn").addEventListener("click", function () {

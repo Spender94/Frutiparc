@@ -354,10 +354,13 @@ test('les cartes de l’appareil se cachent vraiment', () => {
   assert.match(JS, /if \(corps\) corps\.hidden = !\(p && p\.local !== undefined\);/);
   // Et l'écart est assumé par écrit : ces trois cartes n'ont pas d'original.
   assert.match(CSS, /ÉCART ASSUMÉ — la rubrique « Cet appareil »/);
-  const loc = /var PF_LOCALES = \{[\s\S]*?\n  \};/.exec(JS);
+  const loc = /var PF_LOCALES = \[\{[\s\S]*?\n  \}\];/.exec(JS);
   assert.ok(loc, 'PF_LOCALES doit exister');
   assert.match(loc[0], /name: 'Cet appareil',/);
-  assert.match(loc[0], /\{ local: 0, label: 'Notifications' \},/);
+  // Par IDENTIFIANT, pas par rang : une carte ajoutée en tête de `#reg-corps`
+  // décalait tout l'arbre, et « Notifications » ouvrait la carte du voisin.
+  assert.match(loc[0], /\{ local: 'reg-carte-notifs', label: 'Notifications' \},/);
+  assert.ok(!/\{ local: \d+,/.test(JS), 'plus aucune rubrique ne désigne sa carte par son rang');
 });
 
 /* ── 6. CE QUE LE BUREAU FAIT DES PRÉFÉRENCES ─────────────────────────────── */
