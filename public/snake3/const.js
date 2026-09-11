@@ -426,6 +426,26 @@ C.FOND_PORTAIL = '#ade76b';
 C.FOND_SCENE = '#5c9a18';
 C.CADRE_SCENE = { x: 0.45, e: 2 };
 
+/*
+ * LES CLIPS D'ENROBAGE — snake3_fruit (451) et snake3_bonus (450), le fruit
+ * ou l'option « qui paraît/disparaît ».
+ *
+ * L'échelle de leur enfant `f` (la planche), image par image, lue dans le SWF
+ * (PlaceObject2, a = d uniformes) : images 1 à 9 « apparait » — le rebond,
+ * qui DÉPASSE la taille (1,2 pour le fruit, 1,5 pour l'option) —, image 10 le
+ * `stop()` de la timeline (l'objet au repos est à CENT POUR CENT), image 15
+ * « disparait », et la 24e du fruit est l'ombre. Le rendu les joue (rendu.js,
+ * Enrobage) ; et comme Flash mangeait au cadre du CLIP — Std.hitTest(fruit,
+ * col), les rectangles englobants —, la hitbox du moteur suit la même échelle
+ * (niveau.js : Fruit.eat, Option, hit_fruit).
+ */
+C.ECHELLES_FRUIT = [0.1, 0.436, 0.711, 0.925, 1.078, 1.169, 1.2, 1.178,
+  1.089, 1, 1, 1, 1, 1, 1, 0.986, 0.944, 0.873, 0.775, 0.648, 0.494, 0.311, 0.1];
+C.ECHELLES_BONUS = [0.1, 0.528, 0.878, 1.15, 1.344, 1.461, 1.5, 1.444,
+  1.278, 1, 1, 1, 1, 1, 1, 0.986, 0.944, 0.873, 0.775, 0.648, 0.494, 0.311, 0.1];
+C.CLIP_STOP = 10;                    // le `stop()` des deux timelines : le repos
+C.CLIP_DISPARAIT = 15;               // l'étiquette « disparait » des deux
+
 const API = C;
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.SnakeConst = API;

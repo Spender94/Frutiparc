@@ -13,6 +13,14 @@
  * l'extraction) : generate_pos les utilise pour ne rien poser à cheval sur un
  * bord — avec le quirk d'époque : la marge se calcule sur la taille NATURELLE
  * du dessin (`fmc._width × 100/_xscale`), pas sur sa taille à l'écran.
+ *
+ * Et le cadre est celui du CLIP, qui a une vie : snake3_fruit rebondit à
+ * l'apparition (un dixième de sa taille à la première image, 1,2 au sommet,
+ * cent pour cent au `stop()` de l'image 10 — C.ECHELLES_FRUIT), et
+ * Std.hitTest le prenait tel quel. Un fruit à peine posé ne se mangeait donc
+ * pas, et un fruit au sommet de son rebond se prenait un peu plus loin. Le
+ * moteur tient l'image du clip (`image`, avancée par tmod) pour que sa hitbox
+ * suive — et le rendu, qui joue le même clip, dessine ce qu'on mange.
  */
 'use strict';
 
@@ -21,6 +29,16 @@
 const sousNode = (typeof module !== 'undefined' && module.exports);
 const C = sousNode ? require('./const.js') : racine.SnakeConst;
 const S = sousNode ? require('./serpent.js') : racine.SnakeSerpent;
+
+// L'image du clip d'enrobage : une par image d'écran (40 i/s, l'en-tête du
+// SWF), quand tmod compte en trente-deuxièmes de seconde. Elle s'arrête au
+// `stop()` ; « disparait » n'est pas son affaire (l'objet est déjà retiré).
+function avancerClip(o, tmod) {
+  if (o.image < C.CLIP_STOP) o.image = Math.min(C.CLIP_STOP, o.image + tmod * C.SWF_FPS / C.WANTED_FPS);
+}
+function echelleClip(o, echelles) {
+  return echelles[Math.min(C.CLIP_STOP, Math.max(1, Math.floor(o.image))) - 1];
+}
 
 // Recouvrement de deux cadres centrés (Std.hitTest entre clips : les
 // rectangles englobants, en coordonnées de scène).
@@ -41,8 +59,12 @@ class Fruit extends S.Mobile {
     this.on_eat = (serpent) => { serpent.add_queue(this.id); };
     this.geant = false;               // la canne : dessiné en « standard » ×3
     this.points_fixes = null;         //   … et dix fois sa valeur, figée
+    this.image = 1;                   // l'image du clip d'enrobage (451)
     this.majCadre();
   }
+
+  /** L'échelle du clip à cet instant — Flash mangeait à ce cadre-là. */
+  echelleClip() { return echelleClip(this, C.ECHELLES_FRUIT); }
 
   majCadre() {
     const d = this.niveau.dims.fruit(this.id);
@@ -65,12 +87,14 @@ class Fruit extends S.Mobile {
   }
 
   eat(col) {
+    const k = this.echelleClip();
     return this.z === 0 && cadresSeTouchent(
-      this.x, this.y, this.w, this.h, col.x, col.y, col.w, col.h);
+      this.x, this.y, this.w * k, this.h * k, col.x, col.y, col.w, col.h);
   }
 
   move(tmod) {
     this.bouger(tmod);
+    avancerClip(this, tmod);
     if (this.moving) return true;
     this.time -= tmod;
     return this.time > 0;
@@ -93,13 +117,18 @@ class Option extends S.Mobile {
     this.id = id;
     this.time = time;
     this.rotation = 0;
+    this.image = 1;                   // l'image du clip d'enrobage (450)
     const d = niveau.dims.bonus(id);
     this.w = d.w;
     this.h = d.h;
   }
 
+  /** L'échelle du clip à cet instant (le rebond de l'option monte à 1,5). */
+  echelleClip() { return echelleClip(this, C.ECHELLES_BONUS); }
+
   update(partie, tmod) {
     this.bouger(tmod);
+    avancerClip(this, tmod);
     // La flèche bleue tourne sur elle-même ; la rouge suit l'angle du serpent.
     if (this.id === 23) this.rotation += C.FLECHE_ROTATION_SPEED;
     if (this.id === 24) this.rotation = partie.serpent.ang * 180 / Math.PI;
@@ -217,11 +246,15 @@ class Niveau {
     return null;
   }
 
-  // Level.hit_fruit(mc) — la langue : cadre contre cadre, vol compris.
+  // Level.hit_fruit(mc) — la langue : cadre contre cadre, vol compris. Le
+  // cadre est celui du clip tel qu'il se dessine : à l'échelle de son image
+  // et, en vol, levé de z et grossi de (100 + z) % — ce que Moveable.move pose
+  // (`_y = y − z`, `_xscale = (100 + z) × scale`) et que le rendu montre.
   hit_fruit(cadre) {
     for (let i = 0; i < this.fruits.length; i++) {
       const f = this.fruits[i];
-      if (cadresSeTouchent(f.x, f.y, f.w, f.h, cadre.x, cadre.y, cadre.w, cadre.h)) {
+      const k = f.echelleClip() * (100 + f.z) / 100;
+      if (cadresSeTouchent(f.x, f.y - f.z, f.w * k, f.h * k, cadre.x, cadre.y, cadre.w, cadre.h)) {
         this.fruits.splice(i, 1);
         return f;
       }
@@ -236,8 +269,9 @@ class Niveau {
   get_bonus(col) {
     for (let i = 0; i < this.bonuses.length; i++) {
       const b = this.bonuses[i];
+      const k = b.echelleClip();
       if (!b.isMoving() && cadresSeTouchent(
-        b.x, b.y, b.w, b.h, col.x, col.y, col.w, col.h)) {
+        b.x, b.y, b.w * k, b.h * k, col.x, col.y, col.w, col.h)) {
         this.bonuses.splice(i, 1);
         return b;
       }

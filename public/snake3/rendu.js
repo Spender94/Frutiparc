@@ -33,16 +33,12 @@ const rgb = (n) => {
 };
 
 // Les échelles de l'enfant `f` des clips snake3_fruit (451) et snake3_bonus
-// (450), image par image — lues dans le SWF (PlaceObject2, a=d uniformes).
-// 1-9 : « apparait » (rebond), 10-15 : « standard », 16-23 : « disparait »,
-// et la 24e du fruit est l'ombre (teinte figée #4E8114 dans le clip).
-const ECHELLES_FRUIT = [0.1, 0.436, 0.711, 0.925, 1.078, 1.169, 1.2, 1.178,
-  1.089, 1, 1, 1, 1, 1, 1, 0.986, 0.944, 0.873, 0.775, 0.648, 0.494, 0.311, 0.1];
-const ECHELLES_BONUS = [0.1, 0.528, 0.878, 1.15, 1.344, 1.461, 1.5, 1.444,
-  1.278, 1, 1, 1, 1, 1, 1, 0.986, 0.944, 0.873, 0.775, 0.648, 0.494, 0.311, 0.1];
-const F_STANDARD_FRUIT = 9;          // étiquette « standard » de 451
-const F_DISPARAIT_FRUIT = 15;
-const F_DISPARAIT_BONUS = 15;        // 450 : étiquette « disparait » (f15, encore à 100 %)
+// (450), image par image, vivent dans const.js (C.ECHELLES_*) : la hitbox du
+// moteur les suit aussi. L'OBJET AU REPOS EST SUR L'IMAGE 10 — celle du
+// `stop()` de la timeline — et non sur l'étiquette « standard » (image 9,
+// encore à 108,9 %) : on y figeait le fruit, qui se dessinait donc neuf pour
+// cent plus grand que sa hitbox, et la bouche l'effleurait sans le manger.
+// La 24e image du fruit est l'ombre (teinte figée #4E8114 dans le clip).
 const OMBRE_FRUIT = '#4e8114';       // le cxform de l'image « ombre » de 451
 const OMBRE_BONUS = rgb(C.COLOR_FRUIT_OMBRE);
 
@@ -488,9 +484,9 @@ class Enrobage {
     // du SWF) : un clip Flash avance d'une image par image d'écran, pas au
     // rythme de tmod.
     this.tempsFrame += deltaT * C.SWF_FPS;
-    const echelles = this.genre === 'fruit' ? ECHELLES_FRUIT : ECHELLES_BONUS;
-    const standard = this.genre === 'fruit' ? F_STANDARD_FRUIT : 10;
-    const dispar = this.genre === 'fruit' ? F_DISPARAIT_FRUIT : F_DISPARAIT_BONUS;
+    const echelles = this.genre === 'fruit' ? C.ECHELLES_FRUIT : C.ECHELLES_BONUS;
+    const standard = C.CLIP_STOP;
+    const dispar = C.CLIP_DISPARAIT;
     while (this.tempsFrame >= 1) {
       this.tempsFrame -= 1;
       this.film++;
@@ -506,7 +502,7 @@ class Enrobage {
   }
 
   echelle() {
-    const echelles = this.genre === 'fruit' ? ECHELLES_FRUIT : ECHELLES_BONUS;
+    const echelles = this.genre === 'fruit' ? C.ECHELLES_FRUIT : C.ECHELLES_BONUS;
     return echelles[Math.min(echelles.length, Math.max(1, this.frame)) - 1];
   }
 }
@@ -515,10 +511,15 @@ function dessinerEnrobe(ctx, enr) {
   const o = enr.objet;
   const cle = enr.genre === 'fruit' ? 'fruits' : 'options';
   const kClip = enr.echelle();
-  const kZ = (100 + (o.z || 0)) / 100 * (o.echelle || 1);
+  // `scale` est celui de Moveable — un pour tous, TROIS pour le fruit géant de
+  // la canne (Canne.as : `f.scale = 3`, et Moveable.move pose `_xscale =
+  // (100 + z) × scale`). On lisait ici un `echelle` que personne ne posait :
+  // le fruit géant se dessinait à sa taille ordinaire, avec une hitbox trois
+  // fois plus grande que lui — le serpent le mangeait de loin.
+  const kZ = (100 + (o.z || 0)) / 100 * (o.scale || 1);
   // L'ombre du saut (Moveable.move) : le même dessin, teinté, au sol.
   if (o.z && o.z !== 0) {
-    const kO = (100 - o.z / 2) / 100 * (o.echelle || 1);
+    const kO = (100 - o.z / 2) / 100 * (o.scale || 1);
     teinter(ctx, cle, o.id, o.x + o.z / 4, o.y + o.z / 3, kClip * kO,
       enr.genre === 'fruit' ? OMBRE_FRUIT : OMBRE_BONUS, enr.film);
   }
@@ -691,7 +692,6 @@ const API = {
   geometrieCorps, remplirTube, tracerSegment, passeTraits,
   Enrobage, dessinerEnrobe, teinter,
   dangerBombe, dessinerZoneBombe, dessinerQueueCondamnee, ASSIST,
-  ECHELLES_FRUIT, ECHELLES_BONUS,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.SnakeRendu = API;

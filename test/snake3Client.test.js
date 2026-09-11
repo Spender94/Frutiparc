@@ -189,8 +189,9 @@ test('Nombre : l\'ancre au bord droit, chaque chiffre reculé de sa chasse', () 
 test('les échelles d\'enrobage recopiées collent au SWF, image par image', () => {
   const { ouvrir } = require('../scripts/lib/swf-sprites.js');
   const swf = ouvrir(path.join(RACINE, 'Games/snake3/snake3.swf'));
-  const R = require('../public/snake3/rendu.js');
-  for (const [id, table] of [[451, R.ECHELLES_FRUIT], [450, R.ECHELLES_BONUS]]) {
+  // Les tables vivent dans const.js : le rendu les joue, le moteur les mange.
+  const C = require('../public/snake3/const.js');
+  for (const [id, table] of [[451, C.ECHELLES_FRUIT], [450, C.ECHELLES_BONUS]]) {
     const frames = swf.parSprite.get(id);
     for (let f = 1; f <= table.length; f++) {
       const p = frames.get(f).find((q) => q.nom === 'f');
@@ -1394,6 +1395,81 @@ test('la bouche s\'élargit quand la tête tourne, comme le cadre d\'un clip tou
     assert.ok(Math.abs(a.w - (d.w * co + d.h * si) * echelle) < 0.01, 'largeur à ' + ang);
     assert.ok(Math.abs(a.h - (d.w * si + d.h * co) * echelle) < 0.01, 'hauteur à ' + ang);
   }
+});
+
+/*
+ * LA HITBOX D'UN FRUIT EST CELLE DE SON CLIP — et le clip a une vie.
+ *
+ * Flash mangeait au cadre du clip snake3_fruit (Std.hitTest(fruit, col)), dont
+ * l'enfant `f` rebondit à l'apparition (0,1 → 1,2 → 1) et s'arrête à l'image
+ * 10, à cent pour cent. Deux écarts d'avec 2004 : le rendu figeait le fruit sur
+ * l'image 9 (l'étiquette « standard », encore à 108,9 %) — dessiné neuf pour
+ * cent plus grand que sa hitbox, la bouche l'effleurait sans le manger ; et la
+ * hitbox ignorait le rebond — un fruit à peine posé se mangeait à sa taille
+ * pleine, quand Flash ne lui donnait qu'un dixième. Et le fruit géant de la
+ * canne se dessinait à sa taille ordinaire avec une hitbox trois fois plus
+ * grande.
+ */
+test('un fruit au repos est à cent pour cent, et sa hitbox suit le rebond du clip comme en Flash', () => {
+  const C = require(path.join(RACINE, 'public/snake3/const.js'));
+  const N = require(path.join(RACINE, 'public/snake3/niveau.js'));
+  // Les échelles sont celles du SWF : l'image 10, le stop(), est à 1 — pas la 9.
+  assert.equal(C.CLIP_STOP, 10);
+  assert.equal(C.ECHELLES_FRUIT[9], 1);
+  assert.equal(C.ECHELLES_FRUIT[8], 1.089, 'l\'image 9 n\'est PAS le repos');
+  assert.equal(C.ECHELLES_FRUIT[6], 1.2);
+  assert.equal(C.ECHELLES_BONUS[9], 1);
+  assert.equal(C.ECHELLES_BONUS[6], 1.5);
+  // Le rendu s'arrête bien à l'image 10 : au repos, le fruit se dessine à sa taille.
+  const w = bacASable();
+  const niveau = new N.Niveau({ dims: { fruit: () => ({ w: 40, h: 40 }), bonus: () => ({ w: 30, h: 30 }) } });
+  const f = new N.Fruit(niveau, 1, 100);
+  f.x = 100; f.y = 100;
+  const enr = new w.SnakeRendu.Enrobage(f, 'fruit');
+  for (let i = 0; i < 30; i++) enr.main(1 / C.SWF_FPS);
+  assert.equal(enr.frame, 10);
+  assert.equal(enr.echelle(), 1);
+  const rendu = fs.readFileSync(path.join(RACINE, 'public/snake3/rendu.js'), 'utf8');
+  assert.doesNotMatch(rendu, /F_STANDARD_FRUIT|ECHELLES_FRUIT = \[/, 'plus de table ni de repos à part dans le rendu');
+  assert.match(rendu, /const standard = C\.CLIP_STOP;/);
+  // Le fruit géant se dessine à l'échelle de Moveable (`scale`, trois pour la canne).
+  assert.match(rendu, /const kZ = \(100 \+ \(o\.z \|\| 0\)\) \/ 100 \* \(o\.scale \|\| 1\);/);
+  assert.doesNotMatch(rendu, /o\.echelle/, 'plus de lecture d\'un `echelle` que personne ne pose');
+
+  // La hitbox : une bouche à 50 du centre touche le cadre plein (40 + 12 ≥ 50),
+  // pas le dixième (4 + 12).
+  const bouche = { x: 125, y: 100, w: 12, h: 12 };
+  assert.equal(f.image, 1);
+  assert.equal(f.eat(bouche), false, 'à peine posé, le fruit fait un dixième : rien à manger');
+  // Neuf images d'écran plus tard (tmod 0,8 par image à 40 i/s), le clip est
+  // sur son image 10 : la hitbox est pleine.
+  for (let i = 0; i < 9; i++) f.move(0.8);
+  assert.ok(Math.abs(f.image - 10) < 1e-9, 'image ' + f.image);
+  assert.equal(f.eat(bouche), true);
+  // Au sommet du rebond (image 7, 120 %), une bouche à 58 le prend encore
+  // (48 + 12 ≥ 58) ; au repos, non (40 + 12).
+  const loin = { x: 129, y: 100, w: 12, h: 12 };
+  f.image = 7;
+  assert.equal(f.eat(loin), true, 'à 120 %, la hitbox déborde comme le dessin');
+  f.image = 10;
+  assert.equal(f.eat(loin), false);
+  // Le clip ne dépasse jamais son stop, même sur une longue partie.
+  for (let i = 0; i < 50; i++) f.move(1.3);
+  assert.equal(f.image, 10);
+  assert.equal(f.echelleClip(), 1);
+  // La langue et les options suivent la même règle.
+  niveau.fruits.push(f);
+  f.image = 1;
+  assert.equal(niveau.hit_fruit(bouche), null, 'la langue non plus, sur un dixième');
+  f.image = 10;
+  assert.equal(niveau.hit_fruit(bouche), f);
+  const b = new N.Option(niveau, 3, 100);
+  b.x = 300; b.y = 300;
+  niveau.bonuses.push(b);
+  const gueule = { x: 320, y: 300, w: 12, h: 12 };               // 30 + 12 ≥ 40, pas 3 + 12
+  assert.equal(niveau.get_bonus(gueule), null, 'une option qui paraît ne se prend pas encore');
+  for (let i = 0; i < 9; i++) b.update({ serpent: { ang: 0 } }, 0.8);
+  assert.equal(niveau.get_bonus(gueule), b);
 });
 
 // Le corps, lui, est tracé en COURBES. On approchait naguère chaque segment
