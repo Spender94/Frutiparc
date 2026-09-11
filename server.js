@@ -22238,8 +22238,13 @@ app.get('/api/club/players', async (req, res) => {
 });
 
 // Consecration ranking: every known player sorted by overall consecration score.
-// (Le Club ne l'affiche plus : la consécration a sa ligne au tableau des scores
-// de /light, la répéter ici n'apprenait rien. La route reste servie.)
+//
+// LE CLUB L'AFFICHE DE NOUVEAU, avec ce que la ligne du tableau des scores de
+// /light ne dit pas : d'où vient le pourcentage — les pictos gagnés dans
+// chaque jeu compté (`games[].unlocked / total`) et leur total. Seuls les
+// joueurs consacrés (plus de zéro) sont classés, comme au « Class.
+// consécration » du bureau (getConsecrationLeaderboard) : un inscrit sans
+// picto n'a pas de rang à tenir.
 app.get('/api/club/consecration', async (req, res) => {
   try {
     const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
@@ -22266,6 +22271,7 @@ app.get('/api/club/consecration', async (req, res) => {
         } catch (e) { /* ignore */ }
       }
       const c = computeConsecration(username);
+      if (!(c.overall > 0)) continue;
       players.push({
         user: getDisplayName(username),
         overall: c.overall,

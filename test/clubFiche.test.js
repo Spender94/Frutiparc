@@ -264,10 +264,71 @@ test('un joueur sans médaille reçoit une fiche vide, pas une erreur', async ()
   assert.ok(d.records.length >= 1, 'mais son record est bien là');
 });
 
-test('la page du Club n\'affiche plus la consécration, et ouvre une fiche', async () => {
+/*
+ * LA CONSÉCRATION EST DE RETOUR AU CLUB — avec le compte des pictos.
+ *
+ * L'onglet était parti avec l'arrivée de la fiche (« la répéter ici
+ * n'apprenait rien »). Il revient parce qu'il apprend maintenant quelque
+ * chose : d'où vient le pourcentage — les pictos gagnés dans chaque jeu compté
+ * et leur total, sur une colonne par jeu. Et seuls les joueurs consacrés sont
+ * classés : un inscrit sans picto n'a pas de rang à tenir.
+ */
+test('la page du Club affiche de nouveau la consécration, avec les pictos par jeu et leur total', async () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/club/index.html'), 'utf8');
-  assert.equal(/data-tab="consecration"/.test(html), false, 'plus d\'onglet consécration');
-  assert.ok(/data-tab="fiche"/.test(html), 'un onglet « Fiche joueur » à la place');
+  assert.ok(/data-tab="consecration"/.test(html), 'l\'onglet consécration est revenu');
+  assert.ok(/id="panel-consecration"/.test(html), 'et son panneau');
+  assert.ok(/fetch\('\/api\/club\/consecration\?limit=' \+ limit\)/.test(html), 'qui interroge le classement');
+  assert.ok(/tab === 'consecration' && !consecrationData\) loadConsecration\(\)/.test(html), 'chargé à l\'ouverture de l\'onglet');
+  // Une colonne par jeu compté, le compte « gagnés/total », le total à droite.
+  assert.ok(/jeux\.map\(\(g\) => '<th class="jeu">' \+ escapeHtml\(g\.name\) \+ '<\/th>'\)/.test(html), 'une colonne par jeu');
+  assert.ok(/g\.unlocked \+ '\/' \+ g\.total/.test(html), 'le compte des pictos du jeu');
+  assert.ok(/<th class="jeu total">Pictos<\/th>/.test(html), 'la colonne des totaux');
+  assert.ok(/t\.gagnes \+ '\/' \+ t\.total/.test(html), 'le total des pictos gagnés sur le total possible');
+  assert.ok(/lienJoueur\(p\.user\)/.test(html), 'chaque pseudo ouvre sa fiche');
+  assert.ok(/\.conse-defile \{ overflow-x: auto; \}/.test(html), 'neuf jeux de large : le tableau défile sur petit écran');
+});
+
+test('le classement de consécration : les pictos par jeu, et pas de rang sans picto', async () => {
+  const consacre = 'clubfc' + RUN, vide = 'clubfd' + RUN;
+  for (const u of [consacre, vide]) {
+    await fetch(BASE + '/api/auth/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u, password: 'secret123' }),
+    });
+  }
+  // Deux papillons de Kaluga et un fruit de Frutisnake — donnés par l'admin.
+  for (const itemName of ['$butterfly0', '$butterfly1', 'Fruit 12']) {
+    const r = await fetch(`${BASE}/api/admin/users/${consacre}/gameitems`, {
+      method: 'POST', headers: hdr, body: JSON.stringify({ itemName }),
+    });
+    assert.equal(r.status, 200, 'picto ' + itemName);
+  }
+  const d = await (await fetch(BASE + '/api/club/consecration?limit=50')).json();
+  const moi = d.players.find((p) => p.user === consacre);
+  assert.ok(moi, 'le joueur consacré est classé');
+  assert.ok(moi.overall > 0);
+  assert.ok(Array.isArray(moi.games) && moi.games.length === moi.enabledCount, 'un compte par jeu compté');
+  const kaluga = moi.games.find((g) => g.id === 'kaluga');
+  const snake = moi.games.find((g) => g.id === 'snake3');
+  assert.equal(kaluga.unlocked, 2, 'deux pictos Kaluga');
+  assert.ok(kaluga.total > 2, 'sur le total de l\'album');
+  assert.equal(snake.unlocked, 1);
+  assert.equal(snake.total, 322);
+  assert.ok(!moi.games.some((g) => g.id === 'minifever'), 'Mini-Fever reste hors calcul');
+  // Le total des pictos, tel que la page l'affiche : la somme des colonnes.
+  const gagnes = moi.games.reduce((s, g) => s + (g.mode === 'completion' ? 0 : g.unlocked), 0);
+  assert.equal(gagnes, 3);
+  // L'inscrit sans picto n'y est pas — ni dans la liste, ni dans le compte.
+  assert.ok(!d.players.some((p) => p.user === vide), 'pas de rang à zéro');
+  assert.ok(d.totalPlayers >= d.players.length, 'le compte dit les consacrés, la liste en montre au plus cinquante');
+  assert.ok(d.players.every((p) => p.overall > 0), 'tous les classés sont consacrés');
+  // Classés du plus consacré au moins.
+  for (let i = 1; i < d.players.length; i++) assert.ok(d.players[i - 1].overall >= d.players[i].overall);
+});
+
+test('la page du Club ouvre une fiche', async () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/club/index.html'), 'utf8');
+  assert.ok(/data-tab="fiche"/.test(html), 'un onglet « Fiche joueur »');
   assert.ok(/api\/club\/player\?u=/.test(html), 'qui interroge la fiche');
   // La tête de la fiche était une capture PNG du serveur, qu'il fallait avoir
   // réchauffée par Ruffle ; c'est un canevas que le moteur JS dessine à partir

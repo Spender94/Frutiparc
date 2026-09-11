@@ -199,6 +199,36 @@
   a.username { cursor: pointer; }
   a.username:hover { text-decoration: underline; }
 
+  /* Consécration : le pourcentage et sa jauge, puis une colonne par jeu
+     compté (« 9/22 », en or quand l'album est complet) et le total. Le
+     tableau est large — neuf jeux — : il défile dans son cadre sur petit
+     écran plutôt que de déborder de la page. */
+  .conse-info {
+    background: #ADE76B;
+    color: #2C4A0F;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+  }
+  .conse-score { display: flex; flex-direction: column; gap: 3px; min-width: 90px; }
+  .conse-pct-val { font-weight: bold; color: #2C4A0F; font-family: "Courier New", monospace; }
+  .conse-bar-mini {
+    width: 90px;
+    height: 8px;
+    background: #fff;
+    border: 1px solid #8bc55a;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .conse-fill-mini { height: 100%; background: linear-gradient(to right, #8fc63f, #E3756A); }
+  .conse-defile { overflow-x: auto; }
+  .conse-table thead th.jeu { text-align: center; width: auto; padding: 5px 4px; font-size: 10px; white-space: nowrap; }
+  .conse-table tbody td.jeu { text-align: center; padding: 7px 4px; white-space: nowrap; font-family: "Courier New", monospace; }
+  .conse-table td.jeu.complet { color: #b58900; font-weight: bold; }
+  .conse-table th.total, .conse-table td.total { border-left: 2px solid #fff; font-weight: bold; }
+
   /* Records grid */
   .records-area { padding: 8px; background: #fff; }
   .group-title {
@@ -414,6 +444,7 @@
   <div class="tabs">
     <button class="tab active" data-tab="medalists">Top médaillés</button>
     <button class="tab" data-tab="records">Records par jeu</button>
+    <button class="tab" data-tab="consecration">Consécration</button>
     <button class="tab" data-tab="fiche">Fiche joueur</button>
   </div>
 
@@ -453,6 +484,23 @@
     <div id="records-content" class="loading">Chargement…</div>
   </div>
 
+  <!-- La consécration : le pourcentage de chacun, ET d'où il vient — les
+       pictos gagnés dans chaque jeu compté, et leur total. -->
+  <div id="panel-consecration" class="panel hidden">
+    <div class="toolbar">
+      <button class="btn" onclick="loadConsecration()">Actualiser</button>
+      <label>Top&nbsp;:
+        <select id="conse-limit" onchange="loadConsecration()">
+          <option value="20">20</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+        </select>
+      </label>
+      <span id="conse-summary" class="summary"></span>
+    </div>
+    <div id="consecration-content" class="loading">Chargement…</div>
+  </div>
+
   <div id="panel-fiche" class="panel hidden">
     <div class="toolbar">
       <label>Pseudo&nbsp;:
@@ -483,15 +531,93 @@
 <script src="/js/bouille-vignette.js"></script>
 <script>
   let recordsData = null;
+  let consecrationData = null;
   let joueursCharges = false;
 
   function activerOnglet(tab) {
     document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.getAttribute('data-tab') === tab));
     document.getElementById('panel-medalists').classList.toggle('hidden', tab !== 'medalists');
     document.getElementById('panel-records').classList.toggle('hidden', tab !== 'records');
+    document.getElementById('panel-consecration').classList.toggle('hidden', tab !== 'consecration');
     document.getElementById('panel-fiche').classList.toggle('hidden', tab !== 'fiche');
     if (tab === 'records' && !recordsData) loadRecords();
+    if (tab === 'consecration' && !consecrationData) loadConsecration();
     if (tab === 'fiche') chargerListeJoueurs();
+  }
+
+  async function loadConsecration() {
+    const root = document.getElementById('consecration-content');
+    root.className = 'loading';
+    root.textContent = 'Chargement…';
+    const limit = document.getElementById('conse-limit').value || 50;
+    try {
+      const r = await fetch('/api/club/consecration?limit=' + limit);
+      consecrationData = await r.json();
+      renderConsecration();
+    } catch (e) {
+      root.className = 'loading';
+      root.textContent = 'Erreur de chargement: ' + e.message;
+    }
+  }
+
+  /*
+   * LE CLASSEMENT DE CONSÉCRATION, AVEC LE COMPTE DES PICTOS.
+   *
+   * Le pourcentage seul ne disait pas d'où il venait, et l'onglet avait
+   * disparu au profit de la fiche. Il revient avec, pour chaque joueur, les
+   * pictos gagnés dans chaque jeu compté (« 9/22 »), et leur total — un album
+   * complet s'écrit en or. Un jeu compté « à la finition » (mode completion,
+   * s'il s'en présente) s'écrit ✓ ou —. Les jeux hors calcul (Mini-Fever, les
+   * pictos inédits) n'y figurent pas : ils ne pèsent pas sur le pourcentage.
+   */
+  function renderConsecration() {
+    const root = document.getElementById('consecration-content');
+    const players = (consecrationData && consecrationData.players) || [];
+    const summary = document.getElementById('conse-summary');
+    const n = consecrationData && consecrationData.totalPlayers;
+    summary.textContent = n != null ? (n + ' joueur' + (n > 1 ? 's' : '') + ' consacré' + (n > 1 ? 's' : '')) : '';
+    if (!players.length) {
+      root.className = 'loading';
+      root.textContent = 'Aucun joueur à classer pour le moment.';
+      return;
+    }
+    const jeux = players[0].games || [];
+    const perGameMax = players[0].perGameMax || 0;
+    const compte = (g) => (g.mode === 'completion' ? (g.unlocked ? '✓' : '—') : (g.unlocked + '/' + g.total));
+    const totaux = (p) => (p.games || []).reduce((t, g) => {
+      if (g.mode !== 'completion') { t.gagnes += g.unlocked; t.total += g.total; }
+      return t;
+    }, { gagnes: 0, total: 0 });
+    let html = '<div class="conse-info">'
+      + jeux.length + ' jeu' + (jeux.length > 1 ? 'x' : '') + ' pris en compte — un album complet vaut '
+      + perGameMax.toFixed(2) + ' % ; Mini-Fever et les pictos inédits restent hors calcul.'
+      + '</div>';
+    html += '<div class="conse-defile"><table class="conse-table"><thead><tr>'
+      + '<th class="num">#</th>'
+      + '<th>Joueur</th>'
+      + '<th>Consécration</th>'
+      + jeux.map((g) => '<th class="jeu">' + escapeHtml(g.name) + '</th>').join('')
+      + '<th class="jeu total">Pictos</th>'
+      + '</tr></thead><tbody>';
+    players.forEach((p, i) => {
+      const rk = i + 1;
+      const rkClass = rk <= 3 ? 'rank-cell r' + rk : 'rank-cell';
+      const pct = Number(p.overall) || 0;
+      const t = totaux(p);
+      html += '<tr>'
+        + '<td class="' + rkClass + '">' + rk + '</td>'
+        + '<td>' + lienJoueur(p.user) + '</td>'
+        + '<td><div class="conse-score">'
+        +   '<span class="conse-pct-val">' + pct.toFixed(2) + ' %</span>'
+        +   '<div class="conse-bar-mini"><div class="conse-fill-mini" style="width:' + Math.min(pct, 100) + '%"></div></div>'
+        + '</div></td>'
+        + (p.games || []).map((g) => '<td class="jeu' + (g.total > 0 && g.unlocked >= g.total ? ' complet' : '') + '">' + compte(g) + '</td>').join('')
+        + '<td class="jeu total">' + t.gagnes + '/' + t.total + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table></div>';
+    root.className = '';
+    root.innerHTML = html;
   }
 
   document.querySelectorAll('.tab').forEach(btn => {
