@@ -251,7 +251,7 @@ a:hover {
   border-bottom: 1px solid hsl(256 26% 38.6%);
 }
 .consecration-banner {
-  background: linear-gradient(135deg, hsl(256 30% 14.9%), hsl(256 30% 23.3%));
+  background: linear-gradient(135deg, hsl(256 30% 23.3%), hsl(256 30% 17.5%));
   border: 1px solid hsl(256 26% 45.6%);
 }
 .consecration-banner .conse-title {
@@ -265,7 +265,7 @@ a:hover {
   border: 1px solid hsl(256 26% 45.6%);
 }
 .consecration-banner .conse-fill {
-  background: linear-gradient(90deg, hsl(256 30% 36%), hsl(256 30% 36%));
+  background: linear-gradient(90deg, hsl(256 30% 36%), hsl(256 30% 23.9%));
 }
 .consecration-banner .conse-game {
   background: hsl(256 30% 10%);
@@ -468,18 +468,18 @@ a:hover {
   border: 1px solid hsl(256 26% 56.4%);
 }
 .editor-bbcode-toolbar .bb-btn {
-  background: linear-gradient(180deg, hsl(256 30% 11.4%) 0%, hsl(256 30% 22.1%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 22.1%) 0%, hsl(256 30% 14.7%) 100%);
   border: 1px solid hsl(256 26% 44.9%);
   color: hsl(256 13% 84.5%);
 }
 .editor-bbcode-toolbar .bb-btn:hover {
-  background: linear-gradient(180deg, hsl(256 30% 10%) 0%, hsl(256 30% 17.3%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 17.3%) 0%, hsl(256 30% 12.2%) 100%);
 }
 .editor-bbcode-toolbar .bb-btn:active {
-  background: linear-gradient(180deg, hsl(256 30% 22.1%) 0%, hsl(256 30% 11.4%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 14.7%) 0%, hsl(256 30% 22.1%) 100%);
 }
 .editor-bbcode-toolbar .bb-select {
-  background: linear-gradient(180deg, hsl(256 30% 11.4%) 0%, hsl(256 30% 22.1%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 22.1%) 0%, hsl(256 30% 14.7%) 100%);
   border: 1px solid hsl(256 26% 44.9%);
   color: hsl(256 13% 84.5%);
 }
@@ -491,12 +491,12 @@ a:hover {
   color: hsl(256 13% 84.8%);
 }
 .editor-hint-row .close-tags-btn {
-  background: linear-gradient(180deg, hsl(256 30% 11.4%) 0%, hsl(256 30% 22.1%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 22.1%) 0%, hsl(256 30% 14.7%) 100%);
   border: 1px solid hsl(256 26% 44.9%);
   color: hsl(256 13% 84.5%);
 }
 .editor-hint-row .close-tags-btn:hover {
-  background: linear-gradient(180deg, hsl(256 30% 10%) 0%, hsl(256 30% 17.3%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 17.3%) 0%, hsl(256 30% 12.2%) 100%);
 }
 .emoticons-row .emo-btn:hover {
   border-color: hsl(256 26% 56.4%);
@@ -585,7 +585,7 @@ a:hover {
   border: 1px solid hsl(256 26% 39.4%);
 }
 .poll-result-fill {
-  background: linear-gradient(180deg, hsl(325 34% 33.7%) 0%, hsl(325 34% 34.6%) 100%);
+  background: linear-gradient(180deg, hsl(325 34% 34.6%) 0%, hsl(325 34% 31.2%) 100%);
 }
 .poll-result-num {
   color: hsl(256 13% 84.6%);
@@ -620,12 +620,12 @@ a:hover {
   background: hsl(325 34% 34.5%);
 }
 .poll-add-btn {
-  background: linear-gradient(180deg, hsl(256 30% 11.4%) 0%, hsl(256 30% 22.1%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 22.1%) 0%, hsl(256 30% 14.7%) 100%);
   border: 1px solid hsl(256 26% 44.9%);
   color: hsl(256 13% 84.5%);
 }
 .poll-add-btn:hover {
-  background: linear-gradient(180deg, hsl(256 30% 10%) 0%, hsl(256 30% 17.3%) 100%);
+  background: linear-gradient(180deg, hsl(256 30% 17.3%) 0%, hsl(256 30% 12.2%) 100%);
 }
 .poll-edit-hint {
   color: hsl(256 13% 84.6%);
@@ -669,36 +669,36 @@ a:hover {
 /* ── Les dessins de nuit déposés à côté des dessins de jour ───────── */
 /* Ils remplacent l’original et échappent au fanage : ils n’ont plus rien */
 /* à cacher. Déposer « nom-nuit.svg » à côté de « nom.svg » suffit.      */
-img[src$="/fb/Aide.svg"] { content: url("/fb/Aide-nuit.svg"); filter: none; }
-[style*="/fb/Aide.svg"] { background-image: url("/fb/Aide-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/Forum.svg"] { content: url("/fb/Forum-nuit.svg"); filter: none; }
-[style*="/fb/Forum.svg"] { background-image: url("/fb/Forum-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/ForumAlerte.svg"] { content: url("/fb/ForumAlerte-nuit.svg"); filter: none; }
-[style*="/fb/ForumAlerte.svg"] { background-image: url("/fb/ForumAlerte-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/Historique.svg"] { content: url("/fb/Historique-nuit.svg"); filter: none; }
-[style*="/fb/Historique.svg"] { background-image: url("/fb/Historique-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/HistoriqueAlerte.svg"] { content: url("/fb/HistoriqueAlerte-nuit.svg"); filter: none; }
-[style*="/fb/HistoriqueAlerte.svg"] { background-image: url("/fb/HistoriqueAlerte-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/Jeux.svg"] { content: url("/fb/Jeux-nuit.svg"); filter: none; }
-[style*="/fb/Jeux.svg"] { background-image: url("/fb/Jeux-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/Mail.svg"] { content: url("/fb/Mail-nuit.svg"); filter: none; }
-[style*="/fb/Mail.svg"] { background-image: url("/fb/Mail-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/MailRecu.svg"] { content: url("/fb/MailRecu-nuit.svg"); filter: none; }
-[style*="/fb/MailRecu.svg"] { background-image: url("/fb/MailRecu-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/Niveau.svg"] { content: url("/fb/Niveau-nuit.svg"); filter: none; }
-[style*="/fb/Niveau.svg"] { background-image: url("/fb/Niveau-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/Warning.svg"] { content: url("/fb/Warning-nuit.svg"); filter: none; }
-[style*="/fb/Warning.svg"] { background-image: url("/fb/Warning-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/WarningAlerte.svg"] { content: url("/fb/WarningAlerte-nuit.svg"); filter: none; }
-[style*="/fb/WarningAlerte.svg"] { background-image: url("/fb/WarningAlerte-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/cadre_bouille.svg"] { content: url("/fb/cadre_bouille-nuit.svg"); filter: none; }
-[style*="/fb/cadre_bouille.svg"] { background-image: url("/fb/cadre_bouille-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/fleche_droite.svg"] { content: url("/fb/fleche_droite-nuit.svg"); filter: none; }
-[style*="/fb/fleche_droite.svg"] { background-image: url("/fb/fleche_droite-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/fleche_gauche.svg"] { content: url("/fb/fleche_gauche-nuit.svg"); filter: none; }
-[style*="/fb/fleche_gauche.svg"] { background-image: url("/fb/fleche_gauche-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/trophee.svg"] { content: url("/fb/trophee-nuit.svg"); filter: none; }
-[style*="/fb/trophee.svg"] { background-image: url("/fb/trophee-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Aide.svg"] { content: url("/fb/Aide-nuit.svg?v=8ff90618"); filter: none; }
+[style*="/fb/Aide.svg"] { background-image: url("/fb/Aide-nuit.svg?v=8ff90618") !important; filter: none !important; }
+img[src$="/fb/Forum.svg"] { content: url("/fb/Forum-nuit.svg?v=8295a599"); filter: none; }
+[style*="/fb/Forum.svg"] { background-image: url("/fb/Forum-nuit.svg?v=8295a599") !important; filter: none !important; }
+img[src$="/fb/ForumAlerte.svg"] { content: url("/fb/ForumAlerte-nuit.svg?v=8e670d6b"); filter: none; }
+[style*="/fb/ForumAlerte.svg"] { background-image: url("/fb/ForumAlerte-nuit.svg?v=8e670d6b") !important; filter: none !important; }
+img[src$="/fb/Historique.svg"] { content: url("/fb/Historique-nuit.svg?v=00e0aa8d"); filter: none; }
+[style*="/fb/Historique.svg"] { background-image: url("/fb/Historique-nuit.svg?v=00e0aa8d") !important; filter: none !important; }
+img[src$="/fb/HistoriqueAlerte.svg"] { content: url("/fb/HistoriqueAlerte-nuit.svg?v=210c80d4"); filter: none; }
+[style*="/fb/HistoriqueAlerte.svg"] { background-image: url("/fb/HistoriqueAlerte-nuit.svg?v=210c80d4") !important; filter: none !important; }
+img[src$="/fb/Jeux.svg"] { content: url("/fb/Jeux-nuit.svg?v=09198e93"); filter: none; }
+[style*="/fb/Jeux.svg"] { background-image: url("/fb/Jeux-nuit.svg?v=09198e93") !important; filter: none !important; }
+img[src$="/fb/Mail.svg"] { content: url("/fb/Mail-nuit.svg?v=f73aecd4"); filter: none; }
+[style*="/fb/Mail.svg"] { background-image: url("/fb/Mail-nuit.svg?v=f73aecd4") !important; filter: none !important; }
+img[src$="/fb/MailRecu.svg"] { content: url("/fb/MailRecu-nuit.svg?v=1cde3d9c"); filter: none; }
+[style*="/fb/MailRecu.svg"] { background-image: url("/fb/MailRecu-nuit.svg?v=1cde3d9c") !important; filter: none !important; }
+img[src$="/fb/Niveau.svg"] { content: url("/fb/Niveau-nuit.svg?v=55242955"); filter: none; }
+[style*="/fb/Niveau.svg"] { background-image: url("/fb/Niveau-nuit.svg?v=55242955") !important; filter: none !important; }
+img[src$="/fb/Warning.svg"] { content: url("/fb/Warning-nuit.svg?v=ca72ef3d"); filter: none; }
+[style*="/fb/Warning.svg"] { background-image: url("/fb/Warning-nuit.svg?v=ca72ef3d") !important; filter: none !important; }
+img[src$="/fb/WarningAlerte.svg"] { content: url("/fb/WarningAlerte-nuit.svg?v=94f569f1"); filter: none; }
+[style*="/fb/WarningAlerte.svg"] { background-image: url("/fb/WarningAlerte-nuit.svg?v=94f569f1") !important; filter: none !important; }
+img[src$="/fb/cadre_bouille.svg"] { content: url("/fb/cadre_bouille-nuit.svg?v=002401f7"); filter: none; }
+[style*="/fb/cadre_bouille.svg"] { background-image: url("/fb/cadre_bouille-nuit.svg?v=002401f7") !important; filter: none !important; }
+img[src$="/fb/fleche_droite.svg"] { content: url("/fb/fleche_droite-nuit.svg?v=6715bacc"); filter: none; }
+[style*="/fb/fleche_droite.svg"] { background-image: url("/fb/fleche_droite-nuit.svg?v=6715bacc") !important; filter: none !important; }
+img[src$="/fb/fleche_gauche.svg"] { content: url("/fb/fleche_gauche-nuit.svg?v=fad535b6"); filter: none; }
+[style*="/fb/fleche_gauche.svg"] { background-image: url("/fb/fleche_gauche-nuit.svg?v=fad535b6") !important; filter: none !important; }
+img[src$="/fb/trophee.svg"] { content: url("/fb/trophee-nuit.svg?v=162da45b"); filter: none; }
+[style*="/fb/trophee.svg"] { background-image: url("/fb/trophee-nuit.svg?v=162da45b") !important; filter: none !important; }
 
 /* ── À la main, à partir d'ici ────────────────────────────────────── */
 /*

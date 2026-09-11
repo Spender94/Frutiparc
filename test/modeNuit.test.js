@@ -303,10 +303,28 @@ test('le rôle se lit dans le nom de la propriété', () => {
 
 // ── 3. L'invariant, mesuré sur les feuilles produites ────────────────────────
 
+// Les déclarations d'une propriété, avec le SÉLECTEUR de leur règle : c'est
+// lui qui dit si une couleur joue le rôle que son nom annonce. Un `background`
+// de remplissage de barre est un signal, pas un fond ; un `color` de feutre
+// gras est une encre, pas un texte du thème (cf. ROLES_FORCES). Ces deux-là
+// ne relèvent pas de l'invariant des surfaces — un feutre ne s'écrit que sur
+// le panneau du chat, et sa lisibilité s'y mesure à part.
+function declarations(css, propriete) {
+  const out = [];
+  let tete = '';
+  for (const ligne of css.split('\n')) {
+    if (/\{\s*$/.test(ligne)) { tete = ligne.replace(/\s*\{\s*$/, '').trim(); continue; }
+    if (!new RegExp('^\\s*' + propriete + '\\s*:').test(ligne)) continue;
+    const prop = ligne.slice(0, ligne.indexOf(':')).trim();
+    const force = GEN.roleForce(tete, prop);
+    if (force && force !== GEN.roleDe(prop)) continue;
+    out.push(ligne);
+  }
+  return out;
+}
 function clartes(css, propriete) {
   const out = [];
-  for (const ligne of css.split('\n')) {
-    if (!new RegExp('^\\s*' + propriete + '\\s*:').test(ligne)) continue;
+  for (const ligne of declarations(css, propriete)) {
     for (const m of ligne.matchAll(/hsl\([-0-9.]+ [0-9.]+% ([0-9.]+)%/g)) out.push(Number(m[1]));
   }
   return out;
@@ -332,8 +350,7 @@ for (const [nom, css] of [['le light', NUIT], ['le forum', NUIT_FORUM]]) {
 // tient les 4,5:1 — sur la feuille, pas sur la théorie.
 function couleursDe(css, propriete) {
   const out = [];
-  for (const ligne of css.split('\n')) {
-    if (!new RegExp('^\\s*' + propriete + '\\s*:').test(ligne)) continue;
+  for (const ligne of declarations(css, propriete)) {
     for (const m of ligne.matchAll(/hsl\(([-0-9.]+) ([0-9.]+)% ([0-9.]+)%(?: \/ ([0-9.]+))?\)/g)) {
       // Un fond translucide se pose sur autre chose : ce n'est pas lui qui
       // décide de la lisibilité.
@@ -400,11 +417,13 @@ test('seul le châssis s’éteint : les dessins gardent leurs couleurs', () => 
    * retombent pas.
    */
   for (const [quoi, regle] of [
-    ['le boîtier du Frusion', /#frusion-boite \.fr-avant \{\s*\n\s*background-image: url\('\/frutiz\/sprites\/frusion-avant-nuit\.svg'\);\s*\n\s*\}/],
-    ['le « valider » du frutimandala', /#frutimandala \.md-mandalaValider \{\s*\n\s*background-image: url\('\/frutiz\/sprites\/mandalaValider_up-nuit\.svg'\);\s*\n\s*\}/],
-    ['le corps des onglets', /url\("\/frutiz\/sprites\/onglet_corps-nuit\.svg"\)/],
-    ['le fruit d’une barre-titre', /\.fen-pastille \{\s*\n\s*background: url\('\/frutiz\/sprites\/fruit_default-nuit\.svg'\)/],
-    ['le voyant d’un contact', /\.sl-contact \.voyant \{\s*\n\s*--etat: url\('\/frutiz\/sprites\/sl-presence-0-nuit\.svg'\)/],
+    // (`?v=` : l'empreinte du contenu, qui fait qu'une variante refaite est
+    // une URL neuve pour un cache « immutable » — cf. variantesNuit.)
+    ['le boîtier du Frusion', /#frusion-boite \.fr-avant \{\s*\n\s*background-image: url\('\/frutiz\/sprites\/frusion-avant-nuit\.svg\?v=[0-9a-f]{8}'\);\s*\n\s*\}/],
+    ['le « valider » du frutimandala', /#frutimandala \.md-mandalaValider \{\s*\n\s*background-image: url\('\/frutiz\/sprites\/mandalaValider_up-nuit\.svg\?v=[0-9a-f]{8}'\);\s*\n\s*\}/],
+    ['le corps des onglets', /url\("\/frutiz\/sprites\/onglet_corps-nuit\.svg\?v=[0-9a-f]{8}"\)/],
+    ['le fruit d’une barre-titre', /\.fen-pastille \{\s*\n\s*background: url\('\/frutiz\/sprites\/fruit_default-nuit\.svg\?v=[0-9a-f]{8}'\)/],
+    ['le voyant d’un contact', /\.sl-contact \.voyant \{\s*\n\s*--etat: url\('\/frutiz\/sprites\/sl-presence-0-nuit\.svg\?v=[0-9a-f]{8}'\)/],
   ]) {
     assert.match(NUIT, regle, quoi + ' a sa variante, il n’est plus fané');
   }
@@ -434,7 +453,7 @@ test('seul le châssis s’éteint : les dessins gardent leurs couleurs', () => 
   // LA ROUE DU FRUTIMANDALA porte ses fruits sur des quartiers verts : aucun
   // filtre ne sait éteindre le quartier sans le fruit. Elle a donc une vraie
   // VARIANTE DE NUIT, et c'est elle qui sert ; la règle CSS n'est qu'un filet.
-  assert.match(NUIT, /\[style\*="\/frutiz\/sprites\/frutimandala-roue\.svg"\] \{ background-image: url\("\/frutiz\/sprites\/frutimandala-roue-nuit\.svg"\) !important; filter: none !important; \}/);
+  assert.match(NUIT, /\[style\*="\/frutiz\/sprites\/frutimandala-roue\.svg"\] \{ background-image: url\("\/frutiz\/sprites\/frutimandala-roue-nuit\.svg\?v=[0-9a-f]{8}"\) !important; filter: none !important; \}/);
   assert.match(NUIT, /#frutimandala \.md-art \{ filter: brightness\([^)]*\) saturate\([^)]*\); \}/);
   // Les dossiers du forum, eux, sont des GIF opaques : baisser leur luminosité
   // rendait le vert sombre, pas violet, et la bande restait — en olive. Ce
@@ -474,7 +493,15 @@ test('trois positions, par appareil, et le système suivi', () => {
   assert.match(LIGHT, /localStorage\.setItem\(NUIT_CLE, v\)/);
   // Éteindre, c'est désactiver la feuille — pas la retirer : rebasculer est
   // alors instantané.
-  assert.match(LIGHT, /if \(lien\) lien\.disabled = !on;/);
+  // PAR LE MÉDIA, PAS PAR `disabled` : désactiver un <link> fait jeter sa
+  // feuille par Chrome, et la réactiver la RECHARGE — asynchrone, avec un
+  // aller-retour serveur. Mesuré : nuit.css absente des feuilles actives à
+  // l'instant de la bascule, le parc en vert le temps du rechargement, et le
+  // voile d'un fond privé lu à la chair du jour. « not all » laisse la feuille
+  // en place et ses règles reviennent d'un coup.
+  assert.match(LIGHT, /if \(lien\) lien\.media = on \? "all" : "not all";/);
+  assert.match(LIGHT, /if \(l2\) l2\.media = on \? "all" : "not all";/);
+  assert.ok(!/(lien|l2)\.disabled = !on;/.test(LIGHT), 'plus aucune bascule par `disabled`');
 });
 
 test('le serveur a le dernier mot sur la possession', () => {
@@ -583,8 +610,10 @@ test('déposer « nom-nuit.svg » suffit : le dessin de nuit prend la place', ()
   } finally {
     fs.unlinkSync(nuit);
   }
-  // 1) Partout où le CSS nomme le dessin, il pointe désormais la variante…
-  assert.ok(feuille.includes("url('/frutiz/sprites/ecran-reflet-nuit.svg')"),
+  // 1) Partout où le CSS nomme le dessin, il pointe désormais la variante —
+  //    avec l'empreinte de son contenu, pour qu'un cache « immutable » ne
+  //    serve jamais une variante d'avant (cf. variantesNuit)…
+  assert.match(feuille, /url\('\/frutiz\/sprites\/ecran-reflet-nuit\.svg\?v=[0-9a-f]{8}'\)/,
     'le CSS pointe la variante');
   assert.ok(!/url\('\/frutiz\/sprites\/ecran-reflet\.svg'\)/.test(feuille),
     'et plus une seule fois l’original');
@@ -596,11 +625,14 @@ test('déposer « nom-nuit.svg » suffit : le dessin de nuit prend la place', ()
     'la variante échappe au fanage');
   // 3) Les <img> et les fonds posés par le JavaScript sont rattrapés par
   //    sélecteur d'attribut — sans toucher au HTML ni au JS.
-  assert.ok(feuille.includes('img[src$="/frutiz/sprites/ecran-reflet.svg"] '
-    + '{ content: url("/frutiz/sprites/ecran-reflet-nuit.svg"); filter: none; }'));
-  assert.ok(feuille.includes('[style*="/frutiz/sprites/ecran-reflet.svg"] '
-    + '{ background-image: url("/frutiz/sprites/ecran-reflet-nuit.svg") !important; '
-    + 'filter: none !important; }'));
+  assert.match(feuille, /img\[src\$="\/frutiz\/sprites\/ecran-reflet\.svg"\] \{ content: url\("\/frutiz\/sprites\/ecran-reflet-nuit\.svg\?v=[0-9a-f]{8}"\); filter: none; \}/);
+  assert.match(feuille, /\[style\*="\/frutiz\/sprites\/ecran-reflet\.svg"\] \{ background-image: url\("\/frutiz\/sprites\/ecran-reflet-nuit\.svg\?v=[0-9a-f]{8}"\) !important; filter: none !important; \}/);
+  // 4) L'empreinte est celle du CONTENU : deux variantes différentes donnent
+  //    deux URL différentes — c'est ce qui bat le cache.
+  const a = GEN.variantesNuit().get('/frutiz/sprites/frusion-avant.svg');
+  const b = GEN.variantesNuit().get('/frutiz/sprites/frusion-milieu.svg');
+  assert.match(a, /\?v=[0-9a-f]{8}$/);
+  assert.notStrictEqual(a.slice(-8), b.slice(-8), 'deux dessins, deux empreintes');
 });
 
 test('une variante orpheline ne produit aucune règle', () => {
@@ -680,7 +712,7 @@ test('un dessin tout en couleur reçoit quand même sa variante', () => {
     const nuit = path.join(ROOT, 'public/frutiz/sprites', n + '-nuit.svg');
     assert.ok(fs.existsSync(nuit), n + ' doit avoir sa variante');
     assert.match(fs.readFileSync(nuit, 'utf8'), /Ce dessin n'a AUCUNE couleur de châssis/);
-    assert.match(NUIT, new RegExp('url\\("/frutiz/sprites/' + n + '-nuit\\.svg"\\)'));
+    assert.match(NUIT, new RegExp('url\\("/frutiz/sprites/' + n + '-nuit\\.svg\\?v=[0-9a-f]{8}"\\)'));
   }
   // Le « ? » est vert, et il le reste — c'est précisément le vert que la
   // conversion aurait rangé avec le châssis.
@@ -780,7 +812,7 @@ test('un voyant EN PARTIE garde son icône de jeu', () => {
   assert.match(jour, /background: var\(--etat\) center center \/ 8px 8px no-repeat,\s*\n\s*url\('\/frutiz\/sprites\/sl-icone-fond\.svg'\)/);
   assert.match(jour, /\.sl-contact\.en-ligne \.voyant \{\s*\n\s*--etat: url\('\/frutiz\/sprites\/sl-presence-1\.svg'\);\s*\n\s*\}/);
   // Et celle de NUIT change les deux couches, chacune pour sa variante.
-  assert.match(NUIT, /\.sl-contact \.voyant \{\s*\n\s*--etat: url\('\/frutiz\/sprites\/sl-presence-0-nuit\.svg'\);\s*\n\s*background: var\(--etat\)[^\n]*\n\s*url\('\/frutiz\/sprites\/sl-icone-fond-nuit\.svg'\)/);
+  assert.match(NUIT, /\.sl-contact \.voyant \{\s*\n\s*--etat: url\('\/frutiz\/sprites\/sl-presence-0-nuit\.svg\?v=[0-9a-f]{8}'\);\s*\n\s*background: var\(--etat\)[^\n]*\n\s*url\('\/frutiz\/sprites\/sl-icone-fond-nuit\.svg\?v=[0-9a-f]{8}'\)/);
 });
 
 test('la fiche : le bouton du détail reste une commande, la silhouette se lit', () => {
@@ -793,8 +825,8 @@ test('la fiche : le bouton du détail reste une commande, la silhouette se lit',
     assert.ok(roses.length, f + ' doit rester rose : ' + sp(f + '-nuit.svg').slice(0, 200));
   }
   // Le bureau sert la variante, et il n’y a plus de filtre sur cette règle-là.
-  assert.match(NUIT, /\.fiche-boite \.fiche-actions \.fiche-avance \{\s*\n\s*background: url\('\/frutiz\/sprites\/fiche-rose-nuit\.svg'\)/);
-  assert.match(NUIT, /content: url\('\/frutiz\/sprites\/fiche-rose-tri-nuit\.svg'\);/);
+  assert.match(NUIT, /\.fiche-boite \.fiche-actions \.fiche-avance \{\s*\n\s*background: url\('\/frutiz\/sprites\/fiche-rose-nuit\.svg\?v=[0-9a-f]{8}'\)/);
+  assert.match(NUIT, /content: url\('\/frutiz\/sprites\/fiche-rose-tri-nuit\.svg\?v=[0-9a-f]{8}'\);/);
   const retouches = lire('scripts/nuit-retouches.css');
   assert.match(retouches, /\.fiche-actions \.fiche-avance,\s*\n\.fiche-actions \.fiche-avance img \{ filter: none; \}/);
   // LA SILHOUETTE D'UN SIGNE NON RÉVÉLÉ est un noir TRANSLUCIDE : lisible
@@ -992,8 +1024,8 @@ test('les deux Mini-Wave sont déjà des ciels de nuit', () => {
 test('le fond du joueur passe en nuit quand il a un dessin de nuit', () => {
   // Le serveur annonce les quatre cadrages…
   assert.match(SERVEUR, /function cadragesDuFond\(url\) \{[\s\S]*?urlNuit: wallpaperNuitUrl\(wp, false\),[\s\S]*?urlNuitMobile: wallpaperNuitUrl\(wp, true\),/);
-  assert.equal((SERVEUR.match(/\.\.\.cadragesDuFond\(/g) || []).length, 3,
-    'les trois charges utiles du light les portent');
+  assert.equal((SERVEUR.match(/\.\.\.cadragesDuFond\(/g) || []).length, 4,
+    'les trois charges utiles du light les portent — et la route des cadrages d’un fond reçu en privé');
   // …le bureau large prend le paysage de nuit…
   assert.match(BUREAU, /var source = \(nuit && fond\.urlNuit\) \|\| fond\.url;/);
   assert.match(BUREAU, /bureau\.style\.background = nuit \? DECOR_DE_NUIT : '#ADE76B';/);
@@ -1239,4 +1271,130 @@ test('l’arbre des réglages du bureau désigne ses cartes par identifiant', ()
   // qu'on ajoute retombe dans le même piège, invisible depuis le bureau.
   const sansId = [...LIGHT.matchAll(/<div class="reg-carte"(?! id=)/g)];
   assert.strictEqual(sansId.length, 0, sansId.length + ' carte(s) de réglages sans identifiant');
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LES NUANCES : LE RELIEF D'UN OBJET, LES RÔLES FORCÉS, LES DÉGRADÉS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const lireSprite = (f) => lire('public/frutiz/sprites/' + f);
+const clartesDe = (svg) => [...svg.matchAll(/hsl\(\d+ \d+% ([\d.]+)%/g)].map((m) => Number(m[1]));
+
+test('le Frusion est un objet : ses clartés gardent leur ordre, sans plafond', () => {
+  /*
+   * Le boîtier est dessiné en volume : une façade claire (#ffffff, #dddddd),
+   * un corps gris (#999999), une cuve et un cerne sombres (#444444). La
+   * courbe des sprites RENVERSE la clarté — juste pour une surface, faux pour
+   * un objet : le cerne ressortait en liseré clair, la façade en aplat noir,
+   * et la cuve plus claire que le boîtier qu'elle creuse. Un négatif, plat.
+   */
+  const arriere = clartesDe(lireSprite('frusion-arriere-nuit.svg'));   // #444444
+  const milieu = clartesDe(lireSprite('frusion-milieu-nuit.svg'));     // #999999 … #dedfde
+  const slot = clartesDe(lireSprite('frusion-slot-nuit.svg'));         // #999999 … #ffffff
+  assert.ok(arriere.length && milieu.length && slot.length, 'les trois couches sont repeintes');
+  // Le cerne reste le plus sombre, la face blanche la plus claire : l'ordre du
+  // jour, dans l'échelle de la nuit.
+  assert.ok(Math.max(...arriere) < Math.min(...milieu), 'le cerne (#444) reste sous le corps : ' + arriere + ' / ' + milieu);
+  assert.ok(Math.max(...slot) > Math.max(...milieu), 'la face blanche du tiroir est ce qu’il y a de plus clair');
+  assert.strictEqual(Math.max(...slot), GEN.RELIEF_HAUT, 'le blanc atteint le haut de l’échelle du relief');
+  for (const l of [...arriere, ...milieu, ...slot]) {
+    assert.ok(l >= GEN.RELIEF_BAS - 0.05 && l <= GEN.RELIEF_HAUT + 0.05, 'hors échelle : ' + l);
+  }
+  // Et c'est bien la courbe qui le dit : monotone croissante, sans plafond.
+  const c = GEN.convertirHsl;
+  const blanc = c(255, 255, 255, 1, 'relief').l, gris = c(153, 153, 153, 1, 'relief').l, noir = c(0, 0, 0, 1, 'relief').l;
+  assert.ok(blanc > gris && gris > noir, 'la courbe du relief ne renverse pas');
+  assert.ok(blanc > 36, 'un objet échappe au plafond des surfaces (' + blanc + ')');
+  // Le manifeste le déclare pour le lecteur entier, boutons compris.
+  const manifeste = lire('scripts/nuit-svg.js');
+  assert.match(manifeste, /\.map\(\(n\) => \(\{ f: n \+ '\.svg', blanc: 'teint', relief: 'garde' \}\)\)/);
+  assert.match(manifeste, /troisEtats\('frusionCasque'\)\.map\(\(f\) => \(\{ f, blanc: 'teint', relief: 'garde' \}\)\)/);
+  assert.match(manifeste, /troisEtats\('frusionEject'\)\.map\(\(f\) => \(\{ f, blanc: 'teint', relief: 'garde' \}\)\)/);
+});
+
+test('un remplissage de barre est un signal, pas un fond : il prend la couleur du NIV', () => {
+  // Le rôle est forcé par le sélecteur, et seulement pour le remplissage.
+  assert.strictEqual(GEN.roleForce('.enc-progress i::before', 'background'), 'texte');
+  assert.strictEqual(GEN.roleForce('body.bureau-frutiz #bureau-coin .enc-progress::after', 'background'), 'texte');
+  assert.strictEqual(GEN.roleForce('.fiche-plaque .fa-progress i::before', 'background'), 'texte');
+  assert.strictEqual(GEN.roleForce('.enc-progress i', 'background'), null, 'la piste vide reste un fond');
+  assert.strictEqual(GEN.roleForce('.enc-progress i::before', 'color'), null);
+  // Dans la feuille : la barre pleine porte exactement la couleur de texte du
+  // même vert — celle du numéro de niveau —, la piste reste sous le plafond.
+  const plein = /body\.bureau-frutiz #bureau-coin \.enc-progress::after \{\s*\n\s*background: repeating-linear-gradient\(to top, (hsl\([^)]+\)) 0 2px/.exec(NUIT);
+  assert.ok(plein, 'la règle des barres pleines du bureau est là');
+  assert.strictEqual(plein[1], GEN.convertir(...GEN.hexVersRgb('#73B01E'), 'texte'));
+  const piste = /body\.bureau-frutiz #bureau-coin \.enc-progress \{\s*\n\s*background:\s*\n\s*repeating-linear-gradient\(to top, hsl\(256 30% ([\d.]+)%\)/.exec(NUIT);
+  assert.ok(piste, 'la règle de la piste du bureau est là');
+  assert.ok(L(plein[1]) - Number(piste[1]) > 40, 'la barre pleine se détache franchement de la piste');
+  // Le mobile et la fiche suivent la même règle.
+  assert.match(NUIT, /\.enc-progress i::before \{\s*\n\s*background: hsl\(256 13% 8\d\.\d%\);/);
+  assert.match(NUIT, /\.fiche-plaque \.fa-progress i::before \{\s*\n\s*background: hsl\(256 13% 8\d\.\d%\);/);
+});
+
+test('les feutres gras du modo et de l’animateur sont des encres : rouge et bleu, lisibles', () => {
+  assert.strictEqual(GEN.roleForce('.msg.shout, .msg.shout .body, .msg.shout .from, .msg.shout .time', 'color'), 'encre');
+  assert.strictEqual(GEN.roleForce('.msg.blue, .msg.blue .body', 'color'), 'encre');
+  assert.strictEqual(GEN.roleForce('body.bureau-frutiz .fen #chat-panel #messages .msg:not(.blue):not(.shout) .from.me', 'color'), null);
+  const fond = /^#messages \{\n  background: (hsl\([^)]+\));/m.exec(NUIT)[1];
+  const lf = lumDe(fond);
+  const cri = /^\.msg\.shout[^{]*\{\s*\n\s*color: (hsl\([^)]+\));/m.exec(NUIT);
+  const anim = /^\.msg\.blue[^{]*\{\s*\n\s*color: (hsl\([^)]+\));/m.exec(NUIT);
+  assert.ok(cri && anim, 'les deux règles sont dans la feuille');
+  // La teinte est l'identité : rouge (0°) et bleu marine (240°), pas la rose
+  // du thème ni sa lavande.
+  assert.strictEqual(H(cri[1]), 0, 'le cri du modo reste rouge : ' + cri[1]);
+  assert.strictEqual(H(anim[1]), 240, 'la ligne de l’animateur reste bleue : ' + anim[1]);
+  for (const [nom, c] of [['modo', cri[1]], ['animateur', anim[1]]]) {
+    const r = rapport(lumDe(c), lf);
+    assert.ok(r >= 5.4, nom + ' : ' + r.toFixed(2) + ':1 sur le panneau, c’est trop peu');
+  }
+  // Et ils se distinguent du texte ordinaire — pas seulement au gras.
+  const ordinaire = /^\.msg \.body \{\s*\n\s*color: (hsl\([^)]+\));/m.exec(NUIT)[1];
+  assert.ok(Math.abs(S(cri[1]) - S(ordinaire)) > 40, 'le cri est franchement plus saturé que le texte');
+});
+
+test('un dégradé garde sa nuance, et dans le sens du jour', () => {
+  // `.ma-btn.primaire` : un bouton bombé, deux verts à quinze points d'écart
+  // le jour. Pris un à un, ses deux tons arrivaient tous deux au plafond.
+  const m = /^\.ma-btn\.primaire \{[^}]*linear-gradient\(180deg, hsl\(256 30% ([\d.]+)%\), hsl\(256 30% ([\d.]+)%\)\)/m.exec(NUIT);
+  assert.ok(m, 'le dégradé du bouton est dans la feuille');
+  const [haut, bas] = [Number(m[1]), Number(m[2])];
+  assert.ok(haut - bas >= 5, 'le bombé a survécu : ' + haut + ' → ' + bas);
+  assert.ok(haut <= 36.05, 'et le ton de tête reste sous le plafond : ' + haut);
+  // Le ton de tête ne monte jamais au-dessus de SON plafond, même quand un
+  // voisin violet sied plus haut : un cyan ou un jaune atteint la luminance
+  // limite bien plus bas.
+  const arc = GEN.teindreValeur('linear-gradient(#FF6600, #EBB601, #5EA523, #47B9C9, #472899, #962761)', 'fond');
+  for (const c of [...arc.matchAll(/hsl\(([\d.]+) ([\d.]+)% ([\d.]+)%\)/g)]) {
+    const lum = GEN.luminance(...GEN.hslVersRgb(Number(c[1]), Number(c[2]), Number(c[3])));
+    assert.ok(lum <= 0.08, 'un ton du dégradé passe le plafond : ' + c[0]);
+  }
+  // Deux couches d'un `background` ne sont pas un dégradé : le lustre blanc
+  // d'un panneau ne tire pas sa chair vers le noir.
+  const panneau = GEN.teindreValeur('linear-gradient(to bottom, rgba(255,255,255,.64) 0, rgba(255,255,255,0) 8px), #CCF599', 'fond');
+  assert.match(panneau, /hsl\(256 30% 25\.8%\)$/, 'la chair du fil est intacte : ' + panneau);
+});
+
+test('en privé, le fond de l’autre passe en nuit — et le voile suit la feuille', () => {
+  // Le serveur dit les cadrages d'une URL de jour…
+  assert.match(SERVEUR, /app\.get\('\/api\/light\/fond\/cadrages', \(req, res\) => \{/);
+  assert.match(SERVEUR, /res\.json\(\{ ok: true, url: '\/' \+ url, \.\.\.cadragesDuFond\(url\) \}\);/);
+  // …le client les demande une fois par URL et pose le dessin de nuit si le
+  // parc est éteint, l'image de jour sinon.
+  assert.match(LIGHT, /fetch\("\/api\/light\/fond\/cadrages\?sid=" \+ encodeURIComponent\(state\.sid\)/);
+  assert.match(LIGHT, /var src = \(laNuitEstTombee\(\) && c && c\.urlNuit\) \|\| url;/);
+  // LE VOILE EST DANS LA FEUILLE. Le JS ne pose que l'opacité : ni couleur en
+  // dur (le vert du jour voilait une image de nuit), ni couleur LUE à la
+  // bascule (Chrome retraite la feuille de nuit de façon asynchrone).
+  assert.match(LIGHT, /fil\.style\.setProperty\("--wp-alpha", String\(alpha \/ 100\)\);/);
+  assert.ok(!/--wp-voile/.test(LIGHT), 'plus une couleur de voile posée depuis le JavaScript');
+  assert.ok(!/getComputedStyle\(fil\)/.test(LIGHT), 'et rien n’est lu à la bascule');
+  assert.match(NUIT, /linear-gradient\(hsl\(256 30% 25\.8% \/ var\(--wp-alpha, \.8\)\), hsl\(256 30% 25\.8% \/ var\(--wp-alpha, \.8\)\)\)/,
+    'la feuille de nuit porte le voile à la chair du fil, opacité variable');
+  // La bascule repose les fonds déjà reçus.
+  assert.match(LIGHT, /fil\.setAttribute\("data-fond-brut", t\);/);
+  const bascule = LIGHT.slice(LIGHT.indexOf('function appliquerNuit'), LIGHT.indexOf('function poserNuit'));
+  assert.match(bascule, /repeindreLesFondsPrives\(\);/);
+  assert.match(LIGHT, /function repeindreLesFondsPrives\(\) \{\s*\n\s*Array\.prototype\.forEach\.call\(document\.querySelectorAll\("\.a-fond-prive\[data-fond-brut\]"\)/);
 });

@@ -7,14 +7,14 @@
   manifeste de scripts/nuit-svg.js.
 -->
 <g transform="matrix(0.2,0,0,0.2,0,0)">
-  <path d="M35.35 -35.4Q50 -20.7 50 0Q50 20.7 35.35 35.35Q20.7 50 0 50Q-20.7 50 -35.35 35.35Q-50 20.7 -50 0Q-50 -20.7 -35.35 -35.4Q-20.7 -50 0 -50Q20.7 -50 35.35 -35.4Z" fill="hsl(256 30% 17.6%)" fill-rule="evenodd"/>
+  <path d="M35.35 -35.4Q50 -20.7 50 0Q50 20.7 35.35 35.35Q20.7 50 0 50Q-20.7 50 -35.35 35.35Q-50 20.7 -50 0Q-50 -20.7 -35.35 -35.4Q-20.7 -50 0 -50Q20.7 -50 35.35 -35.4Z" fill="hsl(256 30% 41.5%)" fill-rule="evenodd"/>
 
 </g>
 <g transform="matrix(1,0,0,1,0,0)">
   <defs>
     <radialGradient id="g1" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00186,0,0,0.00093,-0.1,8.5)"><stop offset="0" stop-color="hsl(325 68% 85.3%)"/><stop offset="0.16471" stop-color="hsl(325 68% 76.7%)"/><stop offset="0.63529" stop-color="hsl(325 68% 72.2%)"/><stop offset="1" stop-color="hsl(325 68% 61%)"/></radialGradient>
-    <radialGradient id="g2" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00078,0,0,0.00078,0.05,1.75)"><stop offset="0.65098" stop-color="hsl(325 68% 76.7%)"/><stop offset="0.91765" stop-color="hsl(256 30% 36.8%)"/></radialGradient>
-    <radialGradient id="g3" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00081,0,0,0.0008,0.05,-6.4)"><stop offset="0" stop-color="hsl(256 30% 8%)" stop-opacity="0.8"/><stop offset="1" stop-color="hsl(256 30% 8%)" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00078,0,0,0.00078,0.05,1.75)"><stop offset="0.65098" stop-color="hsl(325 68% 76.7%)"/><stop offset="0.91765" stop-color="hsl(256 30% 32.4%)"/></radialGradient>
+    <radialGradient id="g3" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00081,0,0,0.0008,0.05,-6.4)"><stop offset="0" stop-color="hsl(256 30% 46%)" stop-opacity="0.8"/><stop offset="1" stop-color="hsl(256 30% 46%)" stop-opacity="0"/></radialGradient>
   </defs>
   <path d="M-8.95 1Q-8.65 -2.15 -6.35 -4.4Q-3.75 -7.05 0 -7Q1.9 -7.05 3.55 -6.35L6.4 -4.4Q8.65 -2.15 8.95 1L8.95 1.05Q8.65 4.1 6.4 6.35Q3.75 9 0 9Q-3.75 9 -6.35 6.35L-7.45 5.05Q-8.7 3.25 -8.95 1.05L-8.95 1Z" fill="url(#g1)" fill-rule="evenodd"/>
   <path d="M-6.35 -4.4Q-8.65 -2.15 -8.95 1L-9 0.5L-9 0Q-9 -3.75 -6.35 -6.4Q-3.75 -9.05 0 -9Q1.9 -9.05 3.55 -8.35L6.4 -6.4Q9 -3.75 9 0L9 0.5L9 0.75L8.95 1Q8.65 -2.15 6.4 -4.4L3.55 -6.35Q1.9 -7.05 0 -7Q-3.75 -7.05 -6.35 -4.4Z" fill="url(#g2)" fill-rule="evenodd"/>

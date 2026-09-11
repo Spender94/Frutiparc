@@ -54,6 +54,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const RACINE = path.join(__dirname, '..');
 const P = (...x) => path.join(RACINE, ...x);
@@ -165,6 +166,7 @@ const arrondi = (x, n) => Number(x.toFixed(n));
 
 function hsl(h, s, l, a) {
   const t = `hsl(${arrondi(h, 0)} ${arrondi(s, 0)}% ${arrondi(l, 1)}%`;
+  if (typeof a === 'string') return `${t} / ${a})`;          // une variable d'opacité
   return a >= 1 ? `${t})` : `${t} / ${arrondi(a, 3)})`;
 }
 
@@ -220,7 +222,32 @@ const COURBES = {
     const v = 8 + 0.72 * (100 - l);
     return v <= 38 ? v : 38 + (v - 38) * 0.55;
   },
+  /*
+   * LES OBJETS EN RELIEF — la courbe qui NE RENVERSE PAS.
+   *
+   * Toutes les courbes ci-dessus renversent la clarté : ce qui était clair le
+   * jour devient sombre la nuit. C'est juste pour une SURFACE — un panneau
+   * blanc devient un panneau sombre — et faux pour un OBJET. Le lecteur
+   * Frusion est un boîtier dessiné en volume : une face éclairée, une cuve
+   * creusée dans l'ombre, un cerne sombre autour. Renversé, le cerne devenait
+   * la partie la plus claire, la face la plus sombre, et la cuve ressortait
+   * PLUS CLAIRE que le boîtier qu'elle creuse — un négatif photographique,
+   * pas un objet de nuit. D'où l'aplat sans nuance qu'on voyait.
+   *
+   * Un objet de nuit reste éclairé par le haut : ses clartés gardent leur
+   * ORDRE, seule l'échelle change — de [0, 100] à [RELIEF_BAS, RELIEF_HAUT].
+   * Et pas de plafond : le plafond existe pour qu'une surface porte du texte,
+   * et un boîtier n'en porte pas. Il peut donc ressortir plus clair que le
+   * panneau qui le porte, ce qui est précisément ce qui le détache.
+   */
+  relief: (l) => RELIEF_BAS + (RELIEF_HAUT - RELIEF_BAS) * l / 100,
 };
+// L'échelle d'un objet de nuit. Le bas est celui d'un cerne ou d'une cuve ;
+// le haut, celui d'une face éclairée — au-dessus du plafond des surfaces
+// (~36 %), pour que l'objet se détache, en dessous d'un texte (74 %), pour
+// qu'il reste un objet éteint.
+const RELIEF_BAS = 12;
+const RELIEF_HAUT = 46;
 
 /*
  * LES TROIS FAMILLES DU PARC, ET CE QU'ELLES DEVIENNENT LA NUIT.
@@ -327,16 +354,26 @@ const etaler = (v, de, a, versDe, versA) =>
 const ROSE_FOND_MAX = 36;      // le plafond des aplats, comme le châssis
 const ROSE_ACCENT_MAX = 86;    // un liseré rose peut monter jusque-là
 
-function convertir(r, g, b, a, role) {
+// La conversion, en composantes : c'est ce dont a besoin l'étalement des
+// nuances, qui retouche la clarté APRÈS coup (cf. etalerLesNuances).
+function convertirHsl(r, g, b, a, role) {
+  // L'ENCRE D'UN FEUTRE n'est pas une couleur du thème : elle a sa
+  // conversion à elle, qui garde la teinte (cf. encreDeNuit).
+  if (role === 'encre') return { ...encreDeNuitHsl(r, g, b), a };
   const [h, s, lJour] = rgbVersHsl(r, g, b);
+  // Un dessin — de châssis (`sprite`) ou en relief (`relief`) : les mêmes
+  // règles de famille, seule la courbe de clarté change.
+  const dessin = role === 'sprite' || role === 'relief';
   // Le parchemin rejoint le châssis — mais en CSS seulement, et nivelé sur le
   // vert (cf. estParchemin et PARCHEMIN_ECART). Dans un dessin, un orange est
   // une orange.
-  const parchemin = role !== 'sprite' && estParchemin(h, s);
+  const parchemin = !dessin && estParchemin(h, s);
   const l = parchemin ? Math.min(100, lJour + PARCHEMIN_ECART) : lJour;
   let nh = h, ns, nl = COURBES[role](l);
   // Un dessin de châssis EST une surface : mêmes teintes et mêmes bornes
   // qu'un aplat, seule sa courbe de clarté diffère (elle ne plafonne pas).
+  // Un objet en relief, lui, n'est pas une surface : il ne porte pas de texte
+  // et échappe au plafond — c'est même tout l'intérêt (cf. COURBES.relief).
   const surface = role === 'fond' || role === 'sprite';
   if (estRose(h, s)) {
     nh = ROSE_NUIT;
@@ -351,7 +388,7 @@ function convertir(r, g, b, a, role) {
     // Un APLAT rose, lui, reste une prune : il peut porter du texte, et du
     // texte clair sur du rose clair ne se lit pas. Les commandes, elles, ne
     // portent que des glyphes.
-    if (role === 'sprite') { ns = 68; nl = 0.92 * l; }
+    if (dessin) { ns = 68; nl = 0.92 * l; }
     else if (surface) { ns = 34; nl = etaler(nl, 0, ROSE_FOND_MAX, ROSE_FOND_MIN, ROSE_FOND_MAX); }
     else if (role === 'texte') { ns = 58; nl = Math.max(nl, ROSE_TEXTE_MIN); }
     // La courbe des bordures sort entre 30 et 62, c'est-à-dire ENTIÈREMENT
@@ -362,7 +399,7 @@ function convertir(r, g, b, a, role) {
     nh = VIOLET;
     // Le châssis est saturé, mais pas également : un fond violet franc, un
     // texte presque blanc — sans quoi tout vire au lilas.
-    ns = surface ? 30 : role === 'bordure' ? 26 : 13;
+    ns = (surface || role === 'relief') ? 30 : role === 'bordure' ? 26 : 13;
   } else {
     // Un accent garde sa teinte, et une saturation qui le tient éveillé.
     ns = Math.min(Math.max(s * 0.55, 30), 62);
@@ -371,7 +408,7 @@ function convertir(r, g, b, a, role) {
   // Les deux bornes : un fond porte du texte, un texte se pose sur un fond.
   // Le rose d'un dessin échappe au plafond — il ne porte pas de texte, et
   // c'est justement sa clarté qui en fait une commande.
-  const roseDeCommande = role === 'sprite' && estRose(h, s);
+  const roseDeCommande = dessin && estRose(h, s);
   // LE RELIEF D'UN DESSIN N'EST PAS UN FOND. Le plafond existe pour qu'un
   // aplat porte du texte ; il vaut donc pour la FACE d'un dessin — l'écran de
   // l'aquarium, le corps d'un onglet, tous nés d'une valeur claire. Mais ce
@@ -382,7 +419,12 @@ function convertir(r, g, b, a, role) {
   const reliefDeDessin = role === 'sprite' && lJour < 50;
   if (surface && !roseDeCommande && !reliefDeDessin) nl = plafonnerLuminance(nh, ns, nl);
   else if (role === 'texte') nl = releverLuminance(nh, ns, nl);
-  return hsl(nh, ns, nl, a);
+  return { h: nh, s: ns, l: nl, a };
+}
+
+function convertir(r, g, b, a, role) {
+  const c = convertirHsl(r, g, b, a, role);
+  return hsl(c.h, c.s, c.l, c.a);
 }
 
 /*
@@ -419,8 +461,12 @@ const hslDe = (t) => (/hsl\(([\d.]+) ([\d.]+)% ([\d.]+)%/.exec(t) || []).slice(1
 const ENCRE_COMPENSATION = 1;
 
 function encreDeNuit(hex) {
+  const c = encreDeNuitHsl(...hexVersRgb(hex));
+  return hsl(c.h, c.s, c.l, 1);
+}
+function encreDeNuitHsl(r, g, b) {
   const lumFond = luminance(...hslVersRgb(...hslDe(convertir(...hexVersRgb(FOND_DU_CHAT), 'fond'))));
-  const [hJour, sJour, lJour] = rgbVersHsl(...hexVersRgb(hex));
+  const [hJour, sJour, lJour] = rgbVersHsl(r, g, b);
   const h = Math.round(hJour);
   // Arrondie ici, et pas seulement à l'écriture : le rapport se mesure sur la
   // couleur qui SORT, pas sur celle qu'on avait en tête avant de l'arrondir.
@@ -432,7 +478,7 @@ function encreDeNuit(hex) {
   let l = lJour;
   while (l < 100 && contraste(l) < RATIO_VISE) l += 0.5;
   l = Math.min(100, l);
-  return hsl(h, sPour(l), l, 1);
+  return { h, s: sPour(l), l };
 }
 
 /*
@@ -456,6 +502,8 @@ function encreDeNuit(hex) {
  * pour les autres.
  */
 const SUFFIXE_NUIT = '-nuit';
+const empreinte = (fichier) =>
+  crypto.createHash('sha1').update(fs.readFileSync(fichier)).digest('hex').slice(0, 8);
 
 function variantesNuit(racine = P('public')) {
   const trouve = new Map();               // « /chemin/jour.svg » → « /chemin/jour-nuit.svg »
@@ -472,7 +520,19 @@ function variantesNuit(racine = P('public')) {
       // d'émettre une règle qui ne s'appliquerait jamais.
       if (!fs.existsSync(jour)) continue;
       const web = (p) => '/' + path.relative(racine, p).split(path.sep).join('/');
-      trouve.set(web(jour), web(complet));
+      /*
+       * L'EMPREINTE DANS L'URL — parce que le cache du navigateur est
+       * IMMUABLE. Les dessins sont servis avec « max-age 7 jours, immutable »,
+       * ce qui est juste pour un dessin d'époque, qui ne change jamais. Mais
+       * une variante de nuit, elle, est REFAITE à chaque réglage du thème,
+       * sous le même nom : le navigateur gardait la première version qu'il
+       * avait vue — et un bouton survolé une fois, quand sa plaque était
+       * encore blanche, restait blanc au survol une semaine durant. Avec
+       * l'empreinte du contenu dans l'URL, une variante refaite est une URL
+       * neuve : la feuille (elle, revalidée à chaque chargement) la demande,
+       * et le vieux dessin n'est plus jamais servi.
+       */
+      trouve.set(web(jour), web(complet) + '?v=' + empreinte(complet));
     }
   }(racine));
   return trouve;
@@ -498,18 +558,100 @@ const poserVariantes = (valeur) =>
   });
 
 const RE_HEX = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g;
-const RE_RGB = /\brgba?\(\s*([0-9.]+)\s*[, ]\s*([0-9.]+)\s*[, ]\s*([0-9.]+)\s*(?:[,/]\s*([0-9.%]+)\s*)?\)/g;
+// L'alpha peut être un NOMBRE ou une VARIABLE — `rgba(204,245,153,var(--wp-alpha))`,
+// le voile d'un fond privé, dont l'opacité vient du protocole et la couleur
+// du thème. La variable passe telle quelle dans la couleur convertie.
+const RE_RGB = /\brgba?\(\s*([0-9.]+)\s*[, ]\s*([0-9.]+)\s*[, ]\s*([0-9.]+)\s*(?:[,/]\s*([0-9.%]+|var\(--[\w-]+(?:\s*,[^()]*)?\))\s*)?\)/g;
+
+// Les couleurs d'une valeur, dans l'ordre et avec leur place : pour les
+// convertir ENSEMBLE plutôt qu'une à une (cf. etalerLesNuances).
+function couleursDe(valeur) {
+  const trouvees = [];
+  let m;
+  RE_HEX.lastIndex = 0;
+  while ((m = RE_HEX.exec(valeur))) {
+    const [r, g, b, a] = hexVersRgb(m[0]);
+    trouvees.push({ debut: m.index, fin: m.index + m[0].length, r, g, b, a });
+  }
+  RE_RGB.lastIndex = 0;
+  while ((m = RE_RGB.exec(valeur))) {
+    const a = m[4] === undefined ? 1
+      : /^var\(/.test(m[4]) ? m[4]
+        : (String(m[4]).endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]));
+    trouvees.push({ debut: m.index, fin: m.index + m[0].length, r: +m[1], g: +m[2], b: +m[3], a });
+  }
+  return trouvees.sort((x, y) => x.debut - y.debut);
+}
+
+/*
+ * L'ÉTALEMENT DES NUANCES — UN DÉGRADÉ RESTE UN DÉGRADÉ, ET DANS LE MÊME SENS.
+ *
+ * Deux choses arrivaient aux dégradés, et toutes deux les aplatissaient.
+ *
+ * Le PLAFOND, d'abord : un bouton bombé (`#B7E86B → #93CC3C`, quinze points
+ * d'écart le jour) voyait ses deux tons convertis un à un, et tous deux
+ * arriver au plafond des fonds — plus de bombé, un aplat. Le plafond est là
+ * pour qu'un fond porte du texte ; il n'a aucune raison d'effacer le relief
+ * d'un bouton.
+ *
+ * Le RENVERSEMENT, ensuite : la courbe des fonds inverse la clarté, donc le
+ * haut clair d'un bouton devenait son ton sombre et le bas son ton clair —
+ * un bouton éclairé par en dessous. Juste pour une surface, faux pour un
+ * relief.
+ *
+ * On lit donc les couleurs d'un MÊME dégradé ensemble : la plus claire de jour
+ * reste la plus claire de nuit, posée à la plus haute des valeurs converties
+ * (donc jamais au-dessus du plafond), et chaque autre garde en dessous une
+ * part de l'écart qu'elle avait avec elle. Seulement à l'intérieur d'un
+ * `gradient(…)` : deux couches superposées d'un `background` ne sont pas un
+ * dégradé, et le lustre blanc d'un panneau n'a pas à tirer sa chair vers le
+ * noir.
+ */
+const NUANCE_GARDEE = 0.5;    // la part de l'écart de jour rendue la nuit
+const RE_DEGRADE = /\b(?:repeating-)?(?:linear|radial|conic)-gradient\(/g;
+function plagesDeDegrade(valeur) {
+  const plages = [];
+  RE_DEGRADE.lastIndex = 0;
+  let m;
+  while ((m = RE_DEGRADE.exec(valeur))) {
+    let p = 1, i = m.index + m[0].length;
+    for (; i < valeur.length && p; i++) { if (valeur[i] === '(') p++; else if (valeur[i] === ')') p--; }
+    plages.push([m.index, i]);
+  }
+  return plages;
+}
+function etalerLesNuances(valeur, couleurs, sorties) {
+  for (const [de, a] of plagesDeDegrade(valeur)) {
+    const dedans = couleurs
+      .map((c, i) => ({ i, l: rgbVersHsl(c.r, c.g, c.b)[2] }))
+      .filter((x) => couleurs[x.i].debut >= de && couleurs[x.i].fin <= a
+        && (typeof couleurs[x.i].a === 'string' || couleurs[x.i].a >= 0.5));
+    if (dedans.length < 2) continue;
+    const ref = dedans.reduce((x, y) => (y.l > x.l ? y : x));
+    const haut = Math.max(...dedans.map((x) => sorties[x.i].l));
+    // Le ton de tête monte à la plus haute des valeurs converties — mais pas
+    // au-dessus de SON plafond : un jaune ou un cyan atteint la luminance
+    // limite bien plus bas qu'un violet, et c'est la luminance qui compte.
+    const r = sorties[ref.i];
+    r.l = plafonnerLuminance(r.h, r.s, haut);
+    for (const x of dedans) {
+      if (x === ref) continue;
+      sorties[x.i].l = Math.max(4, Math.min(sorties[x.i].l, r.l - NUANCE_GARDEE * (ref.l - x.l)));
+    }
+  }
+}
 
 function teindreValeur(valeur, role) {
-  return valeur
-    .replace(RE_HEX, (m) => {
-      const [r, g, b, a] = hexVersRgb(m);
-      return convertir(r, g, b, a, role);
-    })
-    .replace(RE_RGB, (m, r, g, b, a) => {
-      let alpha = a === undefined ? 1 : (String(a).endsWith('%') ? parseFloat(a) / 100 : parseFloat(a));
-      return convertir(+r, +g, +b, alpha, role);
-    });
+  const couleurs = couleursDe(valeur);
+  if (!couleurs.length) return valeur;
+  const sorties = couleurs.map((c) => convertirHsl(c.r, c.g, c.b, c.a, role));
+  if (role === 'fond') etalerLesNuances(valeur, couleurs, sorties);
+  let texte = '', pos = 0;
+  couleurs.forEach((c, i) => {
+    texte += valeur.slice(pos, c.debut) + hsl(sorties[i].h, sorties[i].s, sorties[i].l, sorties[i].a);
+    pos = c.fin;
+  });
+  return texte + valeur.slice(pos);
 }
 
 const aUneCouleur = (v) => { RE_HEX.lastIndex = 0; RE_RGB.lastIndex = 0; return RE_HEX.test(v) || RE_RGB.test(v); };
@@ -554,6 +696,39 @@ function teindreOmbre(valeur) {
   return couchesDOmbre(valeur)
     .map((couche) => teindreValeur(couche, estLisere(couche) ? 'bordure' : 'ombre'))
     .join(',');
+}
+
+/*
+ * LES RÔLES QUE LE NOM DE LA PROPRIÉTÉ NE DIT PAS.
+ *
+ * `roleDe` lit le rôle dans la propriété — c'est ce qui permet de convertir
+ * mille huit cents couleurs sans les regarder. Mais quelques-unes mentent :
+ * un `background` qui n'est pas une surface, un `color` qui n'est pas du
+ * texte du thème. Ici, le SÉLECTEUR dit ce que la propriété ne dit pas. La
+ * liste est courte, et chaque entrée explique pourquoi elle y est.
+ */
+const ROLES_FORCES = [
+  // LE REMPLISSAGE D'UNE BARRE DE PROGRESSION. Un `background`, donc un fond
+  // pour la conversion — et la piste vide en est un aussi. Les deux
+  // tombaient sur le même violet (36 %, le plafond), et neuf barres pleines
+  // ne se distinguaient plus de neuf barres vides. Or une barre pleine n'est
+  // pas une surface : c'est un SIGNAL, le même que le « NIV 14 » posé à
+  // côté, qui est du texte. Elle en prend donc la courbe — et la même
+  // couleur, par construction.
+  { selecteur: /\.(enc-progress|fa-progress)( i)?::(before|after)$/, propriete: /^background/, role: 'texte' },
+  // LES DEUX FEUTRES GRAS — le cri du modérateur, la ligne de l'animateur —
+  // sont des encres, comme les dix-sept du pot : leur teinte est leur
+  // identité. Passés en texte du thème, le rouge rejoignait la famille rose
+  // et le bleu marine sortait en lavande pâle : deux lignes faites pour
+  // sauter aux yeux ne se distinguaient plus des autres.
+  { selecteur: /\.msg\.(shout|blue)\b/, propriete: /^color$/, role: 'encre' },
+];
+function roleForce(tete, propriete) {
+  const p = propriete.trim().toLowerCase();
+  for (const r of ROLES_FORCES) {
+    if (r.propriete.test(p) && r.selecteur.test(tete || '')) return r.role;
+  }
+  return null;
 }
 
 // Le rôle d'une déclaration, d'après son nom de propriété.
@@ -644,17 +819,18 @@ function decouper(css) {
 
 const inconnues = new Set();
 
-function teindreDecl(texte, { tout }) {
+function teindreDecl(texte, { tout, tete }) {
   const coupe = texte.indexOf(':');
   if (coupe < 0) return null;
   const prop = texte.slice(0, coupe);
   const valeur = texte.slice(coupe + 1);
+  const role = roleForce(tete, prop) || roleDe(prop);
   // Une déclaration sans couleur n'entre normalement pas dans la surcharge —
   // sauf si son dessin a une variante de nuit : c'est alors elle, et elle
   // seule, qui a quelque chose à dire.
   if (aUneVariante(valeur)) {
     return `${prop.trim()}:${poserVariantes(aUneCouleur(valeur)
-      ? teindreValeur(valeur, roleDe(prop)) : valeur)}`;
+      ? teindreValeur(valeur, role) : valeur)}`;
   }
   if (!aUneCouleur(valeur)) return tout ? `${prop.trim()}:${valeur}` : null;
   // Un nom de couleur en valeur nous échapperait : il n'y en a aucun dans les
@@ -665,7 +841,7 @@ function teindreDecl(texte, { tout }) {
   if (/shadow$/.test(prop.trim().toLowerCase())) {
     return `${prop.trim()}:${teindreOmbre(valeur)}`;
   }
-  return `${prop.trim()}:${teindreValeur(valeur, roleDe(prop))}`;
+  return `${prop.trim()}:${teindreValeur(valeur, role)}`;
 }
 
 // Une règle @keyframes se REMPLACE en entier : une copie partielle effacerait
@@ -710,17 +886,17 @@ function porteUnSprite(enfants) {
   return image;
 }
 
-function rendre(noeuds, indent, tout) {
+function rendre(noeuds, indent, tout, tete) {
   const out = [];
   for (const nd of noeuds) {
     if (nd.type === 'decl') {
-      const d = teindreDecl(nd.texte, { tout });
+      const d = teindreDecl(nd.texte, { tout, tete });
       if (d) out.push(indent + d + ';');
       continue;
     }
     if (aIgnorer(nd.tete)) continue;
     const k = estKeyframes(nd.tete);
-    const dedans = rendre(nd.enfants, indent + '  ', tout || k);
+    const dedans = rendre(nd.enfants, indent + '  ', tout || k, nd.tete);
     const sprite = !k && !tout && !nd.tete.startsWith('@') && porteUnSprite(nd.enfants);
     if (sprite) dedans.push(indent + '  filter: var(--nuit-chassis);');
     if (!dedans.length) continue;
@@ -858,7 +1034,7 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
-  convertir, teindreValeur, roleDe, surcharge, fabriquer, CIBLES,
+  convertir, convertirHsl, teindreValeur, roleDe, roleForce, ROLES_FORCES, surcharge, fabriquer, CIBLES,
   estRose, estChassis, estParchemin, rgbVersHsl, hslVersRgb, hexVersRgb, variantesNuit,
-  encreDeNuit, luminance, VIOLET, ROSE_NUIT,
+  encreDeNuit, luminance, VIOLET, ROSE_NUIT, RELIEF_BAS, RELIEF_HAUT,
 };

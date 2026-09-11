@@ -111,10 +111,12 @@ test('le voile plat rejoue setPColor, et le fond ne défile pas', () => {
   // `background-attachment` reste à `scroll` (le défaut) : d'époque `bg.wp`
   // appartient au CADRE. On ne l'écrit donc nulle part — mais on ne met pas
   // `local` non plus.
-  assert.match(LIGHT, /#messages\.a-fond-prive \{\s*\n\s*background:\s*\n\s*linear-gradient\(var\(--wp-voile\), var\(--wp-voile\)\),\s*\n\s*var\(--wp-img\) center \/ cover no-repeat,\s*\n\s*#CCF599;/);
+  // Le voile est ÉCRIT dans la feuille (sa couleur suit donc le thème, de
+  // nuit comme de jour) ; le JavaScript n'en fournit que l'opacité.
+  assert.match(LIGHT, /#messages\.a-fond-prive \{\s*\n\s*background:\s*\n\s*linear-gradient\(rgba\(204,245,153,var\(--wp-alpha, \.8\)\), rgba\(204,245,153,var\(--wp-alpha, \.8\)\)\),\s*\n\s*var\(--wp-img\) center \/ cover no-repeat,\s*\n\s*#CCF599;/);
   assert.doesNotMatch(LIGHT, /a-fond-prive[\s\S]{0,300}background-attachment: local/);
   // Le bureau garde en plus son lustre, qui passe PAR-DESSUS l'image.
-  assert.match(CSS, /#messages\.a-fond-prive \{\s*\n\s*background:\s*\n\s*linear-gradient\(to bottom, rgba\(255,255,255,\.64\)[^\n]*\n\s*linear-gradient\(var\(--wp-voile\), var\(--wp-voile\)\),/);
+  assert.match(CSS, /#messages\.a-fond-prive \{\s*\n\s*background:\s*\n\s*linear-gradient\(to bottom, rgba\(255,255,255,\.64\)[^\n]*\n\s*linear-gradient\(rgba\(204,245,153,var\(--wp-alpha, \.8\)\), rgba\(204,245,153,var\(--wp-alpha, \.8\)\)\),/);
 });
 
 test('et le mien part chez l’autre — à l’ouverture, et à chaque changement', () => {

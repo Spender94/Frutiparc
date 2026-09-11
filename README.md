@@ -201,6 +201,28 @@ comme l'encre est posée en `style=""`, basculer en pleine conversation
 **repeint les lignes déjà écrites** (`repeindreLesEncres`, d'où le
 `data-feutre` que porte chaque ligne teintée).
 
+**Ce que le nom de la propriété ne dit pas** vit dans `ROLES_FORCES` : une
+liste courte de sélecteurs dont la couleur ne joue pas le rôle que sa
+propriété annonce. Le *remplissage* d'une barre de progression est un
+`background`, donc un fond pour la conversion — et la piste vide en est un
+aussi : les deux tombaient sur le même violet (le plafond, 36 %), et neuf
+barres pleines ne se distinguaient plus de neuf barres vides. Or une barre
+pleine est un **signal**, le même que le « NIV 14 » posé à côté, qui est du
+texte : elle en prend la courbe, et la même couleur par construction. De
+même les deux feutres **gras** — le cri du modérateur (`.msg.shout`), la
+ligne de l'animateur (`.msg.blue`) — sont des *encres* comme les dix-sept du
+pot, et passent par `encreDeNuit` : le rouge reste rouge, le bleu marine
+reste bleu, tous deux à 5,5:1 sur le panneau.
+
+**Un dégradé reste un dégradé, et dans le même sens.** Les couleurs d'un même
+`gradient(…)` sont lues *ensemble* : la plus claire de jour reste la plus
+claire de nuit, posée à la plus haute des valeurs converties — donc jamais
+au-dessus de son plafond —, et chaque autre garde en dessous la moitié de
+l'écart qu'elle avait avec elle. Sans quoi le plafond aplatissait un bouton
+bombé (ses deux tons y arrivaient tous deux) et le renversement l'éclairait
+par en dessous. Seulement à l'intérieur d'un dégradé : deux couches
+superposées d'un `background` ne sont pas un dégradé.
+
 **L'invariant, et il est arithmétique** : aucun fond au-dessus de `0,078` de
 luminance, aucun texte en dessous de `0,654`. Les deux bornes sont choisies
 pour que le **pire couple possible** tienne 5,5:1 — donc un texte illisible
@@ -249,7 +271,26 @@ nuances que le fichier ne peut pas dire tout seul :
 | `teinte: 'glyphe'` \| `'voyant'` | le dessin prend une teinte **énoncée** au lieu d'être converti | les pictogrammes de l'encart et leurs voyants (voir plus bas) |
 | `role: 'texte'` | le dessin passe par la courbe du **texte** | « NIV », qui se lit d'un tenant avec le numéro qui le suit |
 | `famille: 'commande'` | le dessin passe par la branche **rose**, celle des boutons | « Acheter » de la boutique : vert le jour, donc rangé avec le châssis, donc violet sombre sur un panneau violet — l'air d'un bouton **désactivé** |
+| `relief: 'garde'` | la courbe **ne renverse pas** les clartés : ce qui était éclairé le reste, ce qui était creusé le reste, l'échelle seule change (`RELIEF_BAS` → `RELIEF_HAUT`, 12 → 46 %), sans plafond | le lecteur Frusion — un **objet** en volume, pas une surface. Renversé, son cerne devenait la partie la plus claire, sa façade un aplat noir et sa cuve *plus claire* que le boîtier qu'elle creuse : un négatif, sans une nuance |
 | `dossier: FB` | le dessin vit dans `public/fb/` et non dans `frutiz/sprites/` | les pièces de la main bar |
+
+**Surface ou objet ?** Toutes les courbes du thème renversent la clarté — un
+panneau blanc devient un panneau sombre —, et c'est juste tant qu'il s'agit
+d'une *surface*, qui porte du texte et doit rester sous le plafond. Un objet
+dessiné en volume, lui, est éclairé par le haut de jour comme de nuit : il
+garde l'ordre de ses clartés, et il peut ressortir plus clair que le panneau
+qui le porte — c'est même ce qui le détache. Un objet ne porte pas de texte,
+il échappe donc au plafond ; une surface en porte, elle y reste. La règle est
+posée dessin par dessin dans le manifeste, jamais devinée.
+
+**L'empreinte dans l'URL.** Les dessins sont servis avec `max-age` 7 jours,
+`immutable` — juste pour un dessin d'époque, faux pour une variante de nuit,
+qui est *refaite* à chaque réglage du thème sous le même nom : un navigateur
+gardait la première version qu'il avait vue, et une languette survolée une
+fois quand sa plaque était encore blanche restait blanche au survol une
+semaine durant. Le générateur écrit donc chaque variante avec l'empreinte de
+son contenu (`…-nuit.svg?v=cd550d50`) : une variante refaite est une URL
+neuve, et la feuille — elle, revalidée à chaque chargement — la demande.
 
 **Un voyant s'inverse.** Les six raccourcis de l'encart ont deux états, et le
 thème de jour signale en **fonçant** — vert clair au repos, vert sombre allumé,
@@ -340,6 +381,22 @@ Trois fonds ont leur dessin de nuit à ce jour — **Utopiz**, **Mini-Pixiz** et
 **Noël Pixiz** —, tous en paysage. Le tiroir de `/light` les accepte quand
 même (la palette avant le cadrage, cf. plus bas) mais les pose en bande au
 milieu : un `_dark_mobile` en portrait remplirait l'écran.
+
+**En privé, le fond de l'autre suit le même chemin.** Une discussion privée
+montre le fond d'écran de l'interlocuteur derrière le fil, sous un voile de
+la chair du panneau — et l'interlocuteur n'envoie que l'URL de *jour* de son
+fond (c'est le protocole d'époque, partagé avec main.swf). C'est le thème de
+*ce* côté qui décide de la version : le client demande les cadrages de l'URL
+reçue à `/api/light/fond/cadrages` (une fois par URL) et pose le dessin de
+nuit s'il existe ; le voile, lui, est **écrit dans la feuille** — la chair du
+fil à l'opacité que la trame a dite (`rgba(204,245,153,var(--wp-alpha))`), que
+la feuille de nuit convertit comme toute autre couleur. Le JavaScript ne pose
+que l'opacité et l'image. Ni couleur écrite en dur (le vert du jour voilait
+une image de nuit), ni couleur *lue* à l'instant de la bascule : Chrome
+retraite `/nuit.css` de façon asynchrone quand on la rallume, et à cet
+instant-là une couleur calculée est encore celle du jour. Basculer en pleine
+conversation repose l'image (`repeindreLesFondsPrives`, d'où le
+`data-fond-brut` que porte chaque fil), et le voile suit la feuille tout seul.
 
 **Le décor par défaut** — ce que la nuit pose quand le joueur n'a choisi aucun
 fond, l'équivalent du vert pomme du jour — est **Utopiz endormie**

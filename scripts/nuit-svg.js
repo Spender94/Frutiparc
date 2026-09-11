@@ -121,17 +121,27 @@ const MANIFESTE = [
   // et c'est du BOÎTIER : d'où `blanc: 'teint'`. La façade porte en plus le
   // petit fruit — rouge, jaune, vert — qui est la seule couleur du lecteur :
   // `teintes: 'gardees'` le sauve du rangement avec la famille rose.
+  //
+  // ET C'EST UN OBJET EN VOLUME, d'où `relief: 'garde'`. Le boîtier est
+  // dessiné éclairé par le haut : une façade claire, une cuve creusée dans
+  // l'ombre (#444444), un cerne sombre autour. La courbe des sprites RENVERSE
+  // les clartés — juste pour une surface, faux pour un objet : le cerne
+  // sortait en liseré clair, la façade en aplat noir, et la cuve PLUS CLAIRE
+  // que le boîtier qu'elle creuse. Un négatif, sans une nuance. La courbe du
+  // relief garde l'ordre des clartés et les descend dans l'échelle de la
+  // nuit : la façade reste la face éclairée, la cuve reste un creux.
   ...['frusion-arriere', 'frusion-fondslot', 'frusion-milieu', 'frusion-slot']
-    .map((n) => ({ f: n + '.svg', blanc: 'teint' })),
-  { f: 'frusion-avant.svg', blanc: 'teint', teintes: 'gardees',
+    .map((n) => ({ f: n + '.svg', blanc: 'teint', relief: 'garde' })),
+  { f: 'frusion-avant.svg', blanc: 'teint', teintes: 'gardees', relief: 'garde',
     note: 'la façade — le petit fruit garde ses couleurs' },
-  // Les deux commandes : un anneau gris et un glyphe. L'anneau s'éteint, le
-  // glyphe reste clair — c'est ce qui les rend lisibles sur le boîtier sombre.
+  // Les deux commandes : une pastille bombée (un dégradé blanc → gris), son
+  // anneau, son glyphe. Même relief que le boîtier qui les porte — la
+  // pastille reste la face éclairée, le glyphe reste sombre dessus.
   // `blanc: 'teint'` ici aussi : leurs blancs ne sont pas un glyphe mais un
   // REFLET — un dégradé blanc vers transparent posé sur la pastille. Discret
   // sur un gris clair, il devenait une grosse tache laiteuse sur le violet.
-  ...troisEtats('frusionCasque').map((f) => ({ f, blanc: 'teint' })),
-  ...troisEtats('frusionEject').map((f) => ({ f, blanc: 'teint' })),
+  ...troisEtats('frusionCasque').map((f) => ({ f, blanc: 'teint', relief: 'garde' })),
+  ...troisEtats('frusionEject').map((f) => ({ f, blanc: 'teint', relief: 'garde' })),
 
   // ── Les quatre boutons du salon, et la languette CONTACTS ─────────────
   ...['chat-but-bouille', 'chat-but-penlist', 'chat-but-userlist', 'chat-but-warning']
@@ -300,7 +310,10 @@ function reteindre(fragment, compteur, entree) {
   const blancTeint = entree && entree.blanc === 'teint';
   const teintesGardees = entree && entree.teintes === 'gardees';
   const imposee = entree && TEINTES[entree.teinte];
-  const role = (entree && entree.role) || 'sprite';
+  // `relief: 'garde'` — CE DESSIN EST UN OBJET, PAS UNE SURFACE. Sa courbe ne
+  // renverse pas les clartés : ce qui était éclairé le reste, ce qui était
+  // creusé le reste (cf. COURBES.relief dans generer-nuit.js).
+  const role = (entree && entree.relief === 'garde') ? 'relief' : ((entree && entree.role) || 'sprite');
   const famille = entree && entree.famille;
   return fragment.replace(RE_COULEUR, (tout, attr, hex) => {
     // Teinte IMPOSÉE : le dessin est un glyphe d'une seule couleur, le thème

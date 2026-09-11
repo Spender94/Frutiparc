@@ -88,7 +88,7 @@ a {
 }
 #prof-enregistrer {
   color: hsl(256 13% 84.8%);
-  background: linear-gradient(180deg, hsl(256 30% 24.5%), hsl(256 30% 35.8%));
+  background: linear-gradient(180deg, hsl(256 30% 35.8%), hsl(256 30% 28%));
   box-shadow: 0 1px 2px hsl(256 13% 17.5% / 0.25), inset 0 1px 0 hsl(256 26% 30% / 0.6);
 }
 .prof-accm-lab {
@@ -235,7 +235,7 @@ a {
 }
 .bo-acheter {
   border: 1px solid hsl(256 26% 40.8%);
-  background: linear-gradient(180deg, hsl(256 30% 36%), hsl(256 30% 36%));
+  background: linear-gradient(180deg, hsl(256 30% 36%), hsl(256 30% 28.9%));
   color: hsl(256 13% 96%);
 }
 .bo-acheter:active {
@@ -291,10 +291,10 @@ a {
   color: hsl(256 13% 84.9%);
 }
 .fb-pastille {
-  background: url('/frutiz/sprites/fruit_default-nuit.svg') center / contain no-repeat;
+  background: url('/frutiz/sprites/fruit_default-nuit.svg?v=152f02fa') center / contain no-repeat;
 }
 .fb-ecran {
-  background: url('/frutiz/sprites/ecran-fond-nuit.svg') 0 0 / 100% 100% no-repeat;
+  background: url('/frutiz/sprites/ecran-fond-nuit.svg?v=4f237dec') 0 0 / 100% 100% no-repeat;
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 .fb-ecran::before {
@@ -366,7 +366,7 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
 }
 #messages.a-fond-prive {
   background:
-      linear-gradient(var(--wp-voile), var(--wp-voile)),
+      linear-gradient(hsl(256 30% 25.8% / var(--wp-alpha, .8)), hsl(256 30% 25.8% / var(--wp-alpha, .8))),
       var(--wp-img) center / cover no-repeat,
       hsl(256 30% 25.8%);
 }
@@ -392,7 +392,7 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
   color: hsl(256 13% 84.4%);
 }
 .msg.shout, .msg.shout .body, .msg.shout .from, .msg.shout .time {
-  color: hsl(325 58% 86.8%);
+  color: hsl(0 100% 77.3%);
 }
 .blindtest {
   background: hsl(240 55% 11.7%);
@@ -403,7 +403,7 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
   color: hsl(240 55% 88.5%);
 }
 .msg.blue, .msg.blue .body, .msg.blue .from, .msg.blue .from.me, .msg.blue .time {
-  color: hsl(240 55% 88.5%);
+  color: hsl(240 100% 82.2%);
 }
 .mention-liste {
   background: hsl(256 30% 10%);
@@ -453,7 +453,7 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
   border-color: hsl(256 26% 42.9%);
 }
 .poll-jauge {
-  background: linear-gradient(hsl(256 30% 23%), hsl(256 30% 30%));
+  background: linear-gradient(hsl(256 30% 30%), hsl(256 30% 25.1%));
 }
 .poll-opt-val {
   color: hsl(256 13% 84.6%);
@@ -463,7 +463,7 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
   background: hsl(325 34% 26.7%);
 }
 .poll-opt.voted .poll-jauge {
-  background: linear-gradient(hsl(325 34% 28.7%), hsl(325 34% 31.2%));
+  background: linear-gradient(hsl(325 34% 31.2%), hsl(325 34% 26.7%));
 }
 .poll-opt.voted .poll-opt-val {
   color: hsl(325 58% 87.7%);
@@ -513,10 +513,10 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
   color: hsl(325 58% 87.5%);
 }
 .pen-swatch.mc {
-  background: linear-gradient(90deg, hsl(256 30% 36%), hsl(256 30% 36%), hsl(256 30% 36%), hsl(187 30% 27%), hsl(240 30% 36%), hsl(277 30% 36%), hsl(312 50% 27.9%));
+  background: linear-gradient(90deg, hsl(256 30% 21.5%), hsl(256 30% 19.6%), hsl(256 30% 20.2%), hsl(187 30% 23.1%), hsl(240 30% 26.5%), hsl(277 30% 16.2%), hsl(312 50% 34%));
 }
 .mc-text {
-  background: linear-gradient(90deg, hsl(256 30% 36%), hsl(256 30% 36%), hsl(256 30% 36%), hsl(187 30% 27%), hsl(240 30% 36%), hsl(277 30% 36%), hsl(312 50% 27.9%));
+  background: linear-gradient(90deg, hsl(256 30% 21.5%), hsl(256 30% 19.6%), hsl(256 30% 20.2%), hsl(187 30% 23.1%), hsl(240 30% 26.5%), hsl(277 30% 16.2%), hsl(312 50% 34%));
 }
 #accent-bar {
   background: hsl(256 30% 10%);
@@ -562,13 +562,13 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
   background: hsl(256 30% 36%);
 }
 .fiche-plaque .fa-progress i::before {
-  background: hsl(256 30% 36%);
+  background: hsl(256 13% 84.6%);
 }
 .fiche-plaque .fa-niv b {
   color: hsl(256 13% 84.6%);
 }
 .fiche-nom-ligne .statut {
-  background: url('/frutiz/sprites/sl-icone-fond-nuit.svg') center center / 17px 17px no-repeat;
+  background: url('/frutiz/sprites/sl-icone-fond-nuit.svg?v=edacc624') center center / 17px 17px no-repeat;
 }
 .fiche-nom-ligne b {
   color: hsl(259 42% 86.9%);
@@ -606,11 +606,11 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-track {
   background: hsl(256 30% 21.3%);
 }
 body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb {
-  background-image: linear-gradient(90deg, hsl(256 30% 36%) 0%, hsl(256 30% 27.1%) 48%, hsl(256 30% 35.8%) 56%, hsl(256 30% 36%) 100%);
+  background-image: linear-gradient(90deg, hsl(256 30% 19.2%) 0%, hsl(256 30% 36%) 48%, hsl(256 30% 29.9%) 56%, hsl(256 30% 19.2%) 100%);
   box-shadow: inset 0 0 0 1px hsl(256 26% 52.6% / 0.3);
 }
 body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
-  background-image: linear-gradient(90deg, hsl(256 30% 36%) 0%, hsl(256 30% 22.3%) 48%, hsl(256 30% 30.9%) 56%, hsl(256 30% 36%) 100%);
+  background-image: linear-gradient(90deg, hsl(256 30% 13.3%) 0%, hsl(256 30% 36%) 48%, hsl(256 30% 30%) 56%, hsl(256 30% 13.3%) 100%);
 }
 .fiche-titre {
   color: hsl(256 13% 84.5%);
@@ -848,17 +848,17 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 }
 .ma-btn {
   color: hsl(325 58% 86.6%);
-  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(325 34% 29.9%), hsl(325 34% 32.6%));
+  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(325 34% 32.6%), hsl(325 34% 27.7%));
   box-shadow: 0 1px 2px hsl(325 58% 66% / 0.22), inset 0 1px 0 hsl(256 26% 30% / 0.55);
 }
 .ma-btn.primaire {
   color: hsl(256 13% 84.8%);
-  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(256 30% 34.1%), hsl(256 30% 36%));
+  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(256 30% 36%), hsl(256 30% 28.6%));
   box-shadow: 0 1px 2px hsl(256 13% 17.5% / 0.22), inset 0 1px 0 hsl(256 26% 30% / 0.55);
 }
 .ma-btn.danger {
   color: hsl(256 13% 96%);
-  background: linear-gradient(180deg, hsl(325 34% 34.8%), hsl(325 34% 34.5%));
+  background: linear-gradient(180deg, hsl(325 34% 34.8%), hsl(325 34% 26.6%));
 }
 .mail-form label {
   color: hsl(256 13% 84.8%);
@@ -945,7 +945,7 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 }
 #trombi-head {
   border-bottom: 1px solid hsl(256 26% 34.3%);
-  background: linear-gradient(180deg, hsl(256 30% 10% / 0.5), hsl(256 30% 10% / 0) 46%), linear-gradient(180deg, hsl(325 34% 29.9%), hsl(325 34% 31.4%));
+  background: linear-gradient(180deg, hsl(256 30% 10% / 0.5), hsl(256 30% 10% / 0) 46%), linear-gradient(180deg, hsl(325 34% 31.4%), hsl(325 34% 28.7%));
   box-shadow: 0 1px 3px hsl(256 13% 17.5% / 0.18);
 }
 #trombi-search {
@@ -970,11 +970,11 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
   background: hsl(325 34% 27.3%);
 }
 #trombi-body::-webkit-scrollbar-thumb {
-  background-image: linear-gradient(90deg, hsl(325 34% 34.5%) 0%, hsl(325 34% 28.2%) 48%, hsl(325 34% 30.5%) 56%, hsl(325 34% 34.5%) 100%);
+  background-image: linear-gradient(90deg, hsl(325 34% 22.4%) 0%, hsl(325 34% 34.5%) 48%, hsl(325 34% 30.5%) 56%, hsl(325 34% 22.4%) 100%);
   box-shadow: inset 0 0 0 1px hsl(325 58% 73.6% / 0.3);
 }
 #trombi-body::-webkit-scrollbar-thumb:hover {
-  background-image: linear-gradient(90deg, hsl(325 34% 34.5%) 0%, hsl(325 34% 27.6%) 48%, hsl(325 34% 29.5%) 56%, hsl(325 34% 34.5%) 100%);
+  background-image: linear-gradient(90deg, hsl(325 34% 19.1%) 0%, hsl(325 34% 34.5%) 48%, hsl(325 34% 29.5%) 56%, hsl(325 34% 19.1%) 100%);
 }
 #trombi-search:focus {
   box-shadow: 0 0 0 3px hsl(256 26% 30% / 0.65);
@@ -985,7 +985,7 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 }
 .trombi-pgbtn {
   color: hsl(325 58% 86.6%);
-  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(325 34% 29.9%), hsl(325 34% 32.6%));
+  background: linear-gradient(180deg, hsl(256 30% 10% / 0.55), hsl(256 30% 10% / 0) 52%), linear-gradient(180deg, hsl(325 34% 32.6%), hsl(325 34% 27.7%));
   box-shadow: 0 1px 2px hsl(325 58% 66% / 0.22), inset 0 1px 0 hsl(256 26% 30% / 0.55);
 }
 .trombi-pginfo {
@@ -1028,7 +1028,7 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
   color: hsl(256 13% 84.9%);
 }
 #sc-liste, #sc-table {
-  background: hsl(256 30% 20.9%) linear-gradient(180deg, hsl(256 30% 11.6%) 0, hsl(256 30% 20.9%) 14px);
+  background: hsl(256 30% 20.9%) linear-gradient(180deg, hsl(256 30% 20.9%) 0, hsl(256 30% 14.4%) 14px);
   border: 2px solid hsl(256 26% 30%);
 }
 .sc-section {
@@ -1099,7 +1099,7 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
   background: hsl(256 30% 36%);
 }
 .enc-progress i::before {
-  background: hsl(256 30% 36%);
+  background: hsl(256 13% 84.9%);
 }
 .enc-trophy .tro {
   filter: drop-shadow(0 1px 0 hsl(256 13% 10% / 0.45));
@@ -1137,7 +1137,7 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
   color: hsl(325 58% 86.6%);
 }
 .daily-banner {
-  background: linear-gradient(135deg, hsl(256 30% 18%), hsl(256 30% 26.2%));
+  background: linear-gradient(135deg, hsl(256 30% 26.2%), hsl(256 30% 20.5%));
   border: 1px solid hsl(256 26% 40.5%);
   box-shadow: inset 0 1px 0 hsl(256 26% 30% / 0.7);
 }
@@ -1197,7 +1197,7 @@ body.bureau-frutiz #bureau-coin .mb-encart {
   box-shadow: inset 0 0 0 1px hsl(256 26% 43.1%), 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz #bureau-coin .mb-encart::after {
-  background: url('/frutiz/sprites/encart-reflet-nuit.svg') left top / 100% 100% no-repeat;
+  background: url('/frutiz/sprites/encart-reflet-nuit.svg?v=9eb24b79') left top / 100% 100% no-repeat;
 }
 body.bureau-frutiz #bureau-coin .enc-progress {
   background:
@@ -1205,10 +1205,10 @@ body.bureau-frutiz #bureau-coin .enc-progress {
     left bottom / 100% 26px no-repeat;
 }
 body.bureau-frutiz #bureau-coin .enc-progress::after {
-  background: repeating-linear-gradient(to top, hsl(256 30% 36%) 0 2px, transparent 2px 3px);
+  background: repeating-linear-gradient(to top, hsl(256 13% 84.9%) 0 2px, transparent 2px 3px);
 }
 body.bureau-frutiz #bureau-coin .enc-progress::before {
-  background: hsl(256 30% 36%);
+  background: hsl(256 13% 84.9%);
 }
 body.bureau-frutiz #bureau-coin .enc-trophy .val {
   color: hsl(256 13% 84.9%);
@@ -1221,19 +1221,19 @@ body.bureau-frutiz #bureau-coin .em-btn {
   box-shadow: 0 0 0 .5px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .ot-fondh {
-  background-image: url('/frutiz/sprites/onglet_fondh-nuit.svg');
+  background-image: url('/frutiz/sprites/onglet_fondh-nuit.svg?v=82cb8fbf');
 }
 body.bureau-frutiz .ot-fondb {
-  background-image: url('/frutiz/sprites/onglet_fondb-nuit.svg');
+  background-image: url('/frutiz/sprites/onglet_fondb-nuit.svg?v=deaaa93c');
 }
 body.bureau-frutiz .ot-barre {
-  background-image: url('/frutiz/sprites/onglet_barre-nuit.svg');
+  background-image: url('/frutiz/sprites/onglet_barre-nuit.svg?v=8cacd6bc');
 }
 body.bureau-frutiz .ot-pied {
-  background-image: url('/frutiz/sprites/onglet_pied-nuit.svg');
+  background-image: url('/frutiz/sprites/onglet_pied-nuit.svg?v=5f88c852');
 }
 body.bureau-frutiz .fb-onglet .ot-couture {
-  background-image: url('/frutiz/sprites/onglet_couture-nuit.svg');
+  background-image: url('/frutiz/sprites/onglet_couture-nuit.svg?v=1b5eea68');
 }
 body.bureau-frutiz .fb-onglet span {
   color: hsl(256 13% 84.5%);
@@ -1256,37 +1256,37 @@ body.bureau-frutiz .fb-onglet .ot-menu button:active {
   }
 }
 body.bureau-frutiz #frusion-boite .fr-arriere {
-  background-image: url('/frutiz/sprites/frusion-arriere-nuit.svg');
+  background-image: url('/frutiz/sprites/frusion-arriere-nuit.svg?v=96b25a63');
 }
 body.bureau-frutiz #frusion-boite .fr-fondslot {
-  background-image: url('/frutiz/sprites/frusion-fondslot-nuit.svg');
+  background-image: url('/frutiz/sprites/frusion-fondslot-nuit.svg?v=e11c2163');
 }
 body.bureau-frutiz #frusion-boite .fr-milieu {
-  background-image: url('/frutiz/sprites/frusion-milieu-nuit.svg');
+  background-image: url('/frutiz/sprites/frusion-milieu-nuit.svg?v=78822942');
 }
 body.bureau-frutiz #frusion-boite .fr-slot {
-  background-image: url('/frutiz/sprites/frusion-slot-nuit.svg');
+  background-image: url('/frutiz/sprites/frusion-slot-nuit.svg?v=3fa67e4e');
 }
 body.bureau-frutiz #frusion-boite .fr-avant {
-  background-image: url('/frutiz/sprites/frusion-avant-nuit.svg');
+  background-image: url('/frutiz/sprites/frusion-avant-nuit.svg?v=cd550d50');
 }
 body.bureau-frutiz #frusion-boite .fr-casque {
-  background-image: url('/frutiz/sprites/frusionCasque_up-nuit.svg');
+  background-image: url('/frutiz/sprites/frusionCasque_up-nuit.svg?v=2b03c8b6');
 }
 body.bureau-frutiz #frusion-boite .fr-casque:hover {
-  background-image: url('/frutiz/sprites/frusionCasque_over-nuit.svg');
+  background-image: url('/frutiz/sprites/frusionCasque_over-nuit.svg?v=b7b0b9d6');
 }
 body.bureau-frutiz #frusion-boite .fr-casque:active {
-  background-image: url('/frutiz/sprites/frusionCasque_down-nuit.svg');
+  background-image: url('/frutiz/sprites/frusionCasque_down-nuit.svg?v=a0bce324');
 }
 body.bureau-frutiz #frusion-boite .fr-eject {
-  background-image: url('/frutiz/sprites/frusionEject_up-nuit.svg');
+  background-image: url('/frutiz/sprites/frusionEject_up-nuit.svg?v=ff6561a5');
 }
 body.bureau-frutiz #frusion-boite .fr-eject:hover {
-  background-image: url('/frutiz/sprites/frusionEject_over-nuit.svg');
+  background-image: url('/frutiz/sprites/frusionEject_over-nuit.svg?v=a2354060');
 }
 body.bureau-frutiz #frusion-boite .fr-eject:active {
-  background-image: url('/frutiz/sprites/frusionEject_down-nuit.svg');
+  background-image: url('/frutiz/sprites/frusionEject_down-nuit.svg?v=e2afa630');
 }
 body.bureau-frutiz .fb-raccourci .fb-r-lbl {
   color: var(--fond-txt, hsl(256 13% 84.8%));
@@ -1311,43 +1311,43 @@ body.bureau-frutiz .fen .fb-dossier-vide {
   color: hsl(256 13% 84.6%);
 }
 body.bureau-frutiz #frutimandala .md-dessus {
-  background: url('/frutiz/sprites/frutimandala-dessus-nuit.svg') left top / 200px 80px no-repeat;
+  background: url('/frutiz/sprites/frutimandala-dessus-nuit.svg?v=7f2c3790') left top / 200px 80px no-repeat;
 }
 body.bureau-frutiz #frutimandala .md-mandalaGauche {
-  background-image: url('/frutiz/sprites/mandalaGauche_up-nuit.svg');
+  background-image: url('/frutiz/sprites/mandalaGauche_up-nuit.svg?v=1662cdac');
 }
 body.bureau-frutiz #frutimandala .md-mandalaGauche:hover {
-  background-image: url('/frutiz/sprites/mandalaGauche_over-nuit.svg');
+  background-image: url('/frutiz/sprites/mandalaGauche_over-nuit.svg?v=ee62e865');
 }
 body.bureau-frutiz #frutimandala .md-mandalaGauche:active {
-  background-image: url('/frutiz/sprites/mandalaGauche_down-nuit.svg');
+  background-image: url('/frutiz/sprites/mandalaGauche_down-nuit.svg?v=9ff98228');
 }
 body.bureau-frutiz #frutimandala .md-mandalaDroite {
-  background-image: url('/frutiz/sprites/mandalaDroite_up-nuit.svg');
+  background-image: url('/frutiz/sprites/mandalaDroite_up-nuit.svg?v=869009fc');
 }
 body.bureau-frutiz #frutimandala .md-mandalaDroite:hover {
-  background-image: url('/frutiz/sprites/mandalaDroite_over-nuit.svg');
+  background-image: url('/frutiz/sprites/mandalaDroite_over-nuit.svg?v=256edb50');
 }
 body.bureau-frutiz #frutimandala .md-mandalaDroite:active {
-  background-image: url('/frutiz/sprites/mandalaDroite_down-nuit.svg');
+  background-image: url('/frutiz/sprites/mandalaDroite_down-nuit.svg?v=fdb09485');
 }
 body.bureau-frutiz #frutimandala .md-mandalaSwap {
-  background-image: url('/frutiz/sprites/mandalaSwap_up-nuit.svg');
+  background-image: url('/frutiz/sprites/mandalaSwap_up-nuit.svg?v=020c1ff0');
 }
 body.bureau-frutiz #frutimandala .md-mandalaSwap:hover {
-  background-image: url('/frutiz/sprites/mandalaSwap_over-nuit.svg');
+  background-image: url('/frutiz/sprites/mandalaSwap_over-nuit.svg?v=44cad884');
 }
 body.bureau-frutiz #frutimandala .md-mandalaSwap:active {
-  background-image: url('/frutiz/sprites/mandalaSwap_down-nuit.svg');
+  background-image: url('/frutiz/sprites/mandalaSwap_down-nuit.svg?v=26ae5475');
 }
 body.bureau-frutiz #frutimandala .md-mandalaValider {
-  background-image: url('/frutiz/sprites/mandalaValider_up-nuit.svg');
+  background-image: url('/frutiz/sprites/mandalaValider_up-nuit.svg?v=f850c7fc');
 }
 body.bureau-frutiz #frutimandala .md-mandalaValider:hover {
-  background-image: url('/frutiz/sprites/mandalaValider_over-nuit.svg');
+  background-image: url('/frutiz/sprites/mandalaValider_over-nuit.svg?v=b1fd459e');
 }
 body.bureau-frutiz #frutimandala .md-mandalaValider:active {
-  background-image: url('/frutiz/sprites/mandalaValider_down-nuit.svg');
+  background-image: url('/frutiz/sprites/mandalaValider_down-nuit.svg?v=7d399116');
 }
 body.bureau-frutiz #mode-rapide {
   color: hsl(256 13% 84.5%);
@@ -1357,7 +1357,7 @@ body.bureau-frutiz #mode-rapide i {
 }
 body.bureau-frutiz #side-list {
   background: linear-gradient(to right,
-    hsl(256 30% 10%) 0 calc(var(--cornerX) - 3px), hsl(256 30% 19.6%) calc(var(--cornerX) - 3px) var(--cornerX));
+    hsl(256 30% 19.6%) 0 calc(var(--cornerX) - 3px), hsl(256 30% 12.9%) calc(var(--cornerX) - 3px) var(--cornerX));
 }
 body.bureau-frutiz #side-list-ombre {
   background: hsl(256 30% 36%);
@@ -1366,18 +1366,18 @@ body.bureau-frutiz #side-list .sl-dossier > .sl-titre {
   color: hsl(256 13% 96%);
 }
 body.bureau-frutiz #side-list .sl-titre .plaque {
-  background: url('/frutiz/sprites/sl-dossier-fond-nuit.svg') left top / 100% 12px no-repeat;
+  background: url('/frutiz/sprites/sl-dossier-fond-nuit.svg?v=dd2e786f') left top / 100% 12px no-repeat;
 }
 body.bureau-frutiz #side-list .sl-titre .bout {
-  background: url('/frutiz/sprites/sl-fleche-1-nuit.svg') left top / 20.65px 12px no-repeat;
+  background: url('/frutiz/sprites/sl-fleche-1-nuit.svg?v=e0c1dff0') left top / 20.65px 12px no-repeat;
 }
 body.bureau-frutiz #side-list .sl-contact .voyant {
-  --etat: url('/frutiz/sprites/sl-presence-0-nuit.svg');
+  --etat: url('/frutiz/sprites/sl-presence-0-nuit.svg?v=64663cbc');
   background: var(--etat) center center / 8px 8px no-repeat,
-              url('/frutiz/sprites/sl-icone-fond-nuit.svg') left top / 17px 17px no-repeat;
+              url('/frutiz/sprites/sl-icone-fond-nuit.svg?v=edacc624') left top / 17px 17px no-repeat;
 }
 body.bureau-frutiz #side-list .sl-contact.en-ligne .voyant {
-  --etat: url('/frutiz/sprites/sl-presence-1-nuit.svg');
+  --etat: url('/frutiz/sprites/sl-presence-1-nuit.svg?v=0f00001a');
 }
 body.bureau-frutiz #side-list .sl-contact .nom {
   color: hsl(256 13% 84.5%);
@@ -1393,13 +1393,13 @@ body.bureau-frutiz #side-list .sl-recherche {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #languette-contacts {
-  background: url('/frutiz/sprites/butContact_up-nuit.svg') center / 19.75px 84.15px no-repeat;
+  background: url('/frutiz/sprites/butContact_up-nuit.svg?v=b71010fd') center / 19.75px 84.15px no-repeat;
 }
 body.bureau-frutiz #languette-contacts:hover {
-  background-image: url('/frutiz/sprites/butContact_over-nuit.svg');
+  background-image: url('/frutiz/sprites/butContact_over-nuit.svg?v=151f9de1');
 }
 body.bureau-frutiz #languette-contacts:active {
-  background-image: url('/frutiz/sprites/butContact_down-nuit.svg');
+  background-image: url('/frutiz/sprites/butContact_down-nuit.svg?v=73263381');
 }
 body.bureau-frutiz #bureau .home-compte {
   color: var(--fond-txt, hsl(256 13% 84.4%));
@@ -1420,25 +1420,25 @@ body.bureau-frutiz .fen-titre {
   color: hsl(256 13% 84.9%);
 }
 body.bureau-frutiz .fen-pastille {
-  background: url('/frutiz/sprites/fruit_default-nuit.svg') center / contain no-repeat;
+  background: url('/frutiz/sprites/fruit_default-nuit.svg?v=152f02fa') center / contain no-repeat;
 }
 body.bureau-frutiz .fen-btn.fermer {
-  background-image: url('/frutiz/sprites/butWinTop1_up-nuit.svg');
+  background-image: url('/frutiz/sprites/butWinTop1_up-nuit.svg?v=787a92ac');
 }
 body.bureau-frutiz .fen-btn.fermer:hover {
-  background-image: url('/frutiz/sprites/butWinTop1_over-nuit.svg');
+  background-image: url('/frutiz/sprites/butWinTop1_over-nuit.svg?v=e5a85312');
 }
 body.bureau-frutiz .fen-btn.fermer:active {
-  background-image: url('/frutiz/sprites/butWinTop1_down-nuit.svg');
+  background-image: url('/frutiz/sprites/butWinTop1_down-nuit.svg?v=1bc07365');
 }
 body.bureau-frutiz .fen-btn.plier {
-  background-image: url('/frutiz/sprites/butWinTop2_up-nuit.svg');
+  background-image: url('/frutiz/sprites/butWinTop2_up-nuit.svg?v=7ec02688');
 }
 body.bureau-frutiz .fen-btn.plier:hover {
-  background-image: url('/frutiz/sprites/butWinTop2_over-nuit.svg');
+  background-image: url('/frutiz/sprites/butWinTop2_over-nuit.svg?v=5322f70e');
 }
 body.bureau-frutiz .fen-btn.plier:active {
-  background-image: url('/frutiz/sprites/butWinTop2_down-nuit.svg');
+  background-image: url('/frutiz/sprites/butWinTop2_down-nuit.svg?v=a0ea30fa');
 }
 body.bureau-frutiz .fen,
 body.bureau-frutiz .fiche-boite {
@@ -1536,10 +1536,10 @@ body.bureau-frutiz #gaspard-panel .gs-icones .icon-btn {
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz #gaspard-panel .gs-icones .gs-but-ecrans {
-  background-image: url('/frutiz/sprites/chat-but-bouille-nuit.svg');
+  background-image: url('/frutiz/sprites/chat-but-bouille-nuit.svg?v=82f0d5cb');
 }
 body.bureau-frutiz #gaspard-panel .gs-icones .gs-but-users {
-  background-image: url('/frutiz/sprites/chat-but-userlist-nuit.svg');
+  background-image: url('/frutiz/sprites/chat-but-userlist-nuit.svg?v=7459f4c0');
 }
 body.bureau-frutiz #gaspard-panel .gs-page {
   background:
@@ -1564,10 +1564,10 @@ body.bureau-frutiz #gaspard-panel .gs-in {
   color: hsl(256 13% 84.4%);
 }
 body.bureau-frutiz #gaspard-panel .gs-ul-fleche {
-  background: url('/frutiz/sprites/user-list-pilule-nuit.svg') center / 100% 20px no-repeat;
+  background: url('/frutiz/sprites/user-list-pilule-nuit.svg?v=ff15cd57') center / 100% 20px no-repeat;
 }
 body.bureau-frutiz #gaspard-panel .gs-ul-boite {
-  border-image: url('/frutiz/sprites/user-list-boite-nuit.svg') 10 fill / 10px stretch;
+  border-image: url('/frutiz/sprites/user-list-boite-nuit.svg?v=74a3eef4') 10 fill / 10px stretch;
 }
 body.bureau-frutiz #recherche-panel .rc-form {
   background: hsl(256 30% 10%);
@@ -1610,7 +1610,7 @@ body.bureau-frutiz #recherche-panel .rc-slot .rc-voyant {
   filter: var(--nuit-chassis);
 }
 body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille {
-  background: url('/frutiz/sprites/ecran-fond-nuit.svg') 0 0 / 100% 100% no-repeat;
+  background: url('/frutiz/sprites/ecran-fond-nuit.svg?v=4f237dec') 0 0 / 100% 100% no-repeat;
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz #recherche-panel .rc-slot .rc-bouille::after {
@@ -1661,16 +1661,16 @@ body.bureau-frutiz .fen #topbar .icon-btn {
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #topbar #bouille-toggle {
-  background-image: url('/frutiz/sprites/chat-but-bouille-nuit.svg');
+  background-image: url('/frutiz/sprites/chat-but-bouille-nuit.svg?v=82f0d5cb');
 }
 body.bureau-frutiz .fen #topbar #users-btn {
-  background-image: url('/frutiz/sprites/chat-but-userlist-nuit.svg');
+  background-image: url('/frutiz/sprites/chat-but-userlist-nuit.svg?v=7459f4c0');
 }
 body.bureau-frutiz .fen #topbar #pen-btn {
-  background-image: url('/frutiz/sprites/chat-but-penlist-nuit.svg');
+  background-image: url('/frutiz/sprites/chat-but-penlist-nuit.svg?v=a9aa16bb');
 }
 body.bureau-frutiz .fen #topbar #chat-warning {
-  background-image: url('/frutiz/sprites/chat-but-warning-nuit.svg');
+  background-image: url('/frutiz/sprites/chat-but-warning-nuit.svg?v=3555ef01');
 }
 body.bureau-frutiz .fen #chat-panel #messages {
   background:
@@ -1682,7 +1682,7 @@ body.bureau-frutiz .fen #chat-panel #messages {
 body.bureau-frutiz .fen #chat-panel #messages.a-fond-prive {
   background:
     linear-gradient(to bottom, hsl(256 30% 10% / 0.64) 0, hsl(256 30% 10% / 0) 8px),
-    linear-gradient(var(--wp-voile), var(--wp-voile)),
+    linear-gradient(hsl(256 30% 25.8% / var(--wp-alpha, .8)), hsl(256 30% 25.8% / var(--wp-alpha, .8))),
     var(--wp-img) center / cover no-repeat,
     hsl(256 30% 25.8%);
 }
@@ -1705,11 +1705,11 @@ body.bureau-frutiz .fen #chat-panel #messages .msg.emote:not(.blue):not(.shout) 
 }
 body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc,
 body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {
-  background: linear-gradient(hsl(256 30% 36%), hsl(256 30% 36%), hsl(256 30% 36%), hsl(187 30% 27%), hsl(256 32% 36%), hsl(329 32% 34.5%)) !important;
+  background: linear-gradient(hsl(256 30% 25.3%), hsl(256 30% 23.5%), hsl(256 30% 19.9%), hsl(187 30% 27%), hsl(256 32% 19.3%), hsl(329 32% 18.9%)) !important;
 }
 body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran,
 body.bureau-frutiz #gaspard-panel .gs-ecrans .bo-ecran {
-  background: url('/frutiz/sprites/ecran-fond-nuit.svg') 0 0 / 100% 100% no-repeat;
+  background: url('/frutiz/sprites/ecran-fond-nuit.svg?v=4f237dec') 0 0 / 100% 100% no-repeat;
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
 }
 body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran::before,
@@ -1728,14 +1728,14 @@ body.bureau-frutiz .bo-tip {
   color: hsl(256 13% 84.5%);
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .users-scroll {
-  background: url('/frutiz/sprites/user-list-pilule-nuit.svg') center / 100% 20px no-repeat;
+  background: url('/frutiz/sprites/user-list-pilule-nuit.svg?v=ff15cd57') center / 100% 20px no-repeat;
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer #users-list {
-  border-image: url('/frutiz/sprites/user-list-boite-nuit.svg') 10 fill / 10px stretch;
+  border-image: url('/frutiz/sprites/user-list-boite-nuit.svg?v=74a3eef4') 10 fill / 10px stretch;
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u,
 body.bureau-frutiz #gaspard-panel .gs-ul-defile .u {
-  background: url('/frutiz/sprites/user-slot-nuit.svg') left top / 120px 18px no-repeat;
+  background: url('/frutiz/sprites/user-slot-nuit.svg?v=7decffde') left top / 120px 18px no-repeat;
   color: hsl(240 30% 86.7%);
 }
 body.bureau-frutiz .fen #chat-panel #users-drawer .u:not([data-genre]):hover span:not(.badge),
@@ -1823,7 +1823,7 @@ body.bureau-frutiz .fiche-boite .fiche-plaque .fa-progress i {
   background: hsl(256 30% 36%);
 }
 body.bureau-frutiz .fiche-boite .fiche-plaque .fa-progress i::before {
-  background: hsl(256 30% 36%);
+  background: hsl(256 13% 84.9%);
 }
 body.bureau-frutiz .fiche-boite .fiche-plaque .fa-niv b {
   color: hsl(256 13% 84.9%);
@@ -1845,10 +1845,10 @@ body.bureau-frutiz .fiche-boite .fiche-actions button {
   background: hsl(256 30% 10%);
 }
 body.bureau-frutiz .fiche-boite .fiche-actions .fiche-avance {
-  background: url('/frutiz/sprites/fiche-rose-nuit.svg') center / 20px 20px no-repeat;
+  background: url('/frutiz/sprites/fiche-rose-nuit.svg?v=583516ee') center / 20px 20px no-repeat;
 }
 body.bureau-frutiz .fiche-boite .fiche-actions .fiche-avance img {
-  content: url('/frutiz/sprites/fiche-rose-tri-nuit.svg');
+  content: url('/frutiz/sprites/fiche-rose-tri-nuit.svg?v=71e52f7a');
 }
 body.bureau-frutiz .fiche-boite .fiche-corps {
   background: linear-gradient(to bottom, hsl(256 30% 10% / 0.55) 0, hsl(256 30% 10% / 0) 8px), hsl(256 30% 25.8%);
@@ -1901,14 +1901,14 @@ body.bureau-frutiz .fen #shop-sheet .bo-solde {
   color: hsl(256 13% 84.8%);
 }
 body.bureau-frutiz .fen #shop-sheet .bo-solde img {
-  content: url('/frutiz/sprites/shop-kikooz-nuit.svg');
+  content: url('/frutiz/sprites/shop-kikooz-nuit.svg?v=e3438eac');
 }
 body.bureau-frutiz .fen #shop-sheet .bq-ico {
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
-  background: url('/frutiz/sprites/shop-but-blanc-nuit.svg') center / 20px 20px no-repeat;
+  background: url('/frutiz/sprites/shop-but-blanc-nuit.svg?v=1e806f60') center / 20px 20px no-repeat;
 }
 body.bureau-frutiz .fen #shop-sheet .bq-ico:hover {
-  background-image: url('/frutiz/sprites/shop-but-blanc-2-nuit.svg');
+  background-image: url('/frutiz/sprites/shop-but-blanc-2-nuit.svg?v=22652403');
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques {
   background: hsl(256 30% 10%);
@@ -1918,13 +1918,13 @@ body.bureau-frutiz .fen #shop-sheet #bo-rubriques button {
   color: hsl(256 13% 84.5%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-rub::before {
-  background: url('/frutiz/sprites/shop-puce-rubrique-nuit.svg') center / 20px 18px no-repeat;
+  background: url('/frutiz/sprites/shop-puce-rubrique-nuit.svg?v=407f150e') center / 20px 18px no-repeat;
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art {
   color: hsl(256 13% 84.5%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques .bo-art::before {
-  background: url('/frutiz/sprites/shop-puce-article-nuit.svg') center / 12px 12px no-repeat;
+  background: url('/frutiz/sprites/shop-puce-article-nuit.svg?v=98c2de4e') center / 12px 12px no-repeat;
 }
 body.bureau-frutiz .fen #shop-sheet #bo-rubriques button:hover {
   background: hsl(256 30% 17.2%);
@@ -1936,10 +1936,10 @@ body.bureau-frutiz .fen #shop-sheet #bo-fiche {
   color: hsl(256 13% 84.4%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-vue .cadre {
-  background: url('/frutiz/sprites/shop-cadre-nuit.svg') center / 100px 100px no-repeat;
+  background: url('/frutiz/sprites/shop-cadre-nuit.svg?v=e573ead7') center / 100px 100px no-repeat;
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-vue .cadre::after {
-  background: url('/frutiz/sprites/shop-cadre-reflet-nuit.svg') 0 0 / 73px 64px no-repeat;
+  background: url('/frutiz/sprites/shop-cadre-reflet-nuit.svg?v=3a2927e4') 0 0 / 73px 64px no-repeat;
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-titre {
   color: hsl(325 58% 86.5%);
@@ -1955,7 +1955,7 @@ body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-prix {
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-acheter {
   border: 2px solid hsl(256 26% 40.8%);
-  background: url('/frutiz/sprites/shop-but-acheter-nuit.svg') center / 80px 16px no-repeat;
+  background: url('/frutiz/sprites/shop-but-acheter-nuit.svg?v=bf316ab2') center / 80px 16px no-repeat;
   color: hsl(256 13% 96%);
 }
 body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-acheter[disabled] {
@@ -1963,7 +1963,7 @@ body.bureau-frutiz .fen #shop-sheet #bo-fiche .bo-acheter[disabled] {
 }
 body.bureau-frutiz .fen #shop-sheet .bq-plus {
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
-  background: url('/frutiz/sprites/shop-plus-kikooz-nuit.svg') center / 150px 60px no-repeat;
+  background: url('/frutiz/sprites/shop-plus-kikooz-nuit.svg?v=d98b82a3') center / 150px 60px no-repeat;
 }
 body.bureau-frutiz .fen #mail-panel .mx-nav-but {
   box-shadow: 0 0 0 2px hsl(256 26% 34.3%);
@@ -2314,190 +2314,190 @@ body.bureau-frutiz .fen #profil-sheet #prof-enregistrer:active {
 /* ── Les dessins de nuit déposés à côté des dessins de jour ───────── */
 /* Ils remplacent l’original et échappent au fanage : ils n’ont plus rien */
 /* à cacher. Déposer « nom-nuit.svg » à côté de « nom.svg » suffit.      */
-img[src$="/fb/Aide.svg"] { content: url("/fb/Aide-nuit.svg"); filter: none; }
-[style*="/fb/Aide.svg"] { background-image: url("/fb/Aide-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/Forum.svg"] { content: url("/fb/Forum-nuit.svg"); filter: none; }
-[style*="/fb/Forum.svg"] { background-image: url("/fb/Forum-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/ForumAlerte.svg"] { content: url("/fb/ForumAlerte-nuit.svg"); filter: none; }
-[style*="/fb/ForumAlerte.svg"] { background-image: url("/fb/ForumAlerte-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/Historique.svg"] { content: url("/fb/Historique-nuit.svg"); filter: none; }
-[style*="/fb/Historique.svg"] { background-image: url("/fb/Historique-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/HistoriqueAlerte.svg"] { content: url("/fb/HistoriqueAlerte-nuit.svg"); filter: none; }
-[style*="/fb/HistoriqueAlerte.svg"] { background-image: url("/fb/HistoriqueAlerte-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/Jeux.svg"] { content: url("/fb/Jeux-nuit.svg"); filter: none; }
-[style*="/fb/Jeux.svg"] { background-image: url("/fb/Jeux-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/Mail.svg"] { content: url("/fb/Mail-nuit.svg"); filter: none; }
-[style*="/fb/Mail.svg"] { background-image: url("/fb/Mail-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/MailRecu.svg"] { content: url("/fb/MailRecu-nuit.svg"); filter: none; }
-[style*="/fb/MailRecu.svg"] { background-image: url("/fb/MailRecu-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/Niveau.svg"] { content: url("/fb/Niveau-nuit.svg"); filter: none; }
-[style*="/fb/Niveau.svg"] { background-image: url("/fb/Niveau-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/Warning.svg"] { content: url("/fb/Warning-nuit.svg"); filter: none; }
-[style*="/fb/Warning.svg"] { background-image: url("/fb/Warning-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/WarningAlerte.svg"] { content: url("/fb/WarningAlerte-nuit.svg"); filter: none; }
-[style*="/fb/WarningAlerte.svg"] { background-image: url("/fb/WarningAlerte-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/cadre_bouille.svg"] { content: url("/fb/cadre_bouille-nuit.svg"); filter: none; }
-[style*="/fb/cadre_bouille.svg"] { background-image: url("/fb/cadre_bouille-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/fleche_droite.svg"] { content: url("/fb/fleche_droite-nuit.svg"); filter: none; }
-[style*="/fb/fleche_droite.svg"] { background-image: url("/fb/fleche_droite-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/fleche_gauche.svg"] { content: url("/fb/fleche_gauche-nuit.svg"); filter: none; }
-[style*="/fb/fleche_gauche.svg"] { background-image: url("/fb/fleche_gauche-nuit.svg") !important; filter: none !important; }
-img[src$="/fb/trophee.svg"] { content: url("/fb/trophee-nuit.svg"); filter: none; }
-[style*="/fb/trophee.svg"] { background-image: url("/fb/trophee-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/butContact_down.svg"] { content: url("/frutiz/sprites/butContact_down-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/butContact_down.svg"] { background-image: url("/frutiz/sprites/butContact_down-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/butContact_over.svg"] { content: url("/frutiz/sprites/butContact_over-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/butContact_over.svg"] { background-image: url("/frutiz/sprites/butContact_over-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/butContact_up.svg"] { content: url("/frutiz/sprites/butContact_up-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/butContact_up.svg"] { background-image: url("/frutiz/sprites/butContact_up-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/butWinTop1_down.svg"] { content: url("/frutiz/sprites/butWinTop1_down-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/butWinTop1_down.svg"] { background-image: url("/frutiz/sprites/butWinTop1_down-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/butWinTop1_over.svg"] { content: url("/frutiz/sprites/butWinTop1_over-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/butWinTop1_over.svg"] { background-image: url("/frutiz/sprites/butWinTop1_over-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/butWinTop1_up.svg"] { content: url("/frutiz/sprites/butWinTop1_up-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/butWinTop1_up.svg"] { background-image: url("/frutiz/sprites/butWinTop1_up-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/butWinTop2_down.svg"] { content: url("/frutiz/sprites/butWinTop2_down-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/butWinTop2_down.svg"] { background-image: url("/frutiz/sprites/butWinTop2_down-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/butWinTop2_over.svg"] { content: url("/frutiz/sprites/butWinTop2_over-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/butWinTop2_over.svg"] { background-image: url("/frutiz/sprites/butWinTop2_over-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/butWinTop2_up.svg"] { content: url("/frutiz/sprites/butWinTop2_up-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/butWinTop2_up.svg"] { background-image: url("/frutiz/sprites/butWinTop2_up-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/butWinTop3_down.svg"] { content: url("/frutiz/sprites/butWinTop3_down-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/butWinTop3_down.svg"] { background-image: url("/frutiz/sprites/butWinTop3_down-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/butWinTop3_over.svg"] { content: url("/frutiz/sprites/butWinTop3_over-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/butWinTop3_over.svg"] { background-image: url("/frutiz/sprites/butWinTop3_over-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/butWinTop3_up.svg"] { content: url("/frutiz/sprites/butWinTop3_up-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/butWinTop3_up.svg"] { background-image: url("/frutiz/sprites/butWinTop3_up-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/chat-but-bouille.svg"] { content: url("/frutiz/sprites/chat-but-bouille-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/chat-but-bouille.svg"] { background-image: url("/frutiz/sprites/chat-but-bouille-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/chat-but-penlist.svg"] { content: url("/frutiz/sprites/chat-but-penlist-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/chat-but-penlist.svg"] { background-image: url("/frutiz/sprites/chat-but-penlist-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/chat-but-userlist.svg"] { content: url("/frutiz/sprites/chat-but-userlist-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/chat-but-userlist.svg"] { background-image: url("/frutiz/sprites/chat-but-userlist-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/chat-but-warning.svg"] { content: url("/frutiz/sprites/chat-but-warning-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/chat-but-warning.svg"] { background-image: url("/frutiz/sprites/chat-but-warning-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/ecran-fond.svg"] { content: url("/frutiz/sprites/ecran-fond-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/ecran-fond.svg"] { background-image: url("/frutiz/sprites/ecran-fond-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/encart-reflet.svg"] { content: url("/frutiz/sprites/encart-reflet-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/encart-reflet.svg"] { background-image: url("/frutiz/sprites/encart-reflet-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/fiche-rose-tri.svg"] { content: url("/frutiz/sprites/fiche-rose-tri-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/fiche-rose-tri.svg"] { background-image: url("/frutiz/sprites/fiche-rose-tri-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/fiche-rose.svg"] { content: url("/frutiz/sprites/fiche-rose-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/fiche-rose.svg"] { background-image: url("/frutiz/sprites/fiche-rose-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/fruit_default.svg"] { content: url("/frutiz/sprites/fruit_default-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/fruit_default.svg"] { background-image: url("/frutiz/sprites/fruit_default-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/fruit_winAlert.svg"] { content: url("/frutiz/sprites/fruit_winAlert-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/fruit_winAlert.svg"] { background-image: url("/frutiz/sprites/fruit_winAlert-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/fruit_winChat.svg"] { content: url("/frutiz/sprites/fruit_winChat-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/fruit_winChat.svg"] { background-image: url("/frutiz/sprites/fruit_winChat-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/fruit_winDebug.svg"] { content: url("/frutiz/sprites/fruit_winDebug-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/fruit_winDebug.svg"] { background-image: url("/frutiz/sprites/fruit_winDebug-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/fruit_winExplorer.svg"] { content: url("/frutiz/sprites/fruit_winExplorer-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/fruit_winExplorer.svg"] { background-image: url("/frutiz/sprites/fruit_winExplorer-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/fruit_winShop.svg"] { content: url("/frutiz/sprites/fruit_winShop-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/fruit_winShop.svg"] { background-image: url("/frutiz/sprites/fruit_winShop-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frusion-arriere.svg"] { content: url("/frutiz/sprites/frusion-arriere-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frusion-arriere.svg"] { background-image: url("/frutiz/sprites/frusion-arriere-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frusion-avant.svg"] { content: url("/frutiz/sprites/frusion-avant-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frusion-avant.svg"] { background-image: url("/frutiz/sprites/frusion-avant-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frusion-fondslot.svg"] { content: url("/frutiz/sprites/frusion-fondslot-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frusion-fondslot.svg"] { background-image: url("/frutiz/sprites/frusion-fondslot-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frusion-milieu.svg"] { content: url("/frutiz/sprites/frusion-milieu-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frusion-milieu.svg"] { background-image: url("/frutiz/sprites/frusion-milieu-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frusion-slot.svg"] { content: url("/frutiz/sprites/frusion-slot-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frusion-slot.svg"] { background-image: url("/frutiz/sprites/frusion-slot-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frusionCasque_down.svg"] { content: url("/frutiz/sprites/frusionCasque_down-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frusionCasque_down.svg"] { background-image: url("/frutiz/sprites/frusionCasque_down-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frusionCasque_over.svg"] { content: url("/frutiz/sprites/frusionCasque_over-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frusionCasque_over.svg"] { background-image: url("/frutiz/sprites/frusionCasque_over-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frusionCasque_up.svg"] { content: url("/frutiz/sprites/frusionCasque_up-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frusionCasque_up.svg"] { background-image: url("/frutiz/sprites/frusionCasque_up-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frusionEject_down.svg"] { content: url("/frutiz/sprites/frusionEject_down-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frusionEject_down.svg"] { background-image: url("/frutiz/sprites/frusionEject_down-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frusionEject_over.svg"] { content: url("/frutiz/sprites/frusionEject_over-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frusionEject_over.svg"] { background-image: url("/frutiz/sprites/frusionEject_over-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frusionEject_up.svg"] { content: url("/frutiz/sprites/frusionEject_up-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frusionEject_up.svg"] { background-image: url("/frutiz/sprites/frusionEject_up-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frutimandala-dessus.svg"] { content: url("/frutiz/sprites/frutimandala-dessus-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frutimandala-dessus.svg"] { background-image: url("/frutiz/sprites/frutimandala-dessus-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/frutimandala-roue.svg"] { content: url("/frutiz/sprites/frutimandala-roue-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/frutimandala-roue.svg"] { background-image: url("/frutiz/sprites/frutimandala-roue-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/mandalaDroite_down.svg"] { content: url("/frutiz/sprites/mandalaDroite_down-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/mandalaDroite_down.svg"] { background-image: url("/frutiz/sprites/mandalaDroite_down-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/mandalaDroite_over.svg"] { content: url("/frutiz/sprites/mandalaDroite_over-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/mandalaDroite_over.svg"] { background-image: url("/frutiz/sprites/mandalaDroite_over-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/mandalaDroite_up.svg"] { content: url("/frutiz/sprites/mandalaDroite_up-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/mandalaDroite_up.svg"] { background-image: url("/frutiz/sprites/mandalaDroite_up-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/mandalaGauche_down.svg"] { content: url("/frutiz/sprites/mandalaGauche_down-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/mandalaGauche_down.svg"] { background-image: url("/frutiz/sprites/mandalaGauche_down-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/mandalaGauche_over.svg"] { content: url("/frutiz/sprites/mandalaGauche_over-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/mandalaGauche_over.svg"] { background-image: url("/frutiz/sprites/mandalaGauche_over-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/mandalaGauche_up.svg"] { content: url("/frutiz/sprites/mandalaGauche_up-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/mandalaGauche_up.svg"] { background-image: url("/frutiz/sprites/mandalaGauche_up-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/mandalaSwap_down.svg"] { content: url("/frutiz/sprites/mandalaSwap_down-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/mandalaSwap_down.svg"] { background-image: url("/frutiz/sprites/mandalaSwap_down-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/mandalaSwap_over.svg"] { content: url("/frutiz/sprites/mandalaSwap_over-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/mandalaSwap_over.svg"] { background-image: url("/frutiz/sprites/mandalaSwap_over-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/mandalaSwap_up.svg"] { content: url("/frutiz/sprites/mandalaSwap_up-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/mandalaSwap_up.svg"] { background-image: url("/frutiz/sprites/mandalaSwap_up-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/mandalaValider_down.svg"] { content: url("/frutiz/sprites/mandalaValider_down-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/mandalaValider_down.svg"] { background-image: url("/frutiz/sprites/mandalaValider_down-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/mandalaValider_over.svg"] { content: url("/frutiz/sprites/mandalaValider_over-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/mandalaValider_over.svg"] { background-image: url("/frutiz/sprites/mandalaValider_over-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/mandalaValider_up.svg"] { content: url("/frutiz/sprites/mandalaValider_up-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/mandalaValider_up.svg"] { background-image: url("/frutiz/sprites/mandalaValider_up-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/onglet_barre.svg"] { content: url("/frutiz/sprites/onglet_barre-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/onglet_barre.svg"] { background-image: url("/frutiz/sprites/onglet_barre-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/onglet_corps.svg"] { content: url("/frutiz/sprites/onglet_corps-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/onglet_corps.svg"] { background-image: url("/frutiz/sprites/onglet_corps-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/onglet_couture.svg"] { content: url("/frutiz/sprites/onglet_couture-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/onglet_couture.svg"] { background-image: url("/frutiz/sprites/onglet_couture-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/onglet_fond.svg"] { content: url("/frutiz/sprites/onglet_fond-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/onglet_fond.svg"] { background-image: url("/frutiz/sprites/onglet_fond-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/onglet_fondb.svg"] { content: url("/frutiz/sprites/onglet_fondb-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/onglet_fondb.svg"] { background-image: url("/frutiz/sprites/onglet_fondb-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/onglet_fondh.svg"] { content: url("/frutiz/sprites/onglet_fondh-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/onglet_fondh.svg"] { background-image: url("/frutiz/sprites/onglet_fondh-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/onglet_pied.svg"] { content: url("/frutiz/sprites/onglet_pied-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/onglet_pied.svg"] { background-image: url("/frutiz/sprites/onglet_pied-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/shop-but-acheter.svg"] { content: url("/frutiz/sprites/shop-but-acheter-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/shop-but-acheter.svg"] { background-image: url("/frutiz/sprites/shop-but-acheter-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/shop-but-blanc-2.svg"] { content: url("/frutiz/sprites/shop-but-blanc-2-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/shop-but-blanc-2.svg"] { background-image: url("/frutiz/sprites/shop-but-blanc-2-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/shop-but-blanc.svg"] { content: url("/frutiz/sprites/shop-but-blanc-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/shop-but-blanc.svg"] { background-image: url("/frutiz/sprites/shop-but-blanc-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/shop-cadre-reflet.svg"] { content: url("/frutiz/sprites/shop-cadre-reflet-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/shop-cadre-reflet.svg"] { background-image: url("/frutiz/sprites/shop-cadre-reflet-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/shop-cadre.svg"] { content: url("/frutiz/sprites/shop-cadre-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/shop-cadre.svg"] { background-image: url("/frutiz/sprites/shop-cadre-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/shop-ico-journal.svg"] { content: url("/frutiz/sprites/shop-ico-journal-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/shop-ico-journal.svg"] { background-image: url("/frutiz/sprites/shop-ico-journal-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/shop-ico-kikooz.svg"] { content: url("/frutiz/sprites/shop-ico-kikooz-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/shop-ico-kikooz.svg"] { background-image: url("/frutiz/sprites/shop-ico-kikooz-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/shop-kikooz.svg"] { content: url("/frutiz/sprites/shop-kikooz-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/shop-kikooz.svg"] { background-image: url("/frutiz/sprites/shop-kikooz-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/shop-plus-kikooz.svg"] { content: url("/frutiz/sprites/shop-plus-kikooz-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/shop-plus-kikooz.svg"] { background-image: url("/frutiz/sprites/shop-plus-kikooz-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/shop-puce-article.svg"] { content: url("/frutiz/sprites/shop-puce-article-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/shop-puce-article.svg"] { background-image: url("/frutiz/sprites/shop-puce-article-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/shop-puce-rubrique.svg"] { content: url("/frutiz/sprites/shop-puce-rubrique-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/shop-puce-rubrique.svg"] { background-image: url("/frutiz/sprites/shop-puce-rubrique-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/sl-dossier-fond.svg"] { content: url("/frutiz/sprites/sl-dossier-fond-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/sl-dossier-fond.svg"] { background-image: url("/frutiz/sprites/sl-dossier-fond-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/sl-fleche-1.svg"] { content: url("/frutiz/sprites/sl-fleche-1-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/sl-fleche-1.svg"] { background-image: url("/frutiz/sprites/sl-fleche-1-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/sl-icone-fond.svg"] { content: url("/frutiz/sprites/sl-icone-fond-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/sl-icone-fond.svg"] { background-image: url("/frutiz/sprites/sl-icone-fond-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/sl-presence-0.svg"] { content: url("/frutiz/sprites/sl-presence-0-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/sl-presence-0.svg"] { background-image: url("/frutiz/sprites/sl-presence-0-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/sl-presence-1.svg"] { content: url("/frutiz/sprites/sl-presence-1-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/sl-presence-1.svg"] { background-image: url("/frutiz/sprites/sl-presence-1-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/user-list-boite.svg"] { content: url("/frutiz/sprites/user-list-boite-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/user-list-boite.svg"] { background-image: url("/frutiz/sprites/user-list-boite-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/user-list-pilule.svg"] { content: url("/frutiz/sprites/user-list-pilule-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/user-list-pilule.svg"] { background-image: url("/frutiz/sprites/user-list-pilule-nuit.svg") !important; filter: none !important; }
-img[src$="/frutiz/sprites/user-slot.svg"] { content: url("/frutiz/sprites/user-slot-nuit.svg"); filter: none; }
-[style*="/frutiz/sprites/user-slot.svg"] { background-image: url("/frutiz/sprites/user-slot-nuit.svg") !important; filter: none !important; }
+img[src$="/fb/Aide.svg"] { content: url("/fb/Aide-nuit.svg?v=8ff90618"); filter: none; }
+[style*="/fb/Aide.svg"] { background-image: url("/fb/Aide-nuit.svg?v=8ff90618") !important; filter: none !important; }
+img[src$="/fb/Forum.svg"] { content: url("/fb/Forum-nuit.svg?v=8295a599"); filter: none; }
+[style*="/fb/Forum.svg"] { background-image: url("/fb/Forum-nuit.svg?v=8295a599") !important; filter: none !important; }
+img[src$="/fb/ForumAlerte.svg"] { content: url("/fb/ForumAlerte-nuit.svg?v=8e670d6b"); filter: none; }
+[style*="/fb/ForumAlerte.svg"] { background-image: url("/fb/ForumAlerte-nuit.svg?v=8e670d6b") !important; filter: none !important; }
+img[src$="/fb/Historique.svg"] { content: url("/fb/Historique-nuit.svg?v=00e0aa8d"); filter: none; }
+[style*="/fb/Historique.svg"] { background-image: url("/fb/Historique-nuit.svg?v=00e0aa8d") !important; filter: none !important; }
+img[src$="/fb/HistoriqueAlerte.svg"] { content: url("/fb/HistoriqueAlerte-nuit.svg?v=210c80d4"); filter: none; }
+[style*="/fb/HistoriqueAlerte.svg"] { background-image: url("/fb/HistoriqueAlerte-nuit.svg?v=210c80d4") !important; filter: none !important; }
+img[src$="/fb/Jeux.svg"] { content: url("/fb/Jeux-nuit.svg?v=09198e93"); filter: none; }
+[style*="/fb/Jeux.svg"] { background-image: url("/fb/Jeux-nuit.svg?v=09198e93") !important; filter: none !important; }
+img[src$="/fb/Mail.svg"] { content: url("/fb/Mail-nuit.svg?v=f73aecd4"); filter: none; }
+[style*="/fb/Mail.svg"] { background-image: url("/fb/Mail-nuit.svg?v=f73aecd4") !important; filter: none !important; }
+img[src$="/fb/MailRecu.svg"] { content: url("/fb/MailRecu-nuit.svg?v=1cde3d9c"); filter: none; }
+[style*="/fb/MailRecu.svg"] { background-image: url("/fb/MailRecu-nuit.svg?v=1cde3d9c") !important; filter: none !important; }
+img[src$="/fb/Niveau.svg"] { content: url("/fb/Niveau-nuit.svg?v=55242955"); filter: none; }
+[style*="/fb/Niveau.svg"] { background-image: url("/fb/Niveau-nuit.svg?v=55242955") !important; filter: none !important; }
+img[src$="/fb/Warning.svg"] { content: url("/fb/Warning-nuit.svg?v=ca72ef3d"); filter: none; }
+[style*="/fb/Warning.svg"] { background-image: url("/fb/Warning-nuit.svg?v=ca72ef3d") !important; filter: none !important; }
+img[src$="/fb/WarningAlerte.svg"] { content: url("/fb/WarningAlerte-nuit.svg?v=94f569f1"); filter: none; }
+[style*="/fb/WarningAlerte.svg"] { background-image: url("/fb/WarningAlerte-nuit.svg?v=94f569f1") !important; filter: none !important; }
+img[src$="/fb/cadre_bouille.svg"] { content: url("/fb/cadre_bouille-nuit.svg?v=002401f7"); filter: none; }
+[style*="/fb/cadre_bouille.svg"] { background-image: url("/fb/cadre_bouille-nuit.svg?v=002401f7") !important; filter: none !important; }
+img[src$="/fb/fleche_droite.svg"] { content: url("/fb/fleche_droite-nuit.svg?v=6715bacc"); filter: none; }
+[style*="/fb/fleche_droite.svg"] { background-image: url("/fb/fleche_droite-nuit.svg?v=6715bacc") !important; filter: none !important; }
+img[src$="/fb/fleche_gauche.svg"] { content: url("/fb/fleche_gauche-nuit.svg?v=fad535b6"); filter: none; }
+[style*="/fb/fleche_gauche.svg"] { background-image: url("/fb/fleche_gauche-nuit.svg?v=fad535b6") !important; filter: none !important; }
+img[src$="/fb/trophee.svg"] { content: url("/fb/trophee-nuit.svg?v=162da45b"); filter: none; }
+[style*="/fb/trophee.svg"] { background-image: url("/fb/trophee-nuit.svg?v=162da45b") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butContact_down.svg"] { content: url("/frutiz/sprites/butContact_down-nuit.svg?v=73263381"); filter: none; }
+[style*="/frutiz/sprites/butContact_down.svg"] { background-image: url("/frutiz/sprites/butContact_down-nuit.svg?v=73263381") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butContact_over.svg"] { content: url("/frutiz/sprites/butContact_over-nuit.svg?v=151f9de1"); filter: none; }
+[style*="/frutiz/sprites/butContact_over.svg"] { background-image: url("/frutiz/sprites/butContact_over-nuit.svg?v=151f9de1") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butContact_up.svg"] { content: url("/frutiz/sprites/butContact_up-nuit.svg?v=b71010fd"); filter: none; }
+[style*="/frutiz/sprites/butContact_up.svg"] { background-image: url("/frutiz/sprites/butContact_up-nuit.svg?v=b71010fd") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butWinTop1_down.svg"] { content: url("/frutiz/sprites/butWinTop1_down-nuit.svg?v=1bc07365"); filter: none; }
+[style*="/frutiz/sprites/butWinTop1_down.svg"] { background-image: url("/frutiz/sprites/butWinTop1_down-nuit.svg?v=1bc07365") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butWinTop1_over.svg"] { content: url("/frutiz/sprites/butWinTop1_over-nuit.svg?v=e5a85312"); filter: none; }
+[style*="/frutiz/sprites/butWinTop1_over.svg"] { background-image: url("/frutiz/sprites/butWinTop1_over-nuit.svg?v=e5a85312") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butWinTop1_up.svg"] { content: url("/frutiz/sprites/butWinTop1_up-nuit.svg?v=787a92ac"); filter: none; }
+[style*="/frutiz/sprites/butWinTop1_up.svg"] { background-image: url("/frutiz/sprites/butWinTop1_up-nuit.svg?v=787a92ac") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butWinTop2_down.svg"] { content: url("/frutiz/sprites/butWinTop2_down-nuit.svg?v=a0ea30fa"); filter: none; }
+[style*="/frutiz/sprites/butWinTop2_down.svg"] { background-image: url("/frutiz/sprites/butWinTop2_down-nuit.svg?v=a0ea30fa") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butWinTop2_over.svg"] { content: url("/frutiz/sprites/butWinTop2_over-nuit.svg?v=5322f70e"); filter: none; }
+[style*="/frutiz/sprites/butWinTop2_over.svg"] { background-image: url("/frutiz/sprites/butWinTop2_over-nuit.svg?v=5322f70e") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butWinTop2_up.svg"] { content: url("/frutiz/sprites/butWinTop2_up-nuit.svg?v=7ec02688"); filter: none; }
+[style*="/frutiz/sprites/butWinTop2_up.svg"] { background-image: url("/frutiz/sprites/butWinTop2_up-nuit.svg?v=7ec02688") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butWinTop3_down.svg"] { content: url("/frutiz/sprites/butWinTop3_down-nuit.svg?v=811326ca"); filter: none; }
+[style*="/frutiz/sprites/butWinTop3_down.svg"] { background-image: url("/frutiz/sprites/butWinTop3_down-nuit.svg?v=811326ca") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butWinTop3_over.svg"] { content: url("/frutiz/sprites/butWinTop3_over-nuit.svg?v=ae867274"); filter: none; }
+[style*="/frutiz/sprites/butWinTop3_over.svg"] { background-image: url("/frutiz/sprites/butWinTop3_over-nuit.svg?v=ae867274") !important; filter: none !important; }
+img[src$="/frutiz/sprites/butWinTop3_up.svg"] { content: url("/frutiz/sprites/butWinTop3_up-nuit.svg?v=2c1ebd31"); filter: none; }
+[style*="/frutiz/sprites/butWinTop3_up.svg"] { background-image: url("/frutiz/sprites/butWinTop3_up-nuit.svg?v=2c1ebd31") !important; filter: none !important; }
+img[src$="/frutiz/sprites/chat-but-bouille.svg"] { content: url("/frutiz/sprites/chat-but-bouille-nuit.svg?v=82f0d5cb"); filter: none; }
+[style*="/frutiz/sprites/chat-but-bouille.svg"] { background-image: url("/frutiz/sprites/chat-but-bouille-nuit.svg?v=82f0d5cb") !important; filter: none !important; }
+img[src$="/frutiz/sprites/chat-but-penlist.svg"] { content: url("/frutiz/sprites/chat-but-penlist-nuit.svg?v=a9aa16bb"); filter: none; }
+[style*="/frutiz/sprites/chat-but-penlist.svg"] { background-image: url("/frutiz/sprites/chat-but-penlist-nuit.svg?v=a9aa16bb") !important; filter: none !important; }
+img[src$="/frutiz/sprites/chat-but-userlist.svg"] { content: url("/frutiz/sprites/chat-but-userlist-nuit.svg?v=7459f4c0"); filter: none; }
+[style*="/frutiz/sprites/chat-but-userlist.svg"] { background-image: url("/frutiz/sprites/chat-but-userlist-nuit.svg?v=7459f4c0") !important; filter: none !important; }
+img[src$="/frutiz/sprites/chat-but-warning.svg"] { content: url("/frutiz/sprites/chat-but-warning-nuit.svg?v=3555ef01"); filter: none; }
+[style*="/frutiz/sprites/chat-but-warning.svg"] { background-image: url("/frutiz/sprites/chat-but-warning-nuit.svg?v=3555ef01") !important; filter: none !important; }
+img[src$="/frutiz/sprites/ecran-fond.svg"] { content: url("/frutiz/sprites/ecran-fond-nuit.svg?v=4f237dec"); filter: none; }
+[style*="/frutiz/sprites/ecran-fond.svg"] { background-image: url("/frutiz/sprites/ecran-fond-nuit.svg?v=4f237dec") !important; filter: none !important; }
+img[src$="/frutiz/sprites/encart-reflet.svg"] { content: url("/frutiz/sprites/encart-reflet-nuit.svg?v=9eb24b79"); filter: none; }
+[style*="/frutiz/sprites/encart-reflet.svg"] { background-image: url("/frutiz/sprites/encart-reflet-nuit.svg?v=9eb24b79") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fiche-rose-tri.svg"] { content: url("/frutiz/sprites/fiche-rose-tri-nuit.svg?v=71e52f7a"); filter: none; }
+[style*="/frutiz/sprites/fiche-rose-tri.svg"] { background-image: url("/frutiz/sprites/fiche-rose-tri-nuit.svg?v=71e52f7a") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fiche-rose.svg"] { content: url("/frutiz/sprites/fiche-rose-nuit.svg?v=583516ee"); filter: none; }
+[style*="/frutiz/sprites/fiche-rose.svg"] { background-image: url("/frutiz/sprites/fiche-rose-nuit.svg?v=583516ee") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fruit_default.svg"] { content: url("/frutiz/sprites/fruit_default-nuit.svg?v=152f02fa"); filter: none; }
+[style*="/frutiz/sprites/fruit_default.svg"] { background-image: url("/frutiz/sprites/fruit_default-nuit.svg?v=152f02fa") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fruit_winAlert.svg"] { content: url("/frutiz/sprites/fruit_winAlert-nuit.svg?v=a9a07f96"); filter: none; }
+[style*="/frutiz/sprites/fruit_winAlert.svg"] { background-image: url("/frutiz/sprites/fruit_winAlert-nuit.svg?v=a9a07f96") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fruit_winChat.svg"] { content: url("/frutiz/sprites/fruit_winChat-nuit.svg?v=9ac1f1f7"); filter: none; }
+[style*="/frutiz/sprites/fruit_winChat.svg"] { background-image: url("/frutiz/sprites/fruit_winChat-nuit.svg?v=9ac1f1f7") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fruit_winDebug.svg"] { content: url("/frutiz/sprites/fruit_winDebug-nuit.svg?v=c617344a"); filter: none; }
+[style*="/frutiz/sprites/fruit_winDebug.svg"] { background-image: url("/frutiz/sprites/fruit_winDebug-nuit.svg?v=c617344a") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fruit_winExplorer.svg"] { content: url("/frutiz/sprites/fruit_winExplorer-nuit.svg?v=92c64f80"); filter: none; }
+[style*="/frutiz/sprites/fruit_winExplorer.svg"] { background-image: url("/frutiz/sprites/fruit_winExplorer-nuit.svg?v=92c64f80") !important; filter: none !important; }
+img[src$="/frutiz/sprites/fruit_winShop.svg"] { content: url("/frutiz/sprites/fruit_winShop-nuit.svg?v=399f63ee"); filter: none; }
+[style*="/frutiz/sprites/fruit_winShop.svg"] { background-image: url("/frutiz/sprites/fruit_winShop-nuit.svg?v=399f63ee") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusion-arriere.svg"] { content: url("/frutiz/sprites/frusion-arriere-nuit.svg?v=96b25a63"); filter: none; }
+[style*="/frutiz/sprites/frusion-arriere.svg"] { background-image: url("/frutiz/sprites/frusion-arriere-nuit.svg?v=96b25a63") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusion-avant.svg"] { content: url("/frutiz/sprites/frusion-avant-nuit.svg?v=cd550d50"); filter: none; }
+[style*="/frutiz/sprites/frusion-avant.svg"] { background-image: url("/frutiz/sprites/frusion-avant-nuit.svg?v=cd550d50") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusion-fondslot.svg"] { content: url("/frutiz/sprites/frusion-fondslot-nuit.svg?v=e11c2163"); filter: none; }
+[style*="/frutiz/sprites/frusion-fondslot.svg"] { background-image: url("/frutiz/sprites/frusion-fondslot-nuit.svg?v=e11c2163") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusion-milieu.svg"] { content: url("/frutiz/sprites/frusion-milieu-nuit.svg?v=78822942"); filter: none; }
+[style*="/frutiz/sprites/frusion-milieu.svg"] { background-image: url("/frutiz/sprites/frusion-milieu-nuit.svg?v=78822942") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusion-slot.svg"] { content: url("/frutiz/sprites/frusion-slot-nuit.svg?v=3fa67e4e"); filter: none; }
+[style*="/frutiz/sprites/frusion-slot.svg"] { background-image: url("/frutiz/sprites/frusion-slot-nuit.svg?v=3fa67e4e") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusionCasque_down.svg"] { content: url("/frutiz/sprites/frusionCasque_down-nuit.svg?v=a0bce324"); filter: none; }
+[style*="/frutiz/sprites/frusionCasque_down.svg"] { background-image: url("/frutiz/sprites/frusionCasque_down-nuit.svg?v=a0bce324") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusionCasque_over.svg"] { content: url("/frutiz/sprites/frusionCasque_over-nuit.svg?v=b7b0b9d6"); filter: none; }
+[style*="/frutiz/sprites/frusionCasque_over.svg"] { background-image: url("/frutiz/sprites/frusionCasque_over-nuit.svg?v=b7b0b9d6") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusionCasque_up.svg"] { content: url("/frutiz/sprites/frusionCasque_up-nuit.svg?v=2b03c8b6"); filter: none; }
+[style*="/frutiz/sprites/frusionCasque_up.svg"] { background-image: url("/frutiz/sprites/frusionCasque_up-nuit.svg?v=2b03c8b6") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusionEject_down.svg"] { content: url("/frutiz/sprites/frusionEject_down-nuit.svg?v=e2afa630"); filter: none; }
+[style*="/frutiz/sprites/frusionEject_down.svg"] { background-image: url("/frutiz/sprites/frusionEject_down-nuit.svg?v=e2afa630") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusionEject_over.svg"] { content: url("/frutiz/sprites/frusionEject_over-nuit.svg?v=a2354060"); filter: none; }
+[style*="/frutiz/sprites/frusionEject_over.svg"] { background-image: url("/frutiz/sprites/frusionEject_over-nuit.svg?v=a2354060") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frusionEject_up.svg"] { content: url("/frutiz/sprites/frusionEject_up-nuit.svg?v=ff6561a5"); filter: none; }
+[style*="/frutiz/sprites/frusionEject_up.svg"] { background-image: url("/frutiz/sprites/frusionEject_up-nuit.svg?v=ff6561a5") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frutimandala-dessus.svg"] { content: url("/frutiz/sprites/frutimandala-dessus-nuit.svg?v=7f2c3790"); filter: none; }
+[style*="/frutiz/sprites/frutimandala-dessus.svg"] { background-image: url("/frutiz/sprites/frutimandala-dessus-nuit.svg?v=7f2c3790") !important; filter: none !important; }
+img[src$="/frutiz/sprites/frutimandala-roue.svg"] { content: url("/frutiz/sprites/frutimandala-roue-nuit.svg?v=7b1b352c"); filter: none; }
+[style*="/frutiz/sprites/frutimandala-roue.svg"] { background-image: url("/frutiz/sprites/frutimandala-roue-nuit.svg?v=7b1b352c") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaDroite_down.svg"] { content: url("/frutiz/sprites/mandalaDroite_down-nuit.svg?v=fdb09485"); filter: none; }
+[style*="/frutiz/sprites/mandalaDroite_down.svg"] { background-image: url("/frutiz/sprites/mandalaDroite_down-nuit.svg?v=fdb09485") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaDroite_over.svg"] { content: url("/frutiz/sprites/mandalaDroite_over-nuit.svg?v=256edb50"); filter: none; }
+[style*="/frutiz/sprites/mandalaDroite_over.svg"] { background-image: url("/frutiz/sprites/mandalaDroite_over-nuit.svg?v=256edb50") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaDroite_up.svg"] { content: url("/frutiz/sprites/mandalaDroite_up-nuit.svg?v=869009fc"); filter: none; }
+[style*="/frutiz/sprites/mandalaDroite_up.svg"] { background-image: url("/frutiz/sprites/mandalaDroite_up-nuit.svg?v=869009fc") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaGauche_down.svg"] { content: url("/frutiz/sprites/mandalaGauche_down-nuit.svg?v=9ff98228"); filter: none; }
+[style*="/frutiz/sprites/mandalaGauche_down.svg"] { background-image: url("/frutiz/sprites/mandalaGauche_down-nuit.svg?v=9ff98228") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaGauche_over.svg"] { content: url("/frutiz/sprites/mandalaGauche_over-nuit.svg?v=ee62e865"); filter: none; }
+[style*="/frutiz/sprites/mandalaGauche_over.svg"] { background-image: url("/frutiz/sprites/mandalaGauche_over-nuit.svg?v=ee62e865") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaGauche_up.svg"] { content: url("/frutiz/sprites/mandalaGauche_up-nuit.svg?v=1662cdac"); filter: none; }
+[style*="/frutiz/sprites/mandalaGauche_up.svg"] { background-image: url("/frutiz/sprites/mandalaGauche_up-nuit.svg?v=1662cdac") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaSwap_down.svg"] { content: url("/frutiz/sprites/mandalaSwap_down-nuit.svg?v=26ae5475"); filter: none; }
+[style*="/frutiz/sprites/mandalaSwap_down.svg"] { background-image: url("/frutiz/sprites/mandalaSwap_down-nuit.svg?v=26ae5475") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaSwap_over.svg"] { content: url("/frutiz/sprites/mandalaSwap_over-nuit.svg?v=44cad884"); filter: none; }
+[style*="/frutiz/sprites/mandalaSwap_over.svg"] { background-image: url("/frutiz/sprites/mandalaSwap_over-nuit.svg?v=44cad884") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaSwap_up.svg"] { content: url("/frutiz/sprites/mandalaSwap_up-nuit.svg?v=020c1ff0"); filter: none; }
+[style*="/frutiz/sprites/mandalaSwap_up.svg"] { background-image: url("/frutiz/sprites/mandalaSwap_up-nuit.svg?v=020c1ff0") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaValider_down.svg"] { content: url("/frutiz/sprites/mandalaValider_down-nuit.svg?v=7d399116"); filter: none; }
+[style*="/frutiz/sprites/mandalaValider_down.svg"] { background-image: url("/frutiz/sprites/mandalaValider_down-nuit.svg?v=7d399116") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaValider_over.svg"] { content: url("/frutiz/sprites/mandalaValider_over-nuit.svg?v=b1fd459e"); filter: none; }
+[style*="/frutiz/sprites/mandalaValider_over.svg"] { background-image: url("/frutiz/sprites/mandalaValider_over-nuit.svg?v=b1fd459e") !important; filter: none !important; }
+img[src$="/frutiz/sprites/mandalaValider_up.svg"] { content: url("/frutiz/sprites/mandalaValider_up-nuit.svg?v=f850c7fc"); filter: none; }
+[style*="/frutiz/sprites/mandalaValider_up.svg"] { background-image: url("/frutiz/sprites/mandalaValider_up-nuit.svg?v=f850c7fc") !important; filter: none !important; }
+img[src$="/frutiz/sprites/onglet_barre.svg"] { content: url("/frutiz/sprites/onglet_barre-nuit.svg?v=8cacd6bc"); filter: none; }
+[style*="/frutiz/sprites/onglet_barre.svg"] { background-image: url("/frutiz/sprites/onglet_barre-nuit.svg?v=8cacd6bc") !important; filter: none !important; }
+img[src$="/frutiz/sprites/onglet_corps.svg"] { content: url("/frutiz/sprites/onglet_corps-nuit.svg?v=a76d1269"); filter: none; }
+[style*="/frutiz/sprites/onglet_corps.svg"] { background-image: url("/frutiz/sprites/onglet_corps-nuit.svg?v=a76d1269") !important; filter: none !important; }
+img[src$="/frutiz/sprites/onglet_couture.svg"] { content: url("/frutiz/sprites/onglet_couture-nuit.svg?v=1b5eea68"); filter: none; }
+[style*="/frutiz/sprites/onglet_couture.svg"] { background-image: url("/frutiz/sprites/onglet_couture-nuit.svg?v=1b5eea68") !important; filter: none !important; }
+img[src$="/frutiz/sprites/onglet_fond.svg"] { content: url("/frutiz/sprites/onglet_fond-nuit.svg?v=0e694788"); filter: none; }
+[style*="/frutiz/sprites/onglet_fond.svg"] { background-image: url("/frutiz/sprites/onglet_fond-nuit.svg?v=0e694788") !important; filter: none !important; }
+img[src$="/frutiz/sprites/onglet_fondb.svg"] { content: url("/frutiz/sprites/onglet_fondb-nuit.svg?v=deaaa93c"); filter: none; }
+[style*="/frutiz/sprites/onglet_fondb.svg"] { background-image: url("/frutiz/sprites/onglet_fondb-nuit.svg?v=deaaa93c") !important; filter: none !important; }
+img[src$="/frutiz/sprites/onglet_fondh.svg"] { content: url("/frutiz/sprites/onglet_fondh-nuit.svg?v=82cb8fbf"); filter: none; }
+[style*="/frutiz/sprites/onglet_fondh.svg"] { background-image: url("/frutiz/sprites/onglet_fondh-nuit.svg?v=82cb8fbf") !important; filter: none !important; }
+img[src$="/frutiz/sprites/onglet_pied.svg"] { content: url("/frutiz/sprites/onglet_pied-nuit.svg?v=5f88c852"); filter: none; }
+[style*="/frutiz/sprites/onglet_pied.svg"] { background-image: url("/frutiz/sprites/onglet_pied-nuit.svg?v=5f88c852") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-but-acheter.svg"] { content: url("/frutiz/sprites/shop-but-acheter-nuit.svg?v=bf316ab2"); filter: none; }
+[style*="/frutiz/sprites/shop-but-acheter.svg"] { background-image: url("/frutiz/sprites/shop-but-acheter-nuit.svg?v=bf316ab2") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-but-blanc-2.svg"] { content: url("/frutiz/sprites/shop-but-blanc-2-nuit.svg?v=22652403"); filter: none; }
+[style*="/frutiz/sprites/shop-but-blanc-2.svg"] { background-image: url("/frutiz/sprites/shop-but-blanc-2-nuit.svg?v=22652403") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-but-blanc.svg"] { content: url("/frutiz/sprites/shop-but-blanc-nuit.svg?v=1e806f60"); filter: none; }
+[style*="/frutiz/sprites/shop-but-blanc.svg"] { background-image: url("/frutiz/sprites/shop-but-blanc-nuit.svg?v=1e806f60") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-cadre-reflet.svg"] { content: url("/frutiz/sprites/shop-cadre-reflet-nuit.svg?v=3a2927e4"); filter: none; }
+[style*="/frutiz/sprites/shop-cadre-reflet.svg"] { background-image: url("/frutiz/sprites/shop-cadre-reflet-nuit.svg?v=3a2927e4") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-cadre.svg"] { content: url("/frutiz/sprites/shop-cadre-nuit.svg?v=e573ead7"); filter: none; }
+[style*="/frutiz/sprites/shop-cadre.svg"] { background-image: url("/frutiz/sprites/shop-cadre-nuit.svg?v=e573ead7") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-ico-journal.svg"] { content: url("/frutiz/sprites/shop-ico-journal-nuit.svg?v=c4e97c8c"); filter: none; }
+[style*="/frutiz/sprites/shop-ico-journal.svg"] { background-image: url("/frutiz/sprites/shop-ico-journal-nuit.svg?v=c4e97c8c") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-ico-kikooz.svg"] { content: url("/frutiz/sprites/shop-ico-kikooz-nuit.svg?v=a5ecb155"); filter: none; }
+[style*="/frutiz/sprites/shop-ico-kikooz.svg"] { background-image: url("/frutiz/sprites/shop-ico-kikooz-nuit.svg?v=a5ecb155") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-kikooz.svg"] { content: url("/frutiz/sprites/shop-kikooz-nuit.svg?v=e3438eac"); filter: none; }
+[style*="/frutiz/sprites/shop-kikooz.svg"] { background-image: url("/frutiz/sprites/shop-kikooz-nuit.svg?v=e3438eac") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-plus-kikooz.svg"] { content: url("/frutiz/sprites/shop-plus-kikooz-nuit.svg?v=d98b82a3"); filter: none; }
+[style*="/frutiz/sprites/shop-plus-kikooz.svg"] { background-image: url("/frutiz/sprites/shop-plus-kikooz-nuit.svg?v=d98b82a3") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-puce-article.svg"] { content: url("/frutiz/sprites/shop-puce-article-nuit.svg?v=98c2de4e"); filter: none; }
+[style*="/frutiz/sprites/shop-puce-article.svg"] { background-image: url("/frutiz/sprites/shop-puce-article-nuit.svg?v=98c2de4e") !important; filter: none !important; }
+img[src$="/frutiz/sprites/shop-puce-rubrique.svg"] { content: url("/frutiz/sprites/shop-puce-rubrique-nuit.svg?v=407f150e"); filter: none; }
+[style*="/frutiz/sprites/shop-puce-rubrique.svg"] { background-image: url("/frutiz/sprites/shop-puce-rubrique-nuit.svg?v=407f150e") !important; filter: none !important; }
+img[src$="/frutiz/sprites/sl-dossier-fond.svg"] { content: url("/frutiz/sprites/sl-dossier-fond-nuit.svg?v=dd2e786f"); filter: none; }
+[style*="/frutiz/sprites/sl-dossier-fond.svg"] { background-image: url("/frutiz/sprites/sl-dossier-fond-nuit.svg?v=dd2e786f") !important; filter: none !important; }
+img[src$="/frutiz/sprites/sl-fleche-1.svg"] { content: url("/frutiz/sprites/sl-fleche-1-nuit.svg?v=e0c1dff0"); filter: none; }
+[style*="/frutiz/sprites/sl-fleche-1.svg"] { background-image: url("/frutiz/sprites/sl-fleche-1-nuit.svg?v=e0c1dff0") !important; filter: none !important; }
+img[src$="/frutiz/sprites/sl-icone-fond.svg"] { content: url("/frutiz/sprites/sl-icone-fond-nuit.svg?v=edacc624"); filter: none; }
+[style*="/frutiz/sprites/sl-icone-fond.svg"] { background-image: url("/frutiz/sprites/sl-icone-fond-nuit.svg?v=edacc624") !important; filter: none !important; }
+img[src$="/frutiz/sprites/sl-presence-0.svg"] { content: url("/frutiz/sprites/sl-presence-0-nuit.svg?v=64663cbc"); filter: none; }
+[style*="/frutiz/sprites/sl-presence-0.svg"] { background-image: url("/frutiz/sprites/sl-presence-0-nuit.svg?v=64663cbc") !important; filter: none !important; }
+img[src$="/frutiz/sprites/sl-presence-1.svg"] { content: url("/frutiz/sprites/sl-presence-1-nuit.svg?v=0f00001a"); filter: none; }
+[style*="/frutiz/sprites/sl-presence-1.svg"] { background-image: url("/frutiz/sprites/sl-presence-1-nuit.svg?v=0f00001a") !important; filter: none !important; }
+img[src$="/frutiz/sprites/user-list-boite.svg"] { content: url("/frutiz/sprites/user-list-boite-nuit.svg?v=74a3eef4"); filter: none; }
+[style*="/frutiz/sprites/user-list-boite.svg"] { background-image: url("/frutiz/sprites/user-list-boite-nuit.svg?v=74a3eef4") !important; filter: none !important; }
+img[src$="/frutiz/sprites/user-list-pilule.svg"] { content: url("/frutiz/sprites/user-list-pilule-nuit.svg?v=ff15cd57"); filter: none; }
+[style*="/frutiz/sprites/user-list-pilule.svg"] { background-image: url("/frutiz/sprites/user-list-pilule-nuit.svg?v=ff15cd57") !important; filter: none !important; }
+img[src$="/frutiz/sprites/user-slot.svg"] { content: url("/frutiz/sprites/user-slot-nuit.svg?v=7decffde"); filter: none; }
+[style*="/frutiz/sprites/user-slot.svg"] { background-image: url("/frutiz/sprites/user-slot-nuit.svg?v=7decffde") !important; filter: none !important; }
 
 /* ── À la main, à partir d'ici ────────────────────────────────────── */
 /*

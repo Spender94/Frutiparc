@@ -23966,6 +23966,23 @@ app.get('/api/light/inventaire', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// ENDPOINT: /api/light/fond/cadrages — les cadrages d'un fond, par son URL.
+//
+// En privé, l'autre joueur n'envoie que l'URL de JOUR de son fond (c'est le
+// protocole d'époque, partagé avec main.swf). Le mode nuit de ce côté-ci veut
+// son dessin de nuit s'il en a un : c'est le serveur qui sait lequel, par la
+// convention de partout (`cadragesDuFond`). Une URL inconnue rend des
+// cadrages vides, pas une erreur : le client garde alors l'image de jour.
+// ─────────────────────────────────────────────
+app.get('/api/light/fond/cadrages', (req, res) => {
+  const sid = req.query.sid || '';
+  if (!resolveUsernameFromSid(sid)) return res.status(401).json({ ok: false, error: 'auth' });
+  const url = String(req.query.url || '').replace(/^\/+/, '');
+  if (!url || url.length > 200) return res.status(400).json({ ok: false, error: 'url' });
+  res.json({ ok: true, url: '/' + url, ...cadragesDuFond(url) });
+});
+
+// ─────────────────────────────────────────────
 // ENDPOINT: /api/light/fond — pose ou retire le fond d'écran.
 //
 // Écrit la MÊME préférence que WallPaperMng.loadWP côté bureau (n° 5, valeur

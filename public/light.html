@@ -792,9 +792,15 @@
      par-dessus l'image, à l'opacité que la trame a dite.
      `background-attachment` reste à `scroll` : d'époque `bg.wp` appartient au
      CADRE, il ne défile pas avec les lignes. */
+  /* Le VOILE est écrit ici, dans la feuille — pas posé par le JavaScript, qui
+     ne fournit que son opacité (`--wp-alpha`, celle que la trame a dite) et
+     l'image. C'est ce qui lui fait prendre la chair du thème du moment : la
+     feuille de nuit convertit cette couleur comme toutes les autres. Une
+     couleur posée en `style=""` depuis le JS ne pouvait pas suivre — et la
+     lire à l'instant de la bascule rendait celle d'avant. */
   #messages.a-fond-prive {
     background:
-      linear-gradient(var(--wp-voile), var(--wp-voile)),
+      linear-gradient(rgba(204,245,153,var(--wp-alpha, .8)), rgba(204,245,153,var(--wp-alpha, .8))),
       var(--wp-img) center / cover no-repeat,
       #CCF599;
   }
@@ -6826,9 +6832,15 @@
       lien.rel = "stylesheet"; lien.href = "/nuit.css"; lien.id = "nuit-css";
       document.head.appendChild(lien);
     }
-    // On DÉSACTIVE plutôt qu'on ne retire : rebasculer est alors instantané,
-    // sans nouvelle requête ni page blanche le temps du chargement.
-    if (lien) lien.disabled = !on;
+    // ON NE DÉSACTIVE PAS, ON CHANGE LE MÉDIA. `lien.disabled = true` fait
+    // JETER la feuille par Chrome (`lien.sheet` devient null) ; un média
+    // « not all » la garde chargée, ses règles se taisent. Mais dans les deux
+    // cas la remise en service est ASYNCHRONE : à l'instant même de la
+    // bascule, /nuit.css n'est plus dans `document.styleSheets`, et elle n'y
+    // revient qu'à la tâche suivante (mesuré, trace à l'appui). Rien de ce qui
+    // suit ne doit donc LIRE une couleur calculée pour décider : on ne se fie
+    // qu'à `data-nuit`, posé juste en dessous, et la feuille rattrape le reste.
+    if (lien) lien.media = on ? "all" : "not all";
     if (on) document.documentElement.setAttribute("data-nuit", "1");
     else document.documentElement.removeAttribute("data-nuit");
     // La barre du téléphone (PWA) prend la couleur du parc.
@@ -6841,8 +6853,10 @@
     // tiroir est dans /nuit.css et suit tout seul.
     if (window.BureauFrutiz && BureauFrutiz.rafraichirFond) BureauFrutiz.rafraichirFond();
     if (invFondActuel) appliquerFond(invFondActuel);
-    // Même raison pour l'encre des feutres : elle est posée en `style=""`.
+    // Même raison pour l'encre des feutres et pour le fond de l'autre en
+    // privé : ils sont posés en `style=""`.
     repeindreLesEncres();
+    repeindreLesFondsPrives();
     // Le forum est un document à part, dans son iframe — même domaine, donc on
     // peut lui tendre la main plutôt que de le recharger sous les yeux du
     // joueur (il perdrait son brouillon de message).
@@ -6856,7 +6870,7 @@
           l2.rel = "stylesheet"; l2.href = "/fb/nuit.css"; l2.id = "nuit-css";
           doc.head.appendChild(l2);
         }
-        if (l2) l2.disabled = !on;
+        if (l2) l2.media = on ? "all" : "not all";   // même raison qu'au-dessus
         if (on) doc.documentElement.setAttribute("data-nuit", "1");
         else doc.documentElement.removeAttribute("data-nuit");
       }
@@ -8227,6 +8241,27 @@
   function fondDuSalon(salon, brut) {
     var fil = journalDe(salon);
     if (!fil) return;
+    poserFondPrive(fil, brut);
+  }
+  /*
+   * LE FOND DE L'AUTRE, LA NUIT. L'autre joueur n'envoie que l'URL de JOUR de
+   * son fond — c'est le protocole d'époque, partagé avec main.swf, et il n'y
+   * a pas à y glisser autre chose. Mais le parc de ce côté-ci peut être
+   * éteint, et son fond a peut-être un dessin de nuit (« background_<nom>_dark »,
+   * cf. cadragesDuFond dans server.js) : c'est le thème de CE côté qui décide
+   * de la version, pas celui qui envoie. On demande donc ses cadrages au
+   * serveur, une fois par URL, et on pose le bon.
+   */
+  var cadragesConnus = {};
+  function cadragesDuFondPrive(url, fait) {
+    if (cadragesConnus[url]) { fait(cadragesConnus[url]); return; }
+    fetch("/api/light/fond/cadrages?sid=" + encodeURIComponent(state.sid)
+      + "&url=" + encodeURIComponent(url.replace(/^\/+/, "")))
+      .then(function (r) { return r.json(); })
+      .then(function (d) { cadragesConnus[url] = (d && d.ok) ? d : {}; fait(cadragesConnus[url]); })
+      .catch(function () { cadragesConnus[url] = {}; fait({}); });
+  }
+  function poserFondPrive(fil, brut) {
     var t = String(brut || "");
     var url = null, alpha = null;
     if (t.length > 0) {
@@ -8237,13 +8272,39 @@
     if (!url) {                          // chaîne vide, ou url refusée : on retire
       fil.classList.remove("a-fond-prive");
       fil.style.removeProperty("--wp-img");
-      fil.style.removeProperty("--wp-voile");
+      fil.style.removeProperty("--wp-alpha");
+      fil.removeAttribute("data-fond-brut");
       return;
     }
     if (!(alpha >= 0 && alpha <= 100)) alpha = FOND_PRIVE_ALPHA;
-    fil.style.setProperty("--wp-img", 'url("' + url + '")');
-    fil.style.setProperty("--wp-voile", "rgba(204,245,153," + (alpha / 100) + ")");
+    // Le message est gardé sur le fil : la nuit peut tomber après coup, et il
+    // faudra reposer le fond — dans sa version de nuit (repeindreLesFondsPrives).
+    fil.setAttribute("data-fond-brut", t);
+    // LE VOILE N'EST PAS POSÉ ICI. Sa couleur est celle de la chair du fil, et
+    // elle vit dans la feuille — de jour le vert, de nuit ce que /nuit.css en
+    // fait. Le JavaScript ne fournit que l'OPACITÉ, celle que la trame a
+    // dite. (Écrire la couleur d'ici, c'était la figer au vert ; la LIRE à
+    // l'instant de la bascule, c'était lire celle d'avant : Chrome retraite
+    // la feuille de nuit de façon asynchrone quand on la rallume.)
+    fil.style.setProperty("--wp-alpha", String(alpha / 100));
     fil.classList.add("a-fond-prive");
+    // L'IMAGE : le dessin de nuit du fond si le parc est éteint et qu'il en a
+    // un, l'image de jour sinon — et l'image de jour tout de suite, le temps
+    // que le serveur réponde.
+    var poser = function (c) {
+      if (fil.getAttribute("data-fond-brut") !== t) return;   // le fond a changé entre-temps
+      var src = (laNuitEstTombee() && c && c.urlNuit) || url;
+      fil.style.setProperty("--wp-img", 'url("' + src + '")');
+    };
+    poser(cadragesConnus[url]);
+    if (!cadragesConnus[url]) cadragesDuFondPrive(url, poser);
+  }
+  // La nuit tombe sur les fonds déjà posés : même raison que pour l'encre des
+  // feutres — ils sont en `style=""`, hors de portée de la feuille.
+  function repeindreLesFondsPrives() {
+    Array.prototype.forEach.call(document.querySelectorAll(".a-fond-prive[data-fond-brut]"), function (fil) {
+      poserFondPrive(fil, fil.getAttribute("data-fond-brut"));
+    });
   }
 
   /*
