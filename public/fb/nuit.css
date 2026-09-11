@@ -17,8 +17,8 @@ body {
 }
 .forum-shell {
   background: hsl(256 30% 10%);
-  border: 1.125px solid hsl(256 26% 56.4%);
-  box-shadow: inset 0 0 0 1px hsl(256 26% 34.1%);
+  border: 1.125px solid hsl(256 26% 60.7%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 39.8%);
 }
 a {
   color: hsl(256 13% 84.8%);
@@ -139,11 +139,11 @@ a:hover {
   background: hsl(256 30% 27.5%);
 }
 .post.post-nonlu {
-  outline: 2px solid hsl(256 26% 51.3%);
+  outline: 2px solid hsl(256 26% 56%);
 }
 @media (prefers-reduced-motion: reduce) {
   .post.post-nonlu {
-    outline-color: hsl(256 26% 55.1%);
+    outline-color: hsl(256 26% 59.5%);
   }
 }
 .post .post-header {
@@ -195,12 +195,12 @@ a:hover {
   color: hsl(256 13% 84.6%);
 }
 .post .post-signature {
-  border-top: 1px solid hsl(256 26% 37.4%);
+  border-top: 1px solid hsl(256 26% 42.9%);
   color: hsl(256 13% 84.4%);
 }
 .post-content blockquote.quote {
   background: hsl(256 30% 18.2%);
-  border: 1.5px solid hsl(256 26% 39.4%);
+  border: 1.5px solid hsl(256 26% 44.8%);
   color: hsl(256 13% 84.4%);
 }
 .post-content blockquote.quote blockquote.quote {
@@ -214,7 +214,7 @@ a:hover {
 }
 .bbcode-toolbar button {
   background: hsl(256 30% 34.3%);
-  border: 1px solid hsl(256 26% 56.4%);
+  border: 1px solid hsl(256 26% 60.8%);
   color: hsl(256 13% 84.8%);
 }
 .bbcode-toolbar button:hover {
@@ -222,15 +222,15 @@ a:hover {
 }
 .picto-picker {
   background: hsl(256 30% 10%);
-  border: 2px solid hsl(256 26% 56.4%);
+  border: 2px solid hsl(256 26% 60.8%);
   box-shadow: 2px 2px 8px hsl(256 13% 0% / 0.25);
 }
 .picto-picker img {
-  border: 1px solid hsl(256 26% 36.4%);
+  border: 1px solid hsl(256 26% 42%);
   background: hsl(256 30% 10%);
 }
 .picto-picker img:hover {
-  border-color: hsl(256 26% 56.4%);
+  border-color: hsl(256 26% 60.8%);
   background: hsl(256 30% 17.5%);
 }
 .picto-picker .picto-empty {
@@ -238,7 +238,7 @@ a:hover {
 }
 .picto-card {
   background: hsl(256 30% 10%);
-  border: 1px solid hsl(256 26% 38.6%);
+  border: 1px solid hsl(256 26% 44.1%);
 }
 .picto-card .picto-name {
   color: hsl(256 13% 84.8%);
@@ -248,11 +248,11 @@ a:hover {
 }
 .picto-gallery-section h4 {
   color: hsl(256 13% 84.8%);
-  border-bottom: 1px solid hsl(256 26% 38.6%);
+  border-bottom: 1px solid hsl(256 26% 44.1%);
 }
 .consecration-banner {
   background: linear-gradient(135deg, hsl(256 30% 23.3%), hsl(256 30% 17.5%));
-  border: 1px solid hsl(256 26% 45.6%);
+  border: 1px solid hsl(256 26% 50.6%);
 }
 .consecration-banner .conse-title {
   color: hsl(256 13% 84.8%);
@@ -262,14 +262,14 @@ a:hover {
 }
 .consecration-banner .conse-bar {
   background: hsl(256 30% 10%);
-  border: 1px solid hsl(256 26% 45.6%);
+  border: 1px solid hsl(256 26% 50.6%);
 }
 .consecration-banner .conse-fill {
   background: linear-gradient(90deg, hsl(256 30% 36%), hsl(256 30% 23.9%));
 }
 .consecration-banner .conse-game {
   background: hsl(256 30% 10%);
-  border: 1px solid hsl(256 26% 38.6%);
+  border: 1px solid hsl(256 26% 44.1%);
   color: hsl(256 13% 84.8%);
 }
 .consecration-banner .conse-game b {
@@ -281,13 +281,13 @@ a:hover {
 .picto-bbcode-hint {
   color: hsl(256 13% 84.8%);
   background: hsl(256 30% 10%);
-  border: 1px solid hsl(256 26% 33.9%);
+  border: 1px solid hsl(256 26% 39.7%);
 }
 .picto-bbcode-hint code {
   background: hsl(256 30% 10%);
 }
 .post-edit-area textarea {
-  border: 1px solid hsl(256 26% 44%);
+  border: 1px solid hsl(256 26% 49.1%);
   background: hsl(256 30% 27.5%);
   color: hsl(256 13% 84.8%);
 }
@@ -312,7 +312,7 @@ a:hover {
   color: hsl(256 13% 84.8%);
 }
 .pagination a, .pagination span {
-  border: 1px solid hsl(256 26% 56.4%);
+  border: 1px solid hsl(256 26% 60.8%);
   background: hsl(256 30% 21.6%);
   color: hsl(256 13% 84.8%);
 }
@@ -331,12 +331,12 @@ a:hover {
 }
 .form-area input[type="text"],
   .form-area textarea {
-  border: 1px solid hsl(256 26% 51.3%);
+  border: 1px solid hsl(256 26% 56%);
   background: hsl(256 30% 10%);
   color: hsl(256 13% 84.8%);
 }
 .bouille-preview-box {
-  border: 1.5px solid hsl(256 26% 56.4%);
+  border: 1.5px solid hsl(256 26% 60.7%);
   background: hsl(256 30% 17.2%);
 }
 .bouille-option-group label {
@@ -344,7 +344,7 @@ a:hover {
 }
 .expression-grid .expr-btn {
   background: hsl(256 30% 27.5%);
-  border: 1px solid hsl(256 26% 56.4%);
+  border: 1px solid hsl(256 26% 60.7%);
   color: hsl(256 13% 84.8%);
 }
 .expression-grid .expr-btn:hover {
@@ -357,7 +357,7 @@ a:hover {
 }
 .acc-grid .acc-btn {
   background: hsl(256 30% 27.5%);
-  border: 1px solid hsl(256 26% 56.4%);
+  border: 1px solid hsl(256 26% 60.7%);
   color: hsl(256 13% 84.8%);
 }
 .acc-grid .acc-btn:hover {
@@ -421,7 +421,7 @@ a:hover {
 .editor-preview-header {
   background: hsl(256 30% 34.3%);
   color: hsl(256 13% 84.8%);
-  border-bottom: 1px solid hsl(256 26% 44%);
+  border-bottom: 1px solid hsl(256 26% 49.1%);
 }
 .editor-preview-header .post-icon {
   filter: var(--nuit-chassis);
@@ -445,7 +445,7 @@ a:hover {
 .editor-input {
   background: hsl(256 30% 10%);
   color: hsl(256 13% 84.8%);
-  border: 1px solid hsl(256 26% 56.4%);
+  border: 1px solid hsl(256 26% 60.8%);
 }
 .bouille-nav {
   color: hsl(256 13% 84.8%);
@@ -465,11 +465,11 @@ a:hover {
 .editor-select {
   background: hsl(256 30% 10%);
   color: hsl(256 13% 84.8%);
-  border: 1px solid hsl(256 26% 56.4%);
+  border: 1px solid hsl(256 26% 60.8%);
 }
 .editor-bbcode-toolbar .bb-btn {
   background: linear-gradient(180deg, hsl(256 30% 22.1%) 0%, hsl(256 30% 14.7%) 100%);
-  border: 1px solid hsl(256 26% 44.9%);
+  border: 1px solid hsl(256 26% 50%);
   color: hsl(256 13% 84.5%);
 }
 .editor-bbcode-toolbar .bb-btn:hover {
@@ -480,32 +480,32 @@ a:hover {
 }
 .editor-bbcode-toolbar .bb-select {
   background: linear-gradient(180deg, hsl(256 30% 22.1%) 0%, hsl(256 30% 14.7%) 100%);
-  border: 1px solid hsl(256 26% 44.9%);
+  border: 1px solid hsl(256 26% 50%);
   color: hsl(256 13% 84.5%);
 }
 .editor-hint-row {
   background: hsl(256 30% 27.5%);
-  border: 1px solid hsl(256 26% 44%);
+  border: 1px solid hsl(256 26% 49.1%);
 }
 .editor-hint-row .hint-text {
   color: hsl(256 13% 84.8%);
 }
 .editor-hint-row .close-tags-btn {
   background: linear-gradient(180deg, hsl(256 30% 22.1%) 0%, hsl(256 30% 14.7%) 100%);
-  border: 1px solid hsl(256 26% 44.9%);
+  border: 1px solid hsl(256 26% 50%);
   color: hsl(256 13% 84.5%);
 }
 .editor-hint-row .close-tags-btn:hover {
   background: linear-gradient(180deg, hsl(256 30% 17.3%) 0%, hsl(256 30% 12.2%) 100%);
 }
 .emoticons-row .emo-btn:hover {
-  border-color: hsl(256 26% 56.4%);
+  border-color: hsl(256 26% 60.8%);
   background: hsl(256 30% 17.5%);
 }
 .editor-textarea {
   background: hsl(256 30% 10%);
   color: hsl(256 13% 84.8%);
-  border: 1px solid hsl(256 26% 56.4%);
+  border: 1px solid hsl(256 26% 60.8%);
 }
 .post-content .mention, .post-signature .mention {
   color: hsl(256 13% 84.8%);
@@ -513,11 +513,11 @@ a:hover {
 .post-content .mention.moi, .post-signature .mention.moi {
   color: hsl(325 58% 86.9%);
   background: hsl(256 30% 15.8%);
-  box-shadow: inset 0 0 0 1px hsl(256 26% 36.9%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 42.5%);
 }
 .mention-liste {
   background: hsl(256 30% 10%);
-  border: 1px solid hsl(256 26% 39.5%);
+  border: 1px solid hsl(256 26% 44.9%);
   box-shadow: 0 6px 18px hsl(256 13% 0% / 0.18);
 }
 .mention-item {
@@ -538,12 +538,12 @@ a:hover {
 }
 .post-content pre.bb-code {
   background: hsl(256 30% 10%);
-  border: 1px solid hsl(256 26% 38.6%);
+  border: 1px solid hsl(256 26% 44.1%);
   color: hsl(256 13% 84.4%);
 }
 .poll-box {
   background: hsl(256 30% 21.6%);
-  border-bottom: 1px solid hsl(256 26% 40.8%);
+  border-bottom: 1px solid hsl(256 26% 46.1%);
 }
 .poll-box-header {
   background: hsl(325 34% 34.6%);
@@ -582,7 +582,7 @@ a:hover {
 }
 .poll-result-track {
   background: hsl(256 30% 18.2%);
-  border: 1px solid hsl(256 26% 39.4%);
+  border: 1px solid hsl(256 26% 44.8%);
 }
 .poll-result-fill {
   background: linear-gradient(180deg, hsl(325 34% 34.6%) 0%, hsl(325 34% 31.2%) 100%);
@@ -607,7 +607,7 @@ a:hover {
 }
 .poll-fields {
   background: hsl(256 30% 27.5%);
-  border: 1px solid hsl(256 26% 44%);
+  border: 1px solid hsl(256 26% 49.1%);
 }
 .poll-edit-q label, .poll-edit-opts-label {
   color: hsl(256 13% 84.8%);
@@ -621,7 +621,7 @@ a:hover {
 }
 .poll-add-btn {
   background: linear-gradient(180deg, hsl(256 30% 22.1%) 0%, hsl(256 30% 14.7%) 100%);
-  border: 1px solid hsl(256 26% 44.9%);
+  border: 1px solid hsl(256 26% 50%);
   color: hsl(256 13% 84.5%);
 }
 .poll-add-btn:hover {
@@ -647,7 +647,7 @@ a:hover {
 }
 .sig-boite {
   background: hsl(256 30% 10%);
-  border: 2px solid hsl(256 26% 56.4%);
+  border: 2px solid hsl(256 26% 60.8%);
   box-shadow: 0 12px 32px hsl(256 13% 0% / 0.35);
 }
 .sig-titre {
@@ -660,7 +660,7 @@ a:hover {
   color: hsl(256 13% 84.6%);
 }
 .sig-apercu {
-  border-top: 1px solid hsl(256 26% 37.4%);
+  border-top: 1px solid hsl(256 26% 42.9%);
 }
 .sig-vide {
   color: hsl(256 13% 88.7%);

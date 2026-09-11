@@ -170,6 +170,23 @@ function hsl(h, s, l, a) {
   return a >= 1 ? `${t})` : `${t} / ${arrondi(a, 3)})`;
 }
 
+/*
+ * LA PLAGE DES LISERÉS, ET POURQUOI ELLE A UN NOM.
+ *
+ * Deux endroits en dépendent, et ils doivent bouger ensemble : la courbe des
+ * bordures, qui produit cette plage, et l'échelle qui y range les liserés
+ * ROSES (cf. `etaler`, plus bas). Les bornes y étaient écrites en dur —
+ * relever la courbe sans les toucher aurait clampé la moitié des roses sur
+ * `ROSE_ACCENT_MAX`, c'est-à-dire exactement le « plancher qui écrase » qu'on
+ * a mis du temps à retirer.
+ *
+ * Les valeurs : le plancher était à 30, à peine quatre points au-dessus du
+ * panneau du chat (25,8 %) — un filet qu'on devinait plus qu'on ne le voyait.
+ * À 36, l'écart passe à dix points : le liseré se lit, et le parc ne s'est
+ * pas assombri d'un cheveu pour autant. C'est le seul réglage de cette passe.
+ */
+const BORDURE_BAS = 36, BORDURE_HAUT = 66;
+
 // Les trois rôles d'une couleur, et la courbe de clarté de chacun.
 // L'exposant creuse : les grands aplats clairs tombent vite, les valeurs
 // sombres — celles du texte d'origine — remontent doucement.
@@ -185,7 +202,7 @@ const COURBES = {
   // le borne pour de bon, en luminance).
   fond: (l) => (l <= 20 ? l * 0.85 : Math.min(10 + 72 * (100 - l) / 100, 36)),
   // Les bordures se posent entre les deux, et toujours visibles.
-  bordure: (l) => 30 + 32 * (100 - l) / 100,                  // 30 % → 62 %
+  bordure: (l) => BORDURE_BAS + (BORDURE_HAUT - BORDURE_BAS) * (100 - l) / 100,
   // Le texte ne se renverse pas : il MONTE, toujours, en gardant sa hiérarchie
   // d'origine (ce qui était le plus clair reste le plus clair).
   texte: (l) => 74 + 22 * (l / 100),                          // 96 % → 74 %
@@ -391,10 +408,11 @@ function convertirHsl(r, g, b, a, role) {
     if (dessin) { ns = 68; nl = 0.92 * l; }
     else if (surface) { ns = 34; nl = etaler(nl, 0, ROSE_FOND_MAX, ROSE_FOND_MIN, ROSE_FOND_MAX); }
     else if (role === 'texte') { ns = 58; nl = Math.max(nl, ROSE_TEXTE_MIN); }
-    // La courbe des bordures sort entre 30 et 62, c'est-à-dire ENTIÈREMENT
+    // La courbe des bordures sort dans la plage nommée plus haut, c'est-à-dire
+    // ENTIÈREMENT
     // sous le plancher des accents : sans l'échelle, tous les liserés roses du
     // parc — et ils sont cinquante et un — sortaient de la même couleur.
-    else { ns = 58; nl = etaler(nl, 30, 62, ROSE_ACCENT_MIN, ROSE_ACCENT_MAX); }
+    else { ns = 58; nl = etaler(nl, BORDURE_BAS, BORDURE_HAUT, ROSE_ACCENT_MIN, ROSE_ACCENT_MAX); }
   } else if (estChassis(h, s) || parchemin) {
     nh = VIOLET;
     // Le châssis est saturé, mais pas également : un fond violet franc, un

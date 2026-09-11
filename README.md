@@ -157,6 +157,16 @@ la propriété : un fond descend, un texte monte, une bordure se pose entre les
 deux, une ombre déjà sombre ne bouge pas. Et elle rejoue la **teinte** par
 famille :
 
+> **Les liserés ont leur plage à eux**, `BORDURE_BAS`→`BORDURE_HAUT` (36 % à
+> 66 %). Le plancher était à 30, quatre points seulement au-dessus du panneau
+> du chat : un filet qu'on devinait plus qu'on ne le voyait. À 36 l'écart passe
+> à quatorze points, et le parc ne s'est pas assombri d'un cheveu — les fonds,
+> les bornes de luminance et le rapport visé n'ont pas bougé. La plage porte un
+> nom parce que **deux endroits en dépendent** : la courbe qui la produit, et
+> l'échelle qui y range les liserés roses (`etaler`). Les laisser diverger
+> clamperait la moitié des roses sur une seule valeur ; un test les tient
+> ensemble.
+
 | Famille | Ce qu'elle devient | Pourquoi |
 |---|---|---|
 | les verts et les gris — le **châssis** | **violet** (256°) | c'est ce qui fait la nuit *violette* plutôt qu'un parc vert éteint |

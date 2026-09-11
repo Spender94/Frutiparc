@@ -286,7 +286,40 @@ test('une ombre reste une ombre, un liseré redevient un liseré', () => {
   assert.ok(L(anneau) > L(teint('#CCF599', 'fond')) + 4,
     'le liseré se détache du panneau qu’il entoure');
   // Et dans la feuille produite, pas seulement en théorie.
-  assert.match(NUIT, /box-shadow: 0 0 0 1px hsl\(256 26% 3[0-9](\.\d)?%\)/);
+  assert.match(NUIT, /box-shadow: 0 0 0 1px hsl\(256 26% 4[0-9](\.\d)?%\)/);
+});
+
+test('les liserés se lisent sur le panneau, sans que le panneau ait bougé', () => {
+  /*
+   * LE SEUL RÉGLAGE DE CETTE PASSE. Le plancher des bordures était à 30 —
+   * quatre points au-dessus du panneau du chat (25,8 %), un filet qu'on
+   * devinait plus qu'on ne le voyait. Il monte à 36, et rien d'autre ne
+   * bouge : ni les fonds, ni les bornes de luminance, ni le rapport visé.
+   */
+  assert.match(lire('scripts/generer-nuit.js'),
+    /const BORDURE_BAS = 36, BORDURE_HAUT = 66;/);
+  const panneau = L(teint('#CCF599', 'fond'));
+  assert.strictEqual(panneau, 25.8, 'le panneau du chat n’a pas bougé (' + panneau + ')');
+  for (const [hex, quoi] of [['#DDDDDD', 'l’anneau des panneaux'],
+    ['#ADE76B', 'la bordure du fil'], ['#CCCCCC', 'l’arête d’une saisie']]) {
+    const liseret = L(teint(hex, 'bordure'));
+    assert.ok(liseret - panneau >= 12,
+      quoi + ' ne se détache pas assez : ' + liseret + ' contre ' + panneau);
+  }
+  // ET LE COUPLAGE, qui est le vrai piège. L'échelle des liserés ROSES prend
+  // pour entrée la plage que produit la courbe des bordures. Les deux étaient
+  // écrites séparément : relever l'une sans l'autre aurait clampé la moitié
+  // des roses sur ROSE_ACCENT_MAX — le « plancher qui écrase » qu'on a mis du
+  // temps à retirer. On vérifie donc que la plage nommée est bien celle que
+  // la courbe produit, aux deux bouts.
+  const src = lire('scripts/generer-nuit.js');
+  assert.match(src, /etaler\(nl, BORDURE_BAS, BORDURE_HAUT, ROSE_ACCENT_MIN, ROSE_ACCENT_MAX\)/);
+  assert.strictEqual(L(teint('#000000', 'bordure')), 66, 'le haut de la plage');
+  assert.strictEqual(L(teint('#FFFFFF', 'bordure')), 36, 'le bas de la plage');
+  // Les roses, eux, ne bougent pas : c'est l'échelle qui a suivi la courbe.
+  const roses = ['#F28687', '#FFAAAD', '#D16767', '#660000'].map((c) => L(teint(c, 'bordure')));
+  assert.deepStrictEqual(roses, [71.3, 69.3, 73.8, 82],
+    'les liserés roses devaient rester où ils étaient : ' + roses);
 });
 
 test('le rôle se lit dans le nom de la propriété', () => {
