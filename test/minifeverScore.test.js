@@ -31,6 +31,7 @@ const PALIERS = require(path.join(ROOT, 'public/minifever/engine.js')).PALIERS;
 const JEUX = require(path.join(ROOT, 'public/minifever/jeux.js')).JEUX;
 
 let proc = null;
+let journal = '';            // ce que le serveur écrit : les refus s'y lisent
 before(async () => {
   // Des lignes de la PARENTHÈSE aux quatre tableaux, semées avant le
   // démarrage : 30 épreuves en difficile et 40 en facile. Le boot doit les
@@ -57,7 +58,7 @@ before(async () => {
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  proc.stdout.on('data', () => {});
+  proc.stdout.on('data', (d) => { journal += d.toString(); });
   proc.stderr.on('data', () => {});
   for (let i = 0; i < 120; i++) {
     try { if ((await fetch(BASE + '/api/loadFrutiSlots?game=snake3')).ok) return; } catch { /* pas prêt */ }
@@ -256,6 +257,45 @@ test('le jeu se sert et se lance depuis le light', async () => {
   const light = await (await fetch(BASE + '/light.html')).text();
   assert.match(light, /minifever-frame/, 'le panneau existe');
   assert.match(light, /fd_minifever\.svg/, 'et son disque est dans la feuille de lancement');
+});
+
+/*
+ * « MES SCORES NE S'ENREGISTRENT PAS. » Le guichet refusait en silence — pas
+ * une ligne au journal — et la page taisait le refus autant que la réussite
+ * tiède (un score moindre que le record du jour, que le classement ne remplace
+ * pas). Chaque issue doit se lire : au journal côté serveur, au bandeau côté
+ * joueur — et un serveur injoignable se réessaie, le temps d'une mise en ligne.
+ */
+test('un refus s\'écrit au journal, et la page dit au joueur ce qu\'il advient de son score', async () => {
+  const sid = await sidPour(joueur('g'));
+  const avant = journal.length;
+  assert.equal((await finir(sid, { palier: 0, niveau: 5, jouees: 20 })).error, 'partie');
+  assert.equal((await finir('sid-mort', { palier: 0, niveau: 5, jouees: 5 })).error, 'session');
+  await wait(150);
+  const depuis = journal.slice(avant);
+  assert.match(depuis, /\[MINIFEVER\] refus « partie » pour fevg\w+ : palier=0 niveau=5 jouees=20/);
+  assert.match(depuis, /\[MINIFEVER\] refus « session » pour sid sid-mort… inconnu : palier=0 niveau=5 jouees=5/);
+  // Une partie acceptée mais moindre que le record du jour : le record voyage
+  // dans la réponse, pour que la page l'explique au lieu de laisser croire à
+  // une perte.
+  const bon = await finir(sid, { palier: 1, niveau: 10, jouees: 10 });     // 200
+  assert.equal(bon.classe, true);
+  const moindre = await finir(sid, { palier: 0, niveau: 5, jouees: 5 });   // 50
+  assert.equal(moindre.ok, true);
+  assert.equal(moindre.classe, false);
+  assert.equal(moindre.record, 200, 'le record du jour, pour le dire au joueur');
+  // La page : chaque issue a sa phrase, et un serveur injoignable se réessaie.
+  const page = fs.readFileSync(path.join(ROOT, 'public/minifever/index.html'), 'utf8');
+  assert.match(page, /dire\('score NON enregistré : ' \+ \(MOTIFS\[r\.error\] \|\| MOTIFS\.reseau\)\)/);
+  assert.match(page, /session: 'ta session a expiré — reconnecte-toi, puis rejoue'/);
+  assert.match(page, /dire\('connecte-toi pour enregistrer tes scores'\)/);
+  assert.match(page, /dire\('aucune épreuve remportée : rien à classer'\)/);
+  assert.match(page, /' — ton meilleur du jour reste ' \+ r\.record/);
+  assert.match(page, /const ENVOI_ESSAIS = 12;/);
+  assert.match(page, /if \(r\.error === 'reseau' && essais < ENVOI_ESSAIS\) \{[\s\S]*?setTimeout\(envoyer, ENVOI_DELAI\);/);
+  assert.match(page, /\(hors classement\) — cliquer pour rejouer/, 'le fever dit qu\'il ne classe pas');
+  // Et la réponse se lit même hors 200 : un refus n'est plus un silence.
+  assert.match(page, /r\.json\(\)\.catch\(\(\) => null\)/);
 });
 
 /*

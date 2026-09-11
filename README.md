@@ -86,6 +86,20 @@ Tu peux déployer ce repo sur **Render Web Service** sans VPS manuel :
      - `RGPD_PURGE_INACTIFS` = `0` pour suspendre l'effacement des comptes inactifs (le préavis part quand même)
      - `RGPD_IP_JOURS` (défaut 183), `RGPD_MODERATION_JOURS` (défaut 365), `RGPD_SESSIONS_JOURS` (défaut 180) : les autres rétentions
      - Changer une durée impose de relire `public/confidentialite.html`, qui les annonce.
+   - Les sessions vivent en base (table `sessions`) et **survivent à une mise
+     en ligne** : au démarrage, `db.loadSessions` les remet en mémoire,
+     dormantes, et chacune se réveille à son premier appel (`reveillerSession`,
+     depuis le garde HTTP en tête des routes et l'ident du chat), ce qui hydrate
+     son compte comme le ferait la connexion. Avant, chaque redémarrage
+     déconnectait tout le monde — et un score envoyé en fin de partie
+     (Mini-Fever, dont une partie dure jusqu'à cent épreuves) tombait sur
+     « session » sans que personne ne le voie. Une session fermée
+     (déconnexion, mot de passe changé, compte supprimé, coupure par un
+     modérateur) ne revient pas. Le guichet `/api/minifever/score` écrit
+     désormais ses refus au journal (`[MINIFEVER] refus « … »`), et la page du
+     jeu dit au joueur ce qu'il advient de son score — refus, session expirée,
+     record du jour inchangé — et réessaie une minute durant si le serveur est
+     injoignable (le temps d'une mise en ligne).
    - Choisir une **région européenne** (Frankfurt) : les données ne doivent pas quitter l'Union sans garantie.
 5. Déployer et attendre le statut **Live**.
 6. Tester:

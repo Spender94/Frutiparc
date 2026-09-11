@@ -173,6 +173,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Une session que la base connaît et que la mémoire a oubliée se réveille
+// ici, avant toute route — voir `sessionsDormantes`. Les autres passent sans
+// attendre.
+app.use((req, res, next) => {
+  const sid = getSidFromParams(req.query) || getSidFromParams(req.body) || '';
+  if (!sid || sessions[sid] || !sessionsDormantes.has(sid)) return next();
+  reveillerSession(sid).then(() => next(), () => next());
+});
+
 
 
 // ─────────────────────────────────────────────
@@ -1213,6 +1222,26 @@ function bouilleOf(user, username) {
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
 const recentSidByIp = new Map(); // ip -> sid fallback for legacy calls missing sid
+/*
+ * LES SESSIONS DORMANTES — celles que la base connaît et que la mémoire a
+ * perdues.
+ *
+ * `sessions` ne vit qu'en mémoire : un redémarrage (chaque mise en ligne, le
+ * disque étant éphémère) l'oubliait tout entier, alors que la table `sessions`
+ * était tenue depuis toujours sans jamais être relue. Tout ce qui portait un
+ * sid mourait d'un coup — et en silence pour un jeu qui n'envoie son score
+ * qu'à la fin d'une longue partie : Mini-Fever finissait sur « mode difficile
+ * terminé ! » et le serveur répondait « session », que personne ne voyait.
+ *
+ * Au démarrage, `db.loadSessions` remplit cette table (sid → pseudo, date) ;
+ * chaque session ne se RÉVEILLE qu'à son premier appel (`reveillerSession`,
+ * appelée par le garde HTTP en tête des routes et par l'ident du chat), ce
+ * qui hydrate son compte au passage — exactement ce que fait la connexion.
+ * Une session fermée (déconnexion, mot de passe changé, compte supprimé)
+ * disparaît des deux tables, jamais l'une sans l'autre.
+ */
+const sessionsDormantes = new Map(); // sid -> { user, createdAt }
+const reveilsEnCours = new Map();    // sid -> promesse du réveil en cours
 const LOGIN_BIS_PAGE_PATH = path.join(__dirname, 'public', 'login-bis.html');
 
 // ─────────────────────────────────────────────
@@ -8358,6 +8387,7 @@ app.post('/api/auth/reset', async (req, res) => {
         db.deleteSession(sid).catch(() => {});
       }
     }
+    oublierSessionsDormantesDe(username);
     console.log(`[RESET] password reset completed for ${username}`);
     return res.json({ ok: true, message: 'Ton code secret a été changé. Tu peux te connecter.' });
   } catch (e) {
@@ -9531,6 +9561,7 @@ function renommerEnMemoire(a, n, affichage) {
   for (const [sid, s] of Object.entries(sessions)) {
     if (s && s.user === a) { delete sessions[sid]; sessionsCoupees++; }
   }
+  oublierSessionsDormantesDe(a);
   if (sessionsCoupees) bilan.push(`${sessionsCoupees} session(s) fermée(s)`);
   for (const sock of getSocketsForUsername(a)) {
     try { sock.end(); } catch (e) { /* déjà partie */ }
@@ -9711,6 +9742,7 @@ async function supprimerJoueurPartout(username, { par = 'admin' } = {}) {
   for (const [sid, s] of Object.entries(sessions)) {
     if (s.user === u) delete sessions[sid];
   }
+  oublierSessionsDormantesDe(u);
   if (scoresData.users[u]) delete scoresData.users[u];
   saveScoresFile();
   delete bouilleCache[u];
@@ -9820,6 +9852,7 @@ app.post('/api/light/compte/suppression', async (req, res) => {
   for (const [s, sess] of Object.entries(sessions)) {
     if (sess.user === username) delete sessions[s];
   }
+  oublierSessionsDormantesDe(username);
   const effaceLe = new Date(Date.now() + RGPD_GRACE_JOURS * 86400000).toISOString();
   console.log(`[RGPD] ${username} demande la suppression de son compte — effacement le ${effaceLe.slice(0, 10)}`);
   res.json({ ok: true, effaceLe, graceJours: RGPD_GRACE_JOURS });
@@ -10733,6 +10766,7 @@ app.delete('/api/admin/users-by-date', adminAuth, async (req, res) => {
       for (const [sid, s] of Object.entries(sessions)) {
         if (s.user === u) delete sessions[sid];
       }
+      oublierSessionsDormantesDe(u);
       if (scoresData.users[u]) delete scoresData.users[u];
       delete bouilleCache[u];
     }
@@ -11608,22 +11642,27 @@ function minifeverScore(palier, niveau) {
 app.post('/api/minifever/score', async (req, res) => {
   const sid = getSidFromRequest(req, req.body || {});
   const username = resolveUsernameFromSid(sid);
-  if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
-
   const b = req.body || {};
+  // UN REFUS S'ÉCRIT AU JOURNAL. Il partait muet, et le client le taisait
+  // aussi : des joueurs finissaient une partie sans rien voir au classement,
+  // et personne ne pouvait dire pourquoi. Le motif et la partie telle
+  // qu'envoyée, pour que la prochaine plainte se lise ici.
+  const refus = (motif) => {
+    console.log(`[MINIFEVER] refus « ${motif} » pour ${username || ('sid ' + String(sid || '').slice(0, 8) + '… inconnu')}`
+      + ` : palier=${b.palier} niveau=${b.niveau} jouees=${b.jouees}`);
+    return res.json({ ok: false, error: motif });
+  };
+  if (!username || !users[username]) return refus('session');
+
   const palier = Math.trunc(Number(b.palier));
   const niveau = Math.trunc(Number(b.niveau));
   const jouees = Math.trunc(Number(b.jouees));
   const info = MINIFEVER_PALIERS[palier];
-  if (!info || !info.nom) return res.json({ ok: false, error: 'palier' });
-  if (!Number.isFinite(niveau) || niveau < 0 || niveau > info.lvl) {
-    return res.json({ ok: false, error: 'niveau' });
-  }
+  if (!info || !info.nom) return refus('palier');
+  if (!Number.isFinite(niveau) || niveau < 0 || niveau > info.lvl) return refus('niveau');
   // Les épreuves jouées, ce sont les réussies plus les ratées ; et on ne rate
   // pas plus souvent qu'on n'a de vies.
-  if (!Number.isFinite(jouees) || jouees < niveau || jouees - niveau > info.vies) {
-    return res.json({ ok: false, error: 'partie' });
-  }
+  if (!Number.isFinite(jouees) || jouees < niveau || jouees - niveau > info.vies) return refus('partie');
 
   // Les pictos : une épreuve remportée pour la première fois entre à l'album.
   const gagnees = Array.isArray(b.gagnees) ? b.gagnees.map(String) : [];
@@ -11652,8 +11691,11 @@ app.post('/api/minifever/score', async (req, res) => {
   if (score > 0) r = persistScore(username, 'minifever_arcade', score, String(palier));
   console.log(`[MINIFEVER] ${username} : ${info.nom}, ${niveau}/${info.lvl} épreuves`
     + `${b.gagnee ? ' (terminé)' : ''} → ${score} pts`
+    + (r.updated ? '' : ` (record du jour ${r.oldScore}, inchangé)`)
     + (neufs.length ? ` · ${neufs.length} picto(s)` : ''));
-  res.json({ ok: true, score, classe: !!r.updated, pictos: neufs.map((e) => e.nom) });
+  // `record` : le meilleur du jour qui reste quand la partie ne le bat pas —
+  // le client le dit au joueur, au lieu de le laisser croire à une perte.
+  res.json({ ok: true, score, classe: !!r.updated, record: Number(r.oldScore) || 0, pictos: neufs.map((e) => e.nom) });
 });
 
 // ─────────────────────────────────────────────
@@ -18093,6 +18135,43 @@ function resolveUsernameFromSid(sid) {
   return null;
 }
 
+/*
+ * RÉVEILLER UNE SESSION DORMANTE (voir `sessionsDormantes`) : le compte est
+ * hydraté s'il ne l'est pas encore — comme à la connexion —, puis la session
+ * reprend sa place en mémoire. Deux appels simultanés partagent le même
+ * réveil. Rend vrai si la session est utilisable au retour.
+ */
+function reveillerSession(sid) {
+  if (!sid || sessions[sid]) return Promise.resolve(!!sessions[sid]);
+  const dormante = sessionsDormantes.get(sid);
+  if (!dormante) return Promise.resolve(false);
+  if (reveilsEnCours.has(sid)) return reveilsEnCours.get(sid);
+  const reveil = (async () => {
+    const username = dormante.user;
+    if (!users[username] && process.env.DATABASE_URL) {
+      try {
+        const row = await db.findUserByUsername(username);
+        if (row) await hydrateUserFromDb(username, row);
+      } catch (e) {
+        console.error(`[SESSION] réveil de ${username} impossible : ${e.message}`);
+        return false;                       // elle reste dormante : on réessaiera
+      }
+    }
+    sessionsDormantes.delete(sid);
+    if (!users[username]) return false;     // compte disparu : la session avec
+    if (!sessions[sid]) sessions[sid] = { user: username, createdAt: dormante.createdAt || Date.now() };
+    return true;
+  })().finally(() => reveilsEnCours.delete(sid));
+  reveilsEnCours.set(sid, reveil);
+  return reveil;
+}
+
+// Les sessions dormantes d'un compte tombent avec les autres : à la
+// suppression, au changement de mot de passe, à la coupure par un modérateur.
+function oublierSessionsDormantesDe(username) {
+  for (const [sid, d] of sessionsDormantes) if (d.user === username) sessionsDormantes.delete(sid);
+}
+
 function getSessionBySid(sid) {
   if (!sid || !sessions[sid]) return null;
   return sessions[sid];
@@ -24173,6 +24252,17 @@ async function boot() {
     try {
       await db.initSchema();
       console.log('[DB] Connected and schema ready');
+      // Les sessions que la base connaît reviennent — dormantes, réveillées à
+      // leur premier appel (voir `sessionsDormantes`). La fenêtre est celle de
+      // la rétention : au-delà, la purge RGPD les a de toute façon effacées.
+      try {
+        const dormantes = await db.loadSessions(RGPD_SESSIONS_JOURS);
+        for (const s of dormantes) {
+          if (sessions[s.sid]) continue;
+          sessionsDormantes.set(s.sid, { user: normalizeUsername(s.username), createdAt: s.createdAt });
+        }
+        console.log(`[DB] ${sessionsDormantes.size} session(s) reprise(s) de la base, dormantes jusqu'à leur premier appel`);
+      } catch (e) { console.error('[DB] Sessions load error:', e.message); }
       const allScores = await db.loadAllScores();
       let count = 0;
       for (const [username, rankings] of Object.entries(allScores)) {
@@ -27953,6 +28043,9 @@ async function handleCBeeMessage(socket, rawXml) {
     case 'ident': {
       const login = msg.attrs.l || '';
       const sid = msg.attrs.s || '';
+      // Une session que la base connaît et que le redémarrage a fait oublier
+      // reprend sa place avant qu'on la lise (voir `sessionsDormantes`).
+      if (sid && !sessions[sid] && sessionsDormantes.has(sid)) await reveillerSession(sid);
       // The light/mobile client identifies itself with lc="1": it opts into the
       // recent-chat-history replay on (re)join, so flipping browser tabs no
       // longer leaves it with an empty conversation. The desktop SWF never sets

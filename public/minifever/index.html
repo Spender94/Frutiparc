@@ -192,32 +192,70 @@ function majEtat(texte) {
 /*
  * La fin d'une chaîne fever : l'écran gameOver est DANS la scène (le clip du
  * SWF) ; le bandeau dit juste le compte, et l'appui relance — GameOver.mt.
+ * Le fever ne classe pas (le barème sous la scène le dit) : on le redit là
+ * où le joueur cherche son score.
  */
 function finFever(d) {
   majEtat((d.niveau - 1) + ' épreuve' + (d.niveau > 2 ? 's' : '') + ' remportée'
-    + (d.niveau > 2 ? 's' : '') + ' — cliquer pour rejouer');
+    + (d.niveau > 2 ? 's' : '') + ' (hors classement) — cliquer pour rejouer');
 }
 
-/* La fin d'une partie d'arcade : le score part à la plateforme. */
+/*
+ * LA FIN D'UNE PARTIE D'ARCADE : le score part à la plateforme, ET ON DIT CE
+ * QU'IL EN ADVIENT.
+ *
+ * Il partait en silence. Un refus du serveur, une session expirée, un serveur
+ * injoignable (mise en ligne, réseau coupé) laissaient le bandeau sur « mode
+ * facile terminé ! » et rien au classement — « mes scores ne s'enregistrent
+ * pas », sans que personne puisse dire pourquoi. Et une partie acceptée mais
+ * moindre que le record du jour passait pour perdue, alors que le classement
+ * garde simplement le meilleur. Chaque issue a maintenant sa phrase ; un
+ * serveur injoignable se réessaie une minute durant avant qu'on le déclare
+ * perdu, le temps d'une mise en ligne.
+ */
+const ENVOI_ESSAIS = 12;              // toutes les cinq secondes : une minute
+const ENVOI_DELAI = 5000;
+const MOTIFS = {
+  session: 'ta session a expiré — reconnecte-toi, puis rejoue',
+  reseau: 'le serveur n\'a pas répondu',
+  partie: 'le serveur a refusé cette partie',
+  niveau: 'le serveur a refusé cette partie',
+  palier: 'ce palier n\'est pas classé',
+};
 function finArcade(d) {
   majEtat(d.gagnee
     ? 'mode ' + d.nom + ' terminé ! — cliquer sur un mode pour rejouer'
     : d.niveau + '/' + d.objectif + ' épreuves — choisir un mode pour rejouer');
-  if (!sid) return;
-  fetch('/api/minifever/score', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sid, palier: d.palier, niveau: d.niveau, jouees: d.jouees,
-      gagnee: d.gagnee, gagnees: [...gagnees] }),
-  }).then((r) => r.json()).then((r) => {
-    if (r && r.ok && r.score > 0) {
-      $('etat').textContent += ' · ' + r.score + ' pts'
-        + (d.palier > 0 ? ' (×' + (1 + d.palier) + ')' : '');
-    }
-    if (r && r.pictos && r.pictos.length) {
-      $('etat').textContent += ' · picto : ' + r.pictos.join(', ');
-    }
-  }).catch(() => {});
+  const base = $('etat').textContent;
+  const cette = socle;                // si le joueur a relancé, on se tait
+  const dire = (t) => { if (socle === cette) $('etat').textContent = base + ' · ' + t; };
+  if (!sid) { dire('connecte-toi pour enregistrer tes scores'); return; }
+  if (!(d.niveau > 0)) { dire('aucune épreuve remportée : rien à classer'); return; }
+  const corps = JSON.stringify({ sid, palier: d.palier, niveau: d.niveau, jouees: d.jouees,
+    gagnee: d.gagnee, gagnees: [...gagnees] });
+  let essais = 0;
+  const envoyer = () => {
+    essais++;
+    fetch('/api/minifever/score', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps })
+      // Le corps se lit même quand le statut n'est pas 200 : c'est là que le
+      // serveur explique. Il ne reste « reseau » que si rien n'est lisible.
+      .then((r) => r.json().catch(() => null).then((j) => (j && typeof j === 'object' ? j : { ok: false, error: 'reseau' })))
+      .catch(() => ({ ok: false, error: 'reseau' }))
+      .then((r) => {
+        if (r.error === 'reseau' && essais < ENVOI_ESSAIS) {
+          dire('score en attente : serveur injoignable, nouvel essai dans quelques secondes…');
+          setTimeout(envoyer, ENVOI_DELAI);
+          return;
+        }
+        if (!r.ok) { dire('score NON enregistré : ' + (MOTIFS[r.error] || MOTIFS.reseau)); return; }
+        let t = r.score + ' pts' + (d.palier > 0 ? ' (×' + (1 + d.palier) + ')' : '');
+        if (r.classe) t += ' — au classement du jour';
+        else if (r.record > 0) t += ' — ton meilleur du jour reste ' + r.record + ' : le classement garde le meilleur';
+        if (r.pictos && r.pictos.length) t += ' · picto : ' + r.pictos.join(', ');
+        dire(t);
+      });
+  };
+  envoyer();
 }
 
 /* ── Le chargement, puis la première épreuve — toute seule, comme le SWF. ── */

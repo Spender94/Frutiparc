@@ -1149,6 +1149,30 @@ async function deleteSession(sid) {
   await pool.query(`DELETE FROM sessions WHERE sid = $1`, [sid]);
 }
 
+/*
+ * LES SESSIONS ENCORE VALABLES, pour les remettre en mémoire au démarrage.
+ *
+ * La table est tenue depuis toujours (createSession à la connexion,
+ * deleteSession à la déconnexion, purgerSessionsAnciennes pour la rétention)
+ * mais personne ne la RELISAIT : un redémarrage — et le disque est éphémère
+ * là où le site est déployé — oubliait toutes les sessions d'un coup. On rend
+ * ici ce qui a moins de `jours` jours, sid, pseudo et date ; le serveur les
+ * garde dormantes et ne réveille chacune qu'à son premier appel.
+ */
+async function loadSessions(jours) {
+  const { rows } = await pool.query(
+    `SELECT s.sid, u.username, s.created_at
+     FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.created_at > now() - make_interval(days => $1)`,
+    [Math.max(1, Number(jours) || 1)]
+  );
+  return rows.map((r) => ({
+    sid: r.sid,
+    username: r.username,
+    createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+  }));
+}
+
 async function getUserItems(userId) {
   const { rows } = await pool.query(
     'SELECT item_id FROM user_items WHERE user_id = $1',
@@ -3887,6 +3911,7 @@ module.exports = {
   createSession,
   getSessionUser,
   deleteSession,
+  loadSessions,
   getUserItems,
   setUserItems,
   upsertScore,
