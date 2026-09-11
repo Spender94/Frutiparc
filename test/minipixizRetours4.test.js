@@ -164,18 +164,33 @@ test('le bassin recharge au taux de l\'aventure — Fountain descend d\'Aventure
   assert.strictEqual(b.jeu.manaCoef, 3, 'même coefficient que la forêt');
 });
 
-test('la fée entre en partie la réserve pleine, comme Aventure.new', () => {
+/*
+ * LA RÉSERVE SE REFAIT À L'ENTRÉE DU LIEU, PAS À LA NAISSANCE DE LA FÉE.
+ *
+ * On la refaisait ici, dans le champ, en croyant que chaque niveau était un
+ * nouvel écran chez Flash. Or base/Forest.setWin et base/Dungeon.setWin
+ * enchaînent les niveaux dans la MÊME base (level += 1, initStep(2)) ; seul
+ * base/Aventure.new — l'entrée en forêt, au donjon — pose `$mana = carac × 2`.
+ * Le champ, lui, reçoit la fée telle qu'elle est : c'était « le bug qui nous
+ * fait récupérer tout le mana à chaque fin de niveau ».
+ */
+test('la fée entre au champ avec ce qu\'il lui reste ; c\'est le lieu qui refait la réserve', () => {
   const fiche = F.genererGraine(seeded(43));
   fiche.$carac = [1, 1, 1, 1, 1, 3];   // mana 3 → réserve 6
-  fiche.$mana = 1;                      // il lui restait UNE goutte hier
+  fiche.$mana = 1;                      // il lui restait UNE goutte
   const fi = new F.Fee(fiche, null, null);
 
   const jeu = new E.Jeu({ graine: 5, niveau: 0, grille: null });
   const champ = new C.Champ(jeu, { fee: fi });
-  assert.strictEqual(fiche.$mana, 6, 'la réserve est refaite au lancement');
-  assert.strictEqual(champ.faerieList[0].mana, 6, 'et la fée du champ la porte');
+  assert.strictEqual(fiche.$mana, 1, 'le champ ne recharge pas');
+  assert.strictEqual(champ.faerieList[0].mana, 1, 'la fée du champ porte ce qu\'elle a');
 
-  // Mais RELIRE la fiche en cours de partie (elle mange, reçoit un objet) ne
+  // L'entrée d'un lieu, elle, refait la réserve (Aventure.new) — c'est ce que
+  // lieux.js et la course en forêt appellent.
+  fi.rechargerMana();
+  assert.strictEqual(fiche.$mana, 6, 'la réserve est refaite à l\'entrée');
+
+  // Et RELIRE la fiche en cours de partie (elle mange, reçoit un objet) ne
   // recharge pas : poserInfo n'est pas une entrée en partie.
   fiche.$mana = 2;
   champ.faerieList[0].poserInfo(fi);

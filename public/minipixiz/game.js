@@ -1189,7 +1189,14 @@ class Client {
     this.jeu = this.lieu.jeu;
     this.champ = this.lieu.champ;
     this.jeu.entree = this.entree;
-    if (this.lieu.fi) this.fee = this.lieu.fi;
+    // La fée qui PARLE est celle qui JOUE — et c'est le lieu qui le sait.
+    // On ne remplaçait la fiche que si le lieu en avait une : l'arbre creux,
+    // qui se joue sans fée, gardait celle de la dernière course, et elle
+    // commentait les cascades et saluait les objets depuis nulle part (le
+    // retour des joueurs : « la fée qui parle en mode challenge »). Pas de
+    // fée au lieu, pas de bulle — comme Game.mt, qui ne fait réagir que
+    // faerieList[0].
+    this.fee = this.lieu.fi || null;
     this.dernier = 0;
     this.reste = 0;
     return this.lieu;
@@ -1329,8 +1336,22 @@ class Client {
       this.jeu = this.lieu.jeu;
       this.champ = this.lieu.champ;
       this.jeu.entree = this.entree;
-      if (this.lieu.fi) this.fee = this.lieu.fi;
+      this.fee = this.lieu.fi || null;
       this.commencerOuverture(((d && d.niveau) || 0) + 1);
+    }
+    /*
+     * base/Dungeon.initStep(21-22) — LE DONJON VAINCU. Le diamant tombe du
+     * ciel jusqu'au milieu de l'aire dans une gerbe de rayons, puis un éclair
+     * blanc, et la clairière (Manager.fadeSlot("menu")). Au deuxième tour du
+     * donjon il n'y a plus de diamant : l'éclair seul. Le portage rentrait à la
+     * clairière sans rien montrer — « je termine des donjons mais rien ne se
+     * passe » : la fiche avait bien son diamant, mais personne ne l'avait vu
+     * tomber. `dessinerCine` joue la scène et envoie « rideau » à la fin, comme
+     * pour la défaite ; c'est là que la page rentre.
+     */
+    if (nom === 'donjonGagne') {
+      const diamant = (d && d.diamant !== null && d.diamant !== undefined) ? Number(d.diamant) : null;
+      this.cine = { phase: 'diamant', diamant, x: SCENE * 0.5, y: -20, vity: 0.5, rayons: [], flash: null, cible: cible || null };
     }
     // Les marges sont celles de la PARTIE, pas du module : l'arbre creux décale
     // son aire de quarante-huit pixels pour laisser la place au tronc.
@@ -2411,6 +2432,7 @@ class Client {
   dessinerCine(ctx, tmod) {
     const c = this.cine;
     if (!c) return;
+    if (c.phase === 'diamant') { this.dessinerDiamant(ctx, c, tmod); return; }
     if (c.phase === 1) {
       c.prc = Math.min(100, c.prc * Math.pow(1.1, tmod));
       ctx.fillStyle = 'rgba(0,0,0,' + (c.prc / 100).toFixed(3) + ')';
@@ -2435,6 +2457,59 @@ class Client {
     if (c.timer <= 10 && !c.dit) {
       c.dit = true;
       this.annonce('rideau', {}, c.cible);
+    }
+  }
+
+  /**
+   * base/Dungeon.initStep(21) et lightDiam — la chute du diamant.
+   *
+   * Le diamant (mcDiamant, image = rang + 1 : chaque rang a sa teinte, comme
+   * les cinq de l'inventaire) descend d'un demi-pixel par image, sa lueur
+   * (partFlipGlow à 40 %) l'accompagne, et trois RAYONS par image jaillissent
+   * de lui — tournés au hasard, longs de 20 à 120, qui s'éteignent en quinze à
+   * vingt-cinq images. Arrivé au milieu de l'aire (initStep(22)), il s'arrête
+   * et l'éclair blanc monte (prc × 1,1 par image) ; plein, c'est la sortie.
+   */
+  dessinerDiamant(ctx, c, tmod) {
+    const s = this.sprites;
+    if (c.diamant !== null && !c.flash) {
+      c.y += c.vity * tmod;
+      for (let i = 0; i < 3; i++) {
+        c.rayons.push({ x: c.x, y: c.y, vy: c.vity, rot: Math.random() * 360,
+          vitr: (Math.random() * 2 - 1) * 10, longueur: 20 + Math.random() * 100,
+          t: 15 + Math.random() * 10, t0: 25 });
+      }
+      if (c.y > SCENE * 0.5) c.flash = { prc: 1 };
+    } else if (!c.flash) {
+      c.flash = { prc: 1 };              // deuxième tour : pas de diamant, l'éclair seul
+    }
+    if (c.diamant !== null) {
+      for (let i = c.rayons.length - 1; i >= 0; i--) {
+        const r = c.rayons[i];
+        r.t -= tmod;
+        if (r.t <= 0) { c.rayons.splice(i, 1); continue; }
+        if (!c.flash) r.y += r.vy * tmod;
+        r.rot += r.vitr * tmod;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, r.t / r.t0) * 0.8;
+        ctx.translate(r.x, r.y);
+        ctx.rotate(r.rot * Math.PI / 180);
+        ctx.strokeStyle = '#fff8c0';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(r.longueur, 0); ctx.stroke();
+        ctx.restore();
+      }
+      if (s.partFlipGlow) poserRendu(ctx, rendre(s.partFlipGlow, 1, 40), c.x, c.y);
+      if (s.invDiamant) poserRendu(ctx, rendre(s.invDiamant, Math.min(5, Math.max(1, c.diamant + 1)), 250), c.x, c.y);
+    }
+    if (c.flash) {
+      c.flash.prc = Math.min(100, c.flash.prc * Math.pow(1.1, tmod));
+      ctx.fillStyle = 'rgba(255,255,255,' + (c.flash.prc / 100).toFixed(3) + ')';
+      ctx.fillRect(0, 0, SCENE, SCENE);
+      if (c.flash.prc >= 100 && !c.dit) {
+        c.dit = true;
+        this.annonce('rideau', {}, c.cible);
+      }
     }
   }
 

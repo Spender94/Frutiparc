@@ -240,6 +240,10 @@ class Fee {
   // ── Les bornes (FaerieInfo.inc*) ──
   vieMax() { return nombre(this.carac[VIE]); }
   manaMax() { return nombre(this.carac[MANA]) * 2; }
+  // base/Aventure.new : `fi.fs.$mana = fi.carac[Cs.MANA]*2` — la réserve est
+  // pleine à l'ENTRÉE D'UN LIEU (une course en forêt, un donjon), et là
+  // seulement : d'un niveau au suivant, la fée garde ce qu'il lui reste.
+  rechargerMana() { this.fs.$mana = this.manaMax(); }
 
   incVie(n) { this.fs.$life = Math.round(borner(0, nombre(this.fs.$life) + n, this.vieMax())); }
   incMana(n) { this.fs.$mana = Math.round(borner(0, nombre(this.fs.$mana) + n, this.manaMax())); }

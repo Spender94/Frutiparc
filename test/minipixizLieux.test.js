@@ -117,6 +117,113 @@ test('le donjon s\'enchaîne sur dix niveaux, et le dernier a ses démons', () =
   assert.equal(d.gagne, true);
 });
 
+/*
+ * « JE TERMINE DES DONJONS MAIS RIEN NE SE PASSE. » La fiche, elle, avait
+ * bien son diamant (Cm.winDungeon, gagnerLeDonjon) ; mais l'annonce
+ * `donjonGagne` ne trouvait personne, et la clairière revenait sans un mot ni
+ * une image. Le client joue maintenant la chute du diamant (base/Dungeon
+ * .initStep(21-22)) et la page dit la nouvelle au retour.
+ */
+test('le donjon vaincu paie — le diamant, le rang suivant, la rangée de l\'inventaire — et l\'annonce', () => {
+  const { c, fs } = carte({ rang: 1 });
+  const gains = [];
+  const d = new X.Donjon({
+    carte: c, fee: fs, graine: 7,
+    surEvenement: (n, o) => { if (n === 'donjonGagne') gains.push(o); },
+  });
+  let tours = 0;
+  while (!d.fini && tours < 40) { viderEtFinirLeTour(d); tours++; }
+  assert.equal(d.gagne, true);
+  assert.equal(gains.length, 1, 'une annonce, au dixième niveau');
+  assert.equal(gains[0].diamant, 1, 'le diamant du rang joué (premier tour)');
+  assert.equal(gains[0].ornegon, false);
+  assert.equal(gains[0].arcEnCiel, false);
+  assert.equal(c.$dungeon.$lvl, 2, 'le rang suivant');
+  assert.equal(c.$dungeon.$f, false);
+  assert.equal(c.$diam, 2, 'la rangée de diamants de l\'inventaire');
+
+  // Le client : l'annonce ouvre la scène du diamant, qui finit sur « rideau ».
+  const fsMod = require('fs');
+  const path = require('path');
+  const js = fsMod.readFileSync(path.join(__dirname, '../public/minipixiz/game.js'), 'utf8');
+  assert.match(js, /if \(nom === 'donjonGagne'\) \{[\s\S]*?this\.cine = \{ phase: 'diamant', diamant,/);
+  assert.match(js, /if \(c\.phase === 'diamant'\) \{ this\.dessinerDiamant\(ctx, c, tmod\); return; \}/);
+  const scene = /\n  dessinerDiamant\(ctx, c, tmod\) \{[\s\S]*?\n  \}\n/.exec(js);
+  assert.ok(scene, 'dessinerDiamant');
+  assert.match(scene[0], /c\.y \+= c\.vity \* tmod;/, 'le diamant descend');
+  assert.match(scene[0], /for \(let i = 0; i < 3; i\+\+\) \{\s*c\.rayons\.push/, 'trois rayons par image (lightDiam)');
+  assert.match(scene[0], /if \(c\.y > SCENE \* 0\.5\) c\.flash = \{ prc: 1 \};/, 'arrivé au milieu, l\'éclair');
+  assert.match(scene[0], /rendre\(s\.invDiamant, Math\.min\(5, Math\.max\(1, c\.diamant \+ 1\)\)/, 'la teinte du rang');
+  assert.match(scene[0], /this\.annonce\('rideau', \{\}, c\.cible\);/, 'et la sortie');
+  // La page attend cette sortie-là, et dit la nouvelle à la clairière.
+  const page = fsMod.readFileSync(path.join(__dirname, '../public/minipixiz/index.html'), 'utf8');
+  assert.match(page, /if \(nom === 'donjonGagne'\) \{[\s\S]*?gainsDonjon = info \|\| \{\};[\s\S]*?plateforme\.ecrire\(avant\);/);
+  assert.match(page, /if \(client\.cine && client\.cine\.phase === 'diamant'\) return;/);
+  assert.match(page, /if \(nom === 'rideau'\) \{ ouvrirMenu\(\); direLesGainsDuDonjon\(\); return; \}/);
+  assert.match(page, /un diamant de plus dans le sac/);
+  assert.match(page, /Ornegon est libéré !/);
+});
+
+/*
+ * « LE BUG QUI NOUS FAIT RÉCUPÉRER TOUT LE MANA À CHAQUE FIN DE NIVEAU. »
+ * base/Aventure.new pose `fi.fs.$mana = carac[MANA]*2` à l'ENTRÉE du lieu, et
+ * les niveaux s'enchaînent ensuite dans la même base (setWin : level += 1,
+ * initStep(2)) sur ce qu'il reste. Le portage rechargeait à chaque niveau, en
+ * reconstruisant la fée.
+ */
+test('la mana est pleine à l\'entrée du donjon, et pas rendue entre deux niveaux', () => {
+  const { c, fs } = carte({ rang: 1 });
+  fs.$mana = 1;
+  const d = new X.Donjon({ carte: c, fee: fs, graine: 7 });
+  const max = new F.Fee(fs, null, c).manaMax();
+  assert.equal(max, 8, 'carac.mana 4, fois deux');
+  assert.equal(fs.$mana, max, 'base/Aventure.new : pleine à l\'entrée');
+  assert.equal(d.champ.faerieList[0].mana, max);
+  // Un niveau de dépensé : il reste un point, et le suivant se joue avec.
+  d.champ.faerieList[0].poserMana(1);
+  assert.equal(fs.$mana, 1);
+  viderEtFinirLeTour(d);
+  assert.equal(d.level, 1);
+  assert.equal(fs.$mana, 1, 'pas de recharge entre deux niveaux');
+  assert.equal(d.champ.faerieList[0].mana, 1, 'la fée du niveau suivant entre avec ce qu\'elle a');
+  // La forêt aussi : la course recharge à son départ, et le combat ne
+  // recharge plus jamais de lui-même.
+  const fsMod = require('fs');
+  const path = require('path');
+  const combat = fsMod.readFileSync(path.join(__dirname, '../public/minipixiz/combat.js'), 'utf8');
+  assert.doesNotMatch(combat, /fi\.fs\.\$mana = nombre\(fi\.carac\[MANA\]\) \* 2/, 'plus de recharge à la naissance de la fée');
+  const page = fsMod.readFileSync(path.join(__dirname, '../public/minipixiz/index.html'), 'utf8');
+  assert.match(page, /function nouvelleCourse\(depart\) \{[\s\S]*?var fiDepart = feeCourante\(\);\s*if \(fiDepart\) fiDepart\.rechargerMana\(\);\s*lancerNiveau\(\);/);
+  assert.doesNotMatch(page, /function lancerNiveau\(\) \{[\s\S]{0,400}rechargerMana/, 'pas à chaque niveau');
+});
+
+/*
+ * « LA FÉE QUI PARLE EN MODE CHALLENGE (ALORS QU'ELLE EST ABSENTE). » L'arbre
+ * creux se joue sans fée ; le client gardait pourtant la fiche de la dernière
+ * course et la faisait commenter les cascades depuis nulle part. La fée qui
+ * parle est celle que le lieu fait jouer — Game.mt ne fait réagir que
+ * faerieList[0].
+ */
+test('l\'arbre creux ne fait parler personne : la fée du client est celle du lieu, ou personne', () => {
+  const { c, fs } = carte({ rang: 0 });
+  const arbre = new X.Arbre({ carte: c, fee: fs, graine: 3 });
+  assert.equal(arbre.fi, null, 'l\'arbre n\'emmène pas la fée');
+  const fsMod = require('fs');
+  const path = require('path');
+  const js = fsMod.readFileSync(path.join(__dirname, '../public/minipixiz/game.js'), 'utf8');
+  const ouvrir = /\n  nouveauLieu\(classe, opts\) \{[\s\S]*?\n  \}\n/.exec(js);
+  assert.ok(ouvrir, 'nouveauLieu');
+  assert.match(ouvrir[0], /this\.fee = this\.lieu\.fi \|\| null;/, 'à l\'ouverture');
+  assert.doesNotMatch(ouvrir[0], /if \(this\.lieu\.fi\) this\.fee = this\.lieu\.fi;/);
+  assert.match(js, /if \(nom === 'niveauDonjon' && this\.lieu\) \{[\s\S]*?this\.fee = this\.lieu\.fi \|\| null;/, 'et à chaque niveau du donjon');
+  // Tout ce qui parle passe par `this.fee` : sans fée, pas un mot.
+  for (const m of [/\n  react\(rangees\) \{\n    const fee = this\.fee;\n    if \(!fee \|\| !rangees\) return;/,
+    /if \(this\.fee && this\.fee\.salutObjet\)/,
+    /&& this\.fee\n\s*&& !this\.dialogue && Math\.random\(\) \* 500 < pas\)/]) {
+    assert.match(js, m);
+  }
+});
+
 test('l\'annonce niveauDonjon part une fois la partie neuve en place', () => {
   const { c, fs } = carte({ rang: 1 });
   const vu = [];

@@ -395,6 +395,10 @@
       // en pleine course doit montrer ce qu'on vient de prendre.
       avant: JSON.parse(JSON.stringify(plateforme.carte)),
     };
+    // base/Aventure.new : la mana est pleine à l'ENTRÉE en forêt — et pas à
+    // chaque niveau de la course, qui se joue sur ce qu'il en reste.
+    var fiDepart = feeCourante();
+    if (fiDepart) fiDepart.rechargerMana();
     lancerNiveau();
   }
 
@@ -903,6 +907,26 @@
        * sur la fiche RÉELLE : la clé du donjon est prise à l'entrée, le record
        * de l'arbre et l'objet de l'arc-en-ciel sont acquis sur-le-champ.
        */
+      // Cm.winDungeon ne disait rien : le diamant tombait, et c'était tout.
+      // Le joueur qui rentre trouve la nouvelle à la clairière — le diamant,
+      // Ornegon libéré au deuxième rang, l'arc-en-ciel au cinquième.
+      var gainsDonjon = null;
+      function direLesGainsDuDonjon() {
+        if (!gainsDonjon) return;
+        var g = gainsDonjon;
+        gainsDonjon = null;
+        var phrases = [];
+        if (g.diamant !== null && g.diamant !== undefined) {
+          phrases.push('Le donjon est vaincu : un diamant de plus dans le sac ('
+            + (Number(g.diamant) + 1) + ' sur 5) !');
+        } else {
+          phrases.push('Le donjon est vaincu — encore un tour de fait !');
+        }
+        if (g.ornegon) phrases.push('Ornegon est libéré !');
+        if (g.arcEnCiel) phrases.push('Un arc-en-ciel est apparu dans la clairière !');
+        menu.dire(phrases.join(' '));
+      }
+
       function ouvrirLieu(classe) {
         direEnPartie(true);
         var avant = JSON.parse(JSON.stringify(plateforme.carte));
@@ -921,13 +945,21 @@
                 && info.level < kills.length) kills[info.level]++;
               return;
             }
-            if (nom === 'donjonGagne' || nom === 'record' || nom === 'prix') {
+            if (nom === 'donjonGagne') {
+              // Cm.winDungeon a écrit la fiche (lieux.js) : on l'enregistre,
+              // et l'on garde la nouvelle pour la dire à la clairière.
+              gainsDonjon = info || {};
+              plateforme.ecrire(avant);
+              return;
+            }
+            if (nom === 'record' || nom === 'prix') {
               plateforme.ecrire(avant);
               return;
             }
             // Perdu : le client joue le fondu et le panneau, puis `rideau`.
-            // Gagné (le donjon vidé), il n'y a pas de panneau : on rentre.
-            if (nom === 'rideau') { ouvrirMenu(); return; }
+            // Gagné (le donjon vaincu) : le client joue la chute du diamant et
+            // l'éclair, puis `rideau` aussi — et la clairière dit la nouvelle.
+            if (nom === 'rideau') { ouvrirMenu(); direLesGainsDuDonjon(); return; }
             if (nom !== 'finPartie') return;
             // L'ARBRE CREUX est le mode classé : son score part au challenge du
             // jour à CHAQUE fin de partie, et le serveur garde le meilleur.
@@ -949,6 +981,10 @@
             // partir avant que l'affectation ne soit revenue.
             var lieu = client.lieu;
             if (info && info.gagne && (!lieu || lieu.fini)) {
+              // Le donjon vaincu se fête à l'écran (base/Dungeon.initStep(21)) :
+              // le client joue la chute du diamant et enverra `rideau`. On ne
+              // rentre tout de suite que s'il n'a rien à jouer.
+              if (client.cine && client.cine.phase === 'diamant') return;
               setTimeout(function () { ouvrirMenu(); }, 900);
               return;
             }
@@ -1127,6 +1163,7 @@
       window.__plateforme = plateforme;
       window.__inventaire = inventaire;
       window.__menu = menu;
+      window.__client = client;
       window.__ouvrirMenu = ouvrirMenu;
       window.__ouvrirMoulin = ouvrirMoulin;
       window.__ouvrirBassin = ouvrirBassin;

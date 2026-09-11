@@ -52,6 +52,10 @@ class Lieu {
     this.level = 0;
     this.fini = false;
     this.gagne = false;
+    // base/Aventure.new : la mana est pleine à l'ENTRÉE du lieu — et là
+    // seulement. Les niveaux qui s'enchaînent ensuite (le donjon) se jouent
+    // sur ce qu'il en reste.
+    if (this.fee) new F.Fee(this.fee, null, this.carte).rechargerMana();
     this.commencer();
   }
 

@@ -846,13 +846,14 @@ class Fee extends Personne {
     this.berserk = false;
     this.x = this.jeu.largeur * 0.5;
     this.y = this.jeu.hauteur * 0.5;
-    // base/Aventure.new : `fi.fs.$mana = fi.carac[Cs.MANA]*2` — la réserve est
-    // PLEINE à chaque entrée en partie. Chaque niveau est un nouvel écran chez
-    // Flash (fadeSlot ré-attache la base, son constructeur repart), donc la
-    // fée recommence toujours mana au complet ; le portage la laissait repartir
-    // avec les restes du niveau d'avant — et c'est ici, PAS dans poserInfo :
-    // la fée qui mange en cours de partie relit sa fiche sans être rechargée.
-    if (fi && fi.fs) fi.fs.$mana = nombre(fi.carac[MANA]) * 2;
+    // La fée ENTRE AVEC CE QU'ELLE A. On rechargeait ici sa mana au complet, en
+    // croyant que chaque niveau était un nouvel écran chez Flash — c'est faux :
+    // base/Forest.setWin et base/Dungeon.setWin font `level += 1` puis
+    // `initStep(2)` dans la MÊME base, et seul `base/Aventure.new` — l'entrée
+    // du lieu — pose `fi.fs.$mana = carac[MANA]*2`. Le portage rendait donc
+    // toute la mana à chaque fin de niveau (le retour des joueurs). La recharge
+    // vit maintenant à l'entrée du lieu (Fee.rechargerMana, lieux.js et la
+    // course en forêt) ; ici, la fée relit simplement sa fiche.
     this.poserInfo(fi);
   }
 
