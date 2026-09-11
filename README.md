@@ -283,6 +283,16 @@ qui le porte — c'est même ce qui le détache. Un objet ne porte pas de texte,
 il échappe donc au plafond ; une surface en porte, elle y reste. La règle est
 posée dessin par dessin dans le manifeste, jamais devinée.
 
+**Les deux pleins écrans du parc** — l'accueil du tiroir et la **page de
+chargement** — ne suivent pas le plafond des fonds, et c'est délibéré. Le
+plafond existe pour qu'un fond porte du texte ; il ne dit rien de l'échelle à
+laquelle on le regarde. Posé sur une surface qui remplit l'écran, il donnait
+un grand lilas à 36 % — et l'on entrait dans le parc par là, avant qu'un
+bureau à 14 % apparaisse dessous. Les deux prennent donc le **ciel** : entier
+pour le tiroir, **nu** (`--nuit-ciel-nu`, le dégradé seul, sans la lune ni les
+nuages) pour la page de chargement, dont la lune — calée pour un tiroir
+étroit — tombait seule en bas d'un écran large.
+
 **L'empreinte dans l'URL.** Les dessins sont servis avec `max-age` 7 jours,
 `immutable` — juste pour un dessin d'époque, faux pour une variante de nuit,
 qui est *refaite* à chaque réglage du thème sous le même nom : un navigateur

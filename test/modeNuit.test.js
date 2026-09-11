@@ -1398,3 +1398,88 @@ test('en privé, le fond de l’autre passe en nuit — et le voile suit la feui
   assert.match(bascule, /repeindreLesFondsPrives\(\);/);
   assert.match(LIGHT, /function repeindreLesFondsPrives\(\) \{\s*\n\s*Array\.prototype\.forEach\.call\(document\.querySelectorAll\("\.a-fond-prive\[data-fond-brut\]"\)/);
 });
+
+test('la page de chargement : un écran au niveau du parc, une barre qui se lit', () => {
+  /*
+   * LA PREMIÈRE CHOSE QU'ON VOIT EN ARRIVANT, et la dernière à avoir été
+   * éteinte. Deux défauts, et chacun sa cause :
+   *
+   *   · ses quatre dessins n'étaient pas au manifeste, donc tous les quatre
+   *     passaient au filtre du châssis — un ruban ROSE rendu gris dans une
+   *     gouttière grise. La barre ne disait plus rien ;
+   *   · son aplat, rangé avec les fonds, se posait au PLAFOND des panneaux
+   *     (36 %) — la valeur la plus claire qu'un fond ait le droit de prendre.
+   *     Sur une carte de 200 px c'est juste ; sur une surface qui remplit
+   *     l'écran, on entrait dans le parc par un grand lilas avant qu'un
+   *     bureau à 14 % apparaisse dessous.
+   */
+  const retouches = lire('scripts/nuit-retouches.css');
+  // 1. LES QUATRE DESSINS ont leur variante, et plus un filtre.
+  for (const n of ['chargement-bout-vide', 'chargement-milieu-vide',
+    'chargement-bout-plein', 'chargement-milieu-plein']) {
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/frutiz/sprites', n + '-nuit.svg')),
+      n + ' n’a pas de variante de nuit');
+    assert.match(NUIT, new RegExp("background-image: url\\('/frutiz/sprites/" + n
+      + "-nuit\\.svg\\?v=[0-9a-f]{8}'\\);"), n + ' n’est pas servi par la feuille');
+  }
+  const bloc = NUIT.slice(NUIT.indexOf('#fb-chargement'), NUIT.indexOf('.ch-titre'));
+  assert.ok(!/--nuit-chassis/.test(bloc), 'la barre de chargement est encore fanée au filtre');
+  // 2. LE RUBAN RESTE ROSE — c'est un signal, et le rose est l'accent du thème.
+  for (const n of ['chargement-bout-plein', 'chargement-milieu-plein']) {
+    const svg = lireSprite(n + '-nuit.svg');
+    const roses = [...svg.matchAll(/hsl\((\d+) /g)].map((m) => Number(m[1]));
+    assert.ok(roses.length >= 3, n + ' : le ruban a perdu ses trois tons');
+    for (const h of roses) assert.strictEqual(h, GEN.ROSE_NUIT, n + ' : un ton n’est plus l’accent');
+    // Son liseré blanc est GARDÉ : un blanc qui CERNE un objet est une marque.
+    assert.match(svg, /fill="#ffffff"/, n + ' : le liseré qui détache le ruban a disparu');
+  }
+  // 3. LA GOUTTIÈRE S'ÉTEINT, et son creux clair devient un creux SOMBRE —
+  //    ce qu'un creux doit être sur un fond de nuit.
+  const gouttiere = clartesDe(lireSprite('chargement-milieu-vide-nuit.svg'));
+  assert.strictEqual(gouttiere.length, 2, 'la gouttière a deux tons');
+  assert.ok(Math.min(...gouttiere) < 25 && Math.max(...gouttiere) > 30,
+    'le creux et son bord ne se distinguent plus : ' + gouttiere);
+  // 4. L'ÉCRAN est au niveau du parc, pas au plafond des panneaux — et sans la
+  //    lune, calée pour un tiroir étroit et qui tombait seule en bas d'un
+  //    écran large.
+  assert.match(retouches, /body\.bureau-frutiz #fb-chargement \{ background: var\(--nuit-ciel-nu\); \}/);
+  const nu = /--nuit-ciel-nu: linear-gradient\(hsl\([^)]+\), hsl\(\d+ \d+% ([\d.]+)%\)\);/.exec(retouches);
+  assert.ok(nu, 'le ciel nu doit être une variable, partagée avec le ciel entier');
+  assert.ok(Number(nu[1]) < 15, 'le bas du ciel nu est au niveau du parc : ' + nu[1] + ' %');
+  assert.match(retouches, /radial-gradient\(circle at 84% 76%[\s\S]*?var\(--nuit-ciel-nu\);/,
+    'le ciel entier doit se poser SUR le ciel nu, pour n’écrire la valeur qu’une fois');
+});
+
+test('une commande garde son rose aux deux extrêmes de clarté', () => {
+  /*
+   * `famille: 'commande'` fait un détour par le RGB pour envoyer une couleur
+   * dans la bande rose. Aux deux extrêmes, HSL n'a plus de teinte à porter —
+   * à 100 % tout est blanc, à 0 % tout est noir — et la couleur repartait donc
+   * en châssis, c'est-à-dire au VIOLET : un blanc de commande ressortait
+   * presque noir. Les bornes le corrigent sans rien coûter aux autres.
+   */
+  const SVG = require('../scripts/nuit-svg.js');
+  const source = lire('scripts/nuit-svg.js');
+  assert.match(source, /Math\.max\(8, Math\.min\(92, l\)\)/);
+  // On le prouve en le faisant : un dessin d'une seule couleur, blanc pur.
+  const dossier = path.join(ROOT, 'public/frutiz/sprites');
+  const essai = path.join(dossier, 'essai-commande-blanche.svg');
+  fs.writeFileSync(essai, '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4">'
+    + '<path d="M0 0h4v4H0Z" fill="#ffffff"/><path d="M1 1h2v2H1Z" fill="#000000"/></svg>');
+  let sortie;
+  try {
+    sortie = SVG.fabriquer({ f: 'essai-commande-blanche.svg', blanc: 'teint', famille: 'commande' }).texte;
+  } finally {
+    fs.unlinkSync(essai);
+  }
+  const teintes = [...sortie.matchAll(/fill="hsl\((\d+) /g)].map((m) => Number(m[1]));
+  assert.strictEqual(teintes.length, 2, 'les deux couleurs sont converties');
+  for (const h of teintes) {
+    assert.strictEqual(h, GEN.ROSE_NUIT, 'une commande extrême est repartie au violet : ' + sortie);
+  }
+  // Et les couleurs ORDINAIRES ne bougent pas d'un cheveu : le bouton
+  // « Acheter » de la boutique est la seule commande en service.
+  const acheter = lireSprite('shop-but-acheter-nuit.svg');
+  assert.ok([...acheter.matchAll(/hsl\((\d+) /g)].every((m) => Number(m[1]) === GEN.ROSE_NUIT),
+    'le bouton « Acheter » doit rester entièrement rose');
+});

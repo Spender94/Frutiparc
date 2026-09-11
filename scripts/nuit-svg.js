@@ -143,6 +143,30 @@ const MANIFESTE = [
   ...troisEtats('frusionCasque').map((f) => ({ f, blanc: 'teint', relief: 'garde' })),
   ...troisEtats('frusionEject').map((f) => ({ f, blanc: 'teint', relief: 'garde' })),
 
+  // ── LA BARRE DE CHARGEMENT ────────────────────────────────────────────
+  //
+  // La toute première chose qu'on voit en arrivant, et la dernière à avoir
+  // été éteinte : ses quatre dessins n'étaient pas au manifeste, le filtre du
+  // châssis les prenait donc tous les quatre — un ruban ROSE passé au gris
+  // dans une gouttière grise, sur un écran violet. On n'y lisait plus rien.
+  //
+  // La ligne de partage est celle de tout le thème, et elle tombe pile entre
+  // les deux moitiés du dessin : la GOUTTIÈRE est verte (`#8fcf5a`, `#dbf3ba`)
+  // — du châssis, elle s'éteint, et son creux clair devient un creux sombre,
+  // ce qu'un creux doit être sur un fond de nuit. Le RUBAN est rose
+  // (`#bb1e1e` → `#ffc1c1`) — l'accent du thème, et par-dessus le marché un
+  // signal : il garde sa couleur (`roseDeCommande`), comme les quatre boutons
+  // du salon. Son liseré blanc le détache du fond sombre, on le garde aussi.
+  ...['chargement-bout-vide', 'chargement-milieu-vide']
+    .map((n) => ({ f: n + '.svg', note: 'la gouttière — du châssis, elle s’éteint' })),
+  // Le liseré blanc du ruban est GARDÉ — c'est la règle du thème, et c'est la
+  // bonne ici : un blanc pur qui CERNE un objet est une marque, pas une face.
+  // Il désigne la partie remplie, exactement comme les glyphes blancs des
+  // boutons du salon désignent leur commande, et c'est lui qui détache le
+  // ruban de sa gouttière sur un fond sombre.
+  ...['chargement-bout-plein', 'chargement-milieu-plein']
+    .map((n) => ({ f: n + '.svg', note: 'le ruban — un signal rose, il le reste' })),
+
   // ── Les quatre boutons du salon, et la languette CONTACTS ─────────────
   ...['chat-but-bouille', 'chat-but-penlist', 'chat-but-userlist', 'chat-but-warning']
     .map((n) => ({ f: n + '.svg' })),
@@ -354,7 +378,13 @@ function reteindre(fragment, compteur, entree) {
      * est celle du thème, on ne fait que dire à qui elle s'applique.
      */
     if (famille === 'commande' && estChassis(h, s)) {
-      const [rr, gg, bb] = hslVersRgb(350, Math.max(s, 30), l);
+      // La clarté est BORNÉE avant le détour par le RGB : aux deux extrêmes,
+      // HSL n'a plus de teinte à porter — à 100 % tout est blanc, à 0 % tout
+      // est noir —, et la couleur repartirait en châssis, c'est-à-dire au
+      // violet. Un blanc de commande ressortait ainsi presque noir. Les
+      // bornes ne coûtent rien aux couleurs ordinaires (aucune n'y touche) et
+      // gardent leur rose aux deux valeurs limites.
+      const [rr, gg, bb] = hslVersRgb(350, Math.max(s, 30), Math.max(8, Math.min(92, l)));
       compteur.reteints++;
       return attr + '="' + convertir(rr, gg, bb, a, role) + '"';
     }

@@ -2168,17 +2168,17 @@ body.bureau-frutiz #fb-chargement {
 }
 body.bureau-frutiz #fb-chargement .ch-g1,
 body.bureau-frutiz #fb-chargement .ch-g2 {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/chargement-bout-vide-nuit.svg?v=c29e1f77');
 }
 body.bureau-frutiz #fb-chargement .ch-gm {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/chargement-milieu-vide-nuit.svg?v=de6c70cb');
 }
 body.bureau-frutiz #fb-chargement .ch-b1,
 body.bureau-frutiz #fb-chargement .ch-b2 {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/chargement-bout-plein-nuit.svg?v=72157be6');
 }
 body.bureau-frutiz #fb-chargement .ch-mid {
-  filter: var(--nuit-chassis);
+  background-image: url('/frutiz/sprites/chargement-milieu-plein-nuit.svg?v=a03e8ed5');
 }
 body.bureau-frutiz #fb-chargement .ch-titre,
 body.bureau-frutiz #fb-chargement .ch-champ,
@@ -2368,6 +2368,14 @@ img[src$="/frutiz/sprites/butWinTop3_over.svg"] { content: url("/frutiz/sprites/
 [style*="/frutiz/sprites/butWinTop3_over.svg"] { background-image: url("/frutiz/sprites/butWinTop3_over-nuit.svg?v=ae867274") !important; filter: none !important; }
 img[src$="/frutiz/sprites/butWinTop3_up.svg"] { content: url("/frutiz/sprites/butWinTop3_up-nuit.svg?v=2c1ebd31"); filter: none; }
 [style*="/frutiz/sprites/butWinTop3_up.svg"] { background-image: url("/frutiz/sprites/butWinTop3_up-nuit.svg?v=2c1ebd31") !important; filter: none !important; }
+img[src$="/frutiz/sprites/chargement-bout-plein.svg"] { content: url("/frutiz/sprites/chargement-bout-plein-nuit.svg?v=72157be6"); filter: none; }
+[style*="/frutiz/sprites/chargement-bout-plein.svg"] { background-image: url("/frutiz/sprites/chargement-bout-plein-nuit.svg?v=72157be6") !important; filter: none !important; }
+img[src$="/frutiz/sprites/chargement-bout-vide.svg"] { content: url("/frutiz/sprites/chargement-bout-vide-nuit.svg?v=c29e1f77"); filter: none; }
+[style*="/frutiz/sprites/chargement-bout-vide.svg"] { background-image: url("/frutiz/sprites/chargement-bout-vide-nuit.svg?v=c29e1f77") !important; filter: none !important; }
+img[src$="/frutiz/sprites/chargement-milieu-plein.svg"] { content: url("/frutiz/sprites/chargement-milieu-plein-nuit.svg?v=a03e8ed5"); filter: none; }
+[style*="/frutiz/sprites/chargement-milieu-plein.svg"] { background-image: url("/frutiz/sprites/chargement-milieu-plein-nuit.svg?v=a03e8ed5") !important; filter: none !important; }
+img[src$="/frutiz/sprites/chargement-milieu-vide.svg"] { content: url("/frutiz/sprites/chargement-milieu-vide-nuit.svg?v=de6c70cb"); filter: none; }
+[style*="/frutiz/sprites/chargement-milieu-vide.svg"] { background-image: url("/frutiz/sprites/chargement-milieu-vide-nuit.svg?v=de6c70cb") !important; filter: none !important; }
 img[src$="/frutiz/sprites/chat-but-bouille.svg"] { content: url("/frutiz/sprites/chat-but-bouille-nuit.svg?v=82f0d5cb"); filter: none; }
 [style*="/frutiz/sprites/chat-but-bouille.svg"] { background-image: url("/frutiz/sprites/chat-but-bouille-nuit.svg?v=82f0d5cb") !important; filter: none !important; }
 img[src$="/frutiz/sprites/chat-but-penlist.svg"] { content: url("/frutiz/sprites/chat-but-penlist-nuit.svg?v=a9aa16bb"); filter: none; }
@@ -2535,7 +2543,11 @@ img[src$="/frutiz/sprites/user-slot.svg"] { content: url("/frutiz/sprites/user-s
                     hsl(48 26% 88% / .20) 22px 38px, transparent 39px),
     radial-gradient(76% 40% at 24% 3%, hsl(272 26% 28%) 0%, transparent 72%),
     radial-gradient(54% 30% at 68% 28%, hsl(288 22% 24%) 0%, transparent 74%),
-    linear-gradient(hsl(258 32% 18%), hsl(252 30% 10%));
+    var(--nuit-ciel-nu);
+  /* Le ciel SANS la lune ni les nuages — le violet du parc, et rien d'autre.
+     Il sert là où un décor serait de trop : sur la page de chargement, qui
+     n'est qu'un aplat d'époque. */
+  --nuit-ciel-nu: linear-gradient(hsl(258 32% 18%), hsl(252 30% 10%));
 }
 
 /* ── Le châssis que le générateur ne voit pas ────────────────────────────── */
@@ -2591,6 +2603,20 @@ img[src$="/fb/boutique/icone.png"] {
    téléphone : c'est là que le ciel se voit. (Pas quand le joueur a posé un
    fond d'écran : le sien passe avant.) */
 #home-panel:not(.a-fond) { background: var(--nuit-ciel); }
+
+/* LA PAGE DE CHARGEMENT EST LE SECOND PLEIN ÉCRAN DU PARC, et le premier
+   qu'on voit en arrivant. Son aplat est le vert de scène de main.swf, que la
+   conversion range avec les fonds : elle le pose donc au PLAFOND des panneaux
+   (36 %), la valeur la plus claire qu'un fond ait le droit de prendre. Juste
+   pour une carte de 200 px, absurde pour une surface qui remplit l'écran —
+   on entrait dans le parc par un grand lilas, avant qu'un bureau à 14 %
+   apparaisse dessous. Le plafond existe pour qu'un fond porte du texte ; il
+   ne dit rien de l'échelle à laquelle on le regarde.
+   Le ciel NU, pas le ciel entier : la lune est calée sur un tiroir étroit, et
+   posée sur un écran large elle tombait seule en bas à droite — on l'aurait
+   prise pour un bouton. D'époque cette page est un aplat ; de nuit c'est le
+   violet du parc, et le bureau s'ouvre dessus sans que rien change de niveau. */
+body.bureau-frutiz #fb-chargement { background: var(--nuit-ciel-nu); }
 
 /* ── Là où la conversion ne pouvait pas deviner ──────────────────────────── */
 

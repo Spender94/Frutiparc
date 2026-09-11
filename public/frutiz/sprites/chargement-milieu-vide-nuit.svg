@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -3 10 18" width="10" height="18" preserveAspectRatio="none">
+<!--
+  ENGENDRÉ par scripts/nuit-svg.js — chargement-milieu-vide.svg en mode nuit.
+  Le même dessin, ses couleurs de châssis repassées par la conversion du
+  thème (vert et gris au violet, rose gardé en accent, le reste intact).
+  la gouttière — du châssis, elle s’éteint
+  Pour le reprendre à la main : écraser ce fichier et retirer son entrée du
+  manifeste de scripts/nuit-svg.js.
+-->
+<g transform="matrix(1,0,0,1,0,0)">
+  <path d="M0 15L0 -3L10 -3L10 15L0 15Z" fill="hsl(256 30% 19.4%)" fill-rule="evenodd"/>
+  <path d="M0 13.95L0 -2.05L10 -2.05L10 13.95L0 13.95Z" fill="hsl(256 30% 38%)" fill-rule="evenodd"/>
+
+</g>
+</svg>

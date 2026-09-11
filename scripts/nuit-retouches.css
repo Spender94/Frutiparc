@@ -33,7 +33,11 @@
                     hsl(48 26% 88% / .20) 22px 38px, transparent 39px),
     radial-gradient(76% 40% at 24% 3%, hsl(272 26% 28%) 0%, transparent 72%),
     radial-gradient(54% 30% at 68% 28%, hsl(288 22% 24%) 0%, transparent 74%),
-    linear-gradient(hsl(258 32% 18%), hsl(252 30% 10%));
+    var(--nuit-ciel-nu);
+  /* Le ciel SANS la lune ni les nuages — le violet du parc, et rien d'autre.
+     Il sert là où un décor serait de trop : sur la page de chargement, qui
+     n'est qu'un aplat d'époque. */
+  --nuit-ciel-nu: linear-gradient(hsl(258 32% 18%), hsl(252 30% 10%));
 }
 
 /* ── Le châssis que le générateur ne voit pas ────────────────────────────── */
@@ -89,6 +93,20 @@ img[src$="/fb/boutique/icone.png"] {
    téléphone : c'est là que le ciel se voit. (Pas quand le joueur a posé un
    fond d'écran : le sien passe avant.) */
 #home-panel:not(.a-fond) { background: var(--nuit-ciel); }
+
+/* LA PAGE DE CHARGEMENT EST LE SECOND PLEIN ÉCRAN DU PARC, et le premier
+   qu'on voit en arrivant. Son aplat est le vert de scène de main.swf, que la
+   conversion range avec les fonds : elle le pose donc au PLAFOND des panneaux
+   (36 %), la valeur la plus claire qu'un fond ait le droit de prendre. Juste
+   pour une carte de 200 px, absurde pour une surface qui remplit l'écran —
+   on entrait dans le parc par un grand lilas, avant qu'un bureau à 14 %
+   apparaisse dessous. Le plafond existe pour qu'un fond porte du texte ; il
+   ne dit rien de l'échelle à laquelle on le regarde.
+   Le ciel NU, pas le ciel entier : la lune est calée sur un tiroir étroit, et
+   posée sur un écran large elle tombait seule en bas à droite — on l'aurait
+   prise pour un bouton. D'époque cette page est un aplat ; de nuit c'est le
+   violet du parc, et le bureau s'ouvre dessus sans que rien change de niveau. */
+body.bureau-frutiz #fb-chargement { background: var(--nuit-ciel-nu); }
 
 /* ── Là où la conversion ne pouvait pas deviner ──────────────────────────── */
 
