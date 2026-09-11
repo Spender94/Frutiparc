@@ -11,10 +11,10 @@
  *      partaient en 3 + 5 avec un papillon jaune, en 1-2-5 avec deux. La
  *      tzongre impose maintenant son ordre — les pommes, elles, cherchent
  *      exactement comme avant.
- *   2. LA POMME D'OR pèse ce que vaut le jeu du joueur : la moyenne de ses
- *      combos, grappes exclues, bornée entre un et deux — là où 2005 lui
- *      laissait le reste d'un tirage. Le PRIX, lui, reste celui d'époque (dix
- *      fois cent fois le poids), si bien que sa taille dit sa valeur.
+ *   2. LA POMME D'OR vaut dix fois la moyenne des combos des cinq dernières
+ *      pommes encaissées avant elle, grappes exclues, sans plafond — là où
+ *      2005 payait dix fois un poids tiré au sort, le reste du kilo. Son
+ *      poids, borné entre un et deux, ne dit plus que sa taille.
  *   3. LE TÉMOIN DE GRAPPE : le portage envoie aussi la PLUS GROSSE grappe
  *      (« tz:g:max »), pour que le partage Grappe / Freestyle se lise à la
  *      taille près (le OU du disque Flash ne sait pas dire « sept »).
@@ -143,54 +143,97 @@ test('l’équilibre, simulé : huit pommes font 4 + 4 avec un jaune, 3-3-2 avec
 // ── 2. La pomme d'or ───────────────────────────────────────────────────────
 
 /*
- * LA POMME D'OR : ce que vaut le jeu du joueur passe par son POIDS.
+ * LA POMME D'OR : dix fois la moyenne des combos des cinq dernières pommes.
  *
- * Premier jet : « dix fois la moyenne des combos ». Le hasard sortait bien du
- * calcul, mais deux choses cassaient. Le prix n'avait plus de plafond — un
- * virtuose à 500 de moyenne encaissait CINQ MILLE points d'une pomme, quand
- * 2005 n'en payait jamais plus de mille sept cents. Et surtout la pomme d'or
- * est celle qui SOLDE le kilo : son poids était le reste de la barre, souvent
- * une miette. On voyait donc un petit pois valoir cinq mille points et une
- * belle pomme en valoir mille — la taille ne disait plus rien du prix, d'où la
- * plainte des « pommes d'or trop grosses ».
+ * Deux jets avant celui-ci. « Dix fois la moyenne des combos de la partie »
+ * d'abord ; puis, pour lui donner un plafond et une taille qui dise son prix,
+ * le poids : un gramme pour cinq cents points de moyenne, borné entre un et
+ * deux, payé cent fois dix. Cette rampe la SOUS-PAYAIT — mille points plus
+ * deux fois la moyenne, plafonnés à deux mille, là où l'on attendait dix fois
+ * la moyenne : un jeu à 200 rendait 1400, et rien ne passait jamais 2000. Et
+ * la moyenne courait sur toute la partie, diluée par les premières pommes.
  *
- * Le prix revient donc au poids (la règle d'époque, `× 100 × 10`), et c'est le
- * POIDS qu'on tire de la moyenne des combos, borné entre un et deux. Bien
- * jouer fait GROSSIR la pomme, et une grosse pomme vaut cher : rayon et prix
- * disent enfin la même chose.
+ * Maintenant le prix est fixé à sa naissance : la moyenne des combos des cinq
+ * dernières pommes encaissées avant elle (zéro pour une pomme sans figure,
+ * grappes exclues), multipliée par dix, sans plafond — et jamais moins qu'une
+ * pomme ordinaire. Le poids ne porte plus que la taille.
  */
 
-// `Classic.poidsPommeOr`, sortie du fichier et rendue appelable : on veut les
-// nombres, pas seulement la forme du code.
-function poidsPommeOr(comboSomme, comboNb) {
-  const src = /\n  poidsPommeOr\(\) \{[\s\S]*?\n  \}/.exec(MODES);
-  assert.ok(src, 'Classic.poidsPommeOr');
-  const bornes = /const POMME_OR_POIDS = (\[[^\]]*\]);/.exec(MODES);
-  assert.ok(bornes, 'const POMME_OR_POIDS');
-  const f = new Function('POMME_OR_POIDS', 'return function ' + src[0].trim() + ';')(
-    JSON.parse(bornes[1]));
-  return f.call({ comboSomme, comboNb });
+// `Classic.noterCombo` et `Classic.pommeOr`, sortis du fichier et rendus
+// appelables : on veut les nombres, pas seulement la forme du code.
+function classic() {
+  const constante = (nom) => {
+    const m = new RegExp('const ' + nom + ' = ([^;]*);').exec(MODES);
+    assert.ok(m, 'const ' + nom);
+    return JSON.parse(m[1]);
+  };
+  const fabrique = (nom) => {
+    const src = new RegExp('\\n  ' + nom + '\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}').exec(MODES);
+    assert.ok(src, 'Classic.' + nom);
+    return new Function('POMME_OR_POIDS', 'POMME_OR_FENETRE', 'return function ' + src[0].trim() + ';')(
+      constante('POMME_OR_POIDS'), constante('POMME_OR_FENETRE'));
+  };
+  return { combosRecents: [], noterCombo: fabrique('noterCombo'), pommeOr: fabrique('pommeOr') };
+}
+// Ce que vaut une pomme d'or née après ces combos-là, dans l'ordre.
+function pommeOr(combos) {
+  const jeu = classic();
+  for (const b of combos) jeu.noterCombo(b);
+  return jeu.pommeOr();
 }
 
-test('la pomme d’or est payée à son poids — la règle de 2005, rendue telle quelle', () => {
-  const p = methode(SPRITES, 'Panier extends Phys', 'pointsPommeOr');
-  assert.match(p, /const p = base \* 10;/, 'dix fois ce que vaudrait une pomme ordinaire');
-  assert.doesNotMatch(p, /comboSomme|comboNb/, 'le prix ne regarde plus la moyenne');
-  assert.match(p, /this\.game\.stat\.setVal\("Pomme d'or", p\);/, 'et le panneau de fin le dit');
-  // `base` est la valeur ordinaire du fruit : c'est là que le poids entre.
-  const a = methode(SPRITES, 'Panier extends Phys', 'addFruit');
-  assert.match(a, /let point = Math\.round\(\(fruit\.weight - fruit\.crunch\) \* 100\);\n\s*if \(fruit\.flGold\) point = this\.pointsPommeOr\(point\);/);
+test('la pomme d’or vaut dix fois la moyenne des combos des cinq dernières pommes', () => {
+  // Que des granites (200) : deux mille — ce que la rampe au poids ne rendait
+  // qu'à 1400.
+  assert.equal(pommeOr([200, 200, 200, 200, 200]).prixOr, 2000);
+  // Une pomme sans figure compte pour zéro : elle pèse sur la moyenne.
+  assert.equal(pommeOr([100, 0, 200, 40, 20]).prixOr, 720);
+  // Seules les cinq dernières comptent : deux corbeaux en début de partie ne
+  // valent plus rien à la fin, et cinq pommes nues effacent tout.
+  assert.equal(pommeOr([760, 760, 100, 100, 100, 100, 100]).prixOr, 1000);
+  assert.equal(pommeOr([100, 100, 100, 100, 100, 0, 0, 0, 0, 0]).prixOr, 0);
+  // Moins de cinq pommes : la moyenne de ce qu'il y a.
+  assert.equal(pommeOr([100, 200]).prixOr, 1500);
+  assert.equal(pommeOr([]).prixOr, 0);
+  // Pas de plafond : un virtuose est payé comme tel.
+  assert.equal(pommeOr([760, 760, 760, 760, 760]).prixOr, 7600);
+  // Et la fenêtre est bien de cinq.
+  assert.match(MODES, /const POMME_OR_FENETRE = 5;/);
 });
 
-test('c’est le POIDS qui porte le jeu du joueur : moyenne des combos, grappes exclues', () => {
-  // La moyenne se nourrit dans checkCombo — des combos seulement, pas des
-  // grappes (qui vivent dans removeScore).
+test('le prix est fixé à la naissance, et le panier le paie tel quel — jamais moins qu’une pomme', () => {
+  const p = methode(SPRITES, 'Panier extends Phys', 'pointsPommeOr');
+  assert.match(p, /const p = Math\.max\(base, fruit\.prixOr \| 0\);/);
+  assert.match(p, /this\.game\.stat\.setVal\("Pomme d'or", p\);/, 'et le panneau de fin le dit');
+  assert.doesNotMatch(p, /combosRecents|\* 10/, 'le panier ne calcule rien : il paie');
+  // Rendu appelable : le prix passe tel quel, sauf s'il vaut moins qu'une
+  // pomme ordinaire de ce poids (`base`, ce que vaudrait le fruit sans l'or).
+  const payer = new Function('fruit', 'base', p);
+  const panier = { game: { stat: { valeurs: {}, setVal(k, v) { this.valeurs[k] = v; } } } };
+  assert.equal(payer.call(panier, { prixOr: 2000 }, 140), 2000);
+  assert.equal(payer.call(panier, { prixOr: 7600 }, 200), 7600, 'sans plafond');
+  assert.equal(payer.call(panier, { prixOr: 40 }, 101), 101, 'jamais moins qu’une pomme');
+  assert.equal(payer.call(panier, { prixOr: 0 }, 100), 100, 'sans combo, une pomme');
+  assert.equal(payer.call(panier, {}, 100), 100, 'sans prix du tout, une pomme aussi');
+  assert.equal(panier.game.stat.valeurs["Pomme d'or"], 100);
+  // `base` est la valeur ordinaire du fruit, et c'est le FRUIT qu'on passe :
+  // le prix voyage avec lui depuis sa naissance.
+  const a = methode(SPRITES, 'Panier extends Phys', 'addFruit');
+  assert.match(a, /let point = Math\.round\(\(fruit\.weight - fruit\.crunch\) \* 100\);\n\s*if \(fruit\.flGold\) point = this\.pointsPommeOr\(fruit, point\);/);
+});
+
+test('les combos se notent pomme par pomme, zéro compris, grappes exclues — et tout repart avec la partie', () => {
+  // Hors du `if (b > 0)` : une pomme sans figure compte pour zéro.
   const c = methode(SPRITES, 'Panier extends Phys', 'checkCombo');
-  assert.match(c, /if \(b > 0\) \{[\s\S]*?this\.game\.comboSomme = \(this\.game\.comboSomme \| 0\) \+ b;\n\s*this\.game\.comboNb = \(this\.game\.comboNb \| 0\) \+ 1;/);
+  assert.match(c, /if \(b > 0\) this\.game\.scroller\.put\(name, '\+' \+ b\);\n[\s\S]*?this\.game\.noterCombo\(b\);/);
+  assert.doesNotMatch(c, /if \(b > 0\) \{/);
   const r = methode(SPRITES, 'Panier extends Phys', 'removeScore');
-  assert.doesNotMatch(r, /comboSomme/, 'la grappe n’entre pas dans la moyenne');
-  // Et tout repart de zéro avec la partie.
-  assert.match(GAME, /this\.gOr = 0; this\.gMax = 0;\n\s*this\.comboSomme = 0; this\.comboNb = 0;/);
+  assert.doesNotMatch(r, /noterCombo|combosRecents/, 'la grappe n’entre pas dans la moyenne');
+  assert.match(GAME, /this\.gOr = 0; this\.gMax = 0;\n\s*this\.combosRecents = \[\];/);
+  // La fenêtre glisse : on garde les cinq derniers, dans l'ordre.
+  const jeu = classic();
+  for (const b of [10, 20, 30, 40, 50, 60, 70]) jeu.noterCombo(b);
+  assert.deepEqual(jeu.combosRecents, [30, 40, 50, 60, 70]);
   // Le barème des figures vit dans `figureDe`, sorti de `checkCombo` pour que
   // les Épreuves puissent nommer une figure sans qu'elle rapporte quoi que ce
   // soit (cf. test/kalugaEpreuves.test.js). Un granite = « tete dunk » =
@@ -200,56 +243,38 @@ test('c’est le POIDS qui porte le jeu du joueur : moyenne des combos, grappes 
   assert.match(f, /if \(fruit\.flScDunk\) \{ b \+= 10; name \+= 'dunk '; \}/);
   assert.match(f, /return \{ name, b: b \* 10 \};/);
   assert.match(SPRITES, /\['tete dunk ', 'granite '\]/);
-  // Le poids n'est plus le reste du kilo : les deux naissances d'une pomme
-  // d'or l'écrasent par celui que vaut le jeu.
+  // Les trois naissances d'une pomme d'or passent par `pommeOr` : même prix,
+  // même poids, d'où qu'elle vienne — le sol, l'arbre, ou le bac à sable.
   const sol = /genGroundFruit\(\) \{[\s\S]*?\n  \}/.exec(MODES)[0];
-  assert.match(sol, /initObj\.flGold = true; initObj\.weight = this\.poidsPommeOr\(\);/);
+  assert.match(sol, /if \(this\.kilo === this\.kiloMax\) Object\.assign\(initObj, this\.pommeOr\(\)\);/);
   const arbre = /genTreeFruit\(\) \{[\s\S]*?\n  \}/.exec(MODES)[0];
-  assert.match(arbre, /initObj\.flGold = true; initObj\.weight = this\.poidsPommeOr\(\);/);
-  // Le bac à sable la fait naître à la main : même poids, sinon l'essai ment.
-  assert.match(MODES, /weight: this\.poidsPommeOr\(\), flGold: true/);
+  assert.match(arbre, /if \(this\.kilo === this\.kiloMax\) \{ Object\.assign\(initObj, this\.pommeOr\(\)\); this\.newBird\(\); \}/);
+  assert.match(MODES, /this\.newFruit\(Object\.assign\(\{ x: 40 \+ random\(Cs\.mcw - 80\) \}, this\.pommeOr\(\)\)\)/);
+  assert.doesNotMatch(MODES + SPRITES + GAME, /poidsPommeOr|comboSomme|comboNb/, 'l’ancienne moyenne est partie');
 });
 
-test('la pomme d’or est bornée : jamais un petit pois, jamais une enclume', () => {
-  // Sans un seul combo, le plancher : une pomme de un, mille points.
-  assert.equal(poidsPommeOr(0, 0), 1);
-  // Un jeu de virtuose (500 de moyenne) atteint le plafond, et rien ne le
-  // dépasse — c'était le défaut du premier jet.
-  assert.equal(poidsPommeOr(3000, 6), 2);
-  assert.equal(poidsPommeOr(100000, 10), 2, 'le plafond tient');
-  // Entre les deux, la rampe est douce : un gramme pour cinq cents points de
-  // moyenne, ce qui couvre tout l'éventail des combos (100 à 760) au lieu de
-  // saturer dès le granite (200).
-  assert.equal(poidsPommeOr(600, 5), 1 + 120 / 500);
-  assert.equal(poidsPommeOr(1400, 7), 1.4);
-});
-
-test('la TAILLE de la pomme d’or dit son PRIX : rayon et valeur sont proportionnels', () => {
-  /*
-   * Un fruit a pour rayon douze fois son poids ; la pomme d'or vaut cent fois
-   * son poids, dix fois. Le rapport valeur / rayon est donc une CONSTANTE —
-   * c'est là toute la demande : qu'on voie d'un coup d'œil ce qu'elle vaut.
-   */
+test('le poids ne porte plus que la taille : bornée, elle grossit avec le jeu', () => {
+  // Sans un seul combo, la plus petite : une pomme de un, 24 px de diamètre.
+  assert.equal(pommeOr([]).weight, 1);
+  assert.equal(pommeOr([0, 0, 0, 0, 0]).weight, 1);
+  // Un gramme pour cinq cents points de moyenne, et un plafond de deux —
+  // au-delà le fil ne la lève plus.
+  assert.equal(pommeOr([200, 200, 200, 200, 200]).weight, 1.4);
+  assert.equal(pommeOr([500, 500, 500, 500, 500]).weight, 2);
+  assert.equal(pommeOr([760, 760, 760, 760, 760]).weight, 2, 'le plafond tient');
   assert.match(SPRITES, /this\.setRay\(this\.weight \* 12\);/, 'rayon = 12 × poids');
-  // Le seul jeu entre les deux est l'ARRONDI du score à l'unité — `addFruit`
-  // paie un nombre entier de points. Un demi-point sur mille cinq cents : le
-  // rapport tient à un demi pour cent près, ce qu'aucun œil ne voit.
-  const attendu = 1000 / 12;
-  for (const [somme, nb] of [[0, 0], [600, 5], [1862, 7], [1400, 7], [3000, 6]]) {
-    const poids = poidsPommeOr(somme, nb);
-    const rayon = poids * 12;
-    const valeur = Math.round(poids * 100) * 10;      // addFruit, puis pointsPommeOr
-    assert.ok(valeur >= 1000 && valeur <= 2000, 'entre mille et deux mille : ' + valeur);
-    const ecart = Math.abs((valeur / rayon) - attendu) / attendu;
-    assert.ok(ecart < 0.005, 'rayon ' + rayon.toFixed(1) + ' px pour ' + valeur
-      + ' points : ' + (ecart * 100).toFixed(2) + ' % d’écart');
+  assert.deepEqual([pommeOr([]).weight * 24, pommeOr([500, 500, 500, 500, 500]).weight * 24], [24, 48]);
+  // Plus la pomme est grosse, plus elle vaut : la taille ne ment jamais sur
+  // le sens, même si le prix, lui, n'a pas de plafond.
+  let precedent = pommeOr([]);
+  for (const m of [20, 72, 120, 200, 266, 500, 760]) {
+    const p = pommeOr([m, m, m, m, m]);
+    assert.ok(p.prixOr > precedent.prixOr && p.weight >= precedent.weight, 'à ' + m + ' de moyenne');
+    assert.equal(p.prixOr, m * 10);
+    precedent = p;
   }
-  // Une pomme deux fois plus large vaut bien deux fois plus cher.
-  assert.equal(Math.round(poidsPommeOr(3000, 6) * 100) * 10,
-    2 * Math.round(poidsPommeOr(0, 0) * 100) * 10);
-  // Et les extrêmes, en clair : la plus petite fait 24 px de diamètre pour
-  // mille points, la plus grosse 48 px pour deux mille.
-  assert.deepEqual([poidsPommeOr(0, 0) * 12 * 2, poidsPommeOr(3000, 6) * 12 * 2], [24, 48]);
+  // Et la pomme d'or est toujours d'or.
+  assert.equal(pommeOr([]).flGold, true);
 });
 
 // ── 3. Le témoin de grappe ─────────────────────────────────────────────────

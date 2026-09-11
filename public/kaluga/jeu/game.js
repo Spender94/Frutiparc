@@ -188,10 +188,10 @@ class Game extends J.Slot {
     this.stat = new J.Stat();
     this.statCombo = new J.Stat();
     // Les témoins de grappe (le OU des tailles pour le disque rustiné, le
-    // maximum pour le classement) et la moyenne des combos (la pomme d'or)
+    // maximum pour le classement) et les derniers combos (la pomme d'or)
     // repartent de zéro avec la partie.
     this.gOr = 0; this.gMax = 0;
-    this.comboSomme = 0; this.comboNb = 0;
+    this.combosRecents = [];
     this.flEndGame = false;
     this.flEndingGame = false;
     this.initList();

@@ -17,11 +17,16 @@ const Key = K.Key;
 const temps = (t) => J.MTNumber.getTimeStr(t, "'", "''");
 
 /*
- * CE QUE PEUT PESER UNE POMME D'OR — donc ce qu'elle peut valoir (dix fois
- * cent fois son poids) et la taille qu'elle fait (rayon = douze fois son
- * poids). Mille points au plancher, deux mille au plafond : 2005 n'a jamais
- * payé plus de mille sept cents, et au-delà le fil ne la lève plus.
+ * LA POMME D'OR — ce qu'elle vaut, et ce qu'elle pèse.
+ *
+ * Elle vaut DIX FOIS LA MOYENNE DES COMBOS DES CINQ DERNIÈRES POMMES
+ * encaissées avant son arrivée (`POMME_OR_FENETRE`), sans plafond. Son poids
+ * ne dit que sa TAILLE (rayon = douze fois le poids) : il suit la même
+ * moyenne, borné entre un et deux (`POMME_OR_POIDS`) — en bas parce qu'elle
+ * solde le kilo et n'en pèserait qu'une miette, en haut parce qu'au-delà le
+ * fil ne la lève plus.
  */
+const POMME_OR_FENETRE = 5;
 const POMME_OR_POIDS = [1, 2];
 
 /*
@@ -130,28 +135,38 @@ class Classic extends J.Game {
     if ((this.squirrelList.length + 1) * 10 < this.level && !random(2) && this.squirrelList.length < this.squirrelLimit) this.genSquirrel();
   }
   /*
-   * LE POIDS DE LA POMME D'OR — c'est lui qui porte la finesse du jeu.
+   * LA POMME D'OR EST FIXÉE À SA NAISSANCE, sur les cinq dernières pommes.
    *
-   * `Panier.pointsPommeOr` la paie dix fois son poids (la règle de 2005), et
-   * son rayon vaut douze fois ce même poids : le prix et la taille disent donc
-   * la même chose. Reste à décider ce qu'elle pèse, et c'est là qu'entre le
-   * jeu du joueur — la MOYENNE DE SES COMBOS, grappes exclues. Une moyenne de
-   * deux cents (que des granites) fait une pomme de deux : deux mille points.
+   * On l'a d'abord payée « dix fois la moyenne des combos de la partie », puis
+   * on l'a rattachée à son poids — un gramme pour cinq cents points de
+   * moyenne, borné entre un et deux, payé cent fois dix. Cette rampe la
+   * SOUS-PAYAIT : mille points plus DEUX FOIS la moyenne, plafonnés à deux
+   * mille, là où l'on attendait dix fois la moyenne. Un jeu à 200 (que des
+   * granites) rendait 1400 au lieu de 2000, et rien ne passait jamais 2000.
+   * Et la moyenne courait sur toute la partie, diluée par les premières
+   * pommes : sur un kilo de quatre-vingts, la fin de partie n'y pesait rien.
    *
-   * BORNÉE des deux côtés. En bas, parce que la pomme d'or solde le kilo et
-   * n'en pèse souvent qu'une miette : sans plancher, on gagnerait un petit
-   * pois. En haut, parce qu'au-delà elle devient une enclume — le fil ne la
-   * lève plus — et parce que 2005 n'a jamais payé plus de mille sept cents.
+   * Maintenant : la MOYENNE DES COMBOS DES CINQ DERNIÈRES POMMES encaissées
+   * avant qu'elle n'arrive (zéro pour une pomme sans figure, grappes exclues),
+   * multipliée par dix. C'est `prixOr`, que `Panier.pointsPommeOr` paie tel
+   * quel — jamais moins qu'une pomme ordinaire, et sans plafond. Le POIDS, lui,
+   * ne porte plus que la taille : la même moyenne sur une rampe d'un gramme
+   * pour cinq cents points, bornée — bien jouer la fait grossir.
    */
-  poidsPommeOr() {
-    const nb = this.comboNb | 0;
-    const moyenne = nb ? (this.comboSomme | 0) / nb : 0;      // en points
-    // Un gramme pour cinq cents points de moyenne : un dunk sec (100) pèse à
-    // peine plus que rien, un jeu de virtuose (500) double la pomme. La rampe
-    // couvre ainsi TOUT l'éventail des combos — de 100 à 760 — au lieu de
-    // saturer dès le granite.
-    const p = POMME_OR_POIDS[0] + moyenne / 500;
-    return Math.max(POMME_OR_POIDS[0], Math.min(POMME_OR_POIDS[1], p));
+  noterCombo(b) {
+    const recents = this.combosRecents || (this.combosRecents = []);
+    recents.push(b);
+    if (recents.length > POMME_OR_FENETRE) recents.shift();
+  }
+  pommeOr() {
+    const recents = this.combosRecents || [];
+    const moyenne = recents.length ? recents.reduce((s, b) => s + b, 0) / recents.length : 0;
+    const poids = POMME_OR_POIDS[0] + moyenne / 500;
+    return {
+      flGold: true,
+      prixOr: Math.round(moyenne * 10),
+      weight: Math.max(POMME_OR_POIDS[0], Math.min(POMME_OR_POIDS[1], poids)),
+    };
   }
   getFruitWeight() {
     let w = 0.5 + random(10 + this.level) / 10;
@@ -183,8 +198,8 @@ class Classic extends J.Game {
     const w = this.getFruitWeight();
     const r = w * 12;
     const initObj = { x: r + random(Cs.mcw - (2 * r)), weight: w };
-    // La pomme d'or pèse ce que vaut le jeu du joueur, pas le reste du kilo.
-    if (this.kilo === this.kiloMax) { initObj.flGold = true; initObj.weight = this.poidsPommeOr(); }
+    // La pomme d'or naît avec son prix et son poids : pas le reste du kilo.
+    if (this.kilo === this.kiloMax) Object.assign(initObj, this.pommeOr());
     const mc = this.newFruit(initObj);
     mc.y = this.map.height - (this.map.groundLevel + mc.ray);
     mc.endUpdate();
@@ -196,9 +211,7 @@ class Classic extends J.Game {
     const w = this.getFruitWeight();
     const r = w * 12;
     const initObj = { x: r + random(Cs.mcw - 2 * r), weight: w, flTree: true, flGround: true };
-    if (this.kilo === this.kiloMax) {
-      initObj.flGold = true; initObj.weight = this.poidsPommeOr(); this.newBird();
-    }
+    if (this.kilo === this.kiloMax) { Object.assign(initObj, this.pommeOr()); this.newBird(); }
     const mc = this.newFruit(initObj);
     mc.y = -1000;
     mc.recal();
@@ -2157,8 +2170,9 @@ class BacASable extends Classic {
     if (this.step === 2 && this.flFruitFalling && this.fruitList.length < this.fruitBase) this.genTreeFruit();
   }
   genPommeOr() {
-    // Au bac à sable on n'a pas joué de combo : c'est le plancher qui sort.
-    const mc = this.newFruit({ x: 40 + random(Cs.mcw - 80), weight: this.poidsPommeOr(), flGold: true });
+    // Au bac à sable rien ne compte — pas de combo noté, donc la plus petite
+    // pomme d'or, au prix plancher : on y regarde sa physique, pas son prix.
+    const mc = this.newFruit(Object.assign({ x: 40 + random(Cs.mcw - 80) }, this.pommeOr()));
     mc.y = this.map.height - (this.map.groundLevel + mc.ray);
     mc.endUpdate();
     return mc;

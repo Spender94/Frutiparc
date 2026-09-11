@@ -943,7 +943,7 @@ class Panier extends Phys {
     if (this.game.type === '$classic') {
       if (fruit.flScoreAble && fruit.antList.length === 0) {
         let point = Math.round((fruit.weight - fruit.crunch) * 100);
-        if (fruit.flGold) point = this.pointsPommeOr(point);
+        if (fruit.flGold) point = this.pointsPommeOr(fruit, point);
         if (point > 0) {
           this.addScore(point);
           const bonus = this.checkCombo(fruit);
@@ -1048,37 +1048,27 @@ class Panier extends Phys {
   }
   checkCombo(fruit) {
     const { name, b } = this.figureDe(fruit);
-    if (b > 0) {
-      this.game.scroller.put(name, '+' + b);
-      // Pour la pomme d'or : la somme et le compte des combos — hors grappe,
-      // qui est une autre affaire (removeScore) et n'entre pas dans la moyenne.
-      this.game.comboSomme = (this.game.comboSomme | 0) + b;
-      this.game.comboNb = (this.game.comboNb | 0) + 1;
-    }
+    if (b > 0) this.game.scroller.put(name, '+' + b);
+    // Pour la pomme d'or : le combo de chaque pomme encaissée, zéro compris
+    // — hors grappe, qui est une autre affaire (removeScore) et n'entre pas
+    // dans la moyenne. Seul le Challenge passe ici, et lui seul en a une.
+    this.game.noterCombo(b);
     if (name !== '') this.game.statCombo.incVal(name, 1);
     return b;
   }
   /*
-   * LA POMME D'OR VAUT DIX FOIS CE QU'ELLE PÈSE — la règle de 2005.
+   * LA POMME D'OR VAUT DIX FOIS LA MOYENNE DES COMBOS DES CINQ DERNIÈRES
+   * POMMES — celles d'avant son arrivée. Le prix est fixé à sa naissance
+   * (`Classic.pommeOr`, qui le pose dans `prixOr`) ; le panier ne fait que le
+   * payer, et le panneau de fin le dit.
    *
-   * ON L'AVAIT DÉCROCHÉE DE SON POIDS, et c'était une erreur double.
-   *
-   * Elle valait « dix fois la moyenne des combos de la partie » : le hasard
-   * sortait bien du calcul, mais deux choses cassaient. D'une part le prix
-   * n'avait plus de plafond — un virtuose à 500 de moyenne encaissait CINQ
-   * MILLE points sur une seule pomme, quand 2005 n'en donnait jamais plus de
-   * mille sept cents. D'autre part la pomme d'or est celle qui SOLDE le kilo :
-   * son poids est le reste de la barre, souvent une miette. On voyait donc un
-   * petit pois de quatre pixels valoir cinq mille points, et une belle pomme
-   * en valoir mille : la taille ne disait plus rien du prix.
-   *
-   * Le prix revient donc au poids — et c'est le POIDS qui porte maintenant la
-   * finesse du jeu : `Classic.poidsPommeOr` le tire de la moyenne des combos,
-   * borné. Bien jouer fait GROSSIR la pomme d'or, et une grosse pomme d'or
-   * vaut cher : on le voit d'un coup d'œil, comme en 2005.
+   * ELLE NE VAUT JAMAIS MOINS QU'UNE POMME. Sans un seul combo sur les cinq
+   * dernières, la moyenne est nulle : on paie alors `base`, ce que vaut une
+   * pomme ordinaire de ce poids — une pomme d'or à zéro serait prise pour une
+   * panne. C'est le seul plancher, et il n'y a pas de plafond.
    */
-  pointsPommeOr(base) {
-    const p = base * 10;
+  pointsPommeOr(fruit, base) {
+    const p = Math.max(base, fruit.prixOr | 0);
     this.game.stat.setVal("Pomme d'or", p);
     return p;
   }

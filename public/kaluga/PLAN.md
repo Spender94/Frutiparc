@@ -452,39 +452,43 @@ lui, joue toujours les règles de 2005. `test/kalugaRegles.test.js` les épingle
    Huit pommes font 4 + 4, puis 3-3-2 avec deux jaunes. Recharges, portée,
    distance : rien d'autre ne change.
 
-2. **La pomme d'or PÈSE ce que vaut le jeu du joueur** (`Classic.poidsPommeOr`).
-   En 2005 elle valait dix fois son poids, et son poids était le *reste* du kilo
-   après le dernier fruit : un tirage. On l'a d'abord payée « dix fois la
-   moyenne des combos, grappes exclues » — le hasard sortait bien du calcul,
-   mais deux choses cassaient. Le prix n'avait plus de plafond : un virtuose à
-   500 de moyenne encaissait **cinq mille** points d'une seule pomme, quand 2005
-   n'en payait jamais plus de mille sept cents. Et la taille ne disait plus
-   rien du prix — un petit pois de quatre pixels pouvait valoir cinq mille
-   points, une belle pomme en valoir mille. D'où les plaintes sur des « pommes
-   d'or trop grosses » : elles ne mentaient pas sur leur valeur par hasard, la
-   valeur ne les regardait tout simplement pas.
+2. **La pomme d'or vaut dix fois la moyenne des combos des cinq dernières
+   pommes** (`Classic.pommeOr`, `Panier.pointsPommeOr`). En 2005 elle valait
+   dix fois son poids, et son poids était le *reste* du kilo après le dernier
+   fruit : un tirage. On l'a d'abord payée « dix fois la moyenne des combos de
+   la partie, grappes exclues », puis — pour lui donner un plafond et une
+   taille qui dise son prix — rattachée à son poids : un gramme pour cinq
+   cents points de moyenne, borné entre 1 et 2, payé cent fois dix. Cette
+   rampe la **sous-payait** : mille points plus *deux fois* la moyenne,
+   plafonnés à deux mille, là où l'on attendait dix fois la moyenne. Un jeu à
+   200 (que des granites) rendait 1400 au lieu de 2000, et rien ne passait
+   jamais 2000. Et la moyenne courait sur toute la partie, diluée par les
+   premières pommes : sur un kilo de quatre-vingts, la fin de partie n'y
+   pesait plus rien. C'était le « la pomme d'or vaut moins qu'elle ne devrait ».
 
-   Le **prix** revient donc à la règle d'époque — `Panier.pointsPommeOr(base)`
-   = `base × 10`, soit cent fois le poids, dix fois — et c'est le **poids** qui
-   porte maintenant la finesse du jeu : la moyenne des combos, grappes exclues,
-   sur une rampe d'un gramme pour cinq cents points, **bornée entre 1 et 2**
-   (`POMME_OR_POIDS`). Le rayon d'un fruit valant douze fois son poids, taille
-   et prix disent enfin la même chose :
-
-   | jeu | moyenne | poids | diamètre | valeur |
-   |---|---|---|---|---|
-   | aucun combo | 0 | 1,00 | 24 px | 1000 |
-   | débutant | 120 | 1,24 | 30 px | 1240 |
-   | bon joueur | 266 | 1,53 | 37 px | 1530 |
-   | virtuose | ≥ 500 | 2,00 | 48 px | 2000 |
-
-   Le rapport valeur / rayon est constant à un demi pour cent près — le seul
-   jeu est l'arrondi du score à l'unité. Bien jouer fait **grossir** la pomme
-   d'or, et une grosse pomme d'or vaut cher : on le voit d'un coup d'œil, comme
-   en 2005. Le plancher compte autant que le plafond, puisque la pomme d'or est
-   celle qui *solde* le kilo et n'en pèse souvent qu'une miette. Son propre
-   combo s'ajoute ensuite comme pour toute pomme, et le panneau de fin
+   La règle est donc celle-ci : à sa **naissance**, la pomme d'or reçoit son
+   prix (`prixOr`) — la moyenne des combos des **cinq dernières pommes**
+   encaissées avant elle (`POMME_OR_FENETRE`), zéro pour une pomme sans
+   figure, grappes exclues (elles vivent dans `removeScore`) — **multipliée
+   par dix**. Pas de plafond. Un seul plancher : elle ne vaut jamais moins
+   qu'une pomme ordinaire de son poids (`base`), parce qu'une pomme d'or à
+   zéro serait prise pour une panne. Le panier paie ce prix tel quel, son
+   propre combo s'ajoute ensuite comme pour toute pomme, et le panneau de fin
    l'affiche.
+
+   Le **poids** ne porte plus que la taille : la même moyenne sur une rampe
+   d'un gramme pour cinq cents points, **bornée entre 1 et 2**
+   (`POMME_OR_POIDS`) — en bas parce qu'elle solde le kilo et n'en pèserait
+   qu'une miette, en haut parce qu'au-delà le fil ne la lève plus. Le rayon
+   d'un fruit valant douze fois son poids, bien jouer la fait **grossir** :
+
+   | les cinq dernières pommes | moyenne | valeur | poids | diamètre |
+   |---|---|---|---|---|
+   | aucun combo | 0 | 100 (une pomme) | 1,00 | 24 px |
+   | un dunk, quatre pommes nues | 20 | 200 | 1,04 | 25 px |
+   | 100 · 0 · 200 · 40 · 20 | 72 | 720 | 1,14 | 27 px |
+   | que des granites | 200 | 2000 | 1,40 | 34 px |
+   | virtuose | 500 | 5000 | 2,00 | 48 px |
 
 3. **Deux défis du jour : Grappe et Freestyle** (serveur, `kalugaAvecGrappe`,
    `routeRankingForSave`). Dès qu'une grappe atteint **la taille 8** —
