@@ -827,6 +827,39 @@ test('les trois retouches du parc éteint : feutres, lueur, liste des salons', (
     'la liste des salons ne doit plus rien devoir au rose');
 });
 
+test('le parc éteint le DIT au navigateur : color-scheme, et un accent', () => {
+  // Une case à cocher, un bouton radio, la liste qu'un <select> déroule, le
+  // curseur de saisie, les ascenseurs : le navigateur les peint lui-même, et
+  // pour un thème CLAIR tant qu'on ne lui a rien dit — d'où, sous « Le parc,
+  // la nuit », trois grosses pastilles blanches sur un panneau presque noir.
+  const racine = (css) => /\n:root \{([\s\S]*?)\n\}/.exec(css)[1];
+  for (const [nom, css] of [['le light', NUIT], ['le forum', NUIT_FORUM]]) {
+    assert.match(racine(css), /^ {2}color-scheme: dark;$/m, nom + ' le déclare sur :root');
+  }
+
+  // ET SEULEMENT LÀ. La déclaration doit vivre dans la feuille de NUIT, qui
+  // s'en va quand on rallume ; écrite dans un thème de jour, elle resterait —
+  // et le parc allumé se retrouverait avec des commandes sombres.
+  for (const [nom, css] of [['public/light.html', LIGHT], ['public/fb/index.html', FORUM],
+    ['public/bureau-frutiz.css', lire('public/bureau-frutiz.css')]]) {
+    // (la requête média `prefers-color-scheme`, qui sert à suivre le réglage du
+    // téléphone, n'est pas la propriété — elle a le droit d'être là.)
+    assert.ok(!/(?<!prefers-)color-scheme\s*:/.test(css), nom + ' n’en déclare pas de jour');
+  }
+
+  // L'ACCENT du light est celui que la CONVERSION donne aux deux règles du
+  // thème de jour qui écrivent un `accent-color` : les bascules des Réglages
+  // (#7CB342) et les radios de la recherche (#94DB39) tombent toutes deux sur
+  // la même valeur. On ne choisit donc rien ici — on la reprend.
+  const accent = (css) => /^ {2}accent-color: (hsl\([^)]+\));$/m.exec(racine(css))[1];
+  const attendu = GEN.convertir(...GEN.hexVersRgb('#7CB342'), 'fond');
+  assert.strictEqual(attendu, GEN.convertir(...GEN.hexVersRgb('#94DB39'), 'fond'),
+    'les deux verts d’accent du thème de jour se rejoignent bien');
+  assert.strictEqual(accent(NUIT), attendu);
+  assert.ok(NUIT.slice(0, NUIT.indexOf(MARQUE)).includes('accent-color: ' + attendu + ';'),
+    'et la conversion la pose déjà, telle quelle, sur les règles d’époque');
+});
+
 test('un voyant EN PARTIE garde son icône de jeu', () => {
   /*
    * LE PIÈGE DES DEUX COUCHES. Le voyant d'un contact en porte deux : le

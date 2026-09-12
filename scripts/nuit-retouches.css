@@ -13,6 +13,30 @@
  */
 
 :root {
+  /* CE QUE LE NAVIGATEUR PEINT LUI-MÊME.
+     Une case à cocher, un bouton radio, la liste qu'un <select> déroule, le
+     curseur de saisie, la surbrillance d'une sélection, les ascenseurs : le CSS
+     ne les dessine pas, il les DEMANDE. Et faute qu'on lui dise le contraire,
+     le navigateur les peint pour un thème CLAIR — même sur une page éteinte.
+     D'où trois grosses pastilles blanches sous « Le parc, la nuit », et, sur un
+     téléphone, une liste qui s'ouvre en plein écran BLANC par-dessus le parc.
+
+     `color-scheme: dark` est la seule façon de le lui dire, et elle ne change
+     aucune couleur écrite dans la feuille : elle ne touche qu'aux pièces que le
+     navigateur dessine à notre place. Comme elle vit dans la feuille de nuit,
+     elle s'en va avec elle. */
+  color-scheme: dark;
+
+  /* L'ACCENT DE CES COMMANDES-LÀ. Trois règles du parc écrivent un
+     `accent-color` dans le thème de jour, et la conversion les a teintes : les
+     bascules des Réglages et les radios de la recherche y tombent toutes deux
+     sur le même violet, la case d'accord parental sur un violet plus sombre.
+     Partout ailleurs il n'y avait rien à teindre, et le navigateur mettait son
+     bleu — le seul bleu d'un parc éteint. On pose donc pour tout le document
+     celui des deux violets sur lequel la conversion s'accorde ; les trois
+     règles teintes gardent le dessus chez elles. */
+  accent-color: hsl(256 30% 36%);
+
   /* LE CHÂSSIS, ET LUI SEUL. Les cadres de fenêtre, les onglets, l'écran de
      la main bar, le boîtier du Frusion : des surfaces d'époque peintes en
      vert, qui n'illustrent rien — elles encadrent. On les repasse au violet

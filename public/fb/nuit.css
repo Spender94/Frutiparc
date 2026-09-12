@@ -734,6 +734,25 @@ img[src$="/fb/trophee.svg"] { content: url("/fb/trophee-nuit.svg?v=162da45b"); f
  */
 
 :root {
+  /* CE QUE LE NAVIGATEUR PEINT LUI-MÊME — la même ligne qu'au light, et pour
+     la même raison : sans elle il dessine ses commandes pour un thème CLAIR,
+     même sur une page éteinte. C'est ici que ça se voyait le plus, et sur un
+     téléphone plus qu'ailleurs : les trois grosses pastilles BLANCHES d'un
+     sondage, les quatre du choix de bouille, et les listes déroulantes de
+     l'éditeur (l'expression, la taille, la couleur) comme les deux du pied de
+     sujet, qui s'ouvrent en plein écran blanc par-dessus le forum. */
+  color-scheme: dark;
+
+  /* L'ACCENT DE CES COMMANDES-LÀ. Le forum n'en écrit aucun dans son thème de
+     jour : ses boutons radio sont ceux du navigateur, en bleu, et la
+     conversion n'avait donc rien à teindre — le forum éteint héritait du seul
+     bleu qu'il contienne. On leur donne le rose dont il cerne DÉJÀ ce qui est
+     choisi : `.expression-grid .expr-btn.active` et `.acc-grid .acc-btn.active`
+     portent cette valeur-là, produite par le générateur. Une vignette choisie
+     et une pastille cochée disent la même chose ; elles le disent maintenant
+     de la même couleur. */
+  accent-color: hsl(325 58% 76%);
+
   --nuit-chassis: grayscale(.85) sepia(.6) hue-rotate(202deg) saturate(1.4) brightness(.42);
   --nuit-ciel:
     radial-gradient(circle at 84% 76%, hsl(48 26% 88%) 0 21px,

@@ -443,6 +443,33 @@ icône de titre, à côté du coffre de l'Inventaire qui, lui, garde ses couleur
 Trois dessins réduits à un rond gris sur une barre presque noire ; ils sont
 sortis de la liste.
 
+### Ce que le navigateur peint lui-même : `color-scheme`
+
+Une case à cocher, un bouton radio, la liste qu'un `<select>` déroule, le
+curseur de saisie, la surbrillance d'une sélection, les ascenseurs : le CSS ne
+les dessine pas, il les *demande*. Le navigateur les peint, et pour un thème
+**clair** tant qu'on ne lui a rien dit — même sur une page éteinte. D'où trois
+grosses pastilles blanches sous « Le parc, la nuit », les trois d'un sondage du
+forum, les quatre du choix de bouille, et, sur un téléphone, une liste
+déroulante qui s'ouvre en **plein écran blanc** par-dessus le parc.
+
+`color-scheme: dark`, posé sur `:root` dans les **deux** feuilles de nuit
+(`scripts/nuit-retouches.css` pour le light et le bureau,
+`scripts/nuit-retouches-forum.css` pour le forum, qui est un document à part),
+est la seule façon de le lui dire. Elle ne change aucune couleur écrite dans la
+feuille : elle ne touche qu'aux pièces dessinées à notre place. Et comme elle
+vit dans la feuille de nuit, elle s'en va avec elle — le thème de jour n'en
+déclare aucune, et `test/modeNuit.test.js` le vérifie.
+
+L'**accent** de ces commandes-là (le disque d'un radio coché, le fond d'une
+case cochée) reste sinon le bleu du navigateur — le seul bleu d'un parc éteint.
+Chaque document reprend donc une valeur que le générateur a déjà produite :
+
+| | l'accent de nuit | d'où il vient |
+|---|---|---|
+| le light et le bureau | `hsl(256 30% 36%)` | le thème de jour écrit trois `accent-color` ; la conversion fait tomber les bascules des Réglages (`#7CB342`) et les radios de la recherche (`#94DB39`) sur cette même valeur. Les trois règles teintes gardent le dessus chez elles |
+| le forum | `hsl(325 58% 76%)` | il n'écrit aucun `accent-color` de jour. On reprend le rose dont il cerne déjà ce qui est **choisi** (`.expr-btn.active`, `.acc-btn.active`) : une vignette sélectionnée et une pastille cochée disent la même chose |
+
 ### Redessiner les assets : `nom-nuit.svg`
 
 Pour remplacer un dessin d'époque :

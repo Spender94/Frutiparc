@@ -294,6 +294,32 @@ test('les boutons de la modale de signature prennent le violet du parc, pas un g
   assert.match(lire('public/fb/nuit.css'), /\.sig-modal \.edit-btn \{/);
 });
 
+test('le forum éteint donne au navigateur son thème, et aux radios l’accent du choisi', () => {
+  // Les pastilles d'un sondage, celles du choix de bouille, les listes que
+  // déroulent « Taille », « Couleur » et « Expression » : le navigateur les
+  // peint lui-même, pour un thème clair tant qu'on ne lui a rien dit. Sur un
+  // téléphone c'est une liste PLEIN ÉCRAN blanche par-dessus un forum éteint.
+  const NUIT = lire('public/fb/nuit.css');
+  const racine = /\n:root \{([\s\S]*?)\n\}/.exec(NUIT)[1];
+  assert.match(racine, /^ {2}color-scheme: dark;$/m);
+  // Et nulle part dans le thème de JOUR : la déclaration doit s'en aller avec
+  // la feuille quand on rallume. (`prefers-color-scheme` est une requête
+  // média, pas la propriété : elle a le droit d'être là.)
+  assert.ok(!/(?<!prefers-)color-scheme\s*:/.test(FORUM),
+    'public/fb/index.html n’en déclare pas de jour');
+
+  // L'ACCENT. Le forum n'écrit aucun `accent-color` de jour — ses radios sont
+  // ceux du navigateur, en bleu —, la conversion n'avait donc rien à teindre.
+  // On reprend le rose dont le forum de nuit cerne déjà ce qui est CHOISI :
+  // une vignette d'expression sélectionnée et une pastille cochée disent la
+  // même chose, elles le disent de la même couleur.
+  const accent = /^ {2}accent-color: (hsl\([^)]+\));$/m.exec(racine)[1];
+  const choisi = /\.expression-grid \.expr-btn\.active \{[^}]*border-color: (hsl\([^)]+\));/.exec(NUIT);
+  assert.ok(choisi, 'la vignette choisie a bien son liseré rose engendré');
+  assert.strictEqual(accent, choisi[1]);
+  assert.ok(!/accent-color/.test(FORUM), 'et le thème de jour n’en écrit toujours aucun');
+});
+
 // ── L'interrupteur, quand le light n'a pas la main ────────────────────────
 
 test('le forum suit le réglage du parc même hors de l’iframe du light', () => {
