@@ -551,6 +551,34 @@ class Clip extends Affichable {
     this.$masquePar = mc || null;
     if (mc) mc.$estMasque = true;
   }
+  // duplicateMovieClip(nom, prof) : un jumeau de ce clip, dans le MÊME parent,
+  // à la profondeur demandée — même symbole, même matrice, mêmes couleurs, et
+  // le DESSIN PAR SCRIPT copié lui aussi (MotionBall duplique le clip des
+  // trous pour en faire le masque de la bille qui tombe) ; le jumeau repart
+  // de sa première image, comme dans le lecteur.
+  duplicateMovieClip(nom, prof) {
+    const parent = this._parent;
+    if (!parent) return undefined;
+    const e = K.instancier(this.$biblio, this.$id === null ? undefined : this.$id);
+    e.poserMatrice(this.matriceLocale());
+    e.$cx = this.$cx ? this.$cx.slice() : null;
+    e.$parScript = this.$parScript;
+    if (this.$trace) {
+      const t = new Trace();
+      t.ops = this.$trace.ops.slice(); t.style = this.$trace.style; t.rempl = this.$trace.rempl;
+      t.dTrait = this.$trace.dTrait; t.dRempl = this.$trace.dRempl; t.x = this.$trace.x; t.y = this.$trace.y;
+      t.cadre = this.$trace.cadre ? this.$trace.cadre.slice() : null;
+      e.$trace = t;
+    }
+    e.$prof = prof;
+    e.$tickNaissance = K.scene ? K.scene.numeroTick : -1;
+    const avant = parent.parProf(prof);
+    if (avant) parent.retirerEnfant(avant);
+    parent.insererEnfant(e);
+    parent.nommer(e, nom);
+    K.finaliser(e, null);
+    return e;
+  }
 
   // ── dessin par script ──
   laTrace() { if (!this.$trace) this.$trace = new Trace(); return this.$trace; }
@@ -807,6 +835,9 @@ class Color {
     this.mc.$cx = [0, 0, 0, cx[3], (rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, 0];
   }
   getRGB() { const cx = this.mc.$cx; return cx ? ((cx[4] & 255) << 16) | ((cx[5] & 255) << 8) | (cx[6] & 255) : 0; }
+  // Color.reset() : l'extension que Std pose sur le prototype (MotionBall) —
+  // la transformation neutre, alpha compris.
+  reset() { this.setTransform({ ra: 100, rb: 0, ga: 100, gb: 0, ba: 100, bb: 0, aa: 100, ab: 0 }); }
 }
 K.Color = Color;
 
@@ -878,6 +909,11 @@ class Scene {
     this.avancerTous(this.racine);
     if (this.surTick) this.fileScripts.unshift([this.racine, this.surTick]);
     this.viderScripts();
+    // Le lecteur Flash refait le test de survol à CHAQUE image, pas seulement
+    // quand la souris bouge : un clip qui passe sous le pointeur immobile
+    // reçoit son rollOver, celui qui s'en va son rollOut — les boules du menu
+    // de MotionBall respirent sous la souris, et se sélectionnent ainsi.
+    if (this.souris.x >= 0 && this.souris.y >= 0 && this.souris.x <= this.largeur && this.souris.y <= this.hauteur) this.surSouris(false, false, false);
   }
   avancerTous(clip) {
     // Les enfants nés à ce tick (attachés par un script, posés par une
@@ -1007,7 +1043,7 @@ class Scene {
       const r = canvas.getBoundingClientRect();
       return { x: (ev.clientX - r.left) * this.largeur / r.width, y: (ev.clientY - r.top) * this.hauteur / r.height };
     };
-    canvas.addEventListener('pointermove', (ev) => { const p = position(ev); this.souris.x = p.x; this.souris.y = p.y; this.surSouris(false, false); });
+    canvas.addEventListener('pointermove', (ev) => { const p = position(ev); this.souris.x = p.x; this.souris.y = p.y; this.surSouris(false, false, true); });
     canvas.addEventListener('pointerdown', (ev) => {
       ev.preventDefault();
       const p = position(ev); this.souris.x = p.x; this.souris.y = p.y;
@@ -1069,7 +1105,28 @@ class Scene {
     }
     this.viderScripts();
   }
-  surSouris(presse, relache) {
+  // Les gestionnaires GLOBAUX de souris — onMouseMove, onMouseDown,
+  // onMouseUp — : Flash les appelle sur tous les clips qui les définissent, où
+  // que soit la souris. Le menu de MotionBall règle sa rotation par
+  // onMouseMove, son intro part au premier clic par onMouseDown.
+  diffuser(nom) {
+    const cibles = [];
+    const ramasser = (clip) => {
+      if (typeof clip[nom] === 'function') cibles.push(clip);
+      for (const e of clip.$enfants) if (e instanceof Clip) ramasser(e);
+    };
+    ramasser(this.racine);
+    for (const c of cibles) {
+      if (c !== this.racine && !c._parent) continue;      // retiré par un gestionnaire précédent
+      if (typeof c[nom] !== 'function') continue;         // effacé entre-temps (delete mc.onMouseDown)
+      try { c[nom](); } catch (e) { console.error('[kaluga] ' + nom, e); }
+    }
+    if (cibles.length) this.viderScripts();
+  }
+  surSouris(presse, relache, bouge) {
+    if (bouge) this.diffuser('onMouseMove');
+    if (presse) this.diffuser('onMouseDown');
+    if (relache) this.diffuser('onMouseUp');
     const sous = this.objetSous(this.souris.x, this.souris.y);
     if (sous !== this.sousSouris) {
       if (this.sousSouris) {
@@ -1094,7 +1151,9 @@ class Scene {
       if (a instanceof Bouton) a.$etat = (sous === a) ? 2 : 1;
       this.declencher(a, sous === a ? 'release' : 'releaseOutside');
     }
-    canvasCurseur(this.canvas, !!sous && (!(sous instanceof Bouton) || sous.useHandCursor));
+    // La main : sur un bouton ou un clip à gestionnaire, sauf s'il a dit
+    // useHandCursor = false (les boules du menu de MotionBall).
+    canvasCurseur(this.canvas, !!sous && sous.useHandCursor !== false);
   }
 }
 function options_cibleClavier(canvas) { return racine; }

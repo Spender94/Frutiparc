@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>MotionBall</title>
+<!--
+  MotionBall — portage natif JS du jeu Flash de 2005 (610×410, 40 images par
+  seconde), fidèle aux sources AS2 (Games/motionBall2/mb2/). Les dessins sont
+  les formes vectorielles du SWF rejouées sur un canvas par le lecteur de
+  liste d'affichage de Kaluga (/kaluga/moteur/), les sons ses MP3, les fontes
+  ses fontes embarquées, les scénarios de ses clips ceux du fichier d'origine.
+
+  Au clavier : les flèches poussent la bille, espace change de bille,
+  échap met en pause (et montre la carte si on l'a).
+
+  ?sid= pour la persistance Frutiparc (fruticard : modes ouverts, TItems,
+  records ; préférences ; score du Challenge au classement).
+-->
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #ade67d;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none; -webkit-user-select: none;
+    font-family: Verdana, Arial, sans-serif;
+  }
+  #tout {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    box-sizing: border-box;
+  }
+  #aire { flex: 1 1 0; min-height: 0; min-width: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; image-rendering: auto; outline: none; }
+  #commandes { display: none; width: 100%; box-sizing: border-box; padding: 0 8px 8px; gap: 12px; align-items: stretch; }
+  @media (pointer: coarse) { #commandes { display: flex; } }
+  .cote { display: flex; gap: 8px; min-width: 0; }
+  #cote-gauche { flex: 3 1 0; }
+  #cote-droit { flex: 3 1 0; }
+  .cote .bloc { display: flex; gap: 8px; min-width: 0; flex: 1 1 auto; }
+  .btn {
+    flex: 1 1 0; min-width: 0;
+    height: clamp(50px, 8.5vh, 76px);
+    border: 3px solid #fff; border-radius: 14px;
+    background: #7b4fb0; color: #fff;
+    font: bold 22px Verdana, sans-serif;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, .18);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden; white-space: nowrap;
+    touch-action: none;
+  }
+  .btn:active, .btn.presse { background: #a07ad6; }
+  #b-pause { flex: 0 1 auto; width: 30%; font-size: 13px; background: #5d3a8a; }
+  @media (orientation: landscape) {
+    #tout { flex-direction: row; gap: 6px; }
+    #aire { width: auto; height: 100%; order: 5; }
+    .cote { height: 100%; flex-direction: column; justify-content: center; padding: 0 4px; flex: 0 0 auto; }
+    .cote .bloc { flex-direction: column; flex: 0 0 auto; }
+    #cote-gauche { order: 0; flex: 0 0 auto; }
+    #cote-droit { order: 9; flex: 0 0 auto; }
+    .btn { flex: 0 0 auto; width: 54px; height: clamp(42px, 14vh, 60px); font-size: 20px; }
+    #b-pause { width: 54px; height: 34px; }
+  }
+  @media (orientation: landscape) and (pointer: coarse) { #commandes { display: contents; } }
+  #chargement {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #fff; font: bold 14px Verdana, sans-serif; text-shadow: 0 1px 0 rgba(0,0,0,.2);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="tout">
+  <div id="aire"><canvas id="scene" width="610" height="410" tabindex="0"></canvas></div>
+  <div id="commandes">
+    <div class="cote" id="cote-gauche">
+      <div class="bloc">
+        <div class="btn" data-touche="gauche">&#8592;</div>
+        <div class="btn" data-touche="haut">&#8593;</div>
+        <div class="btn" data-touche="bas">&#8595;</div>
+        <div class="btn" data-touche="droite">&#8594;</div>
+      </div>
+    </div>
+    <div class="cote" id="cote-droit">
+      <div class="bloc">
+        <div class="btn" data-touche="espace">bille</div>
+        <div class="btn" id="b-pause" data-touche="echap">pause</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="chargement">Chargement de MotionBall…</div>
+
+<script src="/kaluga/moteur/formes.js"></script>
+<script src="/kaluga/moteur/flash.js"></script>
+<script src="/kaluga/moteur/texte.js"></script>
+<script src="/kaluga/moteur/son.js"></script>
+<script src="/kaluga/moteur/chargeur.js"></script>
+<script src="/mb2/jeu/scripts-images.js"></script>
+<script src="/mb2/jeu/base.js"></script>
+<script src="/mb2/jeu/niveau.js"></script>
+<script src="/mb2/jeu/balle.js"></script>
+<script src="/mb2/jeu/boss.js"></script>
+<script src="/mb2/jeu/ecrans.js"></script>
+<script src="/mb2/jeu/game.js"></script>
+<script src="/mb2/plateforme.js"></script>
+<script src="/mb2/jeu/manager.js"></script>
+<!-- Le disque sorti de la Frusion ferme le jeu, et le battement tient le
+     voyant « joue à MotionBall » (data-jeu = swfName du disque, GAME_DISCS). -->
+<script src="/js/eject-watch.js" data-jeu="mb2"></script>
+<script>
+(function () {
+  'use strict';
+  const K = window.KalugaMoteur;
+  const params = new URLSearchParams(location.search);
+  const canvas = document.getElementById('scene');
+  const L = 610, H = 410;
+
+  // Le canvas prend la place que #aire lui laisse, en gardant 610×410.
+  function adapter() {
+    const aire = document.getElementById('aire');
+    const l = aire.clientWidth, h = aire.clientHeight;
+    const ech = Math.max(0.1, Math.min(l / L, h / H));
+    canvas.style.width = Math.floor(L * ech) + 'px';
+    canvas.style.height = Math.floor(H * ech) + 'px';
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const px = Math.max(1, Math.round(L * ech * dpr) / L);
+    canvas.width = Math.round(L * px);
+    canvas.height = Math.round(H * px);
+    if (K.scene) K.scene.echelleCanvas = px;
+  }
+  window.addEventListener('resize', adapter);
+
+  // La manette tactile : chaque bouton vaut une touche du clavier.
+  const CODES = { gauche: 37, droite: 39, haut: 38, bas: 40, espace: 32, echap: 27 };
+  document.querySelectorAll('#commandes .btn').forEach(function (b) {
+    const code = CODES[b.dataset.touche];
+    const poser = function (v, ev) {
+      ev.preventDefault();
+      b.classList.toggle('presse', v);
+      if (v) K.Key.presser(code); else K.Key.relacher(code);
+    };
+    b.addEventListener('pointerdown', function (ev) { poser(true, ev); });
+    b.addEventListener('pointerup', function (ev) { poser(false, ev); });
+    b.addEventListener('pointercancel', function (ev) { poser(false, ev); });
+    b.addEventListener('pointerleave', function (ev) { if (b.classList.contains('presse')) poser(false, ev); });
+    window.addEventListener('pointerup', function () { if (b.classList.contains('presse')) { b.classList.remove('presse'); K.Key.relacher(code); } });
+  });
+
+  // Quitter l'onglet du light, c'est lâcher les commandes (le contrat
+  // `__relacherCommandes` de light.html).
+  const lacherTout = function () {
+    K.Key.toutRelacher();
+    document.querySelectorAll('#commandes .btn.presse').forEach(function (b) { b.classList.remove('presse'); });
+  };
+  window.__relacherCommandes = lacherTout;
+  document.addEventListener('visibilitychange', function () { if (document.hidden) lacherTout(); });
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () {
+      adapter();
+      const b = canvas.getBoundingClientRect();
+      if (!b.width || !b.height) lacherTout();
+    }).observe(document.getElementById('aire'));
+  }
+
+  adapter();
+  window.demarrerMotionBall({ canvas, sid: params.get('sid') || '' }).then(function (r) {
+    window.__mb2 = r;
+    document.getElementById('chargement').remove();
+    adapter();
+    canvas.focus();
+  }).catch(function (e) {
+    document.getElementById('chargement').textContent = 'MotionBall n\'a pas pu démarrer : ' + (e && e.message ? e.message : e);
+    console.error(e);
+  });
+})();
+</script>
+</body>
+</html>

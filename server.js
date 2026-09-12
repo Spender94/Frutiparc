@@ -19121,6 +19121,21 @@ const GAME_DISCS = {
       { u: 'games/motionBall2/full.swf' },
     ],
   },
+  // MotionBall en HTML (/mb2/), sur le modèle de kalugalight : marqueur
+  // `light/mb2` que ruffle.html détourne vers le portage au lieu de Ruffle,
+  // et swfName « mb2 » pour que voyant, <service>, fruticard
+  // (extractGameItemsFromSlot) et classement (mb2_classic, barrière FD
+  // comprise) se comportent exactement comme pour le disque Flash. 622×436 :
+  // la scène de 610×410 plus le cadre.
+  mb2light: {
+    discType: '3',
+    playMode: 'single',
+    swfName: 'mb2',
+    iconName: 'mb2',
+    gameId: 'light/mb2',
+    props: 'w=622;h=436;m=p',
+    files: [],
+  },
   jamajama: {
     discType: '0',
     playMode: 'single',

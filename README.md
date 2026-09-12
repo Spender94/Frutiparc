@@ -133,6 +133,8 @@ frutiengine/          Code source ActionScript 2 du moteur
 frutiparc/            Code source AS2 de l'application principale
 frusion/              Système réseau (client/serveur Flash)
 Games/                Mini-jeux (Burning Kiwi, Kaluga, Frutibandas, etc.)
+public/kaluga/        Kaluga en JS natif (lecteur de SWF `moteur/`, voir son PLAN.md)
+public/mb2/           MotionBall en JS natif, sur le même lecteur (voir son PLAN.md)
 ```
 
 ## Le mode nuit (« Son temps viendra »)

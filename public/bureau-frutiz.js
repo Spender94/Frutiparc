@@ -99,6 +99,8 @@ window.BureauFrutiz = (function () {
     // Kaluga : sa scène fait 700×480 (l'en-tête du SWF), et la fenêtre la
     // montre à l'échelle 1 — 12 et 26 de plus pour le cadre (minFenetre).
     kaluga:     { panneau: '#kaluga-panel',    titre: 'Kaluga',         l: 712, h: 506 },
+    // MotionBall : sa scène fait 610×410, montrée à l'échelle 1 plus le cadre.
+    mb2:        { panneau: '#mb2-panel',       titre: 'Motion-Ball 2',  l: 622, h: 436 },
     minifever:  { panneau: '#minifever-panel', titre: 'Mini-Fever',     l: 880, h: 760 },
     jamajama:   { panneau: '#jamajama-panel',  titre: 'JamaJama',       l: 620, h: 640 },
     // « Salons publics » — la SEULE fenêtre du bureau qui n'existe pas côté
@@ -2394,17 +2396,20 @@ window.BureauFrutiz = (function () {
     // les deux ouvrent le portage, et c'est le serveur qui fait la part du
     // Fruit Défendu au classement. Sous Ruffle, le FD noir joue le SWF.
     kaluga: 'kaluga',
+    // MotionBall, pareil : le FD blanc et le disque light ouvrent le portage.
+    mb2: 'mb2',
   };
   /*
-   * LES DEUX QUI SONT ENCORE EN FLASH.
+   * CELUI QUI EST ENCORE EN FLASH.
    *
-   * Burning Kiwi et Motion-Ball 2 n'ont pas de portage JS : ils se lisent
-   * sous Ruffle, dans une fenêtre à part. Le bureau les MONTRAIT — le bureau
+   * Burning Kiwi n'a pas de portage JS : il se lit sous Ruffle, dans une
+   * fenêtre à part. Le bureau les MONTRAIT — le bureau
    * d'époque montre tous les disques du joueur — mais les laissait INERTES :
    * pas attrapables, donc impossibles à glisser dans la Frusion, alors que
    * main.swf accepte n'importe quel disque dans sa console. (Kaluga en
    * faisait partie, avec ses deux pastilles, jusqu'à son portage — il n'en a
-   * plus qu'une, le FD noir, à côté de son disque light.)
+   * plus qu'une, le FD noir, à côté de son disque light ; Motion-Ball 2 a
+   * suivi le même chemin avec le sien, /mb2/.)
    *
    * Le catalogue vit dans `light.html` (`window.JeuxFlash`), avec les mêmes
    * dimensions et le même rognage que le bureau donne à `game-popup.html` —

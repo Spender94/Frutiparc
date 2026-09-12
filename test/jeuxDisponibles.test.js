@@ -133,14 +133,16 @@ test('Kaluga : CHALLENGE quand la partie compte, ESSAIS sinon', () => {
   assert.match(PLATEFORME, /if \(!this\.sid\) return false;/);
 });
 
-test('les deux jeux Flash y sont aussi, en fenêtre à part', () => {
+test('le jeu encore en Flash y est aussi, en fenêtre à part ; MotionBall a rejoint les portages', () => {
   const noms = listeMobile();
   for (const n of ['Burning Kiwi', 'Motion-Ball 2']) {
     assert.ok(noms.includes(n), n + ' manque à la feuille mobile');
   }
-  // Leurs gabarits sont ceux du catalogue serveur, au chiffre près.
+  // Son gabarit est celui du catalogue serveur, au chiffre près.
   assert.match(LIGHT, /\{ flash: "bkiwi", swf: "games\/burningKiwi\/burningkiwi\.swf", w: 350, h: 350,/);
-  assert.match(LIGHT, /\{ flash: "mb2", swf: "games\/motionBall2\/full\.swf", w: 550, h: 400,/);
+  // Motion-Ball 2 s'ouvre désormais en onglet (/mb2/), comme Kaluga.
+  assert.match(LIGHT, /\{ tab: "mb2", jaquette: "mb2", name: "Motion-Ball 2" \}/);
+  assert.doesNotMatch(LIGHT, /flash: "mb2"/);
   assert.match(SERVEUR, /props: 'w=350;h=350;m=i'/);
   // Le disque Flash de Kaluga reste au catalogue (le bureau Ruffle le joue
   // encore), avec son rognage d'époque.
@@ -164,8 +166,9 @@ test('leurs jaquettes sont celles du SWF, et elles existent', () => {
     assert.ok(fs.existsSync(p), 'jaquette manquante : ' + nom);
     assert.match(LIGHT, new RegExp('jaquette: "' + nom + '"'));
   }
-  // Motion-Ball 2 est un FD BLANC : `discType` 1 au catalogue.
-  assert.match(LIGHT, /jaquette: "mb2", anneau: "1"/);
+  // Motion-Ball 2 s'ouvre en onglet : sa jaquette est celle du disque, sans
+  // anneau de FD (le serveur fait la part du Fruit Défendu au classement).
+  assert.match(LIGHT, /tab: "mb2", jaquette: "mb2"/);
   for (const t of ['0', '1']) {
     assert.ok(fs.existsSync(path.join(ROOT, 'public/frutiz/sprites/disc_anneau_' + t + '.svg')),
       'anneau manquant : ' + t);
