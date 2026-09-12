@@ -227,6 +227,25 @@ comme l'encre est posée en `style=""`, basculer en pleine conversation
 **repeint les lignes déjà écrites** (`repeindreLesEncres`, d'où le
 `data-feutre` que porte chaque ligne teintée).
 
+**Le forum écrit à la même encre.** Un `[color=…]` du BBCode part lui aussi en
+`style=""` — hors de portée de la feuille de nuit —, et les feutres foncés y
+tombaient sous 1,9:1 sur le panneau sombre. `public/fb/index.html` porte donc
+le **calcul** du salon, pas une table de dix-sept : n'importe quelle couleur
+d'auteur y passe. Même `data-encre` que dans le chat, même repeinte à la
+bascule (le forum écoute `data-nuit` par un `MutationObserver`), et un test
+recalcule les dix-sept avec le générateur pour que la copie ne puisse pas
+dériver en silence. Une couleur d'auteur est **validée** avant d'entrer dans
+le `style` : sans quoi `[color=red;background:url(…)]` glissait une
+déclaration de plus.
+
+**Et le forum suit l'interrupteur même quand le light n'a pas la main.** Dans
+l'iframe, c'est le light qui lui tend la feuille au moment du réglage. Mais
+sur le bureau Frutiz le forum s'ouvre dans une **fenêtre de navigateur à
+lui** — et un onglet `/fb/` ouvert à part n'a pas davantage de light
+au-dessus. Le réglage vivant dans le même `localStorage`, le forum écoute
+l'événement `storage`, qui prévient justement les *autres* documents du
+domaine.
+
 **Ce que le nom de la propriété ne dit pas** vit dans `ROLES_FORCES` : une
 liste courte de sélecteurs dont la couleur ne joue pas le rôle que sa
 propriété annonce. Le *remplissage* d'une barre de progression est un
@@ -373,11 +392,28 @@ ses quartiers. Sa portée est donc réduite au premier groupe du SVG — les deu
 tracés des quartiers —, et les fruits n'y bougent pas d'un pixel. Roue sombre,
 fruits en couleur : ce qu'aucun filtre ne pouvait donner.
 
-Reste un cas qu'aucun outil ne sauve : **les deux dossiers du forum**
-(`folder_big.gif`, `folder_big_new.png`) sont des GIF **opaques** au vert
-`#D6F7B5`, et leur plaque court sur toute la hauteur de la page. Baisser leur
-luminosité rend le vert sombre, pas violet : ce sont les deux seuls dessins
-qu'on éteint vraiment. Un `folder_big-nuit.png` **sans fond** règle la question.
+Reste un cas qu'aucun outil ne sauve : **les cinq dessins d'époque du forum**
+(`folder_big.gif`, `folder_big_new.png`, `post.gif`, `reply.gif`, `ico.gif`)
+sont **opaques** — le vert `#D6F7B5` des dossiers, la pastille vert pâle des
+deux boutons, le carré blanc du fil d'Ariane sont peints *dans* l'image, pas
+derrière. Baisser leur luminosité rend le vert sombre, pas violet, et la
+plaque des dossiers courait sur toute la hauteur de la page. Chacun a donc son
+redessin **sans fond** (`folder_big-nuit.png`, `post-nuit.png`…) : le fruit
+garde ses couleurs comme tous les fruits du parc éteint, et la pastille des
+boutons prend la rose du thème. Même remède pour les deux **pictogrammes au
+trait** (`icon_minipost.gif`, `icon_latest_reply.gif`), noirs sur blanc : le
+filtre du châssis les assombrit, et le noir assombri reste noir. Mais un
+pictogramme s'écrit **dans l'encre des mots qu'il accompagne** : leurs
+variantes gardent la forme et l'anticrénelage en **alpha** (1 − clarté) et
+prennent la couleur du texte de nuit. Le papier devient donc *transparent*, et
+le panneau se voit au travers — qu'il soit le violet d'un message ou le rose
+d'un sondage, où un papier peint aurait fait tache.
+
+> `public/fb/forum_lu_dark.png` et `forum_new_dark.png` sont les **dessins
+> d'origine** des deux dossiers, en grand format et sur leur fond violet. Rien
+> ne les sert : `folder_big-nuit.png` et `folder_big_new-nuit.png` en sont
+> tirés (fond démêlé de l'alpha, puis réduction par moitiés jusqu'au 46 × 51
+> de l'original). On les garde comme source.
 
 ### Redessiner les assets : `nom-nuit.svg`
 
@@ -390,6 +426,11 @@ le JavaScript) et **échappe au filtre**. Aucune liste à tenir, aucun code à
 toucher : le fichier sur le disque *est* la déclaration. Deux règles en
 dessinant : même `viewBox` et mêmes dimensions que l'original, et les états
 `_up`/`_over`/`_down` vont par trois.
+
+**L'extension peut changer, et il le faut parfois.** Un dessin d'époque en GIF
+n'a qu'une transparence binaire : le redessiner « sans fond » demande un PNG.
+Le générateur apparie donc `folder_big-nuit.png` à `folder_big.gif` — il
+cherche le radical, pas le suffixe.
 
 ### Les fonds d'écran de nuit : `background_<nom>_dark.jpg`
 

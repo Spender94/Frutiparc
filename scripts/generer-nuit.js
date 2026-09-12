@@ -533,10 +533,20 @@ function variantesNuit(racine = P('public')) {
       if (e.isDirectory()) { marcher(complet); continue; }
       const m = /^(.*)-nuit(\.[A-Za-z0-9]+)$/.exec(e.name);
       if (!m) continue;
-      const jour = path.join(dir, m[1] + m[2]);
+      /*
+       * L'EXTENSION PEUT CHANGER, et il le faut parfois. Un dessin d'époque
+       * en GIF n'a qu'une transparence binaire : le redessiner « sans fond »
+       * demande un PNG. Les deux dossiers de rubrique du forum
+       * (`folder_big.gif`) sont exactement ce cas. On cherche donc l'original
+       * par son NOM DE BASE — à extension égale d'abord, puis parmi les
+       * formats d'image que le parc sert.
+       */
+      const jour = [m[2], '.svg', '.png', '.gif', '.jpg', '.jpeg', '.webp']
+        .map((ext) => path.join(dir, m[1] + ext))
+        .find((p) => p !== complet && fs.existsSync(p));
       // Une variante sans original ne remplace rien : on l'ignore plutôt que
       // d'émettre une règle qui ne s'appliquerait jamais.
-      if (!fs.existsSync(jour)) continue;
+      if (!jour) continue;
       const web = (p) => '/' + path.relative(racine, p).split(path.sep).join('/');
       /*
        * L'EMPREINTE DANS L'URL — parce que le cache du navigateur est

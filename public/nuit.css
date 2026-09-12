@@ -2345,6 +2345,20 @@ img[src$="/fb/fleche_droite.svg"] { content: url("/fb/fleche_droite-nuit.svg?v=6
 [style*="/fb/fleche_droite.svg"] { background-image: url("/fb/fleche_droite-nuit.svg?v=6715bacc") !important; filter: none !important; }
 img[src$="/fb/fleche_gauche.svg"] { content: url("/fb/fleche_gauche-nuit.svg?v=fad535b6"); filter: none; }
 [style*="/fb/fleche_gauche.svg"] { background-image: url("/fb/fleche_gauche-nuit.svg?v=fad535b6") !important; filter: none !important; }
+img[src$="/fb/folder_big.gif"] { content: url("/fb/folder_big-nuit.png?v=1dbb373d"); filter: none; }
+[style*="/fb/folder_big.gif"] { background-image: url("/fb/folder_big-nuit.png?v=1dbb373d") !important; filter: none !important; }
+img[src$="/fb/folder_big_new.png"] { content: url("/fb/folder_big_new-nuit.png?v=4cc206f1"); filter: none; }
+[style*="/fb/folder_big_new.png"] { background-image: url("/fb/folder_big_new-nuit.png?v=4cc206f1") !important; filter: none !important; }
+img[src$="/fb/ico.gif"] { content: url("/fb/ico-nuit.png?v=0306e313"); filter: none; }
+[style*="/fb/ico.gif"] { background-image: url("/fb/ico-nuit.png?v=0306e313") !important; filter: none !important; }
+img[src$="/fb/icon_latest_reply.gif"] { content: url("/fb/icon_latest_reply-nuit.png?v=0f9ad4e7"); filter: none; }
+[style*="/fb/icon_latest_reply.gif"] { background-image: url("/fb/icon_latest_reply-nuit.png?v=0f9ad4e7") !important; filter: none !important; }
+img[src$="/fb/icon_minipost.gif"] { content: url("/fb/icon_minipost-nuit.png?v=a8c38319"); filter: none; }
+[style*="/fb/icon_minipost.gif"] { background-image: url("/fb/icon_minipost-nuit.png?v=a8c38319") !important; filter: none !important; }
+img[src$="/fb/post.gif"] { content: url("/fb/post-nuit.png?v=c000e7d7"); filter: none; }
+[style*="/fb/post.gif"] { background-image: url("/fb/post-nuit.png?v=c000e7d7") !important; filter: none !important; }
+img[src$="/fb/reply.gif"] { content: url("/fb/reply-nuit.png?v=bec3ee87"); filter: none; }
+[style*="/fb/reply.gif"] { background-image: url("/fb/reply-nuit.png?v=bec3ee87") !important; filter: none !important; }
 img[src$="/fb/trophee.svg"] { content: url("/fb/trophee-nuit.svg?v=162da45b"); filter: none; }
 [style*="/fb/trophee.svg"] { background-image: url("/fb/trophee-nuit.svg?v=162da45b") !important; filter: none !important; }
 img[src$="/frutiz/sprites/butContact_down.svg"] { content: url("/frutiz/sprites/butContact_down-nuit.svg?v=73263381"); filter: none; }

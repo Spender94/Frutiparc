@@ -1479,14 +1479,52 @@
  * scripts/generer-nuit.js — d'où la place de ce script, juste après lui.
  */
 (function () {
-  var v; try { v = localStorage.getItem("fp_nuit"); } catch (e) { v = null; }
-  var auto = v === "auto" && window.matchMedia
-    && matchMedia("(prefers-color-scheme: dark)").matches;
-  if (v !== "1" && !auto) return;
-  document.documentElement.setAttribute("data-nuit", "1");
-  var l = document.createElement("link");
-  l.rel = "stylesheet"; l.href = "/fb/nuit.css"; l.id = "nuit-css";
-  document.head.appendChild(l);
+  function choix() {
+    var v; try { v = localStorage.getItem("fp_nuit"); } catch (e) { v = null; }
+    return (v === "1" || v === "auto") ? v : "0";
+  }
+  function allumee(v) {
+    return v === "1" || (v === "auto" && window.matchMedia
+      && matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+  function appliquer(v) {
+    var on = allumee(v);
+    var l = document.getElementById("nuit-css");
+    if (on && !l) {
+      l = document.createElement("link");
+      l.rel = "stylesheet"; l.href = "/fb/nuit.css"; l.id = "nuit-css";
+      document.head.appendChild(l);
+    }
+    // On ne la retire pas : « not all » la fait taire sans la jeter, et le
+    // retour au jour ne coûte pas un second chargement. (Même raison qu'au
+    // light, où `lien.disabled` faisait perdre la feuille à Chrome.)
+    if (l) l.media = on ? "all" : "not all";
+    if (on) document.documentElement.setAttribute("data-nuit", "1");
+    else document.documentElement.removeAttribute("data-nuit");
+  }
+  appliquer(choix());
+
+  /*
+   * QUAND LE LIGHT N'A PAS LA MAIN. Dans l'iframe, c'est lui qui tend la
+   * feuille au forum au moment où le joueur bascule. Mais sur le bureau
+   * Frutiz le forum s'ouvre dans une FENÊTRE DE NAVIGATEUR à lui
+   * (bureau-frutiz.js, `ouvrirForum`) — et un onglet /fb/ ouvert à part n'a
+   * pas davantage de light au-dessus. Le réglage vit dans le même
+   * localStorage ; l'événement `storage` prévient justement les AUTRES
+   * documents du domaine dès qu'il change. Le forum suit donc l'interrupteur
+   * du parc de partout, sans que personne ait à le lui passer.
+   */
+  window.addEventListener("storage", function (e) {
+    if (e.key && e.key !== "fp_nuit") return;
+    appliquer(choix());
+  });
+  // Et « Comme mon téléphone » suit le système qui bascule le soir.
+  if (window.matchMedia) {
+    var mq = matchMedia("(prefers-color-scheme: dark)");
+    var suivre = function () { if (choix() === "auto") appliquer("auto"); };
+    if (mq.addEventListener) mq.addEventListener("change", suivre);
+    else if (mq.addListener) mq.addListener(suivre);
+  }
 })();
 </script>
 </head>
@@ -2010,13 +2048,143 @@ function youtubeEmbedHtml(id) {
     + ' referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>';
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   L'ENCRE DES FEUTRES, LA NUIT — la même qu'au salon.
+
+   Un `[color=…]` du BBCode part en `style="color:…"` : un attribut, hors de
+   portée de la feuille de nuit. Le message reste donc écrit à l'encre du
+   jour sur le panneau sombre — et les feutres foncés du parc (Bleu foncé
+   #472899, Bleu pétrole foncé #264859, Marron foncé #66451E, Violet, Bordeaux)
+   y tombent sous 1,9 de contraste : illisibles. C'est ce que les joueurs
+   rapportaient.
+
+   Le salon a déjà la réponse (`penColorFor`, light.html) : on garde la TEINTE
+   du feutre, on ne remonte que sa clarté — juste assez pour tenir le rapport
+   du parc sur le panneau de nuit —, et l'on rend en saturation ce qu'on prend
+   en clarté, pour qu'un marron reste un marron. La différence ici : le forum
+   accepte N'IMPORTE QUELLE couleur, pas seulement les dix-sept du pot. On
+   porte donc le CALCUL, et non une table.
+
+   C'est celui de `encreDeNuit` (scripts/generer-nuit.js), au chiffre près —
+   un test le recalcule et compare (test/forumNuit.test.js). Le fond visé
+   reste celui du SALON : une encre doit s'écrire pareil dans un salon et sur
+   le forum. Le panneau du forum est un peu plus sombre que celui du salon, si
+   bien que l'encre y gagne encore un peu de contraste.
+   ══════════════════════════════════════════════════════════════════════════ */
+// Le panneau du salon de nuit, tel que la feuille de nuit l'écrit — en HSL,
+// et non en RVB : c'est la forme que le générateur produit, et c'est sur elle
+// qu'il mesure. Un test la recalcule : cette valeur se régénère, elle ne se
+// retouche pas à la main.
+var FOND_ENCRE_NUIT = [256, 30, 25.8];
+var ENCRE_RATIO_VISE = 5.5;      // le rapport du parc
+var ENCRE_COMPENSATION = 1;      // ce qu'on rend en saturation pour cent points de clarté pris
+
+function encreLuminance(r, g, b) {
+  var c = [r, g, b].map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function encreRgbVersHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  var max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  var l = (max + min) / 2, h = 0, s = 0;
+  if (d) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    if (max === r) h = 60 * (((g - b) / d) % 6);
+    else if (max === g) h = 60 * ((b - r) / d + 2);
+    else h = 60 * ((r - g) / d + 4);
+  }
+  return [(h + 360) % 360, s * 100, l * 100];
+}
+function encreHslVersRgb(h, s, l) {
+  s /= 100; l /= 100;
+  var c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+  var t = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x]
+    : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  // Non arrondi : la luminance se mesure sur la couleur exacte, comme dans le
+  // générateur — arrondir ici décalerait la clarté retenue d'un cran.
+  return t.map(function (v) { return (v + m) * 255; });
+}
+// Une couleur CSS quelconque → [r, g, b], par le navigateur lui-même (il sait
+// lire « red » comme « #F03 »). Rien à décoder à la main.
+var encreSonde = null;
+function encreVersRgb(css) {
+  if (!encreSonde) { encreSonde = document.createElement('span'); encreSonde.style.display = 'none'; document.body.appendChild(encreSonde); }
+  encreSonde.style.color = '';
+  encreSonde.style.color = css;
+  if (!encreSonde.style.color) return null;            // couleur refusée par le navigateur
+  var m = /rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(getComputedStyle(encreSonde).color);
+  return m ? [+m[1], +m[2], +m[3]] : null;
+}
+var encreCache = {};
+function encreDeNuit(css) {
+  if (encreCache[css] !== undefined) return encreCache[css];
+  var rgb = encreVersRgb(css);
+  if (!rgb) return (encreCache[css] = null);
+  var f = encreHslVersRgb(FOND_ENCRE_NUIT[0], FOND_ENCRE_NUIT[1], FOND_ENCRE_NUIT[2]);
+  var lumFond = encreLuminance(f[0], f[1], f[2]);
+  var j = encreRgbVersHsl(rgb[0], rgb[1], rgb[2]);
+  var h = Math.round(j[0]), sJour = j[1], lJour = j[2];
+  // Arrondie ici, et pas seulement à l'écriture : le rapport se mesure sur la
+  // couleur qui SORT, pas sur celle qu'on avait en tête avant de l'arrondir.
+  var sPour = function (l) { return Math.round(Math.min(100, sJour * (1 + ENCRE_COMPENSATION * (l - lJour) / 100))); };
+  var contraste = function (l) {
+    var c = encreHslVersRgb(h, sPour(l), l);
+    var lum = encreLuminance(c[0], c[1], c[2]);
+    return (Math.max(lum, lumFond) + 0.05) / (Math.min(lum, lumFond) + 0.05);
+  };
+  var l = lJour;
+  while (l < 100 && contraste(l) < ENCRE_RATIO_VISE) l += 0.5;
+  l = Math.min(100, l);
+  // La clarté s'écrit à la décimale près, comme la feuille de nuit l'écrit.
+  return (encreCache[css] = 'hsl(' + h + ' ' + sPour(l) + '% ' + (Math.round(l * 10) / 10) + '%)');
+}
+function laNuitEstTombee() {
+  return document.documentElement.getAttribute('data-nuit') === '1';
+}
+/* LA NUIT TOMBE SUR CE QUI EST DÉJÀ ÉCRIT. L'encre est posée en `style=""` au
+   moment du rendu : basculer en pleine lecture laisserait la page écrite à
+   l'encre du jour. On repeint donc — d'où le `data-encre` que chaque morceau
+   coloré porte, avec la couleur telle que l'auteur l'a écrite. */
+function repeindreLesEncres(racine) {
+  var nuit = laNuitEstTombee();
+  var els = (racine || document).querySelectorAll('[data-encre]');
+  for (var i = 0; i < els.length; i++) {
+    var brut = els[i].getAttribute('data-encre');
+    els[i].style.color = (nuit && encreDeNuit(brut)) || brut;
+  }
+}
+// Le light bascule la nuit en posant `data-nuit` sur notre <html> (il nous
+// tend la main plutôt que de nous recharger, pour ne pas perdre un brouillon).
+// On écoute donc l'attribut, ce qui vaut aussi hors du light.
+if (typeof MutationObserver === 'function') {
+  new MutationObserver(function () { repeindreLesEncres(); }).observe(
+    document.documentElement, { attributes: true, attributeFilter: ['data-nuit'] });
+}
+
+/* La couleur d'un `[color=…]`, si elle est présentable : un dièse et trois ou
+   six chiffres hexadécimaux, ou un nom de couleur CSS. Tout le reste est
+   refusé — le contenu est déjà échappé, donc on ne peut pas sortir de
+   l'attribut, mais « red;background:url(…) » y glisserait une déclaration de
+   plus, et ce n'est pas au message d'habiller la page. */
+function couleurBBCode(v) {
+  var s = String(v == null ? '' : v).trim();
+  return /^#[0-9A-Fa-f]{3}$|^#[0-9A-Fa-f]{6}$|^[A-Za-z]{3,20}$/.test(s) ? s : null;
+}
+
 function renderBBCode(s) {
   let out = escapeHtml(s);
   out = out.replace(/\[b\]([\s\S]*?)\[\/b\]/gi, '<strong>$1</strong>');
   out = out.replace(/\[i\]([\s\S]*?)\[\/i\]/gi, '<em>$1</em>');
   out = out.replace(/\[u\]([\s\S]*?)\[\/u\]/gi, '<u>$1</u>');
   out = out.replace(/\[s\]([\s\S]*?)\[\/s\]/gi, '<s>$1</s>');
-  out = out.replace(/\[color=([^\]]+)\]([\s\S]*?)\[\/color\]/gi, '<span style="color:$1">$2</span>');
+  // La couleur du jour reste en `style=""` — le thème de jour ne bouge pas
+  // d'un octet ; `data-encre` la garde pour la nuit (repeindreLesEncres).
+  out = out.replace(/\[color=([^\]]+)\]([\s\S]*?)\[\/color\]/gi, function (tout, c, txt) {
+    var col = couleurBBCode(c);
+    if (!col) return txt;
+    var nuit = laNuitEstTombee() && encreDeNuit(col);
+    return '<span class="bb-encre" data-encre="' + col + '" style="color:' + (nuit || col) + '">' + txt + '</span>';
+  });
   // Support both English [size=N] and French [taille=N], like the original.
   var sizeReplacer = function(m, sz, txt) {
     var px = Math.min(Math.max(parseInt(sz, 10), 8), 32);

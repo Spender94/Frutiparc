@@ -21,29 +21,41 @@
 /* Les pictos, l'orange du fil d'Ariane, les vignettes des messages gardent
    leurs couleurs, comme les fruits du bureau. */
 
-/* LES DOSSIERS DU FORUM FONT EXCEPTION, et pour une raison matérielle. Les
-   deux grandes icônes de rubrique (folder_big.gif et folder_big_new.png,
-   2001) sont OPAQUES : leur vert #D6F7B5 est peint dans l'image, pas
-   derrière. Les laisser telles quelles, c'est une bande verte qui court le
-   long des rubriques, seule tache de jour dans un forum éteint.
+/* LES DOSSIERS DU FORUM ONT LEUR DESSIN DE NUIT — le jour promis plus haut
+   est arrivé. Les deux grandes icônes de rubrique (folder_big.gif et
+   folder_big_new.png, 2001) sont OPAQUES : leur vert #D6F7B5 est peint dans
+   l'image, pas derrière, et leur plaque court sur toute la hauteur de la
+   page. On les a longtemps ÉTEINTES au filtre, faute de mieux — le fruit y
+   devenait une silhouette, et le vert un olive sombre plutôt qu'un violet.
 
-   Et la sourdine n'y suffit pas : baisser la luminosité rend le vert sombre,
-   pas violet — la bande restait, en olive. Ce sont donc les deux SEULS
-   dessins qu'on éteint vraiment, parce que leur plaque court sur toute la
-   hauteur de la page. Le fruit y devient une silhouette ; c'est le prix, et
-   il tombe le jour où `folder_big-nuit.png` existe — un PNG sans fond du
-   tout, où le problème ne se pose plus. */
-.folder-icon { filter: var(--nuit-chassis); }
+   `folder_big-nuit.png` et `folder_big_new-nuit.png` les remplacent : le même
+   fruit, sans fond du tout, posé au même endroit du même gabarit 46×51. Plus
+   de plaque, donc plus rien à cacher — et le fruit garde ses couleurs, comme
+   tous les fruits du parc éteint. La règle qui les remplace est écrite plus
+   haut par le générateur (« Les dessins de nuit déposés à côté des dessins
+   de jour »), avec son `filter: none`.
+
+   Même histoire, même remède pour les trois autres dessins opaques du forum
+   (`post.gif` et `reply.gif`, deux pastilles vert pâle ; `ico.gif`, un fruit
+   sur un carré blanc) et pour les deux pictogrammes au trait
+   (`icon_minipost.gif`, `icon_latest_reply.gif`) : plus rien ici ne passe par
+   le filtre du châssis. */
 
 /* LES DEUX BOUTONS DE LA MODALE DE SIGNATURE. Le forum n'habille ses boutons
    que dans `.editor-actions` — la barre verte sous la zone de saisie ; ceux
    de la modale sont ailleurs et portent donc le gris par défaut du navigateur,
    déjà de jour. On ne touche pas au thème de jour pour si peu, mais la nuit
-   ce gris est la seule tache claire de la modale : on l'éteint ici. */
+   ce gris est la seule tache claire de la modale : on l'habille ici.
+
+   Les trois couleurs ne sont pas choisies : ce sont celles que le générateur
+   donnerait au bouton natif de Chrome s'il était écrit dans la feuille —
+   convertir(239,239,239,'fond'), convertir(0,0,0,'texte') et
+   convertir(118,118,118,'bordure'). La modale reste donc dans le violet du
+   parc au lieu d'y poser un gris de plus. */
 .sig-modal .edit-btn {
-  background: hsl(15 5% 16%);
-  color: hsl(0 0% 88%);
-  border: 1px solid hsl(0 0% 32%);
+  background: hsl(256 30% 14.5%);
+  color: hsl(256 13% 84.5%);
+  border: 1px solid hsl(256 26% 52.1%);
 }
 
 /* Le forum flotte sur une page pleine : c'est là qu'on voit le ciel, et la

@@ -488,10 +488,20 @@ test('seul le châssis s’éteint : les dessins gardent leurs couleurs', () => 
   // VARIANTE DE NUIT, et c'est elle qui sert ; la règle CSS n'est qu'un filet.
   assert.match(NUIT, /\[style\*="\/frutiz\/sprites\/frutimandala-roue\.svg"\] \{ background-image: url\("\/frutiz\/sprites\/frutimandala-roue-nuit\.svg\?v=[0-9a-f]{8}"\) !important; filter: none !important; \}/);
   assert.match(NUIT, /#frutimandala \.md-art \{ filter: brightness\([^)]*\) saturate\([^)]*\); \}/);
-  // Les dossiers du forum, eux, sont des GIF opaques : baisser leur luminosité
-  // rendait le vert sombre, pas violet, et la bande restait — en olive. Ce
-  // sont les deux seuls dessins qu'on éteint vraiment.
-  assert.match(NUIT_FORUM, /\.folder-icon \{ filter: var\(--nuit-chassis\); \}/);
+  // LES DESSINS D'ÉPOQUE DU FORUM sont des GIF OPAQUES : baisser leur
+  // luminosité rendait le vert sombre, pas violet, et la bande restait — en
+  // olive. On les a longtemps éteints au filtre, faute de mieux. Chacun a
+  // maintenant son redessin sans fond : le fruit garde ses couleurs comme
+  // tous les fruits du parc, et plus un seul n'est fané.
+  assert.doesNotMatch(NUIT_FORUM, /\.folder-icon \{ filter: var\(--nuit-chassis\); \}/);
+  for (const [jour, nuit] of [['folder_big.gif', 'folder_big-nuit.png'],
+    ['folder_big_new.png', 'folder_big_new-nuit.png'], ['post.gif', 'post-nuit.png'],
+    ['reply.gif', 'reply-nuit.png'], ['ico.gif', 'ico-nuit.png'],
+    ['icon_latest_reply.gif', 'icon_latest_reply-nuit.png']]) {
+    assert.match(NUIT_FORUM, new RegExp('img\\[src\\$="/fb/' + jour.replace('.', '\\.')
+      + '"\\] \\{ content: url\\("/fb/' + nuit.replace('.', '\\.')
+      + '\\?v=[0-9a-f]{8}"\\); filter: none; \\}'), jour + ' a sa variante');
+  }
 });
 
 test('la bouille garde ses couleurs', () => {
