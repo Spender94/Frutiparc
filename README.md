@@ -415,6 +415,35 @@ d'un sondage, où un papier peint aurait fait tache.
 > tirés (fond démêlé de l'alpha, puis réduction par moitiés jusqu'au 46 × 51
 > de l'original). On les garde comme source.
 
+**Le téléphone a les siennes.** Les trois boutons de la barre du haut
+(`icone_feutres.png`, `icone_bouille.png`, `icone_liste.png`) et la pastille
+de défilement du tiroir des connectés (`bouton_up.png`) sont des PNG opaques
+où la plaque est peinte DANS l'image. De jour elle est blanche comme la barre
+et le tiroir qui la portent : on ne la voit pas, on ne voit que la tuile rose.
+La nuit, la barre s'éteignait et les plaques restaient — trois carrés blancs,
+deux dalles grises. Leurs redessins ne sont pas coloriés à la main : chaque
+pixel passe par `convertir`, avec une seule chose à déclarer, le RÔLE de
+chaque partie.
+
+| La partie | Son rôle | Ce qu'elle devient |
+|---|---|---|
+| la plaque, autour | `fond` | le blanc y tombe **très exactement** sur `hsl(256 30% 10%)` — la couleur que la conversion donne au `background: #fff` de la barre et du tiroir. La plaque redevient invisible, comme de jour |
+| la tuile rose | `fond` aussi | la prune des aplats : celle du bouton « ‹ » juste à côté, qui est le même rose de jour |
+| le dessin, dedans | `texte` (un pictogramme) ou `relief` (un reflet) | le blanc cassé du parc, comme le chevron du bouton « ‹ » ; un reflet, lui, ne se renverse pas — c'est la lumière sur un objet |
+
+Dedans et dehors ne se déclarent pas : on part des bords de l'image et l'on
+avance tant qu'on est dans le châssis ; le liseré rose de la tuile arrête la
+marée, et ce qu'elle n'a pas atteint est dedans.
+
+**Une icône de titre est un dessin.** `img.fen-ico` était dans la liste des
+fanés — la règle visait le petit rond de `icone_fenetre.svg`, mais elle porte
+sur la CLASSE, et le panneau Réglages met son propre dessin dessous. Or ce
+rond EST une orange, comme celles du parc. Même méprise pour la bille verte de
+la feuille Boutique, tenue pour une puce de liste : le light s'en sert comme
+icône de titre, à côté du coffre de l'Inventaire qui, lui, garde ses couleurs.
+Trois dessins réduits à un rond gris sur une barre presque noire ; ils sont
+sortis de la liste.
+
 ### Redessiner les assets : `nom-nuit.svg`
 
 Pour remplacer un dessin d'époque :

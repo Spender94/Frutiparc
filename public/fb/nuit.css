@@ -691,6 +691,8 @@ img[src$="/fb/Warning.svg"] { content: url("/fb/Warning-nuit.svg?v=ca72ef3d"); f
 [style*="/fb/Warning.svg"] { background-image: url("/fb/Warning-nuit.svg?v=ca72ef3d") !important; filter: none !important; }
 img[src$="/fb/WarningAlerte.svg"] { content: url("/fb/WarningAlerte-nuit.svg?v=94f569f1"); filter: none; }
 [style*="/fb/WarningAlerte.svg"] { background-image: url("/fb/WarningAlerte-nuit.svg?v=94f569f1") !important; filter: none !important; }
+img[src$="/fb/bouton_up.png"] { content: url("/fb/bouton_up-nuit.png?v=a3a920e1"); filter: none; }
+[style*="/fb/bouton_up.png"] { background-image: url("/fb/bouton_up-nuit.png?v=a3a920e1") !important; filter: none !important; }
 img[src$="/fb/cadre_bouille.svg"] { content: url("/fb/cadre_bouille-nuit.svg?v=002401f7"); filter: none; }
 [style*="/fb/cadre_bouille.svg"] { background-image: url("/fb/cadre_bouille-nuit.svg?v=002401f7") !important; filter: none !important; }
 img[src$="/fb/fleche_droite.svg"] { content: url("/fb/fleche_droite-nuit.svg?v=6715bacc"); filter: none; }
@@ -707,6 +709,12 @@ img[src$="/fb/icon_latest_reply.gif"] { content: url("/fb/icon_latest_reply-nuit
 [style*="/fb/icon_latest_reply.gif"] { background-image: url("/fb/icon_latest_reply-nuit.png?v=0f9ad4e7") !important; filter: none !important; }
 img[src$="/fb/icon_minipost.gif"] { content: url("/fb/icon_minipost-nuit.png?v=a8c38319"); filter: none; }
 [style*="/fb/icon_minipost.gif"] { background-image: url("/fb/icon_minipost-nuit.png?v=a8c38319") !important; filter: none !important; }
+img[src$="/fb/icone_bouille.png"] { content: url("/fb/icone_bouille-nuit.png?v=780bd1dd"); filter: none; }
+[style*="/fb/icone_bouille.png"] { background-image: url("/fb/icone_bouille-nuit.png?v=780bd1dd") !important; filter: none !important; }
+img[src$="/fb/icone_feutres.png"] { content: url("/fb/icone_feutres-nuit.png?v=4830a72b"); filter: none; }
+[style*="/fb/icone_feutres.png"] { background-image: url("/fb/icone_feutres-nuit.png?v=4830a72b") !important; filter: none !important; }
+img[src$="/fb/icone_liste.png"] { content: url("/fb/icone_liste-nuit.png?v=6829895a"); filter: none; }
+[style*="/fb/icone_liste.png"] { background-image: url("/fb/icone_liste-nuit.png?v=6829895a") !important; filter: none !important; }
 img[src$="/fb/post.gif"] { content: url("/fb/post-nuit.png?v=c000e7d7"); filter: none; }
 [style*="/fb/post.gif"] { background-image: url("/fb/post-nuit.png?v=c000e7d7") !important; filter: none !important; }
 img[src$="/fb/reply.gif"] { content: url("/fb/reply-nuit.png?v=bec3ee87"); filter: none; }

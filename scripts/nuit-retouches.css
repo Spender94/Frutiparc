@@ -54,21 +54,34 @@
    vraie variante de nuit (cf. le manifeste de scripts/nuit-svg.js) : les
    laisser ici aurait annulé le travail, puisque ces retouches sont recopiées
    APRÈS les règles engendrées et gagnent donc sur leur `filter: none`. */
-img.reflet, img.fen-ico,
-img[src$="/fb/reflet_bouille.svg"], img[src$="/fb/reflet_niveau.svg"],
-img[src$="/fb/icone_fenetre.svg"], img[src$="/fb/bouton_up.png"],
-img[src$="/fb/boutique/icone.png"] {
+img.reflet,
+img[src$="/fb/reflet_bouille.svg"], img[src$="/fb/reflet_niveau.svg"] {
   filter: var(--nuit-chassis);
 }
 /* Les deux FLÈCHES de pagination en sont sorties à leur tour : elles sont
    roses de part en part, et le rose est l'accent du thème. Elles ont
    maintenant leur variante (cf. le manifeste de scripts/nuit-svg.js). */
+/* LA PASTILLE DE DÉFILEMENT du tiroir des connectés en est sortie : le filtre
+   en faisait une DALLE GRISE, deux fois dans le tiroir — un aplat rose passé
+   au gris n'est plus un bouton. `bouton_up-nuit.png` prend sa place : la même
+   pastille, dans la prune des aplats du parc, sur la même plaque — devenue
+   celle du tiroir, donc invisible, comme de jour sur le blanc. */
+/* L'ICÔNE DE LA BARRE DE TITRE (`img.fen-ico`) en est sortie aussi, et c'était
+   une méprise : la règle visait le petit rond de `icone_fenetre.svg`, mais
+   elle porte sur la CLASSE — et le panneau Réglages met son propre dessin
+   dessous. Or `icone_fenetre.svg` EST une orange, comme celles du parc, et le
+   dessin des Réglages en est un autre : deux fruits qu'on éteignait, l'un et
+   l'autre réduits à un rond gris sur une barre presque noire, alors que la
+   même orange garde ses couleurs partout ailleurs. */
 /* Le DOSSIER de la boutique mobile en est sorti : c'est le même dossier ROSE
    que celui du bureau (shop-puce-rubrique.svg), et le rose est l'accent du
    thème, pas du châssis. Il était dans cette liste depuis avant qu'on décide
    que les dessins gardent leurs couleurs — le fané le rendait gris au milieu
-   d'une colonne de rubriques. La bille verte voisine, elle, reste : c'est une
-   PUCE de liste, sa couleur est du décor et le décor s'éteint. */
+   d'une colonne de rubriques. LA BILLE VERTE le suit aujourd'hui : on la
+   tenait pour une puce de liste, du décor donc, mais le light s'en sert comme
+   ICÔNE DE TITRE de la feuille Boutique — le même emploi que le coffre de
+   l'Inventaire et que l'orange des fenêtres, qui gardent leurs couleurs. Elle
+   était la seule des trois à sortir en gris. */
 
 /* LA ROUE DU FRUTIMANDALA A SA VARIANTE DE NUIT, et c'est elle qui sert :
    `frutimandala-roue-nuit.svg` (produit par scripts/nuit-roue-mandala.js)

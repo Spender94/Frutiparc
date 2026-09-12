@@ -1526,3 +1526,139 @@ test('une commande garde son rose aux deux extrêmes de clarté', () => {
   assert.ok([...acheter.matchAll(/hsl\((\d+) /g)].every((m) => Number(m[1]) === GEN.ROSE_NUIT),
     'le bouton « Acheter » doit rester entièrement rose');
 });
+
+// ── 5. Les plaques d'époque du téléphone ────────────────────────────────────
+
+/*
+ * Un BITMAP ne dit pas ce qu'il est. Trois boutons de la barre du haut, la
+ * pastille de défilement du tiroir des connectés : des PNG de 2001, opaques,
+ * dessinés pour un parc blanc. La feuille de nuit ne peut rien pour eux — ils
+ * arrivent par un <img>, et leur plaque blanche est peinte DANS l'image. La
+ * nuit tombée, ils restaient donc en plein jour : trois carrés blancs dans une
+ * barre éteinte, deux dalles grises dans le tiroir.
+ *
+ * Chacun a maintenant son redessin, et ce redessin n'est pas colorié à la
+ * main : chaque pixel est passé par `convertir`. Ce test le REFAIT sur les
+ * couleurs qui comptent, en relisant les pixels du PNG.
+ */
+function lirePngRgba(rel) {
+  const zlib = require('node:zlib');
+  const d = fs.readFileSync(path.join(ROOT, rel));
+  assert.strictEqual(d.slice(1, 4).toString('latin1'), 'PNG', rel + ' est un PNG');
+  let w = 0, h = 0, prof = 0, type = 0, entrelace = 0;
+  const morceaux = [];
+  for (let i = 8; i + 8 <= d.length;) {
+    const n = d.readUInt32BE(i), nom = d.slice(i + 4, i + 8).toString('latin1');
+    const corps = d.slice(i + 8, i + 8 + n);
+    if (nom === 'IHDR') {
+      w = corps.readUInt32BE(0); h = corps.readUInt32BE(4);
+      prof = corps[8]; type = corps[9]; entrelace = corps[12];
+    } else if (nom === 'IDAT') morceaux.push(corps);
+    else if (nom === 'IEND') break;
+    i += n + 12;
+  }
+  assert.deepStrictEqual([prof, type, entrelace], [8, 6, 0], rel + ' : 8 bits, RGBA, non entrelacé');
+  const brut = zlib.inflateSync(Buffer.concat(morceaux));
+  const px = Buffer.alloc(w * h * 4), pas = w * 4;
+  for (let y = 0; y < h; y++) {
+    const filtre = brut[y * (pas + 1)];
+    const ligne = brut.slice(y * (pas + 1) + 1, (y + 1) * (pas + 1));
+    for (let x = 0; x < pas; x++) {
+      const a = x >= 4 ? px[y * pas + x - 4] : 0;
+      const b = y > 0 ? px[(y - 1) * pas + x] : 0;
+      const c = (x >= 4 && y > 0) ? px[(y - 1) * pas + x - 4] : 0;
+      let v = ligne[x];
+      if (filtre === 1) v += a;
+      else if (filtre === 2) v += b;
+      else if (filtre === 3) v += (a + b) >> 1;
+      else if (filtre === 4) {
+        const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+        v += (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+      }
+      px[y * pas + x] = v & 0xff;
+    }
+  }
+  return { w, h, px };
+}
+const rgbDeHsl = (t) => {
+  const m = /hsl\(([\d.]+) ([\d.]+)% ([\d.]+)%/.exec(t).slice(1).map(Number);
+  return GEN.hslVersRgb(...m).map(Math.round);
+};
+
+test('les plaques d’époque du téléphone ont leur redessin de nuit', () => {
+  // Les gabarits sont ceux des originaux : le HTML donne la taille d'affichage,
+  // mais un redessin plus petit sortirait flou.
+  for (const [jour, nuit] of [['icone_feutres.png', 'icone_feutres-nuit.png'],
+    ['icone_bouille.png', 'icone_bouille-nuit.png'], ['icone_liste.png', 'icone_liste-nuit.png'],
+    ['bouton_up.png', 'bouton_up-nuit.png']]) {
+    const p = lirePngRgba('public/fb/' + nuit);
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/fb', jour)), jour + ' manque');
+    // La feuille les sert, et leur retire tout filtre.
+    assert.match(NUIT, new RegExp('img\\[src\\$="/fb/' + jour.replace('.', '\\.')
+      + '"\\] \\{ content: url\\("/fb/' + nuit.replace('.', '\\.')
+      + '\\?v=[0-9a-f]{8}"\\); filter: none; \\}'), jour + ' a sa variante');
+    assert.ok(p.w > 30 && p.h > 30, nuit + ' garde un gabarit utile');
+  }
+});
+
+test('la plaque blanche d’un bouton du téléphone devient la barre elle-même', () => {
+  /*
+   * C'EST LE POINT. De jour, la plaque est BLANCHE comme la barre et le tiroir
+   * qui la portent : on ne la voit pas, on ne voit que la tuile. La nuit, la
+   * barre et le tiroir sont `hsl(256 30% 10%)` — c'est ce que le générateur
+   * fait de leur `background: #fff`. Si le redessin passe son blanc par le
+   * même `convertir(255,255,255,'fond')`, la plaque redevient invisible ; à un
+   * point près, elle réapparaît en carré.
+   */
+  const attendu = rgbDeHsl(GEN.convertir(255, 255, 255, 1, 'fond'));
+  assert.match(NUIT, /#topbar \{\s*\n\s*background: hsl\(256 30% 10%\);/);
+  assert.match(NUIT, /#users-drawer \{\s*\n\s*background: hsl\(256 30% 10%\);/);
+  for (const nuit of ['icone_feutres-nuit.png', 'icone_bouille-nuit.png',
+    'icone_liste-nuit.png', 'bouton_up-nuit.png']) {
+    const p = lirePngRgba('public/fb/' + nuit);
+    // La plaque, c'est le POURTOUR : la tuile est au milieu et couvre plus de
+    // pixels qu'elle. On relève donc le cadre de trois pixels, et la couleur
+    // qui y domine.
+    const compte = new Map();
+    for (let y = 0; y < p.h; y++) {
+      for (let x = 0; x < p.w; x++) {
+        if (x > 2 && y > 2 && x < p.w - 3 && y < p.h - 3) continue;
+        const i = (y * p.w + x) * 4;
+        if (p.px[i + 3] < 250) continue;
+        const k = p.px[i] + ',' + p.px[i + 1] + ',' + p.px[i + 2];
+        compte.set(k, (compte.get(k) || 0) + 1);
+      }
+    }
+    const plaque = [...compte].sort((a, b) => b[1] - a[1])[0][0].split(',').map(Number);
+    assert.deepStrictEqual(plaque, attendu,
+      nuit + ' : la plaque devrait être ' + attendu.join(',') + ', elle est ' + plaque.join(','));
+  }
+});
+
+test('le filtre du châssis ne s’applique plus à ce qui a sa variante, ni aux dessins de titre', () => {
+  // La pastille de défilement a son redessin : la laisser dans la liste des
+  // fanés annulerait le travail (les retouches passent APRÈS les règles
+  // engendrées et gagnent sur leur `filter: none`).
+  assert.doesNotMatch(NUIT, /img\[src\$="\/fb\/bouton_up\.png"\][^{]*\{[^}]*--nuit-chassis/);
+  /*
+   * ET LES ICÔNES DE TITRE GARDENT LEURS COULEURS. `img.fen-ico` visait le
+   * petit rond de `icone_fenetre.svg` — qui est une ORANGE, comme celles du
+   * parc — mais la règle porte sur la CLASSE, et le panneau Réglages met son
+   * propre dessin dessous. Même méprise pour la bille de la feuille Boutique,
+   * tenue pour une puce de liste alors qu'elle est l'icône de titre, à côté du
+   * coffre de l'Inventaire qui, lui, garde ses couleurs.
+   */
+  // On regarde les SÉLECTEURS des règles qui posent le filtre, pas le texte de
+  // la feuille : les commentaires y nomment justement ce qui en est sorti, et
+  // on les retire donc d'abord.
+  const sansNotes = NUIT.replace(/\/\*[\s\S]*?\*\//g, '');
+  const fanes = [...sansNotes.matchAll(/(^|[;}])([^{};@]+)\{[^{}]*var\(--nuit-chassis\)[^{}]*\}/g)]
+    .map((m) => m[2]).join(' ');
+  assert.ok(fanes.includes('img.reflet'), 'le relevé des règles fanées doit les voir toutes');
+  for (const perdu of ['img.fen-ico', '/fb/icone_fenetre.svg', '/fb/boutique/icone.png']) {
+    assert.ok(!fanes.includes(perdu),
+      perdu + ' : un dessin de titre ne se fane pas, il garde ses couleurs');
+  }
+  // Les reflets, eux, restent : ce sont des SURFACES, la lumière sur un cadre.
+  assert.match(NUIT, /img\[src\$="\/fb\/reflet_bouille\.svg"\]/);
+});
