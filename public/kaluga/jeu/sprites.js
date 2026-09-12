@@ -78,6 +78,30 @@ class Phys extends Sprite {
   init() {
     super.init();
     this.linkList = [];
+    /*
+     * UN SPRITE NAÎT LIBRE — et ce n'est pas une évidence, c'est un CORRECTIF.
+     *
+     * `attachMovie(lien, nom, prof, mc)` sait prendre un AUTRE CLIP pour objet
+     * d'initialisation : il en recopie toutes les propriétés de jeu. Le jeu
+     * s'en sert pour faire passer un sprite d'un parent à l'autre — la pomme
+     * qui entre au panier, la fourmi qui grimpe sur une pomme
+     * (`Fruit.addAnt`), la fourmi qu'on en secoue (`Fruit.dropLastAnt`). Or
+     * `linkList` est refait ici, mais `parentLink` voyageait avec la copie.
+     *
+     * Le cas se voit sur la FOURMI, et il est d'époque (l'AS2 fait la même
+     * chose) : on lui accroche un fil, elle atteint une pomme avant qu'on l'ait
+     * lancée. La copie posée sur la pomme hérite du `parentLink` ; l'originale,
+     * tuée juste après, décroche bien le fil de la tzongre — mais la copie
+     * garde son pointeur, et la fourmi qu'on secoue de la pomme plus tard le
+     * garde à son tour. Pour `chercherDirect`, qui saute tout ce dont le
+     * `parentLink` n'est pas nul, cette fourmi-là est accrochée pour toujours :
+     * plus jamais de fil, où qu'elle aille.
+     *
+     * Le fil, lui, est bien coupé — c'est ce qu'on voit à l'écran. Il ne reste
+     * qu'un souvenir. On l'efface ici, à la naissance : un lien s'établit APRÈS
+     * (`onLink`), jamais par recopie.
+     */
+    this.parentLink = undefined;
     this.initDefault();
     this.power = 0;
     this.searchTimer = 0;

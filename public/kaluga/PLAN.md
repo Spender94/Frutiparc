@@ -429,11 +429,13 @@ Relevé au navigateur : avant, `CaterLaunch` reste à `masterStep 1`, waitList
 intacte ; après, `masterStep 2` (le panneau), puis `SquirrelLaunch` se lance et
 la waitList tombe à `['gamePlant']`.
 
-## Trois règles qui s'écartent de 2005 (à la demande, version light)
+## Cinq règles qui s'écartent de 2005 (à la demande, version light)
 
-Le portage reproduit le Flash au mot près ; ces trois points sont des
-**écarts voulus**, et il faut qu'on sache qu'ils sont là. Le disque Flash,
-lui, joue toujours les règles de 2005. `test/kalugaRegles.test.js` les épingle.
+Le portage reproduit le Flash au mot près ; ces cinq points sont des
+**écarts voulus**, et il faut qu'on sache qu'ils sont là. Les deux derniers
+corrigent des défauts d'époque — le jeu de 2005 les a aussi, et rien ne les
+défend. Le disque Flash, lui, joue toujours les règles de 2005.
+`test/kalugaRegles.test.js` les épingle.
 
 1. **Le fil : les fils directs d'abord, et des chaînes égales**
    (`Tzongre.search`, sprites.js). Le `search` d'époque — gardé tel quel dans
@@ -470,27 +472,72 @@ lui, joue toujours les règles de 2005. `test/kalugaRegles.test.js` les épingle
    prix (`prixOr`) — la moyenne des combos des **cinq dernières pommes**
    encaissées avant elle (`POMME_OR_FENETRE`), zéro pour une pomme sans
    figure, grappes exclues (elles vivent dans `removeScore`) — **multipliée
-   par dix**. Pas de plafond. Un seul plancher : elle ne vaut jamais moins
-   qu'une pomme ordinaire de son poids (`base`), parce qu'une pomme d'or à
-   zéro serait prise pour une panne. Le panier paie ce prix tel quel, son
-   propre combo s'ajoute ensuite comme pour toute pomme, et le panneau de fin
-   l'affiche.
+   par dix, et arrondie à la centaine** : un gros lot s'annonce en compte
+   rond, et « 2440 » n'en a pas l'air. Pas de plafond. Un seul plancher : elle
+   ne vaut jamais moins qu'une pomme ordinaire de son poids (`base`), parce
+   qu'une pomme d'or à zéro serait prise pour une panne. Le panier paie ce
+   prix tel quel, son propre combo s'ajoute ensuite comme pour toute pomme, et
+   le panneau de fin l'affiche.
 
-   Le **poids** ne porte plus que la taille : la même moyenne sur une rampe
-   d'un gramme pour cinq cents points, **bornée entre 1 et 2**
-   (`POMME_OR_POIDS`) — en bas parce qu'elle solde le kilo et n'en pèserait
-   qu'une miette, en haut parce qu'au-delà le fil ne la lève plus. Le rayon
-   d'un fruit valant douze fois son poids, bien jouer la fait **grossir** :
+   Le **poids** ne porte que la taille — et il la portait mal : sur une rampe
+   d'un gramme pour cinq cents points plafonnée à deux, une pomme d'or à 2440
+   pesait 1,49, soit **moins qu'une pomme ordinaire de fin de partie**. La
+   taille ne disait plus rien. La rampe est donc cinq fois plus raide (un
+   gramme pour **deux cents** points, `POMME_OR_RAMPE`) et monte jusqu'au plus
+   gros fruit que le panier sache prendre (`FRUIT_POIDS_MAX`, ci-dessous). Le
+   rayon d'un fruit valant douze fois son poids, bien jouer la fait
+   **grossir** — et la rend plus difficile à encaisser, ce qui est le prix du
+   gros lot :
 
    | les cinq dernières pommes | moyenne | valeur | poids | diamètre |
    |---|---|---|---|---|
    | aucun combo | 0 | 100 (une pomme) | 1,00 | 24 px |
-   | un dunk, quatre pommes nues | 20 | 200 | 1,04 | 25 px |
-   | 100 · 0 · 200 · 40 · 20 | 72 | 720 | 1,14 | 27 px |
-   | que des granites | 200 | 2000 | 1,40 | 34 px |
-   | virtuose | 500 | 5000 | 2,00 | 48 px |
+   | un dunk, quatre pommes nues | 20 | 200 | 1,10 | 26 px |
+   | 100 · 0 · 200 · 40 · 20 | 72 | 700 | 1,36 | 33 px |
+   | que des granites | 200 | 2000 | 2,00 | 48 px |
+   | virtuose | 320 et plus | 3200 et plus | 2,60 | 62 px |
 
-3. **Deux défis du jour : Grappe et Freestyle** (serveur, `kalugaAvecGrappe`,
+3. **Le poids des pommes est borné à ce que le panier encaisse**
+   (`FRUIT_POIDS_MAX`, `Classic.getFruitWeight`). Le rayon d'une pomme vaut
+   douze fois son poids, et `Fruit.update` ne l'encaisse que si elle tient
+   TOUT ENTIÈRE dans l'ouverture (`openRay` = 42) : la fenêtre de tir vaut
+   `2 · (42 − 12·poids)` pixels et se referme vite.
+
+   | poids | points | rayon | fenêtre de tir |
+   |---|---|---|---|
+   | 2,0 | 200 | 24 px | 36 px |
+   | 2,6 | 260 | 31 px | **21 px** |
+   | 3,0 | 300 | 36 px | 12 px |
+   | 3,4 | 340 | 41 px | 2,4 px |
+   | 3,5 | 350 | 42 px | aucune — elle ne peut plus entrer |
+
+   Or le tirage d'époque (`0,5 + random(10 + niveau)/10`) n'a pas de plafond :
+   au niveau 24 il sort des pommes de 3,4, et au-delà des pommes qui ne
+   peuvent littéralement plus entrer. Le joueur en voyait passer qu'il ne
+   pouvait pas attraper — c'est un défaut de 2005 (l'AS2 fait le même tirage),
+   mais rien ne le défend. On ne touche pas au tirage : on arrête de
+   l'**élargir** une fois que la plus lourde pomme qu'il peut sortir atteint
+   le maximum (`FRUIT_ETENDUE_MAX`). La loi reste uniforme, le niveau alourdit
+   toujours les pommes, simplement il cesse de le faire au douzième.
+
+4. **Une fourmi qui rejoint une pomme avec son fil peut en recevoir un autre**
+   (`Phys.init`). `attachMovie(lien, nom, prof, mc)` sait prendre un CLIP pour
+   objet d'initialisation et en recopie toutes les propriétés de jeu : le jeu
+   s'en sert pour faire passer un sprite d'un parent à l'autre — la pomme qui
+   entre au panier, la fourmi qui grimpe sur une pomme (`Fruit.addAnt`), la
+   fourmi qu'on en secoue (`Fruit.dropLastAnt`). `linkList` est refait à
+   l'init, mais **`parentLink` voyageait avec la copie**.
+
+   Le cas se voit sur la fourmi : on lui accroche un fil, elle atteint une
+   pomme avant qu'on l'ait lancée. Le fil se coupe — c'est ce qu'on voit —,
+   mais la copie posée sur la pomme hérite du pointeur, et la fourmi qu'on
+   secoue plus tard le garde à son tour. Pour `chercherDirect`, qui saute tout
+   ce dont le `parentLink` n'est pas nul, cette fourmi-là est accrochée pour
+   toujours : plus jamais de fil, où qu'elle aille. Défaut d'époque lui aussi.
+   `Phys.init` efface donc le souvenir : **un sprite naît libre**, un lien
+   s'établit après (`onLink`), jamais par recopie.
+
+5. **Deux défis du jour : Grappe et Freestyle** (serveur, `kalugaAvecGrappe`,
    `routeRankingForSave`). Dès qu'une grappe atteint **la taille 8** —
    l'Atomique, 2560 points —, la partie va au tableau Grappe (`kaluga_classic`,
    celui d'avant le partage) ; sinon au Freestyle

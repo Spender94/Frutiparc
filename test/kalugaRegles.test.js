@@ -12,12 +12,20 @@
  *      tzongre impose maintenant son ordre — les pommes, elles, cherchent
  *      exactement comme avant.
  *   2. LA POMME D'OR vaut dix fois la moyenne des combos des cinq dernières
- *      pommes encaissées avant elle, grappes exclues, sans plafond — là où
- *      2005 payait dix fois un poids tiré au sort, le reste du kilo. Son
- *      poids, borné entre un et deux, ne dit plus que sa taille.
- *   3. LE TÉMOIN DE GRAPPE : le portage envoie aussi la PLUS GROSSE grappe
+ *      pommes encaissées avant elle, grappes exclues, ARRONDIS À LA CENTAINE
+ *      et sans plafond — là où 2005 payait dix fois un poids tiré au sort, le
+ *      reste du kilo. Son poids ne dit plus que sa taille, et il la dit pour
+ *      de bon : jusqu'au plus gros fruit que le panier sache prendre.
+ *   3. LE POIDS DES POMMES EST BORNÉ à ce que le panier encaisse. Le tirage
+ *      d'époque n'avait pas de plafond et sortait, en fin de partie, des
+ *      pommes trop larges pour l'ouverture : le joueur en voyait passer qu'il
+ *      ne pouvait pas attraper.
+ *   4. LE TÉMOIN DE GRAPPE : le portage envoie aussi la PLUS GROSSE grappe
  *      (« tz:g:max »), pour que le partage Grappe / Freestyle se lise à la
  *      taille près (le OU du disque Flash ne sait pas dire « sept »).
+ *   5. LE FIL DE LA FOURMI : une fourmi qui rejoignait une pomme avec son fil
+ *      restait « accrochée » pour toujours et n'en recevait plus jamais. Le
+ *      défaut est d'époque (le même AS2) ; on le corrige.
  */
 'use strict';
 
@@ -162,16 +170,28 @@ test('l’équilibre, simulé : huit pommes font 4 + 4 avec un jaune, 3-3-2 avec
 // `Classic.noterCombo` et `Classic.pommeOr`, sortis du fichier et rendus
 // appelables : on veut les nombres, pas seulement la forme du code.
 function classic() {
+  /*
+   * Une constante du fichier, TELLE QU'ELLE Y EST ÉCRITE — et certaines se
+   * disent l'une par l'autre (`POMME_OR_POIDS = [1, FRUIT_POIDS_MAX]`). On ne
+   * la lit donc pas comme du JSON : on l'évalue, avec celles d'avant sous la
+   * main. Le lien qui les tient est justement ce qu'on veut éprouver.
+   */
+  const vues = {};
   const constante = (nom) => {
+    if (nom in vues) return vues[nom];
     const m = new RegExp('const ' + nom + ' = ([^;]*);').exec(MODES);
     assert.ok(m, 'const ' + nom);
-    return JSON.parse(m[1]);
+    const noms = Object.keys(vues);
+    vues[nom] = new Function(...noms, 'return (' + m[1] + ');')(...noms.map((k) => vues[k]));
+    return vues[nom];
   };
+  constante('FRUIT_POIDS_MAX');
   const fabrique = (nom) => {
     const src = new RegExp('\\n  ' + nom + '\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}').exec(MODES);
     assert.ok(src, 'Classic.' + nom);
-    return new Function('POMME_OR_POIDS', 'POMME_OR_FENETRE', 'return function ' + src[0].trim() + ';')(
-      constante('POMME_OR_POIDS'), constante('POMME_OR_FENETRE'));
+    return new Function('POMME_OR_POIDS', 'POMME_OR_FENETRE', 'POMME_OR_RAMPE',
+      'return function ' + src[0].trim() + ';')(
+      constante('POMME_OR_POIDS'), constante('POMME_OR_FENETRE'), constante('POMME_OR_RAMPE'));
   };
   return { combosRecents: [], noterCombo: fabrique('noterCombo'), pommeOr: fabrique('pommeOr') };
 }
@@ -186,8 +206,11 @@ test('la pomme d’or vaut dix fois la moyenne des combos des cinq dernières po
   // Que des granites (200) : deux mille — ce que la rampe au poids ne rendait
   // qu'à 1400.
   assert.equal(pommeOr([200, 200, 200, 200, 200]).prixOr, 2000);
-  // Une pomme sans figure compte pour zéro : elle pèse sur la moyenne.
-  assert.equal(pommeOr([100, 0, 200, 40, 20]).prixOr, 720);
+  // Une pomme sans figure compte pour zéro : elle pèse sur la moyenne. Et le
+  // prix s'arrondit à la CENTAINE — un gros lot s'annonce en compte rond.
+  assert.equal(pommeOr([100, 0, 200, 40, 20]).prixOr, 700);
+  assert.equal(pommeOr([244, 244, 244, 244, 244]).prixOr, 2400, '2440 s’annonçait mal');
+  assert.equal(pommeOr([266, 266, 266, 266, 266]).prixOr, 2700, 'et l’arrondi va au plus proche');
   // Seules les cinq dernières comptent : deux corbeaux en début de partie ne
   // valent plus rien à la fin, et cinq pommes nues effacent tout.
   assert.equal(pommeOr([760, 760, 100, 100, 100, 100, 100]).prixOr, 1000);
@@ -257,27 +280,105 @@ test('le poids ne porte plus que la taille : bornée, elle grossit avec le jeu',
   // Sans un seul combo, la plus petite : une pomme de un, 24 px de diamètre.
   assert.equal(pommeOr([]).weight, 1);
   assert.equal(pommeOr([0, 0, 0, 0, 0]).weight, 1);
-  // Un gramme pour cinq cents points de moyenne, et un plafond de deux —
-  // au-delà le fil ne la lève plus.
-  assert.equal(pommeOr([200, 200, 200, 200, 200]).weight, 1.4);
-  assert.equal(pommeOr([500, 500, 500, 500, 500]).weight, 2);
-  assert.equal(pommeOr([760, 760, 760, 760, 760]).weight, 2, 'le plafond tient');
+  // Un gramme pour DEUX CENTS points de moyenne — cinq fois la pente d'avant,
+  // parce qu'à l'ancienne une pomme d'or à 2440 pesait 1,49 : moins qu'une
+  // pomme ordinaire de fin de partie, et la taille ne disait plus rien.
+  assert.equal(pommeOr([200, 200, 200, 200, 200]).weight, 2);
+  assert.equal(Math.round(pommeOr([244, 244, 244, 244, 244]).weight * 100) / 100, 2.22);
+  // Et le plafond est celui du panier : la plus grosse pomme qu'il encaisse.
+  const max = JSON.parse(/const FRUIT_POIDS_MAX = ([^;]*);/.exec(MODES)[1]);
+  assert.match(MODES, /const POMME_OR_POIDS = \[1, FRUIT_POIDS_MAX\];/);
+  assert.equal(pommeOr([500, 500, 500, 500, 500]).weight, max, 'le plafond tient');
+  assert.equal(pommeOr([760, 760, 760, 760, 760]).weight, max);
   assert.match(SPRITES, /this\.setRay\(this\.weight \* 12\);/, 'rayon = 12 × poids');
-  assert.deepEqual([pommeOr([]).weight * 24, pommeOr([500, 500, 500, 500, 500]).weight * 24], [24, 48]);
+  assert.deepEqual([pommeOr([]).weight * 24, pommeOr([200, 200, 200, 200, 200]).weight * 24], [24, 48]);
   // Plus la pomme est grosse, plus elle vaut : la taille ne ment jamais sur
   // le sens, même si le prix, lui, n'a pas de plafond.
   let precedent = pommeOr([]);
   for (const m of [20, 72, 120, 200, 266, 500, 760]) {
     const p = pommeOr([m, m, m, m, m]);
     assert.ok(p.prixOr > precedent.prixOr && p.weight >= precedent.weight, 'à ' + m + ' de moyenne');
-    assert.equal(p.prixOr, m * 10);
+    assert.equal(p.prixOr, Math.round(m * 10 / 100) * 100);
     precedent = p;
   }
   // Et la pomme d'or est toujours d'or.
   assert.equal(pommeOr([]).flGold, true);
 });
 
-// ── 3. Le témoin de grappe ─────────────────────────────────────────────────
+// ── 3. Le poids des pommes, et la bouche du panier ─────────────────────────
+
+/*
+ * LE PANIER N'AVALE QUE CE QUI TIENT DANS SON OUVERTURE. `Fruit.update` ne
+ * l'encaisse que si la pomme y tient TOUT ENTIÈRE — `x - r >= -openRay` et
+ * `x + r <= openRay` —, si bien que la fenêtre de tir vaut
+ * `2 · (openRay − 12·poids)` pixels et se referme à mesure que la pomme
+ * grossit. Le tirage d'époque n'avait pas de plafond : en fin de partie il
+ * sortait des pommes de 3,4 dont la fenêtre faisait 2,4 px, et des pommes de
+ * 3,5 qui ne pouvaient littéralement plus entrer.
+ */
+test('aucune pomme n’est trop large pour le panier — et il lui reste de quoi viser', () => {
+  const openRay = Number(/this\.ray = 90; this\.openLevel = 53; this\.openRay = (\d+);/.exec(SPRITES)[1]);
+  assert.equal(openRay, 42, 'l’ouverture du panier, telle quelle');
+  const max = JSON.parse(/const FRUIT_POIDS_MAX = ([^;]*);/.exec(MODES)[1]);
+  // La condition d'encaissement, au mot près — c'est elle qui fixe le plafond.
+  assert.match(methode(SPRITES, 'Fruit extends Phys', 'update'),
+    /if \(x - r >= -pr && x \+ r <= pr && this\.y \+ r > niv && !this\.game\.flEndGame\)/);
+  // La plus grosse pomme laisse une vraie fenêtre : vingt pixels au moins.
+  const fenetre = 2 * (openRay - max * 12);
+  assert.ok(fenetre >= 20, 'la plus grosse pomme ne laisse que ' + fenetre.toFixed(1) + ' px');
+
+  // Et le tirage ne peut pas la dépasser, à aucun niveau. On le rejoue tel
+  // qu'il est écrit, avec un `random` qui rend toujours son plus grand tirage.
+  const g = methode(MODES, 'Classic extends J.Game', 'getFruitWeight');
+  const etendue = /const FRUIT_ETENDUE_MAX = ([^;]*);/.exec(MODES)[1];
+  const tirer = new Function('random', 'FRUIT_ETENDUE_MAX', 'return function (niveau) {'
+    + 'const this_ = { level: niveau, kilo: 0, kiloMax: 1000 };'
+    + 'return (function () {' + g + '}).call(this_); };')(
+    (n) => n - 1, new Function('FRUIT_POIDS_MAX', 'return (' + etendue + ');')(max));
+  for (let niveau = 0; niveau <= 60; niveau++) {
+    const w = Math.round(tirer(niveau) * 1000) / 1000;
+    assert.ok(w <= max, 'au niveau ' + niveau + ' le tirage sort ' + w);
+  }
+  // Le niveau alourdit toujours les pommes — il cesse seulement de le faire
+  // une fois le maximum atteint.
+  assert.ok(tirer(6) > tirer(0), 'le niveau compte encore');
+  assert.equal(tirer(12), max, 'et il touche le plafond au douzième');
+});
+
+// ── 4. Le fil de la fourmi ─────────────────────────────────────────────────
+
+test('une fourmi qui rejoint une pomme avec son fil peut en recevoir un autre', () => {
+  /*
+   * `attachMovie(lien, nom, prof, mc)` sait prendre un CLIP pour objet
+   * d'initialisation et en recopie toutes les propriétés de jeu. Le jeu s'en
+   * sert pour faire passer un sprite d'un parent à l'autre : `Fruit.addAnt`
+   * pose la fourmi sur la pomme, `Fruit.dropLastAnt` l'en secoue. `linkList`
+   * est refait à l'init, mais `parentLink` voyageait avec la copie — et
+   * `chercherDirect` saute tout ce dont le `parentLink` n'est pas nul.
+   */
+  assert.match(methode(SPRITES, 'Fruit extends Phys', 'addAnt'),
+    /this\.attachMovie\('spBadsAnt', 'ant_' \+ d, 10 \+ d, mc\);/, 'la recopie d’époque est là');
+  assert.match(methode(SPRITES, 'Fruit extends Phys', 'dropLastAnt'),
+    /const mc = this\.game\.newAnt\(mcf\);/, 'et la seconde aussi');
+  // La cure : un sprite naît libre. `init` efface le souvenir du fil.
+  const i = methode(SPRITES, 'Phys extends Sprite', 'init');
+  assert.match(i, /this\.linkList = \[\];/);
+  assert.match(i, /this\.parentLink = undefined;/);
+  // Et l'on refait le chemin : fourmi accrochée → pomme → secouée → libre.
+  const initPhys = new Function('sprite', 'sprite.linkList = []; sprite.parentLink = undefined; return sprite;');
+  const copier = (mc) => initPhys(Object.assign({}, mc));   // K.finaliser, puis constructeur → init
+  const tz = initPhys({ linkList: [] });
+  const fourmi = initPhys({});
+  tz.linkList.push(fourmi); fourmi.parentLink = tz;          // un fil part
+  const surLaPomme = copier(fourmi);                          // Fruit.addAnt
+  const libre = copier(surLaPomme);                           // Fruit.dropLastAnt
+  assert.equal(libre.parentLink, undefined,
+    'la fourmi libérée se croyait encore accrochée : plus jamais de fil');
+  // La règle qui la rejetait, pour mémoire.
+  assert.match(methode(SPRITES, 'Phys extends Sprite', 'chercherDirect'), /if \(mc\.parentLink == null &&/);
+});
+
+// ── 5. Le témoin de grappe ─────────────────────────────────────────────────
 
 test('le portage envoie la plus grosse grappe, en troisième champ', () => {
   const r = methode(SPRITES, 'Panier extends Phys', 'removeScore');

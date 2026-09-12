@@ -17,17 +17,56 @@ const Key = K.Key;
 const temps = (t) => J.MTNumber.getTimeStr(t, "'", "''");
 
 /*
+ * CE QU'UNE POMME PEUT PESER — parce que le panier, lui, a une bouche.
+ *
+ * Le rayon d'une pomme vaut DOUZE FOIS son poids (`Fruit.init`), et le panier
+ * ne l'encaisse que si elle tient TOUT ENTIÈRE dans son ouverture
+ * (`Fruit.update` : `x - r >= -openRay && x + r <= openRay`, avec openRay
+ * = 42). La fenêtre de tir fait donc `2 · (42 − 12·poids)` pixels, et elle se
+ * referme vite :
+ *
+ *   | poids | points | rayon | fenêtre |
+ *   |---|---|---|---|
+ *   | 2,0 | 200 | 24 px | 36 px |
+ *   | 2,6 | 260 | 31 px | 21 px |
+ *   | 3,0 | 300 | 36 px | 12 px |
+ *   | 3,4 | 340 | 41 px | 2,4 px |
+ *   | 3,5 | 350 | 42 px | AUCUNE — elle ne peut plus entrer |
+ *
+ * Or le tirage d'époque (`0,5 + random(10 + niveau)/10`) n'a pas de plafond :
+ * au niveau 24 il sort des pommes à 3,4, et le joueur en voit passer qu'il ne
+ * peut pas attraper. C'est un défaut de 2005 (l'AS2 fait le même tirage), pas
+ * une faute du portage — mais rien ne le défend, alors on le corrige : on ne
+ * touche pas au tirage, on arrête de l'ÉLARGIR une fois que la plus lourde
+ * pomme qu'il peut sortir atteint le maximum. La loi reste uniforme, le niveau
+ * alourdit toujours les pommes, simplement il cesse de le faire au niveau 12.
+ */
+const FRUIT_POIDS_MAX = 2.6;
+// `random(n)` rend 0 à n−1 : la plus lourde vaut donc 0,5 + (n−1)/10.
+const FRUIT_ETENDUE_MAX = Math.round((FRUIT_POIDS_MAX - 0.5) * 10) + 1;
+
+/*
  * LA POMME D'OR — ce qu'elle vaut, et ce qu'elle pèse.
  *
  * Elle vaut DIX FOIS LA MOYENNE DES COMBOS DES CINQ DERNIÈRES POMMES
- * encaissées avant son arrivée (`POMME_OR_FENETRE`), sans plafond. Son poids
- * ne dit que sa TAILLE (rayon = douze fois le poids) : il suit la même
- * moyenne, borné entre un et deux (`POMME_OR_POIDS`) — en bas parce qu'elle
- * solde le kilo et n'en pèserait qu'une miette, en haut parce qu'au-delà le
- * fil ne la lève plus.
+ * encaissées avant son arrivée (`POMME_OR_FENETRE`), ARRONDIS À LA CENTAINE :
+ * une pomme d'or est un gros lot, elle s'annonce en compte rond. Pas de
+ * plafond.
+ *
+ * Son poids ne dit que sa TAILLE. Il suivait la même moyenne sur une rampe
+ * d'un gramme pour cinq cents points, bornée à deux — et la taille ne disait
+ * plus rien : une pomme d'or à 2440 pesait 1,49, moins qu'une pomme ordinaire
+ * de fin de partie. La rampe est maintenant CINQ FOIS plus raide (un gramme
+ * pour deux cents points) et monte jusqu'au plus gros fruit que le panier
+ * sache prendre : une partie jouée aux granites (moyenne 200) donne une pomme
+ * d'or au maximum, une partie sans figure la laisse à la taille d'une pomme.
+ * Elle est donc plus difficile à encaisser quand elle vaut cher — c'est le
+ * prix du gros lot, et il est le même que celui de la plus grosse pomme
+ * ordinaire.
  */
 const POMME_OR_FENETRE = 5;
-const POMME_OR_POIDS = [1, 2];
+const POMME_OR_POIDS = [1, FRUIT_POIDS_MAX];
+const POMME_OR_RAMPE = 200;
 
 /*
  * LE SOUFFLE ENTRE DEUX CORBEAUX, aux Épreuves : huit secondes environ (40
@@ -148,10 +187,22 @@ class Classic extends J.Game {
    *
    * Maintenant : la MOYENNE DES COMBOS DES CINQ DERNIÈRES POMMES encaissées
    * avant qu'elle n'arrive (zéro pour une pomme sans figure, grappes exclues),
-   * multipliée par dix. C'est `prixOr`, que `Panier.pointsPommeOr` paie tel
-   * quel — jamais moins qu'une pomme ordinaire, et sans plafond. Le POIDS, lui,
-   * ne porte plus que la taille : la même moyenne sur une rampe d'un gramme
-   * pour cinq cents points, bornée — bien jouer la fait grossir.
+   * multipliée par dix, ARRONDIE À LA CENTAINE — un gros lot s'annonce en
+   * compte rond, et « 2440 » n'en a pas l'air. C'est `prixOr`, que
+   * `Panier.pointsPommeOr` paie tel quel : jamais moins qu'une pomme ordinaire
+   * (le seul plancher), et sans plafond.
+   *
+   * Le POIDS ne porte que la taille, et il la porte maintenant pour de bon :
+   * un gramme pour deux cents points de moyenne, borné en bas à une pomme
+   * pleine et en haut au plus gros fruit que le panier sache prendre.
+   *
+   *   | les cinq dernières pommes | moyenne | valeur | poids | diamètre |
+   *   |---|---|---|---|---|
+   *   | aucun combo | 0 | 100 (une pomme) | 1,00 | 24 px |
+   *   | un dunk, quatre pommes nues | 20 | 200 | 1,10 | 26 px |
+   *   | 100 · 0 · 200 · 40 · 20 | 72 | 700 | 1,36 | 33 px |
+   *   | que des granites | 200 | 2000 | 2,00 | 48 px |
+   *   | virtuose | 320 et plus | 3200 et plus | 2,60 | 62 px |
    */
   noterCombo(b) {
     const recents = this.combosRecents || (this.combosRecents = []);
@@ -161,15 +212,19 @@ class Classic extends J.Game {
   pommeOr() {
     const recents = this.combosRecents || [];
     const moyenne = recents.length ? recents.reduce((s, b) => s + b, 0) / recents.length : 0;
-    const poids = POMME_OR_POIDS[0] + moyenne / 500;
+    const poids = POMME_OR_POIDS[0] + moyenne / POMME_OR_RAMPE;
     return {
       flGold: true,
-      prixOr: Math.round(moyenne * 10),
+      prixOr: Math.round(moyenne * 10 / 100) * 100,
       weight: Math.max(POMME_OR_POIDS[0], Math.min(POMME_OR_POIDS[1], poids)),
     };
   }
   getFruitWeight() {
-    let w = 0.5 + random(10 + this.level) / 10;
+    // Le tirage d'époque, à ceci près que son ÉTENDUE cesse de croître une
+    // fois la plus lourde pomme arrivée au maximum que le panier encaisse
+    // (cf. FRUIT_POIDS_MAX) : au-delà on distribuait des pommes que personne
+    // ne pouvait rattraper.
+    let w = 0.5 + random(Math.min(10 + this.level, FRUIT_ETENDUE_MAX)) / 10;
     const dif = this.kiloMax - (this.kilo + w);
     if (dif < 0.5) { w = this.kiloMax - this.kilo; this.flFruitFalling = false; }
     this.kilo += w;
