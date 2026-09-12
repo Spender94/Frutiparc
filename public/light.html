@@ -3721,6 +3721,9 @@
     // disque descend dans le tiroir — `frusionMng.launchDisc` puis
     // `FPSlotList.addSlot`, côté bureau d'époque.
     window.activateTab = activateTab;
+    // Et le routeur des liens profonds : le bureau s'en sert pour mener AU
+    // SUJET quand une citation reçue ouvre le forum.
+    window.routerOuverture = routerOuverture;
     // Le bureau desktop refait la fenêtre « Salons publics » de main.swf : il
     // lui faut la liste des salons publics avec leur affluence, le salon
     // courant, et de quoi en rejoindre un. Les discussions privées n'y sont
@@ -3928,20 +3931,14 @@
     }
     if (ouvre === "mail" || ouvre === "evenements" || ouvre === "historique") { activateTab(ouvre); return; }
     // Une citation sur le forum mène AU SUJET : on (re)charge le cadre avec le
-    // sujet demandé — le forum s'ouvre dessus au lieu de l'accueil. Sur le
-    // bureau, où le forum vit dans SA fenêtre de navigateur, c'est elle qu'on
-    // amène sur le sujet.
+    // sujet demandé — le forum s'ouvre dessus au lieu de l'accueil. Et s'il
+    // est DÉPORTÉ, c'est sa fenêtre qu'on amène sur le sujet : le ramener dans
+    // la page ferait deux lectures.
     if (ouvre === "forum" && sujet) {
-      if (window.BureauFrutiz && BureauFrutiz.actif() && BureauFrutiz.ouvrirForum) {
-        BureauFrutiz.ouvrirForum(sujet);
-        return;
-      }
+      if (window.ForumPorte && ForumPorte.ouverte()) { ForumPorte.viser(sujet); return; }
       activateTab("forum"); openMenu(false);
       var fr = $("#forum-frame");
-      if (fr && state.sid) {
-        fr.setAttribute("src", "/fb/?sid=" + encodeURIComponent(state.sid)
-          + "&from=light&sujet=" + encodeURIComponent(sujet));
-      }
+      if (fr && state.sid) fr.setAttribute("src", adresseForum(sujet));
       return;
     }
     // Un défi Grapiz/Frutibandas (ou tout jeu en cadre) : la notification
@@ -4405,12 +4402,16 @@
         return;
       }
       if (go === "club") return window.open("/club/", "_blank");
-      // LE FORUM. Sur le bureau, `win.Forum` n'ouvre pas de fenêtre du bureau :
-      // il renvoie DEHORS, dans une fenêtre de navigateur à lui
-      // (`fp_activatePopupForum`). Sur mobile, rien ne change : le cadre
-      // plein écran reste, avec son lien « ‹ Salons » pour revenir.
-      if (go === "forum" && surBureau && BureauFrutiz.ouvrirForum) {
-        return BureauFrutiz.ouvrirForum();
+      // LE FORUM est une rubrique comme une autre depuis qu'il s'ouvre dans la
+      // fenêtre principale : `activateTab` en bas de cette fonction s'en
+      // charge, et le bureau en fait une fenêtre comme des scores ou de la
+      // messagerie. Il n'y a de détour que s'il est DÉPORTÉ — sa fenêtre de
+      // navigateur existe alors déjà, et on la rappelle plutôt que d'ouvrir
+      // une seconde lecture.
+      if (go === "forum" && window.ForumPorte && ForumPorte.ouverte()) {
+        ForumPorte.viser();
+        openMenu(false);
+        return;
       }
       // Sur le BUREAU, « Les salons » n'ouvre pas la conversation : il ouvre la
       // LISTE des salons, et c'est en cliquant un salon qu'on y entre — le
@@ -4692,6 +4693,31 @@
     var a = ADRESSES_JEU[tab];
     return a ? a + "?sid=" + encodeURIComponent(state.sid || "") : null;
   }
+  /*
+   * L'ADRESSE DU FORUM, et le `from=` qui dit OÙ il est logé.
+   *
+   * Le forum est une page à part, comme un jeu : il vit à /fb/ et le cadre ne
+   * fait que l'héberger. Mais il a deux boutons qui regardent dehors — le
+   * « ‹ Salons » de sa barre et son « Fermer » —, et ce qu'ils doivent faire
+   * dépend de la maison :
+   *
+   *   · `from=light`  : le cadre plein écran du téléphone. « ‹ Salons »
+   *                     paraît, et ramène à /light.
+   *   · `from=bureau` : une fenêtre du bureau Frutiz. Pas de « ‹ Salons » —
+   *                     on est déjà chez soi, la fenêtre a sa croix.
+   *   · rien          : une fenêtre de navigateur à part (le déport), qui se
+   *                     ferme avec `window.close()`.
+   *
+   * Dans les deux premiers cas, « Fermer » passe d'abord par `fp_closeFrame`
+   * (le pont d'époque, que le forum appelle sur son parent) : voir plus bas.
+   */
+  function adresseForum(sujet, dehors) {
+    if (!state.sid) return null;
+    var q = ["sid=" + encodeURIComponent(state.sid)];
+    if (!dehors) q.push("from=" + (window.BureauFrutiz && BureauFrutiz.actif() ? "bureau" : "light"));
+    if (sujet) q.push("sujet=" + encodeURIComponent(sujet));
+    return "/fb/?" + q.join("&");
+  }
   function donnerFocusAuJeu(tab) {
     var sel = CADRES_JEU[tab];
     if (!sel) return;
@@ -4954,15 +4980,8 @@
     // Chargements paresseux (1re ouverture, gardés en mémoire ensuite). On reste
     // sur /light, donc la socket de chat de la page parente n'est jamais coupée
     // pendant qu'on consulte le forum / joue / regarde les scores.
-    // Le cadre du forum ne se charge que là où il SERT : sur le bureau, le
-    // forum a sa fenêtre de navigateur, et remplir ce cadre-ci ouvrirait une
-    // seconde session en pure perte (deux lectures, deux voyants).
-    if (tab === "forum" && !(window.BureauFrutiz && BureauFrutiz.actif())) {
-      var fr = $("#forum-frame");
-      if (fr && !fr.getAttribute("src") && state.sid) {
-        fr.setAttribute("src", "/fb/?sid=" + encodeURIComponent(state.sid) + "&from=light");
-      }
-    }
+    // (Le cadre du forum se remplit avec ceux des jeux, tout en bas : il suit
+    // la même règle qu'eux — APRÈS le reparentage du bureau.)
     // Un jeu dans une IFRAME ne reçoit le clavier que s'il a le focus. Ouvrir
     // son onglet le lui donne — sans quoi les flèches restaient à cette page et
     // le joueur croyait le clavier ignoré (rapporté sur Mini-Wave). Le jeu le
@@ -5001,6 +5020,25 @@
       var cadreJeu = $(CADRES_JEU[tab]);
       if (cadreJeu && !cadreJeu.getAttribute("src")) {
         cadreJeu.setAttribute("src", adresseJeu(tab));
+      }
+    }
+    /*
+     * LE FORUM SUIT LA MÊME RÈGLE QUE LES JEUX — même cadre, même moment.
+     *
+     * Il était l'exception : sur le bureau Frutiz, il sortait de la page pour
+     * une fenêtre de navigateur à lui (`win.Forum` d'époque renvoie dehors),
+     * et ce cadre-ci restait vide là-bas. Il s'ouvre maintenant dans la
+     * fenêtre principale comme le reste — une fenêtre du bureau sur le
+     * bureau, un onglet plein écran sur le téléphone —, et la sortie devient
+     * un CHOIX : l'entrée « Déporter » du menu de son onglet, celle des jeux.
+     *
+     * Tant qu'il est déporté, on ne remplit pas le cadre : ce serait ouvrir
+     * une seconde lecture pour rien (deux voyants, deux sessions).
+     */
+    if (tab === "forum" && state.sid && !(window.ForumPorte && ForumPorte.ouverte())) {
+      var cadreForum = $("#forum-frame");
+      if (cadreForum && !cadreForum.getAttribute("src")) {
+        cadreForum.setAttribute("src", adresseForum());
       }
     }
   }
@@ -5192,6 +5230,94 @@
     // suite qui est à l'écran — sans attendre le filet des deux secondes.
     veiller: veillerSurLesJeux,
   };
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     LE FORUM DANS SA PROPRE FENÊTRE — le même choix que pour les jeux.
+
+     Il l'a longtemps eue d'office : `win.Forum` (0x6e136) est la seule
+     rubrique que le bureau d'époque n'ouvre pas SUR le bureau, elle renvoie
+     dehors. Le portage suivait, et le forum sortait de la page dès qu'on
+     cliquait sa tuile. Il s'ouvre maintenant dans la fenêtre principale comme
+     tout le reste, et le déport devient une entrée de menu.
+
+     SA PROPRE FENÊTRE, PAS CELLE DES JEUX (`frutiparc_forum`, le nom que la
+     page du lecteur Flash emploie déjà) : lire le forum pendant qu'une partie
+     tourne à côté est légitime, et les deux bureaux ouvrent ainsi LA MÊME
+     fenêtre plutôt que deux forums côte à côte. */
+  var FORUM_FENETRE = "width=860,height=640,resizable=yes,scrollbars=yes,"
+    + "menubar=no,toolbar=no,location=no,status=no";
+  function dechargerForum() {
+    var fr = $("#forum-frame");
+    if (!fr || !fr.getAttribute("src")) return false;
+    fr.setAttribute("src", "about:blank");
+    fr.removeAttribute("src");
+    return true;
+  }
+  window.ForumPorte = {
+    adresse: adresseForum,
+    // Le forum part dans sa fenêtre, et QUITTE la page — comme un jeu : deux
+    // lectures du même compte poseraient deux voyants et deux « vu » sur les
+    // mêmes sujets.
+    deporter: function (sujet) {
+      var url = adresseForum(sujet, true);
+      if (!url) return false;
+      try {
+        if (window.__forumPopup && !window.__forumPopup.closed) {
+          if (sujet) window.__forumPopup.location.href = url;
+          window.__forumPopup.focus();
+          dechargerForum();
+          return true;
+        }
+      } catch (e) { /* refusé : on rouvre */ }
+      window.__forumPopup = window.open(url, "frutiparc_forum", FORUM_FENETRE);
+      if (!window.__forumPopup) return false;    // bloquée par le navigateur
+      dechargerForum();
+      try { window.__forumPopup.focus(); } catch (e) { /* refusé */ }
+      return true;
+    },
+    // La fenêtre déportée, ramenée sur un sujet (une citation reçue).
+    viser: function (sujet) {
+      try {
+        if (!window.__forumPopup || window.__forumPopup.closed) return false;
+        if (sujet) window.__forumPopup.location.href = adresseForum(sujet, true);
+        window.__forumPopup.focus();
+        return true;
+      } catch (e) { return false; }
+    },
+    refermer: function () {
+      try {
+        if (window.__forumPopup && !window.__forumPopup.closed) window.__forumPopup.close();
+      } catch (e) { /* déjà fermée */ }
+      window.__forumPopup = null;
+    },
+    ouverte: function () {
+      try { return !!(window.__forumPopup && !window.__forumPopup.closed); } catch (e) { return false; }
+    },
+    decharger: dechargerForum,
+  };
+
+  /*
+   * `fp_closeFrame` — LE PONT D'ÉPOQUE, côté page qui porte le cadre.
+   *
+   * Le bouton « Fermer » du forum appelle `window.parent.fp_closeFrame(1)`
+   * avant toute autre chose (public/fb/index.html, `closeForum`) : c'est ainsi
+   * que la page du lecteur Flash refermait le cadre du forum (`ruffle.html`).
+   * Le light ne le définissait pas, et le forum retombait donc sur sa
+   * solution de repli — `from=light` renvoie à /light… dans le cadre
+   * lui-même, qui se retrouvait à porter un second light.
+   *
+   * On le définit donc ici, et il ferme ce qu'il faut selon la maison : la
+   * fenêtre du bureau, ou l'onglet du téléphone (on revient au salon, qui est
+   * la page d'accueil de la conversation).
+   */
+  window.fp_closeFrame = function () {
+    if (window.BureauFrutiz && BureauFrutiz.actif() && BureauFrutiz.fermerForum) {
+      BureauFrutiz.fermerForum();
+      return;
+    }
+    activateTab("chat");
+  };
+
   function renderDiscs() {
     var grid = $("#disques-grid");
     if (!grid) return;

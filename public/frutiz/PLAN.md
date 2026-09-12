@@ -2988,7 +2988,7 @@ des connectés d'un salon est le même `userSlot` : même comportement.
 « xp » (vert), que le carnet n'emploie pas : il passe `statusDspMode: "all"`
 sans `displayType`.)*
 
-### Le forum n'est pas une fenêtre du bureau (`win.Forum` 0x6e136)
+### Le forum n'était pas une fenêtre du bureau (`win.Forum` 0x6e136)
 
 C'est la seule rubrique qui sort de la page. `init` n'attache aucun contenu :
 
@@ -3008,11 +3008,34 @@ tient à l'activation du slot :
 Et dans les deux cas `me.status.setInternal("forum")` (le voyant « lit le
 forum ») puis `wallPaper.hide()`.
 
-Le revival garde la seconde branche — c'est déjà ce que fait la page du
-lecteur Flash (`ruffle.html`, `openForumPopup`), et le forum a besoin de sa
-largeur. Les deux bureaux visent **la même fenêtre nommée**
-(`frutiparc_forum`) : passer de l'un à l'autre n'en laisse pas deux ouvertes.
-Le mobile, lui, garde son cadre plein écran et son lien « ‹ Salons ».
+**Le portage a choisi la PREMIÈRE branche, et c'est un écart voulu.** Il a
+longtemps gardé la seconde — ce que fait la page du lecteur Flash
+(`ruffle.html`, `openForumPopup`) —, mais le forum sortait alors du bureau dès
+qu'on cliquait sa tuile : plus de barre-titre à pastille, plus d'onglet, plus
+de bureau derrière. Il s'ouvre maintenant dans une **fenêtre du bureau** comme
+les autres rubriques (`RUBRIQUES.forum`, 860 × 640 — le gabarit que la fenêtre
+de navigateur recevait déjà : le forum a besoin de sa largeur).
+
+Et la sortie reste offerte : **« Déporter »**, dans le menu de son onglet,
+l'envoie dans une fenêtre de navigateur à lui — l'entrée que les jeux portés
+ont déjà. `ForumPorte` (light.html) tient cette fenêtre-là, sous **le même nom
+que le chemin Flash** (`frutiparc_forum`) : les deux bureaux visent la même, et
+passer de l'un à l'autre n'en laisse pas deux ouvertes. Déporter, c'est
+DÉPLACER : le cadre de la page se vide, comme pour un jeu.
+
+L'adresse dit où le forum est logé, et ses deux boutons du haut en dépendent :
+
+| `from=` | où | « ‹ Salons » | « Fermer » |
+|---|---|---|---|
+| `light` | le cadre plein écran du téléphone | oui | `fp_closeFrame` → l'onglet du salon |
+| `bureau` | une fenêtre du bureau | non | `fp_closeFrame` → la fenêtre se ferme |
+| *(rien)* | la fenêtre déportée | non | `window.close()` |
+
+`fp_closeFrame` est le pont d'époque, celui que `ruffle.html` définissait
+déjà : `closeForum` l'appelle sur son parent AVANT toute autre chose. Le light
+ne le définissait pas, et le forum retombait sur sa solution de repli —
+`from=light` renvoie à /light… dans le cadre lui-même, qui se retrouvait à
+porter un second light.
 
 ### Un onglet actif ne fait pas disparaître le fond d'écran (0xb9574)
 

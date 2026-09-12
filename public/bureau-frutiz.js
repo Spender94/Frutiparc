@@ -38,9 +38,20 @@ window.BureauFrutiz = (function () {
     // public) et `Slot.addBox` (0x35c98) en tient une LISTE : le bureau
     // d'époque ouvre autant de fenêtres de conversation qu'on veut. Chacune
     // est bâtie à la volée par `ouvrirSalon`, sous la clé « salon:<id> ».
-    // PAS DE FORUM ICI — et ce n'est pas un oubli. `win.Forum` (0x6e136) est
-    // la seule rubrique qui ne s'ouvre pas SUR le bureau : elle renvoie
-    // dehors, dans une fenêtre de navigateur à elle. Voir `ouvrirForum`.
+    /* LE FORUM — un ÉCART VOULU. `win.Forum` (0x6e136) est la seule rubrique
+       que le bureau d'époque n'ouvre pas SUR le bureau : son `init` n'attache
+       aucun contenu, il renvoie dehors, dans une fenêtre de navigateur à elle
+       (voir le grand commentaire de `ouvrirForum`). Le portage a suivi
+       longtemps, et le forum sortait de la page dès qu'on cliquait sa tuile.
+
+       Il s'ouvre maintenant comme les autres, dans la fenêtre principale, et
+       la sortie est un CHOIX — l'entrée « Déporter » du menu de son onglet,
+       celle des jeux portés. Le gabarit est celui que la fenêtre de navigateur
+       recevait déjà (860 × 640) : le forum a besoin de sa largeur.
+       `winType` : le forum n'est pas dans la bande de fruits #198, sa pastille
+       retombe donc sur l'ORANGE par défaut — celle de son propre `ico.gif`. */
+    forum:      { panneau: '#forum-panel',     titre: 'Forum',          l: 860, h: 640,
+                  min: minFenetre(420, 300) },
     // LES SCORES — `box.Score` (0xade18). Relevé 1:1 : 610 × 328, cadre
     // `#444444` compris ; la colonne de gauche fait 160 et celle de droite
     // 430, six pixels entre les deux.
@@ -5136,7 +5147,7 @@ window.BureauFrutiz = (function () {
   }
 
   /* ══════════════════════════════════════════════════════════════════════════
-     LE FORUM — LA SEULE RUBRIQUE QUI SORT DU BUREAU
+     LE FORUM — LA RUBRIQUE QUI SORTAIT DU BUREAU
 
      `win.Forum` (0x6e136) n'est pas une fenêtre du bureau : c'est un renvoi
      vers l'EXTÉRIEUR. Son `init` n'attache aucun contenu, il appelle le pont
@@ -5155,45 +5166,56 @@ window.BureauFrutiz = (function () {
          close:        fp_closeFrame(1) / fp_closePopupForum()
 
      Deux modes, donc : un CADRE dans la page (`cwm`, le mode « une seule
-     fenêtre »), ou une VRAIE FENÊTRE de navigateur. Le revival garde la
-     seconde — c'est ce que la page du lecteur Flash fait déjà (`ruffle.html`,
-     `fp_activatePopupForum`), et le forum a besoin de sa largeur.
+     fenêtre »), ou une VRAIE FENÊTRE de navigateur.
+
+     LE PORTAGE A CHOISI LE PREMIER, et c'est un écart voulu. Le revival
+     gardait la fenêtre de navigateur — ce que fait la page du lecteur Flash
+     (`ruffle.html`, `fp_activatePopupForum`) —, mais le forum sortait alors du
+     bureau dès qu'on cliquait sa tuile : plus de barre-titre à pastille, plus
+     d'onglet, plus de bureau derrière. Il s'ouvre maintenant DANS la fenêtre
+     principale comme les autres rubriques, avec sa fenêtre du bureau et son
+     gabarit d'antan (860 × 640 — le forum a besoin de sa largeur).
+
+     Et la sortie reste offerte : « Déporter », dans le menu de son onglet,
+     l'envoie dans une fenêtre de navigateur à lui — exactement l'entrée que
+     les jeux portés ont déjà. `ForumPorte` (light.html) tient cette
+     fenêtre-là ; elle porte le même nom que celle du chemin Flash
+     (`frutiparc_forum`), si bien que les deux bureaux ouvrent LA MÊME et que
+     passer de l'un à l'autre ne laisse pas deux forums côte à côte.
 
      Le voyant « lit le forum » ne demande rien ici : c'est le serveur qui le
      pose en voyant passer `/fb/?sid=…` (server.js, route du forum) — la même
      chose qu'il faisait pour le cadre du light. */
-  var popupForum = null;
-  // Le même nom et le même gabarit que le chemin Flash (`ruffle.html`,
-  // `openForumPopup`) : les deux bureaux ouvrent LA MÊME fenêtre, et passer
-  // de l'un à l'autre ne laisse pas deux forums ouverts côte à côte.
-  var FORUM_FENETRE = 'width=860,height=640,resizable=yes,scrollbars=yes,'
-    + 'menubar=no,toolbar=no,location=no,status=no';
 
+  function forumDeporte() {
+    return !!(window.ForumPorte && ForumPorte.ouverte());
+  }
   function ouvrirForum(sujet) {
-    // PAS de « &from=light » : ce paramètre est celui du CADRE mobile — il
-    // pose un lien « ‹ Salons » et fait revenir `closeForum()` sur /light.
-    // Une fenêtre ouverte par script se ferme, elle, avec `window.close()`.
-    var sid = jetonSid();
-    var q = [];
-    if (sid) q.push('sid=' + encodeURIComponent(sid));
-    // Une citation reçue en notification mène AU SUJET, pas à l'accueil.
-    if (sujet) q.push('sujet=' + encodeURIComponent(sujet));
-    var url = '/fb/' + (q.length ? '?' + q.join('&') : '');
-    if (popupForum && !popupForum.closed) {
-      // `fp_activatePopupForum` ne rouvre pas : il RAMÈNE au premier plan.
-      // Un sujet demandé y mène quand même — la fenêtre est du même domaine.
-      try {
-        if (sujet) popupForum.location.href = url;
-        popupForum.focus();
-        return true;
-      } catch (e) { /* refusé : on rouvre */ }
-    }
-    popupForum = window.open(url, 'frutiparc_forum', FORUM_FENETRE);
-    // Un bloqueur de fenêtres rend `null` : plutôt que de ne rien faire, on
-    // ouvre dans un onglet — le forum reste atteignable.
-    if (!popupForum) window.open(url, '_blank');
-    else try { popupForum.focus(); } catch (e) {}
+    // Déjà dehors : on ramène sa fenêtre, on n'ouvre pas une seconde lecture.
+    if (forumDeporte()) { ForumPorte.viser(sujet); return true; }
+    // Le chemin ordinaire d'une rubrique : le light bascule l'onglet, remplit
+    // le cadre, et `apresActivateTab` nous rappelle pour en faire une fenêtre.
+    // Un sujet demandé recharge le cadre dessus — c'est le light qui sait le
+    // faire (`routerOuverture`), on ne le double pas ici.
+    if (sujet && window.routerOuverture) { routerOuverture('forum', null, sujet); return true; }
+    if (window.activateTab) activateTab('forum');
+    else ouvrirFenetre('forum');
     return true;
+  }
+  // « Déporter » : le forum passe dans une fenêtre de navigateur, et QUITTE la
+  // page — comme un jeu. Sa fenêtre du bureau se referme donc avec.
+  function deporterForum() {
+    if (!window.ForumPorte || !ForumPorte.deporter) return;
+    if (!ForumPorte.deporter()) {
+      alerte('Fenêtre bloquée : ', 'le navigateur a refusé d’ouvrir la fenêtre du forum.');
+      return;
+    }
+    if (fenetres['forum-panel']) fermerFenetre('forum-panel');
+  }
+  // Le « Fermer » du forum lui-même (`fp_closeFrame`, appelé sur la page qui
+  // porte son cadre) : il referme la fenêtre du bureau.
+  function fermerForum() {
+    if (fenetres['forum-panel']) fermerFenetre('forum-panel');
   }
 
   /* ══════════════════════════════════════════════════════════════════════════
@@ -6605,6 +6627,13 @@ window.BureauFrutiz = (function () {
        besoin — ils s'ouvrent DÉJÀ ainsi et n'ont pas d'onglet. */
     var jeu = jeuDuSlot(idOnglet);
     if (jeu) m.push({ titre: 'Déporter', faire: function () { deporterJeu(jeu); } });
+    // LE FORUM AUSSI. Il l'avait d'office — le bureau d'époque l'envoie
+    // dehors, et le portage a longtemps suivi ; il s'ouvre maintenant ici
+    // comme les autres rubriques, et sortir redevient un choix. C'est le seul
+    // contenu non-jeu qui vaille d'être vu seul : il a sa largeur, ses
+    // brouillons, et l'on continue de discuter à côté.
+    var s = slotDe(idOnglet);
+    if (s && s.panneau === 'forum-panel') m.push({ titre: 'Déporter', faire: deporterForum });
     return m;
   }
 
@@ -6780,6 +6809,10 @@ window.BureauFrutiz = (function () {
      */
     var jeuFerme = jeuDuPanneau(idPanneau);
     if (jeuFerme && window.JeuxPortes && JeuxPortes.decharger) JeuxPortes.decharger(jeuFerme);
+    // LE FORUM EST UN CADRE COMME EUX, et pour la même raison : rendu à sa
+    // place, il rechargerait sa page derrière le bureau — une seconde lecture,
+    // un second voyant, des sujets marqués « vus » que personne n'a ouverts.
+    if (idPanneau === 'forum-panel' && window.ForumPorte && ForumPorte.decharger) ForumPorte.decharger();
     rendre(f.panneau, f.origine);
     f.fen.remove();
     delete fenetres[idPanneau];
@@ -7925,11 +7958,7 @@ window.BureauFrutiz = (function () {
   }
 
   function ouvrirFenetre(tab) {
-    // Le forum n'est pas une fenêtre du bureau : `win.Forum` renvoie vers
-    // l'extérieur (cf. `ouvrirForum`). Quel que soit le chemin qui mène ici —
-    // une tuile, un lien profond, `apresActivateTab` — il sort de la page.
-    if (tab === 'forum') return ouvrirForum();
-    // « Le salon » n'est pas une fenêtre non plus : c'est une par salon.
+    // « Le salon » n'est pas une fenêtre : c'est une par salon.
     if (tab === 'chat') return ouvrirSalon(salonCourant());
     var rub = RUBRIQUES[tab];
     if (!rub) return;
@@ -8781,9 +8810,12 @@ window.BureauFrutiz = (function () {
     // place (et l'enregistrement, comme d'époque, ferme la fenêtre).
     ouvrirProfil: function () { ouvrirFenetre('fiche-edit'); },
     fermerProfil: function () { fermerFenetre('profil-sheet'); },
-    // Le forum : ni fenêtre ni cadre, une FENÊTRE DE NAVIGATEUR à part —
-    // `win.Forum` ne fait rien d'autre que renvoyer dehors.
+    // Le forum : une fenêtre du bureau comme les autres depuis qu'il s'ouvre
+    // dans la fenêtre principale — et « Déporter » l'envoie dehors, au choix.
     ouvrirForum: ouvrirForum,
+    // Son bouton « Fermer » appelle `fp_closeFrame` sur la page qui le porte ;
+    // celle-ci nous le renvoie, et c'est la fenêtre du bureau qui se ferme.
+    fermerForum: fermerForum,
     // La fiche : au bureau c'est une fenêtre, elle se pose et se glisse — et
     // il y en a UNE PAR JOUEUR, chacune à son étage de la pile des fenêtres.
     // Le light nomme la sienne (`cle`) et nous rend son nœud ; à la fermeture

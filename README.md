@@ -239,12 +239,11 @@ le `style` : sans quoi `[color=red;background:url(…)]` glissait une
 déclaration de plus.
 
 **Et le forum suit l'interrupteur même quand le light n'a pas la main.** Dans
-l'iframe, c'est le light qui lui tend la feuille au moment du réglage. Mais
-sur le bureau Frutiz le forum s'ouvre dans une **fenêtre de navigateur à
-lui** — et un onglet `/fb/` ouvert à part n'a pas davantage de light
-au-dessus. Le réglage vivant dans le même `localStorage`, le forum écoute
-l'événement `storage`, qui prévient justement les *autres* documents du
-domaine.
+l'iframe, c'est le light qui lui tend la feuille au moment du réglage. Mais le
+forum **déporté** vit dans une fenêtre de navigateur à lui — et un onglet
+`/fb/` ouvert à part n'a pas davantage de light au-dessus. Le réglage vivant
+dans le même `localStorage`, le forum écoute l'événement `storage`, qui
+prévient justement les *autres* documents du domaine.
 
 **Ce que le nom de la propriété ne dit pas** vit dans `ROLES_FORCES` : une
 liste courte de sélecteurs dont la couleur ne joue pas le rôle que sa

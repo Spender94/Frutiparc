@@ -30,6 +30,7 @@ const ROOT = path.join(__dirname, '..');
 const JS = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.js'), 'utf8');
 const CSS = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
 const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+const FORUM_HTML = fs.readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
 
 test('le nouvel onglet passe SOUS les précédents', () => {
   // `attachMovie("tab", …, dp_tab + (tabMax − r4 × 2))`, r4 = le rang.
@@ -346,35 +347,74 @@ test('le pseudo d’un contact vire au rose sous le curseur', () => {
   assert.match(CSS, /#users-drawer \.u:not\(\[data-genre\]\):active span:not\(\.badge\),\s*\n\s*body\.bureau-frutiz #gaspard-panel \.gs-ul-defile \.u:not\(\[data-genre\]\):active span:not\(\.badge\) \{ color: #DDDDDD; \}/);
 });
 
-test('le forum sort du bureau : une fenêtre de NAVIGATEUR, pas une fenêtre du bureau', () => {
-  // `win.Forum.init` (0x6e136) n'attache aucun contenu : il appelle
-  // `fp_goURLResize('/fb/?sid=…',1)` et pose un simple témoin sur le bureau.
-  // L'ouverture se fait à l'activation, `fp_activatePopupForum()`.
-  assert.ok(!/forum:\s*\{ panneau: '#forum-panel'/.test(JS),
-    'le forum n’est plus une rubrique fenêtrable');
-  assert.match(JS, /function ouvrirFenetre\(tab\) \{\s*\n(?:\s*\/\/[^\n]*\n)*\s*if \(tab === 'forum'\) return ouvrirForum\(\);/,
-    'quel que soit le chemin, on sort de la page');
-  assert.match(JS, /window\.open\(url, 'frutiparc_forum', FORUM_FENETRE\)/);
-  // Le même nom de fenêtre que le chemin Flash : un seul forum ouvert.
+test('le forum s’ouvre DANS la fenêtre principale, et « Déporter » l’envoie dehors', () => {
+  /*
+   * UN ÉCART VOULU. `win.Forum.init` (0x6e136) n'attache aucun contenu : il
+   * appelle `fp_goURLResize('/fb/?sid=…',1)` et pose un simple témoin sur le
+   * bureau, l'ouverture se faisant à l'activation (`fp_activatePopupForum`).
+   * Le portage a suivi longtemps — et le forum sortait de la page dès qu'on
+   * cliquait sa tuile, sans barre-titre, sans onglet, sans bureau derrière.
+   * Il s'ouvre maintenant comme les autres rubriques, et la sortie devient
+   * l'entrée « Déporter » du menu de son onglet, celle des jeux portés.
+   */
+  assert.match(JS, /forum:\s*\{ panneau: '#forum-panel',\s*titre: 'Forum',\s*l: 860, h: 640,/,
+    'le forum est une rubrique fenêtrable, au gabarit de l’ancienne popup');
+  assert.doesNotMatch(JS, /if \(tab === 'forum'\) return ouvrirForum\(\);/,
+    'ouvrirFenetre ne sort plus de la page');
+  // `ouvrirForum` passe par le chemin ordinaire d'une rubrique : le light
+  // bascule l'onglet, et `apresActivateTab` en fait une fenêtre.
+  assert.match(JS, /function ouvrirForum\(sujet\) \{[\s\S]*?if \(window\.activateTab\) activateTab\('forum'\);/);
+  // Sauf s'il est DÉPORTÉ : on rappelle sa fenêtre plutôt que d'ouvrir une
+  // seconde lecture (deux voyants, deux « vu » sur les mêmes sujets).
+  assert.match(JS, /if \(forumDeporte\(\)\) \{ ForumPorte\.viser\(sujet\); return true; \}/);
+  assert.match(JS, /function forumDeporte\(\) \{\s*\n\s*return !!\(window\.ForumPorte && ForumPorte\.ouverte\(\)\);/);
+
+  // « DÉPORTER » — l'entrée du menu, comme pour un jeu, et la fenêtre du
+  // bureau se referme avec (le forum QUITTE la page).
+  assert.match(JS, /if \(s && s\.panneau === 'forum-panel'\) m\.push\(\{ titre: 'Déporter', faire: deporterForum \}\);/);
+  assert.match(JS, /function deporterForum\(\) \{[\s\S]*?if \(!ForumPorte\.deporter\(\)\)[\s\S]*?if \(fenetres\['forum-panel'\]\) fermerFenetre\('forum-panel'\);/);
+
+  // La fenêtre déportée vit dans le light, à côté de celle des jeux — mais
+  // SOUS SON PROPRE NOM : lire le forum pendant une partie est légitime, et
+  // c'est le nom du chemin Flash, donc un seul forum ouvert pour les deux.
+  assert.match(LIGHT, /window\.__forumPopup = window\.open\(url, "frutiparc_forum", FORUM_FENETRE\);/);
   const ruffle = fs.readFileSync(path.join(ROOT, 'public/ruffle.html'), 'utf8');
   assert.ok(ruffle.includes('"frutiparc_forum"'), 'le lecteur Flash vise la même fenêtre');
-  // Rappelée au premier plan plutôt que rouverte — c'est ce que fait
-  // `fp_activatePopupForum` quand la popup vit déjà.
-  assert.match(JS, /if \(popupForum && !popupForum\.closed\)/);
-  // PAS de « from=light » : ce paramètre est celui du cadre mobile (il pose un
-  // lien « ‹ Salons » et fait revenir `closeForum()` sur /light). L'adresse se
-  // bâtit de deux morceaux, et de deux seulement.
-  assert.match(JS, /if \(sid\) q\.push\('sid=' \+ encodeURIComponent\(sid\)\);/);
-  assert.match(JS, /if \(sujet\) q\.push\('sujet=' \+ encodeURIComponent\(sujet\)\);/);
-  assert.match(JS, /var url = '\/fb\/' \+ \(q\.length \? '\?' \+ q\.join\('&'\) : ''\);/);
+  // Déporter, c'est DÉPLACER : le cadre de la page se vide.
+  assert.match(LIGHT, /deporter: function \(sujet\) \{[\s\S]*?dechargerForum\(\);\s*\n\s*try \{ window\.__forumPopup\.focus\(\)/);
+  // Et fermer la fenêtre du bureau vide le cadre aussi : rendu à sa place, il
+  // rechargerait le forum derrière le bureau.
+  assert.match(JS, /if \(idPanneau === 'forum-panel' && window\.ForumPorte && ForumPorte\.decharger\) ForumPorte\.decharger\(\);/);
 
-  // Côté light : la tuile du bureau y va, le mobile garde son cadre.
-  assert.match(LIGHT, /if \(go === "forum" && surBureau && BureauFrutiz\.ouvrirForum\)/);
-  assert.match(LIGHT, /if \(tab === "forum" && !\(window\.BureauFrutiz && BureauFrutiz\.actif\(\)\)\)/,
-    'le cadre mobile ne se charge pas en double sur le bureau');
-  // Une citation reçue en notification mène AU SUJET, fenêtre comprise.
-  assert.match(LIGHT, /BureauFrutiz\.ouvrirForum\(sujet\)/);
+  // L'ADRESSE DIT OÙ LE FORUM EST LOGÉ. `from=light` pose le « ‹ Salons » du
+  // téléphone ; `from=bureau` ne le pose pas (la fenêtre a sa croix) ; la
+  // fenêtre déportée n'a pas de `from` du tout — elle se ferme toute seule.
+  assert.match(LIGHT, /q\.push\("from=" \+ \(window\.BureauFrutiz && BureauFrutiz\.actif\(\) \? "bureau" : "light"\)\);/);
+  assert.match(LIGHT, /function adresseForum\(sujet, dehors\) \{/);
+  assert.match(FORUM_HTML, /get\('from'\) === 'light'/, 'le « ‹ Salons » ne paraît que pour le cadre du téléphone');
+
+  // Le cadre se remplit avec ceux des jeux — APRÈS le reparentage du bureau,
+  // sans quoi le déplacement du cadre rechargerait la page.
+  assert.match(LIGHT, /if \(tab === "forum" && state\.sid && !\(window\.ForumPorte && ForumPorte\.ouverte\(\)\)\)/);
+  assert.doesNotMatch(LIGHT, /if \(tab === "forum" && !\(window\.BureauFrutiz && BureauFrutiz\.actif\(\)\)\)/);
+  // Une citation reçue mène AU SUJET, où que le forum soit logé.
+  assert.match(LIGHT, /if \(window\.ForumPorte && ForumPorte\.ouverte\(\)\) \{ ForumPorte\.viser\(sujet\); return; \}/);
   assert.match(JS, /function ouvrirForum\(sujet\)/);
+});
+
+test('le « Fermer » du forum referme ce qui le porte', () => {
+  /*
+   * Le bouton appelle `window.parent.fp_closeFrame(1)` AVANT toute autre
+   * chose (`closeForum`, public/fb/index.html) : c'est le pont d'époque, que
+   * la page du lecteur Flash définissait déjà. Le light ne le définissait pas,
+   * et le forum retombait sur sa solution de repli — `from=light` renvoie à
+   * /light… dans le cadre lui-même, qui se retrouvait à porter un second light.
+   */
+  assert.match(FORUM_HTML, /typeof window\.parent\.fp_closeFrame === 'function'/);
+  assert.match(LIGHT, /window\.fp_closeFrame = function \(\) \{/);
+  assert.match(LIGHT, /BureauFrutiz\.fermerForum\(\);\s*\n\s*return;\s*\n\s*\}\s*\n\s*activateTab\("chat"\);/);
+  assert.match(JS, /function fermerForum\(\) \{\s*\n\s*if \(fenetres\['forum-panel'\]\) fermerFenetre\('forum-panel'\);/);
+  assert.match(JS, /fermerForum: fermerForum,/, 'et le light peut l’appeler');
 });
 
 test('une fenêtre en plein écran laisse voir le FOND D’ÉCRAN au-dessus d’elle', () => {

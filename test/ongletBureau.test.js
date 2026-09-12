@@ -151,9 +151,17 @@ test('le light écoute ce message et éteint le voyant', () => {
   assert.match(LIGHT, /function setForumNonLus\(n\) \{[\s\S]{0,220}?majVoyant\("Forum", forumNonLus\);/);
 });
 
-test('sur le bureau, le forum s’ouvre bien dans une fenêtre à part', () => {
-  // C'est ce qui rendait `parent` inutile — et `win.Forum` (0x6e136) le veut.
-  assert.match(JS, /popupForum = window\.open\(url, 'frutiparc_forum', FORUM_FENETRE\);/);
+test('le forum DÉPORTÉ s’ouvre dans une fenêtre à part, et sait prévenir son ouvreur', () => {
+  /*
+   * Le forum s'ouvre maintenant dans la fenêtre principale, comme les jeux :
+   * c'est `parent` qui le porte. Mais « Déporter » l'envoie dans une fenêtre
+   * de navigateur à lui, et là c'est `opener` — d'où les deux destinataires
+   * de `prevenirLHote`. La fenêtre n'est donc pas ouverte en `noopener` : le
+   * forum n'aurait plus personne à prévenir.
+   */
+  const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(light, /window\.__forumPopup = window\.open\(url, "frutiparc_forum", FORUM_FENETRE\);/);
+  assert.doesNotMatch(light, /"frutiparc_forum",\s*"noopener/);
   assert.doesNotMatch(JS, /noopener/);
 });
 
