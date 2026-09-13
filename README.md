@@ -346,6 +346,19 @@ semaine durant. Le générateur écrit donc chaque variante avec l'empreinte de
 son contenu (`…-nuit.svg?v=cd550d50`) : une variante refaite est une URL
 neuve, et la feuille — elle, revalidée à chaque chargement — la demande.
 
+> **La feuille du forum ne l'était pas.** `public/fb` est monté en artefact
+> (`max-age` 7 jours, `immutable`) parce qu'il ne contenait que des dessins
+> sortis des SWF — mais `nuit.css` y vit aussi, et il est *engendré*. Or
+> `immutable` ne dit pas « garde-le une semaine », il dit « **ne redemande
+> pas**, même si on recharge » : trois passes de nuit ont été livrées sans que
+> rien ne change à l'écran du joueur, rechargement compris. Le montage
+> `/fb` redescend donc le `.css` et le `.html` à `max-age=0` (gardés,
+> revalidés — comme `/light.html` et `/nuit.css`), et c'est l'**extension**
+> qui décide, pas les deux noms de fichier. Les copies déjà figées, elles, ne
+> se laissaient atteindre qu'en changeant l'URL : le lien porte un `?v=2`, à
+> poser identiquement aux deux endroits qui l'écrivent (`public/fb/index.html`
+> et `public/light.html`). Il n'a pas à être incrémenté de nouveau.
+
 **Un voyant s'inverse.** Les six raccourcis de l'encart ont deux états, et le
 thème de jour signale en **fonçant** — vert clair au repos, vert sombre allumé,
 sur un panneau vert pâle. Sur un panneau de nuit c'est le contraire : on

@@ -46,13 +46,35 @@ test('les dossiers d’artefacts se gardent une semaine', () => {
     // et 8,5 s avant l'arène, à froid comme à chaud — puis, une fois gardés
     // sept jours, 1 176 servis du cache et l'arène en 1,8 s.
     ["'/snake3/sprites'", "'public', 'snake3', 'sprites'"],
-    ["'/fb'", "'public', 'fb'"],
   ]) {
     const re = new RegExp('app\\.use\\(' + route.replace(/[/]/g, '\\/')
       + ',\\s*\\n?\\s*express\\.static\\(path\\.join\\(__dirname, ' + dossier
       + '\\), CACHE_ARTEFACTS\\)\\);');
     assert.match(SERVEUR, re, 'montage manquant ou sans cache : ' + route);
   }
+  // `/fb` prend le même cache — mais il ne contient pas QUE des artefacts, d'où
+  // sa forme à part (le test suivant dit laquelle, et pourquoi).
+  assert.match(SERVEUR,
+    /app\.use\('\/fb', express\.static\(path\.join\(__dirname, 'public', 'fb'\), \{\s*\n\s*\.\.\.CACHE_ARTEFACTS,/,
+    'les dessins du forum gardent leur semaine');
+});
+
+test('… sauf ce que public/fb contient d’ENGENDRÉ : le forum et sa feuille de nuit', () => {
+  // Deux fichiers y vivent qui ne sortent d'aucun SWF : `index.html`, le forum
+  // lui-même, et `nuit.css`, sa feuille de nuit — engendrée depuis le thème de
+  // jour par scripts/generer-nuit.js, donc refaite chaque fois qu'on y touche.
+  //
+  // Or `immutable` ne dit pas « garde-le une semaine », il dit « NE REDEMANDE
+  // PAS, même si on recharge » : trois passes de nuit ont été livrées sans que
+  // rien ne change à l'écran du joueur, rechargement compris — les dossiers du
+  // forum restaient gris, les pastilles blanches.
+  const i = SERVEUR.indexOf("app.use('/fb', express.static(");
+  const bloc = SERVEUR.slice(i, SERVEUR.indexOf('}));', i) + 4);
+  assert.match(bloc, /setHeaders: \(res, chemin\) => \{/);
+  // C'est l'EXTENSION qui décide, pas les deux noms de fichier : le prochain
+  // non-artefact déposé là sera couvert sans qu'on y pense.
+  assert.match(bloc, /\/\\\.\(css\|html\)\$\/i\.test\(chemin\)/);
+  assert.match(bloc, /res\.setHeader\('Cache-Control', 'public, max-age=0'\)/);
 });
 
 test('ils sont montés AVANT le montage général', () => {
@@ -70,10 +92,10 @@ test('la page et ses scripts, eux, restent frais', () => {
   // doit les couvrir. Le montage général reste donc sans options.
   assert.match(SERVEUR, /app\.use\(express\.static\(path\.join\(__dirname, 'public'\)\)\);/);
   // Et rien ne met light.html, les scripts ou la feuille sous CACHE_ARTEFACTS.
-  // Les montages tiennent sur deux lignes : la route, puis le dossier.
-  const montages = SERVEUR.match(/app\.use\('[^']+',\s*\n\s*express\.static\([^\n]*CACHE_ARTEFACTS\)\);/g) || [];
+  const montages = SERVEUR.match(
+    /app\.use\('[^']+',\s*express\.static\(path\.join\(__dirname, [^)]*\)[^;]*?CACHE_ARTEFACTS/g) || [];
   for (const m of montages) {
-    assert.ok(!/'public'\)\)/.test(m), 'le dossier public entier ne doit pas être figé');
+    assert.ok(!/'public'\)/.test(m), 'le dossier public entier ne doit pas être figé');
     assert.ok(!/light\.html|bureau-frutiz/.test(m), 'ni la page ni ses scripts : ' + m);
   }
   assert.strictEqual(montages.length, 5, 'cinq dossiers, pas un de plus');

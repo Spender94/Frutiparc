@@ -524,7 +524,7 @@ test('le thème est posé avant le premier rendu, et après les feuilles de jour
   assert.match(LIGHT, /l\.href = "\/nuit\.css"; l\.id = "nuit-css";/);
   // Le forum a la sienne, sur la même clé et le même domaine.
   assert.match(FORUM, /localStorage\.getItem\("fp_nuit"\)/);
-  assert.match(FORUM, /l\.href = "\/fb\/nuit\.css"; l\.id = "nuit-css";/);
+  assert.match(FORUM, /l\.href = "\/fb\/nuit\.css\?v=2"; l\.id = "nuit-css";/);
 });
 
 test('trois positions, par appareil, et le système suivi', () => {
@@ -569,7 +569,30 @@ test('le fond du bureau et le forum ouvert suivent la bascule', () => {
   // Le forum est un autre document, même domaine : on lui tend la main plutôt
   // que de le recharger (le joueur y a peut-être un message en cours).
   assert.match(LIGHT, /var cadre = document\.getElementById\("forum-frame"\);/);
-  assert.match(LIGHT, /l2\.href = "\/fb\/nuit\.css"; l2\.id = "nuit-css";/);
+  assert.match(LIGHT, /l2\.href = "\/fb\/nuit\.css\?v=2"; l2\.id = "nuit-css";/);
+});
+
+test('la feuille de nuit du forum n’est pas un artefact : elle se revalide', () => {
+  // `public/fb` est servi en `maxAge: '7d', immutable` — la bonne règle pour
+  // des dessins sortis des SWF, la pire pour une feuille ENGENDRÉE depuis le
+  // thème de jour : `immutable` ne dit pas « garde-le une semaine », il dit
+  // « ne redemande pas, même si on recharge ». Trois passes de nuit ont été
+  // livrées sans que rien ne change à l'écran, rechargement compris.
+  const mont = SERVEUR.slice(SERVEUR.indexOf("app.use('/fb', express.static("));
+  const bloc = mont.slice(0, mont.indexOf('}));') + 4);
+  assert.ok(bloc.includes('...CACHE_ARTEFACTS'), 'les dessins gardent leur semaine');
+  assert.match(bloc, /if \(\/\\\.\(css\|html\)\$\/i\.test\(chemin\)\) res\.setHeader\('Cache-Control', 'public, max-age=0'\);/,
+    'la feuille et la page, elles, sont revalidées');
+
+  // Et les deux endroits qui posent le lien portent le MÊME `?v=` — sans quoi
+  // basculer la nuit depuis le light chargerait une seconde copie de la
+  // feuille, et les navigateurs qui tiennent la version figée garderaient la
+  // leur par l'une des deux portes.
+  const v = (t, r) => (r.exec(t) || [])[1];
+  const vForum = v(FORUM, /l\.href = "\/fb\/nuit\.css\?v=(\d+)"/);
+  const vLight = v(LIGHT, /l2\.href = "\/fb\/nuit\.css\?v=(\d+)"/);
+  assert.ok(vForum, 'le forum pose un `?v=`');
+  assert.strictEqual(vLight, vForum, 'et le light pose le même');
 });
 
 // ── L'article ────────────────────────────────────────────────────────────────

@@ -1492,7 +1492,14 @@
     var l = document.getElementById("nuit-css");
     if (on && !l) {
       l = document.createElement("link");
-      l.rel = "stylesheet"; l.href = "/fb/nuit.css"; l.id = "nuit-css";
+      // LE `?v=` EST UNE SORTIE DE SECOURS, et il n'a pas à être incrémenté de
+      // nouveau. `public/fb` était servi en `immutable` — « ne redemande pas,
+      // même si on recharge » —, et cette feuille-ci s'y trouvait par erreur :
+      // les navigateurs qui en tenaient une copie l'ont gardée SEPT JOURS,
+      // rechargement compris. Le serveur la revalide désormais (voir le
+      // montage de `/fb` dans server.js) ; le seul moyen d'atteindre les
+      // copies déjà figées était de changer l'URL.
+      l.rel = "stylesheet"; l.href = "/fb/nuit.css?v=2"; l.id = "nuit-css";
       document.head.appendChild(l);
     }
     // On ne la retire pas : « not all » la fait taire sans la jeter, et le

@@ -24239,8 +24239,26 @@ app.use('/snake3/sprites',
 // `/fb` : les dessins de bouille, les icônes et les jaquettes. Même nature —
 // ils sortent des SWF ou d'un script de composition — et c'est déjà là que le
 // light incrémente son `?v=` quand il en remplace un.
-app.use('/fb',
-  express.static(path.join(__dirname, 'public', 'fb'), CACHE_ARTEFACTS));
+//
+// MAIS public/fb NE CONTIENT PAS QUE DES ARTEFACTS. Deux fichiers y vivent qui
+// ne sortent d'aucune extraction et changent à chaque passe :
+//   · `index.html`, le forum lui-même ;
+//   · `nuit.css`, sa feuille de nuit, ENGENDRÉE depuis le thème de jour par
+//     scripts/generer-nuit.js — donc refaite chaque fois qu'on touche au thème.
+// `immutable` ne dit pas « garde-le une semaine », il dit « NE REDEMANDE PAS,
+// même si on recharge » : une feuille de nuit corrigée restait invisible sept
+// jours pour qui tenait l'ancienne, rechargement compris. Trois passes de
+// suite ont ainsi été livrées sans que rien ne change à l'écran.
+// Ces deux-là reprennent donc la règle de `/light.html` et de `/nuit.css` :
+// gardés en cache, mais REVALIDÉS à chaque chargement (un 304, zéro octet).
+// La règle porte sur l'extension, pas sur les deux noms : le prochain fichier
+// non-artefact déposé ici sera couvert sans qu'on y pense.
+app.use('/fb', express.static(path.join(__dirname, 'public', 'fb'), {
+  ...CACHE_ARTEFACTS,
+  setHeaders: (res, chemin) => {
+    if (/\.(css|html)$/i.test(chemin)) res.setHeader('Cache-Control', 'public, max-age=0');
+  },
+}));
 
 // ─────────────────────────────────────────────
 // Serve static files AFTER API routes so our endpoints take priority

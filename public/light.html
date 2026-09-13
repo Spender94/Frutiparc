@@ -7012,7 +7012,11 @@
         var l2 = doc.getElementById("nuit-css");
         if (on && !l2) {
           l2 = doc.createElement("link");
-          l2.rel = "stylesheet"; l2.href = "/fb/nuit.css"; l2.id = "nuit-css";
+          // Le `?v=` est celui du forum, et pour la même raison : la feuille a
+          // été servie en `immutable` par erreur, et les copies figées alors
+          // ne se laissent atteindre qu'en changeant l'URL. Les deux endroits
+          // qui posent ce lien doivent donc porter le même.
+          l2.rel = "stylesheet"; l2.href = "/fb/nuit.css?v=2"; l2.id = "nuit-css";
           doc.head.appendChild(l2);
         }
         if (l2) l2.media = on ? "all" : "not all";   // même raison qu'au-dessus
