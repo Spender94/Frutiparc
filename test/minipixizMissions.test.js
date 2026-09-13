@@ -310,7 +310,9 @@ test('le sac plein, l\'objet ramassé attend dans la rangée au lieu de se perdr
   const html = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
   assert.match(html, /=== 'perdu'/);
   assert.match(html, /course\.enAttente = course\.enAttente \|\| \[\]/);
-  assert.match(html, /objetsARanger = course\.enAttente\.slice\(\)/);
+  // La liste est celle de la BASE — le lot de l'arc-en-ciel y passe aussi —,
+  // et la course l'ALIMENTE au lieu de l'écraser (cf. minipixizRetours5).
+  assert.match(html, /garderARanger\(course\.enAttente\);/);
   assert.match(html, /inventaire\.setExtraList\(aRanger\)/);
   // Le bouton « retour » passe par la porte condamnable, plus par fermerSac.
   assert.match(html, /\$\('#inv-fermer'\)\.addEventListener\('click', function \(\) \{ inventaire\.fermer\(\); \}\)/);

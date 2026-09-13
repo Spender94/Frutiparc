@@ -245,6 +245,27 @@ class Fee {
   // seulement : d'un niveau au suivant, la fée garde ce qu'il lui reste.
   rechargerMana() { this.fs.$mana = this.manaMax(); }
 
+  /*
+   * CE QUE LA NUIT RENDRA DE CŒURS — `FaerieInfo.upkeep` :
+   *
+   *     maxLife = ceil( ($hunger / 20) × carac[LIFE] )
+   *
+   * La régénération est PROPORTIONNELLE AU VENTRE : couchée repue (20 / 20),
+   * la fée se relève au complet ; couchée à seize, elle ne récupère que les
+   * quatre cinquièmes de ses cœurs. Le jeu ne l'a jamais dit nulle part, et la
+   * règle est invisible tant que la fée est jeune — à deux ou trois cœurs,
+   * l'arrondi au supérieur rend toujours tout. Elle n'apparaît qu'à partir de
+   * cinq ou six, c'est-à-dire le jour où la fée a grandi : d'où le sentiment,
+   * parfaitement fondé, que les cœurs « ne se régénèrent PLUS complètement ».
+   *
+   * Le calcul vit ici, et ici seulement : la nuit l'applique (`entretien`) et
+   * l'écran l'annonce (`raisonDeRester`, et le cadran de santé de
+   * l'inventaire). Les deux ne peuvent donc pas se contredire.
+   */
+  vieDeLaNuit() {
+    return Math.ceil((nombre(this.fs.$hunger) / 20) * this.vieMax());
+  }
+
   incVie(n) { this.fs.$life = Math.round(borner(0, nombre(this.fs.$life) + n, this.vieMax())); }
   incMana(n) { this.fs.$mana = Math.round(borner(0, nombre(this.fs.$mana) + n, this.manaMax())); }
   incMoral(n) { this.fs.$moral = Math.round(borner(0, nombre(this.fs.$moral) + n, 20)); }
@@ -375,11 +396,20 @@ class Fee {
     if (h[MALADE] === 1) return 'est malade : elle ne quittera pas le sac aujourd\'hui';
     // Manger ne rend PAS de vie — ni ici ni dans le jeu d'origine :
     // `FaerieInfo.eat` ne touche que la faim et le moral. La vie se répare la
-    // nuit (`upkeep` la remonte à hauteur du ventre plein) ou d'un coup avec
-    // une potion (it/Potion). Dire « nourrissez-la » tout court envoyait donc
-    // le joueur nourrir sa fée en boucle sans que rien ne bouge.
+    // nuit (`upkeep` la remonte à hauteur du ventre) ou d'un coup avec une
+    // potion (it/Potion). Dire « nourrissez-la » tout court envoyait donc le
+    // joueur nourrir sa fée en boucle sans que rien ne bouge.
+    //
+    // Et l'on dit COMBIEN : « elle récupérera cette nuit » promettait tout, là
+    // où la nuit ne rend qu'à hauteur du ventre (cf. `vieDeLaNuit`). Un joueur
+    // qui la couche à seize de faim retrouve cinq cœurs sur six et croit à un
+    // bug — il n'y en a pas, il manquait quatre bouchées.
     if (!(nombre(this.fs.$life) > 0)) {
-      return 'est à bout de forces — nourrissez-la, elle récupérera cette nuit';
+      const nuit = this.vieDeLaNuit(), max = this.vieMax();
+      return 'est à bout de forces — la nuit lui rend les cœurs à hauteur de son'
+        + ' ventre : ' + nuit + ' sur ' + max
+        + ' avec ' + nombre(this.fs.$hunger) + ' de faim'
+        + (nuit < max ? ' (tous à 20)' : '');
     }
     // Le moral ne remonte que de trois façons (les trois seuls `incMoral` du
     // jeu) : un aliment qu'elle aime, une montée de niveau, ou une nuit passée
@@ -446,8 +476,9 @@ class Fee {
     const fs = this.fs;
 
     // Elle se régénère à hauteur de ce qu'elle a mangé : une fée à jeun ne
-    // récupère rien, et finit par mourir.
-    const vieMax = Math.ceil((nombre(fs.$hunger) / 20) * this.vieMax());
+    // récupère rien, et finit par mourir. (Le calcul est celui de
+    // `vieDeLaNuit`, que l'écran annonce au joueur.)
+    const vieMax = this.vieDeLaNuit();
     fs.$life = Math.max(nombre(fs.$life), vieMax);
     if (vieMax === 0) {
       if (nombre(fs.$life) > 0) {

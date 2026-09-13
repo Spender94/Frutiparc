@@ -343,7 +343,21 @@
   var course = null;
   // Base.itemList, en attente de rangement : les objets ramassés le sac plein.
   // La prochaine clairière ouvrira l'inventaire dessus (tryToClose).
+  //
+  // C'est la liste de la BASE, pas celle de la forêt : `Base.grab` y pousse
+  // tout ce qui ne trouve pas de place — le butin d'un niveau comme le LOT DE
+  // L'ARC-EN-CIEL —, et `Base.tryToClose` est la sortie commune à tous les
+  // modes. Une seule liste, donc, et on y AJOUTE : un lot qui attend ne doit
+  // pas être effacé par la course suivante.
   var objetsARanger = null;
+  function garderARanger(liste) {
+    var l = [];
+    for (var i = 0; i < liste.length; i++) {
+      if (liste[i] !== null && liste[i] !== undefined) l.push(liste[i]);
+    }
+    if (!l.length) return;
+    objetsARanger = (objetsARanger || []).concat(l);
+  }
   // Manager.msg — le courrier de la session : les nouvelles des nuits passées,
   // datées du jour de la fiche. L'enveloppe clignote tant qu'on ne l'a pas lu.
   var courrier = { flView: true, ouvert: false, list: [] };
@@ -633,7 +647,8 @@
         // Base.tryToClose : les objets ramassés SANS place attendent que le
         // joueur repasse par l'inventaire — il s'ouvrira sur la clairière.
         if (course.enAttente && course.enAttente.length) {
-          objetsARanger = course.enAttente.slice();
+          garderARanger(course.enAttente);
+          course.enAttente = null;
         }
         plateforme.enregistrer({
           niveaux: course.niveaux, dernier: course.niveau,
@@ -952,7 +967,20 @@
               plateforme.ecrire(avant);
               return;
             }
-            if (nom === 'record' || nom === 'prix') {
+            if (nom === 'prix') {
+              // LE LOT DE L'ARC-EN-CIEL, LE SAC PLEIN. `Base.grab` ne perd
+              // JAMAIS un objet faute de place : il le pousse dans l'itemList
+              // de la base, et `Base.tryToClose` — la sortie commune à tous les
+              // modes — ouvre l'inventaire dessus au retour, porte condamnée
+              // tant que la rangée n'est pas vidée. Le portage n'avait câblé
+              // cette liste que pour la FORÊT : l'arc-en-ciel, lui, annonçait
+              // son lot puis le laissait disparaître — et il ne revient pas,
+              // un arc-en-ciel ne se gagne qu'une fois.
+              if (info && info.ou === 'perdu') garderARanger([info.objet]);
+              plateforme.ecrire(avant);
+              return;
+            }
+            if (nom === 'record') {
               plateforme.ecrire(avant);
               return;
             }

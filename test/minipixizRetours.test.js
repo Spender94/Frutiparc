@@ -1341,7 +1341,11 @@ test('nourrir ne rend pas la vie — et le message ne le promet plus', () => {
   // Le message doit annoncer la NUIT, pas un effet immédiat.
   const raison = fee.raisonDeRester();
   assert.match(raison, /bout de forces/);
-  assert.match(raison, /cette nuit/, 'il dit quand elle se remettra');
+  // Il dit QUAND elle se remettra — et depuis le cinquième lot de retours,
+  // COMBIEN : la nuit rend les cœurs à hauteur du ventre, pas tous (cf.
+  // minipixizRetours5, « les cœurs ne se régénèrent plus complètement »).
+  assert.match(raison, /la nuit/, 'il dit quand elle se remettra');
+  assert.match(raison, /\d+ sur \d+/, 'et combien de cœurs elle retrouvera');
 
   // Et la nuit la remet debout, justement parce qu'elle a mangé.
   fee.entretien(false, null);
@@ -1367,7 +1371,11 @@ test('le panneau de santé dit par quoi la vie remonte', () => {
   inv.volet = 3;
   inv.agir('vie');
   assert.match(inv.message, /^vie 0 \//);
-  assert.match(inv.message, /cette nuit/, 'la nourriture agit la nuit');
+  assert.match(inv.message, /la nuit/, 'la nourriture agit la nuit');
+  // Et le compte exact, depuis le cinquième lot de retours : à douze de faim,
+  // la nuit ne rend pas tous les cœurs, et le cadran le dit.
+  assert.match(inv.message, /à hauteur du ventre/);
+  assert.match(inv.message, /12 de faim/);
   assert.match(inv.message, /potion/, 'et la potion tout de suite');
 
   // Une fée en forme n'a pas besoin de ce rappel.

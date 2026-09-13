@@ -205,7 +205,18 @@ function entretien(carte, alea) {
     if (fs.$mission !== null && fs.$mission !== undefined) continue;
     if (indexFee(carte, fs) === null) continue;      // déjà dévorée cette nuit
     const fi = new F.Fee(fs, t.reel, carte);
-    const libre = nombre(carte.$current) !== indexFee(carte, fs);
+    // `flFree = Cm.card.$current != getFaerieIndex(fs)` — et `$current` vaut
+    // NULL quand la main est vide (Slot.mt : entrer en bocal la retire). Chez
+    // Flash comme en JS, `null != 0` est VRAI : la fée du rang zéro est alors
+    // libre comme les autres. Le portage passait `$current` par `nombre()`,
+    // qui fait de null un zéro — et la première fée de la liste était tenue
+    // pour portée toutes les nuits où le joueur n'avait personne en main :
+    // un point de moral en MOINS chaque nuit au lieu d'un en plus, sans
+    // jamais pouvoir se refaire au bocal. Le reste du portage garde déjà le
+    // null (feeEnMain, l'inventaire) ; il ne manquait qu'ici.
+    const enMain = carte.$current;
+    const libre = !(enMain !== null && enMain !== undefined
+      && nombre(enMain) === indexFee(carte, fs));
     const r = fi.entretien(libre, ctx);
     for (const m of fi.messages) dire(m);
     if (r.partie) effacerFee(carte, fs);

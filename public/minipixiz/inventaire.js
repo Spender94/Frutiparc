@@ -1115,13 +1115,23 @@ class Inventaire {
     if (!fee) { this.dire('Aucune fée ne vous accompagne encore.'); return; }
     const fs = fee.fs;
     if (quoi === 'vie') {
-      // À zéro, on dit par quoi elle remonte : la nourriture prépare la nuit,
-      // seule une potion soigne sur-le-champ. Sans ça, le joueur nourrit sa fée
-      // en boucle et ne voit jamais le cœur bouger.
+      // On dit par quoi les cœurs remontent, et de COMBIEN. La nuit les rend à
+      // hauteur du ventre (Fee.vieDeLaNuit : `ceil(faim/20 × cœurs)`) — jamais
+      // plus. Tant que la fée est jeune l'arrondi rend toujours tout ; passé
+      // cinq ou six cœurs, un ventre à seize n'en rend plus que cinq, et le
+      // joueur croit la régénération cassée. Autant l'annoncer là où il la
+      // regarde. Seule une potion soigne sur-le-champ.
       const v = nombre(fs.$life);
-      this.dire('vie ' + v + ' / ' + fee.vieMax()
-        + (v > 0 ? '' : ' — la nourriture la remettra d\'aplomb cette nuit ;'
-          + ' une potion la soigne tout de suite.'), fs.$name);
+      const max = fee.vieMax();
+      let t = 'vie ' + v + ' / ' + max;
+      if (v < max) {
+        const nuit = fee.vieDeLaNuit();
+        t += ' — la nuit les remonte à hauteur du ventre : ' + nuit + ' / ' + max
+          + ' avec ' + nombre(fs.$hunger) + ' de faim'
+          + (nuit < max ? ' (20 les rendrait tous)' : '');
+      }
+      if (v <= 0) t += ' ; une potion la soigne tout de suite.';
+      this.dire(t, fs.$name);
       return;
     }
     if (quoi === 'faim') {
