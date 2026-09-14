@@ -165,36 +165,43 @@ test('le donjon vaincu paie — le diamant, le rang suivant, la rangée de l\'in
 });
 
 /*
- * « LE BUG QUI NOUS FAIT RÉCUPÉRER TOUT LE MANA À CHAQUE FIN DE NIVEAU. »
- * base/Aventure.new pose `fi.fs.$mana = carac[MANA]*2` à l'ENTRÉE du lieu, et
- * les niveaux s'enchaînent ensuite dans la même base (setWin : level += 1,
- * initStep(2)) sur ce qu'il reste. Le portage rechargeait à chaque niveau, en
- * reconstruisant la fée.
+ * LA RÉSERVE DE MANA REPART PLEINE À CHAQUE NIVEAU — un ÉCART ASSUMÉ du parc.
+ *
+ * Le jeu d'origine ne la remplit qu'à l'entrée du lieu (base/Aventure.new, le
+ * constructeur ; les niveaux s'enchaînent dans la même base et ne le rappellent
+ * pas). Le parc en décide autrement, parce que `flColorKill` coupe la recharge
+ * dès qu'une couleur du niveau est vidée — et qu'on gagne justement en vidant
+ * les couleurs : sur vingt niveaux d'affilée, la réserve ne remontait jamais.
+ *
+ * Le relevé du fichier d'origine, la raison de s'en écarter et les garde-fous
+ * sont dans test/minipixizMana.test.js, qui fait foi sur ce point.
  */
-test('la mana est pleine à l\'entrée du donjon, et pas rendue entre deux niveaux', () => {
+test('la mana est pleine à l\'entrée du donjon — et à chaque niveau suivant', () => {
   const { c, fs } = carte({ rang: 1 });
   fs.$mana = 1;
   const d = new X.Donjon({ carte: c, fee: fs, graine: 7 });
   const max = new F.Fee(fs, null, c).manaMax();
   assert.equal(max, 8, 'carac.mana 4, fois deux');
-  assert.equal(fs.$mana, max, 'base/Aventure.new : pleine à l\'entrée');
+  assert.equal(fs.$mana, max, 'pleine à l\'entrée');
   assert.equal(d.champ.faerieList[0].mana, max);
-  // Un niveau de dépensé : il reste un point, et le suivant se joue avec.
+  // Un niveau de dépensé : le suivant repart d'aplomb.
   d.champ.faerieList[0].poserMana(1);
   assert.equal(fs.$mana, 1);
   viderEtFinirLeTour(d);
   assert.equal(d.level, 1);
-  assert.equal(fs.$mana, 1, 'pas de recharge entre deux niveaux');
-  assert.equal(d.champ.faerieList[0].mana, 1, 'la fée du niveau suivant entre avec ce qu\'elle a');
-  // La forêt aussi : la course recharge à son départ, et le combat ne
-  // recharge plus jamais de lui-même.
+  assert.equal(fs.$mana, max, 'le niveau suivant repart la réserve pleine');
+  assert.equal(d.champ.faerieList[0].mana, max, 'et la fée du plateau la voit');
+  // Elle vit dans `commencer()` et dans `lancerNiveau()` — les deux endroits où
+  // un niveau commence —, et surtout PAS à la naissance de la fée du champ,
+  // qui la rendrait aussi à qui n'ouvre pas un niveau (le bassin, un clone).
   const fsMod = require('fs');
   const path = require('path');
   const combat = fsMod.readFileSync(path.join(__dirname, '../public/minipixiz/combat.js'), 'utf8');
-  assert.doesNotMatch(combat, /fi\.fs\.\$mana = nombre\(fi\.carac\[MANA\]\) \* 2/, 'plus de recharge à la naissance de la fée');
+  assert.doesNotMatch(combat, /fi\.fs\.\$mana = nombre\(fi\.carac\[MANA\]\) \* 2/,
+    'le champ relit la fiche, il ne la remplit pas');
   const page = fsMod.readFileSync(path.join(__dirname, '../public/minipixiz/index.html'), 'utf8');
-  assert.match(page, /function nouvelleCourse\(depart\) \{[\s\S]*?var fiDepart = feeCourante\(\);\s*if \(fiDepart\) fiDepart\.rechargerMana\(\);\s*lancerNiveau\(\);/);
-  assert.doesNotMatch(page, /function lancerNiveau\(\) \{[\s\S]{0,400}rechargerMana/, 'pas à chaque niveau');
+  assert.match(page, /function lancerNiveau\(\) \{[\s\S]*?if \(fiNiveau\) fiNiveau\.rechargerMana\(\);/,
+    'la forêt recharge à chaque niveau');
 });
 
 /*

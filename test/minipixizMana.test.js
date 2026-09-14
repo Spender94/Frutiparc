@@ -1,18 +1,21 @@
 /*
- * LA RÉSERVE DE MANA — LE RELEVÉ, UNE FOIS POUR TOUTES.
+ * LA RÉSERVE DE MANA — LE RELEVÉ, ET L'ÉCART.
  *
- * Ce point a été retourné deux fois par deux retours contraires :
+ * Ce point a été retourné deux fois par des retours contraires, chaque
+ * correction défaisant la précédente :
  *
- *   « On recommence un niveau avec le mana du niveau d'avant »  (4ᵉ lot)
+ *   « On recommence un niveau avec le mana du niveau d'avant »   (4ᵉ lot)
  *   « Le bug qui nous fait récupérer tout le mana à chaque fin de niveau »
  *   « Le bogue de la mana qui ne se récupère pas après les niveaux est de
  *     retour ! »                                                  (6ᵉ lot)
  *
- * Chaque correction a défait la précédente. Ce fichier existe pour que cela
- * s'arrête : il porte le RELEVÉ du fichier d'origine, et les tests qui le
- * tiennent. Avant de re-basculer la règle, il faut donc démentir le relevé.
+ * Ce fichier existe pour que cela s'arrête. Il porte DEUX choses, qu'il ne
+ * faut pas confondre : ce que fait le jeu d'origine — établi, relevé,
+ * vérifiable — et ce que le parc a DÉCIDÉ de faire autrement.
  *
- * ── Ce qui écrit $mana, dans TOUT le jeu d'origine ────────────────────────
+ * ══ 1. CE QUE FAIT LE JEU D'ORIGINE ═══════════════════════════════════════
+ *
+ * Ce qui écrit $mana, dans tout le fichier — trois endroits, pas un de plus :
  *
  *   base/Aventure.mt:23    `fi.fs.$mana = fi.carac[Cs.MANA]*2`  ← LA SEULE
  *                          recharge, dans le CONSTRUCTEUR de l'aventure.
@@ -21,12 +24,10 @@
  *   Cm.mt:604              `fs.$mana = fs.$carac[Cs.MANA]*2` — à la NAISSANCE
  *                          d'une fée (genFaerieSeed).
  *
- * Et rien d'autre : ni potion, ni étoile, ni objet. (Relevé : `grep -n
- * '\$mana' Games/miniTroll/src/` — dix lignes, dont six en lecture.)
+ * Ni potion, ni objet, ni étoile. (Relevé : `grep -n '\$mana'
+ * Games/miniTroll/src/` — dix lignes, dont six en lecture.)
  *
- * ── Quand le constructeur d'aventure tourne-t-il ? ───────────────────────
- *
- * Une fois par ENTRÉE DANS LE LIEU, et pas une fois par niveau :
+ * Et le constructeur ne tourne qu'à l'ENTRÉE DU LIEU, pas à chaque niveau :
  *
  *   base/Forest.setWin      `level += 1; initStep(2)`   ← la MÊME base
  *   base/Aventure.update(2) `endGame()`
@@ -40,29 +41,36 @@
  * (la clairière → un lieu), et douze retours vers « menu », « news » ou
  * « inventory ». Entre deux niveaux, personne ne rattache l'écran.
  *
- * ── Ce qui rend le mana en JOUANT ────────────────────────────────────────
+ * Ce qui rend du mana en JOUANT, en revanche, vaut à chaque niveau :
  *
  *   Game.checkFallStats  `fi.incManaTimer( -fs.sum × base.getManaReplenishCoef() )`
  *   Aventure             `getManaReplenishCoef() → flColorKill ? 0 : 3`
  *   sp/pe/Faerie         `manaTimer = 50` à la naissance (donc à chaque
  *                        niveau) ; sous zéro, `manaTimer += 80` et un point
- *                        de mana. Le pouvoir POW_REGENERATE_MANA multiplie
- *                        l'apport par 1,5.
+ *                        de mana. POW_REGENERATE_MANA multiplie par 1,5.
  *
- * `flColorKill` se lève dès qu'une COULEUR du niveau est entièrement
- * éliminée (Game.updatecolorList), et ne retombe qu'au `Game.init` du niveau
- * suivant. C'est ce qui rend les fins de niveau tendues : on y vit sur ses
- * réserves, et la forêt se gagne justement en vidant les couleurs.
+ * ══ 2. CE QUE LE PARC FAIT AUTREMENT ══════════════════════════════════════
  *
- * ── Ce que ça donne à l'écran (mesuré, forêt, fée mana 3 → réserve 6) ────
+ * LA RÉSERVE REPART PLEINE À CHAQUE NIVEAU. C'est un écart assumé, décidé
+ * après trois retours de joueurs, et non une lecture du fichier.
  *
- *   niveau 0 à l'ouverture : réserve 6 / 6, manaTimer 50, coef 3
- *   niveau 0, trente cascades de quatre jetons : +4 points
- *   niveau 1 à l'ouverture : la réserve du niveau d'avant, manaTimer 50
- *   niveau 1, mêmes trente cascades : +4 points
+ * La raison : `flColorKill` coupe la recharge dès qu'une COULEUR du niveau
+ * est entièrement vidée — et la forêt se gagne justement en vidant les
+ * couleurs. La fin de chaque niveau se joue donc sans mana, et sur vingt
+ * niveaux d'affilée la réserve ne remonte jamais : les sorts, tout un pan du
+ * jeu, s'éteignent au bout de deux ou trois niveaux.
  *
- * La réserve se refait donc EN JOUANT, à chaque niveau — mais elle ne
- * repart jamais pleine, et elle se coupe dès la première couleur vidée.
+ * Ce que l'écart NE change pas : le taux de recharge en jouant (3), la
+ * coupure par couleur vidée, le plafond (carac[MANA] × 2), et le fait que
+ * rien d'autre ne rende du mana. La fin de niveau reste tendue ; c'est le
+ * niveau SUIVANT qui repart d'aplomb.
+ *
+ * Où ça vit, en un seul endroit par chemin :
+ *   · public/minipixiz/lieux.js   `Lieu.commencer()` — que chaque niveau
+ *     rappelle, donc l'entrée du lieu comme les suivants ;
+ *   · public/minipixiz/index.html `lancerNiveau()` — idem pour la forêt.
+ * Et NULLE PART ailleurs : surtout pas à la naissance de la fée du champ,
+ * qui rendrait aussi la réserve à qui n'ouvre pas un niveau.
  */
 'use strict';
 
@@ -75,7 +83,6 @@ const ROOT = path.join(__dirname, '..');
 const lire = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 const E = require(path.join(ROOT, 'public/minipixiz/engine.js'));
-const C = require(path.join(ROOT, 'public/minipixiz/combat.js'));
 const F = require(path.join(ROOT, 'public/minipixiz/faerie.js'));
 const L = require(path.join(ROOT, 'public/minipixiz/lieux.js'));
 const P = require(path.join(ROOT, 'public/minipixiz/plateforme.js'));
@@ -85,7 +92,7 @@ const graine = (n) => () => {
   return n / 2147483648;
 };
 
-// Une fiche avec une fée de mana 3 — réserve six, comme dans le relevé.
+// Une fiche avec une fée de mana 3 — réserve six.
 function fiche() {
   const c = P.carteNeuve();
   const f = F.genererGraine(graine(7));
@@ -105,106 +112,103 @@ function cascade(jeu) {
   jeu.verifierStatsChute();
 }
 
-test('la réserve est pleine à l’ENTRÉE du lieu — et nulle part ailleurs', () => {
+// ── L'écart : pleine à chaque niveau ──────────────────────────────────────
+
+test('la réserve est pleine à l’entrée du lieu', () => {
   const { c, f } = fiche();
   f.$mana = 1;
   const lieu = new L.Donjon({ carte: c, graine: 7, fee: f, surEvenement: () => {} });
-  assert.equal(f.$mana, 6, 'base/Aventure.new : $mana = carac[MANA] × 2');
+  assert.equal(f.$mana, 6, '$mana = carac[MANA] × 2');
+  assert.equal(lieu.champ.faerieList[0].mana, 6, 'et la fée du plateau la voit');
   assert.equal(lieu.level, 0);
-
-  // On en dépense la moitié, puis on gagne le niveau : le donjon enchaîne
-  // SANS repasser par le constructeur, donc sans refaire la réserve.
-  lieu.champ.faerieList[0].poserMana(3);
-  assert.equal(f.$mana, 3);
-  lieu.jeu.finPartie(true);
-  assert.equal(lieu.level, 1, 'le donjon a enchaîné');
-  assert.equal(f.$mana, 3, 'la fée entre au niveau suivant avec ce qu’il lui reste');
-  assert.equal(lieu.champ.faerieList[0].mana, 3, 'et le champ la reçoit telle quelle');
 });
 
-test('mais elle se refait EN JOUANT, à chaque niveau', () => {
+test('…et pleine À CHAQUE NIVEAU SUIVANT — l’écart assumé', () => {
   const { c, f } = fiche();
   const lieu = new L.Donjon({ carte: c, graine: 7, fee: f, surEvenement: () => {} });
 
-  const refaire = () => {
-    const fee = lieu.champ.faerieList[0];
-    fee.poserMana(0);
-    assert.equal(fee.manaTimer, 50, 'sp/pe/Faerie : manaTimer repart de 50 au niveau');
-    for (let i = 0; i < 30 && !lieu.jeu.termine; i++) cascade(lieu.jeu);
-    return fee.mana;
-  };
-
-  const n0 = refaire();
-  assert.ok(n0 > 0, 'le niveau 0 rend du mana (' + n0 + ')');
-  lieu.jeu.finPartie(true);
-  const n1 = refaire();
-  assert.equal(n1, n0, 'le niveau 1 en rend autant : la recharge n’est pas cassée');
+  for (let n = 0; n < 3; n++) {
+    // On vide la réserve dans le niveau…
+    lieu.champ.faerieList[0].poserMana(0);
+    assert.equal(f.$mana, 0, 'niveau ' + lieu.level + ' : dépensée');
+    // …on le gagne, et le donjon enchaîne.
+    const avant = lieu.level;
+    lieu.jeu.finPartie(true);
+    assert.equal(lieu.level, avant + 1, 'le donjon a enchaîné');
+    assert.equal(f.$mana, 6, 'niveau ' + lieu.level + ' : la réserve repart pleine');
+    assert.equal(lieu.champ.faerieList[0].mana, 6, 'et la fée du plateau aussi');
+  }
 });
 
-test('une couleur vidée coupe la recharge — jusqu’au niveau suivant, pas au-delà', () => {
+test('la recharge en jouant n’a pas bougé : trois par jeton, compteur à 50', () => {
+  const { c, f } = fiche();
+  const lieu = new L.Donjon({ carte: c, graine: 7, fee: f, surEvenement: () => {} });
+  const fee = lieu.champ.faerieList[0];
+  assert.equal(lieu.jeu.manaCoef, 3, 'Aventure.getManaReplenishCoef → 3');
+  assert.equal(fee.manaTimer, 50, 'sp/pe/Faerie : manaTimer part de 50');
+
+  fee.poserMana(0);
+  fee.manaTimer = 1;
+  cascade(lieu.jeu);
+  assert.equal(fee.mana, 1, 'quatre jetons × 3 font tomber la goutte');
+  assert.equal(fee.manaTimer, 69, 'et le compteur remonte de 80');
+});
+
+test('une couleur vidée coupe toujours la recharge du niveau', () => {
   const { c, f } = fiche();
   const lieu = new L.Donjon({ carte: c, graine: 7, fee: f, surEvenement: () => {} });
   const jeu = lieu.jeu;
   const fee = lieu.champ.faerieList[0];
+  assert.equal(jeu.flColorKill, false);
 
-  assert.equal(jeu.flColorKill, false, 'drapeau baissé à l’ouverture du niveau');
-  assert.equal(jeu.manaCoef, 3, 'Aventure.getManaReplenishCoef → 3');
-
-  // On vide une couleur du plateau : Game.updatecolorList lève le drapeau.
   const couleur = jeu.colorList[0];
   jeu.eList.slice().forEach((el) => {
     if (el.et === E.E.JETON && el.type === couleur) el.tuer();
   });
   jeu.majCouleurs();
-  assert.equal(jeu.flColorKill, true);
+  assert.equal(jeu.flColorKill, true, 'Game.updatecolorList lève le drapeau');
 
   fee.poserMana(0);
   fee.manaTimer = 1;
   cascade(jeu);
   assert.equal(fee.mana, 0, 'plus une goutte pour le reste du niveau');
 
-  // …et le niveau suivant repart avec un plateau neuf, drapeau baissé.
+  // Le niveau suivant repart plein ET drapeau baissé.
   jeu.finPartie(true);
   assert.equal(lieu.jeu.flColorKill, false, 'Game.init remet le drapeau à zéro');
-  const fee2 = lieu.champ.faerieList[0];
-  fee2.poserMana(0);
-  fee2.manaTimer = 1;
-  cascade(lieu.jeu);
-  assert.equal(fee2.mana, 1, 'la recharge est revenue avec le niveau');
+  assert.equal(f.$mana, 6, 'et la réserve est pleine');
 });
 
-test('la forêt refait la réserve au départ de la COURSE, pas à chaque niveau', () => {
-  // base/Forest.setWin enchaîne ses vingt niveaux dans la même base : la
-  // recharge vit donc dans `nouvelleCourse`, jamais dans `lancerNiveau`.
-  const PAGE = lire('public/minipixiz/index.html');
-  const course = PAGE.slice(PAGE.indexOf('function nouvelleCourse('),
-    PAGE.indexOf('function sortAApprendre('));
-  assert.match(course, /fiDepart\.rechargerMana\(\);/,
-    'l’entrée en forêt refait la réserve');
-  const niveau = PAGE.slice(PAGE.indexOf('function lancerNiveau('),
-    PAGE.indexOf('function lancerNiveau(') + 1200);
-  assert.ok(!/rechargerMana/.test(niveau),
-    'le niveau suivant, lui, se joue sur ce qu’il en reste');
-
-  // Et dans les lieux, c'est le CONSTRUCTEUR qui recharge — pas `commencer()`,
-  // que chaque niveau rappelle.
+test('la recharge vit dans les DEUX endroits où un niveau commence, et nulle part ailleurs', () => {
+  // Un seul point par chemin : `commencer()` pour les lieux (que chaque
+  // niveau rappelle), `lancerNiveau()` pour la forêt.
   const LIEUX = lire('public/minipixiz/lieux.js');
-  const ctor = LIEUX.slice(LIEUX.indexOf('  constructor(o) {'), LIEUX.indexOf('  evenement(nom, d)'));
-  assert.match(ctor, /rechargerMana\(\);/);
   const commencer = LIEUX.slice(LIEUX.indexOf('  commencer() {'), LIEUX.indexOf('  update(tmod) {'));
-  assert.ok(!/rechargerMana/.test(commencer), 'commencer() ne recharge pas');
+  assert.match(commencer, /rechargerMana\(\);/, 'le lieu recharge à chaque niveau');
+  // AVANT le champ : la fée du plateau lit $mana à sa naissance.
+  assert.ok(commencer.indexOf('rechargerMana') < commencer.indexOf('new C.Champ'),
+    'la recharge précède le champ');
+  const ctor = LIEUX.slice(LIEUX.indexOf('  constructor(o) {'), LIEUX.indexOf('  evenement(nom, d)'));
+  assert.ok(!/rechargerMana/.test(ctor), 'le constructeur n’a plus la sienne : commencer() suffit');
 
-  // Le champ non plus : c'était « le bug qui nous fait récupérer tout le mana
-  // à chaque fin de niveau ».
+  const PAGE = lire('public/minipixiz/index.html');
+  const niveau = PAGE.slice(PAGE.indexOf('function lancerNiveau('),
+    PAGE.indexOf('// Cm.getCurrentFaerie'));
+  assert.match(niveau, /fiNiveau\.rechargerMana\(\);/, 'la forêt recharge à chaque niveau');
+  const course = PAGE.slice(PAGE.indexOf('function nouvelleCourse('),
+    PAGE.indexOf('// Spell.getRandomId'));
+  assert.ok(!/rechargerMana/.test(course),
+    'et plus au départ de la course : lancerNiveau la couvre déjà');
+
+  // PAS à la naissance de la fée du champ : elle rendrait la réserve à qui
+  // n'ouvre pas un niveau (le bassin, un clone).
   const COMBAT = lire('public/minipixiz/combat.js');
   const code = COMBAT.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  assert.ok(!/\$mana\s*=\s*nombre\(fi\.carac\[MANA\]\)/.test(code),
-    'la naissance de la fée du champ ne remplit plus la réserve');
+  assert.ok(!/rechargerMana|\$mana\s*=\s*nombre\(fi\.carac\[MANA\]\)/.test(code),
+    'le champ relit la fiche, il ne la remplit pas');
 });
 
 test('rien d’autre ne rend du mana : ni potion, ni objet, ni étoile', () => {
-  // Le fichier d'origine n'a que deux sources — la recharge d'entrée et la
-  // goutte de `incManaTimer`. Une potion soigne, elle ne recharge pas.
   const O = require(path.join(ROOT, 'public/minipixiz/items.js'));
   const { c, f } = fiche();
   const fee = new F.Fee(f, null, c);
@@ -215,23 +219,20 @@ test('rien d’autre ne rend du mana : ni potion, ni objet, ni étoile', () => {
     O.utiliser(info, fee);
     assert.equal(fee.fs.$mana, 0, (info.nom || '?') + ' ne rend pas de mana');
   }
-  // Et l'étoile du plateau ne passe pas par la mana : sa règle ne lit que
-  // flSpecial (Game.checkFallStats).
   const ENG = lire('public/minipixiz/engine.js');
-  assert.match(ENG, /if \(!this\.fs\.flSpecial\) \{/);
+  assert.match(ENG, /if \(!this\.fs\.flSpecial\) \{/, 'l’étoile ne passe pas par la mana');
 });
 
 test('le relevé du fichier d’origine reste consultable', () => {
-  // Si les sources d'époque sont là, on vérifie que le relevé de l'en-tête
-  // dit vrai — c'est lui qui empêchera la prochaine bascule.
+  // L'écart est une décision ; le relevé, lui, doit rester vrai — c'est à lui
+  // qu'on se reportera le jour où l'on voudra revenir en arrière.
   const src = path.join(ROOT, 'Games/miniTroll/src');
   if (!fs.existsSync(src)) return;                    // dépôt sans les sources
   const av = fs.readFileSync(path.join(src, 'base/Aventure.mt'), 'utf8');
   assert.match(av, /fi\.fs\.\$mana\s*=\s*fi\.carac\[Cs\.MANA\]\*2/,
-    'la recharge est bien dans le constructeur de l’aventure');
-  // …et le constructeur n'est PAS rappelé entre deux niveaux : tryToCloseGame
-  // se contente de tuer le Game et de revenir à l'étape 0.
-  assert.match(av, /function tryToCloseGame\(\)\{[\s\S]*?game\.kill\(\);[\s\S]*?initStep\(0\)/);
+    'la recharge d’origine est dans le constructeur de l’aventure');
+  assert.match(av, /function tryToCloseGame\(\)\{[\s\S]*?game\.kill\(\);[\s\S]*?initStep\(0\)/,
+    'et un niveau enchaîné ne le rappelle pas');
   const forest = fs.readFileSync(path.join(src, 'base/Forest.mt'), 'utf8');
   assert.match(forest, /function setWin\(flag\)\{[\s\S]*?level\+=1;[\s\S]*?initStep\(2\)/,
     'un niveau gagné avance le compteur dans la MÊME base');

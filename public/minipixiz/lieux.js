@@ -52,20 +52,9 @@ class Lieu {
     this.level = 0;
     this.fini = false;
     this.gagne = false;
-    // base/Aventure.new : la mana est pleine à l'ENTRÉE du lieu — et là
-    // seulement. Les niveaux qui s'enchaînent ensuite (le donjon) se jouent
-    // sur ce qu'il en reste.
-    //
-    // CE POINT A DÉJÀ ÉTÉ RETOURNÉ DEUX FOIS, sur deux retours contraires. La
-    // preuve, pour qu'il ne le soit pas une troisième : un niveau gagné fait
-    // `level += 1; initStep(2)` puis `tryToCloseGame` → `game.kill();
-    // initStep(0)` — un Game neuf dans la MÊME base, donc `new` ne repasse
-    // pas. Et une base neuve ne naît que d'un `Manager.fadeSlot`, dont les
-    // treize appels d'époque vont tous de la clairière vers un lieu ou d'un
-    // lieu vers la clairière : jamais d'un niveau au suivant. Le relevé
-    // complet — toutes les écritures de `$mana` du fichier comprises — est
-    // dans test/minipixizMana.test.js.
-    if (this.fee) new F.Fee(this.fee, null, this.carte).rechargerMana();
+    // La réserve se refait à chaque NIVEAU, et `commencer()` est justement ce
+    // que chaque niveau rappelle : c'est donc là qu'elle vit (écart assumé,
+    // voir le manifeste en tête de test/minipixizMana.test.js).
     this.commencer();
   }
 
@@ -92,6 +81,20 @@ class Lieu {
   get margeFace() { return this.peau > 1 ? 10 : 0; }
 
   commencer() {
+    // ── ÉCART ASSUMÉ : LA RÉSERVE REPART PLEINE À CHAQUE NIVEAU ──
+    //
+    // base/Aventure.new ne la remplit qu'à l'ENTRÉE du lieu : les dix niveaux
+    // d'un donjon s'enchaînent dans la même base (`level += 1`, `initStep(2)`,
+    // puis `game.kill(); initStep(0)`) et ne repassent jamais par le
+    // constructeur. Le parc en décide autrement — voir le manifeste en tête de
+    // test/minipixizMana.test.js, qui porte le relevé du fichier d'origine ET
+    // la raison de s'en écarter. `commencer()` est ce que chaque niveau
+    // rappelle : la recharge y couvre donc l'entrée comme les suivants, en un
+    // seul endroit.
+    //
+    // AVANT le champ : la fée du plateau lit `fs.$mana` à sa naissance
+    // (Faerie.setInfo → setMana), et la remplir après la laisserait à sec.
+    if (this.fee) new F.Fee(this.fee, null, this.carte).rechargerMana();
     this.jeu = new E.Jeu(Object.assign({
       graine: this.graine,
       niveau: this.level,

@@ -846,14 +846,12 @@ class Fee extends Personne {
     this.berserk = false;
     this.x = this.jeu.largeur * 0.5;
     this.y = this.jeu.hauteur * 0.5;
-    // La fée ENTRE AVEC CE QU'ELLE A. On rechargeait ici sa mana au complet, en
-    // croyant que chaque niveau était un nouvel écran chez Flash — c'est faux :
-    // base/Forest.setWin et base/Dungeon.setWin font `level += 1` puis
-    // `initStep(2)` dans la MÊME base, et seul `base/Aventure.new` — l'entrée
-    // du lieu — pose `fi.fs.$mana = carac[MANA]*2`. Le portage rendait donc
-    // toute la mana à chaque fin de niveau (le retour des joueurs). La recharge
-    // vit maintenant à l'entrée du lieu (Fee.rechargerMana, lieux.js et la
-    // course en forêt) ; ici, la fée relit simplement sa fiche.
+    // La fée ENTRE AVEC CE QUE PORTE SA FICHE, et rien de plus : ici elle la
+    // relit, elle ne la remplit pas. La recharge est une décision de NIVEAU, et
+    // elle vit donc là où un niveau commence — `Lieu.commencer` et
+    // `lancerNiveau` (cf. le manifeste en tête de test/minipixizMana.test.js).
+    // La poser ici la rendrait aussi aux fées qui n'ouvrent pas un niveau : le
+    // bassin, un clone, une fée qu'on ferait naître en cours de partie.
     this.poserInfo(fi);
   }
 

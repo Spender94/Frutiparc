@@ -409,14 +409,9 @@
       // en pleine course doit montrer ce qu'on vient de prendre.
       avant: JSON.parse(JSON.stringify(plateforme.carte)),
     };
-    // base/Aventure.new : la mana est pleine à l'ENTRÉE en forêt — et pas à
-    // chaque niveau de la course, qui se joue sur ce qu'il en reste. Elle se
-    // refait EN JOUANT (trois points de compteur par jeton détruit), mais la
-    // recharge se coupe dès qu'une couleur du niveau est vidée. La preuve que
-    // c'est bien la règle du jeu, et non un oubli du portage, est dans
-    // test/minipixizMana.test.js — ce point a déjà été retourné deux fois.
-    var fiDepart = feeCourante();
-    if (fiDepart) fiDepart.rechargerMana();
+    // La réserve se refait à chaque NIVEAU, pas seulement à l'entrée en forêt :
+    // c'est dans `lancerNiveau`, avec le reste des écarts assumés (voir le
+    // manifeste en tête de test/minipixizMana.test.js).
     lancerNiveau();
   }
 
@@ -429,6 +424,26 @@
   }
 
   function lancerNiveau() {
+    // ── ÉCART ASSUMÉ : LA RÉSERVE REPART PLEINE À CHAQUE NIVEAU ──
+    //
+    // Le jeu d'origine ne la remplit qu'à l'ENTRÉE du lieu (base/Aventure.new,
+    // le constructeur ; les niveaux s'enchaînent dans la même base et ne le
+    // rappellent pas — le relevé complet est en tête de
+    // test/minipixizMana.test.js). Le parc en décide autrement, et c'est une
+    // décision de jeu, pas une lecture du fichier.
+    //
+    // Pourquoi : la recharge en cours de partie se coupe dès qu'une COULEUR du
+    // niveau est vidée (flColorKill), et la forêt se gagne justement en vidant
+    // les couleurs. La fin de chaque niveau se joue donc sans mana, et sur
+    // vingt niveaux d'affilée la réserve ne remonte jamais : les sorts — tout
+    // un pan du jeu — s'éteignent au bout de deux ou trois niveaux. Trois
+    // retours de joueurs l'ont dit, dont deux fois le même.
+    //
+    // Ce que ça ne change PAS : le taux de recharge en jouant, la coupure par
+    // couleur vidée, le plafond (carac[MANA] × 2). La fin de niveau reste
+    // tendue ; c'est le niveau SUIVANT qui repart d'aplomb.
+    var fiNiveau = feeCourante();
+    if (fiNiveau) fiNiveau.rechargerMana();
     client.nouvellePartie({
       niveau: course.niveau,
       // Une graine NEUVE par niveau : sans elle, le moteur repart de la graine
