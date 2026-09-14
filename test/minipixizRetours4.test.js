@@ -16,10 +16,12 @@
  *   · « Le mana continue de se régénérer après élimination d'une couleur » :
  *     Aventure.getManaReplenishCoef rend `flColorKill ? 0 : 3`, et le portage
  *     n'avait pas le drapeau — la recharge ne se coupait jamais.
- *   · « On recommence un niveau avec le mana du niveau d'avant » :
- *     base/Aventure.new fait `fi.fs.$mana = carac[MANA]*2` à CHAQUE entrée en
- *     partie (chaque niveau ré-attache l'écran chez Flash) ; le portage ne
- *     remplissait la réserve qu'à la naissance de la fée.
+ *   · « On recommence un niveau avec le mana du niveau d'avant » — CE RETOUR
+ *     A ÉTÉ MAL LU, et la correction d'alors a été défaite depuis. On croyait
+ *     que « chaque niveau ré-attache l'écran chez Flash » : c'est faux, et le
+ *     fichier le dit sans ambiguïté (cf. test/minipixizMana.test.js, qui porte
+ *     le relevé complet). On recommence bien un niveau avec le mana du niveau
+ *     d'avant : c'est la règle du jeu, pas un défaut du portage.
  */
 'use strict';
 

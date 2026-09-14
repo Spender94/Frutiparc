@@ -410,7 +410,11 @@
       avant: JSON.parse(JSON.stringify(plateforme.carte)),
     };
     // base/Aventure.new : la mana est pleine à l'ENTRÉE en forêt — et pas à
-    // chaque niveau de la course, qui se joue sur ce qu'il en reste.
+    // chaque niveau de la course, qui se joue sur ce qu'il en reste. Elle se
+    // refait EN JOUANT (trois points de compteur par jeton détruit), mais la
+    // recharge se coupe dès qu'une couleur du niveau est vidée. La preuve que
+    // c'est bien la règle du jeu, et non un oubli du portage, est dans
+    // test/minipixizMana.test.js — ce point a déjà été retourné deux fois.
     var fiDepart = feeCourante();
     if (fiDepart) fiDepart.rechargerMana();
     lancerNiveau();

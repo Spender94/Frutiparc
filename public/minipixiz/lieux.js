@@ -55,6 +55,16 @@ class Lieu {
     // base/Aventure.new : la mana est pleine à l'ENTRÉE du lieu — et là
     // seulement. Les niveaux qui s'enchaînent ensuite (le donjon) se jouent
     // sur ce qu'il en reste.
+    //
+    // CE POINT A DÉJÀ ÉTÉ RETOURNÉ DEUX FOIS, sur deux retours contraires. La
+    // preuve, pour qu'il ne le soit pas une troisième : un niveau gagné fait
+    // `level += 1; initStep(2)` puis `tryToCloseGame` → `game.kill();
+    // initStep(0)` — un Game neuf dans la MÊME base, donc `new` ne repasse
+    // pas. Et une base neuve ne naît que d'un `Manager.fadeSlot`, dont les
+    // treize appels d'époque vont tous de la clairière vers un lieu ou d'un
+    // lieu vers la clairière : jamais d'un niveau au suivant. Le relevé
+    // complet — toutes les écritures de `$mana` du fichier comprises — est
+    // dans test/minipixizMana.test.js.
     if (this.fee) new F.Fee(this.fee, null, this.carte).rechargerMana();
     this.commencer();
   }
