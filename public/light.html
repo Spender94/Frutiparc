@@ -2236,18 +2236,26 @@
   /* Voyant : l'icône au repos et sa version allumée sont superposées, et
      alternent en opposition de phase — un vrai clignotement, pas un fondu
      (steps(1)), comme un témoin lumineux. Tant qu'il n'y a rien à signaler, la
-     couche allumée reste invisible et rien ne bouge. */
+     couche allumée reste invisible et rien ne bouge.
+
+     CINQ CLIGNOTEMENTS, PUIS IL SE FIGE ALLUMÉ. Il clignotait sans fin, et
+     c'est un retour de joueur : un témoin qui ne s'arrête jamais cesse d'être
+     un signal et devient une gêne — on finit par regarder ailleurs. Cinq
+     battements attirent l'œil ; ensuite l'icône d'alerte RESTE, et dit encore
+     qu'il y a quelque chose à voir, sans bouger. `forwards` retient la
+     dernière image de l'animation, qui est justement l'état allumé. */
   .sc-btn { position: relative; }
   .sc-btn .ico-alerte {
     position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
     opacity: 0; pointer-events: none;
   }
   .sc-btn:active .ico-alerte { transform: translate(-50%, -50%) scale(.85); }
-  .sc-btn.clignote .ico-alerte { animation: sc-allume 1.2s steps(1) infinite; }
-  .sc-btn.clignote .ico-repos  { animation: sc-eteint 1.2s steps(1) infinite; }
+  .sc-btn.clignote .ico-alerte { animation: sc-allume 1.2s steps(1) 5 forwards; }
+  .sc-btn.clignote .ico-repos  { animation: sc-eteint 1.2s steps(1) 5 forwards; }
   @keyframes sc-allume { 0%, 50% { opacity: 0; } 50.01%, 100% { opacity: 1; } }
   @keyframes sc-eteint { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
-  /* Mouvement réduit : on ne clignote pas, on reste allumé. Le signal demeure. */
+  /* Mouvement réduit : on ne clignote pas, on reste allumé d'emblée. Le signal
+     demeure — c'est d'ailleurs là que les cinq battements finissent. */
   @media (prefers-reduced-motion: reduce) {
     .sc-btn.clignote .ico-alerte { animation: none; opacity: 1; }
     .sc-btn.clignote .ico-repos  { animation: none; opacity: 0; }
@@ -4098,16 +4106,29 @@
   // historique) et chacune apparaît à DEUX endroits — le raccourci de l'encart
   // niveau et la tuile de la grille. Une seule fonction les tient toutes, sinon
   // un endroit finirait par signaler ce que l'autre ignore.
-  // Les voyants clignotent ENSEMBLE. Une animation CSS démarre au moment où la
-  // classe est posée ; comme chaque compteur arrive de sa propre requête, les
-  // trois partiraient décalés et le bandeau ressemblerait à une guirlande. Un
-  // délai négatif recale chacun sur la même horloge.
-  var CYCLE_VOYANT = 1200;                 // doit valoir la durée de @keyframes
-  var departVoyants = Date.now();
-  function caler(bouton) {
-    var phase = -((Date.now() - departVoyants) % CYCLE_VOYANT) + "ms";
+  /*
+   * CHAQUE VOYANT COMPTE SES CINQ BATTEMENTS DEPUIS QU'IL S'ALLUME.
+   *
+   * On les recalait autrefois sur une horloge commune — un délai d'animation
+   * NÉGATIF — pour qu'ils clignotent ensemble plutôt qu'en guirlande, chaque
+   * compteur arrivant de sa propre requête. Ce recalage n'a plus lieu d'être
+   * depuis que le clignotement est BORNÉ : un délai négatif mange le début de
+   * l'animation, et le voyant recalé ne battrait que quatre fois et demie. Les
+   * cinq battements comptent plus que la synchronie, d'autant qu'ils finissent
+   * tous au même endroit — allumés — et que c'est cet état-là qui dure.
+   *
+   * `eteindre` remet un voyant au repos SUR-LE-CHAMP, sans attendre que le
+   * serveur recompte : c'est ce qui manquait au raccourci du forum, qui
+   * continuait de clignoter après qu'on l'a ouvert.
+   */
+  function eteindre(bouton) {
+    bouton.classList.remove("clignote");
+    // Le navigateur garde la dernière image d'une animation `forwards` tant
+    // qu'on ne la lui reprend pas : on redémarre donc le calcul du style.
     Array.prototype.forEach.call(bouton.querySelectorAll("img"), function (i) {
-      i.style.animationDelay = phase;
+      i.style.animation = "none";
+      void i.offsetWidth;                  // reflow : l'animation est vraiment jetée
+      i.style.animation = "";
     });
   }
   function majVoyant(fichier, n) {
@@ -4131,8 +4152,8 @@
       // Le raccourci clignote : les deux couches sont déjà en place, il suffit
       // de lancer ou d'arrêter l'alternance.
       var allume = n > 0 && !!def.voyant;
-      if (allume) caler(e);
-      e.classList.toggle("clignote", allume);
+      if (allume) e.classList.add("clignote");
+      else eteindre(e);
     });
   }
   var homeProfile = { bouille: DEFAULT_BOUILLE, level: 1, xp: 0, rank: null, kikooz: 0 };
@@ -4270,6 +4291,13 @@
         b.innerHTML = '<img class="ico-repos" src="/fb/' + it.file + '.svg" alt="' + xmlEscape(it.name) + '">'
           + (it.voyant ? '<img class="ico-alerte" src="/fb/' + it.voyant + '.svg" alt="" aria-hidden="true">' : '');
         if (it.go) b.addEventListener("click", function () {
+          // ON A VU LE SIGNAL : le voyant s'éteint au clic, sans attendre que le
+          // serveur recompte. C'était flagrant sur le FORUM — on l'ouvrait, et
+          // le raccourci continuait de clignoter jusqu'à ce qu'on ait lu chaque
+          // sujet, puisque seul le forum renvoie le compte. Les compteurs, eux,
+          // ne bougent pas : le voyant se rallumera à la prochaine VRAIE
+          // nouveauté (les trois `set*NonLus` ne repeignent que sur changement).
+          eteindre(b);
           if (it.go === "disques") {
             if (window.BureauFrutiz && BureauFrutiz.actif() && BureauFrutiz.ouvrirDisques) {
               return BureauFrutiz.ouvrirDisques();

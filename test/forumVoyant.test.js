@@ -314,6 +314,51 @@ test('le forum porte le bouton, et /light écoute son extinction', () => {
   assert.match(light, /setForumNonLus\(d\.restant\)/, '…et éteint son voyant sans attendre');
 });
 
+/*
+ * CINQ BATTEMENTS, PUIS IL SE FIGE ALLUMÉ — et le clic le remet au repos.
+ *
+ * « Les voyants/raccourcis de la top bar ne sont pas censés clignoter
+ * indéfiniment. Ils clignotent 5 fois et ensuite se figent en position
+ * déclenchée. Ils repassent en position non déclenchée quand on clique dessus,
+ * y compris le raccourci forum. »
+ *
+ * Un témoin qui ne s'arrête jamais cesse d'être un signal. Cinq battements
+ * attirent l'œil ; ensuite l'icône d'alerte RESTE — elle dit encore qu'il y a
+ * quelque chose, sans bouger. Et le clic vaut accusé de réception : le forum
+ * en avait particulièrement besoin, puisque seul le forum lui-même renvoie le
+ * compte et qu'on pouvait donc l'ouvrir sans que le voyant s'éteigne.
+ */
+test('le voyant bat cinq fois, se fige allumé, et s’éteint au clic', () => {
+  const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+
+  // Cinq itérations, et la dernière image RETENUE : c'est celle où la couche
+  // d'alerte est à l'opacité 1 et celle du repos à 0.
+  assert.match(light, /\.sc-btn\.clignote \.ico-alerte \{ animation: sc-allume 1\.2s steps\(1\) 5 forwards; \}/);
+  assert.match(light, /\.sc-btn\.clignote \.ico-repos  \{ animation: sc-eteint 1\.2s steps\(1\) 5 forwards; \}/);
+  assert.match(light, /@keyframes sc-allume \{ 0%, 50% \{ opacity: 0; \} 50\.01%, 100% \{ opacity: 1; \} \}/,
+    'la dernière image de « allume » est bien allumée');
+  assert.match(light, /@keyframes sc-eteint \{ 0%, 50% \{ opacity: 1; \} 50\.01%, 100% \{ opacity: 0; \} \}/);
+  assert.ok(!/animation: sc-(allume|eteint) 1\.2s steps\(1\) infinite/.test(light),
+    'plus de clignotement sans fin');
+
+  // Le recalage sur une horloge commune est parti avec l'infini : un délai
+  // NÉGATIF mangerait le début de l'animation, et le voyant recalé ne battrait
+  // que quatre fois et demie.
+  assert.ok(!/animationDelay = phase/.test(light), 'plus de délai négatif');
+  assert.ok(!/function caler\(/.test(light), 'la fonction de recalage a disparu');
+
+  // Éteindre, c'est retirer la classe ET reprendre au navigateur la dernière
+  // image que `forwards` lui faisait garder.
+  assert.match(light, /function eteindre\(bouton\) \{[\s\S]*?classList\.remove\("clignote"\)/);
+  assert.match(light, /i\.style\.animation = "none";[\s\S]{0,120}i\.style\.animation = "";/);
+  assert.match(light, /if \(allume\) e\.classList\.add\("clignote"\);\s*\n\s*else eteindre\(e\);/);
+
+  // Et le clic sur un raccourci l'éteint AVANT de router — le forum compris,
+  // puisque la règle vit sur le bouton, pas sur telle ou telle rubrique.
+  assert.match(light, /if \(it\.go\) b\.addEventListener\("click", function \(\) \{[\s\S]{0,700}eteindre\(b\);/,
+    'le clic éteint le voyant');
+});
+
 test('LIRE un sujet éteint le voyant, sans passer par « tout marquer »', () => {
   // Le voyant du bureau est un LOQUET : le serveur l'allume à la connexion
   // (`<ay/>`) et rien ne l'abaissait en cours de session. Un joueur réglé sur
