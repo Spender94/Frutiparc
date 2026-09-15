@@ -1718,6 +1718,16 @@
   }
   .reg-titre { font-weight: bold; font-size: 13px; color: #40305c; margin-bottom: 4px; }
   .reg-texte { font-size: 12.5px; line-height: 1.4; color: #2C4A0F; }
+  /* La grille des accessoires, mais posée sur une carte blanche : elle perd la
+     plaque jaune de l'inventaire et gagne une colonne — pas de bandeau ni de
+     revente ici, rien que le choix. */
+  #reg-accessoire {
+    margin-top: 10px; padding: 0; background: transparent;
+    grid-template-columns: repeat(4, 1fr);
+  }
+  /* `1fr` ne suffit pas : sans `min-width: 0`, une colonne s'élargit pour tenir
+     « Chapeau de shérif » en entier et les quatre cessent d'être égales. */
+  #reg-accessoire .acc-item { min-width: 0; }
   .reg-note { margin-top: 7px; opacity: .85; }
   .reg-actions {
     margin-top: 9px; display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
@@ -2958,6 +2968,20 @@
             ensemble&nbsp;; les jeux, non.</div>
           <div id="reg-nuit" class="reg-choix" hidden></div>
           <div class="reg-texte reg-note" id="reg-nuit-vendu" hidden></div>
+        </div>
+
+        <!-- L'ACCESSOIRE PAR DÉFAUT — la préférence n° 17, côté joueur. Elle
+             vit dans le compte (pas dans l'appareil, à la différence de la
+             nuit) : le bureau la montre au même endroit, dans sa rubrique
+             « Apparence » (cf. CARTE_DE_PREF, bureau-frutiz.js). -->
+        <div class="reg-carte" id="reg-carte-accessoire">
+          <div class="reg-titre">Accessoire par défaut</div>
+          <div class="reg-texte">Celui que ta bouille porte d'office&nbsp;: le choisir
+            ici te le pose tout de suite sur la tête, et le forum ouvre ses messages
+            dessus au lieu de la tête nue. Rien ne t'empêche d'en changer pour un
+            message ou pour l'après-midi&nbsp;— ton défaut, lui, ne bouge pas.</div>
+          <div id="reg-accessoire" class="acc-grid">…</div>
+          <div class="reg-texte reg-note" id="reg-accessoire-etat"></div>
         </div>
 
         <div class="reg-carte" id="reg-carte-notifs">
@@ -7120,6 +7144,7 @@
     majLigneNotifs();
     majMentions();
     majNuit();
+    majAccessoireDefaut();
     var inst = $("#reg-install");
     if (inst) {
       if (estInstallee()) {
@@ -12319,6 +12344,11 @@
             if (!seen[sfx2]) { seen[sfx2] = true; accList.push({ name: a.name, suffix: sfx2, fullState: null, shopId: achat.shopId, revendable: achat.revendable }); }
           }
         });
+        // L'accessoire par défaut arrive par le même aller-retour : la carte
+        // des réglages n'a rien à demander de plus.
+        var parDefaut = String((d && d.defaultAccessory) || "");
+        accDefaut = parDefaut.length === 9 ? parDefaut : "000000000";
+        if ($("#reg-accessoire")) majAccessoireDefaut();
         // Mark the current selection from the saved bouille.
         var cur = state.bouilleByUser[state.userLower] || DEFAULT_BOUILLE;
         if (isIncarnation(cur)) accSel = { suffix: cur.substring(15, 24), fullState: cur };
@@ -12537,6 +12567,69 @@
         : "Choisis un accessoire de ton inventaire :";
     }
     brancherApercus(grid);
+  }
+
+  /* ── L'ACCESSOIRE PAR DÉFAUT (préférence n° 17) ────────────────────────────
+   *
+   * Comme le fond d'écran, c'est un RÉGLAGE DE COMPTE : il vaut pour le bureau
+   * comme pour le téléphone, et le forum ouvre ses formulaires dessus au lieu
+   * de la tête nue — c'était la demande, le sélecteur du forum repartant de
+   * zéro à chaque message.
+   *
+   * CE QU'IL FAIT, EXACTEMENT. Le choisir ici le POSE tout de suite sur la
+   * bouille (c'est le geste qu'on vient faire), et le forum s'ouvre dessus
+   * ensuite. En porter un autre à la main — l'inventaire, la fenêtre du
+   * bureau, le sélecteur d'un message — ne touche PAS au défaut : on s'écarte
+   * pour un moment, on ne redéfinit pas. Et rien n'est reposé de force à la
+   * connexion : la bouille portée est déjà gardée par le serveur.
+   *
+   * Les INCARNATIONS n'y figurent pas : elles remplacent la bouille entière,
+   * quand la préférence ne garde que les neuf caractères d'accessoire.
+   */
+  var accDefaut = "000000000";
+  function majAccessoireDefaut() {
+    var hote = $("#reg-accessoire");
+    if (!hote || !state.sid) return;
+    // La liste n'est chargée qu'à la demande (cf. loadAccessories) : si elle
+    // n'est pas encore là, on la demande et on repasse.
+    if (!accList.length) { loadAccessories(majAccessoireDefaut); return; }
+    hote.innerHTML = "";
+    accList.forEach(function (ac) {
+      if (ac.fullState) return;
+      var item = el("div", "acc-item" + (ac.suffix === accDefaut ? " sel" : ""));
+      item.innerHTML = '<div class="thumb">' + previewIframe(buildState(myBase, ac.suffix, null))
+        + '</div><div class="lbl">' + xmlEscape(ac.name || "Accessoire") + "</div>";
+      item.addEventListener("click", function () { poserAccessoireDefaut(ac); });
+      hote.appendChild(item);
+    });
+    brancherApercus(hote);
+  }
+
+  function poserAccessoireDefaut(ac) {
+    var etat = $("#reg-accessoire-etat");
+    if (etat) etat.textContent = "…";
+    fetch("/api/light/prefs", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sid: state.sid, prefs: { default_accessory: ac.suffix } }),
+    }).then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) { if (etat) etat.textContent = "Non enregistré, réessaie."; return; }
+        accDefaut = ac.suffix;
+        majAccessoireDefaut();
+        // La fenêtre des préférences du bureau tient une COPIE des valeurs :
+        // sans ce mot-là, son « Enregistrer » reposterait l'ancienne.
+        if (window.BureauFrutiz && BureauFrutiz.noterPref) {
+          BureauFrutiz.noterPref("default_accessory", accDefaut);
+        }
+        accSel = { suffix: accDefaut, fullState: null };
+        porterEtat(buildState(myBase, accDefaut, null));
+        if (etat) {
+          etat.textContent = "✓ « " + (ac.name || "Accessoire") + " » posé, et gardé comme défaut.";
+          clearTimeout(etat._minuteur);
+          etat._minuteur = setTimeout(function () { etat.textContent = ""; }, 6000);
+        }
+      })
+      .catch(function () { if (etat) etat.textContent = "Hors ligne, réessaie."; });
   }
 
   // Un mot dans le bandeau de la feuille, le temps qu'on le lise (le prochain

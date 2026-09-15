@@ -119,7 +119,11 @@ test('un choix se rend en radios, une par ligne', () => {
   assert.ok(f, 'prefFormChoix doit exister');
   assert.match(f[0], /<l><s w="8"\/><r v="value" u="\$\{escapeXml\(encode62\(v\)\)\}">/);
   // La valeur voyage en base 62, comme dans la chaîne stockée.
-  assert.match(SERVEUR, /choices: \(meta\.choices \|\| \[\]\)\.map\(\(\[v, lib\]\) => \(\{ v: encode62\(v\), label: lib \}\)\)/);
+  assert.match(SERVEUR, /\(meta\.choices \|\| \[\]\)\.map\(\(\[v, lib\]\) => \(\{ v: encode62\(v\), label: lib \}\)\)/);
+  // Une seule exception, écrite en toutes lettres : l'accessoire par défaut
+  // garde une chaîne de neuf caractères, et ses choix sortent de l'inventaire
+  // du joueur — aucune liste fixe ne pourrait les connaître.
+  assert.match(SERVEUR, /def\.name === 'default_accessory'\n\s+\? choixAccessoireDefaut\(user\)/);
 });
 
 test('les trois positions demandées, dans cet ordre', () => {
@@ -351,7 +355,11 @@ test('les cartes de l’appareil se cachent vraiment', () => {
   // `display: block` bat le `display: none` que la feuille du navigateur donne
   // à `[hidden]` : sans cette ligne, elles resteraient sous chaque préférence.
   assert.match(CSS, /#reg-corps\[hidden\] \{ display: none; \}/);
-  assert.match(JS, /if \(corps\) corps\.hidden = !\(p && p\.local !== undefined\);/);
+  // Le document n'ouvre `#reg-corps` que pour une préférence qui A une carte :
+  // une rubrique de l'appareil, ou une préférence de compte qui en réclame une
+  // (l'accessoire par défaut — neuf caractères ne se tapent pas à la main).
+  assert.match(JS, /var carte = p \? \(p\.local !== undefined \? p\.local : CARTE_DE_PREF\[p\.name\]\) : null;/);
+  assert.match(JS, /if \(corps\) corps\.hidden = !carte;/);
   // Et l'écart est assumé par écrit : ces trois cartes n'ont pas d'original.
   assert.match(CSS, /ÉCART ASSUMÉ — la rubrique « Cet appareil »/);
   const loc = /var PF_LOCALES = \[\{[\s\S]*?\n  \}\];/.exec(JS);

@@ -5273,6 +5273,13 @@ window.BureauFrutiz = (function () {
     ],
   }];
 
+  // ET L'INVERSE : une préférence de COMPTE qui a mieux à offrir qu'un widget.
+  // L'accessoire par défaut vaut neuf caractères de queue d'état de bouille —
+  // cela ne se tape pas, cela se choisit en vignettes ; la carte du mobile fait
+  // déjà exactement cela, on la montre à sa place. La préférence garde sa
+  // rubrique (« Apparence ») et son libellé, servis par le serveur.
+  var CARTE_DE_PREF = { default_accessory: 'reg-carte-accessoire' };
+
   function habillerReglages(panneau) {
     if (!panneau) return;
     // L'écorce ne se monte qu'une fois ; les VALEURS, elles, se relisent à
@@ -5402,14 +5409,16 @@ window.BureauFrutiz = (function () {
     [].slice.call(feuille.children).forEach(function (n) {
       if (n !== corps) n.remove();
     });
-    if (corps) corps.hidden = !(p && p.local !== undefined);
+    // La carte à montrer, s'il y en a une : celle d'une rubrique de l'appareil,
+    // ou celle d'une préférence de compte qui a mieux à offrir qu'un widget.
+    var carte = p ? (p.local !== undefined ? p.local : CARTE_DE_PREF[p.name]) : null;
+    if (corps) corps.hidden = !carte;
     if (!p) return;
 
-    if (p.local !== undefined) {
-      // Une rubrique de l'appareil : on ne montre que SA carte.
+    if (carte) {
       if (!corps) return;
       var cartes = corps.querySelectorAll('.reg-carte');
-      for (var k = 0; k < cartes.length; k++) cartes[k].hidden = (cartes[k].id !== p.local);
+      for (var k = 0; k < cartes.length; k++) cartes[k].hidden = (cartes[k].id !== carte);
       return;
     }
 
@@ -8775,6 +8784,18 @@ window.BureauFrutiz = (function () {
     // Ce que le light change dans les dossiers (une revente, par exemple) doit
     // se voir dans les fenêtres ouvertes : elles se relisent.
     relireExplorateurs: relireExplorateurs,
+    /*
+     * UNE CARTE QUI S'ENREGISTRE TOUTE SEULE le dit au BROUILLON.
+     *
+     * Les cartes du mobile écrivent à chaque clic (`/api/light/prefs`), la
+     * fenêtre des préférences garde une COPIE que seul « Enregistrer » reverse
+     * dans le compte. Sans cette ligne, régler l'accessoire par défaut dans la
+     * carte puis enregistrer une autre préférence reposterait l'ancienne
+     * valeur par-dessus.
+     */
+    noterPref: function (nom, valeur) {
+      if (prefEtat && prefEtat.brouillon) prefEtat.brouillon[nom] = valeur;
+    },
     // Un voyant qui change : le light nous prévient, la bande des contacts se
     // rhabille sans relire quoi que ce soit.
     majStatutContact: majStatutContact,

@@ -5021,6 +5021,18 @@ const prefDefs = [
   // ni l'onglet qui clignote, ni le voyant, ni le téléphone.
   { id: 15, type: 'b', name: 'mention_chat',             def: 'Y' },
   { id: 16, type: 'b', name: 'mention_forum',            def: 'Y' },
+  // L'ACCESSOIRE PAR DÉFAUT, au même titre que le fond d'écran (id 5) : une
+  // chaîne. Ce sont les NEUF caractères de queue d'un état de bouille — la part
+  // « accessoires » (indices 15 à 23) —, la même clé que la boutique
+  // (`suffix9`) et que le sélecteur du forum. Sa valeur d'origine est la tête
+  // nue, « 000000000 » : tant qu'on n'a rien réglé, rien ne change.
+  //
+  // Elle n'a pas d'original : en 2005 on posait son accessoire à la main, une
+  // fois, et le bureau le gardait ; le forum, lui, repartait de la tête nue à
+  // CHAQUE message. C'est ce dernier point que les joueurs demandent de régler
+  // une bonne fois — d'où une préférence, et non un réglage de plus dans le
+  // formulaire du forum.
+  { id: 17, type: 's', name: 'default_accessory',        def: '000000000' },
 ];
 
 // Les trois modes de `forum_notify`, nommés pour ne pas semer des 0/1/2 nus.
@@ -18606,6 +18618,10 @@ const PREF_LABELS = {
   invite_chat_behavior:    { label: 'Invitation chat privé',           desc: 'Comportement lors de la réception d\'une invitation de chat privé.',
                              choices: INVITE_MODES },
   wallpaper:               { label: 'Fond d\'écran',                   desc: 'Nom du fond d\'écran utilisé sur le bureau.' },
+  default_accessory:       { label: 'Accessoire par défaut',
+                             desc: 'Accessoire que la bouille porte d\'office : posé sur le bureau à la connexion, '
+                               + 'et déjà choisi quand on ouvre un message du forum. Rien n\'empêche d\'en changer '
+                               + 'au coup par coup — cela ne touche pas au défaut.' },
   cache_length:            { label: 'Durée du cache',                  desc: 'Nombre de jours pendant lesquels les fichiers sont conservés.' },
   cl_open:                 { label: 'Ouvrir la liste de contacts',     desc: 'Ouvrir automatiquement la liste de contacts au démarrage.' },
   win_flMoveAnim:          { label: 'Animations des fenêtres',         desc: 'Activer les animations de déplacement des fenêtres.' },
@@ -18636,8 +18652,53 @@ const PREF_CATEGORIES = [
   { name: 'Invitations', ids: [3, 4] },
   { name: 'Forum',   ids: [14] },
   { name: 'Mentions', ids: [15, 16] },
-  { name: 'Apparence',   ids: [5] },
+  { name: 'Apparence',   ids: [5, 17] },
 ];
+
+/*
+ * LES ACCESSOIRES DE BASE — ceux que tout le monde porte sans les avoir
+ * achetés. Une seule liste pour les deux endroits qui les servent : le
+ * sélecteur du forum (`/api/forum/me`) et les choix de l'accessoire par défaut
+ * (juste en dessous).
+ */
+const ACCESSOIRES_DEFAUT = [
+  { id: 'bananocle', name: 'Bananocle', suffix: '6010k0w0g' },
+  { id: 'beaute',    name: 'Beauté',    suffix: 'b000k0w0g' },
+  { id: 'normal',    name: 'Normal',    suffix: '000000000' },
+  { id: 'Kiwix',     name: 'Kiwix',     suffix: '30x000000' },
+];
+
+/*
+ * LES CHOIX DE « L'ACCESSOIRE PAR DÉFAUT » — ils dépendent du JOUEUR.
+ *
+ * Les autres préférences à choix ont une liste fixe, écrite dans `PREF_LABELS` ;
+ * celle-ci est l'inventaire de celui qui ouvre la fenêtre. On la bâtit donc à la
+ * volée, dans la forme que les clients attendent déjà (`{v, label}`) : la
+ * fenêtre « Mes préférences » du bureau y gagne ses boutons radio sans une
+ * ligne de plus, et l'écriture reste celle de toutes les autres préférences.
+ *
+ * « Normal » d'abord — c'est la tête nue, et la valeur d'origine. Les
+ * INCARNATIONS n'y sont pas : elles remplacent la bouille ENTIÈRE, quand cette
+ * préférence-ci ne garde que les neuf caractères d'accessoire.
+ */
+function choixAccessoireDefaut(user) {
+  const vus = new Set();
+  const liste = [];
+  const ajouter = (suffix, label) => {
+    const s = String(suffix || '');
+    if (s.length !== 9 || vus.has(s)) return;
+    vus.add(s);
+    liste.push({ v: s, label: String(label || 'Accessoire') });
+  };
+  ajouter('000000000', 'Normal');
+  for (const a of ACCESSOIRES_DEFAUT) ajouter(a.suffix, a.name);
+  for (const a of (user && user.customAccessories) || []) {
+    if (!a || String(a.v || '').startsWith('wp:') || getAccessoryPrunelle(a)) continue;
+    if (String(a.v || '').length !== 24) continue;
+    ajouter(String(a.v).substring(15, 24), a.n);
+  }
+  return liste;
+}
 
 // Default widget per pref type — mirrors Standard.getPrefForm in main.swf.
 //  bool   → two radios labelled Oui/Non bound to "value" with values Y/N
@@ -18718,8 +18779,12 @@ function prefsEnJson(user) {
         label: meta.label,
         desc: meta.desc || '',
         // Une valeur de choix voyage en base 62, comme dans la chaîne stockée :
-        // le client compare des chaînes, jamais des nombres.
-        choices: (meta.choices || []).map(([v, lib]) => ({ v: encode62(v), label: lib })),
+        // le client compare des chaînes, jamais des nombres. L'accessoire par
+        // défaut fait exception — sa valeur EST déjà une chaîne de neuf
+        // caractères, et ses choix sortent de l'inventaire du joueur.
+        choices: def.name === 'default_accessory'
+          ? choixAccessoireDefaut(user)
+          : (meta.choices || []).map(([v, lib]) => ({ v: encode62(v), label: lib })),
       };
     }),
   }));
@@ -20813,12 +20878,7 @@ app.get('/api/forum/me', (req, res) => {
       }
       return e;
     });
-  const defaults = [
-    { id: 'bananocle', name: 'Bananocle', suffix: '6010k0w0g' },
-    { id: 'beaute',    name: 'Beauté',    suffix: 'b000k0w0g' },
-    { id: 'normal',    name: 'Normal',    suffix: '000000000' },
-    { id: 'Kiwix',     name: 'Kiwix',     suffix: '30x000000' },
-  ];
+  const defaults = ACCESSOIRES_DEFAUT;
   // Expose mute status to the frontend so the topic page can pre-disable
   // the "Répondre" button rather than letting the user compose a message
   // that will be rejected on POST. The server still enforces the lockout
@@ -20853,6 +20913,13 @@ app.get('/api/forum/me', (req, res) => {
     signature: u.forumSignature || '',
     accessories: accessories,
     defaultAccessories: defaults,
+    // L'ACCESSOIRE PAR DÉFAUT, réglé dans les préférences : le forum ouvre ses
+    // formulaires dessus au lieu de la tête nue (cf. la préférence
+    // `default_accessory`). On le rend TEL QUEL — c'est au client de ne
+    // proposer que ce qu'il connaît, et de retomber sur « Normal » sinon : un
+    // accessoire revendu depuis ne doit pas vider le sélecteur, juste ne plus
+    // être choisi d'office.
+    defaultAccessory: prefBrute(u, 'default_accessory') || '',
     muted: mute.muted,
     mutedUntil: mute.until,
     mutedUntilDisplay: mute.untilDisplay,

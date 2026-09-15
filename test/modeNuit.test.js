@@ -1364,8 +1364,11 @@ test('l’arbre des réglages du bureau désigne ses cartes par identifiant', ()
   assert.ok(nuit && nuit.label === 'Le parc, la nuit', 'le mode nuit manque de l’arbre');
   assert.ok(entrees.indexOf(nuit) < entrees.findIndex((e) => e.label === 'Notifications'),
     'le mode nuit doit venir AVANT les notifications, pas dedans');
-  // Et c'est bien l'identifiant qui sélectionne la carte affichée.
-  assert.match(BUREAU, /cartes\[k\]\.hidden = \(cartes\[k\]\.id !== p\.local\);/);
+  // Et c'est bien l'identifiant qui sélectionne la carte affichée — celui de
+  // la rubrique d'appareil, ou celui qu'une préférence de compte réclame par
+  // `CARTE_DE_PREF` (l'accessoire par défaut se choisit en vignettes).
+  assert.match(BUREAU, /var carte = p \? \(p\.local !== undefined \? p\.local : CARTE_DE_PREF\[p\.name\]\) : null;/);
+  assert.match(BUREAU, /cartes\[k\]\.hidden = \(cartes\[k\]\.id !== carte\);/);
   // Toutes les cartes du HTML portent un identifiant : sans quoi la suivante
   // qu'on ajoute retombe dans le même piège, invisible depuis le bureau.
   const sansId = [...LIGHT.matchAll(/<div class="reg-carte"(?! id=)/g)];

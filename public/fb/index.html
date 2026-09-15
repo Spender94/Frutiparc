@@ -1578,6 +1578,9 @@ let myBouille = null;
 let mySignature = '';   // signature de forum (BBCode), éditable via le bouton « Ma signature »
 let myAccessories = [];
 let myDefaultAccessories = [];
+// L'accessoire par défaut (préférence `default_accessory`) : les neuf
+// caractères d'accessoire sur lesquels le formulaire s'ouvre.
+let myDefaultAccessory = '';
 // Les INCARNATIONS possédées, et la bouille principale : le menu déroulant du
 // formulaire choisit entre les deux (cf. incarnationSelectHtml).
 let myIncarnations = [];
@@ -1731,6 +1734,29 @@ function getAllAccessories() {
   return [normal].concat(allAcc);
 }
 
+/*
+ * SUR QUEL ACCESSOIRE LE FORMULAIRE S'OUVRE.
+ *
+ * Il repartait de la TÊTE NUE à chaque message : qui porte toujours le même
+ * accessoire devait le rechoisir vingt fois par jour. Il s'ouvre maintenant sur
+ * celui qu'on a réglé dans ses préférences (`default_accessory`) — et il ne
+ * fait que S'OUVRIR dessus : en changer pour un message ne touche pas au
+ * défaut.
+ *
+ * On ne retient que ce qu'on POSSÈDE ENCORE (`getAllAccessories`) : un
+ * accessoire revendu depuis laisse la tête nue plutôt qu'une vignette choisie
+ * d'office qui ne correspond à rien.
+ */
+function suffixeParDefaut() {
+  var s = String(myDefaultAccessory || '');
+  if (s.length !== 9) return '000000000';
+  var all = getAllAccessories();
+  for (var i = 0; i < all.length; i++) {
+    if (!all[i].fullState && all[i].suffix === s) return s;
+  }
+  return '000000000';
+}
+
 // Track bouille selector pagination per-form.
 var BOUILLE_PER_PAGE = 8;
 var _bouillePage = {};
@@ -1874,10 +1900,18 @@ function bouilleSetIncarnation(formId, etat) {
 }
 
 function bouilleSelHtml(formId) {
-  _bouillePage[formId] = 0;
-  _activeBouilleSel[formId] = { accSuffix9: '000000000', mouthId: null, fullState: null,
+  var suffixe = suffixeParDefaut();
+  _activeBouilleSel[formId] = { accSuffix9: suffixe, mouthId: null, fullState: null,
     incarnation: null };
   var all = getAllAccessories();
+  // La grille s'ouvre sur la PAGE qui porte l'accessoire choisi : elle n'en
+  // montre que huit à la fois, et un défaut invisible serait un défaut qu'on
+  // croit perdu.
+  var rang = 0;
+  for (var i = 0; i < all.length; i++) {
+    if (!all[i].fullState && all[i].suffix === suffixe) { rang = i; break; }
+  }
+  _bouillePage[formId] = Math.floor(rang / BOUILLE_PER_PAGE);
   var html = '';
 
   // Sujet row is rendered by the caller; this returns the rows below it.
@@ -3866,6 +3900,7 @@ async function init() {
       mySignature = data.signature || '';
       myAccessories = data.accessories || [];
       myDefaultAccessories = data.defaultAccessories || [];
+      myDefaultAccessory = data.defaultAccessory || '';
       myIncarnations = data.incarnations || [];
       myBouillePrincipale = data.bouillePrincipale || data.bouille || null;
       myMuted = !!data.muted;
