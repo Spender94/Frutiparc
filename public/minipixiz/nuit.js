@@ -137,10 +137,26 @@ function genererMissions(carte, alea) {
 
 /**
  * Cm.validateMission — l'échéance est là. Les fées reviennent, et le cadeau
- * arrive s'il y a de la place. Sinon il part « à l'AFD » : le jeu ne le garde
- * pas en attente, et c'est une vraie perte.
+ * arrive s'il y a de la place.
+ *
+ * LE CADEAU N'EST PLUS JETÉ D'OFFICE. Le jeu d'origine le donnait « à l'AFD »
+ * quand le sac était plein, sans rien demander — et c'est un retour de joueur :
+ * « quand on a l'inventaire plein le jour de la fin d'une mission, on n'a pas
+ * l'occasion de faire de la place, l'objet est jeté automatiquement […] tout ça
+ * parce que je gardais un œuf pour ma première fée ». Une mission dure des
+ * jours ; perdre son salaire sur une case manquante, sans un mot avant, est une
+ * punition que personne n'a choisie.
+ *
+ * Il rejoint donc la rangée « à ranger » — celle du butin de forêt et du lot de
+ * l'arc-en-ciel (`Base.itemList` / `tryToClose`) : la clairière ouvre
+ * l'inventaire dessus, porte condamnée, et l'on jette ce qu'on veut pour lui
+ * faire de la place. C'est un écart assumé du fichier d'origine, et le seul :
+ * le cadeau, lui, ne change pas.
+ *
+ * @param {object[]} [enAttente] la rangée à alimenter ; sans elle, on retombe
+ *        sur l'ancienne règle (l'AFD) — les appels d'époque restent valides.
  */
-function validerMission(carte, id, dire) {
+function validerMission(carte, id, dire, enAttente) {
   const mis = carte.$mis[id];
   if (!mis) return null;
   const revenues = [];
@@ -159,9 +175,15 @@ function validerMission(carte, id, dire) {
     texte = 'Félicitations !\n' + groupe + (pluriel ? ' ont ' : ' a ') + mis.$string
       + '\nVous avez gagné l\'objet suivant : ' + (it ? it.nom : '?') + ' !';
     if (P().ramasser(carte, mis.$gift) === 'perdu') {
-      texte += '\nMalheureusement, vous n\'aviez pas assez de place dans votre inventaire '
-        + 'pour cet objet. Il a donc été généreusement offert à l\'AFD '
-        + '( Association des Fées Démunies ) qui vous remercie chaleureusement pour ce don.';
+      if (Array.isArray(enAttente)) {
+        enAttente.push(nombre(mis.$gift));
+        texte += '\nVotre inventaire était plein : l\'objet vous attend à l\'entrée du sac. '
+          + 'Faites-lui de la place avant de repartir.';
+      } else {
+        texte += '\nMalheureusement, vous n\'aviez pas assez de place dans votre inventaire '
+          + 'pour cet objet. Il a donc été généreusement offert à l\'AFD '
+          + '( Association des Fées Démunies ) qui vous remercie chaleureusement pour ce don.';
+      }
     }
   } else {
     texte = groupe + (pluriel ? ' n\'ont ' : ' n\'a ') + mis.$string;
@@ -179,12 +201,15 @@ function validerMission(carte, id, dire) {
 /**
  * Cm.upkeep — UNE nuit.
  *
- * @returns {{messages: string[], nouvellesFees: number}} ce que le joueur lira
- *          à son retour, dans l'ordre où le jeu l'aurait dit.
+ * @returns {{messages: string[], nouvellesFees: number, enAttente: number[]}}
+ *          ce que le joueur lira à son retour, dans l'ordre où le jeu l'aurait
+ *          dit — et ce qui l'attend à l'entrée du sac, faute de place (le
+ *          cadeau d'une mission achevée : cf. `validerMission`).
  */
 function entretien(carte, alea) {
   const t = tirages(alea);
   const messages = [];
+  const enAttente = [];
   const dire = (s) => { if (s) messages.push(s); };
   const jour = nombre(carte.$time && carte.$time.$d);
 
@@ -301,10 +326,10 @@ function entretien(carte, alea) {
   for (let i = 0; i < carte.$mis.length; i++) {
     const m = carte.$mis[i];
     m.$d = nombre(m.$d) - 1;
-    if (m.$d === 0) { validerMission(carte, i, dire); i--; }
+    if (m.$d === 0) { validerMission(carte, i, dire, enAttente); i--; }
   }
 
-  return { messages, nouvellesFees };
+  return { messages, nouvellesFees, enAttente };
 }
 
 // Cm.getFaerieIndex
@@ -350,6 +375,9 @@ function passerLeTemps(carte, maintenant, alea, limite) {
   // tombe — pendant l'entretien, c'est le matin qui vient de se lever. C'est
   // cette date que la lettre du courrier affiche en tête de groupe.
   const courrier = [];
+  // Ce qui n'a pas trouvé de place dans le sac, nuit après nuit : la clairière
+  // ouvrira l'inventaire dessus (cf. `validerMission`).
+  const enAttente = [];
   let nouvellesFees = 0;
   while (carte.$time.$s > JOUR) {
     carte.$time.$s -= JOUR;
@@ -362,8 +390,9 @@ function passerLeTemps(carte, maintenant, alea, limite) {
       courrier.push({ d: nombre(carte.$time.$d), txt: m });
     }
     nouvellesFees += r.nouvellesFees;
+    for (const o of (r.enAttente || [])) enAttente.push(o);
   }
-  return { nuits, jouees: Math.min(nuits, max), messages, courrier, nouvellesFees };
+  return { nuits, jouees: Math.min(nuits, max), messages, courrier, nouvellesFees, enAttente };
 }
 
 const API = {

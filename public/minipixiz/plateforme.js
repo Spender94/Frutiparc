@@ -503,6 +503,10 @@ class Plateforme {
     const avant = JSON.parse(JSON.stringify(this.carte));
     const r = N.passerLeTemps(this.carte, maintenant === undefined ? Date.now() : maintenant);
     this.messagesDeNuit = r.messages;
+    // Ce qu'une mission achevée a rapporté sans trouver de place : la clairière
+    // ouvrira l'inventaire dessus, comme au retour de forêt (cf. la rangée « à
+    // ranger » de public/minipixiz/index.html).
+    this.objetsDeNuitEnAttente = r.enAttente || [];
     // Les mêmes nouvelles, datées du jour de la fiche — pour la lettre du
     // courrier (Manager.addMsg garde {d, txt}, Menu.displayLog groupe par jour).
     this.courrier = r.courrier || [];

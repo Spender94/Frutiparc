@@ -17,6 +17,9 @@ const P = require('../public/minipixiz/plateforme.js');
 const F = require('../public/minipixiz/faerie.js');
 const B = require('../public/minipixiz/bassin.js');
 const C = require('../public/minipixiz/combat.js');
+const fs2 = require('node:fs');
+const path = require('node:path');
+const ROOT = path.join(__dirname, '..');
 
 function tirage(graine) {
   let s = graine;
@@ -268,14 +271,47 @@ test('une mission arrivée à échéance rend les fées et donne l\'objet', () =
   assert.ok(r.messages.some((m) => /Félicitations/.test(m)));
 });
 
-test('sans place dans le sac, la récompense part à l\'AFD', () => {
+/*
+ * SANS PLACE DANS LE SAC, LA RÉCOMPENSE ATTEND — ELLE N'EST PLUS JETÉE.
+ *
+ * Le jeu d'origine la donnait « à l'AFD » sans rien demander, et c'est un
+ * retour de joueur : « quand on a l'inventaire plein le jour de la fin d'une
+ * mission, on n'a pas l'occasion de faire de la place, l'objet est jeté
+ * automatiquement […] tout ça parce que je gardais un œuf pour ma première
+ * fée ». Une mission dure des jours ; perdre son salaire sur une case
+ * manquante, sans un mot avant, est une punition que personne n'a choisie.
+ *
+ * Elle rejoint donc la rangée « à ranger » — celle du butin de forêt et du lot
+ * de l'arc-en-ciel. Écart assumé du fichier, et le seul de cette nuit-là.
+ */
+test('sans place dans le sac, la récompense attend d\'être rangée', () => {
   const c = carteNeuve();                // $bag vaut zéro : aucune place
   const fs = ajouterFee(c);
   fs.$mission = 0;
   c.$mis = [{ $d: 1, $gift: 300, $type: 0, $string: 'réussi !' }];
   const r = N.entretien(c, tirage(8));
-  assert.equal(c.$inv.indexOf(300), -1);
-  assert.ok(r.messages.some((m) => /AFD/.test(m)), 'et le jeu le dit franchement');
+  assert.equal(c.$inv.indexOf(300), -1, 'elle n\'entre pas de force dans le sac');
+  assert.deepEqual(r.enAttente, [300], 'elle attend à l\'entrée du sac');
+  assert.ok(r.messages.some((m) => /Votre inventaire était plein/.test(m)),
+    'et le jeu le dit : ' + JSON.stringify(r.messages));
+  assert.ok(!r.messages.some((m) => /AFD/.test(m)), 'plus de don forcé');
+});
+
+test('la rangée de la nuit remonte jusqu\'à la clairière', () => {
+  // `passerLeTemps` cumule les nuits ; la plateforme la pose sur elle-même, et
+  // la page la verse dans la rangée « à ranger » à l'ouverture de la clairière.
+  const c = carteNeuve();
+  const fs = ajouterFee(c);
+  fs.$mission = 0;
+  c.$mis = [{ $d: 1, $gift: 300, $type: 0, $string: 'réussi !' }];
+  c.$time = { $t: 1000, $d: 10, $s: N.JOUR - 1 };
+  const r = N.passerLeTemps(c, 1000 + 2, tirage(8), 400);
+  assert.deepEqual(r.enAttente, [300], 'le cumul des nuits la porte');
+
+  const PLATEFORME = fs2.readFileSync(path.join(ROOT, 'public/minipixiz/plateforme.js'), 'utf8');
+  assert.match(PLATEFORME, /this\.objetsDeNuitEnAttente = r\.enAttente \|\| \[\];/);
+  const PAGE = fs2.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(PAGE, /garderARanger\(plateforme\.objetsDeNuitEnAttente \|\| \[\]\);/);
 });
 
 test('un échec ne donne rien, et le dit', () => {

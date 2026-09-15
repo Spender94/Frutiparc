@@ -849,6 +849,14 @@
         var cm = plateforme.courrier[ci];
         ajouterCourrier(cm.txt, cm.d);
       }
+      // …et ce qu'elles ont RAPPORTÉ sans trouver de place : le cadeau d'une
+      // mission achevée le sac plein. Il rejoint la rangée « à ranger », comme
+      // le butin de forêt et le lot de l'arc-en-ciel — la clairière ouvrira
+      // l'inventaire dessus et l'on jettera ce qu'on veut pour lui faire de la
+      // place. Le jeu d'origine le donnait « à l'AFD » sans rien demander ; une
+      // mission dure des jours, et perdre son salaire sur une case manquante
+      // est une punition que personne n'a choisie.
+      garderARanger(plateforme.objetsDeNuitEnAttente || []);
 
       function echapperHtml(s) {
         return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
