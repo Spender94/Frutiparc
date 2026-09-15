@@ -2593,7 +2593,7 @@ function boardPage(p) { pousserHistoire('board', currentBoardId, p); loadBoard(c
 
 var currentTopicId = null;
 var currentTopicData = null;
-async function loadTopic(topicId, page) {
+async function loadTopic(topicId, page, allerA) {
   /*
    * Ouvrir un sujet sans page explicite (depuis la liste d'un forum, un fil
    * d'Ariane, la création d'un sujet) mène AU PREMIER MESSAGE NON LU.
@@ -2730,7 +2730,10 @@ async function loadTopic(topicId, page) {
 
   app.innerHTML = html;
   brancherBouilles(app);       // les avatars des messages
-  if (data.premierNonLu) allerAuNonLu(data.premierNonLu);
+  // Le message qu'on vient d'écrire passe AVANT la reprise de lecture : quand
+  // on publie, c'est sa réponse qu'on veut voir, pas le premier non-lu.
+  if (allerA) allerAuMessage(allerA);
+  else if (data.premierNonLu) allerAuNonLu(data.premierNonLu);
 }
 
 /*
@@ -2744,10 +2747,9 @@ async function loadTopic(topicId, page) {
  * `block: 'start'` et non 'center' : les messages sont hauts, et l'on veut
  * voir le DÉBUT du message, pas son milieu.
  */
-function allerAuNonLu(postId) {
+function allerAuMessage(postId) {
   var el = document.getElementById('post-' + postId);
-  if (!el) return;
-  el.classList.add('post-nonlu');
+  if (!el) return null;
   // Après la mise en page (les bouilles arrivent en différé et poussent le
   // contenu) : deux images d'avance, sinon on vise une position périmée.
   requestAnimationFrame(function () {
@@ -2755,6 +2757,12 @@ function allerAuNonLu(postId) {
       if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
+  return el;
+}
+function allerAuNonLu(postId) {
+  var el = allerAuMessage(postId);
+  if (!el) return;
+  el.classList.add('post-nonlu');
   var oter = function () {
     el.classList.remove('post-nonlu');
     window.removeEventListener('click', oter, true);
@@ -2974,9 +2982,21 @@ async function submitReply() {
     body: JSON.stringify({ topicId: currentTopicId, content: content, bouille: bouille, mood: mood, sid: SID }),
   });
   if (data.ok) {
-    var totalAfter = (currentTopicData ? currentTopicData.total : 0) + 1;
-    var lastPage = Math.ceil(totalAfter / 15);
-    loadTopic(currentTopicId, lastPage);
+    /*
+     * ON ATTERRIT SUR SON PROPRE MESSAGE.
+     *
+     * La page se comptait ici, à la main : `ceil((total + 1) / 15)`. Deux
+     * fautes dans une ligne — le total était celui du DERNIER chargement, et
+     * le 15 ne correspondait à rien : le serveur pagine par VINGT
+     * (FORUM_POSTS_PER_PAGE). Vingt-et-un messages demandaient donc la page 2
+     * d'un sujet qui n'en avait qu'une, et le joueur tombait sur une page
+     * vide qui n'existait pas encore.
+     *
+     * `'last'` laisse le serveur faire le compte — lui seul connaît le nombre
+     * de messages et la taille d'une page —, et `data.postId` ancre sur la
+     * réponse qu'on vient d'écrire.
+     */
+    loadTopic(currentTopicId, 'last', data.postId);
   } else {
     alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
   }

@@ -3267,8 +3267,79 @@ async function forumUpdatePost(postId, content) {
   );
 }
 
+/**
+ * Supprimer un message — et RENDRE SA PLACE AU DERNIER RÉPONDANT.
+ *
+ * `forum_topics.last_post_by` sert à deux choses : dire qui a parlé en dernier
+ * dans la liste des sujets, et interdire à quelqu'un de poster deux fois de
+ * suite (le garde-fou anti-double-post de /api/forum/topic/:id/reply). La
+ * suppression, elle, n'effaçait que la ligne du message : le sujet continuait
+ * de nommer l'auteur du message disparu, qui se retrouvait donc MUET sur son
+ * propre sujet — il avait beau supprimer, le forum le prenait toujours pour le
+ * dernier à avoir parlé.
+ *
+ * On recalcule donc le dernier message à partir de ceux qui RESTENT, dans la
+ * même transaction que la suppression. Un sujet vidé de tout message n'existe
+ * pas (le premier message se supprime avec le sujet) ; si cela arrivait
+ * quand même, on remet les deux colonnes à zéro plutôt que de laisser un nom
+ * de fantôme.
+ */
 async function forumDeletePost(postId) {
-  await pool.query('DELETE FROM forum_posts WHERE id = $1', [postId]);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'DELETE FROM forum_posts WHERE id = $1 RETURNING topic_id', [postId]
+    );
+    const topicId = rows[0] && rows[0].topic_id;
+    if (topicId) {
+      await client.query(
+        `UPDATE forum_topics t
+            SET last_post_at = d.created_at,
+                last_post_by = d.author_username
+           FROM (SELECT $1::bigint AS topic_id, created_at, author_username
+                   FROM forum_posts
+                  WHERE topic_id = $1
+                  ORDER BY created_at DESC, id DESC
+                  LIMIT 1) d
+          WHERE t.id = d.topic_id`,
+        [topicId]
+      );
+      await client.query(
+        `UPDATE forum_topics SET last_post_by = ''
+          WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM forum_posts WHERE topic_id = $1)`,
+        [topicId]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * QUI A PARLÉ EN DERNIER SUR CE SUJET — lu sur les messages, pas sur la
+ * colonne du sujet.
+ *
+ * `forum_topics.last_post_by` est une commodité d'affichage : elle est tenue à
+ * jour à l'écriture et par `forumDeletePost`. Le garde-fou anti-double-post,
+ * lui, décide de qui a le droit de parler — il ne peut pas se contenter d'une
+ * copie. Les sujets d'avant le correctif portent encore le nom d'auteurs dont
+ * le message a été supprimé, et ces joueurs-là resteraient muets sur leur
+ * propre sujet tant que personne d'autre n'y répond. On relit donc la source.
+ *
+ * @returns {Promise<string>} le pseudo, ou '' si le sujet n'a plus de message
+ */
+async function forumLastPostAuthor(topicId) {
+  const { rows } = await pool.query(
+    `SELECT author_username FROM forum_posts
+      WHERE topic_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1`,
+    [topicId]
+  );
+  return (rows[0] && rows[0].author_username) || '';
 }
 
 async function forumIncrementViews(topicId) {
@@ -4052,6 +4123,7 @@ module.exports = {
   forumCreatePost,
   forumUpdatePost,
   forumDeletePost,
+  forumLastPostAuthor,
   forumIncrementViews,
   forumMarkTopicRead,
   forumFirstUnreadPost,

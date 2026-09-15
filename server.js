@@ -21507,10 +21507,18 @@ app.post('/api/forum/post', async (req, res) => {
     if (topic.is_locked) return res.status(403).json({ error: 'topic locked' });
     // Anti double-post: a user can't be the author of two consecutive
     // messages on the same topic. They must edit their previous post or
-    // wait for someone else to reply first. `last_post_by` is maintained
-    // by forumCreateTopic + forumCreatePost so it stays in sync.
+    // wait for someone else to reply first.
     // Exception : modérateurs et animateurs peuvent poster à la suite.
-    if (!isForumStaff(username) && String(topic.last_post_by || '').toLowerCase() === String(username).toLowerCase()) {
+    //
+    // ON RELIT LE DERNIER MESSAGE, pas la colonne `last_post_by` du sujet.
+    // Celle-ci est une commodité d'affichage : la suppression ne la mettait
+    // pas à jour, si bien qu'un joueur qui effaçait sa propre réponse restait
+    // compté comme dernier répondant — et ne pouvait plus reposter de son
+    // sujet tant que personne d'autre n'y passait. `forumDeletePost` la
+    // recalcule désormais, mais les sujets d'avant le correctif portent encore
+    // le nom d'un message disparu : lire la source les débloque aussi.
+    const dernierAuteur = await db.forumLastPostAuthor(topicId);
+    if (!isForumStaff(username) && String(dernierAuteur || '').toLowerCase() === String(username).toLowerCase()) {
       return res.status(403).json({
         error: 'double_post',
         message: "Tu ne peux pas poster deux messages d'affilée sur le même sujet. Édite ton message précédent ou attends qu'un autre Frutiz réponde.",
