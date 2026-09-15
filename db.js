@@ -3260,10 +3260,23 @@ async function forumCreatePost(topicId, username, content, bouille, mood) {
   return rows[0];
 }
 
-async function forumUpdatePost(postId, content) {
+/**
+ * Corriger un message — son texte, et la BOUILLE qui l'accompagne.
+ *
+ * `bouille` et `mood` sont facultatifs : `null` veut dire « n'y touche pas ».
+ * C'est ce qui permet à un modérateur de corriger le texte d'un autre sans
+ * lui changer la tête — le serveur ne les transmet que lorsque l'auteur
+ * lui-même est à la manœuvre (cf. PUT /api/forum/post/:id).
+ */
+async function forumUpdatePost(postId, content, bouille = null, mood = null) {
   await pool.query(
-    'UPDATE forum_posts SET content = $2, updated_at = now() WHERE id = $1',
-    [postId, content]
+    `UPDATE forum_posts
+        SET content = $2,
+            bouille = COALESCE($3, bouille),
+            mood    = COALESCE($4, mood),
+            updated_at = now()
+      WHERE id = $1`,
+    [postId, content, bouille, mood]
   );
 }
 

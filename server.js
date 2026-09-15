@@ -21663,7 +21663,20 @@ app.put('/api/forum/post/:id', async (req, res) => {
       ? await peutModererBoardId(username, sujetEdit.board_id)
       : isForumModerator(username);
     if (post.author_username !== username && !peutEdit) return res.status(403).json({ error: 'forbidden' });
-    await db.forumUpdatePost(post.id, content);
+    /*
+     * LA BOUILLE DU MESSAGE SE CORRIGE AUSSI — mais SEULEMENT PAR SON AUTEUR.
+     *
+     * On se relit et l'on trouve qu'on avait mis la mauvaise tête : l'accessoire
+     * et l'expression sont des morceaux du message au même titre que son texte,
+     * et rien ne permettait de les reprendre. Un modérateur, lui, corrige le
+     * TEXTE d'un autre ; lui laisser changer le visage serait faire parler
+     * quelqu'un avec une autre figure que la sienne. `null` de ce côté-là, et
+     * la requête garde ce qui est en base.
+     */
+    const sien = post.author_username === username;
+    const bouille = (sien && req.body.bouille) ? normalizeBouilleState(req.body.bouille) : null;
+    const mood = sien ? normalizeForumMood(req.body.mood) : null;
+    await db.forumUpdatePost(post.id, content, bouille, mood);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

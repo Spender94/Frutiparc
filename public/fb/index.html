@@ -599,6 +599,11 @@
     margin-bottom: 6px;
   }
   .post-edit-area .form-actions { display: flex; gap: 6px; }
+  /* Le sélecteur de bouille glissé dans la zone de correction : le même tableau
+     que l'éditeur, en un peu plus serré — il est posé DANS un message, pas dans
+     un formulaire pleine page. */
+  .post-edit-area .editor-form { margin-bottom: 6px; }
+  .post-edit-area .editor-label-cell { width: 130px; }
 
   /* Buttons */
   .btn {
@@ -1899,10 +1904,43 @@ function bouilleSetIncarnation(formId, etat) {
   if (grid) { grid.innerHTML = renderBouilleGrid(formId); brancherBouilles(grid); }
 }
 
-function bouilleSelHtml(formId) {
-  var suffixe = suffixeParDefaut();
-  _activeBouilleSel[formId] = { accSuffix9: suffixe, mouthId: null, fullState: null,
-    incarnation: null };
+/*
+ * D'OÙ PART LE SÉLECTEUR.
+ *
+ * Un message NEUF part du défaut du joueur (`suffixeParDefaut`). Une
+ * CORRECTION, elle, doit partir de ce que le message porte déjà : on rouvre
+ * pour changer la tête, pas pour la remettre à zéro. `depart` porte alors
+ * l'état enregistré (24 caractères) et l'humeur du message.
+ *
+ * Trois cas à démêler dans cet état, les mêmes que `resolveBouilleState` :
+ *   · il correspond EXACTEMENT à un accessoire possédé qui est une bouille
+ *     entière (une paire de prunelles) → c'est `fullState`, il gagne tout ;
+ *   · sa tête est celle d'une INCARNATION possédée → elle sert de base, et les
+ *     neuf derniers caractères restent l'accessoire posé dessus ;
+ *   · sinon, c'est sa bouille et un accessoire.
+ */
+function departDuSelecteur(depart) {
+  var etat = String((depart && depart.etat) || '');
+  var mood = (depart && depart.mood != null) ? Number(depart.mood) : null;
+  if (etat.length !== 24) {
+    return { accSuffix9: suffixeParDefaut(), mouthId: mood, fullState: null, incarnation: null };
+  }
+  for (var i = 0; i < myAccessories.length; i++) {
+    if (myAccessories[i].value === etat && isIncarnationValue(etat)) {
+      return { accSuffix9: etat.substring(15, 24), mouthId: mood, fullState: etat, incarnation: null };
+    }
+  }
+  var inc = null;
+  for (var j = 0; j < myIncarnations.length; j++) {
+    var e = String(myIncarnations[j].etat || '');
+    if (e.length === 24 && e.substring(0, 15) === etat.substring(0, 15)) { inc = e; break; }
+  }
+  return { accSuffix9: etat.substring(15, 24), mouthId: mood, fullState: null, incarnation: inc };
+}
+
+function bouilleSelHtml(formId, depart) {
+  _activeBouilleSel[formId] = departDuSelecteur(depart);
+  var suffixe = _activeBouilleSel[formId].accSuffix9;
   var all = getAllAccessories();
   // La grille s'ouvre sur la PAGE qui porte l'accessoire choisi : elle n'en
   // montre que huit à la fois, et un défaut invisible serait un défaut qu'on
@@ -3484,7 +3522,22 @@ function editPost(postId) {
   var wrap = document.createElement('div');
   wrap.className = 'post-edit-area';
   wrap.id = 'edit-area-' + postId;
-  wrap.innerHTML = bbcodeToolbarHtml(taId)
+  /*
+   * LA BOUILLE SE CORRIGE COMME LE TEXTE — mais seulement la SIENNE.
+   *
+   * L'accessoire et l'expression font partie du message ; on se relit et l'on
+   * trouve qu'on avait mis la mauvaise tête, et il n'y avait rien à faire. Le
+   * sélecteur s'ouvre donc ici aussi, sur ce que le message porte DÉJÀ (et non
+   * sur l'accessoire par défaut : on rouvre pour changer, pas pour remettre à
+   * zéro). Un modérateur qui corrige le texte d'un autre ne le voit pas —
+   * changer le visage de quelqu'un ne serait plus une correction ; le serveur
+   * le refuse de son côté aussi.
+   */
+  var sien = estMonMessage(postId);
+  wrap.innerHTML = (sien && myBouille
+      ? '<div class="editor-form">' + bouilleSelHtml(taId, bouilleDuMessage(postId)) + '</div>'
+      : '')
+    + bbcodeToolbarHtml(taId)
     + emoticonsRowHtml(taId)
     + editorHintRowHtml(taId)
     + '<textarea id="' + taId + '"></textarea>'
@@ -3498,8 +3551,30 @@ function editPost(postId) {
     + '<div id="edit-preview-' + postId + '"></div>';
   contentEl.style.display = 'none';
   contentEl.parentNode.insertBefore(wrap, contentEl.nextSibling);
+  brancherBouilles(wrap);
+  // L'APERÇU, C'EST LA BOUILLE DU MESSAGE : celle qui est déjà à gauche. On lui
+  // prête le temps de la correction l'identifiant que `refreshBouillePreview`
+  // cherche — changer d'accessoire se voit là où il sera enregistré, pas dans
+  // une vignette de plus.
+  var avatar = document.querySelector('#post-' + postId + ' .post-author .avatar');
+  if (sien && avatar) avatar.id = 'bouille-preview-' + taId;
   document.getElementById(taId).value = original;
   document.getElementById(taId).focus();
+}
+
+/** Le message dans les données du sujet — c'est là que vivent bouille et humeur. */
+function messageDuSujet(postId) {
+  var l = (currentTopicData && currentTopicData.posts) || [];
+  for (var i = 0; i < l.length; i++) if (l[i].id === Number(postId)) return l[i];
+  return null;
+}
+function estMonMessage(postId) {
+  var p = messageDuSujet(postId);
+  return !!(p && currentUser && p.author === currentUser);
+}
+function bouilleDuMessage(postId) {
+  var p = messageDuSujet(postId);
+  return p ? { etat: p.bouille, mood: p.mood } : null;
 }
 
 // L'aperçu d'une CORRECTION. Même cadre que l'aperçu d'un message neuf, mais
@@ -3524,6 +3599,15 @@ function cancelEdit(postId) {
   if (wrap) wrap.remove();
   var contentEl = document.getElementById('post-content-' + postId);
   if (contentEl) contentEl.style.display = '';
+  // La bouille du message reprend sa tête d'avant, et rend son identifiant
+  // d'emprunt : on annule, donc rien n'a changé.
+  var avatar = document.getElementById('bouille-preview-edit-textarea-' + postId);
+  if (avatar) {
+    avatar.removeAttribute('id');
+    var p = messageDuSujet(postId);
+    if (p) poserBouille(avatar, p.bouille, p.mood);
+  }
+  delete _activeBouilleSel['edit-textarea-' + postId];
 }
 
 async function submitEdit(postId) {
@@ -3531,10 +3615,17 @@ async function submitEdit(postId) {
   if (!ta) return;
   var newContent = ta.value.trim();
   if (!newContent) { alert('Le message ne peut pas être vide.'); return; }
+  // La bouille ne voyage que si le sélecteur était là — donc si c'est bien
+  // notre message. Le serveur applique la même règle de son côté.
+  var envoi = { content: newContent, sid: SID };
+  if (_activeBouilleSel['edit-textarea-' + postId]) {
+    envoi.bouille = getCurrentBouilleState('edit-textarea-' + postId);
+    envoi.mood = getCurrentMood('edit-textarea-' + postId);
+  }
   var data = await apiFetch('/api/forum/post/' + postId, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: newContent, sid: SID }),
+    body: JSON.stringify(envoi),
   });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
   else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));

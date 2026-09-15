@@ -137,9 +137,13 @@ test('ce qu’on choisit s’enregistre, et le forum le reçoit', async () => {
 test('le forum ouvre son formulaire dessus, et retombe sur la tête nue', () => {
   const FORUM = fs.readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
 
-  // La valeur arrive de /api/forum/me et sert de point de départ.
+  // La valeur arrive de /api/forum/me et sert de point de départ : un message
+  // NEUF n'a pas d'état à reprendre, `departDuSelecteur` retombe donc sur le
+  // défaut du joueur (une CORRECTION, elle, part de ce que le message porte —
+  // cf. test/forumEditerBouille.test.js).
   assert.match(FORUM, /myDefaultAccessory = data\.defaultAccessory \|\| '';/);
-  assert.match(FORUM, /_activeBouilleSel\[formId\] = \{ accSuffix9: suffixe,/);
+  assert.match(FORUM, /_activeBouilleSel\[formId\] = departDuSelecteur\(depart\);/);
+  assert.match(FORUM, /return \{ accSuffix9: suffixeParDefaut\(\), mouthId: mood, fullState: null, incarnation: null \};/);
   assert.ok(!/accSuffix9: '000000000', mouthId: null/.test(FORUM),
     'le formulaire ne repart plus de la tête nue d’office');
 
