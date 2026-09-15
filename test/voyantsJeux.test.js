@@ -163,7 +163,9 @@ test('les matchs Grapiz et Frutibandas allument le voyant côté serveur', () =>
   const grapiz = serveur.indexOf('const grapizNet = new GrapizNet');
   const bandas = serveur.indexOf('const bandasNet = new BandasNet');
   for (const [nom, debut] of [['grapiz', grapiz], ['bandas', bandas]]) {
-    const bloc = serveur.slice(debut, debut + 2200);
+    // La fenêtre tient les deux crochets du bloc (`onMatch` et `onResult`) et
+    // s'arrête bien avant le suivant, à près de huit mille caractères de là.
+    const bloc = serveur.slice(debut, debut + 3000);
     assert.match(bloc, new RegExp("marquerEnPartie\\(u, '" + nom + "'\\)"),
       nom + ' : allumé quand le match se forme');
     assert.match(bloc, /marquerFinDePartie\(p\.id\)/,

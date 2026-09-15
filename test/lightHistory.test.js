@@ -325,16 +325,28 @@ test('les trois rubriques à voyant ont leur tuile sur l\'accueil', () => {
   // Le raccourci clignote : les deux couches sont posées à la construction, et
   // le voyant se réduit à une classe. Aucune pastille chiffrée nulle part — ni
   // sur les tuiles, ni sur les raccourcis : le bureau d'origine n'en a pas.
-  assert.match(maj[0], /e\.classList\.toggle\("clignote", allume\)/, 'le raccourci clignote');
+  // `add` d'un côté, `eteindre` de l'autre : le voyant ne bat que cinq fois
+  // puis se fige allumé (animation `steps(1) 5 forwards`), et l'éteindre
+  // demande de REMONTER l'animation — un simple retrait de classe laisserait
+  // l'image figée sur sa dernière étape. Voir `eteindre`.
+  assert.match(maj[0], /if \(allume\) e\.classList\.add\("clignote"\);\n\s+else eteindre\(e\);/,
+    'le raccourci clignote');
   assert.ok(!/sc-compte/.test(html), 'plus aucune pastille chiffrée');
   assert.match(html, /class="ico-repos"[\s\S]{0,200}class="ico-alerte"/,
     'les deux couches sont posées ensemble');
   assert.match(html, /@keyframes sc-allume[\s\S]{0,120}@keyframes sc-eteint/,
     'et alternent en opposition de phase');
-  // Elles doivent battre ensemble : chaque animation démarre quand sa classe est
-  // posée, or les compteurs arrivent de requêtes distinctes.
-  assert.match(html, /function caler\(bouton\)/, 'les voyants sont calés sur une horloge commune');
-  assert.match(html, /animationDelay = phase/, 'par un délai négatif');
+  // CINQ BATTEMENTS, puis le voyant se fige ALLUMÉ — il ne clignote pas
+  // indéfiniment. (On les recalait autrefois sur une horloge commune, par un
+  // délai d'animation négatif ; ce délai mangerait le début d'un clignotement
+  // borné, et le voyant recalé ne battrait que quatre fois et demie.)
+  assert.match(html, /\.sc-btn\.clignote \.ico-alerte \{ animation: sc-allume 1\.2s steps\(1\) 5 forwards; \}/,
+    'le voyant bat cinq fois puis se fige allumé');
+  assert.ok(!/animationDelay = phase/.test(html), 'plus de recalage sur une horloge commune');
+  // Et il s'éteint SUR-LE-CHAMP quand on clique : une animation `forwards`
+  // garde sa dernière image tant qu'on ne la reprend pas au navigateur.
+  assert.match(html, /function eteindre\(bouton\) \{[\s\S]*?i\.style\.animation = "none";/,
+    'un clic rend le voyant au repos, sans attendre le serveur');
   // Mouvement réduit : on ne clignote pas, mais on reste allumé.
   assert.match(html, /prefers-reduced-motion: reduce\)[\s\S]{0,220}animation: none; opacity: 1/,
     'le signal demeure sans mouvement');

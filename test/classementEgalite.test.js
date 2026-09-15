@@ -70,5 +70,9 @@ test('un rattrapage de donnée ne redate pas le record', () => {
   // Et un score qui n'améliore rien n'écrit rien du tout : la date du record
   // tient d'elle-même.
   assert.match(SERVEUR, /const scoreImproved = isScoreBetter\(rankingId, n, newData, oldScore, oldData\);/);
-  assert.match(SERVEUR, /if \(scoreImproved \|\| shouldBackfillData\) \{/);
+  // La troisième porte est celle des challenges qui classent un zéro
+  // (`classeAZero`) : elle n'écrit QUE la première ligne d'une fiche vide, et
+  // ne touche donc jamais à la date d'un record existant.
+  assert.match(SERVEUR, /if \(scoreImproved \|\| shouldBackfillData \|\| premierClassement\) \{/);
+  assert.match(SERVEUR, /const premierClassement = !prev && !!RANKINGS\[rankingId\]\.classeAZero;/);
 });

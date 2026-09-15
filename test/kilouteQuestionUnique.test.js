@@ -126,8 +126,25 @@ before(async () => {
     }
   });
   await lancer();
+  await attendreLeBacklog(2);
 });
 after(() => arreter());
+
+/*
+ * ET IL ÉCOUTE AVANT D'AVOIR RELU SES QUESTIONS. Le même piège qu'au semis,
+ * de l'autre côté : tant que la base n'a pas répondu, le serveur montre encore
+ * les questions d'origine, celles qu'il tient en mémoire. Lire le backlog sur
+ * la foi du seul port, c'est lire ces trente-là au lieu de nos deux — une
+ * course qui ne se voyait qu'une fois sur deux, selon la vitesse du démarrage.
+ */
+async function attendreLeBacklog(n) {
+  for (let i = 0; i < 200; i++) {
+    const l = await backlog().catch(() => null);
+    if (l && l.length === n) return l;
+    await wait(100);
+  }
+  throw new Error('le backlog n’est jamais descendu à ' + n + ' question(s)');
+}
 
 // ── LA MÉCANIQUE, DANS LE CODE ─────────────────────────────────────────────
 
