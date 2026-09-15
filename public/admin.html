@@ -3925,6 +3925,13 @@ async function loadDetail() {
       html += '<p class="empty">Aucun picto</p>';
     }
 
+    /* MINI-PIXIZ — LE GUICHET. Rendre un objet perdu à cause d'un bug, faire
+       monter une fée. La fiche du jeu tient tout dans un seul slot ; le
+       panneau ne se charge qu'au clic, c'est une requête de plus et elle ne
+       sert qu'à ce sujet-là. */
+    html += `<h4>MiniPixiz <span style="margin-left:auto"><button class="btn-success btn-sm" onclick="ouvrirPixiz()">🧚 Ouvrir le guichet</button></span></h4>`;
+    html += '<div id="pixiz-panneau" style="margin-bottom:24px"><p class="empty">Le sac, les fées, et de quoi leur rendre ce qu\'un bug leur a pris.</p></div>';
+
     // Moderation Logs
     try {
       const mlr = await fetch(`/api/admin/users/${encodeURIComponent(u)}/modlogs`, { headers: hdr() });
@@ -4012,6 +4019,137 @@ async function deleteGameItem(name) {
   await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems/${encodeURIComponent(name)}`, { method: 'DELETE', headers: hdr() });
   toast('Picto supprimé');
   loadDetail();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MINI-PIXIZ — LE GUICHET
+   ══════════════════════════════════════════════════════════════════════════
+
+   Trois gestes, sur la fiche du joueur (slot 0) : la LIRE, RENDRE des objets,
+   FAIRE MONTER une fée. Le serveur fait le travail (voir le bloc du même nom
+   dans server.js) ; ici, on montre ce qu'il y a et on lui passe la commande.
+
+   UN AVERTISSEMENT, ET IL COMPTE : si le joueur est en train de jouer, sa
+   partie ouverte réécrira la fiche par-dessus à la fermeture. Le serveur ne
+   peut pas le savoir — l'écran, lui, peut le dire.
+   ══════════════════════════════════════════════════════════════════════════ */
+let pixizFicheVue = null;
+
+async function ouvrirPixiz() {
+  if (!currentDetailUser) return;
+  const hote = $('#pixiz-panneau');
+  hote.innerHTML = '<p class="empty">Lecture de la fiche…</p>';
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/minipixiz`, { headers: hdr() });
+  if (!r.ok) { hote.innerHTML = `<p class="empty">Erreur ${r.status}.</p>`; return; }
+  pixizFicheVue = await r.json();
+  rendrePixiz();
+}
+
+function pixizCase(c) {
+  return c.id === null
+    ? '<span class="badge" style="opacity:.45">·</span>'
+    : `<span class="badge" title="objet ${c.id}"><img src="/api/picto/${encodeURIComponent('$pixiz_item' + c.id)}" style="height:16px;vertical-align:middle" onerror="this.style.display='none'"> ${esc(c.nom)}</span>`;
+}
+
+function rendrePixiz() {
+  const d = pixizFicheVue;
+  const hote = $('#pixiz-panneau');
+  if (!d || !d.ok) { hote.innerHTML = '<p class="empty">Fiche illisible.</p>'; return; }
+  if (!d.aUneFiche) { hote.innerHTML = `<p class="empty">${esc(d.message || 'Pas de partie MiniPixiz.')}</p>`; return; }
+
+  let h = '<p class="empty" style="margin-bottom:10px">⚠️ Si le joueur est en jeu, sa partie réécrira la fiche en la quittant : à faire quand il est déconnecté.</p>';
+
+  h += '<div style="margin-bottom:10px"><b>Sac du joueur</b> — ' + d.sac.places + ' place(s) (sac n°' + d.sac.modele + ')<br>';
+  h += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">' + d.sac.cases.map(pixizCase).join('') + '</div></div>';
+
+  h += '<div style="margin-bottom:10px"><b>Fées</b><br>';
+  if (!d.fees.length) h += '<span class="empty">Aucune fée.</span>';
+  d.fees.forEach((f) => {
+    h += `<div style="margin:4px 0"><b>${esc(f.nom)}</b> — niveau ${f.niveau}`
+      + ` · exp ${Math.round(f.exp)}/${f.expProchain}`
+      + ` · vie ${f.vie}/${f.vieMax} · mana ${f.mana}/${f.manaMax}`
+      + ` · faim ${f.faim}/20 · moral ${f.moral}/20`
+      + (f.enMission ? ' · <i>en mission</i>' : '')
+      + `<br><span style="opacity:.75">carac ${f.carac.join(' / ')}</span>`
+      + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:2px">' + f.sac.map(pixizCase).join('') + '</div></div>';
+  });
+  h += '</div>';
+
+  const c = d.compteurs;
+  h += `<div style="margin-bottom:10px"><b>Compteurs</b> — ${c.courses} course(s), ${c.missions} mission(s),`
+    + ` ${c.cles} clé(s), ${c.etoiles} étoile(s), ${c.diamants} diamant(s), donjon ${c.donjon},`
+    + ` forêt max ${c.foretMax}, arbre max ${c.arbreMax}</div>`;
+
+  // ── Rendre un objet ──
+  const familles = {};
+  (d.catalogue || []).forEach((o) => { (familles[o.famille] = familles[o.famille] || []).push(o); });
+  let options = '';
+  Object.keys(familles).forEach((fam) => {
+    options += `<optgroup label="${esc(fam)}">`
+      + familles[fam].map((o) => `<option value="${o.id}">${esc(o.nom)} (${o.id})</option>`).join('')
+      + '</optgroup>';
+  });
+  const ou = ['<option value="">Sac du joueur</option>']
+    .concat(d.fees.map((f) => `<option value="${esc(f.nom)}">Sac de ${esc(f.nom)}</option>`)).join('');
+  h += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px">'
+    + '<b>Rendre&nbsp;:</b>'
+    + `<select id="pixiz-objet" style="max-width:280px">${options}</select>`
+    + '<input type="number" id="pixiz-combien" value="1" min="1" max="9" style="width:60px">'
+    + `<select id="pixiz-ou">${ou}</select>`
+    + '<button class="btn-success btn-sm" onclick="pixizRendre()">Rendre</button>'
+    + '</div>';
+
+  // ── Faire monter une fée ──
+  if (d.fees.length) {
+    h += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">'
+      + '<b>Faire monter&nbsp;:</b>'
+      + `<select id="pixiz-fee">${d.fees.map((f) => `<option value="${esc(f.nom)}">${esc(f.nom)} (niv. ${f.niveau})</option>`).join('')}</select>`
+      + '<input type="number" id="pixiz-niveaux" value="1" min="0" max="50" style="width:60px" title="niveaux">'
+      + '<button class="btn-success btn-sm" onclick="pixizMonter()">+ niveau(x)</button>'
+      + '<input type="number" id="pixiz-exp" value="0" min="0" step="50" style="width:80px" title="expérience">'
+      + '<button class="btn-sm" onclick="pixizDonnerExp()">+ expérience</button>'
+      + '</div>';
+  }
+  hote.innerHTML = h;
+}
+
+async function pixizPoster(chemin, corps) {
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/minipixiz/${chemin}`,
+    { method: 'POST', headers: hdr(), body: JSON.stringify(corps) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { toast(d.message || d.error || ('Erreur ' + r.status)); return null; }
+  return d;
+}
+
+async function pixizRendre() {
+  const id = Number($('#pixiz-objet').value);
+  const n = Math.max(1, Math.min(9, Number($('#pixiz-combien').value) || 1));
+  const objets = new Array(n).fill(id);
+  const d = await pixizPoster('objets', { objets, fee: $('#pixiz-ou').value || undefined });
+  if (!d) return;
+  toast(`${d.rendus.length} objet(s) rendu(s)` + (d.refuses.length ? ` — ${d.refuses.length} refusé(s) : sac plein` : ''));
+  ouvrirPixiz();
+}
+
+async function pixizMonter() {
+  const fee = $('#pixiz-fee').value;
+  const niveaux = Math.max(0, Number($('#pixiz-niveaux').value) || 0);
+  if (!niveaux) { toast('Combien de niveaux ?'); return; }
+  if (!confirm(`Faire monter ${fee} de ${niveaux} niveau(x) ?\n\nL'expérience manquante est offerte, et chaque montée applique la caractéristique que la fée avait déjà tirée.`)) return;
+  const d = await pixizPoster('fee', { fee, niveaux });
+  if (!d) return;
+  toast(`${fee} : niveau ${d.niveauAvant} → ${d.niveauApres}`);
+  ouvrirPixiz();
+}
+
+async function pixizDonnerExp() {
+  const fee = $('#pixiz-fee').value;
+  const exp = Math.max(0, Number($('#pixiz-exp').value) || 0);
+  if (!exp) { toast('Combien d’expérience ?'); return; }
+  const d = await pixizPoster('fee', { fee, exp });
+  if (!d) return;
+  toast(`${fee} : ${Math.round(d.etat.exp)}/${d.etat.expProchain} exp`);
+  ouvrirPixiz();
 }
 
 async function resetGameSlot(game) {

@@ -12334,6 +12334,275 @@ app.post('/api/admin/users/:username/minipixiz-pictos/cleanup-fakes', adminAuth,
   res.json({ ok: true, username, removed, removedCount: removed.length });
 });
 
+/* ══════════════════════════════════════════════════════════════════════════
+   MINI-PIXIZ — LE GUICHET DE L'ADMIN
+   ══════════════════════════════════════════════════════════════════════════
+
+   « Crée-moi un endpoint dans l'admin dédié à Minipixiz pour que je puisse
+   faire des ajouts facilement à mes joueurs. L'idée étant de pouvoir leur
+   rendre des objets qu'ils ont perdu à cause de bugs et/ou faire level up
+   leurs fées. »
+
+   Le jeu garde TOUT dans une seule fiche — le slot 0 de `minipixiz` : le sac,
+   les fées, les compteurs, l'horloge. Jusqu'ici l'admin ne pouvait que la
+   lire en vrac (`minipixiz-pictos`) ou la remettre à zéro. Rendre un objet
+   perdu demandait de recomposer le JSON à la main.
+
+   TROIS GESTES, ET PAS UN DE PLUS :
+     · LIRE la fiche, en clair — le sac et ses places, les fées avec leur
+       niveau et leur prochaine marche, les compteurs ;
+     · RENDRE des objets, par leur identifiant de jeu, dans le sac du joueur
+       ou dans celui d'une fée ;
+     · FAIRE MONTER une fée d'un ou plusieurs niveaux.
+
+   LA MONTÉE PASSE PAR LA RÈGLE DU JEU, pas par `$level++`. `Fee.monterNiveau`
+   paie l'expérience, applique la caractéristique déjà tirée (`$next[0]`),
+   remonte le moral de quatre et retire le prochain apprentissage. Écrire le
+   niveau à la main laisserait une fée au niveau 12 avec les caractéristiques
+   d'une débutante — c'est exactement le genre de fiche à moitié cohérente qui
+   a produit les « fées cassées » qu'on répare ici.
+
+   ET LE JOUEUR NE DOIT PAS ÊTRE EN TRAIN DE JOUER : sa partie ouverte réécrit
+   la fiche à la fermeture, par-dessus. L'admin le dit à l'écran ; le serveur,
+   lui, ne peut pas le savoir.
+   ══════════════════════════════════════════════════════════════════════════ */
+const PixizFee = require('./public/minipixiz/faerie.js');
+const PixizObjets = require('./public/minipixiz/items.js');
+
+// La fiche du joueur, d'où qu'elle vienne — mémoire vive d'abord, base
+// ensuite. Rend de quoi la relire ET la réécrire au même endroit.
+async function pixizFiche(nom) {
+  const username = String(nom || '').toLowerCase();
+  const memUser = users[username];
+  let dbId = memUser ? memUser._dbId : null;
+  if (!dbId && process.env.DATABASE_URL) {
+    try { const row = await db.findUserByUsername(username); if (row) dbId = row.id; } catch { /* inconnu */ }
+  }
+  if (!dbId && !memUser) return null;
+
+  let brut = null;
+  if (memUser && memUser.frutiSlots && memUser.frutiSlots.minipixiz) {
+    brut = memUser.frutiSlots.minipixiz['0'] || null;
+  }
+  if (!brut && dbId) {
+    try {
+      const slots = await db.getFrutiSlots(dbId, 'minipixiz');
+      brut = (slots && (slots['0'] || slots[0])) || null;
+    } catch { /* pas de fiche */ }
+  }
+  let carte = null;
+  if (brut) { try { carte = JSON.parse(brut); } catch { carte = null; } }
+  return { username, memUser, dbId, brut, carte };
+}
+
+async function pixizEcrire(fiche, carte) {
+  const json = JSON.stringify(carte);
+  if (fiche.dbId) await db.upsertFrutiSlot(fiche.dbId, 'minipixiz', 0, json);
+  if (fiche.memUser) {
+    if (!fiche.memUser.frutiSlots) fiche.memUser.frutiSlots = {};
+    if (!fiche.memUser.frutiSlots.minipixiz) fiche.memUser.frutiSlots.minipixiz = {};
+    fiche.memUser.frutiSlots.minipixiz['0'] = json;
+  }
+  return json.length;
+}
+
+// Le nom d'un objet : la table du serveur (celle des pictos) d'abord, la
+// famille du jeu ensuite — un parchemin sans picto reste « objet 137 » sinon.
+function pixizNomObjet(id) {
+  if (PIXIZ_ITEM_NAMES[id]) return PIXIZ_ITEM_NAMES[id];
+  const it = PixizObjets.info(Number(id));
+  return it && it.nom ? it.nom : ('objet ' + id);
+}
+
+/*
+ * LE CONTENU D'UN SAC, TROUS COMPRIS. `$inv` est indexé PAR CASE : une case
+ * vide vaut `null`, et le joueur range où il veut. Lire la liste comme une
+ * pile (« pousser à la fin ») remplirait la case 3 d'un sac dont la 0 est
+ * libre, et le jeu, lui, compte les cases.
+ */
+function pixizSac(liste, places) {
+  return PixizObjets.contenu(liste, places).map((n, i) => (n === null
+    ? { case: i, id: null, nom: null }
+    : { case: i, id: n, nom: pixizNomObjet(n) }));
+}
+function pixizPremiereCaseLibre(liste, places) {
+  for (let i = 0; i < places; i++) {
+    if (liste[i] === null || liste[i] === undefined) return i;
+  }
+  return -1;
+}
+
+// Ce qu'une fée montre à l'admin : son état, et la marche suivante.
+function pixizResumeFee(fs, carte) {
+  const f = new PixizFee.Fee(fs, Math.random, carte);
+  const places = PixizObjets.placesFee(fs);
+  return {
+    nom: fs.$name || '(sans nom)',
+    niveau: Number(fs.$level) || 0,
+    exp: Number(fs.$exp) || 0,
+    expProchain: f.limiteExp(),
+    carac: (fs.$carac || []).map((n) => Number(n) || 0),
+    vie: Number(fs.$life) || 0, vieMax: f.vieMax(),
+    mana: Number(fs.$mana) || 0, manaMax: f.manaMax(),
+    faim: Number(fs.$hunger) || 0,
+    moral: Number(fs.$moral) || 0,
+    enMission: fs.$mission !== null && fs.$mission !== undefined,
+    places,
+    sac: pixizSac(fs.$inv || [], places),
+  };
+}
+
+// Le catalogue, pour que l'admin choisisse un objet par son NOM. Il sort de la
+// même table que les pictos (`PIXIZ_ITEM_NAMES`), à laquelle on ajoute la
+// famille du jeu — c'est elle qui range la liste dans le menu.
+function pixizCatalogue() {
+  return Object.keys(PIXIZ_ITEM_NAMES)
+    .map(Number)
+    .filter((id) => PixizObjets.info(id))
+    .sort((a, b) => a - b)
+    .map((id) => ({ id, nom: PIXIZ_ITEM_NAMES[id], famille: PixizObjets.info(id).famille }));
+}
+
+app.get('/api/admin/users/:username/minipixiz', adminAuth, async (req, res) => {
+  const fiche = await pixizFiche(req.params.username);
+  if (!fiche) return res.status(404).json({ error: 'user not found' });
+  if (!fiche.carte) {
+    return res.json({ ok: true, username: fiche.username, aUneFiche: false,
+      catalogue: pixizCatalogue(),
+      message: 'Aucune partie MiniPixiz enregistrée pour ce joueur.' });
+  }
+  const c = fiche.carte;
+  res.json({
+    ok: true,
+    username: fiche.username,
+    aUneFiche: true,
+    taille: fiche.brut.length,
+    sac: {
+      modele: Number(c.$bag) || 0,
+      places: PixizObjets.placesJoueur(c),
+      cases: pixizSac(c.$inv || [], PixizObjets.placesJoueur(c)),
+    },
+    fees: (c.$faerie || []).map((fs) => pixizResumeFee(fs, c)),
+    courante: c.$current === null || c.$current === undefined ? null : Number(c.$current),
+    compteurs: {
+      courses: Number((c.$stat || {}).$run) || 0,
+      missions: Number((c.$stat || {}).$misNum) || 0,
+      cles: Number(c.$key) || 0,
+      etoiles: Number(c.$star) || 0,
+      diamants: Number(c.$diam) || 0,
+      donjon: Number((c.$dungeon || {}).$lvl) || 0,
+      foretMax: Number((c.$stat || {}).$forestMax) || 0,
+      arbreMax: Number((c.$stat || {}).$treeMax) || 0,
+    },
+    catalogue: pixizCatalogue(),
+  });
+});
+
+/*
+ * RENDRE DES OBJETS. `objets` est une liste d'identifiants de jeu (ceux de la
+ * table des pictos : 0..29 les caractéristiques, 30 le bocal, 31 la clé,
+ * 40..49 les pouvoirs, 50..59 les globes, 70..79 les potions, 80..89 les sacs,
+ * 100+ les parchemins, 200+ les grimoires, 300+ la nourriture).
+ *
+ * `fee` (un nom) les met dans le sac de CETTE fée plutôt que dans celui du
+ * joueur — un objet porté agit tant qu'elle le garde.
+ *
+ * Le sac a des places comptées (`placesJoueur` / `placesFee`) : on n'en met
+ * pas plus qu'il n'en tient, et l'on dit ce qui n'est pas passé plutôt que de
+ * le perdre en silence.
+ */
+app.post('/api/admin/users/:username/minipixiz/objets', adminAuth, async (req, res) => {
+  const fiche = await pixizFiche(req.params.username);
+  if (!fiche) return res.status(404).json({ error: 'user not found' });
+  if (!fiche.carte) return res.status(400).json({ error: 'no_slot', message: 'Ce joueur n’a pas de partie MiniPixiz.' });
+
+  const demandes = Array.isArray(req.body && req.body.objets) ? req.body.objets : [];
+  const ids = demandes.map((n) => Math.floor(Number(n))).filter((n) => Number.isFinite(n) && n >= 0);
+  if (!ids.length) return res.status(400).json({ error: 'objets required' });
+  for (const id of ids) {
+    if (!PixizObjets.info(id)) {
+      return res.status(400).json({ error: 'objet_inconnu', id, message: 'Le jeu ne connaît pas l’objet ' + id + '.' });
+    }
+  }
+
+  const c = fiche.carte;
+  const nomFee = String((req.body && req.body.fee) || '').trim();
+  let cible = null;
+  if (nomFee) {
+    cible = (c.$faerie || []).find((f) => String(f.$name || '') === nomFee);
+    if (!cible) return res.status(404).json({ error: 'fee_inconnue', message: 'Aucune fée nommée « ' + nomFee +' ».' });
+    if (!Array.isArray(cible.$inv)) cible.$inv = [];
+  } else if (!Array.isArray(c.$inv)) {
+    c.$inv = [];
+  }
+
+  const sac = cible ? cible.$inv : c.$inv;
+  const places = cible ? PixizObjets.placesFee(cible) : PixizObjets.placesJoueur(c);
+  const rendus = [], refuses = [];
+  for (const id of ids) {
+    const libre = pixizPremiereCaseLibre(sac, places);
+    if (libre < 0) { refuses.push({ id, nom: pixizNomObjet(id), raison: 'sac plein' }); continue; }
+    sac[libre] = id;
+    rendus.push({ id, nom: pixizNomObjet(id), case: libre });
+  }
+
+  const taille = await pixizEcrire(fiche, c);
+  console.log(`[ADMIN] minipixiz objets ${fiche.username}: +${rendus.length}`
+    + (refuses.length ? ` (${refuses.length} refusé(s), sac plein)` : '')
+    + (nomFee ? ` → fée ${nomFee}` : ''));
+  res.json({ ok: true, username: fiche.username, ou: nomFee || 'joueur', rendus, refuses, places, taille });
+});
+
+/*
+ * FAIRE MONTER UNE FÉE. On passe par `Fee.monterNiveau`, la règle du jeu : elle
+ * paie l'expérience (l'admin la complète si elle manque — c'est un cadeau,
+ * pas une triche du compteur), applique la caractéristique déjà tirée dans
+ * `$next`, remonte le moral, et retire ce qu'elle apprendra ensuite.
+ *
+ * `exp` seule, sans `niveaux`, se contente de créditer l'expérience : la fée
+ * montera d'elle-même, en jeu, avec le choix du joueur entre caractéristique
+ * et sort.
+ */
+app.post('/api/admin/users/:username/minipixiz/fee', adminAuth, async (req, res) => {
+  const fiche = await pixizFiche(req.params.username);
+  if (!fiche) return res.status(404).json({ error: 'user not found' });
+  if (!fiche.carte) return res.status(400).json({ error: 'no_slot', message: 'Ce joueur n’a pas de partie MiniPixiz.' });
+
+  const c = fiche.carte;
+  const nomFee = String((req.body && req.body.fee) || '').trim();
+  const fs = (c.$faerie || []).find((f) => String(f.$name || '') === nomFee);
+  if (!fs) return res.status(404).json({ error: 'fee_inconnue', message: 'Aucune fée nommée « ' + nomFee + ' ».' });
+
+  const niveaux = Math.floor(Number((req.body && req.body.niveaux) || 0));
+  const expDonnee = Math.floor(Number((req.body && req.body.exp) || 0));
+  if (!niveaux && !expDonnee) return res.status(400).json({ error: 'rien_a_faire', message: 'Donne des niveaux ou de l’expérience.' });
+  if (niveaux < 0 || expDonnee < 0) return res.status(400).json({ error: 'valeur_negative' });
+
+  const avant = Number(fs.$level) || 0;
+  if (expDonnee) fs.$exp = (Number(fs.$exp) || 0) + expDonnee;
+
+  const appris = [];
+  for (let i = 0; i < niveaux; i++) {
+    if ((Number(fs.$level) || 0) >= PixizFee.NIVEAU_MAX) break;
+    const f = new PixizFee.Fee(fs, Math.random, c);
+    const cout = f.limiteExp();
+    if ((Number(fs.$exp) || 0) < cout) fs.$exp = cout;   // le cadeau couvre la marche
+    const r = f.monterNiveau(0);
+    if (!r) break;
+    appris.push(r);
+  }
+
+  const taille = await pixizEcrire(fiche, c);
+  console.log(`[ADMIN] minipixiz fée ${nomFee} de ${fiche.username}: niveau ${avant} → ${fs.$level}`
+    + (expDonnee ? ` (+${expDonnee} exp)` : ''));
+  res.json({
+    ok: true, username: fiche.username, fee: nomFee,
+    niveauAvant: avant, niveauApres: Number(fs.$level) || 0,
+    appris, plafond: PixizFee.NIVEAU_MAX,
+    etat: pixizResumeFee(fs, c), taille,
+  });
+});
+
 app.get('/api/admin/users/:username/modlogs', adminAuth, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
