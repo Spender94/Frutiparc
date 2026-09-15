@@ -1558,8 +1558,16 @@ const RANKINGS = {
   kaluga_freestyle:   { name: 'Kaluga - Freestyle',       game: 'kaluga',   type: 'L' },
   swapou2_challenge:  { name: 'Swapou - Challenge',       game: 'swapou2',  type: 'L' },
   mb2_challenge:      { name: 'MotionBall - Challenge',   game: 'mb2',      type: 'L', lowerIsBetter: true },
-  bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L' },
-  grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L' },
+  // `classeAZero` : UNE SÉRIE DE ZÉRO EST UNE SÉRIE. Ces deux challenges
+  // comptent des victoires d'affilée, et l'on en fait beaucoup de zéro — perdre
+  // son premier match est le cas le plus fréquent. Le classement les ignorait :
+  // `persistScore` ne retient que ce qui BAT le record, et zéro ne bat pas le
+  // zéro d'une fiche vide. Le joueur restait donc absent du tableau du jour,
+  // comme s'il n'avait pas joué. Avec ce drapeau, un PREMIER score crée la
+  // ligne quelle que soit sa valeur ; la suite continue de ne garder que le
+  // meilleur.
+  bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L', classeAZero: true },
+  grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L', classeAZero: true },
   // Le CHAMPIONNAT de Frutibandas — la salle classée du jeu d'origine
   // (Main.CHAMPION_MODE = 2). Ce n'est pas un record mais une NOTE Elo, qui
   // monte et descend : elle s'écrit donc par fixerScore (écriture absolue) et
@@ -2664,7 +2672,13 @@ function persistScore(username, rankingId, score, data) {
   let updated = false;
   const scoreImproved = isScoreBetter(rankingId, n, newData, oldScore, oldData);
   const shouldBackfillData = !oldData && !!newData && n === oldScore;
-  if (scoreImproved || shouldBackfillData) {
+  // ÊTRE CLASSÉ ET BATTRE SON RECORD SONT DEUX CHOSES. Sur les classements qui
+  // le demandent (`classeAZero`), le PREMIER score écrit la ligne quelle que
+  // soit sa valeur — sans quoi un zéro, qui ne bat pas le zéro d'une fiche
+  // vide, laisserait le joueur absent du tableau comme s'il n'avait pas joué.
+  // Les suivants repassent par la règle du record.
+  const premierClassement = !prev && !!RANKINGS[rankingId].classeAZero;
+  if (scoreImproved || shouldBackfillData || premierClassement) {
     scoresData.users[username][rankingId] = {
       score: scoreImproved ? n : oldScore,
       data: (scoreImproved || !oldData) ? newData : oldData,
@@ -26710,7 +26724,11 @@ const grapizNet = new GrapizNet({
     if (users[username]) users[username].grapizStreak = streak;   // série en cours (mémoire serveur)
     // À la fin d'une série (défaite/abandon/timeout), on enregistre sa longueur
     // au classement « Grapiz - Challenge » (persistScore garde le meilleur).
-    if (info && info.series > 0) persistScore(username, 'grapiz_challenge', info.series);
+    // ZÉRO COMPTE : perdre son premier match est le cas le plus fréquent, et
+    // l'on en restait absent du tableau du jour comme si l'on n'avait pas joué.
+    // Le drapeau `classeAZero` du classement fait écrire la ligne au premier
+    // score, quelle que soit sa valeur.
+    if (info) persistScore(username, 'grapiz_challenge', Math.max(0, Number(info.series) || 0));
   },
   // Portillon FD « disque = vie » : un match entre humains est refusé si un
   // joueur n'a plus de disque ; un disque est consommé à chaque DÉFAITE classée
@@ -26860,7 +26878,8 @@ const bandasNet = new BandasNet({
     if (users[username]) users[username].bandasStreak = streak;    // série en cours (mémoire serveur)
     // À la fin d'une série (défaite/abandon/timeout), on enregistre sa longueur
     // au classement « Frutibandas - Challenge » (persistScore garde le meilleur).
-    if (info && info.series > 0) persistScore(username, 'bandas_challenge', info.series);
+    // ZÉRO COMPTE, pour la même raison qu'à Grapiz : cf. `classeAZero`.
+    if (info) persistScore(username, 'bandas_challenge', Math.max(0, Number(info.series) || 0));
   },
   // Portillon FD « disque = vie » : un match entre humains est refusé si un
   // joueur n'a plus de disque ; un disque est consommé à chaque DÉFAITE classée
