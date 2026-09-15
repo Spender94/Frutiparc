@@ -22,6 +22,7 @@ const N = require('../public/minipixiz/nuit.js');
 const P = require('../public/minipixiz/plateforme.js');
 const F = require('../public/minipixiz/faerie.js');
 const M = require('../public/minipixiz/missions.js');
+const O = require('../public/minipixiz/items.js');
 
 function tirage(graine) {
   let s = graine;
@@ -366,6 +367,74 @@ test('la rangée se range, s\'échange, se jette — et la sortie attend la fin'
   assert.equal(inv.extraList, null);
 });
 
+/*
+ * UN OBJET À RANGER VA DROIT SUR LA FÉE.
+ *
+ * « En retour de forêt, impossible de mettre un objet à ranger directement sur
+ * la fée ; il faut d'abord le ranger dans un emplacement du sac puis ensuite il
+ * peut aller sur la fée. »
+ *
+ * `inv/Item.setCardPos` connaît TROIS destinations — le sac de la fée
+ * (`faerie.fs.$inv[index]`), la rangée (`inv.extraList[…]`) et le sac du joueur
+ * (`Cm.card.$inv[index]`) —, et n'importe laquelle échange avec n'importe
+ * quelle autre. Le portage n'en avait câblé que deux : la rangée ne causait
+ * qu'avec le sac du joueur. Or on revient de forêt les poches PLEINES — c'est
+ * bien pour ça qu'il y a une rangée : le détour par le sac demandait donc une
+ * place qu'on n'a pas.
+ */
+test('un objet de la rangée s\'équipe droit sur la fée, sans passer par le sac', () => {
+  const carte = carteNeuve();
+  carte.$bag = 1;
+  carte.$inv = [301, 302];             // le sac du joueur est PLEIN
+  const fee = ajouterFee(carte);
+  carte.$current = 0;
+  fee.$inv = [];
+  const inv = fauxInventaire(carte);
+  inv.ouvrir();
+  inv.setExtraList([12, 303]);         // un objet de caractéristique, un aliment
+
+  // La rangée → la première case de la fée, en deux gestes et rien d'autre.
+  inv.toucher('extra', 0);
+  inv.toucher(0, 0);
+  assert.equal(fee.$inv[0], 12, 'l\'objet est sur la fée');
+  assert.equal(inv.extraList[0], null, 'et la rangée s\'est vidée de lui');
+  assert.deepEqual(carte.$inv, [301, 302], 'le sac du joueur n\'a pas servi de relais');
+
+  // Et dans l'autre sens : ce que la fée portait revient à la rangée, échangé.
+  inv.toucher(0, 0);
+  inv.toucher('extra', 0);
+  assert.equal(inv.extraList[0], 12);
+  assert.equal(fee.$inv[0], null);
+
+  // Un ÉCHANGE avec une case occupée de la fée marche aussi.
+  fee.$inv[0] = 305;
+  inv.toucher('extra', 0);
+  inv.toucher(0, 0);
+  assert.equal(fee.$inv[0], 12, 'la fée porte le nouveau');
+  assert.equal(inv.extraList[0], 305, 'et l\'ancien attend au comptoir');
+});
+
+test('un bocal HABITÉ ne quitte toujours pas le sac du joueur', () => {
+  // La locataire se repère par `$pos`, un index du sac du JOUEUR : ailleurs,
+  // elle n'aurait plus d'adresse. La règle valait déjà pour les échanges entre
+  // sacs (O.deplacer) ; elle doit valoir aussi pour ceux qui passent par la
+  // rangée, sans quoi le nouveau chemin serait une porte dérobée.
+  const carte = carteNeuve();
+  carte.$bag = 1;
+  carte.$inv = [O.IT_BOCAL, 302];
+  const fee = ajouterFee(carte);
+  fee.$pos = 0;                         // elle dort dans le bocal de la case 0
+  fee.$inv = [];
+  const inv = fauxInventaire(carte);
+  inv.ouvrir();
+  inv.setExtraList([12]);
+
+  assert.equal(inv.deplacerExtra({ sac: 'joueur', case: 0 }, { sac: 'extra', case: 0 }), false,
+    'le bocal habité ne part pas à la rangée');
+  assert.equal(carte.$inv[0], O.IT_BOCAL, 'il n\'a pas bougé');
+  assert.equal(inv.extraList[0], 12, 'et la rangée non plus');
+});
+
 test('les flèches feuillettent la rangée un cran à la fois, mains vides', () => {
   const carte = carteNeuve();
   carte.$bag = 1;
@@ -430,15 +499,16 @@ test('pendant le rangement, le bocal ne se DÉPLACE plus — mais la fée en sor
   assert.match(inv.message, /Rangez vos nouveaux objets/, 'avec la même explication');
 });
 
-test('la rangée NOURRIT sans détour, mais n\'équipe pas une fée', () => {
+test('la rangée nourrit ET équipe sans détour par le sac', () => {
   const carte = carteNeuve();
   carte.$bag = 1;
   carte.$inv = [301, null];
-  ajouterFee(carte);
+  const fee = ajouterFee(carte);
+  fee.$inv = [];
   carte.$current = 0;
   const inv = fauxInventaire(carte);
   inv.ouvrir();
-  inv.setExtraList([303]);
+  inv.setExtraList([303, 12]);
 
   // Inventory.giveItem agit sur l'objet TENU, sans regarder d'où il vient :
   // `setHand` ne retient `flExtra` que pour savoir où le REPOSER. Exiger un
@@ -449,9 +519,14 @@ test('la rangée NOURRIT sans détour, mais n\'équipe pas une fée', () => {
   assert.notEqual(inv.extraList[0], 303, 'l\'aliment a bien été entamé');
   assert.ok(!/Rangez d'abord/.test(inv.message), 'plus de refus : ' + inv.message);
 
-  // Vers le sac d'une fée : refusé — la rangée ne cause qu'avec le sac.
-  const bouge = inv.deplacerExtra({ sac: 'extra', case: 0 }, { sac: 0, case: 0 });
-  assert.equal(bouge, false);
+  // Et vers le sac de la fée, de même : `inv/Item.setCardPos` connaît les trois
+  // destinations, et la rangée en est une comme les autres. Le détour par le
+  // sac du joueur demandait une case libre — justement ce qui manque au retour
+  // de forêt, qui est le seul moment où cette rangée existe.
+  inv.main = null;
+  assert.equal(inv.deplacerExtra({ sac: 'extra', case: 1 }, { sac: 0, case: 0 }), true);
+  assert.equal(fee.$inv[0], 12, 'l\'objet est passé droit sur la fée');
+  assert.equal(inv.extraList[1], null, 'et la rangée s\'est vidée de lui');
 });
 
 test('la flèche de la rangée est sortie du fichier (bouton 682, forme 680)', () => {

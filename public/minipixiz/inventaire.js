@@ -504,28 +504,75 @@ class Inventaire {
   }
 
   /**
-   * Les échanges avec la rangée du bas. Le SWF laissait aussi équiper une fée
-   * droit depuis la rangée ; ici elle ne cause qu'avec le sac du joueur —
-   * l'équipement passe par lui. Une pose sur une case occupée ÉCHANGE, comme
-   * inv/Item.setCardPos qui écrivait chaque moitié de l'échange.
+   * Les échanges avec la rangée du bas.
+   *
+   * Trois destinations possibles, comme dans le fichier : la rangée elle-même,
+   * le sac du JOUEUR, et le sac d'une FÉE. `inv/Item.setCardPos` le dit en
+   * trois branches — `faerie.fs.$inv[index]`, `inv.extraList[…]`,
+   * `Cm.card.$inv[index]` —, et n'importe laquelle peut échanger avec n'importe
+   * quelle autre.
+   *
+   * Le portage n'en avait câblé que deux : la rangée ne causait qu'avec le sac
+   * du joueur. Au retour de forêt, un objet à ranger ne pouvait donc pas aller
+   * DROIT sur la fée — il fallait le poser dans une case du sac, puis le
+   * reprendre pour l'équiper, ce qui demande une case libre alors qu'on revient
+   * justement les poches pleines. C'est le retour d'un joueur, et il avait
+   * raison.
+   *
+   * Une pose sur une case occupée ÉCHANGE, comme setCardPos qui écrivait chaque
+   * moitié.
    */
   deplacerExtra(de, vers) {
     const bag = Math.max(0, Math.min(nombre(this.carte.$bag), INV_SHAPE.length - 1));
     const places = O.PLACES_SAC[bag] || 0;
+    const feeDe = (p) => ((this.carte.$faerie || [])[p.sac] || null);
     const dansSac = (p) => p.sac === 'joueur' && p.case >= 0 && p.case < places;
+    const dansFee = (p) => {
+      const fs = feeDe(p);
+      return !!fs && p.case >= 0 && p.case < O.placesFee(fs);
+    };
     const dansRang = (p) => p.sac === 'extra' && !!this.extraList
       && p.case >= 0 && p.case < this.extraList.length;
-    if (!(dansSac(de) || dansRang(de)) || !(dansSac(vers) || dansRang(vers))) return false;
+    const connu = (p) => dansSac(p) || dansFee(p) || dansRang(p);
+    if (!connu(de) || !connu(vers)) return false;
+    // Un échange qui ne touche pas la rangée n'est pas de son ressort : il
+    // repasse par les règles du jeu (la locataire qui suit son bocal, les trous
+    // qui se gardent). On ne doit pas court-circuiter ça ici.
+    if (!dansRang(de) && !dansRang(vers)) return O.deplacer(this.carte, de, vers);
     if (!Array.isArray(this.carte.$inv)) this.carte.$inv = [];
-    const lire = (p) => (p.sac === 'extra' ? this.extraList[p.case] : this.carte.$inv[p.case]);
-    const poser = (p, v) => {
-      const vv = (v === undefined) ? null : v;
-      if (p.sac === 'extra') this.extraList[p.case] = vv;
-      else this.carte.$inv[p.case] = vv;
+
+    // UN BOCAL HABITÉ NE SORT PAS DU SAC DU JOUEUR : `$pos` est un index de CE
+    // sac-là, et la locataire n'aurait plus d'adresse ailleurs (même règle que
+    // `O.deplacer`, qui la refuse pour les mêmes raisons).
+    const habite = (p) => {
+      const v = p.sac === 'joueur' ? this.carte.$inv[p.case] : null;
+      return v === O.IT_BOCAL
+        && (this.carte.$faerie || []).some((f) => f && f.$pos === p.case);
     };
-    const a = lire(de), b = lire(vers);
-    poser(vers, a);
-    poser(de, b);
+    if (habite(de) || habite(vers)) return false;
+
+    const listeDe = (p) => {
+      if (p.sac === 'extra') return this.extraList;
+      if (p.sac === 'joueur') return this.carte.$inv;
+      const fs = feeDe(p);
+      fs.$inv = fs.$inv || [];
+      return fs.$inv;
+    };
+    const a = listeDe(de), b = listeDe(vers);
+    const x = (a[de.case] === undefined) ? null : a[de.case];
+    const y = (b[vers.case] === undefined) ? null : b[vers.case];
+    if (x === null && y === null) return false;
+    b[vers.case] = x;
+    a[de.case] = y;
+    // Les trous se gardent dans les SACS (la rangée, elle, se vide case à case
+    // et garde sa longueur).
+    for (const p of [de, vers]) {
+      if (p.sac === 'extra') continue;
+      const l = listeDe(p);
+      const n = p.sac === 'joueur' ? places : O.placesFee(feeDe(p));
+      for (let i = 0; i < n; i++) if (l[i] === undefined) l[i] = null;
+      l.length = n;
+    }
     return true;
   }
 
