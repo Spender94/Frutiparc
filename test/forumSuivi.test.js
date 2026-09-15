@@ -31,7 +31,7 @@ const { Client } = require(path.join(__dirname, '..', 'node_modules', 'pg'));
 const WebSocket = require(path.join(__dirname, '..', 'node_modules', 'ws'));
 
 const ROOT = path.join(__dirname, '..');
-const PORT = 3431;
+const PORT = 3580;
 const BASE = `http://127.0.0.1:${PORT}`;
 const CLE = 'cle-forum-suivi';
 const DB = process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5433/frutiparc_forumsuivi';
@@ -58,7 +58,7 @@ before(async () => {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: DB, REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5201', FRUTISCORE_PORT: '5202',
+      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5400', FRUTISCORE_PORT: '5401',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });

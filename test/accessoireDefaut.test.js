@@ -32,7 +32,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-const PORT = 3531;
+const PORT = 3585;
 const BASE = `http://127.0.0.1:${PORT}`;
 const CLE = 'cle-accessoire-defaut';
 const RUN = Date.now().toString(36).slice(-5);
@@ -44,7 +44,7 @@ before(async () => {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5294', FRUTISCORE_PORT: '5295',
+      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5402', FRUTISCORE_PORT: '5403',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });

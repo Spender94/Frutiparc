@@ -104,7 +104,7 @@ test('les tests de l’analyseur passent (public/swapou/analyse.test.js)', () =>
 });
 
 // ── Et en vrai : accordée par l'admin, rendue au client ─────────────────────
-const PORT = 3431;
+const PORT = 3581;
 const BASE = `http://127.0.0.1:${PORT}`;
 const CLE = 'cle-de-test';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

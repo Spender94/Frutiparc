@@ -82,7 +82,13 @@ async function arreter() {
   const parti = new Promise((r) => p.once('exit', r));
   p.kill('SIGKILL');
   await parti;
-  await wait(300);                     // que le port soit rendu
+  // Que le port soit rendu — VU, pas supposé. Trois dixièmes suffisent quand la
+  // machine n'a que ce fichier à faire ; sous la suite complète, le serveur
+  // suivant tombait sur EADDRINUSE et n'écoutait jamais.
+  for (let i = 0; i < 80; i++) {
+    try { await fetch(BASE + '/api/loadFrutiSlots?game=snake3'); } catch { return; }
+    await wait(150);
+  }
 }
 
 before(async () => {

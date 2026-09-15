@@ -127,9 +127,16 @@ test('mise en place : un auteur, un modérateur, un forum', async (t) => {
   await fetch(BASE + `/api/admin/users/${MODO}`, {
     method: 'PATCH', headers: CLEF, body: JSON.stringify({ is_moderator: true }),
   });
-  await fetch(BASE + '/api/admin/forum/seed', { method: 'POST', headers: CLEF, body: '{}' });
-  const idx = await (await fetch(BASE + '/api/forum/index')).json();
-  board = idx.categories.flatMap((c) => c.boards || []).find((b) => b.name === 'Frutiz') || null;
+  // Le serveur sème AUSSI ses forums au démarrage, en tâche de fond : semer à
+  // la main pendant ce temps-là tombe sur « already seeded » (l'endpoint ne
+  // regarde que les catégories, qui existent avant les forums qu'elles
+  // portent). On attend donc de VOIR le forum.
+  for (let i = 0; i < 80 && !board; i++) {
+    await fetch(BASE + '/api/admin/forum/seed', { method: 'POST', headers: CLEF, body: '{}' });
+    const idx = await (await fetch(BASE + '/api/forum/index')).json();
+    board = (idx.categories || []).flatMap((c) => c.boards || []).find((b) => b.name === 'Frutiz') || null;
+    if (!board) await wait(250);
+  }
   assert.ok(board, 'un forum ordinaire où poster');
 });
 

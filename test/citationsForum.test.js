@@ -43,7 +43,7 @@ aOXjI8Pybb6Fd1F5RB0YNzT5T8tX
 
 const ROOT = path.join(__dirname, '..');
 const PORT = 3517;
-const FAUX_PUSH_PORT = 3518;
+const FAUX_PUSH_PORT = 3586;
 const BASE = `http://127.0.0.1:${PORT}`;
 const CLE = 'cle-de-test-citations';
 const DB = process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5433/frutiparc_citations';

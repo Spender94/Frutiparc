@@ -38,7 +38,7 @@ const LIGHT = lire('public/light.html');
 const BUREAU = lire('public/bureau-frutiz.js');
 const SERVEUR = lire('server.js');
 
-const PORT = 3527;
+const PORT = 3584;
 const BASE = `http://127.0.0.1:${PORT}`;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const SUF = 'sv' + String(Date.now()).slice(-6);

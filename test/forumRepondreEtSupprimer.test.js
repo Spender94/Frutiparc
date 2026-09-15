@@ -70,7 +70,7 @@ before(async () => {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: DB, REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5290', FRUTISCORE_PORT: '5291',
+      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5408', FRUTISCORE_PORT: '5409',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -123,11 +123,22 @@ const lireSujet = async (topicId, page) =>
 test('mise en place : deux Frutiz et un sujet', async (t) => {
   if (!dispo) return t.skip('pas de base PostgreSQL de test disponible');
   await inscrire(A); await inscrire(B);
-  // Les forums d'origine ne sont pas semés tout seuls sur une base neuve.
-  await post('/api/admin/forum/seed', {}, chead);
-  const idx = await (await fetch(BASE + '/api/forum/index')).json();
-  board = idx.categories.flatMap((c) => c.boards || [])
-    .find((b) => b.name === 'Frutiz') || null;
+  /*
+   * LES FORUMS D'ORIGINE, sur une base neuve — et le piège du semis CONCURRENT.
+   *
+   * Le serveur sème les siens au démarrage, en tâche de fond. Semer à la main
+   * pendant ce temps-là tombe sur « already seeded » : `/api/admin/forum/seed`
+   * ne regarde que les CATÉGORIES, et celles-ci existent déjà quand les forums
+   * qu'elles portent, eux, ne sont pas encore écrits. On attend donc de VOIR le
+   * forum, comme on attend le reste du schéma plus haut.
+   */
+  for (let i = 0; i < 80 && !board; i++) {
+    await post('/api/admin/forum/seed', {}, chead);
+    const idx = await (await fetch(BASE + '/api/forum/index')).json();
+    board = (idx.categories || []).flatMap((c) => c.boards || [])
+      .find((b) => b.name === 'Frutiz') || null;
+    if (!board) await wait(250);
+  }
   assert.ok(board, 'un forum ordinaire où poster');
 });
 

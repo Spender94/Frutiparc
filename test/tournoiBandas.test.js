@@ -19,7 +19,7 @@ const { spawn } = require('node:child_process');
 const { Client } = require('pg');
 
 const ROOT = path.join(__dirname, '..');
-const PORT = 3496;
+const PORT = 3582;
 const BASE = `http://127.0.0.1:${PORT}`;
 const CLE = 'cle-de-test-tournoi';
 const DB = process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5433/frutiparc_tournoi';

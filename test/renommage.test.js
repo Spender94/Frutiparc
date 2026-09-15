@@ -51,7 +51,7 @@ async function demarrer() {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: DB, REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5306', FRUTISCORE_PORT: '5307',
+      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5406', FRUTISCORE_PORT: '5407',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });

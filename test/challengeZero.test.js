@@ -42,7 +42,7 @@ before(async () => {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5292', FRUTISCORE_PORT: '5293',
+      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5404', FRUTISCORE_PORT: '5405',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });

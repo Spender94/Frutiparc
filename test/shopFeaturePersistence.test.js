@@ -69,8 +69,18 @@ async function demarrer() {
 async function arreter() {
   if (!proc) return;
   const p = proc; proc = null;
+  const parti = new Promise((r) => p.once('exit', r));
   p.kill('SIGKILL');
-  await wait(1200);
+  await parti;
+  // ON ATTEND QUE LE PORT SOIT RENDU, pas une seconde et deux dixièmes. Le
+  // délai fixe tenait tant que la machine n'avait que ce fichier à faire ; la
+  // suite complète la met à genoux, et le serveur suivant tombait alors sur
+  // EADDRINUSE — sans jamais écouter, pendant que le test interrogeait le
+  // mourant.
+  for (let i = 0; i < 80; i++) {
+    try { await fetch(BASE + '/api/loadFrutiSlots?game=snake3'); } catch { return; }
+    await wait(150);
+  }
 }
 
 let dispo = false;
