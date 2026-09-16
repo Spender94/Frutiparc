@@ -152,9 +152,9 @@ test('le tableau du pack est rendu hors écran et recopié', () => {
   const ctx = { save() {}, restore() {}, fillRect() {}, fillText() { textes++; }, strokeText() { contours++; },
     measureText() { return { width: 10 }; }, beginPath() {}, roundRect() {}, fill() {}, drawImage() {},
     createLinearGradient() { return { addColorStop() {} }; } };
-  pack.dessiner(ctx, { longueur: 3, fruits: 4, dynamites: 0, bonus: 12, vitesse: 100, pause: false }, 2);
-  assert.strictEqual(textes, 10, 'cinq intitulés et cinq nombres');
-  assert.strictEqual(contours, 5);
+  pack.dessiner(ctx, { longueur: 3, fruits: 4, dynamites: 0, bonus: 12, chrono: 65, vitesse: 100, pause: false }, 2);
+  assert.strictEqual(textes, 12, 'six intitulés et six nombres');
+  assert.strictEqual(contours, 6);
 });
 
 test('les dessins arrivent en lots, et le rideau n\'attend que ce que l\'arène dessine', () => {

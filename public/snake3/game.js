@@ -286,6 +286,7 @@ class VuePartie {
     this.scoreMc = new D.Nombre('chiffresVert');
     this.finie = false;
     this.peintToutLeFond = true;      // le décor composé inclut les deux aplats
+    this.chrono = 0;                  // secondes de jeu (hors pause, hors mort) — le pack
 
     const sons = jeu.sons;
     sons.setVolume(C.CHANNEL_MUSIC_2, 0);
@@ -454,6 +455,12 @@ class VuePartie {
     const partie = this.partie;
     partie.entree = this.jeu.entreesPartie();
     partie.main(tmod, deltaT);
+
+    // LA DURÉE DE LA PARTIE, pour le tableau de bord du pack. Le jeu ne
+    // compte pas le temps : c'est la page qui le fait, dans le SWF comme ici.
+    // Ni la pause ni ce qui suit la mort ne sont comptés — le chrono se fige
+    // alors sur la durée jouée, et c'est elle qu'on lit à la fin.
+    if (!partie.pause && !partie.game_over_flag) this.chrono += deltaT;
 
     /*
      * LA PAUSE ARRÊTE TOUT — pas seulement le moteur.
@@ -825,6 +832,7 @@ class Jeu {
       // l'augmente tout seul d'un millième d'image en image : l'indice monte
       // doucement toute la partie, ce qui est justement l'information utile.
       vitesse: Math.round(p.serpent.speed * p.serpent.base_speed / C.SNAKE_DEFAULT_SPEED * 100),
+      chrono: vue.chrono,
       pause: !!p.pause,
     };
   }

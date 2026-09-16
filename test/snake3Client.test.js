@@ -858,15 +858,15 @@ test('une partie ne poste qu\'UN score, même si finPartie revient', () => {
   assert.deepStrictEqual(envois, [1200], 'le second appel ne repart pas au serveur');
 });
 
-test('le tableau de bord reprend les cinq lignes et les couleurs du disque', () => {
+test('le tableau de bord reprend les cinq lignes du disque, plus la vitesse', () => {
   const K = require('../public/snake3/pack.js');
   assert.deepStrictEqual(K.LIGNES.map((l) => l.titre),
-    ['Longueur', 'Fruits avalés', 'Dynamites', 'Durée bonus en cours', 'Vitesse']);
-  // Quatre viennent du disque Flash (game-popup.html) ; la cinquième, la
-  // vitesse, remplace sa « durée de la partie » — Frutisnake n'a pas de
-  // chronomètre à battre, alors que l'allure du serpent se joue.
+    ['Longueur', 'Fruits avalés', 'Dynamites', 'Durée bonus en cours', 'Durée de la partie', 'Vitesse']);
+  // Les cinq du disque Flash (game-popup.html) — la durée de la partie
+  // comprise, que les joueurs réclamaient — puis la vitesse, l'ajout du
+  // light : l'allure du serpent se joue.
   const popup = fs.readFileSync(path.join(RACINE, 'public/game-popup.html'), 'utf8');
-  for (const l of K.LIGNES.slice(0, 4)) {
+  for (const l of K.LIGNES.slice(0, 5)) {
     const echappe = l.titre.replace(/é/g, '\\u00e9');
     assert.ok(popup.includes('"' + echappe + '"') || popup.includes('"' + l.titre + '"'),
       'intitulé absent du disque : ' + l.titre);
@@ -877,14 +877,14 @@ test('le tableau de bord reprend les cinq lignes et les couleurs du disque', () 
   assert.strictEqual(K.mmss(-3), '00:00');
   assert.strictEqual(K.mmss(3600 + 61), '61:01', 'au-delà de l\'heure, on compte en minutes');
 
-  // Hors partie : cinq zéros, jamais un panneau vide (sa place est prise dans
+  // Hors partie : six zéros, jamais un panneau vide (sa place est prise dans
   // la scène une fois pour toutes).
   assert.deepStrictEqual(K.valeurs(null),
-    { longueur: '0', fruits: '0', dynamites: '0', bonus: '00:00', vitesse: '100' });
+    { longueur: '0', fruits: '0', dynamites: '0', bonus: '00:00', chrono: '00:00', vitesse: '100' });
   assert.deepStrictEqual(
-    K.valeurs({ longueur: 7, fruits: 12, dynamites: 3, bonus: 29.2, vitesse: 214 }),
-    { longueur: '7', fruits: '12', dynamites: '3', bonus: '00:30', vitesse: '214' },
-    'la durée d\'un bonus s\'arrondit au-dessus : 29,2 s restantes = 30 s affichées');
+    K.valeurs({ longueur: 7, fruits: 12, dynamites: 3, bonus: 29.2, chrono: 754.9, vitesse: 214 }),
+    { longueur: '7', fruits: '12', dynamites: '3', bonus: '00:30', chrono: '12:34', vitesse: '214' },
+    'la durée d\'un bonus s\'arrondit au-dessus : 29,2 s restantes = 30 s affichées ; celle de la partie, en dessous');
 
   // Le panneau se peint DANS le canvas, en prolongement du cadre du jeu : son
   // vert doit être celui du décor, pas une approximation. Le décor du SWF est

@@ -3,7 +3,7 @@
  *
  * L'article 40 de la boutique (300 kikooz) ouvre un tableau de bord de partie :
  * longueur du serpent, fruits avalés, dynamites ramassées, durée du bonus en
- * cours, durée de la partie. C'est la même option de confort que sur le disque
+ * cours, durée de la partie, vitesse. C'est la même option de confort que sur le disque
  * Flash — là-bas game-popup.html la dessine en HTML à côté de la scène, à
  * partir des valeurs que le SWF patché remonte par fpSnakeHud ; ici le moteur
  * est en JS, les valeurs se lisent donc directement (Jeu.releve()).
@@ -34,24 +34,26 @@
 const sousNode = (typeof module !== 'undefined' && module.exports);
 const C = sousNode ? require('./const.js') : racine.SnakeConst;
 
-// Les cinq relevés, avec l'abrégé des dispositions serrées : une colonne de
+// Les six relevés, avec l'abrégé des dispositions serrées : une colonne de
 // cent-soixante points ne loge pas « Durée bonus en cours ».
 //
-// Quatre viennent du disque Flash. Le cinquième, la VITESSE, remplace sa
-// « durée de la partie » : Frutisnake n'a pas de chronomètre à battre, savoir
-// qu'on joue depuis trois minutes n'aide à rien — alors que l'allure du
-// serpent, qui monte toute la partie et triple sous turbo, se joue.
-// Elle est donnée en indice, cent valant l'allure de départ.
+// Cinq viennent du disque Flash — dont la DURÉE DE LA PARTIE, qu'on avait
+// retirée en lui préférant la vitesse : « Frutisnake n'a pas de chronomètre à
+// battre ». Les joueurs, eux, y tenaient — c'est le relevé qu'ils regrettaient
+// le plus. Elle revient donc, et la VITESSE reste : l'allure du serpent, qui
+// monte toute la partie et triple sous turbo, se joue aussi. Elle est donnée
+// en indice, cent valant l'allure de départ.
 const LIGNES = [
   { cle: 'longueur', titre: 'Longueur', court: 'Longueur' },
   { cle: 'fruits', titre: 'Fruits avalés', court: 'Fruits' },
   { cle: 'dynamites', titre: 'Dynamites', court: 'Dynamites' },
   { cle: 'bonus', titre: 'Durée bonus en cours', court: 'Bonus' },
+  { cle: 'chrono', titre: 'Durée de la partie', court: 'Partie' },
   { cle: 'vitesse', titre: 'Vitesse', court: 'Vitesse' },
 ];
-// Le bandeau du portrait tient sur DEUX rangées : trois compteurs puis les
-// deux mesures, plutôt que cinq cases étroites côte à côte.
-const RANGEES = [3, 2];
+// Le bandeau du portrait tient sur DEUX rangées : les trois compteurs, puis
+// les trois mesures — plutôt que six cases étroites côte à côte.
+const RANGEES = [3, 3];
 
 // Les mesures, en points de scène (la scène du jeu fait 700×480).
 const VERT = '#83ca22';                // l'aplat de backgroundBord.svg
@@ -73,15 +75,16 @@ function mmss(sec) {
   return (m < 10 ? '0' : '') + m + ':' + (r < 10 ? '0' : '') + r;
 }
 
-// Les cinq valeurs à afficher. Hors partie elles sont à zéro : le panneau ne
+// Les six valeurs à afficher. Hors partie elles sont à zéro : le panneau ne
 // disparaît jamais, sa place est prise dans la scène une fois pour toutes.
 function valeurs(r) {
-  if (!r) return { longueur: '0', fruits: '0', dynamites: '0', bonus: '00:00', vitesse: '100' };
+  if (!r) return { longueur: '0', fruits: '0', dynamites: '0', bonus: '00:00', chrono: '00:00', vitesse: '100' };
   return {
     longueur: String(r.longueur),
     fruits: String(r.fruits),
     dynamites: String(r.dynamites),
     bonus: mmss(Math.ceil(r.bonus)),
+    chrono: mmss(r.chrono || 0),
     vitesse: String(r.vitesse),
   };
 }
@@ -142,13 +145,14 @@ class Pack {
     const l = b.w - 2 * (LISERE + MARGE);
     const haut = b.h - 2 * (LISERE + MARGE);
     if (this.paysage) {
-      // Cinq cases empilées.
-      const c = (haut - 4 * ENTRE) / 5;
+      // Les six cases empilées.
+      const n = LIGNES.length;
+      const c = (haut - (n - 1) * ENTRE) / n;
       LIGNES.forEach((ligne, i) => {
         this.cellule(ctx, x0, y0 + i * (c + ENTRE), l, c, ligne, v[ligne.cle]);
       });
     } else {
-      // Deux rangées sous la frutibarre : les trois compteurs, puis les deux
+      // Deux rangées sous la frutibarre : les trois compteurs, puis les trois
       // mesures, centrées sous eux. Toutes les cases ont la même largeur —
       // celle d'un tiers de bandeau — pour rester alignées.
       const hr = (haut - ENTRE) / RANGEES.length;
