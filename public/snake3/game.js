@@ -153,6 +153,9 @@ class Transition {
   dessiner(ctx) {
     if (!this.mode || !this.mode.dessiner) return;
     const k = Math.abs(this.taille) / 100;
+    // Le rideau TENU fermé (taille nulle, les dessins du mode visé pas encore
+    // là) : il ne laisse rien voir — inutile de peindre le mode derrière.
+    if (k <= 0) return;
     // Le rideau va de 400 % à 0 : rasteriser la silhouette à CHAQUE échelle
     // ferait une centaine de canvas, dont des 1350×1720, pour un seul fondu.
     // On plafonne la finesse à la taille naturelle et on laisse le contexte
@@ -169,7 +172,23 @@ class Transition {
     t.setTransform(1, 0, 0, 1, 0, 0);
     t.clearRect(0, 0, tampon.width, tampon.height);
     t.setTransform(n, 0, 0, n, 0, 0);
+    /*
+     * LE MODE NE SE PEINT QUE SOUS LE RIDEAU. Hors de la boîte du masque, le
+     * destination-in efface tout de toute façon : peindre là était du travail
+     * jeté — et le rideau faisait ainsi TROIS pleins écrans par image (le
+     * mode, la découpe, la recopie) pendant ses cinquante-trois images.
+     * Mesuré (perf-lag2, rendu logiciel bridé) : cent millisecondes l'image,
+     * quatre secondes pour ouvrir l'arène au lieu d'une et demie. On découpe
+     * donc à la boîte du masque avant de peindre : mêmes pixels à l'arrivée,
+     * et le rideau qui se referme coûte de moins en moins.
+     */
+    t.save();
+    t.beginPath();
+    t.rect(C.WIDTH / 2 + masque.dx * k - 1, C.HEIGHT / 2 + masque.dy * k - 1,
+      masque.lw * k + 2, masque.lh * k + 2);
+    t.clip();
     this.mode.dessiner(t);
+    t.restore();
     t.globalCompositeOperation = 'destination-in';
     t.translate(C.WIDTH / 2, C.HEIGHT / 2);
     t.scale(k, k);
@@ -756,6 +775,7 @@ class Jeu {
     this.pointeur = { x: 0, y: 0, bas: false };
     this.tapOption = 0;               // le reste d'un appui « utiliser l'option »
     this.pack = null;                 // le tableau de bord du pack, s'il est acheté
+    this.dessinsJeuChauds = false;    // les dessins de l'arène rasterisés d'avance (chaufferArene)
     this.scene = { w: C.WIDTH, h: C.HEIGHT };
 
     this.musique = true;
@@ -894,7 +914,21 @@ class Jeu {
   pretPour(i) {
     if (MODES_MENU.indexOf(i) >= 0) return true;
     if (i === 4) return this.dessinsJeuPrets === true && this.encycloPret === true;
-    return this.dessinsJeuPrets === true;
+    // L'arène et la bataille attendent aussi la CHAUFFE des dessins qu'elles
+    // posent d'entrée (cf. chaufferArene) : le rideau s'ouvre sur une partie
+    // dont plus rien ne reste à rasteriser.
+    return this.dessinsJeuPrets === true && this.dessinsJeuChauds === true;
+  }
+
+  // EN PARTIE — le serpent court, rien ne doit se disputer le fil avec lui :
+  // le décodeur de dessins passe au pas, la chauffe s'arrête. La pause, la
+  // fin de partie et les menus rendent le fil.
+  enPartie() {
+    const m = this.mode;
+    if (!m) return false;
+    if (m.partie) return !m.partie.pause && !m.partie.game_over_flag;
+    if (m.bataille) return !m.ecran;
+    return false;
   }
 
   poserModeSuivant(i) {
@@ -1086,6 +1120,11 @@ class Jeu {
       let n = 0;
       while (retard >= PAS && n < RATTRAPAGE) { retard -= PAS; n++; pas(PAS); }
       if (n === RATTRAPAGE) retard = 0;   // machine dépassée : on renonce au reste
+      // Le décodeur de dessins et la chauffe suivent le jeu : au pas pendant
+      // la partie — et seulement si l'écran tient sa cadence —, à plein le
+      // reste du temps (voir dessin.js, `freiner`).
+      const enPartie = this.enPartie();
+      D.freiner(enPartie, dt * 1000);
 
       /*
        * ON NE DESSINE QUE CE QUI A CHANGÉ.
@@ -1103,9 +1142,20 @@ class Jeu {
        * revient au jeu.
        */
       if (n > 0) this.dessiner();
+      // LA CHAUFFE prend ce que l'image laisse : une vingtaine de
+      // millisecondes quand le rideau est tenu fermé — il n'y a rien d'autre
+      // à faire, et c'est elle qu'on attend —, six derrière le menu, la
+      // pause ou la fin de partie, pour qu'ils restent vifs.
+      if (!enPartie && D.chauffeEnAttente()) D.chaufferPendant(this.rideauTenu() ? 20 : 6);
       requestAnimationFrame(cadre);
     };
     requestAnimationFrame(cadre);
+  }
+
+  // Le rideau fermé qui attend ses dessins (Transition.main à taille nulle).
+  rideauTenu() {
+    const m = this.mode;
+    return !!(m instanceof Transition && !m.reversed && m.taille <= 0);
   }
 
   // Une image d'écran. L'empilement est celui du montage du SWF (voir
@@ -1168,7 +1218,15 @@ class Jeu {
     this.canvas.height = hp;
     this.canvas.style.width = Math.round(this.scene.w * this.echelle) + 'px';
     this.canvas.style.height = Math.round(this.scene.h * this.echelle) + 'px';
+    const densiteAvant = D.DENSITE;
     D.poserDensite(this.nettete);
+    // Une autre densité, c'est un cache de rasterisation vidé : on rechauffe
+    // l'arène (au fil libre, jamais pendant la partie) — sans retenir le
+    // rideau, la partie en cours repeindra au besoin ce qui manque.
+    if (D.DENSITE !== densiteAvant && this.dessinsJeuPrets === true) {
+      chaufferArene(this, 'essentiel').then(() => chaufferArene(this, 'suite'))
+        .then(() => chaufferArene(this, 'reste')).catch(() => {});
+    }
   }
 }
 
@@ -1217,6 +1275,92 @@ const DESSINS_JEU = [['screens', [ECRANS.pause]], ['screensSans', Object.values(
 // Battle. Tous les autres — l'arène, la bataille, l'encyclopédie — attendent.
 const MODES_MENU = [0, 3, 5];
 
+/* ── LA CHAUFFE DE L'ARÈNE ─────────────────────────────────────────────────
+ *
+ * Décodé n'est pas rasterisé. Une fois les images de l'arène là, chacune se
+ * peint encore dans son tampon à sa PREMIÈRE apparition — le fond, la
+ * frutibarre et les chiffres au premier tour, puis chaque fruit et chaque
+ * option la première fois qu'ils tombent. Autant de coups de frein semés sur
+ * la première minute : « mini lag, surtout au début ».
+ *
+ * On rasterise donc d'avance (D.chauffer), en trois temps :
+ *   · l'ESSENTIEL — ce que le PREMIER TOUR d'arène pose : les deux fonds et
+ *     leur composition, la frutibarre, le bandeau du score, la tête, le
+ *     terrier, les chiffres verts du score, et les fruits de départ (l'arène
+ *     s'ouvre dessus). Le rideau l'attend (`pretPour`) : il s'ouvre sur une
+ *     partie dont rien ne reste à peindre — et l'attente est courte, c'est
+ *     une centaine de petits tampons et deux grands ;
+ *   · la SUITE, tout de suite après, sans retenir le rideau : ce qui tombe
+ *     dans les premières secondes — les trente-sept options, les cases, les
+ *     bombes, la langue et les chiffres aux paliers où le jeu les demande
+ *     (les bulles de points grossissent jusqu'à 2, le décompte des bombes
+ *     jusqu'à 3,8), les autres têtes, la cloche, la grimace ;
+ *   · le RESTE, quand tout le fond est chargé : les mêmes fruits et options au
+ *     palier 2 (leur saut), leurs ombres, l'écran de pause et celui de fin de
+ *     partie.
+ */
+function suiteEntiere(a, b) { const r = []; for (let i = a; i <= b; i++) r.push(i); return r; }
+function listeChauffeArene(temps) {
+  const l = [];
+  const clip = (cle, frames, k, teinte) => {
+    for (const f of frames) l.push({ cle, frame: f, k: k || 1, teinte: teinte || null });
+  };
+  const m = D.manifeste;
+  if (temps === 'essentiel') {
+    const pf = m.cadres.playField;
+    l.push({ fichier: 'backgroundBord.svg', cadre: pf.bord, k: 1 });
+    l.push({ fichier: 'backgroundField.svg', cadre: pf.champ, k: 1 });
+    for (const p of m.cadres.fbarre.pieces) l.push({ fichier: p.fichier, cadre: p.cadre, k: 1 });
+    clip('barreScore', [1]);
+    clip('tete', [1]);
+    clip('trou', [1]);
+    clip('chiffresVert', suiteEntiere(1, 10));
+    clip('fruits', FRUITS_DEPART);
+  } else if (temps === 'suite') {
+    clip('options', suiteEntiere(1, 37));
+    clip('slot', suiteEntiere(1, 46));
+    clip('tete', [2, 3]);
+    clip('beurk', [1]);
+    clip('sonnette', [1, 2, 3]);
+    clip('bombe', suiteEntiere(1, 22));
+    for (const k of [1, 2, 4]) clip('langue', [1], k);
+    for (const police of ['chiffresVert', 'chiffresRouge', 'chiffresJaune']) {
+      for (const k of (police === 'chiffresVert' ? [2, 4] : [1, 2, 4])) clip(police, suiteEntiere(1, 10), k);
+    }
+  } else {
+    clip('fruits', FRUITS_DEPART, 2);
+    clip('options', suiteEntiere(1, 37), 2);
+    clip('fruits', FRUITS_DEPART, 1, R.OMBRE_FRUIT);
+    clip('options', suiteEntiere(1, 37), 1, R.OMBRE_BONUS);
+    clip('screens', [ECRANS.pause]);
+    clip('screensSans', [ECRANS.gameOver]);
+  }
+  return l;
+}
+
+function chaufferArene(jeu, temps) {
+  const essentiel = temps === 'essentiel';
+  return D.chauffer(listeChauffeArene(temps)).then((n) => {
+    if (!essentiel || typeof document === 'undefined') return n;
+    // Le fond COMPOSÉ, à la taille du tampon — la même clef de cache que
+    // dessinerFondArene, sur la géométrie de l'arène classique (Niveau) ; un
+    // canevas de service d'un pixel lui sert d'écran, ce qui l'oblige à se
+    // peindre maintenant.
+    try {
+      const niveau = {
+        corner: { x: C.BORDER, y: C.BARRE_UP },
+        width: C.WIDTH - C.BORDER * 2,
+        height: C.HEIGHT - (C.BARRE_DOWN + C.BARRE_UP),
+      };
+      const s = document.createElement('canvas');
+      s.width = 1; s.height = 1;
+      dessinerFondArene(s.getContext('2d'), jeu, niveau);
+      s.getContext('2d').getImageData(0, 0, 1, 1);
+    } catch (e) { /* pas de quoi composer : le premier tour d'arène le fera */ }
+    return n;
+  });
+}
+
 // ── Le démarrage ──────────────────────────────────────────────────────────
 window.SnakeJeu = { Jeu, Ecran, VuePartie, VueBataille };
 
@@ -1253,11 +1397,28 @@ window.demarrerFrutisnake = function (options) {
        */
       jeu.pretJeu = D.chargerLot('arene').then(() => D.precharger(DESSINS_JEU)).then(() => {
         jeu.dessinsJeuPrets = true;
+        // La CHAUFFE de l'essentiel avant les lots de fond : c'est elle que
+        // le rideau attend, et le décodeur n'a rien à faire pendant ce temps.
+        return chaufferArene(jeu, 'essentiel');
+      }).then(() => {
+        jeu.dessinsJeuChauds = true;
+        // La suite de la chauffe ne retient RIEN : ni le rideau, ni les lots
+        // de fond — elle prend les tranches que la boucle lui laisse, et ne
+        // finirait qu'après la partie si le joueur s'est rué sur « jouer ».
+        // Les lots, eux, doivent partir maintenant : l'ouvrier les lit hors
+        // du fil, et le décodeur les passe au pas pendant la partie — un
+        // fruit tardif que la frutibarre appelle est alors déjà dans la
+        // file, et passe devant depuis son blob (dessin.js, image()).
+        chaufferArene(jeu, 'suite').catch(() => {});
         return D.chargerLot('fruits2');
       }).then(() => D.chargerLot('suites')).then(() => {
         D.amorcerAnimations(['options', 'slot']);
         return D.chargerLot('encyclo');
-      }).then(() => { jeu.encycloPret = true; });
+      }).then(() => {
+        jeu.encycloPret = true;
+        // Et le reste de la chauffe, une fois que plus rien ne se décode.
+        return chaufferArene(jeu, 'reste');
+      });
       jeu.demarrer();
       window.__frutisnake = jeu;      // la poignée des tests de bout en bout
       return jeu;

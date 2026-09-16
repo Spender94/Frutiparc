@@ -24,6 +24,9 @@ const NOMS = ['explose', 'selmenu', 'sabre', 'rotmenu', 'retmenu', 'ressort',
   'page', 'menu_loop', 'game_loop', 'langue', 'game_over', 'glurps',
   'glurps_2', 'effect_end', 'dynamite', 'fdisp', 'coffre', 'sonnette',
   'cloche', 'ciseaux', 'potion', 'option'];
+// Les deux musiques se décodent avant tout le reste (voir preparer).
+const MUSIQUES = new Set(['menu_loop', 'game_loop']);
+const DECODAGE_PATIENCE = 10000;      // ms avant de passer au son suivant
 
 class Sons {
   constructor() {
@@ -35,9 +38,12 @@ class Sons {
     this.ctx = null;
     this.master = null;
     this.chargeLance = false;
+    this.aDecoder = [];               // les sons téléchargés, dans l'ordre où on les décode
+    this.decodeEnCours = null;
 
     const ouvrir = () => this.ouvrir();
     window.addEventListener('pointerdown', ouvrir, { capture: true });
+    window.addEventListener('pointerup', ouvrir, { capture: true });
     window.addEventListener('keydown', ouvrir, { capture: true });
   }
 
@@ -49,34 +55,80 @@ class Sons {
   charger() {
     if (this.chargeLance) return;
     this.chargeLance = true;
+    // Le contexte s'ouvre DÈS MAINTENANT, suspendu — de quoi décoder pendant
+    // que le menu tourne (voir preparer). Le premier geste le réveillera.
+    this.preparer();
     for (const nom of NOMS) {
       fetch(BASE + nom + '.mp3')
         .then((r) => (r.ok ? r.arrayBuffer() : null))
         .then((b) => {
           if (!b) return;
           this.bruts.set(nom, b);
-          if (this.ctx) this.decoder(nom);
+          this.decoder(nom);
         })
         .catch(() => {});
     }
   }
 
+  /*
+   * LE CONTEXTE AVANT LE GESTE, LE DÉCODAGE UN SON À LA FOIS.
+   *
+   * Le contexte ne s'ouvrait qu'au premier geste — et le premier geste d'un
+   * joueur au doigt, c'est le tap sur « jouer ». Les vingt-deux MP3 partaient
+   * alors au décodage D'UN COUP, au moment même où l'arène se lève : la
+   * musique de partie pèse à elle seule 632 ko, soit près d'une minute de son
+   * à déplier en PCM (une vingtaine de mégaoctets), les vingt-et-un autres
+   * par-dessus, sur les cœurs que la partie voudrait pour elle. C'est un
+   * « lag au début » de plus, et celui-là ne se voit pas sur un banc sans
+   * geste.
+   *
+   * Un contexte se CRÉE sans geste, suspendu : il décode très bien dans cet
+   * état, et seul `resume()` a besoin du geste — il le reçoit au premier
+   * appui, comme avant. Le décodage se fait donc pendant le menu, un son
+   * après l'autre pour ne jamais faire de rafale, les deux musiques d'abord
+   * (ce sont elles qu'on attend). Un décodage qui ne rendrait rien (un vieux
+   * Safari qui attend le geste pour décoder) ne bloque pas les suivants : au
+   * bout de dix secondes on passe, et le premier geste le redemande.
+   */
+  preparer() {
+    if (this.ctx) return true;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return false;
+    try { this.ctx = new AC(); } catch (e) { this.ctx = null; return false; }
+    this.master = this.ctx.createGain();
+    this.master.connect(this.ctx.destination);
+    for (const c of this.canaux.values()) {
+      if (!c.gain) { c.gain = this.ctx.createGain(); c.gain.connect(this.master); this.poserGain(c); }
+    }
+    return true;
+  }
+
   ouvrir() {
     this.charger();
-    if (!this.ctx) {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
-      this.ctx = new AC();
-      this.master = this.ctx.createGain();
-      this.master.connect(this.ctx.destination);
-      for (const nom of this.bruts.keys()) this.decoder(nom);
-    }
+    if (!this.preparer()) return;
     if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    // Ce qui n'est pas encore décodé (ou dont le décodage a été abandonné)
+    // repart — le contexte est réveillé, il ne peut plus rien retenir.
+    for (const nom of this.bruts.keys()) this.decoder(nom);
   }
 
   decoder(nom) {
-    if (this.decode.has(nom) || !this.bruts.has(nom)) return;
+    if (!this.ctx || !this.bruts.has(nom) || this.buffers.has(nom) || this.decode.has(nom)) return;
     this.decode.add(nom);
+    if (MUSIQUES.has(nom)) this.aDecoder.unshift(nom); else this.aDecoder.push(nom);
+    this.decoderSuivant();
+  }
+
+  decoderSuivant() {
+    if (this.decodeEnCours || !this.aDecoder.length) return;
+    const nom = this.aDecoder.shift();
+    this.decodeEnCours = nom;
+    const passer = () => {
+      if (this.decodeEnCours !== nom) return;
+      this.decodeEnCours = null;
+      this.decoderSuivant();
+    };
+    const garde = setTimeout(() => { if (this.decodeEnCours === nom) { this.decode.delete(nom); passer(); } }, DECODAGE_PATIENCE);
     this.ctx.decodeAudioData(this.bruts.get(nom).slice(0))
       .then((buf) => {
         this.buffers.set(nom, buf);
@@ -85,7 +137,8 @@ class Sons {
           if (c.enAttente === nom) { c.enAttente = null; this.jouerSur(c, nom, c.boucle); }
         }
       })
-      .catch(() => {});
+      .catch(() => { this.decode.delete(nom); })
+      .then(() => { clearTimeout(garde); passer(); });
   }
 
   canal(n) {

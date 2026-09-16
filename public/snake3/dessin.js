@@ -46,52 +46,200 @@ function chargerManifeste() {
  * Un lot est un JSON { fichier → texte SVG } : une requête au lieu de
  * centaines. Chaque texte devient une Image par un blob — le même objet, dans
  * le même registre, que si le fichier était venu du réseau : rendreFichier ne
- * voit pas la différence. Les images se créent par paquets de quarante entre
- * deux tours de boucle, pour que le menu reste vif pendant que l'arène se
- * décode derrière lui.
+ * voit pas la différence.
  *
  * Sans lots.js — ou si un lot manque, ou si un fichier n'est dans aucun lot —
  * image() va chercher le fichier comme avant : rien ne casse, c'est seulement
  * plus lent.
+ *
+ * ── ET LE DÉCODAGE NE SE DISPUTE PLUS LE FIL AVEC LA PARTIE ────────────────
+ *
+ * Les lots venaient « en fond » : l'arène d'abord, puis les fruits tardifs,
+ * les suites d'animation, le livre — l'un après l'autre, par paquets de
+ * quarante images entre deux tours de boucle. Mesuré sur un téléphone bridé
+ * (perf-lag, CPU ×4, DPR 3), pour un joueur qui se rue sur « jouer » : les
+ * trois lots de fond s'étalent sur les QUARANTE premières secondes de la
+ * partie, et y font quarante-cinq tâches de plus de cinquante millisecondes
+ * — quatre secondes et demie de fil principal, la moitié de chaque seconde
+ * pendant les huit premières. C'est LE « petit lag du début », et les
+ * « freezes de temps en temps » qui suivent. Trois coûts s'y additionnaient :
+ * lire le JSON (deux mégaoctets et demi pour les fruits), bâtir un Blob et
+ * une adresse par fichier (deux secondes à eux seuls), et décoder chaque SVG
+ * — tous les trois sur le fil principal, tous pendant qu'on joue.
+ *
+ * Trois règles, maintenant :
+ *   · la LECTURE du lot et les blobs se font dans un OUVRIER (lots.worker.js)
+ *     — le fil principal ne reçoit que des adresses prêtes ;
+ *   · le DÉCODAGE des SVG, qui ne peut pas quitter le fil principal, passe
+ *     par UNE file, par vagues bornées : douze images quand le fil est libre
+ *     (menu, rideau, pause, fin de partie), UNE toutes les soixante
+ *     millisecondes pendant la partie — et la vague suivante ne part que
+ *     lorsque la précédente est décodée (ses `load`), ce qui est ce qui borne
+ *     réellement le travail par tour ;
+ *   · un dessin qu'on demande AVANT son tour (`image()` sur un fichier en
+ *     attente — un fruit tardif que la frutibarre appelle) passe devant : il
+ *     se décode tout de suite depuis son blob, sans retourner au réseau.
+ *
+ * Le jeu dit à `freiner()` s'il est en partie ; c'est lui qui a le tempo.
  */
+const OUVRIER = '/snake3/lots.worker.js';
+const VAGUE_LIBRE = 12;               // images par vague, le fil étant libre
+const VAGUE_PARTIE = 1;               // …et pendant la partie
+const DELAI_PARTIE = 120;             // ms entre deux vagues en partie
+// En partie, une image ne se décode que si l'image d'écran précédente est
+// venue à l'heure : au-delà de trente millisecondes entre deux images, la
+// machine est déjà à la peine — un décodage de plus, c'est une image sautée.
+const CADENCE_LIBRE = 30;
+
 const lots = new Map();               // nom → Promise<bool>
+const enAttente = new Map();          // fichier → entrée de la file
+const decodeur = { file: [], enCours: 0, frein: false, programme: false, cadence: 0 };
+let ouvrier = null;                   // le Worker, ou false s'il est hors d'usage
+const attentesOuvrier = new Map();    // nom → { resoudre, rejeter }
+
 function chargerLot(nom) {
   const L = racine.SnakeLots;
   if (!L || !L.lots || !L.lots[nom] || typeof fetch === 'undefined') return Promise.resolve(false);
   if (lots.has(nom)) return lots.get(nom);
-  const pr = fetch(BASE + L.lots[nom])
-    .then((r) => (r.ok ? r.json() : null))
-    .then((lot) => (lot ? poserLot(lot) : false))
+  const url = BASE + L.lots[nom];
+  const pr = lireLotParOuvrier(nom, url)
+    .catch(() => lireLotIci(url))
+    .then((urls) => (urls ? mettreEnFile(nom, urls) : false))
     .catch(() => false);
   lots.set(nom, pr);
   return pr;
 }
 
-function poserLot(lot) {
-  if (typeof Image === 'undefined' || typeof Blob === 'undefined'
-    || typeof URL === 'undefined' || !URL.createObjectURL) return Promise.resolve(false);
-  const noms = Object.keys(lot).filter((f) => !images.has(f));
-  return new Promise((resoudre) => {
-    let i = 0, restants = 0, fini = false;
-    const un = () => { restants--; if (fini && restants === 0) resoudre(true); };
-    const paquet = () => {
-      const fin = Math.min(noms.length, i + 40);
-      for (; i < fin; i++) {
-        const f = noms[i];
-        const im = new Image();
-        const url = URL.createObjectURL(new Blob([lot[f]], { type: 'image/svg+xml' }));
-        restants++;
-        const fait = () => { URL.revokeObjectURL(url); un(); };
-        im.addEventListener('load', fait);
-        im.addEventListener('error', fait);
-        im.src = url;
-        images.set(f, im);
-      }
-      if (i < noms.length) setTimeout(paquet, 0);
-      else { fini = true; if (restants === 0) resoudre(true); }
-    };
-    paquet();
+// L'ouvrier lit le lot et rend [[fichier, adresse blob], …]. Sans Worker (ou
+// s'il tombe), on rejette : le lot se lit ici, comme avant.
+function lireLotParOuvrier(nom, url) {
+  if (ouvrier === false || typeof Worker === 'undefined') return Promise.reject(new Error('pas d’ouvrier'));
+  if (!ouvrier) {
+    try {
+      ouvrier = new Worker(OUVRIER);
+      ouvrier.onmessage = (e) => {
+        const d = e.data || {};
+        const a = attentesOuvrier.get(d.nom);
+        if (!a) return;
+        attentesOuvrier.delete(d.nom);
+        if (d.erreur || !Array.isArray(d.urls)) a.rejeter(new Error(d.erreur || 'lot illisible'));
+        else a.resoudre(d.urls);
+      };
+      ouvrier.onerror = () => {
+        // L'ouvrier est mort : ceux qui l'attendaient retombent sur le chemin
+        // d'ici, et plus personne ne le sollicite.
+        for (const a of attentesOuvrier.values()) a.rejeter(new Error('ouvrier en panne'));
+        attentesOuvrier.clear();
+        try { ouvrier.terminate(); } catch (e) { /* déjà parti */ }
+        ouvrier = false;
+      };
+    } catch (e) { ouvrier = false; return Promise.reject(e); }
+  }
+  return new Promise((resoudre, rejeter) => {
+    attentesOuvrier.set(nom, { resoudre, rejeter });
+    ouvrier.postMessage({ nom, url });
   });
+}
+
+// Le chemin sans ouvrier : lecture et blobs sur le fil principal.
+function lireLotIci(url) {
+  if (typeof Blob === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) return Promise.resolve(null);
+  return fetch(url)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((lot) => {
+      if (!lot) return null;
+      const urls = [];
+      for (const f of Object.keys(lot)) urls.push([f, URL.createObjectURL(new Blob([lot[f]], { type: 'image/svg+xml' }))]);
+      return urls;
+    });
+}
+
+// Les adresses d'un lot entrent dans la file ; la promesse tient jusqu'à ce
+// que la DERNIÈRE image du lot soit décodée.
+function mettreEnFile(nom, urls) {
+  if (typeof Image === 'undefined') return Promise.resolve(false);
+  return new Promise((resoudre) => {
+    const lot = { nom, restants: 0, resoudre, adresses: [] };
+    for (const [f, url] of urls) {
+      if (images.has(f) || enAttente.has(f)) { revoquer(url); continue; }
+      const entree = { fichier: f, url, lot };
+      lot.restants++;
+      enAttente.set(f, entree);
+      decodeur.file.push(entree);
+    }
+    if (lot.restants === 0) { resoudre(true); return; }
+    programmerVague();
+  });
+}
+
+function revoquer(url) {
+  try { URL.revokeObjectURL(url); } catch (e) { /* d'un autre contexte : l'ouvrier s'en charge */ }
+}
+
+// Une entrée de la file devient une Image — maintenant.
+function lancerImage(entree) {
+  enAttente.delete(entree.fichier);
+  const im = new Image();
+  const lot = entree.lot;
+  decodeur.enCours++;
+  const fait = () => {
+    decodeur.enCours--;
+    lot.adresses.push(entree.url);
+    revoquer(entree.url);
+    if (--lot.restants === 0) {
+      if (ouvrier) { try { ouvrier.postMessage({ revoquer: lot.adresses }); } catch (e) { /* tant pis */ } }
+      lot.adresses = [];
+      lot.resoudre(true);
+    }
+    if (decodeur.enCours === 0) programmerVague();
+  };
+  im.addEventListener('load', fait);
+  im.addEventListener('error', fait);
+  im.src = entree.url;
+  images.set(entree.fichier, im);
+  return im;
+}
+
+// La vague suivante : au prochain tour hors partie (les `load` de la vague en
+// cours arrivent chacun dans leur tâche — la boucle du jeu passe entre) ; à
+// petit pas, cadencé, pendant la partie.
+function programmerVague() {
+  if (decodeur.programme || !decodeur.file.length) return;
+  decodeur.programme = true;
+  const lancer = () => { decodeur.programme = false; vague(); };
+  setTimeout(lancer, decodeur.frein ? DELAI_PARTIE : 0);
+}
+
+function vague() {
+  // En partie, sur une machine qui n'arrive déjà pas à tenir la cadence, on
+  // ne décode rien : on repassera à la prochaine échéance.
+  if (decodeur.frein && decodeur.cadence > CADENCE_LIBRE) { programmerVague(); return; }
+  const n = decodeur.frein ? VAGUE_PARTIE : VAGUE_LIBRE;
+  let lancees = 0;
+  while (lancees < n && decodeur.file.length) {
+    const e = decodeur.file.shift();
+    if (!enAttente.has(e.fichier)) continue;    // déjà passée devant (image())
+    lancerImage(e);
+    lancees++;
+  }
+  // Rien lancé (tout était déjà décodé) : on repasse sans attendre de load.
+  if (lancees === 0 && decodeur.file.length) programmerVague();
+}
+
+// Le jeu dit s'il est EN PARTIE : le décodeur ralentit d'autant, et la
+// chauffe (plus bas) s'arrête net. `cadence` : les millisecondes entre les
+// deux dernières images d'écran — la mesure de la peine de la machine.
+function freiner(actif, cadence) {
+  if (typeof cadence === 'number') decodeur.cadence = cadence;
+  const f = !!actif;
+  if (decodeur.frein === f) return;
+  decodeur.frein = f;
+  if (!f) programmerVague();
+}
+
+// Pour les tests : l'état du décodeur, en lecture.
+function etatDecodeur() {
+  return { enFile: decodeur.file.filter((e) => enAttente.has(e.fichier)).length, enCours: decodeur.enCours, frein: decodeur.frein, cadence: decodeur.cadence };
 }
 
 // Pour les tests sous Node : injecter le manifeste sans fetch ni DOM.
@@ -100,6 +248,10 @@ function poserManifeste(m) { manifeste = m; }
 function image(fichier) {
   let im = images.get(fichier);
   if (!im) {
+    // Le fichier attend son tour dans la file : il passe devant, depuis son
+    // blob — pas de retour au réseau pour un dessin qu'on a déjà.
+    const e = enAttente.get(fichier);
+    if (e) return lancerImage(e);
     // Sous Node (les tests lisent le manifeste sans navigateur) : un leurre
     // « chargé mais vide », que rendreFichier refuse et que precharger saute.
     if (typeof Image === 'undefined') return { complete: true, naturalWidth: 0 };
@@ -333,6 +485,87 @@ function rendreMultiplie(cle, frame, k, mr, mv, mb) {
   return r;
 }
 
+/* ── LA CHAUFFE : RASTERISER AVANT QU'ON EN AIT BESOIN ─────────────────────
+ *
+ * Un dessin ne se rasterise qu'à sa PREMIÈRE apparition (rendreFichier) : la
+ * peinture du SVG dans un tampon, sur le fil principal. Pour une partie qui
+ * commence, c'est le fond de l'arène (deux pleins écrans), la frutibarre, la
+ * tête, les chiffres, puis chaque fruit et chaque option la première fois
+ * qu'ils tombent — autant de coups de frein semés sur les premières secondes,
+ * quand la partie est encore fraîche. Mesuré (perf-lag2, CPU ×4) : le premier
+ * tour d'arène coûtait à lui seul cent quatre-vingts millisecondes, et chaque
+ * fruit nouveau sa poignée.
+ *
+ * On rasterise donc D'AVANCE, par tranches que LA BOUCLE DU JEU donne à
+ * chaque image (`chaufferPendant`) — quelques millisecondes derrière le menu,
+ * une vingtaine quand le rideau est tenu fermé et qu'il n'y a rien d'autre à
+ * faire, rien du tout pendant la partie. (Un `requestIdleCallback` n'aurait
+ * eu que des miettes : la boucle tourne à quarante images par seconde et ne
+ * laisse pas le fil « libre » au sens du navigateur ; mesuré, la chauffe
+ * mettait trente secondes à passer derrière un rideau fermé.) Chaque tampon
+ * est FORCÉ par un drawImage 1×1 sur un canevas de service : sans cela le
+ * navigateur garde la peinture en attente et la ferait à la première vraie
+ * apparition, et rien n'aurait chauffé du tout.
+ *
+ * Une entrée : { cle, frame, k, teinte? } ou { fichier, cadre, k, teinte? }.
+ * La promesse rend le nombre de tampons peints — une image pas encore
+ * décodée est simplement sautée (elle chauffera à sa première apparition).
+ */
+const chauffe = { file: [], service: null };
+const maintenant = () => ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now());
+
+function chauffer(entrees) {
+  if (typeof document === 'undefined' || !Array.isArray(entrees)) return Promise.resolve(0);
+  return new Promise((resoudre) => {
+    chauffe.file.push({ entrees: entrees.slice(), i: 0, faites: 0, resoudre });
+  });
+}
+
+// Une tranche de `budget` millisecondes, maintenant — rien en partie.
+function chaufferPendant(budget) {
+  if (decodeur.frein || !chauffe.file.length) return 0;
+  const t0 = maintenant();
+  let faites = 0;
+  while (chauffe.file.length) {
+    const tache = chauffe.file[0];
+    while (tache.i < tache.entrees.length) {
+      if (chaufferUne(tache.entrees[tache.i++])) { tache.faites++; faites++; }
+      if (maintenant() - t0 >= budget) return faites;
+    }
+    chauffe.file.shift();
+    tache.resoudre(tache.faites);
+  }
+  return faites;
+}
+
+// Reste-t-il de quoi chauffer ?
+function chauffeEnAttente() { return chauffe.file.length > 0; }
+
+function chaufferUne(e) {
+  const k = e.k || 1;
+  let r = null;
+  if (e.fichier) r = e.teinte ? rendreTeinteFichier(e.fichier, e.cadre, k, e.teinte) : rendreFichier(e.fichier, e.cadre, k);
+  else r = e.teinte ? rendreTeinte(e.cle, e.frame, k, e.teinte) : rendre(e.cle, e.frame, k);
+  if (!r) return false;
+  forcerTampon(r.c);
+  return true;
+}
+
+// Le tampon est réellement peint quand il sert de SOURCE : un drawImage 1×1
+// sur le canevas de service l'y oblige, sans relire un seul pixel du tampon.
+function forcerTampon(c) {
+  if (!chauffe.service) {
+    chauffe.service = document.createElement('canvas');
+    chauffe.service.width = 1;
+    chauffe.service.height = 1;
+  }
+  try {
+    const s = chauffe.service.getContext('2d');
+    s.drawImage(c, 0, 0, 1, 1, 0, 0, 1, 1);
+    s.getImageData(0, 0, 1, 1);              // et le service ne garde rien en attente
+  } catch (err) { /* un tampon vide : rien à forcer */ }
+}
+
 // Dessine la frame au point d'ancrage (x, y), échelle sx/sy (1 = taille du
 // SWF), rotation en radians. Le contexte est déjà en repère logique.
 function poserRendu(ctx, r, x, y, sx, sy, rot, alpha) {
@@ -456,6 +689,8 @@ const API = {
   chargerManifeste, chargerLot, poserManifeste, precharger, poserDensite, cadre, rendre, rendreFichier,
   rendreTeinte, rendreTeinteFichier, rendreTeinteAnim, rendreMultiplie,
   imageAnim, rendreAnim, amorcerAnimations, poser, poserAnim, image, PopupFX, Nombre,
+  freiner, chauffer, chaufferPendant, chauffeEnAttente, etatDecodeur,
+  VAGUE_LIBRE, VAGUE_PARTIE, DELAI_PARTIE, CADENCE_LIBRE,
   get manifeste() { return manifeste; },
   get DENSITE() { return DENSITE; },
 };

@@ -692,6 +692,7 @@ const API = {
   geometrieCorps, remplirTube, tracerSegment, passeTraits,
   Enrobage, dessinerEnrobe, teinter,
   dangerBombe, dessinerZoneBombe, dessinerQueueCondamnee, ASSIST,
+  OMBRE_FRUIT, OMBRE_BONUS,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.SnakeRendu = API;

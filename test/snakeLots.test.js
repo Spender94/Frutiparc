@@ -201,9 +201,13 @@ test('les dessins arrivent en lots, et le rideau n\'attend que ce que l\'arène 
   assert.match(GAME, /return D\.chargerLot\('encyclo'\);/);
   assert.match(GAME, /const DESSINS_JEU = \[\['screens', \[ECRANS\.pause\]\], \['screensSans', Object\.values\(ECRANS\)\],\s*\n\s*\['fruits', FRUITS_DEPART\],/);
   assert.match(DESSIN, /const seules = Array\.isArray\(entree\) \? new Set\(entree\[1\]\) : null;/);
-  // Les images d'un lot naissent d'un blob, par paquets de quarante.
-  assert.match(DESSIN, /new Blob\(\[lot\[f\]\], \{ type: 'image\/svg\+xml' \}\)/);
-  assert.match(DESSIN, /const fin = Math\.min\(noms\.length, i \+ 40\);/);
+  // Les images d'un lot naissent d'un blob — bâti dans l'OUVRIER (lots.worker.js),
+  // ou ici même s'il n'y en a pas (voir test/snakeLags.test.js pour la file
+  // de décodage qui les cadence).
+  const OUVRIER = lire('public/snake3/lots.worker.js');
+  assert.match(OUVRIER, /new Blob\(\[lot\[f\]\], \{ type: 'image\/svg\+xml' \}\)/);
+  assert.match(DESSIN, /const OUVRIER = '\/snake3\/lots\.worker\.js';/);
+  assert.match(DESSIN, /function lireLotIci\(url\) \{[\s\S]*?new Blob\(\[lot\[f\]\], \{ type: 'image\/svg\+xml' \}\)/);
   // Et sans lots.js, tout continue de marcher fichier par fichier.
   assert.match(DESSIN, /if \(!L \|\| !L\.lots \|\| !L\.lots\[nom\] \|\| typeof fetch === 'undefined'\) return Promise\.resolve\(false\);/);
   const D = require('../public/snake3/dessin.js');
