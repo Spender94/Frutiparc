@@ -317,7 +317,9 @@ test('le voyant : le jeu s’il y en a un, sinon le pip de présence', () => {
 
 test('le drapeau : l’index du pays devient une image de `countryBox`', () => {
   const d = JS.slice(JS.indexOf("var RC_DRAPEAUX ="), JS.indexOf('var rcPanneau = null;'));
-  assert.match(d, /\['fr', 'be', 'lu', 'ca', 'ch', 'ot'\]/);
+  // Les six du SWF, puis les trois du portage — et « ot » EN DERNIER, parce
+  // que c'est lui que le borneur ci-dessous donne au-delà du dernier pays.
+  assert.match(d, /\['fr', 'be', 'lu', 'ca', 'ch', 'mo', 'nl', 'uk', 'ot'\]/);
   // un code vide → « ot » (`initScreen` le réécrit), et Flash borne les autres
   assert.match(d, /if \(s === ''\) return 'ot';/);
   assert.match(d, /if \(n < 1\) return RC_DRAPEAUX\[0\];/);
@@ -390,6 +392,9 @@ test('les dessins sortis du SWF sont là', () => {
   const man = JSON.parse(fs.readFileSync(path.join(D, 'recherche.json'), 'utf8'));
   // mcSearchButton est UN SEUL dessin — trois profondeurs, pas trois états.
   assert.deepStrictEqual(man.bouton.images, ['recherche']);
+  // Le manifeste est le relevé de ce que le CLIP contient : les trois
+  // drapeaux ajoutés depuis (Maroc, Pays-Bas, Royaume-Uni) n'y sont pas, et
+  // n'ont rien à y faire — ils ne sortent pas du SWF. Cf. test/paysFiche.
   assert.deepStrictEqual(man.pays.codes, ['fr', 'be', 'lu', 'ca', 'ch', 'ot']);
   // ch222 n'a que TROIS images : hors ligne, en ligne, invisible.
   assert.strictEqual(man.presence.images.length, 3);

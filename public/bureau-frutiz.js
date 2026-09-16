@@ -1027,14 +1027,36 @@ window.BureauFrutiz = (function () {
   var RC_BLOC_H = 50;                   // `displayBloc` : h = 50, en dur
   var RC_LIGNE = 22;                    // une ligne du formulaire
   var RC_PIED = 24;                     // `cpPageSelector` min h
-  // Les six images de `countryBox`, dans leur ordre de clip. Elles se recoupent
-  // exactement avec la table <ct> de lang_french.xml (France 1, Belgique 2,
-  // Luxembourg 3, Canada 4, Suisse 5) : `gotoAndStop(info.countryCode)` reçoit
-  // l'INDEX en chaîne, ne trouve pas d'étiquette « 3 » et retombe sur le numéro
-  // d'image — d'où la coïncidence, qui n'en est pas une. Un code vide devient
-  // « ot » (`initScreen` le réécrit), et Flash borne les autres : au-dessous de
-  // 1 on reste sur la France, au-dessus de 6 on tombe sur « ot ».
-  var RC_DRAPEAUX = ['fr', 'be', 'lu', 'ca', 'ch', 'ot'];
+  /*
+   * LES DRAPEAUX DU LISTING, dans l'ordre de la table <ct>.
+   *
+   * Les six premières images sont celles de `countryBox`, dans leur ordre de
+   * clip. Elles se recoupent exactement avec la table de lang_french.xml
+   * (France 1, Belgique 2, Luxembourg 3, Canada 4, Suisse 5) :
+   * `gotoAndStop(info.countryCode)` reçoit l'INDEX en chaîne, ne trouve pas
+   * d'étiquette « 3 » et retombe sur le numéro d'image — d'où la coïncidence,
+   * qui n'en est pas une. Un code vide devient « ot » (`initScreen` le
+   * réécrit), et Flash borne les autres : au-dessous de 1 on reste sur la
+   * France, au-delà de la table on tombe sur « ot ».
+   *
+   * ── TROIS PAYS DE PLUS, ET « ot » RESTE LE DERNIER ────────────────────────
+   *
+   * Le Maroc, les Pays-Bas et le Royaume-Uni ont rejoint la table (indices 6,
+   * 7 et 8) : des joueurs les demandaient, et la fiche n'offrait que cinq
+   * pays. Leurs drapeaux ne sortent donc PAS du SWF — c'est un ajout du
+   * portage, et `recherche.json`, qui est le relevé de ce que le clip
+   * contient, n'en parle pas.
+   *
+   * L'ordre de ce tableau est celui de la table, et « ot » y reste EN
+   * DERNIER : c'est lui qui sert de repli au-delà du dernier pays connu, et
+   * le borneur ci-dessous en dépend. Un pays ajouté à la table doit donc
+   * venir ici AVANT « ot », jamais après.
+   *
+   * (Le client Flash d'origine, lui, ne connaît que ses six images : un
+   * Marocain y verra le drapeau générique dans le listing, et son pays
+   * correctement nommé partout ailleurs — la table, elle, est commune.)
+   */
+  var RC_DRAPEAUX = ['fr', 'be', 'lu', 'ca', 'ch', 'mo', 'nl', 'uk', 'ot'];
   function drapeauDe(co) {
     var s = String(co == null ? '' : co);
     if (s === '') return 'ot';

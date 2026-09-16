@@ -163,6 +163,40 @@
 			<r c="24">Zoug</r>
 			<r c="25">Zurich</r>
 		</c>
+		<c c="6" n="Maroc" tn="région" d="0">
+			<r c="0">Tanger-Tétouan-Al Hoceïma</r>
+			<r c="1">L'Oriental</r>
+			<r c="2">Fès-Meknès</r>
+			<r c="3">Rabat-Salé-Kénitra</r>
+			<r c="4">Béni Mellal-Khénifra</r>
+			<r c="5">Casablanca-Settat</r>
+			<r c="6">Marrakech-Safi</r>
+			<r c="7">Drâa-Tafilalet</r>
+			<r c="8">Souss-Massa</r>
+			<r c="9">Guelmim-Oued Noun</r>
+			<r c="10">Laâyoune-Sakia El Hamra</r>
+			<r c="11">Dakhla-Oued Ed-Dahab</r>
+		</c>
+		<c c="7" n="Pays-Bas" tn="province" d="0">
+			<r c="0">Brabant-Septentrional</r>
+			<r c="1">Drenthe</r>
+			<r c="2">Flevoland</r>
+			<r c="3">Frise</r>
+			<r c="4">Gueldre</r>
+			<r c="5">Groningue</r>
+			<r c="6">Hollande-Méridionale</r>
+			<r c="7">Hollande-Septentrionale</r>
+			<r c="8">Limbourg</r>
+			<r c="9">Overijssel</r>
+			<r c="10">Utrecht</r>
+			<r c="11">Zélande</r>
+		</c>
+		<c c="8" n="Royaume-Uni" tn="nation" d="0">
+			<r c="0">Angleterre</r>
+			<r c="1">Écosse</r>
+			<r c="2">Pays de Galles</r>
+			<r c="3">Irlande du Nord</r>
+		</c>
 	</ct>
 	<!-- Display right game name based on game id -->
 	<gn>
