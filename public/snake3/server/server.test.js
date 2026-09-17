@@ -171,7 +171,7 @@ test('abandon : l’adversaire gagne, et pas deux fois', () => {
 });
 
 test('une bombe : mèche de cinq secondes, puis le souffle coupe la queue et tue la tête qui s’y trouve', () => {
-  const s = session({ objets: { premier: [0.5, 0.5], suivants: [1e6, 1e6], partBombes: 1, distanceTete: 0 } });
+  const s = session({ objets: { premier: [0.5, 0.5], suivants: [1e6, 1e6], distanceTete: 0 } });
   jusqua(s, 3025);
   let t = 3050;
   while (!s.objets.length && t < 6000) { s.avancer(t); t += 25; }
@@ -179,6 +179,7 @@ test('une bombe : mèche de cinq secondes, puis le souffle coupe la queue et tue
   const b = s.objets[0];
   assert.strictEqual(b.type, 'bombe');
   assert.ok(Math.abs(b.vie - C.TIME_BOMBE) < 0.06);
+  assert.strictEqual(S.OBJETS.rayonBombe, C.RAYON_BOMBE, 'le souffle est celui du jeu, 160 px');
   // On étire a en une ligne droite de cinq cents pixels (quinze segments de
   // vingt-cinq), la tête à droite, et l'on pose la bombe sous sa queue, loin
   // de la tête : le souffle coupe, la tête vit.
@@ -187,18 +188,18 @@ test('une bombe : mèche de cinq secondes, puis le souffle coupe la queue et tue
   for (let x = 100; x <= 600; x += 5) a.queue.push({ x, y: 300 });
   a.x = 600; a.y = 300; a.ang = 0; a.old_ang = -100; a.len = 15;
   b.x = 250; b.y = 300;
-  const coupe = S.coupure(a, b.x, b.y, 100);
-  assert.strictEqual(coupe, 10, 'la coupe tombe au dixième segment depuis la tête');
+  const coupe = S.coupure(a, b.x, b.y, C.RAYON_BOMBE);
+  assert.strictEqual(coupe, 8, 'la coupe tombe au huitième segment depuis la tête (x = 390, à 140 px)');
   b.vie = 0.01;
   s.avancer(t);
   assert.strictEqual(s.objets.length, 0, 'la bombe a sauté');
   assert.deepStrictEqual(s.snapshot().explosions, [{ x: 250, y: 300 }]);
-  assert.strictEqual(a.len, 10, 'la queue prise dans le souffle est partie');
+  assert.strictEqual(a.len, 8, 'la queue prise dans le souffle est partie');
   assert.strictEqual(s.ended, false, 'la tête, à 350 px, vit');
 });
 
 test('toucher une bombe du nez la fait sauter aussitôt — et c’est la mort', () => {
-  const s = session({ objets: { premier: [0.5, 0.5], suivants: [1e6, 1e6], partBombes: 1, distanceTete: 0 } });
+  const s = session({ objets: { premier: [0.5, 0.5], suivants: [1e6, 1e6], distanceTete: 0 } });
   jusqua(s, 3025);
   let t = 3050;
   while (!s.objets.length && t < 6000) { s.avancer(t); t += 25; }
@@ -213,30 +214,17 @@ test('toucher une bombe du nez la fait sauter aussitôt — et c’est la mort',
   assert.strictEqual(s.endReason, 'collision');
 });
 
-test('un fruit rend trois segments et remplit le turbo', () => {
-  const s = session({ objets: { premier: [0.5, 0.5], suivants: [1e6, 1e6], partBombes: 0, distanceTete: 0 } });
+test('il n’y a que des bombes — pas de fruit dans un duel', () => {
+  const s = session({ objets: { premier: [0.1, 0.1], suivants: [0.1, 0.1], meche: 1e6 } });
   jusqua(s, 3025);
-  let t = 3050;
-  while (!s.objets.length && t < 6000) { s.avancer(t); t += 25; }
-  const f = s.objets[0];
-  assert.strictEqual(f.type, 'fruit');
-  assert.ok(f.fid >= 1 && f.fid <= C.FRUIT_BASE);
-  const a = s.bataille.serpents[0];
-  a.len = 8;
-  s.bataille.powers[0] = 5;
-  f.x = Math.round(a.x + Math.cos(a.ang) * 6);
-  f.y = Math.round(a.y + Math.sin(a.ang) * 6);
-  s.avancer(t);
-  assert.strictEqual(s.objets.length, 0, 'mangé');
-  assert.strictEqual(a.len, 5, 'trois segments rendus');
-  assert.strictEqual(s.bataille.powers[0], C.BATTLE_POWER_MAX);
-  const snap = s.snapshot();
-  assert.deepStrictEqual(snap.manges, [{ id: f.id, e: 0 }]);
-  assert.strictEqual(snap.serpents[0].xp, 3, 'trois segments partis en particules, comptés pour le miroir');
+  for (let t = 3050; t < 6000; t += 25) s.avancer(t);
+  assert.ok(s.objets.length > 0);
+  assert.ok(s.objets.every((o) => o.type === 'bombe'));
+  assert.ok(!('manges' in s.snapshot()), 'rien à manger, rien à annoncer');
 });
 
 test('les objets ne tombent jamais sous le nez d’un serpent, ni plus de quatre à la fois', () => {
-  const s = session({ objets: { premier: [0.1, 0.1], suivants: [0.1, 0.1], vieFruit: 1e6, meche: 1e6, partBombes: 0.5 } });
+  const s = session({ objets: { premier: [0.1, 0.1], suivants: [0.1, 0.1], meche: 1e6 } });
   jusqua(s, 3025);
   for (let t = 3050; t < 6000; t += 25) {
     s.avancer(t);

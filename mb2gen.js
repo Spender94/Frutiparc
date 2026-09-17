@@ -2080,6 +2080,22 @@ function dailyChallengeSeed(date) {
   return (h >>> 0) & 0x3FFFFFFF;
 }
 
+// La graine EFFECTIVE d'un jour n'est pas toujours la graine du jour : quand
+// un tirage échoue à la validation du niveau, generateMb2ChallengeMap avance
+// de 7919 (déterministe, dix essais au plus). Est-ce l'une des graines que le
+// jour peut produire ? C'est le test à faire pour dire « la map servie est
+// la canonique du jour » — comparer à la seule graine de base disait faux les
+// jours où le premier tirage rate.
+const PAS_ESSAI = 7919, ESSAIS_MAX = 10;
+function estGraineDuJour(seed, date) {
+  const base = dailyChallengeSeed(date);
+  const n = Number(seed);
+  for (let attempt = 0; attempt < ESSAIS_MAX; attempt++) {
+    if (((base + attempt * PAS_ESSAI) & 0x3FFFFFFF) === n) return true;
+  }
+  return false;
+}
+
 async function generateMb2ChallengeMap(forceSeed) {
   const outputDir = path.join(__dirname, 'Games', 'motionBall2');
   loadBumpers();
@@ -2091,11 +2107,11 @@ async function generateMb2ChallengeMap(forceSeed) {
   const baseSeed = (forceSeed !== undefined && forceSeed !== null)
     ? ((Number(forceSeed) >>> 0) & 0x3FFFFFFF)
     : dailyChallengeSeed();
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < ESSAIS_MAX; attempt++) {
     try {
       // The attempt offset (deterministic) only matters when a seed fails level
       // validation, so a reboot reproduces the same successful map.
-      const seed = (baseSeed + attempt * 7919) & 0x3FFFFFFF;
+      const seed = (baseSeed + attempt * PAS_ESSAI) & 0x3FFFFFFF;
       rng.init(seed);
       loadBumpers();
       const ddata = levelMake();
@@ -2167,7 +2183,7 @@ async function generateMB2Maps() {
 }
 
 module.exports = {
-  generateMB2Maps, generateMb2ChallengeMap, dailyChallengeSeed,
+  generateMB2Maps, generateMb2ChallengeMap, dailyChallengeSeed, estGraineDuJour,
   // Exposés pour les tests et l'outillage (preuves d'alphabet / fidélité).
   // assembleMake suppose loadBumpers() déjà appelé (posNbits en dépend).
   assembleMake, loadBumpers, B64_SWF, B64_OCAML,

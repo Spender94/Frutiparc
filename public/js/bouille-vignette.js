@@ -53,10 +53,15 @@
   var Swf = global.FPBouilleSwf;
   var M = global.FPBouilleMoteur;
 
-  // Les familles qui existent vraiment. Une bouille d'une famille absente ne se
-  // dessine pas : on laisse la case vide plutôt que de tourner en boucle sur un
-  // fichier introuvable.
+  // Les familles qui existent vraiment. Une bouille d'une famille ABSENTE se
+  // dessine avec les tracés de la famille 0 — le même état (tête, yeux,
+  // couleurs, accessoires : les vingt-quatre caractères ont la même place
+  // dans toutes les familles), les dessins de base. C'est le cas de la
+  // famille 20 (« 0k… », VieuxPruneau) : aucun fichier famille20.swf n'existe
+  // sur le site, et la case restait VIDE. On ne tourne pas en boucle sur un
+  // fichier introuvable pour autant : on n'essaie jamais de le charger.
   var FAMILLES = [0, 10, 11, 12, 13, 14, 15, 16, 23, 24];
+  var FAMILLE_DE_REPLI = 0;
   var DOSSIER = '/fbouille/';
   var chargements = {};                 // famille → Promise<defs>
   var posees = new WeakMap();           // canevas → Bouille
@@ -272,11 +277,17 @@
     return paquetPrunelles;
   }
 
+  var absentesSignalees = {};
   function famille(n) {
+    if (FAMILLES.indexOf(n) < 0) {
+      if (!absentesSignalees[n]) {
+        absentesSignalees[n] = true;
+        try { console.warn('[bouille] famille ' + n + ' absente : dessinée avec la famille ' + FAMILLE_DE_REPLI); } catch (e) { /* sans console */ }
+      }
+      return famille(FAMILLE_DE_REPLI);
+    }
     if (!chargements[n]) {
-      chargements[n] = FAMILLES.indexOf(n) < 0
-        ? Promise.reject(new Error('famille ' + n + ' absente'))
-        : Promise.all([Swf.charger(DOSSIER + 'famille' + n + '.swf'), variantes(), prunelles()])
+      chargements[n] = Promise.all([Swf.charger(DOSSIER + 'famille' + n + '.swf'), variantes(), prunelles()])
           .then(function (r) {
             try { if (r[2]) M.grefferPrunelles(r[0], r[2]); }
             catch (e) { /* une greffe fautive n'empêche pas la bouille */ }

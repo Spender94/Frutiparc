@@ -41,7 +41,7 @@
         dy: Math.sin(o.ang) * Math.max(o.speed, C.SNAKE_DEFAULT_SPEED) * TMOD };
     });
     var objets = session.objets || [];
-    var rayon = (session.objetsCfg && session.objetsCfg.rayonBombe) || 100;
+    var rayon = (session.objetsCfg && session.objetsCfg.rayonBombe) || C.RAYON_BOMBE;
     for (var n = 1; n <= horizon; n++) {
       ang += virage * s.delta_ang * TMOD;
       var dx = Math.cos(ang), dy = Math.sin(ang);

@@ -14600,7 +14600,7 @@ async function mb2PublierCarteDuJourMaintenant(why, opts) {
   }
   if (topic && topic.is_locked) topic = null;
   if (!topic) {
-    const intro = `Chaque nuit, la map du Challenge de Motion Ball 2 change. Chaque matin, je la relève et je la poste ici : le plan du donjon, et le détail — le départ, la salle du boss, où trouver chaque bille et chaque bonus, quelles portes réclament quoi.\n\nGardez ce sujet sous le coude : la map du jour est toujours dans le dernier message.`;
+    const intro = `Chaque nuit, la map du Challenge de Motion Ball 2 change. Chaque matin, je la relève et je la poste ici : la carte du donjon telle que le jeu la montre, et le détail — le départ, la salle du boss, où trouver chaque bille et chaque bonus, les portes, les passages invisibles.\n\nGardez ce sujet sous le coude : la map du jour est toujours dans le dernier message.`;
     topic = await db.forumCreateTopic(board.id, MB2_CARTOGRAPHE, MB2_SUJET_FORUM, intro, bouille, null);
     neuf = true;
     console.log(`[MB2] VieuxPruneau ouvre le sujet #${topic.id} « ${MB2_SUJET_FORUM} » dans « ${board.name} »`);
@@ -14686,16 +14686,22 @@ app.get('/api/admin/mb2/map-info', adminScope('challenge'), (req, res) => {
     if (m) seed = m[1];
   } catch (_) {}
   // Seed déterministe attendu pour aujourd'hui (jour Paris). Si le seed du fichier
-  // l'égale, la map est la map canonique du jour : une régénération/reboot la
-  // réécrit à l'identique, elle ne changera qu'au minuit Paris. Un seed différent
-  // = override (régénération manuelle aléatoire) ou map périmée.
-  let expectedSeed = '';
-  try { expectedSeed = String(require('./mb2gen').dailyChallengeSeed()); } catch (_) {}
+  // est l'un de ceux que le jour produit (la base, ou la base avancée de 7919
+  // par tirage raté — mb2gen.estGraineDuJour), la map est la map canonique du
+  // jour : une régénération/reboot la réécrit à l'identique, elle ne changera
+  // qu'au minuit Paris. Un seed différent = override (régénération manuelle
+  // aléatoire) ou map périmée.
+  let expectedSeed = '', canonical = false;
+  try {
+    const gen = require('./mb2gen');
+    expectedSeed = String(gen.dailyChallengeSeed());
+    canonical = !!seed && gen.estGraineDuJour(seed);
+  } catch (_) {}
   res.json({
     exists: true,
     seed,
     expectedSeed,
-    canonical: !!seed && seed === expectedSeed,
+    canonical,
     mtime: mtime.toISOString(),
     mapDay,
     today,

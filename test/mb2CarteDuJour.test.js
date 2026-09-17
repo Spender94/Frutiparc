@@ -83,11 +83,11 @@ test('le décodage est celui du SWF : un flux forgé se relit champ à champ', (
   assert.deepStrictEqual(d.depart, { x: 0, y: 0 });
   assert.strictEqual(d.salles[0][0].type, 1);
   assert.strictEqual(d.salles[1][0].type, 2);
-  assert.deepStrictEqual(d.salles[1][0].passages[0], { type: 3, bille: 1 });
+  assert.deepStrictEqual(d.salles[1][0].passages[0], { type: 3 }, 'la donnée de la porte est lue, pas gardée : le jeu ne s’en sert pas');
   const r = Carte.decrire(d);
   assert.strictEqual(r.depart, 'A1');
   assert.strictEqual(r.boss, 'B1');
-  assert.deepStrictEqual(r.portes, [{ bille: 1, nom: 'bleue', entre: ['A1', 'B1'] }]);
+  assert.deepStrictEqual(r.portes, [{ entre: ['A1', 'B1'] }]);
   assert.throws(() => Carte.decoderDonjon('a'), /tronqué|illisible/);
   assert.throws(() => Carte.lireFichier('n importe quoi'), /illisible/);
 });
@@ -100,16 +100,35 @@ test('le plan SVG et le message disent la même chose que la description', () =>
   assert.ok(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"'));
   assert.ok(svg.endsWith('</svg>'));
   assert.ok(svg.indexOf('graine ' + graine) > 0);
-  assert.ok(svg.indexOf('<image') < 0, 'tout en formes : rien d’externe');
-  assert.strictEqual((svg.match(/>GO</g) || []).length, 1, 'un seul départ');
-  // Le message : le plan, puis chaque rubrique du détail.
+  // Rien d'extérieur : un SVG dans une balise <img> ne charge que lui-même.
+  assert.doesNotMatch(svg, /href="(?!#|data:)/, 'aucune adresse extérieure');
+  // C'est la carte DU JEU : le parchemin (l'image 281 du manifeste, en
+  // ligne), la grille (la forme 284), et les clips `room` aux places de la
+  // pause (px = 18 + 48x, py = 16 + 36y) — le départ à l'image 34 + 26, le
+  // boss à la 31, chaque bille et chaque bonus à sa case.
+  const json = JSON.parse(fs.readFileSync(path.join(RACINE, 'public/mb2/data/mb2.json'), 'utf8'));
+  const forme = (id) => json.perso[String(id)].ops[0].d.slice(0, 40);
+  assert.ok(svg.indexOf(forme(284)) > 0, 'la grille du jeu');
+  assert.ok(svg.indexOf(forme(276)) > 0, 'le boss (image 31)');
+  assert.ok(svg.indexOf(forme(278)) > 0 && svg.indexOf(forme(271)) > 0, 'la salle où l’on est (34) et le départ (26)');
+  assert.ok(svg.indexOf('<mask') > 0 && svg.indexOf('data:image/png;base64,') > 0, 'le parchemin, en ligne');
+  const place = (nom) => { const x = nom.charCodeAt(0) - 65, y = Number(nom.slice(1)) - 1; return 'translate(' + (18 + 48 * x) + ',' + (16 + 36 * y) + ')'; };
+  assert.ok(svg.indexOf(place(r.depart)) > 0, 'le départ à sa case');
+  assert.ok(svg.indexOf(place(r.boss)) > 0, 'le boss à sa case');
+  for (const b of r.billes) assert.ok(svg.indexOf(place(b.case)) > 0, b.nom);
+  // Rejouable : la même map donne le même plan (l'image est adressée par son contenu).
+  assert.strictEqual(Carte.carteSvg(donjon, { graine, jour: 'autre jour' }), svg);
+  // Le message : le plan, puis chaque rubrique du détail — et rien d'inventé :
+  // une porte n'a pas de couleur (c'est le grelot qui l'ouvre).
   const m = Carte.messageForum(donjon, { graine, jour: 'jeudi 17 septembre 2026', urlImage: '/forum-uploads/abc.svg' });
   assert.ok(m.indexOf('[img]/forum-uploads/abc.svg[/img]') > 0);
   assert.ok(m.indexOf('Départ[/b] en ' + r.depart) > 0);
-  assert.ok(m.indexOf('boss[/b] dort en ' + r.boss) > 0);
+  assert.ok(m.indexOf('boss[/b] en ' + r.boss) > 0);
   for (const b of r.billes) assert.ok(m.indexOf(b.nom + ' en ' + b.case) > 0, b.nom);
   for (const b of r.bonus) assert.ok(m.indexOf(b.nom + ' en ' + b.case) > 0, b.nom);
-  for (const p of r.portes) assert.ok(m.indexOf(p.entre[0] + '–' + p.entre[1] + ' (bille ' + p.nom + ')') > 0);
+  for (const p of r.portes) assert.ok(m.indexOf(p.entre[0] + '–' + p.entre[1]) > 0);
+  assert.doesNotMatch(m, /bille (verte|bleue|métal|violette)\)/, 'pas de couleur aux portes');
+  assert.doesNotMatch(m, /réclame/, 'pas de salle qui réclame une bille : le jeu n’en a pas');
   assert.ok(m.endsWith('(graine ' + graine + ')[/i]'), 'la graine ferme le message : c’est la marque d’idempotence');
   // La variante « changée en cours de journée ».
   const m2 = Carte.messageForum(donjon, { graine, jour: 'x', changement: true });
@@ -192,7 +211,7 @@ test('au démarrage, VieuxPruneau ouvre le sujet et y poste la map du jour avec 
   assert.strictEqual(carte.author, 'VieuxPruneau');
   assert.strictEqual(String(carte.bouille || '').slice(0, 24), '0k0000010000000000000000');
   assert.match(carte.content, /\[img\]\/forum-uploads\/[0-9a-f]{32}\.svg\[\/img\]/);
-  assert.match(carte.content, /Le boss\[\/b\] dort en [A-H][1-8]\./);
+  assert.match(carte.content, /Le boss\[\/b\] en [A-H][1-8]\./);
   assert.match(carte.content, /\(graine \d+\)\[\/i\]$/);
   // Le plan se sert, en SVG, et c'est bien celui de la map servie.
   const url = /\[img\]([^\[]+)\[\/img\]/.exec(carte.content)[1];

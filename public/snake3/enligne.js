@@ -20,10 +20,11 @@
  *     rendu de la bataille locale. Il n'envoie que ses touches, quand elles
  *     changent.
  *
- * Les OBJETS : des bombes (mèche de cinq secondes, puis un souffle qui
- * emporte la queue prise dedans et tue la tête qui s'y trouve — la toucher
- * la fait sauter aussitôt), et des fruits (trois segments rendus, turbo
- * plein). Le souffle se montre au sol quand la mèche est courte.
+ * Les OBJETS : des bombes, celles du Challenge (mèche de cinq secondes,
+ * puis un souffle de RAYON_BOMBE qui emporte la queue prise dedans et tue
+ * la tête qui s'y trouve — la toucher la fait sauter aussitôt). Rien
+ * d'autre : pas de fruit dans un duel. Le souffle se montre au sol quand la
+ * mèche est courte.
  */
 'use strict';
 
@@ -38,7 +39,7 @@ const { Reseau } = window.SnakeReseau;
 
 const MODE_SALON = 20;
 const MODE_BATAILLE = 21;
-const RAYON_BOMBE = 100;               // OBJETS.rayonBombe (server/session.js)
+const RAYON_BOMBE = C.RAYON_BOMBE;     // celui du jeu — OBJETS.rayonBombe (server/session.js)
 const MECHE_COURTE = 2.5;              // le souffle se montre sous ce délai
 
 // ── Le contrôleur : le fil et ce qui passe d'une vue à l'autre ─────────────
@@ -375,17 +376,13 @@ class VueBatailleEnLigne {
 
   _lireObjets(el) {
     this.objets = [...el.getElementsByTagName('o')].map((o) => ({
-      id: Number(o.getAttribute('i')), type: o.getAttribute('t') === 'b' ? 'bombe' : 'fruit',
+      id: Number(o.getAttribute('i')), type: 'bombe',
       x: Number(o.getAttribute('x')), y: Number(o.getAttribute('y')),
-      vie: Number(o.getAttribute('v')), fid: Number(o.getAttribute('f')),
+      vie: Number(o.getAttribute('v')),
     }));
     for (const ex of el.getElementsByTagName('ex')) {
       this.souffles.push({ x: Number(ex.getAttribute('x')), y: Number(ex.getAttribute('y')), frame: 2 });
       this.jeu.sons.play('dynamite');
-    }
-    for (const mg of el.getElementsByTagName('mg')) {
-      const e = Number(mg.getAttribute('e'));
-      this.jeu.sons.play(e === this.monEquipe ? 'glurps' : 'glurps_2');
     }
   }
 
@@ -473,30 +470,28 @@ class VueBatailleEnLigne {
     const jeu = this.jeu;
     J.dessinerFondArene(ctx, jeu, this.niveau);
 
-    // Les objets, au sol : le souffle qui vient quand la mèche est courte,
-    // puis la bombe ou le fruit.
+    // Les bombes, au sol : l'étendue du souffle à venir quand la mèche est
+    // courte — découpée au terrain, comme une marque peinte — puis la bombe.
+    const n = this.niveau;
     for (const o of this.objets) {
-      if (o.type === 'bombe') {
-        if (o.vie < MECHE_COURTE) {
-          const bat = 0.18 + 0.14 * Math.abs(Math.sin(jeu.temps() * 1.4));
-          ctx.save();
-          ctx.globalAlpha = bat;
-          ctx.fillStyle = '#ff3b1f';
-          ctx.beginPath();
-          ctx.arc(o.x, o.y, RAYON_BOMBE, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        }
-        D.poser(ctx, 'bombe', 1, o.x, o.y, 1, 1, 0);
-      } else {
-        D.poser(ctx, 'fruits', o.fid, o.x, o.y, 1, 1, 0);
+      if (o.vie < MECHE_COURTE) {
+        const bat = 0.18 + 0.14 * Math.abs(Math.sin(jeu.temps() * 1.4));
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(n.corner.x, n.corner.y, n.width, n.height);
+        ctx.clip();
+        ctx.globalAlpha = bat;
+        ctx.fillStyle = '#ff3b1f';
+        ctx.beginPath();
+        ctx.arc(o.x, o.y, RAYON_BOMBE, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
+      D.poser(ctx, 'bombe', 1, o.x, o.y, 1, 1, 0);
     }
-    // Le souffle du clip est taillé pour le rayon du Challenge (160) : on le
-    // ramène à celui du Battle.
-    const ks = RAYON_BOMBE / C.RAYON_BOMBE;
+    // Le souffle : le clip du jeu, tel quel — il est taillé pour RAYON_BOMBE.
     for (const b of this.souffles) {
-      D.poser(ctx, 'bombe', Math.max(1, Math.min(22, Math.floor(b.frame))), b.x, b.y, ks, ks, 0);
+      D.poser(ctx, 'bombe', Math.max(1, Math.min(22, Math.floor(b.frame))), b.x, b.y, 1, 1, 0);
     }
 
     for (const s of this.serpents) {
@@ -511,7 +506,7 @@ class VueBatailleEnLigne {
       if (!this.vivants[i]) continue;
       const p = this.powers[i] * 5;
       const x = (i === 0) ? 20 : C.WIDTH - p - 20;
-      this.dessinerJauge(ctx, x, 20, p, i);
+      J.dessinerJauge(ctx, x, 20, p, i);
     }
     ctx.save();
     ctx.font = 'bold 12px Verdana12StB, Verdana, sans-serif';
@@ -546,19 +541,6 @@ class VueBatailleEnLigne {
     }
 
     if (this.ecran) this.ecran.dessiner(ctx);
-  }
-
-  dessinerJauge(ctx, x, y, v, i) {
-    const mid = D.rendre('barMid', i + 1, 1);
-    if (mid) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.scale(Math.max(0.001, v / mid.lw), 1);
-      ctx.drawImage(mid.c, 0, mid.dy, mid.lw, mid.lh);
-      ctx.restore();
-    }
-    D.poser(ctx, 'barSide', i + 1, x, y, 1, 1, 0);
-    D.poser(ctx, 'barSide', i + 1, x + v, y, -1, 1, 0);
   }
 }
 

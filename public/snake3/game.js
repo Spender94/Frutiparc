@@ -746,20 +746,28 @@ class VueBataille {
     if (this.ecran) this.ecran.dessiner(ctx);
   }
 
-  dessinerJauge(ctx, x, y, v, i) {
-    // battleBarSide/battleBarMid, image i+1 pour la couleur du joueur ;
-    // bend est le même bout en miroir à x+v, bmid s'étire sur v.
-    const mid = D.rendre('barMid', i + 1, 1);
-    if (mid) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.scale(Math.max(0.001, v / mid.lw), 1);
-      ctx.drawImage(mid.c, 0, mid.dy, mid.lw, mid.lh);
-      ctx.restore();
-    }
-    D.poser(ctx, 'barSide', i + 1, x, y, 1, 1, 0);
-    D.poser(ctx, 'barSide', i + 1, x + v, y, -1, 1, 0);
+  dessinerJauge(ctx, x, y, v, i) { dessinerJauge(ctx, x, y, v, i); }
+}
+
+// La jauge de turbo du Battle (Battle.draw_power_barre) : un bout arrondi à
+// x, le même en miroir à x+v, et entre les deux le milieu étiré sur v, image
+// i+1 pour la couleur du joueur.
+//
+// ATTENTION AUX NOMS : dans sprites.json, `barMid` est le BOUT (la demi-lune
+// de 8 px, dessinée à gauche de son origine) et `barSide` le MILIEU (le
+// rectangle de 10 px) — l'extraction les a croisés. Étirer la demi-lune
+// donnait un coin blanc qui s'effilait sur toute la barre.
+function dessinerJauge(ctx, x, y, v, i) {
+  const mid = D.rendre('barSide', i + 1, 1);
+  if (mid && v > 0) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(v / mid.lw, 1);
+    ctx.drawImage(mid.c, 0, mid.dy, mid.lw, mid.lh);
+    ctx.restore();
   }
+  D.poser(ctx, 'barMid', i + 1, x, y, 1, 1, 0);
+  D.poser(ctx, 'barMid', i + 1, x + v, y, -1, 1, 0);
 }
 
 // ── Le chef d'orchestre (Manager.as) ──────────────────────────────────────
@@ -1376,7 +1384,7 @@ function chaufferArene(jeu, temps) {
 }
 
 // ── Le démarrage ──────────────────────────────────────────────────────────
-window.SnakeJeu = { Jeu, Ecran, VuePartie, VueBataille, dessinerFondArene, hasard };
+window.SnakeJeu = { Jeu, Ecran, VuePartie, VueBataille, dessinerFondArene, dessinerJauge, hasard };
 
 window.demarrerFrutisnake = function (options) {
   const opts = options || {};

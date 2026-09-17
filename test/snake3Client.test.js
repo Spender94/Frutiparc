@@ -1554,3 +1554,35 @@ test('le corps tue selon sa courbe tracée, pas selon la corde qui coupe le vira
       'le bord intérieur du trait tue aussi (t=' + t + ')');
   }
 });
+
+test('la jauge de turbo du Battle étire le MILIEU et pose les BOUTS — les clés de sprites.json sont croisées', () => {
+  /*
+   * Dans sprites.json, `barMid` est la demi-lune de huit pixels (le BOUT,
+   * dessinée à gauche de son origine : cadre x = −8) et `barSide` le
+   * rectangle de dix (le MILIEU) : l'extraction a croisé les noms. Étirer la
+   * demi-lune sur la largeur de la jauge donnait un coin blanc qui
+   * s'effilait sur toute la barre, en local comme en ligne. La jauge est
+   * dessinée UNE fois (game.js), et la bataille en ligne l'emprunte.
+   */
+  assert.deepStrictEqual(manifeste.clips.barMid.frames['1'].cadre, { x: -8, y: -2, w: 8, h: 16 }, 'barMid : le bout');
+  assert.deepStrictEqual(manifeste.clips.barSide.frames['1'].cadre, { x: 0, y: -2.05, w: 10, h: 16 }, 'barSide : le milieu');
+  const src = fs.readFileSync(path.join(RACINE, 'public/snake3/game.js'), 'utf8');
+  const corps = /\nfunction dessinerJauge\(ctx, x, y, v, i\) \{([\s\S]*?)\n\}/.exec(src);
+  assert.ok(corps, 'dessinerJauge est une fonction du module');
+  assert.match(corps[1], /D\.rendre\('barSide', i \+ 1, 1\)/, 'le rectangle est celui qu\'on étire');
+  assert.match(corps[1], /D\.poser\(ctx, 'barMid', i \+ 1, x, y, 1, 1, 0\)/, 'un bout à x');
+  assert.match(corps[1], /D\.poser\(ctx, 'barMid', i \+ 1, x \+ v, y, -1, 1, 0\)/, 'le même en miroir à x + v');
+  assert.match(src, /dessinerFondArene, dessinerJauge, hasard \}/, 'exportée pour la bataille en ligne');
+  const enligne = fs.readFileSync(path.join(RACINE, 'public/snake3/enligne.js'), 'utf8');
+  assert.match(enligne, /J\.dessinerJauge\(ctx, x, 20, p, i\)/, 'la bataille en ligne dessine la même jauge');
+  assert.doesNotMatch(enligne, /dessinerJauge\(ctx, x, y, v, i\) \{/, 'et n\'en a plus de copie');
+});
+
+test('la bataille en ligne : des bombes au rayon du jeu, et rien d\'autre', () => {
+  const enligne = fs.readFileSync(path.join(RACINE, 'public/snake3/enligne.js'), 'utf8');
+  assert.match(enligne, /const RAYON_BOMBE = C\.RAYON_BOMBE;/, 'le rayon du souffle est celui du Challenge (160)');
+  assert.doesNotMatch(enligne, /'fruits'/, 'pas de fruit posé au sol');
+  assert.doesNotMatch(enligne, /getElementsByTagName\('mg'\)/, 'rien à manger, rien à écouter');
+  // Le souffle du clip est dessiné tel quel : il est taillé pour ce rayon.
+  assert.match(enligne, /D\.poser\(ctx, 'bombe', Math\.max\(1, Math\.min\(22, Math\.floor\(b\.frame\)\)\), b\.x, b\.y, 1, 1, 0\)/);
+});

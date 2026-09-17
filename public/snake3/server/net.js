@@ -168,15 +168,13 @@
       return a + "/>";
     }).join("");
     var obj = snap.objets.map(function (o) {
-      return '<o i="' + o.id + '" t="' + (o.type === "bombe" ? "b" : "f") + '" x="' + o.x + '" y="' + o.y +
-        '" v="' + n3(o.vie) + '" f="' + o.fid + '"/>';
+      return '<o i="' + o.id + '" t="b" x="' + o.x + '" y="' + o.y + '" v="' + n3(o.vie) + '"/>';
     }).join("");
     var ex = snap.explosions.map(function (e) { return '<ex x="' + e.x + '" y="' + e.y + '"/>'; }).join("");
-    var mg = snap.manges.map(function (m) { return '<mg i="' + m.id + '" e="' + m.e + '"/>'; }).join("");
     return '<sb e="' + evt + '" g="' + esc(snap.id) + '" ph="' + snap.phase + '" cd="' + n3(snap.compte) +
       '" n="' + snap.numero + '" t="' + n3(snap.temps) + '" cl="' + (session._classe ? 1 : 0) + '"' +
       (snap.ended ? ' end="1" w="' + snap.winner + '" r="' + esc(snap.endReason) + '"' : "") +
-      ">" + (evt === "state" ? "" : pls) + srp + obj + ex + mg + "</sb>";
+      ">" + (evt === "state" ? "" : pls) + srp + obj + ex + "</sb>";
   };
 
   SnakeNet.prototype._err = function (username, code) {

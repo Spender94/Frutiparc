@@ -43,13 +43,9 @@
     max: 4,                                // posés en même temps, au plus
     marge: 40,                             // aux bords du terrain
     distanceTete: 110,                     // jamais sous le nez d'un serpent
-    partBombes: 0.6,                       // sinon un fruit
     meche: C.TIME_BOMBE,                   // 5 s, comme la bombe du Challenge
-    rayonBombe: 100,                       // le souffle (le Challenge : 160)
+    rayonBombe: C.RAYON_BOMBE,             // le souffle : celui du jeu (160)
     contactBombe: 16,                      // la toucher du nez la fait sauter
-    vieFruit: 12,                          // secondes avant qu'il ne pourrisse
-    contactFruit: 20,
-    segmentsFruit: 3,                      // rendus par un fruit
   };
 
   // Où une bombe posée en (x, y) COUPERAIT ce serpent : l'indice, compté
@@ -124,7 +120,7 @@
   };
 
   SnakeBattleSession.prototype._raz = function () {
-    this.evts = { serpents: [{ q: 0, g: 0, xp: 0 }, { q: 0, g: 0, xp: 0 }], explosions: [], manges: [] };
+    this.evts = { serpents: [{ q: 0, g: 0, xp: 0 }, { q: 0, g: 0, xp: 0 }], explosions: [] };
   };
 
   SnakeBattleSession.prototype.teamOf = function (playerId) {
@@ -175,14 +171,7 @@
       });
     }
     if (!loin) return;
-    var bombe = this.rng() < cfg.partBombes;
-    this.objets.push({
-      id: ++this._seqObjet,
-      type: bombe ? "bombe" : "fruit",
-      x: Math.round(x), y: Math.round(y),
-      vie: bombe ? cfg.meche : cfg.vieFruit,
-      fid: bombe ? 0 : 1 + Math.floor(this.rng() * C.FRUIT_BASE),
-    });
+    this.objets.push({ id: ++this._seqObjet, type: "bombe", x: Math.round(x), y: Math.round(y), vie: cfg.meche });
   };
 
   SnakeBattleSession.prototype._exploser = function (o) {
@@ -209,33 +198,17 @@
     for (var n = 0; n < this.objets.length; n++) {
       var o = this.objets[n];
       o.vie -= dt;
-      var parti = false;
-      if (o.type === "bombe") {
-        var touchee = false;
-        for (var k = 0; k < ba.serpents.length && !touchee; k++) {
-          var s = ba.serpents[k];
-          if (!s) continue;
-          var d = (s.x - o.x) * (s.x - o.x) + (s.y - o.y) * (s.y - o.y);
-          if (d < cfg.contactBombe * cfg.contactBombe) touchee = true;
-        }
-        if (touchee || o.vie <= 0) { this._exploser(o); parti = true; }
-      } else {
-        for (var j = 0; j < ba.serpents.length && !parti; j++) {
-          var sj = ba.serpents[j];
-          if (!sj) continue;
-          var dj = (sj.x - o.x) * (sj.x - o.x) + (sj.y - o.y) * (sj.y - o.y);
-          if (dj < cfg.contactFruit * cfg.contactFruit) {
-            // Trois segments rendus, tête gardée : le reste part en particules
-            // (explode raccourcit d'un et annonce — le miroir fait de même).
-            for (var m = 0; m < cfg.segmentsFruit && sj.len > 2; m++) sj.explode(sj.color);
-            ba.powers[j] = C.BATTLE_POWER_MAX;
-            this.evts.manges.push({ id: o.id, e: j });
-            parti = true;
-          }
-        }
-        if (!parti && o.vie <= 0) parti = true;   // pourri
+      var touchee = false;
+      for (var k = 0; k < ba.serpents.length && !touchee; k++) {
+        var s = ba.serpents[k];
+        if (!s) continue;
+        var d = (s.x - o.x) * (s.x - o.x) + (s.y - o.y) * (s.y - o.y);
+        if (d < cfg.contactBombe * cfg.contactBombe) touchee = true;
       }
-      if (parti) { this.objets.splice(n, 1); n--; }
+      if (touchee || o.vie <= 0) {
+        this._exploser(o);
+        this.objets.splice(n, 1); n--;
+      }
     }
   };
 
@@ -306,9 +279,8 @@
       temps: this.temps,
       players: this.players.map(function (p) { return { id: p.id, name: p.name, team: p.team, fb: p.fb }; }),
       serpents: serpents,
-      objets: this.objets.map(function (o) { return { id: o.id, type: o.type, x: o.x, y: o.y, vie: o.vie, fid: o.fid }; }),
+      objets: this.objets.map(function (o) { return { id: o.id, type: o.type, x: o.x, y: o.y, vie: o.vie }; }),
       explosions: this.evts.explosions.slice(),
-      manges: this.evts.manges.slice(),
       ended: this.ended, winner: this.winner, endReason: this.endReason,
       inputs: self.inputs.map(function (i) { return { gauche: i.gauche, droite: i.droite, haut: i.haut }; }),
     };

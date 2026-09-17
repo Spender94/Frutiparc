@@ -6,14 +6,16 @@
 // du SWF — et en tire trois choses pour le forum :
 //
 //   · le DONJON décodé : huit salles sur huit, chacune avec son type (rien,
-//     salle ordinaire, départ, boss, bille à trouver, bonus, salle qui
-//     réclame une bille) et ses quatre passages (ouvert, fermé, invisible,
-//     porte qui réclame une bille) ;
-//   · un PLAN en SVG, tout en formes — pas une image externe : un SVG posé
-//     dans une balise <img> ne charge rien d'autre que lui-même ;
+//     salle ordinaire, boss, bille à trouver, bonus) et ses quatre passages
+//     (ouvert, fermé, invisible, porte) ;
+//   · le PLAN : LA CARTE DU JEU, telle que la pause la montre quand on a la
+//     carte et le radar en poche (Pause.show_map de public/mb2/jeu/ecrans.js)
+//     — les mêmes clips (`carte`, `room`), lus dans public/mb2/data/mb2.json
+//     et rejoués en SVG, image par image, aux mêmes places ; rien n'y est
+//     dessiné qui ne soit dans le jeu ;
 //   · le MESSAGE du forum, en BBCode : le plan, puis le détail — où l'on
-//     part, où dort le boss, où trouver chaque bille et chaque bonus, quelles
-//     portes réclament quoi, les passages invisibles.
+//     part, où est le boss, où trouver chaque bille et chaque bonus, les
+//     portes, les passages invisibles.
 //
 // Le repère est celui d'une grille de bataille navale : colonnes A à H de
 // gauche à droite, lignes 1 à 8 de haut en bas — le sens du plan de la pause
@@ -50,12 +52,16 @@ function lecteur(data) {
 }
 
 // ── Les noms des choses ────────────────────────────────────────────────────
+// Ce que le jeu en fait (public/mb2/jeu/niveau.js) : les billes à trouver
+// (VERTE, BLEUE, METAL, VIOLET), les bonus — deux billes de plus (ORANGE,
+// ROUGE), la carte, le radar, le grelot (trois par boîte : il ouvre une
+// porte), et deux rallonges de temps (une minute, trois minutes). Une porte
+// s'ouvre au grelot ; un passage invisible se franchit mais n'est pas dessiné
+// sur la carte ; la salle « objet requis » du flux est jouée comme une salle
+// ordinaire.
 const BILLES = ['verte', 'bleue', 'métal', 'violette'];
-const BILLES_COULEUR = ['#39c23f', '#3f8cf0', '#b9bec6', '#a555e0'];
-const BONUS = ['bille orange', 'bille rouge', 'carte', 'radar', 'grelot', 'petit temps', 'grand temps'];
-const BONUS_COURT = ['orange', 'rouge', 'carte', 'radar', 'grelot', '+temps', '++temps'];
-const BONUS_COULEUR = ['#ff8a1f', '#e8262f', '#f4e04d', '#5fd7d3', '#e4c33a', '#8fd67a', '#4fb84a'];
-const TYPES = ['vide', 'normale', 'boss', 'bille', 'bonus', 'réclame'];
+const BONUS = ['bille orange', 'bille rouge', 'carte', 'radar', 'grelot', '+1 min', '+3 min'];
+const TYPES = ['vide', 'ordinaire', 'boss', 'bille', 'bonus', 'ordinaire (« objet requis » dans le flux, sans effet en jeu)'];
 const PASSAGES = ['ouvert', 'fermé', 'invisible', 'porte'];
 const COLONNES = 'ABCDEFGH';
 
@@ -65,7 +71,7 @@ function nomCase(x, y) { return COLONNES[x] + (y + 1); }
 /**
  * Lit `ddata` (le champ de mb2data.dat) et rend le donjon :
  * { largeur, hauteur, depart:{x,y}, salles[x][y] } où une salle vaut
- * { type: 0..5, donnee, passages:[{type, bille}] × 4 (gauche, droite, haut, bas) }
+ * { type: 0..5, donnee, passages:[{type}] × 4 (gauche, droite, haut, bas) }
  * ou { type: 0 } pour une case vide.
  */
 function decoderDonjon(ddata) {
@@ -83,8 +89,10 @@ function decoderDonjon(ddata) {
       if (s.type !== 0) {
         s.passages = [];
         for (let d = 0; d < 4; d++) {
-          const p = { type: bc.read(2), bille: -1 };
-          if (p.type === 3) p.bille = bc.read(2);
+          // Une porte porte deux bits de plus dans le flux ; le jeu les lit et
+          // n'en fait rien (c'est le grelot qui ouvre) — on les passe.
+          const p = { type: bc.read(2) };
+          if (p.type === 3) bc.read(2);
           s.passages.push(p);
         }
       }
@@ -107,7 +115,8 @@ function salle(d, x, y) {
   return (d.salles[x] && d.salles[x][y]) || { type: 0 };
 }
 // Un passage n'existe que s'il est ouvert DES DEUX CÔTÉS (Pause.path_open) ;
-// une porte ou un passage invisible d'un côté suffit à le qualifier.
+// une porte ou un passage invisible d'un côté suffit à le qualifier. (Pour
+// le TEXTE ; le plan, lui, rejoue path_open tel quel.)
 function passage(d, x, y, dir) {
   const a = salle(d, x, y);
   if (!a.passages) return null;
@@ -118,13 +127,13 @@ function passage(d, x, y, dir) {
   if (pa.type === 1 || pb.type === 1) return null;
   if (pa.type === 3) return pa;
   if (pb.type === 3) return pb;
-  if (pa.type === 2 || pb.type === 2) return { type: 2, bille: -1 };
-  return { type: 0, bille: -1 };
+  if (pa.type === 2 || pb.type === 2) return { type: 2 };
+  return { type: 0 };
 }
 
 /** Ce que la carte raconte, rangé : départ, boss, billes, bonus, portes… */
 function decrire(d) {
-  const r = { depart: null, boss: null, billes: [], bonus: [], reclament: [], portes: [], invisibles: [], salles: 0, vides: 0 };
+  const r = { depart: null, boss: null, billes: [], bonus: [], portes: [], invisibles: [], salles: 0, vides: 0 };
   for (let x = 0; x < d.largeur; x++) {
     for (let y = 0; y < d.hauteur; y++) {
       const s = d.salles[x][y];
@@ -135,14 +144,13 @@ function decrire(d) {
       if (s.type === 2) r.boss = c;
       else if (s.type === 3) r.billes.push({ bille: s.donnee, nom: BILLES[s.donnee], case: c });
       else if (s.type === 4) r.bonus.push({ bonus: s.donnee, nom: BONUS[s.donnee], case: c });
-      else if (s.type === 5) r.reclament.push({ bille: s.donnee, nom: BILLES[s.donnee], case: c });
       // Les portes et les passages invisibles, une fois chacun (vers la
       // droite et vers le bas).
       for (const dir of [1, 3]) {
         const p = passage(d, x, y, dir);
         if (!p) continue;
         const voisin = nomCase(x + (dir === 1 ? 1 : 0), y + (dir === 3 ? 1 : 0));
-        if (p.type === 3) r.portes.push({ bille: p.bille, nom: BILLES[p.bille], entre: [c, voisin] });
+        if (p.type === 3) r.portes.push({ entre: [c, voisin] });
         else if (p.type === 2) r.invisibles.push({ entre: [c, voisin] });
       }
     }
@@ -150,154 +158,226 @@ function decrire(d) {
   const ordre = (a, b) => a.case.localeCompare(b.case);
   r.billes.sort((a, b) => a.bille - b.bille);
   r.bonus.sort((a, b) => (a.bonus - b.bonus) || ordre(a, b));
-  r.reclament.sort(ordre);
   return r;
 }
 
-// ── Le plan, en SVG ────────────────────────────────────────────────────────
-const CASE = 56, MARGE = 30, ENTETE = 34, LEGENDE = 62;
+// ── Le plan : la carte du jeu, rejouée en SVG ──────────────────────────────
+//
+// Le jeu (Pause.show_map) pose le clip `carte` — le parchemin et sa grille —
+// puis, case par case, des clips `room` figés sur une image : 1 et 2 pour un
+// passage vers la gauche ou vers le haut (5, 6 depuis une salle visitée ; 9,
+// 10 depuis la salle où l'on est), 14 à 17 les hachures d'une case vide, 26
+// le départ, 31 le boss, 19/22/23/24 les billes, 21/20/28/27/29/30 les
+// bonus (le radar, image 0, n'est pas marqué), 33 une salle visitée, 34 la
+// salle où l'on est. On rejoue exactement cela, avec le joueur AU DÉPART et
+// rien de visité d'autre — l'état de la carte quand on la découvre.
+//
+// Les dessins viennent de public/mb2/data/mb2.json (le manifeste des clips
+// du SWF, celui que le jeu light affiche) : un clip est une liste d'images
+// dont chacune place, déplace ou retire des enfants à une profondeur ; une
+// forme est une suite de tracés SVG remplis ou tracés. On recompose l'état
+// d'une image comme le fait le moteur (KalugaMoteur, flash.js : instantane),
+// puis on l'écrit en SVG.
+const fs = require('node:fs');
+const path = require('node:path');
 
-function svgEsc(s) {
-  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const DOSSIER_MB2 = path.join(__dirname, 'public', 'mb2', 'data');
+const OBJFRAMES = [19, 22, 23, 24];                 // Pause.OBJFRAMES
+const BONUSFRAMES = [21, 20, 28, 0, 27, 29, 30];    // Pause.BONUSFRAMES
+const CARTE_X = 18, CARTE_Y = 16, PAS_X = 48, PAS_Y = 36;   // px = 18 + 48x, py = 16 + 36y
+
+let biblio = null;
+function bibliotheque() {
+  if (!biblio) {
+    const d = JSON.parse(fs.readFileSync(path.join(DOSSIER_MB2, 'mb2.json'), 'utf8'));
+    biblio = { perso: d.perso, symboles: d.symboles, images: d.images, fichiers: new Map() };
+  }
+  return biblio;
 }
 
-/** Le glyphe d'une salle, centré en (0, 0), dans une case de CASE px. */
-function glyphe(s, estDepart) {
-  const out = [];
-  const cercle = (fill, r, stroke) => `<circle r="${r}" fill="${fill}" stroke="${stroke || '#1c3a08'}" stroke-width="2"/>`;
-  if (estDepart) {
-    out.push('<circle r="13" fill="#ffd93b" stroke="#1c3a08" stroke-width="2"/>');
-    out.push('<text y="4.5" font-size="11" font-weight="bold" text-anchor="middle" fill="#1c3a08">GO</text>');
-    return out.join('');
-  }
-  switch (s.type) {
-    case 2:   // le boss : un crâne stylisé sur fond sombre
-      out.push('<circle r="15" fill="#3a2432" stroke="#1c3a08" stroke-width="2"/>');
-      out.push('<circle r="8.5" cy="-2" fill="#f5f1e6"/>');
-      out.push('<rect x="-5" y="4" width="10" height="6" rx="1.5" fill="#f5f1e6"/>');
-      out.push('<circle cx="-3.4" cy="-2.8" r="2.3" fill="#3a2432"/><circle cx="3.4" cy="-2.8" r="2.3" fill="#3a2432"/>');
-      out.push('<rect x="-2.6" y="5.5" width="1.3" height="3.5" fill="#3a2432"/><rect x="1.3" y="5.5" width="1.3" height="3.5" fill="#3a2432"/>');
-      break;
-    case 3:   // une bille à trouver
-      out.push(cercle(BILLES_COULEUR[s.donnee] || '#ccc', 11));
-      out.push('<circle cx="-3.5" cy="-4" r="3" fill="#ffffff" opacity=".75"/>');
-      break;
-    case 4: { // un bonus
-      const b = s.donnee;
-      const fill = BONUS_COULEUR[b] || '#ccc';
-      if (b === 0 || b === 1) {
-        out.push(cercle(fill, 11));
-        out.push('<circle cx="-3.5" cy="-4" r="3" fill="#ffffff" opacity=".75"/>');
-      } else if (b === 2) {          // la carte : un parchemin
-        out.push(`<rect x="-11" y="-8" width="22" height="16" rx="2" fill="${fill}" stroke="#1c3a08" stroke-width="2"/>`);
-        out.push('<path d="M-6 -3 L-1 3 L3 -2 L7 4" fill="none" stroke="#1c3a08" stroke-width="1.6"/>');
-      } else if (b === 3) {          // le radar : des ondes
-        out.push(`<circle r="12" fill="${fill}" stroke="#1c3a08" stroke-width="2"/>`);
-        out.push('<circle r="2.5" fill="#1c3a08"/><circle r="6.5" fill="none" stroke="#1c3a08" stroke-width="1.5"/>');
-      } else if (b === 4) {          // le grelot : la clé des portes
-        out.push(`<circle r="12" fill="${fill}" stroke="#1c3a08" stroke-width="2"/>`);
-        out.push('<circle cy="-2" r="6" fill="none" stroke="#1c3a08" stroke-width="2"/><rect x="-1" y="3" width="2" height="6" fill="#1c3a08"/>');
-      } else {                        // les temps : un cadran
-        out.push(`<circle r="12" fill="${fill}" stroke="#1c3a08" stroke-width="2"/>`);
-        out.push('<path d="M0 -6 V0 H4" fill="none" stroke="#1c3a08" stroke-width="2" stroke-linecap="round"/>');
-        if (b === 6) out.push('<text x="0" y="-13" font-size="9" font-weight="bold" text-anchor="middle" fill="#1c3a08">+</text>');
+// L'état de la liste d'affichage d'un clip à l'image f (1..n) : rejeu des
+// placements 1..f — `p` la profondeur, `c` le caractère, `m` la matrice, `mv`
+// un déplacement (l'enfant en place hérite de ce qu'on ne redit pas), `x`
+// un retrait. Rendu trié par profondeur.
+function instantane(def, f) {
+  const etat = new Map();
+  for (let i = 0; i < f; i++) {
+    for (const op of def.frames[i].ops) {
+      if (op.x !== undefined) { etat.delete(op.x); continue; }
+      const avant = etat.get(op.p);
+      if (op.c !== undefined && !(op.mv && avant)) {
+        etat.set(op.p, { c: op.c, m: op.m || null });
+        continue;
       }
-      break;
+      if (!avant) continue;
+      if (op.c !== undefined) avant.c = op.c;
+      if (op.m) avant.m = op.m;
     }
-    case 5:   // une salle qui réclame une bille : un cadenas de sa couleur
-      out.push(`<rect x="-8" y="-3" width="16" height="12" rx="2" fill="${BILLES_COULEUR[s.donnee] || '#ccc'}" stroke="#1c3a08" stroke-width="2"/>`);
-      out.push('<path d="M-5 -3 V-7 A5 5 0 0 1 5 -7 V-3" fill="none" stroke="#1c3a08" stroke-width="2"/>');
-      break;
-    default:
-      break;
+  }
+  return [...etat.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1]);
+}
+
+const matrice = (m) => (m && !(m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1 && m[4] === 0 && m[5] === 0)
+  ? ` transform="matrix(${m.map((v) => +v.toFixed(3)).join(' ')})"` : '');
+
+// Un remplissage par image : le fichier du manifeste, mis en ligne dans le
+// SVG (un SVG dans une balise <img> ne charge rien d'extérieur). Un fichier
+// SVG est imbriqué tel quel, ses identifiants préfixés pour ne heurter
+// personne ; une image matricielle passe en data:.
+function imageSvg(b, id, ctx) {
+  const im = b.images[String(id)];
+  if (!im) return '';
+  let f = b.fichiers.get(id);
+  if (!f) {
+    const fichier = path.join(DOSSIER_MB2, 'img', im.f);
+    if (/\.svg$/i.test(im.f)) {
+      f = { svg: fs.readFileSync(fichier, 'utf8').replace(/^\s*<\?xml[^>]*>\s*/, '') };
+    } else {
+      const mime = /\.png$/i.test(im.f) ? 'image/png' : 'image/jpeg';
+      f = { data: `data:${mime};base64,${fs.readFileSync(fichier).toString('base64')}` };
+    }
+    b.fichiers.set(id, f);
+  }
+  if (f.data) return `<image href="${f.data}" width="${im.l}" height="${im.h}" preserveAspectRatio="none"/>`;
+  const pfx = ctx.id('i');
+  return f.svg
+    .replace(/\bid="([^"]+)"/g, (_, n) => `id="${pfx}-${n}"`)
+    .replace(/url\(#([^)]+)\)/g, (_, n) => `url(#${pfx}-${n})`)
+    .replace(/\bhref="#([^"]+)"/g, (_, n) => `href="#${pfx}-${n}"`);
+}
+
+// Une forme : ses tracés, dans l'ordre. Le lecteur ne trace jamais moins
+// d'un pixel ; une image de remplissage est découpée par son tracé.
+function formeSvg(b, def, ctx) {
+  const out = [];
+  for (const op of def.ops) {
+    const tr = matrice(op.m);
+    if (op.f) {
+      const f = op.f;
+      if (f.g) throw new Error('mb2carte : un dégradé sur la carte, non prévu');
+      if (f.bm) {
+        const id = ctx.id('d');
+        out.push(`<clipPath id="${id}"><path d="${op.d}" clip-rule="evenodd"${tr}/></clipPath>`);
+        out.push(`<g clip-path="url(#${id})"><g${matrice(f.bm.m)}>${imageSvg(b, f.bm.id, ctx)}</g></g>`);
+      } else {
+        const a = (f.a !== undefined && f.a < 1) ? ` fill-opacity="${f.a}"` : '';
+        out.push(`<path d="${op.d}" fill="${f.c}"${a} fill-rule="evenodd"${tr}/>`);
+      }
+    } else if (op.s) {
+      const st = op.s;
+      const a = (st.a !== undefined && st.a < 1) ? ` stroke-opacity="${st.a}"` : '';
+      out.push(`<path d="${op.d}" fill="none" stroke="${st.c}" stroke-width="${Math.max(st.w || 0, 1)}"${a} stroke-linecap="round" stroke-linejoin="round"${tr}/>`);
+    }
   }
   return out.join('');
 }
 
+// Un caractère figé sur une image : une forme telle quelle, un clip par
+// l'état de son image (ses enfants, chacun à l'image 1 — comme un
+// gotoAndStop sur le parent seul).
+function caractereSvg(b, id, frame, ctx) {
+  const def = b.perso[String(id)];
+  if (!def) return '';
+  if (def.t === 'forme') return formeSvg(b, def, ctx);
+  if (def.t !== 'clip') return '';                  // textes, morphs : rien sur la carte
+  const f = Math.max(1, Math.min(def.n, frame || 1));
+  return instantane(def, f).map((e) => `<g${matrice(e.m)}>${caractereSvg(b, e.c, 1, ctx)}</g>`).join('');
+}
+
+// Le random(4) des cases vides, rejouable : la même map donne le même plan
+// (l'image est adressée par son contenu).
+function aleas(graine) {
+  let a = (Number(graine) || 0) >>> 0;
+  return (n) => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) % n;
+  };
+}
+
 /**
- * Le plan du donjon. `infos` : { graine, jour } pour le cartouche.
+ * Le plan du donjon : la carte de la pause du jeu, en SVG. `infos` :
+ * { graine } (pour les hachures des cases vides et le commentaire du fichier).
  */
 function carteSvg(d, infos) {
   const o = infos || {};
-  const W = MARGE * 2 + CASE * d.largeur, H = ENTETE + MARGE * 2 + CASE * d.hauteur + LEGENDE;
-  const gx = (x) => MARGE + x * CASE, gy = (y) => ENTETE + MARGE + y * CASE;
-  const out = [];
-  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Verdana, Arial, sans-serif">`);
-  out.push(`<rect width="${W}" height="${H}" rx="14" fill="#ade76b"/>`);
-  out.push(`<rect x="8" y="8" width="${W - 16}" height="${H - 16}" rx="10" fill="#5c9a18"/>`);
-  out.push(`<text x="${W / 2}" y="26" font-size="15" font-weight="bold" text-anchor="middle" fill="#ffffff">Motion Ball 2 — Challenge du ${svgEsc(o.jour || '')}</text>`);
-  // Les repères.
-  for (let x = 0; x < d.largeur; x++) {
-    out.push(`<text x="${gx(x) + CASE / 2}" y="${gy(0) - 8}" font-size="11" font-weight="bold" text-anchor="middle" fill="#e6ffc7">${COLONNES[x]}</text>`);
-  }
-  for (let y = 0; y < d.hauteur; y++) {
-    out.push(`<text x="${gx(0) - 10}" y="${gy(y) + CASE / 2 + 4}" font-size="11" font-weight="bold" text-anchor="middle" fill="#e6ffc7">${y + 1}</text>`);
-  }
-  // Les salles.
-  for (let x = 0; x < d.largeur; x++) {
-    for (let y = 0; y < d.hauteur; y++) {
-      const s = d.salles[x][y];
-      if (s.type === 0) {
-        out.push(`<rect x="${gx(x) + 3}" y="${gy(y) + 3}" width="${CASE - 6}" height="${CASE - 6}" rx="6" fill="#4b7f14" opacity=".55"/>`);
-        continue;
-      }
-      out.push(`<rect x="${gx(x) + 3}" y="${gy(y) + 3}" width="${CASE - 6}" height="${CASE - 6}" rx="6" fill="#d9f2b4" stroke="#1c3a08" stroke-width="2"/>`);
-    }
-  }
-  // Les passages (par-dessus les salles, sous les glyphes).
-  for (let x = 0; x < d.largeur; x++) {
-    for (let y = 0; y < d.hauteur; y++) {
-      for (const dir of [1, 3]) {
-        const p = passage(d, x, y, dir);
-        if (!p) continue;
-        const cx = gx(x) + CASE / 2, cy = gy(y) + CASE / 2;
-        const ex = dir === 1 ? cx + CASE : cx, ey = dir === 3 ? cy + CASE : cy;
-        if (p.type === 0) {
-          out.push(`<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" stroke="#1c3a08" stroke-width="8" stroke-linecap="round"/>`);
-          out.push(`<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" stroke="#d9f2b4" stroke-width="4" stroke-linecap="round"/>`);
-        } else if (p.type === 2) {
-          out.push(`<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" stroke="#1c3a08" stroke-width="4" stroke-dasharray="3 5" stroke-linecap="round" opacity=".7"/>`);
-        } else {
-          out.push(`<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" stroke="#1c3a08" stroke-width="8" stroke-linecap="round"/>`);
-          out.push(`<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" stroke="${BILLES_COULEUR[p.bille] || '#ccc'}" stroke-width="4" stroke-linecap="round"/>`);
-          const mx = (cx + ex) / 2, my = (cy + ey) / 2;
-          out.push(`<rect x="${mx - 5}" y="${my - 5}" width="10" height="10" rx="2" fill="${BILLES_COULEUR[p.bille] || '#ccc'}" stroke="#1c3a08" stroke-width="1.5"/>`);
+  const b = bibliotheque();
+  const ROOM = b.symboles.room, CARTE = b.symboles.carte;
+  let seq = 0;
+  const ctx = { id: (p) => `${p}${++seq}` };
+  const random = aleas(o.graine);
+  const posX = d.depart.x, posY = d.depart.y;
+  const salleDe = (x, y) => (d.salles[x] && d.salles[x][y]) || undefined;
+  // Pause.path_open : `undefined` (pas de salle, pas de passages) passe.
+  const pathOpen = (x, y, n) => {
+    const room = salleDe(x, y);
+    const p = room && room.passages ? room.passages[n].type : undefined;
+    return p !== 1 && p !== 2;
+  };
+  const visitee = (x, y) => x === posX && y === posY;
+
+  // Deux plans, comme le DepthManager de la pause : les marqueurs (images
+  // > 14) dessous, les passages et hachures (≤ 14) dessus ; la grille est
+  // échangée avec le DERNIER marqueur posé, qui passe donc sous les autres.
+  const marqueurs = [], chemins = [];
+  let dernier = -1;
+  const poser = (px, py, frame) => {
+    if (!frame) return;
+    const g = `<g transform="translate(${px},${py})">${caractereSvg(b, ROOM, frame, ctx)}</g>`;
+    if (frame > 14) { marqueurs.push(g); dernier = marqueurs.length - 1; } else chemins.push(g);
+  };
+  for (let x = 0; x < 8; x++) {
+    for (let y = 0; y < 8; y++) {
+      const room = salleDe(x, y);
+      if (!room) continue;
+      const px = CARTE_X + PAS_X * x, py = CARTE_Y + PAS_Y * y;
+      if (room.type !== 0) {
+        let t = 0;
+        if (x === posX && y === posY) { poser(px, py, 34); t = 8; }
+        const st = t;
+        if (pathOpen(x, y, 0) && pathOpen(x - 1, y, 1)) {
+          if (x - 1 === posX && y === posY) t = 8;
+          else if (t !== 8 && visitee(x - 1, y)) t = 4;
+          poser(px, py, 1 + t);
+        }
+        t = st;
+        if (pathOpen(x, y, 2) && pathOpen(x, y - 1, 3)) {
+          if (x === posX && y - 1 === posY) t = 8;
+          else if (t !== 8 && visitee(x, y - 1)) t = 4;
+          poser(px, py, 2 + t);
         }
       }
+      switch (room.type) {
+        case 0: poser(px, py, 14 + random(4)); break;
+        case 1: case 5:
+          if (x === d.depart.x && y === d.depart.y) poser(px, py, 26);
+          break;
+        case 2: poser(px, py, 31); break;
+        case 3: if (room.donnee !== -1) poser(px, py, OBJFRAMES[room.donnee]); break;
+        case 4: if (room.donnee !== -1) poser(px, py, BONUSFRAMES[room.donnee]); break;
+        default: break;
+      }
     }
   }
-  // Les glyphes.
-  for (let x = 0; x < d.largeur; x++) {
-    for (let y = 0; y < d.hauteur; y++) {
-      const s = d.salles[x][y];
-      if (s.type === 0) continue;
-      const g = glyphe(s, x === d.depart.x && y === d.depart.y);
-      if (g) out.push(`<g transform="translate(${gx(x) + CASE / 2},${gy(y) + CASE / 2})">${g}</g>`);
-    }
+
+  // Le clip `carte` lui-même : le fond (profondeur 1) et la grille (3, nommée).
+  const fond = [], grille = [];
+  for (const e of instantane(b.perso[String(CARTE)], 1)) {
+    (e.n === 'grille' || grille.length === 0 && fond.length ? grille : fond)
+      .push(`<g${matrice(e.m)}>${caractereSvg(b, e.c, 1, ctx)}</g>`);
   }
-  // La légende.
-  const ly = gy(d.hauteur) + 18;
-  const legende = [
-    ['<circle r="7" fill="#ffd93b" stroke="#1c3a08" stroke-width="1.5"/>', 'départ'],
-    ['<circle r="7" fill="#3a2432" stroke="#1c3a08" stroke-width="1.5"/><circle r="3.5" cy="-1" fill="#f5f1e6"/>', 'boss'],
-    ['<circle r="7" fill="#39c23f" stroke="#1c3a08" stroke-width="1.5"/>', 'bille'],
-    ['<rect x="-6" y="-5" width="12" height="10" rx="1.5" fill="#f4e04d" stroke="#1c3a08" stroke-width="1.5"/>', 'bonus'],
-    ['<rect x="-5" y="-2" width="10" height="7" rx="1" fill="#3f8cf0" stroke="#1c3a08" stroke-width="1.5"/><path d="M-3 -2 V-4 A3 3 0 0 1 3 -4 V-2" fill="none" stroke="#1c3a08" stroke-width="1.5"/>', 'réclame une bille'],
-    ['<line x1="-8" y1="0" x2="8" y2="0" stroke="#1c3a08" stroke-width="3" stroke-dasharray="2 3"/>', 'passage invisible'],
-    ['<line x1="-8" y1="0" x2="8" y2="0" stroke="#3f8cf0" stroke-width="4"/><rect x="-3" y="-3" width="6" height="6" fill="#3f8cf0" stroke="#1c3a08"/>', 'porte'],
-  ];
-  // Sur deux rangées : la première ne tient pas sur la largeur du plan.
-  let lx = MARGE + 6, ligne = 0;
-  legende.forEach(([g, t], i) => {
-    if (i === 4) { lx = MARGE + 6; ligne = 1; }
-    const y = ly + ligne * 18;
-    out.push(`<g transform="translate(${lx},${y})">${g}</g>`);
-    out.push(`<text x="${lx + 12}" y="${y + 4}" font-size="10" fill="#ffffff">${t}</text>`);
-    lx += 26 + t.length * 6.2;
-  });
-  if (o.graine != null) {
-    out.push(`<text x="${W - 14}" y="${H - 12}" font-size="9" text-anchor="end" fill="#e6ffc7">graine ${svgEsc(o.graine)}</text>`);
-  }
+  // Le cadre : celui du fond du clip (la forme 282 : −13, −38, 440 × 360).
+  const [bx, by, bl, bh] = [-13, -38, 440, 360];
+  const out = [];
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${bl}" height="${bh}" viewBox="${bx} ${by} ${bl} ${bh}">`);
+  out.push(`<!-- Motion Ball 2 : la carte du Challenge (graine ${o.graine != null ? o.graine : '?'}), telle que la pause du jeu la montre -->`);
+  out.push(fond.join(''));
+  if (dernier >= 0) out.push(marqueurs[dernier]);
+  marqueurs.forEach((g, i) => { if (i !== dernier) out.push(g); });
+  out.push(grille.join(''));
+  out.push(chemins.join(''));
   out.push('</svg>');
   return out.join('\n');
 }
@@ -306,35 +386,39 @@ function carteSvg(d, infos) {
 function liste(items, f) { return items.map(f).join(', '); }
 
 /**
- * Le message de VieuxPruneau, en BBCode. `infos` : { graine, jour, urlImage,
- * changement } — `changement` (facultatif) quand la map a été changée en
- * cours de journée par l'équipe.
+ * Le message de VieuxPruneau, en BBCode : le plan, puis ce que le donjon
+ * contient, rien de plus. `infos` : { graine, jour, urlImage, changement } —
+ * `changement` (facultatif) quand la map a été changée en cours de journée
+ * par l'équipe.
  */
 function messageForum(d, infos) {
   const o = infos || {};
   const r = decrire(d);
   const l = [];
   if (o.changement) l.push(`[b]Rebelote ![/b] L'équipe vient de changer la map du Challenge en cours de journée. Voici la nouvelle, la seule qui compte désormais.`);
-  else l.push(`[b]La map du jour[/b] — Challenge Motion Ball 2 du ${o.jour || 'jour'}. Nouvelle nuit, nouveau donjon : le voilà, relevé à la lampe torche.`);
+  else l.push(`[b]La map du jour[/b] — Challenge Motion Ball 2 du ${o.jour || 'jour'}.`);
   l.push('');
-  if (o.urlImage) { l.push(`[img]${o.urlImage}[/img]`); l.push(''); }
+  if (o.urlImage) {
+    l.push(`[img]${o.urlImage}[/img]`);
+    l.push(`[i]La carte telle que le jeu la montre en pause (Échap), carte et radar en poche — le joueur au départ.[/i]`);
+    l.push('');
+  }
   l.push(`[b]Le donjon[/b] : ${r.salles} salles sur ${d.largeur} × ${d.hauteur} (${r.vides} cases vides). Colonnes A à H de gauche à droite, lignes 1 à 8 de haut en bas.`);
   l.push(`• [b]Départ[/b] en ${r.depart || '?'}.`);
-  l.push(`• [b]Le boss[/b] dort en ${r.boss || '?'}.`);
+  l.push(`• [b]Le boss[/b] en ${r.boss || '?'}.`);
   if (r.billes.length) l.push(`• [b]Les billes[/b] : ${liste(r.billes, (b) => `${b.nom} en ${b.case}`)}.`);
   const bonusBilles = r.bonus.filter((b) => b.bonus <= 1);
   const bonusAutres = r.bonus.filter((b) => b.bonus > 1);
   if (bonusBilles.length) l.push(`• [b]Billes bonus[/b] : ${liste(bonusBilles, (b) => `${b.nom} en ${b.case}`)}.`);
-  if (bonusAutres.length) l.push(`• [b]Bonus[/b] : ${liste(bonusAutres, (b) => `${b.nom} en ${b.case}`)}.`);
-  if (r.reclament.length) l.push(`• [b]Salles qui réclament une bille[/b] : ${liste(r.reclament, (s) => `${s.case} (bille ${s.nom})`)}.`);
-  if (r.portes.length) l.push(`• [b]Portes[/b] : ${liste(r.portes, (p) => `${p.entre[0]}–${p.entre[1]} (bille ${p.nom})`)}.`);
-  if (r.invisibles.length) l.push(`• [b]Passages invisibles[/b] : ${liste(r.invisibles, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
+  if (bonusAutres.length) l.push(`• [b]Bonus[/b] : ${liste(bonusAutres, (b) => `${b.nom} en ${b.case}`)} (le radar n'est pas marqué sur la carte).`);
+  if (r.portes.length) l.push(`• [b]Portes[/b] (un grelot les ouvre) : ${liste(r.portes, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
+  if (r.invisibles.length) l.push(`• [b]Passages invisibles[/b] (absents de la carte) : ${liste(r.invisibles, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
   l.push('');
-  l.push(`Bonne chasse, et méfiez-vous des bumpers de la mort. [i](graine ${o.graine != null ? o.graine : '?'})[/i]`);
+  l.push(`[i](graine ${o.graine != null ? o.graine : '?'})[/i]`);
   return l.join('\n');
 }
 
 module.exports = {
   decoderDonjon, lireFichier, decrire, carteSvg, messageForum, passage, nomCase,
-  BILLES, BONUS, BONUS_COURT, TYPES, PASSAGES, COLONNES,
+  BILLES, BONUS, TYPES, PASSAGES, COLONNES,
 };
