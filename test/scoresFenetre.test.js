@@ -102,9 +102,10 @@ test('la liste des classements est celle du bureau : ordre, libellés, sections'
     // Club (/api/club/records), où RANKINGS les garde.
     // L'ordre est celui du bureau : kikooz (rk '9'), le CHAMPIONNAT de
     // Frutibandas (rk '7' — le light n'en servait pas, sa section était donc
-    // amputée d'une ligne), le TOURNOI de Frutisnake (rk '16'), puis les deux
-    // classements « joueur » que main.swf ajoute lui-même à la liste reçue.
-    'Class. kikooz', 'Frutibandas', 'Snake tournoi',
+    // amputée d'une ligne), le CHAMPIONNAT de Frutisnake (rk '18', le Battle
+    // en ligne noté à l'Elo), le TOURNOI de Frutisnake (rk '16'), puis les
+    // deux classements « joueur » que main.swf ajoute lui-même à la liste reçue.
+    'Class. kikooz', 'Frutibandas', 'Frutisnake', 'Snake tournoi',
     'Classement XP', 'Class. consécration',
   ], 'la section Championnat : la même que celle du bureau, sans les Concours');
 

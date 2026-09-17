@@ -275,25 +275,27 @@ test('le bot voit le mur venir et tourne ; à niveau 1, il tient plus de vingt s
 
 function pont(opts) {
   let now = 0;
-  const streaks = [];
+  const notes = [];                    // ce que l'hôte persisterait (onChampion)
   const net = new SnakeNet(Object.assign({
     clock: () => now, rng: graine(5), objets: false,
-    onStreak: (u, s, i) => streaks.push([u, s, i.series]),
+    onChampion: (u, f, i) => notes.push([u, f.ls[0], i.delta, i.resultat]),
   }, opts || {}));
   const jusqua = (t) => { let out = []; while (now < t) { now += 25; out = out.concat(net.tick(now)); } return out; };
-  return { net, streaks, jusqua, horloge: () => now };
+  return { net, notes, jusqua, horloge: () => now };
 }
 const attr = (xml, k) => { const m = new RegExp(' ' + k + '="([^"]*)"').exec(xml); return m ? m[1] : null; };
 const de = (msgs, u, e) => msgs.filter((m) => m.to.indexOf(u) >= 0 && attr(m.xml, 'e') === e);
 
-test('hello → salon (bots compris, série seedée) ; seek des deux côtés → start avec les files entières', () => {
-  const { net } = pont({ getStreak: (u) => (u === 'a' ? 4 : 0) });
+test('hello → salon (bots compris, note lue chez l’hôte) ; seek des deux côtés → start avec les files entières', () => {
+  const { net } = pont({ getChampion: (u) => (u === 'a' ? { linit: true, l: [3, 1, 0], ls: [1080, 1000, 1080] } : null) });
   let out = net.handle('a', { a: 'hello', n: 'Alice', f: 'FB' });
   assert.strictEqual(de(out, 'a', 'lobby').length, 1);
   const lobby = out[0].xml;
-  assert.ok(/<pl u="a" n="Alice" s="idle" f="FB" sr="4" bot="0"\/>/.test(lobby), lobby);
+  assert.ok(/<pl u="a" n="Alice" s="idle" f="FB" no="1080" pj="4" bot="0"\/>/.test(lobby), lobby);
   assert.ok(/bot="1"/.test(lobby), 'les bots sont présents');
+  assert.ok(/u="sifflet" [^>]*no="0" pj="0" bot="1"/.test(lobby), 'un bot n’a pas de note');
   net.handle('b', { a: 'hello', n: 'Bob' });
+  assert.ok(/<pl u="b" n="Bob" s="idle" f="" no="1000" pj="0" bot="0"\/>/.test(net._lobbyXml()), 'un nouveau part à 1000');
   out = net.handle('a', { a: 'seek' });
   assert.strictEqual(de(out, 'a', 'start').length, 0);
   assert.ok(/u="a" n="Alice" s="waiting"/.test(de(out, 'a', 'lobby')[0].xml));
@@ -302,7 +304,8 @@ test('hello → salon (bots compris, série seedée) ; seek des deux côtés →
   assert.strictEqual(start.length, 1);
   assert.deepStrictEqual(start[0].to, ['a', 'b']);
   assert.strictEqual(attr(start[0].xml, 'ph'), 'compte');
-  assert.ok(/<p u="a" n="Alice" e="0" f="FB" sr="4"\/>/.test(start[0].xml));
+  assert.strictEqual(attr(start[0].xml, 'cl'), '1', 'entre humains : la note est en jeu');
+  assert.ok(/<p u="a" n="Alice" e="0" f="FB" no="1080"\/>/.test(start[0].xml));
   assert.ok(/<s i="0" [^>]*file="10,60 10,60/.test(start[0].xml), 'la file entière voyage au départ');
   assert.ok(/u="a" n="Alice" s="playing"/.test(de(out, 'b', 'lobby')[0].xml));
 });
@@ -324,8 +327,8 @@ test('le tick pousse un état par pas aux deux joueurs, sans les joueurs dedans,
   assert.strictEqual(net.handle('zz', { a: 'input', g: '1' })[0].xml, '<sb e="err" m="not-in-game"/>');
 });
 
-test('la fin : end aux deux, le vainqueur monte d’une série, le perdant retombe à zéro — et cela se classe', () => {
-  const { net, streaks, jusqua } = pont({ getStreak: (u) => (u === 'b' ? 2 : 0) });
+test('la fin : end aux deux, les deux notes bougent à l’Elo (placement : ±24 entre égaux) — et cela se classe', () => {
+  const { net, notes, jusqua } = pont();
   net.handle('a', { a: 'hello', n: 'A' }); net.handle('b', { a: 'hello', n: 'B' });
   net.handle('a', { a: 'challenge', u: 'b' });
   jusqua(4500);
@@ -335,39 +338,66 @@ test('la fin : end aux deux, le vainqueur monte d’une série, le perdant retom
   assert.strictEqual(fin.length, 1);
   assert.strictEqual(attr(fin[0].xml, 'w'), '1');
   assert.strictEqual(attr(fin[0].xml, 'r'), 'collision');
-  assert.ok(/<p u="b" n="B" e="1" f="" sr="3"\/>/.test(fin[0].xml), 'la série de b, à jour, voyage avec la fin');
-  assert.deepStrictEqual(streaks, [['b', 3, 3], ['a', 0, 0]], 'zéro compte : la série nulle de a se classe');
+  // Deux notes de 1000 en placement (K = 48) : le gagnant prend 24, le
+  // perdant les rend. La fin porte la note à jour ET l'écart.
+  assert.ok(/<p u="b" n="B" e="1" f="" no="1024" dn="24"\/>/.test(fin[0].xml), fin[0].xml);
+  assert.ok(/<p u="a" n="A" e="0" f="" no="976" dn="-24"\/>/.test(fin[0].xml), fin[0].xml);
+  assert.deepStrictEqual(notes, [['a', 976, -24, 'd'], ['b', 1024, 24, 'v']], 'l’hôte reçoit les deux fiches à persister');
+  assert.deepStrictEqual(net.ficheChampion('b').l, [1, 0, 0]);
+  // Une fiche neuve : minimum et maximum prennent la valeur du jour (la règle
+  // de FruticardSlot.setLeagueScore, reprise par elo.js).
+  assert.deepStrictEqual(net.ficheChampion('a').ls, [976, 976, 976], 'note, minimum, maximum');
   assert.strictEqual(net.lobby.getPlayer('a').status, 'idle');
   assert.deepStrictEqual(Object.keys(net.sessions), []);
+  assert.ok(/u="b" [^>]*no="1024" pj="1"/.test(net._lobbyXml()), 'le salon montre la note à jour');
 });
 
-test('abandon (part) et déconnexion en partie : l’autre gagne, la série close ; un défi sur bot compte', () => {
-  const { net, streaks, jusqua } = pont();
+test('abandon (part) et déconnexion valent une défaite ; un bot ne vaut rien (entraînement)', () => {
+  const { net, notes, jusqua } = pont();
   net.handle('a', { a: 'hello', n: 'A' }); net.handle('b', { a: 'hello', n: 'B' });
   net.handle('a', { a: 'challenge', u: 'b' });
   jusqua(500);
   let out = net.handle('b', { a: 'part' });
   assert.strictEqual(attr(de(out, 'a', 'end')[0].xml, 'r'), 'forfeit');
-  assert.deepStrictEqual(streaks.splice(0), [['a', 1, 1], ['b', 0, 0]]);
-  // Rebattre b ne compte pas deux fois dans la même série (anti-complice)…
-  net.handle('a', { a: 'challenge', u: 'b' });
-  net.handle('b', { a: 'part' });
-  assert.deepStrictEqual(streaks.splice(0), [['b', 0, 0]]);
-  assert.strictEqual(net.streaks.a, 1);
-  // …mais un bot, si.
+  assert.deepStrictEqual(notes.splice(0), [['a', 1024, 24, 'v'], ['b', 976, -24, 'd']]);
+  // Contre un bot : la partie se joue, mais rien ne bouge — et la fin le dit.
   out = net.handle('a', { a: 'challenge', u: 'sifflet' });
   assert.strictEqual(de(out, 'a', 'start').length, 1);
+  assert.strictEqual(attr(de(out, 'a', 'start')[0].xml, 'cl'), '0', 'un entraînement');
   const sess = net.sessions[net.lobby.getPlayer('a').gameId];
   sess.forfeit('sifflet');
-  jusqua(net.clock() + 50);
-  assert.strictEqual(net.streaks.a, 2);
-  assert.deepStrictEqual(streaks.splice(0), [['a', 2, 2]]);
-  // Déconnexion en partie → abandon.
+  out = jusqua(net.clock() + 50);
+  const finBot = de(out, 'a', 'end')[0].xml;
+  assert.strictEqual(attr(finBot, 'cl'), '0');
+  assert.ok(finBot.indexOf('dn=') < 0, 'pas d’écart : rien n’a bougé');
+  assert.deepStrictEqual(notes.splice(0), []);
+  assert.strictEqual(net.ficheChampion('a').ls[0], 1024);
+  // Déconnexion en partie → défaite du parti, et sa fiche s'oublie (relue au retour).
   net.handle('a', { a: 'challenge', u: 'b' });
   out = net.onDisconnect('a');
   assert.strictEqual(attr(de(out, 'b', 'end')[0].xml, 'w'), '1');
-  assert.deepStrictEqual(streaks.splice(0), [['b', 1, 1], ['a', 0, 2]]);
+  const [pa, pb] = notes.splice(0);
+  assert.strictEqual(pa[0], 'a'); assert.strictEqual(pa[3], 'd'); assert.ok(pa[2] < 0);
+  assert.strictEqual(pb[0], 'b'); assert.strictEqual(pb[3], 'v'); assert.ok(pb[2] > 0);
   assert.strictEqual(net.lobby.getPlayer('a'), null);
+  assert.strictEqual(net.champions.a, undefined, 'la fiche du parti n’encombre plus la mémoire');
+});
+
+test('une égalité — les deux têtes tombent au même pas — vaut un demi-point à chacun', () => {
+  const { net, notes } = pont({ getChampion: (u) => (u === 'a' ? { linit: true, l: [20, 0, 0], ls: [1200, 1000, 1200] } : null) });
+  net.handle('a', { a: 'hello', n: 'A' }); net.handle('b', { a: 'hello', n: 'B' });
+  net.handle('a', { a: 'challenge', u: 'b' });
+  const sess = net.sessions[net.lobby.getPlayer('a').gameId];
+  sess._finir(-1, 'draw');
+  const out = net.tick(net.clock() + 25);
+  const fin = de(out, 'a', 'end')[0].xml;
+  assert.strictEqual(attr(fin, 'w'), '-1');
+  // Le mieux noté (1200, établi, K = 32) attendait mieux qu'une nulle : il
+  // perd ; le débutant (placement, K = 48) gagne.
+  const [na, nb] = notes;
+  assert.strictEqual(na[3], 'n'); assert.ok(na[2] < 0, 'A rend des points : ' + na[2]);
+  assert.strictEqual(nb[3], 'n'); assert.ok(nb[2] > 0, 'B en gagne : ' + nb[2]);
+  assert.ok(/u="a" [^>]*dn="-\d+"/.test(fin) && /u="b" [^>]*dn="\d+"/.test(fin));
 });
 
 test('le bot joue seul contre un humain ; la reprise (hello en partie) renvoie l’état entier', () => {
@@ -386,11 +416,11 @@ test('le bot joue seul contre un humain ; la reprise (hello en partie) renvoie l
   assert.strictEqual(attr(start[0].xml, 'ph'), 'jeu');
 });
 
-test('le portillon de formation peut refuser un match entre humains (no-fd / opp-no-fd)', () => {
+test('le portillon de formation peut refuser un match entre humains (refus / opp-refus)', () => {
   const { net } = pont({ onMatchForming: (humans) => ({ ok: false, blocked: ['b'] }) });
   net.handle('a', { a: 'hello', n: 'A' }); net.handle('b', { a: 'hello', n: 'B' });
   const out = net.handle('a', { a: 'challenge', u: 'b' });
-  assert.strictEqual(de(out, 'a', 'err')[0].xml, '<sb e="err" m="opp-no-fd"/>');
-  assert.strictEqual(de(out, 'b', 'err')[0].xml, '<sb e="err" m="no-fd"/>');
+  assert.strictEqual(de(out, 'a', 'err')[0].xml, '<sb e="err" m="opp-refus"/>');
+  assert.strictEqual(de(out, 'b', 'err')[0].xml, '<sb e="err" m="refus"/>');
   assert.strictEqual(net.lobby.getPlayer('a').status, 'idle');
 });

@@ -121,7 +121,7 @@ class Menu {
       const y = m.y + C.HEIGHT / 2 - 50;
       // Le cxform de Menu.main : multiplicateurs (p, p·0.6+0.4, p) — la
       // pastille s'assombrit vers le fond (et s'éteint à moitié si inactive).
-      // La pastille 10 (le Battle EN LIGNE) n'est pas dans le SWF : c'est
+      // La pastille 10 (le CHAMPIONNAT en ligne) n'est pas dans le SWF : c'est
       // celle du Battle (2), avec son étiquette dessinée par-dessus.
       const frame = m.id === 10 ? 2 : m.id;
       const r = D.rendreMultiplie('menu', frame, s, p, p * 0.6 + 0.4, p);
@@ -138,12 +138,12 @@ class Menu {
         ctx.lineWidth = 10;
         ctx.strokeStyle = '#1f4a06';
         ctx.fillStyle = '#ffe36b';
-        ctx.strokeText('EN LIGNE', 0, 120);
-        ctx.fillText('EN LIGNE', 0, 120);
+        ctx.strokeText('CHAMPIONNAT', 0, 120);
+        ctx.fillText('CHAMPIONNAT', 0, 120);
         ctx.font = 'bold 26px Verdana, sans-serif';
         ctx.lineWidth = 8;
-        ctx.strokeText('1 contre 1', 0, 154);
-        ctx.fillText('1 contre 1', 0, 154);
+        ctx.strokeText('1 contre 1 en ligne', 0, 154);
+        ctx.fillText('1 contre 1 en ligne', 0, 154);
       }
       ctx.restore();
     }

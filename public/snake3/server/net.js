@@ -1,9 +1,9 @@
 //
 // Frutisnake Battle en ligne — le pont réseau (la « cervelle » côté serveur).
 //
-// Le modèle de Grapiz et de Frutibandas : ce module possède le salon
-// (lobby.js), les sessions de bataille (session.js), les SÉRIES de victoires
-// et les bots, et traduit chaque action d'un client en une liste de messages
+// Le modèle de Frutibandas : ce module possède le salon (lobby.js), les
+// sessions de bataille (session.js), les NOTES du championnat et les bots, et
+// traduit chaque action d'un client en une liste de messages
 // { to:[usernames], xml } que le transport (server.js) enverra. Aucune
 // socket ici → entièrement testable. L'identité d'un joueur = son username.
 //
@@ -16,22 +16,26 @@
 // deux joueurs. Un client n'envoie que ses touches (`input`), quand elles
 // changent.
 //
-// LA SÉRIE — le gros nombre doré de Grapiz et de Bandas : des victoires
-// d'affilée. Battre un adversaire la fait monter (chaque humain ne compte
-// qu'une fois par série — anti-complice ; un bot compte à chaque fois, le
-// serveur le tient) ; perdre, abandonner ou se déconnecter la termine, et
-// sa longueur part au classement « Frutisnake - Battle » (onStreak, zéro
-// compris). Une égalité — les deux têtes tombent au même pas — ne change
-// rien pour personne.
+// LE CHAMPIONNAT — la note d'Elo du Championnat de Frutibandas (elo.js, le
+// même module : placement rapide, plancher à 100). Chaque partie entre deux
+// HUMAINS fait bouger les deux notes, égalité comprise (les deux têtes qui
+// tombent au même pas valent un demi-point chacune) ; l'abandon et la
+// déconnexion valent une défaite. La note part au classement « Frutisnake -
+// Championnat » (onChampion). Un bot n'a pas de note : une partie contre lui
+// est un ENTRAÎNEMENT, elle ne compte pas — sinon un adversaire toujours
+// disponible ferait un distributeur d'Elo.
 //
 (function (root, factory) {
   var L = (typeof require !== "undefined") ? require("./lobby.js") : (root.SnakeBattle && root.SnakeBattle.lobby);
   var S = (typeof require !== "undefined") ? require("./session.js") : (root.SnakeBattle && root.SnakeBattle.session);
   var B = (typeof require !== "undefined") ? require("./bot.js") : (root.SnakeBattle && root.SnakeBattle.bot);
-  var api = factory(L, S, B);
+  // La note du championnat : celle de Frutibandas, le même Elo pour les deux
+  // jeux (le module est pur et n'a rien de propre aux fruits).
+  var E = (typeof require !== "undefined") ? require("../../bandas/server/elo.js") : (root.Bandas && root.Bandas.elo);
+  var api = factory(L, S, B, E);
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else (root.SnakeBattle = root.SnakeBattle || {}).net = api;
-})(typeof self !== "undefined" ? self : this, function (L, S, Bot) {
+})(typeof self !== "undefined" ? self : this, function (L, S, Bot, E) {
   "use strict";
 
   function esc(s) {
@@ -48,16 +52,15 @@
     { id: "viperine", name: "Vipérine", fb: "0006010Y040N0L0000000000" },
   ];
 
-  // opts : { clock?, rng?, withBots?, objets?, onResult?, getStreak?, onStreak?,
-  //          onMatchForming?, onDiscLost?, onDefi?, botIdentity? }
+  // opts : { clock?, rng?, withBots?, objets?, onResult?, getChampion?,
+  //          onChampion?, onMatchForming?, onDefi?, botIdentity? }
   function SnakeNet(opts) {
     opts = opts || {};
     this.lobby = new L.SnakeLobby();
     this.sessions = {};                 // gameId → SnakeBattleSession
     this.names = {};                    // username → nom affiché
     this.bouilles = {};                 // username → frutibouille
-    this.streaks = {};                  // username → série EN COURS
-    this._beaten = {};                  // username → { adversaire: true } battus pendant la série
+    this.champions = {};                // username → fiche Championnat (elo.js : { linit, l, ls })
     this.bots = {};                     // username → true
     this._botNeuf = {};
     this._botEtats = {};                // gameId → { bot: état de décision }
@@ -65,14 +68,33 @@
     this._rng = opts.rng || Math.random;
     this.objets = opts.objets;          // surcharge des objets (tests)
     this.onResult = opts.onResult || function () {};
-    this.getStreak = opts.getStreak || null;
-    this.onStreak = opts.onStreak || null;
+    // CHAMPIONNAT. Deux hooks, absents en tests purs (la note vit alors en
+    // mémoire, à 1000 au départ) :
+    //   • getChampion(username) → la fiche persistée { linit, l, ls } ;
+    //   • onChampion(username, fiche, { adversaire, avant, apres, delta,
+    //     resultat }) → à persister + classer.
+    this.getChampion = opts.getChampion || null;
+    this.onChampion = opts.onChampion || null;
+    // onMatchForming(humains, { hasBot }) : l'hôte allume le voyant de jeu de
+    // chaque humain ; { ok:false, blocked:[…] } refuserait le match.
     this.onMatchForming = opts.onMatchForming || null;
-    this.onDiscLost = opts.onDiscLost || null;
     this.onDefi = opts.onDefi || null;
     this.botIdentity = opts.botIdentity || null;
     if (opts.withBots !== false) this._registerBots();
   }
+
+  // La fiche Championnat d'un joueur, chargée à la demande auprès de l'hôte.
+  SnakeNet.prototype.ficheChampion = function (username) {
+    if (!this.champions[username]) {
+      var brut = null;
+      if (this.getChampion) { try { brut = this.getChampion(username); } catch (e) { brut = null; } }
+      this.champions[username] = E.fiche(brut);
+    }
+    return this.champions[username];
+  };
+  SnakeNet.prototype._note = function (username) {
+    return this.bots[username] ? 0 : this.ficheChampion(username).ls[0];
+  };
 
   // ── Les bots empruntent une tête au Bouilloscope (cf. Grapiz) ─────────────
   SnakeNet.prototype._refreshBotIdentities = function () {
@@ -102,7 +124,6 @@
       self.bots[b.id] = true;
       self.names[b.id] = b.name;
       self.bouilles[b.id] = b.fb;
-      self.streaks[b.id] = 0;
       self._botNeuf[b.id] = true;
       self.lobby.addPlayer(b.id, b.name);
     });
@@ -113,9 +134,10 @@
   SnakeNet.prototype._lobbyXml = function () {
     var self = this;
     var players = this.lobby.listPlayers().map(function (p) {
+      var f = self.bots[p.id] ? null : self.ficheChampion(p.id);
       return '<pl u="' + esc(p.id) + '" n="' + esc(p.name || p.id) + '" s="' + esc(p.status) +
-        '" f="' + esc(self.bouilles[p.id] || "") + '" sr="' + (self.streaks[p.id] || 0) +
-        '" bot="' + (self.bots[p.id] ? 1 : 0) + '"/>';
+        '" f="' + esc(self.bouilles[p.id] || "") + '" no="' + (f ? f.ls[0] : 0) +
+        '" pj="' + (f ? E.parties(f) : 0) + '" bot="' + (self.bots[p.id] ? 1 : 0) + '"/>';
     }).join("");
     return '<sb e="lobby">' + players + "</sb>";
   };
@@ -126,9 +148,14 @@
     var snap = session.snapshot(full);
     // Les joueurs ne voyagent qu'au départ et à la fin : ils ne changent pas
     // entre deux pas, et quarante fois par seconde, chaque octet compte.
+    // `no` : la note ; à la fin d'une partie classée, `dn` dit de combien
+    // elle vient de bouger. `cl="0"` sur l'enveloppe : un entraînement contre
+    // un bot, qui ne compte pas.
     var pls = snap.players.map(function (p) {
+      var mv = session._elo && session._elo[p.id];
       return '<p u="' + esc(p.id) + '" n="' + esc(p.name) + '" e="' + p.team +
-        '" f="' + esc(p.fb || "") + '" sr="' + (self.streaks[p.id] || 0) + '"/>';
+        '" f="' + esc(p.fb || "") + '" no="' + self._note(p.id) + '"' +
+        (mv ? ' dn="' + mv.delta + '"' : "") + '/>';
     }).join("");
     var srp = snap.serpents.map(function (s) {
       var a = '<s i="' + s.team + '" x="' + n1(s.x) + '" y="' + n1(s.y) + '" a="' + n3(s.ang) +
@@ -147,7 +174,7 @@
     var ex = snap.explosions.map(function (e) { return '<ex x="' + e.x + '" y="' + e.y + '"/>'; }).join("");
     var mg = snap.manges.map(function (m) { return '<mg i="' + m.id + '" e="' + m.e + '"/>'; }).join("");
     return '<sb e="' + evt + '" g="' + esc(snap.id) + '" ph="' + snap.phase + '" cd="' + n3(snap.compte) +
-      '" n="' + snap.numero + '" t="' + n3(snap.temps) + '"' +
+      '" n="' + snap.numero + '" t="' + n3(snap.temps) + '" cl="' + (session._classe ? 1 : 0) + '"' +
       (snap.ended ? ' end="1" w="' + snap.winner + '" r="' + esc(snap.endReason) + '"' : "") +
       ">" + (evt === "state" ? "" : pls) + srp + obj + ex + mg + "</sb>";
   };
@@ -165,19 +192,17 @@
   SnakeNet.prototype._startSession = function (game) {
     var self = this;
     var humans = game.players.filter(function (uid) { return !self.bots[uid]; });
-    var fdRanked = null;
+    var hasBot = humans.length !== game.players.length;
     if (humans.length && this.onMatchForming) {
-      var hasBot = humans.length !== game.players.length;
       var chk;
       try { chk = this.onMatchForming(humans, { hasBot: hasBot, playerCount: game.players.length }); } catch (e) { chk = null; }
       if (chk && chk.ok === false) {
         this.lobby.endGame(game.id);
         var blocked = (chk.blocked && chk.blocked.length) ? chk.blocked : humans;
         return game.players.map(function (uid) {
-          return { to: [uid], xml: '<sb e="err" m="' + (blocked.indexOf(uid) >= 0 ? "no-fd" : "opp-no-fd") + '"/>' };
+          return { to: [uid], xml: '<sb e="err" m="' + (blocked.indexOf(uid) >= 0 ? "refus" : "opp-refus") + '"/>' };
         });
       }
-      fdRanked = (chk && chk.ranked) || null;
     }
     var players = game.players.map(function (uid) {
       return { id: uid, name: self.names[uid] || uid, fb: self.bouilles[uid] || "" };
@@ -185,62 +210,44 @@
     var sess = new S.SnakeBattleSession({ id: game.id, players: players, now: this.clock(), rng: this._rng, objets: this.objets });
     sess._botSkill = {};
     game.players.forEach(function (uid) {
-      if (self.bots[uid]) {
-        sess._botSkill[uid] = BOT_SKILL.lo + self._rng() * (BOT_SKILL.hi - BOT_SKILL.lo);
-        self.streaks[uid] = Math.floor(self._rng() * 9);    // série « vitrine » (non classée)
-      }
+      if (self.bots[uid]) sess._botSkill[uid] = BOT_SKILL.lo + self._rng() * (BOT_SKILL.hi - BOT_SKILL.lo);
     });
-    sess._fdRanked = fdRanked;
+    sess._classe = !hasBot;              // entre humains : la note est en jeu
+    sess._elo = null;
     this.sessions[game.id] = sess;
     this._botEtats[game.id] = {};
     return [{ to: game.players.slice(), xml: this._stateXml(sess, "start", true) }];
   };
 
-  // ── Les séries (le modèle de Grapiz) ──────────────────────────────────────
-  SnakeNet.prototype._updateStreaks = function (session) {
-    if (session.winner == null || session.winner < 0 || session.players.length !== 2) return;
-    var win = session.playerOfTeam(session.winner);
-    var lose = session.players.filter(function (p) { return p.team !== session.winner; })[0];
-    if (!win || !lose) return;
-    if (this.bots[win.id] && this.bots[lose.id]) return;
-    var ranked = session._fdRanked || null;
-    var winRanked = !this.bots[win.id] && (!ranked || ranked[win.id] !== false);
-    var loseRanked = !this.bots[lose.id] && (!ranked || ranked[lose.id] !== false);
-
-    if (this.bots[win.id]) {
-      this.streaks[win.id] = (this.streaks[win.id] || 0) + 1;
-    } else if (winRanked) {
-      var counts;
-      if (this.bots[lose.id]) counts = true;
-      else {
-        var beaten = this._beaten[win.id] || (this._beaten[win.id] = {});
-        counts = !beaten[lose.id];
-        if (counts) beaten[lose.id] = true;
-      }
-      if (counts) {
-        var ws = (this.streaks[win.id] || 0) + 1;
-        this.streaks[win.id] = ws;
-        this._fireStreak(win.id, ws, ws);
-      }
-    }
-    if (this.bots[lose.id]) {
-      this.streaks[lose.id] = 0;
-    } else if (loseRanked) {
-      var ended = this.streaks[lose.id] || 0;
-      this.streaks[lose.id] = 0;
-      this._beaten[lose.id] = {};
-      this._fireStreak(lose.id, 0, ended);
-      if (this.onDiscLost) { try { this.onDiscLost(lose.id); } catch (e) {} }
+  // ── Le championnat ─────────────────────────────────────────────────────────
+  // La note de chacun bouge, égalité comprise. Les deux notes sont relevées
+  // AVANT d'être modifiées : sinon le second joueur serait évalué contre la
+  // note déjà corrigée du premier. Rien ne bouge contre un bot.
+  SnakeNet.prototype._updateElo = function (session) {
+    if (!session._classe || session.players.length !== 2) return;
+    var a = session.playerOfTeam(0), b = session.playerOfTeam(1);
+    if (!a || !b || this.bots[a.id] || this.bots[b.id]) return;
+    var nul = session.winner == null || session.winner < 0;
+    var issues = nul ? ["n", "n"] : (session.winner === 0 ? ["v", "d"] : ["d", "v"]);
+    var fa = this.ficheChampion(a.id), fb = this.ficheChampion(b.id);
+    var na = fa.ls[0], nb = fb.ls[0];
+    session._elo = {};
+    this._appliquerElo(session, a.id, fa, nb, issues[0], b.id);
+    this._appliquerElo(session, b.id, fb, na, issues[1], a.id);
+  };
+  SnakeNet.prototype._appliquerElo = function (session, user, avant, noteAdverse, resultat, adversaire) {
+    var r = E.apres(avant, noteAdverse, resultat);
+    this.champions[user] = r.fiche;
+    var info = { adversaire: adversaire, avant: avant.ls[0], apres: r.fiche.ls[0], delta: r.delta, resultat: resultat };
+    session._elo[user] = info;
+    if (this.onChampion) {
+      try { this.onChampion(user, r.fiche, info); } catch (e) { /* la partie prime sur la persistance */ }
     }
   };
-  SnakeNet.prototype._fireStreak = function (user, streak, series) {
-    if (this.bots[user]) return;
-    if (this.onStreak) { try { this.onStreak(user, streak, { series: series }); } catch (e) {} }
-  };
 
-  // Conclut : séries → état final → hook → libère le salon.
+  // Conclut : notes → état final (notes et écarts à jour) → hook → libère.
   SnakeNet.prototype._concludeGame = function (session) {
-    this._updateStreaks(session);
+    this._updateElo(session);
     var msgs = [{ to: this._ids(session), xml: this._stateXml(session, "end") }];
     try { this.onResult(session, session.winner, session.endReason); } catch (e) {}
     this._retireBots(session);
@@ -265,8 +272,8 @@
       case "hello": {
         this.names[username] = attrs.n || username;
         if (attrs.f) this.bouilles[username] = attrs.f;
-        if (this.getStreak && this.streaks[username] === undefined) { try { this.streaks[username] = this.getStreak(username) || 0; } catch (e) {} }
         this.lobby.addPlayer(username, this.names[username]);
+        this.ficheChampion(username);   // charge la note pour le salon
         this._refreshBotIdentities();
         var out = this._lobbyBroadcast();
         // Reconnexion en pleine partie : l'état entier, files comprises.
@@ -323,21 +330,18 @@
     }
   };
 
-  // Déconnexion : abandon si en partie ; la série en cours prend fin.
+  // Déconnexion : abandon si en partie (une défaite, la note en pâtit). La
+  // fiche en mémoire est oubliée : la prochaine venue la relira chez l'hôte.
   SnakeNet.prototype.onDisconnect = function (username) {
     var rm = this.lobby.removePlayer(username);
-    if (!rm || !rm.ok) { delete this.streaks[username]; delete this._beaten[username]; return []; }
+    if (!rm || !rm.ok) { delete this.champions[username]; return []; }
+    var out;
     if (rm.playingGameId && this.sessions[rm.playingGameId]) {
       this.sessions[rm.playingGameId].forfeit(username);
-      var out = this._concludeGame(this.sessions[rm.playingGameId]);
-      delete this.streaks[username];
-      delete this._beaten[username];
-      return out;
-    }
-    if ((this.streaks[username] || 0) > 0) this._fireStreak(username, 0, this.streaks[username]);
-    delete this.streaks[username];
-    delete this._beaten[username];
-    return this._lobbyBroadcast();
+      out = this._concludeGame(this.sessions[rm.playingGameId]);
+    } else out = this._lobbyBroadcast();
+    delete this.champions[username];
+    return out;
   };
 
   // ── Le tick : quarante fois par seconde ───────────────────────────────────

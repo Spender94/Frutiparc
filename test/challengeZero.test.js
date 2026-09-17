@@ -111,13 +111,12 @@ test('un zéro s’affiche et se classe dans les deux tableaux', async () => {
 test('la règle est portée par le classement, pas par tous', () => {
   const SERVEUR = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 
-  // Le drapeau sur les trois SÉRIES de victoires — Bandas, Grapiz, et le
-  // Battle en ligne de Frutisnake, du même modèle — et nulle part ailleurs.
+  // Le drapeau sur les deux challenges concernés, et nulle part ailleurs.
+  // (Le championnat de Frutisnake, lui, est une note d'Elo : pas une série.)
   assert.match(SERVEUR, /bandas_challenge:.*classeAZero: true/);
   assert.match(SERVEUR, /grapiz_challenge:.*classeAZero: true/);
-  assert.match(SERVEUR, /snake3_battle:.*classeAZero: true/);
   const porteurs = (SERVEUR.match(/^\s+\w+:\s+\{ name:.*classeAZero: true/gm) || []).length;
-  assert.equal(porteurs, 3, 'trois classements le portent, pas un de plus');
+  assert.equal(porteurs, 2, 'deux classements le portent, pas un de plus');
 
   // `persistScore` écrit la première ligne quand le classement le demande.
   assert.match(SERVEUR,

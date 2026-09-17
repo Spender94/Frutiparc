@@ -1,10 +1,11 @@
 /*
- * Frutisnake — le BATTLE EN LIGNE : un contre un, sur le modèle de Grapiz et
- * de Frutibandas (le salon, les défis, la série de victoires).
+ * Frutisnake — le CHAMPIONNAT EN LIGNE : le Battle à deux, un contre un, sur
+ * le modèle du Championnat de Frutibandas (le salon, les défis, la note
+ * d'Elo qui monte et descend à chaque partie entre humains).
  *
  * Deux vues, et un fil (reseau.js) qui leur survit :
  *
- *   · le SALON (VueSalon) — la liste des joueurs présents avec leur série,
+ *   · le SALON (VueSalon) — la liste des joueurs présents avec leur note,
  *     « Chercher un adversaire » (le premier qui attend est apparié au
  *     suivant qui cherche) et « Défier » (la partie part sur-le-champ, comme
  *     à Grapiz). Le salon est un panneau HTML posé sur la scène : une liste
@@ -76,7 +77,8 @@ function controleur(jeu) {
       if (e === 'lobby') {
         this.joueurs = [...el.getElementsByTagName('pl')].map((n) => ({
           u: n.getAttribute('u'), n: n.getAttribute('n'), s: n.getAttribute('s'),
-          sr: Number(n.getAttribute('sr')) || 0, bot: n.getAttribute('bot') === '1',
+          no: Number(n.getAttribute('no')) || 0, pj: Number(n.getAttribute('pj')) || 0,
+          bot: n.getAttribute('bot') === '1',
         }));
       }
       if (e === 'start') {
@@ -127,7 +129,7 @@ class VueSalon {
       if (texte != null) e.textContent = texte;
       return e;
     };
-    this.$titre = el('div', 'sl-titre', 'Battle en ligne — 1 contre 1');
+    this.$titre = el('div', 'sl-titre', 'Championnat en ligne — 1 contre 1');
     this.$serie = el('div', 'sl-serie', '');
     this.$etat = el('div', 'sl-etat', this.ctl.etat);
     this.$chercher = el('button', 'sl-btn sl-chercher', 'Chercher un adversaire');
@@ -195,10 +197,11 @@ class VueSalon {
     const enAttente = !!(moi && moi.s === 'waiting');
     this.$chercher.textContent = enAttente ? 'Annuler la recherche…' : 'Chercher un adversaire';
     this.$chercher.classList.toggle('sl-attend', enAttente);
-    this.$serie.textContent = moi ? ('Ta série : ' + moi.sr + (moi.sr > 1 ? ' victoires' : ' victoire')) : '';
+    this.$serie.textContent = moi ? ('Ta note : ' + moi.no + (moi.pj ? ' (' + moi.pj + (moi.pj > 1 ? ' parties)' : ' partie)') : ' (placement)')) : '';
     this.$liste.innerHTML = '';
     const ETAT = { idle: 'disponible', waiting: 'cherche un adversaire', playing: 'en partie' };
-    const tri = [...this.ctl.joueurs].sort((a, b) => (b.sr - a.sr) || a.n.localeCompare(b.n));
+    // Les humains par note, les bots (sans note) à la fin.
+    const tri = [...this.ctl.joueurs].sort((a, b) => (Number(a.bot) - Number(b.bot)) || (b.no - a.no) || a.n.localeCompare(b.n));
     for (const j of tri) {
       const ligne = document.createElement('button');
       ligne.type = 'button';
@@ -208,7 +211,7 @@ class VueSalon {
       nom.textContent = j.n + (j.bot ? ' 🤖' : '');
       const serie = document.createElement('span');
       serie.className = 'sl-sr';
-      serie.textContent = j.sr ? ('🔥 ' + j.sr) : '';
+      serie.textContent = j.bot ? 'entraînement' : String(j.no);
       const etat = document.createElement('span');
       etat.className = 'sl-statut';
       etat.textContent = (moi && j.u === moi.u) ? 'toi' : (ETAT[j.s] || j.s);
@@ -322,8 +325,10 @@ class VueBatailleEnLigne {
     if (!pls.length) return;
     this.joueurs = pls.map((p) => ({
       u: p.getAttribute('u'), n: p.getAttribute('n'), e: Number(p.getAttribute('e')),
-      sr: Number(p.getAttribute('sr')) || 0,
+      no: Number(p.getAttribute('no')) || 0,
+      dn: p.hasAttribute('dn') ? Number(p.getAttribute('dn')) : null,
     }));
+    this.classe = el.getAttribute('cl') !== '0';
     const moi = this.joueurs.find((j) => j.n === this.ctl.moi || j.u === (this.jeu.plateforme.pseudo || '').toLowerCase());
     this.monEquipe = moi ? moi.e : -1;
   }
@@ -416,13 +421,16 @@ class VueBatailleEnLigne {
     const moi = this.joueurs.find((j) => j.e === this.monEquipe);
     const autre = this.joueurs.find((j) => j.e !== this.monEquipe);
     let texte;
-    if (w < 0) texte = C.TXT_BATTLE_DRAW + '\nPersonne ne marque.';
+    if (w < 0) texte = C.TXT_BATTLE_DRAW;
     else if (w === this.monEquipe) {
       texte = 'Tu as gagné !' + (r === 'forfeit' ? '\n' + ((autre && autre.n) || 'Ton adversaire') + ' a abandonné.' : '');
-      if (moi) texte += '\nTa série : ' + moi.sr + (moi.sr > 1 ? ' victoires' : ' victoire');
-    } else {
-      texte = C.TXT_BATTLE_WIN(w);
-      if (moi) texte += '\nTa série s’arrête là.';
+    } else texte = C.TXT_BATTLE_WIN(w);
+    // La note : de combien elle vient de bouger — ou pourquoi elle n'a pas
+    // bougé (un entraînement contre un bot ne compte pas).
+    if (moi && moi.dn != null) {
+      texte += '\nTa note : ' + moi.no + ' (' + (moi.dn >= 0 ? '+' : '') + moi.dn + ')';
+    } else if (!this.classe) {
+      texte += '\nEntraînement : la note ne bouge pas.';
     }
     this.ecran = new J.Ecran(this.jeu, 'resultat', texte);
     if (w >= 0) this.ecran.panCouleur = w + 1;
@@ -512,7 +520,7 @@ class VueBatailleEnLigne {
       ctx.fillStyle = couleur;
       ctx.textAlign = j.e === 0 ? 'left' : 'right';
       const x = j.e === 0 ? 20 : C.WIDTH - 20;
-      ctx.fillText(j.n + (j.sr ? '  🔥 ' + j.sr : '') + (j.e === this.monEquipe ? '  (toi)' : ''), x, 48);
+      ctx.fillText(j.n + (j.no ? '  ' + j.no : '') + (j.e === this.monEquipe ? '  (toi)' : ''), x, 48);
     }
     ctx.restore();
 

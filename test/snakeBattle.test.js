@@ -5,8 +5,9 @@
  * API de raccourci : c'est le chemin qu'emprunte une vraie partie. Deux
  * joueurs se cherchent, la partie part avec les files entières, le serveur
  * pousse ses pas à quarante par seconde aux SEULES sockets du jeu, l'abandon
- * fait gagner l'autre, et la série close se classe — zéro compris — au
- * classement « Frutisnake - Battle », que le livre des records montre.
+ * fait gagner l'autre, et les deux notes d'Elo bougent — la fiche vit dans le
+ * slot 2 du disque snake3, la note au classement « Frutisnake - Championnat »,
+ * que le livre des records montre.
  */
 'use strict';
 
@@ -133,7 +134,7 @@ test('deux joueurs se cherchent, la partie part, le serveur pousse ses pas aux s
   assert.ok(B.sb().filter((m) => attr(m, 'e') === 'state').length >= 30);
   assert.strictEqual(chatA.sb().length, 0, 'la socket de chat ne reçoit rien du jeu');
 
-  // Les touches d'A, puis l'abandon de B : A gagne, sa série monte, B tombe à zéro.
+  // Les touches d'A, puis l'abandon de B : A gagne 24 points, B les rend (placement).
   A.envoyer('<sb a="input" g="1" d="0" h="0" />');
   B.envoyer('<sb a="part" />');
   await wait(600);
@@ -141,17 +142,30 @@ test('deux joueurs se cherchent, la partie part, le serveur pousse ses pas aux s
   assert.ok(finA && finB, 'la fin arrive aux deux');
   assert.strictEqual(attr(finA, 'w'), '0');
   assert.strictEqual(attr(finA, 'r'), 'forfeit');
-  assert.ok(finA.indexOf(`<p u="${joueur('kiwi')}" n="${joueur('kiwi')}" e="0" f="" sr="1"/>`) > 0, finA);
+  assert.ok(finA.indexOf(`<p u="${joueur('kiwi')}" n="${joueur('kiwi')}" e="0" f="" no="1024" dn="24"/>`) > 0, finA);
+  assert.ok(finA.indexOf(`<p u="${joueur('mangue')}" n="${joueur('mangue')}" e="1" f="" no="976" dn="-24"/>`) > 0, finA);
   assert.ok(/s="idle"/.test(A.dernier('lobby')), 'le salon a rendu les deux');
-  assert.ok(new RegExp(`u="${joueur('kiwi')}" [^>]*sr="1"`).test(A.dernier('lobby')), 'la série se voit au salon');
+  assert.ok(new RegExp(`u="${joueur('kiwi')}" [^>]*no="1024" pj="1"`).test(A.dernier('lobby')), 'la note se voit au salon');
 
-  // Le classement : le zéro de B compte, le un d'A aussi.
+  // Le classement : les deux notes, au livre des records.
   await wait(300);
   const l = await livre();
   assert.ok(l, 'snake3_battle au livre des records');
-  assert.strictEqual(l.name, 'Frutisnake - Battle');
-  assert.ok(l.scores.some((s) => s.user === joueur('kiwi')), 'A, un… pas encore : sa série court');
-  assert.ok(l.scores.some((s) => s.user === joueur('mangue') && s.score === 0), 'le zéro de B est classé');
+  assert.strictEqual(l.name, 'Frutisnake - Championnat');
+  assert.ok(l.scores.some((s) => s.user === joueur('kiwi') && s.score === 1024), 'la note d’A');
+  assert.ok(l.scores.some((s) => s.user === joueur('mangue') && s.score === 976), 'celle de B');
+  // La fiche vit dans le slot 2 du disque snake3 — victoires, défaites, nulles,
+  // note, minimum, maximum — sans toucher à la collection (slot 0).
+  const txt = await (await fetch(BASE + '/api/loadFrutiSlots?sid=' + sa + '&game=snake3')).text();
+  const slot2 = /(?:^|&)slot2=([^&]*)/.exec(txt);
+  assert.ok(slot2, 'le slot 2 est servi : ' + txt.slice(0, 80));
+  assert.deepStrictEqual(JSON.parse(decodeURIComponent(slot2[1])), { linit: true, l: [1, 0, 0], ls: [1024, 1024, 1024] });
+  // Une reconnexion relit la fiche chez l'hôte : la note tient.
+  A.fermer();
+  await wait(300);
+  const A2 = await connecter(joueur('kiwi'), sa);
+  assert.ok(new RegExp(`u="${joueur('kiwi')}" [^>]*no="1024" pj="1"`).test(A2.dernier('lobby')), 'la note revient avec le joueur');
+  A2.fermer();
 
   A.fermer(); B.fermer(); chatA.fermer();
   await wait(300);

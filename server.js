@@ -1568,10 +1568,6 @@ const RANKINGS = {
   // meilleur.
   bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L', classeAZero: true },
   grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L', classeAZero: true },
-  // Le BATTLE EN LIGNE de Frutisnake : le duel 1 contre 1 du light, sur le
-  // modèle des deux précédents — une série de victoires d'affilée, zéro
-  // compris (public/snake3/server/net.js → onStreak).
-  snake3_battle:      { name: 'Frutisnake - Battle',      game: 'snake3',   type: 'L', classeAZero: true },
   // Le CHAMPIONNAT de Frutibandas — la salle classée du jeu d'origine
   // (Main.CHAMPION_MODE = 2). Ce n'est pas un record mais une NOTE Elo, qui
   // monte et descend : elle s'écrit donc par fixerScore (écriture absolue) et
@@ -1579,6 +1575,10 @@ const RANKINGS = {
   // (section L côté clients → hors remise à zéro quotidienne) : un classement
   // qui s'effacerait chaque nuit ne serait plus un classement.
   bandas_champion:    { name: 'Frutibandas - Championnat', game: 'bandas',  type: 'L' },
+  // Le CHAMPIONNAT de Frutisnake — le Battle en ligne du light, 1 contre 1,
+  // noté à l'Elo comme celui de Frutibandas (le même elo.js). Permanent :
+  // pas de remise à zéro nocturne, la note vit avec le joueur.
+  snake3_battle:      { name: 'Frutisnake - Championnat', game: 'snake3',  type: 'L' },
   // ── Frutisnake Contest : le plus long serpent ────────────────────────────
   // Un classement à part, qui ne mesure pas le score mais la LONGUEUR maximale
   // atteinte pendant une partie. Trois différences volontaires avec les autres :
@@ -1628,9 +1628,6 @@ const LEGACY_RANKINGS = [
   // (section C) à bandas_challenge/grapiz_challenge.
   { rk: '5', internal: 'bandas_challenge', ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
   { rk: '6', internal: 'grapiz_challenge', ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
-  // Le Battle en ligne de Frutisnake : une série, comme les deux d'au-dessus
-  // (section C, remise à zéro quotidienne). gs='1', le gabarit de Frutisnake.
-  { rk: '18', internal: 'snake3_battle',   ty: 'point',       rn: 'Snake battle', gs: '1', g: 'snake3', section: 'C' },
   // Les deux PILOTES. gs='1' (le gabarit de colonnes de Frutisnake : un simple
   // score, sans colonne annexe) à dessein — les gabarits qui portent une
   // seconde colonne y logent une IMAGE chargée depuis /sd/<nom>.swf (le
@@ -1679,6 +1676,10 @@ const LEGACY_RANKINGS = [
   // là où le client d'époque l'attendait — rk '7', section L, rn 'Frutibandas'.
   // Grapiz garde son rk '8' à vide : son mode championnat n'est pas ouvert.
   { rk: '7', internal: 'bandas_champion',   ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
+  // Le CHAMPIONNAT de Frutisnake (le Battle en ligne du light), noté à l'Elo
+  // comme celui de Frutibandas : même section L. gs='1', le gabarit de
+  // Frutisnake (des points, sans colonne annexe).
+  { rk: '18', internal: 'snake3_battle',    ty: 'point',       rn: 'Frutisnake',   gs: '1', g: 'snake3', section: 'L' },
   { rk: '8', internal: null,                ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
   // Le TOURNOI de Frutisnake : le classement de la carte partagée. Il n'avait
   // d'onglet nulle part — on le lisait seulement au livre des records du Club,
@@ -23059,6 +23060,20 @@ app.get('/api/light/challenge', async (req, res) => {
     games.push(permanent('bandas_champion',
       nomBureau('bandas_champion', 'Frutibandas'), 'bandas', bd));
   } catch (e) { console.error('[LIGHT] bandas champion ranking error:', e.message); }
+  // Et le CHAMPIONNAT de Frutisnake (le Battle en ligne), noté à l'Elo comme
+  // celui de Frutibandas, à sa suite.
+  try {
+    const sn = [];
+    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+      const s = rlist && rlist.snake3_battle;
+      if (!s || !Number.isFinite(Number(s.score))) continue;
+      sn.push({ u, s: Number(s.score), at: s.updatedAt || '',
+        label: Number(s.score).toLocaleString('fr-FR') });
+    }
+    sn.sort(scoreComparator('snake3_battle'));
+    games.push(permanent('snake3_battle',
+      nomBureau('snake3_battle', 'Frutisnake'), 'snake3', sn));
+  } catch (e) { console.error('[LIGHT] snake3 champion ranking error:', e.message); }
   // Le TOURNOI de Frutisnake, à la même place que dans le tableau du bureau
   // (section Championnat, cf. son descripteur legacy rk '16') : le classement
   // de la carte partagée ne se lisait qu'au livre des records du Club.
@@ -27415,8 +27430,9 @@ setInterval(() => {
 }, 1000);
 
 // ─────────────────────────────────────────────
-// Frutisnake BATTLE EN LIGNE — pont multijoueur, même modèle que Grapiz et
-// Frutibandas : la cervelle (salon + sessions + bots + séries) vit dans
+// Frutisnake CHAMPIONNAT EN LIGNE (le Battle à deux) — pont multijoueur,
+// même modèle que Frutibandas : la cervelle (salon + sessions + bots + notes
+// d'Elo) vit dans
 // public/snake3/server/ (logique pure, testée) ; ici on route les messages
 // <sb> et on pousse les états aux sockets concernées.
 //
@@ -27436,23 +27452,57 @@ const snakeNet = new SnakeNet({
     console.log(`[snake3] battle ${session.id} terminé — équipe ${winner} gagne (${reason})`);
     for (const p of (session.players || [])) marquerFinDePartie(p.id);
   },
-  getStreak: (username) => (users[username] || {}).snakeBattleStreak || 0,
-  onStreak: (username, streak, info) => {
-    if (users[username]) users[username].snakeBattleStreak = streak;
-    // La série close part au classement « Frutisnake - Battle », zéro compris
-    // (classeAZero, comme Grapiz et Bandas).
-    if (info) persistScore(username, 'snake3_battle', Math.max(0, Number(info.series) || 0));
+  // CHAMPIONNAT : la fiche { linit, l, ls } vit dans le slot 2 du disque
+  // snake3 (les slots 0 et 1 sont la collection et les préférences du jeu ;
+  // le light ne relit ni n'écrit le 2), et sa note est recopiée au classement
+  // `snake3_battle` — c'est lui qui alimente le tableau des scores et le
+  // livre des records, et lui seul qui survit à un vidage de slot.
+  getChampion: (username) => snakeLireFicheChampion(username),
+  onChampion: (username, fiche, info) => {
+    snakeEcrireFicheChampion(username, fiche);
+    fixerScore(username, 'snake3_battle', fiche.ls[0]);
+    const signe = info.delta >= 0 ? '+' : '';
+    console.log(`[snake3] championnat ${username} ${info.avant} → ${info.apres}`
+      + ` (${signe}${info.delta}) contre ${info.adversaire}`);
   },
   // Pas de portillon FD ici : les disques de Frutisnake sont ceux du
-  // Challenge (le score classique) ; le duel en ligne ne les entame pas, et
-  // toutes ses parties comptent. On ne fait qu'allumer le voyant.
+  // Challenge (le score classique) ; le championnat ne les entame pas. On ne
+  // fait qu'allumer le voyant.
   onMatchForming: (humans) => {
     for (const u of humans) marquerEnPartie(u, 'snake3');
-    const ranked = {};
-    for (const u of humans) ranked[u] = true;
-    return { ok: true, ranked };
+    return { ok: true };
   },
 });
+const SNAKE_SLOT = 'snake3';
+const SNAKE_SLOT_CHAMPION = '2';
+function snakeLireFicheChampion(username) {
+  const u = users[username];
+  const brut = u && u.frutiSlots && u.frutiSlots[SNAKE_SLOT] && u.frutiSlots[SNAKE_SLOT][SNAKE_SLOT_CHAMPION];
+  let fiche = null;
+  if (brut) { try { fiche = typeof brut === 'string' ? JSON.parse(brut) : brut; } catch (e) { fiche = null; } }
+  if (fiche && fiche.linit) return { linit: true, l: fiche.l, ls: fiche.ls };
+  // Pas de fiche, mais une note au classement (slot vidé, base neuve) : on
+  // repart de la note, comme pour Frutibandas.
+  const note = getUserScore(username, 'snake3_battle');
+  if (note && note.score > 0) {
+    const l = (fiche && Array.isArray(fiche.l)) ? fiche.l : [0, 0, 0];
+    return { linit: true, l, ls: [note.score, note.score, note.score] };
+  }
+  return null;
+}
+function snakeEcrireFicheChampion(username, fiche) {
+  const u = users[username];
+  if (!u) return;
+  if (!u.frutiSlots) u.frutiSlots = {};
+  if (!u.frutiSlots[SNAKE_SLOT]) u.frutiSlots[SNAKE_SLOT] = {};
+  const data = JSON.stringify({ linit: true, l: fiche.l, ls: fiche.ls });
+  u.frutiSlots[SNAKE_SLOT][SNAKE_SLOT_CHAMPION] = data;
+  if (u._dbId && process.env.DATABASE_URL) {
+    db.upsertFrutiSlot(u._dbId, SNAKE_SLOT, Number(SNAKE_SLOT_CHAMPION), data).catch((e) => {
+      console.error('[snake3] fiche championnat:', e.message);
+    });
+  }
+}
 function snakeFlush(messages) {
   if (!messages || !messages.length) return;
   for (const m of messages) {
