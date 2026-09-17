@@ -15549,6 +15549,11 @@ function parseMiniwavePipe(s) {
  * SWF et gagnent, comme il se doit. Renvoie true si des champs ont été
  * regreffés (l'appelant resérialise alors `neuf`).
  */
+// Le grade recalculé (Menu.checkPowerUp) écrit dans la fiche s'il monte.
+function miniwaveMajGrade(fiche) {
+  try { return require('./public/miniwave/plateforme.js').majGrade(fiche) > 0; }
+  catch (e) { return false; }
+}
 function miniwaveGreffeHorsTuyau(neuf, prev) {
   if (!neuf || typeof neuf !== 'object' || !prev || typeof prev !== 'object') return false;
   const venuDuTuyau = neuf.$credit === undefined && neuf.$mode === undefined;
@@ -16721,6 +16726,16 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
         recrit = true;
         console.log(`[SLOT]  miniwave : déverrouillages redérivés des achats pour ${username}`
           + ` (missions=${JSON.stringify(neuf.$mode && neuf.$mode[1])})`);
+      }
+      // LE GRADE SUIT LA FICHE. `$lvl` est l'insigne que la fruticard pose
+      // (miniwave_rank) ; le jeu d'origine ne l'écrivait qu'à la promotion, à
+      // l'accueil du menu, et le portage light ne l'écrivait pas — les grades
+      // ne se mettaient pas à jour. On le recalcule ici, à chaque sauvegarde,
+      // avec la formule du jeu (plateforme.js, celle de Menu.checkPowerUp) :
+      // il ne peut que monter.
+      if (miniwaveMajGrade(neuf)) {
+        recrit = true;
+        console.log(`[SLOT]  miniwave : grade ${neuf.$lvl} pour ${username}`);
       }
       if (recrit) data = JSON.stringify(neuf);
     } catch (e) {

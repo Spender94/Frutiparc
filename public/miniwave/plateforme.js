@@ -338,6 +338,25 @@ function grade(carte) {
   return Math.min(Math.round(Math.pow(score, 0.2)), GRADES.length - 1);
 }
 
+/**
+ * Menu.checkPowerUp, la suite : le grade CALCULÉ est-il au-dessus de celui
+ * que la fiche porte ($lvl) ? Alors la fiche monte — c'est `$lvl` que la
+ * fruticard lit pour poser l'insigne (miniwave_rank), et le jeu d'origine
+ * l'écrivait à chaque promotion (`f.$lvl = lvl ; client.saveSlot(0)`). Le
+ * portage calculait le grade pour le saluer, sans jamais l'écrire : l'insigne
+ * de la fruticard restait celui du premier jour.
+ *
+ * Rend le nouveau grade quand la fiche vient de monter, 0 sinon. Ne descend
+ * jamais : une fiche qui porte un grade le garde.
+ */
+function majGrade(carte) {
+  if (!carte || !carte.$cons || !Array.isArray(carte.$badsKill)) return 0;
+  const g = grade(carte);
+  const lvl = Number(carte.$lvl) || 0;
+  if (g > lvl && g < GRADES.length) { carte.$lvl = g; return g; }
+  return 0;
+}
+
 // Ce que le menu a le droit de proposer.
 function modesOuverts(carte) {
   return {
@@ -411,6 +430,15 @@ class Plateforme {
         return this.carte;
       })
       .catch(() => this.carte);        // charge reste faux : on ne sauvera pas
+  }
+
+  // Le grade monte ? La fiche s'enregistre aussitôt (Menu.checkPowerUp :
+  // `client.saveSlot(0)` à la promotion) et l'on rend le nouveau grade — 0
+  // quand rien ne change, et rien ne part au serveur.
+  promouvoir() {
+    const g = majGrade(this.carte);
+    if (g) this.ecrire(this.carte).catch(() => {});
+    return g;
   }
 
   // Envoie la fiche telle quelle. Renvoie ce qui a été enregistré et ce que
@@ -494,7 +522,7 @@ class Plateforme {
 
 const API = {
   Plateforme, carteNeuve, normaliser, versTuyau, lireLoadVars, fusionner,
-  acheter, estAchete, article, grade, modesOuverts, nouveauxPictos,
+  acheter, estAchete, article, grade, majGrade, modesOuverts, nouveauxPictos,
   BOUTIQUE, VAISSEAUX, GRADES, NB_ENNEMIS, NB_VAISSEAUX, NB_ARTICLES, NB_MISSIONS, VERSION,
 };
 

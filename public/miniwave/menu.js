@@ -342,6 +342,14 @@ class Interface {
     });
     this.infoPage = 0;
     this.infoT = 0;
+    // Menu.checkPowerUp : à chaque retour à l'accueil, le grade est recalculé
+    // et, s'il monte, la fiche l'écrit ($lvl — l'insigne de la fruticard) et
+    // le jeu félicite. (page/PowerUp.as en faisait une page ; ici, un mot.)
+    const g = (this.plateforme && this.plateforme.promouvoir) ? this.plateforme.promouvoir() : 0;
+    if (g) {
+      this.surSon('achat');
+      this.dire('Félicitation, votre nouveau grade est : ' + P.GRADES[g]);
+    }
   }
 
   /**

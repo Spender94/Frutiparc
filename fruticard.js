@@ -718,11 +718,27 @@ const MINIWAVE_SPECIAUX = [
   { nom: 'mode fuite', lien: '$time' },
 ];
 
+// L'INSIGNE est celui du grade CALCULÉ, jamais moins que le `$lvl` écrit. Le
+// jeu d'origine n'écrivait `$lvl` qu'à la promotion (Menu.checkPowerUp), et
+// le portage light ne l'écrivait pas du tout : des fiches riches portent
+// encore un `$lvl` de zéro. On refait donc le calcul du jeu (la formule de
+// plateforme.js, tableau de chasse pondéré par l'avancement) et l'on garde le
+// plus haut des deux — la carte dit le vrai grade, sans attendre la prochaine
+// sauvegarde.
+function gradeMiniwave(c) {
+  const ecrit = Number(c.$lvl) || 0;
+  try {
+    const P = require('./public/miniwave/plateforme.js');
+    const calcule = (c && c.$cons && Array.isArray(c.$badsKill)) ? P.grade(c) : 0;
+    return Math.max(ecrit, calcule);
+  } catch (e) { return ecrit; }
+}
+
 function carteMiniwave(c) {
   const lignes = [];
   lignes.push({ height: 60, list: [
     { type: 'spacer', big: 1 },
-    urlLigne('miniwave_rank', { param: { frame: Number(c.$lvl) || 0 } }, { dy: 4 }),
+    urlLigne('miniwave_rank', { param: { frame: gradeMiniwave(c) } }, { dy: 4 }),
     { type: 'spacer', big: 1 },
   ] });
   lignes.push(getTitleLine('vaisseaux'));
