@@ -4753,6 +4753,8 @@ async function performChallengeRoll(today) {
     // en 'previous', donc l'admin peut la rétablir si le nouveau tirage déplaît).
     await mb2StoreCurrentFromDisk(r.seed, 'roll quotidien');
     console.log(`[MB2] Daily roll → regenerated ${r.log}`);
+    // Et VieuxPruneau la poste sur le forum.
+    mb2PublierCarteDuJour('roll quotidien');
   } catch (e) {
     console.error('[MB2] Daily roll map regeneration error:', e.message);
   }
@@ -14542,6 +14544,92 @@ async function mb2StoreCurrentFromDisk(seed, why) {
   } catch (e) { console.error('[MB2] stockage map en base:', e.message); }
 }
 
+// ── VieuxPruneau poste la map du jour ─────────────────────────────────────────
+//
+// À chaque fois que la map SERVIE change — le roll de minuit, la génération au
+// démarrage d'un jour neuf, un coup de main de l'admin — le cartographe relit
+// mb2data.dat (mb2carte.js), dessine le plan en SVG, le range dans les images
+// du forum (forum_images, adressées par contenu : l'adresse ne bouge plus), et
+// répond dans le sujet « Map Challenge Motion-Ball 2 » de la rubrique « Jeux
+// Frutiparc ». Le sujet n'existe pas ? Il l'ouvre. Il est plein (cinq cents
+// messages, verrouillé) ? Il en ouvre un autre du même nom.
+//
+// UNE MAP, UN MESSAGE. La graine voyage dans le texte (« graine 231748148 ») :
+// si le dernier message de VieuxPruneau dans le sujet la porte déjà, il se
+// tait. C'est ce qui rend l'appel sûr partout — au démarrage (la map du jour
+// restaurée depuis la base a déjà été annoncée) comme après un roll forcé par
+// l'admin sur la même graine. Les appels sont sérialisés : deux chemins qui
+// se croisent (boot et roll à minuit pile) ne postent pas deux fois.
+const MB2_SUJET_FORUM = 'Map Challenge Motion-Ball 2';
+const MB2_RUBRIQUE_FORUM = 'Jeux Frutiparc';
+const MB2_CARTOGRAPHE = 'vieuxpruneau';
+let mb2PublicationEnCours = Promise.resolve();
+function mb2JourLisible(d = new Date()) {
+  return new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  }).format(d);
+}
+function mb2PublierCarteDuJour(why, opts) {
+  const tour = mb2PublicationEnCours.then(() => mb2PublierCarteDuJourMaintenant(why, opts || {}))
+    .catch((e) => { console.error('[MB2] VieuxPruneau ne poste pas :', e.message); return null; });
+  mb2PublicationEnCours = tour;
+  return tour;
+}
+async function mb2PublierCarteDuJourMaintenant(why, opts) {
+  if (!process.env.DATABASE_URL) return null;
+  if (!fs.existsSync(MB2_MAP_PATH)) return null;
+  const Carte = require('./mb2carte.js');
+  const { graine, donjon } = Carte.lireFichier(fs.readFileSync(MB2_MAP_PATH, 'utf8'));
+
+  // La rubrique, puis le sujet — ouvert s'il manque, doublé s'il est plein.
+  let boards = await db.forumGetBoards();
+  let board = boards.find((b) => b.name === MB2_RUBRIQUE_FORUM);
+  if (!board) {
+    await ensureForumBoardsExist();
+    boards = await db.forumGetBoards();
+    board = boards.find((b) => b.name === MB2_RUBRIQUE_FORUM);
+    if (!board) throw new Error(`rubrique « ${MB2_RUBRIQUE_FORUM} » introuvable`);
+  }
+  const bouille = users[MB2_CARTOGRAPHE].fbouille;
+  let topic = await db.forumTrouverSujet(board.id, MB2_SUJET_FORUM);
+  let neuf = false;
+  if (topic && !topic.is_locked && (await db.forumCountPosts(topic.id)) >= FORUM_MAX_POSTS_PER_TOPIC) {
+    await db.forumSetLocked(topic.id, true).catch(dbErr('forumSetLocked mb2'));
+    topic = null;
+  }
+  if (topic && topic.is_locked) topic = null;
+  if (!topic) {
+    const intro = `Chaque nuit, la map du Challenge de Motion Ball 2 change. Chaque matin, je la relève et je la poste ici : le plan du donjon, et le détail — le départ, la salle du boss, où trouver chaque bille et chaque bonus, quelles portes réclament quoi.\n\nGardez ce sujet sous le coude : la map du jour est toujours dans le dernier message.`;
+    topic = await db.forumCreateTopic(board.id, MB2_CARTOGRAPHE, MB2_SUJET_FORUM, intro, bouille, null);
+    neuf = true;
+    console.log(`[MB2] VieuxPruneau ouvre le sujet #${topic.id} « ${MB2_SUJET_FORUM} » dans « ${board.name} »`);
+  }
+
+  // Déjà annoncée ? La graine est dans le texte du dernier message.
+  const marque = `(graine ${graine})`;
+  if (!neuf) {
+    const dernier = await db.forumDernierMessageDe(topic.id, MB2_CARTOGRAPHE);
+    if (dernier && String(dernier.content || '').indexOf(marque) >= 0) return { topicId: topic.id, deja: true };
+  }
+
+  // Le plan, rangé dans les images du forum sous son empreinte.
+  const jour = mb2JourLisible();
+  const svg = Carte.carteSvg(donjon, { graine, jour: new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }).format(new Date()) });
+  const buf = Buffer.from(svg, 'utf8');
+  const hash = crypto.createHash('md5').update(buf).digest('hex');
+  await db.upsertForumImage(hash, 'image/svg+xml', 'svg', buf);
+  forumImageCache.set(hash + '.svg', { mime: 'image/svg+xml', buf });
+  const urlImage = `/forum-uploads/${hash}.svg`;
+
+  const contenu = Carte.messageForum(donjon, { graine, jour, urlImage, changement: !!opts.changement });
+  const post = await db.forumCreatePost(topic.id, MB2_CARTOGRAPHE, contenu, bouille, null);
+  // Le voyant du forum, comme pour n'importe quelle réponse.
+  const suiveurs = await db.forumTopicFollowers(topic.id).catch(() => []);
+  notifyForumNews(MB2_CARTOGRAPHE, suiveurs, { id: topic.id, titre: topic.title });
+  console.log(`[MB2] VieuxPruneau a posté la map du jour (${why || 'maj'}, graine=${graine}) — message #${post.id}, sujet #${topic.id}`);
+  return { topicId: topic.id, postId: post.id, graine, urlImage };
+}
+
 app.post('/api/admin/mb2/regenerate-map', adminScope('challenge'), async (req, res) => {
   try {
     const { generateMb2ChallengeMap } = require('./mb2gen');
@@ -14555,6 +14643,7 @@ app.post('/api/admin/mb2/regenerate-map', adminScope('challenge'), async (req, r
     // survivra aux reboots — avant, le boot la remplaçait par celle du jour.
     await mb2StoreCurrentFromDisk(r.seed, 'régénération admin');
     console.log(`[ADMIN] Manual MB2 map regeneration (random seed): ${r.log}`);
+    mb2PublierCarteDuJour('régénération admin', { changement: true });
     res.json({ ok: true, seed: r.seed, distPct: r.distPct, log: r.log });
   } catch (e) {
     console.error('[ADMIN] MB2 map regeneration error:', e.message);
@@ -14573,6 +14662,7 @@ app.post('/api/admin/mb2/restore-previous', adminScope('challenge'), async (req,
     mb2WriteMapAtomic(restored.data);
     const seed = restored.seed || ((String(restored.data).match(/dseed=(\d+)/) || [])[1] || '');
     console.log(`[ADMIN] Map MB2 précédente rétablie (seed=${seed}, jour ${restored.day_key})`);
+    mb2PublierCarteDuJour('map précédente rétablie', { changement: true });
     res.json({ ok: true, seed, dayKey: restored.day_key });
   } catch (e) {
     console.error('[ADMIN] restauration map MB2:', e.message);
@@ -21776,11 +21866,15 @@ const forumImageCache = new Map(); // fname -> { mime, buf }
 // the strict pattern both validates the request and blocks path traversal.
 app.get('/forum-uploads/:name', async (req, res) => {
   const name = String(req.params.name || '');
-  if (!/^[0-9a-f]{32}\.(png|jpe?g|gif|webp)$/i.test(name)) {
+  // (.svg : les plans que le serveur dessine lui-même — la map du jour de
+  // Motion Ball 2, cf. mb2PublierCarteDuJour. Un joueur ne peut pas en
+  // téléverser : sniffForumImage ne reconnaît que les formats bitmap.)
+  if (!/^[0-9a-f]{32}\.(png|jpe?g|gif|webp|svg)$/i.test(name)) {
     return res.status(400).type('text/plain').send('bad name');
   }
   const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
-  const mimeFor = (e) => e === 'png' ? 'image/png' : e === 'gif' ? 'image/gif' : e === 'webp' ? 'image/webp' : 'image/jpeg';
+  const mimeFor = (e) => e === 'png' ? 'image/png' : e === 'gif' ? 'image/gif' : e === 'webp' ? 'image/webp'
+    : e === 'svg' ? 'image/svg+xml' : 'image/jpeg';
   const sendBuf = (mime, buf) => {
     res.type(mime);
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -25271,10 +25365,17 @@ async function boot() {
           const r = await generateMb2ChallengeMap();
           await mb2StoreCurrentFromDisk(r.seed, 'génération au démarrage');
           console.log(`[MB2] Generated ${r.log}`);
+          mb2PublierCarteDuJour('génération au démarrage');
         } catch (e) {
           console.error('[MB2] Challenge map generation error:', e.message);
         }
       });
+    } else {
+      // La map du jour est là (restaurée ou déjà à jour) : si le serveur était
+      // couché à minuit, VieuxPruneau ne l'a pas encore annoncée — il vérifie.
+      // (La base n'est pas forcément prête à cet instant : on laisse passer
+      // le premier tour.)
+      setTimeout(() => mb2PublierCarteDuJour('vérification au démarrage'), 8000);
     }
   } catch (e) {
     console.error('[MB2] Map setup error:', e.message);
@@ -25748,7 +25849,7 @@ const CONNECTED_NPCS = new Set([
 // All bot/NPC accounts — the always-on Gaspard plus the transient visitors
 // (mdamirma, gromelin). Excluded from "real player" counts and from mdamirma's
 // FrutiSigne targeting, so bots never reveal/target each other.
-const NPC_USERNAMES = new Set(['gaspard', 'mdamirma', 'gromelin', 'kiloute79']);
+const NPC_USERNAMES = new Set(['gaspard', 'mdamirma', 'gromelin', 'kiloute79', 'vieuxpruneau']);
 
 // Gaspard is the welcome-bot NPC. Stored under the lowercase key
 // `users.gaspard` like every other user (getDisplayName, trace and
@@ -26214,6 +26315,23 @@ users.kiloute79 = {
   comment: 'La Question à 60 kikooz, tous les soirs à 19h !', siteUrl: '',
   frutiSign: 7, frutiSignB: 7,
   displayName: 'MikeHorny',
+};
+
+// ── VieuxPruneau — le cartographe de Motion Ball 2 ──
+// Chaque nuit, quand la map du Challenge est retirée, il poste la nouvelle sur
+// le forum (Jeux Frutiparc › « Map Challenge Motion-Ball 2 ») : le plan, et le
+// détail — départ, boss, billes, bonus, portes (cf. mb2PublierCarteDuJour).
+users.vieuxpruneau = {
+  pass: '', xp: 424242, kikooz: 0,
+  fbouille: '0k0000010000000000000000',
+  items: withDefaultPens([]),
+  contacts: [], blacklist: [],
+  gender: 'M', birthday: '1948-11-02', country: 'FR', region: 'IDF',
+  countryIndex: '1', regionIndex: '1', prefs: '',
+  isModerator: false, needsBouille: false,
+  city: 'Frutiparc', realJob: 'Cartographe', frutijob: 'Cartographe', firstName: 'Vieux', lastName: 'Pruneau',
+  comment: 'Je relève la map de Motion Ball 2 chaque nuit, à la lampe torche.', siteUrl: '',
+  displayName: 'VieuxPruneau',
 };
 
 // Pseudo affiché de l'animateur — source unique, dérivée du displayName. Toutes

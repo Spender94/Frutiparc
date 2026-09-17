@@ -3346,6 +3346,31 @@ async function forumDeletePost(postId) {
  *
  * @returns {Promise<string>} le pseudo, ou '' si le sujet n'a plus de message
  */
+// Un sujet par son titre, dans une rubrique (sans tenir compte de la casse) —
+// le plus récent s'il y en a plusieurs, mais jamais un sujet verrouillé si un
+// autre est ouvert : c'est ce que cherche un robot qui poste tous les jours au
+// même endroit (VieuxPruneau et la map de Motion Ball).
+async function forumTrouverSujet(boardId, title) {
+  const { rows } = await pool.query(
+    `SELECT * FROM forum_topics
+      WHERE board_id = $1 AND lower(title) = lower($2)
+      ORDER BY is_locked ASC, created_at DESC LIMIT 1`,
+    [boardId, title]
+  );
+  return rows[0] || null;
+}
+
+// Le dernier message d'UN auteur dans un sujet (null s'il n'y a rien écrit).
+async function forumDernierMessageDe(topicId, username) {
+  const { rows } = await pool.query(
+    `SELECT * FROM forum_posts
+      WHERE topic_id = $1 AND lower(author_username) = lower($2)
+      ORDER BY created_at DESC, id DESC LIMIT 1`,
+    [topicId, username]
+  );
+  return rows[0] || null;
+}
+
 async function forumLastPostAuthor(topicId) {
   const { rows } = await pool.query(
     `SELECT author_username FROM forum_posts
@@ -4137,6 +4162,8 @@ module.exports = {
   forumUpdatePost,
   forumDeletePost,
   forumLastPostAuthor,
+  forumTrouverSujet,
+  forumDernierMessageDe,
   forumIncrementViews,
   forumMarkTopicRead,
   forumFirstUnreadPost,
