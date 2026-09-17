@@ -36,6 +36,11 @@ class Bataille {
     this.q_time = 0;
     this.winner = null;
     this.finie = false;
+    // Les morts VENUES D'AILLEURS : le mode en ligne (server/session.js) fait
+    // sauter des bombes qui tuent une tête. Il pose ici l'indice du serpent
+    // condamné, et la prochaine image le compte parmi les touchés — avec la
+    // même fonte en particules, la même égalité si les deux tombent ensemble.
+    this.mortsExternes = [];
 
     for (let i = 0; i < 10; i++) if (scores[i] === undefined) scores[i] = 0;
 
@@ -123,6 +128,8 @@ class Bataille {
         if (i !== j && this.serpents[j] != null && this.serpents[j].hit(c)) hits[i] = true;
       }
     }
+    for (const k of this.mortsExternes) if (this.serpents[k] != null) hits[k] = true;
+    this.mortsExternes = [];
 
     // Tous morts le même tour : égalité.
     let i;

@@ -90,7 +90,9 @@ test('les clips de l\'ARÈNE sont préchargés (sinon le premier effet est perdu
   // absents — le défaut qu'on voulait éviter, déplacé d'un cran.
   assert.match(src, /if \(!this\.jeu\.pretPour\(this\.jeu\.next_mode\)\) \{ this\.taille = 0; return; \}/);
   assert.match(src, /pretPour\(i\) \{\s*\n\s*if \(MODES_MENU\.indexOf\(i\) >= 0\) return true;\s*\n\s*if \(i === 4\) return this\.dessinsJeuPrets === true && this\.encycloPret === true;[\s\S]*?return this\.dessinsJeuPrets === true && this\.dessinsJeuChauds === true;/);
-  assert.match(src, /const MODES_MENU = \[0, 3, 5\];/);
+  // (20 : le salon du Battle en ligne, un panneau sur le fond du menu — il
+  // n'attend rien non plus.)
+  assert.match(src, /const MODES_MENU = \[0, 3, 5, 20\];/);
   // L'arène arrive par son LOT (une requête), puis ses images sont attendues.
   assert.match(src, /jeu\.pretJeu = D\.chargerLot\('arene'\)\.then\(\(\) => D\.precharger\(DESSINS_JEU\)\)\.then/);
 });

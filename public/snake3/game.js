@@ -884,7 +884,11 @@ class Jeu {
       case 2: return new VueBataille(this, this.nplayers || 2);
       case 3: return new M.MenuOptions(this);
       case 4: return new E.Encyclo(this);
-      case 5: return new M.Menu(this, [6, 7, 8, 5], (n) => this.choixMenu(n));
+      // Le sous-menu Battle : deux, trois, quatre joueurs sur un clavier — et
+      // la pastille 10, le duel EN LIGNE (enligne.js), qui n'existait pas.
+      case 5: return new M.Menu(this, [6, 7, 8, 10, 5], (n) => this.choixMenu(n));
+      case 20: return new window.SnakeEnLigne.VueSalon(this);
+      case 21: return new window.SnakeEnLigne.VueBatailleEnLigne(this);
       // La carte a pu fermer entre l'affichage de la pastille et le clic : on
       // retombe alors sur le menu plutôt que de partir sans script.
       case 96: {
@@ -912,6 +916,7 @@ class Jeu {
         this.nplayers = n - 4;
         this.poserModeSuivant(2);
         break;
+      case 10: this.poserModeSuivant(20); break;   // Battle en ligne : le salon
       default: break;
     }
   }
@@ -936,6 +941,7 @@ class Jeu {
     if (!m) return false;
     if (m.partie) return !m.partie.pause && !m.partie.game_over_flag;
     if (m.bataille) return !m.ecran;
+    if (m.enligne) return m.enJeu();
     return false;
   }
 
@@ -1281,7 +1287,7 @@ const DESSINS_JEU = [['screens', [ECRANS.pause]], ['screensSans', Object.values(
   'sonnette', 'langue', 'trou', 'beurk'];
 // Les modes qui n'ont besoin QUE du menu : l'accueil, les options, le sous-menu
 // Battle. Tous les autres — l'arène, la bataille, l'encyclopédie — attendent.
-const MODES_MENU = [0, 3, 5];
+const MODES_MENU = [0, 3, 5, 20];
 
 /* ── LA CHAUFFE DE L'ARÈNE ─────────────────────────────────────────────────
  *
@@ -1370,7 +1376,7 @@ function chaufferArene(jeu, temps) {
 }
 
 // ── Le démarrage ──────────────────────────────────────────────────────────
-window.SnakeJeu = { Jeu, Ecran, VuePartie, VueBataille };
+window.SnakeJeu = { Jeu, Ecran, VuePartie, VueBataille, dessinerFondArene, hasard };
 
 window.demarrerFrutisnake = function (options) {
   const opts = options || {};

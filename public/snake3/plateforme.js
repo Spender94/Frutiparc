@@ -41,6 +41,8 @@ class Plateforme {
     this.prefs = { $music: true, $sounds: true, $keys: C.DEFAULT_KEYS.slice() };
     this.charge = false;              // slot 0 lu (ou compte neuf) : droit d'écrire
     this.pseudo = null;
+    this.nom = null;                  // le nom d'affichage (majuscules comprises)
+    this.bouille = '';
     // Les options de confort achetées en boutique. `snake3Hud` est le « pack
     // de Frutisnake » (article 40, 300 kikooz) : le tableau de bord de partie.
     this.options = {};
@@ -79,7 +81,13 @@ class Plateforme {
     const tournoi = this.chargerTournoi();
     const profil = fetch('/api/light/profile?sid=' + encodeURIComponent(this.sid), { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((p) => { if (p && p.username) this.pseudo = p.username; })
+      .then((p) => {
+        if (p && p.username) this.pseudo = p.username;
+        // Le nom d'affichage et la bouille : le Battle en ligne les montre à
+        // l'adversaire (enligne.js).
+        if (p && p.user) this.nom = p.user;
+        if (p && p.bouille) this.bouille = p.bouille;
+      })
       .catch(() => {});
     const options = fetch('/api/features?sid=' + encodeURIComponent(this.sid), { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))

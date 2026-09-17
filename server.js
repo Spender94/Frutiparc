@@ -1568,6 +1568,10 @@ const RANKINGS = {
   // meilleur.
   bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L', classeAZero: true },
   grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L', classeAZero: true },
+  // Le BATTLE EN LIGNE de Frutisnake : le duel 1 contre 1 du light, sur le
+  // modèle des deux précédents — une série de victoires d'affilée, zéro
+  // compris (public/snake3/server/net.js → onStreak).
+  snake3_battle:      { name: 'Frutisnake - Battle',      game: 'snake3',   type: 'L', classeAZero: true },
   // Le CHAMPIONNAT de Frutibandas — la salle classée du jeu d'origine
   // (Main.CHAMPION_MODE = 2). Ce n'est pas un record mais une NOTE Elo, qui
   // monte et descend : elle s'écrit donc par fixerScore (écriture absolue) et
@@ -1624,6 +1628,9 @@ const LEGACY_RANKINGS = [
   // (section C) à bandas_challenge/grapiz_challenge.
   { rk: '5', internal: 'bandas_challenge', ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
   { rk: '6', internal: 'grapiz_challenge', ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
+  // Le Battle en ligne de Frutisnake : une série, comme les deux d'au-dessus
+  // (section C, remise à zéro quotidienne). gs='1', le gabarit de Frutisnake.
+  { rk: '18', internal: 'snake3_battle',   ty: 'point',       rn: 'Snake battle', gs: '1', g: 'snake3', section: 'C' },
   // Les deux PILOTES. gs='1' (le gabarit de colonnes de Frutisnake : un simple
   // score, sans colonne annexe) à dessein — les gabarits qui portent une
   // seconde colonne y logent une IMAGE chargée depuis /sd/<nom>.swf (le
@@ -7259,10 +7266,11 @@ function pousserNotifDefiSiAbsent(de, vers, jeu) {
     return;
   }
   noterDecisionPush(cible, 'defi_' + jeu, true, 'absent → envoyé');
-  const nomJeu = jeu === 'bandas' ? 'Frutibandas' : 'Grapiz';
+  const nomJeu = jeu === 'bandas' ? 'Frutibandas' : jeu === 'snake3' ? 'Frutisnake' : 'Grapiz';
   pousserNotif(cible, {
     t: `⚔️ ${getDisplayName(de)} te défie !`,
-    c: `La partie de ${nomJeu} commence — ton horloge tourne.`,
+    c: jeu === 'snake3' ? `Le Battle de ${nomJeu} commence — ton serpent est lâché.`
+      : `La partie de ${nomJeu} commence — ton horloge tourne.`,
     u: '/light?ouvre=' + jeu,
     tag: 'defi_' + jeu,
   }, PUSH_TTL.defi);
@@ -27259,6 +27267,67 @@ setInterval(() => {
   try { renouvelerVoyantsParties(bandasNet, 'bandas'); } catch (e) { console.error('[bandas] voyants:', e.message); }
 }, 1000);
 
+// ─────────────────────────────────────────────
+// Frutisnake BATTLE EN LIGNE — pont multijoueur, même modèle que Grapiz et
+// Frutibandas : la cervelle (salon + sessions + bots + séries) vit dans
+// public/snake3/server/ (logique pure, testée) ; ici on route les messages
+// <sb> et on pousse les états aux sockets concernées.
+//
+// LA DIFFÉRENCE : c'est un jeu en TEMPS RÉEL. La partie tourne sur le serveur
+// à quarante pas par seconde (session.js), et chaque pas part aux deux
+// joueurs. Deux conséquences :
+//   · le tick est à 25 ms, pas à la seconde ;
+//   · on n'écrit QUE sur les sockets du jeu (`client.snakeBattle`), pas sur
+//     toutes celles du joueur : son salon de chat, à côté, n'a que faire de
+//     quarante messages par seconde.
+// ─────────────────────────────────────────────
+const { SnakeNet } = require('./public/snake3/server/net.js');
+const snakeNet = new SnakeNet({
+  botIdentity: piocherIdentiteBot,
+  onDefi: (de, vers) => pousserNotifDefiSiAbsent(de, vers, 'snake3'),
+  onResult: (session, winner, reason) => {
+    console.log(`[snake3] battle ${session.id} terminé — équipe ${winner} gagne (${reason})`);
+    for (const p of (session.players || [])) marquerFinDePartie(p.id);
+  },
+  getStreak: (username) => (users[username] || {}).snakeBattleStreak || 0,
+  onStreak: (username, streak, info) => {
+    if (users[username]) users[username].snakeBattleStreak = streak;
+    // La série close part au classement « Frutisnake - Battle », zéro compris
+    // (classeAZero, comme Grapiz et Bandas).
+    if (info) persistScore(username, 'snake3_battle', Math.max(0, Number(info.series) || 0));
+  },
+  // Pas de portillon FD ici : les disques de Frutisnake sont ceux du
+  // Challenge (le score classique) ; le duel en ligne ne les entame pas, et
+  // toutes ses parties comptent. On ne fait qu'allumer le voyant.
+  onMatchForming: (humans) => {
+    for (const u of humans) marquerEnPartie(u, 'snake3');
+    const ranked = {};
+    for (const u of humans) ranked[u] = true;
+    return { ok: true, ranked };
+  },
+});
+function snakeFlush(messages) {
+  if (!messages || !messages.length) return;
+  for (const m of messages) {
+    for (const u of m.to) {
+      for (const [sock, cl] of xmlSocketClients) {
+        if (cl && cl.snakeBattle && cl.logged && cl.username === u) sendToClient(sock, m.xml);
+      }
+    }
+  }
+}
+// Le tick du jeu : quarante pas par seconde, chacun poussé aux deux joueurs.
+// Le pas est FIXE côté session (elle rattrape le retard, trois pas au plus) ;
+// l'intervalle n'a qu'à se tenir à peu près.
+const snakeTick = setInterval(() => {
+  if (!Object.keys(snakeNet.sessions).length) return;
+  try { snakeFlush(snakeNet.tick()); } catch (e) { console.error('[snake3] tick:', e.message); }
+}, 25);
+if (snakeTick.unref) snakeTick.unref();
+setInterval(() => {
+  try { renouvelerVoyantsParties(snakeNet, 'snake3'); } catch (e) { console.error('[snake3] voyants:', e.message); }
+}, 1000);
+
 // Push a live kikooz-balance update to every connected socket of `username`.
 // The SWF's onActivateFeature handler ("ku") sets _global.me.kikooz, which in
 // turn refreshes any open boutique/kikooz display. Without this, a balance
@@ -28451,6 +28520,16 @@ async function handleCBeeMessage(socket, rawXml) {
       client.bandas = true; // marque cette socket comme client Frutibandas
       try { grapizFlush(bandasNet.handle(client.username, msg.attrs || {})); }
       catch (e) { console.error('[bandas] handle:', e.message); }
+      break;
+    }
+
+    // ── sb: Frutisnake Battle en ligne — même modèle, à quarante pas par
+    //    seconde (voir snakeNet). ──
+    case 'sb': {
+      if (!client.username || !client.logged) { sendToClient(socket, '<sb e="err" m="not-logged"/>'); break; }
+      client.snakeBattle = true; // la socket du jeu : seule à recevoir les pas
+      try { snakeFlush(snakeNet.handle(client.username, msg.attrs || {})); }
+      catch (e) { console.error('[snake3] handle:', e.message); }
       break;
     }
 
@@ -31257,6 +31336,19 @@ const xmlSocketServer = net.createServer((socket) => {
       if (client.bandas && client.username) {
         try { grapizFlush(bandasNet.onDisconnect(client.username)); }
         catch (e) { console.error('[bandas] disconnect:', e.message); }
+      }
+      // Frutisnake Battle : idem — mais seulement si ce joueur n'a plus AUCUNE
+      // autre socket de jeu (un rechargement de page en ouvre une nouvelle
+      // avant de fermer l'ancienne : le salon ne doit pas le voir partir).
+      if (client.snakeBattle && client.username) {
+        let autre = false;
+        for (const [, cl] of xmlSocketClients) {
+          if (cl && cl.snakeBattle && cl.logged && cl.username === client.username) { autre = true; break; }
+        }
+        if (!autre) {
+          try { snakeFlush(snakeNet.onDisconnect(client.username)); }
+          catch (e) { console.error('[snake3] disconnect:', e.message); }
+        }
       }
       console.log(`[CBee]  Client disconnected: ${disconnectUser || 'anonymous'}`);
     } else {

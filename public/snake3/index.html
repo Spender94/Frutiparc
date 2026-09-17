@@ -142,11 +142,66 @@
     font: bold 12px Verdana, sans-serif; text-align: center; line-height: 1.35;
   }
   @media (orientation: portrait) and (pointer: coarse) { #tourne.montre { display: block; } }
+
+  /* ── Le salon du Battle en ligne (enligne.js) ───────────────────────────
+     Un panneau HTML posé exactement sur la scène (enligne.js le cale sur le
+     rectangle du canevas et lui donne l'échelle --k) : une liste qui défile
+     et des boutons, aux couleurs de la manette. Tout est en unités d'échelle
+     pour suivre le jeu, du téléphone au grand écran. */
+  #aire { position: relative; }
+  #salon {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    --k: 1;
+    box-sizing: border-box;
+    padding: calc(118px * var(--k)) calc(60px * var(--k)) calc(14px * var(--k));
+    display: flex; flex-direction: column; gap: calc(8px * var(--k));
+    font-family: Verdana, Arial, sans-serif; color: #fff;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, .25);
+    pointer-events: none;
+  }
+  #salon[hidden] { display: none; }
+  #salon > * { pointer-events: auto; }
+  #salon .sl-haut { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  #salon .sl-titre { font-weight: bold; font-size: calc(15px * var(--k)); }
+  #salon .sl-serie { font-size: calc(12px * var(--k)); color: #ffe36b; font-weight: bold; white-space: nowrap; }
+  #salon .sl-btn {
+    border: calc(3px * var(--k)) solid #fff; border-radius: calc(12px * var(--k));
+    background: #83ca22; color: #fff; cursor: pointer;
+    font: bold calc(15px * var(--k)) Verdana, sans-serif;
+    padding: calc(9px * var(--k)) calc(12px * var(--k));
+    text-shadow: 0 1px 0 rgba(0, 0, 0, .18);
+  }
+  #salon .sl-btn:active { background: #a7de53; }
+  #salon .sl-chercher.sl-attend { background: #e0a51b; }
+  #salon .sl-sous { font-size: calc(10px * var(--k)); opacity: .9; }
+  #salon .sl-liste {
+    flex: 1 1 0; min-height: 0; overflow-y: auto;
+    display: flex; flex-direction: column; gap: calc(4px * var(--k));
+    padding: calc(4px * var(--k)); border-radius: calc(10px * var(--k));
+    background: rgba(0, 0, 0, .18);
+  }
+  #salon .sl-joueur {
+    display: flex; align-items: center; gap: calc(8px * var(--k));
+    border: calc(2px * var(--k)) solid rgba(255, 255, 255, .7); border-radius: calc(9px * var(--k));
+    background: rgba(131, 202, 34, .85); color: #fff; cursor: pointer; text-align: left;
+    font: calc(12px * var(--k)) Verdana, sans-serif;
+    padding: calc(6px * var(--k)) calc(10px * var(--k));
+  }
+  #salon .sl-joueur:disabled { cursor: default; opacity: .75; }
+  #salon .sl-joueur.sl-moi { background: rgba(70, 130, 20, .9); }
+  #salon .sl-joueur.sl-playing { background: rgba(200, 80, 40, .75); }
+  #salon .sl-joueur.sl-waiting { background: rgba(224, 165, 27, .85); }
+  #salon .sl-nom { font-weight: bold; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #salon .sl-sr { color: #ffe36b; font-weight: bold; white-space: nowrap; }
+  #salon .sl-statut { font-size: calc(10px * var(--k)); opacity: .9; white-space: nowrap; }
+  #salon .sl-vide { text-align: center; padding: calc(12px * var(--k)); font-size: calc(12px * var(--k)); opacity: .8; }
+  #salon .sl-etat { font-size: calc(10px * var(--k)); text-align: center; opacity: .9; min-height: 1.2em; }
+  #salon .sl-retour { align-self: flex-start; font-size: calc(12px * var(--k)); padding: calc(6px * var(--k)) calc(10px * var(--k)); background: #6ba81b; }
 </style>
 </head>
 <body>
 <div id="tout">
-  <div id="aire"><canvas id="scene" width="700" height="480"></canvas></div>
+  <div id="aire"><canvas id="scene" width="700" height="480"></canvas><div id="salon" hidden></div></div>
   <!-- Les commandes, en deux côtés : un par pouce. En portrait elles font une
        ligne sous le jeu, en paysage deux colonnes de part et d'autre. -->
   <div id="commandes">
@@ -184,6 +239,10 @@
 <script src="/snake3/encyclo.js"></script>
 <script src="/snake3/pack.js"></script>
 <script src="/snake3/game.js"></script>
+<!-- Le Battle en ligne : le fil avec le serveur, puis le salon et la bataille
+     miroir (après game.js, dont ils reprennent l'écran de fin et l'arène). -->
+<script src="/snake3/reseau.js"></script>
+<script src="/snake3/enligne.js"></script>
 <script>
 (function () {
   'use strict';
