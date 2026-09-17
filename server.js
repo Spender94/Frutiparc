@@ -27022,9 +27022,23 @@ function getChannelHistoryComplete(channelName) {
   return channel.history.filter((e) => e.at >= cutoff);
 }
 
+// CHAQUE MESSAGE PORTE SON NUMÉRO. Le client light rejoue les cinq dernières
+// minutes d'un salon à chaque (re)connexion (`rj="1"`, cf. le join) — et une
+// fenêtre qui n'avait pas été vidée relisait deux fois les mêmes lignes : le
+// bureau qui reprend la main après une partie déportée en fenêtre, le fil
+// d'une discussion privée restée ouverte. Avec `mi`, une ligne déjà écrite se
+// reconnaît et se tait. Le SWF ignore l'attribut, comme `rj`. Le numéro est
+// unique d'un démarrage à l'autre (l'historique survit en base).
+const CHAT_MI_PREFIXE = Date.now().toString(36) + '-';
+let chatMiSeq = 0;
+function numeroterMessage(xmlStr) {
+  if (!/^<t[\s>]/.test(xmlStr) || / mi="/.test(xmlStr)) return xmlStr;
+  return xmlStr.replace(/^<t(?=[\s>])/, `<t mi="${CHAT_MI_PREFIXE}${++chatMiSeq}"`);
+}
 function broadcastToChannel(channelName, xmlStr, excludeSocket = null) {
   const channel = channels[channelName];
   if (!channel) return;
+  xmlStr = numeroterMessage(xmlStr);
   recordChannelHistory(channelName, xmlStr);
   for (const [sock, client] of xmlSocketClients) {
     if (sock === excludeSocket) continue;

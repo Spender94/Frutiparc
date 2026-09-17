@@ -7783,6 +7783,19 @@
         var salon = attr(xml, "g");
         var ty = attr(xml, "t") || "m";
         /*
+         * UNE LIGNE DÉJÀ ÉCRITE NE SE RÉÉCRIT PAS.
+         *
+         * Le serveur numérote chaque message (`mi`) et REJOUE les cinq
+         * dernières minutes à chaque (re)connexion (`rj="1"`). Le fil qu'on
+         * regarde est vidé avant le rejeu (cf. l'ident) — mais pas tous : la
+         * fenêtre d'une discussion privée restée ouverte, le fil du bureau
+         * qui reprend la main après une partie déportée dans sa fenêtre,
+         * relisaient deux fois les mêmes lignes. Une ligne rejouée dont le
+         * numéro est déjà dans le fil visé n'a rien à ajouter.
+         */
+        var mi = attr(xml, "mi");
+        if (mi && attr(xml, "rj") === "1" && dejaDansLeFil(salon, mi)) break;
+        /*
          * t="b" — LE FOND D'ÉCRAN DE L'INTERLOCUTEUR, PAS UNE LIGNE DE TEXTE.
          *
          * En privé, chacun montre son bureau à l'autre. `cp.ChatManager`
@@ -7875,7 +7888,7 @@
         if (emAnim) {
           var emWho = xmlUnescape(attr(xml, "eu")) || from;
           var emLabel = xmlUnescape(attr(xml, "el")) || (ANIM_LABEL[emAnim] || "parle");
-          addEmoteMessage({ from: emWho, time: h, label: emLabel, salon: salon });
+          addEmoteMessage({ from: emWho, time: h, label: emLabel, salon: salon, mi: mi });
           if (emWho && !enRejeu) showBouilleOverlay(emWho, emAnim, emLabel, salon);
           break;
         }
@@ -7888,7 +7901,7 @@
           if (/^(\/|https?:\/\/)/.test(iu)) {
             addImageMessage({ from: from, time: h, url: iu, w: parseInt(attr(body, "w"), 10) || 0, title: ititle, salon: salon });
           } else {
-            addMessage({ from: from, time: h, body: "[image]", kind: "system", salon: salon });
+            addMessage({ from: from, time: h, body: "[image]", kind: "system", salon: salon , mi: mi });
           }
           break;
         }
@@ -7905,6 +7918,7 @@
               from: from, time: h, kind: "blue", noFrom: true, salon: salon,
               body: (from || "Quelqu'un") + " vient de t'offrir "
                 + (isFinite(gAmt) ? gAmt : attr(body, "k")) + " kikooz !",
+              mi: mi,
             });
             // Le serveur pousse aussi le nouveau solde (<av ku>) ; ce rafraîchissement
             // couvre le cas où la poussée se perdrait (socket recyclée en arrière-plan).
@@ -7934,7 +7948,7 @@
           // On traite donc le corps de la même façon quoi qu'il arrive : un
           // « < » écrit par un joueur nous parvient échappé, il survit.
           var cBody = htmlToText(stripCdata(body).replace(/<br\s*\/?>/gi, "\n"));
-          if (cBody) addMessage({ from: from, time: h, body: cBody, kind: "blue", noFrom: (from === "admin"), salon: salon });
+          if (cBody) addMessage({ from: from, time: h, body: cBody, kind: "blue", noFrom: (from === "admin"), salon: salon , mi: mi });
           entrerDansLAquarium();
           break;
         }
@@ -7960,7 +7974,7 @@
           // besoin de ce balisage. attr() renvoie la valeur BRUTE (entités encodées),
           // donc on décode d'abord (xmlUnescape → vraies balises) puis htmlToText les
           // retire, pour un horodatage propre « [hh:mm:ss] ».
-          if (mcText) addMessage({ from: from, time: htmlToText(xmlUnescape(h)), body: mcText, kind: "normal", multicolor: true, salon: salon });
+          if (mcText) addMessage({ from: from, time: htmlToText(xmlUnescape(h)), body: mcText, kind: "normal", multicolor: true, salon: salon, mi: mi });
           entrerDansLAquarium();
           break;
         }
@@ -7969,7 +7983,7 @@
         if (/^\s*</.test(stripped)) {
           var plain = htmlToText(stripped);
           var isShout = (attr(xml, "st") === "r");
-          if (plain) addMessage({ from: from, time: h, kind: isShout ? "shout" : "admin", noFrom: true, body: plain, salon: salon, mentions: nommes });
+          if (plain) addMessage({ from: from, time: h, kind: isShout ? "shout" : "admin", noFrom: true, body: plain, salon: salon, mentions: nommes, mi: mi });
           // Le cri part en u="admin" (le pseudo est DANS le corps) : c'est `au`
           // qui dit qui a crié — cf. le commentaire du serveur.
           if (isShout) entrerDansLAquarium(xmlUnescape(attr(xml, "au")));
@@ -7984,9 +7998,9 @@
         var penColor = penColorFor(attr(xml, "p"));
         var em = isAdmin ? { isEmote: false, anim: "parle", label: null } : detectEmote(text);
         if (em.isEmote) {
-          addEmoteMessage({ from: from, time: h, label: em.label, salon: salon });
+          addEmoteMessage({ from: from, time: h, label: em.label, salon: salon, mi: mi });
         } else {
-          addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor, feutre: attr(xml, "p"), salon: salon, mentions: nommes });
+          addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor, feutre: attr(xml, "p"), salon: salon, mentions: nommes, mi: mi });
         }
         if (from && !isAdmin && !enRejeu) showBouilleOverlay(from, em.anim, em.label, salon);
         break;
@@ -8546,6 +8560,13 @@
     return (m.scrollHeight - m.scrollTop - m.clientHeight) < 60;
   }
   function scrollDown(el) { var m = el || msgEl; m.scrollTop = m.scrollHeight; }
+  // Ce numéro de message est-il déjà écrit dans le fil où irait la ligne ?
+  function dejaDansLeFil(salon, mi) {
+    var fil = journalDe(salon || state.room);
+    if (!fil || !fil.querySelector) return false;
+    try { return !!fil.querySelector('[data-mi="' + String(mi).replace(/["\\]/g, "") + '"]'); }
+    catch (e) { return false; }
+  }
   function clearMessages(salon) {
     var m = salon === undefined ? msgEl : journalDe(salon);
     m.innerHTML = "";
@@ -8899,6 +8920,8 @@
     if (o.pen && !o.multicolor && o.feutre != null && o.feutre !== "") {
       row.setAttribute("data-feutre", String(o.feutre));
     }
+    // Le numéro du message : c'est lui qui fait taire un rejeu (cf. `<t>`).
+    if (o.mi) row.setAttribute("data-mi", String(o.mi));
     fil.appendChild(row);
     // Cap DOM size for long sessions.
     while (fil.childNodes.length > 400) fil.removeChild(fil.firstChild);
@@ -9390,6 +9413,7 @@
     row.appendChild(document.createTextNode(" "));
     var lb = el("span", "body"); lb.textContent = o.label;
     row.appendChild(lb);
+    if (o.mi) row.setAttribute("data-mi", String(o.mi));
     fil.appendChild(row);
     while (fil.childNodes.length > 400) fil.removeChild(fil.firstChild);
     if (stick) scrollDown(fil);
