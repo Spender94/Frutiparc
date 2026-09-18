@@ -129,7 +129,8 @@ test('le plan SVG et le message disent la même chose que la description', () =>
   for (const p of r.portes) assert.ok(m.indexOf(p.entre[0] + '–' + p.entre[1]) > 0);
   assert.doesNotMatch(m, /bille (verte|bleue|métal|violette)\)/, 'pas de couleur aux portes');
   assert.doesNotMatch(m, /réclame/, 'pas de salle qui réclame une bille : le jeu n’en a pas');
-  assert.ok(m.endsWith('(graine ' + graine + ')[/i]'), 'la graine ferme le message : c’est la marque d’idempotence');
+  assert.ok(m.endsWith('(graine ' + graine + ' · carte v2)[/i]'), 'la graine et la version du plan ferment le message : c’est la marque d’idempotence');
+  assert.strictEqual(Carte.MARQUE_VERSION, ' · carte v2');
   // La variante « changée en cours de journée ».
   const m2 = Carte.messageForum(donjon, { graine, jour: 'x', changement: true });
   assert.ok(m2.startsWith('[b]Rebelote') && m2.indexOf('[img]') < 0);
@@ -209,17 +210,17 @@ test('au démarrage, VieuxPruneau ouvre le sujet et y poste la map du jour avec 
   assert.ok(s.posts.length >= 2, 'l’introduction, puis la map : ' + s.posts.length);
   const carte = s.posts[s.posts.length - 1];
   assert.strictEqual(carte.author, 'VieuxPruneau');
-  assert.strictEqual(String(carte.bouille || '').slice(0, 24), '0k0000010000000000000000');
+  assert.strictEqual(String(carte.bouille || '').slice(0, 24), '0g0000010000000000000000');
   assert.match(carte.content, /\[img\]\/forum-uploads\/[0-9a-f]{32}\.svg\[\/img\]/);
   assert.match(carte.content, /Le boss\[\/b\] en [A-H][1-8]\./);
-  assert.match(carte.content, /\(graine \d+\)\[\/i\]$/);
+  assert.match(carte.content, /\(graine \d+ · carte v2\)\[\/i\]$/);
   // Le plan se sert, en SVG, et c'est bien celui de la map servie.
   const url = /\[img\]([^\[]+)\[\/img\]/.exec(carte.content)[1];
   const r = await fetch(BASE + url);
   assert.strictEqual(r.status, 200);
   assert.match(r.headers.get('content-type') || '', /image\/svg\+xml/);
   const svg = await r.text();
-  const graine = Number(/\(graine (\d+)\)/.exec(carte.content)[1]);
+  const graine = Number(/\(graine (\d+)/.exec(carte.content)[1]);
   assert.ok(svg.indexOf('graine ' + graine) > 0);
   const info = await fetch(BASE + '/api/admin/mb2/map-info', { headers: hdr }).then((x) => x.json());
   assert.strictEqual(String(info.seed), String(graine), 'la graine du message est celle de la map servie');
@@ -240,7 +241,7 @@ test('un roll sur la même graine ne poste pas deux fois ; une régénération p
   assert.strictEqual(apres.posts.length, n, 'même graine, même message : pas de doublon');
   const info = await fetch(BASE + '/api/admin/mb2/map-info', { headers: hdr }).then((x) => x.json());
   assert.ok(info.canonical, 'la map servie est la canonique du jour');
-  assert.ok(apres.posts[n - 1].content.indexOf('(graine ' + info.seed + ')') > 0, 'et c’est elle qu’annonce le dernier message');
+  assert.ok(apres.posts[n - 1].content.indexOf('(graine ' + info.seed + Carte.MARQUE_VERSION + ')') > 0, 'et c’est elle qu’annonce le dernier message');
   // L'admin tire une autre map : VieuxPruneau la poste, en le disant.
   const rg = await post('/api/admin/mb2/regenerate-map');
   assert.ok(rg.ok);
@@ -248,11 +249,11 @@ test('un roll sur la même graine ne poste pas deux fois ; une régénération p
   assert.strictEqual(s.posts.length, n + 1);
   const dernier = s.posts[s.posts.length - 1];
   assert.ok(dernier.content.indexOf('Rebelote') >= 0, 'la map a changé en cours de journée, et il le dit');
-  assert.ok(dernier.content.indexOf('(graine ' + rg.seed + ')') > 0, 'la nouvelle graine');
+  assert.ok(dernier.content.indexOf('(graine ' + rg.seed + Carte.MARQUE_VERSION + ')') > 0, 'la nouvelle graine');
   // Et le rétablissement de la précédente aussi (l'ancienne graine revient).
   const rp = await post('/api/admin/mb2/restore-previous');
   assert.ok(rp.ok);
   const s2 = await attendreMessages(n + 2);
   assert.strictEqual(s2.posts.length, n + 2);
-  assert.ok(s2.posts[s2.posts.length - 1].content.indexOf('(graine ' + rp.seed + ')') > 0);
+  assert.ok(s2.posts[s2.posts.length - 1].content.indexOf('(graine ' + rp.seed + Carte.MARQUE_VERSION + ')') > 0);
 });

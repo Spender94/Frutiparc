@@ -383,6 +383,15 @@ class Level {
     const clip = this.dmanager.attach(bname, upper ? Const.BUMPER_PLAN : Const.SHADE_PLAN);
     this.fill_pos(b, C.hitmap[b.btype - 1], b);
     Tools.set_mcpos(clip, b);
+    // Un mur est un pavage de tuiles de 40 px qui se touchent bord à bord.
+    // Sur un canevas mis à l'échelle (la fenêtre redimensionnée : 1,27 ×,
+    // 1,8 ×…), le bord commun tombe entre deux pixels et l'anticrénelage y
+    // laisse un fil clair — une « couture » sur chaque bloc. On agrandit
+    // chaque tuile de deux pour cent autour de son centre : les voisines se
+    // recouvrent de 0,8 px et la couture disparaît ; le pourtour d'un bloc
+    // ne bouge que de 0,4 px. (Visuel seulement : la silhouette de collision
+    // vient de Collide.hitmap, sur un clip à l'échelle 1.)
+    if (b.btype === 6) { clip._xscale = 102; clip._yscale = 102; }
     b.clip = clip;
     if (b.btype !== 5 && b.btype !== 6 && b.btype !== 10 && b.btype !== 12 && b.btype !== 13) {
       b.shade = this.dmanager.attach('ombre', Const.SHADE_PLAN);

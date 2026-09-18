@@ -56,10 +56,10 @@
   // Les familles qui existent vraiment. Une bouille d'une famille ABSENTE se
   // dessine avec les tracés de la famille 0 — le même état (tête, yeux,
   // couleurs, accessoires : les vingt-quatre caractères ont la même place
-  // dans toutes les familles), les dessins de base. C'est le cas de la
-  // famille 20 (« 0k… », VieuxPruneau) : aucun fichier famille20.swf n'existe
-  // sur le site, et la case restait VIDE. On ne tourne pas en boucle sur un
-  // fichier introuvable pour autant : on n'essaie jamais de le charger.
+  // dans toutes les familles), les dessins de base — plutôt qu'une case VIDE
+  // (une famille sans fichier famille<n>.swf, comme la 20). On ne tourne pas
+  // en boucle sur un fichier introuvable pour autant : on n'essaie jamais de
+  // le charger.
   var FAMILLES = [0, 10, 11, 12, 13, 14, 15, 16, 23, 24];
   var FAMILLE_DE_REPLI = 0;
   var DOSSIER = '/fbouille/';

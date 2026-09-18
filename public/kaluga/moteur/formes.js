@@ -169,14 +169,55 @@ function ajouterAuMasque(cible, dessin, M) {
 }
 K.ajouterAuMasque = ajouterAuMasque;
 
+// Les pixels d'une image de remplissage, décodés une fois (pour son alpha).
+const pixelsImages = new WeakMap();
+function alphaImage(img, u, v) {
+  let p = pixelsImages.get(img);
+  if (p === undefined) {
+    p = null;
+    try {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const cx = c.getContext('2d', { willReadFrequently: true });
+      cx.drawImage(img, 0, 0);
+      p = { d: cx.getImageData(0, 0, c.width, c.height).data, w: c.width, h: c.height };
+    } catch (e) { /* image d'une autre origine : pas de lecture, on la tient pour opaque */ }
+    pixelsImages.set(img, p);
+  }
+  if (!p) return 255;
+  const i = Math.floor(v) * p.w + Math.floor(u);
+  return p.d[i * 4 + 3];
+}
+
 /**
  * Le point (x, y) — dans le repère du dessin — est-il dans un remplissage ?
+ *
+ * Un remplissage PAR IMAGE ne compte que là où l'image est opaque : c'est ce
+ * que fait le lecteur (hitTest avec le drapeau de forme, et Ruffle après
+ * lui). Les bumpers de Motion Ball sont des carrés remplis d'un PNG rond aux
+ * coins transparents ; tester le seul tracé en faisait des zones de contact
+ * CARRÉES, et la bille rebondissait à trois pixels d'un bumper qu'elle ne
+ * touchait pas — en frôlant à vive allure, on s'y faisait prendre. Hors de
+ * l'image (sans répétition), rien.
  */
-function contient(ctx, dessin, x, y) {
+function contient(ctx, dessin, x, y, images) {
   const c = compiler(dessin);
   for (const o of c.ops) {
-    if (!o.op.f) continue;
-    if (ctx.isPointInPath(o.chemin, x, y, 'evenodd')) return true;
+    const f = o.op.f;
+    if (!f) continue;
+    if (!ctx.isPointInPath(o.chemin, x, y, 'evenodd')) continue;
+    if (f.bm && images) {
+      const img = images[f.bm.id];
+      const inv = img && img.complete && img.naturalWidth ? inverse(f.bm.m) : null;
+      if (inv) {
+        let u = inv[0] * x + inv[2] * y + inv[4], v = inv[1] * x + inv[3] * y + inv[5];
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (f.bm.rp) { u = ((u % w) + w) % w; v = ((v % h) + h) % h; }
+        else if (u < 0 || v < 0 || u >= w || v >= h) continue;
+        if (alphaImage(img, u, v) === 0) continue;
+      }
+    }
+    return true;
   }
   return false;
 }

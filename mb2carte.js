@@ -414,11 +414,17 @@ function messageForum(d, infos) {
   if (r.portes.length) l.push(`• [b]Portes[/b] (un grelot les ouvre) : ${liste(r.portes, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
   if (r.invisibles.length) l.push(`• [b]Passages invisibles[/b] (absents de la carte) : ${liste(r.invisibles, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
   l.push('');
-  l.push(`[i](graine ${o.graine != null ? o.graine : '?'})[/i]`);
+  l.push(`[i](graine ${o.graine != null ? o.graine : '?'}${MARQUE_VERSION})[/i]`);
   return l.join('\n');
 }
 
+// La marque d'idempotence du message (server.js la cherche dans le dernier
+// message de VieuxPruneau) : la graine, et la VERSION du plan. Changer de
+// version fait reposter la map du jour une fois — c'est ainsi que le plan du
+// jeu (v2) a remplacé le plan inventé sans attendre le lendemain.
+const MARQUE_VERSION = ' · carte v2';
+
 module.exports = {
   decoderDonjon, lireFichier, decrire, carteSvg, messageForum, passage, nomCase,
-  BILLES, BONUS, TYPES, PASSAGES, COLONNES,
+  BILLES, BONUS, TYPES, PASSAGES, COLONNES, MARQUE_VERSION,
 };

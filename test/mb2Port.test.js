@@ -204,3 +204,32 @@ test('le catalogue : le disque light de MotionBall à côté du disque Flash, et
   assert.match(lire('public/ruffle.html'), /"light\/mb2": \{ url: "\/mb2\/"/);
   assert.match(lire('public/bureau-frutiz.js'), /mb2:\s*\{ panneau: '#mb2-panel'/);
 });
+
+// ── Les retours des joueurs : la zone de contact et les blocs ─────────────
+
+test('un remplissage par image ne compte que là où l\'image est opaque : le bumper normal est rond, pas carré', () => {
+  // Dans le SWF, le bumper normal (bnormal → forme 855) est un CARRÉ de
+  // 44 px rempli d'un PNG rond aux coins transparents. Tester le seul tracé
+  // en faisait une zone de contact carrée (Collide.gen_hitmap, hitTest avec
+  // le drapeau de forme) : la bille rebondissait à huit pixels d'un anneau
+  // qu'elle ne touchait pas. Le lecteur, lui, regarde l'image.
+  const forme = biblio.perso[String(biblio.symboles.bnormal)].frames[0].ops.find((o) => o.c).c;
+  const f = biblio.perso[String(forme)];
+  assert.strictEqual(f.t, 'forme');
+  assert.ok(f.ops.every((o) => o.f && o.f.bm), 'le bumper normal est fait de remplissages par image');
+  assert.match(f.ops[0].d, /^M22 22L-22 22L-22 -22L22 -22L22 22Z$/, 'un carré de 44 px');
+  assert.strictEqual(biblio.images[String(f.ops[0].f.bm.id)].f, 'mb2-854.png');
+  const formes = lire('public/kaluga/moteur/formes.js');
+  assert.match(formes, /function contient\(ctx, dessin, x, y, images\)/, 'le test de contenu reçoit les images');
+  assert.match(formes, /if \(alphaImage\(img, u, v\) === 0\) continue;/, 'un pixel transparent ne compte pas');
+  assert.match(formes, /if \(f\.bm\.rp\) \{ u = \(\(u % w\) \+ w\) % w; v = \(\(v % h\) \+ h\) % h; \}\s*else if \(u < 0 \|\| v < 0 \|\| u >= w \|\| v >= h\) continue;/, 'hors de l\'image (sans répétition), rien');
+  assert.match(lire('public/kaluga/moteur/flash.js'), /return K\.dessinContient\(K\.scene\.ctxMesure, d, x, y, this\.\$biblio\.images\);/, 'la forme passe les images de sa bibliothèque');
+});
+
+test('les tuiles d\'un mur se recouvrent de deux pour cent : plus de couture sur un canevas mis à l\'échelle', () => {
+  const niveau = lire('public/mb2/jeu/niveau.js');
+  assert.match(niveau, /Tools\.set_mcpos\(clip, b\);[\s\S]{0,900}if \(b\.btype === 6\) \{ clip\._xscale = 102; clip\._yscale = 102; \}\s*b\.clip = clip;/);
+  // La tuile fait 40 px, centrée : deux pour cent, c'est 0,4 px de chaque côté.
+  const tuile = biblio.perso[String(biblio.symboles.wall)].frames[0].ops.find((o) => o.c).c;
+  assert.deepStrictEqual(biblio.perso[String(tuile)].b.map(Math.round), [-20, -20, 20, 20]);
+});

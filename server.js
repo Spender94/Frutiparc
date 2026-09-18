@@ -14606,8 +14606,10 @@ async function mb2PublierCarteDuJourMaintenant(why, opts) {
     console.log(`[MB2] VieuxPruneau ouvre le sujet #${topic.id} « ${MB2_SUJET_FORUM} » dans « ${board.name} »`);
   }
 
-  // Déjà annoncée ? La graine est dans le texte du dernier message.
-  const marque = `(graine ${graine})`;
+  // Déjà annoncée ? La graine est dans le texte du dernier message — avec la
+  // version du plan : un plan redessiné (la carte du jeu a remplacé le plan
+  // inventé) se reposte une fois, même graine, puis se tait.
+  const marque = `(graine ${graine}${Carte.MARQUE_VERSION})`;
   if (!neuf) {
     const dernier = await db.forumDernierMessageDe(topic.id, MB2_CARTOGRAPHE);
     if (dernier && String(dernier.content || '').indexOf(marque) >= 0) return { topicId: topic.id, deja: true };
@@ -26359,7 +26361,7 @@ users.kiloute79 = {
 // détail — départ, boss, billes, bonus, portes (cf. mb2PublierCarteDuJour).
 users.vieuxpruneau = {
   pass: '', xp: 424242, kikooz: 0,
-  fbouille: '0k0000010000000000000000',
+  fbouille: '0g0000010000000000000000',
   items: withDefaultPens([]),
   contacts: [], blacklist: [],
   gender: 'M', birthday: '1948-11-02', country: 'FR', region: 'IDF',

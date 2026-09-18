@@ -251,7 +251,7 @@ class Forme extends Affichable {
   contientLocal(x, y) {
     const d = this.dessin();
     if (!d) return false;
-    return K.dessinContient(K.scene.ctxMesure, d, x, y);
+    return K.dessinContient(K.scene.ctxMesure, d, x, y, this.$biblio.images);
   }
   ajouterAuMasque(chemin, M) {
     const d = this.dessin();
