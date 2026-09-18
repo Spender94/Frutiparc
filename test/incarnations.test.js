@@ -283,15 +283,18 @@ test('les incarnations ont leur rayon, et il est PAYANT', async () => {
   const s = await (await fetch(BASE + '/api/light/shop?sid=' + sid)).json();
   const rayon = (s.categories || []).find((c) => c.name === 'Incarnations');
   assert.ok(rayon, 'le rayon « Incarnations » existe');
-  assert.equal(rayon.items.length, 14, 'les deux originales et leurs six teintes chacune');
+  // Le rayon accueille aussi les teintes du maquillage d'Egerie (cf.
+  // test/maquillageEgerie.test.js) : ici, on ne regarde que les PAIRES.
+  const items = rayon.items.filter((a) => a.prunelle);
+  assert.equal(items.length, 14, 'les deux originales et leurs six teintes chacune');
   // Une plage RÉSERVÉE : un article créé depuis l'admin prend le numéro qu'on
   // lui donne, et ne doit pas pouvoir se poser sur celui d'une incarnation.
-  const ids = rayon.items.map((a) => a.id).sort((x, y) => x - y);
+  const ids = items.map((a) => a.id).sort((x, y) => x - y);
   assert.equal(ids[0], HIKO1, 'la première garde son numéro — elle est vendue');
   assert.equal(ids[1], HIKO2, 'la seconde aussi');
   assert.equal(new Set(ids).size, 14, 'quatorze numéros distincts');
   assert.ok(ids.every((i) => i >= 600001 && i <= 600014), 'tous dans la plage réservée');
-  for (const a of rayon.items) {
+  for (const a of items) {
     assert.equal(a.kind, 'incarnation');
     assert.equal(a.offert, false, 'un rayon payant, comme les accessoires');
     assert.equal(a.owned, false);
@@ -304,13 +307,13 @@ test('les incarnations ont leur rayon, et il est PAYANT', async () => {
       'seuls les caractères 4-5 (l’iris) changent, pas ' + diff.join(','));
   }
   // Les deux index vendus sont ceux du paquet.
-  const yeux = rayon.items.map((a) => M.decode62(a.etat.substring(4, 6))).sort((x, y) => x - y);
+  const yeux = items.map((a) => M.decode62(a.etat.substring(4, 6))).sort((x, y) => x - y);
   assert.deepEqual(yeux, [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
   // Le PRIX suit le modèle, pas la teinte : une couleur ne se paie pas plus
   // cher que l'originale.
   const prix = {};
-  rayon.items.forEach((a) => { prix[/#2/.test(a.name) ? 'animee' : 'fixe'] = new Set(); });
-  rayon.items.forEach((a) => prix[/#2/.test(a.name) ? 'animee' : 'fixe'].add(a.price));
+  items.forEach((a) => { prix[/#2/.test(a.name) ? 'animee' : 'fixe'] = new Set(); });
+  items.forEach((a) => prix[/#2/.test(a.name) ? 'animee' : 'fixe'].add(a.price));
   assert.deepEqual([...prix.fixe], [120], 'les sept fixes au même prix');
   assert.deepEqual([...prix.animee], [200], 'les sept animées aussi');
 });
@@ -407,10 +410,12 @@ test('une incarnation ne se confond pas avec une bouille ordinaire', () => {
   // famille, et celles dont l'iris a été acheté (au-delà des dix-huit
   // d'origine). Serveur et client doivent en juger pareil, sans quoi l'un
   // écraserait la bouille principale que l'autre s'efforce de garder.
+  // (Une troisième depuis le maquillage d'Egerie — yeux et bouche dans un même
+  // bloc de teinte — que test/maquillageEgerie.test.js tient de son côté.)
   assert.match(SERVEUR, /const IRIS_ORIGINE_MAX = 17;/);
-  assert.match(SERVEUR, /return decode62\(s\.substring\(4, 6\)\) > IRIS_ORIGINE_MAX;/);
+  assert.match(SERVEUR, /if \(decode62\(s\.substring\(4, 6\)\) > IRIS_ORIGINE_MAX\) return true;/);
   assert.match(LIGHT, /var IRIS_ORIGINE_MAX = 17;/);
-  assert.match(LIGHT, /return fbDecChar\(v\.charAt\(4\)\) \* 62 \+ fbDecChar\(v\.charAt\(5\)\) > IRIS_ORIGINE_MAX;/);
+  assert.match(LIGHT, /if \(fbDec2\(v, 4\) > IRIS_ORIGINE_MAX\) return true;/);
   // L'éditeur, lui, ne propose que les iris d'origine : les autres s'achètent.
   assert.match(LIGHT, /\{ key: "iris",\s+label: "iris",\s+id: 2, pos: 4,\s+max: IRIS_ORIGINE_MAX \}/);
   // Et la bouille principale ne bouge que lorsqu'on montre la sienne.
@@ -511,7 +516,7 @@ test('le lecteur greffe les prunelles au chargement de la famille', () => {
   const vig = fs.readFileSync(path.join(ROOT, 'public/js/bouille-vignette.js'), 'utf8');
   // Au MÊME point de passage que les variantes d'accessoire, et pour la même
   // raison : un index doit vouloir dire la même chose sur tous les écrans.
-  assert.match(vig, /Promise\.all\(\[Swf\.charger\(DOSSIER \+ 'famille' \+ n \+ '\.swf'\), variantes\(\), prunelles\(\)\]\)/);
+  assert.match(vig, /Promise\.all\(\[Swf\.charger\(DOSSIER \+ 'famille' \+ n \+ '\.swf'\), variantes\(\), prunelles\(\), maquillage\(\)\]\)/);
   assert.match(vig, /M\.grefferPrunelles\(r\[0\], r\[2\]\)/);
   assert.match(vig, /global\.fetch\(DOSSIER \+ 'prunelles\.json'\)/);
   // Un fichier absent ne doit pas empêcher les bouilles de paraître.

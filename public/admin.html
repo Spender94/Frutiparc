@@ -619,8 +619,6 @@
     <div style="border:1px solid #cfe0b3;border-radius:8px;padding:12px;min-width:330px">
       <label style="font-size:12px;color:#555;display:block;margin-bottom:8px">SVG retravaillé :
         <input type="file" id="va-fichier" accept=".svg,image/svg+xml"></label>
-      <div style="font-size:12px;color:#555;margin:-2px 0 8px">… ou une pièce récoltée :
-        <button type="button" class="btn btn-sm" onclick="vaChargerMaquillage()" title="Le fard, les cils, les sourcils et les lèvres de la frutibouille d'Egerie (famille 14), récoltés en variante des lunettes. Niveau 1 : les lèvres, niveau 2 : le fard. Publie-la, puis « → boutique » pour en faire un article aux couleurs de ton choix.">Le maquillage d'Egerie</button></div>
       <div style="display:flex;gap:12px;align-items:flex-start">
         <span style="display:block;width:96px;height:96px;flex:0 0 96px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden" id="va-apercu-hote"></span>
         <div style="flex:1">
@@ -4670,33 +4668,6 @@ function vaRepreview() {
     bouton.disabled = false;
     return inj;
   });
-}
-
-/*
- * LE MAQUILLAGE D'EGERIE, PRÊT À PUBLIER.
- *
- * Le fard, les cils, les sourcils et les lèvres de la famille 14, récoltés par
- * scripts/extract-maquillage-egerie.js au format d'une variante (des aplats en
- * scène, niveau 1 les lèvres, niveau 2 le fard). Il n'y a pas de SVG à
- * déposer : le paquet est servi tel quel, et le formulaire s'en remplit comme
- * d'un fichier — même aperçu, même publication, puis le même « → boutique »
- * que pour n'importe quelle variante. Le type porteur (les lunettes) vient
- * avec le paquet : c'est l'accessoire dessiné sur le visage.
- */
-async function vaChargerMaquillage() {
-  const etat = $('#va-etat');
-  let paq = null;
-  try { paq = await (await fetch('/fbouille/maquillage-egerie.json', { cache: 'no-cache' })).json(); } catch (e) { paq = null; }
-  if (!paq || !Array.isArray(paq.paths) || !paq.paths.length) {
-    etat.textContent = 'Le maquillage d’Egerie est introuvable (fbouille/maquillage-egerie.json).';
-    return;
-  }
-  vaPaths = paq.paths;
-  $('#va-fichier').value = '';
-  if (!$('#va-nom').value.trim()) $('#va-nom').value = paq.nom || 'Maquillage d’Egerie';
-  const sel = $('#va-type');
-  if (paq.type && [...sel.options].some(function (o) { return o.value === String(paq.type); })) sel.value = String(paq.type);
-  vaRepreview();
 }
 
 function vaCharger(svgTexte) {

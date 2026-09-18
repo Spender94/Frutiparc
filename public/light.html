@@ -12102,10 +12102,21 @@
    * après une reconnexion, où le serveur rend la bouille principale.
    */
   var IRIS_ORIGINE_MAX = 17;
+  // Et le MAQUILLAGE D'EGERIE : au-delà des 9 yeux et des 5 bouches
+  // d'origine, c'est un type d'origine plus le maquillage, greffé au bout du
+  // rouleau (index = base × (1 + teinte) + type) — la même règle que le
+  // serveur (`estIncarnation`, `bouilleAvecMaquillage`).
+  var MAQ_YEUX = 9, MAQ_BOUCHES = 5;
+  function fbDec2(v, i) { return fbDecChar(v.charAt(i)) * 62 + fbDecChar(v.charAt(i + 1)); }
+  function fbEnc2(n) { return fbEncChar(Math.floor(n / 62)) + fbEncChar(n % 62); }
   function isIncarnation(v) {
     if (typeof v !== "string" || v.length !== 24) return false;
     if (v.substring(0, 2) !== "00" && v.substring(0, 2) !== "01") return true;
-    return fbDecChar(v.charAt(4)) * 62 + fbDecChar(v.charAt(5)) > IRIS_ORIGINE_MAX;
+    if (fbDec2(v, 4) > IRIS_ORIGINE_MAX) return true;
+    // Yeux et bouche dans le MÊME bloc de teinte : c'est ce que le serveur
+    // écrit, et ce qui distingue le maquillage d'une vieille chaîne qui déborde.
+    var te = Math.floor(fbDec2(v, 2) / MAQ_YEUX), tb = Math.floor(fbDec2(v, 8) / MAQ_BOUCHES);
+    return te >= 1 && te === tb;
   }
   function buildState(base, suffix9, fullState) {
     if (fullState) return String(fullState);
@@ -12253,9 +12264,18 @@
     var cases = [{ nom: "Ma bouille", etat: fbPad(myBase), sienne: true }]
       .concat(invIncarnations.map(function (i) {
         // Toujours redessinée sur SA bouille : elle a pu changer depuis l'achat.
-        var e = fbPad(i.etat);
-        return { nom: i.nom || "Incarnation", etat: fbPad(myBase).substring(0, 4)
-          + e.substring(4, 6) + fbPad(myBase).substring(6, 24) };
+        var e = fbPad(i.etat), b = fbPad(myBase);
+        if (i.maquillage) {
+          // Le maquillage vit aux places des yeux et de la bouche : le BLOC (la
+          // teinte) vient de l'article, le TYPE vient de sa bouille.
+          return { nom: i.nom || "Maquillage", etat: b.substring(0, 2)
+            + fbEnc2(Math.floor(fbDec2(e, 2) / MAQ_YEUX) * MAQ_YEUX + fbDec2(b, 2) % MAQ_YEUX)
+            + b.substring(4, 8)
+            + fbEnc2(Math.floor(fbDec2(e, 8) / MAQ_BOUCHES) * MAQ_BOUCHES + fbDec2(b, 8) % MAQ_BOUCHES)
+            + b.substring(10, 24) };
+        }
+        return { nom: i.nom || "Incarnation", etat: b.substring(0, 4)
+          + e.substring(4, 6) + b.substring(6, 24) };
       }));
     cases.forEach(function (c) {
       var it = el("div", "acc-item" + (c.etat === porte ? " sel" : ""));

@@ -961,6 +961,182 @@
     return table;
   }
 
+  /* ── LE MAQUILLAGE D'EGERIE ──────────────────────────────────────────────
+   *
+   * Le maquillage de la famille 14 n'est pas un accessoire : il est dessiné
+   * DANS les clips de la bouche et des yeux d'Egerie, image par image — c'est
+   * ainsi qu'il suit la bouche qui parle et l'œil qui se ferme. Le paquet
+   * récolté (`public/fbouille/maquillage-egerie.json`, par
+   * scripts/extract-maquillage-egerie.js) porte, pour chaque image des deux
+   * clips, les couches de maquillage et leur matrice.
+   *
+   * La greffe en fait des IMAGES DE ROULEAU, comme les prunelles : au bout du
+   * rouleau des bouches, « bouche k + maquillage teinte t » ; au bout du
+   * rouleau des yeux, « œil k + maquillage teinte t ». Chacune est une COPIE du
+   * clip d'origine de la famille d'accueil — ses images, ses étiquettes, ses
+   * scripts —, où chaque image reçoit en plus les couches de maquillage de
+   * l'image d'Egerie qui lui répond. La bouche d'Egerie est la bouche 2 de la
+   * famille 0 (même clip) et son œil a la ligne de temps des yeux 1 et 2 : là,
+   * image pour image. Ailleurs, on cale par ÉTIQUETTE (parle0, rire0, ferme,
+   * regardG…) : le maquillage suit les poses, avec les formes d'Egerie.
+   *
+   * Rien d'autre ne change : le porteur garde ses yeux, sa bouche, son iris (le
+   * rouleau `p` est celui du clip copié — les prunelles y sont), ses humeurs,
+   * ses émotes et son accessoire. Une bouille désigne le maquillage par sa
+   * chaîne d'état, aux places de la bouche et des yeux :
+   *
+   *     index = base × (1 + t) + k        base = longueur d'origine du rouleau
+   *
+   * L'index est donc le même partout, pour toujours, tant que les teintes se
+   * suivent sans s'insérer. On ne greffe que là où le rouleau a EXACTEMENT sa
+   * longueur d'origine : une autre famille (hiko, les incarnations d'époque)
+   * n'a ni ces bouches ni ces yeux, et ses index ne voudraient rien dire.
+   */
+  const MAQUILLAGE_PROF = 200;       // les couches greffées, au-dessus de tout le clip
+  const MAQUILLAGE_SPRITES = 600000; // les premiers identifiants des clips composés
+
+  // Les rouleaux du visage posés sous ces noms — `b` pour les bouches, `oa`
+  // et `ob` pour les yeux (la famille 0 n'en a qu'un, partagé).
+  function rouleauxDuVisage(defs, noms) {
+    const face = spriteVisage(defs);
+    const out = [];
+    for (const nom of noms) {
+      for (const r of sousSprites(defs, face, nom)) if (out.indexOf(r) < 0) out.push(r);
+    }
+    return out;
+  }
+  // Ce qu'une image du rouleau pose sous ce nom : la bouche k pose son `b`,
+  // l'œil k son `o`.
+  function poseDuRouleau(r, image, nom) {
+    for (const o of etatDuRouleau(r, image).values()) if (o.nom === nom) return o;
+    return null;
+  }
+  // Les positions d'étiquette d'un clip, triées et dédoublonnées (la bouche 0
+  // pose « parle0 » et « parle2 » sur la même image).
+  function bornesDe(def) {
+    const pos = new Set([1]);
+    Object.values(def.labels || {}).forEach((v) => { if (v >= 1) pos.add(v); });
+    return [...pos].sort((a, b) => a - b);
+  }
+  // Le début du segment qui contient l'image f, et sa longueur.
+  function segmentDe(def, bornes, f) {
+    let debut = 1;
+    for (const b of bornes) if (b <= f) debut = b;
+    let fin = def.n + 1;
+    for (const b of bornes) if (b > debut) { fin = b; break; }
+    return { debut, longueur: fin - debut };
+  }
+  /**
+   * L'image du MODÈLE (le clip d'Egerie) qui répond à l'image f de l'HÔTE.
+   * Même ligne de temps : la même image. Sinon, la même étiquette, au même
+   * décalage — borné à la longueur du segment chez le modèle.
+   */
+  function imageCorrespondante(f, hote, modele, meme) {
+    if (meme) return Math.min(f, modele.n);
+    const seg = segmentDe(hote, bornesDe(hote), f);
+    let nom = null;
+    for (const [k, v] of Object.entries(hote.labels || {})) if (v === seg.debut) { nom = k; break; }
+    const debutM = (nom && modele.labels && modele.labels[nom]) ? modele.labels[nom] : (seg.debut === 1 ? 1 : 0);
+    if (!debutM) return Math.min(f, modele.n);      // une étiquette que le modèle n'a pas
+    const segM = segmentDe(modele, bornesDe(modele), debutM);
+    return Math.min(debutM + Math.min(f - seg.debut, segM.longueur - 1), modele.n);
+  }
+  // La copie d'un clip de l'hôte, chaque image augmentée des couches de
+  // maquillage de l'image d'Egerie qui lui répond. Les couches sont RETIRÉES
+  // puis reposées à chaque image : une image de pellicule est un delta, et une
+  // couche absente de l'image suivante doit disparaître.
+  function composerClip(hote, modele, decalageForme) {
+    const meme = hote.n === modele.n
+      && JSON.stringify(hote.labels || {}) === JSON.stringify(modele.labels || {});
+    const profs = new Set();
+    (modele.images || []).forEach((ops) => ops.forEach((o) => profs.add(o.prof)));
+    const images = hote.images.map((im, i) => {
+      const g = imageCorrespondante(i + 1, hote, modele, meme);
+      const sortie = (im || []).slice();
+      profs.forEach((prof) => sortie.push({ t: 'retire', prof: MAQUILLAGE_PROF + prof }));
+      (modele.images[g - 1] || []).forEach((o) => sortie.push({
+        t: 'pose', ch: o.ch + decalageForme, prof: MAQUILLAGE_PROF + o.prof,
+        M: o.M, nom: null, masque: 0, cx: null, ratio: null, deplace: false,
+      }));
+      return sortie;
+    });
+    const copie = Object.assign({}, hote, { images });
+    delete copie._etats;
+    return copie;
+  }
+  /**
+   * Greffe le maquillage d'Egerie dans une famille : les rouleaux des bouches
+   * et des yeux reçoivent, pour chaque teinte et chaque type d'origine, une
+   * image « type + maquillage ». Idempotent. Rend la table
+   * `{ teintes: { cle: t }, base: { bouches, yeux } }`, ou null si la famille
+   * n'est pas celle du relevé.
+   */
+  function grefferMaquillage(defs, paquet) {
+    if (!defs || !paquet || !paquet.bouche || !paquet.oeil) return (defs && defs._maquillage) || null;
+    if (defs._maquillage !== undefined) return defs._maquillage;
+    const base = paquet.base || {};
+    const bouches = rouleauxDuVisage(defs, ['b']);
+    const yeux = rouleauxDuVisage(defs, ['oa', 'ob']);
+    const conforme = bouches.length && yeux.length
+      && bouches.every((r) => r.images.length === base.bouches)
+      && yeux.every((r) => r.images.length === base.yeux);
+    if (!conforme) { defs._maquillage = null; return null; }
+
+    const teintes = paquet.teintes || [];
+    // Les formes, une copie par teinte : les couches « levres » et « fard »
+    // prennent la couleur de la teinte, les « fixe » (cils, sourcils) restent.
+    const DECALAGE_TEINTE = 1000;
+    teintes.forEach((teinte, t) => {
+      Object.entries(paquet.formes || {}).forEach(([id, f]) => {
+        const n = Number(id) + t * DECALAGE_TEINTE;
+        if (defs.formes.has(n)) return;
+        defs.formes.set(n, {
+          id: n, bounds: f.bounds,
+          couches: (f.couches || []).map((c) => ({
+            d: c.d,
+            rgb: c.role === 'levres' ? teinte.levres : c.role === 'fard' ? teinte.fard : c.rgb,
+            alpha: c.alpha == null ? 1 : c.alpha, degrade: c.degrade || null, trait: !!c.trait,
+          })),
+        });
+      });
+    });
+
+    // Les clips composés prennent des identifiants d'une plage à eux, au-delà
+    // de tout ce qui se greffe par paquet (émotes 100000-300000, prunelles
+    // 300000, formes du maquillage 500000) : une greffe qui viendrait APRÈS
+    // avec ses propres numéros ne doit ni écraser ni retrouver les nôtres.
+    let prochain = MAQUILLAGE_SPRITES;
+    defs.sprites.forEach((_, id) => { if (id > prochain) prochain = id; });
+    const greffer = (rouleaux, nom, modele, baseN) => {
+      rouleaux.forEach((r) => {
+        teintes.forEach((teinte, t) => {
+          for (let k = 0; k < baseN; k++) {
+            const pose = poseDuRouleau(r, k + 1, nom);
+            const hote = pose && defs.sprites.get(pose.ch);
+            if (!hote) continue;
+            const index = baseN * (1 + t) + k;
+            prochain += 1;
+            defs.sprites.set(prochain, composerClip(hote, modele, t * DECALAGE_TEINTE));
+            while (r.images.length < index) r.images.push([]);
+            const restant = etatDuRouleau(r, r.images.length);
+            const ordres = [];
+            for (const prof of restant.keys()) if (prof !== pose.prof) ordres.push({ t: 'retire', prof });
+            ordres.push(Object.assign({}, pose, { ch: prochain }));
+            r.images[index] = ordres;
+            r.n = r.images.length;
+            delete r._etats;
+          }
+        });
+      });
+    };
+    greffer(bouches, 'b', paquet.bouche, base.bouches);
+    greffer(yeux, 'o', paquet.oeil, base.yeux);
+    const table = { teintes: {}, base: { bouches: base.bouches, yeux: base.yeux } };
+    teintes.forEach((teinte, t) => { table.teintes[teinte.cle] = t; });
+    defs._maquillage = table;
+    return table;
+  }
+
   /*
    * LES DEUX CHUTES, RYTHMÉES À LA MAIN.
    *
@@ -2292,7 +2468,7 @@
     decode62, encode62, teindre, cxTeinte, composerCx, composerM, etatsDe, facteurPour,
     // Les prunelles : le rouleau d'iris d'une famille, et la greffe de celles
     // qu'on récolte ailleurs (cf. scripts/extract-prunelles-bouille.js).
-    rouleauxIris, grefferPrunelles,
+    rouleauxIris, grefferPrunelles, grefferMaquillage, imageCorrespondante,
     /** Famille d'une chaîne d'état : les deux premiers caractères, en base 62. */
     familleDe: function (s) { return decode62(String(s || '00').substring(0, 2)); },
     /** Attache une bouille à un canevas, la famille étant chargée à la volée. */

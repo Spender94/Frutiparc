@@ -341,6 +341,10 @@ async function initSchema() {
       -- remplace les caractères 4-5 —, et c'est cette clé qui dit laquelle.
       -- Vide pour tout le reste du catalogue.
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS prunelle TEXT DEFAULT '';
+      -- LA TEINTE DU MAQUILLAGE D'EGERIE (public/fbouille/maquillage-egerie.json) :
+      -- un article qui remplace les yeux et la bouche de bloc, comme la
+      -- prunelle remplace l'iris. Vide pour tout le reste.
+      ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS maquillage TEXT DEFAULT '';
 
       -- LES REVENTES. Un joueur rend un accessoire à la boutique contre la
       -- moitié de ce qu'il l'a payé — ou trente kikooz s'il l'a reçu. Une
@@ -2239,17 +2243,18 @@ async function loadShopPacks() {
     if (r.disabled) p.disabled = true;
     if (r.auteur) p.auteur = r.auteur;
     if (r.prunelle) p.prunelle = r.prunelle;
+    if (r.maquillage) p.maquillage = r.maquillage;
     return p;
   });
 }
 
 async function upsertShopPack(pack) {
   await pool.query(
-    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment, wallpaper_id, picto, disabled, auteur, prunelle)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment, wallpaper_id, picto, disabled, auteur, prunelle, maquillage)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      ON CONFLICT (id) DO UPDATE SET
-       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7, wallpaper_id = $8, picto = $9, disabled = $10, auteur = $11, prunelle = $12`,
-    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '', pack.wallpaperId || null, pack.picto || null, !!pack.disabled, String(pack.auteur || ''), String(pack.prunelle || '')]
+       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7, wallpaper_id = $8, picto = $9, disabled = $10, auteur = $11, prunelle = $12, maquillage = $13`,
+    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '', pack.wallpaperId || null, pack.picto || null, !!pack.disabled, String(pack.auteur || ''), String(pack.prunelle || ''), String(pack.maquillage || '')]
   );
 }
 

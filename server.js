@@ -487,12 +487,28 @@ function normalizeBouilleState(value) {
  * principale, que l'on ne met à jour que lorsqu'il montre la sienne.
  */
 const IRIS_ORIGINE_MAX = 17;
+// Et une troisième sorte, depuis le MAQUILLAGE D'EGERIE : ses yeux (9) et ses
+// bouches (5) d'origine vont de 0 à 8 et de 0 à 4 ; au-delà, c'est un type
+// d'origine PLUS le maquillage, greffé au bout du rouleau — cf. plus bas,
+// `MAQUILLAGE`, et `public/fbouille/maquillage-egerie.json`.
+const YEUX_ORIGINE_MAX = 8;
+const BOUCHES_ORIGINE_MAX = 4;
+// Le BLOC de maquillage d'une bouille (1 = première teinte…), ou 0. Les yeux
+// et la bouche doivent tomber dans le MÊME bloc : c'est ce que `bouilleAvecMaquillage`
+// écrit, et c'est ce qui distingue le maquillage d'une vieille chaîne dont
+// la bouche déborde par hasard (le lecteur d'époque bornait à la dernière image).
+function blocMaquillage(s) {
+  const yeux = Math.floor(decode62(s.substring(2, 4)) / (YEUX_ORIGINE_MAX + 1));
+  const bouche = Math.floor(decode62(s.substring(8, 10)) / (BOUCHES_ORIGINE_MAX + 1));
+  return (yeux >= 1 && yeux === bouche && yeux <= MAQUILLAGE.teintes.length) ? yeux : 0;
+}
 function estIncarnation(etat) {
   const s = String(etat || '').split('|')[0];
   if (s.length !== 24) return false;
   const fam = s.substring(0, 2);
   if (fam !== '00' && fam !== '01') return true;
-  return decode62(s.substring(4, 6)) > IRIS_ORIGINE_MAX;
+  if (decode62(s.substring(4, 6)) > IRIS_ORIGINE_MAX) return true;
+  return blocMaquillage(s) > 0;
 }
 
 /*
@@ -6192,10 +6208,54 @@ const PRUNELLES = {};      // cle → { cle, nom, description, teinte, eyeSc }
   }
 })();
 
+/*
+ * LE MAQUILLAGE D'EGERIE — le fard, les cils, les sourcils et les lèvres de la
+ * famille 14, greffés au bout des rouleaux de BOUCHES et d'YEUX de la famille 0.
+ *
+ * Même mécanique que les prunelles, sur deux rouleaux à la fois : le moteur
+ * (`grefferMaquillage`) ajoute, pour chaque teinte t et chaque type d'origine
+ * k, une image « type k + maquillage teinte t » à l'index base × (1 + t) + k
+ * (base = 5 pour les bouches, 9 pour les yeux). Une bouille maquillée garde
+ * donc SES yeux et SA bouche — le maquillage suit leurs animations, image par
+ * image —, son iris, sa coiffure et son accessoire : seuls les caractères 2-3
+ * (yeux) et 8-9 (bouche) changent de bloc.
+ *
+ * Le serveur n'a besoin que des teintes et des bases : il les lit dans le MÊME
+ * fichier que le lecteur (`public/fbouille/maquillage-egerie.json`), aucun
+ * numéro recopié à la main. Chaque teinte est un article du rayon
+ * « Incarnations » — comme un accessoire se vend par couleur.
+ */
+const MAQUILLAGE_FILE = path.join(__dirname, 'public', 'fbouille', 'maquillage-egerie.json');
+const MAQUILLAGE = { nom: 'Maquillage d’Egerie', base: { bouches: 5, yeux: 9 }, teintes: [] };
+const MAQUILLAGES = {};      // cle → { cle, nom, t }
+(function chargerMaquillage() {
+  try {
+    const p = JSON.parse(fs.readFileSync(MAQUILLAGE_FILE, 'utf8'));
+    if (p.nom) MAQUILLAGE.nom = String(p.nom);
+    if (p.base && Number(p.base.bouches) > 0 && Number(p.base.yeux) > 0) {
+      MAQUILLAGE.base = { bouches: Number(p.base.bouches), yeux: Number(p.base.yeux) };
+    }
+    (p.teintes || []).forEach((t, i) => {
+      if (!t || !t.cle) return;
+      const teinte = { cle: String(t.cle), nom: String(t.nom || t.cle), t: i };
+      MAQUILLAGE.teintes.push(teinte);
+      MAQUILLAGES[teinte.cle] = teinte;
+    });
+    console.log(`[MAQUILLAGE] ${MAQUILLAGE.teintes.length} teinte(s) chargée(s)`);
+  } catch (e) {
+    console.error('[MAQUILLAGE] lecture impossible :', e.message);
+  }
+})();
+
 // La plage réservée aux INCARNATIONS livrées avec le code (cf. le rayon plus
 // bas) : au-delà de ce que l'admin numérote à la main, sous les accessoires
 // maison (700 000) et la vitrine (900 000).
 const INCARNATION_ID_BASE = 600000;
+// Et celle des teintes du maquillage d'Egerie, juste au-dessus : l'index de
+// la teinte est figé (les teintes s'ajoutent, ne s'insèrent pas), l'article
+// aussi — `610000 + t`.
+const MAQUILLAGE_ID_BASE = 610000;
+const MAQUILLAGE_PRIX = 80;
 
 /*
  * LE RAYON DES PRUNELLES S'ÉCRIT TOUT SEUL.
@@ -6229,6 +6289,22 @@ const INCARNATIONS_DEFAULT = Object.values(PRUNELLES)
     description: (p.description ? p.description + ' ' : '')
       + 'Tu les enfiles, tu les retires — ta bouille t’attend dessous, intacte.',
   }));
+
+/*
+ * LE RAYON DU MAQUILLAGE S'ÉCRIT TOUT SEUL, comme celui des prunelles : une
+ * teinte ajoutée à la récolte paraît en boutique au redémarrage suivant.
+ */
+const MAQUILLAGES_DEFAULT = MAQUILLAGE.teintes.map((t) => ({
+  id: MAQUILLAGE_ID_BASE + t.t,
+  name: MAQUILLAGE.nom + ' — ' + t.nom,
+  category: 'Incarnations',
+  price: MAQUILLAGE_PRIX,
+  maquillage: t.cle,
+  suffix9: '000000000',
+  comment: t.t === 0 ? 'Le fard, les cils et les lèvres d’Egerie.' : 'Le maquillage d’Egerie, en ' + t.nom + '.',
+  description: 'Il suit ta bouche qui parle et tes yeux qui se ferment, et laisse ton accessoire en place. '
+    + 'Tu le mets, tu le retires — ta bouille t’attend dessous, intacte.',
+}));
 
 const SHOP_PACKS_DEFAULT = [
   {
@@ -6316,6 +6392,8 @@ const SHOP_PACKS_DEFAULT = [
   // Les quatorze paires de prunelles, engendrées depuis la récolte
   // (cf. INCARNATIONS_DEFAULT) : deux originales et leurs six teintes chacune.
   ...INCARNATIONS_DEFAULT,
+  // Les teintes du maquillage d'Egerie (cf. MAQUILLAGES_DEFAULT).
+  ...MAQUILLAGES_DEFAULT,
   // Wallpapers
   { id: 201, name: 'Chevalier moutarde',    category: "Fonds d'écran", price: 0, description: 'Un fond chevaleresque aux tons moutarde.',     suffix9: '000000000', wallpaperId: 'moutarde' },
   { id: 202, name: 'Chorale Frutiparc',     category: "Fonds d'écran", price: 0, description: 'La grande chorale de Frutiparc !',             suffix9: '000000000', wallpaperId: 'chorale' },
@@ -6420,6 +6498,23 @@ function bouilleAvecPrunelle(etat, eyeSc) {
   return s.substring(0, 4) + encode62(Math.max(0, Number(eyeSc) || 0), 2) + s.substring(6, 24);
 }
 
+/*
+ * LE MAQUILLAGE, posé sur une bouille : les caractères 2-3 (yeux) et 8-9
+ * (bouche) passent dans le bloc de la teinte, en gardant le TYPE d'origine —
+ * le porteur garde ses yeux et sa bouche, maquillés. Une bouille déjà maquillée
+ * change simplement de teinte. Une bouille d'une autre famille n'a pas ces
+ * rouleaux : elle est rendue telle quelle.
+ */
+function bouilleAvecMaquillage(etat, cle) {
+  const s = normalizeBouilleState(String(etat || '').split('|')[0]);
+  const teinte = MAQUILLAGES[String(cle || '')];
+  if (!teinte || s.length !== 24 || s.substring(0, 2) !== '00') return s;
+  const { bouches, yeux } = MAQUILLAGE.base;
+  const oeil = yeux * (1 + teinte.t) + (decode62(s.substring(2, 4)) % yeux);
+  const bouche = bouches * (1 + teinte.t) + (decode62(s.substring(8, 10)) % bouches);
+  return s.substring(0, 2) + encode62(oeil, 2) + s.substring(4, 8) + encode62(bouche, 2) + s.substring(10, 24);
+}
+
 // La prunelle d'une entrée d'inventaire, ou null. On la reconnaît à son
 // ARTICLE : le `v` d'une prunelle est une bouille comme une autre, rien dans
 // la chaîne ne dit qu'elle a été achetée pour ses yeux.
@@ -6428,6 +6523,13 @@ function getAccessoryPrunelle(acc) {
   const pack = getShopPack(acc.shopId);
   const cle = pack && pack.prunelle;
   return (cle && PRUNELLES[cle]) ? PRUNELLES[cle] : null;
+}
+// Et la teinte de maquillage d'une entrée d'inventaire, ou null — même règle.
+function getAccessoryMaquillage(acc) {
+  if (!acc || acc.shopId == null) return null;
+  const pack = getShopPack(acc.shopId);
+  const cle = pack && pack.maquillage;
+  return (cle && MAQUILLAGES[cle]) ? MAQUILLAGES[cle] : null;
 }
 
 /*
@@ -6444,13 +6546,27 @@ function incarnationsDe(user, username) {
   const out = [];
   for (const acc of perso) {
     const pru = getAccessoryPrunelle(acc);
-    if (!pru) continue;
+    if (pru) {
+      out.push({
+        id: acc.id,
+        shopId: acc.shopId || null,
+        nom: acc.n || pru.nom,
+        cle: pru.cle,
+        etat: bouilleAvecPrunelle(principale, pru.eyeSc),
+      });
+      continue;
+    }
+    // Le maquillage d'Egerie se porte comme une incarnation : une bouille
+    // entière, la sienne maquillée, qu'on enfile et qu'on retire.
+    const maq = getAccessoryMaquillage(acc);
+    if (!maq) continue;
     out.push({
       id: acc.id,
       shopId: acc.shopId || null,
-      nom: acc.n || pru.nom,
-      cle: pru.cle,
-      etat: bouilleAvecPrunelle(principale, pru.eyeSc),
+      nom: acc.n || (MAQUILLAGE.nom + ' — ' + maq.nom),
+      cle: maq.cle,
+      maquillage: maq.cle,
+      etat: bouilleAvecMaquillage(principale, maq.cle),
     });
   }
   return out;
@@ -12839,20 +12955,24 @@ app.post('/api/admin/shop', adminScope('shop'), async (req, res) => {
   // suffixe d'accessoire : l'un OU l'autre suffit.
   const prunelle = b.prunelle && PRUNELLES[String(b.prunelle)] ? String(b.prunelle) : '';
   if (b.prunelle && !prunelle) return res.status(400).json({ error: 'unknown prunelle' });
-  if (!id || !b.name || (!b.suffix9 && !prunelle)) {
-    return res.status(400).json({ error: 'missing id, name or suffix9/prunelle' });
+  // Idem pour une teinte du maquillage d'Egerie.
+  const maquillage = b.maquillage && MAQUILLAGES[String(b.maquillage)] ? String(b.maquillage) : '';
+  if (b.maquillage && !maquillage) return res.status(400).json({ error: 'unknown maquillage' });
+  if (!id || !b.name || (!b.suffix9 && !prunelle && !maquillage)) {
+    return res.status(400).json({ error: 'missing id, name or suffix9/prunelle/maquillage' });
   }
   if (SHOP_PACKS.find(p => p.id === id)) return res.status(409).json({ error: 'id already exists' });
   const pack = {
     id,
     name: String(b.name),
-    category: String(b.category || (prunelle ? 'Incarnations' : 'Accessoires')),
+    category: String(b.category || ((prunelle || maquillage) ? 'Incarnations' : 'Accessoires')),
     price: Number(b.price) || 0,
     description: String(b.description || ''),
     suffix9: String(b.suffix9 || '000000000'),
     comment: String(b.comment || b.description || ''),
   };
   if (prunelle) pack.prunelle = prunelle;
+  if (maquillage) pack.maquillage = maquillage;
   // Le pseudo du graphiste : commission à chaque vente, rayon « maison ».
   if (b.auteur !== undefined && String(b.auteur).trim()) pack.auteur = String(b.auteur).trim().slice(0, 40);
   SHOP_PACKS.push(pack);
@@ -13128,6 +13248,11 @@ app.patch('/api/admin/shop/:id', adminScope('shop'), async (req, res) => {
     const cle = String(b.prunelle || '');
     if (cle && !PRUNELLES[cle]) return res.status(400).json({ error: 'unknown prunelle' });
     if (cle) pack.prunelle = cle; else delete pack.prunelle;
+  }
+  if (b.maquillage !== undefined) {
+    const cle = String(b.maquillage || '');
+    if (cle && !MAQUILLAGES[cle]) return res.status(400).json({ error: 'unknown maquillage' });
+    if (cle) pack.maquillage = cle; else delete pack.maquillage;
   }
   if (b.auteur !== undefined) {
     const auteur = String(b.auteur).trim().slice(0, 40);
@@ -19878,11 +20003,15 @@ function purchaseShopPack(user, username, packIdRaw) {
   // Une PRUNELLE ne se pose pas au bout de la chaîne comme un accessoire : elle
   // remplace la paire d'iris, aux caractères 4 et 5.
   const prunelle = pack.prunelle ? PRUNELLES[pack.prunelle] : null;
+  // Le MAQUILLAGE non plus : il change les yeux et la bouche de bloc.
+  const maquillage = pack.maquillage ? MAQUILLAGES[pack.maquillage] : null;
   const bouilleStr = isWallpaper
     ? `wp:${wp.url}:${wp.color}`
     : prunelle
       ? bouilleAvecPrunelle(bouilleOf(user, username), prunelle.eyeSc)
-      : bouilleOf(user).substring(0, 15) + pack.suffix9;
+      : maquillage
+        ? bouilleAvecMaquillage(bouillePrincipaleDe(user, username), maquillage.cle)
+        : bouilleOf(user).substring(0, 15) + pack.suffix9;
   if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
   const accEntry = {
     id: isWallpaper ? ('wp_' + pack.wallpaperId) : ('shop_' + pack.id),
@@ -20111,7 +20240,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     // article d'une rubrique offerte ne se revendent pas. Un attribut de plus
     // sur le nœud : le SWF d'époque ignore ce qu'il ne connaît pas.
     const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
-      .filter((acc) => !getAccessoryWallpaper(acc) && !getAccessoryPrunelle(acc))
+      .filter((acc) => !getAccessoryWallpaper(acc) && !getAccessoryPrunelle(acc) && !getAccessoryMaquillage(acc))
       .map((acc) => {
         const vendable = acc.shopId && accessoireRevendable(user, getShopPack(acc.shopId)) ? ' v="1"' : '';
         return `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0"${vendable}>`
@@ -24437,8 +24566,9 @@ app.get('/api/light/shop', (req, res) => {
     const feutre = /^feutre,(\d+)$/.exec(String(p.picto || ''));
     const wp = p.wallpaperId ? WALLPAPER_BY_ID[p.wallpaperId] : null;
     const prunelle = p.prunelle ? PRUNELLES[p.prunelle] : null;
+    const maquillage = p.maquillage ? MAQUILLAGES[p.maquillage] : null;
     const offert = shopCategoryOwnedByDefault(p.category) && !p.notDefault;
-    const accessoire = !wp && !p.picto && !prunelle;
+    const accessoire = !wp && !p.picto && !prunelle && !maquillage;
     // Un ACCESSOIRE n'a pas de `comment` : le bureau lui compose sa fiche en
     // deux niveaux (resolveAccessoryLevels → l1 en gras, l2 en texte courant),
     // avec les deux paragraphes communs quand rien n'est personnalisé. Le
@@ -24454,7 +24584,7 @@ app.get('/api/light/shop', (req, res) => {
       owned: offert || userOwnsShopPack(user, p.id),
       offert,
       kind: wp ? 'fond' : feutre ? 'feutre' : p.picto ? 'picto'
-        : prunelle ? 'incarnation' : 'accessoire',
+        : (prunelle || maquillage) ? 'incarnation' : 'accessoire',
       suffix9: p.suffix9 || '000000000',
     };
     // Une INCARNATION ne se compose pas d'un suffixe : le client ne saurait pas
@@ -24465,6 +24595,11 @@ app.get('/api/light/shop', (req, res) => {
     if (prunelle) {
       a.prunelle = prunelle.cle;
       a.etat = bouilleAvecPrunelle(bouillePrincipaleDe(user, username), prunelle.eyeSc);
+    }
+    // Le maquillage aussi : SA bouille, maquillée de cette teinte.
+    if (maquillage) {
+      a.maquillage = maquillage.cle;
+      a.etat = bouilleAvecMaquillage(bouillePrincipaleDe(user, username), maquillage.cle);
     }
     // Un accessoire maison dit qui l'a dessiné ; la fiche l'écrit.
     if (p.auteur) a.auteur = String(p.auteur);
@@ -24535,6 +24670,7 @@ app.get('/api/light/inventaire', (req, res) => {
   for (const acc of perso) {
     if (getAccessoryWallpaper(acc)) continue;            // c'est un fond, pas un accessoire
     if (getAccessoryPrunelle(acc)) continue;             // c'est une incarnation
+    if (getAccessoryMaquillage(acc)) continue;           // le maquillage aussi
     const v = String(acc.v || '');
     if (v.length !== 24 || vus.has(v)) continue;
     vus.add(v);
@@ -24876,6 +25012,8 @@ async function boot() {
           // ne touche jamais un article que la base renseigne déjà — un article
           // d'admin qui tomberait sur le même numéro reste ce qu'il est.
           if (def && def.prunelle && !p.prunelle) p.prunelle = def.prunelle;
+          // La teinte de maquillage d'Egerie, même règle (`shop_packs.maquillage`).
+          if (def && def.maquillage && !p.maquillage) p.maquillage = def.maquillage;
           // Une RÉCOMPENSE n'a pas de colonne en base : sans ce rappel, la ligne
           // écrite avant que le drapeau existe (le Makulo saisi à la main dans
           // l'admin) reparaîtrait en rayon — à zéro kikooz, donc offerte.

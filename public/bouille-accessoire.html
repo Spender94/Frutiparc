@@ -148,24 +148,6 @@
               style="margin-top:10px"></canvas>
       <button class="btn plein" id="mai-dl" disabled>⬇ Télécharger le gabarit SVG</button>
     </div>
-
-    <!-- 6. Le maquillage d'Egerie -->
-    <div class="carte" style="flex-basis:100%;">
-      <h2>6 · Le maquillage d'Egerie</h2>
-      <p class="sub" style="margin:0 0 10px; max-width:none;">
-        Le fard, les cils, les sourcils et les lèvres de la frutibouille d'Egerie (famille 14),
-        récoltés en variante des <b>lunettes</b> — l'accessoire qui se dessine sur le visage.
-        Le <b>niveau 1</b> teinte les lèvres, le <b>niveau 2</b> le fard ; cils et sourcils
-        restent noirs. Il se publie depuis l'admin (« Variantes d'accessoire → Le maquillage
-        d'Egerie ») et se vend ensuite comme n'importe quel accessoire, aux couleurs de
-        l'article. Ici il se voit sur la coiffure et les couleurs de l'encart 1, et s'emporte
-        au <b>format du gabarit</b> pour être retravaillé puis redéposé dans l'encart 3.
-      </p>
-      <div id="maq-etat" class="aide">Récolte en cours…</div>
-      <canvas id="maq-apercu" class="preview" width="300" height="300"
-              style="margin-top:10px"></canvas>
-      <button class="btn plein" id="maq-dl" disabled>⬇ Télécharger le gabarit SVG</button>
-    </div>
   </div>
 
   <script src="/js/bouille-palette.js"></script>
@@ -289,8 +271,6 @@
       var etat = etatAvec(t, v, co);
       $("#etat").textContent = etat + "   (acc #" + (r ? r.accId : "?") + ")";
       new M.Bouille($("#apercu"), defs, { etat: etat, anime: false, alea: function () { return 0.5; } });
-      // Le maquillage de l'encart 6 suit la coiffure et les couleurs choisies ici.
-      dessinerMaquillage();
     }
 
     // ── Téléchargement du gabarit ──
@@ -715,66 +695,6 @@
 
     $("#mai-liste").addEventListener("change", reprendreMaison);
 
-    /* ── 6 · LE MAQUILLAGE D'EGERIE ─────────────────────────────────────────
-     *
-     * Une pièce récoltée dans le VISAGE d'une autre famille, pas dans un rouleau
-     * d'accessoire : l'encart 4 ne pouvait pas la voir. Elle arrive déjà au
-     * format d'une variante (scripts/extract-maquillage-egerie.js), et l'on fait
-     * ici ce que l'encart 5 fait d'un accessoire publié — une famille NEUVE,
-     * l'injection, l'aperçu aux couleurs de l'encart 1, et le gabarit.
-     */
-    var maquillage = null;             // le paquet { nom, type, paths }
-    var maqDefs = null, maqInj = null;
-
-    function dessinerMaquillage() {
-      if (!maquillage || !maqDefs || !maqInj) return;
-      var co = +$("#coif").value;
-      new M.Bouille($("#maq-apercu"), maqDefs,
-        { etat: etatAvec(maquillage.type, maqInj.variante, co, COLS), anime: false,
-          alea: function () { return 0.5; } });
-    }
-
-    function chargerMaquillage() {
-      var etat = $("#maq-etat");
-      return fetch("/fbouille/maquillage-egerie.json", { cache: "no-cache" })
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (paq) {
-          if (!paq || !paq.paths || !paq.paths.length) throw new Error("paquet vide");
-          maquillage = paq;
-          return Swf.charger("/fbouille/famille0.swf");
-        })
-        .then(function (d) {
-          maqDefs = d;
-          maqInj = V.injecter(d, { type: maquillage.type, paths: maquillage.paths, coiffureRef: 8 });
-          if (!maqInj) throw new Error("injection impossible");
-          var niv = { 1: 0, 2: 0, 3: 0, 0: 0 };
-          maquillage.paths.forEach(function (p) { niv[p.slot || 0]++; });
-          etat.textContent = maquillage.paths.length + " tracés · " + (P.ACCESSORIES[maquillage.type] || maquillage.type)
-            + " · niveau 1 : " + niv[1] + " (lèvres) · niveau 2 : " + niv[2] + " (fard) · fixes : " + niv[0]
-            + " (cils, sourcils)";
-          dessinerMaquillage();
-          $("#maq-dl").disabled = false;
-        })
-        .catch(function (e) {
-          etat.textContent = "Le maquillage d'Egerie est introuvable (" + e.message + ").";
-        });
-    }
-
-    $("#maq-dl").addEventListener("click", function () {
-      if (!maquillage || !maqDefs || !maqInj) return;
-      var co = +$("#coif").value;
-      var svg = V.exporterSVG(maqDefs, {
-        type: maquillage.type, variante: maqInj.variante, coiffure: co,
-        nom: maquillage.nom + " — " + (P.ACCESSORIES[maquillage.type] || maquillage.type),
-        fondTete: V.fondTete(defs, co, 512),
-      });
-      var url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-      var a = document.createElement("a");
-      a.href = url; a.download = "maquillage-egerie.svg";
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-    });
-
     $("#rec-famille").addEventListener("change", rendreRecolte);
 
     $("#variante").addEventListener("change", rafraichir);
@@ -804,8 +724,6 @@
           if (maison.length) return reprendreMaison();
         })
         .catch(function () { maison = []; remplirMaison(); });
-      // Le maquillage d'Egerie (encart 6) : un paquet servi tel quel.
-      chargerMaquillage();
       // Le recensement des autres familles vient APRÈS : il coûte une seconde
       // (neuf SWF à lire), et l'atelier lui-même n'a pas à l'attendre.
       return recenser().then(function () {

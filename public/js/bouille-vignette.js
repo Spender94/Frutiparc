@@ -288,6 +288,25 @@
     return paquetPrunelles;
   }
 
+  /*
+   * LE MAQUILLAGE D'EGERIE — même logique que les prunelles : un paquet, une
+   * greffe au chargement de la famille, des index qui veulent dire la même
+   * chose partout. Il ne se greffe que dans la famille 0 (`grefferMaquillage`
+   * vérifie la longueur des rouleaux) ; ailleurs, la chaîne d'état ne le
+   * désigne jamais.
+   */
+  var paquetMaquillage = null;
+  function maquillage() {
+    if (!paquetMaquillage) {
+      paquetMaquillage = (typeof global.fetch === 'function')
+        ? global.fetch(DOSSIER + 'maquillage-egerie.json')
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .catch(function () { return null; })     // sans lui, la bouche et les yeux d'origine
+        : Promise.resolve(null);
+    }
+    return paquetMaquillage;
+  }
+
   var absentesSignalees = {};
   function famille(n) {
     if (FAMILLES.indexOf(n) < 0) {
@@ -298,10 +317,12 @@
       return famille(FAMILLE_DE_REPLI);
     }
     if (!chargements[n]) {
-      chargements[n] = Promise.all([Swf.charger(DOSSIER + 'famille' + n + '.swf'), variantes(), prunelles()])
+      chargements[n] = Promise.all([Swf.charger(DOSSIER + 'famille' + n + '.swf'), variantes(), prunelles(), maquillage()])
           .then(function (r) {
             try { if (r[2]) M.grefferPrunelles(r[0], r[2]); }
             catch (e) { /* une greffe fautive n'empêche pas la bouille */ }
+            try { if (r[3]) M.grefferMaquillage(r[0], r[3]); }
+            catch (e) { /* idem : sans maquillage, la bouille se dessine quand même */ }
             return injecterVariantes(r[0], n, r[1]);
           });
       // Une famille introuvable ne doit pas laisser traîner un rejet non
