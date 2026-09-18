@@ -76,9 +76,10 @@ const COULEURS_IMPY = [
  * naît à CHAQUE image d'un tir ; sans ce nettoyage, elles s'accumuleraient
  * jusqu'à noyer l'écran.
  *
- * Les autres clips sans durée — l'étoile de la Dactylo, les billes de la
- * Cloche, le trou noir — bouclent au contraire et attendent qu'un sort les
- * range : ils ne sont pas dans cette liste, et c'est voulu.
+ * Les autres clips sans durée — les billes de la Cloche, le trou noir —
+ * bouclent au contraire et attendent qu'un sort les range : ils ne sont pas
+ * dans cette liste, et c'est voulu. (L'étoile de la Dactylo, elle, ne boucle
+ * PAS : voir ARRETS_AU_DEBUT.)
  *
  * La durée est le nombre d'images du clip, relevé dans root.swf — celles qu'il
  * joue DEPUIS SON DÉBUT. Un clip lancé au milieu de son scénario en a d'autant
@@ -106,7 +107,28 @@ const EPHEMERES = {
  * d'un démon réduite à une vignette qui apparaît et rétrécit, là où le jeu
  * montre une bouffée de fumée qui se déploie et se dissipe.
  */
+/*
+ * LES CLIPS QUI S'ARRÊTENT DÈS LEUR PREMIÈRE IMAGE.
+ *
+ * Relevé dans root.swf, image par image : ces clips portent un `stop()` sur
+ * leur image 1. Sous Flash ils restent donc sur cette image, quoi qu'ils aient
+ * d'autres images derrière — seul un `gotoAndPlay` explicite les lance.
+ * L'étoile de la Dactylo (partLightStar) en est : son image 1 est l'ÉTOILE
+ * VIOLETTE ; les huit suivantes sont l'éclat blanc de sa fin, que le sort ne
+ * joue qu'au moment de la ranger. Le portage la faisait « jouer » comme tout
+ * clip à plusieurs images : au bout de neuf pas, elle restait figée sur son
+ * dernier éclat — un halo blanc grossi trois fois, invisible sur le plateau —,
+ * et les étoiles violettes qui tournent autour de la fée avaient disparu.
+ */
+const ARRETS_AU_DEBUT = new Set(['partLightStar', 'mcTokenStar', 'mcBlackMarble', 'mcEscargot', 'mcFlame']);
+
 const IMAGES = {
+  // Les TIRS aussi, quand leur clip est une animation : le Théo laser
+  // (shotLightBeam) grandit sur cinq images — de 0,35 à 24 pixels de long —
+  // et s'arrête sur la dernière (`stop()` à l'image 5, relevé dans
+  // root.swf). Figé sur sa première image, il faisait un trait d'un tiers de
+  // pixel : « les tirs Théo Laser sont invisibles ».
+  shotLightBeam: 5,
   mcBlackBallSpark: 6, partBallColor: 1, partBlackBall: 1, partBlackJuice: 16,
   partBombEplosion: 14, partBubble: 1, partCloud: 13, partConcentrationRay: 12,
   partDeadImp: 12, partDust: 1, partElementCrystal: 1, partFader: 1,
@@ -221,8 +243,9 @@ class Particule extends Corps {
     this.sy = this.echelle;
     this.sa = this.alpha;
     // Un clip à PLUSIEURS images se déroule, c'est la règle de Flash. Seul un
-    // `gotoAndStop` explicite le fige, et le jeu n'en compte que deux.
-    if (!this.fige && IMAGES[this.lien] > 1) this.joue = true;
+    // `gotoAndStop` explicite le fige, et le jeu n'en compte que deux — plus
+    // les clips qui portent eux-mêmes un `stop()` sur leur image 1.
+    if (!this.fige && IMAGES[this.lien] > 1 && !ARRETS_AU_DEBUT.has(this.lien)) this.joue = true;
     if (this.timer === null && EPHEMERES[this.lien]) {
       // Ce qui lui RESTE à jouer : le clip s'efface à sa dernière image, où
       // qu'il ait commencé. Sans ce retranchement, une gerbe lancée à l'image
@@ -963,14 +986,22 @@ class Fee extends Personne {
   // getSpellList : chaque sort dit sa PERTINENCE, qu'on divise par son coût et
   // qu'on multiplie par le goût de la fée pour lui ($spellCoef). Un sort cher
   // doit être bien plus utile qu'un sort d'un point de mana pour passer devant.
+  //
+  // Le curseur d'Ornegon va de 0 à 20 (Frog.release : c = 1 + (x − 75)/58,
+  // en dixièmes). À ZÉRO, le sort ne vaut plus rien : il ne doit pas rester
+  // dans la liste — une fée peu intelligente y pioche au hasard, et elle
+  // « s'obstinait à lancer des sorts mis à 0 ». On juge donc le sort APRÈS
+  // l'avoir pesé, pas avant.
   listeDeSorts() {
     const liste = [];
     for (const s of this.sortList) {
       const rel = s.pertinence();
       if (!(rel > 0) || !isFinite(rel) || !s.disponible()) continue;
       const coef = (this.fi.fs.$spellCoef || {})[s.sid];
-      const multi = (coef === null || coef === undefined) ? 10 : coef;
-      liste.push({ rel: (rel * multi) / s.cout, sort: s });
+      const multi = (coef === null || coef === undefined) ? 10 : nombre(coef);
+      const poids = (rel * multi) / s.cout;
+      if (!(poids > 0)) continue;
+      liste.push({ rel: poids, sort: s });
     }
     liste.sort((a, b) => b.rel - a.rel);
     return liste;
@@ -1267,7 +1298,7 @@ class Champ {
 }
 
 const API = {
-  Corps, Particule, Tir, Personne, Fee, Impy, Champ,
+  Corps, Particule, Tir, Personne, Fee, Impy, Champ, IMAGES, EPHEMERES, ARRETS_AU_DEBUT,
   FORCE, RAPIDITE, VIE, INTELLIGENCE, CONCENTRATION, MANA,
   POUVOIR, STATUT, COULEURS_IMPY, EPHEMERES, IMAGES, T,
   FRICT, BASE_TIR, BASE_CHARGE, CADENCE_SORT_IMPY,

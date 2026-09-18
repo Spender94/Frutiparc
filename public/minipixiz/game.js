@@ -376,6 +376,7 @@ function teinter(g, x, y, l, h, couleur, ajout) {
 // dessine donc directement, avec sa matrice — et ce qui coûte cher, la teinte,
 // se met en cache une fois par (fichier, couleur) au lieu d'une fois par image.
 const peintes = new Map();
+const PAUSE_CONSIGNE = 'Appuyez sur P pour continuer';   // la bande sous « Pause »
 const SUPER = 4;                       // le rendu tramé est fait plus grand que
                                        // nature : la matrice l'agrandit souvent
 
@@ -1092,6 +1093,24 @@ class Client {
     this.redimensionner();
     window.addEventListener('resize', () => this.redimensionner());
     window.addEventListener('orientationchange', () => setTimeout(() => this.redimensionner(), 120));
+    /*
+     * LE FLOU DU RETOUR. Le jeu vit dans une fenêtre du bureau ; quand on la
+     * quitte pour lire une notification, son cadre change de taille — parfois
+     * jusqu'à rien — et `resize` calcule une échelle FRACTIONNAIRE (ou nulle)
+     * pour cette taille-là. Au retour, le cadre reprend ses mesures, mais
+     * la fenêtre du jeu, elle, ne reçoit pas toujours de `resize` : l'échelle
+     * de l'aller restait, et le jeu était « tout flou » jusqu'au prochain
+     * calcul — la fin de la série. On écoute donc aussi le cadre lui-même
+     * (ResizeObserver), le retour au premier plan, et l'on ne retient jamais
+     * la mesure d'un cadre caché.
+     */
+    const parent = this.canvas.parentElement;
+    if (typeof ResizeObserver === 'function' && parent) {
+      try { new ResizeObserver(() => this.redimensionner()).observe(parent); } catch (e) { /* sans lui, resize suffit */ }
+    }
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) this.redimensionner(); });
+    window.addEventListener('focus', () => this.redimensionner());
+    window.addEventListener('pageshow', () => this.redimensionner());
   }
 
   nouvellePartie(opts) {
@@ -2059,9 +2078,19 @@ class Client {
     // violet — un aplat de cette couleur, à cette opacité.
     ctx.fillStyle = 'rgba(147,141,195,' + (prc / 100).toFixed(3) + ')';
     ctx.fillRect(0, 0, SCENE, SCENE);
-    // Le panneau porte déjà le mot, en pleins et déliés.
+    // Le panneau porte déjà le mot, en pleins et déliés — et une BANDE sous
+    // lui (x 42…193, y 123…134), le champ de texte de mcPause dans root.swf.
+    // Un champ de texte ne s'exporte pas en dessin : la bande restait vide, et
+    // « appuyez sur P pour continuer » n'était plus visible. On l'écrit ici.
     if (this.sprites.panPause) {
       poserRendu(ctx, rendre(this.sprites.panPause, 1, 100), 0, 0);
+      ctx.save();
+      ctx.font = 'bold 8px Verdana, Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(PAUSE_CONSIGNE, 117.35, 128.5);
+      ctx.restore();
     }
   }
 
@@ -3226,9 +3255,11 @@ class Client {
   // facteur fractionnaire les rendrait flous.
   redimensionner() {
     const parent = this.canvas.parentElement || document.body;
-    const dispo = Math.min(
-      (parent.clientWidth || SCENE) / SCENE,
-      (parent.clientHeight || SCENE) / SCENE);
+    // Un cadre caché (l'onglet en arrière-plan, la fenêtre repliée) mesure
+    // zéro : ce n'est pas une taille, on garde la dernière vraie.
+    if (document.hidden || !parent.clientWidth || !parent.clientHeight) return;
+    const dispo = Math.min(parent.clientWidth / SCENE, parent.clientHeight / SCENE);
+    if (!(dispo > 0) || !isFinite(dispo)) return;
     const entier = Math.floor(dispo);
     const k = (entier >= 1 && entier / dispo >= 0.8) ? entier : dispo;
     this.echelle = k;
