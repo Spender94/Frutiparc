@@ -65,9 +65,11 @@ function monter(defs) {
 
 test('la récolte ne prend que les dessins de la chute, et les renumérote', () => {
   // Cinq clips — la fumée d'hiko, son chocapic, sa BULLE de chewing-gum, sa
-  // tache, et le nuage de la toux — et les dix-sept formes qu'ils portent.
-  assert.strictEqual(Object.keys(PAQUET.sprites).length, 5, 'cinq clips');
-  assert.strictEqual(Object.keys(PAQUET.formes).length, 17, 'dix-sept formes');
+  // tache, et le nuage de la toux — et les dix-sept formes qu'ils portent ;
+  // puis six clips et quinze formes d'Egerie (sa bulle, sa tache, sa colombe,
+  // sa note et ce qu'ils portent, cf. plus bas).
+  assert.strictEqual(Object.keys(PAQUET.sprites).length, 11, 'onze clips');
+  assert.strictEqual(Object.keys(PAQUET.formes).length, 32, 'trente-deux formes');
   // AU-DELÀ DE LA PLAGE D'UN SWF. Un caractère d'hiko porte un numéro sur
   // seize bits, et la famille d'accueil a le sien au même : #415 est le
   // chocapic chez hiko et tout autre chose dans la famille 0.
@@ -218,8 +220,8 @@ test('la greffe est idempotente et ne recouvre rien', async () => {
   mo.creerVisage();
   mo.greffer(PAQUET);
   const apresF = defs.formes.size, apresS = defs.sprites.size;
-  assert.strictEqual(apresF, avantF + 17, 'dix-sept formes de plus');
-  assert.strictEqual(apresS, avantS + 5, 'cinq clips de plus');
+  assert.strictEqual(apresF, avantF + 32, 'trente-deux formes de plus (hiko, la famille 15, Egerie)');
+  assert.strictEqual(apresS, avantS + 11, 'cinq clips de plus');
   // La même famille sert toutes les bouilles d'une page : la deuxième greffe
   // ne doit rien refaire.
   const mo2 = new Moteur.Moteur(defs, { alea: () => 0.5 });
@@ -254,7 +256,7 @@ test('le paquet ne se charge QUE pour les émotes qui en ont besoin', () => {
   assert.match(VIGNETTE, /function emotes\(\) \{[\s\S]*?fetch\(DOSSIER \+ 'emotes\.json'\)/);
   const j = /function jouer\(c, etat, anim, humeur\) \{[\s\S]*?\n  \}/.exec(VIGNETTE);
   assert.ok(j, 'jouer');
-  assert.match(j[0], /if \(EMOTES_GREFFEES\.indexOf\(n\) >= 0\)/);
+  assert.match(j[0], /if \(EMOTES_GREFFEES\.indexOf\(n\) >= 0 \|\| \(variante && \(n === 7 \|\| n === 8\)\)\) \{/);
   assert.match(j[0], /b\.moteur\.greffer\(r\[1\]\)/);
   // Et l'échec du chargement ne casse rien : `emotes()` rend null.
   assert.match(VIGNETTE, /\.catch\(function \(\) \{ return null; \}\);/);
@@ -537,3 +539,125 @@ function visageDe(defs) {
   }
   return best;
 }
+
+/*
+ * ══ LES ÉMOTES D'EGERIE (famille 14), POUR LES MODÉRATEURS ET LES ANIMATEURS ══
+ *
+ * « J'aimerais extraire des assets de la famille 14 (frutibouille d'Egerie)
+ * […] l'emote "gum", l'emote "sifflote" […] que ces emotes remplacent les
+ * "sifflote" et "gum" par défaut pour les Modérateurs et Animateurs
+ * uniquement. »
+ *
+ * Même pellicule que partout, dessins à elle : la bulle verte, l'éclatement
+ * et la tache (comme hiko), la COLOMBE que son script lâche à l'éclatement,
+ * et la CLÉ DE SOL qui flotte près de la bouche quand elle sifflote. La
+ * bouille dit qui y a droit par un second suffixe : « <état>|<acc>|egerie ».
+ */
+
+test('la récolte d’Egerie : le gum entier, la colombe et la note, dans leur propre plage', async () => {
+  const eg = PAQUET.egerie;
+  assert.ok(eg && eg.gum && eg.sifflote, 'le paquet porte les émotes d’Egerie');
+  assert.match(PAQUET.source.egerie, /famille14\.swf/);
+  const dec = PAQUET.source.decalages[14];
+  assert.ok(dec > PAQUET.source.decalages[15] && dec > 65535, 'une plage à elle, au-delà d’un SWF et des autres récoltes');
+  for (const ch of [eg.gum.bulle.ch, eg.gum.tache.ch, eg.gum.colombe.ch, eg.sifflote.note.ch].concat(eg.gum.eclats.map((e) => e.ch))) {
+    assert.ok(ch > dec && ch < dec + 65536, '#' + ch + ' est dans la plage de la famille 14');
+    assert.ok(PAQUET.sprites[ch] || PAQUET.formes[ch], '#' + ch + ' est récolté (clip ou forme)');
+  }
+  // Les formes sont recopiées telles quelles depuis famille14.swf.
+  const d14 = await lire('famille14.swf');
+  let compares = 0;
+  Object.entries(PAQUET.formes).forEach(([id, forme]) => {
+    const n = Number(id);
+    if (n < dec || n >= dec + 65536) return;
+    assert.deepStrictEqual(forme, d14.formes.get(n - dec), 'la forme ' + id + ' est celle d’Egerie');
+    compares++;
+  });
+  assert.ok(compares >= 10, 'une dizaine de formes au moins : ' + compares);
+  // La note joue (quarante-huit images, comme la croche de la famille 0) ; la
+  // colombe est un clip d'une image ; la bulle aussi.
+  assert.strictEqual(PAQUET.sprites[eg.sifflote.note.ch].n, 48);
+  assert.strictEqual(PAQUET.sprites[eg.gum.colombe.ch].n, 1);
+  assert.strictEqual(PAQUET.sprites[eg.gum.bulle.ch].n, 1);
+  // Et la course de la colombe, lue dans les scripts d'Egerie.
+  assert.deepStrictEqual(eg.gum.colombe.depart, { x: -15, y: 20 });
+  assert.deepStrictEqual(eg.gum.colombe.pas, { x: -3, y: -5 });
+  assert.strictEqual(eg.gum.colombe.jusqua, -70);
+  // La note est posée au même endroit que la croche de la famille 0.
+  const d0 = await lire('famille0.swf');
+  const noteDe = (defs) => { const f = visageDe(defs); return (f.images[f.labels.siffloteLoop - 1] || []).find((o) => o.t === 'pose' && o.ch >= 0); };
+  assert.deepStrictEqual(eg.sifflote.note.M, noteDe(d14).M);
+  assert.deepStrictEqual(noteDe(d0).M, noteDe(d14).M, 'même place dans les deux familles');
+});
+
+test('avec la variante « egerie », sifflote pose la clé de sol à la place de la croche — sans, rien ne change', async () => {
+  const defs = await lire('famille0.swf');
+  const mo = new Moteur.Moteur(defs, { alea: () => 0.5, emotesVariante: 'egerie' });
+  mo.creerVisage(); mo.definir(ETAT); mo.greffer(PAQUET);
+  const face = mo.racine.face;
+  const note0 = (face.def.images[face.def.labels.siffloteLoop - 1] || []).find((o) => o.t === 'pose' && o.ch >= 0).ch;
+  mo.jouerAnim(0); mo.action(7);
+  assert.strictEqual(face.frame, face.def.labels.sifflote, 'la pellicule est celle de la famille 0');
+  assert.ok(mo.remplacements instanceof Map && mo.remplacements.size === 1);
+  assert.strictEqual(mo.remplacements.get(note0), PAQUET.egerie.sifflote.note.ch, 'la croche mène à la clé de sol');
+  // L'émote suivante range la substitution.
+  mo.jouerAnim(1);
+  assert.strictEqual(mo.remplacements, null);
+  // Sans la variante — tout le monde d'autre —, le sifflote est celui de la famille.
+  const sans = monter(defs);
+  sans.jouerAnim(7);
+  assert.strictEqual(sans.remplacements, null);
+  sans.jouerAnim(8);
+  assert.strictEqual(sans.remplacements, null, 'et le gum aussi');
+});
+
+test('avec la variante « egerie », le gum est le sien : bulle, éclats, tache — et la colombe s’envole à l’éclatement', async () => {
+  const defs = await lire('famille0.swf');
+  const mo = new Moteur.Moteur(defs, { alea: () => 0.5, emotesVariante: 'egerie' });
+  mo.creerVisage(); mo.definir(ETAT); mo.greffer(PAQUET);
+  const face = mo.racine.face;
+  mo.jouerAnim(0); mo.action(8);
+  assert.strictEqual(face.frame, face.def.labels.gum);
+  assert.strictEqual(mo.remplacements.size, 4, 'la bulle, deux éclats et une tache');
+  const cibles = [...mo.remplacements.values()].sort((a, b) => a - b);
+  const eg = PAQUET.egerie.gum;
+  assert.deepStrictEqual(cibles, eg.eclats.map((e) => e.ch).concat([eg.tache.ch, eg.bulle.ch]).sort((a, b) => a - b));
+  // Pas de colombe tant que la bulle enfle.
+  assert.strictEqual(mo.colombe, null);
+  let t = 0;
+  while (face.frame < face.def.labels.gumNext && t < 400) { mo.avancer(); t++; }
+  assert.ok(face.frame >= face.def.labels.gumNext, 'la bulle a éclaté (' + t + ' battements)');
+  assert.ok(mo.colombe, 'la colombe est lâchée à l’éclatement');
+  assert.deepStrictEqual(mo.colombe, { x: -15, y: 20 }, 'là où le script d’Egerie la pose');
+  assert.ok(mo.enMouvement(), 'et tient la boucle de rendu éveillée');
+  mo.avancer();
+  assert.deepStrictEqual(mo.colombe, { x: -18, y: 15 }, '(−3, −5) par battement');
+  let n = 0;
+  while (mo.colombe && n < 100) { mo.avancer(); n++; }
+  assert.strictEqual(mo.colombe, null, 'retirée passé x < −70');
+  assert.ok(n >= 17 && n <= 19, 'dix-huit battements de vol environ : ' + n);
+  // Une seule colombe par gum : elle ne revient pas tant que l'émote dure.
+  mo.avancer();
+  assert.strictEqual(mo.colombe, null);
+  // Et l'émote suivante l'oublie tout à fait.
+  mo.jouerAnim(8);
+  assert.strictEqual(mo.colombe, null);
+  assert.strictEqual(mo.colombeLachee, false);
+});
+
+test('la chaîne d’une bouille porte la variante en second suffixe, et le lecteur la suit', () => {
+  // « <état>|<accessoire maison>|<émotes> » : chaque suffixe garde sa place.
+  assert.match(VIGNETTE, /var bouts = raw\.split\('\|'\);/);
+  assert.match(VIGNETTE, /var emotes = bouts\.length > 2 \? bouts\[2\]\.replace\(\/\[\^a-z\]\/g, ''\)\.slice\(0, 16\) : '';/);
+  assert.match(VIGNETTE, /data-emotes="' \+ sp\.emotes \+ '"/, 'html() la pose sur le canevas');
+  assert.match(VIGNETTE, /emotesVariante: emotesVar \|\| null/, 'et le moteur la reçoit');
+  assert.match(VIGNETTE, /if \(b\.moteur\) b\.moteur\.emotesVariante = sp\.emotes \|\| null;/, 'rafraîchir la fait suivre au locuteur suivant');
+  // Le paquet se charge aussi pour le sifflote (7) et le gum (8) d'une bouille à variante.
+  assert.match(VIGNETTE, /if \(EMOTES_GREFFEES\.indexOf\(n\) >= 0 \|\| \(variante && \(n === 7 \|\| n === 8\)\)\) \{/);
+  // Le serveur ne la donne qu'aux modérateurs et aux animateurs.
+  const SERVEUR = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(SERVEUR, /const emotes = \(user && \(user\.isModerator \|\| user\.isAnimator\)\) \? 'egerie' : '';/);
+  assert.match(SERVEUR, /return base \+ '\|' \+ acc \+ \(emotes \? '\|' \+ emotes : ''\);/);
+  // Le chat garde le « | » en mémoire : la variante voyage avec la bouille.
+  assert.match(LIGHT, /var clean = String\(f\)\.replace\(\/\[\^0-9A-Za-z\|\]\/g, ""\);/);
+});

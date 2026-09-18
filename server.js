@@ -1213,7 +1213,16 @@ function bouilleOf(user, username) {
   // vient de l'utilisateur, ou à défaut de la table d'équipement persistée.
   const id = (user && user.accMaisonId)
     || (username && accMaisonEquip[String(username).toLowerCase()]) || null;
-  return (id && accessoiresMaison[id]) ? base + '|' + id : base;
+  const acc = (id && accessoiresMaison[id]) ? id : '';
+  // Et la VARIANTE D'ÉMOTES, en second suffixe : « <état>|<id>|egerie ». Les
+  // modérateurs et les animateurs sifflent et mâchent comme Egerie (famille
+  // 14) — le gum vert, la colombe, la clé de sol —, récoltés dans emotes.json ;
+  // tout le monde d'autre garde les émotes de sa famille. Sans accessoire, le
+  // créneau reste vide (« <état>||egerie ») pour que chaque suffixe garde sa
+  // place.
+  const emotes = (user && (user.isModerator || user.isAnimator)) ? 'egerie' : '';
+  if (!acc && !emotes) return base;
+  return base + '|' + acc + (emotes ? '|' + emotes : '');
 }
 
 // ─────────────────────────────────────────────

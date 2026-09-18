@@ -182,7 +182,9 @@
         var pas = Number(params.get('pas') || 3), nb = Number(params.get('n') || 16);
         titre.textContent = 'Animation ' + a + ' — ' + (M.NOMS_ANIMATIONS[a] || '?')
           + ' — une image toutes les ' + pas + ' (40 im/s)';
-        for (var k = 0; k < nb; k++) tuiles.push({ etat: base, anim: a, ticks: k * pas, legende: '+' + (k * pas) });
+        // &depart=N : commencer la planche N battements plus loin (l'éclatement du gum vient tard).
+        var depart = Number(params.get('depart') || 0);
+        for (var k = 0; k < nb; k++) tuiles.push({ etat: base, anim: a, ticks: depart + k * pas, legende: '+' + (depart + k * pas) });
       }
 
       tuiles.forEach(function (t) {
@@ -195,7 +197,9 @@
         cap.textContent = t.legende;
         fig.appendChild(c); fig.appendChild(cap); hote.appendChild(fig);
         var b = new M.Bouille(c, defs, { etat: t.etat, anime: false, alea: tirage,
-          super: SUPER, antiCouture: COUTURE });
+          super: SUPER, antiCouture: COUTURE,
+          // &emotes=egerie : le gum et le sifflote d'Egerie, comme pour un modérateur.
+          emotesVariante: params.get('emotes') || null });
         if (paquetEmotes) b.moteur.greffer(paquetEmotes);
         if (t.humeur) b.moteur.humeur(t.humeur);
         if (t.anim) {

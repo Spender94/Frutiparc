@@ -520,6 +520,17 @@
     // slot 1/2/3 se peint avec la couleur correspondante ; les autres gardent la
     // leur. C'est l'analogue des col/col2/col3 des accessoires d'époque.
     this.accessoireCouleurs = options.accessoireCouleurs || null;
+    /*
+     * LA VARIANTE D'ÉMOTES — « egerie », ou rien.
+     *
+     * Les modérateurs et les animateurs sifflent et mâchent comme Egerie
+     * (famille 14) : même pellicule, dessins à elle, récoltés dans
+     * emotes.json. Le site le dit dans la chaîne de la bouille (le suffixe
+     * « |…|egerie », cf. bouille-vignette.js) ; pour tout le monde d'autre,
+     * la famille 0 garde ses propres émotes.
+     */
+    this.emotesVariante = options.emotesVariante || null;
+    this.colombe = null;                 // la colombe du gum d'Egerie, en vol
     // Les tracés et les morphs calculés se rangent sur la FAMILLE, pas sur le
     // lecteur : une grille de quarante-huit vignettes partage alors un seul jeu
     // de Path2D au lieu d'en reconstruire quarante-huit.
@@ -1027,8 +1038,10 @@
     // Et les deux chutes ne durent que le temps de la leur.
     if (id !== 14 && id !== 15) this.chute = null;
     // Comme les substitutions de dessins : elles ne valent que pour l'émote
-    // qui les a posées (cf. `remplacements`).
+    // qui les a posées (cf. `remplacements`). Et la colombe ne survit pas au
+    // gum qui l'a lâchée.
     if (id !== 16) this.remplacements = null;
+    this.colombe = null; this.colombeLachee = false;
     // Quelle émote joue — le ralenti des trois empruntées s'y adosse, et son
     // compteur repart avec elles (cf. RALENTI_EMOTES).
     this.animCourante = id;
@@ -1107,12 +1120,17 @@
       if (bb) { bb.allerImage('siffle', true); bb.vars.compt = 7; }
       face.vars.compt = 5;
       oeilCompt(55);
+      // La note d'Egerie (une clé de sol) à la place de la croche, pour qui y a droit.
+      if (this.emotesVariante === 'egerie') this.remplacements = this.remplacementsDuSifflote(this.paquetEgerie('sifflote'));
     } else if (id === 8) {
       r.flStop = false; r.next = 0;
       face.allerImage('gum', true);
       oeil(r.emoteEye + 1);
       muet();
       if (bb) bb.allerImage('souffle', false);
+      // Le gum d'Egerie — bulle verte, éclatement et tache à elle, et la
+      // colombe qui s'envole à l'éclatement — pour qui y a droit.
+      if (this.emotesVariante === 'egerie') this.remplacements = this.remplacementsDuGum(this.paquetEgerie('gum'));
     } else if (id === 9) {
       r.flStop = false; r.next = 0;
       face.allerImage('question', false);
@@ -1259,8 +1277,8 @@
    * et garder le placement d'origine évite de faire dépendre la greffe d'un
    * relevé de plus.
    */
-  Moteur.prototype.remplacementsDuGum = function () {
-    const paq = this.emotes && this.emotes.gum;
+  Moteur.prototype.remplacementsDuGum = function (paquet) {
+    const paq = paquet || (this.emotes && this.emotes.gum);
     const face = this.racine.face;
     if (!paq || !face || !face.def || !face.def.labels) return null;
     const deb = face.def.labels.gumNext;
@@ -1322,6 +1340,61 @@
    */
   const RALENTI_EMOTES = { 14: 7, 15: 7, 16: 7 };
 
+  // Ce qu'Egerie prête pour une émote (`gum`, `sifflote`), ou rien.
+  Moteur.prototype.paquetEgerie = function (quoi) {
+    const e = this.emotes && this.emotes.egerie;
+    return (e && e[quoi]) || null;
+  };
+
+  /*
+   * QUI REMPLACE QUI, pour le sifflote d'Egerie.
+   *
+   * La note qui flotte près de la bouche est le SEUL clip que la pellicule
+   * pose à « siffloteLoop », dans toutes les familles : une croche chez la
+   * famille 0, une clé de sol chez Egerie. On lit la famille d'accueil comme
+   * la récolte a lu la sienne, et l'on échange ce clip — même place, même
+   * pellicule (quarante-huit images chez l'une comme chez l'autre).
+   */
+  Moteur.prototype.remplacementsDuSifflote = function (paq) {
+    const face = this.racine.face;
+    if (!paq || !paq.note || !face || !face.def || !face.def.labels) return null;
+    const deb = face.def.labels.siffloteLoop;
+    if (!deb) return null;
+    const poses = (face.def.images[deb - 1] || []).filter((o) => o.t === 'pose' && o.ch >= 0);
+    if (poses.length !== 1 || !this.defs.sprites.has(paq.note.ch)) return null;
+    return new Map([[poses[0].ch, paq.note.ch]]);
+  };
+
+  /*
+   * LA COLOMBE DU GUM D'EGERIE.
+   *
+   * Chez elle, un script attache le clip « bird » au moment où la bulle passe
+   * cinquante pixels — l'image d'avant l'éclatement —, le pose en (−15, 20)
+   * dans le repère du visage, puis le fait monter de (−3, −5) par battement
+   * jusqu'à x < −70, où il est retiré. Le moteur ne joue pas attachMovie :
+   * il fait la même chose lui-même, à partir de « gumNext » (l'éclatement,
+   * un battement plus tard). Attachée par script, la colombe est AU-DESSUS
+   * de tout le visage — c'est là qu'on la dessine.
+   */
+  Moteur.prototype.avancerColombe = function () {
+    if (this.animCourante !== 8 || this.emotesVariante !== 'egerie') return false;
+    const gum = this.paquetEgerie('gum');
+    const col = gum && gum.colombe;
+    const face = this.racine.face;
+    if (!col || !face || !face.def || !face.def.labels || !this.defs.sprites.has(col.ch)) return false;
+    if (!this.colombe) {
+      const deb = face.def.labels.gumNext;
+      if (!deb || face.frame < deb || this.colombeLachee) return false;
+      this.colombeLachee = true;
+      this.colombe = { x: col.depart.x, y: col.depart.y };
+      return true;
+    }
+    this.colombe.x += col.pas.x;
+    this.colombe.y += col.pas.y;
+    if (this.colombe.x < col.jusqua) this.colombe = null;
+    return true;
+  };
+
   Moteur.prototype.avancer = function () {
     const pas = RALENTI_EMOTES[this.animCourante];
     if (pas) {
@@ -1329,7 +1402,8 @@
       if (this.ralentiCompteur % pas === 0) return false;
     }
     const bouge = this.racine.face ? this.racine.face.avancer() : false;
-    return this.avancerChute() || bouge;
+    const colombe = this.avancerColombe();
+    return this.avancerChute() || colombe || bouge;
   };
 
   /*
@@ -1386,7 +1460,7 @@
 
   /** VRAI tant que l'arbre a une pellicule en marche (cf. Clip.peutBouger). */
   Moteur.prototype.enMouvement = function () {
-    if (this.chute) return true;
+    if (this.chute || this.colombe) return true;
     return this.racine.face ? this.racine.face.peutBouger() : false;
   };
 
@@ -1593,6 +1667,13 @@
       const sp = this.defs.sprites.get(cible);
       if (sp) {
         const clip = this.clipGreffe(cible, sp);
+        /*
+         * UN CLIP QUI JOUE — la note du sifflote (quarante-huit images chez
+         * l'une comme chez l'autre) — se substitue IMAGE POUR IMAGE : on suit
+         * la tête de lecture du clip d'accueil, sinon le greffé resterait sur
+         * son image 1, qui est vide, et l'on ne verrait rien.
+         */
+        if (c && sp.n > 1 && c.frame && clip.frame !== Math.min(c.frame, sp.n)) clip.allerImage(Math.min(c.frame, sp.n), false);
         clip.M = c ? c.M : (e.M || IDENTITE);
         clip.alpha = c ? c.alpha : 100;
         clip.echX = c ? c.echX : 1; clip.echY = c ? c.echY : 1;
@@ -1692,6 +1773,15 @@
     if (ac) {
       const avant = ac.filter((p) => p.avant !== false);
       if (avant.length) this.dessinerAccessoireCustom(ctx, avant);
+    }
+    // La colombe du gum d'Egerie, attachée par script chez elle : au-dessus
+    // du visage entier, dans son repère.
+    const gumE = this.colombe && this.paquetEgerie('gum');
+    if (gumE && gumE.colombe && this.defs.sprites.has(gumE.colombe.ch)) {
+      const clip = this.clipGreffe(gumE.colombe.ch, this.defs.sprites.get(gumE.colombe.ch));
+      const base = composerM(M || IDENTITE, face.matrice());
+      const pose = { a: 1, b: 0, c: 0, d: 1, e: this.colombe.x, f: this.colombe.y };
+      this.dessinerClip(ctx, clip, composerM(base, pose), null, 1);
     }
     /*
      * ET LE NUAGE DE LA TOUX PAR-DESSUS TOUT — la profondeur 45 de la

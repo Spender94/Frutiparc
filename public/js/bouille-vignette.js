@@ -82,11 +82,21 @@
   // (une fois par id, mis en cache) pour les passer au moteur (accessoireCustom).
   var customCache = {};   // id → Promise<paths|null>
   var customPret = {};    // id → paths|null (résolu — pour un accès synchrone)
+  /*
+   * LA CHAÎNE D'UNE BOUILLE ET SES SUFFIXES : « <état>|<accessoire maison>|<émotes> ».
+   *
+   * Les vingt-quatre caractères d'abord ; puis, séparés par « | », l'id d'un
+   * accessoire maison (« m12 », ou rien), et la VARIANTE D'ÉMOTES — « egerie »
+   * pour les modérateurs et les animateurs, dont le gum et le sifflote sont
+   * ceux de la famille 14. Le SWF ne lit que les vingt-quatre premiers
+   * caractères : les suffixes lui sont transparents.
+   */
   function separer(etat) {
     var raw = String(etat == null ? '' : etat);
-    var i = raw.indexOf('|');
-    var cid = i >= 0 ? raw.slice(i + 1).replace(/[^0-9A-Za-z]/g, '').slice(0, 24) : '';
-    return { s: nettoyer(i >= 0 ? raw.slice(0, i) : raw), cid: cid };
+    var bouts = raw.split('|');
+    var cid = bouts.length > 1 ? bouts[1].replace(/[^0-9A-Za-z]/g, '').slice(0, 24) : '';
+    var emotes = bouts.length > 2 ? bouts[2].replace(/[^a-z]/g, '').slice(0, 16) : '';
+    return { s: nettoyer(bouts[0]), cid: cid, emotes: emotes };
   }
   // Résout un id vers { paths, couleurs } (ou null). `couleurs` = les 3 niveaux
   // de couleur (hex) de l'accessoire, pour ses tracés « à niveau ».
@@ -154,6 +164,7 @@
     var m = (o && Number(o.marge)) || 0;
     return '<canvas class="fp-bvig" data-s="' + sp.s + '" data-e="' + e + '"'
       + (sp.cid ? ' data-custom="' + sp.cid + '"' : '')
+      + (sp.emotes ? ' data-emotes="' + sp.emotes + '"' : '')
       + ((o && o.anime) ? ' data-anime="1"' : '')
       + (m > 0 ? ' data-marge="' + m + '"' : '')
       + ' width="1" height="1" aria-hidden="true"'
@@ -368,6 +379,7 @@
     var e = Number(c.getAttribute('data-e') || 0);
     var anime = c.getAttribute('data-anime') === '1';
     var cid = c.getAttribute('data-custom') || '';
+    var emotesVar = c.getAttribute('data-emotes') || '';
     var tour = (tours.get(c) || 0) + 1;
     tours.set(c, tour);
     p = Promise.all([famille(M.familleDe(s)), paquetCustom(cid)]).then(function (r) {
@@ -398,7 +410,8 @@
         // `data-marge` reste sur le canevas : une bouille qu'on remplace par
         // celle d'une autre famille se remonte avec le même cadrage.
         marge: Number(c.getAttribute('data-marge')) || 0,
-        accessoireCustom: paq && paq.paths, accessoireCouleurs: paq && paq.couleurs });
+        accessoireCustom: paq && paq.paths, accessoireCouleurs: paq && paq.couleurs,
+        emotesVariante: emotesVar || null });
       posees.set(c, b);
       c.setAttribute('data-prete', '1');
       return b;
@@ -447,14 +460,20 @@
   function rafraichir(c, etat, humeur) {
     var avant = c.getAttribute('data-s') || '';
     var avantCid = c.getAttribute('data-custom') || '';
-    var sp = etat === undefined ? { s: avant, cid: avantCid } : separer(etat);
+    var avantEmotes = c.getAttribute('data-emotes') || '';
+    var sp = etat === undefined ? { s: avant, cid: avantCid, emotes: avantEmotes } : separer(etat);
     var s = sp.s;
     var e = humeur === undefined ? Number(c.getAttribute('data-e') || 0) : (Number(humeur) || 0);
     c.setAttribute('data-s', s);
     c.setAttribute('data-e', String(e));
     if (sp.cid) c.setAttribute('data-custom', sp.cid); else c.removeAttribute('data-custom');
+    if (sp.emotes) c.setAttribute('data-emotes', sp.emotes); else c.removeAttribute('data-emotes');
     var b = posees.get(c);
     if (b && M.familleDe(s) === M.familleDe(avant)) {
+      // La variante d'émotes suit la bouille : un même canevas sert tout le
+      // monde dans le chat, et le locuteur d'après n'a pas forcément droit à
+      // celle du locuteur d'avant.
+      if (b.moteur) b.moteur.emotesVariante = sp.emotes || null;
       // L'accessoire maison est posé AVANT le rendu (definir rerend) : on prend
       // ses aplats dans le cache résolu s'ils y sont, sinon on rerend au retour.
       // Poser (ou retirer) l'accessoire maison ne doit pas EXIGER un moteur :
@@ -529,8 +548,11 @@
     if (etat !== undefined) rafraichir(c, etat, humeur);
     var n = Number(anim) || 1;
     // Une émote greffée attend son paquet : le monter à moitié ne donnerait
-    // qu'une tête effacée sans rien à sa place.
-    if (EMOTES_GREFFEES.indexOf(n) >= 0) {
+    // qu'une tête effacée sans rien à sa place. Le sifflote (7) et le gum (8)
+    // d'une bouille à variante d'émotes en ont besoin aussi — sans le paquet,
+    // ils joueraient ceux de la famille, ce qui est le pire qui puisse arriver.
+    var variante = c.getAttribute('data-emotes');
+    if (EMOTES_GREFFEES.indexOf(n) >= 0 || (variante && (n === 7 || n === 8))) {
       return Promise.all([dessiner(c), emotes()]).then(function (r) {
         var b = r[0];
         if (!b) return null;

@@ -10947,6 +10947,18 @@
   function maBouilleBase() {
     return String((state.bouilleByUser && state.bouilleByUser[state.userLower]) || homeProfile.bouille || DEFAULT_BOUILLE).split("|")[0];
   }
+  // Le SECOND suffixe de ma bouille — la variante d'émotes des modérateurs et
+  // des animateurs (« |…|egerie ») — doit survivre au changement d'accessoire :
+  // on le relit sur la bouille vivante et on le remet derrière l'accessoire.
+  function maVarianteEmotes() {
+    var bouts = String((state.bouilleByUser && state.bouilleByUser[state.userLower]) || homeProfile.bouille || "").split("|");
+    return bouts.length > 2 ? bouts[2] : "";
+  }
+  function maBouilleAvec(id) {
+    var base = maBouilleBase(), em = maVarianteEmotes();
+    if (!id && !em) return base;
+    return base + "|" + (id || "") + (em ? "|" + em : "");
+  }
   function remplirAccMaison(liste, courant) {
     accMaisonListe = liste || [];
     accMaisonCourant = courant || "";
@@ -10957,7 +10969,7 @@
     function tuile(id, nom) {
       var t = el("div", "accm-tuile" + (accMaisonCourant === (id || "") ? " on" : ""));
       var v = el("div", "accm-vig");
-      v.innerHTML = previewIframe(id ? (base + "|" + id) : base);
+      v.innerHTML = previewIframe(maBouilleAvec(id));
       var n = el("div", "accm-nom"); n.textContent = nom; n.title = nom;
       t.appendChild(v); t.appendChild(n);
       t.addEventListener("click", function () { equiperAccMaison(id || ""); });
@@ -10978,8 +10990,7 @@
       body: corps,
     }).then(function (r) { return r.json(); }).then(function (j) {
       if (!j || !j.ok) return;
-      var base = maBouilleBase();
-      var nouv = id ? (base + "|" + id) : base;
+      var nouv = maBouilleAvec(id);
       state.bouilleByUser[state.userLower] = nouv;
       homeProfile.bouille = nouv;
       refreshHomeAvatar();

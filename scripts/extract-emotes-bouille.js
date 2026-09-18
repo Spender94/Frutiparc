@@ -39,6 +39,21 @@
  * récolte au-delà de la plage d'un SWF (100 000 et au-dessus), et plus rien ne
  * peut se marcher dessus.
  *
+ * LE GUM ET LE SIFFLOTE D'EGERIE (famille 14) — réservés, côté site, aux
+ * modérateurs et aux animateurs. Même pellicule que partout, dessins à elle :
+ *
+ *   · le gum : sa bulle est VERTE, l'éclatement et la tache la couvrent
+ *     toute (comme hiko), et une COLOMBE sort de la bulle — un clip exporté
+ *     sous le nom « bird », que le script de l'image 88 attache quand la bulle
+ *     dépasse cinquante pixels, pose en (−15, 20), et que les images suivantes
+ *     font monter de (−3, −5) par battement jusqu'à ce qu'elle passe x < −70.
+ *     Le moteur ne joue pas attachMovie : on emporte le clip et la course, et
+ *     c'est lui qui la fait voler ;
+ *   · le sifflote : la NOTE qui flotte près de la bouche est un clip de
+ *     quarante-huit images posé à « siffloteLoop » — une croche chez la
+ *     famille 0, une CLÉ DE SOL chez elle. On l'emporte ; la bouche qui
+ *     siffle reste celle de la famille d'accueil.
+ *
  *   node scripts/extract-emotes-bouille.js
  *   → public/fbouille/emotes.json
  */
@@ -281,28 +296,54 @@ const arrondir = (M) => {
     .find((o) => o.t === 'pose' && o.ch >= 0 && o.nom === 'bubble');
   if (!bulle12) throw new Error('famille 12 : la bulle du chewing-gum est introuvable');
 
+  /*
+   * EGERIE (famille 14) : le gum entier — bulle, éclatement, tache —, la
+   * colombe, et la note du sifflote.
+   */
+  const d14 = await lire('famille14.swf');
+  const face14 = visageDe(d14).sp;
+  const gum14 = finDuGum(face14);
+  if (!gum14) throw new Error('famille 14 : la fin du chewing-gum est introuvable');
+  const bulle14 = (face14.images[face14.labels.gum - 1] || [])
+    .find((o) => o.t === 'pose' && o.ch >= 0 && o.nom === 'bubble');
+  if (!bulle14) throw new Error('famille 14 : la bulle du chewing-gum est introuvable');
+  const colombeId = d14.exports.get('bird');
+  if (!colombeId || !d14.sprites.has(colombeId)) throw new Error('famille 14 : la colombe (« bird ») est introuvable');
+  // La note du sifflote : le seul clip posé à « siffloteLoop », près de la bouche.
+  const noteDe = (face) => {
+    const deb = face.labels.siffloteLoop;
+    const poses = (face.images[deb - 1] || []).filter((o) => o.t === 'pose' && o.ch >= 0);
+    if (poses.length !== 1) throw new Error('« siffloteLoop » devrait poser un seul clip, la note ; ' + poses.length + ' trouvé(s)');
+    return poses[0];
+  };
+  const note14 = noteDe(face14);
+
   const recolte = recolter(d12, [fumee.ch, choco.ch, bulle12.ch]
     .concat(gum12.eclats.map((e) => e.ch), [gum12.tache.ch]));
   const recolte15 = recolter(d15, [nuage.ch]);
+  const recolte14 = recolter(d14, [bulle14.ch, colombeId, note14.ch]
+    .concat(gum14.eclats.map((e) => e.ch), [gum14.tache.ch]));
   // Les deux récoltes vivent dans le même paquet : les numéros ne peuvent pas
   // se heurter, un même décalage appliqué à deux familles pouvant retomber sur
   // le même. On pousse la seconde d'une plage de plus.
   const DECALE15 = DECALAGE;
-  const glisser = (table) => {
+  const DECALE14 = DECALAGE * 2;
+  const glisser = (table, de) => {
     const out = {};
-    Object.entries(table).forEach(([id, v]) => { out[Number(id) + DECALE15] = v; });
+    Object.entries(table).forEach(([id, v]) => { out[Number(id) + de] = v; });
     return out;
   };
-  const renumeroter = (sprites) => {
+  const renumeroter = (sprites, de) => {
     const out = {};
     Object.entries(sprites).forEach(([id, sp]) => {
-      out[Number(id) + DECALE15] = Object.assign({}, sp, {
+      out[Number(id) + de] = Object.assign({}, sp, {
         images: sp.images.map((im) => im.map((o) => (o.ch >= 0
-          ? Object.assign({}, o, { ch: o.ch + DECALE15 }) : o))),
+          ? Object.assign({}, o, { ch: o.ch + de }) : o))),
       });
     });
     return out;
   };
+  const ch14 = (ch) => ch + DECALAGE + DECALE14;
 
   const paquet = {
     // De quoi retrouver la source si l'on doit refaire la récolte.
@@ -311,11 +352,15 @@ const arrondir = (M) => {
       toux: 'famille15.swf, visage, étiquette « tousse » — six images de secousse',
       gum: 'famille12.swf, visage, étiquettes « gum » (la bulle) et « gumNext » '
         + '(l’éclatement et la tache)',
+      egerie: 'famille14.swf, visage : « gum » (la bulle), « gumNext » (l’éclatement, '
+        + 'la tache), le clip exporté « bird » (la colombe, course lue dans les scripts '
+        + 'des images 88 à 93), « siffloteLoop » (la note)',
       outil: 'scripts/extract-emotes-bouille.js',
       decalage: DECALAGE,
+      decalages: { 12: DECALAGE, 15: DECALAGE + DECALE15, 14: DECALAGE + DECALE14 },
     },
-    formes: Object.assign({}, recolte.formes, glisser(recolte15.formes)),
-    sprites: Object.assign({}, recolte.sprites, renumeroter(recolte15.sprites)),
+    formes: Object.assign({}, recolte.formes, glisser(recolte15.formes, DECALE15), glisser(recolte14.formes, DECALE14)),
+    sprites: Object.assign({}, recolte.sprites, renumeroter(recolte15.sprites, DECALE15), renumeroter(recolte14.sprites, DECALE14)),
     jutsu: {
       fumee: poseDe(face12, JUTSU, fumee.ch),
       chocapic: poseDe(face12, JUTSU, choco.ch),
@@ -332,6 +377,21 @@ const arrondir = (M) => {
       bulle: { ch: bulle12.ch + DECALAGE },
       eclats: gum12.eclats.map((e) => ({ ch: e.ch + DECALAGE, M: e.M })),
       tache: { ch: gum12.tache.ch + DECALAGE, M: gum12.tache.M },
+    },
+    // Les émotes d'Egerie, prêtes à remplacer celles de la famille d'accueil
+    // pour qui y a droit : le gum (même échange que pour hiko, plus la
+    // colombe) et la note du sifflote.
+    egerie: {
+      gum: {
+        bulle: { ch: ch14(bulle14.ch) },
+        eclats: gum14.eclats.map((e) => ({ ch: ch14(e.ch), M: e.M })),
+        tache: { ch: ch14(gum14.tache.ch), M: gum14.tache.M },
+        // La colombe : attachée dans le VISAGE (profondeur 3) quand la bulle
+        // passe cinquante pixels, en (−15, 20) ; puis (−3, −5) par battement,
+        // retirée dès que x < −70 (scripts des images 88, 90, 91 et 93).
+        colombe: { ch: ch14(colombeId), depart: { x: -15, y: 20 }, pas: { x: -3, y: -5 }, jusqua: -70 },
+      },
+      sifflote: { note: { ch: ch14(note14.ch), M: note14.M } },
     },
   };
 
