@@ -167,10 +167,14 @@
       }
       return a + "/>";
     }).join("");
+    // `t` : b une bombe (avec sa mèche `v`), d une dynamite (sans mèche).
     var obj = snap.objets.map(function (o) {
-      return '<o i="' + o.id + '" t="b" x="' + o.x + '" y="' + o.y + '" v="' + n3(o.vie) + '"/>';
+      return '<o i="' + o.id + '" t="' + (o.type === "dynamite" ? "d" : "b") + '" x="' + o.x + '" y="' + o.y +
+        (o.vie == null ? '"' : '" v="' + n3(o.vie) + '"') + '/>';
     }).join("");
     var ex = snap.explosions.map(function (e) { return '<ex x="' + e.x + '" y="' + e.y + '"/>'; }).join("");
+    // Une dynamite ramassée : où, et par qui — le client y fait le bruit.
+    ex += (snap.ramassages || []).map(function (r) { return '<dy x="' + r.x + '" y="' + r.y + '" e="' + r.team + '"/>'; }).join("");
     return '<sb e="' + evt + '" g="' + esc(snap.id) + '" ph="' + snap.phase + '" cd="' + n3(snap.compte) +
       '" n="' + snap.numero + '" t="' + n3(snap.temps) + '" cl="' + (session._classe ? 1 : 0) + '"' +
       (snap.ended ? ' end="1" w="' + snap.winner + '" r="' + esc(snap.endReason) + '"' : "") +

@@ -57,7 +57,9 @@ const CONST = fs.readFileSync(path.join(ROOT, 'public/snake3/const.js'), 'utf8')
 test('on ne dessine que ce qui a changé', () => {
   const f = /const cadre = \(maintenant\) => \{[\s\S]*?\n    \};/.exec(GAME);
   assert.ok(f, 'la boucle doit exister');
-  assert.match(f[0], /if \(n > 0\) this\.dessiner\(\);/,
+  // (En ligne, l'état vient du réseau : la vue dessine à chaque image et
+  // prolonge les têtes entre deux états — cf. enligne.js.)
+  assert.match(f[0], /if \(n > 0 \|\| \(this\.mode && this\.mode\.enligne\)\) this\.dessiner\(\);/,
     'pas de pas, pas d’image — la cadence retombe sur les 40 du SWF');
   // Et le pas reste FIXE : c'est lui qui garde les clips à la bonne vitesse.
   assert.match(GAME, /const PAS = 1 \/ C\.SWF_FPS;/);

@@ -106,12 +106,13 @@ test('trois secondes de compte à rebours, puis quarante pas par seconde à tmod
   assert.strictEqual(S.PAS, 1 / 40);
 });
 
-test('le rattrapage est borné à trois pas : un trou d’une seconde ne téléporte personne', () => {
+test('le rattrapage est borné à six pas : un trou d’une seconde ne téléporte personne', () => {
   const s = session({ objets: false });
   jusqua(s, 3100);
   const n = s.numero;
-  assert.strictEqual(s.avancer(4100), 3, 'trois pas, pas quarante');
-  assert.strictEqual(s.numero, n + 3);
+  assert.strictEqual(S.RATTRAPAGE, 6, 'un hoquet de 150 ms se rattrape ; au-delà, on renonce');
+  assert.strictEqual(s.avancer(4100), 6, 'six pas, pas quarante');
+  assert.strictEqual(s.numero, n + 6);
 });
 
 test('les touches pilotent le serpent de son équipe ; un inconnu est refusé', () => {
@@ -171,7 +172,7 @@ test('abandon : l’adversaire gagne, et pas deux fois', () => {
 });
 
 test('une bombe : mèche de cinq secondes, puis le souffle coupe la queue et tue la tête qui s’y trouve', () => {
-  const s = session({ objets: { premier: [0.5, 0.5], suivants: [1e6, 1e6], distanceTete: 0 } });
+  const s = session({ objets: { premier: [0.5, 0.5], suivants: [1e6, 1e6], distanceTete: 0, partDynamite: 0 } });
   jusqua(s, 3025);
   let t = 3050;
   while (!s.objets.length && t < 6000) { s.avancer(t); t += 25; }
@@ -199,7 +200,7 @@ test('une bombe : mèche de cinq secondes, puis le souffle coupe la queue et tue
 });
 
 test('toucher une bombe du nez la fait sauter aussitôt — et c’est la mort', () => {
-  const s = session({ objets: { premier: [0.5, 0.5], suivants: [1e6, 1e6], distanceTete: 0 } });
+  const s = session({ objets: { premier: [0.5, 0.5], suivants: [1e6, 1e6], distanceTete: 0, partDynamite: 0 } });
   jusqua(s, 3025);
   let t = 3050;
   while (!s.objets.length && t < 6000) { s.avancer(t); t += 25; }
@@ -214,13 +215,67 @@ test('toucher une bombe du nez la fait sauter aussitôt — et c’est la mort',
   assert.strictEqual(s.endReason, 'collision');
 });
 
-test('il n’y a que des bombes — pas de fruit dans un duel', () => {
+test('il n’y a que des bombes et des dynamites — pas de fruit dans un duel', () => {
   const s = session({ objets: { premier: [0.1, 0.1], suivants: [0.1, 0.1], meche: 1e6 } });
   jusqua(s, 3025);
   for (let t = 3050; t < 6000; t += 25) s.avancer(t);
   assert.ok(s.objets.length > 0);
-  assert.ok(s.objets.every((o) => o.type === 'bombe'));
+  assert.ok(s.objets.every((o) => o.type === 'bombe' || o.type === 'dynamite'));
   assert.ok(!('manges' in s.snapshot()), 'rien à manger, rien à annoncer');
+  // Une bombe porte sa mèche, une dynamite n'en a pas.
+  for (const o of s.objets) assert.strictEqual(o.vie == null, o.type === 'dynamite');
+});
+
+test('une dynamite : ramassée du nez, la n-ième coûte n segments — et la tête nue meurt', () => {
+  const s = session({ objets: { premier: [0.5, 0.5], suivants: [0.5, 0.5], distanceTete: 0, partDynamite: 1 } });
+  jusqua(s, 3025);
+  let t = 3050;
+  const prochaine = () => { while (!s.objets.length && t < 20000) { s.avancer(t); t += 25; } return s.objets[0]; };
+  const sousLeNez = (o, a) => { o.x = Math.round(a.x + Math.cos(a.ang) * 12); o.y = Math.round(a.y + Math.sin(a.ang) * 12); };
+  const a = s.bataille.serpents[0];
+  let d = prochaine();
+  assert.strictEqual(d.type, 'dynamite');
+  assert.strictEqual(d.vie, null, 'pas de mèche : elle attend qu’on la prenne');
+  a.len = 3;
+  sousLeNez(d, a);
+  s.avancer(t); t += 25;
+  assert.strictEqual(s.objets.length, 0, 'ramassée');
+  assert.strictEqual(a.len, 2, 'la première coûte UN segment');
+  const snap = s.snapshot();
+  assert.deepStrictEqual(snap.dynamites, [1, 0]);
+  assert.strictEqual(snap.ramassages.length, 1);
+  assert.strictEqual(snap.ramassages[0].team, 0);
+  assert.strictEqual(snap.serpents[0].xp, 1, 'le segment part en particules, comme au souffle');
+  assert.strictEqual(s.ended, false);
+  // La deuxième coûte deux : la tête reste nue (len 0), et vivante — comme au Challenge.
+  d = prochaine();
+  sousLeNez(d, a);
+  s.avancer(t); t += 25;
+  assert.strictEqual(a.len, 0, 'deux segments de plus');
+  assert.strictEqual(s.ended, false, 'un serpent réduit à sa tête se pilote encore');
+  // La troisième : plus rien à payer — la tête meurt, l'autre gagne.
+  d = prochaine();
+  sousLeNez(d, a);
+  s.avancer(t); t += 25;
+  assert.strictEqual(s.ended, true);
+  assert.strictEqual(s.winner, 1);
+  assert.strictEqual(s.endReason, 'collision');
+});
+
+test('la dynamite voyage en <o t="d"> sans mèche, et sa prise en <dy>', () => {
+  const net = new SnakeNet({ withBots: false, objets: { premier: [0.5, 0.5], suivants: [1e6, 1e6], distanceTete: 0, partDynamite: 1 } });
+  net.handle('a', { a: 'hello', n: 'A' }); net.handle('b', { a: 'hello', n: 'B' });
+  net.handle('a', { a: 'seek' }); net.handle('b', { a: 'seek' });
+  const sess = Object.values(net.sessions)[0];
+  let t = 0, xml = '';
+  while (!/<o /.test(xml) && t < 20000) { t += 25; for (const m of net.tick(t)) if (/e="state"/.test(m.xml)) xml = m.xml; }
+  assert.match(xml, /<o i="\d+" t="d" x="-?\d+" y="-?\d+"\/>/, 'une dynamite : t="d", pas de v : ' + xml);
+  const a = sess.bataille.serpents[0], d = sess.objets[0];
+  a.len = 5;
+  d.x = Math.round(a.x + Math.cos(a.ang) * 12); d.y = Math.round(a.y + Math.sin(a.ang) * 12);
+  t += 25;
+  const msgs = net.tick(t).filter((m) => /e="state"/.test(m.xml));
+  assert.ok(msgs.some((m) => /<dy x="-?\d+" y="-?\d+" e="0"\/>/.test(m.xml)), 'la prise est annoncée');
 });
 
 test('les objets ne tombent jamais sous le nez d’un serpent, ni plus de quatre à la fois', () => {

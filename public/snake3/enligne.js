@@ -22,9 +22,20 @@
  *
  * Les OBJETS : des bombes, celles du Challenge (mèche de cinq secondes,
  * puis un souffle de RAYON_BOMBE qui emporte la queue prise dedans et tue
- * la tête qui s'y trouve — la toucher la fait sauter aussitôt). Rien
- * d'autre : pas de fruit dans un duel. Le souffle se montre au sol quand la
- * mèche est courte.
+ * la tête qui s'y trouve — la toucher la fait sauter aussitôt), et des
+ * dynamites, celles du Challenge aussi (chacune coûte un segment de plus
+ * que la précédente ; la tête nue qui en prend une meurt). Pas de fruit
+ * dans un duel. Le souffle se montre au sol quand la mèche est courte.
+ *
+ * LE MIROIR NE SACCADE PAS. Les états arrivent quarante fois par seconde,
+ * jamais en phase avec l'image du navigateur, parfois par paquets quand le
+ * réseau hoquette : dessiner chaque serpent LÀ OÙ le dernier état l'a laissé
+ * donnait un mouvement en 2-1-2-1 — « c'est lent, ça lague ». On dessine
+ * donc à chaque image, en prolongeant chaque tête sur son cap à sa vitesse
+ * du temps écoulé depuis l'état (borné à un dixième de seconde), et pour SON
+ * serpent on tourne déjà du côté où l'on appuie : le geste se voit tout de
+ * suite, le serveur le confirme au pas suivant. Les files, elles, ne
+ * viennent que du serveur : c'est lui qui joue.
  */
 'use strict';
 
@@ -292,6 +303,7 @@ class VueBatailleEnLigne {
     this.souffles = [];                // { x, y, frame } — la bombe qui saute
     this.finie = false;
     this.dernierEnvoi = null;
+    this.tEtat = 0;                    // quand le dernier état est arrivé (performance.now)
     this.jeu.tmodForce = 1;
 
     const sons = jeu.sons;
@@ -376,14 +388,20 @@ class VueBatailleEnLigne {
 
   _lireObjets(el) {
     this.objets = [...el.getElementsByTagName('o')].map((o) => ({
-      id: Number(o.getAttribute('i')), type: 'bombe',
+      id: Number(o.getAttribute('i')), type: o.getAttribute('t') === 'd' ? 'dynamite' : 'bombe',
       x: Number(o.getAttribute('x')), y: Number(o.getAttribute('y')),
-      vie: Number(o.getAttribute('v')),
+      vie: o.hasAttribute('v') ? Number(o.getAttribute('v')) : null,
     }));
     for (const ex of el.getElementsByTagName('ex')) {
       this.souffles.push({ x: Number(ex.getAttribute('x')), y: Number(ex.getAttribute('y')), frame: 2 });
       this.jeu.sons.play('dynamite');
     }
+    // Une dynamite ramassée : le bruit du Challenge ; les segments qui
+    // partent, eux, viennent avec le pas (xp) comme pour le souffle.
+    for (const dy of el.getElementsByTagName('dy')) {
+      if (dy) this.jeu.sons.play('dynamite');
+    }
+    this.tEtat = performance.now();
   }
 
   // <sb e="state"> : un pas. Les gestes dans L'ORDRE du serveur (Battle.main) :
@@ -474,6 +492,7 @@ class VueBatailleEnLigne {
     // courte — découpée au terrain, comme une marque peinte — puis la bombe.
     const n = this.niveau;
     for (const o of this.objets) {
+      if (o.type !== 'bombe') continue;           // les dynamites : plus bas, sans souffle
       if (o.vie < MECHE_COURTE) {
         const bat = 0.18 + 0.14 * Math.abs(Math.sin(jeu.temps() * 1.4));
         ctx.save();
@@ -494,10 +513,34 @@ class VueBatailleEnLigne {
       D.poser(ctx, 'bombe', Math.max(1, Math.min(22, Math.floor(b.frame))), b.x, b.y, 1, 1, 0);
     }
 
-    for (const s of this.serpents) {
+    // Les dynamites : le dessin de l'option 27 du Challenge, posé au sol.
+    for (const o of this.objets) {
+      if (o.type === 'dynamite') D.poser(ctx, 'options', 27, o.x, o.y, 1, 1, 0);
+    }
+
+    // Les serpents, prolongés du temps écoulé depuis le dernier état (voir
+    // l'en-tête) — la file reste celle du serveur, seule la tête avance.
+    const avance = (this.phase === 'jeu' && !this.finie && this.tEtat)
+      ? Math.min(0.1, Math.max(0, (performance.now() - this.tEtat) / 1000)) : 0;
+    const mien = avance ? jeu.entreesBataille()[0] : null;
+    for (let i = 0; i < this.serpents.length; i++) {
+      const s = this.serpents[i];
       if (!s || s.vivant === false) continue;
+      const x0 = s.x, y0 = s.y, a0 = s.ang;
+      if (avance) {
+        let ang = s.ang;
+        if (i === this.monEquipe && mien) {
+          if (mien.gauche) ang -= s.delta_ang * C.WANTED_FPS * avance;
+          if (mien.droite) ang += s.delta_ang * C.WANTED_FPS * avance;
+        }
+        const v = Math.max(s.speed, C.SNAKE_DEFAULT_SPEED) * (s.base_speed || 1) * C.WANTED_FPS * avance;
+        s.x += Math.cos(ang) * v;
+        s.y += Math.sin(ang) * v;
+        s.ang = ang;
+      }
       R.dessinerSerpent(ctx, s, jeu.tmod, jeu.temps());
       R.dessinerTete(ctx, s, s.tete_frame || 1);
+      s.x = x0; s.y = y0; s.ang = a0;
     }
     this.particules.dessiner(ctx);
 

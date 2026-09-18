@@ -1163,7 +1163,9 @@ class Jeu {
        * exactement sur celle du lecteur d'origine, et le reste du temps
        * revient au jeu.
        */
-      if (n > 0) this.dessiner();
+      // En ligne, l'état vient du réseau, pas du pas local : on dessine à
+      // chaque image, la vue prolonge les têtes entre deux états (enligne.js).
+      if (n > 0 || (this.mode && this.mode.enligne)) this.dessiner();
       // LA CHAUFFE prend ce que l'image laisse : une vingtaine de
       // millisecondes quand le rideau est tenu fermé — il n'y a rien d'autre
       // à faire, et c'est elle qu'on attend —, six derrière le menu, la

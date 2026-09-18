@@ -16,8 +16,12 @@
 //     montrent l'arène ;
 //   · des OBJETS qui tombent : des BOMBES — mèche de cinq secondes, puis un
 //     souffle qui emporte la queue prise dedans et tue la tête qui s'y
-//     trouve ; la toucher du nez la fait sauter aussitôt — et des FRUITS,
-//     qui rendent trois segments et remplissent le turbo ;
+//     trouve ; la toucher du nez la fait sauter aussitôt — et des DYNAMITES,
+//     celles du Challenge (Pile.as) : on la ramasse du nez, et chaque
+//     dynamite ramassée coûte UN SEGMENT DE PLUS que la précédente (la
+//     première un, la deuxième deux…) ; la tête nue qui en ramasse encore
+//     meurt. Un serpent court se faufile mieux, mais y laisse sa marge :
+//     c'est ce qui pousse à prendre des risques pour les attraper ;
 //   · l'abandon (départ, déconnexion) → l'autre gagne.
 //
 // L'horloge est INJECTABLE (`now` en ms) pour des tests déterministes.
@@ -33,7 +37,12 @@
 
   var PAS = 1 / C.SWF_FPS;                 // 1/40 s — le pas du lecteur d'origine
   var TMOD = C.WANTED_FPS / C.SWF_FPS;    // 32/40 = 0,8
-  var RATTRAPAGE = 3;                      // pas joués d'un coup au plus (cf. game.js)
+  // Pas joués d'un coup au plus. Le lecteur en rattrape trois (cf. game.js) ;
+  // ici le serveur ne dessine rien, et chaque pas non joué est du TEMPS DE
+  // JEU PERDU pour les deux joueurs — un serveur occupé ailleurs cent
+  // millisecondes faisait tourner la partie au ralenti. Six pas (150 ms)
+  // absorbent un hoquet ordinaire ; au-delà on renonce, comme avant.
+  var RATTRAPAGE = 6;
   var COMPTE_A_REBOURS = 3;                // secondes avant que les serpents ne partent
 
   // Les objets.
@@ -46,6 +55,8 @@
     meche: C.TIME_BOMBE,                   // 5 s, comme la bombe du Challenge
     rayonBombe: C.RAYON_BOMBE,             // le souffle : celui du jeu (160)
     contactBombe: 16,                      // la toucher du nez la fait sauter
+    partDynamite: 0.5,                     // un objet sur deux est une dynamite
+    contactDynamite: 18,                   // la ramasser du nez
   };
 
   // Où une bombe posée en (x, y) COUPERAIT ce serpent : l'indice, compté
@@ -81,6 +92,7 @@
     this.winner = null;                    // index d'équipe, -1 égalité
     this.endReason = null;                 // "collision" | "forfeit" | "draw"
     this.objets = [];
+    this.dynamites = [0, 0];               // ramassées par chaque équipe (Pile.counter, à chacun le sien)
     this._seqObjet = 0;
     this._prochainObjet = this._tirer(this.objetsCfg ? this.objetsCfg.premier : [1e9, 1e9]);
     // Les événements d'un pas, à raconter au client (remis à zéro à chaque pas).
@@ -120,7 +132,7 @@
   };
 
   SnakeBattleSession.prototype._raz = function () {
-    this.evts = { serpents: [{ q: 0, g: 0, xp: 0 }, { q: 0, g: 0, xp: 0 }], explosions: [] };
+    this.evts = { serpents: [{ q: 0, g: 0, xp: 0 }, { q: 0, g: 0, xp: 0 }], explosions: [], ramassages: [] };
   };
 
   SnakeBattleSession.prototype.teamOf = function (playerId) {
@@ -171,7 +183,22 @@
       });
     }
     if (!loin) return;
-    this.objets.push({ id: ++this._seqObjet, type: "bombe", x: Math.round(x), y: Math.round(y), vie: cfg.meche });
+    var dynamite = this.rng() < cfg.partDynamite;
+    this.objets.push({ id: ++this._seqObjet, type: dynamite ? "dynamite" : "bombe",
+      x: Math.round(x), y: Math.round(y), vie: dynamite ? null : cfg.meche });
+  };
+
+  // Pile.activate, à l'échelle d'un serpent : la n-ième dynamite ramassée
+  // coûte n segments ; celui qui n'en a plus meurt.
+  SnakeBattleSession.prototype._ramasser = function (o, k) {
+    var ba = this.bataille, s = ba.serpents[k];
+    if (!s) return;
+    this.dynamites[k]++;
+    this.evts.ramassages.push({ x: o.x, y: o.y, team: k });
+    for (var i = 0; i < this.dynamites[k]; i++) {
+      if (s.len > 0) s.explode(s.color);
+      else { ba.mortsExternes.push(k); return; }
+    }
   };
 
   SnakeBattleSession.prototype._exploser = function (o) {
@@ -197,15 +224,19 @@
     }
     for (var n = 0; n < this.objets.length; n++) {
       var o = this.objets[n];
-      o.vie -= dt;
-      var touchee = false;
-      for (var k = 0; k < ba.serpents.length && !touchee; k++) {
+      var dynamite = o.type === "dynamite";
+      if (!dynamite) o.vie -= dt;
+      var contact = dynamite ? cfg.contactDynamite : cfg.contactBombe;
+      var touchee = -1;
+      for (var k = 0; k < ba.serpents.length && touchee < 0; k++) {
         var s = ba.serpents[k];
         if (!s) continue;
         var d = (s.x - o.x) * (s.x - o.x) + (s.y - o.y) * (s.y - o.y);
-        if (d < cfg.contactBombe * cfg.contactBombe) touchee = true;
+        if (d < contact * contact) touchee = k;
       }
-      if (touchee || o.vie <= 0) {
+      if (dynamite) {
+        if (touchee >= 0) { this._ramasser(o, touchee); this.objets.splice(n, 1); n--; }
+      } else if (touchee >= 0 || o.vie <= 0) {
         this._exploser(o);
         this.objets.splice(n, 1); n--;
       }
@@ -281,10 +312,12 @@
       serpents: serpents,
       objets: this.objets.map(function (o) { return { id: o.id, type: o.type, x: o.x, y: o.y, vie: o.vie }; }),
       explosions: this.evts.explosions.slice(),
+      ramassages: this.evts.ramassages.slice(),
+      dynamites: this.dynamites.slice(),
       ended: this.ended, winner: this.winner, endReason: this.endReason,
       inputs: self.inputs.map(function (i) { return { gauche: i.gauche, droite: i.droite, haut: i.haut }; }),
     };
   };
 
-  return { SnakeBattleSession: SnakeBattleSession, coupure: coupure, PAS: PAS, TMOD: TMOD, OBJETS: OBJETS, COMPTE_A_REBOURS: COMPTE_A_REBOURS };
+  return { SnakeBattleSession: SnakeBattleSession, coupure: coupure, PAS: PAS, TMOD: TMOD, OBJETS: OBJETS, COMPTE_A_REBOURS: COMPTE_A_REBOURS, RATTRAPAGE: RATTRAPAGE };
 });

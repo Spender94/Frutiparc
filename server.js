@@ -6306,6 +6306,32 @@ const MAQUILLAGES_DEFAULT = MAQUILLAGE.teintes.map((t) => ({
     + 'Tu le mets, tu le retires — ta bouille t’attend dessous, intacte.',
 }));
 
+/*
+ * LES INCARNATIONS D'ÉPOQUE — une bouille ENTIÈRE d'une autre famille.
+ *
+ * Egerie (famille 14) : ses yeux, sa bouche, son maquillage, ses émotes. Un
+ * article `incarnation` porte la CHAÎNE D'ÉTAT complète ; l'achat la met à
+ * l'inventaire telle quelle (`estIncarnation` la reconnaît à sa famille), et
+ * on la porte, on la retire, comme une paire de prunelles. Le numéro est
+ * figé : 620000 + la famille.
+ */
+const INCARNATION_EPOQUE_ID_BASE = 620000;
+const INCARNATIONS_EPOQUE_DEFAULT = [
+  {
+    id: INCARNATION_EPOQUE_ID_BASE + 14,
+    name: 'Egerie',
+    category: 'Incarnations',
+    price: 200,
+    incarnation: '0e0000010000000000000000',
+    suffix9: '000000000',
+    comment: 'La frutibouille d’Egerie, telle qu’elle est.',
+    description: 'Ses yeux, sa bouche, son maquillage et ses émotes à elle. '
+      + 'Tu l’enfiles, tu la retires — ta bouille t’attend dessous, intacte.',
+  },
+];
+// Une chaîne d'état d'incarnation valide : 24 caractères base62.
+function etatIncarnationValide(v) { return /^[0-9a-zA-Z]{24}$/.test(String(v || '')); }
+
 const SHOP_PACKS_DEFAULT = [
   {
     id: 101,
@@ -6394,6 +6420,8 @@ const SHOP_PACKS_DEFAULT = [
   ...INCARNATIONS_DEFAULT,
   // Les teintes du maquillage d'Egerie (cf. MAQUILLAGES_DEFAULT).
   ...MAQUILLAGES_DEFAULT,
+  // Les bouilles entières d'autres familles (cf. INCARNATIONS_EPOQUE_DEFAULT).
+  ...INCARNATIONS_EPOQUE_DEFAULT,
   // Wallpapers
   { id: 201, name: 'Chevalier moutarde',    category: "Fonds d'écran", price: 0, description: 'Un fond chevaleresque aux tons moutarde.',     suffix9: '000000000', wallpaperId: 'moutarde' },
   { id: 202, name: 'Chorale Frutiparc',     category: "Fonds d'écran", price: 0, description: 'La grande chorale de Frutiparc !',             suffix9: '000000000', wallpaperId: 'chorale' },
@@ -6531,6 +6559,12 @@ function getAccessoryMaquillage(acc) {
   const cle = pack && pack.maquillage;
   return (cle && MAQUILLAGES[cle]) ? MAQUILLAGES[cle] : null;
 }
+// Et la bouille ENTIÈRE d'une incarnation d'époque (sa chaîne d'état), ou null.
+function getAccessoryIncarnation(acc) {
+  if (!acc || acc.shopId == null) return null;
+  const pack = getShopPack(acc.shopId);
+  return (pack && etatIncarnationValide(pack.incarnation)) ? String(pack.incarnation) : null;
+}
 
 /*
  * LES INCARNATIONS QU'UN JOUEUR POSSÈDE — la liste, écrite une seule fois.
@@ -6559,14 +6593,28 @@ function incarnationsDe(user, username) {
     // Le maquillage d'Egerie se porte comme une incarnation : une bouille
     // entière, la sienne maquillée, qu'on enfile et qu'on retire.
     const maq = getAccessoryMaquillage(acc);
-    if (!maq) continue;
+    if (maq) {
+      out.push({
+        id: acc.id,
+        shopId: acc.shopId || null,
+        nom: acc.n || (MAQUILLAGE.nom + ' — ' + maq.nom),
+        cle: maq.cle,
+        maquillage: maq.cle,
+        etat: bouilleAvecMaquillage(principale, maq.cle),
+      });
+      continue;
+    }
+    // Une bouille ENTIÈRE d'une autre famille (Egerie) : elle ne se compose
+    // pas sur la sienne, elle la remplace — `entiere` le dit au client.
+    const entiere = getAccessoryIncarnation(acc);
+    if (!entiere) continue;
     out.push({
       id: acc.id,
       shopId: acc.shopId || null,
-      nom: acc.n || (MAQUILLAGE.nom + ' — ' + maq.nom),
-      cle: maq.cle,
-      maquillage: maq.cle,
-      etat: bouilleAvecMaquillage(principale, maq.cle),
+      nom: acc.n || 'Incarnation',
+      cle: 'famille' + decode62(entiere.substring(0, 2)),
+      entiere: true,
+      etat: entiere,
     });
   }
   return out;
@@ -12958,14 +13006,17 @@ app.post('/api/admin/shop', adminScope('shop'), async (req, res) => {
   // Idem pour une teinte du maquillage d'Egerie.
   const maquillage = b.maquillage && MAQUILLAGES[String(b.maquillage)] ? String(b.maquillage) : '';
   if (b.maquillage && !maquillage) return res.status(400).json({ error: 'unknown maquillage' });
-  if (!id || !b.name || (!b.suffix9 && !prunelle && !maquillage)) {
-    return res.status(400).json({ error: 'missing id, name or suffix9/prunelle/maquillage' });
+  // Et une bouille entière : sa chaîne d'état (24 caractères).
+  const incarnation = etatIncarnationValide(b.incarnation) ? String(b.incarnation) : '';
+  if (b.incarnation && !incarnation) return res.status(400).json({ error: 'invalid incarnation state' });
+  if (!id || !b.name || (!b.suffix9 && !prunelle && !maquillage && !incarnation)) {
+    return res.status(400).json({ error: 'missing id, name or suffix9/prunelle/maquillage/incarnation' });
   }
   if (SHOP_PACKS.find(p => p.id === id)) return res.status(409).json({ error: 'id already exists' });
   const pack = {
     id,
     name: String(b.name),
-    category: String(b.category || ((prunelle || maquillage) ? 'Incarnations' : 'Accessoires')),
+    category: String(b.category || ((prunelle || maquillage || incarnation) ? 'Incarnations' : 'Accessoires')),
     price: Number(b.price) || 0,
     description: String(b.description || ''),
     suffix9: String(b.suffix9 || '000000000'),
@@ -12973,6 +13024,7 @@ app.post('/api/admin/shop', adminScope('shop'), async (req, res) => {
   };
   if (prunelle) pack.prunelle = prunelle;
   if (maquillage) pack.maquillage = maquillage;
+  if (incarnation) pack.incarnation = incarnation;
   // Le pseudo du graphiste : commission à chaque vente, rayon « maison ».
   if (b.auteur !== undefined && String(b.auteur).trim()) pack.auteur = String(b.auteur).trim().slice(0, 40);
   SHOP_PACKS.push(pack);
@@ -13253,6 +13305,11 @@ app.patch('/api/admin/shop/:id', adminScope('shop'), async (req, res) => {
     const cle = String(b.maquillage || '');
     if (cle && !MAQUILLAGES[cle]) return res.status(400).json({ error: 'unknown maquillage' });
     if (cle) pack.maquillage = cle; else delete pack.maquillage;
+  }
+  if (b.incarnation !== undefined) {
+    const etat = String(b.incarnation || '');
+    if (etat && !etatIncarnationValide(etat)) return res.status(400).json({ error: 'invalid incarnation state' });
+    if (etat) pack.incarnation = etat; else delete pack.incarnation;
   }
   if (b.auteur !== undefined) {
     const auteur = String(b.auteur).trim().slice(0, 40);
@@ -20005,13 +20062,17 @@ function purchaseShopPack(user, username, packIdRaw) {
   const prunelle = pack.prunelle ? PRUNELLES[pack.prunelle] : null;
   // Le MAQUILLAGE non plus : il change les yeux et la bouche de bloc.
   const maquillage = pack.maquillage ? MAQUILLAGES[pack.maquillage] : null;
+  // Une INCARNATION D'ÉPOQUE est une bouille entière : elle s'achète telle quelle.
+  const entiere = etatIncarnationValide(pack.incarnation) ? String(pack.incarnation) : null;
   const bouilleStr = isWallpaper
     ? `wp:${wp.url}:${wp.color}`
     : prunelle
       ? bouilleAvecPrunelle(bouilleOf(user, username), prunelle.eyeSc)
       : maquillage
         ? bouilleAvecMaquillage(bouillePrincipaleDe(user, username), maquillage.cle)
-        : bouilleOf(user).substring(0, 15) + pack.suffix9;
+        : entiere
+          ? entiere
+          : bouilleOf(user).substring(0, 15) + pack.suffix9;
   if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
   const accEntry = {
     id: isWallpaper ? ('wp_' + pack.wallpaperId) : ('shop_' + pack.id),
@@ -20240,7 +20301,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     // article d'une rubrique offerte ne se revendent pas. Un attribut de plus
     // sur le nœud : le SWF d'époque ignore ce qu'il ne connaît pas.
     const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
-      .filter((acc) => !getAccessoryWallpaper(acc) && !getAccessoryPrunelle(acc) && !getAccessoryMaquillage(acc))
+      .filter((acc) => !getAccessoryWallpaper(acc) && !getAccessoryPrunelle(acc) && !getAccessoryMaquillage(acc) && !getAccessoryIncarnation(acc))
       .map((acc) => {
         const vendable = acc.shopId && accessoireRevendable(user, getShopPack(acc.shopId)) ? ' v="1"' : '';
         return `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0"${vendable}>`
@@ -24567,8 +24628,9 @@ app.get('/api/light/shop', (req, res) => {
     const wp = p.wallpaperId ? WALLPAPER_BY_ID[p.wallpaperId] : null;
     const prunelle = p.prunelle ? PRUNELLES[p.prunelle] : null;
     const maquillage = p.maquillage ? MAQUILLAGES[p.maquillage] : null;
+    const entiere = etatIncarnationValide(p.incarnation) ? String(p.incarnation) : null;
     const offert = shopCategoryOwnedByDefault(p.category) && !p.notDefault;
-    const accessoire = !wp && !p.picto && !prunelle && !maquillage;
+    const accessoire = !wp && !p.picto && !prunelle && !maquillage && !entiere;
     // Un ACCESSOIRE n'a pas de `comment` : le bureau lui compose sa fiche en
     // deux niveaux (resolveAccessoryLevels → l1 en gras, l2 en texte courant),
     // avec les deux paragraphes communs quand rien n'est personnalisé. Le
@@ -24584,7 +24646,7 @@ app.get('/api/light/shop', (req, res) => {
       owned: offert || userOwnsShopPack(user, p.id),
       offert,
       kind: wp ? 'fond' : feutre ? 'feutre' : p.picto ? 'picto'
-        : (prunelle || maquillage) ? 'incarnation' : 'accessoire',
+        : (prunelle || maquillage || entiere) ? 'incarnation' : 'accessoire',
       suffix9: p.suffix9 || '000000000',
     };
     // Une INCARNATION ne se compose pas d'un suffixe : le client ne saurait pas
@@ -24600,6 +24662,11 @@ app.get('/api/light/shop', (req, res) => {
     if (maquillage) {
       a.maquillage = maquillage.cle;
       a.etat = bouilleAvecMaquillage(bouillePrincipaleDe(user, username), maquillage.cle);
+    }
+    // Une bouille entière : l'état de l'article, tel quel.
+    if (entiere) {
+      a.incarnation = true;
+      a.etat = entiere;
     }
     // Un accessoire maison dit qui l'a dessiné ; la fiche l'écrit.
     if (p.auteur) a.auteur = String(p.auteur);
@@ -24671,6 +24738,7 @@ app.get('/api/light/inventaire', (req, res) => {
     if (getAccessoryWallpaper(acc)) continue;            // c'est un fond, pas un accessoire
     if (getAccessoryPrunelle(acc)) continue;             // c'est une incarnation
     if (getAccessoryMaquillage(acc)) continue;           // le maquillage aussi
+    if (getAccessoryIncarnation(acc)) continue;          // et une bouille entière
     const v = String(acc.v || '');
     if (v.length !== 24 || vus.has(v)) continue;
     vus.add(v);
@@ -25014,6 +25082,7 @@ async function boot() {
           if (def && def.prunelle && !p.prunelle) p.prunelle = def.prunelle;
           // La teinte de maquillage d'Egerie, même règle (`shop_packs.maquillage`).
           if (def && def.maquillage && !p.maquillage) p.maquillage = def.maquillage;
+          if (def && def.incarnation && !p.incarnation) p.incarnation = def.incarnation;
           // Une RÉCOMPENSE n'a pas de colonne en base : sans ce rappel, la ligne
           // écrite avant que le drapeau existe (le Makulo saisi à la main dans
           // l'admin) reparaîtrait en rayon — à zéro kikooz, donc offerte.
@@ -26000,6 +26069,15 @@ const channels = {
 // the userleaved cleanup; an ident within the window cancels it and re-binds the
 // new socket. A genuine departure is cleaned up when the timer fires.
 const RECONNECT_GRACE_MS = 45 * 1000;
+// Le client Light REJOINT lui-même ses salons en se reconnectant (il n'a pas
+// besoin qu'on le remette dedans), et quand il ferme l'onglet, c'est pour de
+// bon : on ne fait pas attendre les autres quarante-cinq secondes avant de
+// leur dire qu'il est parti.
+// (Les deux délais se raccourcissent par l'environnement, pour les tests.)
+const RECONNECT_GRACE_LIGHT_MS = Number(process.env.CHAT_GRACE_LIGHT_MS) || 12 * 1000;
+// Et à la reconnexion d'un Light, le temps qu'il redise ses salons avant
+// qu'on annonce son départ de ceux qu'il ne redit pas.
+const REJOIN_LIGHT_MS = Number(process.env.CHAT_REJOIN_LIGHT_MS) || 4 * 1000;
 const pendingChannelCleanup = new Map(); // username -> { channels: string[], timer }
 
 function cancelPendingChannelCleanup(username) {
@@ -26010,15 +26088,25 @@ function cancelPendingChannelCleanup(username) {
   return p;
 }
 
+/*
+ * LE MÉNAGE, SALON PAR SALON.
+ *
+ * Il suffisait qu'une socket vivante du joueur tienne UN salon pour qu'on ne
+ * fasse rien du tout : celui qui fermait l'onglet puis revenait dans un autre
+ * salon restait à jamais dans le premier — présent dans la liste, jamais
+ * annoncé parti. « On voit les gens arriver, mais pas forcément ceux qui
+ * quittent. » On regarde donc chaque salon : le joueur y reste si l'une de
+ * ses sockets vivantes y est ; sinon il en sort, et le salon l'apprend.
+ */
 function runChannelCleanup(username) {
   pendingChannelCleanup.delete(username);
-  // Skip if the user came back: a live chat socket is bound to a salon.
-  const stillHere = getSocketsForUsername(username).some((s) => {
+  const tenus = new Set();
+  for (const s of getSocketsForUsername(username)) {
     const c = xmlSocketClients.get(s);
-    return c && c.channels && c.channels.size > 0;
-  });
-  if (stillHere) return;
+    if (c && c.channels) for (const g of c.channels) tenus.add(g);
+  }
   for (const g of Object.keys(channels)) {
+    if (tenus.has(g)) continue;
     if (channels[g].users && channels[g].users.has(username)) {
       channels[g].users.delete(username);
       broadcastToChannel(g, `<${CMD.userleaved} g="${g}" u="${escapeXml(getDisplayName(username))}" />`);
@@ -27671,9 +27759,18 @@ function snakeFlush(messages) {
 // Le tick du jeu : quarante pas par seconde, chacun poussé aux deux joueurs.
 // Le pas est FIXE côté session (elle rattrape le retard, trois pas au plus) ;
 // l'intervalle n'a qu'à se tenir à peu près.
+// Et l'on DIT quand il ne se tient pas : un pas qui arrive cent millisecondes
+// après le précédent, c'est le serveur occupé ailleurs (une écriture
+// synchrone, une base qui répond tard) — et c'est du lag pour les deux
+// joueurs. Le journal en garde la trace pour qu'on sache d'où il vient.
+let snakeTickPrecedent = 0;
 const snakeTick = setInterval(() => {
+  const maintenant = Date.now();
+  const ecart = snakeTickPrecedent ? maintenant - snakeTickPrecedent : 0;
+  snakeTickPrecedent = maintenant;
   if (!Object.keys(snakeNet.sessions).length) return;
-  try { snakeFlush(snakeNet.tick()); } catch (e) { console.error('[snake3] tick:', e.message); }
+  if (ecart > 100) console.warn(`[snake3] tick en retard : ${ecart} ms entre deux pas (${Object.keys(snakeNet.sessions).length} partie(s) en cours)`);
+  try { snakeFlush(snakeNet.tick(maintenant)); } catch (e) { console.error('[snake3] tick:', e.message); }
 }, 25);
 if (snakeTick.unref) snakeTick.unref();
 setInterval(() => {
@@ -29006,13 +29103,21 @@ async function handleCBeeMessage(socket, rawXml) {
       // so no re-join is needed) and cancel the deferred userleaved cleanup. The
       // user keeps appearing in the salon and can post again immediately.
       const reconnected = cancelPendingChannelCleanup(effectiveLogin);
-      if (reconnected) {
+      if (reconnected && !client.estLight) {
         for (const g of reconnected.channels) {
           if (channels[g]) {
             channels[g].users.add(effectiveLogin);
             client.channels.add(g);
           }
         }
+      } else if (reconnected) {
+        // Un Light redit ses salons lui-même (`<o>` après l'ident) : on ne
+        // le remet nulle part. Ceux qu'il ne redit pas — il a changé de
+        // salon entre-temps — l'annoncent parti d'ici quelques secondes.
+        pendingChannelCleanup.set(effectiveLogin, {
+          channels: reconnected.channels,
+          timer: setTimeout(() => runChannelCleanup(effectiveLogin), REJOIN_LIGHT_MS),
+        });
       }
 
       marquerConnexion(effectiveLogin);
@@ -30330,8 +30435,11 @@ case 'send': {
     if (emo) {
       const who = getDisplayName(client.username);
       const emBody = `<![CDATA[<i>${escapeXml(who + ' ' + emo.label)}</i>]]>`;
+      // Le FEUTRE de l'auteur voyage avec l'émote (`p`, comme sur une ligne
+      // ordinaire) : « kasparov fait une bulle de chewing-gum » s'écrit dans
+      // sa couleur, en italique — pas dans le vert par défaut.
       broadcastToChannel(g,
-        `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}" e="${escapeXml(emo.anim)}" el="${escapeXml(emo.label)}" eu="${escapeXml(who)}">${emBody}</${CMD.send}>`
+        `<${CMD.send} u="admin" t="m" p="${escapeXml(pen)}" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}" e="${escapeXml(emo.anim)}" el="${escapeXml(emo.label)}" eu="${escapeXml(who)}">${emBody}</${CMD.send}>`
       );
       trackXpAction(client.username, 'chatMsg');
       break;
@@ -31653,7 +31761,7 @@ const xmlSocketServer = net.createServer((socket) => {
         const uname = client.username;
         pendingChannelCleanup.set(uname, {
           channels: Array.from(client.channels),
-          timer: setTimeout(() => runChannelCleanup(uname), RECONNECT_GRACE_MS),
+          timer: setTimeout(() => runChannelCleanup(uname), client.estLight ? RECONNECT_GRACE_LIGHT_MS : RECONNECT_GRACE_MS),
         });
       }
       // If this was a game socket (FrutiScore startGame had been received),

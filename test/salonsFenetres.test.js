@@ -76,7 +76,7 @@ test('chaque salon a SON fil, et les lignes vont dans le fil de LEUR salon', () 
   const t = LIGHT.indexOf('case "t":');
   const bloc = LIGHT.slice(t, LIGHT.indexOf('case "r":', t));
   // (`mi` : le numéro du message, qui fait taire un rejeu — cf. chatRejeuDoublons.)
-  assert.match(bloc, /addEmoteMessage\(\{ from: emWho, time: h, label: emLabel, salon: salon, mi: mi \}\);/);
+  assert.match(bloc, /addEmoteMessage\(\{ from: emWho, time: h, label: emLabel, salon: salon, mi: mi,\s+pen: penColorFor\(attr\(xml, "p"\)\), feutre: attr\(xml, "p"\) \}\);/);
   assert.match(bloc, /showBouilleOverlay\(from, em\.anim, em\.label, salon\);/);
   // (`mentions` a rejoint la ligne avec les @mentions : le corps met en évidence
   // les pseudos que le serveur a reconnus, et le salon reste porté par `salon`.)

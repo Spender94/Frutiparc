@@ -345,6 +345,9 @@ async function initSchema() {
       -- un article qui remplace les yeux et la bouche de bloc, comme la
       -- prunelle remplace l'iris. Vide pour tout le reste.
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS maquillage TEXT DEFAULT '';
+      -- UNE BOUILLE ENTIÈRE (Egerie) : la chaîne d'état de 24 caractères
+      -- qu'un article d'incarnation d'époque met à l'inventaire telle quelle.
+      ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS incarnation TEXT DEFAULT '';
 
       -- LES REVENTES. Un joueur rend un accessoire à la boutique contre la
       -- moitié de ce qu'il l'a payé — ou trente kikooz s'il l'a reçu. Une
@@ -2244,17 +2247,18 @@ async function loadShopPacks() {
     if (r.auteur) p.auteur = r.auteur;
     if (r.prunelle) p.prunelle = r.prunelle;
     if (r.maquillage) p.maquillage = r.maquillage;
+    if (r.incarnation) p.incarnation = r.incarnation;
     return p;
   });
 }
 
 async function upsertShopPack(pack) {
   await pool.query(
-    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment, wallpaper_id, picto, disabled, auteur, prunelle, maquillage)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment, wallpaper_id, picto, disabled, auteur, prunelle, maquillage, incarnation)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      ON CONFLICT (id) DO UPDATE SET
-       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7, wallpaper_id = $8, picto = $9, disabled = $10, auteur = $11, prunelle = $12, maquillage = $13`,
-    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '', pack.wallpaperId || null, pack.picto || null, !!pack.disabled, String(pack.auteur || ''), String(pack.prunelle || ''), String(pack.maquillage || '')]
+       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7, wallpaper_id = $8, picto = $9, disabled = $10, auteur = $11, prunelle = $12, maquillage = $13, incarnation = $14`,
+    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '', pack.wallpaperId || null, pack.picto || null, !!pack.disabled, String(pack.auteur || ''), String(pack.prunelle || ''), String(pack.maquillage || ''), String(pack.incarnation || '')]
   );
 }
 

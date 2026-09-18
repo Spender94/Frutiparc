@@ -7888,7 +7888,9 @@
         if (emAnim) {
           var emWho = xmlUnescape(attr(xml, "eu")) || from;
           var emLabel = xmlUnescape(attr(xml, "el")) || (ANIM_LABEL[emAnim] || "parle");
-          addEmoteMessage({ from: emWho, time: h, label: emLabel, salon: salon, mi: mi });
+          // Dans la couleur du feutre de l'auteur (`p`), comme une ligne ordinaire.
+          addEmoteMessage({ from: emWho, time: h, label: emLabel, salon: salon, mi: mi,
+            pen: penColorFor(attr(xml, "p")), feutre: attr(xml, "p") });
           if (emWho && !enRejeu) showBouilleOverlay(emWho, emAnim, emLabel, salon);
           break;
         }
@@ -7998,7 +8000,7 @@
         var penColor = penColorFor(attr(xml, "p"));
         var em = isAdmin ? { isEmote: false, anim: "parle", label: null } : detectEmote(text);
         if (em.isEmote) {
-          addEmoteMessage({ from: from, time: h, label: em.label, salon: salon, mi: mi });
+          addEmoteMessage({ from: from, time: h, label: em.label, salon: salon, mi: mi, pen: penColor, feutre: attr(xml, "p") });
         } else {
           addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor, feutre: attr(xml, "p"), salon: salon, mentions: nommes, mi: mi });
         }
@@ -9405,14 +9407,19 @@
     var stick = nearBottom(fil);
     var row = el("div", "msg emote");
     var t = cleanTime(o.time);
-    if (t) { var ts = el("span", "time"); ts.textContent = t; row.appendChild(ts); }
+    // Le feutre de l'auteur teinte TOUTE la ligne, comme pour un message —
+    // l'italique reste (c'est la classe `emote`). Sans feutre, le vert du parc.
+    if (t) { var ts = el("span", "time"); ts.textContent = t; if (o.pen) ts.style.color = o.pen; row.appendChild(ts); }
     var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : ""));
     fr.textContent = o.from || "?";
+    if (o.pen) fr.style.color = o.pen;
     pseudoCliquable(fr, o.from);
     row.appendChild(fr);
     row.appendChild(document.createTextNode(" "));
     var lb = el("span", "body"); lb.textContent = o.label;
+    if (o.pen) lb.style.color = o.pen;
     row.appendChild(lb);
+    if (o.pen && o.feutre != null && o.feutre !== "") row.setAttribute("data-feutre", String(o.feutre));
     if (o.mi) row.setAttribute("data-mi", String(o.mi));
     fil.appendChild(row);
     while (fil.childNodes.length > 400) fil.removeChild(fil.firstChild);
@@ -12265,6 +12272,8 @@
       .concat(invIncarnations.map(function (i) {
         // Toujours redessinée sur SA bouille : elle a pu changer depuis l'achat.
         var e = fbPad(i.etat), b = fbPad(myBase);
+        // Une bouille ENTIÈRE (Egerie) ne se compose pas sur la sienne.
+        if (i.entiere) return { nom: i.nom || "Incarnation", etat: e };
         if (i.maquillage) {
           // Le maquillage vit aux places des yeux et de la bouche : le BLOC (la
           // teinte) vient de l'article, le TYPE vient de sa bouille.

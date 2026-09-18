@@ -57,11 +57,17 @@
         if ((t.x - px) * (t.x - px) + (t.y - py) * (t.y - py) < 24 * 24) return n;
       }
       // Une bombe : on n'y met pas le nez, et quand la mèche est courte on
-      // s'écarte de tout le souffle.
+      // s'écarte de tout le souffle. Une dynamite : on la prend tant qu'on a
+      // de quoi la payer, on l'évite quand elle coûterait la tête.
       for (var j = 0; j < objets.length; j++) {
         var o = objets[j];
-        if (o.type !== "bombe") continue;
         var d2 = (o.x - px) * (o.x - px) + (o.y - py) * (o.y - py);
+        if (o.type === "dynamite") {
+          var prises = (session.dynamites && session.dynamites[team]) || 0;
+          if (s.len <= prises + 1 && d2 < 30 * 30) return n;
+          continue;
+        }
+        if (o.type !== "bombe") continue;
         var r = (o.vie < 2.5) ? rayon + 12 : 40;
         if (d2 < r * r) return n;
       }

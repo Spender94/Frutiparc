@@ -2197,7 +2197,18 @@
     this.ctx = canvas.getContext('2d');
     this.moteur = new Moteur(defs, options);
     this.moteur.creerVisage();
-    this.cadence = defs.cadence || 40;
+    /*
+     * LA CADENCE : celle du PARC, pas celle du fichier.
+     *
+     * Les pellicules de bouille se déclarent à 40 images par seconde, mais
+     * Flash ne jouait jamais un SWF chargé à sa propre cadence : c'est la
+     * racine qui donne le tempo, et root.swf — le bureau, le chat, le forum —
+     * tourne à 24 (frusion_client, à 30). Un gum de 120 images durait donc
+     * cinq secondes ; lu à 40, il n'en durait que trois — « les animations
+     * des émotes sont souvent trop rapides ». On lit donc à la cadence du
+     * parc ; `options.cadence` reste là pour les bancs d'essai.
+     */
+    this.cadence = options.cadence || CADENCE_PARC;
     this.taille = options.taille || defs.scene.w || 100;
     this.fond = options.fond || null;
     /*
@@ -2418,6 +2429,7 @@
 
   // Une seconde de calme plat avant de se demander si l'on peut s'éteindre :
   // quarante images, la longueur d'une pellicule d'accessoire.
+  const CADENCE_PARC = 24;          // root.swf : 24 images par seconde
   const CALME_MAX = 40;
 
   Bouille.prototype.demarrer = function () {
@@ -2468,7 +2480,7 @@
     decode62, encode62, teindre, cxTeinte, composerCx, composerM, etatsDe, facteurPour,
     // Les prunelles : le rouleau d'iris d'une famille, et la greffe de celles
     // qu'on récolte ailleurs (cf. scripts/extract-prunelles-bouille.js).
-    rouleauxIris, grefferPrunelles, grefferMaquillage, imageCorrespondante,
+    rouleauxIris, grefferPrunelles, grefferMaquillage, imageCorrespondante, CADENCE_PARC,
     /** Famille d'une chaîne d'état : les deux premiers caractères, en base 62. */
     familleDe: function (s) { return decode62(String(s || '00').substring(0, 2)); },
     /** Attache une bouille à un canevas, la famille étant chargée à la volée. */
