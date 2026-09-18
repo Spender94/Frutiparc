@@ -3430,6 +3430,15 @@ async function hydrateUserFromDb(username, dbUser) {
       }
     }
   }
+  // LE COMPTE EST ENTIER — contacts, inventaire, accessoires, pictos,
+  // sauvegardes. C'est ce drapeau, et lui seul, que la connexion Light et le
+  // réveil d'une session dormante regardent avant de se fier à la mémoire :
+  // « users[username] existe » ne suffit pas, une simple conversion de ligne
+  // (dbUserToMemory) y met un compte NU, et le joueur voyait alors son carnet
+  // de contacts, sa consécration et sa garde-robe à zéro alors que la base
+  // avait tout. Posé en dernier : une hydratation qui échoue en route reste
+  // une hydratation à refaire.
+  users[username]._hydrated = true;
 }
 
 function nowSqlTimestamp() {
@@ -3731,13 +3740,23 @@ async function awardDailyXp() {
     if (gain <= 0) continue;
     let user = users[username];
     if (!user && process.env.DATABASE_URL) {
+      // HYDRATER, jamais seulement convertir. Ce passage tourne aussi AU
+      // DÉMARRAGE quand le jour a changé (rollDailyChallengeIfNeeded), pour
+      // tous les joueurs actifs la veille : une simple conversion de ligne
+      // laissait en mémoire un compte NU (sans contacts, inventaire,
+      // accessoires ni pictos), que la connexion Light prenait ensuite pour
+      // le compte entier — carnet vide, consécration à zéro, garde-robe
+      // perdue à l'écran, et les pictos « redécouverts » à l'ouverture d'un
+      // jeu. La base, elle, n'avait rien perdu.
       try {
         const row = await db.findUserByUsername(username);
         if (row) {
-          user = dbUserToMemory(row);
-          users[username] = user;
+          await hydrateUserFromDb(username, row);
+          user = users[username];
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        console.error(`[XP] ${username} : hydratation impossible, XP du jour non attribué (${e.message})`);
+      }
     }
     if (!user) continue;
     const oldXp = user.xp || 0;
@@ -8346,6 +8365,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
     users[username] = createDefaultUser(passwordHash);
     users[username]._dbId = dbUser.id;
+    users[username]._hydrated = true;                  // neuf, donc entier
     if (dbUser.created_at) {
       users[username].createdAt = dbUser.created_at instanceof Date
         ? dbUser.created_at.toISOString()
@@ -8386,7 +8406,9 @@ app.post('/api/auth/login', async (req, res) => {
         dbUser.password = upgrade;
         db.updateUser(username, { password: upgrade }).catch((e) => console.error('[DB] password upgrade error:', e.message));
       }
-      if (!users[username]) {
+      // Un compte NU en mémoire (une ligne convertie sans ses données liées,
+      // cf. `_hydrated`) se recharge comme un compte absent.
+      if (!users[username] || !users[username]._hydrated) {
         await hydrateUserFromDb(username, dbUser);
       }
       users[username]._dbId = dbUser.id;
@@ -18772,7 +18794,7 @@ function reveillerSession(sid) {
   if (reveilsEnCours.has(sid)) return reveilsEnCours.get(sid);
   const reveil = (async () => {
     const username = dormante.user;
-    if (!users[username] && process.env.DATABASE_URL) {
+    if ((!users[username] || !users[username]._hydrated) && process.env.DATABASE_URL) {
       try {
         const row = await db.findUserByUsername(username);
         if (row) await hydrateUserFromDb(username, row);
