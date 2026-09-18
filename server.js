@@ -946,7 +946,19 @@ for (const [id, info] of Object.entries(JAMA_MILESTONES)) {
 function awardJamaPictosOnScore(username) {
   const user = users[username];
   if (!user) return;
-  user.jamaPlayCount = (Number(user.jamaPlayCount) || 0) + 1;
+  // Le compte de parties vit dans la sauvegarde du jeu ($plays, que la route
+  // light incrémente avant d'arriver ici) : c'est elle qui survit à un
+  // redémarrage. Le compteur en mémoire ne faisait foi que jusqu'au reboot,
+  // après quoi il retombait au dernier palier atteint — un joueur à 24
+  // parties repartait de 10. Les deux se réconcilient au plus haut, et la
+  // sauvegarde rattrape le chemin classique (extension.swf → saveScore), qui
+  // ne l'incrémente pas lui-même.
+  const slot = jamaLireSlot(username);
+  user.jamaPlayCount = Math.max((Number(user.jamaPlayCount) || 0) + 1, slot.$plays);
+  if (slot.$plays < user.jamaPlayCount) {
+    slot.$plays = user.jamaPlayCount;
+    jamaEcrireSlot(username, slot);
+  }
   if (!Array.isArray(user.gameItems)) user.gameItems = [];
   const dbId = user._dbId;
   for (const [id, info] of Object.entries(JAMA_MILESTONES)) {
@@ -3332,7 +3344,8 @@ async function hydrateUserFromDb(username, dbUser) {
   if (dbGameItems.length > 0) users[username].gameItems = dbGameItems;
 
   // Restore JamaJama play count from highest owned milestone picto so
-  // future score saves resume from the right threshold.
+  // future score saves resume from the right threshold — the saved slot's
+  // $plays, read once the slots are hydrated below, then takes over.
   let jamaCount = 0;
   for (const id of users[username].gameItems || []) {
     const m = JAMA_MILESTONES[id];
@@ -3403,6 +3416,9 @@ async function hydrateUserFromDb(username, dbUser) {
   } catch (e) {
     console.error(`[HYDRATE] getAllFrutiSlots(${dbUser.id}) failed for ${username}: ${e.message}`);
   }
+  // Le compte de parties de JamaJama, tel que la sauvegarde le tient.
+  users[username].jamaPlayCount = Math.max(Number(users[username].jamaPlayCount) || 0,
+    jamaLireSlot(username).$plays);
 
   if (Object.keys(dbScores).length > 0) {
     if (!scoresData.users[username]) scoresData.users[username] = {};

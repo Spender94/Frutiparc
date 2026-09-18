@@ -64,7 +64,8 @@
   }
 
   /** L'état d'un symbole pour une image (numéro ou étiquette). Une image sans
-   *  état propre garde le dernier connu — la liste d'affichage du lecteur. */
+   *  état propre dans les limites du fichier est vide ; au-delà, on garde le
+   *  dernier connu — c'est là que Flash s'arrête. */
   function etatDe(s, ref) {
     let f = ref || 1;
     if (typeof ref === 'string') {
@@ -80,12 +81,23 @@
       if (e.frame > f) break;
       choix = e;
     }
+    // Le manifeste photographie chaque image qui montre quelque chose : une
+    // image du fichier qui n'y figure pas est VIDE, et le lecteur n'y dessine
+    // rien — la flamme s'éteint sur sa dernière image, le fruit brûlé
+    // disparaît. Au-delà de la dernière image, Flash s'arrête sur elle.
+    if (choix && choix.frame !== f && s.longueur && f <= s.longueur) return VIDE;
+    if (!choix && s.etats.length && f >= 1 && f < s.etats[0].frame) return VIDE;
     return choix || s.etats[0];
   }
+  const VIDE = Object.freeze({ frame: 0, pieces: Object.freeze([]) });
 
-  /** Nombre d'images d'un symbole (la plus haute connue). */
+  /** Nombre d'images d'un symbole : celui du fichier quand le manifeste le
+   *  porte (une dernière image vide n'a pas d'état, mais elle se joue), sinon
+   *  la plus haute image connue. */
   function longueur(cle) {
-    const e = symbole(cle).etats;
+    const s = symbole(cle);
+    if (s.longueur) return s.longueur;
+    const e = s.etats;
     return e[e.length - 1].frame;
   }
   function etiquettes(cle) { return symbole(cle).etiquettes || {}; }

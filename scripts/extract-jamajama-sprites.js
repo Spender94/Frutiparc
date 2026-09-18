@@ -188,6 +188,17 @@ for (const [id, frames] of swf.parSprite) {
   index.set(id, parImage);
   longueurs.set(id, Math.max(...frames.keys()));
 }
+// La photographie d'une image ne retient que les images qui montrent quelque
+// chose : une dernière image VIDE (la flamme qui s'éteint, le fruit qui a fini
+// de brûler) n'y figure pas, et `longueurs` s'arrêtait une image trop tôt —
+// l'effet mourait 1/32 s avant le fichier. L'en-tête du DefineSprite, lui,
+// compte toutes les images : c'est lui qui fait foi.
+swf.parcourir((code, corps) => {
+  if (code !== 39) return;
+  const id = b.readUInt16LE(corps);
+  const n = b.readUInt16LE(corps + 2);
+  if (n > (longueurs.get(id) || 0)) longueurs.set(id, n);
+});
 
 /** L'image où l'objet posé en (clip, profondeur) est né, en remontant tant que
  *  la même tête d'affiche occupe la profondeur. */
@@ -427,6 +438,9 @@ function extraireCible(nom, id) {
     // quelque part.
     const longueur = longueurs.get(id) || 1;
     if (longueur > 1 && !arrets.has(id)) entree.anime = longueur;
+    // Le nombre d'images du fichier, même quand la dernière est vide : c'est
+    // ce que Rendu.longueur() rend, et ce sur quoi les effets calent leur fin.
+    if (longueur > 1) entree.longueur = longueur;
   } else if (swf.estForme(id) || textes.statiques.has(id)) {
     entree.etats = [Object.assign({ frame: 1 },
       versManifeste(aplatirVif(id, IDENTITE, null, 1, '', 0, { n: 0 })))];

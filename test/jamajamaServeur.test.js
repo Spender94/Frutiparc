@@ -17,6 +17,7 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
+const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
@@ -211,4 +212,19 @@ test('sans session, rien ne passe', async () => {
   assert.equal(r.error, 'session');
   const d = await fetch(BASE + '/api/jamajama/donnees').then((x) => x.json());
   assert.equal(d.ok, false);
+});
+
+// Le compte de parties, qui déclenche les paliers de pictos, ne vivait qu'en
+// mémoire : au redémarrage il retombait au dernier palier atteint (un joueur
+// à 24 parties repartait de 10). La sauvegarde du jeu porte $plays ; c'est
+// elle qui fait foi, à l'attribution comme au rechargement du compte.
+test('le compte de parties se lit dans la sauvegarde, à l’attribution comme au rechargement', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const award = src.slice(src.indexOf('function awardJamaPictosOnScore('));
+  const corps = award.slice(0, award.indexOf('\n}\n'));
+  assert.match(corps, /const slot = jamaLireSlot\(username\);/);
+  assert.match(corps, /user\.jamaPlayCount = Math\.max\(\(Number\(user\.jamaPlayCount\) \|\| 0\) \+ 1, slot\.\$plays\);/);
+  assert.match(corps, /if \(slot\.\$plays < user\.jamaPlayCount\) \{\s*slot\.\$plays = user\.jamaPlayCount;\s*jamaEcrireSlot\(username, slot\);/);
+  // Au rechargement, une fois les sauvegardes hydratées.
+  assert.match(src, /getAllFrutiSlots\(\$\{dbUser\.id\}\) failed[\s\S]{0,400}users\[username\]\.jamaPlayCount = Math\.max\(Number\(users\[username\]\.jamaPlayCount\) \|\| 0,\s*jamaLireSlot\(username\)\.\$plays\);/);
 });
