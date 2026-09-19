@@ -157,10 +157,18 @@
         '" f="' + esc(p.fb || "") + '" no="' + self._note(p.id) + '"' +
         (mv ? ' dn="' + mv.delta + '"' : "") + '/>';
     }).join("");
+    // `tr` : le sens où ce serpent tourne À CET INSTANT (−1 gauche, 0 tout
+    // droit, +1 droite). Le client prolonge chaque tête entre deux pas ; sans
+    // ce chiffre il ne pouvait la prolonger qu'en LIGNE DROITE, et un
+    // adversaire en plein virage paraissait avancer par à-coups. Un octet par
+    // serpent et par pas, pour une courbe juste.
     var srp = snap.serpents.map(function (s) {
+      var e = (snap.inputs && snap.inputs[s.team]) || null;
+      var tr = e ? ((e.gauche ? -1 : 0) + (e.droite ? 1 : 0)) : 0;
       var a = '<s i="' + s.team + '" x="' + n1(s.x) + '" y="' + n1(s.y) + '" a="' + n3(s.ang) +
         '" v="' + n3(s.speed) + '" l="' + s.len + '" e="' + n3(s.eat) + '" p="' + n3(s.power) +
-        '" k="' + (s.vivant ? 1 : 0) + '" q="' + s.q + '" g="' + s.g + '" xp="' + s.xp + '"';
+        '" k="' + (s.vivant ? 1 : 0) + '" q="' + s.q + '" g="' + s.g + '" xp="' + s.xp +
+        '" tr="' + tr + '"';
       if (s.fini) a += ' fin="1"';
       if (full && s.queue) {
         a += ' file="' + s.queue.map(function (p) { return n1(p.x) + "," + n1(p.y); }).join(" ") + '"';
@@ -303,6 +311,15 @@
         if (this.onDefi && !this.bots[attrs.u]) { try { this.onDefi(username, attrs.u); } catch (e) {} }
         return this._startSession(r.game).concat(this._lobbyBroadcast());
       }
+
+      // LE PING. Le client a besoin de savoir combien de temps sépare son
+      // doigt de l'écran : c'est de cette mesure qu'il déduit de combien
+      // prédire son propre serpent (enligne.js). La réponse part tout de
+      // suite, dans le même tour de boucle que la demande — la faire attendre
+      // le prochain pas ajouterait jusqu'à vingt-cinq millisecondes à la
+      // mesure, et le client prédirait trop loin.
+      case "ping":
+        return [{ to: [username], xml: '<sb e="pong" t="' + esc(attrs.t || "") + '"/>' }];
 
       case "input": {
         sess = this._sessionOf(username);

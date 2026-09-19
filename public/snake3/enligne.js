@@ -27,15 +27,37 @@
  * que la précédente ; la tête nue qui en prend une meurt). Pas de fruit
  * dans un duel. Le souffle se montre au sol quand la mèche est courte.
  *
- * LE MIROIR NE SACCADE PAS. Les états arrivent quarante fois par seconde,
- * jamais en phase avec l'image du navigateur, parfois par paquets quand le
- * réseau hoquette : dessiner chaque serpent LÀ OÙ le dernier état l'a laissé
- * donnait un mouvement en 2-1-2-1 — « c'est lent, ça lague ». On dessine
- * donc à chaque image, en prolongeant chaque tête sur son cap à sa vitesse
- * du temps écoulé depuis l'état (borné à un dixième de seconde), et pour SON
- * serpent on tourne déjà du côté où l'on appuie : le geste se voit tout de
- * suite, le serveur le confirme au pas suivant. Les files, elles, ne
- * viennent que du serveur : c'est lui qui joue.
+ * LE MIROIR NE SACCADE PAS, ET LE VIRAGE NE SE FAIT PLUS ATTENDRE.
+ *
+ * Les états arrivent quarante fois par seconde, jamais en phase avec l'image
+ * du navigateur : dessiner chaque serpent LÀ OÙ le dernier état l'a laissé
+ * donnait un mouvement en 2-1-2-1. On prolonge donc chaque tête du temps
+ * écoulé depuis l'état — en COURBE, du côté où ce serpent tourne (`tr`, que
+ * le serveur envoie pour les deux).
+ *
+ * Mais prolonger de l'écart entre deux états ne réparait qu'un quart du mal.
+ * Le vrai défaut était ailleurs : l'angle dessiné venait TOUJOURS du serveur,
+ * et le serveur ne voit mon doigt qu'un ALLER-RETOUR plus tard. À cent
+ * vingt millisecondes de réseau, c'est vingt-sept degrés de virage qui
+ * manquent au moment où l'on appuie — le serpent semble refuser de tourner,
+ * puis rattrape d'un coup. Le client n'anticipait qu'un seul pas (cinq
+ * degrés), aussitôt effacé par l'état suivant.
+ *
+ * D'où la PRÉDICTION. On tient l'historique de ses propres touches, et l'on
+ * redessine SON serpent en rejouant, depuis l'état du serveur, toutes les
+ * entrées de la fenêtre qu'il n'a pas encore vues — soit l'aller-retour
+ * (mesuré par ping, cf. reseau.js) plus le temps écoulé depuis l'état. Le
+ * rejeu emprunte le `move` du serpent d'origine : même friction, même
+ * vitesse, mêmes points poussés dans la file, donc la tête reste soudée au
+ * corps et le tracé est celui que le serveur confirmera. Le geste se voit à
+ * l'image où l'on appuie.
+ *
+ * L'ADVERSAIRE, LUI, N'EST PAS PRÉDIT D'AUTANT. On ne connaît pas ses
+ * intentions, et le montrer en avance ferait mentir les frôlements. Il n'est
+ * prolongé que de l'écart entre deux états, sur sa courbe.
+ *
+ * L'autorité reste au serveur de bout en bout : il tranche les collisions et
+ * le vainqueur, et chaque état remet les compteurs à sa vérité.
  */
 'use strict';
 
@@ -52,6 +74,17 @@ const MODE_SALON = 20;
 const MODE_BATAILLE = 21;
 const RAYON_BOMBE = C.RAYON_BOMBE;     // celui du jeu — OBJETS.rayonBombe (server/session.js)
 const MECHE_COURTE = 2.5;              // le souffle se montre sous ce délai
+// Le pas du serveur, et le tmod d'un pas (server/session.js, les mêmes).
+const PAS = 1 / C.SWF_FPS;
+const TMOD = C.WANTED_FPS / C.SWF_FPS;
+// Les bornes de la prédiction. Au-delà de trois cents millisecondes d'écart
+// le rejeu ne prédit plus, il invente : mieux vaut un serpent en retard qu'un
+// serpent ailleurs. `PREDICTION_RTT_MAX` borne ce qu'on compense d'un réseau
+// franchement mauvais, et `PREDICTION_PAS_MAX` garde le coût par image fixe.
+const PREDICTION_MAX = 0.3;            // secondes rejouées, au plus
+const PREDICTION_RTT_MAX = 250;        // ms d'aller-retour compensés, au plus
+const PREDICTION_ECART_MAX = 0.1;      // ce qu'on prolonge l'adversaire
+const PREDICTION_PAS_MAX = 16;
 
 // ── Le contrôleur : le fil et ce qui passe d'une vue à l'autre ─────────────
 function controleur(jeu) {
@@ -304,6 +337,11 @@ class VueBatailleEnLigne {
     this.finie = false;
     this.dernierEnvoi = null;
     this.tEtat = 0;                    // quand le dernier état est arrivé (performance.now)
+    // L'historique de MES touches, horodaté : le rejeu de la prédiction y
+    // relit ce que j'appuyais à chaque pas que le serveur n'a pas encore vu.
+    // On ne garde qu'une seconde — au-delà, aucun aller-retour jouable.
+    this.entrees = [{ t: 0, gauche: false, droite: false, haut: false }];
+    this.virages = [0, 0];             // `tr` du dernier état, par équipe
     this.jeu.tmodForce = 1;
 
     const sons = jeu.sons;
@@ -374,7 +412,106 @@ class VueBatailleEnLigne {
     if (el.getAttribute('end') === '1') this._fin(el);
   }
 
+  // ── LA PRÉDICTION ────────────────────────────────────────────────────────
+  //
+  // Un pas du serveur : la récupération de turbo, la friction, `move`, puis
+  // les touches — c'est l'ordre de Bataille.main, et c'est celui qu'on rejoue
+  // (bataille.js). On emprunte le `move` du serpent d'origine, donc les
+  // points poussés dans la file sont ceux que le serveur poussera : la tête
+  // reste soudée au corps, sans le trou qu'un simple déplacement de la tête
+  // aurait laissé.
+  //
+  // Rien n'est gardé : la fonction rend de quoi TOUT remettre en place après
+  // le tracé. L'état du serveur reste la seule vérité entre deux images.
+  _instantane(s) {
+    const q = s.queue.length;
+    const f = { x: s.x, y: s.y, dx: s.dx, dy: s.dy, ang: s.ang, old_ang: s.old_ang,
+      speed: s.speed, eat: s.eat, dist: s.dist, redraw: s.redraw, col_pt: s.col_pt,
+      queue_collide: s.queue_collide };
+    return () => {
+      s.queue.length = q;
+      s.x = f.x; s.y = f.y; s.dx = f.dx; s.dy = f.dy; s.ang = f.ang; s.old_ang = f.old_ang;
+      s.speed = f.speed; s.eat = f.eat; s.dist = f.dist; s.redraw = f.redraw;
+      s.col_pt = f.col_pt; s.queue_collide = f.queue_collide;
+    };
+  }
+
+  // Ce que j'appuyais à l'instant `t` (horloge locale).
+  _entreeA(t) {
+    const h = this.entrees;
+    for (let k = h.length - 1; k >= 0; k--) if (h[k].t <= t) return h[k];
+    return h[0];
+  }
+
+  // MON serpent : rejoué sur l'aller-retour plus l'écart depuis l'état.
+  _predire(s, depuisEtat) {
+    const rtt = (this.ctl.reseau && this.ctl.reseau.allerRetour) || 0;
+    // Le plafond vaut autant pour un réseau très en retard que pour un onglet
+    // qui revient au premier plan : au-delà, prédire est deviner.
+    const horizon = Math.min(PREDICTION_MAX, depuisEtat + Math.min(rtt, PREDICTION_RTT_MAX) / 1000);
+    if (horizon <= 0) return null;
+    const remettre = this._instantane(s);
+    // Le serveur tranche les collisions : le rejeu ne les cherche pas, il ne
+    // fait qu'avancer. Il s'arrête seulement au mur, pour ne pas dessiner la
+    // tête dehors.
+    s.queue_collide = false;
+    // L'instant local d'où part le rejeu. On le prend de l'HORIZON et non de
+    // l'état, pour que le dernier pas rejoué tombe exactement sur MAINTENANT
+    // même quand le plafond a rogné la fenêtre : c'est ce dernier pas qui
+    // porte la touche qu'on vient d'appuyer, et c'est lui qui fait que le
+    // virage se voit à l'image même.
+    const t0 = performance.now() - horizon * 1000;
+    const bounds = { left: this.niveau.corner.x, top: this.niveau.corner.y,
+      right: this.niveau.corner.x + this.niveau.width,
+      bottom: this.niveau.corner.y + this.niveau.height };
+    let power = this.powers[this.monEquipe];
+    let reste = horizon;
+    let k = 0;
+    while (reste > 0 && k < PREDICTION_PAS_MAX) {
+      const dt = Math.min(PAS, reste);
+      const tmod = TMOD * (dt / PAS);
+      power = Math.min(C.BATTLE_POWER_MAX, power + C.BATTLE_POWER_RECUP * tmod);
+      s.speed *= Math.pow(C.BATTLE_FRICTION, tmod);
+      if (s.speed < C.SNAKE_DEFAULT_SPEED) s.speed = C.SNAKE_DEFAULT_SPEED;
+      if (s.move(bounds, tmod)) break;                 // le mur : on n'en sort pas
+      const e = this._entreeA(t0 + (horizon - reste + dt) * 1000);
+      if (e.gauche) s.ang -= s.delta_ang * tmod;
+      if (e.droite) s.ang += s.delta_ang * tmod;
+      if (e.haut && power > tmod) { power -= tmod; s.speed = C.BATTLE_ACCEL; }
+      reste -= dt;
+      k++;
+    }
+    return remettre;
+  }
+
+  // L'ADVERSAIRE : prolongé du seul écart entre deux états, sur sa courbe.
+  // On ne connaît pas ses intentions ; le montrer en avance ferait mentir les
+  // frôlements, et ce serait le serveur qui aurait raison, pas l'écran.
+  _prolonger(s, virage, depuisEtat) {
+    const horizon = Math.min(PREDICTION_ECART_MAX, depuisEtat);
+    if (horizon <= 0) return null;
+    const remettre = this._instantane(s);
+    s.queue_collide = false;
+    const bounds = { left: this.niveau.corner.x, top: this.niveau.corner.y,
+      right: this.niveau.corner.x + this.niveau.width,
+      bottom: this.niveau.corner.y + this.niveau.height };
+    let reste = horizon;
+    let k = 0;
+    while (reste > 0 && k < PREDICTION_PAS_MAX) {
+      const dt = Math.min(PAS, reste);
+      const tmod = TMOD * (dt / PAS);
+      s.speed *= Math.pow(C.BATTLE_FRICTION, tmod);
+      if (s.speed < C.SNAKE_DEFAULT_SPEED) s.speed = C.SNAKE_DEFAULT_SPEED;
+      if (s.move(bounds, tmod)) break;
+      if (virage) s.ang += virage * s.delta_ang * tmod;
+      reste -= dt;
+      k++;
+    }
+    return remettre;
+  }
+
   _poserChamps(s, i, n) {
+    this.virages[i] = Number(n.getAttribute('tr')) || 0;
     s.x = Number(n.getAttribute('x'));
     s.y = Number(n.getAttribute('y'));
     s.ang = Number(n.getAttribute('a'));
@@ -473,6 +610,10 @@ class VueBatailleEnLigne {
       if (cle !== this.dernierEnvoi) {
         this.dernierEnvoi = cle;
         this.ctl.reseau.sb({ a: 'input', g: e.gauche ? '1' : '0', d: e.droite ? '1' : '0', h: e.haut ? '1' : '0' });
+        // …et l'on garde ce qu'on vient d'appuyer, daté : c'est la matière du
+        // rejeu. Le serveur ne le saura qu'un demi-aller-retour plus tard.
+        this.entrees.push({ t: performance.now(), gauche: !!e.gauche, droite: !!e.droite, haut: !!e.haut });
+        while (this.entrees.length > 2 && this.entrees[1].t < performance.now() - 1000) this.entrees.shift();
       }
     }
     this.particules.main(tmod);
@@ -518,29 +659,21 @@ class VueBatailleEnLigne {
       if (o.type === 'dynamite') D.poser(ctx, 'options', 27, o.x, o.y, 1, 1, 0);
     }
 
-    // Les serpents, prolongés du temps écoulé depuis le dernier état (voir
-    // l'en-tête) — la file reste celle du serveur, seule la tête avance.
-    const avance = (this.phase === 'jeu' && !this.finie && this.tEtat)
-      ? Math.min(0.1, Math.max(0, (performance.now() - this.tEtat) / 1000)) : 0;
-    const mien = avance ? jeu.entreesBataille()[0] : null;
+    // Les serpents. Le MIEN est rejoué depuis l'état du serveur sur tout ce
+    // que le serveur n'a pas encore vu (l'aller-retour plus l'écart depuis
+    // l'état) ; l'adversaire n'est prolongé que de l'écart, sur sa courbe.
+    // Voir l'en-tête.
+    const enJeu = this.phase === 'jeu' && !this.finie && this.tEtat;
+    const depuisEtat = enJeu ? Math.max(0, (performance.now() - this.tEtat) / 1000) : 0;
     for (let i = 0; i < this.serpents.length; i++) {
       const s = this.serpents[i];
       if (!s || s.vivant === false) continue;
-      const x0 = s.x, y0 = s.y, a0 = s.ang;
-      if (avance) {
-        let ang = s.ang;
-        if (i === this.monEquipe && mien) {
-          if (mien.gauche) ang -= s.delta_ang * C.WANTED_FPS * avance;
-          if (mien.droite) ang += s.delta_ang * C.WANTED_FPS * avance;
-        }
-        const v = Math.max(s.speed, C.SNAKE_DEFAULT_SPEED) * (s.base_speed || 1) * C.WANTED_FPS * avance;
-        s.x += Math.cos(ang) * v;
-        s.y += Math.sin(ang) * v;
-        s.ang = ang;
-      }
+      let rendu = null;
+      if (enJeu && i === this.monEquipe) rendu = this._predire(s, depuisEtat);
+      else if (enJeu) rendu = this._prolonger(s, this.virages[i], depuisEtat);
       R.dessinerSerpent(ctx, s, jeu.tmod, jeu.temps());
       R.dessinerTete(ctx, s, s.tete_frame || 1);
-      s.x = x0; s.y = y0; s.ang = a0;
+      if (rendu) rendu();
     }
     this.particules.dessiner(ctx);
 
