@@ -17,15 +17,15 @@
  * ── LA FEUILLE MOBILE ────────────────────────────────────────────────────
  * Elle a sa propre liste, `DISCS`. Les huit portages JS y étaient ; les trois
  * jeux ENCORE EN FLASH — Kaluga, Burning Kiwi, Motion-Ball 2 — n'y étaient
- * pas. Ils s'ouvrent dans une fenêtre à part (game-popup.html + Ruffle), avec
- * les mêmes `props` que le bureau leur donne (`GAME_DISCS`) :
+ * pas. Ils s'ouvraient dans une fenêtre à part (game-popup.html + Ruffle),
+ * avec les mêmes `props` que le bureau leur donne (`GAME_DISCS`) :
  *
  *     bkiwi1  w=350 h=350        kaluga1 w=640 h=480 ct=20 cb=20
  *     mb2     w=550 h=400
  *
- * Mesuré au banc : les onze entrées s'affichent, aucune jaquette ne manque, et
- * un clic sur Kaluga ouvre bien `/game-popup.html?swf=games%2Fkaluga%2Ffull.swf
- * &width=640&height=480&game=kaluga&sid=…&ct=20&cb=20`.
+ * Chacun a depuis rejoint les portages — Kaluga (/kaluga/), Motion-Ball 2
+ * (/mb2/), puis Burning Kiwi (/bkiwi/) — et s'ouvre en onglet ; le pont
+ * `JeuxFlash` reste, vide, pour le jour où un disque reviendrait sous Ruffle.
  */
 
 const { test } = require('node:test');
@@ -133,17 +133,21 @@ test('Kaluga : CHALLENGE quand la partie compte, ESSAIS sinon', () => {
   assert.match(PLATEFORME, /if \(!this\.sid\) return false;/);
 });
 
-test('le jeu encore en Flash y est aussi, en fenêtre à part ; MotionBall a rejoint les portages', () => {
+test('plus aucun jeu en Flash : Burning Kiwi a rejoint les portages, comme MotionBall et Kaluga', () => {
   const noms = listeMobile();
   for (const n of ['Burning Kiwi', 'Motion-Ball 2']) {
     assert.ok(noms.includes(n), n + ' manque à la feuille mobile');
   }
-  // Son gabarit est celui du catalogue serveur, au chiffre près.
-  assert.match(LIGHT, /\{ flash: "bkiwi", swf: "games\/burningKiwi\/burningkiwi\.swf", w: 350, h: 350,/);
-  // Motion-Ball 2 s'ouvre désormais en onglet (/mb2/), comme Kaluga.
+  // Burning Kiwi s'ouvre en onglet (/bkiwi/) ; son entrée Flash a disparu.
+  assert.match(LIGHT, /\{ tab: "bkiwi", jaquette: "bkiwi", name: "Burning Kiwi" \}/);
+  assert.doesNotMatch(LIGHT, /flash: "bkiwi"/);
+  // Motion-Ball 2 s'ouvre en onglet (/mb2/), comme Kaluga.
   assert.match(LIGHT, /\{ tab: "mb2", jaquette: "mb2", name: "Motion-Ball 2" \}/);
   assert.doesNotMatch(LIGHT, /flash: "mb2"/);
+  // Le disque Flash de Burning Kiwi reste au catalogue (le bureau Ruffle le
+  // joue encore), à côté de son disque light.
   assert.match(SERVEUR, /props: 'w=350;h=350;m=i'/);
+  assert.match(SERVEUR, /bkiwilight: \{\s*discType: '0',\s*playMode: 'single',\s*swfName: 'bkiwi',\s*iconName: 'bkiwi',\s*gameId: 'light\/bkiwi',\s*props: 'w=362;h=376;m=p'/);
   // Le disque Flash de Kaluga reste au catalogue (le bureau Ruffle le joue
   // encore), avec son rognage d'époque.
   assert.match(SERVEUR, /props: 'w=640;h=480;ct=20;cb=20;m=i'/);

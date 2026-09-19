@@ -64,18 +64,26 @@ function apresRect(corps) {
   return Math.ceil((5 + nbits * 4) / 8);
 }
 
-function* tags(corps) {
-  let o = apresRect(corps) + 4;         // + cadence (u16) + nombre d'images (u16)
-  while (o + 2 <= corps.length) {
-    const cl = corps.readUInt16LE(o);
-    const code = cl >> 6;
-    let taille = cl & 0x3f;
-    let debut = o + 2;
-    if (taille === 0x3f) { taille = corps.readUInt32LE(debut); debut += 4; }
-    yield { code, debut, taille };
-    o = debut + taille;
-    if (code === 0) break;
+// Les tags, et — avec `--sprites` — ceux des DefineSprite, image par image :
+// c'est là que vivent les scripts d'image des clips, et le code d'un jeu
+// dont le scénario principal n'est qu'un clip « main » (Burning Kiwi).
+function* tags(corps, sprites) {
+  function* scan(from, to, sprite) {
+    let o = from, frame = 1;
+    while (o + 2 <= to) {
+      const cl = corps.readUInt16LE(o);
+      const code = cl >> 6;
+      let taille = cl & 0x3f;
+      let debut = o + 2;
+      if (taille === 0x3f) { taille = corps.readUInt32LE(debut); debut += 4; }
+      if (code === 0) break;
+      if (code === 39 && sprites) yield* scan(debut + 4, debut + taille, corps.readUInt16LE(debut));
+      yield { code, debut, taille, sprite, frame };
+      if (code === 1) frame++;
+      o = debut + taille;
+    }
   }
+  yield* scan(apresRect(corps) + 4, corps.length, 0);   // + cadence (u16) + nombre d'images (u16)
 }
 
 // ── Le désassemblage d'un flot d'actions ──
@@ -208,10 +216,12 @@ const hex = (n) => '0x' + n.toString(16).padStart(5, '0');
 function principal() {
   const chemin = process.argv[2];
   if (!chemin) { console.error('usage : disasm-as2.js <fichier.swf> [décalage]'); process.exit(1); }
-  const vise = process.argv[3] !== undefined ? Number(process.argv[3]) : null;
+  const sprites = process.argv.includes('--sprites');
+  const reste = process.argv.slice(3).filter((a) => a !== '--sprites');
+  const vise = reste[0] !== undefined ? Number(reste[0]) : null;
   const corps = lireSwf(chemin);
 
-  for (const t of tags(corps)) {
+  for (const t of tags(corps, sprites)) {
     if (t.code !== 12 && t.code !== 59 && t.code !== 34) continue;
     if (vise !== null && !(vise >= t.debut && vise < t.debut + t.taille)) continue;
     const sortie = [];
@@ -221,7 +231,8 @@ function principal() {
       sortie.push('═══ DoInitAction sprite#' + sprite + '  [' + hex(t.debut) + '..' + hex(t.debut + t.taille) + '] ═══');
       desassembler(corps, t.debut + 2, t.debut + t.taille, sortie, 0, pool);
     } else if (t.code === 12) {
-      sortie.push('═══ DoAction  [' + hex(t.debut) + '..' + hex(t.debut + t.taille) + '] ═══');
+      sortie.push('═══ DoAction ' + (sprites ? 'sprite#' + t.sprite + ' image ' + t.frame + ' ' : '')
+        + '[' + hex(t.debut) + '..' + hex(t.debut + t.taille) + '] ═══');
       desassembler(corps, t.debut, t.debut + t.taille, sortie, 0, pool);
     } else {
       // DefineButton2 : l'en-tête pointe les actions par ActionOffset.

@@ -8709,6 +8709,14 @@ async function handleSaveScore(req, res) {
   let extraResult = null;
   let extraRankingId = null;
   let routedInfo = null;
+  // Portage JS de Burning Kiwi : le circuit couru vient EN CLAIR (track=N),
+  // là où le SWF le laissait deviner par la différence de slot 0
+  // (detectBkiwiTrackFromSlotDiff). Il prime sur l'heuristique.
+  const bkiwiTrackParam = (gameName.toLowerCase() === 'bkiwi' && params.track !== undefined && params.track !== '')
+    ? Number(params.track) : NaN;
+  if (Number.isInteger(bkiwiTrackParam) && bkiwiTrackParam >= 0 && bkiwiTrackParam <= 5 && users[username]) {
+    users[username].bkiwiCurrentTrack = bkiwiTrackParam;
+  }
   {
     // Single source of truth for BKiwi/MB2 routing (see routeRankingForSave):
     // BKiwi daily challenge always lands on today's track so the fiche + table
@@ -8719,6 +8727,16 @@ async function handleSaveScore(req, res) {
     routedInfo = routed;
     if (routed.daily !== undefined) {
       console.log(`[HTTP]  bkiwi route hint=${routed.hint} daily=${routed.daily} -> classic:${rankingId} challenge:${extraRankingId}`);
+      // Le portage annonce aussi le MODE DE JEU (gm = vs.gameMode, gameData.as :
+      // ARCADE = 1 est le bouton « challenge »). Seul le Challenge alimente
+      // la cuve du jour ; les essais (TRAINING, offerts quand le quota de FD
+      // est épuisé), le duel, le contre-la-montre, les tournois et le
+      // survivor ne gardent que le record permanent du circuit. Le SWF
+      // n'envoie pas gm : rien ne change pour lui.
+      if (params.gm !== undefined && params.gm !== '' && Number(params.gm) !== 1) {
+        extraRankingId = null;
+        console.log(`[HTTP]  bkiwi mode ${params.gm} : record permanent seulement (pas de challenge du jour)`);
+      }
     }
     // Kaluga sans témoin de grappe : aucun des deux tableaux du jour ne peut
     // l'accueillir sans mentir (cf. routeRankingForSave). On ne consomme rien
@@ -18743,6 +18761,15 @@ app.post('/api/kaluga/accessoire', (req, res) => {
   res.json({ ok: true, accorde: true, nom: pack.name, accessoire: entry });
 });
 
+// La course du jour de Burning Kiwi, pour le portage JS : le SWF la recevait
+// du <daily trk="N"/> de la Frusion (dailyData), le portage la demande ici.
+// Même calcul que le classement (getBkiwiDailyTrack : Paris, jour de l'année
+// modulo six) — c'est ce qui garantit que le score du Challenge tombe dans
+// la cuve bkiwi_track<N>_challenge que la fiche et le tableau lisent.
+app.get('/api/bkiwi/daily', (req, res) => {
+  res.json({ ok: true, trk: getBkiwiDailyTrack() });
+});
+
 app.get('/api/fd/status', (req, res) => {
   const username = resolveUsernameFromSid(String(req.query.sid || ''));
   if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
@@ -19833,6 +19860,21 @@ const GAME_DISCS = {
     iconName: 'mb2',
     gameId: 'light/mb2',
     props: 'w=622;h=436;m=p',
+    files: [],
+  },
+  // Burning Kiwi en HTML (/bkiwi/), sur le même modèle : marqueur
+  // `light/bkiwi` que ruffle.html détourne vers le portage, et swfName
+  // « bkiwi » pour que voyant, fruticard (extractGameItemsFromSlot : coupes,
+  // écuries, records par circuit) et classement (bkiwi_track<N>_classic et
+  // le challenge du jour, barrière FD par /do/fdclaim) se comportent comme
+  // pour le disque Flash. 362×376 : la scène de 350×350 plus le cadre.
+  bkiwilight: {
+    discType: '0',
+    playMode: 'single',
+    swfName: 'bkiwi',
+    iconName: 'bkiwi',
+    gameId: 'light/bkiwi',
+    props: 'w=362;h=376;m=p',
     files: [],
   },
   jamajama: {

@@ -231,7 +231,11 @@ class Texte extends K.Affichable {
       }
       if (o !== undefined && o !== null && typeof o !== 'object') {
         const s = String(o);
-        if (s !== this._texte || this._html) { this.text = s; }
+        // Un champ HTML lié à une variable (le résumé de la FrutiCoupe de
+        // Burning Kiwi, <P ALIGN> + <B>) interprète ses balises ; un champ
+        // ordinaire les affiche telles quelles.
+        if (this.html) { if (s !== this._html) this.htmlText = s; }
+        else if (s !== this._texte || this._html) { this.text = s; }
       }
     }
     return this.mesurer();

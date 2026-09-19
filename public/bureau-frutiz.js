@@ -112,6 +112,8 @@ window.BureauFrutiz = (function () {
     kaluga:     { panneau: '#kaluga-panel',    titre: 'Kaluga',         l: 712, h: 506 },
     // MotionBall : sa scène fait 610×410, montrée à l'échelle 1 plus le cadre.
     mb2:        { panneau: '#mb2-panel',       titre: 'Motion-Ball 2',  l: 622, h: 436 },
+    // Burning Kiwi : sa scène fait 350×350, montrée à l'échelle 1 plus le cadre.
+    bkiwi:      { panneau: '#bkiwi-panel',     titre: 'Burning Kiwi',   l: 362, h: 376 },
     minifever:  { panneau: '#minifever-panel', titre: 'Mini-Fever',     l: 880, h: 760 },
     jamajama:   { panneau: '#jamajama-panel',  titre: 'JamaJama',       l: 620, h: 640 },
     // « Salons publics » — la SEULE fenêtre du bureau qui n'existe pas côté
@@ -2431,22 +2433,23 @@ window.BureauFrutiz = (function () {
     kaluga: 'kaluga',
     // MotionBall, pareil : le FD blanc et le disque light ouvrent le portage.
     mb2: 'mb2',
+    // Burning Kiwi, pareil : le FD noir et le disque light ouvrent le portage
+    // (/bkiwi/) ; le quota de Fruits Défendus se règle au serveur (/do/fdclaim).
+    bkiwi: 'bkiwi',
   };
   /*
-   * CELUI QUI EST ENCORE EN FLASH.
+   * PLUS AUCUN DISQUE EN FLASH.
    *
-   * Burning Kiwi n'a pas de portage JS : il se lit sous Ruffle, dans une
-   * fenêtre à part. Le bureau les MONTRAIT — le bureau
-   * d'époque montre tous les disques du joueur — mais les laissait INERTES :
-   * pas attrapables, donc impossibles à glisser dans la Frusion, alors que
-   * main.swf accepte n'importe quel disque dans sa console. (Kaluga en
-   * faisait partie, avec ses deux pastilles, jusqu'à son portage — il n'en a
-   * plus qu'une, le FD noir, à côté de son disque light ; Motion-Ball 2 a
-   * suivi le même chemin avec le sien, /mb2/.)
+   * Un disque sans portage JS se lisait sous Ruffle, dans une fenêtre à
+   * part. Le bureau les MONTRAIT — le bureau d'époque montre tous les
+   * disques du joueur — mais les laissait INERTES : pas attrapables, donc
+   * impossibles à glisser dans la Frusion, alors que main.swf accepte
+   * n'importe quel disque dans sa console. Kaluga, Motion-Ball 2 puis
+   * Burning Kiwi ont chacun quitté cette liste avec leur portage.
    *
    * Le catalogue vit dans `light.html` (`window.JeuxFlash`), avec les mêmes
    * dimensions et le même rognage que le bureau donne à `game-popup.html` —
-   * un seul endroit pour les deux.
+   * un seul endroit pour les deux ; il est vide aujourd'hui.
    */
   function jeuFlashDe(jeu) {
     var P = window.JeuxFlash;
@@ -3587,7 +3590,7 @@ window.BureauFrutiz = (function () {
     // Un jeu déporté par un disque précédent n'a plus rien à voir avec
     // celui-ci : sa fenêtre est déjà partie avec l'éjection.
     this.jeuDeporte = null;
-    // LES TROIS DISQUES QUI SONT ENCORE EN FLASH : pas d'onglet, une FENÊTRE
+    // UN DISQUE RESTÉ EN FLASH (il n'y en a plus) : pas d'onglet, une FENÊTRE
     // À PART (game-popup.html + Ruffle) — celle que la Frusion d'époque
     // ouvrait déjà pour eux depuis `ruffle.html`.
     if (!tab) {

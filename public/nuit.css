@@ -776,6 +776,9 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 #mb2-frame {
   background: hsl(256 30% 31.9%);
 }
+#bkiwi-frame {
+  background: hsl(256 30% 0%);
+}
 #jamajama-frame {
   background: hsl(256 30% 36%);
 }
