@@ -58,8 +58,8 @@ propres stats (carStatsIA × facteur du circuit) et une part de hasard
 vitesses. Le chrono est `getTimer() − timerLap`.
 
 Modes : Challenge (ARCADE, la course du jour, classée), essais (TRAINING),
-tutorial, évolution (FRUTICUP, SURVIVOR), épreuves (TIMETRIAL, DUEL,
-KIWIRUN). La fruticard (slot 0) garde les coupes ($ws, $wss, $wc, $wcs),
+tutorial, évolution (FRUTICUP, SURVIVOR, GHOSTRUN), épreuves (TIMETRIAL,
+DUEL, KIWIRUN). La fruticard (slot 0) garde les coupes ($ws, $wss, $wc, $wcs),
 les écuries ($ac) et les records par circuit ($ts) ; le slot 1 les
 préférences, le slot 2 les modes débloqués.
 
@@ -71,6 +71,37 @@ compris — le résumé de la FrutiCoupe), boutons, masques (`setMask` : le
 décompte 3-2-1-GO découpe le circuit à la forme des chiffres), hitTest par
 forme (les zones des circuits), horloge virtuelle à 40 images par seconde
 (`getTimer()`), scripts d'image dans l'ordre du lecteur.
+
+## Le mode fantôme (Ghost-Run), rendu jouable
+
+Le mode est compilé dans le SWF — enregistrement d'une position toutes les
+deux images, relecture interpolée, voiture translucide à vingt pour cent —
+mais son bouton de menu est resté EN COMMENTAIRE (`inc/menu.as`, après
+« elite ») et `unlockMode` n'a jamais été appelé pour lui : personne n'y a
+jamais joué. Le portage repose le bouton au mot et au pixel près (identifiant
+65, place −23 ; 240, « Rivalisez avec votre pire adversaire: vous ! ») et
+ouvre le mode comme le contre-la-montre.
+
+Deux choses que le fichier ne faisait pas :
+
+- **la trace survit à la page.** Elle part au serveur, une par joueur et par
+  circuit, celle du meilleur temps (`/api/bkiwi/ghost`, table `bkiwi_ghosts`).
+  Le codec (`jeu/fantome.js`) écrit cinq octets par point — position au pixel,
+  rotation absolue sur un octet, donc sans le saut de +179 à −179 — en base64
+  d'URL sans remplissage : une course entière tient dans dix kilo-octets et
+  traverse un formulaire sans qu'un caractère soit ré-encodé. Elle ne voyage
+  qu'à l'entrée en Ghost-Run, jamais avec la fruticard ;
+- **le fantôme tient toute la course.** D'origine, la fin de chaque tour
+  comparait le temps CUMULÉ à celui d'une COURSE ENTIÈRE
+  (`if ( ghost.raceTime < previousGhost.raceTime || previousGhost == undefined )`) :
+  au premier tour le cumul d'un tour gagne toujours, et le fantôme affronté
+  était remplacé par l'enregistrement en cours — le lecteur relisait alors le
+  tableau qu'il écrivait, et la voiture fantôme collait à la nôtre. Le bouton
+  n'ayant jamais été posé, ce défaut n'a jamais été vu par un joueur ; le
+  remplacement se décide donc à l'arrivée, sur les temps complets.
+
+Le fantôme court avec l'écurie qui a fait le temps, pas avec celle qu'on a
+choisie aujourd'hui. Une course abandonnée ou trichée n'en laisse pas.
 
 ## Le pont Frutiparc (`plateforme.js`)
 

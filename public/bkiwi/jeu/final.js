@@ -524,6 +524,8 @@ J.installerFinal = function (M) {
 
     // Envoi des données au serveur si la partie est finie
     J.savePublic();
+    // …et le fantôme, s'il y a mieux qu'avant sur ce circuit.
+    J.sauverFantome();
     if (J.gameEnded() && M.vs.gameMode != M.TUTORIAL) M.vs.finalPhase = 40;  // eslint-disable-line eqeqeq
     else M.vs.finalPhase = 0;
   };

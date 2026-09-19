@@ -233,9 +233,28 @@ J.installerMoteur = function (M) {
         car.timerLap = getTimer();
 
         // Mode ghost
+        //
+        // LE SEUL ENDROIT OÙ L'ON S'ÉCARTE DU FICHIER, ET IL LE FAUT.
+        // D'origine, cette ligne comparait le temps CUMULÉ DEPUIS LE DÉPART
+        // au temps d'une COURSE ENTIÈRE, à chaque fin de tour :
+        //
+        //     if ( ghost.raceTime < previousGhost.raceTime || previousGhost == undefined )
+        //       previousGhost = ghost ;
+        //
+        // Au premier tour, le cumul d'un tour est forcément plus petit qu'une
+        // course de trois : le fantôme qu'on affrontait était donc remplacé
+        // par l'enregistrement EN COURS. Le lecteur se mettait alors à relire
+        // le tableau qu'il était en train d'écrire, au même indice : la
+        // voiture fantôme collait à la nôtre et le mode ne voulait plus rien
+        // dire passé le premier tour. Le bouton n'ayant jamais été posé dans
+        // le fichier (menu.as, bloc commenté), personne n'a vu ce défaut, et
+        // il n'y a donc aucune habitude de joueur à respecter ici.
+        //
+        // On garde donc le fantôme chargé pour TOUTE la course, et le
+        // remplacement se décide à l'arrivée, sur les temps complets
+        // (J.sauverFantome).
         if (M.vs.gameMode == M.GHOSTRUN) {                                    // eslint-disable-line eqeqeq
           M.ghost.raceTime = car.vs.totalTime;
-          if (M.previousGhost == null || M.ghost.raceTime < M.previousGhost.raceTime) M.previousGhost = M.ghost;   // eslint-disable-line eqeqeq
         }
 
         // Temps à la course battu
@@ -742,7 +761,12 @@ J.installerMoteur = function (M) {
       // essais libres sur la course du jour.
       if (mode == M.ARCADE) return !!(c.gameRunning || (typeof c.isRanked === 'function' && c.isRanked()));   // eslint-disable-line eqeqeq
       if (mode == M.TRAINING) return !(typeof c.isRanked === 'function' && c.isRanked());   // eslint-disable-line eqeqeq
-      if (mode == M.TUTORIAL || mode == M.FRUTICUP || mode == M.TIMETRIAL) return true;   // eslint-disable-line eqeqeq
+      // Le GHOSTRUN rejoint les modes ouverts. D'époque il dépendait du slot
+      // des modes, que seul le serveur de 2005 pouvait poser — et son bouton
+      // était commenté : aucun joueur n'a jamais pu y entrer. Rien ne le
+      // rationne (il ne se classe pas contre les autres), il s'ouvre donc
+      // comme le contre-la-montre.
+      if (mode == M.TUTORIAL || mode == M.FRUTICUP || mode == M.TIMETRIAL || mode == M.GHOSTRUN) return true;   // eslint-disable-line eqeqeq
       return M.frutiSlots[M.SLOT_MODES][mode];
     }
     return undefined;
@@ -761,6 +785,27 @@ J.installerMoteur = function (M) {
     return g.moves[g.current++];
   };
   J.createGhost = function () { return { current: 0, moves: [], raceTime: Infinity }; };
+
+  // GARDE LE FANTÔME DE LA COURSE QUI VIENT DE FINIR, S'IL EST MEILLEUR
+  //
+  // Appelée à l'arrivée (initFinal). Le serveur retranche à son tour : il ne
+  // remplace la trace que si le temps la bat, donc deux onglets qui finissent
+  // ensemble ne peuvent pas se voler la place. Une course abandonnée ou
+  // trichée ne laisse pas de fantôme.
+  J.sauverFantome = function () {
+    if (M.vs.gameMode != M.GHOSTRUN) return;                                  // eslint-disable-line eqeqeq
+    if (M.vs.giveUp || M.vs.useSpecials) return;
+    const temps = Number(M.race && M.race.raceTime);
+    if (!Number.isFinite(temps) || temps <= 0) return;
+    if (!M.ghost || !M.ghost.moves || !M.ghost.moves.length) return;
+    // Le fantôme affronté reste le meilleur tant que le nouveau ne le bat pas.
+    if (M.previousGhost != null && Number.isFinite(M.fantomeTemps) && M.fantomeTemps <= temps) return;   // eslint-disable-line eqeqeq
+    M.previousGhost = M.ghost;
+    M.fantomeTemps = temps;
+    M.fantomeCar = M.vs.selectedCar;
+    M.fantomeTrack = M.vs.selectedTrack;
+    client().enregistrerFantome(M.vs.selectedTrack, M.vs.selectedCar, temps, M.ghost);
+  };
 
   // BOUCLE D'ANIM DE LA PHASE DE DÉPART
   J.mainStart = function () {
@@ -1753,7 +1798,10 @@ J.installerMoteur = function (M) {
       M.skipGhost = false;
       M.ghost = J.createGhost();
       if (M.previousGhost != null) {                                          // eslint-disable-line eqeqeq
-        J.attachGhost(M.vs.selectedCar);
+        // Le fantôme court avec la voiture qui a fait le temps, pas avec
+        // celle qu'on a choisie aujourd'hui : c'est sa course à lui.
+        const ecurie = (M.fantomeCar === undefined) ? M.vs.selectedCar : M.fantomeCar;
+        J.attachGhost(ecurie);
         M.previousGhost.current = 0;
       }
     }

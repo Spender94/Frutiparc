@@ -483,6 +483,26 @@ async function initSchema() {
         updated_at  TIMESTAMPTZ DEFAULT now()
       );
 
+      -- Burning Kiwi : LE FANTÔME de chaque joueur, un par circuit.
+      -- Le mode Ghost-Run du fichier d'époque gardait la trace de la course
+      -- dans une variable de la timeline : elle mourait avec la page, et l'on
+      -- ne pouvait défier son meilleur tour que dans la même séance. La trace
+      -- vit ici, encodée (public/bkiwi/jeu/fantome.js) : cinq octets par point,
+      -- une dizaine de kilo-octets pour une course. Elle a sa table, PAS une
+      -- case de fruticard : elle ne doit pas voyager avec la carte à chaque
+      -- ouverture du jeu, mais seulement quand on entre en Ghost-Run.
+      -- « race_time » est le temps total de la course qui a produit la trace ;
+      -- c'est lui qui décide si un nouveau fantôme remplace l'ancien.
+      CREATE TABLE IF NOT EXISTS bkiwi_ghosts (
+        user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        track      SMALLINT NOT NULL,
+        car        SMALLINT NOT NULL DEFAULT 0,
+        race_time  INTEGER NOT NULL,
+        data       TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (user_id, track)
+      );
+
       -- Frutisnake : la CARTE du tournoi (mode « Entraînement » du light).
       -- Générée d'une graine par l'admin, ouverte/fermée à la demande ; la
       -- copie en base fait survivre la carte (et son état) aux redéploiements,
@@ -2511,6 +2531,33 @@ async function setMiniwaveMap(dayKey, seed, data) {
 }
 
 // ── Frutisnake : la carte du tournoi (graine, script, exigences, ouvert/fermé) ──
+/*
+ * BURNING KIWI — LES FANTÔMES.
+ *
+ * Un par joueur et par circuit, celui du meilleur temps. Le remplacement se
+ * décide ICI, en une écriture : `DO UPDATE … WHERE race_time > $4` ne touche
+ * la ligne que si le nouveau temps est meilleur, donc deux onglets qui
+ * finissent leur course en même temps ne peuvent pas se voler la place.
+ * La réponse dit si la ligne a bougé.
+ */
+async function getBkiwiGhost(userId, track) {
+  const { rows } = await pool.query(
+    'SELECT track, car, race_time, data FROM bkiwi_ghosts WHERE user_id = $1 AND track = $2',
+    [userId, track]);
+  return rows[0] || null;
+}
+async function upsertBkiwiGhost(userId, track, car, raceTime, data) {
+  const { rows } = await pool.query(
+    `INSERT INTO bkiwi_ghosts (user_id, track, car, race_time, data, updated_at)
+     VALUES ($1, $2, $3, $4, $5, now())
+     ON CONFLICT (user_id, track) DO UPDATE
+       SET car = $3, race_time = $4, data = $5, updated_at = now()
+       WHERE bkiwi_ghosts.race_time > $4
+     RETURNING race_time`,
+    [userId, track, car, raceTime, data]);
+  return rows.length > 0;
+}
+
 async function getSnake3Tournoi() {
   const { rows } = await pool.query(
     'SELECT graine, carte, exigences, ouvert, classement, organique, manuelle, updated_at '
@@ -3957,6 +4004,8 @@ async function upsertBouilleVariante(v, rang) {
 }
 
 module.exports = {
+  getBkiwiGhost,
+  upsertBkiwiGhost,
   loadBouilleVariantes,
   upsertBouilleVariante,
   insertShopSale,

@@ -425,7 +425,27 @@ J.installerMenu = function (M) {
         if (M.vs.$wss) J.attachButton(64, 'elite XL', skinBt, -4, 200, onPush, undefined, onEnd, onOver, onOut);
         else J.attachButton(64, 'elite', skinBt, -4, 200, onPush, undefined, onEnd, onOver, onOut);
 
-        // (Ghost-Run : en commentaire dans le fichier)
+        // Ghost-Run
+        //
+        // LE BOUTON QUE LE FICHIER PORTE EN COMMENTAIRE (menu.as, après
+        // « elite »), replacé au mot et au pixel près : même identifiant, même
+        // place, même phrase d'aide. Tout le mode est compilé dans le SWF —
+        // l'enregistrement, la relecture interpolée, la voiture translucide —
+        // et seul ce bouton manquait, si bien que personne n'y a jamais joué.
+        // La trace, elle, ne mourait qu'avec la page ; elle vit désormais au
+        // serveur, un fantôme par circuit (plateforme.js, chargerFantome).
+        if (J.checkMode(M.GHOSTRUN)) {
+          skinBt = M.skinAllow;
+          onPush = onPushAllow;
+          onEnd = function () { M.vs.menuPhase = 3; M.vs.gameMode = M.GHOSTRUN; };
+        } else {
+          skinBt = M.skinDisallow;
+          onPush = !J.checkMode(M.GHOSTRUN) ? onPushDisallow : onPushDisallowMode;
+          onEnd = undefined;
+        }
+        onOver = function () { M.menuMC.infoPanel.txt = 'Rivalisez avec votre pire adversaire: vous !'; };
+        onOut = function () { M.menuMC.infoPanel.txt = ''; };
+        J.attachButton(65, 'ghost run', skinBt, -23, 240, onPush, undefined, onEnd, onOver, onOut);
 
         onPush = function () { J.back(); J.playSoundBK('buttonCancel'); J.removeAllButtons(); M.limited.gotoAndPlay('hide'); };
         onEnd = function () {};

@@ -135,6 +135,58 @@ class Client {
       .catch(() => {});
   }
 
+  // ── LE FANTÔME (mode Ghost-Run) ──
+  //
+  // Une trace par circuit, celle du meilleur temps, chez le serveur
+  // (/api/bkiwi/ghost). Elle ne voyage QUE quand on entre en Ghost-Run : elle
+  // pèse une dizaine de kilo-octets, elle n'a rien à faire dans la fruticard
+  // qu'on relit à chaque ouverture du jeu.
+  chargerFantome(track) {
+    const M = J.M;
+    if (!M) return Promise.resolve(null);
+    // Le fantôme de la course précédente ne vaut que pour SON circuit : on
+    // change de piste, on repart seul. Sur la même piste, il reste — c'est le
+    // filet quand le serveur n'a pas pu garder la trace (partie sans session,
+    // réseau muet), et le mode continue de tourner dans la séance.
+    if (M.fantomeTrack !== track) {
+      M.previousGhost = null;
+      M.fantomeTemps = undefined;
+      M.fantomeCar = undefined;
+      M.fantomeTrack = track;
+    }
+    if (!this.sid) return Promise.resolve(M.previousGhost);
+    return fetch('/api/bkiwi/ghost?sid=' + encodeURIComponent(this.sid) + '&track=' + encodeURIComponent(track), { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!j || !j.ok || !j.ghost) return M.previousGhost;
+        // Le serveur garde le meilleur : s'il a mieux que ce qu'on tient en
+        // mémoire, on prend le sien ; sinon on garde le nôtre.
+        const temps = Number(j.ghost.t);
+        if (Number.isFinite(M.fantomeTemps) && M.fantomeTemps <= temps) return M.previousGhost;
+        const trace = J.decoderFantome(j.ghost.p);
+        if (!trace) return M.previousGhost;
+        trace.raceTime = temps;
+        M.previousGhost = trace;
+        M.fantomeTemps = temps;
+        M.fantomeCar = Number(j.ghost.c) || 0;
+        return trace;
+      })
+      .catch(() => M.previousGhost);   // pas de réponse : on garde ce qu'on a
+  }
+  enregistrerFantome(track, car, temps, ghost) {
+    if (!this.sid) return Promise.resolve(false);
+    const data = J.encoderFantome(ghost);
+    if (!data) return Promise.resolve(false);
+    return fetch('/api/bkiwi/ghost', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        sid: this.sid, track: String(track), car: String(car),
+        time: String(Math.round(temps)), data,
+      }).toString(),
+    }).then((r) => (r.ok ? r.json() : null)).then((j) => !!(j && j.saved)).catch(() => false);
+  }
+
   // Un fichier du disque : l'intro et les circuits sont nos bibliothèques
   // (chargées par leur nom), les musiques les MP3 du disque Flash.
   getFileInfos(f) {
@@ -194,15 +246,22 @@ class Client {
     const M = J.M;
     const track = M && M.vs ? M.vs.selectedTrack : undefined;
     const mode = M && M.vs ? M.vs.gameMode : undefined;
-    if (!this.sid) { Promise.resolve().then(() => this.onStartGame()); return; }
+    // GHOST-RUN : on profite du pop-up réseau du départ (phases 92-93) pour
+    // aller chercher le fantôme du circuit. Le jeu attend déjà `fl_success`
+    // là : rien de neuf à inventer côté menu, et la course ne démarre pas
+    // avant que la trace soit là.
+    const fantome = (mode === (M && M.GHOSTRUN))
+      ? this.chargerFantome(track) : Promise.resolve(null);
+
+    if (!this.sid) { fantome.then(() => this.onStartGame()); return; }
     // Le portillon des Fruits Défendus : seul le Challenge (ARCADE = 1) en
     // consomme un ; un refus (ok=0) ramène au menu, comme le SWF rustiné.
-    fetch('/do/fdclaim', {
+    Promise.all([fantome, fetch('/do/fdclaim', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ sid: this.sid, game: 'bkiwi', track: String(track), mode: String(mode) }).toString(),
-    }).then((r) => (r.ok ? r.text() : 'ok=1'))
-      .then((texte) => {
+    }).then((r) => (r.ok ? r.text() : 'ok=1'))])
+      .then(([, texte]) => {
         if (/^ok=0/.test(texte)) {
           this.gameRunning = false;
           if (this.fd) this.fd.remaining = 0;

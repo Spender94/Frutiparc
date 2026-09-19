@@ -131,6 +131,13 @@ if (compression) {
 }
 
 app.use(express.json());
+// BURNING KIWI — LA TRACE D'UN FANTÔME EST PLUS GROSSE QUE LE RESTE.
+// Le lecteur de formulaire d'Express plafonne à cent kilo-octets ; une course
+// de plusieurs minutes en fait davantage, et la requête se serait vu répondre
+// une page d'erreur — le joueur aurait perdu son fantôme sans un mot. Ce
+// lecteur-ci prend la route à son compte, AVANT le lecteur général : celui qui
+// suit voit un corps déjà lu et passe son tour.
+app.use('/api/bkiwi/ghost', express.urlencoded({ extended: false, limit: '512kb' }));
 app.use(express.urlencoded({ extended: true }));
 // Ruffle's LoadVars.sendAndLoad may send POST bodies as text/plain or
 // with no Content-Type at all. Capture any unparsed body as raw text,
@@ -18768,6 +18775,106 @@ app.post('/api/kaluga/accessoire', (req, res) => {
 // la cuve bkiwi_track<N>_challenge que la fiche et le tableau lisent.
 app.get('/api/bkiwi/daily', (req, res) => {
   res.json({ ok: true, trk: getBkiwiDailyTrack() });
+});
+
+/*
+ * LES FANTÔMES DE BURNING KIWI.
+ *
+ * Le mode Ghost-Run fait courir le joueur contre l'enregistrement de sa
+ * meilleure course sur le même circuit. Le fichier d'époque gardait cette
+ * trace dans une variable de la timeline : elle mourait avec la page. Elle vit
+ * désormais au serveur, une par joueur et par circuit, encodée par le client
+ * (public/bkiwi/jeu/fantome.js) — cinq octets par point, une dizaine de
+ * kilo-octets pour une course entière.
+ *
+ * ELLE A SA TABLE, ET PAS UNE CASE DE FRUTICARD. Les cases voyagent à chaque
+ * ouverture du jeu, pour tout le monde ; le fantôme ne se lit qu'en entrant en
+ * Ghost-Run, et seulement celui du circuit choisi.
+ *
+ * Sans Postgres (un serveur de mise au point), la trace tient en mémoire : le
+ * mode reste jouable, le fantôme ne survit pas au redémarrage.
+ */
+// Une trace pèse environ cent trente caractères par seconde de course : la
+// borne laisse passer une course d'une demi-heure, ce qu'aucun circuit ne
+// demande, et arrête net une requête qui n'en serait pas une.
+const BKIWI_FANTOME_MAX = 256 * 1024;
+// (Le lecteur de formulaire de cette route est posé tout en haut, avant le
+// lecteur général : cf. app.use('/api/bkiwi/ghost', …).)
+const bkiwiFantomesMemoire = new Map();    // 'pseudo:circuit' → { track, car, race_time, data }
+
+function bkiwiFantomeCle(username, track) { return username + ':' + track; }
+
+function bkiwiCircuitValide(v) {
+  // Une valeur absente ou vide n'est PAS le circuit 0 : `Number('')` vaut zéro,
+  // et une requête sans circuit se serait vue répondre celui de Green Hill.
+  if (v === undefined || v === null || String(v).trim() === '') return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n < 6 ? n : null;
+}
+
+app.get('/api/bkiwi/ghost', async (req, res) => {
+  const username = resolveUsernameFromSid(String(req.query.sid || ''));
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const track = bkiwiCircuitValide(req.query.track);
+  if (track === null) return res.status(400).json({ ok: false, error: 'circuit_invalide', track: req.query.track });
+
+  let ligne = bkiwiFantomesMemoire.get(bkiwiFantomeCle(username, track)) || null;
+  const dbId = users[username] && users[username]._dbId;
+  if (!ligne && dbId && process.env.DATABASE_URL) {
+    try {
+      ligne = await db.getBkiwiGhost(dbId, track);
+      if (ligne) bkiwiFantomesMemoire.set(bkiwiFantomeCle(username, track), ligne);
+    } catch (e) {
+      console.error(`[BKIWI] lecture du fantôme ${username}/${track} : ${e.message}`);
+      return res.status(503).json({ ok: false, error: 'base_indisponible' });
+    }
+  }
+  if (!ligne) return res.json({ ok: true, ghost: null });
+  res.json({ ok: true, ghost: { t: Number(ligne.race_time), c: Number(ligne.car) || 0, p: String(ligne.data || '') } });
+});
+
+app.post('/api/bkiwi/ghost', async (req, res) => {
+  const params = Object.assign({}, req.query || {}, req.body || {});
+  const username = resolveUsernameFromSid(String(params.sid || ''));
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const track = bkiwiCircuitValide(params.track);
+  if (track === null) return res.status(400).json({ ok: false, error: 'circuit_invalide', track: params.track });
+  const temps = Math.round(Number(params.time));
+  if (!Number.isFinite(temps) || temps <= 0 || temps > 3600000) {
+    return res.status(400).json({ ok: false, error: 'temps_invalide', time: params.time });
+  }
+  const car = Math.max(0, Math.min(4, Math.round(Number(params.car) || 0)));
+  const data = String(params.data || '');
+  // Une trace vide n'est pas un fantôme, et une trace démesurée n'en est pas
+  // un non plus : on refuse plutôt que de remplir la base.
+  if (!data || data.length > BKIWI_FANTOME_MAX) {
+    return res.status(400).json({ ok: false, error: 'trace_invalide', taille: data.length });
+  }
+
+  const cle = bkiwiFantomeCle(username, track);
+  const ancien = bkiwiFantomesMemoire.get(cle) || null;
+  if (ancien && Number(ancien.race_time) <= temps) {
+    return res.json({ ok: true, saved: false, t: Number(ancien.race_time) });
+  }
+  const ligne = { track, car, race_time: temps, data };
+  const dbId = users[username] && users[username]._dbId;
+  if (dbId && process.env.DATABASE_URL) {
+    try {
+      const pose = await db.upsertBkiwiGhost(dbId, track, car, temps, data);
+      if (!pose) {
+        // Une autre course a posé un meilleur temps entre-temps : on relit.
+        const vrai = await db.getBkiwiGhost(dbId, track);
+        if (vrai) bkiwiFantomesMemoire.set(cle, vrai);
+        return res.json({ ok: true, saved: false, t: vrai ? Number(vrai.race_time) : temps });
+      }
+    } catch (e) {
+      console.error(`[BKIWI] écriture du fantôme ${username}/${track} : ${e.message}`);
+      return res.status(503).json({ ok: false, error: 'base_indisponible' });
+    }
+  }
+  bkiwiFantomesMemoire.set(cle, ligne);
+  console.log(`[BKIWI] fantôme de ${username} sur le circuit ${track} : ${temps} ms (${data.length} caractères)`);
+  res.json({ ok: true, saved: true, t: temps });
 });
 
 app.get('/api/fd/status', (req, res) => {
