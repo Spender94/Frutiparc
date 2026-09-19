@@ -93,8 +93,14 @@ J.initialiserDonnees = function (M) {
   M.arrowBorderMargin = 50;
   M.timeLinesY = 3;
   M.timeLinesHeight = 17;
-  M.preloaderX = 175;
+  M.preloaderX = 175;   // docWidth / 2
   M.preloaderY = 205;
+  // Les trois fioles de nitro du préchargeur (gameData.as : nbPreloadIcons =
+  // 3). Elles manquaient : `showProgress` et `attachPreloader` bouclaient sur
+  // `undefined`, donc zéro fois — les fioles restaient à leur première image,
+  // vides, et l'animation de chargement ne se jouait jamais.
+  M.nbPreloadIcons = 3;
+  M.basePreloadURL = '';
   M.normalFPS = 32;
   M.LOW = 0;
   M.MEDIUM = 1;

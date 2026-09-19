@@ -82,6 +82,10 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.header('Access-Control-Allow-Headers', '*');
+  // `X-Taille-Reelle` (voir plus bas, au montage des fichiers statiques) doit
+  // être LISIBLE par le script : un en-tête de réponse maison ne l'est pas
+  // d'office quand la page vient d'une autre origine.
+  res.header('Access-Control-Expose-Headers', 'X-Taille-Reelle, Content-Length');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
@@ -21408,7 +21412,7 @@ if (fs.existsSync(ruffleDir)) {
 } else {
   console.log('[STARTUP] Ruffle npm package not found — HTML pages will fall back to CDN');
 }
-app.use('/swf/games/burningKiwi', express.static(path.join(__dirname, 'Games', 'burningKiwi')));
+app.use('/swf/games/burningKiwi', express.static(path.join(__dirname, 'Games', 'burningKiwi'), { setHeaders: (res, c, st) => { if (st && st.size) res.setHeader('X-Taille-Reelle', String(st.size)); } }));
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
 app.use('/swf/games/motionBall2', express.static(path.join(__dirname, 'Games', 'motionBall2')));
@@ -25174,10 +25178,26 @@ app.use('/fb', express.static(path.join(__dirname, 'public', 'fb'), {
 // ─────────────────────────────────────────────
 // Serve static files AFTER API routes so our endpoints take priority
 // ─────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, 'public')));
+/*
+ * LA TAILLE RÉELLE, POUR LES JAUGES DE CHARGEMENT.
+ *
+ * Les portages montrent un préchargeur pendant qu'ils tirent une
+ * bibliothèque (les trois fioles de nitro de Burning Kiwi, par exemple). Pour
+ * remplir une jauge, il faut savoir où l'on va — et `Content-Length` ne le dit
+ * plus dès que la réponse est compressée : `compression` passe en « chunked »
+ * et retire l'en-tête. Tous nos JSON de données sont dans ce cas.
+ *
+ * On pose donc, sur chaque fichier statique, sa taille SUR LE DISQUE — celle
+ * du corps décompressé, donc celle que le client verra défiler. Le stat est
+ * déjà fait par `express.static` : l'en-tête ne coûte rien.
+ */
+const tailleReelle = (res, chemin, stat) => {
+  if (stat && stat.size) res.setHeader('X-Taille-Reelle', String(stat.size));
+};
+app.use(express.static(path.join(__dirname, 'public'), { setHeaders: tailleReelle }));
 // Fallback: swf.frutiparc.com URLs resolve to root paths (/wheel/wheel1.swf)
 // but files live under public/swf/. This second mount acts as fallback.
-app.use(express.static(path.join(__dirname, 'public', 'swf')));
+app.use(express.static(path.join(__dirname, 'public', 'swf'), { setHeaders: tailleReelle }));
 
 // ─────────────────────────────────────────────
 // ─────────────────────────────────────────────

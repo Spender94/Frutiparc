@@ -77,20 +77,30 @@ test('… sauf ce que public/fb contient d’ENGENDRÉ : le forum et sa feuille 
   assert.match(bloc, /res\.setHeader\('Cache-Control', 'public, max-age=0'\)/);
 });
 
+// Le montage général de public/ — celui qui sert la page, ses scripts et sa
+// feuille. Il porte `setHeaders: tailleReelle`, qui n'est PAS un réglage de
+// cache : il annonce la taille du fichier sur le disque pour les jauges de
+// chargement des portages (cf. test/bkiwiPrechargeur.test.js).
+const MONTAGE_GENERAL = /app\.use\(express\.static\(path\.join\(__dirname, 'public'\)(, \{ setHeaders: tailleReelle \})?\)\);/;
+
 test('ils sont montés AVANT le montage général', () => {
   // `express.static(public)` sert les mêmes fichiers sans cache : monté avant,
   // il gagnerait, et les en-têtes ne serviraient à rien.
   const iArtefacts = SERVEUR.indexOf('app.use(\'/frutiz/sprites\'');
-  const iGeneral = SERVEUR.indexOf("app.use(express.static(path.join(__dirname, 'public')));");
-  assert.ok(iArtefacts > 0 && iGeneral > 0, 'les deux montages doivent exister');
-  assert.ok(iArtefacts < iGeneral,
+  const m = MONTAGE_GENERAL.exec(SERVEUR);
+  assert.ok(iArtefacts > 0 && m, 'les deux montages doivent exister');
+  assert.ok(iArtefacts < m.index,
     'les dossiers d’artefacts passent avant le montage général');
 });
 
 test('la page et ses scripts, eux, restent frais', () => {
   // Ils doivent pouvoir changer à chaque déploiement : aucun cache long ne
-  // doit les couvrir. Le montage général reste donc sans options.
-  assert.match(SERVEUR, /app\.use\(express\.static\(path\.join\(__dirname, 'public'\)\)\);/);
+  // doit les couvrir. Le montage général ne porte donc AUCUN réglage de
+  // cache — tout au plus l'en-tête de taille, qui ne change rien à la
+  // fraîcheur.
+  const m = MONTAGE_GENERAL.exec(SERVEUR);
+  assert.ok(m, 'le montage général de public/ doit exister');
+  assert.ok(!/maxAge|immutable|Cache-Control/.test(m[0]), 'et rester sans cache : ' + m[0]);
   // Et rien ne met light.html, les scripts ou la feuille sous CACHE_ARTEFACTS.
   const montages = SERVEUR.match(
     /app\.use\('[^']+',\s*express\.static\(path\.join\(__dirname, [^)]*\)[^;]*?CACHE_ARTEFACTS/g) || [];

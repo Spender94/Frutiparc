@@ -218,8 +218,16 @@ J.installerMoteur = function (M) {
           J.attachPerfect();
         }
 
-        // Indicateur permanent de temps au tour
-        if (idCar == 0 && (M.vs.gameMode == M.TIMETRIAL || M.vs.gameMode == M.ARCADE || M.vs.gameMode == M.TRAINING)) {   // eslint-disable-line eqeqeq
+        // Indicateur permanent de temps au tour — en haut à gauche, un tour
+        // par ligne, avec l'écart au tour précédent.
+        //
+        // Le GHOSTRUN s'ajoute ici à la liste du fichier. Le bouton n'ayant
+        // jamais été posé dans le SWF (menu.as, bloc commenté), le mode n'a
+        // jamais figuré dans aucune de ces listes — mais c'est une course
+        // contre le chrono comme le contre-la-montre, et courir sans voir ses
+        // temps au tour n'a pas de sens : on ne sait pas où l'on perd.
+        if (idCar == 0 && (M.vs.gameMode == M.TIMETRIAL || M.vs.gameMode == M.ARCADE   // eslint-disable-line eqeqeq
+            || M.vs.gameMode == M.TRAINING || M.vs.gameMode == M.GHOSTRUN)) {          // eslint-disable-line eqeqeq
           J.attachTimeLine(car.vs.laps - 1, M.temps, perfect, best, false, car.previousLapTime);
         }
         car.previousLapTime = M.temps;
@@ -2278,12 +2286,21 @@ J.installerMoteur = function (M) {
     obj.getBytesTotal = () => p.total;
     obj.getBytesLoaded = () => p.octets;
 
+    // La jauge : les octets à mesure qu'ils arrivent (K.telecharger). Le
+    // lecteur Flash les rendait par getBytesLoaded / getBytesTotal ; ici ce
+    // sont les mêmes, tirés du corps de la réponse.
+    const avance = (octets, total) => {
+      if (M.preloadData !== p) return;                  // un autre chargement a pris la place
+      p.octets = octets;
+      p.total = total || p.fileInfos.size || 0;
+    };
+
     if (obj instanceof K.Clip) {
       // MovieClip : la bibliothèque du fichier (data/<nom>.json) prend la
       // place du clip vide, à sa profondeur et sous son nom — c'est ce que
       // loadClip faisait de track.skin et de l'intro.
       const nom = fileName.replace(/\.swf$/i, '');
-      K.chargerBiblio(nom).then((biblio) => {
+      K.chargerBiblio(nom, avance).then((biblio) => {
         if (M.preloadData !== p) return;                  // un autre chargement a pris la place
         const parent = obj._parent;
         if (!parent) return;
@@ -2301,7 +2318,7 @@ J.installerMoteur = function (M) {
         p.obj = neuf;
         neuf.getBytesTotal = () => p.total;
         neuf.getBytesLoaded = () => p.octets;
-        p.total = p.fileInfos.size || 100000;
+        p.total = p.total || p.fileInfos.size || 100000;
         p.octets = p.total;
         J.eventOnLoadComplete(neuf);
       }).catch((e) => { console.error('[bkiwi] chargement', fileName, e); J.eventOnLoadError(fileName, 'URLNotFound'); });
@@ -2309,9 +2326,9 @@ J.installerMoteur = function (M) {
       // Objet son : le MP3 est décodé, puis attaché au Sound
       const nom = fileName.replace(/\.mp3$/i, '');
       obj.attachSound(nom);
-      K.audio.charger(nom, p.fileInfos.name).then((buf) => {
+      K.audio.charger(nom, p.fileInfos.name, avance).then((buf) => {
         if (M.preloadData !== p) return;
-        p.total = p.fileInfos.size || 100000;
+        p.total = p.total || p.fileInfos.size || 100000;
         p.octets = p.total;
         if (typeof obj.onLoad === 'function') obj.onLoad(!!buf);
       });

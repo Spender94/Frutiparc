@@ -958,16 +958,31 @@ class Scene {
     this.base = ctx.getTransform();
     this.racine.dessinerDans(ctx, 1);
   }
-  tampon(niveau) {
+  /*
+   * UN TAMPON HORS ÉCRAN, À LA TAILLE DE CE QU'ON Y MET.
+   *
+   * Ces canevas servent aux compositions (teintes) : on y dessine l'objet,
+   * on le multiplie, on le rajoute, puis on le recopie. Tant qu'ils faisaient
+   * la taille de la scène entière, chaque changement de mode de composition
+   * coûtait une passe sur tout le canevas — huit millisecondes pour un
+   * confetti de dix-sept pixels. On les taille donc sur la boîte de l'objet.
+   *
+   * La taille est arrondie au multiple de 64 supérieur pour ne pas
+   * réallouer à chaque image (un `canvas.width = …` jette le tampon), et
+   * redescend quand elle devient quatre fois trop grande — un fond plein
+   * écran teinté ne doit pas garder sa mémoire pour la suite.
+   */
+  tampon(niveau, l, h) {
     let t = this.tampons[niveau];
     if (!t) {
       const c = document.createElement('canvas');
       t = { canvas: c, ctx: c.getContext('2d') };
       this.tampons[niveau] = t;
     }
-    if (t.canvas.width !== this.canvas.width || t.canvas.height !== this.canvas.height) {
-      t.canvas.width = this.canvas.width; t.canvas.height = this.canvas.height;
-    }
+    const arrondi = (v) => Math.max(64, Math.min(4096, Math.ceil(v / 64) * 64));
+    const vl = arrondi(l), vh = arrondi(h);
+    if (t.canvas.width < vl || t.canvas.width > vl * 4) t.canvas.width = vl;
+    if (t.canvas.height < vh || t.canvas.height > vh * 4) t.canvas.height = vh;
     return t;
   }
   // Dessine un objet : matrice, masque, transformation de couleur, puis son contenu.
@@ -993,46 +1008,94 @@ class Scene {
     contenu(ctx, a);
     ctx.restore();
   }
+  /*
+   * LA BOÎTE D'UN OBJET, EN PIXELS DU CANEVAS.
+   *
+   * La composition d'une teinte ci-dessous travaille hors écran : sans cette
+   * boîte, elle nettoie, peint et recopie DEUX CANEVAS ENTIERS pour chaque
+   * objet teinté, si petit soit-il. Un confetti de dix-sept unités de côté
+   * coûtait alors autant qu'un fond plein écran — six passes sur 700 × 700
+   * pixels, huit millisecondes, et vingt confettis à l'écran de fin de course
+   * de Burning Kiwi faisaient tomber le rendu à sept images par seconde.
+   *
+   * On borne donc chaque composition à ce que l'objet occupe réellement. Le
+   * cadre vient du contenu (formes, enfants, champs), passé par la matrice du
+   * moment ; deux pixels de marge couvrent l'antialiasing des bords, et un
+   * objet entièrement hors champ ne donne rien du tout — on saute.
+   *
+   * `null` veut dire « on ne sait pas » (pas de cadre calculable) : dans ce
+   * cas on compose le canevas entier, comme avant.
+   */
+  boiteDevice(ctx, obj) {
+    let cl;
+    try { cl = obj.cadreLocal(); } catch (e) { cl = null; }
+    if (!cl || !isFinite(cl[0]) || !isFinite(cl[1]) || !isFinite(cl[2]) || !isFinite(cl[3])) return null;
+    const M = ctx.getTransform().multiply(domMatrice(obj.matriceLocale()));
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of [[cl[0], cl[1]], [cl[2], cl[1]], [cl[0], cl[3]], [cl[2], cl[3]]]) {
+      const px = M.a * x + M.c * y + M.e;
+      const py = M.b * x + M.d * y + M.f;
+      if (px < x0) x0 = px; if (px > x1) x1 = px;
+      if (py < y0) y0 = py; if (py > y1) y1 = py;
+    }
+    if (!isFinite(x0) || !isFinite(y0) || !isFinite(x1) || !isFinite(y1)) return null;
+    const W = this.canvas.width, H = this.canvas.height;
+    const MARGE = 2;
+    const gx = Math.max(0, Math.floor(x0) - MARGE), gy = Math.max(0, Math.floor(y0) - MARGE);
+    const dx = Math.min(W, Math.ceil(x1) + MARGE), dy = Math.min(H, Math.ceil(y1) + MARGE);
+    if (dx <= gx || dy <= gy) return { x: 0, y: 0, w: 0, h: 0 };   // hors champ
+    return { x: gx, y: gy, w: dx - gx, h: dy - gy };
+  }
   // Composition hors écran pour une transformation de couleur (mult + add).
   dessinerTeinte(ctx, obj, alpha, contenu) {
-    const niveau = this.niveauTeinte++;
-    const t1 = this.tampon(niveau * 2), t2 = this.tampon(niveau * 2 + 1);
     const T = ctx.getTransform();
-    const W = t1.canvas.width, H = t1.canvas.height;
+    // Ce que cet objet occupe : tout le reste des tampons ne sert à rien.
+    const b = this.boiteDevice(ctx, obj) || { x: 0, y: 0, w: this.canvas.width, h: this.canvas.height };
+    if (b.w <= 0 || b.h <= 0) return;
+    const t1 = this.tampon(this.niveauTeinte * 2, b.w, b.h);
+    const t2 = this.tampon(this.niveauTeinte * 2 + 1, b.w, b.h);
+    // Le tampon a son origine au coin de la boîte : la scène y est décalée
+    // d'autant, et tout se joue ensuite en (0, 0, largeur, hauteur).
+    const Tb = new DOMMatrix().translateSelf(-b.x, -b.y).multiply(T);
+    this.niveauTeinte++;
     t1.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    t1.ctx.clearRect(0, 0, W, H);
-    t1.ctx.setTransform(T);
+    t1.ctx.clearRect(0, 0, b.w, b.h);
+    t1.ctx.setTransform(Tb);
     obj.$sansTeinte = true;
     const cx = obj.$cx;
     const alphaObj = cx[3];
     cx[3] = 256;
-    try { this.dessinerObjet(t1.ctx, obj, 1, contenu); } finally { obj.$sansTeinte = false; cx[3] = alphaObj; }
+    // Un masque se pose en repère de scène (`base`) : dans le tampon, ce
+    // repère est décalé du coin de la boîte comme tout le reste.
+    const base = this.base;
+    this.base = new DOMMatrix().translateSelf(-b.x, -b.y).multiply(base);
+    try { this.dessinerObjet(t1.ctx, obj, 1, contenu); } finally { obj.$sansTeinte = false; cx[3] = alphaObj; this.base = base; }
     this.niveauTeinte--;
     const c2 = t2.ctx;
     c2.setTransform(1, 0, 0, 1, 0, 0);
     c2.globalAlpha = 1;
     c2.globalCompositeOperation = 'source-over';
-    c2.clearRect(0, 0, W, H);
-    c2.drawImage(t1.canvas, 0, 0);
+    c2.clearRect(0, 0, b.w, b.h);
+    c2.drawImage(t1.canvas, 0, 0, b.w, b.h, 0, 0, b.w, b.h);
     if (cx[0] !== 256 || cx[1] !== 256 || cx[2] !== 256) {
       c2.globalCompositeOperation = 'multiply';
       c2.fillStyle = `rgb(${Math.round(Math.max(0, Math.min(256, cx[0])) / 256 * 255)},${Math.round(Math.max(0, Math.min(256, cx[1])) / 256 * 255)},${Math.round(Math.max(0, Math.min(256, cx[2])) / 256 * 255)})`;
-      c2.fillRect(0, 0, W, H);
+      c2.fillRect(0, 0, b.w, b.h);
       c2.globalCompositeOperation = 'destination-in';
-      c2.drawImage(t1.canvas, 0, 0);
+      c2.drawImage(t1.canvas, 0, 0, b.w, b.h, 0, 0, b.w, b.h);
     }
     if (cx[4] || cx[5] || cx[6]) {
       c2.globalCompositeOperation = 'lighter';
       c2.fillStyle = `rgb(${Math.max(0, Math.min(255, Math.round(cx[4])))},${Math.max(0, Math.min(255, Math.round(cx[5])))},${Math.max(0, Math.min(255, Math.round(cx[6])))})`;
-      c2.fillRect(0, 0, W, H);
+      c2.fillRect(0, 0, b.w, b.h);
       c2.globalCompositeOperation = 'destination-in';
-      c2.drawImage(t1.canvas, 0, 0);
+      c2.drawImage(t1.canvas, 0, 0, b.w, b.h, 0, 0, b.w, b.h);
     }
     c2.globalCompositeOperation = 'source-over';
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = alpha * Math.max(0, Math.min(1, alphaObj / 256));
-    ctx.drawImage(t2.canvas, 0, 0);
+    ctx.drawImage(t2.canvas, 0, 0, b.w, b.h, b.x, b.y, b.w, b.h);
     ctx.restore();
   }
 

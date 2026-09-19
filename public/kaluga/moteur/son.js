@@ -36,12 +36,18 @@ const audio = {
     if (c && c.state === 'suspended') c.resume().catch(() => {});
   },
   // Charge un son (mp3 ou wav) ; sans contexte audio, on n'a rien à décoder.
-  charger(nom, fichier) {
-    if (this.tampons[nom]) return Promise.resolve(this.tampons[nom]);
+  // `surProgres(octets, total)`, s'il est donné, suit le téléchargement : une
+  // musique de course pèse trois cents kilo-octets, et le jeu montre sa jauge
+  // pendant ce temps-là (K.telecharger, chargeur.js).
+  charger(nom, fichier, surProgres) {
+    if (this.tampons[nom]) { if (surProgres) surProgres(1, 1); return Promise.resolve(this.tampons[nom]); }
     if (this.attente[nom]) return this.attente[nom];
     const c = this.contexteOuvert();
     if (!c) return Promise.resolve(null);
-    this.attente[nom] = fetch(this.base + fichier).then((r) => (r.ok ? r.arrayBuffer() : null))
+    const prendre = (surProgres && K.telecharger)
+      ? K.telecharger(this.base + fichier, surProgres)
+      : fetch(this.base + fichier).then((r) => (r.ok ? r.arrayBuffer() : null));
+    this.attente[nom] = prendre
       .then((b) => (b ? c.decodeAudioData(b) : null))
       .then((buf) => { this.tampons[nom] = buf; delete this.attente[nom]; return buf; })
       .catch(() => { delete this.attente[nom]; return null; });
