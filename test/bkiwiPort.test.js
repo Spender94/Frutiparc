@@ -212,10 +212,13 @@ test('la session est blanche, et c\'est le quota de FD qui dit « challenge » o
 
 test('le score part avec le circuit et le mode, le claim de FD avec le mode ; le serveur en fait la part', () => {
   const P = lire('public/bkiwi/plateforme.js');
-  assert.match(P, /fetch\('\/do\/fdclaim'/);
+  // `requete()` et non `fetch()` : toute requête du client porte un délai,
+  // sans quoi une connexion qui ne revient pas fige le jeu (cf.
+  // test/bkiwiBlocages.test.js).
+  assert.match(P, /requete\('\/do\/fdclaim'/);
   assert.match(P, /game: 'bkiwi', track: String\(track\), mode: String\(mode\)/);
   assert.match(P, /if \(\/\^ok=0\/\.test\(texte\)\) \{[\s\S]*?this\.onError\(\);/, 'un refus de FD ramène au menu (client.error)');
-  assert.match(P, /fetch\('\/api\/saveScore\?' \+ p\.toString\(\)\)/);
+  assert.match(P, /requete\('\/api\/saveScore\?' \+ p\.toString\(\)\)/);
   assert.match(P, /track: String\(track\), gm: String\(mode\),/);
   assert.match(P, /game: 'bkiwi', slotId: String\(n\), data: serialiserSlot\(donnees\)/);
   const S = lire('server.js');

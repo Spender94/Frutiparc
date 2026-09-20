@@ -82,6 +82,78 @@ function serialiserSlot(obj) {
   return JSON.stringify(obj, (k, v) => (typeof v === 'number' && !Number.isFinite(v) ? (v > 0 ? INFINI_JSON : -INFINI_JSON) : v));
 }
 
+/*
+ * AUCUNE REQUÊTE NE DOIT POUVOIR FIGER LE JEU.
+ *
+ * Le jeu attend le réseau à cinq endroits, et à chaque fois il attend un
+ * drapeau (`fl_success`, `connected`, `error`) en boucle, avec un voyant
+ * « réseau » à l'écran : l'ouverture de la session au menu, le départ d'une
+ * course (le portillon des Fruits Défendus), l'enregistrement du score À
+ * L'ARRIVÉE, l'écriture des cases de la fruticard et le fantôme.
+ *
+ * Or `fetch` N'A PAS DE DÉLAI. Une connexion qui part et ne revient pas — un
+ * téléphone qui change d'antenne, un mobile qui passe en veille, un proxy qui
+ * avale la requête — laisse la promesse en suspens POUR TOUJOURS. Le jeu
+ * reste alors sur son voyant, la boucle de phase tourne dans le vide, et
+ * aucune touche n'en sort : il n'y a plus qu'à éjecter le disque. C'est
+ * exactement ce que décrivent les joueurs après une course — la phase 40 de
+ * la fin (`saveScore`) est le premier écran qui suit l'arrivée.
+ *
+ * Toute requête passe donc par ici, avec un délai. Passé ce délai on tranche
+ * comme un échec réseau ordinaire — chemin que chaque appelant sait déjà
+ * traiter : on perd le classement de cette course, jamais la partie.
+ */
+const DELAI_RESEAU = 9000;            // ms — au-delà, la requête est perdue
+function requete(url, options, delai) {
+  const ms = delai || DELAI_RESEAU;
+  if (typeof AbortController !== 'function') return fetch(url, options);
+  const ctl = new AbortController();
+  const minuterie = setTimeout(() => ctl.abort(), ms);
+  const opts = Object.assign({}, options, { signal: ctl.signal });
+  return fetch(url, opts).then(
+    (r) => { clearTimeout(minuterie); return r; },
+    (e) => {
+      clearTimeout(minuterie);
+      throw (e && e.name === 'AbortError') ? new Error('délai dépassé : ' + url) : e;
+    },
+  );
+}
+J.requete = requete;
+
+/*
+ * LE PANNEAU DE PANNE.
+ *
+ * Quand le jeu s'arrête pour de bon (J.fatal, moteur.js), il n'y a plus de
+ * boucle pour dessiner quoi que ce soit : le panneau est donc posé DANS LA
+ * PAGE, par-dessus la toile. Il dit ce qui s'est passé et rouvre le jeu d'un
+ * clic — c'est ce que le joueur obtenait en éjectant le disque et en le
+ * remettant, sans le disque à éjecter.
+ */
+J.montrerPanneEtRelancer = function (message) {
+  if (typeof document === 'undefined' || document.getElementById('bkiwi-panne')) return;
+  const boite = document.createElement('div');
+  boite.id = 'bkiwi-panne';
+  boite.style.cssText = [
+    'position:fixed', 'inset:0', 'z-index:2147483600', 'display:flex',
+    'flex-direction:column', 'align-items:center', 'justify-content:center', 'gap:14px',
+    'background:rgba(28,10,44,.92)', 'color:#fff', 'text-align:center', 'padding:24px',
+    'font:bold 13px Verdana,Arial,sans-serif', 'cursor:pointer',
+  ].join(';');
+  const titre = document.createElement('div');
+  titre.textContent = String(message || 'Le jeu s’est arrêté');
+  titre.style.cssText = 'max-width:300px;line-height:1.5;text-shadow:0 1px 0 rgba(0,0,0,.4)';
+  const bouton = document.createElement('div');
+  bouton.textContent = 'Relancer le jeu';
+  bouton.style.cssText = [
+    'border:3px solid #fff', 'border-radius:14px', 'background:#c9531b',
+    'padding:10px 22px', 'font:bold 15px Verdana,Arial,sans-serif',
+  ].join(';');
+  boite.appendChild(titre);
+  boite.appendChild(bouton);
+  boite.addEventListener('click', () => { try { location.reload(); } catch (e) { /* rien à faire de plus */ } });
+  (document.body || document.documentElement).appendChild(boite);
+};
+
 class Client {
   constructor(sid) {
     this.sid = sid || '';
@@ -119,7 +191,7 @@ class Client {
   }
   chargerFd() {
     if (!this.sid) return Promise.resolve();
-    return fetch('/api/fd/status?sid=' + encodeURIComponent(this.sid) + '&game=bkiwi', { cache: 'no-store' })
+    return requete('/api/fd/status?sid=' + encodeURIComponent(this.sid) + '&game=bkiwi', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (j && j.ok) this.fd = j; })
       .catch(() => {});
@@ -127,7 +199,7 @@ class Client {
   // La course du jour, dite par le serveur : dailyData = <daily trk="N"/>,
   // ce que le menu (phase 140) lit comme le XML d'époque.
   chargerCourseDuJour() {
-    return fetch('/api/bkiwi/daily' + (this.sid ? '?sid=' + encodeURIComponent(this.sid) : ''), { cache: 'no-store' })
+    return requete('/api/bkiwi/daily' + (this.sid ? '?sid=' + encodeURIComponent(this.sid) : ''), { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (j && j.ok && Number.isFinite(Number(j.trk))) this.dailyData = '<daily trk="' + Number(j.trk) + '"/>';
@@ -155,7 +227,7 @@ class Client {
       M.fantomeTrack = track;
     }
     if (!this.sid) return Promise.resolve(M.previousGhost);
-    return fetch('/api/bkiwi/ghost?sid=' + encodeURIComponent(this.sid) + '&track=' + encodeURIComponent(track), { cache: 'no-store' })
+    return requete('/api/bkiwi/ghost?sid=' + encodeURIComponent(this.sid) + '&track=' + encodeURIComponent(track), { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (!j || !j.ok || !j.ghost) return M.previousGhost;
@@ -177,7 +249,7 @@ class Client {
     if (!this.sid) return Promise.resolve(false);
     const data = J.encoderFantome(ghost);
     if (!data) return Promise.resolve(false);
-    return fetch('/api/bkiwi/ghost', {
+    return requete('/api/bkiwi/ghost', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -207,11 +279,11 @@ class Client {
       this.chargerCourseDuJour().then(() => this.onServiceConnect());
       return;
     }
-    const profil = fetch('/api/light/profile?sid=' + encodeURIComponent(this.sid), { cache: 'no-store' })
+    const profil = requete('/api/light/profile?sid=' + encodeURIComponent(this.sid), { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((p) => { if (p && (p.user || p.username)) this.pseudo = p.user || p.username; })
       .catch(() => {});
-    const slots = fetch('/api/loadFrutiSlots?sid=' + encodeURIComponent(this.sid) + '&game=bkiwi', { cache: 'no-store' })
+    const slots = requete('/api/loadFrutiSlots?sid=' + encodeURIComponent(this.sid) + '&game=bkiwi', { cache: 'no-store' })
       .then((r) => {
         if (!r.ok) throw new Error('loadFrutiSlots ' + r.status);
         return r.text();
@@ -256,7 +328,7 @@ class Client {
     if (!this.sid) { fantome.then(() => this.onStartGame()); return; }
     // Le portillon des Fruits Défendus : seul le Challenge (ARCADE = 1) en
     // consomme un ; un refus (ok=0) ramène au menu, comme le SWF rustiné.
-    Promise.all([fantome, fetch('/do/fdclaim', {
+    Promise.all([fantome, requete('/do/fdclaim', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ sid: this.sid, game: 'bkiwi', track: String(track), mode: String(mode) }).toString(),
@@ -306,7 +378,7 @@ class Client {
       sid: this.sid, game: 'bkiwi', score: String(Math.max(0, Math.floor(Number(score) || 0))), data,
       track: String(track), gm: String(mode),
     });
-    fetch('/api/saveScore?' + p.toString())
+    requete('/api/saveScore?' + p.toString())
       .then((r) => r.json().catch(() => null).then((j) => (j && typeof j === 'object' ? j : { ok: r.ok, error: 'reseau' })))
       .catch(() => ({ ok: false, error: 'reseau' }))
       .then(finir);
@@ -327,7 +399,7 @@ class Client {
     if (!this.sid || !this.charge) return Promise.resolve(false);
     const donnees = this.slots[n];
     if (donnees === undefined) return Promise.resolve(false);
-    return fetch('/api/saveFrutiSlot', {
+    return requete('/api/saveFrutiSlot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ sid: this.sid, game: 'bkiwi', slotId: String(n), data: serialiserSlot(donnees) }).toString(),

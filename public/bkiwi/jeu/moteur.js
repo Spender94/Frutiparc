@@ -909,12 +909,27 @@ J.installerMoteur = function (M) {
   };
 
   // ERREUR CRITIQUE
+  /*
+   * L'ERREUR FATALE, ET LA PORTE DE SORTIE.
+   *
+   * `M.stop()` arrête le clip principal : sa boucle de deux images ne rappelle
+   * plus `J.main()`, donc plus rien ne tourne — ni menu, ni touches, ni clic.
+   * C'est ce que fait le fichier, et c'était tenable en 2004 : la plateforme
+   * des Fruits Défendus, autour du jeu, montrait l'erreur et refermait le
+   * disque. Ici il n'y a pas de plateforme autour : le joueur se retrouvait
+   * devant une image morte, sans un mot, et n'avait plus qu'à éjecter le FD
+   * pour relancer une partie — ce que les joueurs décrivent.
+   *
+   * On garde donc l'arrêt (le jeu est dans un état où il ne faut plus rien
+   * écrire), mais on DIT ce qui s'est passé et on rouvre le jeu d'un clic.
+   */
   J.fatal = function (msgUser, msg) {
     error('(FATAL ) ' + msgUser);
     error('(FATAL ) ' + msg);
     client().logError(msgUser + '\n----------\nInformations complémentaires:\n' + msg + ' (' + M.buildVersion + '/' + M.buildDate + ') ');
     M.stop();
     M.fatalError = msgUser;
+    if (typeof J.montrerPanneEtRelancer === 'function') J.montrerPanneEtRelancer(msgUser);
   };
   J.report = function (msg) {
     warning('(REPORT) ' + msg);

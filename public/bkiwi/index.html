@@ -115,6 +115,13 @@
 <!-- Le disque sorti de la Frusion ferme le jeu, et le battement tient le
      voyant « joue à Burning Kiwi » (data-jeu = swfName du disque, GAME_DISCS). -->
 <script src="/js/eject-watch.js" data-jeu="bkiwi"></script>
+<!-- Combien de courses classées reste-t-il aujourd'hui ? Burning Kiwi est
+     rationné comme Kaluga, MotionBall 2, Frutisnake et Swapou (server.js,
+     FD_LIMITED_GAMES) : passé le quota, on continue de courir mais le temps
+     n'entre plus au Challenge — le menu bascule alors sur les « essais ».
+     Rien ne le disait ici : le bandeau l'affiche en permanence, comme sur les
+     jeux Flash (game-popup.html) et sur Swapou. -->
+<script src="/js/fd-badge.js" data-jeu="bkiwi"></script>
 <script>
 (function () {
   'use strict';

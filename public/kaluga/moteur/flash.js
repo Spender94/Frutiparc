@@ -134,10 +134,50 @@ class Affichable {
   }
   get _visible() { return this.$visible; }
   set _visible(v) { this.$visible = !!v; }
+  /*
+   * `_width` ET `_height` : ON REPART TOUJOURS DE LA TAILLE NATURELLE.
+   *
+   * Poser `_width` redimensionne le clip pour que sa boîte fasse cette
+   * largeur. On le faisait en RELATIF — « multiplie l'échelle par le rapport
+   * des largeurs » — et cela a un point mort : une fois la largeur à zéro,
+   * l'échelle est à zéro, et zéro fois quoi que ce soit fait zéro. Le clip ne
+   * pouvait PLUS JAMAIS repousser.
+   *
+   * Ce n'est pas un cas d'école. La jauge de vitesse de Burning Kiwi est un
+   * masque que `resetGame` met à `_width = 0` au départ de chaque course,
+   * puis que le jeu fait grandir à chaque image (`maskSpeedBar._width =
+   * vitesse × 95 / max`). Elle restait donc à zéro : AUCUNE barre de vitesse,
+   * ni pendant le décompte, ni pendant la course. Or c'est sur cette barre
+   * que le joueur cale son super départ — il faut lâcher l'accélérateur
+   * pile à la vitesse optimale. Sans elle, on part à l'aveugle : « c'est plus
+   * difficile de faire un départ parfait sur la version light ».
+   *
+   * Flash, lui, divise par la largeur du DESSIN (l'objet non mis à l'échelle)
+   * et peut donc toujours revenir. On fait pareil. Pour un clip TOURNÉ, dont
+   * la boîte dans le parent n'est plus proportionnelle à son échelle, on garde
+   * l'ancien calcul relatif : c'est ce que le lecteur faisait, et aucun de nos
+   * jeux ne redimensionne un clip tourné.
+   */
   get _width() { const c = this.cadreParent(); return c ? c[2] - c[0] : 0; }
-  set _width(v) { const w = this._width; if (w > 0) this._xscale = this._xscale * v / w; }
+  set _width(v) {
+    const l = this.cadreLocal();
+    if (!l) return;
+    const naturelle = l[2] - l[0];
+    const tourne = Math.abs(this.$b) > 1e-9 || Math.abs(this.$c) > 1e-9;
+    if (tourne) { const w = this._width; if (w > 0) this._xscale = this._xscale * v / w; return; }
+    if (!(naturelle > 0)) return;
+    this._xscale = (v / naturelle) * 100 * (this.$a < 0 ? -1 : 1);
+  }
   get _height() { const c = this.cadreParent(); return c ? c[3] - c[1] : 0; }
-  set _height(v) { const h = this._height; if (h > 0) this._yscale = this._yscale * v / h; }
+  set _height(v) {
+    const l = this.cadreLocal();
+    if (!l) return;
+    const naturelle = l[3] - l[1];
+    const tourne = Math.abs(this.$b) > 1e-9 || Math.abs(this.$c) > 1e-9;
+    if (tourne) { const h = this._height; if (h > 0) this._yscale = this._yscale * v / h; return; }
+    if (!(naturelle > 0)) return;
+    this._yscale = (v / naturelle) * 100 * (this.$d < 0 ? -1 : 1);
+  }
   get _xmouse() { return this.globalToLocal({ x: K.scene.souris.x, y: K.scene.souris.y }).x; }
   get _ymouse() { return this.globalToLocal({ x: K.scene.souris.x, y: K.scene.souris.y }).y; }
   get _root() { return K.scene ? K.scene.racine : null; }
@@ -874,6 +914,29 @@ class Scene {
     K.Std.reset();
   }
 
+  /*
+   * UNE ERREUR NE DOIT PAS TUER LE JEU.
+   *
+   * `requestAnimationFrame` se REDEMANDE à la fin de chaque tour : si un
+   * script d'image lève une exception au milieu, la ligne qui redemande
+   * l'image suivante n'est jamais atteinte et la boucle s'arrête POUR
+   * TOUJOURS. L'écran se fige sur sa dernière image, plus une touche ne
+   * répond, et il n'y a plus qu'à recharger — ou, sur le bureau, à éjecter le
+   * disque. Une seule faute dans un coin du jeu, et toute la partie est
+   * perdue.
+   *
+   * On isole donc le pas et le tracé : l'image en cours est sacrifiée, la
+   * boucle continue. La faute est dite une fois (les suivantes seraient
+   * quarante par seconde) et retenue dans `pannes`, pour qu'on puisse la
+   * retrouver.
+   */
+  signalerPanne(ou, e) {
+    if (!this.pannes) this.pannes = [];
+    const cle = ou + ':' + ((e && e.message) || e);
+    if (this.pannes.indexOf(cle) >= 0) return;
+    this.pannes.push(cle);
+    if (typeof console !== 'undefined') console.error('[kaluga] ' + ou + ' :', e);
+  }
   // ── boucle ──
   demarrer() {
     if (this.actif) return;
@@ -881,6 +944,9 @@ class Scene {
     this.tPrecedent = null;
     const boucle = (t) => {
       if (!this.actif) return;
+      // Redemandée D'ABORD : quoi qu'il arrive ensuite, il y aura une image
+      // de plus.
+      this.rafId = requestAnimationFrame(boucle);
       if (this.tPrecedent === null) { this.tPrecedent = t; }
       this.accumule += Math.min(t - this.tPrecedent, 500);
       this.tPrecedent = t;
@@ -888,7 +954,7 @@ class Scene {
       while (this.accumule >= this.periode && n < 3) {
         this.accumule -= this.periode;
         this.horloge += this.periode;
-        this.tick();
+        try { this.tick(); } catch (e) { this.signalerPanne('pas', e); }
         n++;
       }
       if (this.accumule >= this.periode) {
@@ -897,8 +963,7 @@ class Scene {
         this.accumule -= saut;
         this.horloge += saut;
       }
-      if (n) this.rendre();
-      this.rafId = requestAnimationFrame(boucle);
+      if (n) { try { this.rendre(); } catch (e) { this.signalerPanne('tracé', e); } }
     };
     this.rafId = requestAnimationFrame(boucle);
   }

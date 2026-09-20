@@ -871,13 +871,39 @@ J.installerMenu = function (M) {
         M.vs.menuPhase++;
         break;
 
-      // ***** CONNEXION : connecté et prêt (onServerReady) *****
+      /*
+       * CONNEXION : connecté et prêt (onServerReady)
+       *
+       * D'ÉPOQUE, un échec ici posait `menuPhase = -1` et s'en remettait à la
+       * plateforme des Fruits Défendus, autour du jeu, pour montrer l'erreur
+       * et refermer le disque. Ici il n'y a pas de plateforme autour : la
+       * phase -1 est l'attente d'un bouton, et AUCUN bouton n'a encore été
+       * posé (on n'a pas atteint la phase 99). Le joueur se retrouvait devant
+       * un fond de menu vide et muet — plus qu'à éjecter le FD.
+       *
+       * On réessaie donc une fois, puis on entre QUAND MÊME dans le menu, en
+       * mode hors ligne : `charge` reste faux, donc aucune case de la
+       * fruticard ne sera écrite (Client.saveSlot le refuse) — on ne risque
+       * pas d'écraser des records avec une carte vide. On joue, on ne garde
+       * rien, et c'est infiniment mieux qu'un écran mort.
+       */
       case 121:
         if (client().error) {
+          if (!M.reconnexionFaite) {
+            M.reconnexionFaite = true;
+            client().serviceConnect();
+            break;
+          }
+          M.fl_allowReset = true;
+          J.initFrutiCardContent();
+          J.readFrutiCard();
           J.detachNetworkPop();
-          M.vs.menuPhase = -1;
+          J.report('service indisponible : menu en mode hors ligne');
+          M.vs.menuPhase++;
+          break;
         }
         if (client().connected) {
+          M.reconnexionFaite = false;
           M.fl_allowReset = true;
           J.initFrutiCardContent();
           J.readFrutiCard();
