@@ -882,6 +882,117 @@ class Color {
 K.Color = Color;
 
 // ── La scène ──────────────────────────────────────────────────────────────
+/*
+ * LA TRANSFORMATION DE COULEUR, TELLE QUE FLASH LA FAIT.
+ *
+ * Un placement porte un `cx` : multiplier chaque composante, puis lui AJOUTER
+ * un décalage — `out = src · m / 256 + a`, sur la couleur NON prémultipliée,
+ * l'alpha compris. Les décalages vont de −255 à +255.
+ *
+ * On le faisait à coups de compositions : « multiply » pour les
+ * multiplicateurs, « lighter » pour les décalages. Mais `lighter` ne sait
+ * qu'AJOUTER, et le code bornait donc les décalages à zéro :
+ *
+ *     `rgb(${Math.max(0, Math.min(255, Math.round(cx[4])))}, …)`
+ *
+ * Tout décalage NÉGATIF — c'est-à-dire tout ASSOMBRISSEMENT — était purement
+ * et simplement jeté. Or la piste de Burning Kiwi en porte un : son clip
+ * `track` a `cx = [256, 256, 256, 256, −70, −70, −21, 0]`, soixante-dix
+ * niveaux de moins sur le rouge et le vert. Le jeu se jouait donc dans une
+ * lumière qu'il n'a jamais eue, et les voitures, qui portent un décalage
+ * POSITIF (+70), ressortaient d'autant plus.
+ *
+ * Un `feColorMatrix` fait exactement ce calcul, décalages négatifs compris,
+ * sur la couleur non prémultipliée, et `ctx.filter` sait le poser sur un
+ * `drawImage`. Une passe au lieu de cinq, et le bon résultat. Vérifié :
+ * (110, 151, 59) + (−70, −70, −21) rend (40, 81, 38) au pixel près.
+ *
+ * `ctx.filter` manque aux Safari d'avant la version 17 : on le sonde une fois
+ * et l'on garde l'ancienne composition pour eux — même image qu'aujourd'hui,
+ * jamais pire.
+ */
+/*
+ * Un filtre par `cx` distinct, gardé une fois pour toutes. Le parc est borné
+ * par le CONTENU : mesuré au navigateur, Burning Kiwi en pose 197 pendant une
+ * course (stable de la dixième à la cent-vingtième seconde) et 251 quand on a
+ * visité tous ses écrans ; MotionBall 2, 22 ; Kaluga, aucun. Un portage futur
+ * qui ferait varier une teinte en continu en demanderait, lui, sans fin : on
+ * s'arrête donc à mille et l'on repasse alors par l'ancienne composition —
+ * moins juste, mais le DOM ne gonfle pas.
+ */
+const PLAFOND_FILTRES = 1000;
+const filtresCx = new Map();
+let filtreDispo = null;            // null = pas encore sondé
+function filtreUtilisable() {
+  if (filtreDispo !== null) return filtreDispo;
+  filtreDispo = false;
+  try {
+    if (typeof document === 'undefined') return false;
+    const c = document.createElement('canvas'); c.width = 1; c.height = 1;
+    const x = c.getContext('2d');
+    if (typeof x.filter !== 'string') return false;
+    // On vérifie que le filtre AGIT vraiment : déclarer la propriété ne
+    // suffit pas, certains moteurs l'acceptent et l'ignorent.
+    const id = poserFiltre([256, 256, 256, 256, -255, -255, -255, 0]);
+    if (!id) return false;
+    const src = document.createElement('canvas'); src.width = 1; src.height = 1;
+    const sx = src.getContext('2d');
+    sx.fillStyle = '#ffffff'; sx.fillRect(0, 0, 1, 1);
+    x.filter = id; x.drawImage(src, 0, 0); x.filter = 'none';
+    const d = x.getImageData(0, 0, 1, 1).data;
+    filtreDispo = d[0] < 20 && d[3] > 200;       // le blanc est devenu noir
+  } catch (e) { filtreDispo = false; }
+  return filtreDispo;
+}
+/**
+ * Les vingt coefficients d'un `feColorMatrix` pour le `cx` d'un placement.
+ * Les multiplicateurs de Flash sont sur 256, ses décalages sur 255 — et le
+ * filtre, lui, travaille en fractions : c'est toute la conversion.
+ */
+function matriceCouleur(cx) {
+  const k = (i) => cx[i] / 256;
+  const d = (i) => cx[i] / 255;
+  return [
+    k(0), 0, 0, 0, d(4),
+    0, k(1), 0, 0, d(5),
+    0, 0, k(2), 0, d(6),
+    0, 0, 0, k(3), d(7),
+  ];
+}
+K.matriceCouleur = matriceCouleur;
+
+function poserFiltre(cx) {
+  const cle = cx.join(',');
+  if (filtresCx.has(cle)) return filtresCx.get(cle);
+  if (filtresCx.size >= PLAFOND_FILTRES) return null;
+  let valeur = null;
+  try {
+    const ns = 'http://www.w3.org/2000/svg';
+    let hote = document.getElementById('kaluga-filtres');
+    if (!hote) {
+      hote = document.createElementNS(ns, 'svg');
+      hote.setAttribute('id', 'kaluga-filtres');
+      hote.setAttribute('width', '0');
+      hote.setAttribute('height', '0');
+      hote.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
+      (document.body || document.documentElement).appendChild(hote);
+    }
+    const id = 'kaluga-cx-' + filtresCx.size;
+    const filtre = document.createElementNS(ns, 'filter');
+    filtre.setAttribute('id', id);
+    // sRGB : Flash calcule sur les octets tels quels, pas en linéaire.
+    filtre.setAttribute('color-interpolation-filters', 'sRGB');
+    const m = document.createElementNS(ns, 'feColorMatrix');
+    m.setAttribute('type', 'matrix');
+    m.setAttribute('values', matriceCouleur(cx).join(' '));
+    filtre.appendChild(m);
+    hote.appendChild(filtre);
+    valeur = 'url(#' + id + ')';
+  } catch (e) { valeur = null; }
+  filtresCx.set(cle, valeur);
+  return valeur;
+}
+
 class Scene {
   constructor(canvas, biblio, options) {
     K.scene = this;
@@ -1118,7 +1229,6 @@ class Scene {
     const b = this.boiteDevice(ctx, obj) || { x: 0, y: 0, w: this.canvas.width, h: this.canvas.height };
     if (b.w <= 0 || b.h <= 0) return;
     const t1 = this.tampon(this.niveauTeinte * 2, b.w, b.h);
-    const t2 = this.tampon(this.niveauTeinte * 2 + 1, b.w, b.h);
     // Le tampon a son origine au coin de la boîte : la scène y est décalée
     // d'autant, et tout se joue ensuite en (0, 0, largeur, hauteur).
     const Tb = new DOMMatrix().translateSelf(-b.x, -b.y).multiply(T);
@@ -1136,7 +1246,27 @@ class Scene {
     this.base = new DOMMatrix().translateSelf(-b.x, -b.y).multiply(base);
     try { this.dessinerObjet(t1.ctx, obj, 1, contenu); } finally { obj.$sansTeinte = false; cx[3] = alphaObj; this.base = base; }
     this.niveauTeinte--;
-    const c2 = t2.ctx;
+
+    // LA VOIE JUSTE : un feColorMatrix fait `src · m + a` d'un coup, décalages
+    // négatifs compris, sur la couleur non prémultipliée — le calcul même de
+    // Flash. Une passe, et le bon résultat.
+    if (filtreUtilisable()) {
+      const f = poserFiltre([cx[0], cx[1], cx[2], 256, cx[4], cx[5], cx[6], cx[7]]);
+      if (f) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = alpha * Math.max(0, Math.min(1, alphaObj / 256));
+        ctx.filter = f;
+        ctx.drawImage(t1.canvas, 0, 0, b.w, b.h, b.x, b.y, b.w, b.h);
+        ctx.restore();
+        return;
+      }
+    }
+
+    // LA VOIE DE SECOURS, pour les lecteurs sans `ctx.filter` (Safari d'avant
+    // la 17) : les compositions d'avant. Les décalages négatifs y restent
+    // perdus — c'est l'image d'aujourd'hui, jamais pire.
+    const c2 = this.tampon(this.niveauTeinte * 2 + 1, b.w, b.h).ctx;
     c2.setTransform(1, 0, 0, 1, 0, 0);
     c2.globalAlpha = 1;
     c2.globalCompositeOperation = 'source-over';
@@ -1160,7 +1290,7 @@ class Scene {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = alpha * Math.max(0, Math.min(1, alphaObj / 256));
-    ctx.drawImage(t2.canvas, 0, 0, b.w, b.h, b.x, b.y, b.w, b.h);
+    ctx.drawImage(c2.canvas, 0, 0, b.w, b.h, b.x, b.y, b.w, b.h);
     ctx.restore();
   }
 
