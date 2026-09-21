@@ -1021,6 +1021,39 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 .trombi-empty {
   color: hsl(256 13% 85.7%);
 }
+#trombi-mode {
+  background: hsl(256 30% 10% / 0.45);
+  color: hsl(325 58% 86.6%);
+}
+#trombi-mode[aria-pressed="true"] {
+  background: hsl(256 30% 10%);
+  color: hsl(325 58% 87.5%);
+  box-shadow: 0 1px 2px hsl(256 13% 17.5% / 0.25);
+}
+.bq-bouton {
+  background: hsl(325 34% 30.6%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
+  color: hsl(325 58% 86.9%);
+}
+.bq-bouton:active {
+  background: hsl(325 34% 32%);
+}
+#trombi-bq-rows {
+  background: hsl(256 30% 10% / 0.55);
+}
+.fb-row.bq-libre .bq-texte {
+  color: hsl(325 58% 86.5%);
+}
+.fb-row.bq-libre .fb-label {
+  color: hsl(325 58% 86.7%);
+}
+.fb-row.bq-libre .fb-bar {
+  background: repeating-linear-gradient(45deg, hsl(256 30% 19.9%) 0 4px, hsl(256 30% 16.5%) 4px 8px) !important;
+  border-color: hsl(256 26% 42%) !important;
+}
+.trombi-proches {
+  color: hsl(325 58% 86.6%);
+}
 #sc-fenetre {
   border: 4px solid hsl(256 26% 36%);
   box-shadow: 0 0 0 1px hsl(256 26% 52.5%), 0 2px 6px hsl(256 13% 0% / 0.25);

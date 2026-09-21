@@ -1878,6 +1878,64 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .trombi-empty { grid-column: 1 / -1; text-align: center; color: #888; font-size: 13px; padding: 22px 10px; }
+  /* ── Le Bouilloscope à l'envers : chercher par la bouille ──────────────
+     Le tiroir reprend TELS QUELS les habits de l'éditeur « Ma Frutibouille »
+     (.fb-ecran, .fb-rows, .fb-row, .fb-arrow, .fb-label, .fb-sample) — c'est
+     le même geste, ce doit être la même chose à l'œil. Ce qui s'y ajoute est
+     propre à la recherche : l'état « peu importe » d'une ligne, et les deux
+     boutons de départ. */
+  #trombi-barre { display: flex; gap: 6px; align-items: center; }
+  #trombi-barre #trombi-search { flex: 1 1 auto; width: auto; }
+  #trombi-mode {
+    flex: 0 0 auto; border: 0; border-radius: 14px; padding: 8px 10px;
+    background: rgba(255,255,255,.45); color: #7a1f1f;
+    font: bold 12px Verdana, Arial, sans-serif; cursor: pointer; white-space: nowrap;
+  }
+  #trombi-mode[aria-pressed="true"] { background: #fff; color: #D16767; box-shadow: 0 1px 2px rgba(44,74,15,.25); }
+  #trombi-bq { display: none; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+  #trombi-bq.show { display: flex; }
+  #trombi-bq-gauche { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  #trombi-bq-gauche .fb-ecran { margin: 0 0 2px; }
+  .bq-bouton {
+    border: 0; border-radius: 8px; padding: 3px 8px; background: #FFAAAD;
+    box-shadow: inset 0 0 0 1.5px #F28687; color: #660000;
+    font: bold 10px Verdana, Arial, sans-serif; cursor: pointer; white-space: nowrap;
+  }
+  .bq-bouton:active { background: #F49B9E; }
+  /* Les rangées prennent le reste de la largeur : une colonne sur le
+     téléphone, deux dans la fenêtre du bureau (780 de large). */
+  /* Bornée : dans la fenêtre du bureau (780 de large), une rangée étirée
+     mettrait un demi-mètre entre ses deux flèches. L'éditeur tient en 214 px
+     de large — on reste dans cet ordre de grandeur. */
+  #trombi-bq-rows {
+    flex: 1 1 260px; min-width: 240px; max-width: 420px;
+    background: rgba(255,255,255,.55); border-radius: 10px; padding: 4px 6px;
+  }
+  #trombi-bq-rows .fb-row { height: 24px; }
+  #trombi-bq-rows .fb-arrow { flex: 0 0 24px; width: 24px; height: 24px; background-size: 23px 23px; }
+  #trombi-bq-rows .fb-label { cursor: pointer; }
+  #trombi-bq-rows .fb-sample { cursor: pointer; margin: 0 8px; }
+  #trombi-bq-rows .fb-bar { display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .bq-texte {
+    font: 10px Verdana, Arial, sans-serif; padding: 0 6px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* La couleur du texte « peu importe » vit ICI et non en ligne : le
+     générateur du mode nuit (scripts/generer-nuit.js) ne relit que la
+     feuille de style, et un gris posé en JS resterait illisible la nuit. */
+  .fb-row.bq-libre .bq-texte { font-style: italic; color: #8a6a6a; }
+  /* « Peu importe » : la ligne s'efface sans disparaître — on doit voir d'un
+     coup d'œil ce qu'on a décrit et ce qu'on a laissé libre. */
+  .fb-row.bq-libre .fb-label { color: #9a6a6a; font-style: italic; }
+  .fb-row.bq-libre .fb-sample { opacity: .5; }
+  .fb-row.bq-libre .fb-bar {
+    background: repeating-linear-gradient(45deg, #EDEDED 0 4px, #DCDCDC 4px 8px) !important;
+    border-color: #CCCCCC !important;
+  }
+  .trombi-proches {
+    grid-column: 1 / -1; text-align: center; color: #7a1f1f; font-size: 12px;
+    padding: 10px 8px 2px; line-height: 1.5;
+  }
   /* ══════════════════════════════════════════════════════════════════════
      LE TABLEAU DES SCORES — la fenêtre du bureau, à l'identique.
 
@@ -2489,6 +2547,7 @@
 <script src="/js/bouille-vignette.js"></script>
 <!-- Palette de couleurs (sélecteur visuel de l'éditeur « Ma Frutibouille »). -->
 <script src="/js/bouille-palette.js"></script>
+<script src="/js/bouille-recherche.js"></script>
 </head>
 <body>
 
@@ -3083,8 +3142,23 @@
        serveur. Barre de recherche en tête, grille scrollable de bouilles. -->
   <section class="panel" id="trombi-panel">
     <div id="trombi-head">
-      <input id="trombi-search" type="search" placeholder="Rechercher un Frutiz…" autocomplete="off">
+      <div id="trombi-barre">
+        <input id="trombi-search" type="search" placeholder="Rechercher un Frutiz…" autocomplete="off">
+        <!-- LA RECHERCHE INVERSÉE. Vingt ans après, on se souvient mieux de sa
+             tête que de son pseudo : ce bouton ouvre l'éditeur de bouilles en
+             mode QUESTION, et l'annuaire se filtre sur les traits décrits. -->
+        <button id="trombi-mode" type="button" aria-pressed="false"
+                title="Chercher par bouille">par bouille</button>
+      </div>
       <div id="trombi-letters"></div>
+      <div id="trombi-bq">
+        <div id="trombi-bq-gauche">
+          <div class="fb-ecran" id="trombi-bq-ecran"></div>
+          <button class="bq-bouton" id="trombi-bq-mienne" type="button">ma bouille</button>
+          <button class="bq-bouton" id="trombi-bq-vider" type="button">tout effacer</button>
+        </div>
+        <div class="fb-rows" id="trombi-bq-rows"></div>
+      </div>
     </div>
     <div id="trombi-body"></div>
     <div id="trombi-pager"></div>
@@ -4673,11 +4747,33 @@
       .catch(function () { if (body) body.innerHTML = '<div class="trombi-empty">Impossible de charger le trombinoscope.</div>'; });
   }
   function trombiQuery() { var se = $("#trombi-search"); return ((se && se.value) || "").trim().toLowerCase(); }
-  function trombiFiltered() {
+  // Le tri par PSEUDO : la recherche texte, sinon la lettre, sinon tout.
+  function trombiParPseudo() {
     var q = trombiQuery();
     if (q) return (trombiData || []).filter(function (e) { return String(e.pseudo).toLowerCase().indexOf(q) !== -1; });
     if (trombiLetter && trombiLetter !== "Tous") return (trombiData || []).filter(function (e) { return trombiFirstLetter(e.pseudo) === trombiLetter; });
     return trombiData || [];
+  }
+  /*
+   * LES DEUX FILTRES SE COMPOSENT.
+   *
+   * On réduit d'abord par le pseudo (la recherche d'origine), puis par la
+   * bouille décrite. « Ça commençait par un K et il avait les cheveux verts »
+   * est une phrase qu'on entend, et les deux moitiés doivent pouvoir jouer
+   * ensemble.
+   *
+   * `trombiProches` recueille le repêchage : quand la description ne rend
+   * personne, la liste des têtes les plus RESSEMBLANTES — voir
+   * FPBouilleRecherche.chercher.
+   */
+  var trombiProches = [];
+  function trombiFiltered() {
+    var base = trombiParPseudo();
+    trombiProches = [];
+    if (!bqActif) return base;
+    var r = FPBouilleRecherche.chercher(base, bqCriteres);
+    trombiProches = r.proches;
+    return r.exacts;
   }
   function renderTrombiLetters() {
     var bar = $("#trombi-letters"); if (!bar) return;
@@ -4701,7 +4797,22 @@
     var pages = Math.max(1, Math.ceil(list.length / TROMBI_PAGE));
     if (trombiPage >= pages) trombiPage = 0;
     var slice = list.slice(trombiPage * TROMBI_PAGE, (trombiPage + 1) * TROMBI_PAGE);
-    if (!list.length) {
+    if (!list.length && trombiProches.length) {
+      // PERSONNE NE PORTE EXACTEMENT CETTE TÊTE. Plutôt qu'une page vide, on
+      // montre les plus proches : une mémoire de vingt ans se trompe d'un
+      // cran, et c'est souvent le bon visage à un iris près.
+      body.innerHTML = '<div class="trombi-proches">Aucune bouille ne correspond exactement.<br>Voici les plus ressemblantes :</div>'
+        + trombiProches.map(function (e) {
+          var ecart = e.rates === 1 ? "un trait de différence" : e.rates + " traits de différence";
+          return '<div class="trombi-card" data-pseudo="' + xmlEscape(e.pseudo) + '" title="'
+            + xmlEscape(e.pseudo + " — " + ecart) + '"><div class="tb">'
+            + FPBouilleVignette.html(e.bouille) + '</div><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
+        }).join("");
+      FPBouilleVignette.brancher(body);
+      Array.prototype.forEach.call(body.querySelectorAll(".trombi-card"), function (c) {
+        c.addEventListener("click", function () { ouvrirFiche(c.getAttribute("data-pseudo")); });
+      });
+    } else if (!list.length) {
       body.innerHTML = '<div class="trombi-empty">' + ((trombiData && trombiData.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>';
     } else {
       // Vignette = un canevas du moteur JS, dessiné en approchant de l'écran
@@ -4722,7 +4833,11 @@
   }
   function renderTrombiPager(total, pages) {
     var pg = $("#trombi-pager"); if (!pg) return;
-    if (pages <= 1) { pg.innerHTML = total ? '<span class="trombi-badge">' + total + ' Frutiz</span>' : ""; return; }
+    if (pages <= 1) {
+      pg.innerHTML = total ? '<span class="trombi-badge">' + total + ' Frutiz</span>'
+        : (trombiProches.length ? '<span class="trombi-badge">' + trombiProches.length + ' ressemblantes</span>' : "");
+      return;
+    }
     pg.innerHTML =
       '<button class="trombi-pgbtn" id="trombi-prev"' + (trombiPage <= 0 ? " disabled" : "") + '>‹</button>' +
       '<span class="trombi-pginfo">page ' + (trombiPage + 1) + '/' + pages + '</span>' +
@@ -4734,6 +4849,156 @@
   }
   var trombiSearchEl = $("#trombi-search");
   if (trombiSearchEl) trombiSearchEl.addEventListener("input", function () { trombiPage = 0; renderTrombiLetters(); renderTrombi(); });
+
+  /* ── CHERCHER PAR LA BOUILLE ───────────────────────────────────────────
+   *
+   * « Certains Frutiz ne se souviennent pas de leur pseudo, mais plutôt de
+   * leur bouille. » Le tiroir répond à ça : on décrit une tête avec les
+   * flèches de l'éditeur « Ma Frutibouille », et l'annuaire se réduit à ceux
+   * qui la portent.
+   *
+   * LA DIFFÉRENCE AVEC L'ÉDITEUR tient en un mot : « peu importe ». Dans
+   * l'éditeur, chaque ligne porte forcément une valeur — on fabrique un
+   * visage entier. Ici, chaque ligne peut rester LIBRE, et seules celles
+   * qu'on a réglées filtrent. Toucher le milieu d'une ligne bascule de l'un à
+   * l'autre ; les flèches, elles, règlent la ligne ET l'activent — tourner
+   * une flèche, c'est forcément vouloir ce trait-là.
+   *
+   * L'APERÇU montre la tête décrite. Les lignes libres y prennent le trait du
+   * SOCLE (la bouille par défaut, ou la sienne) : il faut bien dessiner
+   * quelque chose, et c'est dit à l'écran par la rayure grise de la ligne.
+   */
+  var bqActif = false;          // le tiroir est-il ouvert (et filtre-t-il) ?
+  var bqCriteres = {};          // clé de champ → valeur, absent = peu importe
+  // Le socle de départ : la bouille par défaut SANS son sac à patate. Sous le
+  // sac, le visage est caché — c'est déjà pourquoi l'éditeur le quitte à
+  // l'ouverture, et c'est encore plus vrai ici, où l'aperçu sert de question.
+  var BQ_SOCLE_NU = FPBouilleRecherche.ecrire(DEFAULT_BOUILLE, 6, 0);
+  var bqSocle = BQ_SOCLE_NU;
+  var bqRowsBuilt = false;
+
+  function bqEtat() { return FPBouilleRecherche.composer(bqSocle, bqCriteres); }
+  function bqValeurAffichee(champ) {
+    var v = bqCriteres[champ.cle];
+    return v === undefined ? FPBouilleRecherche.lire(bqSocle, champ.pos) : v;
+  }
+  // Les valeurs qu'une flèche propose : celles que l'annuaire porte vraiment,
+  // une fois les AUTRES critères appliqués (FPBouilleRecherche.choix). Le
+  // filtre du pseudo compte aussi — chercher « les K aux cheveux verts » ne
+  // doit pas proposer un vert que plus aucun K ne porte.
+  function bqChoix(champ) {
+    var vue = Object.create(null);
+    FPBouilleRecherche.CHAMPS.forEach(function (c) {
+      if (bqCriteres[c.cle] !== undefined) vue[c.cle] = bqCriteres[c.cle];
+    });
+    vue[champ.cle] = bqValeurAffichee(champ);
+    return FPBouilleRecherche.choix(trombiParPseudo(), vue, champ.cle);
+  }
+  function bqCycle(champ, dir) {
+    var choix = bqChoix(champ);
+    var ici = choix.indexOf(bqValeurAffichee(champ));
+    if (ici < 0) ici = dir > 0 ? -1 : 0;
+    bqCriteres[champ.cle] = choix[((ici + dir) % choix.length + choix.length) % choix.length];
+    bqRafraichirLigne(champ); bqRendre();
+  }
+  function bqBasculer(champ) {
+    if (bqCriteres[champ.cle] === undefined) bqCriteres[champ.cle] = FPBouilleRecherche.lire(bqSocle, champ.pos);
+    else delete bqCriteres[champ.cle];
+    bqRafraichirLigne(champ); bqRendre();
+  }
+  function bqRafraichirLigne(champ) {
+    var row = document.getElementById("bq-row-" + champ.cle);
+    if (!row) return;
+    var libre = bqCriteres[champ.cle] === undefined;
+    row.classList.toggle("bq-libre", libre);
+    var v = bqValeurAffichee(champ);
+    if (champ.type === "couleur") {
+      var bar = row.querySelector(".fb-bar");
+      var hex = FPBouille.colorHex(v);
+      bar.style.background = libre ? "" : hex;
+      bar.style.borderColor = libre ? "" : fbDecale(hex, 0xBB);
+      var t = bar.querySelector(".bq-texte");
+      t.textContent = libre ? champ.libelle + " : peu importe" : champ.libelle + " · " + FPBouille.colorName(v);
+      t.style.color = libre ? "" : FPBouille.readableText(hex);
+      bar.parentNode.title = t.textContent;
+    } else {
+      var lab = row.querySelector(".fb-label");
+      // Le nom du champ seul suffit pour une couleur (l'échantillon parle) ;
+      // pour le reste il faut dire LAQUELLE, sans quoi on ne sait pas ce
+      // qu'on décrit ni comment le raconter à quelqu'un d'autre.
+      lab.textContent = libre ? champ.libelle + " : peu importe"
+        : champ.libelle + " " + FPBouilleRecherche.nomValeur(champ.cle, v);
+      lab.parentNode.title = lab.textContent;
+    }
+  }
+  function bqBuildRows() {
+    var rows = $("#trombi-bq-rows");
+    if (!rows) return;
+    rows.innerHTML = "";
+    FPBouilleRecherche.CHAMPS.forEach(function (champ) {
+      var row = el("div", "fb-row"); row.id = "bq-row-" + champ.cle;
+      var g = el("button", "fb-arrow lft"); g.type = "button"; g.setAttribute("aria-label", "précédent");
+      var d = el("button", "fb-arrow rgt"); d.type = "button"; d.setAttribute("aria-label", "suivant");
+      var centre;
+      if (champ.type === "couleur") {
+        centre = el("div", "fb-sample");
+        var bar = el("div", "fb-bar");
+        // L'éditeur peut se passer de nom sur ses deux lignes de couleur :
+        // elles y sont à une place connue. Ici, neuf lignes se suivent et une
+        // gélule rayée ne dit rien — on écrit donc le nom DANS la gélule.
+        bar.appendChild(el("span", "bq-texte"));
+        centre.appendChild(bar);
+      } else {
+        centre = el("div", "fb-label");
+      }
+      g.addEventListener("click", function () { bqCycle(champ, -1); });
+      d.addEventListener("click", function () { bqCycle(champ, 1); });
+      centre.addEventListener("click", function () { bqBasculer(champ); });
+      row.appendChild(g); row.appendChild(centre); row.appendChild(d);
+      rows.appendChild(row);
+    });
+    bqRowsBuilt = true;
+    FPBouilleRecherche.CHAMPS.forEach(bqRafraichirLigne);
+  }
+  // L'aperçu : le même canevas que l'éditeur, gardé monté d'un réglage à
+  // l'autre (rafraichir ne recharge pas la famille tant qu'on y reste).
+  function bqApercu() {
+    var hote = $("#trombi-bq-ecran");
+    var c = hote && hote.querySelector("canvas.fp-bvig");
+    if (c) { FPBouilleVignette.rafraichir(c, bqEtat()); return; }
+    if (!hote) return;
+    hote.innerHTML = previewIframe(bqEtat());
+    brancherApercus(hote);
+  }
+  function bqRendre() { bqApercu(); trombiPage = 0; renderTrombi(); }
+  function bqOuvrir(ouvert) {
+    bqActif = !!ouvert;
+    var tiroir = $("#trombi-bq"), bouton = $("#trombi-mode");
+    if (tiroir) tiroir.classList.toggle("show", bqActif);
+    if (bouton) bouton.setAttribute("aria-pressed", bqActif ? "true" : "false");
+    if (bqActif && !bqRowsBuilt) bqBuildRows();
+    if (bqActif) bqApercu();
+    trombiPage = 0; renderTrombi();
+  }
+  var bqModeEl = $("#trombi-mode");
+  if (bqModeEl) bqModeEl.addEventListener("click", function () { bqOuvrir(!bqActif); });
+  var bqMienneEl = $("#trombi-bq-mienne");
+  if (bqMienneEl) bqMienneEl.addEventListener("click", function () {
+    // On part de SA bouille, tous champs réglés : le plus court chemin quand
+    // on cherche « quelqu'un qui me ressemblait ». La bouille principale, pas
+    // l'incarnation du moment — c'est le visage que l'annuaire a gardé.
+    bqSocle = FPBouilleRecherche.bourrer(myBase || DEFAULT_BOUILLE);
+    FPBouilleRecherche.CHAMPS.forEach(function (c) { bqCriteres[c.cle] = FPBouilleRecherche.lire(bqSocle, c.pos); });
+    if (!bqRowsBuilt) bqBuildRows(); else FPBouilleRecherche.CHAMPS.forEach(bqRafraichirLigne);
+    bqRendre();
+  });
+  var bqViderEl = $("#trombi-bq-vider");
+  if (bqViderEl) bqViderEl.addEventListener("click", function () {
+    bqCriteres = {};
+    bqSocle = BQ_SOCLE_NU;
+    FPBouilleRecherche.CHAMPS.forEach(bqRafraichirLigne);
+    bqRendre();
+  });
 
   // ── Navigation entre panneaux ──
   // activateTab pilote l'affichage des panneaux. On l'appelle depuis la grille

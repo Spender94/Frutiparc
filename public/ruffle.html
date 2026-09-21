@@ -136,6 +136,10 @@
     <script src="/js/bouille-moteur.js"></script>
     <script src="/js/bouille-variante.js"></script>
     <script src="/js/bouille-vignette.js"></script>
+    <!-- La palette et la recherche par bouille : le Bouilloscope de l'overlay
+         se fouille aussi à l'envers (cf. /light, même module). -->
+    <script src="/js/bouille-palette.js"></script>
+    <script src="/js/bouille-recherche.js"></script>
 </head>
 <body>
     <div id="player-container"></div>
@@ -959,6 +963,15 @@
                 var TR_PAGE = 48;
                 var ov = null, gridEl = null, searchEl = null, letterEl = null, pagerEl = null;
                 var data = null, letters = [], letter = "Tous", page = 0;
+                /* LA RECHERCHE PAR BOUILLE. Mêmes règles que /light (module
+                   /js/bouille-recherche.js) : des lignes qu'on règle ou qu'on
+                   laisse à « peu importe », un aperçu de la tête décrite, et
+                   le repêchage par ressemblance quand personne ne correspond.
+                   Seuls les habits changent — ici tout est en style inline,
+                   comme le reste de cet overlay. */
+                var bqActif = false, bqCriteres = {}, bqRows = null, bqEcran = null, bqTiroir = null, bqBouton = null;
+                var BQ_SOCLE = FPBouilleRecherche.ecrire("000000010000000000000000", 6, 0);
+                var bqProches = [];
                 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
                 function injectStyle() {
                     if (document.getElementById("fpt-style")) return;
@@ -986,7 +999,22 @@
                       + '#fp-trombi-overlay .fpt-chip{transition:filter .1s ease}'
                       + '#fp-trombi-overlay .fpt-chip:hover{filter:brightness(1.04)}'
                       + '#fp-trombi-overlay .fpt-pgbtn{transition:filter .1s ease}'
-                      + '#fp-trombi-overlay .fpt-pgbtn:hover:not([disabled]){filter:brightness(1.06)}';
+                      + '#fp-trombi-overlay .fpt-pgbtn:hover:not([disabled]){filter:brightness(1.06)}'
+                      // Le tiroir « par bouille » : les rangées de l'éditeur,
+                      // rhabillées pour l'overlay.
+                      + '#fp-trombi-overlay .bqr{display:flex;align-items:center;height:24px}'
+                      + '#fp-trombi-overlay .bqf{flex:0 0 24px;width:24px;height:24px;padding:0;border:0;cursor:pointer;background:transparent no-repeat center/23px 23px}'
+                      + '#fp-trombi-overlay .bqf.g{background-image:url("/frutiz/sprites/fb-fleche-gauche.svg")}'
+                      + '#fp-trombi-overlay .bqf.d{background-image:url("/frutiz/sprites/fb-fleche-droite.svg")}'
+                      + '#fp-trombi-overlay .bqf:active{filter:brightness(.9)}'
+                      + '#fp-trombi-overlay .bqc{flex:1 1 auto;min-width:0;text-align:center;font:11px Verdana,Arial,sans-serif;color:#333;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+                      + '#fp-trombi-overlay .bqg{flex:1 1 auto;min-width:0;height:18px;margin:0 8px;border-radius:9px;border:2px solid transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden}'
+                      + '#fp-trombi-overlay .bqg span{font:10px Verdana,Arial,sans-serif;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+                      + '#fp-trombi-overlay .bqr.libre .bqc{color:#9a6a6a;font-style:italic}'
+                      + '#fp-trombi-overlay .bqr.libre .bqg{background:repeating-linear-gradient(45deg,#EDEDED 0 4px,#DCDCDC 4px 8px);border-color:#CCC}'
+                      + '#fp-trombi-overlay .bqr.libre .bqg span{font-style:italic;color:#8a6a6a}'
+                      + '#fp-trombi-overlay .bqb{border:0;border-radius:8px;padding:3px 8px;background:#FFAAAD;box-shadow:inset 0 0 0 1.5px #F28687;color:#660000;font:bold 10px Verdana,Arial,sans-serif;cursor:pointer;white-space:nowrap}'
+                      + '#fp-trombi-overlay .bqb:active{background:#F49B9E}';
                     document.head.appendChild(st);
                 }
                 function build() {
@@ -1018,10 +1046,22 @@
                     searchEl.className = "fpt-search";
                     searchEl.style.cssText = "width:100%;box-sizing:border-box;padding:8px 12px;border:0;border-radius:14px;font-size:13px;background:#fff;color:#333;box-shadow:0 1px 2px rgba(122,31,31,.18)";
                     searchEl.addEventListener("input", function () { page = 0; renderLetters(); render(); });
+                    // La ligne de recherche porte désormais DEUX entrées : le
+                    // pseudo, et la bouille. Les deux se composent.
+                    var ligneRech = document.createElement("div");
+                    ligneRech.style.cssText = "display:flex;gap:6px;align-items:center";
+                    bqBouton = document.createElement("button");
+                    bqBouton.className = "fpt-chip";
+                    bqBouton.type = "button";
+                    bqBouton.textContent = "par bouille";
+                    bqBouton.title = "Chercher par la bouille plutôt que par le pseudo";
+                    bqBouton.addEventListener("click", function () { bqOuvrir(!bqActif); });
+                    ligneRech.appendChild(searchEl); ligneRech.appendChild(bqBouton);
                     letterEl = document.createElement("div");
                     letterEl.className = "fpt-letters";
                     letterEl.style.cssText = "display:flex;gap:4px;overflow-x:auto";
-                    head.appendChild(titleRow); head.appendChild(searchEl); head.appendChild(letterEl);
+                    bqTiroir = construireTiroir();
+                    head.appendChild(titleRow); head.appendChild(ligneRech); head.appendChild(letterEl); head.appendChild(bqTiroir);
                     gridEl = document.createElement("div");
                     gridEl.className = "fpt-scroll";
                     gridEl.style.cssText = "flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px;display:grid;gap:10px;align-content:start;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));background:linear-gradient(180deg,#ffffff,#fff6f6)";
@@ -1035,17 +1075,134 @@
                     return ov;
                 }
                 function hide() { if (ov) ov.style.display = "none"; }
+
+                // ── Le tiroir « par bouille » ─────────────────────────────
+                function bqEtat() { return FPBouilleRecherche.composer(BQ_SOCLE, bqCriteres); }
+                function bqAffiche(champ) {
+                    var v = bqCriteres[champ.cle];
+                    return v === undefined ? FPBouilleRecherche.lire(BQ_SOCLE, champ.pos) : v;
+                }
+                function bqChoix(champ) {
+                    var vue = {};
+                    FPBouilleRecherche.CHAMPS.forEach(function (c) { if (bqCriteres[c.cle] !== undefined) vue[c.cle] = bqCriteres[c.cle]; });
+                    vue[champ.cle] = bqAffiche(champ);
+                    return FPBouilleRecherche.choix(parPseudo(), vue, champ.cle);
+                }
+                function bqCycle(champ, dir) {
+                    var choix = bqChoix(champ);
+                    var ici = choix.indexOf(bqAffiche(champ));
+                    if (ici < 0) ici = dir > 0 ? -1 : 0;
+                    bqCriteres[champ.cle] = choix[((ici + dir) % choix.length + choix.length) % choix.length];
+                    bqLigne(champ); bqRendre();
+                }
+                function bqBasculer(champ) {
+                    if (bqCriteres[champ.cle] === undefined) bqCriteres[champ.cle] = FPBouilleRecherche.lire(BQ_SOCLE, champ.pos);
+                    else delete bqCriteres[champ.cle];
+                    bqLigne(champ); bqRendre();
+                }
+                // Le décalage de `FEMC.setColor` : sortie = source + (col − 255).
+                // Le liseré de la gélule est la couleur vue depuis un gris #BB.
+                function bqDecale(hex, source) {
+                    var v = parseInt(String(hex).replace("#", ""), 16) || 0, d = 255 - source;
+                    return "#" + [16, 8, 0].map(function (k) {
+                        return ("0" + Math.max(0, Math.min(255, ((v >> k) & 255) - d)).toString(16)).slice(-2);
+                    }).join("");
+                }
+                function bqLigne(champ) {
+                    var row = bqRows && bqRows.querySelector('[data-cle="' + champ.cle + '"]');
+                    if (!row) return;
+                    var libre = bqCriteres[champ.cle] === undefined, v = bqAffiche(champ);
+                    row.classList.toggle("libre", libre);
+                    if (champ.type === "couleur") {
+                        var g = row.querySelector(".bqg"), t = g.firstChild, hex = FPBouille.colorHex(v);
+                        g.style.background = libre ? "" : hex;
+                        g.style.borderColor = libre ? "" : bqDecale(hex, 0xBB);
+                        t.textContent = libre ? champ.libelle + " : peu importe" : champ.libelle + " · " + FPBouille.colorName(v);
+                        t.style.color = libre ? "" : FPBouille.readableText(hex);
+                        g.title = t.textContent;
+                    } else {
+                        var c = row.querySelector(".bqc");
+                        c.textContent = libre ? champ.libelle + " : peu importe"
+                            : champ.libelle + " " + FPBouilleRecherche.nomValeur(champ.cle, v);
+                        c.title = c.textContent;
+                    }
+                }
+                function bqApercu() {
+                    if (!bqEcran) return;
+                    var c = bqEcran.querySelector("canvas.fp-bvig");
+                    if (c) { FPBouilleVignette.rafraichir(c, bqEtat()); return; }
+                    bqEcran.innerHTML = FPBouilleVignette.html(bqEtat());
+                    FPBouilleVignette.brancher(bqEcran);
+                }
+                function bqRendre() { bqApercu(); page = 0; render(); }
+                function bqOuvrir(ouvert) {
+                    bqActif = !!ouvert;
+                    if (bqTiroir) bqTiroir.style.display = bqActif ? "flex" : "none";
+                    if (bqBouton) {
+                        bqBouton.setAttribute("aria-pressed", bqActif ? "true" : "false");
+                        bqBouton.style.cssText = "flex:0 0 auto;border:0;border-radius:14px;padding:8px 10px;cursor:pointer;font-weight:bold;font-size:12px;white-space:nowrap;"
+                            + (bqActif ? "background:#fff;color:#D16767;box-shadow:0 1px 3px rgba(122,31,31,.30)" : "background:rgba(255,255,255,.45);color:#7a1f1f");
+                    }
+                    if (bqActif) { FPBouilleRecherche.CHAMPS.forEach(bqLigne); bqApercu(); }
+                    page = 0; render();
+                }
+                function construireTiroir() {
+                    var t = document.createElement("div");
+                    t.style.cssText = "display:none;gap:12px;flex-wrap:wrap;align-items:flex-start";
+                    var gauche = document.createElement("div");
+                    gauche.style.cssText = "flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px";
+                    bqEcran = document.createElement("div");
+                    bqEcran.style.cssText = "position:relative;width:100px;height:100px;background:url('/frutiz/sprites/ecran-fond.svg') 0 0/100% 100% no-repeat;border-radius:6px;box-shadow:0 0 0 2px #DDD;overflow:hidden";
+                    var vider = document.createElement("button");
+                    vider.className = "bqb"; vider.type = "button"; vider.textContent = "tout effacer";
+                    vider.addEventListener("click", function () {
+                        bqCriteres = {};
+                        FPBouilleRecherche.CHAMPS.forEach(bqLigne);
+                        bqRendre();
+                    });
+                    gauche.appendChild(bqEcran); gauche.appendChild(vider);
+                    bqRows = document.createElement("div");
+                    bqRows.style.cssText = "flex:1 1 260px;min-width:240px;max-width:420px;background:rgba(255,255,255,.55);border-radius:10px;padding:4px 6px;display:flex;flex-direction:column;gap:2px";
+                    FPBouilleRecherche.CHAMPS.forEach(function (champ) {
+                        var row = document.createElement("div");
+                        row.className = "bqr libre"; row.setAttribute("data-cle", champ.cle);
+                        var g = document.createElement("button"); g.className = "bqf g"; g.type = "button";
+                        var d = document.createElement("button"); d.className = "bqf d"; d.type = "button";
+                        var centre;
+                        if (champ.type === "couleur") {
+                            centre = document.createElement("div"); centre.className = "bqg";
+                            centre.appendChild(document.createElement("span"));
+                        } else {
+                            centre = document.createElement("div"); centre.className = "bqc";
+                        }
+                        g.addEventListener("click", function () { bqCycle(champ, -1); });
+                        d.addEventListener("click", function () { bqCycle(champ, 1); });
+                        centre.addEventListener("click", function () { bqBasculer(champ); });
+                        row.appendChild(g); row.appendChild(centre); row.appendChild(d);
+                        bqRows.appendChild(row);
+                    });
+                    t.appendChild(gauche); t.appendChild(bqRows);
+                    return t;
+                }
                 function firstLetter(name) {
                     var c = String(name || "").trim().charAt(0).toUpperCase();
                     try { c = c.normalize("NFD").replace(/[̀-ͯ]/g, ""); } catch (e) {}
                     return /[A-Z]/.test(c) ? c : "#";
                 }
                 function query() { return ((searchEl && searchEl.value) || "").trim().toLowerCase(); }
-                function filtered() {
+                function parPseudo() {
                     var q = query();
                     if (q) return (data || []).filter(function (e) { return String(e.pseudo).toLowerCase().indexOf(q) !== -1; });
                     if (letter && letter !== "Tous") return (data || []).filter(function (e) { return firstLetter(e.pseudo) === letter; });
                     return data || [];
+                }
+                function filtered() {
+                    var base = parPseudo();
+                    bqProches = [];
+                    if (!bqActif) return base;
+                    var r = FPBouilleRecherche.chercher(base, bqCriteres);
+                    bqProches = r.proches;
+                    return r.exacts;
                 }
                 function renderLetters() {
                     if (!letterEl) return;
@@ -1063,7 +1220,11 @@
                     if (!pagerEl) return;
                     // Compteur en pastille « étiquette » blanche.
                     var badge = '<span style="display:inline-block;padding:3px 12px;border-radius:999px;background:#fff;color:#D16767;font-weight:bold;font-size:12px;box-shadow:0 1px 2px rgba(122,31,31,.20)">' + total + ' Frutiz</span>';
-                    if (pages <= 1) { pagerEl.innerHTML = total ? badge : ""; return; }
+                    if (pages <= 1) {
+                        pagerEl.innerHTML = total ? badge
+                            : (bqProches.length ? badge.replace(total + ' Frutiz', bqProches.length + ' ressemblantes') : "");
+                        return;
+                    }
                     // Boutons « bonbon » : voile blanc dégradé + reflet interne.
                     var btn = "border:0;background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,0) 52%),linear-gradient(180deg,#FEB7B7,#F58E8E);color:#7a1f1f;font-weight:bold;font-size:16px;width:36px;height:30px;border-radius:9px;cursor:pointer;box-shadow:0 1px 2px rgba(122,31,31,.22),inset 0 1px 0 rgba(255,255,255,.55)";
                     pagerEl.innerHTML =
@@ -1075,13 +1236,25 @@
                     if (p) p.addEventListener("click", function () { if (page > 0) { page--; render(); } });
                     if (n) n.addEventListener("click", function () { if (page < pages - 1) { page++; render(); } });
                 }
+                function carteHtml(e) {
+                    var titre = e.rates === undefined ? e.pseudo
+                        : e.pseudo + " — " + (e.rates === 1 ? "un trait de différence" : e.rates + " traits de différence");
+                    return '<div class="fpt-card" title="' + esc(titre) + '" style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1px solid #f0dada;border-radius:10px;padding:8px 4px;text-align:center">'
+                        + '<span style="display:block;width:72px;height:72px;border:1px solid #cfe0b3;border-radius:8px;background:#E8F8D3;overflow:hidden">' + FPBouilleVignette.html(e.bouille) + '</span>'
+                        + '<span style="font-size:12px;font-weight:bold;color:#2C4A0F;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.pseudo) + '</span></div>';
+                }
                 function render() {
                     if (!gridEl) return;
                     var list = filtered();
                     var pages = Math.max(1, Math.ceil(list.length / TR_PAGE));
                     if (page >= pages) page = 0;
                     var slice = list.slice(page * TR_PAGE, (page + 1) * TR_PAGE);
-                    if (!list.length) {
+                    if (!list.length && bqProches.length) {
+                        // Personne ne porte exactement cette tête : on montre
+                        // les plus proches plutôt qu'une page vide.
+                        gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#7a1f1f;font-size:12px;padding:10px 8px 2px;line-height:1.5">Aucune bouille ne correspond exactement.<br>Voici les plus ressemblantes :</div>'
+                            + bqProches.map(carteHtml).join("");
+                    } else if (!list.length) {
                         gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#888;font-size:13px;padding:24px">' + ((data && data.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>';
                     } else {
                         // Vignette = <img> sur le cache PNG /bouille-img (rendu identique
@@ -1089,11 +1262,7 @@
                         // cache froid est réchauffé en arrière-plan par FPBouilleThumb.
                         // loading="lazy" => seules les vignettes proches du viewport sont
                         // sondées/capturées.
-                        gridEl.innerHTML = slice.map(function (e) {
-                            return '<div class="fpt-card" style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1px solid #f0dada;border-radius:10px;padding:8px 4px;text-align:center">'
-                                + '<span style="display:block;width:72px;height:72px;border:1px solid #cfe0b3;border-radius:8px;background:#E8F8D3;overflow:hidden">' + FPBouilleVignette.html(e.bouille) + '</span>'
-                                + '<span style="font-size:12px;font-weight:bold;color:#2C4A0F;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.pseudo) + '</span></div>';
-                        }).join("");
+                        gridEl.innerHTML = slice.map(carteHtml).join("");
                     }
                     FPBouilleVignette.brancher(gridEl);
                     gridEl.scrollTop = 0;
