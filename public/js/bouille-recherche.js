@@ -11,15 +11,23 @@
   retient les Frutiz qui la portent.
 
   ── CE QU'ON PEUT DÉCRIRE ─────────────────────────────────────────────────
-  Neuf champs, pris dans les douze paires base62 de l'état (cf.
+  Huit champs, pris dans les douze paires base62 de l'état (cf.
   public/frutiz/BOUILLES.md, § « La chaîne d'état »). Chacun est INDÉPENDANT :
   on le règle, ou on le laisse à « peu importe ». Décrire, ce n'est pas
   remplir un formulaire entier — c'est poser les deux ou trois traits dont on
   est sûr.
 
-  On ne propose pas les trois champs restants (accessoire secondaire et ses
-  deux autres couleurs) : ce sont des détails de rendu qu'on ne garde pas en
-  mémoire, et neuf lignes suffisent déjà à isoler une tête.
+  Quatre paires restent dehors, et pour deux raisons différentes :
+
+    · la FAMILLE. Elle a bien un sens — c'est le famille<N>.swf qui dessine la
+      tête —, mais les bouilles spéciales sont rares : la quasi-totalité de
+      l'annuaire relève de la même famille. Une ligne qui ne trie presque
+      rien n'est pas une ligne utile ; elle coûte un cran de plus à parcourir
+      à tout le monde pour servir une poignée. On ne la propose donc pas, et
+      la recherche l'ignore — ce qui revient à la laisser toujours libre, et
+      rend bien les bouilles spéciales quand les autres traits collent.
+    · l'ACCESSOIRE SECONDAIRE et ses deux autres couleurs : des détails de
+      rendu qu'on ne garde pas en mémoire.
 
   Les coiffures 1, 2 et 3 — le SAC À PATATE — sont ici PROPOSÉES, alors que
   l'éditeur les écarte. C'est voulu : on ne conçoit pas un sac, mais on se
@@ -88,7 +96,6 @@
    * nom du champ — exactement comme l'éditeur d'époque, qui ne numérote rien.
    */
   var CHAMPS = [
-    { cle: 'famille',  libelle: 'famille',    pos: 0,  max: 24, type: 'valeur' },
     { cle: 'yeux',     libelle: 'yeux',       pos: 2,  max: 8,  type: 'valeur' },
     { cle: 'iris',     libelle: 'iris',       pos: 4,  max: 17, type: 'valeur' },
     { cle: 'cheveux',  libelle: 'cheveux',    pos: 6,  max: 66, type: 'valeur' },

@@ -64,8 +64,9 @@ test('écrire puis relire rend la valeur, jusqu’aux coiffures au-delà de 61',
 });
 
 test('les champs tombent aux places du relevé, et d’accord avec l’éditeur', () => {
-  const attendu = { famille: 0, yeux: 2, iris: 4, cheveux: 6, bouche: 8, peau: 10, colch: 12, acc: 14, acccol: 18 };
+  const attendu = { yeux: 2, iris: 4, cheveux: 6, bouche: 8, peau: 10, colch: 12, acc: 14, acccol: 18 };
   R.CHAMPS.forEach((c) => assert.strictEqual(c.pos, attendu[c.cle], 'place de ' + c.cle));
+  assert.deepStrictEqual(R.CHAMPS.map((c) => c.cle), Object.keys(attendu), 'ni plus, ni moins, et dans cet ordre');
   // `FB_PARTS` de light.html porte les mêmes bornes pour les lignes communes :
   // si l'éditeur change de famille de référence, la recherche doit suivre.
   const parts = LIGHT.match(/var FB_PARTS = \[[\s\S]*?\n {2}\];/)[0];
@@ -76,6 +77,22 @@ test('les champs tombent aux places du relevé, et d’accord avec l’éditeur'
     assert.strictEqual(R.champ(cle).max, max, 'la recherche a dérivé sur ' + cle);
   }
   assert.strictEqual(R.champ('iris').max, iris, 'les iris d’origine');
+});
+
+test('la famille ne se propose pas : elle ne trierait presque rien', () => {
+  // Les bouilles spéciales sont rares — la quasi-totalité de l'annuaire
+  // relève de la même famille. Une ligne qui ne trie presque rien coûterait
+  // un cran de plus à parcourir à tout le monde pour servir une poignée.
+  assert.strictEqual(R.champ('famille'), null, 'aucun champ « famille »');
+  assert.ok(!R.CHAMPS.some((c) => c.pos === 0), 'la paire 0 n’est décrite par aucune ligne');
+  // Et l'ignorer, c'est la laisser LIBRE : une bouille d'une autre famille
+  // ressort quand ses autres traits collent — ce qu'on veut, justement.
+  const gens = [
+    { pseudo: 'Ordinaire', bouille: R.ecrire(tete({ cheveux: 27 }), 0, 0) },
+    { pseudo: 'Speciale', bouille: R.ecrire(tete({ cheveux: 27 }), 0, 14) },
+  ];
+  assert.deepStrictEqual(R.chercher(gens, { cheveux: 27 }).exacts.map((e) => e.pseudo),
+    ['Ordinaire', 'Speciale']);
 });
 
 /* ── 2. « PEU IMPORTE » ───────────────────────────────────────────────────── */
