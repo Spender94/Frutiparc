@@ -3406,6 +3406,13 @@ async function forumDeletePost(postId) {
 // le plus récent s'il y en a plusieurs, mais jamais un sujet verrouillé si un
 // autre est ouvert : c'est ce que cherche un robot qui poste tous les jours au
 // même endroit (VieuxPruneau et la map de Motion Ball).
+// Le nombre de Frutiz inscrits — c'est le rang qu'annonce Natacha quand il
+// est rond.
+async function countUsers() {
+  const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM users');
+  return rows[0].n;
+}
+
 async function forumTrouverSujet(boardId, title) {
   const { rows } = await pool.query(
     `SELECT * FROM forum_topics
@@ -4221,6 +4228,7 @@ module.exports = {
   forumDeletePost,
   forumLastPostAuthor,
   forumTrouverSujet,
+  countUsers,
   forumDernierMessageDe,
   forumIncrementViews,
   forumMarkTopicRead,

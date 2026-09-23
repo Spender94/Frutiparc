@@ -8390,6 +8390,8 @@ app.post('/api/auth/register', async (req, res) => {
     if (ref.referralFlag) await db.updateUser(username, { referral_flag: ref.referralFlag }).catch(() => {});
     recordSuccessfulRegister(ip);
     console.log(`[REGISTER] ok ip=${ip} user=${rawName}` + (ref.referredBy ? ` | parrain=${ref.referredBy} state=${ref.referralState} flag=${ref.referralFlag || '-'}` : ''));
+    // Natacha le salue sur le forum — sans retenir la réponse.
+    natachaAccueillir(username, ref.referredBy);
     return res.json({ ok: true, username: rawName });
   } catch (e) {
     console.error('[DB] register error:', e.message);
@@ -14889,6 +14891,59 @@ async function mb2PublierCarteDuJourMaintenant(why, opts) {
   notifyForumNews(MB2_CARTOGRAPHE, suiveurs, { id: topic.id, titre: topic.title });
   console.log(`[MB2] VieuxPruneau a posté la map du jour (${why || 'maj'}, graine=${graine}) — message #${post.id}, sujet #${topic.id}`);
   return { topicId: topic.id, postId: post.id, graine, urlImage };
+}
+
+// ── Natacha souhaite la bienvenue ────────────────────────────────────────────
+//
+// Un message par inscription, dans le sujet « Bienvenue aux nouveaux Frutiz ! »
+// de la rubrique Frutiz — ouvert s'il manque, doublé s'il est plein, comme
+// celui de VieuxPruneau. Le texte vient de natacha.js : semé par le pseudo et
+// le jour, il varie d'un Frutiz à l'autre et se répète pour le même. Les
+// appels sont sérialisés : deux inscriptions dans la même seconde n'ouvrent
+// pas deux sujets. Le nouveau est @mentionné : il trouve le mot de Natacha
+// dans son historique à sa première connexion, et le voyant du forum
+// s'allume chez ceux qui suivent le sujet.
+const Natacha = require('./natacha.js');
+let natachaEnCours = Promise.resolve();
+function natachaAccueillir(username, parrain) {
+  const tour = natachaEnCours.then(() => natachaAccueillirMaintenant(username, parrain))
+    .catch((e) => { console.error('[NATACHA] pas de bienvenue pour ' + username + ' :', e.message); return null; });
+  natachaEnCours = tour;
+  return tour;
+}
+async function natachaAccueillirMaintenant(username, parrain) {
+  if (!process.env.DATABASE_URL) return null;
+  const qui = String(username || '').toLowerCase();
+  if (!qui || NPC_USERNAMES.has(qui)) return null;
+  let boards = await db.forumGetBoards();
+  let board = boards.find((b) => b.name === Natacha.RUBRIQUE);
+  if (!board) {
+    await ensureForumBoardsExist();
+    boards = await db.forumGetBoards();
+    board = boards.find((b) => b.name === Natacha.RUBRIQUE);
+    if (!board) throw new Error(`rubrique « ${Natacha.RUBRIQUE} » introuvable`);
+  }
+  const bouille = users[Natacha.PSEUDO_NPC].fbouille;
+  let topic = await db.forumTrouverSujet(board.id, Natacha.SUJET);
+  if (topic && !topic.is_locked && (await db.forumCountPosts(topic.id)) >= FORUM_MAX_POSTS_PER_TOPIC) {
+    await db.forumSetLocked(topic.id, true).catch(dbErr('forumSetLocked natacha'));
+    topic = null;
+  }
+  if (topic && topic.is_locked) topic = null;
+  if (!topic) {
+    topic = await db.forumCreateTopic(board.id, Natacha.PSEUDO_NPC, Natacha.SUJET, Natacha.INTRO, bouille, null);
+    console.log(`[NATACHA] ouvre le sujet #${topic.id} « ${Natacha.SUJET} » dans « ${board.name} »`);
+  }
+  const numero = await db.countUsers().catch(() => 0);
+  const contenu = Natacha.messageBienvenue(getDisplayName(qui), {
+    numero, parrain: parrain ? getDisplayName(String(parrain).toLowerCase()) : null,
+  });
+  const post = await db.forumCreatePost(topic.id, Natacha.PSEUDO_NPC, contenu, bouille, null);
+  const suiveurs = await db.forumTopicFollowers(topic.id).catch(() => []);
+  notifyForumNews(Natacha.PSEUDO_NPC, suiveurs, { id: topic.id, titre: topic.title });
+  await notifierMentionsForum(Natacha.PSEUDO_NPC, topic.id, topic.title, contenu).catch(() => []);
+  console.log(`[NATACHA] souhaite la bienvenue à ${qui} — message #${post.id}, sujet #${topic.id}`);
+  return { topicId: topic.id, postId: post.id, contenu };
 }
 
 app.post('/api/admin/mb2/regenerate-map', adminScope('challenge'), async (req, res) => {
@@ -26329,7 +26384,7 @@ const CONNECTED_NPCS = new Set([
 // All bot/NPC accounts — the always-on Gaspard plus the transient visitors
 // (mdamirma, gromelin). Excluded from "real player" counts and from mdamirma's
 // FrutiSigne targeting, so bots never reveal/target each other.
-const NPC_USERNAMES = new Set(['gaspard', 'mdamirma', 'gromelin', 'kiloute79', 'vieuxpruneau']);
+const NPC_USERNAMES = new Set(['gaspard', 'mdamirma', 'gromelin', 'kiloute79', 'vieuxpruneau', 'natacha']);
 
 // Gaspard is the welcome-bot NPC. Stored under the lowercase key
 // `users.gaspard` like every other user (getDisplayName, trace and
@@ -26812,6 +26867,23 @@ users.vieuxpruneau = {
   city: 'Frutiparc', realJob: 'Cartographe', frutijob: 'Cartographe', firstName: 'Vieux', lastName: 'Pruneau',
   comment: 'Je relève la map de Motion Ball 2 chaque nuit, à la lampe torche.', siteUrl: '',
   displayName: 'VieuxPruneau',
+};
+
+// ── Natacha — l'hôtesse d'accueil ──
+// À chaque inscription, elle souhaite la bienvenue au nouveau sur le forum
+// (Frutiz › « Bienvenue aux nouveaux Frutiz ! »), avec un mot différent à
+// chaque fois (cf. natacha.js et natachaAccueillir).
+users.natacha = {
+  pass: '', xp: 242424, kikooz: 0,
+  fbouille: Natacha.BOUILLE,
+  items: withDefaultPens([]),
+  contacts: [], blacklist: [],
+  gender: 'F', birthday: '1986-05-14', country: 'FR', region: 'IDF',
+  countryIndex: '1', regionIndex: '1', prefs: '',
+  isModerator: false, needsBouille: false,
+  city: 'Frutiparc', realJob: "Hôtesse d'accueil", frutijob: "Hôtesse d'accueil", firstName: 'Natacha', lastName: '',
+  comment: "Je tiens l'accueil du parc : personne n'arrive dans le silence.", siteUrl: '',
+  displayName: Natacha.NOM,
 };
 
 // Pseudo affiché de l'animateur — source unique, dérivée du displayName. Toutes
