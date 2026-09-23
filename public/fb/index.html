@@ -3031,13 +3031,74 @@ function showReplyForm(initialContent) {
   }
 }
 
+/*
+ * UNE CITATION S'ALLÈGE AVANT D'ÊTRE INSÉRÉE.
+ *
+ * Citer un long message le recopiait en entier : la réponse s'ouvrait sur un
+ * pavé déjà lu juste au-dessus, et d'une citation à l'autre la page devenait
+ * une pyramide. On ne garde donc que le début — CITATION_MAX caractères de
+ * texte, coupés sur un espace —, suivi de « [...] », et l'on retire les
+ * citations que le message contenait lui-même : on répond à ce qu'il dit,
+ * pas à ce qu'il citait. L'auteur de la réponse garde la main : c'est le
+ * texte de l'éditeur, il peut en remettre.
+ *
+ * La coupe respecte le BBCode : elle ne tombe jamais au milieu d'une balise,
+ * ni dans une image, un lien, une vidéo ou un picto (on coupe alors avant),
+ * et les balises de mise en forme restées ouvertes sont refermées.
+ */
+var CITATION_MAX = 300;
+var CITATION_ATOMES = ['img', 'url', 'youtube', 'code', 'liste'];
+function abregerCitation(texte, max) {
+  max = max || CITATION_MAX;
+  var t = String(texte || '');
+  // Les citations imbriquées, de la plus interne à la plus externe.
+  var interne = /\[(?:citation|quote)(?:=[^\]]+)?\](?:(?!\[(?:citation|quote)(?:=[^\]]+)?\])[\s\S])*?\[\/(?:citation|quote)\]/i;
+  for (var g = 0; g < 200 && interne.test(t); g++) t = t.replace(interne, '');
+  t = t.replace(/\n{3,}/g, '\n\n').trim();
+  if (!t) return '[...]';                  // il ne faisait que citer
+  // Le texte VISIBLE, balises exclues, décide de la coupe.
+  var visible = 0, i = 0, coupe = -1;
+  while (i < t.length) {
+    if (t[i] === '[') {
+      var fin = t.indexOf(']', i);
+      if (fin > i && /^\[\/?[a-z*]+(?:=[^\]]*)?\]$/i.test(t.slice(i, fin + 1))) { i = fin + 1; continue; }
+    }
+    visible++;
+    if (visible > max) { coupe = i; break; }
+    i++;
+  }
+  if (coupe < 0) return t;
+  // Sur un blanc, si l'on en trouve un pas trop loin en arrière.
+  var blanc = Math.max(t.lastIndexOf(' ', coupe), t.lastIndexOf('\n', coupe));
+  if (blanc > coupe - 60 && blanc > 0) coupe = blanc;
+  var garde = t.slice(0, coupe);
+  // Pas au milieu d'une balise.
+  var crochet = garde.lastIndexOf('[');
+  if (crochet > garde.lastIndexOf(']')) garde = garde.slice(0, crochet);
+  // Les balises encore ouvertes : un atome se retire en entier, une mise en
+  // forme se referme.
+  var pile = [], re = /\[(\/?)([a-z*]+)(?:=[^\]]*)?\]/gi, m;
+  while ((m = re.exec(garde)) !== null) {
+    var nom = m[2].toLowerCase();
+    if (nom === '*' || nom === 'picto') continue;
+    if (m[1]) { for (var k = pile.length - 1; k >= 0; k--) if (pile[k].nom === nom) { pile.splice(k); break; } }
+    else pile.push({ nom: nom, pos: m.index });
+  }
+  for (var a = 0; a < pile.length; a++) {
+    if (CITATION_ATOMES.indexOf(pile[a].nom) >= 0) { garde = garde.slice(0, pile[a].pos); pile = pile.slice(0, a); break; }
+  }
+  garde = garde.replace(/\s+$/, '');
+  for (var z = pile.length - 1; z >= 0; z--) garde += '[/' + pile[z].nom + ']';
+  return garde + ' [...]';
+}
+
 function quotePost(postId, author) {
   var el = document.getElementById('post-content-' + postId);
   if (!el) return;
   var raw = el.getAttribute('data-raw') || el.textContent;
   var tmp = document.createElement('textarea');
   tmp.innerHTML = raw;
-  var text = tmp.value;
+  var text = abregerCitation(tmp.value);
   showReplyForm('[quote=' + author + ']\n' + text.trim() + '\n[/quote]\n\n');
 }
 
