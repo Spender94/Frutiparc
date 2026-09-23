@@ -14858,7 +14858,7 @@ async function mb2PublierCarteDuJourMaintenant(why, opts) {
   }
   if (topic && topic.is_locked) topic = null;
   if (!topic) {
-    const intro = `Chaque nuit, la map du Challenge de Motion Ball 2 change. Chaque matin, je la relève et je la poste ici : la carte du donjon telle que le jeu la montre, et le détail — le départ, la salle du boss, où trouver chaque bille et chaque bonus, les portes, les passages invisibles.\n\nGardez ce sujet sous le coude : la map du jour est toujours dans le dernier message.`;
+    const intro = `Chaque nuit, la map du Challenge de Motion Ball 2 change. Chaque matin, je la relève et je la poste ici : la carte du donjon telle que le jeu la montre, le plan détaillé de chaque salle — bumpers, blocs verts, trous, passages secrets, portes —, et le détail : le départ, la salle du boss, où trouver chaque bille et chaque bonus, ce qu'il faut pour traverser.\n\nGardez ce sujet sous le coude : la map du jour est toujours dans le dernier message.`;
     topic = await db.forumCreateTopic(board.id, MB2_CARTOGRAPHE, MB2_SUJET_FORUM, intro, bouille, null);
     neuf = true;
     console.log(`[MB2] VieuxPruneau ouvre le sujet #${topic.id} « ${MB2_SUJET_FORUM} » dans « ${board.name} »`);
@@ -14873,22 +14873,27 @@ async function mb2PublierCarteDuJourMaintenant(why, opts) {
     if (dernier && String(dernier.content || '').indexOf(marque) >= 0) return { topicId: topic.id, deja: true };
   }
 
-  // Le plan, rangé dans les images du forum sous son empreinte.
+  // Les deux plans — la carte du jeu, puis le plan détaillé des salles —,
+  // rangés dans les images du forum sous leur empreinte.
   const jour = mb2JourLisible();
-  const svg = Carte.carteSvg(donjon, { graine, jour: new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }).format(new Date()) });
-  const buf = Buffer.from(svg, 'utf8');
-  const hash = crypto.createHash('md5').update(buf).digest('hex');
-  await db.upsertForumImage(hash, 'image/svg+xml', 'svg', buf);
-  forumImageCache.set(hash + '.svg', { mime: 'image/svg+xml', buf });
-  const urlImage = `/forum-uploads/${hash}.svg`;
+  const ranger = async (svg) => {
+    const buf = Buffer.from(svg, 'utf8');
+    const hash = crypto.createHash('md5').update(buf).digest('hex');
+    await db.upsertForumImage(hash, 'image/svg+xml', 'svg', buf);
+    forumImageCache.set(hash + '.svg', { mime: 'image/svg+xml', buf });
+    return `/forum-uploads/${hash}.svg`;
+  };
+  const infosPlan = { graine, jour: new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }).format(new Date()) };
+  const urlImage = await ranger(Carte.carteSvg(donjon, infosPlan));
+  const urlPlan = await ranger(Carte.planSvg(donjon, infosPlan));
 
-  const contenu = Carte.messageForum(donjon, { graine, jour, urlImage, changement: !!opts.changement });
+  const contenu = Carte.messageForum(donjon, { graine, jour, urlImage, urlPlan, changement: !!opts.changement });
   const post = await db.forumCreatePost(topic.id, MB2_CARTOGRAPHE, contenu, bouille, null);
   // Le voyant du forum, comme pour n'importe quelle réponse.
   const suiveurs = await db.forumTopicFollowers(topic.id).catch(() => []);
   notifyForumNews(MB2_CARTOGRAPHE, suiveurs, { id: topic.id, titre: topic.title });
   console.log(`[MB2] VieuxPruneau a posté la map du jour (${why || 'maj'}, graine=${graine}) — message #${post.id}, sujet #${topic.id}`);
-  return { topicId: topic.id, postId: post.id, graine, urlImage };
+  return { topicId: topic.id, postId: post.id, graine, urlImage, urlPlan };
 }
 
 app.post('/api/admin/mb2/regenerate-map', adminScope('challenge'), async (req, res) => {
