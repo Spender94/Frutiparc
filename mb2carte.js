@@ -569,173 +569,131 @@ function carteSvg(d, infos) {
       .push(`<g${matrice(e.m)}>${caractereSvg(b, e.c, 1, ctx)}</g>`);
   }
   // Le cadre : celui du fond du clip (la forme 282 : −13, −38, 440 × 360).
-  const [bx, by, bl, bh] = [-13, -38, 440, 360];
+  // Sous le parchemin, la légende des annotations.
+  const [bx, by, bl] = [-13, -38, 440];
+  const bh = 360 + LEGENDE_H;
   const out = [];
-  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${bl}" height="${bh}" viewBox="${bx} ${by} ${bl} ${bh}">`);
-  out.push(`<!-- Motion Ball 2 : la carte du Challenge (graine ${o.graine != null ? o.graine : '?'}), telle que la pause du jeu la montre -->`);
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${bl}" height="${bh}" viewBox="${bx} ${by} ${bl} ${bh}" font-family="Verdana, Arial, sans-serif">`);
+  out.push(`<!-- Motion Ball 2 : la carte du Challenge (graine ${o.graine != null ? o.graine : '?'}), telle que la pause du jeu la montre, annotée -->`);
   out.push(fond.join(''));
   if (dernier >= 0) out.push(marqueurs[dernier]);
   marqueurs.forEach((g, i) => { if (i !== dernier) out.push(g); });
   out.push(grille.join(''));
   out.push(chemins.join(''));
+  // Par-dessus tout : les annotations.
+  out.push(annotations(d).join('\n'));
+  out.push(legende(bx, by + 360, bl).join('\n'));
   out.push('</svg>');
   return out.join('\n');
 }
 
-// ── Le plan détaillé : les salles à l'échelle, avec leur contenu ──────────
+// ── Les annotations : ce que les joueurs dessinaient à la main ────────────
 //
-// Le second dessin. La carte du jeu (carteSvg) reste ce qu'elle est ; ici,
-// chaque salle est un rectangle à l'échelle de sa grille (152 × 102 cases,
-// une case = un demi-pixel), avec ses objets à leur place et à leur taille,
-// ses passages en trouées dans le mur — pointillée pour un passage
-// invisible, barrée d'un verrou pour une porte —, un badge pour ce qu'on y
-// trouve (départ, boss, billes, bonus), et un liseré quand il faut la bille
-// verte ou l'interrupteur pour traverser. Une légende au pied.
+// La carte reste celle du jeu ; on pose par-dessus, dans son repère (une
+// case = 48 × 36, à 18 + 48x, 16 + 36y), ce que le flux nous apprend :
 //
-// Le repère est celui de la carte : colonnes A à H, lignes 1 à 8.
-const PLAN = {
-  echelle: 0.5, caseL: 76, caseH: 51, marge: 8, gauche: 22, haut: 20, legende: 62,
-};
+//   · un passage secret : un pointillé sur le mur qu'il traverse ;
+//   · une porte : le grelot (♪) qui l'ouvre, posé sur le mur ;
+//   · dans chaque salle, une rangée de pastilles : les bumpers ombres
+//     (invisibles en jeu), les trous, les blocs verts, l'interrupteur, les
+//     mortels quand ils abondent, et la salle « à bumpers » ;
+//   · un liseré vert ou violet autour de la salle quand il faut la bille
+//     verte, ou l'interrupteur, pour la traverser.
+//
+// Et une légende sous le parchemin.
 const COULEURS = {
-  fond: '#FBF3D6', salle: '#FFF9E6', mur: '#8A6D3B', vide: '#EEE6D0', hachure: '#D9CFB4',
-  b1: '#7A8CC8', b2: '#5DBB63', b3: '#D9482B', b4: '#9B59B6', b5: '#6B6B6B',
-  bloc: '#3FA34D', trou: '#2B2B2B', rouge: '#E53935', bleue: '#1E88E5', tele: '#26C6DA',
-  inter: '#8E24AA', blocRouge: '#EF9A9A', blocBleu: '#90CAF9', zapper: '#FDD835',
-  porte: '#5D4037', texte: '#5A4A2A', verte: '#2E7D32', interrupteur: '#8E24AA',
+  ombre: '#4A4A4A', trou: '#111111', bloc: '#2E8B3A', inter: '#7B1FA2', mortel: '#D32F2F', bumpers: '#3F51B5',
+  secret: '#4E2E00', porte: '#5D4037', grelot: '#F9A825', verte: '#1B7A2A', texte: '#5A3A00', legende: '#FFF3C4',
 };
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const CASE_L = PAS_X, CASE_H = PAS_Y;
+const LEGENDE_H = 46;
 
-// La taille d'un objet sur la grille (sa silhouette dans bumpers.txt), en cases.
-function tailleObjet(type) {
-  const { silhouette } = tablesDeCollision();
-  const t = silhouette(type);
-  return { l: t.length, h: t[0].length };
+// Une pastille ronde avec un nombre ou une lettre.
+function pastille(x, y, fond, texte, encre) {
+  const t = String(texte);
+  return `<g><circle cx="${x}" cy="${y}" r="4.6" fill="${fond}" stroke="#fff" stroke-width="0.9"/>`
+    + `<text x="${x}" y="${y + 2.1}" text-anchor="middle" font-size="${t.length > 1 ? 5.2 : 6}" font-weight="bold" font-family="Verdana, Arial, sans-serif" fill="${encre || '#fff'}">${esc(t)}</text></g>`;
+}
+function carre(x, y, fond) {
+  return `<rect x="${x - 4}" y="${y - 4}" width="8" height="8" rx="1" fill="${fond}" stroke="#fff" stroke-width="0.9"/>`;
+}
+// Le grelot d'une porte, posé sur le mur.
+function grelot(x, y) {
+  return `<g><circle cx="${x}" cy="${y}" r="5.5" fill="${COULEURS.grelot}" stroke="${COULEURS.porte}" stroke-width="1.4"/>`
+    + `<text x="${x}" y="${y + 2.8}" text-anchor="middle" font-size="7.5" font-weight="bold" font-family="Verdana, Arial, sans-serif" fill="#fff">♪</text></g>`;
 }
 
-function objetSvg(o, e) {
-  const { l, h } = tailleObjet(SOLIDES.has(o.type) ? o.type : 6);
-  const cx = (o.x + l / 2) * e, cy = (o.y + h / 2) * e, r = Math.max(1.5, (Math.min(l, h) / 2) * e);
-  switch (o.type) {
-    case 1: case 2: case 3: case 4: case 5:
-      return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${COULEURS['b' + o.type]}" stroke="#333" stroke-width="0.5"/>`;
-    case 6:
-      return `<rect x="${(o.x * e).toFixed(1)}" y="${(o.y * e).toFixed(1)}" width="${(l * e).toFixed(1)}" height="${(h * e).toFixed(1)}" fill="${COULEURS.bloc}" stroke="#1B5E20" stroke-width="0.5"/>`;
-    case 7:
-      return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${COULEURS.trou}"/>`;
-    case 8: case 9:
-      return `<circle cx="${((o.x + 3) * e).toFixed(1)}" cy="${((o.y + 3) * e).toFixed(1)}" r="${(2.5 * e).toFixed(1)}" fill="${o.type === 8 ? COULEURS.rouge : COULEURS.bleue}" stroke="#fff" stroke-width="0.4"/>`;
-    case 10:
-      return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${COULEURS.tele}" stroke-width="1.2"/>`;
-    case 11:
-      return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${COULEURS.inter}" stroke="#fff" stroke-width="0.8"/>`;
-    case 12: case 13:
-      return `<rect x="${(o.x * e).toFixed(1)}" y="${(o.y * e).toFixed(1)}" width="${(l * e).toFixed(1)}" height="${(h * e).toFixed(1)}" fill="${o.type === 12 ? COULEURS.blocRouge : COULEURS.blocBleu}" stroke="${COULEURS.inter}" stroke-width="0.5"/>`;
-    case 14:
-      return `<rect x="${(o.x * e).toFixed(1)}" y="${(o.y * e).toFixed(1)}" width="${(l * e).toFixed(1)}" height="${(h * e).toFixed(1)}" fill="${COULEURS.zapper}" stroke="#333" stroke-width="0.5"/>`;
-    default: return '';
-  }
+// Les pastilles d'une salle, d'après son analyse : [[fond, texte, forme]].
+function pastillesDe(a) {
+  const l = [];
+  const n = (t) => a.compte[t] || 0;
+  if (n(5)) l.push([COULEURS.ombre, n(5), 'rond']);
+  if (a.trous) l.push([COULEURS.trou, a.trous, 'rond']);
+  if (a.blocs) l.push([COULEURS.bloc, a.blocs, 'carre']);
+  if (a.interrupteur || a.blocsBleus || a.blocsRouges) l.push([COULEURS.inter, 'I', 'rond']);
+  if (n(3) >= SEUIL_MORTELS) l.push([COULEURS.mortel, n(3), 'rond']);
+  if (a.bumpers >= SEUIL_SALLE_A_BUMPERS) l.push([COULEURS.bumpers, a.bumpers, 'rond']);
+  return l;
 }
 
-// Un badge rond avec une lettre, pour ce qu'on trouve dans la salle.
-function badge(x, y, fond, lettre, encre) {
-  return `<g><circle cx="${x}" cy="${y}" r="6.5" fill="${fond}" stroke="#fff" stroke-width="1"/>`
-    + `<text x="${x}" y="${y + 3.2}" text-anchor="middle" font-size="8.5" font-weight="bold" font-family="Verdana, Arial, sans-serif" fill="${encre || '#fff'}">${esc(lettre)}</text></g>`;
-}
-const BADGES_BILLES = [['#3FA34D', 'V'], ['#1E88E5', 'B'], ['#8D8D8D', 'M'], ['#8E24AA', 'Vi']];
-const BADGES_BONUS = [['#FB8C00', '+1'], ['#E53935', '+1'], ['#6D4C41', 'C'], ['#00897B', 'R'], ['#F9A825', '♪'], ['#546E7A', '1′'], ['#37474F', '3′']];
-
-function planSvg(d, infos) {
-  const o = infos || {};
-  const { CW, CH, BORD } = tablesDeCollision();
-  const e = PLAN.echelle, L = PLAN.caseL, H = PLAN.caseH, M = PLAN.marge;
-  const larg = PLAN.gauche + 8 * (L + M) + M, haut = PLAN.haut + 8 * (H + M) + PLAN.legende;
+function annotations(d) {
   const out = [];
-  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${larg}" height="${haut}" viewBox="0 0 ${larg} ${haut}" font-family="Verdana, Arial, sans-serif">`);
-  out.push(`<!-- Motion Ball 2 : le plan détaillé du Challenge (graine ${o.graine != null ? o.graine : '?'}) : chaque salle à l'échelle, avec son contenu -->`);
-  out.push(`<defs><pattern id="hach" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="${COULEURS.vide}"/><line x1="0" y1="0" x2="0" y2="6" stroke="${COULEURS.hachure}" stroke-width="2"/></pattern></defs>`);
-  out.push(`<rect width="${larg}" height="${haut}" fill="${COULEURS.fond}"/>`);
-  // Les repères : A..H en haut, 1..8 à gauche.
-  for (let x = 0; x < 8; x++) out.push(`<text x="${PLAN.gauche + x * (L + M) + L / 2}" y="${PLAN.haut - 6}" text-anchor="middle" font-size="10" font-weight="bold" fill="${COULEURS.texte}">${COLONNES[x]}</text>`);
-  for (let y = 0; y < 8; y++) out.push(`<text x="${PLAN.gauche - 8}" y="${PLAN.haut + y * (H + M) + H / 2 + 4}" text-anchor="middle" font-size="10" font-weight="bold" fill="${COULEURS.texte}">${y + 1}</text>`);
-
-  const largPorte = 28 * e;           // Const.DOOR_CSIZE : la trouée de la porte, en cases
+  const coin = (x, y) => [CARTE_X + PAS_X * x, CARTE_Y + PAS_Y * y];
   for (let x = 0; x < 8; x++) {
     for (let y = 0; y < 8; y++) {
-      const px = PLAN.gauche + x * (L + M), py = PLAN.haut + y * (H + M);
-      const sl = salle(d, x, y);
-      if (sl.type === 0 || !d.salles[x] || !d.salles[x][y]) {
-        out.push(`<rect x="${px}" y="${py}" width="${L}" height="${H}" fill="url(#hach)" stroke="${COULEURS.hachure}"/>`);
-        continue;
-      }
-      const a = analyserSalle(d, x, y);
-      out.push(`<g transform="translate(${px},${py})">`);
-      out.push(`<rect width="${L}" height="${H}" fill="${COULEURS.salle}"/>`);
-      // Les objets, à leur place.
-      if (sl.objets) for (const ob of sl.objets) out.push(objetSvg(ob, e));
-      // Les murs : quatre côtés, troués là où l'on passe.
-      const cotes = [
-        { dir: 0, x1: 0, y1: 0, x2: 0, y2: H },        // gauche
-        { dir: 1, x1: L, y1: 0, x2: L, y2: H },        // droite
-        { dir: 2, x1: 0, y1: 0, x2: L, y2: 0 },        // haut
-        { dir: 3, x1: 0, y1: H, x2: L, y2: H },        // bas
-      ];
-      for (const c of cotes) {
-        const p = passage(d, x, y, c.dir);
-        const vertical = c.dir < 2;
-        const mil = vertical ? H / 2 : L / 2;
-        const attrs = `stroke="${COULEURS.mur}" stroke-width="2.5" stroke-linecap="round"`;
-        if (!p) { out.push(`<line x1="${c.x1}" y1="${c.y1}" x2="${c.x2}" y2="${c.y2}" ${attrs}/>`); continue; }
-        const a1 = mil - largPorte / 2, a2 = mil + largPorte / 2;
-        if (vertical) {
-          out.push(`<line x1="${c.x1}" y1="0" x2="${c.x1}" y2="${a1}" ${attrs}/><line x1="${c.x1}" y1="${a2}" x2="${c.x1}" y2="${H}" ${attrs}/>`);
-          if (p.type === 2) out.push(`<line x1="${c.x1}" y1="${a1}" x2="${c.x1}" y2="${a2}" stroke="${COULEURS.mur}" stroke-width="1.2" stroke-dasharray="2 2"/>`);
-          if (p.type === 3) out.push(`<line x1="${c.x1}" y1="${a1 + 1}" x2="${c.x1}" y2="${a2 - 1}" stroke="${COULEURS.porte}" stroke-width="4"/><text x="${c.x1}" y="${mil + 3}" text-anchor="middle" font-size="7" fill="#fff">♪</text>`);
+      const s = salle(d, x, y);
+      if (s.type === 0) continue;
+      const [px, py] = coin(x, y);
+      // Les passages secrets et les portes vers la droite et vers le bas.
+      for (const dir of [1, 3]) {
+        const p = passage(d, x, y, dir);
+        if (!p || p.type < 2) continue;
+        const mx = dir === 1 ? px + CASE_L : px + CASE_L / 2;
+        const my = dir === 1 ? py + CASE_H / 2 : py + CASE_H;
+        if (p.type === 2) {
+          const [x1, y1, x2, y2] = dir === 1 ? [mx, my - 9, mx, my + 9] : [mx - 9, my, mx + 9, my];
+          out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity="0.8"/>`
+            + `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COULEURS.secret}" stroke-width="2" stroke-dasharray="2.5 2.5"/>`);
         } else {
-          out.push(`<line x1="0" y1="${c.y1}" x2="${a1}" y2="${c.y1}" ${attrs}/><line x1="${a2}" y1="${c.y1}" x2="${L}" y2="${c.y1}" ${attrs}/>`);
-          if (p.type === 2) out.push(`<line x1="${a1}" y1="${c.y1}" x2="${a2}" y2="${c.y1}" stroke="${COULEURS.mur}" stroke-width="1.2" stroke-dasharray="2 2"/>`);
-          if (p.type === 3) out.push(`<line x1="${a1 + 1}" y1="${c.y1}" x2="${a2 - 1}" y2="${c.y1}" stroke="${COULEURS.porte}" stroke-width="4"/><text x="${mil}" y="${c.y1 + 2.5}" text-anchor="middle" font-size="7" fill="#fff">♪</text>`);
+          out.push(grelot(mx, my));
         }
       }
+      const a = analyserSalle(d, x, y);
+      if (!a) continue;
       // Le liseré : ce qu'il faut pour traverser.
-      if (a && a.acces !== 'libre') {
-        const coul = a.acces === 'bloquée' ? '#B71C1C' : a.acces === 'verte' ? COULEURS.verte : COULEURS.interrupteur;
-        out.push(`<rect x="2" y="2" width="${L - 4}" height="${H - 4}" fill="none" stroke="${coul}" stroke-width="2" stroke-dasharray="4 2"/>`);
+      if (a.acces !== 'libre') {
+        const coul = a.acces === 'verte' ? COULEURS.verte : a.acces === 'bloquée' ? COULEURS.mortel : COULEURS.inter;
+        out.push(`<rect x="${px + 2.5}" y="${py + 2.5}" width="${CASE_L - 5}" height="${CASE_H - 5}" rx="2" fill="none" stroke="${coul}" stroke-width="2.2" stroke-dasharray="4 2"/>`);
       }
-      // Le badge : ce qu'on y trouve.
-      let b = null;
-      if (x === d.depart.x && y === d.depart.y) b = badge(9, 9, '#00897B', 'D');
-      else if (sl.type === 2) b = badge(9, 9, '#212121', '☠');
-      else if (sl.type === 3 && sl.donnee >= 0 && BADGES_BILLES[sl.donnee]) b = badge(9, 9, BADGES_BILLES[sl.donnee][0], BADGES_BILLES[sl.donnee][1]);
-      else if (sl.type === 4 && sl.donnee >= 0 && BADGES_BONUS[sl.donnee]) b = badge(9, 9, BADGES_BONUS[sl.donnee][0], BADGES_BONUS[sl.donnee][1]);
-      if (b) out.push(b);
-      // Le nom de la case, discret.
-      out.push(`<text x="${L - 3}" y="${H - 3}" text-anchor="end" font-size="7" fill="${COULEURS.texte}" opacity="0.7">${nomCase(x, y)}</text>`);
-      out.push('</g>');
+      // Les pastilles, en rangée au bas de la case (deux rangées au besoin).
+      const l = pastillesDe(a);
+      l.forEach(([fond, texte, forme], i) => {
+        const cx = px + 8 + (i % 4) * 10.5, cy = py + CASE_H - 8 - Math.floor(i / 4) * 10.5;
+        out.push(forme === 'carre' ? carre(cx, cy, fond) + `<text x="${cx}" y="${cy + 2.1}" text-anchor="middle" font-size="${String(texte).length > 1 ? 5.2 : 6}" font-weight="bold" font-family="Verdana, Arial, sans-serif" fill="#fff">${esc(texte)}</text>` : pastille(cx, cy, fond, texte));
+      });
     }
   }
-  // La légende.
-  const ly = PLAN.haut + 8 * (H + M) + 14;
-  const lig = (items, y) => items.map(([dessin, texte], i) => `<g transform="translate(${PLAN.gauche + i * 108},${y})">${dessin}<text x="14" y="4" font-size="8.5" fill="${COULEURS.texte}">${esc(texte)}</text></g>`).join('');
-  const rond = (c) => `<circle cx="5" cy="0" r="4.5" fill="${c}" stroke="#333" stroke-width="0.5"/>`;
-  const carre = (c, tr) => `<rect x="0.5" y="-4.5" width="9" height="9" fill="${c}" stroke="${tr || '#333'}" stroke-width="0.5"/>`;
+  return out;
+}
+
+// La légende, sous le parchemin (deux lignes).
+function legende(x0, y0, largeur) {
+  const out = [`<rect x="${x0}" y="${y0}" width="${largeur}" height="${LEGENDE_H}" fill="${COULEURS.legende}"/>`];
+  const lig = (items, y) => items.map(([dessin, texte], i) => `<g transform="translate(${x0 + 10 + i * 88},${y})">${dessin}<text x="9" y="2.6" font-size="7" font-family="Verdana, Arial, sans-serif" fill="${COULEURS.texte}">${esc(texte)}</text></g>`).join('');
   out.push(lig([
-    [rond(COULEURS.b1), 'bumper'], [rond(COULEURS.b2), 'bumper à temps'], [rond(COULEURS.b3), 'bumper mortel'],
-    [rond(COULEURS.b4), 'bumper aimant'], [rond(COULEURS.b5), 'bumper ombre'], [carre(COULEURS.bloc, '#1B5E20'), 'bloc vert (bille verte)'],
-  ], ly));
+    [pastille(0, 0, COULEURS.ombre, 3), 'bumpers ombres'], [pastille(0, 0, COULEURS.trou, 4), 'trous'],
+    [carre(0, 0, COULEURS.bloc), 'blocs verts'], [pastille(0, 0, COULEURS.inter, 'I'), 'interrupteur'],
+    [pastille(0, 0, COULEURS.mortel, 5), 'mortels (5 et +)'],
+  ], y0 + 14));
   out.push(lig([
-    [`<circle cx="5" cy="0" r="3" fill="${COULEURS.trou}"/>`, 'trou'], [`<circle cx="3" cy="0" r="2.5" fill="${COULEURS.rouge}"/><circle cx="9" cy="0" r="2.5" fill="${COULEURS.bleue}"/>`, 'billes rouge, bleue'],
-    [`<line x1="0" y1="0" x2="10" y2="0" stroke="${COULEURS.mur}" stroke-width="1.2" stroke-dasharray="2 2"/>`, 'passage secret'],
-    [`<line x1="0" y1="0" x2="10" y2="0" stroke="${COULEURS.porte}" stroke-width="4"/>`, 'porte (grelot ♪)'],
-    [`<rect x="0" y="-5" width="10" height="10" fill="none" stroke="${COULEURS.verte}" stroke-width="1.5" stroke-dasharray="3 1.5"/>`, 'bille verte obligatoire'],
-    [`<rect x="0" y="-5" width="10" height="10" fill="none" stroke="${COULEURS.interrupteur}" stroke-width="1.5" stroke-dasharray="3 1.5"/>`, 'interrupteur obligatoire'],
-  ], ly + 16));
-  out.push(lig([
-    [badge(5, 0, '#00897B', 'D'), 'départ'], [badge(5, 0, '#212121', '☠'), 'boss'],
-    [badge(5, 0, '#3FA34D', 'V'), 'bille (V, B, M, Vi)'], [badge(5, 0, '#F9A825', '♪'), 'grelot'],
-    [badge(5, 0, '#6D4C41', 'C'), 'carte · R radar'], [badge(5, 0, '#FB8C00', '+1'), 'bille en plus · 1′ 3′ temps'],
-  ], ly + 32));
-  out.push('</svg>');
-  return out.join('\n');
+    [pastille(0, 0, COULEURS.bumpers, 20), 'salle à bumpers'],
+    [`<line x1="-4" y1="0" x2="4" y2="0" stroke="${COULEURS.secret}" stroke-width="2" stroke-dasharray="2.5 2.5"/>`, 'passage secret'],
+    [grelot(0, 0), 'porte (grelot)'],
+    [`<rect x="-5" y="-4" width="10" height="8" fill="none" stroke="${COULEURS.verte}" stroke-width="1.6" stroke-dasharray="3 1.5"/>`, 'bille verte obligatoire'],
+    [`<rect x="-5" y="-4" width="10" height="8" fill="none" stroke="${COULEURS.inter}" stroke-width="1.6" stroke-dasharray="3 1.5"/>`, 'interrupteur obligatoire'],
+  ], y0 + 32));
+  return out;
 }
 
 // ── Le message du forum ────────────────────────────────────────────────────
@@ -756,12 +714,7 @@ function messageForum(d, infos) {
   l.push('');
   if (o.urlImage) {
     l.push(`[img]${o.urlImage}[/img]`);
-    l.push(`[i]La carte telle que le jeu la montre en pause (Échap), carte et radar en poche — le joueur au départ.[/i]`);
-    l.push('');
-  }
-  if (o.urlPlan) {
-    l.push(`[img]${o.urlPlan}[/img]`);
-    l.push(`[i]Le plan détaillé (cliquer pour l'agrandir) : chaque salle à l'échelle avec ce qu'elle contient, les passages secrets en pointillé, les portes avec leur grelot, et un liseré vert ou violet quand il faut la bille verte ou l'interrupteur pour traverser.[/i]`);
+    l.push(`[i]La carte telle que le jeu la montre en pause (Échap), carte et radar en poche, le joueur au départ — annotée (cliquer pour l'agrandir) : les passages secrets en pointillé, le grelot sur chaque porte, et dans chaque salle ses bumpers ombres, ses trous, ses blocs verts, son interrupteur ; un liseré vert ou violet quand il faut la bille verte ou l'interrupteur pour traverser.[/i]`);
     l.push('');
   }
   l.push(`[b]Le donjon[/b] : ${r.salles} salles sur ${d.largeur} × ${d.hauteur} (${r.vides} cases vides). Colonnes A à H de gauche à droite, lignes 1 à 8 de haut en bas.`);
@@ -773,7 +726,7 @@ function messageForum(d, infos) {
   if (bonusBilles.length) l.push(`• [b]Billes bonus[/b] : ${liste(bonusBilles, (b) => `${b.nom} en ${b.case}`)}.`);
   if (bonusAutres.length) l.push(`• [b]Bonus[/b] : ${liste(bonusAutres, (b) => `${b.nom} en ${b.case}`)} (le radar n'est pas marqué sur la carte).`);
   if (r.portes.length) l.push(`• [b]Portes[/b] (un grelot — la cloche — les ouvre) : ${liste(r.portes, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
-  if (r.invisibles.length) l.push(`• [b]Passages secrets[/b] (absents de la carte du jeu, en pointillé sur le plan) : ${liste(r.invisibles, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
+  if (r.invisibles.length) l.push(`• [b]Passages secrets[/b] (absents de la carte du jeu, en pointillé sur la carte) : ${liste(r.invisibles, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
   if (r.contenu) {
     l.push('');
     l.push(`[b]Dans les salles[/b]`);
@@ -807,8 +760,9 @@ function messageForum(d, infos) {
 // La marque d'idempotence du message (server.js la cherche dans le dernier
 // message de VieuxPruneau) : la graine, et la VERSION du plan. Changer de
 // version fait reposter la map du jour une fois — c'est ainsi que le plan du
-// jeu (v2) a remplacé le plan inventé sans attendre le lendemain.
-const MARQUE_VERSION = ' · carte v3';
+// jeu (v2) a remplacé le plan inventé, puis la carte annotée (v4) le plan
+// nu, sans attendre le lendemain.
+const MARQUE_VERSION = ' · carte v4';
 // Une salle « à bumpers » : à partir de ce nombre. Toutes les salles en ont
 // (de cinq à une dizaine) ; celles qu'on nomme en ont vingt et plus — les
 // salles spéciales aux vingt aimants ou aux vingt ombres, et les plus
@@ -817,6 +771,6 @@ const SEUIL_SALLE_A_BUMPERS = 20;
 const SEUIL_MORTELS = 5;
 
 module.exports = {
-  decoderDonjon, lireFichier, decrire, carteSvg, planSvg, messageForum, passage, nomCase, analyserSalle,
+  decoderDonjon, lireFichier, decrire, carteSvg, messageForum, passage, nomCase, analyserSalle,
   BILLES, BONUS, TYPES, PASSAGES, OBJETS, COLONNES, MARQUE_VERSION, SEUIL_SALLE_A_BUMPERS, SEUIL_MORTELS,
 };
