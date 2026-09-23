@@ -6,28 +6,16 @@
 // du SWF — et en tire trois choses pour le forum :
 //
 //   · le DONJON décodé : huit salles sur huit, chacune avec son type (rien,
-//     salle ordinaire, boss, bille à trouver, bonus), ses quatre passages
-//     (ouvert, fermé, invisible, porte) — et, à la suite du donjon dans le
-//     même flux, le CONTENU de chaque salle : bumpers, blocs verts, trous,
-//     interrupteur et ses blocs, téléporteurs, zappers, billes rouges et
-//     bleues, chacun à sa place sur la grille de la salle (152 × 102 cases
-//     de quatre pixels : LevelLoader.decode_room_bumpers) ;
-//   · l'ANALYSE de chaque salle : ce qu'il y a dedans, et s'il faut la
-//     bille verte (les blocs barrent le chemin) ou l'interrupteur (les blocs
-//     bleus le barrent) pour la traverser — ce que les joueurs annotaient à
-//     la main sur la capture de la carte ;
-//   · le PLAN DÉTAILLÉ : les soixante-quatre salles dessinées à l'échelle
-//     avec leur contenu, les passages secrets et les portes, dans un second
-//     SVG (le premier reste la carte du jeu, telle quelle) ;
+//     salle ordinaire, boss, bille à trouver, bonus) et ses quatre passages
+//     (ouvert, fermé, invisible, porte) ;
 //   · le PLAN : LA CARTE DU JEU, telle que la pause la montre quand on a la
 //     carte et le radar en poche (Pause.show_map de public/mb2/jeu/ecrans.js)
 //     — les mêmes clips (`carte`, `room`), lus dans public/mb2/data/mb2.json
 //     et rejoués en SVG, image par image, aux mêmes places ; rien n'y est
 //     dessiné qui ne soit dans le jeu ;
-//   · le MESSAGE du forum, en BBCode : les deux plans, puis le détail — où
-//     l'on part, où est le boss, où trouver chaque bille et chaque bonus, les
-//     portes, les passages invisibles, les salles à bumpers, les blocs verts
-//     qu'il faut casser, les interrupteurs, les trous.
+//   · le MESSAGE du forum, en BBCode : le plan, puis le détail — où l'on
+//     part, où est le boss, où trouver chaque bille et chaque bonus, les
+//     portes, les passages invisibles.
 //
 // Le repère est celui d'une grille de bataille navale : colonnes A à H de
 // gauche à droite, lignes 1 à 8 de haut en bas — le sens du plan de la pause
@@ -60,10 +48,6 @@ function lecteur(data) {
       return Math.floor(bits / 2 ** nbits) & ((1 << n) - 1);
     },
     erreur: () => erreur,
-    // `MTBitcodec.next_part` : on oublie les bits restants du caractère en
-    // cours — le générateur cale chaque partie (donjon, puis salles) sur un
-    // caractère entier (flushPartie).
-    suite() { nbits = 0; bits = 0; },
   };
 }
 
@@ -79,15 +63,6 @@ const BILLES = ['verte', 'bleue', 'métal', 'violette'];
 const BONUS = ['bille orange', 'bille rouge', 'carte', 'radar', 'grelot', '+1 min', '+3 min'];
 const TYPES = ['vide', 'ordinaire', 'boss', 'bille', 'bonus', 'ordinaire (« objet requis » dans le flux, sans effet en jeu)'];
 const PASSAGES = ['ouvert', 'fermé', 'invisible', 'porte'];
-// Les objets d'une salle (Level.gen_bumper et gen_normal_room) : les cinq
-// bumpers, le BLOC VERT — que seule la bille VERTE casse (Collide.wall_on_hit
-// ne fait rien pour les autres) —, le trou, les billes rouge et bleue à
-// ramasser, le téléporteur, l'INTERRUPTEUR et ses blocs rouges et bleus (les
-// bleus sont solides au départ, les rouges le deviennent quand on frappe
-// l'interrupteur), le zapper, et la sortie du mode classique.
-const OBJETS = [null, 'bumper', 'bumper à temps', 'bumper mortel', 'bumper aimant', 'bumper ombre',
-  'bloc vert', 'trou', 'bille rouge', 'bille bleue', 'téléporteur', 'interrupteur', 'bloc rouge', 'bloc bleu', 'zapper', 'sortie'];
-const POS_NBITS = 8;                 // Const.POS_NBITS : ceil(log2(152))
 const COLONNES = 'ABCDEFGH';
 
 function nomCase(x, y) { return COLONNES[x] + (y + 1); }
@@ -125,28 +100,6 @@ function decoderDonjon(ddata) {
     }
   }
   if (bc.erreur()) throw new Error('mb2carte : flux tronqué');
-  // Le contenu des salles, à la suite, dans l'ordre du donjon (x puis y),
-  // une entrée par case — vide comprise (un bit à zéro). Une salle : un bit,
-  // puis des objets (type sur quatre bits, x et y sur huit) jusqu'au type 0.
-  bc.suite();
-  for (let x = 0; x < largeur; x++) {
-    for (let y = 0; y < hauteur; y++) {
-      const s = salles[x][y];
-      s.objets = null;
-      if (bc.read(1) !== 1) continue;
-      s.objets = [];
-      for (;;) {
-        const t = bc.read(4);
-        if (t <= 0) break;
-        const ox = bc.read(POS_NBITS), oy = bc.read(POS_NBITS);
-        if (bc.erreur()) break;
-        s.objets.push({ type: t, x: ox, y: oy });
-      }
-    }
-  }
-  // Un flux d'avant les salles (ou tronqué) : on garde le donjon, sans
-  // contenu — la carte du jeu ne s'en sert pas.
-  if (bc.erreur()) for (let x = 0; x < largeur; x++) for (let y = 0; y < hauteur; y++) salles[x][y].objets = null;
   return { largeur, hauteur, depart, salles };
 }
 
@@ -178,168 +131,15 @@ function passage(d, x, y, dir) {
   return { type: 0 };
 }
 
-// ── L'analyse d'une salle ──────────────────────────────────────────────────
-//
-// Ce que les joueurs annotaient à la main sur la capture de la carte : les
-// salles à bumpers, celles où des blocs verts barrent le passage — il faut
-// alors la bille VERTE, la seule qui les casse —, celles où c'est
-// l'interrupteur qui commande le passage, les trous.
-//
-// Pour le dire, on rejoue la grille de collision de la salle avec les tables
-// de bumpers.txt (les mêmes silhouettes que le jeu : mb2gen._tables), on
-// gonfle chaque obstacle du rayon de la bille (deux cases), et l'on cherche
-// si les entrées de la salle — les passages praticables, et son centre — se
-// rejoignent :
-//
-//   · oui, blocs verts et blocs bleus en place       → « libre » ;
-//   · seulement si l'on retire les blocs verts        → « verte » ;
-//   · seulement en basculant l'interrupteur           → « interrupteur » ;
-//   · en basculant ET en cassant                      → « interrupteur+verte » ;
-//   · jamais                                          → « bloquée » (ne devrait pas arriver).
-const SOLIDES = new Set([1, 2, 3, 4, 5, 6, 7, 11, 12, 13, 14]);
-const RAYON_BILLE = 2;               // Const.BALL_RAYSIZE (8 px) en cases de 4 px
-
-let tables = null;
-function tablesDeCollision() {
-  if (!tables) {
-    const gen = require('./mb2gen.js');
-    gen.loadBumpers();
-    const T = gen._tables;
-    // La silhouette de chaque type : bumpers.txt en donne sept (les cinq
-    // bumpers, le bloc, le trou) ; l'interrupteur, ses blocs et le zapper
-    // prennent celle du bloc.
-    const silhouette = (t) => T.bumpers[t - 1] || T.bumpers[5];
-    tables = { CW: T.cwidth, CH: T.cheight, BORD: T.cborder, silhouette };
-  }
-  return tables;
-}
-
-function grilleDeSalle(objets, { sansVerts = false, interrupteur = false } = {}) {
-  const { CW, CH, BORD, silhouette } = tablesDeCollision();
-  const dur = Array.from({ length: CW }, () => new Uint8Array(CH));
-  for (let i = 0; i < BORD; i++) for (let j = 0; j < CH; j++) { dur[i][j] = 1; dur[CW - 1 - i][j] = 1; }
-  for (let j = 0; j < BORD; j++) for (let i = 0; i < CW; i++) { dur[i][j] = 1; dur[i][CH - 1 - j] = 1; }
-  for (const o of objets || []) {
-    if (!SOLIDES.has(o.type)) continue;
-    if (o.type === 6 && sansVerts) continue;
-    // Les bleus sont solides au départ, les rouges une fois l'interrupteur frappé.
-    if (o.type === 13 && interrupteur) continue;
-    if (o.type === 12 && !interrupteur) continue;
-    const tbl = silhouette(o.type);
-    for (let a = 0; a < tbl.length; a++) {
-      for (let b = 0; b < tbl[a].length; b++) {
-        if (!tbl[a][b]) continue;
-        // Gonflé du rayon de la bille : elle ne passe pas où son centre ne passe pas.
-        for (let dx = -RAYON_BILLE; dx <= RAYON_BILLE; dx++) {
-          for (let dy = -RAYON_BILLE; dy <= RAYON_BILLE; dy++) {
-            const px = o.x + a + dx, py = o.y + b + dy;
-            if (px >= 0 && px < CW && py >= 0 && py < CH) dur[px][py] = 1;
-          }
-        }
-      }
-    }
-  }
-  return dur;
-}
-
-// Les entrées d'une salle : ses passages praticables (par `passage`, les deux
-// côtés comptés) et son centre, en cases de la grille.
-function entreesDeSalle(d, x, y) {
-  const { CW, CH, BORD } = tablesDeCollision();
-  const e = [{ nom: 'centre', x: Math.floor(CW / 2), y: Math.floor(CH / 2) }];
-  const portes = [
-    { nom: 'gauche', x: BORD + 1, y: Math.floor(CH / 2) },
-    { nom: 'droite', x: CW - BORD - 2, y: Math.floor(CH / 2) },
-    { nom: 'haut', x: Math.floor(CW / 2), y: BORD + 1 },
-    { nom: 'bas', x: Math.floor(CW / 2), y: CH - BORD - 2 },
-  ];
-  for (let dir = 0; dir < 4; dir++) if (passage(d, x, y, dir)) e.push(portes[dir]);
-  return e;
-}
-
-// Toutes les entrées se rejoignent-elles sur cette grille ?
-function seRejoignent(dur, entrees) {
-  const CW = dur.length, CH = dur[0].length;
-  // Une entrée gonflée dans un obstacle : on part de la case libre la plus proche.
-  const depart = (e) => {
-    for (let r = 0; r <= 6; r++) {
-      for (let dx = -r; dx <= r; dx++) {
-        for (let dy = -r; dy <= r; dy++) {
-          const px = e.x + dx, py = e.y + dy;
-          if (px >= 0 && px < CW && py >= 0 && py < CH && !dur[px][py]) return [px, py];
-        }
-      }
-    }
-    return null;
-  };
-  const departs = entrees.map(depart);
-  if (departs.some((p) => !p)) return false;
-  const vu = Array.from({ length: CW }, () => new Uint8Array(CH));
-  const file = [departs[0]];
-  vu[departs[0][0]][departs[0][1]] = 1;
-  while (file.length) {
-    const [px, py] = file.pop();
-    for (const [nx, ny] of [[px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]]) {
-      if (nx < 0 || nx >= CW || ny < 0 || ny >= CH || dur[nx][ny] || vu[nx][ny]) continue;
-      vu[nx][ny] = 1; file.push([nx, ny]);
-    }
-  }
-  return departs.every(([px, py]) => vu[px][py]);
-}
-
-/**
- * Ce qu'il y a dans une salle et ce qu'il faut pour la traverser :
- * { compte: {type: n}, bumpers, blocs, trous, interrupteur, acces }
- * où `acces` vaut 'libre' | 'verte' | 'interrupteur' | 'interrupteur+verte' | 'bloquée'.
- * Sans contenu (flux d'avant les salles) : null.
- */
-function analyserSalle(d, x, y) {
-  const s = salle(d, x, y);
-  if (!s.objets || s.type === 0) return null;
-  const compte = {};
-  for (const o of s.objets) compte[o.type] = (compte[o.type] || 0) + 1;
-  const n = (t) => compte[t] || 0;
-  const r = {
-    compte,
-    bumpers: n(1) + n(2) + n(3) + n(4) + n(5),
-    blocs: n(6), trous: n(7), rouges: n(8), bleues: n(9),
-    teleporteurs: n(10), interrupteur: n(11) > 0, blocsRouges: n(12), blocsBleus: n(13), zappers: n(14),
-    acces: 'libre',
-  };
-  const entrees = entreesDeSalle(d, x, y);
-  if (entrees.length < 2) return r;
-  if (seRejoignent(grilleDeSalle(s.objets), entrees)) return r;
-  if (r.blocs && seRejoignent(grilleDeSalle(s.objets, { sansVerts: true }), entrees)) { r.acces = 'verte'; return r; }
-  if (r.interrupteur || r.blocsBleus) {
-    if (seRejoignent(grilleDeSalle(s.objets, { interrupteur: true }), entrees)) { r.acces = 'interrupteur'; return r; }
-    if (r.blocs && seRejoignent(grilleDeSalle(s.objets, { interrupteur: true, sansVerts: true }), entrees)) { r.acces = 'interrupteur+verte'; return r; }
-  }
-  r.acces = 'bloquée';
-  return r;
-}
-
 /** Ce que la carte raconte, rangé : départ, boss, billes, bonus, portes… */
 function decrire(d) {
-  const r = { depart: null, boss: null, billes: [], bonus: [], portes: [], invisibles: [], salles: 0, vides: 0,
-    // Le contenu des salles, quand le flux le porte.
-    contenu: false, bumpers: [], blocsVerts: [], interrupteurs: [], trous: [], teleporteurs: [], zappers: [], bloquees: [] };
+  const r = { depart: null, boss: null, billes: [], bonus: [], portes: [], invisibles: [], salles: 0, vides: 0 };
   for (let x = 0; x < d.largeur; x++) {
     for (let y = 0; y < d.hauteur; y++) {
       const s = d.salles[x][y];
       const c = nomCase(x, y);
       if (s.type === 0) { r.vides++; continue; }
       r.salles++;
-      const a = analyserSalle(d, x, y);
-      if (a) {
-        r.contenu = true;
-        if (a.bumpers) r.bumpers.push({ case: c, nombre: a.bumpers, compte: a.compte });
-        if (a.blocs) r.blocsVerts.push({ case: c, nombre: a.blocs, obligatoire: a.acces === 'verte' || a.acces === 'interrupteur+verte' });
-        if (a.interrupteur || a.blocsRouges || a.blocsBleus) r.interrupteurs.push({ case: c, obligatoire: a.acces === 'interrupteur' || a.acces === 'interrupteur+verte' });
-        if (a.trous) r.trous.push({ case: c, nombre: a.trous });
-        if (a.teleporteurs) r.teleporteurs.push({ case: c, nombre: a.teleporteurs });
-        if (a.zappers) r.zappers.push({ case: c, nombre: a.zappers });
-        if (a.acces === 'bloquée') r.bloquees.push({ case: c });
-      }
       if (x === d.depart.x && y === d.depart.y) r.depart = c;
       if (s.type === 2) r.boss = c;
       else if (s.type === 3) r.billes.push({ bille: s.donnee, nom: BILLES[s.donnee], case: c });
@@ -569,131 +369,17 @@ function carteSvg(d, infos) {
       .push(`<g${matrice(e.m)}>${caractereSvg(b, e.c, 1, ctx)}</g>`);
   }
   // Le cadre : celui du fond du clip (la forme 282 : −13, −38, 440 × 360).
-  // Sous le parchemin, la légende des annotations.
-  const [bx, by, bl] = [-13, -38, 440];
-  const bh = 360 + LEGENDE_H;
+  const [bx, by, bl, bh] = [-13, -38, 440, 360];
   const out = [];
-  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${bl}" height="${bh}" viewBox="${bx} ${by} ${bl} ${bh}" font-family="Verdana, Arial, sans-serif">`);
-  out.push(`<!-- Motion Ball 2 : la carte du Challenge (graine ${o.graine != null ? o.graine : '?'}), telle que la pause du jeu la montre, annotée -->`);
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${bl}" height="${bh}" viewBox="${bx} ${by} ${bl} ${bh}">`);
+  out.push(`<!-- Motion Ball 2 : la carte du Challenge (graine ${o.graine != null ? o.graine : '?'}), telle que la pause du jeu la montre -->`);
   out.push(fond.join(''));
   if (dernier >= 0) out.push(marqueurs[dernier]);
   marqueurs.forEach((g, i) => { if (i !== dernier) out.push(g); });
   out.push(grille.join(''));
   out.push(chemins.join(''));
-  // Par-dessus tout : les annotations.
-  out.push(annotations(d).join('\n'));
-  out.push(legende(bx, by + 360, bl).join('\n'));
   out.push('</svg>');
   return out.join('\n');
-}
-
-// ── Les annotations : ce que les joueurs dessinaient à la main ────────────
-//
-// La carte reste celle du jeu ; on pose par-dessus, dans son repère (une
-// case = 48 × 36, à 18 + 48x, 16 + 36y), ce que le flux nous apprend :
-//
-//   · un passage secret : un pointillé sur le mur qu'il traverse ;
-//   · une porte : le grelot (♪) qui l'ouvre, posé sur le mur ;
-//   · dans chaque salle, une rangée de pastilles : les bumpers ombres
-//     (invisibles en jeu), les trous, les blocs verts, l'interrupteur, les
-//     mortels quand ils abondent, et la salle « à bumpers » ;
-//   · un liseré vert ou violet autour de la salle quand il faut la bille
-//     verte, ou l'interrupteur, pour la traverser.
-//
-// Et une légende sous le parchemin.
-const COULEURS = {
-  ombre: '#4A4A4A', trou: '#111111', bloc: '#2E8B3A', inter: '#7B1FA2', mortel: '#D32F2F', bumpers: '#3F51B5',
-  secret: '#4E2E00', porte: '#5D4037', grelot: '#F9A825', verte: '#1B7A2A', texte: '#5A3A00', legende: '#FFF3C4',
-};
-const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const CASE_L = PAS_X, CASE_H = PAS_Y;
-const LEGENDE_H = 46;
-
-// Une pastille ronde avec un nombre ou une lettre.
-function pastille(x, y, fond, texte, encre) {
-  const t = String(texte);
-  return `<g><circle cx="${x}" cy="${y}" r="4.6" fill="${fond}" stroke="#fff" stroke-width="0.9"/>`
-    + `<text x="${x}" y="${y + 2.1}" text-anchor="middle" font-size="${t.length > 1 ? 5.2 : 6}" font-weight="bold" font-family="Verdana, Arial, sans-serif" fill="${encre || '#fff'}">${esc(t)}</text></g>`;
-}
-function carre(x, y, fond) {
-  return `<rect x="${x - 4}" y="${y - 4}" width="8" height="8" rx="1" fill="${fond}" stroke="#fff" stroke-width="0.9"/>`;
-}
-// Le grelot d'une porte, posé sur le mur.
-function grelot(x, y) {
-  return `<g><circle cx="${x}" cy="${y}" r="5.5" fill="${COULEURS.grelot}" stroke="${COULEURS.porte}" stroke-width="1.4"/>`
-    + `<text x="${x}" y="${y + 2.8}" text-anchor="middle" font-size="7.5" font-weight="bold" font-family="Verdana, Arial, sans-serif" fill="#fff">♪</text></g>`;
-}
-
-// Les pastilles d'une salle, d'après son analyse : [[fond, texte, forme]].
-function pastillesDe(a) {
-  const l = [];
-  const n = (t) => a.compte[t] || 0;
-  if (n(5)) l.push([COULEURS.ombre, n(5), 'rond']);
-  if (a.trous) l.push([COULEURS.trou, a.trous, 'rond']);
-  if (a.blocs) l.push([COULEURS.bloc, a.blocs, 'carre']);
-  if (a.interrupteur || a.blocsBleus || a.blocsRouges) l.push([COULEURS.inter, 'I', 'rond']);
-  if (n(3) >= SEUIL_MORTELS) l.push([COULEURS.mortel, n(3), 'rond']);
-  if (a.bumpers >= SEUIL_SALLE_A_BUMPERS) l.push([COULEURS.bumpers, a.bumpers, 'rond']);
-  return l;
-}
-
-function annotations(d) {
-  const out = [];
-  const coin = (x, y) => [CARTE_X + PAS_X * x, CARTE_Y + PAS_Y * y];
-  for (let x = 0; x < 8; x++) {
-    for (let y = 0; y < 8; y++) {
-      const s = salle(d, x, y);
-      if (s.type === 0) continue;
-      const [px, py] = coin(x, y);
-      // Les passages secrets et les portes vers la droite et vers le bas.
-      for (const dir of [1, 3]) {
-        const p = passage(d, x, y, dir);
-        if (!p || p.type < 2) continue;
-        const mx = dir === 1 ? px + CASE_L : px + CASE_L / 2;
-        const my = dir === 1 ? py + CASE_H / 2 : py + CASE_H;
-        if (p.type === 2) {
-          const [x1, y1, x2, y2] = dir === 1 ? [mx, my - 9, mx, my + 9] : [mx - 9, my, mx + 9, my];
-          out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity="0.8"/>`
-            + `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COULEURS.secret}" stroke-width="2" stroke-dasharray="2.5 2.5"/>`);
-        } else {
-          out.push(grelot(mx, my));
-        }
-      }
-      const a = analyserSalle(d, x, y);
-      if (!a) continue;
-      // Le liseré : ce qu'il faut pour traverser.
-      if (a.acces !== 'libre') {
-        const coul = a.acces === 'verte' ? COULEURS.verte : a.acces === 'bloquée' ? COULEURS.mortel : COULEURS.inter;
-        out.push(`<rect x="${px + 2.5}" y="${py + 2.5}" width="${CASE_L - 5}" height="${CASE_H - 5}" rx="2" fill="none" stroke="${coul}" stroke-width="2.2" stroke-dasharray="4 2"/>`);
-      }
-      // Les pastilles, en rangée au bas de la case (deux rangées au besoin).
-      const l = pastillesDe(a);
-      l.forEach(([fond, texte, forme], i) => {
-        const cx = px + 8 + (i % 4) * 10.5, cy = py + CASE_H - 8 - Math.floor(i / 4) * 10.5;
-        out.push(forme === 'carre' ? carre(cx, cy, fond) + `<text x="${cx}" y="${cy + 2.1}" text-anchor="middle" font-size="${String(texte).length > 1 ? 5.2 : 6}" font-weight="bold" font-family="Verdana, Arial, sans-serif" fill="#fff">${esc(texte)}</text>` : pastille(cx, cy, fond, texte));
-      });
-    }
-  }
-  return out;
-}
-
-// La légende, sous le parchemin (deux lignes).
-function legende(x0, y0, largeur) {
-  const out = [`<rect x="${x0}" y="${y0}" width="${largeur}" height="${LEGENDE_H}" fill="${COULEURS.legende}"/>`];
-  const lig = (items, y) => items.map(([dessin, texte], i) => `<g transform="translate(${x0 + 10 + i * 88},${y})">${dessin}<text x="9" y="2.6" font-size="7" font-family="Verdana, Arial, sans-serif" fill="${COULEURS.texte}">${esc(texte)}</text></g>`).join('');
-  out.push(lig([
-    [pastille(0, 0, COULEURS.ombre, 3), 'bumpers ombres'], [pastille(0, 0, COULEURS.trou, 4), 'trous'],
-    [carre(0, 0, COULEURS.bloc), 'blocs verts'], [pastille(0, 0, COULEURS.inter, 'I'), 'interrupteur'],
-    [pastille(0, 0, COULEURS.mortel, 5), 'mortels (5 et +)'],
-  ], y0 + 14));
-  out.push(lig([
-    [pastille(0, 0, COULEURS.bumpers, 20), 'salle à bumpers'],
-    [`<line x1="-4" y1="0" x2="4" y2="0" stroke="${COULEURS.secret}" stroke-width="2" stroke-dasharray="2.5 2.5"/>`, 'passage secret'],
-    [grelot(0, 0), 'porte (grelot)'],
-    [`<rect x="-5" y="-4" width="10" height="8" fill="none" stroke="${COULEURS.verte}" stroke-width="1.6" stroke-dasharray="3 1.5"/>`, 'bille verte obligatoire'],
-    [`<rect x="-5" y="-4" width="10" height="8" fill="none" stroke="${COULEURS.inter}" stroke-width="1.6" stroke-dasharray="3 1.5"/>`, 'interrupteur obligatoire'],
-  ], y0 + 32));
-  return out;
 }
 
 // ── Le message du forum ────────────────────────────────────────────────────
@@ -714,7 +400,7 @@ function messageForum(d, infos) {
   l.push('');
   if (o.urlImage) {
     l.push(`[img]${o.urlImage}[/img]`);
-    l.push(`[i]La carte telle que le jeu la montre en pause (Échap), carte et radar en poche, le joueur au départ — annotée (cliquer pour l'agrandir) : les passages secrets en pointillé, le grelot sur chaque porte, et dans chaque salle ses bumpers ombres, ses trous, ses blocs verts, son interrupteur ; un liseré vert ou violet quand il faut la bille verte ou l'interrupteur pour traverser.[/i]`);
+    l.push(`[i]La carte telle que le jeu la montre en pause (Échap), carte et radar en poche — le joueur au départ.[/i]`);
     l.push('');
   }
   l.push(`[b]Le donjon[/b] : ${r.salles} salles sur ${d.largeur} × ${d.hauteur} (${r.vides} cases vides). Colonnes A à H de gauche à droite, lignes 1 à 8 de haut en bas.`);
@@ -725,33 +411,8 @@ function messageForum(d, infos) {
   const bonusAutres = r.bonus.filter((b) => b.bonus > 1);
   if (bonusBilles.length) l.push(`• [b]Billes bonus[/b] : ${liste(bonusBilles, (b) => `${b.nom} en ${b.case}`)}.`);
   if (bonusAutres.length) l.push(`• [b]Bonus[/b] : ${liste(bonusAutres, (b) => `${b.nom} en ${b.case}`)} (le radar n'est pas marqué sur la carte).`);
-  if (r.portes.length) l.push(`• [b]Portes[/b] (un grelot — la cloche — les ouvre) : ${liste(r.portes, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
-  if (r.invisibles.length) l.push(`• [b]Passages secrets[/b] (absents de la carte du jeu, en pointillé sur la carte) : ${liste(r.invisibles, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
-  if (r.contenu) {
-    l.push('');
-    l.push(`[b]Dans les salles[/b]`);
-    const obligatoires = r.blocsVerts.filter((b) => b.obligatoire);
-    if (obligatoires.length) l.push(`• [b]Blocs verts à casser obligatoirement[/b] (il faut la bille verte pour traverser) : ${liste(obligatoires, (b) => b.case)}.`);
-    const autresBlocs = r.blocsVerts.filter((b) => !b.obligatoire);
-    if (autresBlocs.length) l.push(`• [b]Blocs verts[/b] (on peut les contourner) : ${liste(autresBlocs, (b) => b.case)}.`);
-    const interObl = r.interrupteurs.filter((i) => i.obligatoire);
-    if (interObl.length) l.push(`• [b]Interrupteur à frapper pour passer[/b] : ${liste(interObl, (i) => i.case)}.`);
-    const interAutres = r.interrupteurs.filter((i) => !i.obligatoire);
-    if (interAutres.length) l.push(`• [b]Interrupteurs[/b] : ${liste(interAutres, (i) => i.case)}.`);
-    // Les salles à bumpers : toutes en ont ; on ne nomme que les plus garnies,
-    // puis celles où les mortels abondent. Le plan montre le reste.
-    const pl = (n, un, des) => `${n} ${n > 1 ? des : un}`;
-    const speciaux = (c) => [[2, 'à temps', 'à temps'], [3, 'mortel', 'mortels'], [4, 'aimant', 'aimants'], [5, 'ombre', 'ombres']]
-      .filter(([t]) => c[t]).map(([t, un, des]) => pl(c[t], un, des)).join(', ');
-    const garnies = r.bumpers.filter((b) => b.nombre >= SEUIL_SALLE_A_BUMPERS).sort((a, b) => b.nombre - a.nombre);
-    if (garnies.length) l.push(`• [b]Salles à bumpers[/b] (${SEUIL_SALLE_A_BUMPERS} et plus) : ${liste(garnies, (b) => `${b.case} (${b.nombre}${speciaux(b.compte) ? ' dont ' + speciaux(b.compte) : ''})`)}.`);
-    const mortelles = r.bumpers.filter((b) => b.nombre < SEUIL_SALLE_A_BUMPERS && (b.compte[3] || 0) >= SEUIL_MORTELS).sort((a, b) => b.compte[3] - a.compte[3]);
-    if (mortelles.length) l.push(`• [b]Bumpers mortels en nombre[/b] (${SEUIL_MORTELS} et plus) : ${liste(mortelles, (b) => `${b.case} (${pl(b.compte[3], 'mortel', 'mortels')})`)}.`);
-    if (r.trous.length) l.push(`• [b]Trous[/b] : ${liste(r.trous, (t) => `${t.case} (${t.nombre})`)}.`);
-    if (r.teleporteurs.length) l.push(`• [b]Téléporteurs[/b] : ${liste(r.teleporteurs, (t) => t.case)}.`);
-    if (r.zappers.length) l.push(`• [b]Zappers[/b] : ${liste(r.zappers, (t) => t.case)}.`);
-    if (r.bloquees.length) l.push(`• [b]Salles que je ne sais pas traverser[/b] (à vérifier sur place) : ${liste(r.bloquees, (t) => t.case)}.`);
-  }
+  if (r.portes.length) l.push(`• [b]Portes[/b] (un grelot les ouvre) : ${liste(r.portes, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
+  if (r.invisibles.length) l.push(`• [b]Passages invisibles[/b] (absents de la carte) : ${liste(r.invisibles, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
   l.push('');
   l.push(`[i](graine ${o.graine != null ? o.graine : '?'}${MARQUE_VERSION})[/i]`);
   return l.join('\n');
@@ -760,17 +421,10 @@ function messageForum(d, infos) {
 // La marque d'idempotence du message (server.js la cherche dans le dernier
 // message de VieuxPruneau) : la graine, et la VERSION du plan. Changer de
 // version fait reposter la map du jour une fois — c'est ainsi que le plan du
-// jeu (v2) a remplacé le plan inventé, puis la carte annotée (v4) le plan
-// nu, sans attendre le lendemain.
-const MARQUE_VERSION = ' · carte v4';
-// Une salle « à bumpers » : à partir de ce nombre. Toutes les salles en ont
-// (de cinq à une dizaine) ; celles qu'on nomme en ont vingt et plus — les
-// salles spéciales aux vingt aimants ou aux vingt ombres, et les plus
-// encombrées. Et l'on nomme à part celles où les mortels abondent.
-const SEUIL_SALLE_A_BUMPERS = 20;
-const SEUIL_MORTELS = 5;
+// jeu (v2) a remplacé le plan inventé sans attendre le lendemain.
+const MARQUE_VERSION = ' · carte v2';
 
 module.exports = {
-  decoderDonjon, lireFichier, decrire, carteSvg, messageForum, passage, nomCase, analyserSalle,
-  BILLES, BONUS, TYPES, PASSAGES, OBJETS, COLONNES, MARQUE_VERSION, SEUIL_SALLE_A_BUMPERS, SEUIL_MORTELS,
+  decoderDonjon, lireFichier, decrire, carteSvg, messageForum, passage, nomCase,
+  BILLES, BONUS, TYPES, PASSAGES, COLONNES, MARQUE_VERSION,
 };

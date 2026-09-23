@@ -1284,7 +1284,6 @@
   /* Inline images inserted via the [img] tag / image-upload button */
   .post-content .bb-img,
   .editor-preview-content .bb-img {
-    cursor: zoom-in;
     max-width: 100%;
     max-height: 400px;
     height: auto;
@@ -2291,10 +2290,8 @@ function renderBBCode(s) {
   // root-relative path (our own /forum-uploads/…); the content was already
   // HTML-escaped above and the charset excludes quotes/brackets/angles, so the
   // src can't break out of the attribute or smuggle a javascript: scheme.
-  // (L'image est limitée en hauteur, cf. .bb-img : un clic l'ouvre en taille
-  // réelle — voir l'écouteur `bb-img` plus bas.)
   out = out.replace(/\[img\]\s*((?:https?:\/\/|\/)[^\s\[\]"'<>]+?)\s*\[\/img\]/gi,
-    '<img class="bb-img" src="$1" alt="image" loading="lazy" title="Cliquer pour ouvrir l\'image en taille réelle">');
+    '<img class="bb-img" src="$1" alt="image" loading="lazy">');
   // Citations — gère l'IMBRICATION ([quote] dans [quote], profondeur libre) :
   // on remplace en boucle la citation la plus INTERNE (celle dont le corps ne
   // contient plus d'ouvrant [quote/citation]), chaque passe remonte donc d'un
@@ -3510,17 +3507,6 @@ document.addEventListener('click', function(e) {
   if (!e.target.closest('.picto-picker') && !e.target.closest('.editor-bbcode-toolbar')) {
     document.querySelectorAll('.picto-picker').forEach(function(el) { el.remove(); });
   }
-});
-
-// Une image [img] est limitée en hauteur dans le message (400 px) : un clic
-// l'ouvre en taille réelle dans un nouvel onglet — le plan détaillé de la map
-// du jour, une capture, se lisent ainsi en entier. Une image déjà dans un
-// lien ([url=…][img]…[/img][/url]) garde son lien à elle.
-document.addEventListener('click', function(e) {
-  var img = e.target.closest && e.target.closest('img.bb-img');
-  if (!img || img.closest('a') || !img.closest('.post-content, .editor-preview-content')) return;
-  e.preventDefault();
-  window.open(img.getAttribute('src'), '_blank', 'noopener');
 });
 
 function editPost(postId) {

@@ -14858,7 +14858,7 @@ async function mb2PublierCarteDuJourMaintenant(why, opts) {
   }
   if (topic && topic.is_locked) topic = null;
   if (!topic) {
-    const intro = `Chaque nuit, la map du Challenge de Motion Ball 2 change. Chaque matin, je la relève et je la poste ici : la carte du donjon telle que le jeu la montre, annotée — passages secrets, portes et leur grelot, bumpers ombres, trous, blocs verts, interrupteurs —, et le détail : le départ, la salle du boss, où trouver chaque bille et chaque bonus, ce qu'il faut pour traverser.\n\nGardez ce sujet sous le coude : la map du jour est toujours dans le dernier message.`;
+    const intro = `Chaque nuit, la map du Challenge de Motion Ball 2 change. Chaque matin, je la relève et je la poste ici : la carte du donjon telle que le jeu la montre, et le détail — le départ, la salle du boss, où trouver chaque bille et chaque bonus, les portes, les passages invisibles.\n\nGardez ce sujet sous le coude : la map du jour est toujours dans le dernier message.`;
     topic = await db.forumCreateTopic(board.id, MB2_CARTOGRAPHE, MB2_SUJET_FORUM, intro, bouille, null);
     neuf = true;
     console.log(`[MB2] VieuxPruneau ouvre le sujet #${topic.id} « ${MB2_SUJET_FORUM} » dans « ${board.name} »`);
@@ -14873,8 +14873,7 @@ async function mb2PublierCarteDuJourMaintenant(why, opts) {
     if (dernier && String(dernier.content || '').indexOf(marque) >= 0) return { topicId: topic.id, deja: true };
   }
 
-  // La carte du jeu, annotée, rangée dans les images du forum sous son
-  // empreinte.
+  // Le plan, rangé dans les images du forum sous son empreinte.
   const jour = mb2JourLisible();
   const svg = Carte.carteSvg(donjon, { graine, jour: new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }).format(new Date()) });
   const buf = Buffer.from(svg, 'utf8');

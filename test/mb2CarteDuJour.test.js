@@ -122,9 +122,6 @@ test('le plan SVG et le message disent la même chose que la description', () =>
   // une porte n'a pas de couleur (c'est le grelot qui l'ouvre).
   const m = Carte.messageForum(donjon, { graine, jour: 'jeudi 17 septembre 2026', urlImage: '/forum-uploads/abc.svg' });
   assert.ok(m.indexOf('[img]/forum-uploads/abc.svg[/img]') > 0);
-  assert.ok(m.indexOf('[b]Dans les salles[/b]') > 0, 'la rubrique du contenu des salles');
-  for (const b of r.blocsVerts.filter((v) => v.obligatoire)) assert.match(m, new RegExp('Blocs verts à casser obligatoirement[^\\n]*' + b.case), b.case);
-  for (const p of r.invisibles) assert.match(m, new RegExp('Passages secrets[^\\n]*' + p.entre[0] + '–' + p.entre[1]));
   assert.ok(m.indexOf('Départ[/b] en ' + r.depart) > 0);
   assert.ok(m.indexOf('boss[/b] en ' + r.boss) > 0);
   for (const b of r.billes) assert.ok(m.indexOf(b.nom + ' en ' + b.case) > 0, b.nom);
@@ -132,130 +129,11 @@ test('le plan SVG et le message disent la même chose que la description', () =>
   for (const p of r.portes) assert.ok(m.indexOf(p.entre[0] + '–' + p.entre[1]) > 0);
   assert.doesNotMatch(m, /bille (verte|bleue|métal|violette)\)/, 'pas de couleur aux portes');
   assert.doesNotMatch(m, /réclame/, 'pas de salle qui réclame une bille : le jeu n’en a pas');
-  assert.ok(m.endsWith('(graine ' + graine + ' · carte v4)[/i]'), 'la graine et la version du plan ferment le message : c’est la marque d’idempotence');
-  assert.strictEqual(Carte.MARQUE_VERSION, ' · carte v4');
+  assert.ok(m.endsWith('(graine ' + graine + ' · carte v2)[/i]'), 'la graine et la version du plan ferment le message : c’est la marque d’idempotence');
+  assert.strictEqual(Carte.MARQUE_VERSION, ' · carte v2');
   // La variante « changée en cours de journée ».
   const m2 = Carte.messageForum(donjon, { graine, jour: 'x', changement: true });
   assert.ok(m2.startsWith('[b]Rebelote') && m2.indexOf('[img]') < 0);
-});
-
-test('le contenu des salles se relit à la suite du donjon : des objets connus, à des positions de la grille', () => {
-  const contenu = fs.readFileSync(path.join(RACINE, 'Games', 'motionBall2', 'mb2data.dat'), 'utf8');
-  const { donjon } = Carte.lireFichier(contenu);
-  let objets = 0, salles = 0;
-  const types = new Set();
-  for (let x = 0; x < donjon.largeur; x++) {
-    for (let y = 0; y < donjon.hauteur; y++) {
-      const s = donjon.salles[x][y];
-      if (s.type === 0) { assert.strictEqual(s.objets, null, 'une case vide n’a pas de contenu'); continue; }
-      // Le boss, les billes et les bonus sont des salles toutes faites (le
-      // jeu les bâtit lui-même) : le flux n'en porte pas le contenu. Les
-      // autres, oui (genRoomContent).
-      if (s.type === 2 || s.type === 3 || s.type === 4) { assert.strictEqual(s.objets, null, 'salle toute faite : ' + Carte.nomCase(x, y)); continue; }
-      assert.ok(Array.isArray(s.objets), 'une salle a son contenu : ' + Carte.nomCase(x, y));
-      salles++;
-      for (const o of s.objets) {
-        assert.ok(o.type >= 1 && o.type <= 15, 'un type connu : ' + o.type);
-        assert.ok(Carte.OBJETS[o.type], 'et nommé');
-        // La grille d'une salle : 152 × 102 cases de 4 px (Const.CWIDTH, CHEIGHT).
-        assert.ok(o.x >= 0 && o.x < 152 && o.y >= 0 && o.y < 102, 'dans la grille : ' + o.x + ',' + o.y);
-        types.add(o.type);
-        objets++;
-      }
-    }
-  }
-  assert.ok(salles >= 40, salles + ' salles garnies');
-  // Le générateur peuple chaque salle de bumpers (cinq au moins) : des
-  // centaines d'objets, et le bumper ordinaire y est toujours.
-  assert.ok(objets >= 5 * salles, objets + ' objets pour ' + salles + ' salles');
-  assert.ok(types.has(1), 'des bumpers');
-  // La description en tire ses rubriques.
-  const r = Carte.decrire(donjon);
-  assert.strictEqual(r.contenu, true);
-  assert.strictEqual(r.bumpers.length, salles, 'toutes les salles garnies ont des bumpers');
-  for (const b of r.bumpers) assert.strictEqual(b.nombre, Object.entries(b.compte).filter(([t]) => t >= 1 && t <= 5).reduce((n, [, c]) => n + c, 0));
-  // Un flux d'avant le contenu (le donjon seul) reste lisible : sans contenu.
-  const m = /dseed=(\d+)&ddata=([A-Za-z0-9_-]+)/.exec(contenu);
-  const d2 = Carte.decoderDonjon(m[2].slice(0, 200));
-  assert.strictEqual(d2.largeur, 8);
-  assert.strictEqual(d2.salles[donjon.depart.x][donjon.depart.y].objets, null);
-  assert.strictEqual(Carte.decrire(d2).contenu, false);
-});
-
-// Un donjon 2 × 1 forgé à la main : la salle A1 (au départ) ouverte vers B1,
-// et son contenu donné.
-function donjonDeux(objets) {
-  const salle = (type, passages, obj) => ({ type, donnee: -1, passages: passages.map((t) => ({ type: t })), objets: obj });
-  return {
-    largeur: 2, hauteur: 1, depart: { x: 0, y: 0 },
-    salles: [[salle(1, [1, 0, 1, 1], objets)], [salle(2, [0, 1, 1, 1], [])]],
-  };
-}
-// Une rangée de blocs du haut en bas de la salle, à la colonne x (la
-// silhouette d'un bloc fait dix cases).
-const barre = (type, x) => Array.from({ length: 11 }, (_, i) => ({ type, x, y: i * 10 }));
-
-test('l’analyse d’une salle rejoue sa grille de collision : libre, bille verte obligatoire, interrupteur obligatoire', () => {
-  // Rien : libre.
-  let a = Carte.analyserSalle(donjonDeux([{ type: 1, x: 70, y: 40 }]), 0, 0);
-  assert.strictEqual(a.acces, 'libre');
-  assert.strictEqual(a.bumpers, 1);
-  // Une barre de blocs verts entre le centre et la sortie de droite : il
-  // faut la bille verte, la seule qui les casse.
-  a = Carte.analyserSalle(donjonDeux(barre(6, 110)), 0, 0);
-  assert.strictEqual(a.acces, 'verte');
-  assert.strictEqual(a.blocs, 11);
-  // La même barre en blocs bleus (solides au départ) avec un interrupteur :
-  // il faut le frapper.
-  a = Carte.analyserSalle(donjonDeux(barre(13, 110).concat([{ type: 11, x: 30, y: 40 }])), 0, 0);
-  assert.strictEqual(a.acces, 'interrupteur');
-  assert.strictEqual(a.interrupteur, true);
-  // Des blocs rouges (solides une fois l'interrupteur frappé) ne gênent pas
-  // au départ.
-  a = Carte.analyserSalle(donjonDeux(barre(12, 110).concat([{ type: 11, x: 30, y: 40 }])), 0, 0);
-  assert.strictEqual(a.acces, 'libre');
-  // Une barre de bumpers : rien n'y fait.
-  a = Carte.analyserSalle(donjonDeux(barre(1, 110)), 0, 0);
-  assert.strictEqual(a.acces, 'bloquée');
-  // Sans contenu : pas d'analyse.
-  assert.strictEqual(Carte.analyserSalle(donjonDeux(null), 0, 0), null);
-  // La description en fait ses rubriques.
-  const r = Carte.decrire(donjonDeux(barre(6, 110)));
-  assert.deepStrictEqual(r.blocsVerts, [{ case: 'A1', nombre: 11, obligatoire: true }]);
-  const m = Carte.messageForum(donjonDeux(barre(6, 110)), { graine: 1, jour: 'x' });
-  assert.match(m, /Blocs verts à casser obligatoirement\[\/b\][^\n]*A1\./);
-});
-
-test('la carte du jeu est annotée par-dessus : passages secrets, grelots des portes, pastilles des salles, liserés, légende', () => {
-  const contenu = fs.readFileSync(path.join(RACINE, 'Games', 'motionBall2', 'mb2data.dat'), 'utf8');
-  const { graine, donjon } = Carte.lireFichier(contenu);
-  const r = Carte.decrire(donjon);
-  const svg = Carte.carteSvg(donjon, { graine, jour: 'x' });
-  // La carte du jeu est toujours là (le parchemin, la grille), avec une
-  // légende sous le parchemin : 360 + 46 de haut.
-  assert.ok(svg.indexOf('<mask') > 0 && svg.indexOf('data:image/png;base64,') > 0);
-  assert.ok(svg.indexOf('viewBox="-13 -38 440 406"') > 0, 'la légende sous le parchemin');
-  // Un pointillé par passage secret, un grelot par porte (plus la légende).
-  assert.strictEqual((svg.match(/stroke-dasharray="2.5 2.5"/g) || []).length, r.invisibles.length + 1, 'un pointillé par passage secret');
-  assert.strictEqual((svg.match(/>♪<\/text>/g) || []).length, r.portes.length + 1, 'un grelot par porte');
-  // Un liseré par salle à condition.
-  const conditions = r.blocsVerts.filter((b) => b.obligatoire).length + r.interrupteurs.filter((i) => i.obligatoire).length + r.bloquees.length;
-  assert.strictEqual((svg.match(/stroke-dasharray="4 2"/g) || []).length, conditions, 'un liseré par salle à condition');
-  // Les pastilles : autant de trous que de salles à trous, d'ombres que de salles à ombres.
-  const ombres = r.bumpers.filter((b) => b.compte[5]).length;
-  assert.strictEqual((svg.match(/fill="#4A4A4A"/g) || []).length, ombres + 1, 'une pastille par salle à bumpers ombres');
-  assert.strictEqual((svg.match(/fill="#111111"/g) || []).length, r.trous.length + 1, 'une pastille par salle à trous');
-  // Sans contenu (le donjon seul) : les passages secrets et les portes
-  // restent annotés (ils viennent du donjon), les salles non.
-  const m = /dseed=(\d+)&ddata=([A-Za-z0-9_-]+)/.exec(contenu);
-  const nue = Carte.carteSvg(Carte.decoderDonjon(m[2].slice(0, 200)), { graine, jour: 'x' });
-  assert.strictEqual((nue.match(/>♪<\/text>/g) || []).length, r.portes.length + 1);
-  assert.strictEqual((nue.match(/fill="#111111"/g) || []).length, 1, 'pas de pastille : la légende seule');
-  assert.strictEqual((nue.match(/stroke-dasharray="4 2"/g) || []).length, 0);
-  // Sur le donjon forgé : la barre de blocs verts vaut un liseré vert et une pastille verte à 11.
-  const p2 = Carte.carteSvg(donjonDeux(barre(6, 110)), { graine: 1, jour: 'x' });
-  assert.strictEqual((p2.match(/stroke-dasharray="4 2"/g) || []).length, 1);
-  assert.ok(p2.indexOf('>11</text>') > 0, 'le nombre de blocs');
 });
 
 // ── Le serveur, avec Postgres ──────────────────────────────────────────────
@@ -335,7 +213,7 @@ test('au démarrage, VieuxPruneau ouvre le sujet et y poste la map du jour avec 
   assert.strictEqual(String(carte.bouille || '').slice(0, 24), '0g0000010000000000000000');
   assert.match(carte.content, /\[img\]\/forum-uploads\/[0-9a-f]{32}\.svg\[\/img\]/);
   assert.match(carte.content, /Le boss\[\/b\] en [A-H][1-8]\./);
-  assert.match(carte.content, /\(graine \d+ · carte v4\)\[\/i\]$/);
+  assert.match(carte.content, /\(graine \d+ · carte v2\)\[\/i\]$/);
   // Le plan se sert, en SVG, et c'est bien celui de la map servie.
   const url = /\[img\]([^\[]+)\[\/img\]/.exec(carte.content)[1];
   const r = await fetch(BASE + url);
