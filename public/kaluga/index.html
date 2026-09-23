@@ -132,7 +132,11 @@
     canvas.style.width = Math.floor(700 * ech) + 'px';
     canvas.style.height = Math.floor(480 * ech) + 'px';
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const px = Math.max(1, Math.round(700 * ech * dpr) / 700);
+    // La définition est plafonnée à 1,6 million de pixels : chaque image
+    // redessine toute la scène en vectoriel, et en plein écran sur un écran
+    // dense on tirait jusqu'à dix fois la scène d'origine (voir mb2/index.html).
+    const plafond = Math.sqrt(1.6e6 / (700 * 480));
+    const px = Math.max(1, Math.min(plafond, Math.round(700 * ech * dpr) / 700));
     canvas.width = Math.round(700 * px);
     canvas.height = Math.round(480 * px);
     if (K.scene) K.scene.echelleCanvas = px;

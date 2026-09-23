@@ -121,6 +121,19 @@
   const L = 610, H = 410;
 
   // Le canvas prend la place que #aire lui laisse, en gardant 610×410.
+  //
+  // Sa définition (les pixels réellement tracés) suit l'échelle et la densité
+  // de l'écran, mais PLAFONNÉE : chaque image redessine toute la scène en
+  // vectoriel, et son coût croît avec le nombre de pixels. En plein écran sur
+  // un portable haute densité, on tirait 3200 × 2150 pixels quarante fois par
+  // seconde — onze fois la scène d'origine — et les salles les plus chargées
+  // (les vingt bumpers ombres révélés par la bille violette : trois cents
+  // remplissages et deux cent cinquante traits par image) ne tenaient plus la
+  // cadence. Mesuré : à cette taille, une telle salle coûte 60 % de plus
+  // qu'une salle ordinaire, et la cadence tombe. On s'arrête à 1,6 million
+  // de pixels (1525 × 1025 ici) : net sur un écran dense, et deux à quatre
+  // fois moins à tracer.
+  const PIXELS_MAX = 1.6e6;
   function adapter() {
     const aire = document.getElementById('aire');
     const l = aire.clientWidth, h = aire.clientHeight;
@@ -128,7 +141,8 @@
     canvas.style.width = Math.floor(L * ech) + 'px';
     canvas.style.height = Math.floor(H * ech) + 'px';
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const px = Math.max(1, Math.round(L * ech * dpr) / L);
+    const plafond = Math.sqrt(PIXELS_MAX / (L * H));
+    const px = Math.max(1, Math.min(plafond, Math.round(L * ech * dpr) / L));
     canvas.width = Math.round(L * px);
     canvas.height = Math.round(H * px);
     if (K.scene) K.scene.echelleCanvas = px;
