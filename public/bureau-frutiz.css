@@ -2883,6 +2883,9 @@ body.bureau-frutiz .fen #chat-panel #users-drawer .vide {
    bureau, le panneau ne montre que CE salon — le seul que le protocole
    connaisse — et les onglets disparaissent avec lui. */
 body.bureau-frutiz .fen #chat-panel #users-drawer #drawer-onglets { display: none; }
+/* La ligne « N en ligne · M aujourd'hui » appartient à « Tout le site » : elle
+   part avec lui (et ne tiendrait pas dans les 122 px du panneau). */
+body.bureau-frutiz .fen #chat-panel #users-drawer .site-resume { display: none; }
 /* Le voile du tiroir mobile n'a plus lieu d'être : le panneau est DANS la
    fenêtre, il ne recouvre rien. */
 body.bureau-frutiz .fen #chat-panel #drawer-backdrop { display: none !important; }

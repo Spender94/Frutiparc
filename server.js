@@ -8103,15 +8103,19 @@ setInterval(() => { try { releverPresence(); } catch (e) { console.error('[PRESE
 
 // Les parties classées, par jeu et par jour — pour l'onglet Statistiques. Une
 // même partie peut écrire deux classements (le tour et la course de Burning
-// Kiwi) : on ne compte qu'une partie par joueur et par jeu sur vingt secondes.
+// Kiwi, le record et le Challenge du jour) : ces écritures tombent dans la
+// MÊME requête, à quelques millisecondes. On fusionne donc les scores d'un
+// joueur sur un jeu à moins de trois secondes d'écart — pas plus : une partie
+// de Frutisnake perdue en dix secondes, puis une autre, font bien deux parties.
+const PARTIE_FUSION_MS = 3000;
 const partiesRecentes = new Map();   // 'pseudo|jeu' → instant
 function noterPartie(username, jeu) {
   const cle = String(username || '').toLowerCase();
   if (!cle || !jeu || NPC_USERNAMES.has(cle) || !users[cle]) return;
   const k = cle + '|' + jeu, t = Date.now();
-  if (t - (partiesRecentes.get(k) || 0) < 20000) return;
+  if (t - (partiesRecentes.get(k) || 0) < PARTIE_FUSION_MS) return;
   partiesRecentes.set(k, t);
-  if (partiesRecentes.size > 5000) for (const [kk, tt] of partiesRecentes) if (t - tt > 20000) partiesRecentes.delete(kk);
+  if (partiesRecentes.size > 5000) for (const [kk, tt] of partiesRecentes) if (t - tt > PARTIE_FUSION_MS) partiesRecentes.delete(kk);
   if (process.env.DATABASE_URL) db.statsPartieNoter(parisDayKey(), jeu).catch(dbErr('statsPartieNoter'));
 }
 

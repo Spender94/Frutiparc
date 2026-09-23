@@ -100,9 +100,15 @@ test('se connecter compte pour aujourd’hui, une fois, et la base s’en souvie
 test('l’onglet Statistiques : totaux, jour par jour, parties par jeu — administrateurs seulement', async (t) => {
   if (!dispo) return t.skip('Postgres de test indisponible');
   const sid = await inscrireEtConnecter('Cerise');
-  // Une course de Burning Kiwi (score = temps en ms) : une partie classée.
+  // Une course de Burning Kiwi en essai (score = temps en ms) : une partie.
   const s = await json('/api/saveScore?' + new URLSearchParams({ sid, game: 'bkiwi', score: '95000', data: 'Sonic Brain:3:1', track: '2', gm: '0' }));
   assert.strictEqual(s.ok, true, JSON.stringify(s));
+  // Une course en Challenge écrit DEUX classements (le record du circuit et
+  // le Challenge du jour) dans la même requête : une seule partie. Et une
+  // autre course quelques secondes plus tard en est bien une seconde.
+  await wait(3200);
+  const c = await json('/api/saveScore?' + new URLSearchParams({ sid, game: 'bkiwi', score: '94000', data: 'Sonic Brain:3:1', track: '2', gm: '1' }));
+  assert.strictEqual(c.ok, true, JSON.stringify(c));
   await wait(300);
   // Fermé sans clé.
   assert.strictEqual((await json('/api/admin/stats')).statut, 403);
@@ -115,8 +121,8 @@ test('l’onglet Statistiques : totaux, jour par jour, parties par jeu — admin
   const auj = d.jours[6];
   assert.ok(auj.connectes >= 3, JSON.stringify(auj));
   assert.ok(auj.inscrits >= 3, JSON.stringify(auj));
-  assert.deepStrictEqual(auj.parties, { bkiwi: 1 });
-  assert.deepStrictEqual(d.jeux.bkiwi, { semaine: 1, fenetre: 1 });
+  assert.deepStrictEqual(auj.parties, { bkiwi: 2 }, 'deux courses, pas trois écritures');
+  assert.deepStrictEqual(d.jeux.bkiwi, { semaine: 2, fenetre: 2 });
   assert.strictEqual(typeof d.direct.enLigne, 'number');
   // Les jours d'avant la table : rien d'inventé.
   assert.strictEqual(d.jours[0].connectes, undefined);
