@@ -993,6 +993,10 @@ function poserFiltre(cx) {
   return valeur;
 }
 
+// Le retard maximal qu'une image rattrape, en millisecondes : au-delà, on
+// considère que l'onglet a été quitté et l'on laisse passer le temps.
+const RATTRAPAGE_MAX = 500;
+
 class Scene {
   constructor(canvas, biblio, options) {
     K.scene = this;
@@ -1059,17 +1063,42 @@ class Scene {
       // de plus.
       this.rafId = requestAnimationFrame(boucle);
       if (this.tPrecedent === null) { this.tPrecedent = t; }
-      this.accumule += Math.min(t - this.tPrecedent, 500);
+      this.accumule += Math.min(t - this.tPrecedent, RATTRAPAGE_MAX);
       this.tPrecedent = t;
+      /*
+       * LE RETARD SE RATTRAPE, IL NE SE SAUTE PAS.
+       *
+       * L'horloge du jeu (`horloge`, ce que getTimer() rend) n'avance qu'avec
+       * les pas : vingt-cinq millisecondes par pas, jamais autrement. C'est
+       * elle qui chronomètre les courses de Burning Kiwi, et c'est elle que
+       * `gtmod` lit. Tant qu'elle n'avance QUE par les pas, la simulation est
+       * la même sur toutes les machines — bit pour bit celle d'un lecteur
+       * Flash à quarante images par seconde —, quelle que soit la régularité
+       * du navigateur.
+       *
+       * On bornait le rattrapage à trois pas par image, et l'on SAUTAIT le
+       * reste en faisant avancer l'horloge sans pas. Or dans la page du
+       * bureau ou du light, le jeu partage son fil avec le chat, le forum et
+       * les bouilles animées : une image qui tarde de plus de cent
+       * millisecondes n'a rien de rare, et à chaque fois le chrono courait
+       * pendant que la voiture restait en place — un biais qui ne joue que
+       * dans un sens, celui de tours plus longs. Mesuré au pilote automatique
+       * avec un fil occupé 90 ms toutes les 200 ms : +0,15 à +0,2 s par tour.
+       *
+       * On rattrape donc tout le retard, jusqu'à la borne de RATTRAPAGE_MAX
+       * (au-delà, c'est un onglet qu'on a quitté : là, le temps passe, comme
+       * le lecteur saute ses images). Un pas coûte une milliseconde : vingt
+       * pas d'un coup, c'est vingt millisecondes, pas une spirale.
+       */
       let n = 0;
-      while (this.accumule >= this.periode && n < 3) {
+      const pasMax = Math.ceil(RATTRAPAGE_MAX / this.periode);
+      while (this.accumule >= this.periode && n < pasMax) {
         this.accumule -= this.periode;
         this.horloge += this.periode;
         try { this.tick(); } catch (e) { this.signalerPanne('pas', e); }
         n++;
       }
       if (this.accumule >= this.periode) {
-        // En retard : on saute, comme le lecteur saute des images — le temps passe.
         const saut = Math.floor(this.accumule / this.periode) * this.periode;
         this.accumule -= saut;
         this.horloge += saut;
