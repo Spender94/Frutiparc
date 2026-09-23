@@ -967,6 +967,24 @@ async function initSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_password_resets_hash ON password_resets(token_hash);
 
+      -- LA PRÉSENCE, JOUR PAR JOUR (heure de Paris). Une ligne par Frutiz et par
+      -- jour où il s'est montré : c'est le « connectés aujourd'hui » du parc,
+      -- et l'historique de l'onglet Statistiques de l'admin. last_login ne
+      -- garde que la dernière date — il ne sait pas dire qui était là mardi.
+      CREATE TABLE IF NOT EXISTS presence_jour (
+        jour      TEXT NOT NULL,
+        username  TEXT NOT NULL,
+        PRIMARY KEY (jour, username)
+      );
+      -- Ce que le jour a eu de remarquable : le pic de connectés simultanés
+      -- (et son heure), les parties classées par jeu ({ "bkiwi": 12, … }).
+      CREATE TABLE IF NOT EXISTS stats_jour (
+        jour      TEXT PRIMARY KEY,
+        pic       INTEGER NOT NULL DEFAULT 0,
+        pic_at    TIMESTAMPTZ,
+        parties   JSONB NOT NULL DEFAULT '{}'::jsonb
+      );
+
       -- Tracks one-off data migrations that can't be expressed as idempotent
       -- DDL (e.g. a one-time UPDATE that must NOT re-run on later boots).
       CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -3406,6 +3424,84 @@ async function forumDeletePost(postId) {
 // le plus récent s'il y en a plusieurs, mais jamais un sujet verrouillé si un
 // autre est ouvert : c'est ce que cherche un robot qui poste tous les jours au
 // même endroit (VieuxPruneau et la map de Motion Ball).
+// ── La présence et les statistiques du jour ──────────────────────────────────
+// Le jour est une clé 'YYYY-MM-DD' à l'heure de Paris, calculée par le serveur.
+const MINUIT_PARIS = `(date_trunc('day', now() AT TIME ZONE 'Europe/Paris') AT TIME ZONE 'Europe/Paris')`;
+
+async function presenceNoter(jour, username) {
+  await pool.query(
+    'INSERT INTO presence_jour (jour, username) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    [jour, String(username).toLowerCase()]
+  );
+}
+// Qui s'est montré ce jour-là. Pour AUJOURD'HUI, on y ajoute les comptes dont
+// la dernière connexion date d'après minuit : c'est ce qui rend le compte juste
+// dès le premier jour de la table, et après un redémarrage.
+async function presenceDuJour(jour, aujourdhui) {
+  const { rows } = await pool.query(
+    aujourdhui
+      ? `SELECT username FROM presence_jour WHERE jour = $1
+         UNION SELECT lower(username) FROM users WHERE last_login >= ${MINUIT_PARIS}`
+      : 'SELECT username FROM presence_jour WHERE jour = $1',
+    [jour]
+  );
+  return rows.map((r) => String(r.username).toLowerCase());
+}
+async function statsPicDuJour(jour) {
+  const { rows } = await pool.query('SELECT pic, pic_at FROM stats_jour WHERE jour = $1', [jour]);
+  return rows[0] ? { pic: rows[0].pic, picAt: rows[0].pic_at } : null;
+}
+async function statsPicNoter(jour, pic) {
+  await pool.query(
+    `INSERT INTO stats_jour (jour, pic, pic_at) VALUES ($1, $2, now())
+     ON CONFLICT (jour) DO UPDATE SET pic = EXCLUDED.pic, pic_at = EXCLUDED.pic_at
+     WHERE stats_jour.pic < EXCLUDED.pic`,
+    [jour, pic]
+  );
+}
+async function statsPartieNoter(jour, jeu) {
+  await pool.query(
+    `INSERT INTO stats_jour (jour, parties) VALUES ($1, jsonb_build_object($2::text, 1))
+     ON CONFLICT (jour) DO UPDATE SET parties = stats_jour.parties
+       || jsonb_build_object($2::text, COALESCE((stats_jour.parties ->> $2)::int, 0) + 1)`,
+    [jour, jeu]
+  );
+}
+/*
+ * Les chiffres de l'onglet Statistiques, en une passe : les totaux du parc, et
+ * une ligne par jour sur les `jours` derniers jours (connectés distincts, pic,
+ * inscriptions, messages du forum et du chat, parties par jeu). `jourDebut`
+ * est la clé du premier jour de la fenêtre, calculée par le serveur.
+ */
+async function statsAdmin(jourDebut) {
+  const totaux = (await pool.query(`
+    SELECT
+      (SELECT COUNT(*)::int FROM users) AS comptes,
+      (SELECT COUNT(*)::int FROM users WHERE created_at >= ${MINUIT_PARIS}) AS inscrits_jour,
+      (SELECT COUNT(*)::int FROM users WHERE created_at >= now() - interval '7 days') AS inscrits_7,
+      (SELECT COUNT(*)::int FROM users WHERE created_at >= now() - interval '30 days') AS inscrits_30,
+      (SELECT COUNT(*)::int FROM users WHERE last_login >= now() - interval '7 days') AS actifs_7,
+      (SELECT COUNT(*)::int FROM users WHERE last_login >= now() - interval '30 days') AS actifs_30,
+      (SELECT COUNT(*)::int FROM forum_posts WHERE created_at >= now() - interval '7 days') AS forum_7,
+      (SELECT COUNT(*)::int FROM forum_topics WHERE created_at >= now() - interval '7 days') AS sujets_7,
+      (SELECT COALESCE(SUM(price), 0)::int FROM shop_purchases WHERE created_at >= now() - interval '30 days') AS boutique_30,
+      (SELECT COUNT(*)::int FROM shop_purchases WHERE created_at >= now() - interval '30 days') AS achats_30
+  `)).rows[0];
+  const parJour = (sql) => pool.query(sql, [jourDebut]).then((r) => r.rows);
+  const jourDe = (col) => `to_char(${col} AT TIME ZONE 'Europe/Paris', 'YYYY-MM-DD')`;
+  const [presence, stats, inscrits, forum, chat] = await Promise.all([
+    parJour('SELECT jour, COUNT(*)::int AS n FROM presence_jour WHERE jour >= $1 GROUP BY jour'),
+    parJour('SELECT jour, pic, pic_at, parties FROM stats_jour WHERE jour >= $1'),
+    parJour(`SELECT ${jourDe('created_at')} AS jour, COUNT(*)::int AS n FROM users
+             WHERE ${jourDe('created_at')} >= $1 GROUP BY 1`),
+    parJour(`SELECT ${jourDe('created_at')} AS jour, COUNT(*)::int AS n FROM forum_posts
+             WHERE ${jourDe('created_at')} >= $1 GROUP BY 1`),
+    parJour(`SELECT ${jourDe("to_timestamp(at_ms / 1000.0)")} AS jour, COUNT(*)::int AS n FROM chat_history
+             WHERE ${jourDe("to_timestamp(at_ms / 1000.0)")} >= $1 GROUP BY 1`),
+  ]);
+  return { totaux, presence, stats, inscrits, forum, chat };
+}
+
 // Le nombre de Frutiz inscrits — c'est le rang qu'annonce Natacha quand il
 // est rond.
 async function countUsers() {
@@ -4229,6 +4325,12 @@ module.exports = {
   forumLastPostAuthor,
   forumTrouverSujet,
   countUsers,
+  presenceNoter,
+  presenceDuJour,
+  statsPicDuJour,
+  statsPicNoter,
+  statsPartieNoter,
+  statsAdmin,
   forumDernierMessageDe,
   forumIncrementViews,
   forumMarkTopicRead,

@@ -84,9 +84,31 @@ async function salons(sid) {
   }
   throw new Error('les salons du forum ne sont jamais apparus');
 }
+// Natacha salue chaque inscrit sur le forum (natacha.js), juste APRÈS la
+// réponse de l'inscription : son message rallume le voyant de tout le monde.
+// On attend qu'il soit posté, pour que les mesures « de départ » l'incluent
+// au lieu de le voir tomber au milieu d'une comparaison.
+async function accueilli(pseudo) {
+  for (let i = 0; i < 80; i++) {
+    try {
+      const index = await json(await fetch(`${BASE}/api/forum/index`));
+      const board = (index.categories || []).flatMap((c) => c.boards || []).find((b) => b.name === 'Frutiz');
+      if (board) {
+        const b = await json(await fetch(`${BASE}/api/forum/board/${board.id}`));
+        const t = (b.topics || []).find((x) => x.title === 'Bienvenue aux nouveaux Frutiz !');
+        if (t) {
+          const page = await json(await fetch(`${BASE}/api/forum/topic/${t.id}?page=last`));
+          if ((page.posts || []).some((p) => String(p.content || '').toLowerCase().indexOf('@' + pseudo.toLowerCase()) >= 0)) return;
+        }
+      }
+    } catch { /* pas encore */ }
+    await wait(150);
+  }
+}
 async function inscrire(pseudo) {
   const body = JSON.stringify({ username: pseudo, password: 'secret123' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+  await accueilli(pseudo);
   const j = await json(await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }));
   assert.ok(j.sid, 'session de ' + pseudo);
   return j.sid;
@@ -236,6 +258,9 @@ test('« Tout marquer comme lu » éteint le voyant, et un message neuf le rallu
   const sidA = await inscrire('toutluauteur');
   const sidB = await inscrire('toutlulecteur');
   const sidC = await inscrire('toutlurelance');
+  // Le témoin est inscrit d'emblée : une inscription fait parler Natacha sur
+  // le forum, ce qui rallumerait le voyant de B après son « tout lu ».
+  const sidD = await inscrire('toutlutemoin');
 
   const liste = await salons(sidA);
   const board = liste.find((b) => /frutiz/i.test(b.name) && !/jeux/i.test(b.name)) || liste[liste.length - 1];
@@ -267,7 +292,6 @@ test('« Tout marquer comme lu » éteint le voyant, et un message neuf le rallu
   assert.equal(await compte(sidB), 0, 'le voyant de B est éteint');
 
   // A, qui n'a rien demandé, garde son propre compte : le marquage est PERSONNEL.
-  const sidD = await inscrire('toutlutemoin');
   assert.ok(await compte(sidD) >= 2, 'un autre frutiz voit toujours les sujets non lus');
 
   // Et le forum continue de vivre : une réponse rallume le voyant de B.

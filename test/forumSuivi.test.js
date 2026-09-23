@@ -92,9 +92,31 @@ async function salons(sid) {
   }
   throw new Error('les salons du forum ne sont jamais apparus');
 }
+// Natacha salue chaque inscrit sur le forum (natacha.js), juste APRÈS la
+// réponse de l'inscription : son message compte dans le voyant de tout le
+// monde. On attend qu'il soit posté, pour qu'il ne tombe pas au milieu d'une
+// mesure (« tout est lu », puis un sujet neuf de plus).
+async function accueilli(pseudo) {
+  for (let i = 0; i < 80; i++) {
+    try {
+      const index = await json(await fetch(`${BASE}/api/forum/index`));
+      const board = (index.categories || []).flatMap((c) => c.boards || []).find((b) => b.name === 'Frutiz');
+      if (board) {
+        const b = await json(await fetch(`${BASE}/api/forum/board/${board.id}`));
+        const t = (b.topics || []).find((x) => x.title === 'Bienvenue aux nouveaux Frutiz !');
+        if (t) {
+          const page = await json(await fetch(`${BASE}/api/forum/topic/${t.id}?page=last`));
+          if ((page.posts || []).some((p) => String(p.content || '').toLowerCase().indexOf('@' + pseudo.toLowerCase()) >= 0)) return;
+        }
+      }
+    } catch { /* pas encore */ }
+    await wait(150);
+  }
+}
 async function inscrire(pseudo) {
   const body = JSON.stringify({ username: pseudo, password: 'secret123' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+  await accueilli(pseudo);
   const j = await json(await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }));
   assert.ok(j.sid, 'session de ' + pseudo);
   return j.sid;

@@ -1402,6 +1402,21 @@
   }
   .dr-onglet.on { color: #D16767; border-bottom-color: #D16767; }
   .dr-onglet:active { background: #f4f9ec; }
+  /* « ● 12 en ligne · 58 aujourd'hui » : une ligne discrète sous les onglets
+     de la vue « tout le site ». La pastille verte dit « en direct » ; le
+     second chiffre compte les Frutiz différents passés depuis minuit. */
+  .site-resume {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 7px 10px; font-size: 12px; color: #6c8f3a; background: #fff;
+    border-bottom: 1px solid #DDDDDD; white-space: nowrap;
+  }
+  .site-resume[hidden] { display: none; }
+  .site-resume b { color: #2C4A0F; font-size: 13px; }
+  .site-resume .sep { color: #bfd4a0; }
+  .site-resume .pastille {
+    width: 8px; height: 8px; border-radius: 50%; background: #2ecc40; flex: none;
+    box-shadow: 0 0 0 3px rgba(46, 204, 64, .18);
+  }
   /* Sur « tout le site », chaque ligne porte en plus le salon où se trouve le
      joueur : le pseudo passe donc au-dessus, en colonne. */
   #users-drawer .u.avec-lieu { flex-direction: column; align-items: center; gap: 2px; justify-content: center; }
@@ -2803,6 +2818,9 @@
         <button type="button" class="dr-onglet on" data-vue="salon">Ce salon</button>
         <button type="button" class="dr-onglet" data-vue="site">Tout le site</button>
       </div>
+      <!-- Sur « tout le site » : combien sont là, et combien sont passés
+           depuis minuit (/api/light/online, today). -->
+      <div class="site-resume" id="site-resume" hidden></div>
       <button class="users-scroll up" id="users-scroll-up" aria-label="Faire défiler vers le haut"><img src="/fb/bouton_up.png" alt=""></button>
       <div class="list" id="users-list"></div>
       <button class="users-scroll down" id="users-scroll-down" aria-label="Faire défiler vers le bas"><img src="/fb/bouton_up.png" alt=""></button>
@@ -9071,6 +9089,7 @@
   function majConnectesCadre(c) {
     var list = dansCadre(c, "users-list");
     if (!list) return;
+    peindreResume(dansCadre(c, "site-resume"), c.vue === "site");
     if (c.vue === "site") { remplirListeSite(list); return; }
     var set = state.usersByRoom[c.salon] || {};
     list.innerHTML = "";
@@ -10143,6 +10162,20 @@
   // serveur (/api/light/online) car aucune trame ne dit qui est ailleurs.
   var drawerVue = "salon";
   var siteListe = null, siteTimer = null;
+  // Les deux chiffres du site : en ligne, et passés aujourd'hui (et le pic).
+  var siteChiffres = null;
+  function peindreResume(bloc, visible) {
+    if (!bloc) return;
+    bloc.hidden = !visible || !siteChiffres;
+    if (bloc.hidden) return;
+    var c = siteChiffres;
+    bloc.innerHTML = '<span class="pastille"></span><b>' + c.enLigne + '</b> en ligne'
+      + (c.jour != null ? '<span class="sep">·</span><b>' + c.jour + '</b> aujourd\'hui' : '');
+    bloc.title = c.jour != null
+      ? c.jour + (c.jour > 1 ? " Frutiz différents" : " Frutiz") + " depuis minuit"
+        + (c.pic ? " — jusqu'à " + c.pic + " en même temps" : "")
+      : "";
+  }
 
   // Une ligne : le pseudo, éventuellement le lieu, et le geste « écrire en privé ».
   // ── La FICHE d'un frutiz ──
@@ -11582,6 +11615,8 @@
       .then(function (d) {
         if (!d || !d.ok) return;
         siteListe = d.users || [];
+        siteChiffres = { enLigne: typeof d.count === "number" ? d.count : siteListe.length, jour: typeof d.today === "number" ? d.today : null, pic: d.peak || 0 };
+        peindreResume($("#site-resume"), drawerVue === "site");
         if (drawerVue === "site") renderSite();
         // Les cadres du bureau ont chacun leur onglet : ceux qui regardent le
         // site se rafraîchissent aussi.
@@ -11600,6 +11635,7 @@
       b.classList.toggle("on", b.getAttribute("data-vue") === vue);
     });
     $("#users-list").scrollTop = 0;
+    peindreResume($("#site-resume"), vue === "site");
     if (vue === "site") { renderSite(); chargerSite(); } else renderUsers();
     majRafraichissementSite();
   }

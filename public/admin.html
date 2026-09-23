@@ -205,6 +205,21 @@
     align-items: center;
     border-radius: 4px;
   }
+  /* Onglet Statistiques : des cartes à chiffre, deux colonnes, un graphe. */
+  .st-cartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .st-carte { background: #fff; border: 2px solid #D6F7B5; border-radius: 8px; padding: 8px 10px; }
+  .st-carte .v { font: bold 22px Arial, sans-serif; color: #2C4A0F; }
+  .st-carte .v small { font-size: 12px; color: #6c8f3a; font-weight: normal; }
+  .st-carte .l { color: #6c8f3a; margin-top: 2px; }
+  .st-carte.vif { border-color: #8cc152; }
+  .st-carte.vif .v::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #2ecc40; margin-right: 6px; vertical-align: middle; box-shadow: 0 0 0 3px rgba(46,204,64,.2); }
+  .st-deux { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .st-barre { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  .st-barre .n { width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .st-barre .b { height: 12px; background: #8cc152; border-radius: 3px; min-width: 2px; }
+  .st-legende { display: flex; gap: 14px; margin-bottom: 6px; color: #6c8f3a; }
+  .st-legende i { display: inline-block; width: 12px; height: 10px; margin-right: 4px; vertical-align: middle; border-radius: 2px; }
+  #stats-graphe svg { width: 100%; height: auto; display: block; }
   /* Section content padding */
   .section-content {
     padding: 8px 10px;
@@ -366,6 +381,9 @@
   </div>
 
   <div class="tabs">
+    <div class="tab-group"><span class="lbl">Pilotage</span><div class="grp">
+      <button class="tab" data-tab="stats" onclick="switchTab('stats')">Statistiques</button>
+    </div></div>
     <div class="tab-group"><span class="lbl">Joueurs</span><div class="grp">
       <button class="tab active" data-tab="users" onclick="switchTab('users')">Joueurs</button>
       <button class="tab" data-tab="detail" onclick="switchTab('detail')">Détail joueur</button>
@@ -391,6 +409,46 @@
       <button class="tab" data-tab="forumcensor" onclick="switchTab('forumcensor')">Censure forum</button>
     </div></div>
   </div>
+
+<div class="content" id="tab-stats" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadStats()">Rafraîchir</button>
+    <select id="stats-jours" onchange="loadStats()">
+      <option value="7">7 derniers jours</option>
+      <option value="30" selected>30 derniers jours</option>
+      <option value="90">90 derniers jours</option>
+    </select>
+    <label style="margin-left:8px"><input type="checkbox" id="stats-auto" onchange="statsAuto()"> rafraîchir toutes les minutes</label>
+    <span id="stats-maj" style="margin-left:auto;color:#6c8f3a"></span>
+  </div>
+  <h3>En direct</h3>
+  <div class="st-cartes" id="stats-direct"></div>
+  <div class="st-deux">
+    <div><h4>Ce que font les connectés</h4><div id="stats-activites" class="section-content"></div></div>
+    <div><h4>Salons</h4><div id="stats-salons" class="section-content"></div></div>
+  </div>
+  <h3>Le parc</h3>
+  <div class="st-cartes" id="stats-totaux"></div>
+  <h3>Jour par jour</h3>
+  <div class="section-content">
+    <div class="st-legende">
+      <span><i style="background:#8cc152"></i>connectés distincts</span>
+      <span><i style="background:#E3756A;height:3px"></i>pic simultané</span>
+      <span><i style="background:#2C4A0F"></i>inscriptions</span>
+    </div>
+    <div id="stats-graphe"></div>
+  </div>
+  <table style="margin-top:8px">
+    <thead><tr><th>Jour</th><th>Connectés</th><th>Pic</th><th>Inscriptions</th><th>Forum</th><th>Chat</th><th>Parties</th></tr></thead>
+    <tbody id="stats-jours-body"></tbody>
+  </table>
+  <h3>Parties classées par jeu</h3>
+  <table>
+    <thead><tr><th>Jeu</th><th>7 derniers jours</th><th id="stats-jeux-fenetre">Sur la période</th><th style="width:45%"></th></tr></thead>
+    <tbody id="stats-jeux"></tbody>
+  </table>
+  <p style="color:#6c8f3a;margin-top:10px">Les connectés distincts, le pic et les parties sont relevés depuis la mise en place de cet onglet : les jours d'avant restent vides. « Actifs » compte les comptes dont la dernière connexion tombe dans la période ; « Parties » compte les scores envoyés (une par joueur et par jeu toutes les vingt secondes au plus).</p>
+</div>
 
 <div class="content" id="tab-users">
   <div class="toolbar">
@@ -1524,7 +1582,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons'].forEach(t => {
+  ['stats','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -1544,6 +1602,98 @@ function switchTab(name) {
   if (name === 'referrals') loadReferrals();
   if (name === 'tournoi') { loadTournaments(); loadSnakeTournoi(); loadKalugaBac(); }
   if (name === 'dons') loadDons();
+  if (name === 'stats') loadStats();
+  else statsAuto(false);
+}
+
+// ─── Statistiques ───
+const STATS_JEUX = {
+  bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', kaluga: 'Kaluga', swapou2: 'Swapou', mb2: 'Motion Ball 2',
+  jamajama: 'JamaJama', minipixiz: 'MiniPixiz', miniwave: 'MiniWave', minifever: 'Mini-Fever',
+  bandas: 'Bandas', grapiz: 'Grapiz', forum: 'Lit le forum', ailleurs: 'Ailleurs sur le site',
+};
+const statsNomJeu = (k) => STATS_JEUX[k] || k;
+const statsHeure = (iso) => iso ? new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }) : '';
+const statsJourCourt = (j) => { const [, m, d] = j.split('-'); return d + '/' + m; };
+function statsCarte(v, l, vif) {
+  return `<div class="st-carte${vif ? ' vif' : ''}"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+}
+function statsBarres(obj, nomDe) {
+  const e = Object.entries(obj || {}).sort((a, b) => b[1] - a[1]);
+  if (!e.length) return '<span style="color:#6c8f3a">Personne pour le moment.</span>';
+  const max = e[0][1] || 1;
+  return e.map(([k, n]) => `<div class="st-barre"><span class="n">${esc(nomDe(k))}</span>`
+    + `<span class="b" style="width:${Math.round(260 * n / max)}px"></span><b>${n}</b></div>`).join('');
+}
+// Le graphe : une barre par jour (connectés distincts), la ligne du pic, et un
+// point par jour qui a vu des inscriptions — en SVG, sans bibliothèque.
+function statsGraphe(jours) {
+  const L = 900, H = 200, G = 30, B = 22, pas = (L - G) / jours.length;
+  const max = Math.max(1, ...jours.map((j) => Math.max(j.connectes || 0, j.pic || 0, j.inscrits || 0)));
+  const y = (v) => H - B - (H - B - 10) * v / max;
+  const out = [`<svg viewBox="0 0 ${L} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Verdana" font-size="10">`];
+  for (const t of [0, 0.5, 1]) {
+    const v = Math.round(max * t);
+    out.push(`<line x1="${G}" x2="${L}" y1="${y(v)}" y2="${y(v)}" stroke="#e3efd4"/><text x="${G - 4}" y="${y(v) + 3}" text-anchor="end" fill="#6c8f3a">${v}</text>`);
+  }
+  const pics = [];
+  jours.forEach((j, i) => {
+    const x = G + i * pas;
+    if (j.connectes != null) {
+      out.push(`<rect x="${x + pas * 0.15}" y="${y(j.connectes)}" width="${pas * 0.7}" height="${H - B - y(j.connectes)}" fill="#8cc152" rx="2"><title>${statsJourCourt(j.jour)} : ${j.connectes} connectés</title></rect>`);
+    }
+    if (j.pic != null) pics.push(`${x + pas / 2},${y(j.pic)}`);
+    if (j.inscrits) out.push(`<circle cx="${x + pas / 2}" cy="${y(j.inscrits)}" r="3.5" fill="#2C4A0F"><title>${statsJourCourt(j.jour)} : ${j.inscrits} inscription(s)</title></circle>`);
+    if (jours.length <= 31 || i % Math.ceil(jours.length / 30) === 0) {
+      out.push(`<text x="${x + pas / 2}" y="${H - 6}" text-anchor="middle" fill="#6c8f3a" font-size="${jours.length > 31 ? 8 : 9}">${statsJourCourt(j.jour)}</text>`);
+    }
+  });
+  if (pics.length > 1) out.push(`<polyline points="${pics.join(' ')}" fill="none" stroke="#E3756A" stroke-width="2"/>`);
+  out.push('</svg>');
+  return out.join('');
+}
+let statsMinuterie = null;
+function statsAuto(forcer) {
+  const voulu = forcer === false ? false : !!($('#stats-auto') && $('#stats-auto').checked);
+  if (voulu && !statsMinuterie) statsMinuterie = setInterval(loadStats, 60000);
+  if (!voulu && statsMinuterie) { clearInterval(statsMinuterie); statsMinuterie = null; }
+}
+async function loadStats() {
+  try {
+    const r = await fetch('/api/admin/stats?jours=' + ($('#stats-jours').value || 30), { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    const di = d.direct;
+    $('#stats-direct').innerHTML = statsCarte(di.enLigne, 'en ligne maintenant', true)
+      + statsCarte(di.aujourdhui, 'Frutiz différents aujourd\'hui')
+      + statsCarte(di.pic + (di.picAt ? ` <small>à ${statsHeure(di.picAt)}</small>` : ''), 'pic simultané du jour');
+    $('#stats-activites').innerHTML = statsBarres(di.activites, statsNomJeu);
+    $('#stats-salons').innerHTML = statsBarres(di.salons, (g) => g);
+    const t = d.totaux;
+    $('#stats-totaux').innerHTML = t
+      ? statsCarte(t.comptes, 'comptes')
+        + statsCarte(`${t.inscrits_jour} <small>/ ${t.inscrits_7} / ${t.inscrits_30}</small>`, 'inscrits aujourd\'hui / 7 j / 30 j')
+        + statsCarte(`${t.actifs_7} <small>/ ${t.actifs_30}</small>`, 'actifs 7 j / 30 j')
+        + statsCarte(`${t.forum_7} <small>· ${t.sujets_7} sujets</small>`, 'messages du forum (7 j)')
+        + statsCarte(`${t.achats_30} <small>· ${t.boutique_30} kikooz</small>`, 'achats en boutique (30 j)')
+      : `<div class="section-content">${d.base ? 'Base indisponible' + (d.erreur ? ' : ' + esc(d.erreur) : '') : 'Pas de base de données : seuls les chiffres en direct sont disponibles.'}</div>`;
+    $('#stats-graphe').innerHTML = statsGraphe(d.jours);
+    const tiret = (v) => v == null ? '<span style="color:#9fb37e">–</span>' : v;
+    const somme = (o) => Object.values(o || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+    $('#stats-jours-body').innerHTML = d.jours.slice().reverse().map((j) => `<tr>
+      <td>${new Date(j.jour + 'T12:00:00Z').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}</td>
+      <td>${tiret(j.connectes)}</td><td>${j.pic != null ? j.pic + (j.picAt ? ` <span style="color:#6c8f3a">(${statsHeure(j.picAt)})</span>` : '') : tiret(null)}</td>
+      <td>${tiret(j.inscrits)}</td><td>${tiret(j.forum)}</td><td>${tiret(j.chat)}</td>
+      <td title="${esc(Object.entries(j.parties || {}).map(([k, n]) => statsNomJeu(k) + ' : ' + n).join(', '))}">${j.parties ? somme(j.parties) : tiret(null)}</td>
+    </tr>`).join('');
+    $('#stats-jeux-fenetre').textContent = 'Sur ' + d.jours.length + ' jours';
+    const jeux = Object.entries(d.jeux || {}).sort((a, b) => b[1].fenetre - a[1].fenetre);
+    const maxJ = jeux.length ? jeux[0][1].fenetre || 1 : 1;
+    $('#stats-jeux').innerHTML = jeux.length ? jeux.map(([k, v]) => `<tr><td>${esc(statsNomJeu(k))}</td><td>${v.semaine}</td><td>${v.fenetre}</td>`
+      + `<td><div class="st-barre"><span class="b" style="width:${Math.round(100 * v.fenetre / maxJ)}%"></span></div></td></tr>`).join('')
+      : '<tr><td colspan="4">Aucune partie relevée pour l\'instant.</td></tr>';
+    $('#stats-maj').textContent = 'mis à jour à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 
 // ─── Trombinoscope (annuaire des Frutiz) ───

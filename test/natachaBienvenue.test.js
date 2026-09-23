@@ -155,10 +155,10 @@ test('à l’inscription, Natacha ouvre le sujet dans « Frutiz » et y souhaite
   assert.strictEqual((await inscrire('PommeVerte')).ok, true);
   const s = await attendreMessages(2);
   assert.ok(s, 'le sujet « ' + N.SUJET + ' » existe dans « Frutiz »');
-  assert.strictEqual(s.topic.author, 'natacha');
+  assert.strictEqual(s.topic.author, N.NOM);
   assert.strictEqual(s.posts[0].content, N.INTRO);
   const mot = s.posts[s.posts.length - 1];
-  assert.strictEqual(mot.author, 'natacha');
+  assert.strictEqual(mot.author, N.NOM);
   assert.strictEqual(String(mot.bouille || '').slice(0, 24), N.BOUILLE);
   assert.ok(mot.content.indexOf('@PommeVerte') >= 0, mot.content);
   // Un deuxième Frutiz, parrainé : un autre mot, qui le mentionne lui et son parrain.

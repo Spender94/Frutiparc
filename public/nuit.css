@@ -692,6 +692,21 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 .dr-onglet:active {
   background: hsl(256 30% 13.5%);
 }
+.site-resume {
+  color: hsl(256 13% 84.7%);
+  background: hsl(256 30% 10%);
+  border-bottom: 1px solid hsl(256 26% 40%);
+}
+.site-resume b {
+  color: hsl(256 13% 84.8%);
+}
+.site-resume .sep {
+  color: hsl(256 13% 90%);
+}
+.site-resume .pastille {
+  background: hsl(256 30% 36%);
+  box-shadow: 0 0 0 3px hsl(256 26% 51.3% / 0.18);
+}
 #users-drawer .u .lieu {
   color: hsl(256 13% 84.7%);
 }

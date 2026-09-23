@@ -2332,6 +2332,47 @@ function formatMb2Time(centisec) {
   return `${m}:${String(s).padStart(2, '0')}.${String(c).padStart(2, '0')}`;
 }
 
+/*
+ * LA DONNÉE ANNEXE D'UNE COURSE DE BURNING KIWI, SOUS SA SEULE FORME LISIBLE.
+ *
+ * Le jeu envoie `[carName, perfectsRank, posRank]`, et `carName` est le nom
+ * AFFICHÉ de la voiture : « Sonic Brain », « UWE Wing »… On la rangeait telle
+ * quelle, « Sonic Brain:3:1 ». Or le tableau des scores (le SWF `cp.Score`
+ * comme le light) passe d'abord la donnée par `MTSerialization.unserialize`,
+ * pour qui un « S » en tête annonce une chaîne : « Sonic Brain » y perdait
+ * son S et devenait « onic brain », qu'aucune écurie ne reconnaît — la case
+ * restait vide. C'était la seule écurie dont le nom commence par un S.
+ *
+ * Les voitures spéciales (OrangiX, UWE Wing II, Crazy Hun, SuperSonic, Final
+ * KiwiX : `carSkinNames[20..24]`) n'avaient pas de vignette du tout : elles
+ * courent sous les couleurs de leur écurie d'origine, on montre celle-ci.
+ * L'UltraCop (`[40]`) et le Drone n'ont pas d'écurie : case vide, comme le
+ * veut `bkiwi_team` pour un nom inconnu.
+ *
+ * On rend donc toujours `S<écurie>:<perfects>:<position>:` — la forme
+ * sérialisée d'époque, celle de la valeur par défaut `Skiwix:5:1:` —, avec
+ * l'écurie en minuscules (la liste de `bkiwi_team`). Une donnée déjà
+ * sérialisée (« SSonic Brain… », « Skiwix… ») est reconnue et dépouillée
+ * d'abord ; un nom qu'on ne connaît pas passe tel quel.
+ */
+const BKIWI_ECURIES = ['ultra orange', 'uwe wing', 'fury hun', 'sonic brain', 'kiwix'];
+const BKIWI_VOITURES_SPECIALES = {
+  'orangix': 'ultra orange', 'uwe wing ii': 'uwe wing', 'crazy hun': 'fury hun',
+  'supersonic': 'sonic brain', 'final kiwix': 'kiwix',
+};
+function bkiwiEcurieDe(nom) {
+  const n = String(nom || '').trim().toLowerCase();
+  if (BKIWI_ECURIES.includes(n)) return n;
+  return BKIWI_VOITURES_SPECIALES[n] || null;
+}
+function bkiwiDonneeCanonique(champs) {
+  let nom = String(champs[0] || '').trim();
+  // Déjà sérialisée : le S de tête n'appartient pas au nom.
+  if (!bkiwiEcurieDe(nom) && /^S/.test(nom) && bkiwiEcurieDe(nom.slice(1))) nom = nom.slice(1);
+  const ecurie = bkiwiEcurieDe(nom) || nom;
+  return `S${ecurie}:${String(champs[1] == null ? '' : champs[1]).trim()}:${String(champs[2] == null ? '' : champs[2]).trim()}:`;
+}
+
 function formatRankingExtraData(rankingId, rawData, scoreHint) {
   const raw = String(rawData || '').trim();
   // Mini-Fever : la donnée stockée est le PALIER (0..3), déjà raconté par le
@@ -2353,16 +2394,15 @@ function formatRankingExtraData(rankingId, rawData, scoreHint) {
   }
 
   if (rankingId.startsWith('bkiwi_track')) {
-    if (raw.includes(':')) return raw;
-    if (raw.includes(',')) {
-      const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
-      if (parts.length >= 3) return `${parts[0]}:${parts[1]}:${parts[2]}:`;
+    let champs = null;
+    if (raw.includes(':')) champs = raw.split(':');
+    else if (raw.includes(',')) champs = raw.split(',').map((p) => p.trim()).filter(Boolean);
+    else {
+      const arr = parseMtSerializedArray(raw);
+      if (arr && arr.length >= 3) champs = arr.map((v) => String(v == null ? '' : v));
     }
-    const arr = parseMtSerializedArray(raw);
-    if (arr && arr.length >= 3) {
-      return `${String(arr[0] || '')}:${String(arr[1] || '')}:${String(arr[2] || '')}:`;
-    }
-    return raw;
+    if (!champs || champs.length < 3) return raw;
+    return bkiwiDonneeCanonique(champs);
   }
 
   // Swapou « Perso » : même format sérialisé (S<charId>:) pour le classique
@@ -2724,6 +2764,7 @@ function persistScore(username, rankingId, score, data) {
   // Tournoi : si une fenêtre de capture est ouverte sur ce ranking, on retient le
   // meilleur score du joueur pour le tour en cours (indépendant de son record perso).
   captureTournamentScore(username, rankingId, n, newData);
+  noterPartie(username, RANKINGS[rankingId].game);
   const oldPos = computePosition(rankingId, username);
   let updated = false;
   const scoreImproved = isScoreBetter(rankingId, n, newData, oldScore, oldData);
@@ -3995,6 +4036,7 @@ function awardImmediateXp(username, gain, reason = '', { notify = true } = {}) {
 function marquerConnexion(username) {
   const user = users[username];
   if (user) user.lastLogin = new Date().toISOString();
+  noterPresence(username);
   if (process.env.DATABASE_URL) {
     db.recordLogin(username).catch((e) => console.error('[DB] recordLogin error:', e.message));
   }
@@ -7987,16 +8029,176 @@ app.get('/api/me/bouille', (req, res) => {
 
 // Number of distinct connected players (chat sockets), excluding NPCs. Used by
 // the legacy Ruffle page + the mobile client to show a live "online" badge.
-app.get('/api/online-count', (req, res) => {
+/*
+ * LA PRÉSENCE DU JOUR — « 12 en ligne · 58 aujourd'hui ».
+ *
+ * « En ligne » se lit sur les sockets, comme toujours. « Aujourd'hui » compte
+ * les Frutiz DIFFÉRENTS qui se sont montrés depuis minuit (heure de Paris) :
+ * chaque identification (marquerConnexion) les y inscrit, et un relevé à la
+ * minute y ajoute ceux qui étaient déjà là au passage de minuit — ils sont
+ * bien « connectés dans la journée » sans s'être identifiés à nouveau. Le
+ * même relevé tient le PIC de connectés simultanés.
+ *
+ * La mémoire suffit à répondre vite ; la base (presence_jour, stats_jour)
+ * rend le compte juste après un redémarrage, et garde l'historique pour
+ * l'onglet Statistiques de l'admin. Les PNJ ne comptent jamais.
+ */
+const presence = { jour: null, noms: new Set(), pic: 0, picAt: null };
+function connectesMaintenant() {
   const online = new Set();
   for (const [, cl] of xmlSocketClients) {
     const u = cl && cl.username;
     if (!u) continue;
-    if (NPC_USERNAMES.has(u)) continue;
-    online.add(String(u).toLowerCase());
+    const cle = String(u).toLowerCase();
+    if (NPC_USERNAMES.has(cle)) continue;
+    online.add(cle);
   }
+  return online;
+}
+// Le jour a-t-il changé ? On repart de zéro, puis la base complète (ceux
+// d'avant un redémarrage) sans jamais retirer personne.
+function presenceJour() {
+  const jour = parisDayKey();
+  if (presence.jour === jour) return presence;
+  presence.jour = jour;
+  presence.noms = new Set();
+  presence.pic = 0;
+  presence.picAt = null;
+  if (process.env.DATABASE_URL) {
+    db.presenceDuJour(jour, true)
+      .then((noms) => { if (presence.jour === jour) for (const n of noms) if (!NPC_USERNAMES.has(n)) presence.noms.add(n); })
+      .catch(dbErr('presenceDuJour'));
+    // Le pic déjà atteint aujourd'hui, avant un redémarrage.
+    db.statsPicDuJour(jour)
+      .then((r) => {
+        if (!r || presence.jour !== jour || !(r.pic > presence.pic)) return;
+        presence.pic = r.pic;
+        presence.picAt = r.picAt ? new Date(r.picAt).toISOString() : null;
+      })
+      .catch(dbErr('statsPicDuJour'));
+  }
+  return presence;
+}
+function noterPresence(username) {
+  const cle = String(username || '').toLowerCase();
+  if (!cle || NPC_USERNAMES.has(cle)) return;
+  const p = presenceJour();
+  if (p.noms.has(cle)) return;
+  p.noms.add(cle);
+  if (process.env.DATABASE_URL) db.presenceNoter(p.jour, cle).catch(dbErr('presenceNoter'));
+}
+// Le relevé : ceux qui sont là comptent pour aujourd'hui, et le pic suit.
+function releverPresence() {
+  const maintenant = connectesMaintenant();
+  const p = presenceJour();
+  for (const n of maintenant) noterPresence(n);
+  if (maintenant.size > p.pic) {
+    p.pic = maintenant.size;
+    p.picAt = new Date().toISOString();
+    if (process.env.DATABASE_URL) db.statsPicNoter(p.jour, p.pic).catch(dbErr('statsPicNoter'));
+  }
+  return { enLigne: maintenant.size, aujourdhui: p.noms.size, pic: p.pic, picAt: p.picAt };
+}
+setInterval(() => { try { releverPresence(); } catch (e) { console.error('[PRESENCE]', e.message); } }, 60 * 1000).unref();
+
+// Les parties classées, par jeu et par jour — pour l'onglet Statistiques. Une
+// même partie peut écrire deux classements (le tour et la course de Burning
+// Kiwi) : on ne compte qu'une partie par joueur et par jeu sur vingt secondes.
+const partiesRecentes = new Map();   // 'pseudo|jeu' → instant
+function noterPartie(username, jeu) {
+  const cle = String(username || '').toLowerCase();
+  if (!cle || !jeu || NPC_USERNAMES.has(cle) || !users[cle]) return;
+  const k = cle + '|' + jeu, t = Date.now();
+  if (t - (partiesRecentes.get(k) || 0) < 20000) return;
+  partiesRecentes.set(k, t);
+  if (partiesRecentes.size > 5000) for (const [kk, tt] of partiesRecentes) if (t - tt > 20000) partiesRecentes.delete(kk);
+  if (process.env.DATABASE_URL) db.statsPartieNoter(parisDayKey(), jeu).catch(dbErr('statsPartieNoter'));
+}
+
+/*
+ * L'ONGLET STATISTIQUES DE L'ADMIN (administrateurs complets seulement : aucun
+ * rôle ne porte l'onglet « stats »).
+ *
+ * En direct : en ligne, passés aujourd'hui, pic du jour, et ce que font les
+ * connectés en ce moment (le voyant de jeu de chacun, les salons publics).
+ * Puis, de la base : les totaux du parc (comptes, inscriptions, actifs à 7 et
+ * 30 jours d'après la dernière connexion, forum, boutique) et une ligne par
+ * jour sur la fenêtre demandée (7 à 90 jours) — connectés distincts, pic,
+ * inscriptions, messages du forum et du chat, parties classées par jeu.
+ *
+ * L'historique des connectés et des parties commence avec presence_jour et
+ * stats_jour : avant, ces cases restent vides plutôt que d'inventer.
+ */
+function joursDepuis(nb) {
+  const fin = new Date(parisDayKey() + 'T12:00:00Z');
+  const out = [];
+  for (let i = nb - 1; i >= 0; i--) {
+    const d = new Date(fin);
+    d.setUTCDate(fin.getUTCDate() - i);
+    out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+app.get('/api/admin/stats', adminScope('stats'), async (req, res) => {
+  const nb = Math.max(7, Math.min(90, Math.floor(Number(req.query.jours) || 30)));
+  const r = releverPresence();
+  // Ce que font les connectés, maintenant.
+  const activites = {}, salons = {};
+  for (const nom of connectesMaintenant()) {
+    const jeu = STATUS_INTERNAL_JEU[statusInternalOf(nom)] || 'ailleurs';
+    activites[jeu] = (activites[jeu] || 0) + 1;
+  }
+  for (const [, cl] of xmlSocketClients) {
+    if (!cl || !cl.username || NPC_USERNAMES.has(String(cl.username).toLowerCase())) continue;
+    for (const g of (cl.channels || [])) if (!/^pm2?_/.test(String(g))) salons[g] = (salons[g] || 0) + 1;
+  }
+  const jours = joursDepuis(nb).map((jour) => ({ jour }));
+  const sortie = {
+    ok: true, base: !!process.env.DATABASE_URL,
+    direct: { enLigne: r.enLigne, aujourdhui: r.aujourdhui, pic: r.pic, picAt: r.picAt, activites, salons },
+    totaux: null, jours, jeux: {},
+  };
+  if (process.env.DATABASE_URL) {
+    try {
+      const d = await db.statsAdmin(jours[0].jour);
+      sortie.totaux = d.totaux;
+      const index = new Map(jours.map((j) => [j.jour, j]));
+      const poser = (rows, champ) => { for (const row of rows) { const j = index.get(row.jour); if (j) j[champ] = row.n; } };
+      poser(d.presence, 'connectes');
+      poser(d.inscrits, 'inscrits');
+      poser(d.forum, 'forum');
+      poser(d.chat, 'chat');
+      for (const row of d.stats) {
+        const j = index.get(row.jour);
+        if (!j) continue;
+        j.pic = row.pic; j.picAt = row.pic_at;
+        j.parties = row.parties || {};
+      }
+      // Les parties par jeu, sur 7 jours et sur toute la fenêtre.
+      jours.forEach((j, i) => {
+        for (const [jeu, n] of Object.entries(j.parties || {})) {
+          const e = sortie.jeux[jeu] || (sortie.jeux[jeu] = { semaine: 0, fenetre: 0 });
+          e.fenetre += Number(n) || 0;
+          if (i >= jours.length - 7) e.semaine += Number(n) || 0;
+        }
+      });
+    } catch (e) {
+      console.error('[STATS] admin :', e.message);
+      sortie.erreur = e.message;
+    }
+  }
+  // Aujourd'hui, la mémoire est plus fraîche que la base.
+  const auj = jours[jours.length - 1];
+  auj.connectes = Math.max(auj.connectes || 0, r.aujourdhui);
+  auj.pic = Math.max(auj.pic || 0, r.pic);
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, count: online.size });
+  res.json(sortie);
+});
+
+app.get('/api/online-count', (req, res) => {
+  const r = releverPresence();
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, count: r.enLigne, today: r.aujourdhui, peak: r.pic });
 });
 
 // Same population as /api/online-count, but returns the connected pseudos so the
@@ -22681,7 +22883,26 @@ const LEGACY_FORUM_BOARDS = [
 //   - sort_order is rewritten so the visible order matches the spec
 // Boards whose name doesn't appear in FORUM_DEFAULT_STRUCTURE (legacy or
 // custom rubriques) are left alone.
-async function ensureForumBoardsExist() {
+/*
+ * UN SEUL ENSEMENCEMENT À LA FOIS.
+ *
+ * Plusieurs chemins le demandent : le démarrage, l'admin (« réensemencer »),
+ * et les PNJ qui postent — VieuxPruneau, Natacha — quand ils ne trouvent pas
+ * leur rubrique. Or Natacha parle à chaque inscription, donc parfois pendant
+ * que le démarrage ensemence encore : deux passes simultanées créaient chacune
+ * les rubriques manquantes, puis fusionnaient les doublons en SUPPRIMANT l'un
+ * des deux — celui qu'un joueur venait peut-être de lire, et où son sujet
+ * n'avait plus où aller. Un appel pendant qu'une passe tourne attend donc
+ * celle-ci au lieu d'en lancer une seconde.
+ */
+let ensemencementForumEnCours = null;
+function ensureForumBoardsExist() {
+  if (!ensemencementForumEnCours) {
+    ensemencementForumEnCours = ensemencerForum().finally(() => { ensemencementForumEnCours = null; });
+  }
+  return ensemencementForumEnCours;
+}
+async function ensemencerForum() {
   if (!process.env.DATABASE_URL) return;
   try {
     const categories = await db.forumGetCategories();
@@ -22762,17 +22983,13 @@ async function ensureForumBoardsExist() {
 app.post('/api/admin/forum/seed', adminAuth, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
   try {
+    // « Déjà ensemencé » se disait dès qu'une CATÉGORIE existait — y compris
+    // pendant que le démarrage créait encore les rubriques : on rendait la main
+    // sur un forum à moitié garni. On passe désormais par l'ensemencement à
+    // vol unique, qui attend une passe en cours et complète ce qui manque.
     const existing = await db.forumGetCategories();
-    if (existing.length > 0) return res.json({ ok: true, message: 'already seeded' });
-    const cats = FORUM_DEFAULT_STRUCTURE;
-    for (let ci = 0; ci < cats.length; ci++) {
-      const cat = await db.forumCreateCategory(cats[ci].name, ci);
-      for (let bi = 0; bi < cats[ci].boards.length; bi++) {
-        const b = cats[ci].boards[bi];
-        await db.forumCreateBoard(cat.id, b.name, b.description, bi);
-      }
-    }
-    res.json({ ok: true, message: 'seeded' });
+    await ensureForumBoardsExist();
+    res.json({ ok: true, message: existing.length > 0 ? 'already seeded' : 'seeded' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -24112,7 +24329,8 @@ app.get('/api/light/online', (req, res) => {
     .sort((a, b) => String(a.pseudo).localeCompare(String(b.pseudo), 'fr', { sensitivity: 'base' }));
 
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, count: liste.length, users: liste });
+  const pr = releverPresence();
+  res.json({ ok: true, count: liste.length, users: liste, today: pr.aujourdhui, peak: pr.pic });
 });
 
 // ─────────────────────────────────────────────
@@ -28241,8 +28459,11 @@ function patchSlot0(username, game, existingData, ctx) {
       const ecurieDe = (rk) => {
         const brut = rk && rk.data;
         if (!brut) return 0;
-        const premier = String(Array.isArray(brut) ? brut[0] : brut).split(':')[0].trim();
-        const i = FCard.ECURIES_BKIWI.indexOf(premier.toLowerCase());
+        // La même lecture que le tableau des scores : S sérialisé retiré,
+        // voitures spéciales rangées sous leur écurie (bkiwiDonneeCanonique).
+        const champs = String(Array.isArray(brut) ? brut.join(':') : brut).split(':');
+        const ecurie = bkiwiDonneeCanonique(champs).slice(1).split(':')[0];
+        const i = FCard.ECURIES_BKIWI.indexOf(ecurie);
         return i < 0 ? 0 : i;
       };
       for (let t = 0; t < 6; t++) {

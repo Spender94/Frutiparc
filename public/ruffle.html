@@ -151,7 +151,7 @@
         padding:5px 10px;border-radius:14px;cursor:pointer;user-select:none;display:none;
         box-shadow:0 2px 6px rgba(0,0,0,.25)" title="Voir qui est connecté">
       <span id="online-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;
-        background:#2ecc40;margin-right:6px;vertical-align:middle"></span><span id="online-count">…</span> en ligne <span style="opacity:.6">▾</span>
+        background:#2ecc40;margin-right:6px;vertical-align:middle"></span><span id="online-count">…</span> en ligne<span id="online-today" style="display:none"><span style="opacity:.55;margin:0 5px">·</span><span id="online-today-n"></span> aujourd'hui</span> <span style="opacity:.6">▾</span>
     </div>
     <!-- Liste des connectés (repliée par défaut, ouverte au clic sur le badge). -->
     <div id="online-list" style="position:fixed;top:38px;right:10px;z-index:2147483646;display:none;
@@ -381,6 +381,14 @@
                         if (d && typeof d.count === "number") {
                             label.textContent = d.count;
                             badge.style.display = "block";
+                        }
+                        // Les Frutiz différents passés depuis minuit (heure de
+                        // Paris), et le pic de la journée dans l'infobulle.
+                        if (d && typeof d.today === "number") {
+                            document.getElementById("online-today-n").textContent = d.today;
+                            document.getElementById("online-today").style.display = "";
+                            badge.title = d.today + (d.today > 1 ? " Frutiz différents" : " Frutiz") + " depuis minuit"
+                                + (d.peak ? " — jusqu'à " + d.peak + " en même temps" : "") + ". Cliquer pour voir qui est connecté.";
                         }
                     })
                     .catch(function () { /* keep last value */ });

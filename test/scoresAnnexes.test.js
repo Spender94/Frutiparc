@@ -192,3 +192,49 @@ test('l’écusson vient d’un octet retourné, pas d’un clic simulé', () =>
   const swf = fs.readFileSync(path.join(ROOT, 'public/swf/sd/bkiwi_team.swf'));
   assert.strictEqual(swf.slice(0, 3).toString('ascii'), 'CWS');
 });
+
+/* ── 4. LE NOM DE LA VOITURE, SOUS SA FORME LISIBLE ─────────────────────── */
+
+// Les fonctions du serveur, extraites telles quelles (le serveur ne s'exporte
+// pas), et la lecture du light qui les consomme.
+function extraireServeur() {
+  const a = SERVEUR.indexOf('const BKIWI_ECURIES');
+  const b = SERVEUR.indexOf('function formatRankingExtraData');
+  const c = SERVEUR.indexOf('function getScoreDataFromAttrs');
+  const parse = /function parseMtSerializedArray\(raw\) \{[\s\S]*?\n\}/.exec(SERVEUR)[0];
+  // eslint-disable-next-line no-new-func
+  return new Function(parse + '\n' + SERVEUR.slice(a, c) + '\nreturn { bkiwiDonneeCanonique, formatRankingExtraData };')();
+}
+function extraireLight() {
+  const deser = /function sdDeserialiser\(brut\) \{[\s\S]*?\n  \}/.exec(LIGHT)[0];
+  // eslint-disable-next-line no-new-func
+  return new Function(deser + '\nvar SD_ECURIES = ["ultra orange", "uwe wing", "fury hun", "sonic brain", "kiwix"];'
+    + '\nreturn function (d) { return SD_ECURIES.indexOf(sdDeserialiser(d).split(":")[0].toLowerCase()); };')();
+}
+
+test('Sonic Brain garde son S : chaque voiture retrouve son écurie au tableau des scores', () => {
+  const { formatRankingExtraData } = extraireServeur();
+  const ecurieLue = extraireLight();
+  const rk = 'bkiwi_track2_challenge';
+  // Ce que le jeu envoie (carName affiché), et ce que le tableau en lit.
+  const cas = {
+    'Ultra Orange:6:1': 0, 'UWE Wing:3:2': 1, 'Fury Hun:0:4': 2, 'Sonic Brain:3:1': 3, 'KiwiX:1:2': 4,
+    // Les voitures spéciales courent sous les couleurs de leur écurie.
+    'OrangiX:1:1': 0, 'UWE Wing II:1:1': 1, 'Crazy Hun:1:1': 2, 'SuperSonic:2:1': 3, 'Final KiwiX:1:1': 4,
+    // Déjà sérialisée (bureau, ou valeur par défaut) : reconnue telle quelle.
+    'SSonic Brain:3:1:': 3, 'Skiwix:5:1:': 4,
+    // Pas d'écurie : case vide, comme le veut bkiwi_team.
+    'UltraCop:4:3': -1, 'Drone:1:1': -1,
+  };
+  for (const [brut, attendu] of Object.entries(cas)) {
+    const d = formatRankingExtraData(rk, brut, 0);
+    assert.match(d, /^S[^:]*:[^:]*:[^:]*:$/, brut + ' → ' + d);
+    assert.strictEqual(ecurieLue(d), attendu, brut + ' → ' + d);
+  }
+  // Le rang (perfects, position) passe intact.
+  assert.strictEqual(formatRankingExtraData(rk, 'Sonic Brain:3:1', 0), 'Ssonic brain:3:1:');
+  // Sans donnée, la valeur d'époque.
+  assert.strictEqual(formatRankingExtraData(rk, '', 0), 'Skiwix:5:1:');
+  // La fiche lit l'écurie de la même façon.
+  assert.match(SERVEUR, /const ecurie = bkiwiDonneeCanonique\(champs\)\.slice\(1\)\.split\(':'\)\[0\];/);
+});
