@@ -38,6 +38,8 @@ const PORTES = {
   animateur: '/api/admin/kiloute/questions',
   chapelier: '/api/admin/shop',
 };
+// L'analyste lit les chiffres : l'onglet Statistiques et le Palmarès.
+const PORTES_ANALYSTE = ['/api/admin/stats', '/api/admin/palmares'];
 
 let proc = null;
 let dispo = false;
@@ -297,4 +299,27 @@ test('la casquette de tournoi s\'ajoute sans déplacer l\'arrivée d\'un animate
   assert.equal(corps.accueil, 'channels', 'il arrive toujours aux Salons');
   assert.ok(corps.tabs.includes('tournoi'));
   assert.ok(corps.tabs.includes('kiloute'), 'ses onglets d\'animateur tiennent');
+});
+
+// ── L'analyste : les chiffres, et rien d'autre ─────────────────────────────
+
+test('l\'analyste lit les Statistiques et le Palmarès, et rien d\'autre', async (t) => {
+  if (!dispo) return t.skip('pas de base PostgreSQL de test disponible');
+  const pseudo = 'analyste' + RUN;
+  await inscrire(pseudo);
+  assert.equal(await donnerRoles(pseudo, 'analyste'), 200);
+  const { corps } = await seConnecter(pseudo);
+  assert.deepEqual(corps.roles, ['analyste']);
+  assert.deepEqual(corps.tabs, ['stats', 'palmares']);
+  assert.equal(corps.accueil, 'stats', 'il arrive sur les Statistiques');
+  for (const porte of PORTES_ANALYSTE) assert.equal(await ouvre(corps.token, porte), 200, porte + ' s\'ouvre');
+  for (const [role, porte] of Object.entries(PORTES)) {
+    assert.equal(await ouvre(corps.token, porte), 403, `${porte} (${role}) reste fermé`);
+  }
+  // Et l'inverse : un chapelier ne lit pas les chiffres.
+  const autre = 'chapchiffres' + RUN;
+  await inscrire(autre);
+  await donnerRoles(autre, 'chapelier');
+  const c2 = (await seConnecter(autre)).corps;
+  for (const porte of PORTES_ANALYSTE) assert.equal(await ouvre(c2.token, porte), 403, porte + ' reste fermé au chapelier');
 });

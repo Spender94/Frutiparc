@@ -8120,8 +8120,8 @@ function noterPartie(username, jeu) {
 }
 
 /*
- * L'ONGLET STATISTIQUES DE L'ADMIN (administrateurs complets seulement : aucun
- * rôle ne porte l'onglet « stats »).
+ * L'ONGLET STATISTIQUES DE L'ADMIN (administrateurs complets, et le rôle
+ * « Analyste »).
  *
  * En direct : en ligne, passés aujourd'hui, pic du jour, et ce que font les
  * connectés en ce moment (le voyant de jeu de chacun, les salons publics).
@@ -8195,6 +8195,67 @@ app.get('/api/admin/stats', adminScope('stats'), async (req, res) => {
   const auj = jours[jours.length - 1];
   auj.connectes = Math.max(auj.connectes || 0, r.aujourdhui);
   auj.pic = Math.max(auj.pic || 0, r.pic);
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(sortie);
+});
+
+/*
+ * LE PALMARÈS — l'onglet des stats « sympas », pour l'administrateur et
+ * l'analyste : les plus totochés, les accessoires les plus achetés, les plus
+ * généreux, les plus médaillés, les rois des records, les plumes du forum…
+ * `periode` : 'tout' (défaut), '30' ou '7' jours pour ce qui est daté. Les
+ * pseudos partent à leur casse d'affichage ; les PNJ ne figurent nulle part.
+ */
+app.get('/api/admin/palmares', adminScope('stats', 'palmares'), async (req, res) => {
+  const jours = ['7', '30'].includes(String(req.query.periode)) ? Number(req.query.periode) : 0;
+  const depuis = jours ? new Date(Date.now() - jours * 86400000) : null;
+  const jourDebut = jours ? joursDepuis(jours)[0] : '0000-00-00';
+  const pnj = [...NPC_USERNAMES];
+  // Les rois des records : qui tient la PREMIÈRE place des classements
+  // permanents (ceux du Challenge repartent de zéro chaque jour).
+  const records = {};
+  for (const rk of Object.keys(RANKINGS)) {
+    if (isDailyResetRanking(rk)) continue;
+    const top = collectTop3ForRanking(rk)[0];
+    const cle = top && String(top.u).toLowerCase();
+    if (!top || NPC_USERNAMES.has(cle)) continue;
+    const e = records[cle] || (records[cle] = { u: cle, n: 0, classements: [] });
+    e.n++;
+    e.classements.push(RANKINGS[rk].name);
+  }
+  let listeRecords = Object.values(records);
+  // Les pseudos à leur casse d'affichage — lus en base quand on l'a : la
+  // mémoire ne garde que les comptes récemment actifs.
+  let affiches = null;
+  const nom = (u) => (affiches && affiches.get(String(u || '').toLowerCase())) || getDisplayName(String(u || ''));
+  const sortie = { ok: true, periode: jours ? String(jours) : 'tout', base: !!process.env.DATABASE_URL };
+  if (process.env.DATABASE_URL) {
+    try {
+      const d = await db.palmares(depuis, jourDebut, pnj);
+      const tous = [];
+      for (const k of ['totoches', 'depensiers', 'genereux', 'gates', 'medailles', 'bavards', 'cites', 'parrains', 'niveaux', 'fortunes', 'doyens']) {
+        for (const r of d[k]) tous.push(r.u);
+      }
+      affiches = await db.nomsAffiches(tous.concat(listeRecords.map((r) => r.u)));
+      // Un record tenu par un compte supprimé depuis ne se montre pas.
+      listeRecords = listeRecords.filter((r) => affiches.has(r.u));
+      const avecNom = (l) => l.map((r) => Object.assign({}, r, { u: nom(r.u) }));
+      for (const k of ['totoches', 'depensiers', 'genereux', 'gates', 'medailles', 'bavards', 'cites', 'parrains', 'niveaux', 'fortunes', 'doyens']) {
+        sortie[k] = avecNom(d[k]);
+      }
+      sortie.niveaux = sortie.niveaux.map((r) => Object.assign(r, { niveau: getLevelForXp(Number(r.xp) || 0) }));
+      sortie.accessoires = d.accessoires;
+      sortie.sujets = d.sujets;
+      sortie.signes = d.signes.map((r) => ({ signe: FRUTI_SIGN_NAMES[r.signe] || String(r.signe), n: r.n }));
+      sortie.anniversaires = d.anniversaires;
+      sortie.jeux = d.jeux;
+    } catch (e) {
+      console.error('[PALMARES]', e.message);
+      sortie.erreur = e.message;
+    }
+  }
+  sortie.records = listeRecords.map((r) => Object.assign(r, { u: nom(r.u) }))
+    .sort((a, b) => b.n - a.n || a.u.localeCompare(b.u)).slice(0, 8);
   res.setHeader('Cache-Control', 'no-store');
   res.json(sortie);
 });
@@ -9124,6 +9185,10 @@ const ADMIN_ROLES = {
   // dont dépend `adminRoleAccueil`. Devant `animateur`, il aurait déplacé
   // l'arrivée des animateurs des salons vers les tournois.
   tournoi: { label: 'Organisateur de tournois', accueil: 'tournoi', tabs: ['tournoi'] },
+  // Analyste : lit les chiffres du parc — l'onglet Statistiques et le Palmarès
+  // (les stats « sympas » à partager avec la communauté). Lecture seule : il
+  // ne touche à rien d'autre.
+  analyste: { label: 'Analyste', accueil: 'stats', tabs: ['stats', 'palmares'] },
 };
 // UN COMPTE, PLUSIEURS CASQUETTES. Le même bénévole peut tenir les scores, la
 // boutique et l'animation — il fallait choisir, on cumule désormais. La colonne

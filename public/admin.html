@@ -220,6 +220,20 @@
   .st-legende { display: flex; gap: 14px; margin-bottom: 6px; color: #6c8f3a; }
   .st-legende i { display: inline-block; width: 12px; height: 10px; margin-right: 4px; vertical-align: middle; border-radius: 2px; }
   #stats-graphe svg { width: 100%; height: auto; display: block; }
+  /* Palmarès : une carte par classement, le premier mis à l'honneur. */
+  .pm-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 10px; margin-top: 8px; }
+  .pm-carte { background: #fff; border: 2px solid #D6F7B5; border-radius: 10px; padding: 10px 12px; }
+  .pm-carte.hors { opacity: .5; }
+  .pm-carte header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .pm-carte header .e { font-size: 20px; }
+  .pm-carte header b { font: bold 13px Arial, sans-serif; color: #2C4A0F; flex: 1; }
+  .pm-carte header label { color: #6c8f3a; white-space: nowrap; }
+  .pm-carte .quand { color: #9fb37e; font-size: 10px; margin: -4px 0 6px 28px; }
+  .pm-carte ol { margin: 0; padding-left: 22px; }
+  .pm-carte li { margin: 2px 0; color: #335511; }
+  .pm-carte li:first-child { font-size: 13px; font-weight: bold; color: #E3756A; }
+  .pm-carte li .d { color: #6c8f3a; font-weight: normal; font-size: 11px; }
+  .pm-carte .vide { color: #9fb37e; font-style: italic; }
   /* Section content padding */
   .section-content {
     padding: 8px 10px;
@@ -383,6 +397,7 @@
   <div class="tabs">
     <div class="tab-group"><span class="lbl">Pilotage</span><div class="grp">
       <button class="tab" data-tab="stats" onclick="switchTab('stats')">Statistiques</button>
+      <button class="tab" data-tab="palmares" onclick="switchTab('palmares')">Palmarès</button>
     </div></div>
     <div class="tab-group"><span class="lbl">Joueurs</span><div class="grp">
       <button class="tab active" data-tab="users" onclick="switchTab('users')">Joueurs</button>
@@ -448,6 +463,27 @@
     <tbody id="stats-jeux"></tbody>
   </table>
   <p style="color:#6c8f3a;margin-top:10px">Les connectés distincts, le pic et les parties sont relevés depuis la mise en place de cet onglet : les jours d'avant restent vides. « Actifs » compte les comptes dont la dernière connexion tombe dans la période ; « Parties » compte les parties terminées avec un score (le tour et la course d'une même partie de Burning Kiwi ne comptent qu'une fois).</p>
+</div>
+
+<div class="content" id="tab-palmares" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadPalmares()">Rafraîchir</button>
+    <select id="palmares-periode" onchange="loadPalmares()">
+      <option value="tout" selected>depuis toujours</option>
+      <option value="30">30 derniers jours</option>
+      <option value="7">7 derniers jours</option>
+    </select>
+    <button class="btn" onclick="palmaresMessage()">Préparer le message du forum</button>
+    <span style="margin-left:auto;color:#6c8f3a">Décoche une carte pour la laisser hors du message.</span>
+  </div>
+  <div id="palmares-export" style="display:none;margin:8px 0">
+    <h3>Le message à coller sur le forum</h3>
+    <div class="section-content">
+      <textarea id="palmares-bbcode" rows="12" style="width:100%;font:11px monospace"></textarea>
+      <div style="margin-top:6px"><button class="btn" onclick="palmaresCopier()">Copier</button> <span id="palmares-copie" style="color:#6c8f3a"></span></div>
+    </div>
+  </div>
+  <div class="pm-grille" id="palmares-cartes"></div>
 </div>
 
 <div class="content" id="tab-users">
@@ -1582,7 +1618,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['stats','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons'].forEach(t => {
+  ['stats','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -1604,6 +1640,96 @@ function switchTab(name) {
   if (name === 'dons') loadDons();
   if (name === 'stats') loadStats();
   else statsAuto(false);
+  if (name === 'palmares') loadPalmares();
+}
+
+// ─── Palmarès ───
+const pl = (n, un, des) => `${n} ${Number(n) > 1 ? des : un}`;
+const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const majuscule = (t) => String(t).charAt(0).toUpperCase() + String(t).slice(1);
+// Une carte par classement : `nom` (ce qu'on classe), `d` (le chiffre), et
+// `date` : vrai si la période choisie s'applique, faux si c'est « de tout temps ».
+const PALMARES_CARTES = [
+  { k: 'totoches', e: '🥊', t: 'Les plus totochés', date: true, d: (r) => pl(r.n, 'totoche', 'totoches') },
+  { k: 'accessoires', e: '🎩', t: 'Les accessoires les plus achetés', date: true, nom: (r) => r.nom, d: (r) => pl(r.n, 'achat', 'achats') },
+  { k: 'depensiers', e: '💸', t: 'Les plus dépensiers', date: true, d: (r) => `${r.n} kikooz (${pl(r.achats, 'achat', 'achats')})` },
+  { k: 'genereux', e: '🎁', t: 'Les plus généreux', date: true, d: (r) => `${r.n} kikooz offerts` },
+  { k: 'gates', e: '🎀', t: 'Les plus gâtés', date: true, d: (r) => `${r.n} kikooz reçus` },
+  { k: 'medailles', e: '🥇', t: 'Les plus médaillés', date: true, d: (r) => [[r.ors, 'or'], [r.argents, 'argent'], [r.bronzes, 'bronze']].filter(([n]) => n > 0).map(([n, m]) => n + ' ' + m).join(' · ') },
+  { k: 'records', e: '🏆', t: 'Les rois des records', date: false, d: (r) => pl(r.n, 'record', 'records'), info: (r) => r.classements.join(', ') },
+  { k: 'jeux', e: '🎮', t: 'Les jeux les plus joués', date: true, nom: (r) => statsNomJeu(r.jeu), d: (r) => pl(r.n, 'partie', 'parties') },
+  { k: 'bavards', e: '✏️', t: 'Les plumes du forum', date: true, d: (r) => pl(r.n, 'message', 'messages') },
+  { k: 'cites', e: '💬', t: 'Les plus cités sur le forum', date: true, d: (r) => pl(r.n, 'citation', 'citations') },
+  { k: 'sujets', e: '🔥', t: 'Les sujets les plus animés', date: true, nom: (r) => r.titre, d: (r) => pl(r.n, 'message', 'messages') },
+  { k: 'parrains', e: '🤝', t: 'Les meilleurs parrains', date: true, d: (r) => pl(r.n, 'filleul', 'filleuls') },
+  { k: 'niveaux', e: '⭐', t: 'Les plus hauts niveaux', date: false, d: (r) => `niveau ${r.niveau}` },
+  { k: 'fortunes', e: '💰', t: 'Les plus grosses fortunes', date: false, d: (r) => `${r.n} kikooz` },
+  { k: 'doyens', e: '🦉', t: 'Les doyens du parc', date: false, d: (r) => 'inscrit le ' + new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) },
+  { k: 'signes', e: '🍎', t: 'Les fruti-signes les plus répandus', date: false, nom: (r) => 'Signe ' + majuscule(r.signe), d: (r) => pl(r.n, 'Frutiz', 'Frutiz') },
+  { k: 'anniversaires', e: '🎂', t: 'Les mois qui fêtent le plus d\'anniversaires', date: false, nom: (r) => majuscule(MOIS[r.mois - 1] || r.mois), d: (r) => pl(r.n, 'anniversaire', 'anniversaires') },
+];
+let palmaresDonnees = null;
+const palmaresHors = new Set();          // les cartes décochées
+function palmaresPeriodeTexte(p) {
+  return p === '7' ? 'les 7 derniers jours' : p === '30' ? 'les 30 derniers jours' : 'depuis l\'ouverture';
+}
+async function loadPalmares() {
+  try {
+    const r = await fetch('/api/admin/palmares?periode=' + ($('#palmares-periode').value || 'tout'), { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    palmaresDonnees = d;
+    renderPalmares();
+    $('#palmares-export').style.display = 'none';
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+function renderPalmares() {
+  const d = palmaresDonnees;
+  if (!d) return;
+  const periode = palmaresPeriodeTexte(d.periode);
+  $('#palmares-cartes').innerHTML = PALMARES_CARTES.map((c) => {
+    const liste = d[c.k] || [];
+    const lignes = liste.length
+      ? '<ol>' + liste.map((r) => `<li${c.info ? ` title="${esc(c.info(r))}"` : ''}>${esc(c.nom ? c.nom(r) : r.u)} <span class="d">— ${esc(c.d(r))}</span></li>`).join('') + '</ol>'
+      : `<div class="vide">${d.base || !c.date ? 'Rien à classer pour l\'instant.' : 'Pas de base de données.'}</div>`;
+    const coche = !palmaresHors.has(c.k);
+    return `<div class="pm-carte${coche ? '' : ' hors'}" data-k="${c.k}"><header><span class="e">${c.e}</span><b>${esc(c.t)}</b>`
+      + `<label><input type="checkbox" ${coche ? 'checked' : ''} onchange="palmaresBasculer('${c.k}', this.checked)"> dans le message</label></header>`
+      + `<div class="quand">${c.date ? esc(periode) : 'de tout temps'}</div>${lignes}</div>`;
+  }).join('');
+}
+function palmaresBasculer(k, oui) {
+  if (oui) palmaresHors.delete(k); else palmaresHors.add(k);
+  const carte = document.querySelector(`.pm-carte[data-k="${k}"]`);
+  if (carte) carte.classList.toggle('hors', !oui);
+  if ($('#palmares-export').style.display !== 'none') palmaresMessage();
+}
+// Le message du forum : le podium (trois premiers) de chaque carte cochée.
+function palmaresTexte(d, hors) {
+  const l = [`[b]🏆 Le parc en chiffres[/b] — [i]${palmaresPeriodeTexte(d.periode)}[/i]`, ''];
+  const podium = ['🥇', '🥈', '🥉'];
+  for (const c of PALMARES_CARTES) {
+    if (hors.has(c.k)) continue;
+    const liste = (d[c.k] || []).slice(0, 3);
+    if (!liste.length) continue;
+    l.push(`[b]${c.e} ${c.t}[/b]${c.date || d.periode === 'tout' ? '' : ' [i](de tout temps)[/i]'}`);
+    l.push(liste.map((r, i) => `${podium[i]} ${c.nom ? c.nom(r) : r.u} (${c.d(r)})`).join('   '));
+    l.push('');
+  }
+  l.push('[i]Chiffres relevés le ' + new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) + '.[/i]');
+  return l.join('\n');
+}
+function palmaresMessage() {
+  if (!palmaresDonnees) return;
+  $('#palmares-bbcode').value = palmaresTexte(palmaresDonnees, palmaresHors);
+  $('#palmares-export').style.display = '';
+  $('#palmares-copie').textContent = '';
+}
+async function palmaresCopier() {
+  const ta = $('#palmares-bbcode');
+  try { await navigator.clipboard.writeText(ta.value); }
+  catch (e) { ta.select(); document.execCommand('copy'); }
+  $('#palmares-copie').textContent = 'Copié !';
 }
 
 // ─── Statistiques ───
@@ -4630,6 +4756,7 @@ const ROLES_ADMIN = [
   { id: 'animateur', label: 'Animateur (MikeHorny + Salons + Tournois)' },
   { id: 'chapelier', label: 'Chapelier (Boutique)' },
   { id: 'tournoi', label: 'Organisateur de tournois (Tournois seuls)' },
+  { id: 'analyste', label: 'Analyste (Statistiques + Palmarès)' },
 ];
 const rolesDe = (user) => String(user.admin_role || '').split(',').map((s) => s.trim()).filter(Boolean);
 

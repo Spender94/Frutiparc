@@ -3502,6 +3502,100 @@ async function statsAdmin(jourDebut) {
   return { totaux, presence, stats, inscrits, forum, chat };
 }
 
+/*
+ * LE PALMARÈS — les chiffres « sympas » qu'on partage avec la communauté.
+ *
+ * `depuis` (Date ou null) borne ce qui est daté (totoches, achats, dons,
+ * médailles, forum, parrainages, parties) ; le reste est « de tout temps »
+ * (niveaux, fortunes, doyens, fruti-signes, anniversaires). `pnj` : les
+ * pseudos (minuscules) à écarter partout. Chaque liste est déjà triée ; le
+ * serveur met les pseudos à leur casse d'affichage.
+ */
+async function palmares(depuis, jourDebut, pnj) {
+  const d = depuis || null;
+  const P = [d, pnj];
+  const date = (col) => `($1::timestamptz IS NULL OR ${col} >= $1)`;
+  const q = (sql, params) => pool.query(sql, params || P).then((r) => r.rows);
+  const [
+    totoches, accessoires, depensiers, genereux, gates, medailles, bavards, cites,
+    sujets, parrains, niveaux, fortunes, doyens, signes, anniversaires, jeux,
+  ] = await Promise.all([
+    q(`SELECT lower(target_username) AS u, COUNT(*)::int AS n FROM moderation_logs
+        WHERE action = 'totoche' AND ${date('created_at')} AND lower(target_username) <> ALL($2)
+        GROUP BY 1 ORDER BY n DESC, u LIMIT 8`),
+    q(`SELECT pack_name AS nom, max(category) AS categorie, COUNT(*)::int AS n FROM shop_purchases
+        WHERE pack_name <> '' AND ${date('created_at')} AND lower(username) <> ALL($2)
+        GROUP BY pack_name ORDER BY n DESC, nom LIMIT 8`),
+    q(`SELECT lower(username) AS u, SUM(price)::int AS n, COUNT(*)::int AS achats FROM shop_purchases
+        WHERE ${date('created_at')} AND lower(username) <> ALL($2)
+        GROUP BY 1 ORDER BY n DESC, u LIMIT 8`),
+    // Les dons de SA poche (/donne), pas l'enveloppe d'animation.
+    q(`SELECT lower(giver) AS u, SUM(amount)::int AS n, COUNT(*)::int AS dons FROM kikooz_gifts
+        WHERE source = 'personnel' AND ${date('created_at')} AND lower(giver) <> ALL($2)
+        GROUP BY 1 ORDER BY n DESC, u LIMIT 8`),
+    q(`SELECT lower(recipient) AS u, SUM(amount)::int AS n, COUNT(*)::int AS dons FROM kikooz_gifts
+        WHERE ${date('created_at')} AND lower(recipient) <> ALL($2)
+        GROUP BY 1 ORDER BY n DESC, u LIMIT 8`),
+    q(`SELECT lower(username) AS u,
+              COUNT(*) FILTER (WHERE medal = 'or')::int AS ors,
+              COUNT(*) FILTER (WHERE medal = 'argent')::int AS argents,
+              COUNT(*) FILTER (WHERE medal = 'bronze')::int AS bronzes,
+              COUNT(*)::int AS n
+         FROM challenge_medals WHERE ${date('created_at')} AND lower(username) <> ALL($2)
+        GROUP BY 1 ORDER BY ors DESC, argents DESC, bronzes DESC, u LIMIT 8`),
+    q(`SELECT lower(author_username) AS u, COUNT(*)::int AS n FROM forum_posts
+        WHERE ${date('created_at')} AND lower(author_username) <> ALL($2)
+        GROUP BY 1 ORDER BY n DESC, u LIMIT 8`),
+    // Les plus cités : le nom porté par [quote=…] / [citation=…].
+    q(`SELECT lower(trim(m[1])) AS u, COUNT(*)::int AS n
+         FROM forum_posts, regexp_matches(content, '\\[(?:quote|citation)=([^\\]]+)\\]', 'gi') AS m
+        WHERE ${date('created_at')} AND lower(trim(m[1])) <> ALL($2)
+        GROUP BY 1 ORDER BY n DESC, u LIMIT 8`),
+    // Les sujets les plus animés — hors sujets de PNJ (la map du jour, les
+    // bienvenues de Natacha) qui gagneraient à tous les coups.
+    q(`SELECT t.id, t.title AS titre, COUNT(p.id)::int AS n FROM forum_topics t
+         JOIN forum_posts p ON p.topic_id = t.id
+        WHERE ${date('p.created_at')} AND lower(t.author_username) <> ALL($2)
+        GROUP BY t.id, t.title ORDER BY n DESC, t.id LIMIT 5`),
+    q(`SELECT lower(referred_by) AS u, COUNT(*)::int AS n FROM users
+        WHERE referred_by IS NOT NULL AND referral_state = 'rewarded' AND ${date('created_at')}
+          AND lower(referred_by) <> ALL($2)
+        GROUP BY 1 ORDER BY n DESC, u LIMIT 8`),
+    q(`SELECT lower(username) AS u, xp FROM users WHERE lower(username) <> ALL($1)
+        ORDER BY xp DESC, created_at LIMIT 8`, [pnj]),
+    q(`SELECT lower(username) AS u, kikooz AS n FROM users WHERE lower(username) <> ALL($1)
+        ORDER BY kikooz DESC, created_at LIMIT 8`, [pnj]),
+    q(`SELECT lower(username) AS u, created_at FROM users WHERE lower(username) <> ALL($1)
+        ORDER BY created_at ASC LIMIT 5`, [pnj]),
+    q(`SELECT fruti_sign AS signe, COUNT(*)::int AS n FROM users
+        WHERE fruti_sign >= 0 AND lower(username) <> ALL($1) GROUP BY 1 ORDER BY n DESC`, [pnj]),
+    // Le 15 mai 1990 est la date par défaut : ceux qui ne l'ont jamais réglée.
+    q(`SELECT extract(month FROM birthday)::int AS mois, COUNT(*)::int AS n FROM users
+        WHERE birthday IS NOT NULL AND birthday <> DATE '1990-05-15' AND lower(username) <> ALL($1)
+        GROUP BY 1 ORDER BY n DESC, mois`, [pnj]),
+    q(`SELECT e.key AS jeu, SUM(e.value::int)::int AS n FROM stats_jour, jsonb_each_text(parties) AS e
+        WHERE jour >= $1 GROUP BY 1 ORDER BY n DESC`, [jourDebut]),
+  ]);
+  return {
+    totoches, accessoires, depensiers, genereux, gates, medailles, bavards, cites,
+    sujets, parrains, niveaux, fortunes, doyens, signes, anniversaires, jeux,
+  };
+}
+
+// Les pseudos à leur casse d'affichage, lus en base : la mémoire du serveur
+// ne garde que les comptes récemment actifs. Rend Map(minuscules → affiché),
+// sans entrée pour un compte qui n'existe plus.
+async function nomsAffiches(pseudos) {
+  const liste = [...new Set((pseudos || []).map((u) => String(u || '').toLowerCase()).filter(Boolean))];
+  if (!liste.length) return new Map();
+  const { rows } = await pool.query(
+    `SELECT lower(username) AS u, COALESCE(NULLIF(display_name, ''), username) AS d
+       FROM users WHERE lower(username) = ANY($1)`,
+    [liste]
+  );
+  return new Map(rows.map((r) => [r.u, r.d]));
+}
+
 // Le nombre de Frutiz inscrits — c'est le rang qu'annonce Natacha quand il
 // est rond.
 async function countUsers() {
@@ -4331,6 +4425,8 @@ module.exports = {
   statsPicNoter,
   statsPartieNoter,
   statsAdmin,
+  palmares,
+  nomsAffiches,
   forumDernierMessageDe,
   forumIncrementViews,
   forumMarkTopicRead,
