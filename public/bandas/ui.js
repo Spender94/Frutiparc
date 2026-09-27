@@ -155,8 +155,11 @@
     if (e === "gchat") return GV.chatMessage(el.getAttribute("u"), el.getAttribute("m"));
     if (e === "start") return onStart(el);
     if (e === "ev") return onEvent(el);
+    if (e === "spec") { if (state.inGame) GV.onSpec(el); return; }
     if (e === "err") {
       var m = el.getAttribute("m");
+      if (m === "spectator-mute") { GV.muet(); return; }
+      if (m === "no-such-game" && state.screen === "lobby") { setStatus("Cette partie vient de se terminer."); bd({ a: "list" }); return; }
       // Refus FD d'un match classé : popin native (pas une simple ligne d'état).
       if (m === "no-fd" || m === "opp-no-fd") { showFdPopin(m); return; }
       setStatus("⚠ " + m); return;
@@ -164,7 +167,7 @@
   }
 
   // ── Lobby ────────────────────────────────────────────────────────────────
-  var lobbyPlayers = [], lobbyGames = [], lobbySel = null;
+  var lobbyPlayers = [], lobbyGames = [], lobbyLive = [], lobbySel = null;
   var SQCLASS = { idle: "SQ-idle", waiting: "SQ-waiting", playing: "SQ-playing" };
   var STATUSLABEL = { idle: "Disponible", waiting: "En attente", playing: "En partie" };
   function onLobby(el) {
@@ -172,14 +175,20 @@
       state.gotLobby = true;
       setStatus("Connecté — " + state.user);
       if (state.screen === "connect") showScreen("mode");
+      // Reconnecté en pleine observation : le serveur nous a oubliés.
+      else if (state.inGame && GV.spectator) quitterSpectacle();
     }
     // Le serveur dit de quelle salle vient ce lobby : un message adressé à une
     // salle qu'on vient de quitter ne doit pas écraser la liste de la nouvelle.
     var sa = el.getAttribute("sa");
     if (sa && SALLES[sa] && sa !== state.salle) return;
-    lobbyPlayers = []; lobbyGames = [];
+    lobbyPlayers = []; lobbyGames = []; lobbyLive = [];
     each(el.getElementsByTagName("pl"), function (n) {
-      lobbyPlayers.push({ u: n.getAttribute("u"), n: n.getAttribute("n"), s: n.getAttribute("s"), f: n.getAttribute("f"), sr: +n.getAttribute("sr") || 0, el: +n.getAttribute("el") || 0, bot: n.getAttribute("bot") === "1" });
+      lobbyPlayers.push({ u: n.getAttribute("u"), n: n.getAttribute("n"), s: n.getAttribute("s"), f: n.getAttribute("f"), sr: +n.getAttribute("sr") || 0, el: +n.getAttribute("el") || 0, bot: n.getAttribute("bot") === "1", w: n.getAttribute("w") || "" });
+    });
+    // Les parties en cours de la salle, qu'on peut aller regarder.
+    each(el.getElementsByTagName("live"), function (n) {
+      lobbyLive.push({ g: n.getAttribute("g"), u0: n.getAttribute("u0"), u1: n.getAttribute("u1"), n0: n.getAttribute("n0"), n1: n.getAttribute("n1"), ns: +n.getAttribute("ns") || 0 });
     });
     each(el.getElementsByTagName("game"), function (n) {
       lobbyGames.push({ id: n.getAttribute("id"), host: n.getAttribute("host"), c: +n.getAttribute("c"), m: +n.getAttribute("m") });
@@ -220,7 +229,8 @@
     lobbyPlayers.forEach(function (p) {
       if (isMe(p)) return;
       var row = div("pli can" + (lobbySel === p.u ? " sel" : ""));
-      row.innerHTML = '<span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span><span class="nm">' + esc(p.n || p.u) + "</span>";
+      row.innerHTML = '<span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span><span class="nm">' + esc(p.n || p.u) + "</span>"
+        + (p.w ? '<span class="eye" title="Regarde une partie">👁</span>' : "");
       row.onclick = function () { selectPlayer(p.u); };
       box.appendChild(row);
     });
@@ -238,6 +248,7 @@
     if (!p) {
       title.textContent = "Liste des défis";
       body.innerHTML = '<div class="defis-empty">Clique sur un joueur dans la liste de droite pour voir son statut et le défier.</div>';
+      renderLive(body);
       foot.innerHTML = '<span class="arrow" data-col="defis" title="Replier">»</span>';
       return;
     }
@@ -254,9 +265,28 @@
       var g = lobbyGames.filter(function (x) { return x.host === p.u; })[0];
       if (g) { btn.textContent = "Rejoindre " + name; btn.onclick = function () { bd({ a: "join", g: g.id }); }; }
       else { btn.textContent = "Défier " + name; btn.disabled = true; }
-    } else { btn.textContent = name + " est en partie"; btn.disabled = true; }
+    } else {
+      // En partie : on peut aller regarder.
+      var lv = liveOf(p.u);
+      if (lv) { btn.textContent = "Regarder la partie"; btn.onclick = function () { bd({ a: "watch", g: lv.g }); }; }
+      else { btn.textContent = name + " est en partie"; btn.disabled = true; }
+    }
     foot.appendChild(btn);
     var arr = document.createElement("span"); arr.className = "arrow"; arr.setAttribute("data-col", "defis"); arr.setAttribute("title", "Replier"); arr.textContent = "»"; foot.appendChild(arr);
+  }
+  // ── Les parties en cours (spectateurs) ──────────────────────────────────
+  function liveOf(uid) { for (var i = 0; i < lobbyLive.length; i++) if (lobbyLive[i].u0 === uid || lobbyLive[i].u1 === uid) return lobbyLive[i]; return null; }
+  function renderLive(box) {
+    if (!lobbyLive.length) return;
+    var t = div("live-title"); t.textContent = "Parties en cours"; box.appendChild(t);
+    lobbyLive.forEach(function (lv) {
+      var r = div("live-row");
+      r.innerHTML = '<span class="lv-nm">' + esc(lv.n0) + " contre " + esc(lv.n1) + "</span>"
+        + (lv.ns ? '<span class="lv-ns">👁 ' + lv.ns + "</span>" : "");
+      var b = document.createElement("button"); b.className = "btn-regarder"; b.textContent = "Regarder";
+      b.onclick = function () { bd({ a: "watch", g: lv.g }); };
+      r.appendChild(b); box.appendChild(r);
+    });
   }
   function collapsePanel(name) { var el = $("#panel-" + name); if (el) el.classList.add("collapsed"); if (name === "defis") { lobbySel = null; renderPlayers(); } }
   function expandPanel(name) { var el = $("#panel-" + name); if (el) el.classList.remove("collapsed"); if (name === "defis") renderDefis(); }
@@ -420,11 +450,25 @@
   }
 
   GV.send = function (a) { bd(a); };
+  // L'observateur qui s'en va : rien à abandonner, retour au salon.
+  function quitterSpectacle() {
+    if (GV._endTimer) { clearTimeout(GV._endTimer); GV._endTimer = null; }
+    state.inGame = false;
+    GV.started = false;
+    GV.spectator = false;
+    GV.stopMusic();
+    document.body.classList.remove("chat-open", "sheet-open");
+    showScreen("lobby");
+    renderLobby();
+    bd({ a: "list" });
+  }
   GV.onQuit = function () {
+    if (GV.spectator) { bd({ a: "unwatch" }); quitterSpectacle(); return; }
     bd({ a: "part" });
     // l'événement end reviendra du serveur ; en mode challenge l'abandon ferme le jeu
   };
   GV.onEndClosed = function () {
+    if (GV.spectator) { quitterSpectacle(); return; }   // l'observateur retourne au salon
     var mine = GV.winner === GV.myTeam;
     state.inGame = false;
     GV.started = false;

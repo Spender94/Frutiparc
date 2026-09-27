@@ -141,6 +141,11 @@
       return String(p.u).toLowerCase() === String(user).toLowerCase() || String(p.n).toLowerCase() === String(user).toLowerCase();
     })[0];
     GV.myTeam = me ? me.e : -1;
+    GV.user = user;
+    // Observateur (sp="1") : il voit ce que verrait un adversaire — cartes de
+    // dos, pièges d'autrui masqués —, lit le chat mais n'y écrit pas.
+    GV.spectator = el.getAttribute("sp") === "1";
+    GV.specs = null;
     GV.players = players;
     GV.hands = hands;
     var b = el.getElementsByTagName("b")[0];
@@ -173,7 +178,16 @@
     setupCanvas();
 
     $("#bd-chatbox").innerHTML = "";
-    logLine("ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !");
+    if (GV.spectator) {
+      var noms = players.slice().sort(function (a, b2) { return a.e - b2.e; }).map(function (p) { return p.n || p.u; });
+      logLine("Vous observez la partie de " + noms.join(" et ") + ". " + MUET);
+    } else {
+      logLine("ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !");
+    }
+    var inp = $("#bd-input");
+    inp.disabled = GV.spectator; inp.value = "";
+    inp.placeholder = GV.spectator ? "Chat en lecture seule (observateur)" : "Discuter… (Entrée pour envoyer)";
+    $("#btn-giveup").textContent = $("#m-giveup").textContent = GV.spectator ? "Quitter" : "Abandon";
     $("#bd-end").style.display = "none";
     $("#bd-banner").style.display = "none";
     $("#m-hint").classList.remove("on");
@@ -488,7 +502,7 @@
         }
         break;
       case CARD.CELERITE:
-        logLine(team === GV.myTeam ? "Effet célérité, encore à vous !" : "Effet célérité, l'adversaire bouge encore !");
+        logLine(team === GV.myTeam ? "Effet célérité, encore à vous !" : GV.spectator ? "Effet célérité, " + nameOf(team) + " bouge encore !" : "Effet célérité, l'adversaire bouge encore !");
         break;
       // désordre / charge / entracte / confiscation : bannière seulement
     }
@@ -947,7 +961,9 @@
     ["up", "down", "left", "right"].forEach(function (d) {
       $("#arrow-" + d).classList.toggle("on", show);
     });
-    $("#m-dpad").classList.toggle("on", show);     // mobile : croix directionnelle
+    $("#m-dpad").classList.toggle("on", show || (GV.spectator && GV.started && !GV.ended));     // mobile : croix directionnelle
+    // L'observateur n'a que « Son » et « Quitter » : pas de flèches.
+    $("#m-dpad").classList.toggle("spect", !!GV.spectator);
     positionArrows();
   }
 
@@ -1001,6 +1017,21 @@
 
   // ── Chat & log ─────────────────────────────────────────────────────────────
   function logLine(txt) { addChatLine('<span class="log">' + esc(txt) + "</span>"); }
+  // Erreur 2035 du jeu d'origine.
+  var MUET = "Les observateurs ne peuvent parler dans cette partie.";
+  GV.note = logLine;
+  GV.muet = function () { logLine(MUET); };
+  // <bd e="spec" ns l="Kiwi, Pomme"> : on annonce qui arrive et qui s'en va
+  // (sauf soi-même), une ligne dans le chat de la partie.
+  GV.onSpec = function (el) {
+    var l = el.getAttribute("l") || "";
+    var noms = l ? l.split(", ") : [];
+    var avant = GV.specs || [];
+    var moi = function (n) { return String(n).toLowerCase() === String(GV.user || "").toLowerCase(); };
+    noms.forEach(function (n) { if (avant.indexOf(n) < 0 && !moi(n)) logLine("👁 " + n + " observe la partie."); });
+    avant.forEach(function (n) { if (noms.indexOf(n) < 0 && !moi(n)) logLine("👁 " + n + " n'observe plus la partie."); });
+    GV.specs = noms;
+  };
   GV.chatMessage = function (user, msg) { addChatLine('<span class="nk">' + esc(user) + " &gt;</span> " + esc(msg)); };
   function addChatLine(html) {
     var box = $("#bd-chatbox");
@@ -1016,7 +1047,11 @@
     var box = $("#bd-end");
     var mine = GV.winner === GV.myTeam;
     var draw = !(GV.winner === 0 || GV.winner === 1);
-    if (draw) {
+    if (GV.spectator) {
+      // L'observateur n'a ni série ni défaite : juste l'issue.
+      $("#bd-endtext").textContent = draw ? "Égalité ! La Vachette gagne…" : "La partie est terminée, " + nameOf(GV.winner) + " a gagné !";
+      $("#bd-endsub").textContent = "";
+    } else if (draw) {
       $("#bd-endtext").textContent = "Égalité ! La Vachette gagne…\nVous avez encore vos chances sur le challenge.";
       $("#bd-endsub").textContent = "";
     } else if (mine) {
@@ -1111,6 +1146,7 @@
     // boutons (Abandon avec confirmation — texte d'origine)
     function onGiveUp() {
       if (GV.ended) { closeEnd(); return; }
+      if (GV.spectator) { if (GV.onQuit) GV.onQuit(); return; }   // on ne fait que regarder : pas de confirmation
       if (window.confirm("Voulez-vous abandonner la partie ?")) { if (GV.onQuit) GV.onQuit(); }
     }
     $("#btn-giveup").addEventListener("click", onGiveUp);

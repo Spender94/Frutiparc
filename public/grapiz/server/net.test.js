@@ -326,5 +326,69 @@ var nvide = new N.GrapizNet({ clock: function () { return 0; }, botIdentity: fun
 nvide.handle("x", { a: "hello" });
 eq(nvide.names["cassis"], "Cassis", "annuaire trop maigre (null) : noms d'origine");
 
+// ── SPECTATEURS : regarder une partie sans y jouer (Challenge compris) ──────
+(function () {
+  var ns = new N.GrapizNet({ clock: function () { return 0; }, withBots: false });
+  ["al", "bo", "ca", "da"].forEach(function (u) { ns.handle(u, { a: "hello", n: u.toUpperCase() }); });
+  eq(find(ns.handle("zz", { a: "watch", g: "x" }), "err").xml.indexOf("unknown-player") >= 0, true, "spec : inconnu refusé");
+  ok(find(ns.handle("ca", { a: "watch", g: "nope" }), "err").xml.indexOf("no-such-game") >= 0, "spec : partie inexistante refusée");
+  ns.handle("al", { a: "challenge", u: "bo", t: "60000" });
+  var gid = Object.keys(ns.sessions)[0];
+  var s = ns.sessions[gid];
+  ok(find(ns.handle("al", { a: "watch", g: gid }), "err").xml.indexOf("already-in") >= 0, "spec : un joueur ne regarde pas sa partie");
+  // Le lobby annonce la partie en cours.
+  var lob = ns._lobbyXml();
+  ok(lob.indexOf('<live g="' + gid + '" u0="al" u1="bo" n0="AL" n1="BO"') >= 0, "spec : la partie en cours est dans le lobby");
+  // Carol regarde.
+  var w = ns.handle("ca", { a: "watch", g: gid });
+  var st = find(w, "start");
+  ok(st && st.to.length === 1 && st.to[0] === "ca", "spec : l'état de départ va au seul spectateur");
+  ok(st.xml.indexOf('sp="1"') >= 0 && st.xml.indexOf('ns="1"') >= 0, "spec : marqué spectateur, un spectateur");
+  ok(st.xml.indexOf("<t ") >= 0, "spec : le plateau est là");
+  var sp = find(w, "spec");
+  ok(sp && toHas(sp, "al") && toHas(sp, "bo") && toHas(sp, "ca"), "spec : les joueurs savent qu'on les regarde");
+  ok(sp.xml.indexOf('l="CA"') >= 0, "spec : le nom du spectateur est donné");
+  ok(ns._lobbyXml().indexOf('<pl u="ca" n="CA" s="idle"') >= 0 && ns._lobbyXml().indexOf('w="' + gid + '"') >= 0, "spec : le lobby sait qui regarde quoi");
+  ok(ns._lobbyXml().indexOf('ns="1"/>') >= 0, "spec : le compteur de la partie en cours");
+  // Un coup lui parvient.
+  var lm = s.game.legalMoves(0)[0];
+  var mv = find(ns.handle("al", { a: "move", x: String(lm.from.x), y: String(lm.from.y), d: String(lm.direction) }), "move");
+  ok(mv && toHas(mv, "ca"), "spec : les coups parviennent au spectateur");
+  // Il ne joue pas, il ne parle pas, mais il lit.
+  ok(find(ns.handle("ca", { a: "move", x: "0", y: "0", d: "0" }), "err"), "spec : pas de coup pour un spectateur");
+  var gs = ns.handle("ca", { a: "gsay", m: "coucou" });
+  ok(gs.length === 1 && gs[0].xml.indexOf("spectator-mute") >= 0 && gs[0].to[0] === "ca", "spec : muet (erreur au seul spectateur)");
+  var gc = find(ns.handle("bo", { a: "gsay", m: "bien joué" }), "gchat");
+  ok(gc && toHas(gc, "ca") && toHas(gc, "al"), "spec : il lit le chat de la partie");
+  // Un second spectateur, puis il s'en va.
+  ns.handle("da", { a: "watch", g: gid });
+  eq(s._spectateurs.length, 2, "spec : deux spectateurs");
+  var uw = ns.handle("da", { a: "unwatch" });
+  ok(find(uw, "spec") && find(uw, "spec").xml.indexOf('ns="1"') >= 0, "spec : unwatch annoncé");
+  ok(!ns.watching.da, "spec : il ne regarde plus");
+  // Déconnexion d'un spectateur.
+  ns.handle("da", { a: "watch", g: gid });
+  var dc = ns.onDisconnect("da");
+  ok(find(dc, "spec") && s._spectateurs.length === 1, "spec : la déconnexion le retire");
+  // Créer un salon, c'est cesser de regarder.
+  ns.handle("da", { a: "hello", n: "DA" });
+  ns.handle("da", { a: "watch", g: gid });
+  ns.handle("da", { a: "create" });
+  ok(!ns.watching.da && s._spectateurs.indexOf("da") < 0, "spec : créer un salon arrête de regarder");
+  ok(find(ns.handle("da", { a: "watch", g: gid }), "err").xml.indexOf("already-busy") >= 0, "spec : on ne regarde pas en attendant un adversaire");
+  // La fin parvient au spectateur, puis tout est rangé.
+  var fin = find(ns.handle("bo", { a: "part" }), "end");
+  ok(fin && toHas(fin, "ca"), "spec : la fin parvient au spectateur");
+  ok(!ns.watching.ca, "spec : plus rien à regarder après la fin");
+  ok(ns._lobbyXml().indexOf("<live") < 0, "spec : la partie finie quitte la liste");
+  // Être défié en regardant : la partie démarre, on cesse de regarder.
+  ns.handle("al", { a: "challenge", u: "bo", t: "60000" });
+  var g2 = Object.keys(ns.sessions)[0];
+  ns.handle("ca", { a: "watch", g: g2 });
+  ns.handle("da", { a: "part" });
+  var ch = ns.handle("da", { a: "challenge", u: "ca", t: "60000" });
+  ok(find(ch, "spec") && !ns.watching.ca && ns.sessions[g2]._spectateurs.length === 0, "spec : défié en regardant → il quitte le spectacle");
+})();
+
 console.log("\nGrapiz net: " + passed + " passed, " + fails + " failed.");
 process.exit(fails ? 1 : 0);

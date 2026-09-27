@@ -8,8 +8,15 @@
 //
 // Protocole (XML sur le WebSocket existant, tag <bd>) :
 //   client → serveur : <bd a="hello|list|create|join|challenge|choose|play|
-//                             move|part|say|gsay" .../>
-//   serveur → client : <bd e="lobby|start|ev|chat|gchat|err" ...> ... </bd>
+//                             move|part|say|gsay|watch|unwatch" .../>
+//   serveur → client : <bd e="lobby|start|ev|chat|gchat|spec|err" ...> ... </bd>
+//
+// LES SPECTATEURS. Comme dans le Frutiparc d'origine (NetworkController.as :
+// « Les observateurs ne peuvent parler dans cette partie »), on peut regarder
+// une partie en cours sans y jouer — ici dans les TROIS salles, challenge
+// compris. Le spectateur reçoit l'instantané puis les événements PUBLICS : il
+// voit exactement ce que voit un adversaire, jamais une pose cachée ni un
+// piège. Il lit le chat de la partie mais n'y écrit pas.
 //
 // Les événements de partie (e="ev") sont REJOUÉS par le client avec son
 // propre moteur (mêmes règles → mêmes plateaux), avec la visibilité
@@ -59,6 +66,7 @@
     this.champions = {};                // username → fiche Championnat (elo.js)
     this.bots = {};                     // username → true
     this._botNeuf = {};                 // bot → doit repartir sous une autre identité
+    this.watching = {};                 // username → gameId de la partie qu'il REGARDE
     this.clock = opts.clock || function () { return Date.now(); };
     this._rng = opts.rng || Math.random;
     this.onResult = opts.onResult || function () {};   // hook (session, winner, reason)
@@ -190,13 +198,24 @@
       var f = self.champions[p.id];
       return '<pl u="' + esc(p.id) + '" n="' + esc(p.name || p.id) + '" s="' + esc(p.status) +
         '" f="' + esc(self.bouilles[p.id] || "") + '" sr="' + (self.streaks[p.id] || 0) +
-        '" el="' + (f ? f.ls[0] : "") + '" bot="' + (self.bots[p.id] ? 1 : 0) + '"/>';
+        '" el="' + (f ? f.ls[0] : "") + '" bot="' + (self.bots[p.id] ? 1 : 0) + '"' +
+        (self.watching[p.id] ? ' w="' + esc(self.watching[p.id]) + '"' : "") + '/>';
     }).join("");
+    // Les parties EN COURS de la salle : ce qu'on peut aller regarder.
+    var live = Object.keys(this.sessions).map(function (id) { return self.sessions[id]; })
+      .filter(function (s) { return s && !s.ended && (s._salle || L.SALLE_DEFAUT) === (salle === undefined ? s._salle : salle); })
+      .map(function (s) {
+        var a = s.playerOfTeam(0), b = s.playerOfTeam(1);
+        return '<live g="' + esc(s.id) + '" u0="' + esc(a ? a.id : "") + '" u1="' + esc(b ? b.id : "") +
+          '" n0="' + esc(a ? a.name : "") + '" n1="' + esc(b ? b.name : "") +
+          '" f0="' + esc(a ? a.fb : "") + '" f1="' + esc(b ? b.fb : "") +
+          '" ns="' + (s._spectateurs || []).length + '"/>';
+      }).join("");
     var c = this.lobby.comptes();
     var salles = Object.keys(c).map(function (s) {
       return '<s k="' + esc(s) + '" j="' + c[s].joueurs + '" p="' + c[s].parties + '"/>';
     }).join("");
-    return '<bd e="lobby" sa="' + esc(salle === undefined ? "" : salle) + '">' + players + games + salles + "</bd>";
+    return '<bd e="lobby" sa="' + esc(salle === undefined ? "" : salle) + '">' + players + games + live + salles + "</bd>";
   };
 
   // Instantané complet d'une partie (départ + reprise) pour UN destinataire :
@@ -205,6 +224,8 @@
   BandasNet.prototype._startXml = function (session, username) {
     var self = this;
     var snap = session.snapshot(this.clock());
+    var equipe = session.teamOf(username);                 // −1 : un spectateur
+    var specs = session._spectateurs || [];
     var champ = (session._salle || L.SALLE_DEFAUT) === "champ";
     var pls = snap.players.map(function (p) {
       // Au CHAMPIONNAT le gros nombre doré n'est plus la série mais la NOTE :
@@ -215,19 +236,64 @@
         '" c="' + snap.hands[p.team].join(":") + '"/>';
     }).join("");
     var board = '<b size="' + snap.size + '" x1="' + snap.bounds.x1 + '" x2="' + snap.bounds.x2 +
-      '" y1="' + snap.bounds.y1 + '" y2="' + snap.bounds.y2 + '">' + snap.content + "</b>";
+      '" y1="' + snap.bounds.y1 + '" y2="' + snap.bounds.y2 + '">' + this._contenuPour(session, snap.content, equipe) + "</b>";
     return '<bd e="start" g="' + esc(snap.id) + '" sa="' + esc(session._salle || L.SALLE_DEFAUT) +
       '" t="' + snap.currentTeam +
       '" ph="' + snap.phase + '" i="' + snap.totalTime + '" c="' + snap.pool.join(":") + '"' +
       (snap.ended ? ' end="1" w="' + snap.winner + '"' : "") +
+      (equipe < 0 ? ' sp="1"' : "") + ' ns="' + specs.length + '"' +
       ">" + pls + board + "</bd>";
+  };
+
+  // LE PLATEAU TEL QUE CE DESTINATAIRE A LE DROIT DE LE VOIR. La chaîne du
+  // plateau code chaque case, pièges compris (TRAPPED → « 3 ») : l'envoyer
+  // telle quelle livrait à un joueur qui se reconnecte les pièges de son
+  // adversaire — et en aurait livré tous à un spectateur. Un piège qui n'est
+  // pas le sien redevient une case libre (FREE → « 6 ») : c'est ce qu'il
+  // voit en jouant, la pose ayant été cachée.
+  BandasNet.prototype._contenuPour = function (session, content, equipe) {
+    var owners = (session.game && session.game.trapOwner) || {};
+    var size = session.game && session.game.board ? session.game.board.getSize() : 0;
+    if (!size) return content;
+    var out = "";
+    for (var i = 0; i < content.length; i++) {
+      var ch = content.charAt(i);
+      if (ch === "3") {
+        var x = i % size, y = Math.floor(i / size);
+        if (owners[x + "," + y] !== equipe) ch = "6";
+      }
+      out += ch;
+    }
+    return out;
+  };
+
+  // ── Les spectateurs ─────────────────────────────────────────────────────────
+  BandasNet.prototype._specs = function (session) { return (session._spectateurs || []).slice(); };
+  // Joueurs + spectateurs : à qui part ce qui est public dans la partie.
+  BandasNet.prototype._public = function (session) { return this._ids(session).concat(this._specs(session)); };
+  // Qui regarde : le compte et les noms, pour les joueurs comme pour la salle.
+  BandasNet.prototype._specXml = function (session) {
+    var self = this;
+    var noms = this._specs(session).map(function (u) { return self.names[u] || u; });
+    return '<bd e="spec" g="' + esc(session.id) + '" ns="' + noms.length + '" l="' + esc(noms.join(", ")) + '"/>';
+  };
+  // Cesse de regarder. Rend les messages à envoyer aux joueurs et aux autres
+  // spectateurs (le compte a changé) ; rien si l'on ne regardait rien.
+  BandasNet.prototype._quitterSpectacle = function (username) {
+    var gid = this.watching[username];
+    if (!gid) return [];
+    delete this.watching[username];
+    var sess = this.sessions[gid];
+    if (!sess || !sess._spectateurs) return [];
+    sess._spectateurs = sess._spectateurs.filter(function (u) { return u !== username; });
+    return [{ to: this._public(sess), xml: this._specXml(sess) }];
   };
 
   // Un événement de partie → un message <bd e="ev"> ciblé (visibilité des
   // cartes cachées comprise). `clocks` : temps restants joints à chaque envoi.
   BandasNet.prototype._eventMessages = function (session, events) {
     var self = this;
-    var all = this._ids(session);
+    var all = this._public(session);              // joueurs + spectateurs
     var out = [];
     var rt = session.players.map(function (p) {
       return Math.round(session.remainingOf(p.team, self.clock()));
@@ -325,6 +391,10 @@
       }
       fdRanked = (chk && chk.ranked) || null;
     }
+    // Qui regardait une partie et en commence une cesse de regarder (un défi
+    // reçu en spectateur, par exemple).
+    var avant = [];
+    game.players.forEach(function (uid) { avant = avant.concat(self._quitterSpectacle(uid)); });
     var players = game.players.map(function (uid) {
       return { id: uid, name: self.names[uid] || uid, fb: self.bouilles[uid] || "" };
     });
@@ -344,10 +414,11 @@
     });
     sess._fdRanked = fdRanked;   // {username:bool} statut classé par humain (null = tout classé)
     sess._salle = game.salle || L.SALLE_DEFAUT;   // ce qui sera compté à la fin
+    sess._spectateurs = [];
     this.sessions[game.id] = sess;
-    return game.players.map(function (uid) {
+    return avant.concat(game.players.map(function (uid) {
       return { to: [uid], xml: self._startXml(sess, uid) };
-    });
+    }));
   };
 
   // Séries (challenge) : mêmes règles que Grapiz — modèle « DISQUE = VIE » :
@@ -452,6 +523,11 @@
     this._retireBots(session);
     this.lobby.endGame(session.id);      // ← les bots redeviennent "idle" ici
     this._refreshBotIdentities();        // …et repartent sous un autre nom
+    // Les spectateurs ont reçu la fin (événement public) : ils ne regardent
+    // plus rien.
+    var self = this;
+    this._specs(session).forEach(function (u) { if (self.watching[u] === session.id) delete self.watching[u]; });
+    session._spectateurs = [];
     delete this.sessions[session.id];
     return msgs.concat(this._lobbyBroadcast());
   };
@@ -505,18 +581,40 @@
       case "room": {
         var rs = this.lobby.changerSalle(username, attrs.sa);
         if (!rs.ok) return [this._err(username, rs.error)];
-        return this._lobbyBroadcast();
+        return this._quitterSpectacle(username).concat(this._lobbyBroadcast());
       }
 
       case "create":
         r = this.lobby.createGame(username, params);
-        return r.ok ? this._lobbyBroadcast() : [this._err(username, r.error)];
+        return r.ok ? this._quitterSpectacle(username).concat(this._lobbyBroadcast()) : [this._err(username, r.error)];
 
       case "join":
         r = this.lobby.joinGame(username, attrs.g);
         if (!r.ok) return [this._err(username, r.error)];
+        out = this._quitterSpectacle(username);
         if (r.started) out = out.concat(this._startSession(r.game));
         return out.concat(this._lobbyBroadcast());
+
+      // REGARDER une partie en cours de SA salle. On ne regarde pas en jouant
+      // (ni en attendant un adversaire), ni la partie dont on est.
+      case "watch": {
+        var pw = this.lobby.getPlayer(username);
+        if (!pw) return [this._err(username, "unknown-player")];
+        var sw = this.sessions[attrs.g];
+        if (!sw || sw.ended) return [this._err(username, "no-such-game")];
+        if (sw.teamOf(username) >= 0) return [this._err(username, "already-in")];
+        if (pw.status !== "idle") return [this._err(username, "already-busy")];
+        if ((sw._salle || L.SALLE_DEFAUT) !== pw.salle) return [this._err(username, "other-room")];
+        out = this._quitterSpectacle(username);
+        this.watching[username] = sw.id;
+        (sw._spectateurs || (sw._spectateurs = [])).push(username);
+        out.push({ to: [username], xml: this._startXml(sw, username) });
+        out.push({ to: this._public(sw), xml: this._specXml(sw) });
+        return out.concat(this._lobbyBroadcast());
+      }
+
+      case "unwatch":
+        return this._quitterSpectacle(username).concat(this._lobbyBroadcast());
 
       case "challenge": {
         // Défier = lancer la partie directement (modèle Grapiz).
@@ -569,8 +667,10 @@
       case "gsay": {                                // chat en partie
         if (!attrs.m) return [];
         sess = this._sessionOf(username);
-        if (!sess) return [];
-        return [{ to: this._ids(sess), xml: '<bd e="gchat" u="' + esc(this.names[username] || username) + '" m="' + esc(attrs.m) + '"/>' }];
+        // « Les observateurs ne peuvent parler dans cette partie » (erreur
+        // 2035 du jeu d'origine) : ils lisent, ils n'écrivent pas.
+        if (!sess) return this.watching[username] ? [this._err(username, "spectator-mute")] : [];
+        return [{ to: this._public(sess), xml: '<bd e="gchat" u="' + esc(this.names[username] || username) + '" m="' + esc(attrs.m) + '"/>' }];
       }
 
       default:
@@ -581,8 +681,9 @@
   // Déconnexion (= quitter Frutibandas) : abandon si en partie ; sinon la
   // série en cours prend fin (enregistrée + remise à 0).
   BandasNet.prototype.onDisconnect = function (username) {
+    var vus = this._quitterSpectacle(username);
     var rm = this.lobby.removePlayer(username);
-    if (!rm || !rm.ok) { delete this.streaks[username]; delete this._beaten[username]; return []; }
+    if (!rm || !rm.ok) { delete this.streaks[username]; delete this._beaten[username]; return vus; }
     if (rm.playingGameId && this.sessions[rm.playingGameId]) {
       var sess = this.sessions[rm.playingGameId];
       sess.forfeit(username);
@@ -594,7 +695,7 @@
     if ((this.streaks[username] || 0) > 0) this._fireStreak(username, 0, this.streaks[username]);
     delete this.streaks[username];
     delete this._beaten[username];
-    return this._lobbyBroadcast();
+    return vus.concat(this._lobbyBroadcast());
   };
 
   // Tick périodique : timeouts d'horloge + coups des bots.

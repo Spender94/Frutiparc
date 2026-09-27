@@ -7,8 +7,14 @@
 // entièrement testable. L'identité d'un joueur = son username.
 //
 // Protocole (XML sur le WebSocket existant, tag <gz>) :
-//   client → serveur : <gz a="hello|list|create|join|challenge|accept|decline|move|part" .../>
-//   serveur → client : <gz e="lobby|challenged|start|move|end|err" ...> ... </gz>
+//   client → serveur : <gz a="hello|list|create|join|challenge|accept|decline|move|part|watch|unwatch" .../>
+//   serveur → client : <gz e="lobby|challenged|start|move|end|spec|err" ...> ... </gz>
+//
+// LES SPECTATEURS. Comme dans le Frutiparc d'origine (NetworkController.as :
+// « Les observateurs ne peuvent parler dans cette partie »), on peut regarder
+// une partie en cours sans y jouer — au Challenge aussi. Grapiz n'a rien de
+// caché : le spectateur reçoit le même état que les joueurs à chaque coup,
+// lit le chat de la partie, mais n'y écrit pas.
 //
 (function (root, factory) {
   var L = (typeof require !== "undefined") ? require("./lobby.js") : (root.Grapiz && root.Grapiz.lobby);
@@ -47,6 +53,7 @@
     this._beaten = {};                  // username → { opponentId: true } battus PENDANT la série en cours (anti-farm)
     this.bots = {};                     // username → config bot ({lo,hi})
     this._botNeuf = {};                 // bot → doit repartir sous une autre identité
+    this.watching = {};                 // username → gameId de la partie qu'il REGARDE
     this.clock = opts.clock || function () { return Date.now(); };
     this._rng = opts.rng || Math.random;
     this.onResult = opts.onResult || function () {};   // hook (game, winner, reason)
@@ -151,9 +158,20 @@
     var players = this.lobby.listPlayers().map(function (p) {
       return '<pl u="' + esc(p.id) + '" n="' + esc(p.name || p.id) + '" s="' + esc(p.status) +
         '" f="' + esc(self.bouilles[p.id] || "") + '" sr="' + (self.streaks[p.id] || 0) +
-        '" bot="' + (self.bots[p.id] ? 1 : 0) + '"/>';
+        '" bot="' + (self.bots[p.id] ? 1 : 0) + '"' +
+        (self.watching[p.id] ? ' w="' + esc(self.watching[p.id]) + '"' : "") + '/>';
     }).join("");
-    return "<gz e=\"lobby\">" + players + games + "</gz>";
+    // Les parties EN COURS : ce qu'on peut aller regarder.
+    var live = Object.keys(this.sessions).map(function (id) { return self.sessions[id]; })
+      .filter(function (s) { return s && !s.ended; })
+      .map(function (s) {
+        var a = s.playerOfTeam(0), b = s.playerOfTeam(1);
+        return '<live g="' + esc(s.id) + '" u0="' + esc(a ? a.id : "") + '" u1="' + esc(b ? b.id : "") +
+          '" n0="' + esc(a ? a.name : "") + '" n1="' + esc(b ? b.name : "") +
+          '" f0="' + esc(a ? a.fb : "") + '" f1="' + esc(b ? b.fb : "") +
+          '" ns="' + (s._spectateurs || []).length + '"/>';
+      }).join("");
+    return "<gz e=\"lobby\">" + players + games + live + "</gz>";
   };
 
   GrapizNet.prototype._stateXml = function (session, evt, extra) {
@@ -179,6 +197,25 @@
     return to.length ? [{ to: to, xml: this._lobbyXml() }] : [];
   };
   GrapizNet.prototype._ids = function (session) { return session.players.map(function (p) { return p.id; }); };
+
+  // ── Les spectateurs ─────────────────────────────────────────────────────────
+  GrapizNet.prototype._specs = function (session) { return (session._spectateurs || []).slice(); };
+  // Joueurs + spectateurs : à qui part l'état de la partie.
+  GrapizNet.prototype._public = function (session) { return this._ids(session).concat(this._specs(session)); };
+  GrapizNet.prototype._specXml = function (session) {
+    var self = this;
+    var noms = this._specs(session).map(function (u) { return self.names[u] || u; });
+    return '<gz e="spec" g="' + esc(session.id) + '" ns="' + noms.length + '" l="' + esc(noms.join(", ")) + '"/>';
+  };
+  GrapizNet.prototype._quitterSpectacle = function (username) {
+    var gid = this.watching[username];
+    if (!gid) return [];
+    delete this.watching[username];
+    var sess = this.sessions[gid];
+    if (!sess || !sess._spectateurs) return [];
+    sess._spectateurs = sess._spectateurs.filter(function (u) { return u !== username; });
+    return [{ to: this._public(sess), xml: this._specXml(sess) }];
+  };
 
   GrapizNet.prototype._startSession = function (game) {
     var self = this;
@@ -207,10 +244,14 @@
       }
       fdRanked = (chk && chk.ranked) || null;
     }
+    // Qui regardait une partie et en commence une cesse de regarder.
+    var avant = [];
+    game.players.forEach(function (uid) { avant = avant.concat(self._quitterSpectacle(uid)); });
     var players = game.players.map(function (uid) {
       return { id: uid, name: self.names[uid] || uid, fb: self.bouilles[uid] || "" };
     });
     var sess = new S.GrapizSession({ id: game.id, players: players, params: game.params, now: this.clock() });
+    sess._spectateurs = [];
     // Bots : niveau effectif tiré au sort POUR CETTE PARTIE + série "vitrine"
     // (affichée mais non classée) pour avoir l'air d'un vrai adversaire.
     sess._botSkill = {};
@@ -222,7 +263,7 @@
     });
     sess._fdRanked = fdRanked;   // {username:bool} statut classé par humain (null = tout classé)
     this.sessions[game.id] = sess;
-    return [{ to: game.players.slice(), xml: this._stateXml(sess, "start") }];
+    return avant.concat([{ to: game.players.slice(), xml: this._stateXml(sess, "start") }]);
   };
 
   // Met à jour les séries (challenge) selon le modèle « DISQUE = VIE ».
@@ -288,13 +329,17 @@
   // classement → libère le lobby. Renvoie tous les messages à pousser.
   GrapizNet.prototype._concludeGame = function (session) {
     this._updateStreaks(session);
-    var msgs = [{ to: this._ids(session), xml: this._stateXml(session, "end") }];
+    var msgs = [{ to: this._public(session), xml: this._stateXml(session, "end") }];
     try { this.onResult(session, session.winner, session.endReason); } catch (e) {}
     // Le bot ne change de tête qu'APRÈS l'écran de fin, qui doit encore nommer
     // l'adversaire qu'on vient de jouer.
     this._retireBots(session);
     this.lobby.endGame(session.id);      // ← les bots redeviennent "idle" ici
     this._refreshBotIdentities();        // …et repartent sous un autre nom
+    // Les spectateurs ont reçu l'état final : ils ne regardent plus rien.
+    var self = this;
+    this._specs(session).forEach(function (u) { if (self.watching[u] === session.id) delete self.watching[u]; });
+    session._spectateurs = [];
     delete this.sessions[session.id];
     return msgs.concat(this._lobbyBroadcast());
   };
@@ -322,13 +367,34 @@
 
       case "create":
         r = this.lobby.createGame(username, params);
-        return r.ok ? this._lobbyBroadcast() : [this._err(username, r.error)];
+        return r.ok ? this._quitterSpectacle(username).concat(this._lobbyBroadcast()) : [this._err(username, r.error)];
 
       case "join":
         r = this.lobby.joinGame(username, attrs.g);
         if (!r.ok) return [this._err(username, r.error)];
+        out = this._quitterSpectacle(username);
         if (r.started) out = out.concat(this._startSession(r.game));
         return out.concat(this._lobbyBroadcast());
+
+      // REGARDER une partie en cours. On ne regarde pas en jouant (ni en
+      // attendant un adversaire), ni la partie dont on est.
+      case "watch": {
+        var pw = this.lobby.getPlayer(username);
+        if (!pw) return [this._err(username, "unknown-player")];
+        var sw = this.sessions[attrs.g];
+        if (!sw || sw.ended) return [this._err(username, "no-such-game")];
+        if (sw.teamOf(username) >= 0) return [this._err(username, "already-in")];
+        if (pw.status !== "idle") return [this._err(username, "already-busy")];
+        out = this._quitterSpectacle(username);
+        this.watching[username] = sw.id;
+        (sw._spectateurs || (sw._spectateurs = [])).push(username);
+        out.push({ to: [username], xml: this._stateXml(sw, "start", ' sp="1" ns="' + sw._spectateurs.length + '"') });
+        out.push({ to: this._public(sw), xml: this._specXml(sw) });
+        return out.concat(this._lobbyBroadcast());
+      }
+
+      case "unwatch":
+        return this._quitterSpectacle(username).concat(this._lobbyBroadcast());
 
       case "challenge": {
         // Défier = lancer la partie DIRECTEMENT (pas de validation de l'adversaire).
@@ -349,7 +415,7 @@
         var res = sess.requestMove(username, num(attrs.x), num(attrs.y), num(attrs.d), this.clock());
         if (!res.ok) return [this._err(username, res.error)];
         if (res.ended) return this._concludeGame(sess);            // série + état final + lobby
-        return [{ to: this._ids(sess), xml: this._stateXml(sess, "move") }];
+        return [{ to: this._public(sess), xml: this._stateXml(sess, "move") }];
       }
 
       case "part": {
@@ -368,11 +434,13 @@
         return [{ to: to, xml: '<gz e="chat" u="' + esc(this.names[username] || username) + '" m="' + esc(attrs.m) + '"/>' }];
       }
 
-      case "gsay": {                                  // chat en partie (aux 2 joueurs)
+      case "gsay": {                                  // chat en partie (joueurs + spectateurs)
         if (!attrs.m) return [];
         var gp = this.lobby.getPlayer(username);
-        if (!gp || !gp.gameId || !this.sessions[gp.gameId]) return [];
-        return [{ to: this._ids(this.sessions[gp.gameId]), xml: '<gz e="gchat" u="' + esc(this.names[username] || username) + '" m="' + esc(attrs.m) + '"/>' }];
+        // « Les observateurs ne peuvent parler dans cette partie » (erreur 2035
+        // du jeu d'origine) : ils lisent, ils n'écrivent pas.
+        if (!gp || !gp.gameId || !this.sessions[gp.gameId]) return this.watching[username] ? [this._err(username, "spectator-mute")] : [];
+        return [{ to: this._public(this.sessions[gp.gameId]), xml: '<gz e="gchat" u="' + esc(this.names[username] || username) + '" m="' + esc(attrs.m) + '"/>' }];
       }
 
       default:
@@ -384,8 +452,9 @@
   // cours prend fin (enregistrée + remise à 0 — pas de reprise plus tard). Le
   // joueur est retiré du lobby et la liste rediffusée aux autres.
   GrapizNet.prototype.onDisconnect = function (username) {
+    var vus = this._quitterSpectacle(username);
     var rm = this.lobby.removePlayer(username);
-    if (!rm || !rm.ok) { delete this.streaks[username]; delete this._beaten[username]; return []; }
+    if (!rm || !rm.ok) { delete this.streaks[username]; delete this._beaten[username]; return vus; }
     if (rm.playingGameId && this.sessions[rm.playingGameId]) {
       this.sessions[rm.playingGameId].forfeit(username);          // défaite → la série tombe (via _concludeGame)
       var out = this._concludeGame(this.sessions[rm.playingGameId]);
@@ -396,7 +465,7 @@
     if ((this.streaks[username] || 0) > 0) this._fireStreak(username, 0, this.streaks[username]);
     delete this.streaks[username];
     delete this._beaten[username];
-    return this._lobbyBroadcast();
+    return vus.concat(this._lobbyBroadcast());
   };
 
   // Tick périodique des horloges : termine les parties dont le temps est écoulé.
@@ -426,7 +495,7 @@
     var res = sess.requestMove(p.id, mv.from.x, mv.from.y, mv.direction, now);
     if (!res.ok) { sess._botAt = now + 400; return []; }               // coup refusé → réessaie
     if (res.ended) return this._concludeGame(sess);
-    return [{ to: this._ids(sess), xml: this._stateXml(sess, "move") }];
+    return [{ to: this._public(sess), xml: this._stateXml(sess, "move") }];
   };
 
   return { GrapizNet: GrapizNet };

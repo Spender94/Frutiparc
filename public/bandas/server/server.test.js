@@ -897,5 +897,89 @@ ok(Bot.evaluate(luiEpars, 0) > Bot.evaluate(luiCentre, 0),
     "salles: on ne déserte pas une partie ouverte");
 })();
 
+// ══ SPECTATEURS ═════════════════════════════════════════════════════════════
+// Regarder une partie en cours de sa salle (challenge compris) : l'instantané,
+// puis les seuls événements PUBLICS ; le chat de la partie en lecture seule.
+(function () {
+  var t = 1000;
+  var net = new N.BandasNet({ withBots: false, clock: function () { return t; }, rng: seeded(7) });
+  var qui = function (msgs, u) { return msgs.filter(function (m) { return m.to.indexOf(u) >= 0; }); };
+  var xmlDe = function (msgs, u, re) { return qui(msgs, u).map(function (m) { return m.xml; }).filter(function (x) { return re.test(x); })[0] || ""; };
+  ["alice", "bob", "carol", "erin"].forEach(function (u) { net.handle(u, { a: "hello", n: u, sa: "chall" }); });
+  net.handle("dave", { a: "hello", n: "dave", sa: "amical" });
+  var m = net.handle("alice", { a: "challenge", u: "bob" });
+  var gid = (/<bd e="start" g="([^"]+)"/.exec(xmlDe(m, "alice", /e="start"/)) || [])[1];
+  ok(!!gid, "spect: la partie démarre");
+  var sess = net.sessions[gid];
+
+  // Qui peut regarder.
+  ok(/m="other-room"/.test(xmlDe(net.handle("dave", { a: "watch", g: gid }), "dave", /e="err"/)), "spect: pas une partie d'une autre salle");
+  ok(/m="already-in"/.test(xmlDe(net.handle("alice", { a: "watch", g: gid }), "alice", /e="err"/)), "spect: pas sa propre partie");
+  ok(/m="no-such-game"/.test(xmlDe(net.handle("carol", { a: "watch", g: "g999" }), "carol", /e="err"/)), "spect: une partie qui existe");
+
+  // Carol regarde : l'instantané marqué spectateur, et tout le monde le sait.
+  m = net.handle("carol", { a: "watch", g: gid });
+  var st = xmlDe(m, "carol", /e="start"/);
+  ok(/ sp="1"/.test(st), "spect: instantané marqué spectateur");
+  ok(!/ sp="1"/.test(net._startXml(sess, "alice")), "spect: un joueur n'est pas marqué");
+  ok(/e="spec"[^>]* ns="1" l="carol"/.test(xmlDe(m, "alice", /e="spec"/)), "spect: les joueurs voient qui regarde");
+  ok(/e="spec"/.test(xmlDe(m, "bob", /e="spec"/)), "spect: l'adversaire aussi");
+  var lob = net._lobbyXml("chall");
+  ok(new RegExp('<live g="' + gid + '" u0="alice" u1="bob" n0="alice" n1="bob"[^>]* ns="1"').test(lob), "spect: la partie en cours figure au salon, avec ses spectateurs");
+  ok(/<pl u="carol"[^>]* w="/.test(lob), "spect: le salon sait que carol regarde");
+  ok(net._lobbyXml("amical").indexOf("<live") < 0, "spect: une autre salle ne la voit pas");
+
+  // Les événements publics lui parviennent, les poses cachées non.
+  var cur = sess.game.currentTeam, joueur = sess.playerOfTeam(cur).id;
+  m = net.handle(joueur, { a: "choose", c: sess.game.pool[0] });
+  ok(/t="cardChosen"/.test(xmlDe(m, "carol", /e="ev"/)), "spect: reçoit un coup public");
+  var cache = net._eventMessages(sess, [{ type: "cardPlayed", team: 0, card: CARD.PIEGE, x: 1, y: 1, hidden: true, to: 0 }]);
+  eq(cache.length, 1, "spect: une pose cachée = un seul message");
+  ok(cache[0].to.length === 1 && cache[0].to[0] === "alice", "spect: … pour son seul poseur");
+  var fin = net._eventMessages(sess, [{ type: "trapRevealed", x: 1, y: 1, to: "all" }]);
+  ok(fin[0].to.indexOf("carol") >= 0 && fin[0].to.indexOf("alice") >= 0, "spect: la révélation est publique");
+
+  // Les pièges : chacun ne voit que les siens dans un instantané, le spectateur aucun.
+  var b = sess.game.board, size = b.getSize();
+  var cx = b.minX, cy = b.minY, trouve = false;
+  for (var yy = b.minY; yy <= b.maxY && !trouve; yy++) for (var xx = b.minX; xx <= b.maxX && !trouve; xx++) {
+    if (b.getElement({ x: xx, y: yy }) === E.FREE) { cx = xx; cy = yy; trouve = true; }
+  }
+  b.setElement({ x: cx, y: cy }, E.TRAPPED);
+  sess.game.trapOwner[cx + "," + cy] = 0;
+  var i = cx + cy * size;
+  var contenu = function (u) { return /<b [^>]*>([^<]*)<\/b>/.exec(net._startXml(sess, u))[1]; };
+  eq(contenu("alice").charAt(i), "3", "spect: le poseur revoit son piège à la reprise");
+  eq(contenu("bob").charAt(i), "6", "spect: l'adversaire ne voit pas le piège (reprise)");
+  eq(contenu("carol").charAt(i), "6", "spect: le spectateur ne voit pas le piège");
+  b.setElement({ x: cx, y: cy }, E.FREE); delete sess.game.trapOwner[cx + "," + cy];
+
+  // Le chat de la partie : lu par le spectateur, pas écrit.
+  ok(/m="spectator-mute"/.test(xmlDe(net.handle("carol", { a: "gsay", m: "psst" }), "carol", /e="err"/)), "spect: les observateurs ne peuvent parler");
+  ok(/e="gchat" u="alice"/.test(xmlDe(net.handle("alice", { a: "gsay", m: "bien joué" }), "carol", /e="gchat"/)), "spect: lit le chat des joueurs");
+
+  // Quitter, puis revenir, puis se déconnecter : le compte suit.
+  ok(/ns="0"/.test(xmlDe(net.handle("carol", { a: "unwatch" }), "alice", /e="spec"/)), "spect: quitter remet le compte à zéro");
+  ok(!net.watching.carol, "spect: carol ne regarde plus");
+  net.handle("carol", { a: "watch", g: gid });
+  ok(/ns="0"/.test(xmlDe(net.onDisconnect("carol"), "bob", /e="spec"/)), "spect: la déconnexion le retire");
+  net.handle("carol", { a: "hello", n: "carol", sa: "chall" });
+
+  // Défié pendant qu'il regarde : il joue, et ne regarde plus.
+  net.handle("carol", { a: "watch", g: gid });
+  m = net.handle("erin", { a: "challenge", u: "carol" });
+  ok(/e="start"/.test(xmlDe(m, "carol", /e="start"/)) && !/ sp="1"/.test(xmlDe(m, "carol", /e="start"/)), "spect: défié, il joue sa partie");
+  ok(!net.watching.carol && sess._spectateurs.indexOf("carol") < 0, "spect: … et quitte les gradins");
+  ok(/ns="0"/.test(xmlDe(m, "alice", /e="spec"/)), "spect: les joueurs regardés en sont avertis");
+  net.handle("erin", { a: "part" });
+
+  // La fin de partie parvient aux spectateurs, qui sont libérés.
+  net.handle("carol", { a: "watch", g: gid });
+  m = net.handle("alice", { a: "part" });
+  ok(/t="end"/.test(xmlDe(m, "carol", /e="ev"/)), "spect: reçoit la fin de partie");
+  ok(!net.watching.carol, "spect: libéré à la fin");
+  ok(net._lobbyXml("chall").indexOf("<live") < 0, "spect: la partie quitte la liste des parties en cours");
+})();
+
 console.log("bandas server tests: " + passed + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);

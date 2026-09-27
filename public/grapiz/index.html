@@ -85,6 +85,14 @@
   .btn-defier { font:inherit; font-weight:bold; border:0; border-radius:5px; padding:5px 12px; cursor:pointer;
     background:#fff; color:#6b7d10; box-shadow:0 1px 2px #00000033; }
   .btn-defier[disabled] { opacity:.6; cursor:default; color:#7a7a55; }
+  /* Parties en cours (vert) : ce qu'on peut aller regarder. */
+  .live-title { font-size:12px; font-weight:bold; margin:12px 2px 4px; opacity:.95; }
+  .live-row { display:flex; align-items:center; gap:6px; padding:4px 2px; font-size:12px; font-weight:bold; border-top:1px solid #ffffff55; }
+  .live-row .lv-nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .live-row .lv-ns { opacity:.85; font-weight:normal; white-space:nowrap; }
+  .btn-regarder { font:inherit; font-size:11px; font-weight:bold; border:0; border-radius:5px; padding:3px 8px; cursor:pointer;
+    background:#fff; color:#6b7d10; box-shadow:0 1px 2px #00000033; }
+  .pli .eye { padding:0 8px; display:flex; align-items:center; font-size:12px; opacity:.9; }
 
   /* Jaune — chat */
   .chat-log .ln { margin:1px 0; font-size:13px; line-height:1.45; text-shadow:0 1px 1px #00000026; }
@@ -161,6 +169,10 @@
     background:#FFFEE2 0 0/100% 100% no-repeat; background-image:url(zone_de_chat.png); }
   .g-warn { color:#7a5510; font-size:11px; line-height:1.4; padding:2px 4px 8px; }
   .g-end { text-align:center; font-weight:bold; padding:8px; }
+  /* Spectateurs : qui regarde la partie (joueurs comme observateurs). */
+  .g-spec { color:#8a5a10; font-size:11px; padding:0 4px 6px; line-height:1.4; }
+  .g-spec:empty { display:none; }
+  .g-input input:disabled { opacity:.75; cursor:not-allowed; }
   .g-chat { flex:1; overflow-y:auto; padding:8px 11px; font-size:12.5px; line-height:1.5; color:#555; }
   .g-chat .nk { font-weight:bold; color:#c47b2e; }
   /* Barre de chat : bandeau bien arrondi, centré, ~80 % de la largeur ; Entrée pour envoyer. */
@@ -284,6 +296,7 @@
         </div>
         <div class="g-side">
           <div class="g-warn">ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !</div>
+          <div id="g-spec" class="g-spec"></div>
           <div id="g-end" class="g-end" style="display:none"></div>
           <div class="g-chat" id="game-chat"></div>
           <div class="g-input"><input id="game-say" placeholder="Discuter…" maxlength="200"></div>
@@ -322,7 +335,7 @@
 
   var state = {
     ws: null, user: "", myBouille: "", gotLobby: false, screen: "connect",
-    gameId: null, myTeam: -1, turn: -1, size: 4, tokens: [], players: [], ended: false,
+    gameId: null, myTeam: -1, spectator: false, turn: -1, size: 4, tokens: [], players: [], ended: false,
     sel: null, targets: {}, helloTimer: null, clockTimer: null, lastTick: {}, _barSig: "",
   };
   function setStatus(s) { $("#status").textContent = s; }
@@ -435,8 +448,12 @@
     if (e === "chat") return addChat($("#lobby-chat"), el.getAttribute("u"), el.getAttribute("m"));
     if (e === "gchat") return addChat($("#game-chat"), el.getAttribute("u"), el.getAttribute("m"));
     if (e === "start" || e === "move" || e === "state" || e === "end") return onGameState(el);
+    if (e === "spec") return onSpec(el);
     if (e === "err") {
       var m = el.getAttribute("m");
+      // Erreur 2035 du jeu d'origine : l'observateur lit, il n'écrit pas.
+      if (m === "spectator-mute") { addNote(MUET); return; }
+      if (m === "no-such-game" && state.screen === "lobby") { setStatus("Cette partie vient de se terminer."); gz({ a: "list" }); return; }
       // Refus FD d'un match classé : popin native (pas une simple ligne d'état).
       if (m === "no-fd" || m === "opp-no-fd") { showFdPopin(m); return; }
       setStatus("⚠ " + m); return;
@@ -444,14 +461,19 @@
   }
 
   // ── Lobby (3 panneaux : Défis / Chat / Joueurs — fidèle au jeu d'origine) ────
-  var lobbyPlayers = [], lobbyGames = [], lobbySel = null;
+  var lobbyPlayers = [], lobbyGames = [], lobbyLive = [], lobbySel = null;
   var SQCLASS = { idle: "SQ-idle", waiting: "SQ-waiting", playing: "SQ-playing" };
   var STATUSLABEL = { idle: "Disponible", waiting: "En attente", playing: "En partie" };
   function onLobby(el) {
-    if (!state.gotLobby) { state.gotLobby = true; setStatus("Connecté — " + state.user); if (state.screen === "connect") showScreen("mode"); }
-    lobbyPlayers = []; lobbyGames = [];
-    each(el.getElementsByTagName("pl"), function (n) { lobbyPlayers.push({ u: n.getAttribute("u"), n: n.getAttribute("n"), s: n.getAttribute("s"), f: n.getAttribute("f"), sr: +n.getAttribute("sr") || 0, bot: n.getAttribute("bot") === "1" }); });
+    if (!state.gotLobby) {
+      state.gotLobby = true; setStatus("Connecté — " + state.user); if (state.screen === "connect") showScreen("mode");
+      // Reconnecté en pleine observation : le serveur nous a oubliés, on revient au salon.
+      else if (state.spectator && state.screen === "game") { if (state._endTimer) { clearTimeout(state._endTimer); state._endTimer = null; } gotoLobby(); }
+    }
+    lobbyPlayers = []; lobbyGames = []; lobbyLive = [];
+    each(el.getElementsByTagName("pl"), function (n) { lobbyPlayers.push({ u: n.getAttribute("u"), n: n.getAttribute("n"), s: n.getAttribute("s"), f: n.getAttribute("f"), sr: +n.getAttribute("sr") || 0, bot: n.getAttribute("bot") === "1", w: n.getAttribute("w") || "" }); });
     each(el.getElementsByTagName("game"), function (n) { lobbyGames.push({ id: n.getAttribute("id"), host: n.getAttribute("host"), c: +n.getAttribute("c"), m: +n.getAttribute("m") }); });
+    each(el.getElementsByTagName("live"), function (n) { lobbyLive.push({ g: n.getAttribute("g"), u0: n.getAttribute("u0"), u1: n.getAttribute("u1"), n0: n.getAttribute("n0"), n1: n.getAttribute("n1"), ns: +n.getAttribute("ns") || 0 }); });
     $("#ch-j").textContent = lobbyPlayers.length; $("#ch-p").textContent = lobbyGames.length;
     if (state.screen === "lobby") renderLobby();
   }
@@ -475,7 +497,8 @@
     lobbyPlayers.forEach(function (p) {
       if (isMe(p)) return;
       var row = div("pli can" + (lobbySel === p.u ? " sel" : ""));
-      row.innerHTML = '<span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span><span class="nm">' + esc(p.n || p.u) + "</span>";
+      row.innerHTML = '<span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span><span class="nm">' + esc(p.n || p.u) + "</span>"
+        + (p.w ? '<span class="eye" title="Regarde une partie">👁</span>' : "");
       row.onclick = function () { selectPlayer(p.u); };
       box.appendChild(row);
     });
@@ -489,6 +512,7 @@
     if (!p) {
       title.textContent = "Liste des défis";
       body.innerHTML = '<div class="defis-empty">Clique sur un joueur dans la liste de droite pour voir son statut et le défier.</div>';
+      renderLive(body);
       foot.innerHTML = '<span class="arrow" data-col="defis" title="Replier">»</span>';
       return;
     }
@@ -502,10 +526,43 @@
       var g = lobbyGames.filter(function (x) { return x.host === p.u; })[0];
       if (g) { btn.textContent = "Rejoindre " + name; btn.onclick = function () { gz({ a: "join", g: g.id }); }; }
       else { btn.textContent = "Défier " + name; btn.disabled = true; }
-    } else { btn.textContent = name + " est en partie"; btn.disabled = true; }
+    } else {
+      // En partie : on peut aller regarder.
+      var lv = liveOf(p.u);
+      if (lv) { btn.textContent = "Regarder la partie"; btn.onclick = function () { watch(lv.g); }; }
+      else { btn.textContent = name + " est en partie"; btn.disabled = true; }
+    }
     foot.appendChild(btn);
     var arr = document.createElement("span"); arr.className = "arrow"; arr.setAttribute("data-col", "defis"); arr.setAttribute("title", "Replier"); arr.textContent = "»"; foot.appendChild(arr);
   }
+  // ── Les parties en cours (spectateurs) ──────────────────────────────────
+  function liveOf(uid) { for (var i = 0; i < lobbyLive.length; i++) if (lobbyLive[i].u0 === uid || lobbyLive[i].u1 === uid) return lobbyLive[i]; return null; }
+  function nbSpec(n) { return n + " spectateur" + (n > 1 ? "s" : ""); }
+  function renderLive(box) {
+    if (!lobbyLive.length) return;
+    var t = div("live-title"); t.textContent = "Parties en cours"; box.appendChild(t);
+    lobbyLive.forEach(function (lv) {
+      var r = div("live-row");
+      r.innerHTML = '<span class="lv-nm">' + esc(lv.n0) + " contre " + esc(lv.n1) + "</span>"
+        + (lv.ns ? '<span class="lv-ns">👁 ' + lv.ns + "</span>" : "");
+      var b = document.createElement("button"); b.className = "btn-regarder"; b.textContent = "Regarder";
+      b.onclick = function () { watch(lv.g); };
+      r.appendChild(b); box.appendChild(r);
+    });
+  }
+  function watch(g) { gz({ a: "watch", g: g }); }
+  // Qui regarde : « 2 spectateurs : Kiwi, Pomme ».
+  var MUET = "Les observateurs ne peuvent parler dans cette partie.";
+  function onSpec(el) {
+    if (el.getAttribute("g") !== state.gameId) return;
+    showSpecs(+el.getAttribute("ns") || 0, el.getAttribute("l") || "");
+  }
+  function showSpecs(n, liste) { $("#g-spec").textContent = n ? "👁 " + nbSpec(n) + (liste ? " : " + liste : "") : ""; }
+  function addNote(msg) {
+    var log = $("#game-chat"); var ln = div("ln"); ln.style.fontStyle = "italic"; ln.style.color = "#8a5a10";
+    ln.textContent = msg; log.appendChild(ln); log.scrollTop = log.scrollHeight;
+  }
+
   // Replier (✕ en-tête / » du pied) ou déplier (» de la bande repliée) un panneau.
   function collapsePanel(name) { var el = $("#panel-" + name); if (el) el.classList.add("collapsed"); if (name === "defis") { lobbySel = null; renderPlayers(); } }
   function expandPanel(name) { var el = $("#panel-" + name); if (el) el.classList.remove("collapsed"); if (name === "defis") renderDefis(); }
@@ -526,7 +583,7 @@
   $("#mode-chall").onclick = function () { lobbySel = null; $("#panel-defis").classList.add("collapsed"); showScreen("lobby"); renderLobby(); };
   $("#lobby-back").onclick = function () { showScreen("mode"); };
   $("#btn-create").onclick = function () { var me = lobbyPlayers.filter(isMe)[0]; if (me && me.s === "waiting") gz({ a: "part" }); else gz({ a: "create" }); };
-  $("#game-quit").onclick = function () { gz({ a: "part" }); leaveGame(); };
+  $("#game-quit").onclick = function () { gz({ a: state.spectator ? "unwatch" : "part" }); leaveGame(); };
   $("#lobby-send").onclick = sendLobbyChat;
   $("#lobby-say").addEventListener("keydown", function (e) { if (e.key === "Enter") sendLobbyChat(); });
   $("#game-say").addEventListener("keydown", function (e) { if (e.key === "Enter") sendGameChat(); });
@@ -546,6 +603,7 @@
   // ── Partie ───────────────────────────────────────────────────────────────
   function onGameState(el) {
     var fresh = state.gameId !== el.getAttribute("g");
+    if (fresh) { state.myTeam = -1; state.spectator = el.getAttribute("sp") === "1"; }
     state.gameId = el.getAttribute("g"); state.size = +el.getAttribute("sz") || 4;
     state.turn = +el.getAttribute("turn"); state.ended = el.getAttribute("end") === "1";
     state.tokens = [];
@@ -557,20 +615,41 @@
       state.players.push(pl);
     });
     state.sel = null; state.targets = {};
-    if (fresh) { $("#game-chat").innerHTML = ""; $("#g-end").style.display = "none"; }
+    if (fresh) { $("#game-chat").innerHTML = ""; $("#g-end").style.display = "none"; setupSpectator(el); }
     showScreen("game"); renderPlayersBar(); renderBoard(); startClocks();
     if (state.ended) {
       var w = +el.getAttribute("w"), mine = w === state.myTeam, who = state.players.filter(function (p) { return p.e === w; })[0];
-      var b = $("#g-end"); b.style.display = "block";
+      var b = $("#g-end"); b.style.display = "block"; stopClocks();
+      if (state.spectator) {
+        // L'observateur : le vainqueur, sans série à lui ; retour au salon.
+        b.textContent = (who ? (who.n || who.u) : "équipe " + w) + " remporte la partie !";
+        b.style.color = "#8a5a10";
+        if (state._endTimer) clearTimeout(state._endTimer);
+        state._endTimer = setTimeout(function () { state._endTimer = null; gotoLobby(); }, 3200);
+        return;
+      }
       b.textContent = mine ? "🏆 Victoire ! +1 à ta série." : ("Défaite — " + (who ? (who.n || who.u) : "équipe " + w) + " gagne. Série terminée.");
-      b.style.color = mine ? "#2e7d32" : "#c62828"; stopClocks();
+      b.style.color = mine ? "#2e7d32" : "#c62828";
       // Gagnant → retour lobby (série +1). Perdant → écran d'accueil (le jeu s'arrête).
       if (state._endTimer) clearTimeout(state._endTimer);
       state._endTimer = setTimeout(function () { state._endTimer = null; if (mine) gotoLobby(); else gotoHome(); }, 2600);
     }
   }
-  function gotoLobby() { state.gameId = null; state.myTeam = -1; state._barSig = ""; stopClocks(); showScreen("lobby"); renderLobby(); gz({ a: "list" }); }
-  function gotoHome() { state.gameId = null; state.myTeam = -1; state._barSig = ""; stopClocks(); showScreen("mode"); gz({ a: "list" }); }
+  // Joueur ou observateur : chat, bouton ✕ et bandeau d'avertissement.
+  function setupSpectator(el) {
+    var sp = state.spectator, inp = $("#game-say"), q = $("#game-quit");
+    inp.disabled = sp; inp.value = "";
+    inp.placeholder = sp ? "Chat en lecture seule (observateur)" : "Discuter…";
+    q.title = sp ? "Quitter la partie (vous l'observez)" : "Abandonner la partie";
+    var noms = state.players.slice().sort(function (a, b) { return a.e - b.e; }).map(function (p) { return p.n || p.u; });
+    $(".g-warn").textContent = sp
+      ? "Vous observez la partie de " + noms.join(" et ") + ". " + MUET
+      : "ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !";
+    if (sp) addNote("Vous observez la partie de " + noms.join(" et ") + ".");
+    showSpecs(+el.getAttribute("ns") || 0, "");
+  }
+  function gotoLobby() { state.spectator = false; state.gameId = null; state.myTeam = -1; state._barSig = ""; stopClocks(); showScreen("lobby"); renderLobby(); gz({ a: "list" }); }
+  function gotoHome() { state.spectator = false; state.gameId = null; state.myTeam = -1; state._barSig = ""; stopClocks(); showScreen("mode"); gz({ a: "list" }); }
   function leaveGame() { if (state._endTimer) { clearTimeout(state._endTimer); state._endTimer = null; } gotoLobby(); }
 
   // Géométrie calée EXACTEMENT sur hex_grapiz.png (hexagone FLAT-TOP, mesuré sur
