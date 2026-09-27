@@ -2255,6 +2255,12 @@ body.bureau-frutiz .fen .fb-alerte-ok::after {
   border-top: 1px solid #FFEAEC; border-right: 1px solid #FFEAEC;
   border-left: 0; border-bottom: 0;
 }
+/* Une alerte reste visible quand un onglet a la main (le bureau, lui, est
+   escamoté) : elle passe devant tout. */
+body.bureau-frutiz.fb-onglet-actif .fen.fen-par-dessus { display: flex; }
+body.bureau-frutiz .fen.fen-par-dessus { z-index: 100000 !important; }
+/* La boîte à plusieurs choix (`demander`) : les gélules côte à côte. */
+body.bureau-frutiz .fen .fb-alerte-pied.fb-alerte-choix { gap: 8px; }
 /* Hors fenêtre, le panneau attend son tour : le bureau le reparente à
    l'ouverture, comme tous les autres. */
 body.bureau-frutiz .fb-alerte-panneau { display: none; }

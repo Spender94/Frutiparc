@@ -771,17 +771,28 @@ const GAME_ITEM_INFO = {
   '$ship05':     { name: 'Vaisseau 5',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship05.gif' },
   '$arcade':     { name: 'Arcade Boss',         game: 'MiniWave', gif: 'Games/miniWave2/titem/pictoBoss.gif' },
   '$letter':     { name: 'Letter Invader',     game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/letter.gif' },
-  // Les trois smileys du stand : leurs GIF animés d'origine n'ont pas encore
-  // été retrouvés — en attendant, le picto montre l'icône de substitution.
-  // (Quand les vrais GIF seront là : les poser dans public/fb/, les pointer
-  // ici, et rebrancher la rangée du forum.)
-  '$smiley_love':  { name: 'Smiley Love',      game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
-  '$smiley_laugh': { name: 'Smiley Laugh',     game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
-  '$smiley_twirl': { name: 'Smiley Twirl',     game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+  // Les trois smileys du stand (articles 10, 11 et 12 de Shop.as, 30, 220 et
+  // 480 crédits) : leurs GIF animés d'époque, retrouvés et posés dans
+  // public/fb/. La correspondance se lit sur les icônes du stand (shopIco,
+  // images 11 à 13) : le cœur qui s'envole, c'est « aux anges » ; la grande
+  // bouche du fou rire, « extasié » ; la roulade, « ravi ».
+  '$smiley_love':  { name: 'Smiley Aux anges', game: 'MiniWave', gif: 'public/fb/smiley_aux_anges.gif' },
+  '$smiley_laugh': { name: 'Smiley Extasié',   game: 'MiniWave', gif: 'public/fb/smiley_extasie.gif' },
+  '$smiley_twirl': { name: 'Smiley Ravi',      game: 'MiniWave', gif: 'public/fb/smiley_ravi.gif' },
   // Les deux fonds d'écran du stand : les images de fond du SWF.
   '$wpMinistar':   { name: 'Fond Ministar',    game: 'MiniWave', gif: 'Games/miniWave2/bitmap/bg/miniwave_ministar.jpg' },
   '$wpNostromo':   { name: 'Fond Nostromo',    game: 'MiniWave', gif: 'Games/miniWave2/bitmap/bg/miniwave_nostromo.jpg' },
 };
+
+// Les smileys du stand Miniwave, tels que le forum les connaît : le code tapé
+// (ou inséré par la rangée), le fichier servi depuis /fb/, et le titem qui les
+// débloque. Tout le monde VOIT un smiley posté ; seuls les acheteurs ont le
+// bouton dans l'éditeur. (La même table vit côté forum, MINIWAVE_EMOTICONS.)
+const MINIWAVE_FORUM_SMILEYS = [
+  { item: '$smiley_love',  code: ':auxanges:', file: 'smiley_aux_anges.gif', title: 'Aux anges (stand Miniwave)' },
+  { item: '$smiley_laugh', code: ':extasie:',  file: 'smiley_extasie.gif',   title: 'Extasié (stand Miniwave)' },
+  { item: '$smiley_twirl', code: ':ravi:',     file: 'smiley_ravi.gif',      title: 'Ravi (stand Miniwave)' },
+];
 
 // ── Mini-Fever ───────────────────────────────────────────────────────────────
 // Le jeu n'est JAMAIS sorti : personne n'a jamais dessiné ses récompenses, et
@@ -5156,7 +5167,42 @@ const prefDefs = [
   // une bonne fois — d'où une préférence, et non un réglage de plus dans le
   // formulaire du forum.
   { id: 17, type: 's', name: 'default_accessory',        def: '000000000' },
+  // LE FEUTRE PAR DÉFAUT, lui non plus sans original : en 2005, le feutre
+  // (`PenMng.current`) repartait de « aucun » à chaque connexion, et il
+  // fallait le rechoisir dans chaque salon. Un entier, pour que la fenêtre
+  // « Mes préférences » le serve en boutons radio comme les autres choix :
+  // 0 = aucun feutre (le défaut), 1 à 17 = les dix-sept feutres d'époque
+  // (index 0 à 16, décalés d'un cran), 18 = le multicolore, pour qui l'a
+  // acheté. Seul le light s'en sert : le salon Flash garde son pot de feutres.
+  { id: 18, type: 'i', name: 'default_pen',              def: encode62(0) },
 ];
+
+// Les dix-sept feutres d'époque (penList de main.swf), dans l'ordre de leurs
+// index — mêmes noms que le pot de feutres du light (FEUTRES, light.html).
+const NOMS_FEUTRES = [
+  'Orange', 'Bleu', 'Vert foncé', 'Bordeaux', 'Rose', 'Jaune', 'Vert clair', 'Cyan',
+  'Bleu foncé', 'Marron', 'Marron foncé', 'Vert kaki', 'Bleu pétrole', 'Vert',
+  'Bleu pétrole foncé', 'Orange foncé', 'Violet',
+];
+const FEUTRE_PREF_MULTICOLORE = 18;
+// Valeur stockée (base 62) → feutre du client : '' (aucun), '0'…'16', 'mc'.
+function feutreDePref(brut) {
+  const n = decode62(String(brut || '0'));
+  if (n >= 1 && n <= NOMS_FEUTRES.length) return String(n - 1);
+  if (n === FEUTRE_PREF_MULTICOLORE) return 'mc';
+  return '';
+}
+// Les choix offerts à CE joueur : le multicolore seulement s'il le possède.
+function choixFeutreDefaut(user) {
+  const liste = [[0, 'Aucun feutre']].concat(NOMS_FEUTRES.map((nom, i) => [i + 1, nom]));
+  if (user && Array.isArray(user.ownedFeutres) && user.ownedFeutres.includes('mc')) {
+    liste.push([FEUTRE_PREF_MULTICOLORE, 'Multicolore']);
+  }
+  return liste;
+}
+// Les préférences que le SWF ne sait pas appliquer : elles ne figurent pas
+// dans son formulaire (`/do/prefForm`), où elles ne feraient rien.
+const PREFS_LIGHT_SEULEMENT = new Set([18]);
 
 // Les trois modes de `forum_notify`, nommés pour ne pas semer des 0/1/2 nus.
 const FORUM_NOTIFY_AUCUNE = 0;
@@ -19612,6 +19658,10 @@ function appliquerPref(username, user, prefId, rawVal) {
   const def = prefDefs.find((p) => p.id === prefId);
   if (!def) return false;
   const parsed = parsePrefString(user.prefs || '');
+  // Le feutre par défaut n'accepte qu'un feutre existant — et le multicolore,
+  // seulement de qui l'a acheté.
+  if (def.name === 'default_pen' && rawVal !== ''
+    && !choixFeutreDefaut(user).some(([v]) => encode62(v) === rawVal)) return false;
   const isDefault = (rawVal === '' || rawVal === def.def);
   if (isDefault) {
     delete parsed[prefId];
@@ -19724,6 +19774,10 @@ const PREF_LABELS = {
   mention_chat:            { label: 'Mentions dans les salons',
                              desc: 'Être prévenu quand quelqu\'un écrit « @ton pseudo » dans un salon public : '
                                + 'l\'onglet de la conversation clignote, et le téléphone sonne si tu es absent.' },
+  default_pen:             { label: 'Feutre par défaut',
+                             desc: 'Le feutre déjà choisi en arrivant dans les salons : tes messages s\'écrivent '
+                               + 'dans sa couleur sans avoir à le rechoisir. Tu peux toujours en changer le temps '
+                               + 'd\'une conversation — le défaut, lui, ne bouge pas.' },
   mention_forum:           { label: 'Mentions sur le forum',
                              desc: 'Être prévenu quand quelqu\'un te mentionne dans un message du forum : '
                                + 'voyant du raccourci, ligne dans l\'historique, et notification sur le téléphone.' },
@@ -19731,7 +19785,7 @@ const PREF_LABELS = {
 
 const PREF_CATEGORIES = [
   { name: 'Général', ids: [1, 6, 7, 8] },
-  { name: 'Chat',    ids: [9, 10, 11, 12, 13] },
+  { name: 'Chat',    ids: [9, 10, 11, 12, 13, 18] },
   { name: 'Mail',    ids: [2] },
   { name: 'Invitations', ids: [3, 4] },
   { name: 'Forum',   ids: [14] },
@@ -19816,7 +19870,7 @@ app.get(['/do/prefForm', '/prefForm'], (req, res) => {
     body += `<c n="${escapeXml(cat.name)}">`;
     for (const id of cat.ids) {
       const def = byId[id];
-      if (!def) continue;
+      if (!def || PREFS_LIGHT_SEULEMENT.has(id)) continue;
       const meta = PREF_LABELS[def.name] || { label: def.name, desc: '' };
       body += `<p i="${id}" f="${escapeXml(meta.label)}"><d>${escapeXml(meta.desc)}</d><f>${prefFormDe(def)}</f></p>`;
     }
@@ -19868,7 +19922,8 @@ function prefsEnJson(user) {
         // caractères, et ses choix sortent de l'inventaire du joueur.
         choices: def.name === 'default_accessory'
           ? choixAccessoireDefaut(user)
-          : (meta.choices || []).map(([v, lib]) => ({ v: encode62(v), label: lib })),
+          : (def.name === 'default_pen' ? choixFeutreDefaut(user) : (meta.choices || []))
+            .map(([v, lib]) => ({ v: encode62(v), label: lib })),
       };
     }),
   }));
@@ -21992,10 +22047,17 @@ app.get('/api/forum/me', (req, res) => {
   // — this is purely a UX hint.
   const mute = getMuteInfoForUser(username);
   const ban = getBanInfoForUser(username);
+  // Les smileys achetés au stand Miniwave rejoignent la rangée de l'éditeur
+  // de CE joueur (le rendu des messages, lui, les montre à tout le monde).
+  const items = Array.isArray(u.gameItems) ? u.gameItems : [];
+  const smileys = MINIWAVE_FORUM_SMILEYS
+    .filter(s => items.includes(s.item))
+    .map(s => ({ code: s.code, file: s.file, title: s.title }));
   res.json({
     user: getDisplayName(username),
     isModerator: !!u.isModerator,
     isAnimator: !!u.isAnimator,
+    smileys,
     bouille: bouilleOf(u, username),
     /*
      * LA BOUILLE PRINCIPALE, et les INCARNATIONS qu'on possède.
@@ -24337,6 +24399,13 @@ app.get('/api/light/profile', async (req, res) => {
     })(),
     // Feutres spéciaux possédés (pour afficher la pastille dédiée dans la palette).
     ownedFeutres: Array.isArray(u.ownedFeutres) ? u.ownedFeutres.slice() : [],
+    // Le feutre par défaut (préférence `default_pen`), déjà traduit dans la
+    // langue du pot de feutres : '' (aucun), '0'…'16', ou 'mc'. Un multicolore
+    // retiré depuis ne s'impose plus.
+    defaultPen: (() => {
+      const f = feutreDePref(prefBrute(u, 'default_pen'));
+      return f === 'mc' && !(Array.isArray(u.ownedFeutres) && u.ownedFeutres.includes('mc')) ? '' : f;
+    })(),
   });
 });
 

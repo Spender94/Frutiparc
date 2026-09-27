@@ -119,7 +119,7 @@ test('un choix se rend en radios, une par ligne', () => {
   assert.ok(f, 'prefFormChoix doit exister');
   assert.match(f[0], /<l><s w="8"\/><r v="value" u="\$\{escapeXml\(encode62\(v\)\)\}">/);
   // La valeur voyage en base 62, comme dans la chaîne stockée.
-  assert.match(SERVEUR, /\(meta\.choices \|\| \[\]\)\.map\(\(\[v, lib\]\) => \(\{ v: encode62\(v\), label: lib \}\)\)/);
+  assert.match(SERVEUR, /: \(def\.name === 'default_pen' \? choixFeutreDefaut\(user\) : \(meta\.choices \|\| \[\]\)\)\s*\.map\(\(\[v, lib\]\) => \(\{ v: encode62\(v\), label: lib \}\)\)/);
   // Une seule exception, écrite en toutes lettres : l'accessoire par défaut
   // garde une chaîne de neuf caractères, et ses choix sortent de l'inventaire
   // du joueur — aucune liste fixe ne pourrait les connaître.
@@ -411,4 +411,20 @@ test('la liste des présents se met à jour même quand la ligne se tait', () =>
   // Se faire expulser SOI-MÊME se dit toujours.
   const kb = /var kDire = \(tag === "ah"\)[\s\S]*?\n        \}/.exec(LIGHT);
   assert.match(kb[0], /if \(sameName\(kWho, state\.user\)\) \{\s*\n\s+systemLine\("Tu as été " \+ kVerb/);
+});
+
+test('le feutre par défaut : un entier, ses choix selon le joueur, et hors du formulaire Flash', () => {
+  // 0 = aucun, 1 à 17 = les feutres d'époque décalés d'un cran, 18 = le multicolore.
+  assert.match(SERVEUR, /\{ id: 18, type: 'i', name: 'default_pen',\s+def: encode62\(0\) \},/);
+  assert.match(SERVEUR, /\{ name: 'Chat',\s+ids: \[9, 10, 11, 12, 13, 18\] \},/);
+  // Le multicolore n'est offert — et accepté — qu'à qui l'a acheté.
+  assert.match(SERVEUR, /user\.ownedFeutres\.includes\('mc'\)\) \{\s*\n\s*liste\.push\(\[FEUTRE_PREF_MULTICOLORE, 'Multicolore'\]\);/);
+  assert.match(SERVEUR, /def\.name === 'default_pen' && rawVal !== ''\s*\n\s*&& !choixFeutreDefaut\(user\)\.some/);
+  // Le salon Flash garde son pot de feutres : la préférence n'est pas dans son formulaire.
+  assert.match(SERVEUR, /if \(!def \|\| PREFS_LIGHT_SEULEMENT\.has\(id\)\) continue;/);
+  // Le light la prend en main à l'arrivée, sans défaire un choix du moment.
+  const L = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(L, /if \(!state\.penChoisi && typeof selectPen === "function"\) selectPen\(state\.penDefaut, true\);/);
+  assert.match(L, /id="reg-carte-feutre"/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.js'), 'utf8'), /default_pen: 'reg-carte-feutre'/);
 });

@@ -496,13 +496,24 @@ test('un onglet de JEU gagne « Déporter », au-dessus de « Fermer »', () => 
      LA PLACE : `_y = −(i × tabMenuSpace + 16)` met l'index 0 EN BAS. Poussée
      en fin de tableau, l'entrée se dessine donc TOUT EN HAUT, au-dessus de
      « Fermer » — c'est là qu'elle était demandée. */
-  assert.match(JS, /if \(jeu\) m\.push\(\{ titre: 'Déporter', faire: function \(\) \{ deporterJeu\(jeu\); \} \}\);/);
+  assert.match(JS, /if \(jeu\) m\.push\(\{ titre: 'Déporter', faire: function \(\) \{ deporterJeu\(jeu, idOnglet\); \} \}\);/);
   // Elle n'existe que pour un onglet qui PORTE un jeu.
   assert.match(JS, /function jeuDuSlot\(idOnglet\) \{\s*\n\s*var s = slotDe\(idOnglet\);\s*\n\s*return s \? jeuDuPanneau\(s\.panneau\) : null;/);
   assert.match(JS, /if \(rub && rub\.panneau === '#' \+ idPanneau\) return tab;/);
   // Le jeu QUITTE la page : deux instances écriraient la même sauvegarde.
-  const d = JS.slice(JS.indexOf('function deporterJeu(tab) {'),
-    JS.indexOf('function deporterJeu(tab) {') + 800);
+  const d = JS.slice(JS.indexOf('function deporterJeu(tab, idOnglet, confirme) {'),
+    JS.indexOf('function deporterJeu(tab, idOnglet, confirme) {') + 2400);
+  // UNE PARTIE ENTAMÉE serait relancée : on prévient, et on propose « Vers
+  // bureau », qui détache le jeu sur le bureau sans l'arrêter.
+  assert.match(d, /if \(!confirme && P\.entame && P\.entame\(tab\)\) \{/);
+  assert.match(d, /Ta partie en cours sera relancée/);
+  assert.match(d, /\{ titre: 'Vers bureau', faire: function \(\) \{ if \(idOnglet\) versBureau\(idOnglet\); \} \}/);
+  assert.match(d, /\{ titre: 'Déporter', faire: function \(\) \{ deporterJeu\(tab, idOnglet, true\); \} \}/);
+  const L = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(L, /\["pointerdown", "touchstart", "keydown"\]\.forEach/, 'on retient qu\'on a joué dans le cadre');
+  assert.match(L, /entame: function \(tab\) \{ return jeuEntame\(tab\); \},/);
+  // Et l'alerte passe devant l'onglet qui a la main.
+  assert.match(JS, /f\.fen\.classList\.add\('fen-par-dessus'\)/);
   assert.match(d, /if \(!P\.deporter\(tab, rub\.l, rub\.h\)\)/);
   assert.match(d, /if \(panneau && fenetres\[panneau\.id\]\) fermerFenetre\(panneau\.id\);/);
   assert.match(d, /frusion\.jeu = null; frusion\.jeuDeporte = tab;/);

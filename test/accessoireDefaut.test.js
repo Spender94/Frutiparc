@@ -171,7 +171,7 @@ test('le réglage est au même endroit pour le téléphone et pour le bureau', (
   assert.match(LIGHT, /accList\.forEach\(function \(ac\) \{\n\s+if \(ac\.fullState\) return;/);
 
   // Le bureau montre LA MÊME carte à la place du champ de saisie…
-  assert.match(BUREAU, /var CARTE_DE_PREF = \{ default_accessory: 'reg-carte-accessoire' \};/);
+  assert.match(BUREAU, /var CARTE_DE_PREF = \{ default_accessory: 'reg-carte-accessoire'[,} ]/);
   assert.match(BUREAU, /p\.local !== undefined \? p\.local : CARTE_DE_PREF\[p\.name\]/);
   // …et une carte qui s'enregistre seule prévient le brouillon de la fenêtre,
   // sans quoi « Enregistrer » reposterait l'ancienne valeur.

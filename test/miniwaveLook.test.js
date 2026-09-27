@@ -117,22 +117,30 @@ test('score centré avec ses pointillés, vies en bas à droite, panneaux du SWF
   assert.match(jeu, /alpha \* 0\.8 \+ p\.ta \* 0\.2/, 'avec le fondu de Msg.update');
 });
 
-// ── 5. Les smileys du stand : en ATTENTE de leurs GIF d'origine ──────────
-// Les animations recréées ont été retirées à la demande : les vrais GIF
-// d'époque seront posés dans public/fb/ quand ils auront été retrouvés, et
-// la rangée du forum rebranchée à ce moment-là. D'ici là, le forum ne doit
-// porter AUCUNE trace des smileys du stand.
+// ── 5. Les smileys du stand : leurs GIF d'époque, branchés au forum ───────
+// Les animations recréées avaient été retirées en attendant les vrais GIF.
+// Ils sont là (public/fb/smiley_*.gif) : la rangée du forum est rebranchée —
+// visible de tous dans les messages, dans l'éditeur des seuls acheteurs.
 
-test('le forum ne porte pas de smileys du stand tant que les GIF d\'origine manquent', () => {
+test('les smileys du stand sont les GIF d\'époque, branchés au forum', () => {
   const forum = fs.readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
-  assert.ok(!/MINIWAVE_EMOTICONS/.test(forum), 'pas de table de smileys du stand');
-  assert.ok(!/smiley_love/.test(forum), 'pas de fichier smiley référencé');
-  for (const f of ['smiley_love.svg', 'smiley_laugh.svg', 'smiley_twirl.svg']) {
-    assert.ok(!fs.existsSync(path.join(ROOT, 'public/fb', f)), f + ' a été retiré');
-  }
   const serveur = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  assert.ok(!/MINIWAVE_FORUM_SMILEYS/.test(serveur), 'le serveur non plus');
-  // L'achat au stand continue de donner le picto ($smiley_*) — seule la
-  // partie forum attend.
-  assert.match(serveur, /'\$smiley_love'/, 'le picto du stand existe toujours');
+  const paires = [['$smiley_love', 'smiley_aux_anges.gif', ':auxanges:'],
+    ['$smiley_laugh', 'smiley_extasie.gif', ':extasie:'], ['$smiley_twirl', 'smiley_ravi.gif', ':ravi:']];
+  for (const [item, fichier, code] of paires) {
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/fb', fichier)), fichier + ' est posé');
+    assert.ok(serveur.includes(`'${item}'`) && serveur.includes(`gif: 'public/fb/${fichier}'`), item + ' pointe sur ' + fichier);
+    assert.ok(serveur.includes(`item: '${item}',`) && serveur.includes(`code: '${code}'`), item + ' est connu du forum côté serveur');
+    assert.ok(forum.includes(`file: '${fichier}'`) && forum.includes(`code: '${code}'`), code + ' est dans la table du forum');
+  }
+  // Les animations recréées ne reviennent pas.
+  for (const f of ['smiley_love.svg', 'smiley_laugh.svg', 'smiley_twirl.svg']) {
+    assert.ok(!fs.existsSync(path.join(ROOT, 'public/fb', f)), f + ' reste retiré');
+  }
+  // Le rendu connaît tout le monde ; la rangée, seulement ce qu'on a acheté.
+  assert.match(forum, /mySmileys = \(data\.smileys \|\| \[\]\)/);
+  assert.match(forum, /mySmileys\.indexOf\(s\.code\) < 0\) continue/);
+  assert.match(serveur, /MINIWAVE_FORUM_SMILEYS\s*\.filter\(s => items\.includes\(s\.item\)\)/);
+  // Le smiley triste, lui, ne se vendait pas : il est à tout le monde.
+  assert.match(forum, /file: 'smiley_sad\.gif', code: ':sad:'/);
 });

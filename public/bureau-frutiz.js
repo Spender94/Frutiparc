@@ -810,12 +810,47 @@ window.BureauFrutiz = (function () {
     ok.addEventListener('click', partir);
     ouvrirFenetre(id);
     var f = fenetres[id];
+    // Une alerte se lit PAR-DESSUS l'onglet qui a la main : sans cela, elle
+    // s'ouvrait sur le bureau escamoté, invisible derrière le jeu en onglet.
+    if (f && f.fen) f.fen.classList.add('fen-par-dessus');
     if (f && f.fen) {
       var croix = f.fen.querySelector('.fen-btn.fermer');
       if (croix) croix.addEventListener('click', function () { delete RUBRIQUES[id]; p.remove(); });
     }
     ok.focus();
     return id;
+  }
+
+  /*
+   * LA MÊME BOÎTE, AVEC UN CHOIX. `win.Alert` n'a qu'un bouton ; la question
+   * du déport en demande trois. Même fenêtre, mêmes gélules, une par choix —
+   * chacune referme la boîte avant d'agir.
+   */
+  function demander(titre, texte, choix) {
+    var id = alerte(titre, texte);
+    if (!id) return;                       // hors bureau : window.alert a suffi
+    var p = document.getElementById(id);
+    var f = fenetres[id];
+    var pied = p && p.querySelector('.fb-alerte-pied');
+    if (!pied) return;
+    pied.innerHTML = '';
+    pied.classList.add('fb-alerte-choix');
+    choix.forEach(function (c, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'fb-alerte-ok';
+      b.textContent = c.titre;
+      b.addEventListener('click', function () {
+        fermerFenetre(id);
+        delete RUBRIQUES[id];
+        p.remove();
+        c.faire();
+      });
+      pied.appendChild(b);
+      if (i === 0) b.focus();
+    });
+    // Le texte est plus long qu'une alerte : la boîte s'élargit d'autant.
+    if (f && f.fen) { f.fen.style.width = '360px'; f.fen.style.height = '170px'; }
   }
 
   // ── « Salons publics » (`win.RoomList` 0xbebb6, `cp.RoomList` 0x70733) ──
@@ -5303,7 +5338,7 @@ window.BureauFrutiz = (function () {
   // cela ne se tape pas, cela se choisit en vignettes ; la carte du mobile fait
   // déjà exactement cela, on la montre à sa place. La préférence garde sa
   // rubrique (« Apparence ») et son libellé, servis par le serveur.
-  var CARTE_DE_PREF = { default_accessory: 'reg-carte-accessoire' };
+  var CARTE_DE_PREF = { default_accessory: 'reg-carte-accessoire', default_pen: 'reg-carte-feutre' };
 
   function habillerReglages(panneau) {
     if (!panneau) return;
@@ -6660,7 +6695,7 @@ window.BureauFrutiz = (function () {
        taille, sur son écran. Les trois jeux restés en Flash n'en ont pas
        besoin — ils s'ouvrent DÉJÀ ainsi et n'ont pas d'onglet. */
     var jeu = jeuDuSlot(idOnglet);
-    if (jeu) m.push({ titre: 'Déporter', faire: function () { deporterJeu(jeu); } });
+    if (jeu) m.push({ titre: 'Déporter', faire: function () { deporterJeu(jeu, idOnglet); } });
     // LE FORUM AUSSI. Il l'avait d'office — le bureau d'époque l'envoie
     // dehors, et le portage a longtemps suivi ; il s'ouvre maintenant ici
     // comme les autres rubriques, et sortir redevient un choix. C'est le seul
@@ -6703,10 +6738,27 @@ window.BureauFrutiz = (function () {
    * On referme donc sa fenêtre du bureau — et la Frusion le sait, pour que
    * l'éjection du disque referme la bonne chose.
    */
-  function deporterJeu(tab) {
+  function deporterJeu(tab, idOnglet, confirme) {
     var P = window.JeuxPortes;
     var rub = RUBRIQUES[tab];
     if (!P || !P.deporter || !rub) return;
+    /* UNE PARTIE EN COURS SERAIT PERDUE. La fenêtre du navigateur repart d'une
+       page neuve : un navigateur ne sait pas y faire passer un jeu en marche.
+       On prévient donc — et on propose « Vers bureau », qui, lui, détache la
+       fenêtre du jeu sur le bureau SANS l'interrompre. Un jeu à peine ouvert
+       (rien cliqué, rien tapé) se déporte sans question. */
+    if (!confirme && P.entame && P.entame(tab)) {
+      var nom = JEUX_NOM[tab] || 'ce jeu';
+      demander('Déporter ' + nom + ' ? ',
+        'Ta partie en cours sera relancée : le jeu repart de zéro dans la nouvelle fenêtre. '
+          + 'Pour la garder, choisis « Vers bureau » : le jeu passe en fenêtre sur le bureau, sans s’arrêter.',
+        [
+          { titre: 'Vers bureau', faire: function () { if (idOnglet) versBureau(idOnglet); } },
+          { titre: 'Déporter', faire: function () { deporterJeu(tab, idOnglet, true); } },
+          { titre: 'Annuler', faire: function () {} },
+        ]);
+      return;
+    }
     if (!P.deporter(tab, rub.l, rub.h)) {
       alerte('Fenêtre bloquée : ', 'le navigateur a refusé d’ouvrir la fenêtre du jeu.');
       return;

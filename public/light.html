@@ -1751,6 +1751,9 @@
      « Chapeau de shérif » en entier et les quatre cessent d'être égales. */
   #reg-accessoire .acc-item { min-width: 0; }
   .reg-note { margin-top: 7px; opacity: .85; }
+  /* Le feutre par défaut : les pastilles du pot de feutres, en grille. */
+  #reg-feutre { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 9px; }
+  #reg-feutre .pen-swatch { width: 28px; height: 28px; }
   .reg-actions {
     margin-top: 9px; display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
   }
@@ -3077,6 +3080,19 @@
             message ou pour l'après-midi&nbsp;— ton défaut, lui, ne bouge pas.</div>
           <div id="reg-accessoire" class="acc-grid">…</div>
           <div class="reg-texte reg-note" id="reg-accessoire-etat"></div>
+        </div>
+
+        <!-- LE FEUTRE PAR DÉFAUT — la préférence n° 18. Un réglage de COMPTE,
+             comme l'accessoire : celui qu'on trouve déjà choisi en arrivant
+             dans les salons, sur le téléphone comme sur le bureau. -->
+        <div class="reg-carte" id="reg-carte-feutre">
+          <div class="reg-titre">Feutre par défaut</div>
+          <div class="reg-texte">La couleur dans laquelle tu écris en arrivant dans
+            les salons, sans avoir à rechoisir ton feutre à chaque visite. Tu peux
+            toujours en changer le temps d'une conversation&nbsp;— ton défaut, lui,
+            ne bouge pas.</div>
+          <div id="reg-feutre">…</div>
+          <div class="reg-texte reg-note" id="reg-feutre-etat"></div>
         </div>
 
         <div class="reg-carte" id="reg-carte-notifs">
@@ -4477,6 +4493,12 @@
           setJournalNonLus("evenements", d.eventsUnread);    // …événements…
           setJournalNonLus("historique", d.historyUnread);   // …et historique
           state.ownedFeutres = Array.isArray(d.ownedFeutres) ? d.ownedFeutres : [];
+          // Le feutre par défaut (préférence n° 18) : on le prend en main dès
+          // l'arrivée — sauf si on a déjà choisi un feutre depuis (le profil
+          // se relit souvent ; il ne doit pas défaire le choix du moment).
+          state.penDefaut = typeof d.defaultPen === "string" ? d.defaultPen : "";
+          if (!state.penChoisi && typeof selectPen === "function") selectPen(state.penDefaut, true);
+          if ($("#reg-feutre")) majFeutreDefaut();
           // Un totoché qui recharge la page reste totoché : c'est le compte qui
           // porte la peine, pas l'onglet du navigateur.
           if (typeof poserMuselage === "function") poserMuselage(Number(d.mutedUntil) || 0);
@@ -5271,6 +5293,34 @@
    * l'attribut ne fait rien au document déjà là), puis on retire l'attribut
    * pour que la prochaine ouverture de l'onglet le recharge.
    */
+  /*
+   * UNE PARTIE ENTAMÉE ? Le bureau veut le savoir avant de DÉPORTER un jeu :
+   * la fenêtre de navigateur repart d'une page neuve (un navigateur ne sait
+   * pas déplacer un jeu en marche d'une fenêtre à l'autre), et la partie en
+   * cours serait perdue sans prévenir. On ne lit pas l'état de onze jeux :
+   * on retient seulement qu'on a cliqué, touché ou tapé DANS le cadre depuis
+   * son chargement — un jeu à peine ouvert, sur son menu, se déporte sans
+   * question. Les cadres sont de la même origine : on écoute leur document.
+   */
+  Object.keys(CADRES_JEU).forEach(function (tab) {
+    var cadre = $(CADRES_JEU[tab]);
+    if (!cadre) return;
+    cadre.addEventListener("load", function () {
+      cadre._entame = false;
+      var doc = null;
+      try { doc = cadre.contentDocument; } catch (e) { /* autre origine */ }
+      if (!doc || !cadre.getAttribute("src")) return;
+      var noter = function () { cadre._entame = true; };
+      ["pointerdown", "touchstart", "keydown"].forEach(function (ev) {
+        doc.addEventListener(ev, noter, { capture: true, passive: true });
+      });
+    });
+  });
+  function jeuEntame(tab) {
+    var cadre = CADRES_JEU[tab] && $(CADRES_JEU[tab]);
+    return !!(cadre && cadre.getAttribute("src") && cadre._entame);
+  }
+
   function dechargerJeu(tab) {
     var sel = CADRES_JEU[tab];
     var cadre = sel && $(sel);
@@ -5527,6 +5577,8 @@
      ouverte au lieu d'en empiler une seconde. */
   window.JeuxPortes = {
     adresse: adresseJeu,
+    // Une partie est-elle entamée dans ce cadre ? (cf. jeuEntame)
+    entame: function (tab) { return jeuEntame(tab); },
     // Le jeu part dans sa fenêtre. `l` et `h` sont le gabarit que le bureau
     // donne déjà à la fenêtre du jeu (RUBRIQUES) : la fenêtre de navigateur
     // reprend la même, faute de mieux que ce que le jeu demande lui-même.
@@ -7445,6 +7497,7 @@
     majMentions();
     majNuit();
     majAccessoireDefaut();
+    majFeutreDefaut();
     var inst = $("#reg-install");
     if (inst) {
       if (estInstallee()) {
@@ -12200,7 +12253,8 @@
   // Le feutre est celui du JOUEUR, pas celui d'une fenêtre (`PenMng.current`,
   // un seul pour la session) : le choix se répercute sur toutes les barres
   // ouvertes et toutes les saisies, cadres du bureau compris.
-  function selectPen(idx) {
+  function selectPen(idx, parDefaut) {
+    if (!parDefaut) state.penChoisi = true;
     state.pen = idx;
     Array.prototype.forEach.call(document.querySelectorAll("#pen-bar .pen-swatch"), function (sw) {
       var v = sw.getAttribute("data-pen");
@@ -13007,6 +13061,64 @@
         porterEtat(buildState(myBase, accDefaut, null));
         if (etat) {
           etat.textContent = "✓ « " + (ac.name || "Accessoire") + " » posé, et gardé comme défaut.";
+          clearTimeout(etat._minuteur);
+          etat._minuteur = setTimeout(function () { etat.textContent = ""; }, 6000);
+        }
+      })
+      .catch(function () { if (etat) etat.textContent = "Hors ligne, réessaie."; });
+  }
+
+  /* ── LE FEUTRE PAR DÉFAUT (préférence n° 18) ───────────────────────────────
+   *
+   * Les pastilles du pot de feutres, en grille : « aucun », les dix-sept
+   * feutres d'époque, et le multicolore pour qui l'a acheté. Le serveur garde
+   * un entier (0 = aucun, 1 à 17 = les feutres décalés d'un cran, 18 = le
+   * multicolore) pour que la fenêtre « Mes préférences » en fasse des boutons
+   * radio ; on traduit ici, dans la langue du pot : "", "0"…"16", "mc".
+   *
+   * Le choisir ici le PREND aussi en main tout de suite : c'est ce qu'on
+   * vient chercher. Changer de feutre dans un salon, ensuite, ne touche pas au
+   * défaut.
+   */
+  function feutreVersPref(pen) {
+    if (pen === "mc") return 18;
+    var n = parseInt(pen, 10);
+    return Number.isFinite(n) ? n + 1 : 0;
+  }
+  function majFeutreDefaut() {
+    var hote = $("#reg-feutre");
+    if (!hote) return;
+    var defaut = state.penDefaut || "";
+    hote.innerHTML = "";
+    function pastille(pen, classe, titre) {
+      var sw = el("div", "pen-swatch" + (classe ? " " + classe : "") + (defaut === pen ? " sel" : ""));
+      sw.title = titre;
+      if (pen !== "" && pen !== "mc") sw.style.background = penColorFor(pen);
+      if (pen === "") sw.textContent = "✕";
+      sw.addEventListener("click", function () { poserFeutreDefaut(pen, titre); });
+      hote.appendChild(sw);
+    }
+    pastille("", "none", "Aucun feutre");
+    FEUTRES.forEach(function (f) { pastille(String(f.i), "", f.name); });
+    if (state.ownedFeutres && state.ownedFeutres.indexOf("mc") >= 0) pastille("mc", "mc", "Feutre multicolore");
+  }
+  function poserFeutreDefaut(pen, nom) {
+    var etat = $("#reg-feutre-etat");
+    if (etat) etat.textContent = "…";
+    var v = feutreVersPref(pen).toString(36);   // < 62 : la base 62 et la base 36 s'accordent sur 0-9a-z
+    fetch("/api/light/prefs", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sid: state.sid, prefs: { default_pen: v } }),
+    }).then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok || !d.saved) { if (etat) etat.textContent = "Non enregistré, réessaie."; return; }
+        state.penDefaut = pen;
+        selectPen(pen);
+        majFeutreDefaut();
+        // La fenêtre des préférences du bureau tient une COPIE des valeurs.
+        if (window.BureauFrutiz && BureauFrutiz.noterPref) BureauFrutiz.noterPref("default_pen", v);
+        if (etat) {
+          etat.textContent = pen === "" ? "✓ Plus de feutre par défaut." : "✓ « " + nom + " » gardé comme feutre par défaut.";
           clearTimeout(etat._minuteur);
           etat._minuteur = setTimeout(function () { etat.textContent = ""; }, 6000);
         }

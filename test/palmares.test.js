@@ -23,6 +23,9 @@ const CLE = 'cle-de-test';
 const DB = process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5433/frutiparc_palmares';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let proc, dispo = false;
+// Ce que le serveur écrit : rendu dans l'erreur s'il ne démarre pas, au lieu
+// d'un test qui attend pour toujours.
+let journal = '';
 
 async function baseNeuve() {
   const admin = new Client({ connectionString: DB.replace(/\/[^/]+$/, '/postgres') });
@@ -45,14 +48,35 @@ function demarrer() {
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  proc.stdout.on('data', () => {});
-  proc.stderr.on('data', () => {});
+  journal = '';
+  const noter = (d) => { journal = (journal + d).slice(-4000); };
+  proc.stdout.on('data', noter);
+  proc.stderr.on('data', noter);
+  proc.on('exit', (code, sig) => noter(`\n[serveur arrêté : code ${code}, signal ${sig}]`));
 }
 async function pret() {
-  for (let i = 0; i < 160; i++) {
+  for (let i = 0; i < 240; i++) {
     try { if ((await fetch(BASE + '/api/online-count')).ok) return; } catch { /* pas prêt */ }
     await wait(250);
   }
+  throw new Error('le serveur de test ne répond pas :\n' + journal);
+}
+
+// Le serveur RÉPOND avant d'avoir fini de créer ses tables : sur une base
+// neuve, un compte inscrit trop tôt ne vivrait qu'en mémoire (INSERT refusé,
+// « relation users does not exist »). On attend que la base soit prête — le
+// forum « Frutiz », semé en dernier, en fait foi.
+async function basePrete() {
+  for (let i = 0; i < 240; i++) {
+    const c = new Client({ connectionString: DB });
+    try {
+      await c.connect();
+      const r = await c.query("SELECT 1 FROM forum_boards WHERE name = 'Frutiz' LIMIT 1");
+      if (r.rows.length) return;
+    } catch { /* tables pas encore là */ } finally { try { await c.end(); } catch { /* rien */ } }
+    await wait(250);
+  }
+  throw new Error('la base de test n\'a jamais été prête');
 }
 
 before(async () => {
@@ -60,6 +84,7 @@ before(async () => {
   if (!dispo) return;
   demarrer();
   await pret();
+  await basePrete();
   // Des Frutiz, puis la base garnie à la main.
   for (const u of ['Pomme', 'Kiwi', 'Cerise', 'Mangue']) {
     await fetch(BASE + '/api/auth/register', {
@@ -69,6 +94,7 @@ before(async () => {
   }
   const c = new Client({ connectionString: DB });
   await c.connect();
+  try {
   const vieux = "now() - interval '40 days'";
   await c.query(`
     INSERT INTO moderation_logs (target_username, moderator, action, detail, created_at) VALUES
@@ -103,7 +129,11 @@ before(async () => {
       ($1, 'kiwi', '[quote=Pomme]\nPremier ![/quote]\nBravo.'),
       ($1, 'cerise', '[quote=Pomme]x[/quote] et [quote=Kiwi]y[/quote]'),
       ($1, 'kiwi', 'Encore moi.')`, [t.id]);
-  await c.end();
+  } finally {
+    // Une connexion laissée ouverte garde le processus en vie : le fichier de
+    // test ne finirait jamais, et la suite entière l'attendrait.
+    await c.end();
+  }
 });
 after(() => { if (proc) proc.kill('SIGKILL'); });
 

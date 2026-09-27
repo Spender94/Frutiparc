@@ -791,7 +791,9 @@ K.finaliser = (e, init) => {
   // Hors d'un script (un chargement de carte, un intervalle, un clic), le
   // lecteur exécute les actions de première image avant l'image suivante :
   // on vide la file tout de suite, sinon un stop() arriverait après l'avance.
-  if (K.scene && !K.scene.dansScript) K.scene.viderScripts();
+  // Mais PAS pendant l'avance des images elle-même (cf. Scene.tick) : le
+  // lecteur fait avancer TOUTE la liste d'affichage, puis joue les actions.
+  if (K.scene && !K.scene.dansScript && !K.scene.enAvance) K.scene.viderScripts();
 };
 
 // ── L'horloge et Std (le tmod de Motion-Twin) ─────────────────────────────
@@ -1111,7 +1113,16 @@ class Scene {
 
   tick() {
     this.numeroTick++;
-    this.avancerTous(this.racine);
+    // L'AVANCE D'ABORD, LES ACTIONS ENSUITE. Un clip qui reboucle sur une
+    // image posant un enfant appelait K.finaliser au milieu de l'avance, qui
+    // vidait la file : les scripts déjà programmés — la boucle de jeu de
+    // MotionBall (main, image 2) — tournaient alors AVANT le stop() de
+    // l'image 1 du clip, programmé juste après. Un bumper touché à cet
+    // instant précis partait sur « hit »… puis ce stop() en retard le figeait
+    // là, gros et illuminé, pour de bon. On ne vide la file qu'une fois toute
+    // la liste avancée, dans l'ordre où les images ont été jouées.
+    this.enAvance = true;
+    try { this.avancerTous(this.racine); } finally { this.enAvance = false; }
     if (this.surTick) this.fileScripts.unshift([this.racine, this.surTick]);
     this.viderScripts();
     // Le lecteur Flash refait le test de survol à CHAQUE image, pas seulement

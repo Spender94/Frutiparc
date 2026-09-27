@@ -52,11 +52,29 @@ async function pret() {
   }
 }
 
+// Le serveur RÉPOND avant d'avoir fini de créer ses tables : sur une base
+// neuve, un compte inscrit trop tôt ne vivrait qu'en mémoire (INSERT refusé,
+// « relation users does not exist »). On attend que la base soit prête — le
+// forum « Frutiz », semé en dernier, en fait foi.
+async function basePrete() {
+  for (let i = 0; i < 240; i++) {
+    const c = new Client({ connectionString: DB });
+    try {
+      await c.connect();
+      const r = await c.query("SELECT 1 FROM forum_boards WHERE name = 'Frutiz' LIMIT 1");
+      if (r.rows.length) return;
+    } catch { /* tables pas encore là */ } finally { try { await c.end(); } catch { /* rien */ } }
+    await wait(250);
+  }
+  throw new Error('la base de test n\'a jamais été prête');
+}
+
 before(async () => {
   dispo = await baseNeuve();
   if (!dispo) return;
   demarrer();
   await pret();
+  await basePrete();
 });
 after(() => { if (proc) proc.kill('SIGKILL'); });
 
@@ -112,7 +130,14 @@ test('l’onglet Statistiques : totaux, jour par jour, parties par jeu — admin
   await wait(300);
   // Fermé sans clé.
   assert.strictEqual((await json('/api/admin/stats')).statut, 403);
-  const d = await admin('/api/admin/stats?jours=7');
+  // Les comptes et les parties s'écrivent en base DERRIÈRE la réponse : sur
+  // une machine chargée, les stats peuvent passer avant. On attend qu'elles
+  // aient rattrapé (au plus quinze secondes) plutôt que de lire trop tôt.
+  let d = await admin('/api/admin/stats?jours=7');
+  for (let i = 0; i < 60 && !(d.ok && d.totaux && d.totaux.comptes >= 3 && d.jeux && d.jeux.bkiwi && d.jeux.bkiwi.semaine >= 2); i++) {
+    await wait(250);
+    d = await admin('/api/admin/stats?jours=7');
+  }
   assert.strictEqual(d.ok, true, JSON.stringify(d));
   assert.strictEqual(d.base, true);
   assert.strictEqual(d.jours.length, 7);

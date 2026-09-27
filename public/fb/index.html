@@ -1190,6 +1190,9 @@
     vertical-align: middle;
     image-rendering: -webkit-optimize-contrast;
   }
+  /* Les smileys ANIMÉS (stand Miniwave, triste) sont plus larges que hauts —
+     32 px sur 16 à 19 : à leur taille, sans être écrasés dans le carré. */
+  .emo-img[src*="/fb/smiley_"] { width: auto; height: auto; }
 
   /* Editor textarea */
   .editor-textarea {
@@ -3244,7 +3247,23 @@ var EMOTICONS = [
   { file: 'nooo.gif',      code: ':nooo:',     alts: [':noo:'],         title: 'NON !' },
   { file: 'cross.gif',     code: ':cross:',    alts: [],                title: 'Croix' },
   { file: 'chart.gif',     code: ':chart:',    alts: [],                title: 'Graphique' },
+  // Le smiley triste animé, retrouvé avec ceux du stand Miniwave — mais qui
+  // ne s'y vendait pas : il est à tout le monde.
+  { file: 'smiley_sad.gif', code: ':sad:',     alts: [],                title: 'Tout triste' },
 ];
+
+// Les smileys ANIMÉS du stand Miniwave ($smiley_love / _laugh / _twirl, les
+// articles 10 à 12 de Shop.as, achetés en crédits du jeu). Tout le monde les
+// VOIT dans les messages (sinon un post en serait troué) ; seuls les joueurs
+// qui les ont achetés au stand les ont dans leur rangée — la liste arrive
+// avec /api/forum/me (mySmileys). Même table côté serveur :
+// MINIWAVE_FORUM_SMILEYS.
+var MINIWAVE_EMOTICONS = [
+  { file: 'smiley_aux_anges.gif', code: ':auxanges:', title: 'Aux anges (stand Miniwave)' },
+  { file: 'smiley_extasie.gif',   code: ':extasie:',  title: 'Extasié (stand Miniwave)' },
+  { file: 'smiley_ravi.gif',      code: ':ravi:',     title: 'Ravi (stand Miniwave)' },
+];
+var mySmileys = [];   // codes débloqués pour CE joueur, remplis par init()
 
 function emoticonsRowHtml(targetId) {
   var html = '<div class="emoticons-row">';
@@ -3254,6 +3273,15 @@ function emoticonsRowHtml(targetId) {
       + ' (' + escapeHtml(e.code) + ')" '
       + 'onclick="bbInsertText(\'' + targetId + '\',\' ' + escapeHtml(e.code) + ' \')">'
       + '<img class="emo-img" src="/fb/' + e.file + '" alt="' + escapeHtml(e.code) + '"></button>';
+  }
+  // La rangée s'allonge des smileys du stand débloqués par le joueur.
+  for (var k = 0; k < MINIWAVE_EMOTICONS.length; k++) {
+    var s = MINIWAVE_EMOTICONS[k];
+    if (mySmileys.indexOf(s.code) < 0) continue;
+    html += '<button type="button" class="emo-btn" title="' + escapeHtml(s.title)
+      + ' (' + escapeHtml(s.code) + ')" '
+      + 'onclick="bbInsertText(\'' + targetId + '\',\' ' + escapeHtml(s.code) + ' \')">'
+      + '<img class="emo-img" src="/fb/' + s.file + '" alt="' + escapeHtml(s.code) + '"></button>';
   }
   html += '</div>';
   return html;
@@ -3272,6 +3300,11 @@ function _buildEmoSubs() {
     for (var j = 0; j < (e.alts || []).length; j++) {
       entries.push({ code: e.alts[j], file: e.file });
     }
+  }
+  // Les smileys du stand Miniwave se rendent pour TOUT LE MONDE : un message
+  // posté par un acheteur doit se lire pareil chez les autres.
+  for (var k = 0; k < MINIWAVE_EMOTICONS.length; k++) {
+    entries.push({ code: MINIWAVE_EMOTICONS[k].code, file: MINIWAVE_EMOTICONS[k].file });
   }
   entries.sort(function(a, b) { return b.code.length - a.code.length; });
   return entries;
@@ -4050,6 +4083,9 @@ async function init() {
       currentUser = data.user;
       myBouille = data.bouille || null;
       mySignature = data.signature || '';
+      // Les smileys du stand Miniwave débloqués par CE joueur : leur code
+      // rejoint la rangée de l'éditeur (le rendu, lui, connaît tout le monde).
+      mySmileys = (data.smileys || []).map(function (s) { return s.code; });
       myAccessories = data.accessories || [];
       myDefaultAccessories = data.defaultAccessories || [];
       myDefaultAccessory = data.defaultAccessory || '';
