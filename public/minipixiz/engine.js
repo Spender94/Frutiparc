@@ -362,6 +362,8 @@ class Oeil extends Element {
     this.et = E.OEIL;
     if (this.color === undefined) this.color = 0;
     this.lumiere = 0;               // Eye.light — la charge, dite par la pupille
+    // Sa date de naissance : la pupille bat depuis là (chaque œil sa phase).
+    this.ne = (jeu && jeu.horloge) || 0;
   }
 
   // Eye.blast : un seul souffle l'emporte — explode() puis kill().

@@ -80,6 +80,20 @@ const TS = E.TS;
  * seconde) est simplement PERDUE — le jeu ne rattrape jamais son retard.
  */
 const IPS = 32;                       // Timer.wantedFPS
+// LE PASSAGE D'UN NIVEAU À L'AUTRE, en forêt. Le jeu d'origine faisait
+// s'envoler la fée (Aventure.initStep(2)), effaçait le plateau d'un coup,
+// ouvrait au besoin le panneau d'expérience, puis la gerbe du niveau suivant.
+// On garde tout cela, adouci d'un voile ANTHRACITE : le plateau s'y fond
+// pendant l'envol, le choix et le numéro en sortent, puis le voile se lève
+// sur le nouveau niveau. Durées en images du jeu (1/32 s).
+const ANTHRACITE = '#2b2e33';
+const VOILE_DEBUT = 8;                 // l'envol a commencé quand le voile tombe…
+const VOILE_MONTEE = 24;               // …et le voici opaque
+const VOILE_TENUE = 6;                 // un temps au noir avant la suite
+const VOILE_LEVEE = 14;                // il se lève sur le nouveau plateau
+const FONDU_PANNEAU = 16;              // le choix de niveau apparaît…
+const FONDU_PANNEAU_SORTIE = 12;       // …et s'efface après le clic
+const FONDU_NUMERO = 16;               // la gerbe et son numéro sortent du noir
 const TMOD_LISSAGE = 0.95;            // Timer.tmod_factor
 const TMOD_SAUT = 0.5;                // Timer.maxDeltaTime, en secondes
 
@@ -1589,6 +1603,13 @@ class Client {
         // Le bouquet d'abord : le plateau attend que la gerbe se referme
         // (Aventure.initStep(1) ne lance le jeu qu'après).
         this.reste = 0;
+      } else if (this.transition && this.transition.phase === 'envol' && this.champ) {
+        // Aventure.update, étape 2 : la partie est finie, mais la fée — et
+        // tout ce qui vole — continue de bouger jusqu'à sortir par le haut.
+        pas = this.avancerDe(this.champ, this.reste); this.reste = 0;
+      } else if (this.transition) {
+        // Au noir, puis pendant que le voile se lève : rien ne tombe encore.
+        this.reste = 0;
       } else if (mode) {
         pas = this.avancerDe(mode, this.reste); this.reste = 0;
       } else if (this.jeu) {
@@ -1616,6 +1637,7 @@ class Client {
   }
 
   dessiner(tmod) {
+    this.majTransition(tmod);
     this.dessinerScene(tmod);
     this.dessinerPause(this.ctx, tmod);
     if (this.iris && !this.iris.dessiner(this.ctx, tmod)) this.iris = null;
@@ -1628,7 +1650,7 @@ class Client {
     const s = this.sprites;
     if (this.gromelin) { this.dessinerGromelin(ctx, tmod); return; }
     if (this.ornegon) { this.dessinerOrnegon(ctx); return; }
-    if (this.evolution) { this.dessinerEvolution(ctx); return; }
+    if (this.evolution) { this.dessinerEvolution(ctx, tmod); return; }
     if (this.nouvelle) { this.dessinerNouvelle(ctx); return; }
     if (this.carteForet) { this.dessinerCarteForet(ctx, tmod); return; }
     if (this.bassin) { this.dessinerBassin(ctx, tmod); this.dessinerCine(ctx, tmod); return; }
@@ -1669,11 +1691,67 @@ class Client {
     //    après le reste.
     this.dessinerNuitNoire(ctx);
 
-    // 5. La bulle de la fée, le bouquet d'ouverture, et s'il faut mourir, le
-    //    rideau par-dessus tout.
+    // 5. La bulle de la fée, le voile du passage de niveau, le bouquet
+    //    d'ouverture par-dessus, et s'il faut mourir, le rideau sur tout.
     this.dessinerDialogue(ctx, tmod);
+    this.dessinerVoile(ctx);
     this.dessinerOuverture(ctx, tmod);
     this.dessinerCine(ctx, tmod);
+  }
+
+  /**
+   * Aventure.initStep(2) — le niveau est gagné : la fée file vers le haut de
+   * l'écran (trg = milieu, −30 ; flForceWay, plus d'esquive), pendant que le
+   * plateau se fond dans l'anthracite. Au noir complet, `apres` prend la
+   * suite : le panneau d'expérience, ou directement le niveau suivant.
+   */
+  commencerEnvol(apres) {
+    const f = this.champ && this.champ.faerieList && this.champ.faerieList[0];
+    if (f && !f.flDeath && this.jeu) {
+      f.flForceWay = true;
+      f.trg = { x: this.jeu.largeur * 0.5, y: -30 };
+    }
+    this.transition = { phase: 'envol', t: 0, voile: 0, fee: f || null, apres: apres || null };
+  }
+
+  majTransition(tmod) {
+    const tr = this.transition;
+    if (!tr) return;
+    // Un autre écran a pris la main (partie perdue, lieu, bassin, nouvelle) :
+    // le passage n'a plus lieu d'être.
+    if (this.lieu || this.bassin || this.cine || this.nouvelle) { this.transition = null; return; }
+    tr.t += tmod;
+    if (tr.phase === 'envol') {
+      if (tr.t > VOILE_DEBUT) tr.voile = Math.min(1, tr.voile + tmod / VOILE_MONTEE);
+      // Aventure.update : au moins vingt images, et la fée sortie (y < −10)
+      // — ou tombée. Une fée coincée ne retient pas la suite plus de trois
+      // secondes et demie.
+      const f = tr.fee;
+      const partie = !f || f.flDeath || f.y < -10;
+      if ((tr.t >= 20 && partie && tr.voile >= 1) || tr.t > 110) {
+        tr.phase = 'noir'; tr.voile = 1; tr.t = 0;
+      }
+    } else if (tr.phase === 'noir') {
+      if (tr.apres && tr.t >= VOILE_TENUE) { const suite = tr.apres; tr.apres = null; suite(); }
+    } else if (tr.phase === 'levee') {
+      tr.voile = Math.max(0, tr.voile - tmod / VOILE_LEVEE);
+      if (tr.voile <= 0 && !this.ouverture) this.transition = null;
+    }
+  }
+
+  dessinerVoile(ctx) {
+    const tr = this.transition;
+    if (!tr || tr.voile <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, tr.voile);
+    ctx.fillStyle = ANTHRACITE;
+    ctx.fillRect(0, 0, SCENE, SCENE);
+    ctx.restore();
+    // Pendant l'envol, la fée passe DEVANT le voile : on la voit monter et
+    // quitter l'écran pendant que le plateau s'éteint derrière elle.
+    if (tr.phase === 'envol' && tr.fee && !tr.fee.flDeath && this.jeu) {
+      this.dessinerCreature(ctx, tr.fee);
+    }
   }
 
   /**
@@ -2257,7 +2335,8 @@ class Client {
   ouvrirEvolution(o) {
     this.cine = null;
     this.ouverture = null;
-    this.evolution = Object.assign({ survole: null }, o || {});
+    // Le panneau sort du noir en fondu, et s'y efface après le choix.
+    this.evolution = Object.assign({ survole: null, alpha: 0, sortie: false, choix: null }, o || {});
   }
 
   // initExpSlot : `mc._x = (i*2-1) × 46`, `mc._y = 15`, dans un panneau centré.
@@ -2276,17 +2355,45 @@ class Client {
       if (Math.abs(x - c.x) > 30 || Math.abs(y - c.y) > 30) continue;
       // Un choix impossible (pas de sort à apprendre) ne compte pas.
       if (c.i === 1 && (e.fi.fs.$next[1] === null || e.fi.fs.$next[1] === undefined)) return;
-      this.evolution = null;
-      if (e.surChoix) e.surChoix(c.i);
+      // Pas de choix pendant les fondus : le panneau n'est pas encore là, ou
+      // il s'en va déjà.
+      if (e.sortie || e.alpha < 1) return;
+      // Le choix est pris ; le panneau s'efface, PUIS la suite se joue (voir
+      // dessinerEvolution).
+      e.sortie = true;
+      e.choix = c.i;
       return;
     }
   }
 
-  dessinerEvolution(ctx) {
+  dessinerEvolution(ctx, tmod) {
     const s = this.sprites, e = this.evolution;
     const fi = e.fi;
-    ctx.fillStyle = 'rgba(12,20,10,.55)';
+    // Les fondus : entrée depuis le noir, sortie vers lui après le clic —
+    // et c'est seulement une fois effacé que le choix s'applique.
+    tmod = tmod || 1;
+    if (e.sortie) {
+      e.alpha = Math.max(0, e.alpha - tmod / FONDU_PANNEAU_SORTIE);
+      if (e.alpha <= 0) {
+        this.evolution = null;
+        if (e.surChoix) e.surChoix(e.choix);
+        if (this.transition) { ctx.fillStyle = ANTHRACITE; ctx.fillRect(0, 0, SCENE, SCENE); }
+        return;
+      }
+    } else if (e.alpha < 1) {
+      e.alpha = Math.min(1, e.alpha + tmod / FONDU_PANNEAU);
+    }
+    // Sur le voile anthracite du passage de niveau ; ailleurs (donjon), le
+    // voile sombre d'avant.
+    ctx.fillStyle = this.transition ? ANTHRACITE : 'rgba(12,20,10,.55)';
     ctx.fillRect(0, 0, SCENE, SCENE);
+    ctx.save();
+    ctx.globalAlpha = e.alpha;
+    this.dessinerPanneauEvolution(ctx, s, e, fi);
+    ctx.restore();
+  }
+
+  dessinerPanneauEvolution(ctx, s, e, fi) {
     if (s.expPanneau) {
       const r = rendre(s.expPanneau, 1, 100);
       poserRendu(ctx, r, SCENE * 0.5, SCENE * 0.5);
@@ -2415,7 +2522,10 @@ class Client {
    * tombent. Pendant ce temps, rien ne bouge — le plateau attend.
    */
   commencerOuverture(numero) {
-    this.ouverture = { sc: 1, vit: 0, trg: 100, tenue: 40, numero };
+    this.ouverture = { sc: 1, vit: 0, trg: 100, tenue: 40, numero, alpha: 1 };
+    // Sorti du voile anthracite : la gerbe et son numéro apparaissent en
+    // fondu, puis le voile se lève quand elle se referme.
+    if (this.transition) { this.transition.phase = 'bouquet'; this.ouverture.alpha = 0; }
   }
 
   dessinerOuverture(ctx, tmod) {
@@ -2425,9 +2535,14 @@ class Client {
     o.vit += Math.max(-10, Math.min(ds * 0.1, 10)) * tmod;
     o.vit *= Math.pow(0.75, tmod);
     o.sc += o.vit * tmod;
+    if (o.alpha < 1) o.alpha = Math.min(1, o.alpha + tmod / FONDU_NUMERO);
     if (o.trg === 100) {
       o.tenue -= tmod;
-      if (o.tenue < 0) o.trg = 0;
+      if (o.tenue < 0) {
+        o.trg = 0;
+        // La gerbe se referme : le voile commence à se lever sur le plateau.
+        if (this.transition && this.transition.phase === 'bouquet') this.transition.phase = 'levee';
+      }
     } else if (o.sc < 1) {
       this.ouverture = null;
       return;
@@ -2437,17 +2552,20 @@ class Client {
     const cy = jeu ? jeu.hauteur * 0.5 : SCENE / 2;
     const k = Math.max(0.01, o.sc / 100);
     ctx.save();
+    ctx.globalAlpha = o.alpha;
     ctx.translate(cx, cy);
     ctx.scale(k, k);
     if (this.sprites.bouquet) {
       poserRendu(ctx, rendre(this.sprites.bouquet, 1, 100), 0, 0);
     }
-    // panel.field : le numéro du niveau, en gros, au cœur de la gerbe.
-    ctx.font = 'bold 74px "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
+    // panel.field : le numéro du niveau, en gros, au cœur de la gerbe — le
+    // champ #166 du SWF, Atlantis 90 px, violet #88549E, centré dans sa boîte
+    // de 124 × 94 (−59, −33.5).
+    ctx.font = '90px Atlantis, "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
+    ctx.textBaseline = 'middle';
     ctx.fillStyle = 'rgb(136,84,158)';
-    ctx.fillText(String(o.numero), 1, 28);
+    ctx.fillText(String(o.numero), 1.15, 13.3);
     ctx.textBaseline = 'top';
     ctx.restore();
   }
@@ -3099,7 +3217,16 @@ class Client {
         // Eye.updateLight : 20 + light×40 pour cent.
         const teinte = E.COULEURS[e.color] || E.COULEURS[0];
         const etat = s.eye && (s.eye.etats.find((q) => q.frame === 1) || s.eye.etats[0]);
-        const pupille = etat && etat.pieces.find((p) => p.nom === 'center');
+        // LA PUPILLE BAT. Dans le SWF, le clip `center` a deux images — la
+        // grande pupille (shape758), la petite (shape972) — et pas de stop() :
+        // il les alterne à chaque image du lecteur (40 par seconde), par-dessus
+        // la charge. On la choisit à l'horloge du jeu (en 1/32 s), ramenée aux
+        // 40 images par seconde du SWF, depuis la naissance de l'œil.
+        const nP = s.eye ? s.eye.etats.length : 1;
+        const tP = Math.floor((((this.jeu && this.jeu.horloge) || 0) - (e.ne || 0)) * 40 / 32);
+        const fP = 1 + ((tP % nP) + nP) % nP;
+        const etatP = (s.eye && s.eye.etats.find((q) => q.frame === fP)) || etat;
+        const pupille = etatP && etatP.pieces.find((p) => p.nom === 'center');
         if (etat && pupille) {
           poserRendu(ctx, rendre(s.eye, 1, TS, undefined, { col: teinte }, '<center'), x, y);
           const img = images.get(pupille.fichier);

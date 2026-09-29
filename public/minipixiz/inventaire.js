@@ -174,15 +174,30 @@ class Inventaire {
     // Le coin de sortie s'allume au survol (mcButQuit image 2). L'écran ne se
     // redessine que quand l'état change — pas à chaque mouvement.
     this.surLeCoin = false;
+    // La pastille de niveau a son INFOBULLE (Mc.makeHint : « niveau 3
+    // (42.3%) »), et le portrait dit les goûts de la fée au survol
+    // (Inventory.setFaerieFace : trgMsg sur facePanel.pic).
+    this.surPastille = false;
+    this.surPortrait = false;
+    this.souris = { x: 0, y: 0 };
     this.canvas.addEventListener('mousemove', (ev) => {
       const r = this.canvas.getBoundingClientRect();
       const x = (ev.clientX - r.left) / this.echelle;
       const y = (ev.clientY - r.top) / this.echelle;
+      this.souris = { x, y };
       const dessus = x > SCENE - 46 && y > SCENE - 46;
-      if (dessus !== this.surLeCoin) { this.surLeCoin = dessus; this.rendre(); }
+      const z = this.zoneSous(x, y);
+      const pastille = !!(z && z.pastille !== undefined);
+      const portrait = z === 'portrait' && !this.main && !(this.glisse && this.glisse.pris);
+      if (portrait && !this.surPortrait) this.montrerGouts();
+      this.surPortrait = portrait;
+      if (dessus !== this.surLeCoin || pastille || pastille !== this.surPastille) {
+        this.surLeCoin = dessus; this.surPastille = pastille; this.rendre();
+      }
     });
     this.canvas.addEventListener('mouseleave', () => {
-      if (this.surLeCoin) { this.surLeCoin = false; this.rendre(); }
+      this.surPortrait = false;
+      if (this.surLeCoin || this.surPastille) { this.surLeCoin = false; this.surPastille = false; this.rendre(); }
     });
     this.redimensionner();
     window.addEventListener('resize', () => { this.redimensionner(); this.rendre(); });
@@ -295,7 +310,7 @@ class Inventaire {
     // 6. Le bandeau de message, le cadre, la poubelle.
     poser('invMessage', this.titre ? 2 : 1, 100, 0, MSG_Y);
     if (this.message) {
-      this.texte(this.message, SCENE / 2, MSG_Y + (this.titre ? 26 : 22), '#2a2416', 9, 200);
+      this.texte(this.message, SCENE / 2, MSG_Y + (this.titre ? 25 : 22), '#2a2416', this.messageTaille || 9, 200);
       if (this.titre) this.texte(this.titre, SCENE / 2, MSG_Y + 10, '#6b3a1a', 10);
     }
     poser('invDevant', 1, 100, 0, 0);
@@ -317,6 +332,25 @@ class Inventaire {
         ctx.lineWidth = 2;
         ctx.strokeRect(r.x - 16, r.y - 16, 32, 32);
       }
+    }
+
+    // 7. L'infobulle de la pastille (mcHint : fond vert pâle à 80 %, Verdana
+    //    10 vert sombre), posée en haut à gauche de la souris et gardée dans
+    //    la scène, comme Hint.mt.
+    if (this.surPastille && fee && !(this.glisse && this.glisse.pris)) {
+      const t = this.libelleNiveau(fee);
+      ctx.save();
+      ctx.font = '10px Verdana, Arial, sans-serif';
+      const l = Math.ceil(ctx.measureText(t).width) + 8, h = 16;
+      const bx = Math.max(0, Math.min(SCENE - l, this.souris.x - l));
+      const by = Math.max(0, Math.min(SCENE - h, this.souris.y - h));
+      ctx.fillStyle = 'rgba(189,240,199,0.9)';
+      ctx.fillRect(bx, by, l, h);
+      ctx.fillStyle = 'rgb(18,78,24)';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(t, bx + 4, by + h / 2 + 0.5);
+      ctx.restore();
     }
 
     // 6. Le GLISSER : l'objet suit le doigt (inv/Hand.mt suivait la souris), sa
@@ -694,15 +728,20 @@ class Inventaire {
     if (fee) {
       pose('invBouton', 6, a.quit);
       pose('invNiveau', 1, a.level);
-      // Le niveau, dans sa pastille (facePanel.level.field) — et dessous, la
-      // progression vers le suivant, que le bureau ne disait qu'en infobulle :
-      // « niveau N (42.3%) ».
+      // Le niveau, dans sa pastille (facePanel.level.field) : la police et le
+      // bleu des lettres des caractéristiques. La progression vers le niveau
+      // suivant n'est PAS écrite dessous — elle débordait sur la première
+      // barre : comme au bureau, elle vit dans l'infobulle de la pastille
+      // (et un toucher la dit dans le bandeau).
       if (a.level) {
-        this.texte(String(nombre(fee.fs.$level) + 1), px + a.level.x, py + a.level.y - 5,
-          '#3a2a12', 10);
-        const prc = Math.min(99.9, Math.round((nombre(fee.fs.$exp) / fee.limiteExp()) * 1000) / 10);
-        this.texte(prc + ' %', px + a.level.x, py + a.level.y + 9, '#5a4a22', 7);
-        this.zoneRect({ pastille: 1 }, px + a.level.x - 10, py + a.level.y - 12, 20, 26);
+        ctx.save();
+        ctx.font = 'bold 12px ' + FONTE;
+        ctx.fillStyle = LETTRE_COULEUR;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(nombre(fee.fs.$level) + 1), px + a.level.x, py + a.level.y + 0.5);
+        ctx.restore();
+        this.zoneRect({ pastille: 1 }, px + a.level.x - 10, py + a.level.y - 10, 20, 20);
       }
     }
 
@@ -733,15 +772,16 @@ class Inventaire {
     ctx.textBaseline = 'top';
     ctx.fillStyle = couleur;
     if (largeurMax && ctx.measureText(t).width > largeurMax) {
-      // Le bandeau du jeu tient sur deux lignes : on coupe au dernier espace.
-      const mots = t.split(' ');
-      let l1 = '', l2 = '';
-      for (const m of mots) {
-        if (ctx.measureText(l1 + ' ' + m).width < largeurMax && !l2) l1 += (l1 ? ' ' : '') + m;
-        else l2 += (l2 ? ' ' : '') + m;
+      // Le bandeau coupe au dernier espace qui tient — sur autant de lignes
+      // qu'il faut (il n'en prenait que deux, et la seconde débordait).
+      const lignes = [];
+      let l = '';
+      for (const m of t.split(' ')) {
+        const essai = l ? l + ' ' + m : m;
+        if (l && ctx.measureText(essai).width > largeurMax) { lignes.push(l); l = m; } else l = essai;
       }
-      ctx.fillText(l1, x, y);
-      ctx.fillText(l2, x, y + (taille || 10) + 2);
+      if (l) lignes.push(l);
+      lignes.forEach((li, i) => ctx.fillText(li, x, y + i * ((taille || 10) + 2)));
     } else {
       ctx.fillText(t, x, y);
     }
@@ -879,10 +919,7 @@ class Inventaire {
     // La pastille de niveau dit la progression, comme l'infobulle du bureau.
     if (quoi && quoi.pastille !== undefined) {
       const fee = this.fee();
-      if (fee) {
-        const prc = Math.min(99.9, Math.round((nombre(fee.fs.$exp) / fee.limiteExp()) * 1000) / 10);
-        this.dire('niveau ' + (nombre(fee.fs.$level) + 1) + ' (' + prc + ' %)');
-      }
+      if (fee) this.dire(this.libelleNiveau(fee));
       return;
     }
     if (quoi && quoi.fee !== undefined) {
@@ -1098,13 +1135,10 @@ class Inventaire {
     if (!fee) { this.dire('Aucune fée ne vous accompagne encore.'); return; }
     if (!this.main) {
       // setFaerieFace : la regarder, c'est apprendre ce qu'elle aime — le jeu
-      // met son nom en titre du bandeau et ses goûts en dessous. Et si elle
-      // n'est pas en état de suivre (isReadyForBattle), on le dit ICI d'abord :
-      // c'est la question que le joueur se pose en la voyant manquer en forêt.
-      const raison = fee.raisonDeRester ? fee.raisonDeRester() : null;
-      const g = fee.gouts();
-      this.dire(raison ? ('Elle ' + raison + '.')
-        : (g || 'Amenez un aliment ici pour la nourrir.'), fee.fs.$name);
+      // met son nom en titre du bandeau et ses goûts en dessous, et rien
+      // d'autre. (Son état — à bout de forces, sans moral — se lit dans le
+      // volet santé, et au départ pour la forêt.)
+      this.montrerGouts();
       return;
     }
     // Un aliment se donne en TROIS parts (it.taille). Reposer la main entre
@@ -1193,10 +1227,30 @@ class Inventaire {
         + ' qu\'elle aime le fait remonter.'), fs.$name);
   }
 
-  dire(message, titre) {
+  dire(message, titre, taille) {
     this.message = message || '';
     this.titre = titre || '';
+    this.messageTaille = taille || 0;
     this.rendre();
+  }
+
+  // « niveau 3 (42.3 %) » — Inventory.mt:384, la progression vers le suivant.
+  libelleNiveau(fee) {
+    const prc = Math.min(99.9, Math.round((nombre(fee.fs.$exp) / fee.limiteExp()) * 1000) / 10);
+    return 'niveau ' + (nombre(fee.fs.$level) + 1) + ' (' + prc + ' %)';
+  }
+
+  // Ce qu'elle aime, ce qu'elle déteste : en clair et en petit, au survol du
+  // portrait comme au toucher.
+  montrerGouts() {
+    const fee = this.fee();
+    if (!fee) return;
+    const g = fee.goutsCourts ? fee.goutsCourts() : null;
+    const t = g
+      ? ('Aime : ' + (g.aime.length ? g.aime.join(', ') : 'rien de spécial')
+        + '  ·  Déteste : ' + (g.deteste.length ? g.deteste.join(', ') : 'rien'))
+      : (fee.gouts() || 'Amenez un aliment ici pour la nourrir.');
+    this.dire(t, fee.fs.$name, 8);
   }
 
   changer() {

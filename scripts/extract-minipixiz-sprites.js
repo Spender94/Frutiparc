@@ -80,7 +80,11 @@ const CIBLES = [
   { cle: 'imp', symbole: 'imp', etiquette: 'Impy' },
   // L'œil : la boule teintée (`col`) et sa pupille (`center`), que le jeu fait
   // grossir à mesure que l'œil se charge (Eye.updateLight : 20 + light×40 %).
-  { cle: 'eye', symbole: 'eye', etiquette: 'Œil' },
+  // La pupille `center` a DEUX images (shape758, la grande ; shape972, la
+  // petite) et pas de stop() : elle bat à la cadence du SWF. `synchro` envoie
+  // l'enfant à l'image du parent — sans lui, les deux images de l'œil
+  // retombaient sur la première pupille, et l'œil restait figé.
+  { cle: 'eye', symbole: 'eye', etiquette: 'Œil', synchro: true },
 
   // ── Le cadre du jeu ──
   // interfaceRacine porte les trois morceaux du cadre de la forêt : les racines

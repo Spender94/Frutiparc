@@ -611,7 +611,10 @@
                 if (!nx || nx[1] === null || nx[1] === undefined) {
                   mfXp.fi.preparerProchainNiveau(sortAApprendre);
                 }
-                setTimeout(function () {
+                // La fée s'envole et le plateau se fond dans l'anthracite ; au
+                // noir complet, le panneau de choix en sort (Aventure.initStep
+                // 2 puis 3).
+                client.commencerEnvol(function () {
                   client.ouvrirEvolution({
                     fi: mfXp.fi,
                     surChoix: function (choix) {
@@ -623,15 +626,18 @@
                             : 'elle apprend un sort !'));
                       }
                       plateforme.ecrire(plateforme.carte);
-                      setTimeout(lancerNiveau, 300);
+                      // Le panneau s'est effacé dans le noir : le numéro du
+                      // niveau suivant en sort.
+                      lancerNiveau();
                     },
                   });
-                }, 900);
+                });
                 return;
               }
-              // La course continue : la fée monte, le niveau suivant s'ouvre.
-              // Pas d'écran entre les deux — le jeu enchaîne sur son bouquet.
-              setTimeout(lancerNiveau, 900);
+              // La course continue : la fée s'envole, le plateau se fond dans
+              // l'anthracite, puis le numéro du niveau suivant en sort — le
+              // bouquet du jeu, et le voile se lève sur le nouveau plateau.
+              client.commencerEnvol(lancerNiveau);
               return;
             }
             // Relais atteint : base/Forest.endGame ferme la partie ici. Un
@@ -1230,6 +1236,7 @@
       window.__ajouterCourrier = ajouterCourrier;
       window.__feeCouranteSeed = feeCouranteSeed;
       window.__ouvrirSac = ouvrirSac;
+      window.__entrerEnForet = function () { fermerMenu(); ouvrirCarte(); };
     })
     .catch(function (e) {
       $('#chargement').innerHTML = '<div>Chargement impossible</div><div style="font-size:11px">'

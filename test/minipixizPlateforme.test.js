@@ -531,7 +531,10 @@ test('la page enchaîne les niveaux et n\'enregistre qu\'à la fin de la course'
   assert.match(html, /plateforme\.charger\(\)/, 'la fiche est lue au démarrage');
   // Une course est une SUITE : gagner enchaîne, perdre enregistre.
   assert.match(html, /if \(info\.gagne\)/, 'un niveau gagné enchaîne');
-  assert.match(html, /setTimeout\(lancerNiveau/, 'sur le suivant');
+  // …sur le suivant, APRÈS l'envol de la fée et le fondu anthracite.
+  assert.match(html, /client\.commencerEnvol\(lancerNiveau\);/, 'sur le suivant, après l\'envol');
+  assert.match(html, /client\.commencerEnvol\(function \(\) \{\s*\n\s*client\.ouvrirEvolution\(\{/,
+    'et le panneau de choix sort du même noir');
   assert.match(html, /plateforme\.enregistrer\(\{\s*niveaux: course\.niveaux/,
     'et seule la fin de course enregistre');
   assert.match(html, /course\.objets\.push\(info\.type\)/, 'les objets sont collectés en route');

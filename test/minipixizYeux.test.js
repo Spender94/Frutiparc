@@ -203,6 +203,19 @@ test('le clip de l\'œil est dans le manifeste, avec sa boule et sa pupille', ()
   const noms = etat.pieces.map((p) => p.nom);
   assert.ok(noms.includes('col'), 'la boule à teinter');
   assert.ok(noms.includes('center'), 'et la pupille');
+  // La pupille BAT : deux images différentes (Eye.mt n'a pas de stop() ; le
+  // clip `center` alterne shape758 et shape972 à chaque image du SWF).
+  const p1 = etat.pieces.find((p) => p.nom === 'center');
+  const e2 = m.eye.etats.find((q) => q.frame === 2);
+  const p2 = e2 && e2.pieces.find((p) => p.nom === 'center');
+  assert.ok(p2, 'une seconde image de pupille');
+  assert.strictEqual(p1.fichier, 'shape758.svg');
+  assert.strictEqual(p2.fichier, 'shape972.svg');
+  assert.ok(fs.existsSync(path.join(ROOT, 'public/minipixiz/sprites/shape972.svg')), 'la petite pupille est extraite');
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(client, /\* 40 \/ 32\);\s*\n\s*const fP = 1 \+ \(\(tP % nP\) \+ nP\) % nP;/, 'l\'image de la pupille suit l\'horloge');
+  assert.match(fs.readFileSync(path.join(ROOT, 'public/minipixiz/engine.js'), 'utf8'),
+    /this\.lumiere = 0;[^\n]*\n[^\n]*\n\s*this\.ne = \(jeu && jeu\.horloge\) \|\| 0;/, 'chaque œil a sa phase');
 });
 
 // ── Les couleurs du plateau ───────────────────────────────────────────────

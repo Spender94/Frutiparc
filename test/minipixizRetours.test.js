@@ -1149,8 +1149,25 @@ test('quand la fée reste au sac, le jeu DIT pourquoi', () => {
   // La tape suivante part quand même — on prévient, on n'interdit pas.
   assert.match(page, /menu\.dire\(resteAuSac\);\s*\n\s*return;/);
   assert.match(page, /raisonDite = resteAuSac;/);
+  // Le portrait, lui, ne dit plus que ses GOÛTS — comme setFaerieFace, qui
+  // n'y montrait jamais son état : « Aime : Glace, Brioche · Déteste :
+  // Pain », en petit. L'état reste dit au départ, et dans le volet santé.
   const inv = fs.readFileSync(path.join(ROOT, 'public/minipixiz/inventaire.js'), 'utf8');
-  assert.match(inv, /raisonDeRester \? fee\.raisonDeRester\(\) : null/);
+  assert.match(inv, /if \(!this\.main\) \{[\s\S]{0,400}this\.montrerGouts\(\);\s*\n\s*return;/);
+  assert.match(inv, /'Aime : ' \+ \(g\.aime\.length \? g\.aime\.join\(', '\) : 'rien de spécial'\)/);
+  assert.match(inv, /this\.dire\(t, fee\.fs\.\$name, 8\);/);
+  const gouts = new F.Fee(Object.assign(F.genererGraine(tirage(2)), { $taste: [[5, 9], [0]] }), tirage(2), carte).goutsCourts();
+  assert.deepStrictEqual(gouts, { aime: ['Glace', 'Brioche'], deteste: ['Pain'] });
+});
+
+test('la pastille de niveau : le bleu des caractéristiques, la progression en infobulle', () => {
+  // Inventory.mt:384 — Mc.makeHint(facePanel.level, « niveau N (P%) »). Le
+  // pourcentage écrit sous la pastille débordait sur la première barre.
+  const inv = fs.readFileSync(path.join(ROOT, 'public/minipixiz/inventaire.js'), 'utf8');
+  assert.match(inv, /ctx\.font = 'bold 12px ' \+ FONTE;\s*\n\s*ctx\.fillStyle = LETTRE_COULEUR;/);
+  assert.ok(!/this\.texte\(prc \+ ' %'/.test(inv), 'plus de pourcentage en vrac sous le niveau');
+  assert.match(inv, /if \(this\.surPastille && fee && !\(this\.glisse && this\.glisse\.pris\)\) \{/);
+  assert.match(inv, /return 'niveau ' \+ \(nombre\(fee\.fs\.\$level\) \+ 1\) \+ ' \(' \+ prc \+ ' %\)';/);
 });
 
 test('la clairière coupe ses phrases aux mots plutôt que de déborder', () => {
@@ -2029,4 +2046,30 @@ test('la remise à zéro de l\'horloge ne saute plus une image', () => {
   // Et `nouvellePartie` remet bien l'horloge — c'est voulu, c'est le saut qui
   // ne l'était pas.
   assert.match(src, /this\.dernier = 0;\n\s*this\.reste = 0;/);
+});
+
+test('passer d\'un niveau à l\'autre : envol de la fée, voile anthracite, choix et numéro en fondu', () => {
+  // Aventure.initStep(2) : la fée file vers le haut (flForceWay, trg = milieu,
+  // −30) — le portage la gelait avec le plateau et enchaînait sans transition.
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(client, /const ANTHRACITE = '#2b2e33';/);
+  assert.match(client, /f\.flForceWay = true;\s*\n\s*f\.trg = \{ x: this\.jeu\.largeur \* 0\.5, y: -30 \};/);
+  // La fée et tout ce qui vole continuent de bouger pendant l'envol.
+  assert.match(client, /this\.transition\.phase === 'envol' && this\.champ\) \{[\s\S]{0,300}this\.avancerDe\(this\.champ, this\.reste\)/);
+  // Au moins vingt images, la fée sortie (y < −10), le voile opaque — ou un
+  // plafond, pour qu'une fée coincée ne retienne pas la suite.
+  assert.match(client, /if \(\(tr\.t >= 20 && partie && tr\.voile >= 1\) \|\| tr\.t > 110\)/);
+  // Elle passe devant le voile pendant qu'elle monte.
+  assert.match(client, /if \(tr\.phase === 'envol' && tr\.fee && !tr\.fee\.flDeath && this\.jeu\) \{\s*\n\s*this\.dessinerCreature\(ctx, tr\.fee\);/);
+  // Le numéro : le bouquet sort du noir, en Atlantis 90 px violet (champ #166).
+  assert.match(client, /if \(this\.transition\) \{ this\.transition\.phase = 'bouquet'; this\.ouverture\.alpha = 0; \}/);
+  assert.match(client, /ctx\.font = '90px Atlantis, /);
+  // Le panneau de choix entre et sort en fondu, et le choix ne s'applique
+  // qu'une fois le panneau effacé.
+  assert.match(client, /if \(e\.sortie \|\| e\.alpha < 1\) return;/);
+  assert.match(client, /if \(e\.alpha <= 0\) \{\s*\n\s*this\.evolution = null;\s*\n\s*if \(e\.surChoix\) e\.surChoix\(e\.choix\);/);
+  // La page ne compte plus des millisecondes : elle attend le noir.
+  assert.ok(!/setTimeout\(lancerNiveau, 900\)/.test(page), 'plus de coupure sèche à 900 ms');
+  assert.match(page, /client\.commencerEnvol\(lancerNiveau\);/);
 });

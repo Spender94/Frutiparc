@@ -707,6 +707,18 @@ class Fee {
     return str.trim();
   }
 
+  // Les mêmes goûts, en deux listes de noms d'aliments (it.Food.NAME) : ce
+  // que la fiche affiche en clair — « Aime : Glace, Brioche · Déteste : Pain ».
+  goutsCourts() {
+    const O = (typeof module !== 'undefined' && module.exports)
+      ? require('./items.js') : racine.MinipixizObjets;
+    const nom = (n) => (O && O.ALIMENTS[n]) || '?';
+    return {
+      aime: ((this.fs.$taste && this.fs.$taste[0]) || []).map(nom),
+      deteste: ((this.fs.$taste && this.fs.$taste[1]) || []).map(nom),
+    };
+  }
+
   // Un résumé lisible, pour l'interface.
   etat() {
     return {
