@@ -80,20 +80,10 @@ const TS = E.TS;
  * seconde) est simplement PERDUE — le jeu ne rattrape jamais son retard.
  */
 const IPS = 32;                       // Timer.wantedFPS
-// LE PASSAGE D'UN NIVEAU À L'AUTRE, en forêt. Le jeu d'origine faisait
-// s'envoler la fée (Aventure.initStep(2)), effaçait le plateau d'un coup,
-// ouvrait au besoin le panneau d'expérience, puis la gerbe du niveau suivant.
-// On garde tout cela, adouci d'un voile ANTHRACITE : le plateau s'y fond
-// pendant l'envol, le choix et le numéro en sortent, puis le voile se lève
-// sur le nouveau niveau. Durées en images du jeu (1/32 s).
-const ANTHRACITE = '#2b2e33';
-const VOILE_DEBUT = 8;                 // l'envol a commencé quand le voile tombe…
-const VOILE_MONTEE = 24;               // …et le voici opaque
-const VOILE_TENUE = 6;                 // un temps au noir avant la suite
-const VOILE_LEVEE = 14;                // il se lève sur le nouveau plateau
-const FONDU_PANNEAU = 16;              // le choix de niveau apparaît…
-const FONDU_PANNEAU_SORTIE = 12;       // …et s'efface après le clic
-const FONDU_NUMERO = 16;               // la gerbe et son numéro sortent du noir
+// Le panneau d'expérience (Aventure.setPanel) et la gerbe s'ouvrent sur le
+// même ressort : vit += clamp(écart × 0,1, ±10), frottement 0,75. Le panneau
+// se pose à 80 % (panel.trg = 80), et se referme à zéro avant de disparaître.
+const PANNEAU_EXP_ECHELLE = 80;
 const TMOD_LISSAGE = 0.95;            // Timer.tmod_factor
 const TMOD_SAUT = 0.5;                // Timer.maxDeltaTime, en secondes
 
@@ -1074,8 +1064,8 @@ class Client {
     // niveau : le nom passe dans `fieldName`, et une bulle donne la description.
     this.canvas.addEventListener('mousemove', () => {
       if (!this.evolution || !this.pointeur) return;
-      const c = this.casesEvolution().find((q) => Math.abs(this.pointeur.x - q.x) <= 30
-        && Math.abs(this.pointeur.y - q.y) <= 30);
+      const c = this.casesEvolutionEcran().find((q) => Math.abs(this.pointeur.x - q.x) <= q.r
+        && Math.abs(this.pointeur.y - q.y) <= q.r);
       this.evolution.survole = c ? c.i : null;
     });
     this.canvas.addEventListener('mouseleave', () => { this.pointeur = null; });
@@ -1607,9 +1597,6 @@ class Client {
         // Aventure.update, étape 2 : la partie est finie, mais la fée — et
         // tout ce qui vole — continue de bouger jusqu'à sortir par le haut.
         pas = this.avancerDe(this.champ, this.reste); this.reste = 0;
-      } else if (this.transition) {
-        // Au noir, puis pendant que le voile se lève : rien ne tombe encore.
-        this.reste = 0;
       } else if (mode) {
         pas = this.avancerDe(mode, this.reste); this.reste = 0;
       } else if (this.jeu) {
@@ -1691,19 +1678,20 @@ class Client {
     //    après le reste.
     this.dessinerNuitNoire(ctx);
 
-    // 5. La bulle de la fée, le voile du passage de niveau, le bouquet
-    //    d'ouverture par-dessus, et s'il faut mourir, le rideau sur tout.
+    // 5. La bulle de la fée, le bouquet d'ouverture, et s'il faut mourir, le
+    //    rideau par-dessus tout.
     this.dessinerDialogue(ctx, tmod);
-    this.dessinerVoile(ctx);
     this.dessinerOuverture(ctx, tmod);
     this.dessinerCine(ctx, tmod);
   }
 
   /**
    * Aventure.initStep(2) — le niveau est gagné : la fée file vers le haut de
-   * l'écran (trg = milieu, −30 ; flForceWay, plus d'esquive), pendant que le
-   * plateau se fond dans l'anthracite. Au noir complet, `apres` prend la
-   * suite : le panneau d'expérience, ou directement le niveau suivant.
+   * l'écran (trg = milieu, −30 ; flForceWay, plus d'esquive), par-dessus le
+   * plateau qui reste tel quel. Aventure.update, étape 2 : au bout d'au moins
+   * vingt images, et une fois la fée sortie (y < −10) ou tombée, `endGame`
+   * — ici `apres` : le panneau d'expérience sur le cadre vide, ou
+   * directement le niveau suivant et sa gerbe.
    */
   commencerEnvol(apres) {
     const f = this.champ && this.champ.faerieList && this.champ.faerieList[0];
@@ -1711,48 +1699,25 @@ class Client {
       f.flForceWay = true;
       f.trg = { x: this.jeu.largeur * 0.5, y: -30 };
     }
-    this.transition = { phase: 'envol', t: 0, voile: 0, fee: f || null, apres: apres || null };
+    this.transition = { phase: 'envol', t: 0, fee: f || null, apres: apres || null };
   }
 
   majTransition(tmod) {
     const tr = this.transition;
     if (!tr) return;
     // Un autre écran a pris la main (partie perdue, lieu, bassin, nouvelle) :
-    // le passage n'a plus lieu d'être.
+    // l'envol n'a plus lieu d'être.
     if (this.lieu || this.bassin || this.cine || this.nouvelle) { this.transition = null; return; }
     tr.t += tmod;
-    if (tr.phase === 'envol') {
-      if (tr.t > VOILE_DEBUT) tr.voile = Math.min(1, tr.voile + tmod / VOILE_MONTEE);
-      // Aventure.update : au moins vingt images, et la fée sortie (y < −10)
-      // — ou tombée. Une fée coincée ne retient pas la suite plus de trois
-      // secondes et demie.
-      const f = tr.fee;
-      const partie = !f || f.flDeath || f.y < -10;
-      if ((tr.t >= 20 && partie && tr.voile >= 1) || tr.t > 110) {
-        tr.phase = 'noir'; tr.voile = 1; tr.t = 0;
-      }
-    } else if (tr.phase === 'noir') {
-      if (tr.apres && tr.t >= VOILE_TENUE) { const suite = tr.apres; tr.apres = null; suite(); }
-    } else if (tr.phase === 'levee') {
-      tr.voile = Math.max(0, tr.voile - tmod / VOILE_LEVEE);
-      if (tr.voile <= 0 && !this.ouverture) this.transition = null;
+    const f = tr.fee;
+    const partie = !f || f.flDeath || f.y < -10;
+    // Une fée coincée ne retient pas la suite plus de trois secondes et demie.
+    if ((tr.t >= 20 && partie) || tr.t > 110) {
+      this.transition = null;
+      if (tr.apres) tr.apres();
     }
   }
 
-  dessinerVoile(ctx) {
-    const tr = this.transition;
-    if (!tr || tr.voile <= 0) return;
-    ctx.save();
-    ctx.globalAlpha = Math.min(1, tr.voile);
-    ctx.fillStyle = ANTHRACITE;
-    ctx.fillRect(0, 0, SCENE, SCENE);
-    ctx.restore();
-    // Pendant l'envol, la fée passe DEVANT le voile : on la voit monter et
-    // quitter l'écran pendant que le plateau s'éteint derrière elle.
-    if (tr.phase === 'envol' && tr.fee && !tr.fee.flDeath && this.jeu) {
-      this.dessinerCreature(ctx, tr.fee);
-    }
-  }
 
   /**
    * Frog.mt — chez ORNEGON. La grenouille demande à la fée ses sorts préférés :
@@ -2335,8 +2300,23 @@ class Client {
   ouvrirEvolution(o) {
     this.cine = null;
     this.ouverture = null;
-    // Le panneau sort du noir en fondu, et s'y efface après le choix.
-    this.evolution = Object.assign({ survole: null, alpha: 0, sortie: false, choix: null }, o || {});
+    // Aventure.setPanel : le panneau jaillit sur le ressort de la gerbe
+    // jusqu'à 80 %, et se refermera à zéro après le choix.
+    this.evolution = Object.assign({ survole: null, sc: 0, vit: 0, trg: PANNEAU_EXP_ECHELLE,
+      sortie: false, choix: null }, o || {});
+  }
+
+  // Les cases à l'ÉCRAN : le panneau est dessiné à son échelle du moment
+  // (80 % au repos), autour du centre de la scène.
+  casesEvolutionEcran() {
+    const e = this.evolution;
+    const k = Math.max(0, ((e && e.sc) || 0) / 100);
+    return this.casesEvolution().map((c) => ({
+      i: c.i,
+      x: SCENE * 0.5 + (c.x - SCENE * 0.5) * k,
+      y: SCENE * 0.5 + (c.y - SCENE * 0.5) * k,
+      r: 30 * k,
+    }));
   }
 
   // initExpSlot : `mc._x = (i*2-1) × 46`, `mc._y = 15`, dans un panneau centré.
@@ -2351,16 +2331,16 @@ class Client {
   clicEvolution(x, y) {
     const e = this.evolution;
     if (!e) return;
-    for (const c of this.casesEvolution()) {
-      if (Math.abs(x - c.x) > 30 || Math.abs(y - c.y) > 30) continue;
+    for (const c of this.casesEvolutionEcran()) {
+      if (Math.abs(x - c.x) > c.r || Math.abs(y - c.y) > c.r) continue;
       // Un choix impossible (pas de sort à apprendre) ne compte pas.
       if (c.i === 1 && (e.fi.fs.$next[1] === null || e.fi.fs.$next[1] === undefined)) return;
-      // Pas de choix pendant les fondus : le panneau n'est pas encore là, ou
-      // il s'en va déjà.
-      if (e.sortie || e.alpha < 1) return;
-      // Le choix est pris ; le panneau s'efface, PUIS la suite se joue (voir
-      // dessinerEvolution).
+      if (e.sortie) return;
+      // initExpSlot.onPress : `fi.levelUp(i)` puis `panel.trg = 0` — le
+      // panneau se referme, et la suite ne se joue qu'une fois refermé
+      // (movePanel : `_xscale < 0` → removeMovieClip → tryToCloseGame).
       e.sortie = true;
+      e.trg = 0;
       e.choix = c.i;
       return;
     }
@@ -2369,26 +2349,32 @@ class Client {
   dessinerEvolution(ctx, tmod) {
     const s = this.sprites, e = this.evolution;
     const fi = e.fi;
-    // Les fondus : entrée depuis le noir, sortie vers lui après le clic —
-    // et c'est seulement une fois effacé que le choix s'applique.
+    // Aventure.movePanel : le ressort de la gerbe, vers 80 % puis vers zéro.
     tmod = tmod || 1;
-    if (e.sortie) {
-      e.alpha = Math.max(0, e.alpha - tmod / FONDU_PANNEAU_SORTIE);
-      if (e.alpha <= 0) {
-        this.evolution = null;
-        if (e.surChoix) e.surChoix(e.choix);
-        if (this.transition) { ctx.fillStyle = ANTHRACITE; ctx.fillRect(0, 0, SCENE, SCENE); }
-        return;
-      }
-    } else if (e.alpha < 1) {
-      e.alpha = Math.min(1, e.alpha + tmod / FONDU_PANNEAU);
+    const ds = e.trg - e.sc;
+    e.vit += Math.max(-10, Math.min(ds * 0.1, 10)) * tmod;
+    e.vit *= Math.pow(0.75, tmod);
+    e.sc += e.vit * tmod;
+    if (e.sortie && e.sc < 0) {
+      this.evolution = null;
+      if (e.surChoix) e.surChoix(e.choix);
+      return;
     }
-    // Sur le voile anthracite du passage de niveau ; ailleurs (donjon), le
-    // voile sombre d'avant.
-    ctx.fillStyle = this.transition ? ANTHRACITE : 'rgba(12,20,10,.55)';
-    ctx.fillRect(0, 0, SCENE, SCENE);
+    // Dessous : en forêt, le cadre VIDE — tryToCloseGame a fait `game.kill()`,
+    // le plateau n'est plus là ; ailleurs (donjon), le voile sombre d'avant.
+    if (!this.lieu && s.cadre) {
+      poserRendu(ctx, rendre(s.cadre, CADRE_FOND, 100), 0, 0);
+      poserRendu(ctx, rendre(s.cadre, CADRE_MILIEU, 100), 0, 0);
+      poserRendu(ctx, rendre(s.cadre, CADRE_DESSUS, 100), 0, 0);
+    } else {
+      ctx.fillStyle = 'rgba(12,20,10,.55)';
+      ctx.fillRect(0, 0, SCENE, SCENE);
+    }
+    const k = Math.max(0.01, e.sc / 100);
     ctx.save();
-    ctx.globalAlpha = e.alpha;
+    ctx.translate(SCENE * 0.5, SCENE * 0.5);
+    ctx.scale(k, k);
+    ctx.translate(-SCENE * 0.5, -SCENE * 0.5);
     this.dessinerPanneauEvolution(ctx, s, e, fi);
     ctx.restore();
   }
@@ -2469,12 +2455,18 @@ class Client {
     // ne s'affiche pas d'office : sans case désignée, la bande du bas reste
     // vide.
     if (sv !== null && sv !== undefined && resumes[sv]) {
+      // La bulle vit à l'échelle de la SCÈNE, pas du panneau qui rétrécit.
+      ctx.save();
+      ctx.setTransform(this.nettete, 0, 0, this.nettete, 0, 0);
       ctx.font = '8px Verdana, Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
       const lignes = decouperTexte(ctx, resumes[sv], 212);
       // Le bas de la scène, sous les deux cases : la bande commence assez haut
       // pour tenir quatre lignes sans jamais mordre sur les noms.
       let y = SCENE - 8 - lignes.length * 9;
       for (const ligne of lignes) { ecrire(ligne, SCENE * 0.5, y); y += 9; }
+      ctx.restore();
     }
     ctx.textAlign = 'left';
   }
@@ -2522,10 +2514,7 @@ class Client {
    * tombent. Pendant ce temps, rien ne bouge — le plateau attend.
    */
   commencerOuverture(numero) {
-    this.ouverture = { sc: 1, vit: 0, trg: 100, tenue: 40, numero, alpha: 1 };
-    // Sorti du voile anthracite : la gerbe et son numéro apparaissent en
-    // fondu, puis le voile se lève quand elle se referme.
-    if (this.transition) { this.transition.phase = 'bouquet'; this.ouverture.alpha = 0; }
+    this.ouverture = { sc: 1, vit: 0, trg: 100, tenue: 40, numero };
   }
 
   dessinerOuverture(ctx, tmod) {
@@ -2535,14 +2524,9 @@ class Client {
     o.vit += Math.max(-10, Math.min(ds * 0.1, 10)) * tmod;
     o.vit *= Math.pow(0.75, tmod);
     o.sc += o.vit * tmod;
-    if (o.alpha < 1) o.alpha = Math.min(1, o.alpha + tmod / FONDU_NUMERO);
     if (o.trg === 100) {
       o.tenue -= tmod;
-      if (o.tenue < 0) {
-        o.trg = 0;
-        // La gerbe se referme : le voile commence à se lever sur le plateau.
-        if (this.transition && this.transition.phase === 'bouquet') this.transition.phase = 'levee';
-      }
+      if (o.tenue < 0) o.trg = 0;
     } else if (o.sc < 1) {
       this.ouverture = null;
       return;
@@ -2552,7 +2536,6 @@ class Client {
     const cy = jeu ? jeu.hauteur * 0.5 : SCENE / 2;
     const k = Math.max(0.01, o.sc / 100);
     ctx.save();
-    ctx.globalAlpha = o.alpha;
     ctx.translate(cx, cy);
     ctx.scale(k, k);
     if (this.sprites.bouquet) {
@@ -3004,7 +2987,13 @@ class Client {
         couleur: p.couleur === null ? undefined : p.couleur, melange: p.melange,
       });
     }
-    for (const pe of jeu.pList) this.dessinerCreature(ctx, pe);
+    // Aventure.initStep(1) : la fée ne naît qu'une fois la gerbe refermée —
+    // pendant l'ouverture, elle n'est pas encore là.
+    const feeAVenir = this.ouverture && this.champ && this.champ.faerieList;
+    for (const pe of jeu.pList) {
+      if (feeAVenir && feeAVenir.indexOf(pe) >= 0) continue;
+      this.dessinerCreature(ctx, pe);
+    }
     // Un TIR déroule ses images comme une particule : sous Flash, un clip à
     // plusieurs images joue, il n'y a pas à le demander. On le figeait sur sa
     // première — la boule de la Clametorche (partFlameBall, treize images : la
@@ -3444,8 +3433,8 @@ class Client {
         const t0 = ev.changedTouches[0];
         if (!t0) return;
         const p = scene(t0);
-        const c = this.casesEvolution().find((q) => Math.abs(p.x - q.x) <= 30
-          && Math.abs(p.y - q.y) <= 30);
+        const c = this.casesEvolutionEcran().find((q) => Math.abs(p.x - q.x) <= q.r
+          && Math.abs(p.y - q.y) <= q.r);
         if (c && this.evolution.survole !== c.i) {
           ev.preventDefault();         // pas de clic synthétisé : pas de choix
           this.evolution.survole = c.i;

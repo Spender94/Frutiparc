@@ -2048,28 +2048,30 @@ test('la remise à zéro de l\'horloge ne saute plus une image', () => {
   assert.match(src, /this\.dernier = 0;\n\s*this\.reste = 0;/);
 });
 
-test('passer d\'un niveau à l\'autre : envol de la fée, voile anthracite, choix et numéro en fondu', () => {
+test('passer d\'un niveau à l\'autre comme le jeu d\'origine : envol, panneau à ressort, gerbe', () => {
   // Aventure.initStep(2) : la fée file vers le haut (flForceWay, trg = milieu,
-  // −30) — le portage la gelait avec le plateau et enchaînait sans transition.
+  // −30) — le portage la gelait avec le plateau et enchaînait après 900 ms.
+  // Pas de fondu : le jeu n'en fait aucun entre deux niveaux.
   const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
   const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
-  assert.match(client, /const ANTHRACITE = '#2b2e33';/);
+  assert.ok(!/ANTHRACITE|dessinerVoile/.test(client), 'aucun voile qui ne soit pas d\'origine');
   assert.match(client, /f\.flForceWay = true;\s*\n\s*f\.trg = \{ x: this\.jeu\.largeur \* 0\.5, y: -30 \};/);
   // La fée et tout ce qui vole continuent de bouger pendant l'envol.
   assert.match(client, /this\.transition\.phase === 'envol' && this\.champ\) \{[\s\S]{0,300}this\.avancerDe\(this\.champ, this\.reste\)/);
-  // Au moins vingt images, la fée sortie (y < −10), le voile opaque — ou un
-  // plafond, pour qu'une fée coincée ne retienne pas la suite.
-  assert.match(client, /if \(\(tr\.t >= 20 && partie && tr\.voile >= 1\) \|\| tr\.t > 110\)/);
-  // Elle passe devant le voile pendant qu'elle monte.
-  assert.match(client, /if \(tr\.phase === 'envol' && tr\.fee && !tr\.fee\.flDeath && this\.jeu\) \{\s*\n\s*this\.dessinerCreature\(ctx, tr\.fee\);/);
-  // Le numéro : le bouquet sort du noir, en Atlantis 90 px violet (champ #166).
-  assert.match(client, /if \(this\.transition\) \{ this\.transition\.phase = 'bouquet'; this\.ouverture\.alpha = 0; \}/);
+  // Aventure.update, étape 2 : au moins vingt images, la fée sortie (y < −10).
+  assert.match(client, /if \(\(tr\.t >= 20 && partie\) \|\| tr\.t > 110\)/);
+  // Le panneau d'expérience : le ressort de la gerbe, posé à 80 %, refermé à
+  // zéro après le clic — et le choix ne s'applique qu'une fois refermé.
+  assert.match(client, /const PANNEAU_EXP_ECHELLE = 80;/);
+  assert.match(client, /e\.sortie = true;\s*\n\s*e\.trg = 0;/);
+  assert.match(client, /if \(e\.sortie && e\.sc < 0\) \{\s*\n\s*this\.evolution = null;\s*\n\s*if \(e\.surChoix\) e\.surChoix\(e\.choix\);/);
+  // Sur le cadre vide : game.kill() a retiré le plateau.
+  assert.match(client, /if \(!this\.lieu && s\.cadre\) \{\s*\n\s*poserRendu\(ctx, rendre\(s\.cadre, CADRE_FOND, 100\), 0, 0\);/);
+  // La gerbe, sans fondu, et son numéro en Atlantis 90 px (champ #166).
   assert.match(client, /ctx\.font = '90px Atlantis, /);
-  // Le panneau de choix entre et sort en fondu, et le choix ne s'applique
-  // qu'une fois le panneau effacé.
-  assert.match(client, /if \(e\.sortie \|\| e\.alpha < 1\) return;/);
-  assert.match(client, /if \(e\.alpha <= 0\) \{\s*\n\s*this\.evolution = null;\s*\n\s*if \(e\.surChoix\) e\.surChoix\(e\.choix\);/);
-  // La page ne compte plus des millisecondes : elle attend le noir.
+  // La fée ne naît qu'après la gerbe (Aventure.initStep(1)).
+  assert.match(client, /if \(feeAVenir && feeAVenir\.indexOf\(pe\) >= 0\) continue;/);
+  // La page ne compte plus des millisecondes : elle attend la sortie de la fée.
   assert.ok(!/setTimeout\(lancerNiveau, 900\)/.test(page), 'plus de coupure sèche à 900 ms');
   assert.match(page, /client\.commencerEnvol\(lancerNiveau\);/);
 });

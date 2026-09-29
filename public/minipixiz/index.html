@@ -611,8 +611,8 @@
                 if (!nx || nx[1] === null || nx[1] === undefined) {
                   mfXp.fi.preparerProchainNiveau(sortAApprendre);
                 }
-                // La fée s'envole et le plateau se fond dans l'anthracite ; au
-                // noir complet, le panneau de choix en sort (Aventure.initStep
+                // La fée s'envole ; une fois sortie, le plateau disparaît et le
+                // panneau de choix jaillit sur le cadre vide (Aventure.initStep
                 // 2 puis 3).
                 client.commencerEnvol(function () {
                   client.ouvrirEvolution({
@@ -626,17 +626,17 @@
                             : 'elle apprend un sort !'));
                       }
                       plateforme.ecrire(plateforme.carte);
-                      // Le panneau s'est effacé dans le noir : le numéro du
-                      // niveau suivant en sort.
+                      // Le panneau s'est refermé : le niveau suivant s'ouvre
+                      // sur sa gerbe.
                       lancerNiveau();
                     },
                   });
                 });
                 return;
               }
-              // La course continue : la fée s'envole, le plateau se fond dans
-              // l'anthracite, puis le numéro du niveau suivant en sort — le
-              // bouquet du jeu, et le voile se lève sur le nouveau plateau.
+              // La course continue : la fée s'envole par le haut, puis le
+              // niveau suivant s'ouvre sur sa gerbe (Aventure.initStep 2,
+              // puis 0).
               client.commencerEnvol(lancerNiveau);
               return;
             }
