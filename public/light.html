@@ -3699,6 +3699,24 @@
   // The sid is the only thing needed to resume; we keep it in localStorage and
   // re-validate it on load via /api/forum/me (returns {user} if still valid).
   var SESS_KEY = "fp_light_session";
+  // LE JETON D'APPAREIL : le même que la page de connexion du bureau
+  // (login-bis.html, clé `fp_device`), tiré une fois et gardé par le
+  // navigateur. Il part avec la connexion, l'inscription et la reprise de
+  // session ; le serveur le range dans son journal des connexions. Sans
+  // localStorage (navigation privée), il est vide et rien d'autre ne change.
+  function jetonAppareil() {
+    try {
+      var t = localStorage.getItem("fp_device");
+      if (!t) {
+        var a = new Uint8Array(16);
+        if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(a);
+        else for (var i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
+        t = "d" + Array.prototype.map.call(a, function (b) { return ("0" + b.toString(16)).slice(-2); }).join("");
+        localStorage.setItem("fp_device", t);
+      }
+      return t;
+    } catch (e) { return ""; }
+  }
   function saveSession() {
     try { localStorage.setItem(SESS_KEY, JSON.stringify({ sid: state.sid, user: state.user })); } catch (e) {}
   }
@@ -3752,7 +3770,7 @@
     fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: user, password: pass }),
+      body: JSON.stringify({ username: user, password: pass, device_token: jetonAppareil() }),
     }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         if (btn) { btn.disabled = false; btn.textContent = label; }
@@ -3807,7 +3825,7 @@
     var btn = $("#re-btn"); btn.disabled = true; btn.textContent = "Création…";
     // Trois champs, dont un facultatif : c'est tout ce que l'inscription
     // demande, et c'est délibéré (cf. la mention sous le bouton).
-    var body = { username: user, password: pass };
+    var body = { username: user, password: pass, device_token: jetonAppareil() };
     if (email) body.email = email;
     fetch("/api/auth/register", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -4469,7 +4487,8 @@
   }
   function loadHomeProfile() {
     if (!state.sid) { setHomeAvatar(DEFAULT_BOUILLE, homeMood); return; }
-    fetch("/api/light/profile?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+    fetch("/api/light/profile?sid=" + encodeURIComponent(state.sid)
+      + "&appareil=" + encodeURIComponent(jetonAppareil()), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && !d.error) {

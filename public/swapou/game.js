@@ -160,6 +160,52 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     }).catch(function () {});
   };
 
+  /*
+   * LA GRAINE D'UNE PARTIE CHALLENGE — la vérification des scores.
+   *
+   * Avant la partie, le serveur lui donne un numéro et une graine. Les seuls
+   * tirages qui DÉCIDENT de la partie — la couleur et les marques (gel,
+   * métal) des fruits qui montent — en sortent ; tout le reste (particules,
+   * sons, secousses) garde Math.random. La loi est la même, uniforme : la
+   * partie ne change pas, elle devient seulement REJOUABLE, et le serveur
+   * peut vérifier le score en la rejouant coup par coup.
+   *
+   * Tout est à sens unique et sans risque : si le serveur ne répond pas
+   * (1,5 s au plus), la partie se joue sur une graine locale et n'est
+   * simplement pas vérifiée.
+   */
+  SW.tirage = function (graine) {                 // mulberry32
+    let a = graine >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  SW.maintenant = function () {
+    return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  };
+  Client.prototype.demanderPartie = function () {
+    const me = this;
+    me.partie = null;
+    if (me.standalone || !me.sid || typeof fetch === 'undefined') return Promise.resolve(null);
+    const body = new URLSearchParams();
+    body.set('sid', me.sid);
+    const demande = fetch('/api/swapou/partie', { method: 'POST', body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok && j.id && Number.isFinite(Number(j.graine))) {
+          me.partie = { id: String(j.id), graine: Number(j.graine) >>> 0 };
+        }
+        return me.partie;
+      })
+      .catch(function () { return null; });
+    const delai = new Promise(function (ok) { setTimeout(function () { ok(null); }, 1500); });
+    return Promise.race([demande, delai]);
+  };
+
   Client.prototype.saveScore = function (score, mode, cb) {
     if (this.standalone || !this.sid) { cb(null); return; }
     const body = new URLSearchParams();
@@ -168,6 +214,19 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     body.set('m', String(mode));
     body.set('score', String(score));
     body.set('data', 'S' + SW.Data.players[0] + ':');
+    // Le récit de la partie (numéro, coups, temps de réflexion), pour que le
+    // serveur la rejoue. Des champs EN PLUS : le score s'enregistre comme
+    // avant, et un serveur qui ne les lit pas les ignore.
+    const pf = this.partieFinie;
+    this.partieFinie = null;
+    // Un journal démesuré (plus de 600 000 caractères, des dizaines de milliers
+    // de coups) ne part pas : le score, lui, part toujours.
+    if (pf && String(pf.coups).length <= 600000) {
+      if (pf.id) body.set('partie', pf.id);
+      else body.set('graine', String(pf.graine));
+      body.set('coups', pf.coups);
+      body.set('duree', String(pf.duree));
+    }
     fetch('/api/saveScore', { method: 'POST', body: body })
       .then(function (r) { return r.json(); })
       .then(function (j) { cb(j); })
@@ -2507,7 +2566,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     if (this.panne || !this.surLeBouton(x, y)) return false;
     const m = this.jouable();
     if (!m) return true;                 // le bouton est là, mais il attend
-    if (m.type === 'defend') { this.game.defend(); return true; }
+    if (m.type === 'defend') { this.game.defend('ia'); return true; }
     // La paire de l'analyseur est en cases ; le jeu la veut avec ses fruits.
     const lvl = this.game.player.level, p = m.pair;
     const col2 = lvl.fruits[p.x + p.dx];
@@ -2515,7 +2574,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       x: p.x, y: p.y, dx: p.dx, dy: p.dy,
       f1: lvl.fruits[p.x] ? lvl.fruits[p.x][p.y] : null,
       f2: col2 ? (col2[p.y + p.dy] === undefined ? null : col2[p.y + p.dy]) : null,
-    });
+    }, 'ia');
     return true;
   };
   AnalyseChallenge.prototype.dessinerBouton = function (ctx) {
@@ -2664,6 +2723,18 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
 
   // ── Challenge (Challenge.as) ─────────────────────────────────────────────
   function Challenge() {
+    // La graine de la partie (cf. SW.tirage) — AVANT tout tirage : les trois
+    // premières lignes en sortent déjà.
+    const client = SW.Manager && SW.Manager.client;
+    this.partie = (client && client.partie) || null;
+    if (client) client.partie = null;              // une graine ne sert qu'une fois
+    this.graine = this.partie ? this.partie.graine : Math.floor(Math.random() * 4294967296);
+    this.hasard = SW.tirage(this.graine);
+    // Le journal : chaque coup, et le temps de réflexion qui l'a précédé
+    // (depuis que le plateau s'est rendu la main).
+    this.journal = [];
+    this.debut = SW.maintenant();
+    this.debloqueA = this.debut;
     A.playMusic(A.MUSIC_CHALLENGE);
     TItem.combo_nitems = 0;
     this.ncoups = 5;
@@ -2704,19 +2775,31 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   Challenge.prototype.setLock = function (flag) {
     this.lock = flag;
     this.interf.setLock(flag);
+    if (!flag) this.debloqueA = SW.maintenant();
+  };
+  // Un tirage de jeu : entier dans [0, n), de la graine de la partie.
+  Challenge.prototype.tire = function (n) {
+    return Math.floor(this.hasard() * n);
+  };
+  // « s x,y,sens @ms » pour un échange (sens 0 droite, 1 bas, 2 gauche,
+  // 3 haut), « d @ms » pour une défense ; « ! » quand c'est le bouton de
+  // l'IA qui a joué.
+  Challenge.prototype.noter = function (coup, origine) {
+    const ms = Math.max(0, Math.round(SW.maintenant() - this.debloqueA));
+    this.journal.push(coup + '@' + ms + (origine === 'ia' ? '!' : ''));
   };
   Challenge.prototype.getPower = function (context, mc) {
     this.interf.addPower(0, mc);
   };
   Challenge.prototype.genFruitFlags = function () {
-    const isArmure = (random(130) < random(this.ncoups));
-    const isNoswap = !isArmure && (random(250) < random(this.ncoups));
+    const isArmure = (this.tire(130) < this.tire(this.ncoups));
+    const isNoswap = !isArmure && (this.tire(250) < this.tire(this.ncoups));
     let isStar = !isArmure && !isNoswap && (--this.star_counter === 0);
     if (isStar) this.star_counter = E.CHALLENGE_STAR_COUNTER;
     return (isArmure ? E.FLAG_ARMURE : 0) | (isStar ? E.FLAG_STAR : 0) | (isNoswap ? E.FLAG_NOSWAP : 0);
   };
   Challenge.prototype.genFruitColor = function () {
-    return random(E.CHALLENGE_MAX_COLORS);
+    return this.tire(E.CHALLENGE_MAX_COLORS);
   };
   Challenge.prototype.destroy = function () {
     this.interf.destroy();
@@ -2732,6 +2815,15 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       this.interf.gameOver(true);
       this.interf.pl[0].face.setDead(0xFFFFF);
       this.player.gameOver(false);
+      // Le récit de la partie part avec le score (Client.saveScore).
+      if (SW.Manager.client) {
+        SW.Manager.client.partieFinie = {
+          id: this.partie ? this.partie.id : null,
+          graine: this.graine,
+          coups: this.journal.join(';'),
+          duree: Math.round(SW.maintenant() - this.debut),
+        };
+      }
       const g = SW.Manager.gameOver(this.player.score);
       if (SW.Data.gameMode === SW.Data.CLASSIC)
         g.winTitem(TItem.classicItems(this.level));
@@ -2750,8 +2842,10 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     }
   };
   // Un échange, d'où qu'il vienne : la souris, le doigt, ou le bouton de l'IA.
-  Challenge.prototype.jouerPaire = function (fpair) {
+  Challenge.prototype.jouerPaire = function (fpair, origine) {
     if (!this.player.swapPair(fpair)) return false;
+    const sens = fpair.dx === 1 ? 0 : fpair.dy === 1 ? 1 : fpair.dx === -1 ? 2 : 3;
+    this.noter('s' + fpair.x + ',' + fpair.y + ',' + sens, origine);
     SW.Manager.client.nswaps++;
     this.ncoups++;
     this.nmoves = (this.nmoves || 0) + 1;     // compteur affichable (cf. drawFront)
@@ -2765,8 +2859,9 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     if (this.analyse && this.analyse.clic(SW.mouse.x, SW.mouse.y)) return;
     this.jouerPaire(SW.pickPair(this.player));
   };
-  Challenge.prototype.defend = function () {
+  Challenge.prototype.defend = function (origine) {
     if (!this.lock && this.player.canDefend()) {
+      this.noter('d', origine);
       this.setLock(true);
       this.special_power = true;
       this.player.defend();

@@ -363,6 +363,8 @@ test('les réglages de l’appli offrent l’export et la suppression', () => {
   assert.match(light, /id="reg-suppr-btn"/);
   assert.match(light, /window\.location\.href = "\/api\/light\/mes-donnees\?sid=" \+ encodeURIComponent\(state\.sid\);/);
   assert.match(light, /fetch\("\/api\/light\/compte\/suppression", \{/);
-  // L'inscription reste à trois champs : c'est ce que la politique annonce.
-  assert.match(light, /var body = \{ username: user, password: pass \};/);
+  // L'inscription reste à trois champs SAISIS : c'est ce que la politique
+  // annonce. Le jeton d'appareil qui les accompagne n'est pas demandé au
+  // joueur ; la politique le décrit (lutte contre les multi-comptes).
+  assert.match(light, /var body = \{ username: user, password: pass, device_token: jetonAppareil\(\) \};/);
 });

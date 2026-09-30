@@ -1010,14 +1010,18 @@
       var body = new URLSearchParams();
       body.set('sid', sid);
       body.set('game', 'swapou2');
+      // En même temps que la réservation : la graine de la partie (cf.
+      // SW.tirage, game.js). Elle ne retarde jamais le départ de plus
+      // d'1,5 s, et son absence n'empêche rien.
+      var graine = Manager.client.demanderPartie ? Manager.client.demanderPartie() : Promise.resolve(null);
       fetch('/do/fdclaim', { method: 'POST', body: body })
         .then(function (r) { return r.text(); })
         .then(function (t) {
-          if (/(^|&)ok=1(&|$)/.test(t)) { Manager.started(); return; }
+          if (/(^|&)ok=1(&|$)/.test(t)) { graine.then(function () { Manager.started(); }); return; }
           if (Manager.mode && Manager.mode.netUnlock) Manager.mode.netUnlock();
           SW.showFdRefus(t);
         })
-        .catch(function () { Manager.started(); });
+        .catch(function () { graine.then(function () { Manager.started(); }); });
     },
     startDuel: function () {
       Manager.mode.destroy();

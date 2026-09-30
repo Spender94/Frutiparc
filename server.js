@@ -142,6 +142,11 @@ app.use(express.json());
 // lecteur-ci prend la route à son compte, AVANT le lecteur général : celui qui
 // suit voit un corps déjà lu et passe son tour.
 app.use('/api/bkiwi/ghost', express.urlencoded({ extended: false, limit: '512kb' }));
+// SWAPOU — le journal des coups voyage avec le score (cf. swapouRejeu.js). Une
+// très longue partie peut dépasser les cent kilo-octets : sans ce lecteur, le
+// SCORE lui-même serait refusé avec le journal. Même lecteur que le général
+// (extended), seul le plafond change.
+app.use('/api/saveScore', express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 // Ruffle's LoadVars.sendAndLoad may send POST bodies as text/plain or
 // with no Content-Type at all. Capture any unparsed body as raw text,
@@ -1308,7 +1313,10 @@ const LOGIN_BIS_PAGE_PATH = path.join(__dirname, 'public', 'login-bis.html');
 // Shape: { users: { [username]: { [rankingId]: { score, data, updatedAt } } } }
 // One ranking per game; ranking id = <gameName>_classic for mode 0.
 // ─────────────────────────────────────────────
-const SCORES_DIR = path.join(__dirname, 'data');
+// FRUTI_DATA_DIR : un autre dossier pour ces fichiers — les tests qui posent
+// des scores s'en servent pour ne pas écrire dans celui des autres. Absent (la
+// production), c'est `data/`, comme toujours.
+const SCORES_DIR = process.env.FRUTI_DATA_DIR ? path.resolve(process.env.FRUTI_DATA_DIR) : path.join(__dirname, 'data');
 const SCORES_FILE = path.join(SCORES_DIR, 'scores.json');
 const CHALLENGE_MEDALS_FILE = path.join(SCORES_DIR, 'challenge-medals.json');
 
@@ -2851,6 +2859,9 @@ function fixerScore(username, rankingId, score, data) {
 // meilleurs scores du tour en cours (`${tid}:${round}` -> Map(user -> {score,data})).
 const tournamentWindows = new Map();
 const tournamentRoundScores = new Map();
+// Swapou : le tournoi ne compte-t-il que les parties vérifiées ? Baissé par
+// défaut ; l'admin le lève (onglet Swapou), la marque vit dans app_state.
+let swapouTournoiVerifie = false;
 const tRoundKey = (tid, round) => `${tid}:${round}`;
 
 function openTournamentWindow(tid, round, rankingId, endsAt) {
@@ -2861,10 +2872,18 @@ function closeTournamentWindow(rankingId) { tournamentWindows.delete(rankingId);
 
 // Hook appelé par persistScore : retient le meilleur score du joueur pour le tour
 // en cours si une fenêtre est ouverte sur ce ranking (sens géré par isScoreBetter).
-function captureTournamentScore(username, rankingId, score, data) {
+//
+// SWAPOU, TOURNOI « PARTIES VÉRIFIÉES SEULEMENT » (interrupteur de l'admin,
+// baissé par défaut) : levé, un score Swapou n'entre au tour qu'une fois sa
+// partie rejouée et trouvée conforme — c'est le rejeu qui rappelle cette
+// fonction, avec `opts.verifie` et l'heure où le score était arrivé
+// (`opts.a`), pour qu'une vérification finie une seconde après la clôture
+// compte quand même.
+function captureTournamentScore(username, rankingId, score, data, opts) {
   const win = tournamentWindows.get(rankingId);
   if (!win) return;
-  if (win.endsAt && Date.now() > win.endsAt) return;
+  if (swapouTournoiVerifie && /^swapou2/.test(rankingId) && !(opts && opts.verifie)) return;
+  if (win.endsAt && ((opts && opts.a) || Date.now()) > win.endsAt) return;
   const key = tRoundKey(win.tid, win.round);
   let cache = tournamentRoundScores.get(key);
   if (!cache) { cache = new Map(); tournamentRoundScores.set(key, cache); }
@@ -8702,6 +8721,7 @@ app.post('/api/auth/register', async (req, res) => {
     await db.updateUser(username, { display_name: rawName });
     if (ref.referralFlag) await db.updateUser(username, { referral_flag: ref.referralFlag }).catch(() => {});
     recordSuccessfulRegister(ip);
+    journaliserConnexion(req, username, 'inscription', deviceToken);
     console.log(`[REGISTER] ok ip=${ip} user=${rawName}` + (ref.referredBy ? ` | parrain=${ref.referredBy} state=${ref.referralState} flag=${ref.referralFlag || '-'}` : ''));
     // Natacha le salue sur le forum — sans retenir la réponse.
     natachaAccueillir(username, ref.referredBy);
@@ -8788,6 +8808,8 @@ app.post('/api/auth/login', async (req, res) => {
     users[username].deviceToken = loginDevice;
     if (users[username]._dbId) db.poserJetonAppareil(username, loginDevice).catch(() => {});
   }
+
+  journaliserConnexion(req, username, 'connexion', loginDevice);
 
   const sid = crypto.randomBytes(16).toString('hex');
   sessions[sid] = { user: username, createdAt: Date.now() };
@@ -8970,6 +8992,450 @@ app.post('/api/auth/reset', async (req, res) => {
   }
 });
 
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * SWAPOU CHALLENGE — LES PARTIES VÉRIFIÉES (mode observateur)
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Le score de Swapou est calculé par le navigateur. Pour savoir s'il est
+ * vrai, le serveur donne à chaque partie une GRAINE (d'où sortent la couleur
+ * et les marques des fruits qui montent), le navigateur rend avec le score la
+ * liste des coups joués, et le serveur REJOUE la partie avec le vrai code du
+ * jeu (swapouRejeu.js, dans un fil à part : swapouRejeuFil.js).
+ *
+ * CE QUE ÇA NE CHANGE PAS — c'est la règle : le score s'enregistre exactement
+ * comme avant, que la vérification ait lieu ou non, qu'elle réussisse ou non.
+ * Le rejeu arrive APRÈS la réponse au joueur, et toute erreur s'y tait. Un
+ * serveur qui ne répond pas à temps à la demande de graine laisse le jeu tirer
+ * la sienne (« graine locale ») : la partie se joue pareil.
+ *
+ * La seule chose qui peut en dépendre, c'est le TOURNOI, et seulement si
+ * l'admin lève l'interrupteur « parties vérifiées seulement » (baissé par
+ * défaut) : un score n'y entre alors qu'une fois sa partie trouvée conforme.
+ */
+const SWAPOU_REJEU_DELAI_MS = 60 * 1000;
+const SWAPOU_ACCORD_DELAI_MS = 60 * 60 * 1000;
+
+// Un fil de rejeu : une file, une partie à la fois, un délai de garde. Un fil
+// qui plante ou dépasse son délai est remplacé ; la partie en cours est
+// déclarée « non vérifiable », jamais fautive.
+function creerFilRejeu(nom, delaiMs) {
+  const fil = { worker: null, file: [], courant: null, n: 0, minuteur: null };
+  function lancer() {
+    if (fil.worker) return fil.worker;
+    const { Worker } = require('worker_threads');
+    const w = new Worker(path.join(__dirname, 'swapouRejeuFil.js'));
+    w.unref();
+    w.on('message', (m) => {
+      const c = fil.courant;
+      if (!c || !m || m.n !== c.n) return;
+      if (m.avance) { if (c.surAvance) c.surAvance(m.avance); return; }
+      finir(m.erreur ? { erreur: m.erreur } : m);
+    });
+    const tomber = (raison) => {
+      if (fil.worker !== w) return;
+      fil.worker = null;
+      if (fil.courant) finir({ erreur: raison });
+    };
+    w.on('error', (e) => tomber('fil de rejeu en panne : ' + e.message));
+    w.on('exit', () => tomber('fil de rejeu arrêté'));
+    fil.worker = w;
+    return w;
+  }
+  function finir(reponse) {
+    const c = fil.courant;
+    fil.courant = null;
+    clearTimeout(fil.minuteur);
+    try { c.resoudre(reponse); } catch (e) { /* l'appelant se tait */ }
+    setImmediate(suivant);
+  }
+  function suivant() {
+    if (fil.courant || !fil.file.length) return;
+    const c = fil.file.shift();
+    fil.courant = c;
+    try {
+      lancer().postMessage(Object.assign({ n: c.n }, c.travail));
+    } catch (e) {
+      finir({ erreur: 'fil de rejeu indisponible : ' + e.message });
+      return;
+    }
+    fil.minuteur = setTimeout(() => {
+      const w = fil.worker;
+      fil.worker = null;
+      if (w) w.terminate().catch(() => {});
+      finir({ erreur: 'rejeu trop long' });
+    }, delaiMs);
+    if (fil.minuteur.unref) fil.minuteur.unref();
+  }
+  return {
+    nom,
+    demander(travail, surAvance) {
+      return new Promise((resoudre) => {
+        fil.file.push({ n: ++fil.n, travail, resoudre, surAvance });
+        suivant();
+      });
+    },
+    get attente() { return fil.file.length + (fil.courant ? 1 : 0); },
+  };
+}
+const swapouFilVerif = creerFilRejeu('verification', SWAPOU_REJEU_DELAI_MS);
+const swapouFilAccord = creerFilRejeu('accord', SWAPOU_ACCORD_DELAI_MS);
+// L'accord en cours de calcul, pour la barre d'avancement de l'admin.
+const swapouAccordsEnCours = new Map();   // id -> { fait, total }
+
+// Les parties distribuées, gardées en mémoire (la base suit, sans qu'on
+// l'attende) : la graine part tout de suite, la base écrit ensuite.
+const swapouPartiesDonnees = new Map();   // id -> { username, graine, at }
+const swapouDemandesRecentes = new Map(); // username -> [horodatages]
+const SWAPOU_PARTIE_ID = /^[a-f0-9]{24}$/;
+
+app.post('/api/swapou/partie', (req, res) => {
+  try {
+    const sid = String((req.body && req.body.sid) || req.query.sid || '');
+    const username = (sid && sessions[sid] && sessions[sid].user) || '';
+    if (!username) return res.status(401).json({ ok: false, error: 'not_authenticated' });
+    // Garde-fou : trente parties par minute, c'est déjà beaucoup plus qu'on
+    // n'en joue. Au-delà, pas de graine — le jeu tire la sienne.
+    const t = Date.now();
+    const liste = (swapouDemandesRecentes.get(username) || []).filter((x) => t - x < 60000);
+    if (liste.length >= 30) return res.json({ ok: false, error: 'rate_limited' });
+    liste.push(t);
+    swapouDemandesRecentes.set(username, liste);
+    const id = crypto.randomBytes(12).toString('hex');
+    const graine = crypto.randomBytes(4).readUInt32LE(0);
+    swapouPartiesDonnees.set(id, { username, graine, at: t });
+    if (swapouPartiesDonnees.size > 20000) {
+      // Les plus anciennes d'abord (l'ordre d'insertion d'une Map).
+      for (const k of swapouPartiesDonnees.keys()) {
+        swapouPartiesDonnees.delete(k);
+        if (swapouPartiesDonnees.size <= 15000) break;
+      }
+    }
+    if (process.env.DATABASE_URL) db.creerPartieSwapou(id, username, graine).catch(dbErr('creerPartieSwapou'));
+    return res.json({ ok: true, id, graine });
+  } catch (e) {
+    return res.json({ ok: false });
+  }
+});
+setInterval(() => {
+  const limite = Date.now() - 2 * 86400000;
+  for (const [id, p] of swapouPartiesDonnees) if (p.at < limite) swapouPartiesDonnees.delete(id);
+  for (const [u, l] of swapouDemandesRecentes) if (!l.some((x) => Date.now() - x < 60000)) swapouDemandesRecentes.delete(u);
+}, 10 * 60 * 1000).unref();
+
+/*
+ * La partie rendue avec son score : notée, puis rejouée — le tout APRÈS la
+ * réponse au joueur, sans jamais la retarder ni la changer. `classe` est le
+ * classement où le score a été rangé (null s'il ne l'a pas été) : c'est lui
+ * que le tournoi vérifié rappellera.
+ */
+function swapouNoterPartie(username, params, score, data, classe, iaDetenteur) {
+  if (!process.env.DATABASE_URL || params.coups === undefined) return;
+  const recuA = Date.now();
+  const tournoiOuvert = !!(classe && tournamentWindows.has(classe));
+  setImmediate(() => {
+    swapouVerifierPartie(username, params, score, data, classe, iaDetenteur, recuA, tournoiOuvert)
+      .catch((e) => console.error('[SWAPOU] vérification :', e.message));
+  });
+}
+async function swapouVerifierPartie(username, params, score, data, classe, iaDetenteur, recuA, tournoiOuvert) {
+  const coups = String(params.coups || '').slice(0, 1000000);
+  const m = /^S(\d+):/.exec(String(params.data || ''));
+  const perso = m ? Number(m[1]) : null;
+  const R = require('./swapouRejeu.js');
+  const rythme = R.rythme(coups);
+  const base = {
+    username, perso, score, coups, nbCoups: rythme.coups,
+    dureeMs: Number(params.duree) || 0, rythme, iaDetenteur: !!iaDetenteur, tournoi: tournoiOuvert,
+  };
+  // D'où vient la graine ?
+  let partie = null, refus = '';
+  const id = String(params.partie || '');
+  if (id) {
+    if (!SWAPOU_PARTIE_ID.test(id)) refus = 'numéro de partie invalide';
+    else {
+      const enMemoire = swapouPartiesDonnees.get(id);
+      const ligne = await db.lirePartieSwapou(id);
+      const donnee = enMemoire || (ligne && { username: ligne.username, graine: Number(ligne.graine) });
+      if (!donnee) refus = 'numéro de partie inconnu';
+      else if (String(donnee.username).toLowerCase() !== String(username).toLowerCase()) refus = 'partie donnée à un autre joueur';
+      else if (ligne && ligne.fini_le) refus = 'partie déjà rendue une fois';
+      else partie = { id, graine: donnee.graine, source: 'serveur' };
+    }
+    swapouPartiesDonnees.delete(id);
+  } else if (params.graine !== undefined && /^\d{1,10}$/.test(String(params.graine))) {
+    partie = { id: 'l' + crypto.randomBytes(11).toString('hex'), graine: Number(params.graine) >>> 0, source: 'locale' };
+  } else {
+    refus = 'graine absente';
+  }
+  if (!partie) {
+    // Rien à rejouer : la partie est notée telle quelle, « non vérifiable ».
+    const nid = 'x' + crypto.randomBytes(11).toString('hex');
+    await db.finirPartieSwapou(Object.assign({ id: nid, graine: 0, source: 'serveur' }, base));
+    await db.verdictPartieSwapou(nid, { verdict: 'non_verifiable', raison: refus });
+    return;
+  }
+  await db.finirPartieSwapou(Object.assign({ id: partie.id, graine: partie.graine, source: partie.source }, base));
+  const rep = await swapouFilVerif.demander({ type: 'verifier', graine: partie.graine, coups, perso });
+  let verdict, raison = '', scoreRejoue = null;
+  if (rep.erreur || !rep.resultat) {
+    verdict = 'non_verifiable'; raison = rep.erreur || 'rejeu sans réponse';
+  } else {
+    const r = rep.resultat;
+    scoreRejoue = r.score;
+    if (!r.ok) { verdict = 'divergent'; raison = r.raison || 'partie non terminée'; }
+    else if (r.score !== Number(score)) { verdict = 'divergent'; raison = `score rejoué ${r.score}, déclaré ${score}`; }
+    else verdict = 'conforme';
+  }
+  await db.verdictPartieSwapou(partie.id, { verdict, scoreRejoue, raison });
+  if (verdict === 'divergent') {
+    console.log(`[SWAPOU] partie ${partie.id} de ${username} DIVERGENTE — ${raison}`);
+  }
+  // Le tournoi vérifié : seules les parties conformes, à graine du serveur.
+  if (swapouTournoiVerifie && classe && verdict === 'conforme' && partie.source === 'serveur' && !iaDetenteur) {
+    captureTournamentScore(username, classe, Number(score) || 0, data, { verifie: true, a: recuA });
+  }
+}
+
+// ── L'admin : les parties, le bilan, le journal d'une partie, l'accord ──────
+app.get('/api/admin/swapou/parties', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, parties: [], bilan: [], tournoiVerifie: swapouTournoiVerifie, sansBase: true });
+  try {
+    const jours = Math.max(1, Math.min(Number(req.query.jours) || 30, 400));
+    const depuis = new Date(Date.now() - jours * 86400000);
+    const parties = await db.listerPartiesSwapou({
+      username: req.query.joueur ? normalizeUsername(req.query.joueur) : '',
+      verdict: req.query.verdict || '', depuis, limit: req.query.limit || 300,
+    });
+    const bilan = await db.bilanPartiesSwapou(depuis);
+    for (const p of parties) {
+      const a = swapouAccordsEnCours.get(p.id);
+      if (a) p.accordEnCours = a;
+    }
+    res.json({ ok: true, parties, bilan, tournoiVerifie: swapouTournoiVerifie,
+      attente: swapouFilVerif.attente, attenteAccord: swapouFilAccord.attente });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+app.get('/api/admin/swapou/parties/:id', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, error: 'no db' });
+  const p = await db.lirePartieSwapou(req.params.id).catch(() => null);
+  if (!p) return res.status(404).json({ ok: false, error: 'introuvable' });
+  res.json({ ok: true, partie: p, accordEnCours: swapouAccordsEnCours.get(p.id) || null });
+});
+// L'accord avec l'IA : pour chaque coup, le rang qu'il a dans le classement de
+// l'analyseur du jeu. Plusieurs minutes de calcul par partie : à la demande.
+app.post('/api/admin/swapou/parties/:id/accord', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, error: 'no db' });
+  const p = await db.lirePartieSwapou(req.params.id).catch(() => null);
+  if (!p) return res.status(404).json({ ok: false, error: 'introuvable' });
+  if (!p.coups || !p.graine) return res.status(400).json({ ok: false, error: 'rien à analyser' });
+  if (swapouAccordsEnCours.has(p.id)) return res.json({ ok: true, deja: true });
+  swapouAccordsEnCours.set(p.id, { fait: 0, total: p.nb_coups || 0 });
+  res.json({ ok: true });
+  swapouFilAccord.demander(
+    { type: 'accord', graine: Number(p.graine), coups: p.coups, perso: p.perso, budgetMs: 1500 },
+    (avance) => swapouAccordsEnCours.set(p.id, avance))
+    .then(async (rep) => {
+      const accord = rep.resultat && rep.resultat.accord
+        ? Object.assign({ calcule_le: new Date().toISOString() }, rep.resultat.accord)
+        : { erreur: rep.erreur || 'pas de résultat', calcule_le: new Date().toISOString() };
+      await db.accordPartieSwapou(p.id, accord);
+    })
+    .catch((e) => console.error('[SWAPOU] accord :', e.message))
+    .finally(() => swapouAccordsEnCours.delete(p.id));
+});
+// Rejouer à nouveau (après une panne du fil, par exemple).
+app.post('/api/admin/swapou/parties/:id/rejouer', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, error: 'no db' });
+  const p = await db.lirePartieSwapou(req.params.id).catch(() => null);
+  if (!p || !p.coups || p.graine == null || p.fini_le == null) return res.status(404).json({ ok: false, error: 'introuvable' });
+  const rep = await swapouFilVerif.demander({ type: 'verifier', graine: Number(p.graine), coups: p.coups, perso: p.perso });
+  let verdict = 'non_verifiable', raison = rep.erreur || '', scoreRejoue = null;
+  if (rep.resultat) {
+    scoreRejoue = rep.resultat.score;
+    if (!rep.resultat.ok) { verdict = 'divergent'; raison = rep.resultat.raison || 'partie non terminée'; }
+    else if (rep.resultat.score !== Number(p.score_declare)) { verdict = 'divergent'; raison = `score rejoué ${rep.resultat.score}, déclaré ${p.score_declare}`; }
+    else { verdict = 'conforme'; raison = ''; }
+  }
+  await db.verdictPartieSwapou(p.id, { verdict, scoreRejoue, raison });
+  res.json({ ok: true, verdict, scoreRejoue, raison });
+});
+app.post('/api/admin/swapou/tournoi-verifie', adminAuth, async (req, res) => {
+  const on = !!(req.body && (req.body.on === true || req.body.on === '1' || req.body.on === 1));
+  swapouTournoiVerifie = on;
+  if (process.env.DATABASE_URL) await db.setAppState('swapou_tournoi_verifie', on ? '1' : '0').catch(dbErr('swapou_tournoi_verifie'));
+  console.log(`[SWAPOU] tournoi : parties vérifiées seulement = ${on}`);
+  res.json({ ok: true, tournoiVerifie: on });
+});
+
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * LE JOURNAL DES CONNEXIONS (anti multi-comptes)
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * À la connexion, à l'inscription et à la reprise d'une session par le light,
+ * on note : le jour, l'adresse (celle que le serveur retient partout,
+ * getClientIp, INCHANGÉE), la chaîne X-Forwarded-For brute et l'adresse de la
+ * socket — pour que l'admin juge lui-même —, le jeton d'appareil
+ * (localStorage `fp_device`) et le navigateur. On n'y décide rien, on ne
+ * bloque personne : c'est un relevé, que l'onglet « Comptes liés » croise.
+ */
+const connexionsNotees = new Map();   // clé -> horodatage (dédoublonnage)
+function journaliserConnexion(req, username, origine, appareil) {
+  try {
+    if (!process.env.DATABASE_URL || !username) return;
+    const u = String(username).toLowerCase();
+    if (NPC_USERNAMES.has(u)) return;
+    const ip = String(getClientIp(req) || '');
+    const jeton = String(appareil || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+    const jour = parisDayKey();
+    // Une reprise de session repasse souvent : une écriture par quart d'heure
+    // suffit (la connexion et l'inscription, elles, s'écrivent toujours).
+    const cle = [u, jour, ip, jeton].join('|');
+    const t = Date.now();
+    if (origine === 'reprise' && t - (connexionsNotees.get(cle) || 0) < 15 * 60 * 1000) return;
+    connexionsNotees.set(cle, t);
+    if (connexionsNotees.size > 50000) connexionsNotees.clear();
+    db.noterConnexion({
+      username: u, jour, ip,
+      xff: String(req.headers['x-forwarded-for'] || ''),
+      socketIp: String((req.socket && req.socket.remoteAddress) || ''),
+      appareil: jeton,
+      navigateur: String(req.headers['user-agent'] || ''),
+      origine,
+    }).catch(dbErr('noterConnexion'));
+  } catch (e) { /* un relevé ne casse jamais une connexion */ }
+}
+
+// Les e-mails se comparent sans leur fard : la casse, le « +étiquette », et
+// les points d'une adresse Gmail (a.b@gmail.com et ab@gmail.com arrivent au
+// même endroit).
+function emailCanonique(e) {
+  const s = String(e || '').trim().toLowerCase();
+  const at = s.lastIndexOf('@');
+  if (at < 1) return '';
+  let local = s.slice(0, at).split('+')[0];
+  let dom = s.slice(at + 1);
+  if (dom === 'googlemail.com') dom = 'gmail.com';
+  if (dom === 'gmail.com') local = local.replace(/\./g, '');
+  return local + '@' + dom;
+}
+
+/*
+ * LES COMPTES LIÉS. Les indices viennent par paires (db.indicesMultiComptes) ;
+ * on les pèse, on relie les comptes que des indices FORTS réunissent, et l'on
+ * rend des groupes, chacun avec ses preuves. Les poids :
+ *   même appareil (journal ou jeton d'inscription)  100 — quasi certain ;
+ *   même e-mail (canonique)                          100 ;
+ *   même adresse le même jour                        10 par jour (max 60) ;
+ *   même adresse d'inscription                       25 ;
+ *   des kikooz passés de l'un à l'autre              +15 (ne relie pas seul).
+ * Un groupe se forme à partir de 50 : un seul jour d'adresse commune (une
+ * famille, une école) n'y suffit pas ; cinq jours, ou un appareil, oui.
+ */
+async function calculerComptesLies(jours) {
+  const ind = await db.indicesMultiComptes(jours);
+  const paires = new Map();
+  const paire = (a, b) => {
+    a = String(a).toLowerCase(); b = String(b).toLowerCase();
+    if (a === b) return null;
+    if (a > b) [a, b] = [b, a];
+    const k = a + '|' + b;
+    if (!paires.has(k)) paires.set(k, { a, b, poids: 0, preuves: [] });
+    return paires.get(k);
+  };
+  for (const r of ind.appareil) { const p = paire(r.a, r.b); if (p) { p.poids += 100; p.preuves.push(`même appareil (${r.jours} jour${r.jours > 1 ? 's' : ''})`); } }
+  for (const r of ind.jeton) { const p = paire(r.a, r.b); if (p && !p.preuves.some((x) => x.startsWith('même appareil'))) { p.poids += 100; p.preuves.push('même appareil à l’inscription'); } }
+  for (const r of ind.ipJour) { const p = paire(r.a, r.b); if (p) { p.poids += Math.min(60, 10 * r.jours); p.preuves.push(`même adresse le même jour (${r.jours} jour${r.jours > 1 ? 's' : ''} : ${(r.ips || []).slice(0, 3).join(', ')})`); } }
+  for (const r of ind.ipInscr) { const p = paire(r.a, r.b); if (p) { p.poids += 25; p.preuves.push(`même adresse d’inscription (${r.ip})`); } }
+  // L'e-mail, lu en base (la mémoire ne tient que les comptes venus depuis
+  // le démarrage).
+  const parEmail = new Map();
+  for (const r of ind.emails) {
+    const e = emailCanonique(r.email);
+    if (!e) continue;
+    if (!parEmail.has(e)) parEmail.set(e, []);
+    parEmail.get(e).push(r.username);
+  }
+  for (const noms of parEmail.values()) {
+    for (let i = 0; i < noms.length; i++) for (let j = i + 1; j < noms.length; j++) {
+      const p = paire(noms[i], noms[j]); if (p) { p.poids += 100; p.preuves.push('même e-mail'); }
+    }
+  }
+  const dons = new Map(ind.dons.map((r) => [r.a + '|' + r.b, r]));
+  for (const p of paires.values()) {
+    const d = dons.get(p.a + '|' + p.b);
+    if (d) { p.poids += 15; p.preuves.push(`kikooz échangés (${d.n} don${d.n > 1 ? 's' : ''}, ${d.total} au total)`); }
+  }
+  // Les groupes : union des paires assez lourdes.
+  const SEUIL = 50;
+  const parent = new Map();
+  const racine = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const lier = (a, b) => {
+    if (!parent.has(a)) parent.set(a, a);
+    if (!parent.has(b)) parent.set(b, b);
+    const ra = racine(a), rb = racine(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  const fortes = [...paires.values()].filter((p) => p.poids >= SEUIL);
+  for (const p of fortes) lier(p.a, p.b);
+  const groupes = new Map();
+  // Dans un groupe, on montre AUSSI les indices plus faibles entre ses
+  // membres : ils complètent le tableau sans avoir suffi à relier.
+  const dansUnGroupe = (p) => parent.has(p.a) && parent.has(p.b) && racine(p.a) === racine(p.b);
+  for (const p of paires.values()) {
+    if (!dansUnGroupe(p)) continue;
+    const r = racine(p.a);
+    if (!groupes.has(r)) groupes.set(r, { comptes: new Set(), paires: [], poids: 0 });
+    const g = groupes.get(r);
+    g.comptes.add(p.a); g.comptes.add(p.b);
+    g.paires.push(p);
+    g.poids = Math.max(g.poids, p.poids);
+  }
+  const tous = new Set();
+  for (const g of groupes.values()) for (const n of g.comptes) tous.add(n);
+  const lignes = new Map((await db.fichesComptes([...tous])).map((r) => [r.username, r]));
+  const iso = (d) => (d ? new Date(d).toISOString() : '');
+  const fiche = (nom) => {
+    const r = lignes.get(nom) || {};
+    const u = users[nom] || {};
+    return {
+      username: nom, affichage: r.display_name || getDisplayName(nom),
+      creeLe: iso(r.created_at) || u.createdAt || '',
+      derniere: iso(r.last_login) || u.lastLogin || '',
+      xp: Number(r.xp != null ? r.xp : u.xp) || 0,
+      parrain: r.referred_by || u.referredBy || '',
+      banni: banInfoFromUntil(r.banned_until || u.bannedUntil).banned,
+    };
+  };
+  return [...groupes.values()]
+    .map((g) => ({
+      comptes: [...g.comptes].sort().map(fiche),
+      paires: g.paires.sort((x, y) => y.poids - x.poids),
+      poids: g.poids,
+    }))
+    .sort((x, y) => y.poids - x.poids || y.comptes.length - x.comptes.length);
+}
+app.get('/api/admin/comptes-lies', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, groupes: [], sansBase: true });
+  try {
+    const jours = Math.max(1, Math.min(Number(req.query.jours) || 90, RGPD_IP_JOURS));
+    res.json({ ok: true, jours, groupes: await calculerComptesLies(jours) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+app.get('/api/admin/connexions/:username', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, connexions: [] });
+  try {
+    res.json({ ok: true, connexions: await db.connexionsDe(normalizeUsername(req.params.username)) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ─────────────────────────────────────────────
 // ENDPOINT: /api/saveScore — Game popup posts score here after game ends.
 // Accepts both GET (from SWF getURL) and POST (from popup JS fetch).
@@ -9026,6 +9492,7 @@ async function handleSaveScore(req, res) {
     if (process.env.DATABASE_URL) {
       db.addSwapouIaScore(username, scoreVal, scoreData).catch(dbErr('swapou_ia_scores'));
     }
+    swapouNoterPartie(username, params, scoreVal, scoreData, null, true);
     console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} NON classé (IA de Swapou) → swapou_ia_scores`);
     return res.json({
       ok: true, updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0,
@@ -9104,6 +9571,12 @@ async function handleSaveScore(req, res) {
     awardJamaPictosOnScore(username);
   }
   console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} updated=${result.updated}`);
+  // Swapou : la partie est rejouée pour vérification, APRÈS cette réponse et
+  // sans rien y changer (cf. swapouNoterPartie).
+  if (/^swapou2/.test(rankingId)) {
+    try { swapouNoterPartie(username, params, scoreVal, scoreData, fdg.direct ? rankingId : null, false); }
+    catch (e) { /* la vérification ne touche jamais au score */ }
+  }
 
   // On n'éteint PLUS le voyant ici. Poser un score ne veut pas dire quitter :
   // le joueur enchaîne souvent une autre manche, et le voyant s'éteignait sous
@@ -10370,8 +10843,9 @@ app.delete('/api/admin/users/:username', adminAuth, async (req, res) => {
  *     l'admin et les tests ;
  *   · rgpdBalayage(), toutes les heures — les suppressions arrivées à
  *     échéance, les comptes inactifs (préavis par e-mail, puis effacement), et
- *     les purges de rétention (IP et jeton d'inscription, journaux de
- *     modération, sessions, jetons de réinitialisation).
+ *     les purges de rétention (IP et jeton d'inscription, journal des
+ *     connexions, parties de Swapou vérifiées, journaux de modération,
+ *     sessions, jetons de réinitialisation).
  *
  * Les durées sont celles que la politique de confidentialité annonce. Elles
  * se règlent par l'environnement, pour qu'on n'ait pas à toucher au code
@@ -10494,7 +10968,7 @@ let rgpdBalayageEnCours = false;
 async function rgpdBalayage() {
   if (!process.env.DATABASE_URL || rgpdBalayageEnCours) return null;
   rgpdBalayageEnCours = true;
-  const bilan = { suppressions: 0, preavis: 0, inactifs: 0, ip: 0, jetons: 0, moderation: 0, sessions: 0, resets: 0, erreurs: [] };
+  const bilan = { suppressions: 0, preavis: 0, inactifs: 0, ip: 0, jetons: 0, moderation: 0, sessions: 0, resets: 0, connexions: 0, swapou: 0, erreurs: [] };
   try {
     // 1. Les demandes de suppression arrivées à échéance.
     for (const r of await db.comptesASupprimer(RGPD_GRACE_JOURS)) {
@@ -10539,6 +11013,10 @@ async function rgpdBalayage() {
       if ((sess.createdAt || 0) < limiteSess) delete sessions[s];
     }
     bilan.resets = await db.purgerJetonsReset(RGPD_RESETS_JOURS);
+    // Le journal des connexions et les parties de Swapou vérifiées : six mois,
+    // comme l'IP d'inscription.
+    bilan.connexions = await db.purgerConnexions(RGPD_IP_JOURS);
+    bilan.swapou = await db.purgerPartiesSwapou(RGPD_IP_JOURS);
   } catch (e) {
     bilan.erreurs.push(e.message);
   } finally {
@@ -24335,6 +24813,9 @@ app.get('/api/light/kikooz', (req, res) => {
 app.get('/api/light/profile', async (req, res) => {
   const username = resolveUsernameFromSid(req.query.sid || '');
   if (!username) return res.status(401).json({ error: 'auth' });
+  // Le light rouvre sa session sans repasser par la connexion : c'est ici
+  // qu'on la voit revenir (cf. journaliserConnexion).
+  journaliserConnexion(req, username, 'reprise', req.query.appareil);
   const u = users[username] || {};
   const xp = Number(u.xp) || 0;
   // Rang au classement général par XP (1 = meilleur, rang « compétition »).
@@ -25633,6 +26114,8 @@ async function boot() {
     try {
       await db.initSchema();
       console.log('[DB] Connected and schema ready');
+      try { swapouTournoiVerifie = (await db.getAppState('swapou_tournoi_verifie')) === '1'; }
+      catch (e) { console.error('[SWAPOU] interrupteur du tournoi :', e.message); }
       // Les sessions que la base connaît reviennent — dormantes, réveillées à
       // leur premier appel (voir `sessionsDormantes`). La fenêtre est celle de
       // la rétention : au-delà, la purge RGPD les a de toute façon effacées.

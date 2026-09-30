@@ -90,6 +90,30 @@ de confidentialité : public adulte, accord parental avant 15 ans), pas mesurée
 | **Durée** | IP et jeton : 6 mois ; le lien de parrainage : vie du compte |
 | **Où** | `users` (`register_ip`, `device_token`, `device_token_at`, `referred_by`, `referral_*`) |
 
+## 6 bis. Lutte contre les multi-comptes (journal des connexions)
+
+| | |
+|---|---|
+| **Finalité** | Repérer un même joueur derrière plusieurs pseudos (classements, tournois, kikooz) |
+| **Base légale** | Intérêt légitime (l'équité du parc) |
+| **Données** | jour, adresse IP retenue par le serveur, chaîne `X-Forwarded-For` brute, adresse de la socket, jeton d'appareil (`fp_device`, tiré au hasard), navigateur (User-Agent), origine (connexion, inscription, reprise), nombre de connexions du jour |
+| **Destinataires** | serveur ; administrateur (clé maître seule), onglet « Comptes liés » |
+| **Durée** | 6 mois (`RGPD_IP_JOURS`), purge par `rgpdBalayage()` |
+| **Où** | `connexions` ; exporté (`connexions`), effacé à la suppression du compte, suivi au renommage |
+| **Décision automatisée** | aucune : le rapprochement propose des groupes, l'administrateur tranche |
+
+## 6 ter. Vérification des scores de Swapou Challenge
+
+| | |
+|---|---|
+| **Finalité** | S'assurer qu'un score est réel, en rejouant la partie sur le serveur |
+| **Base légale** | Intérêt légitime (l'équité des classements et des tournois) |
+| **Données** | numéro et graine de la partie, coups joués et temps de réflexion de chacun, score déclaré et score rejoué, verdict, rythme (médiane, régularité), accord avec l'IA du jeu (calculé à la demande) |
+| **Destinataires** | serveur ; administrateur (clé maître seule), onglet « Swapou » |
+| **Durée** | 6 mois (`RGPD_IP_JOURS`) ; une graine jamais jouée : 2 jours |
+| **Où** | `swapou_parties` ; exporté (`swapou_parties`), effacé à la suppression du compte, suivi au renommage |
+| **Décision automatisée** | aucune sur le compte ni sur le classement ; seul le tournoi, si l'administrateur lève l'interrupteur « parties vérifiées seulement », n'y fait entrer que les parties conformes |
+
 ## 7. Notifications push
 
 | | |

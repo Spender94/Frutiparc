@@ -290,6 +290,23 @@
     border-top: 1px solid #8bc55a;
   }
 
+  /* Intégrité : verdicts de Swapou, groupes de comptes liés */
+  .vd { display: inline-block; padding: 1px 7px; border-radius: 8px; font-size: 11px; font-weight: bold; color: #fff; }
+  .vd-conforme { background: #2f8f2f; }
+  .vd-divergent { background: #b31111; }
+  .vd-non_verifiable { background: #888; }
+  .vd-en_cours { background: #c8860a; }
+  .integ-note { font-size: 12px; color: #555; margin: 4px 2px 10px; line-height: 1.45; }
+  .integ-inter { background: #fff; border: 2px solid #D6F7B5; border-radius: 8px; padding: 10px 12px; margin: 8px 0 14px; }
+  .integ-inter label { font-weight: bold; color: #2C4A0F; display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+  .integ-alerte { color: #b31111; font-weight: bold; }
+  .cl-groupe { background: #fff; border: 2px solid #D6F7B5; border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; }
+  .cl-groupe.fort { border-color: #e3a0a0; }
+  .cl-groupe h4 { margin: 0 0 6px; font-size: 14px; color: #2C4A0F; }
+  .cl-groupe .preuve { display: inline-block; background: #f4dca0; color: #7a5b00; border-radius: 8px; padding: 1px 7px; font-size: 11px; margin: 1px 2px; }
+  .cl-journal { margin-top: 8px; font-size: 11px; }
+  .cl-journal td { font-family: monospace; }
+
   /* Badges */
   .badge {
     display: inline-block;
@@ -423,7 +440,86 @@
       <button class="tab" data-tab="banwords" onclick="switchTab('banwords')">Modération chat</button>
       <button class="tab" data-tab="forumcensor" onclick="switchTab('forumcensor')">Censure forum</button>
     </div></div>
+    <div class="tab-group"><span class="lbl">Intégrité</span><div class="grp">
+      <button class="tab" data-tab="swapouverif" onclick="switchTab('swapouverif')">Swapou vérifié</button>
+      <button class="tab" data-tab="compteslies" onclick="switchTab('compteslies')">Comptes liés</button>
+    </div></div>
   </div>
+
+<div class="content" id="tab-swapouverif" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadSwapouVerif()">Rafraîchir</button>
+    <select id="sv-jours" onchange="loadSwapouVerif()">
+      <option value="1">Aujourd'hui (24 h)</option>
+      <option value="7" selected>7 derniers jours</option>
+      <option value="30">30 derniers jours</option>
+      <option value="183">6 mois</option>
+    </select>
+    <input id="sv-joueur" placeholder="joueur" style="width:120px" onkeydown="if(event.key==='Enter')loadSwapouVerif()">
+    <select id="sv-verdict" onchange="loadSwapouVerif()">
+      <option value="">tous les verdicts</option>
+      <option value="conforme">conformes</option>
+      <option value="divergent">divergentes</option>
+      <option value="non_verifiable">non vérifiables</option>
+      <option value="en_cours">en cours</option>
+    </select>
+    <span id="sv-etat" style="margin-left:auto;font-size:13px"></span>
+  </div>
+  <p class="integ-note">
+    Chaque partie de <b>Swapou Challenge</b> jouée dans le portage part avec la liste de ses coups ; le serveur la
+    <b>rejoue</b> avec le vrai code du jeu, à partir de la graine qu'il a lui-même donnée. <span class="vd vd-conforme">conforme</span> :
+    la partie rejouée finit au score déclaré. <span class="vd vd-divergent">divergent</span> : un coup impossible, une fin
+    qui ne tombe pas, un score différent — un score <b>trafiqué</b>. Le rejeu prouve que la partie a été <i>jouée</i>, pas
+    <i>qui</i> l'a jouée : pour l'aide d'une IA, regarde le <b>rythme</b> (réflexion médiane, et régularité : l'écart des
+    temps de réflexion rapporté à leur moyenne — un humain varie d'un coup à l'autre, un programme à cadence fixe presque pas ;
+    en rouge sous 0,35) et l'<b>accord avec l'IA</b> (la part des coups qui sont exactement le meilleur coup de
+    l'analyseur du jeu ; quelques minutes de calcul par partie, à la demande).
+    Rien ici ne touche au classement : les scores sont enregistrés comme avant.
+  </p>
+  <div class="integ-inter">
+    <label><input type="checkbox" id="sv-tournoi" onchange="swapouTournoiVerifie(this.checked)">
+      Tournoi Swapou : ne compter que les parties vérifiées</label>
+    <div class="integ-note" style="margin:6px 0 0">
+      Baissé (par défaut), un score entre au tour du tournoi dès qu'il est posé, comme avant.
+      Levé, il n'y entre qu'une fois sa partie rejouée et trouvée <b>conforme</b>, avec une graine donnée par le serveur
+      (quelques dixièmes de seconde après la fin de partie). <span class="integ-alerte">Les parties du jeu Flash, et celles
+      jouées sans réseau au lancement, n'entrent alors plus au tour</span> : annonce-le aux joueurs (« le tournoi se joue
+      sur la version du parc »). Le classement Challenge habituel, lui, ne change pas.
+    </div>
+  </div>
+  <h3>Par joueur</h3>
+  <table>
+    <thead><tr><th>Joueur</th><th>Parties</th><th>Conformes</th><th>Divergentes</th><th>Graine locale</th><th>Meilleur vérifié</th><th>Meilleur déclaré</th><th>Coups joués par le bouton IA</th><th>Réflexion médiane</th><th>Régularité</th></tr></thead>
+    <tbody id="sv-bilan"></tbody>
+  </table>
+  <h3>Les parties</h3>
+  <table>
+    <thead><tr><th>Fin</th><th>Joueur</th><th>Score déclaré</th><th>Rejoué</th><th>Verdict</th><th>Coups</th><th>Durée</th><th>Réflexion médiane</th><th>Régularité</th><th>Accord avec l'IA</th><th></th></tr></thead>
+    <tbody id="sv-parties"></tbody>
+  </table>
+</div>
+
+<div class="content" id="tab-compteslies" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadComptesLies()">Rafraîchir</button>
+    <select id="cl-jours" onchange="loadComptesLies()">
+      <option value="30">30 derniers jours</option>
+      <option value="90" selected>90 derniers jours</option>
+      <option value="183">6 mois</option>
+    </select>
+    <span id="cl-etat" style="margin-left:auto;font-size:13px"></span>
+  </div>
+  <p class="integ-note">
+    Les comptes que des indices rapprochent, à partir du <b>journal des connexions</b> (tenu depuis cette version : il se remplit
+    au fil des connexions) et des données d'inscription. Le poids d'une paire :
+    <b>même appareil</b> (le même navigateur, reconnu par un jeton tiré au hasard) 100 ;
+    <b>même e-mail</b> 100 ; <b>même adresse IP le même jour</b> 10 par jour (60 au plus) ;
+    <b>même adresse d'inscription</b> 25 ; des <b>kikooz échangés</b> +15. Un groupe se forme à partir de 50.
+    Une adresse IP seule ne prouve rien — une famille, une colocation, une école, un opérateur mobile en partagent une — ;
+    c'est la répétition, et surtout l'appareil, qui parlent. Rien n'est décidé automatiquement : c'est toi qui tranches.
+  </p>
+  <div id="cl-groupes"></div>
+</div>
 
 <div class="content" id="tab-stats" style="display:none">
   <div class="toolbar">
@@ -1618,7 +1714,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['stats','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons'].forEach(t => {
+  ['stats','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons','swapouverif','compteslies'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -1641,6 +1737,170 @@ function switchTab(name) {
   if (name === 'stats') loadStats();
   else statsAuto(false);
   if (name === 'palmares') loadPalmares();
+  if (name === 'swapouverif') loadSwapouVerif();
+  else swapouVerifSuivre(false);
+  if (name === 'compteslies') loadComptesLies();
+}
+
+// ─── Intégrité : Swapou vérifié ───
+let svMinuteur = null;
+function swapouVerifSuivre(on) {
+  if (svMinuteur) { clearInterval(svMinuteur); svMinuteur = null; }
+  if (on) svMinuteur = setInterval(loadSwapouVerif, 5000);
+}
+function svDuree(ms) {
+  const s = Math.round((Number(ms) || 0) / 1000);
+  return s >= 60 ? Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0') : s + ' s';
+}
+function svMs(ms) { return ms == null ? '—' : (Number(ms) / 1000).toFixed(1).replace('.', ',') + ' s'; }
+function svRegularite(v) {
+  if (v == null || v === '') return '—';
+  const n = Number(v);
+  const txt = n.toFixed(2).replace('.', ',');
+  // Très régulier = suspect : un programme joue à cadence fixe.
+  return n < 0.35 ? `<b style="color:#b31111" title="Très régulier : un programme joue à cadence fixe">${txt}</b>` : txt;
+}
+function svAccord(p) {
+  if (p.accordEnCours) {
+    const a = p.accordEnCours;
+    return `<span style="color:#c8860a">calcul… ${a.total ? Math.round(100 * a.fait / a.total) : 0} %</span>`;
+  }
+  const a = p.accord;
+  if (a && a.erreur) return `<span style="color:#b31111" title="${esc(a.erreur)}">échec</span> <button class="btn btn-sm" onclick="swapouAccord('${p.id}')">Relancer</button>`;
+  if (a) {
+    const fort = a.premierPct >= 70;
+    const courbe = (a.tranches || []).map((t) => t == null ? '·' : t + '%').join(' → ');
+    return `<b style="color:${fort ? '#b31111' : '#2C4A0F'}" title="Coups identiques au meilleur de l'IA, parmi ${a.choix} coups à vrai choix. Par tranche de 50 coups : ${esc(courbe)}">${String(a.premierPct).replace('.', ',')} %</b>`
+      + ` <span style="color:#777;font-size:11px">top 3 : ${String(a.top3Pct).replace('.', ',')} %</span>`;
+  }
+  if (!p.nb_coups || !p.graine) return '—';
+  return `<button class="btn btn-sm" onclick="swapouAccord('${p.id}')">Calculer</button>`;
+}
+async function loadSwapouVerif() {
+  try {
+    const q = new URLSearchParams({ jours: $('#sv-jours').value, joueur: $('#sv-joueur').value.trim(), verdict: $('#sv-verdict').value });
+    const r = await fetch('/api/admin/swapou/parties?' + q, { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    $('#sv-tournoi').checked = !!d.tournoiVerifie;
+    const n = d.parties.length;
+    const div = d.parties.filter((p) => p.verdict === 'divergent').length;
+    $('#sv-etat').innerHTML = d.sansBase ? 'sans base de données : rien à montrer'
+      : `<span class="count">${n}</span> partie${n > 1 ? 's' : ''}${div ? ` · <b style="color:#b31111">${div} divergente${div > 1 ? 's' : ''}</b>` : ''}`
+        + (d.attente ? ` · ${d.attente} en vérification` : '') + (d.attenteAccord ? ` · ${d.attenteAccord} accord(s) en calcul` : '');
+    $('#sv-bilan').innerHTML = d.bilan.map((b) => `<tr>
+      <td><a href="#" class="uname" onclick="$('#sv-joueur').value='${esc(b.username)}';loadSwapouVerif();return false">${esc(b.username)}</a></td>
+      <td>${b.parties}</td><td>${b.conformes}</td>
+      <td>${b.divergentes ? `<b style="color:#b31111">${b.divergentes}</b>` : 0}</td>
+      <td>${b.locales || 0}</td>
+      <td>${b.meilleur_verifie == null ? '—' : Number(b.meilleur_verifie).toLocaleString('fr-FR')}</td>
+      <td>${b.meilleur_declare == null ? '—' : Number(b.meilleur_declare).toLocaleString('fr-FR')}</td>
+      <td>${b.coups_ia || 0}</td>
+      <td>${svMs(b.mediane_moy)}</td>
+      <td>${svRegularite(b.variation_moy)}</td>
+    </tr>`).join('') || '<tr><td colspan="10" style="text-align:center;color:#999;padding:14px">Aucune partie sur la période.</td></tr>';
+    $('#sv-parties').innerHTML = d.parties.map((p) => {
+      const ry = p.rythme || {};
+      const rejoue = p.score_rejoue == null ? '—' : Number(p.score_rejoue).toLocaleString('fr-FR');
+      return `<tr>
+        <td style="white-space:nowrap">${tFmtDate(p.fini_le)}</td>
+        <td><a href="#" onclick="viewUser('${esc(p.username)}');return false" class="uname">${esc(p.username)}</a>
+          ${p.ia_detenteur ? '<span class="badge" title="Joueur à qui l’admin a accordé l’IA : score non classé">IA accordée</span>' : ''}
+          ${p.tournoi ? '<span class="badge" style="background:#7a5bd0;color:#fff">tournoi</span>' : ''}
+          ${p.source === 'locale' ? '<span class="badge" style="background:#ddd;color:#555" title="Le serveur n’a pas répondu à temps : graine tirée par le navigateur">graine locale</span>' : ''}</td>
+        <td>${Number(p.score_declare || 0).toLocaleString('fr-FR')}</td>
+        <td>${rejoue}</td>
+        <td><span class="vd vd-${p.verdict}">${esc(p.verdict.replace('_', ' '))}</span>${p.raison ? `<div style="font-size:11px;color:#777">${esc(p.raison)}</div>` : ''}</td>
+        <td>${p.nb_coups}${ry.parIa ? ` <span style="color:#b31111" title="coups joués par le bouton de l’IA">(${ry.parIa} IA)</span>` : ''}${ry.defenses ? ` <span style="color:#777;font-size:11px">${ry.defenses} déf.</span>` : ''}</td>
+        <td>${svDuree(p.duree_ms)}</td>
+        <td>${svMs(ry.medianeMs)}</td>
+        <td>${svRegularite(ry.variation)}</td>
+        <td>${svAccord(p)}</td>
+        <td><button class="btn btn-sm" title="Rejouer la partie à nouveau" onclick="swapouRejouer('${p.id}')">Rejouer</button></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="11" style="text-align:center;color:#999;padding:14px">Aucune partie.</td></tr>';
+    // Un accord en calcul : on suit l'avancement.
+    swapouVerifSuivre(d.parties.some((p) => p.accordEnCours || p.verdict === 'en_cours'));
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function swapouTournoiVerifie(on) {
+  const msg = on
+    ? 'Ne compter au tournoi Swapou que les parties vérifiées ?\n\nLes parties du jeu Flash (et celles jouées sans réseau au lancement) n’entreront plus au tour.'
+    : 'Revenir au fonctionnement habituel (tout score entre au tour du tournoi) ?';
+  if (!confirm(msg)) { $('#sv-tournoi').checked = !on; return; }
+  try {
+    const r = await fetch('/api/admin/swapou/tournoi-verifie', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()), body: JSON.stringify({ on }) });
+    const d = await r.json();
+    if (d.ok) toast(d.tournoiVerifie ? 'Tournoi : parties vérifiées seulement' : 'Tournoi : fonctionnement habituel');
+    else toast('Erreur: ' + JSON.stringify(d));
+    $('#sv-tournoi').checked = !!d.tournoiVerifie;
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function swapouAccord(id) {
+  try {
+    const r = await fetch('/api/admin/swapou/parties/' + id + '/accord', { method: 'POST', headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    toast('Calcul de l’accord lancé (quelques minutes)');
+    loadSwapouVerif();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function swapouRejouer(id) {
+  try {
+    const r = await fetch('/api/admin/swapou/parties/' + id + '/rejouer', { method: 'POST', headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    toast('Rejouée : ' + d.verdict.replace('_', ' ') + (d.raison ? ' — ' + d.raison : ''));
+    loadSwapouVerif();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// ─── Intégrité : comptes liés ───
+async function loadComptesLies() {
+  try {
+    const r = await fetch('/api/admin/comptes-lies?jours=' + $('#cl-jours').value, { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    const n = d.groupes.length;
+    $('#cl-etat').innerHTML = d.sansBase ? 'sans base de données : rien à montrer'
+      : `<span class="count">${n}</span> groupe${n > 1 ? 's' : ''} de comptes liés`;
+    $('#cl-groupes').innerHTML = d.groupes.map((g, i) => {
+      const fort = g.poids >= 100;
+      return `<div class="cl-groupe${fort ? ' fort' : ''}">
+        <h4>${fort ? '🔴' : '🟠'} ${g.comptes.length} comptes — indice le plus fort : ${g.poids}</h4>
+        <table><thead><tr><th>Compte</th><th>Inscrit le</th><th>Dernière connexion</th><th>XP</th><th>Parrain</th><th></th></tr></thead><tbody>
+        ${g.comptes.map((c) => `<tr>
+          <td><a href="#" onclick="viewUser('${esc(c.username)}');return false" class="uname">${esc(c.affichage || c.username)}</a>
+            ${c.banni ? '<span class="badge" style="background:#b31111;color:#fff">banni</span>' : ''}</td>
+          <td>${c.creeLe ? new Date(c.creeLe).toLocaleDateString('fr-FR') : '—'}</td>
+          <td>${c.derniere ? tFmtDate(c.derniere) : '—'}</td>
+          <td>${Number(c.xp || 0).toLocaleString('fr-FR')}</td>
+          <td>${esc(c.parrain || '—')}</td>
+          <td><button class="btn btn-sm" onclick="journalConnexions('${esc(c.username)}', 'clj-${i}')">Journal</button></td>
+        </tr>`).join('')}
+        </tbody></table>
+        <div style="margin-top:6px">${g.paires.map((p) => `<div style="font-size:12px;margin:2px 0">
+          <b>${esc(p.a)}</b> ↔ <b>${esc(p.b)}</b> <span style="color:#777">(${p.poids})</span> :
+          ${p.preuves.map((x) => `<span class="preuve">${esc(x)}</span>`).join('')}</div>`).join('')}</div>
+        <div class="cl-journal" id="clj-${i}"></div>
+      </div>`;
+    }).join('') || '<p style="color:#999">Aucun groupe sur la période. Le journal des connexions se remplit au fil des connexions : '
+      + 'repasse dans quelques jours.</p>';
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function journalConnexions(username, cible) {
+  try {
+    const r = await fetch('/api/admin/connexions/' + encodeURIComponent(username), { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    const court = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+    $('#' + cible).innerHTML = `<b>Journal de ${esc(username)}</b>
+      <table><thead><tr><th>Jour</th><th>Adresse</th><th>Chaîne X-Forwarded-For</th><th>Appareil</th><th>Navigateur</th><th>Origine</th><th>Fois</th></tr></thead><tbody>
+      ${d.connexions.map((c) => `<tr><td>${esc(c.jour)}</td><td>${esc(c.ip || '—')}</td><td title="${esc(c.xff)}">${esc(court(c.xff, 40) || '—')}</td>
+        <td title="${esc(c.appareil)}">${esc(court(c.appareil, 14) || '—')}</td><td title="${esc(c.navigateur)}">${esc(court(c.navigateur, 50))}</td>
+        <td>${esc(c.origine)}</td><td>${c.n}</td></tr>`).join('') || '<tr><td colspan="7">Aucune connexion notée.</td></tr>'}
+      </tbody></table>`;
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 
 // ─── Palmarès ───

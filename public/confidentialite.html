@@ -114,6 +114,12 @@
       <tr><td>Adresse IP et jeton d'appareil à l'inscription</td>
           <td>Empêcher les abus de multi-comptes au parrainage</td>
           <td>L'intérêt légitime (l'équité du parc)</td></tr>
+      <tr><td>Journal des connexions : jour, adresse IP, jeton d'appareil, navigateur</td>
+          <td>Repérer les multi-comptes (un même joueur derrière plusieurs pseudos, pour les classements, les tournois ou les kikooz)</td>
+          <td>L'intérêt légitime (l'équité du parc) ; lu par l'administrateur seul, jamais montré aux autres</td></tr>
+      <tr><td>Déroulé de tes parties de Swapou Challenge : les coups joués et leur rythme</td>
+          <td>Vérifier que les scores sont réels, en rejouant la partie</td>
+          <td>L'intérêt légitime (l'équité des classements et des tournois)</td></tr>
       <tr><td>Journaux techniques du serveur</td>
           <td>Faire tourner le service et le sécuriser</td>
           <td>L'intérêt légitime</td></tr>
@@ -166,6 +172,8 @@
       <tr><td>Lignes des salons de discussion</td><td>24 heures</td></tr>
       <tr><td>Messages privés, courrier interne, forum</td><td>Tant que ton compte existe (le forum garde les messages, anonymisés, après la suppression : voir ci-dessous)</td></tr>
       <tr><td>Adresse IP et jeton d'appareil de l'inscription</td><td>6 mois</td></tr>
+      <tr><td>Journal des connexions</td><td>6 mois</td></tr>
+      <tr><td>Déroulé des parties de Swapou Challenge</td><td>6 mois</td></tr>
       <tr><td>Sanctions de modération</td><td>1 an</td></tr>
       <tr><td>Sessions de connexion</td><td>6 mois sans être renouvelées</td></tr>
       <tr><td>Jetons de récupération de code secret</td><td>7 jours</td></tr>
@@ -226,8 +234,10 @@
   <section class="carte">
     <h2>Sur ton appareil</h2>
     <p>Le site garde en local (<i>localStorage</i>) ta session de connexion,
-    quelques préférences d'affichage, et ton choix pour les blindtests — c'est ce
-    qui t'évite de retaper ton code secret. Ce sont des données strictement
+    quelques préférences d'affichage, ton choix pour les blindtests, et un
+    <b>jeton d'appareil</b> (un nombre tiré au hasard, qui ne dit rien de toi
+    ni de ton appareil) — c'est ce qui t'évite de retaper ton code secret, et
+    ce qui permet de reconnaître deux comptes ouverts depuis le même navigateur. Ce sont des données strictement
     nécessaires : aucun bandeau de cookies n'est requis. <b>Aucun cookie tiers,
     aucun outil de mesure d'audience, aucune régie publicitaire.</b></p>
   </section>

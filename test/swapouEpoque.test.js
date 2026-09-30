@@ -119,10 +119,13 @@ test('le panneau de l’IA joue le coup qu’il conseille', () => {
   assert.match(JEU, /if \(!m \|\| this\.game\.lock \|\| this\.game\.pause\.activated\(\)\) return null;/);
   // Et il passe par le MÊME chemin que la souris : mêmes compteurs, même
   // verrou, même oubli du conseil.
-  assert.match(JEU, /Challenge\.prototype\.jouerPaire = function \(fpair\) \{/);
+  // (le second argument, « origine », ne sert qu'au journal de la partie :
+  // un coup joué par le bouton y est marqué « ! »).
+  assert.match(JEU, /Challenge\.prototype\.jouerPaire = function \(fpair, origine\) \{/);
   assert.match(JEU, /if \(this\.analyse && this\.analyse\.clic\(SW\.mouse\.x, SW\.mouse\.y\)\) return;/);
   assert.match(JEU, /this\.jouerPaire\(SW\.pickPair\(this\.player\)\);/);
-  assert.match(JEU, /if \(m\.type === 'defend'\) \{ this\.game\.defend\(\); return true; \}/);
+  assert.match(JEU, /if \(m\.type === 'defend'\) \{ this\.game\.defend\('ia'\); return true; \}/);
+  assert.match(JEU, /\}, 'ia'\);/, 'l\'échange du bouton est marqué comme joué par l\'IA');
   // La paire de l'analyseur est en CASES ; le jeu la veut avec ses fruits.
   assert.match(JEU, /f1: lvl\.fruits\[p\.x\] \? lvl\.fruits\[p\.x\]\[p\.y\] : null,/);
   // Le panneau a grandi juste ce qu'il faut : il finit à 316, le visage

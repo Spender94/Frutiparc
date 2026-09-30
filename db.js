@@ -938,6 +938,64 @@ async function initSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_swapou_ia_scores_user ON swapou_ia_scores(LOWER(username), created_at DESC);
 
+      -- LES PARTIES DE SWAPOU CHALLENGE, VÉRIFIÉES. Le serveur donne la graine
+      -- (/api/swapou/partie), le navigateur rend le journal des coups avec le
+      -- score ; le serveur rejoue la partie (swapouRejeu.js) et note le
+      -- verdict. Mode OBSERVATEUR : le score, lui, a été enregistré comme
+      -- avant — la ligne ne sert qu'à l'admin (et, si l'interrupteur du
+      -- tournoi est levé, à n'y compter que les parties conformes).
+      --   source  : 'serveur' (graine donnée par le serveur) ou 'locale' (le
+      --             serveur n'a pas répondu à temps, le navigateur a tiré la
+      --             sienne : rejouable, mais preuve plus faible) ;
+      --   verdict : 'en_cours', 'conforme', 'divergent', 'non_verifiable'.
+      CREATE TABLE IF NOT EXISTS swapou_parties (
+        id             TEXT PRIMARY KEY,
+        username       TEXT NOT NULL,
+        graine         BIGINT NOT NULL,
+        source         TEXT NOT NULL DEFAULT 'serveur',
+        perso          INTEGER,
+        cree_le        TIMESTAMPTZ NOT NULL DEFAULT now(),
+        fini_le        TIMESTAMPTZ,
+        score_declare  INTEGER,
+        score_rejoue   INTEGER,
+        verdict        TEXT NOT NULL DEFAULT 'en_cours',
+        raison         TEXT NOT NULL DEFAULT '',
+        coups          TEXT NOT NULL DEFAULT '',
+        nb_coups       INTEGER NOT NULL DEFAULT 0,
+        duree_ms       INTEGER NOT NULL DEFAULT 0,
+        rythme         JSONB,
+        accord         JSONB,
+        ia_detenteur   BOOLEAN NOT NULL DEFAULT false,
+        tournoi        BOOLEAN NOT NULL DEFAULT false
+      );
+      CREATE INDEX IF NOT EXISTS idx_swapou_parties_user ON swapou_parties(LOWER(username), cree_le DESC);
+      CREATE INDEX IF NOT EXISTS idx_swapou_parties_date ON swapou_parties(cree_le DESC);
+
+      -- LE JOURNAL DES CONNEXIONS, pour démasquer les multi-comptes. Une ligne
+      -- par joueur, par jour, par adresse et par appareil — les connexions
+      -- suivantes du même jour ne font que monter le compteur. On y range
+      -- l'adresse TELLE QUE REÇUE (la chaîne X-Forwarded-For entière et
+      -- l'adresse de la socket), sans rien décider : c'est l'admin qui lit.
+      -- Six mois de rétention (RGPD_IP_JOURS), comme l'IP d'inscription.
+      CREATE TABLE IF NOT EXISTS connexions (
+        id         SERIAL PRIMARY KEY,
+        username   TEXT NOT NULL,
+        jour       TEXT NOT NULL,
+        ip         TEXT NOT NULL DEFAULT '',
+        xff        TEXT NOT NULL DEFAULT '',
+        socket_ip  TEXT NOT NULL DEFAULT '',
+        appareil   TEXT NOT NULL DEFAULT '',
+        navigateur TEXT NOT NULL DEFAULT '',
+        origine    TEXT NOT NULL DEFAULT '',
+        premiere   TIMESTAMPTZ NOT NULL DEFAULT now(),
+        derniere   TIMESTAMPTZ NOT NULL DEFAULT now(),
+        n          INTEGER NOT NULL DEFAULT 1,
+        UNIQUE (username, jour, ip, appareil)
+      );
+      CREATE INDEX IF NOT EXISTS idx_connexions_ip ON connexions(ip);
+      CREATE INDEX IF NOT EXISTS idx_connexions_appareil ON connexions(appareil) WHERE appareil <> '';
+      CREATE INDEX IF NOT EXISTS idx_connexions_user ON connexions(LOWER(username), derniere DESC);
+
       -- Chat auto-moderation: words triggering an instant totoché. Matched
       -- case-insensitively on the accent-stripped message, with word
       -- boundaries (so "pdf" doesn't hit "pd"). Edited live from /admin.
@@ -1736,6 +1794,8 @@ async function anonymiserJoueur(username) {
       ['trombinoscope', 'pseudo', 'brut'],
       ['contacts', 'contact_name', 'adresse'],
       ['blacklist', 'blocked_name', 'adresse'],
+      ['swapou_parties', 'username', 'brut'],
+      ['connexions', 'username', 'brut'],
     ]) {
       const r = quoi === 'adresse'
         ? await client.query(`DELETE FROM ${table} WHERE LOWER(SPLIT_PART(${col}, '@', 1)) = $1`, [a])
@@ -1748,7 +1808,8 @@ async function anonymiserJoueur(username) {
     // Tout ce qui le NOMME par ailleurs — l'auteur d'un sujet, d'un message,
     // d'un courrier, un don, un achat, un tournoi — prend la pierre tombale.
     const retirees = new Set(['push_subscriptions.username', 'trombinoscope.pseudo',
-      'forum_topic_reads.username', 'forum_topic_follows.username', 'users.referred_by']);
+      'forum_topic_reads.username', 'forum_topic_follows.username', 'users.referred_by',
+      'swapou_parties.username', 'connexions.username']);
     for (const [table, col] of RENOMMAGE_COLONNES) {
       if (retirees.has(`${table}.${col}`)) continue;
       const r = await client.query(
@@ -1819,6 +1880,8 @@ async function exporterDonnees(userId, username) {
     forum_suivis: await q('SELECT topic_id, created_at FROM forum_topic_follows WHERE LOWER(username) = $1', [u]),
     tournois: await q('SELECT tournament_id, seed, qualif_score, status, created_at FROM tournament_players WHERE LOWER(username) = $1', [u]),
     swapou_ia: await q('SELECT score, data, created_at FROM swapou_ia_scores WHERE LOWER(username) = $1 ORDER BY created_at', [u]),
+    swapou_parties: await q('SELECT id, graine, source, perso, cree_le, fini_le, score_declare, score_rejoue, verdict, raison, coups, nb_coups, duree_ms, rythme FROM swapou_parties WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
+    connexions: await q('SELECT jour, ip, xff, socket_ip, appareil, navigateur, origine, premiere, derniere, n FROM connexions WHERE LOWER(username) = $1 ORDER BY premiere', [u]),
     sanctions: await q('SELECT moderator, action, detail, created_at FROM moderation_logs WHERE LOWER(target_username) = $1 ORDER BY created_at', [u]),
     notifications: await q('SELECT ua, created_at FROM push_subscriptions WHERE LOWER(username) = $1', [u]),
     sessions: await q('SELECT created_at FROM sessions WHERE user_id = $1 ORDER BY created_at', [id]),
@@ -1887,6 +1950,8 @@ const RENOMMAGE_COLONNES = [
   ['kikooz_gifts', 'giver'],
   ['kikooz_gifts', 'recipient'],
   ['swapou_ia_scores', 'username'],
+  ['swapou_parties', 'username'],
+  ['connexions', 'username'],
   ['shop_packs', 'auteur'],
   ['users', 'referred_by'],
 ];
@@ -2264,6 +2329,181 @@ async function listSwapouIaScores(username, limit = 50) {
      WHERE LOWER(username) = LOWER($1) ORDER BY created_at DESC, id DESC LIMIT $2`,
     [String(username || ''), Math.max(1, Math.min(Number(limit) || 50, 500))]
   );
+  return rows;
+}
+
+// ── Les parties de Swapou Challenge, vérifiées par rejeu (swapou_parties) ──
+async function creerPartieSwapou(id, username, graine) {
+  await pool.query(
+    `INSERT INTO swapou_parties (id, username, graine, source) VALUES ($1, $2, $3, 'serveur')
+     ON CONFLICT (id) DO NOTHING`,
+    [String(id), String(username || '').toLowerCase(), Number(graine) >>> 0]);
+}
+async function lirePartieSwapou(id) {
+  const { rows } = await pool.query('SELECT * FROM swapou_parties WHERE id = $1', [String(id || '')]);
+  return rows[0] || null;
+}
+// La partie rendue avec son score. Une partie à graine LOCALE n'a pas de
+// ligne encore : elle naît ici.
+async function finirPartieSwapou(p) {
+  await pool.query(
+    `INSERT INTO swapou_parties (id, username, graine, source, perso, fini_le, score_declare,
+                                 coups, nb_coups, duree_ms, rythme, ia_detenteur, tournoi, verdict)
+     VALUES ($1, $2, $3, $4, $5, now(), $6, $7, $8, $9, $10, $11, $12, 'en_cours')
+     ON CONFLICT (id) DO UPDATE SET perso = $5, fini_le = now(), score_declare = $6, coups = $7,
+       nb_coups = $8, duree_ms = $9, rythme = $10, ia_detenteur = $11, tournoi = $12`,
+    [String(p.id), String(p.username || '').toLowerCase(), Number(p.graine) >>> 0,
+     p.source === 'locale' ? 'locale' : 'serveur',
+     Number.isFinite(Number(p.perso)) ? Number(p.perso) : null,
+     Math.round(Number(p.score) || 0), String(p.coups || ''), Number(p.nbCoups) || 0,
+     Math.max(0, Math.min(Math.round(Number(p.dureeMs) || 0), 2147483647)),
+     p.rythme ? JSON.stringify(p.rythme) : null, !!p.iaDetenteur, !!p.tournoi]);
+}
+async function verdictPartieSwapou(id, v) {
+  await pool.query(
+    'UPDATE swapou_parties SET verdict = $2, score_rejoue = $3, raison = $4 WHERE id = $1',
+    [String(id), String(v.verdict || 'non_verifiable'),
+     Number.isFinite(Number(v.scoreRejoue)) ? Math.round(Number(v.scoreRejoue)) : null,
+     String(v.raison || '').slice(0, 200)]);
+}
+async function accordPartieSwapou(id, accord) {
+  await pool.query('UPDATE swapou_parties SET accord = $2 WHERE id = $1',
+    [String(id), accord ? JSON.stringify(accord) : null]);
+}
+// La liste de l'admin : les parties rendues (les graines jamais jouées ne
+// disent rien), les plus récentes d'abord. Le journal des coups n'y est pas —
+// il est lourd ; on le relit partie par partie.
+async function listerPartiesSwapou(opts = {}) {
+  const cond = ['fini_le IS NOT NULL'];
+  const params = [];
+  if (opts.username) { params.push(String(opts.username).toLowerCase()); cond.push(`LOWER(username) = $${params.length}`); }
+  if (opts.verdict) { params.push(String(opts.verdict)); cond.push(`verdict = $${params.length}`); }
+  if (opts.depuis) { params.push(new Date(opts.depuis)); cond.push(`fini_le >= $${params.length}`); }
+  params.push(Math.max(1, Math.min(Number(opts.limit) || 100, 1000)));
+  const { rows } = await pool.query(
+    `SELECT id, username, graine, source, perso, cree_le, fini_le, score_declare, score_rejoue,
+            verdict, raison, nb_coups, duree_ms, rythme, accord, ia_detenteur, tournoi
+       FROM swapou_parties WHERE ${cond.join(' AND ')}
+      ORDER BY fini_le DESC LIMIT $${params.length}`, params);
+  return rows;
+}
+// Le bilan par joueur : combien de parties, combien conformes, le meilleur
+// score vérifié, la régularité moyenne du rythme.
+async function bilanPartiesSwapou(depuis) {
+  const { rows } = await pool.query(
+    `SELECT username,
+            COUNT(*)::int AS parties,
+            COUNT(*) FILTER (WHERE verdict = 'conforme')::int AS conformes,
+            COUNT(*) FILTER (WHERE verdict = 'divergent')::int AS divergentes,
+            COUNT(*) FILTER (WHERE source = 'locale')::int AS locales,
+            MAX(score_rejoue) FILTER (WHERE verdict = 'conforme') AS meilleur_verifie,
+            MAX(score_declare) AS meilleur_declare,
+            SUM(COALESCE((rythme->>'parIa')::int, 0))::int AS coups_ia,
+            AVG((rythme->>'variation')::float) AS variation_moy,
+            AVG((rythme->>'medianeMs')::float) AS mediane_moy
+       FROM swapou_parties
+      WHERE fini_le IS NOT NULL AND fini_le >= $1
+      GROUP BY username ORDER BY MAX(score_declare) DESC NULLS LAST`,
+    [depuis ? new Date(depuis) : new Date(0)]);
+  return rows;
+}
+// La rétention : une graine jamais jouée ne vit que deux jours ; une partie,
+// le temps annoncé par la politique de confidentialité.
+async function purgerPartiesSwapou(jours) {
+  const orph = await pool.query(
+    `DELETE FROM swapou_parties WHERE fini_le IS NULL AND cree_le < now() - interval '2 days'`);
+  const vieilles = await pool.query(
+    'DELETE FROM swapou_parties WHERE cree_le < now() - make_interval(days => $1)',
+    [Math.max(1, Number(jours) || 0)]);
+  return orph.rowCount + vieilles.rowCount;
+}
+
+// ── Le journal des connexions (connexions) ──
+async function noterConnexion(c) {
+  await pool.query(
+    `INSERT INTO connexions (username, jour, ip, xff, socket_ip, appareil, navigateur, origine)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (username, jour, ip, appareil) DO UPDATE
+       SET derniere = now(), n = connexions.n + 1,
+           xff = EXCLUDED.xff, socket_ip = EXCLUDED.socket_ip,
+           navigateur = EXCLUDED.navigateur, origine = EXCLUDED.origine`,
+    [String(c.username || '').toLowerCase(), String(c.jour || ''),
+     String(c.ip || '').slice(0, 64), String(c.xff || '').slice(0, 300),
+     String(c.socketIp || '').slice(0, 64), String(c.appareil || '').slice(0, 80),
+     String(c.navigateur || '').slice(0, 300), String(c.origine || '').slice(0, 20)]);
+}
+async function connexionsDe(username, limit = 200) {
+  const { rows } = await pool.query(
+    `SELECT jour, ip, xff, socket_ip, appareil, navigateur, origine, premiere, derniere, n
+       FROM connexions WHERE LOWER(username) = $1 ORDER BY derniere DESC LIMIT $2`,
+    [String(username || '').toLowerCase(), Math.max(1, Math.min(Number(limit) || 200, 2000))]);
+  return rows;
+}
+async function purgerConnexions(jours) {
+  const r = await pool.query(
+    'DELETE FROM connexions WHERE derniere < now() - make_interval(days => $1)',
+    [Math.max(1, Number(jours) || 0)]);
+  return r.rowCount;
+}
+/*
+ * LES INDICES DE MULTI-COMPTES, en paires (a < b). Rien n'est décidé ici :
+ * chaque requête rend un type d'indice, le serveur les regroupe.
+ *   · appareil   — le même jeton d'appareil (localStorage) sur deux comptes :
+ *                  le plus fort ; il faut le même navigateur, le même profil ;
+ *   · ip_jour    — la même adresse le même jour : une famille, une école, un
+ *                  opérateur mobile le produisent aussi — c'est un indice
+ *                  faible, qui compte surtout quand il se répète ;
+ *   · ip_inscr   — la même adresse d'inscription ;
+ *   · dons       — des kikooz passés de l'un à l'autre.
+ * Une adresse partagée par trop de comptes le même jour (un point d'accès
+ * public) est écartée : elle relierait tout le monde à tout le monde.
+ */
+async function indicesMultiComptes(jours, maxParIp = 6) {
+  const j = Math.max(1, Number(jours) || 0);
+  const q = async (sql, params) => (await pool.query(sql, params)).rows;
+  const appareil = await q(
+    `SELECT a.username AS a, b.username AS b, COUNT(DISTINCT a.jour)::int AS jours,
+            MAX(GREATEST(a.derniere, b.derniere)) AS dernier
+       FROM connexions a JOIN connexions b
+         ON a.appareil = b.appareil AND a.username < b.username
+      WHERE a.appareil <> '' AND a.derniere >= now() - make_interval(days => $1)
+      GROUP BY a.username, b.username`, [j]);
+  const jeton = await q(
+    `SELECT LOWER(a.username) AS a, LOWER(b.username) AS b
+       FROM users a JOIN users b ON a.device_token = b.device_token AND LOWER(a.username) < LOWER(b.username)
+      WHERE a.device_token <> ''`);
+  const ipJour = await q(
+    `WITH partagees AS (
+       SELECT jour, ip FROM connexions
+        WHERE ip <> '' AND derniere >= now() - make_interval(days => $1)
+        GROUP BY jour, ip HAVING COUNT(DISTINCT username) BETWEEN 2 AND $2)
+     SELECT a.username AS a, b.username AS b, COUNT(DISTINCT a.jour)::int AS jours,
+            ARRAY_AGG(DISTINCT a.ip) AS ips
+       FROM connexions a JOIN connexions b
+         ON a.jour = b.jour AND a.ip = b.ip AND a.username < b.username
+       JOIN partagees p ON p.jour = a.jour AND p.ip = a.ip
+      GROUP BY a.username, b.username`, [j, Math.max(2, Number(maxParIp) || 6)]);
+  const ipInscr = await q(
+    `SELECT LOWER(a.username) AS a, LOWER(b.username) AS b, a.register_ip AS ip
+       FROM users a JOIN users b ON a.register_ip = b.register_ip AND LOWER(a.username) < LOWER(b.username)
+      WHERE a.register_ip <> '' AND a.register_ip <> 'unknown'`);
+  const dons = await q(
+    `SELECT LEAST(LOWER(giver), LOWER(recipient)) AS a, GREATEST(LOWER(giver), LOWER(recipient)) AS b,
+            COUNT(*)::int AS n, SUM(amount)::int AS total
+       FROM kikooz_gifts WHERE LOWER(giver) <> LOWER(recipient)
+      GROUP BY 1, 2`);
+  const emails = await q(
+    `SELECT LOWER(username) AS username, email FROM users WHERE COALESCE(email, '') <> ''`);
+  return { appareil, jeton, ipJour, ipInscr, dons, emails };
+}
+// La fiche courte des comptes d'un groupe, lue en base : la mémoire du serveur
+// ne tient que les comptes venus depuis son démarrage.
+async function fichesComptes(noms) {
+  if (!noms.length) return [];
+  const { rows } = await pool.query(
+    `SELECT LOWER(username) AS username, display_name, created_at, last_login, xp, referred_by, banned_until
+       FROM users WHERE LOWER(username) = ANY($1)`,
+    [noms.map((n) => String(n).toLowerCase())]);
   return rows;
 }
 
@@ -4216,6 +4456,20 @@ module.exports = {
   renommerJoueur,
   RENOMMAGE_COLONNES,
   RENOMMAGE_ADRESSES,
+  // Swapou vérifié, multi-comptes
+  creerPartieSwapou,
+  lirePartieSwapou,
+  finirPartieSwapou,
+  verdictPartieSwapou,
+  accordPartieSwapou,
+  listerPartiesSwapou,
+  bilanPartiesSwapou,
+  purgerPartiesSwapou,
+  noterConnexion,
+  connexionsDe,
+  purgerConnexions,
+  indicesMultiComptes,
+  fichesComptes,
   // RGPD
   PSEUDO_SUPPRIME,
   deleteSessionsForUser,
