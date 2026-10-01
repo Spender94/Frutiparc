@@ -643,6 +643,13 @@ async function initSchema() {
       --   tournament_matches.paris_fermes  le match a commencé : plus de mise ;
       --   tournament_paris.statut      'ouvert', 'gagne', 'perdu', 'rembourse' ;
       --   tournament_paris.gain        ce que le parieur a reçu (mise comprise).
+      -- LES TOURS AUTOMATIQUES d'un tournoi au score (option, baissée par
+      -- défaut) : chaque tour de coupe s'ouvre pour round_hours heures,
+      -- retient le meilleur score de chacun, désigne les vainqueurs à la
+      -- clôture et lance le suivant, tours_pause_h heures plus tard (le temps
+      -- de parier sur les nouvelles affiches).
+      ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS tours_auto BOOLEAN DEFAULT false;
+      ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS tours_pause_h INTEGER DEFAULT 0;
       ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS paris_actifs BOOLEAN DEFAULT false;
       ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS paris_plafond INTEGER DEFAULT 100;
       ALTER TABLE tournament_matches ADD COLUMN IF NOT EXISTS paris_fermes BOOLEAN DEFAULT false;

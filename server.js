@@ -3044,7 +3044,7 @@ async function tournamentSetMatchWinner(t, match, winner, score1, score2) {
   // Finale décidée → tournoi terminé + statuts champion / finaliste.
   if (match.round === rounds && winner) {
     const loser = (match.player1 === winner) ? match.player2 : match.player1;
-    await db.updateTournament(t.id, { status: 'finished' });
+    await db.updateTournament(t.id, { status: 'finished', champion: winner });
     try {
       const players = await db.getTournamentPlayers(t.id);
       const next = players.map((p) => ({ username: p.username, seed: p.seed, qualif_score: p.qualif_score,
@@ -3058,14 +3058,10 @@ async function tournamentSetMatchWinner(t, match, winner, score1, score2) {
   return { ok: true };
 }
 
-function tournamentRoundName(round, totalRounds) {
-  const fromEnd = totalRounds - round;
-  if (fromEnd === 0) return 'Finale';
-  if (fromEnd === 1) return 'Demi-finale';
-  if (fromEnd === 2) return '1/4 de finale';
-  if (fromEnd === 3) return '8ème de finale';
-  if (fromEnd === 4) return '16ème de finale';
-  return 'Tour ' + round;
+// `matches` (facultatif) : les affiches du tour — pour reconnaître le tour
+// préliminaire (cf. tournoiCoupe.js).
+function tournamentRoundName(round, totalRounds, matches) {
+  return TC.nomDuTour(round, totalRounds, matches);
 }
 // Rendu SVG du bracket (look « bracket classique » vert Frutiparc, vainqueur en
 // gras). Servi tel quel comme image partageable sur le forum via [img].
@@ -3090,7 +3086,7 @@ function tournamentBracketSvg(t, matches) {
     const x = pad + (r - 1) * colW;
     const ms = matches.filter((m) => m.round === r).sort((a, b) => a.slot - b.slot);
     const firstTop = cy[r + ':0'] - boxH / 2;
-    svg += `<text x="${x}" y="${firstTop - 6}" font-size="12" font-weight="bold" fill="#2c4a0f">${esc(tournamentRoundName(r, rounds))}</text>`;
+    svg += `<text x="${x}" y="${firstTop - 6}" font-size="12" font-weight="bold" fill="#2c4a0f">${esc(tournamentRoundName(r, rounds, ms))}</text>`;
     ms.forEach((m) => {
       const top = cy[r + ':' + m.slot] - boxH / 2;
       const p1 = m.player1 || '-', p2 = m.player2 || '-';
@@ -3112,7 +3108,7 @@ const TOURNAMENT_TICK_MS = Math.max(1000, Number(process.env.TOURNAMENT_TICK_MS)
 async function runTournamentScheduler() {
   if (!process.env.DATABASE_URL) return;
   try {
-    const rows = await db.getTournamentsByStatus(['scheduled', 'qualif']);
+    const rows = await db.getTournamentsByStatus(['scheduled', 'qualif', 'bracket']);
     const now = Date.now();
     for (const t of rows) {
       try {
@@ -3125,11 +3121,112 @@ async function runTournamentScheduler() {
             closeTournamentWindow(t.ranking_id);
             console.warn(`[TOURNOI] #${t.id} annulé à la clôture (joueurs=${r.count})`);
           }
-          // (Phase 3 : génération auto du bracket ici ; Phase 5 : annonces.)
+          // Tours automatiques : la coupe se tire aussitôt, et son premier
+          // tour se programme (tours_pause_h plus tard).
+          else if (t.tours_auto && (t.format || 'score') === 'score') {
+            await tournamentGenerateBracket(await db.getTournament(t.id));
+          }
+        } else if (t.status === 'bracket' && t.tours_auto && (t.format || 'score') === 'score') {
+          await avancerCoupe(t);
         }
       } catch (e) { console.error(`[TOURNOI] scheduler #${t.id}:`, e.message); }
     }
   } catch (e) { console.error('[TOURNOI] scheduler error:', e.message); }
+}
+
+/*
+ * LES TOURS AUTOMATIQUES DE LA COUPE (option tours_auto, tournois au score).
+ *
+ * Le tour courant (current_round) vit en trois temps, que le planificateur
+ * fait avancer à chaque passage :
+ *   1. programmé : ses affiches reçoivent leur fenêtre [début, fin] — début =
+ *      la fin du tour précédent (ou la génération de la coupe) + la pause ;
+ *   2. ouvert : de début à fin, la capture du tournoi retient le meilleur
+ *      score de chacun (la même mécanique que la qualif, interrupteur des
+ *      parties vérifiées compris) ; les paris sur ces affiches sont fermés ;
+ *   3. clos : à la fin, chaque affiche est tranchée (tournoiCoupe.js), les
+ *      vainqueurs montent, et le tour suivant se programme. La finale
+ *      tranchée termine le tournoi.
+ * Une affiche que l'organisateur a tranchée à la main n'est pas retouchée.
+ * Le serveur redémarre en plein tour : le passage suivant rouvre la fenêtre et
+ * recharge les scores déjà retenus.
+ */
+const TOURNOI_HEURE_MS = Math.max(1, Number(process.env.TOURNOI_HEURE_MS) || 3600000);
+async function programmerTour(t, round, debutMs) {
+  const fin = debutMs + (Number(t.round_hours) || 72) * TOURNOI_HEURE_MS;
+  for (const m of await db.getTournamentMatches(t.id)) {
+    if (Number(m.round) !== round || m.winner || !m.player1 || !m.player2) continue;
+    await db.updateTournamentMatch(m.id, { window_start: new Date(debutMs), window_end: new Date(fin) });
+  }
+  console.log(`[TOURNOI] #${t.id} tour ${round} programmé : ${new Date(debutMs).toISOString()} → ${new Date(fin).toISOString()}`);
+}
+async function avancerCoupe(t) {
+  const round = Number(t.current_round) || 1;
+  const matches = await db.getTournamentMatches(t.id);
+  if (!matches.length) return;
+  const total = Math.max(...matches.map((m) => Number(m.round)));
+  const pause = (Number(t.tours_pause_h) || 0) * TOURNOI_HEURE_MS;
+  const now = Date.now();
+  const aJouer = matches.filter((m) => Number(m.round) === round && m.player1 && m.player2 && !m.winner);
+  if (!aJouer.length) {
+    // Tour déjà tranché (exemptés, ou décisions à la main) : au suivant.
+    if (round < total) {
+      const precedent = matches.filter((m) => Number(m.round) === round && m.window_end)
+        .map((m) => new Date(m.window_end).getTime());
+      await db.updateTournament(t.id, { current_round: round + 1 });
+      await programmerTour(t, round + 1, (precedent.length ? Math.max(...precedent) : now) + pause);
+    }
+    return;
+  }
+  const sansFenetre = aJouer.filter((m) => !m.window_start || !m.window_end);
+  if (sansFenetre.length) {
+    const autres = aJouer.filter((m) => m.window_start).map((m) => new Date(m.window_start).getTime());
+    await programmerTour(t, round, autres.length ? Math.min(...autres) : now + pause);
+    return;
+  }
+  const debut = Math.min(...aJouer.map((m) => new Date(m.window_start).getTime()));
+  const fin = Math.max(...aJouer.map((m) => new Date(m.window_end).getTime()));
+  if (now < debut) return;
+  const cle = tRoundKey(t.id, round);
+  if (now < fin) {
+    const win = tournamentWindows.get(t.ranking_id);
+    if (!win || win.tid !== t.id || win.round !== round) {
+      openTournamentWindow(t.id, round, t.ranking_id, new Date(fin).toISOString());
+      const cache = tournamentRoundScores.get(cle);
+      for (const r of await db.getRoundScores(t.id, round)) {
+        cache.set(r.username, { score: Number(r.score) || 0, data: r.data || '' });
+      }
+      for (const m of aJouer) if (m.status !== 'live') await db.updateTournamentMatch(m.id, { status: 'live' });
+      console.log(`[TOURNOI] #${t.id} ${tournamentRoundName(round, total, matches.filter((m) => Number(m.round) === round))} ouvert jusqu'au ${new Date(fin).toISOString()}`);
+      parisRecaler(t.id);
+    }
+    return;
+  }
+  // Clôture du tour.
+  if (tournamentWindows.get(t.ranking_id) && tournamentWindows.get(t.ranking_id).tid === t.id) closeTournamentWindow(t.ranking_id);
+  const scores = new Map();
+  for (const r of await db.getRoundScores(t.id, round)) {
+    scores.set(String(r.username).toLowerCase(), {
+      score: Number(r.score) || 0, data: r.data || '',
+      at: r.updated_at ? new Date(r.updated_at).toISOString() : '',
+    });
+  }
+  const seeds = new Map((await db.getTournamentPlayers(t.id)).map((p) => [String(p.username).toLowerCase(), Number(p.seed) || 999]));
+  const meilleur = (a, b) => isScoreBetter(t.ranking_id, a.score, a.data, b.score, b.data);
+  for (const m of aJouer) {
+    const frais = await db.getTournamentMatch(m.id);
+    if (!frais || frais.winner) continue;
+    const v = TC.vainqueurDuMatch(frais, scores, (u) => seeds.get(String(u || '').toLowerCase()), meilleur);
+    await tournamentSetMatchWinner(await db.getTournament(t.id), frais, v.winner, v.score1, v.score2);
+    console.log(`[TOURNOI] #${t.id} ${frais.player1} ${v.score1 == null ? '—' : v.score1} / ${v.score2 == null ? '—' : v.score2} ${frais.player2} → ${v.winner} (${v.motif})`);
+  }
+  tournamentRoundScores.delete(cle);
+  const apres = await db.getTournament(t.id);
+  if (apres && apres.status === 'bracket' && round < total) {
+    await db.updateTournament(t.id, { current_round: round + 1 });
+    await programmerTour(apres, round + 1, fin + pause);
+  }
+  parisRecaler(t.id);
 }
 
 // Position for a user in a ranking (1-based). 0 if not ranked.
@@ -9985,6 +10082,7 @@ function parisAffiche(m) {
 // Un match dont les mises doivent se fermer d'elles-mêmes : il a commencé.
 function parisMatchCommence(t, m) {
   if (m.winner || m.status === 'done') return true;
+  if (m.window_start && new Date(m.window_start).getTime() <= Date.now()) return true;
   if (t.format === 'duel') return (Number(m.score1) || 0) + (Number(m.score2) || 0) > 0;
   return m.score1 != null || m.score2 != null;
 }
@@ -10122,7 +10220,7 @@ app.get('/api/paris', async (req, res) => {
       const fin = rounds.length ? Math.max(...rounds) : 0;
       const nomTour = (m) => (t.format === 'duel'
         ? TD.nomDuTour(Number(m.round), matches.filter((x) => Number(x.round) === Number(m.round)).length)
-        : tournamentRoundName(Number(m.round), fin));
+        : tournamentRoundName(Number(m.round), fin, matches.filter((x) => Number(x.round) === Number(m.round))));
       const fiche = (m) => {
         const liste = (parMatch.get(m.id) || []).filter((p) => p.statut !== 'rembourse');
         const pot = Paris.pot(liste, m.player1, m.player2);
@@ -10275,7 +10373,10 @@ app.post('/api/admin/tournaments', tournoiScope, async (req, res) => {
   const rankingId = format === 'duel' ? 'bandas_champion' : String(b.ranking_id || '').trim();
   if (!name) return res.status(400).json({ error: 'name_required' });
   if (!RANKINGS[rankingId]) return res.status(400).json({ error: 'ranking_invalid' });
-  const bracketSize = [4, 8, 16, 32].includes(Number(b.bracket_size)) ? Number(b.bracket_size) : 8;
+  // N'importe quel nombre de qualifiés de 2 à 32 : la grille prend la
+  // puissance de deux au-dessus, et les mieux classés sont exemptés du
+  // premier tour (10 qualifiés : 6 exemptés, un tour préliminaire 7–10, 8–9).
+  const bracketSize = tailleCoupe(b.bracket_size, 8);
   const roundHours = Math.max(1, Math.min(720, Number(b.round_hours) || 72));
   try {
     const t = await db.createTournament({
@@ -10285,9 +10386,39 @@ app.post('/api/admin/tournaments', tournoiScope, async (req, res) => {
       poule_size: Math.max(2, Math.min(8, Number(b.poule_size) || 3)),
       qualif_par_poule: Math.max(1, Math.min(4, Number(b.qualif_par_poule) || 2)),
     });
+    const options = optionsTours(b);
+    if (format === 'score' && Object.keys(options).length) {
+      await db.updateTournament(t.id, options);
+      Object.assign(t, options);
+    }
     res.json({ ok: true, tournament: t });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Les tours automatiques se règlent à tout moment (l'édition générale ne vaut
+// qu'au brouillon) : on peut les lever sur un tournoi déjà lancé.
+app.post('/api/admin/tournaments/:id/tours', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    if ((t.format || 'score') !== 'score') return res.status(400).json({ error: 'format', message: 'Les tours automatiques valent pour les tournois au score.' });
+    const o = optionsTours(req.body || {});
+    if (req.body && req.body.round_hours !== undefined) o.round_hours = Math.max(1, Math.min(720, Number(req.body.round_hours) || 72));
+    await db.updateTournament(t.id, o);
+    res.json({ ok: true });
+    runTournamentScheduler().catch(() => {});
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+function tailleCoupe(v, defaut) {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n >= 2 && n <= 32 ? n : defaut;
+}
+function optionsTours(b) {
+  const o = {};
+  if (b.tours_auto !== undefined) o.tours_auto = b.tours_auto === true || b.tours_auto === '1' || b.tours_auto === 1;
+  if (b.tours_pause_h !== undefined) o.tours_pause_h = Math.max(0, Math.min(168, Math.floor(Number(b.tours_pause_h)) || 0));
+  return o;
+}
 
 app.get('/api/admin/tournaments/:id', tournoiScope, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
@@ -10303,7 +10434,10 @@ app.get('/api/admin/tournaments/:id', tournoiScope, async (req, res) => {
       return res.json({ tournament: t, players, matches, roundScores: [], tables: e.tables, tours: e.tours });
     }
     const roundScores = rankTournamentRoundScores(t.ranking_id, await db.getRoundScores(t.id, t.current_round || 0));
-    res.json({ tournament: t, players, matches, roundScores });
+    const classement = matches.length
+      ? TC.classementFinal(players, matches, (a, b) => isScoreBetter(t.ranking_id, a, '', b, '')) : [];
+    res.json({ tournament: t, players, matches, roundScores, classement,
+      heureMs: TOURNOI_HEURE_MS });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -10316,8 +10450,9 @@ app.patch('/api/admin/tournaments/:id', tournoiScope, async (req, res) => {
     const b = req.body || {}; const fields = {};
     if (b.name !== undefined) fields.name = String(b.name).trim().slice(0, 80);
     if (b.ranking_id !== undefined && RANKINGS[b.ranking_id]) { fields.ranking_id = b.ranking_id; fields.game = RANKINGS[b.ranking_id].game; }
-    if (b.bracket_size !== undefined && [4, 8, 16, 32].includes(Number(b.bracket_size))) fields.bracket_size = Number(b.bracket_size);
+    if (b.bracket_size !== undefined && tailleCoupe(b.bracket_size, null)) fields.bracket_size = tailleCoupe(b.bracket_size, null);
     if (b.round_hours !== undefined) fields.round_hours = Math.max(1, Math.min(720, Number(b.round_hours) || 72));
+    Object.assign(fields, optionsTours(b));
     if (Object.keys(fields).length) await db.updateTournament(t.id, fields);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -10525,6 +10660,7 @@ app.post('/api/admin/tournaments/:id/match/:mid', tournoiScope, async (req, res)
 // correspondante et lui ajoute son point (voir tournoiDuelManche, appelé par le
 // crochet onResult du pont bandas).
 const TD = require('./tournoiDuel.js');
+const TC = require('./tournoiCoupe.js');
 
 // L'état complet d'un tournoi en duel, pour l'admin comme pour le jeu.
 async function tournoiDuelEtat(t) {

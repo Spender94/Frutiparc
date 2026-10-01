@@ -2773,10 +2773,15 @@ async function openCreateTournament() {
       <div id="t-bloc-score">
         <label style="display:block;margin:8px 0 2px">Jeu (ranking)</label>
         <select id="t-ranking" style="width:100%">${opts}</select>
-        <label style="display:block;margin:8px 0 2px">Taille de la coupe</label>
-        <select id="t-size"><option value="4">4 (2 tours)</option><option value="8" selected>8 (3 tours)</option><option value="16">16 (4 tours)</option><option value="32">32 (5 tours)</option></select>
+        <label style="display:block;margin:8px 0 2px">Nombre de qualifiés pour la coupe</label>
+        <input id="t-size" type="number" min="2" max="32" value="8" style="width:70px">
+        <span style="color:#888;font-size:12px">de 2 à 32 ; s'il n'est pas une puissance de 2, les mieux classés sont exemptés du premier tour (10 → 6 exemptés, tour préliminaire 7e–10e et 8e–9e)</span>
         <label style="display:block;margin:8px 0 2px">Durée d'un tour (heures)</label>
         <input id="t-hours" type="number" min="1" max="720" value="72" style="width:90px"> <span style="color:#888;font-size:12px">72 h = 3 jours</span>
+        <label style="display:block;margin:10px 0 2px"><input type="checkbox" id="t-auto" checked> Tours automatiques</label>
+        <div style="color:#888;font-size:12px">À la fin de la qualif, la coupe se tire seule ; chaque tour dure la durée ci-dessus, garde le meilleur score de chacun, qualifie le plus gros score et lance le tour suivant.</div>
+        <label style="display:block;margin:8px 0 2px">Pause avant chaque tour (heures)</label>
+        <input id="t-pause" type="number" min="0" max="168" value="0" style="width:70px"> <span style="color:#888;font-size:12px">le temps d'annoncer les affiches (et de parier, si les paris sont ouverts)</span>
       </div>
       <div id="t-bloc-duel" style="display:none">
         <div style="background:#f6fbf2;border:1px dashed #9c3;border-radius:6px;padding:9px;margin:8px 0;font-size:13px;color:#456">
@@ -2808,7 +2813,8 @@ async function createTournament() {
   const body = format === 'duel'
     ? { name: $('#t-name').value, format: 'duel', poule_size: Number($('#t-poule').value),
         qualif_par_poule: Number($('#t-qpp').value), win_by: Number($('#t-ecart').value) }
-    : { name: $('#t-name').value, ranking_id: $('#t-ranking').value, bracket_size: Number($('#t-size').value), round_hours: Number($('#t-hours').value) };
+    : { name: $('#t-name').value, ranking_id: $('#t-ranking').value, bracket_size: Number($('#t-size').value), round_hours: Number($('#t-hours').value),
+        tours_auto: $('#t-auto').checked, tours_pause_h: Number($('#t-pause').value) };
   try {
     const d = await (await fetch('/api/admin/tournaments', { method:'POST', headers: hdr(), body: JSON.stringify(body) })).json();
     if (d && d.ok) { toast('Tournoi créé'); loadTournaments(); openTournament(d.tournament.id); }
@@ -3013,10 +3019,56 @@ async function openTournament(id) {
             ${ lead ? `<table><thead><tr><th>#</th><th>Joueur</th><th>Score</th></tr></thead><tbody>${lead}</tbody></table>` : '<p style="color:#999">Aucun score capturé pour le moment.</p>' }
           </div>
         </div>
+        ${toursAutoPanneau(t, d)}
+        ${classementPanneau(t, d)}
         ${ (d.matches && d.matches.length) ? `<div style="margin-top:14px"><h4 style="margin:0 0 6px">Bracket <span style="font-weight:normal;color:#888;font-size:12px">— clique ✓ pour désigner le vainqueur (forfait = désigner l'autre) · ✎ pour corriger un joueur</span></h4>${bracketShareBar(t)}${renderBracket(t, d.matches)}</div>` : '' }
       </div>`;
     chargerParisAdmin(t, d.matches || []);
   } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// ─── Tours automatiques et classement final ───
+function toursAutoPanneau(t, d) {
+  const duTour = (d.matches || []).filter((m) => Number(m.round) === Number(t.current_round) && m.window_start);
+  const debut = duTour.length ? Math.min(...duTour.map((m) => new Date(m.window_start).getTime())) : null;
+  const fin = duTour.length ? Math.max(...duTour.map((m) => new Date(m.window_end).getTime())) : null;
+  const maintenant = Date.now();
+  let etat = '';
+  if (t.status === 'bracket' && t.tours_auto && debut) {
+    etat = maintenant < debut ? `Tour ${t.current_round} : s'ouvre le <b>${tFmtDate(debut)}</b>, se ferme le <b>${tFmtDate(fin)}</b>.`
+      : `Tour ${t.current_round} <b style="color:#c8860a">en cours</b> jusqu'au <b>${tFmtDate(fin)}</b> — le meilleur score de chacun est retenu.`;
+  }
+  return `<div style="border:1px dashed #8fae5a;background:#f6fbf2;padding:10px;border-radius:6px;margin:10px 0;font-size:13px">
+    <label style="font-weight:bold"><input type="checkbox" id="t-auto-${t.id}" ${t.tours_auto ? 'checked' : ''} onchange="toursAuto(${t.id})"> Tours automatiques</label>
+    <label style="margin-left:12px">Durée d'un tour : <input type="number" id="t-heures-${t.id}" min="1" max="720" value="${t.round_hours}" style="width:60px"> h</label>
+    <label style="margin-left:12px">Pause avant chaque tour : <input type="number" id="t-pause-${t.id}" min="0" max="168" value="${t.tours_pause_h || 0}" style="width:60px"> h</label>
+    <button class="btn btn-sm" onclick="toursAuto(${t.id})">Enregistrer</button>
+    <div style="color:#777;margin-top:5px">Le plus gros score du tour qualifie ; à égalité, le premier à l'avoir réalisé ; un seul a joué, il passe ; personne n'a joué, le mieux classé de la qualif passe.
+      Les parties comptent avec les FD du joueur, comme en qualif. Tu peux toujours trancher un match à la main : le tour automatique n'y retouche pas.</div>
+    ${etat ? `<div style="margin-top:5px">${etat}</div>` : ''}
+  </div>`;
+}
+async function toursAuto(id) {
+  const body = { tours_auto: $('#t-auto-' + id).checked, round_hours: Number($('#t-heures-' + id).value), tours_pause_h: Number($('#t-pause-' + id).value) };
+  try {
+    const d = await (await fetch('/api/admin/tournaments/' + id + '/tours', { method: 'POST', headers: hdr(), body: JSON.stringify(body) })).json();
+    if (d.ok) { toast(body.tours_auto ? 'Tours automatiques' : 'Tours à la main'); setTimeout(() => openTournament(id), 400); }
+    else toast('Erreur: ' + (d.message || d.error));
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+const CL_STATUT = { champion: '🏆 champion', finaliste: 'finaliste', elimine: 'éliminé', en_lice: 'en lice' };
+function classementPanneau(t, d) {
+  const c = d.classement || [];
+  if (!c.length) return '';
+  const total = Math.max(...(d.matches || []).map((m) => Number(m.round)));
+  const fini = t.status === 'finished';
+  return `<div style="margin:10px 0"><h4 style="margin:0 0 4px">Classement ${fini ? 'final' : 'provisoire'}
+      <span style="font-weight:normal;color:#888;font-size:12px">— éliminés au même tour départagés par leur score de ce tour, puis par la qualif</span></h4>
+    <table><thead><tr><th>Rang</th><th>Joueur</th><th>Statut</th><th>Sorti en</th><th>Score du tour</th><th>Seed</th></tr></thead><tbody>
+    ${c.map((l) => `<tr><td><b>${l.rang}</b></td><td>${esc(l.username)}</td><td>${CL_STATUT[l.statut] || l.statut}</td>
+      <td>${l.sortie ? esc(bracketRoundName(l.sortie, total, (d.matches || []).filter((m) => Number(m.round) === l.sortie))) : '—'}</td>
+      <td>${l.score == null ? '—' : l.score}</td><td>${l.seed < 999 ? l.seed : '—'}</td></tr>`).join('')}
+    </tbody></table></div>`;
 }
 
 // ─── Paris en kikooz (option du tournoi) ───
@@ -3123,7 +3175,10 @@ async function closeQualif(id) {
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 // ─── Bracket ───
-function bracketRoundName(round, totalRounds) {
+function bracketRoundName(round, totalRounds, matchs) {
+  // Un premier tour avec des exemptés et des matchs joués : le tour préliminaire.
+  if (Number(round) === 1 && totalRounds >= 2 && matchs && matchs.some((m) => (!!m.player1) !== (!!m.player2))
+    && matchs.some((m) => m.player1 && m.player2)) return 'Tour préliminaire';
   const fromEnd = totalRounds - round;
   if (fromEnd === 0) return 'Finale';
   if (fromEnd === 1) return 'Demi-finale';
@@ -3178,7 +3233,9 @@ function renderBracket(t, matches) {
   for (let r = 1; r <= rounds; r++) {
     const ms = matches.filter(m => m.round === r).sort((a, b) => a.slot - b.slot);
     const cards = ms.map(m => bracketMatchCard(t, m, r === rounds)).join('');
-    cols += `<div style="min-width:196px;flex:0 0 auto"><div style="font-weight:bold;font-size:12px;color:#555;margin-bottom:6px">${bracketRoundName(r, rounds)}</div>${cards}</div>`;
+    const fen = ms.find((m) => m.window_start);
+    const quand = fen ? `<div style="font-weight:normal;color:#888;font-size:11px">${tFmtDate(fen.window_start)} → ${tFmtDate(fen.window_end)}</div>` : '';
+    cols += `<div style="min-width:196px;flex:0 0 auto"><div style="font-weight:bold;font-size:12px;color:#555;margin-bottom:6px">${bracketRoundName(r, rounds, ms)}${quand}</div>${cards}</div>`;
   }
   return `<div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:6px;align-items:flex-start">${cols}</div>`;
 }
