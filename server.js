@@ -3931,6 +3931,7 @@ function grantReferralReward(username, role, filleul) {
 //   { type: 'c', k, c }   k kikooz obtenus par c
 //   { type: 'g', k, f }   k kikooz obtenus grâce au filleul f
 //   { type: 'a', k, f }   k kikooz offerts par f (animation, /don, équipe)
+//   { type: 'p', k, n }   mise de k kikooz sur un pari de tournoi (n : le pari)
 function journalKikooz(user, entry) {
   if (!user || !entry) return;
   if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
@@ -3957,7 +3958,7 @@ function kikoozLogDepuisBase(rows) {
       k: Number(r.amount) || 0,
     };
     const label = String(r.label || '');
-    if (type === 'b') e.n = label; else if (type === 'c') e.c = label; else e.f = label;
+    if (type === 'b' || type === 'p') e.n = label; else if (type === 'c') e.c = label; else e.f = label;
     out.push(e);
   }
   return out;
@@ -9943,6 +9944,313 @@ app.post('/api/admin/referrals/:username/:action', adminAuth, async (req, res) =
 // ════════════════════ Admin : Tournois ══════════════════════════════════════
 const tournoiScope = adminScope('tournoi');
 
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * LES PARIS EN KIKOOZ — une option du tournoi
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Baissée par défaut ; l'organisateur la lève tournoi par tournoi (et règle le
+ * plafond de mise). Les joueurs misent leurs kikooz sur le vainqueur d'un
+ * match dont les deux joueurs sont connus et qui n'a pas commencé (page
+ * /paris/). Pari MUTUEL (paris.js) : le pot du match va à ceux qui ont vu
+ * juste, au prorata de leurs mises — aucun kikooz n'est créé ni détruit.
+ *
+ * Les règles d'équité :
+ *   · on ne parie pas sur ses propres matchs, ni sur un match où joue un
+ *     compte qui a partagé son appareil (journal des connexions) ;
+ *   · un pari par match, qu'on peut grossir jusqu'au plafond, jamais retourner ;
+ *   · les mises se ferment quand le match commence : à la première manche en
+ *     duel, au premier score saisi ou par l'organisateur au score.
+ *
+ * LE RECALAGE (parisRecaler) est le seul endroit qui règle ou rembourse. Il
+ * est appelé après chaque action de l'organisateur sur un tournoi, après
+ * chaque manche de duel, et toutes les dix minutes par sécurité. Il compare
+ * les paris ouverts à l'état du tournoi :
+ *   · match décidé                      → règlement du pot ;
+ *   · match disparu (bracket régénéré), joueur remplacé, tournoi annulé ou
+ *     supprimé, option baissée          → remboursement ;
+ *   · sinon                             → rien.
+ * Chaque pari ne se règle qu'une fois (db.reglerParis), même si deux recalages
+ * se croisent : on ne paie que ce que la base vient de faire passer d'« ouvert »
+ * à réglé.
+ */
+const Paris = require('./paris.js');
+const parisFiles = new Map();           // tid -> recalage en cours (un à la fois)
+const parisVerrous = new Set();         // pseudos en train de miser
+let parisOuvertsCache = { at: 0, n: 0 };
+
+function parisAffiche(m) {
+  return `${getDisplayName(String(m.player1 || ''))} contre ${getDisplayName(String(m.player2 || ''))}`;
+}
+// Un match dont les mises doivent se fermer d'elles-mêmes : il a commencé.
+function parisMatchCommence(t, m) {
+  if (m.winner || m.status === 'done') return true;
+  if (t.format === 'duel') return (Number(m.score1) || 0) + (Number(m.score2) || 0) > 0;
+  return m.score1 != null || m.score2 != null;
+}
+// Les kikooz du pari qui reviennent : en mémoire si le joueur y est (c'est
+// alors elle qui fait foi), sinon par un incrément atomique en base.
+function parisCrediter(username, k, libelle) {
+  if (!k || k <= 0) return;
+  const user = users[username];
+  if (user) {
+    user.kikooz = (Number(user.kikooz) || 0) + k;
+    journalKikooz(user, { type: 'c', k, c: libelle });
+    if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
+    notifyKikoozUpdate(username, user.kikooz);
+  } else if (process.env.DATABASE_URL) {
+    db.incrementKikooz(username, k).catch(dbErr('incrementKikooz pari'));
+    db.addKikoozLogEntryByUsername(username, { type: 'c', k, label: libelle }).catch(dbErr('kikooz_log pari'));
+  }
+}
+function parisRecaler(tid) {
+  const id = Number(tid);
+  if (!process.env.DATABASE_URL || !Number.isInteger(id) || id <= 0) return Promise.resolve();
+  const prec = parisFiles.get(id) || Promise.resolve();
+  const suite = prec.then(() => parisRecalerMaintenant(id))
+    .catch((e) => console.error(`[PARIS] recalage du tournoi #${id} :`, e.message));
+  parisFiles.set(id, suite);
+  suite.then(() => { if (parisFiles.get(id) === suite) parisFiles.delete(id); });
+  parisOuvertsCache.at = 0;
+  return suite;
+}
+async function parisRecalerMaintenant(tid) {
+  const t = await db.getTournament(tid);
+  const matches = t ? await db.getTournamentMatches(tid) : [];
+  // Les mises se ferment sur les matchs qui ont commencé.
+  for (const m of matches) {
+    if (!m.paris_fermes && parisMatchCommence(t, m)) {
+      await db.updateTournamentMatch(m.id, { paris_fermes: true });
+      m.paris_fermes = true;
+    }
+  }
+  const ouverts = await db.parisDuTournoi(tid, 'ouvert');
+  if (!ouverts.length) return;
+  const parId = new Map(matches.map((m) => [m.id, m]));
+  const parMatch = new Map();
+  for (const p of ouverts) {
+    if (!parMatch.has(p.match_id)) parMatch.set(p.match_id, []);
+    parMatch.get(p.match_id).push(p);
+  }
+  const decisions = [];
+  const rembourser = (liste) => { for (const p of liste) decisions.push({ id: p.id, username: p.username, statut: 'rembourse', gain: p.mise }); };
+  for (const [mid, liste] of parMatch) {
+    const m = parId.get(mid);
+    if (!t || !t.paris_actifs || t.status === 'cancelled' || !m) { rembourser(liste); continue; }
+    const joueurs = new Set([String(m.player1 || '').toLowerCase(), String(m.player2 || '').toLowerCase()]);
+    const valides = liste.filter((p) => m.player1 && m.player2 && joueurs.has(String(p.choix).toLowerCase()));
+    rembourser(liste.filter((p) => !valides.includes(p)));
+    if (m.winner && m.status === 'done') decisions.push(...Paris.regler(valides, m.winner));
+  }
+  if (!decisions.length) return;
+  const faits = await db.reglerParis(decisions);
+  for (const f of faits) {
+    const quoi = f.affiche ? ` (${f.affiche})` : '';
+    if (f.statut === 'gagne') parisCrediter(f.username, f.gain, 'un pari gagné' + quoi);
+    else if (f.statut === 'rembourse') parisCrediter(f.username, f.gain, 'un pari remboursé' + quoi);
+    console.log(`[PARIS] #${tid} ${f.username} ${f.statut} : mise ${f.mise}, reçoit ${f.gain}${quoi}`);
+  }
+}
+// Après chaque action de l'organisateur sur un tournoi (vainqueur, scores,
+// bracket, tirage, tour suivant, suppression…), on recale ses paris.
+app.use('/api/admin/tournaments/:id', (req, res, next) => {
+  if (req.method !== 'GET') {
+    const tid = Number(req.params.id);
+    res.on('finish', () => { if (res.statusCode < 400 && Number.isInteger(tid)) parisRecaler(tid); });
+  }
+  next();
+});
+// Le filet : les tournois qui ont encore des paris ouverts, toutes les dix
+// minutes (et au démarrage) — un recalage manqué ne laisse rien en suspens.
+async function parisRecalerTout() {
+  if (!process.env.DATABASE_URL) return;
+  try { for (const tid of await db.tournoisAvecParisOuverts()) await parisRecaler(tid); }
+  catch (e) { console.error('[PARIS] recalage général :', e.message); }
+}
+if (process.env.DATABASE_URL) {
+  setTimeout(parisRecalerTout, 90 * 1000).unref();
+  setInterval(parisRecalerTout, 10 * 60 * 1000).unref();
+}
+
+// Les tournois à paris qu'on montre : en cours, ou finis depuis moins d'une
+// semaine (pour lire ses résultats).
+async function parisTournoisVisibles() {
+  const tous = await db.listTournaments();
+  const semaine = Date.now() - 7 * 86400000;
+  return tous.filter((t) => t.paris_actifs && (['poules', 'bracket'].includes(t.status)
+    || (t.status === 'finished' && new Date(t.updated_at || 0).getTime() > semaine)));
+}
+function parisMatchOuvert(t, m) {
+  return ['poules', 'bracket'].includes(t.status) && m.player1 && m.player2
+    && !m.winner && m.status !== 'done' && !m.paris_fermes && !parisMatchCommence(t, m);
+}
+
+// Combien de matchs sont ouverts aux paris : la tuile « Paris » du light ne
+// paraît que s'il y en a.
+app.get('/api/paris/ouverts', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ n: 0 });
+  try {
+    if (Date.now() - parisOuvertsCache.at > 20000) {
+      let n = 0;
+      for (const t of await parisTournoisVisibles()) {
+        for (const m of await db.getTournamentMatches(t.id)) if (parisMatchOuvert(t, m)) n++;
+      }
+      parisOuvertsCache = { at: Date.now(), n };
+    }
+    res.json({ n: parisOuvertsCache.n });
+  } catch (e) { res.json({ n: 0 }); }
+});
+
+// La page des paris : les matchs ouverts, ceux en cours, ceux réglés, et ce que
+// le joueur y a misé. Les pots sont publics (des totaux) ; qui a misé quoi ne
+// l'est pas.
+app.get('/api/paris', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, tournois: [], sansBase: true });
+  try {
+    const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
+    const user = moi ? users[moi] : null;
+    const tournois = [];
+    for (const t of await parisTournoisVisibles()) {
+      const matches = await db.getTournamentMatches(t.id);
+      const paris = await db.parisDuTournoi(t.id);
+      const parMatch = new Map();
+      for (const p of paris) {
+        if (!parMatch.has(p.match_id)) parMatch.set(p.match_id, []);
+        parMatch.get(p.match_id).push(p);
+      }
+      const rounds = matches.map((m) => Number(m.round));
+      const fin = rounds.length ? Math.max(...rounds) : 0;
+      const nomTour = (m) => (t.format === 'duel'
+        ? TD.nomDuTour(Number(m.round), matches.filter((x) => Number(x.round) === Number(m.round)).length)
+        : tournamentRoundName(Number(m.round), fin));
+      const fiche = (m) => {
+        const liste = (parMatch.get(m.id) || []).filter((p) => p.statut !== 'rembourse');
+        const pot = Paris.pot(liste, m.player1, m.player2);
+        const mien = moi ? (parMatch.get(m.id) || []).find((p) => p.username === moi) : null;
+        const j = (n) => (n ? { pseudo: n, nom: getDisplayName(n), mises: pot.joueurs[String(n).toLowerCase()] } : null);
+        return {
+          id: m.id, tour: nomTour(m), poule: m.poule || null,
+          j1: j(m.player1), j2: j(m.player2), pot: pot.total,
+          score1: m.score1, score2: m.score2, vainqueur: m.winner || null,
+          ouvert: parisMatchOuvert(t, m),
+          interdit: !!moi && (moi === String(m.player1 || '').toLowerCase() || moi === String(m.player2 || '').toLowerCase()),
+          mien: mien ? { choix: mien.choix, mise: mien.mise, statut: mien.statut, gain: mien.gain } : null,
+        };
+      };
+      tournois.push({
+        id: t.id, nom: t.name, jeu: t.game, statut: t.status, format: t.format,
+        plafond: Math.max(1, Number(t.paris_plafond) || 100),
+        ouverts: matches.filter((m) => parisMatchOuvert(t, m)).map(fiche),
+        enCours: matches.filter((m) => m.player1 && m.player2 && !m.winner && !parisMatchOuvert(t, m)).map(fiche),
+        regles: matches.filter((m) => m.winner && (parMatch.get(m.id) || []).length).map(fiche).reverse(),
+      });
+    }
+    res.json({ ok: true, moi: moi || null, solde: user ? Number(user.kikooz) || 0 : null, tournois });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/paris', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, code: 'fermes', message: 'Les paris ne sont pas disponibles.' });
+  const b = req.body || {};
+  const moi = resolveUsernameFromSid(String(b.sid || ''));
+  if (!moi) return res.status(401).json({ ok: false, code: 'auth', message: 'Connecte-toi pour parier.' });
+  const user = users[moi];
+  if (!user) return res.status(503).json({ ok: false, code: 'auth', message: 'Compte indisponible, réessaie.' });
+  if (parisVerrous.has(moi)) return res.status(429).json({ ok: false, code: 'patience', message: 'Un pari est déjà en cours d’enregistrement.' });
+  parisVerrous.add(moi);
+  try {
+    const m = await db.getTournamentMatch(Number(b.match));
+    const t = m ? await db.getTournament(m.tournament_id) : null;
+    const precedent = m ? await db.pariDe(m.id, moi) : null;
+    const choix = String(b.choix || '').toLowerCase();
+    const mise = Number(b.mise);
+    const refus = Paris.refus({
+      tournoi: t, match: m, parieur: moi, choix, mise, solde: Number(user.kikooz) || 0,
+      misePrecedente: precedent && precedent.statut === 'ouvert' ? precedent.mise : 0,
+      choixPrecedent: precedent && precedent.statut === 'ouvert' ? precedent.choix : null,
+    });
+    if (refus) return res.status(400).json(Object.assign({ ok: false }, refus));
+    if (precedent && precedent.statut !== 'ouvert') {
+      return res.status(400).json({ ok: false, code: 'joue', message: 'Les paris sur ce match sont réglés.' });
+    }
+    const lies = await db.memeAppareil(moi, [m.player1, m.player2]);
+    if (lies.length) {
+      return res.status(400).json({ ok: false, code: 'appareil',
+        message: 'Ton compte a été utilisé sur le même appareil qu’un des joueurs de ce match : tu ne peux pas parier dessus.' });
+    }
+    const affiche = parisAffiche(m);
+    const pari = await db.poserPari({ tournamentId: t.id, matchId: m.id, username: moi, choix, mise, affiche });
+    if (!pari) return res.status(400).json({ ok: false, code: 'camp', message: 'Tu as déjà parié sur l’autre joueur de ce match.' });
+    // Le solde a pu bouger pendant l'écriture (un achat, un don) : on revérifie.
+    if ((Number(user.kikooz) || 0) < mise) {
+      await db.retirerMise(pari.id, mise).catch(dbErr('retirerMise'));
+      return res.status(400).json({ ok: false, code: 'solde', message: 'Tu n’as pas assez de kikooz.' });
+    }
+    user.kikooz = (Number(user.kikooz) || 0) - mise;
+    if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
+    journalKikooz(user, { type: 'p', k: mise, n: `${getDisplayName(choix)} — ${affiche}` });
+    notifyKikoozUpdate(moi, user.kikooz);
+    console.log(`[PARIS] #${t.id} ${moi} mise ${mise} sur ${choix} (${affiche}) — total ${pari.mise}`);
+    // Le match a pu se jouer entre la vérification et l'écriture : le
+    // recalage le verra (et remboursera ce pari s'il arrive après le règlement).
+    parisRecaler(t.id);
+    res.json({ ok: true, mise: pari.mise, choix: pari.choix, solde: user.kikooz });
+  } catch (e) {
+    console.error('[PARIS] mise :', e.message);
+    res.status(500).json({ ok: false, code: 'erreur', message: 'Le pari n’a pas pu être enregistré.' });
+  } finally {
+    parisVerrous.delete(moi);
+  }
+});
+
+// ── L'organisateur : l'option, le plafond, la fermeture, le relevé ──────────
+app.post('/api/admin/tournaments/:id/paris', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    const b = req.body || {};
+    const champs = {};
+    if (b.actifs !== undefined) champs.paris_actifs = b.actifs === true || b.actifs === '1' || b.actifs === 1;
+    if (b.plafond !== undefined) {
+      const p = Math.floor(Number(b.plafond));
+      if (!Number.isFinite(p) || p < 1 || p > 100000) return res.status(400).json({ error: 'bad_plafond', message: 'Plafond : un nombre de kikooz, au moins 1.' });
+      champs.paris_plafond = p;
+    }
+    await db.updateTournament(t.id, champs);
+    console.log(`[PARIS] tournoi #${t.id} : ${JSON.stringify(champs)}`);
+    res.json({ ok: true });       // le recalage suit (option baissée → remboursements)
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/admin/tournaments/:id/match/:mid/paris', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const m = await db.getTournamentMatch(Number(req.params.mid));
+    if (!m || m.tournament_id !== Number(req.params.id)) return res.status(404).json({ error: 'match_not_found' });
+    const ferme = !(req.body && (req.body.ferme === false || req.body.ferme === '0'));
+    if (!ferme && m.winner) return res.status(400).json({ error: 'deja_joue', message: 'Ce match est joué : ses paris sont réglés.' });
+    await db.updateTournamentMatch(m.id, { paris_fermes: ferme });
+    res.json({ ok: true, ferme });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/admin/tournaments/:id/paris', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ paris: [] });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    const paris = await db.parisDuTournoi(t.id);
+    const matches = await db.getTournamentMatches(t.id);
+    const pots = matches.map((m) => {
+      const liste = paris.filter((p) => p.match_id === m.id && p.statut !== 'rembourse');
+      return { match: m.id, ouvert: parisMatchOuvert(t, m), ferme: !!m.paris_fermes,
+        parieurs: liste.length, pot: Paris.pot(liste, m.player1, m.player2) };
+    });
+    res.json({ actifs: !!t.paris_actifs, plafond: Number(t.paris_plafond) || 100, paris, pots });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Jeux disponibles (rankings "classiques") pour le sélecteur de création.
 app.get('/api/admin/tournament-games', tournoiScope, (req, res) => {
   res.json(Object.entries(RANKINGS)
@@ -10267,9 +10575,11 @@ async function tournoiDuelManche(a, b, gagnant) {
     : [Number(t.current_round) || 1, TD.TOUR_REPECHAGE];
   const r = TD.manche(matches, tours, a, b, gagnant, t.win_by);
   if (!r) return null;
-  const champs = { score1: r.score1, score2: r.score2 };
+  // Une manche jouée : le match a commencé, ses paris se ferment.
+  const champs = { score1: r.score1, score2: r.score2, paris_fermes: true };
   if (r.fini) { champs.winner = r.winner; champs.status = 'done'; }
   await db.updateTournamentMatch(r.match.id, champs);
+  parisRecaler(t.id);
   console.log(`[tournoi] ${t.name} — ${r.match.player1} ${r.score1}-${r.score2} ${r.match.player2}`
     + (r.fini ? ` → ${r.winner} l'emporte` : ''));
   return { tournoi: t, match: r.match, fini: r.fini, winner: r.winner, score1: r.score1, score2: r.score2 };
@@ -21250,8 +21560,10 @@ app.get('/ft/log', (req, res) => {
   const body = entries.map((e) => {
     const t = escapeXml(e.t || '');
     const k = Number(e.k) || 0;
-    if (e.type === 'b') {
-      return `<b t="${t}" k="${k}" n="${escapeXml(e.n || '')}"/>`;
+    // Une mise de pari (type 'p') : le bureau d'époque n'a pas d'image pour
+    // elle, il la montre comme une dépense — ce qu'elle est.
+    if (e.type === 'b' || e.type === 'p') {
+      return `<b t="${t}" k="${k}" n="${escapeXml(e.type === 'p' ? 'Pari : ' + (e.n || '') : (e.n || ''))}"/>`;
     }
     if (e.type === 'c') {
       return `<c t="${t}" k="${k}" c="${escapeXml(e.c || '')}"/>`;
@@ -24779,6 +25091,12 @@ const LIGHT_KIKOOZ_KINDS = {
   a: { type: 1,  icone: 'kikooz_kcall',
        phrase: (e) => `${Number(e.k) || 0} kikooz offerts par ${e.f || ''}.` },
 };
+// Une mise de pari (type 'p') n'a pas de phrase d'époque : elle se lit comme
+// une dépense — « Achat du produit "Pari : …" » —, pareil sur le bureau Flash
+// (/ft/log) et ici. La table ci-dessus reste celle de lang_french.as.
+function kikoozLigneEpoque(e) {
+  return e && e.type === 'p' ? { type: 'b', t: e.t, k: e.k, n: 'Pari : ' + (e.n || '') } : e;
+}
 
 app.get('/api/light/kikooz', (req, res) => {
   const username = resolveUsernameFromSid(req.query.sid || '');
@@ -24787,7 +25105,7 @@ app.get('/api/light/kikooz', (req, res) => {
   const brut = Array.isArray(user.kikoozLog) ? user.kikoozLog : [];
   // Un nœud d'un type inconnu est IGNORÉ, pas affiché en clair : `onLog` fait
   // pareil (son dernier `else` saute le `push` et passe au frère suivant).
-  const events = brut.map((e) => {
+  const events = brut.map(kikoozLigneEpoque).map((e) => {
     const d = LIGHT_KIKOOZ_KINDS[e.type];
     if (!d) return null;
     return {

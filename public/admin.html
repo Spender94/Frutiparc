@@ -2948,7 +2948,7 @@ async function openTournament(id) {
     const d = await (await fetch('/api/admin/tournaments/' + id, { headers: hdr() })).json();
     if (!d.tournament) { toast('Erreur: ' + JSON.stringify(d)); return; }
     const t = d.tournament;
-    if (t.format === 'duel') return renderTournoiDuel(d);
+    if (t.format === 'duel') { renderTournoiDuel(d); return chargerParisAdmin(t, d.matches || []); }
     let actions = '';
     if (t.status === 'draft' || t.status === 'scheduled') {
       const planLabel = t.status === 'scheduled' ? 'Reprogrammer' : 'Programmer';
@@ -3015,6 +3015,76 @@ async function openTournament(id) {
         </div>
         ${ (d.matches && d.matches.length) ? `<div style="margin-top:14px"><h4 style="margin:0 0 6px">Bracket <span style="font-weight:normal;color:#888;font-size:12px">— clique ✓ pour désigner le vainqueur (forfait = désigner l'autre) · ✎ pour corriger un joueur</span></h4>${bracketShareBar(t)}${renderBracket(t, d.matches)}</div>` : '' }
       </div>`;
+    chargerParisAdmin(t, d.matches || []);
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// ─── Paris en kikooz (option du tournoi) ───
+const PARIS_STATUT = { ouvert: 'en jeu', gagne: 'gagné', perdu: 'perdu', rembourse: 'remboursé' };
+async function chargerParisAdmin(t, matches) {
+  const hote = $('#tournoi-detail');
+  let bloc = $('#paris-admin');
+  if (!bloc) { bloc = document.createElement('div'); bloc.id = 'paris-admin'; hote.appendChild(bloc); }
+  try {
+    const d = await (await fetch('/api/admin/tournaments/' + t.id + '/paris', { headers: hdr() })).json();
+    if (d.error) { bloc.innerHTML = ''; return; }
+    const parMatch = Object.fromEntries((d.pots || []).map((p) => [p.match, p]));
+    const nom = (m) => `${esc(m.player1 || '?')} contre ${esc(m.player2 || '?')}`;
+    const pots = matches.filter((m) => m.player1 && m.player2).map((m) => {
+      const p = parMatch[m.id] || { parieurs: 0, pot: { total: 0, joueurs: {} }, ouvert: false, ferme: !!m.paris_fermes };
+      const j = (n) => { const x = p.pot.joueurs[String(n).toLowerCase()] || { mises: 0, cote: null }; return `${x.mises}${x.cote ? ' (×' + String(x.cote).replace('.', ',') + ')' : ''}`; };
+      const etat = m.winner ? `<span style="color:#2f8f2f">réglé — ${esc(m.winner)}</span>`
+        : p.ouvert ? '<b style="color:#c8860a">ouvert</b>' : 'fermé';
+      const bouton = m.winner ? '' : (m.paris_fermes
+        ? `<button class="btn btn-sm" onclick="parisFermer(${t.id},${m.id},false)">Rouvrir</button>`
+        : `<button class="btn btn-sm" onclick="parisFermer(${t.id},${m.id},true)">Fermer les paris</button>`);
+      return `<tr><td>${nom(m)}</td><td>${p.parieurs}</td><td>${p.pot.total}</td><td>${j(m.player1)}</td><td>${j(m.player2)}</td><td>${etat}</td><td>${bouton}</td></tr>`;
+    }).join('');
+    const parId = Object.fromEntries(matches.map((m) => [m.id, m]));
+    const lignes = (d.paris || []).slice().reverse().map((p) => `<tr>
+      <td>${tFmtDate(p.cree_le)}</td><td><b>${esc(p.username)}</b></td>
+      <td>${parId[p.match_id] ? nom(parId[p.match_id]) : esc(p.affiche || '—')}</td>
+      <td>${esc(p.choix)}</td><td>${p.mise}</td><td>${PARIS_STATUT[p.statut] || p.statut}</td><td>${p.statut === 'ouvert' ? '—' : p.gain}</td></tr>`).join('');
+    bloc.innerHTML = `
+      <div style="border:1px solid #e3a0a0;background:#fff8f6;padding:12px;border-radius:8px;margin-top:14px;font-size:13px">
+        <h4 style="margin:0 0 6px">🎲 Paris en kikooz</h4>
+        <label style="font-weight:bold"><input type="checkbox" id="paris-actifs" ${d.actifs ? 'checked' : ''} onchange="parisReglages(${t.id})"> Ouvrir les paris sur ce tournoi</label>
+        <label style="margin-left:14px">Mise maximale par joueur et par match :
+          <input type="number" id="paris-plafond" min="1" value="${d.plafond}" style="width:80px"> kikooz</label>
+        <button class="btn btn-sm" onclick="parisReglages(${t.id})">Enregistrer</button>
+        <div style="color:#777;margin:6px 0 10px;line-height:1.45">
+          Pari mutuel : le pot d'un match va à ceux qui ont vu juste, au prorata de leur mise — le parc ne crée ni ne détruit de kikooz.
+          Les joueurs misent sur les matchs dont les deux adversaires sont connus, sur la page <b>/paris/</b> (tuile « Paris » du light,
+          visible seulement quand des paris sont ouverts). Pas de pari sur ses propres matchs, ni depuis l'appareil d'un des joueurs.
+          ${t.format === 'duel'
+            ? 'En duel, les mises se ferment d’elles-mêmes à la <b>première manche</b> du match.'
+            : '<b>Au score, ferme les paris d’un match quand il commence</b> (saisir un score les ferme aussi) : sinon on pourrait miser en voyant le match se jouer.'}
+          Le vainqueur désigné règle le pot aussitôt ; <b>changer ensuite le vainqueur ne reprend pas les gains</b>.
+          Baisser l'option, supprimer le tournoi, régénérer le bracket ou remplacer un joueur <b>rembourse</b> les paris concernés.
+        </div>
+        ${pots ? `<table><thead><tr><th>Match</th><th>Parieurs</th><th>Pot</th><th>Sur le 1er (cote)</th><th>Sur le 2e (cote)</th><th>Paris</th><th></th></tr></thead><tbody>${pots}</tbody></table>`
+          : '<p style="color:#999">Aucun match dont les deux joueurs sont connus.</p>'}
+        ${lignes ? `<h4 style="margin:12px 0 4px">Tous les paris</h4><table><thead><tr><th>Date</th><th>Parieur</th><th>Match</th><th>Sur</th><th>Mise</th><th>Statut</th><th>Reçu</th></tr></thead><tbody>${lignes}</tbody></table>` : ''}
+      </div>`;
+  } catch (e) { bloc.innerHTML = ''; }
+}
+async function parisReglages(id) {
+  const actifs = $('#paris-actifs').checked;
+  const plafond = Number($('#paris-plafond').value);
+  if (!actifs && !confirm('Fermer les paris de ce tournoi ?\n\nLes paris encore en jeu seront remboursés.')) { $('#paris-actifs').checked = true; return; }
+  try {
+    const r = await fetch('/api/admin/tournaments/' + id + '/paris', { method: 'POST', headers: hdr(), body: JSON.stringify({ actifs, plafond }) });
+    const d = await r.json();
+    if (d.ok) { toast(actifs ? 'Paris ouverts (plafond ' + plafond + ' kikooz)' : 'Paris fermés, mises en jeu remboursées'); setTimeout(() => openTournament(id), 400); }
+    else toast('Erreur: ' + (d.message || d.error));
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function parisFermer(id, mid, ferme) {
+  try {
+    const r = await fetch('/api/admin/tournaments/' + id + '/match/' + mid + '/paris', { method: 'POST', headers: hdr(), body: JSON.stringify({ ferme }) });
+    const d = await r.json();
+    if (d.ok) { toast(ferme ? 'Paris fermés sur ce match' : 'Paris rouverts sur ce match'); openTournament(id); }
+    else toast('Erreur: ' + (d.message || d.error));
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 async function scheduleTournament(id) {

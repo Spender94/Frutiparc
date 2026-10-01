@@ -52,7 +52,7 @@ de confidentialité : public adulte, accord parental avant 15 ans), pas mesurée
 |---|---|
 | **Finalité** | Jouer : scores, classements, inventaire, progression, monnaie du jeu |
 | **Base légale** | Exécution du contrat |
-| **Données** | scores et classements (publics), médailles, fruticards (sauvegardes de jeu), inventaire et accessoires, pictos, kikooz et leur historique, quotas quotidiens, préférences, bureau |
+| **Données** | scores et classements (publics), médailles, fruticards (sauvegardes de jeu), inventaire et accessoires, pictos, kikooz et leur historique, paris en kikooz sur les tournois (mise, joueur choisi, gain ; seuls les totaux des pots sont publics), quotas quotidiens, préférences, bureau |
 | **Destinataires** | serveur ; classements publics pour les scores et médailles |
 | **Durée** | vie du compte ; les archives de classement des jours passés gardent le pseudo (anonymisé à la suppression du compte) |
 | **Où** | `scores`, `challenge_score_archive`, `challenge_medals`, `fruti_slots`, `user_items`, `user_accessories`, `user_game_items`, `kikooz_log`, `kikooz_gifts`, `shop_purchases`, `shop_sales`, `tournament_*`, `swapou_ia_scores`, colonnes `xp`, `kikooz`, `fd_state`, `owned_*`, `desktop_items`, `prefs` de `users` |

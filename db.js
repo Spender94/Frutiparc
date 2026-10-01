@@ -634,6 +634,35 @@ async function initSchema() {
       ALTER TABLE tournament_players ADD COLUMN IF NOT EXISTS poule TEXT DEFAULT NULL;
       ALTER TABLE tournament_matches ADD COLUMN IF NOT EXISTS poule TEXT DEFAULT NULL;
 
+      -- LES PARIS EN KIKOOZ, une option du tournoi (baissée par défaut). Pari
+      -- mutuel : les mises d'un match font un pot que se partagent ceux qui
+      -- ont vu juste (paris.js). Un pari par joueur et par match, qu'on peut
+      -- grossir jusqu'au plafond, jamais retourner.
+      --   tournaments.paris_actifs     l'option ;
+      --   tournaments.paris_plafond    la mise maximale d'un joueur sur un match ;
+      --   tournament_matches.paris_fermes  le match a commencé : plus de mise ;
+      --   tournament_paris.statut      'ouvert', 'gagne', 'perdu', 'rembourse' ;
+      --   tournament_paris.gain        ce que le parieur a reçu (mise comprise).
+      ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS paris_actifs BOOLEAN DEFAULT false;
+      ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS paris_plafond INTEGER DEFAULT 100;
+      ALTER TABLE tournament_matches ADD COLUMN IF NOT EXISTS paris_fermes BOOLEAN DEFAULT false;
+      CREATE TABLE IF NOT EXISTS tournament_paris (
+        id             SERIAL PRIMARY KEY,
+        tournament_id  INTEGER NOT NULL,
+        match_id       INTEGER NOT NULL,
+        username       TEXT NOT NULL,
+        choix          TEXT NOT NULL,
+        mise           INTEGER NOT NULL,
+        statut         TEXT NOT NULL DEFAULT 'ouvert',
+        gain           INTEGER NOT NULL DEFAULT 0,
+        affiche        TEXT NOT NULL DEFAULT '',
+        cree_le        TIMESTAMPTZ NOT NULL DEFAULT now(),
+        regle_le       TIMESTAMPTZ,
+        UNIQUE (match_id, username)
+      );
+      CREATE INDEX IF NOT EXISTS idx_tparis_tournoi ON tournament_paris(tournament_id, statut);
+      CREATE INDEX IF NOT EXISTS idx_tparis_user ON tournament_paris(LOWER(username), cree_le DESC);
+
       -- Capture des scores postés pendant une fenêtre (round 0 = qualif, sinon le tour).
       -- On garde le MEILLEUR score par joueur et par tour (indépendant du record perso).
       CREATE TABLE IF NOT EXISTS tournament_round_scores (
@@ -1796,6 +1825,10 @@ async function anonymiserJoueur(username) {
       ['blacklist', 'blocked_name', 'adresse'],
       ['swapou_parties', 'username', 'brut'],
       ['connexions', 'username', 'brut'],
+      // Ses paris : déjà payés ou bientôt sans objet. Les garder sous la
+      // pierre tombale heurterait « un pari par joueur et par match » dès que
+      // deux comptes supprimés auraient misé sur le même match.
+      ['tournament_paris', 'username', 'brut'],
     ]) {
       const r = quoi === 'adresse'
         ? await client.query(`DELETE FROM ${table} WHERE LOWER(SPLIT_PART(${col}, '@', 1)) = $1`, [a])
@@ -1809,7 +1842,7 @@ async function anonymiserJoueur(username) {
     // d'un courrier, un don, un achat, un tournoi — prend la pierre tombale.
     const retirees = new Set(['push_subscriptions.username', 'trombinoscope.pseudo',
       'forum_topic_reads.username', 'forum_topic_follows.username', 'users.referred_by',
-      'swapou_parties.username', 'connexions.username']);
+      'swapou_parties.username', 'connexions.username', 'tournament_paris.username']);
     for (const [table, col] of RENOMMAGE_COLONNES) {
       if (retirees.has(`${table}.${col}`)) continue;
       const r = await client.query(
@@ -1882,6 +1915,7 @@ async function exporterDonnees(userId, username) {
     swapou_ia: await q('SELECT score, data, created_at FROM swapou_ia_scores WHERE LOWER(username) = $1 ORDER BY created_at', [u]),
     swapou_parties: await q('SELECT id, graine, source, perso, cree_le, fini_le, score_declare, score_rejoue, verdict, raison, coups, nb_coups, duree_ms, rythme FROM swapou_parties WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     connexions: await q('SELECT jour, ip, xff, socket_ip, appareil, navigateur, origine, premiere, derniere, n FROM connexions WHERE LOWER(username) = $1 ORDER BY premiere', [u]),
+    paris: await q('SELECT tournament_id, affiche, choix, mise, statut, gain, cree_le, regle_le FROM tournament_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     sanctions: await q('SELECT moderator, action, detail, created_at FROM moderation_logs WHERE LOWER(target_username) = $1 ORDER BY created_at', [u]),
     notifications: await q('SELECT ua, created_at FROM push_subscriptions WHERE LOWER(username) = $1', [u]),
     sessions: await q('SELECT created_at FROM sessions WHERE user_id = $1 ORDER BY created_at', [id]),
@@ -1952,6 +1986,8 @@ const RENOMMAGE_COLONNES = [
   ['swapou_ia_scores', 'username'],
   ['swapou_parties', 'username'],
   ['connexions', 'username'],
+  ['tournament_paris', 'username'],
+  ['tournament_paris', 'choix'],
   ['shop_packs', 'auteur'],
   ['users', 'referred_by'],
 ];
@@ -4368,6 +4404,88 @@ async function getRoundScores(tid, round) {
     `SELECT username, score, data, updated_at FROM tournament_round_scores WHERE tournament_id = $1 AND round = $2`, [tid, round]);
   return rows;
 }
+// ── Les paris des tournois (tournament_paris) ──
+async function parisDuTournoi(tid, statut) {
+  const { rows } = statut
+    ? await pool.query(`SELECT * FROM tournament_paris WHERE tournament_id = $1 AND statut = $2 ORDER BY id`, [tid, statut])
+    : await pool.query(`SELECT * FROM tournament_paris WHERE tournament_id = $1 ORDER BY id`, [tid]);
+  return rows;
+}
+// Les tournois qui ont encore des paris ouverts (un tournoi supprimé compris :
+// ses paris doivent être remboursés).
+async function tournoisAvecParisOuverts() {
+  const { rows } = await pool.query(`SELECT DISTINCT tournament_id FROM tournament_paris WHERE statut = 'ouvert'`);
+  return rows.map((r) => r.tournament_id);
+}
+async function parisDeJoueur(username, limit = 100) {
+  const { rows } = await pool.query(
+    `SELECT p.*, t.name AS tournoi FROM tournament_paris p LEFT JOIN tournaments t ON t.id = p.tournament_id
+      WHERE LOWER(p.username) = $1 ORDER BY p.cree_le DESC LIMIT $2`,
+    [String(username || '').toLowerCase(), Math.max(1, Math.min(Number(limit) || 100, 500))]);
+  return rows;
+}
+async function pariDe(matchId, username) {
+  const { rows } = await pool.query(
+    `SELECT * FROM tournament_paris WHERE match_id = $1 AND LOWER(username) = $2`,
+    [matchId, String(username || '').toLowerCase()]);
+  return rows[0] || null;
+}
+// Pose ou grossit un pari. Le camp ne se change pas : un pari existant sur
+// l'autre joueur ne bouge pas, et rien n'est rendu (null).
+async function poserPari(p) {
+  const { rows } = await pool.query(
+    `INSERT INTO tournament_paris (tournament_id, match_id, username, choix, mise, affiche)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (match_id, username) DO UPDATE SET mise = tournament_paris.mise + EXCLUDED.mise
+       WHERE tournament_paris.choix = EXCLUDED.choix AND tournament_paris.statut = 'ouvert'
+     RETURNING *`,
+    [p.tournamentId, p.matchId, String(p.username).toLowerCase(), String(p.choix).toLowerCase(),
+     Math.trunc(Number(p.mise)), String(p.affiche || '').slice(0, 200)]);
+  return rows[0] || null;
+}
+// Annule une mise qui vient d'être posée (le débit des kikooz a échoué).
+async function retirerMise(id, mise) {
+  await pool.query(
+    `UPDATE tournament_paris SET mise = mise - $2 WHERE id = $1 AND statut = 'ouvert'`, [id, Math.trunc(Number(mise))]);
+  await pool.query(`DELETE FROM tournament_paris WHERE id = $1 AND mise <= 0`, [id]);
+}
+/*
+ * Le règlement, d'un seul tenant : chaque pari ne passe de 'ouvert' à son
+ * statut qu'UNE fois (la condition `statut = 'ouvert'` le garantit même si
+ * deux règlements se croisent). On ne rend que les lignes réellement réglées
+ * ici : ce sont elles, et elles seules, qu'on paie.
+ */
+async function reglerParis(decisions) {
+  const client = await pool.connect();
+  const faits = [];
+  try {
+    await client.query('BEGIN');
+    for (const d of decisions) {
+      const { rows } = await client.query(
+        `UPDATE tournament_paris SET statut = $2, gain = $3, regle_le = now()
+          WHERE id = $1 AND statut = 'ouvert' RETURNING id, username, mise, gain, statut, choix, affiche, tournament_id, match_id`,
+        [d.id, d.statut, Math.trunc(Number(d.gain) || 0)]);
+      if (rows[0]) faits.push(rows[0]);
+    }
+    await client.query('COMMIT');
+    return faits;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+// Deux comptes ont-ils partagé un appareil (journal des connexions) ? Un
+// parieur ne mise pas sur un match où joue un compte de son propre appareil.
+async function memeAppareil(username, autres) {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT b.username FROM connexions a JOIN connexions b ON a.appareil = b.appareil
+      WHERE a.appareil <> '' AND LOWER(a.username) = $1 AND LOWER(b.username) = ANY($2)`,
+    [String(username || '').toLowerCase(), autres.map((x) => String(x || '').toLowerCase())]);
+  return rows.map((r) => r.username);
+}
+
 async function getActiveTournaments() {
   const { rows } = await pool.query(`SELECT * FROM tournaments WHERE status IN ('qualif','bracket')`);
   return rows;
@@ -4470,6 +4588,15 @@ module.exports = {
   purgerConnexions,
   indicesMultiComptes,
   fichesComptes,
+  // Paris des tournois
+  parisDuTournoi,
+  tournoisAvecParisOuverts,
+  parisDeJoueur,
+  pariDe,
+  poserPari,
+  retirerMise,
+  reglerParis,
+  memeAppareil,
   // RGPD
   PSEUDO_SUPPRIME,
   deleteSessionsForUser,

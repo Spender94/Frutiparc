@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="fr">
+<!-- Les paris des tournois.
+
+     Une page, comme le Club : les tournois dont l'organisateur a ouvert les
+     paris, leurs matchs ouverts aux mises, ceux en cours, et les résultats.
+     Pari MUTUEL : le pot d'un match va à ceux qui ont vu juste, au prorata de
+     leur mise (paris.js) ; la cote affichée est celle du pot à l'instant, elle
+     bouge jusqu'au début du match. La session est celle du light. -->
+<head>
+<meta charset="UTF-8">
+<title>Paris des tournois — Frutiparc</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Verdana, Arial, Helvetica, sans-serif;
+    font-size: 11px;
+    background: #ADE76B;
+    color: #335511;
+    padding: 12px;
+  }
+  .shell {
+    background: #fff;
+    border-radius: 7px;
+    overflow: hidden;
+    padding: 6px;
+    border: 1.125px solid #2E3C1E;
+    box-shadow: inset 0 0 0 1px #DEDEDF;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  .entete { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
+  .entete .titre { color: #E3756A; font: bold 14px Arial, sans-serif; }
+  .entete .solde { margin-left: auto; font-weight: bold; color: #2C4A0F; }
+  .bandeau {
+    background: #E3756A; color: #fff; font: bold 12px Arial, Verdana, sans-serif;
+    padding: 6px 10px; border-radius: 7px 7px 0 0; margin-top: 8px;
+    display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap;
+  }
+  .bandeau small { font-weight: normal; opacity: .9; }
+  .regle { background: #ADE76B; color: #2C4A0F; padding: 6px 10px; line-height: 1.5; }
+  h3 { font: bold 12px Arial, sans-serif; color: #2C4A0F; margin: 10px 4px 6px; }
+  .vide { color: #6c8f3a; padding: 6px 4px 10px; }
+
+  .match { background: #D6F7B5; border-radius: 6px; padding: 8px 10px; margin: 0 0 8px; }
+  .match .tour { color: #6c8f3a; font-size: 10px; margin-bottom: 6px; display: flex; gap: 8px; }
+  .match .tour .pot { margin-left: auto; font-weight: bold; color: #2C4A0F; }
+  .duo { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: stretch; }
+  .duo .contre { align-self: center; color: #6c8f3a; font-weight: bold; }
+  .cote {
+    background: #fff; border: 2px solid #C3EF93; border-radius: 6px; padding: 6px 8px;
+    display: flex; flex-direction: column; gap: 2px; text-align: left; font-family: inherit; font-size: 11px; color: #335511;
+  }
+  button.cote { cursor: pointer; }
+  button.cote:hover:not(:disabled) { border-color: #E3756A; }
+  button.cote:disabled { cursor: default; opacity: .75; }
+  .cote.choisi { border-color: #E3756A; background: #fff6f4; }
+  .cote.gagnant { border-color: #2f8f2f; }
+  .cote .nom { font-weight: bold; font-size: 12px; color: #2C4A0F; overflow-wrap: anywhere; }
+  .cote .x { font: bold 15px Arial, sans-serif; color: #E3756A; }
+  .cote .x.vide { color: #9ab87a; font-size: 12px; }
+  .cote .detail { color: #6c8f3a; font-size: 10px; }
+  .miser { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .miser input {
+    width: 80px; padding: 3px 6px; border: 1px solid #8bc55a; border-radius: 3px;
+    font: 12px Verdana, sans-serif; color: #2C4A0F;
+  }
+  .miser .aide { color: #6c8f3a; font-size: 10px; }
+  .mien { margin-top: 6px; font-weight: bold; color: #2C4A0F; }
+  .mien.gagne { color: #2f8f2f; }
+  .mien.perdu { color: #b31111; }
+  .mien.rembourse { color: #6c8f3a; }
+  .note { margin-top: 6px; color: #6c8f3a; }
+  .msg { margin-top: 6px; font-weight: bold; }
+  .msg.err { color: #b31111; }
+  .msg.ok { color: #2f8f2f; }
+  .connexion { padding: 14px 8px; text-align: center; line-height: 1.6; }
+  a { color: #2C4A0F; }
+  @media (max-width: 420px) {
+    body { padding: 6px; }
+    .duo { grid-template-columns: 1fr; }
+    .duo .contre { text-align: center; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="entete">
+    <span>🎲</span>
+    <span class="titre">Paris des tournois</span>
+    <span class="solde" id="solde"></span>
+  </div>
+  <div id="contenu"><p class="vide">Chargement…</p></div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var sid = new URLSearchParams(location.search).get('sid') || '';
+  if (!sid) {
+    try { sid = (JSON.parse(localStorage.getItem('fp_light_session') || '{}') || {}).sid || ''; } catch (e) { sid = ''; }
+  }
+  var contenu = document.getElementById('contenu');
+  var etat = null;
+  var messages = {};       // id du match -> { texte, ok }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function nombre(n) { return Number(n || 0).toLocaleString('fr-FR'); }
+  function kz(n) { return nombre(n) + ' kikooz'; }
+  function cote(c) { return c == null ? null : '×' + String(c).replace('.', ','); }
+
+  function charger() {
+    return fetch('/api/paris?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { etat = d; rendre(); })
+      .catch(function () { contenu.innerHTML = '<p class="vide">Le serveur ne répond pas. Réessaie dans un instant.</p>'; });
+  }
+
+  function carteJoueur(m, j, autre, ouvert) {
+    var mises = j.mises || { mises: 0, parieurs: 0, cote: null };
+    var c = cote(mises.cote);
+    var choisi = m.mien && m.mien.choix === j.pseudo.toLowerCase();
+    var gagnant = m.vainqueur && m.vainqueur.toLowerCase() === j.pseudo.toLowerCase();
+    var bloque = !ouvert || m.interdit || !etat.moi || (m.mien && m.mien.choix !== j.pseudo.toLowerCase());
+    var tag = ouvert ? 'button' : 'div';
+    return '<' + tag + ' class="cote' + (choisi ? ' choisi' : '') + (gagnant ? ' gagnant' : '') + '"'
+      + (ouvert ? ' data-match="' + m.id + '" data-choix="' + esc(j.pseudo) + '"' + (bloque ? ' disabled' : '') : '') + '>'
+      + '<span class="nom">' + (gagnant ? '🏆 ' : '') + esc(j.nom) + '</span>'
+      + (c ? '<span class="x">' + c + '</span>' : '<span class="x vide">pas encore de mise</span>')
+      + '<span class="detail">' + kz(mises.mises) + ' · ' + mises.parieurs + ' parieur' + (mises.parieurs > 1 ? 's' : '') + '</span>'
+      + '</' + tag + '>';
+  }
+
+  function blocMatch(t, m, ouvert) {
+    var h = '<div class="match" id="m' + m.id + '">'
+      + '<div class="tour"><span>' + esc(m.tour) + (m.poule ? ' — poule ' + esc(m.poule) : '') + '</span>'
+      + '<span class="pot">pot : ' + kz(m.pot) + '</span></div>'
+      + '<div class="duo">' + carteJoueur(m, m.j1, m.j2, ouvert) + '<span class="contre">contre</span>' + carteJoueur(m, m.j2, m.j1, ouvert) + '</div>';
+    if (m.mien) {
+      var nomChoix = m.mien.choix === m.j1.pseudo.toLowerCase() ? m.j1.nom : m.j2.nom;
+      if (m.mien.statut === 'gagne') h += '<div class="mien gagne">Gagné : ta mise de ' + kz(m.mien.mise) + ' sur ' + esc(nomChoix) + ' t’a rapporté ' + kz(m.mien.gain) + '.</div>';
+      else if (m.mien.statut === 'perdu') h += '<div class="mien perdu">Perdu : ta mise de ' + kz(m.mien.mise) + ' sur ' + esc(nomChoix) + '.</div>';
+      else if (m.mien.statut === 'rembourse') h += '<div class="mien rembourse">Remboursé : ' + kz(m.mien.gain) + ' (personne en face, ou match annulé).</div>';
+      else h += '<div class="mien">Ta mise : ' + kz(m.mien.mise) + ' sur ' + esc(nomChoix) + '.</div>';
+    }
+    if (ouvert && m.interdit) {
+      h += '<div class="note">C’est ton match : tu ne peux pas parier dessus. Bonne chance !</div>';
+    } else if (ouvert && etat.moi) {
+      var deja = m.mien ? m.mien.mise : 0;
+      var reste = Math.max(0, t.plafond - deja);
+      if (reste > 0) {
+        h += '<div class="miser"><input type="number" min="1" max="' + reste + '" step="1" value="' + Math.min(10, reste) + '" id="mise' + m.id + '" aria-label="Mise en kikooz">'
+          + '<span class="aide">kikooz — ' + (m.mien ? 'tu peux ajouter jusqu’à ' + kz(reste) + ' sur le même joueur' : 'choisis ta mise, puis touche un joueur') + '</span></div>';
+      } else {
+        h += '<div class="note">Tu as misé le plafond sur ce match.</div>';
+      }
+    } else if (!ouvert && !m.vainqueur) {
+      h += '<div class="note">Le match a commencé : les mises sont fermées.</div>';
+    }
+    var msg = messages[m.id];
+    if (msg) h += '<div class="msg ' + (msg.ok ? 'ok' : 'err') + '">' + esc(msg.texte) + '</div>';
+    return h + '</div>';
+  }
+
+  function rendre() {
+    var d = etat;
+    document.getElementById('solde').textContent = d.solde == null ? '' : 'Ton solde : ' + kz(d.solde);
+    if (!d.tournois || !d.tournois.length) {
+      contenu.innerHTML = '<p class="vide">Aucun tournoi n’a de paris ouverts en ce moment. Les organisateurs ouvrent les paris tournoi par tournoi : reviens au prochain !</p>';
+      return;
+    }
+    var h = '';
+    if (!d.moi) h += '<p class="connexion">Pour parier, <a href="/light.html">connecte-toi au parc</a>, puis reviens ici.</p>';
+    d.tournois.forEach(function (t) {
+      h += '<div class="bandeau">' + esc(t.nom) + ' <small>' + esc(t.jeu) + '</small></div>'
+        + '<div class="regle">Pari mutuel : toutes les mises d’un match font un pot, que se partagent ceux qui ont vu juste, '
+        + 'au prorata de leur mise. La cote (×) est celle du pot à l’instant : elle bouge jusqu’au début du match. '
+        + 'Mise maximale : ' + kz(t.plafond) + ' par match. On ne parie pas sur ses propres matchs. '
+        + 'Si personne n’a misé sur le vainqueur, chacun récupère sa mise.</div>';
+      h += '<h3>Matchs ouverts aux paris</h3>';
+      h += t.ouverts.length ? t.ouverts.map(function (m) { return blocMatch(t, m, true); }).join('')
+        : '<p class="vide">Pas de match ouvert : les prochains le seront dès que leurs deux joueurs seront connus.</p>';
+      if (t.enCours.length) {
+        h += '<h3>Matchs en cours</h3>' + t.enCours.map(function (m) { return blocMatch(t, m, false); }).join('');
+      }
+      if (t.regles.length) {
+        h += '<h3>Résultats</h3>' + t.regles.map(function (m) { return blocMatch(t, m, false); }).join('');
+      }
+    });
+    contenu.innerHTML = h;
+  }
+
+  contenu.addEventListener('click', function (ev) {
+    var b = ev.target.closest('button.cote');
+    if (!b || b.disabled) return;
+    var id = Number(b.getAttribute('data-match'));
+    var choix = b.getAttribute('data-choix');
+    var champ = document.getElementById('mise' + id);
+    var mise = champ ? Math.floor(Number(champ.value)) : 0;
+    var nom = b.querySelector('.nom').textContent;
+    if (!(mise >= 1)) { messages[id] = { texte: 'Indique une mise d’au moins 1 kikooz.' }; rendre(); return; }
+    if (!confirm('Miser ' + kz(mise) + ' sur ' + nom + ' ?\n\nUne mise ne se reprend pas.')) return;
+    b.disabled = true;
+    fetch('/api/paris', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: sid, match: id, choix: choix, mise: mise }),
+    }).then(function (r) { return r.json(); })
+      .then(function (j) {
+        messages[id] = j.ok ? { ok: true, texte: 'C’est parié : ' + kz(j.mise) + ' sur ' + nom + '.' }
+          : { texte: j.message || 'Le pari n’a pas pu être enregistré.' };
+        return charger();
+      })
+      .catch(function () { messages[id] = { texte: 'Le serveur ne répond pas.' }; rendre(); });
+  });
+
+  charger();
+  // Les cotes bougent : on relit toutes les trente secondes, sauf pendant
+  // qu'on tape une mise.
+  setInterval(function () {
+    var a = document.activeElement;
+    if (a && a.tagName === 'INPUT') return;
+    charger();
+  }, 30000);
+})();
+</script>
+</body>
+</html>
