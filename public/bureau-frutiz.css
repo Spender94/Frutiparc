@@ -1248,6 +1248,9 @@ body.bureau-frutiz #bureau .home-tile[data-go="chat"]       .ico img { max-width
 body.bureau-frutiz #bureau .home-tile[data-go="scores"]     .ico img { max-width: 35px; max-height: 38px; }
 body.bureau-frutiz #bureau .home-tile[data-go="shop"]       .ico img { max-width: 36px; max-height: 32px; }
 body.bureau-frutiz #bureau .home-tile[data-go="trombi"]     .ico img { max-width: 42px; max-height: 42px; }
+/* Le livre aux cartes (`pictoForum`, 55,2 × 56,2 dans fileIcon.swf) : la même
+   règle que les autres dessins de la feuille, 0,60 de la taille native. */
+body.bureau-frutiz #bureau .home-tile[data-go="paris"]      .ico img { max-width: 33px; max-height: 34px; }
 /* LES TROIS DOSSIERS de la rangée — contacts, liste noire, corbeille. Leurs
    dessins sortent de la MÊME feuille que le courrier et l'historique
    (fileIcon.swf, `ico_dossier_*`) : ils suivent donc la même règle, 0,60 de
@@ -1301,6 +1304,9 @@ body.bureau-frutiz #bureau .home-tile[data-go="scores"]     { order: 8; }
 body.bureau-frutiz #bureau .home-tile[data-go="shop"]       { order: 9; }
 body.bureau-frutiz #bureau .home-tile[data-go="trombi"]     { order: 10; }
 body.bureau-frutiz #bureau .home-tile[data-go="club"]       { order: 11; }
+/* Les PARIS (ajoutés au Revival, absents de la rangée d'époque) : après le
+   Club, en bout de rangée. La tuile ne paraît que si des paris sont ouverts. */
+body.bureau-frutiz #bureau .home-tile[data-go="paris"]      { order: 12; }
 /* L'étiquette d'époque : du texte posé À NU sur le fond (mesuré #335511 sur
    l'aplat #ADE76B, ref-bureau-propre.png) — main.swf ne met AUCUN halo, la
    lisibilité vient de la couleur de texte imposée par le fond d'écran
