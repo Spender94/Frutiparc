@@ -9,9 +9,10 @@
  * retenu, le plus gros passe ; classement final 1 à 10, les éliminés d'un
  * même tour départagés au score.
  *
- * Ici une « heure » dure une seconde (TOURNOI_HEURE_MS) : chaque tour dure 6 s,
- * précédé de 5 s de pause (le temps de parier) — de la marge pour une machine
- * chargée par le reste de la suite. Les scores arrivent par le
+ * Ici une « heure » dure une seconde (TOURNOI_HEURE_MS) : chaque tour dure 8 s.
+ * Le premier attend derrière une longue pause (le temps de parier), que
+ * l'organisateur abrège avec « Lancer le tour maintenant » : le test ne dépend
+ * pas de l'horloge d'une machine chargée par le reste de la suite. Les scores arrivent par le
  * vrai chemin du jeu (/api/saveScore) au tour préliminaire, puis par la saisie
  * de l'organisateur pour les tours suivants (les FD d'un compte neuf ne
  * suffiraient pas à jouer quatre tours dans la même journée de test).
@@ -117,8 +118,8 @@ test('qualif : douze joueurs, les dix meilleurs en coupe, tirée toute seule', a
   await compte('parieuse', 300);
   await compte('parieur', 300);
   const c = await post('/api/admin/tournaments', {
-    name: 'Maître ES Swapou 2026', ranking_id: 'swapou2_classic', bracket_size: 10, round_hours: 6,
-    tours_auto: true, tours_pause_h: 5,
+    name: 'Maître ES Swapou 2026', ranking_id: 'swapou2_classic', bracket_size: 10, round_hours: 8,
+    tours_auto: true, tours_pause_h: 120,
   }, ADMIN);
   assert.ok(c.ok, JSON.stringify(c));
   tid = c.tournament.id;
@@ -157,6 +158,10 @@ test('tour préliminaire : on parie pendant la pause, plus une fois le tour ouve
   assert.ok(!ouvert(d, 1), 'la pause : le tour n’est pas encore ouvert');
   assert.equal((await post('/api/paris', { sid: sids.parieuse, match: m710.id, choix: 'p10', mise: 50 })).ok, true);
   assert.equal((await post('/api/paris', { sid: sids.parieur, match: m710.id, choix: 'p07', mise: 30 })).ok, true);
+  // L'organisateur lance le tour sans attendre la fin de la pause, et les
+  // tours suivants s'enchaîneront sans pause.
+  const lance = await post(`/api/admin/tournaments/${tid}/tours`, { tours_pause_h: 0, maintenant: true }, ADMIN);
+  assert.equal(lance.lance, 2, 'les deux matchs du tour préliminaire');
   d = await attendre(tid, 'le tour préliminaire ouvert', (x) => ouvert(x, 1));
   const tard = await post('/api/paris', { sid: sids.parieur, match: m710.id, choix: 'p07', mise: 10 });
   assert.equal(tard.code, 'joue', 'le tour a commencé : plus de mise');

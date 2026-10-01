@@ -670,6 +670,29 @@ async function initSchema() {
       CREATE INDEX IF NOT EXISTS idx_tparis_tournoi ON tournament_paris(tournament_id, statut);
       CREATE INDEX IF NOT EXISTS idx_tparis_user ON tournament_paris(LOWER(username), cree_le DESC);
 
+      -- LES PARIS DU CHALLENGE : sur les médaillés du lendemain. On mise la
+      -- veille (jusqu'à minuit) ; le pot se règle au changement de jour, sur
+      -- le podium que le roll vient de calculer.
+      --   jour   le jour du Challenge parié (heure de Paris) ;
+      --   jeu    le classement (ou 'bkiwi' : le circuit du jour, quel qu'il soit) ;
+      --   type   'podium' (sera médaillé) ou 'or' (aura la médaille d'or).
+      CREATE TABLE IF NOT EXISTS challenge_paris (
+        id         SERIAL PRIMARY KEY,
+        jour       TEXT NOT NULL,
+        jeu        TEXT NOT NULL,
+        type       TEXT NOT NULL,
+        username   TEXT NOT NULL,
+        choix      TEXT NOT NULL,
+        mise       INTEGER NOT NULL,
+        statut     TEXT NOT NULL DEFAULT 'ouvert',
+        gain       INTEGER NOT NULL DEFAULT 0,
+        cree_le    TIMESTAMPTZ NOT NULL DEFAULT now(),
+        regle_le   TIMESTAMPTZ,
+        UNIQUE (jour, jeu, type, username, choix)
+      );
+      CREATE INDEX IF NOT EXISTS idx_cparis_jour ON challenge_paris(jour, statut);
+      CREATE INDEX IF NOT EXISTS idx_cparis_user ON challenge_paris(LOWER(username), cree_le DESC);
+
       -- Capture des scores postés pendant une fenêtre (round 0 = qualif, sinon le tour).
       -- On garde le MEILLEUR score par joueur et par tour (indépendant du record perso).
       CREATE TABLE IF NOT EXISTS tournament_round_scores (
@@ -1836,6 +1859,7 @@ async function anonymiserJoueur(username) {
       // pierre tombale heurterait « un pari par joueur et par match » dès que
       // deux comptes supprimés auraient misé sur le même match.
       ['tournament_paris', 'username', 'brut'],
+      ['challenge_paris', 'username', 'brut'],
     ]) {
       const r = quoi === 'adresse'
         ? await client.query(`DELETE FROM ${table} WHERE LOWER(SPLIT_PART(${col}, '@', 1)) = $1`, [a])
@@ -1849,7 +1873,8 @@ async function anonymiserJoueur(username) {
     // d'un courrier, un don, un achat, un tournoi — prend la pierre tombale.
     const retirees = new Set(['push_subscriptions.username', 'trombinoscope.pseudo',
       'forum_topic_reads.username', 'forum_topic_follows.username', 'users.referred_by',
-      'swapou_parties.username', 'connexions.username', 'tournament_paris.username']);
+      'swapou_parties.username', 'connexions.username', 'tournament_paris.username',
+      'challenge_paris.username']);
     for (const [table, col] of RENOMMAGE_COLONNES) {
       if (retirees.has(`${table}.${col}`)) continue;
       const r = await client.query(
@@ -1923,6 +1948,7 @@ async function exporterDonnees(userId, username) {
     swapou_parties: await q('SELECT id, graine, source, perso, cree_le, fini_le, score_declare, score_rejoue, verdict, raison, coups, nb_coups, duree_ms, rythme FROM swapou_parties WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     connexions: await q('SELECT jour, ip, xff, socket_ip, appareil, navigateur, origine, premiere, derniere, n FROM connexions WHERE LOWER(username) = $1 ORDER BY premiere', [u]),
     paris: await q('SELECT tournament_id, affiche, choix, mise, statut, gain, cree_le, regle_le FROM tournament_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
+    paris_challenge: await q('SELECT jour, jeu, type, choix, mise, statut, gain, cree_le, regle_le FROM challenge_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     sanctions: await q('SELECT moderator, action, detail, created_at FROM moderation_logs WHERE LOWER(target_username) = $1 ORDER BY created_at', [u]),
     notifications: await q('SELECT ua, created_at FROM push_subscriptions WHERE LOWER(username) = $1', [u]),
     sessions: await q('SELECT created_at FROM sessions WHERE user_id = $1 ORDER BY created_at', [id]),
@@ -1995,6 +2021,8 @@ const RENOMMAGE_COLONNES = [
   ['connexions', 'username'],
   ['tournament_paris', 'username'],
   ['tournament_paris', 'choix'],
+  ['challenge_paris', 'username'],
+  ['challenge_paris', 'choix'],
   ['shop_packs', 'auteur'],
   ['users', 'referred_by'],
 ];
@@ -4483,6 +4511,82 @@ async function reglerParis(decisions) {
     client.release();
   }
 }
+// ── Les paris du Challenge (challenge_paris) ──
+async function parisChallengeDuJour(jour) {
+  const { rows } = await pool.query(`SELECT * FROM challenge_paris WHERE jour = $1 ORDER BY id`, [String(jour)]);
+  return rows;
+}
+async function parisChallengeOuvertsAvant(jour) {
+  const { rows } = await pool.query(
+    `SELECT * FROM challenge_paris WHERE statut = 'ouvert' AND jour < $1 ORDER BY id`, [String(jour)]);
+  return rows;
+}
+async function parisChallengeOuverts() {
+  const { rows } = await pool.query(`SELECT * FROM challenge_paris WHERE statut = 'ouvert' ORDER BY id`);
+  return rows;
+}
+async function miseChallengeDuJour(username, jour) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(mise), 0)::int AS n FROM challenge_paris WHERE LOWER(username) = $1 AND jour = $2`,
+    [String(username || '').toLowerCase(), String(jour)]);
+  return rows[0].n;
+}
+async function parisChallengeDe(username, limit = 100) {
+  const { rows } = await pool.query(
+    `SELECT * FROM challenge_paris WHERE LOWER(username) = $1 ORDER BY cree_le DESC LIMIT $2`,
+    [String(username || '').toLowerCase(), Math.max(1, Math.min(Number(limit) || 100, 500))]);
+  return rows;
+}
+async function poserPariChallenge(p) {
+  const { rows } = await pool.query(
+    `INSERT INTO challenge_paris (jour, jeu, type, username, choix, mise)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (jour, jeu, type, username, choix) DO UPDATE SET mise = challenge_paris.mise + EXCLUDED.mise
+       WHERE challenge_paris.statut = 'ouvert'
+     RETURNING *`,
+    [String(p.jour), String(p.jeu), String(p.type), String(p.username).toLowerCase(),
+     String(p.choix).toLowerCase(), Math.trunc(Number(p.mise))]);
+  return rows[0] || null;
+}
+async function retirerMiseChallenge(id, mise) {
+  await pool.query(`UPDATE challenge_paris SET mise = mise - $2 WHERE id = $1 AND statut = 'ouvert'`, [id, Math.trunc(Number(mise))]);
+  await pool.query(`DELETE FROM challenge_paris WHERE id = $1 AND mise <= 0`, [id]);
+}
+// Même garantie que reglerParis : on ne rend que ce qui vient de passer
+// d'« ouvert » à réglé.
+async function reglerParisChallenge(decisions) {
+  const client = await pool.connect();
+  const faits = [];
+  try {
+    await client.query('BEGIN');
+    for (const d of decisions) {
+      const { rows } = await client.query(
+        `UPDATE challenge_paris SET statut = $2, gain = $3, regle_le = now()
+          WHERE id = $1 AND statut = 'ouvert' RETURNING id, jour, jeu, type, username, choix, mise, gain, statut`,
+        [d.id, d.statut, Math.trunc(Number(d.gain) || 0)]);
+      if (rows[0]) faits.push(rows[0]);
+    }
+    await client.query('COMMIT');
+    return faits;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+// Les habitués d'un classement du Challenge : qui y a joué ces derniers jours,
+// et combien de fois sur le podium (les candidats proposés aux parieurs).
+async function habituesChallenge(rankingIds, depuisJour) {
+  const { rows } = await pool.query(
+    `SELECT LOWER(username) AS username, COUNT(DISTINCT day_key)::int AS jours
+       FROM challenge_score_archive
+      WHERE ranking_id = ANY($1) AND day_key >= $2
+      GROUP BY LOWER(username)`,
+    [rankingIds, String(depuisJour)]);
+  return rows;
+}
+
 // Deux comptes ont-ils partagé un appareil (journal des connexions) ? Un
 // parieur ne mise pas sur un match où joue un compte de son propre appareil.
 async function memeAppareil(username, autres) {
@@ -4604,6 +4708,15 @@ module.exports = {
   retirerMise,
   reglerParis,
   memeAppareil,
+  parisChallengeDuJour,
+  parisChallengeOuvertsAvant,
+  parisChallengeOuverts,
+  miseChallengeDuJour,
+  parisChallengeDe,
+  poserPariChallenge,
+  retirerMiseChallenge,
+  reglerParisChallenge,
+  habituesChallenge,
   // RGPD
   PSEUDO_SUPPRIME,
   deleteSessionsForUser,

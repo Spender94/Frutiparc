@@ -4944,8 +4944,10 @@ async function performChallengeRoll(today) {
   console.log(`[CHALLENGE] Rolling cycle: archiveDay=${archiveDay} newDay=${today}`);
 
   const winnersByUser = {};
+  const podiums = {};           // rankingId -> [or, argent, bronze] (paris du Challenge)
   for (const rkId of challengeRankingIds()) {
     const top = collectTop3ForRanking(rkId);
+    podiums[rkId] = top.map((x) => x.u);
     const direction = isLowerBetter(rkId) ? 'asc (lower=better)' : 'desc (higher=better)';
     console.log(`[CHALLENGE] ${rkId} sort=${direction} top=${JSON.stringify(top)}`);
     for (let i = 0; i < top.length; i++) {
@@ -4965,6 +4967,8 @@ async function performChallengeRoll(today) {
 
   challengeMedalsData.medalsByVisibleDay[archiveDay] = winnersByUser;
   notifyChallengeWinners(winnersByUser, archiveDay);
+  // Les paris sur les médaillés de ce jour se règlent sur ce podium.
+  parisChallengeRegler(archiveDay, podiums).catch((e) => console.error('[PARIS] règlement du Challenge :', e.message));
   challengeMedalsData.lastRollDay = today;
   saveChallengeMedals();
 
@@ -10195,7 +10199,7 @@ app.get('/api/paris/ouverts', async (req, res) => {
       }
       parisOuvertsCache = { at: Date.now(), n };
     }
-    res.json({ n: parisOuvertsCache.n });
+    res.json({ n: parisOuvertsCache.n + (parisChallengeReglages.actif && jeuxChallengeOuverts().length ? 1 : 0) });
   } catch (e) { res.json({ n: 0 }); }
 });
 
@@ -10333,6 +10337,292 @@ app.post('/api/admin/tournaments/:id/match/:mid/paris', tournoiScope, async (req
     res.json({ ok: true, ferme });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * LES PARIS DU CHALLENGE — sur les médaillés du lendemain
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Un interrupteur global (admin, onglet Challenge), éteint par défaut ; une
+ * fois levé, ça tourne tous les jours sans organisateur.
+ *
+ *   · On mise LA VEILLE, jusqu'à minuit (heure de Paris), sur le Challenge du
+ *     lendemain : le classement du jour se lit en direct, miser pendant la
+ *     journée reviendrait à recopier le podium.
+ *   · Deux pots par jeu : « médaillé » (le joueur finit sur le podium) et
+ *     « or » (il gagne). Pari mutuel (paris.js) : ceux qui ont vu juste se
+ *     partagent le pot au prorata de leurs mises ; personne n'a vu juste,
+ *     chacun récupère sa mise.
+ *   · On peut miser sur soi. Un plafond par JOUR et par joueur, tous jeux
+ *     confondus (50 kikooz d'origine) : arranger un podium n'en vaut pas la
+ *     peine.
+ *   · Le règlement se fait au roll du Challenge (performChallengeRoll), sur le
+ *     podium que le roll vient de calculer — les médailles que tout le monde
+ *     voit. Burning Kiwi est UN jeu : le circuit du jour, quel qu'il soit.
+ *   · Le filet : un pari resté ouvert plus d'un jour après son Challenge (le
+ *     roll n'a pas eu lieu) est remboursé.
+ */
+const PARIS_CHALLENGE_DEFAUT = { actif: false, plafond: 50, exclus: [] };
+let parisChallengeReglages = Object.assign({}, PARIS_CHALLENGE_DEFAUT);
+async function chargerReglagesParisChallenge() {
+  try {
+    const brut = await db.getAppState('paris_challenge');
+    if (brut) parisChallengeReglages = Object.assign({}, PARIS_CHALLENGE_DEFAUT, JSON.parse(brut));
+  } catch (e) { console.error('[PARIS] réglages du Challenge :', e.message); }
+}
+function jourDecale(jour, n) {
+  const d = new Date(jour + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+const parisChallengeDemain = () => jourDecale(parisDayKey(), 1);
+const parisChallengeHier = () => jourDecale(parisDayKey(), -1);
+function jourLisible(jour) {
+  const d = new Date(jour + 'T12:00:00Z');
+  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+}
+// Les jeux du Challenge, tels qu'on parie dessus.
+function jeuxChallengeParis() {
+  const jeux = [];
+  const bkiwi = [];
+  for (const rk of challengeRankingIds()) {
+    if (/^bkiwi_track\d+_challenge$/.test(rk)) { bkiwi.push(rk); continue; }
+    const leg = LEGACY_RANKINGS.find((r) => r.internal === rk);
+    jeux.push({ cle: rk, nom: (leg && leg.rn) || (RANKINGS[rk] && RANKINGS[rk].name) || rk, rankings: [rk] });
+  }
+  if (bkiwi.length) jeux.unshift({ cle: 'bkiwi', nom: 'Burning Kiwi', rankings: bkiwi });
+  return jeux;
+}
+function jeuxChallengeOuverts() {
+  const exclus = new Set(parisChallengeReglages.exclus || []);
+  return jeuxChallengeParis().filter((j) => !exclus.has(j.cle));
+}
+function libellePariChallenge(p, jeux) {
+  const j = (jeux || jeuxChallengeParis()).find((x) => x.cle === p.jeu);
+  const nom = getDisplayName(p.choix);
+  return `${nom} ${p.type === 'or' ? 'en or' : 'médaillé'} à ${j ? j.nom : p.jeu} (${jourLisible(p.jour)})`;
+}
+async function parisChallengeAppliquer(decisions) {
+  if (!decisions.length) return [];
+  const faits = await db.reglerParisChallenge(decisions);
+  const jeux = jeuxChallengeParis();
+  for (const f of faits) {
+    const quoi = ` (${libellePariChallenge(f, jeux)})`;
+    if (f.statut === 'gagne') parisCrediter(f.username, f.gain, 'un pari gagné' + quoi);
+    else if (f.statut === 'rembourse') parisCrediter(f.username, f.gain, 'un pari remboursé' + quoi);
+    console.log(`[PARIS] Challenge ${f.jour} ${f.jeu}/${f.type} ${f.username} ${f.statut} : mise ${f.mise}, reçoit ${f.gain}`);
+  }
+  return faits;
+}
+// Le règlement d'un jour, au roll. `podiums` : { rankingId: [or, argent, bronze] }.
+async function parisChallengeRegler(jour, podiums) {
+  if (!process.env.DATABASE_URL) return;
+  const ouverts = (await db.parisChallengeDuJour(jour)).filter((p) => p.statut === 'ouvert');
+  if (!ouverts.length) return;
+  const parJeu = new Map(jeuxChallengeParis().map((j) => [j.cle, {
+    podium: j.rankings.flatMap((rk) => podiums[rk] || []),
+    or: j.rankings.map((rk) => (podiums[rk] || [])[0]).filter(Boolean),
+  }]));
+  const pots = new Map();
+  for (const p of ouverts) {
+    const k = p.jeu + '|' + p.type;
+    if (!pots.has(k)) pots.set(k, []);
+    pots.get(k).push(p);
+  }
+  const decisions = [];
+  for (const [k, liste] of pots) {
+    const [jeu, type] = k.split('|');
+    const gagnants = parJeu.get(jeu);
+    if (!gagnants) { for (const p of liste) decisions.push({ id: p.id, statut: 'rembourse', gain: p.mise }); continue; }
+    decisions.push(...Paris.reglerEnsemble(liste, type === 'or' ? gagnants.or : gagnants.podium));
+  }
+  await parisChallengeAppliquer(decisions);
+}
+// Rembourse des paris ouverts (option baissée, jeu retiré, roll manqué).
+async function parisChallengeRembourser(filtre) {
+  const ouverts = (await db.parisChallengeOuverts()).filter(filtre);
+  return parisChallengeAppliquer(ouverts.map((p) => ({ id: p.id, statut: 'rembourse', gain: p.mise })));
+}
+async function parisChallengeFilet() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const hier = parisChallengeHier();
+    await parisChallengeRembourser((p) => p.jour < hier);
+  } catch (e) { console.error('[PARIS] filet du Challenge :', e.message); }
+}
+if (process.env.DATABASE_URL) setInterval(parisChallengeFilet, 10 * 60 * 1000).unref();
+
+app.get('/api/paris/challenge', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, actif: false });
+  try {
+    const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
+    const user = moi ? users[moi] : null;
+    const R = parisChallengeReglages;
+    const demain = parisChallengeDemain();
+    const hier = parisChallengeHier();
+    const base = { ok: true, actif: !!R.actif, moi: moi || null, solde: user ? Number(user.kikooz) || 0 : null };
+    if (!R.actif) return res.json(base);
+    const paris = await db.parisChallengeDuJour(demain);
+    const depuis = jourDecale(parisDayKey(), -14);
+    // Les noms d'affichage, lus en base : la mémoire ne tient que les comptes
+    // venus depuis le démarrage.
+    const affiches = new Map();
+    const nomDe = (u) => affiches.get(u) || getDisplayName(u);
+    const jeux = [];
+    for (const j of jeuxChallengeOuverts()) {
+      const ici = paris.filter((p) => p.jeu === j.cle && p.statut !== 'rembourse');
+      const podium = Paris.potLibre(ici.filter((p) => p.type === 'podium'));
+      const or = Paris.potLibre(ici.filter((p) => p.type === 'or'), true);
+      const habitues = (await db.habituesChallenge(j.rankings, depuis)).sort((a, b) => b.jours - a.jours).slice(0, 12);
+      const noms = new Set(habitues.map((h) => h.username));
+      for (const k of Object.keys(podium.joueurs).concat(Object.keys(or.joueurs))) noms.add(k);
+      const inconnus = [...noms].filter((u) => !affiches.has(u));
+      if (inconnus.length) {
+        for (const r of await db.fichesComptes(inconnus)) affiches.set(r.username, r.display_name || getDisplayName(r.username));
+      }
+      const candidats = [...noms].map((u) => ({
+        pseudo: u, nom: nomDe(u),
+        jours: (habitues.find((h) => h.username === u) || {}).jours || 0,
+        podium: podium.joueurs[u] || { mises: 0, parieurs: 0 },
+        or: or.joueurs[u] || { mises: 0, parieurs: 0, cote: null },
+      })).sort((a, b) => (b.podium.mises + b.or.mises) - (a.podium.mises + a.or.mises) || b.jours - a.jours);
+      jeux.push({
+        cle: j.cle, nom: j.nom, potPodium: podium.total, potOr: or.total, candidats,
+        mesParis: moi ? ici.filter((p) => p.username === moi).map((p) => ({ type: p.type, choix: p.choix, nom: nomDe(p.choix), mise: p.mise })) : [],
+      });
+    }
+    // Hier : les médaillés, et ce que j'y avais misé.
+    const medailles = challengeMedalsData.medalsByVisibleDay[hier] || {};
+    const mesHier = moi ? (await db.parisChallengeDuJour(hier)).filter((p) => p.username === moi) : [];
+    const aNommer = Object.keys(medailles).concat(mesHier.map((p) => p.choix)).map((u) => String(u).toLowerCase())
+      .filter((u) => !affiches.has(u));
+    if (aNommer.length) {
+      for (const r of await db.fichesComptes(aNommer)) affiches.set(r.username, r.display_name || getDisplayName(r.username));
+    }
+    const podiumHier = {};
+    for (const [u, liste] of Object.entries(medailles)) {
+      for (const m of liste || []) {
+        const cle = /^bkiwi_track/.test(m.rankingId) ? 'bkiwi' : m.rankingId;
+        (podiumHier[cle] = podiumHier[cle] || [])[(m.rank || 1) - 1] = nomDe(String(u).toLowerCase());
+      }
+    }
+    res.json(Object.assign(base, {
+      jour: demain, jourLisible: jourLisible(demain), plafond: Number(R.plafond) || 50,
+      dejaMise: moi ? await db.miseChallengeDuJour(moi, demain) : 0, jeux,
+      hier: {
+        jour: hier, jourLisible: jourLisible(hier),
+        podiums: jeuxChallengeParis().filter((j) => podiumHier[j.cle]).map((j) => ({ nom: j.nom, podium: podiumHier[j.cle] })),
+        mesParis: mesHier.map((p) => ({
+          texte: libellePariChallenge(p).replace(getDisplayName(p.choix), nomDe(p.choix)),
+          mise: p.mise, statut: p.statut, gain: p.gain })),
+      },
+    }));
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/paris/challenge', async (req, res) => {
+  const non = (code, message, status) => res.status(status || 400).json({ ok: false, code, message });
+  if (!process.env.DATABASE_URL || !parisChallengeReglages.actif) return non('fermes', 'Les paris du Challenge ne sont pas ouverts.');
+  const b = req.body || {};
+  const moi = resolveUsernameFromSid(String(b.sid || ''));
+  if (!moi) return non('auth', 'Connecte-toi pour parier.', 401);
+  const user = users[moi];
+  if (!user) return non('auth', 'Compte indisponible, réessaie.', 503);
+  const jeu = jeuxChallengeOuverts().find((j) => j.cle === String(b.jeu || ''));
+  if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux paris.');
+  const type = String(b.type || '');
+  if (type !== 'podium' && type !== 'or') return non('type', 'Pari inconnu.');
+  const mise = Number(b.mise);
+  if (!Number.isInteger(mise) || mise < 1) return non('mise', 'La mise est un nombre entier de kikooz.');
+  if (parisVerrous.has(moi)) return non('patience', 'Un pari est déjà en cours d’enregistrement.', 429);
+  parisVerrous.add(moi);
+  try {
+    const choix = normalizeUsername(b.choix);
+    let existe = !!users[choix];
+    if (!existe && choix) { try { existe = !!(await db.findUserByUsername(choix)); } catch (e) { existe = false; } }
+    if (!existe) return non('choix', 'Ce joueur n’existe pas.');
+    const jour = parisChallengeDemain();
+    const plafond = Number(parisChallengeReglages.plafond) || 50;
+    const deja = await db.miseChallengeDuJour(moi, jour);
+    if (deja + mise > plafond) {
+      return non('plafond', `Le plafond est de ${plafond} kikooz par jour : tu peux encore miser ${Math.max(0, plafond - deja)}.`);
+    }
+    if ((Number(user.kikooz) || 0) < mise) return non('solde', 'Tu n’as pas assez de kikooz.');
+    const pari = await db.poserPariChallenge({ jour, jeu: jeu.cle, type, username: moi, choix, mise });
+    if (!pari) return non('fermes', 'Ce pari est déjà réglé.');
+    // Deux mises simultanées ont pu passer le plafond, ou le solde bouger.
+    if ((await db.miseChallengeDuJour(moi, jour)) > plafond || (Number(user.kikooz) || 0) < mise) {
+      await db.retirerMiseChallenge(pari.id, mise).catch(dbErr('retirerMiseChallenge'));
+      return non('plafond', 'Ta mise dépasse le plafond du jour ou ton solde.');
+    }
+    user.kikooz = (Number(user.kikooz) || 0) - mise;
+    if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
+    journalKikooz(user, { type: 'p', k: mise, n: libellePariChallenge({ jour, jeu: jeu.cle, type, choix }) });
+    notifyKikoozUpdate(moi, user.kikooz);
+    console.log(`[PARIS] Challenge ${jour} ${jeu.cle}/${type} : ${moi} mise ${mise} sur ${choix}`);
+    res.json({ ok: true, mise: pari.mise, solde: user.kikooz, dejaMise: deja + mise });
+  } catch (e) {
+    console.error('[PARIS] mise Challenge :', e.message);
+    non('erreur', 'Le pari n’a pas pu être enregistré.', 500);
+  } finally {
+    parisVerrous.delete(moi);
+  }
+});
+
+app.get('/api/admin/paris-challenge', adminScope('challenge'), async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ reglages: parisChallengeReglages, jeux: [], sansBase: true });
+  try {
+    const exclus = new Set(parisChallengeReglages.exclus || []);
+    const demain = parisChallengeDemain(), hier = parisChallengeHier();
+    const pd = await db.parisChallengeDuJour(demain);
+    const ph = await db.parisChallengeDuJour(hier);
+    const somme = (l) => l.reduce((s, p) => s + (Number(p.mise) || 0), 0);
+    res.json({
+      reglages: parisChallengeReglages, demain, hier,
+      jeux: jeuxChallengeParis().map((j) => {
+        const d = pd.filter((p) => p.jeu === j.cle && p.statut !== 'rembourse');
+        const h = ph.filter((p) => p.jeu === j.cle);
+        return {
+          cle: j.cle, nom: j.nom, exclu: exclus.has(j.cle),
+          demain: { parieurs: new Set(d.map((p) => p.username)).size, podium: somme(d.filter((p) => p.type === 'podium')), or: somme(d.filter((p) => p.type === 'or')) },
+          hier: { mises: somme(h), gagnes: h.filter((p) => p.statut === 'gagne').length,
+            perdus: h.filter((p) => p.statut === 'perdu').length, rembourses: h.filter((p) => p.statut === 'rembourse').length,
+            ouverts: h.filter((p) => p.statut === 'ouvert').length },
+        };
+      }),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/admin/paris-challenge', adminScope('challenge'), async (req, res) => {
+  const b = req.body || {};
+  const avant = parisChallengeReglages;
+  const apres = Object.assign({}, avant);
+  if (b.actif !== undefined) apres.actif = b.actif === true || b.actif === '1' || b.actif === 1;
+  if (b.plafond !== undefined) {
+    const p = Math.floor(Number(b.plafond));
+    if (!Number.isFinite(p) || p < 1 || p > 100000) return res.status(400).json({ error: 'bad_plafond', message: 'Plafond : un nombre de kikooz, au moins 1.' });
+    apres.plafond = p;
+  }
+  if (Array.isArray(b.exclus)) {
+    const connus = new Set(jeuxChallengeParis().map((j) => j.cle));
+    apres.exclus = b.exclus.map(String).filter((k) => connus.has(k));
+  }
+  parisChallengeReglages = apres;
+  try {
+    if (process.env.DATABASE_URL) {
+      await db.setAppState('paris_challenge', JSON.stringify(apres));
+      // L'option baissée, ou un jeu retiré : les mises en jeu reviennent.
+      const exclus = new Set(apres.exclus || []);
+      const r = await parisChallengeRembourser((p) => !apres.actif || exclus.has(p.jeu));
+      if (r.length) console.log(`[PARIS] Challenge : ${r.length} pari(s) remboursé(s)`);
+    }
+    parisOuvertsCache.at = 0;
+    console.log(`[PARIS] réglages du Challenge : ${JSON.stringify(apres)}`);
+    res.json({ ok: true, reglages: apres });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/admin/tournaments/:id/paris', tournoiScope, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ paris: [] });
   try {
@@ -10404,8 +10694,21 @@ app.post('/api/admin/tournaments/:id/tours', tournoiScope, async (req, res) => {
     if ((t.format || 'score') !== 'score') return res.status(400).json({ error: 'format', message: 'Les tours automatiques valent pour les tournois au score.' });
     const o = optionsTours(req.body || {});
     if (req.body && req.body.round_hours !== undefined) o.round_hours = Math.max(1, Math.min(720, Number(req.body.round_hours) || 72));
-    await db.updateTournament(t.id, o);
-    res.json({ ok: true });
+    if (Object.keys(o).length) await db.updateTournament(t.id, o);
+    // « Lancer le tour maintenant » : le reste de la pause saute, le tour en
+    // attente s'ouvre au prochain passage du planificateur pour sa pleine durée.
+    let lance = 0;
+    if (req.body && req.body.maintenant && t.status === 'bracket') {
+      const heures = Number(o.round_hours || t.round_hours) || 72;
+      const debut = Date.now();
+      for (const m of await db.getTournamentMatches(t.id)) {
+        if (Number(m.round) !== Number(t.current_round) || m.winner || !m.window_start) continue;
+        if (new Date(m.window_start).getTime() <= debut) continue;
+        await db.updateTournamentMatch(m.id, { window_start: new Date(debut), window_end: new Date(debut + heures * TOURNOI_HEURE_MS) });
+        lance++;
+      }
+    }
+    res.json({ ok: true, lance });
     runTournamentScheduler().catch(() => {});
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -26570,6 +26873,7 @@ async function boot() {
       console.log('[DB] Connected and schema ready');
       try { swapouTournoiVerifie = (await db.getAppState('swapou_tournoi_verifie')) === '1'; }
       catch (e) { console.error('[SWAPOU] interrupteur du tournoi :', e.message); }
+      await chargerReglagesParisChallenge();
       // Les sessions que la base connaît reviennent — dormantes, réveillées à
       // leur premier appel (voir `sessionsDormantes`). La fenêtre est celle de
       // la rétention : au-delà, la purge RGPD les a de toute façon effacées.

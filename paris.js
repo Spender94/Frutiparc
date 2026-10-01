@@ -28,10 +28,21 @@
  *   `gain` est ce que le parieur REÇOIT (sa mise comprise) : 0 s'il a perdu.
  */
 function regler(paris, gagnant) {
-  const g = cle(gagnant);
+  return reglerEnsemble(paris, [gagnant]);
+}
+
+/**
+ * Le même règlement quand PLUSIEURS joueurs font gagner un pari — les trois
+ * médaillés d'un Challenge : quiconque a misé sur l'un d'eux a vu juste, et
+ * ceux-là se partagent le pot au prorata de leurs mises.
+ * @param {Array<{id, username, choix, mise}>} paris
+ * @param {string[]} gagnants
+ */
+function reglerEnsemble(paris, gagnants) {
+  const g = new Set((gagnants || []).filter(Boolean).map(cle));
   const liste = (paris || []).filter((p) => Number(p.mise) > 0);
   const pot = liste.reduce((s, p) => s + Number(p.mise), 0);
-  const bons = liste.filter((p) => cle(p.choix) === g);
+  const bons = liste.filter((p) => g.has(cle(p.choix)));
   const misesBonnes = bons.reduce((s, p) => s + Number(p.mise), 0);
   if (!bons.length) {
     return liste.map((p) => ({ id: p.id, username: p.username, statut: 'rembourse', gain: Number(p.mise) }));
@@ -116,6 +127,28 @@ function refus(ctx) {
   return null;
 }
 
+/**
+ * Le pot d'un pari à plusieurs candidats (le Challenge) : le total, et les
+ * mises sur chacun. La cote n'y est exacte que pour un pari à un seul
+ * gagnant (la médaille d'or) : pour le podium, elle dépend des deux autres
+ * médaillés.
+ */
+function potLibre(paris, unSeulGagnant) {
+  const joueurs = {};
+  let total = 0;
+  for (const p of paris || []) {
+    const k = cle(p.choix);
+    if (!joueurs[k]) joueurs[k] = { mises: 0, parieurs: 0, cote: null };
+    joueurs[k].mises += Number(p.mise) || 0;
+    joueurs[k].parieurs++;
+    total += Number(p.mise) || 0;
+  }
+  if (unSeulGagnant) {
+    for (const k of Object.keys(joueurs)) joueurs[k].cote = Math.round((total / joueurs[k].mises) * 100) / 100;
+  }
+  return { total, joueurs };
+}
+
 function cle(s) { return String(s == null ? '' : s).toLowerCase(); }
 
-module.exports = { regler, pot, refus };
+module.exports = { regler, reglerEnsemble, pot, potLibre, refus };

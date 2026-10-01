@@ -9,7 +9,7 @@
      bouge jusqu'au début du match. La session est celle du light. -->
 <head>
 <meta charset="UTF-8">
-<title>Paris des tournois — Frutiparc</title>
+<title>Paris — Frutiparc</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -77,7 +77,31 @@
   .msg.ok { color: #2f8f2f; }
   .connexion { padding: 14px 8px; text-align: center; line-height: 1.6; }
   a { color: #2C4A0F; }
+  /* Le Challenge de demain */
+  .reglage { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 4px; }
+  .reglage input { width: 70px; padding: 3px 6px; border: 1px solid #8bc55a; border-radius: 3px; font: 12px Verdana, sans-serif; }
+  .bascule { display: inline-flex; border: 2px solid #E3756A; border-radius: 12px; overflow: hidden; }
+  .bascule button { border: 0; background: #fff; color: #E3756A; font: bold 11px Verdana, sans-serif; padding: 4px 10px; cursor: pointer; }
+  .bascule button.on { background: #E3756A; color: #fff; }
+  .jeu { background: #D6F7B5; border-radius: 6px; padding: 8px 10px; margin: 0 0 8px; }
+  .jeu summary { font: bold 12px Arial, sans-serif; color: #2C4A0F; display: flex; gap: 8px; flex-wrap: wrap; cursor: pointer; list-style: none; }
+  .jeu summary::-webkit-details-marker { display: none; }
+  .jeu summary::before { content: '▸'; color: #E3756A; }
+  .jeu[open] summary::before { content: '▾'; }
+  .jeu summary span { margin-left: auto; font-weight: normal; color: #6c8f3a; }
+  .jeu summary b { color: #E3756A; }
+  .cand { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; align-items: center; padding: 4px 0; border-top: 1px solid #C3EF93; }
+  .cand .n { font-weight: bold; color: #2C4A0F; overflow-wrap: anywhere; }
+  .cand .n small { font-weight: normal; color: #6c8f3a; }
+  .cand .m { color: #6c8f3a; font-size: 10px; text-align: right; }
+  .btn-p { border: 0; border-radius: 10px; background: #E3756A; color: #fff; font: bold 10px Verdana, sans-serif; padding: 4px 10px; cursor: pointer; }
+  .btn-p:disabled { background: #c9b1ad; cursor: default; }
+  .autre { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+  .autre input { width: 130px; padding: 3px 6px; border: 1px solid #8bc55a; border-radius: 3px; font: 11px Verdana, sans-serif; }
+  .podiums { line-height: 1.7; padding: 4px 6px; }
   @media (max-width: 420px) {
+    .cand { grid-template-columns: 1fr auto; }
+    .cand .m { text-align: left; }
     body { padding: 6px; }
     .duo { grid-template-columns: 1fr; }
     .duo .contre { text-align: center; }
@@ -88,9 +112,10 @@
 <div class="shell">
   <div class="entete">
     <span>🎲</span>
-    <span class="titre">Paris des tournois</span>
+    <span class="titre">Paris</span>
     <span class="solde" id="solde"></span>
   </div>
+  <div id="challenge"></div>
   <div id="contenu"><p class="vide">Chargement…</p></div>
 </div>
 <script>
@@ -168,9 +193,10 @@
 
   function rendre() {
     var d = etat;
-    document.getElementById('solde').textContent = d.solde == null ? '' : 'Ton solde : ' + kz(d.solde);
+    if (d.solde != null) document.getElementById('solde').textContent = 'Ton solde : ' + kz(d.solde);
     if (!d.tournois || !d.tournois.length) {
-      contenu.innerHTML = '<p class="vide">Aucun tournoi n’a de paris ouverts en ce moment. Les organisateurs ouvrent les paris tournoi par tournoi : reviens au prochain !</p>';
+      contenu.innerHTML = '<p class="vide">Aucun tournoi n’a de paris ouverts en ce moment'
+        + (etatC && etatC.actif ? '.' : ' : reviens au prochain !') + '</p>';
       return;
     }
     var h = '';
@@ -217,6 +243,118 @@
       .catch(function () { messages[id] = { texte: 'Le serveur ne répond pas.' }; rendre(); });
   });
 
+  // ── LE CHALLENGE DE DEMAIN ─────────────────────────────────────────────
+  // On parie la veille sur les médaillés du lendemain : « médaillé » (sur le
+  // podium) ou « or ». Une mise et un type communs à toute la section.
+  var zoneC = document.getElementById('challenge');
+  var etatC = null, typeC = 'podium', msgC = {}, ouvertsC = {};
+  function chargerChallenge() {
+    return fetch('/api/paris/challenge?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        etatC = d; rendreChallenge();
+        if (etat) rendre();          // le mot « pas de tournoi » dépend du Challenge
+      })
+      .catch(function () { zoneC.innerHTML = ''; });
+  }
+  function rendreChallenge() {
+    var d = etatC;
+    if (!d || !d.actif) { zoneC.innerHTML = ''; return; }
+    if (d.solde != null) document.getElementById('solde').textContent = 'Ton solde : ' + kz(d.solde);
+    var reste = Math.max(0, d.plafond - (d.dejaMise || 0));
+    var champ = document.getElementById('miseC');
+    var miseCourante = champ ? champ.value : String(Math.min(10, reste || 10));
+    var h = '<div class="bandeau">Challenge de ' + esc(d.jourLisible) + ' <small>les médaillés de demain</small></div>'
+      + '<div class="regle">Mise sur les joueurs que tu vois sur le podium du Challenge de demain : « médaillé » (or, argent ou bronze) '
+      + 'ou « or » (le premier). Les mises se ferment ce soir à minuit. Ceux qui ont vu juste se partagent le pot de chaque jeu, au prorata '
+      + 'de leur mise ; si personne n’a vu juste, chacun récupère sa mise. Tu peux miser sur toi. Maximum : ' + kz(d.plafond) + ' par jour, tous jeux confondus.</div>';
+    if (d.moi) {
+      h += '<div class="reglage"><span class="bascule"><button data-type="podium" class="' + (typeC === 'podium' ? 'on' : '') + '">Médaillé</button>'
+        + '<button data-type="or" class="' + (typeC === 'or' ? 'on' : '') + '">Médaille d’or</button></span>'
+        + '<input type="number" id="miseC" min="1" max="' + reste + '" value="' + esc(miseCourante) + '" aria-label="Mise"> kikooz'
+        + '<span class="aide" style="color:#6c8f3a">— déjà misé pour demain : ' + kz(d.dejaMise) + ' sur ' + kz(d.plafond) + '</span></div>';
+    } else {
+      h += '<p class="connexion">Pour parier, <a href="/light.html">connecte-toi au parc</a>, puis reviens ici.</p>';
+    }
+    // Un jeu par volet : ouverts d'office, ceux où il y a déjà du jeu (ou que
+    // le joueur a ouverts lui-même) ; les autres se déplient au toucher.
+    d.jeux.forEach(function (j) {
+      var ouvert = ouvertsC[j.cle] !== undefined ? ouvertsC[j.cle] : (j.potPodium + j.potOr > 0 || j.mesParis.length > 0);
+      h += '<details class="jeu" data-jeu="' + esc(j.cle) + '"' + (ouvert ? ' open' : '') + '><summary>' + esc(j.nom)
+        + (j.mesParis.length ? ' <b>✓</b>' : '')
+        + '<span>médaillés : ' + kz(j.potPodium) + ' · or : ' + kz(j.potOr) + '</span></summary>';
+      j.candidats.forEach(function (c) {
+        var oc = c.or.cote ? ' ×' + String(c.or.cote).replace('.', ',') : '';
+        h += '<div class="cand"><span class="n">' + esc(c.nom) + (c.jours ? ' <small>' + c.jours + ' j. joués sur 14</small>' : '') + '</span>'
+          + '<span class="m">médaillé : ' + kz(c.podium.mises) + '</span>'
+          + '<span class="m">or : ' + kz(c.or.mises) + oc + '</span>'
+          + '<button class="btn-p" data-jeu="' + esc(j.cle) + '" data-choix="' + esc(c.pseudo) + '" data-nom="' + esc(c.nom) + '"'
+          + (d.moi && reste > 0 ? '' : ' disabled') + '>Parier</button></div>';
+      });
+      if (!j.candidats.length) h += '<p class="vide">Personne n’y a joué ces deux dernières semaines : sois le premier à parier !</p>';
+      if (d.moi && reste > 0) {
+        h += '<div class="autre"><input placeholder="un autre joueur" id="autre-' + esc(j.cle) + '">'
+          + '<button class="btn-p" data-jeu="' + esc(j.cle) + '" data-autre="1">Parier</button></div>';
+      }
+      if (j.mesParis.length) {
+        h += '<div class="mien">Tes paris : ' + j.mesParis.map(function (p) {
+          return esc(p.nom) + ' ' + (p.type === 'or' ? 'en or' : 'médaillé') + ' (' + kz(p.mise) + ')';
+        }).join(' · ') + '</div>';
+      }
+      var m = msgC[j.cle];
+      if (m) h += '<div class="msg ' + (m.ok ? 'ok' : 'err') + '">' + esc(m.texte) + '</div>';
+      h += '</details>';
+    });
+    var hier = d.hier || {};
+    if ((hier.podiums && hier.podiums.length) || (hier.mesParis && hier.mesParis.length)) {
+      h += '<h3>Le Challenge de ' + esc(hier.jourLisible) + '</h3><div class="podiums">';
+      (hier.podiums || []).forEach(function (p) {
+        h += '<div><b>' + esc(p.nom) + '</b> : 🥇 ' + esc(p.podium[0] || '—') + (p.podium[1] ? ' · 🥈 ' + esc(p.podium[1]) : '') + (p.podium[2] ? ' · 🥉 ' + esc(p.podium[2]) : '') + '</div>';
+      });
+      (hier.mesParis || []).forEach(function (p) {
+        var cls = p.statut === 'gagne' ? 'gagne' : p.statut === 'perdu' ? 'perdu' : 'rembourse';
+        var t = p.statut === 'gagne' ? 'gagné : +' + kz(p.gain) : p.statut === 'perdu' ? 'perdu' : p.statut === 'rembourse' ? 'remboursé' : 'en attente du changement de jour';
+        h += '<div class="mien ' + cls + '">' + esc(p.texte) + ' — ' + kz(p.mise) + ' misés, ' + t + '</div>';
+      });
+      h += '</div>';
+    }
+    zoneC.innerHTML = h;
+  }
+  // Le volet qu'on ouvre ou ferme le reste aux rafraîchissements.
+  zoneC.addEventListener('toggle', function (ev) {
+    var dj = ev.target;
+    if (dj && dj.classList && dj.classList.contains('jeu')) ouvertsC[dj.getAttribute('data-jeu')] = dj.open;
+  }, true);
+  zoneC.addEventListener('click', function (ev) {
+    var t = ev.target.closest('.bascule button');
+    if (t) { typeC = t.getAttribute('data-type'); rendreChallenge(); return; }
+    var b = ev.target.closest('.btn-p');
+    if (!b || b.disabled) return;
+    var jeu = b.getAttribute('data-jeu');
+    var choix = b.getAttribute('data-choix'), nom = b.getAttribute('data-nom');
+    if (b.getAttribute('data-autre')) {
+      var champ = document.getElementById('autre-' + jeu);
+      choix = nom = (champ && champ.value.trim()) || '';
+      if (!choix) { msgC[jeu] = { texte: 'Indique le pseudo du joueur.' }; rendreChallenge(); return; }
+    }
+    var mise = Math.floor(Number((document.getElementById('miseC') || {}).value));
+    if (!(mise >= 1)) { msgC[jeu] = { texte: 'Indique une mise d’au moins 1 kikooz.' }; rendreChallenge(); return; }
+    var quoi = typeC === 'or' ? 'en or' : 'médaillé';
+    if (!confirm('Miser ' + kz(mise) + ' sur ' + nom + ' ' + quoi + ' demain ?\n\nUne mise ne se reprend pas.')) return;
+    b.disabled = true;
+    fetch('/api/paris/challenge', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: sid, jeu: jeu, type: typeC, choix: choix, mise: mise }),
+    }).then(function (r) { return r.json(); })
+      .then(function (j) {
+        msgC[jeu] = j.ok ? { ok: true, texte: 'C’est parié : ' + kz(mise) + ' sur ' + nom + ' ' + quoi + '.' }
+          : { texte: j.message || 'Le pari n’a pas pu être enregistré.' };
+        return chargerChallenge();
+      })
+      .catch(function () { msgC[jeu] = { texte: 'Le serveur ne répond pas.' }; rendreChallenge(); });
+  });
+
+  chargerChallenge();
   charger();
   // Les cotes bougent : on relit toutes les trente secondes, sauf pendant
   // qu'on tape une mise.
@@ -224,6 +362,7 @@
     var a = document.activeElement;
     if (a && a.tagName === 'INPUT') return;
     charger();
+    chargerChallenge();
   }, 30000);
 })();
 </script>

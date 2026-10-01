@@ -1195,6 +1195,7 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
   </div>
   <div id="challenge-status" class="section-content" style="margin-bottom:8px"></div>
   <div id="mb2-map-info" class="section-content" style="margin-bottom:8px;font-size:11px;color:#2C4A0F"></div>
+  <div id="paris-challenge-admin" style="margin-bottom:10px"></div>
   <h4>Scores actuels du cycle</h4>
   <div id="challenge-scores" class="section-content"></div>
   <h4>Archives</h4>
@@ -3035,7 +3036,8 @@ function toursAutoPanneau(t, d) {
   const maintenant = Date.now();
   let etat = '';
   if (t.status === 'bracket' && t.tours_auto && debut) {
-    etat = maintenant < debut ? `Tour ${t.current_round} : s'ouvre le <b>${tFmtDate(debut)}</b>, se ferme le <b>${tFmtDate(fin)}</b>.`
+    etat = maintenant < debut ? `Tour ${t.current_round} : s'ouvre le <b>${tFmtDate(debut)}</b>, se ferme le <b>${tFmtDate(fin)}</b>.
+        <button class="btn btn-sm" onclick="lancerTour(${t.id})">Lancer le tour maintenant</button>`
       : `Tour ${t.current_round} <b style="color:#c8860a">en cours</b> jusqu'au <b>${tFmtDate(fin)}</b> — le meilleur score de chacun est retenu.`;
   }
   return `<div style="border:1px dashed #8fae5a;background:#f6fbf2;padding:10px;border-radius:6px;margin:10px 0;font-size:13px">
@@ -3047,6 +3049,14 @@ function toursAutoPanneau(t, d) {
       Les parties comptent avec les FD du joueur, comme en qualif. Tu peux toujours trancher un match à la main : le tour automatique n'y retouche pas.</div>
     ${etat ? `<div style="margin-top:5px">${etat}</div>` : ''}
   </div>`;
+}
+async function lancerTour(id) {
+  if (!confirm('Ouvrir le tour maintenant, sans attendre la fin de la pause ?\n\nLes paris sur ses matchs se ferment aussitôt.')) return;
+  try {
+    const d = await (await fetch('/api/admin/tournaments/' + id + '/tours', { method: 'POST', headers: hdr(), body: JSON.stringify({ maintenant: true }) })).json();
+    if (d.ok) { toast('Tour lancé'); setTimeout(() => openTournament(id), 800); }
+    else toast('Erreur: ' + (d.message || d.error));
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 async function toursAuto(id) {
   const body = { tours_auto: $('#t-auto-' + id).checked, round_hours: Number($('#t-heures-' + id).value), tours_pause_h: Number($('#t-pause-' + id).value) };
@@ -6351,7 +6361,50 @@ async function retirerPackTous(id, name) {
 }
 
 // ── Challenge ──
+// ─── Paris du Challenge (sur les médaillés du lendemain) ───
+async function chargerParisChallengeAdmin() {
+  const bloc = $('#paris-challenge-admin');
+  if (!bloc) return;
+  try {
+    const d = await (await fetch('/api/admin/paris-challenge', { headers: hdr() })).json();
+    if (!d.reglages) { bloc.innerHTML = ''; return; }
+    const R = d.reglages;
+    const lignes = (d.jeux || []).map((j) => `<tr>
+      <td><label><input type="checkbox" class="pc-jeu" value="${esc(j.cle)}" ${j.exclu ? '' : 'checked'}> ${esc(j.nom)}</label></td>
+      <td>${j.demain.parieurs}</td><td>${j.demain.podium}</td><td>${j.demain.or}</td>
+      <td>${j.hier.mises ? `${j.hier.mises} misés · ${j.hier.gagnes} gagnés · ${j.hier.perdus} perdus${j.hier.rembourses ? ' · ' + j.hier.rembourses + ' remboursés' : ''}${j.hier.ouverts ? ' · <b style="color:#c8860a">' + j.hier.ouverts + ' en attente du roll</b>' : ''}` : '—'}</td>
+    </tr>`).join('');
+    bloc.innerHTML = `
+      <div style="border:1px solid #e3a0a0;background:#fff8f6;padding:12px;border-radius:8px;font-size:13px">
+        <h4 style="margin:0 0 6px">🎲 Paris sur les médaillés</h4>
+        <label style="font-weight:bold"><input type="checkbox" id="pc-actif" ${R.actif ? 'checked' : ''}> Ouvrir les paris du Challenge</label>
+        <label style="margin-left:14px">Plafond par joueur et par jour : <input type="number" id="pc-plafond" min="1" value="${R.plafond}" style="width:70px"> kikooz</label>
+        <button class="btn btn-sm" onclick="enregistrerParisChallenge()">Enregistrer</button>
+        <div style="color:#777;margin:6px 0 10px;line-height:1.45">
+          Les joueurs misent <b>la veille, jusqu'à minuit</b>, sur les médaillés du Challenge du lendemain (page <b>/paris/</b>, tuile « Paris » du light) :
+          « sera médaillé » ou « aura l'or ». Pari mutuel : le pot de chaque jeu va à ceux qui ont vu juste, au prorata de leur mise ; personne n'a vu juste, tout le monde est remboursé.
+          On peut miser sur soi. Le pot se règle tout seul au changement de jour, sur le podium des médailles.
+          Baisser l'option ou décocher un jeu <b>rembourse</b> les mises en jeu.
+          ⚠ « Terminer le cycle » à la main règle les paris de la veille, pas ceux du jour.
+        </div>
+        <table><thead><tr><th>Jeu (décocher pour fermer)</th><th>Parieurs pour le ${esc(d.demain || '')}</th><th>Pot « médaillé »</th><th>Pot « or »</th><th>Règlement du ${esc(d.hier || '')}</th></tr></thead><tbody>${lignes}</tbody></table>
+      </div>`;
+  } catch (e) { bloc.innerHTML = ''; }
+}
+async function enregistrerParisChallenge() {
+  const actif = $('#pc-actif').checked;
+  const exclus = Array.from(document.querySelectorAll('.pc-jeu')).filter((c) => !c.checked).map((c) => c.value);
+  const body = { actif, plafond: Number($('#pc-plafond').value), exclus };
+  try {
+    const r = await fetch('/api/admin/paris-challenge', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
+    const d = await r.json();
+    if (d.ok) { toast(actif ? 'Paris du Challenge ouverts' : 'Paris du Challenge fermés (mises remboursées)'); chargerParisChallengeAdmin(); }
+    else toast('Erreur: ' + (d.message || d.error));
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
 async function loadChallengeStatus() {
+  chargerParisChallengeAdmin();
   try {
     const r = await fetch('/api/admin/challenge/status', { headers: hdr() });
     const d = await r.json();
