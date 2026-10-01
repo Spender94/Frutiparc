@@ -690,6 +690,10 @@ async function initSchema() {
         regle_le   TIMESTAMPTZ,
         UNIQUE (jour, jeu, type, username, choix)
       );
+      -- La cote fixe, figée à la mise, et ce que rendra la mise si elle gagne.
+      -- NULL : un pari posé sous l'ancienne règle (pari mutuel).
+      ALTER TABLE challenge_paris ADD COLUMN IF NOT EXISTS cote NUMERIC(6,2);
+      ALTER TABLE challenge_paris ADD COLUMN IF NOT EXISTS retour INTEGER;
       CREATE INDEX IF NOT EXISTS idx_cparis_jour ON challenge_paris(jour, statut);
       CREATE INDEX IF NOT EXISTS idx_cparis_user ON challenge_paris(LOWER(username), cree_le DESC);
 
@@ -1948,7 +1952,7 @@ async function exporterDonnees(userId, username) {
     swapou_parties: await q('SELECT id, graine, source, perso, cree_le, fini_le, score_declare, score_rejoue, verdict, raison, coups, nb_coups, duree_ms, rythme FROM swapou_parties WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     connexions: await q('SELECT jour, ip, xff, socket_ip, appareil, navigateur, origine, premiere, derniere, n FROM connexions WHERE LOWER(username) = $1 ORDER BY premiere', [u]),
     paris: await q('SELECT tournament_id, affiche, choix, mise, statut, gain, cree_le, regle_le FROM tournament_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
-    paris_challenge: await q('SELECT jour, jeu, type, choix, mise, statut, gain, cree_le, regle_le FROM challenge_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
+    paris_challenge: await q('SELECT jour, jeu, type, choix, mise, cote, statut, gain, cree_le, regle_le FROM challenge_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     sanctions: await q('SELECT moderator, action, detail, created_at FROM moderation_logs WHERE LOWER(target_username) = $1 ORDER BY created_at', [u]),
     notifications: await q('SELECT ua, created_at FROM push_subscriptions WHERE LOWER(username) = $1', [u]),
     sessions: await q('SELECT created_at FROM sessions WHERE user_id = $1 ORDER BY created_at', [id]),
@@ -4537,19 +4541,29 @@ async function parisChallengeDe(username, limit = 100) {
     [String(username || '').toLowerCase(), Math.max(1, Math.min(Number(limit) || 100, 500))]);
   return rows;
 }
+// Une mise de plus sur le même pari s'ajoute à la première : le retour promis
+// est la somme des deux (chacune à sa cote), la cote affichée leur moyenne.
 async function poserPariChallenge(p) {
   const { rows } = await pool.query(
-    `INSERT INTO challenge_paris (jour, jeu, type, username, choix, mise)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT (jour, jeu, type, username, choix) DO UPDATE SET mise = challenge_paris.mise + EXCLUDED.mise
+    `INSERT INTO challenge_paris (jour, jeu, type, username, choix, mise, cote, retour)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (jour, jeu, type, username, choix) DO UPDATE SET
+       mise = challenge_paris.mise + EXCLUDED.mise,
+       retour = COALESCE(challenge_paris.retour, challenge_paris.mise) + EXCLUDED.retour,
+       cote = ROUND((COALESCE(challenge_paris.retour, challenge_paris.mise) + EXCLUDED.retour)::numeric
+                    / (challenge_paris.mise + EXCLUDED.mise), 2)
        WHERE challenge_paris.statut = 'ouvert'
      RETURNING *`,
     [String(p.jour), String(p.jeu), String(p.type), String(p.username).toLowerCase(),
-     String(p.choix).toLowerCase(), Math.trunc(Number(p.mise))]);
+     String(p.choix).toLowerCase(), Math.trunc(Number(p.mise)), Number(p.cote), Math.trunc(Number(p.retour))]);
   return rows[0] || null;
 }
-async function retirerMiseChallenge(id, mise) {
-  await pool.query(`UPDATE challenge_paris SET mise = mise - $2 WHERE id = $1 AND statut = 'ouvert'`, [id, Math.trunc(Number(mise))]);
+async function retirerMiseChallenge(id, mise, retour) {
+  await pool.query(
+    `UPDATE challenge_paris SET mise = mise - $2, retour = retour - $3,
+            cote = CASE WHEN mise - $2 > 0 THEN ROUND((retour - $3)::numeric / (mise - $2), 2) ELSE cote END
+      WHERE id = $1 AND statut = 'ouvert'`,
+    [id, Math.trunc(Number(mise)), Math.trunc(Number(retour) || 0)]);
   await pool.query(`DELETE FROM challenge_paris WHERE id = $1 AND mise <= 0`, [id]);
 }
 // Même garantie que reglerParis : on ne rend que ce qui vient de passer
@@ -4575,18 +4589,29 @@ async function reglerParisChallenge(decisions) {
     client.release();
   }
 }
-// Les habitués d'un classement du Challenge : qui y a joué ces derniers jours,
-// et combien de fois sur le podium (les candidats proposés aux parieurs).
-async function habituesChallenge(rankingIds, depuisJour) {
+// L'historique d'un jeu du Challenge entre deux jours (inclus) : qui y a un
+// score archivé, chaque jour, et qui y a pris une médaille. De quoi tirer les
+// cotes (coteChallenge.js).
+async function historiqueChallenge(rankingIds, depuisJour, jusquaJour) {
+  const a = [rankingIds, String(depuisJour), String(jusquaJour)];
+  const joues = await pool.query(
+    `SELECT DISTINCT LOWER(username) AS username, day_key AS jour FROM challenge_score_archive
+      WHERE ranking_id = ANY($1) AND day_key >= $2 AND day_key <= $3`, a);
+  const medailles = await pool.query(
+    `SELECT LOWER(username) AS username, awarded_day AS jour, MIN(rank)::int AS rang FROM challenge_medals
+      WHERE ranking_id = ANY($1) AND awarded_day >= $2 AND awarded_day <= $3
+      GROUP BY LOWER(username), awarded_day`, a);
+  return { joues: joues.rows, medailles: medailles.rows };
+}
+// Le bilan du parc, jour par jour : les mises réglées, et ce qu'il en a rendu.
+async function bilanParisChallenge(depuisJour) {
   const { rows } = await pool.query(
-    `SELECT LOWER(username) AS username, COUNT(DISTINCT day_key)::int AS jours
-       FROM challenge_score_archive
-      WHERE ranking_id = ANY($1) AND day_key >= $2
-      GROUP BY LOWER(username)`,
-    [rankingIds, String(depuisJour)]);
+    `SELECT jour, COALESCE(SUM(mise), 0)::int AS mises, COALESCE(SUM(gain), 0)::int AS gains, COUNT(*)::int AS paris,
+            COUNT(*) FILTER (WHERE statut = 'gagne')::int AS gagnes
+       FROM challenge_paris WHERE statut IN ('gagne', 'perdu') AND jour >= $1
+      GROUP BY jour ORDER BY jour DESC`, [String(depuisJour)]);
   return rows;
 }
-
 // Deux comptes ont-ils partagé un appareil (journal des connexions) ? Un
 // parieur ne mise pas sur un match où joue un compte de son propre appareil.
 async function memeAppareil(username, autres) {
@@ -4716,7 +4741,8 @@ module.exports = {
   poserPariChallenge,
   retirerMiseChallenge,
   reglerParisChallenge,
-  habituesChallenge,
+  historiqueChallenge,
+  bilanParisChallenge,
   // RGPD
   PSEUDO_SUPPRIME,
   deleteSessionsForUser,

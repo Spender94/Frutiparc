@@ -94,14 +94,22 @@
   .cand .n { font-weight: bold; color: #2C4A0F; overflow-wrap: anywhere; }
   .cand .n small { font-weight: normal; color: #6c8f3a; }
   .cand .m { color: #6c8f3a; font-size: 10px; text-align: right; }
+  /* Les cotes en colonnes fixes : l'en-tête « médaillé / or » tombe juste au-dessus. */
+  .jeu .cand { grid-template-columns: 1fr 58px 58px 64px; }
+  .jeu .cand .m { text-align: right; }
+  .cand.tete { border-top: 0; padding-bottom: 0; }
+  .cand .c { color: #6c8f3a; font: 11px Verdana, sans-serif; text-align: right; min-width: 42px; }
+  .cand .c.on { color: #E3756A; font-weight: bold; font-size: 13px; }
   .btn-p { border: 0; border-radius: 10px; background: #E3756A; color: #fff; font: bold 10px Verdana, sans-serif; padding: 4px 10px; cursor: pointer; }
   .btn-p:disabled { background: #c9b1ad; cursor: default; }
   .autre { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
   .autre input { width: 130px; padding: 3px 6px; border: 1px solid #8bc55a; border-radius: 3px; font: 11px Verdana, sans-serif; }
   .podiums { line-height: 1.7; padding: 4px 6px; }
   @media (max-width: 420px) {
-    .cand { grid-template-columns: 1fr auto; }
-    .cand .m { text-align: left; }
+    .jeu .cand { grid-template-columns: 1fr 1fr 64px; }
+    .jeu .cand .m { text-align: left; }
+    .cand .n { grid-column: 1 / -1; }
+    .cand .m, .cand .c { text-align: left; }
     body { padding: 6px; }
     .duo { grid-template-columns: 1fr; }
     .duo .contre { text-align: center; }
@@ -245,9 +253,12 @@
 
   // ── LE CHALLENGE DE DEMAIN ─────────────────────────────────────────────
   // On parie la veille sur les médaillés du lendemain : « médaillé » (sur le
-  // podium) ou « or ». Une mise et un type communs à toute la section.
+  // podium) ou « or ». Chaque joueur a sa cote, tirée de son historique ; une
+  // mise et un type communs à toute la section.
   var zoneC = document.getElementById('challenge');
   var etatC = null, typeC = 'podium', msgC = {}, ouvertsC = {};
+  function cote(c) { return c == null ? '—' : '×' + String(c).replace('.', ','); }
+  function retour(mise, c) { return Math.floor(mise * c + 1e-9); }
   function chargerChallenge() {
     return fetch('/api/paris/challenge?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
@@ -261,13 +272,16 @@
     var d = etatC;
     if (!d || !d.actif) { zoneC.innerHTML = ''; return; }
     if (d.solde != null) document.getElementById('solde').textContent = 'Ton solde : ' + kz(d.solde);
+    var R = d.regles || { fenetre: 30, joursMin: 7, maxSoi: 3 };
     var reste = Math.max(0, d.plafond - (d.dejaMise || 0));
     var champ = document.getElementById('miseC');
     var miseCourante = champ ? champ.value : String(Math.min(10, reste || 10));
     var h = '<div class="bandeau">Challenge de ' + esc(d.jourLisible) + ' <small>les médaillés de demain</small></div>'
       + '<div class="regle">Mise sur les joueurs que tu vois sur le podium du Challenge de demain : « médaillé » (or, argent ou bronze) '
-      + 'ou « or » (le premier). Les mises se ferment ce soir à minuit. Ceux qui ont vu juste se partagent le pot de chaque jeu, au prorata '
-      + 'de leur mise ; si personne n’a vu juste, chacun récupère sa mise. Tu peux miser sur toi. Maximum : ' + kz(d.plafond) + ' par jour, tous jeux confondus.</div>';
+      + 'ou « or » (le premier). Chaque joueur a sa <b>cote</b>, tirée de ses ' + R.fenetre + ' derniers jours de Challenge sur le jeu : '
+      + 'si tu vois juste, tu reçois ta mise multipliée par la cote, celle du moment où tu mises. Un joueur qui ne vient pas jouer fait perdre le pari. '
+      + 'Seuls les joueurs venus au moins ' + R.joursMin + ' jours ont une cote. Tu peux miser sur toi, à ' + cote(R.maxSoi) + ' au plus. '
+      + 'Les mises se ferment ce soir à minuit. Maximum : ' + kz(d.plafond) + ' par jour, tous jeux confondus.</div>';
     if (d.moi) {
       h += '<div class="reglage"><span class="bascule"><button data-type="podium" class="' + (typeC === 'podium' ? 'on' : '') + '">Médaillé</button>'
         + '<button data-type="or" class="' + (typeC === 'or' ? 'on' : '') + '">Médaille d’or</button></span>'
@@ -279,26 +293,31 @@
     // Un jeu par volet : ouverts d'office, ceux où il y a déjà du jeu (ou que
     // le joueur a ouverts lui-même) ; les autres se déplient au toucher.
     d.jeux.forEach(function (j) {
-      var ouvert = ouvertsC[j.cle] !== undefined ? ouvertsC[j.cle] : (j.potPodium + j.potOr > 0 || j.mesParis.length > 0);
+      var ouvert = ouvertsC[j.cle] !== undefined ? ouvertsC[j.cle] : (j.mises > 0 || j.mesParis.length > 0);
       h += '<details class="jeu" data-jeu="' + esc(j.cle) + '"' + (ouvert ? ' open' : '') + '><summary>' + esc(j.nom)
         + (j.mesParis.length ? ' <b>✓</b>' : '')
-        + '<span>médaillés : ' + kz(j.potPodium) + ' · or : ' + kz(j.potOr) + '</span></summary>';
+        + '<span>' + j.eligibles + ' joueur' + (j.eligibles > 1 ? 's' : '') + ' coté' + (j.eligibles > 1 ? 's' : '') + ' · misé : ' + kz(j.mises) + '</span></summary>';
+      if (j.candidats.length) {
+        h += '<div class="cand tete"><span class="n"></span><span class="m">médaillé</span><span class="m">or</span><span></span></div>';
+      }
       j.candidats.forEach(function (c) {
-        var oc = c.or.cote ? ' ×' + String(c.or.cote).replace('.', ',') : '';
-        h += '<div class="cand"><span class="n">' + esc(c.nom) + (c.jours ? ' <small>' + c.jours + ' j. joués sur 14</small>' : '') + '</span>'
-          + '<span class="m">médaillé : ' + kz(c.podium.mises) + '</span>'
-          + '<span class="m">or : ' + kz(c.or.mises) + oc + '</span>'
-          + '<button class="btn-p" data-jeu="' + esc(j.cle) + '" data-choix="' + esc(c.pseudo) + '" data-nom="' + esc(c.nom) + '"'
+        var ici = c.cote[typeC];
+        h += '<div class="cand"><span class="n">' + esc(c.nom) + (c.soi ? ' <small>(toi)</small>' : '')
+          + ' <small>' + c.podiums + ' podium' + (c.podiums > 1 ? 's' : '') + (c.ors ? ', ' + c.ors + ' en or' : '') + ' · ' + c.joues + ' j. joués</small></span>'
+          + '<span class="c' + (typeC === 'podium' ? ' on' : '') + '">' + cote(c.cote.podium) + '</span>'
+          + '<span class="c' + (typeC === 'or' ? ' on' : '') + '">' + cote(c.cote.or) + '</span>'
+          + '<button class="btn-p" data-jeu="' + esc(j.cle) + '" data-choix="' + esc(c.pseudo) + '" data-nom="' + esc(c.nom) + '" data-cote="' + ici + '"'
           + (d.moi && reste > 0 ? '' : ' disabled') + '>Parier</button></div>';
       });
-      if (!j.candidats.length) h += '<p class="vide">Personne n’y a joué ces deux dernières semaines : sois le premier à parier !</p>';
-      if (d.moi && reste > 0) {
+      if (!j.candidats.length) h += '<p class="vide">Personne n’a encore assez joué à ce jeu (' + R.joursMin + ' jours sur ' + R.fenetre + ') pour avoir une cote.</p>';
+      if (d.moi && reste > 0 && j.eligibles > j.candidats.length) {
         h += '<div class="autre"><input placeholder="un autre joueur" id="autre-' + esc(j.cle) + '">'
           + '<button class="btn-p" data-jeu="' + esc(j.cle) + '" data-autre="1">Parier</button></div>';
       }
       if (j.mesParis.length) {
         h += '<div class="mien">Tes paris : ' + j.mesParis.map(function (p) {
-          return esc(p.nom) + ' ' + (p.type === 'or' ? 'en or' : 'médaillé') + ' (' + kz(p.mise) + ')';
+          return esc(p.nom) + ' ' + (p.type === 'or' ? 'en or' : 'médaillé') + ' (' + kz(p.mise)
+            + (p.retour != null ? ' à ' + cote(p.cote) + ', rapportera ' + kz(p.retour) : '') + ')';
         }).join(' · ') + '</div>';
       }
       var m = msgC[j.cle];
@@ -314,7 +333,7 @@
       (hier.mesParis || []).forEach(function (p) {
         var cls = p.statut === 'gagne' ? 'gagne' : p.statut === 'perdu' ? 'perdu' : 'rembourse';
         var t = p.statut === 'gagne' ? 'gagné : +' + kz(p.gain) : p.statut === 'perdu' ? 'perdu' : p.statut === 'rembourse' ? 'remboursé' : 'en attente du changement de jour';
-        h += '<div class="mien ' + cls + '">' + esc(p.texte) + ' — ' + kz(p.mise) + ' misés, ' + t + '</div>';
+        h += '<div class="mien ' + cls + '">' + esc(p.texte) + ' — ' + kz(p.mise) + ' misés' + (p.cote != null ? ' à ' + cote(p.cote) : '') + ', ' + t + '</div>';
       });
       h += '</div>';
     }
@@ -332,6 +351,7 @@
     if (!b || b.disabled) return;
     var jeu = b.getAttribute('data-jeu');
     var choix = b.getAttribute('data-choix'), nom = b.getAttribute('data-nom');
+    var c = b.getAttribute('data-autre') ? null : Number(b.getAttribute('data-cote'));
     if (b.getAttribute('data-autre')) {
       var champ = document.getElementById('autre-' + jeu);
       choix = nom = (champ && champ.value.trim()) || '';
@@ -340,14 +360,17 @@
     var mise = Math.floor(Number((document.getElementById('miseC') || {}).value));
     if (!(mise >= 1)) { msgC[jeu] = { texte: 'Indique une mise d’au moins 1 kikooz.' }; rendreChallenge(); return; }
     var quoi = typeC === 'or' ? 'en or' : 'médaillé';
-    if (!confirm('Miser ' + kz(mise) + ' sur ' + nom + ' ' + quoi + ' demain ?\n\nUne mise ne se reprend pas.')) return;
+    var question = c
+      ? 'Miser ' + kz(mise) + ' sur ' + nom + ' ' + quoi + ' demain, à ' + cote(c) + ' ?\n\nS’il l’est, tu reçois ' + kz(retour(mise, c)) + '. Une mise ne se reprend pas.'
+      : 'Miser ' + kz(mise) + ' sur ' + nom + ' ' + quoi + ' demain, à sa cote du moment ?\n\nUne mise ne se reprend pas.';
+    if (!confirm(question)) return;
     b.disabled = true;
     fetch('/api/paris/challenge', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sid: sid, jeu: jeu, type: typeC, choix: choix, mise: mise }),
+      body: JSON.stringify({ sid: sid, jeu: jeu, type: typeC, choix: choix, mise: mise, cote: c }),
     }).then(function (r) { return r.json(); })
       .then(function (j) {
-        msgC[jeu] = j.ok ? { ok: true, texte: 'C’est parié : ' + kz(mise) + ' sur ' + nom + ' ' + quoi + '.' }
+        msgC[jeu] = j.ok ? { ok: true, texte: 'C’est parié : ' + kz(mise) + ' sur ' + nom + ' ' + quoi + ' à ' + cote(j.cote) + ' — tu recevras ' + kz(j.retour) + ' s’il l’est.' }
           : { texte: j.message || 'Le pari n’a pas pu être enregistré.' };
         return chargerChallenge();
       })

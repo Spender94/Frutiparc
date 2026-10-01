@@ -6369,11 +6369,17 @@ async function chargerParisChallengeAdmin() {
     const d = await (await fetch('/api/admin/paris-challenge', { headers: hdr() })).json();
     if (!d.reglages) { bloc.innerHTML = ''; return; }
     const R = d.reglages;
+    const C = d.regles || {};
+    const fx = (c) => (c == null ? '—' : '×' + String(c).replace('.', ','));
+    const signe = (n) => `<b style="color:${n >= 0 ? '#2f8f2f' : '#c03c30'}">${n >= 0 ? '+' : ''}${n}</b>`;
     const lignes = (d.jeux || []).map((j) => `<tr>
       <td><label><input type="checkbox" class="pc-jeu" value="${esc(j.cle)}" ${j.exclu ? '' : 'checked'}> ${esc(j.nom)}</label></td>
-      <td>${j.demain.parieurs}</td><td>${j.demain.podium}</td><td>${j.demain.or}</td>
-      <td>${j.hier.mises ? `${j.hier.mises} misés · ${j.hier.gagnes} gagnés · ${j.hier.perdus} perdus${j.hier.rembourses ? ' · ' + j.hier.rembourses + ' remboursés' : ''}${j.hier.ouverts ? ' · <b style="color:#c8860a">' + j.hier.ouverts + ' en attente du roll</b>' : ''}` : '—'}</td>
+      <td>${j.eligibles} <small style="color:#777">(${j.jours} j. d'historique)</small></td>
+      <td style="font-size:11px">${(j.favoris || []).map((f) => `${esc(f.nom)} <span style="color:#777">${f.podiums}/${f.joues}</span> ${fx(f.podium)} · or ${fx(f.or)}`).join('<br>') || '—'}</td>
+      <td>${j.demain.parieurs} · ${j.demain.podium + j.demain.or} misés${j.demain.engage ? ` <small style="color:#777">(rendrait au plus ${j.demain.engage})</small>` : ''}</td>
+      <td>${j.hier.mises || j.hier.ouverts ? `${j.hier.mises} misés · ${j.hier.payes} payés (${signe(j.hier.mises - j.hier.payes)}) · ${j.hier.gagnes} gagnés · ${j.hier.perdus} perdus${j.hier.rembourses ? ' · ' + j.hier.rembourses + ' remboursés' : ''}${j.hier.ouverts ? ' · <b style="color:#c8860a">' + j.hier.ouverts + ' en attente du roll</b>' : ''}` : '—'}</td>
     </tr>`).join('');
+    const B = d.bilan || { jours: [], mises: 0, gains: 0 };
     bloc.innerHTML = `
       <div style="border:1px solid #e3a0a0;background:#fff8f6;padding:12px;border-radius:8px;font-size:13px">
         <h4 style="margin:0 0 6px">🎲 Paris sur les médaillés</h4>
@@ -6382,12 +6388,16 @@ async function chargerParisChallengeAdmin() {
         <button class="btn btn-sm" onclick="enregistrerParisChallenge()">Enregistrer</button>
         <div style="color:#777;margin:6px 0 10px;line-height:1.45">
           Les joueurs misent <b>la veille, jusqu'à minuit</b>, sur les médaillés du Challenge du lendemain (page <b>/paris/</b>, tuile « Paris » du light) :
-          « sera médaillé » ou « aura l'or ». Pari mutuel : le pot de chaque jeu va à ceux qui ont vu juste, au prorata de leur mise ; personne n'a vu juste, tout le monde est remboursé.
-          On peut miser sur soi. Le pot se règle tout seul au changement de jour, sur le podium des médailles.
+          « sera médaillé » ou « aura l'or ». <b>Cote fixe</b>, figée à la mise, tirée des ${C.fenetre || 30} derniers jours de Challenge du joueur sur le jeu
+          (fréquence de ses podiums, ou de ses médailles d'or, lissée) : marge du parc ${Math.round((C.marge || 0.1) * 100)} %, entre ${fx(C.min || 1.1)} et ${fx(C.max || 10)},
+          ${fx(C.maxSoi || 3)} au plus sur soi ou sur un compte du même appareil ; il faut ${C.joursMin || 7} jours joués pour être coté.
+          Le gagnant reçoit mise × cote, le parc paie ; une mise perdue est gardée. Règlement automatique au changement de jour, sur le podium des médailles.
           Baisser l'option ou décocher un jeu <b>rembourse</b> les mises en jeu.
           ⚠ « Terminer le cycle » à la main règle les paris de la veille, pas ceux du jour.
         </div>
-        <table><thead><tr><th>Jeu (décocher pour fermer)</th><th>Parieurs pour le ${esc(d.demain || '')}</th><th>Pot « médaillé »</th><th>Pot « or »</th><th>Règlement du ${esc(d.hier || '')}</th></tr></thead><tbody>${lignes}</tbody></table>
+        <div style="margin:0 0 8px">Bilan du parc sur 30 jours : ${B.mises} kikooz misés, ${B.gains} rendus → ${signe(B.mises - B.gains)}
+          <span style="color:#777">(positif : des kikooz retirés du jeu ; négatif : des kikooz créés)</span></div>
+        <table><thead><tr><th>Jeu (décocher pour fermer)</th><th>Joueurs cotés</th><th>Favoris (podiums/jours) et cotes</th><th>Mises pour le ${esc(d.demain || '')}</th><th>Règlement du ${esc(d.hier || '')}</th></tr></thead><tbody>${lignes}</tbody></table>
       </div>`;
   } catch (e) { bloc.innerHTML = ''; }
 }
