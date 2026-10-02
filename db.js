@@ -4576,7 +4576,7 @@ async function reglerParisChallenge(decisions) {
     for (const d of decisions) {
       const { rows } = await client.query(
         `UPDATE challenge_paris SET statut = $2, gain = $3, regle_le = now()
-          WHERE id = $1 AND statut = 'ouvert' RETURNING id, jour, jeu, type, username, choix, mise, gain, statut`,
+          WHERE id = $1 AND statut = 'ouvert' RETURNING id, jour, jeu, type, username, choix, mise, cote, gain, statut`,
         [d.id, d.statut, Math.trunc(Number(d.gain) || 0)]);
       if (rows[0]) faits.push(rows[0]);
     }
@@ -4610,6 +4610,38 @@ async function bilanParisChallenge(depuisJour) {
             COUNT(*) FILTER (WHERE statut = 'gagne')::int AS gagnes
        FROM challenge_paris WHERE statut IN ('gagne', 'perdu') AND jour >= $1
       GROUP BY jour ORDER BY jour DESC`, [String(depuisJour)]);
+  return rows;
+}
+// Le registre des paris d'un joueur : tournois et Challenge, du plus récent
+// au plus ancien.
+async function registreParis(username, limit = 200) {
+  const u = String(username || '').toLowerCase();
+  const n = Math.max(1, Math.min(Number(limit) || 200, 1000));
+  const { rows } = await pool.query(
+    `(SELECT 'tournoi' AS sorte, p.id, p.cree_le, p.regle_le, p.choix, p.mise, NULL::numeric AS cote, p.statut, p.gain,
+             p.affiche, t.name AS tournoi, NULL AS jour, NULL AS jeu, NULL AS type
+        FROM tournament_paris p LEFT JOIN tournaments t ON t.id = p.tournament_id WHERE LOWER(p.username) = $1)
+     UNION ALL
+     (SELECT 'challenge', c.id, c.cree_le, c.regle_le, c.choix, c.mise, c.cote, c.statut, c.gain,
+             NULL, NULL, c.jour, c.jeu, c.type
+        FROM challenge_paris c WHERE LOWER(c.username) = $1)
+     ORDER BY cree_le DESC LIMIT $2`, [u, n]);
+  return rows;
+}
+// Les gros coups du parc depuis une date : les paris gagnés dont le gain net
+// atteint le seuil — ceux que Dimitri annonce.
+async function grosCoupsParis(depuis, seuil, limit = 30) {
+  const { rows } = await pool.query(
+    `(SELECT 'tournoi' AS sorte, p.id, p.regle_le, p.username, p.choix, p.mise, NULL::numeric AS cote, p.gain,
+             p.affiche, t.name AS tournoi, NULL AS jour, NULL AS jeu, NULL AS type
+        FROM tournament_paris p LEFT JOIN tournaments t ON t.id = p.tournament_id
+       WHERE p.statut = 'gagne' AND p.gain - p.mise >= $2 AND p.regle_le >= $1)
+     UNION ALL
+     (SELECT 'challenge', c.id, c.regle_le, c.username, c.choix, c.mise, c.cote, c.gain,
+             NULL, NULL, c.jour, c.jeu, c.type
+        FROM challenge_paris c WHERE c.statut = 'gagne' AND c.gain - c.mise >= $2 AND c.regle_le >= $1)
+     ORDER BY regle_le DESC LIMIT $3`,
+    [depuis, Math.max(1, Number(seuil) || 100), Math.max(1, Math.min(Number(limit) || 30, 200))]);
   return rows;
 }
 // Deux comptes ont-ils partagé un appareil (journal des connexions) ? Un
@@ -4743,6 +4775,8 @@ module.exports = {
   reglerParisChallenge,
   historiqueChallenge,
   bilanParisChallenge,
+  registreParis,
+  grosCoupsParis,
   // RGPD
   PSEUDO_SUPPRIME,
   deleteSessionsForUser,

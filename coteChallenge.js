@@ -19,10 +19,18 @@
  *     trois jours ne font pas une certitude.
  *   Pour le pari « or », la même chose avec les seules médailles d'or.
  *
- * LA COTE. (1 − marge) / p, arrondie au centième INFÉRIEUR, puis bornée :
- *   · marge du parc : 10 % ;
- *   · bornes : ×1,1 au moins, ×10 au plus ;
- *   · sur soi (ou sur un compte du même appareil) : ×3 au plus ;
+ * LA COTE. (1 − marge) / p, arrondie au centième INFÉRIEUR, puis bornée. L'or
+ * est le pari risqué : il paie davantage, et c'est garanti.
+ *
+ *                       médaillé        or
+ *   marge du parc        10 %          5 %
+ *   bornes            ×1,1 à ×10    ×1,65 à ×15
+ *   sur soi (ou un
+ *   compte du même
+ *   appareil), au plus     ×3          ×4,5
+ *
+ *   · et la cote « or » d'un joueur vaut TOUJOURS au moins 1,5 fois sa cote
+ *     « médaillé » ;
  *   · moins de 7 jours joués sur le jeu dans la fenêtre : pas de cote, le
  *     joueur n'est pas proposé.
  *
@@ -34,11 +42,10 @@
 const REGLES = Object.freeze({
   fenetre: 30,     // jours d'historique
   joursMin: 7,     // jours joués, au moins, pour avoir une cote
-  marge: 0.10,
-  min: 1.1,
-  max: 10,
-  maxSoi: 3,
   lissage: 5,      // L : jours « moyens » prêtés à chacun
+  ecartOr: 1.5,    // la cote « or » vaut au moins 1,5 × la cote « médaillé »
+  podium: Object.freeze({ marge: 0.10, min: 1.1, max: 10, maxSoi: 3 }),
+  or: Object.freeze({ marge: 0.05, min: 1.65, max: 15, maxSoi: 4.5 }),
 });
 
 const cle = (s) => String(s == null ? '' : s).toLowerCase();
@@ -90,27 +97,30 @@ function cotesDuJeu(hist, regles) {
     const eligible = j >= R.joursMin;
     const proba = (succes, b) => (n ? (j / n) : 0) * (succes + R.lissage * b) / (j + R.lissage);
     const pP = proba(k, base.podium), pO = proba(o, base.or);
+    const cP = coteDe(pP, 'podium', R);
+    const cO = Math.min(R.or.max, Math.max(coteDe(pO, 'or', R), centiemeInferieur(cP * R.ecartOr)));
     joueurs[u] = {
       joues: j, podiums: k, ors: o, eligible,
-      podium: { p: pP, cote: eligible ? coteDe(pP, R) : null },
-      or: { p: pO, cote: eligible ? coteDe(pO, R) : null },
+      podium: { p: pP, cote: eligible ? cP : null },
+      or: { p: pO, cote: eligible ? cO : null },
     };
   }
   return { jours: n, base, joueurs };
 }
 
-/** La cote d'une probabilité, marge prise et bornes appliquées. */
-function coteDe(p, regles) {
+/** La cote d'une probabilité pour un type de pari ('podium' ou 'or'), marge prise et bornes appliquées. */
+function coteDe(p, type, regles) {
   const R = Object.assign({}, REGLES, regles || {});
-  const brute = p > 0 ? centiemeInferieur((1 - R.marge) / p) : R.max;
-  return Math.min(R.max, Math.max(R.min, brute));
+  const T = R[type === 'or' ? 'or' : 'podium'];
+  const brute = p > 0 ? centiemeInferieur((1 - T.marge) / p) : T.max;
+  return Math.min(T.max, Math.max(T.min, brute));
 }
 
 /** La cote proposée à un parieur : celle du joueur, plafonnée s'il parie sur soi. */
-function coteProposee(cote, soi, regles) {
+function coteProposee(cote, soi, type, regles) {
   const R = Object.assign({}, REGLES, regles || {});
   if (cote == null) return null;
-  return soi ? Math.min(cote, R.maxSoi) : cote;
+  return soi ? Math.min(cote, R[type === 'or' ? 'or' : 'podium'].maxSoi) : cote;
 }
 
 /** Ce que rend une mise gagnante : mise × cote, au kikooz inférieur. */

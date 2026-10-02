@@ -53,9 +53,8 @@ async function sql(q, params) {
   await c.connect();
   try { return (await c.query(q, params)).rows; } finally { await c.end(); }
 }
-before(async () => {
-  dispo = await baseNeuve();
-  if (!dispo) return;
+// Le serveur, lancé (et relancé : les réglages doivent survivre au redémarrage).
+async function demarrer() {
   proc = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
@@ -75,6 +74,22 @@ before(async () => {
     await wait(250);
   }
   throw new Error('serveur ou schéma indisponible');
+}
+async function arreter() {
+  if (!proc) return;
+  const fini = new Promise((r) => proc.once('exit', r));
+  proc.kill('SIGKILL');
+  await fini;
+  proc = null;
+  for (let i = 0; i < 40; i++) {
+    try { await fetch(BASE + '/api/loadFrutiSlots?game=snake3'); } catch { return; }
+    await wait(100);
+  }
+}
+before(async () => {
+  dispo = await baseNeuve();
+  if (!dispo) return;
+  await demarrer();
 });
 after(() => {
   if (proc) proc.kill('SIGKILL');
@@ -98,12 +113,18 @@ async function jouer(pseudo, score) {
 }
 const PARIEURS = ['anais', 'basile', 'cyril'];
 
-test('l’interrupteur baissé : rien ne se mise', async (t) => {
+test('ouverts par défaut ; baissés, rien ne se mise — et ça survit au redémarrage', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
   for (const p of PARIEURS) await compte(p, 500);
   for (const j of ['grenade', 'papaye', 'myrtille', 'clemence']) await compte(j);
+  assert.equal((await etat('anais')).actif, true, 'une base neuve : les paris sont ouverts');
+  assert.equal((await (await fetch(BASE + '/api/paris/ouverts')).json()).n, 1, 'la tuile paraît');
+  assert.ok((await post('/api/admin/paris-challenge', { actif: false }, ADMIN)).ok);
   assert.equal((await etat('anais')).actif, false);
   assert.equal((await parier('anais', 'swapou2_classic', 'podium', 'grenade', 10)).code, 'fermes');
+  await arreter();
+  await demarrer();
+  assert.equal((await etat('anais')).actif, false, 'baissés par l’admin, ils le restent après un redémarrage');
   assert.equal((await (await fetch(BASE + '/api/paris/ouverts')).json()).n, 0, 'pas de tuile');
 });
 
@@ -145,7 +166,11 @@ test('les cotes de demain, tirées de l’historique', async (t) => {
   assert.equal(e.jour, jourParis(1));
   assert.ok(e.jeux.some((j) => j.cle === 'bkiwi' && j.nom === 'Burning Kiwi'), 'Burning Kiwi : un seul jeu');
   assert.ok(!e.jeux.some((j) => /^bkiwi_track/.test(j.cle)));
-  assert.deepEqual(e.regles, { fenetre: 30, joursMin: 7, marge: 0.1, min: 1.1, max: 10, maxSoi: 3 });
+  assert.deepEqual(e.regles, {
+    fenetre: 30, joursMin: 7, ecartOr: 1.5,
+    podium: { marge: 0.1, min: 1.1, max: 10, maxSoi: 3 },
+    or: { marge: 0.05, min: 1.65, max: 15, maxSoi: 4.5 },
+  });
   const sw = e.jeux.find((j) => j.cle === 'swapou2_classic');
   assert.equal(sw.jours, 30);
   assert.equal(sw.eligibles, 5, 'basile, 5 jours joués, n’est pas coté');
@@ -159,21 +184,22 @@ test('les cotes de demain, tirées de l’historique', async (t) => {
   const g = sw.candidats.find((c) => c.pseudo === 'grenade');
   assert.deepEqual([g.joues, g.podiums, g.ors], [30, 20, 20]);
   assert.deepEqual(g.cote, { podium: COTES.grenade.podium.cote, or: COTES.grenade.or.cote });
-  assert.ok(g.cote.podium > 1.1 && g.cote.or > g.cote.podium);
+  assert.ok(g.cote.podium > 1.1 && g.cote.or >= g.cote.podium * 1.5 - 0.01, 'l’or paie au moins 1,5 fois le médaillé');
+  for (const c of sw.candidats) assert.ok(c.cote.or > c.cote.podium, c.pseudo);
   assert.ok(sw.candidats.find((c) => c.pseudo === 'cyril').cote.podium === 10, 'cyril, jamais médaillé : la cote plafond');
-  // Vu par cyril : sur lui-même, ×3 au plus.
+  // Vu par cyril : sur lui-même, ×3 au plus en médaillé, ×4,5 en or.
   const vuParCyril = (await etat('cyril')).jeux.find((j) => j.cle === 'swapou2_classic').candidats.find((c) => c.pseudo === 'cyril');
   assert.equal(vuParCyril.soi, true);
-  assert.deepEqual(vuParCyril.cote, { podium: 3, or: 3 });
+  assert.deepEqual(vuParCyril.cote, { podium: 3, or: 4.5 });
   // Un compte du même appareil compte comme soi : clémence, jamais en or
-  // (×10 pour les autres), est à ×3 au plus pour cyril.
-  assert.equal(COTES.clemence.or.cote, 10);
+  // (×15 pour les autres), est à ×4,5 au plus pour cyril.
+  assert.equal(COTES.clemence.or.cote, 15);
   await sql(`INSERT INTO connexions (username, jour, appareil) VALUES ('cyril', $1, 'appareil-partage'), ('clemence', $1, 'appareil-partage')`, [jourParis(0)]);
   const vus = (await etat('cyril')).jeux.find((j) => j.cle === 'swapou2_classic').candidats;
   const cl = vus.find((c) => c.pseudo === 'clemence');
   assert.equal(cl.soi, false, 'le lien d’appareil ne s’affiche pas');
-  assert.equal(cl.cote.or, 3);
-  assert.equal(sw.candidats.find((c) => c.pseudo === 'clemence').cote.or, 10, 'pour anais, la cote entière');
+  assert.equal(cl.cote.or, 4.5);
+  assert.equal(sw.candidats.find((c) => c.pseudo === 'clemence').cote.or, 15, 'pour anais, la cote entière');
   // Un jeu sans historique : personne n'est coté.
   const sn = e.jeux.find((j) => j.cle === 'snake3_classic');
   assert.equal(sn.eligibles, 0);
@@ -225,6 +251,8 @@ test('les mises de demain : cote figée, plafond du jour, sur soi, refus', async
 test('la nuit passe, le roll règle à la cote — le parc paie les gagnants', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
   const cg = COTES.grenade, cp = COTES.papaye;
+  // Le seuil des gros coups, abaissé pour le test : 5 kikooz de bénéfice.
+  assert.ok((await post('/api/admin/paris-challenge', { grosCoup: 5 }, ADMIN)).ok);
   // « La nuit passe » : les paris de demain deviennent ceux d'hier.
   const hier = jourParis(-1);
   await sql(`UPDATE challenge_paris SET jour = $1`, [hier]);
@@ -275,6 +303,54 @@ test('la nuit passe, le roll règle à la cote — le parc paie les gagnants', a
   const swa = adm.jeux.find((x) => x.cle === 'swapou2_classic');
   assert.equal(swa.eligibles, 5);
   assert.equal(swa.favoris.length, 5);
+  assert.equal(adm.reglages.grosCoup, 5);
+
+  // DIMITRI annonce les gros coups (bénéfice ≥ 5), en un message, ravi.
+  const gagnes = [
+    { qui: 'anais', net: Cote.retourDe(20, cg.podium.cote) + Cote.retourDe(10, cg.podium.cote) - 30 },
+    { qui: 'anais', net: Cote.retourDe(20, cg.or.cote) - 20 },
+    { qui: 'basile', net: Cote.retourDe(30, cp.podium.cote) - 30 },
+    { qui: 'myrtille', net: 30 },
+  ].filter((g) => g.net >= 5);
+  assert.ok(gagnes.length >= 2, JSON.stringify(gagnes));
+  let annonces = [];
+  for (let i = 0; i < 40 && !annonces.length; i++) {
+    annonces = await sql(`SELECT p.content, p.mood, p.bouille, t.title, b.name AS rubrique FROM forum_posts p
+      JOIN forum_topics t ON t.id = p.topic_id JOIN forum_boards b ON b.id = t.board_id
+      WHERE p.author_username = 'dimitri-pnj' AND p.content LIKE '%avait misé%'`);
+    if (!annonces.length) await wait(150);
+  }
+  assert.equal(annonces.length, 1, 'un seul message pour le lot');
+  const a = annonces[0];
+  assert.equal(a.title, 'Les gros coups de Dimitri');
+  assert.equal(a.rubrique, 'Jeux Frutiparc');
+  assert.equal(a.mood, 4, 'd’humeur ravie');
+  assert.equal(a.bouille, '0o0000000000000000000000');
+  for (const g of gagnes) assert.match(a.content, new RegExp('@' + g.qui + ' avait misé'));
+  assert.doesNotMatch(a.content, /@cyril/);
+  // Le sujet s'ouvre par son mot d'accueil.
+  const intro = await sql(`SELECT p.content, p.mood FROM forum_posts p JOIN forum_topics t ON t.id = p.topic_id
+    WHERE t.title = 'Les gros coups de Dimitri' ORDER BY p.id LIMIT 1`);
+  assert.match(intro[0].content, /Dimitri, je tiens le comptoir des paris/);
+  // Un second roll n'annonce rien de plus.
+  assert.equal((await sql(`SELECT COUNT(*)::int AS n FROM forum_posts WHERE author_username = 'dimitri-pnj'`))[0].n, 2);
+
+  // LE REGISTRE : mes paris et mon bilan ; les gros coups du parc.
+  const reg = await (await fetch(BASE + '/api/paris/registre?sid=' + sids.anais)).json();
+  assert.equal(reg.ok, true);
+  assert.equal(reg.seuil, 5);
+  assert.deepEqual([reg.bilan.paris, reg.bilan.gagnes, reg.bilan.perdus, reg.bilan.mises, reg.bilan.gains, reg.bilan.net],
+    [2, 2, 0, 50, gainAnais, gainAnais - 50]);
+  assert.ok(reg.lignes.every((l) => l.sorte === 'challenge' && l.statut === 'gagne' && l.cote > 1));
+  assert.ok(reg.lignes.some((l) => /^grenade en or à Swapou 2/.test(l.quoi)));
+  assert.equal(reg.grosCoups.length, gagnes.length);
+  assert.ok(reg.grosCoups.some((c) => c.parieur === 'anais' && c.gain > c.mise));
+  const regCyril = await (await fetch(BASE + '/api/paris/registre?sid=' + sids.cyril)).json();
+  assert.deepEqual([regCyril.bilan.paris, regCyril.bilan.perdus, regCyril.bilan.net], [2, 2, -40]);
+  const anonyme = await (await fetch(BASE + '/api/paris/registre')).json();
+  assert.equal(anonyme.moi, null);
+  assert.deepEqual(anonyme.lignes, []);
+  assert.equal(anonyme.grosCoups.length, gagnes.length, 'les gros coups sont publics');
   assert.ok(swa.favoris.every((f, i) => i === 0 || f.podium >= swa.favoris[i - 1].podium), 'les favoris d’abord');
 });
 

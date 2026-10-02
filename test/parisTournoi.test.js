@@ -110,6 +110,9 @@ let tid = null, m1 = null, m2 = null;
 
 test('mise en place : un tournoi au score, la coupe générée, l’option baissée', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  // Les paris du Challenge, ouverts par défaut, comptent aussi dans la tuile :
+  // on les ferme, ce test ne regarde que les tournois.
+  assert.ok((await (await post('/api/admin/paris-challenge', { actif: false }, ADMIN)).json()).ok);
   for (const j of ['pj1', 'pj2', 'pj3', 'pj4']) await compte(j, 'd' + j, j === 'pj1' ? 500 : undefined);
   await compte('ana', 'dana', 500);
   await compte('bob', 'dbob', 500);

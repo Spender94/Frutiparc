@@ -146,6 +146,10 @@ window.BureauFrutiz = (function () {
     // pour une conversation neuve. C'est `minGaspard` qui le calcule, cadre
     // par cadre — 240 × 248 fenêtre nue, plus large quand on ouvre les
     // bouilles ou les présents. Le `l`/`h` à zéro laisse `recal` décider.
+    // LES PARIS — pas de fenêtre d'époque : la page /paris/ dans un cadre,
+    // logé dans la feuille mobile que la fenêtre adopte (comme la boutique).
+    paris:      { panneau: '#paris-sheet',     titre: 'Paris', l: 660, h: 580,
+                  min: minFenetre(380, 300), centre: true },
     gaspard:    { panneau: '#gaspard-panel', titre: 'Gaspard', fruit: 'winChat',
                   l: 0, h: 0, min: function () { return minGaspard(); } },
     // L'EXPLORATEUR — `win.Explorer`, la fenêtre JAUNE (winType « winExplorer »,
@@ -5197,6 +5201,13 @@ window.BureauFrutiz = (function () {
     if (corps) corps.appendChild(pied);
   }
 
+  /** Les paris aussi : la feuille entre dans une fenêtre, PUIS le cadre se
+   *  charge — déplacer un cadre le recharge, autant ne le faire qu'une fois. */
+  function ouvrirParis() {
+    ouvrirFenetre('paris');
+    if (window.ParisPorte) ParisPorte.charger();
+  }
+
   /** La boutique s'ouvre en FENÊTRE sur le bureau, pas en feuille. */
   function ouvrirBoutique() {
     // Une fenêtre NEUVE s'ouvre rayons repliés ; rappeler la tuile sur une
@@ -6899,6 +6910,7 @@ window.BureauFrutiz = (function () {
     // place, il rechargerait sa page derrière le bureau — une seconde lecture,
     // un second voyant, des sujets marqués « vus » que personne n'a ouverts.
     if (idPanneau === 'forum-panel' && window.ForumPorte && ForumPorte.decharger) ForumPorte.decharger();
+    if (idPanneau === 'paris-sheet' && window.ParisPorte) ParisPorte.decharger();
     rendre(f.panneau, f.origine);
     f.fen.remove();
     delete fenetres[idPanneau];
@@ -8903,6 +8915,7 @@ window.BureauFrutiz = (function () {
     },
     // La boutique : une FENÊTRE sur le bureau, la feuille du mobile ailleurs.
     ouvrirBoutique: ouvrirBoutique,
+    ouvrirParis: ouvrirParis,
     // « Modifier ma fiche » (`win.EditInfo`) : une FENÊTRE aussi. Le light
     // remplit les champs après l'ouverture ; la fermeture remet la feuille en
     // place (et l'enregistrement, comme d'époque, ferme la fenêtre).

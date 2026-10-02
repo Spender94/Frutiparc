@@ -10153,6 +10153,10 @@ async function parisRecalerMaintenant(tid) {
     else if (f.statut === 'rembourse') parisCrediter(f.username, f.gain, 'un pari remboursé' + quoi);
     console.log(`[PARIS] #${tid} ${f.username} ${f.statut} : mise ${f.mise}, reçoit ${f.gain}${quoi}`);
   }
+  dimitriAnnoncer(faits.map((f) => ({
+    id: 't' + f.id, statut: f.statut, username: f.username, choix: f.choix, mise: f.mise, gain: f.gain, cote: null,
+    quoi: (nom) => `la victoire de ${nom}${f.affiche ? ` (${f.affiche}${t && t.name ? `, ${t.name}` : ''})` : ''}`,
+  })));
 }
 // Après chaque action de l'organisateur sur un tournoi (vainqueur, scores,
 // bracket, tirage, tour suivant, suppression…), on recale ses paris.
@@ -10367,7 +10371,11 @@ app.post('/api/admin/tournaments/:id/match/:mid/paris', tournoiScope, async (req
  *     roll n'a pas eu lieu) est remboursé.
  */
 const CoteChallenge = require('./coteChallenge.js');
-const PARIS_CHALLENGE_DEFAUT = { actif: false, plafond: 50, exclus: [] };
+// Ouverts par défaut, en permanence : l'admin peut les fermer, et ce choix est
+// gardé en base (app_state), relu à chaque démarrage. `grosCoup` : le gain net
+// (gain − mise) à partir duquel Dimitri annonce un pari sur le forum —
+// tournois compris.
+const PARIS_CHALLENGE_DEFAUT = { actif: true, plafond: 50, exclus: [], grosCoup: 100 };
 let parisChallengeReglages = Object.assign({}, PARIS_CHALLENGE_DEFAUT);
 async function chargerReglagesParisChallenge() {
   try {
@@ -10448,6 +10456,12 @@ async function parisChallengeAppliquer(decisions) {
     else if (f.statut === 'rembourse') parisCrediter(f.username, f.gain, 'un pari remboursé' + quoi);
     console.log(`[PARIS] Challenge ${f.jour} ${f.jeu}/${f.type} ${f.username} ${f.statut} : mise ${f.mise}, reçoit ${f.gain}`);
   }
+  dimitriAnnoncer(faits.map((f) => {
+    const j = jeux.find((x) => x.cle === f.jeu);
+    return { id: 'c' + f.id, statut: f.statut, username: f.username, choix: f.choix, mise: f.mise, gain: f.gain,
+      cote: f.cote == null ? null : Number(f.cote),
+      quoi: (nom) => `${nom} ${f.type === 'or' ? 'en or' : 'médaillé'} à ${j ? j.nom : f.jeu}` };
+  }));
   return faits;
 }
 // Le règlement d'un jour, au roll. `podiums` : { rankingId: [or, argent, bronze] }.
@@ -10531,7 +10545,7 @@ app.get('/api/paris/challenge', async (req, res) => {
           // `soi` : le joueur lui-même. Un compte du même appareil a la même
           // cote plafonnée, sans qu'on l'écrive.
           pseudo: u, nom: nomDe(u), joues: l.joues, podiums: l.podiums, ors: l.ors, soi: u === moi,
-          cote: { podium: CoteChallenge.coteProposee(l.podium.cote, soi.has(u)), or: CoteChallenge.coteProposee(l.or.cote, soi.has(u)) },
+          cote: { podium: CoteChallenge.coteProposee(l.podium.cote, soi.has(u), 'podium'), or: CoteChallenge.coteProposee(l.or.cote, soi.has(u), 'or') },
           parieurs: new Set(surLui.map((p) => p.username)).size,
           mises: surLui.reduce((s, p) => s + (Number(p.mise) || 0), 0),
         };
@@ -10557,7 +10571,7 @@ app.get('/api/paris/challenge', async (req, res) => {
     }
     res.json(Object.assign(base, {
       jour: demain, jourLisible: jourLisible(demain), plafond: Number(R.plafond) || 50,
-      regles: { fenetre: RC.fenetre, joursMin: RC.joursMin, marge: RC.marge, min: RC.min, max: RC.max, maxSoi: RC.maxSoi },
+      regles: { fenetre: RC.fenetre, joursMin: RC.joursMin, ecartOr: RC.ecartOr, podium: RC.podium, or: RC.or },
       dejaMise: moi ? await db.miseChallengeDuJour(moi, demain) : 0, jeux,
       hier: {
         jour: hier, jourLisible: jourLisible(hier),
@@ -10567,6 +10581,53 @@ app.get('/api/paris/challenge', async (req, res) => {
           mise: p.mise, cote: p.cote == null ? null : Number(p.cote), statut: p.statut, gain: p.gain })),
       },
     }));
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// LE REGISTRE DES PARIS : mes paris (tournois et Challenge) avec mon bilan, et
+// les gros coups du parc ces 30 derniers jours — ceux que Dimitri annonce.
+app.get('/api/paris/registre', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, moi: null, lignes: [], grosCoups: [] });
+  try {
+    const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
+    const seuil = Math.max(1, Number(parisChallengeReglages.grosCoup) || 100);
+    const mesParis = moi ? await db.registreParis(moi, 300) : [];
+    const coups = await db.grosCoupsParis(new Date(Date.now() - 30 * 86400000), seuil, 30);
+    const noms = new Map();
+    const cles = [...new Set(mesParis.map((p) => p.choix).concat(coups.flatMap((c) => [c.username, c.choix]))
+      .map((u) => String(u || '').toLowerCase()).filter(Boolean))];
+    if (cles.length) for (const r of await db.fichesComptes(cles)) noms.set(r.username, r.display_name || getDisplayName(r.username));
+    const nomDe = (u) => noms.get(String(u || '').toLowerCase()) || getDisplayName(String(u || '').toLowerCase());
+    const jeux = jeuxChallengeParis();
+    const quoi = (p) => {
+      if (p.sorte === 'challenge') {
+        const j = jeux.find((x) => x.cle === p.jeu);
+        return `${nomDe(p.choix)} ${p.type === 'or' ? 'en or' : 'médaillé'} à ${j ? j.nom : p.jeu} (${jourLisible(p.jour)})`;
+      }
+      return `la victoire de ${nomDe(p.choix)}${p.affiche ? ` (${p.affiche})` : ''}${p.tournoi ? `, ${p.tournoi}` : ''}`;
+    };
+    const lignes = mesParis.map((p) => ({
+      sorte: p.sorte, quand: p.cree_le, quoi: quoi(p), mise: p.mise,
+      cote: p.cote == null ? null : Number(p.cote), statut: p.statut, gain: p.gain,
+    }));
+    const regles = lignes.filter((l) => l.statut === 'gagne' || l.statut === 'perdu');
+    const bilan = {
+      paris: lignes.length,
+      gagnes: regles.filter((l) => l.statut === 'gagne').length,
+      perdus: regles.filter((l) => l.statut === 'perdu').length,
+      mises: regles.reduce((s2, l) => s2 + l.mise, 0),
+      gains: regles.reduce((s2, l) => s2 + l.gain, 0),
+      enJeu: lignes.filter((l) => l.statut === 'ouvert').reduce((s2, l) => s2 + l.mise, 0),
+      meilleur: regles.filter((l) => l.statut === 'gagne').reduce((m, l) => Math.max(m, l.gain - l.mise), 0),
+    };
+    bilan.net = bilan.gains - bilan.mises;
+    res.json({
+      ok: true, moi: moi || null, seuil, bilan, lignes,
+      grosCoups: coups.map((c) => ({ quand: c.regle_le, parieur: nomDe(c.username), quoi: quoi(c), mise: c.mise,
+        cote: c.cote == null ? null : Number(c.cote), gain: c.gain })),
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -10600,7 +10661,7 @@ app.post('/api/paris/challenge', async (req, res) => {
       return non('cote', `Pas de cote pour ${getDisplayName(choix)} à ${jeu.nom} : il faut avoir joué au moins ${RC.joursMin} jours au Challenge de ce jeu sur les ${RC.fenetre} derniers.`);
     }
     const surSoi = (await comptesDeSoi(moi, [choix])).has(choix);
-    const cote = CoteChallenge.coteProposee(ligne[type].cote, surSoi);
+    const cote = CoteChallenge.coteProposee(ligne[type].cote, surSoi, type);
     // La cote vue à l'écran est celle qu'on prend : si elle a bougé entre-temps
     // (roll, médaille corrigée), on le dit au lieu de miser à une autre.
     if (b.cote != null && b.cote !== '' && Math.abs(Number(b.cote) - cote) > 0.001) {
@@ -10675,6 +10736,11 @@ app.post('/api/admin/paris-challenge', adminScope('challenge'), async (req, res)
     const p = Math.floor(Number(b.plafond));
     if (!Number.isFinite(p) || p < 1 || p > 100000) return res.status(400).json({ error: 'bad_plafond', message: 'Plafond : un nombre de kikooz, au moins 1.' });
     apres.plafond = p;
+  }
+  if (b.grosCoup !== undefined) {
+    const g = Math.floor(Number(b.grosCoup));
+    if (!Number.isFinite(g) || g < 1 || g > 1000000) return res.status(400).json({ error: 'bad_gros_coup', message: 'Gros coup : un gain net en kikooz, au moins 1.' });
+    apres.grosCoup = g;
   }
   if (Array.isArray(b.exclus)) {
     const connus = new Set(jeuxChallengeParis().map((j) => j.cle));
@@ -16560,6 +16626,62 @@ async function natachaAccueillirMaintenant(username, parrain) {
   notifyForumNews(Natacha.PSEUDO_NPC, suiveurs, { id: topic.id, titre: topic.title });
   await notifierMentionsForum(Natacha.PSEUDO_NPC, topic.id, topic.title, contenu).catch(() => []);
   console.log(`[NATACHA] souhaite la bienvenue à ${qui} — message #${post.id}, sujet #${topic.id}`);
+  return { topicId: topic.id, postId: post.id, contenu };
+}
+
+// ── Dimitri annonce les gros coups ───────────────────────────────────────────
+//
+// Un pari gagné dont le gain net (gain − mise) atteint le seuil des réglages
+// (100 kikooz d'origine) est un GROS COUP : Dimitri le salue dans le sujet
+// « Les gros coups de Dimitri » de la rubrique « Jeux Frutiparc » — ouvert
+// s'il manque, doublé s'il est plein — d'humeur ravie, en @mentionnant le
+// parieur. Les coups réglés ensemble font un seul message. Chaque pari ne se
+// règle qu'une fois (db.reglerParis*), il n'est donc annoncé qu'une fois.
+const Dimitri = require('./dimitri.js');
+let dimitriEnCours = Promise.resolve();
+// `coups` : les paris qu'on vient de régler, { id, statut, username, choix, mise, gain, cote, quoi(nomDuChoix) }.
+function dimitriAnnoncer(coups) {
+  const seuil = Math.max(1, Number(parisChallengeReglages.grosCoup) || 100);
+  const gros = (coups || []).filter((c) => c.statut === 'gagne' && Number(c.gain) - Number(c.mise) >= seuil);
+  if (!gros.length || !process.env.DATABASE_URL) return Promise.resolve(null);
+  const tour = dimitriEnCours.then(() => dimitriAnnoncerMaintenant(gros))
+    .catch((e) => { console.error('[DIMITRI] pas d\'annonce :', e.message); return null; });
+  dimitriEnCours = tour;
+  return tour;
+}
+async function dimitriAnnoncerMaintenant(gros) {
+  let boards = await db.forumGetBoards();
+  let board = boards.find((b) => b.name === Dimitri.RUBRIQUE);
+  if (!board) {
+    await ensureForumBoardsExist();
+    boards = await db.forumGetBoards();
+    board = boards.find((b) => b.name === Dimitri.RUBRIQUE);
+    if (!board) throw new Error(`rubrique « ${Dimitri.RUBRIQUE} » introuvable`);
+  }
+  const bouille = users[Dimitri.PSEUDO_NPC].fbouille;
+  let topic = await db.forumTrouverSujet(board.id, Dimitri.SUJET);
+  if (topic && !topic.is_locked && (await db.forumCountPosts(topic.id)) >= FORUM_MAX_POSTS_PER_TOPIC) {
+    await db.forumSetLocked(topic.id, true).catch(dbErr('forumSetLocked dimitri'));
+    topic = null;
+  }
+  if (topic && topic.is_locked) topic = null;
+  if (!topic) {
+    topic = await db.forumCreateTopic(board.id, Dimitri.PSEUDO_NPC, Dimitri.SUJET, Dimitri.INTRO, bouille, Dimitri.HUMEUR);
+    console.log(`[DIMITRI] ouvre le sujet #${topic.id} « ${Dimitri.SUJET} » dans « ${board.name} »`);
+  }
+  // Les noms d'affichage, lus en base : parieurs et joueurs peuvent être hors ligne.
+  const noms = new Map();
+  const cles = [...new Set(gros.flatMap((c) => [String(c.username).toLowerCase(), String(c.choix).toLowerCase()]))];
+  try { for (const r of await db.fichesComptes(cles)) noms.set(r.username, r.display_name || getDisplayName(r.username)); } catch (e) { /* noms par défaut */ }
+  const nomDe = (u) => noms.get(String(u).toLowerCase()) || getDisplayName(String(u).toLowerCase());
+  const contenu = Dimitri.messageGrosCoups(gros.map((c) => ({
+    id: c.id, parieur: nomDe(c.username), quoi: c.quoi(nomDe(c.choix)), mise: c.mise, cote: c.cote, gain: c.gain,
+  })));
+  const post = await db.forumCreatePost(topic.id, Dimitri.PSEUDO_NPC, contenu, bouille, Dimitri.HUMEUR);
+  const suiveurs = await db.forumTopicFollowers(topic.id).catch(() => []);
+  notifyForumNews(Dimitri.PSEUDO_NPC, suiveurs, { id: topic.id, titre: topic.title });
+  await notifierMentionsForum(Dimitri.PSEUDO_NPC, topic.id, topic.title, contenu).catch(() => []);
+  console.log(`[DIMITRI] annonce ${gros.length} gros coup(s) — message #${post.id}, sujet #${topic.id}`);
   return { topicId: topic.id, postId: post.id, contenu };
 }
 
@@ -28054,7 +28176,7 @@ const CONNECTED_NPCS = new Set([
 // All bot/NPC accounts — the always-on Gaspard plus the transient visitors
 // (mdamirma, gromelin). Excluded from "real player" counts and from mdamirma's
 // FrutiSigne targeting, so bots never reveal/target each other.
-const NPC_USERNAMES = new Set(['gaspard', 'mdamirma', 'gromelin', 'kiloute79', 'vieuxpruneau', 'natacha']);
+const NPC_USERNAMES = new Set(['gaspard', 'mdamirma', 'gromelin', 'kiloute79', 'vieuxpruneau', 'natacha', Dimitri.PSEUDO_NPC]);
 
 // Gaspard is the welcome-bot NPC. Stored under the lowercase key
 // `users.gaspard` like every other user (getDisplayName, trace and
@@ -28554,6 +28676,22 @@ users.natacha = {
   city: 'Frutiparc', realJob: "Hôtesse d'accueil", frutijob: "Hôtesse d'accueil", firstName: 'Natacha', lastName: '',
   comment: "Je tiens l'accueil du parc : personne n'arrive dans le silence.", siteUrl: '',
   displayName: Natacha.NOM,
+};
+
+// ── Dimitri — le bookmaker du parc ──
+// Quand un pari rapporte gros, il l'annonce, ravi, sur le forum (Jeux
+// Frutiparc › « Les gros coups de Dimitri » ; cf. dimitri.js et dimitriAnnoncer).
+users[Dimitri.PSEUDO_NPC] = {
+  pass: '', xp: 313131, kikooz: 0,
+  fbouille: Dimitri.BOUILLE,
+  items: withDefaultPens([]),
+  contacts: [], blacklist: [],
+  gender: 'M', birthday: '1979-03-21', country: 'FR', region: 'IDF',
+  countryIndex: '1', regionIndex: '1', prefs: '',
+  isModerator: false, needsBouille: false,
+  city: 'Frutiparc', realJob: 'Bookmaker', frutijob: 'Bookmaker', firstName: 'Dimitri', lastName: '',
+  comment: 'Je tiens le comptoir des paris. Un gros coup ? Je le crie sur le forum !', siteUrl: '',
+  displayName: Dimitri.NOM,
 };
 
 // Pseudo affiché de l'animateur — source unique, dérivée du displayName. Toutes

@@ -6370,6 +6370,8 @@ async function chargerParisChallengeAdmin() {
     if (!d.reglages) { bloc.innerHTML = ''; return; }
     const R = d.reglages;
     const C = d.regles || {};
+    const P = C.podium || { marge: 0.1, min: 1.1, max: 10, maxSoi: 3 };
+    const O = C.or || { marge: 0.05, min: 1.65, max: 15, maxSoi: 4.5 };
     const fx = (c) => (c == null ? '—' : '×' + String(c).replace('.', ','));
     const signe = (n) => `<b style="color:${n >= 0 ? '#2f8f2f' : '#c03c30'}">${n >= 0 ? '+' : ''}${n}</b>`;
     const lignes = (d.jeux || []).map((j) => `<tr>
@@ -6385,12 +6387,17 @@ async function chargerParisChallengeAdmin() {
         <h4 style="margin:0 0 6px">🎲 Paris sur les médaillés</h4>
         <label style="font-weight:bold"><input type="checkbox" id="pc-actif" ${R.actif ? 'checked' : ''}> Ouvrir les paris du Challenge</label>
         <label style="margin-left:14px">Plafond par joueur et par jour : <input type="number" id="pc-plafond" min="1" value="${R.plafond}" style="width:70px"> kikooz</label>
+        <label style="margin-left:14px" title="Gain net (gain − mise) à partir duquel Dimitri annonce le pari sur le forum — tournois compris">Gros coup à partir de : <input type="number" id="pc-groscoup" min="1" value="${R.grosCoup || 100}" style="width:70px"> kikooz de bénéfice</label>
         <button class="btn btn-sm" onclick="enregistrerParisChallenge()">Enregistrer</button>
         <div style="color:#777;margin:6px 0 10px;line-height:1.45">
-          Les joueurs misent <b>la veille, jusqu'à minuit</b>, sur les médaillés du Challenge du lendemain (page <b>/paris/</b>, tuile « Paris » du light) :
+          Les joueurs misent <b>la veille, jusqu'à minuit</b>, sur les médaillés du Challenge du lendemain (tuile « Paris » : une fenêtre du bureau, une feuille sur mobile) :
           « sera médaillé » ou « aura l'or ». <b>Cote fixe</b>, figée à la mise, tirée des ${C.fenetre || 30} derniers jours de Challenge du joueur sur le jeu
-          (fréquence de ses podiums, ou de ses médailles d'or, lissée) : marge du parc ${Math.round((C.marge || 0.1) * 100)} %, entre ${fx(C.min || 1.1)} et ${fx(C.max || 10)},
-          ${fx(C.maxSoi || 3)} au plus sur soi ou sur un compte du même appareil ; il faut ${C.joursMin || 7} jours joués pour être coté.
+          (fréquence de ses podiums, ou de ses médailles d'or, lissée) ; il faut ${C.joursMin || 7} jours joués pour être coté.
+          <b>Médaillé</b> : marge ${Math.round(P.marge * 100)} %, de ${fx(P.min)} à ${fx(P.max)}, ${fx(P.maxSoi)} au plus sur soi (ou un compte du même appareil).
+          <b>Or</b>, le pari risqué, paie davantage : marge ${Math.round(O.marge * 100)} %, de ${fx(O.min)} à ${fx(O.max)}, ${fx(O.maxSoi)} au plus sur soi,
+          et toujours au moins ${String(C.ecartOr || 1.5).replace('.', ',')} fois la cote « médaillé » du joueur.
+          Ouverts par défaut ; l'état choisi ici est gardé en base et survit aux redémarrages.
+          Un gain net d'au moins le seuil « gros coup » est annoncé par <b>Dimitri</b> sur le forum (Jeux Frutiparc › « Les gros coups de Dimitri »).
           Le gagnant reçoit mise × cote, le parc paie ; une mise perdue est gardée. Règlement automatique au changement de jour, sur le podium des médailles.
           Baisser l'option ou décocher un jeu <b>rembourse</b> les mises en jeu.
           ⚠ « Terminer le cycle » à la main règle les paris de la veille, pas ceux du jour.
@@ -6404,7 +6411,7 @@ async function chargerParisChallengeAdmin() {
 async function enregistrerParisChallenge() {
   const actif = $('#pc-actif').checked;
   const exclus = Array.from(document.querySelectorAll('.pc-jeu')).filter((c) => !c.checked).map((c) => c.value);
-  const body = { actif, plafond: Number($('#pc-plafond').value), exclus };
+  const body = { actif, plafond: Number($('#pc-plafond').value), grosCoup: Number($('#pc-groscoup').value), exclus };
   try {
     const r = await fetch('/api/admin/paris-challenge', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
     const d = await r.json();

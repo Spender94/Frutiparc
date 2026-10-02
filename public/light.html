@@ -162,6 +162,8 @@
     background: #F8F866; border: 1px solid #EAEA0E; border-radius: 6px;
     box-shadow: 0 0 0 1px #DDDDDD;
   }
+  .sheet.sheet-paris { height: 90vh; max-height: 90vh; }
+  #paris-cadre { flex: 1; min-height: 0; width: 100%; border: 0; display: block; background: #fff; }
   .sheet-preview { display: none; justify-content: center; margin-bottom: 10px; }
   #bouille-sheet-preview {
     width: 132px; height: 132px; background: #fff; border: 2px solid #DDDDDD;
@@ -3357,6 +3359,18 @@
     </div>
   </div>
 
+  <!-- Les paris — la page /paris/ dans un cadre : une feuille sur mobile, une
+       fenêtre sur le bureau (qui adopte la feuille, comme la boutique). Le
+       cadre ne se charge qu'à l'ouverture et se vide à la fermeture. -->
+  <div id="paris-sheet-backdrop" class="sheet-backdrop"></div>
+  <div id="paris-sheet" class="sheet sheet-paris">
+    <div class="sheet-head">
+      <span>Paris</span>
+      <button id="paris-sheet-close">✕</button>
+    </div>
+    <iframe id="paris-cadre" title="Paris" src="about:blank"></iframe>
+  </div>
+
   <div id="disques-sheet-backdrop" class="sheet-backdrop"></div>
   <div id="disques-sheet" class="sheet">
     <div class="sheet-head">
@@ -4623,7 +4637,12 @@
         return;
       }
       if (go === "club") return window.open("/club/", "_blank");
-      if (go === "paris") return window.open("/paris/", "_blank");
+      // LES PARIS : une fenêtre du bureau, une feuille sur mobile — jamais un
+      // onglet à part.
+      if (go === "paris") {
+        if (surBureau && BureauFrutiz.ouvrirParis) return BureauFrutiz.ouvrirParis();
+        return openParisSheet();
+      }
       // LE FORUM est une rubrique comme une autre depuis qu'il s'ouvre dans la
       // fenêtre principale : `activateTab` en bas de cette fonction s'en
       // charge, et le bureau en fait une fenêtre comme des scores ou de la
@@ -5796,6 +5815,36 @@
     $("#disques-sheet-backdrop").classList.remove("show");
     $("#disques-sheet").classList.remove("show");
   }
+  // ── Les paris : la page /paris/ dans un cadre ──
+  // `ParisPorte` sert la feuille (mobile) comme la fenêtre (bureau) : le cadre
+  // se charge à l'ouverture, avec la session du light, et se vide à la
+  // fermeture — une page fermée ne relit plus les cotes toutes les 30 s.
+  window.ParisPorte = {
+    charger: function () {
+      var c = $("#paris-cadre");
+      if (!c) return;
+      var url = "/paris/?cadre=1&sid=" + encodeURIComponent(state.sid || "");
+      if (c.getAttribute("src") !== url) c.setAttribute("src", url);
+    },
+    decharger: function () {
+      var c = $("#paris-cadre");
+      if (c && c.getAttribute("src") !== "about:blank") c.setAttribute("src", "about:blank");
+    },
+  };
+  function openParisSheet() {
+    openMenu(false);
+    ParisPorte.charger();
+    $("#paris-sheet-backdrop").classList.add("show");
+    $("#paris-sheet").classList.add("show");
+  }
+  function closeParisSheet() {
+    $("#paris-sheet-backdrop").classList.remove("show");
+    $("#paris-sheet").classList.remove("show");
+    ParisPorte.decharger();
+  }
+  $("#paris-sheet-close").addEventListener("click", closeParisSheet);
+  $("#paris-sheet-backdrop").addEventListener("click", closeParisSheet);
+
   // Ouverture via la tuile « Mes disques » de l'accueil (cf. home-tile[data-go]).
   $("#disques-sheet-close").addEventListener("click", closeDisquesSheet);
   $("#disques-sheet-backdrop").addEventListener("click", closeDisquesSheet);

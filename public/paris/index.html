@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html lang="fr">
-<!-- Les paris des tournois.
+<!-- Les paris : les médaillés du Challenge de demain (cote fixe), les
+     tournois dont l'organisateur a ouvert les paris (pari MUTUEL : le pot d'un
+     match va à ceux qui ont vu juste, au prorata de leur mise), et le
+     registre — mes paris et les gros coups du parc.
 
-     Une page, comme le Club : les tournois dont l'organisateur a ouvert les
-     paris, leurs matchs ouverts aux mises, ceux en cours, et les résultats.
-     Pari MUTUEL : le pot d'un match va à ceux qui ont vu juste, au prorata de
-     leur mise (paris.js) ; la cote affichée est celle du pot à l'instant, elle
-     bouge jusqu'au début du match. La session est celle du light. -->
+     Le bureau du light l'ouvre dans une de ses fenêtres (?cadre=1 : la fenêtre
+     fait le cadre et le titre), le mobile dans une feuille. La session est
+     celle du light. -->
 <head>
 <meta charset="UTF-8">
 <title>Paris — Frutiparc</title>
@@ -114,6 +115,32 @@
     .duo { grid-template-columns: 1fr; }
     .duo .contre { text-align: center; }
   }
+  /* Les deux vues : parier, et le registre */
+  .onglets { display: flex; gap: 4px; padding: 0 6px; border-bottom: 2px solid #E3756A; }
+  .onglets button { border: 0; border-radius: 7px 7px 0 0; background: #D6F7B5; color: #2C4A0F; font: bold 12px Arial, sans-serif; padding: 6px 14px; cursor: pointer; }
+  .onglets button.on { background: #E3756A; color: #fff; }
+  .vue[hidden] { display: none; }
+  .bilan { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0; }
+  .bilan div { background: #D6F7B5; border-radius: 6px; padding: 6px 8px; text-align: center; }
+  .bilan b { display: block; font: bold 15px Arial, sans-serif; color: #2C4A0F; }
+  .bilan b.plus { color: #2f8f2f; } .bilan b.moins { color: #b31111; }
+  .bilan span { color: #6c8f3a; font-size: 10px; }
+  table.reg { width: 100%; border-collapse: collapse; }
+  table.reg th { text-align: left; color: #6c8f3a; font-weight: normal; font-size: 10px; padding: 3px 4px; border-bottom: 1px solid #C3EF93; }
+  table.reg td { padding: 4px; border-bottom: 1px solid #E5F8D2; vertical-align: top; }
+  table.reg td.n { text-align: right; white-space: nowrap; }
+  .st { font-weight: bold; white-space: nowrap; }
+  .st.gagne { color: #2f8f2f; } .st.perdu { color: #b31111; } .st.rembourse, .st.ouvert { color: #6c8f3a; }
+  .coup { background: #fff6f4; border-left: 3px solid #E3756A; border-radius: 4px; padding: 6px 8px; margin: 0 0 6px; line-height: 1.5; }
+  .coup .q { color: #6c8f3a; font-size: 10px; }
+  /* Dans une fenêtre du bureau (?cadre=1) : la fenêtre fait le cadre et le titre. */
+  body.cadre { padding: 0; background: #fff; }
+  body.cadre .shell { border: 0; border-radius: 0; box-shadow: none; max-width: none; }
+  body.cadre .entete .titre, body.cadre .entete > span:first-child { display: none; }
+  @media (max-width: 420px) {
+    .bilan { grid-template-columns: repeat(2, 1fr); }
+    table.reg .q-date { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -123,8 +150,12 @@
     <span class="titre">Paris</span>
     <span class="solde" id="solde"></span>
   </div>
-  <div id="challenge"></div>
-  <div id="contenu"><p class="vide">Chargement…</p></div>
+  <div class="onglets"><button data-vue="parier" class="on">Parier</button><button data-vue="registre">Registre</button></div>
+  <div class="vue" id="vue-parier">
+    <div id="challenge"></div>
+    <div id="contenu"><p class="vide">Chargement…</p></div>
+  </div>
+  <div class="vue" id="vue-registre" hidden></div>
 </div>
 <script>
 (function () {
@@ -133,6 +164,13 @@
   if (!sid) {
     try { sid = (JSON.parse(localStorage.getItem('fp_light_session') || '{}') || {}).sid || ''; } catch (e) { sid = ''; }
   }
+  var cadre = new URLSearchParams(location.search).get('cadre') === '1';
+  if (cadre) document.body.classList.add('cadre');
+  // Dans une fenêtre du bureau, un lien sort de la fenêtre, pas dans le cadre.
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest && ev.target.closest('a[href]');
+    if (a && cadre) a.target = '_top';
+  });
   var contenu = document.getElementById('contenu');
   var etat = null;
   var messages = {};       // id du match -> { texte, ok }
@@ -272,7 +310,7 @@
     var d = etatC;
     if (!d || !d.actif) { zoneC.innerHTML = ''; return; }
     if (d.solde != null) document.getElementById('solde').textContent = 'Ton solde : ' + kz(d.solde);
-    var R = d.regles || { fenetre: 30, joursMin: 7, maxSoi: 3 };
+    var R = d.regles || { fenetre: 30, joursMin: 7, ecartOr: 1.5, podium: { maxSoi: 3 }, or: { maxSoi: 4.5 } };
     var reste = Math.max(0, d.plafond - (d.dejaMise || 0));
     var champ = document.getElementById('miseC');
     var miseCourante = champ ? champ.value : String(Math.min(10, reste || 10));
@@ -280,7 +318,8 @@
       + '<div class="regle">Mise sur les joueurs que tu vois sur le podium du Challenge de demain : « médaillé » (or, argent ou bronze) '
       + 'ou « or » (le premier). Chaque joueur a sa <b>cote</b>, tirée de ses ' + R.fenetre + ' derniers jours de Challenge sur le jeu : '
       + 'si tu vois juste, tu reçois ta mise multipliée par la cote, celle du moment où tu mises. Un joueur qui ne vient pas jouer fait perdre le pari. '
-      + 'Seuls les joueurs venus au moins ' + R.joursMin + ' jours ont une cote. Tu peux miser sur toi, à ' + cote(R.maxSoi) + ' au plus. '
+      + 'L’or est plus risqué, il paie plus : sa cote vaut toujours au moins ' + String(R.ecartOr).replace('.', ',') + ' fois celle du médaillé. '
+      + 'Seuls les joueurs venus au moins ' + R.joursMin + ' jours ont une cote. Tu peux miser sur toi, à ' + cote(R.podium.maxSoi) + ' au plus en médaillé et ' + cote(R.or.maxSoi) + ' en or. '
       + 'Les mises se ferment ce soir à minuit. Maximum : ' + kz(d.plafond) + ' par jour, tous jeux confondus.</div>';
     if (d.moi) {
       h += '<div class="reglage"><span class="bascule"><button data-type="podium" class="' + (typeC === 'podium' ? 'on' : '') + '">Médaillé</button>'
@@ -376,6 +415,73 @@
       })
       .catch(function () { msgC[jeu] = { texte: 'Le serveur ne répond pas.' }; rendreChallenge(); });
   });
+
+  // ── LE REGISTRE ────────────────────────────────────────────────────────
+  // Mes paris, tournois et Challenge, avec mon bilan ; et les gros coups du
+  // parc, ceux que Dimitri annonce sur le forum.
+  var zoneR = document.getElementById('vue-registre');
+  var vue = 'parier';
+  var STATUTS = { gagne: 'gagné', perdu: 'perdu', rembourse: 'remboursé', ouvert: 'en jeu' };
+  function date(q) {
+    var d = new Date(q);
+    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  }
+  function chargerRegistre() {
+    return fetch('/api/paris/registre?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(rendreRegistre)
+      .catch(function () { zoneR.innerHTML = '<p class="vide">Le serveur ne répond pas. Réessaie dans un instant.</p>'; });
+  }
+  function rendreRegistre(d) {
+    var h = '';
+    if (!d.moi) {
+      h += '<p class="connexion">Pour voir tes paris, <a href="/light.html">connecte-toi au parc</a>.</p>';
+    } else {
+      var b = d.bilan;
+      h += '<div class="bilan">'
+        + '<div><b>' + b.paris + '</b><span>paris (' + b.gagnes + ' gagnés, ' + b.perdus + ' perdus)</span></div>'
+        + '<div><b>' + nombre(b.mises) + '</b><span>kikooz misés</span></div>'
+        + '<div><b>' + nombre(b.gains) + '</b><span>kikooz reçus</span></div>'
+        + '<div><b class="' + (b.net >= 0 ? 'plus' : 'moins') + '">' + (b.net > 0 ? '+' : '') + nombre(b.net) + '</b><span>bilan'
+        + (b.enJeu ? ' · ' + kz(b.enJeu) + ' en jeu' : '') + '</span></div></div>';
+      if (d.lignes.length) {
+        h += '<h3>Mes paris</h3><table class="reg"><thead><tr><th class="q-date">Date</th><th>Pari</th><th>Mise</th><th>Cote</th><th>Résultat</th></tr></thead><tbody>';
+        d.lignes.forEach(function (l) {
+          // Gagné : le bénéfice, et ce qui est revenu (mise comprise).
+          var res = l.statut === 'gagne' ? '<b>+' + nombre(l.gain - l.mise) + '</b> <small>(' + nombre(l.gain) + ' reçus)</small>'
+            : l.statut === 'perdu' ? '<small>−' + nombre(l.mise) + '</small>'
+            : l.statut === 'rembourse' ? '<small>' + nombre(l.gain) + ' rendus</small>' : '';
+          h += '<tr><td class="q-date">' + esc(date(l.quand)) + '</td><td>' + (l.sorte === 'challenge' ? '🏅 ' : '🏆 ') + esc(l.quoi) + '</td>'
+            + '<td class="n">' + nombre(l.mise) + '</td><td class="n">' + (l.cote ? cote(l.cote) : '<small>mutuel</small>') + '</td>'
+            + '<td><span class="st ' + l.statut + '">' + STATUTS[l.statut] + '</span>' + (res ? ' ' + res : '') + '</td></tr>';
+        });
+        h += '</tbody></table>';
+      } else {
+        h += '<p class="vide">Tu n’as encore rien parié. Tes paris s’inscriront ici, gagnés ou perdus.</p>';
+      }
+    }
+    h += '<h3>Les gros coups du parc <small style="font-weight:normal;color:#6c8f3a">— 30 derniers jours, ' + kz(d.seuil || 100) + ' de bénéfice ou plus</small></h3>';
+    if (d.grosCoups && d.grosCoups.length) {
+      d.grosCoups.forEach(function (c) {
+        h += '<div class="coup"><b>' + esc(c.parieur) + '</b> a misé ' + kz(c.mise) + ' sur ' + esc(c.quoi)
+          + (c.cote ? ', à ' + cote(c.cote) : '') + ' : <b>' + kz(c.gain) + '</b> empochés.'
+          + ' <span class="q">' + esc(date(c.quand)) + '</span></div>';
+      });
+    } else {
+      h += '<p class="vide">Pas encore de gros coup : Dimitri attend le premier avec impatience.</p>';
+    }
+    zoneR.innerHTML = h;
+  }
+  document.querySelector('.onglets').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-vue]');
+    if (!b) return;
+    vue = b.getAttribute('data-vue');
+    Array.prototype.forEach.call(document.querySelectorAll('.onglets button'), function (x) { x.classList.toggle('on', x === b); });
+    document.getElementById('vue-parier').hidden = vue !== 'parier';
+    zoneR.hidden = vue !== 'registre';
+    if (vue === 'registre') { if (!zoneR.innerHTML) zoneR.innerHTML = '<p class="vide">Chargement…</p>'; chargerRegistre(); }
+  });
+  if (/registre/.test(location.hash)) document.querySelector('.onglets button[data-vue=registre]').click();
 
   chargerChallenge();
   charger();

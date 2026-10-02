@@ -30,16 +30,16 @@ test('le taux de base du jeu : ses médailles sur ses participations', () => {
   assert.ok(Math.abs(r.base.or - 0.1) < 1e-9);
 });
 
-test('la cote d’un habitué : fréquence lissée, marge de 10 %, au centième inférieur', () => {
+test('la cote d’un habitué : fréquence lissée, au centième inférieur — 10 % de marge en médaillé, 5 % en or', () => {
   const as = C.cotesDuJeu(historique()).joueurs.as;
   assert.deepEqual([as.joues, as.podiums, as.ors, as.eligible], [30, 12, 6, true]);
   // podium : (12 + 5 × 0,3) / (30 + 5) = 0,3857… → 0,9 / 0,3857 = 2,333…
   assert.equal(as.podium.cote, 2.33);
-  // or : (6 + 5 × 0,1) / 35 = 0,1857… → 4,846…
-  assert.equal(as.or.cote, 4.84);
+  // or : (6 + 5 × 0,1) / 35 = 0,1857… → 0,95 / 0,1857 = 5,115…
+  assert.equal(as.or.cote, 5.11);
 });
 
-test('les bornes : ×1,1 au moins, ×10 au plus', () => {
+test('les bornes : médaillé de ×1,1 à ×10, or de ×1,65 à ×15', () => {
   const h = historique();
   // « roi » : tous les jours en or. « fantome » : tous les jours, jamais rien.
   for (const jour of JOURS) {
@@ -48,9 +48,26 @@ test('les bornes : ×1,1 au moins, ×10 au plus', () => {
   }
   const r = C.cotesDuJeu(h).joueurs;
   assert.equal(r.roi.podium.cote, 1.1);
-  assert.equal(r.roi.or.cote, 1.1);
+  assert.equal(r.roi.or.cote, 1.65);
   assert.equal(r.fantome.podium.cote, 10);
-  assert.equal(r.fantome.or.cote, 10);
+  assert.equal(r.fantome.or.cote, 15);
+});
+
+test('l’or paie toujours au moins 1,5 fois le médaillé', () => {
+  const h = historique();
+  // « second » : toujours deuxième — jamais d'or, mais un podium sûr.
+  for (const jour of JOURS) {
+    h.joues.push({ username: 'second', jour });
+    h.medailles.push({ username: 'second', jour, rang: 2 });
+  }
+  const r = C.cotesDuJeu(h).joueurs;
+  for (const u of Object.keys(r)) {
+    if (!r[u].eligible) continue;
+    assert.ok(r[u].or.cote >= Math.min(15, Math.floor(r[u].podium.cote * 1.5 * 100 + 1e-9) / 100), u);
+    assert.ok(r[u].or.cote > r[u].podium.cote, u);
+  }
+  assert.equal(r.second.podium.cote, 1.1);
+  assert.equal(r.second.or.cote, 15, 'jamais d’or en 30 jours : la cote plafond');
 });
 
 test('un jour d’absence compte comme un jour sans podium', () => {
@@ -67,7 +84,7 @@ test('un jour d’absence compte comme un jour sans podium', () => {
   assert.equal(mi.podiums, 6);
   const attendu = (15 / 30) * (6 + 5 * r.base.podium) / (15 + 5);
   assert.ok(Math.abs(mi.podium.p - attendu) < 1e-12);
-  assert.equal(mi.podium.cote, C.coteDe(attendu));
+  assert.equal(mi.podium.cote, C.coteDe(attendu, 'podium'));
 });
 
 test('moins de 7 jours joués : pas de cote', () => {
@@ -89,11 +106,13 @@ test('une médaille sans score archivé vaut un jour joué', () => {
   assert.equal(r.joueurs.x.eligible, false);
 });
 
-test('sur soi : ×3 au plus', () => {
-  assert.equal(C.coteProposee(4.84, true), 3);
-  assert.equal(C.coteProposee(4.84, false), 4.84);
-  assert.equal(C.coteProposee(2.33, true), 2.33);
-  assert.equal(C.coteProposee(null, true), null);
+test('sur soi : ×3 au plus en médaillé, ×4,5 en or', () => {
+  assert.equal(C.coteProposee(4.84, true, 'podium'), 3);
+  assert.equal(C.coteProposee(4.84, false, 'podium'), 4.84);
+  assert.equal(C.coteProposee(2.33, true, 'podium'), 2.33);
+  assert.equal(C.coteProposee(12, true, 'or'), 4.5);
+  assert.equal(C.coteProposee(4.2, true, 'or'), 4.2);
+  assert.equal(C.coteProposee(null, true, 'or'), null);
 });
 
 test('le retour d’une mise : mise × cote, au kikooz inférieur', () => {
