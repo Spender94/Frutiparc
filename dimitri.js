@@ -2,9 +2,12 @@
 /*
  * Dimitri — le bookmaker du parc, toujours ravi.
  *
- * Quand un pari rapporte gros (tournoi ou Challenge), il l'annonce sur le
- * forum (Jeux Frutiparc › « Les gros coups de Dimitri »), en citant le
- * parieur (@mention : il est prévenu) et le coup : la mise, la cote, le gain.
+ * Il tient LE sujet des paris, dans Jeux Frutiparc : « Les paris du parc :
+ * pronostics, débats et gros coups ». Un sujet de discussion comme un autre —
+ * chacun y donne ses pronostics, discute des cotes, commente les tournois —
+ * qu'il ouvre lui-même au démarrage du serveur s'il n'existe pas. Et quand un
+ * pari rapporte gros (tournoi ou Challenge), il y annonce le coup en citant
+ * le parieur (@mention : il est prévenu) : la mise, la cote, le gain.
  * Plusieurs gros coups réglés ensemble (le roll de minuit) font UN message.
  *
  * Le tirage des phrases est SEMÉ par les paris eux-mêmes : le même lot rejoué
@@ -21,12 +24,16 @@ const NOM = 'Dimitri';
 const BOUILLE = '0o0000000000000000000000';
 const HUMEUR = 4;                       // « Joie » : la bouille ravie
 const RUBRIQUE = 'Jeux Frutiparc';
-const SUJET = 'Les gros coups de Dimitri';
+const SUJET = 'Les paris du parc : pronostics, débats et gros coups';
 
 const INTRO = `Bonjour bonjour ! Moi c'est ${NOM}, je tiens le comptoir des paris du parc.\n\n`
-  + `Chaque fois que quelqu'un réussit un [b]gros coup[/b] — un pari qui rapporte gros, sur un tournoi ou sur les médaillés du Challenge —, `
-  + `je l'annonce ici. Le nom du parieur, sa mise, la cote, et ce qu'il a empoché.\n\n`
-  + `Les paris se font depuis la tuile « Paris » du bureau. Qui sera le prochain ? Je suis ravi d'avance !`;
+  + `Ce sujet est le vôtre : on y parle [b]paris[/b], tout simplement. Vos pronostics pour le Challenge de demain, `
+  + `les favoris des tournois, les cotes qui vous paraissent trop belles (ou pas assez), vos stratégies, vos regrets… `
+  + `Débattez, commentez, chambrez-vous gentiment !\n\n`
+  + `Et chaque fois que quelqu'un réussit un [b]gros coup[/b] — un pari qui rapporte gros, sur un tournoi ou sur les `
+  + `médaillés du Challenge —, je viens l'annoncer ici : le parieur, sa mise, la cote et ce qu'il a empoché.\n\n`
+  + `Pour parier : la tuile « Paris » du bureau. Son onglet « Registre » garde la trace de tous vos paris. `
+  + `À vos pronostics, je suis ravi d'avance !`;
 
 const OUVERTURES_UN = [
   () => `Ah ça, c'est un gros coup !`,

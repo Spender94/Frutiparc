@@ -16629,27 +16629,28 @@ async function natachaAccueillirMaintenant(username, parrain) {
   return { topicId: topic.id, postId: post.id, contenu };
 }
 
-// ── Dimitri annonce les gros coups ───────────────────────────────────────────
+// ── Dimitri : le sujet des paris, et les gros coups ─────────────────────────
+//
+// Dimitri tient le sujet des paris de la rubrique « Jeux Frutiparc » (Dimitri.SUJET) :
+// un sujet de discussion — pronostics, débats, commentaires — qu'il ouvre
+// lui-même au démarrage s'il manque, et qu'il double s'il est plein.
 //
 // Un pari gagné dont le gain net (gain − mise) atteint le seuil des réglages
-// (100 kikooz d'origine) est un GROS COUP : Dimitri le salue dans le sujet
-// « Les gros coups de Dimitri » de la rubrique « Jeux Frutiparc » — ouvert
-// s'il manque, doublé s'il est plein — d'humeur ravie, en @mentionnant le
-// parieur. Les coups réglés ensemble font un seul message. Chaque pari ne se
-// règle qu'une fois (db.reglerParis*), il n'est donc annoncé qu'une fois.
+// (100 kikooz d'origine) est un GROS COUP : Dimitri l'annonce dans ce sujet,
+// d'humeur ravie, en @mentionnant le parieur. Les coups réglés ensemble font
+// un seul message. Chaque pari ne se règle qu'une fois (db.reglerParis*), il
+// n'est donc annoncé qu'une fois. Tout passe par une file : le démarrage et
+// un règlement qui se croisent n'ouvrent pas deux sujets.
 const Dimitri = require('./dimitri.js');
 let dimitriEnCours = Promise.resolve();
-// `coups` : les paris qu'on vient de régler, { id, statut, username, choix, mise, gain, cote, quoi(nomDuChoix) }.
-function dimitriAnnoncer(coups) {
-  const seuil = Math.max(1, Number(parisChallengeReglages.grosCoup) || 100);
-  const gros = (coups || []).filter((c) => c.statut === 'gagne' && Number(c.gain) - Number(c.mise) >= seuil);
-  if (!gros.length || !process.env.DATABASE_URL) return Promise.resolve(null);
-  const tour = dimitriEnCours.then(() => dimitriAnnoncerMaintenant(gros))
-    .catch((e) => { console.error('[DIMITRI] pas d\'annonce :', e.message); return null; });
+function dimitriFile(tache, quoi) {
+  const tour = dimitriEnCours.then(tache)
+    .catch((e) => { console.error(`[DIMITRI] ${quoi} :`, e.message); return null; });
   dimitriEnCours = tour;
   return tour;
 }
-async function dimitriAnnoncerMaintenant(gros) {
+// Le sujet des paris : trouvé, ou ouvert (avec son mot d'accueil).
+async function dimitriSujet() {
   let boards = await db.forumGetBoards();
   let board = boards.find((b) => b.name === Dimitri.RUBRIQUE);
   if (!board) {
@@ -16658,7 +16659,6 @@ async function dimitriAnnoncerMaintenant(gros) {
     board = boards.find((b) => b.name === Dimitri.RUBRIQUE);
     if (!board) throw new Error(`rubrique « ${Dimitri.RUBRIQUE} » introuvable`);
   }
-  const bouille = users[Dimitri.PSEUDO_NPC].fbouille;
   let topic = await db.forumTrouverSujet(board.id, Dimitri.SUJET);
   if (topic && !topic.is_locked && (await db.forumCountPosts(topic.id)) >= FORUM_MAX_POSTS_PER_TOPIC) {
     await db.forumSetLocked(topic.id, true).catch(dbErr('forumSetLocked dimitri'));
@@ -16666,9 +16666,25 @@ async function dimitriAnnoncerMaintenant(gros) {
   }
   if (topic && topic.is_locked) topic = null;
   if (!topic) {
-    topic = await db.forumCreateTopic(board.id, Dimitri.PSEUDO_NPC, Dimitri.SUJET, Dimitri.INTRO, bouille, Dimitri.HUMEUR);
+    topic = await db.forumCreateTopic(board.id, Dimitri.PSEUDO_NPC, Dimitri.SUJET, Dimitri.INTRO,
+      users[Dimitri.PSEUDO_NPC].fbouille, Dimitri.HUMEUR);
     console.log(`[DIMITRI] ouvre le sujet #${topic.id} « ${Dimitri.SUJET} » dans « ${board.name} »`);
   }
+  return topic;
+}
+function dimitriOuvrirSujet() {
+  if (!process.env.DATABASE_URL) return Promise.resolve(null);
+  return dimitriFile(dimitriSujet, 'sujet des paris');
+}
+// `coups` : les paris qu'on vient de régler, { id, statut, username, choix, mise, gain, cote, quoi(nomDuChoix) }.
+function dimitriAnnoncer(coups) {
+  const seuil = Math.max(1, Number(parisChallengeReglages.grosCoup) || 100);
+  const gros = (coups || []).filter((c) => c.statut === 'gagne' && Number(c.gain) - Number(c.mise) >= seuil);
+  if (!gros.length || !process.env.DATABASE_URL) return Promise.resolve(null);
+  return dimitriFile(() => dimitriAnnoncerMaintenant(gros), 'pas d\'annonce');
+}
+async function dimitriAnnoncerMaintenant(gros) {
+  const topic = await dimitriSujet();
   // Les noms d'affichage, lus en base : parieurs et joueurs peuvent être hors ligne.
   const noms = new Map();
   const cles = [...new Set(gros.flatMap((c) => [String(c.username).toLowerCase(), String(c.choix).toLowerCase()]))];
@@ -16677,7 +16693,7 @@ async function dimitriAnnoncerMaintenant(gros) {
   const contenu = Dimitri.messageGrosCoups(gros.map((c) => ({
     id: c.id, parieur: nomDe(c.username), quoi: c.quoi(nomDe(c.choix)), mise: c.mise, cote: c.cote, gain: c.gain,
   })));
-  const post = await db.forumCreatePost(topic.id, Dimitri.PSEUDO_NPC, contenu, bouille, Dimitri.HUMEUR);
+  const post = await db.forumCreatePost(topic.id, Dimitri.PSEUDO_NPC, contenu, users[Dimitri.PSEUDO_NPC].fbouille, Dimitri.HUMEUR);
   const suiveurs = await db.forumTopicFollowers(topic.id).catch(() => []);
   notifyForumNews(Dimitri.PSEUDO_NPC, suiveurs, { id: topic.id, titre: topic.title });
   await notifierMentionsForum(Dimitri.PSEUDO_NPC, topic.id, topic.title, contenu).catch(() => []);
@@ -27069,6 +27085,9 @@ async function boot() {
       try { swapouTournoiVerifie = (await db.getAppState('swapou_tournoi_verifie')) === '1'; }
       catch (e) { console.error('[SWAPOU] interrupteur du tournoi :', e.message); }
       await chargerReglagesParisChallenge();
+      // Le sujet des paris de Dimitri : ouvert s'il manque (en tâche de fond :
+      // les rubriques du forum se créent un peu plus loin dans le démarrage).
+      setTimeout(() => dimitriOuvrirSujet(), 5000).unref();
       // Les sessions que la base connaît reviennent — dormantes, réveillées à
       // leur premier appel (voir `sessionsDormantes`). La fenêtre est celle de
       // la rétention : au-delà, la purge RGPD les a de toute façon effacées.
@@ -28679,8 +28698,8 @@ users.natacha = {
 };
 
 // ── Dimitri — le bookmaker du parc ──
-// Quand un pari rapporte gros, il l'annonce, ravi, sur le forum (Jeux
-// Frutiparc › « Les gros coups de Dimitri » ; cf. dimitri.js et dimitriAnnoncer).
+// Il tient le sujet des paris (Jeux Frutiparc › « Les paris du parc :
+// pronostics, débats et gros coups ») et y annonce, ravi, les gros coups (cf. dimitri.js).
 users[Dimitri.PSEUDO_NPC] = {
   pass: '', xp: 313131, kikooz: 0,
   fbouille: Dimitri.BOUILLE,

@@ -148,8 +148,9 @@ window.BureauFrutiz = (function () {
     // bouilles ou les présents. Le `l`/`h` à zéro laisse `recal` décider.
     // LES PARIS — pas de fenêtre d'époque : la page /paris/ dans un cadre,
     // logé dans la feuille mobile que la fenêtre adopte (comme la boutique).
+    // Une fenêtre standard : elle se pose dans le coin, comme les autres.
     paris:      { panneau: '#paris-sheet',     titre: 'Paris', l: 660, h: 580,
-                  min: minFenetre(380, 300), centre: true },
+                  min: minFenetre(380, 300) },
     gaspard:    { panneau: '#gaspard-panel', titre: 'Gaspard', fruit: 'winChat',
                   l: 0, h: 0, min: function () { return minGaspard(); } },
     // L'EXPLORATEUR — `win.Explorer`, la fenêtre JAUNE (winType « winExplorer »,

@@ -118,6 +118,15 @@ test('ouverts par défaut ; baissés, rien ne se mise — et ça survit au redé
   for (const p of PARIEURS) await compte(p, 500);
   for (const j of ['grenade', 'papaye', 'myrtille', 'clemence']) await compte(j);
   assert.equal((await etat('anais')).actif, true, 'une base neuve : les paris sont ouverts');
+  // Dimitri ouvre son sujet au démarrage, avant le moindre gros coup.
+  let sujets = [];
+  for (let i = 0; i < 60 && !sujets.length; i++) {
+    sujets = await sql(`SELECT t.id, b.name FROM forum_topics t JOIN forum_boards b ON b.id = t.board_id
+      WHERE t.title = 'Les paris du parc : pronostics, débats et gros coups' AND t.author_username = 'dimitri-pnj'`);
+    if (!sujets.length) await wait(250);
+  }
+  assert.equal(sujets.length, 1);
+  assert.equal(sujets[0].name, 'Jeux Frutiparc');
   assert.equal((await (await fetch(BASE + '/api/paris/ouverts')).json()).n, 1, 'la tuile paraît');
   assert.ok((await post('/api/admin/paris-challenge', { actif: false }, ADMIN)).ok);
   assert.equal((await etat('anais')).actif, false);
@@ -322,16 +331,18 @@ test('la nuit passe, le roll règle à la cote — le parc paie les gagnants', a
   }
   assert.equal(annonces.length, 1, 'un seul message pour le lot');
   const a = annonces[0];
-  assert.equal(a.title, 'Les gros coups de Dimitri');
+  assert.equal(a.title, 'Les paris du parc : pronostics, débats et gros coups');
   assert.equal(a.rubrique, 'Jeux Frutiparc');
   assert.equal(a.mood, 4, 'd’humeur ravie');
   assert.equal(a.bouille, '0o0000000000000000000000');
   for (const g of gagnes) assert.match(a.content, new RegExp('@' + g.qui + ' avait misé'));
   assert.doesNotMatch(a.content, /@cyril/);
-  // Le sujet s'ouvre par son mot d'accueil.
+  // Le sujet, ouvert par Dimitri dès le démarrage : un sujet de discussion.
   const intro = await sql(`SELECT p.content, p.mood FROM forum_posts p JOIN forum_topics t ON t.id = p.topic_id
-    WHERE t.title = 'Les gros coups de Dimitri' ORDER BY p.id LIMIT 1`);
+    WHERE t.title = 'Les paris du parc : pronostics, débats et gros coups' ORDER BY p.id`);
   assert.match(intro[0].content, /Dimitri, je tiens le comptoir des paris/);
+  assert.match(intro[0].content, /Débattez, commentez/);
+  assert.equal(intro.length, 2, 'un seul sujet : le mot d’accueil, puis l’annonce');
   // Un second roll n'annonce rien de plus.
   assert.equal((await sql(`SELECT COUNT(*)::int AS n FROM forum_posts WHERE author_username = 'dimitri-pnj'`))[0].n, 2);
 

@@ -15,6 +15,8 @@ test('son compte : un pseudo que personne ne peut prendre, la bouille demandée,
   assert.equal(Dimitri.BOUILLE, '0o0000000000000000000000');
   assert.equal(Dimitri.HUMEUR, 4);
   assert.equal(Dimitri.RUBRIQUE, 'Jeux Frutiparc');
+  assert.match(Dimitri.SUJET, /paris/i);
+  assert.match(Dimitri.INTRO, /pronostics/);
 });
 
 test('un gros coup : le parieur mentionné, la mise, la cote, le gain', () => {
