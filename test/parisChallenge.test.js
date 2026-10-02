@@ -209,10 +209,14 @@ test('les cotes de demain, tirées de l’historique', async (t) => {
   assert.equal(cl.soi, false, 'le lien d’appareil ne s’affiche pas');
   assert.equal(cl.cote.or, 4.5);
   assert.equal(sw.candidats.find((c) => c.pseudo === 'clemence').cote.or, 15, 'pour anais, la cote entière');
-  // Un jeu sans historique : personne n'est coté.
+  // Un jeu sans historique : personne n'est coté ; la découverte par défaut.
   const sn = e.jeux.find((j) => j.cle === 'snake3_classic');
   assert.equal(sn.eligibles, 0);
   assert.deepEqual(sn.candidats, []);
+  assert.deepEqual(sn.decouverte, { podium: 3, or: 5 });
+  // Au Swapou, la découverte vient du taux de médailles du jeu.
+  assert.deepEqual(sw.decouverte, Cote.cotesDuJeu(HIST).decouverte);
+  assert.ok(sw.decouverte.or >= sw.decouverte.podium * 1.5 - 0.01);
 });
 
 test('les mises de demain : cote figée, plafond du jour, sur soi, refus', async (t) => {
@@ -235,10 +239,20 @@ test('les mises de demain : cote figée, plafond du jour, sur soi, refus', async
   const m2 = await post('/api/paris/challenge', { sid: sids.basile, jeu: 'swapou2_classic', type: 'podium', choix: 'papaye', mise: 30, cote: cp.podium.cote });
   assert.equal(m2.ok, true, JSON.stringify(m2));
   assert.equal((await parier('cyril', 'swapou2_classic', 'podium', 'personne-ici', 5)).code, 'choix');
-  const sansCote = await parier('cyril', 'swapou2_classic', 'podium', 'basile', 5);
-  assert.equal(sansCote.code, 'cote', 'basile n’a que 5 jours joués');
-  assert.match(sansCote.message, /au moins 7 jours/);
-  assert.equal((await parier('cyril', 'snake3_classic', 'podium', 'grenade', 5)).code, 'cote', 'pas d’historique sur ce jeu');
+  // Hors de la liste : la cote de découverte. Basile (5 jours, aucun podium)
+  // l'a, plafonnée par ses quelques jours ; au Frutisnake, que personne ne
+  // joue, c'est la cote par défaut.
+  await compte('dora', 500);
+  const decouv = Cote.cotesDuJeu(HIST).decouverte;
+  const surBasile = await parier('dora', 'swapou2_classic', 'podium', 'basile', 10);
+  assert.equal(surBasile.ok, true, JSON.stringify(surBasile));
+  assert.equal(surBasile.decouverte, true);
+  assert.equal(surBasile.cote, Math.min(decouv.podium, COTES.basile.podium.cote));
+  assert.equal(surBasile.cote, COTES.basile.podium.cote);
+  const surInconnu = await parier('dora', 'snake3_classic', 'or', 'grenade', 5);
+  assert.equal(surInconnu.ok, true, JSON.stringify(surInconnu));
+  assert.deepEqual([surInconnu.cote, surInconnu.decouverte, surInconnu.retour], [5, true, 25], 'jeu sans historique : ×5 en or');
+  assert.equal((await parier('dora', 'swapou2_classic', 'podium', 'dimitri-pnj', 5)).code, 'choix', 'pas de pari sur un PNJ');
   const soi = await parier('cyril', 'swapou2_classic', 'podium', 'cyril', 15);
   assert.equal(soi.ok, true, 'on peut miser sur soi');
   assert.equal(soi.cote, 3, '×3 au plus sur soi');
@@ -247,12 +261,12 @@ test('les mises de demain : cote figée, plafond du jour, sur soi, refus', async
   assert.equal((await parier('cyril', 'swapou2_classic', 'tierce', 'papaye', 5)).code, 'type');
   assert.equal(await solde('anais'), 450);
   const rows = await sql(`SELECT username, type, choix, mise, cote::float AS cote, retour FROM challenge_paris WHERE jour = $1 ORDER BY id`, [demain]);
-  assert.equal(rows.length, 5);
+  assert.equal(rows.length, 7, 'dont les deux paris de dora à la cote de découverte');
   const ap = rows.find((x) => x.username === 'anais' && x.type === 'podium');
   assert.equal(ap.mise, 30);
   assert.equal(ap.retour, Cote.retourDe(20, cg.podium.cote) + Cote.retourDe(10, cg.podium.cote), 'deux mises, chacune à sa cote');
   const vu = (await etat('anais')).jeux.find((j) => j.cle === 'swapou2_classic');
-  assert.equal(vu.mises, 120);
+  assert.equal(vu.mises, 130);
   assert.deepEqual(vu.mesParis.map((p) => [p.type, p.choix, p.mise, p.retour]),
     [['podium', 'grenade', 30, ap.retour], ['or', 'grenade', 20, Cote.retourDe(20, cg.or.cote)]]);
 });
@@ -280,12 +294,14 @@ test('la nuit passe, le roll règle à la cote — le parc paie les gagnants', a
   assert.equal(await solde('anais'), 450 + gainAnais);
   assert.equal(await solde('basile'), 470 + Cote.retourDe(30, cp.podium.cote));
   assert.equal(await solde('cyril'), 460, 'cyril pas médaillé, papaye pas en or');
+  assert.equal(await solde('dora'), 490, 'basile pas médaillé ; le Frutisnake n’a pas tourné : mise rendue');
   const rows = await sql(`SELECT username, type, statut, gain FROM challenge_paris ORDER BY username, type`);
   assert.deepEqual(rows.map((r) => [r.username, r.type, r.statut, r.gain]), [
     ['anais', 'or', 'gagne', Cote.retourDe(20, cg.or.cote)], ['anais', 'podium', 'gagne', Cote.retourDe(20, cg.podium.cote) + Cote.retourDe(10, cg.podium.cote)],
     ['basile', 'podium', 'gagne', Cote.retourDe(30, cp.podium.cote)],
     ['clemence', 'or', 'perdu', 0],
     ['cyril', 'or', 'perdu', 0], ['cyril', 'podium', 'perdu', 0],
+    ['dora', 'or', 'rembourse', 5], ['dora', 'podium', 'perdu', 0],
     ['myrtille', 'or', 'gagne', 40],
   ]);
   // Le compte rendu de la veille.
@@ -305,7 +321,7 @@ test('la nuit passe, le roll règle à la cote — le parc paie les gagnants', a
   assert.match(textes, new RegExp(Cote.retourDe(20, cg.or.cote) + ' kikooz obtenus par un pari gagné \\(grenade en or à Swapou 2'));
   // Le bilan du parc, côté admin : ce qu'il a encaissé moins ce qu'il a rendu.
   const adm = await (await fetch(BASE + '/api/admin/paris-challenge', { headers: ADMIN })).json();
-  const mises = 30 + 20 + 30 + 15 + 25 + 10 + 30;
+  const mises = 30 + 20 + 30 + 15 + 25 + 10 + 10 + 30;
   const rendus = gainAnais + Cote.retourDe(30, cp.podium.cote) + 40;
   assert.equal(adm.bilan.mises, mises);
   assert.equal(adm.bilan.gains, rendus);

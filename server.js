@@ -10552,6 +10552,7 @@ app.get('/api/paris/challenge', async (req, res) => {
       });
       jeux.push({
         cle: j.cle, nom: j.nom, jours: c.jours, eligibles: liste.length, candidats,
+        decouverte: c.decouverte || RC.decouverteDefaut,
         mises: ici.reduce((s, p) => s + (Number(p.mise) || 0), 0),
         mesParis: moi ? ici.filter((p) => p.username === moi).map((p) => ({
           type: p.type, choix: p.choix, nom: nomDe(p.choix), mise: p.mise,
@@ -10653,15 +10654,13 @@ app.post('/api/paris/challenge', async (req, res) => {
     const choix = normalizeUsername(b.choix);
     let existe = !!users[choix];
     if (!existe && choix) { try { existe = !!(await db.findUserByUsername(choix)); } catch (e) { existe = false; } }
-    if (!existe) return non('choix', 'Ce joueur n’existe pas.');
+    // Les PNJ ne jouent pas au Challenge : un pari sur eux serait perdu d'avance.
+    if (!existe || NPC_USERNAMES.has(choix)) return non('choix', 'Ce joueur n’existe pas.');
     const jour = parisChallengeDemain();
-    const RC = CoteChallenge.REGLES;
-    const ligne = ((await cotesChallenge(jour)).get(jeu.cle) || { joueurs: {} }).joueurs[choix];
-    if (!ligne || !ligne.eligible) {
-      return non('cote', `Pas de cote pour ${getDisplayName(choix)} à ${jeu.nom} : il faut avoir joué au moins ${RC.joursMin} jours au Challenge de ce jeu sur les ${RC.fenetre} derniers.`);
-    }
+    // Sa cote, ou — trop peu d'historique sur ce jeu — la cote de découverte.
+    const trouvee = CoteChallenge.coteDuJoueur((await cotesChallenge(jour)).get(jeu.cle), choix, type);
     const surSoi = (await comptesDeSoi(moi, [choix])).has(choix);
-    const cote = CoteChallenge.coteProposee(ligne[type].cote, surSoi, type);
+    const cote = CoteChallenge.coteProposee(trouvee.cote, surSoi, type);
     // La cote vue à l'écran est celle qu'on prend : si elle a bougé entre-temps
     // (roll, médaille corrigée), on le dit au lieu de miser à une autre.
     if (b.cote != null && b.cote !== '' && Math.abs(Number(b.cote) - cote) > 0.001) {
@@ -10686,7 +10685,7 @@ app.post('/api/paris/challenge', async (req, res) => {
     journalKikooz(user, { type: 'p', k: mise, n: libellePariChallenge({ jour, jeu: jeu.cle, type, choix }) + ', cote ' + coteLisible(cote) });
     notifyKikoozUpdate(moi, user.kikooz);
     console.log(`[PARIS] Challenge ${jour} ${jeu.cle}/${type} : ${moi} mise ${mise} sur ${choix} à ${cote} (rendra ${retour})`);
-    res.json({ ok: true, mise: pari.mise, cote, retour, retourTotal: pari.retour, solde: user.kikooz, dejaMise: deja + mise });
+    res.json({ ok: true, mise: pari.mise, cote, decouverte: trouvee.decouverte, retour, retourTotal: pari.retour, solde: user.kikooz, dejaMise: deja + mise });
   } catch (e) {
     console.error('[PARIS] mise Challenge :', e.message);
     non('erreur', 'Le pari n’a pas pu être enregistré.', 500);
@@ -10715,6 +10714,7 @@ app.get('/api/admin/paris-challenge', adminScope('challenge'), async (req, res) 
         const el = Object.entries(c.joueurs).filter(([, l]) => l.eligible).sort(favorisDabord);
         return {
           cle: j.cle, nom: j.nom, exclu: exclus.has(j.cle), jours: c.jours, eligibles: el.length,
+          decouverte: c.decouverte || CoteChallenge.REGLES.decouverteDefaut,
           favoris: el.slice(0, 5).map(([u, l]) => ({ pseudo: u, nom: getDisplayName(u), joues: l.joues, podiums: l.podiums, ors: l.ors, podium: l.podium.cote, or: l.or.cote })),
           demain: { parieurs: new Set(d.map((p) => p.username)).size, podium: somme(d.filter((p) => p.type === 'podium')), or: somme(d.filter((p) => p.type === 'or')),
             engage: somme(d, 'retour') },

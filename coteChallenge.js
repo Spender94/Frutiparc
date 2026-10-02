@@ -31,8 +31,18 @@
  *
  *   · et la cote « or » d'un joueur vaut TOUJOURS au moins 1,5 fois sa cote
  *     « médaillé » ;
- *   · moins de 7 jours joués sur le jeu dans la fenêtre : pas de cote, le
- *     joueur n'est pas proposé.
+ *   · moins de 7 jours joués sur le jeu dans la fenêtre : pas assez
+ *     d'historique pour une cote à soi — le joueur n'est pas dans la liste,
+ *     mais on peut parier sur lui à la COTE DE DÉCOUVERTE (ci-dessous).
+ *
+ * LA COTE DE DÉCOUVERTE. Celle d'un joueur « moyen » du jeu, qui vient jouer :
+ * p = le taux de base du jeu (ses médailles sur ses participations), marge et
+ * bornes comme ci-dessus, l'or au moins 1,5 fois le médaillé. Un jeu trop peu
+ * joué pour avoir un taux de base (moins de 10 participations dans la
+ * fenêtre) : ×3 en médaillé, ×5 en or. Un joueur qui a déjà un peu joué (1 à
+ * 6 jours) ne peut qu'y perdre : sa cote est la plus petite de la découverte
+ * et de celle que lui donnent ses quelques jours (en supposant qu'il vienne) —
+ * six médailles d'or en six jours ne se jouent pas à la cote d'un inconnu.
  *
  * LE RÈGLEMENT. La cote est figée à la mise : le parieur gagnant reçoit
  * `retour` = mise × cote (arrondi au kikooz inférieur), mise comprise ; le
@@ -44,6 +54,8 @@ const REGLES = Object.freeze({
   joursMin: 7,     // jours joués, au moins, pour avoir une cote
   lissage: 5,      // L : jours « moyens » prêtés à chacun
   ecartOr: 1.5,    // la cote « or » vaut au moins 1,5 × la cote « médaillé »
+  baseMin: 10,     // participations, au moins, pour tirer un taux de base du jeu
+  decouverteDefaut: Object.freeze({ podium: 3, or: 5 }),
   podium: Object.freeze({ marge: 0.10, min: 1.1, max: 10, maxSoi: 3 }),
   or: Object.freeze({ marge: 0.05, min: 1.65, max: 15, maxSoi: 4.5 }),
 });
@@ -57,7 +69,8 @@ const centiemeInferieur = (x) => Math.floor(x * 100 + 1e-9) / 100;
  *   une ligne par médaille (rang 1 = or).
  * @returns {{ jours, base: {podium, or}, joueurs: { [pseudo]: Ligne } }}
  *   Ligne : { joues, podiums, ors, eligible, podium: {p, cote}, or: {p, cote} }
- *   (`cote` null quand le joueur n'est pas éligible).
+ *   (un joueur non éligible porte sa cote de découverte) ; `decouverte` :
+ *   { podium, or }, la cote d'un joueur inconnu du jeu.
  */
 function cotesDuJeu(hist, regles) {
   const R = Object.assign({}, REGLES, regles || {});
@@ -89,6 +102,14 @@ function cotesDuJeu(hist, regles) {
     podium: participations ? nbPodiums / participations : 0.3,
     or: participations ? nbOrs / participations : 0.1,
   };
+  // La cote « or » d'une paire : au moins 1,5 fois la cote « médaillé ».
+  const paire = (pP, pO) => {
+    const cP = coteDe(pP, 'podium', R);
+    return { podium: cP, or: Math.min(R.or.max, Math.max(coteDe(pO, 'or', R), centiemeInferieur(cP * R.ecartOr))) };
+  };
+  const decouverte = participations >= R.baseMin
+    ? paire(base.podium, base.or)
+    : { podium: R.decouverteDefaut.podium, or: R.decouverteDefaut.or };
   const joueurs = {};
   for (const [u, s] of joues) {
     const j = s.size;
@@ -97,15 +118,28 @@ function cotesDuJeu(hist, regles) {
     const eligible = j >= R.joursMin;
     const proba = (succes, b) => (n ? (j / n) : 0) * (succes + R.lissage * b) / (j + R.lissage);
     const pP = proba(k, base.podium), pO = proba(o, base.or);
-    const cP = coteDe(pP, 'podium', R);
-    const cO = Math.min(R.or.max, Math.max(coteDe(pO, 'or', R), centiemeInferieur(cP * R.ecartOr)));
+    let c;
+    if (eligible) c = paire(pP, pO);
+    else {
+      // Peu de jours : la découverte, sauf si ces jours-là (s'il vient) disent moins.
+      const sien = paire((k + R.lissage * base.podium) / (j + R.lissage), (o + R.lissage * base.or) / (j + R.lissage));
+      c = { podium: Math.min(decouverte.podium, sien.podium), or: Math.min(decouverte.or, sien.or) };
+    }
     joueurs[u] = {
       joues: j, podiums: k, ors: o, eligible,
-      podium: { p: pP, cote: eligible ? cP : null },
-      or: { p: pO, cote: eligible ? cO : null },
+      podium: { p: pP, cote: c.podium },
+      or: { p: pO, cote: c.or },
     };
   }
-  return { jours: n, base, joueurs };
+  return { jours: n, base, decouverte, joueurs };
+}
+
+/** La cote d'un joueur pour ce jeu : la sienne, ou celle de découverte s'il est inconnu. */
+function coteDuJoueur(cotes, pseudo, type) {
+  const l = cotes && cotes.joueurs && cotes.joueurs[cle(pseudo)];
+  if (l) return { cote: l[type === 'or' ? 'or' : 'podium'].cote, decouverte: !l.eligible };
+  const d = (cotes && cotes.decouverte) || REGLES.decouverteDefaut;
+  return { cote: d[type === 'or' ? 'or' : 'podium'], decouverte: true };
 }
 
 /** La cote d'une probabilité pour un type de pari ('podium' ou 'or'), marge prise et bornes appliquées. */
@@ -144,4 +178,4 @@ function reglerCotes(paris, gagnants) {
   });
 }
 
-module.exports = { REGLES, cotesDuJeu, coteDe, coteProposee, retourDe, reglerCotes };
+module.exports = { REGLES, cotesDuJeu, coteDuJoueur, coteDe, coteProposee, retourDe, reglerCotes };

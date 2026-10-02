@@ -6377,7 +6377,8 @@ async function chargerParisChallengeAdmin() {
     const lignes = (d.jeux || []).map((j) => `<tr>
       <td><label><input type="checkbox" class="pc-jeu" value="${esc(j.cle)}" ${j.exclu ? '' : 'checked'}> ${esc(j.nom)}</label></td>
       <td>${j.eligibles} <small style="color:#777">(${j.jours} j. d'historique)</small></td>
-      <td style="font-size:11px">${(j.favoris || []).map((f) => `${esc(f.nom)} <span style="color:#777">${f.podiums}/${f.joues}</span> ${fx(f.podium)} · or ${fx(f.or)}`).join('<br>') || '—'}</td>
+      <td style="font-size:11px">${(j.favoris || []).map((f) => `${esc(f.nom)} <span style="color:#777">${f.podiums}/${f.joues}</span> ${fx(f.podium)} · or ${fx(f.or)}`).join('<br>') || '—'}
+        ${j.decouverte ? `<div style="color:#777">découverte : ${fx(j.decouverte.podium)} · or ${fx(j.decouverte.or)}</div>` : ''}</td>
       <td>${j.demain.parieurs} · ${j.demain.podium + j.demain.or} misés${j.demain.engage ? ` <small style="color:#777">(rendrait au plus ${j.demain.engage})</small>` : ''}</td>
       <td>${j.hier.mises || j.hier.ouverts ? `${j.hier.mises} misés · ${j.hier.payes} payés (${signe(j.hier.mises - j.hier.payes)}) · ${j.hier.gagnes} gagnés · ${j.hier.perdus} perdus${j.hier.rembourses ? ' · ' + j.hier.rembourses + ' remboursés' : ''}${j.hier.ouverts ? ' · <b style="color:#c8860a">' + j.hier.ouverts + ' en attente du roll</b>' : ''}` : '—'}</td>
     </tr>`).join('');
@@ -6392,7 +6393,9 @@ async function chargerParisChallengeAdmin() {
         <div style="color:#777;margin:6px 0 10px;line-height:1.45">
           Les joueurs misent <b>la veille, jusqu'à minuit</b>, sur les médaillés du Challenge du lendemain (tuile « Paris » : une fenêtre du bureau, une feuille sur mobile) :
           « sera médaillé » ou « aura l'or ». <b>Cote fixe</b>, figée à la mise, tirée des ${C.fenetre || 30} derniers jours de Challenge du joueur sur le jeu
-          (fréquence de ses podiums, ou de ses médailles d'or, lissée) ; il faut ${C.joursMin || 7} jours joués pour être coté.
+          (fréquence de ses podiums, ou de ses médailles d'or, lissée) ; il faut ${C.joursMin || 7} jours joués pour avoir sa propre cote.
+          Un joueur sans assez d'historique se parie à la <b>cote de découverte</b> du jeu (celle d'un joueur moyen, tirée du taux de médailles du jeu ;
+          ${fx((C.decouverteDefaut || {}).podium || 3)} / ${fx((C.decouverteDefaut || {}).or || 5)} pour un jeu trop peu joué), jamais plus que ce que ses quelques jours lui donnent.
           <b>Médaillé</b> : marge ${Math.round(P.marge * 100)} %, de ${fx(P.min)} à ${fx(P.max)}, ${fx(P.maxSoi)} au plus sur soi (ou un compte du même appareil).
           <b>Or</b>, le pari risqué, paie davantage : marge ${Math.round(O.marge * 100)} %, de ${fx(O.min)} à ${fx(O.max)}, ${fx(O.maxSoi)} au plus sur soi,
           et toujours au moins ${String(C.ecartOr || 1.5).replace('.', ',')} fois la cote « médaillé » du joueur.

@@ -87,16 +87,36 @@ test('un jour d’absence compte comme un jour sans podium', () => {
   assert.equal(mi.podium.cote, C.coteDe(attendu, 'podium'));
 });
 
-test('moins de 7 jours joués : pas de cote', () => {
+test('moins de 7 jours joués : la cote de découverte, jamais plus que ses quelques jours', () => {
   const h = historique();
   for (const jour of JOURS.slice(0, 6)) h.joues.push({ username: 'nouveau', jour });
   for (const jour of JOURS.slice(0, 7)) h.joues.push({ username: 'sept', jour });
-  const r = C.cotesDuJeu(h).joueurs;
-  assert.equal(r.nouveau.eligible, false);
-  assert.equal(r.nouveau.podium.cote, null);
-  assert.equal(r.nouveau.or.cote, null);
-  assert.equal(r.sept.eligible, true);
-  assert.ok(r.sept.podium.cote > 1);
+  // « flash » : 5 jours, 5 médailles d'or.
+  for (const jour of JOURS.slice(0, 5)) {
+    h.joues.push({ username: 'flash', jour });
+    h.medailles.push({ username: 'flash', jour, rang: 1 });
+  }
+  const r = C.cotesDuJeu(h);
+  const d = r.decouverte;
+  // Le joueur moyen : base 90 podiums / 311 participations… la cote suit le taux de base.
+  assert.equal(d.podium, C.coteDe(r.base.podium, 'podium'));
+  assert.ok(d.or >= Math.floor(d.podium * 1.5 * 100 + 1e-9) / 100);
+  assert.equal(r.joueurs.nouveau.eligible, false);
+  assert.deepEqual([r.joueurs.nouveau.podium.cote, r.joueurs.nouveau.or.cote], [d.podium, d.or], 'rien gagné : la découverte');
+  assert.ok(r.joueurs.flash.or.cote < d.or, 'cinq ors en cinq jours : moins que la découverte');
+  assert.ok(r.joueurs.flash.podium.cote < d.podium);
+  assert.equal(r.joueurs.sept.eligible, true);
+  // Un inconnu du jeu : la découverte ; un joueur peu venu : la sienne.
+  assert.deepEqual(C.coteDuJoueur(r, 'Personne', 'or'), { cote: d.or, decouverte: true });
+  assert.deepEqual(C.coteDuJoueur(r, 'flash', 'or'), { cote: r.joueurs.flash.or.cote, decouverte: true });
+  assert.deepEqual(C.coteDuJoueur(r, 'as', 'podium'), { cote: 2.33, decouverte: false });
+});
+
+test('un jeu trop peu joué : découverte par défaut, ×3 et ×5', () => {
+  const r = C.cotesDuJeu({ joues: [{ username: 'a', jour: '2026-09-01' }], medailles: [] });
+  assert.deepEqual(r.decouverte, { podium: 3, or: 5 });
+  assert.deepEqual(C.cotesDuJeu({ joues: [], medailles: [] }).decouverte, { podium: 3, or: 5 });
+  assert.deepEqual(C.coteDuJoueur(null, 'x', 'podium'), { cote: 3, decouverte: true });
 });
 
 test('une médaille sans score archivé vaut un jour joué', () => {

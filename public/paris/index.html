@@ -104,6 +104,7 @@
   .btn-p { border: 0; border-radius: 10px; background: #E3756A; color: #fff; font: bold 10px Verdana, sans-serif; padding: 4px 10px; cursor: pointer; }
   .btn-p:disabled { background: #c9b1ad; cursor: default; }
   .autre { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+  .autre .decouv { color: #6c8f3a; font-size: 10px; flex-basis: 100%; }
   .autre input { width: 130px; padding: 3px 6px; border: 1px solid #8bc55a; border-radius: 3px; font: 11px Verdana, sans-serif; }
   .podiums { line-height: 1.7; padding: 4px 6px; }
   @media (max-width: 420px) {
@@ -319,7 +320,8 @@
       + 'ou « or » (le premier). Chaque joueur a sa <b>cote</b>, tirée de ses ' + R.fenetre + ' derniers jours de Challenge sur le jeu : '
       + 'si tu vois juste, tu reçois ta mise multipliée par la cote, celle du moment où tu mises. Un joueur qui ne vient pas jouer fait perdre le pari. '
       + 'L’or est plus risqué, il paie plus : sa cote vaut toujours au moins ' + String(R.ecartOr).replace('.', ',') + ' fois celle du médaillé. '
-      + 'Seuls les joueurs venus au moins ' + R.joursMin + ' jours ont une cote. Tu peux miser sur toi, à ' + cote(R.podium.maxSoi) + ' au plus en médaillé et ' + cote(R.or.maxSoi) + ' en or. '
+      + 'La liste montre les joueurs venus au moins ' + R.joursMin + ' jours ; pour un autre (même toi, si tu n’y joues jamais), tape son pseudo : il a la cote de découverte du jeu, celle d’un joueur moyen. '
+      + 'Tu peux miser sur toi, à ' + cote(R.podium.maxSoi) + ' au plus en médaillé et ' + cote(R.or.maxSoi) + ' en or. '
       + 'Les mises se ferment ce soir à minuit. Maximum : ' + kz(d.plafond) + ' par jour, tous jeux confondus.</div>';
     if (d.moi) {
       h += '<div class="reglage"><span class="bascule"><button data-type="podium" class="' + (typeC === 'podium' ? 'on' : '') + '">Médaillé</button>'
@@ -348,10 +350,15 @@
           + '<button class="btn-p" data-jeu="' + esc(j.cle) + '" data-choix="' + esc(c.pseudo) + '" data-nom="' + esc(c.nom) + '" data-cote="' + ici + '"'
           + (d.moi && reste > 0 ? '' : ' disabled') + '>Parier</button></div>';
       });
-      if (!j.candidats.length) h += '<p class="vide">Personne n’a encore assez joué à ce jeu (' + R.joursMin + ' jours sur ' + R.fenetre + ') pour avoir une cote.</p>';
-      if (d.moi && reste > 0 && j.eligibles > j.candidats.length) {
+      if (!j.candidats.length) h += '<p class="vide">Personne n’a encore assez joué à ce jeu (' + R.joursMin + ' jours sur ' + R.fenetre + ') pour avoir sa propre cote.</p>';
+      // N'importe quel joueur, même absent de la liste : sans historique, il
+      // a la cote de découverte du jeu (celle d'un joueur moyen).
+      var dc = j.decouverte || {};
+      if (d.moi && reste > 0) {
         h += '<div class="autre"><input placeholder="un autre joueur" id="autre-' + esc(j.cle) + '">'
-          + '<button class="btn-p" data-jeu="' + esc(j.cle) + '" data-autre="1">Parier</button></div>';
+          + '<button class="btn-p" data-jeu="' + esc(j.cle) + '" data-autre="1">Parier</button>'
+          + '<span class="decouv">pas dans la liste ? cote de découverte : ' + cote(dc.podium) + ' en médaillé, ' + cote(dc.or) + ' en or'
+          + ' <small>(moins s’il a déjà un peu joué ; sur toi, ' + cote(R.podium.maxSoi) + ' et ' + cote(R.or.maxSoi) + ' au plus)</small></span></div>';
       }
       if (j.mesParis.length) {
         h += '<div class="mien">Tes paris : ' + j.mesParis.map(function (p) {
@@ -409,7 +416,8 @@
       body: JSON.stringify({ sid: sid, jeu: jeu, type: typeC, choix: choix, mise: mise, cote: c }),
     }).then(function (r) { return r.json(); })
       .then(function (j) {
-        msgC[jeu] = j.ok ? { ok: true, texte: 'C’est parié : ' + kz(mise) + ' sur ' + nom + ' ' + quoi + ' à ' + cote(j.cote) + ' — tu recevras ' + kz(j.retour) + ' s’il l’est.' }
+        msgC[jeu] = j.ok ? { ok: true, texte: 'C’est parié : ' + kz(mise) + ' sur ' + nom + ' ' + quoi + ' à ' + cote(j.cote)
+            + (j.decouverte ? ' (cote de découverte)' : '') + ' — tu recevras ' + kz(j.retour) + ' s’il l’est.' }
           : { texte: j.message || 'Le pari n’a pas pu être enregistré.' };
         return chargerChallenge();
       })
