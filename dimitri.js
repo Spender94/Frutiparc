@@ -32,6 +32,7 @@ const INTRO = `Bonjour bonjour ! Moi c'est ${NOM}, je tiens le comptoir des pari
   + `Débattez, commentez, chambrez-vous gentiment !\n\n`
   + `Et chaque fois que quelqu'un réussit un [b]gros coup[/b] — un pari qui rapporte gros, sur un tournoi ou sur les `
   + `médaillés du Challenge —, je viens l'annoncer ici : le parieur, sa mise, la cote et ce qu'il a empoché.\n\n`
+  + `Et chaque lundi, je sacre le [b]Prunostiqueur de la semaine[/b] : celui qui a gagné le plus de kikooz en pariant.\n\n`
   + `Pour parier : l’icône « Prunostics » du bureau. Son onglet « Registre » garde la trace de tous vos paris. `
   + `À vos pronostics, je suis ravi d'avance !`;
 
@@ -115,4 +116,35 @@ function messageGrosCoups(coups) {
   return l.join('\n');
 }
 
-module.exports = { PSEUDO_NPC, NOM, BOUILLE, HUMEUR, RUBRIQUE, SUJET, INTRO, messageGrosCoups };
+/**
+ * Le Prunostiqueur de la semaine, chaque lundi.
+ * @param {{ semaine: string, gagnant: {nom, net, paris, gagnes}, suivants: Array<{nom, net}>, objet: string|null }} s
+ *   `semaine` : « du lundi 5 au dimanche 11 octobre » ; `objet` : le nom de
+ *   l'objet de la boutique offert, s'il y en a un.
+ */
+function messageSemaine(s) {
+  const g = s.gagnant;
+  const tirage = tirageSeme(hacher(`semaine:${s.semaine}:${g.nom}:${g.net}`));
+  const ouvertures = [
+    () => `Roulement de tambour… le [b]Prunostiqueur de la semaine[/b] est connu !`,
+    () => `Le comptoir a fait ses comptes, et le [b]Prunostiqueur de la semaine[/b], c'est…`,
+    () => `Mesdames et messieurs, voici le [b]Prunostiqueur de la semaine[/b] !`,
+  ];
+  const l = [choisir(tirage, ouvertures)(), ''];
+  l.push(`🏆 @${g.nom}, avec [b]+${nombre(g.net)} kikooz[/b] de bénéfice ${s.semaine} (${g.gagnes} pari${g.gagnes > 1 ? 's' : ''} gagné${g.gagnes > 1 ? 's' : ''} sur ${g.paris}).`);
+  if (s.objet) l.push(`Il repart avec un cadeau du parc : [b]${s.objet}[/b] !`);
+  const suivants = (s.suivants || []).filter((x) => x && x.net > 0).slice(0, 2);
+  if (suivants.length) {
+    l.push('');
+    l.push(`Sur le podium aussi : ${suivants.map((x, i) => `${i === 0 ? '🥈' : '🥉'} @${x.nom} (+${nombre(x.net)})`).join(', ')}.`);
+  }
+  l.push('');
+  l.push(choisir(tirage, [
+    () => `Une nouvelle semaine commence : à vos Prunostics !`,
+    () => `Les compteurs sont remis à zéro. Qui fera mieux cette semaine ?`,
+    () => `Bravo ! Et pour les autres : la revanche commence aujourd'hui.`,
+  ])());
+  return l.join('\n');
+}
+
+module.exports = { PSEUDO_NPC, NOM, BOUILLE, HUMEUR, RUBRIQUE, SUJET, INTRO, messageGrosCoups, messageSemaine };

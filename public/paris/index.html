@@ -289,14 +289,17 @@
     var choisi = function (type) {
       return ticket && ticket.sorte === 'c' && ticket.jeu === j.cle && ticket.choix === c.pseudo && ticket.type === type;
     };
+    // Le bouton porte la cote du POT à l'instant (le pot entier sur ce qui est
+    // misé sur lui) ; personne n'a encore misé sur lui : « à prendre ».
     var bouton = function (type) {
+      var pt = c.pot[type] || {};
       return '<button class="c' + (type === 'or' ? ' or' : '') + (choisi(type) ? ' choisi' : '') + '" data-jeu="' + esc(j.cle) + '" data-choix="' + esc(c.pseudo)
-        + '" data-type="' + type + '"' + (actif ? '' : ' disabled') + '><b>' + cote(c.cote[type]) + '</b><span>' + (type === 'or' ? 'en or' : 'médaillé') + '</span></button>';
+        + '" data-type="' + type + '"' + (actif ? '' : ' disabled') + '><b>' + (pt.cote ? cote(pt.cote) : 'à prendre') + '</b><span>'
+        + (type === 'or' ? 'en or' : 'médaillé') + (pt.mises ? ' · ' + nombre(pt.mises) : '') + '</span></button>';
     };
     var stats = c.joues
       ? c.podiums + ' podium' + (c.podiums > 1 ? 's' : '') + ' sur ' + c.joues + ' j.' + (c.ors ? ' · ' + c.ors + ' en or' : '')
-      : 'jamais venu ces 30 jours';
-    if (c.decouverte) stats += ' · cote de découverte';
+      : 'pas venu ces 30 jours';
     var sel = ticket && ticket.sorte === 'c' && ticket.jeu === j.cle && ticket.choix === c.pseudo;
     var h = '<div class="ligne' + (sel ? ' sel' : '') + (classe ? ' ' + classe : '') + '"><div class="nom">' + esc(c.nom)
       + (c.soi ? ' <span class="toi">(toi)</span>' : '') + '<small>' + stats + '</small></div>' + bouton('podium') + bouton('or') + '</div>';
@@ -310,16 +313,17 @@
       zoneC.innerHTML = '<p class="vide">Les Prunostics du Challenge sont fermés pour le moment. Passe voir l’onglet Tournois !</p>';
       return;
     }
-    var R = d.regles || { fenetre: 30, joursMin: 7, ecartOr: 1.5, podium: { maxSoi: 3 }, or: { maxSoi: 4.5 } };
     var reste = resteDuJour();
-    var h = '<div class="soustitre"><b>Challenge de ' + esc(d.jourLisible) + '</b><span>les médaillés de demain · mises jusqu’à minuit</span></div>'
+    var noms = d.jeux.map(function (j) { return j.nom; });
+    var h = '<div class="soustitre"><b>Challenge de ' + esc(d.jourLisible) + '</b><span>'
+      + (noms.length ? 'les jeux du jour : ' + esc(noms.join(' et ')) : 'pas de jeu ouvert') + ' · mises jusqu’à minuit</span></div>'
       + '<details class="regle"><summary>Comment ça marche ?</summary><div>'
-      + 'Touche la cote d’un joueur : <b>médaillé</b> s’il finit sur le podium demain (or, argent ou bronze), <b>en or</b> s’il gagne. '
-      + 'Choisis ta mise sur le ticket : si tu vois juste, tu reçois ta mise multipliée par la cote, celle du moment où tu mises. '
-      + 'Chaque cote est tirée des ' + R.fenetre + ' derniers jours de Challenge du joueur sur le jeu. L’or est plus risqué, il paie plus : '
-      + 'au moins ' + String(R.ecartOr).replace('.', ',') + ' fois le médaillé. Un joueur pas dans la liste (même toi, si tu n’y joues jamais) ? '
-      + 'Cherche-le : il a la cote de découverte du jeu. Sur toi, la cote est plafonnée à ' + cote(R.podium.maxSoi) + ' en médaillé et ' + cote(R.or.maxSoi) + ' en or. '
-      + 'Un joueur qui ne vient pas jouer fait perdre le pari. Maximum : ' + kz(d.plafond) + ' par jour, tous jeux confondus.</div></details>';
+      + 'Chaque jour, <b>' + (noms.length || 2) + ' jeux</b> du Challenge sont ouverts aux Prunostics (ils changent tous les jours). '
+      + 'Touche un joueur : <b>médaillé</b> s’il finit sur le podium demain (or, argent ou bronze), <b>en or</b> s’il gagne. '
+      + 'C’est un <b>pari mutuel</b> : toutes les mises d’un pari font un pot, que se partagent ceux qui ont vu juste, au prorata de leur mise. '
+      + 'Plus tu vas contre la foule, plus tu gagnes ! La cote affichée est celle du pot à l’instant : elle bouge jusqu’à minuit. '
+      + 'Si personne n’a vu juste, chacun récupère sa mise. Tu peux miser sur toi — et tout le monde sur n’importe qui : cherche son pseudo. '
+      + 'Maximum : ' + kz(d.plafond) + ' par jour, tous jeux confondus. Et chaque lundi, Dimitri sacre le <b>Prunostiqueur de la semaine</b>.</div></details>';
     if (!d.moi) h += CONNEXION;
     else {
       h += '<div class="budget"><div class="l"><span>Misé pour demain : <b>' + kz(d.dejaMise) + '</b></span><span>il te reste <b>' + nombre(reste) + '</b> sur ' + nombre(d.plafond) + '</span></div>'
@@ -332,40 +336,45 @@
     if (mes.length) {
       h += '<div class="mes"><h4>Mes paris pour demain</h4>' + mes.map(function (x) {
         var p = x.p;
-        return (p.type === 'or' ? '🥇 ' : '🏅 ') + esc(p.nom) + (p.type === 'or' ? ' en or' : ' médaillé') + ' à ' + esc(x.j.nom) + ' — '
-          + nombre(p.mise) + (p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) : '');
+        var fin = p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)'
+          : ' → ≈ <b>' + nombre(estimation(x.j, p.type, p.choix, 0)) + '</b> si le pot en restait là';
+        return (p.type === 'or' ? '🥇 ' : '🏅 ') + esc(p.nom) + (p.type === 'or' ? ' en or' : ' médaillé') + ' à ' + esc(x.j.nom) + ' — ' + nombre(p.mise) + fin;
+      }).join('<br>') + (d.autresParis || []).map(function (p) {
+        return '<br>🏅 ' + esc(p.texte) + ' — ' + nombre(p.mise) + (p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)' : '');
+      }).join('') + '</div>';
+    } else if ((d.autresParis || []).length) {
+      h += '<div class="mes"><h4>Mes paris pour demain</h4>' + d.autresParis.map(function (p) {
+        return '🏅 ' + esc(p.texte) + ' — ' + nombre(p.mise) + (p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)' : '');
       }).join('<br>') + '</div>';
     }
     // Les jeux en pastilles : celui choisi, sinon le premier où il se passe quelque chose.
     if (!jeuActif || !d.jeux.some(function (j) { return j.cle === jeuActif; })) {
-      var vivant = d.jeux.filter(function (j) { return j.mesParis.length || j.mises; })[0]
-        || d.jeux.filter(function (j) { return j.candidats.length; })[0] || d.jeux[0];
+      var vivant = d.jeux.filter(function (j) { return j.mesParis.length; })[0] || d.jeux[0];
       jeuActif = vivant ? vivant.cle : null;
     }
     h += '<div class="jeux">' + d.jeux.map(function (j) {
       return '<button data-pastille="' + esc(j.cle) + '" class="' + (j.cle === jeuActif ? 'on' : '') + '">' + esc(j.nom)
-        + (j.eligibles ? ' <em>· ' + j.eligibles + '</em>' : '') + (j.mesParis.length ? ' <span class="pt">●</span>' : '') + '</button>';
+        + ' <em>· ' + kz(j.pots.podium + j.pots.or) + '</em>' + (j.mesParis.length ? ' <span class="pt">●</span>' : '') + '</button>';
     }).join('') + '</div>';
     var j = d.jeux.filter(function (x) { return x.cle === jeuActif; })[0];
     if (j) {
-      var dc = j.decouverte || {};
+      h += '<p class="decouv">Pot « médaillé » : <b>' + kz(j.pots.podium) + '</b> · pot « or » : <b>' + kz(j.pots.or) + '</b></p>';
       if (d.moi) {
-        h += '<div class="cherche"><input placeholder="🔍 Un autre joueur…" data-cherche="' + esc(j.cle) + '"><button data-chercher="' + esc(j.cle) + '">Coter</button></div>';
+        h += '<div class="cherche"><input placeholder="🔍 Un autre joueur…" data-cherche="' + esc(j.cle) + '"><button data-chercher="' + esc(j.cle) + '">Voir</button></div>';
       }
       if (trouve[j.cle]) {
         var tr = trouve[j.cle];
         h += tr.erreur ? '<p class="decouv" style="color:#b31111">' + esc(tr.erreur) + '</p>' : ligneJoueur(j, tr, 'trouve');
       }
-      var liste = toutVoir[j.cle] ? j.candidats : j.candidats.slice(0, 5);
-      liste.forEach(function (c) { h += ligneJoueur(j, c); });
+      var liste = toutVoir[j.cle] ? j.candidats : j.candidats.slice(0, 6);
+      liste.forEach(function (c) { if (!trouve[j.cle] || trouve[j.cle].pseudo !== c.pseudo) h += ligneJoueur(j, c); });
       if (!j.candidats.length) {
-        h += '<p class="vide">Personne n’a encore assez joué à ' + esc(j.nom) + ' (' + R.joursMin + ' jours sur ' + R.fenetre + ') pour avoir sa propre cote. '
-          + 'Cherche un joueur ci-dessus : il aura la cote de découverte, ' + cote(dc.podium) + ' en médaillé et ' + cote(dc.or) + ' en or.</p>';
+        h += '<p class="vide">Personne n’est encore venu régulièrement à ' + esc(j.nom) + '. Cherche un joueur ci-dessus — pourquoi pas toi ?</p>';
       } else if (j.candidats.length > liste.length) {
-        h += '<div class="plus">+ ' + (j.candidats.length - liste.length) + ' autres joueurs cotés · <button data-toutvoir="' + esc(j.cle) + '">tout voir</button></div>';
-      } else if (j.candidats.length) {
-        h += '<p class="decouv">Pas dans la liste ? Cherche-le : cote de découverte ' + cote(dc.podium) + ' en médaillé, ' + cote(dc.or) + ' en or (moins s’il a déjà un peu joué).</p>';
+        h += '<div class="plus">+ ' + (j.candidats.length - liste.length) + ' autres habitués · <button data-toutvoir="' + esc(j.cle) + '">tout voir</button></div>';
       }
+    } else {
+      h += '<p class="vide">Aucun jeu n’est ouvert aux Prunostics demain.</p>';
     }
     // Hier : les podiums, et ce que j'y avais misé.
     var hier = d.hier || {};
@@ -390,20 +399,34 @@
     if (tr && tr.pseudo === pseudo) return { j: j, c: tr };
     return { j: j, c: j.candidats.filter(function (c) { return c.pseudo === pseudo; })[0] };
   }
+  // Pari mutuel : ce que rapporteraient mes mises sur ce joueur (plus `mise`
+  // de plus) si le pot en restait là. Pour « médaillé », c'est un maximum :
+  // le pot se partage aussi avec ceux qui ont misé sur les deux autres médaillés.
+  function estimation(j, type, pseudo, mise) {
+    var c = trouverCandidat(j.cle, pseudo);
+    var surLui = c && c.c && c.c.pot[type] ? c.c.pot[type].mises : 0;
+    var miens = 0;
+    j.mesParis.forEach(function (p) { if (p.type === type && p.choix === pseudo && p.retour == null) miens += p.mise; });
+    var pot = j.pots[type] + mise, sur = surLui + mise, moi = miens + mise;
+    return sur > 0 ? Math.floor(pot * moi / sur) : moi;
+  }
   function ouvrirTicketChallenge(cleJeu, pseudo, type) {
     var t = trouverCandidat(cleJeu, pseudo);
     if (!t || !t.c) return;
-    var c = t.c, j = t.j, k = c.cote[type];
+    var c = t.c, j = t.j;
     var quoi = type === 'or' ? 'en or' : 'médaillé';
+    var pt = c.pot[type] || {};
     ticket = {
-      sorte: 'c', jeu: j.cle, choix: c.pseudo, type: type, cote: k, mise: ticket && ticket.mise,
+      sorte: 'c', jeu: j.cle, choix: c.pseudo, type: type, mise: ticket && ticket.mise,
       reste: resteDuJour(), plein: 'Tu as misé ton maximum de ' + kz(etatC.plafond) + ' pour demain.',
-      titre: (type === 'or' ? '🥇 ' : '🏅 ') + esc(c.nom) + ' ' + quoi + ' à ' + esc(j.nom) + ', demain — cote ' + cote(k)
-        + (c.decouverte ? ' <small style="font-weight:normal;color:#6c8f3a">(découverte)</small>' : ''),
+      titre: (type === 'or' ? '🥇 ' : '🏅 ') + esc(c.nom) + ' ' + quoi + ' à ' + esc(j.nom) + ', demain'
+        + ' <small style="font-weight:normal;color:#6c8f3a">— pot ' + (type === 'or' ? '« or »' : '« médaillé »') + ' : ' + kz(j.pots[type])
+        + (pt.mises ? ', dont ' + kz(pt.mises) + ' sur ' + esc(c.nom) : ', personne sur ' + esc(c.nom) + ' pour l’instant') + '</small>',
       gainHtml: function (mise) {
         if (!(mise >= 1)) return '<small>Indique une mise d’au moins 1 kikooz.</small>';
-        var r = retour(mise, k);
-        return 'S’' + (type === 'or' ? 'il gagne' : 'il est médaillé') + ', tu reçois <b>' + kz(r) + '</b> <small>(+' + nombre(r - mise) + ')</small>';
+        var r = estimation(j, type, c.pseudo, mise);
+        return 'S’' + (type === 'or' ? 'il gagne' : 'il est médaillé') + ', tu reçois ' + (type === 'or' ? '≈ ' : 'jusqu’à ≈ ') + '<b>' + kz(r) + '</b> '
+          + '<small>si le pot en restait là — il grossit jusqu’à minuit' + (type === 'or' ? '' : ', et se partage avec ceux qui ont misé sur les autres médaillés') + '</small>';
       },
     };
   }
@@ -440,7 +463,7 @@
     var champ = document.querySelector('[data-cherche="' + cleJeu + '"]');
     var pseudo = champ ? champ.value.trim() : '';
     if (!pseudo) return;
-    fetch('/api/paris/challenge/cote?sid=' + encodeURIComponent(sid) + '&jeu=' + encodeURIComponent(cleJeu) + '&choix=' + encodeURIComponent(pseudo), { cache: 'no-store' })
+    fetch('/api/paris/challenge/joueur?sid=' + encodeURIComponent(sid) + '&jeu=' + encodeURIComponent(cleJeu) + '&choix=' + encodeURIComponent(pseudo), { cache: 'no-store' })
       .then(json)
       .then(function (r) {
         if (!r.ok) { trouve[cleJeu] = { erreur: r.message || 'Joueur introuvable.' }; ticket = null; rendreChallenge(); return; }
@@ -457,19 +480,15 @@
     t.envoi = true; t.erreur = null; rendreChallenge();
     fetch('/api/paris/challenge', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sid: sid, jeu: t.jeu, type: t.type, choix: t.choix, mise: t.mise, cote: t.cote }),
+      body: JSON.stringify({ sid: sid, jeu: t.jeu, type: t.type, choix: t.choix, mise: t.mise }),
     }).then(json).then(function (r) {
       t.envoi = false;
-      if (!r.ok) {
-        t.erreur = r.message || 'Le pari n’a pas pu être enregistré.';
-        // La cote a bougé : le ticket prend la nouvelle, au joueur de revalider.
-        if (r.code === 'cote_changee' && r.cote) { t.cote = r.cote; return chargerChallenge().then(function () { ouvrirTicketChallenge(t.jeu, t.choix, t.type); ticket.erreur = t.erreur; ticket.mise = t.mise; rendreChallenge(); }); }
-        rendreChallenge();
-        return;
-      }
+      if (!r.ok) { t.erreur = r.message || 'Le pari n’a pas pu être enregistré.'; rendreChallenge(); return; }
       var c = trouverCandidat(t.jeu, t.choix);
       toast = { vue: 'challenge', texte: 'C’est parié ! ' + kz(t.mise) + ' sur ' + (c && c.c ? c.c.nom : t.choix)
-        + (t.type === 'or' ? ' en or' : ' médaillé') + ' (' + cote(r.cote) + ') : ' + kz(r.retour) + ' à la clé.' };
+        + (t.type === 'or' ? ' en or' : ' médaillé') + ' — pot de ' + kz(r.pot) + ' : ≈ ' + kz(r.estime) + ' pour toi s’il en restait là.' };
+      // Le joueur cherché passe dans la liste (on a misé sur lui).
+      delete trouve[t.jeu];
       ticket = null;
       majSolde(r.solde);
       return chargerChallenge();
@@ -611,6 +630,25 @@
   }
   function rendreRegistre(d) {
     var h = '';
+    // Le Prunostiqueur de la semaine.
+    var s = d.semaine;
+    if (s) {
+      h += '<div class="regbloc"><h3>🏆 Prunostiqueur de la semaine <small style="font-weight:normal;color:#6c8f3a">— ' + esc(s.lisible)
+        + ', bénéfice net, ' + s.minParis + ' paris réglés au moins</small></h3>';
+      if (s.passee) h += '<p class="decouv" style="margin:0 0 6px">La semaine dernière : <b>' + esc(s.passee.nom) + '</b> (+' + kz(s.passee.net) + '), sacré par Dimitri.</p>';
+      if (s.classement.length) {
+        h += '<table class="reg"><tbody>' + s.classement.map(function (c) {
+          return '<tr' + (c.soi ? ' style="background:#FFF6F4"' : '') + '><td class="n" style="width:24px">' + (c.rang === 1 ? '🥇' : c.rang === 2 ? '🥈' : c.rang === 3 ? '🥉' : c.rang) + '</td>'
+            + '<td><b>' + esc(c.nom) + '</b>' + (c.soi ? ' <small>(toi)</small>' : '') + ' <small style="color:#6c8f3a">' + c.gagnes + ' gagné' + (c.gagnes > 1 ? 's' : '') + ' sur ' + c.paris + '</small></td>'
+            + '<td class="n"><b class="' + (c.net >= 0 ? 'gagne' : 'perdu') + '">' + (c.net > 0 ? '+' : '') + nombre(c.net) + '</b></td></tr>';
+        }).join('') + '</tbody></table>';
+        if (d.moi && !s.moi) h += '<p class="decouv" style="margin:6px 0 0">Pas encore classé cette semaine : il te faut ' + s.minParis + ' paris réglés.</p>';
+        else if (s.moi && s.moi.rang > 10) h += '<p class="decouv" style="margin:6px 0 0">Toi : ' + s.moi.rang + 'e (' + (s.moi.net > 0 ? '+' : '') + nombre(s.moi.net) + ').</p>';
+      } else {
+        h += '<p class="vide" style="padding-left:0">Personne n’est encore classé cette semaine : ' + s.minParis + ' paris réglés pour entrer dans la course.</p>';
+      }
+      h += '</div>';
+    }
     if (!d.moi) {
       h += '<p class="connexion">Pour voir tes paris, <a href="/light.html">connecte-toi au parc</a>.</p>';
     } else {

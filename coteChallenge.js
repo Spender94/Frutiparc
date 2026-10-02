@@ -1,5 +1,16 @@
 'use strict';
 /*
+ * ⚠ LES PRUNOSTICS DU CHALLENGE SONT REDEVENUS UN PARI MUTUEL (paris.js) : une
+ * cote fixe calculée se trompe, et c'est le parc qui payait l'erreur — des
+ * kikooz créés à chaque cote trop généreuse. Ce module ne fixe donc plus
+ * aucun gain. Il sert encore à deux choses :
+ *   · `cotesDuJeu` : l'historique d'un jeu (jours joués, podiums, ors de
+ *     chacun) — les habitués proposés aux parieurs, et le tirage des jeux du
+ *     jour (les jeux vraiment joués) ;
+ *   · `reglerCotes` : le règlement des paris posés à cote fixe pendant la
+ *     semaine où elle a eu cours — payés comme promis.
+ * Le reste (cotes, découverte) décrit cette règle d'une semaine.
+ *
  * LES COTES DU CHALLENGE — une cote fixe par joueur, tirée de son historique.
  *
  * Pas de base, pas d'horloge : on donne l'historique d'un jeu (qui a joué

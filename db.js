@@ -4541,27 +4541,33 @@ async function parisChallengeDe(username, limit = 100) {
     [String(username || '').toLowerCase(), Math.max(1, Math.min(Number(limit) || 100, 500))]);
   return rows;
 }
-// Une mise de plus sur le même pari s'ajoute à la première : le retour promis
-// est la somme des deux (chacune à sa cote), la cote affichée leur moyenne.
+// Une mise de plus sur le même pari s'ajoute à la première. Pari mutuel (le
+// cas d'aujourd'hui) : ni cote ni retour, ils restent vides. Pari à cote fixe
+// (l'ancienne règle) : le retour promis est la somme des deux, chacune à sa
+// cote, et la cote affichée leur moyenne.
 async function poserPariChallenge(p) {
+  const fixe = p.cote != null && p.retour != null;
   const { rows } = await pool.query(
     `INSERT INTO challenge_paris (jour, jeu, type, username, choix, mise, cote, retour)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (jour, jeu, type, username, choix) DO UPDATE SET
        mise = challenge_paris.mise + EXCLUDED.mise,
-       retour = COALESCE(challenge_paris.retour, challenge_paris.mise) + EXCLUDED.retour,
-       cote = ROUND((COALESCE(challenge_paris.retour, challenge_paris.mise) + EXCLUDED.retour)::numeric
-                    / (challenge_paris.mise + EXCLUDED.mise), 2)
+       retour = CASE WHEN EXCLUDED.retour IS NULL THEN challenge_paris.retour
+                     ELSE COALESCE(challenge_paris.retour, challenge_paris.mise) + EXCLUDED.retour END,
+       cote = CASE WHEN EXCLUDED.retour IS NULL THEN challenge_paris.cote
+                   ELSE ROUND((COALESCE(challenge_paris.retour, challenge_paris.mise) + EXCLUDED.retour)::numeric
+                              / (challenge_paris.mise + EXCLUDED.mise), 2) END
        WHERE challenge_paris.statut = 'ouvert'
      RETURNING *`,
     [String(p.jour), String(p.jeu), String(p.type), String(p.username).toLowerCase(),
-     String(p.choix).toLowerCase(), Math.trunc(Number(p.mise)), Number(p.cote), Math.trunc(Number(p.retour))]);
+     String(p.choix).toLowerCase(), Math.trunc(Number(p.mise)),
+     fixe ? Number(p.cote) : null, fixe ? Math.trunc(Number(p.retour)) : null]);
   return rows[0] || null;
 }
 async function retirerMiseChallenge(id, mise, retour) {
   await pool.query(
     `UPDATE challenge_paris SET mise = mise - $2, retour = retour - $3,
-            cote = CASE WHEN mise - $2 > 0 THEN ROUND((retour - $3)::numeric / (mise - $2), 2) ELSE cote END
+            cote = CASE WHEN mise - $2 > 0 AND retour IS NOT NULL THEN ROUND((retour - $3)::numeric / (mise - $2), 2) ELSE cote END
       WHERE id = $1 AND statut = 'ouvert'`,
     [id, Math.trunc(Number(mise)), Math.trunc(Number(retour) || 0)]);
   await pool.query(`DELETE FROM challenge_paris WHERE id = $1 AND mise <= 0`, [id]);
@@ -4626,6 +4632,25 @@ async function registreParis(username, limit = 200) {
              NULL, NULL, c.jour, c.jeu, c.type
         FROM challenge_paris c WHERE LOWER(c.username) = $1)
      ORDER BY cree_le DESC LIMIT $2`, [u, n]);
+  return rows;
+}
+// Le classement des parieurs entre deux jours (inclus, heure de Paris) : les
+// paris RÉGLÉS (gagnés ou perdus) du Challenge — par le jour du Challenge — et
+// des tournois — par le jour du règlement. Le bénéfice net d'abord.
+async function classementParis(depuisJour, jusquaJour, minParis = 3) {
+  const { rows } = await pool.query(
+    `WITH tous AS (
+       SELECT LOWER(username) AS username, mise, gain, statut FROM challenge_paris
+        WHERE statut IN ('gagne', 'perdu') AND jour >= $1 AND jour <= $2
+       UNION ALL
+       SELECT LOWER(username), mise, gain, statut FROM tournament_paris
+        WHERE statut IN ('gagne', 'perdu')
+          AND to_char(regle_le AT TIME ZONE 'Europe/Paris', 'YYYY-MM-DD') BETWEEN $1 AND $2)
+     SELECT username, COUNT(*)::int AS paris, COUNT(*) FILTER (WHERE statut = 'gagne')::int AS gagnes,
+            SUM(mise)::int AS mises, SUM(gain)::int AS gains, (SUM(gain) - SUM(mise))::int AS net
+       FROM tous GROUP BY username HAVING COUNT(*) >= $3
+      ORDER BY net DESC, gains DESC, username`,
+    [String(depuisJour), String(jusquaJour), Math.max(1, Number(minParis) || 1)]);
   return rows;
 }
 // Les gros coups du parc depuis une date : les paris gagnés dont le gain net
@@ -4777,6 +4802,7 @@ module.exports = {
   bilanParisChallenge,
   registreParis,
   grosCoupsParis,
+  classementParis,
   // RGPD
   PSEUDO_SUPPRIME,
   deleteSessionsForUser,

@@ -6369,57 +6369,82 @@ async function chargerParisChallengeAdmin() {
     const d = await (await fetch('/api/admin/paris-challenge', { headers: hdr() })).json();
     if (!d.reglages) { bloc.innerHTML = ''; return; }
     const R = d.reglages;
-    const C = d.regles || {};
-    const P = C.podium || { marge: 0.1, min: 1.1, max: 10, maxSoi: 3 };
-    const O = C.or || { marge: 0.05, min: 1.65, max: 15, maxSoi: 4.5 };
-    const fx = (c) => (c == null ? '—' : '×' + String(c).replace('.', ','));
     const signe = (n) => `<b style="color:${n >= 0 ? '#2f8f2f' : '#c03c30'}">${n >= 0 ? '+' : ''}${n}</b>`;
-    const lignes = (d.jeux || []).map((j) => `<tr>
-      <td><label><input type="checkbox" class="pc-jeu" value="${esc(j.cle)}" ${j.exclu ? '' : 'checked'}> ${esc(j.nom)}</label></td>
-      <td>${j.eligibles} <small style="color:#777">(${j.jours} j. d'historique)</small></td>
-      <td style="font-size:11px">${(j.favoris || []).map((f) => `${esc(f.nom)} <span style="color:#777">${f.podiums}/${f.joues}</span> ${fx(f.podium)} · or ${fx(f.or)}`).join('<br>') || '—'}
-        ${j.decouverte ? `<div style="color:#777">découverte : ${fx(j.decouverte.podium)} · or ${fx(j.decouverte.or)}</div>` : ''}</td>
-      <td>${j.demain.parieurs} · ${j.demain.podium + j.demain.or} misés${j.demain.engage ? ` <small style="color:#777">(rendrait au plus ${j.demain.engage})</small>` : ''}</td>
-      <td>${j.hier.mises || j.hier.ouverts ? `${j.hier.mises} misés · ${j.hier.payes} payés (${signe(j.hier.mises - j.hier.payes)}) · ${j.hier.gagnes} gagnés · ${j.hier.perdus} perdus${j.hier.rembourses ? ' · ' + j.hier.rembourses + ' remboursés' : ''}${j.hier.ouverts ? ' · <b style="color:#c8860a">' + j.hier.ouverts + ' en attente du roll</b>' : ''}` : '—'}</td>
+    const fixe = Array.isArray((R.choix || {})[d.demain]);
+    const lignes = (d.jeux || []).map((j) => `<tr${j.duJour ? ' style="background:#fff3d6"' : ''}>
+      <td><label title="Décoché : jamais tiré au sort ni pariable"><input type="checkbox" class="pc-jeu" value="${esc(j.cle)}" ${j.exclu ? '' : 'checked'}> ${esc(j.nom)}</label></td>
+      <td><label><input type="checkbox" class="pc-dujour" value="${esc(j.cle)}" ${j.duJour ? 'checked' : ''}> ${j.duJour ? '<b>du jour</b>' : ''}</label></td>
+      <td>${j.habitues} <small style="color:#777">(${j.jours} j. joués sur 30)</small></td>
+      <td style="font-size:11px">${(j.favoris || []).map((f) => `${esc(f.nom)} <span style="color:#777">${f.podiums}/${f.joues}${f.ors ? ' · ' + f.ors + ' or' : ''}</span>`).join('<br>') || '—'}</td>
+      <td>${j.duJour || j.demain.podium + j.demain.or ? `${j.demain.parieurs} parieur(s) · pot médaillé ${j.demain.podium} · pot or ${j.demain.or}` : '—'}</td>
+      <td>${j.hier.mises || j.hier.ouverts ? `${j.hier.mises} misés · ${j.hier.payes} rendus · ${j.hier.gagnes} gagnés · ${j.hier.perdus} perdus${j.hier.rembourses ? ' · ' + j.hier.rembourses + ' remboursés' : ''}${j.hier.ouverts ? ' · <b style="color:#c8860a">' + j.hier.ouverts + ' en attente du roll</b>' : ''}` : '—'}</td>
     </tr>`).join('');
     const B = d.bilan || { jours: [], mises: 0, gains: 0 };
+    const S = d.semaine || { classement: [] };
+    const objets = (d.objets || []).map((o) => `<option value="${o.id}" ${R.recompenseSemaine === o.id ? 'selected' : ''}>${esc(o.nom)} (${esc(o.rayon || '')})</option>`).join('');
     bloc.innerHTML = `
       <div style="border:1px solid #e3a0a0;background:#fff8f6;padding:12px;border-radius:8px;font-size:13px">
-        <h4 style="margin:0 0 6px">🎲 Paris sur les médaillés</h4>
-        <label style="font-weight:bold"><input type="checkbox" id="pc-actif" ${R.actif ? 'checked' : ''}> Ouvrir les paris du Challenge</label>
+        <h4 style="margin:0 0 6px">🟣 Prunostics du Challenge</h4>
+        <label style="font-weight:bold"><input type="checkbox" id="pc-actif" ${R.actif ? 'checked' : ''}> Ouvrir les Prunostics du Challenge</label>
         <label style="margin-left:14px">Plafond par joueur et par jour : <input type="number" id="pc-plafond" min="1" value="${R.plafond}" style="width:70px"> kikooz</label>
+        <label style="margin-left:14px">Jeux par jour : <input type="number" id="pc-nbjeux" min="1" value="${R.nbJeux || 2}" style="width:50px"></label>
         <label style="margin-left:14px" title="Gain net (gain − mise) à partir duquel Dimitri annonce le pari sur le forum — tournois compris">Gros coup à partir de : <input type="number" id="pc-groscoup" min="1" value="${R.grosCoup || 100}" style="width:70px"> kikooz de bénéfice</label>
         <button class="btn btn-sm" onclick="enregistrerParisChallenge()">Enregistrer</button>
         <div style="color:#777;margin:6px 0 10px;line-height:1.45">
           Les joueurs misent <b>la veille, jusqu'à minuit</b>, sur les médaillés du Challenge du lendemain (icône « Prunostics » : une fenêtre du bureau, une feuille sur mobile) :
-          « sera médaillé » ou « aura l'or ». <b>Cote fixe</b>, figée à la mise, tirée des ${C.fenetre || 30} derniers jours de Challenge du joueur sur le jeu
-          (fréquence de ses podiums, ou de ses médailles d'or, lissée) ; il faut ${C.joursMin || 7} jours joués pour avoir sa propre cote.
-          Un joueur sans assez d'historique se parie à la <b>cote de découverte</b> du jeu (celle d'un joueur moyen, tirée du taux de médailles du jeu ;
-          ${fx((C.decouverteDefaut || {}).podium || 3)} / ${fx((C.decouverteDefaut || {}).or || 5)} pour un jeu trop peu joué), jamais plus que ce que ses quelques jours lui donnent.
-          <b>Médaillé</b> : marge ${Math.round(P.marge * 100)} %, de ${fx(P.min)} à ${fx(P.max)}, ${fx(P.maxSoi)} au plus sur soi (ou un compte du même appareil).
-          <b>Or</b>, le pari risqué, paie davantage : marge ${Math.round(O.marge * 100)} %, de ${fx(O.min)} à ${fx(O.max)}, ${fx(O.maxSoi)} au plus sur soi,
-          et toujours au moins ${String(C.ecartOr || 1.5).replace('.', ',')} fois la cote « médaillé » du joueur.
-          Ouverts par défaut ; l'état choisi ici est gardé en base et survit aux redémarrages.
-          Un gain net d'au moins le seuil « gros coup » est annoncé par <b>Dimitri</b> dans son sujet de discussion sur les paris (Jeux Frutiparc › « Les Prunostics du parc : débats, pronos et gros coups »), qu’il ouvre lui-même au démarrage.
-          Le gagnant reçoit mise × cote, le parc paie ; une mise perdue est gardée. Règlement automatique au changement de jour, sur le podium des médailles.
-          Baisser l'option ou décocher un jeu <b>rembourse</b> les mises en jeu.
+          « sera médaillé » ou « aura l'or ». <b>Pari mutuel</b> : dans chaque jeu, un pot « médaillé » et un pot « or », partagés entre ceux qui ont vu juste au prorata de leur mise ;
+          personne n'a vu juste, tout le monde est remboursé. Le parc ne crée ni ne détruit de kikooz.
+          Seuls les <b>jeux du jour</b> sont ouverts : tirés au sort parmi les jeux vraiment joués (7 jours sur 30), sans reprendre ceux de la veille, et figés dès le tirage.
+          Tu peux les choisir toi-même ci-dessous (colonne « Jeux du ${esc(d.demain || '')} ») ; retirer un jeu rembourse ses mises.
+          Les anciens paris à cote fixe se règlent à leur cote, comme promis.
+          Un gain net d'au moins le seuil « gros coup » est annoncé par <b>Dimitri</b> dans son sujet (Jeux Frutiparc › « Les Prunostics du parc : débats, pronos et gros coups »).
           ⚠ « Terminer le cycle » à la main règle les paris de la veille, pas ceux du jour.
         </div>
-        <div style="margin:0 0 8px">Bilan du parc sur 30 jours : ${B.mises} kikooz misés, ${B.gains} rendus → ${signe(B.mises - B.gains)}
-          <span style="color:#777">(positif : des kikooz retirés du jeu ; négatif : des kikooz créés)</span></div>
-        <table><thead><tr><th>Jeu (décocher pour fermer)</th><th>Joueurs cotés</th><th>Favoris (podiums/jours) et cotes</th><th>Mises pour le ${esc(d.demain || '')}</th><th>Règlement du ${esc(d.hier || '')}</th></tr></thead><tbody>${lignes}</tbody></table>
+        <div style="margin:0 0 8px">Jeux du ${esc(d.demain || '')} : <b>${(d.jeuxDuJour || []).map((k) => esc(((d.jeux || []).find((j) => j.cle === k) || {}).nom || k)).join(' et ') || '—'}</b>
+          <span style="color:#777">(${fixe ? 'figés' : 'pas encore tirés'})</span>
+          <button class="btn btn-sm" onclick="enregistrerJeuxDuJour()">Valider les jeux cochés pour le ${esc(d.demain || '')}</button>
+          <button class="btn btn-sm" onclick="retirerJeuxDuJour()" title="Efface le choix : un nouveau tirage sera fait">Nouveau tirage</button></div>
+        <div style="margin:0 0 8px">🏆 Prunostiqueur de la semaine (${esc(S.lisible || '')}) :
+          ${S.classement.length ? S.classement.map((c, i) => `${i + 1}. ${esc(c.nom)} ${signe(c.net)} <small style="color:#777">(${c.paris} paris)</small>`).join(' · ') : '<span style="color:#777">personne encore</span>'}
+          <br>Objet offert au gagnant : <select id="pc-recompense"><option value="">— aucun —</option>${objets}</select>
+          <button class="btn btn-sm" onclick="enregistrerRecompenseSemaine()">Enregistrer</button>
+          <button class="btn btn-sm" onclick="sacrerSemaine()" title="Dimitri annonce dès maintenant le gagnant de la semaine passée (déjà fait automatiquement chaque lundi)">Sacrer la semaine passée maintenant</button></div>
+        ${B.mises || B.gains ? `<div style="margin:0 0 8px">Paris à cote fixe (l'ancienne règle) sur 30 jours : ${B.mises} kikooz misés, ${B.gains} rendus → ${signe(B.mises - B.gains)}</div>` : ''}
+        <table><thead><tr><th>Jeu (décocher pour l'exclure)</th><th>Jeux du ${esc(d.demain || '')}</th><th>Habitués</th><th>Les plus médaillés (podiums/jours)</th><th>Mises pour le ${esc(d.demain || '')}</th><th>Règlement du ${esc(d.hier || '')}</th></tr></thead><tbody>${lignes}</tbody></table>
       </div>`;
   } catch (e) { bloc.innerHTML = ''; }
+}
+async function postParisChallenge(body, ok) {
+  try {
+    const r = await fetch('/api/admin/paris-challenge', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
+    const d = await r.json();
+    if (d.ok) { toast(ok); chargerParisChallengeAdmin(); } else toast('Erreur: ' + (d.message || d.error));
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 async function enregistrerParisChallenge() {
   const actif = $('#pc-actif').checked;
   const exclus = Array.from(document.querySelectorAll('.pc-jeu')).filter((c) => !c.checked).map((c) => c.value);
-  const body = { actif, plafond: Number($('#pc-plafond').value), grosCoup: Number($('#pc-groscoup').value), exclus };
+  await postParisChallenge({ actif, plafond: Number($('#pc-plafond').value), nbJeux: Number($('#pc-nbjeux').value),
+    grosCoup: Number($('#pc-groscoup').value), exclus }, actif ? 'Prunostics du Challenge ouverts' : 'Prunostics du Challenge fermés (mises remboursées)');
+}
+async function enregistrerJeuxDuJour() {
+  const jeux = Array.from(document.querySelectorAll('.pc-dujour')).filter((c) => c.checked).map((c) => c.value);
+  if (!jeux.length) { toast('Coche au moins un jeu.'); return; }
+  await postParisChallenge({ jeuxDuJour: { jeux } }, 'Jeux de demain enregistrés');
+}
+async function retirerJeuxDuJour() {
+  if (!confirm('Effacer les jeux de demain et refaire un tirage ? Les mises sur les jeux qui sortent seront remboursées.')) return;
+  await postParisChallenge({ jeuxDuJour: { jeux: [] } }, 'Nouveau tirage pour demain');
+}
+async function enregistrerRecompenseSemaine() {
+  const v = $('#pc-recompense').value;
+  await postParisChallenge({ recompenseSemaine: v === '' ? null : Number(v) }, v ? 'Récompense de la semaine enregistrée' : 'Plus de récompense pour la semaine');
+}
+async function sacrerSemaine() {
+  if (!confirm('Dimitri annonce maintenant le Prunostiqueur de la semaine passée (et lui offre l\'objet choisi) ?')) return;
   try {
-    const r = await fetch('/api/admin/paris-challenge', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
-    const d = await r.json();
-    if (d.ok) { toast(actif ? 'Paris du Challenge ouverts' : 'Paris du Challenge fermés (mises remboursées)'); chargerParisChallengeAdmin(); }
-    else toast('Erreur: ' + (d.message || d.error));
+    const d = await (await fetch('/api/admin/paris-challenge/semaine', { method: 'POST', headers: hdr(), body: '{}' })).json();
+    toast(d.gagnant ? `Sacré : ${d.gagnant.nom} (+${d.gagnant.net})` : 'Personne à sacrer pour la semaine passée');
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 

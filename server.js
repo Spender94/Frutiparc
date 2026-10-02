@@ -10344,38 +10344,44 @@ app.post('/api/admin/tournaments/:id/match/:mid/paris', tournoiScope, async (req
 });
 /*
  * ══════════════════════════════════════════════════════════════════════════
- * LES PARIS DU CHALLENGE — sur les médaillés du lendemain, à cote fixe
+ * LES PRUNOSTICS DU CHALLENGE — sur les médaillés du lendemain, en pari mutuel
  * ══════════════════════════════════════════════════════════════════════════
  *
- * Un interrupteur global (admin, onglet Challenge), éteint par défaut ; une
- * fois levé, ça tourne tous les jours sans organisateur.
+ * Un interrupteur global (admin, onglet Challenge), levé par défaut ; ça tourne
+ * tous les jours sans organisateur.
  *
  *   · On mise LA VEILLE, jusqu'à minuit (heure de Paris), sur le Challenge du
  *     lendemain : le classement du jour se lit en direct, miser pendant la
  *     journée reviendrait à recopier le podium.
- *   · Deux paris par jeu : « médaillé » (le joueur finit sur le podium) et
- *     « or » (il gagne). Chaque joueur a sa COTE, tirée de ses 30 derniers
- *     jours de Challenge sur le jeu (coteChallenge.js : marge de 10 %, entre
- *     ×1,1 et ×10, ×3 au plus sur soi ou sur un compte du même appareil, au
- *     moins 7 jours joués pour être proposé). La cote est FIGÉE à la mise :
- *     le gagnant reçoit mise × cote, le parc paie ; le perdant ne reçoit rien.
- *   · Un plafond par JOUR et par joueur, tous jeux confondus (50 kikooz
- *     d'origine) : arranger un podium n'en vaut pas la peine.
+ *   · DEUX JEUX PAR JOUR seulement (`nbJeux`), tirés au sort parmi les jeux
+ *     vraiment joués, sans reprendre ceux de la veille, et figés dès le
+ *     premier tirage (app_state) ; l'admin peut les choisir lui-même. Toutes
+ *     les mises tombent ainsi dans les mêmes pots.
+ *   · Deux POTS par jeu : « médaillé » (le joueur finit sur le podium) et « or »
+ *     (il gagne). PARI MUTUEL (paris.js) : ceux qui ont vu juste se partagent
+ *     le pot au prorata de leur mise ; personne n'a vu juste, chacun récupère
+ *     sa mise. Le parc ne crée ni ne détruit aucun kikooz. (Une semaine de cote
+ *     fixe l'a montré : un modèle se trompe, et c'est le parc qui paie l'erreur.)
+ *   · On peut miser sur soi. Un plafond par JOUR et par joueur, tous jeux
+ *     confondus (50 kikooz d'origine).
  *   · Le règlement se fait au roll du Challenge (performChallengeRoll), sur le
- *     podium que le roll vient de calculer — les médailles que tout le monde
- *     voit. Burning Kiwi est UN jeu : le circuit du jour, quel qu'il soit. Un
- *     jeu sans aucun médaillé (il n'a pas tourné) : tout est remboursé.
- *   · Les paris posés avant les cotes (colonne `retour` vide) se règlent comme
- *     alors, en pari mutuel entre eux.
+ *     podium que le roll vient de calculer. Burning Kiwi est UN jeu : le
+ *     circuit du jour, quel qu'il soit.
+ *   · Les paris posés à COTE FIXE (colonne `retour` remplie, la règle d'une
+ *     semaine) se règlent comme promis, à leur cote.
  *   · Le filet : un pari resté ouvert plus d'un jour après son Challenge (le
  *     roll n'a pas eu lieu) est remboursé.
+ *   · Chaque lundi, Dimitri sacre le Prunostiqueur de la semaine (le meilleur
+ *     bénéfice net, tournois compris), et l'admin peut lui faire offrir un objet.
  */
 const CoteChallenge = require('./coteChallenge.js');
 // Ouverts par défaut, en permanence : l'admin peut les fermer, et ce choix est
 // gardé en base (app_state), relu à chaque démarrage. `grosCoup` : le gain net
 // (gain − mise) à partir duquel Dimitri annonce un pari sur le forum —
-// tournois compris.
-const PARIS_CHALLENGE_DEFAUT = { actif: true, plafond: 50, exclus: [], grosCoup: 100 };
+// tournois compris. `choix` : les jeux de chaque jour, { jour: [clés] }, tirés
+// ou choisis par l'admin. `recompenseSemaine` : l'id d'un objet de la boutique
+// offert au Prunostiqueur de la semaine (aucun par défaut).
+const PARIS_CHALLENGE_DEFAUT = { actif: true, plafond: 50, exclus: [], grosCoup: 100, nbJeux: 2, choix: {}, recompenseSemaine: null };
 let parisChallengeReglages = Object.assign({}, PARIS_CHALLENGE_DEFAUT);
 async function chargerReglagesParisChallenge() {
   try {
@@ -10411,6 +10417,61 @@ function jeuxChallengeOuverts() {
   const exclus = new Set(parisChallengeReglages.exclus || []);
   return jeuxChallengeParis().filter((j) => !exclus.has(j.cle));
 }
+async function enregistrerReglagesParisChallenge() {
+  if (process.env.DATABASE_URL) await db.setAppState('paris_challenge', JSON.stringify(parisChallengeReglages));
+}
+// Un tirage reproductible, semé par le jour.
+function tirageDuJour(jour) {
+  let a = 0;
+  for (const ch of String(jour)) a = (Math.imul(a ^ ch.charCodeAt(0), 2654435761) + 0x9E3779B9) >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// LES JEUX DU JOUR : ceux de `choix[jour]` (tirés ou choisis par l'admin), sinon
+// un tirage — parmi les jeux qui ont tourné au moins 7 jours sur les 30
+// derniers (tous s'il en manque), sans ceux de la veille quand c'est possible —
+// aussitôt figé en base : la liste annoncée ne bouge plus.
+let jeuxDuJourEnCours = Promise.resolve();
+function jeuxDuJour(jour) {
+  const tour = jeuxDuJourEnCours.then(() => jeuxDuJourMaintenant(jour));
+  jeuxDuJourEnCours = tour.catch(() => null);
+  return tour;
+}
+async function jeuxDuJourMaintenant(jour) {
+  const R = parisChallengeReglages;
+  const ouverts = jeuxChallengeOuverts();
+  const fixe = (R.choix || {})[jour];
+  if (Array.isArray(fixe) && fixe.length) return fixe.map((k) => ouverts.find((j) => j.cle === k)).filter(Boolean);
+  const nb = Math.max(1, Math.min(Number(R.nbJeux) || 2, ouverts.length));
+  let vivants = ouverts;
+  if (process.env.DATABASE_URL) {
+    const hist = await cotesChallenge(jour);
+    const joues = ouverts.filter((j) => ((hist.get(j.cle) || {}).jours || 0) >= 7);
+    if (joues.length >= nb) vivants = joues;
+  }
+  const veille = (R.choix || {})[jourDecale(jour, -1)] || [];
+  let urne = vivants.filter((j) => !veille.includes(j.cle));
+  if (urne.length < nb) urne = vivants;
+  // `retirages` : l'admin a demandé un nouveau tirage — une autre graine.
+  const t = tirageDuJour(jour + ':' + ((R.retirages || {})[jour] || 0));
+  const melange = urne.slice().sort((x, y) => (x.cle < y.cle ? -1 : 1))
+    .map((j) => ({ j, k: t() })).sort((x, y) => x.k - y.k).map((x) => x.j);
+  const elus = melange.slice(0, nb);
+  // Figé en base ; on ne garde que deux semaines de tirages.
+  const choix = Object.assign({}, R.choix || {});
+  choix[jour] = elus.map((j) => j.cle);
+  const limite = jourDecale(jour, -14);
+  for (const k of Object.keys(choix)) if (k < limite) delete choix[k];
+  parisChallengeReglages = Object.assign({}, parisChallengeReglages, { choix });
+  try { await enregistrerReglagesParisChallenge(); } catch (e) { console.error('[PARIS] jeux du jour :', e.message); }
+  console.log(`[PARIS] jeux du Challenge du ${jour} : ${choix[jour].join(', ')}`);
+  return elus;
+}
 function libellePariChallenge(p, jeux) {
   const j = (jeux || jeuxChallengeParis()).find((x) => x.cle === p.jeu);
   const nom = getDisplayName(p.choix);
@@ -10435,16 +10496,13 @@ async function cotesChallenge(jour) {
   cotesChallengeCache = { jour, roll, at: Date.now(), parJeu };
   return parJeu;
 }
-// [pseudo, cotes] : la plus petite cote « médaillé » d'abord, puis « or », puis le pseudo.
-const favorisDabord = (a, b) => a[1].podium.cote - b[1].podium.cote || a[1].or.cote - b[1].or.cote || (a[0] < b[0] ? -1 : 1);
-// Les comptes « à soi » parmi `pseudos` : soi-même, et ceux du même appareil.
-async function comptesDeSoi(moi, pseudos) {
-  const soi = new Set([moi]);
-  const autres = [...new Set(pseudos)].filter((u) => u && u !== moi);
-  if (moi && autres.length) {
-    try { for (const u of await db.memeAppareil(moi, autres)) soi.add(String(u).toLowerCase()); } catch (e) { /* journal indisponible */ }
-  }
-  return soi;
+// Les habitués d'un jeu, les plus souvent médaillés d'abord : [pseudo, ligne].
+const habituesDabord = (a, b) => (b[1].podiums / b[1].joues) - (a[1].podiums / a[1].joues) || b[1].ors - a[1].ors || (a[0] < b[0] ? -1 : 1);
+// Le pot d'un joueur dans un pari mutuel : ce qui est misé sur lui, et la cote
+// du moment (le pot entier sur ses mises, s'il était seul à faire gagner).
+function potDuJoueur(pot, pseudo) {
+  const p = pot.joueurs[pseudo] || { mises: 0, parieurs: 0 };
+  return { mises: p.mises, parieurs: p.parieurs, cote: p.mises > 0 ? Math.floor((pot.total / p.mises) * 100) / 100 : null };
 }
 async function parisChallengeAppliquer(decisions) {
   if (!decisions.length) return [];
@@ -10491,6 +10549,8 @@ async function parisChallengeRegler(jour, podiums) {
     if (anciens.length) decisions.push(...Paris.reglerEnsemble(anciens, g));
   }
   await parisChallengeAppliquer(decisions);
+  // Le dimanche réglé : le Prunostiqueur de la semaine peut être sacré.
+  prunostiqueurDeLaSemaine().catch((e) => console.error('[PARIS] Prunostiqueur de la semaine :', e.message));
 }
 // Rembourse des paris ouverts (option baissée, jeu retiré, roll manqué).
 async function parisChallengeRembourser(filtre) {
@@ -10503,6 +10563,7 @@ async function parisChallengeFilet() {
     const hier = parisChallengeHier();
     await parisChallengeRembourser((p) => p.jour < hier);
   } catch (e) { console.error('[PARIS] filet du Challenge :', e.message); }
+  try { await prunostiqueurDeLaSemaine(); } catch (e) { console.error('[PARIS] Prunostiqueur de la semaine :', e.message); }
 }
 if (process.env.DATABASE_URL) setInterval(parisChallengeFilet, 10 * 60 * 1000).unref();
 
@@ -10512,13 +10573,12 @@ app.get('/api/paris/challenge', async (req, res) => {
     const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
     const user = moi ? users[moi] : null;
     const R = parisChallengeReglages;
-    const RC = CoteChallenge.REGLES;
     const demain = parisChallengeDemain();
     const hier = parisChallengeHier();
     const base = { ok: true, actif: !!R.actif, moi: moi || null, solde: user ? Number(user.kikooz) || 0 : null };
     if (!R.actif) return res.json(base);
     const paris = await db.parisChallengeDuJour(demain);
-    const cotes = await cotesChallenge(demain);
+    const hist = await cotesChallenge(demain);
     // Les noms d'affichage, lus en base : la mémoire ne tient que les comptes
     // venus depuis le démarrage.
     const affiches = new Map();
@@ -10529,40 +10589,42 @@ app.get('/api/paris/challenge', async (req, res) => {
         for (const r of await db.fichesComptes(inconnus)) affiches.set(r.username, r.display_name || getDisplayName(r.username));
       }
     };
-    const ouverts = jeuxChallengeOuverts();
-    const eligibles = (cle) => Object.entries((cotes.get(cle) || { joueurs: {} }).joueurs).filter(([, l]) => l.eligible);
-    const soi = await comptesDeSoi(moi, ouverts.flatMap((j) => eligibles(j.cle).map(([u]) => u)));
     const jeux = [];
-    for (const j of ouverts) {
+    for (const j of await jeuxDuJour(demain)) {
       const ici = paris.filter((p) => p.jeu === j.cle && p.statut !== 'rembourse');
-      const c = cotes.get(j.cle) || { jours: 0, joueurs: {} };
-      // Les favoris d'abord ; au-delà de 25, on les tape dans « un autre joueur ».
-      const liste = eligibles(j.cle).sort(favorisDabord);
-      await nommer(liste.slice(0, 25).map(([u]) => u).concat(ici.map((p) => p.choix)));
-      const candidats = liste.slice(0, 25).map(([u, l]) => {
-        const surLui = ici.filter((p) => p.choix === u);
+      // Les pots mutuels : les paris à cote fixe (l'ancienne règle) n'y entrent pas.
+      const mutuels = ici.filter((p) => p.retour == null);
+      const potP = Paris.potLibre(mutuels.filter((p) => p.type === 'podium'));
+      const potO = Paris.potLibre(mutuels.filter((p) => p.type === 'or'), true);
+      const h = hist.get(j.cle) || { jours: 0, joueurs: {} };
+      // Les candidats : les habitués du jeu (3 jours joués au moins), et ceux
+      // sur qui quelqu'un a déjà misé.
+      const habitues = Object.entries(h.joueurs).filter(([, l]) => l.joues >= 3).sort(habituesDabord).slice(0, 25).map(([u]) => u);
+      const pseudos = [...new Set(habitues.concat(mutuels.map((p) => p.choix)))];
+      await nommer(pseudos.concat(ici.map((p) => p.choix)));
+      const candidats = pseudos.map((u) => {
+        const l = h.joueurs[u] || { joues: 0, podiums: 0, ors: 0 };
         return {
-          // `soi` : le joueur lui-même. Un compte du même appareil a la même
-          // cote plafonnée, sans qu'on l'écrive.
           pseudo: u, nom: nomDe(u), joues: l.joues, podiums: l.podiums, ors: l.ors, soi: u === moi,
-          cote: { podium: CoteChallenge.coteProposee(l.podium.cote, soi.has(u), 'podium'), or: CoteChallenge.coteProposee(l.or.cote, soi.has(u), 'or') },
-          parieurs: new Set(surLui.map((p) => p.username)).size,
-          mises: surLui.reduce((s, p) => s + (Number(p.mise) || 0), 0),
+          pot: { podium: potDuJoueur(potP, u), or: potDuJoueur(potO, u) },
         };
-      });
+      }).sort((x, y) => (y.pot.podium.mises + y.pot.or.mises) - (x.pot.podium.mises + x.pot.or.mises)
+        || (y.joues ? y.podiums / y.joues : 0) - (x.joues ? x.podiums / x.joues : 0));
       jeux.push({
-        cle: j.cle, nom: j.nom, jours: c.jours, eligibles: liste.length, candidats,
-        decouverte: c.decouverte || RC.decouverteDefaut,
-        mises: ici.reduce((s, p) => s + (Number(p.mise) || 0), 0),
+        cle: j.cle, nom: j.nom, jours: h.jours, candidats,
+        pots: { podium: potP.total, or: potO.total },
+        mises: ici.reduce((s2, p) => s2 + (Number(p.mise) || 0), 0),
         mesParis: moi ? ici.filter((p) => p.username === moi).map((p) => ({
           type: p.type, choix: p.choix, nom: nomDe(p.choix), mise: p.mise,
           cote: p.cote == null ? null : Number(p.cote), retour: p.retour })) : [],
       });
     }
+    // Mes paris de demain sur un jeu qui n'est plus du jour (cote fixe d'avant) : on les montre aussi.
+    const autres = moi ? paris.filter((p) => p.username === moi && p.statut === 'ouvert' && !jeux.some((j) => j.cle === p.jeu)) : [];
     // Hier : les médaillés, et ce que j'y avais misé.
     const medailles = challengeMedalsData.medalsByVisibleDay[hier] || {};
     const mesHier = moi ? (await db.parisChallengeDuJour(hier)).filter((p) => p.username === moi) : [];
-    await nommer(Object.keys(medailles).concat(mesHier.map((p) => p.choix)).map((u) => String(u).toLowerCase()));
+    await nommer(Object.keys(medailles).concat(mesHier.map((p) => p.choix), autres.map((p) => p.choix)).map((u) => String(u).toLowerCase()));
     const podiumHier = {};
     for (const [u, liste] of Object.entries(medailles)) {
       for (const m of liste || []) {
@@ -10570,13 +10632,16 @@ app.get('/api/paris/challenge', async (req, res) => {
         (podiumHier[cle] = podiumHier[cle] || [])[(m.rank || 1) - 1] = nomDe(String(u).toLowerCase());
       }
     }
+    const jeuxHier = (R.choix || {})[hier];
     res.json(Object.assign(base, {
       jour: demain, jourLisible: jourLisible(demain), plafond: Number(R.plafond) || 50,
-      regles: { fenetre: RC.fenetre, joursMin: RC.joursMin, ecartOr: RC.ecartOr, podium: RC.podium, or: RC.or },
       dejaMise: moi ? await db.miseChallengeDuJour(moi, demain) : 0, jeux,
+      autresParis: autres.map((p) => ({ texte: libellePariChallenge(p).replace(getDisplayName(p.choix), nomDe(p.choix)), mise: p.mise,
+        cote: p.cote == null ? null : Number(p.cote), retour: p.retour })),
       hier: {
         jour: hier, jourLisible: jourLisible(hier),
-        podiums: jeuxChallengeParis().filter((j) => podiumHier[j.cle]).map((j) => ({ nom: j.nom, podium: podiumHier[j.cle] })),
+        podiums: jeuxChallengeParis().filter((j) => podiumHier[j.cle] && (!jeuxHier || jeuxHier.includes(j.cle)))
+          .map((j) => ({ nom: j.nom, podium: podiumHier[j.cle] })),
         mesParis: mesHier.map((p) => ({
           texte: libellePariChallenge(p).replace(getDisplayName(p.choix), nomDe(p.choix)),
           mise: p.mise, cote: p.cote == null ? null : Number(p.cote), statut: p.statut, gain: p.gain })),
@@ -10585,6 +10650,80 @@ app.get('/api/paris/challenge', async (req, res) => {
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
+});
+
+// LA SEMAINE d'un jour, du lundi au dimanche (jours de Paris).
+function semaineParis(jour) {
+  const d = new Date(jour + 'T12:00:00Z');
+  const lundi = jourDecale(jour, -((d.getUTCDay() + 6) % 7));
+  const dimanche = jourDecale(lundi, 6);
+  const f = (j, o) => new Date(j + 'T12:00:00Z').toLocaleDateString('fr-FR', Object.assign({ timeZone: 'UTC' }, o));
+  const memeMois = lundi.slice(0, 7) === dimanche.slice(0, 7);
+  return {
+    lundi, dimanche,
+    lisible: `du ${f(lundi, memeMois ? { weekday: 'long', day: 'numeric' } : { weekday: 'long', day: 'numeric', month: 'long' })} au ${f(dimanche, { weekday: 'long', day: 'numeric', month: 'long' })}`,
+  };
+}
+// LE PRUNOSTIQUEUR DE LA SEMAINE : le meilleur bénéfice net de la semaine
+// passée (3 paris réglés au moins, tournois compris), sacré par Dimitri sur le
+// forum — une fois par semaine (app_state), du lundi au mercredi, quand les
+// paris du dimanche sont réglés. L'objet de la boutique choisi par l'admin
+// (`recompenseSemaine`), s'il y en a un, lui est offert.
+async function prunostiqueurDeLaSemaine(opts) {
+  if (!process.env.DATABASE_URL) return null;
+  const o = opts || {};
+  const aujourdhui = parisDayKey();
+  const sem = semaineParis(o.lundi || jourDecale(aujourdhui, -7));
+  const CLE = 'paris_semaine_annoncee';
+  if (!o.force) {
+    const jourDeSemaine = (new Date(aujourdhui + 'T12:00:00Z').getUTCDay() + 6) % 7;
+    if (jourDeSemaine > 2 || aujourdhui <= sem.dimanche) return null;
+    if ((await db.getAppState(CLE)) === sem.lundi) return null;
+    if ((await db.parisChallengeDuJour(sem.dimanche)).some((p) => p.statut === 'ouvert')) return null;
+  }
+  await db.setAppState(CLE, sem.lundi);
+  const classement = await db.classementParis(sem.lundi, sem.dimanche, 3);
+  const premier = classement[0];
+  if (!premier || premier.net <= 0) {
+    console.log(`[PARIS] Prunostiqueur de la semaine ${sem.lundi} : personne (aucun bénéfice)`);
+    return { semaine: sem, gagnant: null };
+  }
+  const noms = new Map();
+  for (const r of await db.fichesComptes(classement.slice(0, 3).map((c) => c.username))) noms.set(r.username, r.display_name || getDisplayName(r.username));
+  const nomDe = (u) => noms.get(u) || getDisplayName(u);
+  // La récompense : un objet de la boutique, si l'admin en a choisi un.
+  let objet = null;
+  const pack = parisChallengeReglages.recompenseSemaine != null ? SHOP_PACKS.find((x) => x.id === parisChallengeReglages.recompenseSemaine) : null;
+  if (pack) {
+    try {
+      const row = await db.findUserByUsername(premier.username);
+      if (row) {
+        await db.addItem(row.id, pack.id);
+        if (users[premier.username]) users[premier.username].items = withDefaultPens(await db.getUserItems(row.id));
+        objet = pack.name;
+      }
+    } catch (e) { console.error('[PARIS] récompense de la semaine :', e.message); }
+  }
+  const contenu = Dimitri.messageSemaine({
+    semaine: sem.lisible, objet,
+    gagnant: { nom: nomDe(premier.username), net: premier.net, paris: premier.paris, gagnes: premier.gagnes },
+    suivants: classement.slice(1, 3).map((c) => ({ nom: nomDe(c.username), net: c.net })),
+  });
+  await dimitriFile(async () => {
+    const topic = await dimitriSujet();
+    await db.forumCreatePost(topic.id, Dimitri.PSEUDO_NPC, contenu, users[Dimitri.PSEUDO_NPC].fbouille, Dimitri.HUMEUR);
+    const suiveurs = await db.forumTopicFollowers(topic.id).catch(() => []);
+    notifyForumNews(Dimitri.PSEUDO_NPC, suiveurs, { id: topic.id, titre: topic.title });
+    await notifierMentionsForum(Dimitri.PSEUDO_NPC, topic.id, topic.title, contenu).catch(() => []);
+  }, 'Prunostiqueur de la semaine');
+  console.log(`[PARIS] Prunostiqueur de la semaine ${sem.lundi} : ${premier.username} (+${premier.net})${objet ? ' — ' + objet : ''}`);
+  return { semaine: sem, gagnant: Object.assign({ nom: nomDe(premier.username), objet }, premier) };
+}
+app.post('/api/admin/paris-challenge/semaine', adminScope('challenge'), async (req, res) => {
+  try {
+    const lundi = req.body && /^\d{4}-\d{2}-\d{2}$/.test(String(req.body.lundi || '')) ? String(req.body.lundi) : undefined;
+    res.json(Object.assign({ ok: true }, await prunostiqueurDeLaSemaine({ force: true, lundi })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // LE REGISTRE DES PARIS : mes paris (tournois et Challenge) avec mon bilan, et
@@ -10624,8 +10763,22 @@ app.get('/api/paris/registre', async (req, res) => {
       meilleur: regles.filter((l) => l.statut === 'gagne').reduce((m, l) => Math.max(m, l.gain - l.mise), 0),
     };
     bilan.net = bilan.gains - bilan.mises;
+    // Le Prunostiqueur de la semaine : le classement en cours, et le sacré de la semaine passée.
+    const sem = semaineParis(parisDayKey());
+    const passee = semaineParis(jourDecale(sem.lundi, -7));
+    const enCours = await db.classementParis(sem.lundi, sem.dimanche, 3);
+    const avant = (await db.classementParis(passee.lundi, passee.dimanche, 3))[0];
+    const aNommer = enCours.slice(0, 10).map((c) => c.username).concat(avant ? [avant.username] : []);
+    if (aNommer.length) for (const r of await db.fichesComptes(aNommer)) noms.set(r.username, r.display_name || getDisplayName(r.username));
+    const monRang = moi ? enCours.findIndex((c) => c.username === moi) : -1;
+    const semaine = {
+      lisible: sem.lisible, minParis: 3,
+      classement: enCours.slice(0, 10).map((c, i) => ({ rang: i + 1, nom: nomDe(c.username), soi: c.username === moi, net: c.net, paris: c.paris, gagnes: c.gagnes })),
+      moi: monRang >= 0 ? { rang: monRang + 1, net: enCours[monRang].net } : null,
+      passee: avant && avant.net > 0 ? { lisible: passee.lisible, nom: nomDe(avant.username), net: avant.net } : null,
+    };
     res.json({
-      ok: true, moi: moi || null, seuil, bilan, lignes,
+      ok: true, moi: moi || null, seuil, bilan, lignes, semaine,
       grosCoups: coups.map((c) => ({ quand: c.regle_le, parieur: nomDe(c.username), quoi: quoi(c), mise: c.mise,
         cote: c.cote == null ? null : Number(c.cote), gain: c.gain })),
     });
@@ -10634,30 +10787,36 @@ app.get('/api/paris/registre', async (req, res) => {
   }
 });
 
-// La cote d'UN joueur, avant de parier : celle qu'affiche le ticket quand on
-// cherche quelqu'un hors de la liste (sa cote, ou celle de découverte).
-app.get('/api/paris/challenge/cote', async (req, res) => {
+// UN joueur, avant de parier : celui qu'on cherche hors de la liste — son
+// historique sur le jeu, et ce qui est déjà misé sur lui.
+app.get('/api/paris/challenge/joueur', async (req, res) => {
   const non = (code, message, status) => res.status(status || 400).json({ ok: false, code, message });
   if (!process.env.DATABASE_URL || !parisChallengeReglages.actif) return non('fermes', 'Les paris du Challenge ne sont pas ouverts.');
   try {
     const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
-    const jeu = jeuxChallengeOuverts().find((j) => j.cle === String(req.query.jeu || ''));
-    if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux paris.');
+    const demain = parisChallengeDemain();
+    const jeu = (await jeuxDuJour(demain)).find((j) => j.cle === String(req.query.jeu || ''));
+    if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux paris demain.');
     const choix = normalizeUsername(req.query.choix);
     let fiche = null;
     if (choix && !NPC_USERNAMES.has(choix)) {
       try { fiche = (await db.fichesComptes([choix]))[0] || null; } catch (e) { fiche = null; }
     }
     if (!fiche) return non('choix', 'Ce joueur n’existe pas.', 404);
-    const cotes = (await cotesChallenge(parisChallengeDemain())).get(jeu.cle);
-    const surSoi = moi ? (await comptesDeSoi(moi, [choix])).has(choix) : false;
-    const p = CoteChallenge.coteDuJoueur(cotes, choix, 'podium');
-    const o = CoteChallenge.coteDuJoueur(cotes, choix, 'or');
-    const l = (cotes && cotes.joueurs && cotes.joueurs[choix]) || { joues: 0, podiums: 0, ors: 0 };
+    const h = (await cotesChallenge(demain)).get(jeu.cle) || { joueurs: {} };
+    const l = h.joueurs[choix] || { joues: 0, podiums: 0, ors: 0 };
+    const mutuels = (await db.parisChallengeDuJour(demain)).filter((p) => p.jeu === jeu.cle && p.statut !== 'rembourse' && p.retour == null);
     res.json({
       ok: true, pseudo: choix, nom: fiche.display_name || getDisplayName(choix), soi: choix === moi,
-      joues: l.joues, podiums: l.podiums, ors: l.ors, decouverte: p.decouverte,
-      cote: { podium: CoteChallenge.coteProposee(p.cote, surSoi, 'podium'), or: CoteChallenge.coteProposee(o.cote, surSoi, 'or') },
+      joues: l.joues, podiums: l.podiums, ors: l.ors,
+      pot: {
+        podium: potDuJoueur(Paris.potLibre(mutuels.filter((p) => p.type === 'podium')), choix),
+        or: potDuJoueur(Paris.potLibre(mutuels.filter((p) => p.type === 'or'), true), choix),
+      },
+      pots: {
+        podium: mutuels.filter((p) => p.type === 'podium').reduce((s2, p) => s2 + p.mise, 0),
+        or: mutuels.filter((p) => p.type === 'or').reduce((s2, p) => s2 + p.mise, 0),
+      },
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -10665,15 +10824,16 @@ app.get('/api/paris/challenge/cote', async (req, res) => {
 });
 
 app.post('/api/paris/challenge', async (req, res) => {
-  const non = (code, message, status, plus) => res.status(status || 400).json(Object.assign({ ok: false, code, message }, plus || {}));
+  const non = (code, message, status) => res.status(status || 400).json({ ok: false, code, message });
   if (!process.env.DATABASE_URL || !parisChallengeReglages.actif) return non('fermes', 'Les paris du Challenge ne sont pas ouverts.');
   const b = req.body || {};
   const moi = resolveUsernameFromSid(String(b.sid || ''));
   if (!moi) return non('auth', 'Connecte-toi pour parier.', 401);
   const user = users[moi];
   if (!user) return non('auth', 'Compte indisponible, réessaie.', 503);
-  const jeu = jeuxChallengeOuverts().find((j) => j.cle === String(b.jeu || ''));
-  if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux paris.');
+  const jour = parisChallengeDemain();
+  const jeu = (await jeuxDuJour(jour).catch(() => [])).find((j) => j.cle === String(b.jeu || ''));
+  if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux paris demain.');
   const type = String(b.type || '');
   if (type !== 'podium' && type !== 'or') return non('type', 'Pari inconnu.');
   const mise = Number(b.mise);
@@ -10686,15 +10846,11 @@ app.post('/api/paris/challenge', async (req, res) => {
     if (!existe && choix) { try { existe = !!(await db.findUserByUsername(choix)); } catch (e) { existe = false; } }
     // Les PNJ ne jouent pas au Challenge : un pari sur eux serait perdu d'avance.
     if (!existe || NPC_USERNAMES.has(choix)) return non('choix', 'Ce joueur n’existe pas.');
-    const jour = parisChallengeDemain();
-    // Sa cote, ou — trop peu d'historique sur ce jeu — la cote de découverte.
-    const trouvee = CoteChallenge.coteDuJoueur((await cotesChallenge(jour)).get(jeu.cle), choix, type);
-    const surSoi = (await comptesDeSoi(moi, [choix])).has(choix);
-    const cote = CoteChallenge.coteProposee(trouvee.cote, surSoi, type);
-    // La cote vue à l'écran est celle qu'on prend : si elle a bougé entre-temps
-    // (roll, médaille corrigée), on le dit au lieu de miser à une autre.
-    if (b.cote != null && b.cote !== '' && Math.abs(Number(b.cote) - cote) > 0.001) {
-      return non('cote_changee', `La cote a changé : elle est maintenant de ${coteLisible(cote)}. Vérifie, puis mise à nouveau.`, 409, { cote });
+    // Un pari à cote fixe (l'ancienne règle) sur le même joueur reste tel quel.
+    const avant = (await db.parisChallengeDuJour(jour)).find((p) => p.username === moi && p.jeu === jeu.cle
+      && p.type === type && p.choix === choix && p.statut === 'ouvert');
+    if (avant && avant.retour != null) {
+      return non('fixe', 'Tu as déjà un pari à cote fixe sur ce joueur : il reste tel quel. Mise sur un autre, ou sur l’autre pot.');
     }
     const plafond = Number(parisChallengeReglages.plafond) || 50;
     const deja = await db.miseChallengeDuJour(moi, jour);
@@ -10702,20 +10858,24 @@ app.post('/api/paris/challenge', async (req, res) => {
       return non('plafond', `Le plafond est de ${plafond} kikooz par jour : tu peux encore miser ${Math.max(0, plafond - deja)}.`);
     }
     if ((Number(user.kikooz) || 0) < mise) return non('solde', 'Tu n’as pas assez de kikooz.');
-    const retour = CoteChallenge.retourDe(mise, cote);
-    const pari = await db.poserPariChallenge({ jour, jeu: jeu.cle, type, username: moi, choix, mise, cote, retour });
+    const pari = await db.poserPariChallenge({ jour, jeu: jeu.cle, type, username: moi, choix, mise });
     if (!pari) return non('fermes', 'Ce pari est déjà réglé.');
     // Deux mises simultanées ont pu passer le plafond, ou le solde bouger.
     if ((await db.miseChallengeDuJour(moi, jour)) > plafond || (Number(user.kikooz) || 0) < mise) {
-      await db.retirerMiseChallenge(pari.id, mise, retour).catch(dbErr('retirerMiseChallenge'));
+      await db.retirerMiseChallenge(pari.id, mise, 0).catch(dbErr('retirerMiseChallenge'));
       return non('plafond', 'Ta mise dépasse le plafond du jour ou ton solde.');
     }
     user.kikooz = (Number(user.kikooz) || 0) - mise;
     if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
-    journalKikooz(user, { type: 'p', k: mise, n: libellePariChallenge({ jour, jeu: jeu.cle, type, choix }) + ', cote ' + coteLisible(cote) });
+    journalKikooz(user, { type: 'p', k: mise, n: libellePariChallenge({ jour, jeu: jeu.cle, type, choix }) });
     notifyKikoozUpdate(moi, user.kikooz);
-    console.log(`[PARIS] Challenge ${jour} ${jeu.cle}/${type} : ${moi} mise ${mise} sur ${choix} à ${cote} (rendra ${retour})`);
-    res.json({ ok: true, mise: pari.mise, cote, decouverte: trouvee.decouverte, retour, retourTotal: pari.retour, solde: user.kikooz, dejaMise: deja + mise });
+    console.log(`[PARIS] Challenge ${jour} ${jeu.cle}/${type} : ${moi} mise ${mise} sur ${choix}`);
+    // Le pot après la mise, et ce qu'elle rapporterait s'il en restait là.
+    const mutuels = (await db.parisChallengeDuJour(jour)).filter((p) => p.jeu === jeu.cle && p.type === type && p.statut !== 'rembourse' && p.retour == null);
+    const pot = Paris.potLibre(mutuels, type === 'or');
+    const surLui = (pot.joueurs[choix] || { mises: 0 }).mises;
+    const estime = surLui > 0 ? Math.floor((pot.total * pari.mise) / surLui) : pari.mise;
+    res.json({ ok: true, mise: pari.mise, pot: pot.total, estime, solde: user.kikooz, dejaMise: deja + mise });
   } catch (e) {
     console.error('[PARIS] mise Challenge :', e.message);
     non('erreur', 'Le pari n’a pas pu être enregistré.', 500);
@@ -10725,29 +10885,33 @@ app.post('/api/paris/challenge', async (req, res) => {
 });
 
 app.get('/api/admin/paris-challenge', adminScope('challenge'), async (req, res) => {
-  if (!process.env.DATABASE_URL) return res.json({ reglages: parisChallengeReglages, regles: CoteChallenge.REGLES, jeux: [], sansBase: true });
+  const objets = SHOP_PACKS.map((o) => ({ id: o.id, nom: o.name, rayon: o.category }));
+  if (!process.env.DATABASE_URL) return res.json({ reglages: parisChallengeReglages, jeux: [], objets, sansBase: true });
   try {
-    const exclus = new Set(parisChallengeReglages.exclus || []);
+    const R = parisChallengeReglages;
+    const exclus = new Set(R.exclus || []);
     const demain = parisChallengeDemain(), hier = parisChallengeHier();
+    const duJour = (await jeuxDuJour(demain)).map((j) => j.cle);
     const pd = await db.parisChallengeDuJour(demain);
     const ph = await db.parisChallengeDuJour(hier);
-    const cotes = await cotesChallenge(demain);
+    const hist = await cotesChallenge(demain);
     const bilan = await db.bilanParisChallenge(jourDecale(parisDayKey(), -30));
-    const somme = (l, k) => l.reduce((s, p) => s + (Number(p[k || 'mise']) || 0), 0);
+    const somme = (l, k) => l.reduce((s2, p) => s2 + (Number(p[k || 'mise']) || 0), 0);
+    const sem = semaineParis(parisDayKey());
+    const classement = (await db.classementParis(sem.lundi, sem.dimanche, 3)).slice(0, 5);
     res.json({
-      reglages: parisChallengeReglages, regles: CoteChallenge.REGLES, demain, hier,
+      reglages: R, demain, hier, jeuxDuJour: duJour, objets,
+      semaine: { lisible: sem.lisible, classement: classement.map((c) => Object.assign({ nom: getDisplayName(c.username) }, c)) },
       bilan: { jours: bilan, mises: somme(bilan, 'mises'), gains: somme(bilan, 'gains') },
       jeux: jeuxChallengeParis().map((j) => {
         const d = pd.filter((p) => p.jeu === j.cle && p.statut !== 'rembourse');
         const h = ph.filter((p) => p.jeu === j.cle);
-        const c = cotes.get(j.cle) || { jours: 0, joueurs: {} };
-        const el = Object.entries(c.joueurs).filter(([, l]) => l.eligible).sort(favorisDabord);
+        const c = hist.get(j.cle) || { jours: 0, joueurs: {} };
+        const habitues = Object.entries(c.joueurs).filter(([, l]) => l.joues >= 3).sort(habituesDabord);
         return {
-          cle: j.cle, nom: j.nom, exclu: exclus.has(j.cle), jours: c.jours, eligibles: el.length,
-          decouverte: c.decouverte || CoteChallenge.REGLES.decouverteDefaut,
-          favoris: el.slice(0, 5).map(([u, l]) => ({ pseudo: u, nom: getDisplayName(u), joues: l.joues, podiums: l.podiums, ors: l.ors, podium: l.podium.cote, or: l.or.cote })),
-          demain: { parieurs: new Set(d.map((p) => p.username)).size, podium: somme(d.filter((p) => p.type === 'podium')), or: somme(d.filter((p) => p.type === 'or')),
-            engage: somme(d, 'retour') },
+          cle: j.cle, nom: j.nom, exclu: exclus.has(j.cle), duJour: duJour.includes(j.cle), jours: c.jours, habitues: habitues.length,
+          favoris: habitues.slice(0, 3).map(([u, l]) => ({ pseudo: u, nom: getDisplayName(u), joues: l.joues, podiums: l.podiums, ors: l.ors })),
+          demain: { parieurs: new Set(d.map((p) => p.username)).size, podium: somme(d.filter((p) => p.type === 'podium')), or: somme(d.filter((p) => p.type === 'or')) },
           hier: { mises: somme(h.filter((p) => p.statut !== 'rembourse')), payes: somme(h.filter((p) => p.statut === 'gagne'), 'gain'),
             gagnes: h.filter((p) => p.statut === 'gagne').length,
             perdus: h.filter((p) => p.statut === 'perdu').length, rembourses: h.filter((p) => p.statut === 'rembourse').length,
@@ -10760,7 +10924,8 @@ app.get('/api/admin/paris-challenge', adminScope('challenge'), async (req, res) 
 app.post('/api/admin/paris-challenge', adminScope('challenge'), async (req, res) => {
   const b = req.body || {};
   const avant = parisChallengeReglages;
-  const apres = Object.assign({}, avant);
+  const apres = Object.assign({}, avant, { choix: Object.assign({}, avant.choix || {}) });
+  const connus = new Set(jeuxChallengeParis().map((j) => j.cle));
   if (b.actif !== undefined) apres.actif = b.actif === true || b.actif === '1' || b.actif === 1;
   if (b.plafond !== undefined) {
     const p = Math.floor(Number(b.plafond));
@@ -10772,23 +10937,49 @@ app.post('/api/admin/paris-challenge', adminScope('challenge'), async (req, res)
     if (!Number.isFinite(g) || g < 1 || g > 1000000) return res.status(400).json({ error: 'bad_gros_coup', message: 'Gros coup : un gain net en kikooz, au moins 1.' });
     apres.grosCoup = g;
   }
-  if (Array.isArray(b.exclus)) {
-    const connus = new Set(jeuxChallengeParis().map((j) => j.cle));
-    apres.exclus = b.exclus.map(String).filter((k) => connus.has(k));
+  if (b.nbJeux !== undefined) {
+    const n = Math.floor(Number(b.nbJeux));
+    if (!Number.isFinite(n) || n < 1 || n > connus.size) return res.status(400).json({ error: 'bad_nb_jeux', message: `Jeux par jour : de 1 à ${connus.size}.` });
+    apres.nbJeux = n;
+  }
+  if (b.recompenseSemaine !== undefined) {
+    const id = b.recompenseSemaine === null || b.recompenseSemaine === '' ? null : Number(b.recompenseSemaine);
+    if (id !== null && !SHOP_PACKS.some((o) => o.id === id)) return res.status(400).json({ error: 'bad_objet', message: 'Cet objet n’existe pas dans la boutique.' });
+    apres.recompenseSemaine = id;
+  }
+  if (Array.isArray(b.exclus)) apres.exclus = b.exclus.map(String).filter((k) => connus.has(k));
+  // Les jeux d'un jour, choisis à la main (demain, d'ordinaire).
+  if (b.jeuxDuJour && typeof b.jeuxDuJour === 'object') {
+    const jour = String(b.jeuxDuJour.jour || parisChallengeDemain());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(jour) || jour < parisChallengeDemain()) return res.status(400).json({ error: 'bad_jour', message: 'On ne choisit les jeux que pour demain ou plus tard.' });
+    const liste = (Array.isArray(b.jeuxDuJour.jeux) ? b.jeuxDuJour.jeux : []).map(String).filter((k) => connus.has(k));
+    if (liste.length) apres.choix[jour] = [...new Set(liste)];
+    else {
+      // Vide : un NOUVEAU tirage, avec une autre graine.
+      delete apres.choix[jour];
+      apres.retirages = Object.assign({}, apres.retirages || {});
+      apres.retirages[jour] = (apres.retirages[jour] || 0) + 1;
+      for (const k of Object.keys(apres.retirages)) if (k < parisChallengeHier()) delete apres.retirages[k];
+    }
   }
   parisChallengeReglages = apres;
   viderCotesChallenge();
   try {
     if (process.env.DATABASE_URL) {
-      await db.setAppState('paris_challenge', JSON.stringify(apres));
-      // L'option baissée, ou un jeu retiré : les mises en jeu reviennent.
+      await enregistrerReglagesParisChallenge();
+      // Le nouveau tirage, tout de suite : ses jeux sont figés, et les mises
+      // sur ceux qui sortent sont remboursées juste après.
+      if (b.jeuxDuJour && typeof b.jeuxDuJour === 'object') await jeuxDuJour(String(b.jeuxDuJour.jour || parisChallengeDemain()));
+      const choixFinal = parisChallengeReglages.choix || {};
+      // L'option baissée, un jeu retiré ou qui n'est plus du jour : les mises en jeu reviennent.
       const exclus = new Set(apres.exclus || []);
-      const r = await parisChallengeRembourser((p) => !apres.actif || exclus.has(p.jeu));
+      const r = await parisChallengeRembourser((p) => !apres.actif || exclus.has(p.jeu)
+        || (Array.isArray(choixFinal[p.jour]) && !choixFinal[p.jour].includes(p.jeu) && p.retour == null));
       if (r.length) console.log(`[PARIS] Challenge : ${r.length} pari(s) remboursé(s)`);
     }
     parisOuvertsCache.at = 0;
-    console.log(`[PARIS] réglages du Challenge : ${JSON.stringify(apres)}`);
-    res.json({ ok: true, reglages: apres });
+    console.log(`[PARIS] réglages du Challenge : ${JSON.stringify(Object.assign({}, apres, { choix: undefined }))}`);
+    res.json({ ok: true, reglages: parisChallengeReglages });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

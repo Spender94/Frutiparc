@@ -45,3 +45,19 @@ test('le même lot donne le même texte ; un autre lot peut en changer', () => {
   assert.ok(textes.size > 3, 'des ouvertures variées');
   assert.equal(Dimitri.messageGrosCoups([]), '');
 });
+
+test('le Prunostiqueur de la semaine : le sacré, son bénéfice, le podium, l’objet', () => {
+  const m = Dimitri.messageSemaine({
+    semaine: 'du lundi 5 au dimanche 11 octobre', objet: 'Bonnet de nuit',
+    gagnant: { nom: 'Noisette', net: 212, paris: 9, gagnes: 4 },
+    suivants: [{ nom: 'Cassis', net: 40 }, { nom: 'Sureau', net: -3 }],
+  });
+  assert.match(m, /Prunostiqueur de la semaine/);
+  assert.match(m, /🏆 @Noisette, avec \[b\]\+212 kikooz\[\/b\] de bénéfice du lundi 5 au dimanche 11 octobre \(4 paris gagnés sur 9\)/);
+  assert.match(m, /cadeau du parc : \[b\]Bonnet de nuit\[\/b\]/);
+  assert.match(m, /🥈 @Cassis \(\+40\)/);
+  assert.doesNotMatch(m, /Sureau/, 'un bénéfice négatif ne monte pas sur le podium');
+  const sansObjet = Dimitri.messageSemaine({ semaine: 'x', objet: null, gagnant: { nom: 'A', net: 5, paris: 3, gagnes: 1 }, suivants: [] });
+  assert.doesNotMatch(sansObjet, /cadeau/);
+  assert.match(sansObjet, /1 pari gagné sur 3/);
+});
