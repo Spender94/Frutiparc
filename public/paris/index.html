@@ -90,6 +90,20 @@
   .c b { display: block; font: bold 14px Arial, sans-serif; color: #E3756A; }
   .c span { font-size: 9px; color: #6c8f3a; }
   .c.or { border-color: #F1D27A; } .c.or b { color: #C8860A; }
+  /* Les médailles du site (awards.swf) : les trois jetons, et celles de chaque jeu. */
+  img.md { width: 13px; height: 13px; vertical-align: -2px; }
+  .trio { display: inline-flex; vertical-align: -2px; }
+  .trio img.md { margin-right: -5px; }
+  .trio img.md:last-child { margin-right: 0; }
+  img.tro { width: 9px; height: 13px; vertical-align: -2px; }
+  img.mj { width: 18px; height: 18px; vertical-align: -5px; }
+  .c > span { display: block; white-space: nowrap; }
+  .c span img.md { width: 10px; height: 10px; vertical-align: -1px; margin-right: 2px; }
+  .c span .trio img.md { margin-right: -4px; }
+  .c span .trio { margin-right: 2px; }
+  .c span .trio img.md:last-child { margin-right: 0; }
+  .c i { display: block; font-style: normal; font-size: 9px; color: #9ab87a; line-height: 1.1; }
+  .c.choisi i { color: #fff; }
   .c:hover:not(:disabled) { border-color: #E3756A; }
   .c.choisi { background: #E3756A; border-color: #E3756A; } .c.choisi b, .c.choisi span { color: #fff; }
   .c:disabled { cursor: default; opacity: .55; }
@@ -214,6 +228,23 @@
   function kz(n) { return nombre(n) + ' kikooz'; }
   function cote(c) { return c == null ? '—' : '×' + String(c).replace('.', ','); }
   function retour(mise, c) { return Math.floor(mise * c + 1e-9); }
+  // LES MÉDAILLES DU SITE — les jetons d'awards.swf (/fb/medal_*.svg), les
+  // médailles de chaque jeu (/fb/medal_<métal>_<jeu>.png, celles des fiches),
+  // et le trophée des tournois (/fb/trophee.svg). Pas d'emoji.
+  var METAL = { or: 'gold', argent: 'silver', bronze: 'bronze' };
+  function jeton(metal) { return '<img class="md" src="/fb/medal_' + METAL[metal] + '.svg" alt="">'; }
+  // « en or » : le jeton d'or ; « médaillé » : les trois, l'un sur l'autre.
+  function iconePari(type) {
+    return type === 'or' ? jeton('or') : '<span class="trio">' + jeton('or') + jeton('argent') + jeton('bronze') + '</span>';
+  }
+  var TROPHEE = '<img class="tro" src="/fb/trophee.svg" alt="">';
+  // jeu (clé du Challenge) → suffixe des médailles du jeu, comme sur la fiche.
+  var MEDAILLE_JEU = { swapou2: 'swapou', snake3: 'snake', bkiwi: 'bk', mb2: 'mb2', kaluga: 'kaluga',
+    bandas: 'bandas', grapiz: 'grapiz', minipixiz: 'minipixiz', miniwave: 'miniwave', minifever: 'minifever' };
+  function medailleJeu(cleJeu, metal) {
+    var k = MEDAILLE_JEU[String(cleJeu || '').split('_')[0]];
+    return k ? '<img class="mj" src="/fb/medal_' + METAL[metal] + '_' + k + '.png" alt="">' : jeton(metal);
+  }
   function json(r) { return r.json(); }
   var CONNEXION = '<p class="connexion">Pour parier, <a href="/light.html">connecte-toi au parc</a>, puis reviens ici.</p>';
 
@@ -295,7 +326,7 @@
       var pt = c.pot[type] || {};
       return '<button class="c' + (type === 'or' ? ' or' : '') + (choisi(type) ? ' choisi' : '') + '" data-jeu="' + esc(j.cle) + '" data-choix="' + esc(c.pseudo)
         + '" data-type="' + type + '"' + (actif ? '' : ' disabled') + '><b>' + (pt.cote ? cote(pt.cote) : 'à prendre') + '</b><span>'
-        + (type === 'or' ? 'en or' : 'médaillé') + (pt.mises ? ' · ' + nombre(pt.mises) : '') + '</span></button>';
+        + iconePari(type) + (type === 'or' ? 'en or' : 'médaillé') + '</span><i>' + (pt.mises ? kz(pt.mises) + ' misés' : '&nbsp;') + '</i></button>';
     };
     var stats = c.joues
       ? c.podiums + ' podium' + (c.podiums > 1 ? 's' : '') + ' sur ' + c.joues + ' j.' + (c.ors ? ' · ' + c.ors + ' en or' : '')
@@ -338,13 +369,13 @@
         var p = x.p;
         var fin = p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)'
           : ' → ≈ <b>' + nombre(estimation(x.j, p.type, p.choix, 0)) + '</b> si le pot en restait là';
-        return (p.type === 'or' ? '🥇 ' : '🏅 ') + esc(p.nom) + (p.type === 'or' ? ' en or' : ' médaillé') + ' à ' + esc(x.j.nom) + ' — ' + nombre(p.mise) + fin;
+        return iconePari(p.type) + ' ' + esc(p.nom) + (p.type === 'or' ? ' en or' : ' médaillé') + ' à ' + esc(x.j.nom) + ' — ' + nombre(p.mise) + fin;
       }).join('<br>') + (d.autresParis || []).map(function (p) {
-        return '<br>🏅 ' + esc(p.texte) + ' — ' + nombre(p.mise) + (p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)' : '');
+        return '<br>' + iconePari(p.type) + ' ' + esc(p.texte) + ' — ' + nombre(p.mise) + (p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)' : '');
       }).join('') + '</div>';
     } else if ((d.autresParis || []).length) {
       h += '<div class="mes"><h4>Mes paris pour demain</h4>' + d.autresParis.map(function (p) {
-        return '🏅 ' + esc(p.texte) + ' — ' + nombre(p.mise) + (p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)' : '');
+        return iconePari(p.type) + ' ' + esc(p.texte) + ' — ' + nombre(p.mise) + (p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)' : '');
       }).join('<br>') + '</div>';
     }
     // Les jeux en pastilles : celui choisi, sinon le premier où il se passe quelque chose.
@@ -386,7 +417,9 @@
         h += '<div class="' + p.statut + '">' + esc(p.texte) + ' — ' + kz(p.mise) + (p.cote != null ? ' à ' + cote(p.cote) : '') + ', ' + t + '</div>';
       });
       (hier.podiums || []).forEach(function (p) {
-        h += '<div><b>' + esc(p.nom) + '</b> : 🥇 ' + esc(p.podium[0] || '—') + (p.podium[1] ? ' · 🥈 ' + esc(p.podium[1]) : '') + (p.podium[2] ? ' · 🥉 ' + esc(p.podium[2]) : '') + '</div>';
+        h += '<div><b>' + esc(p.nom) + '</b> : ' + medailleJeu(p.cle, 'or') + ' ' + esc(p.podium[0] || '—')
+          + (p.podium[1] ? ' · ' + medailleJeu(p.cle, 'argent') + ' ' + esc(p.podium[1]) : '')
+          + (p.podium[2] ? ' · ' + medailleJeu(p.cle, 'bronze') + ' ' + esc(p.podium[2]) : '') + '</div>';
       });
       h += '</div>';
     }
@@ -419,7 +452,7 @@
     ticket = {
       sorte: 'c', jeu: j.cle, choix: c.pseudo, type: type, mise: ticket && ticket.mise,
       reste: resteDuJour(), plein: 'Tu as misé ton maximum de ' + kz(etatC.plafond) + ' pour demain.',
-      titre: (type === 'or' ? '🥇 ' : '🏅 ') + esc(c.nom) + ' ' + quoi + ' à ' + esc(j.nom) + ', demain'
+      titre: iconePari(type) + ' ' + esc(c.nom) + ' ' + quoi + ' à ' + esc(j.nom) + ', demain'
         + ' <small style="font-weight:normal;color:#6c8f3a">— pot ' + (type === 'or' ? '« or »' : '« médaillé »') + ' : ' + kz(j.pots[type])
         + (pt.mises ? ', dont ' + kz(pt.mises) + ' sur ' + esc(c.nom) : ', personne sur ' + esc(c.nom) + ' pour l’instant') + '</small>',
       gainHtml: function (mise) {
@@ -512,7 +545,7 @@
     var tag = ouvert ? 'button' : 'div';
     return '<' + tag + ' class="joueur' + (choisi ? ' choisi' : '') + (gagnant ? ' gagnant' : '') + '"'
       + (ouvert ? ' data-match="' + m.id + '" data-choix="' + esc(pseudo) + '"' + (bloque ? ' disabled' : '') : '') + '>'
-      + '<span class="n">' + (gagnant ? '🏆 ' : '') + esc(j.nom) + '</span>'
+      + '<span class="n">' + (gagnant ? TROPHEE + ' ' : '') + esc(j.nom) + '</span>'
       + (mises.cote ? '<span class="x">' + cote(mises.cote) + '</span>' : '<span class="x rien">pas encore de mise</span>')
       + '<span class="d">' + kz(mises.mises) + ' · ' + mises.parieurs + ' parieur' + (mises.parieurs > 1 ? 's' : '') + '</span>'
       + '</' + tag + '>';
@@ -572,7 +605,7 @@
     ticket = {
       sorte: 't', match: m.id, choix: pseudo, mise: ticket && ticket.mise, reste: Math.max(0, t.plafond - deja),
       plein: 'Tu as misé le plafond de ' + kz(t.plafond) + ' sur ce match.',
-      titre: '🏆 ' + esc(j.nom) + ' gagne — ' + esc(m.j1.nom) + ' contre ' + esc(m.j2.nom) + (deja ? ' <small style="font-weight:normal;color:#6c8f3a">(tu y as déjà ' + kz(deja) + ')</small>' : ''),
+      titre: TROPHEE + ' ' + esc(j.nom) + ' gagne — ' + esc(m.j1.nom) + ' contre ' + esc(m.j2.nom) + (deja ? ' <small style="font-weight:normal;color:#6c8f3a">(tu y as déjà ' + kz(deja) + ')</small>' : ''),
       // Pari mutuel : ce que rapporterait la mise si le pot en restait là.
       gainHtml: function (mise) {
         if (!(mise >= 1)) return '<small>Indique une mise d’au moins 1 kikooz.</small>';
@@ -633,12 +666,12 @@
     // Le Prunostiqueur de la semaine.
     var s = d.semaine;
     if (s) {
-      h += '<div class="regbloc"><h3>🏆 Prunostiqueur de la semaine <small style="font-weight:normal;color:#6c8f3a">— ' + esc(s.lisible)
+      h += '<div class="regbloc"><h3>' + TROPHEE + ' Prunostiqueur de la semaine <small style="font-weight:normal;color:#6c8f3a">— ' + esc(s.lisible)
         + ', bénéfice net, ' + s.minParis + ' paris réglés au moins</small></h3>';
       if (s.passee) h += '<p class="decouv" style="margin:0 0 6px">La semaine dernière : <b>' + esc(s.passee.nom) + '</b> (+' + kz(s.passee.net) + '), sacré par Dimitri.</p>';
       if (s.classement.length) {
         h += '<table class="reg"><tbody>' + s.classement.map(function (c) {
-          return '<tr' + (c.soi ? ' style="background:#FFF6F4"' : '') + '><td class="n" style="width:24px">' + (c.rang === 1 ? '🥇' : c.rang === 2 ? '🥈' : c.rang === 3 ? '🥉' : c.rang) + '</td>'
+          return '<tr' + (c.soi ? ' style="background:#FFF6F4"' : '') + '><td class="n" style="width:24px">' + (c.rang === 1 ? jeton('or') : c.rang === 2 ? jeton('argent') : c.rang === 3 ? jeton('bronze') : c.rang) + '</td>'
             + '<td><b>' + esc(c.nom) + '</b>' + (c.soi ? ' <small>(toi)</small>' : '') + ' <small style="color:#6c8f3a">' + c.gagnes + ' gagné' + (c.gagnes > 1 ? 's' : '') + ' sur ' + c.paris + '</small></td>'
             + '<td class="n"><b class="' + (c.net >= 0 ? 'gagne' : 'perdu') + '">' + (c.net > 0 ? '+' : '') + nombre(c.net) + '</b></td></tr>';
         }).join('') + '</tbody></table>';
@@ -667,7 +700,7 @@
           var res = l.statut === 'gagne' ? '<b>+' + nombre(l.gain - l.mise) + '</b> <small>(' + nombre(l.gain) + ' reçus)</small>'
             : l.statut === 'perdu' ? '<small>−' + nombre(l.mise) + '</small>'
             : l.statut === 'rembourse' ? '<small>' + nombre(l.gain) + ' rendus</small>' : '';
-          h += '<tr><td class="q-date">' + esc(date(l.quand)) + '</td><td>' + (l.sorte === 'challenge' ? '🏅 ' : '🏆 ') + esc(l.quoi) + '</td>'
+          h += '<tr><td class="q-date">' + esc(date(l.quand)) + '</td><td>' + (l.sorte === 'challenge' ? iconePari(l.type) : TROPHEE) + ' ' + esc(l.quoi) + '</td>'
             + '<td class="n">' + nombre(l.mise) + '</td><td class="n">' + (l.cote ? cote(l.cote) : '<small>mutuel</small>') + '</td>'
             + '<td><span class="st ' + l.statut + '">' + STATUTS[l.statut] + '</span>' + (res ? ' ' + res : '') + '</td></tr>';
         });

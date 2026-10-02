@@ -10636,12 +10636,12 @@ app.get('/api/paris/challenge', async (req, res) => {
     res.json(Object.assign(base, {
       jour: demain, jourLisible: jourLisible(demain), plafond: Number(R.plafond) || 50,
       dejaMise: moi ? await db.miseChallengeDuJour(moi, demain) : 0, jeux,
-      autresParis: autres.map((p) => ({ texte: libellePariChallenge(p).replace(getDisplayName(p.choix), nomDe(p.choix)), mise: p.mise,
+      autresParis: autres.map((p) => ({ type: p.type, texte: libellePariChallenge(p).replace(getDisplayName(p.choix), nomDe(p.choix)), mise: p.mise,
         cote: p.cote == null ? null : Number(p.cote), retour: p.retour })),
       hier: {
         jour: hier, jourLisible: jourLisible(hier),
         podiums: jeuxChallengeParis().filter((j) => podiumHier[j.cle] && (!jeuxHier || jeuxHier.includes(j.cle)))
-          .map((j) => ({ nom: j.nom, podium: podiumHier[j.cle] })),
+          .map((j) => ({ cle: j.cle, nom: j.nom, podium: podiumHier[j.cle] })),
         mesParis: mesHier.map((p) => ({
           texte: libellePariChallenge(p).replace(getDisplayName(p.choix), nomDe(p.choix)),
           mise: p.mise, cote: p.cote == null ? null : Number(p.cote), statut: p.statut, gain: p.gain })),
@@ -10749,7 +10749,7 @@ app.get('/api/paris/registre', async (req, res) => {
       return `la victoire de ${nomDe(p.choix)}${p.affiche ? ` (${p.affiche})` : ''}${p.tournoi ? `, ${p.tournoi}` : ''}`;
     };
     const lignes = mesParis.map((p) => ({
-      sorte: p.sorte, quand: p.cree_le, quoi: quoi(p), mise: p.mise,
+      sorte: p.sorte, type: p.type, quand: p.cree_le, quoi: quoi(p), mise: p.mise,
       cote: p.cote == null ? null : Number(p.cote), statut: p.statut, gain: p.gain,
     }));
     const regles = lignes.filter((l) => l.statut === 'gagne' || l.statut === 'perdu');

@@ -330,7 +330,7 @@ test('le Prunostiqueur de la semaine : le classement, le sacre, l’objet offert
   }
   assert.equal(sacre.length, 1);
   assert.match(sacre[0].content, /@emile, avec \[b\]\+60 kikooz\[\/b\]/);
-  assert.match(sacre[0].content, /🥈 @fanny \(\+20\)/);
+  assert.match(sacre[0].content, /@fanny, 2e \(\+20\)/);
   assert.doesNotMatch(sacre[0].content, /@gaston/, 'pas de podium pour un bénéfice négatif');
   assert.match(sacre[0].content, new RegExp('cadeau du parc : \\[b\\]' + objet.nom.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   // Le registre montre le sacré de la semaine passée, et le classement en cours.

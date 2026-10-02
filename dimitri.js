@@ -131,12 +131,12 @@ function messageSemaine(s) {
     () => `Mesdames et messieurs, voici le [b]Prunostiqueur de la semaine[/b] !`,
   ];
   const l = [choisir(tirage, ouvertures)(), ''];
-  l.push(`🏆 @${g.nom}, avec [b]+${nombre(g.net)} kikooz[/b] de bénéfice ${s.semaine} (${g.gagnes} pari${g.gagnes > 1 ? 's' : ''} gagné${g.gagnes > 1 ? 's' : ''} sur ${g.paris}).`);
+  l.push(`@${g.nom}, avec [b]+${nombre(g.net)} kikooz[/b] de bénéfice ${s.semaine} (${g.gagnes} pari${g.gagnes > 1 ? 's' : ''} gagné${g.gagnes > 1 ? 's' : ''} sur ${g.paris}).`);
   if (s.objet) l.push(`Il repart avec un cadeau du parc : [b]${s.objet}[/b] !`);
   const suivants = (s.suivants || []).filter((x) => x && x.net > 0).slice(0, 2);
   if (suivants.length) {
     l.push('');
-    l.push(`Sur le podium aussi : ${suivants.map((x, i) => `${i === 0 ? '🥈' : '🥉'} @${x.nom} (+${nombre(x.net)})`).join(', ')}.`);
+    l.push(`Sur le podium aussi : ${suivants.map((x, i) => `@${x.nom}, ${i + 2}e (+${nombre(x.net)})`).join(', ')}.`);
   }
   l.push('');
   l.push(choisir(tirage, [
