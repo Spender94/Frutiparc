@@ -24,7 +24,7 @@ const NOM = 'Dimitri';
 const BOUILLE = '0o0000000000000000000000';
 const HUMEUR = 4;                       // « Joie » : la bouille ravie
 const RUBRIQUE = 'Jeux Frutiparc';
-const SUJET = 'Les paris du parc : pronostics, débats et gros coups';
+const SUJET = 'Les Prunostics du parc : débats, pronos et gros coups';
 
 const INTRO = `Bonjour bonjour ! Moi c'est ${NOM}, je tiens le comptoir des paris du parc.\n\n`
   + `Ce sujet est le vôtre : on y parle [b]paris[/b], tout simplement. Vos pronostics pour le Challenge de demain, `
@@ -32,7 +32,7 @@ const INTRO = `Bonjour bonjour ! Moi c'est ${NOM}, je tiens le comptoir des pari
   + `Débattez, commentez, chambrez-vous gentiment !\n\n`
   + `Et chaque fois que quelqu'un réussit un [b]gros coup[/b] — un pari qui rapporte gros, sur un tournoi ou sur les `
   + `médaillés du Challenge —, je viens l'annoncer ici : le parieur, sa mise, la cote et ce qu'il a empoché.\n\n`
-  + `Pour parier : la tuile « Paris » du bureau. Son onglet « Registre » garde la trace de tous vos paris. `
+  + `Pour parier : l’icône « Prunostics » du bureau. Son onglet « Registre » garde la trace de tous vos paris. `
   + `À vos pronostics, je suis ravi d'avance !`;
 
 const OUVERTURES_UN = [

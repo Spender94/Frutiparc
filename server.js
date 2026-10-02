@@ -10192,7 +10192,7 @@ function parisMatchOuvert(t, m) {
     && !m.winner && m.status !== 'done' && !m.paris_fermes && !parisMatchCommence(t, m);
 }
 
-// Combien de matchs sont ouverts aux paris : la tuile « Paris » du light ne
+// Combien de matchs sont ouverts aux paris : la icône « Prunostics » du light ne
 // paraît que s'il y en a.
 app.get('/api/paris/ouverts', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ n: 0 });
@@ -10628,6 +10628,36 @@ app.get('/api/paris/registre', async (req, res) => {
       ok: true, moi: moi || null, seuil, bilan, lignes,
       grosCoups: coups.map((c) => ({ quand: c.regle_le, parieur: nomDe(c.username), quoi: quoi(c), mise: c.mise,
         cote: c.cote == null ? null : Number(c.cote), gain: c.gain })),
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// La cote d'UN joueur, avant de parier : celle qu'affiche le ticket quand on
+// cherche quelqu'un hors de la liste (sa cote, ou celle de découverte).
+app.get('/api/paris/challenge/cote', async (req, res) => {
+  const non = (code, message, status) => res.status(status || 400).json({ ok: false, code, message });
+  if (!process.env.DATABASE_URL || !parisChallengeReglages.actif) return non('fermes', 'Les paris du Challenge ne sont pas ouverts.');
+  try {
+    const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
+    const jeu = jeuxChallengeOuverts().find((j) => j.cle === String(req.query.jeu || ''));
+    if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux paris.');
+    const choix = normalizeUsername(req.query.choix);
+    let fiche = null;
+    if (choix && !NPC_USERNAMES.has(choix)) {
+      try { fiche = (await db.fichesComptes([choix]))[0] || null; } catch (e) { fiche = null; }
+    }
+    if (!fiche) return non('choix', 'Ce joueur n’existe pas.', 404);
+    const cotes = (await cotesChallenge(parisChallengeDemain())).get(jeu.cle);
+    const surSoi = moi ? (await comptesDeSoi(moi, [choix])).has(choix) : false;
+    const p = CoteChallenge.coteDuJoueur(cotes, choix, 'podium');
+    const o = CoteChallenge.coteDuJoueur(cotes, choix, 'or');
+    const l = (cotes && cotes.joueurs && cotes.joueurs[choix]) || { joues: 0, podiums: 0, ors: 0 };
+    res.json({
+      ok: true, pseudo: choix, nom: fiche.display_name || getDisplayName(choix), soi: choix === moi,
+      joues: l.joues, podiums: l.podiums, ors: l.ors, decouverte: p.decouverte,
+      cote: { podium: CoteChallenge.coteProposee(p.cote, surSoi, 'podium'), or: CoteChallenge.coteProposee(o.cote, surSoi, 'or') },
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

@@ -122,7 +122,7 @@ test('ouverts par défaut ; baissés, rien ne se mise — et ça survit au redé
   let sujets = [];
   for (let i = 0; i < 60 && !sujets.length; i++) {
     sujets = await sql(`SELECT t.id, b.name FROM forum_topics t JOIN forum_boards b ON b.id = t.board_id
-      WHERE t.title = 'Les paris du parc : pronostics, débats et gros coups' AND t.author_username = 'dimitri-pnj'`);
+      WHERE t.title = 'Les Prunostics du parc : débats, pronos et gros coups' AND t.author_username = 'dimitri-pnj'`);
     if (!sujets.length) await wait(250);
   }
   assert.equal(sujets.length, 1);
@@ -244,6 +244,15 @@ test('les mises de demain : cote figée, plafond du jour, sur soi, refus', async
   // joue, c'est la cote par défaut.
   await compte('dora', 500);
   const decouv = Cote.cotesDuJeu(HIST).decouverte;
+  // Le ticket demande d'abord la cote du joueur cherché.
+  const vueCote = await (await fetch(BASE + '/api/paris/challenge/cote?sid=' + sids.dora + '&jeu=swapou2_classic&choix=Basile')).json();
+  assert.equal(vueCote.ok, true, JSON.stringify(vueCote));
+  assert.deepEqual([vueCote.pseudo, vueCote.decouverte, vueCote.joues], ['basile', true, 5]);
+  assert.deepEqual(vueCote.cote, { podium: COTES.basile.podium.cote, or: COTES.basile.or.cote });
+  assert.equal((await (await fetch(BASE + '/api/paris/challenge/cote?jeu=swapou2_classic&choix=personne-ici')).json()).code, 'choix');
+  assert.equal((await (await fetch(BASE + '/api/paris/challenge/cote?jeu=swapou2_classic&choix=dimitri-pnj')).json()).code, 'choix');
+  const surSoiCote = await (await fetch(BASE + '/api/paris/challenge/cote?sid=' + sids.dora + '&jeu=snake3_classic&choix=dora')).json();
+  assert.deepEqual([surSoiCote.soi, surSoiCote.cote.podium, surSoiCote.cote.or], [true, 3, 4.5], 'sur soi, plafonnée');
   const surBasile = await parier('dora', 'swapou2_classic', 'podium', 'basile', 10);
   assert.equal(surBasile.ok, true, JSON.stringify(surBasile));
   assert.equal(surBasile.decouverte, true);
@@ -347,7 +356,7 @@ test('la nuit passe, le roll règle à la cote — le parc paie les gagnants', a
   }
   assert.equal(annonces.length, 1, 'un seul message pour le lot');
   const a = annonces[0];
-  assert.equal(a.title, 'Les paris du parc : pronostics, débats et gros coups');
+  assert.equal(a.title, 'Les Prunostics du parc : débats, pronos et gros coups');
   assert.equal(a.rubrique, 'Jeux Frutiparc');
   assert.equal(a.mood, 4, 'd’humeur ravie');
   assert.equal(a.bouille, '0o0000000000000000000000');
@@ -355,7 +364,7 @@ test('la nuit passe, le roll règle à la cote — le parc paie les gagnants', a
   assert.doesNotMatch(a.content, /@cyril/);
   // Le sujet, ouvert par Dimitri dès le démarrage : un sujet de discussion.
   const intro = await sql(`SELECT p.content, p.mood FROM forum_posts p JOIN forum_topics t ON t.id = p.topic_id
-    WHERE t.title = 'Les paris du parc : pronostics, débats et gros coups' ORDER BY p.id`);
+    WHERE t.title = 'Les Prunostics du parc : débats, pronos et gros coups' ORDER BY p.id`);
   assert.match(intro[0].content, /Dimitri, je tiens le comptoir des paris/);
   assert.match(intro[0].content, /Débattez, commentez/);
   assert.equal(intro.length, 2, 'un seul sujet : le mot d’accueil, puis l’annonce');

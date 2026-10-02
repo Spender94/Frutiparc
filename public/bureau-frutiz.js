@@ -146,10 +146,12 @@ window.BureauFrutiz = (function () {
     // pour une conversation neuve. C'est `minGaspard` qui le calcule, cadre
     // par cadre — 240 × 248 fenêtre nue, plus large quand on ouvre les
     // bouilles ou les présents. Le `l`/`h` à zéro laisse `recal` décider.
-    // LES PARIS — pas de fenêtre d'époque : la page /paris/ dans un cadre,
-    // logé dans la feuille mobile que la fenêtre adopte (comme la boutique).
-    // Une fenêtre standard : elle se pose dans le coin, comme les autres.
-    paris:      { panneau: '#paris-sheet',     titre: 'Paris', l: 660, h: 580,
+    // LES PRUNOSTICS (les paris) — pas de fenêtre d'époque : la page /paris/
+    // dans un cadre, logé dans la feuille mobile que la fenêtre adopte (comme
+    // la boutique). Une fenêtre standard, posée dans le coin comme les autres ;
+    // sa pastille est la PRUNE de la bande #198 (`winDebug`), que la fenêtre
+    // de débogage d'époque était seule à porter.
+    paris:      { panneau: '#paris-sheet',     titre: 'Prunostics', fruit: 'winDebug', l: 520, h: 600,
                   min: minFenetre(380, 300) },
     gaspard:    { panneau: '#gaspard-panel', titre: 'Gaspard', fruit: 'winChat',
                   l: 0, h: 0, min: function () { return minGaspard(); } },
