@@ -44,6 +44,49 @@ const INV_HEIGHT = 140;
 const INV_SHAPE = [0, 2, 3, 4, 3];
 const SECTION = ['voir les caractéristiques', 'voir les sortilèges',
   'voir l\'équipement', 'voir la santé'];
+// L'infobulle du bouton qui tourne les volets : la même chose, avec sa
+// majuscule — c'est un titre, pas une phrase.
+const SECTION_BULLE = SECTION.map((t) => t.charAt(0).toUpperCase() + t.slice(1));
+
+/*
+ * Lang.FLASK_ACTION — ce que fait la fée dans son bocal, selon son moral
+ * (cinq humeurs, de la plus sombre à la plus gaie). it/Flask.getDesc en
+ * tire une au hasard à chaque survol :
+ *
+ *     action = FLASK_ACTION[ floor( (moral − 0,1) / 4 ) ]
+ *     « Noisette ( niv.3 ) » + action + « dans ce bocal. »
+ *
+ * Recopiées telles quelles des sources (Lang.mt), fautes de frappe comprises
+ * — « poême », les guillemets doublés —, sauf les espaces manquantes au bout
+ * de quatre phrases, qui collaient le mot suivant.
+ */
+const FLASK_ACTION = [
+  ['pleure', 'pleure à chaudes larmes', 'gémit', 'déprime', 'dépérit',
+    'se cogne la tête contre les parois', 'chante un air lugubre', 'est démoralisée',
+    'gratte contre le bord', 'grave un nouveau trait sur les parois',
+    'lit \'\'comment s\'évader d\'un bocal\'\''],
+  ['s\'ennuie', 'n\'a pas le moral', 'parle toute seule', 'trouve le temps long',
+    'se ronge les ongles', 'chante un air triste', 'vous regarde tristement',
+    'se tourne les pouces', 'regarde ailleurs', 'fixe la paroi du bocal', 'tourne en rond',
+    'bavarde avec la paroi..', 'parle avec son reflet'],
+  ['vous attend', 'chante un air de musique', 'attend votre retour',
+    'attend la prochaine aventure', 'joue aux cartes toute seule', 'vole tranquillement',
+    'nettoie ses ailes', 's\'étire', 'dort', 'fait une bulle de chewing-gum',
+    'installe son hamac', 'fait un pictionary toute seule', 'se brosse les dents',
+    'se vernit les ongles', 'médite paisiblement'],
+  ['fait des tourbillons', 'fait un château de cartes', 'agite ses ailes',
+    'vous fait un clin d\'oeil', 'vole joyeusement', 'se coiffe', 'lit un roman',
+    'se fait un collier de perles', 'a senti qu\'on la regardait',
+    'se parfume à la violette', 'teste ses chapeaux', 'téléphone à Clochette',
+    'sautille dans tous les sens', 'se fait un bain de pied aux bulles magiques'],
+  ['fait du jokari', 'chante un air joyeux', 'joue du micro-banjo', 'rigole toute seule',
+    'danse', 'écrit un poême', 'virevolte', 'fait des pompes', 'fait des loopings',
+    'dessine sur un parchemin', 'fait des paillettes', 'grignote un chocapic',
+    'joue à sa mini-frusion', 'fait des biscuits au chocolat'],
+];
+// La ligne « Prochain niveau » du tableau de bois s'efface passé ce niveau
+// (affiché) : au-delà, c'est une surprise.
+const NIVEAU_SURPRISE = 15;
 
 // Le panneau de la fée et ses volets (initFaeriePanel / initFaerieIntMode).
 const PANNEAU = { x: 200, y: 41 };
@@ -186,26 +229,63 @@ class Inventaire {
     // (Inventory.setFaerieFace : trgMsg sur facePanel.pic).
     this.surPastille = false;
     this.surPortrait = false;
+    this.surVolet = false;            // le bouton des volets : son infobulle
+    this.survol = null;               // inv.trgMsg : {cle, message, titre} de la case survolée
     this.souris = { x: 0, y: 0 };
+    this.sourisDedans = false;
+    // inv/Hand.mt — LA MAIN SUIT LA SOURIS. Prendre un objet au clic le
+    // retire de sa case et le fait voler derrière le pointeur (moveHand :
+    // un tiers du chemin par image), jusqu'au clic qui le pose. Au doigt,
+    // pas de pointeur à suivre : la case reste marquée, et le glisser
+    // (ci-dessous) fait le reste.
+    this.mainPos = null;              // {x, y} de l'objet tenu, à la souris
+    this.dernierPointeur = 'mouse';   // 'mouse' | 'touch' | 'pen' : le dernier appui
+    // inv/Slot.click — la fée entre et sort de son bocal TOUCHE ENFONCÉE
+    // (ESPACE au bureau ; on accepte aussi Ctrl, le geste qu'on attend
+    // aujourd'hui). Un clic simple prend le bocal en main, comme tout objet.
+    // Au doigt, pas de touche : l'appui simple reste le geste de la fée.
+    this.espace = false;
+    window.addEventListener('keydown', (ev) => { if (ev.key === ' ' || ev.code === 'Space') this.espace = true; });
+    window.addEventListener('keyup', (ev) => { if (ev.key === ' ' || ev.code === 'Space') this.espace = false; });
+    window.addEventListener('blur', () => { this.espace = false; });
     this.canvas.addEventListener('mousemove', (ev) => {
       const r = this.canvas.getBoundingClientRect();
       const x = (ev.clientX - r.left) / this.echelle;
       const y = (ev.clientY - r.top) / this.echelle;
       this.souris = { x, y };
+      this.sourisDedans = true;
+      this.dernierPointeur = 'mouse';
       const dessus = x > SCENE - 46 && y > SCENE - 46;
       const z = this.zoneSous(x, y);
       const pastille = !!(z && z.pastille !== undefined);
+      const volet = z === 'volet' && !this.main;
       const portrait = z === 'portrait' && !this.main && !(this.glisse && this.glisse.pris);
       if (portrait && !this.surPortrait) this.montrerGouts();
       this.surPortrait = portrait;
-      if (dessus !== this.surLeCoin || pastille || pastille !== this.surPastille) {
-        this.surLeCoin = dessus; this.surPastille = pastille; this.rendre();
+      const survol = this.survolDe(z);
+      const changeSurvol = (survol && survol.cle) !== (this.survol && this.survol.cle);
+      if (changeSurvol) this.survol = survol;
+      if (dessus !== this.surLeCoin || pastille || pastille !== this.surPastille
+        || volet || volet !== this.surVolet || changeSurvol) {
+        this.surLeCoin = dessus; this.surPastille = pastille; this.surVolet = volet; this.rendre();
       }
+      if (this.main && !this.anime) this.animer();
     });
     this.canvas.addEventListener('mouseleave', () => {
       this.surPortrait = false;
-      if (this.surLeCoin || this.surPastille) { this.surLeCoin = false; this.surPastille = false; this.rendre(); }
+      this.sourisDedans = false;
+      const avait = this.survol;
+      this.survol = null;
+      if (this.surLeCoin || this.surPastille || this.surVolet || avait) {
+        this.surLeCoin = false; this.surPastille = false; this.surVolet = false; this.rendre();
+      }
     });
+    // L'IRIS (Manager.fadeSlot) : le sac s'ouvre dans l'étoile, comme les
+    // autres lieux — et la boucle d'images qui la fait grandir sert aussi à
+    // la main qui suit la souris.
+    this.iris = null;
+    this.anime = 0;
+    this.tmod = 1;
     this.redimensionner();
     window.addEventListener('resize', () => { this.redimensionner(); this.rendre(); });
   }
@@ -315,10 +395,17 @@ class Inventaire {
     poser('invFond', 1, 100, 0, 0);
 
     // 6. Le bandeau de message, le cadre, la poubelle.
-    poser('invMessage', this.titre ? 2 : 1, 100, 0, MSG_Y);
-    if (this.message) {
-      this.texte(this.message, SCENE / 2, MSG_Y + (this.titre ? 25 : 22), '#2a2416', this.messageTaille || 9, 200);
-      if (this.titre) this.texte(this.titre, SCENE / 2, MSG_Y + 10, '#6b3a1a', 10);
+    // Inventory.setMsg : ce qu'on survole passe devant, le temps du survol
+    // (trgMsg : onRollOver pose, onRollOut efface) ; sinon le dernier mot dit ;
+    // sinon, sur les volets des caractéristiques et des sortilèges, ce que la
+    // fée apprendra à sa prochaine montée.
+    const mot = (this.survol && !(this.glisse && this.glisse.pris)) ? this.survol
+      : this.message ? { message: this.message, titre: this.titre, taille: this.messageTaille }
+        : this.prochainNiveau(fee);
+    poser('invMessage', mot && mot.titre ? 2 : 1, 100, 0, MSG_Y);
+    if (mot && mot.message) {
+      this.texte(mot.message, SCENE / 2, MSG_Y + (mot.titre ? 25 : 22), '#2a2416', mot.taille || 9, 200);
+      if (mot.titre) this.texte(mot.titre, SCENE / 2, MSG_Y + 10, '#6b3a1a', 10);
     }
     poser('invDevant', 1, 100, 0, 0);
     if (this.extraList) this.rendreFlechesARanger();
@@ -330,34 +417,37 @@ class Inventaire {
     poser('boutonQuitter', this.surLeCoin ? 2 : 1, 100, SCENE, SCENE);
     this.zoneRect('quitter', SCENE - 46, SCENE - 46, 46, 46);
 
-    // 5. L'objet tenu suit le doigt : on le montre au coin de sa case d'origine,
-    //    entouré, pour qu'on sache toujours ce qu'on a en main.
+    // 5. L'objet tenu. À la souris, il VOLE derrière le pointeur (inv/Hand.mt,
+    //    DP_HAND, par-dessus tout), sa case laissée vide. Au doigt, il n'y a
+    //    pas de pointeur à suivre : la case reste marquée.
     if (this.main) {
-      const r = this.caseDeLaMain();
-      if (r) {
-        ctx.strokeStyle = '#ffd76a';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(r.x - 16, r.y - 16, 32, 32);
+      if (this.mainSuitSouris()) {
+        const d = dessinObjet(this.typeEnMain());
+        if (d && s[d.cle] && this.mainPos) {
+          C.poserRendu(ctx, C.rendre(s[d.cle], d.frame, SLOT_SIZE * 0.82, undefined, d.parties),
+            this.mainPos.x, this.mainPos.y);
+        }
+      } else {
+        const r = this.caseDeLaMain();
+        if (r) {
+          ctx.strokeStyle = '#ffd76a';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(r.x - 16, r.y - 16, 32, 32);
+        }
       }
+    }
+
+    // Le bouton des volets dit où il mène (Mc.makeHint), au lieu de l'écrire
+    // dans le tableau de bois.
+    if (this.surVolet && fee && !(this.glisse && this.glisse.pris)) {
+      this.infobulle(SECTION_BULLE[(this.volet + 1) % 4]);
     }
 
     // 7. L'infobulle de la pastille (mcHint : fond vert pâle à 80 %, Verdana
     //    10 vert sombre), posée en haut à gauche de la souris et gardée dans
     //    la scène, comme Hint.mt.
     if (this.surPastille && fee && !(this.glisse && this.glisse.pris)) {
-      const t = this.libelleNiveau(fee);
-      ctx.save();
-      ctx.font = '10px Verdana, Arial, sans-serif';
-      const l = Math.ceil(ctx.measureText(t).width) + 8, h = 16;
-      const bx = Math.max(0, Math.min(SCENE - l, this.souris.x - l));
-      const by = Math.max(0, Math.min(SCENE - h, this.souris.y - h));
-      ctx.fillStyle = 'rgba(189,240,199,0.9)';
-      ctx.fillRect(bx, by, l, h);
-      ctx.fillStyle = 'rgb(18,78,24)';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(t, bx + 4, by + h / 2 + 0.5);
-      ctx.restore();
+      this.infobulle(this.libelleNiveau(fee));
     }
 
     // 6. Le GLISSER : l'objet suit le doigt (inv/Hand.mt suivait la souris), sa
@@ -379,6 +469,146 @@ class Inventaire {
           this.glisse.x, this.glisse.y);
       }
     }
+  }
+
+  /**
+   * mcHint — l'infobulle du jeu : fond vert pâle à 80 %, Verdana 10 vert
+   * sombre, posée en haut à gauche de la souris et gardée dans la scène.
+   */
+  infobulle(t) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.font = '10px Verdana, Arial, sans-serif';
+    const l = Math.ceil(ctx.measureText(t).width) + 8, h = 16;
+    const bx = Math.max(0, Math.min(SCENE - l, this.souris.x - l));
+    const by = Math.max(0, Math.min(SCENE - h, this.souris.y - h));
+    ctx.fillStyle = 'rgba(189,240,199,0.9)';
+    ctx.fillRect(bx, by, l, h);
+    ctx.fillStyle = 'rgb(18,78,24)';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(t, bx + 4, by + h / 2 + 0.5);
+    ctx.restore();
+  }
+
+  /**
+   * « Prochain niveau : … » — ce n'est pas dans le jeu, c'est une envie de
+   * joueur : savoir ce que la prochaine montée réserve motive à la chercher.
+   * La fiche le sait déjà (`$next`, préparé par setNextLevelUp : une
+   * caractéristique, et un sort quand il en existe un à sa portée). Passé le
+   * niveau 15, c'est une surprise — et c'est aussi plus honnête quand tout
+   * est au plafond, où le tirage n'a plus grand sens.
+   *
+   * Seulement sur les volets des caractéristiques et des sortilèges : c'est
+   * là qu'on se demande ce qui vient.
+   */
+  prochainNiveau(fee) {
+    if (!fee || (this.volet !== 0 && this.volet !== 1)) return null;
+    const fs = fee.fs;
+    const titre = 'Prochain niveau :';
+    if (nombre(fs.$level) + 1 > NIVEAU_SURPRISE) return { titre, message: 'surprise !' };
+    const nx = Array.isArray(fs.$next) ? fs.$next : null;
+    if (!nx) return null;
+    const F = racine.MinipixizFee;
+    const c = Number(nx[0]);
+    const carac = (Number.isInteger(c) && F && F.NOM_CARAC && F.NOM_CARAC[c]) ? '+1 en ' + F.NOM_CARAC[c] : null;
+    let sort = null;
+    if (nx[1] !== null && nx[1] !== undefined) {
+      const S = racine.MinipixizSorts;
+      const sp = S && S.nouveauSort ? S.nouveauSort(nx[1], null) : null;
+      sort = (sp && sp.nom && sp.nom()) || 'un nouveau sort';
+    }
+    const t = [carac, sort].filter(Boolean).join(' ou ');
+    return t ? { titre, message: t } : null;
+  }
+
+  /**
+   * inv.trgMsg — ce que dit une case au SURVOL : le nom de l'objet et sa
+   * description (It.getInfoMsg), et pour un bocal ce que fait sa locataire
+   * (it/Flask.getDesc). Tiré une fois en entrant dans la case : la phrase ne
+   * change pas à chaque pixel de souris.
+   */
+  survolDe(z) {
+    if (this.main || (this.glisse && this.glisse.pris)) return null;
+    if (!z || z.sac === undefined) return null;
+    const it = this.objetA(z.sac, z.case);
+    if (!it) return null;
+    const cle = z.sac + ':' + z.case;
+    if (this.survol && this.survol.cle === cle) return this.survol;
+    if (z.sac === 'joueur' && it.famille === 'bocal') {
+      return { cle, titre: 'Bocal résidentiel :', message: this.descBocal(z.case) };
+    }
+    return { cle, titre: (it.nom || '') + ' :', message: it.desc || '' };
+  }
+
+  // it/Flask.getDesc — vide, en mission, ou habité.
+  descBocal(index, alea) {
+    const dedans = (this.carte.$faerie || []).find((f) => f && f.$pos === index);
+    if (!dedans) {
+      return 'Il sert à abriter les fées. Pour y loger votre fée, cliquez dessus en appuyant sur Ctrl'
+        + ' (ou la barre espace) ; au doigt, touchez-le simplement.';
+    }
+    if (enMission(dedans)) return this.descMission(dedans);
+    // floor((moral − 0,1) / 4) : un moral à zéro donnait −1 dans le jeu (et une
+    // phrase « undefined ») — on le garde dans la première humeur.
+    const h = Math.max(0, Math.min(FLASK_ACTION.length - 1, Math.floor((nombre(dedans.$moral) - 0.1) / 4)));
+    const l = FLASK_ACTION[h];
+    const tirage = (alea || Math.random)();
+    const action = l[Math.min(l.length - 1, Math.floor(tirage * l.length))];
+    return dedans.$name + ' ( niv.' + (nombre(dedans.$level) + 1) + ' ) ' + action + ' dans ce bocal.';
+  }
+
+  // ── La main à la souris (inv/Hand.mt) ──
+  mainSuitSouris() {
+    return !!this.main && this.dernierPointeur === 'mouse' && this.sourisDedans;
+  }
+  typeEnMain() {
+    if (!this.main) return null;
+    const m = this.main;
+    return m.sac === 'joueur' ? (this.carte.$inv || [])[m.case]
+      : m.sac === 'extra' ? (this.extraList || [])[m.case]
+        : (((this.carte.$faerie || [])[m.sac] || {}).$inv || [])[m.case];
+  }
+
+  /**
+   * La boucle d'images de l'inventaire. Il ne se redessine d'ordinaire qu'aux
+   * gestes ; elle ne tourne que le temps d'une transition (l'iris) ou tant
+   * qu'un objet vole derrière la souris.
+   */
+  animer() {
+    if (this.anime) return;
+    let dernier = 0;
+    const pas = (t) => {
+      const dt = dernier ? Math.min(0.1, (t - dernier) / 1000) : 1 / 40;
+      dernier = t;
+      this.tmod = Math.max(0.25, dt * 40);
+      // moveHand : un tiers du chemin par image (c = 0,3 × tmod).
+      if (this.main && this.mainSuitSouris()) {
+        if (!this.mainPos) this.mainPos = this.departDeLaMain();
+        const c = Math.min(1, 0.3 * this.tmod);
+        this.mainPos.x += (this.souris.x - this.mainPos.x) * c;
+        this.mainPos.y += (this.souris.y - this.mainPos.y) * c;
+      }
+      this.rendre();
+      if (this.iris && !this.iris.dessiner(this.ctx, this.tmod)) this.iris = null;
+      const encore = this.iris || (this.main && this.mainSuitSouris()
+        && this.mainPos && (Math.abs(this.souris.x - this.mainPos.x) > 0.3
+          || Math.abs(this.souris.y - this.mainPos.y) > 0.3));
+      this.anime = encore ? requestAnimationFrame(pas) : 0;
+    };
+    this.anime = requestAnimationFrame(pas);
+  }
+  departDeLaMain() {
+    const r = this.caseDeLaMain();
+    return r ? { x: r.x, y: r.y } : { x: this.souris.x, y: this.souris.y };
+  }
+
+  // Manager.fadeSlot : le sac s'ouvre dans l'étoile, depuis le point touché.
+  irisDepuis(source, x, y) {
+    const C = racine.MinipixizClient;
+    if (!source || !C || !C.Iris) return;
+    this.iris = new C.Iris(source, x, y);
+    this.animer();
   }
 
   grillePour(sac) {
@@ -408,7 +638,10 @@ class Inventaire {
       const r = C.rendre(s.invCase, 1, taille);
       C.poserRendu(ctx, r, cx, cy);
     }
-    const d = dessinObjet(type);
+    // inv/Slot.take : prendre l'objet le RETIRE de sa case (removeItem) ; il
+    // vole à la souris. Au doigt, il reste visible sous sa case marquée.
+    const tenu = this.mainSuitSouris() && this.main.sac === sac && this.main.case === index;
+    const d = tenu ? null : dessinObjet(type);
     if (d && s[d.cle]) {
       // Un objet occupe la case sans la remplir : le jeu le pose à l'échelle de
       // la case, comme n'importe quel dessin de cent unités.
@@ -417,7 +650,7 @@ class Inventaire {
     }
     // inv/Item.updatePic : un bocal habité montre SA locataire. Sans ce dessin,
     // rien ne dirait au joueur laquelle de ses fées Gromelin acceptera.
-    if (sac === 'joueur' && type === O.IT_BOCAL) {
+    if (sac === 'joueur' && type === O.IT_BOCAL && !tenu) {
       const dedans = (this.carte.$faerie || []).find((f) => f && f.$pos === index);
       if (dedans && enMission(dedans)) {
         // it/Flask.updatePic : partie en mission, la locataire cède la place à
@@ -827,6 +1060,7 @@ class Inventaire {
   }
 
   doigtPose(ev) {
+    this.dernierPointeur = ev.pointerType || 'mouse';
     const p = this.pointDe(ev);
     const quoi = this.zoneSous(p.x, p.y);
     if (quoi && quoi.sac !== undefined && this.objetA(quoi.sac, quoi.case)) {
@@ -901,8 +1135,17 @@ class Inventaire {
   clic(ev) {
     if (this.clicApresGlisse) { this.clicApresGlisse = false; return; }
     const p = this.pointDe(ev);
+    if (ev.pointerType) this.dernierPointeur = ev.pointerType;
+    // inv/Slot.click : `Key.isDown(Key.SPACE)` — à la souris, la fée n'entre
+    // et ne sort du bocal que touche enfoncée ; un clic simple PREND le bocal
+    // en main. Au doigt (et pour tout autre appel de toucher), l'appui reste
+    // le geste de la fée.
+    this.clicSimple = this.dernierPointeur === 'mouse'
+      && !(ev.ctrlKey || ev.metaKey || this.espace);
+    this.souris = p;
     const quoi = this.zoneSous(p.x, p.y);
     if (quoi !== null) this.agir(quoi);
+    this.clicSimple = false;
   }
 
   agir(quoi) {
@@ -913,7 +1156,9 @@ class Inventaire {
       // `if( me.hand == null )` dans initFaerieIntMode.
       if (this.main) { this.dire('Reposez d\'abord ce que vous tenez.'); return; }
       this.volet = (this.volet + 1) % 4;
-      this.dire(SECTION[(this.volet + 1) % 4]);
+      // Où mène le bouton se lit dans son infobulle ; le tableau de bois,
+      // lui, retrouve son mot par défaut (« Prochain niveau », s'il y a lieu).
+      this.dire('');
       return;
     }
     if (quoi === 'faim' || quoi === 'moral' || quoi === 'vie') { this.direSante(quoi); return; }
@@ -1052,8 +1297,15 @@ class Inventaire {
     // bureau, l'appui simple ici) reste permis. Le portage bloquait TOUT, en
     // silence : la fée rangée « pour un test » pendant le rangement devenait
     // imprenable jusqu'à la prochaine visite du sac.
-    if (!this.main && sac === 'joueur' && it && it.famille === 'bocal') {
+    if (!this.main && sac === 'joueur' && it && it.famille === 'bocal' && !this.clicSimple) {
       return this.bocal(index);
+    }
+    // Le bocal habité, en pleine partie de rangement, ne se déplace pas
+    // (inv/Slot.click : « PAS DE MANIP DE FEE EN FIN DE MATCH »).
+    if (!this.main && this.extraList && sac === 'joueur' && it && it.famille === 'bocal'
+      && (this.carte.$faerie || []).some((f) => f && f.$pos === index)) {
+      this.dire('Rangez vos nouveaux objets avant de déplacer ce bocal.');
+      return;
     }
     if (this.extraList && this.main && sac === 'joueur' && it && it.famille === 'bocal'
       && (this.carte.$faerie || []).some((f) => f && f.$pos === index)) {
@@ -1063,7 +1315,12 @@ class Inventaire {
     if (!this.main) {
       if (!it) { this.dire(''); return; }
       this.main = { sac, case: index };
+      this.survol = null;
+      // La main part de la case et file vers la souris (setHand : hand._x = it._x).
+      const r = this.caseDeLaMain();
+      this.mainPos = r ? { x: r.x, y: r.y } : null;
       this.dire(it.desc, it.nom);
+      if (this.mainSuitSouris()) this.animer();
       return;
     }
     if (this.main.sac === sac && this.main.case === index) { this.main = null; this.dire(''); return; }
@@ -1282,7 +1539,10 @@ class Inventaire {
 
   ouvrir() {
     this.main = null;
+    this.mainPos = null;
     this.glisse = null;
+    this.survol = null;
+    this.surVolet = false;
     // Inventory.mt s'ouvre sur la fée COURANTE (Cm.getCurrentFaerie lit
     // $faerie[$current]) — et sur PERSONNE quand la main est vide : $current
     // nul donne un médaillon vide, pas la première fée venue. Le portage
@@ -1310,7 +1570,7 @@ class Inventaire {
 }
 
 const API = { Inventaire, dessinObjet, INV_SHAPE, SLOT_SIZE, INV_WIDTH, INV_HEIGHT,
-  SECTION, PANNEAU, EXTRA, BARRE, LETTRES };
+  SECTION, PANNEAU, EXTRA, BARRE, LETTRES, FLASK_ACTION, SECTION_BULLE, NIVEAU_SURPRISE };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinipixizInventaire = API;
 

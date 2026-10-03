@@ -733,19 +733,33 @@
         // Cm.withdraw écrivait aussi son adieu dans le courrier (Manager.addMsg).
         surCourrier: function (txt) { ajouterCourrier(txt); },
       });
-      function ouvrirSac() {
+      // Manager.fadeSlot : le sac s'ouvre dans l'ÉTOILE, comme les autres
+      // lieux de la clairière — depuis l'endroit touché quand on vient de la
+      // clairière, depuis le centre pour les boutons. Le mot qu'elle venait
+      // de dire s'efface : on part ailleurs.
+      function ouvrirSac(avecIris, x, y) {
+        if (menu) menu.dire('');
         $('#inventaire').classList.add('on');
         inventaire.ouvrir();
+        if (avecIris && $('#menu').classList.contains('on')) {
+          inventaire.irisDepuis($('#menu-stage'), x, y);
+        }
       }
       // À la fermeture, la clairière retient ses clics un instant : le doigt
       // qui vient de toucher « retour » (ou le triangle) ne doit pas choisir
       // un lieu — la porte de l'arbre creux se tient parfois juste dessous.
+      // Et elle revient dans l'étoile, sur la photographie du sac qu'on quitte.
       function fermerSac() {
+        var menuVisible = $('#menu').classList.contains('on');
+        if (menuVisible && menu) {
+          menu.iris = new window.MinipixizClient.Iris($('#inv-stage'));
+          menu.dire('');
+        }
         $('#inventaire').classList.remove('on');
         if (menu && menu.garder) menu.garder(400);
       }
-      $('#sac-but').addEventListener('click', ouvrirSac);
-      $('#menu-sac').addEventListener('click', ouvrirSac);
+      $('#sac-but').addEventListener('click', function () { ouvrirSac(true); });
+      $('#menu-sac').addEventListener('click', function () { ouvrirSac(true); });
       // Le bouton « retour » passe par la même porte que le triangle du coin :
       // tant qu'il reste des objets à ranger, elle est condamnée (Inventory
       // .update — « Rangez vos nouveaux objets avant de partir! »).
@@ -784,7 +798,11 @@
             fermerMenu(); ouvrirCarte(); irisVersJeu(); return;
           }
           if (lieu.va === 'option') { ouvrirMoulin(); return; }
-          if (lieu.va === 'inventaire') { ouvrirSac(); return; }
+          if (lieu.va === 'inventaire') {
+            var pc = menu.dernierClic || null;
+            ouvrirSac(true, pc && pc.x, pc && pc.y);
+            return;
+          }
           if (lieu.va === 'dungeon') {
             if (!etat.ouvert) {
               menu.dire(REFUS[0]);

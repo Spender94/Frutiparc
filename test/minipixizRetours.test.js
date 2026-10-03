@@ -258,7 +258,7 @@ test('un glissement du doigt sur la clairière n\'est pas un choix', () => {
   // Et les deux retours arment bien cette garde : le sac, et chaque
   // ouverture du menu (retour de partie, d'Ornegon, du bassin…).
   const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
-  assert.match(page, /function fermerSac\(\) \{[\s\S]{0,220}menu\.garder\(400\)/,
+  assert.match(page, /function fermerSac\(\) \{[^}]*\}[\s\S]{0,200}menu\.garder\(400\)/,
     'fermer le sac arme la garde');
   const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/menu.js'), 'utf8');
   assert.match(src, /demarrer\(alea\) \{\n    this\.garder\(400\);/,

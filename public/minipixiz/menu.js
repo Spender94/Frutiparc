@@ -538,6 +538,9 @@ class Menu {
     // Et au retour d'un autre écran (le sac, une partie), un court silence :
     // le tap qui a fermé là-bas ne doit pas choisir ici.
     if (this.garde && this.maintenant() < this.garde) return;
+    // Un mot dit (« impossible de plonger… ») ne survit pas au geste suivant :
+    // le clic l'efface, et ce qu'il choisit en dira peut-être un autre.
+    this.message = '';
     const r = this.canvas.getBoundingClientRect();
     const x = (ev.clientX - r.left) / this.echelle;
     const y = (ev.clientY - r.top) / this.echelle;
@@ -582,6 +585,9 @@ class Menu {
 
   demarrer(alea) {
     this.garder(400);
+    // On revient d'ailleurs (une partie, la forêt, le bassin) : le mot de
+    // tout à l'heure n'a plus lieu d'être.
+    this.message = '';
     if (!this.nuages.length) this.semerNuages(alea);
     // On mesure à l'ouverture : tant que le panneau est caché, il n'a pas de
     // taille, et le canevas resterait à l'échelle un.
