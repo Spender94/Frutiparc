@@ -75,8 +75,15 @@ const DEDANS = {
 // de base 3,3 px en dessous.
 const LETTRES = ['F', 'R', 'V', 'I', 'C', 'M'];
 const LETTRE_COULEUR = 'rgb(73,116,186)';
-const LETTRE_X = 2.35;
-const LETTRE_BASE = 3.3;
+// La lettre vit AU CENTRE du disque de la barre (le disque est à l'origine du
+// dessin). On la centre sur sa propre boîte d'encre, mesurée à chaque rendu :
+// un décalage fixe la mettait de travers selon la police que le navigateur
+// a sous la main.
+const LETTRE_X = 0;
+const LETTRE_BASE = 3.3;              // repli, si le navigateur ne mesure pas l'encre
+// Les points au-delà de huit : dorés, posés par-dessus les premiers.
+const POINT_OR = 0xFFD040;
+const POINT_OR_DX = 1.6, POINT_OR_DY = -1.8;
 // Le compteur de clés et d'étoiles : même fonte, deux fois plus haute, centrée
 // dans une boîte qui déborde à droite de l'alvéole, et à peine opaque.
 const COMPTE_COULEUR = 'rgba(67,100,175,.70)';
@@ -621,12 +628,27 @@ class Inventaire {
           ctx.textAlign = 'center';
           ctx.textBaseline = 'alphabetic';
           ctx.fillStyle = LETTRE_COULEUR;
-          ctx.fillText(LETTRES[i], BARRE.x + LETTRE_X, y + LETTRE_BASE);
+          const mes = ctx.measureText(LETTRES[i]);
+          const asc = mes.actualBoundingBoxAscent, desc = mes.actualBoundingBoxDescent;
+          const base = (asc > 0) ? (asc - (desc || 0)) / 2 : LETTRE_BASE;
+          ctx.fillText(LETTRES[i], BARRE.x + LETTRE_X, y + base);
           ctx.textBaseline = 'top';
+          const val = nombre(fee.carac[i]);
           for (let p = 0; p < BARRE.points; p++) {
             if (!s.invPoint) break;
-            C.poserRendu(ctx, C.rendre(s.invPoint, p < nombre(fee.carac[i]) ? 2 : 1, 100),
+            C.poserRendu(ctx, C.rendre(s.invPoint, p < val ? 2 : 1, 100),
               BARRE.x + BARRE.point0 + p * BARRE.pointPas, y);
+          }
+          // AU-DELÀ DE HUIT. La barre n'a que huit cases, mais une fée qui
+          // continue de monter après le plafond des sept passe à neuf, dix…
+          // et la fiche n'en montrait rien. Les points suivants reviennent sur
+          // la rangée, DORÉS et posés par-dessus les premiers : le neuvième
+          // coiffe le premier, le dixième le deuxième… La page se remplit, et
+          // chaque point doré se lit « celui-ci compte deux fois ».
+          for (let p = BARRE.points; p < val && p < BARRE.points * 2; p++) {
+            if (!s.invPoint) break;
+            C.poserRendu(ctx, C.rendre(s.invPoint, 2, 100, POINT_OR),
+              BARRE.x + BARRE.point0 + (p - BARRE.points) * BARRE.pointPas + POINT_OR_DX, y + POINT_OR_DY);
           }
         }
         break;

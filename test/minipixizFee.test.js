@@ -151,6 +151,40 @@ test('on n\'améliore pas une caractéristique déjà au maximum', () => {
   }
 });
 
+test('une fiche de l\'ère Flash (« +1 en null ») : $next[0] à 6 ou 7 est redressé', () => {
+  // Le SWF tirait sur huit ; une fée sur quatre est arrivée avec un $next[0]
+  // qui ne désigne aucune caractéristique, et sa montée n'offrait rien.
+  const g = F.genererGraine(alea(31));
+  g.$next = [6, 13];
+  const fee = new F.Fee(g, alea(31));
+  assert.ok(fee.fs.$next[0] >= 0 && fee.fs.$next[0] < 6, `redressé à la lecture : ${fee.fs.$next[0]}`);
+  assert.equal(fee.fs.$next[1], 13, 'le sort réservé n\'est pas touché');
+  // Et si la fiche est corrompue entre-temps, la montée elle-même redresse.
+  fee.fs.$next = [7, null];
+  fee.incExp(50);
+  const appris = fee.monterNiveau(0);
+  assert.equal(appris.genre, 'carac');
+  assert.ok(appris.id >= 0 && appris.id < 6);
+  assert.ok(typeof appris.nom === 'string' && appris.nom.length, 'un vrai nom, jamais « null »');
+  assert.equal(fee.fs.$carac.length, 6, 'pas de septième case');
+  assert.ok(fee.fs.$carac.every((v) => Number.isFinite(v)));
+  // Une fiche sans $next du tout n'est pas inventée : c'est le jeu qui la prépare.
+  const h = F.genererGraine(alea(32)); delete h.$next;
+  assert.equal(new F.Fee(h, alea(32)).fs.$next, undefined);
+});
+
+test('toutes les caractéristiques au plafond : la montée donne quand même un vrai point', () => {
+  const fee = new F.Fee(F.genererGraine(alea(33)), alea(33));
+  fee.fs.$carac = [7, 7, 7, 7, 7, 7];
+  const vus = new Set();
+  for (let i = 0; i < 60; i++) { fee.preparerProchainNiveau(); vus.add(fee.fs.$next[0]); }
+  assert.ok([...vus].every((c) => c >= 0 && c < 6), 'jamais une case fantôme (6 ou 7)');
+  assert.ok(vus.size > 1, 'et le hasard joue encore entre les six');
+  fee.incExp(50);
+  const appris = fee.monterNiveau(0);
+  assert.equal(fee.fs.$carac[appris.id], 8, 'la caractéristique passe à huit');
+});
+
 test('monter de niveau consomme l\'expérience et remonte le moral', () => {
   const fee = new F.Fee(F.genererGraine(alea(4)), alea(4));
   fee.fs.$moral = 5;

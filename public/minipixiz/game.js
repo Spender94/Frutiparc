@@ -121,6 +121,21 @@ function pilerInterface(margeFace) {
 const INTER = pilerInterface(0);
 const ECART_COEUR = 14;               // inter.Life : un cœur tous les 14 px
 const ECART_MANA = 6;                 // inter.Mana : une goutte tous les 6 px
+// À LA LIGNE. Le jeu d'origine plafonnait les caractéristiques à sept : au
+// plus quatorze gouttes (7 × 2) et sept cœurs, et chaque rangée tenait dans
+// ses cent pixels. Une fée qui continue de monter en a seize, dix-huit… et la
+// rangée sortait du cadre, les gouttes de trop invisibles. Passé quatorze
+// gouttes — ou sept cœurs —, on revient à la ligne ; ce qui est dessous
+// descend d'autant.
+const MANA_PAR_LIGNE = 14;
+const COEURS_PAR_LIGNE = 7;
+function lignesInterface(fee) {
+  if (!fee) return { mana: 1, vie: 1, decalVie: 0, decalBas: 0 };
+  const mana = Math.max(1, Math.ceil(fee.manaMax() / MANA_PAR_LIGNE));
+  const vie = Math.max(1, Math.ceil(fee.vieMax() / COEURS_PAR_LIGNE));
+  const decalVie = (mana - 1) * ECART_MANA;
+  return { mana, vie, decalVie, decalBas: decalVie + (vie - 1) * ECART_COEUR };
+}
 
 // inter.Life.setHealth ne met à l'échelle que le sous-clip `c` du cœur — le
 // cœur rouge, pas son fond. Dans l'export, c'est la DERNIÈRE pièce de
@@ -2902,7 +2917,7 @@ class Client {
     // la droite (Rainbow.initStep(21)) : `sortie.roueX` est son décalage.
     const boite = pilerInterface(this.lieu.margeFace);
     const x = ROUE_LOT.x + ((e.sortie && e.sortie.roueX) || 0);
-    const y = boite.vie.y + boite.vie.h + 3;
+    const y = boite.vie.y + boite.vie.h + 3 + lignesInterface(this.fee).decalBas;
     if (x > SCENE) return;
     poserRendu(ctx, rendre(s.roueLot, 1, 100), x, y);
 
@@ -3307,20 +3322,24 @@ class Client {
       poserRendu(ctx, rendre(sCadre, 1, t, undefined, null, '>pic'), cx, cy);
     }
 
-    // ── LE MANA (inter.Mana) ── une goutte tous les six pixels, centrées.
+    // ── LE MANA (inter.Mana) ── une goutte tous les six pixels, centrées —
+    // et à la ligne toutes les quatorze (voir lignesInterface).
+    const lignes = lignesInterface(fee);
     if (fee && sMana) {
       const max = fee.manaMax();
-      const m = (boite.mana.l - ECART_MANA * max) * 0.5;
       for (let i = 0; i < max; i++) {
+        const ligne = Math.floor(i / MANA_PAR_LIGNE);
+        const n = Math.min(MANA_PAR_LIGNE, max - ligne * MANA_PAR_LIGNE);
+        const m = (boite.mana.l - ECART_MANA * n) * 0.5;
         poserRendu(ctx, rendre(sMana, i < fee.fs.$mana ? 2 : 1, 100),
-          boite.mana.x + m + ECART_MANA * i - 1, boite.mana.y);
+          boite.mana.x + m + ECART_MANA * (i - ligne * MANA_PAR_LIGNE) - 1, boite.mana.y + ligne * ECART_MANA);
       }
     }
 
-    // ── LA VIE (inter.Life) ── un cœur tous les quatorze.
+    // ── LA VIE (inter.Life) ── un cœur tous les quatorze, à la ligne tous les
+    // sept, sous les rangées de mana.
     if (fee && sCoeur) {
       const max = fee.vieMax();
-      const m = (boite.vie.l - ECART_COEUR * max) * 0.5;
       // inter.Life.setHealth : le cœur COURANT rétrécit avec la santé qui
       // reste — échelle 10 + santé × 0,9 % — car chaque cœur encaisse CENT
       // points avant de céder (Faerie.harm). Sans lui, la vie semblait tomber
@@ -3329,7 +3348,11 @@ class Client {
       const mf = this.champ && this.champ.faerieList && this.champ.faerieList[0];
       const vie = Math.max(0, Math.floor(Number(fee.fs.$life) || 0));
       for (let i = 0; i < max; i++) {
-        const x = boite.vie.x + m + ECART_COEUR * i - 1, y = boite.vie.y;
+        const ligne = Math.floor(i / COEURS_PAR_LIGNE);
+        const n = Math.min(COEURS_PAR_LIGNE, max - ligne * COEURS_PAR_LIGNE);
+        const m = (boite.vie.l - ECART_COEUR * n) * 0.5;
+        const x = boite.vie.x + m + ECART_COEUR * (i - ligne * COEURS_PAR_LIGNE) - 1;
+        const y = boite.vie.y + lignes.decalVie + ligne * ECART_COEUR;
         if (i === vie - 1 && mf && !mf.flDeath && mf.health < 100) {
           // Le fond du cœur (image 1), puis le cœur rouge seul, fondu sur
           // place — c'est le sous-clip `c` que le fichier met à l'échelle.
@@ -3712,6 +3735,7 @@ window.MinipixizClient = {
   dessinerCreatureSur, dessinerPartsSur,
   fondre, teinter, poserDensite,
   LARGEUR, HAUTEUR, LIGNES_CACHEES, SCENE, COLONNE_X, INTER, ECART_COEUR, ECART_MANA,
+  MANA_PAR_LIGNE, COEURS_PAR_LIGNE, lignesInterface,
 };
 
 })();

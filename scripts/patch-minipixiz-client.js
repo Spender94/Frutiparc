@@ -1303,6 +1303,36 @@ currentTagLen = buf.readUInt32LE(DOACTION_OFFSET + 2);
 buf.writeUInt32LE(currentTagLen + ssDelta, DOACTION_OFFSET + 2);
 console.log(`Tag length: ${currentTagLen} → ${currentTagLen + ssDelta} (ssDelta=${ssDelta})`);
 
+// ─── Step 5 bis: FaerieInfo.setNextLevelUp tire sur SIX caractéristiques ───
+//
+// Le jeu compte six caractéristiques (force, rapidité, vie, intelligence,
+// concentration, mana) mais `setNextLevelUp` tire la prochaine à améliorer
+// avec `Std.random(8)`, et ne retire que si la case tirée est déjà au
+// plafond — une case 6 ou 7 n'existe pas, elle n'est donc jamais au plafond,
+// et le tirage s'arrête dessus : un joueur sur quatre voyait « +1 en null »
+// à la montée suivante (haXe écrit « null » pour un nom qui n'existe pas), un
+// niveau pour rien. Quand toutes les caractéristiques sont au plafond, la
+// boucle fait ses cent tours et le dernier tirage reste sur 6 ou 7 bien plus
+// souvent encore. On change le 8 en 6 : le tirage ne sort plus des six.
+//
+// L'appel se reconnaît à ses octets : `push 8 ; push 1` (l'argument et le
+// nombre d'arguments), puis `callMethod ; storeRegister 6 ; pop` — le résultat
+// rangé dans le registre de la boucle. C'est le seul endroit du fichier où
+// `Std.random(8)` est rangé ainsi.
+function patchSetNextLevelUp(buf) {
+  const appel = Buffer.from([0x07, 8, 0, 0, 0, 0x07, 1, 0, 0, 0]);   // push 8 ; push 1
+  const rangement = Buffer.from([0x52, 0x87, 0x01, 0x00, 0x06, 0x17]); // callMethod ; storeRegister r6 ; pop
+  const trouves = [];
+  let i = -1;
+  while ((i = buf.indexOf(appel, i + 1)) >= 0) {
+    if (buf.slice(i + appel.length, i + appel.length + 14).indexOf(rangement) >= 0) trouves.push(i);
+  }
+  if (trouves.length !== 1) throw new Error(`setNextLevelUp: ${trouves.length} appel(s) Std.random(8) reconnu(s), un seul attendu`);
+  buf[trouves[0] + 1] = 6;
+  console.log(`Patched setNextLevelUp: Std.random(8) → Std.random(6) at ${trouves[0]}`);
+}
+patchSetNextLevelUp(buf);
+
 // ─── Step 6: Write output ───
 
 const outSize = writeSwf(SWF_PATH, sig, version, buf);

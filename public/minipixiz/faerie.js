@@ -207,6 +207,28 @@ class Fee {
     this.couleurCheveux = null;       // posée par une coloration portée
     this.messages = [];               // ce que Manager.addMsg aurait dit
     this.initItems(carte);
+    this.assainirProchain();
+  }
+
+  /**
+   * SETNEXTLEVELUP_HUIT_CARAC, suite — les fiches de l'ère Flash. Le jeu
+   * d'origine tirait sur huit pour six caractéristiques, et une fée sur quatre
+   * est arrivée ici avec un `$next[0]` à 6 ou 7 : sa prochaine montée offrait
+   * « +1 en null », un niveau pour rien. Le tirage est corrigé (voir
+   * tirerCarac), mais la fiche, elle, garde ce qu'elle porte jusqu'à la
+   * montée suivante — on la redresse donc dès qu'on la lit, et encore au
+   * moment de monter, au cas où. Le sort réservé n'est pas touché.
+   */
+  prochaineCaracValide() {
+    const n = this.fs.$next ? Number(this.fs.$next[0]) : NaN;
+    return (Number.isInteger(n) && n >= 0 && n < NB_CARAC) ? n : null;
+  }
+  assainirProchain() {
+    if (!Array.isArray(this.fs.$next)) return false;
+    if (this.prochaineCaracValide() !== null) return false;
+    const sort = (this.fs.$next[1] === undefined) ? null : this.fs.$next[1];
+    this.fs.$next = [this.tirerCarac(), sort];
+    return true;
   }
 
   /**
@@ -317,16 +339,25 @@ class Fee {
       }
     }
 
-    // SETNEXTLEVELUP_HUIT_CARAC — voir l'en-tête : l'original tire sur huit
-    // pour six caractéristiques.
+    this.fs.$next = [this.tirerCarac(), sid];
+    return this.fs.$next;
+  }
+
+  /**
+   * La caractéristique de la prochaine montée. SETNEXTLEVELUP_HUIT_CARAC —
+   * voir l'en-tête : l'original tire sur huit pour six caractéristiques. On
+   * tire parmi les six, en évitant celles déjà au plafond ; quand TOUTES y
+   * sont (une fée qui continue de monter), n'importe laquelle des six fait
+   * l'affaire — jamais une case qui n'existe pas.
+   */
+  tirerCarac() {
+    const { entier } = tirages(this.alea);
     let cid = 0;
     for (let t = 0; t < 100; t++) {
       cid = entier(NB_CARAC);
       if (nombre(this.fs.$carac[cid]) < CARAC_MAX) break;
     }
-
-    this.fs.$next = [cid, sid];
-    return this.fs.$next;
+    return cid;
   }
 
   /**
@@ -347,6 +378,7 @@ class Fee {
       this.sorts.push(sid);
       appris = { genre: 'sort', id: sid };
     } else {
+      this.assainirProchain();          // une fiche d'avant : jamais « +1 en null »
       const car = this.fs.$next[0];
       this.fs.$carac[car] = nombre(this.fs.$carac[car]) + 1;
       this.carac[car] = nombre(this.carac[car]) + 1;

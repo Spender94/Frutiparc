@@ -237,3 +237,25 @@ test('le relevé du fichier d’origine reste consultable', () => {
   assert.match(forest, /function setWin\(flag\)\{[\s\S]*?level\+=1;[\s\S]*?initStep\(2\)/,
     'un niveau gagné avance le compteur dans la MÊME base');
 });
+
+// ── À LA LIGNE : passé quatorze gouttes (ou sept cœurs), la colonne de droite
+// revient à la ligne au lieu de sortir du cadre. `lignesInterface` est la
+// seule arithmétique de ce retour ; on l'extrait du source du client.
+test('les rangées de mana et de cœurs passent à la ligne au-delà du plafond d\'origine', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'minipixiz', 'game.js'), 'utf8');
+  const m = /const MANA_PAR_LIGNE[\s\S]*?function lignesInterface\(fee\) \{[\s\S]*?\n\}\n/.exec(src);
+  assert.ok(m, 'lignesInterface est dans game.js');
+  const { lignesInterface } = new Function('ECART_MANA', 'ECART_COEUR', m[0] + '\nreturn { lignesInterface };')(6, 14);
+  assert.deepEqual(lignesInterface(null), { mana: 1, vie: 1, decalVie: 0, decalBas: 0 });
+  // Sept de mana, sept de vie : le plafond d'origine, tout tient sur une ligne.
+  assert.deepEqual(lignesInterface({ manaMax: () => 14, vieMax: () => 7 }), { mana: 1, vie: 1, decalVie: 0, decalBas: 0 });
+  // Huit de mana : seize gouttes → une deuxième rangée, et les cœurs descendent de six.
+  assert.deepEqual(lignesInterface({ manaMax: () => 16, vieMax: () => 7 }), { mana: 2, vie: 1, decalVie: 6, decalBas: 6 });
+  // Huit de vie aussi : une deuxième rangée de cœurs, ce qui est dessous descend de 6 + 14.
+  assert.deepEqual(lignesInterface({ manaMax: () => 16, vieMax: () => 8 }), { mana: 2, vie: 2, decalVie: 6, decalBas: 20 });
+  // Et le dessin suit la même règle : chaque goutte est posée sur SA ligne.
+  assert.match(src, /Math\.floor\(i \/ MANA_PAR_LIGNE\)/);
+  assert.match(src, /boite\.mana\.y \+ ligne \* ECART_MANA/);
+});

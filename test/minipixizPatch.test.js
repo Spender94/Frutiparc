@@ -434,3 +434,23 @@ test('onLoad patché : flux bien formé, balises diag absentes', () => {
   const text = ol.toString('latin1');
   assert.ok(!text.includes('ONLOAD|s=') && !text.includes('FAERIE|t='), 'balises diag absentes');
 });
+
+// ── setNextLevelUp : le tirage de la caractéristique ne sort plus des six ──
+// (voir patchSetNextLevelUp dans scripts/patch-minipixiz-client.js). On lit
+// le SWF livré : l'appel `Std.random(n)` rangé dans le registre de la boucle
+// doit pousser 6, et il n'en reste aucun qui pousse 8.
+test('SWF : setNextLevelUp tire Std.random(6), plus jamais 8 (« +1 en null »)', () => {
+  const zlib = require('node:zlib');
+  const path = require('node:path');
+  const raw = fs.readFileSync(path.join(__dirname, '..', 'Games', 'miniTroll', 'minipixiz.swf'));
+  const body = raw.slice(0, 3).toString('ascii') === 'CWS' ? zlib.inflateSync(raw.slice(8)) : raw.slice(8);
+  const rangement = Buffer.from([0x52, 0x87, 0x01, 0x00, 0x06, 0x17]);   // callMethod ; storeRegister r6 ; pop
+  const compte = (n) => {
+    const appel = Buffer.from([0x07, n, 0, 0, 0, 0x07, 1, 0, 0, 0]);
+    let i = -1, c = 0;
+    while ((i = body.indexOf(appel, i + 1)) >= 0) if (body.slice(i + 10, i + 24).indexOf(rangement) >= 0) c++;
+    return c;
+  };
+  assert.equal(compte(6), 1, 'le tirage sur six est là');
+  assert.equal(compte(8), 0, 'celui sur huit a disparu');
+});
