@@ -521,7 +521,7 @@ test('le chat mène au gum d’hiko sous un mot à lui', () => {
     'et le gum d’époque garde le sien');
   const idx = /var ANIM_INDEX = \{[\s\S]*?\};/.exec(LIGHT);
   assert.match(idx[0], /gum:8,/);
-  assert.match(idx[0], /gumm:16 \}/);
+  assert.match(idx[0], /gumm:16[,} ]/);
   const lab = /var ANIM_LABEL = \{[\s\S]*?\};/.exec(LIGHT);
   assert.match(lab[0], /gumm:"s’en met plein la figure"/);
   assert.strictEqual(Moteur.ANIMATIONS[16], 'gumm');

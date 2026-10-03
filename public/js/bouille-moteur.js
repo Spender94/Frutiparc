@@ -110,6 +110,14 @@
    *   16 gumm     le chewing-gum d'hiko : la même bulle, mais elle éclate EN
    *               PLEINE FIGURE — un aplat jaune sur toute la tête, là où la
    *               famille 0 ne prend qu'une pastille sur la joue.
+   *   17 clin     un œil sur « ferme », l'autre tel quel, la bouche du
+   *               Sourire ; l'œil se rouvre, le sourire reste un instant ;
+   *   18 bisou    la pellicule de « rougir » (le fard), les yeux clos de
+   *               « pleurer », la bouche en bec du sifflote tenue tout du
+   *               long.
+   *
+   * Les deux dernières n'empruntent rien à personne : ce sont des RECETTES,
+   * trois dessins que chaque famille a déjà, posés ensemble.
    *
    * Les trois dernières viennent d'AUTRES FAMILLES. Leurs dessins — la fumée
    * et le chocapic du jutsu, le nuage de la toux, l'éclatement du gum d'hiko —
@@ -133,7 +141,7 @@
    */
   const ANIMATIONS = ['stop', 'parle', 'rire', 'mdr', 'langue', 'rougir', 'regard',
     'siffle', 'gum', 'question', 'miam', 'pleure', 'larme', 'beurk', 'jutsu', 'tousse',
-    'gumm'];
+    'gumm', 'clin', 'bisou'];
   // Les noms tels que le parc les affiche déjà — ceux du forum (EXPRESSIONS,
   // public/fb/index.html) et de la page de démonstration. Le SWF, lui, ne
   // nomme pas ses humeurs : emoteList n'est qu'un tableau de couples.
@@ -141,7 +149,7 @@
     'Déterminé', 'Embarrassé', 'Totoché'];
   const NOMS_ANIMATIONS = ['Repos', 'Parler', 'Rire', 'MDR', 'Langue', 'Rougir',
     'Regard', 'Sifflote', 'Chewing-gum', 'Question', 'Miam', 'Pleurer', 'Larme',
-    'Beurk', 'Jutsu', 'Tousse', 'Gum d’hiko'];
+    'Beurk', 'Jutsu', 'Tousse', 'Gum d’hiko', 'Clin d’œil', 'Bisou'];
   // actionList nomme « siffle » et « pleure » ce que la pellicule étiquette
   // « sifflote » et « pleurer ». playAnim() vise les étiquettes.
   const ETIQUETTES = { siffle: 'sifflote', pleure: 'pleurer' };
@@ -1178,6 +1186,17 @@
    */
   const TOUX_SURSAUTS = [0, 10, 20, 30];
   const TOUX_FIN = 45;
+  /*
+   * CLIN D'ŒIL. Le visage ne joue rien, c'est le moteur qui tient le compte,
+   * comme pour la toux : l'œil est clos dès le départ, se rouvre à
+   * CLIN_OUVRE (une petite demi-seconde — un vrai clin est bref), et le
+   * sourire tient encore un peu avant que tout rentre, à CLIN_FIN.
+   */
+  const CLIN_OUVRE = 20;
+  const CLIN_FIN = 38;
+  // BISOU : « rougir » mène la fin ; la bouche en bec ne doit pas rendre la
+  // main avant elle — on lui donne plus de tours qu'il n'en faut.
+  const BISOU_TOURS = 40;
   const TOUX_NUAGE = 20;               // « _alpha -= 5 » vingt fois, chez elle
 
   Moteur.prototype.humeur = function (id) {
@@ -1211,8 +1230,9 @@
     // Le fard kaki n'appartient qu'à « beurk » : toute autre animation
     // — le retour au repos compris — le range.
     this.fardKaki = (id === 13);
-    // Et les deux chutes ne durent que le temps de la leur.
-    if (id !== 14 && id !== 15) this.chute = null;
+    // Et les deux chutes ne durent que le temps de la leur — le clin d'œil
+    // aussi, qui tient son compte de la même façon.
+    if (id !== 14 && id !== 15 && id !== 17) this.chute = null;
     // Comme les substitutions de dessins : elles ne valent que pour l'émote
     // qui les a posées (cf. `remplacements`). Et la colombe ne survit pas au
     // gum qui l'a lâchée.
@@ -1434,6 +1454,37 @@
       oeil(r.emoteEye + 1);
       muet();
       if (bb) bb.allerImage('souffle', false);
+    } else if (id === 17) {
+      /*
+       * CLIN D'ŒIL — rien de dessiné. L'œil gauche (oa) sur l'image
+       * « ferme » que « pleurer » et la toux utilisent déjà, l'œil droit
+       * laissé à l'humeur du moment, et la bouche du Sourire (HUMEURS[3]).
+       * Le visage reste sur son image de repos : c'est le moteur qui rouvre
+       * l'œil et qui range tout (cf. avancerChute, CLIN_OUVRE / CLIN_FIN).
+       */
+      const sourire = HUMEURS[3];
+      r.flStop = false; r.next = 0;
+      face.allerImage(1, false);
+      if (oaO) oaO.allerImage('ferme', false);
+      if (obO) obO.allerImage(r.emoteEye + 1, false);
+      muet();
+      if (bb) bb.allerImage(sourire[1] + 1, false);
+      this.chute = { quoi: 'clin', t: 0 };
+    } else if (id === 18) {
+      /*
+       * BISOU — la pellicule de « rougir », dont le seul apport est le fard
+       * des joues et qui mène la fin (quarante tours, comme rougir et
+       * beurk) ; les yeux clos de « pleurer » ; et la bouche en bec que le
+       * sifflote pose à l'étiquette « siffle », tenue tout du long : on lui
+       * donne plus de tours qu'il n'en faut pour qu'elle ne rende pas la
+       * main au visage avant lui.
+       */
+      r.flStop = false; r.next = 0;
+      face.allerImage('rougir', true);
+      oeil('ferme');
+      muet();
+      if (bb) { bb.allerImage('siffle', true); bb.vars.compt = BISOU_TOURS; }
+      face.vars.compt = 40;
     }
     return this;
   };
@@ -1611,6 +1662,16 @@
         else if (TOUX_SURSAUTS.indexOf(ch.t - secousse.length + 1) >= 0) bb.allerImage(1, false);
       }
       if (ch.t >= TOUX_FIN) { this.chute = null; this.jouerAnim(0); }
+      return true;
+    }
+    if (ch.quoi === 'clin') {
+      // L'œil clos se rouvre à l'humeur du moment ; le sourire tient encore.
+      if (ch.t === CLIN_OUVRE) {
+        const face = this.racine.face;
+        const oa = face && face.enfantNomme('oa'), oaO = oa && oa.enfantNomme('o');
+        if (oaO) oaO.allerImage(this.racine.emoteEye + 1, false);
+      }
+      if (ch.t >= CLIN_FIN) { this.chute = null; this.jouerAnim(0); }
       return true;
     }
     return false;
