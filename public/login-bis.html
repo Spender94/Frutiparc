@@ -18,7 +18,7 @@
       min-height: 100vh;
       font-family: Verdana, Arial, sans-serif;
       color: var(--text);
-      background: var(--green-bg) url('https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/bg.gif') center/120% no-repeat;
+      background: var(--green-bg) url('/images/bg.gif') center/120% no-repeat;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -237,6 +237,7 @@
       transition: none;
       display: block;
     }
+    .game-card .game-name { display: none; }
     .game-card.active {
       height: 160px;
     }
@@ -316,69 +317,163 @@
     .hidden { display: none !important; }
 
     /* ────────── Mobile : la home était 100% desktop (logo absolu, grilles
-       2 colonnes, largeurs/hauteurs fixes) → débordement horizontal qui cassait
-       tout, pop-up « version mobile » comprise. On empile tout proprement. ───── */
+       2 colonnes, largeurs/hauteurs fixes). Ici tout s'empile, et chaque bloc
+       prend l'allure d'une appli : une scène fruitée en haut, une carte de
+       connexion aux champs hauts, deux vrais boutons, l'accueil en carte, et
+       les jeux en grille de vignettes nommées. ───── */
     @media (max-width: 760px) {
       html, body { overflow-x: hidden; }
-      body { padding: 14px 12px 28px; background-size: cover; }
+      body {
+        padding: 0 0 24px;
+        /* Le ciel et les arbres de bg.gif, en haut, derrière le logo et la
+           carte — et non étirés sur toute la page, où ils se pixelisaient. */
+        background: #b9ea76;
+        background-image: linear-gradient(180deg, rgba(185,234,118,0) 0, rgba(185,234,118,0) 330px, #b9ea76 430px),
+          url('/images/bg.gif');
+        background-size: 100% 100%, 210% auto;
+        background-position: 0 0, 62% 0;
+        background-repeat: no-repeat, no-repeat;
+      }
 
-      /* Barres login/inscription : cartes blanches pleine largeur, logo recentré
-         au-dessus, contenu empilé. */
-      .topbar, #register-form {
-        width: 100%; height: auto; min-height: 0;
-        margin-top: 60px; padding: 12px;
+      /* La scène : le logo, grand et centré, puis la carte de connexion. */
+      .topbar {
+        width: calc(100% - 28px); height: auto; min-height: 0;
+        margin: 128px 14px 0; padding: 18px 16px 16px;
         flex-direction: column; align-items: stretch;
-        border-radius: 12px;
+        border-radius: 18px;
+        background: rgba(255,255,255,.96);
+        box-shadow: 0 12px 28px rgba(44,74,15,.22);
       }
-      .logo { position: absolute; left: 50%; top: -52px; transform: translateX(-50%); width: 148px; }
+      .logo {
+        position: absolute; left: 50%; top: -112px; transform: translateX(-50%);
+        width: 204px; filter: drop-shadow(0 6px 10px rgba(44,74,15,.25));
+      }
 
-      /* Formulaire empilé : chaque label (NOM/CODE…) AU-DESSUS de son champ,
-         en pleine largeur. L'ancienne version laissait « CODE » coincé à droite
-         du champ pseudo (les paires label+champ ne restaient pas ensemble). */
+      /* Le formulaire empilé : le libellé (NOM / CODE) au-dessus de son champ. */
       .login-form { flex-wrap: wrap; gap: 6px; font-size: 14px; align-items: center; }
-      .login-form > label { flex: 1 1 100%; margin: 5px 0 -2px 2px; }
+      .login-form > label { flex: 1 1 100%; margin: 8px 0 0 4px; }
       .login-form > label:first-of-type { margin-top: 0; }
-      .login-form input {
-        flex: 1 1 100%; min-width: 0; width: auto; height: 36px;
-        font-size: 16px; /* ≥16px = pas de zoom auto iOS au focus */
-      }
       .label-img { height: 17px; }
-      /* spécificité > « .login-form > label » : la case MODE FRUTIZ sur sa
-         propre ligne, alignée à gauche. */
-      .login-form > label.mode-inline { flex: 1 1 100%; justify-content: flex-start; font-size: 13px; letter-spacing: 0; margin: 8px 0 2px; }
-      .btn { padding: 11px 10px; font-size: 15px; line-height: 1; }
-      .btn-primary { flex: 1 1 100%; margin-top: 6px; }
-      .btn-secondary { flex: 1 1 100%; margin-left: 0; padding: 8px; text-decoration: underline; }
-      /* Inscription : mêmes règles (labels texte au-dessus des champs). */
-      #register-form .login-form > strong { flex: 1 1 100%; text-align: center; font-size: 15px; margin-bottom: 2px; }
-      #register-form .login-form label { flex: 1 1 100%; margin: 5px 0 -2px 2px; font-weight: 700; color: #4f7d1e; }
-      #register-form .login-form input,
-      #register-form #reg-email { flex: 1 1 100%; }
+      /* Les champs de texte (pas la case à cocher : voir plus bas). */
+      .login-form > input:not([type="checkbox"]) {
+        flex: 1 1 100%; min-width: 0; width: auto; height: 46px;
+        padding: 0 14px; border-radius: 12px;
+        border: 2px solid #cfe9a3; background: #f4fbe8;
+        font-size: 16px; /* ≥16px = pas de zoom auto iOS au focus */
+        color: #3b5a16;
+      }
+      .login-form > input:not([type="checkbox"]):focus {
+        border-color: #8fc73a; background: #fff;
+        box-shadow: 0 0 0 3px rgba(143,199,58,.25);
+      }
 
-      /* Accueil : une seule colonne — panneau d'abord, jeux ensuite. */
-      .layout { width: 100%; grid-template-columns: 1fr; gap: 14px; margin-top: 16px; }
+      /* MODE FRUTIZ : une ligne à part, la case devient un vrai interrupteur
+         — la case de 14 px prenait la hauteur des champs et finissait en
+         grande barre vide. */
+      .login-form > label.mode-inline {
+        flex: 1 1 100%; justify-content: space-between; flex-direction: row-reverse;
+        margin: 12px 2px 4px; padding: 0 4px;
+        font-size: 14px; letter-spacing: 0; color: #4f7d1e;
+      }
+      .mode-check-wrap { width: 48px; height: 28px; }
+      .mode-inline input[type="checkbox"] {
+        width: 48px; min-width: 48px; height: 28px; margin: 0;
+        border: 2px solid #cfe9a3; background: #eef7df; border-radius: 14px;
+        transition: background .2s, border-color .2s;
+      }
+      .mode-inline input[type="checkbox"]::after {
+        content: ''; position: absolute; top: 2px; left: 2px;
+        width: 20px; height: 20px; border-radius: 50%;
+        background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+        transition: transform .2s;
+      }
+      .mode-inline input[type="checkbox"]:checked { background: #8fc73a; border-color: #7bb12c; }
+      .mode-inline input[type="checkbox"]:checked::after { transform: translateX(20px); }
+      /* L'anneau rouge qui se dessine au clic suit la taille de l'interrupteur. */
+      .mode-ring { inset: -6px; width: 60px; height: 40px; }
+      .mode-ring circle { display: none; }
+
+      /* Deux vrais boutons, pleine largeur : OK en rose, l'inscription en
+         contour vert — plus de lien souligné perdu sous le bouton. */
+      .btn { padding: 0 14px; font-size: 16px; line-height: 1; }
+      .btn-primary {
+        flex: 1 1 100%; height: 50px; margin-top: 10px; border-radius: 14px;
+        background: linear-gradient(180deg, #ffb6be, #f18e9a); border-color: #e78690;
+        box-shadow: 0 4px 0 #d9707c; font-size: 18px; letter-spacing: 1px;
+      }
+      .btn-primary:active { transform: translateY(2px); box-shadow: 0 2px 0 #d9707c; }
+      .btn-secondary {
+        flex: 1 1 100%; height: 46px; margin: 8px 0 0; padding: 0 14px; border-radius: 14px;
+        border: 2px solid #8fc73a; color: #4f7d1e; background: #fff;
+        text-decoration: none; font-size: 15px;
+      }
+      .btn-secondary:active { background: #f1f9e4; }
+
+      /* Inscription : le formulaire vit DANS la carte d'accueil (plus dans
+         une barre du haut) — les règles de barre d'autrefois ne s'y
+         appliquent pas ; mêmes champs, mêmes boutons que la connexion. */
+      #register-form {
+        width: auto; min-height: 0; margin: 0; padding: 0;
+        background: none; box-shadow: none; border-radius: 0;
+      }
+      #register-form input, #register-form #reg-email { flex: none; width: 100%; }
+      .register-simple input { height: 46px; padding: 0 14px; border-radius: 12px; border: 2px solid #cfe9a3; background: #f4fbe8; font-size: 16px; }
+      .register-simple input:focus { border-color: #8fc73a; background: #fff; box-shadow: 0 0 0 3px rgba(143,199,58,.25); }
+      .register-simple label { font-size: 13px; margin: 10px 0 4px 4px; }
+      .register-actions { margin-top: 16px; }
+      .register-actions .btn-primary, .register-actions .btn-secondary { margin-top: 0; flex: 1 1 0; height: 48px; }
+
+      /* L'accueil : une colonne — la carte de bienvenue d'abord, les jeux ensuite. */
+      .layout { width: calc(100% - 28px); margin: 16px 14px 0; grid-template-columns: 1fr; gap: 14px; }
       .main {
-        order: 1; height: auto; grid-template-columns: 1fr; gap: 12px;
-        padding: 14px; text-align: center;
+        order: 1; height: auto; grid-template-columns: 1fr; gap: 10px;
+        padding: 18px 16px 14px; border-radius: 18px; text-align: center;
+        box-shadow: 0 8px 22px rgba(44,74,15,.16);
       }
       .main h1 { font-size: 20px; }
-      .main p { text-align: left; margin: 6px 0; }
-      .welcome-title { max-width: 86%; height: auto; }
+      .main p { text-align: left; margin: 8px 0; font-size: 14px; line-height: 1.45; }
+      .welcome-title { max-width: 100%; height: auto; margin: 0 auto 4px; }
       .welcome {
-        height: auto; max-width: 60%; max-height: none;
-        padding-right: 0; justify-self: center; margin: 6px auto 0;
+        height: auto; width: 62%; max-width: 230px; max-height: none;
+        padding-right: 0; justify-self: center; margin: 0 auto;
       }
-      .cta { justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
-      .cta img { height: 34px; }
+      .cta { justify-content: center; gap: 10px; margin-top: 14px; }
+      .cta img { height: auto; width: 46%; max-width: 160px; }
+      .cta img:active { transform: translateY(1px); }
+      .register-simple { max-width: none; text-align: left; }
 
-      .games { order: 2; height: auto; max-height: 300px; overflow-y: auto; }
-      .game-card { width: 100%; }
+      /* Les jeux : une grille de vignettes carrées, nommées. Le survol du
+         bureau (une vignette qui s'ouvre, les autres qui se tassent) n'a pas
+         de sens au doigt : toutes les mêmes, toujours. */
+      .games {
+        order: 2; height: auto; max-height: none; overflow: visible;
+        padding: 14px 12px 12px; border-radius: 18px;
+        box-shadow: 0 8px 22px rgba(44,74,15,.16);
+      }
+      .games h3 { font-size: 14px; color: #4f7d1e; margin-bottom: 10px; }
+      .games-list { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px 6px; }
+      .game-card, .game-card.active, .game-card.compact {
+        width: auto; height: auto; border: 0; border-radius: 0; background: none;
+        overflow: visible; cursor: default; transition: none;
+        display: flex; flex-direction: column; align-items: center; gap: 4px;
+      }
+      .game-card img {
+        width: 100%; aspect-ratio: 1 / 1; height: auto; object-fit: cover;
+        border-radius: 12px; border: 2px solid #dfe9cf; box-shadow: 0 2px 4px rgba(44,74,15,.12);
+      }
+      .game-card .game-name {
+        display: block; font-size: 9.5px; line-height: 1.15; color: #4f7d1e; font-weight: 700;
+        text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
 
-      .status, .loading { width: 100%; }
+      .status { width: calc(100% - 28px); margin: 10px 14px 0; font-size: 13px; }
+      .loading { width: calc(100% - 28px); margin: 120px 14px 0; border-radius: 18px; }
 
       /* Footer dans le flux : plus de barre fixe qui recouvre le contenu. */
-      footer { position: static; margin-top: 18px; width: 100%; }
-      .footer-bottom { font-size: 10px; line-height: 1.45; }
+      footer { position: static; margin-top: 22px; width: 100%; }
+      .footer-top { padding: 10px 12px; font-size: 12px; line-height: 1.6; }
+      .footer-bottom { font-size: 10px; line-height: 1.45; padding: 8px 12px; }
+      #forgot-box { margin: 10px 14px 0; max-width: none; }
     }
   </style>
 </head>
@@ -388,11 +483,11 @@
        déjà. Le Flash, lui, se rejoint par le lien du pied de page ou par
        « Mode Flash » dans le menu de l'onglet Bureau. -->
   <header class="topbar" id="topbar">
-    <img class="logo" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/logo.gif" alt="Frutiparc" />
+    <img class="logo" src="/images/logo.gif" alt="Frutiparc" />
     <form id="login-form" class="login-form" autocomplete="on">
-      <label for="username"><img class="label-img" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/nom.png" alt="Nom" /></label>
+      <label for="username"><img class="label-img" src="/images/nom.png" alt="Nom" /></label>
       <input id="username" name="username" minlength="3" maxlength="20" required />
-      <label for="password"><img class="label-img" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/code.png" alt="Code" /></label>
+      <label for="password"><img class="label-img" src="/images/code.png" alt="Code" /></label>
       <input id="password" name="password" type="password" minlength="6" maxlength="80" required />
       <label class="mode-inline"><span class="mode-check-wrap" id="mode-ring-wrap"><input type="checkbox" id="mode-frutiz" /><svg class="mode-ring" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="10.5"></circle></svg></span>MODE FRUTIZ</label>
       <button class="btn btn-primary" type="submit">OK</button>
@@ -416,7 +511,7 @@
 
     <article class="main">
       <div class="welcome-left">
-        <img class="welcome-title" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome_title.gif" alt="Bienvenue sur Frutiparc" />
+        <img class="welcome-title" src="/images/welcome_title.gif" alt="Bienvenue sur Frutiparc" />
 
         <!-- Accueil par défaut : texte + boutons (masqué pendant l'inscription) -->
         <div id="welcome-text">
@@ -425,8 +520,8 @@
           <p>Frutiparc c'est aussi le mode Frutiz : e-mail, salons de discussions, forums et blog, dans une interface fruitée.</p>
 
           <div class="cta">
-            <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/decouvrir.gif" alt="Découvrir" />
-            <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/sinscrire.gif" alt="S'inscrire" id="cta-register" />
+            <img src="/images/decouvrir.gif" alt="Découvrir" />
+            <img src="/images/sinscrire.gif" alt="S'inscrire" id="cta-register" />
           </div>
         </div>
 
@@ -448,7 +543,7 @@
       </div>
 
       <div>
-        <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome.gif" alt="Frutiparc" class="welcome" />
+        <img src="/images/welcome.gif" alt="Frutiparc" class="welcome" />
       </div>
     </article>
   </section>
@@ -485,7 +580,7 @@
   </footer>
 
   <script>
-    const ASSET_BASE = 'https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images';
+    const ASSET_BASE = '/images';
 
     const games = [
       { id: 'bk', name: 'Burning Kiwi', image: 'bk.png' },
@@ -587,6 +682,12 @@
         };
 
         card.appendChild(img);
+        // Le nom du jeu, sous la vignette : le mobile montre les jeux en
+        // grille de vignettes carrées, et une vignette sans nom ne dit rien.
+        const nom = document.createElement('span');
+        nom.className = 'game-name';
+        nom.textContent = game.name;
+        card.appendChild(nom);
         card.addEventListener('mouseenter', () => {
           selectedGame = game.name;
           gameTitle.textContent = selectedGame;
