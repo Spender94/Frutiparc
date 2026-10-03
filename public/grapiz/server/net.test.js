@@ -390,5 +390,54 @@ eq(nvide.names["cassis"], "Cassis", "annuaire trop maigre (null) : noms d'origin
   ok(find(ch, "spec") && !ns.watching.ca && ns.sessions[g2]._spectateurs.length === 0, "spec : défié en regardant → il quitte le spectacle");
 })();
 
+
+// ══ LES PARTIES EN DIFFÉRÉ ═══════════════════════════════════════════════════
+(function () {
+  var JOUR = 24 * 3600 * 1000;
+  var T = 0, notifs = [], sauves = [];
+  var dn = new N.GrapizNet({
+    clock: function () { return T; }, withBots: false,
+    differe: {
+      onSauver: function (p) { sauves.push(p.id + ":" + p.statut); },
+      onNotifier: function (n) { notifs.push(n.type + ">" + n.vers); },
+      identite: function (u) { return { name: u.toUpperCase(), fb: "" }; },
+    },
+  });
+  dn.handle("alice", { a: "hello", n: "Alice" });
+  var inv = dn.handle("alice", { a: "dinvite", u: "bob", sa: "champ" });
+  eq(inv.length, 2, "différé: l'invitation rafraîchit les deux listes");
+  var p = dn.differe.toutes()[0];
+  eq(notifs[0], "invitation>bob", "différé: l'invité est prévenu");
+  dn.handle("bob", { a: "daccept", id: p.id });
+  eq(p.statut, "en_cours", "différé: acceptée → en cours");
+  eq(p.tour, 0, "différé: l'hôte ouvre");
+  eq(p.etat.def.tokens.length, 18, "différé: le plateau lambda est gardé");
+  eq(notifs[1], "acceptee>alice", "différé: l'hôte apprend l'acceptation, c'est à lui");
+  var ouv = dn.handle("bob", { a: "dopen", id: p.id });
+  ok(ouv[0].xml.indexOf('<gz e="start" g="' + p.id + '"') === 0 && ouv[0].xml.indexOf('df="1"') > 0, "différé: dopen rend l'état marqué df");
+  ok(ouv[0].xml.indexOf('rt="259200000"') > 0, "différé: trois jours d'horloge");
+  var lm = dn._sessionDifferee(p, T).game.legalMoves(0)[0];
+  ok(dn.handle("bob", { a: "dmove", id: p.id, x: lm.from.x, y: lm.from.y, d: lm.direction })[0].xml.indexOf("not-your-turn") >= 0, "différé: pas son tour");
+  T = JOUR;
+  var mv = dn.handle("alice", { a: "dmove", id: p.id, x: lm.from.x, y: lm.from.y, d: lm.direction });
+  ok(mv[0].xml.indexOf('<gz e="move"') === 0 && mv[0].to.length === 2, "différé: l'état part aux deux");
+  ok(mv[0].xml.indexOf('turn="1"') > 0, "différé: le trait passe");
+  eq(p.coups, 1, "différé: un coup compté");
+  eq(p.echeance, 4 * JOUR, "différé: l'échéance repart à trois jours");
+  eq(notifs[2], "tour>bob", "différé: « Alice a joué ! À ton tour »");
+  var tokens = p.etat.def.tokens.filter(function (t) { return t.x === lm.to.x && t.y === lm.to.y; });
+  eq(tokens.length, 1, "différé: l'état gardé porte le coup");
+  // Trois jours sans jouer : forfait, note du championnat.
+  T = 4 * JOUR;
+  dn.tick(T);
+  eq(p.statut, "finie", "différé: délai dépassé → finie");
+  eq(p.gagnant, 0, "différé: bob devait jouer, alice gagne");
+  eq(dn.champions.alice.ls[0], 1024, "différé: la note d'Elo du gagnant (Grapiz championnat)");
+  eq(dn.champions.bob.ls[0], 976, "différé: …et celle du perdant");
+  ok(dn.handle("alice", { a: "dopen", id: p.id })[0].xml.indexOf('end="1" w="0" r="delai"') > 0, "différé: la partie finie se relit avec son issue");
+  // Le lobby porte la note.
+  ok(dn._lobbyXml().indexOf('el="1024"') > 0, "différé: la note au lobby");
+})();
+
 console.log("\nGrapiz net: " + passed + " passed, " + fails + " failed.");
 process.exit(fails ? 1 : 0);

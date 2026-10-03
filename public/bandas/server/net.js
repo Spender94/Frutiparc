@@ -29,10 +29,13 @@
   var B = (typeof require !== "undefined") ? require("./bot.js") : (root.Bandas && root.Bandas.bot);
   var G = (typeof require !== "undefined") ? require("../game.js") : (root.Bandas && root.Bandas.game);
   var E = (typeof require !== "undefined") ? require("./elo.js") : (root.Bandas && root.Bandas.elo);
-  var api = factory(L, S, B, G, E);
+  // Les parties en DIFFÉRÉ (amical et championnat) : le cycle de vie vit dans
+  // differe.js, à la racine (serveur seulement).
+  var D = (typeof require !== "undefined") ? require("../../../differe.js") : null;
+  var api = factory(L, S, B, G, E, D);
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else (root.Bandas = root.Bandas || {}).net = api;
-})(typeof self !== "undefined" ? self : this, function (L, S, Bot, G, E) {
+})(typeof self !== "undefined" ? self : this, function (L, S, Bot, G, E, D) {
   "use strict";
 
   function esc(s) {
@@ -100,7 +103,115 @@
     this.getChampion = opts.getChampion || null;
     this.onChampion = opts.onChampion || null;
     if (opts.withBots !== false) this._registerBots();
+    // LES PARTIES EN DIFFÉRÉ — on invite un joueur, chacun joue son coup quand
+    // il passe, trois jours par coup ; amical ou championnat, jamais au
+    // Challenge. `opts.differe` : les hooks de l'hôte (onSauver, onSupprimer,
+    // onNotifier, identite, existe) ; `false` pour s'en passer. Actions :
+    // dlist, dinvite, daccept, ddecline, dopen, dchoose, dplay, dmove, dpart.
+    this.differe = (opts.differe !== false && D) ? this._creerDiffere(opts.differe || {}) : null;
   }
+
+  // ── Les parties en différé ──────────────────────────────────────────────────
+  BandasNet.prototype._creerDiffere = function (h) {
+    var self = this;
+    return new D.Differe({
+      jeu: "bandas",
+      clock: function () { return self.clock(); },
+      // L'état gardé est la sérialisation complète de BandasGame (poses
+      // cachées comprises — le serveur seul la lit). Le premier à choisir est
+      // tiré au sort, comme en direct.
+      moteur: {
+        nouveau: function (p) {
+          var prm = L.defaultParams(p.params || {});
+          return new G.BandasGame({ size: prm.boardSize, cardsPerPlayer: prm.cards, rng: self._rng }).toJSON();
+        },
+        tourDe: function (etat) { return etat.currentTeam; },
+      },
+      identite: function (u) {
+        var ext = (h.identite ? (h.identite(u) || {}) : {});
+        return { name: self.names[u] || ext.name || u, fb: self.bouilles[u] || ext.fb || "" };
+      },
+      existe: h.existe || function (u) { return !self.bots[u]; },
+      onSauver: h.onSauver, onSupprimer: h.onSupprimer, onNotifier: h.onNotifier,
+      // La fin : la note du championnat bouge, l'hôte est prévenu comme pour
+      // une partie en direct (journal, manche de tournoi…).
+      onFin: function (p) {
+        var sess = self._sessionDifferee(p, self.clock());
+        self._updateElo(sess);
+        try { self.onResult(sess, sess.winner, sess.endReason); } catch (e) {}
+      },
+      delai: h.delai, rappelAvant: h.rappelAvant, garde: h.garde, maxEnCours: h.maxEnCours, ids: h.ids,
+    });
+  };
+  // Une session reconstruite depuis l'état gardé, le temps d'un coup ou d'une
+  // lecture ; jamais dans this.sessions. L'horloge du joueur au trait = ce qui
+  // reste avant l'échéance, l'autre a ses trois jours pleins.
+  BandasNet.prototype._sessionDifferee = function (p, now) {
+    var delai = this.differe ? this.differe.delai : D.DELAI_COUP;
+    var players = p.joueurs.map(function (u, i) { return { id: u, name: p.noms[i] || u, fb: p.bouilles[i] || "" }; });
+    var prm = L.defaultParams(p.params || {});
+    prm.time = delai;
+    var game = p.etat ? G.BandasGame.fromJSON(p.etat, this._rng)
+      : new G.BandasGame({ size: prm.boardSize, cardsPerPlayer: prm.cards, rng: this._rng });
+    var sess = new S.BandasSession({ id: p.id, players: players, params: prm, game: game, now: now });
+    sess.totalTime = delai;
+    sess.clocks = [delai, delai];
+    if (p.statut === "en_cours" && p.echeance) sess.clocks[p.tour] = Math.max(0, p.echeance - now);
+    sess.turnStart = now;
+    sess._salle = p.salle;
+    sess._differe = p.id;
+    sess._spectateurs = [];
+    if (p.statut === "finie") {
+      sess.ended = true; sess.winner = p.gagnant; sess.endReason = p.raison;
+      game.ended = true; game.winner = p.gagnant;
+    }
+    return sess;
+  };
+  BandasNet.prototype._dliste = function (username) {
+    return { to: [username], xml: this.differe.xmlListe(username, "bd") };
+  };
+  BandasNet.prototype._dlistes = function (usernames) {
+    var self = this, vus = {};
+    return (usernames || []).filter(function (u) { if (vus[u]) return false; vus[u] = true; return true; })
+      .map(function (u) { return self._dliste(u); });
+  };
+  // Ce qu'un joueur voit en ouvrant une partie en différé : l'instantané
+  // complet, marqué df="1" (le client ne compte pas en minutes et ne prend pas
+  // la fermeture pour un abandon).
+  BandasNet.prototype._dOuvrir = function (username, id) {
+    var p = this.differe.partie(id);
+    if (!p || p.statut === "invitation") return [this._err(username, "no-such-game")];
+    if (p.joueurs.indexOf(username) < 0) return [this._err(username, "not-a-player")];
+    return [{ to: [username], xml: this._startXml(this._sessionDifferee(p, this.clock()), username, ' df="1"') }];
+  };
+  // Une action de jeu (draft, carte, mouvement) dans une partie en différé.
+  BandasNet.prototype._dCoup = function (username, attrs) {
+    var now = this.clock();
+    var ca = this.differe.coupAutorise(username, attrs.id, now);
+    if (!ca.ok) {
+      // Trop tard : la partie vient d'être perdue par forfait.
+      if (ca.error === "delai") {
+        var fin = this._sessionDifferee(ca.partie, now);
+        return [{ to: [username], xml: this._startXml(fin, username, ' df="1"') }].concat(this._dlistes(ca.partie.joueurs));
+      }
+      return [this._err(username, ca.error)];
+    }
+    var p = ca.partie;
+    var sess = this._sessionDifferee(p, now);
+    var res;
+    if (attrs.a === "dchoose") res = sess.requestChooseCard(username, num(attrs.c), now);
+    else if (attrs.a === "dplay") res = sess.requestPlayCard(username, num(attrs.c), num(attrs.x), num(attrs.y), now);
+    else res = sess.requestMove(username, num(attrs.d), now);
+    if (!res.ok) return [this._err(username, res.error)];
+    // Les événements partent AVANT la conclusion (ils portent les horloges
+    // d'avant le coup, comme en direct) ; le client ne garde que ceux de la
+    // partie qu'il regarde.
+    var msgs = this._eventMessages(sess, res.events || []);
+    this.differe.apresCoup(p.id, sess.game.toJSON(), {
+      tour: sess.game.currentTeam, fini: !!(res.ended || sess.ended), gagnant: sess.winner, raison: sess.endReason,
+    }, now);
+    return msgs.concat(this._dlistes(p.joueurs));
+  };
 
   // La fiche Championnat d'un joueur, chargée à la demande auprès de l'hôte.
   BandasNet.prototype.ficheChampion = function (username) {
@@ -221,7 +332,7 @@
   // Instantané complet d'une partie (départ + reprise) pour UN destinataire :
   // sa propre main est détaillée, celle de l'adversaire aussi (le draft est
   // public dans le jeu d'origine — seules les POSES cachées sont secrètes).
-  BandasNet.prototype._startXml = function (session, username) {
+  BandasNet.prototype._startXml = function (session, username, extra) {
     var self = this;
     var snap = session.snapshot(this.clock());
     var equipe = session.teamOf(username);                 // −1 : un spectateur
@@ -241,7 +352,7 @@
       '" t="' + snap.currentTeam +
       '" ph="' + snap.phase + '" i="' + snap.totalTime + '" c="' + snap.pool.join(":") + '"' +
       (snap.ended ? ' end="1" w="' + snap.winner + '"' : "") +
-      (equipe < 0 ? ' sp="1"' : "") + ' ns="' + specs.length + '"' +
+      (equipe < 0 ? ' sp="1"' : "") + ' ns="' + specs.length + '"' + (extra || "") +
       ">" + pls + board + "</bd>";
   };
 
@@ -570,10 +681,25 @@
         // déjà en partie (reconnexion pendant une partie) → renvoyer l'état
         sess = this._sessionOf(username);
         if (sess) out.push({ to: [username], xml: this._startXml(sess, username) });
-        return out.concat(this._lobbyBroadcast());
+        // Ses parties en différé partent avec le salon.
+        return out.concat(this._lobbyBroadcast()).concat(this.differe ? [this._dliste(username)] : []);
 
       case "list":
         return [{ to: [username], xml: this._lobbyXml(this.lobby.salleDe(username)) }];
+
+      // ── Les parties en différé ──
+      case "dlist":
+        return this.differe ? [this._dliste(username)] : [this._err(username, "unknown-action")];
+      case "dinvite": case "daccept": case "ddecline": case "dpart": {
+        if (!this.differe) return [this._err(username, "unknown-action")];
+        var rd = this.differe.action(username, attrs, this.clock(), L.defaultParams(params));
+        if (!rd.ok) return [this._err(username, rd.error)];
+        return this._dlistes(rd.touches);
+      }
+      case "dopen":
+        return this.differe ? this._dOuvrir(username, attrs.id) : [this._err(username, "unknown-action")];
+      case "dchoose": case "dplay": case "dmove":
+        return this.differe ? this._dCoup(username, attrs) : [this._err(username, "unknown-action")];
 
       // Changer de salle (l'écran de sélection de mode). Les deux salles
       // concernées sont rafraîchies : on disparaît de l'une, on paraît dans
@@ -712,6 +838,8 @@
       }
       out = out.concat(this._tickBot(sess, now));
     }, this);
+    // Les parties en différé : forfaits, rappels, invitations éteintes.
+    if (this.differe) out = out.concat(this._dlistes(this.differe.tick(now)));
     return out;
   };
 

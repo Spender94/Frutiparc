@@ -319,5 +319,39 @@ ok(r.ok, "vachette jouée");
 eq(g.board.getElementAt(g.board.toIndex(horsCadre)), E.DESTROYED, "elle le reste après la vachette");
 eq(find(r, "cardPlayed")[0].y, g.board.minY, "l'annonce porte la ligne réelle, pas 0");
 
+
+// ── Sérialisation complète (parties en différé) : aller-retour fidèle ───────
+(function () {
+  var g = new G.BandasGame({ size: 6, cardsPerPlayer: 2, rng: seeded(3) });
+  // un draft complet, puis quelques effets armés
+  var t = g.currentTeam;
+  while (g.phase === G.PHASE_CARD_SELECTION) { g.chooseCard(g.currentTeam, g.pool[0]); }
+  g.hands[g.currentTeam] = [CARD.PIEGE, CARD.CHARGE];
+  var libre = null;
+  for (var y = g.board.minY; y <= g.board.maxY && !libre; y++) for (var x = g.board.minX; x <= g.board.maxX; x++) {
+    if (g.board.getElement({ x: x, y: y }) === E.FREE) { libre = { x: x, y: y }; break; }
+  }
+  if (!libre) { libre = { x: g.board.minX, y: g.board.minY }; g.board.decTeamCounter(g.board.getElement(libre)); g.board.setElement(libre, E.FREE); }
+  ok(g.playCard(g.currentTeam, CARD.PIEGE, libre.x, libre.y).ok, "différé: un piège posé");
+  g.charge[g.currentTeam] = true;
+  g.desordre[1 - g.currentTeam] = true; g.desordreBy[1 - g.currentTeam] = g.currentTeam;
+  var json = JSON.parse(JSON.stringify(g.toJSON()));
+  var r = G.BandasGame.fromJSON(json, seeded(3));
+  eq(r.board.toContentString(), g.board.toContentString(), "différé: le plateau revient à l'identique (piège compris)");
+  eq(r.board.minX + "," + r.board.maxY, g.board.minX + "," + g.board.maxY, "différé: les bornes aussi");
+  eq(r.board.countSpritesOf(0) + "/" + r.board.countSpritesOf(1), g.board.countSpritesOf(0) + "/" + g.board.countSpritesOf(1), "différé: les compteurs d'équipe");
+  eq(JSON.stringify(r.hands), JSON.stringify(g.hands), "différé: les mains");
+  eq(r.currentTeam, g.currentTeam, "différé: le trait");
+  eq(r.phase, G.PHASE_MOVE, "différé: la phase");
+  eq(r.cardPlayedThisTurn, true, "différé: la carte jouée ce tour");
+  eq(JSON.stringify(r.charge) + JSON.stringify(r.desordre) + JSON.stringify(r.desordreBy), JSON.stringify(g.charge) + JSON.stringify(g.desordre) + JSON.stringify(g.desordreBy), "différé: les effets armés");
+  eq(JSON.stringify(r.trapOwner), JSON.stringify(g.trapOwner), "différé: les poseurs de pièges");
+  eq(r.firstDrafter, t, "différé: qui a ouvert le draft");
+  // et le relu joue comme l'original
+  var a = g.move(g.currentTeam, E.DIR.UP), b = r.move(r.currentTeam, E.DIR.UP);
+  eq(a.ok, b.ok, "différé: le même coup est accepté pareil");
+  eq(r.board.toContentString(), g.board.toContentString(), "différé: …et donne le même plateau");
+})();
+
 console.log("bandas game tests: " + passed + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);

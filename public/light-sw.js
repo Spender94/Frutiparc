@@ -44,7 +44,7 @@ self.addEventListener('notificationclick', function (e) {
         try {
           var p = new URL(u, self.location.origin).searchParams;
           f.postMessage({ ouvre: p.get('ouvre') || '', avec: p.get('avec') || '',
-            sujet: p.get('sujet') || '', salon: p.get('salon') || '' });
+            sujet: p.get('sujet') || '', salon: p.get('salon') || '', partie: p.get('partie') || '' });
         } catch (err) { /* lien illisible : le focus suffit */ }
         return f.focus();
       }

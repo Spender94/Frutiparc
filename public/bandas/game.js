@@ -397,6 +397,50 @@
     return { ok: true, events: [{ type: "end", winner: this.winner, to: "all" }] };
   };
 
+  // ── Sérialisation complète (les parties en DIFFÉRÉ) ───────────────────────
+  // L'instantané ci-dessous est ce que voit un joueur ; ceci est TOUT ce que
+  // sait le serveur — poses cachées, effets armés, pièges et leurs poseurs —,
+  // de quoi ranger une partie en base entre deux coups joués à des jours
+  // d'écart, et la relever à l'identique. Objet nu, sérialisable en JSON.
+  BandasGame.prototype.toJSON = function () {
+    return {
+      size: this.size, cardsPerPlayer: this.cardsPerPlayer,
+      content: this.board.toContentString(),
+      bounds: { x1: this.board.minX, x2: this.board.maxX, y1: this.board.minY, y2: this.board.maxY },
+      pool: this.pool.slice(), hands: [this.hands[0].slice(), this.hands[1].slice()],
+      phase: this.phase, currentTeam: this.currentTeam, firstDrafter: this.firstDrafter,
+      ended: this.ended, winner: this.winner, cardPlayedThisTurn: this.cardPlayedThisTurn,
+      nextSolo: this.nextSolo.map(function (c) { return c ? { x: c.x, y: c.y } : null; }),
+      charge: this.charge.slice(), celerite: this.celerite.slice(),
+      desordre: this.desordre.slice(), desordreBy: this.desordreBy.slice(),
+      confiscation: this.confiscation.slice(),
+      trapOwner: Object.assign({}, this.trapOwner),
+    };
+  };
+  // Le chemin inverse. `rng` : le hasard des coups à venir (renfort).
+  BandasGame.fromJSON = function (o, rng) {
+    var g = new BandasGame({
+      size: o.size, cardsPerPlayer: o.cardsPerPlayer, rng: rng,
+      board: E.Board.fromContent(o.size, o.content, o.bounds),
+      pool: o.pool || [], firstTeam: o.currentTeam,
+    });
+    g.hands = [(o.hands && o.hands[0] || []).slice(), (o.hands && o.hands[1] || []).slice()];
+    g.phase = o.phase;
+    g.currentTeam = o.currentTeam;
+    g.firstDrafter = (o.firstDrafter === undefined) ? o.currentTeam : o.firstDrafter;
+    g.ended = !!o.ended;
+    g.winner = (o.winner === undefined) ? null : o.winner;
+    g.cardPlayedThisTurn = !!o.cardPlayedThisTurn;
+    g.nextSolo = (o.nextSolo || [null, null]).map(function (c) { return c ? { x: c.x, y: c.y } : null; });
+    g.charge = (o.charge || [false, false]).slice();
+    g.celerite = (o.celerite || [false, false]).slice();
+    g.desordre = (o.desordre || [false, false]).slice();
+    g.desordreBy = (o.desordreBy || [null, null]).slice();
+    g.confiscation = (o.confiscation || [false, false]).slice();
+    g.trapOwner = Object.assign({}, o.trapOwner || {});
+    return g;
+  };
+
   // ── Instantané (reprise / spectateur) ─────────────────────────────────────
   BandasGame.prototype.snapshot = function () {
     return {

@@ -145,6 +145,10 @@
     // Observateur (sp="1") : il voit ce que verrait un adversaire — cartes de
     // dos, pièges d'autrui masqués —, lit le chat mais n'y écrit pas.
     GV.spectator = el.getAttribute("sp") === "1";
+    // En DIFFÉRÉ (df="1") : trois jours par coup — les horloges se lisent en
+    // jours, fermer ne vaut pas abandon, pas de chat.
+    GV.differe = el.getAttribute("df") === "1";
+    GV.gameId = el.getAttribute("g");
     GV.specs = null;
     GV.players = players;
     GV.hands = hands;
@@ -181,13 +185,15 @@
     if (GV.spectator) {
       var noms = players.slice().sort(function (a, b2) { return a.e - b2.e; }).map(function (p) { return p.n || p.u; });
       logLine("Vous observez la partie de " + noms.join(" et ") + ". " + MUET);
+    } else if (GV.differe) {
+      logLine("Partie en différé : chacun joue quand il passe, trois jours par coup. Tu peux fermer, la partie t'attend — tu seras prévenu quand ce sera à toi.");
     } else {
       logLine("ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !");
     }
     var inp = $("#bd-input");
-    inp.disabled = GV.spectator; inp.value = "";
-    inp.placeholder = GV.spectator ? "Chat en lecture seule (observateur)" : "Discuter… (Entrée pour envoyer)";
-    $("#btn-giveup").textContent = $("#m-giveup").textContent = GV.spectator ? "Quitter" : "Abandon";
+    inp.disabled = GV.spectator || GV.differe; inp.value = "";
+    inp.placeholder = GV.spectator ? "Chat en lecture seule (observateur)" : GV.differe ? "Pas de chat en différé" : "Discuter… (Entrée pour envoyer)";
+    $("#btn-giveup").textContent = $("#m-giveup").textContent = (GV.spectator || GV.differe) ? "Fermer" : "Abandon";
     $("#bd-end").style.display = "none";
     $("#bd-banner").style.display = "none";
     $("#m-hint").classList.remove("on");
@@ -221,6 +227,9 @@
     startMusic();
     GV.dirty = true;
     if (GV.ended) showEnd();
+    // Revoir une partie en différé finie : l'issue reste à l'écran, on la
+    // ferme soi-même (OK ou Fermer).
+    if (GV.ended && GV.differe && GV._endTimer) { clearTimeout(GV._endTimer); GV._endTimer = null; }
   };
 
   // ── File d'événements (un événement <bd e="ev"> à la fois) ────────────────
@@ -1005,6 +1014,7 @@
     if ($("#pclock1").textContent !== f1) { $("#pclock1").textContent = f1; $("#m-clock1").textContent = f1; }
   }
   function fmt(ms) {
+    if (GV.differe && window.DiffereUI) return DiffereUI.fmtDelai(ms);   // trois jours : en jours et heures
     ms = Math.max(0, ms | 0);
     var s = Math.floor(ms / 1000);
     return ("0" + Math.floor(s / 60)).slice(-2) + ":" + ("0" + (s % 60)).slice(-2);
@@ -1051,6 +1061,10 @@
       // L'observateur n'a ni série ni défaite : juste l'issue.
       $("#bd-endtext").textContent = draw ? "Égalité ! La Vachette gagne…" : "La partie est terminée, " + nameOf(GV.winner) + " a gagné !";
       $("#bd-endsub").textContent = "";
+    } else if (GV.differe) {
+      // En différé : ni série ni challenge — l'issue, et retour à la liste.
+      $("#bd-endtext").textContent = draw ? "Égalité ! La Vachette gagne…" : mine ? "Partie en différé gagnée !" : "Partie en différé perdue.";
+      $("#bd-endsub").textContent = draw ? "" : nameOf(GV.winner) + " remporte la partie.";
     } else if (draw) {
       $("#bd-endtext").textContent = "Égalité ! La Vachette gagne…\nVous avez encore vos chances sur le challenge.";
       $("#bd-endsub").textContent = "";
@@ -1146,7 +1160,7 @@
     // boutons (Abandon avec confirmation — texte d'origine)
     function onGiveUp() {
       if (GV.ended) { closeEnd(); return; }
-      if (GV.spectator) { if (GV.onQuit) GV.onQuit(); return; }   // on ne fait que regarder : pas de confirmation
+      if (GV.spectator || GV.differe) { if (GV.onQuit) GV.onQuit(); return; }   // regarder, ou différé : fermer sans confirmation
       if (window.confirm("Voulez-vous abandonner la partie ?")) { if (GV.onQuit) GV.onQuit(); }
     }
     $("#btn-giveup").addEventListener("click", onGiveUp);

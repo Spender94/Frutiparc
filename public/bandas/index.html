@@ -60,6 +60,16 @@
   #tournoi-vue .gagne { font-weight:bold; color:#2f8f2f; }
   #tournoi-vue .encours { color:#c98a00; font-size:12px; }
   @media (max-width: 760px) { #tournoi-vue .corps { flex-direction:column; gap:14px; } }
+  /* ── Les parties en DIFFÉRÉ (amical et championnat) : une surcouche sur le
+     lobby, dessinée par le module commun /js/differe-ui.js. ── */
+  #differe-vue { position:fixed; inset:0; z-index:900; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; padding:16px; }
+  #differe-vue.on { display:flex; }
+  #differe-vue .boite { background:#fff; border-radius:10px; max-width:720px; width:100%; max-height:86vh; overflow:auto; box-shadow:0 8px 22px rgba(0,0,0,.45); }
+  #differe-vue .tete { position:sticky; top:0; z-index:1; background:#8cc63f; color:#fff; padding:10px 14px; font-weight:bold; display:flex; align-items:center; }
+  #differe-vue .tete .x { margin-left:auto; cursor:pointer; font-size:18px; line-height:1; }
+  #differe-box { padding:14px; --dif-accent:#8ba731; --dif-fond:#f6fbf2; }
+  .mode .mdif { margin-top:4px; text-align:center; font-size:12px; color:#7a7a7a; min-height:16px; }
+  .mode .mdif b { color:#74902a; }
 
   /* Sa propre note, sous le bandeau du championnat : c'est l'enjeu de la salle.
      Le fond de la page est clair — on écrit donc en sombre, et le nombre
@@ -308,8 +318,8 @@
       <div class="bandas-v">FRUTIBANDAS</div>
     </div>
     <div class="mode-list">
-      <div class="mode active" id="mode-champ" data-salle="champ"><div class="mname">CHAMPIONNAT</div><div class="mstats"><div class="j"><span>JOUEURS</span><span data-cpt="champ-j">0</span></div><div class="p"><span>PARTIES</span><span data-cpt="champ-p">0</span></div></div><div class="mnote" id="ma-note"></div></div>
-      <div class="mode active" id="mode-amical" data-salle="amical"><div class="mname">MATCHES AMICAUX</div><div class="mstats"><div class="j"><span>JOUEURS</span><span data-cpt="amical-j">0</span></div><div class="p"><span>PARTIES</span><span data-cpt="amical-p">0</span></div></div></div>
+      <div class="mode active" id="mode-champ" data-salle="champ"><div class="mname">CHAMPIONNAT</div><div class="mstats"><div class="j"><span>JOUEURS</span><span data-cpt="champ-j">0</span></div><div class="p"><span>PARTIES</span><span data-cpt="champ-p">0</span></div></div><div class="mnote" id="ma-note"></div><div class="mdif" id="dif-champ"></div></div>
+      <div class="mode active" id="mode-amical" data-salle="amical"><div class="mname">MATCHES AMICAUX</div><div class="mstats"><div class="j"><span>JOUEURS</span><span data-cpt="amical-j">0</span></div><div class="p"><span>PARTIES</span><span data-cpt="amical-p">0</span></div></div><div class="mdif" id="dif-amical"></div></div>
       <div class="mode active" id="mode-chall" data-salle="chall"><div class="mname">CHALLENGE</div><div class="mstats"><div class="j"><span>JOUEURS</span><span data-cpt="chall-j" id="ch-j">0</span></div><div class="p"><span>PARTIES</span><span data-cpt="chall-p" id="ch-p">0</span></div></div></div>
     </div>
   </div>
@@ -321,6 +331,7 @@
         <span class="title" id="lobby-title">CHALLENGE</span>
         <span class="sp"></span>
         <button id="btn-tournoi" style="display:none">Tournoi</button>
+        <button id="btn-differe" style="display:none">En différé</button>
         <button id="btn-create">Créer une partie</button>
         <span class="x" id="lobby-back" title="Retour">✕</span>
       </div>
@@ -358,6 +369,14 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Les parties en différé : invitations, parties en cours, terminées. -->
+  <div id="differe-vue">
+    <div class="boite">
+      <div class="tete"><span id="differe-titre">Parties en différé</span><span class="x" id="differe-fermer" title="Fermer">✕</span></div>
+      <div id="differe-box"></div>
     </div>
   </div>
 
@@ -467,6 +486,7 @@
 <script src="/js/bouille-variante.js"></script>
 <script src="/js/bouille-vignette.js"></script>
 <script src="engine.js"></script>
+<script src="/js/differe-ui.js"></script>
 <script src="gameview.js"></script>
 <script src="ui.js"></script>
 <!-- Le disque sorti de la Frusion referme cette fenêtre (voir le fichier). -->

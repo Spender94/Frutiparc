@@ -697,6 +697,23 @@ async function initSchema() {
       CREATE INDEX IF NOT EXISTS idx_cparis_jour ON challenge_paris(jour, statut);
       CREATE INDEX IF NOT EXISTS idx_cparis_user ON challenge_paris(LOWER(username), cree_le DESC);
 
+      -- LES PARTIES EN DIFFÉRÉ (Grapiz, Frutibandas) : une partie par
+      -- correspondance dort des jours entre deux coups, elle doit survivre à
+      -- un redémarrage. La ligne entière (joueurs, trait, échéance, état du
+      -- jeu — poses cachées comprises, que seul le serveur lit) est le JSON de
+      -- la colonne donnees ; les autres colonnes servent au filtrage et au RGPD.
+      CREATE TABLE IF NOT EXISTS parties_differees (
+        id        TEXT PRIMARY KEY,
+        jeu       TEXT NOT NULL,
+        statut    TEXT NOT NULL,
+        joueur_a  TEXT NOT NULL,
+        joueur_b  TEXT NOT NULL,
+        echeance  TIMESTAMPTZ,
+        donnees   JSONB NOT NULL,
+        maj_le    TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_pdiff_jeu ON parties_differees(jeu, statut);
+
       -- Capture des scores postés pendant une fenêtre (round 0 = qualif, sinon le tour).
       -- On garde le MEILLEUR score par joueur et par tour (indépendant du record perso).
       CREATE TABLE IF NOT EXISTS tournament_round_scores (
@@ -1864,6 +1881,9 @@ async function anonymiserJoueur(username) {
       // deux comptes supprimés auraient misé sur le même match.
       ['tournament_paris', 'username', 'brut'],
       ['challenge_paris', 'username', 'brut'],
+      // Ses parties en différé : sans lui, elles n'ont plus d'adversaire.
+      ['parties_differees', 'joueur_a', 'brut'],
+      ['parties_differees', 'joueur_b', 'brut'],
     ]) {
       const r = quoi === 'adresse'
         ? await client.query(`DELETE FROM ${table} WHERE LOWER(SPLIT_PART(${col}, '@', 1)) = $1`, [a])
@@ -1878,7 +1898,7 @@ async function anonymiserJoueur(username) {
     const retirees = new Set(['push_subscriptions.username', 'trombinoscope.pseudo',
       'forum_topic_reads.username', 'forum_topic_follows.username', 'users.referred_by',
       'swapou_parties.username', 'connexions.username', 'tournament_paris.username',
-      'challenge_paris.username']);
+      'challenge_paris.username', 'parties_differees.joueur_a', 'parties_differees.joueur_b']);
     for (const [table, col] of RENOMMAGE_COLONNES) {
       if (retirees.has(`${table}.${col}`)) continue;
       const r = await client.query(
@@ -4653,6 +4673,27 @@ async function classementParis(depuisJour, jusquaJour, minParis = 3) {
     [String(depuisJour), String(jusquaJour), Math.max(1, Number(minParis) || 1)]);
   return rows;
 }
+// ── Les parties en différé ──
+// Toutes les parties d'un jeu (ou de tous), telles que differe.js les garde.
+async function listerPartiesDifferees(jeu) {
+  const { rows } = jeu
+    ? await pool.query('SELECT donnees FROM parties_differees WHERE jeu = $1', [jeu])
+    : await pool.query('SELECT donnees FROM parties_differees');
+  return rows.map((r) => (typeof r.donnees === 'string' ? JSON.parse(r.donnees) : r.donnees));
+}
+async function sauverPartieDifferee(p) {
+  await pool.query(
+    `INSERT INTO parties_differees (id, jeu, statut, joueur_a, joueur_b, echeance, donnees, maj_le)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, now())
+     ON CONFLICT (id) DO UPDATE SET statut = EXCLUDED.statut, echeance = EXCLUDED.echeance,
+       donnees = EXCLUDED.donnees, maj_le = now()`,
+    [p.id, p.jeu, p.statut, String(p.joueurs[0] || '').toLowerCase(), String(p.joueurs[1] || '').toLowerCase(),
+      p.echeance ? new Date(p.echeance) : null, JSON.stringify(p)]);
+}
+async function supprimerPartieDifferee(id) {
+  await pool.query('DELETE FROM parties_differees WHERE id = $1', [id]);
+}
+
 // Les gros coups du parc depuis une date : les paris gagnés dont le gain net
 // atteint le seuil — ceux que Dimitri annonce.
 async function grosCoupsParis(depuis, seuil, limit = 30) {
@@ -4803,6 +4844,9 @@ module.exports = {
   registreParis,
   grosCoupsParis,
   classementParis,
+  listerPartiesDifferees,
+  sauverPartieDifferee,
+  supprimerPartieDifferee,
   // RGPD
   PSEUDO_SUPPRIME,
   deleteSessionsForUser,

@@ -36,6 +36,7 @@
   var state = {
     ws: null, user: "", myBouille: "", gotLobby: false, screen: "connect",
     inGame: false, helloTimer: null, lobbyTab: "players", salle: salleGardee(),
+    differe: false, gameId: null,   // la partie affichée est en différé ; son identifiant
   };
   function setStatus(s) { $("#status").textContent = s; }
 
@@ -151,6 +152,7 @@
     var el = doc.documentElement; if (!el || el.nodeName !== "bd") return;
     var e = el.getAttribute("e");
     if (e === "lobby") return onLobby(el);
+    if (e === "dlist") return differeUI.maj(el);
     if (e === "chat") return addChat($("#lobby-chat"), el.getAttribute("u"), el.getAttribute("m"));
     if (e === "gchat") return GV.chatMessage(el.getAttribute("u"), el.getAttribute("m"));
     if (e === "start") return onStart(el);
@@ -162,9 +164,42 @@
       if (m === "no-such-game" && state.screen === "lobby") { setStatus("Cette partie vient de se terminer."); bd({ a: "list" }); return; }
       // Refus FD d'un match classé : popin native (pas une simple ligne d'état).
       if (m === "no-fd" || m === "opp-no-fd") { showFdPopin(m); return; }
+      if ($("#differe-vue").classList.contains("on") && differeUI.erreur) { differeUI.erreur(m); return; }
       setStatus("⚠ " + m); return;
     }
   }
+
+  // ── Les parties en différé (amical et championnat) ───────────────────────
+  // On invite un joueur, chacun joue son coup quand il passe, trois jours par
+  // coup. Le panneau est le module commun /js/differe-ui.js ; la partie
+  // s'affiche sur le plateau habituel, marquée `differe` (voir GV.send).
+  var differeUI = DiffereUI.creer({
+    conteneur: $("#differe-box"), sid: sid,
+    envoyer: function (a) { bd(a); },
+    moi: function () { return state.user; },
+    salle: function () { return state.salle === "chall" ? null : state.salle; },
+    ouvrir: function (id) { fermerDiffere(); bd({ a: "dopen", id: id }); },
+    onListe: function (ui) {
+      var l = function (sa) { var n = ui.aMoi(sa), m = ui.enCours(sa); return m ? ("En différé : <b>" + n + "</b> à jouer · " + m + " en cours") : "En différé : 3 jours par coup"; };
+      $("#dif-champ").innerHTML = l("champ"); $("#dif-amical").innerHTML = l("amical");
+    },
+  });
+  function ouvrirDiffere() {
+    $("#differe-titre").textContent = "Parties en différé — " + (SALLES[state.salle] ? SALLES[state.salle].titre.toLowerCase() : "");
+    $("#differe-vue").classList.add("on");
+    differeUI.rendre();
+    bd({ a: "dlist" });
+  }
+  function fermerDiffere() { $("#differe-vue").classList.remove("on"); }
+  $("#btn-differe").onclick = ouvrirDiffere;
+  $("#differe-fermer").onclick = fermerDiffere;
+  $("#differe-vue").addEventListener("click", function (ev) { if (ev.target === $("#differe-vue")) fermerDiffere(); });
+  function majBoutonDiffere() { $("#btn-differe").style.display = (state.screen === "lobby" && state.salle !== "chall") ? "" : "none"; }
+  // Une notification « X a joué ! À ton tour » ouvre directement la partie.
+  DiffereUI.ecouterOuverture("bandas", function (id) {
+    var attendre = function () { if (state.gotLobby) { if (state.inGame && !state.differe) return; bd({ a: "dopen", id: id }); } else setTimeout(attendre, 300); };
+    attendre();
+  });
 
   // ── Lobby ────────────────────────────────────────────────────────────────
   var lobbyPlayers = [], lobbyGames = [], lobbyLive = [], lobbySel = null;
@@ -272,6 +307,14 @@
       else { btn.textContent = name + " est en partie"; btn.disabled = true; }
     }
     foot.appendChild(btn);
+    // Hors Challenge : le même adversaire peut se jouer EN DIFFÉRÉ, qu'il soit
+    // libre ou déjà en partie — l'invitation attend trois jours.
+    if (state.salle !== "chall" && !p.bot) {
+      var bd2 = document.createElement("button"); bd2.className = "btn-defier"; bd2.style.marginLeft = "6px";
+      bd2.textContent = "En différé"; bd2.title = "Inviter " + name + " à une partie en différé (3 jours par coup)";
+      bd2.onclick = function () { bd({ a: "dinvite", u: p.u, sa: state.salle }); ouvrirDiffere(); };
+      foot.appendChild(bd2);
+    }
     var arr = document.createElement("span"); arr.className = "arrow"; arr.setAttribute("data-col", "defis"); arr.setAttribute("title", "Replier"); arr.textContent = "»"; foot.appendChild(arr);
   }
   // ── Les parties en cours (spectateurs) ──────────────────────────────────
@@ -323,8 +366,9 @@
     renderLobby();
     bd({ a: "list" });
     if (salle === "champ") chargerTournoi(); else majTournoi();
+    majBoutonDiffere();
   }
-  $("#lobby-back").onclick = function () { showScreen("mode"); majTournoi(); };
+  $("#lobby-back").onclick = function () { showScreen("mode"); majTournoi(); majBoutonDiffere(); };
 
   // ── Le tournoi (format duel) ───────────────────────────────────────────────
   //
@@ -441,15 +485,45 @@
   // ── Partie ───────────────────────────────────────────────────────────────
   function onStart(el) {
     state.inGame = true;
+    state.differe = el.getAttribute("df") === "1";
+    state.gameId = el.getAttribute("g");
+    fermerDiffere();
     showScreen("game");
+    majBoutonDiffere();
     GV.start(el, state.user);
   }
   function onEvent(el) {
     if (!state.inGame) return;
+    // Un événement d'une AUTRE partie (en différé, l'adversaire a joué dans une
+    // partie qu'on n'a pas ouverte) : la liste se rafraîchit, pas le plateau.
+    if (state.gameId && el.getAttribute("g") && el.getAttribute("g") !== state.gameId) return;
     GV.pushEvent(el);
   }
 
-  GV.send = function (a) { bd(a); };
+  // En différé, les actions de jeu portent l'identifiant de la partie (le
+  // serveur n'a pas de session « en cours » pour nous) ; le chat n'y existe pas.
+  GV.send = function (a) {
+    if (state.differe) {
+      var map = { choose: "dchoose", play: "dplay", move: "dmove" };
+      if (map[a.a]) bd(Object.assign({}, a, { a: map[a.a], id: state.gameId }));
+      return;
+    }
+    bd(a);
+  };
+  // Fermer une partie en différé : elle attend, on revient au salon et à la liste.
+  function quitterDiffere() {
+    if (GV._endTimer) { clearTimeout(GV._endTimer); GV._endTimer = null; }
+    state.inGame = false; state.differe = false; state.gameId = null;
+    GV.started = false;
+    GV.stopMusic();
+    document.body.classList.remove("chat-open", "sheet-open");
+    showScreen("lobby");
+    renderLobby();
+    majBoutonDiffere();
+    bd({ a: "list" });
+    ouvrirDiffere();
+    if (state.salle === "champ") chargerTournoi();
+  }
   // L'observateur qui s'en va : rien à abandonner, retour au salon.
   function quitterSpectacle() {
     if (GV._endTimer) { clearTimeout(GV._endTimer); GV._endTimer = null; }
@@ -463,11 +537,13 @@
     bd({ a: "list" });
   }
   GV.onQuit = function () {
+    if (state.differe) { quitterDiffere(); return; }   // la croix ne vaut pas abandon : la partie attend
     if (GV.spectator) { bd({ a: "unwatch" }); quitterSpectacle(); return; }
     bd({ a: "part" });
     // l'événement end reviendra du serveur ; en mode challenge l'abandon ferme le jeu
   };
   GV.onEndClosed = function () {
+    if (state.differe) { quitterDiffere(); return; }     // retour au panneau des parties en différé
     if (GV.spectator) { quitterSpectacle(); return; }   // l'observateur retourne au salon
     var mine = GV.winner === GV.myTeam;
     state.inGame = false;

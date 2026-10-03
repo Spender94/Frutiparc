@@ -282,6 +282,10 @@ const USER_LOG_TYPE = {
   INSCRIPTION: 40,   // first entry on a freshly-registered account
   GODSON:      50,   // new godson recruited
   MEDAL:       60,   // won a daily-challenge medal
+  // Une partie en DIFFÉRÉ (Grapiz, Frutibandas) : invitation, « X a joué ! À
+  // ton tour », rappel, issue. Pas de dessin dans le SWF pour ce type : le
+  // light lui prête celui des nouveaux jeux (cf. LIGHT_HISTORY_KINDS).
+  DIFFERE:     70,
 };
 
 // Internal-status code for each game — the 2-char base62 value broadcast in
@@ -1635,6 +1639,10 @@ const RANKINGS = {
   // meilleur.
   bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L', classeAZero: true },
   grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L', classeAZero: true },
+  // Le CHAMPIONNAT de Grapiz : la salle classée du jeu d'origine, rouverte en
+  // DIFFÉRÉ (des parties par correspondance, trois jours par coup). Une note
+  // Elo (le même elo.js que Frutibandas), écrite par fixerScore, permanente.
+  grapiz_champion:    { name: 'Grapiz - Championnat',     game: 'grapiz',   type: 'L' },
   // Le CHAMPIONNAT de Frutibandas — la salle classée du jeu d'origine
   // (Main.CHAMPION_MODE = 2). Ce n'est pas un record mais une NOTE Elo, qui
   // monte et descend : elle s'écrit donc par fixerScore (écriture absolue) et
@@ -1741,13 +1749,14 @@ const LEGACY_RANKINGS = [
   // Frutibandas a retrouvé le sien : la salle classée du jeu d'origine
   // (Main.CHAMPION_MODE = 2) est rouverte, et sa note Elo se range exactement
   // là où le client d'époque l'attendait — rk '7', section L, rn 'Frutibandas'.
-  // Grapiz garde son rk '8' à vide : son mode championnat n'est pas ouvert.
+  // Grapiz a retrouvé le sien aussi (rk '8', section L) : son championnat se
+  // joue en DIFFÉRÉ, et sa note Elo s'écrit là.
   { rk: '7', internal: 'bandas_champion',   ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   // Le CHAMPIONNAT de Frutisnake (le Battle en ligne du light), noté à l'Elo
   // comme celui de Frutibandas : même section L. gs='1', le gabarit de
   // Frutisnake (des points, sans colonne annexe).
   { rk: '18', internal: 'snake3_battle',    ty: 'point',       rn: 'Frutisnake',   gs: '1', g: 'snake3', section: 'L' },
-  { rk: '8', internal: null,                ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
+  { rk: '8', internal: 'grapiz_champion',   ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
   // Le TOURNOI de Frutisnake : le classement de la carte partagée. Il n'avait
   // d'onglet nulle part — on le lisait seulement au livre des records du Club,
   // alors que c'est un tableau de compétition, celui qu'on vient consulter.
@@ -7552,7 +7561,8 @@ let PUSH_CLE_PUBLIQUE = '';
 
 // defi : l'horloge de la partie fait 600 s — au-delà, la notification ne mène
 // plus qu'à un forfait déjà consommé ; forum : une citation se lit plus tard.
-const PUSH_TTL = { courrier: 24 * 3600, mp: 3600, evenement: 12 * 3600, defi: 600, forum: 24 * 3600 };
+// differe : un coup en différé attend trois jours — la notification aussi.
+const PUSH_TTL = { courrier: 24 * 3600, mp: 3600, evenement: 12 * 3600, defi: 600, forum: 24 * 3600, differe: 3 * 24 * 3600 };
 
 function pushInit(cles, nAbonnements) {
   // Le sujet VAPID identifie l'expéditeur auprès des services de poussée
@@ -25536,6 +25546,19 @@ app.get('/api/light/challenge', async (req, res) => {
     games.push(permanent('snake3_battle',
       nomBureau('snake3_battle', 'Frutisnake'), 'snake3', sn));
   } catch (e) { console.error('[LIGHT] snake3 champion ranking error:', e.message); }
+  // Et le CHAMPIONNAT de Grapiz (les parties en différé), même note d'Elo.
+  try {
+    const gz = [];
+    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+      const s = rlist && rlist.grapiz_champion;
+      if (!s || !Number.isFinite(Number(s.score))) continue;
+      gz.push({ u, s: Number(s.score), at: s.updatedAt || '',
+        label: Number(s.score).toLocaleString('fr-FR') });
+    }
+    gz.sort(scoreComparator('grapiz_champion'));
+    games.push(permanent('grapiz_champion',
+      nomBureau('grapiz_champion', 'Grapiz'), 'grapiz', gz));
+  } catch (e) { console.error('[LIGHT] grapiz champion ranking error:', e.message); }
   // Le TOURNOI de Frutisnake, à la même place que dans le tableau du bureau
   // (section Championnat, cf. son descripteur legacy rk '16') : le classement
   // de la carte partagée ne se lisait qu'au livre des records du Club.
@@ -25822,6 +25845,7 @@ const LIGHT_HISTORY_KINDS = {
   40: { icone: 'evt_inscription',  titre: 'Inscription' },
   50: { icone: 'histo_filleul',    titre: 'Parrainage' },
   60: { icone: 'histo_medaille',   titre: 'Médaille' },
+  70: { icone: 'evt_jeu',          titre: 'Partie en différé' },
 };
 
 // Les deux journaux ont la même forme : { d: date, t: type, c: texte, n: neuf }.
@@ -27306,6 +27330,8 @@ async function boot() {
       try { swapouTournoiVerifie = (await db.getAppState('swapou_tournoi_verifie')) === '1'; }
       catch (e) { console.error('[SWAPOU] interrupteur du tournoi :', e.message); }
       await chargerReglagesParisChallenge();
+      // Les parties en différé reprennent où elles en étaient.
+      await chargerPartiesDifferees();
       // Le sujet des paris de Dimitri : ouvert s'il manque (en tâche de fond :
       // les rubriques du forum se créent un peu plus loin dans le démarrage).
       setTimeout(() => dimitriOuvrirSujet(), 5000).unref();
@@ -29795,9 +29821,151 @@ function piocherIdentiteBot(deja, rng) {
   return libres[Math.floor(tirage * libres.length) % libres.length];
 }
 
+// ─────────────────────────────────────────────
+// LES PARTIES EN DIFFÉRÉ (Grapiz et Frutibandas, amical et championnat) : on
+// invite un joueur, chacun joue son coup quand il passe, trois jours par coup.
+// La cervelle vit dans differe.js (à la racine) et dans les nets de chaque jeu
+// (sessions éphémères reconstruites depuis l'état gardé). Ici : la
+// persistance (table parties_differees), les notifications — l'entrée
+// d'historique dans l'appli, et le téléphone si le joueur n'est pas devant
+// un écran —, et les hooks communs aux deux jeux.
+// ─────────────────────────────────────────────
+const NOMS_JEU_DIFFERE = { grapiz: 'Grapiz', bandas: 'Frutibandas' };
+function notifierDiffere(n) {
+  const p = n.partie;
+  const jeu = NOMS_JEU_DIFFERE[p.jeu] || p.jeu;
+  const vers = String(n.vers || '').toLowerCase();
+  if (!vers || NPC_USERNAMES.has(vers)) return;
+  const moi = p.joueurs.indexOf(vers);
+  const adv = getDisplayName(p.joueurs[1 - moi] || '');
+  const de = n.de ? getDisplayName(n.de) : adv;
+  const mode = p.salle === 'champ' ? 'championnat' : 'amical';
+  const au = p.jeu === 'bandas' ? 'à Frutibandas' : 'au Grapiz';
+  let emoji = '', titre, corps, urgence = 'high';
+  switch (n.type) {
+    case 'invitation':
+      emoji = '🎲 '; titre = `${de} t'invite à une partie de ${jeu}`;
+      corps = `En différé (${mode}) : trois jours par coup, tu joues quand tu passes.`; break;
+    case 'acceptee':
+      titre = `${de} a accepté ta partie de ${jeu}`;
+      corps = p.tour === moi ? `À toi d'ouvrir la partie !` : `${de} ouvre la partie ; tu seras prévenu à ton tour.`; break;
+    case 'tour':
+      titre = `${de} a joué ! À ton tour ${au}`;
+      corps = `Tu as trois jours pour répondre (${mode}).`; break;
+    case 'rappel':
+      emoji = '⏳ '; titre = `Plus qu'un jour pour jouer ${au}`;
+      corps = `${adv} attend ton coup : passé demain, la partie est perdue.`; urgence = 'normal'; break;
+    case 'fin': {
+      const gagne = p.gagnant === moi, nul = p.gagnant !== 0 && p.gagnant !== 1;
+      emoji = gagne ? '🏆 ' : '';
+      titre = nul ? `Égalité ${au} contre ${adv}` : gagne ? `Victoire ${au} contre ${adv} !` : `Défaite ${au} contre ${adv}`;
+      corps = p.raison === 'forfeit' ? (gagne ? `${adv} a abandonné la partie.` : `Tu as abandonné la partie.`)
+        : `La partie en différé (${mode}) est terminée.`; break;
+    }
+    case 'delai': {
+      const gagne = p.gagnant === moi;
+      emoji = gagne ? '🏆 ' : '';
+      titre = gagne ? `${adv} n'a pas joué : tu gagnes ${au}` : `Trois jours sans jouer : partie de ${jeu} perdue`;
+      corps = gagne ? `Victoire par forfait (${mode}).` : `${adv} gagne par forfait (${mode}).`; break;
+    }
+    case 'refus':
+      titre = `${de} décline ta partie de ${jeu}`; corps = `Ton invitation en différé n'a pas été acceptée.`; urgence = 'normal'; break;
+    case 'expiree':
+      titre = `${adv} n'a pas répondu à ton invitation ${au}`; corps = `Trois jours sans réponse : l'invitation est retirée.`; urgence = 'normal'; break;
+    default: return;
+  }
+  // Dans l'appli : une entrée d'historique (la cloche s'allume, et elle
+  // attend un joueur déconnecté à sa prochaine connexion).
+  addAndNotifyUserLog(vers, { type: USER_LOG_TYPE.DIFFERE, content: `${titre} — ${corps}` });
+  // Sur le téléphone, si personne n'est devant un écran.
+  if (!pushPret) return;
+  if (estJoignableEnDirect(vers)) { noterDecisionPush(vers, 'differe_' + p.jeu, false, 'présent (socket fraîche au premier plan)'); return; }
+  noterDecisionPush(vers, 'differe_' + p.jeu, true, 'absent → envoyé');
+  pousserNotif(vers, {
+    t: emoji + titre, c: corps,
+    u: `/light?ouvre=${p.jeu}&partie=${encodeURIComponent(p.id)}`,
+    tag: 'differe_' + p.id,
+  }, PUSH_TTL.differe, urgence);
+}
+// Les hooks d'un jeu : persistance, notifications, annuaire.
+function hooksDiffere(jeu) {
+  return {
+    onSauver: (p) => {
+      if (!process.env.DATABASE_URL) return;
+      db.sauverPartieDifferee(p).catch((e) => console.error(`[${jeu}] partie en différé non sauvée :`, e.message));
+    },
+    onSupprimer: (id) => {
+      if (!process.env.DATABASE_URL) return;
+      db.supprimerPartieDifferee(id).catch((e) => console.error(`[${jeu}] partie en différé non retirée :`, e.message));
+    },
+    onNotifier: (n) => { try { notifierDiffere(n); } catch (e) { console.error(`[${jeu}] notification différé :`, e.message); } },
+    // On peut inviter quelqu'un qui n'a jamais ouvert le jeu : son nom et sa
+    // tête viennent du compte. Pas les PNJ, ni les comptes inexistants.
+    identite: (u) => ({ name: getDisplayName(u), fb: (users[u] && users[u].fbouille) || '' }),
+    existe: (u) => !!users[u] && !NPC_USERNAMES.has(u),
+  };
+}
+// Au démarrage : les parties que la base connaît reviennent à chaque jeu.
+async function chargerPartiesDifferees() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const toutes = await db.listerPartiesDifferees();
+    const n = {
+      grapiz: grapizNet.differe ? grapizNet.differe.charger(toutes.filter((p) => p.jeu === 'grapiz')) : 0,
+      bandas: bandasNet.differe ? bandasNet.differe.charger(toutes.filter((p) => p.jeu === 'bandas')) : 0,
+    };
+    console.log(`[DIFFERE] ${n.grapiz} partie(s) Grapiz et ${n.bandas} partie(s) Frutibandas reprises de la base`);
+  } catch (e) { console.error('[DIFFERE] chargement :', e.message); }
+}
+
+// ── La fiche CHAMPIONNAT de Grapiz ──────────────────────────────────────────
+// Comme Frutisnake : { linit, l, ls } dans le slot 2 du disque grapiz (le jeu
+// d'origine n'écrit que le slot 0), et la note recopiée au classement
+// `grapiz_champion` — c'est lui qui fait foi si le slot a été vidé.
+const GRAPIZ_SLOT = 'grapiz';
+const GRAPIZ_SLOT_CHAMPION = '2';
+function grapizLireFicheChampion(username) {
+  const u = users[username];
+  const brut = u && u.frutiSlots && u.frutiSlots[GRAPIZ_SLOT] && u.frutiSlots[GRAPIZ_SLOT][GRAPIZ_SLOT_CHAMPION];
+  let fiche = null;
+  if (brut) { try { fiche = typeof brut === 'string' ? JSON.parse(brut) : brut; } catch (e) { fiche = null; } }
+  if (fiche && fiche.linit) return { linit: true, l: fiche.l, ls: fiche.ls };
+  const note = getUserScore(username, 'grapiz_champion');
+  if (note && note.score > 0) {
+    const l = (fiche && Array.isArray(fiche.l)) ? fiche.l : [0, 0, 0];
+    return { linit: true, l, ls: [note.score, note.score, note.score] };
+  }
+  return null;
+}
+function grapizEcrireFicheChampion(username, fiche) {
+  const u = users[username];
+  if (!u) return;
+  if (!u.frutiSlots) u.frutiSlots = {};
+  if (!u.frutiSlots[GRAPIZ_SLOT]) u.frutiSlots[GRAPIZ_SLOT] = {};
+  const data = JSON.stringify({ linit: true, l: fiche.l, ls: fiche.ls });
+  u.frutiSlots[GRAPIZ_SLOT][GRAPIZ_SLOT_CHAMPION] = data;
+  if (u._dbId && process.env.DATABASE_URL) {
+    db.upsertFrutiSlot(u._dbId, GRAPIZ_SLOT, Number(GRAPIZ_SLOT_CHAMPION), data).catch((e) => {
+      console.error('[grapiz] fiche championnat:', e.message);
+    });
+  }
+}
+
 const { GrapizNet } = require('./public/grapiz/server/net.js');
 const grapizNet = new GrapizNet({
   botIdentity: piocherIdentiteBot,
+  // Les parties en différé (voir plus haut).
+  differe: hooksDiffere('grapiz'),
+  // CHAMPIONNAT (en différé) : la note d'Elo, lue au premier « hello », réécrite
+  // après chaque partie classée, recopiée au classement.
+  getChampion: (username) => grapizLireFicheChampion(username),
+  onChampion: (username, fiche, info) => {
+    grapizEcrireFicheChampion(username, fiche);
+    fixerScore(username, 'grapiz_champion', fiche.ls[0]);
+    const signe = info.delta >= 0 ? '+' : '';
+    console.log(`[grapiz] championnat ${username} ${info.avant} → ${info.apres}`
+      + ` (${signe}${info.delta}) contre ${info.adversaire}`);
+  },
   // Un défi lance la partie sur-le-champ : si le défié n'est pas frais devant
   // un écran, son téléphone sonne (voir pousserNotifDefiSiAbsent).
   onDefi: (de, vers) => pousserNotifDefiSiAbsent(de, vers, 'grapiz'),
@@ -29944,6 +30112,8 @@ function bandasEcrireFicheChampion(username, fiche) {
 
 const bandasNet = new BandasNet({
   botIdentity: piocherIdentiteBot,      // cf. piocherIdentiteBot, plus haut
+  // Les parties en différé (voir hooksDiffere, plus haut).
+  differe: hooksDiffere('bandas'),
   // Un défi lance la partie sur-le-champ : si le défié n'est pas frais devant
   // un écran, son téléphone sonne (voir pousserNotifDefiSiAbsent).
   onDefi: (de, vers) => pousserNotifDefiSiAbsent(de, vers, 'bandas'),

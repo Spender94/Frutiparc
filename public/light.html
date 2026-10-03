@@ -4114,10 +4114,10 @@
     var pUrl = new URLSearchParams(window.location.search);
     if (pUrl.get("ouvre")) {
       lienProfond = { ouvre: pUrl.get("ouvre"), avec: pUrl.get("avec") || "",
-        sujet: pUrl.get("sujet") || "", salon: pUrl.get("salon") || "" };
+        sujet: pUrl.get("sujet") || "", salon: pUrl.get("salon") || "", partie: pUrl.get("partie") || "" };
     }
   } catch (e) { /* pas de lien */ }
-  function routerOuverture(ouvre, avec, sujet, salon) {
+  function routerOuverture(ouvre, avec, sujet, salon, partie) {
     if (ouvre === "prive" && avec) { activateTab("chat"); openMenu(false); ouvrirPrive(avec); return; }
     // Une @mention mène AU SALON où elle a été écrite : ouvrir le chat sur une
     // autre conversation obligerait à chercher soi-même où l'on a été appelé.
@@ -4139,14 +4139,26 @@
       return;
     }
     // Un défi Grapiz/Frutibandas (ou tout jeu en cadre) : la notification
-    // amène directement à la table.
-    if (CADRES_JEU[ouvre]) { activateTab(ouvre); openMenu(false); return; }
+    // amène directement à la table. Une partie en DIFFÉRÉ (« X a joué ! À ton
+    // tour ») mène à LA partie : on la souffle au cadre du jeu.
+    if (CADRES_JEU[ouvre]) { if (partie) ouvrirPartieDifferee(ouvre, partie); activateTab(ouvre); openMenu(false); return; }
     if (ouvre === "chat" || ouvre === "forum" || ouvre === "scores") { activateTab(ouvre); openMenu(false); }
   }
   function appliquerLienProfond() {
     if (!lienProfond) return;
     var l = lienProfond; lienProfond = null;
-    routerOuverture(l.ouvre, l.avec, l.sujet, l.salon);
+    routerOuverture(l.ouvre, l.avec, l.sujet, l.salon, l.partie);
+  }
+  // La partie en différé à ouvrir : laissée en mémoire locale pour le cadre
+  // du jeu qui va se charger (il la lit en arrivant), et soufflée au cadre
+  // s'il est déjà là (il l'ouvre sur-le-champ). Même origine : le jeu lit
+  // déjà la session dans ce même stockage.
+  function ouvrirPartieDifferee(jeu, id) {
+    try { localStorage.setItem("fp_differe_ouvrir", JSON.stringify({ jeu: jeu, id: id, at: Date.now() })); } catch (e) { /* stockage fermé */ }
+    var cadre = CADRES_JEU[jeu] && $(CADRES_JEU[jeu]);
+    if (cadre && cadre.contentWindow) {
+      try { cadre.contentWindow.postMessage({ differe: id, jeu: jeu }, window.location.origin); } catch (e) { /* le stockage suffira */ }
+    }
   }
 
   // ── Navigation : le MENU est un TIROIR (overlay) ──
@@ -7283,7 +7295,7 @@
     // nous souffle le lien profond au lieu de recharger.
     navigator.serviceWorker.addEventListener("message", function (e) {
       var d = e.data || {};
-      if (d.ouvre) routerOuverture(d.ouvre, d.avec || "", d.sujet || "", d.salon || "");
+      if (d.ouvre) routerOuverture(d.ouvre, d.avec || "", d.sujet || "", d.salon || "", d.partie || "");
     });
   }
 

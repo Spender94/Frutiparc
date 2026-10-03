@@ -16,14 +16,26 @@
 // caché : le spectateur reçoit le même état que les joueurs à chaque coup,
 // lit le chat de la partie, mais n'y écrit pas.
 //
+// LES PARTIES EN DIFFÉRÉ (amical et championnat, jamais au Challenge) : on
+// invite un joueur, chacun joue son coup quand il passe, trois jours par coup.
+// Le cycle de vie (invitations, échéances, forfaits, rappels) vit dans
+// differe.js, à la racine ; ici on reconstruit une session ÉPHÉMÈRE depuis
+// l'état gardé pour appliquer un coup, et on renvoie l'état comme pour une
+// partie en direct, marqué df="1". Actions : dlist, dinvite, daccept,
+// ddecline, dopen, dmove, dpart.
+//
 (function (root, factory) {
+  var E = (typeof require !== "undefined") ? require("../engine.js") : (root.Grapiz && root.Grapiz.engine);
   var L = (typeof require !== "undefined") ? require("./lobby.js") : (root.Grapiz && root.Grapiz.lobby);
   var S = (typeof require !== "undefined") ? require("./session.js") : (root.Grapiz && root.Grapiz.session);
   var B = (typeof require !== "undefined") ? require("./bot.js") : (root.Grapiz && root.Grapiz.bot);
-  var api = factory(L, S, B);
+  // La note d'Elo du Championnat : le même module que Frutibandas et Frutisnake.
+  var Elo = (typeof require !== "undefined") ? require("../../bandas/server/elo.js") : (root.Bandas && root.Bandas.elo);
+  var D = (typeof require !== "undefined") ? require("../../../differe.js") : null;
+  var api = factory(E, L, S, B, Elo, D);
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else (root.Grapiz = root.Grapiz || {}).net = api;
-})(typeof self !== "undefined" ? self : this, function (L, S, Bot) {
+})(typeof self !== "undefined" ? self : this, function (E, L, S, Bot, Elo, D) {
   "use strict";
 
   function esc(s) {
@@ -79,8 +91,156 @@
     // l'écran sous les yeux (notification sur son téléphone).
     this.onDefi = opts.onDefi || null;
     this.onDiscLost = opts.onDiscLost || null;
+    // CHAMPIONNAT (les parties en différé de la salle « champ ») : la note
+    // d'Elo. Deux hooks, absents en tests purs (la fiche vit en mémoire) :
+    //   • getChampion(username) → la fiche persistée { linit, l, ls } ;
+    //   • onChampion(username, fiche, info) → à persister + classer.
+    this.champions = {};
+    this.getChampion = opts.getChampion || null;
+    this.onChampion = opts.onChampion || null;
     if (opts.withBots !== false) this._registerBots();
+    // Les parties en différé. `opts.differe` : les hooks de l'hôte (onSauver,
+    // onSupprimer, onNotifier, identite, existe) ; `false` pour s'en passer.
+    this.differe = (opts.differe !== false && D) ? this._creerDiffere(opts.differe || {}) : null;
   }
+
+  // La fiche Championnat d'un joueur, chargée à la demande auprès de l'hôte.
+  GrapizNet.prototype.ficheChampion = function (username) {
+    if (!this.champions[username]) {
+      var brut = null;
+      if (this.getChampion) { try { brut = this.getChampion(username); } catch (e) { brut = null; } }
+      this.champions[username] = Elo.fiche(brut);
+    }
+    return this.champions[username];
+  };
+
+  // ── Les parties en différé ──────────────────────────────────────────────────
+  GrapizNet.prototype._creerDiffere = function (h) {
+    var self = this;
+    return new D.Differe({
+      jeu: "grapiz",
+      clock: function () { return self.clock(); },
+      // L'état gardé : la définition du plateau (ce que lit Board.fromDefinition)
+      // et le trait. Le plateau de départ est le « lambda », et c'est l'hôte
+      // (équipe 0) qui ouvre, comme en direct.
+      moteur: {
+        nouveau: function () { return { def: { size: 4, tokens: E.LAMBDA_DEF.tokens.slice() }, turn: 0 }; },
+        tourDe: function (etat) { return etat.turn; },
+      },
+      // Le nom et la tête : ceux du salon s'il est passé par là, sinon l'hôte
+      // les connaît (on peut inviter quelqu'un qui n'a jamais ouvert Grapiz).
+      identite: function (u) {
+        var ext = (h.identite ? (h.identite(u) || {}) : {});
+        return { name: self.names[u] || ext.name || u, fb: self.bouilles[u] || ext.fb || "" };
+      },
+      existe: h.existe || function (u) { return !self.bots[u]; },
+      onSauver: h.onSauver, onSupprimer: h.onSupprimer, onNotifier: h.onNotifier,
+      // La fin d'une partie : la note du championnat bouge, et l'hôte est
+      // prévenu comme pour une partie en direct (journal, tournoi…).
+      onFin: function (p) {
+        var sess = self._sessionDifferee(p, self.clock());
+        self._updateElo(sess);
+        try { self.onResult(sess, sess.winner, sess.endReason); } catch (e) {}
+      },
+      delai: h.delai, rappelAvant: h.rappelAvant, garde: h.garde, maxEnCours: h.maxEnCours, ids: h.ids,
+    });
+  };
+  // Une session reconstruite depuis l'état gardé, le temps d'un coup ou d'une
+  // lecture. L'horloge du joueur au trait = ce qui reste avant l'échéance ;
+  // l'autre a ses trois jours pleins. Jamais rangée dans this.sessions : le
+  // lobby ne la voit pas, elle n'occupe personne.
+  GrapizNet.prototype._sessionDifferee = function (p, now) {
+    var delai = this.differe ? this.differe.delai : D.DELAI_COUP;
+    var players = p.joueurs.map(function (u, i) { return { id: u, name: p.noms[i] || u, fb: p.bouilles[i] || "" }; });
+    var etat = p.etat || { def: { size: 4, tokens: E.LAMBDA_DEF.tokens }, turn: 0 };
+    var sess = new S.GrapizSession({
+      id: p.id, players: players, params: { boardSize: etat.def.size || 4, time: delai, nbrPlayers: 2 },
+      board: E.Board.fromDefinition(etat.def), now: now,
+    });
+    sess.game.currentTurn = etat.turn || 0;
+    sess.clocks = [delai, delai];
+    if (p.statut === "en_cours" && p.echeance) sess.clocks[p.tour] = Math.max(0, p.echeance - now);
+    sess.turnStart = now;
+    sess._salle = p.salle;
+    sess._differe = p.id;
+    sess._spectateurs = [];
+    if (p.statut === "finie") { sess.ended = true; sess.winner = p.gagnant; sess.endReason = p.raison; sess.game.ended = true; }
+    return sess;
+  };
+  GrapizNet.prototype._etatDiffere = function (sess) {
+    var b = sess.game.getBoard();
+    return {
+      def: { size: b.getSize(), tokens: b.getTokens().map(function (t) { var c = t.getCoordinate(); return { t: t.getTeam(), x: c.x, y: c.y }; }) },
+      turn: sess.game.currentTurn,
+    };
+  };
+  GrapizNet.prototype._dliste = function (username) {
+    return { to: [username], xml: this.differe.xmlListe(username, "gz") };
+  };
+  GrapizNet.prototype._dlistes = function (usernames) {
+    var self = this, vus = {};
+    return (usernames || []).filter(function (u) { if (vus[u]) return false; vus[u] = true; return true; })
+      .map(function (u) { return self._dliste(u); });
+  };
+  // L'état d'une partie en différé, aux deux joueurs (df="1" : le client sait
+  // qu'il ne doit ni abandonner à la fermeture, ni compter en minutes).
+  GrapizNet.prototype._dEtat = function (p, sess, evt, to) {
+    return { to: to || p.joueurs.slice(), xml: this._stateXml(sess, evt, ' df="1" sa="' + esc(p.salle) + '"') };
+  };
+  // Ce qu'un joueur voit en ouvrant une partie en différé (début ou reprise).
+  GrapizNet.prototype._dOuvrir = function (username, id) {
+    var p = this.differe.partie(id);
+    if (!p || p.statut === "invitation") return [this._err(username, "no-such-game")];
+    if (p.joueurs.indexOf(username) < 0) return [this._err(username, "not-a-player")];
+    return [this._dEtat(p, this._sessionDifferee(p, this.clock()), p.statut === "finie" ? "end" : "start", [username])];
+  };
+  // Un coup dans une partie en différé.
+  GrapizNet.prototype._dCoup = function (username, attrs) {
+    var now = this.clock();
+    var ca = this.differe.coupAutorise(username, attrs.id, now);
+    if (!ca.ok) {
+      // Trop tard : la partie vient d'être perdue par forfait — l'état final
+      // au joueur, les listes aux deux.
+      if (ca.error === "delai") return [this._dEtat(ca.partie, this._sessionDifferee(ca.partie, now), "end", [username])].concat(this._dlistes(ca.partie.joueurs));
+      return [this._err(username, ca.error)];
+    }
+    var p = ca.partie;
+    var sess = this._sessionDifferee(p, now);
+    var res = sess.requestMove(username, num(attrs.x), num(attrs.y), num(attrs.d), now);
+    if (!res.ok) return [this._err(username, res.error)];
+    this.differe.apresCoup(p.id, this._etatDiffere(sess), {
+      tour: sess.game.currentTurn, fini: !!res.ended, gagnant: sess.winner, raison: sess.endReason,
+    }, now);
+    // La session rejouée depuis l'état gardé porte l'issue telle qu'elle a été
+    // conclue (onFin a pu passer par là) : c'est elle qu'on montre.
+    var apres = this._sessionDifferee(p, now);
+    return [this._dEtat(p, apres, p.statut === "finie" ? "end" : "move")].concat(this._dlistes(p.joueurs));
+  };
+
+  // CHAMPIONNAT : la note de chacun bouge (Elo). Grapiz ne connaît pas la
+  // nulle. Les deux notes sont relevées AVANT d'être modifiées.
+  GrapizNet.prototype._updateElo = function (session) {
+    if ((session._salle || "chall") !== "champ") return;
+    var a = session.playerOfTeam(0), b = session.playerOfTeam(1);
+    if (!a || !b || this.bots[a.id] || this.bots[b.id]) return;
+    if (session.winner !== 0 && session.winner !== 1) return;
+    var issues = session.winner === 0 ? ["v", "d"] : ["d", "v"];
+    var fa = this.ficheChampion(a.id), fb = this.ficheChampion(b.id);
+    var na = fa.ls[0], nb = fb.ls[0];
+    this._appliquerElo(a.id, fa, nb, issues[0], b.id);
+    this._appliquerElo(b.id, fb, na, issues[1], a.id);
+  };
+  GrapizNet.prototype._appliquerElo = function (user, avant, noteAdverse, resultat, adversaire) {
+    var r = Elo.apres(avant, noteAdverse, resultat);
+    this.champions[user] = r.fiche;
+    if (this.onChampion) {
+      try {
+        this.onChampion(user, r.fiche, {
+          adversaire: adversaire, avant: avant.ls[0], apres: r.fiche.ls[0], delta: r.delta, resultat: resultat,
+        });
+      } catch (e) { /* la partie prime sur la persistance */ }
+    }
+  };
 
   // ── Les bots empruntent une identité au Bouilloscope ───────────────────────
   //
@@ -156,9 +316,10 @@
         '" m="' + g.max + '" t="' + g.params.time + '" sz="' + g.params.boardSize + '"/>';
     }).join("");
     var players = this.lobby.listPlayers().map(function (p) {
+      var f = self.champions[p.id];
       return '<pl u="' + esc(p.id) + '" n="' + esc(p.name || p.id) + '" s="' + esc(p.status) +
         '" f="' + esc(self.bouilles[p.id] || "") + '" sr="' + (self.streaks[p.id] || 0) +
-        '" bot="' + (self.bots[p.id] ? 1 : 0) + '"' +
+        '" el="' + (f ? f.ls[0] : "") + '" bot="' + (self.bots[p.id] ? 1 : 0) + '"' +
         (self.watching[p.id] ? ' w="' + esc(self.watching[p.id]) + '"' : "") + '/>';
     }).join("");
     // Les parties EN COURS : ce qu'on peut aller regarder.
@@ -178,9 +339,13 @@
     var self = this;
     var snap = session.snapshot(this.clock());
     var toks = snap.board.map(function (t) { return '<t e="' + t.team + '" x="' + t.x + '" y="' + t.y + '"/>'; }).join("");
+    // Au CHAMPIONNAT (en différé), le gros nombre doré n'est plus la série
+    // mais la NOTE : c'est elle qu'on joue.
+    var champ = (session._salle || "chall") === "champ";
     var pls = snap.players.map(function (p) {
       return '<p u="' + esc(p.id) + '" n="' + esc(p.name) + '" e="' + p.team +
-        '" rt="' + p.remaining + '" f="' + esc(p.fb || "") + '" sr="' + (self.streaks[p.id] || 0) + '"/>';
+        '" rt="' + Math.round(p.remaining) + '" f="' + esc(p.fb || "") +
+        '" sr="' + (champ ? self.ficheChampion(p.id).ls[0] : (self.streaks[p.id] || 0)) + '"/>';
     }).join("");
     return '<gz e="' + evt + '" g="' + esc(snap.id) + '" turn="' + snap.currentTurn +
       '" sz="' + session.game.getBoard().getSize() + '"' +
@@ -357,13 +522,30 @@
         // série de départ : ne la seede qu'une fois (ne pas écraser une série en cours)
         if (this.getStreak && this.streaks[username] === undefined) { try { this.streaks[username] = this.getStreak(username) || 0; } catch (e) {} }
         this.lobby.addPlayer(username, this.names[username]);
+        this.ficheChampion(username);   // charge la note pour le lobby
         // L'annuaire des Frutiz n'est chargé qu'après le démarrage du serveur :
         // au premier salon venu, les bots prennent enfin leur vraie tête.
         this._refreshBotIdentities();
-        return this._lobbyBroadcast();
+        // Ses parties en différé partent avec le salon : l'écran d'accueil
+        // peut dire tout de suite « 2 parties t'attendent ».
+        return this._lobbyBroadcast().concat(this.differe ? [this._dliste(username)] : []);
 
       case "list":
         return [{ to: [username], xml: this._lobbyXml() }];
+
+      // ── Les parties en différé ──
+      case "dlist":
+        return this.differe ? [this._dliste(username)] : [this._err(username, "unknown-action")];
+      case "dinvite": case "daccept": case "ddecline": case "dpart": {
+        if (!this.differe) return [this._err(username, "unknown-action")];
+        var rd = this.differe.action(username, attrs, this.clock(), L.defaultParams({ boardSize: 4 }));
+        if (!rd.ok) return [this._err(username, rd.error)];
+        return this._dlistes(rd.touches);
+      }
+      case "dopen":
+        return this.differe ? this._dOuvrir(username, attrs.id) : [this._err(username, "unknown-action")];
+      case "dmove":
+        return this.differe ? this._dCoup(username, attrs) : [this._err(username, "unknown-action")];
 
       case "create":
         r = this.lobby.createGame(username, params);
@@ -479,6 +661,9 @@
       if (to && to.ended) { out = out.concat(this._concludeGame(sess)); return; }
       out = out.concat(this._tickBot(sess, now));             // coup d'un bot si c'est son tour
     }, this);
+    // Les parties en différé : échéances dépassées (forfait), rappels,
+    // invitations éteintes — les listes des joueurs touchés sont rafraîchies.
+    if (this.differe) out = out.concat(this._dlistes(this.differe.tick(now)));
     return out;
   };
 

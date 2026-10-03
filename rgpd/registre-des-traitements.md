@@ -52,10 +52,10 @@ de confidentialité : public adulte, accord parental avant 15 ans), pas mesurée
 |---|---|
 | **Finalité** | Jouer : scores, classements, inventaire, progression, monnaie du jeu |
 | **Base légale** | Exécution du contrat |
-| **Données** | scores et classements (publics), médailles, fruticards (sauvegardes de jeu), inventaire et accessoires, pictos, kikooz et leur historique, paris en kikooz sur les tournois (mise, joueur choisi, gain ; seuls les totaux des pots sont publics) et sur les médaillés du Challenge (mise, joueur choisi, gain, et la cote des anciens paris à cote fixe ; seuls les totaux misés par joueur et les pots sont publics) ; le classement hebdomadaire des parieurs (« Prunostiqueur de la semaine » : pseudo, bénéfice net, nombre de paris, pour qui a au moins 3 paris réglés dans la semaine) est public dans le registre des paris, et le premier est annoncé sur le forum ; un « gros coup » (bénéfice d'au moins le seuil fixé par l'admin, 100 kikooz d'origine) est rendu public : pseudo du parieur, pari, mise, cote et gain, dans le registre des paris (30 jours) et dans un message de Dimitri sur le forum (Jeux Frutiparc), où le parieur est mentionné, quotas quotidiens, préférences, bureau |
+| **Données** | scores et classements (publics), médailles, fruticards (sauvegardes de jeu), inventaire et accessoires, pictos, kikooz et leur historique, paris en kikooz sur les tournois (mise, joueur choisi, gain ; seuls les totaux des pots sont publics) et sur les médaillés du Challenge (mise, joueur choisi, gain, et la cote des anciens paris à cote fixe ; seuls les totaux misés par joueur et les pots sont publics) ; le classement hebdomadaire des parieurs (« Prunostiqueur de la semaine » : pseudo, bénéfice net, nombre de paris, pour qui a au moins 3 paris réglés dans la semaine) est public dans le registre des paris, et le premier est annoncé sur le forum ; un « gros coup » (bénéfice d'au moins le seuil fixé par l'admin, 100 kikooz d'origine) est rendu public : pseudo du parieur, pari, mise, cote et gain, dans le registre des paris (30 jours) et dans un message de Dimitri sur le forum (Jeux Frutiparc), où le parieur est mentionné ; les parties en différé de Grapiz et Frutibandas (les deux joueurs, la salle, le trait, l'échéance, l'état complet de la partie — y compris les poses cachées, que seul le serveur lit —, l'issue) ; quotas quotidiens, préférences, bureau |
 | **Destinataires** | serveur ; classements publics pour les scores et médailles |
-| **Durée** | vie du compte ; les archives de classement des jours passés gardent le pseudo (anonymisé à la suppression du compte) |
-| **Où** | `scores`, `challenge_score_archive`, `challenge_medals`, `fruti_slots`, `user_items`, `user_accessories`, `user_game_items`, `kikooz_log`, `kikooz_gifts`, `shop_purchases`, `shop_sales`, `tournament_*`, `swapou_ia_scores`, colonnes `xp`, `kikooz`, `fd_state`, `owned_*`, `desktop_items`, `prefs` de `users` |
+| **Durée** | vie du compte ; les archives de classement des jours passés gardent le pseudo (anonymisé à la suppression du compte) ; une partie en différé est effacée sept jours après sa fin (une invitation sans réponse, après trois jours), et avec le compte de l'un de ses joueurs |
+| **Où** | `scores`, `challenge_score_archive`, `challenge_medals`, `fruti_slots`, `user_items`, `user_accessories`, `user_game_items`, `kikooz_log`, `kikooz_gifts`, `shop_purchases`, `shop_sales`, `tournament_*`, `swapou_ia_scores`, `parties_differees`, colonnes `xp`, `kikooz`, `fd_state`, `owned_*`, `desktop_items`, `prefs` de `users` |
 
 ## 4. Communication : salons, messages privés, courrier interne, forum
 
@@ -118,7 +118,7 @@ de confidentialité : public adulte, accord parental avant 15 ans), pas mesurée
 
 | | |
 |---|---|
-| **Finalité** | Prévenir le joueur (courrier, MP, événements) quand il n'est pas devant l'écran |
+| **Finalité** | Prévenir le joueur (courrier, MP, événements, défis, parties en différé : « X a joué ! À ton tour », invitation, rappel la veille de l'échéance, issue) quand il n'est pas devant l'écran |
 | **Base légale** | Consentement (bouton « Activer les notifications » ; « Couper » le retire) |
 | **Données** | adresse d'envoi chiffrée fournie par le navigateur, clés de chiffrement, navigateur, date |
 | **Destinataires** | le service de push du navigateur (Google, Apple, Mozilla) — qui ne peut pas lire le contenu |

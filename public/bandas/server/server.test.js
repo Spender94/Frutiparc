@@ -981,5 +981,95 @@ ok(Bot.evaluate(luiEpars, 0) > Bot.evaluate(luiCentre, 0),
   ok(net._lobbyXml("chall").indexOf("<live") < 0, "spect: la partie quitte la liste des parties en cours");
 })();
 
+
+// ══ LES PARTIES EN DIFFÉRÉ ═══════════════════════════════════════════════════
+// On invite, l'autre accepte, chacun joue quand il passe ; trois jours par
+// coup ; la note du championnat bouge à la fin ; tout est reconstruit depuis
+// l'état gardé (sérialisation complète de BandasGame).
+(function () {
+  var JOUR = 24 * 3600 * 1000;
+  var T = 0, sauves = [], supprimes = [], notifs = [], resultats = [];
+  var dn = new N.BandasNet({
+    clock: function () { return T; }, withBots: false, rng: seeded(99),
+    onResult: function (s, w, r) { resultats.push({ id: s.id, w: w, r: r, salle: s._salle }); },
+    differe: {
+      onSauver: function (p) { sauves.push(JSON.parse(JSON.stringify(p))); },
+      onSupprimer: function (id) { supprimes.push(id); },
+      onNotifier: function (n) { notifs.push(n.type + ">" + n.vers); },
+      identite: function (u) { return { name: u.toUpperCase(), fb: "F" + u }; },
+    },
+  });
+  var h = dn.handle("alice", { a: "hello", n: "Alice", sa: "champ" });
+  ok(h[h.length - 1].xml.indexOf('e="dlist"') === 0 || h[h.length - 1].xml.indexOf('<bd e="dlist"') === 0, "différé: hello joint la liste des parties");
+  // On peut inviter quelqu'un qui n'a jamais ouvert le jeu : l'hôte connaît sa tête.
+  var inv = dn.handle("alice", { a: "dinvite", u: "bob", sa: "champ", sz: "6", cd: "2" });
+  eq(inv.length, 2, "différé: l'invitation rafraîchit les deux listes");
+  var p = dn.differe.toutes()[0];
+  eq(p.statut, "invitation", "différé: une invitation");
+  eq(p.noms[1], "BOB", "différé: le nom de l'invité vient de l'hôte");
+  eq(p.params.boardSize, 6, "différé: les paramètres de l'invitation sont gardés");
+  eq(notifs[0], "invitation>bob", "différé: l'invité est prévenu");
+  ok(dn.handle("alice", { a: "dinvite", u: "bob", sa: "chall" })[0].xml.indexOf("bad-room") >= 0, "différé: pas au Challenge");
+  ok(dn.handle("alice", { a: "daccept", id: p.id })[0].xml.indexOf("not-invited") >= 0, "différé: l'hôte n'accepte pas pour l'invité");
+  dn.handle("bob", { a: "hello", n: "Bob", sa: "amical" });
+  dn.handle("bob", { a: "daccept", id: p.id });
+  eq(p.statut, "en_cours", "différé: acceptée → en cours");
+  ok(p.etat && p.etat.content.length === 36 && p.etat.pool.length === 4, "différé: l'état gardé est une partie 6×6 à 2 cartes");
+  eq(p.echeance, 3 * JOUR, "différé: trois jours pour le premier coup");
+  eq(notifs[1], "acceptee>alice", "différé: l'hôte apprend l'acceptation");
+  // Ouvrir : l'instantané complet, marqué df.
+  var ouv = dn.handle("alice", { a: "dopen", id: p.id });
+  ok(ouv[0].xml.indexOf('<bd e="start" g="' + p.id + '"') === 0 && ouv[0].xml.indexOf('df="1"') > 0, "différé: dopen rend l'instantané marqué df");
+  ok(ouv[0].xml.indexOf('sa="champ"') > 0 && ouv[0].xml.indexOf('sr="1000"') > 0, "différé: au championnat, le gros nombre est la note");
+  ok(dn.handle("zoe", { a: "dopen", id: p.id })[0].xml.indexOf("not-a-player") >= 0, "différé: un tiers n'ouvre pas la partie");
+  // Le draft, à des jours d'écart.
+  var premier = p.joueurs[p.tour], second = p.joueurs[1 - p.tour];
+  ok(dn.handle(second, { a: "dchoose", id: p.id, c: String(p.etat.pool[0]) })[0].xml.indexOf("not-your-turn") >= 0, "différé: pas son tour");
+  T = 2 * JOUR;
+  var c1 = dn.handle(premier, { a: "dchoose", id: p.id, c: String(p.etat.pool[0]) });
+  ok(c1.some(function (m) { return m.xml.indexOf('t="cardChosen"') > 0 && m.to.length === 2; }), "différé: l'événement part aux deux joueurs");
+  ok(c1.filter(function (m) { return m.xml.indexOf('e="dlist"') > 0; }).length === 2, "différé: …et les deux listes");
+  eq(p.coups, 1, "différé: un coup compté");
+  eq(p.joueurs[p.tour], second, "différé: le trait passe");
+  eq(p.echeance, 5 * JOUR, "différé: l'échéance repart à trois jours");
+  eq(notifs[2], "tour>" + second, "différé: « X a joué ! À ton tour »");
+  eq(sauves[sauves.length - 1].coups, 1, "différé: l'état est persisté à chaque coup");
+  // L'état relu depuis la base donne la même partie.
+  var relu = G.BandasGame.fromJSON(JSON.parse(JSON.stringify(p.etat)));
+  eq(relu.hands[p.etat.currentTeam === 0 ? 1 : 0].length, 1, "différé: la main relue a sa carte");
+  eq(relu.board.toContentString(), p.etat.content, "différé: le plateau relu est le même");
+  // Le rappel la veille, puis le forfait.
+  T = 4 * JOUR + 1;
+  dn.tick(T);
+  eq(notifs[notifs.length - 1], "rappel>" + second, "différé: un rappel la veille de l'échéance");
+  T = 5 * JOUR;
+  var tk = dn.tick(T);
+  eq(p.statut, "finie", "différé: trois jours sans jouer → finie");
+  eq(p.raison, "delai", "différé: …par dépassement du délai");
+  eq(p.joueurs[p.gagnant], premier, "différé: l'autre gagne");
+  eq(tk.filter(function (m) { return m.xml.indexOf('e="dlist"') > 0; }).length, 2, "différé: les deux listes rafraîchies");
+  eq(notifs.slice(-2).filter(function (n) { return n.indexOf("delai>") === 0; }).length, 2, "différé: les deux sont prévenus du forfait");
+  eq(dn.champions[premier].ls[0], 1024, "différé: la note du gagnant monte (championnat)");
+  eq(dn.champions[second].ls[0], 976, "différé: celle du perdant descend");
+  eq(resultats.length, 1, "différé: l'hôte apprend le résultat comme en direct");
+  eq(resultats[0].salle, "champ", "différé: …avec la salle");
+  ok(dn.handle("alice", { a: "dopen", id: p.id })[0].xml.indexOf('end="1"') > 0, "différé: une partie finie se relit avec son issue");
+  // En amical, pas de note.
+  dn.handle("alice", { a: "dinvite", u: "bob", sa: "amical" });
+  var q = dn.differe.toutes().filter(function (x) { return x.statut === "invitation"; })[0];
+  dn.handle("bob", { a: "daccept", id: q.id });
+  dn.handle("bob", { a: "dpart", id: q.id });
+  eq(q.raison, "forfeit", "différé: l'abandon");
+  eq(q.gagnant, 0, "différé: l'hôte gagne par abandon");
+  eq(dn.champions.alice.ls[0] + dn.champions.bob.ls[0], 2000, "différé: l'amical ne touche pas aux notes");
+  // Une invitation sans réponse s'éteint.
+  dn.handle("alice", { a: "dinvite", u: "carl", sa: "amical" });
+  var r = dn.differe.toutes().filter(function (x) { return x.statut === "invitation"; })[0];
+  T += 3 * JOUR;
+  dn.tick(T);
+  ok(!dn.differe.partie(r.id) && supprimes.indexOf(r.id) >= 0, "différé: l'invitation sans réponse est retirée");
+  eq(notifs[notifs.length - 1], "expiree>alice", "différé: …et l'hôte le sait");
+})();
+
 console.log("bandas server tests: " + passed + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);
