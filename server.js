@@ -286,6 +286,9 @@ const USER_LOG_TYPE = {
   // ton tour », rappel, issue. Pas de dessin dans le SWF pour ce type : le
   // light lui prête celui des nouveaux jeux (cf. LIGHT_HISTORY_KINDS).
   DIFFERE:     70,
+  // On a misé sur toi (Prunostics d'un tournoi ou du Challenge) : une entrée
+  // à la première mise de chaque parieur, pas à chaque rallonge.
+  PRUNOSTIC:   71,
 };
 
 // Internal-status code for each game — the 2-char base62 value broadcast in
@@ -10268,6 +10271,17 @@ app.get('/api/paris', async (req, res) => {
   }
 });
 
+// LE JOUEUR SUR QUI L'ON MISE EST PRÉVENU : une entrée d'historique (la
+// cloche s'allume, et elle attend le joueur hors ligne), à la PREMIÈRE mise
+// de chaque parieur sur lui — une rallonge ne fait pas sonner deux fois. Miser
+// sur soi ne se notifie pas. Le parieur reste ANONYME, comme sur la page des
+// paris (qui a misé quoi n'en sort pas) : seule la mise est dite.
+function prunosticPrevenir(joueur, parieur, texte) {
+  const qui = String(joueur || '').toLowerCase();
+  if (!qui || qui === String(parieur || '').toLowerCase() || NPC_USERNAMES.has(qui)) return;
+  addAndNotifyUserLog(qui, { type: USER_LOG_TYPE.PRUNOSTIC, content: texte });
+}
+
 app.post('/api/paris', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, code: 'fermes', message: 'Les paris ne sont pas disponibles.' });
   const b = req.body || {};
@@ -10309,6 +10323,10 @@ app.post('/api/paris', async (req, res) => {
     if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
     journalKikooz(user, { type: 'p', k: mise, n: `${getDisplayName(choix)} — ${affiche}` });
     notifyKikoozUpdate(moi, user.kikooz);
+    if (Number(pari.mise) === mise) {
+      prunosticPrevenir(choix, moi, `Un Frutiz prunostique ta victoire : ${mise} kikooz misés sur toi`
+        + ` (${affiche}${t.name ? `, ${t.name}` : ''}). À toi de jouer !`);
+    }
     console.log(`[PARIS] #${t.id} ${moi} mise ${mise} sur ${choix} (${affiche}) — total ${pari.mise}`);
     // Le match a pu se jouer entre la vérification et l'écriture : le
     // recalage le verra (et remboursera ce pari s'il arrive après le règlement).
@@ -10721,6 +10739,7 @@ async function prunostiqueurDeLaSemaine(opts) {
   });
   await dimitriFile(async () => {
     const topic = await dimitriSujet();
+    if (!topic) return;
     await db.forumCreatePost(topic.id, Dimitri.PSEUDO_NPC, contenu, users[Dimitri.PSEUDO_NPC].fbouille, Dimitri.HUMEUR);
     const suiveurs = await db.forumTopicFollowers(topic.id).catch(() => []);
     notifyForumNews(Dimitri.PSEUDO_NPC, suiveurs, { id: topic.id, titre: topic.title });
@@ -10879,6 +10898,10 @@ app.post('/api/paris/challenge', async (req, res) => {
     if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
     journalKikooz(user, { type: 'p', k: mise, n: libellePariChallenge({ jour, jeu: jeu.cle, type, choix }) });
     notifyKikoozUpdate(moi, user.kikooz);
+    if (Number(pari.mise) === mise) {
+      prunosticPrevenir(choix, moi, `Un Frutiz prunostique ${type === 'or' ? 'ta médaille d’or' : 'ton podium'}`
+        + ` à ${jeu.nom} au Challenge de demain : ${mise} kikooz misés sur toi. Ne le déçois pas !`);
+    }
     console.log(`[PARIS] Challenge ${jour} ${jeu.cle}/${type} : ${moi} mise ${mise} sur ${choix}`);
     // Le pot après la mise, et ce qu'elle rapporterait s'il en restait là.
     const mutuels = (await db.parisChallengeDuJour(jour)).filter((p) => p.jeu === jeu.cle && p.type === type && p.statut !== 'rembourse' && p.retour == null);
@@ -16864,7 +16887,16 @@ async function natachaAccueillirMaintenant(username, parrain) {
 //
 // Dimitri tient le sujet des paris de la rubrique « Jeux Frutiparc » (Dimitri.SUJET) :
 // un sujet de discussion — pronostics, débats, commentaires — qu'il ouvre
-// lui-même au démarrage s'il manque, et qu'il double s'il est plein.
+// UNE FOIS, au premier démarrage, et qu'il double s'il est plein.
+//
+// Le sujet ouvert est retenu en base (app_state `dimitri_sujet`) : c'est par
+// son numéro qu'on le retrouve, pas par son titre ni sa rubrique. Avant, un
+// sujet renommé, déplacé, verrouillé ou supprimé par la modération n'était
+// plus « trouvé », et chaque redémarrage en rouvrait un, mot d'accueil
+// compris. Désormais le démarrage n'ouvre rien dès qu'un sujet a existé ; un
+// sujet supprimé n'est rouvert que si Dimitri a vraiment quelque chose à dire
+// (un gros coup, le Prunostiqueur de la semaine), et un sujet que la
+// modération a verrouillé le fait taire.
 //
 // Un pari gagné dont le gain net (gain − mise) atteint le seuil des réglages
 // (100 kikooz d'origine) est un GROS COUP : Dimitri l'annonce dans ce sujet,
@@ -16880,32 +16912,60 @@ function dimitriFile(tache, quoi) {
   dimitriEnCours = tour;
   return tour;
 }
-// Le sujet des paris : trouvé, ou ouvert (avec son mot d'accueil).
-async function dimitriSujet() {
-  let boards = await db.forumGetBoards();
-  let board = boards.find((b) => b.name === Dimitri.RUBRIQUE);
-  if (!board) {
-    await ensureForumBoardsExist();
-    boards = await db.forumGetBoards();
-    board = boards.find((b) => b.name === Dimitri.RUBRIQUE);
-    if (!board) throw new Error(`rubrique « ${Dimitri.RUBRIQUE} » introuvable`);
+// Le sujet des paris : retrouvé par son numéro, ou ouvert (avec son mot
+// d'accueil). `o.demarrage` : n'ouvrir que si Dimitri n'a jamais eu de sujet.
+// Rend null quand Dimitri doit se taire (sujet verrouillé par la modération,
+// ou démarrage alors qu'un sujet a déjà existé).
+const DIMITRI_SUJET_ETAT = 'dimitri_sujet';
+async function dimitriSujet(o) {
+  const demarrage = !!(o && o.demarrage);
+  const memo = Number(await db.getAppState(DIMITRI_SUJET_ETAT)) || null;
+  let topic = memo ? await db.forumGetTopic(memo) : null;
+  let board = null;
+  const rubrique = async () => {
+    let boards = await db.forumGetBoards();
+    let b = boards.find((x) => x.name === Dimitri.RUBRIQUE);
+    if (!b) {
+      await ensureForumBoardsExist();
+      boards = await db.forumGetBoards();
+      b = boards.find((x) => x.name === Dimitri.RUBRIQUE);
+      if (!b) throw new Error(`rubrique « ${Dimitri.RUBRIQUE} » introuvable`);
+    }
+    return b;
+  };
+  // Pas encore de numéro retenu (un sujet ouvert avant cette règle) : on
+  // l'adopte par son titre, s'il existe.
+  if (!topic && !memo) {
+    board = await rubrique();
+    topic = await db.forumTrouverSujet(board.id, Dimitri.SUJET);
   }
-  let topic = await db.forumTrouverSujet(board.id, Dimitri.SUJET);
-  if (topic && !topic.is_locked && (await db.forumCountPosts(topic.id)) >= FORUM_MAX_POSTS_PER_TOPIC) {
-    await db.forumSetLocked(topic.id, true).catch(dbErr('forumSetLocked dimitri'));
+  if (topic) {
+    const plein = (await db.forumCountPosts(topic.id)) >= FORUM_MAX_POSTS_PER_TOPIC;
+    if (!plein) {
+      if (topic.id !== memo) await db.setAppState(DIMITRI_SUJET_ETAT, topic.id);
+      if (topic.is_locked) {
+        console.log(`[DIMITRI] le sujet #${topic.id} est verrouillé : Dimitri se tait`);
+        return null;
+      }
+      return topic;
+    }
+    // Plein : on le ferme et on en ouvre la suite.
+    if (!topic.is_locked) await db.forumSetLocked(topic.id, true).catch(dbErr('forumSetLocked dimitri'));
     topic = null;
+  } else if (demarrage && memo) {
+    // Le sujet a existé puis a disparu : on ne le rouvre pas au démarrage.
+    return null;
   }
-  if (topic && topic.is_locked) topic = null;
-  if (!topic) {
-    topic = await db.forumCreateTopic(board.id, Dimitri.PSEUDO_NPC, Dimitri.SUJET, Dimitri.INTRO,
-      users[Dimitri.PSEUDO_NPC].fbouille, Dimitri.HUMEUR);
-    console.log(`[DIMITRI] ouvre le sujet #${topic.id} « ${Dimitri.SUJET} » dans « ${board.name} »`);
-  }
+  if (!board) board = await rubrique();
+  topic = await db.forumCreateTopic(board.id, Dimitri.PSEUDO_NPC, Dimitri.SUJET, Dimitri.INTRO,
+    users[Dimitri.PSEUDO_NPC].fbouille, Dimitri.HUMEUR);
+  await db.setAppState(DIMITRI_SUJET_ETAT, topic.id);
+  console.log(`[DIMITRI] ouvre le sujet #${topic.id} « ${Dimitri.SUJET} » dans « ${board.name} »`);
   return topic;
 }
 function dimitriOuvrirSujet() {
   if (!process.env.DATABASE_URL) return Promise.resolve(null);
-  return dimitriFile(dimitriSujet, 'sujet des paris');
+  return dimitriFile(() => dimitriSujet({ demarrage: true }), 'sujet des paris');
 }
 // `coups` : les paris qu'on vient de régler, { id, statut, username, choix, mise, gain, cote, quoi(nomDuChoix) }.
 function dimitriAnnoncer(coups) {
@@ -16916,6 +16976,7 @@ function dimitriAnnoncer(coups) {
 }
 async function dimitriAnnoncerMaintenant(gros) {
   const topic = await dimitriSujet();
+  if (!topic) return null;
   // Les noms d'affichage, lus en base : parieurs et joueurs peuvent être hors ligne.
   const noms = new Map();
   const cles = [...new Set(gros.flatMap((c) => [String(c.username).toLowerCase(), String(c.choix).toLowerCase()]))];
@@ -25846,6 +25907,7 @@ const LIGHT_HISTORY_KINDS = {
   50: { icone: 'histo_filleul',    titre: 'Parrainage' },
   60: { icone: 'histo_medaille',   titre: 'Médaille' },
   70: { icone: 'evt_jeu',          titre: 'Partie en différé' },
+  71: { icone: 'evt_jeu',          titre: 'Prunostics' },
 };
 
 // Les deux journaux ont la même forme : { d: date, t: type, c: texte, n: neuf }.

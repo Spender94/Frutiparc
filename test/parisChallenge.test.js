@@ -149,6 +149,10 @@ test('ouverts par défaut ; baissés, rien ne se mise — et ça survit au redé
   }
   assert.equal(sujets.length, 1);
   assert.equal(sujets[0].name, 'Jeux Frutiparc');
+  const sujetsDimitri = () => sql(`SELECT id, title FROM forum_topics WHERE author_username = 'dimitri-pnj'`);
+  // La modération le renomme : au redémarrage, Dimitri ne rouvre rien (avant,
+  // il ne le « trouvait » plus par son titre, et en ouvrait un à chaque reboot).
+  await sql(`UPDATE forum_topics SET title = 'Le comptoir de Dimitri' WHERE id = $1`, [sujets[0].id]);
   assert.ok((await post('/api/admin/paris-challenge', { actif: false }, ADMIN)).ok);
   assert.equal((await etat('anais')).actif, false);
   assert.equal((await parier('anais', 'swapou2_classic', 'podium', 'grenade', 10)).code, 'fermes');
@@ -156,6 +160,14 @@ test('ouverts par défaut ; baissés, rien ne se mise — et ça survit au redé
   await demarrer();
   assert.equal((await etat('anais')).actif, false, 'baissés par l’admin, ils le restent après un redémarrage');
   assert.equal((await (await fetch(BASE + '/api/paris/ouverts')).json()).n, 0, 'pas de tuile');
+  await wait(6500);   // l'ouverture du sujet au démarrage attend 5 s
+  assert.deepEqual((await sujetsDimitri()).map((x) => x.id), [sujets[0].id], 'renommé : toujours un seul sujet, le même');
+  // Supprimé : le démarrage ne le rouvre pas non plus.
+  await sql(`DELETE FROM forum_topics WHERE id = $1`, [sujets[0].id]);
+  await arreter();
+  await demarrer();
+  await wait(6500);
+  assert.equal((await sujetsDimitri()).length, 0, 'supprimé : pas de nouveau sujet au démarrage');
 });
 
 test('les deux jeux du jour : tirés au sort, figés, ou choisis par l’admin', async (t) => {
@@ -215,6 +227,19 @@ test('le pari mutuel : les pots, leur cote, le plafond, sur soi, les refus', asy
   assert.equal(m2.ok, true);
   assert.deepEqual([m2.pot, m2.estime], [45, 45], 'or : 45 au pot, tout à cyril si papaye gagne');
   assert.equal((await parier('cyril', 'swapou2_classic', 'tierce', 'papaye', 5)).code, 'type');
+  // Les joueurs sur qui l'on mise sont prévenus — à la première mise de chaque
+  // parieur sur chaque pot, pas à la rallonge, et pas quand on mise sur soi.
+  const prevenus = async (u) => (await sql(`SELECT l.content FROM user_logs l JOIN users u ON u.id = l.user_id
+    WHERE lower(u.username) = $1 AND l.entry_type = 71 ORDER BY l.id`, [u])).map((r) => r.content);
+  await wait(300);
+  const g7 = (await prevenus('grenade')).filter((c) => /Swapou 2/.test(c));
+  assert.equal(g7.length, 2, 'anais : un podium et un or (la rallonge ne sonne pas) — ' + JSON.stringify(g7));
+  assert.equal(g7[0], 'Un Frutiz prunostique ton podium à Swapou 2 au Challenge de demain : 20 kikooz misés sur toi. Ne le déçois pas !');
+  assert.match(g7[1], /prunostique ta médaille d’or/);
+  assert.ok(!g7.join(' ').includes('anais'), 'le parieur reste anonyme, comme sur la page');
+  assert.ok((await prevenus('grenade')).some((c) => /Frutisnake/.test(c)), 'et dora, plus tôt, au Frutisnake');
+  assert.equal((await prevenus('papaye')).length, 2, 'basile et cyril');
+  assert.equal((await prevenus('cyril')).length, 0, 'miser sur soi ne se notifie pas');
   assert.equal(await solde('anais'), 450);
   // Ce que la page voit : les pots, et la cote du pot sur chacun.
   const sw = (await etat('anais')).jeux.find((j) => j.cle === 'swapou2_classic');

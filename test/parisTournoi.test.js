@@ -176,6 +176,16 @@ test('les mises : débit, plafond, camp, son propre match, l’appareil d’un j
   assert.equal(fiche.j1.mises.cote, 2.13);
   assert.deepEqual(fiche.mien, { choix: 'pj1', mise: 50, statut: 'ouvert', gain: 0 });
   assert.ok(!JSON.stringify(e).includes('"username"'), 'qui a misé quoi ne sort pas');
+  // Les joueurs sur qui l'on mise sont prévenus, sans savoir par qui : pj1
+  // deux fois (ana, bob), pj4 une fois (la rallonge de cid ne sonne pas).
+  const prevenus = async (u) => (await sql(`SELECT l.content FROM user_logs l JOIN users u ON u.id = l.user_id
+    WHERE lower(u.username) = $1 AND l.entry_type = 71 ORDER BY l.id`, [u])).map((r) => r.content);
+  const p1 = await prevenus('pj1');
+  assert.equal(p1.length, 2, JSON.stringify(p1));
+  assert.match(p1[0], /^Un Frutiz prunostique ta victoire : 50 kikooz misés sur toi \(.+\)\. À toi de jouer !$/);
+  assert.ok(!p1.join(' ').match(/\bana\b|\bbob\b/), 'anonyme');
+  assert.equal((await prevenus('pj4')).length, 1);
+  assert.equal((await prevenus('pj2')).length, 1, 'pj1 a misé sur pj2 (un autre match)');
   const ej1 = await etat('pj1');
   assert.equal(ej1.tournois[0].ouverts.find((m) => m.id === m1).interdit, true);
 });
