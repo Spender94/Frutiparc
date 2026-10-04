@@ -150,7 +150,12 @@ test('les mises : débit, plafond, camp, son propre match, l’appareil d’un j
   assert.equal((await (await fetch(BASE + '/api/paris/ouverts')).json()).n, 2, 'les deux matchs du premier tour');
 
   const avant = await totalSoldes();
-  assert.equal((await parier('ana', m1, 'pj1', 50)).ok, true);
+  // LES COTES FIXES. Une qualif chacun (pj1 400, pj4 100) : pj1 bat pj4 sur
+  // la seule paire connue, lissé vers 50 % (1 score chacun, L = 3) :
+  // p = 0,5 + 0,5 × 1/4 = 62,5 % → ×1,47 (0,92 / 0,625) ; pj4 ×2,45.
+  const coteAna = await parier('ana', m1, 'pj1', 50);
+  assert.equal(coteAna.ok, true);
+  assert.deepEqual([coteAna.cote, coteAna.retour], [1.47, 73], 'le favori rapporte peu : 50 × 1,47');
   assert.equal(await solde('ana'), 450, 'la mise est débitée');
   assert.equal((await parier('bob', m1, 'pj1', 30)).ok, true);
   assert.equal((await parier('cid', m1, 'pj4', 120)).code, 'plafond');
@@ -158,6 +163,7 @@ test('les mises : débit, plafond, camp, son propre match, l’appareil d’un j
   const plus = await parier('cid', m1, 'pj4', 20);
   assert.equal(plus.ok, true);
   assert.equal(plus.mise, 90, 'la mise grossit');
+  assert.deepEqual([plus.retour, plus.cote], [171 + 49, 2.45], 'l’outsider rapporte gros, la rallonge à la cote du moment');
   assert.equal((await parier('cid', m1, 'pj4', 20)).code, 'plafond', '90 + 20 > 100');
   assert.equal((await parier('cid', m1, 'pj1', 5)).code, 'camp', 'pas de changement de camp');
   assert.equal((await parier('pj1', m1, 'pj1', 10)).code, 'soi', 'pas sur son propre match');
@@ -173,8 +179,8 @@ test('les mises : débit, plafond, camp, son propre match, l’appareil d’un j
   const fiche = e.tournois[0].ouverts.find((m) => m.id === m1);
   assert.equal(fiche.pot, 170);
   assert.equal(fiche.j1.mises.mises, 80);
-  assert.equal(fiche.j1.mises.cote, 2.13);
-  assert.deepEqual(fiche.mien, { choix: 'pj1', mise: 50, statut: 'ouvert', gain: 0 });
+  assert.deepEqual([fiche.j1.cote, fiche.j1.p, fiche.j2.cote, fiche.j2.p], [1.47, 63, 2.45, 38], 'la cote et les chances de chacun');
+  assert.deepEqual(fiche.mien, { choix: 'pj1', mise: 50, statut: 'ouvert', gain: 0, cote: 1.47, retour: 73 });
   assert.ok(!JSON.stringify(e).includes('"username"'), 'qui a misé quoi ne sort pas');
   // Les joueurs sur qui l'on mise sont prévenus, sans savoir par qui : pj1
   // deux fois (ana, bob), pj4 une fois (la rallonge de cid ne sonne pas).
@@ -190,36 +196,42 @@ test('les mises : débit, plafond, camp, son propre match, l’appareil d’un j
   assert.equal(ej1.tournois[0].ouverts.find((m) => m.id === m1).interdit, true);
 });
 
-test('la décision du match règle le pot — aucun kikooz créé ni détruit', async (t) => {
+test('la décision du match paie à la cote figée — et un ancien pari mutuel reste mutuel', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
   const avant = await totalSoldes();
-  const enJeu = 50 + 30 + 90 + 10;           // les mises encore dans les pots
+  // Deux paris MUTUELS posés avant les cotes (retour NULL) : ils se règlent
+  // entre eux, au pot, comme on le leur avait promis.
+  await sql(`INSERT INTO tournament_paris (tournament_id, match_id, username, choix, mise, affiche) VALUES
+    ($1, $2, 'pj2', 'pj1', 20, 'pj1 contre pj4'), ($1, $2, 'pj3', 'pj4', 20, 'pj1 contre pj4')`, [tid, m1]);
+  const kz = async (u) => Number((await sql(`SELECT kikooz FROM users WHERE username = $1`, [u]))[0].kikooz);
+  const pj2Avant = await kz('pj2');
   // Un score saisi ferme les mises.
   assert.ok((await (await post(`/api/admin/tournaments/${tid}/match/${m1}`, { score1: 420, score2: null }, ADMIN)).json()).ok);
   await wait(300);
   assert.equal((await parier('ana', m1, 'pj1', 5)).code, 'joue', 'le match a commencé');
   assert.ok((await (await post(`/api/admin/tournaments/${tid}/match/${m1}`, { winner: 'pj1', score1: 420, score2: 380 }, ADMIN)).json()).ok);
   await wait(500);
-  // 170 de pot, 80 sur pj1 : ana 50 → 106,25, bob 30 → 63,75 ; le kikooz du
-  // reste va au plus gros reste (bob).
-  assert.equal(await solde('ana'), 450 + 106);
-  assert.equal(await solde('bob'), 470 + 64);
+  // La cote figée : ana 50 × 1,47 → 73, bob 30 × 1,47 → 44 ; cid, sur
+  // l'outsider, perd ses 90. Le parc paie les gagnants et garde les mises perdues.
+  assert.equal(await solde('ana'), 450 + 73);
+  assert.equal(await solde('bob'), 470 + 44);
   assert.equal(await solde('cid'), 410, 'cid a perdu sa mise');
-  assert.equal(await totalSoldes(), avant + 170, 'le pot de m1 est revenu, entier, aux soldes');
+  assert.equal(await totalSoldes(), avant + 73 + 44);
   const rows = await sql(`SELECT username, statut, gain FROM tournament_paris WHERE match_id = $1 ORDER BY username`, [m1]);
   assert.deepEqual(rows.map((r) => [r.username, r.statut, r.gain]),
-    [['ana', 'gagne', 106], ['bob', 'gagne', 64], ['cid', 'perdu', 0]]);
+    [['ana', 'gagne', 73], ['bob', 'gagne', 44], ['cid', 'perdu', 0], ['pj2', 'gagne', 40], ['pj3', 'perdu', 0]]);
+  assert.equal(await kz('pj2'), pj2Avant + 40, 'le pari mutuel : tout le pot (40) au seul qui a vu juste');
   // La base suit la mémoire.
-  const [b] = await sql(`SELECT kikooz FROM users WHERE username = 'bob'`);
-  assert.equal(Number(b.kikooz), 534);
-  void enJeu;
+  let b = null;
+  for (let i = 0; i < 20 && !(b && Number(b.kikooz) === 514); i++) { [b] = await sql(`SELECT kikooz FROM users WHERE username = 'bob'`); if (Number(b.kikooz) !== 514) await wait(100); }
+  assert.equal(Number(b.kikooz), 514);
   // Un nouveau recalage (une autre action de l'organisateur) ne paie pas deux fois.
   await post(`/api/admin/tournaments/${tid}/paris`, { plafond: 100 }, ADMIN);
   await wait(400);
-  assert.equal(await solde('ana'), 556, 'payé une fois, une seule');
+  assert.equal(await solde('ana'), 523, 'payé une fois, une seule');
   // La page montre le résultat.
   const reg = (await etat('ana')).tournois[0].regles.find((m) => m.id === m1);
-  assert.deepEqual(reg.mien, { choix: 'pj1', mise: 50, statut: 'gagne', gain: 106 });
+  assert.deepEqual(reg.mien, { choix: 'pj1', mise: 50, statut: 'gagne', gain: 73, cote: 1.47, retour: 73 });
 });
 
 test('l’option baissée en cours de route rembourse les paris ouverts', async (t) => {
@@ -237,14 +249,15 @@ test('le journal des kikooz, le relevé de l’organisateur, l’export', async 
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
   const j = await (await fetch(BASE + '/api/light/kikooz?sid=' + sids.ana)).json();
   const textes = (j.events || []).map((e) => e.text).join(' | ');
-  assert.match(textes, /Achat du produit "Pari : pj1 — pj1 contre pj4" pour 50 kikooz\./, 'une mise se lit comme une dépense');
-  assert.match(textes, /106 kikooz obtenus par un pari gagné \(pj1 contre pj4\)\./);
+  assert.match(textes, /Achat du produit "Pari : pj1 à ×1,47 — pj1 contre pj4" pour 50 kikooz\./, 'une mise se lit comme une dépense');
+  assert.match(textes, /73 kikooz obtenus par un pari gagné \(pj1 contre pj4\)\./);
   const ft = await (await fetch(BASE + '/ft/log?sid=' + sids.ana)).text();
-  assert.match(ft, /<b t="[^"]+" k="50" n="Pari : pj1 — pj1 contre pj4"\/>/, 'le bureau Flash la lit comme une dépense');
+  assert.match(ft, /<b t="[^"]+" k="50" n="Pari : pj1 à ×1,47 — pj1 contre pj4"\/>/, 'le bureau Flash la lit comme une dépense');
   const rel = await (await fetch(BASE + `/api/admin/tournaments/${tid}/paris`, { headers: ADMIN })).json();
-  assert.equal(rel.paris.length, 4);
+  assert.equal(rel.paris.length, 6);
   assert.equal(rel.actifs, false);
   const exp = await (await fetch(BASE + '/api/light/mes-donnees?sid=' + sids.ana)).json();
   assert.equal(exp.paris.length, 1);
-  assert.equal(exp.paris[0].gain, 106);
+  assert.equal(exp.paris[0].gain, 73);
+  assert.equal(Number(exp.paris[0].cote), 1.47, 'l’export garde la cote');
 });

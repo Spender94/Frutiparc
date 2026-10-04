@@ -3115,7 +3115,8 @@ async function chargerParisAdmin(t, matches) {
           <input type="number" id="paris-plafond" min="1" value="${d.plafond}" style="width:80px"> kikooz</label>
         <button class="btn btn-sm" onclick="parisReglages(${t.id})">Enregistrer</button>
         <div style="color:#777;margin:6px 0 10px;line-height:1.45">
-          Pari mutuel : le pot d'un match va à ceux qui ont vu juste, au prorata de leur mise — le parc ne crée ni ne détruit de kikooz.
+          <b>Cote fixe</b> par joueur, tirée de ses scores récents (Challenge du jeu, 60 jours, et scores du tournoi) avec 8 % de marge : le favori rapporte peu, l'outsider beaucoup.
+          La cote est figée à la mise : le gagnant reçoit mise × cote, le parc garde les mises perdues. (Les paris posés avant les cotes restent mutuels.)
           Les joueurs misent sur les matchs dont les deux adversaires sont connus, sur la page <b>/paris/</b> (icône « Prunostics » du light,
           visible seulement quand des paris sont ouverts). Pas de pari sur ses propres matchs, ni depuis l'appareil d'un des joueurs.
           ${t.format === 'duel'
@@ -6380,8 +6381,8 @@ async function chargerParisChallengeAdmin() {
       <td>${j.hier.mises || j.hier.ouverts ? `${j.hier.mises} misés · ${j.hier.payes} rendus · ${j.hier.gagnes} gagnés · ${j.hier.perdus} perdus${j.hier.rembourses ? ' · ' + j.hier.rembourses + ' remboursés' : ''}${j.hier.ouverts ? ' · <b style="color:#c8860a">' + j.hier.ouverts + ' en attente du roll</b>' : ''}` : '—'}</td>
     </tr>`).join('');
     const B = d.bilan || { jours: [], mises: 0, gains: 0 };
-    const S = d.semaine || { classement: [] };
-    const objets = (d.objets || []).map((o) => `<option value="${o.id}" ${R.recompenseSemaine === o.id ? 'selected' : ''}>${esc(o.nom)} (${esc(o.rayon || '')})</option>`).join('');
+    const S = d.mois || { classement: [] };
+    const objets = (d.objets || []).map((o) => `<option value="${o.id}" ${R.recompenseMois === o.id ? 'selected' : ''}>${esc(o.nom)} (${esc(o.rayon || '')})</option>`).join('');
     bloc.innerHTML = `
       <div style="border:1px solid #e3a0a0;background:#fff8f6;padding:12px;border-radius:8px;font-size:13px">
         <h4 style="margin:0 0 6px">🟣 Prunostics du Challenge</h4>
@@ -6389,12 +6390,13 @@ async function chargerParisChallengeAdmin() {
         <label style="margin-left:14px">Plafond par joueur et par jour : <input type="number" id="pc-plafond" min="1" value="${R.plafond}" style="width:70px"> kikooz</label>
         <label style="margin-left:14px">Jeux par jour : <input type="number" id="pc-nbjeux" min="1" value="${R.nbJeux || 2}" style="width:50px"></label>
         <label style="margin-left:14px" title="Gain net (gain − mise) à partir duquel Dimitri annonce le pari sur le forum — tournois compris">Gros coup à partir de : <input type="number" id="pc-groscoup" min="1" value="${R.grosCoup || 100}" style="width:70px"> kikooz de bénéfice</label>
+        <label style="margin-left:14px" title="La cagnotte ne dépasse jamais ce montant : au-delà, les mises des pots sans gagnant quittent le parc">Cagnotte plafonnée à : <input type="number" id="pc-plafondcagnotte" min="0" value="${R.plafondCagnotte == null ? 500 : R.plafondCagnotte}" style="width:80px"> kikooz</label>
         <button class="btn btn-sm" onclick="enregistrerParisChallenge()">Enregistrer</button>
         <div style="color:#777;margin:6px 0 10px;line-height:1.45">
           Les joueurs misent <b>la veille, jusqu'à minuit</b>, sur les médaillés du Challenge du lendemain (icône « Prunostics » : une fenêtre du bureau, une feuille sur mobile) :
           « sera médaillé » ou « aura l'or ». <b>Pari mutuel</b> : dans chaque jeu, un pot « médaillé » et un pot « or », partagés entre ceux qui ont vu juste au prorata de leur mise ;
-          un pari perdu est perdu ; quand personne n'a vu juste, le pot part à la <b>cagnotte</b>, que le Prunostiqueur de la semaine remporte le lundi
-          (cagnotte en jeu : <b>${Number(d.cagnotte) || 0} kikooz</b>). Le parc ne crée ni ne détruit de kikooz.
+          un pari perdu est perdu ; quand personne n'a vu juste, le pot part à la <b>cagnotte</b> (plafonnée : le surplus quitte le parc),
+          que le Prunostiqueur du mois remporte (cagnotte en jeu : <b>${Number(d.cagnotte) || 0} kikooz</b>). Le parc ne crée aucun kikooz.
           Seuls les <b>jeux du jour</b> sont ouverts : tirés au sort parmi les jeux vraiment joués (7 jours sur 30), sans reprendre ceux de la veille, et figés dès le tirage.
           Tu peux les choisir toi-même ci-dessous (colonne « Jeux du ${esc(d.demain || '')} ») ; retirer un jeu rembourse ses mises.
           Les anciens paris à cote fixe se règlent à leur cote, comme promis.
@@ -6405,11 +6407,11 @@ async function chargerParisChallengeAdmin() {
           <span style="color:#777">(${fixe ? 'figés' : 'pas encore tirés'})</span>
           <button class="btn btn-sm" onclick="enregistrerJeuxDuJour()">Valider les jeux cochés pour le ${esc(d.demain || '')}</button>
           <button class="btn btn-sm" onclick="retirerJeuxDuJour()" title="Efface le choix : un nouveau tirage sera fait">Nouveau tirage</button></div>
-        <div style="margin:0 0 8px">🏆 Prunostiqueur de la semaine (${esc(S.lisible || '')}) :
+        <div style="margin:0 0 8px">🏆 Prunostiqueur du mois (${esc(S.lisible || '')}) — sacré dans la première semaine du mois suivant, il porte le frutijob « Prunostiqueur du mois » tout ce mois-là :
           ${S.classement.length ? S.classement.map((c, i) => `${i + 1}. ${esc(c.nom)} ${signe(c.net)} <small style="color:#777">(${c.paris} paris)</small>`).join(' · ') : '<span style="color:#777">personne encore</span>'}
           <br>Objet offert au gagnant : <select id="pc-recompense"><option value="">— aucun —</option>${objets}</select>
-          <button class="btn btn-sm" onclick="enregistrerRecompenseSemaine()">Enregistrer</button>
-          <button class="btn btn-sm" onclick="sacrerSemaine()" title="Dimitri annonce dès maintenant le gagnant de la semaine passée (déjà fait automatiquement chaque lundi)">Sacrer la semaine passée maintenant</button></div>
+          <button class="btn btn-sm" onclick="enregistrerRecompenseMois()">Enregistrer</button>
+          <button class="btn btn-sm" onclick="sacrerMois()" title="Dimitri annonce dès maintenant le gagnant du mois passé (déjà fait automatiquement en début de mois)">Sacrer le mois passé maintenant</button></div>
         ${B.mises || B.gains ? `<div style="margin:0 0 8px">Paris à cote fixe (l'ancienne règle) sur 30 jours : ${B.mises} kikooz misés, ${B.gains} rendus → ${signe(B.mises - B.gains)}</div>` : ''}
         <table><thead><tr><th>Jeu (décocher pour l'exclure)</th><th>Jeux du ${esc(d.demain || '')}</th><th>Habitués</th><th>Les plus médaillés (podiums/jours)</th><th>Mises pour le ${esc(d.demain || '')}</th><th>Règlement du ${esc(d.hier || '')}</th></tr></thead><tbody>${lignes}</tbody></table>
       </div>`;
@@ -6426,7 +6428,8 @@ async function enregistrerParisChallenge() {
   const actif = $('#pc-actif').checked;
   const exclus = Array.from(document.querySelectorAll('.pc-jeu')).filter((c) => !c.checked).map((c) => c.value);
   await postParisChallenge({ actif, plafond: Number($('#pc-plafond').value), nbJeux: Number($('#pc-nbjeux').value),
-    grosCoup: Number($('#pc-groscoup').value), exclus }, actif ? 'Prunostics du Challenge ouverts' : 'Prunostics du Challenge fermés (mises remboursées)');
+    grosCoup: Number($('#pc-groscoup').value), plafondCagnotte: Number($('#pc-plafondcagnotte').value), exclus },
+    actif ? 'Prunostics du Challenge ouverts' : 'Prunostics du Challenge fermés (mises remboursées)');
 }
 async function enregistrerJeuxDuJour() {
   const jeux = Array.from(document.querySelectorAll('.pc-dujour')).filter((c) => c.checked).map((c) => c.value);
@@ -6437,15 +6440,15 @@ async function retirerJeuxDuJour() {
   if (!confirm('Effacer les jeux de demain et refaire un tirage ? Les mises sur les jeux qui sortent seront remboursées.')) return;
   await postParisChallenge({ jeuxDuJour: { jeux: [] } }, 'Nouveau tirage pour demain');
 }
-async function enregistrerRecompenseSemaine() {
+async function enregistrerRecompenseMois() {
   const v = $('#pc-recompense').value;
-  await postParisChallenge({ recompenseSemaine: v === '' ? null : Number(v) }, v ? 'Récompense de la semaine enregistrée' : 'Plus de récompense pour la semaine');
+  await postParisChallenge({ recompenseMois: v === '' ? null : Number(v) }, v ? 'Récompense du mois enregistrée' : 'Plus de récompense pour le mois');
 }
-async function sacrerSemaine() {
-  if (!confirm('Dimitri annonce maintenant le Prunostiqueur de la semaine passée (et lui offre l\'objet choisi) ?')) return;
+async function sacrerMois() {
+  if (!confirm('Dimitri annonce maintenant le Prunostiqueur du mois passé (cagnotte, titre et objet choisi) ?')) return;
   try {
-    const d = await (await fetch('/api/admin/paris-challenge/semaine', { method: 'POST', headers: hdr(), body: '{}' })).json();
-    toast(d.gagnant ? `Sacré : ${d.gagnant.nom} (+${d.gagnant.net})` : 'Personne à sacrer pour la semaine passée');
+    const d = await (await fetch('/api/admin/paris-challenge/mois', { method: 'POST', headers: hdr(), body: '{}' })).json();
+    toast(d.gagnant ? `Sacré : ${d.gagnant.nom} (+${d.gagnant.net})` : 'Personne à sacrer pour le mois passé');
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 

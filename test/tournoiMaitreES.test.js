@@ -156,8 +156,13 @@ test('tour préliminaire : on parie pendant la pause, plus une fois le tour ouve
   let d = await detail(tid);
   const m710 = affiche(d, 1, 'p10');
   assert.ok(!ouvert(d, 1), 'la pause : le tour n’est pas encore ouvert');
-  assert.equal((await post('/api/paris', { sid: sids.parieuse, match: m710.id, choix: 'p10', mise: 50 })).ok, true);
-  assert.equal((await post('/api/paris', { sid: sids.parieur, match: m710.id, choix: 'p07', mise: 30 })).ok, true);
+  const surP10 = await post('/api/paris', { sid: sids.parieuse, match: m710.id, choix: 'p10', mise: 50 });
+  assert.equal(surP10.ok, true);
+  const surP07 = await post('/api/paris', { sid: sids.parieur, match: m710.id, choix: 'p07', mise: 30 });
+  assert.equal(surP07.ok, true);
+  // Les cotes fixes : le 10e qualifié est l'outsider du 7e.
+  assert.ok(surP10.cote > surP07.cote, `p10 ×${surP10.cote} contre p07 ×${surP07.cote}`);
+  assert.equal(surP10.retour, Math.floor(50 * surP10.cote + 1e-9));
   // L'organisateur lance le tour sans attendre la fin de la pause, et les
   // tours suivants s'enchaîneront sans pause.
   const lance = await post(`/api/admin/tournaments/${tid}/tours`, { tours_pause_h: 0, maintenant: true }, ADMIN);
@@ -178,10 +183,12 @@ test('tour préliminaire : on parie pendant la pause, plus une fois le tour ouve
   // Les vainqueurs ont rejoint les quarts.
   assert.ok(tour(d, 2).some((m) => m.player1 === 'p01' && m.player2 === 'p09'));
   assert.ok(tour(d, 2).some((m) => m.player1 === 'p02' && m.player2 === 'p10'));
-  // Le pari : 80 de pot, tout à la parieuse.
+  // Le pari sur l'outsider paie sa cote figée ; celui sur le favori est perdu.
   await wait(400);
   const [p] = await sql(`SELECT statut, gain FROM tournament_paris WHERE username = 'parieuse'`);
-  assert.deepEqual([p.statut, p.gain], ['gagne', 80]);
+  assert.deepEqual([p.statut, p.gain], ['gagne', surP10.retour]);
+  const [q] = await sql(`SELECT statut, gain FROM tournament_paris WHERE username = 'parieur'`);
+  assert.deepEqual([q.statut, q.gain], ['perdu', 0]);
 });
 
 async function scoreOrga(joueur, score) {

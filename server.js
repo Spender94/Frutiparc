@@ -10090,6 +10090,26 @@ const tournoiScope = adminScope('tournoi');
  * à réglé.
  */
 const Paris = require('./paris.js');
+const CoteTournoi = require('./coteTournoi.js');
+// Les cotes des matchs d'un tournoi (coteTournoi.js), d'après les scores des
+// joueurs : gardées deux minutes, le temps d'une page et de ses paris. Un
+// nouveau score de tournoi change les cotes des tours suivants, pas d'un
+// pari déjà posé (sa cote est figée).
+const cotesTournoiCache = new Map();   // tid -> { at, scores }
+async function scoresDesCotes(t, matches) {
+  const c = cotesTournoiCache.get(t.id);
+  if (c && Date.now() - c.at < 120000) return c.scores;
+  const qui = [...new Set(matches.flatMap((m) => [m.player1, m.player2]).filter(Boolean).map((u) => String(u).toLowerCase()))];
+  const R = CoteTournoi.REGLES;
+  const scores = await db.scoresPourCotes(t.id, t.ranking_id, qui, jourDecale(parisDayKey(), -R.fenetreJours), R.echantillons);
+  cotesTournoiCache.set(t.id, { at: Date.now(), scores });
+  return scores;
+}
+async function cotesDuMatch(t, m, matches) {
+  if (!m || !m.player1 || !m.player2) return null;
+  const scores = await scoresDesCotes(t, matches || [m]);
+  return CoteTournoi.cotesDuMatch(m.player1, m.player2, scores);
+}
 const parisFiles = new Map();           // tid -> recalage en cours (un à la fois)
 const parisVerrous = new Set();         // pseudos en train de miser
 let parisOuvertsCache = { at: 0, n: 0 };
@@ -10156,10 +10176,14 @@ async function parisRecalerMaintenant(tid) {
     const joueurs = new Set([String(m.player1 || '').toLowerCase(), String(m.player2 || '').toLowerCase()]);
     const valides = liste.filter((p) => m.player1 && m.player2 && joueurs.has(String(p.choix).toLowerCase()));
     rembourser(liste.filter((p) => !valides.includes(p)));
-    if (m.winner && m.status === 'done') decisions.push(...Paris.regler(valides, m.winner));
+    if (m.winner && m.status === 'done') {
+      decisions.push(...CoteTournoi.regler(valides.filter((p) => p.retour != null), m.winner));
+      const mutuels = valides.filter((p) => p.retour == null);
+      if (mutuels.length) decisions.push(...Paris.regler(mutuels, m.winner));
+    }
   }
   if (!decisions.length) return;
-  const faits = await db.reglerParis(decisions);
+  const faits = await db.reglerParis(decisions, { plafondCagnotte: parisChallengeReglages.plafondCagnotte });
   for (const f of faits) {
     const quoi = f.affiche ? ` (${f.affiche})` : '';
     if (f.statut === 'gagne') parisCrediter(f.username, f.gain, 'un pari gagné' + quoi);
@@ -10167,7 +10191,8 @@ async function parisRecalerMaintenant(tid) {
     console.log(`[PARIS] #${tid} ${f.username} ${f.statut} : mise ${f.mise}, reçoit ${f.gain}${quoi}`);
   }
   dimitriAnnoncer(faits.map((f) => ({
-    id: 't' + f.id, statut: f.statut, username: f.username, choix: f.choix, mise: f.mise, gain: f.gain, cote: null,
+    id: 't' + f.id, statut: f.statut, username: f.username, choix: f.choix, mise: f.mise, gain: f.gain,
+    cote: f.cote == null ? null : Number(f.cote),
     quoi: (nom) => `la victoire de ${nom}${f.affiche ? ` (${f.affiche}${t && t.name ? `, ${t.name}` : ''})` : ''}`,
   })));
 }
@@ -10243,18 +10268,22 @@ app.get('/api/paris', async (req, res) => {
       const nomTour = (m) => (t.format === 'duel'
         ? TD.nomDuTour(Number(m.round), matches.filter((x) => Number(x.round) === Number(m.round)).length)
         : tournamentRoundName(Number(m.round), fin, matches.filter((x) => Number(x.round) === Number(m.round))));
+      const scores = await scoresDesCotes(t, matches);
       const fiche = (m) => {
         const liste = (parMatch.get(m.id) || []).filter((p) => p.statut !== 'rembourse');
         const pot = Paris.pot(liste, m.player1, m.player2);
         const mien = moi ? (parMatch.get(m.id) || []).find((p) => p.username === moi) : null;
-        const j = (n) => (n ? { pseudo: n, nom: getDisplayName(n), mises: pot.joueurs[String(n).toLowerCase()] } : null);
+        const cotes = m.player1 && m.player2 ? CoteTournoi.cotesDuMatch(m.player1, m.player2, scores) : {};
+        const j = (n) => (n ? Object.assign({ pseudo: n, nom: getDisplayName(n), mises: pot.joueurs[String(n).toLowerCase()] },
+          cotes[String(n).toLowerCase()] ? { cote: cotes[String(n).toLowerCase()].cote, p: Math.round(cotes[String(n).toLowerCase()].p * 100) } : {}) : null);
         return {
           id: m.id, tour: nomTour(m), poule: m.poule || null,
           j1: j(m.player1), j2: j(m.player2), pot: pot.total,
           score1: m.score1, score2: m.score2, vainqueur: m.winner || null,
           ouvert: parisMatchOuvert(t, m),
           interdit: !!moi && (moi === String(m.player1 || '').toLowerCase() || moi === String(m.player2 || '').toLowerCase()),
-          mien: mien ? { choix: mien.choix, mise: mien.mise, statut: mien.statut, gain: mien.gain } : null,
+          mien: mien ? { choix: mien.choix, mise: mien.mise, statut: mien.statut, gain: mien.gain,
+            cote: mien.cote == null ? null : Number(mien.cote), retour: mien.retour } : null,
         };
       };
       tournois.push({
@@ -10312,26 +10341,33 @@ app.post('/api/paris', async (req, res) => {
         message: 'Ton compte a été utilisé sur le même appareil qu’un des joueurs de ce match : tu ne peux pas parier dessus.' });
     }
     const affiche = parisAffiche(m);
-    const pari = await db.poserPari({ tournamentId: t.id, matchId: m.id, username: moi, choix, mise, affiche });
+    // La cote du moment, figée sur la mise. Un pari mutuel posé avant les
+    // cotes reste mutuel : sa rallonge aussi.
+    const mutuel = !!(precedent && precedent.statut === 'ouvert' && precedent.retour == null);
+    const cotes = mutuel ? null : await cotesDuMatch(t, m, await db.getTournamentMatches(t.id));
+    const cote = cotes && cotes[choix] ? cotes[choix].cote : null;
+    const retour = cote ? CoteTournoi.retourDe(mise, cote) : null;
+    const pari = await db.poserPari({ tournamentId: t.id, matchId: m.id, username: moi, choix, mise, affiche, retour, cote });
     if (!pari) return res.status(400).json({ ok: false, code: 'camp', message: 'Tu as déjà parié sur l’autre joueur de ce match.' });
     // Le solde a pu bouger pendant l'écriture (un achat, un don) : on revérifie.
     if ((Number(user.kikooz) || 0) < mise) {
-      await db.retirerMise(pari.id, mise).catch(dbErr('retirerMise'));
+      await db.retirerMise(pari.id, mise, retour).catch(dbErr('retirerMise'));
       return res.status(400).json({ ok: false, code: 'solde', message: 'Tu n’as pas assez de kikooz.' });
     }
     user.kikooz = (Number(user.kikooz) || 0) - mise;
     if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
-    journalKikooz(user, { type: 'p', k: mise, n: `${getDisplayName(choix)} — ${affiche}` });
+    journalKikooz(user, { type: 'p', k: mise, n: `${getDisplayName(choix)}${cote ? ` à ×${String(cote).replace('.', ',')}` : ''} — ${affiche}` });
     notifyKikoozUpdate(moi, user.kikooz);
     if (Number(pari.mise) === mise) {
       prunosticPrevenir(choix, moi, `Un Frutiz prunostique ta victoire : ${mise} kikooz misés sur toi`
         + ` (${affiche}${t.name ? `, ${t.name}` : ''}). À toi de jouer !`);
     }
-    console.log(`[PARIS] #${t.id} ${moi} mise ${mise} sur ${choix} (${affiche}) — total ${pari.mise}`);
+    console.log(`[PARIS] #${t.id} ${moi} mise ${mise} sur ${choix}${cote ? ` à ×${cote}` : ' (mutuel)'} (${affiche}) — total ${pari.mise}`);
     // Le match a pu se jouer entre la vérification et l'écriture : le
     // recalage le verra (et remboursera ce pari s'il arrive après le règlement).
     parisRecaler(t.id);
-    res.json({ ok: true, mise: pari.mise, choix: pari.choix, solde: user.kikooz });
+    res.json({ ok: true, mise: pari.mise, choix: pari.choix, solde: user.kikooz,
+      cote: pari.cote == null ? null : Number(pari.cote), retour: pari.retour });
   } catch (e) {
     console.error('[PARIS] mise :', e.message);
     res.status(500).json({ ok: false, code: 'erreur', message: 'Le pari n’a pas pu être enregistré.' });
@@ -10388,8 +10424,8 @@ app.post('/api/admin/tournaments/:id/match/:mid/paris', tournoiScope, async (req
  *   · Deux POTS par jeu : « médaillé » (le joueur finit sur le podium) et « or »
  *     (il gagne). PARI MUTUEL (paris.js) : ceux qui ont vu juste se partagent
  *     le pot au prorata de leur mise ; un pari perdu est perdu, et quand
- *     personne n'a vu juste, le pot part à la CAGNOTTE, que le Prunostiqueur
- *     de la semaine remporte le lundi. Le parc ne crée ni ne détruit aucun kikooz. (Une semaine de cote
+ *     personne n'a vu juste, le pot part à la CAGNOTTE (plafonnée), que le
+ *     Prunostiqueur du mois remporte. Le parc ne crée aucun kikooz. (Une semaine de cote
  *     fixe l'a montré : un modèle se trompe, et c'est le parc qui paie l'erreur.)
  *   · On peut miser sur soi. Un plafond par JOUR et par joueur, tous jeux
  *     confondus (50 kikooz d'origine).
@@ -10400,22 +10436,32 @@ app.post('/api/admin/tournaments/:id/match/:mid/paris', tournoiScope, async (req
  *     semaine) se règlent comme promis, à leur cote.
  *   · Le filet : un pari resté ouvert plus d'un jour après son Challenge (le
  *     roll n'a pas eu lieu) est remboursé.
- *   · Chaque lundi, Dimitri sacre le Prunostiqueur de la semaine (le meilleur
- *     bénéfice net, tournois compris), et l'admin peut lui faire offrir un objet.
+ *   · Au début de chaque mois, Dimitri sacre le Prunostiqueur du mois (le
+ *     meilleur bénéfice net, tournois compris) : la cagnotte, le frutijob
+ *     « Prunostiqueur du mois » pendant tout le mois suivant, et l'objet que
+ *     l'admin a peut-être choisi.
  */
 const CoteChallenge = require('./coteChallenge.js');
 // Ouverts par défaut, en permanence : l'admin peut les fermer, et ce choix est
 // gardé en base (app_state), relu à chaque démarrage. `grosCoup` : le gain net
 // (gain − mise) à partir duquel Dimitri annonce un pari sur le forum —
 // tournois compris. `choix` : les jeux de chaque jour, { jour: [clés] }, tirés
-// ou choisis par l'admin. `recompenseSemaine` : l'id d'un objet de la boutique
-// offert au Prunostiqueur de la semaine (aucun par défaut).
-const PARIS_CHALLENGE_DEFAUT = { actif: true, plafond: 50, exclus: [], grosCoup: 100, nbJeux: 2, choix: {}, recompenseSemaine: null };
+// ou choisis par l'admin. `recompenseMois` : l'id d'un objet de la boutique
+// offert au Prunostiqueur du mois (aucun par défaut). `plafondCagnotte` : la
+// cagnotte ne dépasse jamais ce montant — au-delà, les mises des pots sans
+// gagnant quittent le parc, pour que le Prunostiqueur ne s'enrichisse pas trop.
+const PARIS_CHALLENGE_DEFAUT = { actif: true, plafond: 50, exclus: [], grosCoup: 100, nbJeux: 2, choix: {}, recompenseMois: null, plafondCagnotte: 500 };
 let parisChallengeReglages = Object.assign({}, PARIS_CHALLENGE_DEFAUT);
 async function chargerReglagesParisChallenge() {
   try {
     const brut = await db.getAppState('paris_challenge');
     if (brut) parisChallengeReglages = Object.assign({}, PARIS_CHALLENGE_DEFAUT, JSON.parse(brut));
+    // L'objet offert au Prunostiqueur « de la semaine » passe à celui du mois.
+    const R = parisChallengeReglages;
+    if (R.recompenseSemaine !== undefined) {
+      if (R.recompenseMois == null && R.recompenseSemaine != null) R.recompenseMois = R.recompenseSemaine;
+      delete R.recompenseSemaine;
+    }
   } catch (e) { console.error('[PARIS] réglages du Challenge :', e.message); }
 }
 function jourDecale(jour, n) {
@@ -10535,7 +10581,7 @@ function potDuJoueur(pot, pseudo) {
 }
 async function parisChallengeAppliquer(decisions) {
   if (!decisions.length) return [];
-  const faits = await db.reglerParisChallenge(decisions);
+  const faits = await db.reglerParisChallenge(decisions, { plafondCagnotte: parisChallengeReglages.plafondCagnotte });
   const jeux = jeuxChallengeParis();
   for (const f of faits) {
     const quoi = ` (${libellePariChallenge(f, jeux)})`;
@@ -10579,7 +10625,7 @@ async function parisChallengeRegler(jour, podiums) {
   }
   await parisChallengeAppliquer(decisions);
   // Le dimanche réglé : le Prunostiqueur de la semaine peut être sacré.
-  prunostiqueurDeLaSemaine().catch((e) => console.error('[PARIS] Prunostiqueur de la semaine :', e.message));
+  prunostiqueurDuMois().catch((e) => console.error('[PARIS] Prunostiqueur du mois :', e.message));
 }
 // Rembourse des paris ouverts (option baissée, jeu retiré, roll manqué).
 async function parisChallengeRembourser(filtre) {
@@ -10592,7 +10638,7 @@ async function parisChallengeFilet() {
     const hier = parisChallengeHier();
     await parisChallengeRembourser((p) => p.jour < hier);
   } catch (e) { console.error('[PARIS] filet du Challenge :', e.message); }
-  try { await prunostiqueurDeLaSemaine(); } catch (e) { console.error('[PARIS] Prunostiqueur de la semaine :', e.message); }
+  try { await prunostiqueurDuMois(); } catch (e) { console.error('[PARIS] Prunostiqueur du mois :', e.message); }
 }
 if (process.env.DATABASE_URL) setInterval(parisChallengeFilet, 10 * 60 * 1000).unref();
 
@@ -10683,47 +10729,88 @@ app.get('/api/paris/challenge', async (req, res) => {
 });
 
 // LA SEMAINE d'un jour, du lundi au dimanche (jours de Paris).
-function semaineParis(jour) {
-  const d = new Date(jour + 'T12:00:00Z');
-  const lundi = jourDecale(jour, -((d.getUTCDay() + 6) % 7));
-  const dimanche = jourDecale(lundi, 6);
-  const f = (j, o) => new Date(j + 'T12:00:00Z').toLocaleDateString('fr-FR', Object.assign({ timeZone: 'UTC' }, o));
-  const memeMois = lundi.slice(0, 7) === dimanche.slice(0, 7);
+// Le mois d'un jour (heure de Paris) : { cle 'AAAA-MM', premier, dernier, lisible 'octobre 2026' }.
+function moisParis(jour) {
+  const cle = String(jour).slice(0, 7);
+  const [a, m] = cle.split('-').map(Number);
   return {
-    lundi, dimanche,
-    lisible: `du ${f(lundi, memeMois ? { weekday: 'long', day: 'numeric' } : { weekday: 'long', day: 'numeric', month: 'long' })} au ${f(dimanche, { weekday: 'long', day: 'numeric', month: 'long' })}`,
+    cle, premier: cle + '-01',
+    dernier: new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10),
+    lisible: new Date(Date.UTC(a, m - 1, 15)).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
   };
 }
-// LE PRUNOSTIQUEUR DE LA SEMAINE : le meilleur bénéfice net de la semaine
-// passée (3 paris réglés au moins, tournois compris), sacré par Dimitri sur le
-// forum — une fois par semaine (app_state), du lundi au mercredi, quand les
-// paris du dimanche sont réglés. L'objet de la boutique choisi par l'admin
-// (`recompenseSemaine`), s'il y en a un, lui est offert.
-async function prunostiqueurDeLaSemaine(opts) {
+function moisDecale(cle, n) {
+  const [a, m] = String(cle).split('-').map(Number);
+  return new Date(Date.UTC(a, m - 1 + n, 15)).toISOString().slice(0, 7);
+}
+/*
+ * LE TITRE DU MOIS : le frutijob « Prunostiqueur du mois » (« Prunostiqueuse »
+ * pour une joueuse), porté tout le mois qui suit le sacre, puis rendu. On garde
+ * en base (app_state `prunostics_titre`) qui le porte, pour quel mois, et le
+ * frutijob qu'il avait avant ; au mois suivant, on lui rend l'ancien — sauf si
+ * l'admin lui en a donné un autre entre-temps.
+ */
+const TITRE_ETAT = 'prunostics_titre';
+const titreDuMois = (gender) => (gender === 'F' ? 'Prunostiqueuse du mois' : 'Prunostiqueur du mois');
+async function poserFrutijob(username, job) {
+  await db.updateUser(username, { frutijob: job });
+  if (users[username]) users[username].frutijob = job;
+}
+async function rendreLeTitre(aujourdhui) {
+  const brut = await db.getAppState(TITRE_ETAT);
+  if (!brut) return null;
+  let t = null;
+  try { t = JSON.parse(brut); } catch { t = null; }
+  if (!t || !t.username || !t.mois || t.mois >= String(aujourdhui).slice(0, 7)) return null;
+  const row = await db.findUserByUsername(t.username).catch(() => null);
+  if (row && String(row.frutijob || '') === t.titre) await poserFrutijob(t.username, t.ancien || '');
+  await db.setAppState(TITRE_ETAT, '');
+  console.log(`[PARIS] ${t.username} rend le titre de ${t.mois} (frutijob « ${t.ancien || ''} »)`);
+  return t;
+}
+async function donnerLeTitre(username, mois) {
+  const row = await db.findUserByUsername(username);
+  if (!row) return null;
+  const titre = titreDuMois(row.gender);
+  // L'ancien titre d'un double sacre ne doit pas devenir « son » frutijob.
+  let ancien = String(row.frutijob || '');
+  if (ancien === titreDuMois('F') || ancien === titreDuMois('M')) ancien = '';
+  await db.setAppState(TITRE_ETAT, JSON.stringify({ username, mois, titre, ancien }));
+  await poserFrutijob(username, titre);
+  return titre;
+}
+// LE PRUNOSTIQUEUR DU MOIS : le meilleur bénéfice net du mois passé (3 paris
+// réglés au moins, tournois compris), sacré par Dimitri sur le forum — une fois
+// par mois (app_state), dans la première semaine, quand les paris du dernier
+// jour sont réglés. Il remporte la cagnotte, le frutijob du mois pendant tout
+// le mois en cours, et l'objet de la boutique choisi par l'admin
+// (`recompenseMois`), s'il y en a un.
+async function prunostiqueurDuMois(opts) {
   if (!process.env.DATABASE_URL) return null;
   const o = opts || {};
   const aujourdhui = parisDayKey();
-  const sem = semaineParis(o.lundi || jourDecale(aujourdhui, -7));
-  const CLE = 'paris_semaine_annoncee';
+  // D'abord, le titre du mois passé revient à son ancien frutijob.
+  await rendreLeTitre(aujourdhui).catch((e) => console.error('[PARIS] rendre le titre :', e.message));
+  const mois = moisParis((o.mois || moisDecale(aujourdhui.slice(0, 7), -1)) + '-01');
+  const CLE = 'paris_mois_annonce';
   if (!o.force) {
-    const jourDeSemaine = (new Date(aujourdhui + 'T12:00:00Z').getUTCDay() + 6) % 7;
-    if (jourDeSemaine > 2 || aujourdhui <= sem.dimanche) return null;
-    if ((await db.getAppState(CLE)) === sem.lundi) return null;
-    if ((await db.parisChallengeDuJour(sem.dimanche)).some((p) => p.statut === 'ouvert')) return null;
+    if (Number(aujourdhui.slice(8, 10)) > 7 || aujourdhui <= mois.dernier) return null;
+    if ((await db.getAppState(CLE)) === mois.cle) return null;
+    if ((await db.parisChallengeDuJour(mois.dernier)).some((p) => p.statut === 'ouvert')) return null;
   }
-  await db.setAppState(CLE, sem.lundi);
-  const classement = await db.classementParis(sem.lundi, sem.dimanche, 3);
+  await db.setAppState(CLE, mois.cle);
+  const classement = await db.classementParis(mois.premier, mois.dernier, 3);
   const premier = classement[0];
   if (!premier || premier.net <= 0) {
-    console.log(`[PARIS] Prunostiqueur de la semaine ${sem.lundi} : personne (aucun bénéfice)`);
-    return { semaine: sem, gagnant: null };
+    console.log(`[PARIS] Prunostiqueur du mois ${mois.cle} : personne (aucun bénéfice)`);
+    return { mois, gagnant: null };
   }
   const noms = new Map();
   for (const r of await db.fichesComptes(classement.slice(0, 3).map((c) => c.username))) noms.set(r.username, r.display_name || getDisplayName(r.username));
   const nomDe = (u) => noms.get(u) || getDisplayName(u);
   // La récompense : un objet de la boutique, si l'admin en a choisi un.
   let objet = null;
-  const pack = parisChallengeReglages.recompenseSemaine != null ? SHOP_PACKS.find((x) => x.id === parisChallengeReglages.recompenseSemaine) : null;
+  const pack = parisChallengeReglages.recompenseMois != null ? SHOP_PACKS.find((x) => x.id === parisChallengeReglages.recompenseMois) : null;
   if (pack) {
     try {
       const row = await db.findUserByUsername(premier.username);
@@ -10732,18 +10819,21 @@ async function prunostiqueurDeLaSemaine(opts) {
         if (users[premier.username]) users[premier.username].items = withDefaultPens(await db.getUserItems(row.id));
         objet = pack.name;
       }
-    } catch (e) { console.error('[PARIS] récompense de la semaine :', e.message); }
+    } catch (e) { console.error('[PARIS] récompense du mois :', e.message); }
   }
-  // La cagnotte : les pots sans gagnant de la semaine (et des précédentes, si
-  // personne n'a été sacré), au Prunostiqueur. Une semaine sans sacré la
-  // laisse grossir.
+  // La cagnotte : les pots sans gagnant (plafonnée), au Prunostiqueur. Un mois
+  // sans sacré la laisse en place.
   let cagnotte = 0;
   try {
     cagnotte = await db.prunosticsCagnotteVider();
     if (cagnotte > 0) parisCrediter(premier.username, cagnotte, 'la cagnotte des Prunostics');
-  } catch (e) { console.error('[PARIS] cagnotte de la semaine :', e.message); cagnotte = 0; }
-  const contenu = Dimitri.messageSemaine({
-    semaine: sem.lisible, objet, cagnotte,
+  } catch (e) { console.error('[PARIS] cagnotte du mois :', e.message); cagnotte = 0; }
+  // Le titre, porté tout le mois en cours.
+  let titre = null;
+  try { titre = await donnerLeTitre(premier.username, moisDecale(mois.cle, 1)); }
+  catch (e) { console.error('[PARIS] titre du mois :', e.message); }
+  const contenu = Dimitri.messageMois({
+    mois: mois.lisible, objet, cagnotte, titre,
     gagnant: { nom: nomDe(premier.username), net: premier.net, paris: premier.paris, gagnes: premier.gagnes },
     suivants: classement.slice(1, 3).map((c) => ({ nom: nomDe(c.username), net: c.net })),
   });
@@ -10754,14 +10844,14 @@ async function prunostiqueurDeLaSemaine(opts) {
     const suiveurs = await db.forumTopicFollowers(topic.id).catch(() => []);
     notifyForumNews(Dimitri.PSEUDO_NPC, suiveurs, { id: topic.id, titre: topic.title });
     await notifierMentionsForum(Dimitri.PSEUDO_NPC, topic.id, topic.title, contenu).catch(() => []);
-  }, 'Prunostiqueur de la semaine');
-  console.log(`[PARIS] Prunostiqueur de la semaine ${sem.lundi} : ${premier.username} (+${premier.net})${objet ? ' — ' + objet : ''}${cagnotte ? ` — cagnotte ${cagnotte}` : ''}`);
-  return { semaine: sem, gagnant: Object.assign({ nom: nomDe(premier.username), objet, cagnotte }, premier) };
+  }, 'Prunostiqueur du mois');
+  console.log(`[PARIS] Prunostiqueur du mois ${mois.cle} : ${premier.username} (+${premier.net})${objet ? ' — ' + objet : ''}${cagnotte ? ` — cagnotte ${cagnotte}` : ''}${titre ? ` — « ${titre} »` : ''}`);
+  return { mois, gagnant: Object.assign({ nom: nomDe(premier.username), objet, cagnotte, titre }, premier) };
 }
-app.post('/api/admin/paris-challenge/semaine', adminScope('challenge'), async (req, res) => {
+app.post('/api/admin/paris-challenge/mois', adminScope('challenge'), async (req, res) => {
   try {
-    const lundi = req.body && /^\d{4}-\d{2}-\d{2}$/.test(String(req.body.lundi || '')) ? String(req.body.lundi) : undefined;
-    res.json(Object.assign({ ok: true }, await prunostiqueurDeLaSemaine({ force: true, lundi })));
+    const mois = req.body && /^\d{4}-\d{2}$/.test(String(req.body.mois || '')) ? String(req.body.mois) : undefined;
+    res.json(Object.assign({ ok: true }, await prunostiqueurDuMois({ force: true, mois })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -10802,23 +10892,24 @@ app.get('/api/paris/registre', async (req, res) => {
       meilleur: regles.filter((l) => l.statut === 'gagne').reduce((m, l) => Math.max(m, l.gain - l.mise), 0),
     };
     bilan.net = bilan.gains - bilan.mises;
-    // Le Prunostiqueur de la semaine : le classement en cours, et le sacré de la semaine passée.
-    const sem = semaineParis(parisDayKey());
-    const passee = semaineParis(jourDecale(sem.lundi, -7));
-    const enCours = await db.classementParis(sem.lundi, sem.dimanche, 3);
-    const avant = (await db.classementParis(passee.lundi, passee.dimanche, 3))[0];
+    // Le Prunostiqueur du mois : le classement en cours, et le sacré du mois passé.
+    const sem = moisParis(parisDayKey());
+    const passee = moisParis(moisDecale(sem.cle, -1) + '-01');
+    const enCours = await db.classementParis(sem.premier, sem.dernier, 3);
+    const avant = (await db.classementParis(passee.premier, passee.dernier, 3))[0];
     const aNommer = enCours.slice(0, 10).map((c) => c.username).concat(avant ? [avant.username] : []);
     if (aNommer.length) for (const r of await db.fichesComptes(aNommer)) noms.set(r.username, r.display_name || getDisplayName(r.username));
     const monRang = moi ? enCours.findIndex((c) => c.username === moi) : -1;
-    const semaine = {
+    const mois = {
       lisible: sem.lisible, minParis: 3,
       classement: enCours.slice(0, 10).map((c, i) => ({ rang: i + 1, nom: nomDe(c.username), soi: c.username === moi, net: c.net, paris: c.paris, gagnes: c.gagnes })),
       moi: monRang >= 0 ? { rang: monRang + 1, net: enCours[monRang].net } : null,
       passee: avant && avant.net > 0 ? { lisible: passee.lisible, nom: nomDe(avant.username), net: avant.net } : null,
       cagnotte: await db.prunosticsCagnotte().catch(() => 0),
+      plafondCagnotte: Number(parisChallengeReglages.plafondCagnotte) || 0,
     };
     res.json({
-      ok: true, moi: moi || null, seuil, bilan, lignes, semaine,
+      ok: true, moi: moi || null, seuil, bilan, lignes, mois,
       grosCoups: coups.map((c) => ({ quand: c.regle_le, parieur: nomDe(c.username), quoi: quoi(c), mise: c.mise,
         cote: c.cote == null ? null : Number(c.cote), gain: c.gain })),
     });
@@ -10941,12 +11032,12 @@ app.get('/api/admin/paris-challenge', adminScope('challenge'), async (req, res) 
     const hist = await cotesChallenge(demain);
     const bilan = await db.bilanParisChallenge(jourDecale(parisDayKey(), -30));
     const somme = (l, k) => l.reduce((s2, p) => s2 + (Number(p[k || 'mise']) || 0), 0);
-    const sem = semaineParis(parisDayKey());
-    const classement = (await db.classementParis(sem.lundi, sem.dimanche, 3)).slice(0, 5);
+    const sem = moisParis(parisDayKey());
+    const classement = (await db.classementParis(sem.premier, sem.dernier, 3)).slice(0, 5);
     res.json({
       reglages: R, demain, hier, jeuxDuJour: duJour, objets,
       cagnotte: await db.prunosticsCagnotte().catch(() => 0),
-      semaine: { lisible: sem.lisible, classement: classement.map((c) => Object.assign({ nom: getDisplayName(c.username) }, c)) },
+      mois: { lisible: sem.lisible, classement: classement.map((c) => Object.assign({ nom: getDisplayName(c.username) }, c)) },
       bilan: { jours: bilan, mises: somme(bilan, 'mises'), gains: somme(bilan, 'gains') },
       jeux: jeuxChallengeParis().map((j) => {
         const d = pd.filter((p) => p.jeu === j.cle && p.statut !== 'rembourse');
@@ -10987,10 +11078,15 @@ app.post('/api/admin/paris-challenge', adminScope('challenge'), async (req, res)
     if (!Number.isFinite(n) || n < 1 || n > connus.size) return res.status(400).json({ error: 'bad_nb_jeux', message: `Jeux par jour : de 1 à ${connus.size}.` });
     apres.nbJeux = n;
   }
-  if (b.recompenseSemaine !== undefined) {
-    const id = b.recompenseSemaine === null || b.recompenseSemaine === '' ? null : Number(b.recompenseSemaine);
+  if (b.recompenseMois !== undefined) {
+    const id = b.recompenseMois === null || b.recompenseMois === '' ? null : Number(b.recompenseMois);
     if (id !== null && !SHOP_PACKS.some((o) => o.id === id)) return res.status(400).json({ error: 'bad_objet', message: 'Cet objet n’existe pas dans la boutique.' });
-    apres.recompenseSemaine = id;
+    apres.recompenseMois = id;
+  }
+  if (b.plafondCagnotte !== undefined) {
+    const c = Math.floor(Number(b.plafondCagnotte));
+    if (!Number.isFinite(c) || c < 0 || c > 1000000) return res.status(400).json({ error: 'bad_plafond_cagnotte', message: 'Plafond de la cagnotte : un nombre de kikooz, 0 ou plus.' });
+    apres.plafondCagnotte = c;
   }
   if (Array.isArray(b.exclus)) apres.exclus = b.exclus.map(String).filter((k) => connus.has(k));
   // Les jeux d'un jour, choisis à la main (demain, d'ordinaire).

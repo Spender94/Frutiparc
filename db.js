@@ -668,6 +668,12 @@ async function initSchema() {
         UNIQUE (match_id, username)
       );
       CREATE INDEX IF NOT EXISTS idx_tparis_tournoi ON tournament_paris(tournament_id, statut);
+      -- LES COTES FIXES (coteTournoi.js) : la cote est figée à la mise, et
+      -- « retour » est ce que rendra le pari s'il gagne (mise comprise ; une
+      -- rallonge s'y ajoute à la cote du moment). NULL : un pari mutuel posé
+      -- avant les cotes, réglé comme tel.
+      ALTER TABLE tournament_paris ADD COLUMN IF NOT EXISTS cote NUMERIC(6,2);
+      ALTER TABLE tournament_paris ADD COLUMN IF NOT EXISTS retour INTEGER;
       CREATE INDEX IF NOT EXISTS idx_tparis_user ON tournament_paris(LOWER(username), cree_le DESC);
 
       -- LES PARIS DU CHALLENGE : sur les médaillés du lendemain. On mise la
@@ -1971,7 +1977,7 @@ async function exporterDonnees(userId, username) {
     swapou_ia: await q('SELECT score, data, created_at FROM swapou_ia_scores WHERE LOWER(username) = $1 ORDER BY created_at', [u]),
     swapou_parties: await q('SELECT id, graine, source, perso, cree_le, fini_le, score_declare, score_rejoue, verdict, raison, coups, nb_coups, duree_ms, rythme FROM swapou_parties WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     connexions: await q('SELECT jour, ip, xff, socket_ip, appareil, navigateur, origine, premiere, derniere, n FROM connexions WHERE LOWER(username) = $1 ORDER BY premiere', [u]),
-    paris: await q('SELECT tournament_id, affiche, choix, mise, statut, gain, cree_le, regle_le FROM tournament_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
+    paris: await q('SELECT tournament_id, affiche, choix, mise, cote, statut, gain, cree_le, regle_le FROM tournament_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     paris_challenge: await q('SELECT jour, jeu, type, choix, mise, cote, statut, gain, cree_le, regle_le FROM challenge_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     sanctions: await q('SELECT moderator, action, detail, created_at FROM moderation_logs WHERE LOWER(target_username) = $1 ORDER BY created_at', [u]),
     notifications: await q('SELECT ua, created_at FROM push_subscriptions WHERE LOWER(username) = $1', [u]),
@@ -4493,19 +4499,27 @@ async function pariDe(matchId, username) {
 // l'autre joueur ne bouge pas, et rien n'est rendu (null).
 async function poserPari(p) {
   const { rows } = await pool.query(
-    `INSERT INTO tournament_paris (tournament_id, match_id, username, choix, mise, affiche)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT (match_id, username) DO UPDATE SET mise = tournament_paris.mise + EXCLUDED.mise
+    `INSERT INTO tournament_paris (tournament_id, match_id, username, choix, mise, affiche, retour, cote)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (match_id, username) DO UPDATE SET
+       mise = tournament_paris.mise + EXCLUDED.mise,
+       retour = CASE WHEN tournament_paris.retour IS NULL THEN NULL ELSE tournament_paris.retour + EXCLUDED.retour END,
+       cote = CASE WHEN tournament_paris.retour IS NULL THEN NULL
+                   ELSE ROUND((tournament_paris.cote * tournament_paris.mise + EXCLUDED.cote * EXCLUDED.mise)
+                              / (tournament_paris.mise + EXCLUDED.mise), 2) END
        WHERE tournament_paris.choix = EXCLUDED.choix AND tournament_paris.statut = 'ouvert'
      RETURNING *`,
     [p.tournamentId, p.matchId, String(p.username).toLowerCase(), String(p.choix).toLowerCase(),
-     Math.trunc(Number(p.mise)), String(p.affiche || '').slice(0, 200)]);
+     Math.trunc(Number(p.mise)), String(p.affiche || '').slice(0, 200),
+     p.retour == null ? null : Math.trunc(Number(p.retour)), p.retour == null ? null : Number(p.cote)]);
   return rows[0] || null;
 }
 // Annule une mise qui vient d'être posée (le débit des kikooz a échoué).
-async function retirerMise(id, mise) {
+async function retirerMise(id, mise, retour) {
   await pool.query(
-    `UPDATE tournament_paris SET mise = mise - $2 WHERE id = $1 AND statut = 'ouvert'`, [id, Math.trunc(Number(mise))]);
+    `UPDATE tournament_paris SET mise = mise - $2,
+            retour = CASE WHEN retour IS NULL THEN NULL ELSE retour - $3 END
+      WHERE id = $1 AND statut = 'ouvert'`, [id, Math.trunc(Number(mise)), Math.trunc(Number(retour) || 0)]);
   await pool.query(`DELETE FROM tournament_paris WHERE id = $1 AND mise <= 0`, [id]);
 }
 /*
@@ -4517,21 +4531,24 @@ async function retirerMise(id, mise) {
 // LA CAGNOTTE DES PRUNOSTICS (app_state `prunostics_cagnotte`) : les mises
 // des pots sans gagnant. Elle grossit dans la transaction même du règlement
 // (un pari ne se règle qu'une fois : sa mise n'y entre qu'une fois), et le
-// Prunostiqueur de la semaine la vide d'un coup.
+// Prunostiqueur du mois la vide d'un coup. `plafond` (null : aucun) : elle
+// ne le dépasse jamais — ce qui déborde quitte le parc.
 const CAGNOTTE_CLE = 'prunostics_cagnotte';
-async function cagnotteAjouter(q, n) {
+async function cagnotteAjouter(q, n, plafond) {
+  const cap = plafond == null || !Number.isFinite(Number(plafond)) ? null : Math.max(0, Math.trunc(Number(plafond)));
   await q.query(
-    `INSERT INTO app_state (key, value, updated_at) VALUES ($1, $2::text, now())
+    `INSERT INTO app_state (key, value, updated_at) VALUES ($1, LEAST($2::bigint, COALESCE($3::bigint, $2::bigint))::text, now())
      ON CONFLICT (key) DO UPDATE
-       SET value = ((CASE WHEN app_state.value ~ '^[0-9]+$' THEN app_state.value::bigint ELSE 0 END) + $2::bigint)::text,
+       SET value = LEAST((CASE WHEN app_state.value ~ '^[0-9]+$' THEN app_state.value::bigint ELSE 0 END) + $2::bigint,
+                         COALESCE($3::bigint, 9223372036854775807))::text,
            updated_at = now()`,
-    [CAGNOTTE_CLE, Math.trunc(Number(n) || 0)]);
+    [CAGNOTTE_CLE, Math.trunc(Number(n) || 0), cap]);
 }
 async function prunosticsCagnotte() {
   const v = await getAppState(CAGNOTTE_CLE);
   return /^[0-9]+$/.test(String(v || '')) ? Number(v) : 0;
 }
-async function prunosticsCagnotteAjouter(n) { await cagnotteAjouter(pool, n); }
+async function prunosticsCagnotteAjouter(n, plafond) { await cagnotteAjouter(pool, n, plafond); }
 // Vide la cagnotte et rend ce qu'elle contenait — d'un seul geste : deux
 // sacres qui se croiseraient ne la toucheraient pas deux fois.
 async function prunosticsCagnotteVider() {
@@ -4544,7 +4561,7 @@ async function prunosticsCagnotteVider() {
   return /^[0-9]+$/.test(v) ? Number(v) : 0;
 }
 
-async function reglerParis(decisions) {
+async function reglerParis(decisions, opts) {
   const client = await pool.connect();
   const faits = [];
   try {
@@ -4553,12 +4570,12 @@ async function reglerParis(decisions) {
     for (const d of decisions) {
       const { rows } = await client.query(
         `UPDATE tournament_paris SET statut = $2, gain = $3, regle_le = now()
-          WHERE id = $1 AND statut = 'ouvert' RETURNING id, username, mise, gain, statut, choix, affiche, tournament_id, match_id`,
+          WHERE id = $1 AND statut = 'ouvert' RETURNING id, username, mise, gain, statut, choix, affiche, tournament_id, match_id, cote`,
         [d.id, d.statut, Math.trunc(Number(d.gain) || 0)]);
       if (rows[0]) faits.push(rows[0]);
       if (rows[0] && d.cagnotte) versCagnotte += Number(rows[0].mise) || 0;
     }
-    if (versCagnotte > 0) await cagnotteAjouter(client, versCagnotte);
+    if (versCagnotte > 0) await cagnotteAjouter(client, versCagnotte, opts && opts.plafondCagnotte);
     await client.query('COMMIT');
     return faits;
   } catch (e) {
@@ -4627,7 +4644,7 @@ async function retirerMiseChallenge(id, mise, retour) {
 }
 // Même garantie que reglerParis : on ne rend que ce qui vient de passer
 // d'« ouvert » à réglé.
-async function reglerParisChallenge(decisions) {
+async function reglerParisChallenge(decisions, opts) {
   const client = await pool.connect();
   const faits = [];
   try {
@@ -4641,7 +4658,7 @@ async function reglerParisChallenge(decisions) {
       if (rows[0]) faits.push(rows[0]);
       if (rows[0] && d.cagnotte) versCagnotte += Number(rows[0].mise) || 0;
     }
-    if (versCagnotte > 0) await cagnotteAjouter(client, versCagnotte);
+    if (versCagnotte > 0) await cagnotteAjouter(client, versCagnotte, opts && opts.plafondCagnotte);
     await client.query('COMMIT');
     return faits;
   } catch (e) {
@@ -4654,6 +4671,26 @@ async function reglerParisChallenge(decisions) {
 // L'historique d'un jeu du Challenge entre deux jours (inclus) : qui y a un
 // score archivé, chaque jour, et qui y a pris une médaille. De quoi tirer les
 // cotes (coteChallenge.js).
+// Les scores qui font les cotes d'un tournoi (coteTournoi.js) : les meilleurs
+// scores du jour au Challenge du jeu depuis `depuisJour` (les `n` plus récents
+// de chacun), et tous ceux du tournoi lui-même (qualif, tours). { pseudo: [scores] }.
+async function scoresPourCotes(tournamentId, rankingId, usernames, depuisJour, n) {
+  const qui = (usernames || []).map((u) => String(u).toLowerCase());
+  const out = {};
+  if (!qui.length) return out;
+  const { rows: arch } = await pool.query(
+    `SELECT username, score FROM (
+       SELECT LOWER(username) AS username, score,
+              ROW_NUMBER() OVER (PARTITION BY LOWER(username) ORDER BY day_key DESC) AS rang
+         FROM challenge_score_archive
+        WHERE ranking_id = $1 AND LOWER(username) = ANY($2) AND day_key >= $3) t
+      WHERE rang <= $4`, [String(rankingId), qui, String(depuisJour), Math.max(1, Number(n) || 30)]);
+  const { rows: tour } = await pool.query(
+    `SELECT LOWER(username) AS username, score FROM tournament_round_scores
+      WHERE tournament_id = $1 AND LOWER(username) = ANY($2) AND score > 0`, [Number(tournamentId), qui]);
+  for (const r of arch.concat(tour)) (out[r.username] = out[r.username] || []).push(Number(r.score));
+  return out;
+}
 async function historiqueChallenge(rankingIds, depuisJour, jusquaJour) {
   const a = [rankingIds, String(depuisJour), String(jusquaJour)];
   const joues = await pool.query(
@@ -4680,7 +4717,7 @@ async function registreParis(username, limit = 200) {
   const u = String(username || '').toLowerCase();
   const n = Math.max(1, Math.min(Number(limit) || 200, 1000));
   const { rows } = await pool.query(
-    `(SELECT 'tournoi' AS sorte, p.id, p.cree_le, p.regle_le, p.choix, p.mise, NULL::numeric AS cote, p.statut, p.gain,
+    `(SELECT 'tournoi' AS sorte, p.id, p.cree_le, p.regle_le, p.choix, p.mise, p.cote, p.statut, p.gain,
              p.affiche, t.name AS tournoi, NULL AS jour, NULL AS jeu, NULL AS type
         FROM tournament_paris p LEFT JOIN tournaments t ON t.id = p.tournament_id WHERE LOWER(p.username) = $1)
      UNION ALL
@@ -4734,7 +4771,7 @@ async function supprimerPartieDifferee(id) {
 // atteint le seuil — ceux que Dimitri annonce.
 async function grosCoupsParis(depuis, seuil, limit = 30) {
   const { rows } = await pool.query(
-    `(SELECT 'tournoi' AS sorte, p.id, p.regle_le, p.username, p.choix, p.mise, NULL::numeric AS cote, p.gain,
+    `(SELECT 'tournoi' AS sorte, p.id, p.regle_le, p.username, p.choix, p.mise, p.cote, p.gain,
              p.affiche, t.name AS tournoi, NULL AS jour, NULL AS jeu, NULL AS type
         FROM tournament_paris p LEFT JOIN tournaments t ON t.id = p.tournament_id
        WHERE p.statut = 'gagne' AND p.gain - p.mise >= $2 AND p.regle_le >= $1)
@@ -4876,6 +4913,7 @@ module.exports = {
   retirerMiseChallenge,
   reglerParisChallenge,
   historiqueChallenge,
+  scoresPourCotes,
   bilanParisChallenge,
   registreParis,
   grosCoupsParis,

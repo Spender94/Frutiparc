@@ -32,7 +32,8 @@ const INTRO = `Bonjour bonjour ! Moi c'est ${NOM}, je tiens le comptoir des pari
   + `Débattez, commentez, chambrez-vous gentiment !\n\n`
   + `Et chaque fois que quelqu'un réussit un [b]gros coup[/b] — un pari qui rapporte gros, sur un tournoi ou sur les `
   + `médaillés du Challenge —, je viens l'annoncer ici : le parieur, sa mise, la cote et ce qu'il a empoché.\n\n`
-  + `Et chaque lundi, je sacre le [b]Prunostiqueur de la semaine[/b] : celui qui a gagné le plus de kikooz en pariant.\n\n`
+  + `Et au début de chaque mois, je sacre le [b]Prunostiqueur du mois[/b] : celui qui a gagné le plus de kikooz en pariant. `
+  + `Il rafle la cagnotte et porte le titre tout le mois suivant !\n\n`
   + `Pour parier : l’icône « Prunostics » du bureau. Son onglet « Registre » garde la trace de tous vos paris. `
   + `À vos pronostics, je suis ravi d'avance !`;
 
@@ -117,21 +118,23 @@ function messageGrosCoups(coups) {
 }
 
 /**
- * Le Prunostiqueur de la semaine, chaque lundi.
- * @param {{ semaine: string, gagnant: {nom, net, paris, gagnes}, suivants: Array<{nom, net}>, objet: string|null }} s
- *   `semaine` : « du lundi 5 au dimanche 11 octobre » ; `objet` : le nom de
- *   l'objet de la boutique offert, s'il y en a un.
+ * Le Prunostiqueur du mois, au début du mois suivant.
+ * @param {{ mois: string, gagnant: {nom, net, paris, gagnes}, suivants: Array<{nom, net}>,
+ *           objet: string|null, cagnotte: number, titre: string|null }} s
+ *   `mois` : « septembre 2026 » ; `objet` : l'objet de la boutique offert, s'il
+ *   y en a un ; `titre` : le frutijob qu'il porte tout le mois qui commence.
  */
-function messageSemaine(s) {
+function messageMois(s) {
   const g = s.gagnant;
-  const tirage = tirageSeme(hacher(`semaine:${s.semaine}:${g.nom}:${g.net}`));
+  const tirage = tirageSeme(hacher(`mois:${s.mois}:${g.nom}:${g.net}`));
   const ouvertures = [
-    () => `Roulement de tambour… le [b]Prunostiqueur de la semaine[/b] est connu !`,
-    () => `Le comptoir a fait ses comptes, et le [b]Prunostiqueur de la semaine[/b], c'est…`,
-    () => `Mesdames et messieurs, voici le [b]Prunostiqueur de la semaine[/b] !`,
+    () => `Roulement de tambour… le [b]Prunostiqueur du mois[/b] est connu !`,
+    () => `Le comptoir a fait ses comptes, et le [b]Prunostiqueur du mois[/b], c'est…`,
+    () => `Mesdames et messieurs, voici le [b]Prunostiqueur du mois[/b] !`,
   ];
   const l = [choisir(tirage, ouvertures)(), ''];
-  l.push(`@${g.nom}, avec [b]+${nombre(g.net)} kikooz[/b] de bénéfice ${s.semaine} (${g.gagnes} pari${g.gagnes > 1 ? 's' : ''} gagné${g.gagnes > 1 ? 's' : ''} sur ${g.paris}).`);
+  l.push(`@${g.nom}, avec [b]+${nombre(g.net)} kikooz[/b] de bénéfice en ${s.mois} (${g.gagnes} pari${g.gagnes > 1 ? 's' : ''} gagné${g.gagnes > 1 ? 's' : ''} sur ${g.paris}).`);
+  if (s.titre) l.push(`Tout ce mois-ci, il porte fièrement le titre de [b]${s.titre}[/b] !`);
   if (s.cagnotte > 0) l.push(`Et il rafle [b]la cagnotte : ${nombre(s.cagnotte)} kikooz[/b], les mises des pronos que personne n'a vus venir !`);
   if (s.objet) l.push(`Il repart avec un cadeau du parc : [b]${s.objet}[/b] !`);
   const suivants = (s.suivants || []).filter((x) => x && x.net > 0).slice(0, 2);
@@ -141,11 +144,11 @@ function messageSemaine(s) {
   }
   l.push('');
   l.push(choisir(tirage, [
-    () => `Une nouvelle semaine commence : à vos Prunostics !`,
-    () => `Les compteurs sont remis à zéro. Qui fera mieux cette semaine ?`,
+    () => `Un nouveau mois commence : à vos Prunostics !`,
+    () => `Les compteurs sont remis à zéro. Qui fera mieux ce mois-ci ?`,
     () => `Bravo ! Et pour les autres : la revanche commence aujourd'hui.`,
   ])());
   return l.join('\n');
 }
 
-module.exports = { PSEUDO_NPC, NOM, BOUILLE, HUMEUR, RUBRIQUE, SUJET, INTRO, messageGrosCoups, messageSemaine };
+module.exports = { PSEUDO_NPC, NOM, BOUILLE, HUMEUR, RUBRIQUE, SUJET, INTRO, messageGrosCoups, messageMois };

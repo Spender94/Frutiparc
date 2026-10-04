@@ -355,8 +355,8 @@
       + 'Plus tu vas contre la foule, plus tu gagnes ! La cote affichée est celle du pot à l’instant : elle bouge jusqu’à minuit. '
       + 'Un pari perdu est perdu : ta mise paie ceux qui ont vu juste. Et si <b>personne</b> n’a vu juste, toutes les mises vont dans la <b>cagnotte</b>. '
       + 'Tu peux miser sur toi — et tout le monde sur n’importe qui : cherche son pseudo. '
-      + 'Maximum : ' + kz(d.plafond) + ' par jour, tous jeux confondus. Et chaque lundi, Dimitri sacre le <b>Prunostiqueur de la semaine</b>, qui remporte la cagnotte'
-      + (d.cagnotte > 0 ? ' (' + kz(d.cagnotte) + ' en ce moment)' : '') + '.</div></details>';
+      + 'Maximum : ' + kz(d.plafond) + ' par jour, tous jeux confondus. Et au début de chaque mois, Dimitri sacre le <b>Prunostiqueur du mois</b> : '
+      + 'il remporte la cagnotte' + (d.cagnotte > 0 ? ' (' + kz(d.cagnotte) + ' en ce moment)' : '') + ' et porte le titre tout le mois suivant.</div></details>';
     if (!d.moi) h += CONNEXION;
     else {
       h += '<div class="budget"><div class="l"><span>Misé pour demain : <b>' + kz(d.dejaMise) + '</b></span><span>il te reste <b>' + nombre(reste) + '</b> sur ' + nombre(d.plafond) + '</span></div>'
@@ -548,21 +548,23 @@
     return '<' + tag + ' class="joueur' + (choisi ? ' choisi' : '') + (gagnant ? ' gagnant' : '') + '"'
       + (ouvert ? ' data-match="' + m.id + '" data-choix="' + esc(pseudo) + '"' + (bloque ? ' disabled' : '') : '') + '>'
       + '<span class="n">' + (gagnant ? TROPHEE + ' ' : '') + esc(j.nom) + '</span>'
-      + (mises.cote ? '<span class="x">' + cote(mises.cote) + '</span>' : '<span class="x rien">pas encore de mise</span>')
-      + '<span class="d">' + kz(mises.mises) + ' · ' + mises.parieurs + ' parieur' + (mises.parieurs > 1 ? 's' : '') + '</span>'
+      // La cote FIXE du joueur (coteTournoi.js) : basse pour le favori, haute pour l'outsider.
+      + (j.cote ? '<span class="x">' + cote(j.cote) + '</span>' : '<span class="x rien">—</span>')
+      + '<span class="d">' + (j.p != null ? j.p + ' % de chances' : '') + (mises.parieurs ? ' · ' + mises.parieurs + ' parieur' + (mises.parieurs > 1 ? 's' : '') : '') + '</span>'
       + '</' + tag + '>';
   }
   function blocMatch(t, m, ouvert) {
     var sel = ticket && ticket.sorte === 't' && ticket.match === m.id;
     var h = '<div class="match' + (sel ? ' sel' : '') + '">'
-      + '<div class="tour"><span>' + esc(m.tour) + (m.poule ? ' — poule ' + esc(m.poule) : '') + '</span><span class="pot">pot : ' + kz(m.pot) + '</span></div>'
+      + '<div class="tour"><span>' + esc(m.tour) + (m.poule ? ' — poule ' + esc(m.poule) : '') + '</span>' + (m.pot ? '<span class="pot">misé : ' + kz(m.pot) + '</span>' : '') + '</div>'
       + '<div class="duo">' + carteJoueur(t, m, m.j1, ouvert) + '<span class="contre">contre</span>' + carteJoueur(t, m, m.j2, ouvert) + '</div>';
     if (m.mien) {
       var nomChoix = m.mien.choix === m.j1.pseudo.toLowerCase() ? m.j1.nom : m.j2.nom;
       if (m.mien.statut === 'gagne') h += '<div class="mien gagne">Gagné : ta mise de ' + kz(m.mien.mise) + ' sur ' + esc(nomChoix) + ' t’a rapporté ' + kz(m.mien.gain) + '.</div>';
       else if (m.mien.statut === 'perdu') h += '<div class="mien perdu">Perdu : ta mise de ' + kz(m.mien.mise) + ' sur ' + esc(nomChoix) + '.</div>';
       else if (m.mien.statut === 'rembourse') h += '<div class="mien rembourse">Remboursé : ' + kz(m.mien.gain) + ' (match annulé ou joueur remplacé).</div>';
-      else h += '<div class="mien">Ta mise : ' + kz(m.mien.mise) + ' sur ' + esc(nomChoix) + '.</div>';
+      else h += '<div class="mien">Ta mise : ' + kz(m.mien.mise) + ' sur ' + esc(nomChoix)
+        + (m.mien.retour ? ' à ' + cote(m.mien.cote) + ' : ' + kz(m.mien.retour) + ' pour toi s’il gagne.' : ' (pari mutuel).') + '</div>';
     }
     if (ouvert && m.interdit) h += '<div class="note">C’est ton match : tu ne peux pas parier dessus. Bonne chance !</div>';
     else if (!ouvert && !m.vainqueur) h += '<div class="note">Le match a commencé : les mises sont fermées.</div>';
@@ -586,10 +588,9 @@
     d.tournois.forEach(function (t) {
       h += '<div class="bandeau">' + esc(t.nom) + ' <small>' + esc(t.jeu) + '</small></div>'
         + '<details class="regle" style="margin-top:6px"><summary>Comment ça marche ?</summary><div>'
-        + 'Touche le joueur que tu vois gagner, choisis ta mise sur le ticket. C’est un <b>pari mutuel</b> : toutes les mises d’un match font un pot, '
-        + 'que se partagent ceux qui ont vu juste, au prorata de leur mise. La cote (×) est celle du pot à l’instant : elle bouge jusqu’au début du match. '
-        + 'Mise maximale : ' + kz(t.plafond) + ' par match. On ne parie pas sur ses propres matchs. Un pari perdu est perdu ; si personne n’a misé sur le vainqueur, '
-        + 'toutes les mises vont dans la cagnotte, que remporte le Prunostiqueur de la semaine.</div></details>';
+        + 'Touche le joueur que tu vois gagner, choisis ta mise sur le ticket. Chaque joueur a sa <b>cote</b> (×), tirée de ses scores récents : '
+        + 'le favori rapporte peu, l’outsider beaucoup. La cote est <b>figée au moment où tu paries</b> : s’il gagne, tu reçois ta mise × la cote ; '
+        + 's’il perd, ta mise est perdue. Mise maximale : ' + kz(t.plafond) + ' par match. On ne parie pas sur ses propres matchs.</div></details>';
       h += '<h3>Matchs ouverts aux paris</h3>';
       h += t.ouverts.length ? t.ouverts.map(function (m) { return blocMatch(t, m, true); }).join('')
         : '<p class="vide">Pas de match ouvert : les prochains le seront dès que leurs deux joueurs seront connus.</p>';
@@ -609,12 +610,17 @@
       sorte: 't', match: m.id, choix: pseudo, mise: ticket && ticket.mise, reste: Math.max(0, t.plafond - deja),
       plein: 'Tu as misé le plafond de ' + kz(t.plafond) + ' sur ce match.',
       titre: TROPHEE + ' ' + esc(j.nom) + ' gagne — ' + esc(m.j1.nom) + ' contre ' + esc(m.j2.nom) + (deja ? ' <small style="font-weight:normal;color:#6c8f3a">(tu y as déjà ' + kz(deja) + ')</small>' : ''),
-      // Pari mutuel : ce que rapporterait la mise si le pot en restait là.
+      // Cote fixe : la mise × la cote, au kikooz inférieur (comme le serveur).
+      // Un ancien pari mutuel sur ce match garde sa règle : on l'estime au pot.
       gainHtml: function (mise) {
         if (!(mise >= 1)) return '<small>Indique une mise d’au moins 1 kikooz.</small>';
-        var pot = (Number(m.pot) || 0) + mise, sur = surLui + mise, moi = deja + mise;
-        var r = Math.floor(pot * moi / sur);
-        return 'S’il gagne, tu reçois environ <b>' + kz(r) + '</b> <small>(si le pot en restait là : il bouge jusqu’au match)</small>';
+        if (m.mien && m.mien.statut === 'ouvert' && m.mien.retour == null) {
+          var pot = (Number(m.pot) || 0) + mise, sur = surLui + mise, moi = deja + mise;
+          return 'S’il gagne, tu reçois environ <b>' + kz(Math.floor(pot * moi / sur)) + '</b> <small>(pari mutuel)</small>';
+        }
+        if (!j.cote) return '<small>Pas de cote pour ce joueur.</small>';
+        var r = Math.floor(mise * j.cote + 1e-9);
+        return 'S’il gagne, tu reçois <b>' + kz(r) + '</b> <small>(' + kz(mise) + ' × ' + cote(j.cote) + ', cote figée à la mise)</small>';
       },
     };
   }
@@ -647,7 +653,7 @@
     }).then(json).then(function (r) {
       t.envoi = false;
       if (!r.ok) { t.erreur = r.message || 'Le pari n’a pas pu être enregistré.'; rendreTournois(); return; }
-      toast = { vue: 'tournois', texte: 'C’est parié ! ' + kz(r.mise) + ' au total sur ce match.' };
+      toast = { vue: 'tournois', texte: 'C’est parié ! ' + kz(r.mise) + ' au total sur ce match' + (r.retour ? ' : ' + kz(r.retour) + ' pour toi s’il gagne.' : '.') };
       ticket = null;
       return chargerTournois();
     }).catch(function () { t.envoi = false; t.erreur = 'Le serveur ne répond pas.'; rendreTournois(); });
@@ -666,23 +672,24 @@
   }
   function rendreRegistre(d) {
     var h = '';
-    // Le Prunostiqueur de la semaine.
-    var s = d.semaine;
+    // Le Prunostiqueur du mois.
+    var s = d.mois;
     if (s) {
-      h += '<div class="regbloc"><h3>' + TROPHEE + ' Prunostiqueur de la semaine <small style="font-weight:normal;color:#6c8f3a">— ' + esc(s.lisible)
+      h += '<div class="regbloc"><h3>' + TROPHEE + ' Prunostiqueur du mois <small style="font-weight:normal;color:#6c8f3a">— ' + esc(s.lisible)
         + ', bénéfice net, ' + s.minParis + ' paris réglés au moins</small></h3>';
-      if (s.passee) h += '<p class="decouv" style="margin:0 0 6px">La semaine dernière : <b>' + esc(s.passee.nom) + '</b> (+' + kz(s.passee.net) + '), sacré par Dimitri.</p>';
-      h += '<p class="decouv" style="margin:0 0 6px">Cagnotte en jeu : <b>' + kz(s.cagnotte || 0) + '</b> — les mises des pronos que personne n’a vus venir. Le Prunostiqueur la remporte lundi.</p>';
+      if (s.passee) h += '<p class="decouv" style="margin:0 0 6px">Le mois dernier : <b>' + esc(s.passee.nom) + '</b> (+' + kz(s.passee.net) + '), sacré par Dimitri.</p>';
+      h += '<p class="decouv" style="margin:0 0 6px">Cagnotte en jeu : <b>' + kz(s.cagnotte || 0) + '</b>' + (s.plafondCagnotte ? ' (au plus ' + kz(s.plafondCagnotte) + ')' : '')
+        + ' — les mises des pronos que personne n’a vus venir. Le Prunostiqueur du mois la remporte, avec le titre.</p>';
       if (s.classement.length) {
         h += '<table class="reg"><tbody>' + s.classement.map(function (c) {
           return '<tr' + (c.soi ? ' style="background:#FFF6F4"' : '') + '><td class="n" style="width:24px">' + (c.rang === 1 ? jeton('or') : c.rang === 2 ? jeton('argent') : c.rang === 3 ? jeton('bronze') : c.rang) + '</td>'
             + '<td><b>' + esc(c.nom) + '</b>' + (c.soi ? ' <small>(toi)</small>' : '') + ' <small style="color:#6c8f3a">' + c.gagnes + ' gagné' + (c.gagnes > 1 ? 's' : '') + ' sur ' + c.paris + '</small></td>'
             + '<td class="n"><b class="' + (c.net >= 0 ? 'gagne' : 'perdu') + '">' + (c.net > 0 ? '+' : '') + nombre(c.net) + '</b></td></tr>';
         }).join('') + '</tbody></table>';
-        if (d.moi && !s.moi) h += '<p class="decouv" style="margin:6px 0 0">Pas encore classé cette semaine : il te faut ' + s.minParis + ' paris réglés.</p>';
+        if (d.moi && !s.moi) h += '<p class="decouv" style="margin:6px 0 0">Pas encore classé ce mois-ci : il te faut ' + s.minParis + ' paris réglés.</p>';
         else if (s.moi && s.moi.rang > 10) h += '<p class="decouv" style="margin:6px 0 0">Toi : ' + s.moi.rang + 'e (' + (s.moi.net > 0 ? '+' : '') + nombre(s.moi.net) + ').</p>';
       } else {
-        h += '<p class="vide" style="padding-left:0">Personne n’est encore classé cette semaine : ' + s.minParis + ' paris réglés pour entrer dans la course.</p>';
+        h += '<p class="vide" style="padding-left:0">Personne n’est encore classé ce mois-ci : ' + s.minParis + ' paris réglés pour entrer dans la course.</p>';
       }
       h += '</div>';
     }

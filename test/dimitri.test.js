@@ -46,19 +46,22 @@ test('le même lot donne le même texte ; un autre lot peut en changer', () => {
   assert.equal(Dimitri.messageGrosCoups([]), '');
 });
 
-test('le Prunostiqueur de la semaine : le sacré, son bénéfice, le podium, l’objet', () => {
-  const m = Dimitri.messageSemaine({
-    semaine: 'du lundi 5 au dimanche 11 octobre', objet: 'Bonnet de nuit',
+test('le Prunostiqueur du mois : le sacré, son bénéfice, son titre, la cagnotte, le podium, l’objet', () => {
+  const m = Dimitri.messageMois({
+    mois: 'septembre 2026', objet: 'Bonnet de nuit', cagnotte: 240, titre: 'Prunostiqueur du mois',
     gagnant: { nom: 'Noisette', net: 212, paris: 9, gagnes: 4 },
     suivants: [{ nom: 'Cassis', net: 40 }, { nom: 'Sureau', net: -3 }],
   });
-  assert.match(m, /Prunostiqueur de la semaine/);
-  assert.match(m, /@Noisette, avec \[b\]\+212 kikooz\[\/b\] de bénéfice du lundi 5 au dimanche 11 octobre \(4 paris gagnés sur 9\)/);
+  assert.match(m, /Prunostiqueur du mois/);
+  assert.match(m, /@Noisette, avec \[b\]\+212 kikooz\[\/b\] de bénéfice en septembre 2026 \(4 paris gagnés sur 9\)/);
+  assert.match(m, /le titre de \[b\]Prunostiqueur du mois\[\/b\]/);
+  assert.match(m, /la cagnotte : 240 kikooz/);
   assert.match(m, /cadeau du parc : \[b\]Bonnet de nuit\[\/b\]/);
   assert.match(m, /@Cassis, 2e \(\+40\)/);
   assert.doesNotMatch(m, /[🏆🥇🥈🥉🏅]/u, 'pas d’emoji : les vraies médailles sont sur le site');
   assert.doesNotMatch(m, /Sureau/, 'un bénéfice négatif ne monte pas sur le podium');
-  const sansObjet = Dimitri.messageSemaine({ semaine: 'x', objet: null, gagnant: { nom: 'A', net: 5, paris: 3, gagnes: 1 }, suivants: [] });
-  assert.doesNotMatch(sansObjet, /cadeau/);
+  const sansObjet = Dimitri.messageMois({ mois: 'x', objet: null, cagnotte: 0, titre: null, gagnant: { nom: 'A', net: 5, paris: 3, gagnes: 1 }, suivants: [] });
+  assert.doesNotMatch(sansObjet, /cadeau|cagnotte|titre/);
   assert.match(sansObjet, /1 pari gagné sur 3/);
+  assert.match(Dimitri.INTRO, /Prunostiqueur du mois/);
 });
