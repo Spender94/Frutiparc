@@ -3716,12 +3716,12 @@ function addSiteHistoryEntry(user, { type = 1, content = '', flNew = false } = {
 // XP System — daily activity tracking & levelling
 // ─────────────────────────��───────────────────
 // Tracks daily actions per user. Persisted to disk so it survives restarts.
-// Action counts: chatMsg, forumTopic, forumPost, gamePlayed (tallied at the
+// Action counts: chatMsg, forumTopic, forumPost, gamePlayed, pari (tallied at the
 // rollover). Also holds loginXpDay: the day key on which the once-per-day
 // connection bonus was already granted (login XP is paid immediately on ident,
 // not at the rollover).
 const XP_ACTIONS_FILE = path.join(SCORES_DIR, 'xp-actions.json');
-let dailyXpActions = {}; // username -> { chatMsg:N, forumTopic:N, forumPost:N, gamePlayed:N, loginXpDay:'YYYY-MM-DD' }
+let dailyXpActions = {}; // username -> { chatMsg:N, forumTopic:N, forumPost:N, gamePlayed:N, pari:N, loginXpDay:'YYYY-MM-DD' }
 
 function loadXpActions() {
   try {
@@ -3794,7 +3794,7 @@ function animatorKikoozLeft(username) {
 
 function getXpActions(username) {
   if (!dailyXpActions[username]) {
-    dailyXpActions[username] = { login: 0, chatMsg: 0, forumTopic: 0, forumPost: 0, gamePlayed: 0 };
+    dailyXpActions[username] = { login: 0, chatMsg: 0, forumTopic: 0, forumPost: 0, gamePlayed: 0, pari: 0 };
   }
   return dailyXpActions[username];
 }
@@ -3817,6 +3817,10 @@ const XP_REWARDS = {
   forumTopic: { base: 2500, cap: 3  },  // 2500 XP per topic, max 7500/day
   forumPost:  { base: 1250, cap: 8  },  // 1250 XP per reply, max 10000/day
   gamePlayed: { base: 1500, cap: 10 },  // 1500 XP per challenge score, max 15000/day
+  // Les Prunostics : parier fait gagner un peu d'XP, quelle que soit l'issue.
+  // Un NOUVEAU pari compte (pas une rallonge : sinon cinq mises d'un kikooz
+  // sur le même joueur feraient le plein), cinq par jour au plus.
+  pari:       { base: 1000, cap: 5  },  // 1000 XP per new bet, max 5000/day
 };
 // Once-per-day connection bonus, granted immediately on ident (see
 // awardDailyLoginXp) instead of being deferred to the rollover.
@@ -10359,6 +10363,7 @@ app.post('/api/paris', async (req, res) => {
     journalKikooz(user, { type: 'p', k: mise, n: `${getDisplayName(choix)}${cote ? ` à ×${String(cote).replace('.', ',')}` : ''} — ${affiche}` });
     notifyKikoozUpdate(moi, user.kikooz);
     if (Number(pari.mise) === mise) {
+      trackXpAction(moi, 'pari');
       prunosticPrevenir(choix, moi, `Un Frutiz prunostique ta victoire : ${mise} kikooz misés sur toi`
         + ` (${affiche}${t.name ? `, ${t.name}` : ''}). À toi de jouer !`);
     }
@@ -11001,6 +11006,7 @@ app.post('/api/paris/challenge', async (req, res) => {
     journalKikooz(user, { type: 'p', k: mise, n: libellePariChallenge({ jour, jeu: jeu.cle, type, choix }) });
     notifyKikoozUpdate(moi, user.kikooz);
     if (Number(pari.mise) === mise) {
+      trackXpAction(moi, 'pari');
       prunosticPrevenir(choix, moi, `Un Frutiz prunostique ${type === 'or' ? 'ta médaille d’or' : 'ton podium'}`
         + ` à ${jeu.nom} au Challenge de demain : ${mise} kikooz misés sur toi. Ne le déçois pas !`);
     }

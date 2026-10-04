@@ -281,9 +281,18 @@ test('la nuit passe : le roll règle au prorata, aucun kikooz créé ni détruit
   await jouer('papaye', 8000);
   await jouer('myrtille', 7000);
   await jouer('clemence', 6000);
+  // L'XP des paris est versée au roll, avec celle des autres actions du jour.
+  const xp = async (u) => Number((await sql(`SELECT xp FROM users WHERE username = $1`, [u]))[0].xp) || 0;
+  const xpAvant = { anais: await xp('anais'), basile: await xp('basile') };
   const roll = await post('/api/admin/challenge/roll', {}, ADMIN);
   assert.ok(roll.ok, JSON.stringify(roll));
   await wait(800);
+  // anais : deux NOUVEAUX paris (médaillé, or) — sa rallonge ne compte pas ;
+  // basile : un. 1000 XP par pari.
+  let gagne = 0;
+  for (let i = 0; i < 20 && gagne !== 2000; i++) { gagne = (await xp('anais')) - xpAvant.anais; if (gagne !== 2000) await wait(150); }
+  assert.equal(gagne, 2000, 'parier fait gagner de l’XP, une fois par nouveau pari');
+  assert.equal((await xp('basile')) - xpAvant.basile, 1000);
   // Médaillé : 75 de pot ; grenade (anais, 30) et papaye (basile, 30) sont
   // médaillées → 37,5 chacun, le kikooz d'arrondi au premier arrivé ; cyril
   // (sur lui-même, 15) n'est pas sur le podium. Or : 45 de pot ; grenade a
