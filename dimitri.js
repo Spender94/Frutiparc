@@ -132,6 +132,7 @@ function messageSemaine(s) {
   ];
   const l = [choisir(tirage, ouvertures)(), ''];
   l.push(`@${g.nom}, avec [b]+${nombre(g.net)} kikooz[/b] de bénéfice ${s.semaine} (${g.gagnes} pari${g.gagnes > 1 ? 's' : ''} gagné${g.gagnes > 1 ? 's' : ''} sur ${g.paris}).`);
+  if (s.cagnotte > 0) l.push(`Et il rafle [b]la cagnotte : ${nombre(s.cagnotte)} kikooz[/b], les mises des pronos que personne n'a vus venir !`);
   if (s.objet) l.push(`Il repart avec un cadeau du parc : [b]${s.objet}[/b] !`);
   const suivants = (s.suivants || []).filter((x) => x && x.net > 0).slice(0, 2);
   if (suivants.length) {

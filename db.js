@@ -4514,18 +4514,51 @@ async function retirerMise(id, mise) {
  * deux règlements se croisent). On ne rend que les lignes réellement réglées
  * ici : ce sont elles, et elles seules, qu'on paie.
  */
+// LA CAGNOTTE DES PRUNOSTICS (app_state `prunostics_cagnotte`) : les mises
+// des pots sans gagnant. Elle grossit dans la transaction même du règlement
+// (un pari ne se règle qu'une fois : sa mise n'y entre qu'une fois), et le
+// Prunostiqueur de la semaine la vide d'un coup.
+const CAGNOTTE_CLE = 'prunostics_cagnotte';
+async function cagnotteAjouter(q, n) {
+  await q.query(
+    `INSERT INTO app_state (key, value, updated_at) VALUES ($1, $2::text, now())
+     ON CONFLICT (key) DO UPDATE
+       SET value = ((CASE WHEN app_state.value ~ '^[0-9]+$' THEN app_state.value::bigint ELSE 0 END) + $2::bigint)::text,
+           updated_at = now()`,
+    [CAGNOTTE_CLE, Math.trunc(Number(n) || 0)]);
+}
+async function prunosticsCagnotte() {
+  const v = await getAppState(CAGNOTTE_CLE);
+  return /^[0-9]+$/.test(String(v || '')) ? Number(v) : 0;
+}
+async function prunosticsCagnotteAjouter(n) { await cagnotteAjouter(pool, n); }
+// Vide la cagnotte et rend ce qu'elle contenait — d'un seul geste : deux
+// sacres qui se croiseraient ne la toucheraient pas deux fois.
+async function prunosticsCagnotteVider() {
+  const { rows } = await pool.query(
+    `UPDATE app_state a SET value = '0', updated_at = now()
+       FROM (SELECT key, value FROM app_state WHERE key = $1 FOR UPDATE) avant
+      WHERE a.key = avant.key
+      RETURNING avant.value`, [CAGNOTTE_CLE]);
+  const v = rows[0] ? String(rows[0].value) : '0';
+  return /^[0-9]+$/.test(v) ? Number(v) : 0;
+}
+
 async function reglerParis(decisions) {
   const client = await pool.connect();
   const faits = [];
   try {
     await client.query('BEGIN');
+    let versCagnotte = 0;
     for (const d of decisions) {
       const { rows } = await client.query(
         `UPDATE tournament_paris SET statut = $2, gain = $3, regle_le = now()
           WHERE id = $1 AND statut = 'ouvert' RETURNING id, username, mise, gain, statut, choix, affiche, tournament_id, match_id`,
         [d.id, d.statut, Math.trunc(Number(d.gain) || 0)]);
       if (rows[0]) faits.push(rows[0]);
+      if (rows[0] && d.cagnotte) versCagnotte += Number(rows[0].mise) || 0;
     }
+    if (versCagnotte > 0) await cagnotteAjouter(client, versCagnotte);
     await client.query('COMMIT');
     return faits;
   } catch (e) {
@@ -4599,13 +4632,16 @@ async function reglerParisChallenge(decisions) {
   const faits = [];
   try {
     await client.query('BEGIN');
+    let versCagnotte = 0;
     for (const d of decisions) {
       const { rows } = await client.query(
         `UPDATE challenge_paris SET statut = $2, gain = $3, regle_le = now()
           WHERE id = $1 AND statut = 'ouvert' RETURNING id, jour, jeu, type, username, choix, mise, cote, gain, statut`,
         [d.id, d.statut, Math.trunc(Number(d.gain) || 0)]);
       if (rows[0]) faits.push(rows[0]);
+      if (rows[0] && d.cagnotte) versCagnotte += Number(rows[0].mise) || 0;
     }
+    if (versCagnotte > 0) await cagnotteAjouter(client, versCagnotte);
     await client.query('COMMIT');
     return faits;
   } catch (e) {
@@ -5001,6 +5037,9 @@ module.exports = {
   deleteQuizImage,
   getAppState,
   setAppState,
+  prunosticsCagnotte,
+  prunosticsCagnotteAjouter,
+  prunosticsCagnotteVider,
   loadKilouteQuestions,
   insertKilouteQuestion,
   updateKilouteQuestion,

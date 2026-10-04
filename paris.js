@@ -8,11 +8,14 @@
  *
  * LE PARI MUTUEL. Toutes les mises d'un match vont dans un même pot ; ceux qui
  * ont vu juste se partagent le pot entier, chacun au prorata de sa mise. Le
- * parc ne prend rien et ne donne rien : la somme des gains est EXACTEMENT la
- * somme des mises. Pas de kikooz créé, pas de kikooz détruit.
+ * parc ne prend rien et ne donne rien : pas de kikooz créé, pas de kikooz
+ * détruit.
  *
- *   · Personne n'a vu juste (tout le monde avait misé sur le perdant) : chacun
- *     récupère sa mise — il n'y a personne à payer.
+ *   · Un pari perdu est TOUJOURS perdu. Personne n'a vu juste : tout le monde
+ *     perd, et le pot part dans la CAGNOTTE des Prunostics (`cagnotte: true`
+ *     sur chaque décision), que le Prunostiqueur de la semaine remporte le
+ *     lundi. Avant, chacun était remboursé : parier seul, ou à contre-pied de
+ *     tout le monde, ne coûtait alors rien.
  *   · Tout le monde a vu juste : chacun récupère sa mise, et rien de plus.
  *
  * Les arrondis. Les kikooz sont entiers : on donne à chacun la partie entière
@@ -24,8 +27,9 @@
 /**
  * @param {Array<{id, username, choix, mise}>} paris — les paris OUVERTS du match
  * @param {string} gagnant — le pseudo du vainqueur
- * @returns {Array<{id, username, statut:'gagne'|'perdu'|'rembourse', gain:number}>}
+ * @returns {Array<{id, username, statut:'gagne'|'perdu', gain:number, cagnotte?:true}>}
  *   `gain` est ce que le parieur REÇOIT (sa mise comprise) : 0 s'il a perdu.
+ *   `cagnotte` marque les mises d'un pot sans gagnant, qui vont à la cagnotte.
  */
 function regler(paris, gagnant) {
   return reglerEnsemble(paris, [gagnant]);
@@ -45,7 +49,7 @@ function reglerEnsemble(paris, gagnants) {
   const bons = liste.filter((p) => g.has(cle(p.choix)));
   const misesBonnes = bons.reduce((s, p) => s + Number(p.mise), 0);
   if (!bons.length) {
-    return liste.map((p) => ({ id: p.id, username: p.username, statut: 'rembourse', gain: Number(p.mise) }));
+    return liste.map((p) => ({ id: p.id, username: p.username, statut: 'perdu', gain: 0, cagnotte: true }));
   }
   const parts = bons.map((p, rang) => {
     const exacte = (Number(p.mise) * pot) / misesBonnes;

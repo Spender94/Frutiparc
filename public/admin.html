@@ -6393,7 +6393,8 @@ async function chargerParisChallengeAdmin() {
         <div style="color:#777;margin:6px 0 10px;line-height:1.45">
           Les joueurs misent <b>la veille, jusqu'à minuit</b>, sur les médaillés du Challenge du lendemain (icône « Prunostics » : une fenêtre du bureau, une feuille sur mobile) :
           « sera médaillé » ou « aura l'or ». <b>Pari mutuel</b> : dans chaque jeu, un pot « médaillé » et un pot « or », partagés entre ceux qui ont vu juste au prorata de leur mise ;
-          personne n'a vu juste, tout le monde est remboursé. Le parc ne crée ni ne détruit de kikooz.
+          un pari perdu est perdu ; quand personne n'a vu juste, le pot part à la <b>cagnotte</b>, que le Prunostiqueur de la semaine remporte le lundi
+          (cagnotte en jeu : <b>${Number(d.cagnotte) || 0} kikooz</b>). Le parc ne crée ni ne détruit de kikooz.
           Seuls les <b>jeux du jour</b> sont ouverts : tirés au sort parmi les jeux vraiment joués (7 jours sur 30), sans reprendre ceux de la veille, et figés dès le tirage.
           Tu peux les choisir toi-même ci-dessous (colonne « Jeux du ${esc(d.demain || '')} ») ; retirer un jeu rembourse ses mises.
           Les anciens paris à cote fixe se règlent à leur cote, comme promis.

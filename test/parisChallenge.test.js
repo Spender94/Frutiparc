@@ -269,6 +269,9 @@ test('la nuit passe : le roll règle au prorata, aucun kikooz créé ni détruit
   await sql(`UPDATE challenge_paris SET jour = $1`, [hier]);
   // Un ancien pari à cote fixe (la règle d'une semaine) : payé comme promis.
   await sql(`INSERT INTO challenge_paris (jour, jeu, type, username, choix, mise, cote, retour) VALUES ($1, 'swapou2_classic', 'or', 'dora', 'grenade', 10, 3, 30)`, [hier]);
+  // Un pot sans gagnant : dora seule sur clémence, médaillée au Grapiz où
+  // personne ne monte sur le podium. Perdu — et la mise part à la cagnotte.
+  await sql(`INSERT INTO challenge_paris (jour, jeu, type, username, choix, mise) VALUES ($1, 'grapiz_challenge', 'podium', 'dora', 'clemence', 12)`, [hier]);
   await jouer('grenade', 9000);
   await jouer('papaye', 8000);
   await jouer('myrtille', 7000);
@@ -286,21 +289,26 @@ test('la nuit passe : le roll règle au prorata, aucun kikooz créé ni détruit
   assert.equal(await solde('dora'), 500 + 30, 'la cote fixe d’avant : 10 × 3');
   const apres = (await Promise.all(PARIEURS.map(solde))).reduce((a, b) => a + b, 0);
   assert.equal(apres, avant + 75 + 45, 'les deux pots sont revenus, entiers, aux soldes');
-  const rows = await sql(`SELECT username, type, statut, gain FROM challenge_paris ORDER BY username, type`);
+  const rows = await sql(`SELECT username, type, statut, gain FROM challenge_paris ORDER BY username, type, jeu`);
   assert.deepEqual(rows.map((r) => [r.username, r.type, r.statut, r.gain]), [
     ['anais', 'or', 'gagne', 45], ['anais', 'podium', 'gagne', 38],
     ['basile', 'podium', 'gagne', 37],
     ['cyril', 'or', 'perdu', 0], ['cyril', 'podium', 'perdu', 0],
-    ['dora', 'or', 'gagne', 30], ['dora', 'podium', 'rembourse', 5],
+    ['dora', 'or', 'gagne', 30], ['dora', 'podium', 'perdu', 0], ['dora', 'podium', 'rembourse', 5],
   ]);
+  // La cagnotte : les 12 kikooz du pot sans gagnant, et rien d'autre.
+  const cagnotte = async () => Number(((await sql(`SELECT value FROM app_state WHERE key = 'prunostics_cagnotte'`))[0] || {}).value || 0);
+  assert.equal(await cagnotte(), 12);
   // Le compte rendu de la veille.
   const e = await etat('anais');
   assert.deepEqual(e.hier.podiums.find((p) => p.nom === 'Swapou 2').podium, ['grenade', 'papaye', 'myrtille']);
   assert.ok(e.hier.mesParis.some((p) => p.statut === 'gagne' && p.gain === 45));
-  // Un second roll ne paie pas deux fois.
+  // Un second roll ne paie pas deux fois, ni ne regarnit la cagnotte.
   await post('/api/admin/challenge/roll', {}, ADMIN);
   await wait(500);
   assert.equal(await solde('anais'), 533);
+  assert.equal(await cagnotte(), 12);
+  assert.equal((await etat('anais')).cagnotte, 12, 'la page la montre');
   // Le journal des kikooz : une dépense, puis un gain.
   const j = await (await fetch(BASE + '/api/light/kikooz?sid=' + sids.anais)).json();
   const textes = (j.events || []).map((x) => x.text).join(' | ');
@@ -344,6 +352,11 @@ test('le Prunostiqueur de la semaine : le classement, le sacre, l’objet offert
   const r = await post('/api/admin/paris-challenge/semaine', {}, ADMIN);
   assert.ok(r.ok, JSON.stringify(r));
   assert.deepEqual([r.gagnant.username, r.gagnant.net, r.gagnant.paris, r.gagnant.objet], ['emile', 60, 3, objet.nom]);
+  // La cagnotte (les 12 kikooz du pot sans gagnant) lui revient, et repart de zéro.
+  assert.equal(r.gagnant.cagnotte, 12);
+  assert.equal(((await sql(`SELECT value FROM app_state WHERE key = 'prunostics_cagnotte'`))[0] || {}).value, '0');
+  const jk = await (await fetch(BASE + '/api/light/kikooz?sid=' + sids.emile)).json();
+  assert.match((jk.events || []).map((x) => x.text).join(' | '), /12 kikooz obtenus par la cagnotte des Prunostics/);
   // L'objet est bien dans son inventaire.
   const items = await sql(`SELECT i.item_id FROM user_items i JOIN users u ON u.id = i.user_id WHERE LOWER(u.username) = 'emile'`);
   assert.ok(items.some((i) => Number(i.item_id) === objet.id));
@@ -356,12 +369,14 @@ test('le Prunostiqueur de la semaine : le classement, le sacre, l’objet offert
   assert.equal(sacre.length, 1);
   assert.match(sacre[0].content, /@emile, avec \[b\]\+60 kikooz\[\/b\]/);
   assert.match(sacre[0].content, /@fanny, 2e \(\+20\)/);
+  assert.match(sacre[0].content, /la cagnotte : 12 kikooz/);
   assert.doesNotMatch(sacre[0].content, /@gaston/, 'pas de podium pour un bénéfice négatif');
   assert.match(sacre[0].content, new RegExp('cadeau du parc : \\[b\\]' + objet.nom.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   // Le registre montre le sacré de la semaine passée, et le classement en cours.
   const reg = await (await fetch(BASE + '/api/paris/registre?sid=' + sids.emile)).json();
   assert.deepEqual(reg.semaine.passee && [reg.semaine.passee.nom, reg.semaine.passee.net], ['emile', 60]);
   assert.equal(reg.semaine.minParis, 3);
+  assert.equal(reg.semaine.cagnotte, 0, 'vidée par le sacre');
   assert.ok(Array.isArray(reg.semaine.classement));
 });
 

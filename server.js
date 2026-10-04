@@ -10387,8 +10387,9 @@ app.post('/api/admin/tournaments/:id/match/:mid/paris', tournoiScope, async (req
  *     les mises tombent ainsi dans les mêmes pots.
  *   · Deux POTS par jeu : « médaillé » (le joueur finit sur le podium) et « or »
  *     (il gagne). PARI MUTUEL (paris.js) : ceux qui ont vu juste se partagent
- *     le pot au prorata de leur mise ; personne n'a vu juste, chacun récupère
- *     sa mise. Le parc ne crée ni ne détruit aucun kikooz. (Une semaine de cote
+ *     le pot au prorata de leur mise ; un pari perdu est perdu, et quand
+ *     personne n'a vu juste, le pot part à la CAGNOTTE, que le Prunostiqueur
+ *     de la semaine remporte le lundi. Le parc ne crée ni ne détruit aucun kikooz. (Une semaine de cote
  *     fixe l'a montré : un modèle se trompe, et c'est le parc qui paie l'erreur.)
  *   · On peut miser sur soi. Un plafond par JOUR et par joueur, tous jeux
  *     confondus (50 kikooz d'origine).
@@ -10663,6 +10664,7 @@ app.get('/api/paris/challenge', async (req, res) => {
     const jeuxHier = (R.choix || {})[hier];
     res.json(Object.assign(base, {
       jour: demain, jourLisible: jourLisible(demain), plafond: Number(R.plafond) || 50,
+      cagnotte: await db.prunosticsCagnotte().catch(() => 0),
       dejaMise: moi ? await db.miseChallengeDuJour(moi, demain) : 0, jeux,
       autresParis: autres.map((p) => ({ type: p.type, texte: libellePariChallenge(p).replace(getDisplayName(p.choix), nomDe(p.choix)), mise: p.mise,
         cote: p.cote == null ? null : Number(p.cote), retour: p.retour })),
@@ -10732,8 +10734,16 @@ async function prunostiqueurDeLaSemaine(opts) {
       }
     } catch (e) { console.error('[PARIS] récompense de la semaine :', e.message); }
   }
+  // La cagnotte : les pots sans gagnant de la semaine (et des précédentes, si
+  // personne n'a été sacré), au Prunostiqueur. Une semaine sans sacré la
+  // laisse grossir.
+  let cagnotte = 0;
+  try {
+    cagnotte = await db.prunosticsCagnotteVider();
+    if (cagnotte > 0) parisCrediter(premier.username, cagnotte, 'la cagnotte des Prunostics');
+  } catch (e) { console.error('[PARIS] cagnotte de la semaine :', e.message); cagnotte = 0; }
   const contenu = Dimitri.messageSemaine({
-    semaine: sem.lisible, objet,
+    semaine: sem.lisible, objet, cagnotte,
     gagnant: { nom: nomDe(premier.username), net: premier.net, paris: premier.paris, gagnes: premier.gagnes },
     suivants: classement.slice(1, 3).map((c) => ({ nom: nomDe(c.username), net: c.net })),
   });
@@ -10745,8 +10755,8 @@ async function prunostiqueurDeLaSemaine(opts) {
     notifyForumNews(Dimitri.PSEUDO_NPC, suiveurs, { id: topic.id, titre: topic.title });
     await notifierMentionsForum(Dimitri.PSEUDO_NPC, topic.id, topic.title, contenu).catch(() => []);
   }, 'Prunostiqueur de la semaine');
-  console.log(`[PARIS] Prunostiqueur de la semaine ${sem.lundi} : ${premier.username} (+${premier.net})${objet ? ' — ' + objet : ''}`);
-  return { semaine: sem, gagnant: Object.assign({ nom: nomDe(premier.username), objet }, premier) };
+  console.log(`[PARIS] Prunostiqueur de la semaine ${sem.lundi} : ${premier.username} (+${premier.net})${objet ? ' — ' + objet : ''}${cagnotte ? ` — cagnotte ${cagnotte}` : ''}`);
+  return { semaine: sem, gagnant: Object.assign({ nom: nomDe(premier.username), objet, cagnotte }, premier) };
 }
 app.post('/api/admin/paris-challenge/semaine', adminScope('challenge'), async (req, res) => {
   try {
@@ -10805,6 +10815,7 @@ app.get('/api/paris/registre', async (req, res) => {
       classement: enCours.slice(0, 10).map((c, i) => ({ rang: i + 1, nom: nomDe(c.username), soi: c.username === moi, net: c.net, paris: c.paris, gagnes: c.gagnes })),
       moi: monRang >= 0 ? { rang: monRang + 1, net: enCours[monRang].net } : null,
       passee: avant && avant.net > 0 ? { lisible: passee.lisible, nom: nomDe(avant.username), net: avant.net } : null,
+      cagnotte: await db.prunosticsCagnotte().catch(() => 0),
     };
     res.json({
       ok: true, moi: moi || null, seuil, bilan, lignes, semaine,
@@ -10934,6 +10945,7 @@ app.get('/api/admin/paris-challenge', adminScope('challenge'), async (req, res) 
     const classement = (await db.classementParis(sem.lundi, sem.dimanche, 3)).slice(0, 5);
     res.json({
       reglages: R, demain, hier, jeuxDuJour: duJour, objets,
+      cagnotte: await db.prunosticsCagnotte().catch(() => 0),
       semaine: { lisible: sem.lisible, classement: classement.map((c) => Object.assign({ nom: getDisplayName(c.username) }, c)) },
       bilan: { jours: bilan, mises: somme(bilan, 'mises'), gains: somme(bilan, 'gains') },
       jeux: jeuxChallengeParis().map((j) => {

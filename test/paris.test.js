@@ -39,7 +39,10 @@ test('jusqu’au dernier kikooz : la somme des gains est la somme des mises', ()
     for (let i = 0; i < n; i++) liste.push(pari(i, 'u' + i, alea() < 0.5 ? 'a' : 'b', 1 + Math.floor(alea() * 100)));
     const pot = liste.reduce((s, p) => s + p.mise, 0);
     const r = P.regler(liste, alea() < 0.5 ? 'a' : 'b');
-    assert.equal(r.reduce((s, x) => s + x.gain, 0), pot, 'rien de créé, rien de perdu');
+    // Ce qui ne va pas aux gagnants va à la cagnotte : rien de créé, rien de perdu.
+    const cagnotte = r.filter((x) => x.cagnotte).reduce((s, x) => s + liste.find((y) => y.id === x.id).mise, 0);
+    assert.equal(r.reduce((s, x) => s + x.gain, 0) + cagnotte, pot, 'rien de créé, rien de perdu');
+    assert.ok(!r.some((x) => x.statut === 'rembourse'), 'un pari perdu ne se rembourse jamais');
     for (const x of r) {
       const p = liste.find((y) => y.id === x.id);
       if (x.statut === 'gagne') assert.ok(x.gain >= p.mise, 'un gagnant récupère au moins sa mise');
@@ -54,9 +57,13 @@ test('un arrondi : les kikooz qui restent vont aux plus gros restes', () => {
   assert.deepEqual(r.filter((x) => x.statut === 'gagne').map((x) => x.gain), [4, 3, 3], 'le premier arrivé départage');
 });
 
-test('personne n’a vu juste : chacun récupère sa mise ; tout le monde a vu juste : idem', () => {
+test('personne n’a vu juste : tout le monde perd, le pot va à la cagnotte ; tout le monde a vu juste : chacun reprend sa mise', () => {
   const r = P.regler([pari(1, 'a', 'x', 20), pari(2, 'b', 'x', 5)], 'y');
-  assert.deepEqual(r.map((x) => [x.statut, x.gain]), [['rembourse', 20], ['rembourse', 5]]);
+  assert.deepEqual(r.map((x) => [x.statut, x.gain, x.cagnotte]), [['perdu', 0, true], ['perdu', 0, true]]);
+  // Seul dans son pot, et à côté : perdu aussi. Parier engage toujours sa mise.
+  assert.deepEqual(P.regler([pari(1, 'a', 'x', 30)], 'y').map((x) => [x.statut, x.gain]), [['perdu', 0]]);
+  // Un pot qui a des gagnants n'envoie rien à la cagnotte.
+  assert.ok(!P.regler([pari(1, 'a', 'x', 20), pari(2, 'b', 'y', 5)], 'x').some((x) => x.cagnotte));
   const r2 = P.regler([pari(1, 'a', 'x', 20), pari(2, 'b', 'x', 5)], 'x');
   assert.deepEqual(r2.map((x) => [x.statut, x.gain]), [['gagne', 20], ['gagne', 5]]);
   assert.deepEqual(P.regler([], 'x'), []);
