@@ -492,6 +492,9 @@ test('ASTERO : ce qui sort d\'un bord rentre par l\'autre', () => {
 test('PARACHUTE : la fourmi posée sur la feuille gagne, et sa pellicule joue $landing', () => {
   const b = banc(J.Parachute, { dif: 0 });
   const j = b.jeu;
+  // skin._xscale = paraRay·2 : la fourmi à 50 % (à 100 %, elle sortait du cadre).
+  assert.equal(j.para.peau.sx, 0.5);
+  assert.equal(j.para.peau.sy, 0.5);
   // Parachute.init : rayon 40 - dif·0.1, vitesse 0.5 + dif·0.06, sol à mch-15.
   assert.equal(j.rayonFeuille, 40);
   assert.equal(j.vitesseFeuille, 0.5);
@@ -942,6 +945,33 @@ test('JUMPFISH : le saut, la ligne d\'eau, le cliché — gagné si le poisson e
   assert.ok(j.blancEcran < 0.5 && j.blancEcran > 0, 'et se dissipe');
   b.avancer(30);
   assert.equal(j.gagnant, true, 'photo réussie');
+});
+
+test('JUMPFISH : un poisson DANS le cadre, même décalé sur le côté, fait une photo réussie', () => {
+  // « L'ombre est parfaitement dans le cadre, mais un peu sur le côté, et le
+  // défi ne se valide pas » : la source exigeait 30 % de la taille du centre.
+  const essai = (decalX, decalY, rot) => {
+    const b = banc(J.JumpFish, { dif: 0 });
+    const j = b.jeu;
+    b.socle.timer = 99;
+    b.avancer(1);
+    b.souris(j.poisson.x + decalX, j.poisson.y + decalY);
+    j.cadre.x = j.poisson.x - decalX;
+    j.cadre.y = j.poisson.y - decalY;
+    j.cadre.peau.rot = rot || 0;
+    // Le cadre ne bouge plus d'ici l'appui : il est déjà sous la souris…
+    b.souris(j.cadre.x, j.cadre.y);
+    j.photographier();
+    b.avancer(60);
+    return j.gagnant;
+  };
+  assert.equal(essai(0, 0), true, 'au centre');
+  assert.equal(essai(38, 0), true, 'décalé de 38 px dans un cadre de 100 : réussi (refusé avant)');
+  assert.equal(essai(-30, 30), true, 'dans un coin intérieur');
+  assert.equal(essai(55, 0), false, 'hors du cadre : raté');
+  assert.equal(essai(0, -60), false, 'au-dessus du cadre : raté');
+  // Le cadre incliné : le repère tourne avec lui.
+  assert.equal(essai(38, 0, 90), true, 'cadre tourné d’un quart : toujours dedans');
 });
 
 test('JUMPFISH : le poisson manqué replonge — plouf partagé avec la fumée du Lander', () => {
@@ -1534,6 +1564,20 @@ test('le taquin : huit fenêtres sur l\'image, le trou en haut à gauche', () =>
   assert.ok(!j.checkWin(), 'jamais mélangé en position gagnante');
 });
 
+test('le taquin : l’image couvre tout le plateau — aucune tuile n’en vaut une autre', () => {
+  // L'image (202 px, le visage plein cadre) était posée à demi-taille : cinq
+  // tuiles sur huit étaient du fond uni, interchangeables à l'œil, et un taquin
+  // « refait » à l'image n'était pas résolu (le défi ne se terminait pas).
+  const j = banc(J.Taquin, { dif: 0 }).jeu;
+  for (const o of j.sList) {
+    assert.equal(o.image.sx, 2, 'étirée × 2 : 100 unités du dessin pour 200 px');
+    assert.equal(o.image.sy, 2);
+    // Chaque fenêtre de 66,7 px tombe DANS l'image (0–200 depuis son coin).
+    assert.ok((o.origX + 1) * j.ec <= 100 * o.image.sx + 1e-9 && (o.origY + 1) * j.ec <= 100 * o.image.sy + 1e-9,
+      `tuile (${o.origX}, ${o.origY}) couverte`);
+  }
+});
+
 test('le taquin se joue : glisser vers le trou, et la victoire attend le trou en (0,0)', () => {
   const b = banc(J.Taquin, { dif: 0 });
   const j = b.jeu;
@@ -2042,6 +2086,29 @@ test('le fléau penche du côté lourd et les plateaux suivent (ressort 0,1, amo
   const dernier = j.pList[2][4];
   assert.equal(dernier.mc.y.toFixed(4), (j.p2.y + 93).toFixed(4));
   assert.ok(Math.abs(dernier.lx) <= 30 + 1e-9, 'dans la largeur du plateau');
+});
+
+test('un poids SEUL de son calibre est visible au centre du plateau, et se retire', () => {
+  // La formule d'étalement divise par (n - 1) : un poids seul donnait NaN —
+  // invisible et impossible à cliquer (« un poids invisible s'ajoute »).
+  const b = banc(J.Balance);
+  const j = b.jeu;
+  b.avancer(5);
+  j.addPoid(2);
+  b.avancer(1);
+  const gros = j.pList[2][0];
+  assert.equal(gros.lx, 0, 'au centre du plateau');
+  assert.ok(Number.isFinite(gros.mc.x) && Number.isFinite(gros.mc.y), 'une vraie position');
+  assert.equal(gros.mc.x.toFixed(4), (j.p2.x - 0.2).toFixed(4));
+  // On le retire en cliquant dessus.
+  b.souris(gros.mc.x, gros.mc.y - 5);
+  j.click();
+  assert.equal(j.pList[2].length, 0, 'retiré');
+  assert.equal(j.right, 0);
+  // Deux poids du même calibre : étalés comme à l'époque, sans NaN.
+  j.addPoid(0);
+  j.addPoid(0);
+  assert.ok(j.pList[0].every((p) => Number.isFinite(p.lx)));
 });
 
 test('l\'équilibre exact, fléau posé, gagne — et les gardes d\'époque tiennent', () => {

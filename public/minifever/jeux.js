@@ -773,6 +773,12 @@ class Parachute extends Jeu {
     this.para.y = HAUTEUR * 0.5;
     this.para.vitr = 0;
     this.para.flPhys = false;
+    // skin._xscale = paraRay·2 : la fourmi à 50 %. Le portage l'avait
+    // oubliée — dessinée à 100 %, elle débordait sous le cadre en
+    // descendant (ses pattes 50 px plus bas que le point d'atterrissage
+    // que le jeu calcule, y + paraRay), et la viser devenait une devinette.
+    this.para.peau.sx = this.rayonPara * 2 / 100;
+    this.para.peau.sy = this.rayonPara * 2 / 100;
     this.para.peau.arreter();
     this.para.init();
     this.anim = null;             // en vol, la pellicule reste sur l'image 1
@@ -1885,8 +1891,15 @@ class Orbital extends Jeu {
  * Une ombre tourne dans l'eau ; le poisson saute — une seule fois — et il faut
  * le prendre dans le cadre, qui suit la souris en tanguant. L'appui déclenche :
  * flash blanc, le décor se découpe au format de la photo, le poisson s'y fige.
- * Réussie si le poisson est à moins de 30 % du cadre de son centre. La
- * difficulté rétrécit le cadre et raidit le saut.
+ * La difficulté rétrécit le cadre et raidit le saut.
+ *
+ * LA PHOTO RÉUSSIE. La source exigeait le poisson à moins de 30 % de la
+ * taille du cadre de son CENTRE (un disque de 30 px dans un cadre de 100) :
+ * un poisson bien visible dans le cadre, mais décalé sur le côté, était
+ * refusé — « l'ombre est parfaitement dans le cadre et le défi ne se valide
+ * pas ». La règle suit donc ce que le joueur voit : le centre du poisson
+ * DANS le cadre (dans le repère du cadre incliné), à 8 % du bord près —
+ * |x|, |y| < 42 % de la taille, le cadre en faisant ±50 %.
  *
  * Dessins (voisins de gameJumpFish #184) :
  *   sym182  l'eau, en toile de fond
@@ -1897,6 +1910,9 @@ class Orbital extends Jeu {
  *   sym16   le plouf — la bouffée partagée avec la fumée du Lander, quinze
  *           images, qui se retire d'elle-même
  */
+// La demi-largeur utile du cadre, en part de sa taille (il en fait ±0,5).
+const JUMPFISH_CADRE = 0.42;
+
 class JumpFish extends Jeu {
   constructor(socle) {
     super(socle);
@@ -1970,7 +1986,7 @@ class JumpFish extends Jeu {
       case 3:
         this.flash = Math.min(this.flash + 2 * Temps.tmod, 100);
         this.blancEcran = (100 - this.flash) / 100;
-        if (this.flash > 98) this.gagne(this.distance < this.taille * 0.3);
+        if (this.flash > 98) this.gagne(this.dansLeCadre);
         break;
       default: break;
     }
@@ -2021,6 +2037,14 @@ class JumpFish extends Jeu {
     this.cadre.peau.allerA(2);
     this.scene.devant(this.cadre.peau);
     this.distance = this.poisson.distance(this.cadre);
+    // Le poisson dans le repère du cadre (incliné de sa rotation).
+    const a = -this.cadre.peau.rot * Math.PI / 180;
+    const dx = this.poisson.x - this.cadre.x;
+    const dy = this.poisson.y - this.cadre.y;
+    const lx = dx * Math.cos(a) - dy * Math.sin(a);
+    const ly = dx * Math.sin(a) + dy * Math.cos(a);
+    const marge = this.taille * JUMPFISH_CADRE;
+    this.dansLeCadre = Math.abs(lx) < marge && Math.abs(ly) < marge;
     // Le poisson FIGÉ, dans le fond masqué — la copie que la source attache.
     const fige = this.attacher('sym180', PROF.SPRITE);
     fige.x = this.poisson.x;
@@ -3874,9 +3898,20 @@ class Balance extends Jeu {
         const b = a[0].mc.boite || { x0: -25, x1: 25 };
         const w = (b.x1 - b.x0) * a[0].mc.sx;          // a[0]._width d'époque
         const wt = (a.length - 1) * w;
-        const e = (this.plateWidth - (wt + w)) / (a.length - 1);
-        for (let i = 0; i < a.length; i++) {
-          a[i].lx = w * 0.5 + (w + e) * i - this.plateWidth * 0.5;
+        // UN SEUL poids du calibre : la formule d'époque divise par zéro
+        // (a.length - 1), e vaut l'infini et (w + e)·0 donne NaN. Flash
+        // ignorait ce _x invalide — le poids restait à 0, au milieu du
+        // plateau ; ici il partait en NaN : INVISIBLE, et impossible à
+        // cliquer pour le retirer (le « poids fantôme » de la balance, le
+        // gros surtout, qu'on pose rarement en double). Seul, il se pose
+        // donc au centre, comme dans le SWF.
+        if (a.length === 1) {
+          a[0].lx = 0;
+        } else {
+          const e = (this.plateWidth - (wt + w)) / (a.length - 1);
+          for (let i = 0; i < a.length; i++) {
+            a[i].lx = w * 0.5 + (w + e) * i - this.plateWidth * 0.5;
+          }
         }
       }
       this.right += a.length * this.pInfoList[n];
@@ -5058,9 +5093,14 @@ const HAMMER_TERRIERS = [
  * Tout est vérifié contre la classe « 2pp4O5 » du SWF de dev :
  *   · picFrame = random(4) + 1, mais UNE seule image a été compilée
  *     (sym554) : le tirage d'époque brûle un aléa et retombe toujours sur
- *     le même tableau — reproduit tel quel. Et cette image (un bitmap de
- *     102 px) ne couvre que le coin HAUT-GAUCHE du taquin de 200 : les
- *     tuiles du bas et de la droite sont nues — l'état du build, conservé ;
+ *     le même tableau — reproduit tel quel. Ce tableau est un bitmap de
+ *     202 px (gfx/taquin_0.png, le visage plein cadre), mais le build le
+ *     posait à demi-taille (102) : il ne couvrait que le coin haut-gauche,
+ *     et CINQ tuiles sur huit étaient du fond uni, interchangeables à l'œil.
+ *     Le joueur refaisait l'image… sans que l'ordre soit le bon, et le défi
+ *     ne se terminait pas (« une fois sur dix », selon le mélange). Le
+ *     tableau est donc étiré sur tout le taquin (× 2) : chaque tuile a son
+ *     morceau, et une image refaite est un taquin résolu ;
  *   · l'id d'époque s'incrémente TROU COMPRIS (id = x·3 + y), et checkWin
  *     compare id à round(y + x·side) ;
  *   · le recadrage d'époque (pic à 100·c, décalé de -x·ec·c) se compense
@@ -5103,6 +5143,9 @@ class Taquin extends Jeu {
           // L'image plein cadre, masquée par la fenêtre de la tuile…
           const image = this.attacher('sym554', PROF.SPRITE);
           image.allerA(picFrame);
+          // Le visage plein cadre : 100 unités du dessin pour les 200 px du taquin.
+          image.sx = this.size / 100;
+          image.sy = this.size / 100;
           // …et la bordure par-dessus.
           const bord = this.attacher('sym558', PROF.SPRITE);
           bord.sx = k;
