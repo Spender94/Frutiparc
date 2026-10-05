@@ -276,7 +276,7 @@ class Tzongre extends Phys {
     this.coolDownShoot = 0;
     this.bonusMulti = 0; this.bonusCombo = 0; this.bonusPower = 0; this.bonusDodge = 0; this.bonusFilMax = 0;
     this.bzzz = 0; this.lNum = 0; this.pitch = 0; this.cBoost = 1; this.searchTimer = 0;
-    this.flDirectVide = false;
+    this.tourChaine = false; this.attenteChaine = 0;
     this.thrustCoef = 1 / Math.pow(this.nbFrict, 8);
     super.init();
     this.setSkin();
@@ -563,17 +563,46 @@ class Tzongre extends Phys {
    * change — les pommes cherchent exactement comme avant, c'est l'ORDRE que la
    * tzongre leur impose qui est nouveau.
    */
+  /*
+   * L'ORDRE DES FILS : UN JAUNE, PUIS UN ORANGE, PUIS UN JAUNE…
+   *
+   * 2005 laissait les chaînes (orange) dévorer les pommes avant que la
+   * tzongre ait lancé son deuxième fil (jaune) ; la règle de septembre
+   * inversait tout — les fils directs d'abord, jusqu'à la dernière place —
+   * et les premières pommes pendaient côte à côte, à l'horizontale, à se
+   * gêner : plus moyen de faire une grappe. On ALTERNE donc : après un fil
+   * direct, c'est au tour d'une chaîne de s'allonger (la plus courte), puis
+   * de nouveau un fil direct, et ainsi de suite.
+   *
+   * Le tour passe quand même si celui qui l'a ne peut pas jouer : plus de
+   * place ou rien à portée pour un fil direct ; chaînes au bout de leur
+   * profondeur (combo), ou rien trouvé en deux recharges (24 temps), pour
+   * une chaîne. Une recharge en cours, elle, se respecte : on attend.
+   */
   search(combo) {
-    if (this.linkList.length === 0) this.flDirectVide = false;
-    const direct = this.chercherDirect();
-    if (direct === true) this.flDirectVide = false;
-    else if (direct === false) this.flDirectVide = true;
-    if (combo <= 0 || this.linkList.length === 0) return;
-    if (this.linkList.length < this.range && !this.flDirectVide) return;
+    if (this.linkList.length === 0) { this.tourChaine = false; this.attenteChaine = 0; }
     const tailles = this.linkList.map((l) => l.chainLength());
-    const min = Math.min.apply(null, tailles);
+    const min = tailles.length ? Math.min.apply(null, tailles) : 0;
+    // Une chaîne peut s'allonger tant qu'elle n'a pas combo + 1 pommes.
+    const chainePossible = combo > 0 && this.linkList.length > 0 && min < combo + 1;
+    if (!this.tourChaine || !chainePossible) {
+      const direct = this.chercherDirect();
+      if (direct === true) { this.tourChaine = combo > 0; this.attenteChaine = 0; return; }
+      // Recharge en cours avec une place libre : on attend le prochain fil direct.
+      if (direct === undefined && this.linkList.length < this.range && !this.tourChaine) return;
+      // Plus de place, ou rien à portée : la main passe aux chaînes.
+    }
+    if (!chainePossible) return;
+    const avant = tailles.reduce((a, b) => a + b, 0);
     for (let i = 0; i < this.linkList.length; i++) {
       if (tailles[i] <= min) this.linkList[i].search(combo - 1);
+    }
+    const apres = this.linkList.reduce((a, l) => a + l.chainLength(), 0);
+    if (apres > avant) { this.tourChaine = false; this.attenteChaine = 0; return; }
+    // Rien trouvé : au bout de deux recharges, le tour revient au jaune.
+    if (this.tourChaine) {
+      this.attenteChaine += Cs.tmod;
+      if (this.attenteChaine > 24) { this.tourChaine = false; this.attenteChaine = 0; }
     }
   }
   groundCrash() {

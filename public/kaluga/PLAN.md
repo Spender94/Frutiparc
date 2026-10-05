@@ -437,22 +437,28 @@ corrigent des défauts d'époque — le jeu de 2005 les a aussi, et rien ne les
 défend. Le disque Flash, lui, joue toujours les règles de 2005.
 `test/kalugaRegles.test.js` les épingle.
 
-1. **Le fil : les fils directs d'abord, et des chaînes égales**
-   (`Tzongre.search`, sprites.js). Le `search` d'époque — gardé tel quel dans
-   `Phys`, c'est celui des pommes — fait deux choses à chaque image : un fil
-   direct si la tzongre a une place (le papillon **jaune**, « Multi up »), puis
-   chaque pomme accrochée cherche à son tour, `combo` niveaux plus loin (le
-   papillon **orange**, « Chain up »). Or un accrochage coûte douze temps de
-   recharge à qui accroche : pendant que la tzongre attend pour lancer son
-   deuxième fil, la première pomme a déjà fini d'attendre et allonge sa
-   chaîne — puis la seconde, en retard d'un cran. Huit pommes partaient en
-   3 + 5 avec un jaune, en 1-2-5 avec deux : le jeu favorisait l'orange. Deux
-   règles à la place : les fils directs se servent en premier (tant qu'il
-   reste une place et que la dernière recherche directe a trouvé — si elle
-   n'a rien trouvé, les chaînes repartent, sinon une seule pomme en vue ne
-   chaînerait jamais), et seules les chaînes **les plus courtes** s'allongent.
-   Huit pommes font 4 + 4, puis 3-3-2 avec deux jaunes. Recharges, portée,
-   distance : rien d'autre ne change.
+1. **Le fil : un jaune, puis un orange, puis un jaune…** (`Tzongre.search`,
+   sprites.js). Le `search` d'époque — gardé tel quel dans `Phys`, c'est celui
+   des pommes — fait deux choses à chaque image : un fil direct si la tzongre
+   a une place (le papillon **jaune**, « Multi up »), puis chaque pomme
+   accrochée cherche à son tour, `combo` niveaux plus loin (le papillon
+   **orange**, « Chain up »). Un accrochage coûte douze temps de recharge à qui
+   accroche : pendant que la tzongre attend pour lancer son deuxième fil, la
+   première pomme a déjà fini d'attendre et allonge sa chaîne. Huit pommes
+   partaient en 3 + 5 avec un jaune, en 1-2-5 avec deux : le jeu favorisait
+   l'orange.
+
+   Une première correction (septembre) servait les fils directs d'abord,
+   jusqu'à la dernière place : les premières pommes pendaient alors côte à
+   côte, à l'horizontale, à se gêner — « plus moyen de faire des grappes ».
+   La règle est désormais l'**alternance** demandée par les joueurs : après un
+   fil direct, c'est au tour d'une chaîne de s'allonger (la plus courte), puis
+   de nouveau un fil direct, etc. Le tour passe si celui qui l'a ne peut pas
+   jouer (plus de place ou rien à portée pour le jaune ; chaînes au bout de
+   leur profondeur, ou rien trouvé en deux recharges, pour l'orange). Quatre
+   pommes avec un jaune : J-O-J-O, 2 + 2 ; huit avec deux jaunes :
+   J-O-J-O-J-O puis les chaînes, 3-3-2. Recharges, portée, distance : rien
+   d'autre ne change.
 
 2. **La pomme d'or vaut dix fois la moyenne des combos des cinq dernières
    pommes** (`Classic.pommeOr`, `Panier.pointsPommeOr`). En 2005 elle valait

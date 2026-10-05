@@ -71,35 +71,36 @@ test('les pommes cherchent comme en 2005 : Phys.search est la recherche d’épo
   assert.equal(s.trim(), "this.chercherDirect();\n    for (const link of this.linkList) if (combo > 0) link.search(combo - 1);");
 });
 
-test('la tzongre impose son ordre : fils directs d’abord, chaînes les plus courtes ensuite', () => {
+test('la tzongre alterne : un fil jaune, puis une chaîne orange (la plus courte), puis un jaune…', () => {
   const s = methode(SPRITES, 'Tzongre extends Phys', 'search');
-  // La recherche directe passe TOUJOURS en premier.
-  assert.match(s, /^\s*if \(this\.linkList\.length === 0\) this\.flDirectVide = false;\n\s*const direct = this\.chercherDirect\(\);/);
-  // Tant qu'il reste une place ET que la dernière recherche directe a trouvé,
-  // les chaînes attendent ; si elle n'a rien trouvé, elles repartent.
-  assert.match(s, /if \(direct === true\) this\.flDirectVide = false;\n\s*else if \(direct === false\) this\.flDirectVide = true;/);
-  assert.match(s, /if \(this\.linkList\.length < this\.range && !this\.flDirectVide\) return;/);
-  // Seules les chaînes les plus courtes s'allongent.
-  assert.match(s, /const tailles = this\.linkList\.map\(\(l\) => l\.chainLength\(\)\);/);
-  assert.match(s, /const min = Math\.min\.apply\(null, tailles\);/);
+  // Le tour repart du jaune quand la tzongre n'a plus de fil.
+  assert.match(s, /if \(this\.linkList\.length === 0\) \{ this\.tourChaine = false; this\.attenteChaine = 0; \}/);
+  // Une chaîne peut s'allonger tant qu'elle n'a pas combo + 1 pommes.
+  assert.match(s, /const chainePossible = combo > 0 && this\.linkList\.length > 0 && min < combo \+ 1;/);
+  // Un fil direct posé donne la main aux chaînes.
+  assert.match(s, /if \(direct === true\) \{ this\.tourChaine = combo > 0; this\.attenteChaine = 0; return; \}/);
+  // Une recharge en cours se respecte (on attend son fil direct).
+  assert.match(s, /if \(direct === undefined && this\.linkList\.length < this\.range && !this\.tourChaine\) return;/);
+  // Seules les chaînes les plus courtes s'allongent ; une chaîne allongée rend la main au jaune.
   assert.match(s, /if \(tailles\[i\] <= min\) this\.linkList\[i\]\.search\(combo - 1\);/);
-  // La longueur d'une chaîne : les pommes suspendues, elle comprise.
+  assert.match(s, /if \(apres > avant\) \{ this\.tourChaine = false; this\.attenteChaine = 0; return; \}/);
+  // Rien trouvé en deux recharges : le tour revient au jaune.
+  assert.match(s, /if \(this\.attenteChaine > 24\) \{ this\.tourChaine = false; this\.attenteChaine = 0; \}/);
   assert.match(SPRITES, /chainLength\(\) \{ let n = 1; for \(const l of this\.linkList\) n \+= l\.chainLength\(\); return n; \}/);
-  // Le témoin repart à zéro avec la tzongre.
-  assert.match(methode(SPRITES, 'Tzongre extends Phys', 'init'), /this\.flDirectVide = false;/);
+  assert.match(methode(SPRITES, 'Tzongre extends Phys', 'init'), /this\.tourChaine = false; this\.attenteChaine = 0;/);
 });
 
-test('l’équilibre, simulé : huit pommes font 4 + 4 avec un jaune, 3-3-2 avec deux', () => {
+test('l’alternance, simulée : J, O, J, O… — ni chaînes affamées, ni rangée de fils directs', () => {
   /* Une simulation du jeu de fils, à plat : la recharge de douze temps, la
      portée, l'ordre d'appel — tout ce qui compte pour la RÉPARTITION, et rien
-     d'autre (pas de physique). On rejoue les deux ordres, celui de 2005 et le
-     nouveau, sur les mêmes pommes alignées, et l'on compte les fils. */
-  function simuler(range, combo, nbPommes, ordreNouveau) {
+     d'autre (pas de physique). On rejoue l'ordre de 2005 et l'alternance sur
+     les mêmes pommes alignées, et l'on note l'ordre des fils (J : direct,
+     O : chaîne). */
+  function simuler(range, combo, nbPommes, alterne) {
     const noeud = (x) => ({ x, linkList: [], parentLink: null, searchTimer: 0, range: 1, nbTake: 80, flLinkable: true });
-    // Les pommes en rang serré, la tzongre à portée de toutes (le rang fait
-    // moins que sa prise) : ce qui décide, c'est l'ordre, pas la géométrie.
     const pommes = Array.from({ length: nbPommes }, (_, i) => noeud(20 + i * 10));
-    const tz = noeud(60); tz.range = range; tz.nbTake = 140; tz.flDirectVide = false;
+    const tz = noeud(60); tz.range = range; tz.nbTake = 140; tz.tourChaine = false; tz.attenteChaine = 0;
+    const journal = [];
     const chainLength = (n) => 1 + n.linkList.reduce((s, l) => s + chainLength(l), 0);
     const chercherDirect = (n) => {
       if (n.searchTimer > 0) { n.searchTimer -= 1; return undefined; }
@@ -113,62 +114,49 @@ test('l’équilibre, simulé : huit pommes font 4 + 4 avec un jaune, 3-3-2 avec
       }
       if (!link) return false;
       n.linkList.push(link); n.searchTimer = 12; link.searchTimer = 12; link.parentLink = n;
+      journal.push(n === tz ? 'J' : 'O');
       return true;
     };
     const searchPomme = (n, c) => { chercherDirect(n); for (const l of n.linkList) if (c > 0) searchPomme(l, c - 1); };
     const searchTz2005 = (c) => searchPomme(tz, c);
-    const searchTzNouveau = (c) => {
-      if (tz.linkList.length === 0) tz.flDirectVide = false;
-      const direct = chercherDirect(tz);
-      if (direct === true) tz.flDirectVide = false; else if (direct === false) tz.flDirectVide = true;
-      if (c <= 0 || tz.linkList.length === 0) return;
-      if (tz.linkList.length < tz.range && !tz.flDirectVide) return;
+    const searchAlterne = (c) => {
+      if (tz.linkList.length === 0) { tz.tourChaine = false; tz.attenteChaine = 0; }
       const tailles = tz.linkList.map(chainLength);
-      const min = Math.min.apply(null, tailles);
+      const min = tailles.length ? Math.min.apply(null, tailles) : 0;
+      const chainePossible = c > 0 && tz.linkList.length > 0 && min < c + 1;
+      if (!tz.tourChaine || !chainePossible) {
+        const direct = chercherDirect(tz);
+        if (direct === true) { tz.tourChaine = c > 0; tz.attenteChaine = 0; return; }
+        if (direct === undefined && tz.linkList.length < tz.range && !tz.tourChaine) return;
+      }
+      if (!chainePossible) return;
+      const avant = tailles.reduce((a, b) => a + b, 0);
       tz.linkList.forEach((l, i) => { if (tailles[i] <= min) searchPomme(l, c - 1); });
+      const apres = tz.linkList.reduce((a, l) => a + chainLength(l), 0);
+      if (apres > avant) { tz.tourChaine = false; tz.attenteChaine = 0; return; }
+      if (tz.tourChaine) { tz.attenteChaine += 1; if (tz.attenteChaine > 24) { tz.tourChaine = false; tz.attenteChaine = 0; } }
     };
-    for (let t = 0; t < 400; t++) (ordreNouveau ? searchTzNouveau : searchTz2005)(combo);
-    return tz.linkList.map(chainLength).sort((a, b) => b - a);
+    for (let t = 0; t < 400; t++) (alterne ? searchAlterne : searchTz2005)(combo);
+    return { forme: tz.linkList.map(chainLength).sort((a, b) => b - a), ordre: journal.join('') };
   }
-  // 2005 : la première chaîne mange ce qui aurait dû faire l'autre fil — c'est
-  // le « 1 et 3, 2 et 4 » relevé par les joueurs, et « 1-2-5 » à deux jaunes.
-  // (À huit pommes et chaînes de quatre, 2005 fait déjà 4 + 4 : c'est le
-  // PLAFOND de profondeur qui égalise, pas l'ordre — le déséquilibre se voit
-  // dès que les pommes manquent pour remplir toutes les chaînes.)
-  assert.deepEqual(simuler(2, 3, 4, false), [3, 1], '2005, un jaune, quatre pommes : 1 et 3');
-  assert.deepEqual(simuler(2, 3, 6, false), [4, 2], '2005, un jaune, six pommes : 2 et 4');
-  assert.deepEqual(simuler(3, 3, 8, false), [4, 3, 1], '2005, deux jaunes, huit pommes : une chaîne affamée');
-  // Nouveau : à une pomme près, toujours.
-  assert.deepEqual(simuler(2, 3, 4, true), [2, 2], 'un jaune, quatre pommes : 2 + 2');
-  assert.deepEqual(simuler(2, 3, 6, true), [3, 3], 'un jaune, six pommes : 3 + 3');
-  assert.deepEqual(simuler(2, 3, 8, true), [4, 4], 'un jaune, huit pommes : 4 + 4');
-  assert.deepEqual(simuler(3, 3, 8, true), [3, 3, 2], 'deux jaunes, huit pommes : 3-3-2');
-  assert.deepEqual(simuler(2, 1, 8, true), [2, 2], 'un jaune, un orange : deux chaînes de deux, ni plus');
-  // Sans papillon orange, aucune chaîne : les fils directs, et c'est tout.
-  assert.deepEqual(simuler(2, 0, 8, true), [1, 1], 'sans orange, deux pommes');
+  // 2005 : la première chaîne mange ce qui aurait dû faire l'autre fil.
+  assert.deepEqual(simuler(2, 3, 4, false).forme, [3, 1], '2005, un jaune, quatre pommes : 1 et 3');
+  assert.deepEqual(simuler(3, 3, 8, false).forme, [4, 3, 1], '2005, deux jaunes, huit pommes : une chaîne affamée');
+  // L'alternance : un jaune, un orange, un jaune…
+  assert.deepEqual(simuler(2, 3, 4, true), { forme: [2, 2], ordre: 'JOJO' });
+  assert.deepEqual(simuler(2, 3, 8, true), { forme: [4, 4], ordre: 'JOJOOOOO' }, 'places pleines : les chaînes finissent');
+  assert.deepEqual(simuler(3, 3, 6, true), { forme: [2, 2, 2], ordre: 'JOJOJO' });
+  assert.deepEqual(simuler(3, 3, 8, true), { forme: [3, 3, 2], ordre: 'JOJOJOOO' });
+  // Sans jaune, une seule chaîne ; sans orange, que des fils directs.
+  assert.deepEqual(simuler(1, 3, 4, true), { forme: [4], ordre: 'JOOO' });
+  assert.deepEqual(simuler(2, 0, 8, true), { forme: [1, 1], ordre: 'JJ' });
+  // Le deuxième fil direct n'est jamais lancé avant qu'une chaîne ait poussé.
+  for (const [r, c, n] of [[2, 3, 6], [3, 3, 8], [4, 3, 8], [3, 1, 8]]) {
+    const o = simuler(r, c, n, true).ordre;
+    assert.ok(!/JJ/.test(o), `${r}/${c}/${n} : jamais deux jaunes d’affilée (${o})`);
+  }
 });
 
-// ── 2. La pomme d'or ───────────────────────────────────────────────────────
-
-/*
- * LA POMME D'OR : dix fois la moyenne des combos des cinq dernières pommes.
- *
- * Deux jets avant celui-ci. « Dix fois la moyenne des combos de la partie »
- * d'abord ; puis, pour lui donner un plafond et une taille qui dise son prix,
- * le poids : un gramme pour cinq cents points de moyenne, borné entre un et
- * deux, payé cent fois dix. Cette rampe la SOUS-PAYAIT — mille points plus
- * deux fois la moyenne, plafonnés à deux mille, là où l'on attendait dix fois
- * la moyenne : un jeu à 200 rendait 1400, et rien ne passait jamais 2000. Et
- * la moyenne courait sur toute la partie, diluée par les premières pommes.
- *
- * Maintenant le prix est fixé à sa naissance : la moyenne des combos des cinq
- * dernières pommes encaissées avant elle (zéro pour une pomme sans figure,
- * grappes exclues), multipliée par dix, sans plafond — et jamais moins qu'une
- * pomme ordinaire. Le poids ne porte plus que la taille.
- */
-
-// `Classic.noterCombo` et `Classic.pommeOr`, sortis du fichier et rendus
-// appelables : on veut les nombres, pas seulement la forme du code.
 function classic() {
   /*
    * Une constante du fichier, TELLE QU'ELLE Y EST ÉCRITE — et certaines se
