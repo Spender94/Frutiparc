@@ -16,9 +16,13 @@
  *   · l'admin : réglages persistants, semaine retouchée, seuil abaissé qui
  *     paie aussitôt, remise à zéro d'un testeur ;
  *   · la semaine qui tourne : un nouveau tirage, l'avancement repart de zéro ;
- *   · le contrat « rien que pour toi » : trois propositions taillées sur
- *     l'archive du Challenge du joueur, une signature (une seule), et seuls
- *     les résultats d'après la signature comptent.
+ *   · le contrat « rien que pour toi » (en réserve) : trois propositions
+ *     taillées sur l'archive du Challenge du joueur, une signature (une
+ *     seule), et seuls les résultats d'après la signature comptent ;
+ *   · les quêtes INDIVIDUELLES (le mode par défaut) : taillées sur l'archive
+ *     de chacun, complétées de quêtes faciles pour qui joue peu, un score
+ *     joué avant d'ouvrir la fenêtre qui compte quand même, tout figé et
+ *     gardé au redémarrage.
  */
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
@@ -256,9 +260,45 @@ test('le contrat signé : une quête « contrat », battre son record se compte 
   const m = Q.definitionContrat({ niveau: 'moyenne', mesure: 'snake-challenge', seuil: 1100, strict: false, jours: 4, repere: { mediane: 1025, haut: 1100 } });
   assert.match(Q.detail(m), /tes bons jours \(médiane : 1\s025 points\)/);
   assert.equal(Q.definitionContrat({ niveau: 'facile', mesure: 'inconnue', seuil: 1 }), null);
-  // Les réglages du contrat, bornés.
-  assert.deepEqual(Q.reglagesNormalises({}).contrat, { actif: true, fenetre: 28, minJours: 3 });
-  assert.deepEqual(Q.reglagesNormalises({ contrat: { actif: false, fenetre: 2, minJours: 99 } }).contrat, { actif: false, fenetre: 7, minJours: 20 });
+  // Les réglages : individuelles par défaut, contrat en réserve, lecture bornée.
+  const R0 = Q.reglagesNormalises({});
+  assert.equal(R0.mode, 'individuelles');
+  assert.deepEqual(R0.contrat, { actif: false });
+  assert.deepEqual(R0.individuelles, { fenetre: 28, minJours: 3 });
+  const R1 = Q.reglagesNormalises({ mode: 'bof', contrat: { actif: true }, individuelles: { fenetre: 2, minJours: 99 } });
+  assert.deepEqual([R1.mode, R1.contrat.actif, R1.individuelles.fenetre, R1.individuelles.minJours], ['individuelles', true, 7, 20]);
+  assert.equal(Q.reglagesNormalises({ mode: 'deux' }).mode, 'deux');
+});
+
+test('les quêtes individuelles : la composition, taillée sur les jeux du joueur, jamais deux fois la même cible', () => {
+  const histo = {
+    'swapou-challenge': [12000, 15000, 18000, 14000, 16500, 13000],
+    'snake-challenge': [800, 1240, 950, 1100],
+    'kaluga-grappe': [3000, 4200, 3900],
+    'kaluga-freestyle': [9000, 9500, 9900, 9100, 9800],
+    'mb2-challenge-salles': [40, 55],
+  };
+  const props = Q.proposerPerso(histo, Q.aleaSeme('perso:kiwi:2026-10-05'), {});
+  assert.deepEqual(props.map((p) => p.niveau), ['facile', 'facile', 'moyenne', 'moyenne', 'difficile']);
+  assert.ok(!props.some((p) => p.mesure === 'mb2-challenge-salles'), 'MotionBall : deux jours, trop peu');
+  assert.equal(new Set(props.map((p) => p.mesure + ':' + p.niveau)).size, 5);
+  assert.deepEqual(Q.proposerPerso(histo, Q.aleaSeme('perso:kiwi:2026-10-05'), {}), props, 'même graine, mêmes quêtes');
+  // Un seul jeu : trois quêtes (facile, moyenne, difficile), pas cinq redites.
+  const seul = Q.proposerPerso({ 'swapou-challenge': histo['swapou-challenge'] }, () => 0.4, {});
+  assert.deepEqual(seul.map((p) => [p.niveau, p.seuil, p.strict]), [['facile', 14000, false], ['moyenne', 16500, false], ['difficile', 18000, true]]);
+  // Deux jeux : chacun a sa facile et sa moyenne, l'un des deux sa difficile.
+  const deux = Q.proposerPerso({ 'swapou-challenge': histo['swapou-challenge'], 'snake-challenge': histo['snake-challenge'] }, () => 0.4, {});
+  assert.equal(deux.length, 5);
+  assert.deepEqual(deux.filter((p) => p.niveau === 'facile').map((p) => p.mesure).sort(), ['snake-challenge', 'swapou-challenge']);
+  // La composition de l'admin est suivie.
+  assert.deepEqual(Q.proposerPerso(histo, () => 0.4, { composition: { facile: 1, moyenne: 0, difficile: 2 } }).map((p) => p.niveau), ['facile', 'difficile', 'difficile']);
+  assert.deepEqual(Q.proposerPerso({}, () => 0.4, {}), []);
+  // La quête : un id, la marque « taillée », le titre et la raison.
+  const d = Q.definitionPerso(seul[0], 'ind-1');
+  assert.deepEqual([d.id, d.taillee, d.niveau, d.etiquette], ['ind-1', true, 'facile', 'swapou2']);
+  assert.equal(Q.titre(d).replace(/\s/g, ' '), 'Dépasse 14 000 points à Swapou');
+  assert.match(Q.detail(d), /ton niveau habituel \(6 jours de jeu\)/);
+  assert.equal(Q.estFaite(d, { m: 14000 }), true);
 });
 
 test('une déclaration de mode : connue et vraisemblable, ou refusée', () => {
@@ -441,7 +481,8 @@ test('fermées par défaut, puis ouvertes à un testeur — et à lui seul', asy
   await compte('papaye');
   await compte('grenade');
   assert.deepEqual(await etat('papaye'), { ok: true, acces: false }, 'une base neuve : fermées');
-  const r = await post('/api/admin/quetes', { ouverture: 'testeurs', testeurs: 'Papaye, inconnu42' }, ADMIN);
+  // Le mode collectif (le tirage commun) pour les tests qui suivent ; les quêtes individuelles ont leur test plus bas.
+  const r = await post('/api/admin/quetes', { ouverture: 'testeurs', testeurs: 'Papaye, inconnu42', mode: 'collectives' }, ADMIN);
   assert.ok(r.ok);
   assert.deepEqual(r.reglages.testeurs, ['papaye', 'inconnu42']);
   assert.deepEqual(r.inconnus, ['inconnu42'], 'l’admin est prévenu des pseudos inconnus');
@@ -642,6 +683,7 @@ test('le contrat : taillé sur l’archive du joueur, signé une fois, payé sur
   const pass = await (await fetch(BASE + '/api/admin/users/kiwi/fd-pass', { method: 'POST', headers: ADMIN, body: JSON.stringify({ game: 'swapou2', delta: 3 }) })).json();
   assert.equal(pass.passes, 3, JSON.stringify(pass));
   await semaineConnue(['kaluga-chrono-facile']);   // rien à Swapou cette semaine : seul le contrat paie
+  assert.equal((await post('/api/admin/quetes', { contrat: { actif: true } }, ADMIN)).reglages.contrat.actif, true, 'le contrat est en réserve : on l’allume');
   const lundi = lundiCourant();
   // Trois semaines de Challenge archivées : Swapou 6 jours, Frutisnake 4, Kaluga 3, MotionBall 2 (trop peu).
   const archive = {
@@ -727,9 +769,73 @@ test('le contrat : taillé sur l’archive du joueur, signé une fois, payé sur
   // L'admin le coupe : plus de contrat nulle part ; puis le rouvre.
   assert.ok((await post('/api/admin/quetes', { contrat: { actif: false } }, ADMIN)).ok);
   assert.deepEqual((await etat('kiwi')).contrat, { etat: 'inactif' });
-  const R = (await post('/api/admin/quetes', { contrat: { actif: true, fenetre: 21, minJours: 4 } }, ADMIN)).reglages;
-  assert.deepEqual(R.contrat, { actif: true, fenetre: 21, minJours: 4 });
+  const R = (await post('/api/admin/quetes', { contrat: { actif: true }, individuelles: { fenetre: 21, minJours: 4 } }, ADMIN)).reglages;
+  assert.deepEqual([R.contrat, R.individuelles], [{ actif: true }, { fenetre: 21, minJours: 4 }]);
   assert.equal((await etat('kiwi')).contrat.etat, 'signe');
+});
+
+test('les quêtes individuelles : taillées sur l’archive de chacun, faciles pour qui débute, un score d’avant la visite compte', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  const r = await post('/api/admin/quetes', { mode: 'individuelles', contrat: { actif: false }, individuelles: { fenetre: 28, minJours: 3 } }, ADMIN);
+  assert.equal(r.reglages.mode, 'individuelles');
+  await compte('mangue');
+  await compte('banane');
+  const lundi = lundiCourant();
+  const archive = {
+    swapou2_classic: [12000, 15000, 18000, 14000, 16500, 13000],
+    snake3_classic: [800, 1240, 950, 1100],
+    kaluga_classic: [3000, 4200, 3900],
+  };
+  for (const [rk, scores] of Object.entries(archive)) {
+    for (let i = 0; i < scores.length; i++) {
+      await sql(`INSERT INTO challenge_score_archive (day_key, ranking_id, username, score, data) VALUES ($1, $2, 'mangue', $3, '')`,
+        [Q.jourPlus(lundi, -1 - i * 2), rk, scores[i]]);
+    }
+  }
+  // Ce que le module taillera pour elle.
+  const historique = { 'swapou-challenge': archive.swapou2_classic, 'snake-challenge': archive.snake3_classic, 'kaluga-grappe': archive.kaluga_classic };
+  const props = Q.proposerPerso(historique, Q.aleaSeme('perso:mangue:' + lundi), { minJours: 3 });
+  assert.equal(props.length, 5);
+  const titres = props.map((p, i) => Q.titre(Q.definitionPerso(p, 'ind-' + (i + 1))));
+  // Elle joue AVANT d'avoir ouvert la fenêtre : la plus douce de ses cibles à Swapou.
+  const sw = props.map((p, i) => Object.assign({ i }, p)).filter((p) => p.mesure === 'swapou-challenge' && !p.strict).sort((a, b) => a.seuil - b.seuil)[0];
+  assert.ok(sw, 'une cible Swapou atteignable : ' + JSON.stringify(props));
+  const avant = await solde('mangue');
+  await swapou('mangue', sw.seuil);
+  await wait(400);
+  let e = await etat('mangue');
+  assert.deepEqual(e.quetes.map((q) => q.titre), titres);
+  assert.deepEqual(e.quetes.map((q) => q.id), ['ind-1', 'ind-2', 'ind-3', 'ind-4', 'ind-5']);
+  assert.ok(e.quetes.every((q) => q.taillee));
+  assert.equal(e.quetes[sw.i].fait, true, 'le score d’avant la visite a compté');
+  const gain = { facile: 5, moyenne: 10, difficile: 20 }[sw.niveau];
+  assert.equal(await solde('mangue'), avant + gain);
+  assert.match(e.messages[0], /taillées|mesure/, e.messages.join('\n'));
+  assert.equal(e.contrat.etat, 'inactif');
+  const ligne = (await sql(`SELECT quetes, connu FROM quetes_individuelles WHERE username = 'mangue' AND semaine = $1`, [lundi]))[0];
+  assert.deepEqual([ligne.quetes.length, ligne.connu], [5, true]);
+  // Pas d'historique : des quêtes faciles du catalogue, et Gromelin explique.
+  e = await etat('banane');
+  assert.equal(e.quetes.length, 5);
+  assert.ok(e.quetes.every((q) => q.niveau === 'facile' && !q.taillee && /^ind-\d$/.test(q.id)), JSON.stringify(e.quetes.map((q) => [q.id, q.niveau])));
+  assert.ok(e.messages.some((m) => /Je ne te connais pas encore/.test(m)), e.messages.join('\n'));
+  // L'admin voit chacun avec ses quêtes.
+  const A = await adminEtat();
+  const jm = A.joueurs.find((j) => j.username === 'mangue');
+  assert.deepEqual([jm.total, jm.faites, jm.gagnes, jm.connu], [5, 1, gain, true]);
+  assert.equal(A.joueurs.find((j) => j.username === 'banane').connu, false);
+  // Retoucher le tirage commun ne touche pas aux quêtes individuelles.
+  assert.ok((await post('/api/admin/quetes/semaine', { action: 'tirer' }, ADMIN)).ok);
+  // Redémarrage : les mêmes quêtes, l'avancement gardé, rien ne se repaie.
+  await arreter();
+  await demarrer();
+  await reconnecter('mangue');
+  e = await etat('mangue');
+  assert.deepEqual(e.quetes.map((q) => q.titre), titres);
+  assert.equal(e.quetes[sw.i].fait, true);
+  await swapou('mangue', sw.seuil + 100);
+  await wait(300);
+  assert.equal(await solde('mangue'), avant + gain);
 });
 
 test('RGPD : l’export du joueur contient ses quêtes', async (t) => {
@@ -738,6 +844,7 @@ test('RGPD : l’export du joueur contient ses quêtes', async (t) => {
   assert.ok(D.RENOMMAGE_COLONNES.some(([tb, c]) => tb === 'quetes_progres' && c === 'username'));
   assert.ok(D.RENOMMAGE_COLONNES.some(([tb, c]) => tb === 'quetes_visites' && c === 'username'));
   assert.ok(D.RENOMMAGE_COLONNES.some(([tb, c]) => tb === 'quetes_contrats' && c === 'username'));
+  assert.ok(D.RENOMMAGE_COLONNES.some(([tb, c]) => tb === 'quetes_individuelles' && c === 'username'));
   assert.match(fs.readFileSync(path.join(ROOT, 'db.js'), 'utf8'), /quetes_contrats: await q\('SELECT semaine, propositions, choix, signe_at FROM quetes_contrats WHERE username = \$1/);
   const SRC = fs.readFileSync(path.join(ROOT, 'db.js'), 'utf8');
   assert.match(SRC, /quetes: await q\('SELECT semaine, quete_id, etat, fait_at, gain FROM quetes_progres WHERE username = \$1/);

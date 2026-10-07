@@ -45,8 +45,14 @@ const REGLAGES_DEFAUT = Object.freeze({
   composition: { facile: 2, moyenne: 2, difficile: 1 },
   // Les retouches de l'admin, quête par quête : { id: { actif, niveau, seuil, n } }
   catalogue: {},
-  // Le contrat de la semaine, propre à chaque joueur (voir proposerContrat).
-  contrat: { actif: true, fenetre: 28, minJours: 3 },
+  // Quelles quêtes : 'individuelles' (taillées sur les scores de chacun, voir
+  // proposerPerso), 'collectives' (le tirage commun du lundi), ou 'deux'.
+  mode: 'individuelles',
+  // Ce qu'on lit des scores de chacun : les N jours avant le lundi, et le
+  // minimum de jours joués pour qu'un jeu compte.
+  individuelles: { fenetre: 28, minJours: 3 },
+  // Le contrat à signer (une proposition parmi trois), en plus — en réserve.
+  contrat: { actif: false },
 });
 
 // L'étiquette de couleur posée devant le titre.
@@ -401,12 +407,13 @@ function reglagesNormalises(brut) {
   R.gains = gains;
   R.composition = compo;
   R.catalogue = (R.catalogue && typeof R.catalogue === 'object') ? R.catalogue : {};
-  const C = Object.assign({}, REGLAGES_DEFAUT.contrat, (R.contrat && typeof R.contrat === 'object') ? R.contrat : {});
-  R.contrat = {
-    actif: C.actif !== false,
-    fenetre: Math.max(7, Math.min(90, Math.floor(Number(C.fenetre)) || 28)),
-    minJours: Math.max(1, Math.min(20, Math.floor(Number(C.minJours)) || 3)),
+  R.mode = ['individuelles', 'collectives', 'deux'].includes(R.mode) ? R.mode : REGLAGES_DEFAUT.mode;
+  const I = Object.assign({}, REGLAGES_DEFAUT.individuelles, (R.individuelles && typeof R.individuelles === 'object') ? R.individuelles : {});
+  R.individuelles = {
+    fenetre: Math.max(7, Math.min(90, Math.floor(Number(I.fenetre)) || 28)),
+    minJours: Math.max(1, Math.min(20, Math.floor(Number(I.minJours)) || 3)),
   };
+  R.contrat = { actif: !!(R.contrat && typeof R.contrat === 'object' && R.contrat.actif === true) };
   // Les quêtes créées par l'admin : une mesure, un seuil, un niveau.
   R.perso = (Array.isArray(R.perso) ? R.perso : []).filter((x) => x && /^perso-\d+$/.test(String(x.id))
     && MESURES[x.mesure] && NIVEAUX.includes(x.niveau) && Number(x.seuil) > 0)
@@ -709,6 +716,16 @@ const PAROLES = {
   rien: [
     'Pas de quêtes cette semaine. Profites-en, ça ne durera pas.',
   ],
+  // Une semaine neuve, des quêtes taillées sur ses scores.
+  semainePerso: [
+    'Lundi. J’ai épluché tes scores, <em>grumpf</em>. Voilà {n} quêtes taillées pour toi : ni trop dures, ni trop faciles. Au travail.',
+    '<em>Grumpf.</em> J’ai regardé ce que tu vaux vraiment. {n} quêtes à ta mesure cette semaine. Pas d’excuse.',
+    'Nouvelle semaine. {n} quêtes, faites sur mesure d’après tes propres scores. Ne me déçois pas.',
+  ],
+  // Pas assez joué pour qu'on le connaisse : des quêtes faciles, pour commencer.
+  inconnu: [
+    'Je ne te connais pas encore. Joue au <em>Challenge</em> quelques jours, et lundi prochain je taillerai tes quêtes sur tes propres scores.',
+  ],
   // Le contrat de la semaine, proposé et pas encore signé.
   contrat: [
     'Et pour toi, j’ai préparé un <em>contrat</em>. Taillé sur tes propres scores, pas sur ceux des autres. Choisis-en un, signe, et au travail.',
@@ -724,13 +741,12 @@ function parole(cle, vars, alea) {
   return t.replace(/\{(\w+)\}/g, (_, k) => (vars && vars[k] !== undefined ? String(vars[k]) : ''));
 }
 
-// ── Le contrat de la semaine : rien que pour toi ─────────────────────────────
+// ── Les quêtes individuelles : taillées sur les scores de chacun ─────────────
 /*
- * Chaque lundi, Gromelin prépare pour chaque joueur TROIS quêtes calées sur ses
- * propres résultats des dernières semaines (le meilleur de chaque jour, au
- * Challenge, tel que le serveur l'a archivé) — une facile, une moyenne, une
- * difficile, dans les jeux qu'il pratique vraiment. Le joueur en signe une ;
- * seuls les résultats obtenus APRÈS la signature comptent.
+ * Chaque lundi, Gromelin taille pour chaque joueur SES quêtes de la semaine,
+ * calées sur ses propres résultats des semaines passées (le meilleur de
+ * chaque jour, au Challenge, tel que le serveur l'a archivé), dans les jeux
+ * qu'il pratique vraiment :
  *
  *   facile    : son niveau habituel   — la médiane de ses meilleurs du jour ;
  *   moyenne   : ses bons jours        — le meilleur quart ;
@@ -739,6 +755,8 @@ function parole(cle, vars, alea) {
  * Seuls les jeux joués au moins `minJours` jours sur la fenêtre comptent : sur
  * deux parties, on ne sait rien de quelqu'un. Les cibles s'arrondissent dans
  * le sens du joueur (vers le bas pour un score, vers le haut pour un temps).
+ * La même lecture sert au CONTRAT (trois propositions, une à signer), gardé
+ * en réserve.
  */
 const MESURES_PERSO = ['swapou-challenge', 'snake-challenge', 'kaluga-grappe', 'kaluga-freestyle', 'mb2-challenge-salles',
   'minipixiz-arbre', 'miniwave-challenge', 'minifever-arcade0', 'minifever-arcade1', 'minifever-arcade2', 'minifever-arcade3'];
@@ -754,15 +772,8 @@ function arrondir(m, v) {
 }
 function quantile(tries, q) { return tries[Math.min(tries.length - 1, Math.floor(q * tries.length))]; }
 
-/**
- * Les trois propositions d'un joueur.
- * @param {{ [cle]: number[] }} historique — par mesure, le meilleur de chaque jour joué
- * @param {() => number} alea — semé par le joueur et la semaine
- * @returns {Array<{ niveau, mesure, seuil, strict, jours, repere }>}
- */
-function proposerContrat(historique, alea, options) {
-  const minJours = (options && options.minJours) || REGLAGES_DEFAUT.contrat.minJours;
-  const rnd = alea || Math.random;
+// Les mesures assez jouées, des plus pratiquées aux moins pratiquées.
+function candidats(historique, rnd, minJours) {
   const cands = [];
   for (const [cle, valeurs] of Object.entries(historique || {})) {
     const m = MESURES[cle];
@@ -772,42 +783,67 @@ function proposerContrat(historique, alea, options) {
     const tries = v.slice().sort((a, b) => (m.inverse ? a - b : b - a));
     cands.push({ m, jours: v.length, tries, tirage: rnd() });
   }
-  // Les jeux les plus pratiqués d'abord ; un jeu ne sert qu'une fois tant qu'il y en a d'autres.
-  cands.sort((a, b) => b.jours - a.jours || a.tirage - b.tirage);
-  const parJeu = [];
-  for (const c of cands) if (!parJeu.some((x) => x.m.jeu === c.m.jeu)) parJeu.push(c);
-  if (!parJeu.length) return [];
-  const choix = parJeu.slice(0, 3);
-  for (let i = choix.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [choix[i], choix[j]] = [choix[j], choix[i]]; }
+  return cands.sort((a, b) => b.jours - a.jours || a.tirage - b.tirage);
+}
+// La cible d'une mesure à un niveau ; `deja` : les cibles déjà posées (une
+// moyenne ne redit pas la facile de la même mesure).
+function cible(c, niveau, deja) {
+  const { m, tries, jours } = c;
+  const record = tries[0];
+  const haut = quantile(tries, 0.25);
+  const mediane = quantile(tries, 0.5);
+  if (niveau === 'difficile') {
+    // Déjà au plafond (100 % des salles) : on vise d'y revenir.
+    if (m.plafond != null && !m.inverse && record >= m.plafond) return { niveau, mesure: m.cle, seuil: m.plafond, strict: false, jours, repere: { record } };
+    return { niveau, mesure: m.cle, seuil: record, strict: true, jours, repere: { record } };
+  }
+  let seuil = arrondir(m, niveau === 'facile' ? mediane : haut);
+  if (niveau === 'moyenne' && (deja || []).some((x) => x.niveau === 'facile' && x.mesure === m.cle && x.seuil === seuil)) seuil = arrondir(m, record);
+  return { niveau, mesure: m.cle, seuil, strict: false, jours, repere: { mediane, haut, record } };
+}
+function melanger(l, rnd) {
+  for (let i = l.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [l[i], l[j]] = [l[j], l[i]]; }
+  return l;
+}
+
+/**
+ * Les quêtes individuelles d'un joueur, autant que la composition en demande
+ * (2 faciles, 2 moyennes, 1 difficile par défaut) — moins s'il joue peu : une
+ * mesure ne revient jamais deux fois au même niveau.
+ * @param {{ [cle]: number[] }} historique — par mesure, le meilleur de chaque jour joué
+ * @param {() => number} alea — semé par le joueur et la semaine
+ * @returns {Array<{ niveau, mesure, seuil, strict, jours, repere }>}
+ */
+function proposerPerso(historique, alea, options) {
+  const o = options || {};
+  const minJours = o.minJours || REGLAGES_DEFAUT.individuelles.minJours;
+  const compo = o.composition || REGLAGES_DEFAUT.composition;
+  const rnd = alea || Math.random;
+  const cands = candidats(historique, rnd, minJours);
+  if (!cands.length) return [];
+  const places = [];
+  for (const niveau of NIVEAUX) for (let i = 0; i < (Number(compo[niveau]) || 0); i++) places.push(niveau);
+  // Un jeu à la fois (le plus pratiqué d'abord), puis ses autres mesures.
+  const parJeu = [], autres = [];
+  for (const c of cands) (parJeu.some((x) => x.m.jeu === c.m.jeu) ? autres : parJeu).push(c);
+  const retenues = melanger(parJeu.concat(autres).slice(0, places.length), rnd);
   const props = [];
-  NIVEAUX.forEach((niveau, i) => {
-    const c = choix[i % choix.length];
-    const { m, tries } = c;
-    const record = tries[0];
-    const haut = quantile(tries, 0.25);
-    const mediane = quantile(tries, 0.5);
-    if (niveau === 'difficile') {
-      if (m.plafond != null && !m.inverse && record >= m.plafond) {
-        // Déjà au plafond (100 % des salles) : on vise d'y revenir.
-        props.push({ niveau, mesure: m.cle, seuil: m.plafond, strict: false, jours: c.jours, repere: { record } });
-        return;
-      }
-      props.push({ niveau, mesure: m.cle, seuil: record, strict: true, jours: c.jours, repere: { record } });
+  places.forEach((niveau, k) => {
+    for (let t = 0; t < retenues.length; t++) {
+      const c = retenues[(k + t) % retenues.length];
+      if (props.some((x) => x.mesure === c.m.cle && x.niveau === niveau)) continue;
+      const p = cible(c, niveau, props);
+      if (props.some((x) => x.mesure === p.mesure && x.seuil === p.seuil && x.strict === p.strict)) continue;
+      props.push(p);
       return;
     }
-    let seuil = arrondir(m, niveau === 'facile' ? mediane : haut);
-    if (niveau === 'moyenne') {
-      const facile = props.find((x) => x.niveau === 'facile' && x.mesure === m.cle);
-      if (facile && seuil === facile.seuil) seuil = arrondir(m, record);
-    }
-    props.push({ niveau, mesure: m.cle, seuil, strict: false, jours: c.jours, repere: { mediane, haut, record } });
   });
   return props;
 }
 
-/** La définition de quête d'une proposition (id « contrat »). */
-function definitionContrat(prop) {
-  const m = MESURES[prop.mesure];
+/** La définition de quête d'une cible taillée pour un joueur. */
+function definitionPerso(prop, id) {
+  const m = MESURES[prop && prop.mesure];
   if (!m) return null;
   const titre = prop.strict
     ? `Bats ton record à ${m.groupe} : ${m.inverse ? 'moins de' : 'plus de'} {seuil}`
@@ -818,12 +854,31 @@ function definitionContrat(prop) {
     : prop.niveau === 'moyenne'
       ? `${m.nom} · tes bons jours (médiane : ${formater(m, r.mediane)})`
       : `${m.nom} · ton record des dernières semaines`;
-  return { id: 'contrat', niveau: prop.niveau, type: 'mesure', etiquette: m.jeu, famille: m.cle, contrat: true,
+  return { id: String(id), niveau: prop.niveau, type: 'mesure', etiquette: m.jeu, famille: m.cle, taillee: true,
     params: { mesure: m.cle, seuil: prop.seuil, strict: !!prop.strict }, titre, detail };
 }
 
+/** Le contrat (en réserve) : trois propositions, une par niveau et par jeu. */
+function proposerContrat(historique, alea, options) {
+  const minJours = (options && options.minJours) || REGLAGES_DEFAUT.individuelles.minJours;
+  const rnd = alea || Math.random;
+  const cands = candidats(historique, rnd, minJours);
+  const parJeu = [];
+  for (const c of cands) if (!parJeu.some((x) => x.m.jeu === c.m.jeu)) parJeu.push(c);
+  if (!parJeu.length) return [];
+  const choix = melanger(parJeu.slice(0, 3), rnd);
+  const props = [];
+  NIVEAUX.forEach((niveau, i) => props.push(cible(choix[i % choix.length], niveau, props)));
+  return props;
+}
+/** La définition de quête d'une proposition signée (id « contrat »). */
+function definitionContrat(prop) {
+  const d = definitionPerso(prop, 'contrat');
+  return d && Object.assign(d, { contrat: true });
+}
+
 module.exports = {
-  MESURES_PERSO, proposerContrat, definitionContrat, arrondir, aleaSeme,
+  MESURES_PERSO, proposerPerso, definitionPerso, proposerContrat, definitionContrat, arrondir, aleaSeme,
   NIVEAUX, NIVEAU_NOM, REGLAGES_DEFAUT, CATALOGUE, ETIQUETTES, KALUGA_EPREUVES, MODES,
   nombre, jourPlus, lundiDe, minuitParis, finDeSemaine, semaineLisible,
   reglagesNormalises, definition, catalogue, titre, tirer,

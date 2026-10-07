@@ -10867,8 +10867,13 @@ app.post('/api/admin/paris-challenge/mois', adminScope('challenge'), async (req,
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// LES QUÊTES DE GROMELIN (quetes.js) — cinq quêtes par semaine, tirées le
+// LES QUÊTES DE GROMELIN (quetes.js) — cinq quêtes par semaine, neuves le
 // lundi à minuit (heure de Paris), payées en kikooz dès qu'elles sont faites.
+//
+// LE MODE se règle à l'admin : INDIVIDUELLES (par défaut — chacun reçoit des
+// quêtes taillées sur ses propres scores, voir quetesIndivDe), COLLECTIVES
+// (le même tirage pour tous), ou les deux. Le contrat à signer reste en
+// réserve, coupé par défaut.
 //
 // L'OUVERTURE se règle à l'admin (onglet Quêtes) : fermées, réservées à des
 // testeurs nommés, ou ouvertes à tous. Tout ce qui se règle est PERSISTANT :
@@ -10893,6 +10898,12 @@ const quetesVisites = new Map();      // pseudo → { semaine, vuAt }
 // de jours de jeu), on le note sans l'écrire, et on réessaie une heure après.
 const quetesContrats = new Map();
 const quetesContratsEnCours = new Map(); // pseudo → Promise (une préparation à la fois)
+// Les quêtes individuelles de la semaine : pseudo → { quetes: [définitions
+// figées], connu } — taillées à la première visite (ou au premier événement)
+// de la semaine. Les événements arrivés pendant qu'on les taille attendent.
+const quetesIndiv = new Map();
+const quetesIndivEnCours = new Map();
+const quetesIndivAttente = new Map();
 let quetesPret = false;               // chargées (base lue) : avant, on n'écoute rien
 const GROMELIN_BOUILLE = '0d0000010000000000000000';
 
@@ -10922,6 +10933,8 @@ function quetesSemaineCourante() {
     quetesSemaine = { lundi, quetes: Quetes.tirer(quetesReglages, 'gromelin:' + lundi) };
     quetesProgres.clear();
     quetesContrats.clear();
+    quetesIndiv.clear();
+    quetesIndivAttente.clear();
     quetesEnregistrerSemaine();
     console.log(`[QUETES] semaine du ${lundi} : ${quetesSemaine.quetes.map((q) => q.id).join(', ') || 'aucune quête'}`);
   }
@@ -10954,6 +10967,9 @@ async function chargerQuetes() {
     for (const v of await db.quetesChargerVisites()) {
       quetesVisites.set(String(v.username).toLowerCase(), { semaine: v.semaine, vuAt: v.vu_at ? new Date(v.vu_at).getTime() : 0 });
     }
+    for (const row of await db.quetesChargerIndividuelles(S.lundi)) {
+      quetesIndiv.set(String(row.username).toLowerCase(), { quetes: Array.isArray(row.quetes) ? row.quetes : [], connu: !!row.connu });
+    }
     for (const row of await db.quetesChargerContrats(S.lundi)) {
       quetesContratPoser(String(row.username).toLowerCase(), {
         propositions: Array.isArray(row.propositions) ? row.propositions : [],
@@ -10974,13 +10990,98 @@ function quetesContratPoser(u, c) {
   quetesContrats.set(u, c);
   return c;
 }
-// Les classements que lit le contrat (les mesures « perso » viennent toutes du Challenge).
-const QUETES_CONTRAT_RK = Array.from(new Set(Quetes.MESURES_PERSO.map((k) => Quetes.MESURES[k].source.rk)));
+// Les classements que lisent les quêtes individuelles (les mesures « perso »
+// viennent toutes du Challenge).
+const QUETES_PERSO_RK = Array.from(new Set(Quetes.MESURES_PERSO.map((k) => Quetes.MESURES[k].source.rk)));
 /**
- * Le contrat du joueur pour la semaine — préparé à sa première visite : ses
- * meilleurs du jour au Challenge sur la fenêtre réglée (archive), une valeur
- * par jour et par mesure, puis trois propositions. Semé par le joueur et le
- * lundi : refaire le calcul redonne les mêmes.
+ * Ce qu'on sait d'un joueur : ses meilleurs du jour au Challenge (archive) sur
+ * les `fenetre` jours AVANT le lundi — rien de la semaine en cours, pour que
+ * ses quêtes ne dépendent pas du jour où il ouvre la fenêtre. Une valeur par
+ * jour et par mesure.
+ */
+async function quetesHistoriqueDe(u, lundi) {
+  const depuis = Quetes.jourPlus(lundi, -quetesReglages.individuelles.fenetre);
+  const rows = await db.quetesHistoriqueJoueur(u, depuis, QUETES_PERSO_RK, lundi);
+  const parJour = {};   // mesure → { jour → meilleur }
+  for (const row of rows) {
+    const evt = { type: 'score', rk: row.ranking_id, v: Number(row.score), data: row.data == null ? '' : String(row.data) };
+    for (const cle of Quetes.MESURES_PERSO) {
+      const m = Quetes.MESURES[cle];
+      const v = Quetes.valeurDe(m, evt);
+      if (v == null || (m.unite !== 'temps' && v <= 0)) continue;
+      const j = (parJour[cle] = parJour[cle] || {});
+      if (j[row.day_key] === undefined || (m.inverse ? v < j[row.day_key] : v > j[row.day_key])) j[row.day_key] = v;
+    }
+  }
+  const historique = {};
+  for (const [cle, j] of Object.entries(parJour)) historique[cle] = Object.values(j);
+  return historique;
+}
+
+/**
+ * LES QUÊTES INDIVIDUELLES du joueur pour la semaine, taillées sur son
+ * historique (voir Quetes.proposerPerso), autant que la composition en
+ * demande. Ce qui manque — il joue peu, ou on ne le connaît pas encore — se
+ * complète de quêtes FACILES du catalogue, dans d'autres jeux : à sa portée,
+ * le temps qu'on le connaisse. Toutes portent un id « ind-N » (jamais celui
+ * d'une quête commune : retoucher le tirage commun n'y touche pas). Semé par
+ * le joueur et le lundi, figé en base à la première préparation.
+ */
+async function quetesIndivDe(u) {
+  if (quetesReglages.mode === 'collectives') return null;
+  const S = quetesSemaineCourante();
+  const deja = quetesIndiv.get(u);
+  if (deja) return deja;
+  if (quetesIndivEnCours.has(u)) return quetesIndivEnCours.get(u);
+  const travail = (async () => {
+    const historique = process.env.DATABASE_URL ? await quetesHistoriqueDe(u, S.lundi) : {};
+    const compo = quetesReglages.composition;
+    const props = Quetes.proposerPerso(historique, Quetes.aleaSeme('perso:' + u + ':' + S.lundi),
+      { minJours: quetesReglages.individuelles.minJours, composition: compo });
+    const quetes = props.map((p, i) => Quetes.definitionPerso(p, 'ind-' + (i + 1))).filter(Boolean);
+    const connu = quetes.length > 0;
+    const manque = Quetes.NIVEAUX.reduce((n, k) => n + (Number(compo[k]) || 0), 0) - quetes.length;
+    if (manque > 0) {
+      const jeux = new Set(quetes.map((q) => q.etiquette));
+      const faciles = Quetes.tirer(Object.assign({}, quetesReglages, { composition: { facile: 10, moyenne: 0, difficile: 0 } }), 'gromelin:' + S.lundi + ':' + u);
+      const ailleurs = faciles.filter((q) => !jeux.has(q.etiquette));
+      const choix = ailleurs.concat(faciles.filter((q) => jeux.has(q.etiquette))).slice(0, manque);
+      choix.forEach((q) => quetes.push(Object.assign({}, q, { id: 'ind-' + (quetes.length + 1), base: q.id })));
+    }
+    if (quetesSemaineCourante().lundi !== S.lundi) return null;   // la semaine a tourné entre-temps
+    let liste = { quetes, connu };
+    if (process.env.DATABASE_URL) {
+      // Une autre préparation a pu l'écrire d'abord : la base fait foi.
+      const lu = await db.quetesEnregistrerIndividuelles(S.lundi, u, quetes, connu);
+      if (lu) liste = { quetes: Array.isArray(lu.quetes) ? lu.quetes : quetes, connu: !!lu.connu };
+    }
+    quetesIndiv.set(u, liste);
+    console.log(`[QUETES] ${u} : ${liste.quetes.length} quête(s) individuelle(s)${liste.connu ? '' : ' (pas encore d’historique)'}`);
+    // Les événements arrivés pendant qu'on taillait : rejoués sur ses seules quêtes individuelles.
+    const att = quetesIndivAttente.get(u);
+    quetesIndivAttente.delete(u);
+    if (att) for (const evt of att) quetesAppliquer(u, quetesIndivListe(u), evt);
+    return liste;
+  })();
+  quetesIndivEnCours.set(u, travail);
+  try { return await travail; } catch (e) { console.error('[QUETES] quêtes individuelles :', e.message); return null; } finally { quetesIndivEnCours.delete(u); }
+}
+// Les quêtes individuelles prêtes (en mode « les deux », sans les quêtes faciles de complément).
+function quetesIndivListe(u) {
+  if (quetesReglages.mode === 'collectives') return [];
+  const l = quetesIndiv.get(u);
+  if (!l) return [];
+  return quetesReglages.mode === 'deux' ? l.quetes.filter((q) => q.taillee) : l.quetes;
+}
+/** Les quêtes de la semaine d'un joueur (hors contrat), selon le mode réglé. */
+function quetesDe(u) {
+  const S = quetesSemaineCourante();
+  return (quetesReglages.mode === 'individuelles' ? [] : S.quetes).concat(quetesIndivListe(u));
+}
+
+/**
+ * Le contrat du joueur pour la semaine (en réserve) — préparé à sa première
+ * visite : trois propositions taillées sur son historique, une à signer.
  */
 async function quetesContratDe(u) {
   if (!quetesReglages.contrat.actif) return null;
@@ -10990,23 +11091,9 @@ async function quetesContratDe(u) {
   if (!process.env.DATABASE_URL) return quetesContratPoser(u, { propositions: [], choix: null, signeAt: 0, essaiAt: Date.now() });
   if (quetesContratsEnCours.has(u)) return quetesContratsEnCours.get(u);
   const travail = (async () => {
-    const depuis = Quetes.jourPlus(S.lundi, -quetesReglages.contrat.fenetre);
-    const rows = await db.quetesHistoriqueJoueur(u, depuis, QUETES_CONTRAT_RK);
-    const parJour = {};   // mesure → { jour → meilleur }
-    for (const row of rows) {
-      const evt = { type: 'score', rk: row.ranking_id, v: Number(row.score), data: row.data == null ? '' : String(row.data) };
-      for (const cle of Quetes.MESURES_PERSO) {
-        const m = Quetes.MESURES[cle];
-        const v = Quetes.valeurDe(m, evt);
-        if (v == null || (m.unite !== 'temps' && v <= 0)) continue;
-        const j = (parJour[cle] = parJour[cle] || {});
-        if (j[row.day_key] === undefined || (m.inverse ? v < j[row.day_key] : v > j[row.day_key])) j[row.day_key] = v;
-      }
-    }
-    const historique = {};
-    for (const [cle, j] of Object.entries(parJour)) historique[cle] = Object.values(j);
+    const historique = await quetesHistoriqueDe(u, S.lundi);
     const propositions = Quetes.proposerContrat(historique, Quetes.aleaSeme('contrat:' + u + ':' + S.lundi),
-      { minJours: quetesReglages.contrat.minJours });
+      { minJours: quetesReglages.individuelles.minJours });
     if (quetesSemaineCourante().lundi !== S.lundi) return null;   // la semaine a tourné entre-temps
     if (!propositions.length) return quetesContratPoser(u, { propositions: [], choix: null, signeAt: 0, essaiAt: Date.now() });
     await db.quetesEnregistrerContrat(S.lundi, u, propositions);
@@ -11025,7 +11112,7 @@ async function quetesContratDe(u) {
 function quetesContratVue(u) {
   if (!quetesReglages.contrat.actif) return { etat: 'inactif' };
   const c = quetesContrats.get(u);
-  if (!c || !c.propositions.length) return { etat: 'aucun', minJours: quetesReglages.contrat.minJours, fenetre: quetesReglages.contrat.fenetre };
+  if (!c || !c.propositions.length) return { etat: 'aucun', minJours: quetesReglages.individuelles.minJours, fenetre: quetesReglages.individuelles.fenetre };
   const gainDe = (niveau) => Number(quetesReglages.gains[niveau]) || 0;
   const propositions = c.propositions.map((prop, i) => {
     const def = Quetes.definitionContrat(prop);
@@ -11041,12 +11128,24 @@ function quetesEvenement(username, evt) {
   if (!quetesPret) return;
   const u = String(username || '').toLowerCase();
   if (!u || !users[u] || !quetesAcces(u)) return;
-  const S = quetesSemaineCourante();
-  const jour = parisDayKey();
-  // Les quêtes de la semaine, plus le contrat s'il est signé : il n'existe
+  // Ses quêtes individuelles pas encore taillées (il joue avant d'avoir
+  // ouvert la fenêtre) : on les taille, et l'événement attend son tour.
+  if (quetesReglages.mode !== 'collectives' && !quetesIndiv.has(u)) {
+    const att = quetesIndivAttente.get(u) || [];
+    if (att.length < 50) att.push(evt);
+    quetesIndivAttente.set(u, att);
+    quetesIndivDe(u);
+  }
+  // Ses quêtes de la semaine, plus le contrat s'il est signé : il n'existe
   // qu'à partir de la signature, donc rien d'avant ne compte.
   const contrat = quetesContrats.get(u);
-  const defs = contrat && contrat.def && quetesReglages.contrat.actif ? S.quetes.concat([contrat.def]) : S.quetes;
+  const defs = quetesDe(u);
+  if (contrat && contrat.def && quetesReglages.contrat.actif) defs.push(contrat.def);
+  quetesAppliquer(u, defs, evt);
+}
+function quetesAppliquer(u, defs, evt) {
+  const S = quetesSemaineCourante();
+  const jour = parisDayKey();
   for (const def of defs) {
     const p = quetesProgresDe(u, def.id);
     if (p.faitAt) continue;
@@ -11085,7 +11184,7 @@ function quetesReverifier() {
   for (const [u, m] of quetesProgres) {
     if (!quetesAcces(u)) continue;
     const c = quetesContrats.get(u);
-    for (const def of (c && c.def ? quetesSemaine.quetes.concat([c.def]) : quetesSemaine.quetes)) {
+    for (const def of (c && c.def ? quetesDe(u).concat([c.def]) : quetesDe(u))) {
       const p = m.get(def.id);
       if (p && !p.faitAt && Quetes.estFaite(def, p.etat)) quetesAccomplir(u, def, p, quetesSemaine.lundi);
     }
@@ -11113,10 +11212,11 @@ function quetesEtatPour(username) {
       id: def.id, niveau: def.niveau, niveauNom: Quetes.NIVEAU_NOM[def.niveau], gain,
       titre: Quetes.titre(def), detail: Quetes.detail(def), ligne: av.ligne, pc: av.pc,
       fait: !!p.faitAt, faitLe: p.faitAt || null,
-      etiquette: Quetes.ETIQUETTES[def.etiquette] || null,
+      etiquette: Quetes.ETIQUETTES[def.etiquette] || null, taillee: !!def.taillee,
     };
   };
-  const quetes = S.quetes.map(carte);
+  const quetes = quetesDe(u).map(carte);
+  const indiv = quetesReglages.mode !== 'collectives' ? quetesIndiv.get(u) : null;
   const contrat = quetesContratVue(u);
   const cdef = contrat.etat === 'signe' ? quetesContrats.get(u).def : null;
   if (cdef) {
@@ -11133,7 +11233,11 @@ function quetesEtatPour(username) {
   const aSigner = contrat.etat === 'a_signer';
   if (!toutes.length && !aSigner) messages.push(Quetes.parole('rien', {}, alea));
   else {
-    if (nouvelleSemaine && quetes.length) messages.push(Quetes.parole('semaine', { n: quetes.length }, alea));
+    if (nouvelleSemaine && quetes.length) {
+      messages.push(Quetes.parole(indiv && indiv.connu ? 'semainePerso' : 'semaine', { n: quetes.length }, alea));
+      // Pas encore d'historique : des quêtes faciles, et la promesse de mieux.
+      if (indiv && !indiv.connu) messages.push(Quetes.parole('inconnu', {}, alea));
+    }
     const neuves = toutes.filter((q) => q.fait && q.faitLe > vuAt).sort((a, b) => a.faitLe - b.faitLe);
     for (const q of neuves) messages.push(Quetes.parole('faite', { titre: quetesEchapper(q.titre), gain: q.gain }, alea));
     const reste = toutes.filter((q) => !q.fait).length;
@@ -11155,6 +11259,7 @@ app.get('/api/quetes/etat', async (req, res) => {
   const u = resolveUsernameFromSid(String(req.query.sid || ''));
   if (!u) return res.status(401).json({ ok: false, error: 'auth_required' });
   if (!quetesPret || !quetesAcces(u)) return res.json({ ok: true, acces: false });
+  await quetesIndivDe(u);
   await quetesContratDe(u);
   res.json(quetesEtatPour(u));
 });
@@ -11224,18 +11329,23 @@ function quetesAdminSemaine() {
   });
 }
 function quetesAdminJoueurs() {
-  const S = quetesSemaineCourante();
   const out = [];
-  for (const [u, m] of quetesProgres) {
-    const lignes = S.quetes.map((def) => {
+  const pseudos = new Set([...quetesProgres.keys(), ...(quetesReglages.mode !== 'collectives' ? quetesIndiv.keys() : [])]);
+  for (const u of pseudos) {
+    const m = quetesProgres.get(u) || new Map();
+    const defs = quetesDe(u);
+    const lignes = defs.map((def) => {
       const p = m.get(def.id);
       const av = Quetes.avancement(def, p ? p.etat : {});
-      return { id: def.id, fait: !!(p && p.faitAt), ligne: av.ligne, pc: av.pc };
+      return { id: def.id, niveau: def.niveau, titre: Quetes.titre(def), taillee: !!def.taillee,
+        fait: !!(p && p.faitAt), ligne: av.ligne, pc: av.pc };
     });
-    if (!lignes.some((l) => l.fait || l.pc > 0)) continue;
+    if (!quetesIndiv.has(u) && !lignes.some((l) => l.fait || l.pc > 0)) continue;
     let gagnes = 0;
-    for (const def of S.quetes) { const p = m.get(def.id); if (p && p.faitAt) gagnes += p.gain; }
-    out.push({ username: u, nom: getDisplayName(u), faites: lignes.filter((l) => l.fait).length, gagnes, lignes });
+    for (const def of defs) { const p = m.get(def.id); if (p && p.faitAt) gagnes += p.gain; }
+    const indiv = quetesIndiv.get(u);
+    out.push({ username: u, nom: getDisplayName(u), faites: lignes.filter((l) => l.fait).length, total: lignes.length, gagnes,
+      connu: indiv ? !!indiv.connu : null, lignes });
   }
   return out.sort((a, b) => b.faites - a.faites || b.gagnes - a.gagnes || a.nom.localeCompare(b.nom));
 }
@@ -11298,17 +11408,20 @@ app.post('/api/admin/quetes', adminScope('quetes'), async (req, res) => {
     }
     if (b.gains && typeof b.gains === 'object') neuf.gains = Object.assign({}, quetesReglages.gains, b.gains);
     if (b.composition && typeof b.composition === 'object') neuf.composition = Object.assign({}, quetesReglages.composition, b.composition);
+    if (b.mode !== undefined) neuf.mode = String(b.mode);
+    if (b.individuelles && typeof b.individuelles === 'object') neuf.individuelles = Object.assign({}, quetesReglages.individuelles, b.individuelles);
     if (b.contrat && typeof b.contrat === 'object') neuf.contrat = Object.assign({}, quetesReglages.contrat, b.contrat);
-    const avantContrat = JSON.stringify(quetesReglages.contrat);
+    const avantLecture = JSON.stringify(quetesReglages.individuelles);
     quetesReglages = Quetes.reglagesNormalises(neuf);
     // Fenêtre ou minimum changés : ceux qui n'avaient pas de quoi faire un contrat
-    // retentent leur chance dès leur prochaine visite (les contrats proposés restent).
-    if (JSON.stringify(quetesReglages.contrat) !== avantContrat) {
+    // retentent leur chance dès leur prochaine visite (les contrats proposés et
+    // les quêtes individuelles déjà taillées restent : la semaine prochaine).
+    if (JSON.stringify(quetesReglages.individuelles) !== avantLecture) {
       for (const [u, c] of quetesContrats) if (!c.def && !c.propositions.length) quetesContrats.delete(u);
     }
     await quetesEnregistrerReglages();
     const inconnus = quetesReglages.testeurs.filter((u) => !users[u]);
-    console.log(`[QUETES] réglages : ouverture=${quetesReglages.ouverture} testeurs=${quetesReglages.testeurs.join(',') || '—'}`);
+    console.log(`[QUETES] réglages : ouverture=${quetesReglages.ouverture} mode=${quetesReglages.mode} testeurs=${quetesReglages.testeurs.join(',') || '—'}`);
     res.json({ ok: true, reglages: quetesReglages, inconnus });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -11439,6 +11552,8 @@ app.post('/api/admin/quetes/reinitialiser', adminScope('quetes'), async (req, re
     quetesProgres.delete(u);
     quetesVisites.delete(u);
     quetesContrats.delete(u);
+    quetesIndiv.delete(u);
+    quetesIndivAttente.delete(u);
     let n = 0;
     if (process.env.DATABASE_URL) n = await db.quetesReinitialiser(S.lundi, u);
     res.json({ ok: true, lignes: n });
@@ -12586,7 +12701,7 @@ function renommerEnMemoire(a, n, affichage) {
   if (deplacerCle(dailyXpActions, a, n)) { saveXpActions(); bilan.push('actions XP'); }
   if (deplacerCle(accMaisonEquip, a, n)) { sauverEquip(); bilan.push('accessoire maison porté'); }
   // Les quêtes de Gromelin : l'avancement de la semaine et la dernière visite.
-  for (const sac of [quetesProgres, quetesVisites, quetesContrats]) {
+  for (const sac of [quetesProgres, quetesVisites, quetesContrats, quetesIndiv]) {
     if (sac.has(a)) { sac.set(n, sac.get(a)); sac.delete(a); }
   }
   if (quetesReglages.testeurs.includes(a)) {

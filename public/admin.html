@@ -6399,10 +6399,13 @@ async function loadQuetes() {
         <button class="btn btn-sm" onclick="quetesSemaine('remplacer', '${esc(q.id)}')">Remplacer</button>
         <button class="btn-danger btn-sm" onclick="quetesSemaine('retirer', '${esc(q.id)}')">Retirer</button>
       </td></tr>`).join('');
-    const tetes = S.quetes.map((q) => `<th title="${esc(q.titre)}">${esc(q.titre.length > 22 ? q.titre.slice(0, 21) + '…' : q.titre)}</th>`).join('');
-    const joueurs = d.joueurs.map((j) => `<tr><td><b>${esc(j.nom)}</b></td><td>${j.faites} / ${S.quetes.length}</td><td>${j.gagnes}</td>
-      ${j.lignes.map((l) => `<td style="font-size:11px">${l.fait ? '<b style="color:#2f8f2f">✔ faite</b>' : esc(l.ligne)}</td>`).join('')}
-      <td><button class="btn btn-sm" onclick="quetesReinit('${esc(j.username)}')" title="Efface son avancement de la semaine (les kikooz versés restent)">Remettre à zéro</button></td></tr>`).join('');
+    // Chaque joueur a ses quêtes (individuelles) : la liste, ligne par ligne.
+    const joueurs = d.joueurs.map((j) => `<tr><td><b>${esc(j.nom)}</b>${j.connu === false ? '<br><small style="color:#c8860a">pas encore d’historique</small>' : ''}</td>
+      <td>${j.faites} / ${j.total}</td><td>${j.gagnes}</td>
+      <td style="font-size:11px">${j.lignes.map((l) => `<div>${qtNiveau(l.niveau)} ${esc(l.titre)}${l.taillee ? '' : ' <small style="color:#999">(catalogue)</small>'}
+        — ${l.fait ? '<b style="color:#2f8f2f">✔ faite</b>' : esc(l.ligne)}</div>`).join('')}</td>
+      <td><button class="btn btn-sm" onclick="quetesReinit('${esc(j.username)}')" title="Efface son avancement de la semaine et ses quêtes, retaillées à sa prochaine visite (les kikooz versés restent)">Remettre à zéro</button></td></tr>`).join('');
+    const modeRadio = (v, l) => `<label style="margin-right:14px"><input type="radio" name="qt-mode" value="${v}" ${R.mode === v ? 'checked' : ''}> ${l}</label>`;
     // Les repères d'une mesure : des pastilles qui posent leur valeur dans le champ.
     const pastilles = (reps, cible) => (reps || []).map((r) => `<button class="btn btn-sm" type="button" style="background:#f3e6c4;color:#5a3a0e"
       onclick="$('#${cible}').value='${esc(r.texte)}'" title="Repère du jeu">${esc(r.nom)} : ${esc(r.texte)}</button>`).join(' ');
@@ -6435,8 +6438,8 @@ async function loadQuetes() {
       <div style="border:1px solid #c9a46a;background:#fffaf0;padding:12px;border-radius:8px;font-size:13px;margin-bottom:12px">
         <h4 style="margin:0 0 6px">🎒 Les quêtes de Gromelin</h4>
         <div style="color:#777;margin:0 0 10px;line-height:1.45">
-          Chaque lundi à minuit (heure de Paris), Gromelin tire des quêtes dans le catalogue ci-dessous : les mêmes pour tout le monde,
-          en variant les jeux. Une quête faite rapporte ses kikooz <b>tout de suite</b> (ligne « Quêtes » dans l'historique du joueur).
+          Chaque lundi à minuit (heure de Paris), chacun reçoit ses quêtes de la semaine — taillées sur ses propres scores en mode individuel,
+          tirées dans le catalogue ci-dessous (les mêmes pour tous) en mode collectif. Une quête faite rapporte ses kikooz <b>tout de suite</b> (ligne « Quêtes » dans l'historique du joueur).
           L'icône « Quêtes » (le baluchon) n'apparaît qu'aux joueurs qui y ont accès ; elle gigote quand Gromelin a du neuf.
           Tout est enregistré en base : un redémarrage ne change rien.
         </div>
@@ -6444,17 +6447,21 @@ async function loadQuetes() {
         <div style="margin-bottom:8px"><b>Testeurs</b> (pseudos séparés par des virgules ou des espaces) :<br>
           <textarea id="qt-testeurs" rows="2" style="width:100%;max-width:640px">${esc(R.testeurs.join(', '))}</textarea></div>
         <div style="margin-bottom:6px"><b>Gains (kikooz) :</b> ${parNiveau('gain', 'gains')}</div>
-        <div style="margin-bottom:8px"><b>Quêtes par semaine :</b> ${parNiveau('compo', 'composition')} <small style="color:#777">(pris en compte au prochain tirage)</small></div>
-        <div style="margin-bottom:8px"><b>Contrat « Rien que pour toi » :</b>
-          <label style="margin-right:10px"><input type="checkbox" id="qt-contrat-actif" ${R.contrat.actif ? 'checked' : ''}> proposé</label>
-          <label style="margin-right:10px">d'après les <input type="number" min="7" max="90" id="qt-contrat-fenetre" value="${R.contrat.fenetre}" style="width:52px"> derniers jours</label>
-          <label>joués au moins <input type="number" min="1" max="20" id="qt-contrat-min" value="${R.contrat.minJours}" style="width:44px"> jours</label>
-          <div style="color:#777;font-size:12px;margin-top:3px;line-height:1.45">Chaque semaine, Gromelin propose à chacun trois quêtes taillées sur ses meilleurs scores du jour au Challenge :
-            facile (son niveau habituel, la médiane), moyenne (ses bons jours, le meilleur quart), difficile (battre son record de la période).
-            Une par jeu, dans les jeux qu'il pratique le plus. Il en signe une ; seuls les résultats obtenus après la signature comptent. Gains : ceux du niveau ci-dessus.</div></div>
+        <div style="margin-bottom:8px"><b>Quêtes par semaine :</b> ${parNiveau('compo', 'composition')} <small style="color:#777">(prises en compte lundi prochain)</small></div>
+        <div style="margin-bottom:4px"><b>Mode :</b> ${modeRadio('individuelles', 'Individuelles')}${modeRadio('collectives', 'Collectives')}${modeRadio('deux', 'Les deux')}</div>
+        <div style="color:#777;font-size:12px;margin-bottom:6px;line-height:1.45"><b>Individuelles</b> : chacun reçoit ses quêtes, taillées sur ses meilleurs scores du jour au Challenge —
+          facile (son niveau habituel, la médiane), moyenne (ses bons jours, le meilleur quart), difficile (battre son record de la période) —, dans les jeux qu'il pratique le plus.
+          Celui qui n'a pas assez joué reçoit des quêtes <b>faciles</b> du catalogue, en attendant. Taillées à sa première visite de la semaine, puis figées.
+          <b>Collectives</b> : le tirage commun ci-dessous, le même pour tous.</div>
+        <div style="margin-bottom:8px"><b>Lecture des scores :</b>
+          <label style="margin-right:10px">les <input type="number" min="7" max="90" id="qt-ind-fenetre" value="${R.individuelles.fenetre}" style="width:52px"> jours avant lundi,</label>
+          <label>un jeu compte s'il a été joué au moins <input type="number" min="1" max="20" id="qt-ind-min" value="${R.individuelles.minJours}" style="width:44px"> jours</label></div>
+        <div style="margin-bottom:8px"><label><input type="checkbox" id="qt-contrat-actif" ${R.contrat.actif ? 'checked' : ''}> <b>Contrat à signer</b> en plus</label>
+          <small style="color:#777">(trois propositions taillées sur ses scores, il en signe une ; seuls les résultats d'après la signature comptent)</small></div>
         <button class="btn btn-success" onclick="quetesEnregistrer()">Enregistrer</button>
       </div>
-      <h4>Cette semaine — ${esc(S.lisible)} <small style="font-weight:normal;opacity:.85">(nouvelles quêtes dans ${qtReste(S.fin)})</small></h4>
+      <h4>Tirage commun — ${esc(S.lisible)} <small style="font-weight:normal;opacity:.85">(nouvelles quêtes dans ${qtReste(S.fin)})</small></h4>
+      ${R.mode === 'individuelles' ? '<div style="color:#c8860a;font-size:12px;margin-bottom:6px">Mode individuel : ce tirage n’est montré à personne (il reprendra en mode collectif).</div>' : ''}
       <div class="toolbar" style="margin-bottom:6px">
         <button class="btn-danger" onclick="quetesSemaine('tirer')" title="Tire de nouvelles quêtes pour la semaine en cours">Nouveau tirage</button>
         <select id="qt-ajout"><option value="">— ajouter une quête —</option>${options(libres())}</select>
@@ -6464,10 +6471,9 @@ async function loadQuetes() {
       <h4>Joueurs cette semaine</h4>
       <div class="toolbar" style="margin-bottom:6px"><input id="qt-reinit" placeholder="pseudo" style="width:140px">
         <button class="btn" onclick="quetesReinit($('#qt-reinit').value)" title="Pour retester : efface l'avancement de la semaine du joueur (les kikooz versés restent)">Remettre à zéro</button></div>
-      ${joueurs ? `<table><thead><tr><th>Joueur</th><th>Faites</th><th>Kikooz</th>${tetes}<th></th></tr></thead><tbody>${joueurs}</tbody></table>` : '<div style="color:#777">Personne n’a encore avancé cette semaine.</div>'}
-      <h4>Contrats de la semaine</h4>
-      ${contrats ? `<table><thead><tr><th>Joueur</th><th>Contrat</th><th>Propositions (la signée en rouge)</th><th>Où il en est</th></tr></thead><tbody>${contrats}</tbody></table>`
-        : '<div style="color:#777">Aucun contrat proposé pour l’instant (un contrat se prépare à la première ouverture de la fenêtre des quêtes).</div>'}
+      ${joueurs ? `<table><thead><tr><th>Joueur</th><th>Faites</th><th>Kikooz</th><th>Ses quêtes</th><th></th></tr></thead><tbody>${joueurs}</tbody></table>` : '<div style="color:#777">Personne n’a encore ouvert ses quêtes cette semaine.</div>'}
+      ${contrats ? `<h4>Contrats de la semaine</h4><table><thead><tr><th>Joueur</th><th>Contrat</th><th>Propositions (la signée en rouge)</th><th>Où il en est</th></tr></thead><tbody>${contrats}</tbody></table>`
+        : ''}
       <h4>Créer une quête</h4>
       <div style="border:1px solid #c9a46a;background:#fffaf0;padding:10px;border-radius:8px;font-size:12px;margin-bottom:10px">
         <div style="color:#777;margin-bottom:6px;line-height:1.45">Une quête, c'est un <b>résultat</b> : choisis ce qu'on mesure, et le seuil à atteindre.
@@ -6501,8 +6507,11 @@ async function quetesEnregistrer() {
   const o = document.querySelector('input[name="qt-ouverture"]:checked');
   const gains = {}, composition = {};
   for (const n of quetesAdmin.niveaux) { gains[n] = Number($(`#qt-gain-${n}`).value); composition[n] = Number($(`#qt-compo-${n}`).value); }
-  const contrat = { actif: $('#qt-contrat-actif').checked, fenetre: Number($('#qt-contrat-fenetre').value), minJours: Number($('#qt-contrat-min').value) };
-  await quetesPost('/api/admin/quetes', { ouverture: o ? o.value : 'ferme', testeurs: $('#qt-testeurs').value, gains, composition, contrat },
+  const md = document.querySelector('input[name="qt-mode"]:checked');
+  const individuelles = { fenetre: Number($('#qt-ind-fenetre').value), minJours: Number($('#qt-ind-min').value) };
+  const contrat = { actif: $('#qt-contrat-actif').checked };
+  await quetesPost('/api/admin/quetes', { ouverture: o ? o.value : 'ferme', mode: md ? md.value : 'individuelles', testeurs: $('#qt-testeurs').value,
+    gains, composition, individuelles, contrat },
     (d) => `Quêtes : ${{ ferme: 'fermées', testeurs: 'testeurs seulement', tous: 'ouvertes à tous' }[d.reglages.ouverture]}`
       + (d.inconnus && d.inconnus.length ? ` — pseudo(s) inconnu(s) : ${d.inconnus.join(', ')}` : ''));
 }

@@ -764,6 +764,17 @@ async function initSchema() {
       -- LE CONTRAT DE LA SEMAINE, propre à chaque joueur : les trois
       -- propositions de Gromelin, figées à la première visite, et celle que le
       -- joueur a signée (son avancement vit dans quetes_progres, id « contrat »).
+      -- LES QUÊTES INDIVIDUELLES de la semaine, taillées sur les scores de
+      -- chacun et figées à leur préparation (définitions complètes, comme
+      -- quetes_semaine) ; leur avancement vit dans quetes_progres.
+      CREATE TABLE IF NOT EXISTS quetes_individuelles (
+        semaine     TEXT NOT NULL,
+        username    TEXT NOT NULL,
+        quetes      JSONB NOT NULL DEFAULT '[]'::jsonb,
+        connu       BOOLEAN NOT NULL DEFAULT false,
+        cree_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (semaine, username)
+      );
       CREATE TABLE IF NOT EXISTS quetes_contrats (
         semaine       TEXT NOT NULL,
         username      TEXT NOT NULL,
@@ -1926,6 +1937,7 @@ async function anonymiserJoueur(username) {
       ['quetes_progres', 'username', 'brut'],
       ['quetes_visites', 'username', 'brut'],
       ['quetes_contrats', 'username', 'brut'],
+      ['quetes_individuelles', 'username', 'brut'],
       // Ses parties en différé : sans lui, elles n'ont plus d'adversaire.
       ['parties_differees', 'joueur_a', 'brut'],
       ['parties_differees', 'joueur_b', 'brut'],
@@ -2021,6 +2033,7 @@ async function exporterDonnees(userId, username) {
     quetes: await q('SELECT semaine, quete_id, etat, fait_at, gain FROM quetes_progres WHERE username = $1 ORDER BY semaine, quete_id', [u]),
     quetes_visite: await q('SELECT semaine, vu_at FROM quetes_visites WHERE username = $1', [u]),
     quetes_contrats: await q('SELECT semaine, propositions, choix, signe_at FROM quetes_contrats WHERE username = $1 ORDER BY semaine', [u]),
+    quetes_individuelles: await q('SELECT semaine, quetes, cree_at FROM quetes_individuelles WHERE username = $1 ORDER BY semaine', [u]),
     sanctions: await q('SELECT moderator, action, detail, created_at FROM moderation_logs WHERE LOWER(target_username) = $1 ORDER BY created_at', [u]),
     notifications: await q('SELECT ua, created_at FROM push_subscriptions WHERE LOWER(username) = $1', [u]),
     sessions: await q('SELECT created_at FROM sessions WHERE user_id = $1 ORDER BY created_at', [id]),
@@ -2098,6 +2111,7 @@ const RENOMMAGE_COLONNES = [
   ['quetes_progres', 'username'],
   ['quetes_visites', 'username'],
   ['quetes_contrats', 'username'],
+  ['quetes_individuelles', 'username'],
   ['shop_packs', 'auteur'],
   ['users', 'referred_by'],
 ];
@@ -3159,13 +3173,28 @@ async function quetesSignerContrat(semaine, username, choix) {
     [String(semaine), String(username).toLowerCase(), Number(choix)]);
   return r.rowCount > 0;
 }
-// L'historique d'un joueur au Challenge : le meilleur de chaque jour, par classement.
-async function quetesHistoriqueJoueur(username, depuisJour, rankingIds) {
+// L'historique d'un joueur au Challenge : le meilleur de chaque jour, par
+// classement, de `depuisJour` (inclus) à `avantJour` (exclu).
+async function quetesHistoriqueJoueur(username, depuisJour, rankingIds, avantJour) {
   const { rows } = await pool.query(
     `SELECT ranking_id, day_key, score, data FROM challenge_score_archive
-      WHERE LOWER(username) = $1 AND day_key >= $2 AND ranking_id = ANY($3)`,
-    [String(username).toLowerCase(), String(depuisJour), rankingIds]);
+      WHERE LOWER(username) = $1 AND day_key >= $2 AND day_key < $4 AND ranking_id = ANY($3)`,
+    [String(username).toLowerCase(), String(depuisJour), rankingIds, String(avantJour || '9999-12-31')]);
   return rows;
+}
+async function quetesChargerIndividuelles(semaine) {
+  const { rows } = await pool.query('SELECT username, quetes, connu FROM quetes_individuelles WHERE semaine = $1', [String(semaine)]);
+  return rows;
+}
+// La première préparation fait foi (deux visites simultanées : une seule liste).
+async function quetesEnregistrerIndividuelles(semaine, username, quetes, connu) {
+  await pool.query(
+    `INSERT INTO quetes_individuelles (semaine, username, quetes, connu) VALUES ($1, $2, $3::jsonb, $4)
+     ON CONFLICT (semaine, username) DO NOTHING`,
+    [String(semaine), String(username).toLowerCase(), JSON.stringify(quetes || []), !!connu]);
+  const { rows } = await pool.query('SELECT quetes, connu FROM quetes_individuelles WHERE semaine = $1 AND username = $2',
+    [String(semaine), String(username).toLowerCase()]);
+  return rows[0] || null;
 }
 async function quetesChargerVisites() {
   const { rows } = await pool.query('SELECT username, semaine, vu_at FROM quetes_visites');
@@ -3184,6 +3213,7 @@ async function quetesReinitialiser(semaine, username) {
   const r = await pool.query('DELETE FROM quetes_progres WHERE semaine = $1 AND username = $2', [String(semaine), u]);
   await pool.query('DELETE FROM quetes_visites WHERE username = $1', [u]);
   await pool.query('DELETE FROM quetes_contrats WHERE semaine = $1 AND username = $2', [String(semaine), u]);
+  await pool.query('DELETE FROM quetes_individuelles WHERE semaine = $1 AND username = $2', [String(semaine), u]);
   return r.rowCount;
 }
 async function quetesRetirerQuete(semaine, queteId) {
@@ -5026,6 +5056,8 @@ module.exports = {
   quetesEnregistrerContrat,
   quetesSignerContrat,
   quetesHistoriqueJoueur,
+  quetesChargerIndividuelles,
+  quetesEnregistrerIndividuelles,
   quetesNoterVisite,
   quetesReinitialiser,
   quetesRetirerQuete,
