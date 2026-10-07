@@ -10876,7 +10876,8 @@ app.post('/api/admin/paris-challenge/mois', adminScope('challenge'), async (req,
 // réserve, coupé par défaut.
 //
 // L'OUVERTURE se règle à l'admin (onglet Quêtes) : fermées, réservées à des
-// testeurs nommés, ou ouvertes à tous. Tout ce qui se règle est PERSISTANT :
+// testeurs nommés, ou ouvertes à tous (ce qu'a fait le lancement, une fois).
+// Tout ce qui se règle est PERSISTANT :
 // app_state `quetes_reglages` (ouverture, testeurs, gains, composition,
 // retouches du catalogue) et `quetes_semaine` (les quêtes tirées, figées pour
 // la semaine) ; l'avancement de chacun dans quetes_progres, sa dernière visite
@@ -10952,6 +10953,17 @@ async function chargerQuetes() {
   try {
     const r = await db.getAppState('quetes_reglages');
     if (r) quetesReglages = Quetes.reglagesNormalises(JSON.parse(r));
+    // LE LANCEMENT, une seule fois : le premier démarrage qui porte ce code
+    // ouvre les quêtes à tous, en mode individuel (contrat coupé). Il le note
+    // (app_state `quetes_lancement`) : si l'admin les referme ensuite, un
+    // redémarrage ne les rouvre pas.
+    if (!(await db.getAppState('quetes_lancement'))) {
+      quetesReglages = Quetes.reglagesNormalises(Object.assign({}, quetesReglages,
+        { ouverture: 'tous', mode: 'individuelles', contrat: { actif: false } }));
+      await quetesEnregistrerReglages();
+      await db.setAppState('quetes_lancement', new Date().toISOString());
+      console.log('[QUETES] lancement : quêtes individuelles ouvertes à tous');
+    }
     const s = await db.getAppState('quetes_semaine');
     if (s) {
       const sem = JSON.parse(s);

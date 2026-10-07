@@ -459,6 +459,12 @@ async function reconnecter(pseudo) {
 }
 const etat = async (qui) => (await fetch(BASE + '/api/quetes/etat?sid=' + sids[qui])).json();
 const solde = async (qui) => (await (await fetch(BASE + '/api/paris?sid=' + sids[qui])).json()).solde;
+// Le paiement suit l'écriture en base (asynchrone) : on laisse le solde arriver, 3 s au plus.
+async function soldeVaut(qui, attendu) {
+  let v;
+  for (let i = 0; i < 30; i++) { v = await solde(qui); if (v === attendu) return v; await wait(100); }
+  return v;
+}
 const adminEtat = async () => (await fetch(BASE + '/api/admin/quetes', { headers: ADMIN })).json();
 async function swapou(pseudo, score) {
   const b = new URLSearchParams({ sid: sids[pseudo], game: 'swapou2', m: '0', score: String(score), data: 'S0:' });
@@ -476,11 +482,22 @@ async function semaineConnue(ids) {
   for (const id of ids) assert.ok((await post('/api/admin/quetes/semaine', { action: 'ajouter', id }, ADMIN)).ok, id);
 }
 
-test('fermées par défaut, puis ouvertes à un testeur — et à lui seul', async (t) => {
+test('le lancement les ouvre à tous (une fois) ; l’admin les referme, puis les ouvre à un testeur — et à lui seul', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
   await compte('papaye');
   await compte('grenade');
-  assert.deepEqual(await etat('papaye'), { ok: true, acces: false }, 'une base neuve : fermées');
+  // Le premier démarrage : ouvertes à tous, individuelles, et c'est noté.
+  let e0 = await etat('grenade');
+  assert.equal(e0.acces, true, 'le lancement : ouvertes à tous');
+  assert.equal(e0.quetes.length, 5);
+  assert.ok(e0.quetes.every((q) => q.niveau === 'facile' && /^ind-/.test(q.id)), 'individuelles (pas d’historique : faciles)');
+  const lanceA = (await sql(`SELECT value FROM app_state WHERE key = 'quetes_lancement'`))[0];
+  assert.ok(lanceA && lanceA.value, 'le lancement est noté');
+  const R0 = JSON.parse((await sql(`SELECT value FROM app_state WHERE key = 'quetes_reglages'`))[0].value);
+  assert.deepEqual([R0.ouverture, R0.mode, R0.contrat.actif], ['tous', 'individuelles', false]);
+  // L'admin les referme.
+  assert.equal((await post('/api/admin/quetes', { ouverture: 'ferme' }, ADMIN)).reglages.ouverture, 'ferme');
+  assert.deepEqual(await etat('papaye'), { ok: true, acces: false }, 'fermées');
   // Le mode collectif (le tirage commun) pour les tests qui suivent ; les quêtes individuelles ont leur test plus bas.
   const r = await post('/api/admin/quetes', { ouverture: 'testeurs', testeurs: 'Papaye, inconnu42', mode: 'collectives' }, ADMIN);
   assert.ok(r.ok);
@@ -583,6 +600,8 @@ test('les réglages et l’avancement survivent au redémarrage ; rien ne se rep
   await reconnecter('grenade');
   const e = await etat('papaye');
   assert.equal(e.acces, true, 'toujours testeur');
+  assert.equal(JSON.parse((await sql(`SELECT value FROM app_state WHERE key = 'quetes_reglages'`))[0].value).ouverture, 'testeurs',
+    'le lancement ne se refait pas au redémarrage');
   assert.deepEqual(e.quetes.map((q) => q.id), ids, 'la même semaine');
   assert.ok(e.quetes.every((q) => q.fait));
   assert.equal(e.nouveau, false, 'la visite aussi est gardée');
@@ -616,11 +635,10 @@ test('l’admin crée une quête (la course verte), la calibre, abaisse son seui
   // Le seuil abaissé à 4:40 : papaye l'a déjà, elle est payée sans rejouer.
   const r = await post('/api/admin/quetes/catalogue', { id: 'perso-1', seuil: '4:40' }, ADMIN);
   assert.ok(r.ok && r.semaineMiseAJour, JSON.stringify(r));
-  await wait(300);
+  assert.equal(await soldeVaut('papaye', avant + 20), avant + 20, '+20 (difficile)');
   e = await etat('papaye');
   assert.equal(quete(e, 'perso-1').titre, 'Finis la course verte en moins de 4 min 40 s');
   assert.equal(quete(e, 'perso-1').fait, true);
-  assert.equal(await solde('papaye'), avant + 20, '+20 (difficile)');
   // Tout est gardé : la quête créée et son seuil.
   const reglages = JSON.parse((await sql(`SELECT value FROM app_state WHERE key = 'quetes_reglages'`))[0].value);
   assert.deepEqual(reglages.perso.map((x) => [x.id, x.mesure, x.seuil, x.niveau]), [['perso-1', 'mb2-course1', 28000, 'difficile']]);
@@ -646,7 +664,7 @@ test('l’admin crée une quête (la course verte), la calibre, abaisse son seui
   // Et l'on peut refaire la quête : elle se repaie (c'est le but d'un test).
   await wait(1600);
   await declarer('papaye', 'mb2', 'course1', 27900);
-  assert.equal(await solde('papaye'), k + 20);
+  assert.equal(await soldeVaut('papaye', k + 20), k + 20);
 });
 
 test('ouvertes à tous, puis la semaine tourne : nouveau tirage, avancement neuf', async (t) => {
