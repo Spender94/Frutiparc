@@ -52,22 +52,50 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
 .qt { font-family: Verdana, Arial, sans-serif; color: #4A3110; flex: 1 0 auto; display: flex; flex-direction: column; }
 .qt-ferme, .qt-vide { padding: 24px 16px; text-align: center; color: #FFF3D2; font-size: 13px; }
 
-/* Gromelin et sa bulle */
-.qt-tete { display: flex; align-items: center; gap: 12px; padding: 12px 14px;
-  background: linear-gradient(#C9DF9C, #B4D57A); border-bottom: 3px solid #6B4A1C; }
-/* L'écran de bouille de Gaspard (cp.FrutiScreen) : fond, reflet, double liseré. */
-.qt-ecran { position: relative; flex: 0 0 100px; width: 100px; height: 100px; overflow: hidden;
+/* Gromelin et sa bulle — tout est sur le BOIS du tableau : le fronton est
+   une planche plus sombre, l'écran de bouille y est encadré et cloué comme un
+   portrait, et ce que dit Gromelin est un parchemin punaisé, du même papier
+   que les quêtes. Rien ne flotte sur un aplat d'une autre matière. */
+.qt-tete { position: relative; display: flex; align-items: center; gap: 16px; padding: 16px 16px 18px;
+  background-color: #8A5A26;
+  background-image:
+    linear-gradient(rgba(255,225,170,.10), rgba(0,0,0,.16)),
+    repeating-linear-gradient(0deg, rgba(40,20,0,.30) 0 2px, transparent 2px 46px),
+    repeating-linear-gradient(0deg, rgba(255,230,180,.07) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 50px, rgba(255,255,255,.03) 50px 110px);
+  border-bottom: 3px solid #4A2E0C; box-shadow: inset 0 -8px 12px -8px rgba(0,0,0,.45); }
+/* Le cadre du portrait : une baguette de bois clair, quatre clous. */
+.qt-cadre { position: relative; flex: 0 0 auto; padding: 7px; border-radius: 9px;
+  background-color: #B98243;
+  background-image:
+    radial-gradient(circle at 7px 7px, #6A5584 0 2.2px, #B7A5CC 2.4px 2.9px, transparent 3.2px),
+    radial-gradient(circle at calc(100% - 7px) 7px, #6A5584 0 2.2px, #B7A5CC 2.4px 2.9px, transparent 3.2px),
+    radial-gradient(circle at 7px calc(100% - 7px), #6A5584 0 2.2px, #B7A5CC 2.4px 2.9px, transparent 3.2px),
+    radial-gradient(circle at calc(100% - 7px) calc(100% - 7px), #6A5584 0 2.2px, #B7A5CC 2.4px 2.9px, transparent 3.2px),
+    linear-gradient(145deg, #D19A55, #8E5F26);
+  box-shadow: 0 4px 0 rgba(30,15,0,.45), inset 0 1px 0 rgba(255,235,190,.55), inset 0 -2px 0 rgba(0,0,0,.28); }
+/* L'écran de bouille de Gaspard (cp.FrutiScreen) : son fond et son reflet,
+   enfoncé dans le cadre (un liseré sombre au lieu du gris du châssis). */
+.qt-ecran { position: relative; width: 100px; height: 100px; overflow: hidden;
   background: url('/frutiz/sprites/ecran-fond.svg') 0 0 / 100% 100% no-repeat;
-  border-radius: 6px; box-shadow: 0 0 0 2px #DDDDDD; }
+  border-radius: 5px; box-shadow: 0 0 0 2px #5A3810; }
 .qt-ecran::before { content: ""; position: absolute; right: 2px; top: 2px; width: 42.7px; height: 31.8px; z-index: 7;
   pointer-events: none; background: url('/frutiz/sprites/ecran-reflet.svg') 0 0 / 42.7px 31.8px no-repeat; }
-.qt-ecran::after { content: ""; position: absolute; inset: 0; border-radius: 6px; box-shadow: inset 0 0 0 1px #888888; z-index: 6; pointer-events: none; }
+.qt-ecran::after { content: ""; position: absolute; inset: 0; border-radius: 5px; z-index: 6; pointer-events: none;
+  box-shadow: inset 0 2px 6px rgba(40,20,0,.45); }
 .qt-ecran > canvas.fp-bvig { display: block; width: 98px !important; height: 98px !important; margin: 1px; }
-.qt-dit { position: relative; flex: 1; min-width: 0; min-height: 64px; cursor: pointer;
-  background: #FFFDF2; border: 2px solid #8A6430; border-radius: 14px;
-  padding: 9px 12px 22px; font-size: 12.5px; line-height: 1.45; }
-.qt-dit::before { content: ''; position: absolute; left: -10px; top: 40px; width: 14px; height: 14px; background: #FFFDF2;
-  border-left: 2px solid #8A6430; border-bottom: 2px solid #8A6430; transform: rotate(45deg); }
+/* La parole : un parchemin punaisé (deux punaises violettes, comme les quêtes). */
+.qt-dit { position: relative; flex: 1; min-width: 0; min-height: 70px; cursor: pointer;
+  background-color: #EFDBA4;
+  background-image:
+    radial-gradient(circle at 14px 9px, #7E6A99 0 3.5px, transparent 4px),
+    radial-gradient(circle at calc(100% - 14px) 9px, #7E6A99 0 3.5px, transparent 4px),
+    linear-gradient(170deg, #F6E6B8, #E9CF91);
+  border: 2px solid #8C6531; border-radius: 7px 11px 6px 9px; transform: rotate(-.4deg);
+  box-shadow: 0 4px 0 rgba(30,15,0,.40);
+  padding: 14px 14px 22px; font-size: 12.5px; line-height: 1.45; color: #3E2608; }
+.qt-dit::before { content: ''; position: absolute; left: -9px; top: 38px; width: 14px; height: 14px; background: #F2DFAC;
+  border-left: 2px solid #8C6531; border-bottom: 2px solid #8C6531; transform: rotate(45deg); }
 .qt-dit em { color: #7A1F10; font-style: normal; font-weight: bold; }
 .qt-curseur { display: inline-block; width: 2px; height: 13px; background: #4A3110; vertical-align: -2px; margin-left: 1px;
   animation: qt-clign .8s steps(1) infinite; }
@@ -118,7 +146,9 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
 .qt-pied b { color: #FFE58A; }
 
 @media (max-width: 420px) {
-  .qt-ecran { flex-basis: 76px; width: 76px; height: 76px; }
+  .qt-tete { gap: 12px; padding: 12px 10px 14px; }
+  .qt-cadre { padding: 5px; }
+  .qt-ecran { width: 76px; height: 76px; }
   .qt-ecran > canvas.fp-bvig { width: 74px !important; height: 74px !important; }
   .qt-dit { font-size: 12px; }
   .qt-planches { padding: 12px 8px 14px; }

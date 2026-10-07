@@ -126,7 +126,7 @@
       return;
     }
     corps.innerHTML = '<div class="qt">'
-      + '<div class="qt-tete"><div class="qt-ecran" title="' + esc((etat.gromelin && etat.gromelin.nom) || 'Gromelin') + '"></div>'
+      + '<div class="qt-tete"><div class="qt-cadre"><div class="qt-ecran" title="' + esc((etat.gromelin && etat.gromelin.nom) || 'Gromelin') + '"></div></div>'
       + '<div class="qt-dit" role="status" aria-live="polite" title="Clique pour la suite"><span class="qt-txt"></span><span class="qt-curseur"></span><span class="qt-suite"></span></div></div>'
       + '<div class="qt-semaine">' + semaine + '</div>'
       + '<div class="qt-planches">' + planches + '</div>'
