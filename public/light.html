@@ -2517,6 +2517,8 @@
      Le module ne fait RIEN tant que light.html n'appelle pas demarrer(),
      et demarrer() n'est appelé que sur grand écran — le mobile ne change pas. -->
 <link rel="stylesheet" href="/bureau-frutiz.css">
+<!-- Les quêtes de Gromelin : le baluchon et la fenêtre (dessins, hors mode nuit). -->
+<link rel="stylesheet" href="/quetes.css">
 <script>
 /*
  * LE MODE NUIT, ALLUMÉ AVANT LE PREMIER RENDU.
@@ -2557,6 +2559,7 @@
 })();
 </script>
 <script src="/bureau-frutiz.js"></script>
+<script src="/js/quetes-light.js"></script>
 <!-- LE BOUILLOSCOPE EN JAVASCRIPT — le moteur lit les SWF de famille d'époque
      (public/fbouille) et dessine dans un canevas : plus d'iframe Ruffle par
      vignette, plus de cache PNG à réchauffer. Voir public/frutiz/BOUILLES.md. -->
@@ -2738,6 +2741,10 @@
            fileIcon.swf — la même que l'explorateur du bureau Frutiz affiche
            déjà (/frutiz/sprites/ico_pictoForum.svg). -->
       <button class="home-tile" data-go="paris" id="tuile-paris" style="display:none"><span class="ico"><img src="/frutiz/sprites/ico_pictoForum.svg" alt="" onerror="this.replaceWith(document.createTextNode('🎲'))"></span><span class="lbl">Prunostics</span></button>
+      <!-- Les QUÊTES de Gromelin : le baluchon de MiniPixiz. La tuile ne paraît
+           que si les quêtes sont ouvertes à ce joueur (QuetesLight.demarrer) ;
+           `.nouvelles` la fait gigoter quand Gromelin a du neuf. -->
+      <button class="home-tile" data-go="quetes" id="tuile-quetes" style="display:none"><span class="ico"><span class="ico-baluchon"><img class="sac" src="/minipixiz/sprites/shape446.svg" alt=""><span class="eclat e1"></span><span class="eclat e2"></span><span class="eclat e3"></span></span></span><span class="lbl">Quêtes</span></button>
       <!-- Les RÉGLAGES de l'appli : notifications, installation, diagnostic.
            L'icône est celle du bureau — le radis de « linkPreference », sorti
            en vecteur de la feuille des liens de fileIcon.swf
@@ -3369,6 +3376,17 @@
       <button id="paris-sheet-close">✕</button>
     </div>
     <iframe id="paris-cadre" title="Prunostics" src="about:blank"></iframe>
+  </div>
+
+  <!-- LES QUÊTES DE GROMELIN — une feuille sur mobile, une fenêtre sur le
+       bureau (qui adopte la feuille). Le contenu est bâti par quetes-light.js. -->
+  <div id="quetes-sheet-backdrop" class="sheet-backdrop"></div>
+  <div id="quetes-sheet" class="sheet sheet-quetes">
+    <div class="sheet-head">
+      <span><img class="sheet-ico" src="/minipixiz/sprites/shape446.svg" alt="">Les quêtes de Gromelin</span>
+      <button id="quetes-sheet-close">✕</button>
+    </div>
+    <div id="quetes-corps"></div>
   </div>
 
   <div id="disques-sheet-backdrop" class="sheet-backdrop"></div>
@@ -4530,6 +4548,7 @@
   }
   function loadHomeProfile() {
     majTuileParis();
+    if (window.QuetesLight && state.sid) QuetesLight.demarrer(state.sid);
     if (!state.sid) { setHomeAvatar(DEFAULT_BOUILLE, homeMood); return; }
     fetch("/api/light/profile?sid=" + encodeURIComponent(state.sid)
       + "&appareil=" + encodeURIComponent(jetonAppareil()), { cache: "no-store" })
@@ -4654,6 +4673,12 @@
       if (go === "paris") {
         if (surBureau && BureauFrutiz.ouvrirParis) return BureauFrutiz.ouvrirParis();
         return openParisSheet();
+      }
+      // LES QUÊTES : la même chose — une fenêtre du bureau, une feuille sur mobile.
+      if (go === "quetes") {
+        if (surBureau && BureauFrutiz.ouvrirQuetes) return BureauFrutiz.ouvrirQuetes();
+        if (window.QuetesLight) { openMenu(false); QuetesLight.ouvrirFeuille(); }
+        return;
       }
       // LE FORUM est une rubrique comme une autre depuis qu'il s'ouvre dans la
       // fenêtre principale : `activateTab` en bas de cette fonction s'en
@@ -8564,6 +8589,8 @@
         var texteHisto = xmlUnescape(bodyOf(xml));
         if (texteHisto) systemLine("★ " + texteHisto);
         planifierMajHistorique();
+        // Une quête payée (USER_LOG_TYPE.QUETE) : le baluchon et la fenêtre se relisent.
+        if (attr(xml, "type") === "72" && window.QuetesLight) QuetesLight.rafraichir();
         break;
       }
 

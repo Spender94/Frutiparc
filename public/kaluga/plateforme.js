@@ -179,6 +179,21 @@ class Client {
   }
   onSaveScore() { this.mng.scoreSaved(); }
 
+  /*
+   * LES QUÊTES DE GROMELIN. Une épreuve n'a pas de classement : sa trace est
+   * la fruticard, qui ne garde que les records. Le serveur ne peut donc pas
+   * voir « 3 lancers de vers cette semaine » — le jeu le lui dit, épreuve par
+   * épreuve (`mode` = epreuve<trialId>, `record` = record personnel battu).
+   * Sans session, rien ne part.
+   */
+  rapporterQuete(mode, valeur, record) {
+    if (!this.sid) return;
+    fetch('/api/quetes/mode', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: this.sid, jeu: 'kaluga', mode: String(mode), v: Number(valeur) || 0, record: !!record }),
+    }).catch(() => {});
+  }
+
   saveSlot(n) {
     if (this.lockList[n]) return Promise.resolve(false);
     if (!this.sid || !this.charge) return Promise.resolve(false);

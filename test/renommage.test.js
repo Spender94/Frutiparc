@@ -243,6 +243,7 @@ test('la liste des colonnes balayées couvre ce que la base range par pseudo', (
     'moderation_logs.moderator', 'kikooz_gifts.giver', 'kikooz_gifts.recipient',
     'swapou_ia_scores.username', 'contacts.contact_name', 'blacklist.blocked_name',
     'shop_packs.auteur', 'users.referred_by', 'swapou_parties.username', 'connexions.username', 'tournament_paris.username', 'tournament_paris.choix', 'challenge_paris.username', 'challenge_paris.choix',
+    'quetes_progres.username', 'quetes_visites.username',
   ]) {
     assert.ok(colonnes.has(attendue), attendue + ' doit être balayée');
   }

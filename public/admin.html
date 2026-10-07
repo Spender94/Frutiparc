@@ -433,6 +433,7 @@
       <button class="tab" data-tab="gaspard" onclick="switchTab('gaspard')">Aide Gaspard</button>
       <button class="tab" data-tab="events" onclick="switchTab('events')">Événements</button>
       <button class="tab" data-tab="challenge" onclick="switchTab('challenge')">Challenge</button>
+      <button class="tab" data-tab="quetes" onclick="switchTab('quetes')">Quêtes</button>
     </div></div>
     <div class="tab-group"><span class="lbl">Modération</span><div class="grp">
       <button class="tab" data-tab="channels" onclick="switchTab('channels')">Salons</button>
@@ -1228,6 +1229,11 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
   </table>
 </div>
 
+<div class="content" id="tab-quetes" style="display:none">
+  <div class="toolbar"><button class="btn" onclick="loadQuetes()">Rafraîchir</button></div>
+  <div id="quetes-admin" class="section-content"></div>
+</div>
+
 <div class="content" id="tab-events" style="display:none">
   <h4>Pousser un événement (fenêtre Événements)</h4>
   <div class="section-content">
@@ -1715,7 +1721,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['stats','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons','swapouverif','compteslies'].forEach(t => {
+  ['stats','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons','swapouverif','compteslies','quetes'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -1741,6 +1747,7 @@ function switchTab(name) {
   if (name === 'swapouverif') loadSwapouVerif();
   else swapouVerifSuivre(false);
   if (name === 'compteslies') loadComptesLies();
+  if (name === 'quetes') loadQuetes();
 }
 
 // ─── Intégrité : Swapou vérifié ───
@@ -6359,6 +6366,131 @@ async function retirerPackTous(id, name) {
   const data = await r.json();
   if (!r.ok) { toast('Erreur: ' + (data.error || 'inconnu')); return; }
   toast(`"${name}" retiré à ${data.retires} joueurs (${data.deshabilles} le portaient)`);
+}
+
+// ─── Les quêtes de Gromelin ───
+let quetesAdmin = null;
+function qtReste(fin) {
+  const ms = Math.max(0, Number(fin) - Date.now());
+  const j = Math.floor(ms / 86400000), h = Math.floor(ms / 3600000) % 24;
+  return j ? `${j} j ${h} h` : `${h} h ${Math.floor(ms / 60000) % 60} min`;
+}
+const QT_NIVEAU = { facile: 'Facile', moyenne: 'Moyenne', difficile: 'Difficile' };
+const QT_COULEUR = { facile: '#5E9E1C', moyenne: '#C8860A', difficile: '#C0281A' };
+function qtNiveau(n) { return `<b style="color:${QT_COULEUR[n] || '#333'}">${QT_NIVEAU[n] || esc(n)}</b>`; }
+async function loadQuetes() {
+  const bloc = $('#quetes-admin');
+  try {
+    const d = await (await fetch('/api/admin/quetes', { headers: hdr() })).json();
+    if (!d.ok) { bloc.innerHTML = `<div style="color:#c03c30">Erreur : ${esc(d.error || 'inconnue')}</div>`; return; }
+    quetesAdmin = d;
+    const R = d.reglages, S = d.semaine;
+    const radio = (v, l) => `<label style="margin-right:14px"><input type="radio" name="qt-ouverture" value="${v}" ${R.ouverture === v ? 'checked' : ''}> ${l}</label>`;
+    const parNiveau = (k, titre) => d.niveaux.map((n) => `<label style="margin-right:10px">${QT_NIVEAU[n]} <input type="number" min="0" id="qt-${k}-${n}" value="${R[titre][n]}" style="width:56px"></label>`).join('');
+    const cat = d.catalogue;
+    const libres = (niveau) => cat.filter((q) => q.actif && !q.cetteSemaine && (!niveau || q.niveau === niveau));
+    const options = (l) => l.map((q) => `<option value="${esc(q.id)}">${esc(q.titre)}</option>`).join('');
+    const semaine = S.quetes.map((q) => `<tr>
+      <td>${qtNiveau(q.niveau)}</td>
+      <td><b>${esc(q.titre)}</b><br><small style="color:#777">${esc(q.detail || '')} · <code>${esc(q.id)}</code></small></td>
+      <td>${q.gain}</td><td>${q.enCours}</td><td>${q.faites}</td><td>${q.kikooz}</td>
+      <td style="white-space:nowrap">
+        <select id="qt-par-${esc(q.id)}"><option value="">au hasard (${QT_NIVEAU[q.niveau]})</option>${options(libres(q.niveau))}</select>
+        <button class="btn btn-sm" onclick="quetesSemaine('remplacer', '${esc(q.id)}')">Remplacer</button>
+        <button class="btn-danger btn-sm" onclick="quetesSemaine('retirer', '${esc(q.id)}')">Retirer</button>
+      </td></tr>`).join('');
+    const tetes = S.quetes.map((q) => `<th title="${esc(q.titre)}">${esc(q.titre.length > 22 ? q.titre.slice(0, 21) + '…' : q.titre)}</th>`).join('');
+    const joueurs = d.joueurs.map((j) => `<tr><td><b>${esc(j.nom)}</b></td><td>${j.faites} / ${S.quetes.length}</td><td>${j.gagnes}</td>
+      ${j.lignes.map((l) => `<td style="font-size:11px">${l.fait ? '<b style="color:#2f8f2f">✔ faite</b>' : esc(l.ligne)}</td>`).join('')}
+      <td><button class="btn btn-sm" onclick="quetesReinit('${esc(j.username)}')" title="Efface son avancement de la semaine (les kikooz versés restent)">Remettre à zéro</button></td></tr>`).join('');
+    const catalogue = cat.map((q) => `<tr${q.cetteSemaine ? ' style="background:#fff3d6"' : ''}>
+      <td><input type="checkbox" id="qt-actif-${esc(q.id)}" ${q.actif ? 'checked' : ''}></td>
+      <td><select id="qt-niv-${esc(q.id)}">${d.niveaux.map((n) => `<option value="${n}" ${q.niveau === n ? 'selected' : ''}>${QT_NIVEAU[n]}</option>`).join('')}</select></td>
+      <td><b>${esc(q.titre)}</b>${q.cetteSemaine ? ' <small style="color:#c8860a">(cette semaine)</small>' : ''}<br><small style="color:#777">${esc(q.detail || '')} · ${esc(q.type)} · famille ${esc(q.famille)}</small></td>
+      <td>${q.reglable ? `${q.reglable === 'seuil' ? 'Seuil' : 'Nombre'} <input type="number" min="1" id="qt-val-${esc(q.id)}" value="${q.valeur}" style="width:80px">` : '—'}</td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="quetesCatalogue('${esc(q.id)}')">Enregistrer</button>
+        ${q.reglable === 'seuil' ? `<button class="btn btn-sm" onclick="quetesCalibrer('${esc(q.id)}')" title="Qui atteint ce seuil ?">Calibrer</button>` : ''}
+        <div id="qt-cal-${esc(q.id)}" style="font-size:11px;color:#2C4A0F;max-width:280px;white-space:normal"></div></td></tr>`).join('');
+    const histo = (d.historique || []).map((h) => `<tr><td>${esc(h.semaine)}</td><td>${h.joueurs}</td><td>${h.faites}</td><td>${h.kikooz}</td></tr>`).join('');
+    bloc.innerHTML = `
+      <div style="border:1px solid #c9a46a;background:#fffaf0;padding:12px;border-radius:8px;font-size:13px;margin-bottom:12px">
+        <h4 style="margin:0 0 6px">🎒 Les quêtes de Gromelin</h4>
+        <div style="color:#777;margin:0 0 10px;line-height:1.45">
+          Chaque lundi à minuit (heure de Paris), Gromelin tire des quêtes dans le catalogue ci-dessous : les mêmes pour tout le monde,
+          jamais deux de la même famille. Une quête faite rapporte ses kikooz <b>tout de suite</b> (ligne « Quêtes » dans l'historique du joueur).
+          L'icône « Quêtes » (le baluchon) n'apparaît qu'aux joueurs qui y ont accès ; elle gigote quand Gromelin a du neuf.
+          Tout est enregistré en base : un redémarrage ne change rien.
+        </div>
+        <div style="margin-bottom:8px"><b>Ouverture :</b> ${radio('ferme', 'Fermées')}${radio('testeurs', 'Testeurs seulement')}${radio('tous', 'Ouvertes à tous')}</div>
+        <div style="margin-bottom:8px"><b>Testeurs</b> (pseudos séparés par des virgules ou des espaces) :<br>
+          <textarea id="qt-testeurs" rows="2" style="width:100%;max-width:640px">${esc(R.testeurs.join(', '))}</textarea></div>
+        <div style="margin-bottom:6px"><b>Gains (kikooz) :</b> ${parNiveau('gain', 'gains')}</div>
+        <div style="margin-bottom:8px"><b>Quêtes par semaine :</b> ${parNiveau('compo', 'composition')} <small style="color:#777">(pris en compte au prochain tirage)</small></div>
+        <button class="btn btn-success" onclick="quetesEnregistrer()">Enregistrer</button>
+      </div>
+      <h4>Cette semaine — ${esc(S.lisible)} <small style="font-weight:normal;opacity:.85">(nouvelles quêtes dans ${qtReste(S.fin)})</small></h4>
+      <div class="toolbar" style="margin-bottom:6px">
+        <button class="btn-danger" onclick="quetesSemaine('tirer')" title="Tire de nouvelles quêtes pour la semaine en cours">Nouveau tirage</button>
+        <select id="qt-ajout"><option value="">— ajouter une quête —</option>${options(libres())}</select>
+        <button class="btn" onclick="quetesSemaine('ajouter')">Ajouter</button>
+      </div>
+      <table><thead><tr><th>Niveau</th><th>Quête</th><th>Gain</th><th>En cours</th><th>Faites</th><th>Kikooz versés</th><th></th></tr></thead><tbody>${semaine || '<tr><td colspan="7">Aucune quête.</td></tr>'}</tbody></table>
+      <h4>Joueurs cette semaine</h4>
+      <div class="toolbar" style="margin-bottom:6px"><input id="qt-reinit" placeholder="pseudo" style="width:140px">
+        <button class="btn" onclick="quetesReinit($('#qt-reinit').value)" title="Pour retester : efface l'avancement de la semaine du joueur (les kikooz versés restent)">Remettre à zéro</button></div>
+      ${joueurs ? `<table><thead><tr><th>Joueur</th><th>Faites</th><th>Kikooz</th>${tetes}<th></th></tr></thead><tbody>${joueurs}</tbody></table>` : '<div style="color:#777">Personne n’a encore avancé cette semaine.</div>'}
+      <h4>Catalogue</h4>
+      <div style="color:#777;font-size:12px;margin-bottom:6px">Décocher une quête la retire des prochains tirages. Retoucher une quête de la semaine s'applique tout de suite
+        (et ce qui devient atteint est payé). « Calibrer » montre qui atteint le seuil : 28 jours de Challenge archivés pour un score, les records des fruticards pour une épreuve de Kaluga.</div>
+      <table><thead><tr><th>Active</th><th>Niveau</th><th>Quête</th><th>Réglage</th><th></th></tr></thead><tbody>${catalogue}</tbody></table>
+      ${histo ? `<h4>Semaines</h4><table><thead><tr><th>Semaine du</th><th>Joueurs</th><th>Quêtes faites</th><th>Kikooz versés</th></tr></thead><tbody>${histo}</tbody></table>` : ''}`;
+  } catch (e) { bloc.innerHTML = `<div style="color:#c03c30">Erreur : ${esc(e.message)}</div>`; }
+}
+async function quetesPost(url, body, ok) {
+  try {
+    const r = await fetch(url, { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
+    const d = await r.json();
+    if (d.ok) { toast(ok(d)); loadQuetes(); } else toast('Erreur : ' + (d.message || d.error));
+    return d;
+  } catch (e) { toast('Erreur : ' + e.message); return null; }
+}
+async function quetesEnregistrer() {
+  const o = document.querySelector('input[name="qt-ouverture"]:checked');
+  const gains = {}, composition = {};
+  for (const n of quetesAdmin.niveaux) { gains[n] = Number($(`#qt-gain-${n}`).value); composition[n] = Number($(`#qt-compo-${n}`).value); }
+  await quetesPost('/api/admin/quetes', { ouverture: o ? o.value : 'ferme', testeurs: $('#qt-testeurs').value, gains, composition },
+    (d) => `Quêtes : ${{ ferme: 'fermées', testeurs: 'testeurs seulement', tous: 'ouvertes à tous' }[d.reglages.ouverture]}`
+      + (d.inconnus && d.inconnus.length ? ` — pseudo(s) inconnu(s) : ${d.inconnus.join(', ')}` : ''));
+}
+async function quetesSemaine(action, id) {
+  if (action === 'tirer' && !confirm('Tirer de nouvelles quêtes pour la semaine en cours ? L’avancement non payé sur les quêtes qui sortent sera perdu.')) return;
+  if (action === 'retirer' && !confirm('Retirer cette quête de la semaine ? L’avancement non payé sera perdu.')) return;
+  const body = { action };
+  if (action === 'remplacer') { body.id = id; body.par = $(`#qt-par-${id}`).value || undefined; }
+  if (action === 'retirer') body.id = id;
+  if (action === 'ajouter') { body.id = $('#qt-ajout').value; if (!body.id) { toast('Choisis une quête à ajouter.'); return; } }
+  await quetesPost('/api/admin/quetes/semaine', body, () => 'Semaine mise à jour');
+}
+async function quetesCatalogue(id) {
+  const q = quetesAdmin.catalogue.find((x) => x.id === id);
+  const body = { id, actif: $(`#qt-actif-${id}`).checked, niveau: $(`#qt-niv-${id}`).value };
+  if (q && q.reglable) body[q.reglable] = Number($(`#qt-val-${id}`).value);
+  await quetesPost('/api/admin/quetes/catalogue', body, (d) => d.semaineMiseAJour ? 'Quête enregistrée (et appliquée à la semaine)' : 'Quête enregistrée');
+}
+async function quetesCalibrer(id) {
+  const out = $(`#qt-cal-${id}`);
+  const v = $(`#qt-val-${id}`) ? $(`#qt-val-${id}`).value : '';
+  out.textContent = '…';
+  try {
+    const d = await (await fetch(`/api/admin/quetes/calibrage?id=${encodeURIComponent(id)}&seuil=${encodeURIComponent(v)}`, { headers: hdr() })).json();
+    out.textContent = d.texte || 'Pas de données pour cette quête.';
+  } catch (e) { out.textContent = 'Erreur : ' + e.message; }
+}
+async function quetesReinit(u) {
+  u = String(u || '').trim();
+  if (!u) { toast('Indique un pseudo.'); return; }
+  if (!confirm(`Remettre à zéro la semaine de ${u} ? Son avancement est effacé ; les kikooz déjà versés restent.`)) return;
+  await quetesPost('/api/admin/quetes/reinitialiser', { username: u }, (d) => `Semaine de ${u} remise à zéro (${d.lignes} ligne(s))`);
 }
 
 // ── Challenge ──

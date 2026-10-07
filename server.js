@@ -289,6 +289,8 @@ const USER_LOG_TYPE = {
   // On a misé sur toi (Prunostics d'un tournoi ou du Challenge) : une entrée
   // à la première mise de chaque parieur, pas à chaque rallonge.
   PRUNOSTIC:   71,
+  // Une quête de Gromelin accomplie (et payée).
+  QUETE:       72,
 };
 
 // Internal-status code for each game — the 2-char base62 value broadcast in
@@ -2796,6 +2798,7 @@ function persistScore(username, rankingId, score, data) {
   // meilleur score du joueur pour le tour en cours (indépendant de son record perso).
   captureTournamentScore(username, rankingId, n, newData);
   noterPartie(username, RANKINGS[rankingId].game);
+  quetesEvenement(username, { type: 'score', rk: rankingId, v: n, challenge: isDailyResetRanking(rankingId) });
   const oldPos = computePosition(rankingId, username);
   let updated = false;
   const scoreImproved = isScoreBetter(rankingId, n, newData, oldScore, oldData);
@@ -3802,6 +3805,7 @@ function getXpActions(username) {
 function trackXpAction(username, action) {
   getXpActions(username)[action] = (getXpActions(username)[action] || 0) + 1;
   saveXpActions();
+  quetesEvenement(username, { type: 'action', action });
 }
 
 // XP reward per action type (with daily caps), tallied at the midnight
@@ -4847,6 +4851,7 @@ function awardMedalKikooz(username, reward, reason) {
 function notifyChallengeWinners(winnersByUser, visibleDay) {
   for (const [username, medals] of Object.entries(winnersByUser || {})) {
     let totalReward = 0;
+    if (medals && medals.length) quetesEvenement(username, { type: 'action', action: 'medaille' });
     for (const m of medals) {
       const gameName = GAME_DISPLAY_NAMES[m.game] || m.game;
       const medalName = MEDAL_DISPLAY_NAMES[m.medal] || m.medal;
@@ -8301,6 +8306,7 @@ function noterPartie(username, jeu) {
   if (t - (partiesRecentes.get(k) || 0) < PARTIE_FUSION_MS) return;
   partiesRecentes.set(k, t);
   if (partiesRecentes.size > 5000) for (const [kk, tt] of partiesRecentes) if (t - tt > PARTIE_FUSION_MS) partiesRecentes.delete(kk);
+  quetesEvenement(cle, { type: 'partie', jeu });
   if (process.env.DATABASE_URL) db.statsPartieNoter(parisDayKey(), jeu).catch(dbErr('statsPartieNoter'));
 }
 
@@ -10860,6 +10866,407 @@ app.post('/api/admin/paris-challenge/mois', adminScope('challenge'), async (req,
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ══════════════════════════════════════════════════════════════════════════
+// LES QUÊTES DE GROMELIN (quetes.js) — cinq quêtes par semaine, tirées le
+// lundi à minuit (heure de Paris), payées en kikooz dès qu'elles sont faites.
+//
+// L'OUVERTURE se règle à l'admin (onglet Quêtes) : fermées, réservées à des
+// testeurs nommés, ou ouvertes à tous. Tout ce qui se règle est PERSISTANT :
+// app_state `quetes_reglages` (ouverture, testeurs, gains, composition,
+// retouches du catalogue) et `quetes_semaine` (les quêtes tirées, figées pour
+// la semaine) ; l'avancement de chacun dans quetes_progres, sa dernière visite
+// dans quetes_visites. Un redémarrage reprend tout où il en était.
+//
+// LES ÉVÉNEMENTS viennent des points de passage du parc — persistScore (un
+// score classé), noterPartie (une partie), trackXpAction (pari, salons,
+// forum), la Question à 60 kikooz, les médailles du Challenge — et des jeux
+// light pour leurs modes hors classement (POST /api/quetes/mode : les
+// épreuves de Kaluga). Un joueur sans accès n'avance rien.
+// ══════════════════════════════════════════════════════════════════════════
+const Quetes = require('./quetes.js');
+let quetesReglages = Quetes.reglagesNormalises();
+let quetesSemaine = null;             // { lundi, quetes: [définitions figées] }
+const quetesProgres = new Map();      // pseudo → Map(id de quête → { etat, faitAt, gain })
+const quetesVisites = new Map();      // pseudo → { semaine, vuAt }
+let quetesPret = false;               // chargées (base lue) : avant, on n'écoute rien
+const GROMELIN_BOUILLE = '0d0000010000000000000000';
+
+function quetesAcces(username) {
+  const u = String(username || '').toLowerCase();
+  if (!u || NPC_USERNAMES.has(u)) return false;
+  if (quetesReglages.ouverture === 'tous') return true;
+  if (quetesReglages.ouverture === 'testeurs') return quetesReglages.testeurs.includes(u);
+  return false;
+}
+async function quetesEnregistrerReglages() {
+  if (process.env.DATABASE_URL) await db.setAppState('quetes_reglages', JSON.stringify(quetesReglages));
+}
+function quetesEnregistrerSemaine() {
+  if (process.env.DATABASE_URL && quetesSemaine) {
+    db.setAppState('quetes_semaine', JSON.stringify(quetesSemaine)).catch(dbErr('quetes_semaine'));
+  }
+}
+/**
+ * La semaine en cours — tirée à la première demande d'une semaine neuve. Le
+ * tirage est semé par le lundi : deux serveurs, ou un redémarrage, tirent les
+ * mêmes quêtes.
+ */
+function quetesSemaineCourante() {
+  const lundi = Quetes.lundiDe(parisDayKey());
+  if (!quetesSemaine || quetesSemaine.lundi !== lundi) {
+    quetesSemaine = { lundi, quetes: Quetes.tirer(quetesReglages, 'gromelin:' + lundi) };
+    quetesProgres.clear();
+    quetesEnregistrerSemaine();
+    console.log(`[QUETES] semaine du ${lundi} : ${quetesSemaine.quetes.map((q) => q.id).join(', ') || 'aucune quête'}`);
+  }
+  return quetesSemaine;
+}
+function quetesProgresDe(username, id) {
+  let m = quetesProgres.get(username);
+  if (!m) { m = new Map(); quetesProgres.set(username, m); }
+  let p = m.get(id);
+  if (!p) { p = { etat: {}, faitAt: 0, gain: 0 }; m.set(id, p); }
+  return p;
+}
+async function chargerQuetes() {
+  if (!process.env.DATABASE_URL) { quetesSemaineCourante(); quetesPret = true; return; }
+  try {
+    const r = await db.getAppState('quetes_reglages');
+    if (r) quetesReglages = Quetes.reglagesNormalises(JSON.parse(r));
+    const s = await db.getAppState('quetes_semaine');
+    if (s) {
+      const sem = JSON.parse(s);
+      if (sem && sem.lundi && Array.isArray(sem.quetes)) quetesSemaine = sem;
+    }
+    const S = quetesSemaineCourante();
+    for (const row of await db.quetesChargerSemaine(S.lundi)) {
+      const p = quetesProgresDe(String(row.username).toLowerCase(), row.quete_id);
+      p.etat = row.etat || {};
+      p.faitAt = row.fait_at ? new Date(row.fait_at).getTime() : 0;
+      p.gain = Number(row.gain) || 0;
+    }
+    for (const v of await db.quetesChargerVisites()) {
+      quetesVisites.set(String(v.username).toLowerCase(), { semaine: v.semaine, vuAt: v.vu_at ? new Date(v.vu_at).getTime() : 0 });
+    }
+  } catch (e) { console.error('[QUETES] chargement :', e.message); }
+  quetesPret = true;
+}
+
+/** Un événement du parc : il fait peut-être avancer une quête du joueur. */
+function quetesEvenement(username, evt) {
+  if (!quetesPret) return;
+  const u = String(username || '').toLowerCase();
+  if (!u || !users[u] || !quetesAcces(u)) return;
+  const S = quetesSemaineCourante();
+  const jour = parisDayKey();
+  for (const def of S.quetes) {
+    const p = quetesProgresDe(u, def.id);
+    if (p.faitAt) continue;
+    const etat = Quetes.appliquer(def, p.etat, evt, jour);
+    if (!etat) continue;
+    p.etat = etat;
+    if (Quetes.estFaite(def, etat)) quetesAccomplir(u, def, p, S.lundi);
+    else if (process.env.DATABASE_URL) db.quetesEnregistrer(S.lundi, u, def.id, etat).catch(dbErr('quetes_progres'));
+  }
+}
+/** La quête est faite : on la marque (une fois), puis Gromelin paie. */
+function quetesAccomplir(username, def, p, lundi) {
+  const gain = Number(quetesReglages.gains[def.niveau]) || 0;
+  p.faitAt = Date.now();
+  p.gain = gain;
+  const payer = () => {
+    const titre = Quetes.titre(def);
+    if (gain > 0) parisCrediter(username, gain, `la quête « ${titre} » (Gromelin)`);
+    addAndNotifyUserLog(username, {
+      type: USER_LOG_TYPE.QUETE,
+      content: gain > 0 ? `Quête accomplie : « ${titre} ». Gromelin te verse ${gain} kikooz.` : `Quête accomplie : « ${titre} ».`,
+      flNew: true,
+    });
+    console.log(`[QUETES] ${username} : « ${titre} » faite (+${gain} kikooz)`);
+  };
+  if (!process.env.DATABASE_URL) return payer();
+  db.quetesMarquerFaite(lundi, username, def.id, p.etat, gain)
+    .then((neuf) => { if (neuf) payer(); })
+    .catch(dbErr('quetes_progres fait'));
+}
+// Après une retouche de l'admin (seuil abaissé, quête remplacée) : ce qui est
+// désormais atteint se paie tout de suite, sans attendre l'événement suivant.
+function quetesReverifier() {
+  if (!quetesSemaine) return;
+  for (const [u, m] of quetesProgres) {
+    if (!quetesAcces(u)) continue;
+    for (const def of quetesSemaine.quetes) {
+      const p = m.get(def.id);
+      if (p && !p.faitAt && Quetes.estFaite(def, p.etat)) quetesAccomplir(u, def, p, quetesSemaine.lundi);
+    }
+  }
+}
+
+function quetesEchapper(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+/** Ce que le joueur voit : ses quêtes, où il en est, et ce que dit Gromelin. */
+function quetesEtatPour(username) {
+  const u = String(username).toLowerCase();
+  const S = quetesSemaineCourante();
+  const vis = quetesVisites.get(u);
+  const vuAt = vis && vis.semaine === S.lundi ? vis.vuAt : 0;
+  const m = quetesProgres.get(u) || new Map();
+  let gagnes = 0, total = 0;
+  const quetes = S.quetes.map((def) => {
+    const p = m.get(def.id) || { etat: {}, faitAt: 0, gain: 0 };
+    const av = Quetes.avancement(def, p.etat);
+    const gain = p.faitAt ? p.gain : (Number(quetesReglages.gains[def.niveau]) || 0);
+    total += gain;
+    if (p.faitAt) gagnes += p.gain;
+    return {
+      id: def.id, niveau: def.niveau, niveauNom: Quetes.NIVEAU_NOM[def.niveau], gain,
+      titre: Quetes.titre(def), detail: def.detail || '', ligne: av.ligne, pc: av.pc,
+      fait: !!p.faitAt, faitLe: p.faitAt || null,
+      etiquette: Quetes.ETIQUETTES[def.etiquette] || null,
+    };
+  });
+  // Ce que Gromelin a à dire depuis la dernière visite, dans l'ordre. Son
+  // tirage est semé par la visite : la même tant qu'on n'a pas rouvert.
+  const alea = (() => { let a = 7; for (const ch of u + S.lundi + vuAt) a = (Math.imul(a ^ ch.charCodeAt(0), 2654435761) + 1) >>> 0; return () => { a = (Math.imul(a ^ (a >>> 15), 2246822507) + 0x9E3779B9) >>> 0; return a / 4294967296; }; })();
+  const messages = [];
+  const nouvelleSemaine = !vis || vis.semaine !== S.lundi;
+  if (!quetes.length) messages.push(Quetes.parole('rien', {}, alea));
+  else {
+    if (nouvelleSemaine) messages.push(Quetes.parole('semaine', { n: quetes.length }, alea));
+    const neuves = quetes.filter((q) => q.fait && q.faitLe > vuAt).sort((a, b) => a.faitLe - b.faitLe);
+    for (const q of neuves) messages.push(Quetes.parole('faite', { titre: quetesEchapper(q.titre), gain: q.gain }, alea));
+    const reste = quetes.filter((q) => !q.fait).length;
+    if (!reste) messages.push(Quetes.parole('fini', {}, alea));
+    else if (!nouvelleSemaine) messages.push(Quetes.parole('reste', { reste, s: reste > 1 ? 's' : '' }, alea));
+  }
+  const nouveau = nouvelleSemaine || quetes.some((q) => q.fait && q.faitLe > vuAt);
+  return {
+    ok: true, acces: true,
+    semaine: { lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi), fin: Quetes.finDeSemaine(S.lundi) },
+    quetes, gagnes, total, nouveau, nouvelleSemaine, messages,
+    gains: quetesReglages.gains,
+    gromelin: { nom: getDisplayName('gromelin'), bouille: (users.gromelin && users.gromelin.fbouille) || GROMELIN_BOUILLE },
+  };
+}
+
+app.get('/api/quetes/etat', (req, res) => {
+  const u = resolveUsernameFromSid(String(req.query.sid || ''));
+  if (!u) return res.status(401).json({ ok: false, error: 'auth_required' });
+  if (!quetesPret || !quetesAcces(u)) return res.json({ ok: true, acces: false });
+  res.json(quetesEtatPour(u));
+});
+// La fenêtre est ouverte : ce qui était neuf est vu.
+app.post('/api/quetes/vu', (req, res) => {
+  const b = Object.assign({}, req.query || {}, req.body || {});
+  const u = resolveUsernameFromSid(String(b.sid || ''));
+  if (!u) return res.status(401).json({ ok: false, error: 'auth_required' });
+  if (!quetesPret || !quetesAcces(u)) return res.json({ ok: true, acces: false });
+  const S = quetesSemaineCourante();
+  quetesVisites.set(u, { semaine: S.lundi, vuAt: Date.now() });
+  if (process.env.DATABASE_URL) db.quetesNoterVisite(u, S.lundi).catch(dbErr('quetes_visites'));
+  res.json({ ok: true });
+});
+// Un résultat de mode de jeu hors classement, déclaré par le jeu light. Peu
+// fiable par nature (le navigateur le calcule) : borné, espacé, et il ne fait
+// qu'avancer une quête — il ne classe rien.
+const quetesDernierMode = new Map();
+app.post('/api/quetes/mode', (req, res) => {
+  const b = Object.assign({}, req.query || {}, req.body || {});
+  const u = resolveUsernameFromSid(String(b.sid || ''));
+  if (!u) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const rec = Quetes.modeRecevable(b.jeu, b.mode, b.v);
+  if (!rec) return res.status(400).json({ ok: false, error: 'mode_invalide' });
+  const t = Date.now();
+  if (t - (quetesDernierMode.get(u) || 0) < 1500) return res.json({ ok: true, ignore: true });
+  quetesDernierMode.set(u, t);
+  quetesEvenement(u, { type: 'mode', jeu: rec.jeu, mode: rec.mode, v: rec.v, record: b.record === true || b.record === '1' || b.record === 'true' });
+  res.json({ ok: true });
+});
+
+// ── L'admin des quêtes ──
+function quetesAdminSemaine() {
+  const S = quetesSemaineCourante();
+  return S.quetes.map((def) => {
+    let enCours = 0, faites = 0, kikooz = 0;
+    for (const [, m] of quetesProgres) {
+      const p = m.get(def.id);
+      if (!p) continue;
+      if (p.faitAt) { faites++; kikooz += p.gain; } else if (Object.keys(p.etat || {}).length) enCours++;
+    }
+    return { id: def.id, niveau: def.niveau, type: def.type, titre: Quetes.titre(def), detail: def.detail,
+      gain: Number(quetesReglages.gains[def.niveau]) || 0, enCours, faites, kikooz };
+  });
+}
+function quetesAdminJoueurs() {
+  const S = quetesSemaineCourante();
+  const out = [];
+  for (const [u, m] of quetesProgres) {
+    const lignes = S.quetes.map((def) => {
+      const p = m.get(def.id);
+      const av = Quetes.avancement(def, p ? p.etat : {});
+      return { id: def.id, fait: !!(p && p.faitAt), ligne: av.ligne, pc: av.pc };
+    });
+    if (!lignes.some((l) => l.fait || l.pc > 0)) continue;
+    let gagnes = 0;
+    for (const def of S.quetes) { const p = m.get(def.id); if (p && p.faitAt) gagnes += p.gain; }
+    out.push({ username: u, nom: getDisplayName(u), faites: lignes.filter((l) => l.fait).length, gagnes, lignes });
+  }
+  return out.sort((a, b) => b.faites - a.faites || b.gagnes - a.gagnes || a.nom.localeCompare(b.nom));
+}
+app.get('/api/admin/quetes', adminScope('quetes'), async (req, res) => {
+  try {
+    const S = quetesSemaineCourante();
+    const cat = Quetes.catalogue(quetesReglages).map((d) => ({
+      id: d.id, niveau: d.niveau, type: d.type, actif: d.actif, famille: d.famille,
+      titre: Quetes.titre(d), detail: d.detail, etiquette: Quetes.ETIQUETTES[d.etiquette] || null,
+      // Le nombre que l'admin retouche : le seuil, ou le nombre de fois.
+      reglable: d.params.seuil !== undefined ? 'seuil' : (d.params.n !== undefined ? 'n' : null),
+      valeur: d.params.seuil !== undefined ? d.params.seuil : d.params.n,
+      cetteSemaine: S.quetes.some((q) => q.id === d.id),
+    }));
+    let historique = [];
+    if (process.env.DATABASE_URL) historique = await db.quetesHistorique(8).catch(() => []);
+    res.json({
+      ok: true, reglages: quetesReglages, niveaux: Quetes.NIVEAUX,
+      semaine: { lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi), fin: Quetes.finDeSemaine(S.lundi), quetes: quetesAdminSemaine() },
+      catalogue: cat, joueurs: quetesAdminJoueurs(), historique,
+    });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Les réglages : ouverture, testeurs, gains, composition.
+app.post('/api/admin/quetes', adminScope('quetes'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const neuf = Object.assign({}, quetesReglages);
+    if (b.ouverture !== undefined) neuf.ouverture = String(b.ouverture);
+    if (b.testeurs !== undefined) {
+      neuf.testeurs = (Array.isArray(b.testeurs) ? b.testeurs : String(b.testeurs).split(/[\s,;]+/))
+        .map((x) => normalizeUsername(x)).filter(Boolean);
+    }
+    if (b.gains && typeof b.gains === 'object') neuf.gains = Object.assign({}, quetesReglages.gains, b.gains);
+    if (b.composition && typeof b.composition === 'object') neuf.composition = Object.assign({}, quetesReglages.composition, b.composition);
+    quetesReglages = Quetes.reglagesNormalises(neuf);
+    await quetesEnregistrerReglages();
+    const inconnus = quetesReglages.testeurs.filter((u) => !users[u]);
+    console.log(`[QUETES] réglages : ouverture=${quetesReglages.ouverture} testeurs=${quetesReglages.testeurs.join(',') || '—'}`);
+    res.json({ ok: true, reglages: quetesReglages, inconnus });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Une quête du catalogue : active ou non, son niveau, son seuil (ou son nombre).
+// Si elle est de la semaine, la semaine suit — et ce qui devient atteint se paie.
+app.post('/api/admin/quetes/catalogue', adminScope('quetes'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const id = String(b.id || '');
+    if (!Quetes.CATALOGUE.some((q) => q.id === id)) return res.status(404).json({ ok: false, error: 'quete_inconnue' });
+    const r = Object.assign({}, quetesReglages.catalogue[id] || {});
+    if (b.actif !== undefined) r.actif = !!b.actif;
+    if (b.niveau !== undefined && Quetes.NIVEAUX.includes(b.niveau)) r.niveau = b.niveau;
+    if (b.seuil !== undefined && Number(b.seuil) > 0) r.seuil = Number(b.seuil);
+    if (b.n !== undefined && Number(b.n) >= 1) r.n = Math.floor(Number(b.n));
+    quetesReglages.catalogue = Object.assign({}, quetesReglages.catalogue, { [id]: r });
+    await quetesEnregistrerReglages();
+    const S = quetesSemaineCourante();
+    const i = S.quetes.findIndex((q) => q.id === id);
+    if (i >= 0) {
+      S.quetes[i] = Quetes.definition(id, quetesReglages);
+      quetesEnregistrerSemaine();
+      quetesReverifier();
+    }
+    res.json({ ok: true, quete: Quetes.definition(id, quetesReglages), semaineMiseAJour: i >= 0 });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// La semaine en cours : tout retirer, remplacer une quête, en retirer une.
+// Une quête qui sort de la semaine perd l'avancement non payé de chacun.
+app.post('/api/admin/quetes/semaine', adminScope('quetes'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const S = quetesSemaineCourante();
+    const avant = S.quetes.map((q) => q.id);
+    if (b.action === 'tirer') {
+      S.quetes = Quetes.tirer(quetesReglages, 'gromelin:' + S.lundi + ':' + Date.now());
+    } else if (b.action === 'remplacer') {
+      const i = S.quetes.findIndex((q) => q.id === String(b.id));
+      if (i < 0) return res.status(404).json({ ok: false, error: 'pas_cette_semaine' });
+      let par = b.par ? Quetes.definition(String(b.par), quetesReglages) : null;
+      if (b.par && !par) return res.status(404).json({ ok: false, error: 'quete_inconnue' });
+      if (!par) {
+        const niveau = S.quetes[i].niveau;
+        const libres = Quetes.catalogue(quetesReglages).filter((q) => q.actif && q.niveau === niveau && !avant.includes(q.id));
+        if (!libres.length) return res.status(400).json({ ok: false, error: 'plus_de_quete', message: 'Plus aucune quête active de ce niveau.' });
+        par = libres[Math.floor(Math.random() * libres.length)];
+      }
+      if (avant.includes(par.id)) return res.status(400).json({ ok: false, error: 'deja_la', message: 'Cette quête est déjà de la semaine.' });
+      S.quetes[i] = par;
+    } else if (b.action === 'retirer') {
+      S.quetes = S.quetes.filter((q) => q.id !== String(b.id));
+    } else if (b.action === 'ajouter') {
+      const par = Quetes.definition(String(b.id), quetesReglages);
+      if (!par) return res.status(404).json({ ok: false, error: 'quete_inconnue' });
+      if (avant.includes(par.id)) return res.status(400).json({ ok: false, error: 'deja_la', message: 'Cette quête est déjà de la semaine.' });
+      S.quetes.push(par);
+    } else return res.status(400).json({ ok: false, error: 'action_inconnue' });
+    const apres = new Set(S.quetes.map((q) => q.id));
+    for (const id of avant) {
+      if (apres.has(id)) continue;
+      for (const [, m] of quetesProgres) { const p = m.get(id); if (p && !p.faitAt) m.delete(id); }
+      if (process.env.DATABASE_URL) await db.quetesRetirerQuete(S.lundi, id).catch(dbErr('quetes retirer'));
+    }
+    quetesEnregistrerSemaine();
+    quetesReverifier();
+    console.log(`[QUETES] semaine du ${S.lundi} retouchée (${b.action}) : ${S.quetes.map((q) => q.id).join(', ')}`);
+    res.json({ ok: true, quetes: quetesAdminSemaine() });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Remettre à zéro la semaine d'un joueur — pour tester. Les kikooz versés le restent.
+app.post('/api/admin/quetes/reinitialiser', adminScope('quetes'), async (req, res) => {
+  try {
+    const u = normalizeUsername((req.body || {}).username);
+    if (!u) return res.status(400).json({ ok: false, error: 'pseudo_manquant' });
+    const S = quetesSemaineCourante();
+    quetesProgres.delete(u);
+    quetesVisites.delete(u);
+    let n = 0;
+    if (process.env.DATABASE_URL) n = await db.quetesReinitialiser(S.lundi, u);
+    res.json({ ok: true, lignes: n });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// LE CALIBRAGE : qui atteint ce seuil ? Pour une quête au score, les 28 derniers
+// jours du Challenge archivé ; pour une épreuve de Kaluga, les records des
+// fruticards. Rien pour les quêtes « faire N fois ».
+app.get('/api/admin/quetes/calibrage', adminScope('quetes'), async (req, res) => {
+  try {
+    const def = Quetes.definition(String(req.query.id || ''), quetesReglages);
+    if (!def) return res.status(404).json({ ok: false, error: 'quete_inconnue' });
+    const seuil = Number(req.query.seuil) > 0 ? Number(req.query.seuil) : def.params.seuil;
+    if (!process.env.DATABASE_URL || seuil === undefined) return res.json({ ok: true, texte: null });
+    if (def.type === 'score') {
+      const c = await db.quetesCalibrageScore(def.params.rk, seuil, !!def.params.inverse, Quetes.jourPlus(parisDayKey(), -28));
+      return res.json({ ok: true, texte: `Sur 28 jours : ${c.atteint} joueur(s) sur ${c.joueurs} ont atteint ${Quetes.nombre(seuil)} au moins une fois `
+        + `(${c.journees_atteintes} journée(s) sur ${c.journees}).`, donnees: c });
+    }
+    if (def.type === 'mode' && def.params.jeu === 'kaluga') {
+      const i = Number(String(def.params.mode).replace('epreuve', ''));
+      const records = [];
+      for (const row of await db.getSlot0ForGame('kaluga')) {
+        try {
+          const c = JSON.parse(row.data);
+          const t = c && c.$trial && c.$trial.$list && c.$trial.$list[i];
+          if (t && Number(t.$max) > 0) records.push(Number(t.$max));
+        } catch (e) { /* fiche illisible */ }
+      }
+      records.sort((a, b) => a - b);
+      const med = records.length ? records[Math.floor(records.length / 2)] : 0;
+      const atteint = records.filter((v) => v >= seuil).length;
+      return res.json({ ok: true, texte: records.length
+        ? `${atteint} joueur(s) sur ${records.length} ont un record ≥ ${Quetes.nombre(seuil)} ; record médian : ${Quetes.nombre(med)}.`
+        : 'Personne n’a encore de record à cette épreuve.', donnees: { joueurs: records.length, atteint, mediane: med } });
+    }
+    res.json({ ok: true, texte: null });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // LE REGISTRE DES PARIS : mes paris (tournois et Challenge) avec mon bilan, et
 // les gros coups du parc ces 30 derniers jours — ceux que Dimitri annonce.
 app.get('/api/paris/registre', async (req, res) => {
@@ -11947,6 +12354,16 @@ function renommerEnMemoire(a, n, affichage) {
   if (deplacerCle(scoresData.users, a, n)) { saveScoresFile(); bilan.push('scores'); }
   if (deplacerCle(dailyXpActions, a, n)) { saveXpActions(); bilan.push('actions XP'); }
   if (deplacerCle(accMaisonEquip, a, n)) { sauverEquip(); bilan.push('accessoire maison porté'); }
+  // Les quêtes de Gromelin : l'avancement de la semaine et la dernière visite.
+  for (const sac of [quetesProgres, quetesVisites]) {
+    if (sac.has(a)) { sac.set(n, sac.get(a)); sac.delete(a); }
+  }
+  if (quetesReglages.testeurs.includes(a)) {
+    quetesReglages = Quetes.reglagesNormalises(Object.assign({}, quetesReglages,
+      { testeurs: quetesReglages.testeurs.map((t) => (t === a ? n : t)) }));
+    quetesEnregistrerReglages().catch(dbErr('quetes_reglages renommage'));
+    bilan.push('testeur des quêtes');
+  }
   deplacerCle(bouilleCache, a, n);
   deplacerCle(partiesEnCours, a, n);
   deplacerCle(recentlyEjected, a, n);
@@ -26022,6 +26439,8 @@ const LIGHT_HISTORY_KINDS = {
   60: { icone: 'histo_medaille',   titre: 'Médaille' },
   70: { icone: 'evt_jeu',          titre: 'Partie en différé' },
   71: { icone: 'evt_jeu',          titre: 'Prunostics' },
+  // Le baluchon de MiniPixiz, celui de l'icône « Quêtes ».
+  72: { icone: 'histo_quete',      titre: 'Quêtes' },
 };
 
 // Les deux journaux ont la même forme : { d: date, t: type, c: texte, n: neuf }.
@@ -27506,6 +27925,8 @@ async function boot() {
       try { swapouTournoiVerifie = (await db.getAppState('swapou_tournoi_verifie')) === '1'; }
       catch (e) { console.error('[SWAPOU] interrupteur du tournoi :', e.message); }
       await chargerReglagesParisChallenge();
+      // Les quêtes de Gromelin : réglages, semaine tirée, avancement de chacun.
+      await chargerQuetes();
       // Les parties en différé reprennent où elles en étaient.
       await chargerPartiesDifferees();
       // Le sujet des paris de Dimitri : ouvert s'il manque (en tâche de fond :
@@ -29336,6 +29757,8 @@ function kilouteAwardKikooz(username, amount, quizName) {
   // Le nœud <a> d'époque — « $k kikooz offerts par $f » — est celui de l'animation.
   journalKikooz(u, { type: 'a', k: amount, f: ANIM_NAME });
   const name = (typeof quizName === 'string' && quizName.trim()) ? quizName.trim() : '';
+  // Les quêtes : la Question à 60 kikooz du soir, ou un quiz lancé.
+  quetesEvenement(username, { type: 'action', action: name ? 'quiz' : 'kiloute' });
   const content = name
     ? `Tu as gagné ${amount} kikooz au quiz « ${name} » de ${ANIM_NAME} !`
     : `Tu as gagné ${amount} kikooz à la Question à 60 kikooz de ${ANIM_NAME} !`;

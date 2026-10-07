@@ -743,6 +743,30 @@ async function initSchema() {
         updated_at  TIMESTAMPTZ DEFAULT now()
       );
 
+      -- LES QUÊTES DE GROMELIN (quetes.js) : où en est chaque joueur, quête par
+      -- quête, pour la semaine (le lundi, heure de Paris). « etat » est ce que la
+      -- quête retient (meilleur score, compteur, jours joués) ; « fait_at » se
+      -- pose UNE fois, dans la même écriture que le paiement est décidé — c'est
+      -- ce qui empêche de payer deux fois. Les quêtes tirées et les réglages
+      -- vivent dans app_state (quetes_semaine, quetes_reglages).
+      CREATE TABLE IF NOT EXISTS quetes_progres (
+        semaine     TEXT NOT NULL,
+        username    TEXT NOT NULL,
+        quete_id    TEXT NOT NULL,
+        etat        JSONB NOT NULL DEFAULT '{}'::jsonb,
+        fait_at     TIMESTAMPTZ,
+        gain        INTEGER NOT NULL DEFAULT 0,
+        updated_at  TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (semaine, username, quete_id)
+      );
+      -- La dernière visite à la fenêtre des quêtes : ce qui est arrivé depuis,
+      -- Gromelin le raconte ; une semaine pas encore vue fait gigoter l'icône.
+      CREATE TABLE IF NOT EXISTS quetes_visites (
+        username    TEXT PRIMARY KEY,
+        semaine     TEXT NOT NULL DEFAULT '',
+        vu_at       TIMESTAMPTZ
+      );
+
       -- MikeHorny "Question à 60 kikooz" backlog (admin-managed)
       CREATE TABLE IF NOT EXISTS kiloute_questions (
         id          SERIAL PRIMARY KEY,
@@ -1887,6 +1911,9 @@ async function anonymiserJoueur(username) {
       // deux comptes supprimés auraient misé sur le même match.
       ['tournament_paris', 'username', 'brut'],
       ['challenge_paris', 'username', 'brut'],
+      // Ses quêtes : payées ou perdues, elles ne racontent plus rien.
+      ['quetes_progres', 'username', 'brut'],
+      ['quetes_visites', 'username', 'brut'],
       // Ses parties en différé : sans lui, elles n'ont plus d'adversaire.
       ['parties_differees', 'joueur_a', 'brut'],
       ['parties_differees', 'joueur_b', 'brut'],
@@ -1979,6 +2006,8 @@ async function exporterDonnees(userId, username) {
     connexions: await q('SELECT jour, ip, xff, socket_ip, appareil, navigateur, origine, premiere, derniere, n FROM connexions WHERE LOWER(username) = $1 ORDER BY premiere', [u]),
     paris: await q('SELECT tournament_id, affiche, choix, mise, cote, statut, gain, cree_le, regle_le FROM tournament_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     paris_challenge: await q('SELECT jour, jeu, type, choix, mise, cote, statut, gain, cree_le, regle_le FROM challenge_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
+    quetes: await q('SELECT semaine, quete_id, etat, fait_at, gain FROM quetes_progres WHERE username = $1 ORDER BY semaine, quete_id', [u]),
+    quetes_visite: await q('SELECT semaine, vu_at FROM quetes_visites WHERE username = $1', [u]),
     sanctions: await q('SELECT moderator, action, detail, created_at FROM moderation_logs WHERE LOWER(target_username) = $1 ORDER BY created_at', [u]),
     notifications: await q('SELECT ua, created_at FROM push_subscriptions WHERE LOWER(username) = $1', [u]),
     sessions: await q('SELECT created_at FROM sessions WHERE user_id = $1 ORDER BY created_at', [id]),
@@ -2053,6 +2082,8 @@ const RENOMMAGE_COLONNES = [
   ['tournament_paris', 'choix'],
   ['challenge_paris', 'username'],
   ['challenge_paris', 'choix'],
+  ['quetes_progres', 'username'],
+  ['quetes_visites', 'username'],
   ['shop_packs', 'auteur'],
   ['users', 'referred_by'],
 ];
@@ -3068,6 +3099,78 @@ async function setAppState(key, value) {
      ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()`,
     [key, String(value == null ? '' : value)]
   );
+}
+
+// ── LES QUÊTES DE GROMELIN ──
+async function quetesChargerSemaine(semaine) {
+  const { rows } = await pool.query(
+    `SELECT username, quete_id, etat, fait_at, gain FROM quetes_progres WHERE semaine = $1`, [String(semaine)]);
+  return rows;
+}
+async function quetesEnregistrer(semaine, username, queteId, etat) {
+  await pool.query(
+    `INSERT INTO quetes_progres (semaine, username, quete_id, etat, updated_at) VALUES ($1, $2, $3, $4::jsonb, now())
+     ON CONFLICT (semaine, username, quete_id) DO UPDATE SET etat = $4::jsonb, updated_at = now()
+      WHERE quetes_progres.fait_at IS NULL`,
+    [String(semaine), String(username).toLowerCase(), String(queteId), JSON.stringify(etat || {})]);
+}
+// Pose `fait_at` et le gain — une seule fois : rend true si c'est cet appel
+// qui l'a posé (c'est lui, et lui seul, qui paie).
+async function quetesMarquerFaite(semaine, username, queteId, etat, gain) {
+  const r = await pool.query(
+    `INSERT INTO quetes_progres (semaine, username, quete_id, etat, fait_at, gain, updated_at)
+     VALUES ($1, $2, $3, $4::jsonb, now(), $5, now())
+     ON CONFLICT (semaine, username, quete_id) DO UPDATE SET etat = $4::jsonb, fait_at = now(), gain = $5, updated_at = now()
+      WHERE quetes_progres.fait_at IS NULL
+     RETURNING fait_at`,
+    [String(semaine), String(username).toLowerCase(), String(queteId), JSON.stringify(etat || {}), Math.max(0, Math.floor(Number(gain) || 0))]);
+  return r.rowCount > 0;
+}
+async function quetesChargerVisites() {
+  const { rows } = await pool.query('SELECT username, semaine, vu_at FROM quetes_visites');
+  return rows;
+}
+async function quetesNoterVisite(username, semaine) {
+  await pool.query(
+    `INSERT INTO quetes_visites (username, semaine, vu_at) VALUES ($1, $2, now())
+     ON CONFLICT (username) DO UPDATE SET semaine = $2, vu_at = now()`,
+    [String(username).toLowerCase(), String(semaine)]);
+}
+// L'admin remet à zéro la semaine d'un joueur (pour tester) : l'avancement
+// part, la visite aussi ; les kikooz déjà versés restent versés.
+async function quetesReinitialiser(semaine, username) {
+  const u = String(username).toLowerCase();
+  const r = await pool.query('DELETE FROM quetes_progres WHERE semaine = $1 AND username = $2', [String(semaine), u]);
+  await pool.query('DELETE FROM quetes_visites WHERE username = $1', [u]);
+  return r.rowCount;
+}
+async function quetesRetirerQuete(semaine, queteId) {
+  const r = await pool.query('DELETE FROM quetes_progres WHERE semaine = $1 AND quete_id = $2 AND fait_at IS NULL',
+    [String(semaine), String(queteId)]);
+  return r.rowCount;
+}
+// Les semaines passées : combien de joueurs, de quêtes faites, de kikooz versés.
+async function quetesHistorique(n) {
+  const { rows } = await pool.query(
+    `SELECT semaine, COUNT(DISTINCT username)::int AS joueurs,
+            COUNT(*) FILTER (WHERE fait_at IS NOT NULL)::int AS faites,
+            COALESCE(SUM(gain) FILTER (WHERE fait_at IS NOT NULL), 0)::int AS kikooz
+       FROM quetes_progres GROUP BY semaine ORDER BY semaine DESC LIMIT $1`, [Math.max(1, Number(n) || 8)]);
+  return rows;
+}
+// LE CALIBRAGE d'une quête au score : sur les jours archivés depuis `depuisJour`,
+// combien de joueurs ont joué ce classement, et combien ont atteint le seuil au
+// moins une fois ; et la même chose en journées (un joueur × un jour).
+async function quetesCalibrageScore(rankingId, seuil, inverse, depuisJour) {
+  const cmp = inverse ? 'score <= $2' : 'score >= $2';
+  const { rows } = await pool.query(
+    `SELECT COUNT(DISTINCT LOWER(username))::int AS joueurs,
+            COUNT(DISTINCT LOWER(username)) FILTER (WHERE ${cmp})::int AS atteint,
+            COUNT(*)::int AS journees,
+            COUNT(*) FILTER (WHERE ${cmp})::int AS journees_atteintes
+       FROM challenge_score_archive WHERE ranking_id = $1 AND day_key >= $3`,
+    [String(rankingId), Number(seuil) || 0, String(depuisJour)]);
+  return rows[0] || { joueurs: 0, atteint: 0, journees: 0, journees_atteintes: 0 };
 }
 
 // ── MikeHorny quiz questions ──
@@ -4866,6 +4969,15 @@ async function upsertBouilleVariante(v, rang) {
 }
 
 module.exports = {
+  quetesChargerSemaine,
+  quetesEnregistrer,
+  quetesMarquerFaite,
+  quetesChargerVisites,
+  quetesNoterVisite,
+  quetesReinitialiser,
+  quetesRetirerQuete,
+  quetesHistorique,
+  quetesCalibrageScore,
   getBkiwiGhost,
   upsertBkiwiGhost,
   loadBouilleVariantes,

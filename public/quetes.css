@@ -1,0 +1,133 @@
+/*
+ * LES QUÊTES DE GROMELIN — l'icône (le baluchon de MiniPixiz) et la fenêtre
+ * (planches, parchemins, Gromelin dans son écran de bouille).
+ *
+ * Feuille à part : le bois et le parchemin sont des DESSINS, pas du châssis —
+ * le mode nuit (engendré de light.html et bureau-frutiz.css) n'a pas à les
+ * repeindre, et ne les voit donc pas.
+ */
+
+/* ── L'icône ────────────────────────────────────────────────────────────── */
+.home-tile[data-go="quetes"] .ico { position: relative; overflow: visible; }
+.ico-baluchon { position: relative; display: block; width: 40px; height: 35px; }
+.ico-baluchon img.sac {
+  width: 40px !important; height: 35px !important; max-width: none !important; max-height: none !important;
+  display: block; transform-origin: 50% 95%;
+}
+/* Mobile : la case de la grille est plus grande, le baluchon aussi. */
+body:not(.bureau-frutiz) .home-tile[data-go="quetes"] .ico-baluchon { transform: scale(1.3); }
+.ico-baluchon .eclat {
+  position: absolute; width: 12px; height: 12px; display: none; pointer-events: none;
+  background: url('/minipixiz/sprites/shape177.svg') center / contain no-repeat;
+  filter: drop-shadow(0 0 2px #FFF6A0) brightness(1.15);
+  animation: qt-eclat 1.6s ease-in-out infinite;
+}
+.ico-baluchon .eclat.e1 { left: -5px; top: 2px; }
+.ico-baluchon .eclat.e2 { left: 31px; top: -6px; width: 15px; height: 15px; animation-delay: .55s; }
+.ico-baluchon .eclat.e3 { left: 34px; top: 20px; width: 9px; height: 9px; animation-delay: 1.1s; }
+@keyframes qt-eclat { 0%, 100% { transform: scale(.2) rotate(0); opacity: 0; } 45% { transform: scale(1) rotate(45deg); opacity: 1; } }
+@keyframes qt-gigote { 0%, 70%, 100% { transform: rotate(0); } 76% { transform: rotate(-7deg); } 84% { transform: rotate(6deg); } 92% { transform: rotate(-3deg); } }
+.home-tile.nouvelles .ico-baluchon .eclat { display: block; }
+.home-tile.nouvelles .ico-baluchon img.sac { animation: qt-gigote 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .home-tile.nouvelles .ico-baluchon img.sac { animation: none; }
+  .ico-baluchon .eclat { animation: none; opacity: 1; }
+}
+
+/* ── La feuille (mobile) et la fenêtre (bureau) ─────────────────────────── */
+.sheet.sheet-quetes { height: 90vh; max-height: 90vh; }
+.sheet.sheet-quetes .sheet-head .sheet-ico { width: 20px; height: 17px; }
+#quetes-corps { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #B07A3C;
+  display: flex; flex-direction: column; }
+/* Sur le bureau, la fenêtre adopte la feuille (comme les Prunostics). */
+body.bureau-frutiz .fen #quetes-sheet {
+  position: static; inset: auto; transform: none; transition: none; visibility: visible;
+  height: auto; max-height: none; border: 0; border-radius: 0; box-shadow: none;
+  background: #B07A3C; z-index: auto; padding: 0;
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+body.bureau-frutiz .fen #quetes-sheet .sheet-head { display: none; }
+body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
+
+.qt { font-family: Verdana, Arial, sans-serif; color: #4A3110; flex: 1 0 auto; display: flex; flex-direction: column; }
+.qt-ferme, .qt-vide { padding: 24px 16px; text-align: center; color: #FFF3D2; font-size: 13px; }
+
+/* Gromelin et sa bulle */
+.qt-tete { display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  background: linear-gradient(#C9DF9C, #B4D57A); border-bottom: 3px solid #6B4A1C; }
+/* L'écran de bouille de Gaspard (cp.FrutiScreen) : fond, reflet, double liseré. */
+.qt-ecran { position: relative; flex: 0 0 100px; width: 100px; height: 100px; overflow: hidden;
+  background: url('/frutiz/sprites/ecran-fond.svg') 0 0 / 100% 100% no-repeat;
+  border-radius: 6px; box-shadow: 0 0 0 2px #DDDDDD; }
+.qt-ecran::before { content: ""; position: absolute; right: 2px; top: 2px; width: 42.7px; height: 31.8px; z-index: 7;
+  pointer-events: none; background: url('/frutiz/sprites/ecran-reflet.svg') 0 0 / 42.7px 31.8px no-repeat; }
+.qt-ecran::after { content: ""; position: absolute; inset: 0; border-radius: 6px; box-shadow: inset 0 0 0 1px #888888; z-index: 6; pointer-events: none; }
+.qt-ecran > canvas.fp-bvig { display: block; width: 98px !important; height: 98px !important; margin: 1px; }
+.qt-dit { position: relative; flex: 1; min-width: 0; min-height: 64px; cursor: pointer;
+  background: #FFFDF2; border: 2px solid #8A6430; border-radius: 14px;
+  padding: 9px 12px 22px; font-size: 12.5px; line-height: 1.45; }
+.qt-dit::before { content: ''; position: absolute; left: -10px; top: 40px; width: 14px; height: 14px; background: #FFFDF2;
+  border-left: 2px solid #8A6430; border-bottom: 2px solid #8A6430; transform: rotate(45deg); }
+.qt-dit em { color: #7A1F10; font-style: normal; font-weight: bold; }
+.qt-curseur { display: inline-block; width: 2px; height: 13px; background: #4A3110; vertical-align: -2px; margin-left: 1px;
+  animation: qt-clign .8s steps(1) infinite; }
+@keyframes qt-clign { 50% { opacity: 0; } }
+.qt-suite { position: absolute; right: 10px; bottom: 4px; font-size: 10.5px; color: #8A6430; }
+.qt-suite b { color: #5E9E1C; }
+
+.qt-semaine { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px 10px;
+  padding: 7px 14px; font-size: 11px; color: #FFF3D2; background: #6B4A1C; text-shadow: 0 1px 0 #3A2508; }
+.qt-semaine b { color: #FFE58A; }
+
+/* Les planches et les parchemins */
+.qt-planches { flex: 1 0 auto; padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 12px;
+  background-color: #B07A3C;
+  background-image: repeating-linear-gradient(0deg, rgba(60,30,0,.28) 0 2px, transparent 2px 58px),
+    repeating-linear-gradient(0deg, rgba(255,230,180,.06) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 40px, rgba(255,255,255,.03) 40px 90px); }
+.qt-carte { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center;
+  padding: 10px 12px 10px 10px; border-radius: 7px 11px 6px 9px; background: linear-gradient(170deg, #F6E6B8, #E9CF91);
+  border: 2px solid #8C6531; box-shadow: 0 3px 0 rgba(50,25,0,.35); }
+.qt-carte:nth-child(odd) { transform: rotate(-.5deg); }
+.qt-carte:nth-child(even) { transform: rotate(.4deg); }
+.qt-carte::before { content: ''; position: absolute; left: 50%; top: -6px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #C9B6DD, #7E6A99 70%); box-shadow: 0 1px 1px rgba(0,0,0,.4); }
+.qt-case { position: relative; width: 36px; height: 36px; grid-row: span 3; align-self: center; }
+.qt-case img { width: 36px; height: 36px; display: block; }
+.qt-coche { position: absolute; left: 6px; top: -10px; font-size: 34px; line-height: 1; color: #C0281A; font-weight: bold;
+  transform: rotate(-8deg); text-shadow: 0 1px 0 rgba(255,255,255,.5); }
+.qt-titre { font-size: 13px; font-weight: bold; color: #3E2608; overflow-wrap: anywhere; }
+.qt-detail { grid-column: 2; font-size: 11px; color: #7A5A2A; }
+.qt-jeu { display: inline-block; font-size: 10px; font-weight: bold; color: #fff; border-radius: 8px; padding: 1px 6px; margin-right: 5px;
+  vertical-align: 1px; }
+.qt-barre { grid-column: 2; height: 8px; border-radius: 4px; background: rgba(110,70,20,.22); overflow: hidden; }
+.qt-barre i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(#9BD24C, #6FAE24); }
+.qt-gain { grid-column: 3; grid-row: 1 / span 3; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 58px; }
+.qt-kik { display: inline-flex; align-items: center; gap: 4px; font-size: 15px; font-weight: bold; color: #5A3A0E; white-space: nowrap; }
+.qt-kik img { width: 18px; height: 18px; }
+.qt-diff { display: inline-flex; gap: 2px; }
+.qt-diff i { width: 8px; height: 8px; border-radius: 50%; background: rgba(110,70,20,.25); }
+.qt-diff i.on { background: #C0281A; }
+.qt-diff-nom { font-size: 9.5px; font-weight: bold; color: #8A6430; text-transform: uppercase; letter-spacing: .5px; }
+.qt-carte.faite { opacity: .78; }
+/* Le tampon se pose sur la barre (pleine) : jamais sur le titre, même étroit. */
+.qt-tampon { position: absolute; right: 74px; bottom: 2px; transform: rotate(-10deg); font-size: 15px;
+  font-weight: bold; letter-spacing: 3px; color: rgba(192,40,26,.8); border: 3px double rgba(192,40,26,.8); border-radius: 6px;
+  padding: 0 7px; pointer-events: none; }
+.qt-pied { padding: 8px 14px 12px; font-size: 10.5px; color: #FFE9B8; background: #6B4A1C; text-align: center; line-height: 1.5; }
+.qt-pied b { color: #FFE58A; }
+
+@media (max-width: 420px) {
+  .qt-ecran { flex-basis: 76px; width: 76px; height: 76px; }
+  .qt-ecran > canvas.fp-bvig { width: 74px !important; height: 74px !important; }
+  .qt-dit { font-size: 12px; }
+  .qt-planches { padding: 12px 8px 14px; }
+  .qt-carte { grid-template-columns: 32px minmax(0, 1fr) auto; gap: 3px 8px; padding: 9px 8px; }
+  .qt-case, .qt-case img { width: 30px; height: 30px; }
+  .qt-coche { font-size: 28px; }
+  .qt-gain { min-width: 48px; }
+  .qt-tampon { right: 60px; font-size: 13px; letter-spacing: 2px; }
+}
+
+/* Sur le bureau, l'icône se range après les Prunostics, en bout de rangée. */
+body.bureau-frutiz #bureau .home-tile[data-go="quetes"] { order: 13; }

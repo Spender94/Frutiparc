@@ -1194,6 +1194,12 @@ class Trial extends J.Game {
   addScore() {
     switch (this.mode) {
       case 'single': {
+        // Les quêtes : l'épreuve et son résultat, et si le record personnel
+        // tombe (un premier essai, contre un record vide, ne compte pas).
+        const ancienMax = Number(this.card.$max) || 0;
+        if (this.mng.client && this.mng.client.rapporterQuete) {
+          this.mng.client.rapporterQuete('epreuve' + this.trialId, this.score, ancienMax > 0 && this.score > ancienMax);
+        }
         const list = this.card.$list;
         list.push({ $s: this.score, $t: this.tzongreInfo.id });
         while (list.length > 12) list.shift();

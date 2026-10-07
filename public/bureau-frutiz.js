@@ -153,6 +153,11 @@ window.BureauFrutiz = (function () {
     // de débogage d'époque était seule à porter.
     paris:      { panneau: '#paris-sheet',     titre: 'Prunostics', fruit: 'winDebug', l: 520, h: 600,
                   min: minFenetre(380, 300) },
+    // LES QUÊTES DE GROMELIN — pas de fenêtre d'époque non plus : la feuille
+    // mobile adoptée, comme les Prunostics. Pastille : l'orange par défaut
+    // (aucune étiquette de la bande #198 ne lui revient).
+    quetes:     { panneau: '#quetes-sheet',    titre: 'Les quêtes de Gromelin', fruit: 'winQuetes', l: 540, h: 640,
+                  min: minFenetre(360, 320) },
     gaspard:    { panneau: '#gaspard-panel', titre: 'Gaspard', fruit: 'winChat',
                   l: 0, h: 0, min: function () { return minGaspard(); } },
     // L'EXPLORATEUR — `win.Explorer`, la fenêtre JAUNE (winType « winExplorer »,
@@ -5211,6 +5216,12 @@ window.BureauFrutiz = (function () {
     if (window.ParisPorte) ParisPorte.charger();
   }
 
+  /** Les quêtes : la feuille entre dans une fenêtre, puis Gromelin parle. */
+  function ouvrirQuetes() {
+    ouvrirFenetre('quetes');
+    if (window.QuetesLight) QuetesLight.ouvert();
+  }
+
   /** La boutique s'ouvre en FENÊTRE sur le bureau, pas en feuille. */
   function ouvrirBoutique() {
     // Une fenêtre NEUVE s'ouvre rayons repliés ; rappeler la tuile sur une
@@ -6914,6 +6925,7 @@ window.BureauFrutiz = (function () {
     // un second voyant, des sujets marqués « vus » que personne n'a ouverts.
     if (idPanneau === 'forum-panel' && window.ForumPorte && ForumPorte.decharger) ForumPorte.decharger();
     if (idPanneau === 'paris-sheet' && window.ParisPorte) ParisPorte.decharger();
+    if (idPanneau === 'quetes-sheet' && window.QuetesLight) QuetesLight.ferme();
     rendre(f.panneau, f.origine);
     f.fen.remove();
     delete fenetres[idPanneau];
@@ -8919,6 +8931,7 @@ window.BureauFrutiz = (function () {
     // La boutique : une FENÊTRE sur le bureau, la feuille du mobile ailleurs.
     ouvrirBoutique: ouvrirBoutique,
     ouvrirParis: ouvrirParis,
+    ouvrirQuetes: ouvrirQuetes,
     // « Modifier ma fiche » (`win.EditInfo`) : une FENÊTRE aussi. Le light
     // remplit les champs après l'ouverture ; la fermeture remet la feuille en
     // place (et l'enregistrement, comme d'époque, ferme la fenêtre).
