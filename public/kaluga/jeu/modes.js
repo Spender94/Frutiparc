@@ -456,6 +456,7 @@ class Chrono extends J.Game {
       { type: 'graph', gfx: 'partGraphCurve', box: { x: 20, y: 6, w: 420, h: 230 }, maxResult: this.max, margin: 10, list: statList,
         flGhost: true, flLine: true, flNode: true, flCurve: false, nodeFrame: 1, line: lineCoef, lineBase: 5, marginInt: 16, marginUp: 16, lineSuffix: 'sec.', flBackground: true },
     ] });
+    if (this.mng.client && this.mng.client.rapporterQuete) this.mng.client.rapporterQuete('chrono' + this.level, this.score);
     if (this.score <= this.goalList[this.level]) this.checkUnlock(2);
     this.mng.client.saveSlot(0);
   }
@@ -539,6 +540,7 @@ class Invasion extends J.Game {
     return mc;
   }
   addScore() {
+    if (this.mng.client && this.mng.client.rapporterQuete) this.mng.client.rapporterQuete('invasion' + this.level, this.score);
     const info = this.mng.card.$invasion.$level[this.level];
     if (this.score > info.$s) { info.$s = this.score; info.$t = this.tzongreInfo.id; }
     this.endPanelMiddle.push({ list: [
@@ -609,6 +611,7 @@ class Survival extends J.Game {
     this.tzongre.endUpdate();
   }
   addScore() {
+    if (this.mng.client && this.mng.client.rapporterQuete) this.mng.client.rapporterQuete('survie' + this.level, this.score);
     const info = this.mng.card.$survival.$level[this.level];
     if (this.score > info.$s) { info.$s = this.score; info.$t = this.tzongreInfo.id; }
     this.endPanelMiddle.push({ list: [
@@ -748,6 +751,7 @@ class Ring extends J.Game {
   }
   onTzRelease() { if (this.step === 1) { this.step = 0; this.barTimer.kill(); } }
   addScore() {
+    if (this.mng.client && this.mng.client.rapporterQuete) this.mng.client.rapporterQuete('piste' + this.level, this.score);
     const info = this.mng.card.$ring.$level[this.level];
     if (this.score < info.$s) { info.$s = this.score; info.$t = this.tzongreInfo.id; }
     this.endPanelMiddle.push({ list: [
@@ -1034,6 +1038,7 @@ class Defi extends J.Game {
      * la Survie ou de la Piste. `saveSlot(0)`, plus bas, les écrit chez le
      * serveur : ils survivent à la session comme au redémarrage.
      */
+    if (this.mng.client && this.mng.client.rapporterQuete) this.mng.client.rapporterQuete('defi' + this.level, this.score);
     const rec = this.recordDuNiveau();
     const ancien = Number(rec && rec.$s) || 0;
     const battu = !!rec && (!ancien || this.score < ancien);
@@ -1306,6 +1311,9 @@ class Trial extends J.Game {
         this.mng.client.saveSlot(0);
       }
     }
+    // Les quêtes : le total du triathlon ou de l'heptathlon (le score classé, lui,
+    // part sans grappe et tombe au freestyle — on ne peut pas l'y reconnaître).
+    if (score > 0 && this.mng.client && this.mng.client.rapporterQuete) this.mng.client.rapporterQuete(this.mode, score);
     if (score > 0) this.saveScore(score);
   }
   updateTournament() {

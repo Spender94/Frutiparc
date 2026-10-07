@@ -198,6 +198,11 @@ function majEtat(texte) {
 function finFever(d) {
   majEtat((d.niveau - 1) + ' épreuve' + (d.niveau > 2 ? 's' : '') + ' remportée'
     + (d.niveau > 2 ? 's' : '') + ' (hors classement) — cliquer pour rejouer');
+  // Hors classement, mais pas hors quêtes : la chaîne compte pour Gromelin.
+  if (sid && d.niveau > 1) {
+    fetch('/api/quetes/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid, jeu: 'minifever', mode: 'fever', v: d.niveau - 1 }) }).catch(() => {});
+  }
 }
 
 /*

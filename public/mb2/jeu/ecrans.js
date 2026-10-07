@@ -744,6 +744,8 @@ class GameOverCourse {
 
   saveRecords() {
     const score = this.score;
+    // Les quêtes : le temps de cette course (en centièmes), qu'il batte un record ou non.
+    if (J.Manager.client && J.Manager.client.rapporterQuete) J.Manager.client.rapporterQuete('course' + J.Manager.play_mode_param, score);
     const plrecord = { $t: score, $c: false };
     const card = J.Manager.client.fcard;
     const param = J.Manager.play_mode_param;

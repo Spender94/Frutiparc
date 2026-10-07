@@ -127,6 +127,11 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.saveSlot(1);
   };
   Client.prototype.saveClassicScore = function (score) {
+    // Les quêtes : le score du mode classique (hors classement), partie par partie.
+    if (this.sid) {
+      fetch('/api/quetes/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sid: this.sid, jeu: 'swapou2', mode: 'classique', v: Number(score) || 0 }) }).catch(() => {});
+    }
     const s = this.slots[0];
     const old = s.$classic_record || 0;
     if (score > old) s.$classic_record = score;

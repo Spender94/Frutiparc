@@ -2798,7 +2798,7 @@ function persistScore(username, rankingId, score, data) {
   // meilleur score du joueur pour le tour en cours (indépendant de son record perso).
   captureTournamentScore(username, rankingId, n, newData);
   noterPartie(username, RANKINGS[rankingId].game);
-  quetesEvenement(username, { type: 'score', rk: rankingId, v: n, challenge: isDailyResetRanking(rankingId) });
+  quetesEvenement(username, { type: 'score', rk: rankingId, v: n, data: newData, challenge: isDailyResetRanking(rankingId) });
   const oldPos = computePosition(rankingId, username);
   let updated = false;
   const scoreImproved = isScoreBetter(rankingId, n, newData, oldScore, oldData);
@@ -11021,7 +11021,7 @@ function quetesEtatPour(username) {
     if (p.faitAt) gagnes += p.gain;
     return {
       id: def.id, niveau: def.niveau, niveauNom: Quetes.NIVEAU_NOM[def.niveau], gain,
-      titre: Quetes.titre(def), detail: def.detail || '', ligne: av.ligne, pc: av.pc,
+      titre: Quetes.titre(def), detail: Quetes.detail(def), ligne: av.ligne, pc: av.pc,
       fait: !!p.faitAt, faitLe: p.faitAt || null,
       etiquette: Quetes.ETIQUETTES[def.etiquette] || null,
     };
@@ -11094,7 +11094,7 @@ function quetesAdminSemaine() {
       if (!p) continue;
       if (p.faitAt) { faites++; kikooz += p.gain; } else if (Object.keys(p.etat || {}).length) enCours++;
     }
-    return { id: def.id, niveau: def.niveau, type: def.type, titre: Quetes.titre(def), detail: def.detail,
+    return { id: def.id, niveau: def.niveau, type: def.type, titre: Quetes.titre(def), detail: Quetes.detail(def),
       gain: Number(quetesReglages.gains[def.niveau]) || 0, enCours, faites, kikooz };
   });
 }
@@ -11117,20 +11117,30 @@ function quetesAdminJoueurs() {
 app.get('/api/admin/quetes', adminScope('quetes'), async (req, res) => {
   try {
     const S = quetesSemaineCourante();
-    const cat = Quetes.catalogue(quetesReglages).map((d) => ({
-      id: d.id, niveau: d.niveau, type: d.type, actif: d.actif, famille: d.famille,
-      titre: Quetes.titre(d), detail: d.detail, etiquette: Quetes.ETIQUETTES[d.etiquette] || null,
-      // Le nombre que l'admin retouche : le seuil, ou le nombre de fois.
-      reglable: d.params.seuil !== undefined ? 'seuil' : (d.params.n !== undefined ? 'n' : null),
-      valeur: d.params.seuil !== undefined ? d.params.seuil : d.params.n,
-      cetteSemaine: S.quetes.some((q) => q.id === d.id),
+    const cat = Quetes.catalogue(quetesReglages).map((d) => {
+      const m = d.type === 'mesure' ? Quetes.MESURES[d.params.mesure] : null;
+      const reglable = m ? (m.unite === 'boss' ? null : 'seuil') : (d.params.seuil !== undefined ? 'seuil' : (d.params.n !== undefined ? 'n' : null));
+      const valeur = d.params.seuil !== undefined ? d.params.seuil : d.params.n;
+      return {
+        id: d.id, niveau: d.niveau, type: d.type, actif: d.actif, famille: d.famille, perso: !!d.perso,
+        titre: Quetes.titre(d), detail: Quetes.detail(d), etiquette: Quetes.ETIQUETTES[d.etiquette] || null,
+        mesure: m ? m.cle : null, mesureNom: m ? `${m.groupe} — ${m.nom}` : null, titrePerso: d.perso ? (d.titre || '') : '',
+        reglable, valeur, valeurTexte: m ? Quetes.formater(m, valeur).replace(/^salle |^niveau /, '') : valeur,
+        reperes: m ? Quetes.reperes(m) : [], sens: m ? (m.inverse ? 'au plus' : 'au moins') : null,
+        cetteSemaine: S.quetes.some((x) => x.id === d.id),
+      };
+    });
+    const mesures = Object.values(Quetes.MESURES).map((m) => ({
+      cle: m.cle, groupe: m.groupe, nom: m.nom, unite: m.unite, inverse: !!m.inverse,
+      source: m.source.rk ? 'classement' : 'jeu', reperes: Quetes.reperes(m), modele: m.titre,
+      reglable: m.unite !== 'boss',
     }));
     let historique = [];
     if (process.env.DATABASE_URL) historique = await db.quetesHistorique(8).catch(() => []);
     res.json({
       ok: true, reglages: quetesReglages, niveaux: Quetes.NIVEAUX,
       semaine: { lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi), fin: Quetes.finDeSemaine(S.lundi), quetes: quetesAdminSemaine() },
-      catalogue: cat, joueurs: quetesAdminJoueurs(), historique,
+      catalogue: cat, mesures, joueurs: quetesAdminJoueurs(), historique,
     });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -11159,13 +11169,30 @@ app.post('/api/admin/quetes/catalogue', adminScope('quetes'), async (req, res) =
   try {
     const b = req.body || {};
     const id = String(b.id || '');
-    if (!Quetes.CATALOGUE.some((q) => q.id === id)) return res.status(404).json({ ok: false, error: 'quete_inconnue' });
-    const r = Object.assign({}, quetesReglages.catalogue[id] || {});
-    if (b.actif !== undefined) r.actif = !!b.actif;
-    if (b.niveau !== undefined && Quetes.NIVEAUX.includes(b.niveau)) r.niveau = b.niveau;
-    if (b.seuil !== undefined && Number(b.seuil) > 0) r.seuil = Number(b.seuil);
-    if (b.n !== undefined && Number(b.n) >= 1) r.n = Math.floor(Number(b.n));
-    quetesReglages.catalogue = Object.assign({}, quetesReglages.catalogue, { [id]: r });
+    const avant = Quetes.definition(id, quetesReglages);
+    if (!avant) return res.status(404).json({ ok: false, error: 'quete_inconnue' });
+    const m = avant.type === 'mesure' ? Quetes.MESURES[avant.params.mesure] : null;
+    let seuil;
+    if (b.seuil !== undefined && b.seuil !== '') {
+      seuil = m ? Quetes.lireValeur(m, b.seuil) : (Number(b.seuil) > 0 ? Number(b.seuil) : null);
+      if (seuil == null) return res.status(400).json({ ok: false, error: 'seuil_illisible', message: 'Seuil illisible (exemples : 25000, 4:40, 45,5).' });
+    }
+    if (avant.perso) {
+      // Une quête de l'admin se retouche en place.
+      quetesReglages.perso = quetesReglages.perso.map((x) => (x.id !== id ? x : Object.assign({}, x,
+        b.actif !== undefined ? { actif: !!b.actif } : {},
+        b.niveau !== undefined && Quetes.NIVEAUX.includes(b.niveau) ? { niveau: b.niveau } : {},
+        seuil != null ? { seuil } : {},
+        b.titre !== undefined ? { titre: String(b.titre || '').trim().slice(0, 120) } : {})));
+      quetesReglages = Quetes.reglagesNormalises(quetesReglages);
+    } else {
+      const r = Object.assign({}, quetesReglages.catalogue[id] || {});
+      if (b.actif !== undefined) r.actif = !!b.actif;
+      if (b.niveau !== undefined && Quetes.NIVEAUX.includes(b.niveau)) r.niveau = b.niveau;
+      if (seuil != null) r.seuil = seuil;
+      if (b.n !== undefined && Number(b.n) >= 1) r.n = Math.floor(Number(b.n));
+      quetesReglages.catalogue = Object.assign({}, quetesReglages.catalogue, { [id]: r });
+    }
     await quetesEnregistrerReglages();
     const S = quetesSemaineCourante();
     const i = S.quetes.findIndex((q) => q.id === id);
@@ -11219,6 +11246,41 @@ app.post('/api/admin/quetes/semaine', adminScope('quetes'), async (req, res) => 
     res.json({ ok: true, quetes: quetesAdminSemaine() });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+// LES QUÊTES DE L'ADMIN : une mesure, un seuil, un niveau (et un titre, si
+// celui de la mesure ne va pas). Supprimer une quête de l'admin la retire
+// aussi de la semaine en cours.
+app.post('/api/admin/quetes/perso', adminScope('quetes'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (b.action === 'supprimer') {
+      const id = String(b.id || '');
+      if (!quetesReglages.perso.some((x) => x.id === id)) return res.status(404).json({ ok: false, error: 'quete_inconnue' });
+      quetesReglages = Quetes.reglagesNormalises(Object.assign({}, quetesReglages, { perso: quetesReglages.perso.filter((x) => x.id !== id) }));
+      await quetesEnregistrerReglages();
+      const S = quetesSemaineCourante();
+      if (S.quetes.some((x) => x.id === id)) {
+        S.quetes = S.quetes.filter((x) => x.id !== id);
+        for (const [, mp] of quetesProgres) { const p = mp.get(id); if (p && !p.faitAt) mp.delete(id); }
+        if (process.env.DATABASE_URL) await db.quetesRetirerQuete(S.lundi, id).catch(dbErr('quetes retirer'));
+        quetesEnregistrerSemaine();
+      }
+      return res.json({ ok: true });
+    }
+    const m = Quetes.MESURES[String(b.mesure || '')];
+    if (!m) return res.status(400).json({ ok: false, error: 'mesure_inconnue', message: 'Choisis une mesure.' });
+    if (!Quetes.NIVEAUX.includes(b.niveau)) return res.status(400).json({ ok: false, error: 'niveau', message: 'Choisis un niveau.' });
+    const seuil = m.unite === 'boss' ? 1 : Quetes.lireValeur(m, b.seuil);
+    if (seuil == null) return res.status(400).json({ ok: false, error: 'seuil_illisible', message: 'Seuil illisible (exemples : 25000, 4:40, 45,5).' });
+    const n = quetesReglages.perso.reduce((mx, x) => Math.max(mx, Number(String(x.id).replace('perso-', '')) || 0), 0) + 1;
+    const neuve = { id: 'perso-' + n, mesure: m.cle, seuil, niveau: b.niveau, titre: String(b.titre || '').trim().slice(0, 120), actif: true };
+    quetesReglages = Quetes.reglagesNormalises(Object.assign({}, quetesReglages, { perso: quetesReglages.perso.concat([neuve]) }));
+    await quetesEnregistrerReglages();
+    const def = Quetes.definition(neuve.id, quetesReglages);
+    console.log(`[QUETES] quête créée : ${neuve.id} « ${Quetes.titre(def)} » (${neuve.niveau})`);
+    res.json({ ok: true, quete: { id: neuve.id, titre: Quetes.titre(def) } });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // Remettre à zéro la semaine d'un joueur — pour tester. Les kikooz versés le restent.
 app.post('/api/admin/quetes/reinitialiser', adminScope('quetes'), async (req, res) => {
   try {
@@ -11232,38 +11294,57 @@ app.post('/api/admin/quetes/reinitialiser', adminScope('quetes'), async (req, re
     res.json({ ok: true, lignes: n });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
-// LE CALIBRAGE : qui atteint ce seuil ? Pour une quête au score, les 28 derniers
-// jours du Challenge archivé ; pour une épreuve de Kaluga, les records des
-// fruticards. Rien pour les quêtes « faire N fois ».
+// LE CALIBRAGE d'une mesure : le meilleur résultat de chaque joueur, et la
+// place du seuil parmi eux. Trois sources, selon la mesure :
+//   · un classement du jour : 28 jours du Challenge archivé, plus aujourd'hui ;
+//   · un classement permanent (les circuits de Burning Kiwi, JamaJama) : les
+//     records de chacun ;
+//   · un mode hors classement : le record rangé sur la fruticard (slot 0).
+async function quetesValeursDeMesure(m) {
+  const meilleurs = new Map();
+  const garder = (u, v) => {
+    if (v == null || !Number.isFinite(v)) return;
+    const k = String(u).toLowerCase();
+    const a = meilleurs.get(k);
+    if (a === undefined || (m.inverse ? v < a : v > a)) meilleurs.set(k, v);
+  };
+  if (m.source.rk) {
+    const rk = m.source.rk;
+    const evt = (score, data) => Quetes.valeurDe(m, { type: 'score', rk, v: Number(score), data: data == null ? '' : String(data) });
+    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+      const r = rlist && rlist[rk];
+      if (r && Number.isFinite(Number(r.score)) && !(RANKINGS[rk] && RANKINGS[rk].lowerIsBetter && Number(r.score) <= 0)) garder(u, evt(r.score, r.data));
+    }
+    if (process.env.DATABASE_URL && isDailyResetRanking(rk)) {
+      for (const row of await db.quetesArchive(rk, Quetes.jourPlus(parisDayKey(), -28))) garder(row.username, evt(row.score, row.data));
+    }
+  } else if (m.carte && process.env.DATABASE_URL) {
+    for (const row of await db.getSlot0ForGame(m.jeu)) {
+      let c = null;
+      try { c = JSON.parse(row.data); } catch (e) { continue; }
+      let v = null;
+      try { v = c ? m.carte(c) : null; } catch (e) { v = null; }
+      if (v != null && Number(v) > 0) garder(row.username, Number(v));
+    }
+  }
+  return Array.from(meilleurs.values());
+}
 app.get('/api/admin/quetes/calibrage', adminScope('quetes'), async (req, res) => {
   try {
-    const def = Quetes.definition(String(req.query.id || ''), quetesReglages);
-    if (!def) return res.status(404).json({ ok: false, error: 'quete_inconnue' });
-    const seuil = Number(req.query.seuil) > 0 ? Number(req.query.seuil) : def.params.seuil;
-    if (!process.env.DATABASE_URL || seuil === undefined) return res.json({ ok: true, texte: null });
-    if (def.type === 'score') {
-      const c = await db.quetesCalibrageScore(def.params.rk, seuil, !!def.params.inverse, Quetes.jourPlus(parisDayKey(), -28));
-      return res.json({ ok: true, texte: `Sur 28 jours : ${c.atteint} joueur(s) sur ${c.joueurs} ont atteint ${Quetes.nombre(seuil)} au moins une fois `
-        + `(${c.journees_atteintes} journée(s) sur ${c.journees}).`, donnees: c });
+    let m = Quetes.MESURES[String(req.query.mesure || '')];
+    if (!m && req.query.id) {
+      const def = Quetes.definition(String(req.query.id), quetesReglages);
+      if (def && def.type === 'mesure') m = Quetes.MESURES[def.params.mesure];
+      else if (def && def.type === 'record') m = Quetes.MESURES['kaluga-' + def.params.mode];
     }
-    if (def.type === 'mode' && def.params.jeu === 'kaluga') {
-      const i = Number(String(def.params.mode).replace('epreuve', ''));
-      const records = [];
-      for (const row of await db.getSlot0ForGame('kaluga')) {
-        try {
-          const c = JSON.parse(row.data);
-          const t = c && c.$trial && c.$trial.$list && c.$trial.$list[i];
-          if (t && Number(t.$max) > 0) records.push(Number(t.$max));
-        } catch (e) { /* fiche illisible */ }
-      }
-      records.sort((a, b) => a - b);
-      const med = records.length ? records[Math.floor(records.length / 2)] : 0;
-      const atteint = records.filter((v) => v >= seuil).length;
-      return res.json({ ok: true, texte: records.length
-        ? `${atteint} joueur(s) sur ${records.length} ont un record ≥ ${Quetes.nombre(seuil)} ; record médian : ${Quetes.nombre(med)}.`
-        : 'Personne n’a encore de record à cette épreuve.', donnees: { joueurs: records.length, atteint, mediane: med } });
-    }
-    res.json({ ok: true, texte: null });
+    if (!m) return res.json({ ok: true, texte: 'Pas de calibrage pour cette quête.' });
+    const seuil = req.query.seuil !== undefined && req.query.seuil !== '' ? Quetes.lireValeur(m, req.query.seuil) : null;
+    const valeurs = await quetesValeursDeMesure(m);
+    const c = Quetes.calibrer(m, valeurs, seuil);
+    const source = m.source.rk ? (isDailyResetRanking(m.source.rk) ? 'meilleur sur 28 jours de Challenge' : 'record de chacun')
+      : (m.carte ? 'record de la fruticard' : null);
+    if (!source) return res.json({ ok: true, texte: 'Ce résultat n’est rangé nulle part (le jeu le déclare partie par partie) : pas de statistiques, fie-toi aux repères.' });
+    res.json({ ok: true, texte: `${c.texte} (${source})`, donnees: c });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 

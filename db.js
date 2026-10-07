@@ -3158,6 +3158,13 @@ async function quetesHistorique(n) {
        FROM quetes_progres GROUP BY semaine ORDER BY semaine DESC LIMIT $1`, [Math.max(1, Number(n) || 8)]);
   return rows;
 }
+// Les scores archivés d'un classement du jour depuis une date (calibrage des quêtes).
+async function quetesArchive(rankingId, depuisJour) {
+  const { rows } = await pool.query(
+    `SELECT username, score, data FROM challenge_score_archive WHERE ranking_id = $1 AND day_key >= $2`,
+    [String(rankingId), String(depuisJour)]);
+  return rows;
+}
 // LE CALIBRAGE d'une quête au score : sur les jours archivés depuis `depuisJour`,
 // combien de joueurs ont joué ce classement, et combien ont atteint le seuil au
 // moins une fois ; et la même chose en journées (un joueur × un jour).
@@ -4978,6 +4985,7 @@ module.exports = {
   quetesRetirerQuete,
   quetesHistorique,
   quetesCalibrageScore,
+  quetesArchive,
   getBkiwiGhost,
   upsertBkiwiGhost,
   loadBouilleVariantes,

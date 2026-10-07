@@ -197,7 +197,22 @@ class Client {
     J.Manager.scoreSaved(r.rankingScore, r.oldScore, r.oldPos, r.bestScorePos);
   }
 
+  /*
+   * LES QUÊTES DE GROMELIN. Les modes hors classement (Classique, Course,
+   * Aventure) ne laissent au serveur que des records sur la fruticard : il ne
+   * verrait pas « la course verte en moins de 4 min 40 cette semaine ». Le
+   * jeu le lui dit, partie par partie. Sans session, rien ne part.
+   */
+  rapporterQuete(mode, valeur) {
+    if (!this.sid) return;
+    fetch('/api/quetes/mode', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: this.sid, jeu: 'mb2', mode: String(mode), v: Number(valeur) || 0 }),
+    }).catch(() => {});
+  }
+
   saveClassicScore(score) {
+    this.rapporterQuete('classique', score);
     let record = this.slots[0].$classic_score;
     if (score > record) {
       record = score;

@@ -57,6 +57,9 @@ const ETIQUETTES = {
   minifever:  { nom: 'Mini-Fever',  couleur: '#D9534F' },
   jamajama:   { nom: 'JamaJama',    couleur: '#C77B1E' },
   minipixiz:  { nom: 'MiniPixiz',   couleur: '#B04CB7' },
+  miniwave:   { nom: 'MiniWave',    couleur: '#3C7DD9' },
+  grapiz:     { nom: 'Grapiz',      couleur: '#7A9E1C' },
+  bandas:     { nom: 'Frutibandas', couleur: '#C0392B' },
   challenge:  { nom: 'Challenge',   couleur: '#5E9E1C' },
   prunostics: { nom: 'Prunostics',  couleur: '#7E5AA8' },
   forum:      { nom: 'Forum',       couleur: '#D9822B' },
@@ -68,76 +71,269 @@ const ETIQUETTES = {
 // KALUGA_EPREUVES) — le mode déclaré est `epreuve<trialId>`.
 const KALUGA_EPREUVES = ['lancer de vers', 'dexteripomme', "lancer d'écureuil",
   'planter de vers', 'lancer de fourmi', 'plantapomme', 'course de grenouille'];
-
-// Les résultats de mode que le serveur accepte, et leur borne de vraisemblance :
-// au-delà, la déclaration est ignorée.
-const MODES = {};
-KALUGA_EPREUVES.forEach((nom, i) => {
-  MODES['kaluga:epreuve' + i] = { nom, unite: i === 0 || i === 6 ? 'cm' : 'pts', max: 1e6 };
-});
+const KALUGA_NIVEAUX = ['facile', 'standard', 'difficile', 'infernal'];
+const KALUGA_DEFIS = ['facile', 'moyen', 'difficile'];
+const MB2_COURSES = ['jaune', 'verte', 'rouge', 'orange', 'bleue', 'métal', 'violette'];
+const MB2_DONJONS = ['de l’eau', 'du feu', 'de l’air', 'de la terre', 'de la Tourneboule'];
+const BKIWI_CIRCUITS = ['Green Hill', 'Banana Derby', 'Terre Grise', 'Solstice', 'Jupiter IV', 'Mistral Kiwi'];
+const MINIFEVER_PALIERS = ['facile', 'normal', 'difficile', 'infernal'];
+const MINIFEVER_OBJECTIFS = [40, 80, 100, 100];
+const JAMAJAMA_AUTEUR = [41, 95, 51, 188, 5, 5, 62];
 
 /*
- * LE CATALOGUE. Les seuils sont des points de départ : l'admin les retouche
- * (onglet Quêtes), en voyant la part des joueurs qui les atteignent.
+ * LES MESURES — ce que le parc sait mesurer d'une partie, et rien d'autre :
+ * un résultat (points, temps, distance, salles…), jamais un volume.
+ *
+ * Deux sources :
+ *   · `rk` : un score CLASSÉ, que le serveur a reçu et rangé (persistScore).
+ *     Le plus sûr. `data` filtre ou `valeur(v, data)` transforme ce qui arrive ;
+ *   · `mode` : un résultat de mode HORS classement, déclaré par le jeu light
+ *     (POST /api/quetes/mode). Le navigateur le calcule : à récompenser
+ *     modestement. `max` en est la borne de vraisemblance.
+ *
+ * `unite` : points, temps (en `base` : ms ou cs), cm, %, salles, épreuves,
+ * victoires, coups, niveau, boss (oui/non). `inverse` : plus petit = meilleur.
+ * `titre` : la quête, `{seuil}` y est posé. `reperes` : les chiffres que le
+ * JEU LUI-MÊME donne (objectifs de niveau, temps de l'ordinateur) — de quoi
+ * régler un seuil sans statistiques. `carte(fiche)` : où lire le record du
+ * joueur sur sa fruticard (slot 0), pour le calibrage de l'admin.
  */
+const MESURES = {};
+function mesure(cle, m) { MESURES[cle] = Object.assign({ cle }, m); }
+const sec = (s) => s * 1000;          // ms
+const mncs = (m, s) => (m * 60 + s) * 100;   // cs (MotionBall)
+
+// ── Swapou ──
+mesure('swapou-challenge', { jeu: 'swapou2', groupe: 'Swapou', nom: 'Challenge : points',
+  source: { rk: 'swapou2_classic' }, unite: 'points',
+  titre: 'Dépasse {seuil} à Swapou', detail: 'Au Challenge' });
+mesure('swapou-classique', { jeu: 'swapou2', groupe: 'Swapou', nom: 'Classique : points',
+  source: { mode: 'classique' }, unite: 'points', max: 1e8,
+  titre: 'Fais {seuil} en Swapou classique', detail: 'Mode classique',
+  carte: (c) => c.$classic_record });
+// ── Frutisnake ──
+mesure('snake-challenge', { jeu: 'snake3', groupe: 'Frutisnake', nom: 'Challenge : points',
+  source: { rk: 'snake3_classic' }, unite: 'points',
+  titre: 'Fais {seuil} à Frutisnake', detail: 'Au Challenge' });
+// ── Kaluga ──
+mesure('kaluga-grappe', { jeu: 'kaluga', groupe: 'Kaluga', nom: 'Challenge (grappe) : points',
+  source: { rk: 'kaluga_classic' }, unite: 'points',
+  titre: 'Fais {seuil} à Kaluga', detail: 'Au Challenge, avec une grappe de 8 fruits ou plus' });
+mesure('kaluga-freestyle', { jeu: 'kaluga', groupe: 'Kaluga', nom: 'Challenge (freestyle) : points',
+  source: { rk: 'kaluga_freestyle_classic' }, unite: 'points',
+  titre: 'Fais {seuil} à Kaluga en freestyle', detail: 'Au Challenge, sans grande grappe' });
+KALUGA_NIVEAUX.forEach((n, i) => {
+  mesure('kaluga-chrono' + i, { jeu: 'kaluga', groupe: 'Kaluga', nom: `Chrono ${n} : temps`,
+    source: { mode: 'chrono' + i }, unite: 'temps', base: 'ms', inverse: true, max: sec(1800),
+    titre: `Finis le Chrono ${n} en moins de {seuil}`, detail: 'Kaluga, mode Olympique',
+    reperes: [{ nom: 'Objectif du jeu', v: [60000, 50000, 45000, 42000][i] }],
+    carte: (c) => { const l = c.$chrono && c.$chrono.$level && c.$chrono.$level[i]; return Array.isArray(l) && l.length ? l[l.length - 1] : null; } });
+  mesure('kaluga-survie' + i, { jeu: 'kaluga', groupe: 'Kaluga', nom: `Survie ${n} : temps tenu`,
+    source: { mode: 'survie' + i }, unite: 'temps', base: 'ms', max: sec(3600),
+    titre: `Tiens {seuil} en Survie ${n}`, detail: 'Kaluga, mode Olympique',
+    reperes: [{ nom: 'Objectif du jeu', v: [45000, 60000, 80000, 150000][i] }],
+    carte: (c) => { const l = c.$survival && c.$survival.$level && c.$survival.$level[i]; return l ? l.$s : null; } });
+  mesure('kaluga-invasion' + i, { jeu: 'kaluga', groupe: 'Kaluga', nom: `Invasion ${n} : temps tenu`,
+    source: { mode: 'invasion' + i }, unite: 'temps', base: 'ms', max: sec(3600),
+    titre: `Tiens {seuil} en Invasion ${n}`, detail: 'Kaluga, mode Olympique',
+    reperes: [{ nom: 'Objectif du jeu', v: [90000, 120000, 150000, 180000][i] }],
+    carte: (c) => { const l = c.$invasion && c.$invasion.$level && c.$invasion.$level[i]; return l ? l.$s : null; } });
+  mesure('kaluga-piste' + i, { jeu: 'kaluga', groupe: 'Kaluga', nom: `Piste ${n} : temps`,
+    source: { mode: 'piste' + i }, unite: 'temps', base: 'ms', inverse: true, max: sec(1800),
+    titre: `Boucle la Piste ${n} en moins de {seuil}`, detail: 'Kaluga, mode Olympique',
+    reperes: [{ nom: 'Objectif du jeu', v: [45000, 90000, 90000, 90000][i] }],
+    carte: (c) => { const l = c.$ring && c.$ring.$level && c.$ring.$level[i]; return l && l.$s < 600000 ? l.$s : null; } });
+});
+KALUGA_DEFIS.forEach((n, i) => {
+  mesure('kaluga-defi' + i, { jeu: 'kaluga', groupe: 'Kaluga', nom: `Épreuve ${n} : temps`,
+    source: { mode: 'defi' + i }, unite: 'temps', base: 'ms', inverse: true, max: sec(600),
+    titre: `Réussis l’épreuve ${n} en moins de {seuil}`, detail: 'Kaluga, mode Épreuves',
+    reperes: [{ nom: 'Temps imparti', v: [60000, 90000, 110000][i] }],
+    carte: (c) => { const l = c.$defiScore && c.$defiScore.$level && c.$defiScore.$level[i]; return l && l.$s ? l.$s : null; } });
+});
+KALUGA_EPREUVES.forEach((nom, i) => {
+  mesure('kaluga-epreuve' + i, { jeu: 'kaluga', groupe: 'Kaluga', nom: `Olympique, ${nom} : distance`,
+    source: { mode: 'epreuve' + i }, unite: 'cm', max: 1e6,
+    titre: `Fais {seuil} au ${nom}`, detail: 'Kaluga, épreuve olympique',
+    carte: (c) => { const t = c.$trial && c.$trial.$list && c.$trial.$list[i]; return t && t.$max > 0 ? t.$max : null; } });
+});
+mesure('kaluga-triathlon', { jeu: 'kaluga', groupe: 'Kaluga', nom: 'Triathlon : points',
+  source: { mode: 'triathlon' }, unite: 'points', max: 1e7,
+  titre: 'Fais {seuil} au triathlon', detail: 'Kaluga, mode Olympique',
+  carte: (c) => (c.$trial && c.$trial.$tria ? c.$trial.$tria.$s : null) });
+mesure('kaluga-heptathlon', { jeu: 'kaluga', groupe: 'Kaluga', nom: 'Heptathlon : points',
+  source: { mode: 'heptathlon' }, unite: 'points', max: 1e7,
+  titre: 'Fais {seuil} à l’heptathlon', detail: 'Kaluga, mode Olympique',
+  carte: (c) => (c.$trial && c.$trial.$hept ? c.$trial.$hept.$s : null) });
+// ── MotionBall ──
+mesure('mb2-challenge-salles', { jeu: 'mb2', groupe: 'MotionBall', nom: 'Challenge : salles explorées',
+  source: { rk: 'mb2_classic' }, unite: '%', valeur: (v) => (v >= 100 ? 100 : v + 1),
+  titre: 'Explore {seuil} des salles du Challenge MotionBall', detail: 'Au Challenge du jour' });
+mesure('mb2-challenge-boss', { jeu: 'mb2', groupe: 'MotionBall', nom: 'Challenge : poulpe vaincu',
+  source: { rk: 'mb2_classic' }, unite: 'boss', valeur: (v) => (v >= 100 ? 1 : 0),
+  titre: 'Vaincs le poulpe au Challenge MotionBall', detail: 'Au Challenge du jour' });
+mesure('mb2-classique', { jeu: 'mb2', groupe: 'MotionBall', nom: 'Classique : salle atteinte',
+  source: { mode: 'classique' }, unite: 'salles', max: 1000,
+  titre: 'Atteins la {seuil} en Classique MotionBall', detail: 'Mode classique',
+  reperes: [{ nom: 'Titem du jeu', v: 40 }], carte: (c) => c.$classic_score });
+MB2_COURSES.forEach((coul, i) => {
+  const cpu = [[mncs(3, 0), mncs(3, 40), mncs(4, 20)], [mncs(4, 0), mncs(4, 40), mncs(5, 20)], [mncs(4, 30), mncs(5, 15), mncs(6, 0)],
+    [mncs(2, 30), mncs(3, 0), mncs(3, 30)], [mncs(3, 0), mncs(3, 30), mncs(4, 0)], [mncs(4, 0), mncs(4, 40), mncs(5, 20)],
+    [mncs(4, 0), mncs(4, 40), mncs(5, 20)]][i];
+  mesure('mb2-course' + i, { jeu: 'mb2', groupe: 'MotionBall', nom: `Course ${coul} : temps`,
+    source: { mode: 'course' + i }, unite: 'temps', base: 'cs', inverse: true, max: mncs(30, 0),
+    titre: `Finis la course ${coul} en moins de {seuil}`, detail: 'MotionBall, mode Course (trois tours)',
+    reperes: [{ nom: 'Or (ordinateur)', v: cpu[0] }, { nom: 'Argent', v: cpu[1] }, { nom: 'Bronze', v: cpu[2] }],
+    carte: (c) => { const r = c.$records && c.$records[i]; const moi = Array.isArray(r) ? r.find((x) => x && !x.$c) : null; return moi ? moi.$t : null; } });
+});
+MB2_DONJONS.forEach((nom, i) => {
+  mesure('mb2-donjon' + i, { jeu: 'mb2', groupe: 'MotionBall', nom: `Aventure : boss du donjon ${nom}`,
+    source: { mode: 'aventure' + i }, unite: 'boss', valeur: (v) => (v >= 100 ? 1 : 0), max: 1e7,
+    titre: `Vaincs le boss du donjon ${nom}`, detail: 'MotionBall, mode Aventure',
+    carte: (c) => (Array.isArray(c.$dungeons_done) ? (c.$dungeons_done[i] ? 1 : 0) : null) });
+});
+// ── Burning Kiwi ── (tous les modes de course rangent leur temps au record du circuit)
+BKIWI_CIRCUITS.forEach((nom, i) => {
+  mesure('bkiwi-circuit' + i, { jeu: 'bkiwi', groupe: 'Burning Kiwi', nom: `${nom} : temps de course`,
+    source: { rk: `bkiwi_track${i}_classic` }, unite: 'temps', base: 'ms', inverse: true,
+    titre: `Boucle ${nom} en moins de {seuil}`, detail: 'Burning Kiwi, n’importe quel mode de course', records: true });
+});
+// ── Mini-Fever ──
+MINIFEVER_PALIERS.forEach((nom, p) => {
+  mesure('minifever-arcade' + p, { jeu: 'minifever', groupe: 'Mini-Fever', nom: `Arcade ${nom} : épreuves remportées`,
+    source: { rk: 'minifever_arcade', data: String(p) }, unite: 'épreuves', valeur: (v) => v / (10 * (1 + p)),
+    titre: `Remporte {seuil} en arcade ${nom}`, detail: 'Mini-Fever, mode arcade',
+    reperes: [{ nom: 'Mode terminé', v: MINIFEVER_OBJECTIFS[p] }] });
+});
+mesure('minifever-fever', { jeu: 'minifever', groupe: 'Mini-Fever', nom: 'Fever : épreuves enchaînées',
+  source: { mode: 'fever' }, unite: 'épreuves', max: 10000,
+  titre: 'Enchaîne {seuil} en mode fever', detail: 'Mini-Fever, mode fever' });
+// ── JamaJama ── (le tournoi : le niveau voyage dans la donnée du score)
+JAMAJAMA_AUTEUR.forEach((auteur, k) => {
+  mesure('jamajama-tournoi' + (k + 1), { jeu: 'jamajama', groupe: 'JamaJama', nom: `Tournoi, niveau ${k + 1} : coups`,
+    source: { rk: 'jamajama_classic', data: String(200001 + k) }, unite: 'coups', inverse: true,
+    titre: `Résous le niveau ${k + 1} du tournoi en {seuil} au plus`, detail: 'JamaJama, tournoi',
+    reperes: [{ nom: 'Or (score de l’auteur)', v: auteur }] });
+});
+// ── MiniPixiz, MiniWave ──
+mesure('minipixiz-arbre', { jeu: 'minipixiz', groupe: 'MiniPixiz', nom: 'Arbre creux : points',
+  source: { rk: 'minipixiz_classic' }, unite: 'points',
+  titre: 'Fais {seuil} dans l’arbre creux', detail: 'MiniPixiz, au Challenge' });
+mesure('miniwave-challenge', { jeu: 'miniwave', groupe: 'MiniWave', nom: 'Challenge : points',
+  source: { rk: 'miniwave_classic' }, unite: 'points',
+  titre: 'Fais {seuil} au Challenge MiniWave', detail: 'MiniWave, au Challenge' });
+mesure('miniwave-niveau', { jeu: 'miniwave', groupe: 'MiniWave', nom: 'Challenge : niveau atteint',
+  source: { rk: 'miniwave_classic' }, unite: 'niveau', valeur: (v, d) => (Number(d) > 0 ? Number(d) : null),
+  titre: 'Atteins le {seuil} au Challenge MiniWave', detail: 'MiniWave, au Challenge',
+  reperes: [{ nom: 'Dernier niveau', v: 40 }] });
+// ── Grapiz, Frutibandas ──
+mesure('grapiz-serie', { jeu: 'grapiz', groupe: 'Grapiz', nom: 'Challenge : victoires d’affilée',
+  source: { rk: 'grapiz_challenge' }, unite: 'victoires',
+  titre: 'Enchaîne {seuil} d’affilée au Challenge Grapiz', detail: 'Grapiz, au Challenge' });
+mesure('bandas-serie', { jeu: 'bandas', groupe: 'Frutibandas', nom: 'Challenge : victoires d’affilée',
+  source: { rk: 'bandas_challenge' }, unite: 'victoires',
+  titre: 'Enchaîne {seuil} d’affilée au Challenge Frutibandas', detail: 'Frutibandas, au Challenge' });
+
+// Les résultats de mode que le serveur accepte (« jeu:mode »), avec leur borne.
+const MODES = {};
+for (const m of Object.values(MESURES)) {
+  if (m.source.mode) MODES[m.jeu + ':' + m.source.mode] = { nom: m.nom, unite: m.unite, max: m.max || 1e7 };
+}
+
+// ── Écrire et lire une valeur, dans l'unité de sa mesure ──
+function formater(m, v) {
+  if (v == null || !Number.isFinite(Number(v))) return '—';
+  const n = Number(v);
+  switch (m && m.unite) {
+    case 'temps': {
+      const cs = Math.round(m.base === 'cs' ? n : n / 10);
+      const min = Math.floor(cs / 6000), s = Math.floor(cs / 100) % 60, c = cs % 100;
+      const cc = c ? ',' + String(c).padStart(2, '0') : '';
+      return min ? `${min} min ${String(s).padStart(2, '0')}${c ? cc : ''} s`.replace(' 00 s', '') : `${s}${cc} s`;
+    }
+    case '%': return nombre(n) + ' %';
+    case 'boss': return n >= 1 ? 'vaincu' : 'pas encore';
+    case 'points': return nombre(n) + ' point' + (n > 1 ? 's' : '');
+    case 'cm': return nombre(n) + ' cm';
+    case 'salles': return 'salle ' + nombre(n);
+    case 'niveau': return 'niveau ' + nombre(n);
+    case 'coups': return nombre(n) + ' coup' + (n > 1 ? 's' : '');
+    case 'victoires': return nombre(n) + ' victoire' + (n > 1 ? 's' : '');
+    case 'épreuves': return nombre(n) + ' épreuve' + (n > 1 ? 's' : '');
+    default: return nombre(n);
+  }
+}
+/** Ce que l'admin tape (« 4:40 », « 4:40,50 », « 45 », « 45,5 s », « 25 000 ») → la valeur. */
+function lireValeur(m, texte) {
+  const t = String(texte == null ? '' : texte).trim().toLowerCase().replace(/\s| /g, '').replace(/(s|sec|secondes?|points?|pts|cm|%|coups?)$/, '');
+  if (!t) return null;
+  if (m && m.unite === 'temps') {
+    const r = /^(?:(\d+)(?:min|:|'|m))?(\d+(?:[.,]\d+)?)?(?:")?$/.exec(t.replace(/min$/, 'min0'));
+    if (!r || (r[1] === undefined && r[2] === undefined)) return null;
+    const secondes = (Number(r[1]) || 0) * 60 + (Number(String(r[2] || '0').replace(',', '.')) || 0);
+    if (!(secondes > 0)) return null;
+    return m.base === 'cs' ? Math.round(secondes * 100) : Math.round(secondes * 1000);
+  }
+  const chiffres = /^(?:salle|niveau)?([\d]+(?:[.,]\d+)?)/.exec(t);
+  const n = chiffres ? Number(chiffres[1].replace(',', '.')) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+/** La valeur d'un événement pour une mesure, ou null s'il ne la concerne pas. */
+function valeurDe(m, evt) {
+  if (!m || !evt) return null;
+  const s = m.source;
+  let v;
+  if (s.rk) {
+    if (evt.type !== 'score' || evt.rk !== s.rk) return null;
+    if (s.data !== undefined && String(evt.data == null ? '' : evt.data) !== s.data) return null;
+  } else if (s.mode) {
+    if (evt.type !== 'mode' || evt.jeu !== m.jeu || evt.mode !== s.mode) return null;
+  } else return null;
+  v = Number(evt.v);
+  if (!Number.isFinite(v)) return null;
+  if (m.valeur) v = m.valeur(v, evt.data);
+  return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
+}
+const atteint = (m, v, seuil) => (m.inverse ? v <= seuil : v >= seuil);
+const mieux = (m, v, ancien) => ancien == null || (m.inverse ? v < ancien : v > ancien);
+
+/*
+ * LE CATALOGUE : des quêtes de RÉSULTAT, calées sur les repères que les jeux
+ * donnent eux-mêmes (objectifs de niveau de Kaluga, temps de l'ordinateur à
+ * MotionBall, fin d'un mode d'arcade). Tout le reste — un temps à Burning
+ * Kiwi, un score de Frutisnake — l'admin le crée à partir d'une mesure, avec
+ * son seuil (onglet Quêtes, « Créer une quête »).
+ */
+const q = (id, niveau, cle, seuil, extra) => Object.assign({ id, niveau, type: 'mesure', etiquette: MESURES[cle].jeu,
+  famille: cle, params: { mesure: cle, seuil } }, extra || {});
 const CATALOGUE = [
   // ── Faciles ──
-  { id: 'challenge-2j', niveau: 'facile', type: 'jours', etiquette: 'challenge', famille: 'challenge-jours',
-    params: { n: 2 }, titre: 'Joue au Challenge {n} jours différents', detail: 'N’importe quel jeu du jour' },
-  { id: 'prunostic-1', niveau: 'facile', type: 'action', etiquette: 'prunostics', famille: 'prunostics',
-    params: { action: 'pari', n: 1 }, titre: 'Place un Prunostic', detail: 'Sur un match de tournoi ou le Challenge de demain' },
-  { id: 'forum-2', niveau: 'facile', type: 'action', etiquette: 'forum', famille: 'forum',
-    params: { action: 'forumPost', n: 2 }, titre: 'Réponds {n} fois sur le forum', detail: 'N’importe quel sujet' },
-  { id: 'salons-20', niveau: 'facile', type: 'action', etiquette: 'salons', famille: 'salons',
-    params: { action: 'chatMsg', n: 20 }, titre: 'Écris {n} messages dans les salons', detail: 'Salons publics ou privés' },
-  { id: 'snake3-3p', niveau: 'facile', type: 'parties', etiquette: 'snake3', famille: 'snake3',
-    params: { jeu: 'snake3', n: 3 }, titre: 'Joue {n} parties de Frutisnake', detail: 'Parties classées' },
-  { id: 'swapou2-3p', niveau: 'facile', type: 'parties', etiquette: 'swapou2', famille: 'swapou2',
-    params: { jeu: 'swapou2', n: 3 }, titre: 'Joue {n} parties de Swapou', detail: 'Parties classées' },
-  { id: 'kaluga-3p', niveau: 'facile', type: 'parties', etiquette: 'kaluga', famille: 'kaluga',
-    params: { jeu: 'kaluga', n: 3 }, titre: 'Joue {n} parties de Kaluga', detail: 'Parties classées' },
-  { id: 'minifever-3p', niveau: 'facile', type: 'parties', etiquette: 'minifever', famille: 'minifever',
-    params: { jeu: 'minifever', n: 3 }, titre: 'Joue {n} parties de Mini-Fever', detail: 'Parties classées' },
-  { id: 'bkiwi-3p', niveau: 'facile', type: 'parties', etiquette: 'bkiwi', famille: 'bkiwi',
-    params: { jeu: 'bkiwi', n: 3 }, titre: 'Fais {n} courses de Burning Kiwi', detail: 'Courses classées' },
-  { id: 'vers-3', niveau: 'facile', type: 'mode', etiquette: 'kaluga', famille: 'kaluga-epreuves',
-    params: { jeu: 'kaluga', mode: 'epreuve0', n: 3 }, titre: 'Fais {n} lancers de vers', detail: 'Kaluga, mode Épreuves' },
-  { id: 'grenouille-3', niveau: 'facile', type: 'mode', etiquette: 'kaluga', famille: 'kaluga-epreuves',
-    params: { jeu: 'kaluga', mode: 'epreuve6', n: 3 }, titre: 'Fais {n} courses de grenouille', detail: 'Kaluga, mode Épreuves' },
-
+  q('kaluga-chrono-facile', 'facile', 'kaluga-chrono0', 60000),
+  q('kaluga-survie-facile', 'facile', 'kaluga-survie0', 45000),
+  q('mb2-course-jaune-bronze', 'facile', 'mb2-course0', mncs(4, 20)),
+  q('minifever-arcade-facile-20', 'facile', 'minifever-arcade0', 20),
+  q('mb2-salles-50', 'facile', 'mb2-challenge-salles', 50),
+  { id: 'vers-record', niveau: 'facile', type: 'record', etiquette: 'kaluga', famille: 'kaluga-epreuve0',
+    params: { jeu: 'kaluga', mode: 'epreuve0' }, titre: 'Bats ton record au lancer de vers', detail: 'Kaluga, épreuve olympique' },
   // ── Moyennes ──
-  { id: 'challenge-4j', niveau: 'moyenne', type: 'jours', etiquette: 'challenge', famille: 'challenge-jours',
-    params: { n: 4 }, titre: 'Joue au Challenge {n} jours différents', detail: 'N’importe quel jeu du jour' },
-  { id: 'prunostic-3', niveau: 'moyenne', type: 'action', etiquette: 'prunostics', famille: 'prunostics',
-    params: { action: 'pari', n: 3 }, titre: 'Place {n} Prunostics', detail: 'Tournois ou Challenge, un nouveau pari à chaque fois' },
-  { id: 'forum-5', niveau: 'moyenne', type: 'action', etiquette: 'forum', famille: 'forum',
-    params: { action: 'forumPost', n: 5 }, titre: 'Réponds {n} fois sur le forum', detail: 'N’importe quel sujet' },
-  { id: 'swapou2-15000', niveau: 'moyenne', type: 'score', etiquette: 'swapou2', famille: 'swapou2',
-    params: { rk: 'swapou2_classic', seuil: 15000 }, titre: 'Dépasse {seuil} points à Swapou', detail: 'Au Challenge' },
-  { id: 'snake3-10p', niveau: 'moyenne', type: 'parties', etiquette: 'snake3', famille: 'snake3',
-    params: { jeu: 'snake3', n: 10 }, titre: 'Joue {n} parties de Frutisnake', detail: 'Parties classées' },
-  { id: 'snake3-100a', niveau: 'moyenne', type: 'score', etiquette: 'snake3', famille: 'snake3-long',
-    params: { rk: 'snake3_contest', seuil: 100, unite: 'anneaux' }, titre: 'Fais un serpent de {seuil} anneaux', detail: 'Frutisnake, n’importe quelle partie' },
-  { id: 'vers-record', niveau: 'moyenne', type: 'record', etiquette: 'kaluga', famille: 'kaluga-epreuves',
-    params: { jeu: 'kaluga', mode: 'epreuve0' }, titre: 'Bats ton record au lancer de vers', detail: 'Kaluga, mode Épreuves' },
-  { id: 'vers-seuil', niveau: 'moyenne', type: 'mode', etiquette: 'kaluga', famille: 'kaluga-epreuves', actif: false,
-    params: { jeu: 'kaluga', mode: 'epreuve0', seuil: 400 }, titre: 'Fais {seuil} cm au lancer de vers', detail: 'Kaluga, mode Épreuves' },
-  { id: 'minipixiz-5p', niveau: 'moyenne', type: 'parties', etiquette: 'minipixiz', famille: 'minipixiz',
-    params: { jeu: 'minipixiz', n: 5 }, titre: 'Termine {n} parties de MiniPixiz', detail: 'Parties classées' },
-
+  q('swapou-15000', 'moyenne', 'swapou-challenge', 15000),
+  q('kaluga-chrono-standard', 'moyenne', 'kaluga-chrono1', 50000),
+  q('kaluga-invasion-facile', 'moyenne', 'kaluga-invasion0', 90000),
+  q('mb2-course-verte-argent', 'moyenne', 'mb2-course1', mncs(4, 40)),
+  q('minifever-arcade-facile', 'moyenne', 'minifever-arcade0', 40),
+  q('kaluga-defi-facile', 'moyenne', 'kaluga-defi0', 60000),
+  { id: 'grenouille-record', niveau: 'moyenne', type: 'record', etiquette: 'kaluga', famille: 'kaluga-epreuve6',
+    params: { jeu: 'kaluga', mode: 'epreuve6' }, titre: 'Bats ton record à la course de grenouille', detail: 'Kaluga, épreuve olympique' },
   // ── Difficiles ──
-  { id: 'swapou2-25000', niveau: 'difficile', type: 'score', etiquette: 'swapou2', famille: 'swapou2',
-    params: { rk: 'swapou2_classic', seuil: 25000 }, titre: 'Dépasse {seuil} points à Swapou', detail: 'Au Challenge' },
+  q('swapou-25000', 'difficile', 'swapou-challenge', 25000),
+  q('kaluga-chrono-difficile', 'difficile', 'kaluga-chrono2', 45000),
+  q('mb2-course-verte-or', 'difficile', 'mb2-course1', mncs(4, 0)),
+  q('mb2-poulpe', 'difficile', 'mb2-challenge-boss', 1),
+  q('minifever-arcade-normal', 'difficile', 'minifever-arcade1', 80),
   { id: 'kiloute', niveau: 'difficile', type: 'action', etiquette: 'kiloute', famille: 'kiloute',
     params: { action: 'kiloute', n: 1 }, titre: 'Remporte une Question à 60 kikooz', detail: 'Tous les soirs à 19 h, dans les salons' },
   { id: 'medaille', niveau: 'difficile', type: 'action', etiquette: 'challenge', famille: 'medaille',
     params: { action: 'medaille', n: 1 }, titre: 'Monte sur le podium d’un Challenge', detail: 'Médaille d’or, d’argent ou de bronze, versée au changement de jour' },
-  { id: 'challenge-6j', niveau: 'difficile', type: 'jours', etiquette: 'challenge', famille: 'challenge-jours',
-    params: { n: 6 }, titre: 'Joue au Challenge {n} jours différents', detail: 'N’importe quel jeu du jour' },
-  { id: 'snake3-200a', niveau: 'difficile', type: 'score', etiquette: 'snake3', famille: 'snake3-long',
-    params: { rk: 'snake3_contest', seuil: 200, unite: 'anneaux' }, titre: 'Fais un serpent de {seuil} anneaux', detail: 'Frutisnake, n’importe quelle partie' },
-  { id: 'grenouille-record', niveau: 'difficile', type: 'record', etiquette: 'kaluga', famille: 'kaluga-epreuves',
-    params: { jeu: 'kaluga', mode: 'epreuve6' }, titre: 'Bats ton record à la course de grenouille', detail: 'Kaluga, mode Épreuves' },
 ];
 
 // ── Les nombres et les dates ─────────────────────────────────────────────────
@@ -201,12 +397,23 @@ function reglagesNormalises(brut) {
   R.gains = gains;
   R.composition = compo;
   R.catalogue = (R.catalogue && typeof R.catalogue === 'object') ? R.catalogue : {};
+  // Les quêtes créées par l'admin : une mesure, un seuil, un niveau.
+  R.perso = (Array.isArray(R.perso) ? R.perso : []).filter((x) => x && /^perso-\d+$/.test(String(x.id))
+    && MESURES[x.mesure] && NIVEAUX.includes(x.niveau) && Number(x.seuil) > 0)
+    .map((x) => ({ id: String(x.id), mesure: x.mesure, seuil: Number(x.seuil), niveau: x.niveau,
+      titre: x.titre ? String(x.titre).slice(0, 120) : '', actif: x.actif !== false }));
   return R;
 }
 
 /** La quête du catalogue, avec les retouches de l'admin. */
 function definition(id, reglages) {
-  const base = CATALOGUE.find((q) => q.id === id);
+  const perso = (((reglages || {}).perso) || []).find((x) => x.id === id);
+  if (perso) {
+    return { id: perso.id, niveau: perso.niveau, type: 'mesure', etiquette: MESURES[perso.mesure].jeu,
+      famille: perso.mesure, params: { mesure: perso.mesure, seuil: perso.seuil },
+      titre: perso.titre || undefined, actif: perso.actif, perso: true };
+  }
+  const base = CATALOGUE.find((x) => x.id === id);
   if (!base) return null;
   const r = ((reglages || {}).catalogue || {})[id] || {};
   const def = JSON.parse(JSON.stringify(base));
@@ -216,12 +423,25 @@ function definition(id, reglages) {
   if (def.params.n !== undefined && Number(r.n) >= 1) def.params.n = Math.floor(Number(r.n));
   return def;
 }
-function catalogue(reglages) { return CATALOGUE.map((q) => definition(q.id, reglages)); }
+function catalogue(reglages) {
+  return CATALOGUE.map((x) => definition(x.id, reglages))
+    .concat((((reglages || {}).perso) || []).map((x) => definition(x.id, reglages)));
+}
 
 /** Le titre d'une quête, ses nombres posés. */
 function titre(def) {
   const p = def.params || {};
+  if (def.type === 'mesure') {
+    const m = MESURES[p.mesure];
+    const modele = def.titre || (m && m.titre) || '';
+    return String(modele).replace('{seuil}', formater(m, p.seuil));
+  }
   return String(def.titre).replace('{seuil}', nombre(p.seuil)).replace('{n}', nombre(p.n));
+}
+/** La ligne sous le titre. */
+function detail(def) {
+  if (def.type === 'mesure') { const m = MESURES[(def.params || {}).mesure]; return def.detail || (m && m.detail) || ''; }
+  return def.detail || '';
 }
 
 // ── Le tirage du lundi ───────────────────────────────────────────────────────
@@ -250,6 +470,7 @@ function tirer(reglages, graine, exclues) {
   const sauf = new Set(exclues || []);
   const choisies = [];
   const familles = new Set();
+  const jeux = new Set();
   for (const niveau of NIVEAUX) {
     const pool = catalogue(R).filter((q) => q.actif && q.niveau === niveau && !sauf.has(q.id));
     for (let i = pool.length - 1; i > 0; i--) {
@@ -258,8 +479,19 @@ function tirer(reglages, graine, exclues) {
     }
     const voulu = R.composition[niveau];
     let pris = 0;
-    for (const q of pool) { if (pris >= voulu) break; if (familles.has(q.famille)) continue; choisies.push(q); familles.add(q.famille); pris++; }
-    for (const q of pool) { if (pris >= voulu) break; if (choisies.includes(q)) continue; choisies.push(q); pris++; }
+    // D'abord des jeux différents, puis des familles différentes, puis ce qui reste.
+    const passes = [
+      (x) => !familles.has(x.famille) && !jeux.has(x.etiquette),
+      (x) => !familles.has(x.famille),
+      () => true,
+    ];
+    for (const ok of passes) {
+      for (const x of pool) {
+        if (pris >= voulu) break;
+        if (choisies.includes(x) || !ok(x)) continue;
+        choisies.push(x); familles.add(x.famille); jeux.add(x.etiquette); pris++;
+      }
+    }
   }
   return choisies;
 }
@@ -270,6 +502,10 @@ function tirer(reglages, graine, exclues) {
 function estFaite(def, etat) {
   const p = def.params || {}, e = etat || {};
   switch (def.type) {
+    case 'mesure': {
+      const m = MESURES[p.mesure];
+      return !!m && e.m != null && atteint(m, Number(e.m), Number(p.seuil));
+    }
     case 'score':
     case 'mode':
       if (p.seuil !== undefined) {
@@ -294,6 +530,13 @@ function appliquer(def, etat, evt, jour) {
   const e = Object.assign({}, etat || {});
   if (!evt || !evt.type) return null;
   switch (def.type) {
+    case 'mesure': {
+      const m = MESURES[p.mesure];
+      const v = valeurDe(m, evt);
+      if (v == null || !mieux(m, v, e.m)) return null;
+      e.m = v;
+      return e;
+    }
     case 'score': {
       if (evt.type !== 'score' || evt.rk !== p.rk) return null;
       const v = Number(evt.v);
@@ -353,6 +596,19 @@ function avancement(def, etat) {
   let valeur = 0, cible = 1, ligne = '';
   const unite = p.unite || ((def.type === 'mode' || def.type === 'record') ? (MODES[p.jeu + ':' + p.mode] || {}).unite : '') || 'points';
   switch (def.type) {
+    case 'mesure': {
+      const m = MESURES[p.mesure];
+      if (!m) break;
+      cible = Number(p.seuil);
+      valeur = e.m == null ? 0 : Number(e.m);
+      if (m.unite === 'boss') {
+        ligne = fait ? 'vaincu' : 'pas encore vaincu cette semaine';
+        return { fait, valeur, cible, ligne, pc: fait ? 1 : 0 };
+      }
+      ligne = e.m == null ? 'pas encore de résultat cette semaine' : `ton meilleur cette semaine : ${formater(m, e.m)}`;
+      const pc = e.m == null ? 0 : (m.inverse ? (e.m > 0 ? cible / e.m : 0) : e.m / cible);
+      return { fait, valeur, cible, ligne, pc: fait ? 1 : Math.max(0, Math.min(0.99, pc)) };
+    }
     case 'score':
     case 'mode':
       if (p.seuil !== undefined) {
@@ -390,6 +646,29 @@ function modeRecevable(jeu, mode, v) {
   const n = Number(v);
   if (!def || !Number.isFinite(n) || n < 0 || n > def.max) return null;
   return { jeu: String(jeu), mode: String(mode), v: n };
+}
+
+/** Les repères d'une mesure, mis en forme pour l'admin. */
+function reperes(m) {
+  return ((m && m.reperes) || []).map((r) => ({ nom: r.nom, v: r.v, texte: formater(m, r.v) }));
+}
+/**
+ * Le calibrage : les meilleurs résultats de chaque joueur (une valeur par
+ * joueur), et un seuil — combien l'atteignent, et où il se situe.
+ */
+function calibrer(m, valeurs, seuil) {
+  const v = (valeurs || []).map(Number).filter(Number.isFinite).sort((a, b) => (m.inverse ? a - b : b - a));
+  if (!v.length) return { joueurs: 0, texte: 'Aucun résultat connu pour cette mesure.' };
+  const rang = (q) => v[Math.min(v.length - 1, Math.floor(q * v.length))];
+  const res = { joueurs: v.length, meilleur: v[0], top10: rang(0.1), top25: rang(0.25), mediane: rang(0.5) };
+  const f = (x) => formater(m, x);
+  let texte = `${v.length} joueur(s) · meilleur ${f(res.meilleur)} · top 10 % ${f(res.top10)} · top 25 % ${f(res.top25)} · médiane ${f(res.mediane)}`;
+  if (Number(seuil) > 0) {
+    res.atteint = v.filter((x) => atteint(m, x, Number(seuil))).length;
+    texte += ` — ${f(seuil)} : atteint par ${res.atteint} (${Math.round(100 * res.atteint / v.length)} %)`;
+  }
+  res.texte = texte;
+  return res;
 }
 
 // ── Gromelin parle ───────────────────────────────────────────────────────────
@@ -432,4 +711,5 @@ module.exports = {
   nombre, jourPlus, lundiDe, minuitParis, finDeSemaine, semaineLisible,
   reglagesNormalises, definition, catalogue, titre, tirer,
   estFaite, appliquer, avancement, modeRecevable, parole, PAROLES,
+  MESURES, formater, lireValeur, valeurDe, reperes, calibrer, detail,
 };

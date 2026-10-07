@@ -422,6 +422,8 @@ class Card {
   static time(m, s) { return (m * 60 + s) * 100; }
   static scoreDonjon(c, score) {
     const id = J.Manager.play_mode_param;
+    // Les quêtes : le score du donjon (100 et plus : le boss est tombé).
+    if (J.Manager.client && J.Manager.client.rapporterQuete) J.Manager.client.rapporterQuete('aventure' + id, score);
     let old = c.$dtimes[id];
     if (old === undefined) old = 0;
     if (old < score) {
