@@ -6425,6 +6425,11 @@ async function loadQuetes() {
     for (const m of d.mesures) (groupes[m.groupe] = groupes[m.groupe] || []).push(m);
     const optMesures = Object.keys(groupes).map((g) => `<optgroup label="${esc(g)}">${groupes[g].map((m) =>
       `<option value="${esc(m.cle)}">${esc(m.nom)}${m.source === 'jeu' ? ' (déclaré par le jeu)' : ''}</option>`).join('')}</optgroup>`).join('');
+    // Les contrats de la semaine : un par joueur, taillé sur ses scores.
+    const QT_CONTRAT = { a_signer: '<span style="color:#c8860a">à signer</span>', signe: '<b style="color:#95261A">signé</b>', fait: '<b style="color:#2f8f2f">✔ rempli</b>' };
+    const contrats = (d.contrats || []).map((c) => `<tr><td><b>${esc(c.nom)}</b></td><td>${QT_CONTRAT[c.etat] || esc(c.etat)}</td>
+      <td style="font-size:11px">${c.propositions.map((p, i) => p ? `<div${c.choix === i ? ' style="font-weight:bold;color:#95261A"' : (c.choix != null ? ' style="color:#aaa"' : '')}>${qtNiveau(p.niveau)} ${esc(p.titre)}</div>` : '').join('')}</td>
+      <td style="font-size:11px">${c.etat === 'a_signer' ? '—' : (c.fait ? `+${c.gain} kikooz` : esc(c.ligne || ''))}</td></tr>`).join('');
     const histo = (d.historique || []).map((h) => `<tr><td>${esc(h.semaine)}</td><td>${h.joueurs}</td><td>${h.faites}</td><td>${h.kikooz}</td></tr>`).join('');
     bloc.innerHTML = `
       <div style="border:1px solid #c9a46a;background:#fffaf0;padding:12px;border-radius:8px;font-size:13px;margin-bottom:12px">
@@ -6440,6 +6445,13 @@ async function loadQuetes() {
           <textarea id="qt-testeurs" rows="2" style="width:100%;max-width:640px">${esc(R.testeurs.join(', '))}</textarea></div>
         <div style="margin-bottom:6px"><b>Gains (kikooz) :</b> ${parNiveau('gain', 'gains')}</div>
         <div style="margin-bottom:8px"><b>Quêtes par semaine :</b> ${parNiveau('compo', 'composition')} <small style="color:#777">(pris en compte au prochain tirage)</small></div>
+        <div style="margin-bottom:8px"><b>Contrat « Rien que pour toi » :</b>
+          <label style="margin-right:10px"><input type="checkbox" id="qt-contrat-actif" ${R.contrat.actif ? 'checked' : ''}> proposé</label>
+          <label style="margin-right:10px">d'après les <input type="number" min="7" max="90" id="qt-contrat-fenetre" value="${R.contrat.fenetre}" style="width:52px"> derniers jours</label>
+          <label>joués au moins <input type="number" min="1" max="20" id="qt-contrat-min" value="${R.contrat.minJours}" style="width:44px"> jours</label>
+          <div style="color:#777;font-size:12px;margin-top:3px;line-height:1.45">Chaque semaine, Gromelin propose à chacun trois quêtes taillées sur ses meilleurs scores du jour au Challenge :
+            facile (son niveau habituel, la médiane), moyenne (ses bons jours, le meilleur quart), difficile (battre son record de la période).
+            Une par jeu, dans les jeux qu'il pratique le plus. Il en signe une ; seuls les résultats obtenus après la signature comptent. Gains : ceux du niveau ci-dessus.</div></div>
         <button class="btn btn-success" onclick="quetesEnregistrer()">Enregistrer</button>
       </div>
       <h4>Cette semaine — ${esc(S.lisible)} <small style="font-weight:normal;opacity:.85">(nouvelles quêtes dans ${qtReste(S.fin)})</small></h4>
@@ -6453,6 +6465,9 @@ async function loadQuetes() {
       <div class="toolbar" style="margin-bottom:6px"><input id="qt-reinit" placeholder="pseudo" style="width:140px">
         <button class="btn" onclick="quetesReinit($('#qt-reinit').value)" title="Pour retester : efface l'avancement de la semaine du joueur (les kikooz versés restent)">Remettre à zéro</button></div>
       ${joueurs ? `<table><thead><tr><th>Joueur</th><th>Faites</th><th>Kikooz</th>${tetes}<th></th></tr></thead><tbody>${joueurs}</tbody></table>` : '<div style="color:#777">Personne n’a encore avancé cette semaine.</div>'}
+      <h4>Contrats de la semaine</h4>
+      ${contrats ? `<table><thead><tr><th>Joueur</th><th>Contrat</th><th>Propositions (la signée en rouge)</th><th>Où il en est</th></tr></thead><tbody>${contrats}</tbody></table>`
+        : '<div style="color:#777">Aucun contrat proposé pour l’instant (un contrat se prépare à la première ouverture de la fenêtre des quêtes).</div>'}
       <h4>Créer une quête</h4>
       <div style="border:1px solid #c9a46a;background:#fffaf0;padding:10px;border-radius:8px;font-size:12px;margin-bottom:10px">
         <div style="color:#777;margin-bottom:6px;line-height:1.45">Une quête, c'est un <b>résultat</b> : choisis ce qu'on mesure, et le seuil à atteindre.
@@ -6486,7 +6501,8 @@ async function quetesEnregistrer() {
   const o = document.querySelector('input[name="qt-ouverture"]:checked');
   const gains = {}, composition = {};
   for (const n of quetesAdmin.niveaux) { gains[n] = Number($(`#qt-gain-${n}`).value); composition[n] = Number($(`#qt-compo-${n}`).value); }
-  await quetesPost('/api/admin/quetes', { ouverture: o ? o.value : 'ferme', testeurs: $('#qt-testeurs').value, gains, composition },
+  const contrat = { actif: $('#qt-contrat-actif').checked, fenetre: Number($('#qt-contrat-fenetre').value), minJours: Number($('#qt-contrat-min').value) };
+  await quetesPost('/api/admin/quetes', { ouverture: o ? o.value : 'ferme', testeurs: $('#qt-testeurs').value, gains, composition, contrat },
     (d) => `Quêtes : ${{ ferme: 'fermées', testeurs: 'testeurs seulement', tous: 'ouvertes à tous' }[d.reglages.ouverture]}`
       + (d.inconnus && d.inconnus.length ? ` — pseudo(s) inconnu(s) : ${d.inconnus.join(', ')}` : ''));
 }

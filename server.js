@@ -10888,6 +10888,11 @@ let quetesReglages = Quetes.reglagesNormalises();
 let quetesSemaine = null;             // { lundi, quetes: [définitions figées] }
 const quetesProgres = new Map();      // pseudo → Map(id de quête → { etat, faitAt, gain })
 const quetesVisites = new Map();      // pseudo → { semaine, vuAt }
+// Le contrat de la semaine, propre à chacun : pseudo → { propositions, choix,
+// signeAt, def } (def : la quête signée). Sans proposition possible (pas assez
+// de jours de jeu), on le note sans l'écrire, et on réessaie une heure après.
+const quetesContrats = new Map();
+const quetesContratsEnCours = new Map(); // pseudo → Promise (une préparation à la fois)
 let quetesPret = false;               // chargées (base lue) : avant, on n'écoute rien
 const GROMELIN_BOUILLE = '0d0000010000000000000000';
 
@@ -10916,6 +10921,7 @@ function quetesSemaineCourante() {
   if (!quetesSemaine || quetesSemaine.lundi !== lundi) {
     quetesSemaine = { lundi, quetes: Quetes.tirer(quetesReglages, 'gromelin:' + lundi) };
     quetesProgres.clear();
+    quetesContrats.clear();
     quetesEnregistrerSemaine();
     console.log(`[QUETES] semaine du ${lundi} : ${quetesSemaine.quetes.map((q) => q.id).join(', ') || 'aucune quête'}`);
   }
@@ -10948,8 +10954,86 @@ async function chargerQuetes() {
     for (const v of await db.quetesChargerVisites()) {
       quetesVisites.set(String(v.username).toLowerCase(), { semaine: v.semaine, vuAt: v.vu_at ? new Date(v.vu_at).getTime() : 0 });
     }
+    for (const row of await db.quetesChargerContrats(S.lundi)) {
+      quetesContratPoser(String(row.username).toLowerCase(), {
+        propositions: Array.isArray(row.propositions) ? row.propositions : [],
+        choix: row.choix == null ? null : Number(row.choix),
+        signeAt: row.signe_at ? new Date(row.signe_at).getTime() : 0,
+      });
+    }
   } catch (e) { console.error('[QUETES] chargement :', e.message); }
   quetesPret = true;
+}
+
+// ── Le contrat de la semaine ──
+// Un contrat lu ou préparé : sa quête signée est reconstruite d'après la
+// proposition (figée en base), pas d'après les réglages du moment.
+function quetesContratPoser(u, c) {
+  const prop = c.choix != null ? c.propositions[c.choix] : null;
+  c.def = prop ? Quetes.definitionContrat(prop) : null;
+  quetesContrats.set(u, c);
+  return c;
+}
+// Les classements que lit le contrat (les mesures « perso » viennent toutes du Challenge).
+const QUETES_CONTRAT_RK = Array.from(new Set(Quetes.MESURES_PERSO.map((k) => Quetes.MESURES[k].source.rk)));
+/**
+ * Le contrat du joueur pour la semaine — préparé à sa première visite : ses
+ * meilleurs du jour au Challenge sur la fenêtre réglée (archive), une valeur
+ * par jour et par mesure, puis trois propositions. Semé par le joueur et le
+ * lundi : refaire le calcul redonne les mêmes.
+ */
+async function quetesContratDe(u) {
+  if (!quetesReglages.contrat.actif) return null;
+  const S = quetesSemaineCourante();
+  const deja = quetesContrats.get(u);
+  if (deja && (deja.propositions.length || Date.now() - (deja.essaiAt || 0) < 3600000)) return deja;
+  if (!process.env.DATABASE_URL) return quetesContratPoser(u, { propositions: [], choix: null, signeAt: 0, essaiAt: Date.now() });
+  if (quetesContratsEnCours.has(u)) return quetesContratsEnCours.get(u);
+  const travail = (async () => {
+    const depuis = Quetes.jourPlus(S.lundi, -quetesReglages.contrat.fenetre);
+    const rows = await db.quetesHistoriqueJoueur(u, depuis, QUETES_CONTRAT_RK);
+    const parJour = {};   // mesure → { jour → meilleur }
+    for (const row of rows) {
+      const evt = { type: 'score', rk: row.ranking_id, v: Number(row.score), data: row.data == null ? '' : String(row.data) };
+      for (const cle of Quetes.MESURES_PERSO) {
+        const m = Quetes.MESURES[cle];
+        const v = Quetes.valeurDe(m, evt);
+        if (v == null || (m.unite !== 'temps' && v <= 0)) continue;
+        const j = (parJour[cle] = parJour[cle] || {});
+        if (j[row.day_key] === undefined || (m.inverse ? v < j[row.day_key] : v > j[row.day_key])) j[row.day_key] = v;
+      }
+    }
+    const historique = {};
+    for (const [cle, j] of Object.entries(parJour)) historique[cle] = Object.values(j);
+    const propositions = Quetes.proposerContrat(historique, Quetes.aleaSeme('contrat:' + u + ':' + S.lundi),
+      { minJours: quetesReglages.contrat.minJours });
+    if (quetesSemaineCourante().lundi !== S.lundi) return null;   // la semaine a tourné entre-temps
+    if (!propositions.length) return quetesContratPoser(u, { propositions: [], choix: null, signeAt: 0, essaiAt: Date.now() });
+    await db.quetesEnregistrerContrat(S.lundi, u, propositions);
+    // Une autre instance (ou une course) a pu l'écrire d'abord : la base fait foi.
+    const lu = (await db.quetesChargerContrats(S.lundi)).find((r) => String(r.username).toLowerCase() === u);
+    return quetesContratPoser(u, lu ? {
+      propositions: Array.isArray(lu.propositions) ? lu.propositions : propositions,
+      choix: lu.choix == null ? null : Number(lu.choix),
+      signeAt: lu.signe_at ? new Date(lu.signe_at).getTime() : 0,
+    } : { propositions, choix: null, signeAt: 0 });
+  })();
+  quetesContratsEnCours.set(u, travail);
+  try { return await travail; } catch (e) { console.error('[QUETES] contrat :', e.message); return null; } finally { quetesContratsEnCours.delete(u); }
+}
+// Ce que le joueur voit de son contrat.
+function quetesContratVue(u) {
+  if (!quetesReglages.contrat.actif) return { etat: 'inactif' };
+  const c = quetesContrats.get(u);
+  if (!c || !c.propositions.length) return { etat: 'aucun', minJours: quetesReglages.contrat.minJours, fenetre: quetesReglages.contrat.fenetre };
+  const gainDe = (niveau) => Number(quetesReglages.gains[niveau]) || 0;
+  const propositions = c.propositions.map((prop, i) => {
+    const def = Quetes.definitionContrat(prop);
+    return def ? { i, niveau: def.niveau, niveauNom: Quetes.NIVEAU_NOM[def.niveau], gain: gainDe(def.niveau),
+      titre: Quetes.titre(def), detail: Quetes.detail(def), etiquette: Quetes.ETIQUETTES[def.etiquette] || null } : null;
+  }).filter(Boolean);
+  if (!c.def) return { etat: 'a_signer', propositions };
+  return { etat: 'signe', signeLe: c.signeAt || null, choix: c.choix, propositions };
 }
 
 /** Un événement du parc : il fait peut-être avancer une quête du joueur. */
@@ -10959,7 +11043,11 @@ function quetesEvenement(username, evt) {
   if (!u || !users[u] || !quetesAcces(u)) return;
   const S = quetesSemaineCourante();
   const jour = parisDayKey();
-  for (const def of S.quetes) {
+  // Les quêtes de la semaine, plus le contrat s'il est signé : il n'existe
+  // qu'à partir de la signature, donc rien d'avant ne compte.
+  const contrat = quetesContrats.get(u);
+  const defs = contrat && contrat.def && quetesReglages.contrat.actif ? S.quetes.concat([contrat.def]) : S.quetes;
+  for (const def of defs) {
     const p = quetesProgresDe(u, def.id);
     if (p.faitAt) continue;
     const etat = Quetes.appliquer(def, p.etat, evt, jour);
@@ -10976,10 +11064,11 @@ function quetesAccomplir(username, def, p, lundi) {
   p.gain = gain;
   const payer = () => {
     const titre = Quetes.titre(def);
-    if (gain > 0) parisCrediter(username, gain, `la quête « ${titre} » (Gromelin)`);
+    const quoi = def.contrat ? 'Contrat rempli' : 'Quête accomplie';
+    if (gain > 0) parisCrediter(username, gain, `${def.contrat ? 'le contrat' : 'la quête'} « ${titre} » (Gromelin)`);
     addAndNotifyUserLog(username, {
       type: USER_LOG_TYPE.QUETE,
-      content: gain > 0 ? `Quête accomplie : « ${titre} ». Gromelin te verse ${gain} kikooz.` : `Quête accomplie : « ${titre} ».`,
+      content: gain > 0 ? `${quoi} : « ${titre} ». Gromelin te verse ${gain} kikooz.` : `${quoi} : « ${titre} ».`,
       flNew: true,
     });
     console.log(`[QUETES] ${username} : « ${titre} » faite (+${gain} kikooz)`);
@@ -10995,7 +11084,8 @@ function quetesReverifier() {
   if (!quetesSemaine) return;
   for (const [u, m] of quetesProgres) {
     if (!quetesAcces(u)) continue;
-    for (const def of quetesSemaine.quetes) {
+    const c = quetesContrats.get(u);
+    for (const def of (c && c.def ? quetesSemaine.quetes.concat([c.def]) : quetesSemaine.quetes)) {
       const p = m.get(def.id);
       if (p && !p.faitAt && Quetes.estFaite(def, p.etat)) quetesAccomplir(u, def, p, quetesSemaine.lundi);
     }
@@ -11013,7 +11103,7 @@ function quetesEtatPour(username) {
   const vuAt = vis && vis.semaine === S.lundi ? vis.vuAt : 0;
   const m = quetesProgres.get(u) || new Map();
   let gagnes = 0, total = 0;
-  const quetes = S.quetes.map((def) => {
+  const carte = (def) => {
     const p = m.get(def.id) || { etat: {}, faitAt: 0, gain: 0 };
     const av = Quetes.avancement(def, p.etat);
     const gain = p.faitAt ? p.gain : (Number(quetesReglages.gains[def.niveau]) || 0);
@@ -11025,36 +11115,71 @@ function quetesEtatPour(username) {
       fait: !!p.faitAt, faitLe: p.faitAt || null,
       etiquette: Quetes.ETIQUETTES[def.etiquette] || null,
     };
-  });
+  };
+  const quetes = S.quetes.map(carte);
+  const contrat = quetesContratVue(u);
+  const cdef = contrat.etat === 'signe' ? quetesContrats.get(u).def : null;
+  if (cdef) {
+    contrat.quete = Object.assign(carte(cdef), { contrat: true });
+    contrat.quete.ligne = contrat.quete.ligne.replace('cette semaine', 'depuis la signature');
+  }
   // Ce que Gromelin a à dire depuis la dernière visite, dans l'ordre. Son
   // tirage est semé par la visite : la même tant qu'on n'a pas rouvert.
   const alea = (() => { let a = 7; for (const ch of u + S.lundi + vuAt) a = (Math.imul(a ^ ch.charCodeAt(0), 2654435761) + 1) >>> 0; return () => { a = (Math.imul(a ^ (a >>> 15), 2246822507) + 0x9E3779B9) >>> 0; return a / 4294967296; }; })();
   const messages = [];
   const nouvelleSemaine = !vis || vis.semaine !== S.lundi;
-  if (!quetes.length) messages.push(Quetes.parole('rien', {}, alea));
+  // Le contrat compte avec les autres une fois signé ; pas encore signé, il a sa réplique.
+  const toutes = contrat.quete ? quetes.concat([contrat.quete]) : quetes;
+  const aSigner = contrat.etat === 'a_signer';
+  if (!toutes.length && !aSigner) messages.push(Quetes.parole('rien', {}, alea));
   else {
-    if (nouvelleSemaine) messages.push(Quetes.parole('semaine', { n: quetes.length }, alea));
-    const neuves = quetes.filter((q) => q.fait && q.faitLe > vuAt).sort((a, b) => a.faitLe - b.faitLe);
+    if (nouvelleSemaine && quetes.length) messages.push(Quetes.parole('semaine', { n: quetes.length }, alea));
+    const neuves = toutes.filter((q) => q.fait && q.faitLe > vuAt).sort((a, b) => a.faitLe - b.faitLe);
     for (const q of neuves) messages.push(Quetes.parole('faite', { titre: quetesEchapper(q.titre), gain: q.gain }, alea));
-    const reste = quetes.filter((q) => !q.fait).length;
-    if (!reste) messages.push(Quetes.parole('fini', {}, alea));
+    const reste = toutes.filter((q) => !q.fait).length;
+    if (aSigner) messages.push(Quetes.parole('contrat', {}, alea));
+    else if (!reste) messages.push(Quetes.parole('fini', {}, alea));
     else if (!nouvelleSemaine) messages.push(Quetes.parole('reste', { reste, s: reste > 1 ? 's' : '' }, alea));
   }
-  const nouveau = nouvelleSemaine || quetes.some((q) => q.fait && q.faitLe > vuAt);
+  const nouveau = nouvelleSemaine || toutes.some((q) => q.fait && q.faitLe > vuAt);
   return {
     ok: true, acces: true,
     semaine: { lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi), fin: Quetes.finDeSemaine(S.lundi) },
-    quetes, gagnes, total, nouveau, nouvelleSemaine, messages,
+    quetes, contrat, gagnes, total, nouveau, nouvelleSemaine, messages,
     gains: quetesReglages.gains,
     gromelin: { nom: getDisplayName('gromelin'), bouille: (users.gromelin && users.gromelin.fbouille) || GROMELIN_BOUILLE },
   };
 }
 
-app.get('/api/quetes/etat', (req, res) => {
+app.get('/api/quetes/etat', async (req, res) => {
   const u = resolveUsernameFromSid(String(req.query.sid || ''));
   if (!u) return res.status(401).json({ ok: false, error: 'auth_required' });
   if (!quetesPret || !quetesAcces(u)) return res.json({ ok: true, acces: false });
+  await quetesContratDe(u);
   res.json(quetesEtatPour(u));
+});
+// La signature du contrat : une des trois propositions, une fois pour la semaine.
+app.post('/api/quetes/contrat', async (req, res) => {
+  const b = Object.assign({}, req.query || {}, req.body || {});
+  const u = resolveUsernameFromSid(String(b.sid || ''));
+  if (!u) return res.status(401).json({ ok: false, error: 'auth_required' });
+  if (!quetesPret || !quetesAcces(u)) return res.json({ ok: true, acces: false });
+  try {
+    const c = await quetesContratDe(u);
+    if (!c || !c.propositions.length) return res.status(400).json({ ok: false, error: 'pas_de_contrat' });
+    if (c.choix != null) return res.status(409).json({ ok: false, error: 'deja_signe', message: 'Tu as déjà signé ton contrat cette semaine.' });
+    const choix = Number(b.choix);
+    if (!Number.isInteger(choix) || choix < 0 || choix >= c.propositions.length) return res.status(400).json({ ok: false, error: 'choix_invalide' });
+    const S = quetesSemaineCourante();
+    if (process.env.DATABASE_URL && !(await db.quetesSignerContrat(S.lundi, u, choix))) {
+      return res.status(409).json({ ok: false, error: 'deja_signe', message: 'Tu as déjà signé ton contrat cette semaine.' });
+    }
+    quetesContratPoser(u, Object.assign(c, { choix, signeAt: Date.now() }));
+    console.log(`[QUETES] ${u} signe son contrat : « ${Quetes.titre(c.def)} » (${c.def.niveau})`);
+    const etat = quetesEtatPour(u);
+    etat.messages = [Quetes.parole('contratSigne', {}, Math.random)];
+    res.json(etat);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 // La fenêtre est ouverte : ce qui était neuf est vu.
 app.post('/api/quetes/vu', (req, res) => {
@@ -11114,6 +11239,23 @@ function quetesAdminJoueurs() {
   }
   return out.sort((a, b) => b.faites - a.faites || b.gagnes - a.gagnes || a.nom.localeCompare(b.nom));
 }
+function quetesAdminContrats() {
+  const out = [];
+  for (const [u, c] of quetesContrats) {
+    if (!c.propositions.length) continue;
+    const props = c.propositions.map((prop) => { const d = Quetes.definitionContrat(prop); return d ? { niveau: d.niveau, titre: Quetes.titre(d) } : null; });
+    const ligne = { username: u, nom: getDisplayName(u), propositions: props, choix: c.choix, signeLe: c.signeAt || null, etat: c.def ? 'signe' : 'a_signer' };
+    if (c.def) {
+      const p = (quetesProgres.get(u) || new Map()).get('contrat');
+      const av = Quetes.avancement(c.def, p ? p.etat : {});
+      Object.assign(ligne, { titre: Quetes.titre(c.def), niveau: c.def.niveau, ligne: av.ligne.replace('cette semaine', 'depuis la signature'), pc: av.pc, fait: !!(p && p.faitAt), gain: p && p.faitAt ? p.gain : 0 });
+      if (ligne.fait) ligne.etat = 'fait';
+    }
+    out.push(ligne);
+  }
+  const ordre = { fait: 0, signe: 1, a_signer: 2 };
+  return out.sort((a, b) => ordre[a.etat] - ordre[b.etat] || a.nom.localeCompare(b.nom));
+}
 app.get('/api/admin/quetes', adminScope('quetes'), async (req, res) => {
   try {
     const S = quetesSemaineCourante();
@@ -11140,7 +11282,7 @@ app.get('/api/admin/quetes', adminScope('quetes'), async (req, res) => {
     res.json({
       ok: true, reglages: quetesReglages, niveaux: Quetes.NIVEAUX,
       semaine: { lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi), fin: Quetes.finDeSemaine(S.lundi), quetes: quetesAdminSemaine() },
-      catalogue: cat, mesures, joueurs: quetesAdminJoueurs(), historique,
+      catalogue: cat, mesures, joueurs: quetesAdminJoueurs(), contrats: quetesAdminContrats(), historique,
     });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -11156,7 +11298,14 @@ app.post('/api/admin/quetes', adminScope('quetes'), async (req, res) => {
     }
     if (b.gains && typeof b.gains === 'object') neuf.gains = Object.assign({}, quetesReglages.gains, b.gains);
     if (b.composition && typeof b.composition === 'object') neuf.composition = Object.assign({}, quetesReglages.composition, b.composition);
+    if (b.contrat && typeof b.contrat === 'object') neuf.contrat = Object.assign({}, quetesReglages.contrat, b.contrat);
+    const avantContrat = JSON.stringify(quetesReglages.contrat);
     quetesReglages = Quetes.reglagesNormalises(neuf);
+    // Fenêtre ou minimum changés : ceux qui n'avaient pas de quoi faire un contrat
+    // retentent leur chance dès leur prochaine visite (les contrats proposés restent).
+    if (JSON.stringify(quetesReglages.contrat) !== avantContrat) {
+      for (const [u, c] of quetesContrats) if (!c.def && !c.propositions.length) quetesContrats.delete(u);
+    }
     await quetesEnregistrerReglages();
     const inconnus = quetesReglages.testeurs.filter((u) => !users[u]);
     console.log(`[QUETES] réglages : ouverture=${quetesReglages.ouverture} testeurs=${quetesReglages.testeurs.join(',') || '—'}`);
@@ -11289,6 +11438,7 @@ app.post('/api/admin/quetes/reinitialiser', adminScope('quetes'), async (req, re
     const S = quetesSemaineCourante();
     quetesProgres.delete(u);
     quetesVisites.delete(u);
+    quetesContrats.delete(u);
     let n = 0;
     if (process.env.DATABASE_URL) n = await db.quetesReinitialiser(S.lundi, u);
     res.json({ ok: true, lignes: n });
@@ -12436,7 +12586,7 @@ function renommerEnMemoire(a, n, affichage) {
   if (deplacerCle(dailyXpActions, a, n)) { saveXpActions(); bilan.push('actions XP'); }
   if (deplacerCle(accMaisonEquip, a, n)) { sauverEquip(); bilan.push('accessoire maison porté'); }
   // Les quêtes de Gromelin : l'avancement de la semaine et la dernière visite.
-  for (const sac of [quetesProgres, quetesVisites]) {
+  for (const sac of [quetesProgres, quetesVisites, quetesContrats]) {
     if (sac.has(a)) { sac.set(n, sac.get(a)); sac.delete(a); }
   }
   if (quetesReglages.testeurs.includes(a)) {

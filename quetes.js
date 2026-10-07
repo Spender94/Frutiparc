@@ -45,6 +45,8 @@ const REGLAGES_DEFAUT = Object.freeze({
   composition: { facile: 2, moyenne: 2, difficile: 1 },
   // Les retouches de l'admin, quête par quête : { id: { actif, niveau, seuil, n } }
   catalogue: {},
+  // Le contrat de la semaine, propre à chaque joueur (voir proposerContrat).
+  contrat: { actif: true, fenetre: 28, minJours: 3 },
 });
 
 // L'étiquette de couleur posée devant le titre.
@@ -294,7 +296,9 @@ function valeurDe(m, evt) {
   if (m.valeur) v = m.valeur(v, evt.data);
   return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
 }
-const atteint = (m, v, seuil) => (m.inverse ? v <= seuil : v >= seuil);
+const atteint = (m, v, seuil, strict) => (strict
+  ? (m.inverse ? v < seuil : v > seuil)
+  : (m.inverse ? v <= seuil : v >= seuil));
 const mieux = (m, v, ancien) => ancien == null || (m.inverse ? v < ancien : v > ancien);
 
 /*
@@ -397,6 +401,12 @@ function reglagesNormalises(brut) {
   R.gains = gains;
   R.composition = compo;
   R.catalogue = (R.catalogue && typeof R.catalogue === 'object') ? R.catalogue : {};
+  const C = Object.assign({}, REGLAGES_DEFAUT.contrat, (R.contrat && typeof R.contrat === 'object') ? R.contrat : {});
+  R.contrat = {
+    actif: C.actif !== false,
+    fenetre: Math.max(7, Math.min(90, Math.floor(Number(C.fenetre)) || 28)),
+    minJours: Math.max(1, Math.min(20, Math.floor(Number(C.minJours)) || 3)),
+  };
   // Les quêtes créées par l'admin : une mesure, un seuil, un niveau.
   R.perso = (Array.isArray(R.perso) ? R.perso : []).filter((x) => x && /^perso-\d+$/.test(String(x.id))
     && MESURES[x.mesure] && NIVEAUX.includes(x.niveau) && Number(x.seuil) > 0)
@@ -504,7 +514,7 @@ function estFaite(def, etat) {
   switch (def.type) {
     case 'mesure': {
       const m = MESURES[p.mesure];
-      return !!m && e.m != null && atteint(m, Number(e.m), Number(p.seuil));
+      return !!m && e.m != null && atteint(m, Number(e.m), Number(p.seuil), !!p.strict);
     }
     case 'score':
     case 'mode':
@@ -699,6 +709,14 @@ const PAROLES = {
   rien: [
     'Pas de quêtes cette semaine. Profites-en, ça ne durera pas.',
   ],
+  // Le contrat de la semaine, proposé et pas encore signé.
+  contrat: [
+    'Et pour toi, j’ai préparé un <em>contrat</em>. Taillé sur tes propres scores, pas sur ceux des autres. Choisis-en un, signe, et au travail.',
+    'J’ai regardé tes scores. <em>Grumpf.</em> Je t’ai préparé trois contrats à ta mesure. Un seul, tu signes, et après on n’en parle plus.',
+  ],
+  contratSigne: [
+    'Signé. Je garde ça au chaud. Seuls les résultats <em>à partir de maintenant</em> comptent, alors file.',
+  ],
 };
 function parole(cle, vars, alea) {
   const l = PAROLES[cle] || [''];
@@ -706,7 +724,106 @@ function parole(cle, vars, alea) {
   return t.replace(/\{(\w+)\}/g, (_, k) => (vars && vars[k] !== undefined ? String(vars[k]) : ''));
 }
 
+// ── Le contrat de la semaine : rien que pour toi ─────────────────────────────
+/*
+ * Chaque lundi, Gromelin prépare pour chaque joueur TROIS quêtes calées sur ses
+ * propres résultats des dernières semaines (le meilleur de chaque jour, au
+ * Challenge, tel que le serveur l'a archivé) — une facile, une moyenne, une
+ * difficile, dans les jeux qu'il pratique vraiment. Le joueur en signe une ;
+ * seuls les résultats obtenus APRÈS la signature comptent.
+ *
+ *   facile    : son niveau habituel   — la médiane de ses meilleurs du jour ;
+ *   moyenne   : ses bons jours        — le meilleur quart ;
+ *   difficile : battre son record de la période (strictement).
+ *
+ * Seuls les jeux joués au moins `minJours` jours sur la fenêtre comptent : sur
+ * deux parties, on ne sait rien de quelqu'un. Les cibles s'arrondissent dans
+ * le sens du joueur (vers le bas pour un score, vers le haut pour un temps).
+ */
+const MESURES_PERSO = ['swapou-challenge', 'snake-challenge', 'kaluga-grappe', 'kaluga-freestyle', 'mb2-challenge-salles',
+  'minipixiz-arbre', 'miniwave-challenge', 'minifever-arcade0', 'minifever-arcade1', 'minifever-arcade2', 'minifever-arcade3'];
+for (const k of MESURES_PERSO) MESURES[k].perso = true;
+MESURES['mb2-challenge-salles'].plafond = 100;
+
+function pas(v) { const a = Math.abs(v); return a >= 10000 ? 100 : a >= 1000 ? 50 : a >= 100 ? 10 : 1; }
+/** Une cible ronde, arrondie dans le sens du joueur. */
+function arrondir(m, v) {
+  if (m.unite === 'temps') { const q = m.base === 'cs' ? 50 : 500; return Math.ceil(v / q) * q; }
+  const p = m.unite === 'points' ? pas(v) : 1;
+  return m.inverse ? Math.ceil(v / p) * p : Math.max(p, Math.floor(v / p) * p);
+}
+function quantile(tries, q) { return tries[Math.min(tries.length - 1, Math.floor(q * tries.length))]; }
+
+/**
+ * Les trois propositions d'un joueur.
+ * @param {{ [cle]: number[] }} historique — par mesure, le meilleur de chaque jour joué
+ * @param {() => number} alea — semé par le joueur et la semaine
+ * @returns {Array<{ niveau, mesure, seuil, strict, jours, repere }>}
+ */
+function proposerContrat(historique, alea, options) {
+  const minJours = (options && options.minJours) || REGLAGES_DEFAUT.contrat.minJours;
+  const rnd = alea || Math.random;
+  const cands = [];
+  for (const [cle, valeurs] of Object.entries(historique || {})) {
+    const m = MESURES[cle];
+    const v = (valeurs || []).map(Number).filter(Number.isFinite);
+    if (!m || !m.perso || v.length < minJours) continue;
+    // du meilleur au moins bon
+    const tries = v.slice().sort((a, b) => (m.inverse ? a - b : b - a));
+    cands.push({ m, jours: v.length, tries, tirage: rnd() });
+  }
+  // Les jeux les plus pratiqués d'abord ; un jeu ne sert qu'une fois tant qu'il y en a d'autres.
+  cands.sort((a, b) => b.jours - a.jours || a.tirage - b.tirage);
+  const parJeu = [];
+  for (const c of cands) if (!parJeu.some((x) => x.m.jeu === c.m.jeu)) parJeu.push(c);
+  if (!parJeu.length) return [];
+  const choix = parJeu.slice(0, 3);
+  for (let i = choix.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [choix[i], choix[j]] = [choix[j], choix[i]]; }
+  const props = [];
+  NIVEAUX.forEach((niveau, i) => {
+    const c = choix[i % choix.length];
+    const { m, tries } = c;
+    const record = tries[0];
+    const haut = quantile(tries, 0.25);
+    const mediane = quantile(tries, 0.5);
+    if (niveau === 'difficile') {
+      if (m.plafond != null && !m.inverse && record >= m.plafond) {
+        // Déjà au plafond (100 % des salles) : on vise d'y revenir.
+        props.push({ niveau, mesure: m.cle, seuil: m.plafond, strict: false, jours: c.jours, repere: { record } });
+        return;
+      }
+      props.push({ niveau, mesure: m.cle, seuil: record, strict: true, jours: c.jours, repere: { record } });
+      return;
+    }
+    let seuil = arrondir(m, niveau === 'facile' ? mediane : haut);
+    if (niveau === 'moyenne') {
+      const facile = props.find((x) => x.niveau === 'facile' && x.mesure === m.cle);
+      if (facile && seuil === facile.seuil) seuil = arrondir(m, record);
+    }
+    props.push({ niveau, mesure: m.cle, seuil, strict: false, jours: c.jours, repere: { mediane, haut, record } });
+  });
+  return props;
+}
+
+/** La définition de quête d'une proposition (id « contrat »). */
+function definitionContrat(prop) {
+  const m = MESURES[prop.mesure];
+  if (!m) return null;
+  const titre = prop.strict
+    ? `Bats ton record à ${m.groupe} : ${m.inverse ? 'moins de' : 'plus de'} {seuil}`
+    : undefined;
+  const r = prop.repere || {};
+  const detail = prop.niveau === 'facile'
+    ? `${m.nom} · ton niveau habituel (${prop.jours} jours de jeu)`
+    : prop.niveau === 'moyenne'
+      ? `${m.nom} · tes bons jours (médiane : ${formater(m, r.mediane)})`
+      : `${m.nom} · ton record des dernières semaines`;
+  return { id: 'contrat', niveau: prop.niveau, type: 'mesure', etiquette: m.jeu, famille: m.cle, contrat: true,
+    params: { mesure: m.cle, seuil: prop.seuil, strict: !!prop.strict }, titre, detail };
+}
+
 module.exports = {
+  MESURES_PERSO, proposerContrat, definitionContrat, arrondir, aleaSeme,
   NIVEAUX, NIVEAU_NOM, REGLAGES_DEFAUT, CATALOGUE, ETIQUETTES, KALUGA_EPREUVES, MODES,
   nombre, jourPlus, lundiDe, minuitParis, finDeSemaine, semaineLisible,
   reglagesNormalises, definition, catalogue, titre, tirer,

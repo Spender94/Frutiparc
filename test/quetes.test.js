@@ -15,7 +15,10 @@
  *   · ce que dit Gromelin, ce qui est « neuf », la visite ;
  *   · l'admin : réglages persistants, semaine retouchée, seuil abaissé qui
  *     paie aussitôt, remise à zéro d'un testeur ;
- *   · la semaine qui tourne : un nouveau tirage, l'avancement repart de zéro.
+ *   · la semaine qui tourne : un nouveau tirage, l'avancement repart de zéro ;
+ *   · le contrat « rien que pour toi » : trois propositions taillées sur
+ *     l'archive du Challenge du joueur, une signature (une seule), et seuls
+ *     les résultats d'après la signature comptent.
  */
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
@@ -189,6 +192,75 @@ test('le calibrage : où se situe un seuil parmi les meilleurs de chacun', () =>
   assert.equal(Q.calibrer(m, []).joueurs, 0);
 });
 
+test('le contrat : trois propositions taillées sur les scores du joueur, une par jeu', () => {
+  const histo = {
+    'swapou-challenge': [12000, 15000, 18000, 14000, 16500, 13000],   // 6 jours
+    'snake-challenge': [800, 1240, 950, 1100],                          // 4 jours
+    'kaluga-grappe': [3000, 4200, 3900],                                // 3 jours
+    'kaluga-freestyle': [9000, 9500, 9900, 9100, 9800],                 // Kaluga encore : un jeu ne sert qu'une fois
+    'mb2-challenge-salles': [40, 55],                                   // 2 jours : trop peu
+    'mb2-course1': [27000, 26000, 25000],                               // pas une mesure « perso »
+  };
+  const props = Q.proposerContrat(histo, Q.aleaSeme('contrat:kiwi:2026-10-05'), { minJours: 3 });
+  assert.deepEqual(props.map((p) => p.niveau), ['facile', 'moyenne', 'difficile']);
+  const jeux = props.map((p) => Q.MESURES[p.mesure].jeu);
+  assert.equal(new Set(jeux).size, 3, 'trois jeux différents : ' + jeux);
+  assert.deepEqual(jeux.slice().sort(), ['kaluga', 'snake3', 'swapou2'], 'les jeux les plus pratiqués, pas MotionBall (2 jours)');
+  assert.ok(props.some((p) => p.mesure === 'kaluga-freestyle'), 'Kaluga : sa mesure la plus jouée (5 jours) passe avant la grappe (3)');
+  assert.deepEqual(Q.proposerContrat(histo, Q.aleaSeme('contrat:kiwi:2026-10-05'), { minJours: 3 }), props, 'même graine, mêmes propositions');
+  // Les cibles : médiane (facile), meilleur quart (moyenne), record battu (difficile).
+  const solo = (h) => {
+    const r = {};
+    for (const niveau of Q.NIVEAUX) r[niveau] = Q.proposerContrat({ 'swapou-challenge': h }, () => 0.3, { minJours: 3 }).find((p) => p.niveau === niveau);
+    return r;
+  };
+  const sw = solo([12000, 15000, 18000, 14000, 16500, 13000]);
+  assert.equal(sw.facile.seuil, 14000, 'six jours : la médiane basse (le 4e meilleur), dans le sens du joueur');
+  assert.equal(sw.moyenne.seuil, 16500);
+  assert.deepEqual([sw.difficile.seuil, sw.difficile.strict], [18000, true], 'battre 18 000, strictement');
+  // Un seul jeu : les trois niveaux le visent, du plus doux au plus dur.
+  assert.ok(sw.facile.seuil < sw.moyenne.seuil && sw.moyenne.seuil <= sw.difficile.seuil);
+  // L'arrondi va dans le sens du joueur : vers le bas pour un score, vers le haut pour un temps.
+  assert.equal(Q.arrondir(Q.MESURES['swapou-challenge'], 18437), 18400);
+  assert.equal(Q.arrondir(Q.MESURES['snake-challenge'], 1237), 1200);
+  assert.equal(Q.arrondir(Q.MESURES['minifever-arcade0'], 17.5), 17);
+  assert.equal(Q.arrondir(Q.MESURES['mb2-course1'], 27120), 27150, 'un temps en centièmes : au 1/2 s au-dessus');
+  assert.equal(Q.arrondir(Q.MESURES['kaluga-chrono0'], 45230), 45500);
+  // Trop peu de jours partout : pas de contrat.
+  assert.deepEqual(Q.proposerContrat({ 'swapou-challenge': [1, 2] }, () => 0.5, { minJours: 3 }), []);
+  assert.deepEqual(Q.proposerContrat({}, () => 0.5), []);
+  // MotionBall déjà à 100 % des salles : on vise d'y revenir, pas l'impossible.
+  const mb = Q.proposerContrat({ 'mb2-challenge-salles': [100, 80, 60, 100] }, () => 0.5, { minJours: 3 }).find((p) => p.niveau === 'difficile');
+  assert.deepEqual([mb.seuil, mb.strict], [100, false]);
+});
+
+test('le contrat signé : une quête « contrat », battre son record se compte strictement', () => {
+  const d = Q.definitionContrat({ niveau: 'difficile', mesure: 'swapou-challenge', seuil: 18000, strict: true, jours: 6, repere: { record: 18000 } });
+  assert.equal(d.id, 'contrat');
+  assert.equal(d.contrat, true);
+  assert.equal(d.etiquette, 'swapou2');
+  assert.equal(Q.titre(d).replace(/\s/g, ' '), 'Bats ton record à Swapou : plus de 18 000 points');
+  assert.match(Q.detail(d), /ton record des dernières semaines/);
+  const jour = '2026-10-06';
+  const e = Q.appliquer(d, {}, { type: 'score', rk: 'swapou2_classic', v: 18000 }, jour);
+  assert.equal(Q.estFaite(d, e), false, 'égaler son record ne suffit pas');
+  assert.equal(Q.estFaite(d, Q.appliquer(d, e, { type: 'score', rk: 'swapou2_classic', v: 18010 }, jour)), true);
+  // Un temps (le moins est le mieux) : strictement moins.
+  const t = Q.definitionContrat({ niveau: 'difficile', mesure: 'kaluga-chrono0', seuil: 50000, strict: true, jours: 3, repere: {} });
+  assert.equal(Q.estFaite(t, { m: 50000 }), false);
+  assert.equal(Q.estFaite(t, { m: 49990 }), true);
+  // Facile et moyenne : le titre de la mesure, et ce qui le justifie.
+  const f = Q.definitionContrat({ niveau: 'facile', mesure: 'snake-challenge', seuil: 1000, strict: false, jours: 4, repere: { mediane: 1025 } });
+  assert.equal(Q.estFaite(f, { m: 1000 }), true);
+  assert.match(Q.detail(f), /ton niveau habituel \(4 jours de jeu\)/);
+  const m = Q.definitionContrat({ niveau: 'moyenne', mesure: 'snake-challenge', seuil: 1100, strict: false, jours: 4, repere: { mediane: 1025, haut: 1100 } });
+  assert.match(Q.detail(m), /tes bons jours \(médiane : 1\s025 points\)/);
+  assert.equal(Q.definitionContrat({ niveau: 'facile', mesure: 'inconnue', seuil: 1 }), null);
+  // Les réglages du contrat, bornés.
+  assert.deepEqual(Q.reglagesNormalises({}).contrat, { actif: true, fenetre: 28, minJours: 3 });
+  assert.deepEqual(Q.reglagesNormalises({ contrat: { actif: false, fenetre: 2, minJours: 99 } }).contrat, { actif: false, fenetre: 7, minJours: 20 });
+});
+
 test('une déclaration de mode : connue et vraisemblable, ou refusée', () => {
   assert.deepEqual(Q.modeRecevable('kaluga', 'epreuve0', '412.5'), { jeu: 'kaluga', mode: 'epreuve0', v: 412.5 });
   assert.equal(Q.modeRecevable('kaluga', 'epreuve9', 1), null);
@@ -225,6 +297,15 @@ test('le client : un message s’écrit lettre à lettre, ses balises toujours r
   assert.match(c, /qt-tampon">FAIT/);
   assert.match(c, /\+20/);
   assert.equal((c.match(/<i class="on">/g) || []).length, 3);
+  // Une proposition de contrat : son bouton « Signer », qui porte son numéro.
+  const p = L._proposition({ i: 2, niveau: 'moyenne', niveauNom: 'Moyenne', gain: 10, titre: 'Fais 1 100 points', detail: 'tes bons jours',
+    etiquette: { nom: 'Frutisnake', couleur: '#5E9E1C' } });
+  assert.match(p, /<button type="button" class="qt-signer" data-i="2">Signer<\/button>/);
+  assert.match(p, /qt-sceau vide/);
+  // Le contrat signé : scellé de cire, pas de case à cocher.
+  const sc = L._carte({ id: 'contrat', contrat: true, niveau: 'facile', niveauNom: 'Facile', gain: 5, titre: 'x', detail: '', ligne: '', pc: 0 });
+  assert.match(sc, /qt-carte qt-signee/);
+  assert.match(sc, /qt-case qt-sceau/);
 });
 
 test('le light : la tuile, la feuille, le script, et le bureau qui adopte la feuille', () => {
@@ -554,11 +635,110 @@ test('ouvertes à tous, puis la semaine tourne : nouveau tirage, avancement neuf
   assert.deepEqual([h.joueurs, h.faites, h.kikooz], [1, 1, 20]);
 });
 
+test('le contrat : taillé sur l’archive du joueur, signé une fois, payé sur les seuls résultats d’après', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  await compte('kiwi');
+  // Deux parties de Swapou par jour, sans pass : on lui en donne trois de plus.
+  const pass = await (await fetch(BASE + '/api/admin/users/kiwi/fd-pass', { method: 'POST', headers: ADMIN, body: JSON.stringify({ game: 'swapou2', delta: 3 }) })).json();
+  assert.equal(pass.passes, 3, JSON.stringify(pass));
+  await semaineConnue(['kaluga-chrono-facile']);   // rien à Swapou cette semaine : seul le contrat paie
+  const lundi = lundiCourant();
+  // Trois semaines de Challenge archivées : Swapou 6 jours, Frutisnake 4, Kaluga 3, MotionBall 2 (trop peu).
+  const archive = {
+    swapou2_classic: [12000, 15000, 18000, 14000, 16500, 13000],
+    snake3_classic: [800, 1240, 950, 1100],
+    kaluga_classic: [3000, 4200, 3900],
+    mb2_classic: [40, 55],
+  };
+  for (const [rk, scores] of Object.entries(archive)) {
+    for (let i = 0; i < scores.length; i++) {
+      await sql(`INSERT INTO challenge_score_archive (day_key, ranking_id, username, score, data) VALUES ($1, $2, 'kiwi', $3, '')`,
+        [Q.jourPlus(lundi, -2 - i * 3), rk, scores[i]]);
+    }
+  }
+  // Hors fenêtre (40 jours) : ignoré, sinon ce serait son record.
+  await sql(`INSERT INTO challenge_score_archive (day_key, ranking_id, username, score, data) VALUES ($1, 'swapou2_classic', 'kiwi', 99999, '')`,
+    [Q.jourPlus(lundi, -40)]);
+  let e = await etat('kiwi');
+  assert.equal(e.contrat.etat, 'a_signer', JSON.stringify(e.contrat));
+  assert.deepEqual(e.contrat.propositions.map((p) => p.niveau), ['facile', 'moyenne', 'difficile']);
+  assert.deepEqual(e.contrat.propositions.map((p) => p.gain), [5, 10, 20]);
+  assert.deepEqual(e.contrat.propositions.map((p) => p.etiquette.nom).sort(), ['Frutisnake', 'Kaluga', 'Swapou']);
+  assert.match(e.messages[e.messages.length - 1], /contrat/, 'Gromelin propose le contrat');
+  assert.equal(e.total, 5, 'pas signé : le contrat ne compte pas encore dans le total');
+  // Ce sont les propositions du module, semées par le joueur et le lundi.
+  const historique = { 'swapou-challenge': archive.swapou2_classic, 'snake-challenge': archive.snake3_classic, 'kaluga-grappe': archive.kaluga_classic,
+    'mb2-challenge-salles': archive.mb2_classic.map((v) => v + 1) };
+  const props = Q.proposerContrat(historique, Q.aleaSeme('contrat:kiwi:' + lundi), { minJours: 3 });
+  assert.deepEqual(e.contrat.propositions.map((p) => p.titre), props.map((p) => Q.titre(Q.definitionContrat(p))));
+  const ligne = (await sql(`SELECT propositions, choix FROM quetes_contrats WHERE username = 'kiwi' AND semaine = $1`, [lundi]))[0];
+  assert.equal(ligne.propositions.length, 3);
+  assert.equal(ligne.choix, null);
+  assert.equal((await adminEtat()).contrats.find((c) => c.username === 'kiwi').etat, 'a_signer');
+  // Sans archive : pas de contrat, et l'on dit pourquoi.
+  assert.deepEqual((await etat('grenade')).contrat, { etat: 'aucun', minJours: 3, fenetre: 28 });
+
+  // Un score d'AVANT la signature ne compte pas.
+  await swapou('kiwi', 30000);
+  assert.equal((await post('/api/quetes/contrat', { sid: sids.kiwi, choix: 7 })).error, 'choix_invalide');
+  const i = props.findIndex((p) => p.mesure === 'swapou-challenge');
+  const P = props[i];
+  const avant = await solde('kiwi');
+  const r = await post('/api/quetes/contrat', { sid: sids.kiwi, choix: i });
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.equal(r.contrat.etat, 'signe');
+  assert.equal(r.contrat.choix, i);
+  assert.equal(r.contrat.quete.fait, false);
+  assert.equal(r.contrat.quete.pc, 0, 'les 30 000 d’avant la signature ne comptent pas');
+  assert.match(r.messages[0], /Signé/);
+  assert.equal(r.total, 5 + r.contrat.quete.gain);
+  assert.equal((await post('/api/quetes/contrat', { sid: sids.kiwi, choix: (i + 1) % 3 })).error, 'deja_signe');
+  assert.equal((await sql(`SELECT choix FROM quetes_contrats WHERE username = 'kiwi'`))[0].choix, i);
+  // Juste en dessous (ou égal à son record, quand il faut le battre) : pas encore.
+  await swapou('kiwi', P.strict ? P.seuil : P.seuil - 100);
+  e = await etat('kiwi');
+  assert.equal(e.contrat.quete.fait, false);
+  assert.match(e.contrat.quete.ligne, /^ton meilleur depuis la signature : /);
+  await swapou('kiwi', P.seuil + 100);
+  e = await etat('kiwi');
+  assert.equal(e.contrat.quete.fait, true);
+  const gain = { facile: 5, moyenne: 10, difficile: 20 }[P.niveau];
+  assert.equal(await solde('kiwi'), avant + gain, 'payé tout de suite');
+  assert.equal(e.gagnes, gain);
+  assert.ok(e.messages.some((m) => m.includes('kikooz</em>') && m.includes(e.contrat.quete.titre.split(' ')[0])), e.messages.join('\n'));
+  const histo = await sql(`SELECT l.content FROM user_logs l JOIN users u ON u.id = l.user_id WHERE u.username = 'kiwi' AND l.entry_type = 72`);
+  assert.equal(histo.length, 1);
+  assert.match(histo[0].content, new RegExp(`^Contrat rempli : « .+ »\\. Gromelin te verse ${gain} kikooz\\.$`));
+  const A = await adminEtat();
+  const c = A.contrats.find((x) => x.username === 'kiwi');
+  assert.deepEqual([c.etat, c.choix, c.gain], ['fait', i, gain]);
+
+  // Redémarrage : toujours signé, toujours rempli, rien ne se repaie.
+  await arreter();
+  await demarrer();
+  await reconnecter('kiwi');
+  e = await etat('kiwi');
+  assert.equal(e.contrat.etat, 'signe');
+  assert.equal(e.contrat.quete.fait, true);
+  assert.deepEqual(e.contrat.propositions.map((p) => p.titre), props.map((p) => Q.titre(Q.definitionContrat(p))));
+  await swapou('kiwi', P.seuil + 500);
+  assert.equal(await solde('kiwi'), avant + gain);
+
+  // L'admin le coupe : plus de contrat nulle part ; puis le rouvre.
+  assert.ok((await post('/api/admin/quetes', { contrat: { actif: false } }, ADMIN)).ok);
+  assert.deepEqual((await etat('kiwi')).contrat, { etat: 'inactif' });
+  const R = (await post('/api/admin/quetes', { contrat: { actif: true, fenetre: 21, minJours: 4 } }, ADMIN)).reglages;
+  assert.deepEqual(R.contrat, { actif: true, fenetre: 21, minJours: 4 });
+  assert.equal((await etat('kiwi')).contrat.etat, 'signe');
+});
+
 test('RGPD : l’export du joueur contient ses quêtes', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
   const D = require(path.join(ROOT, 'db.js'));
   assert.ok(D.RENOMMAGE_COLONNES.some(([tb, c]) => tb === 'quetes_progres' && c === 'username'));
   assert.ok(D.RENOMMAGE_COLONNES.some(([tb, c]) => tb === 'quetes_visites' && c === 'username'));
+  assert.ok(D.RENOMMAGE_COLONNES.some(([tb, c]) => tb === 'quetes_contrats' && c === 'username'));
+  assert.match(fs.readFileSync(path.join(ROOT, 'db.js'), 'utf8'), /quetes_contrats: await q\('SELECT semaine, propositions, choix, signe_at FROM quetes_contrats WHERE username = \$1/);
   const SRC = fs.readFileSync(path.join(ROOT, 'db.js'), 'utf8');
   assert.match(SRC, /quetes: await q\('SELECT semaine, quete_id, etat, fait_at, gain FROM quetes_progres WHERE username = \$1/);
   assert.match(SRC, /\['quetes_progres', 'username', 'brut'\],\n\s+\['quetes_visites', 'username', 'brut'\]/);

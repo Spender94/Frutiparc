@@ -142,6 +142,33 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
 .qt-tampon { position: absolute; right: 74px; bottom: 2px; transform: rotate(-10deg); font-size: 15px;
   font-weight: bold; letter-spacing: 3px; color: rgba(192,40,26,.8); border: 3px double rgba(192,40,26,.8); border-radius: 6px;
   padding: 0 7px; pointer-events: none; }
+/* Le contrat : « Rien que pour toi ». Un ruban rouge cloué sur la planche,
+   puis des parchemins plus clairs, scellés de cire une fois signés. */
+.qt-contrat:empty { display: none; }
+.qt-contrat { padding: 4px 14px 16px; background: #9C6A32;
+  background-image: repeating-linear-gradient(0deg, rgba(60,30,0,.25) 0 2px, transparent 2px 58px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 40px, rgba(255,255,255,.03) 40px 90px);
+  border-top: 3px solid #6B4A1C; }
+.qt-ruban { position: relative; z-index: 0; display: flex; justify-content: center; margin: 10px 0 8px; }
+.qt-ruban span { position: relative; display: inline-block; padding: 4px 22px; font-size: 12px; font-weight: bold; letter-spacing: 1px;
+  text-transform: uppercase; color: #FFF3D2; background: linear-gradient(#C23A26, #95261A); text-shadow: 0 1px 0 #5A140A;
+  box-shadow: 0 2px 0 rgba(50,25,0,.35); }
+.qt-ruban span::before, .qt-ruban span::after { content: ''; position: absolute; top: 4px; border: 11px solid #7C1E13; z-index: -1; }
+.qt-ruban span::before { left: -14px; border-left-color: transparent; }
+.qt-ruban span::after { right: -14px; border-right-color: transparent; }
+.qt-contrat-note { margin: 0 4px 10px; font-size: 11px; line-height: 1.45; color: #FFF3D2; text-align: center; text-shadow: 0 1px 0 #3A2508; }
+.qt-contrat-note b { color: #FFE58A; }
+.qt-props { display: flex; flex-direction: column; gap: 12px; }
+.qt-carte.qt-prop, .qt-carte.qt-signee { background: linear-gradient(170deg, #FBF1D6, #EFDCAA); border-color: #95261A; }
+.qt-sceau { display: flex; align-items: center; justify-content: center; border-radius: 50%; font: bold 17px Georgia, serif;
+  color: rgba(255,225,200,.85); background: radial-gradient(circle at 38% 34%, #D8503A, #9A2414 62%, #74180C);
+  box-shadow: 0 2px 2px rgba(60,10,0,.4), inset 0 0 0 3px rgba(120,20,8,.55); transform: rotate(-12deg); }
+.qt-sceau.vide { background: none; box-shadow: none; color: rgba(149,38,26,.35); border: 2px dashed rgba(149,38,26,.45); transform: none; }
+.qt-signer { margin-top: 2px; padding: 3px 10px; font: bold 11px Verdana, Arial, sans-serif; color: #FFF3D2; cursor: pointer;
+  background: linear-gradient(#C23A26, #95261A); border: 1px solid #6E1A10; border-radius: 12px; box-shadow: 0 2px 0 rgba(50,25,0,.35); }
+.qt-signer:hover { background: linear-gradient(#D24A34, #A52E20); }
+.qt-signer.arme { background: linear-gradient(#F0B73A, #C98A12); border-color: #8A5A08; color: #3E2608; }
+.qt-signer:disabled { opacity: .6; cursor: default; }
 .qt-pied { padding: 8px 14px 12px; font-size: 10.5px; color: #FFE9B8; background: #6B4A1C; text-align: center; line-height: 1.5; }
 .qt-pied b { color: #FFE58A; }
 
@@ -157,6 +184,7 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
   .qt-coche { font-size: 28px; }
   .qt-gain { min-width: 48px; }
   .qt-tampon { right: 60px; font-size: 13px; letter-spacing: 2px; }
+  .qt-contrat { padding: 4px 8px 14px; }
 }
 
 /* Sur le bureau, l'icône se range après les Prunostics, en bout de rangée. */

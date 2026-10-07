@@ -12,6 +12,10 @@
  *     mobile, comme les Prunostics. Gromelin dans son écran de bouille — celui
  *     des bouilles de Gaspard —, sa bulle, puis les quêtes en parchemins sur
  *     des planches.
+ *   · LE CONTRAT (« Rien que pour toi ») : sous les quêtes de tous, trois
+ *     propositions taillées par le serveur sur les scores du joueur ; il en
+ *     signe une (deux clics : « Signer », puis « Sûr ? »), qui devient sa
+ *     quête personnelle de la semaine, scellée de cire.
  *   · LA PAROLE : à l'ouverture, Gromelin joue l'animation « parle » du moteur
  *     de bouilles (playAnim 1) pendant que ses messages s'écrivent lettre à
  *     lettre, l'un après l'autre, puis se tait. Un clic dans la bulle finit le
@@ -93,20 +97,58 @@
     if (h > 0) return h + ' h ' + m + ' min';
     return Math.max(1, m) + ' min';
   }
-  function carte(q) {
+  function difficulte(q) {
     var points = '';
     var niv = q.niveau === 'difficile' ? 3 : (q.niveau === 'moyenne' ? 2 : 1);
     for (var i = 1; i <= 3; i++) points += '<i' + (i <= niv ? ' class="on"' : '') + '></i>';
-    var et = q.etiquette ? '<span class="qt-jeu" style="background:' + esc(q.etiquette.couleur) + '">' + esc(q.etiquette.nom) + '</span>' : '';
-    return '<div class="qt-carte' + (q.fait ? ' faite' : '') + '">'
-      + '<div class="qt-case"><img src="' + CASE + '" alt="">' + (q.fait ? '<span class="qt-coche" aria-label="faite">✔</span>' : '') + '</div>'
+    return '<span class="qt-diff" aria-hidden="true">' + points + '</span><span class="qt-diff-nom">' + esc(q.niveauNom) + '</span>';
+  }
+  function etiquette(q) {
+    return q.etiquette ? '<span class="qt-jeu" style="background:' + esc(q.etiquette.couleur) + '">' + esc(q.etiquette.nom) + '</span>' : '';
+  }
+  function carte(q) {
+    var points = difficulte(q);
+    var et = etiquette(q);
+    var cas = q.contrat
+      ? '<div class="qt-case qt-sceau" aria-hidden="true">G</div>'
+      : '<div class="qt-case"><img src="' + CASE + '" alt="">' + (q.fait ? '<span class="qt-coche" aria-label="faite">✔</span>' : '') + '</div>';
+    return '<div class="qt-carte' + (q.fait ? ' faite' : '') + (q.contrat ? ' qt-signee' : '') + '">'
+      + cas
       + '<div class="qt-titre">' + et + esc(q.titre) + '</div>'
       + '<div class="qt-detail">' + esc(q.detail) + (q.detail && q.ligne ? ' · ' : '') + esc(q.ligne) + '</div>'
       + '<div class="qt-barre"><i style="width:' + Math.round((Number(q.pc) || 0) * 100) + '%"></i></div>'
       + '<div class="qt-gain"><span class="qt-kik"><img src="' + KIKOOZ + '" alt="kikooz">' + (q.fait ? '+' : '') + nombre(q.gain) + '</span>'
-      + '<span class="qt-diff" aria-hidden="true">' + points + '</span><span class="qt-diff-nom">' + esc(q.niveauNom) + '</span></div>'
+      + points + '</div>'
       + (q.fait ? '<span class="qt-tampon">FAIT</span>' : '')
       + '</div>';
+  }
+  // Une proposition de contrat, pas encore signée.
+  function proposition(p) {
+    return '<div class="qt-carte qt-prop">'
+      + '<div class="qt-case qt-sceau vide" aria-hidden="true">G</div>'
+      + '<div class="qt-titre">' + etiquette(p) + esc(p.titre) + '</div>'
+      + '<div class="qt-detail">' + esc(p.detail) + '</div>'
+      + '<div class="qt-gain"><span class="qt-kik"><img src="' + KIKOOZ + '" alt="kikooz">' + nombre(p.gain) + '</span>'
+      + difficulte(p) + '<button type="button" class="qt-signer" data-i="' + Number(p.i) + '">Signer</button></div>'
+      + '</div>';
+  }
+  function contrat() {
+    var c = etat && etat.contrat;
+    if (!c || c.etat === 'inactif') return '';
+    var ruban = '<div class="qt-ruban"><span>Rien que pour toi</span></div>';
+    if (c.etat === 'aucun') {
+      var sem = Math.max(1, Math.round((Number(c.fenetre) || 28) / 7));
+      return ruban + '<div class="qt-contrat-note">Joue au Challenge au moins <b>' + nombre(c.minJours || 3) + ' jours</b> sur '
+        + (sem > 1 ? 'les ' + sem + ' dernières semaines' : 'la dernière semaine')
+        + ', et Gromelin te taillera un contrat sur mesure, d’après tes propres scores.</div>';
+    }
+    if (c.etat === 'a_signer') {
+      return ruban + '<div class="qt-contrat-note">Trois contrats taillés sur tes scores du Challenge. <b>Signes-en un seul</b> : '
+        + 'seuls les résultats obtenus après la signature comptent.</div>'
+        + '<div class="qt-props">' + (c.propositions || []).map(proposition).join('') + '</div>';
+    }
+    return ruban + '<div class="qt-contrat-note">Ton contrat de la semaine. Seuls les résultats obtenus depuis la signature comptent.</div>'
+      + '<div class="qt-props">' + (c.quete ? carte(c.quete) : '') + '</div>';
   }
   function rendre() {
     var corps = document.getElementById('quetes-corps');
@@ -123,6 +165,7 @@
       // Déjà affichée : on ne touche ni à Gromelin ni à sa bulle (il parle peut-être).
       dejaLa.querySelector('.qt-semaine').innerHTML = semaine;
       dejaLa.querySelector('.qt-planches').innerHTML = planches;
+      dejaLa.querySelector('.qt-contrat').innerHTML = contrat();
       return;
     }
     corps.innerHTML = '<div class="qt">'
@@ -130,6 +173,7 @@
       + '<div class="qt-dit" role="status" aria-live="polite" title="Clique pour la suite"><span class="qt-txt"></span><span class="qt-curseur"></span><span class="qt-suite"></span></div></div>'
       + '<div class="qt-semaine">' + semaine + '</div>'
       + '<div class="qt-planches">' + planches + '</div>'
+      + '<div class="qt-contrat">' + contrat() + '</div>'
       + '<div class="qt-pied">' + gainsTxt + 'Nouvelles quêtes chaque lundi à minuit. Une quête non finie dimanche est perdue.</div>'
       + '</div>';
     var ecran = corps.querySelector('.qt-ecran');
@@ -138,6 +182,42 @@
       FPBouilleVignette.brancher(ecran);
     }
     corps.querySelector('.qt-dit').addEventListener('click', clicBulle);
+    corps.querySelector('.qt-contrat').addEventListener('click', clicSigner);
+  }
+
+  // ── La signature du contrat ────────────────────────────────────────────────
+  // Deux clics : on ne signe pas par mégarde un engagement d'une semaine.
+  function clicSigner(e) {
+    var b = e.target && e.target.closest ? e.target.closest('.qt-signer') : null;
+    if (!b || b.disabled) return;
+    if (!b.classList.contains('arme')) {
+      var autres = document.querySelectorAll('#quetes-corps .qt-signer.arme');
+      for (var k = 0; k < autres.length; k++) { autres[k].classList.remove('arme'); autres[k].textContent = 'Signer'; }
+      b.classList.add('arme');
+      b.textContent = 'Sûr ?';
+      clearTimeout(b._qt);
+      b._qt = setTimeout(function () { b.classList.remove('arme'); b.textContent = 'Signer'; }, 4000);
+      return;
+    }
+    clearTimeout(b._qt);
+    b.disabled = true;
+    b.textContent = '…';
+    signer(Number(b.getAttribute('data-i')));
+  }
+  function signer(i) {
+    return fetch('/api/quetes/contrat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: sid, choix: i }) })
+      .then(function (r) { return r.json().catch(function () { return null; }); })
+      .catch(function () { return null; })
+      .then(function (d) {
+        if (d && d.ok && d.acces) {
+          majEtat(d);
+          if (ouverte) { rendre(); parler(d.messages); }
+          return;
+        }
+        if (ouverte) parler([esc((d && d.message) || 'Grumpf. Ta signature n’est pas passée. Réessaie.')]);
+        return rafraichir();
+      });
   }
 
   // ── La parole ──────────────────────────────────────────────────────────────
@@ -306,6 +386,6 @@
     demarrer: demarrer, rafraichir: rafraichir, ouvert: ouvert, ferme: ferme,
     ouvrirFeuille: ouvrirFeuille, fermerFeuille: fermerFeuille, rapporterMode: rapporterMode,
     // pour les tests
-    _debut: debut, _longueur: longueur, _carte: carte,
+    _debut: debut, _longueur: longueur, _carte: carte, _proposition: proposition,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
