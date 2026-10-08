@@ -973,7 +973,7 @@ const CIBLES = [
     // à la conversion (qui ne lit que le CSS) mais à savoir quels dessins ce
     // client-là emploie : sans ce filtre, la feuille du forum embarquerait
     // les règles de tous les sprites du bureau, qu'il n'affiche jamais.
-    emploie: () => [P('public/light.html'), P('public/bureau-frutiz.css'), P('public/bureau-frutiz.js'), P('public/quetes.css'), P('public/js/quetes-light.js')],
+    emploie: () => [P('public/light.html'), P('public/bureau-frutiz.css'), P('public/bureau-frutiz.js'), P('public/quetes.css'), P('public/js/quetes-light.js'), P('public/js/quetes-foret.js')],
   },
   {
     sortie: 'public/fb/nuit.css',

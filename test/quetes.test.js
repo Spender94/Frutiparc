@@ -496,16 +496,62 @@ test('le client : un message s’écrit lettre à lettre, ses balises toujours r
     etiquette: { nom: 'Frutisnake', couleur: '#5E9E1C' } });
   assert.match(p, /<button type="button" class="qt-gelule qt-signer" data-i="2">Signer<\/button>/);
   assert.match(p, /qt-sceau vide/);
+  // « Changer » : le bouton orange de Swapou.
+  L._etat({ echange: { possible: true } });
+  assert.match(L._carte({ id: 'ind-2', gain: 8, titre: 't', detail: '', ligne: '', pc: 0, jeu: 'forum' }),
+    /<button type="button" class="qt-swapou qt-changer" data-id="ind-2"/);
+  // Les mises à prix : sous l'enseigne, des affiches sans « RECHERCHÉ ».
+  L._etat({ primes: [{ rk: 'swapou2_classic', jeu: 'swapou2', ouverte: true, record: '26 777 points', tenant: 'goyave29', gain: 500,
+    etiquette: { nom: 'Swapou' } }] });
+  const af = L._primes();
+  assert.match(af, /class="qt-enseigne" data-texte="Mises à prix"/);
+  assert.match(af, /\/images\/swapou\.png/);
+  assert.doesNotMatch(af, /RECHERCH/);
+  L._etat(null);
   // Le contrat signé : scellé de cire, pas de case à cocher.
   const sc = L._carte({ id: 'contrat', contrat: true, niveau: 'facile', niveauNom: 'Facile', gain: 5, titre: 'x', detail: '', ligne: '', pc: 0 });
   assert.match(sc, /qt-ligne qt-signee/);
   assert.match(sc, /class="qt-sceau"/);
 });
 
+test('la forêt de Gromelin : le cadrage, le ciel de l’heure, le voile de nuit, l’extrait des sprites', () => {
+  globalThis.window = globalThis;
+  require(path.join(ROOT, 'public/js/quetes-foret.js'));
+  const F = globalThis.QuetesForet;
+  // Le cadrage : 400 unités de décor de large dans une fenêtre, 300 sur un téléphone.
+  const b = F._cadre(540), m = F._cadre(380);
+  assert.deepEqual([b.H, b.etroit, b.gromelin], [230, false, 160]);
+  assert.deepEqual([m.H, m.etroit, m.gromelin], [200, true, 130]);
+  assert.ok(Math.abs(b.k - 540 / 400) < 1e-9 && Math.abs(m.k - 380 / 300) < 1e-9);
+  assert.ok(b.y0 > 0 && b.y0 + b.H / b.k === 240, 'le bas du paysage reste en bas');
+  // Le ciel : minuit, midi (la 51e image), presque minuit.
+  assert.equal(F._ciel(0), '/minipixiz/sprites/ciel/ciel001.svg');
+  assert.equal(F._ciel(12), '/minipixiz/sprites/ciel/ciel051.svg');
+  assert.equal(F._ciel(23.99), '/minipixiz/sprites/ciel/ciel100.svg');
+  for (const h of [0, 6, 12, 18, 23.99]) assert.ok(fs.existsSync(path.join(ROOT, 'public', F._ciel(h))), F._ciel(h));
+  // La nuit : rien à midi, plus fort au loin qu'au premier plan.
+  assert.equal(F._nuit(12), 0);
+  assert.equal(F._voile(0.25, 0), '');
+  const loin = Number(/brightness\(([\d.]+)/.exec(F._voile(0.25, 1))[1]), pres = Number(/brightness\(([\d.]+)/.exec(F._voile(3.2, 1))[1]);
+  assert.ok(loin < pres, `${loin} contre ${pres}`);
+  // L'extrait des sprites : à jour (scripts/extraire-foret.js), et chaque pièce existe.
+  const X = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/minipixiz/sprites/foret.json'), 'utf8'));
+  const TOUT = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/minipixiz/sprites/sprites.json'), 'utf8'));
+  for (const s of ['horizon', 'collines', 'foret3', 'foret2', 'foret', 'milieu', 'arbre', 'herbe', 'premier', 'nuage', 'mCabane', 'mArbre', 'mMoulin', 'mDonjon', 'invMessage']) {
+    assert.ok(X[s], s);
+    assert.deepEqual(X[s].etats[0].pieces.map((p) => p.fichier), TOUT[s].etats[0].pieces.map((p) => p.fichier), s + ' à jour');
+    for (const p of X[s].etats[0].pieces) assert.ok(fs.existsSync(path.join(ROOT, 'public/minipixiz/sprites', p.fichier)), p.fichier);
+  }
+  assert.deepEqual(X.foret.ancrages.house, TOUT.foret.ancrages.house);
+  // Gromelin (l'écran de mission), la feuille du courrier, la bulle de fée, les boutons de Swapou.
+  for (const f of ['minipixiz/sprites/shape990.svg', 'minipixiz/sprites/shape1039.svg', 'minipixiz/sprites/shape764.svg',
+    'swapou/ui/bouton-orange.svg', 'swapou/ui/bouton-vert.svg', 'swapou/ui/max.svg']) assert.ok(fs.existsSync(path.join(ROOT, 'public', f)), f);
+});
+
 test('le light : la tuile, la feuille, le script, et le bureau qui adopte la feuille', () => {
   const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   assert.match(LIGHT, /id="tuile-quetes" style="display:none"/);
-  assert.match(LIGHT, /<script src="\/js\/quetes-light.js"><\/script>/);
+  assert.match(LIGHT, /<script src="\/js\/quetes-foret.js"><\/script>\n<script src="\/js\/quetes-light.js"><\/script>/);
   assert.match(LIGHT, /<link rel="stylesheet" href="\/quetes.css">/);
   assert.match(LIGHT, /id="quetes-sheet" class="sheet sheet-quetes"/);
   assert.match(LIGHT, /if \(go === "quetes"\)/);

@@ -2411,27 +2411,34 @@ body.bureau-frutiz .fen #quetes-sheet {
 .qt-ferme, .qt-vide {
   color: hsl(256 13% 84.8%);
 }
-.qt-ecran {
-  background: url('/frutiz/sprites/ecran-fond-nuit.svg?v=4f237dec') 0 0 / 100% 100% no-repeat;
-  box-shadow: 0 0 0 2px hsl(256 26% 40%);
+.qt-scene {
+  background: linear-gradient(to bottom, hsl(209 32% 19.8%), hsl(203 34% 30%) 55%, hsl(256 30% 13.7%) 56%, hsl(256 30% 5.4%));
+  border-bottom: 1px solid hsl(256 26% 40%);
 }
-.qt-ecran::before {
-  filter: var(--nuit-chassis);
+@keyframes qt-derive {
+  to {
+    transform: translateX(80px);
+  }
 }
-.qt-ecran::after {
-  box-shadow: inset 0 0 0 1px hsl(256 26% 50%);
+@keyframes qt-souffle {
+  50% {
+    transform: translateY(1.5px) scaleY(.99);
+  }
+}
+@keyframes qt-parle {
+  50% {
+    transform: translateY(-1.5px) rotate(-1deg);
+  }
 }
 .qt-dit {
-  background: linear-gradient(to bottom, hsl(256 30% 10% / 0.6) 2px, hsl(256 30% 10% / 0) 12px), hsl(256 30% 25.8%);
-  border: 2px solid hsl(256 26% 46.1%);
-  box-shadow: 0 0 0 2px hsl(256 26% 40%);
-  color: hsl(256 13% 84.4%);
+  filter: drop-shadow(1px 2px 1px hsl(256 13% 17.8% / 0.35));
+  color: hsl(256 13% 84.7%);
 }
 .qt-dit em {
-  color: hsl(256 13% 84.4%);
+  color: hsl(325 58% 86.4%);
 }
 .qt-curseur {
-  background: hsl(256 30% 17%);
+  background: hsl(256 30% 36%);
 }
 @keyframes qt-clign {
   50% {
@@ -2439,10 +2446,15 @@ body.bureau-frutiz .fen #quetes-sheet {
   }
 }
 .qt-suite {
-  color: hsl(256 13% 84.6%);
+  color: hsl(256 13% 85.7%);
 }
 .qt-suite b {
-  color: hsl(256 13% 84.4%);
+  color: hsl(325 58% 86.4%);
+}
+@keyframes qt-monte {
+  50% {
+    transform: translateY(-2px);
+  }
 }
 .qt-semaine {
   color: hsl(256 13% 84.8%);
@@ -2505,6 +2517,26 @@ body.bureau-frutiz .fen #quetes-sheet {
 .qt-kik {
   color: hsl(256 13% 84.7%);
 }
+.qt-liste .qt-gain .qt-kik {
+  background: hsl(256 30% 14%);
+  border: 2px solid hsl(256 26% 40.8%);
+  color: hsl(256 13% 84.8%);
+  box-shadow: inset 0 1px 0 hsl(256 26% 36% / 0.55), 0 1px 2px hsl(256 13% 22.7% / 0.35);
+}
+.qt-liste .qt-ligne.faite .qt-gain .qt-kik {
+  background: hsl(256 30% 17.2%);
+  border-color: hsl(256 26% 46.1%);
+  color: hsl(256 13% 84.4%);
+}
+.qt-swapou {
+  color: hsl(256 13% 96%);
+  text-shadow: 0 1px 0 hsl(256 26% 55.2%);
+  filter: var(--nuit-chassis);
+}
+.qt-swapou.arme {
+  text-shadow: 0 1px 0 hsl(256 26% 60.7%);
+  filter: var(--nuit-chassis);
+}
 .qt-gelule {
   background: hsl(325 34% 30.6%);
   box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
@@ -2534,6 +2566,10 @@ body.bureau-frutiz .fen #quetes-sheet {
 .qt-note b {
   color: hsl(256 13% 84.4%);
 }
+.qt-enseigne span {
+  color: hsl(256 13% 84.5%);
+  text-shadow: 0 1px 0 hsl(256 26% 36.5% / 0.6);
+}
 .qt-sceau {
   color: hsl(325 58% 95%);
   background: radial-gradient(circle at 38% 34%, hsl(325 34% 34.5%), hsl(325 34% 20.7%) 70%);
@@ -2546,9 +2582,6 @@ body.bureau-frutiz .fen #quetes-sheet {
   background: linear-gradient(175deg, hsl(256 30% 22.7%), hsl(256 30% 16.8%));
   border: 1px solid hsl(256 26% 45.6%);
   box-shadow: 0 2px 4px hsl(256 13% 0% / 0.18), inset 0 0 16px hsl(256 13% 36% / 0.18);
-}
-.qt-recherche {
-  color: hsl(325 58% 86.4%);
 }
 .qt-portrait {
   box-shadow: 0 0 0 2px hsl(256 26% 40%), 0 0 0 3px hsl(256 26% 50%);
@@ -3057,8 +3090,17 @@ body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {
    lisibles par-dessus. */
 #bureau { --fond-txt: hsl(258 18% 88%); --fond-halo: 0,0,0; }
 
-/* Les quêtes : le curseur de Gromelin s'écrit dans l'encre de sa bulle. */
-.qt-curseur { background: hsl(256 13% 84.4%); }
+/* Les quêtes : Gromelin écrit sur une feuille du courrier de Pixiz — une
+   IMAGE, qui reste claire la nuit (un peu adoucie) : son encre reste donc
+   l'encre brune du jour, curseur compris. La forêt, elle, a sa propre nuit
+   (le ciel et le voile de l'heure qu'il est). */
+.qt-dit { color: #4A3418; filter: drop-shadow(1px 2px 1px rgba(0,0,0,.5)) brightness(.88); }
+.qt-dit em, .qt-suite b { color: #6E1A10; }
+.qt-suite { color: #9A7A48; }
+.qt-curseur { background: #4A3418; }
+/* L'enseigne : le texte gravé dans le bois ; « Changer » : l'écriture blanche de Swapou. */
+.qt-enseigne span { color: #3E2608; }
+.qt-swapou { color: #FFFFFF; }
 /* Le parchemin des quêtes est une IMAGE : la nuit, pas de filtre sur toute la
    liste (il déteindrait sur les voyants et la frutibarre) — un panneau de
    nuit à la place ; les baguettes, elles, sont recolorées par le générateur. */

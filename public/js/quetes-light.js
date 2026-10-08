@@ -9,17 +9,18 @@
  *     scintillent autour (`.nouvelles`). Pas de pastille : le bureau d'origine
  *     n'en pose sur aucune icône, c'est le dessin qui change d'état.
  *   · LA FENÊTRE (#quetes-sheet) : une fenêtre du bureau, une feuille sur
- *     mobile, comme les Prunostics. Gromelin dans son écran de bouille — celui
- *     des bouilles de Gaspard —, sa bulle, puis les quêtes en parchemins sur
- *     des planches.
+ *     mobile, comme les Prunostics. En haut, la forêt de Gromelin (le paysage
+ *     de MiniPixiz, dessiné par quetes-foret.js) : Gromelin y sort des herbes
+ *     devant sa cabane et écrit sur une feuille du courrier de Pixiz ; puis
+ *     les quêtes sur son parchemin, et les mises à prix.
  *   · LE CONTRAT (« Rien que pour toi ») : sous les quêtes de tous, trois
  *     propositions taillées par le serveur sur les scores du joueur ; il en
  *     signe une (deux clics : « Signer », puis « Sûr ? »), qui devient sa
  *     quête personnelle de la semaine, scellée de cire.
- *   · LA PAROLE : à l'ouverture, Gromelin joue l'animation « parle » du moteur
- *     de bouilles (playAnim 1) pendant que ses messages s'écrivent lettre à
- *     lettre, l'un après l'autre, puis se tait. Un clic dans la bulle finit le
- *     message en cours, ou passe au suivant.
+ *   · LA PAROLE : à l'ouverture, Gromelin s'anime pendant que ses messages
+ *     s'écrivent lettre à lettre sur sa feuille, l'un après l'autre, puis se
+ *     tait. Un clic sur la feuille finit le message en cours, ou passe au
+ *     suivant.
  *
  * Le serveur fait foi pour tout : ce module ne calcule rien, il affiche
  * /api/quetes/etat et prévient /api/quetes/vu quand la fenêtre s'ouvre.
@@ -90,20 +91,14 @@
   }
 
   // ── La fenêtre ─────────────────────────────────────────────────────────────
-  function reste(fin) {
-    var ms = Math.max(0, Number(fin) - Date.now());
-    var j = Math.floor(ms / 86400000), h = Math.floor(ms / 3600000) % 24, m = Math.floor(ms / 60000) % 60;
-    if (j > 0) return j + ' j ' + h + ' h';
-    if (h > 0) return h + ' h ' + m + ' min';
-    return Math.max(1, m) + ' min';
-  }
   /*
    * LES ASSETS DU PARC. Rien de dessiné ici : le jeu d'une quête se reconnaît
    * à son VOYANT (celui de la barre des jeux) ; chaque quête a sa CASE — la
    * case de mission de l'écran de Gromelin, dans MiniPixiz, cochée quand
    * c'est fait —, et la liste est écrite sur son PARCHEMIN de missions ;
-   * l'avancement est la FRUTIBARRE de Frutisnake, les kikooz la pièce de la
-   * boutique, les boutons la gélule rose d'époque.
+   * l'avancement est la FRUTIBARRE de Frutisnake, les kikooz la pièce et la
+   * pastille de la boutique ; « Changer » est le bouton orange de Swapou, la
+   * signature du contrat la gélule rose d'époque.
    */
   var VOYANT = { swapou2: 'swapou', snake3: 'snake3', kaluga: 'kaluga', bkiwi: 'bkiwi', mb2: 'mb2', minifever: 'minifever',
     minipixiz: 'minipixiz', miniwave: 'miniwave', grapiz: 'grapiz', bandas: 'bandas', forum: 'forum' };
@@ -132,7 +127,7 @@
   }
   function carte(q) {
     var changer = (!q.fait && !q.contrat && etat && etat.echange && etat.echange.possible)
-      ? '<button type="button" class="qt-gelule qt-changer" data-id="' + esc(q.id) + '" title="Une fois par semaine, une seule quête">Changer</button>' : '';
+      ? '<button type="button" class="qt-swapou qt-changer" data-id="' + esc(q.id) + '" title="Une fois par semaine, une seule quête">Changer</button>' : '';
     return '<div class="qt-ligne' + (q.fait ? ' faite' : '') + (q.contrat ? ' qt-signee' : '') + '">'
       + (q.contrat ? '<span class="qt-sceau" aria-hidden="true">G</span>' : caseMission(q.fait))
       + '<div class="qt-corps"><div class="qt-titre">' + (q.contrat ? '' : voyant(q)) + esc(q.titre) + '</div>'
@@ -141,18 +136,17 @@
       + '<div class="qt-gain">' + piece(q.gain, q.fait) + changer + '</div>'
       + '</div>';
   }
-  // LES MISES À PRIX : un avis de recherche par record du parc, le portrait
-  // du jeu (son illustration du site) au milieu.
+  // LES MISES À PRIX : sous l'enseigne (la planche aux lianes de Pixiz), une
+  // affiche par record du parc, le portrait du jeu (son illustration du site).
   function primes() {
     var l = (etat && etat.primes) || [];
     if (!l.length) return '';
-    return section('Mises à prix')
-      + '<div class="qt-note">Bats un <b>record absolu du parc</b> au Challenge en détrônant son tenant : Gromelin paie la prime. '
+    return '<div class="qt-enseigne" data-texte="Mises à prix"><span>Mises à prix</span></div>'
+      + '<div class="qt-note qt-note-primes">Bats un <b>record absolu du parc</b> au Challenge en détrônant son tenant : Gromelin paie la prime. '
       + 'Une prime par record et par semaine.</div>'
       + '<div class="qt-avis">' + l.map(function (p) {
         var portrait = PORTRAIT[p.jeu];
         return '<div class="qt-affiche' + (p.ouverte ? '' : ' prise') + '">'
-          + '<div class="qt-recherche">RECHERCHÉ</div>'
           + (portrait ? '<div class="qt-portrait"><img src="/images/' + portrait + '.png" alt=""></div>' : '<div class="qt-portrait vide">' + voyant(p) + '</div>')
           + '<div class="qt-aff-jeu">' + voyant(p) + esc(nomJeu(p)) + '</div>'
           + '<div class="qt-aff-record">' + esc(p.record) + '</div>'
@@ -200,24 +194,32 @@
         : 'Une quête ne te plaît pas ? Tu peux en <b>changer une</b> par semaine.') : '');
     var dejaLa = corps.querySelector('.qt');
     var planches = (etat.quetes || []).map(carte).join('') || '<div class="qt-vide">Pas de quêtes cette semaine.</div>';
-    // Le compteur de la boutique (gagnés / possibles), et le bonus de la semaine.
+    // Où il en est, le bonus de la semaine, et le compteur de la boutique (gagnés / possibles) —
+    // tamponné « max! » (Swapou) quand toute la semaine est faite.
+    var Q = etat.quetes || [];
+    var faites = Q.filter(function (q) { return q.fait; }).length;
+    var tout = Q.length > 0 && faites === Q.length;
     var semaine = '<img class="qt-cabane" src="/minipixiz/sprites/shape429.svg" alt="" title="La cabane de Gromelin">'
-      + '<span class="qt-sem-txt">Semaine ' + esc(S.lisible || '') + '<br>Nouvelles quêtes dans <b class="qt-compte">' + esc(reste(S.fin)) + '</b></span>'
+      + '<span class="qt-sem-txt">Semaine ' + esc(S.lisible || '') + '<br>'
+      + (!Q.length ? 'Pas de quêtes cette semaine' : tout ? '<b>Toutes les quêtes sont faites !</b>'
+        : '<b>' + faites + ' quête' + (faites > 1 ? 's' : '') + ' faite' + (faites > 1 ? 's' : '') + '</b> sur ' + Q.length) + '</span>'
       + '<span class="qt-sem-droite">' + (etat.bonus ? '<span class="qt-bonus' + (etat.bonus.verse ? ' verse' : '') + '" title="'
         + (etat.bonus.verse ? 'Bonus de la semaine versé' : 'Toutes les quêtes faites : un bonus d’XP') + '"><img src="/fb/Niveau.svg" alt="">'
         + (etat.bonus.verse ? '✔ ' : 'tout finir : ') + '+' + nombre(etat.bonus.xp) + ' XP</span>' : '')
-      + '<span class="qt-compteur" title="kikooz gagnés / possibles cette semaine"><img src="' + PIECE + '" alt="kikooz"><b>' + nombre(etat.gagnes) + '</b>&nbsp;/ ' + nombre(etat.total) + '</span></span>';
+      + '<span class="qt-compteur" title="kikooz gagnés / possibles cette semaine"><img src="' + PIECE + '" alt="kikooz"><b>' + nombre(etat.gagnes) + '</b>&nbsp;/ ' + nombre(etat.total)
+      + (tout ? '<img class="qt-max" src="/swapou/ui/max.svg" alt="max !">' : '') + '</span></span>';
     if (dejaLa) {
-      // Déjà affichée : on ne touche ni à Gromelin ni à sa bulle (il parle peut-être).
+      // Déjà affichée : on ne touche ni à la forêt ni à la feuille (Gromelin écrit peut-être).
       dejaLa.querySelector('.qt-semaine').innerHTML = semaine;
       dejaLa.querySelector('.qt-planches').innerHTML = planches;
       dejaLa.querySelector('.qt-contrat').innerHTML = contrat();
       dejaLa.querySelector('.qt-primes').innerHTML = primes();
       dejaLa.querySelector('.qt-pied').innerHTML = pied;
+      enseignes(dejaLa);
       return;
     }
     corps.innerHTML = '<div class="qt">'
-      + '<div class="qt-tete"><div class="qt-cadre"><div class="qt-ecran" title="' + esc((etat.gromelin && etat.gromelin.nom) || 'Gromelin') + '"></div></div>'
+      + '<div class="qt-scene">'
       + '<div class="qt-dit" role="status" aria-live="polite" title="Clique pour la suite"><span class="qt-txt"></span><span class="qt-curseur"></span><span class="qt-suite"></span></div></div>'
       + '<div class="qt-semaine">' + semaine + '</div>'
       + '<div class="qt-planches qt-liste">' + planches + '</div>'
@@ -225,14 +227,27 @@
       + '<div class="qt-primes">' + primes() + '</div>'
       + '<div class="qt-pied">' + pied + '</div>'
       + '</div>';
-    var ecran = corps.querySelector('.qt-ecran');
-    if (global.FPBouilleVignette && etat.gromelin) {
-      ecran.innerHTML = FPBouilleVignette.html(etat.gromelin.bouille, { marge: FPBouilleVignette.MARGE_ECRAN });
-      FPBouilleVignette.brancher(ecran);
-    }
+    var scene = corps.querySelector('.qt-scene');
+    if (global.QuetesForet) {
+      QuetesForet.brancher(scene).then(function () {
+        enseignes(corps);
+        // La feuille a pu s'écrire avant que la forêt soit là : on rebranche les bulles.
+        QuetesForet.placerLettre(scene);
+      });
+    } else scene.classList.add('sans-foret');
     corps.querySelector('.qt-dit').addEventListener('click', clicBulle);
     corps.querySelector('.qt-contrat').addEventListener('click', clicSigner);
     corps.querySelector('.qt-planches').addEventListener('click', clicChanger);
+  }
+  // Les enseignes (planches de Pixiz), une fois les sprites de la forêt arrivés.
+  function enseignes(racine) {
+    if (!global.QuetesForet) return;
+    var l = racine.querySelectorAll('.qt-enseigne[data-texte]');
+    for (var i = 0; i < l.length; i++) {
+      var el = l[i];
+      el.removeAttribute('data-texte');
+      QuetesForet.enseigne(el, el.textContent, 0.7);
+    }
   }
 
   // ── L'échange : une quête par semaine (deux clics, comme la signature) ──────
@@ -319,14 +334,9 @@
     while (ouvertes.length) out += '</' + ouvertes.pop() + '>';
     return out;
   }
-  function toile() { var c = $('#quetes-corps .qt-ecran canvas'); return c || null; }
   function bouche(parle) {
-    var c = toile();
-    if (!c || !global.FPBouilleVignette || !etat || !etat.gromelin) return;
-    try {
-      if (parle) FPBouilleVignette.jouer(c, etat.gromelin.bouille, 1);
-      else FPBouilleVignette.stopper(c);
-    } catch (e) { /* une bouille qui ne se dessine pas ne doit rien bloquer */ }
+    var g = $('#quetes-corps .qt-gromelin');
+    if (g) g.classList.toggle('parle', !!parle);
   }
   function dessinerParole() {
     var d = $('#quetes-corps .qt-dit');
@@ -402,6 +412,8 @@
     ouverte = false;
     taire();
     var corps = document.getElementById('quetes-corps');
+    var scene = corps && corps.querySelector('.qt-scene');
+    if (scene && scene._qtSuivi) scene._qtSuivi.disconnect();
     if (corps) corps.innerHTML = '';
     majTuile();
   }
@@ -440,18 +452,13 @@
     if ((s || '') === sid && sonde) return rafraichir();
     sid = s || '';
     if (sonde) clearInterval(sonde);
-    sonde = setInterval(function () { if (!ouverte) rafraichir(); else majCompte(); }, SONDE_MS);
+    sonde = setInterval(function () { if (!ouverte) rafraichir(); }, SONDE_MS);
     var close = document.getElementById('quetes-sheet-close');
     if (close && !close._qt) { close._qt = true; close.addEventListener('click', fermerFeuille); }
     var fond = document.getElementById('quetes-sheet-backdrop');
     if (fond && !fond._qt) { fond._qt = true; fond.addEventListener('click', fermerFeuille); }
     return rafraichir();
   }
-  function majCompte() {
-    var b = $('#quetes-corps .qt-compte');
-    if (b && etat && etat.semaine) b.textContent = reste(etat.semaine.fin);
-  }
-
   /*
    * LES MODES DE JEU HORS CLASSEMENT. Un jeu light déclare un résultat (une
    * épreuve de Kaluga) ; le serveur décide s'il fait avancer une quête.

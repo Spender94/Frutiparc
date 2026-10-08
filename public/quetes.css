@@ -1,12 +1,14 @@
 /*
  * LES QUÊTES DE GROMELIN — l'icône (le baluchon de MiniPixiz) et la fenêtre.
  *
- * La fenêtre ne dessine rien qui ne soit déjà au parc : la fenêtre blanche du
- * bureau, l'écran de bouille de Gaspard, la « fiche » verte (`frSheet`) de la
- * boutique pour la bulle, la boîte blanche des rubriques pour la liste, les
- * voyants des jeux, la frutibarre de Frutisnake, la pièce et le
- * compteur de la boutique, la gélule rose (`butPushStandard`). Les mises à
- * prix sont des affiches, le portrait de chaque jeu au milieu.
+ * La fenêtre ne dessine rien qui ne soit déjà au parc. En haut, la forêt de
+ * Gromelin : le paysage de l'écran-titre de MiniPixiz (quetes-foret.js), le
+ * Gromelin de l'écran de mission de Pixiz, et sa parole sur une feuille du
+ * courrier de Pixiz reliée à lui par des bulles de fée. Puis la ligne de la
+ * semaine (bonus, compteur de la boutique), le parchemin de missions avec ses
+ * cases, les voyants des jeux, la frutibarre de Frutisnake, les pastilles de
+ * kikooz de la boutique, le bouton orange de Swapou ; enfin les mises à prix,
+ * sous la planche aux lianes de Pixiz, en affiches.
  */
 
 /* ── L'icône ────────────────────────────────────────────────────────────── */
@@ -55,27 +57,45 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
   padding: 8px 8px 0; gap: 8px; }
 .qt-ferme, .qt-vide { padding: 20px 12px; text-align: center; color: #666666; }
 
-/* Gromelin : l'écran de bouille de Gaspard (cp.FrutiScreen — fond, reflet,
-   liseré #DDDDDD, anneau #888888, rayon 6), et sa parole dans une fiche verte. */
-.qt-tete { display: flex; align-items: stretch; gap: 10px; }
-.qt-cadre { flex: 0 0 auto; }
-.qt-ecran { position: relative; width: 100px; height: 100px; overflow: hidden; border-radius: 6px;
-  background: url('/frutiz/sprites/ecran-fond.svg') 0 0 / 100% 100% no-repeat; box-shadow: 0 0 0 2px #DDDDDD; }
-.qt-ecran::before { content: ""; position: absolute; right: 2px; top: 2px; width: 42.7px; height: 31.8px; z-index: 7;
-  pointer-events: none; background: url('/frutiz/sprites/ecran-reflet.svg') 0 0 / 42.7px 31.8px no-repeat; }
-.qt-ecran::after { content: ""; position: absolute; inset: 0; border-radius: 6px; z-index: 6; pointer-events: none;
-  box-shadow: inset 0 0 0 1px #888888; }
-.qt-ecran > canvas.fp-bvig { display: block; width: 100px !important; height: 100px !important; }
-.qt-dit { position: relative; flex: 1; min-width: 0; min-height: 84px; cursor: pointer; padding: 6px 8px 18px;
-  background: linear-gradient(to bottom, rgba(255,255,255,.6) 2px, rgba(255,255,255,0) 12px), #CCF599;
-  border: 2px solid #ADE76B; border-radius: 5px; box-shadow: 0 0 0 2px #DDDDDD;
-  font-size: 11px; line-height: 1.5; color: #335511; }
-.qt-dit em { font-style: normal; font-weight: bold; color: #224400; }
-.qt-curseur { display: inline-block; width: 2px; height: 11px; background: #335511; vertical-align: -1px; margin-left: 1px;
+/* ── La forêt de Gromelin ─────────────────────────────────────────────── */
+.qt-scene { position: relative; height: 230px; margin: -8px -8px 0; overflow: hidden; flex: 0 0 auto;
+  background: linear-gradient(to bottom, #6FA6D8, #BFDDF0 55%, #7FBF4A 56%, #3E8A2A); border-bottom: 1px solid #DDDDDD; }
+.qt-ciel { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.qt-plan { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.qt-nuage { position: absolute !important; opacity: .9; animation: qt-derive 90s linear infinite; }
+@keyframes qt-derive { to { transform: translateX(80px); } }
+/* Gromelin (Pixiz, l'écran de mission) sort des herbes devant sa cabane ; le
+   dessin le montre penché vers la droite : on le redresse un peu. Il respire,
+   et s'anime quand il parle. */
+.qt-gromelin { position: absolute; transform-origin: 50% 100%; animation: qt-souffle 4s ease-in-out infinite; }
+.qt-gromelin img { display: block; width: 100%; height: 100%; transform-origin: 45% 100%; transform: rotate(-12deg); }
+.qt-gromelin.parle { animation: qt-parle .5s ease-in-out infinite; }
+@keyframes qt-souffle { 50% { transform: translateY(1.5px) scaleY(.99); } }
+@keyframes qt-parle { 50% { transform: translateY(-1.5px) rotate(-1deg); } }
+/* Ce qu'il dit : une feuille du courrier de Pixiz (shape1039, ses plis et ses
+   bords déchirés en border-image), et les bulles de fée qui y mènent. */
+.qt-dit { position: absolute; z-index: 6; top: 12px; right: 12px; left: 45%; min-height: 56px; max-height: calc(100% - 24px);
+  overflow: hidden; box-sizing: border-box; padding: 9px 13px 15px; cursor: pointer;
+  border-image: url('/minipixiz/sprites/shape1039.svg') 16 fill / 10px stretch;
+  filter: drop-shadow(1px 2px 1px rgba(40,25,5,.35));
+  font-size: 11px; line-height: 1.5; color: #4A3418; }
+.qt-dit em { font-style: normal; font-weight: bold; color: #6E1A10; }
+.qt-curseur { display: inline-block; width: 2px; height: 11px; background: #4A3418; vertical-align: -1px; margin-left: 1px;
   animation: qt-clign .8s steps(1) infinite; }
 @keyframes qt-clign { 50% { opacity: 0; } }
-.qt-suite { position: absolute; right: 7px; bottom: 3px; font-size: 10px; color: #6A9A3A; }
-.qt-suite b { color: #335511; }
+.qt-suite { position: absolute; right: 12px; bottom: 4px; font-size: 9px; color: #9A7A48; }
+.qt-suite b { color: #6E1A10; }
+.qt-bulle-fee { position: absolute; z-index: 5; display: block; animation: qt-monte 2.4s ease-in-out infinite; }
+.qt-bulle-fee:nth-of-type(2n) { animation-delay: -.8s; }
+@keyframes qt-monte { 50% { transform: translateY(-2px); } }
+.qt-scene.etroite { height: 200px; }
+.qt-scene.etroite .qt-dit { top: 10px; right: 10px; font-size: 10.5px; line-height: 1.45; padding: 8px 11px 14px; }
+/* Sans la forêt (ses sprites ne sont pas arrivés) : la feuille seule, sur un ciel. */
+.qt-scene.sans-foret { height: auto; min-height: 90px; padding: 12px; }
+.qt-scene.sans-foret .qt-dit { position: relative; inset: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .qt-nuage, .qt-gromelin, .qt-gromelin.parle, .qt-bulle-fee { animation: none; }
+}
 
 /* La semaine : le texte, le bonus, et le compteur de la boutique (`frKikooz`). */
 .qt-semaine { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; color: #666666; font-size: 10px; line-height: 1.4; }
@@ -90,6 +110,8 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
   background: #F8D5BC; border: 2px solid #F3BE8C; border-radius: 5px; box-shadow: 0 0 0 2px #DDDDDD;
   font: 700 12px Verdana, Arial, sans-serif; color: #764A34; white-space: nowrap; }
 .qt-compteur b { font: 700 14px Verdana, Arial, sans-serif; color: inherit; }
+.qt-compteur { position: relative; }
+.qt-max { position: absolute; z-index: 2; right: -12px; top: -11px; width: 36px; height: auto !important; transform: rotate(12deg); }
 .qt-compteur img, .qt-kik img { width: 16px; height: 15px; display: block; }
 .qt-bonus { display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 6px 0 2px; border-radius: 9px;
   background: #F3F3F3; box-shadow: inset 0 0 0 1px #DDDDDD; color: #666666; white-space: nowrap; }
@@ -99,7 +121,7 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
 /* La liste : le PARCHEMIN de missions de Gromelin (MiniPixiz, shape992 — son
    fond et ses bords ombrés, découpés en border-image pour ne pas s'étirer),
    roulé entre deux baguettes (shape993, ses mêmes teintes, couchées). */
-.qt-liste { position: relative; margin: 8px 10px 12px; padding: 4px 2px;
+.qt-liste { position: relative; margin: 14px 10px 12px; padding: 4px 2px;
   border: solid transparent; border-width: 0 16px; border-image: url('/minipixiz/sprites/shape992.svg') 0 34 fill / 0 16px stretch; }
 .qt-liste::before, .qt-liste::after { content: ""; position: absolute; left: -24px; right: -24px; height: 12px; border-radius: 6px; z-index: 1;
   background:
@@ -135,6 +157,18 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
 .qt-barre i::after { right: 0; transform: scaleX(-1); }
 .qt-gain { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 52px; }
 .qt-kik { display: inline-flex; align-items: center; gap: 2px; font: 700 11px Verdana, Arial, sans-serif; color: #5A3420; white-space: nowrap; }
+/* Les récompenses du parchemin : la pastille kikooz de la boutique (celle du
+   compteur et des affiches), qui se détache du fond ; verte une fois versée. */
+.qt-liste .qt-gain .qt-kik { box-sizing: border-box; min-width: 48px; height: 22px; justify-content: center; padding: 0 7px 0 3px;
+  border-radius: 5px; font-size: 12px; background: #F8D5BC; border: 2px solid #F3BE8C; color: #764A34;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 1px 2px rgba(60,35,10,.35); }
+.qt-liste .qt-ligne.faite .qt-gain .qt-kik { background: #E8F8D3; border-color: #ADE76B; color: #335511; }
+/* « Changer » : le bouton orange de Swapou ; armé (« Sûr ? »), son bouton vert. */
+.qt-swapou { position: relative; height: 18px; margin-top: 2px; padding: 0 10px; border: 0; cursor: pointer; white-space: nowrap;
+  font: 700 10px Verdana, Arial, sans-serif; color: #FFFFFF; text-shadow: 0 1px 0 #8A4A00;
+  background: url('/swapou/ui/bouton-orange.svg') center / 100% 100% no-repeat; }
+.qt-swapou.arme { background-image: url('/swapou/ui/bouton-vert.svg'); text-shadow: 0 1px 0 #2E5A00; }
+.qt-swapou:disabled { opacity: .6; cursor: default; }
 /* La gélule rose (`butPushStandard`, #465). */
 .qt-gelule { position: relative; height: 16px; padding: 0 9px; border: 0; border-radius: 8px; background: #FFAAAD;
   box-shadow: inset 0 0 0 1.5px #F28687; font: 700 10px Verdana, Arial, sans-serif; color: #660000; cursor: pointer; white-space: nowrap; }
@@ -156,6 +190,13 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
 .qt-section img { width: 20px; height: 18px; }
 .qt-note { margin: 2px 0 6px; font-size: 10px; color: #666666; line-height: 1.45; }
 .qt-note b { color: #333333; }
+/* L'enseigne des mises à prix : la planche aux lianes de Pixiz (invMessage). */
+.qt-enseigne { position: relative; margin: 10px auto 2px; min-height: 20px; text-align: center; }
+.qt-enseigne .qt-mp { position: absolute !important; left: 0; top: 0; }
+.qt-enseigne span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font: 700 14px Verdana, Arial, sans-serif; color: #3E2608; text-shadow: 0 1px 0 rgba(255,240,200,.6); }
+.qt-enseigne:not(:has(.qt-mp)) span { position: static; }
+.qt-note-primes { text-align: center; }
 /* Le sceau du contrat (s'il est rallumé). */
 .qt-sceau { justify-self: center; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;
   font: bold 13px Georgia, serif; color: #FFE8E8; background: radial-gradient(circle at 38% 34%, #F28687, #C0392B 70%); }
@@ -167,8 +208,7 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
   border: 1px solid #C9A464; border-radius: 3px 5px 4px 2px; box-shadow: 0 2px 4px rgba(0,0,0,.18), inset 0 0 16px rgba(160,110,40,.18); }
 .qt-affiche:nth-child(odd) { transform: rotate(-1deg); }
 .qt-affiche:nth-child(even) { transform: rotate(.9deg); }
-.qt-recherche { font: bold 14px Georgia, serif; letter-spacing: 3px; color: #6E1A10; }
-.qt-portrait { width: 64px; height: 64px; margin: 5px auto 4px; border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 2px #DDDDDD, 0 0 0 3px #888888; background: #CCF599; }
+.qt-portrait { width: 64px; height: 64px; margin: 2px auto 4px; border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 2px #DDDDDD, 0 0 0 3px #888888; background: #CCF599; }
 .qt-portrait img { width: 100%; height: 100%; object-fit: cover; display: block; filter: sepia(.25); }
 .qt-portrait.vide { display: flex; align-items: center; justify-content: center; }
 .qt-aff-jeu { display: flex; align-items: center; justify-content: center; gap: 3px; font-weight: bold; color: #333333; }
@@ -186,10 +226,13 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
 .qt-pied { margin: 0 -8px; padding: 6px 10px 8px; border-top: 1px solid #DDDDDD; font-size: 10px; color: #888888; text-align: center; line-height: 1.5; }
 .qt-pied b { color: #555555; }
 
-@media (max-width: 420px) {
-  .qt-ecran { width: 76px; height: 76px; }
-  .qt-ecran > canvas.fp-bvig { width: 76px !important; height: 76px !important; }
-  .qt-avis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+/* Étroit : les trois affiches restent de front, en plus petit. */
+@media (max-width: 460px) {
+  .qt-avis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .qt-affiche { padding: 6px 4px 7px; }
+  .qt-portrait { width: 54px; height: 54px; }
+  .qt-aff-record { font-size: 11px; }
+  .qt-aff-tenant { font-size: 9px; }
 }
 
 /* Sur le bureau, l'icône se range après les Prunostics, en bout de rangée. */

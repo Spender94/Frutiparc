@@ -255,8 +255,17 @@ body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {
    lisibles par-dessus. */
 #bureau { --fond-txt: hsl(258 18% 88%); --fond-halo: 0,0,0; }
 
-/* Les quêtes : le curseur de Gromelin s'écrit dans l'encre de sa bulle. */
-.qt-curseur { background: hsl(256 13% 84.4%); }
+/* Les quêtes : Gromelin écrit sur une feuille du courrier de Pixiz — une
+   IMAGE, qui reste claire la nuit (un peu adoucie) : son encre reste donc
+   l'encre brune du jour, curseur compris. La forêt, elle, a sa propre nuit
+   (le ciel et le voile de l'heure qu'il est). */
+.qt-dit { color: #4A3418; filter: drop-shadow(1px 2px 1px rgba(0,0,0,.5)) brightness(.88); }
+.qt-dit em, .qt-suite b { color: #6E1A10; }
+.qt-suite { color: #9A7A48; }
+.qt-curseur { background: #4A3418; }
+/* L'enseigne : le texte gravé dans le bois ; « Changer » : l'écriture blanche de Swapou. */
+.qt-enseigne span { color: #3E2608; }
+.qt-swapou { color: #FFFFFF; }
 /* Le parchemin des quêtes est une IMAGE : la nuit, pas de filtre sur toute la
    liste (il déteindrait sur les voyants et la frutibarre) — un panneau de
    nuit à la place ; les baguettes, elles, sont recolorées par le générateur. */
