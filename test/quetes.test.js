@@ -318,17 +318,19 @@ test('les paliers du parc : cinq seuils communs, le niveau d’un joueur, la pai
   const paliers = { 'swapou-challenge': P, 'snake-challenge': Q.paliersDe(Q.MESURES['snake-challenge'], parc.map((v) => v / 10), 12),
     'kaluga-grappe': Q.paliersDe(Q.MESURES['kaluga-grappe'], parc.map((v) => v / 2), 12) };
   const gains = { bronze: 5, argent: 8, or: 12, platine: 18, legende: 25 };
+  // (Les scores seuls ici : la vie du parc et les exploits ont leur propre test.)
+  const sansParc = { activites: 0, exploits: 0 };
   // Un habitué de niveau Or à Swapou : Or, Platine, Légende — et rien sur le nombre de jours joués.
-  const habitue = Q.proposerV2({ historique: { 'swapou-challenge': Array(40).fill(8800) }, paliers }, () => 0.3, {});
+  const habitue = Q.proposerV2({ historique: { 'swapou-challenge': Array(40).fill(8800) }, paliers }, () => 0.3, sansParc);
   assert.equal(habitue.niveaux['swapou-challenge'], 'or');
   const sw = habitue.quetes.filter((q) => q.mesure === 'swapou-challenge');
   assert.deepEqual(sw.map((q) => [q.niveau, q.palier, q.seuil, q.gain]),
     [['facile', 'or', 8600, 12], ['moyenne', 'platine', 9600, 18], ['difficile', 'legende', 10000, 25]]);
-  const occasionnel = Q.proposerV2({ historique: { 'swapou-challenge': [8800, 8800, 8800] }, paliers }, () => 0.3, {});
+  const occasionnel = Q.proposerV2({ historique: { 'swapou-challenge': [8800, 8800, 8800] }, paliers }, () => 0.3, sansParc);
   assert.deepEqual(occasionnel.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => q.seuil), sw.map((q) => q.seuil),
     'trois jours ou quarante : les mêmes cibles');
   // Sous le Bronze : Bronze, Argent, Or.
-  const faible = Q.proposerV2({ historique: { 'swapou-challenge': [2000, 2500, 3000] }, paliers }, () => 0.3, {});
+  const faible = Q.proposerV2({ historique: { 'swapou-challenge': [2000, 2500, 3000] }, paliers }, () => 0.3, sansParc);
   assert.deepEqual(faible.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => q.palier), ['bronze', 'argent', 'or']);
   // Le budget : un faible reçoit plus de quêtes (plus douces), un fort moins.
   for (const r of [habitue, faible]) {
@@ -347,7 +349,7 @@ test('les paliers du parc : cinq seuils communs, le niveau d’un joueur, la pai
     assert.equal(q.seuil, paliers[q.mesure].decouverte);
   }
   // Premiers pas : en tête, une fois chacun ; un parc sans repères n'en propose pas d'autre.
-  const nouveau = Q.proposerV2({ historique: {}, paliers: {}, premiersPas: ['pas-forum', 'pas-prunostic', 'pas-jeux'] }, () => 0.3, {});
+  const nouveau = Q.proposerV2({ historique: {}, paliers: {}, premiersPas: ['pas-forum', 'pas-prunostic', 'pas-jeux'] }, () => 0.3, sansParc);
   assert.deepEqual(nouveau.quetes.map((q) => q.cle), ['pas-forum', 'pas-prunostic', 'pas-jeux']);
   // La réserve des échanges : ce qui n'a pas été pris.
   assert.ok(habitue.reserve.length >= 1);
@@ -359,6 +361,66 @@ test('les paliers du parc : cinq seuils communs, le niveau d’un joueur, la pai
   assert.match(Q.detail(d), /atteint par 15 % du parc/);
   assert.equal(Q.estFaite(d, { m: 8600 }), true);
   assert.match(Q.detail(Q.definitionV2(dec[0], 'ind-9')), /^Découverte/);
+});
+
+test('la vie du parc et les exploits : des actions sur le site, pas seulement des scores', () => {
+  const parc = Array.from({ length: 100 }, (_, i) => (i + 1) * 100);
+  const paliers = { 'swapou-challenge': Q.paliersDe(Q.MESURES['swapou-challenge'], parc, 12),
+    'snake-challenge': Q.paliersDe(Q.MESURES['snake-challenge'], parc.map((v) => v / 10), 12) };
+  const gains = { bronze: 5, argent: 8, or: 12, platine: 18, legende: 25 };
+  const tirage = (historique, premiersPas, graine, o) => Q.proposerV2({ historique, paliers, premiersPas }, Q.aleaSeme(graine), o || {});
+  // Un habitué de niveau Or : deux activités (jamais deux du même coin), un exploit,
+  // au moins deux quêtes de score ; le budget compte tout.
+  for (let i = 0; i < 20; i++) {
+    const r = tirage({ 'swapou-challenge': Array(10).fill(8800) }, [], 'or:' + i);
+    const act = r.quetes.filter((q) => q.genre === 'parc' && q.sorte === 'activite');
+    const exp = r.quetes.filter((q) => q.genre === 'parc' && q.sorte === 'exploit');
+    assert.equal(act.length, 2);
+    assert.equal(exp.length, 1);
+    assert.notEqual(Q.PARC[act[0].cle].etiquette, Q.PARC[act[1].cle].etiquette, 'deux du même coin');
+    assert.ok(r.quetes.filter((q) => q.genre === 'palier' || q.genre === 'decouverte').length >= 2);
+    assert.ok(r.quetes.length <= 7);
+    for (const q of r.quetes) assert.equal(q.gain, gains[q.palier]);
+    // À l'affichage : les scores d'abord, puis la vie du parc, puis l'exploit.
+    const genres = r.quetes.map((q) => (q.genre === 'parc' ? q.sorte : 'score'));
+    assert.deepEqual(genres, genres.slice().sort((a, b) => ['score', 'activite', 'exploit'].indexOf(a) - ['score', 'activite', 'exploit'].indexOf(b)));
+    // La réserve des échanges en propose d'autres.
+    assert.ok(r.reserve.some((x) => x.genre === 'parc'));
+  }
+  // Le podium : seulement pour qui a atteint l'Or quelque part.
+  const exploits = (h) => new Set(Array.from({ length: 30 }, (_, i) => tirage(h, [], 'x:' + i).quetes.filter((q) => q.sorte === 'exploit').map((q) => q.cle)).flat());
+  assert.ok(!exploits({ 'swapou-challenge': [2000, 2500, 3000] }).has('exploit-podium'), 'un joueur sous le Bronze');
+  assert.ok(exploits({ 'swapou-challenge': Array(5).fill(9700) }).has('exploit-podium'), 'un Platine');
+  // Un débutant : pas de doublon avec ses premiers pas (forum, Prunostic, jours de Challenge).
+  const deb = tirage({}, ['pas-forum', 'pas-prunostic', 'pas-jeux'], 'deb');
+  const cles = deb.quetes.filter((q) => q.genre === 'parc').map((q) => q.cle);
+  assert.ok(cles.length >= 1);
+  for (const c of cles) assert.ok(!['parc-forum', 'parc-sujet', 'parc-prunostics', 'parc-assidu', 'exploit-podium'].includes(c), c);
+  // Réglables : zéro activité, zéro exploit.
+  assert.ok(!tirage({ 'swapou-challenge': Array(10).fill(8800) }, [], 'z', { activites: 0, exploits: 0 }).quetes.some((q) => q.genre === 'parc'));
+  const R = Q.reglagesNormalises({ paliers: { activites: 9, exploits: -1 } });
+  assert.deepEqual([R.paliers.activites, R.paliers.exploits], [2, 1]);
+  // Les définitions, et leur avancement par les événements du site.
+  const forum = Q.definitionV2({ genre: 'parc', cle: 'parc-forum', palier: 'bronze', niveau: 'facile', gain: 5 }, 'ind-7');
+  assert.deepEqual([forum.id, forum.type, forum.etiquette, forum.famille, forum.parc, forum.gain], ['ind-7', 'action', 'forum', 'parc-forum', 'activite', 5]);
+  assert.match(Q.detail(forum), /^Vie du parc/);
+  let e = {};
+  for (let i = 0; i < 2; i++) e = Q.appliquer(forum, e, { type: 'action', action: 'forumPost' }, 'j') || e;
+  assert.equal(Q.appliquer(forum, e, { type: 'action', action: 'chatMsg' }, 'j'), null);
+  assert.equal(Q.avancement(forum, e).ligne, '2 / 3');
+  assert.ok(Q.estFaite(forum, Q.appliquer(forum, e, { type: 'action', action: 'forumPost' }, 'j')));
+  const sujet = Q.definitionV2({ genre: 'parc', cle: 'parc-sujet', gain: 8 }, 'ind-8');
+  assert.ok(Q.estFaite(sujet, Q.appliquer(sujet, {}, { type: 'action', action: 'forumTopic' }, 'j')));
+  const podium = Q.definitionV2({ genre: 'parc', cle: 'exploit-podium', gain: 18 }, 'ind-9');
+  assert.ok(Q.estFaite(podium, Q.appliquer(podium, {}, { type: 'action', action: 'medaille' }, 'j')));
+  const vers = Q.definitionV2({ genre: 'parc', cle: 'exploit-vers', gain: 8 }, 'ind-10');
+  assert.equal(Q.appliquer(vers, {}, { type: 'mode', jeu: 'kaluga', mode: 'epreuve0', v: 9, record: false }, 'j'), null, 'pas un record');
+  assert.ok(Q.estFaite(vers, Q.appliquer(vers, {}, { type: 'mode', jeu: 'kaluga', mode: 'epreuve0', v: 12, record: true }, 'j')));
+  const assidu = Q.definitionV2({ genre: 'parc', cle: 'parc-assidu', gain: 8 }, 'ind-11');
+  e = {};
+  for (const j of ['a', 'a', 'b', 'c']) e = Q.appliquer(assidu, e, { type: 'score', challenge: true, rk: 'swapou2_classic', v: 1 }, j) || e;
+  assert.equal(Q.avancement(assidu, e).ligne, '3 / 4 jours');
+  assert.equal(Q.definitionV2({ genre: 'parc', cle: 'inconnue' }, 'x'), null);
 });
 
 test('les premiers pas : le forum, un Prunostic qui coûte plus qu’il ne rapporte, trois jeux', () => {
@@ -989,6 +1051,10 @@ test('le modèle des paliers : paliers du parc, paie au palier, échange, bonus 
   }
   assert.ok(e.total >= 50 || e.quetes.length === 7, `${e.total} kikooz, ${e.quetes.length} quêtes`);
   assert.deepEqual([e.echange.possible, e.echange.fait, e.bonus.xp, e.bonus.verse], [true, null, 25000, false]);
+  // Pas seulement des scores : deux quêtes de la vie du parc et un exploit, après les jeux.
+  const horsScores = e.quetes.filter((q) => /^(Vie du parc|Exploit) ·/.test(q.detail));
+  assert.deepEqual(horsScores.map((q) => q.detail.split(' ·')[0]), ['Vie du parc', 'Vie du parc', 'Exploit'], JSON.stringify(e.quetes.map((q) => q.detail)));
+  assert.deepEqual(e.quetes.slice(-3).map((q) => q.id), horsScores.map((q) => q.id), 'en fin de liste');
   const A = await adminEtat();
   assert.equal(A.v2, true);
   const swp = A.paliers.mesures.find((m) => m.cle === 'swapou-challenge');
@@ -1022,7 +1088,7 @@ test('le modèle des paliers : paliers du parc, paie au palier, échange, bonus 
 
   // FIGUE : trois quêtes au plus, un budget minuscule — un seul score les fait toutes,
   // bat le record du parc : la semaine complète (XP) et la mise à prix.
-  assert.ok((await post('/api/admin/quetes', { paliers: { budget: 5, maxQuetes: 3 } }, ADMIN)).ok);
+  assert.ok((await post('/api/admin/quetes', { paliers: { budget: 5, maxQuetes: 3, activites: 0, exploits: 0 } }, ADMIN)).ok);
   e = await etat('figue');
   assert.equal(e.quetes.length, 3, JSON.stringify(e.quetes.map((q) => q.titre)));
   const xpAvant = Number((await sql(`SELECT xp FROM users WHERE username = 'figue'`))[0].xp) || 0;
@@ -1051,13 +1117,36 @@ test('le modèle des paliers : paliers du parc, paie au palier, échange, bonus 
   assert.equal((await sql(`SELECT username, ancien, gain FROM quetes_primes WHERE semaine = $1`, [lundi])).map((r) => [r.username, r.ancien, r.gain]).join(), `figue,${tenant},500`);
 
   // OLIVE : une débutante (premiers pas rallumés) ; un score de Challenge compte pour « trois jeux ».
-  assert.ok((await post('/api/admin/quetes', { paliers: { budget: 50, maxQuetes: 7, premiersPas: true } }, ADMIN)).ok);
+  assert.ok((await post('/api/admin/quetes', { paliers: { budget: 50, maxQuetes: 7, premiersPas: true, activites: 2, exploits: 1 } }, ADMIN)).ok);
   e = await etat('olive');
   assert.deepEqual(e.quetes.filter((q) => q.premiersPas).map((q) => q.id), ['pas-forum', 'pas-prunostic', 'pas-jeux']);
   assert.ok(e.quetes.some((q) => q.decouverte), 'des découvertes');
   await swapou('olive', 6000);
   await wait(300);
   assert.equal(quete(await etat('olive'), 'pas-jeux').ligne, '1 / 3 jeux');
+
+  // PRUNE : la vie du parc au complet (quatre activités : l'une est forcément
+  // une quête de forum) ; des messages sur le forum la font, et Gromelin paie.
+  assert.ok((await post('/api/admin/quetes', { paliers: { premiersPas: false, activites: 4 } }, ADMIN)).ok);
+  await compte('prune');
+  e = await etat('prune');
+  const forum = e.quetes.find((q) => /forum/.test(q.titre) && /^Vie du parc/.test(q.detail));
+  assert.ok(forum, JSON.stringify(e.quetes.map((q) => q.titre)));
+  const board = (await sql(`SELECT id FROM forum_boards WHERE name = 'Frutiz' LIMIT 1`))[0];
+  const avantP = await solde('prune');
+  for (let i = 0; i < 3; i++) {
+    const sujet = await post('/api/forum/topic', { sid: sids.cerise, boardId: board.id, title: 'Les quêtes, épisode ' + (i + 1), content: 'Qui a déjà fini ses quêtes de la semaine ?' });
+    assert.ok(sujet.topicId || sujet.id || sujet.ok, JSON.stringify(sujet));
+    const tid = sujet.topicId || sujet.id || (sujet.topic && sujet.topic.id);
+    const rep = await post('/api/forum/post', { sid: sids.prune, topicId: tid, content: 'Moi, presque : il me manque la grenouille !' });
+    assert.ok(!rep.error, JSON.stringify(rep));
+  }
+  assert.ok(!(await post('/api/forum/topic', { sid: sids.prune, boardId: board.id, title: 'Mon premier sujet', content: 'Bonjour à tous, je viens pour les quêtes.' })).error);
+  await wait(400);
+  const faite = (await etat('prune')).quetes.find((q) => q.id === forum.id);
+  assert.ok(faite.fait, JSON.stringify(faite));
+  assert.equal(await soldeVaut('prune', avantP + forum.gain), avantP + forum.gain);
+  assert.ok((await post('/api/admin/quetes', { paliers: { activites: 2 } }, ADMIN)).ok);
 
   // Redémarrage : l'échange, le bonus et la prime tiennent.
   await arreter();

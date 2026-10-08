@@ -6488,6 +6488,9 @@ async function loadQuetes() {
           <div style="margin-bottom:6px"><b>Gains par palier :</b> ${['bronze', 'argent', 'or', 'platine', 'legende'].map((k) => `<label style="margin-right:8px">${qtPalier(k)} <input type="number" min="0" id="qt-gp-${k}" value="${R.paliers.gains[k]}" style="width:50px"></label>`).join('')}</div>
           <div style="margin-bottom:6px"><label style="margin-right:12px"><b>Budget</b> <input type="number" min="5" id="qt-p-budget" value="${R.paliers.budget}" style="width:56px"> kikooz possibles par semaine</label>
             <label><b>au plus</b> <input type="number" min="3" max="10" id="qt-p-max" value="${R.paliers.maxQuetes}" style="width:44px"> quêtes</label></div>
+          <div style="margin-bottom:6px"><b>Hors scores :</b>
+            <label style="margin-right:12px"><input type="number" min="0" max="4" id="qt-p-activites" value="${R.paliers.activites}" style="width:40px"> quête(s) de la vie du parc (forum, salons, Prunostics, assiduité)</label>
+            <label><input type="number" min="0" max="2" id="qt-p-exploits" value="${R.paliers.exploits}" style="width:40px"> exploit(s) (podium, Question à 60 kikooz, records de Kaluga)</label></div>
           <div style="margin-bottom:6px">
             <label style="margin-right:12px"><input type="checkbox" id="qt-p-decouverte" ${R.paliers.decouverte ? 'checked' : ''}> Découverte (un jeu pas joué)</label>
             <label style="margin-right:12px"><input type="checkbox" id="qt-p-pas" ${R.paliers.premiersPas ? 'checked' : ''}> Premiers pas (débutants)</label>
@@ -6572,7 +6575,8 @@ async function quetesEnregistrer() {
   const gp = {};
   for (const k of ['bronze', 'argent', 'or', 'platine', 'legende']) gp[k] = Number($(`#qt-gp-${k}`).value);
   const paliers = { depuis: $('#qt-p-depuis').value, gains: gp, budget: Number($('#qt-p-budget').value), maxQuetes: Number($('#qt-p-max').value),
-    decouverte: $('#qt-p-decouverte').checked, premiersPas: $('#qt-p-pas').checked, echange: $('#qt-p-echange').checked, bonusXp: Number($('#qt-p-bonus').value) };
+    decouverte: $('#qt-p-decouverte').checked, premiersPas: $('#qt-p-pas').checked, echange: $('#qt-p-echange').checked, bonusXp: Number($('#qt-p-bonus').value),
+    activites: Number($('#qt-p-activites').value), exploits: Number($('#qt-p-exploits').value) };
   const primes = { actif: $('#qt-pr-actif').checked, gain: Number($('#qt-pr-gain').value) };
   await quetesPost('/api/admin/quetes', { ouverture: o ? o.value : 'ferme', mode: md ? md.value : 'individuelles', testeurs: $('#qt-testeurs').value,
     gains, composition, individuelles, contrat, paliers, primes },

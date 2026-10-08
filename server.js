@@ -11194,7 +11194,8 @@ async function quetesTaillerV2(u, lundi, historique, paliers) {
     }
   }
   const r = Quetes.proposerV2({ historique, paliers, premiersPas }, Quetes.aleaSeme('paliers:' + u + ':' + lundi),
-    { minJours: quetesReglages.individuelles.minJours, budget: R.budget, maxQuetes: R.maxQuetes, gains: R.gains, decouverte: R.decouverte });
+    { minJours: quetesReglages.individuelles.minJours, budget: R.budget, maxQuetes: R.maxQuetes, gains: R.gains, decouverte: R.decouverte,
+      activites: R.activites, exploits: R.exploits });
   let n = 0;
   const quetes = r.quetes.map((sp) => Quetes.definitionV2(sp, sp.genre === 'premierspas' ? sp.cle : 'ind-' + (++n))).filter(Boolean);
   const connu = Object.keys(r.niveaux).length > 0;
@@ -11560,7 +11561,8 @@ app.post('/api/quetes/echanger', async (req, res) => {
     if (p && p.faitAt) return res.status(400).json({ ok: false, error: 'deja_faite', message: 'Cette quête est déjà faite.' });
     // La remplaçante : même niveau d'abord, jamais une mesure déjà dans la liste.
     const prises = new Set(l.quetes.map((q) => q.famille));
-    const libres = (l.reserve || []).filter((sp) => sp.mesure && !prises.has(sp.mesure));
+    // (une quête de la vie du parc se reconnaît à sa clé, une quête de score à sa mesure)
+    const libres = (l.reserve || []).filter((sp) => (sp.mesure || sp.cle) && !prises.has(sp.mesure || sp.cle));
     const sp = libres.find((x) => x.niveau === ancienne.niveau) || libres[0];
     const num = l.quetes.reduce((mx, q) => Math.max(mx, Number(String(q.id).replace('ind-', '')) || 0), 0) + 1;
     let neuve = sp ? Quetes.definitionV2(sp, 'ind-' + num) : null;

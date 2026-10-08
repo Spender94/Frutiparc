@@ -73,6 +73,10 @@ const REGLAGES_DEFAUT = Object.freeze({
     premiersPas: true,    // forum, Prunostic, trois jeux : une fois dans sa vie
     echange: true,        // changer une quête, une fois par semaine
     bonusXp: 25000,       // toutes les quêtes de la semaine faites
+    // Les quêtes hors scores : la vie du parc (forum, salons, Prunostics…)
+    // et les exploits (podium, Question à 60 kikooz, records de Kaluga).
+    activites: 2,
+    exploits: 1,
     seuils: {},           // retouches de l'admin : { mesure: { bronze, …, legende } }
   },
   // LES MISES À PRIX : battre un record absolu du parc (le livre des records du
@@ -461,6 +465,8 @@ function reglagesNormalises(brut) {
     premiersPas: P.premiersPas !== false,
     echange: P.echange !== false,
     bonusXp: borne(P.bonusXp, 0, 1000000, P0.bonusXp),
+    activites: borne(P.activites, 0, 4, P0.activites),
+    exploits: borne(P.exploits, 0, 2, P0.exploits),
     seuils,
   };
   const PR = Object.assign({}, REGLAGES_DEFAUT.primes, (R.primes && typeof R.primes === 'object') ? R.primes : {});
@@ -1018,6 +1024,37 @@ const PREMIERS_PAS = {
   'pas-jeux': { genre: 'premierspas', cle: 'pas-jeux' },
 };
 
+/*
+ * LA VIE DU PARC ET LES EXPLOITS — les quêtes qui ne sont pas des scores.
+ * Une activité se fait en passant du temps sur le site (forum, salons,
+ * Prunostics, Challenge) ; un exploit est un coup d'éclat (un podium, la
+ * Question à 60 kikooz, un record à Kaluga). `min` : le palier qu'il faut
+ * avoir atteint dans au moins un jeu pour se voir proposer l'exploit.
+ * `sauf` : le premier pas qui fait déjà la même chose (pas de doublon).
+ */
+const PARC = {
+  'parc-forum': { sorte: 'activite', palier: 'bronze', type: 'action', etiquette: 'forum', params: { action: 'forumPost', n: 3 }, sauf: 'pas-forum',
+    titre: 'Réponds à trois messages sur le forum', detail: 'Vie du parc · trois réponses, dans les sujets de ton choix' },
+  'parc-sujet': { sorte: 'activite', palier: 'argent', type: 'action', etiquette: 'forum', params: { action: 'forumTopic', n: 1 }, sauf: 'pas-forum',
+    titre: 'Ouvre un nouveau sujet sur le forum', detail: 'Vie du parc · une question, une idée, le récit d’une partie…' },
+  'parc-salons': { sorte: 'activite', palier: 'bronze', type: 'action', etiquette: 'salons', params: { action: 'chatMsg', n: 15 },
+    titre: 'Papote dans les salons : quinze messages', detail: 'Vie du parc · dans le salon de ton choix' },
+  'parc-prunostics': { sorte: 'activite', palier: 'bronze', type: 'action', etiquette: 'prunostics', params: { action: 'pari', n: 2 }, sauf: 'pas-prunostic',
+    titre: 'Place deux Prunostics', detail: 'Vie du parc · sur un match du tournoi ou sur le Challenge de demain' },
+  'parc-assidu': { sorte: 'activite', palier: 'argent', type: 'jours', etiquette: 'challenge', params: { n: 4 }, sauf: 'pas-jeux',
+    titre: 'Joue au Challenge quatre jours cette semaine', detail: 'Vie du parc · un score dans la journée suffit' },
+  'exploit-podium': { sorte: 'exploit', palier: 'platine', type: 'action', etiquette: 'challenge', params: { action: 'medaille', n: 1 }, min: 'or',
+    titre: 'Monte sur le podium d’un Challenge', detail: 'Exploit · une médaille d’or, d’argent ou de bronze, versée au changement de jour' },
+  'exploit-question': { sorte: 'exploit', palier: 'or', type: 'action', etiquette: 'kiloute', params: { action: 'kiloute', n: 1 },
+    titre: 'Remporte une Question à 60 kikooz', detail: 'Exploit · tous les soirs à 19 h, dans les salons' },
+  'exploit-vers': { sorte: 'exploit', palier: 'argent', type: 'record', etiquette: 'kaluga', params: { jeu: 'kaluga', mode: 'epreuve0' },
+    titre: 'Bats ton record au lancer de vers', detail: 'Exploit · Kaluga, épreuve olympique' },
+  'exploit-grenouille': { sorte: 'exploit', palier: 'argent', type: 'record', etiquette: 'kaluga', params: { jeu: 'kaluga', mode: 'epreuve6' },
+    titre: 'Bats ton record à la course de grenouille', detail: 'Exploit · Kaluga, épreuve olympique' },
+};
+// Le niveau d'une quête de la vie du parc (pour l'échange : même niveau d'abord).
+const PARC_NIVEAU = { bronze: 'facile', argent: 'moyenne', or: 'difficile', platine: 'difficile', legende: 'difficile' };
+
 /**
  * Les quêtes d'un joueur au modèle des paliers.
  * @param {object} entree
@@ -1068,10 +1105,28 @@ function proposerV2(entree, alea, options) {
   if (!o.decouverte) X.length = 0;
   const quetes = [];
   let total = 0;
-  const assez = () => quetes.length >= o.maxQuetes || (quetes.length >= 3 && total >= o.budget);
+  // Assez : la limite, ou le budget atteint avec au moins deux quêtes de score
+  // (la vie du parc et l'exploit passent d'abord, mais ne remplacent pas les jeux).
+  const scores = () => quetes.filter((q) => q.genre === 'palier' || q.genre === 'decouverte').length;
+  const assez = () => quetes.length >= o.maxQuetes || (quetes.length >= 3 && total >= o.budget && scores() >= 2);
   const poser = (q) => { quetes.push(q); total += q.gain; };
   // Les premiers pas d'abord : ils comptent dans le budget.
   for (const id of (E.premiersPas || [])) if (PREMIERS_PAS[id] && !assez()) poser(Object.assign({ niveau: 'facile', palier: 'bronze', gain: gains.bronze }, PREMIERS_PAS[id]));
+  // Puis la vie du parc et un exploit, hors scores : ils comptent aussi.
+  const pas = new Set(E.premiersPas || []);
+  const meilleur = Math.max(-1, ...Object.values(niveaux).map((p) => PALIERS.indexOf(p)));
+  const parc = (sorte) => melanger(Object.keys(PARC).filter((cle) => {
+    const x = PARC[cle];
+    return x.sorte === sorte && !(x.sauf && pas.has(x.sauf)) && !(x.min && meilleur < PALIERS.indexOf(x.min));
+  }), rnd).map((cle) => ({ genre: 'parc', cle, sorte, palier: PARC[cle].palier, niveau: PARC_NIVEAU[PARC[cle].palier], gain: gains[PARC[cle].palier] }));
+  const A = parc('activite'), XP = parc('exploit');
+  // Deux activités du même coin (deux quêtes de forum) : une seule.
+  const coin = (q) => PARC[q.cle].etiquette;
+  for (let i = 0; i < (o.activites || 0) && A.length && !assez(); i++) {
+    const j = A.findIndex((q) => !quetes.some((x) => x.genre === 'parc' && coin(x) === coin(q)));
+    poser(A.splice(j < 0 ? 0 : j, 1)[0]);
+  }
+  for (let i = 0; i < (o.exploits || 0) && XP.length && !assez(); i++) poser(XP.shift());
   const piles = { F, M, D, X };
   const motif = ['F', 'M', 'D', 'F', 'M', 'X', 'F', 'M', 'D', 'F', 'M', 'D', 'F', 'M', 'D'];
   let xPris = 0;
@@ -1104,7 +1159,12 @@ function proposerV2(entree, alea, options) {
     if (quetes.some((q) => q.mesure === c.m.cle && q.seuil === P[palier])) continue;
     plusBas.push({ genre: 'palier', mesure: c.m.cle, palier, seuil: P[palier], niveau: 'facile', jours: c.jours, gain: gains[palier] });
   }
-  const reserve = F.concat(M, D, X, plusBas).slice(0, 10);
+  // La réserve : deux autres activités et un autre exploit d'abord (on peut
+  // vouloir troquer « quinze messages » contre autre chose qu'un score).
+  const reserve = A.slice(0, o.activites ? 2 : 0).concat(XP.slice(0, o.exploits ? 1 : 0), F, M, D, X, plusBas).slice(0, 12);
+  // À l'affichage : les premiers pas, les scores, puis la vie du parc et l'exploit.
+  const rang = (q) => (q.genre === 'premierspas' ? 0 : q.genre !== 'parc' ? 1 : q.sorte === 'activite' ? 2 : 3);
+  quetes.sort((a, b) => rang(a) - rang(b));
   return { quetes, reserve, niveaux };
 }
 
@@ -1128,6 +1188,12 @@ function definitionV2(spec, id) {
     }
     return null;
   }
+  if (spec.genre === 'parc') {
+    const x = PARC[spec.cle];
+    if (!x) return null;
+    return { id: String(id), niveau: spec.niveau || PARC_NIVEAU[x.palier], palier: spec.palier || x.palier, gain: spec.gain, v2: true,
+      type: x.type, etiquette: x.etiquette, famille: spec.cle, parc: x.sorte, params: Object.assign({}, x.params), titre: x.titre, detail: x.detail };
+  }
   const m = MESURES[spec.mesure];
   if (!m) return null;
   const decouverte = spec.genre === 'decouverte';
@@ -1139,7 +1205,7 @@ function definitionV2(spec, id) {
 }
 
 module.exports = {
-  PALIERS, PALIER_NOM, PALIER_PART, paliersDe, palierAtteint, proposerV2, definitionV2, PREMIERS_PAS,
+  PALIERS, PALIER_NOM, PALIER_PART, paliersDe, palierAtteint, proposerV2, definitionV2, PREMIERS_PAS, PARC,
   MESURES_PERSO, proposerPerso, definitionPerso, proposerContrat, definitionContrat, arrondir, aleaSeme,
   NIVEAUX, NIVEAU_NOM, REGLAGES_DEFAUT, CATALOGUE, ETIQUETTES, KALUGA_EPREUVES, MODES,
   nombre, jourPlus, lundiDe, minuitParis, finDeSemaine, semaineLisible,
