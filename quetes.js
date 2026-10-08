@@ -36,6 +36,13 @@
 
 const NIVEAUX = ['facile', 'moyenne', 'difficile'];
 const NIVEAU_NOM = { facile: 'Facile', moyenne: 'Moyenne', difficile: 'Difficile' };
+// Les paliers du parc (v2) : la part des meilleurs du jour du parc qui les
+// atteint — Bronze, la moitié ; Légende, le centième.
+const PALIERS = ['bronze', 'argent', 'or', 'platine', 'legende'];
+const PALIER_NOM = { bronze: 'Bronze', argent: 'Argent', or: 'Or', platine: 'Platine', legende: 'Légende' };
+const PALIER_PART = { bronze: 0.5, argent: 0.3, or: 0.15, platine: 0.05, legende: 0.01 };
+// Une découverte se cale un peu sous le Bronze : six sur dix l'atteignent.
+const DECOUVERTE_PART = 0.6;
 
 const REGLAGES_DEFAUT = Object.freeze({
   // 'ferme' : personne · 'testeurs' : les pseudos listés · 'tous' : tout le parc
@@ -53,6 +60,25 @@ const REGLAGES_DEFAUT = Object.freeze({
   individuelles: { fenetre: 28, minJours: 3 },
   // Le contrat à signer (une proposition parmi trois), en plus — en réserve.
   contrat: { actif: false },
+  // LE MODÈLE DES PALIERS (v2), pour les semaines à partir de `depuis` :
+  // les cibles se calent sur des paliers communs à tout le parc, et la paie
+  // suit le palier. Chacun reçoit des quêtes jusqu'à `budget` kikooz
+  // possibles (au moins 3, au plus `maxQuetes`).
+  paliers: {
+    depuis: '2026-10-12',
+    gains: { bronze: 5, argent: 8, or: 12, platine: 18, legende: 25 },
+    budget: 50,
+    maxQuetes: 7,
+    decouverte: true,     // une quête dans un jeu pas joué depuis la fenêtre
+    premiersPas: true,    // forum, Prunostic, trois jeux : une fois dans sa vie
+    echange: true,        // changer une quête, une fois par semaine
+    bonusXp: 25000,       // toutes les quêtes de la semaine faites
+    seuils: {},           // retouches de l'admin : { mesure: { bronze, …, legende } }
+  },
+  // LES MISES À PRIX : battre un record absolu du parc (le livre des records du
+  // Club) sur un classement du Challenge. Une prime par classement et par
+  // semaine, et seulement en détrônant quelqu'un d'autre.
+  primes: { actif: true, gain: 500, classements: null },   // null : tous ceux des quêtes
 });
 
 // L'étiquette de couleur posée devant le titre.
@@ -414,6 +440,35 @@ function reglagesNormalises(brut) {
     minJours: Math.max(1, Math.min(20, Math.floor(Number(I.minJours)) || 3)),
   };
   R.contrat = { actif: !!(R.contrat && typeof R.contrat === 'object' && R.contrat.actif === true) };
+  const P0 = REGLAGES_DEFAUT.paliers;
+  const P = Object.assign({}, P0, (R.paliers && typeof R.paliers === 'object') ? R.paliers : {});
+  const borne = (v, min, max, def) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= min && n <= max ? n : def; };
+  const gp = {};
+  for (const k of PALIERS) gp[k] = borne((P.gains || {})[k], 0, 1000, P0.gains[k]);
+  const seuils = {};
+  for (const [cle, x] of Object.entries((P.seuils && typeof P.seuils === 'object') ? P.seuils : {})) {
+    if (!MESURES[cle] || !x || typeof x !== 'object') continue;
+    const o = {};
+    for (const k of PALIERS) if (Number(x[k]) > 0) o[k] = Number(x[k]);
+    if (Object.keys(o).length) seuils[cle] = o;
+  }
+  R.paliers = {
+    depuis: /^\d{4}-\d{2}-\d{2}$/.test(String(P.depuis)) ? String(P.depuis) : P0.depuis,
+    gains: gp,
+    budget: borne(P.budget, 5, 2000, P0.budget),
+    maxQuetes: borne(P.maxQuetes, 3, 10, P0.maxQuetes),
+    decouverte: P.decouverte !== false,
+    premiersPas: P.premiersPas !== false,
+    echange: P.echange !== false,
+    bonusXp: borne(P.bonusXp, 0, 1000000, P0.bonusXp),
+    seuils,
+  };
+  const PR = Object.assign({}, REGLAGES_DEFAUT.primes, (R.primes && typeof R.primes === 'object') ? R.primes : {});
+  R.primes = {
+    actif: PR.actif !== false,
+    gain: borne(PR.gain, 0, 100000, REGLAGES_DEFAUT.primes.gain),
+    classements: Array.isArray(PR.classements) ? PR.classements.map(String) : null,
+  };
   // Les quêtes créées par l'admin : une mesure, un seuil, un niveau.
   R.perso = (Array.isArray(R.perso) ? R.perso : []).filter((x) => x && /^perso-\d+$/.test(String(x.id))
     && MESURES[x.mesure] && NIVEAUX.includes(x.niveau) && Number(x.seuil) > 0)
@@ -534,6 +589,8 @@ function estFaite(def, etat) {
     case 'parties':
     case 'action': return (Number(e.c) || 0) >= p.n;
     case 'record': return (Number(e.c) || 0) >= 1;
+    case 'pari': return (Number(e.c) || 0) >= 1;
+    case 'jeux': return (Array.isArray(e.g) ? e.g.length : 0) >= p.n;
     default: return false;
   }
 }
@@ -577,8 +634,23 @@ function appliquer(def, etat, evt, jour) {
       return e;
     }
     case 'action': {
-      if (evt.type !== 'action' || evt.action !== p.action) return null;
+      if (evt.type !== 'action' || !(evt.action === p.action || (p.actions || []).includes(evt.action))) return null;
       e.c = (Number(e.c) || 0) + 1;
+      return e;
+    }
+    case 'pari': {
+      // Un Prunostic d'au moins `mise` kikooz (la mise totale de ce pari).
+      if (evt.type !== 'pari' || !(Number(evt.mise) >= Number(p.mise)) || (Number(e.c) || 0) >= 1) return null;
+      e.c = 1;
+      return e;
+    }
+    case 'jeux': {
+      // Des jeux différents au Challenge.
+      if (evt.type !== 'score' || !evt.challenge || !evt.jeu) return null;
+      const g = Array.isArray(e.g) ? e.g.slice() : [];
+      if (g.includes(evt.jeu)) return null;
+      g.push(evt.jeu);
+      e.g = g;
       return e;
     }
     case 'mode': {
@@ -651,6 +723,14 @@ function avancement(def, etat) {
     case 'record':
       cible = 1; valeur = (Number(e.c) || 0) >= 1 ? 1 : 0;
       ligne = valeur ? `record battu : ${nombre(e.m)} ${unite}` : 'pas encore battu cette semaine';
+      break;
+    case 'pari':
+      cible = 1; valeur = (Number(e.c) || 0) >= 1 ? 1 : 0;
+      ligne = valeur ? 'Prunostic placé' : 'pas encore de Prunostic';
+      break;
+    case 'jeux':
+      cible = p.n; valeur = Math.min(p.n, Array.isArray(e.g) ? e.g.length : 0);
+      ligne = `${valeur} / ${cible} jeux`;
       break;
     default: break;
   }
@@ -725,6 +805,15 @@ const PAROLES = {
   // Pas assez joué pour qu'on le connaisse : des quêtes faciles, pour commencer.
   inconnu: [
     'Je ne te connais pas encore. Joue au <em>Challenge</em> quelques jours, et lundi prochain je taillerai tes quêtes sur tes propres scores.',
+  ],
+  // L'échange de la semaine.
+  echange: [
+    'Bon. Puisque tu insistes : « {titre} » à la place. Et c’est la dernière fois cette semaine.',
+    '<em>Grumpf.</em> Changée. « {titre} », et pas de réclamation.',
+  ],
+  // Une mise à prix ouverte dans un jeu où il excelle.
+  prime: [
+    'Toi qui joues si bien : le record de <em>{nom}</em> est à {tenant}. Bats-le, et je te verse <em>{gain} kikooz</em>.',
   ],
   // Le contrat de la semaine, proposé et pas encore signé.
   contrat: [
@@ -877,7 +966,180 @@ function definitionContrat(prop) {
   return d && Object.assign(d, { contrat: true });
 }
 
+// ── Le modèle des paliers (v2) ──────────────────────────────────────────────
+/*
+ * POURQUOI. Caler les cibles sur le seul historique du joueur avait deux
+ * travers : « battre son record » est d'autant plus dur qu'on a joué (le
+ * meilleur jour sur cinquante contre le meilleur sur trois), et tout se payait
+ * pareil, quel que soit le niveau visé.
+ *
+ * LES PALIERS DU PARC. Chaque lundi, pour chaque mesure, on prend les meilleurs
+ * du jour de TOUT le parc sur la fenêtre, et l'on pose cinq paliers : Bronze
+ * (la moitié du parc l'atteint), Argent (30 %), Or (15 %), Platine (5 %),
+ * Légende (1 %). L'admin peut retoucher chacun.
+ *
+ * LE NIVEAU D'UN JOUEUR dans un jeu : le palier qu'atteint son résultat
+ * habituel (la médiane de ses meilleurs du jour). Ses quêtes : facile = son
+ * palier, moyenne = le suivant, difficile = deux au-dessus (Légende au plus).
+ * Le nombre de jours joués n'y change rien.
+ *
+ * LA PAIE suit le palier (Bronze 5 … Légende 25), et chacun reçoit des quêtes
+ * jusqu'à un BUDGET de kikooz possibles : un débutant en a davantage, plus
+ * douces ; un expert moins, plus dures. Plus une DÉCOUVERTE (un jeu qu'il n'a
+ * pas joué de la fenêtre) et, pour qui débute, les PREMIERS PAS (une fois dans
+ * sa vie : le forum, un Prunostic, trois jeux du Challenge).
+ */
+
+/** Les paliers d'une mesure, d'après les meilleurs du jour du parc. */
+function paliersDe(m, valeurs, joueurs, options) {
+  const o = options || {};
+  const v = (valeurs || []).map(Number).filter(Number.isFinite);
+  if (!m || v.length < (o.minValeurs || 20) || (joueurs || 0) < (o.minJoueurs || 4)) return null;
+  const tries = v.sort((a, b) => (m.inverse ? a - b : b - a));
+  const au = (part) => tries[Math.min(tries.length - 1, Math.max(0, Math.ceil(part * tries.length) - 1))];
+  const r = {};
+  for (const k of PALIERS) r[k] = arrondir(m, au(PALIER_PART[k]));
+  if (m.plafond != null) for (const k of PALIERS) r[k] = Math.min(r[k], m.plafond);
+  r.decouverte = arrondir(m, au(DECOUVERTE_PART));
+  return r;
+}
+/** Le palier qu'atteint une valeur (index dans PALIERS), -1 sous le Bronze. */
+function palierAtteint(m, paliers, v) {
+  let k = -1;
+  PALIERS.forEach((nom, i) => { if (paliers && paliers[nom] != null && atteint(m, v, paliers[nom])) k = i; });
+  return k;
+}
+// La mesure qui représente un jeu pour une découverte (la première de la liste).
+function mesurePrincipale(jeu) { return MESURES_PERSO.find((k) => MESURES[k].jeu === jeu); }
+
+const PREMIERS_PAS = {
+  'pas-forum': { genre: 'premierspas', cle: 'pas-forum' },
+  'pas-prunostic': { genre: 'premierspas', cle: 'pas-prunostic' },
+  'pas-jeux': { genre: 'premierspas', cle: 'pas-jeux' },
+};
+
+/**
+ * Les quêtes d'un joueur au modèle des paliers.
+ * @param {object} entree
+ *   historique   { mesure: [ses meilleurs du jour] } sur la fenêtre
+ *   paliers      { mesure: { bronze, …, legende, decouverte } } (null : mesure sans repères)
+ *   premiersPas  les premiers pas qui lui restent (ids), [] s'il n'est pas débutant
+ * @param {() => number} alea
+ * @param {object} options  minJours, budget, maxQuetes, gains, decouverte
+ * @returns {{ quetes: spec[], reserve: spec[], niveaux: { mesure: palier } }}
+ *   spec : { genre: 'palier'|'decouverte'|'premierspas', mesure, palier, seuil, niveau, jours, gain }
+ */
+function proposerV2(entree, alea, options) {
+  const o = Object.assign({}, REGLAGES_DEFAUT.paliers, { minJours: REGLAGES_DEFAUT.individuelles.minJours }, options || {});
+  const rnd = alea || Math.random;
+  const gains = o.gains || REGLAGES_DEFAUT.paliers.gains;
+  const E = entree || {};
+  const paliers = E.paliers || {};
+  // Les mesures qu'il pratique, avec des repères : les plus jouées d'abord.
+  const cands = candidats(E.historique, rnd, o.minJours).filter((c) => paliers[c.m.cle]);
+  const parJeu = [], autres = [];
+  for (const c of cands) (parJeu.some((x) => x.m.jeu === c.m.jeu) ? autres : parJeu).push(c);
+  const ordre = parJeu.concat(autres);
+  const niveaux = {};
+  const F = [], M = [], D = [];
+  for (const c of ordre) {
+    const P = paliers[c.m.cle];
+    const mediane = quantile(c.tries, 0.5);
+    const L = palierAtteint(c.m, P, mediane);
+    niveaux[c.m.cle] = L < 0 ? null : PALIERS[L];
+    const vus = new Set();
+    // Sous le Bronze, on part du Bronze : Bronze, Argent, Or.
+    const b = Math.max(L, 0);
+    [['facile', b, F], ['moyenne', Math.min(b + 1, 4), M], ['difficile', Math.min(b + 2, 4), D]].forEach(([niveau, k, pile]) => {
+      const palier = PALIERS[k];
+      if (vus.has(P[palier])) return;   // deux paliers confondus : une seule quête
+      vus.add(P[palier]);
+      pile.push({ genre: 'palier', mesure: c.m.cle, palier, seuil: P[palier], niveau, jours: c.jours, gain: gains[palier] });
+    });
+  }
+  // Les découvertes : un jeu dont il n'a joué aucune mesure sur la fenêtre.
+  const joues = new Set(cands.map((c) => c.m.jeu).concat(Object.entries(E.historique || {})
+    .filter(([, v]) => (v || []).length).map(([k]) => MESURES[k] && MESURES[k].jeu)));
+  const X = melanger(Array.from(new Set(MESURES_PERSO.map((k) => MESURES[k].jeu)))
+    .filter((j) => !joues.has(j))
+    .map(mesurePrincipale)
+    .filter((k) => k && paliers[k] && paliers[k].decouverte != null)
+    .map((k) => ({ genre: 'decouverte', mesure: k, palier: 'bronze', seuil: paliers[k].decouverte, niveau: 'facile', jours: 0, gain: gains.bronze })), rnd);
+  if (!o.decouverte) X.length = 0;
+  const quetes = [];
+  let total = 0;
+  const assez = () => quetes.length >= o.maxQuetes || (quetes.length >= 3 && total >= o.budget);
+  const poser = (q) => { quetes.push(q); total += q.gain; };
+  // Les premiers pas d'abord : ils comptent dans le budget.
+  for (const id of (E.premiersPas || [])) if (PREMIERS_PAS[id] && !assez()) poser(Object.assign({ niveau: 'facile', palier: 'bronze', gain: gains.bronze }, PREMIERS_PAS[id]));
+  const piles = { F, M, D, X };
+  const motif = ['F', 'M', 'D', 'F', 'M', 'X', 'F', 'M', 'D', 'F', 'M', 'D', 'F', 'M', 'D'];
+  let xPris = 0;
+  // Dans chaque pile, la mesure la moins servie jusqu'ici : les jeux alternent.
+  const servie = (mesure) => quetes.filter((x) => x.mesure === mesure).length;
+  const prendre = (pile) => {
+    if (!pile.length) return null;
+    let i = 0;
+    pile.forEach((x, j) => { if (servie(x.mesure) < servie(pile[i].mesure)) i = j; });
+    return pile.splice(i, 1)[0];
+  };
+  for (const k of motif) {
+    if (assez()) break;
+    if (k === 'X' && xPris >= 1) continue;
+    const q = prendre(piles[k]);
+    if (!q) continue;
+    if (k === 'X') xPris++;
+    poser(q);
+  }
+  // Les piles vides et le budget pas atteint (il joue peu) : d'autres découvertes.
+  while (!assez() && X.length) poser(X.shift());
+  // Ce qui reste fait la réserve des échanges, plus « un cran plus bas » dans
+  // chacun de ses jeux (pour qui trouve une quête trop dure).
+  const plusBas = [];
+  for (const c of ordre) {
+    const P = paliers[c.m.cle];
+    const L = palierAtteint(c.m, P, quantile(c.tries, 0.5));
+    if (L < 1) continue;
+    const palier = PALIERS[L - 1];
+    if (quetes.some((q) => q.mesure === c.m.cle && q.seuil === P[palier])) continue;
+    plusBas.push({ genre: 'palier', mesure: c.m.cle, palier, seuil: P[palier], niveau: 'facile', jours: c.jours, gain: gains[palier] });
+  }
+  const reserve = F.concat(M, D, X, plusBas).slice(0, 10);
+  return { quetes, reserve, niveaux };
+}
+
+/** La définition d'une quête du modèle des paliers. */
+function definitionV2(spec, id) {
+  if (!spec) return null;
+  if (spec.genre === 'premierspas') {
+    const base = { id: String(id || spec.cle), niveau: 'facile', palier: 'bronze', gain: spec.gain, premiersPas: true, v2: true, famille: spec.cle };
+    if (spec.cle === 'pas-forum') {
+      return Object.assign(base, { type: 'action', etiquette: 'forum', params: { actions: ['forumPost', 'forumTopic'], n: 1 },
+        titre: 'Écris ton premier message sur le forum', detail: 'Premiers pas · un sujet ou une réponse, où tu veux' });
+    }
+    if (spec.cle === 'pas-prunostic') {
+      const mise = Math.max(10, 2 * (Number(spec.gain) || 0));
+      return Object.assign(base, { type: 'pari', etiquette: 'prunostics', params: { mise },
+        titre: `Place un Prunostic d’au moins ${nombre(mise)} kikooz`, detail: 'Premiers pas · sur un match du tournoi ou sur le Challenge de demain' });
+    }
+    if (spec.cle === 'pas-jeux') {
+      return Object.assign(base, { type: 'jeux', etiquette: 'challenge', params: { n: 3 },
+        titre: 'Joue à trois jeux différents au Challenge', detail: 'Premiers pas · un score dans trois jeux du Challenge' });
+    }
+    return null;
+  }
+  const m = MESURES[spec.mesure];
+  if (!m) return null;
+  const decouverte = spec.genre === 'decouverte';
+  const detail = decouverte
+    ? `Découverte · ${m.nom} — un jeu que tu n’as pas joué ces dernières semaines`
+    : `${m.nom} · palier ${PALIER_NOM[spec.palier]} du parc (${Math.round(PALIER_PART[spec.palier] * 100)} % l’atteignent)`;
+  return { id: String(id), niveau: spec.niveau, palier: spec.palier, gain: spec.gain, type: 'mesure', etiquette: m.jeu, famille: m.cle,
+    taillee: true, v2: true, decouverte, params: { mesure: m.cle, seuil: spec.seuil }, detail };
+}
+
 module.exports = {
+  PALIERS, PALIER_NOM, PALIER_PART, paliersDe, palierAtteint, proposerV2, definitionV2, PREMIERS_PAS,
   MESURES_PERSO, proposerPerso, definitionPerso, proposerContrat, definitionContrat, arrondir, aleaSeme,
   NIVEAUX, NIVEAU_NOM, REGLAGES_DEFAUT, CATALOGUE, ETIQUETTES, KALUGA_EPREUVES, MODES,
   nombre, jourPlus, lundiDe, minuitParis, finDeSemaine, semaineLisible,

@@ -6377,6 +6377,27 @@ function qtReste(fin) {
 }
 const QT_NIVEAU = { facile: 'Facile', moyenne: 'Moyenne', difficile: 'Difficile' };
 const QT_COULEUR = { facile: '#5E9E1C', moyenne: '#C8860A', difficile: '#C0281A' };
+const QT_PALIER = { bronze: ['Bronze', '#9C5F28'], argent: ['Argent', '#7E878E'], or: ['Or', '#B8860B'], platine: ['Platine', '#3F8F99'], legende: ['Légende', '#6E2F99'] };
+function qtPalier(k) { const p = QT_PALIER[k] || [k, '#333']; return `<b style="color:${p[1]}">${p[0]}</b>`; }
+async function quetesPaliers(cle) {
+  const seuils = {};
+  for (const k of ['bronze', 'argent', 'or', 'platine', 'legende']) seuils[k] = $(`#qt-pl-${cle}-${k}`).value;
+  await quetesPost('/api/admin/quetes/paliers', { mesure: cle, seuils }, (d) => d.seuils ? 'Paliers retouchés' : 'Paliers calculés rétablis');
+}
+async function quetesApercu() {
+  const u = $('#qt-ap-u').value.trim();
+  const bloc = $('#qt-ap');
+  if (!u) return;
+  bloc.textContent = '…';
+  try {
+    const d = await (await fetch('/api/admin/quetes/apercu?u=' + encodeURIComponent(u), { headers: hdr() })).json();
+    if (!d.ok) { bloc.innerHTML = `<span style="color:#c03c30">${esc(d.message || d.error)}</span>`; return; }
+    bloc.innerHTML = `<b>${esc(d.nom)}</b>, semaine ${esc(d.lisible)} — <b>${d.quetes.length}</b> quêtes, <b>${d.total}</b> kikooz possibles
+      <div style="color:#777;margin:2px 0 4px">niveaux : ${d.niveaux.length ? d.niveaux.map((n) => `${esc(n.mesure)} <b>${esc(n.palier)}</b> (${n.jours} j)`).join(' · ') : 'aucun jeu assez joué'}</div>
+      ${d.quetes.map((q) => `<div>${q.palier ? `<b>${esc(q.palier)}</b> ${q.gain} kz` : `${q.gain} kz`} · ${q.decouverte ? '<i>découverte</i> · ' : ''}${q.premiersPas ? '<i>premiers pas</i> · ' : ''}${esc(q.titre)} <small style="color:#777">${esc(q.detail)}</small></div>`).join('')}
+      ${d.reserve.length ? `<div style="color:#777;margin-top:4px">réserve (échange) : ${d.reserve.map(esc).join(' · ')}</div>` : ''}`;
+  } catch (e) { bloc.textContent = 'Erreur : ' + e.message; }
+}
 function qtNiveau(n) { return `<b style="color:${QT_COULEUR[n] || '#333'}">${QT_NIVEAU[n] || esc(n)}</b>`; }
 async function loadQuetes() {
   const bloc = $('#quetes-admin');
@@ -6401,9 +6422,11 @@ async function loadQuetes() {
       </td></tr>`).join('');
     // Chaque joueur a ses quêtes (individuelles) : la liste, ligne par ligne.
     const joueurs = d.joueurs.map((j) => `<tr><td><b>${esc(j.nom)}</b>${j.connu === false ? '<br><small style="color:#c8860a">pas encore d’historique</small>' : ''}</td>
-      <td>${j.faites} / ${j.total}</td><td>${j.gagnes}</td>
-      <td style="font-size:11px">${j.lignes.map((l) => `<div>${qtNiveau(l.niveau)} ${esc(l.titre)}${l.taillee ? '' : ' <small style="color:#999">(catalogue)</small>'}
-        — ${l.fait ? '<b style="color:#2f8f2f">✔ faite</b>' : esc(l.ligne)}</div>`).join('')}</td>
+      <td>${j.faites} / ${j.total}</td><td>${j.gagnes} / ${j.possible}</td>
+      <td style="font-size:11px">${j.lignes.map((l) => `<div>${l.palier ? qtPalier(l.palier) + ` <b>${l.gain}</b> ` : qtNiveau(l.niveau) + ' '}${l.decouverte ? '<i>découverte</i> ' : ''}${l.premiersPas ? '<i>premiers pas</i> ' : ''}${esc(l.titre)}${l.taillee || l.premiersPas ? '' : ' <small style="color:#999">(catalogue)</small>'}
+        — ${l.fait ? '<b style="color:#2f8f2f">✔ faite</b>' : esc(l.ligne)}</div>`).join('')}
+        ${j.echange ? `<div style="color:#c8860a">↺ a changé « ${esc(j.echange)} »</div>` : ''}${j.bonus ? '<div style="color:#2f8f2f">✔ bonus XP de la semaine versé</div>' : ''}
+        ${Object.keys(j.niveaux || {}).length ? `<div style="color:#777">niveaux : ${Object.entries(j.niveaux).map(([k, n]) => esc(k.replace('-challenge', '')) + ' ' + (n ? qtPalier(n) : 'sous le Bronze')).join(' · ')}</div>` : ''}</td>
       <td><button class="btn btn-sm" onclick="quetesReinit('${esc(j.username)}')" title="Efface son avancement de la semaine et ses quêtes, retaillées à sa prochaine visite (les kikooz versés restent)">Remettre à zéro</button></td></tr>`).join('');
     const modeRadio = (v, l) => `<label style="margin-right:14px"><input type="radio" name="qt-mode" value="${v}" ${R.mode === v ? 'checked' : ''}> ${l}</label>`;
     // Les repères d'une mesure : des pastilles qui posent leur valeur dans le champ.
@@ -6456,6 +6479,24 @@ async function loadQuetes() {
         <div style="margin-bottom:8px"><b>Lecture des scores :</b>
           <label style="margin-right:10px">les <input type="number" min="7" max="90" id="qt-ind-fenetre" value="${R.individuelles.fenetre}" style="width:52px"> jours avant lundi,</label>
           <label>un jeu compte s'il a été joué au moins <input type="number" min="1" max="20" id="qt-ind-min" value="${R.individuelles.minJours}" style="width:44px"> jours</label></div>
+        <div style="border-top:1px dashed #c9a46a;margin:8px 0;padding-top:8px">
+          <b>Modèle des paliers</b> — à partir de la semaine du <input type="date" id="qt-p-depuis" value="${esc(R.paliers.depuis)}">
+          ${d.v2 ? '<b style="color:#2f8f2f">(en vigueur cette semaine)</b>' : '<span style="color:#c8860a">(pas encore en vigueur cette semaine)</span>'}
+          <div style="color:#777;font-size:12px;margin:3px 0 6px;line-height:1.45">Chaque lundi, cinq paliers par jeu sont calculés sur les meilleurs du jour de tout le parc (fenêtre ci-dessus) :
+            Bronze (la moitié du parc l'atteint), Argent (30 %), Or (15 %), Platine (5 %), Légende (1 %). Le niveau d'un joueur est le palier de son résultat habituel ;
+            ses quêtes visent son palier (facile), le suivant (moyenne) et deux au-dessus (difficile). La paie suit le palier, et chacun reçoit des quêtes jusqu'au budget.</div>
+          <div style="margin-bottom:6px"><b>Gains par palier :</b> ${['bronze', 'argent', 'or', 'platine', 'legende'].map((k) => `<label style="margin-right:8px">${qtPalier(k)} <input type="number" min="0" id="qt-gp-${k}" value="${R.paliers.gains[k]}" style="width:50px"></label>`).join('')}</div>
+          <div style="margin-bottom:6px"><label style="margin-right:12px"><b>Budget</b> <input type="number" min="5" id="qt-p-budget" value="${R.paliers.budget}" style="width:56px"> kikooz possibles par semaine</label>
+            <label><b>au plus</b> <input type="number" min="3" max="10" id="qt-p-max" value="${R.paliers.maxQuetes}" style="width:44px"> quêtes</label></div>
+          <div style="margin-bottom:6px">
+            <label style="margin-right:12px"><input type="checkbox" id="qt-p-decouverte" ${R.paliers.decouverte ? 'checked' : ''}> Découverte (un jeu pas joué)</label>
+            <label style="margin-right:12px"><input type="checkbox" id="qt-p-pas" ${R.paliers.premiersPas ? 'checked' : ''}> Premiers pas (débutants)</label>
+            <label style="margin-right:12px"><input type="checkbox" id="qt-p-echange" ${R.paliers.echange ? 'checked' : ''}> Changer une quête par semaine</label>
+            <label>Bonus semaine complète <input type="number" min="0" id="qt-p-bonus" value="${R.paliers.bonusXp}" style="width:76px"> XP</label></div>
+          <div><label style="margin-right:12px"><input type="checkbox" id="qt-pr-actif" ${R.primes.actif ? 'checked' : ''}> <b>Mises à prix</b> (records absolus du parc)</label>
+            <label>prime <input type="number" min="0" id="qt-pr-gain" value="${R.primes.gain}" style="width:64px"> kikooz</label>
+            <small style="color:#777">— battre un record du Challenge en détrônant quelqu'un d'autre ; une prime par record et par semaine</small></div>
+        </div>
         <div style="margin-bottom:8px"><label><input type="checkbox" id="qt-contrat-actif" ${R.contrat.actif ? 'checked' : ''}> <b>Contrat à signer</b> en plus</label>
           <small style="color:#777">(trois propositions taillées sur ses scores, il en signe une ; seuls les résultats d'après la signature comptent)</small></div>
         <button class="btn btn-success" onclick="quetesEnregistrer()">Enregistrer</button>
@@ -6474,6 +6515,24 @@ async function loadQuetes() {
       ${joueurs ? `<table><thead><tr><th>Joueur</th><th>Faites</th><th>Kikooz</th><th>Ses quêtes</th><th></th></tr></thead><tbody>${joueurs}</tbody></table>` : '<div style="color:#777">Personne n’a encore ouvert ses quêtes cette semaine.</div>'}
       ${contrats ? `<h4>Contrats de la semaine</h4><table><thead><tr><th>Joueur</th><th>Contrat</th><th>Propositions (la signée en rouge)</th><th>Où il en est</th></tr></thead><tbody>${contrats}</tbody></table>`
         : ''}
+      <h4>Aperçu du tirage de lundi</h4>
+      <div style="border:1px solid #c9a46a;background:#fffaf0;padding:10px;border-radius:8px;font-size:12px;margin-bottom:10px">
+        <input id="qt-ap-u" placeholder="pseudo" style="width:150px"> <button class="btn btn-sm" onclick="quetesApercu()">Voir ses quêtes de lundi</button>
+        <small style="color:#777">(d'après les scores connus à ce jour : ceux de la fin de semaine peuvent encore les changer)</small>
+        <div id="qt-ap" style="margin-top:6px"></div>
+      </div>
+      <h4>Paliers du parc — semaine du ${esc(d.paliers.lundi)}</h4>
+      <div style="color:#777;font-size:12px;margin-bottom:6px">Calculés sur les meilleurs du jour de tout le parc. Une case remplie remplace le palier calculé (vide : le calculé) ;
+        les retouches valent pour les quêtes taillées ensuite. Un jeu trop peu joué (moins de 20 journées, ou de 4 joueurs) n'a pas de paliers : pas de quête dans ce jeu, sauf à les fixer ici.</div>
+      <table><thead><tr><th>Mesure</th>${['bronze', 'argent', 'or', 'platine', 'legende'].map((k) => `<th>${qtPalier(k)}</th>`).join('')}<th></th></tr></thead><tbody>
+      ${d.paliers.mesures.map((m) => `<tr><td><b>${esc(m.groupe)}</b><br><small style="color:#777">${esc(m.nom)} · ${esc(m.sens)}</small></td>
+        ${['bronze', 'argent', 'or', 'platine', 'legende'].map((k) => `<td style="font-size:11px">${m.calcules ? esc(m.calcules[k] || '—') : '<i style="color:#999">—</i>'}<br>
+          <input id="qt-pl-${esc(m.cle)}-${k}" value="${esc(m.retouches && m.retouches[k] ? m.retouches[k] : '')}" placeholder="retouche" style="width:90px;font-size:11px"></td>`).join('')}
+        <td><button class="btn btn-sm" onclick="quetesPaliers('${esc(m.cle)}')">Enregistrer</button></td></tr>`).join('')}
+      </tbody></table>
+      ${(d.primes || []).length ? `<h4>Mises à prix</h4><table><thead><tr><th>Classement</th><th>Record du parc</th><th>Tenant</th><th>Cette semaine</th></tr></thead><tbody>
+        ${d.primes.map((p) => `<tr><td>${esc(p.nom)}</td><td>${esc(p.record)}</td><td>${esc(p.tenant)}</td><td>${p.ouverte ? `ouverte (${p.gain} kikooz)` : `<b>prise par ${esc(p.prisePar)}</b>`}</td></tr>`).join('')}
+      </tbody></table>` : ''}
       <h4>Créer une quête</h4>
       <div style="border:1px solid #c9a46a;background:#fffaf0;padding:10px;border-radius:8px;font-size:12px;margin-bottom:10px">
         <div style="color:#777;margin-bottom:6px;line-height:1.45">Une quête, c'est un <b>résultat</b> : choisis ce qu'on mesure, et le seuil à atteindre.
@@ -6510,8 +6569,13 @@ async function quetesEnregistrer() {
   const md = document.querySelector('input[name="qt-mode"]:checked');
   const individuelles = { fenetre: Number($('#qt-ind-fenetre').value), minJours: Number($('#qt-ind-min').value) };
   const contrat = { actif: $('#qt-contrat-actif').checked };
+  const gp = {};
+  for (const k of ['bronze', 'argent', 'or', 'platine', 'legende']) gp[k] = Number($(`#qt-gp-${k}`).value);
+  const paliers = { depuis: $('#qt-p-depuis').value, gains: gp, budget: Number($('#qt-p-budget').value), maxQuetes: Number($('#qt-p-max').value),
+    decouverte: $('#qt-p-decouverte').checked, premiersPas: $('#qt-p-pas').checked, echange: $('#qt-p-echange').checked, bonusXp: Number($('#qt-p-bonus').value) };
+  const primes = { actif: $('#qt-pr-actif').checked, gain: Number($('#qt-pr-gain').value) };
   await quetesPost('/api/admin/quetes', { ouverture: o ? o.value : 'ferme', mode: md ? md.value : 'individuelles', testeurs: $('#qt-testeurs').value,
-    gains, composition, individuelles, contrat },
+    gains, composition, individuelles, contrat, paliers, primes },
     (d) => `Quêtes : ${{ ferme: 'fermées', testeurs: 'testeurs seulement', tous: 'ouvertes à tous' }[d.reglages.ouverture]}`
       + (d.inconnus && d.inconnus.length ? ` — pseudo(s) inconnu(s) : ${d.inconnus.join(', ')}` : ''));
 }

@@ -775,6 +775,24 @@ async function initSchema() {
         cree_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
         PRIMARY KEY (semaine, username)
       );
+      -- Le modèle des paliers : les quêtes de rechange (la réserve), et
+      -- l'échange de la semaine (une quête changée, une fois).
+      ALTER TABLE quetes_individuelles ADD COLUMN IF NOT EXISTS reserve JSONB NOT NULL DEFAULT '[]'::jsonb;
+      ALTER TABLE quetes_individuelles ADD COLUMN IF NOT EXISTS echange JSONB;
+      ALTER TABLE quetes_individuelles ADD COLUMN IF NOT EXISTS niveaux JSONB NOT NULL DEFAULT '{}'::jsonb;
+      -- LES MISES À PRIX : un record absolu du parc battu (en détrônant
+      -- quelqu'un), une prime par classement et par semaine.
+      CREATE TABLE IF NOT EXISTS quetes_primes (
+        semaine        TEXT NOT NULL,
+        ranking_id     TEXT NOT NULL,
+        username       TEXT NOT NULL,
+        score          DOUBLE PRECISION NOT NULL,
+        ancien         TEXT,
+        ancien_score   DOUBLE PRECISION,
+        gain           INTEGER NOT NULL DEFAULT 0,
+        pris_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (semaine, ranking_id)
+      );
       CREATE TABLE IF NOT EXISTS quetes_contrats (
         semaine       TEXT NOT NULL,
         username      TEXT NOT NULL,
@@ -1938,6 +1956,7 @@ async function anonymiserJoueur(username) {
       ['quetes_visites', 'username', 'brut'],
       ['quetes_contrats', 'username', 'brut'],
       ['quetes_individuelles', 'username', 'brut'],
+      ['quetes_primes', 'username', 'brut'],
       // Ses parties en différé : sans lui, elles n'ont plus d'adversaire.
       ['parties_differees', 'joueur_a', 'brut'],
       ['parties_differees', 'joueur_b', 'brut'],
@@ -2033,7 +2052,8 @@ async function exporterDonnees(userId, username) {
     quetes: await q('SELECT semaine, quete_id, etat, fait_at, gain FROM quetes_progres WHERE username = $1 ORDER BY semaine, quete_id', [u]),
     quetes_visite: await q('SELECT semaine, vu_at FROM quetes_visites WHERE username = $1', [u]),
     quetes_contrats: await q('SELECT semaine, propositions, choix, signe_at FROM quetes_contrats WHERE username = $1 ORDER BY semaine', [u]),
-    quetes_individuelles: await q('SELECT semaine, quetes, cree_at FROM quetes_individuelles WHERE username = $1 ORDER BY semaine', [u]),
+    quetes_individuelles: await q('SELECT semaine, quetes, echange, cree_at FROM quetes_individuelles WHERE username = $1 ORDER BY semaine', [u]),
+    quetes_primes: await q('SELECT semaine, ranking_id, score, gain, pris_at FROM quetes_primes WHERE username = $1 ORDER BY pris_at', [u]),
     sanctions: await q('SELECT moderator, action, detail, created_at FROM moderation_logs WHERE LOWER(target_username) = $1 ORDER BY created_at', [u]),
     notifications: await q('SELECT ua, created_at FROM push_subscriptions WHERE LOWER(username) = $1', [u]),
     sessions: await q('SELECT created_at FROM sessions WHERE user_id = $1 ORDER BY created_at', [id]),
@@ -2112,6 +2132,8 @@ const RENOMMAGE_COLONNES = [
   ['quetes_visites', 'username'],
   ['quetes_contrats', 'username'],
   ['quetes_individuelles', 'username'],
+  ['quetes_primes', 'username'],
+  ['quetes_primes', 'ancien'],
   ['shop_packs', 'auteur'],
   ['users', 'referred_by'],
 ];
@@ -3183,18 +3205,61 @@ async function quetesHistoriqueJoueur(username, depuisJour, rankingIds, avantJou
   return rows;
 }
 async function quetesChargerIndividuelles(semaine) {
-  const { rows } = await pool.query('SELECT username, quetes, connu FROM quetes_individuelles WHERE semaine = $1', [String(semaine)]);
+  const { rows } = await pool.query('SELECT username, quetes, connu, reserve, echange, niveaux FROM quetes_individuelles WHERE semaine = $1', [String(semaine)]);
   return rows;
 }
 // La première préparation fait foi (deux visites simultanées : une seule liste).
-async function quetesEnregistrerIndividuelles(semaine, username, quetes, connu) {
+async function quetesEnregistrerIndividuelles(semaine, username, quetes, connu, extra) {
+  const x = extra || {};
   await pool.query(
-    `INSERT INTO quetes_individuelles (semaine, username, quetes, connu) VALUES ($1, $2, $3::jsonb, $4)
+    `INSERT INTO quetes_individuelles (semaine, username, quetes, connu, reserve, niveaux) VALUES ($1, $2, $3::jsonb, $4, $5::jsonb, $6::jsonb)
      ON CONFLICT (semaine, username) DO NOTHING`,
-    [String(semaine), String(username).toLowerCase(), JSON.stringify(quetes || []), !!connu]);
-  const { rows } = await pool.query('SELECT quetes, connu FROM quetes_individuelles WHERE semaine = $1 AND username = $2',
+    [String(semaine), String(username).toLowerCase(), JSON.stringify(quetes || []), !!connu,
+      JSON.stringify(x.reserve || []), JSON.stringify(x.niveaux || {})]);
+  const { rows } = await pool.query('SELECT quetes, connu, reserve, echange, niveaux FROM quetes_individuelles WHERE semaine = $1 AND username = $2',
     [String(semaine), String(username).toLowerCase()]);
   return rows[0] || null;
+}
+// L'échange de la semaine : une seule fois (rend true si c'est celui-ci).
+async function quetesEchangerIndividuelle(semaine, username, quetes, reserve, echange) {
+  const r = await pool.query(
+    `UPDATE quetes_individuelles SET quetes = $3::jsonb, reserve = $4::jsonb, echange = $5::jsonb
+      WHERE semaine = $1 AND username = $2 AND echange IS NULL`,
+    [String(semaine), String(username).toLowerCase(), JSON.stringify(quetes), JSON.stringify(reserve || []), JSON.stringify(echange)]);
+  return r.rowCount > 0;
+}
+async function quetesOublierProgres(semaine, username, queteId) {
+  await pool.query('DELETE FROM quetes_progres WHERE semaine = $1 AND username = $2 AND quete_id = $3 AND fait_at IS NULL',
+    [String(semaine), String(username).toLowerCase(), String(queteId)]);
+}
+// Les premiers pas déjà faits, toutes semaines confondues.
+async function quetesPremiersPasFaits(username) {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT quete_id FROM quetes_progres WHERE username = $1 AND fait_at IS NOT NULL AND quete_id LIKE 'pas-%'`,
+    [String(username).toLowerCase()]);
+  return rows.map((r) => r.quete_id);
+}
+// Le parc entier au Challenge, pour les paliers : les scores archivés de ces
+// classements, de `depuisJour` (inclus) à `avantJour` (exclu).
+async function quetesArchiveParc(rankingIds, depuisJour, avantJour) {
+  const { rows } = await pool.query(
+    `SELECT ranking_id, username, day_key, score, data FROM challenge_score_archive
+      WHERE ranking_id = ANY($1) AND day_key >= $2 AND day_key < $3`,
+    [rankingIds, String(depuisJour), String(avantJour)]);
+  return rows;
+}
+async function quetesChargerPrimes(semaine) {
+  const { rows } = await pool.query('SELECT ranking_id, username, score, ancien, ancien_score, gain, pris_at FROM quetes_primes WHERE semaine = $1', [String(semaine)]);
+  return rows;
+}
+// Une prime prise : la première de la semaine sur ce classement (rend true si c'est celle-ci).
+async function quetesPrendrePrime(semaine, rankingId, username, score, ancien, ancienScore, gain) {
+  const r = await pool.query(
+    `INSERT INTO quetes_primes (semaine, ranking_id, username, score, ancien, ancien_score, gain)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (semaine, ranking_id) DO NOTHING`,
+    [String(semaine), String(rankingId), String(username).toLowerCase(), Number(score), ancien ? String(ancien).toLowerCase() : null,
+      ancienScore == null ? null : Number(ancienScore), Math.max(0, Math.floor(Number(gain) || 0))]);
+  return r.rowCount > 0;
 }
 async function quetesChargerVisites() {
   const { rows } = await pool.query('SELECT username, semaine, vu_at FROM quetes_visites');
@@ -3227,7 +3292,7 @@ async function quetesHistorique(n) {
     `SELECT semaine, COUNT(DISTINCT username)::int AS joueurs,
             COUNT(*) FILTER (WHERE fait_at IS NOT NULL)::int AS faites,
             COALESCE(SUM(gain) FILTER (WHERE fait_at IS NOT NULL), 0)::int AS kikooz
-       FROM quetes_progres GROUP BY semaine ORDER BY semaine DESC LIMIT $1`, [Math.max(1, Number(n) || 8)]);
+       FROM quetes_progres WHERE quete_id <> 'bonus-semaine' GROUP BY semaine ORDER BY semaine DESC LIMIT $1`, [Math.max(1, Number(n) || 8)]);
   return rows;
 }
 // Les scores archivés d'un classement du jour depuis une date (calibrage des quêtes).
@@ -5058,6 +5123,12 @@ module.exports = {
   quetesHistoriqueJoueur,
   quetesChargerIndividuelles,
   quetesEnregistrerIndividuelles,
+  quetesEchangerIndividuelle,
+  quetesOublierProgres,
+  quetesPremiersPasFaits,
+  quetesArchiveParc,
+  quetesChargerPrimes,
+  quetesPrendrePrime,
   quetesNoterVisite,
   quetesReinitialiser,
   quetesRetirerQuete,
