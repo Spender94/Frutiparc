@@ -424,6 +424,9 @@ test('le client : un message s’écrit lettre à lettre, ses balises toujours r
   assert.match(c, /src="\/fb\/voyant_swapou\.png"/);
   assert.match(c, /<div class="qt-barre"><i style="width:100%"><\/i><\/div>/);
   assert.doesNotMatch(c, /medal_/);
+  // La case de mission de Gromelin (MiniPixiz), cochée.
+  assert.match(c, /class="qt-case cochee"/);
+  assert.match(c, /shape981\.svg[^]*shape983\.svg/);
   assert.match(c, /\+20/);
   assert.doesNotMatch(c, /qt-palier|Platine|Légende/, 'plus de pastille de palier');
   // Une proposition de contrat : son bouton « Signer », qui porte son numéro.

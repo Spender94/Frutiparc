@@ -257,3 +257,10 @@ body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {
 
 /* Les quêtes : le curseur de Gromelin s'écrit dans l'encre de sa bulle. */
 .qt-curseur { background: hsl(256 13% 84.4%); }
+/* Le parchemin des quêtes est une IMAGE : la nuit, pas de filtre sur toute la
+   liste (il déteindrait sur les voyants et la frutibarre) — un panneau de
+   nuit à la place ; les baguettes, elles, sont recolorées par le générateur. */
+.qt-liste { filter: none; border-image: none; border-width: 0; background: hsl(256 30% 14%);
+  box-shadow: 0 0 0 2px hsl(256 26% 40%); border-radius: 3px; }
+/* La frutibarre garde son rose la nuit (ce sont les dessins de Frutisnake). */
+.qt-barre i, .qt-barre i::before, .qt-barre i::after { filter: none; }

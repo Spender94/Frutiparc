@@ -99,9 +99,11 @@
   }
   /*
    * LES ASSETS DU PARC. Rien de dessiné ici : le jeu d'une quête se reconnaît
-   * à son VOYANT (celui de la barre des jeux) ; l'avancement est la
-   * FRUTIBARRE de Frutisnake (ses deux bouts roses et son milieu étiré), les
-   * kikooz la pièce de la boutique, les boutons la gélule rose d'époque.
+   * à son VOYANT (celui de la barre des jeux) ; chaque quête a sa CASE — la
+   * case de mission de l'écran de Gromelin, dans MiniPixiz, cochée quand
+   * c'est fait —, et la liste est écrite sur son PARCHEMIN de missions ;
+   * l'avancement est la FRUTIBARRE de Frutisnake, les kikooz la pièce de la
+   * boutique, les boutons la gélule rose d'époque.
    */
   var VOYANT = { swapou2: 'swapou', snake3: 'snake3', kaluga: 'kaluga', bkiwi: 'bkiwi', mb2: 'mb2', minifever: 'minifever',
     minipixiz: 'minipixiz', miniwave: 'miniwave', grapiz: 'grapiz', bandas: 'bandas', forum: 'forum' };
@@ -123,12 +125,17 @@
     return '<div class="qt-barre">' + (p > 0 ? '<i style="width:' + p + '%"></i>' : '') + '</div>';
   }
   function section(titre) { return '<div class="qt-section"><img src="/frutiz/sprites/shop-puce-rubrique.svg" alt="">' + esc(titre) + '</div>'; }
+  // La case de mission de Gromelin (caseMission : la case, et sa coche).
+  function caseMission(fait) {
+    return '<span class="qt-case' + (fait ? ' cochee' : '') + '" aria-label="' + (fait ? 'faite' : 'à faire') + '">'
+      + '<img src="/minipixiz/sprites/shape981.svg" alt="">' + (fait ? '<img class="coche" src="/minipixiz/sprites/shape983.svg" alt="">' : '') + '</span>';
+  }
   function carte(q) {
     var changer = (!q.fait && !q.contrat && etat && etat.echange && etat.echange.possible)
       ? '<button type="button" class="qt-gelule qt-changer" data-id="' + esc(q.id) + '" title="Une fois par semaine, une seule quête">Changer</button>' : '';
     return '<div class="qt-ligne' + (q.fait ? ' faite' : '') + (q.contrat ? ' qt-signee' : '') + '">'
-      + (q.contrat ? '<span class="qt-sceau" aria-hidden="true">G</span>' : voyant(q))
-      + '<div class="qt-corps"><div class="qt-titre">' + esc(q.titre) + '</div>'
+      + (q.contrat ? '<span class="qt-sceau" aria-hidden="true">G</span>' : caseMission(q.fait))
+      + '<div class="qt-corps"><div class="qt-titre">' + (q.contrat ? '' : voyant(q)) + esc(q.titre) + '</div>'
       + '<div class="qt-detail">' + esc(q.detail) + (q.detail && q.ligne ? ' · ' : '') + esc(q.ligne) + '</div>'
       + barre(q.fait ? 1 : q.pc) + '</div>'
       + '<div class="qt-gain">' + piece(q.gain, q.fait) + changer + '</div>'
@@ -194,11 +201,12 @@
     var dejaLa = corps.querySelector('.qt');
     var planches = (etat.quetes || []).map(carte).join('') || '<div class="qt-vide">Pas de quêtes cette semaine.</div>';
     // Le compteur de la boutique (gagnés / possibles), et le bonus de la semaine.
-    var semaine = '<span class="qt-sem-txt">Semaine ' + esc(S.lisible || '') + '<br>Nouvelles quêtes dans <b class="qt-compte">' + esc(reste(S.fin)) + '</b></span>'
-      + (etat.bonus ? '<span class="qt-bonus' + (etat.bonus.verse ? ' verse' : '') + '" title="'
+    var semaine = '<img class="qt-cabane" src="/minipixiz/sprites/shape429.svg" alt="" title="La cabane de Gromelin">'
+      + '<span class="qt-sem-txt">Semaine ' + esc(S.lisible || '') + '<br>Nouvelles quêtes dans <b class="qt-compte">' + esc(reste(S.fin)) + '</b></span>'
+      + '<span class="qt-sem-droite">' + (etat.bonus ? '<span class="qt-bonus' + (etat.bonus.verse ? ' verse' : '') + '" title="'
         + (etat.bonus.verse ? 'Bonus de la semaine versé' : 'Toutes les quêtes faites : un bonus d’XP') + '"><img src="/fb/Niveau.svg" alt="">'
         + (etat.bonus.verse ? '✔ ' : 'tout finir : ') + '+' + nombre(etat.bonus.xp) + ' XP</span>' : '')
-      + '<span class="qt-compteur" title="kikooz gagnés / possibles cette semaine"><img src="' + PIECE + '" alt="kikooz"><b>' + nombre(etat.gagnes) + '</b>&nbsp;/ ' + nombre(etat.total) + '</span>';
+      + '<span class="qt-compteur" title="kikooz gagnés / possibles cette semaine"><img src="' + PIECE + '" alt="kikooz"><b>' + nombre(etat.gagnes) + '</b>&nbsp;/ ' + nombre(etat.total) + '</span></span>';
     if (dejaLa) {
       // Déjà affichée : on ne touche ni à Gromelin ni à sa bulle (il parle peut-être).
       dejaLa.querySelector('.qt-semaine').innerHTML = semaine;
