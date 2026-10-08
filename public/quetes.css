@@ -4,7 +4,7 @@
  * La fenêtre ne dessine rien qui ne soit déjà au parc : la fenêtre blanche du
  * bureau, l'écran de bouille de Gaspard, la « fiche » verte (`frSheet`) de la
  * boutique pour la bulle, la boîte blanche des rubriques pour la liste, les
- * voyants et les médailles des jeux, la barre de chargement, la pièce et le
+ * voyants des jeux, la frutibarre de Frutisnake, la pièce et le
  * compteur de la boutique, la gélule rose (`butPushStandard`). Les mises à
  * prix sont des affiches, le portrait de chaque jeu au milieu.
  */
@@ -104,18 +104,19 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
 .qt-titre { font-weight: bold; color: #000000; overflow-wrap: anywhere; }
 .qt-detail { margin-top: 1px; font-size: 10px; color: #666666; overflow-wrap: anywhere; }
 .qt-ligne.faite .qt-titre { color: #335511; }
-/* La barre de chargement du bureau : elle se remplit de son rose sur un vert
-   pâli (le vert plein de la jauge vide se lirait comme « fini »). */
-.qt-barre { position: relative; height: 6px; margin-top: 4px; border-radius: 3px; overflow: hidden;
-  background: #EEF8E2; box-shadow: inset 0 0 0 1px #CDE9A8, 0 0 0 1px #FFFFFF; }
-.qt-barre i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px;
-  background: url('/frutiz/sprites/chargement-milieu-plein.svg') 0 0 / 100% 100%; }
-.qt-ligne.faite .qt-barre i { background: #9BD24C; }
+/* LA FRUTIBARRE de Frutisnake : son bout rose (fbarrePiece02), son milieu
+   (fbarrePiece03) et le bout en miroir — posée dans une gouttière rose pâle.
+   Les dessins gardent leurs proportions (un SVG ne s'étire pas en fond) : le
+   milieu, une tranche verticale, se RÉPÈTE à la hauteur de la barre. */
+.qt-barre { position: relative; height: 10px; margin-top: 4px; border-radius: 5px; overflow: hidden;
+  background: #FDECEC; box-shadow: inset 0 0 0 1px #F6C9CA; }
+.qt-barre i { position: absolute; left: 0; top: 0; bottom: 0; min-width: 10px; box-sizing: border-box; padding: 0 4px;
+  background: url('/snake3/sprites/fbarrePiece03.svg') 0 0 / auto 100% repeat-x content-box; }
+.qt-barre i::before, .qt-barre i::after { content: ""; position: absolute; top: 0; bottom: 0; width: 5.3px;
+  background: url('/snake3/sprites/fbarrePiece02.svg') 0 0 / auto 100% no-repeat; }
+.qt-barre i::before { left: 0; }
+.qt-barre i::after { right: 0; transform: scaleX(-1); }
 .qt-gain { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 52px; }
-/* La médaille du jeu : sa couleur dit la difficulté ; grisée tant qu'elle n'est pas gagnée. */
-/* (estompée, pas grisée : le bronze, l'argent et l'or doivent se distinguer) */
-.qt-medaille { width: 26px; height: 26px; object-fit: contain; opacity: .42; }
-.qt-medaille.gagnee { filter: none; }
 .qt-kik { display: inline-flex; align-items: center; gap: 2px; font: 700 11px Verdana, Arial, sans-serif; color: #764A34; white-space: nowrap; }
 /* La gélule rose (`butPushStandard`, #465). */
 .qt-gelule { position: relative; height: 16px; padding: 0 9px; border: 0; border-radius: 8px; background: #FFAAAD;

@@ -99,18 +99,14 @@
   }
   /*
    * LES ASSETS DU PARC. Rien de dessiné ici : le jeu d'une quête se reconnaît
-   * à son VOYANT (celui de la barre des jeux), sa difficulté à la MÉDAILLE du
-   * jeu (bronze, argent, or — celles du Challenge), grisée tant qu'elle n'est
-   * pas gagnée ; l'avancement est la barre de chargement du bureau, les
+   * à son VOYANT (celui de la barre des jeux) ; l'avancement est la
+   * FRUTIBARRE de Frutisnake (ses deux bouts roses et son milieu étiré), les
    * kikooz la pièce de la boutique, les boutons la gélule rose d'époque.
    */
   var VOYANT = { swapou2: 'swapou', snake3: 'snake3', kaluga: 'kaluga', bkiwi: 'bkiwi', mb2: 'mb2', minifever: 'minifever',
     minipixiz: 'minipixiz', miniwave: 'miniwave', grapiz: 'grapiz', bandas: 'bandas', forum: 'forum' };
-  var MEDAILLE = { swapou2: 'swapou', snake3: 'snake', kaluga: 'kaluga', bkiwi: 'bk', mb2: 'mb2', minifever: 'minifever',
-    minipixiz: 'minipixiz', miniwave: 'miniwave', grapiz: 'grapiz', bandas: 'bandas' };
   var PORTRAIT = { swapou2: 'swapou', snake3: 'frutisnake', kaluga: 'kaluga', mb2: 'mb', minipixiz: 'mpixiz', miniwave: 'mwave',
     bkiwi: 'bk', grapiz: 'grapiz', jamajama: 'jamajama' };
-  var METAL = { facile: 'bronze', moyenne: 'silver', difficile: 'gold' };
   var PIECE = '/frutiz/sprites/shop-kikooz.svg';
   function nomJeu(q) { return q.etiquette ? q.etiquette.nom : ''; }
   // Hors des jeux : la prune des Prunostics (sa tuile), le soleil des
@@ -121,14 +117,11 @@
     return v ? '<img class="qt-voyant" src="' + v + '" alt="' + esc(nomJeu(q)) + '" title="' + esc(nomJeu(q)) + '">'
       : '<img class="qt-voyant puce" src="/frutiz/sprites/puce-standard-2.svg" alt="" title="' + esc(nomJeu(q)) + '">';
   }
-  function medaille(q) {
-    var m = METAL[q.niveau] || 'bronze', j = MEDAILLE[q.jeu];
-    var src = j ? '/fb/medal_' + m + '_' + j + '.png' : '/fb/medal_' + m + '.svg';
-    return '<img class="qt-medaille' + (q.fait ? ' gagnee' : '') + '" src="' + src + '" alt="' + esc(q.niveauNom || '') + '" title="'
-      + esc(q.niveauNom || '') + (q.fait ? ' — faite' : '') + '">';
-  }
   function piece(n, plus) { return '<span class="qt-kik"><img src="' + PIECE + '" alt="kikooz">' + (plus ? '+' : '') + nombre(n) + '</span>'; }
-  function barre(pc) { return '<div class="qt-barre"><i style="width:' + Math.round((Number(pc) || 0) * 100) + '%"></i></div>'; }
+  function barre(pc) {
+    var p = Math.round((Number(pc) || 0) * 100);
+    return '<div class="qt-barre">' + (p > 0 ? '<i style="width:' + p + '%"></i>' : '') + '</div>';
+  }
   function section(titre) { return '<div class="qt-section"><img src="/frutiz/sprites/shop-puce-rubrique.svg" alt="">' + esc(titre) + '</div>'; }
   function carte(q) {
     var changer = (!q.fait && !q.contrat && etat && etat.echange && etat.echange.possible)
@@ -138,7 +131,7 @@
       + '<div class="qt-corps"><div class="qt-titre">' + esc(q.titre) + '</div>'
       + '<div class="qt-detail">' + esc(q.detail) + (q.detail && q.ligne ? ' · ' : '') + esc(q.ligne) + '</div>'
       + barre(q.fait ? 1 : q.pc) + '</div>'
-      + '<div class="qt-gain">' + medaille(q) + piece(q.gain, q.fait) + changer + '</div>'
+      + '<div class="qt-gain">' + piece(q.gain, q.fait) + changer + '</div>'
       + '</div>';
   }
   // LES MISES À PRIX : un avis de recherche par record du parc, le portrait
@@ -168,7 +161,7 @@
       + '<span class="qt-sceau vide" aria-hidden="true">G</span>'
       + '<div class="qt-corps"><div class="qt-titre">' + esc(p.titre) + '</div>'
       + '<div class="qt-detail">' + esc(p.detail) + '</div></div>'
-      + '<div class="qt-gain">' + medaille(p) + piece(p.gain)
+      + '<div class="qt-gain">' + piece(p.gain)
       + '<button type="button" class="qt-gelule qt-signer" data-i="' + Number(p.i) + '">Signer</button></div>'
       + '</div>';
   }

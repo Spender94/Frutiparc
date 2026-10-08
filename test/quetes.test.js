@@ -420,10 +420,10 @@ test('le client : un message s’écrit lettre à lettre, ses balises toujours r
   const c = L._carte({ id: 'x', niveau: 'difficile', niveauNom: 'Difficile', gain: 20, titre: 'A <b>', detail: 'd', ligne: '0 / 1', pc: 0.5,
     fait: true, jeu: 'swapou2', palier: 'platine', palierNom: 'Platine', etiquette: { nom: 'Swapou', couleur: '#E2862A' } });
   assert.match(c, /A &lt;b&gt;/, 'le titre est échappé');
-  // Les assets du parc : la médaille d'or du jeu (gagnée), son voyant, la pièce.
-  assert.match(c, /src="\/fb\/medal_gold_swapou\.png"/);
-  assert.match(c, /class="qt-medaille gagnee"/);
+  // Les assets du parc : le voyant du jeu, la frutibarre (ici pleine), pas de médaille.
   assert.match(c, /src="\/fb\/voyant_swapou\.png"/);
+  assert.match(c, /<div class="qt-barre"><i style="width:100%"><\/i><\/div>/);
+  assert.doesNotMatch(c, /medal_/);
   assert.match(c, /\+20/);
   assert.doesNotMatch(c, /qt-palier|Platine|Légende/, 'plus de pastille de palier');
   // Une proposition de contrat : son bouton « Signer », qui porte son numéro.
