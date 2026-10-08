@@ -356,7 +356,7 @@ test('les paliers du parc : cinq seuils communs, le niveau d’un joueur, la pai
   const d = Q.definitionV2(sw[0], 'ind-1');
   assert.deepEqual([d.id, d.palier, d.gain, d.type, d.etiquette], ['ind-1', 'or', 12, 'mesure', 'swapou2']);
   assert.equal(Q.titre(d).replace(/\s/g, ' '), 'Dépasse 8 600 points à Swapou');
-  assert.match(Q.detail(d), /palier Or du parc \(15 % l’atteignent\)/);
+  assert.match(Q.detail(d), /atteint par 15 % du parc/);
   assert.equal(Q.estFaite(d, { m: 8600 }), true);
   assert.match(Q.detail(Q.definitionV2(dec[0], 'ind-9')), /^Découverte/);
 });
@@ -418,20 +418,23 @@ test('le client : un message s’écrit lettre à lettre, ses balises toujours r
   assert.equal(L._debut(m, 9), '<em>Grumpf.</em> T');
   assert.equal(L._debut(m, 999), m);
   const c = L._carte({ id: 'x', niveau: 'difficile', niveauNom: 'Difficile', gain: 20, titre: 'A <b>', detail: 'd', ligne: '0 / 1', pc: 0.5,
-    fait: true, etiquette: { nom: 'Swapou', couleur: '#E2862A' } });
+    fait: true, jeu: 'swapou2', palier: 'platine', palierNom: 'Platine', etiquette: { nom: 'Swapou', couleur: '#E2862A' } });
   assert.match(c, /A &lt;b&gt;/, 'le titre est échappé');
-  assert.match(c, /qt-tampon">FAIT/);
+  // Les assets du parc : la médaille d'or du jeu (gagnée), son voyant, la pièce.
+  assert.match(c, /src="\/fb\/medal_gold_swapou\.png"/);
+  assert.match(c, /class="qt-medaille gagnee"/);
+  assert.match(c, /src="\/fb\/voyant_swapou\.png"/);
   assert.match(c, /\+20/);
-  assert.equal((c.match(/<i class="on">/g) || []).length, 3);
+  assert.doesNotMatch(c, /qt-palier|Platine|Légende/, 'plus de pastille de palier');
   // Une proposition de contrat : son bouton « Signer », qui porte son numéro.
   const p = L._proposition({ i: 2, niveau: 'moyenne', niveauNom: 'Moyenne', gain: 10, titre: 'Fais 1 100 points', detail: 'tes bons jours',
     etiquette: { nom: 'Frutisnake', couleur: '#5E9E1C' } });
-  assert.match(p, /<button type="button" class="qt-signer" data-i="2">Signer<\/button>/);
+  assert.match(p, /<button type="button" class="qt-gelule qt-signer" data-i="2">Signer<\/button>/);
   assert.match(p, /qt-sceau vide/);
   // Le contrat signé : scellé de cire, pas de case à cocher.
   const sc = L._carte({ id: 'contrat', contrat: true, niveau: 'facile', niveauNom: 'Facile', gain: 5, titre: 'x', detail: '', ligne: '', pc: 0 });
-  assert.match(sc, /qt-carte qt-signee/);
-  assert.match(sc, /qt-case qt-sceau/);
+  assert.match(sc, /qt-ligne qt-signee/);
+  assert.match(sc, /class="qt-sceau"/);
 });
 
 test('le light : la tuile, la feuille, le script, et le bureau qui adopte la feuille', () => {

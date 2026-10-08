@@ -3,6 +3,7 @@
  * La feuille du mode nuit. Produite par scripts/generer-nuit.js à partir de :
  *   · public/light.html (son <style>)
  *   · public/bureau-frutiz.css
+ *   · public/quetes.css
  *
  * Toute retouche du thème de jour demande de relancer :
  *   node scripts/generer-nuit.js
@@ -2371,6 +2372,211 @@ body.bureau-frutiz .fen #paris-sheet {
   background: hsl(256 30% 10%);
 }
 
+.ico-baluchon .eclat {
+  filter: drop-shadow(0 0 2px hsl(256 13% 16.9%)) brightness(1.15);
+}
+@keyframes qt-eclat {
+  0%, 100% {
+    transform: scale(.2) rotate(0);
+    opacity: 0;
+  }
+  45% {
+    transform: scale(1) rotate(45deg);
+    opacity: 1;
+  }
+}
+@keyframes qt-gigote {
+  0%, 70%, 100% {
+    transform: rotate(0);
+  }
+  76% {
+    transform: rotate(-7deg);
+  }
+  84% {
+    transform: rotate(6deg);
+  }
+  92% {
+    transform: rotate(-3deg);
+  }
+}
+#quetes-corps {
+  background: hsl(256 30% 10%);
+}
+body.bureau-frutiz .fen #quetes-sheet {
+  background: hsl(256 30% 10%);
+}
+.qt {
+  color: hsl(256 13% 84.4%);
+}
+.qt-ferme, .qt-vide {
+  color: hsl(256 13% 84.8%);
+}
+.qt-ecran {
+  background: url('/frutiz/sprites/ecran-fond-nuit.svg?v=4f237dec') 0 0 / 100% 100% no-repeat;
+  box-shadow: 0 0 0 2px hsl(256 26% 40%);
+}
+.qt-ecran::before {
+  filter: var(--nuit-chassis);
+}
+.qt-ecran::after {
+  box-shadow: inset 0 0 0 1px hsl(256 26% 50%);
+}
+.qt-dit {
+  background: linear-gradient(to bottom, hsl(256 30% 10% / 0.6) 2px, hsl(256 30% 10% / 0) 12px), hsl(256 30% 25.8%);
+  border: 2px solid hsl(256 26% 46.1%);
+  box-shadow: 0 0 0 2px hsl(256 26% 40%);
+  color: hsl(256 13% 84.4%);
+}
+.qt-dit em {
+  color: hsl(256 13% 84.4%);
+}
+.qt-curseur {
+  background: hsl(256 30% 17%);
+}
+@keyframes qt-clign {
+  50% {
+    opacity: 0;
+  }
+}
+.qt-suite {
+  color: hsl(256 13% 84.6%);
+}
+.qt-suite b {
+  color: hsl(256 13% 84.4%);
+}
+.qt-semaine {
+  color: hsl(256 13% 84.8%);
+}
+.qt-semaine b {
+  color: hsl(256 13% 84.4%);
+}
+.qt-compteur {
+  background: hsl(256 30% 14%);
+  border: 2px solid hsl(256 26% 40.8%);
+  box-shadow: 0 0 0 2px hsl(256 26% 40%);
+  color: hsl(256 13% 84.8%);
+}
+.qt-bonus {
+  background: hsl(256 30% 13.4%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 40%);
+  color: hsl(256 13% 84.8%);
+}
+.qt-bonus.verse {
+  background: hsl(256 30% 17.2%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 46.1%);
+  color: hsl(256 13% 84.4%);
+}
+.qt-liste {
+  background: hsl(256 30% 10%);
+  box-shadow: 0 0 0 2px hsl(256 26% 40%);
+}
+.qt-ligne {
+  border-top: 1px solid hsl(256 26% 38%);
+}
+.qt-ligne:hover {
+  background: hsl(256 30% 13.5%);
+}
+.qt-ligne.faite {
+  background: hsl(256 30% 17.2%);
+}
+.qt-titre {
+  color: hsl(256 13% 84.5%);
+}
+.qt-detail {
+  color: hsl(256 13% 84.8%);
+}
+.qt-ligne.faite .qt-titre {
+  color: hsl(256 13% 84.4%);
+}
+.qt-barre {
+  background: hsl(256 30% 15.1%);
+  box-shadow: inset 0 0 0 1px hsl(256 26% 42.4%), 0 0 0 1px hsl(256 26% 36%);
+}
+.qt-barre i {
+  background: url('/frutiz/sprites/chargement-milieu-plein-nuit.svg?v=a03e8ed5') 0 0 / 100% 100%;
+}
+.qt-ligne.faite .qt-barre i {
+  background: hsl(256 30% 36%);
+}
+.qt-kik {
+  color: hsl(256 13% 84.8%);
+}
+.qt-gelule {
+  background: hsl(325 34% 30.6%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
+  color: hsl(325 58% 86.9%);
+}
+.qt-gelule::after {
+  border-top: 1px solid hsl(325 58% 66.8%);
+  border-right: 1px solid hsl(325 58% 66.8%);
+}
+.qt-gelule:active {
+  background: hsl(325 34% 32%);
+}
+.qt-gelule.arme {
+  background: hsl(256 30% 22.3%);
+  box-shadow: inset 0 0 0 1.5px hsl(256 26% 46.6%);
+  color: hsl(256 13% 84.9%);
+}
+.qt-gelule.arme::after {
+  border-color: hsl(256 26% 36.5%);
+}
+.qt-section {
+  color: hsl(256 13% 84.5%);
+}
+.qt-note {
+  color: hsl(256 13% 84.8%);
+}
+.qt-note b {
+  color: hsl(256 13% 84.4%);
+}
+.qt-sceau {
+  color: hsl(325 58% 95%);
+  background: radial-gradient(circle at 38% 34%, hsl(325 34% 34.5%), hsl(325 34% 20.7%) 70%);
+}
+.qt-sceau.vide {
+  color: hsl(325 58% 90.2%);
+  box-shadow: inset 0 0 0 1.5px hsl(325 58% 71.3%);
+}
+.qt-affiche {
+  background: linear-gradient(175deg, hsl(256 30% 22.7%), hsl(256 30% 16.8%));
+  border: 1px solid hsl(256 26% 45.6%);
+  box-shadow: 0 2px 4px hsl(256 13% 0% / 0.18), inset 0 0 16px hsl(256 13% 36% / 0.18);
+}
+.qt-recherche {
+  color: hsl(325 58% 86.4%);
+}
+.qt-portrait {
+  box-shadow: 0 0 0 2px hsl(256 26% 40%), 0 0 0 3px hsl(256 26% 50%);
+  background: hsl(256 30% 25.8%);
+}
+.qt-aff-jeu {
+  color: hsl(256 13% 84.4%);
+}
+.qt-aff-record {
+  color: hsl(256 13% 84.5%);
+}
+.qt-aff-tenant {
+  color: hsl(256 13% 84.8%);
+}
+.qt-aff-prime .qt-kik {
+  background: hsl(256 30% 14%);
+  border: 2px solid hsl(256 26% 40.8%);
+  box-shadow: 0 0 0 2px hsl(256 26% 40%);
+}
+.qt-aff-prise {
+  color: hsl(325 58% 86.9% / 0.9);
+  border: 2px double hsl(325 58% 77.5% / 0.85);
+  background: hsl(256 30% 10% / 0.7);
+}
+.qt-pied {
+  border-top: 1px solid hsl(256 26% 40%);
+  color: hsl(256 13% 85.7%);
+}
+.qt-pied b {
+  color: hsl(256 13% 84.8%);
+}
+
 /* ── Les dessins de nuit déposés à côté des dessins de jour ───────── */
 /* Ils remplacent l’original et échappent au fanage : ils n’ont plus rien */
 /* à cacher. Déposer « nom-nuit.svg » à côté de « nom.svg » suffit.      */
@@ -2846,3 +3052,6 @@ body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {
    `poserFond`) ; ces deux variables-là lui servent à rendre les légendes
    lisibles par-dessus. */
 #bureau { --fond-txt: hsl(258 18% 88%); --fond-halo: 0,0,0; }
+
+/* Les quêtes : le curseur de Gromelin s'écrit dans l'encre de sa bulle. */
+.qt-curseur { background: hsl(256 13% 84.4%); }

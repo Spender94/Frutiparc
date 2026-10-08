@@ -1133,7 +1133,7 @@ function definitionV2(spec, id) {
   const decouverte = spec.genre === 'decouverte';
   const detail = decouverte
     ? `Découverte · ${m.nom} — un jeu que tu n’as pas joué ces dernières semaines`
-    : `${m.nom} · palier ${PALIER_NOM[spec.palier]} du parc (${Math.round(PALIER_PART[spec.palier] * 100)} % l’atteignent)`;
+    : `${m.nom} · atteint par ${Math.round(PALIER_PART[spec.palier] * 100)} % du parc`;
   return { id: String(id), niveau: spec.niveau, palier: spec.palier, gain: spec.gain, type: 'mesure', etiquette: m.jeu, famille: m.cle,
     taillee: true, v2: true, decouverte, params: { mesure: m.cle, seuil: spec.seuil }, detail };
 }

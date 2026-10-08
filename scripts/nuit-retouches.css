@@ -254,3 +254,6 @@ body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {
    `poserFond`) ; ces deux variables-là lui servent à rendre les légendes
    lisibles par-dessus. */
 #bureau { --fond-txt: hsl(258 18% 88%); --fond-halo: 0,0,0; }
+
+/* Les quêtes : le curseur de Gromelin s'écrit dans l'encre de sa bulle. */
+.qt-curseur { background: hsl(256 13% 84.4%); }

@@ -1,10 +1,12 @@
 /*
- * LES QUÊTES DE GROMELIN — l'icône (le baluchon de MiniPixiz) et la fenêtre
- * (planches, parchemins, Gromelin dans son écran de bouille).
+ * LES QUÊTES DE GROMELIN — l'icône (le baluchon de MiniPixiz) et la fenêtre.
  *
- * Feuille à part : le bois et le parchemin sont des DESSINS, pas du châssis —
- * le mode nuit (engendré de light.html et bureau-frutiz.css) n'a pas à les
- * repeindre, et ne les voit donc pas.
+ * La fenêtre ne dessine rien qui ne soit déjà au parc : la fenêtre blanche du
+ * bureau, l'écran de bouille de Gaspard, la « fiche » verte (`frSheet`) de la
+ * boutique pour la bulle, la boîte blanche des rubriques pour la liste, les
+ * voyants et les médailles des jeux, la barre de chargement, la pièce et le
+ * compteur de la boutique, la gélule rose (`butPushStandard`). Les mises à
+ * prix sont des affiches, le portrait de chaque jeu au milieu.
  */
 
 /* ── L'icône ────────────────────────────────────────────────────────────── */
@@ -37,204 +39,138 @@ body:not(.bureau-frutiz) .home-tile[data-go="quetes"] .ico-baluchon { transform:
 /* ── La feuille (mobile) et la fenêtre (bureau) ─────────────────────────── */
 .sheet.sheet-quetes { height: 90vh; max-height: 90vh; }
 .sheet.sheet-quetes .sheet-head .sheet-ico { width: 20px; height: 17px; }
-#quetes-corps { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #B07A3C;
+#quetes-corps { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #FFFFFF;
   display: flex; flex-direction: column; }
 /* Sur le bureau, la fenêtre adopte la feuille (comme les Prunostics). */
 body.bureau-frutiz .fen #quetes-sheet {
   position: static; inset: auto; transform: none; transition: none; visibility: visible;
   height: auto; max-height: none; border: 0; border-radius: 0; box-shadow: none;
-  background: #B07A3C; z-index: auto; padding: 0;
+  background: #FFFFFF; z-index: auto; padding: 0;
   flex: 1; min-height: 0; display: flex; flex-direction: column;
 }
 body.bureau-frutiz .fen #quetes-sheet .sheet-head { display: none; }
 body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
 
-.qt { font-family: Verdana, Arial, sans-serif; color: #4A3110; flex: 1 0 auto; display: flex; flex-direction: column; }
-.qt-ferme, .qt-vide { padding: 24px 16px; text-align: center; color: #FFF3D2; font-size: 13px; }
+.qt { font: 11px Verdana, Arial, sans-serif; color: #333333; flex: 1 0 auto; display: flex; flex-direction: column;
+  padding: 8px 8px 0; gap: 8px; }
+.qt-ferme, .qt-vide { padding: 20px 12px; text-align: center; color: #666666; }
 
-/* Gromelin et sa bulle — tout est sur le BOIS du tableau : le fronton est
-   une planche plus sombre, l'écran de bouille y est encadré et cloué comme un
-   portrait, et ce que dit Gromelin est un parchemin punaisé, du même papier
-   que les quêtes. Rien ne flotte sur un aplat d'une autre matière. */
-.qt-tete { position: relative; display: flex; align-items: center; gap: 16px; padding: 16px 16px 18px;
-  background-color: #8A5A26;
-  background-image:
-    linear-gradient(rgba(255,225,170,.10), rgba(0,0,0,.16)),
-    repeating-linear-gradient(0deg, rgba(40,20,0,.30) 0 2px, transparent 2px 46px),
-    repeating-linear-gradient(0deg, rgba(255,230,180,.07) 0 1px, transparent 1px 5px),
-    repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 50px, rgba(255,255,255,.03) 50px 110px);
-  border-bottom: 3px solid #4A2E0C; box-shadow: inset 0 -8px 12px -8px rgba(0,0,0,.45); }
-/* Le cadre du portrait : une baguette de bois clair, quatre clous. */
-.qt-cadre { position: relative; flex: 0 0 auto; padding: 7px; border-radius: 9px;
-  background-color: #B98243;
-  background-image:
-    radial-gradient(circle at 7px 7px, #6A5584 0 2.2px, #B7A5CC 2.4px 2.9px, transparent 3.2px),
-    radial-gradient(circle at calc(100% - 7px) 7px, #6A5584 0 2.2px, #B7A5CC 2.4px 2.9px, transparent 3.2px),
-    radial-gradient(circle at 7px calc(100% - 7px), #6A5584 0 2.2px, #B7A5CC 2.4px 2.9px, transparent 3.2px),
-    radial-gradient(circle at calc(100% - 7px) calc(100% - 7px), #6A5584 0 2.2px, #B7A5CC 2.4px 2.9px, transparent 3.2px),
-    linear-gradient(145deg, #D19A55, #8E5F26);
-  box-shadow: 0 4px 0 rgba(30,15,0,.45), inset 0 1px 0 rgba(255,235,190,.55), inset 0 -2px 0 rgba(0,0,0,.28); }
-/* L'écran de bouille de Gaspard (cp.FrutiScreen) : son fond et son reflet,
-   enfoncé dans le cadre (un liseré sombre au lieu du gris du châssis). */
-.qt-ecran { position: relative; width: 100px; height: 100px; overflow: hidden;
-  background: url('/frutiz/sprites/ecran-fond.svg') 0 0 / 100% 100% no-repeat;
-  border-radius: 5px; box-shadow: 0 0 0 2px #5A3810; }
+/* Gromelin : l'écran de bouille de Gaspard (cp.FrutiScreen — fond, reflet,
+   liseré #DDDDDD, anneau #888888, rayon 6), et sa parole dans une fiche verte. */
+.qt-tete { display: flex; align-items: stretch; gap: 10px; }
+.qt-cadre { flex: 0 0 auto; }
+.qt-ecran { position: relative; width: 100px; height: 100px; overflow: hidden; border-radius: 6px;
+  background: url('/frutiz/sprites/ecran-fond.svg') 0 0 / 100% 100% no-repeat; box-shadow: 0 0 0 2px #DDDDDD; }
 .qt-ecran::before { content: ""; position: absolute; right: 2px; top: 2px; width: 42.7px; height: 31.8px; z-index: 7;
   pointer-events: none; background: url('/frutiz/sprites/ecran-reflet.svg') 0 0 / 42.7px 31.8px no-repeat; }
-.qt-ecran::after { content: ""; position: absolute; inset: 0; border-radius: 5px; z-index: 6; pointer-events: none;
-  box-shadow: inset 0 2px 6px rgba(40,20,0,.45); }
-.qt-ecran > canvas.fp-bvig { display: block; width: 98px !important; height: 98px !important; margin: 1px; }
-/* La parole : un parchemin punaisé (deux punaises violettes, comme les quêtes). */
-.qt-dit { position: relative; flex: 1; min-width: 0; min-height: 70px; cursor: pointer;
-  background-color: #EFDBA4;
-  background-image:
-    radial-gradient(circle at 14px 9px, #7E6A99 0 3.5px, transparent 4px),
-    radial-gradient(circle at calc(100% - 14px) 9px, #7E6A99 0 3.5px, transparent 4px),
-    linear-gradient(170deg, #F6E6B8, #E9CF91);
-  border: 2px solid #8C6531; border-radius: 7px 11px 6px 9px; transform: rotate(-.4deg);
-  box-shadow: 0 4px 0 rgba(30,15,0,.40);
-  padding: 14px 14px 22px; font-size: 12.5px; line-height: 1.45; color: #3E2608; }
-.qt-dit::before { content: ''; position: absolute; left: -9px; top: 38px; width: 14px; height: 14px; background: #F2DFAC;
-  border-left: 2px solid #8C6531; border-bottom: 2px solid #8C6531; transform: rotate(45deg); }
-.qt-dit em { color: #7A1F10; font-style: normal; font-weight: bold; }
-.qt-curseur { display: inline-block; width: 2px; height: 13px; background: #4A3110; vertical-align: -2px; margin-left: 1px;
+.qt-ecran::after { content: ""; position: absolute; inset: 0; border-radius: 6px; z-index: 6; pointer-events: none;
+  box-shadow: inset 0 0 0 1px #888888; }
+.qt-ecran > canvas.fp-bvig { display: block; width: 100px !important; height: 100px !important; }
+.qt-dit { position: relative; flex: 1; min-width: 0; min-height: 84px; cursor: pointer; padding: 6px 8px 18px;
+  background: linear-gradient(to bottom, rgba(255,255,255,.6) 2px, rgba(255,255,255,0) 12px), #CCF599;
+  border: 2px solid #ADE76B; border-radius: 5px; box-shadow: 0 0 0 2px #DDDDDD;
+  font-size: 11px; line-height: 1.5; color: #335511; }
+.qt-dit em { font-style: normal; font-weight: bold; color: #224400; }
+.qt-curseur { display: inline-block; width: 2px; height: 11px; background: #335511; vertical-align: -1px; margin-left: 1px;
   animation: qt-clign .8s steps(1) infinite; }
 @keyframes qt-clign { 50% { opacity: 0; } }
-.qt-suite { position: absolute; right: 10px; bottom: 4px; font-size: 10.5px; color: #8A6430; }
-.qt-suite b { color: #5E9E1C; }
+.qt-suite { position: absolute; right: 7px; bottom: 3px; font-size: 10px; color: #6A9A3A; }
+.qt-suite b { color: #335511; }
 
-.qt-semaine { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px 10px;
-  padding: 7px 14px; font-size: 11px; color: #FFF3D2; background: #6B4A1C; text-shadow: 0 1px 0 #3A2508; }
-.qt-semaine b { color: #FFE58A; }
+/* La semaine : le texte, le bonus, et le compteur de la boutique (`frKikooz`). */
+.qt-semaine { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: #666666; font-size: 10px; line-height: 1.4; }
+.qt-semaine b { color: #333333; }
+.qt-sem-txt { flex: 1; min-width: 150px; }
+.qt-compteur { display: inline-flex; align-items: center; gap: 3px; box-sizing: border-box; height: 22px; padding: 0 6px 0 3px;
+  background: #F8D5BC; border: 2px solid #F3BE8C; border-radius: 5px; box-shadow: 0 0 0 2px #DDDDDD;
+  font: 700 12px Verdana, Arial, sans-serif; color: #764A34; white-space: nowrap; }
+.qt-compteur b { font: 700 14px Verdana, Arial, sans-serif; color: inherit; }
+.qt-compteur img, .qt-kik img { width: 16px; height: 15px; display: block; }
+.qt-bonus { display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 6px 0 2px; border-radius: 9px;
+  background: #F3F3F3; box-shadow: inset 0 0 0 1px #DDDDDD; color: #666666; white-space: nowrap; }
+.qt-bonus img { width: 16px; height: 16px; display: block; }
+.qt-bonus.verse { background: #E8F8D3; box-shadow: inset 0 0 0 1px #ADE76B; color: #335511; font-weight: bold; }
 
-/* Les planches et les parchemins */
-.qt-planches { flex: 1 0 auto; padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 12px;
-  background-color: #B07A3C;
-  background-image: repeating-linear-gradient(0deg, rgba(60,30,0,.28) 0 2px, transparent 2px 58px),
-    repeating-linear-gradient(0deg, rgba(255,230,180,.06) 0 1px, transparent 1px 5px),
-    repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 40px, rgba(255,255,255,.03) 40px 90px); }
-.qt-carte { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center;
-  padding: 10px 12px 10px 10px; border-radius: 7px 11px 6px 9px; background: linear-gradient(170deg, #F6E6B8, #E9CF91);
-  border: 2px solid #8C6531; box-shadow: 0 3px 0 rgba(50,25,0,.35); }
-.qt-carte:nth-child(odd) { transform: rotate(-.5deg); }
-.qt-carte:nth-child(even) { transform: rotate(.4deg); }
-.qt-carte::before { content: ''; position: absolute; left: 50%; top: -6px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #C9B6DD, #7E6A99 70%); box-shadow: 0 1px 1px rgba(0,0,0,.4); }
-.qt-case { position: relative; width: 36px; height: 36px; grid-row: span 3; align-self: center; }
-.qt-case img { width: 36px; height: 36px; display: block; }
-.qt-coche { position: absolute; left: 6px; top: -10px; font-size: 34px; line-height: 1; color: #C0281A; font-weight: bold;
-  transform: rotate(-8deg); text-shadow: 0 1px 0 rgba(255,255,255,.5); }
-.qt-titre { font-size: 13px; font-weight: bold; color: #3E2608; overflow-wrap: anywhere; }
-.qt-detail { grid-column: 2; font-size: 11px; color: #7A5A2A; }
-.qt-jeu { display: inline-block; font-size: 10px; font-weight: bold; color: #fff; border-radius: 8px; padding: 1px 6px; margin-right: 5px;
-  vertical-align: 1px; }
-.qt-barre { grid-column: 2; height: 8px; border-radius: 4px; background: rgba(110,70,20,.22); overflow: hidden; }
-.qt-barre i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(#9BD24C, #6FAE24); }
-.qt-gain { grid-column: 3; grid-row: 1 / span 3; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 58px; }
-.qt-kik { display: inline-flex; align-items: center; gap: 4px; font-size: 15px; font-weight: bold; color: #5A3A0E; white-space: nowrap; }
-.qt-kik img { width: 18px; height: 18px; }
-.qt-diff { display: inline-flex; gap: 2px; }
-.qt-diff i { width: 8px; height: 8px; border-radius: 50%; background: rgba(110,70,20,.25); }
-.qt-diff i.on { background: #C0281A; }
-.qt-diff-nom { font-size: 9.5px; font-weight: bold; color: #8A6430; text-transform: uppercase; letter-spacing: .5px; }
-.qt-carte.faite { opacity: .78; }
-/* Le tampon se pose sur la barre (pleine) : jamais sur le titre, même étroit. */
-.qt-tampon { position: absolute; right: 74px; bottom: 2px; transform: rotate(-10deg); font-size: 15px;
-  font-weight: bold; letter-spacing: 3px; color: rgba(192,40,26,.8); border: 3px double rgba(192,40,26,.8); border-radius: 6px;
-  padding: 0 7px; pointer-events: none; }
-/* Le contrat : « Rien que pour toi ». Un ruban rouge cloué sur la planche,
-   puis des parchemins plus clairs, scellés de cire une fois signés. */
-.qt-contrat:empty { display: none; }
-.qt-contrat { padding: 4px 14px 16px; background: #9C6A32;
-  background-image: repeating-linear-gradient(0deg, rgba(60,30,0,.25) 0 2px, transparent 2px 58px),
-    repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 40px, rgba(255,255,255,.03) 40px 90px);
-  border-top: 3px solid #6B4A1C; }
-.qt-ruban { position: relative; z-index: 0; display: flex; justify-content: center; margin: 10px 0 8px; }
-.qt-ruban span { position: relative; display: inline-block; padding: 4px 22px; font-size: 12px; font-weight: bold; letter-spacing: 1px;
-  text-transform: uppercase; color: #FFF3D2; background: linear-gradient(#C23A26, #95261A); text-shadow: 0 1px 0 #5A140A;
-  box-shadow: 0 2px 0 rgba(50,25,0,.35); }
-.qt-ruban span::before, .qt-ruban span::after { content: ''; position: absolute; top: 4px; border: 11px solid #7C1E13; z-index: -1; }
-.qt-ruban span::before { left: -14px; border-left-color: transparent; }
-.qt-ruban span::after { right: -14px; border-right-color: transparent; }
-.qt-contrat-note { margin: 0 4px 10px; font-size: 11px; line-height: 1.45; color: #FFF3D2; text-align: center; text-shadow: 0 1px 0 #3A2508; }
-.qt-contrat-note b { color: #FFE58A; }
-.qt-props { display: flex; flex-direction: column; gap: 12px; }
-.qt-carte.qt-prop, .qt-carte.qt-signee { background: linear-gradient(170deg, #FBF1D6, #EFDCAA); border-color: #95261A; }
-.qt-sceau { display: flex; align-items: center; justify-content: center; border-radius: 50%; font: bold 17px Georgia, serif;
-  color: rgba(255,225,200,.85); background: radial-gradient(circle at 38% 34%, #D8503A, #9A2414 62%, #74180C);
-  box-shadow: 0 2px 2px rgba(60,10,0,.4), inset 0 0 0 3px rgba(120,20,8,.55); transform: rotate(-12deg); }
-.qt-sceau.vide { background: none; box-shadow: none; color: rgba(149,38,26,.35); border: 2px dashed rgba(149,38,26,.45); transform: none; }
-.qt-signer { margin-top: 2px; padding: 3px 10px; font: bold 11px Verdana, Arial, sans-serif; color: #FFF3D2; cursor: pointer;
-  background: linear-gradient(#C23A26, #95261A); border: 1px solid #6E1A10; border-radius: 12px; box-shadow: 0 2px 0 rgba(50,25,0,.35); }
-.qt-signer:hover { background: linear-gradient(#D24A34, #A52E20); }
-.qt-signer.arme { background: linear-gradient(#F0B73A, #C98A12); border-color: #8A5A08; color: #3E2608; }
-.qt-signer:disabled { opacity: .6; cursor: default; }
-/* Le modèle des paliers : la médaille du palier, sous les points de difficulté. */
-.qt-palier { font-size: 9.5px; font-weight: bold; text-transform: uppercase; letter-spacing: .5px; padding: 1px 7px; border-radius: 8px;
-  color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,.35); box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 1px 0 rgba(50,25,0,.3); }
-.qt-palier.p-bronze  { background: linear-gradient(#D49A5E, #9C5F28); }
-.qt-palier.p-argent  { background: linear-gradient(#D7DCE0, #8E979E); color: #2E3338; text-shadow: 0 1px 0 rgba(255,255,255,.5); }
-.qt-palier.p-or      { background: linear-gradient(#FFE07A, #D19A12); color: #4A3000; text-shadow: 0 1px 0 rgba(255,255,255,.45); }
-.qt-palier.p-platine { background: linear-gradient(#C9F1F2, #6FB6BE); color: #123D42; text-shadow: 0 1px 0 rgba(255,255,255,.5); }
-.qt-palier.p-legende { background: linear-gradient(#C68BEA, #6E2F99); }
-.qt-tag { display: inline-block; font-size: 9.5px; font-weight: bold; color: #5A3A0E; background: #FFE58A; border: 1px solid #C9A040;
-  border-radius: 8px; padding: 0 6px; margin-right: 5px; vertical-align: 1px; text-transform: uppercase; letter-spacing: .4px; }
-.qt-tag.pas { background: #CDEBA6; border-color: #79A93C; color: #2E4A0F; }
-.qt-carte.qt-decouverte::before { background: radial-gradient(circle at 35% 35%, #FFE58A, #C9A040 70%); }
-/* Changer une quête : un petit bouton sous la médaille, deux clics. */
-.qt-changer { margin-top: 2px; padding: 1px 8px; font: bold 10px Verdana, Arial, sans-serif; color: #6B4A1C; cursor: pointer;
-  background: #F6E6B8; border: 1px solid #A47B3E; border-radius: 10px; }
-.qt-changer:hover { background: #FFF3D2; }
-.qt-changer.arme { background: linear-gradient(#F0B73A, #C98A12); border-color: #8A5A08; color: #3E2608; }
-.qt-changer:disabled { opacity: .6; cursor: default; }
-/* Le bonus de la semaine, dans la barre. */
-.qt-bonus { padding: 1px 8px; border-radius: 9px; background: rgba(255,229,138,.16); border: 1px dashed rgba(255,229,138,.6); }
-.qt-bonus.verse { background: rgba(155,210,76,.25); border: 1px solid #9BD24C; }
+/* La liste : la boîte blanche des rubriques de la boutique. */
+.qt-liste { background: #FFFFFF; border-radius: 3px; box-shadow: 0 0 0 2px #DDDDDD; }
+.qt-ligne { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 2px 8px; align-items: center;
+  padding: 6px 6px 6px 4px; border-top: 1px solid #EEEEEE; }
+.qt-ligne:first-child { border-top: 0; }
+.qt-ligne:hover { background: #F4FBEA; }
+.qt-ligne.faite { background: #E8F8D3; }
+.qt-voyant { width: 28px; height: 28px; object-fit: contain; justify-self: center; }
+.qt-voyant.puce { width: 14px; height: 14px; }
+.qt-corps { min-width: 0; }
+.qt-titre { font-weight: bold; color: #000000; overflow-wrap: anywhere; }
+.qt-detail { margin-top: 1px; font-size: 10px; color: #666666; overflow-wrap: anywhere; }
+.qt-ligne.faite .qt-titre { color: #335511; }
+/* La barre de chargement du bureau : elle se remplit de son rose sur un vert
+   pâli (le vert plein de la jauge vide se lirait comme « fini »). */
+.qt-barre { position: relative; height: 6px; margin-top: 4px; border-radius: 3px; overflow: hidden;
+  background: #EEF8E2; box-shadow: inset 0 0 0 1px #CDE9A8, 0 0 0 1px #FFFFFF; }
+.qt-barre i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px;
+  background: url('/frutiz/sprites/chargement-milieu-plein.svg') 0 0 / 100% 100%; }
+.qt-ligne.faite .qt-barre i { background: #9BD24C; }
+.qt-gain { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 52px; }
+/* La médaille du jeu : sa couleur dit la difficulté ; grisée tant qu'elle n'est pas gagnée. */
+/* (estompée, pas grisée : le bronze, l'argent et l'or doivent se distinguer) */
+.qt-medaille { width: 26px; height: 26px; object-fit: contain; opacity: .42; }
+.qt-medaille.gagnee { filter: none; }
+.qt-kik { display: inline-flex; align-items: center; gap: 2px; font: 700 11px Verdana, Arial, sans-serif; color: #764A34; white-space: nowrap; }
+/* La gélule rose (`butPushStandard`, #465). */
+.qt-gelule { position: relative; height: 16px; padding: 0 9px; border: 0; border-radius: 8px; background: #FFAAAD;
+  box-shadow: inset 0 0 0 1.5px #F28687; font: 700 10px Verdana, Arial, sans-serif; color: #660000; cursor: pointer; white-space: nowrap; }
+.qt-gelule::after { content: ""; position: absolute; inset: 1.5px; pointer-events: none; border-radius: 6.5px;
+  border-top: 1px solid #FFEAEC; border-right: 1px solid #FFEAEC; }
+.qt-gelule:active { background: #F49B9E; }
+.qt-gelule.arme { background: #FFD27A; box-shadow: inset 0 0 0 1.5px #E2A23A; color: #5A3A00; }
+.qt-gelule.arme::after { border-color: #FFF0C8; }
+.qt-gelule:disabled { opacity: .6; cursor: default; }
+/* « Changer » n'encombre pas la liste : il paraît au survol de la quête
+   (toujours là sur un écran tactile, et dès qu'il est armé). */
+@media (hover: hover) {
+  .qt-changer { visibility: hidden; }
+  .qt-ligne:hover .qt-changer, .qt-ligne:focus-within .qt-changer, .qt-changer.arme { visibility: visible; }
+}
 
-/* Les mises à prix : des avis de recherche cloués sur la planche. */
-.qt-primes:empty { display: none; }
-.qt-primes { padding: 4px 14px 16px; background: #8E5E2B;
-  background-image: repeating-linear-gradient(0deg, rgba(60,30,0,.25) 0 2px, transparent 2px 58px),
-    repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 40px, rgba(255,255,255,.03) 40px 90px);
-  border-top: 3px solid #6B4A1C; }
-.qt-ruban-or span { background: linear-gradient(#E8B83A, #B07A12); color: #3E2608; text-shadow: 0 1px 0 rgba(255,240,190,.6); }
-.qt-ruban-or span::before, .qt-ruban-or span::after { border-color: #8A5E0C; }
-.qt-ruban-or span::before { border-left-color: transparent; }
-.qt-ruban-or span::after { border-right-color: transparent; }
-.qt-avis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
-.qt-affiche { position: relative; padding: 8px 8px 10px; text-align: center; background: linear-gradient(175deg, #F3DFA8, #E2C27C);
-  border: 1px solid #8C6531; border-radius: 3px 5px 4px 2px; box-shadow: 0 3px 0 rgba(50,25,0,.35), inset 0 0 18px rgba(140,90,30,.25); }
-.qt-affiche:nth-child(odd) { transform: rotate(-1.2deg); }
-.qt-affiche:nth-child(even) { transform: rotate(1deg); }
-.qt-affiche::before { content: ''; position: absolute; left: 50%; top: -5px; width: 9px; height: 9px; margin-left: -4px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #C9B6DD, #7E6A99 70%); box-shadow: 0 1px 1px rgba(0,0,0,.4); }
-.qt-recherche { font: bold 15px Georgia, serif; letter-spacing: 3px; color: #6E1A10; border-bottom: 2px solid rgba(110,26,16,.5); padding-bottom: 2px; margin-bottom: 5px; }
-.qt-aff-jeu .qt-jeu { margin: 0; }
-.qt-aff-record { margin-top: 5px; font-size: 14px; font-weight: bold; color: #3E2608; }
-.qt-aff-tenant { font-size: 10.5px; color: #7A5A2A; }
-.qt-aff-prime { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 2px 10px; border-radius: 10px;
-  font-size: 16px; font-weight: bold; color: #4A3000; background: linear-gradient(#FFE07A, #D19A12); box-shadow: 0 1px 0 rgba(50,25,0,.35); }
-.qt-aff-prime img { width: 18px; height: 18px; }
+/* Les rubriques (contrat, mises à prix) : la puce rose des rubriques de la boutique. */
+.qt-section { display: flex; align-items: center; gap: 4px; margin-top: 4px; font: 700 13px Verdana, Arial, sans-serif; color: #000000; }
+.qt-section img { width: 20px; height: 18px; }
+.qt-note { margin: 2px 0 6px; font-size: 10px; color: #666666; line-height: 1.45; }
+.qt-note b { color: #333333; }
+/* Le sceau du contrat (s'il est rallumé). */
+.qt-sceau { justify-self: center; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;
+  font: bold 13px Georgia, serif; color: #FFE8E8; background: radial-gradient(circle at 38% 34%, #F28687, #C0392B 70%); }
+.qt-sceau.vide { background: none; color: #F28687; box-shadow: inset 0 0 0 1.5px #F28687; }
+
+/* Les mises à prix : des affiches, le portrait du jeu au milieu. */
+.qt-avis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; padding: 4px 2px 6px; }
+.qt-affiche { position: relative; padding: 7px 8px 9px; text-align: center; background: linear-gradient(175deg, #F6E7BC, #E8CD8E);
+  border: 1px solid #C9A464; border-radius: 3px 5px 4px 2px; box-shadow: 0 2px 4px rgba(0,0,0,.18), inset 0 0 16px rgba(160,110,40,.18); }
+.qt-affiche:nth-child(odd) { transform: rotate(-1deg); }
+.qt-affiche:nth-child(even) { transform: rotate(.9deg); }
+.qt-recherche { font: bold 14px Georgia, serif; letter-spacing: 3px; color: #6E1A10; }
+.qt-portrait { width: 64px; height: 64px; margin: 5px auto 4px; border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 2px #DDDDDD, 0 0 0 3px #888888; background: #CCF599; }
+.qt-portrait img { width: 100%; height: 100%; object-fit: cover; display: block; filter: sepia(.25); }
+.qt-portrait.vide { display: flex; align-items: center; justify-content: center; }
+.qt-aff-jeu { display: flex; align-items: center; justify-content: center; gap: 3px; font-weight: bold; color: #333333; }
+.qt-aff-jeu .qt-voyant { width: 16px; height: 16px; }
+.qt-aff-record { margin-top: 3px; font-size: 13px; font-weight: bold; color: #000000; }
+.qt-aff-tenant { font-size: 10px; color: #666666; }
+.qt-aff-prime { margin-top: 5px; }
+.qt-aff-prime .qt-kik { height: 20px; padding: 0 7px 0 3px; border-radius: 5px; background: #F8D5BC; border: 2px solid #F3BE8C;
+  box-shadow: 0 0 0 2px #DDDDDD; font-size: 14px; }
 .qt-affiche.prise { filter: grayscale(.7); opacity: .8; }
-.qt-aff-prise { position: absolute; left: 6px; right: 6px; top: 42%; transform: rotate(-12deg); font-size: 11px; font-weight: bold;
-  color: rgba(192,40,26,.9); border: 2px double rgba(192,40,26,.85); border-radius: 5px; background: rgba(255,245,220,.6); padding: 1px 4px; }
+.qt-aff-prise { position: absolute; left: 6px; right: 6px; top: 44%; transform: rotate(-12deg); font-size: 11px; font-weight: bold;
+  color: rgba(192,40,26,.9); border: 2px double rgba(192,40,26,.85); border-radius: 5px; background: rgba(255,245,220,.7); padding: 1px 4px; }
 
-.qt-pied { padding: 8px 14px 12px; font-size: 10.5px; color: #FFE9B8; background: #6B4A1C; text-align: center; line-height: 1.5; }
-.qt-pied b { color: #FFE58A; }
+.qt-contrat:empty, .qt-primes:empty { display: none; }
+.qt-pied { margin: 0 -8px; padding: 6px 10px 8px; border-top: 1px solid #DDDDDD; font-size: 10px; color: #888888; text-align: center; line-height: 1.5; }
+.qt-pied b { color: #555555; }
 
 @media (max-width: 420px) {
-  .qt-tete { gap: 12px; padding: 12px 10px 14px; }
-  .qt-cadre { padding: 5px; }
   .qt-ecran { width: 76px; height: 76px; }
-  .qt-ecran > canvas.fp-bvig { width: 74px !important; height: 74px !important; }
-  .qt-dit { font-size: 12px; }
-  .qt-planches { padding: 12px 8px 14px; }
-  .qt-carte { grid-template-columns: 32px minmax(0, 1fr) auto; gap: 3px 8px; padding: 9px 8px; }
-  .qt-case, .qt-case img { width: 30px; height: 30px; }
-  .qt-coche { font-size: 28px; }
-  .qt-gain { min-width: 48px; }
-  .qt-tampon { right: 60px; font-size: 13px; letter-spacing: 2px; }
-  .qt-contrat, .qt-primes { padding: 4px 8px 14px; }
+  .qt-ecran > canvas.fp-bvig { width: 76px !important; height: 76px !important; }
   .qt-avis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 }
 

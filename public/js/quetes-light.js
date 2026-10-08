@@ -97,105 +97,115 @@
     if (h > 0) return h + ' h ' + m + ' min';
     return Math.max(1, m) + ' min';
   }
-  function difficulte(q) {
-    var points = '';
-    var niv = q.niveau === 'difficile' ? 3 : (q.niveau === 'moyenne' ? 2 : 1);
-    for (var i = 1; i <= 3; i++) points += '<i' + (i <= niv ? ' class="on"' : '') + '></i>';
-    // Au modèle des paliers, le nom est celui du palier (et sa couleur de médaille).
-    var nom = q.palier
-      ? '<span class="qt-palier p-' + esc(q.palier) + '">' + esc(q.palierNom) + '</span>'
-      : '<span class="qt-diff-nom">' + esc(q.niveauNom) + '</span>';
-    return '<span class="qt-diff" aria-hidden="true">' + points + '</span>' + nom;
+  /*
+   * LES ASSETS DU PARC. Rien de dessiné ici : le jeu d'une quête se reconnaît
+   * à son VOYANT (celui de la barre des jeux), sa difficulté à la MÉDAILLE du
+   * jeu (bronze, argent, or — celles du Challenge), grisée tant qu'elle n'est
+   * pas gagnée ; l'avancement est la barre de chargement du bureau, les
+   * kikooz la pièce de la boutique, les boutons la gélule rose d'époque.
+   */
+  var VOYANT = { swapou2: 'swapou', snake3: 'snake3', kaluga: 'kaluga', bkiwi: 'bkiwi', mb2: 'mb2', minifever: 'minifever',
+    minipixiz: 'minipixiz', miniwave: 'miniwave', grapiz: 'grapiz', bandas: 'bandas', forum: 'forum' };
+  var MEDAILLE = { swapou2: 'swapou', snake3: 'snake', kaluga: 'kaluga', bkiwi: 'bk', mb2: 'mb2', minifever: 'minifever',
+    minipixiz: 'minipixiz', miniwave: 'miniwave', grapiz: 'grapiz', bandas: 'bandas' };
+  var PORTRAIT = { swapou2: 'swapou', snake3: 'frutisnake', kaluga: 'kaluga', mb2: 'mb', minipixiz: 'mpixiz', miniwave: 'mwave',
+    bkiwi: 'bk', grapiz: 'grapiz', jamajama: 'jamajama' };
+  var METAL = { facile: 'bronze', moyenne: 'silver', difficile: 'gold' };
+  var PIECE = '/frutiz/sprites/shop-kikooz.svg';
+  function nomJeu(q) { return q.etiquette ? q.etiquette.nom : ''; }
+  // Hors des jeux : la prune des Prunostics (sa tuile), le soleil des
+  // événements de jeu pour le Challenge, la bulle des salons.
+  var ICONE = { prunostics: '/frutiz/sprites/ico_pictoForum.svg', challenge: '/fb/evt_jeu.svg', salons: '/fb/icone_salon.png' };
+  function voyant(q) {
+    var v = VOYANT[q.jeu] ? '/fb/voyant_' + VOYANT[q.jeu] + '.png' : ICONE[q.jeu];
+    return v ? '<img class="qt-voyant" src="' + v + '" alt="' + esc(nomJeu(q)) + '" title="' + esc(nomJeu(q)) + '">'
+      : '<img class="qt-voyant puce" src="/frutiz/sprites/puce-standard-2.svg" alt="" title="' + esc(nomJeu(q)) + '">';
   }
-  function etiquette(q) {
-    return q.etiquette ? '<span class="qt-jeu" style="background:' + esc(q.etiquette.couleur) + '">' + esc(q.etiquette.nom) + '</span>' : '';
+  function medaille(q) {
+    var m = METAL[q.niveau] || 'bronze', j = MEDAILLE[q.jeu];
+    var src = j ? '/fb/medal_' + m + '_' + j + '.png' : '/fb/medal_' + m + '.svg';
+    return '<img class="qt-medaille' + (q.fait ? ' gagnee' : '') + '" src="' + src + '" alt="' + esc(q.niveauNom || '') + '" title="'
+      + esc(q.niveauNom || '') + (q.fait ? ' — faite' : '') + '">';
   }
+  function piece(n, plus) { return '<span class="qt-kik"><img src="' + PIECE + '" alt="kikooz">' + (plus ? '+' : '') + nombre(n) + '</span>'; }
+  function barre(pc) { return '<div class="qt-barre"><i style="width:' + Math.round((Number(pc) || 0) * 100) + '%"></i></div>'; }
+  function section(titre) { return '<div class="qt-section"><img src="/frutiz/sprites/shop-puce-rubrique.svg" alt="">' + esc(titre) + '</div>'; }
   function carte(q) {
-    var points = difficulte(q);
-    var et = etiquette(q);
-    var cas = q.contrat
-      ? '<div class="qt-case qt-sceau" aria-hidden="true">G</div>'
-      : '<div class="qt-case"><img src="' + CASE + '" alt="">' + (q.fait ? '<span class="qt-coche" aria-label="faite">✔</span>' : '') + '</div>';
-    var tag = q.decouverte ? '<span class="qt-tag">Découverte</span>' : (q.premiersPas ? '<span class="qt-tag pas">Premiers pas</span>' : '');
     var changer = (!q.fait && !q.contrat && etat && etat.echange && etat.echange.possible)
-      ? '<button type="button" class="qt-changer" data-id="' + esc(q.id) + '" title="Une fois par semaine, une seule quête">Changer</button>' : '';
-    return '<div class="qt-carte' + (q.fait ? ' faite' : '') + (q.contrat ? ' qt-signee' : '') + (q.decouverte ? ' qt-decouverte' : '') + '">'
-      + cas
-      + '<div class="qt-titre">' + tag + et + esc(q.titre) + '</div>'
+      ? '<button type="button" class="qt-gelule qt-changer" data-id="' + esc(q.id) + '" title="Une fois par semaine, une seule quête">Changer</button>' : '';
+    return '<div class="qt-ligne' + (q.fait ? ' faite' : '') + (q.contrat ? ' qt-signee' : '') + '">'
+      + (q.contrat ? '<span class="qt-sceau" aria-hidden="true">G</span>' : voyant(q))
+      + '<div class="qt-corps"><div class="qt-titre">' + esc(q.titre) + '</div>'
       + '<div class="qt-detail">' + esc(q.detail) + (q.detail && q.ligne ? ' · ' : '') + esc(q.ligne) + '</div>'
-      + '<div class="qt-barre"><i style="width:' + Math.round((Number(q.pc) || 0) * 100) + '%"></i></div>'
-      + '<div class="qt-gain"><span class="qt-kik"><img src="' + KIKOOZ + '" alt="kikooz">' + (q.fait ? '+' : '') + nombre(q.gain) + '</span>'
-      + points + changer + '</div>'
-      + (q.fait ? '<span class="qt-tampon">FAIT</span>' : '')
+      + barre(q.fait ? 1 : q.pc) + '</div>'
+      + '<div class="qt-gain">' + medaille(q) + piece(q.gain, q.fait) + changer + '</div>'
       + '</div>';
   }
-  // LES MISES À PRIX : un avis de recherche par record du parc.
+  // LES MISES À PRIX : un avis de recherche par record du parc, le portrait
+  // du jeu (son illustration du site) au milieu.
   function primes() {
     var l = (etat && etat.primes) || [];
     if (!l.length) return '';
-    return '<div class="qt-ruban qt-ruban-or"><span>Mises à prix</span></div>'
-      + '<div class="qt-contrat-note">Bats un <b>record absolu du parc</b> au Challenge, en détrônant son tenant : Gromelin paie la prime. '
+    return section('Mises à prix')
+      + '<div class="qt-note">Bats un <b>record absolu du parc</b> au Challenge en détrônant son tenant : Gromelin paie la prime. '
       + 'Une prime par record et par semaine.</div>'
       + '<div class="qt-avis">' + l.map(function (p) {
+        var portrait = PORTRAIT[p.jeu];
         return '<div class="qt-affiche' + (p.ouverte ? '' : ' prise') + '">'
           + '<div class="qt-recherche">RECHERCHÉ</div>'
-          + '<div class="qt-aff-jeu">' + etiquette(p) + '</div>'
+          + (portrait ? '<div class="qt-portrait"><img src="/images/' + portrait + '.png" alt=""></div>' : '<div class="qt-portrait vide">' + voyant(p) + '</div>')
+          + '<div class="qt-aff-jeu">' + voyant(p) + esc(nomJeu(p)) + '</div>'
           + '<div class="qt-aff-record">' + esc(p.record) + '</div>'
           + '<div class="qt-aff-tenant">record de <b>' + esc(p.tenant) + '</b></div>'
-          + '<div class="qt-aff-prime"><img src="' + KIKOOZ + '" alt="kikooz">' + nombre(p.gain) + '</div>'
+          + '<div class="qt-aff-prime">' + piece(p.gain) + '</div>'
           + (p.ouverte ? '' : '<span class="qt-aff-prise">Prise par ' + esc(p.prisePar) + '</span>')
           + '</div>';
       }).join('') + '</div>';
   }
   // Une proposition de contrat, pas encore signée.
   function proposition(p) {
-    return '<div class="qt-carte qt-prop">'
-      + '<div class="qt-case qt-sceau vide" aria-hidden="true">G</div>'
-      + '<div class="qt-titre">' + etiquette(p) + esc(p.titre) + '</div>'
-      + '<div class="qt-detail">' + esc(p.detail) + '</div>'
-      + '<div class="qt-gain"><span class="qt-kik"><img src="' + KIKOOZ + '" alt="kikooz">' + nombre(p.gain) + '</span>'
-      + difficulte(p) + '<button type="button" class="qt-signer" data-i="' + Number(p.i) + '">Signer</button></div>'
+    return '<div class="qt-ligne qt-prop">'
+      + '<span class="qt-sceau vide" aria-hidden="true">G</span>'
+      + '<div class="qt-corps"><div class="qt-titre">' + esc(p.titre) + '</div>'
+      + '<div class="qt-detail">' + esc(p.detail) + '</div></div>'
+      + '<div class="qt-gain">' + medaille(p) + piece(p.gain)
+      + '<button type="button" class="qt-gelule qt-signer" data-i="' + Number(p.i) + '">Signer</button></div>'
       + '</div>';
   }
   function contrat() {
     var c = etat && etat.contrat;
     if (!c || c.etat === 'inactif') return '';
-    var ruban = '<div class="qt-ruban"><span>Rien que pour toi</span></div>';
+    var tete = section('Rien que pour toi');
     if (c.etat === 'aucun') {
       var sem = Math.max(1, Math.round((Number(c.fenetre) || 28) / 7));
-      return ruban + '<div class="qt-contrat-note">Joue au Challenge au moins <b>' + nombre(c.minJours || 3) + ' jours</b> sur '
+      return tete + '<div class="qt-note">Joue au Challenge au moins <b>' + nombre(c.minJours || 3) + ' jours</b> sur '
         + (sem > 1 ? 'les ' + sem + ' dernières semaines' : 'la dernière semaine')
         + ', et Gromelin te taillera un contrat sur mesure, d’après tes propres scores.</div>';
     }
     if (c.etat === 'a_signer') {
-      return ruban + '<div class="qt-contrat-note">Trois contrats taillés sur tes scores du Challenge. <b>Signes-en un seul</b> : '
+      return tete + '<div class="qt-note">Trois contrats taillés sur tes scores du Challenge. <b>Signes-en un seul</b> : '
         + 'seuls les résultats obtenus après la signature comptent.</div>'
-        + '<div class="qt-props">' + (c.propositions || []).map(proposition).join('') + '</div>';
+        + '<div class="qt-liste">' + (c.propositions || []).map(proposition).join('') + '</div>';
     }
-    return ruban + '<div class="qt-contrat-note">Ton contrat de la semaine. Seuls les résultats obtenus depuis la signature comptent.</div>'
-      + '<div class="qt-props">' + (c.quete ? carte(c.quete) : '') + '</div>';
+    return tete + '<div class="qt-note">Ton contrat de la semaine. Seuls les résultats obtenus depuis la signature comptent.</div>'
+      + '<div class="qt-liste">' + (c.quete ? carte(c.quete) : '') + '</div>';
   }
   function rendre() {
     var corps = document.getElementById('quetes-corps');
     if (!corps || !etat) return;
     if (!etat.acces) { corps.innerHTML = '<div class="qt-ferme">Gromelin n’a pas de quêtes pour toi en ce moment.</div>'; return; }
     var S = etat.semaine || {};
-    var gp = etat.gainsPaliers;
-    var gainsTxt = gp
-      ? ('Bronze <b>' + nombre(gp.bronze) + '</b> · Argent <b>' + nombre(gp.argent) + '</b> · Or <b>' + nombre(gp.or)
-        + '</b> · Platine <b>' + nombre(gp.platine) + '</b> · Légende <b>' + nombre(gp.legende) + '</b> kikooz, versés dès que la quête est faite.<br>')
-      : (etat.gains ? ('Facile <b>' + nombre(etat.gains.facile) + '</b> · Moyenne <b>' + nombre(etat.gains.moyenne)
-        + '</b> · Difficile <b>' + nombre(etat.gains.difficile) + '</b> kikooz, versés dès que la quête est faite.<br>') : '');
-    if (etat.echange) gainsTxt += (etat.echange.fait ? 'Tu as changé une quête cette semaine (« ' + esc(etat.echange.fait.titre) + ' »).'
-      : 'Une quête ne te plaît pas ? Tu peux en <b>changer une</b> par semaine.') + '<br>';
+    var pied = 'Les kikooz sont versés dès que la quête est faite. Nouvelles quêtes chaque lundi à minuit ; une quête non finie dimanche est perdue.'
+      + (etat.echange ? '<br>' + (etat.echange.fait ? 'Tu as changé une quête cette semaine (« ' + esc(etat.echange.fait.titre) + ' »).'
+        : 'Une quête ne te plaît pas ? Tu peux en <b>changer une</b> par semaine.') : '');
     var dejaLa = corps.querySelector('.qt');
-    var pied = gainsTxt + 'Nouvelles quêtes chaque lundi à minuit. Une quête non finie dimanche est perdue.';
     var planches = (etat.quetes || []).map(carte).join('') || '<div class="qt-vide">Pas de quêtes cette semaine.</div>';
-    var semaine = '<span>Semaine ' + esc(S.lisible || '') + ' · <b>' + nombre(etat.gagnes) + '</b> / ' + nombre(etat.total) + ' kikooz gagnés</span>'
-      + (etat.bonus ? '<span class="qt-bonus' + (etat.bonus.verse ? ' verse' : '') + '">' + (etat.bonus.verse
-        ? '✔ Bonus de la semaine : <b>+' + nombre(etat.bonus.xp) + ' XP</b>'
-        : 'Tout finir : <b>+' + nombre(etat.bonus.xp) + ' XP</b>') + '</span>' : '')
-      + '<span>Nouvelles quêtes dans <b class="qt-compte">' + esc(reste(S.fin)) + '</b></span>';
+    // Le compteur de la boutique (gagnés / possibles), et le bonus de la semaine.
+    var semaine = '<span class="qt-sem-txt">Semaine ' + esc(S.lisible || '') + '<br>Nouvelles quêtes dans <b class="qt-compte">' + esc(reste(S.fin)) + '</b></span>'
+      + (etat.bonus ? '<span class="qt-bonus' + (etat.bonus.verse ? ' verse' : '') + '" title="'
+        + (etat.bonus.verse ? 'Bonus de la semaine versé' : 'Toutes les quêtes faites : un bonus d’XP') + '"><img src="/fb/Niveau.svg" alt="">'
+        + (etat.bonus.verse ? '✔ ' : 'tout finir : ') + '+' + nombre(etat.bonus.xp) + ' XP</span>' : '')
+      + '<span class="qt-compteur" title="kikooz gagnés / possibles cette semaine"><img src="' + PIECE + '" alt="kikooz"><b>' + nombre(etat.gagnes) + '</b>&nbsp;/ ' + nombre(etat.total) + '</span>';
     if (dejaLa) {
       // Déjà affichée : on ne touche ni à Gromelin ni à sa bulle (il parle peut-être).
       dejaLa.querySelector('.qt-semaine').innerHTML = semaine;
@@ -209,7 +219,7 @@
       + '<div class="qt-tete"><div class="qt-cadre"><div class="qt-ecran" title="' + esc((etat.gromelin && etat.gromelin.nom) || 'Gromelin') + '"></div></div>'
       + '<div class="qt-dit" role="status" aria-live="polite" title="Clique pour la suite"><span class="qt-txt"></span><span class="qt-curseur"></span><span class="qt-suite"></span></div></div>'
       + '<div class="qt-semaine">' + semaine + '</div>'
-      + '<div class="qt-planches">' + planches + '</div>'
+      + '<div class="qt-planches qt-liste">' + planches + '</div>'
       + '<div class="qt-contrat">' + contrat() + '</div>'
       + '<div class="qt-primes">' + primes() + '</div>'
       + '<div class="qt-pied">' + pied + '</div>'

@@ -966,14 +966,14 @@ ${sources.map((s) => ' *   · ' + s).join('\n')}
 const CIBLES = [
   {
     sortie: 'public/nuit.css',
-    sources: ['public/light.html (son <style>)', 'public/bureau-frutiz.css'],
-    lire: () => [styleDe(P('public/light.html')), fs.readFileSync(P('public/bureau-frutiz.css'), 'utf8')],
+    sources: ['public/light.html (son <style>)', 'public/bureau-frutiz.css', 'public/quetes.css'],
+    lire: () => [styleDe(P('public/light.html')), fs.readFileSync(P('public/bureau-frutiz.css'), 'utf8'), fs.readFileSync(P('public/quetes.css'), 'utf8')],
     retouches: 'scripts/nuit-retouches.css',
     // Les documents ENTIERS — HTML et JavaScript compris. Ils ne servent pas
     // à la conversion (qui ne lit que le CSS) mais à savoir quels dessins ce
     // client-là emploie : sans ce filtre, la feuille du forum embarquerait
     // les règles de tous les sprites du bureau, qu'il n'affiche jamais.
-    emploie: () => [P('public/light.html'), P('public/bureau-frutiz.css'), P('public/bureau-frutiz.js')],
+    emploie: () => [P('public/light.html'), P('public/bureau-frutiz.css'), P('public/bureau-frutiz.js'), P('public/quetes.css'), P('public/js/quetes-light.js')],
   },
   {
     sortie: 'public/fb/nuit.css',

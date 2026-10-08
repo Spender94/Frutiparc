@@ -10985,7 +10985,6 @@ async function chargerQuetes() {
       quetesPrimesPrises.set(row.ranking_id, { username: String(row.username).toLowerCase(), score: Number(row.score), ancien: row.ancien,
         gain: Number(row.gain) || 0, prisAt: row.pris_at ? new Date(row.pris_at).getTime() : 0 });
     }
-    await chargerQuetesRecords().catch((e) => console.error('[QUETES] records du parc :', e.message));
     for (const row of await db.quetesChargerIndividuelles(S.lundi)) {
       quetesIndiv.set(String(row.username).toLowerCase(), quetesIndivLu(row));
     }
@@ -10998,6 +10997,9 @@ async function chargerQuetes() {
     }
   } catch (e) { console.error('[QUETES] chargement :', e.message); }
   quetesPret = true;
+  // Les records du parc (pour les mises à prix) : tout le livre des records,
+  // plus long à lire — en arrière-plan, sans retarder l'ouverture des quêtes.
+  chargerQuetesRecords().catch((e) => console.error('[QUETES] records du parc :', e.message));
 }
 
 // ── Le contrat de la semaine ──
@@ -11255,7 +11257,7 @@ function quetesContratVue(u) {
   const propositions = c.propositions.map((prop, i) => {
     const def = Quetes.definitionContrat(prop);
     return def ? { i, niveau: def.niveau, niveauNom: Quetes.NIVEAU_NOM[def.niveau], gain: gainDe(def.niveau),
-      titre: Quetes.titre(def), detail: Quetes.detail(def), etiquette: Quetes.ETIQUETTES[def.etiquette] || null } : null;
+      titre: Quetes.titre(def), detail: Quetes.detail(def), etiquette: Quetes.ETIQUETTES[def.etiquette] || null, jeu: def.etiquette || null } : null;
   }).filter(Boolean);
   if (!c.def) return { etat: 'a_signer', propositions };
   return { etat: 'signe', signeLe: c.signeAt || null, choix: c.choix, propositions };
@@ -11382,7 +11384,7 @@ function quetesEtatPour(username) {
       decouverte: !!def.decouverte, premiersPas: !!def.premiersPas,
       titre: Quetes.titre(def), detail: Quetes.detail(def), ligne: av.ligne, pc: av.pc,
       fait: !!p.faitAt, faitLe: p.faitAt || null,
-      etiquette: Quetes.ETIQUETTES[def.etiquette] || null, taillee: !!def.taillee,
+      etiquette: Quetes.ETIQUETTES[def.etiquette] || null, jeu: def.etiquette || null, taillee: !!def.taillee,
     };
   };
   const quetes = quetesDe(u).map(carte);
@@ -11522,7 +11524,7 @@ function quetesPrimesVue() {
     const cle = Quetes.MESURES_PERSO.find((k) => Quetes.MESURES[k].source.rk === rk);
     const jeu = cle ? Quetes.MESURES[cle].jeu : (RANKINGS[rk] && RANKINGS[rk].game);
     return {
-      rk, nom: (RANKINGS[rk] && RANKINGS[rk].name) || rk, etiquette: Quetes.ETIQUETTES[jeu] || null,
+      rk, nom: (RANKINGS[rk] && RANKINGS[rk].name) || rk, etiquette: Quetes.ETIQUETTES[jeu] || null, jeu: jeu || null,
       record: quetesValeurLisible(rk, rec.score, rec.data), tenant: getDisplayName(rec.username), tenantPseudo: rec.username,
       gain: quetesReglages.primes.gain, ouverte: !prise,
       prisePar: prise ? getDisplayName(prise.username) : null,
