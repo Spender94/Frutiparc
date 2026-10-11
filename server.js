@@ -19157,7 +19157,11 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
     if (dungeon) {
       const lvl = Number(dungeon.$lvl) || 0;
       const loop = Number(dungeon.$loop) || 0;
-      const completed = Math.min(5, loop > 0 ? 5 : (lvl + (dungeon.$f ? 1 : 0)));
+      // `$f` dit que le donjon est BÂTI (Cm.updateTime), pas vaincu : le compter
+      // donnait le diamant une nuit trop tôt. Rangs vaincus = $lvl au premier tour
+      // (vaincre le rang k porte $lvl à k+1), cinq dès qu'une boucle est faite ;
+      // $diam, le compte de la fiche, ne peut que confirmer.
+      const completed = Math.min(5, Math.max(Number(parsed.$diam) || 0, loop > 0 ? 5 : lvl));
       for (let k = 1; k <= completed; k++) addIfNew(`$pixiz_diam${k}`);
     }
   } else if (game === 'snake3') {
@@ -20155,7 +20159,10 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
             merged.$faerie = prev.$faerie;
           }
           // Nested progress containers — keep prev when new is missing/empty.
-          if (prev.$dungeon && Number(prev.$dungeon.$lvl) > Number((merged.$dungeon || {}).$lvl || 0)) {
+          // Le rang compte avec sa boucle : après le 5e donjon, $lvl retombe à 0
+          // et $loop passe à 1 — comparer $lvl seul rétrograderait la fiche.
+          const rangDonjon = (d) => (d ? (Number(d.$loop) || 0) * 5 + (Number(d.$lvl) || 0) : 0);
+          if (prev.$dungeon && rangDonjon(prev.$dungeon) > rangDonjon(merged.$dungeon)) {
             merged.$dungeon = prev.$dungeon;
           }
           if (prev.$pond && Number(prev.$pond.$q) > Number((merged.$pond || {}).$q || 0)) {

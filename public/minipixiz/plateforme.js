@@ -221,6 +221,26 @@ function reparer(brut) {
   return { carte: c, reparations };
 }
 
+/**
+ * Le cinquième diamant des fiches d'AVANT le correctif.
+ *
+ * Ce n'est pas un dégât — `reparer` n'y touche donc pas —, c'est la trace du
+ * défaut d'origine : Cm.winDungeon ne donnait jamais le diamant du rang 4 et
+ * laissait $diam à quatre au bout d'un tour complet (voir Donjon.gagnerLeDonjon
+ * dans lieux.js). Une boucle faite ($loop > 0) avec moins de cinq diamants,
+ * c'est donc un joueur qui a vaincu le cinquième donjon sans rien en rapporter :
+ * on lui rend l'alvéole qui manque. Le serveur garde le plus grand $diam, et
+ * dérive de toute façon les cinq pictos de la boucle faite.
+ *
+ * @returns {boolean} vrai si la fiche a changé
+ */
+function rendreLeCinquiemeDiamant(c) {
+  if (!c || !c.$dungeon) return false;
+  if (!(nombre(c.$dungeon.$loop) > 0) || nombre(c.$diam) >= 5) return false;
+  c.$diam = 5;
+  return true;
+}
+
 // La fiche porte-t-elle une vraie progression ? Même règle que
 // isMinipixizSlotHealthy côté serveur — on la relit pour savoir si une
 // sauvegarde risquerait d'écraser quelque chose.
@@ -467,6 +487,9 @@ class Plateforme {
         this.carte = r.carte;
         this.reparations = r.reparations;
         this.charge = true;
+        // Avant les nuits : si l'une d'elles écrit la fiche, autant qu'elle
+        // parte complète.
+        rendreLeCinquiemeDiamant(this.carte);
         this.passerLesNuits();
         return this.carte;
       })
@@ -616,7 +639,8 @@ class Plateforme {
 }
 
 const API = {
-  Plateforme, carteNeuve, reparer, fusionner, ramasser, fiche, lireLoadVars, feeEnMain,
+  Plateforme, carteNeuve, reparer, rendreLeCinquiemeDiamant, fusionner, ramasser, fiche,
+  lireLoadVars, feeEnMain,
   normaliserPref, PREF_DEFAUT,
   nouveauxPictos, porteUneProgression, finDeCourse,
   VERSION, NB_ZONES, PAS_CHECKPOINT, PLACES_SAC, RELAIS,

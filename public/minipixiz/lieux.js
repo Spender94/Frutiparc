@@ -288,13 +288,37 @@ class Donjon extends Lieu {
    * Le deuxième rang libère Ornegon, le cinquième fait apparaître un
    * arc-en-ciel et relance la boucle. Le diamant n'est donné qu'au PREMIER
    * tour : les suivants ne rapportent plus que le plaisir.
+   *
+   * ── ÉCART ASSUMÉ : LE CINQUIÈME DIAMANT ──
+   *
+   * « Le bug du cinquième donjon », jamais corrigé à l'époque : le fichier
+   * d'origine ne donnait JAMAIS le cinquième diamant. Cm.winDungeon, dans
+   * l'ordre :
+   *
+   *     if( card.$dungeon.$lvl==4 ){ … card.$dungeon.$loop++; }          (1)
+   *     if( card.$dungeon.$loop==0 ) giveItem("$diam_"+card.$dungeon.$lvl) (2)
+   *     card.$dungeon.$lvl = (card.$dungeon.$lvl+1)%5;                     (3)
+   *     card.$diam = int(Math.max(card.$diam,card.$dungeon.$lvl))          (4)
+   *
+   * Au rang 4, (1) passe $loop à 1 AVANT que (2) ne le teste : pas de
+   * $diam_4. Puis (3) ramène le rang à zéro et (4) laisse $diam à quatre : la
+   * cinquième alvéole de l'inventaire (Inventory.initExtraDisplay en dessine
+   * cinq) ne se remplit jamais — alors que le diamant qui tombe à l'écran est
+   * bien le cinquième (Dungeon.initStep(21) : `gotoAndStop(difficulty+1)`) et
+   * que son picto existe (bmp/titems/GIF/diam/diam5.gif). On lit donc le tour
+   * et le rang AVANT de les faire tourner, et $diam compte les rangs vaincus :
+   * cinq au bout du cinquième. Les rangs 0 à 3 ne changent pas d'un cheveu.
    */
   gagnerLeDonjon() {
     const c = this.carte;
     if (!c) return null;
     const d = c.$dungeon;
+    // Le rang joué et le tour EN COURS, figés ici : c'est à eux que se mesure
+    // la récompense, pas à ce qu'ils deviennent trois lignes plus bas.
+    const rang = nombre(d.$lvl);
+    const premierTour = nombre(d.$loop) === 0;
     const gains = { diamant: null, ornegon: false, arcEnCiel: false };
-    if (nombre(d.$lvl) === 4) {
+    if (rang === 4) {
       if (c.$rainbow.$day === null || c.$rainbow.$day === undefined) {
         c.$rainbow.$day = 0;
         c.$rainbow.$f = true;
@@ -304,13 +328,15 @@ class Donjon extends Lieu {
       }
       d.$loop = nombre(d.$loop) + 1;
     }
-    if (nombre(d.$lvl) === 2 && !c.$frog) { c.$frog = true; gains.ornegon = true; }
-    if (nombre(d.$loop) === 0) gains.diamant = nombre(d.$lvl);
+    if (rang === 2 && !c.$frog) { c.$frog = true; gains.ornegon = true; }
+    if (premierTour) gains.diamant = rang;
 
-    d.$lvl = (nombre(d.$lvl) + 1) % 5;
+    d.$lvl = (rang + 1) % 5;
     d.$f = false;
     d.$day = nombre(c.$time.$d);
-    c.$diam = Math.max(nombre(c.$diam), nombre(d.$lvl));
+    // Le compte des rangs vaincus — et non le rang suivant, qui retombe à zéro
+    // après le cinquième.
+    c.$diam = Math.max(nombre(c.$diam), rang + 1);
     this.evenement('donjonGagne', gains);
     return gains;
   }
