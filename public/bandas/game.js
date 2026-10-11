@@ -16,7 +16,8 @@
 //   Vachette       la meuhmeuh nettoie toute la colonne choisie
 //   Conversion     le fruit ciblé change d'équipe
 //   Charge         le prochain mouvement est appliqué deux fois
-//   Entracte       on ne bouge pas ce tour-ci (la carte tient lieu de tour)
+//   Entracte       on ne bouge pas ce tour-ci (la carte tient lieu de tour) ;
+//                  un désordre adverse qui attendait ce mouvement est perdu
 //   Solo           seul le fruit choisi bougera au prochain mouvement
 //   Piège          (cachée) piège une case libre ; le fruit qui s'y pose meurt
 //
@@ -120,8 +121,9 @@
     }
   };
 
-  // Fin de tour : célérité fait rejouer la même équipe, sinon on alterne. La
-  // fenêtre de confiscation adverse expire quand le tour de sa cible se finit.
+  // Fin de tour : célérité fait rejouer la même équipe, sinon on alterne. Les
+  // effets que l'adversaire avait armés contre ce tour-ci (confiscation,
+  // désordre) expirent quand le tour de leur cible se finit.
   //
   // CÉLÉRITÉ NE REND QU'UN MOUVEMENT. Le tour rejoué garde `cardPlayedThisTurn`
   // à vrai : on rebouge, on ne rejoue pas de carte. Sans quoi la carte se
@@ -131,6 +133,17 @@
     if (this._checkEnd(events)) return;
     var t = this.currentTeam;
     this.confiscation[1 - t] = false;          // la fenêtre « prochain tour » de l'adversaire se referme
+    // Même sort pour le désordre armé CONTRE t : il visait « le prochain
+    // mouvement » de t, et le tour de t s'achève. Après un mouvement il est
+    // déjà consommé (move) ; après un ENTRACTE il n'y a pas eu de mouvement,
+    // et la carte ne doit pas attendre le tour d'après — l'entracte l'a
+    // absorbée. Elle est révélée comme elle l'aurait été devant le mouvement,
+    // sinon ni l'un ni l'autre ne saurait qu'elle est tombée à l'eau.
+    if (this.desordre[t]) {
+      this.desordre[t] = false;
+      events.push({ type: "cardPlayed", team: this.desordreBy[t], card: CARD.DESORDRE, to: "all" });
+      this.desordreBy[t] = null;
+    }
     var rejoue = false;
     if (this.celerite[t]) {
       this.celerite[t] = false;                // on rejoue (le tour reste à t)

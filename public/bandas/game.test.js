@@ -223,6 +223,68 @@ eq(find(r, "cardPlayed")[0].card, CARD.DESORDRE, "desordre revealed before the m
 eq(find(r, "cardPlayed")[0].to, "all", "desordre reveal broadcast");
 eq(evTypes(r).indexOf("cardPlayed"), 0, "reveal comes first");
 
+// ── Désordre puis Entracte : l'entracte absorbe le désordre ─────────────────
+// Bug remonté par les joueurs : J1 pose Désordre, J2 répond Entracte, et
+// l'inversion se reportait sur le mouvement SUIVANT de J2. Le désordre vise
+// « le prochain mouvement » adverse ; un tour passé sans mouvement l'éteint.
+// D'abord le cas témoin, sans entracte : même plateau, le désordre s'applique.
+var DES_ROWS = ["......", ".0..0.", "......", "..1...", "......", "......"];
+g = game(DES_ROWS, { firstTeam: 0 });
+g.hands[0] = [CARD.DESORDRE];
+g.hands[1] = [CARD.ENTRACTE];
+g.playCard(0, CARD.DESORDRE);
+g.move(0, DIR.UP);
+r = g.move(1, DIR.LEFT);                               // J2 bouge sans entracte
+eq(g.board.getElement({ x: 3, y: 3 }), 1, "témoin: sans entracte, le mouvement adverse est bien inversé");
+eq(g.desordre[1], false, "témoin: le désordre est consommé par le mouvement");
+// Puis le cas rapporté : J2 joue Entracte au lieu de bouger.
+g = game(DES_ROWS, { firstTeam: 0 });
+g.hands[0] = [CARD.DESORDRE];
+g.hands[1] = [CARD.ENTRACTE];
+g.playCard(0, CARD.DESORDRE);
+g.move(0, DIR.UP);
+r = g.playCard(1, CARD.ENTRACTE);
+ok(r.ok, "désordre+entracte: l'entracte est accepté");
+eq(evTypes(r), "cardPlayed,cardPlayed,turn", "désordre+entracte: entracte, révélation du désordre perdu, puis le tour");
+eq(find(r, "cardPlayed")[1].card, CARD.DESORDRE, "désordre+entracte: la carte perdue est révélée");
+eq(find(r, "cardPlayed")[1].team, 0, "désordre+entracte: …au nom de son poseur");
+eq(find(r, "cardPlayed")[1].to, "all", "désordre+entracte: …aux deux joueurs");
+eq(g.desordre[1], false, "désordre+entracte: le désordre ne reste pas armé");
+eq(g.desordreBy[1], null, "désordre+entracte: plus de poseur en attente");
+eq(g.currentTeam, 0, "désordre+entracte: le tour passe à J1");
+g.move(0, DIR.DOWN);                                   // J1 rejoue normalement (ses fruits sont au bord : pas vers le haut)
+r = g.move(1, DIR.LEFT);                               // le tour d'APRÈS de J2 : pas d'inversion
+eq(g.board.getElement({ x: 1, y: 3 }), 1, "désordre+entracte: le mouvement suivant de J2 n'est PAS inversé");
+eq(find(r, "cardPlayed").length, 0, "désordre+entracte: rien à révéler au tour suivant");
+// Symétrique : le désordre est posé par J2, c'est J1 qui répond Entracte.
+g = game(["......", ".1..1.", "......", "..0...", "......", "......"], { firstTeam: 1 });
+g.hands[1] = [CARD.DESORDRE];
+g.hands[0] = [CARD.ENTRACTE];
+g.playCard(1, CARD.DESORDRE);
+g.move(1, DIR.UP);
+r = g.playCard(0, CARD.ENTRACTE);
+eq(find(r, "cardPlayed")[1].team, 1, "désordre(J2)+entracte(J1): révélation au nom de J2");
+eq(g.desordre[0], false, "désordre(J2)+entracte(J1): le désordre contre J1 est éteint");
+g.move(1, DIR.DOWN);
+g.move(0, DIR.LEFT);
+eq(g.board.getElement({ x: 1, y: 3 }), 0, "désordre(J2)+entracte(J1): le mouvement suivant de J1 n'est pas inversé");
+// Et un désordre armé qui traverse une sérialisation (partie en différé) :
+// relu avant l'entracte, il est encore là ; relu après, il a disparu.
+// (size explicite : toJSON range la taille de la partie, pas celle du plateau)
+g = game(DES_ROWS, { firstTeam: 0, size: 6 });
+g.hands[0] = [CARD.DESORDRE];
+g.hands[1] = [CARD.ENTRACTE];
+g.playCard(0, CARD.DESORDRE);
+g.move(0, DIR.UP);
+var relu = G.BandasGame.fromJSON(JSON.parse(JSON.stringify(g.toJSON())));
+eq(relu.desordre[1], true, "différé: le désordre armé survit à la relecture");
+relu.playCard(1, CARD.ENTRACTE);
+relu = G.BandasGame.fromJSON(JSON.parse(JSON.stringify(relu.toJSON())));
+eq(relu.desordre[1], false, "différé: relu après l'entracte, le désordre n'est plus armé");
+relu.move(0, DIR.DOWN);
+relu.move(1, DIR.LEFT);
+eq(relu.board.getElement({ x: 1, y: 3 }), 1, "différé: le mouvement suivant n'est pas inversé");
+
 // ── Confiscation : la carte adverse du tour suivant est volée ───────────────
 g = game(["0...1.", "0...1.", "0...1.", "0...1.", "......", "......"], { firstTeam: 0 });
 g.hands[0] = [CARD.CONFISCATION];

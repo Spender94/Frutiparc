@@ -39,7 +39,7 @@ Frutibandas = un **pousse-pousse de fruits** 2 joueurs (oranges, béret rouge,
 | 6 | Vachette | la meuhmeuh vide toute la **colonne** choisie |
 | 7 | Conversion | le fruit ciblé change d'équipe |
 | 8 | Charge | le prochain mouvement est appliqué **deux fois** |
-| 9 | Entracte | on ne bouge pas ce tour-ci (la carte tient lieu de tour) |
+| 9 | Entracte | on ne bouge pas ce tour-ci (la carte tient lieu de tour) ; un désordre adverse qui visait ce mouvement est perdu, pas reporté |
 | 10 | Solo | seul le fruit choisi bougera au prochain mouvement |
 | 11 | Piège | *(cachée)* piège une case libre ; le fruit qui s'y pose meurt avec la case |
 
