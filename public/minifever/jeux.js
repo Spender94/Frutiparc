@@ -1364,8 +1364,20 @@ class Gather extends Jeu {
  * Dessins (gameTubulo #214) :
  *   sym209  le tube, trois images — l'enfant nommé du clip mcTube, sorti à
  *           part par l'extracteur
- *   sym210  la FENÊTRE capsule : la forme qui servait de masque au tube, et
- *           qui redevient une découpe ici
+ *   sym210  la FENÊTRE capsule : la forme qui servait de masque au tube
+ *           (clipDepth dans le sprite mcTube #210), et qui redevient une
+ *           découpe ici
+ *
+ * LE DÉCALAGE DES PISTONS. « Décalage gênant entre le pointeur et les pistons
+ * sélectionnés » : le portage cherchait la case sous la souris dans la BOÎTE
+ * de la fenêtre capsule entière. Or la fenêtre monte 42,5 unités (17 px) plus
+ * haut que le tube qu'elle découpe — ce vide au-dessus du piston n'est pas
+ * dessiné, mais il attrapait la souris ; et la case du dessous étant posée
+ * APRÈS, c'est elle qui raflait le tiers supérieur du piston qu'on VOYAIT :
+ * on survolait une capsule, la croix de celle 32 px plus bas s'allumait. Le
+ * lecteur Flash, lui, ne donne la souris à un clip masqué que là où son
+ * dessin est VISIBLE — le tube découpé par la fenêtre. C'est cette forme-là
+ * (pistonVisible) qu'on teste désormais, bouts arrondis compris.
  */
 class Tubulo extends Jeu {
   constructor(socle) {
@@ -1432,22 +1444,56 @@ class Tubulo extends Jeu {
   }
 
   /**
-   * La case sous un point : la fenêtre capsule, la dernière posée devant —
-   * comme le onPress/onRollOver du lecteur. Servie par le survol ET par
-   * l'appui, qui arrive au doigt SANS survol préalable.
+   * La case sous un point : le piston VISIBLE, la dernière case posée devant
+   * — comme le onPress/onRollOver du lecteur sur un clip masqué. Servie par
+   * le survol ET par l'appui, qui arrive au doigt SANS survol préalable.
    */
   sousLePoint(px, py) {
-    const b = (this.socle && this.socle.mesures && this.socle.mesures.sym210)
-      ? this.socle.mesures.sym210.boite : { x0: -8, y0: -50, x1: 8, y1: 50 };
-    const k = this.taille / 100;
     for (let x = this.xMax - 1; x >= 0; x--) {
       for (let y = this.yMax - 1; y >= 0; y--) {
         const slot = this.grille[x][y];
-        if (px > slot.x + b.x0 * k && px < slot.x + b.x1 * k
-          && py > slot.y + b.y0 * k && py < slot.y + b.y1 * k) return slot;
+        if (this.pistonVisible(slot, px, py)) return slot;
       }
     }
     return null;
+  }
+
+  /**
+   * Le point est-il sur la part VISIBLE du piston d'une case : le tube
+   * (sym209, à sa plongée du moment) découpé par la fenêtre capsule (sym210) ?
+   * Les deux font la même largeur ; en haut, c'est le sommet du tube qui
+   * borne — un demi-cercle de rayon la demi-largeur (shape206) — et en bas le
+   * fond de la fenêtre — un demi-ovale, moitié moins haut que large (shape205).
+   * Le haut de la fenêtre et le bas du tube, eux, n'enferment rien de
+   * visible : la fenêtre monte plus haut que le tube, le tube descend plus
+   * bas qu'elle.
+   */
+  pistonVisible(slot, px, py) {
+    const m = this.socle && this.socle.mesures;
+    const f = (m && m.sym210) ? m.sym210.boite : { x0: -50, y0: -147.5, x1: 50, y1: 27.5 };
+    const t = (m && m.sym209) ? m.sym209.boite : { x0: -50, y0: -105, x1: 50, y1: 145 };
+    const k = this.taille / 100;
+    // Dans le repère de la capsule, en unités du clip.
+    const lx = (px - slot.x) / k;
+    const ly = (py - slot.y) / k;
+    const plongee = slot.mc ? (slot.mc.y - slot.y) / k : 0;    // le tube descend dans sa fenêtre
+    if (lx <= f.x0 || lx >= f.x1) return false;
+    const r = (f.x1 - f.x0) / 2;                                  // la demi-largeur
+    // Le haut : le sommet arrondi du tube…
+    const haut = Math.max(t.y0 + plongee, f.y0);
+    if (ly <= haut) return false;
+    if (ly < haut + r) {
+      const dy = ly - (haut + r);
+      if (lx * lx + dy * dy > r * r) return false;
+    }
+    // …le bas : le fond ovale de la fenêtre.
+    const bas = Math.min(f.y1, t.y1 + plongee);
+    if (ly >= bas) return false;
+    if (ly > bas - r / 2) {
+      const ex = lx / r, ey = (ly - (bas - r / 2)) / (r / 2);
+      if (ex * ex + ey * ey > 1) return false;
+    }
+    return true;
   }
 
   /*
@@ -1893,13 +1939,19 @@ class Orbital extends Jeu {
  * flash blanc, le décor se découpe au format de la photo, le poisson s'y fige.
  * La difficulté rétrécit le cadre et raidit le saut.
  *
- * LA PHOTO RÉUSSIE. La source exigeait le poisson à moins de 30 % de la
- * taille du cadre de son CENTRE (un disque de 30 px dans un cadre de 100) :
- * un poisson bien visible dans le cadre, mais décalé sur le côté, était
- * refusé — « l'ombre est parfaitement dans le cadre et le défi ne se valide
- * pas ». La règle suit donc ce que le joueur voit : le centre du poisson
- * DANS le cadre (dans le repère du cadre incliné), à 8 % du bord près —
- * |x|, |y| < 42 % de la taille, le cadre en faisant ±50 %.
+ * LA PHOTO RÉUSSIE. La règle d'époque : « setWin(distance<size*0.3) », la
+ * distance du centre du poisson au centre du cadre sous 30 % de la taille
+ * (30 px dans un cadre de 100, pour un poisson de 54 × 11). Un poisson bien
+ * visible dans le cadre mais décalé — en hauteur, le long de son petit
+ * côté — pouvait être refusé : « la photo est parfaitement cadrée et le
+ * défi ne se valide pas ». On avait alors relâché la règle au CENTRE du
+ * poisson dans le cadre (à 8 % du bord près) : trop — à 42 px du centre,
+ * une tête ou une queue de 27 px dépasse largement, « on peut faire du hors
+ * cadre sans problème ». La règle est donc celle d'époque, à laquelle
+ * s'ajoute ce que l'œil appelle une photo cadrée : le poisson TOUT ENTIER
+ * dans la fenêtre du cliché (sa boîte, tournée comme lui, dans le repère du
+ * cadre incliné ; sym163, ±50 % de la taille). Qui déborde du cadre, et
+ * dont le centre est à plus de 30 %, rate.
  *
  * Dessins (voisins de gameJumpFish #184) :
  *   sym182  l'eau, en toile de fond
@@ -1910,8 +1962,8 @@ class Orbital extends Jeu {
  *   sym16   le plouf — la bouffée partagée avec la fumée du Lander, quinze
  *           images, qui se retire d'elle-même
  */
-// La demi-largeur utile du cadre, en part de sa taille (il en fait ±0,5).
-const JUMPFISH_CADRE = 0.42;
+// La demi-largeur de la fenêtre du cliché (sym163), en part de sa taille.
+const JUMPFISH_CADRE = 0.5;
 
 class JumpFish extends Jeu {
   constructor(socle) {
@@ -2037,14 +2089,9 @@ class JumpFish extends Jeu {
     this.cadre.peau.allerA(2);
     this.scene.devant(this.cadre.peau);
     this.distance = this.poisson.distance(this.cadre);
-    // Le poisson dans le repère du cadre (incliné de sa rotation).
-    const a = -this.cadre.peau.rot * Math.PI / 180;
-    const dx = this.poisson.x - this.cadre.x;
-    const dy = this.poisson.y - this.cadre.y;
-    const lx = dx * Math.cos(a) - dy * Math.sin(a);
-    const ly = dx * Math.sin(a) + dy * Math.cos(a);
-    const marge = this.taille * JUMPFISH_CADRE;
-    this.dansLeCadre = Math.abs(lx) < marge && Math.abs(ly) < marge;
+    // La règle d'époque (distance < size·0.3), OU le poisson tout entier
+    // dans la fenêtre du cliché.
+    this.dansLeCadre = this.distance < this.taille * 0.3 || this.poissonEntier();
     // Le poisson FIGÉ, dans le fond masqué — la copie que la source attache.
     const fige = this.attacher('sym180', PROF.SPRITE);
     fige.x = this.poisson.x;
@@ -2054,6 +2101,32 @@ class JumpFish extends Jeu {
     fige.allerA(this.poisson.peau.image);
     fige.masque = m;
     this.poisson.tuer();
+  }
+
+  /**
+   * Le poisson est-il TOUT ENTIER dans la fenêtre du cliché ? Sa boîte
+   * (sym180), tournée comme lui, a ses quatre coins dans le carré du masque
+   * (sym163), lu dans le repère du cadre incliné.
+   */
+  poissonEntier() {
+    const p = this.poisson.peau;
+    const b = p.boite || { x0: -26.775, y0: -5.3, x1: 26.775, y1: 5.3 };
+    const ap = p.rot * Math.PI / 180;                       // le cap du poisson
+    const ac = -this.cadre.peau.rot * Math.PI / 180;        // vers le repère du cadre
+    const marge = this.taille * JUMPFISH_CADRE;
+    for (const [cx, cy] of [[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]]) {
+      // Le coin, dans le repère du poisson (son miroir sy = ±1 ne change
+      // rien à une boîte symétrique), puis sur la scène…
+      const sx = this.poisson.x + (cx * p.sx) * Math.cos(ap) - (cy * p.sy) * Math.sin(ap);
+      const sy = this.poisson.y + (cx * p.sx) * Math.sin(ap) + (cy * p.sy) * Math.cos(ap);
+      // …puis dans celui du cadre.
+      const dx = sx - this.cadre.x;
+      const dy = sy - this.cadre.y;
+      const lx = dx * Math.cos(ac) - dy * Math.sin(ac);
+      const ly = dx * Math.sin(ac) + dy * Math.cos(ac);
+      if (Math.abs(lx) >= marge || Math.abs(ly) >= marge) return false;
+    }
+    return true;
   }
 
   plouf(x, y) {

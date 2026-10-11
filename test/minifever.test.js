@@ -947,9 +947,10 @@ test('JUMPFISH : le saut, la ligne d\'eau, le cliché — gagné si le poisson e
   assert.equal(j.gagnant, true, 'photo réussie');
 });
 
-test('JUMPFISH : un poisson DANS le cadre, même décalé sur le côté, fait une photo réussie', () => {
-  // « L'ombre est parfaitement dans le cadre, mais un peu sur le côté, et le
-  // défi ne se valide pas » : la source exigeait 30 % de la taille du centre.
+test('JUMPFISH : un poisson TOUT ENTIER dans le cadre réussit, un poisson qui déborde rate', () => {
+  // La règle d'époque — « setWin(distance<size*0.3) » — plus la photo cadrée
+  // telle que l'œil la voit : le poisson entier dans la fenêtre du cliché.
+  // Relâchée au seul centre du poisson, elle acceptait du hors cadre.
   const essai = (decalX, decalY, rot) => {
     const b = banc(J.JumpFish, { dif: 0 });
     const j = b.jeu;
@@ -966,12 +967,20 @@ test('JUMPFISH : un poisson DANS le cadre, même décalé sur le côté, fait un
     return j.gagnant;
   };
   assert.equal(essai(0, 0), true, 'au centre');
-  assert.equal(essai(38, 0), true, 'décalé de 38 px dans un cadre de 100 : réussi (refusé avant)');
-  assert.equal(essai(-30, 30), true, 'dans un coin intérieur');
+  assert.equal(essai(20, 20), true, 'à 28 px du centre : la règle d\'époque');
+  // Le poisson (54 × 11) nage à l'horizontale ici : décalé en HAUTEUR, il
+  // tient entier dans le cadre de 100 — cadré, donc réussi (refusé par la
+  // seule règle d'époque, qui ne regarde que les centres).
+  assert.equal(essai(0, 38), true, 'décalé de 38 px en hauteur, entier dans le cadre : réussi');
+  // Décalé de 38 px sur le CÔTÉ, sa tête (ou sa queue) sort de 15 px : raté.
+  assert.equal(essai(38, 0), false, 'décalé de 38 px sur le côté : il déborde, raté');
+  assert.equal(essai(-30, 30), false, 'dans un coin, le poisson déborde : raté');
   assert.equal(essai(55, 0), false, 'hors du cadre : raté');
   assert.equal(essai(0, -60), false, 'au-dessus du cadre : raté');
   // Le cadre incliné : le repère tourne avec lui.
-  assert.equal(essai(38, 0, 90), true, 'cadre tourné d’un quart : toujours dedans');
+  assert.equal(essai(0, 38, 90), true, 'cadre tourné d\'un quart : toujours dedans');
+  assert.equal(essai(0, 30, 45), true, 'cadre à 45° : le poisson tient dans le carré penché');
+  assert.equal(essai(38, 38, 45), false, 'cadre à 45°, poisson vers l\'angle : il sort, raté');
 });
 
 test('JUMPFISH : le poisson manqué replonge — plouf partagé avec la fumée du Lander', () => {
