@@ -101,16 +101,22 @@ test('une fiche venue du tuyau est complétée, pas refusée', () => {
 test('les seuils du serveur sont ceux qu\'on annonce au joueur', () => {
   const avant = P.carteNeuve();
   avant.$badsKill[4] = 199;
+  // Mort au premier niveau : l'espèce s'ouvre, pas le picto « Arcade Boss » —
+  // celui-là attend le boss final abattu (cf. miniwaveRetours6.test.js).
   const apres = P.fusionner(avant, { mode: 'arcade', badsKill: { 4: 1, 9: 3 }, level: 0 });
-  assert.deepEqual(P.nouveauxPictos(avant, apres),
-    [{ genre: 'bads', type: 4 }, { genre: 'arcade' }]);
+  assert.deepEqual(P.nouveauxPictos(avant, apres), [{ genre: 'bads', type: 4 }]);
   // Une deuxième partie ne re-annonce pas ce qui est déjà acquis.
   const encore = P.fusionner(apres, { mode: 'arcade', badsKill: { 4: 10 }, level: 3 });
   assert.deepEqual(P.nouveauxPictos(apres, encore), []);
+  // Le parcours fini (le boss, index 199, battu : niveau 200 atteint) l'ouvre.
+  const fini = P.fusionner(encore, { mode: 'arcade', level: P.NB_NIVEAUX_ARCADE, score: 1 });
+  assert.deepEqual(P.nouveauxPictos(encore, fini), [{ genre: 'arcade' }]);
 
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   assert.match(src, /badsKill\[i\] >= 200\) addIfNew\('\$bads' \+ i\)/);
-  assert.match(src, /\$arcade && parsed\.\$arcade\.\$bestLevel > 0\) addIfNew\('\$arcade'\)/);
+  // Le serveur lit le picto arcade dans $bestLevel ; le seuil qui dit « boss
+  // final abattu » est NB_NIVEAUX_ARCADE (> 200), cf. plateforme.arcadeFinie.
+  assert.match(src, /\$arcade && parsed\.\$arcade\.\$bestLevel > \d+\) addIfNew\('\$arcade'\)/);
   assert.match(src, /cons\.\$bonus\[i\] >= 100\) addIfNew\('\$mis' \+ i\)/);
   assert.match(src, /cons\.\$letter >= 100\) addIfNew\('\$letter'\)/);
 });

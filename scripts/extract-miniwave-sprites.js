@@ -124,8 +124,15 @@ function aExtraire() {
   //     le projectile (`flHit = false`) et joue son éclatement. Sans ces
   //     images, un projectile désarmé ressemblait trait pour trait à un
   //     projectile vivant — d'où l'impression qu'ils sont increvables.
+  //   · le Demon lemon (bads 42, image 52 → sprite 1256, neuf images). Sa
+  //     boule de foudre est destructible de la même façon (Shot.as, cas 17 :
+  //     `mc.kill(); this.shot.play(); this.flHit = false`) et son sous-clip
+  //     joue un éclatement en anneaux dont l'image 9 appelle _parent.kill().
+  //     Les quatre étincelles qui l'entourent sont des clips FRÈRES, posés à
+  //     côté du sous-clip dans l'image 52 : elles restent pendant l'éclatement.
   liste.push({ cle: 'trouNoir', id: 1217, etiquette: 'Trou noir de la Nectarine' });
   liste.push({ cle: 'tirKiwi', id: 1251, etiquette: 'Tir du Kiwi (destructible)' });
+  liste.push({ cle: 'tirLemon', id: 1256, etiquette: 'Tir du Demon lemon (destructible)' });
   // L'interface du jeu : l'ornement du panneau de score (les chevrons de part
   // et d'autre des chiffres), les fonds des panneaux de message (level,
   // game over, fin, boss) et le fond du menu.

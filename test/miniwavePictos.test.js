@@ -141,12 +141,12 @@ test('une partie jouée pour de vrai finit par se voir dans la fiche', async (t)
     assert.equal(relu.$badsKill[Number(type)], n, `espèce ${type} : ${n} éliminations retenues`);
   }
 
-  // Le picto « arcade » s'obtient dès le premier niveau atteint : c'est le
-  // premier que ce portage doit savoir donner.
+  // Le picto « arcade » attend le boss final (Boss.as initStep 29) : une
+  // partie morte en route ne le donne pas, le vaisseau de départ si.
   const gi = await pictos();
   const ids = (gi.items || gi.gameItems || gi).map ? (gi.items || gi.gameItems || gi) : [];
   const liste = Array.isArray(ids) ? ids.map((x) => (typeof x === 'string' ? x : x.id)) : [];
-  assert.ok(liste.includes('$arcade'), `picto arcade accordé (reçu : ${liste.join(', ') || 'aucun'})`);
+  assert.ok(!liste.includes('$arcade'), `pas de picto arcade sans le boss (reçu : ${liste.join(', ') || 'aucun'})`);
   assert.ok(liste.includes('$ship00'), 'et le picto du vaisseau de départ');
 
   t.diagnostic(`partie : ${fin.score} points, niveau ${fin.level + 1}, ${abattus} fruits, pictos ${liste.join(' ')}`);

@@ -15611,7 +15611,9 @@ app.get('/api/admin/users/:username/miniwave-pictos', adminAuth, async (req, res
     if (Array.isArray(parsed.$badsKill)) {
       for (let i = 0; i < parsed.$badsKill.length; i++) { if (parsed.$badsKill[i] >= 200) earned.push('$bads' + i); }
     }
-    if (parsed.$arcade && parsed.$arcade.$bestLevel > 0) earned.push('$arcade');
+    // Le boss final battu : l'écran de fin est le niveau 200 des 200, $bestLevel = 201
+    // (Boss.as initStep 29 donnait le picto ; cf. public/miniwave/plateforme.js arcadeFinie).
+    if (parsed.$arcade && parsed.$arcade.$bestLevel > 200) earned.push('$arcade');
     if (parsed.$cons) {
       if (Array.isArray(parsed.$cons.$bonus)) {
         for (let i = 0; i < parsed.$cons.$bonus.length && i <= 4; i++) { if (parsed.$cons.$bonus[i] >= 100) earned.push('$mis' + i); }
@@ -19084,7 +19086,9 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
         if (badsKill[i] && badsKill[i] >= 200) addIfNew('$bads' + i);
       }
     }
-    if (parsed.$arcade && parsed.$arcade.$bestLevel > 0) addIfNew('$arcade');
+    // Le boss final battu, pas la première mort : $bestLevel > 200 (voir la route
+    // miniwave-pictos et public/miniwave/plateforme.js arcadeFinie).
+    if (parsed.$arcade && parsed.$arcade.$bestLevel > 200) addIfNew('$arcade');
     const cons = parsed.$cons;
     if (cons) {
       if (Array.isArray(cons.$bonus)) {

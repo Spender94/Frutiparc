@@ -53,10 +53,17 @@ const MARGE_TIR = 20;             // Shot.killMargin
  *             désarmé et joue son éclatement ; l'image 7 appelle
  *             `_parent.kill()`. Sans ces images, un projectile désarmé restait
  *             à l'écran, identique à un projectile vivant.
+ *   comp. 17  Demon lemon (sprite 1256, 9 images) : même mécanique que le Kiwi
+ *             — la boule de foudre touchée est désarmée et joue son éclatement
+ *             en anneaux ; l'image 9 appelle `_parent.kill()`. L'image 52 du
+ *             clip des tirs pose AUSSI quatre étincelles, clips frères du
+ *             sous-clip (`eclats`) : elles restent autour pendant l'éclatement,
+ *             et c'est au client de continuer à les dessiner.
  */
 const CLIPS_TIR = {
   13: { cle: 'trouNoir', boucle: [8, 16], fin: 25 },
   16: { cle: 'tirKiwi', fin: 7 },
+  17: { cle: 'tirLemon', fin: 9, eclats: true },
 };
 const DECOR_DECAL = 18.7;         // Game.decorDecal — défilement du fond par niveau
 
@@ -685,9 +692,21 @@ class Shot extends Sprite {
       case 17: {                      // Demon lemon : boule qui charge de près
         const o = this.behaviourInfo;
         if (o.step === undefined) o.step = 0;
+        // Shot.as, cas 17 : la boule est DESTRUCTIBLE, exactement comme le tir
+        // du Kiwi (cas 16) — la balle du vaisseau meurt (`mc.kill()`, sans
+        // impact ni point : ce n'est pas un ennemi abattu), la boule est
+        // désarmée (`flHit = false`) et joue son éclatement (`shot.play()`),
+        // dont l'image finale l'efface. Sans la pellicule, elle restait à
+        // l'écran, inoffensive mais identique à une boule vivante — d'où
+        // « le tir du Demon lemon ne se détruit pas ». Comme pour le Kiwi, on
+        // ne relance pas l'éclatement d'une boule déjà désarmée.
         for (let i = 0; i < jeu.hShotList.length; i++) {
           const m = jeu.hShotList[i];
-          if (this.touche(m.x, m.y)) { m.tuer(); this.flHit = false; }
+          if (this.flHit && this.touche(m.x, m.y)) {
+            m.tuer();
+            this.flHit = false;
+            this.jouerClip();
+          }
         }
         if (this.flHit && jeu.hero) {
           if (o.step === 0) { if (this.distance(jeu.hero) < 100) o.step = 1; }
@@ -1418,6 +1437,12 @@ class Boss extends Sprite {
       case 29:                           // agonie
         this.mvt = { d: 8, timerMax: 80, x: this.x, y: this.y };
         this.timer = 80;
+        // Boss.as, initStep 29 (« ORANGE DESTRUCT ») : c'est ICI, à l'entrée
+        // en agonie du boss final, que le jeu d'origine donne le picto
+        // (`client.giveItem("$arcade")`) — pas à l'écran de fin, et pas à la
+        // première partie. Le moteur le note ; la fiche (plateforme.js) en
+        // fait un parcours fini, même si le vaisseau tombe pendant l'agonie.
+        jeu.arcadeFinie = true;
         jeu.evenement('bossForme', { forme: this.forme, fin: true });
         break;
       case 30:                           // explosion finale
@@ -2287,7 +2312,17 @@ def(41, {                                                         // Prune paral
 });
 def(42, {                                                         // Demon lemon : boule qui charge
   freq: 400, cdSpeed: 1,
-  tirer: (b) => { const t = base(b); t.vity = 2.2; t.behaviourId = 17; },
+  tirer: (b) => {
+    const t = base(b);
+    t.vity = 2.2;
+    t.behaviourId = 17;
+    // Lemon.shoot : `killMargin = 5` — la boule meurt à cinq pixels du bord,
+    // pas à vingt. Et sa boîte de collision avec les balles du vaisseau est
+    // celle de son dessin (Sprite.hTest = getBounds) : une boule de 12 × 12
+    // (forme 1254 du SWF), plus large que le rayon de 4 d'un tir ordinaire.
+    t.killMargin = 5;
+    t.ray = 6;
+  },
 });
 def(43, {                                                         // Pêche jongleuse : tire souvent, un peu au hasard
   freq: 40, cdSpeed: 10,
@@ -2417,6 +2452,7 @@ class Game {
     this.termine = false;
     this.hero = null;
     this.boss = null;
+    this.arcadeFinie = false;       // le boss final est entré en agonie (cf. Boss.initStep 29)
     this.frict = FRICTION;
     this.entree = { gauche: false, droite: false, tir: false, bombe: false };
     this.shipBounds = { min: 0, max: LARGEUR };
@@ -2802,11 +2838,12 @@ class Game {
     this.termine = true;
     // Le relevé de la partie part avec l'annonce : c'est lui que la plateforme
     // ajoute à la fiche du joueur (les éliminations par espèce ouvrent les
-    // pictos à 200, le niveau atteint ouvre le picto « arcade »).
+    // pictos à 200, le boss final abattu ouvre le picto « arcade »).
     this.evenement('finPartie', {
       raison, score: this.score, level: this.level,
       badsKill: Object.assign({}, this.badsKill),
       saucerKill: this.saucerKill, credits: this.credits,
+      arcadeFinie: !!this.arcadeFinie,
     });
   }
 

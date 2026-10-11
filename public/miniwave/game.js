@@ -193,7 +193,13 @@ function poser(ctx, sprite, frame, x, y, echelle) {
   if (!sprite) return;
   const etat = sprite.etats.find((e) => e.frame === frame) || sprite.etats[0];
   if (!etat) return;
-  for (const p of etat.pieces) {
+  poserPieces(ctx, etat.pieces, x, y, echelle);
+}
+
+// Les pièces d'un état, une à une — séparé de `poser` pour pouvoir n'en
+// dessiner qu'une partie (les étincelles du Demon lemon sans sa boule).
+function poserPieces(ctx, pieces, x, y, echelle) {
+  for (const p of pieces) {
     let img = null;
     let alpha = 1;
     if (p.cx) {
@@ -967,15 +973,30 @@ class Client {
     // la Nectarine et l'éclatement du tir de Kiwi (cf. CLIPS_TIR). Tant qu'ils
     // dorment sur leur image 1, c'est le petit projectile du départ ; dès que
     // Shot.as les lance, c'est leur pellicule qu'on voit.
+    // La boule du Demon lemon (`eclats`) a quatre étincelles autour, clips
+    // FRÈRES du sous-clip dans l'image 52 : endormie, c'est l'image standard
+    // qui la dessine au complet ; en train d'éclater, on garde les étincelles
+    // (toutes les pièces de l'image sauf la première, qui est le sous-clip
+    // aplati) et on pose la pellicule par-dessus.
     const clip = E.CLIPS_TIR[t.behaviourId];
-    if (clip && this.sprites[clip.cle]) {
+    if (clip && this.sprites[clip.cle] && (t.clipJoue || !clip.eclats)) {
       const sp2 = this.sprites[clip.cle];
       const n = Math.max(1, Math.min(t.clipImage || 1, sp2.etats[sp2.etats.length - 1].frame));
+      const a = (t.rot !== undefined) ? t.rot : Math.atan2(t.vity, t.vitx);
       ctx.save();
       ctx.translate(t.x, t.y);
+      if (clip.eclats && sp) {
+        const etat = sp.etats.find((e) => e.frame === frame);
+        if (etat) {
+          ctx.save();
+          ctx.rotate(a);
+          poserPieces(ctx, etat.pieces.slice(1), 0, 0);
+          ctx.restore();
+        }
+      }
       // Le trou noir, une fois ouvert, ne tourne plus avec sa vitesse : il est
       // posé à plat, comme le clip d'époque qui s'arrête sur place.
-      if (!t.clipJoue) ctx.rotate((t.rot !== undefined) ? t.rot : Math.atan2(t.vity, t.vitx));
+      if (!t.clipJoue) ctx.rotate(a);
       poser(ctx, sp2, n, 0, 0);
       ctx.restore();
       return;

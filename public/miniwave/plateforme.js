@@ -11,7 +11,12 @@
  *   • $ship[i] vrai            → picto du vaisseau i
  *   • $badsKill[i] ≥ 200       → picto de l'espèce i (deux cents fruits abattus,
  *                                Challenge NON compris : cf. fusionner)
- *   • $arcade.$bestLevel > 0   → picto « arcade »
+ *   • $arcade.$bestLevel > 200 → picto « arcade » : le parcours FINI, c'est-à-dire
+ *                                le boss final abattu (cf. arcadeFinie). Le jeu
+ *                                d'origine le donne à l'entrée en agonie du boss
+ *                                (Boss.as, initStep 29 : client.giveItem("$arcade")),
+ *                                jamais avant — un serveur qui lirait « > 0 »
+ *                                l'offrirait à la première mort.
  *   • $cons.$bonus[i] ≥ 100    → picto de la mission i (i ≤ 4)
  *   • $cons.$letter ≥ 100      → picto « lettre »
  *   • $shop[i] == 0            → picto de l'article acheté (i de 10 à 14)
@@ -47,6 +52,11 @@ const NB_VAISSEAUX = 6;
 const NB_ARTICLES = 20;
 const NB_MISSIONS = 8;              // $mode[1] et $cons.$bonus en comptent huit
 const VERSION = 0.93;               // Manager.fcVersion
+// Les 200 niveaux de l'arcade (levels.json, main[0]) : le dernier, l'index 199,
+// est le boss. `level` est un index et le niveau ATTEINT est le suivant : mourir
+// devant le boss laisse $bestLevel à 200, le battre mène au niveau 200 (l'écran
+// de fin), soit $bestLevel = 201. C'est cette frontière qui dit « arcade finie ».
+const NB_NIVEAUX_ARCADE = 200;
 
 // Les six vaisseaux (inc/heroName.as). Le 0 est offert, les cinq autres
 // s'achètent — dans cet ordre, qui est celui de la boutique.
@@ -243,8 +253,17 @@ function fusionner(carte, jeu) {
       c.$cons.$main = Math.max(c.$cons.$main, nombre(jeu.cons));
       c.$arcade.$bestScore = Math.max(c.$arcade.$bestScore, score);
       // `level` est un index ; le niveau ATTEINT est le suivant. Un joueur qui
-      // meurt au premier niveau a donc bien 1, ce qui suffit au picto arcade.
+      // meurt au premier niveau a donc bien 1 — et le picto « Arcade Boss »,
+      // lui, attend la fin du parcours (cf. arcadeFinie).
       c.$arcade.$bestLevel = Math.max(c.$arcade.$bestLevel, niveau + 1);
+      // Le boss final est entré en agonie (Boss.as, initStep 29 : c'est là que
+      // le jeu d'origine donne le picto). Le vaisseau peut encore tomber sous
+      // un dernier tir pendant les 160 images de l'agonie : le parcours n'en
+      // est pas moins fini, et la fiche doit le dire — le niveau atteint est
+      // au-delà du dernier.
+      if (jeu.arcadeFinie) {
+        c.$arcade.$bestLevel = Math.max(c.$arcade.$bestLevel, NB_NIVEAUX_ARCADE + 1);
+      }
       break;
     case 'challenge': {
       // La map change chaque jour : le record est CELUI DU JOUR. Une partie
@@ -367,6 +386,14 @@ function modesOuverts(carte) {
   };
 }
 
+// L'arcade est-elle FINIE sur cette fiche ? Le boss final abattu mène au
+// niveau 200 (l'écran de fin), donc à un meilleur niveau de 201 : au-delà des
+// 200 niveaux du parcours. C'est la seule trace du boss battu que la fiche
+// d'origine porte — Manager.formatFruticard n'a pas de champ pour le picto.
+function arcadeFinie(carte) {
+  return Number(carte && carte.$arcade && carte.$arcade.$bestLevel) > NB_NIVEAUX_ARCADE;
+}
+
 // Ce que la partie vient d'ouvrir : les seuils franchis entre les deux fiches.
 // Même règle que extractGameItemsFromSlot côté serveur — on ne fait que la
 // relire, pour l'annoncer au joueur avant que le serveur ne la confirme.
@@ -375,7 +402,10 @@ function nouveauxPictos(avant, apres) {
   for (let i = 0; i < NB_ENNEMIS; i++) {
     if (apres.$badsKill[i] >= 200 && avant.$badsKill[i] < 200) l.push({ genre: 'bads', type: i });
   }
-  if (apres.$arcade.$bestLevel > 0 && avant.$arcade.$bestLevel === 0) l.push({ genre: 'arcade' });
+  // Le picto « Arcade Boss » : le boss final abattu, et rien de moins. Le jeu
+  // d'origine le donnait par client.giveItem à l'agonie du boss (Boss.as,
+  // initStep 29) ; ici, c'est le parcours fini qui se lit dans la fiche.
+  if (arcadeFinie(apres) && !arcadeFinie(avant)) l.push({ genre: 'arcade' });
   for (let i = 0; i < 5; i++) {
     if (apres.$cons.$bonus[i] >= 100 && avant.$cons.$bonus[i] < 100) l.push({ genre: 'mission', num: i });
   }
@@ -522,8 +552,9 @@ class Plateforme {
 
 const API = {
   Plateforme, carteNeuve, normaliser, versTuyau, lireLoadVars, fusionner,
-  acheter, estAchete, article, grade, majGrade, modesOuverts, nouveauxPictos,
-  BOUTIQUE, VAISSEAUX, GRADES, NB_ENNEMIS, NB_VAISSEAUX, NB_ARTICLES, NB_MISSIONS, VERSION,
+  acheter, estAchete, article, grade, majGrade, modesOuverts, nouveauxPictos, arcadeFinie,
+  BOUTIQUE, VAISSEAUX, GRADES, NB_ENNEMIS, NB_VAISSEAUX, NB_ARTICLES, NB_MISSIONS, NB_NIVEAUX_ARCADE,
+  VERSION,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
