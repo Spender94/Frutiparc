@@ -5,8 +5,9 @@
  * Deux cases de sauvegarde, comme le SWF :
  *   · slot 0 : la FRUTICARD du jeu — { $vs, $tz, $seq, $bonus, $mode, $stat,
  *     $classic, $trial, $chrono, $survival, $invasion, $ring } : les tzongres
- *     et modes débloqués, les records. C'est elle que le serveur relit pour
- *     les pictos (extractGameItemsFromSlot : papillons, drapeaux, tzongres,
+ *     et modes débloqués, les records — plus `$titem`, les Titems que le jeu
+ *     a accordés (voir giveItem). C'est elle que le serveur relit pour les
+ *     pictos (extractGameItemsFromSlot : papillons, drapeaux, tzongres,
  *     objets spéciaux) ;
  *   · slot 1 : les préférences — { $key: [haut, gauche, droite, bas, fil],
  *     $param: [musique, sons, particules] }.
@@ -205,8 +206,29 @@ class Client {
       body: new URLSearchParams({ sid: this.sid, game: 'kaluga', slotId: String(n), data: JSON.stringify(donnees) }).toString(),
     }).then((r) => r.ok).catch(() => false);
   }
-  // Les pictos se déduisent de la fruticard côté serveur, à chaque sauvegarde.
-  giveItem() {}
+  /*
+   * UN TITEM (picto) GAGNÉ — Game.addTitem, la règle de Game.checkUnlock(n) :
+   * n = 2 Chrono, 3 Survie, 4 Invasion, 5 Piste, un Titem par NIVEAU GAGNÉ —
+   * facile le papillon, standard le drapeau, difficile la tzongre, INFERNAL
+   * l'objet spécial (panier, corbeau, Kaluga Spécial, fourmi) ; et `$tz0`
+   * à la création de la fiche.
+   *
+   * D'époque, `giveItem` partait au serveur par le GameClient. Ici les pictos
+   * se déduisent de la fruticard côté serveur (extractGameItemsFromSlot), à
+   * chaque sauvegarde — or la fiche ne note que les niveaux OUVERTS
+   * (`$mode[n][k]`), jamais « l'infernal est gagné » : rien ne lui dit qu'un
+   * objet spécial est dû. On note donc sur la fiche, en clair, ce que le jeu
+   * vient d'accorder (`$titem`, la liste des noms, sans doublon) ; le
+   * `saveSlot(0)` qui suit toujours l'appel (checkUnlock, formatCard)
+   * l'emporte. Le serveur n'a plus qu'à lire.
+   */
+  giveItem(str) {
+    const nom = String(str || '');
+    const carte = this.slots[0];
+    if (!nom || !carte || typeof carte !== 'object') return;
+    if (!Array.isArray(carte.$titem)) carte.$titem = [];
+    if (!carte.$titem.includes(nom)) carte.$titem.push(nom);
+  }
   /*
    * UNE RÉCOMPENSE D'ACCESSOIRE.
    *

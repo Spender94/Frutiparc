@@ -18975,26 +18975,61 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
       }
     }
   } else if (game === 'kaluga') {
-    // Kaluga: $mode[n][level] tracks mode unlocks, $tz[id] tracks tzongres
-    // mode indices 2-5 correspond to the 4 playable types (n=2..5)
-    // level 0→butterfly, level 1→smiley, level 2→tz, level 3→special item
+    /*
+     * KALUGA — la règle de Game.checkUnlock(n) (Games/kaluga/class/kaluga/Game.as) :
+     * n = 2 Chrono, 3 Survie, 4 Invasion, 5 Piste ; un Titem par NIVEAU GAGNÉ —
+     *   facile    → $butterfly(n-2)
+     *   standard  → $smiley(n-2)
+     *   difficile → la tzongre [1,4,3,2][n-2] ($tz[id] = 1 en même temps)
+     *   infernal  → ['$basket','$bird','$ring','$ant'][n-2]  (la fourmi : la Piste)
+     * — plus $tz0 à la création de la fiche (Manager.formatCard).
+     *
+     * Le portage note en clair ce que le jeu accorde : `$titem` (Client.giveItem,
+     * public/kaluga/plateforme.js). On le lit d'abord, restreint aux Titems de
+     * Kaluga que la table connaît.
+     *
+     * Pour une fiche sans trace (disque Flash, parties d'avant), la fiche suffit
+     * encore, à condition de la lire comme le jeu l'écrit : $mode[n][k] = 1 veut
+     * dire « niveau k OUVERT » — le facile l'est d'office ([1,0,0,0]), gagner le
+     * niveau k ouvre le k+1 (k < 3), et gagner l'infernal n'ouvre rien. Le niveau
+     * k est donc gagné quand $mode[n][k+1] est coché ; l'infernal, quand le record
+     * du niveau 3 satisfait l'objectif d'époque (goalList[3] de chaque mode) :
+     * Chrono ≤ 42000 (dernier temps de $chrono.$level[3]), Survie > 150000,
+     * Invasion > 180000, Piste ≤ 90000. L'ancienne lecture (k = « niveau k
+     * gagné ») offrait le papillon sans jouer et décalait tout d'un niveau — la
+     * fourmi tombait au difficile de la Piste au lieu de l'infernal.
+     */
+    const titem = parsed.$titem;
+    if (Array.isArray(titem)) {
+      for (const nom of titem) {
+        const info = GAME_ITEM_INFO[nom];
+        if (info && info.game === 'Kaluga' && nom !== '$kagulga') addIfNew(nom);
+      }
+    }
     const mode = parsed.$mode;
     const tz = parsed.$tz;
+    const dernier = (a) => (Array.isArray(a) && a.length ? Number(a[a.length - 1]) : NaN);
+    const record = (cle) => {
+      const o = parsed[cle];
+      const l = o && Array.isArray(o.$level) ? o.$level[3] : null;
+      return l && typeof l === 'object' && !Array.isArray(l) ? Number(l.$s) : NaN;
+    };
+    const KALUGA_INFERNAL_GAGNE = [
+      () => dernier(parsed.$chrono && Array.isArray(parsed.$chrono.$level) ? parsed.$chrono.$level[3] : null) <= 42000,
+      () => record('$survival') > 150000,
+      () => record('$invasion') > 180000,
+      () => { const s = record('$ring'); return s > 0 && s <= 90000; },
+    ];
     if (Array.isArray(mode)) {
       for (let n = 2; n <= 5; n++) {
         const sub = mode[n];
         if (!Array.isArray(sub)) continue;
-        if (sub[0]) addIfNew('$butterfly' + (n - 2));
-        if (sub[1]) addIfNew('$smiley' + (n - 2));
-        if (sub[2]) {
-          const tzUnlockList = [1, 4, 3, 2];
-          const tzId = tzUnlockList[n - 2];
-          addIfNew('$tz' + tzId);
-        }
-        if (sub[3]) {
-          const specials = ['$basket', '$bird', '$ring', '$ant'];
-          addIfNew(specials[n - 2]);
-        }
+        if (sub[1]) addIfNew('$butterfly' + (n - 2));
+        if (sub[2]) addIfNew('$smiley' + (n - 2));
+        if (sub[3]) addIfNew('$tz' + [1, 4, 3, 2][n - 2]);
+        let infernal = false;
+        try { infernal = !!KALUGA_INFERNAL_GAGNE[n - 2](); } catch (e) { infernal = false; }
+        if (infernal) addIfNew(['$basket', '$bird', '$ring', '$ant'][n - 2]);
       }
     }
     if (Array.isArray(tz)) {

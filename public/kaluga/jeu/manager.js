@@ -126,6 +126,9 @@ class Manager {
     // La marque du Makulo : posée quand le SERVEUR a répondu, elle dit à la
     // victoire suivante de ne pas réannoncer une récompense déjà touchée.
     if (c.$makulo == null) c.$makulo = 0;
+    // Les Titems accordés par le jeu (Client.giveItem) : la trace que le
+    // serveur lit pour les pictos. Une fiche d'époque ne l'a pas.
+    if (!Array.isArray(c.$titem)) c.$titem = [];
     if (!c.$stat) c.$stat = { $fruit: 0 };
     if (!c.$classic) c.$classic = { $s: 0 };
     if (!c.$trial) c.$trial = { $st: 1, $tria: { $s: 0 }, $hept: { $s: 0 }, $list: [] };

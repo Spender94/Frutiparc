@@ -610,3 +610,51 @@ l'AnimLoader rétablit 32 en quittant la séquence : on ne reproduit pas
 l'accélération du jeu qui suivait le générique d'époque. (Sous Ruffle, dans
 ce dépôt, ces séquences ne se chargent pas : le disque `kaluga1` ne liste
 pas les films — le portage les rend.)
+
+## Les Titems (pictos) — la règle d'origine, et la trace `$titem`
+
+La règle est celle de `Game.checkUnlock(n)` (`Games/kaluga/class/kaluga/
+Game.as`), appelée par les quatre modes à niveaux quand l'objectif du niveau
+joué est atteint — `Chrono.addScore` : `score <= goalList[level]` →
+`checkUnlock(2)` ; `Survival.addScore` : `score > goalList[level]` →
+`checkUnlock(3)` ; `Invasion.addScore` : `score > goalList[level]` →
+`checkUnlock(4)` ; `Ring.addScore` : `score <= goalList[level]` →
+`checkUnlock(5)` — et seulement en session blanche (`isWhite`). Un Titem par
+NIVEAU GAGNÉ (`switch(this.level)`), le niveau suivant s'ouvrant en même temps
+(`$mode[n][level+1] = 1`, pour `level < 3`) :
+
+| mode (n)        | facile (0)    | standard (1) | difficile (2)              | infernal (3)            |
+|-----------------|---------------|--------------|----------------------------|-------------------------|
+| Chrono (2)      | `$butterfly0` | `$smiley0`   | `$tz1` Piwali (`$tz[1]=1`) | `$basket` panier        |
+| Survie (3)      | `$butterfly1` | `$smiley1`   | `$tz4` Makulo (`$tz[4]=1`) | `$bird` corbeau         |
+| Invasion (4)    | `$butterfly2` | `$smiley2`   | `$tz3` Gomola (`$tz[3]=1`) | `$ring` Kaluga Spécial  |
+| Piste/Ring (5)  | `$butterfly3` | `$smiley3`   | `$tz2` Nalika (`$tz[2]=1`) | `$ant` FOURMI           |
+
+(`tzUnlockList = [1,4,3,2]`, `unlockList = ["$basket","$bird","$ring","$ant"]`,
+indexés par `n-2`.) S'y ajoutent `$tz0` à la création de la fiche
+(`Manager.formatCard`, « FIRST TITEM KALUGA ») et la **kagulga**, qui n'est pas
+un Titem mais un accessoire (`giveAccessory`), gagnée au triathlon
+(`Trial`, `$mode[1][8] = 1`). Le Challenge ne donne aucun Titem.
+
+**La fourmi se gagne donc en INFERNAL — et à la Piste, pas à l'Invasion** (qui
+donne le Kaluga Spécial). Le portage (`Game.checkUnlock`, `jeu/game.js`) suit
+ce texte à la lettre.
+
+Ce qui s'en écartait, c'est le chemin du picto. D'époque, `giveItem` partait au
+serveur ; dans le portage il était vide, et le serveur déduisait les pictos de
+`$mode[n][k]` en le lisant comme « niveau k gagné » — alors que la fiche dit
+« niveau k OUVERT » : le facile est ouvert d'office (`[1,0,0,0]`), gagner le
+niveau k ouvre le k+1, et gagner l'infernal n'ouvre rien. Tout était donc
+décalé d'un niveau : papillon offert sans jouer, drapeau au facile, tzongre au
+standard, et l'objet spécial — la fourmi — au DIFFICILE au lieu de l'infernal.
+C'est ce que les joueurs ont remonté.
+
+Le portage note maintenant sur la fiche ce que le jeu accorde : `$titem`, la
+liste des noms passés à `giveItem` (sans doublon), que le `saveSlot(0)` suivant
+emporte. Le serveur peut la lire telle quelle ; et pour les fiches sans trace
+(disque Flash, parties d'avant), la fiche suffit encore : le niveau k est gagné
+quand `$mode[n][k+1]` est coché (k < 3), et l'infernal l'est quand le record du
+niveau 3 satisfait l'objectif d'époque — Chrono `$chrono.$level[3]` (dernier
+temps) ≤ 42000, Survie `$survival.$level[3].$s` > 150000, Invasion
+`$invasion.$level[3].$s` > 180000, Piste `$ring.$level[3].$s` ≤ 90000. Le
+test `test/kalugaPictos.test.js` verrouille la table.
