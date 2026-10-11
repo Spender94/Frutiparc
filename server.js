@@ -711,11 +711,15 @@ const GAME_ITEM_INFO = {
   '$combo09':    { name: 'Combo 9',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_09.gif' },
   '$combo10':    { name: 'Combo 10',            game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_10.gif' },
   '$combo11':    { name: 'Combo 11',            game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_11.gif' },
-  '$photo01':    { name: 'Photo Sel',           game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_sel.gif' },
-  '$photo02':    { name: 'Photo Moutarde',      game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_moutarde.gif' },
-  '$photo03':    { name: 'Photo Dimitri',       game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_dimitri.gif' },
-  '$photo04':    { name: 'Photo Natacha',       game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_natacha.gif' },
-  '$photo05':    { name: 'Photo Poivre',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_poivre.gif' },
+  // L'ordre des photos est celui des persos (Data.CHAR_NAMES) : TItem.duelItem
+  // donne PHOTO_TITEMS + Data.players[1], l'id de l'adversaire battu en duel
+  // « sauvage » — 0 Dimitri, 1 Natacha, 2 Sel, 3 Poivre, 4 Moutarde, 5 TomTom,
+  // 6 Wasabii (test/swapouPictos.test.js).
+  '$photo01':    { name: 'Photo Dimitri',       game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_dimitri.gif' },
+  '$photo02':    { name: 'Photo Natacha',       game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_natacha.gif' },
+  '$photo03':    { name: 'Photo Sel',           game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_sel.gif' },
+  '$photo04':    { name: 'Photo Poivre',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_poivre.gif' },
+  '$photo05':    { name: 'Photo Moutarde',      game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_moutarde.gif' },
   '$photo06':    { name: 'Photo Tomtom',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_tomtom.gif' },
   '$photo07':    { name: 'Photo Wasabi',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_wasabi.gif' },
   // $photo08 (slot 45 in TItem.as TITEMS) — unobtainable: duelItem() awards

@@ -265,6 +265,24 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   SW.Client = Client;
 
   // ── TItem (TItem.as) ─────────────────────────────────────────────────────
+  // Les pictos (« titems ») sont des cases du tableau `$items` du slot 0, à
+  // l'INDEX de TITEMS — c'est ce tableau, et lui seul, que le serveur relit
+  // (SWAPOU2_TITEMS dans server.js), et le SWF desktop écrit les mêmes cases :
+  // l'ordre ne se touche pas. Ce que chaque case veut dire, d'après TItem.as :
+  //   0..6   Pot au feu : HISTO_TITEMS + histoPhase, soit un objet par étape
+  //          — Sel → $sel, le frère/la sœur → rien (case vide ''), Poivre →
+  //          $poivre, Moutarde → $epee (sa dague), TomTom → $piment, Wasabii →
+  //          $dent, Wasabii 2e forme → $sucre (+ un des 7..15 au hasard) ;
+  //   7..15  métal, glace, étoile (fin du Pot au feu, un seul par partie) ;
+  //   16..26 $fruit01..11 : Classique, un fruit par niveau ATTEINT (niveau n →
+  //          $fruit(n+1)), remis à la FIN de la partie (game over) seulement ;
+  //   27..37 $combo01..11 : cinq fois le même nom de combo en Challenge ;
+  //   38..44 $photo01..07 : Duel « sauvage » (difficulté 4) gagné, à
+  //          PHOTO_TITEMS + id de l'ADVERSAIRE — l'id des persos (CHAR_NAMES) :
+  //          0 Dimitri, 1 Natacha, 2 Sel, 3 Poivre, 4 Moutarde, 5 TomTom,
+  //          6 Wasabii. $photo01 est donc la photo de DIMITRI, $photo03 celle
+  //          de Sel : le nom que le serveur affiche pour chaque clé doit
+  //          suivre cet ordre-là (test/swapouPictos.test.js le vérifie).
   const TItem = {
     TITEMS: ['$sel', '', '$poivre', '$epee', '$piment', '$dent', '$sucre',
       '$metal01', '$metal02', '$metal03', '$ice01', '$ice02', '$ice03', '$star01', '$star02', '$star03',
