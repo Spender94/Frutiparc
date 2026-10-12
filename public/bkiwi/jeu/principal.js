@@ -9,7 +9,9 @@
  * le code et appelle init(), et sa boucle de deux images qui fait main() une
  * fois par image (scripts-images.js) : le jeu tourne exactement comme dans
  * le fichier — même horloge, même timer de secours (gtmod), mêmes
- * profondeurs.
+ * profondeurs. Les touches sont datées et appliquées au pas dont c'est
+ * l'instant (jeu/cadence.js), pour qu'un à-coup du navigateur ne change ni
+ * la course ni le chrono.
  *
  * Les musiques (bk00..05.mp3, bkMenu.mp3) ne sont pas ici : le jeu les
  * demande au fil du menu et des courses (initMusicLoader → startPreload),
@@ -39,6 +41,9 @@ racine.demarrerBurningKiwi = function (options) {
   return K.chargerBiblio('bkiwi').then((biblio) => {
     Promise.all(SONS.map((n) => K.audio.charger(n, K.fichierSon(n)))).catch(() => {});
     const scene = new K.Scene(canvas, biblio, { cadence: 40 });
+    // Les touches datées, appliquées devant le pas dont c'est l'instant
+    // (jeu/cadence.js) : un à-coup du navigateur ne change plus la course.
+    if (typeof J.installerCadence === 'function') J.installerCadence(scene);
     const client = new J.Client(options.sid || '');
     J.client = client;
     // La racine : le clip 0 du SWF. Son image 1 saute à « main », qui pose

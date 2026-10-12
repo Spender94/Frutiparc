@@ -118,6 +118,31 @@ La session est **blanche** (tous les modes ouverts, la fruticard tenue) ;
 c'est le quota de FD qui décide si le premier bouton dit « challenge » ou
 « essais » (`checkMode`, `Client.isRanked`).
 
+## La cadence et les touches (`jeu/cadence.js`)
+
+Le lecteur avance la physique à pas fixes de 25 ms sur une horloge virtuelle
+(`Scene.demarrer`, flash.js) : `getTimer()` — donc le chrono, `getTimer() −
+timerLap`, et le gtmod du timer de secours — ne connaît que les pas, et une
+image qui tarde est rattrapée par autant de pas (jusqu'à 500 ms). Mesuré au
+pilote automatique jouant dans le pas : 21,850 s au tour sur Green Hill, que
+les images durent 16,7 ms, 33 ms (processeur ralenti quatre fois) ou 150 ms
+(fil occupé 90 ms toutes les 200 ms, six pas par image).
+
+Mais le joueur pilote au temps, et chaque pas lisait le clavier à l'instant de
+son exécution : six pas joués en rafale lisaient tous le clavier tel qu'il est
+à la fin de la rafale — une flèche lâchée au milieu des 150 ms l'était pour
+les six pas. Le chrono était juste, la course n'était plus la même. Chaque
+frappe est donc **datée** (`ev.timeStamp`, l'heure de la touche) et appliquée
+devant le pas dont c'est l'instant (`tPrecedent − accumule`, l'heure à
+laquelle ce pas aurait dû tomber) : la règle du Flash Player d'époque, dont le
+minuteur exécutait l'image k à 25·k ms. La physique ne dépend plus que de la
+suite des frappes et de leurs dates : le même rejeu de touches donne la même
+course, au millième de pixel, à 25 ms réguliers, à 16,7 / 33,3 ms et à
+10 / 40 / 70 ms (`test/bkiwiCadence.test.js`), là où l'ancienne lecture ne
+bouclait même plus le tour sous les rafales. Le pilote de test et les bancs
+qui jouent *dans* le pas posent l'état du clavier directement
+(`K.Key.$cadence.presser0`).
+
 ## Vérification contre Ruffle
 
 Le SWF sous Ruffle (game-popup.html) et le portage, pilotés au clavier avec

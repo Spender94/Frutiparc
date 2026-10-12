@@ -635,8 +635,10 @@ J.installerMoteur = function (M) {
       M.trackStats[i].$fcTotal = Infinity;
     }
 
+    // « controls[i] == undefined » : l'égalité large de l'AS2 vaut aussi pour
+    // null — ce qu'une case jamais posée devient à travers le JSON du slot.
     for (let i = 0; i < M.controls.length; i++) {
-      if (M.controls[i] === undefined) M.controls[i] = M.defaultControls[i];
+      if (M.controls[i] == null) M.controls[i] = M.defaultControls[i];      // eslint-disable-line eqeqeq
     }
   };
 
