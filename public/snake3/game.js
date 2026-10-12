@@ -1171,6 +1171,10 @@ class Jeu {
       // à faire, et c'est elle qu'on attend —, six derrière le menu, la
       // pause ou la fin de partie, pour qu'ils restent vifs.
       if (!enPartie && D.chauffeEnAttente()) D.chaufferPendant(this.rideauTenu() ? 20 : 6);
+      // Et les documents SVG qui ont peint un tampon cette image s'en vont :
+      // leur tampon reste, eux ne pèseraient plus que sur le ramasse-miettes
+      // (dessin.js, « les documents SVG ne restent pas en vie »).
+      D.relacher();
       requestAnimationFrame(cadre);
     };
     requestAnimationFrame(cadre);

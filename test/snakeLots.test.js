@@ -133,12 +133,14 @@ test('le décor est composé une fois, les aplats ne se repeignent plus', () => 
 });
 
 test('une rasterisation par palier, pas par vingtième d\'échelle', () => {
-  assert.match(DESSIN, /function palier\(k, im\) \{\s*\n\s*if \(k <= 1\.25\) return 1;/);
+  // (Le palier se calcule sur la TAILLE relevée au décodage, qui survit au
+  // document SVG relâché — cf. snakeLags2.test.js.)
+  assert.match(DESSIN, /function palier\(k, taille\) \{\s*\n\s*if \(k <= 1\.25\) return 1;/);
   assert.match(DESSIN, /return k <= 2\.5 \? 2 : 4;/);
   assert.match(DESSIN, /clef: fichier \+ '@' \+ kp/);
   assert.ok(!/Math\.round\(k \* 20\) \/ 20/.test(DESSIN), 'plus de clef au vingtième');
   // Les grands dessins restent au palier 1.
-  assert.match(DESSIN, /if \(im\.naturalWidth \* DENSITE > 300 \|\| im\.naturalHeight \* DENSITE > 300\) return 1;/);
+  assert.match(DESSIN, /if \(taille\.w \* DENSITE > 300 \|\| taille\.h \* DENSITE > 300\) return 1;/);
 });
 
 test('le tableau du pack est rendu hors écran et recopié', () => {

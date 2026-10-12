@@ -22,8 +22,47 @@
 const BASE = '/snake3/sprites/';
 
 let manifeste = null;
-const images = new Map();             // fichier → Image (le SVG décodé)
-const rendus = new Map();             // fichier@k → { c, dx, dy, lw, lh }
+/*
+ * ── LES DOCUMENTS SVG NE RESTENT PAS EN VIE ────────────────────────────────
+ *
+ * « Toujours quelques lags pendant les parties. Très courts mais fréquents. »
+ *
+ * Une Image dont la source est un SVG n'est pas une image : c'est un DOCUMENT
+ * entier que le navigateur garde derrière elle — sa page, son arbre, ses
+ * styles. On en gardait mille cent (chaque dessin du jeu, décodé une fois,
+ * rangé ici pour toujours), soit trente-cinq mille nœuds que CHAQUE ramassage
+ * complet du moteur JavaScript doit parcourir — le tas JS, lui, ne pèse que
+ * trois mégaoctets. Mesuré (scratchpad snake-lags, CPU ×1) : un ramassage
+ * complet dure 125 à 170 ms avec ces documents vivants, 12 ms sans ; et le
+ * navigateur en déclenche un toutes les cinq à dix secondes de partie
+ * (« memory reducer », puis la croissance ordinaire du tas) — c'est le lag,
+ * court et fréquent, sur une machine qui pourtant ne fait rien de lourd.
+ *
+ * Un dessin ne se peint qu'une fois par palier (rendreFichier), dans un
+ * tampon qui ne doit rien au document. On RELÂCHE donc le document dès qu'il
+ * a servi — en fin d'image d'écran (`relacher`, appelé par la boucle du jeu),
+ * et l'on garde trois choses à sa place, toutes légères pour le ramasseur :
+ *   · sa SOURCE (l'adresse blob du lot, qu'on ne révoque plus) — pour le
+ *     redécoder si un autre palier, ou une autre densité, le redemande ;
+ *   · sa TAILLE naturelle — le palier et la clef de cache en dépendent ;
+ *   · son dernier tampon peint, en SECOURS : le temps d'un redécodage (une
+ *     ou deux images d'écran), c'est lui qu'on dessine à l'échelle demandée,
+ *     plutôt que rien — un fruit qui saute ne clignote pas.
+ * Les fichiers des lots qui ne servent qu'à l'écran (écrans, pages, menu :
+ * plus de 150 pixels) ne se décodent plus d'avance du tout : leur tampon
+ * pèserait des mégaoctets, et leur première apparition est toujours un
+ * rebond parti de zéro. Les petits (fruits, options, chiffres) se peignent au
+ * palier 1 dès leur décodage, puis le document part : c'est l'état où la
+ * chauffe les aurait mis, sans le document.
+ */
+const images = new Map();             // fichier → Image VIVANTE (en cours de décodage, ou décodée et pas encore relâchée)
+const sources = new Map();            // fichier → adresse (le blob du lot), gardée pour redécoder
+const tailles = new Map();            // fichier → { w, h } : la taille naturelle, relevée au décodage
+const rendus = new Map();             // fichier@k[/variante] → { c, dx, dy, lw, lh, kp }
+const secours = new Map();            // fichier[/variante] → le dernier tampon peint, toutes densités
+const aRelacher = new Set();          // les fichiers dont le document a peint un tampon cette image
+let tour = 0;                         // le compteur d'images d'écran de `relacher`
+const GRAND = 150;                    // pixels logiques : au-delà, un dessin « d'écran »
 let DENSITE = 1;                      // pixels physiques par pixel logique (1..4)
 
 function chargerManifeste() {
@@ -155,13 +194,19 @@ function lireLotIci(url) {
 }
 
 // Les adresses d'un lot entrent dans la file ; la promesse tient jusqu'à ce
-// que la DERNIÈRE image du lot soit décodée.
+// que la DERNIÈRE image du lot soit décodée. Les adresses sont GARDÉES
+// (`sources`) : un document relâché se redécode d'ici, sans retour au réseau.
+// Les grands dessins (écrans, pages) ne font pas la file : ils ne se
+// décoderont qu'à leur première apparition, comme n'importe quel fichier hors
+// lot — mais depuis leur blob.
 function mettreEnFile(nom, urls) {
   if (typeof Image === 'undefined') return Promise.resolve(false);
   return new Promise((resoudre) => {
-    const lot = { nom, restants: 0, resoudre, adresses: [] };
+    const lot = { nom, restants: 0, resoudre };
     for (const [f, url] of urls) {
-      if (images.has(f) || enAttente.has(f)) { revoquer(url); continue; }
+      if (sources.has(f) || images.has(f) || enAttente.has(f)) { revoquer(url); continue; }
+      sources.set(f, url);
+      if (estGrand(f)) continue;
       const entree = { fichier: f, url, lot };
       lot.restants++;
       enAttente.set(f, entree);
@@ -176,7 +221,30 @@ function revoquer(url) {
   try { URL.revokeObjectURL(url); } catch (e) { /* d'un autre contexte : l'ouvrier s'en charge */ }
 }
 
-// Une entrée de la file devient une Image — maintenant.
+// Le cadre d'un fichier d'après le manifeste (clé → frames → fichier), et
+// s'il est « d'écran ». Sans manifeste (les bancs), rien n'est grand.
+let cadres = null;                    // fichier → cadre, bâti à la première demande
+function cadreDe(fichier) {
+  if (!manifeste) return null;
+  if (!cadres) {
+    cadres = new Map();
+    for (const clip of Object.values(manifeste.clips || {})) {
+      for (const f of Object.values(clip.frames || {})) {
+        if (f.fichier && f.cadre) cadres.set(f.fichier, f.cadre);
+        for (const a of (f.anim || [])) if (a.fichier && a.cadre) cadres.set(a.fichier, a.cadre);
+      }
+    }
+  }
+  return cadres.get(fichier) || null;
+}
+function estGrand(fichier) {
+  const c = cadreDe(fichier);
+  return !!c && Math.max(c.w || 0, c.h || 0) > GRAND;
+}
+
+// Une entrée de la file — ou un fichier froid { fichier, url } — devient une
+// Image, maintenant. Au décodage, on relève sa taille, et un petit dessin se
+// peint tout de suite au palier 1 : son document n'a plus rien à faire ici.
 function lancerImage(entree) {
   enAttente.delete(entree.fichier);
   const im = new Image();
@@ -184,13 +252,18 @@ function lancerImage(entree) {
   decodeur.enCours++;
   const fait = () => {
     decodeur.enCours--;
-    lot.adresses.push(entree.url);
-    revoquer(entree.url);
-    if (--lot.restants === 0) {
-      if (ouvrier) { try { ouvrier.postMessage({ revoquer: lot.adresses }); } catch (e) { /* tant pis */ } }
-      lot.adresses = [];
-      lot.resoudre(true);
-    }
+    // C'est CE drapeau, et non `complete`, qui dit « décodée » : une image
+    // relancée depuis un blob déjà en cache est `complete` sur-le-champ, son
+    // `load` n'étant que mis en file — la relâcher avant qu'il n'arrive
+    // (src retiré) l'annulerait, et `enCours` ne redescendrait jamais.
+    im.decodee = true;
+    im.tourPret = tour;
+    if (im.naturalWidth) tailles.set(entree.fichier, { w: im.naturalWidth, h: im.naturalHeight });
+    peindreAuDecodage(entree.fichier);
+    // Une image `complete` d'emblée a pu peindre AVANT ce load (et la fin
+    // d'image l'a laissée, à raison) : elle a servi, elle peut partir.
+    if (im.aPeint) aRelacher.add(entree.fichier);
+    if (lot && --lot.restants === 0) lot.resoudre(true);
     if (decodeur.enCours === 0) programmerVague();
   };
   im.addEventListener('load', fait);
@@ -198,6 +271,55 @@ function lancerImage(entree) {
   im.src = entree.url;
   images.set(entree.fichier, im);
   return im;
+}
+
+// Le tampon du palier 1 d'un petit dessin, dès son décodage — et FORCÉ,
+// comme à la chauffe : le document peut alors partir. Les grands dessins
+// attendent leur première apparition (un écran de 700 pixels à la densité 3
+// pèse douze mégaoctets : on n'en peint que ceux qui servent).
+function peindreAuDecodage(fichier) {
+  if (typeof document === 'undefined') return;
+  const cadre = cadreDe(fichier);
+  if (!cadre || estGrand(fichier)) return;
+  const r = rendreFichier(fichier, cadre, 1);
+  if (r && !r.secours) forcerTampon(r.c);
+}
+
+/*
+ * LA FIN D'UNE IMAGE D'ÉCRAN : les documents qui ont peint un tampon partent
+ * (`src` retiré, l'élément oublié) — leur source, leur taille et leur tampon
+ * restent. La boucle du jeu l'appelle à chaque image. Un document décodé
+ * depuis longtemps sans avoir rien peint de neuf (un redécodage dont le
+ * dessin n'a finalement pas été redemandé, ou dont le palier 1 existait
+ * déjà) part aussi, au bout d'une demi-seconde, pourvu qu'un tampon de
+ * secours existe pour lui.
+ */
+const PATIENCE_RELACHE = 30;          // images d'écran
+function relacher() {
+  tour++;
+  for (const f of aRelacher) relacherUne(f);
+  aRelacher.clear();
+  if (tour % 16 === 0) {
+    for (const [f, im] of images) {
+      if (im.decodee && tour - im.tourPret >= PATIENCE_RELACHE) relacherUne(f);
+    }
+  }
+}
+
+function relacherUne(fichier) {
+  const im = images.get(fichier);
+  // Pas encore décodé (son `load` n'est pas passé), en échec (rien à
+  // redessiner), ou jamais peint : il reste.
+  if (!im || !im.decodee || !im.naturalWidth || !secours.has(fichier)) return;
+  images.delete(fichier);
+  if (typeof im.removeAttribute === 'function') im.removeAttribute('src');
+}
+
+// Pour les tests : les documents vivants, les tampons, les sources gardées.
+function etatImages() {
+  const enDecodage = [];
+  for (const [f, im] of images) if (!im.decodee) enDecodage.push(f);
+  return { vivantes: images.size, enDecodage, tampons: rendus.size, secours: secours.size, sources: sources.size, tailles: tailles.size };
 }
 
 // La vague suivante : au prochain tour hors partie (les `load` de la vague en
@@ -245,21 +367,22 @@ function etatDecodeur() {
 // Pour les tests sous Node : injecter le manifeste sans fetch ni DOM.
 function poserManifeste(m) { manifeste = m; }
 
+// L'Image VIVANTE d'un fichier — décodée ou en cours —, lancée s'il le faut :
+// un fichier de la file passe devant, depuis son blob ; un fichier froid (son
+// document relâché, ou un grand dessin jamais décodé) repart de sa source ;
+// un fichier hors lot vient du réseau. Pour savoir si un dessin est PRÊT à
+// se peindre, c'est `tailles` qu'il faut lire : un document relâché l'est.
 function image(fichier) {
-  let im = images.get(fichier);
-  if (!im) {
-    // Le fichier attend son tour dans la file : il passe devant, depuis son
-    // blob — pas de retour au réseau pour un dessin qu'on a déjà.
-    const e = enAttente.get(fichier);
-    if (e) return lancerImage(e);
-    // Sous Node (les tests lisent le manifeste sans navigateur) : un leurre
-    // « chargé mais vide », que rendreFichier refuse et que precharger saute.
-    if (typeof Image === 'undefined') return { complete: true, naturalWidth: 0 };
-    im = new Image();
-    im.src = BASE + fichier;
-    images.set(fichier, im);
-  }
-  return im;
+  const im = images.get(fichier);
+  if (im) return im;
+  // Le fichier attend son tour dans la file : il passe devant, depuis son
+  // blob — pas de retour au réseau pour un dessin qu'on a déjà.
+  const e = enAttente.get(fichier);
+  if (e) return lancerImage(e);
+  // Sous Node (les tests lisent le manifeste sans navigateur) : un leurre
+  // « chargé mais vide », que rendreFichier refuse et que precharger saute.
+  if (typeof Image === 'undefined') return { complete: true, naturalWidth: 0 };
+  return lancerImage({ fichier, url: sources.get(fichier) || (BASE + fichier), lot: null });
 }
 
 // Précharge les images d'un jeu de clés (avant d'ouvrir le jeu). Une entrée
@@ -277,6 +400,8 @@ function precharger(cles) {
     if (!clip) continue;
     for (const [n, f] of Object.entries(clip.frames)) {
       if (seules && !seules.has(Number(n))) continue;
+      // Décodé puis relâché : il est prêt — on ne le redécode pas pour rien.
+      if (tailles.has(f.fichier) && !images.has(f.fichier)) continue;
       const im = image(f.fichier);
       if (!im.complete) {
         promesses.push(new Promise((res) => {
@@ -330,27 +455,43 @@ function rendre(cle, frame, k) {
  * restent au palier 1 — un écran à 1,1 (le rebond d'entrée) tiré d'un tampon
  * double ferait trente mégaoctets pour trois images.
  */
-function palier(k, im) {
+function palier(k, taille) {
   if (k <= 1.25) return 1;
-  if (im.naturalWidth * DENSITE > 300 || im.naturalHeight * DENSITE > 300) return 1;
+  if (taille.w * DENSITE > 300 || taille.h * DENSITE > 300) return 1;
   return k <= 2.5 ? 2 : 4;
 }
 
-// L'image et la clef de cache d'un fichier à l'échelle k — null tant que
-// l'image n'est pas décodée.
+// La taille et la clef de cache d'un fichier à l'échelle k — null tant que
+// l'image n'a jamais été décodée (sa taille est relevée au décodage, et
+// survit au document).
 function clefRaster(fichier, k) {
-  const im = image(fichier);
-  if (!im.complete || !im.naturalWidth) return null;
-  const kp = palier(k || 1, im);
-  return { im, kp, clef: fichier + '@' + kp };
+  const taille = tailles.get(fichier);
+  if (!taille) return null;
+  const kp = palier(k || 1, taille);
+  return { taille, kp, clef: fichier + '@' + kp };
+}
+
+// Le tampon de SECOURS d'un fichier (ou d'une de ses variantes), présenté à
+// la géométrie demandée : le dernier peint, à quelque palier ou densité que
+// ce soit. `secours: true` dit qu'il tient la place — rien ne doit le mettre
+// en cache sous la clef demandée, et la chauffe repassera.
+function tamponDeSecours(clefSecours, cadre) {
+  const s = secours.get(clefSecours);
+  if (!s) return null;
+  return { c: s.c, dx: cadre.x, dy: cadre.y, lw: s.lw, lh: s.lh, kp: s.kp, secours: true };
 }
 
 function rendreFichier(fichier, cadre, k) {
   const cr = clefRaster(fichier, k);
-  if (!cr) return null;
+  // Jamais décodé : on lance le décodage (depuis son blob s'il en a un), et
+  // il n'y a rien à montrer d'ici là.
+  if (!cr) { image(fichier); return null; }
   let r = rendus.get(cr.clef);
   if (r) return r;
-  const im = cr.im;
+  // Le palier manque, et le document est parti (ou se redécode) : on le
+  // relance et l'on dessine, le temps qu'il revienne, le dernier tampon peint.
+  const im = image(fichier);
+  if (!im.complete || !im.naturalWidth) return tamponDeSecours(fichier, cadre);
   const kd = cr.kp * DENSITE;
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.ceil(im.naturalWidth * kd));
@@ -362,8 +503,37 @@ function rendreFichier(fichier, cadre, k) {
     dy: cadre.y,
     lw: c.width / DENSITE / cr.kp,
     lh: c.height / DENSITE / cr.kp,
+    kp: cr.kp,
   };
   rendus.set(cr.clef, r);
+  secours.set(fichier, r);
+  im.aPeint = true;
+  aRelacher.add(fichier);               // le document a servi : il partira en fin d'image
+  return r;
+}
+
+// Une VARIANTE d'un tampon (teinte, multiplication) : peinte depuis le tampon
+// de base et mise en cache sous sa clef — ou, si la base n'est qu'un secours,
+// depuis lui, en secours elle aussi (et gardée comme tel, pour ne pas la
+// repeindre à chaque image le temps du redécodage).
+function variante(fichier, cadre, k, suffixe, peindre) {
+  const base = rendreFichier(fichier, cadre, k);
+  if (!base) return null;
+  const clefSecours = fichier + suffixe;
+  if (base.secours) {
+    let s = secours.get(clefSecours);
+    if (!s) {
+      s = peindre(base);
+      secours.set(clefSecours, s);
+    }
+    return { c: s.c, dx: base.dx, dy: base.dy, lw: s.lw, lh: s.lh, kp: s.kp, secours: true };
+  }
+  const clef = fichier + '@' + base.kp + suffixe;
+  let r = rendus.get(clef);
+  if (r) return r;
+  r = peindre(base);
+  rendus.set(clef, r);
+  secours.set(clefSecours, r);
   return r;
 }
 
@@ -425,22 +595,17 @@ function rendreAnim(cle, frame, tick, k) {
 // passe par un canvas intermédiaire — un source-atop sur le canvas de scène
 // teinterait tout ce qui est déjà peint dessous.
 function rendreTeinteFichier(fichier, cadre, k, couleur) {
-  const base = rendreFichier(fichier, cadre, k);
-  if (!base) return null;
-  const clef = clefRaster(fichier, k).clef + '/' + couleur;
-  let r = rendus.get(clef);
-  if (r) return r;
-  const c = document.createElement('canvas');
-  c.width = base.c.width;
-  c.height = base.c.height;
-  const ctx = c.getContext('2d');
-  ctx.drawImage(base.c, 0, 0);
-  ctx.globalCompositeOperation = 'source-in';
-  ctx.fillStyle = couleur;
-  ctx.fillRect(0, 0, c.width, c.height);
-  r = { c, dx: base.dx, dy: base.dy, lw: base.lw, lh: base.lh };
-  rendus.set(clef, r);
-  return r;
+  return variante(fichier, cadre, k, '/' + couleur, (base) => {
+    const c = document.createElement('canvas');
+    c.width = base.c.width;
+    c.height = base.c.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(base.c, 0, 0);
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = couleur;
+    ctx.fillRect(0, 0, c.width, c.height);
+    return { c, dx: base.dx, dy: base.dy, lw: base.lw, lh: base.lh, kp: base.kp };
+  });
 }
 
 function rendreTeinte(cle, frame, k, couleur) {
@@ -464,25 +629,22 @@ function rendreMultiplie(cle, frame, k, mr, mv, mb) {
   const q = (v) => Math.round(Math.max(0, Math.min(1, v)) * 32) / 32;
   mr = q(mr); mv = q(mv); mb = q(mb);
   if (mr === 1 && mv === 1 && mb === 1) return rendre(cle, frame, k);
-  const base = rendre(cle, frame, k);
-  if (!base) return null;
-  const f = manifeste.clips[cle].frames[frame] || manifeste.clips[cle].frames[1];
-  const clef = clefRaster(f.fichier, k).clef + '*' + mr + ',' + mv + ',' + mb;
-  let r = rendus.get(clef);
-  if (r) return r;
-  const c = document.createElement('canvas');
-  c.width = base.c.width;
-  c.height = base.c.height;
-  const ctx = c.getContext('2d');
-  ctx.drawImage(base.c, 0, 0);
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.fillStyle = 'rgb(' + Math.round(mr * 255) + ',' + Math.round(mv * 255) + ',' + Math.round(mb * 255) + ')';
-  ctx.fillRect(0, 0, c.width, c.height);
-  ctx.globalCompositeOperation = 'destination-in';
-  ctx.drawImage(base.c, 0, 0);
-  r = { c, dx: base.dx, dy: base.dy, lw: base.lw, lh: base.lh };
-  rendus.set(clef, r);
-  return r;
+  const clip = manifeste.clips[cle];
+  const f = clip && (clip.frames[frame] || clip.frames[1]);
+  if (!f) return null;
+  return variante(f.fichier, f.cadre, k, '*' + mr + ',' + mv + ',' + mb, (base) => {
+    const c = document.createElement('canvas');
+    c.width = base.c.width;
+    c.height = base.c.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(base.c, 0, 0);
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = 'rgb(' + Math.round(mr * 255) + ',' + Math.round(mv * 255) + ',' + Math.round(mb * 255) + ')';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(base.c, 0, 0);
+    return { c, dx: base.dx, dy: base.dy, lw: base.lw, lh: base.lh, kp: base.kp };
+  });
 }
 
 /* ── LA CHAUFFE : RASTERISER AVANT QU'ON EN AIT BESOIN ─────────────────────
@@ -517,11 +679,17 @@ const maintenant = () => ((typeof performance !== 'undefined' && performance.now
 function chauffer(entrees) {
   if (typeof document === 'undefined' || !Array.isArray(entrees)) return Promise.resolve(0);
   return new Promise((resoudre) => {
-    chauffe.file.push({ entrees: entrees.slice(), i: 0, faites: 0, resoudre });
+    chauffe.file.push({ entrees: entrees.slice(), i: 0, faites: 0, remises: [], resoudre });
   });
 }
 
-// Une tranche de `budget` millisecondes, maintenant — rien en partie.
+// Une tranche de `budget` millisecondes, maintenant — rien en partie. Une
+// entrée dont le dessin se (re)décode est REMISE : elle repasse à la tranche
+// suivante, quand son document sera là — sans quoi la chauffe sauterait tout
+// ce qu'elle a elle-même relâché après le palier 1 (les chiffres à 2 et 4,
+// le saut des fruits).
+const PLUS_TARD = 'plus tard';
+const ESSAIS_CHAUFFE = 40;            // tranches, soit autant d'images d'écran
 function chaufferPendant(budget) {
   if (decodeur.frein || !chauffe.file.length) return 0;
   const t0 = maintenant();
@@ -529,8 +697,17 @@ function chaufferPendant(budget) {
   while (chauffe.file.length) {
     const tache = chauffe.file[0];
     while (tache.i < tache.entrees.length) {
-      if (chaufferUne(tache.entrees[tache.i++])) { tache.faites++; faites++; }
+      const e = tache.entrees[tache.i++];
+      const etat = chaufferUne(e);
+      if (etat === true) { tache.faites++; faites++; }
+      else if (etat === PLUS_TARD && (e.essais = (e.essais || 0) + 1) <= ESSAIS_CHAUFFE) tache.remises.push(e);
       if (maintenant() - t0 >= budget) return faites;
+    }
+    if (tache.remises.length) {
+      tache.entrees = tache.remises;
+      tache.remises = [];
+      tache.i = 0;
+      return faites;                    // la tranche suivante : les décodages auront eu leur tâche
     }
     chauffe.file.shift();
     tache.resoudre(tache.faites);
@@ -541,14 +718,29 @@ function chaufferPendant(budget) {
 // Reste-t-il de quoi chauffer ?
 function chauffeEnAttente() { return chauffe.file.length > 0; }
 
+// Vrai (peint), faux (rien à peindre : image absente ou en échec — elle
+// chauffera à sa première apparition), ou PLUS_TARD (son document se décode).
 function chaufferUne(e) {
   const k = e.k || 1;
   let r = null;
   if (e.fichier) r = e.teinte ? rendreTeinteFichier(e.fichier, e.cadre, k, e.teinte) : rendreFichier(e.fichier, e.cadre, k);
   else r = e.teinte ? rendreTeinte(e.cle, e.frame, k, e.teinte) : rendre(e.cle, e.frame, k);
-  if (!r) return false;
+  if (!r) return seDecode(e) ? PLUS_TARD : false;
+  if (r.secours) return PLUS_TARD;
   forcerTampon(r.c);
   return true;
+}
+
+// Le dessin d'une entrée de chauffe a-t-il un document en cours de décodage ?
+function seDecode(e) {
+  let fichier = e.fichier;
+  if (!fichier && manifeste) {
+    const clip = manifeste.clips[e.cle];
+    const f = clip && (clip.frames[e.frame] || clip.frames[1]);
+    fichier = f && f.fichier;
+  }
+  const im = fichier && images.get(fichier);
+  return !!im && !im.decodee;
 }
 
 // Le tampon est réellement peint quand il sert de SOURCE : un drawImage 1×1
@@ -690,7 +882,8 @@ const API = {
   rendreTeinte, rendreTeinteFichier, rendreTeinteAnim, rendreMultiplie,
   imageAnim, rendreAnim, amorcerAnimations, poser, poserAnim, image, PopupFX, Nombre,
   freiner, chauffer, chaufferPendant, chauffeEnAttente, etatDecodeur,
-  VAGUE_LIBRE, VAGUE_PARTIE, DELAI_PARTIE, CADENCE_LIBRE,
+  relacher, etatImages, estGrand,
+  VAGUE_LIBRE, VAGUE_PARTIE, DELAI_PARTIE, CADENCE_LIBRE, GRAND, PATIENCE_RELACHE,
   get manifeste() { return manifeste; },
   get DENSITE() { return DENSITE; },
 };
