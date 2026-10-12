@@ -757,9 +757,11 @@ const GAME_ITEM_INFO = {
   '$bshadow':    { name: 'Bumper invisible',    game: 'MotionBall', gif: 'Games/motionBall2/picto/bumperInvisible.gif' },
   '$oeil':       { name: "Oeil du poulpe",      game: 'MotionBall', gif: 'Games/motionBall2/picto/oeilDuPoulpe.gif' },
   '$masque':     { name: 'Masque de TB',        game: 'MotionBall', gif: 'Games/motionBall2/picto/maskDeTB.gif' },
-  '$eca0':       { name: 'Écaille verte',       game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleVerte.gif' },
+  // Une écaille par donjon d'aventure (TItems.giveAventure : $eca n) ; le
+  // serpent du donjon n est teinté eau (bleu), feu (rouge), vent (vert), terre.
+  '$eca0':       { name: 'Écaille bleue',       game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleBleue.gif' },
   '$eca1':       { name: 'Écaille rouge',       game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleRouge.gif' },
-  '$eca2':       { name: 'Écaille bleue',       game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleBleue.gif' },
+  '$eca2':       { name: 'Écaille verte',       game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleVerte.gif' },
   '$eca3':       { name: 'Écaille marron',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleMarron.gif' },
   '$symb0':      { name: 'Logo eau',            game: 'MotionBall', gif: 'Games/motionBall2/picto/logoEau.gif' },
   '$symb1':      { name: 'Logo feu',            game: 'MotionBall', gif: 'Games/motionBall2/picto/logoFeu.gif' },

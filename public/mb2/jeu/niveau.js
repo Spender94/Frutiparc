@@ -98,6 +98,167 @@ class LevelLoader {
 }
 J.LevelLoader = LevelLoader;
 
+// ── Le bumper invisible se dessine depuis un cache raster ─────────────────
+/*
+ * LE BUMPER INVISIBLE EST LE SEUL BUMPER EN PUR VECTEUR : son corps (forme
+ * 819) et son cœur (clip 820 → forme 557) font dix remplissages et neuf
+ * coutures, là où bnormal, btime, bdeath et bmagnet sont des bitmaps. Tant
+ * qu'il est invisible, il ne coûte rien ; mais la bille violette le voit
+ * (Collide.bumper_shadow_on_update : alpha selon la distance, donc TOUS les
+ * bumpers invisibles de la salle sont dessinés à chaque image), et dans une
+ * salle qui en compte quinze ou seize — aventure 1 (0,1), aventure 4 (6,2),
+ * l'Aide (0,6) — le rendu entier double. Mesuré sous Chromium sans
+ * accélération, vidage du canevas forcé à chaque image : 5,9 → 12,1 ms par
+ * image, soit 0,4 ms par bumper visible, contre 0,07 ms pour un bumper
+ * bitmap et 0,02 ms pour un drawImage. Ce sont les « ralentissements dans
+ * les salles spéciales balle violette » rapportés par les joueurs.
+ *
+ * Au repos (image 1), chaque REMPLISSAGE de chaque forme du clip est donc
+ * rastérisé une fois dans un canevas hors écran — et sa couture (le débord
+ * d'un demi-pixel que le moteur trace sur les arêtes partagées) dans un
+ * second —, sous la matrice exacte qu'il a sur le canevas de la scène (sa
+ * partie linéaire et sa phase sous-pixel) : à une translation entière près,
+ * la rastérisation est la même. Au rendu, les canevas sont recopiés d'un
+ * drawImage chacun, dans l'ordre du dessin direct et avec le même alpha.
+ * C'est ce qui garde la composition du moteur — et du lecteur Flash — quand
+ * le clip est translucide : chaque remplissage se pose à son alpha sur ce
+ * qui est déjà là, et le disque de base de la forme 819 se voit à travers
+ * ses reflets. Un cache aplati par forme donnerait autre chose dès que
+ * l'alpha descend sous 100. Mesuré contre le dessin direct, pixel à pixel,
+ * à deux échelles de canevas : au plus six niveaux sur 255 d'écart (les
+ * arrondis 8 bits des bords lissés), jamais plus de huit.
+ *
+ * L'animation « hit » (images 2 à 9, le corps teinté) et tout cas qui sort
+ * du cadre — masque, teinte, morphose, dégradé ou motif, trait, dessin par
+ * script, matrice dégénérée, pas de document — repassent par le dessin
+ * normal du moteur, tel quel.
+ */
+const CACHES_BUMPER_INVISIBLE = new Map();
+const PLAFOND_CACHES_BUMPER_INVISIBLE = 128;    // des formes (deux par bumper, 16 bumpers au plus par salle) : quelques phases d'avance
+const MARGE_CACHE = 2;           // le lissage des bords et le débord des coutures
+
+// La teinte d'un placement : tout ce qui n'est pas un simple alpha.
+function estTeinte(cx) {
+  return !!cx && (cx[0] !== 256 || cx[1] !== 256 || cx[2] !== 256 || !!cx[4] || !!cx[5] || !!cx[6]);
+}
+
+// Relève, dans l'ordre d'affichage, les formes du clip et leur matrice
+// (repère du canevas). `false` dès qu'un enfant ne se met pas en cache.
+function releverFormes(clip, M, liste) {
+  for (const e of clip.$enfants) {
+    if (!e.$visible || e.$estMasque) continue;
+    if (e.$masqueJusqua || e.$masquePar || e.$cx || e.$trace) return false;
+    const Me = K.composer(M, e.matriceLocale());
+    if (e instanceof K.Forme) {
+      if (e.$ratio !== null && e.$ratio !== undefined) return false;   // une morphose
+      if (!Me.every(Number.isFinite) || Me[0] * Me[3] - Me[1] * Me[2] === 0) return false;
+      const d = e.dessin();
+      if (!d || !e.cadreLocal()) return false;
+      // Rien que des remplissages de couleur unie : le seul cas qu'on sait
+      // recomposer à l'identique (un dégradé, un motif ou un trait : non).
+      if (!d.ops.every((op) => op.f && op.f.c && !op.f.g && !op.f.bm)) return false;
+      liste.push([e, Me]);
+    } else if (e instanceof K.Clip) {
+      if (!releverFormes(e, Me, liste)) return false;
+    } else return false;
+  }
+  return true;
+}
+
+// Les caches d'une forme sous cette matrice (sa partie linéaire — échelle,
+// et le cas échéant rotation ou cisaillement — et sa phase sous-pixel) :
+// { ox, oy, ops: [{ fa, rempl, couture }] }, chaque canevas à recopier en
+// (ox, oy) — des entiers — dans le repère du canevas. (La partie linéaire
+// n'est pas forcément une échelle uniforme : le clip « main » du SWF est
+// posé à [1,00009, 0, 0, 1,00012], l'arrondi en virgule fixe du fichier —
+// on la prend telle quelle.)
+function cachesForme(e, Me) {
+  const cl = K.transformerCadre(e.cadreLocal(), [Me[0], Me[1], Me[2], Me[3], 0, 0]);
+  const x0 = Me[4] + cl[0], y0 = Me[5] + cl[1], x1 = Me[4] + cl[2], y1 = Me[5] + cl[3];
+  const ox = Math.floor(x0) - MARGE_CACHE, oy = Math.floor(y0) - MARGE_CACHE;
+  // La phase sous-pixel, EXACTE : à la pointe d'une courbe tangente à
+  // l'axe, un décalage d'un soixante-quatrième de pixel suffit à faire
+  // basculer une sous-ligne du lissage sur toute la corde — un quart de
+  // couverture d'un coup. Les bumpers, posés à des coordonnées entières de
+  // la salle, partagent de toute façon leurs phases.
+  const px = Me[4] - ox, py = Me[5] - oy;
+  const l = Math.ceil(x1) - ox + MARGE_CACHE, h = Math.ceil(y1) - oy + MARGE_CACHE;
+  const cle = e.$id + '|' + Me[0] + '|' + Me[1] + '|' + Me[2] + '|' + Me[3] + '|' + px + '|' + py + '|' + l + '|' + h;
+  let c = CACHES_BUMPER_INVISIBLE.get(cle);
+  if (c) return c;
+  if (CACHES_BUMPER_INVISIBLE.size >= PLAFOND_CACHES_BUMPER_INVISIBLE) CACHES_BUMPER_INVISIBLE.clear();
+  const d = e.dessin();
+  const compile = K.compilerDessin(d);
+  // Un canevas vierge posé dans le repère du remplissage, comme le fait
+  // K.dessinerDessin : la matrice de la forme, puis celle du dessin (c.m).
+  const canevas = () => {
+    const cv = document.createElement('canvas');
+    cv.width = l; cv.height = h;
+    const cc = cv.getContext('2d');
+    cc.setTransform(Me[0], Me[1], Me[2], Me[3], px, py);
+    if (compile.m) cc.transform(compile.m.a, compile.m.b, compile.m.c, compile.m.d, compile.m.e, compile.m.f);
+    cc.globalAlpha = 1;
+    return { cv, cc };
+  };
+  // L'échelle « moyenne » de la transformation, pour l'épaisseur de la
+  // couture : un pixel d'écran, exactement comme dans formes.js.
+  const lin = compile.m ? K.composer([Me[0], Me[1], Me[2], Me[3], 0, 0], [compile.m.a, compile.m.b, compile.m.c, compile.m.d, 0, 0]) : Me;
+  const echelle = Math.sqrt(Math.abs(lin[0] * lin[3] - lin[1] * lin[2])) || 1;
+  c = { ox, oy, ops: [] };
+  for (const o of compile.ops) {
+    const f = o.op.f;
+    const rempl = canevas();
+    rempl.cc.fillStyle = f.c;
+    rempl.cc.fill(o.chemin, 'evenodd');
+    let couture = null;
+    if (o.cheminDebord) {
+      couture = canevas();
+      couture.cc.strokeStyle = f.c;
+      couture.cc.lineWidth = 1 / echelle;
+      couture.cc.lineJoin = 'round';
+      couture.cc.lineCap = 'round';
+      couture.cc.stroke(o.cheminDebord);
+    }
+    c.ops.push({ fa: (f.a !== undefined && f.a < 1) ? f.a : 1, rempl: rempl.cv, couture: couture ? couture.cv : null });
+  }
+  CACHES_BUMPER_INVISIBLE.set(cle, c);
+  return c;
+}
+
+function poserCacheBumperInvisible(clip) {
+  const direct = clip.dessinerDans;
+  clip.dessinerDans = function (ctx, alpha) {
+    if (!this.$visible || this.$estMasque) return;
+    const cx = this.$cx;
+    if (typeof document === 'undefined' || this._currentframe !== 1 || this.$masquePar || this.$trace || estTeinte(cx)) {
+      direct.call(this, ctx, alpha);
+      return;
+    }
+    const a = alpha * (cx ? Math.max(0, Math.min(1, cx[3] / 256)) : 1);
+    if (a <= 0.001) return;
+    const T = ctx.getTransform();
+    const formes = [];
+    if (!releverFormes(this, K.composer([T.a, T.b, T.c, T.d, T.e, T.f], this.matriceLocale()), formes)) {
+      direct.call(this, ctx, alpha);
+      return;
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    for (const [e, Me] of formes) {
+      const c = cachesForme(e, Me);
+      for (const o of c.ops) {
+        ctx.globalAlpha = a * o.fa;
+        ctx.drawImage(o.rempl, c.ox, c.oy);
+        if (o.couture) ctx.drawImage(o.couture, c.ox, c.oy);
+      }
+    }
+    ctx.restore();
+  };
+  return clip;
+}
+J.poserCacheBumperInvisible = poserCacheBumperInvisible;
+J.CACHES_BUMPER_INVISIBLE = CACHES_BUMPER_INVISIBLE;
+
 // ── Level ─────────────────────────────────────────────────────────────────
 class Level {
   constructor(game) {
@@ -393,6 +554,7 @@ class Level {
     // vient de Collide.hitmap, sur un clip à l'échelle 1.)
     if (b.btype === 6) { clip._xscale = 102; clip._yscale = 102; }
     b.clip = clip;
+    if (b.btype === 5) poserCacheBumperInvisible(clip);   // voir « Le bumper invisible se dessine depuis un cache raster »
     if (b.btype !== 5 && b.btype !== 6 && b.btype !== 10 && b.btype !== 12 && b.btype !== 13) {
       b.shade = this.dmanager.attach('ombre', Const.SHADE_PLAN);
       b.shade._x = b.clip._x;
