@@ -10952,6 +10952,7 @@ app.post('/api/admin/paris-challenge/mois', adminScope('challenge'), async (req,
 // épreuves de Kaluga). Un joueur sans accès n'avance rien.
 // ══════════════════════════════════════════════════════════════════════════
 const Quetes = require('./quetes.js');
+const LoupGarou = require('./loupgarou.js');
 let quetesReglages = Quetes.reglagesNormalises();
 let quetesSemaine = null;             // { lundi, quetes: [définitions figées] }
 const quetesProgres = new Map();      // pseudo → Map(id de quête → { etat, faitAt, gain })
@@ -29032,6 +29033,8 @@ async function boot() {
       await chargerReglagesParisChallenge();
       // Les quêtes de Gromelin : réglages, semaine tirée, avancement de chacun.
       await chargerQuetes();
+      // Les parties de loup-garou en cours reprennent (en pause).
+      await lgCharger();
       // Les parties en différé reprennent où elles en étaient.
       await chargerPartiesDifferees();
       // Le sujet des paris de Dimitri : ouvert s'il manque (en tâche de fond :
@@ -29370,6 +29373,7 @@ async function boot() {
                     + "(<i>/status off</i> pour l&#8217;enlever)<br/>"
                     + "&#8226; <i>/donne nombre pseudo</i>&#160;: offre des Kikooz (le nombre d&#8217;abord&#160;!)<br/>"
                     + "&#8226; <i>/d6</i>, <i>/d20</i>&#8230;&#160;: lance un d&#233; devant tout le salon<br/>"
+                    + "&#8226; <i>/lg aide</i>&#160;: les commandes du loup-garou, quand un animateur en m&#232;ne une partie<br/>"
                     + "&#8226; <i>/topic ...</i>&#160;: change le sujet du salon (mod&#233;rateurs)",
                 },
               ],
@@ -31459,6 +31463,204 @@ function programmerFinDeTotoche(username) {
   }, Math.max(0, reste) + 500);
   if (t.unref) t.unref();
   finsDeTotoche.set(username, t);
+}
+
+/*
+ * LE LOUP-GAROU DU SALON — le câblage (le moteur est dans loupgarou.js).
+ *
+ * Une partie par salon, ouverte par un animateur (dans son salon) ou un
+ * modérateur : /lg ouvrir. Tout passe par /lg : les inscriptions, les actions
+ * de nuit, le vote, et la main du meneur. Le moteur rend des événements, que
+ * l'on traduit ici en lignes de chat :
+ *   · public  → une annonce de la partie (t="c", le bleu gras des animateurs) ;
+ *   · info    → une ligne grise en italique ;
+ *   · secret  → une ligne violette pour un seul joueur (st="lg"), jamais mise
+ *               dans l'historique du salon ;
+ *   · meneur  → la même chose, pour le meneur.
+ * La nuit, le salon se tait (lgParole, appelée sur chaque ligne) : ce qu'un
+ * loup écrit part à la seule meute. Les morts se taisent jusqu'à la fin.
+ * Le client mobile reçoit en plus, à chaque changement, SA vue de la partie
+ * (t="lg", un JSON : phase, chrono, son rôle, les joueurs, son action) pour
+ * son panneau de jeu ; le bureau Flash ne la reçoit pas.
+ * Les parties sont gardées en base (app_state `loupgarou`) : après un
+ * redémarrage, elles reprennent en pause (/lg reprise).
+ */
+const lgParties = new Map();      // salon → partie
+const lgMinuteurs = new Map();    // salon → setTimeout du chrono
+const lgFermetures = new Map();   // salon → setTimeout du rangement d'une partie finie
+const LG_GARDER_FINIE_MS = 15 * 60 * 1000;
+
+function lgTexte(t) {
+  return escapeXml(String(t == null ? '' : t)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br/>');
+}
+function lgPublic(salon, t) {
+  const ta = buildChatTimeAttrs();
+  broadcastToChannel(salon, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}"><![CDATA[${lgTexte(t)}]]></${CMD.send}>`);
+}
+function lgInfo(salon, t) {
+  const ta = buildChatTimeAttrs();
+  broadcastToChannel(salon, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}"><![CDATA[<i>${lgTexte(t)}</i>]]></${CMD.send}>`);
+}
+// Une ligne pour un seul joueur — à ses fenêtres ouvertes sur le salon (à
+// toutes, s'il n'y est plus : il ne doit pas manquer son rôle).
+function lgSecret(salon, u, t) {
+  const ta = buildChatTimeAttrs();
+  const xml = `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}" st="lg"><![CDATA[<font color="#5B2A86"><i>${lgTexte(t)}</i></font>]]></${CMD.send}>`;
+  const socks = getSocketsForUsername(u);
+  const dedans = socks.filter((s) => { const cl = xmlSocketClients.get(s); return cl && cl.channels && cl.channels.has(salon); });
+  for (const s of (dedans.length ? dedans : socks)) sendToClient(s, xml);
+}
+function lgVueA(sock, cl, p) {
+  const v = p ? LoupGarou.vue(p, cl.username, isChannelStaff(cl.username, p.salon), Date.now()) : { ferme: true };
+  const json = JSON.stringify(v).replace(/]]>/g, ']]\\u003e');
+  sendToClient(sock, `<${CMD.send} u="admin" t="lg" p="" g="${escapeXml(p ? p.salon : '')}" h="" d=""><![CDATA[${json}]]></${CMD.send}>`);
+}
+function lgVues(salon) {
+  const p = lgParties.get(salon) || null;
+  for (const [sock, cl] of xmlSocketClients) {
+    if (!cl || !cl.estLight || !cl.logged || !cl.channels || !cl.channels.has(salon)) continue;
+    if (p) lgVueA(sock, cl, p);
+    else sendToClient(sock, `<${CMD.send} u="admin" t="lg" p="" g="${escapeXml(salon)}" h="" d=""><![CDATA[{"ferme":true}]]></${CMD.send}>`);
+  }
+}
+function lgPlanifier(p) {
+  clearTimeout(lgMinuteurs.get(p.salon));
+  lgMinuteurs.delete(p.salon);
+  if (!p.echeance || p.pause != null || lgParties.get(p.salon) !== p) return;
+  const t = setTimeout(() => {
+    lgMinuteurs.delete(p.salon);
+    if (lgParties.get(p.salon) !== p) return;
+    lgDiffuser(p, LoupGarou.echeance(p, Date.now()));
+  }, Math.max(0, p.echeance - Date.now()) + 30);
+  if (t.unref) t.unref();
+  lgMinuteurs.set(p.salon, t);
+}
+let lgSauvegarde = null;
+function lgEnregistrer() {
+  if (!process.env.DATABASE_URL || lgSauvegarde) return;
+  lgSauvegarde = setTimeout(() => {
+    lgSauvegarde = null;
+    const parties = [...lgParties.values()].filter((p) => p.phase !== 'fin');
+    db.setAppState('loupgarou', JSON.stringify(parties)).catch(dbErr('loupgarou'));
+  }, 500);
+  if (lgSauvegarde.unref) lgSauvegarde.unref();
+}
+function lgDiffuser(p, evts, options) {
+  for (const e of evts || []) {
+    if (e.a === 'public') lgPublic(p.salon, e.t);
+    else if (e.a === 'info') lgInfo(p.salon, e.t);
+    else if (e.a === 'secret') lgSecret(p.salon, e.u, e.t);
+    else if (e.a === 'meneur') lgSecret(p.salon, p.meneur, e.t);
+    else if (e.a === 'fin') lgPayer(p, e);
+  }
+  if (options && options.leger) return;      // un murmure de la meute : rien d'autre ne change
+  lgPlanifier(p);
+  if (p.phase === 'fin' && !lgFermetures.has(p.salon)) {
+    const t = setTimeout(() => { lgFermetures.delete(p.salon); if (lgParties.get(p.salon) === p) { lgParties.delete(p.salon); lgVues(p.salon); } }, LG_GARDER_FINIE_MS);
+    if (t.unref) t.unref();
+    lgFermetures.set(p.salon, t);
+  }
+  lgVues(p.salon);
+  lgEnregistrer();
+}
+/*
+ * LE PRIX : `prix` kikooz à chaque gagnant, pris dans l'enveloppe du meneur
+ * — comme /don : plafonnée pour un animateur, libre pour un modérateur.
+ * L'enveloppe ne suffit pas ? On partage ce qu'il reste, à parts égales.
+ */
+function lgPayer(p, e) {
+  const prix = Math.floor(Number(e.prix) || 0);
+  const gagnants = (e.gagnants || []).filter((u) => users[u]);
+  if (prix <= 0 || !gagnants.length) return;
+  const donneur = p.meneur;
+  const isMod = isModerator(donneur);
+  if (!isMod && !isAnimator(donneur)) { lgInfo(p.salon, 'Le meneur n’a plus d’enveloppe : pas de prix cette fois.'); return; }
+  let part = prix;
+  if (!isMod) {
+    const rec = getAnimatorWeekRecord(donneur);
+    const reste = Math.max(0, ANIMATOR_WEEKLY_KIKOOZ - rec.given);
+    part = Math.min(prix, Math.floor(reste / gagnants.length));
+    if (part <= 0) { lgInfo(p.salon, 'L’enveloppe du meneur est vide cette semaine : pas de prix, mais la gloire !'); return; }
+    rec.given += part * gagnants.length;
+    saveAnimatorKikooz();
+  }
+  for (const u of gagnants) {
+    const cible = users[u];
+    cible.kikooz = (Number(cible.kikooz) || 0) + part;
+    if (cible._dbId) db.updateUser(u, { kikooz: cible.kikooz }).catch(dbErr('updateUser kikooz loupgarou'));
+    journalKikooz(cible, { type: 'a', k: part, f: getDisplayName(donneur) });
+    notifyKikoozUpdate(u, cible.kikooz);
+    addAndNotifyUserLog(u, { type: USER_LOG_TYPE.CHAT, content: `Victoire au loup-garou ! ${getDisplayName(donneur)} t'offre ${part} kikooz.` });
+    if (process.env.DATABASE_URL) {
+      db.addKikoozGift({ giver: donneur, recipient: u, amount: part, reason: 'loup-garou',
+        giverRole: isMod ? 'moderateur' : 'animateur', source: 'enveloppe', weekKey: parisWeekKey() })
+        .catch((err) => console.error('[DB] kikooz gift log error:', err.message));
+    }
+  }
+  lgPublic(p.salon, `${part} kikooz pour chaque gagnant : ${gagnants.map((u) => getDisplayName(u)).join(', ')} !${part < prix ? ' (L’enveloppe du meneur n’en permettait pas plus.)' : ''}`);
+  console.log(`[LOUPGAROU] prix : ${part} kikooz × ${gagnants.length} (meneur ${donneur})`);
+}
+/** Une commande /lg (ligne = ce qui suit « /lg »). */
+function lgCommande(client, g, ligne) {
+  const u = client.username;
+  const nom = getDisplayName(u);
+  const staff = isChannelStaff(u, g);
+  const mots = String(ligne || '').trim().split(/\s+/).filter(Boolean);
+  const premier = LoupGarou.normaliser(mots[0] || '');
+  let p = lgParties.get(g);
+  if (['ouvrir', 'nouvelle', 'creer', 'open'].includes(premier)) {
+    if (!staff) return lgSecret(g, u, 'Seuls les animateurs (dans leur salon) et les modérateurs ouvrent une partie de loup-garou.');
+    if (isPrivateChannel(g)) return lgSecret(g, u, 'Pas de loup-garou dans une discussion privée.');
+    if (p && p.phase !== 'fin') return lgSecret(g, u, 'Une partie est déjà en cours dans ce salon (/lg fin pour l’arrêter).');
+    const r = LoupGarou.lireReglages(mots.slice(1));
+    p = LoupGarou.creer({ salon: g, meneur: u, meneurNom: nom, now: Date.now(), prix: r.prix || 0 });
+    Object.assign(p.options.chronos, r.chronos);
+    clearTimeout(lgFermetures.get(g));
+    lgFermetures.delete(g);
+    lgParties.set(g, p);
+    console.log(`[LOUPGAROU] partie ouverte dans ${g} par ${u}`);
+    return lgDiffuser(p, LoupGarou.ouverture(p).concat([{ a: 'meneur', t: LoupGarou.aide(p, u, true) }]));
+  }
+  if (!p) {
+    if (!premier || ['aide', 'help', '?', 'commandes'].includes(premier)) return lgSecret(g, u, LoupGarou.aide(null, u, staff));
+    return lgSecret(g, u, staff ? 'Pas de partie dans ce salon : /lg ouvrir pour en lancer une (/lg aide pour tout savoir).' : 'Pas de partie de loup-garou dans ce salon pour le moment.');
+  }
+  // « ajouter » : un pseudo présent dans le salon.
+  const compte = (a) => {
+    const ch = channels[g];
+    const cle = LoupGarou.normaliser(a);
+    const x = ch && [...ch.users].find((k) => LoupGarou.normaliser(k) === cle || LoupGarou.normaliser(getDisplayName(k)) === cle);
+    return x ? { u: x, nom: getDisplayName(x) } : null;
+  };
+  lgDiffuser(p, LoupGarou.commande(p, { u, nom, staff }, ligne, { now: Date.now(), compte }));
+}
+/**
+ * Une ligne ordinaire dans un salon où se joue une partie : true si elle est
+ * prise en charge ici (tue, ou relayée à la meute) — l'appelant s'arrête alors.
+ */
+function lgFiltrerParole(client, g, texte) {
+  const p = lgParties.get(g);
+  if (!p) return false;
+  const par = LoupGarou.parole(p, client.username, isChannelStaff(client.username, g));
+  if (par.meute) { lgDiffuser(p, LoupGarou.meute(p, client.username, texte), { leger: true }); return true; }
+  if (!par.ok) { lgSecret(g, client.username, par.raison); return true; }
+  return false;
+}
+async function lgCharger() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const brut = await db.getAppState('loupgarou');
+    const liste = brut ? JSON.parse(brut) : [];
+    for (const p of Array.isArray(liste) ? liste : []) {
+      if (!p || !p.salon || p.phase === 'fin') continue;
+      if (p.pause == null && ['nuit', 'jour', 'vote', 'chasseur', 'soir'].includes(p.phase)) {
+        p.pause = p.echeance ? Math.max(15000, p.echeance - Date.now()) : 0;
+        p.echeance = null;
+      }
+      lgParties.set(p.salon, p);
+      console.log(`[LOUPGAROU] partie de ${p.salon} rechargée (${p.phase}, en pause)`);
+    }
+  } catch (e) { console.error('[LOUPGAROU] chargement :', e.message); }
 }
 
 function getSocketsForUsername(username) {
@@ -33626,6 +33828,9 @@ case 'join': {
     sendToClient(socket, `<${CMD.send} u="admin" t="poll" p="" g="${escapeXml(g)}" h="" d=""><![CDATA[${payload}]]></${CMD.send}>`);
   }
 
+  // 3 quater. Une partie de loup-garou se joue ici : le panneau du mobile.
+  if (client.estLight && lgParties.has(g)) lgVueA(socket, client, lgParties.get(g));
+
   // 4. Notification aux autres + trace du nouvel arrivant pour leurs FrutiScreen
   {
     const joinerUd = users[client.username] || {};
@@ -33982,6 +34187,11 @@ case 'send': {
     if (!channel || !client.channels.has(g) || !channel.users.has(client.username)) {
       sendToClient(socket, `<${CMD.error} k="220" />`);
       break;
+    }
+    // Pas d'image non plus pendant la nuit d'un loup-garou (ni de la part d'un mort).
+    if (lgParties.has(g)) {
+      const par = LoupGarou.parole(lgParties.get(g), client.username, isChannelStaff(client.username, g));
+      if (!par.ok) { lgSecret(g, client.username, par.raison || 'Pas d’image pendant la nuit.'); break; }
     }
     /*
      * `/image` (et son abréviation `/img`) EST OUVERTE À TOUT LE MONDE.
@@ -34535,6 +34745,12 @@ case 'send': {
       break;
     }
 
+    // ── /lg … : le loup-garou du salon (cf. lgCommande) ──
+    if (/^\/(lg|loupgarou|loup-garou)(\s|$)/i.test(text)) {
+      lgCommande(client, g, text.replace(/^\/\S+\s*/, ''));
+      break;
+    }
+
     // ── Unknown slash command ──
     // The SWF command dispatcher was patched (scripts/patch-main-anim-commands)
     // to FORWARD unmatched slash commands here as plain text, instead of
@@ -34547,6 +34763,10 @@ case 'send': {
       sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Commande inconnue.</i>]]></${CMD.send}>`);
       break;
     }
+
+    // Une partie de loup-garou se joue ici : la nuit, le salon se tait (un
+    // loup parle à sa meute seule), et les morts se taisent jusqu'à la fin.
+    if (type !== 'g' && lgFiltrerParole(client, g, unescapeXml(text))) break;
 
     // NB: /image, /img, /testimg, /testimage are intercepted client-side by the
     // SWF (they never arrive here as text). /image broadcasts a desktop window
