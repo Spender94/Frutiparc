@@ -1267,6 +1267,82 @@ test('l’admin retaille la semaine : les quêtes faites restent, les autres sui
   assert.ok((await post('/api/admin/quetes', { paliers: { pas: { moyenne: 1.25, difficile: 1.5, moyenneTemps: 1.1, difficileTemps: 1.2 } } }, ADMIN)).ok);
 });
 
+test('l’admin retouche les quêtes d’un joueur une à une : un seuil, le gain, le titre ; en retire, en ajoute', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  const joueur = async (u) => (await fetch(BASE + '/api/admin/quetes/joueur?u=' + u, { headers: ADMIN })).json();
+  const agir = (qui, corps) => post('/api/admin/quetes/joueur', Object.assign({ username: qui }, corps), ADMIN);
+  const numero = (id) => Number((/^ind-(\d+)$/.exec(id) || [])[1]) || 0;
+  assert.equal((await joueur('personne')).error, 'joueur_inconnu');
+
+  // MIRABELLE, un compte neuf (ses FD de la journée intacts) : l'admin lui ajoute
+  // un résultat au seuil et au gain de son choix, avant même qu'elle ouvre son baluchon.
+  await compte('mirabelle');
+  let d = await joueur('mirabelle');
+  assert.ok(d.ok && d.quetes.length >= 1, JSON.stringify(d));
+  assert.ok(d.modeles.some((m) => m.cle === 'parc:parc-salons') && d.modeles.some((m) => m.cle === 'mesure:swapou-challenge' && m.seuil));
+  const max = d.quetes.reduce((n, q) => Math.max(n, numero(q.id)), 0);
+  let r = await agir('mirabelle', { action: 'ajouter', modele: 'mesure:swapou-challenge', valeur: '12 000', gain: '9' });
+  assert.ok(r.ok, JSON.stringify(r));
+  const neuve = r.quetes.find((q) => numero(q.id) === max + 1);
+  assert.ok(neuve, JSON.stringify(r.quetes.map((q) => q.id)));
+  assert.deepEqual([neuve.titre, neuve.gain, neuve.reglable, neuve.fait, neuve.retouchee], [`Dépasse ${Q.nombre(12000)} points à Swapou`, 9, 'seuil', false, true]);
+  assert.equal((await agir('mirabelle', { action: 'ajouter', modele: 'mesure:swapou-challenge', valeur: 'beaucoup' })).error, 'seuil_illisible');
+  assert.equal((await agir('mirabelle', { action: 'ajouter', modele: 'truc:machin' })).error, 'modele_inconnu');
+  await swapou('mirabelle', 11500);
+  await wait(500);
+  let e = await etat('mirabelle');
+  assert.ok(quete(e, neuve.id) && !quete(e, neuve.id).fait && quete(e, neuve.id).pc > 0, 'en cours, pas faite : 11 500 < 12 000 — ' + JSON.stringify(quete(e, neuve.id)));
+  const avant = await solde('mirabelle');
+
+  // Retouchée : le seuil descend sous son score du jour, le gain et le titre changent — et c'est payé tout de suite.
+  r = await agir('mirabelle', { action: 'modifier', id: neuve.id, valeur: '11000', gain: '11', titre: 'Dépasse {seuil} à Swapou, dit Gromelin' });
+  assert.ok(r.ok, JSON.stringify(r));
+  const retouchee = r.quetes.find((q) => q.id === neuve.id);
+  assert.deepEqual([retouchee.titre, retouchee.gain, retouchee.valeur, retouchee.fait], [`Dépasse ${Q.nombre(11000)} points à Swapou, dit Gromelin`, 11, 11000, true]);
+  assert.equal(await soldeVaut('mirabelle', avant + 11), avant + 11, 'payée au nouveau gain');
+  e = await etat('mirabelle');
+  assert.deepEqual([quete(e, neuve.id).fait, quete(e, neuve.id).gain, quete(e, neuve.id).titre], [true, 11, `Dépasse ${Q.nombre(11000)} points à Swapou, dit Gromelin`]);
+  // Faite : plus de retouche.
+  assert.equal((await agir('mirabelle', { action: 'modifier', id: neuve.id, gain: '50' })).error, 'deja_faite');
+  assert.equal((await agir('mirabelle', { action: 'modifier', id: 'ind-999', gain: '50' })).error, 'quete_inconnue');
+
+  // CERISE : une quête retirée part de sa liste, son avancement avec.
+  d = await joueur('cerise');
+  const sortante = d.quetes.find((q) => !q.fait);
+  assert.ok(sortante, 'une quête pas faite à retirer');
+  r = await agir('cerise', { action: 'retirer', id: sortante.id });
+  assert.ok(r.ok && !r.quetes.some((q) => q.id === sortante.id), JSON.stringify(r));
+  assert.ok(!quete(await etat('cerise'), sortante.id));
+  assert.equal((await sql(`SELECT 1 FROM quetes_progres WHERE username = 'cerise' AND semaine = $1 AND quete_id = $2 AND fait_at IS NULL`, [lundiCourant(), sortante.id])).length, 0);
+  assert.equal((await agir('cerise', { action: 'retirer', id: sortante.id })).error, 'quete_inconnue');
+
+  // La vie du parc et les premiers pas s'ajoutent aussi ; un compte se règle ; un premier pas une seule fois.
+  const gains = (await adminEtat()).reglages.paliers.gains;
+  r = await agir('cerise', { action: 'ajouter', modele: 'parc:parc-salons' });
+  const salons = r.quetes.find((q) => q.titre === 'Papote dans les salons : quinze messages');
+  assert.ok(salons && salons.gain === gains.bronze && salons.reglable === 'n' && salons.valeur === 15, JSON.stringify(r.quetes));
+  r = await agir('cerise', { action: 'modifier', id: salons.id, valeur: '5', titre: 'Papote dans les salons : cinq messages', gain: '' });
+  assert.ok(r.ok, JSON.stringify(r));
+  const s2 = r.quetes.find((q) => q.id === salons.id);
+  assert.deepEqual([s2.valeur, s2.titre, s2.gain], [5, 'Papote dans les salons : cinq messages', gains.bronze]);
+  r = await agir('cerise', { action: 'ajouter', modele: 'pas:pas-forum', gain: '7' });
+  assert.ok(r.ok && r.quetes.some((q) => q.id === 'pas-forum' && q.gain === 7), JSON.stringify(r));
+  assert.equal((await agir('cerise', { action: 'ajouter', modele: 'pas:pas-forum' })).error, 'deja_la');
+
+  // Redémarrage : tout tient.
+  await arreter();
+  await demarrer();
+  await reconnecter('cerise');
+  await reconnecter('mirabelle');
+  e = await etat('cerise');
+  assert.ok(!quete(e, sortante.id) && quete(e, 'pas-forum'), JSON.stringify(e.quetes.map((q) => q.id)));
+  assert.equal(quete(e, salons.id).titre, 'Papote dans les salons : cinq messages');
+  const ligne = (await sql(`SELECT quetes FROM quetes_individuelles WHERE username = 'cerise' AND semaine = $1`, [lundiCourant()]))[0];
+  assert.deepEqual(ligne.quetes.map((q) => q.id).sort(), e.quetes.map((q) => q.id).sort());
+  e = await etat('mirabelle');
+  assert.deepEqual([quete(e, neuve.id).fait, quete(e, neuve.id).gain], [true, 11]);
+});
+
 test('RGPD : l’export du joueur contient ses quêtes', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
   const D = require(path.join(ROOT, 'db.js'));

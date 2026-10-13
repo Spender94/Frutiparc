@@ -6431,7 +6431,8 @@ async function loadQuetes() {
         — ${l.fait ? '<b style="color:#2f8f2f">✔ faite</b>' : esc(l.ligne)}</div>`).join('')}
         ${j.echange ? `<div style="color:#c8860a">↺ a changé « ${esc(j.echange)} »</div>` : ''}${j.bonus ? '<div style="color:#2f8f2f">✔ bonus XP de la semaine versé</div>' : ''}
         ${Object.keys(j.niveaux || {}).length ? `<div style="color:#777">niveaux : ${Object.entries(j.niveaux).map(([k, n]) => esc(k.replace('-challenge', '')) + ' ' + (n ? qtPalier(n) : 'sous le Bronze')).join(' · ')}</div>` : ''}</td>
-      <td><button class="btn btn-sm" onclick="quetesReinit('${esc(j.username)}')" title="Efface son avancement de la semaine et ses quêtes, retaillées à sa prochaine visite (les kikooz versés restent)">Remettre à zéro</button></td></tr>`).join('');
+      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="quetesEditer('${esc(j.username)}')" title="Voir et retoucher ses quêtes une à une : seuil, gain, titre ; en retirer, en ajouter">Éditer</button>
+        <button class="btn btn-sm" onclick="quetesReinit('${esc(j.username)}')" title="Efface son avancement de la semaine et ses quêtes, retaillées à sa prochaine visite (les kikooz versés restent)">Remettre à zéro</button></td></tr>`).join('');
     const modeRadio = (v, l) => `<label style="margin-right:14px"><input type="radio" name="qt-mode" value="${v}" ${R.mode === v ? 'checked' : ''}> ${l}</label>`;
     // Les repères d'une mesure : des pastilles qui posent leur valeur dans le champ.
     const pastilles = (reps, cible) => (reps || []).map((r) => `<button class="btn btn-sm" type="button" style="background:#f3e6c4;color:#5a3a0e"
@@ -6523,8 +6524,10 @@ async function loadQuetes() {
       <table><thead><tr><th>Niveau</th><th>Quête</th><th>Gain</th><th>En cours</th><th>Faites</th><th>Kikooz versés</th><th></th></tr></thead><tbody>${semaine || '<tr><td colspan="7">Aucune quête.</td></tr>'}</tbody></table>
       <h4>Joueurs cette semaine</h4>
       <div class="toolbar" style="margin-bottom:6px"><input id="qt-reinit" placeholder="pseudo" style="width:140px">
+        <button class="btn" onclick="quetesEditer($('#qt-reinit').value)" title="Voir et retoucher ses quêtes de la semaine une à une (ses quêtes sont taillées s'il ne les a pas encore ouvertes)">Éditer ses quêtes</button>
         <button class="btn" onclick="quetesReinit($('#qt-reinit').value)" title="Pour retester : efface l'avancement de la semaine du joueur (les kikooz versés restent)">Remettre à zéro</button></div>
       ${joueurs ? `<table><thead><tr><th>Joueur</th><th>Faites</th><th>Kikooz</th><th>Ses quêtes</th><th></th></tr></thead><tbody>${joueurs}</tbody></table>` : '<div style="color:#777">Personne n’a encore ouvert ses quêtes cette semaine.</div>'}
+      <div id="qt-ed"></div>
       ${contrats ? `<h4>Contrats de la semaine</h4><table><thead><tr><th>Joueur</th><th>Contrat</th><th>Propositions (la signée en rouge)</th><th>Où il en est</th></tr></thead><tbody>${contrats}</tbody></table>`
         : ''}
       <h4>Aperçu du tirage de lundi</h4>
@@ -6647,6 +6650,102 @@ async function quetesCreer() {
 async function quetesSupprimer(id) {
   if (!confirm('Supprimer cette quête ? Si elle est de la semaine, elle en sort (avancement non payé perdu).')) return;
   await quetesPost('/api/admin/quetes/perso', { action: 'supprimer', id }, () => 'Quête supprimée');
+}
+// ── Les quêtes d'un joueur, à la main ──
+let quetesEdition = null;   // le pseudo dont le panneau est ouvert (rouvert après chaque rechargement de l'onglet)
+async function quetesEditer(u) {
+  u = String(u || '').trim();
+  if (!u) { toast('Indique un pseudo.'); return; }
+  const bloc = $('#qt-ed');
+  if (bloc) bloc.innerHTML = '…';
+  try {
+    const d = await (await fetch('/api/admin/quetes/joueur?u=' + encodeURIComponent(u), { headers: hdr() })).json();
+    if (!d.ok) { toast('Erreur : ' + (d.message || d.error)); if (bloc) bloc.innerHTML = ''; return; }
+    quetesEdition = d.username;
+    quetesEditerRendre(d);
+    const b = $('#qt-ed');
+    if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest' });
+  } catch (e) { toast('Erreur : ' + e.message); }
+}
+function quetesEditerRendre(d) {
+  const bloc = $('#qt-ed');
+  if (!bloc || !d) return;
+  const u = d.username;
+  const lignes = d.quetes.map((q) => {
+    const tete = `${q.palier ? qtPalier(q.palier) + ' ' : qtNiveau(q.niveau) + ' '}${q.decouverte ? '<i>découverte</i> ' : ''}${q.premiersPas ? '<i>premiers pas</i> ' : ''}${q.parc ? `<i>${q.parc === 'exploit' ? 'exploit' : 'vie du parc'}</i> ` : ''}`;
+    const reglage = !q.reglable ? '<span style="color:#999">—</span>'
+      : `<input id="qt-ed-v-${esc(q.id)}" value="${esc(q.valeurTexte)}" style="width:100px;font-size:11px" ${q.fait ? 'disabled' : ''}>
+         <small style="color:#777">${q.reglable === 'seuil' ? esc(q.sens || '') : q.reglable === 'mise' ? 'kikooz misés' : 'fois'}</small>`;
+    return `<tr>
+      <td style="font-size:12px">${tete}<b>${esc(q.titre)}</b>${q.retouchee ? ' <small style="color:#c8860a">(retouchée)</small>' : ''}<br><small style="color:#777">${esc(q.detail)}</small>
+        ${q.fait ? '' : `<br><input id="qt-ed-t-${esc(q.id)}" value="${esc(q.titrePerso)}" placeholder="${q.mesure ? 'titre automatique' : 'titre'}" style="width:96%;font-size:11px;margin-top:3px">`}</td>
+      <td style="white-space:nowrap">${reglage}</td>
+      <td><input id="qt-ed-g-${esc(q.id)}" value="${q.gain}" style="width:48px;font-size:11px" ${q.fait ? 'disabled' : ''}></td>
+      <td style="font-size:11px">${q.fait ? '<b style="color:#2f8f2f">✔ faite, payée</b>' : esc(q.ligne)}</td>
+      <td style="white-space:nowrap">${q.fait ? '' : `<button class="btn btn-sm" onclick="quetesJoueurAction('${esc(u)}', 'modifier', '${esc(q.id)}')">Enregistrer</button> `}
+        <button class="btn btn-sm" onclick="quetesJoueurAction('${esc(u)}', 'retirer', '${esc(q.id)}')" title="${q.fait ? 'La retirer de sa liste (les kikooz versés restent)' : 'La retirer de sa liste : son avancement est perdu'}">Retirer</button></td></tr>`;
+  }).join('');
+  const groupes = {};
+  for (const m of d.modeles) (groupes[m.groupe] = groupes[m.groupe] || []).push(m);
+  const optModeles = Object.entries(groupes).map(([g, l]) => `<optgroup label="${esc(g)}">${l.map((m) =>
+    `<option value="${esc(m.cle)}" data-seuil="${m.seuil ? 1 : 0}" data-gain="${m.gain == null ? '' : m.gain}" data-sens="${esc(m.sens || '')}" data-reperes="${esc(JSON.stringify(m.reperes || []))}">${esc(m.titre)}${m.gain != null ? ` (${m.gain} kz)` : ''}</option>`).join('')}</optgroup>`).join('');
+  bloc.innerHTML = `<div style="border:1px solid #c9a46a;background:#fffaf0;padding:10px;border-radius:8px;font-size:12px;margin:8px 0 12px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+      <div>Les quêtes de <b>${esc(d.nom)}</b>, semaine ${esc(d.lisible)} — <b>${d.quetes.length}</b> quête(s), <b>${d.total}</b> kikooz encore à gagner
+        ${d.echange ? `<span style="color:#c8860a"> · a changé « ${esc(d.echange)} »</span>` : ''}</div>
+      <button class="btn btn-sm" onclick="quetesEdition = null; $('#qt-ed').innerHTML = ''">Fermer</button></div>
+    <div style="color:#777;margin:4px 0 6px;line-height:1.45">Un seuil s'écrit comme la quête l'affiche (<code>25 000</code>, <code>4:40</code>, <code>45,5</code>) ; le gain en kikooz.
+      Une retouche qui rend la quête atteinte la paie tout de suite. Une quête faite ne se retouche plus. Le joueur voit le changement à sa prochaine ouverture du baluchon.</div>
+    <table><thead><tr><th>Quête</th><th>Seuil / compte</th><th>Gain</th><th>Où il en est</th><th></th></tr></thead>
+      <tbody>${lignes || '<tr><td colspan="5" style="color:#777">Aucune quête.</td></tr>'}</tbody></table>
+    <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <select id="qt-ed-modele" onchange="quetesEditerModele()" style="max-width:330px"><option value="">— ajouter une quête —</option>${optModeles}</select>
+      <span id="qt-ed-seuil-bloc" style="display:none">Seuil <input id="qt-ed-seuil" style="width:100px"> <small id="qt-ed-sens" style="color:#777"></small></span>
+      Gain <input id="qt-ed-gain" placeholder="défaut" style="width:56px" title="Vide : le gain du palier de la quête">
+      Titre <input id="qt-ed-titre" placeholder="automatique" style="width:200px">
+      <button class="btn btn-success btn-sm" onclick="quetesJoueurAction('${esc(u)}', 'ajouter')">Ajouter</button></div>
+    <div id="qt-ed-reperes" style="margin-top:4px"></div>
+  </div>`;
+}
+function quetesEditerModele() {
+  const sel = $('#qt-ed-modele');
+  const o = sel && sel.options[sel.selectedIndex];
+  if (!o) return;
+  const seuil = o.dataset.seuil === '1';
+  $('#qt-ed-seuil-bloc').style.display = seuil ? '' : 'none';
+  $('#qt-ed-sens').textContent = o.dataset.sens || '';
+  $('#qt-ed-gain').placeholder = o.dataset.gain ? o.dataset.gain : 'défaut';
+  let reperes = [];
+  try { reperes = JSON.parse(o.dataset.reperes || '[]'); } catch (e) { reperes = []; }
+  $('#qt-ed-reperes').innerHTML = seuil && reperes.length ? 'Repères du jeu : ' + reperes.map((r) => `<button class="btn btn-sm" type="button"
+    style="background:#f3e6c4;color:#5a3a0e" onclick="$('#qt-ed-seuil').value='${esc(r.texte)}'">${esc(r.nom)} : ${esc(r.texte)}</button>`).join(' ') : '';
+}
+async function quetesJoueurAction(u, action, id) {
+  const corps = { username: u, action };
+  const lire = (sel) => { const e = $(sel); return e ? e.value : undefined; };
+  if (action === 'modifier') {
+    corps.id = id;
+    corps.valeur = lire(`#qt-ed-v-${id}`);
+    corps.gain = lire(`#qt-ed-g-${id}`);
+    corps.titre = lire(`#qt-ed-t-${id}`);
+  } else if (action === 'retirer') {
+    corps.id = id;
+    if (!confirm('Retirer cette quête de sa liste ?')) return;
+  } else if (action === 'ajouter') {
+    corps.modele = lire('#qt-ed-modele');
+    if (!corps.modele) { toast('Choisis une quête à ajouter.'); return; }
+    corps.valeur = lire('#qt-ed-seuil');
+    corps.gain = lire('#qt-ed-gain');
+    corps.titre = lire('#qt-ed-titre');
+  }
+  try {
+    const r = await fetch('/api/admin/quetes/joueur', { method: 'POST', headers: hdr(), body: JSON.stringify(corps) });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur : ' + (d.message || d.error)); return; }
+    toast({ modifier: 'Quête retouchée', retirer: 'Quête retirée', ajouter: 'Quête ajoutée' }[action] + ` chez ${d.nom}`);
+    await loadQuetes();
+    quetesEditerRendre(d);
+  } catch (e) { toast('Erreur : ' + e.message); }
 }
 async function quetesReinit(u) {
   u = String(u || '').trim();

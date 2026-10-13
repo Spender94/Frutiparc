@@ -12079,6 +12079,179 @@ app.post('/api/admin/quetes/retailler', adminScope('quetes'), async (req, res) =
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+/*
+ * LES QUÊTES D'UN JOUEUR, À LA MAIN : l'admin voit la liste de la semaine
+ * d'un joueur et la retouche quête par quête — le seuil ou le compte, le
+ * gain, le titre ; en retire une ; en ajoute une (de la vie du parc, des
+ * premiers pas, ou un résultat avec le seuil de son choix). Une quête faite
+ * ne se retouche plus (payée) ; une retouche qui rend la quête atteinte la
+ * paie tout de suite ; une quête retirée perd son avancement. L'échange de
+ * la semaine n'est pas touché.
+ */
+async function quetesJoueurListe(u) {
+  if (quetesReglages.mode === 'collectives') return null;
+  return quetesIndiv.get(u) || quetesIndivDe(u);
+}
+// Ce qu'on peut ajouter à un joueur.
+function quetesJoueurModeles() {
+  const G = quetesReglages.paliers.gains;
+  const out = [];
+  for (const [cle, x] of Object.entries(Quetes.PARC)) {
+    out.push({ cle: 'parc:' + cle, groupe: x.sorte === 'exploit' ? 'Exploits' : 'Vie du parc', titre: x.titre, gain: Number(G[x.palier]) || 0 });
+  }
+  for (const [cle, sp] of Object.entries(Quetes.PREMIERS_PAS)) {
+    const d = Quetes.definitionV2(Object.assign({ gain: Number(G.bronze) || 0 }, sp), cle);
+    if (d) out.push({ cle: 'pas:' + cle, groupe: 'Premiers pas', titre: Quetes.titre(d), gain: d.gain });
+  }
+  for (const m of Object.values(Quetes.MESURES)) {
+    out.push({ cle: 'mesure:' + m.cle, groupe: 'Un résultat, au seuil de ton choix', titre: `${m.groupe} — ${m.nom}`,
+      seuil: m.unite !== 'boss', sens: m.inverse ? 'au plus' : 'au moins', unite: m.unite, reperes: Quetes.reperes(m) });
+  }
+  return out;
+}
+function quetesJoueurVue(u, liste) {
+  const S = quetesSemaineCourante();
+  const progres = quetesProgres.get(u) || new Map();
+  const quetes = liste.quetes.map((def) => {
+    const p = progres.get(def.id);
+    const av = Quetes.avancement(def, p ? p.etat : {});
+    const prm = def.params || {};
+    const m = def.type === 'mesure' ? Quetes.MESURES[prm.mesure] : null;
+    const reglable = m ? (m.unite === 'boss' ? null : 'seuil') : def.type === 'pari' ? 'mise' : (prm.n !== undefined ? 'n' : null);
+    const valeur = reglable === 'seuil' ? prm.seuil : reglable === 'mise' ? prm.mise : reglable === 'n' ? prm.n : null;
+    return { id: def.id, type: def.type, niveau: def.niveau, palier: def.palier || null, gain: quetesGainDe(def),
+      titre: Quetes.titre(def), detail: Quetes.detail(def), titrePerso: def.titre || '', etiquette: Quetes.ETIQUETTES[def.etiquette] || null,
+      mesure: m ? m.cle : null, mesureNom: m ? `${m.groupe} — ${m.nom}` : null, sens: m ? (m.inverse ? 'au plus' : 'au moins') : null,
+      reglable, valeur, valeurTexte: m ? Quetes.formater(m, valeur) : (valeur == null ? '' : String(valeur)),
+      fait: !!(p && p.faitAt), ligne: av.ligne, pc: av.pc,
+      decouverte: !!def.decouverte, premiersPas: !!def.premiersPas, parc: def.parc || null, retouchee: !!def.retouchee };
+  });
+  return { ok: true, username: u, nom: getDisplayName(u), lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi),
+    connu: !!liste.connu, echange: liste.echange ? liste.echange.deTitre : null,
+    quetes, total: quetes.reduce((n, q) => n + (q.fait ? 0 : q.gain), 0), modeles: quetesJoueurModeles() };
+}
+app.get('/api/admin/quetes/joueur', adminScope('quetes'), async (req, res) => {
+  try {
+    const u = normalizeUsername(req.query.u);
+    if (!u || !users[u]) return res.status(404).json({ ok: false, error: 'joueur_inconnu', message: 'Joueur inconnu.' });
+    const liste = await quetesJoueurListe(u);
+    if (!liste) return res.status(400).json({ ok: false, error: 'collectives', message: 'Les quêtes sont collectives : rien à retoucher joueur par joueur.' });
+    res.json(quetesJoueurVue(u, liste));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post('/api/admin/quetes/joueur', adminScope('quetes'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const u = normalizeUsername(b.username);
+    if (!u || !users[u]) return res.status(404).json({ ok: false, error: 'joueur_inconnu', message: 'Joueur inconnu.' });
+    const liste = await quetesJoueurListe(u);
+    if (!liste) return res.status(400).json({ ok: false, error: 'collectives', message: 'Les quêtes sont collectives : rien à retoucher joueur par joueur.' });
+    const S = quetesSemaineCourante();
+    const quetes = liste.quetes.slice();
+    const progres = quetesProgres.get(u) || new Map();
+    const refus = (code, message) => res.status(400).json({ ok: false, error: code, message });
+    const id = String(b.id || '');
+    const entier = (v, min) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= min ? n : null; };
+    const gainLu = (v, defaut) => (v === undefined || v === null || String(v).trim() === '') ? defaut : entier(v, 0);
+    const titreLu = (v) => String(v || '').trim().slice(0, 120);
+    let quoi = '';
+    if (b.action === 'retirer') {
+      const i = quetes.findIndex((q) => q.id === id);
+      if (i < 0) return res.status(404).json({ ok: false, error: 'quete_inconnue', message: 'Il n’a pas cette quête.' });
+      quoi = `« ${Quetes.titre(quetes[i])} » retirée`;
+      quetes.splice(i, 1);
+      progres.delete(id);
+      if (process.env.DATABASE_URL) db.quetesOublierProgres(S.lundi, u, id).catch(dbErr('quetes joueur'));
+    } else if (b.action === 'modifier') {
+      const i = quetes.findIndex((q) => q.id === id);
+      if (i < 0) return res.status(404).json({ ok: false, error: 'quete_inconnue', message: 'Il n’a pas cette quête.' });
+      const p = progres.get(id);
+      if (p && p.faitAt) return refus('deja_faite', 'Cette quête est faite et payée : elle ne se retouche plus.');
+      const def = JSON.parse(JSON.stringify(quetes[i]));
+      def.params = def.params || {};
+      const m = def.type === 'mesure' ? Quetes.MESURES[def.params.mesure] : null;
+      if (b.valeur !== undefined && String(b.valeur).trim() !== '') {
+        if (m) {
+          if (m.unite === 'boss') return refus('pas_reglable', 'Cette quête n’a pas de seuil à régler.');
+          const s = Quetes.lireValeur(m, b.valeur);
+          if (s == null) return refus('seuil_illisible', 'Seuil illisible (exemples : 25000, 4:40, 45,5).');
+          def.params.seuil = s;
+        } else if (def.type === 'pari') {
+          const s = entier(b.valeur, 1);
+          if (s == null) return refus('valeur_illisible', 'Mise illisible : un nombre de kikooz.');
+          def.params.mise = s;
+        } else if (def.params.n !== undefined) {
+          const n = entier(b.valeur, 1);
+          if (n == null) return refus('valeur_illisible', 'Compte illisible : un nombre entier, au moins 1.');
+          def.params.n = n;
+        } else return refus('pas_reglable', 'Cette quête n’a pas de nombre à régler.');
+      }
+      const gain = gainLu(b.gain, quetesGainDe(def));
+      if (gain == null) return refus('gain_illisible', 'Gain illisible : un nombre de kikooz.');
+      def.gain = gain;
+      if (b.titre !== undefined) {
+        const t = titreLu(b.titre);
+        if (t) def.titre = t; else if (m) delete def.titre;   // vide : le titre de la mesure
+      }
+      if (b.niveau !== undefined && Quetes.NIVEAUX.includes(b.niveau)) def.niveau = b.niveau;
+      if (b.palier !== undefined && Quetes.PALIERS.includes(b.palier)) def.palier = b.palier;
+      def.retouchee = true;
+      quetes[i] = def;
+      quoi = `« ${Quetes.titre(def)} » retouchée (${gain} kikooz)`;
+    } else if (b.action === 'ajouter') {
+      const [genre, cle] = String(b.modele || '').split(':');
+      const num = quetes.reduce((n, q) => Math.max(n, Number((/^ind-(\d+)$/.exec(q.id) || [])[1]) || 0), 0);
+      const neuf = 'ind-' + (num + 1);
+      const G = quetesReglages.paliers.gains;
+      let def = null;
+      if (genre === 'parc' && Quetes.PARC[cle]) {
+        def = Quetes.definitionV2({ genre: 'parc', cle, gain: Number(G[Quetes.PARC[cle].palier]) || 0 }, neuf);
+      } else if (genre === 'pas' && Quetes.PREMIERS_PAS[cle]) {
+        if (quetes.some((q) => q.id === cle)) return refus('deja_la', 'Il a déjà cette quête.');
+        def = Quetes.definitionV2(Object.assign({ gain: Number(G.bronze) || 0 }, Quetes.PREMIERS_PAS[cle]), cle);
+      } else if (genre === 'mesure' && Quetes.MESURES[cle]) {
+        const m = Quetes.MESURES[cle];
+        const seuil = m.unite === 'boss' ? 1 : Quetes.lireValeur(m, b.valeur);
+        if (seuil == null) return refus('seuil_illisible', 'Seuil illisible (exemples : 25000, 4:40, 45,5).');
+        // Le palier du seuil dans le parc, quand il en a : il donne le niveau et le gain par défaut.
+        const v2 = quetesV2(S.lundi);
+        const P = v2 ? quetesPaliersEffectifs(await quetesPaliersBruts(S))[cle] : null;
+        const k = P ? Quetes.palierAtteint(m, P, seuil) : -1;
+        const palier = v2 ? Quetes.PALIERS[Math.max(0, k)] : null;
+        const niveau = k <= 0 ? 'facile' : k === 1 ? 'moyenne' : 'difficile';
+        def = { id: neuf, niveau, type: 'mesure', etiquette: m.jeu, famille: m.cle, taillee: true,
+          gain: v2 ? Number(G[palier]) || 0 : Number(quetesReglages.gains[niveau]) || 0,
+          params: { mesure: m.cle, seuil }, detail: `${m.nom} · un défi de Gromelin` };
+        if (palier) Object.assign(def, { palier, v2: true });
+      } else return refus('modele_inconnu', 'Modèle de quête inconnu.');
+      if (!def) return refus('modele_inconnu', 'Modèle de quête inconnu.');
+      const gain = gainLu(b.gain, def.gain);
+      if (gain == null) return refus('gain_illisible', 'Gain illisible : un nombre de kikooz.');
+      def.gain = gain;
+      const t = titreLu(b.titre);
+      if (t) def.titre = t;
+      def.taillee = true;      // visible aussi en mode « les deux »
+      def.retouchee = true;
+      quetes.push(def);
+      quoi = `« ${Quetes.titre(def)} » ajoutée (${gain} kikooz)`;
+    } else return refus('action_inconnue', 'Action inconnue.');
+    if (quetesSemaineCourante().lundi !== S.lundi) return refus('semaine_tournee', 'La semaine vient de tourner : recharge.');
+    const neuve = Object.assign({}, liste, { quetes });
+    if (process.env.DATABASE_URL) await db.quetesRemplacerIndividuelles(S.lundi, u, quetes, neuve.reserve, neuve.niveaux);
+    quetesIndiv.set(u, neuve);
+    // Ce qui est désormais atteint se paie tout de suite ; et la semaine peut
+    // se trouver complète (le bonus).
+    if (b.action === 'modifier') {
+      const def = quetes.find((q) => q.id === id);
+      const p = progres.get(id);
+      if (p && !p.faitAt && Quetes.estFaite(def, p.etat)) quetesAccomplir(u, def, p, S.lundi);
+    }
+    if (b.action === 'retirer') quetesBonusPeutEtre(u, S.lundi);
+    console.log(`[QUETES] ${u} : ${quoi} par l’admin`);
+    res.json(quetesJoueurVue(u, neuve));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // Remettre à zéro la semaine d'un joueur — pour tester. Les kikooz versés le restent.
 app.post('/api/admin/quetes/reinitialiser', adminScope('quetes'), async (req, res) => {
   try {
