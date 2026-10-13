@@ -110,6 +110,9 @@ let tid = null, m1 = null, m2 = null;
 
 test('mise en place : un tournoi au score, la coupe générée, l’option baissée', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  // Les quêtes de Gromelin (ouvertes à tous au démarrage) paient un Prunostic
+  // placé : fermées, pour que les soldes ne comptent que les paris.
+  assert.ok((await post('/api/admin/quetes', { ouverture: 'ferme' }, ADMIN)).ok);
   // Les paris du Challenge, ouverts par défaut, comptent aussi dans la tuile :
   // on les ferme, ce test ne regarde que les tournois.
   assert.ok((await (await post('/api/admin/paris-challenge', { actif: false }, ADMIN)).json()).ok);

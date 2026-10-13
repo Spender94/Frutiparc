@@ -172,11 +172,41 @@ test('ouverts par défaut ; baissés, rien ne se mise — et ça survit au redé
   assert.equal((await sujetsDimitri()).length, 0, 'supprimé : pas de nouveau sujet au démarrage');
 });
 
-test('les deux jeux du jour : tirés au sort, figés, ou choisis par l’admin', async (t) => {
+test('les deux jeux du jour : tirés au sort, figés, ou choisis par l’admin — les moins récents d’abord', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
   await semerHistorique();
+  // Les quêtes de Gromelin (ouvertes à tous au démarrage) paient un Prunostic
+  // placé : fermées, pour que les soldes ne comptent que les paris.
+  assert.ok((await post('/api/admin/quetes', { ouverture: 'ferme' }, ADMIN)).ok);
   assert.ok((await post('/api/admin/paris-challenge', { actif: true, plafond: 50 }, ADMIN)).ok);
   const demain = jourParis(1);
+  // LE TIRAGE : les moins récemment tirés d'abord. On pose huit jours de
+  // tirages (J+1 à J+8, seuls jours que l'admin peut fixer) qui voient tous les
+  // jeux sauf trois ; le tirage de J+9 ne peut sortir que de ces trois-là, et
+  // celui de J+10 prend le troisième, jamais tiré, avant tout autre.
+  const tous = ['swapou2_classic', 'snake3_classic', 'kaluga_classic', 'kaluga_freestyle_classic', 'mb2_classic', 'minifever_arcade',
+    'minipixiz_classic', 'miniwave_classic', 'grapiz_challenge', 'bandas_challenge', 'bkiwi'];
+  const jamais = ['minipixiz_classic', 'grapiz_challenge', 'bkiwi'];
+  const deja = tous.filter((k) => !jamais.includes(k));
+  for (let i = 1; i <= 8; i++) {
+    const jeux = [deja[(2 * i) % deja.length], deja[(2 * i + 1) % deja.length]];
+    assert.ok((await post('/api/admin/paris-challenge', { jeuxDuJour: { jour: jourParis(i), jeux } }, ADMIN)).ok);
+  }
+  assert.ok((await post('/api/admin/paris-challenge', { jeuxDuJour: { jour: jourParis(9), jeux: [] } }, ADMIN)).ok);
+  const premier = (await reglages()).choix[jourParis(9)];
+  assert.equal(premier.length, 2);
+  for (const k of premier) assert.ok(jamais.includes(k), `${k} est sorti alors que ${jamais.join(', ')} n'ont jamais été tirés`);
+  assert.ok((await post('/api/admin/paris-challenge', { jeuxDuJour: { jour: jourParis(10), jeux: [] } }, ADMIN)).ok);
+  const second = (await reglages()).choix[jourParis(10)];
+  const restant = jamais.filter((k) => !premier.includes(k))[0];
+  assert.ok(second.includes(restant), `${restant}, jamais tiré, doit sortir le lendemain (sorti : ${second.join(', ')})`);
+  for (const k of second) assert.ok(!premier.includes(k), 'pas ceux de la veille');
+  // Le lendemain encore : les deux plus anciens (ceux de J+1), à moins que la veille ne les retienne.
+  assert.ok((await post('/api/admin/paris-challenge', { jeuxDuJour: { jour: jourParis(11), jeux: [] } }, ADMIN)).ok);
+  const troisieme = (await reglages()).choix[jourParis(11)];
+  const attendus = (await reglages()).choix[jourParis(1)].filter((k) => !second.includes(k));
+  for (const k of attendus) assert.ok(troisieme.includes(k), `${k}, le plus ancien, doit ressortir (sorti : ${troisieme.join(', ')})`);
+  // (les tirages posés pour J+1 à J+11 restent : la suite choisit ses jeux elle-même)
   const e = await etat('anais');
   assert.equal(e.jour, demain);
   assert.equal(e.jeux.length, 2, 'deux jeux par jour');
@@ -342,6 +372,33 @@ test('la nuit passe : le roll règle au prorata, aucun kikooz créé ni détruit
   const reg = await (await fetch(BASE + '/api/paris/registre?sid=' + sids.anais)).json();
   assert.deepEqual([reg.bilan.paris, reg.bilan.gagnes, reg.bilan.mises, reg.bilan.gains, reg.bilan.net], [2, 2, 50, 83, 33]);
   assert.ok(reg.grosCoups.some((c) => c.parieur === 'anais'));
+});
+
+test('le rattrapage : un pari d’un jour passé resté ouvert se règle sur les médailles en base', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  // Avant-hier au Swapou (semerHistorique) : i = 2 → podium grenade, papaye, myrtille.
+  // Les paris sont posés en base comme si le roll les avait oubliés (les soldes
+  // en mémoire ne bougent pas : seul le règlement crédite).
+  const jour = jourParis(-2);
+  const avantA = await solde('anais'), avantC = await solde('cyril'), avantD = await solde('dora');
+  await sql(`INSERT INTO challenge_paris (jour, jeu, type, username, choix, mise) VALUES
+    ($1, 'swapou2_classic', 'podium', 'anais', 'grenade', 10), ($1, 'swapou2_classic', 'podium', 'cyril', 'clemence', 10),
+    ($1, 'kaluga_classic', 'podium', 'dora', 'grenade', 7)`, [jour]);
+  const r = await post('/api/admin/paris-challenge/rattraper', {}, ADMIN);
+  assert.ok(r.ok && r.jours === 1, JSON.stringify(r));
+  await wait(500);
+  const lignes = await sql(`SELECT username, statut, gain FROM challenge_paris WHERE jour = $1 ORDER BY username`, [jour]);
+  // Le pot des médaillés (20) : grenade sur le podium, clémence non → tout pour
+  // anais. Au Kaluga, personne n'a de médaille ce jour-là : pot sans gagnant,
+  // perdu — comme au roll.
+  assert.deepEqual(lignes.map((l) => [l.username, l.statut, Number(l.gain)]), [['anais', 'gagne', 20], ['cyril', 'perdu', 0], ['dora', 'perdu', 0]],
+    'réglés sur les médailles du jour : ' + JSON.stringify(lignes));
+  assert.equal(await solde('anais'), avantA + 20, 'anais est créditée de son gain');
+  assert.equal(await solde('cyril'), avantC);
+  assert.equal(await solde('dora'), avantD);
+  assert.deepEqual(r.encoreOuverts, [], 'plus rien d’ouvert avant aujourd’hui');
+  // Rien à rattraper une seconde fois.
+  assert.equal((await post('/api/admin/paris-challenge/rattraper', {}, ADMIN)).jours, 0);
 });
 
 test('le Prunostiqueur du mois : le classement, le sacre, la cagnotte, le titre porté puis rendu, l’objet offert', async (t) => {

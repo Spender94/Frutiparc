@@ -10525,6 +10525,34 @@ function tirageDuJour(jour) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+// LE TIRAGE D'UN JOUR : parmi les jeux vivants, les MOINS RÉCEMMENT TIRÉS
+// d'abord (jamais tirés avant tout), par groupe de même ancienneté — un
+// groupe entier passe s'il tient dans les places qui restent, sinon le tirage
+// du jour choisit dedans. Un jeu ne reste ainsi jamais longtemps sans sortir :
+// avec onze jeux et deux par jour, chacun revient dans la semaine, et un jeu
+// tout neuf (MiniPixiz) sort dès qu'il est vivant. Jamais ceux de la veille,
+// tant qu'il en reste assez.
+function urneDesJeux(vivants, choix, jour, nb, tirage) {
+  const dernier = {};
+  for (const [j, liste] of Object.entries(choix || {})) {
+    if (!(j < jour) || !Array.isArray(liste)) continue;
+    for (const cle of liste) if (!dernier[cle] || dernier[cle] < j) dernier[cle] = j;
+  }
+  const veille = (choix || {})[jourDecale(jour, -1)] || [];
+  let candidats = vivants.filter((j) => !veille.includes(j.cle));
+  if (candidats.length < nb) candidats = vivants.slice();
+  const anc = (j) => dernier[j.cle] || '';
+  candidats.sort((x, y) => (anc(x) < anc(y) ? -1 : anc(x) > anc(y) ? 1 : (x.cle < y.cle ? -1 : 1)));
+  const elus = [];
+  for (let i = 0; elus.length < nb && i < candidats.length;) {
+    const groupe = [];
+    for (const a = anc(candidats[i]); i < candidats.length && anc(candidats[i]) === a; i++) groupe.push(candidats[i]);
+    const reste = nb - elus.length;
+    if (groupe.length <= reste) { elus.push(...groupe); continue; }
+    elus.push(...groupe.map((j) => ({ j, k: tirage() })).sort((x, y) => x.k - y.k).slice(0, reste).map((x) => x.j));
+  }
+  return elus;
+}
 // LES JEUX DU JOUR : ceux de `choix[jour]` (tirés ou choisis par l'admin), sinon
 // un tirage — parmi les jeux qui ont tourné au moins 7 jours sur les 30
 // derniers (tous s'il en manque), sans ceux de la veille quand c'est possible —
@@ -10547,14 +10575,9 @@ async function jeuxDuJourMaintenant(jour) {
     const joues = ouverts.filter((j) => ((hist.get(j.cle) || {}).jours || 0) >= 7);
     if (joues.length >= nb) vivants = joues;
   }
-  const veille = (R.choix || {})[jourDecale(jour, -1)] || [];
-  let urne = vivants.filter((j) => !veille.includes(j.cle));
-  if (urne.length < nb) urne = vivants;
   // `retirages` : l'admin a demandé un nouveau tirage — une autre graine.
   const t = tirageDuJour(jour + ':' + ((R.retirages || {})[jour] || 0));
-  const melange = urne.slice().sort((x, y) => (x.cle < y.cle ? -1 : 1))
-    .map((j) => ({ j, k: t() })).sort((x, y) => x.k - y.k).map((x) => x.j);
-  const elus = melange.slice(0, nb);
+  const elus = urneDesJeux(vivants, R.choix || {}, jour, nb, t);
   // Figé en base ; on ne garde que deux semaines de tirages.
   const choix = Object.assign({}, R.choix || {});
   choix[jour] = elus.map((j) => j.cle);
@@ -10620,7 +10643,7 @@ async function parisChallengeRegler(jour, podiums) {
   viderCotesChallenge();
   if (!process.env.DATABASE_URL) return;
   const ouverts = (await db.parisChallengeDuJour(jour)).filter((p) => p.statut === 'ouvert');
-  if (!ouverts.length) return;
+  if (!ouverts.length) { console.log(`[PARIS] Challenge ${jour} : aucun pari ouvert à régler`); return; }
   const parJeu = new Map(jeuxChallengeParis().map((j) => [j.cle, {
     podium: j.rankings.flatMap((rk) => podiums[rk] || []),
     or: j.rankings.map((rk) => (podiums[rk] || [])[0]).filter(Boolean),
@@ -10641,7 +10664,8 @@ async function parisChallengeRegler(jour, podiums) {
     const anciens = liste.filter((p) => p.retour == null);
     if (anciens.length) decisions.push(...Paris.reglerEnsemble(anciens, g));
   }
-  await parisChallengeAppliquer(decisions);
+  const faits = await parisChallengeAppliquer(decisions);
+  console.log(`[PARIS] Challenge ${jour} : ${faits.length} pari(s) réglé(s) sur ${ouverts.length} ouvert(s)`);
   // Le dimanche réglé : le Prunostiqueur de la semaine peut être sacré.
   prunostiqueurDuMois().catch((e) => console.error('[PARIS] Prunostiqueur du mois :', e.message));
 }
@@ -10650,15 +10674,46 @@ async function parisChallengeRembourser(filtre) {
   const ouverts = (await db.parisChallengeOuverts()).filter(filtre);
   return parisChallengeAppliquer(ouverts.map((p) => ({ id: p.id, statut: 'rembourse', gain: p.mise })));
 }
+// LE RATTRAPAGE : un pari d'un jour passé encore ouvert se règle sur les
+// médailles de ce jour, telles que la base les garde — le règlement du roll
+// a pu manquer (une erreur de base, un redémarrage au mauvais moment, un
+// roll fait par une autre instance). Rien n'est réglé pour un jour sans
+// médaille en base : le filet rembourse ceux-là, comme avant.
+async function parisChallengeRattraper() {
+  if (!process.env.DATABASE_URL) return 0;
+  const ouverts = await db.parisChallengeOuvertsAvant(parisDayKey());
+  let n = 0;
+  for (const jour of [...new Set(ouverts.map((p) => p.jour))].sort()) {
+    const podiums = await db.podiumsDuJour(jour);
+    if (!Object.keys(podiums).length) continue;
+    console.log(`[PARIS] rattrapage du ${jour} : ${ouverts.filter((p) => p.jour === jour).length} pari(s) encore ouvert(s), médailles en base`);
+    await parisChallengeRegler(jour, podiums);
+    n++;
+  }
+  return n;
+}
 async function parisChallengeFilet() {
   if (!process.env.DATABASE_URL) return;
+  try { await parisChallengeRattraper(); } catch (e) { console.error('[PARIS] rattrapage du Challenge :', e.message); }
   try {
     const hier = parisChallengeHier();
     await parisChallengeRembourser((p) => p.jour < hier);
   } catch (e) { console.error('[PARIS] filet du Challenge :', e.message); }
   try { await prunostiqueurDuMois(); } catch (e) { console.error('[PARIS] Prunostiqueur du mois :', e.message); }
 }
-if (process.env.DATABASE_URL) setInterval(parisChallengeFilet, 10 * 60 * 1000).unref();
+if (process.env.DATABASE_URL) {
+  setInterval(parisChallengeFilet, 10 * 60 * 1000).unref();
+  // Et peu après le démarrage : ce qu'un roll manqué a laissé ouvert.
+  setTimeout(() => { parisChallengeRattraper().catch((e) => console.error('[PARIS] rattrapage au démarrage :', e.message)); }, 20 * 1000).unref();
+}
+// L'admin règle maintenant ce qui peut l'être (sans attendre le filet).
+app.post('/api/admin/paris-challenge/rattraper', adminScope('challenge'), async (req, res) => {
+  try {
+    const jours = await parisChallengeRattraper();
+    const ouverts = process.env.DATABASE_URL ? await db.parisChallengeOuvertsAvant(parisDayKey()) : [];
+    res.json({ ok: true, jours, encoreOuverts: ouverts.map((p) => ({ id: p.id, jour: p.jour, jeu: p.jeu, type: p.type, username: p.username, mise: p.mise })) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 
 app.get('/api/paris/challenge', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true, actif: false });

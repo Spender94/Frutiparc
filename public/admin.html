@@ -6693,7 +6693,8 @@ async function chargerParisChallengeAdmin() {
           ${S.classement.length ? S.classement.map((c, i) => `${i + 1}. ${esc(c.nom)} ${signe(c.net)} <small style="color:#777">(${c.paris} paris)</small>`).join(' · ') : '<span style="color:#777">personne encore</span>'}
           <br>Objet offert au gagnant : <select id="pc-recompense"><option value="">— aucun —</option>${objets}</select>
           <button class="btn btn-sm" onclick="enregistrerRecompenseMois()">Enregistrer</button>
-          <button class="btn btn-sm" onclick="sacrerMois()" title="Dimitri annonce dès maintenant le gagnant du mois passé (déjà fait automatiquement en début de mois)">Sacrer le mois passé maintenant</button></div>
+          <button class="btn btn-sm" onclick="sacrerMois()" title="Dimitri annonce dès maintenant le gagnant du mois passé (déjà fait automatiquement en début de mois)">Sacrer le mois passé maintenant</button>
+          <button class="btn btn-sm" onclick="rattraperParis()" title="Règle tout de suite, sur les médailles en base, les paris d'un jour passé restés ouverts (le filet le fait toutes les 10 minutes)">Régler les paris en attente</button></div>
         ${B.mises || B.gains ? `<div style="margin:0 0 8px">Paris à cote fixe (l'ancienne règle) sur 30 jours : ${B.mises} kikooz misés, ${B.gains} rendus → ${signe(B.mises - B.gains)}</div>` : ''}
         <table><thead><tr><th>Jeu (décocher pour l'exclure)</th><th>Jeux du ${esc(d.demain || '')}</th><th>Habitués</th><th>Les plus médaillés (podiums/jours)</th><th>Mises pour le ${esc(d.demain || '')}</th><th>Règlement du ${esc(d.hier || '')}</th></tr></thead><tbody>${lignes}</tbody></table>
       </div>`;
@@ -6725,6 +6726,15 @@ async function retirerJeuxDuJour() {
 async function enregistrerRecompenseMois() {
   const v = $('#pc-recompense').value;
   await postParisChallenge({ recompenseMois: v === '' ? null : Number(v) }, v ? 'Récompense du mois enregistrée' : 'Plus de récompense pour le mois');
+}
+async function rattraperParis() {
+  try {
+    const d = await (await fetch('/api/admin/paris-challenge/rattraper', { method: 'POST', headers: hdr(), body: '{}' })).json();
+    if (!d.ok) throw new Error(d.error || 'refus');
+    const reste = (d.encoreOuverts || []).length;
+    toast(`${d.jours} jour(s) réglé(s)` + (reste ? ` — ${reste} pari(s) d'un jour sans médaille en base restent ouverts (remboursés par le filet)` : ''));
+    chargerParisChallengeAdmin();
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 async function sacrerMois() {
   if (!confirm('Dimitri annonce maintenant le Prunostiqueur du mois passé (cagnotte, titre et objet choisi) ?')) return;

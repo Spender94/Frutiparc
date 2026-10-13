@@ -4842,6 +4842,20 @@ async function parisChallengeOuvertsAvant(jour) {
     `SELECT * FROM challenge_paris WHERE statut = 'ouvert' AND jour < $1 ORDER BY id`, [String(jour)]);
   return rows;
 }
+// Les podiums d'un jour, d'après les médailles enregistrées :
+// { rankingId: [or, argent, bronze] } (pseudos en minuscules).
+async function podiumsDuJour(jour) {
+  const { rows } = await pool.query(
+    `SELECT ranking_id, LOWER(username) AS username, rank FROM challenge_medals WHERE awarded_day = $1 ORDER BY ranking_id, rank`,
+    [String(jour)]);
+  const out = {};
+  for (const r of rows) {
+    const l = (out[r.ranking_id] = out[r.ranking_id] || []);
+    l[Math.max(0, Math.min(2, Number(r.rank) - 1))] = r.username;
+  }
+  for (const k of Object.keys(out)) out[k] = Array.from(out[k], (u) => u || undefined).filter(Boolean);
+  return out;
+}
 async function parisChallengeOuverts() {
   const { rows } = await pool.query(`SELECT * FROM challenge_paris WHERE statut = 'ouvert' ORDER BY id`);
   return rows;
@@ -5176,6 +5190,7 @@ module.exports = {
   parisChallengeDuJour,
   parisChallengeOuvertsAvant,
   parisChallengeOuverts,
+  podiumsDuJour,
   miseChallengeDuJour,
   parisChallengeDe,
   poserPariChallenge,
