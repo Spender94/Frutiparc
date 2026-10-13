@@ -825,6 +825,56 @@
   /* Blindtest : un bandeau au-dessus du fil, avec le décompte. L'iframe est
      réduite à un point : on veut le SON, surtout pas l'image — elle porterait
      le titre de la chanson. */
+  /* Le loup-garou : la ligne secrète, et le panneau de la partie. */
+  .msg.lg, .msg.lg .body, .msg.lg .time { color: #5B2A86; font-style: italic; }
+  .msg.lg .body { white-space: pre-line; }
+  .msg.lg .body::before { content: "🔒 "; font-style: normal; }
+  .lg-panneau {
+    flex: 0 0 auto; margin: 6px 6px 0; padding: 7px 9px; border-radius: 8px;
+    background: #FFF4D6; color: #4A3210; border: 1px solid #D9B66B; font-size: 13px;
+    max-height: 42vh; overflow-y: auto; transition: background .6s, color .6s;
+  }
+  .lg-panneau.lg-nuit, .lg-panneau.lg-soir { background: #1E2142; color: #E6E4FF; border-color: #3B3F7A; }
+  .lg-panneau.lg-vote, .lg-panneau.lg-chasseur { background: #FFE3C4; border-color: #E59A4A; }
+  .lg-panneau.lg-fin { background: #E7F5D6; border-color: #8DBF5A; color: #2C4A0F; }
+  .lg-tete { display: flex; align-items: center; gap: 8px; font-weight: bold; }
+  .lg-titre { letter-spacing: .3px; }
+  .lg-chrono { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .lg-chrono.presse { color: #E0401F; }
+  .lg-panneau.lg-nuit .lg-chrono.presse { color: #FF9F7A; }
+  .lg-moi { margin-top: 3px; font-size: 12.5px; }
+  .lg-action { margin-top: 5px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-weight: bold; }
+  .lg-victime { font-weight: normal; font-style: italic; }
+  .lg-joueurs { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .lg-joueur {
+    display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px 3px 3px; border-radius: 14px;
+    background: rgba(0,0,0,.07); border: 1px solid transparent; font: inherit; font-size: 12.5px; color: inherit;
+  }
+  .lg-panneau.lg-nuit .lg-joueur, .lg-panneau.lg-soir .lg-joueur { background: rgba(255,255,255,.1); }
+  .lg-joueur.jouable { cursor: pointer; border-color: currentColor; }
+  .lg-joueur.jouable:hover, .lg-joueur.choisi { background: #E59A4A; color: #fff; border-color: #E59A4A; }
+  .lg-panneau.lg-nuit .lg-joueur.choisi, .lg-panneau.lg-nuit .lg-joueur.jouable:hover { background: #A2342B; border-color: #A2342B; }
+  .lg-joueur.envoi { opacity: .6; }
+  .lg-joueur.mort { opacity: .55; text-decoration: line-through; }
+  .lg-joueur.moi { font-weight: bold; }
+  .lg-joueur.loup .lg-role { background: #A2342B; color: #fff; }
+  .lg-num {
+    display: inline-block; min-width: 18px; height: 18px; line-height: 18px; border-radius: 9px; text-align: center;
+    background: rgba(0,0,0,.18); font-size: 11px; font-weight: bold;
+  }
+  .lg-role { font-size: 10.5px; padding: 0 5px; border-radius: 6px; background: rgba(0,0,0,.12); text-decoration: none; }
+  .lg-voix { font-size: 11px; font-weight: bold; background: #E0401F; color: #fff; border-radius: 8px; padding: 0 5px; }
+  .lg-pied { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .lg-btn {
+    border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; font-size: 12px; font-weight: bold;
+    background: rgba(0,0,0,.12); color: inherit;
+  }
+  .lg-panneau.lg-nuit .lg-btn, .lg-panneau.lg-soir .lg-btn { background: rgba(255,255,255,.16); }
+  .lg-btn.lg-go { background: #5E9E1C; color: #fff; }
+  .lg-btn.lg-vie { background: #2F8F6F; color: #fff; }
+  .lg-btn.lg-stop { background: #B5372C; color: #fff; }
+  .lg-btn.lg-aide { margin-left: auto; }
+  .lg-btn.lg-plier { padding: 1px 7px; }
   .blindtest {
     display: flex; align-items: center; gap: 8px;
     padding: 6px 10px; background: #000046; color: #fff;
@@ -8434,6 +8484,11 @@
         }
         // Sondage en direct (/poll) : le corps est un JSON. On ouvre — ou on
         // met à jour, ou on fige — la bulle interactive du salon.
+        // Loup-garou : la vue de la partie, pour le panneau (cf. lgRecevoir).
+        if (ty === "lg") {
+          try { lgRecevoir(JSON.parse(stripCdata(body)), salon || attr(xml, "g")); } catch (e) {}
+          break;
+        }
         if (ty === "poll") {
           var pjson = stripCdata(body);
           try { renderPoll(JSON.parse(pjson), salon); } catch (e) {}
@@ -8456,6 +8511,13 @@
           // retire, pour un horodatage propre « [hh:mm:ss] ».
           if (mcText) addMessage({ from: from, time: htmlToText(xmlUnescape(h)), body: mcText, kind: "normal", multicolor: true, salon: salon, mi: mi });
           entrerDansLAquarium();
+          break;
+        }
+        // st="lg" → une ligne SECRÈTE du loup-garou (son rôle, sa vision…) :
+        // pour soi seul, en violet, retours à la ligne gardés.
+        if (attr(xml, "st") === "lg") {
+          var lgTxt = htmlToText(stripCdata(body).replace(/<br\s*\/?>/gi, "\n"));
+          if (lgTxt) addMessage({ from: from, time: h, kind: "lg", noFrom: true, body: lgTxt, salon: salon, mi: mi });
           break;
         }
         // st="r" → cri modérateur ("!texte"), rendu en rouge gras comme desktop.
@@ -8826,6 +8888,7 @@
       rejoindreSalon(room);
     }
     renderUsers();
+    lgRendreTout();
   }
 
   // Après une reconnexion (le navigateur mobile coupe la socket dès qu'on passe
@@ -9364,7 +9427,7 @@
     // globales, le courrier, les dons — c'est celui qu'on regarde.
     var fil = journalDe(o.salon || state.room);
     var stick = nearBottom(fil);
-    var row = el("div", "msg" + (o.kind === "system" ? " system" : o.kind === "admin" ? " admin" : o.kind === "shout" ? " shout" : o.kind === "blue" ? " blue" : ""));
+    var row = el("div", "msg" + (o.kind === "system" ? " system" : o.kind === "admin" ? " admin" : o.kind === "shout" ? " shout" : o.kind === "blue" ? " blue" : o.kind === "lg" ? " lg" : ""));
     if (o.kind === "system") {
       row.textContent = o.body;
     } else {
@@ -9424,6 +9487,214 @@
   // Le « qui a voté quoi » n'est jamais diffusé : chacun retient SON choix ici
   // (state.pollMine[id]) et voter renvoie la commande texte /vote N, que le clic
   // émet tout seul — elle n'apparaît jamais comme un message.
+  /*
+   * LE PANNEAU DU LOUP-GAROU.
+   *
+   * Quand un animateur mène une partie dans un salon, le serveur envoie à
+   * chacun SA vue de la partie (`<t t="lg">`, un JSON) à chaque changement :
+   * la phase et son chrono, son rôle, les joueurs, l'action qu'il peut faire
+   * maintenant. On en fait une bannière au-dessus du fil (comme celle du
+   * blindtest) : on touche un joueur pour voter, dévorer, sonder… — la
+   * commande /lg part toute seule. Le meneur y trouve ses boutons (lancer,
+   * suite, vote, pause, arrêt). Rien de secret n'y figure que le joueur ne
+   * doive savoir : le serveur trie (loupgarou.js, `vue`).
+   */
+  var lgCache = {};          // salon → { v, recuAt }
+  var lgSelection = {};      // salon → [n, n] (les deux amoureux de cupidon)
+  var lgReplie = {};         // salon → true (la liste des joueurs est repliée)
+  var lgTicTimer = null;
+  var LG_PHASES = {
+    inscriptions: "🐺 Loup-garou · inscriptions", nuit: "🌙 Nuit", jour: "☀️ Jour", vote: "🗳️ Le vote",
+    chasseur: "🎯 Le dernier tir du chasseur", soir: "🌇 Le soir tombe", fin: "🏆 Partie terminée",
+  };
+  var LG_GAGNANT = { village: "Victoire du village !", loups: "Victoire des loups-garous !", amoureux: "Victoire des amoureux !",
+    personne: "Match nul : plus personne au village.", annulee: "Partie arrêtée par le meneur." };
+
+  function lgRecevoir(v, salon) {
+    salon = salon || (v && v.salon);
+    if (!salon) return;
+    if (!v || v.ferme) delete lgCache[salon];
+    else lgCache[salon] = { v: v, recuAt: Date.now() };
+    if (v && !v.ferme && !(v.action && v.action.deux)) delete lgSelection[salon];
+    lgRendre(salon);
+  }
+  function lgEnvoyer(salon, cmd) {
+    wsSend('<t g="' + xmlEscape(salon) + '" t="m" p="">' + xmlEscape("/lg " + cmd) + '</t>');
+  }
+  // Les fils où la bannière se montre : la fenêtre du salon (bureau) et le
+  // panneau mobile quand c'est le salon qu'on regarde.
+  function lgFils(salon) {
+    var fils = [];
+    if (journaux[salon]) fils.push(journaux[salon]);
+    var m = document.querySelector("#chat-panel:not([data-salon]) #messages");
+    if (m && fils.indexOf(m) < 0 && salon === state.room) fils.push(m);
+    return fils;
+  }
+  function lgRendreTout() {
+    Array.prototype.forEach.call(document.querySelectorAll(".lg-panneau"), function (b) {
+      var s = b.getAttribute("data-salon");
+      if (!lgCache[s] || lgFils(s).indexOf(b.nextElementSibling) < 0) b.remove();
+    });
+    Object.keys(lgCache).forEach(lgRendre);
+  }
+  function lgRendre(salon) {
+    var fils = lgCache[salon] ? lgFils(salon) : [];
+    Array.prototype.forEach.call(document.querySelectorAll(".lg-panneau"), function (b) {
+      if (b.getAttribute("data-salon") === salon && fils.indexOf(b.nextElementSibling) < 0) b.remove();
+    });
+    fils.forEach(function (fil) {
+      var b = fil.previousElementSibling;
+      if (!b || !b.classList || !b.classList.contains("lg-panneau") || b.getAttribute("data-salon") !== salon) {
+        if (b && b.classList && b.classList.contains("lg-panneau")) b.remove();
+        b = el("div", "lg-panneau");
+        b.setAttribute("data-salon", salon);
+        fil.parentNode.insertBefore(b, fil);
+      }
+      lgRemplir(b, lgCache[salon].v, salon);
+    });
+    lgTic();
+  }
+  function lgReste(c) {
+    if (!c || c.v.reste == null) return null;
+    return c.v.pause ? c.v.reste : Math.max(0, c.v.reste - (Date.now() - c.recuAt));
+  }
+  function lgChronoTexte(ms) {
+    var s = Math.ceil(ms / 1000), m = Math.floor(s / 60);
+    return m + ":" + String(s % 60).padStart(2, "0");
+  }
+  function lgTic() {
+    var actif = false;
+    Array.prototype.forEach.call(document.querySelectorAll(".lg-panneau .lg-chrono"), function (t) {
+      var c = lgCache[t.getAttribute("data-salon")];
+      var r = lgReste(c);
+      if (r == null) { t.textContent = ""; return; }
+      t.textContent = (c.v.pause ? "⏸ " : "") + lgChronoTexte(r);
+      t.classList.toggle("presse", !c.v.pause && r < 10000);
+      if (!c.v.pause && r > 0) actif = true;
+    });
+    clearTimeout(lgTicTimer);
+    if (actif) lgTicTimer = setTimeout(lgTic, 500);
+  }
+  function lgBouton(texte, cls, f) {
+    var b = el("button", "lg-btn" + (cls ? " " + cls : ""));
+    b.type = "button";
+    b.textContent = texte;
+    b.addEventListener("click", function (e) { e.preventDefault(); f(); });
+    return b;
+  }
+  function lgRemplir(box, v, salon) {
+    box.className = "lg-panneau lg-" + v.phase + (v.moi && !v.moi.vivant ? " lg-mort" : "");
+    box.innerHTML = "";
+    // ── La tête : la phase, le chrono, replier ──
+    var tete = el("div", "lg-tete");
+    var titre = el("span", "lg-titre");
+    var nomPhase = LG_PHASES[v.phase] || "Loup-garou";
+    if (v.phase === "nuit") nomPhase += " " + v.nuit;
+    if (v.phase === "jour") nomPhase += " " + v.jour + " · débat";
+    if (v.phase === "vote") nomPhase = "🗳️ Jour " + v.jour + " · le vote";
+    if (v.phase === "fin") nomPhase = "🏆 " + (LG_GAGNANT[v.gagnant] || "Partie terminée");
+    titre.textContent = nomPhase;
+    tete.appendChild(titre);
+    var chrono = el("span", "lg-chrono");
+    chrono.setAttribute("data-salon", salon);
+    tete.appendChild(chrono);
+    var plier = lgBouton(lgReplie[salon] ? "▸" : "▾", "lg-plier", function () { lgReplie[salon] = !lgReplie[salon]; lgRendre(salon); });
+    plier.title = lgReplie[salon] ? "Déplier" : "Replier";
+    tete.appendChild(plier);
+    if (v.phase === "fin") tete.appendChild(lgBouton("✕", "lg-plier", function () { delete lgCache[salon]; lgRendre(salon); }));
+    box.appendChild(tete);
+    // ── Qui je suis ──
+    var moi = el("div", "lg-moi");
+    if (v.estMeneur) moi.textContent = "Tu mènes la partie (meneur : " + v.meneur + ") : tu vois tous les rôles.";
+    else if (v.moi) {
+      var b = el("b"); b.textContent = v.moi.roleNom;
+      moi.appendChild(document.createTextNode(v.moi.vivant ? "Tu es " : "Tu étais "));
+      moi.appendChild(b);
+      var extra = [];
+      if (v.moi.meute) extra.push(v.moi.meute.length ? "meute : " + v.moi.meute.join(", ") : "loup solitaire");
+      if (v.moi.amoureux) extra.push("♥ " + v.moi.amoureux);
+      if (v.moi.potions) extra.push("potions : vie " + (v.moi.potions.vie ? "✓" : "✗") + ", mort " + (v.moi.potions.mort ? "✓" : "✗"));
+      if (v.moi.sansVote) extra.push("tu ne votes plus");
+      if (!v.moi.vivant && v.phase !== "fin") extra.push("chut jusqu’à la fin !");
+      if (extra.length) moi.appendChild(document.createTextNode(" · " + extra.join(" · ")));
+      moi.title = v.moi.desc || "";
+    } else if (v.phase === "inscriptions") {
+      moi.textContent = (v.inscrit ? "Tu es inscrit. " : "") + v.joueurs.length + " inscrit" + (v.joueurs.length > 1 ? "s" : "") + " (" + v.min + " à " + v.max + ")"
+        + (v.prix ? " · " + v.prix + " kikooz par gagnant" : "") + " · meneur : " + v.meneur;
+    } else moi.textContent = "Tu regardes la partie" + (v.composition ? " · " + v.composition : "") + ".";
+    box.appendChild(moi);
+    // ── L'action du moment ──
+    var a = v.action;
+    var sel = lgSelection[salon] || [];
+    if (a && !lgReplie[salon]) {
+      var ligne = el("div", "lg-action");
+      var txt = el("span");
+      txt.textContent = a.deux ? (sel.length ? "Second amoureux…" : a.libelle) : (a.libelle ? a.libelle + " touche un joueur" : "");
+      ligne.appendChild(txt);
+      if (a.blanc) ligne.appendChild(lgBouton("Vote blanc", "", function () { lgEnvoyer(salon, "voter blanc"); }));
+      if (a.sorciere) {
+        var vict = el("span", "lg-victime");
+        vict.textContent = a.sorciere.victime ? "Les loups ont attaqué " + a.sorciere.victime + "." : "Les loups n’ont attaqué personne.";
+        ligne.insertBefore(vict, txt);
+        if (a.sorciere.sauver) ligne.appendChild(lgBouton("Sauver " + a.sorciere.victime, "lg-vie", function () { lgEnvoyer(salon, "sauver"); }));
+        ligne.appendChild(lgBouton("Ne rien faire", "", function () { lgEnvoyer(salon, "rien"); }));
+      }
+      box.appendChild(ligne);
+    }
+    // ── Les joueurs ──
+    if (!lgReplie[salon] && v.joueurs.length) {
+      var liste = el("div", "lg-joueurs");
+      v.joueurs.forEach(function (j) {
+        var jouable = a && (a.cibles || []).indexOf(j.n) >= 0;
+        var c = el(jouable ? "button" : "span", "lg-joueur" + (j.vivant ? "" : " mort") + (j.moi ? " moi" : "")
+          + (j.role === "loup" ? " loup" : "") + (a && a.choisi === j.n ? " choisi" : "") + (sel.indexOf(j.n) >= 0 ? " choisi" : "")
+          + (jouable ? " jouable" : ""));
+        if (jouable) c.type = "button";
+        var num = el("span", "lg-num"); num.textContent = j.n; c.appendChild(num);
+        c.appendChild(document.createTextNode(j.nom + (j.vivant ? "" : " †") + (j.amoureux ? " ♥" : "")));
+        if (j.roleNom && (!j.moi || !j.vivant || v.phase === "fin")) { var r = el("span", "lg-role"); r.textContent = j.roleNom; c.appendChild(r); }
+        if (j.voix) { var vx = el("span", "lg-voix"); vx.textContent = j.voix; c.appendChild(vx); }
+        if (jouable) {
+          c.addEventListener("click", function () {
+            if (a.deux) {
+              var s = (lgSelection[salon] || []).slice();
+              var i = s.indexOf(j.n);
+              if (i >= 0) s.splice(i, 1); else s.push(j.n);
+              lgSelection[salon] = s;
+              if (s.length === 2) { lgEnvoyer(salon, "lier " + s[0] + " " + s[1]); lgSelection[salon] = []; }
+              lgRendre(salon);
+              return;
+            }
+            if (a.verbe === "tuer" && !confirm("Empoisonner " + j.nom + " ? (une seule potion de mort)")) return;
+            c.classList.add("envoi");
+            lgEnvoyer(salon, a.verbe + " " + j.n);
+          });
+        }
+        liste.appendChild(c);
+      });
+      box.appendChild(liste);
+    }
+    // ── Les boutons : s'inscrire, et ceux du meneur ──
+    var pied = el("div", "lg-pied");
+    if (v.phase === "inscriptions" && !v.estMeneur) {
+      pied.appendChild(v.inscrit ? lgBouton("Me retirer", "", function () { lgEnvoyer(salon, "quitter"); })
+        : lgBouton("Je joue !", "lg-go", function () { lgEnvoyer(salon, "jouer"); }));
+    }
+    if (v.estMeneur) {
+      if (v.phase === "inscriptions") pied.appendChild(lgBouton("Lancer la partie", "lg-go", function () { lgEnvoyer(salon, "lancer"); }));
+      else if (v.phase === "fin") pied.appendChild(lgBouton("Nouvelle partie", "lg-go", function () { lgEnvoyer(salon, "ouvrir" + (v.prix ? " prix=" + v.prix : "")); }));
+      else {
+        pied.appendChild(lgBouton("Suite ▸", "", function () { lgEnvoyer(salon, "suite"); }));
+        if (v.phase === "jour") pied.appendChild(lgBouton("Ouvrir le vote", "", function () { lgEnvoyer(salon, "vote"); }));
+        pied.appendChild(v.pause ? lgBouton("Reprendre", "", function () { lgEnvoyer(salon, "reprise"); })
+          : lgBouton("Pause", "", function () { lgEnvoyer(salon, "pause"); }));
+      }
+      if (v.phase !== "fin") pied.appendChild(lgBouton("Arrêter", "lg-stop", function () { if (confirm("Arrêter la partie de loup-garou ?")) lgEnvoyer(salon, "fin"); }));
+    }
+    pied.appendChild(lgBouton("Aide", "lg-aide", function () { lgEnvoyer(salon, "aide"); }));
+    box.appendChild(pied);
+  }
+
   function renderPoll(data, salon) {
     if (!data || !data.id) return;
     var fil = journalDe(salon || state.room);

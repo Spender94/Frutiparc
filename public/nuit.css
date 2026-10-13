@@ -398,6 +398,81 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
 .msg.shout, .msg.shout .body, .msg.shout .from, .msg.shout .time {
   color: hsl(0 100% 77.3%);
 }
+.msg.lg, .msg.lg .body, .msg.lg .time {
+  color: hsl(272 30% 85.6%);
+}
+.lg-panneau {
+  background: hsl(256 30% 10%);
+  color: hsl(256 13% 84.9%);
+  border: 1px solid hsl(256 26% 44.2%);
+}
+.lg-panneau.lg-nuit, .lg-panneau.lg-soir {
+  background: hsl(235 30% 16%);
+  color: hsl(244 55% 94.8%);
+  border-color: hsl(236 30% 55.4%);
+}
+.lg-panneau.lg-vote, .lg-panneau.lg-chasseur {
+  background: hsl(256 30% 11.8%);
+  border-color: hsl(256 26% 45.5%);
+}
+.lg-panneau.lg-fin {
+  background: hsl(256 30% 17.2%);
+  border-color: hsl(256 26% 49.5%);
+  color: hsl(256 13% 84.8%);
+}
+.lg-chrono.presse {
+  color: hsl(325 58% 86.5%);
+}
+.lg-panneau.lg-nuit .lg-chrono.presse {
+  color: hsl(17 55% 90.3%);
+}
+.lg-joueur {
+  background: hsl(256 30% 0% / 0.07);
+}
+.lg-panneau.lg-nuit .lg-joueur, .lg-panneau.lg-soir .lg-joueur {
+  background: hsl(256 30% 10% / 0.1);
+}
+.lg-joueur.jouable:hover, .lg-joueur.choisi {
+  background: hsl(256 30% 32.7%);
+  color: hsl(256 13% 96%);
+  border-color: hsl(256 26% 45.5%);
+}
+.lg-panneau.lg-nuit .lg-joueur.choisi, .lg-panneau.lg-nuit .lg-joueur.jouable:hover {
+  background: hsl(325 34% 34.5%);
+  border-color: hsl(325 58% 78%);
+}
+.lg-joueur.loup .lg-role {
+  background: hsl(325 34% 34.5%);
+  color: hsl(256 13% 96%);
+}
+.lg-num {
+  background: hsl(256 30% 0% / 0.18);
+}
+.lg-role {
+  background: hsl(256 30% 0% / 0.12);
+}
+.lg-voix {
+  background: hsl(325 34% 34.5%);
+  color: hsl(256 13% 96%);
+}
+.lg-btn {
+  background: hsl(256 30% 0% / 0.12);
+}
+.lg-panneau.lg-nuit .lg-btn, .lg-panneau.lg-soir .lg-btn {
+  background: hsl(256 30% 10% / 0.16);
+}
+.lg-btn.lg-go {
+  background: hsl(256 30% 36%);
+  color: hsl(256 13% 96%);
+}
+.lg-btn.lg-vie {
+  background: hsl(256 30% 36%);
+  color: hsl(256 13% 96%);
+}
+.lg-btn.lg-stop {
+  background: hsl(325 34% 34.5%);
+  color: hsl(256 13% 96%);
+}
 .blindtest {
   background: hsl(240 55% 11.7%);
   color: hsl(256 13% 96%);

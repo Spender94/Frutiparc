@@ -2936,6 +2936,14 @@ body.bureau-frutiz .fen #chat-panel #users-drawer { grid-area: 1 / 3 / -1 / 4; }
 body.bureau-frutiz .fen #chat-panel #pen-bar { grid-area: 3 / 2; }
 body.bureau-frutiz .fen #chat-panel #accent-bar { grid-area: 4 / 2; }
 body.bureau-frutiz .fen #chat-panel .compose { grid-area: 5 / 2; }
+/* Une bannière au-dessus du fil — le panneau d'une partie de loup-garou, celle
+   d'un blindtest : elle prend la première ligne de la colonne du milieu, et le
+   fil descend d'une ligne. Sans placement, la grille la posait dans une
+   colonne à elle et le fil se retrouvait large d'une lettre. */
+body.bureau-frutiz .fen #chat-panel > .lg-panneau,
+body.bureau-frutiz .fen #chat-panel > .blindtest { grid-area: 1 / 2 / 2 / 3; margin: 0 0 6px; }
+body.bureau-frutiz .fen #chat-panel:has(> .lg-panneau) #messages,
+body.bureau-frutiz .fen #chat-panel:has(> .blindtest) #messages { grid-area: 2 / 2 / 3 / 3; }
 
 
 /* ══ LES DEUX JOURNAUX — « Mon historique » et « Événements » ═══════════════
