@@ -3221,6 +3221,13 @@ async function quetesEnregistrerIndividuelles(semaine, username, quetes, connu, 
   return rows[0] || null;
 }
 // L'échange de la semaine : une seule fois (rend true si c'est celui-ci).
+// La liste retaillée par l'admin (les quêtes faites gardées) : on remplace tout sauf l'échange.
+async function quetesRemplacerIndividuelles(semaine, username, quetes, reserve, niveaux) {
+  const r = await pool.query(
+    `UPDATE quetes_individuelles SET quetes = $3::jsonb, reserve = $4::jsonb, niveaux = $5::jsonb WHERE semaine = $1 AND username = $2`,
+    [String(semaine), String(username).toLowerCase(), JSON.stringify(quetes || []), JSON.stringify(reserve || []), JSON.stringify(niveaux || {})]);
+  return r.rowCount > 0;
+}
 async function quetesEchangerIndividuelle(semaine, username, quetes, reserve, echange) {
   const r = await pool.query(
     `UPDATE quetes_individuelles SET quetes = $3::jsonb, reserve = $4::jsonb, echange = $5::jsonb
@@ -5138,6 +5145,7 @@ module.exports = {
   quetesChargerIndividuelles,
   quetesEnregistrerIndividuelles,
   quetesEchangerIndividuelle,
+  quetesRemplacerIndividuelles,
   quetesOublierProgres,
   quetesPremiersPasFaits,
   quetesArchiveParc,

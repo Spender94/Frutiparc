@@ -77,6 +77,11 @@ const REGLAGES_DEFAUT = Object.freeze({
     // et les exploits (podium, Question à 60 kikooz, records de Kaluga).
     activites: 2,
     exploits: 1,
+    // Le pas personnel : une moyenne vise au plus ×1,25 le score habituel du
+    // joueur, une difficile ×1,5 (les temps : ÷1,1 et ÷1,2) — le palier du parc
+    // s'il est plus proche. Sans quoi un Bronze à 11 000 se voyait demander
+    // l'Argent à 20 000 : le double.
+    pas: { moyenne: 1.25, difficile: 1.5, moyenneTemps: 1.1, difficileTemps: 1.2 },
     seuils: {},           // retouches de l'admin : { mesure: { bronze, …, legende } }
   },
   // LES MISES À PRIX : battre un record absolu du parc (le livre des records du
@@ -422,6 +427,15 @@ function semaineLisible(lundi) {
 
 // ── Le catalogue, retouché par l'admin ───────────────────────────────────────
 
+// Le pas personnel : des coefficients entre 1 (le score habituel) et 3.
+function pasNormalises(brut, defaut) {
+  const out = {};
+  for (const k of Object.keys(defaut)) {
+    const v = Number(brut && brut[k]);
+    out[k] = Number.isFinite(v) && v >= 1 && v <= 3 ? Math.round(v * 100) / 100 : defaut[k];
+  }
+  return out;
+}
 function reglagesNormalises(brut) {
   const R = Object.assign({}, REGLAGES_DEFAUT, brut || {});
   R.ouverture = ['ferme', 'testeurs', 'tous'].includes(R.ouverture) ? R.ouverture : 'ferme';
@@ -467,6 +481,7 @@ function reglagesNormalises(brut) {
     bonusXp: borne(P.bonusXp, 0, 1000000, P0.bonusXp),
     activites: borne(P.activites, 0, 4, P0.activites),
     exploits: borne(P.exploits, 0, 2, P0.exploits),
+    pas: pasNormalises(P.pas, P0.pas),
     seuils,
   };
   const PR = Object.assign({}, REGLAGES_DEFAUT.primes, (R.primes && typeof R.primes === 'object') ? R.primes : {});
@@ -996,11 +1011,30 @@ function definitionContrat(prop) {
  * sa vie : le forum, un Prunostic, trois jeux du Challenge).
  */
 
-/** Les paliers d'une mesure, d'après les meilleurs du jour du parc. */
-function paliersDe(m, valeurs, joueurs, options) {
+/*
+ * LES REPÈRES CONNUS : ce que le parc sait de ses jeux, par l'expérience des
+ * joueurs — posés sous les paliers calculés (le calcul les remplit, l'admin
+ * les retouche). À Swapou, 10 000 est facile, 20 000 moyen, 25 000 dur, et
+ * 30 000 vaut souvent une médaille ; au-delà, c'est le haut du panier (la
+ * Légende reste calculée).
+ */
+const PALIERS_CONNUS = {
+  'swapou-challenge': { bronze: 10000, argent: 20000, or: 25000, platine: 30000 },
+};
+
+/**
+ * Les paliers d'une mesure, d'après le SCORE HABITUEL de chacun : un joueur,
+ * une voix — sa médiane sur la fenêtre —, et non ses journées une à une, sans
+ * quoi l'habitué qui joue tous les jours à 25 000 pèse vingt-huit fois le
+ * joueur du dimanche, et le Bronze s'envole. `joueurs` : les meilleurs du jour
+ * de chaque joueur, [[…], […]] (un tableau plat vaut un joueur par valeur).
+ */
+function paliersDe(m, joueurs, options) {
   const o = options || {};
-  const v = (valeurs || []).map(Number).filter(Number.isFinite);
-  if (!m || v.length < (o.minValeurs || 20) || (joueurs || 0) < (o.minJoueurs || 4)) return null;
+  const listes = (joueurs || []).map((j) => (Array.isArray(j) ? j : [j]).map(Number).filter(Number.isFinite)).filter((j) => j.length);
+  const nValeurs = listes.reduce((n, j) => n + j.length, 0);
+  if (!m || nValeurs < (o.minValeurs || 20) || listes.length < (o.minJoueurs || 4)) return null;
+  const v = listes.map((j) => quantile(j.slice().sort((a, b) => (m.inverse ? a - b : b - a)), 0.5));
   const tries = v.sort((a, b) => (m.inverse ? a - b : b - a));
   const au = (part) => tries[Math.min(tries.length - 1, Math.max(0, Math.ceil(part * tries.length) - 1))];
   const r = {};
@@ -1079,20 +1113,36 @@ function proposerV2(entree, alea, options) {
   const ordre = parJeu.concat(autres);
   const niveaux = {};
   const F = [], M = [], D = [];
+  const pasDe = o.pas || REGLAGES_DEFAUT.paliers.pas;
   for (const c of ordre) {
-    const P = paliers[c.m.cle];
+    const m = c.m, P = paliers[m.cle];
     const mediane = quantile(c.tries, 0.5);
-    const L = palierAtteint(c.m, P, mediane);
-    niveaux[c.m.cle] = L < 0 ? null : PALIERS[L];
+    const L = palierAtteint(m, P, mediane);
+    niveaux[m.cle] = L < 0 ? null : PALIERS[L];
     const vus = new Set();
-    // Sous le Bronze, on part du Bronze : Bronze, Argent, Or.
-    const b = Math.max(L, 0);
-    [['facile', b, F], ['moyenne', Math.min(b + 1, 4), M], ['difficile', Math.min(b + 2, 4), D]].forEach(([niveau, k, pile]) => {
+    // Le palier du parc, ou — s'il est plus proche — un pas au-dessus du score
+    // habituel : facile = ce qu'il fait la moitié du temps ; moyenne et difficile
+    // un cran et deux crans au-dessus, sans jamais lui demander le double.
+    const pas = (k) => (m.inverse ? pasDe[k + 'Temps'] : pasDe[k]);
+    const vers = (k) => {
+      const perso = arrondir(m, m.inverse ? mediane / pas(k) : mediane * pas(k));
+      const cran = PALIERS[Math.min(L + (k === 'moyenne' ? 1 : 2), 4)];
+      const parc = L + (k === 'moyenne' ? 1 : 2) > 4 ? null : P[cran];
+      if (parc == null) return perso;
+      return atteint(m, perso, parc) ? parc : perso;   // le plus proche de lui des deux
+    };
+    const poser = (niveau, seuil, pile) => {
+      if (seuil == null || (m.plafond != null && !m.inverse && seuil > m.plafond)) return;
+      if (vus.has(seuil) || [...vus].some((v) => atteint(m, v, seuil))) return;   // pas plus bas qu'une cible déjà posée
+      vus.add(seuil);
+      // La paie : le palier qu'atteint la cible (le Bronze pour ce qui est dessous).
+      const k = Math.max(0, palierAtteint(m, P, seuil));
       const palier = PALIERS[k];
-      if (vus.has(P[palier])) return;   // deux paliers confondus : une seule quête
-      vus.add(P[palier]);
-      pile.push({ genre: 'palier', mesure: c.m.cle, palier, seuil: P[palier], niveau, jours: c.jours, gain: gains[palier] });
-    });
+      pile.push({ genre: 'palier', mesure: m.cle, palier, seuil, niveau, jours: c.jours, gain: gains[palier], parc: seuil === P[palier] });
+    };
+    poser('facile', L >= 0 ? P[PALIERS[L]] : arrondir(m, mediane), F);
+    poser('moyenne', vers('moyenne'), M);
+    poser('difficile', vers('difficile'), D);
   }
   // Les découvertes : un jeu dont il n'a joué aucune mesure sur la fenêtre.
   const joues = new Set(cands.map((c) => c.m.jeu).concat(Object.entries(E.historique || {})
@@ -1199,13 +1249,15 @@ function definitionV2(spec, id) {
   const decouverte = spec.genre === 'decouverte';
   const detail = decouverte
     ? `Découverte · ${m.nom} — un jeu que tu n’as pas joué ces dernières semaines`
-    : `${m.nom} · atteint par ${Math.round(PALIER_PART[spec.palier] * 100)} % du parc`;
+    : spec.parc !== false
+      ? `${m.nom} · atteint par ${Math.round(PALIER_PART[spec.palier] * 100)} % du parc`
+      : `${m.nom} · ${spec.niveau === 'facile' ? 'ton score habituel' : spec.niveau === 'moyenne' ? 'un cran au-dessus de tes scores habituels' : 'bien au-dessus de tes scores habituels'}`;
   return { id: String(id), niveau: spec.niveau, palier: spec.palier, gain: spec.gain, type: 'mesure', etiquette: m.jeu, famille: m.cle,
     taillee: true, v2: true, decouverte, params: { mesure: m.cle, seuil: spec.seuil }, detail };
 }
 
 module.exports = {
-  PALIERS, PALIER_NOM, PALIER_PART, paliersDe, palierAtteint, proposerV2, definitionV2, PREMIERS_PAS, PARC,
+  PALIERS, PALIER_NOM, PALIER_PART, PALIERS_CONNUS, paliersDe, palierAtteint, proposerV2, definitionV2, PREMIERS_PAS, PARC,
   MESURES_PERSO, proposerPerso, definitionPerso, proposerContrat, definitionContrat, arrondir, aleaSeme,
   NIVEAUX, NIVEAU_NOM, REGLAGES_DEFAUT, CATALOGUE, ETIQUETTES, KALUGA_EPREUVES, MODES,
   nombre, jourPlus, lundiDe, minuitParis, finDeSemaine, semaineLisible,

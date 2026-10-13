@@ -11169,8 +11169,7 @@ function quetesV2(lundi) { return quetesReglages.mode !== 'collectives' && Strin
  */
 let quetesPaliersEnCours = null;
 async function quetesParcPaliers(lundi) {
-  const parJour = {};   // mesure → { pseudo|jour → meilleur }
-  const joueurs = {};   // mesure → Set(pseudos)
+  const parJour = {};   // mesure → { pseudo → { jour → meilleur } }
   if (process.env.DATABASE_URL) {
     const rows = await db.quetesArchiveParc(QUETES_PERSO_RK, Quetes.jourPlus(lundi, -quetesReglages.individuelles.fenetre), lundi);
     for (const row of rows) {
@@ -11180,16 +11179,16 @@ async function quetesParcPaliers(lundi) {
         const m = Quetes.MESURES[cle];
         const v = Quetes.valeurDe(m, evt);
         if (v == null || (m.unite !== 'temps' && v <= 0)) continue;
-        const k = String(row.username).toLowerCase() + '|' + row.day_key;
-        const j = (parJour[cle] = parJour[cle] || {});
-        if (j[k] === undefined || (m.inverse ? v < j[k] : v > j[k])) j[k] = v;
-        (joueurs[cle] = joueurs[cle] || new Set()).add(String(row.username).toLowerCase());
+        const u = String(row.username).toLowerCase();
+        const j = ((parJour[cle] = parJour[cle] || {})[u] = parJour[cle][u] || {});
+        if (j[row.day_key] === undefined || (m.inverse ? v < j[row.day_key] : v > j[row.day_key])) j[row.day_key] = v;
       }
     }
   }
   const out = {};
   for (const cle of Quetes.MESURES_PERSO) {
-    out[cle] = parJour[cle] ? Quetes.paliersDe(Quetes.MESURES[cle], Object.values(parJour[cle]), joueurs[cle].size) : null;
+    // Un joueur, une voix : ses meilleurs du jour, dont paliersDe prend la médiane.
+    out[cle] = parJour[cle] ? Quetes.paliersDe(Quetes.MESURES[cle], Object.values(parJour[cle]).map((j) => Object.values(j))) : null;
   }
   return out;
 }
@@ -11208,14 +11207,23 @@ async function quetesPaliersBruts(S) {
   return quetesPaliersEnCours;
 }
 // Les paliers bruts, retouchés par l'admin.
+// Les paliers bruts, sous les repères connus du parc (Quetes.PALIERS_CONNUS),
+// sous les retouches de l'admin ; et l'échelle ne redescend jamais (un palier
+// calculé sous le repère connu du dessous le rejoint — une seule quête alors).
 function quetesPaliersEffectifs(bruts) {
   const out = {};
   for (const cle of Quetes.MESURES_PERSO) {
+    const m = Quetes.MESURES[cle];
     const b = bruts && bruts[cle];
-    const r = quetesReglages.paliers.seuils[cle];
-    if (!b && !(r && Quetes.PALIERS.every((k) => r[k] != null))) { out[cle] = null; continue; }
-    out[cle] = Object.assign({}, b || {}, r || {});
-    if (out[cle].decouverte == null) out[cle].decouverte = out[cle].bronze;
+    const r = Object.assign({}, Quetes.PALIERS_CONNUS[cle] || {}, quetesReglages.paliers.seuils[cle] || {});
+    if (!b && !Quetes.PALIERS.every((k) => r[k] != null)) { out[cle] = null; continue; }
+    const p = Object.assign({}, b || {}, r);
+    for (let i = 1; i < Quetes.PALIERS.length; i++) {
+      const bas = p[Quetes.PALIERS[i - 1]], haut = p[Quetes.PALIERS[i]];
+      if (bas != null && haut != null && (m.inverse ? haut > bas : haut < bas)) p[Quetes.PALIERS[i]] = bas;
+    }
+    if (p.decouverte == null || (m.inverse ? p.decouverte < p.bronze : p.decouverte > p.bronze)) p.decouverte = p.bronze;
+    out[cle] = p;
   }
   return out;
 }
@@ -11243,8 +11251,8 @@ async function quetesIndivV2(u, S, historique) {
   return liste;
 }
 // Le calcul seul (sert aussi à l'aperçu de l'admin) : rend { quetes, connu, r }.
-async function quetesTaillerV2(u, lundi, historique, paliers) {
-  const R = quetesReglages.paliers;
+async function quetesTaillerV2(u, lundi, historique, paliers, ajust) {
+  const R = Object.assign({}, quetesReglages.paliers, ajust || {});
   let premiersPas = [];
   if (R.premiersPas) {
     // Débutant : aucun jeu assez joué pour qu'on le connaisse.
@@ -11256,7 +11264,7 @@ async function quetesTaillerV2(u, lundi, historique, paliers) {
   }
   const r = Quetes.proposerV2({ historique, paliers, premiersPas }, Quetes.aleaSeme('paliers:' + u + ':' + lundi),
     { minJours: quetesReglages.individuelles.minJours, budget: R.budget, maxQuetes: R.maxQuetes, gains: R.gains, decouverte: R.decouverte,
-      activites: R.activites, exploits: R.exploits });
+      activites: R.activites, exploits: R.exploits, pas: R.pas });
   let n = 0;
   const quetes = r.quetes.map((sp) => Quetes.definitionV2(sp, sp.genre === 'premierspas' ? sp.cle : 'ind-' + (++n))).filter(Boolean);
   const connu = Object.keys(r.niveaux).length > 0;
@@ -12011,6 +12019,63 @@ app.get('/api/admin/quetes/apercu', adminScope('quetes'), async (req, res) => {
       total: t.quetes.reduce((n, d) => n + quetesGainDe(d), 0),
       reserve: t.r.reserve.map((sp) => { const d = Quetes.definitionV2(sp, 'r'); return d ? Quetes.titre(d) + (d.palier ? ` (${Quetes.PALIER_NOM[d.palier]})` : '') : null; }).filter(Boolean),
     });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+/*
+ * RETAILLER LA SEMAINE EN COURS : les paliers du parc sont recalculés, puis
+ * les quêtes de chacun retaillées au modèle du moment — les quêtes déjà faites
+ * restent (payées, cochées), les autres sont remplacées, avec le budget et les
+ * places qui restent. Sert quand le modèle change en cours de semaine (un
+ * recalibrage) : sans quoi chacun garderait jusqu'à dimanche des quêtes
+ * taillées à l'ancienne. L'échange de la semaine n'est pas rendu.
+ */
+async function quetesRetaillerSemaine() {
+  const S = quetesSemaineCourante();
+  if (!quetesV2(S.lundi)) return { ok: false, error: 'pas_v2', message: 'La semaine ne suit pas le modèle des paliers.' };
+  S.paliers = null;
+  const paliers = quetesPaliersEffectifs(await quetesPaliersBruts(S));
+  const rows = process.env.DATABASE_URL ? await db.quetesChargerIndividuelles(S.lundi) : [];
+  const R = quetesReglages.paliers;
+  let joueurs = 0, remplacees = 0;
+  for (const row of rows) {
+    const u = String(row.username).toLowerCase();
+    const avant = quetesIndivLu(row);
+    const progres = quetesProgres.get(u) || new Map();
+    const faites = avant.quetes.filter((q) => (progres.get(q.id) || {}).faitAt);
+    // Tout fait (le bonus de la semaine versé) : on ne lui rouvre pas la semaine.
+    if (avant.quetes.length && faites.length === avant.quetes.length) continue;
+    const gagnes = faites.reduce((n, q) => n + quetesGainDe(q), 0);
+    const historique = process.env.DATABASE_URL ? await quetesHistoriqueDe(u, S.lundi) : {};
+    const t = await quetesTaillerV2(u, S.lundi, historique, paliers,
+      { budget: Math.max(0, R.budget - gagnes), maxQuetes: Math.max(0, R.maxQuetes - faites.length) });
+    // Pas deux fois la même : une faite qui reviendrait est écartée (les clés
+    // d'un jsonb relu ne sont pas dans l'ordre où on les a écrites).
+    const canon = (o) => JSON.stringify(Object.keys(o || {}).sort().map((k) => [k, o[k]]));
+    const meme = (a, b) => a.famille === b.famille && canon(a.params) === canon(b.params);
+    const neuves = t.quetes.filter((q) => !faites.some((f) => meme(f, q))).slice(0, Math.max(0, R.maxQuetes - faites.length));
+    let num = avant.quetes.reduce((n, q) => Math.max(n, Number((/^ind-(\d+)$/.exec(q.id) || [])[1]) || 0), 0);
+    for (const q of neuves) if (/^ind-/.test(q.id)) q.id = 'ind-' + (++num);
+    const quetes = faites.concat(neuves);
+    // L'avancement des quêtes remplacées s'efface (celui des faites reste).
+    for (const q of avant.quetes) {
+      if (faites.includes(q)) continue;
+      progres.delete(q.id);
+      if (process.env.DATABASE_URL) db.quetesOublierProgres(S.lundi, u, q.id).catch(dbErr('quetes retailler'));
+    }
+    const liste = { quetes, connu: t.connu, reserve: t.r.reserve, echange: avant.echange, niveaux: t.r.niveaux };
+    if (process.env.DATABASE_URL) await db.quetesRemplacerIndividuelles(S.lundi, u, quetes, liste.reserve, liste.niveaux);
+    quetesIndiv.set(u, liste);
+    joueurs++;
+    remplacees += avant.quetes.length - faites.length;
+    console.log(`[QUETES] ${u} : semaine retaillée — ${faites.length} faite(s) gardée(s), ${neuves.length} nouvelle(s) (${quetes.reduce((n, q) => n + quetesGainDe(q), 0)} kikooz possibles)`);
+  }
+  return { ok: true, lundi: S.lundi, joueurs, remplacees };
+}
+app.post('/api/admin/quetes/retailler', adminScope('quetes'), async (req, res) => {
+  try {
+    const r = await quetesRetaillerSemaine();
+    res.status(r.ok ? 200 : 400).json(r);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 

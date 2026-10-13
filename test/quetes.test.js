@@ -305,18 +305,25 @@ test('les paliers du parc : cinq seuils communs, le niveau d’un joueur, la pai
   const m = Q.MESURES['swapou-challenge'];
   // Un parc de 100 meilleurs du jour, de 100 à 10 000 points.
   const parc = Array.from({ length: 100 }, (_, i) => (i + 1) * 100);
-  const P = Q.paliersDe(m, parc, 12);
+  // (un tableau plat : un joueur par valeur)
+  const P = Q.paliersDe(m, parc);
   assert.deepEqual([P.bronze, P.argent, P.or, P.platine, P.legende], [5100, 7100, 8600, 9600, 10000]);
   assert.ok(P.decouverte < P.bronze);
-  assert.equal(Q.paliersDe(m, parc.slice(0, 10), 12), null, 'trop peu de journées');
-  assert.equal(Q.paliersDe(m, parc, 2), null, 'trop peu de joueurs');
+  assert.equal(Q.paliersDe(m, parc.slice(0, 10)), null, 'trop peu de journées');
+  assert.equal(Q.paliersDe(m, [parc]), null, 'trop peu de joueurs (un seul, cent journées)');
+  // UN JOUEUR, UNE VOIX : l'habitué qui joue vingt-huit jours à 25 000 ne pèse
+  // pas vingt-huit fois le joueur du dimanche. Le Bronze est le score habituel
+  // du joueur médian, pas la journée médiane du parc.
+  const voix = Q.paliersDe(m, [Array(28).fill(25000), [10000, 11000, 12000], [8000, 9000, 7000], [12000, 13000, 12500], [6000, 6500]]);
+  assert.equal(voix.bronze, 11000, 'cinq joueurs : médianes 25 000, 12 500, 11 000, 8 000, 6 000 → le troisième');
+  assert.equal(voix.legende, 25000);
   // Un temps (le moins est le mieux) : les paliers descendent.
-  const t = Q.paliersDe(Q.MESURES['mb2-course1'], parc.map((v) => v * 10), 12);
+  const t = Q.paliersDe(Q.MESURES['mb2-course1'], parc.map((v) => v * 10));
   assert.ok(t.bronze > t.argent && t.argent > t.legende);
   assert.equal(Q.palierAtteint(m, P, 7200), 1, 'Argent');
   assert.equal(Q.palierAtteint(m, P, 3000), -1, 'sous le Bronze');
-  const paliers = { 'swapou-challenge': P, 'snake-challenge': Q.paliersDe(Q.MESURES['snake-challenge'], parc.map((v) => v / 10), 12),
-    'kaluga-grappe': Q.paliersDe(Q.MESURES['kaluga-grappe'], parc.map((v) => v / 2), 12) };
+  const paliers = { 'swapou-challenge': P, 'snake-challenge': Q.paliersDe(Q.MESURES['snake-challenge'], parc.map((v) => v / 10)),
+    'kaluga-grappe': Q.paliersDe(Q.MESURES['kaluga-grappe'], parc.map((v) => v / 2)) };
   const gains = { bronze: 5, argent: 8, or: 12, platine: 18, legende: 25 };
   // (Les scores seuls ici : la vie du parc et les exploits ont leur propre test.)
   const sansParc = { activites: 0, exploits: 0 };
@@ -329,9 +336,27 @@ test('les paliers du parc : cinq seuils communs, le niveau d’un joueur, la pai
   const occasionnel = Q.proposerV2({ historique: { 'swapou-challenge': [8800, 8800, 8800] }, paliers }, () => 0.3, sansParc);
   assert.deepEqual(occasionnel.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => q.seuil), sw.map((q) => q.seuil),
     'trois jours ou quarante : les mêmes cibles');
-  // Sous le Bronze : Bronze, Argent, Or.
+  // Sous le Bronze : son score habituel, puis un pas au-dessus (×1,25, ×1,5),
+  // jamais le Bronze à 5 100 pour qui fait 2 500 — tout au Bronze pour la paie.
   const faible = Q.proposerV2({ historique: { 'swapou-challenge': [2000, 2500, 3000] }, paliers }, () => 0.3, sansParc);
-  assert.deepEqual(faible.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => q.palier), ['bronze', 'argent', 'or']);
+  assert.deepEqual(faible.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => [q.niveau, q.palier, q.seuil, q.parc]),
+    [['facile', 'bronze', 2500, false], ['moyenne', 'bronze', 3100, false], ['difficile', 'bronze', 3750, false]]);
+  // Entre deux paliers : le pas personnel quand le palier est trop loin, le
+  // palier quand il est plus proche (un 7 000 : Argent 7 100 à portée, l'Or
+  // 8 600 plus proche que 10 500 ; un 5 200 : Bronze, puis 6 500 et 7 800, pas
+  // l'Argent à 7 100… si, l'Argent, plus proche que 6 500 ? non : 6 500 < 7 100).
+  const entre = Q.proposerV2({ historique: { 'swapou-challenge': [5200, 5200, 5200] }, paliers }, () => 0.3, sansParc);
+  assert.deepEqual(entre.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => [q.niveau, q.palier, q.seuil, q.parc]),
+    [['facile', 'bronze', 5100, true], ['moyenne', 'bronze', 6500, false], ['difficile', 'argent', 7800, false]]);
+  const pres = Q.proposerV2({ historique: { 'swapou-challenge': [7000, 7000, 7000] }, paliers }, () => 0.3, sansParc);
+  assert.deepEqual(pres.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => [q.niveau, q.palier, q.seuil, q.parc]),
+    [['facile', 'bronze', 5100, true], ['moyenne', 'argent', 7100, true], ['difficile', 'or', 8600, true]]);
+  // Le pas se règle, et il a ses bornes.
+  const serre = Q.proposerV2({ historique: { 'swapou-challenge': [5200, 5200, 5200] }, paliers }, () => 0.3, Object.assign({ pas: { moyenne: 1.1, difficile: 1.2, moyenneTemps: 1.1, difficileTemps: 1.2 } }, sansParc));
+  assert.deepEqual(serre.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => q.seuil), [5100, 5700, 6200]);
+  assert.deepEqual(Q.reglagesNormalises({ paliers: { pas: { moyenne: 0.5, difficile: 1.4 } } }).paliers.pas, { moyenne: 1.25, difficile: 1.4, moyenneTemps: 1.1, difficileTemps: 1.2 });
+  // Les repères connus : Swapou.
+  assert.deepEqual(Q.PALIERS_CONNUS['swapou-challenge'], { bronze: 10000, argent: 20000, or: 25000, platine: 30000 });
   // Le budget : un faible reçoit plus de quêtes (plus douces), un fort moins.
   for (const r of [habitue, faible]) {
     const total = r.quetes.reduce((n, q) => n + q.gain, 0);
@@ -359,14 +384,15 @@ test('les paliers du parc : cinq seuils communs, le niveau d’un joueur, la pai
   assert.deepEqual([d.id, d.palier, d.gain, d.type, d.etiquette], ['ind-1', 'or', 12, 'mesure', 'swapou2']);
   assert.equal(Q.titre(d).replace(/\s/g, ' '), 'Dépasse 8 600 points à Swapou');
   assert.match(Q.detail(d), /atteint par 15 % du parc/);
+  assert.match(Q.detail(Q.definitionV2(entre.quetes.find((q) => q.niveau === 'moyenne' && q.mesure === 'swapou-challenge'), 'ind-2')), /un cran au-dessus de tes scores habituels/);
   assert.equal(Q.estFaite(d, { m: 8600 }), true);
   assert.match(Q.detail(Q.definitionV2(dec[0], 'ind-9')), /^Découverte/);
 });
 
 test('la vie du parc et les exploits : des actions sur le site, pas seulement des scores', () => {
   const parc = Array.from({ length: 100 }, (_, i) => (i + 1) * 100);
-  const paliers = { 'swapou-challenge': Q.paliersDe(Q.MESURES['swapou-challenge'], parc, 12),
-    'snake-challenge': Q.paliersDe(Q.MESURES['snake-challenge'], parc.map((v) => v / 10), 12) };
+  const paliers = { 'swapou-challenge': Q.paliersDe(Q.MESURES['swapou-challenge'], parc),
+    'snake-challenge': Q.paliersDe(Q.MESURES['snake-challenge'], parc.map((v) => v / 10)) };
   const gains = { bronze: 5, argent: 8, or: 12, platine: 18, legende: 25 };
   const tirage = (historique, premiersPas, graine, o) => Q.proposerV2({ historique, paliers, premiersPas }, Q.aleaSeme(graine), o || {});
   // Un habitué de niveau Or : deux activités (jamais deux du même coin), un exploit,
@@ -641,6 +667,11 @@ before(async () => {
   dispo = await baseNeuve();
   if (!dispo) return;
   await demarrer();
+  // Les tests qui suivent exercent le premier modèle (les quêtes taillées sur
+  // les seuls scores du joueur, le catalogue) : le modèle des paliers, en
+  // production depuis le 12 octobre 2026, attend ici un lundi lointain — le
+  // test du modèle des paliers le rapproche lui-même.
+  await post('/api/admin/quetes', { paliers: { depuis: '2099-01-04' } }, ADMIN);
 });
 after(() => {
   if (proc) proc.kill('SIGKILL');
@@ -1203,6 +1234,37 @@ test('le modèle des paliers : paliers du parc, paie au palier, échange, bonus 
   assert.deepEqual([e.echange.possible, e.echange.fait.titre], [false, vieille.titre]);
   assert.equal((await etat('figue')).bonus.verse, true);
   assert.equal((await etat('cerise')).primes.find((p) => p.rk === 'swapou2_classic').prisePar, 'figue');
+});
+
+test('l’admin retaille la semaine : les quêtes faites restent, les autres suivent le modèle du moment', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  const avant = await etat('cerise');
+  const faites = avant.quetes.filter((q) => q.fait);
+  assert.ok(faites.length >= 1 && faites.length < avant.quetes.length, JSON.stringify(avant.quetes.map((q) => [q.titre, q.fait])));
+  // Un pas serré : les cibles pas faites changent toutes.
+  assert.ok((await post('/api/admin/quetes', { paliers: { pas: { moyenne: 1.05, difficile: 1.1, moyenneTemps: 1.02, difficileTemps: 1.04 } } }, ADMIN)).ok);
+  const r = await post('/api/admin/quetes/retailler', {}, ADMIN);
+  assert.ok(r.ok && r.joueurs >= 2 && r.remplacees >= 1, JSON.stringify(r));
+  const apres = await etat('cerise');
+  for (const f of faites) {
+    const g = apres.quetes.find((q) => q.id === f.id);
+    assert.ok(g && g.fait && g.titre === f.titre && g.gain === f.gain, 'une quête faite reste, payée et cochée : ' + f.titre);
+  }
+  const neuves = apres.quetes.filter((q) => !q.fait);
+  assert.ok(neuves.length >= 1 && apres.quetes.length <= 7);
+  const anciens = avant.quetes.filter((q) => !q.fait).map((q) => q.id);
+  for (const q of neuves) assert.ok(!anciens.includes(q.id), 'les nouvelles portent des numéros neufs : ' + q.id);
+  assert.equal(apres.gagnes, avant.gagnes, 'rien de repayé');
+  assert.deepEqual([apres.echange.possible, apres.echange.fait.titre], [avant.echange.possible, avant.echange.fait.titre], 'l’échange de la semaine n’est pas rendu');
+  // Figue avait tout fini (le bonus versé) : rien ne bouge chez elle.
+  const f = await etat('figue');
+  assert.ok(f.quetes.length === 3 && f.quetes.every((q) => q.fait), JSON.stringify(f.quetes.map((q) => [q.titre, q.fait])));
+  // La base dit la même chose, et l'avancement des quêtes remplacées est parti.
+  const ligne = (await sql(`SELECT quetes FROM quetes_individuelles WHERE username = 'cerise' AND semaine = $1`, [lundiCourant()]))[0];
+  assert.deepEqual(ligne.quetes.map((q) => q.id), apres.quetes.map((q) => q.id));
+  const restes = await sql(`SELECT quete_id FROM quetes_progres WHERE username = 'cerise' AND semaine = $1 AND fait_at IS NULL`, [lundiCourant()]);
+  for (const x of restes) assert.ok(!anciens.includes(x.quete_id), 'avancement effacé : ' + x.quete_id);
+  assert.ok((await post('/api/admin/quetes', { paliers: { pas: { moyenne: 1.25, difficile: 1.5, moyenneTemps: 1.1, difficileTemps: 1.2 } } }, ADMIN)).ok);
 });
 
 test('RGPD : l’export du joueur contient ses quêtes', async (t) => {

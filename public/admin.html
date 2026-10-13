@@ -6384,6 +6384,10 @@ async function quetesPaliers(cle) {
   for (const k of ['bronze', 'argent', 'or', 'platine', 'legende']) seuils[k] = $(`#qt-pl-${cle}-${k}`).value;
   await quetesPost('/api/admin/quetes/paliers', { mesure: cle, seuils }, (d) => d.seuils ? 'Paliers retouchés' : 'Paliers calculés rétablis');
 }
+async function quetesRetailler() {
+  if (!confirm('Retailler les quêtes de la semaine en cours de tous les joueurs ? Les quêtes faites restent, les autres sont remplacées (le modèle et les paliers du moment).')) return;
+  await quetesPost('/api/admin/quetes/retailler', {}, (d) => `${d.joueurs} joueur(s) retaillé(s), ${d.remplacees} quête(s) remplacée(s)`);
+}
 async function quetesApercu() {
   const u = $('#qt-ap-u').value.trim();
   const bloc = $('#qt-ap');
@@ -6491,6 +6495,11 @@ async function loadQuetes() {
           <div style="margin-bottom:6px"><b>Hors scores :</b>
             <label style="margin-right:12px"><input type="number" min="0" max="4" id="qt-p-activites" value="${R.paliers.activites}" style="width:40px"> quête(s) de la vie du parc (forum, salons, Prunostics, assiduité)</label>
             <label><input type="number" min="0" max="2" id="qt-p-exploits" value="${R.paliers.exploits}" style="width:40px"> exploit(s) (podium, Question à 60 kikooz, records de Kaluga)</label></div>
+          <div style="margin-bottom:6px"><b>Pas personnel :</b> une moyenne vise au plus
+            <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-moyenne" value="${R.paliers.pas.moyenne}" style="width:52px"> × le score habituel du joueur, une difficile
+            <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-difficile" value="${R.paliers.pas.difficile}" style="width:52px"> × (les temps : ÷
+            <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-moyenneTemps" value="${R.paliers.pas.moyenneTemps}" style="width:52px"> et ÷
+            <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-difficileTemps" value="${R.paliers.pas.difficileTemps}" style="width:52px">) — le palier du parc s'il est plus proche. La paie suit le palier qu'atteint la cible.</div>
           <div style="margin-bottom:6px">
             <label style="margin-right:12px"><input type="checkbox" id="qt-p-decouverte" ${R.paliers.decouverte ? 'checked' : ''}> Découverte (un jeu pas joué)</label>
             <label style="margin-right:12px"><input type="checkbox" id="qt-p-pas" ${R.paliers.premiersPas ? 'checked' : ''}> Premiers pas (débutants)</label>
@@ -6521,6 +6530,7 @@ async function loadQuetes() {
       <h4>Aperçu du tirage de lundi</h4>
       <div style="border:1px solid #c9a46a;background:#fffaf0;padding:10px;border-radius:8px;font-size:12px;margin-bottom:10px">
         <input id="qt-ap-u" placeholder="pseudo" style="width:150px"> <button class="btn btn-sm" onclick="quetesApercu()">Voir ses quêtes de lundi</button>
+        <button class="btn btn-sm" onclick="quetesRetailler()" title="Recalcule les paliers du parc et retaille les quêtes de la semaine en cours de tout le monde : les quêtes faites restent, les autres suivent le modèle du moment">Retailler la semaine en cours</button>
         <small style="color:#777">(d'après les scores connus à ce jour : ceux de la fin de semaine peuvent encore les changer)</small>
         <div id="qt-ap" style="margin-top:6px"></div>
       </div>
@@ -6576,7 +6586,9 @@ async function quetesEnregistrer() {
   for (const k of ['bronze', 'argent', 'or', 'platine', 'legende']) gp[k] = Number($(`#qt-gp-${k}`).value);
   const paliers = { depuis: $('#qt-p-depuis').value, gains: gp, budget: Number($('#qt-p-budget').value), maxQuetes: Number($('#qt-p-max').value),
     decouverte: $('#qt-p-decouverte').checked, premiersPas: $('#qt-p-pas').checked, echange: $('#qt-p-echange').checked, bonusXp: Number($('#qt-p-bonus').value),
-    activites: Number($('#qt-p-activites').value), exploits: Number($('#qt-p-exploits').value) };
+    activites: Number($('#qt-p-activites').value), exploits: Number($('#qt-p-exploits').value),
+    pas: { moyenne: Number($('#qt-p-pas-moyenne').value), difficile: Number($('#qt-p-pas-difficile').value),
+      moyenneTemps: Number($('#qt-p-pas-moyenneTemps').value), difficileTemps: Number($('#qt-p-pas-difficileTemps').value) } };
   const primes = { actif: $('#qt-pr-actif').checked, gain: Number($('#qt-pr-gain').value) };
   await quetesPost('/api/admin/quetes', { ouverture: o ? o.value : 'ferme', mode: md ? md.value : 'individuelles', testeurs: $('#qt-testeurs').value,
     gains, composition, individuelles, contrat, paliers, primes },
