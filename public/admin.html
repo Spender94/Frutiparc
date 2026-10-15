@@ -3002,12 +3002,48 @@ async function openTournament(id) {
           <div style="margin:8px 0">
             <label>Pseudo : <input id="t-rs-user" style="width:150px" placeholder="Pseudo exact"></label>
             <label style="margin-left:6px">Score : <input id="t-rs-score" type="number" style="width:120px"></label>
-            <button class="btn btn-sm" onclick="setRoundScore(${t.id})">Enregistrer le score de qualif</button>
-            <div style="color:#888;margin-top:3px">Crée/corrige le score de qualif d'un joueur (utile si un score a été modifié à la main hors fenêtre).</div>
+            <button class="btn btn-sm" onclick="setRoundScore(${t.id})">${t.status === 'bracket' ? 'Enregistrer le score du tour en cours' : 'Enregistrer le score de qualif'}</button>
+            <div style="color:#888;margin-top:3px">${t.status === 'bracket'
+              ? `Crée/corrige le score d'un joueur pour le tour ${t.current_round} (un score joué hors fenêtre, ou à corriger).`
+              : 'Crée/corrige le score de qualif d\'un joueur (utile si un score a été modifié à la main hors fenêtre).'}</div>
           </div>
           ${t.status === 'seeded' ? `<div style="margin:8px 0"><button class="btn btn-sm" onclick="reseed(${t.id})">Re-seeder depuis les scores</button> <span style="color:#888">Re-fige le top ${t.bracket_size || 'N'} d'après les scores de qualif actuels.</span></div>` : ''}
           <div style="margin-top:6px"><button class="btn btn-sm" style="background:#c10000;color:#fff" onclick="deleteTournament(${t.id})">Supprimer le tournoi</button></div>
         </div>`;
+    }
+    // Reprendre un tournoi déjà commencé ailleurs (qualif jouée hors du site).
+    let reprisePanel = '';
+    if (['draft', 'scheduled', 'seeded', 'cancelled'].includes(t.status)) {
+      reprisePanel = `
+        <div style="border:1px dashed #c8860a;background:#fffaf0;padding:10px;border-radius:6px;margin:10px 0;font-size:13px">
+          <b>⏩ Reprendre un tournoi déjà commencé</b>
+          <div style="color:#777;margin:4px 0 6px;line-height:1.45">Les qualifications se sont jouées hors du site ? Colle le classement final, <b>un qualifié par ligne, dans l'ordre</b>
+            (« 1er : pattedecat avec 45 855 points » ou « pattedecat 45855 » — on peut copier les lignes du forum telles quelles).
+            Le tournoi passe à « qualifiés seedés » sans rouvrir de qualif ; génère ensuite le bracket, reporte les tours déjà joués avec ✓,
+            puis cale la fenêtre du tour en cours.</div>
+          <textarea id="t-reprise-${t.id}" rows="6" style="width:100%;max-width:560px;font-family:monospace;font-size:12px" placeholder="1er : pattedecat avec 45 855 points&#10;2e : DEBleen avec 42 830 points&#10;…"></textarea>
+          <div><button class="btn-success btn-sm" onclick="repriseTournoi(${t.id})">Poser les qualifiés</button></div>
+        </div>`;
+    }
+    // La fenêtre du tour en cours, posée à la main (un tour commencé hors du site).
+    let fenetrePanel = '';
+    if (t.status === 'bracket') {
+      const duTour = (d.matches || []).filter((m) => Number(m.round) === Number(t.current_round) && m.player1 && m.player2 && !m.winner);
+      const deb = duTour.find((m) => m.window_start), fin = duTour.find((m) => m.window_end);
+      const swapou = /^swapou2/.test(t.ranking_id);
+      fenetrePanel = duTour.length ? `
+        <div style="border:1px dashed #6a8fd0;background:#f4f8ff;padding:10px;border-radius:6px;margin:10px 0;font-size:13px">
+          <b>🕒 Fenêtre du tour en cours</b> <span style="color:#888">(tour ${t.current_round}, ${duTour.length} match(s) à jouer — heure de Paris)</span>
+          <div style="margin:6px 0">
+            <label>Début : <input type="datetime-local" id="t-fen-deb-${t.id}" value="${toLocalInput(deb && deb.window_start)}"></label>
+            <label style="margin-left:10px">Fin : <input type="datetime-local" id="t-fen-fin-${t.id}" value="${toLocalInput(fin && fin.window_end)}"></label>
+            ${swapou ? `<label style="margin-left:10px"><input type="checkbox" id="t-fen-rec-${t.id}" checked> récupérer les scores déjà joués depuis le début</label>` : ''}
+            <button class="btn-success btn-sm" onclick="fenetreTour(${t.id})">Appliquer</button>
+          </div>
+          <div style="color:#777;line-height:1.45">Pour un tour commencé hors du site : pose ses vraies dates. Le meilleur score de chacun est retenu jusqu'à la fin${swapou ? ' ; ceux déjà joués depuis le début sont relus dans le journal des parties de Challenge' : ' ; les scores déjà joués se saisissent à la main ci-dessus'}.
+            Une fin déjà passée clôt le tour aussitôt. Les paris d'un match se ferment dès que sa fenêtre a commencé.</div>
+          <div id="t-fen-res-${t.id}" style="margin-top:6px"></div>
+        </div>` : '';
     }
     const win = (t.qualif_start || t.qualif_end) ? ` · Qualif : <b>${t.qualif_start?tFmtDate(t.qualif_start):'?'}</b> → <b>${t.qualif_end?tFmtDate(t.qualif_end):'?'}</b>` : '';
     const lead = (d.roundScores||[]).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.username)}</td><td>${r.score}</td></tr>`).join('');
@@ -3020,6 +3056,8 @@ async function openTournament(id) {
           ${t.best_qualifier ? ' · Meilleur qualifié : <b>'+esc(t.best_qualifier)+'</b>' : ''}
         </div>
         <div style="margin-bottom:10px">${actions}</div>
+        ${reprisePanel}
+        ${fenetrePanel}
         ${manualPanel}
         <div style="display:flex;gap:24px;flex-wrap:wrap">
           ${ players ? `<div><h4 style="margin:0 0 4px">Qualifiés (seedés)</h4><table><thead><tr><th>Seed</th><th>Joueur</th><th>Score qualif</th></tr></thead><tbody>${players}</tbody></table></div>` : '' }
@@ -3033,6 +3071,36 @@ async function openTournament(id) {
       </div>`;
     chargerParisAdmin(t, d.matches || []);
   } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function repriseTournoi(id) {
+  const texte = ($('#t-reprise-' + id) || {}).value || '';
+  if (!texte.trim()) { toast('Colle le classement des qualifiés.'); return; }
+  try {
+    const d = await (await fetch('/api/admin/tournaments/' + id + '/reprise', { method: 'POST', headers: hdr(), body: JSON.stringify({ qualifies: texte }) })).json();
+    if (!d.ok) { toast('Erreur : ' + (d.message || d.error)); return; }
+    toast(`${d.qualified.length} qualifiés posés — génère maintenant le bracket`);
+    openTournament(id);
+  } catch (e) { toast('Erreur : ' + e.message); }
+}
+async function fenetreTour(id) {
+  const deb = new Date($('#t-fen-deb-' + id).value), fin = new Date($('#t-fen-fin-' + id).value);
+  if (isNaN(deb.getTime()) || isNaN(fin.getTime())) { toast('Indique le début et la fin.'); return; }
+  const rec = $('#t-fen-rec-' + id);
+  if (fin.getTime() <= Date.now() && !confirm('La fin est déjà passée : le tour sera clos aussitôt et les vainqueurs désignés. Continuer ?')) return;
+  try {
+    const d = await (await fetch('/api/admin/tournaments/' + id + '/fenetre', { method: 'POST', headers: hdr(),
+      body: JSON.stringify({ debut: deb.toISOString(), fin: fin.toISOString(), recuperer: !!(rec && rec.checked) }) })).json();
+    if (!d.ok) { toast('Erreur : ' + (d.message || d.error)); return; }
+    toast(`Tour ${d.round} : ${d.matchs} match(s) du ${tFmtDate(d.debut)} au ${tFmtDate(d.fin)}`);
+    await openTournament(id);
+    const box = $('#t-fen-res-' + id);
+    if (box && d.recuperes) {
+      box.innerHTML = d.recuperes.length
+        ? '<b>Scores relus :</b> ' + d.recuperes.map((r) => `${esc(r.username)} <b>${r.score}</b> <span style="color:#888">(${r.parties} partie${r.parties > 1 ? 's' : ''}${r.retenu ? '' : `, déjà ${r.avant} retenu`})</span>`).join(' · ')
+        : '<span style="color:#888">Aucune partie de Challenge jouée par ces joueurs depuis le début du tour.</span>';
+    }
+  } catch (e) { toast('Erreur : ' + e.message); }
 }
 
 // ─── Tours automatiques et classement final ───
@@ -3265,7 +3333,7 @@ function bracketMatchCard(t, m, isFinal) {
     const nameJs = name ? name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
     return `<div style="display:flex;align-items:center;gap:4px;padding:3px 6px;${isWin ? 'font-weight:bold;color:#1f3d0a' : 'color:#2c4a0f'}">
       <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isWin ? '🏆 ' : ''}${label}${sc != null ? ` <span style="color:#6f8a45;font-weight:normal">(${sc})</span>` : ''}</span>
-      ${name ? `<button class="btn btn-sm" title="Désigner vainqueur (forfait = désigner l'autre)" style="padding:0 6px" onclick="matchWin(${t.id},${m.id},'${nameJs}')">✓</button>` : ''}
+      ${name ? `<button class="btn btn-sm" title="Désigner vainqueur (forfait = désigner l'autre)" style="padding:0 6px" onclick="matchWin(${t.id},${m.id},'${nameJs}',${m.player1 && m.player2 ? 'true' : 'false'})">✓</button>` : ''}
       <button class="btn btn-sm" title="Modifier ce joueur" style="padding:0 5px" onclick="matchEditPlayer(${t.id},${m.id},${who},'${nameJs}')">✎</button>
     </div>`;
   };
@@ -3281,8 +3349,21 @@ function postMatch(tid, mid, body) {
     .then(r => r.json()).then(d => { if (d && !d.ok) toast('Erreur: ' + (d.message || JSON.stringify(d))); return d; })
     .catch(e => { toast('Erreur: ' + e.message); return null; });
 }
-async function matchWin(tid, mid, winner) {
-  const d = await postMatch(tid, mid, { winner });
+async function matchWin(tid, mid, winner, duel) {
+  const body = { winner };
+  // Un match joué hors du site (repris en cours de tournoi) : ses deux scores
+  // se reportent ici, dans l'ordre du bracket. Vide : vainqueur seul (forfait…).
+  if (duel) {
+    const v = prompt(`Vainqueur : ${winner}.\nScores du match (facultatif) : celui du HAUT puis celui du BAS du bracket, séparés par « / », ex. « 34 755 / 30 605 ».\nLaisse vide pour désigner le vainqueur sans score.`, '');
+    if (v === null) return;
+    if (v.trim()) {
+      const t = v.replace(/[\u202f\u00a0]/g, ' ').trim();
+      const n = (t.includes('/') ? t.split('/') : t.split(/\s+/)).map((x) => x.replace(/[ .]/g, '')).filter(Boolean);
+      if (n.length !== 2 || !n.every((x) => /^\d+$/.test(x))) { toast('Deux scores attendus, séparés par « / » (ou laisse vide).'); return; }
+      body.score1 = Number(n[0]); body.score2 = Number(n[1]);
+    }
+  }
+  const d = await postMatch(tid, mid, body);
   if (d && d.ok) { toast('Vainqueur : ' + winner); loadTournaments(); openTournament(tid); }
 }
 async function matchReset(tid, mid) {

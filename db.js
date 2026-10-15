@@ -2515,6 +2515,26 @@ async function listSwapouIaScores(username, limit = 50) {
 }
 
 // ── Les parties de Swapou Challenge, vérifiées par rejeu (swapou_parties) ──
+/**
+ * Le meilleur score de Swapou Challenge de chacun, entre deux instants : sert
+ * à rattraper un tour de tournoi qui se jouait déjà avant d'être ouvert sur le
+ * site. Les parties au score rejoué divergent ne comptent pas ; `verifiees` :
+ * seulement les parties vérifiées conformes, à graine du serveur, sans l'IA
+ * (l'interrupteur « tournoi vérifié »).
+ */
+async function meilleursSwapouEntre(usernames, debut, fin, verifiees) {
+  const noms = (usernames || []).map((u) => String(u || '').toLowerCase()).filter(Boolean);
+  if (!noms.length) return [];
+  const { rows } = await pool.query(
+    `SELECT LOWER(username) AS username, MAX(score_declare)::int AS score, COUNT(*)::int AS parties
+       FROM swapou_parties
+      WHERE LOWER(username) = ANY($1) AND fini_le IS NOT NULL AND score_declare IS NOT NULL
+        AND fini_le >= $2 AND fini_le <= $3 AND verdict <> 'divergent'
+        AND ($4::boolean IS NOT TRUE OR (verdict = 'conforme' AND source = 'serveur' AND NOT ia_detenteur))
+      GROUP BY LOWER(username)`,
+    [noms, new Date(debut), new Date(fin), !!verifiees]);
+  return rows;
+}
 async function creerPartieSwapou(id, username, graine) {
   await pool.query(
     `INSERT INTO swapou_parties (id, username, graine, source) VALUES ($1, $2, $3, 'serveur')
@@ -4716,6 +4736,12 @@ async function upsertRoundScore(tid, round, username, score, data) {
      DO UPDATE SET score = EXCLUDED.score, data = EXCLUDED.data, updated_at = now()`,
     [tid, round, username, score, data || '']);
 }
+// Les scores d'un tour pris AVANT un instant (sa fenêtre a été reportée).
+async function oublierRoundScoresAvant(tid, round, avant) {
+  const r = await pool.query(`DELETE FROM tournament_round_scores WHERE tournament_id = $1 AND round = $2 AND updated_at < $3`,
+    [tid, round, new Date(avant)]);
+  return r.rowCount;
+}
 async function getRoundScores(tid, round) {
   // `updated_at` : à score égal, c'est le PREMIER arrivé qui reste devant
   // (scoreComparator, server.js) — la ligne doit donc porter sa date.
@@ -5146,6 +5172,8 @@ module.exports = {
   quetesEnregistrerIndividuelles,
   quetesEchangerIndividuelle,
   quetesRemplacerIndividuelles,
+  meilleursSwapouEntre,
+  oublierRoundScoresAvant,
   quetesOublierProgres,
   quetesPremiersPasFaits,
   quetesArchiveParc,

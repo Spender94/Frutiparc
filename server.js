@@ -3190,12 +3190,15 @@ async function avancerCoupe(t) {
   const now = Date.now();
   const aJouer = matches.filter((m) => Number(m.round) === round && m.player1 && m.player2 && !m.winner);
   if (!aJouer.length) {
-    // Tour déjà tranché (exemptés, ou décisions à la main) : au suivant.
+    // Tour déjà tranché (exemptés, ou décisions à la main) : au suivant. Un
+    // tour tranché à la main AVANT la fin de sa fenêtre n'a plus rien à
+    // attendre : le suivant part maintenant (pause comprise), pas à la fin
+    // prévue — c'est le cas d'un tour joué hors du site, puis reporté ici.
     if (round < total) {
       const precedent = matches.filter((m) => Number(m.round) === round && m.window_end)
         .map((m) => new Date(m.window_end).getTime());
       await db.updateTournament(t.id, { current_round: round + 1 });
-      await programmerTour(t, round + 1, (precedent.length ? Math.max(...precedent) : now) + pause);
+      await programmerTour(t, round + 1, (precedent.length ? Math.min(Math.max(...precedent), now) : now) + pause);
     }
     return;
   }
@@ -12863,6 +12866,126 @@ app.post('/api/admin/tournaments/:id/reseed', tournoiScope, async (req, res) => 
     const r = await tournamentSeedFromScores(t);
     if (!r.ok) return res.status(400).json({ error: r.error, message: 'Moins de 2 scores de qualif.' });
     res.json({ ok: true, qualified: r.qualified });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/*
+ * REPRENDRE UN TOURNOI DÉJÀ COMMENCÉ AILLEURS (sur le forum, à la main).
+ *
+ * Les qualifications ont eu lieu hors du site : on colle le classement final
+ * (« pseudo score », une ligne par qualifié, dans l'ordre), et le tournoi
+ * passe directement à « qualifiés seedés », sans rouvrir de fenêtre. On génère
+ * ensuite la coupe comme d'habitude, on reporte les tours déjà joués (✓ dans
+ * le bracket), et l'on cale la fenêtre du tour en cours (route `fenetre`).
+ */
+function lireQualifies(texte) {
+  const lignes = String(texte || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const out = [], erreurs = [];
+  for (const l of lignes) {
+    // « 1er : pattedecat avec 45 855 points », « 🥉 3e : Cerji avec 42 685 points »,
+    // « pattedecat 45855 », « 7. Crazynou — 29 695 pts » : le score est le
+    // nombre en fin de ligne, le pseudo le premier mot qui n'est pas un rang.
+    const sansUnite = l.replace(/\s*(?:pts?|points?)\.?\s*$/i, '');
+    const m = /(?:^|[\s:\u2013\u2014])(\d[\d \u202f\u00a0.]*)$/.exec(sansUnite);
+    if (!m) { erreurs.push(l); continue; }
+    const score = Number(m[1].replace(/[ \u202f\u00a0.]/g, ''));
+    const mots = sansUnite.slice(0, m.index).split(/[\s:—–,]+/).map((w) => w.replace(/^@/, ''))
+      .filter((w) => /^[A-Za-z0-9_.\-]+$/.test(w) && !/^#?\d+(?:er|re|e|ème|eme|è|°|\.|\))?$/i.test(w) && !/^(?:avec|score|de|pts?|points?|-)$/i.test(w));
+    if (!mots.length || !Number.isFinite(score)) { erreurs.push(l); continue; }
+    out.push({ nom: mots[0], score });
+  }
+  return { qualifies: out, erreurs };
+}
+app.post('/api/admin/tournaments/:id/reprise', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    if ((t.format || 'score') !== 'score') return res.status(400).json({ error: 'format', message: 'Réservé aux tournois au score.' });
+    if (!['draft', 'scheduled', 'seeded', 'cancelled'].includes(t.status)) {
+      return res.status(400).json({ error: 'bad_status', message: 'La coupe est déjà lancée : la reprise se fait avant de générer le bracket.' });
+    }
+    const { qualifies, erreurs } = lireQualifies((req.body || {}).qualifies);
+    if (erreurs.length) return res.status(400).json({ error: 'illisible', message: `Lignes illisibles : ${erreurs.join(' | ')}` });
+    if (qualifies.length < 2) return res.status(400).json({ error: 'not_enough_players', message: 'Il faut au moins deux qualifiés.' });
+    if (qualifies.length > 32) return res.status(400).json({ error: 'trop', message: '32 qualifiés au plus.' });
+    const inconnus = qualifies.filter((q) => !users[normalizeUsername(q.nom)]).map((q) => q.nom);
+    if (inconnus.length) return res.status(400).json({ error: 'inconnus', message: `Pseudos inconnus : ${inconnus.join(', ')}` });
+    const vus = new Set();
+    for (const q of qualifies) {
+      const u = normalizeUsername(q.nom);
+      if (vus.has(u)) return res.status(400).json({ error: 'doublon', message: `${q.nom} apparaît deux fois.` });
+      vus.add(u);
+    }
+    if (await db.rankingHasActiveTournament(t.ranking_id, t.id)) return res.status(409).json({ error: 'ranking_busy', message: 'Un autre tournoi est déjà programmé/en cours sur ce jeu.' });
+    closeTournamentWindow(t.ranking_id);
+    const players = qualifies.map((q, i) => ({ username: normalizeUsername(q.nom), seed: i + 1, qualif_score: q.score, status: 'qualified' }));
+    for (const p of players) await db.upsertRoundScore(t.id, 0, p.username, p.qualif_score, '');
+    await db.setTournamentPlayers(t.id, players);
+    await db.updateTournament(t.id, { status: 'seeded', current_round: 0, bracket_size: players.length, best_qualifier: players[0].username });
+    console.log(`[TOURNOI] #${t.id} repris : ${players.length} qualifiés posés à la main (${players.map((p) => p.username).join(', ')})`);
+    res.json({ ok: true, qualified: players });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/*
+ * LA FENÊTRE DU TOUR EN COURS, posée à la main : un tour qui a commencé hors
+ * du site (ou qu'on veut décaler). Les affiches pas encore tranchées du tour
+ * reçoivent [début, fin] ; la capture reprend jusqu'à la nouvelle fin. Avec
+ * `recuperer` (Swapou), les meilleurs scores déjà joués depuis le début sont
+ * relus dans le journal des parties de Challenge et retenus pour le tour.
+ * Une fin déjà passée clôt le tour au passage suivant du planificateur.
+ */
+app.post('/api/admin/tournaments/:id/fenetre', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    if ((t.format || 'score') !== 'score' || t.status !== 'bracket') return res.status(400).json({ error: 'bad_status', message: 'La coupe d’un tournoi au score doit être en cours.' });
+    const b = req.body || {};
+    const debut = new Date(b.debut), fin = new Date(b.fin);
+    if (isNaN(debut.getTime()) || isNaN(fin.getTime())) return res.status(400).json({ error: 'bad_dates', message: 'Dates invalides.' });
+    if (fin <= debut) return res.status(400).json({ error: 'end_before_start', message: 'La fin doit être après le début.' });
+    const round = Number(t.current_round) || 1;
+    const aJouer = (await db.getTournamentMatches(t.id)).filter((m) => Number(m.round) === round && m.player1 && m.player2 && !m.winner);
+    if (!aJouer.length) return res.status(400).json({ error: 'rien', message: 'Aucune affiche à jouer dans le tour en cours.' });
+    // Un début reporté dans le futur : le tour n'a pas commencé — ses paris se
+    // rouvrent, et ce qui a été pris avant le nouveau début est oublié.
+    const pasCommence = debut.getTime() > Date.now();
+    for (const m of aJouer) {
+      await db.updateTournamentMatch(m.id, Object.assign({ window_start: debut, window_end: fin },
+        pasCommence ? { paris_fermes: false, status: 'pending', score1: null, score2: null } : {}));
+    }
+    let oublies = 0;
+    if (pasCommence) {
+      oublies = await db.oublierRoundScoresAvant(t.id, round, debut);
+      tournamentRoundScores.delete(tRoundKey(t.id, round));
+    }
+    // La fenêtre en mémoire se rouvre avec la nouvelle fin (cf. avancerCoupe).
+    const win = tournamentWindows.get(t.ranking_id);
+    if (win && win.tid === t.id) closeTournamentWindow(t.ranking_id);
+    let recuperes = null;
+    if (b.recuperer) {
+      if (!/^swapou2/.test(t.ranking_id)) return res.status(400).json({ error: 'recuperation', message: 'La récupération des scores déjà joués ne vaut que pour Swapou. Saisis-les à la main.' });
+      const joueurs = [...new Set(aJouer.flatMap((m) => [m.player1, m.player2]).map((u) => String(u).toLowerCase()))];
+      const jusqua = new Date(Math.min(fin.getTime(), Date.now()));
+      const lus = await db.meilleursSwapouEntre(joueurs, debut, jusqua, swapouTournoiVerifie);
+      const deja = new Map((await db.getRoundScores(t.id, round)).map((r) => [String(r.username).toLowerCase(), r]));
+      recuperes = [];
+      for (const r of lus) {
+        const avant = deja.get(r.username);
+        const garde = !avant || isScoreBetter(t.ranking_id, Number(r.score), '', Number(avant.score), avant.data || '');
+        if (garde) {
+          await db.upsertRoundScore(t.id, round, r.username, Number(r.score), '');
+          const cache = tournamentRoundScores.get(tRoundKey(t.id, round));
+          if (cache) cache.set(r.username, { score: Number(r.score), data: '' });
+        }
+        recuperes.push({ username: r.username, score: Number(r.score), parties: r.parties, retenu: garde, avant: avant ? Number(avant.score) : null });
+      }
+    }
+    console.log(`[TOURNOI] #${t.id} tour ${round} : fenêtre posée à la main ${debut.toISOString()} → ${fin.toISOString()}${recuperes ? ` (${recuperes.length} score(s) relus)` : ''}`);
+    if (t.tours_auto) await avancerCoupe(await db.getTournament(t.id));
+    res.json({ ok: true, round, matchs: aJouer.length, debut: debut.toISOString(), fin: fin.toISOString(), recuperes, oublies, parisRouverts: pasCommence });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
