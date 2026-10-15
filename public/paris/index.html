@@ -171,6 +171,14 @@
   .coup { background: #fff6f4; border-left: 3px solid #E3756A; border-radius: 4px; padding: 6px 8px; margin: 0 0 6px; line-height: 1.5; }
   .coup .q { color: #6c8f3a; font-size: 10px; }
   .regbloc h3 { margin: 10px 0 6px; }
+  a.qui { color: #2C4A0F; font-weight: bold; text-decoration: none; border-bottom: 1px dotted #6c8f3a; }
+  a.qui:hover { color: #E3756A; }
+  .tout { display: block; margin: 6px auto 0; border: 0; border-radius: 6px; background: #D6F7B5; color: #2C4A0F; font: bold 11px Arial, sans-serif; padding: 5px 12px; cursor: pointer; }
+  .navjour { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 12px 4px; }
+  .navjour b { font-size: 13px; color: #2C4A0F; text-align: center; flex: 1; }
+  .navjour button { border: 0; border-radius: 6px; background: #D6F7B5; color: #2C4A0F; font: bold 12px Arial, sans-serif; padding: 5px 10px; cursor: pointer; }
+  .navjour button[disabled] { opacity: .35; cursor: default; }
+  .net.plus { color: #2f8f2f; font-weight: bold; } .net.moins { color: #b31111; font-weight: bold; }
 
   /* Dans une fenêtre du bureau (?cadre=1) : la fenêtre fait le cadre et le titre. */
   body.cadre { padding: 0; background: #fff; }
@@ -197,10 +205,12 @@
     <button data-vue="challenge" class="on">Challenge</button>
     <button data-vue="tournois">Tournois</button>
     <button data-vue="registre">Registre</button>
+    <button data-vue="parc">Le parc</button>
   </div>
   <div class="vue" id="vue-challenge"><p class="vide">Chargement…</p></div>
   <div class="vue" id="vue-tournois" hidden><p class="vide">Chargement…</p></div>
   <div class="vue" id="vue-registre" hidden></div>
+  <div class="vue" id="vue-parc" hidden></div>
 </div>
 <script>
 (function () {
@@ -670,7 +680,12 @@
       .then(json).then(rendreRegistre)
       .catch(function () { zoneR.innerHTML = '<p class="vide">Le serveur ne répond pas. Réessaie dans un instant.</p>'; });
   }
+  var classementEntier = false, dernierRegistre = null;
+  function lienParieur(nom, pseudo) {
+    return '<a href="#" class="qui" data-parieur="' + esc(pseudo) + '" title="Voir ses paris réglés">' + esc(nom) + '</a>';
+  }
   function rendreRegistre(d) {
+    dernierRegistre = d;
     var h = '';
     // Le Prunostiqueur du mois.
     var s = d.mois;
@@ -681,11 +696,16 @@
       h += '<p class="decouv" style="margin:0 0 6px">Cagnotte en jeu : <b>' + kz(s.cagnotte || 0) + '</b>' + (s.plafondCagnotte ? ' (au plus ' + kz(s.plafondCagnotte) + ')' : '')
         + ' — les mises des pronos que personne n’a vus venir. Le Prunostiqueur du mois la remporte, avec le titre.</p>';
       if (s.classement.length) {
-        h += '<table class="reg"><tbody>' + s.classement.map(function (c) {
+        var montres = classementEntier ? s.classement : s.classement.slice(0, 10);
+        h += '<table class="reg"><tbody>' + montres.map(function (c) {
           return '<tr' + (c.soi ? ' style="background:#FFF6F4"' : '') + '><td class="n" style="width:24px">' + (c.rang === 1 ? jeton('or') : c.rang === 2 ? jeton('argent') : c.rang === 3 ? jeton('bronze') : c.rang) + '</td>'
-            + '<td><b>' + esc(c.nom) + '</b>' + (c.soi ? ' <small>(toi)</small>' : '') + ' <small style="color:#6c8f3a">' + c.gagnes + ' gagné' + (c.gagnes > 1 ? 's' : '') + ' sur ' + c.paris + '</small></td>'
+            + '<td>' + lienParieur(c.nom, c.pseudo) + (c.soi ? ' <small>(toi)</small>' : '') + ' <small style="color:#6c8f3a">' + c.gagnes + ' gagné' + (c.gagnes > 1 ? 's' : '') + ' sur ' + c.paris + '</small></td>'
             + '<td class="n"><b class="' + (c.net >= 0 ? 'gagne' : 'perdu') + '">' + (c.net > 0 ? '+' : '') + nombre(c.net) + '</b></td></tr>';
         }).join('') + '</tbody></table>';
+        if (s.classement.length > 10) {
+          h += '<button class="tout" data-classement="' + (classementEntier ? 'haut' : 'tout') + '">'
+            + (classementEntier ? 'Ne montrer que les dix premiers' : 'Voir tout le classement (' + s.classement.length + ' prunostiqueurs)') + '</button>';
+        }
         if (d.moi && !s.moi) h += '<p class="decouv" style="margin:6px 0 0">Pas encore classé ce mois-ci : il te faut ' + s.minParis + ' paris réglés.</p>';
         else if (s.moi && s.moi.rang > 10) h += '<p class="decouv" style="margin:6px 0 0">Toi : ' + s.moi.rang + 'e (' + (s.moi.net > 0 ? '+' : '') + nombre(s.moi.net) + ').</p>';
       } else {
@@ -724,7 +744,7 @@
     h += '<div class="regbloc"><h3>Les gros coups du parc <small style="font-weight:normal;color:#6c8f3a">— 30 derniers jours, ' + kz(d.seuil || 100) + ' de bénéfice ou plus</small></h3>';
     if (d.grosCoups && d.grosCoups.length) {
       d.grosCoups.forEach(function (c) {
-        h += '<div class="coup"><b>' + esc(c.parieur) + '</b> a misé ' + kz(c.mise) + ' sur ' + esc(c.quoi)
+        h += '<div class="coup">' + (c.pseudo ? lienParieur(c.parieur, c.pseudo) : '<b>' + esc(c.parieur) + '</b>') + ' a misé ' + kz(c.mise) + ' sur ' + esc(c.quoi)
           + (c.cote ? ', à ' + cote(c.cote) : '') + ' : <b>' + kz(c.gain) + '</b> empochés. <span class="q">' + esc(date(c.quand)) + '</span></div>';
       });
     } else {
@@ -732,6 +752,87 @@
     }
     zoneR.innerHTML = h + '</div>';
   }
+
+  // ── LE PARC : les paris des autres, une fois réglés ───────────────────
+  // Un jour (le Challenge de ce jour, les matchs de tournoi réglés ce jour-là),
+  // ou un joueur (ses paris réglés des 30 derniers jours). Les paris en jeu ne
+  // se montrent jamais : on ne recopie pas les pronos du jour.
+  var zoneP = $('#vue-parc');
+  var parc = { jour: null, parieur: null };
+  function decrirePari(l) {
+    if (l.sorte === 'challenge') return iconePari(l.type) + ' ' + esc(l.choix) + ' ' + (l.type === 'or' ? 'en or' : 'médaillé') + ' à ' + esc(l.jeu || '');
+    return TROPHEE + ' la victoire de ' + esc(l.choix) + (l.affiche ? ' <small>(' + esc(l.affiche) + ')</small>' : '');
+  }
+  function resultatPari(l) {
+    var res = l.statut === 'gagne' ? '<b>+' + nombre(l.gain - l.mise) + '</b>'
+      : l.statut === 'perdu' ? '<small>−' + nombre(l.mise) + '</small>'
+      : l.statut === 'rembourse' ? '<small>rendu</small>' : '';
+    return '<span class="st ' + l.statut + '">' + STATUTS[l.statut] + '</span> ' + res;
+  }
+  function chargerParc() {
+    var url = parc.parieur ? '/api/paris/parieur?u=' + encodeURIComponent(parc.parieur)
+      : '/api/paris/parc' + (parc.jour ? '?jour=' + encodeURIComponent(parc.jour) : '');
+    return fetch(url, { cache: 'no-store' }).then(json).then(rendreParc)
+      .catch(function () { zoneP.innerHTML = '<p class="vide">Le serveur ne répond pas. Réessaie dans un instant.</p>'; });
+  }
+  function rendreParc(d) {
+    if (!d || !d.ok) { zoneP.innerHTML = '<p class="vide">' + esc((d && d.message) || 'Introuvable.') + '</p>'; return; }
+    var h = '';
+    if (parc.parieur) {
+      var b = d.bilan;
+      h += '<div class="navjour"><button data-parc-retour>‹ Le parc, jour par jour</button><b>Les paris de ' + esc(d.nom) + '</b><span></span></div>';
+      h += '<p class="decouv" style="margin:0 12px 4px">Ses paris réglés des 30 derniers jours (ceux en jeu restent secrets).</p>';
+      h += '<div class="bilan">'
+        + '<div><b>' + b.paris + '</b><span>paris réglés (' + b.gagnes + ' gagnés)</span></div>'
+        + '<div><b>' + nombre(b.mises) + '</b><span>kikooz misés</span></div>'
+        + '<div><b>' + nombre(b.gains) + '</b><span>kikooz reçus</span></div>'
+        + '<div><b class="' + (b.net >= 0 ? 'plus' : 'moins') + '">' + (b.net > 0 ? '+' : '') + nombre(b.net) + '</b><span>bilan</span></div></div>';
+      h += '<div class="regbloc">';
+      if (d.lignes.length) {
+        h += '<table class="reg"><thead><tr><th class="q-date">Réglé le</th><th>Pari</th><th>Mise</th><th>Cote</th><th>Résultat</th></tr></thead><tbody>'
+          + d.lignes.map(function (l) {
+            return '<tr><td class="q-date">' + esc(date(l.quand)) + '</td><td>' + decrirePari(l) + '</td><td class="n">' + nombre(l.mise) + '</td>'
+              + '<td class="n">' + (l.cote ? cote(l.cote) : '<small>mutuel</small>') + '</td><td>' + resultatPari(l) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      } else h += '<p class="vide" style="padding-left:0">Aucun pari réglé ces 30 derniers jours.</p>';
+      zoneP.innerHTML = h + '</div>';
+      return;
+    }
+    parc.jour = d.jour;
+    h += '<div class="navjour"><button data-parc-jour="' + esc(d.precedent) + '">‹ veille</button><b>' + esc(d.lisible) + '</b>'
+      + '<button data-parc-jour="' + esc(d.suivant || '') + '"' + (d.suivant ? '' : ' disabled') + '>lendemain ›</button></div>';
+    h += '<p class="decouv" style="margin:0 12px 4px">Les paris d’un jour se dévoilent une fois réglés : le Challenge de ce jour, et les matchs de tournoi réglés ce jour-là. Touche un nom pour voir tous ses paris.</p>';
+    h += '<div class="regbloc">';
+    if (d.bilan.length) {
+      h += '<h3>Le bilan du jour</h3><table class="reg"><thead><tr><th></th><th>Prunostiqueur</th><th>Gagnés</th><th>Misé</th><th>Bilan</th></tr></thead><tbody>'
+        + d.bilan.map(function (b, i) {
+          return '<tr><td class="n" style="width:20px">' + (i + 1) + '</td><td>' + lienParieur(b.nom, b.pseudo) + '</td><td class="n">' + b.gagnes + '/' + b.paris + '</td>'
+            + '<td class="n">' + nombre(b.mises) + '</td><td class="n"><span class="net ' + (b.net >= 0 ? 'plus' : 'moins') + '">' + (b.net > 0 ? '+' : '') + nombre(b.net) + '</span></td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+    if (d.lignes.length) {
+      h += '<h3>Tous les paris</h3><table class="reg"><thead><tr><th>Qui</th><th>Pari</th><th>Mise</th><th>Cote</th><th>Résultat</th></tr></thead><tbody>'
+        + d.lignes.map(function (l) {
+          return '<tr><td>' + lienParieur(l.parieur, l.pseudo) + '</td><td>' + decrirePari(l) + '</td><td class="n">' + nombre(l.mise) + '</td>'
+            + '<td class="n">' + (l.cote ? cote(l.cote) : '<small>mutuel</small>') + '</td><td>' + resultatPari(l) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    } else h += '<p class="vide" style="padding-left:0">Aucun pari réglé ce jour-là.</p>';
+    zoneP.innerHTML = h + '</div>';
+  }
+  document.addEventListener('click', function (ev) {
+    var t = ev.target.closest && ev.target.closest('[data-parieur],[data-parc-jour],[data-parc-retour],[data-classement]');
+    if (!t) return;
+    ev.preventDefault();
+    if (t.hasAttribute('data-classement')) {
+      classementEntier = t.getAttribute('data-classement') === 'tout';
+      if (dernierRegistre) rendreRegistre(dernierRegistre);
+      return;
+    }
+    if (t.hasAttribute('data-parieur')) { parc.parieur = t.getAttribute('data-parieur'); montrer('parc'); return; }
+    if (t.hasAttribute('data-parc-retour')) { parc.parieur = null; chargerParc(); return; }
+    var j = t.getAttribute('data-parc-jour');
+    if (j && !t.disabled) { parc.jour = j; parc.parieur = null; chargerParc(); }
+  });
 
   // ── Les onglets ────────────────────────────────────────────────────────
   function montrer(v) {
@@ -741,9 +842,11 @@
     zoneC.hidden = v !== 'challenge';
     zoneT.hidden = v !== 'tournois';
     zoneR.hidden = v !== 'registre';
+    zoneP.hidden = v !== 'parc';
     if (v === 'challenge') rendreChallenge();
     if (v === 'tournois') rendreTournois();
     if (v === 'registre') { if (!zoneR.innerHTML) zoneR.innerHTML = '<p class="vide">Chargement…</p>'; chargerRegistre(); }
+    if (v === 'parc') { zoneP.innerHTML = '<p class="vide">Chargement…</p>'; chargerParc(); }
   }
   document.querySelector('.onglets').addEventListener('click', function (ev) {
     var b = ev.target.closest('button[data-vue]');
@@ -752,6 +855,7 @@
 
   Promise.all([chargerChallenge(), chargerTournois()]).then(function () {
     if (/registre/.test(location.hash)) montrer('registre');
+    else if (/parc/.test(location.hash)) montrer('parc');
     else if (/tournois/.test(location.hash) || (etatC && !etatC.actif && etatT && etatT.tournois && etatT.tournois.length)) montrer('tournois');
   });
   // Les cotes des tournois bougent : on relit toutes les trente secondes,

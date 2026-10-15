@@ -358,6 +358,21 @@ test('la nuit passe : le roll règle au prorata, aucun kikooz créé ni détruit
   const textes = (j.events || []).map((x) => x.text).join(' | ');
   assert.match(textes, /Achat du produit "Pari : grenade en or à Swapou 2/);
   assert.match(textes, /45 kikooz obtenus par un pari gagné \(grenade en or à Swapou 2/);
+  // LA TRANSPARENCE : réglés, les paris de la veille se montrent à tous ; ceux
+  // du jour (et de demain) restent cachés — on retombe sur la veille.
+  const parc = await (await fetch(BASE + '/api/paris/parc?jour=' + hier)).json();
+  assert.ok(parc.ok, JSON.stringify(parc));
+  assert.equal(parc.jour, hier);
+  assert.equal(parc.lignes.length, 8);
+  const orAnais = parc.lignes.find((l) => l.pseudo === 'anais' && l.type === 'or');
+  assert.deepEqual([orAnais.choix, orAnais.jeu, orAnais.statut, orAnais.gain], ['grenade', 'Swapou 2', 'gagne', 45]);
+  assert.equal(parc.bilan[0].pseudo, 'anais', 'le meilleur du jour en tête');
+  assert.ok(parc.bilan.find((b) => b.pseudo === 'cyril').net < 0, 'les déroutes aussi');
+  assert.equal(parc.suivant, null, 'pas de lendemain : il n’est pas réglé');
+  assert.equal((await (await fetch(BASE + '/api/paris/parc?jour=' + jourParis(1))).json()).jour, hier, 'demain ne se dévoile pas');
+  const anais = await (await fetch(BASE + '/api/paris/parieur?u=anais')).json();
+  assert.deepEqual([anais.nom, anais.lignes.length, anais.bilan.gagnes, anais.bilan.net], ['anais', 2, 2, 83 - anais.bilan.mises]);
+  assert.equal((await fetch(BASE + '/api/paris/parieur?u=personne')).status, 404);
   // DIMITRI annonce les gros coups (bénéfice ≥ 5), en un message, ravi.
   let annonces = [];
   for (let i = 0; i < 40 && !annonces.length; i++) {

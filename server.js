@@ -12395,12 +12395,13 @@ app.get('/api/paris/registre', async (req, res) => {
     const passee = moisParis(moisDecale(sem.cle, -1) + '-01');
     const enCours = await db.classementParis(sem.premier, sem.dernier, 3);
     const avant = (await db.classementParis(passee.premier, passee.dernier, 3))[0];
-    const aNommer = enCours.slice(0, 10).map((c) => c.username).concat(avant ? [avant.username] : []);
+    const aNommer = enCours.map((c) => c.username).concat(avant ? [avant.username] : []);
     if (aNommer.length) for (const r of await db.fichesComptes(aNommer)) noms.set(r.username, r.display_name || getDisplayName(r.username));
     const monRang = moi ? enCours.findIndex((c) => c.username === moi) : -1;
     const mois = {
       lisible: sem.lisible, minParis: 3,
-      classement: enCours.slice(0, 10).map((c, i) => ({ rang: i + 1, nom: nomDe(c.username), soi: c.username === moi, net: c.net, paris: c.paris, gagnes: c.gagnes })),
+      // Le classement ENTIER (la page n'en montre que le haut, et le reste sur demande).
+      classement: enCours.map((c, i) => ({ rang: i + 1, nom: nomDe(c.username), pseudo: c.username, soi: c.username === moi, net: c.net, paris: c.paris, gagnes: c.gagnes })),
       moi: monRang >= 0 ? { rang: monRang + 1, net: enCours[monRang].net } : null,
       passee: avant && avant.net > 0 ? { lisible: passee.lisible, nom: nomDe(avant.username), net: avant.net } : null,
       cagnotte: await db.prunosticsCagnotte().catch(() => 0),
@@ -12408,12 +12409,77 @@ app.get('/api/paris/registre', async (req, res) => {
     };
     res.json({
       ok: true, moi: moi || null, seuil, bilan, lignes, mois,
-      grosCoups: coups.map((c) => ({ quand: c.regle_le, parieur: nomDe(c.username), quoi: quoi(c), mise: c.mise,
+      grosCoups: coups.map((c) => ({ quand: c.regle_le, parieur: nomDe(c.username), pseudo: String(c.username || '').toLowerCase(), quoi: quoi(c), mise: c.mise,
         cote: c.cote == null ? null : Number(c.cote), gain: c.gain })),
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
+});
+
+/*
+ * LA TRANSPARENCE DES PRUNOSTICS : les mises des autres, une fois réglées.
+ * Un pari en jeu reste secret (on ne copie pas les pronos du jour) ; réglé,
+ * il devient public — qui a misé quoi sur qui, et ce qu'il a touché. De quoi
+ * comprendre comment les meilleurs s'y prennent… et savourer les déroutes.
+ *   /api/paris/parc?jour=   tous les paris réglés d'un jour (le Challenge de
+ *                           ce jour, et les matchs de tournoi réglés ce jour-là)
+ *   /api/paris/parieur?u=   les paris réglés d'un joueur, 30 derniers jours
+ */
+async function parisLignesPubliques(rows) {
+  const noms = new Map();
+  const cles = [...new Set(rows.flatMap((p) => [p.username, p.choix]).map((u) => String(u || '').toLowerCase()).filter(Boolean))];
+  if (cles.length) for (const r of await db.fichesComptes(cles)) noms.set(r.username, r.display_name || getDisplayName(r.username));
+  const nomDe = (u) => noms.get(String(u || '').toLowerCase()) || getDisplayName(String(u || '').toLowerCase());
+  const jeux = jeuxChallengeParis();
+  return rows.map((p) => {
+    const j = p.sorte === 'challenge' ? jeux.find((x) => x.cle === p.jeu) : null;
+    return {
+      sorte: p.sorte, quand: p.regle_le, parieur: nomDe(p.username), pseudo: String(p.username || '').toLowerCase(),
+      choix: nomDe(p.choix), type: p.type || null, jeu: p.sorte === 'challenge' ? (j ? j.nom : p.jeu) : null, cleJeu: p.jeu || null,
+      jour: p.jour || null, tournoi: p.tournoi || null, affiche: p.affiche || null,
+      mise: Number(p.mise) || 0, cote: p.cote == null ? null : Number(p.cote), statut: p.statut, gain: Number(p.gain) || 0,
+    };
+  });
+}
+function parisBilanParJoueur(lignes) {
+  const par = new Map();
+  for (const l of lignes) {
+    if (l.statut !== 'gagne' && l.statut !== 'perdu') continue;
+    const b = par.get(l.pseudo) || { pseudo: l.pseudo, nom: l.parieur, paris: 0, gagnes: 0, mises: 0, gains: 0 };
+    b.paris++; if (l.statut === 'gagne') b.gagnes++;
+    b.mises += l.mise; b.gains += l.gain;
+    par.set(l.pseudo, b);
+  }
+  return [...par.values()].map((b) => Object.assign(b, { net: b.gains - b.mises })).sort((a, b) => b.net - a.net || b.gains - a.gains);
+}
+app.get('/api/paris/parc', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, lignes: [], bilan: [] });
+  try {
+    const aujourdhui = parisDayKey();
+    const hier = jourDecale(aujourdhui, -1);
+    let jour = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.jour || '')) ? String(req.query.jour) : hier;
+    // Le jour en cours (et demain) se joue encore : rien n'est réglé, rien ne se montre.
+    if (jour >= aujourdhui) jour = hier;
+    const lignes = await parisLignesPubliques(await db.parisReglesDuJour(jour));
+    res.json({ ok: true, jour, lisible: jourLisible(jour), precedent: jourDecale(jour, -1), suivant: jour < hier ? jourDecale(jour, 1) : null,
+      lignes, bilan: parisBilanParJoueur(lignes) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get('/api/paris/parieur', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, lignes: [] });
+  try {
+    const u = normalizeUsername(req.query.u);
+    const fiche = u ? (await db.fichesComptes([u]))[0] : null;
+    if (!fiche) return res.status(404).json({ ok: false, message: 'Ce joueur n’existe pas.' });
+    const depuis = Date.now() - 30 * 86400000;
+    const rows = (await db.registreParis(u, 500))
+      .filter((p) => p.statut !== 'ouvert' && p.regle_le && new Date(p.regle_le).getTime() >= depuis)
+      .map((p) => Object.assign({ username: u }, p));
+    const lignes = await parisLignesPubliques(rows);
+    const b = parisBilanParJoueur(lignes)[0] || { paris: 0, gagnes: 0, mises: 0, gains: 0, net: 0 };
+    res.json({ ok: true, pseudo: u, nom: fiche.display_name || getDisplayName(u), lignes, bilan: b });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // UN joueur, avant de parier : celui qu'on cherche hors de la liste — son

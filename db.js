@@ -5063,6 +5063,22 @@ async function supprimerPartieDifferee(id) {
 
 // Les gros coups du parc depuis une date : les paris gagnés dont le gain net
 // atteint le seuil — ceux que Dimitri annonce.
+// Les paris RÉGLÉS d'un jour, de tout le parc : ceux du Challenge de ce jour
+// et ceux des tournois réglés ce jour-là (heure de Paris).
+async function parisReglesDuJour(jour) {
+  const { rows } = await pool.query(
+    `(SELECT 'tournoi' AS sorte, p.id, p.regle_le, LOWER(p.username) AS username, p.choix, p.mise, p.cote, p.statut, p.gain,
+             p.affiche, t.name AS tournoi, NULL AS jour, NULL AS jeu, NULL AS type
+        FROM tournament_paris p LEFT JOIN tournaments t ON t.id = p.tournament_id
+       WHERE p.statut IN ('gagne', 'perdu', 'rembourse')
+         AND to_char(p.regle_le AT TIME ZONE 'Europe/Paris', 'YYYY-MM-DD') = $1)
+     UNION ALL
+     (SELECT 'challenge', c.id, c.regle_le, LOWER(c.username), c.choix, c.mise, c.cote, c.statut, c.gain,
+             NULL, NULL, c.jour, c.jeu, c.type
+        FROM challenge_paris c WHERE c.jour = $1 AND c.statut IN ('gagne', 'perdu', 'rembourse'))
+     ORDER BY sorte, jeu, mise DESC, id`, [String(jour)]);
+  return rows;
+}
 async function grosCoupsParis(depuis, seuil, limit = 30) {
   const { rows } = await pool.query(
     `(SELECT 'tournoi' AS sorte, p.id, p.regle_le, p.username, p.choix, p.mise, p.cote, p.gain,
@@ -5173,6 +5189,7 @@ module.exports = {
   quetesEchangerIndividuelle,
   quetesRemplacerIndividuelles,
   meilleursSwapouEntre,
+  parisReglesDuJour,
   oublierRoundScoresAvant,
   quetesOublierProgres,
   quetesPremiersPasFaits,
