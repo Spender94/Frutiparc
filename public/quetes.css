@@ -39,7 +39,7 @@ body:not(.bureau-frutiz) .home-tile[data-go="quetes"] .ico-baluchon { transform:
 }
 
 /* ── La feuille (mobile) et la fenêtre (bureau) ─────────────────────────── */
-.sheet.sheet-quetes { height: 90vh; max-height: 90vh; }
+.sheet.sheet-quetes { height: 90vh; max-height: 90vh; height: calc(var(--app-h, 100dvh) * .9); max-height: calc(var(--app-h, 100dvh) * .9); }
 .sheet.sheet-quetes .sheet-head .sheet-ico { width: 20px; height: 17px; }
 #quetes-corps { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #FFFFFF;
   display: flex; flex-direction: column; }

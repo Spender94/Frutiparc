@@ -132,6 +132,10 @@
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
     background: #ffffff; border: 1px solid #6c6c6c;
     border-radius: 10px 10px 0 0; max-height: 76vh; display: flex; flex-direction: column;
+    /* LA HAUTEUR VISIBLE, pas celle des « vh » : sur mobile, 100vh se mesure
+       barre d'adresse repliée — une feuille de 90vh glissait alors son en-tête
+       (et sa croix) sous la barre. --app-h suit window.visualViewport. */
+    max-height: calc(var(--app-h, 100dvh) * .76);
     transform: translateY(110%); visibility: hidden;
     transition: transform .25s ease, visibility 0s linear .25s;
     box-shadow: 0 0 0 1px #DDDDDD, 0 -8px 24px rgba(44,74,15,.3);
@@ -162,7 +166,11 @@
     background: #F8F866; border: 1px solid #EAEA0E; border-radius: 6px;
     box-shadow: 0 0 0 1px #DDDDDD;
   }
-  .sheet.sheet-paris { height: 90vh; max-height: 90vh; }
+  .sheet.sheet-paris { height: 90vh; max-height: 90vh; height: calc(var(--app-h, 100dvh) * .9); max-height: calc(var(--app-h, 100dvh) * .9); }
+  /* La croix : une vraie cible pour le pouce. */
+  .sheet .sheet-head { padding-top: 8px; padding-bottom: 8px; }
+  .sheet .sheet-head button { min-width: 40px; min-height: 36px; border-radius: 8px; }
+  .sheet .sheet-head button:active { background: rgba(44,74,15,.12); }
   #paris-cadre { flex: 1; min-height: 0; width: 100%; border: 0; display: block; background: #fff; }
   .sheet-preview { display: none; justify-content: center; margin-bottom: 10px; }
   #bouille-sheet-preview {
@@ -626,7 +634,7 @@
     width: 234px; box-sizing: border-box;
     /* Sur petit écran, le contenu défile dans le cadre : « valider » reste
        toujours atteignable. */
-    max-height: 92vh; max-height: 92dvh; overflow-y: auto;
+    max-height: 92vh; max-height: 92dvh; max-height: calc(var(--app-h, 100dvh) * .92); overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     background: #FFFFFF; border-radius: 6px;
     box-shadow: 0 0 0 1px #999999, 0 6px 18px rgba(0, 0, 0, .35);
@@ -832,7 +840,7 @@
   .lg-panneau {
     flex: 0 0 auto; margin: 6px 6px 0; padding: 7px 9px; border-radius: 8px;
     background: #FFF4D6; color: #4A3210; border: 1px solid #D9B66B; font-size: 13px;
-    max-height: 42vh; overflow-y: auto; transition: background .6s, color .6s;
+    max-height: 42vh; max-height: calc(var(--app-h, 100dvh) * .42); overflow-y: auto; transition: background .6s, color .6s;
   }
   .lg-panneau.lg-nuit, .lg-panneau.lg-soir { background: #1E2142; color: #E6E4FF; border-color: #3B3F7A; }
   .lg-panneau.lg-vote, .lg-panneau.lg-chasseur { background: #FFE3C4; border-color: #E59A4A; }
@@ -1100,7 +1108,7 @@
      copies. Les ids restent sur l'original, ils ne servent plus qu'au mobile. */
   .fiche-boite {
     position: relative;
-    width: min(340px, 94vw); max-height: 92vh; overflow-y: auto;
+    width: min(340px, 94vw); max-height: 92vh; max-height: calc(var(--app-h, 100dvh) * .92); overflow-y: auto;
     background: #fff; border: 1.5px solid #545454; border-radius: 8px;
     /* L'ombre portée court sur TOUS les côtés — une lueur sombre centrée,
        et une seconde plus basse pour poser la carte sur le fond. */
@@ -14073,6 +14081,48 @@
       .then(function (d) { if (d && d.needsBouille) openFbEditor(d.bouille); })
       .catch(function () {});
   }
+
+  /*
+   * LE BOUTON RETOUR DU TÉLÉPHONE ferme la feuille ouverte (Prunostics,
+   * quêtes, boutique…) au lieu de quitter le site. Chaque feuille qui s'ouvre
+   * sur mobile pose une entrée d'historique ; « retour » referme la dernière
+   * ouverte (par sa croix, pour que chacune fasse son rangement), et une
+   * feuille fermée par sa croix rend l'entrée qu'elle avait posée. Le bureau
+   * (fenêtres) n'est pas concerné.
+   */
+  (function () {
+    if (!window.history || !history.pushState || !window.MutationObserver) return;
+    var pile = [];              // les feuilles ouvertes, la dernière en haut
+    var parRetour = 0;          // fermetures demandées par le bouton retour
+    var ignorer = 0;            // retours d'historique que l'on a faits soi-même
+    function surBureau() { return document.body.classList.contains("bureau-frutiz"); }
+    new MutationObserver(function (muts) {
+      muts.forEach(function (m) {
+        var f = m.target;
+        if (!f.classList || !f.classList.contains("sheet")) return;
+        var ouverte = f.classList.contains("show");
+        var i = pile.indexOf(f);
+        if (ouverte && i < 0 && !surBureau()) {
+          pile.push(f);
+          try { history.pushState({ feuille: true }, ""); } catch (e) {}
+        } else if (!ouverte && i >= 0) {
+          pile.splice(i, 1);
+          if (parRetour) { parRetour--; return; }
+          if (history.state && history.state.feuille) { ignorer++; history.back(); }
+        }
+      });
+    }).observe(document.body, { attributes: true, attributeFilter: ["class"], subtree: true });
+    window.addEventListener("popstate", function () {
+      if (ignorer) { ignorer--; return; }
+      var f = pile[pile.length - 1];
+      if (!f) return;
+      parRetour++;
+      var b = f.querySelector(".sheet-head button");
+      if (b) b.click(); else f.classList.remove("show");
+      // La croix n'a rien fermé (une confirmation refusée…) : la feuille reste.
+      if (f.classList.contains("show")) { parRetour--; try { history.pushState({ feuille: true }, ""); } catch (e) {} }
+    });
+  })();
 
   // ── Mobile keyboard handling ─────────────────────────────────────────────
   // When the on-screen keyboard opens, the browser shrinks the "visual
