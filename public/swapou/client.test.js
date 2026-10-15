@@ -66,8 +66,8 @@ SW.handleMouseMove(btJouer.curX, btJouer.curY);
 menu.onClickDown();
 pump(120, 2);
 assert(menu.phase === 20, 'phase modes de jeu');
-assert(menu.btList.length === 5, '5 boutons de modes');
-assert(menu.btList[3].active === false, 'classique verrouillé sans $sucre');
+assert(menu.btList.length === 6, '6 boutons de modes (challenge, essai, duel, pot au feu, classique, retour)');
+assert(menu.btList[4].active === false, 'classique verrouillé sans $sucre');
 
 // clic sur « challenge »
 const btChal = menu.btList[0];

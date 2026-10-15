@@ -43,6 +43,10 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     players: [-1, -1],
     difficulty: 0,
     gameMode: 0,
+    // LE MODE ESSAI : une partie de Challenge à l'identique (mêmes règles,
+    // mêmes combos, mêmes pictos), mais illimitée — pas de FD — et hors
+    // classement : aucun score n'est envoyé. gameMode reste CHALLENGE.
+    essai: false,
     histoPhase: 0,
     chars: [false],
   };
@@ -2289,6 +2293,8 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       dessinerScore(ctx, this.viewScore, 68.4, 9.15, 1.6143, '#aa724b');
       U.text(ctx, 'pts', 61.7, 56.25,
         { size: 12, color: '#b37851', font: 'cipher', align: 'left', baseline: 'alphabetic' });
+      // Une partie d'essai le dit : son score ne part pas au classement.
+      if (SW.Data.essai) U.text(ctx, 'PARTIE D’ESSAI', 74, 112, { size: 11, color: '#fff1c9', align: 'center', baseline: 'alphabetic' });
     }
     // Compteur de coups : sur SON parchemin, à la même place relative que le
     // score sur le sien, surmonté de son étiquette. N'apparaît que si le serveur

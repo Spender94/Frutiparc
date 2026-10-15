@@ -283,14 +283,19 @@
       case 20: {
         this.attachTitle(' Modes ');
         this.attachButton(0, ' challenge ', 30, 'Affrontez les autres Frutiz sur le classement');
-        this.attachButton(1, ' duel ', 40, 'Match amical en Un contre Un');
-        this.attachButton(2, 'pot au feu', 50, 'Progressez et accédez à de nouveaux personnages');
-        const bt = this.attachButton(3, ' classique ', 60, 'La version classique de swapou');
+        this.attachButton(1, ' essai ', 70, 'Le Challenge pour s\'entraîner : illimité, hors classement (les pictos comptent)');
+        this.attachButton(2, ' duel ', 40, 'Match amical en Un contre Un');
+        this.attachButton(3, 'pot au feu', 50, 'Progressez et accédez à de nouveaux personnages');
+        const bt = this.attachButton(4, ' classique ', 60, 'La version classique de swapou');
         const items = Manager.client.slots[0] && Manager.client.slots[0].$items;
         if (!items || !items[6]) bt.disable();
-        this.attachButton(4, ' retour ', -1, '');
+        this.attachButton(5, ' retour ', -1, '');
         break;
       }
+      case 70:
+        this.attachFaces(0, this.phase + 1, ' Personnage ');
+        this.attachButton(4, ' retour ', -1, '');
+        break;
       case 30:
         this.attachFaces(0, this.phase + 1, ' Personnage ');
         this.attachButton(4, ' retour ', -1, '');
@@ -331,7 +336,12 @@
   };
   Menu.prototype.onHidden = function () {
     switch (this.phase) {
-      case 31: this.end(SW.Data.CHALLENGE); break;
+      case 31: SW.Data.essai = false; this.end(SW.Data.CHALLENGE); break;
+      case 71:
+        SW.Data.essai = true;
+        this.end(SW.Data.CHALLENGE);
+        this.onEnd = Manager.startEssai;
+        break;
       case 41: break;
       case 42: break;
       case 43:
@@ -1023,6 +1033,13 @@
         })
         .catch(function () { graine.then(function () { Manager.started(); }); });
     },
+    // LE MODE ESSAI : la partie de Challenge, sans réserver de FD ni de graine
+    // (rien n'est envoyé au classement, il n'y a rien à vérifier).
+    startEssai: function () {
+      SW.Data.essai = true;
+      if (Manager.client) Manager.client.partie = null;
+      Manager.started();
+    },
     startDuel: function () {
       Manager.mode.destroy();
       Manager.client.direEnPartie(true);
@@ -1042,6 +1059,7 @@
       if (Manager.mode) Manager.mode.destroy();
       if (Manager.client) Manager.client.direEnPartie(false);
       SW.Data.histoPhase = 0;
+      SW.Data.essai = false;
       Manager.mode = new Menu();
     },
     started: function () {
@@ -1083,6 +1101,14 @@
           break;
         }
         case SW.Data.CHALLENGE:
+          // Essai : pas de classement, pas de record — les pictos gagnés en
+          // route sont déjà rangés dans la fiche (TItem.addCombo).
+          if (SW.Data.essai) {
+            Manager.client.partieFinie = null;
+            Manager.client.direEnPartie(false);
+            g.scoreSaved(score, 0, 0, 0, 'Partie d\'essai : score non classé.\nLes pictos gagnés sont gardés.');
+            break;
+          }
           g.connecting();
           g.netLock();
           Manager.client.doEndGame(score);
