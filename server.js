@@ -11508,7 +11508,7 @@ function quetesEtatPour(username) {
       ? { possible: quetesEchangePossible(u), fait: indiv && indiv.echange ? { titre: indiv.echange.deTitre } : null } : null,
     bonus: quetesV2(S.lundi) && quetesReglages.paliers.bonusXp
       ? { xp: quetesReglages.paliers.bonusXp, verse: !!((quetesProgres.get(u) || new Map()).get(QUETES_BONUS_ID) || {}).faitAt } : null,
-    primes: quetesPrimesVue(),
+    primes: quetesPrimesVue(u),
     gromelin: { nom: getDisplayName('gromelin'), bouille: (users.gromelin && users.gromelin.fbouille) || GROMELIN_BOUILLE },
   };
 }
@@ -11555,6 +11555,12 @@ function quetesPrimesDeLaSemaine() {
   }
   return S;
 }
+// Les derniers records battus (en mémoire) : qui, devant qui, payé ou pourquoi pas.
+const quetesPrimesJournal = [];
+function quetesPrimesNoter(e) {
+  quetesPrimesJournal.unshift(Object.assign({ at: Date.now() }, e));
+  if (quetesPrimesJournal.length > 50) quetesPrimesJournal.length = 50;
+}
 function quetesPrimeScore(u, evt) {
   const R = quetesReglages.primes;
   if (!R.actif || !quetesPrimesClassements().includes(evt.rk)) return;
@@ -11566,7 +11572,24 @@ function quetesPrimeScore(u, evt) {
   const ancien = quetesRecordsParc.get(evt.rk);
   if (ancien && !isScoreBetter(evt.rk, n, data, ancien.score, ancien.data)) return;
   quetesRecordsParc.set(evt.rk, { username: u, score: n, data });
-  if (!payable || !ancien || ancien.username === u || quetesPrimesPrises.has(evt.rk) || !R.gain) return;
+  const nomRk = (RANKINGS[evt.rk] && RANKINGS[evt.rk].name) || evt.rk;
+  // Pourquoi ce record ne paie pas : on le dit au joueur (il croyait toucher
+  // la prime) et on le note pour l'admin.
+  const deja = quetesPrimesPrises.get(evt.rk);
+  const issue = !payable || !R.gain ? 'fermee' : !ancien ? 'premier' : ancien.username === u ? 'propre' : deja ? 'prise' : 'payee';
+  quetesPrimesNoter({ rk: evt.rk, nom: nomRk, username: u, score: n, data, ancien: ancien ? ancien.username : null,
+    ancienScore: ancien ? ancien.score : null, issue, par: deja ? deja.username : null });
+  if (issue === 'propre') {
+    addAndNotifyUserLog(u, { type: USER_LOG_TYPE.QUETE, flNew: true,
+      content: `Nouveau record absolu (${nomRk}) : bravo ! C'était déjà le tien, et la mise à prix ne paie que si l'on détrône quelqu'un d'autre.` });
+  } else if (issue === 'prise') {
+    addAndNotifyUserLog(u, { type: USER_LOG_TYPE.QUETE, flNew: true,
+      content: `Nouveau record absolu (${nomRk}), devant ${getDisplayName(ancien.username)} : bravo ! La prime de cette semaine sur ce record a déjà été prise par ${getDisplayName(deja.username)} ; une nouvelle s'ouvre lundi.` });
+  }
+  if (issue !== 'payee') {
+    console.log(`[QUETES] ${u} bat le record ${evt.rk} (${ancien ? `${ancien.username} : ${ancien.score}` : 'aucun'} → ${n}) : pas de prime (${issue})`);
+    return;
+  }
   const prise = { username: u, score: n, data, ancien: ancien.username, ancienScore: ancien.score, gain: R.gain, prisAt: Date.now() };
   quetesPrimesPrises.set(evt.rk, prise);
   const payer = () => {
@@ -11588,7 +11611,7 @@ function quetesValeurLisible(rk, score, data) {
   const v = Quetes.valeurDe(m, { type: 'score', rk, v: Number(score), data: String(data || '') });
   return v == null ? Quetes.nombre(score) : Quetes.formater(m, v);
 }
-function quetesPrimesVue() {
+function quetesPrimesVue(moi) {
   if (!quetesReglages.primes.actif) return [];
   if (!quetesV2(quetesPrimesDeLaSemaine().lundi)) return [];
   return quetesPrimesClassements().map((rk) => {
@@ -11602,6 +11625,7 @@ function quetesPrimesVue() {
       record: quetesValeurLisible(rk, rec.score, rec.data), tenant: getDisplayName(rec.username), tenantPseudo: rec.username,
       gain: quetesReglages.primes.gain, ouverte: !prise,
       prisePar: prise ? getDisplayName(prise.username) : null,
+      moi: !!moi && rec.username === String(moi).toLowerCase(),
     };
   }).filter(Boolean);
 }
@@ -11827,6 +11851,9 @@ app.get('/api/admin/quetes', adminScope('quetes'), async (req, res) => {
       v2: quetesV2(S.lundi), paliers: await quetesAdminPaliers(S), primes: quetesPrimesVue(),
       primesPrises: Array.from(quetesPrimesPrises.entries()).map(([rk, x]) => ({ rk, nom: (RANKINGS[rk] || {}).name || rk,
         par: getDisplayName(x.username), ancien: x.ancien ? getDisplayName(x.ancien) : null, record: quetesValeurLisible(rk, x.score, x.data), gain: x.gain })),
+      primesJournal: quetesPrimesJournal.map((e) => ({ at: e.at, nom: e.nom, par: getDisplayName(e.username), record: quetesValeurLisible(e.rk, e.score, e.data),
+        ancien: e.ancien ? getDisplayName(e.ancien) : null, ancienRecord: e.ancienScore == null ? null : quetesValeurLisible(e.rk, e.ancienScore, ''),
+        issue: e.issue, prisePar: e.par ? getDisplayName(e.par) : null })),
     });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });

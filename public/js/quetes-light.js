@@ -143,7 +143,7 @@
     if (!l.length) return '';
     return '<div class="qt-enseigne" data-texte="Mises à prix"><span>Mises à prix</span></div>'
       + '<div class="qt-note qt-note-primes">Bats un <b>record absolu du parc</b> au Challenge en détrônant son tenant : Gromelin paie la prime. '
-      + 'Une prime par record et par semaine.</div>'
+      + 'Une prime par record et par semaine ; battre son propre record ne compte pas.</div>'
       + '<div class="qt-avis">' + l.map(function (p) {
         var portrait = PORTRAIT[p.jeu];
         return '<div class="qt-affiche' + (p.ouverte ? '' : ' prise') + '">'
@@ -152,7 +152,8 @@
           + '<div class="qt-aff-record">' + esc(p.record) + '</div>'
           + '<div class="qt-aff-tenant">record de <b>' + esc(p.tenant) + '</b></div>'
           + '<div class="qt-aff-prime">' + piece(p.gain) + '</div>'
-          + (p.ouverte ? '' : '<span class="qt-aff-prise">Prise par ' + esc(p.prisePar) + '</span>')
+          + (p.ouverte ? (p.moi ? '<span class="qt-aff-prise qt-aff-moi">Ton record : à toi de le défendre !</span>' : '')
+            : '<span class="qt-aff-prise">Prise par ' + esc(p.prisePar) + '</span>')
           + '</div>';
       }).join('') + '</div>';
   }

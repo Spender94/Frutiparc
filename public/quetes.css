@@ -222,6 +222,8 @@ body.bureau-frutiz #quetes-sheet-backdrop { display: none !important; }
 .qt-aff-prise { position: absolute; left: 6px; right: 6px; top: 44%; transform: rotate(-12deg); font-size: 11px; font-weight: bold;
   color: rgba(192,40,26,.9); border: 2px double rgba(192,40,26,.85); border-radius: 5px; background: rgba(255,245,220,.7); padding: 1px 4px; }
 
+.qt-aff-prise.qt-aff-moi { color: #2C6A0F; border-color: rgba(60,130,20,.85); transform: rotate(-6deg); }
+
 .qt-contrat:empty, .qt-primes:empty { display: none; }
 .qt-pied { margin: 0 -8px; padding: 6px 10px 8px; border-top: 1px solid #DDDDDD; font-size: 10px; color: #888888; text-align: center; line-height: 1.5; }
 .qt-pied b { color: #555555; }

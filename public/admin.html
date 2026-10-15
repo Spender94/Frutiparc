@@ -6629,7 +6629,18 @@ async function loadQuetes() {
       </tbody></table>
       ${(d.primes || []).length ? `<h4>Mises à prix</h4><table><thead><tr><th>Classement</th><th>Record du parc</th><th>Tenant</th><th>Cette semaine</th></tr></thead><tbody>
         ${d.primes.map((p) => `<tr><td>${esc(p.nom)}</td><td>${esc(p.record)}</td><td>${esc(p.tenant)}</td><td>${p.ouverte ? `ouverte (${p.gain} kikooz)` : `<b>prise par ${esc(p.prisePar)}</b>`}</td></tr>`).join('')}
-      </tbody></table>` : ''}
+      </tbody></table>
+      <div style="color:#777;font-size:12px;margin:6px 0 4px">Les records battus depuis le dernier démarrage du serveur, et pourquoi la prime a payé ou non :</div>
+      ${(d.primesJournal || []).length ? `<table><thead><tr><th>Quand</th><th>Classement</th><th>Par</th><th>Nouveau record</th><th>Ancien</th><th>Prime</th></tr></thead><tbody>
+        ${d.primesJournal.map((e) => `<tr><td style="font-size:11px">${esc(new Date(e.at).toLocaleString('fr-FR'))}</td><td>${esc(e.nom)}</td><td><b>${esc(e.par)}</b></td><td>${esc(e.record)}</td>
+          <td>${e.ancien ? `${esc(e.ancien)} (${esc(e.ancienRecord)})` : '—'}</td>
+          <td>${{ payee: '<b style="color:#2f8f2f">payée</b>', propre: 'non : son propre record', prise: `non : déjà prise par ${esc(e.prisePar || '?')} cette semaine`,
+            premier: 'non : pas de record avant lui', fermee: 'non : mises à prix fermées' }[e.issue] || esc(e.issue)}</td></tr>`).join('')}
+      </tbody></table>` : '<div style="color:#999;font-size:12px">Aucun record battu depuis le démarrage.</div>'}
+      ${(d.primesPrises || []).length ? `<div style="color:#777;font-size:12px;margin:8px 0 4px">Les primes payées cette semaine :</div>
+        <table><thead><tr><th>Classement</th><th>Par</th><th>Record</th><th>Devant</th><th>Gain</th></tr></thead><tbody>
+        ${d.primesPrises.map((x) => `<tr><td>${esc(x.nom)}</td><td><b>${esc(x.par)}</b></td><td>${esc(x.record)}</td><td>${esc(x.ancien || '—')}</td><td>${x.gain}</td></tr>`).join('')}
+        </tbody></table>` : ''}` : ''}
       <h4>Créer une quête</h4>
       <div style="border:1px solid #c9a46a;background:#fffaf0;padding:10px;border-radius:8px;font-size:12px;margin-bottom:10px">
         <div style="color:#777;margin-bottom:6px;line-height:1.45">Une quête, c'est un <b>résultat</b> : choisis ce qu'on mesure, et le seuil à atteindre.

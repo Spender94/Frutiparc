@@ -1188,6 +1188,11 @@ test('le modèle des paliers : paliers du parc, paie au palier, échange, bonus 
   await wait(400);
   const gagneC = (await etat('cerise')).quetes.filter((q) => q.fait).reduce((n, q) => n + q.gain, 0);
   assert.ok(await solde('cerise') - avantC < 500, 'pas de seconde prime');
+  // … mais Gromelin le lui dit : la prime de la semaine est déjà prise.
+  const logsC = await sql(`SELECT l.content FROM user_logs l JOIN users u ON u.id = l.user_id WHERE u.username = 'cerise' AND l.entry_type = 72 ORDER BY l.id`);
+  assert.ok(logsC.some((l) => /Nouveau record absolu .*déjà été prise par figue/i.test(l.content)), logsC.map((l) => l.content).join('\n'));
+  const journal = (await adminEtat()).primesJournal;
+  assert.deepEqual(journal.slice(0, 2).map((e) => e.issue), ['prise', 'payee'], JSON.stringify(journal));
   assert.ok(gagneC >= cible.gain);
   const prime = (await etat('cerise')).primes.find((p) => p.rk === 'swapou2_classic');
   assert.deepEqual([prime.ouverte, prime.prisePar, prime.tenant], [false, 'figue', 'cerise']);
