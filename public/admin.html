@@ -3188,6 +3188,8 @@ async function chargerParisAdmin(t, matches) {
         <label style="font-weight:bold"><input type="checkbox" id="paris-actifs" ${d.actifs ? 'checked' : ''} onchange="parisReglages(${t.id})"> Ouvrir les paris sur ce tournoi</label>
         <label style="margin-left:14px">Mise maximale par joueur et par match :
           <input type="number" id="paris-plafond" min="1" value="${d.plafond}" style="width:80px"> kikooz</label>
+        ${t.format === 'duel' ? '' : `<label style="margin-left:14px">Mises ouvertes pendant les
+          <input type="number" id="paris-delai" min="0" max="720" value="${d.delai}" style="width:60px"> premières heures d'un match</label>`}
         <button class="btn btn-sm" onclick="parisReglages(${t.id})">Enregistrer</button>
         <div style="color:#777;margin:6px 0 10px;line-height:1.45">
           <b>Cote fixe</b> par joueur, tirée de ses scores récents (Challenge du jeu, 60 jours, et scores du tournoi) avec 8 % de marge : le favori rapporte peu, l'outsider beaucoup.
@@ -3196,7 +3198,7 @@ async function chargerParisAdmin(t, matches) {
           visible seulement quand des paris sont ouverts). Pas de pari sur ses propres matchs, ni depuis l'appareil d'un des joueurs.
           ${t.format === 'duel'
             ? 'En duel, les mises se ferment d’elles-mêmes à la <b>première manche</b> du match.'
-            : '<b>Au score, ferme les paris d’un match quand il commence</b> (saisir un score les ferme aussi) : sinon on pourrait miser en voyant le match se jouer.'}
+            : `<b>Au score, les mises d'un match restent ouvertes pendant ses ${d.delai} premières heures</b>, puis se ferment (0 : dès qu'il commence). Fermer un match à la main tient, même dans ce délai.`}
           Le vainqueur désigné règle le pot aussitôt ; <b>changer ensuite le vainqueur ne reprend pas les gains</b>.
           Baisser l'option, supprimer le tournoi, régénérer le bracket ou remplacer un joueur <b>rembourse</b> les paris concernés.
         </div>
@@ -3209,9 +3211,10 @@ async function chargerParisAdmin(t, matches) {
 async function parisReglages(id) {
   const actifs = $('#paris-actifs').checked;
   const plafond = Number($('#paris-plafond').value);
+  const champDelai = $('#paris-delai');
   if (!actifs && !confirm('Fermer les paris de ce tournoi ?\n\nLes paris encore en jeu seront remboursés.')) { $('#paris-actifs').checked = true; return; }
   try {
-    const r = await fetch('/api/admin/tournaments/' + id + '/paris', { method: 'POST', headers: hdr(), body: JSON.stringify({ actifs, plafond }) });
+    const r = await fetch('/api/admin/tournaments/' + id + '/paris', { method: 'POST', headers: hdr(), body: JSON.stringify(Object.assign({ actifs, plafond }, champDelai ? { delai: Number(champDelai.value) } : {})) });
     const d = await r.json();
     if (d.ok) { toast(actifs ? 'Paris ouverts (plafond ' + plafond + ' kikooz)' : 'Paris fermés, mises en jeu remboursées'); setTimeout(() => openTournament(id), 400); }
     else toast('Erreur: ' + (d.message || d.error));

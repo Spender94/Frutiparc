@@ -578,6 +578,10 @@
     }
     if (ouvert && m.interdit) h += '<div class="note">C’est ton match : tu ne peux pas parier dessus. Bonne chance !</div>';
     else if (!ouvert && !m.vainqueur) h += '<div class="note">Le match a commencé : les mises sont fermées.</div>';
+    if (ouvert && m.misesJusqua) {
+      h += '<div class="note">Le match est en cours : mises ouvertes jusqu’au <b>'
+        + esc(new Date(m.misesJusqua).toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</b>.</div>';
+    }
     if (sel) h += ticketHtml(ticket);
     return h + '</div>';
   }

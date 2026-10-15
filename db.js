@@ -653,6 +653,11 @@ async function initSchema() {
       ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS paris_actifs BOOLEAN DEFAULT false;
       ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS paris_plafond INTEGER DEFAULT 100;
       ALTER TABLE tournament_matches ADD COLUMN IF NOT EXISTS paris_fermes BOOLEAN DEFAULT false;
+      -- Au score, un match se joue en 72 h : les paris restent ouverts pendant
+      -- ses paris_delai_h premières heures (24 par défaut). paris_fermes_main :
+      -- l'organisateur a fermé ce match lui-même — rien ne le rouvre.
+      ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS paris_delai_h INTEGER DEFAULT 24;
+      ALTER TABLE tournament_matches ADD COLUMN IF NOT EXISTS paris_fermes_main BOOLEAN DEFAULT false;
       CREATE TABLE IF NOT EXISTS tournament_paris (
         id             SERIAL PRIMARY KEY,
         tournament_id  INTEGER NOT NULL,

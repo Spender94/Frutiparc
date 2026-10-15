@@ -10137,9 +10137,25 @@ function parisAffiche(m) {
   return `${getDisplayName(String(m.player1 || ''))} contre ${getDisplayName(String(m.player2 || ''))}`;
 }
 // Un match dont les mises doivent se fermer d'elles-mêmes : il a commencé.
+// Les heures de paris qu'un match au score garde après le début de sa fenêtre.
+function parisDelaiH(t) {
+  if ((t.format || 'score') !== 'score') return 0;
+  const n = Number(t.paris_delai_h);
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, 720) : 24;
+}
+// Quand les mises d'un match se ferment (null : pas encore de fenêtre).
+function parisFinMises(t, m) {
+  if (!m.window_start) return null;
+  const fin = new Date(m.window_start).getTime() + parisDelaiH(t) * TOURNOI_HEURE_MS;
+  // Jamais au-delà de la fin du match lui-même.
+  return new Date(m.window_end ? Math.min(fin, new Date(m.window_end).getTime()) : fin);
+}
 function parisMatchCommence(t, m) {
   if (m.winner || m.status === 'done') return true;
-  if (m.window_start && new Date(m.window_start).getTime() <= Date.now()) return true;
+  // Au score, le match dure des jours : on peut encore parier pendant ses
+  // premières heures (paris_delai_h) ; ensuite les mises se ferment.
+  const fin = parisFinMises(t, m);
+  if (fin && fin.getTime() <= Date.now()) return true;
   if (t.format === 'duel') return (Number(m.score1) || 0) + (Number(m.score2) || 0) > 0;
   return m.score1 != null || m.score2 != null;
 }
@@ -10172,11 +10188,17 @@ function parisRecaler(tid) {
 async function parisRecalerMaintenant(tid) {
   const t = await db.getTournament(tid);
   const matches = t ? await db.getTournamentMatches(tid) : [];
-  // Les mises se ferment sur les matchs qui ont commencé.
+  // Les mises se ferment sur les matchs qui ont commencé (au score : passé
+  // leur délai de paris). Un match fermé par la règle d'avant, ou dont la
+  // fenêtre a été reportée, se rouvre — sauf si l'organisateur l'a fermé.
   for (const m of matches) {
-    if (!m.paris_fermes && parisMatchCommence(t, m)) {
+    const clos = parisMatchCommence(t, m);
+    if (!m.paris_fermes && clos) {
       await db.updateTournamentMatch(m.id, { paris_fermes: true });
       m.paris_fermes = true;
+    } else if (m.paris_fermes && !clos && !m.paris_fermes_main && t && ['bracket', 'poules'].includes(t.status)) {
+      await db.updateTournamentMatch(m.id, { paris_fermes: false });
+      m.paris_fermes = false;
     }
   }
   const ouverts = await db.parisDuTournoi(tid, 'ouvert');
@@ -10228,7 +10250,11 @@ app.use('/api/admin/tournaments/:id', (req, res, next) => {
 // minutes (et au démarrage) — un recalage manqué ne laisse rien en suspens.
 async function parisRecalerTout() {
   if (!process.env.DATABASE_URL) return;
-  try { for (const tid of await db.tournoisAvecParisOuverts()) await parisRecaler(tid); }
+  try {
+    const tids = new Set(await db.tournoisAvecParisOuverts());
+    for (const t of await db.getTournamentsByStatus(['bracket', 'poules'])) if (t.paris_actifs) tids.add(t.id);
+    for (const tid of tids) await parisRecaler(tid);
+  }
   catch (e) { console.error('[PARIS] recalage général :', e.message); }
 }
 if (process.env.DATABASE_URL) {
@@ -10300,6 +10326,9 @@ app.get('/api/paris', async (req, res) => {
           j1: j(m.player1), j2: j(m.player2), pot: pot.total,
           score1: m.score1, score2: m.score2, vainqueur: m.winner || null,
           ouvert: parisMatchOuvert(t, m),
+          // Le match a commencé, les mises tiennent encore : jusqu'à quand.
+          misesJusqua: m.window_start && new Date(m.window_start).getTime() <= Date.now() && parisMatchOuvert(t, m)
+            ? parisFinMises(t, m).toISOString() : null,
           interdit: !!moi && (moi === String(m.player1 || '').toLowerCase() || moi === String(m.player2 || '').toLowerCase()),
           mien: mien ? { choix: mien.choix, mise: mien.mise, statut: mien.statut, gain: mien.gain,
             cote: mien.cote == null ? null : Number(mien.cote), retour: mien.retour } : null,
@@ -10351,6 +10380,7 @@ app.post('/api/paris', async (req, res) => {
       choixPrecedent: precedent && precedent.statut === 'ouvert' ? precedent.choix : null,
     });
     if (refus) return res.status(400).json(Object.assign({ ok: false }, refus));
+    if (parisMatchCommence(t, m)) return res.status(400).json({ ok: false, code: 'joue', message: 'Les mises sur ce match sont fermées.' });
     if (precedent && precedent.statut !== 'ouvert') {
       return res.status(400).json({ ok: false, code: 'joue', message: 'Les paris sur ce match sont réglés.' });
     }
@@ -10406,6 +10436,11 @@ app.post('/api/admin/tournaments/:id/paris', tournoiScope, async (req, res) => {
     const b = req.body || {};
     const champs = {};
     if (b.actifs !== undefined) champs.paris_actifs = b.actifs === true || b.actifs === '1' || b.actifs === 1;
+    if (b.delai !== undefined) {
+      const dl = Math.floor(Number(b.delai));
+      if (!Number.isFinite(dl) || dl < 0 || dl > 720) return res.status(400).json({ error: 'bad_delai', message: 'Délai : un nombre d’heures, de 0 à 720.' });
+      champs.paris_delai_h = dl;
+    }
     if (b.plafond !== undefined) {
       const p = Math.floor(Number(b.plafond));
       if (!Number.isFinite(p) || p < 1 || p > 100000) return res.status(400).json({ error: 'bad_plafond', message: 'Plafond : un nombre de kikooz, au moins 1.' });
@@ -10423,7 +10458,7 @@ app.post('/api/admin/tournaments/:id/match/:mid/paris', tournoiScope, async (req
     if (!m || m.tournament_id !== Number(req.params.id)) return res.status(404).json({ error: 'match_not_found' });
     const ferme = !(req.body && (req.body.ferme === false || req.body.ferme === '0'));
     if (!ferme && m.winner) return res.status(400).json({ error: 'deja_joue', message: 'Ce match est joué : ses paris sont réglés.' });
-    await db.updateTournamentMatch(m.id, { paris_fermes: ferme });
+    await db.updateTournamentMatch(m.id, { paris_fermes: ferme, paris_fermes_main: ferme });
     res.json({ ok: true, ferme });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -12702,7 +12737,7 @@ app.get('/api/admin/tournaments/:id/paris', tournoiScope, async (req, res) => {
       return { match: m.id, ouvert: parisMatchOuvert(t, m), ferme: !!m.paris_fermes,
         parieurs: liste.length, pot: Paris.pot(liste, m.player1, m.player2) };
     });
-    res.json({ actifs: !!t.paris_actifs, plafond: Number(t.paris_plafond) || 100, paris, pots });
+    res.json({ actifs: !!t.paris_actifs, plafond: Number(t.paris_plafond) || 100, delai: parisDelaiH(t), paris, pots });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

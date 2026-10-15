@@ -125,7 +125,9 @@ test('qualif : douze joueurs, les dix meilleurs en coupe, tirée toute seule', a
   tid = c.tournament.id;
   assert.equal(c.tournament.bracket_size, 10, 'dix qualifiés : accepté');
   assert.equal(c.tournament.tours_auto, true);
-  await post(`/api/admin/tournaments/${tid}/paris`, { actifs: true, plafond: 100 }, ADMIN);
+  // Délai de paris à 0 : les mises ferment dès l'ouverture d'un tour (le
+  // délai par défaut, 24 h, est vérifié dans tournoiReprise.test.js).
+  await post(`/api/admin/tournaments/${tid}/paris`, { actifs: true, plafond: 100, delai: 0 }, ADMIN);
   assert.ok((await post(`/api/admin/tournaments/${tid}/schedule`, {
     qualif_start: new Date(Date.now() - 60000).toISOString(), qualif_end: new Date(Date.now() + 8000).toISOString(),
   }, ADMIN)).ok);

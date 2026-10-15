@@ -172,11 +172,25 @@ test('le Maître ÈS Swapou repris en cours de quarts : qualifiés collés, pré
   assert.ok(tour(d, 2).every((m) => Math.abs(new Date(m.window_end).getTime() - fin.getTime()) < 1000));
   assert.deepEqual(d.roundScores.map((x) => [x.username, x.score]), [['pattedecat', 40000], ['sandek', 36000], ['crazynou', 35000], ['tom31', 31000]]);
 
-  // 6. Les paris s'ouvrent ; ceux des quarts, déjà commencés, restent fermés.
+  // 6. Les paris s'ouvrent : un quart commencé depuis 20 h se parie encore
+  //    (24 h de mises au score) ; passé ce délai, plus de mise.
   assert.ok((await post(`/api/admin/tournaments/${tid}/paris`, { actifs: true, plafond: 100 }, ADMIN)).ok);
   await wait(500);
-  const refus = await post('/api/paris', { sid: sids.parieuse, match: q1.id, choix: 'pattedecat', mise: 10 });
+  const page = await (await fetch(BASE + '/api/paris?sid=' + sids.parieuse)).json();
+  const q1Page = page.tournois[0].ouverts.find((m) => m.id === q1.id);
+  assert.ok(q1Page && q1Page.misesJusqua, JSON.stringify(page.tournois[0].ouverts));
+  assert.ok(Math.abs(new Date(q1Page.misesJusqua).getTime() - (debut.getTime() + 24 * H_MS)) < 1000);
+  const tot = await post('/api/paris', { sid: sids.parieuse, match: q1.id, choix: 'pattedecat', mise: 10 });
+  assert.ok(tot.ok, JSON.stringify(tot));
+  r = await post(`/api/admin/tournaments/${tid}/fenetre`, { debut: new Date(Date.now() - 25 * H_MS).toISOString(), fin: fin.toISOString() }, ADMIN);
+  assert.ok(r.ok, JSON.stringify(r));
+  await wait(500);
+  const refus = await post('/api/paris', { sid: sids.parieuse, match: q2.id, choix: 'debleen', mise: 10 });
   assert.equal(refus.code, 'joue', JSON.stringify(refus));
+  // Un délai de 0 : les mises ferment dès le début du match (l'ancienne règle).
+  assert.ok((await post(`/api/admin/tournaments/${tid}/paris`, { delai: 0 }, ADMIN)).ok);
+  assert.equal((await post(`/api/admin/tournaments/${tid}/paris`, { delai: -3 }, ADMIN)).error, 'bad_delai');
+  assert.ok((await post(`/api/admin/tournaments/${tid}/paris`, { delai: 24 }, ADMIN)).ok);
 
   // 7. Un nouveau score dans la fenêtre est retenu ; à la fin du tour, les vainqueurs montent.
   r = await post(`/api/admin/tournaments/${tid}/round-score`, { username: 'cyid773190', score: 20000 }, ADMIN);
