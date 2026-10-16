@@ -18,6 +18,7 @@ const J = racine.BkiwiJeu = racine.BkiwiJeu || {};
 const G = J.G;
 const random = J.random;
 const rm = J.rm;
+const vif = J.vif;
 
 J.installerFinal = function (M) {
   const client = () => M.client;
@@ -98,6 +99,7 @@ J.installerFinal = function (M) {
             else M.vs.finalPhase = 30;
             break;
           }
+          if (M.MULTI !== undefined && M.vs.gameMode == M.MULTI) { M.vs.finalPhase = 70; break; }   // eslint-disable-line eqeqeq
           if ((M.vs.gameMode == M.TRAINING || M.vs.gameMode == M.ARCADE) && M.classement != 1) {   // eslint-disable-line eqeqeq
             M.vs.finalPhase = 30;
             break;
@@ -326,6 +328,8 @@ J.installerFinal = function (M) {
           J.playSoundBK('buttonOk');
           rm(M.gameOver);
           M.skipToTrackPresent = false;
+          // En ligne, l'abandon ramène au salon.
+          if (M.MULTI !== undefined && M.vs.gameMode == M.MULTI) J.multi.retourSalon();   // eslint-disable-line eqeqeq
           J.gotoMenu();
         }
         break;
@@ -418,8 +422,59 @@ J.installerFinal = function (M) {
         }
         break;
 
+      // *** EN LIGNE : le classement des pilotes (multi.js), vivant tant que
+      // les autres arrivent — le résumé du tournoi prête son cadre.
+      case 70:
+        if (!J.skipTest()) {
+          const d = M.calcDepth(M.DP_INTERF);
+          M.attachMovie('tournamentSummary', 'summary', d);
+          M.summary._x = M.docWidth / 2;
+          M.summary._y = M.docHeight / 2;
+          J.remplirClassementEnLigne();
+          M.vs.finalPhase++;
+        }
+        break;
+
+      case 71:
+        J.remplirClassementEnLigne();
+        if (J.skipTest()) {
+          J.playSoundBK('buttonOk');
+          rm(M.summary);
+          rm(M.finalScrolls);
+          M.skipToTrackPresent = false;
+          J.multi.retourSalon();
+          J.gotoMenu();
+        }
+        break;
+
       default: break;
     }
+  };
+
+  // Les lignes du classement en ligne : nom et voiture, temps ou « … » tant
+  // que le pilote court ; la ligne du joueur en gras, comme au tournoi.
+  J.remplirClassementEnLigne = function () {
+    if (!vif(M.summary)) return;
+    const c = J.multi.course;
+    const moi = J.multi.moi();
+    const grille = J.multi.grille();
+    let lignes = (c && c.classement.length) ? c.classement.slice() : grille.map((g) => ({ u: g.u, n: g.nom, c: g.voiture, t: 0, g: 0 }));
+    lignes = lignes.slice(0, 4);
+    for (let i = 0; i < 4; i++) {
+      const a = lignes[i];
+      if (!a) { M.summary['car_' + i] = ''; M.summary['pts_' + i] = ''; continue; }
+      const parti = c && c.distants[a.u] && c.distants[a.u].parti;
+      // (la colonne des points du tournoi est étroite : le temps y tient en petit)
+      let nom = '<P ALIGN="CENTER"><FONT SIZE="13">' + (a.g ? a.g + '. ' : '') + a.n + '</FONT></P>';
+      let temps = '<P ALIGN="CENTER"><FONT SIZE="9">' + (a.t ? J.timeToString(a.t) : (parti ? 'abandon' : '…')) + '</FONT></P>';
+      if (a.u === moi) { nom = '<B>' + nom + '</B>'; temps = '<B>' + temps + '</B>'; }
+      M.summary['car_' + i] = nom;
+      M.summary['pts_' + i] = temps;
+    }
+    // Le cadre dit « Votre temps : » — on y met le sien ; l'attente des
+    // autres se lit au titre.
+    M.summary.titre = (c && c.resultat) ? 'CLASSEMENT FINAL' : 'CLASSEMENT (EN COURS)';
+    M.summary.timeTxt = (M.race && M.race.raceTime) ? J.timeToString(M.race.raceTime) : '';
   };
 
   // ANIM DES CONFETTIS
@@ -502,9 +557,16 @@ J.installerFinal = function (M) {
       J.startMusic(M.musicMenu);
     }
 
+    const enLigne = (M.MULTI !== undefined && M.vs.gameMode == M.MULTI);      // eslint-disable-line eqeqeq
+
     // Classement
     if (M.vs.giveUp) {
       M.classement = 4;
+      if (enLigne) J.multi.abandonner();
+    } else if (enLigne) {
+      // Le rang dit par le serveur à l'arrivée (au temps) ; en attendant sa
+      // réponse, celui de la piste.
+      M.classement = J.multi.rang() || Math.max(1, M.orderFinal.indexOf(0) + 1);
     } else {
       for (M.i = 0; M.i < M.orderFinal.length; M.i++) {
         if (M.orderFinal[M.i] == 0) M.classement = M.i + 1;                   // eslint-disable-line eqeqeq
@@ -526,7 +588,8 @@ J.installerFinal = function (M) {
     J.savePublic();
     // …et le fantôme, s'il y a mieux qu'avant sur ce circuit.
     J.sauverFantome();
-    if (J.gameEnded() && M.vs.gameMode != M.TUTORIAL) M.vs.finalPhase = 40;  // eslint-disable-line eqeqeq
+    if (enLigne) M.vs.finalPhase = 0;                                       // rien à classer : pas de saveScore
+    else if (J.gameEnded() && M.vs.gameMode != M.TUTORIAL) M.vs.finalPhase = 40;   // eslint-disable-line eqeqeq
     else M.vs.finalPhase = 0;
   };
 };

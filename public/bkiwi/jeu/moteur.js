@@ -572,6 +572,8 @@ J.installerMoteur = function (M) {
 
   // MET À JOUR L'ÉTAT DE PAUSE
   J.togglePause = function () {
+    // En ligne, pas de pause : les autres ne s'arrêtent pas avec vous.
+    if (M.MULTI !== undefined && M.vs.gameMode == M.MULTI && M.vs.mainPhase == 1) return;   // eslint-disable-line eqeqeq
     M.gamePaused = !M.gamePaused;
     rm(M.pauseBox);
     if (M.gamePaused) {
@@ -760,6 +762,8 @@ J.installerMoteur = function (M) {
   // TESTE LA DISPONIBILITÉ D'UN MODE
   J.checkMode = function (mode) {
     const c = client();
+    // Le mode en ligne (multi.js) : une session du parc et une WebSocket.
+    if (M.MULTI !== undefined && mode == M.MULTI) return !!(J.multi && J.multi.disponible());   // eslint-disable-line eqeqeq
     if (c.isBlack() || c.isGray()) return (mode == M.ARCADE || mode == M.TUTORIAL);   // eslint-disable-line eqeqeq
     if (c.isRed()) return M.frutiSlots[M.SLOT_MODES][mode];
     if (c.isWhite()) {
@@ -956,8 +960,17 @@ J.installerMoteur = function (M) {
       }
     }
 
-    // Départ
-    if (M.gamePaused && M.starting) J.mainStart();
+    // Départ — en ligne, le décompte attend le GO du serveur, le même instant
+    // pour tous (multi.js) ; le voyant réseau tourne en attendant.
+    const enLigne = (M.MULTI !== undefined && M.vs.gameMode == M.MULTI);      // eslint-disable-line eqeqeq
+    if (M.gamePaused && M.starting) {
+      if (enLigne && !J.multi.pretAuDepart()) {
+        if (!vif(M.networkPop)) J.attachNetworkPop();
+      } else {
+        if (enLigne && vif(M.networkPop)) J.detachNetworkPop();
+        J.mainStart();
+      }
+    }
 
     // Forçage de la pause par le serveur
     if (!M.gamePaused && client().forcePause == true) J.togglePause();       // eslint-disable-line eqeqeq
@@ -978,6 +991,7 @@ J.installerMoteur = function (M) {
     if (!M.gamePaused) {
       J.moveFx();
       J.manageGame();
+      if (enLigne) J.multi.tickCourse();
 
       // Panneau d'affichage du jeu
       const suivi = M.cars[M.trackedCar];
@@ -1360,7 +1374,10 @@ J.installerMoteur = function (M) {
       if (M.lockQuit && !Key.isDown(Key.ESCAPE)) M.lockQuit = false;
       if (!M.lockQuit && Key.isDown(Key.ESCAPE)) {
         if (!client().forcePause) J.togglePause();
-        if (M.gamePaused) {
+        // (en ligne, la pause ne prend pas : la boîte s'ouvre quand même, la
+        // course continue derrière)
+        const enLigne = (M.MULTI !== undefined && M.vs.gameMode == M.MULTI);  // eslint-disable-line eqeqeq
+        if (M.gamePaused || (enLigne && !M.waitingGiveUp)) {
           M.waitingGiveUp = true;
           const d = M.calcDepth(M.DP_MENU);
           rm(M.giveUpBox);
@@ -1543,11 +1560,16 @@ J.installerMoteur = function (M) {
     }
     J.getOrder();
     delete M.forcePosition;
+
+    // En ligne : le circuit est là, on le dit — le GO viendra du serveur.
+    if (M.MULTI !== undefined && M.vs.gameMode == M.MULTI) J.multi.charge();  // eslint-disable-line eqeqeq
   };
 
   // ═══════════════════════════ IA.as ═══════════════════════════
 
   J.moveIA = function () {
+    // En ligne : pas d'IA, les voitures des autres pilotes (multi.js).
+    if (M.MULTI !== undefined && M.vs.gameMode == M.MULTI) { J.multi.avancerDistants(); return; }   // eslint-disable-line eqeqeq
     for (let i = 1; i < M.cars.length; i++) {
       const carIA = M.cars[i];
       M.carIA = carIA;
@@ -1838,6 +1860,21 @@ J.installerMoteur = function (M) {
       else track.difficulty *= 1.15;
     }
 
+    if (M.MULTI !== undefined && M.vs.gameMode == M.MULTI) {                 // eslint-disable-line eqeqeq
+      // En ligne : pas d'IA. Ma voiture en 0, celles des autres pilotes à la
+      // suite, chacune à sa place de la grille (celle du salon) et avec la
+      // voiture que son pilote a choisie ; les autres roulent depuis leurs
+      // positions reçues (multi.js).
+      const grille = J.multi.grille();
+      M.maxCars = grille.length;
+      for (const g of grille) {
+        M.startPoint = M.tracks[id].startPoints[g.place] || M.tracks[id].startPoints[0];
+        J.attachCar(g.id, M.carStats[g.voiture] || M.carStats[0], M.startPoint.x, M.startPoint.y, M.startPoint.ang);
+        if (!g.moi) J.multi.lier(g.u, M.cars[g.id]);
+      }
+      i = M.tracks[id].startPoints.length;
+    }
+
     while (i < M.tracks[id].startPoints.length && i < M.maxCars) {
       M.startPoint = M.tracks[id].startPoints[i];
       M.carId = M.startPoint.id;
@@ -1982,6 +2019,8 @@ J.installerMoteur = function (M) {
     }
 
     mc.skin.gotoAndStop(mc.skinId);
+    // La X Violet (multi.js) : la carrosserie de la Final KiwiX, en violet.
+    if (stats.violet) { J.teindreViolet(mc.skin); mc.carName = 'X Violet'; }
 
     // Initialisation des forces
     mc.speed = 0;

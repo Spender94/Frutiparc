@@ -130,6 +130,21 @@ J.installerMenu = function (M) {
         onOut = function () { M.menuMC.infoPanel.txt = ''; };
         J.attachButton(14, 'epreuves', 1, -25, 200, onPush, undefined, onEnd, onOver, onOut);
 
+        // En ligne (le mode MULTI, multi.js) : on choisit d'abord sa voiture
+        // (la X Violet y est), puis le salon. Grisé sans session ni réseau.
+        if (M.MULTI !== undefined && J.checkMode(M.MULTI)) {
+          skinBt = M.skinAllow;
+          onPush = onPushAllow;
+          onEnd = function () { M.vs.menuPhase = 4; M.vs.gameMode = M.MULTI; };
+        } else {
+          skinBt = M.skinDisallow;
+          onPush = function () { refuser('CONNECTEZ-VOUS AU PARC'); };
+          onEnd = undefined;
+        }
+        onOver = function () { M.menuMC.infoPanel.txt = 'Courez en ligne contre d\'autres pilotes du parc, avec la X Violet !'; };
+        onOut = function () { M.menuMC.infoPanel.txt = ''; };
+        J.attachButton(15, 'en ligne', skinBt, -30, 240, onPush, undefined, onEnd, onOver, onOut);
+
         onPush = function () { J.back(); J.playSoundBK('buttonCancel'); J.removeAllButtons(); M.menuMC.infoPanel.gotoAndPlay('hide'); };
         onEnd = function () {};
         J.attachButton(J.getPrevious(), 'retour', 2, -70, 320, onPush, undefined, onEnd);
@@ -297,9 +312,18 @@ J.installerMenu = function (M) {
           if (M.specials[4].state) currentName = M.carSkinNames[24];
           J.attachButton(45, currentName.toLowerCase(), skinBt, -15, 240, choisir(4), undefined, undefined);
         }
+        // La X Violet : la voiture du mode en ligne, pour tout le monde.
+        const enLigne = (M.MULTI !== undefined && M.vs.gameMode == M.MULTI);   // eslint-disable-line eqeqeq
+        if (enLigne) {
+          J.attachButton(46, 'x violet', 3, -15, 280, choisir(M.X_VIOLET), undefined, undefined);
+        } else if (M.vs.selectedCar == M.X_VIOLET) {                            // eslint-disable-line eqeqeq
+          M.vs.selectedCar = 2;
+          J.updateStats(M.vs.selectedCar);
+        }
 
         onPush = function () {
-          if (!M.availableCars[M.vs.selectedCar]) {
+          const permise = M.availableCars[M.vs.selectedCar] || (enLigne && M.vs.selectedCar == M.X_VIOLET);   // eslint-disable-line eqeqeq
+          if (!permise) {
             // Véhicule non autorisé (« isWhite() » nu : une fonction qui n'existe
             // pas sur le scénario — undefined, donc le libellé de la démo)
             J.playSoundBK('buttonRefuse');
@@ -322,11 +346,16 @@ J.installerMenu = function (M) {
         onEnd = function () {};
         let nextPhase = 5;
         if (M.vs.gameMode == M.DUEL) nextPhase = 150;                         // eslint-disable-line eqeqeq
-        J.attachButton(nextPhase, 'ok', 2, -70, 280, onPush, undefined, onEnd);
+        if (enLigne) nextPhase = 160;
+        J.attachButton(nextPhase, 'ok', 2, -70, enLigne ? 320 : 280, onPush, undefined, onEnd);
 
-        onPush = function () { J.back(); J.playSoundBK('buttonCancel'); M.menuMC.carSel._visible = false; J.removeAllButtons(); };
-        onEnd = function () {};
-        J.attachButton(J.getPrevious(), 'retour', 2, -70, 320, onPush, undefined, onEnd);
+        // En ligne, l'ok est descendu d'un cran (six voitures) : pas de
+        // retour à part, l'ok ramène au salon — c'est le même geste.
+        if (!enLigne) {
+          onPush = function () { J.back(); J.playSoundBK('buttonCancel'); M.menuMC.carSel._visible = false; J.removeAllButtons(); };
+          onEnd = function () {};
+          J.attachButton(J.getPrevious(), 'retour', 2, -70, 320, onPush, undefined, onEnd);
+        }
 
         M.vs.menuPhase = -1;
         break;
@@ -987,6 +1016,27 @@ J.installerMenu = function (M) {
         break;
       }
 
+      // ***** EN LIGNE : le salon (multi.js) *****
+      case 160: {
+        J.stack(M.vs.menuPhase);
+        M.menuMC.bande._visible = false;
+        M.menuMC.infoPanel._visible = false;
+        M.menuMC.carSel._visible = false;
+        M.menuMC.menuTitleANIM.menuTitle.title = 'en ligne';
+        M.menuMC.fondMenu.gotoAndStop(1);
+        M.menuMC.menuTitleANIM.gotoAndStop(1);
+        J.removeAllButtons();
+        M.vs.gameMode = M.MULTI;
+        // Le panneau ferme : retour aux modes de jeu ; « ma voiture » : le
+        // choix des voitures, dont l'ok ramène ici.
+        J.multi.surFermeture = function () { M.history = [99]; M.vs.menuPhase = 1; };
+        J.multi.surVoiture = function () { M.vs.menuPhase = 4; };
+        J.multi.ouvrir();
+        J.multi.voiture(M.vs.selectedCar);
+        M.vs.menuPhase = -1;
+        break;
+      }
+
       // ***** DUEL : choix adversaire *****
       case 150: {
         J.stack(M.vs.menuPhase);
@@ -1211,8 +1261,15 @@ J.installerMenu = function (M) {
   // MET A JOUR LES JAUGES DE STATS DU PANNEAU DES ECURIES
   J.updateStats = function (idCar) {
     M.menuMC.carSel.car_5._visible = false;
-    for (let i = 0; i < M.carStats.length; i++) {
-      if (i == idCar) {                                                       // eslint-disable-line eqeqeq
+    // La X Violet (multi.js) n'a pas de dessin à elle dans le menu : c'est la
+    // KiwiX (car_4) teinte en violet ; la KiwiX reprend ses couleurs sinon.
+    const violet = (M.X_VIOLET !== undefined && idCar == M.X_VIOLET);        // eslint-disable-line eqeqeq
+    if (M.menuMC.carSel.car_4) {
+      if (violet) J.teindreViolet(M.menuMC.carSel.car_4);
+      else new K.Color(M.menuMC.carSel.car_4).reset();
+    }
+    for (let i = 0; i < 5; i++) {
+      if (i == idCar || (violet && i == 4)) {                                 // eslint-disable-line eqeqeq
         if (idCar == 0 && M.specials[5].state && !M.specials[4].state) M.menuMC.carSel.car_5._visible = true;   // eslint-disable-line eqeqeq
         else M.menuMC.carSel['car_' + i]._visible = true;
       } else {
@@ -1315,7 +1372,12 @@ J.installerMenu = function (M) {
     // Divers
     M.killConfettis = false;
     M.newTournament = false;
-    if (M.skipToTrackPresent) {
+    if (J.multi && J.multi.actif) {
+      // Après une course en ligne : le salon, sans repasser par le logo.
+      M.menuMC.fondMenu._visible = true;
+      M.menuMC.menuTitleANIM._visible = true;
+      M.vs.menuPhase = 160;
+    } else if (M.skipToTrackPresent) {
       M.menuMC.fondMenu._visible = false;
       M.menuMC.menuTitleANIM._visible = false;
       M.vs.menuPhase = 90; // pour les tournois, on zappe direct à la présentation de la course

@@ -32434,6 +32434,42 @@ setInterval(() => {
   try { renouvelerVoyantsParties(snakeNet, 'snake3'); } catch (e) { console.error('[snake3] voyants:', e.message); }
 }, 1000);
 
+// ─────────────────────────────────────────────
+// Burning Kiwi MULTI — les courses en ligne (deux à quatre pilotes). La
+// cervelle (salons, départ, arrivée, classement) vit dans
+// public/bkiwi/server/net.js ; ici on route les messages <kw> et on pousse
+// aux sockets concernées.
+//
+// PAS DE PHYSIQUE ICI. Chaque pilote joue sa voiture chez lui, comme en solo
+// (zéro lag sur sa propre voiture), et le serveur ne fait que RELAYER les
+// positions — vingt par seconde et par pilote, un message court — aux autres
+// pilotes du salon. Le tick n'a donc rien à calculer : une fois par seconde,
+// il ne tient que les délais (un pilote qui ne charge pas, une course qui ne
+// finit pas).
+// ─────────────────────────────────────────────
+const { BkiwiNet } = require('./public/bkiwi/server/net.js');
+const bkiwiNet = new BkiwiNet({
+  // Une course en ligne est une partie de Burning Kiwi (les quêtes, les
+  // statistiques) ; le voyant du parc s'allume pour chaque pilote.
+  onDepart: (pilotes) => { for (const u of pilotes) { marquerEnPartie(u, 'bkiwi'); noterPartie(u, 'bkiwi'); } },
+  onFin: (pilotes) => { for (const u of pilotes) marquerFinDePartie(u); },
+});
+function bkiwiFlush(messages) {
+  if (!messages || !messages.length) return;
+  for (const m of messages) {
+    for (const u of m.to) {
+      for (const [sock, cl] of xmlSocketClients) {
+        if (cl && cl.bkiwiMulti && cl.logged && cl.username === u) sendToClient(sock, m.xml);
+      }
+    }
+  }
+}
+setInterval(() => {
+  try { bkiwiFlush(bkiwiNet.tick(Date.now())); } catch (e) { console.error('[bkiwi] tick:', e.message); }
+  try { for (const u of bkiwiNet.enCourse()) if (estJoignableEnDirect(u)) marquerEnPartie(u, 'bkiwi'); }
+  catch (e) { console.error('[bkiwi] voyants:', e.message); }
+}, 1000);
+
 // Push a live kikooz-balance update to every connected socket of `username`.
 // The SWF's onActivateFeature handler ("ku") sets _global.me.kikooz, which in
 // turn refreshes any open boutique/kikooz display. Without this, a balance
@@ -33497,7 +33533,11 @@ async function handleCBeeMessage(socket, rawXml) {
   // light bat toutes les 25 s quand il est visible.
   client.derniereTrame = Date.now();
 
-  console.log(`[CBee]  <- ${cmdName} (${msg.tag}) ${JSON.stringify(msg.attrs)}`);
+  // (les positions et pings des courses de Burning Kiwi, vingt par seconde et
+  // par pilote, ne passent pas au journal)
+  if (!(msg.tag === 'kw' && msg.attrs && (msg.attrs.a === 'pos' || msg.attrs.a === 'ping'))) {
+    console.log(`[CBee]  <- ${cmdName} (${msg.tag}) ${JSON.stringify(msg.attrs)}`);
+  }
 
   // FrutiScore overlap: wire code "v" is listModes request.
   if (msg.tag === 'v') {
@@ -33639,6 +33679,18 @@ async function handleCBeeMessage(socket, rawXml) {
       client.snakeBattle = true; // la socket du jeu : seule à recevoir les pas
       try { snakeFlush(snakeNet.handle(client.username, msg.attrs || {})); }
       catch (e) { console.error('[snake3] handle:', e.message); }
+      break;
+    }
+
+    // ── kw: Burning Kiwi MULTI — les courses en ligne (voir bkiwiNet).
+    //    (« bk » est déjà un code du protocole d'époque, senduserongroup.) ──
+    case 'kw': {
+      if (!client.username || !client.logged) { sendToClient(socket, '<kw e="err" m="not-logged"/>'); break; }
+      client.bkiwiMulti = true; // la socket du jeu : seule à recevoir les positions
+      // Le nom montré aux autres pilotes : celui du parc, pas celui que la page dit.
+      if (msg.attrs && msg.attrs.a === 'hello') msg.attrs.n = getDisplayName(client.username);
+      try { bkiwiFlush(bkiwiNet.handle(client.username, msg.attrs || {})); }
+      catch (e) { console.error('[bkiwi] handle:', e.message); }
       break;
     }
 
@@ -36486,6 +36538,17 @@ const xmlSocketServer = net.createServer((socket) => {
         if (!autre) {
           try { snakeFlush(snakeNet.onDisconnect(client.username)); }
           catch (e) { console.error('[snake3] disconnect:', e.message); }
+        }
+      }
+      // Burning Kiwi MULTI : idem.
+      if (client.bkiwiMulti && client.username) {
+        let autre = false;
+        for (const [, cl] of xmlSocketClients) {
+          if (cl && cl.bkiwiMulti && cl.logged && cl.username === client.username) { autre = true; break; }
+        }
+        if (!autre) {
+          try { bkiwiFlush(bkiwiNet.onDisconnect(client.username)); }
+          catch (e) { console.error('[bkiwi] disconnect:', e.message); }
         }
       }
       console.log(`[CBee]  Client disconnected: ${disconnectUser || 'anonymous'}`);

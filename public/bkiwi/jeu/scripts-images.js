@@ -64,6 +64,7 @@ const S = {
     J.installerMoteur(this);
     J.installerMenu(this);
     J.installerFinal(this);
+    if (typeof J.installerMulti === 'function') J.installerMulti(this);   // le mode en ligne (multi.js)
     J.M = this;
     J.init();
   },

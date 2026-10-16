@@ -1,5 +1,7 @@
 /*
  * Frutisnake — le fil avec le serveur du Battle en ligne (enligne.js).
+ * (Le même fil sert aux courses en ligne de Burning Kiwi, avec la balise
+ * <kw> — options `balise` et `salon` ; voir /bkiwi/multi.js.)
  *
  * Le même WebSocket que le chat et que Grapiz : on s'identifie par `<k l s>`
  * (le pseudo et la session), puis on parle la balise <sb> — voir
@@ -25,6 +27,11 @@
 class Reseau {
   constructor(o) {
     const opts = o || {};
+    // La balise du jeu : <sb> pour le Battle de Frutisnake, <kw> pour les
+    // courses de Burning Kiwi — même socket, même identification, même ping.
+    // `salon` : l'événement qui dit « le serveur nous a pris » (le hello cesse).
+    this.balise = opts.balise || 'sb';
+    this.evenementSalon = opts.salon || 'lobby';
     this.sid = opts.sid || '';
     this.pseudo = opts.pseudo || '';
     this.nom = opts.nom || this.pseudo;
@@ -41,6 +48,12 @@ class Reseau {
     // partie, c'était quarante objets jetés par seconde sur un téléphone.
     this._parseur = (typeof DOMParser !== 'undefined') ? new DOMParser() : null;
     this.allerRetour = 0;              // ms, le plancher des derniers relevés
+    // L'écart entre l'horloge du serveur et la nôtre (ms), relevé sur le pong
+    // le plus court : `st` est l'heure du serveur quand il a répondu. Sert à
+    // traduire une heure dite par le serveur (le départ d'une course) en heure
+    // locale.
+    this.decalage = 0;
+    this._decalageRtt = Infinity;
     this._pings = [];
     this._pingTimer = null;
     this._surVisibilite = () => {
@@ -59,6 +72,10 @@ class Reseau {
 
   connecter() {
     if (this.ferme) return;
+    // Une socket déjà en route (qui s'ouvre, ou ouverte) suffit : en ouvrir
+    // une seconde laissait la première vivre en doublon — ses trames
+    // arrivaient deux fois, et chaque ouverture refaisait le hello.
+    if (this.ws && this.ws.readyState <= 1) return;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     let ws;
     try { ws = new WebSocket(proto + '://' + location.host + '/'); } catch (e) { this._planifier(); return; }
@@ -73,8 +90,11 @@ class Reseau {
         if (this.salonRecu || this.ferme) { clearInterval(this._helloTimer); this._helloTimer = null; return; }
         this.sb({ a: 'hello', n: this.nom, f: this.bouille });
       }, 600);
+      // Les pings partent une fois la socket ouverte : avant, chaque ping
+      // tombait dans le vide et demandait une reconnexion… d'une socket qui
+      // était en train de s'ouvrir.
+      this._lancerPings();
     };
-    this._lancerPings();
     ws.onmessage = (ev) => this._recevoir(ev.data);
     ws.onclose = () => { if (this.ws !== ws) return; if (!this.ferme) { this.surEtat('Reconnexion…'); this._planifier(); } };
     ws.onerror = () => { try { ws.close(); } catch (e) { /* déjà fermée */ } };
@@ -97,15 +117,23 @@ class Reseau {
     battre();
   }
   _horloge() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
-  _pong(t) {
+  _pong(t, st) {
     if (!Number.isFinite(t)) return;
-    const aller = this._horloge() - t;
+    const maintenant = this._horloge();
+    const aller = maintenant - t;
     // Un relevé absurde (onglet endormi, horloge qui a sauté) ne compte pas.
     if (aller < 0 || aller > 3000) return;
     this._pings.push(aller);
     if (this._pings.length > 6) this._pings.shift();
     this.allerRetour = Math.min.apply(null, this._pings);
+    // L'horloge du serveur, lue au milieu de l'aller-retour le plus court.
+    if (Number.isFinite(st) && aller <= this._decalageRtt) {
+      this._decalageRtt = aller;
+      this.decalage = st - (t + aller / 2);
+    }
   }
+  // Une heure du serveur (ms) en heure de la page (performance.now).
+  heureLocale(st) { return Number(st) - this.decalage; }
 
   _planifier() {
     if (this._reconnexion || this.ferme) return;
@@ -116,13 +144,15 @@ class Reseau {
     if (this.ws && this.ws.readyState === 1) {
       try { this.ws.send(s + '\0'); return true; } catch (e) { /* on retombe sur la reconnexion */ }
     }
-    this._planifier();
+    // Une socket qui s'ouvre encore (readyState 0) n'a pas besoin d'une
+    // seconde : on ne replanifie que si elle est fermée ou en train de l'être.
+    if (!this.ws || this.ws.readyState > 1) this._planifier();
     return false;
   }
 
-  // <sb a="…" …/>
+  // <sb a="…" …/> (ou la balise du jeu)
   sb(attrs) {
-    let s = '<sb';
+    let s = '<' + this.balise;
     for (const k of Object.keys(attrs)) s += ' ' + k + '="' + Reseau.xml(attrs[k]) + '"';
     return this.envoyer(s + ' />');
   }
@@ -137,14 +167,14 @@ class Reseau {
     this.tampon = parts.pop();
     for (let p of parts) {
       p = p.trim();
-      if (p.indexOf('<sb') !== 0) continue;
+      if (p.indexOf('<' + this.balise) !== 0) continue;
       let doc;
       try { doc = this._parseur.parseFromString(p, 'text/xml'); } catch (e) { continue; }
       const el = doc.documentElement;
-      if (!el || el.nodeName !== 'sb') continue;
+      if (!el || el.nodeName !== this.balise) continue;
       const e = el.getAttribute('e');
-      if (e === 'pong') { this._pong(Number(el.getAttribute('t'))); continue; }
-      if (e === 'lobby' && !this.salonRecu) { this.salonRecu = true; this.surEtat('Connecté'); }
+      if (e === 'pong') { this._pong(Number(el.getAttribute('t')), Number(el.getAttribute('st'))); continue; }
+      if (e === this.evenementSalon && !this.salonRecu) { this.salonRecu = true; this.surEtat('Connecté'); }
       this.surEvenement(e, el);
     }
   }
@@ -164,6 +194,6 @@ class Reseau {
 
 const API = { Reseau };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
-else racine.SnakeReseau = API;
+else { racine.SnakeReseau = API; racine.ReseauJeu = API; }
 
 })(typeof window !== 'undefined' ? window : globalThis);

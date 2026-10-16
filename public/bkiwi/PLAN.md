@@ -154,3 +154,53 @@ vide, mêmes voitures IA ; un virage à gauche d'une seconde au même instant
 amène les deux voitures contre la même bordure, à la même hauteur. Seule
 différence : le préchargement du circuit prend 0,3 s au portage (les
 bibliothèques se reconstruisent), et rien au SWF en cache — hors course.
+
+## Le mode en ligne (MULTI) et la X Violet
+
+Un mode qui n'existait pas dans le fichier : des courses à deux, trois ou
+quatre pilotes du parc, sur n'importe lequel des six circuits, bouton
+« en ligne » des modes de jeu. Rien n'y est classé : c'est pour s'amuser.
+
+**Pourquoi ça ne lague pas.** Le Battle de Frutisnake fait jouer la partie
+par le serveur, parce que deux serpents qui se touchent, c'est la fin de l'un
+des deux. Une course n'a rien à trancher : chacun pilote *sa* voiture, avec
+la physique du jeu, au pas, exactement comme en solo — la touche agit à
+l'image même où on l'enfonce, le réseau n'est jamais entre le doigt et le
+virage. Vingt fois par seconde, la voiture dit où elle est (`multi.js`,
+`tickCourse` : x, y, cap, vitesse, nitro, tour, balise), et le serveur
+(`server/net.js`, balise `<kw>` — « bk » était déjà un code du protocole
+d'époque) le relaie aux autres pilotes du salon, sans le lire. Les voitures
+des autres se dessinent entre deux positions reçues, un dixième de seconde en
+arrière du présent (`avancerDistants`) : ce retard absorbe la gigue du
+réseau ; quand une position tarde, la voiture est prolongée sur son cap à sa
+vitesse, puis s'arrête plutôt que d'inventer. Les voitures ne se cognent pas
+(elles se traversent, comme un fantôme) : une collision à cent millisecondes
+de distance ne serait la même pour personne.
+
+**Le départ et l'arrivée.** L'hôte lance quand les autres sont prêts ; chacun
+charge le circuit et le dit ; le serveur donne alors l'heure du GO, la même
+pour tous (traduite en heure locale par l'écart d'horloge relevé au ping,
+`reseau.js`, `heureLocale`). Le décompte 3-2-1 attend ce GO, le voyant réseau
+tournant en attendant. Le chrono de chacun est le sien ; à l'arrivée il part
+au serveur, qui classe **au temps** (deux pilotes partis au même instant : le
+meilleur chrono est devant, qu'il ait ou non le réseau le plus court). Quand
+tous sont arrivés — ou ont renoncé (échap), ou quatre-vingt-dix secondes après
+le premier — le résultat tombe, et le salon est prêt pour la revanche. Pas de
+pause en ligne : les autres ne s'arrêtent pas avec vous.
+
+**La X Violet.** La voiture du mode, et de lui seul (sixième bouton du choix
+des voitures, pour tout le monde) : la meilleure valeur de chaque colonne de
+`carStats` parmi les cinq écuries (rotation 9, accélération 1,8, frein 0,93,
+maniabilité 0,992, vitesse 16,2, adhérence 0,7), sept nitros — le plafond du
+jeu —, et la carrosserie de la Final KiwiX (habillage 25) teinte en violet
+(`Color.setTransform`). Dans le menu, c'est la KiwiX teinte qui la figure.
+
+Le salon (hub des courses ouvertes, pilotes au stand, circuit, voitures,
+prêt, lancer) est un panneau HTML posé sur la scène (`index.html`,
+`#bk-multi`) : des listes et des boutons, ce que le canevas fait mal. Le fil
+est celui du Battle de Frutisnake (`/snake3/reseau.js`, options `balise` et
+`salon`), qui mesure l'aller-retour et l'écart d'horloge.
+
+Tests : `public/bkiwi/server/net.test.js` (le pont à blanc, horloge
+injectée) et `test/bkiwiMulti.test.js` (deux pilotes sur la WebSocket du
+parc, de bout en bout).

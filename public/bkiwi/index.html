@@ -74,11 +74,44 @@
     color: #fff; font: bold 14px Verdana, sans-serif; text-shadow: 0 1px 0 rgba(0,0,0,.2);
     pointer-events: none;
   }
+  /* Le salon du mode en ligne (multi.js) : un panneau posé sur la scène. */
+  #aire { position: relative; }
+  #bk-multi {
+    position: absolute; inset: 0; display: none; flex-direction: column; gap: 8px;
+    margin: auto; width: min(100%, 420px); max-height: 100%; overflow: auto; box-sizing: border-box;
+    padding: 10px 12px; background: rgba(28, 10, 44, .94); color: #fff;
+    font: 12px/1.45 Verdana, Arial, sans-serif; border: 3px solid #c9531b; border-radius: 12px;
+  }
+  #bk-multi .bkm-tete { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; }
+  #bk-multi .bkm-etat { font-size: 11px; color: #d8b7ff; font-weight: normal; }
+  #bk-multi .bkm-section { background: rgba(255, 255, 255, .07); border-radius: 8px; padding: 6px 8px; }
+  #bk-multi .bkm-titre { font-weight: bold; color: #ffd27a; margin-bottom: 4px; }
+  #bk-multi .bkm-petit { margin-top: 8px; font-size: 11px; }
+  #bk-multi .bkm-ligne { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 3px 0; border-top: 1px solid rgba(255,255,255,.08); }
+  #bk-multi .bkm-ligne:first-of-type { border-top: 0; }
+  #bk-multi .bkm-ligne i { color: #d8b7ff; font-style: normal; font-size: 11px; }
+  #bk-multi .bkm-vide, #bk-multi .bkm-noms, #bk-multi .bkm-note { color: #cbb6e0; font-size: 11px; }
+  #bk-multi .bkm-note { text-align: center; }
+  #bk-multi .bkm-erreur { background: #8a2010; border-radius: 6px; padding: 4px 8px; font-weight: bold; }
+  #bk-multi .bkm-pret { font-size: 11px; color: #cbb6e0; }
+  #bk-multi .bkm-pret.oui { color: #9cff8a; font-weight: bold; }
+  #bk-multi .bkm-piste { margin: 2px 0 6px; }
+  #bk-multi select { font: inherit; padding: 2px 4px; border-radius: 6px; }
+  #bk-multi .bkm-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  #bk-multi .bkm-btn {
+    flex: 1 1 auto; min-height: 36px; border: 2px solid #fff; border-radius: 10px; cursor: pointer;
+    background: #c9531b; color: #fff; font: bold 12px Verdana, Arial, sans-serif; padding: 4px 10px;
+  }
+  #bk-multi .bkm-btn.bkm-grand { flex-basis: 100%; min-height: 42px; font-size: 14px; }
+  #bk-multi .bkm-btn.bkm-sombre { background: #5a2d7a; }
+  #bk-multi .bkm-btn.bkm-oui { background: #2d7a3e; }
+  #bk-multi .bkm-btn[disabled] { opacity: .45; cursor: default; }
+  #bk-multi .bkm-btn:not([disabled]):active { background: #f0813d; }
 </style>
 </head>
 <body>
 <div id="tout">
-  <div id="aire"><canvas id="scene" width="350" height="350" tabindex="0"></canvas></div>
+  <div id="aire"><canvas id="scene" width="350" height="350" tabindex="0"></canvas><div id="bk-multi"></div></div>
   <div id="commandes">
     <div class="cote" id="cote-gauche">
       <div class="bloc">
@@ -111,6 +144,10 @@
 <script src="/bkiwi/jeu/menu.js"></script>
 <script src="/bkiwi/jeu/final.js"></script>
 <script src="/bkiwi/plateforme.js"></script>
+<!-- Le mode en ligne : le fil WebSocket partagé avec le Battle de Frutisnake
+     (balise <kw>), et le salon, la course, les voitures des autres. -->
+<script src="/snake3/reseau.js"></script>
+<script src="/bkiwi/multi.js"></script>
 <script src="/bkiwi/jeu/cadence.js"></script>
 <script src="/bkiwi/jeu/principal.js"></script>
 <!-- Le disque sorti de la Frusion ferme le jeu, et le battement tient le
@@ -190,6 +227,17 @@
       if (!b.width || !b.height) lacherTout();
     }).observe(document.getElementById('aire'));
   }
+
+  // Le salon du mode en ligne : une seule écoute pour ses boutons et sa liste.
+  const salon = document.getElementById('bk-multi');
+  salon.addEventListener('click', function (ev) {
+    const b = ev.target.closest('[data-act]');
+    if (b && b.tagName !== 'SELECT' && window.BkiwiJeu && window.BkiwiJeu.multi) window.BkiwiJeu.multi.action(b);
+  });
+  salon.addEventListener('change', function (ev) {
+    const b = ev.target.closest('select[data-act]');
+    if (b && window.BkiwiJeu && window.BkiwiJeu.multi) window.BkiwiJeu.multi.action(b);
+  });
 
   adapter();
   window.demarrerBurningKiwi({ canvas, sid: params.get('sid') || '' }).then(function (r) {
