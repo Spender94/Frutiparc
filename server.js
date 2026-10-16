@@ -11559,10 +11559,13 @@ function quetesEtatPour(username) {
 const quetesRecordsParc = new Map();   // ranking → { username, score, data }
 const quetesPrimesPrises = new Map();  // ranking → { username, score, ancien, gain, prisAt } (semaine en cours)
 let quetesPrimesSemaine = null;
-// Les classements à prime : ceux des quêtes (sauf l'arcade de Mini-Fever, dont le score mêle les paliers).
+// Les classements à prime : ceux des quêtes, sauf l'arcade de Mini-Fever (dont le
+// score mêle les paliers) et le Challenge MotionBall (un pourcentage de salles :
+// « détrôner » un 100 % n'a pas de sens).
+const QUETES_PRIMES_EXCLUS = new Set(['minifever_arcade', 'mb2_classic']);
 function quetesPrimesClassements() {
   const l = quetesReglages.primes.classements;
-  return (l && l.length ? l : QUETES_PERSO_RK.filter((rk) => rk !== 'minifever_arcade')).filter((rk) => RANKINGS[rk] && isDailyResetRanking(rk));
+  return (l && l.length ? l : QUETES_PERSO_RK).filter((rk) => !QUETES_PRIMES_EXCLUS.has(rk) && RANKINGS[rk] && isDailyResetRanking(rk));
 }
 async function chargerQuetesRecords() {
   const rks = new Set(quetesPrimesClassements());
