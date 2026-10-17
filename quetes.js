@@ -87,8 +87,33 @@ const REGLAGES_DEFAUT = Object.freeze({
   // LES MISES À PRIX : battre un record absolu du parc (le livre des records du
   // Club) sur un classement du Challenge. Une prime par classement et par
   // semaine, et seulement en détrônant quelqu'un d'autre.
-  primes: { actif: true, gain: 500, classements: null },   // null : tous ceux des quêtes
+  //
+  // LA PRIME GROSSIT AVEC L'ÂGE DU RECORD. Tous les records ne se valent pas :
+  // certains sont à portée de main, d'autres tiennent depuis des mois. Un
+  // record neuf est mis à prix `gain` ; chaque semaine qu'il tient ajoute `pas`
+  // kikooz, jusqu'au `plafond`. Un record battu (et payé) repart de `relance`,
+  // et regrossit de `pas` par semaine. Ainsi le record facile, repris toutes
+  // les semaines, ne rapporte plus grand-chose, et le record imprenable
+  // finit par valoir une fortune.
+  primes: { actif: true, gain: 500, relance: 100, pas: 50, plafond: 5000, classements: null },   // classements null : tous ceux des quêtes
 });
+
+// La valeur d'une mise à prix : la base (gain d'un record neuf, ou relance
+// après un record payé) plus le pas par semaine entière que le record tient,
+// bornée au plafond. `depuis` et `lundi` sont des jours 'AAAA-MM-JJ'.
+function primeValeur(reglagesPrimes, base, depuis, lundi) {
+  const R = reglagesPrimes || {};
+  let b = Number(base);
+  if (!Number.isFinite(b)) b = Number(R.gain) || 0;
+  let semaines = 0;
+  if (depuis && lundi) {
+    const d0 = Date.parse(lundiDe(String(depuis)) + 'T00:00:00Z'), d1 = Date.parse(String(lundi) + 'T00:00:00Z');
+    if (Number.isFinite(d0) && Number.isFinite(d1)) semaines = Math.max(0, Math.floor((d1 - d0) / (7 * 86400000)));
+  }
+  const v = b + (Number(R.pas) || 0) * semaines;
+  const plafond = Number(R.plafond);
+  return Math.max(0, Math.round(plafond > 0 ? Math.min(plafond, v) : v));
+}
 
 // L'étiquette de couleur posée devant le titre.
 const ETIQUETTES = {
@@ -488,6 +513,9 @@ function reglagesNormalises(brut) {
   R.primes = {
     actif: PR.actif !== false,
     gain: borne(PR.gain, 0, 100000, REGLAGES_DEFAUT.primes.gain),
+    relance: borne(PR.relance, 0, 100000, REGLAGES_DEFAUT.primes.relance),
+    pas: borne(PR.pas, 0, 100000, REGLAGES_DEFAUT.primes.pas),
+    plafond: borne(PR.plafond, 0, 10000000, REGLAGES_DEFAUT.primes.plafond),
     classements: Array.isArray(PR.classements) ? PR.classements.map(String) : null,
   };
   // Les quêtes créées par l'admin : une mesure, un seuil, un niveau.
@@ -1260,7 +1288,7 @@ module.exports = {
   PALIERS, PALIER_NOM, PALIER_PART, PALIERS_CONNUS, paliersDe, palierAtteint, proposerV2, definitionV2, PREMIERS_PAS, PARC,
   MESURES_PERSO, proposerPerso, definitionPerso, proposerContrat, definitionContrat, arrondir, aleaSeme,
   NIVEAUX, NIVEAU_NOM, REGLAGES_DEFAUT, CATALOGUE, ETIQUETTES, KALUGA_EPREUVES, MODES,
-  nombre, jourPlus, lundiDe, minuitParis, finDeSemaine, semaineLisible,
+  nombre, jourPlus, lundiDe, minuitParis, finDeSemaine, semaineLisible, primeValeur,
   reglagesNormalises, definition, catalogue, titre, tirer,
   estFaite, appliquer, avancement, modeRecevable, parole, PAROLES,
   MESURES, formater, lireValeur, valeurDe, reperes, calibrer, detail,

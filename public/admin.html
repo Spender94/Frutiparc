@@ -6591,8 +6591,11 @@ async function loadQuetes() {
             <label style="margin-right:12px"><input type="checkbox" id="qt-p-echange" ${R.paliers.echange ? 'checked' : ''}> Changer une quête par semaine</label>
             <label>Bonus semaine complète <input type="number" min="0" id="qt-p-bonus" value="${R.paliers.bonusXp}" style="width:76px"> XP</label></div>
           <div><label style="margin-right:12px"><input type="checkbox" id="qt-pr-actif" ${R.primes.actif ? 'checked' : ''}> <b>Mises à prix</b> (records absolus du parc)</label>
-            <label>prime <input type="number" min="0" id="qt-pr-gain" value="${R.primes.gain}" style="width:64px"> kikooz</label>
-            <small style="color:#777">— battre un record du Challenge en détrônant quelqu'un d'autre ; une prime par record et par semaine</small></div>
+            <label>record neuf <input type="number" min="0" id="qt-pr-gain" value="${R.primes.gain}" style="width:64px"> kz</label>
+            <label style="margin-left:8px">+ <input type="number" min="0" id="qt-pr-pas" value="${R.primes.pas}" style="width:56px"> kz par semaine tenue</label>
+            <label style="margin-left:8px">plafond <input type="number" min="0" id="qt-pr-plafond" value="${R.primes.plafond}" style="width:70px"> kz</label>
+            <label style="margin-left:8px">après un record payé <input type="number" min="0" id="qt-pr-relance" value="${R.primes.relance}" style="width:64px"> kz</label>
+            <div><small style="color:#777">Battre un record (Challenge, championnats Grapiz et Frutibandas) en détrônant quelqu'un d'autre ; une prime par record et par semaine. La prime grossit chaque semaine que le record tient, et repart de la relance une fois payée — un record facile, repris sans cesse, ne rapporte plus grand-chose ; un record imprenable finit au plafond.</small></div></div>
         </div>
         <div style="margin-bottom:8px"><label><input type="checkbox" id="qt-contrat-actif" ${R.contrat.actif ? 'checked' : ''}> <b>Contrat à signer</b> en plus</label>
           <small style="color:#777">(trois propositions taillées sur ses scores, il en signe une ; seuls les résultats d'après la signature comptent)</small></div>
@@ -6630,14 +6633,14 @@ async function loadQuetes() {
           <input id="qt-pl-${esc(m.cle)}-${k}" value="${esc(m.retouches && m.retouches[k] ? m.retouches[k] : '')}" placeholder="retouche" style="width:90px;font-size:11px"></td>`).join('')}
         <td><button class="btn btn-sm" onclick="quetesPaliers('${esc(m.cle)}')">Enregistrer</button></td></tr>`).join('')}
       </tbody></table>
-      ${(d.primes || []).length ? `<h4>Mises à prix</h4><table><thead><tr><th>Classement</th><th>Record du parc</th><th>Tenant</th><th>Cette semaine</th></tr></thead><tbody>
-        ${d.primes.map((p) => `<tr><td>${esc(p.nom)}</td><td>${esc(p.record)}</td><td>${esc(p.tenant)}</td><td>${p.ouverte ? `ouverte (${p.gain} kikooz)` : `<b>prise par ${esc(p.prisePar)}</b>`}</td></tr>`).join('')}
+      ${(d.primes || []).length ? `<h4>Mises à prix</h4><table><thead><tr><th>Classement</th><th>Record du parc</th><th>Tenant</th><th>Tenu depuis</th><th>Prime</th><th>Cette semaine</th></tr></thead><tbody>
+        ${d.primes.map((p) => `<tr><td>${esc(p.nom)}</td><td>${esc(p.record)}</td><td>${esc(p.tenant)}</td><td>${p.semaines} sem.${p.depuis ? ` <small style="color:#999">(${esc(p.depuis)})</small>` : ''}</td><td><b>${p.ouverte ? p.gain : p.prochaine}</b> kz</td><td>${p.ouverte ? 'ouverte' : `<b>prise par ${esc(p.prisePar)}</b> (${p.gain} kz payés)`}</td></tr>`).join('')}
       </tbody></table>
       <div style="color:#777;font-size:12px;margin:6px 0 4px">Les records battus depuis le dernier démarrage du serveur, et pourquoi la prime a payé ou non :</div>
       ${(d.primesJournal || []).length ? `<table><thead><tr><th>Quand</th><th>Classement</th><th>Par</th><th>Nouveau record</th><th>Ancien</th><th>Prime</th></tr></thead><tbody>
         ${d.primesJournal.map((e) => `<tr><td style="font-size:11px">${esc(new Date(e.at).toLocaleString('fr-FR'))}</td><td>${esc(e.nom)}</td><td><b>${esc(e.par)}</b></td><td>${esc(e.record)}</td>
           <td>${e.ancien ? `${esc(e.ancien)} (${esc(e.ancienRecord)})` : '—'}</td>
-          <td>${{ payee: '<b style="color:#2f8f2f">payée</b>', propre: 'non : son propre record', prise: `non : déjà prise par ${esc(e.prisePar || '?')} cette semaine`,
+          <td>${{ payee: `<b style="color:#2f8f2f">payée</b>${e.gain ? ` : ${e.gain} kz` : ''}`, propre: 'non : son propre record', prise: `non : déjà prise par ${esc(e.prisePar || '?')} cette semaine`,
             premier: 'non : pas de record avant lui', fermee: 'non : mises à prix fermées' }[e.issue] || esc(e.issue)}</td></tr>`).join('')}
       </tbody></table>` : '<div style="color:#999;font-size:12px">Aucun record battu depuis le démarrage.</div>'}
       ${(d.primesPrises || []).length ? `<div style="color:#777;font-size:12px;margin:8px 0 4px">Les primes payées cette semaine :</div>
@@ -6687,7 +6690,8 @@ async function quetesEnregistrer() {
     activites: Number($('#qt-p-activites').value), exploits: Number($('#qt-p-exploits').value),
     pas: { moyenne: Number($('#qt-p-pas-moyenne').value), difficile: Number($('#qt-p-pas-difficile').value),
       moyenneTemps: Number($('#qt-p-pas-moyenneTemps').value), difficileTemps: Number($('#qt-p-pas-difficileTemps').value) } };
-  const primes = { actif: $('#qt-pr-actif').checked, gain: Number($('#qt-pr-gain').value) };
+  const primes = { actif: $('#qt-pr-actif').checked, gain: Number($('#qt-pr-gain').value), pas: Number($('#qt-pr-pas').value),
+    plafond: Number($('#qt-pr-plafond').value), relance: Number($('#qt-pr-relance').value) };
   await quetesPost('/api/admin/quetes', { ouverture: o ? o.value : 'ferme', mode: md ? md.value : 'individuelles', testeurs: $('#qt-testeurs').value,
     gains, composition, individuelles, contrat, paliers, primes },
     (d) => `Quêtes : ${{ ferme: 'fermées', testeurs: 'testeurs seulement', tous: 'ouvertes à tous' }[d.reglages.ouverture]}`

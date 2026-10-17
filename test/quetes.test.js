@@ -472,7 +472,14 @@ test('les premiers pas : le forum, un Prunostic qui coûte plus qu’il ne rappo
   assert.deepEqual(R.paliers.gains, { bronze: 5, argent: 8, or: 12, platine: 18, legende: 40 });
   assert.deepEqual([R.paliers.budget, R.paliers.maxQuetes, R.paliers.depuis], [50, 7, '2026-10-12']);
   assert.deepEqual(R.paliers.seuils, { 'swapou-challenge': { bronze: 100 } });
-  assert.deepEqual(Q.reglagesNormalises({}).primes, { actif: true, gain: 500, classements: null });
+  assert.deepEqual(Q.reglagesNormalises({}).primes, { actif: true, gain: 500, relance: 100, pas: 50, plafond: 5000, classements: null });
+  // La valeur d'une mise à prix : base + pas par semaine tenue, au plafond.
+  const PR = { gain: 500, relance: 100, pas: 50, plafond: 5000 };
+  assert.equal(Q.primeValeur(PR, 500, '2026-10-14', '2026-10-12'), 500, 'un record de la semaine : la base');
+  assert.equal(Q.primeValeur(PR, 500, '2026-10-01', '2026-10-12'), 600, 'deux lundis passés : deux pas');
+  assert.equal(Q.primeValeur(PR, 100, '2026-09-28', '2026-10-12'), 200, 'après relance : 100 + 2 × 50');
+  assert.equal(Q.primeValeur(PR, 500, '2024-01-01', '2026-10-12'), 5000, 'un vieux record vaut le plafond');
+  assert.equal(Q.primeValeur(PR, undefined, null, '2026-10-12'), 500, 'sans état : le gain d’un record neuf');
 });
 
 test('une déclaration de mode : connue et vraisemblable, ou refusée', () => {
@@ -1196,6 +1203,15 @@ test('le modèle des paliers : paliers du parc, paie au palier, échange, bonus 
   assert.ok(gagneC >= cible.gain);
   const prime = (await etat('cerise')).primes.find((p) => p.rk === 'swapou2_classic');
   assert.deepEqual([prime.ouverte, prime.prisePar, prime.tenant], [false, 'figue', 'cerise']);
+  // La prime payée valait 500 (un record neuf) ; le record repart à la relance,
+  // 100 kikooz, à compter d'aujourd'hui — et cet état survit en base.
+  assert.deepEqual([prime.gain, prime.prochaine, prime.semaines], [500, 100, 0], JSON.stringify(prime));
+  assert.equal(journal[1].gain, 500);
+  const etatPrimes = JSON.parse((await sql(`SELECT value FROM app_state WHERE key = 'quetes_primes_etat'`))[0].value);
+  assert.equal(etatPrimes.swapou2_classic.base, 100);
+  // Les championnats en ligne sont mis à prix aussi (dès qu'ils ont un record).
+  const A2 = await adminEtat();
+  assert.ok(!A2.primes.some((p) => p.rk === 'mb2_classic'), 'pas le Challenge MotionBall');
   assert.equal((await sql(`SELECT username, ancien, gain FROM quetes_primes WHERE semaine = $1`, [lundi])).map((r) => [r.username, r.ancien, r.gain]).join(), `figue,${tenant},500`);
 
   // OLIVE : une débutante (premiers pas rallumés) ; un score de Challenge compte pour « trois jeux ».

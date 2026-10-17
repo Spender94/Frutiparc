@@ -11373,6 +11373,13 @@ function quetesContratVue(u) {
 }
 
 /** Un événement du parc : il fait peut-être avancer une quête du joueur. */
+// Une note de championnat (Grapiz, Frutibandas) qui monte : un score pour les
+// mises à prix — le record du parc, c'est la meilleure note.
+function quetesNoteChampion(username, rk, note) {
+  const n = Number(note);
+  if (!Number.isFinite(n) || n <= 0 || !RANKINGS[rk]) return;
+  quetesEvenement(username, { type: 'score', rk, v: n, data: '', challenge: false, jeu: RANKINGS[rk].game });
+}
 function quetesEvenement(username, evt) {
   if (!quetesPret) return;
   const u = String(username || '').toLowerCase();
@@ -11556,31 +11563,85 @@ function quetesEtatPour(username) {
  * ce classement (quetes_primes) ; battre son propre record ne paie pas. Ainsi
  * personne ne vit de primes en grattant son record d'un point chaque semaine.
  */
-const quetesRecordsParc = new Map();   // ranking → { username, score, data }
+const quetesRecordsParc = new Map();   // ranking → { username, score, data, at }
 const quetesPrimesPrises = new Map();  // ranking → { username, score, ancien, gain, prisAt } (semaine en cours)
 let quetesPrimesSemaine = null;
 // Les classements à prime : ceux des quêtes, sauf l'arcade de Mini-Fever (dont le
 // score mêle les paliers) et le Challenge MotionBall (un pourcentage de salles :
-// « détrôner » un 100 % n'a pas de sens).
+// « détrôner » un 100 % n'a pas de sens) ; plus les deux championnats en ligne
+// (Grapiz, Frutibandas), dont le record est la meilleure note.
 const QUETES_PRIMES_EXCLUS = new Set(['minifever_arcade', 'mb2_classic']);
+const QUETES_PRIMES_EN_PLUS = ['grapiz_champion', 'bandas_champion'];
 function quetesPrimesClassements() {
   const l = quetesReglages.primes.classements;
-  return (l && l.length ? l : QUETES_PERSO_RK).filter((rk) => !QUETES_PRIMES_EXCLUS.has(rk) && RANKINGS[rk] && isDailyResetRanking(rk));
+  const base = (l && l.length ? l : QUETES_PERSO_RK.concat(QUETES_PRIMES_EN_PLUS));
+  return base.filter((rk) => !QUETES_PRIMES_EXCLUS.has(rk) && RANKINGS[rk] && (isDailyResetRanking(rk) || QUETES_PRIMES_EN_PLUS.includes(rk)));
+}
+/*
+ * LA VALEUR DE CHAQUE MISE À PRIX (quetes.js, primeValeur) : une base — le
+ * gain d'un record neuf, ou la relance après un record payé — plus le pas par
+ * semaine que le record tient, jusqu'au plafond. Ce qu'il faut retenir par
+ * classement, c'est donc la base et la date de départ du compteur : un record
+ * jamais mis à prix part de la date du record lui-même (un record qui tient
+ * depuis un an vaut déjà le plafond) ; une prime payée fait repartir le
+ * compteur du jour, à la relance. Battre son propre record ne remet rien à
+ * zéro : le record tient toujours face aux autres. Gardé en base (app_state
+ * `quetes_primes_etat`) : il survit aux redémarrages.
+ */
+const quetesPrimesEtat = new Map();    // ranking → { base, depuis: 'AAAA-MM-JJ' }
+function quetesPrimesEtatEnregistrer() {
+  if (!process.env.DATABASE_URL) return;
+  const obj = {};
+  for (const [rk, e] of quetesPrimesEtat) obj[rk] = e;
+  db.setAppState('quetes_primes_etat', JSON.stringify(obj)).catch(dbErr('quetes primes etat'));
+}
+function quetesPrimeValeur(rk, lundi) {
+  const e = quetesPrimesEtat.get(rk);
+  const R = quetesReglages.primes;
+  if (!e) return R.gain;
+  return Quetes.primeValeur(R, e.base, e.depuis, lundi || quetesSemaineCourante().lundi);
+}
+function quetesPrimeSemaines(rk, lundi) {
+  const e = quetesPrimesEtat.get(rk);
+  if (!e || !e.depuis) return 0;
+  const d0 = Date.parse(Quetes.lundiDe(e.depuis) + 'T00:00:00Z'), d1 = Date.parse((lundi || quetesSemaineCourante().lundi) + 'T00:00:00Z');
+  return (Number.isFinite(d0) && Number.isFinite(d1)) ? Math.max(0, Math.floor((d1 - d0) / (7 * 86400000))) : 0;
+}
+// Un classement sans état : le compteur part de la date du record (ou d'aujourd'hui).
+function quetesPrimesEtatCompleter() {
+  let neuf = false;
+  for (const rk of quetesPrimesClassements()) {
+    const rec = quetesRecordsParc.get(rk);
+    if (!rec || quetesPrimesEtat.has(rk)) continue;
+    const jour = rec.at ? new Date(rec.at) : null;
+    const depuis = (jour && !Number.isNaN(jour.getTime())) ? jour.toISOString().slice(0, 10) : parisDayKey();
+    quetesPrimesEtat.set(rk, { base: quetesReglages.primes.gain, depuis });
+    neuf = true;
+  }
+  if (neuf) quetesPrimesEtatEnregistrer();
 }
 async function chargerQuetesRecords() {
   const rks = new Set(quetesPrimesClassements());
-  const garder = (u, rk, score, data) => {
+  const garder = (u, rk, score, data, at) => {
     if (!rks.has(rk) || !Number.isFinite(Number(score)) || NPC_USERNAMES.has(String(u).toLowerCase())) return;
     if (RANKINGS[rk].lowerIsBetter && Number(score) <= 0) return;
     const cur = quetesRecordsParc.get(rk);
     if (!cur || isScoreBetter(rk, Number(score), String(data || ''), Number(cur.score), String(cur.data || ''))) {
-      quetesRecordsParc.set(rk, { username: String(u).toLowerCase(), score: Number(score), data: String(data || '') });
+      quetesRecordsParc.set(rk, { username: String(u).toLowerCase(), score: Number(score), data: String(data || ''), at: at || null });
     }
   };
-  for (const [u, rlist] of Object.entries(scoresData.users || {})) for (const [rk, e] of Object.entries(rlist || {})) if (e) garder(u, rk, e.score, e.data);
+  for (const [u, rlist] of Object.entries(scoresData.users || {})) for (const [rk, e] of Object.entries(rlist || {})) if (e) garder(u, rk, e.score, e.data, e.updatedAt || e.at);
   if (process.env.DATABASE_URL) {
-    for (const r of await db.getAllTimeBestScores()) garder(r.username, r.ranking_id, r.score, r.data);
+    for (const r of await db.getAllTimeBestScores()) garder(r.username, r.ranking_id, r.score, r.data, r.updated_at);
+    if (!quetesPrimesEtat.size) {
+      try {
+        const brut = await db.getAppState('quetes_primes_etat');
+        const obj = brut ? JSON.parse(brut) : {};
+        for (const [rk, e] of Object.entries(obj || {})) if (e && Number.isFinite(Number(e.base))) quetesPrimesEtat.set(rk, { base: Number(e.base), depuis: String(e.depuis || '') });
+      } catch (e) { console.error('[QUETES] état des mises à prix :', e.message); }
+    }
   }
+  quetesPrimesEtatCompleter();
 }
 function quetesPrimesDeLaSemaine() {
   const S = quetesSemaineCourante();
@@ -11609,14 +11670,18 @@ function quetesPrimeScore(u, evt) {
   if (!Number.isFinite(n) || (RANKINGS[evt.rk].lowerIsBetter && n <= 0)) return;
   const ancien = quetesRecordsParc.get(evt.rk);
   if (ancien && !isScoreBetter(evt.rk, n, data, ancien.score, ancien.data)) return;
-  quetesRecordsParc.set(evt.rk, { username: u, score: n, data });
+  quetesRecordsParc.set(evt.rk, { username: u, score: n, data, at: new Date().toISOString() });
   const nomRk = (RANKINGS[evt.rk] && RANKINGS[evt.rk].name) || evt.rk;
+  // La prime en jeu : celle que le record valait au moment d'être battu.
+  const valeur = quetesPrimeValeur(evt.rk, S.lundi);
   // Pourquoi ce record ne paie pas : on le dit au joueur (il croyait toucher
   // la prime) et on le note pour l'admin.
   const deja = quetesPrimesPrises.get(evt.rk);
-  const issue = !payable || !R.gain ? 'fermee' : !ancien ? 'premier' : ancien.username === u ? 'propre' : deja ? 'prise' : 'payee';
+  const issue = !payable || !valeur ? 'fermee' : !ancien ? 'premier' : ancien.username === u ? 'propre' : deja ? 'prise' : 'payee';
   quetesPrimesNoter({ rk: evt.rk, nom: nomRk, username: u, score: n, data, ancien: ancien ? ancien.username : null,
-    ancienScore: ancien ? ancien.score : null, issue, par: deja ? deja.username : null });
+    ancienScore: ancien ? ancien.score : null, issue, par: deja ? deja.username : null, gain: valeur });
+  // Un tout premier record : sa mise à prix part d'aujourd'hui.
+  if (!ancien && !quetesPrimesEtat.has(evt.rk)) { quetesPrimesEtat.set(evt.rk, { base: R.gain, depuis: parisDayKey() }); quetesPrimesEtatEnregistrer(); }
   if (issue === 'propre') {
     addAndNotifyUserLog(u, { type: USER_LOG_TYPE.QUETE, flNew: true,
       content: `Nouveau record absolu (${nomRk}) : bravo ! C'était déjà le tien, et la mise à prix ne paie que si l'on détrône quelqu'un d'autre.` });
@@ -11628,40 +11693,50 @@ function quetesPrimeScore(u, evt) {
     console.log(`[QUETES] ${u} bat le record ${evt.rk} (${ancien ? `${ancien.username} : ${ancien.score}` : 'aucun'} → ${n}) : pas de prime (${issue})`);
     return;
   }
-  const prise = { username: u, score: n, data, ancien: ancien.username, ancienScore: ancien.score, gain: R.gain, prisAt: Date.now() };
+  const prise = { username: u, score: n, data, ancien: ancien.username, ancienScore: ancien.score, gain: valeur, prisAt: Date.now() };
   quetesPrimesPrises.set(evt.rk, prise);
+  // Le record est payé : sa mise à prix repart de la relance, à compter d'aujourd'hui.
+  quetesPrimesEtat.set(evt.rk, { base: R.relance, depuis: parisDayKey() });
+  quetesPrimesEtatEnregistrer();
   const payer = () => {
     const nom = (RANKINGS[evt.rk] && RANKINGS[evt.rk].name) || evt.rk;
-    parisCrediter(u, R.gain, `la mise à prix du record « ${nom} » (Gromelin)`);
+    parisCrediter(u, valeur, `la mise à prix du record « ${nom} » (Gromelin)`);
     addAndNotifyUserLog(u, { type: USER_LOG_TYPE.QUETE, flNew: true,
-      content: `Record absolu battu (${nom}), devant ${getDisplayName(ancien.username)} ! Gromelin te verse la mise à prix : ${R.gain} kikooz.` });
-    console.log(`[QUETES] ${u} bat le record ${evt.rk} (${ancien.username} : ${ancien.score} → ${n}) : prime de ${R.gain} kikooz`);
+      content: `Record absolu battu (${nom}), devant ${getDisplayName(ancien.username)} ! Gromelin te verse la mise à prix : ${valeur} kikooz.` });
+    console.log(`[QUETES] ${u} bat le record ${evt.rk} (${ancien.username} : ${ancien.score} → ${n}) : prime de ${valeur} kikooz`);
   };
   if (!process.env.DATABASE_URL) return payer();
-  db.quetesPrendrePrime(S.lundi, evt.rk, u, n, ancien.username, ancien.score, R.gain)
+  db.quetesPrendrePrime(S.lundi, evt.rk, u, n, ancien.username, ancien.score, valeur)
     .then((neuf) => { if (neuf) payer(); }).catch(dbErr('quetes prime'));
 }
 // La valeur d'un record, lisible (avec l'unité de sa mesure).
 function quetesValeurLisible(rk, score, data) {
   const cle = Quetes.MESURES_PERSO.find((k) => Quetes.MESURES[k].source.rk === rk && Quetes.MESURES[k].source.data === undefined);
   const m = cle && Quetes.MESURES[cle];
+  if (QUETES_PRIMES_EN_PLUS.includes(rk)) return Quetes.nombre(score) + ' pts';   // une note de championnat
   if (!m) return Quetes.nombre(score);
   const v = Quetes.valeurDe(m, { type: 'score', rk, v: Number(score), data: String(data || '') });
   return v == null ? Quetes.nombre(score) : Quetes.formater(m, v);
 }
 function quetesPrimesVue(moi) {
   if (!quetesReglages.primes.actif) return [];
-  if (!quetesV2(quetesPrimesDeLaSemaine().lundi)) return [];
+  const S = quetesPrimesDeLaSemaine();
+  if (!quetesV2(S.lundi)) return [];
+  quetesPrimesEtatCompleter();
   return quetesPrimesClassements().map((rk) => {
     const rec = quetesRecordsParc.get(rk);
     if (!rec) return null;
     const prise = quetesPrimesPrises.get(rk);
     const cle = Quetes.MESURES_PERSO.find((k) => Quetes.MESURES[k].source.rk === rk);
     const jeu = cle ? Quetes.MESURES[cle].jeu : (RANKINGS[rk] && RANKINGS[rk].game);
+    const etat = quetesPrimesEtat.get(rk);
     return {
       rk, nom: (RANKINGS[rk] && RANKINGS[rk].name) || rk, etiquette: Quetes.ETIQUETTES[jeu] || null, jeu: jeu || null,
       record: quetesValeurLisible(rk, rec.score, rec.data), tenant: getDisplayName(rec.username), tenantPseudo: rec.username,
-      gain: quetesReglages.primes.gain, ouverte: !prise,
+      // La prime : celle d'aujourd'hui (elle grossit chaque semaine que le record tient).
+      gain: prise ? prise.gain : quetesPrimeValeur(rk, S.lundi), semaines: quetesPrimeSemaines(rk, S.lundi), depuis: etat ? etat.depuis : null,
+      prochaine: quetesPrimeValeur(rk, S.lundi),   // ce que vaut le record aujourd'hui (après une prise : la relance)
+      ouverte: !prise,
       prisePar: prise ? getDisplayName(prise.username) : null,
       moi: !!moi && rec.username === String(moi).toLowerCase(),
     };
@@ -11891,7 +11966,7 @@ app.get('/api/admin/quetes', adminScope('quetes'), async (req, res) => {
         par: getDisplayName(x.username), ancien: x.ancien ? getDisplayName(x.ancien) : null, record: quetesValeurLisible(rk, x.score, x.data), gain: x.gain })),
       primesJournal: quetesPrimesJournal.map((e) => ({ at: e.at, nom: e.nom, par: getDisplayName(e.username), record: quetesValeurLisible(e.rk, e.score, e.data),
         ancien: e.ancien ? getDisplayName(e.ancien) : null, ancienRecord: e.ancienScore == null ? null : quetesValeurLisible(e.rk, e.ancienScore, ''),
-        issue: e.issue, prisePar: e.par ? getDisplayName(e.par) : null })),
+        issue: e.issue, prisePar: e.par ? getDisplayName(e.par) : null, gain: e.gain })),
     });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -32122,6 +32197,7 @@ const grapizNet = new GrapizNet({
   onChampion: (username, fiche, info) => {
     grapizEcrireFicheChampion(username, fiche);
     fixerScore(username, 'grapiz_champion', fiche.ls[0]);
+    quetesNoteChampion(username, 'grapiz_champion', fiche.ls[0]);
     const signe = info.delta >= 0 ? '+' : '';
     console.log(`[grapiz] championnat ${username} ${info.avant} → ${info.apres}`
       + ` (${signe}${info.delta}) contre ${info.adversaire}`);
@@ -32318,6 +32394,7 @@ const bandasNet = new BandasNet({
   onChampion: (username, fiche, info) => {
     bandasEcrireFicheChampion(username, fiche);
     fixerScore(username, 'bandas_champion', fiche.ls[0]);
+    quetesNoteChampion(username, 'bandas_champion', fiche.ls[0]);
     const signe = info.delta >= 0 ? '+' : '';
     console.log(`[bandas] championnat ${username} ${info.avant} → ${info.apres}`
       + ` (${signe}${info.delta}) contre ${info.adversaire}`);
