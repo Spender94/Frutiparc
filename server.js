@@ -2279,22 +2279,60 @@ function detectBkiwiTrackFromSlotDiff(prevDataStr, newDataStr) {
 // Returns { classic: {trackIdx: ms}, challenge: {trackIdx: ms} } keeping only
 // real (> 0) times. This is the source of truth for per-circuit records: the
 // saveScore wire payload never carries a track, but the card always does.
+/*
+ * LES MEILLEURS TEMPS PAR CIRCUIT D'UNE FRUTICARD DE BURNING KIWI (slot 0).
+ *
+ * Le jeu les tient dans `$ts`, INDEXÉ PAR LE RANG du circuit (un tableau, ou
+ * un objet à clés « 0 »…« 5 » une fois passé par patchSlot0) : `$fcTotal`, la
+ * meilleure COURSE, et `$fcLap`, le meilleur TOUR — écrits en CONTRE-LA-MONTRE
+ * seulement (moteur.js, « Temps à la course battu »), et `Infinity` tant
+ * qu'on n'en a pas fait (9999999 une fois sérialisé, `null` d'avant la
+ * rustine). Les clés `$t0`…`$t5` et `$bc`/`$bl` sont celles d'anciennes
+ * sauvegardes garnies par le serveur : on les lit aussi. Pendant des mois le
+ * serveur ne lisait QUE ces dernières, que le jeu n'écrit jamais : les
+ * contre-la-montre n'entraient ni au livre des records ni aux mises à prix.
+ * Rend { course: { rang: ms }, tour: { rang: ms } }, ou null si la carte ne
+ * dit rien.
+ */
+const BKIWI_INFINI = 9999999;
 function bkiwiTrackBestsFromSlot0(slot0Str) {
   let parsed;
   try { parsed = JSON.parse(slot0Str); } catch { return null; }
   const ts = parsed && parsed.$ts;
-  if (!ts || typeof ts !== 'object' || Array.isArray(ts)) return null;
-  const out = { classic: {}, challenge: {} };
+  if (!ts || typeof ts !== 'object') return null;
+  const temps = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 && n < BKIWI_INFINI ? n : 0; };
+  const meilleur = (x, y) => (x && y ? Math.min(x, y) : x || y);
+  const out = { course: {}, tour: {} };
   let any = false;
   for (let t = 0; t < 6; t++) {
-    const s = ts[`$t${t}`];
+    const s = (ts[t] && typeof ts[t] === 'object') ? ts[t] : ts[`$t${t}`];
     if (!s || typeof s !== 'object') continue;
-    const bc = Number(s.$bc);
-    const bl = Number(s.$bl);
-    if (Number.isFinite(bc) && bc > 0) { out.classic[t] = bc; any = true; }
-    if (Number.isFinite(bl) && bl > 0) { out.challenge[t] = bl; any = true; }
+    const course = meilleur(temps(s.$fcTotal), temps(s.$bc));
+    const tour = meilleur(temps(s.$fcLap), temps(s.$bl));
+    if (course) { out.course[t] = course; any = true; }
+    if (tour) { out.tour[t] = tour; any = true; }
   }
   return any ? out : null;
+}
+
+/*
+ * UN CONTRE-LA-MONTRE BATTU, LU DANS LA CARTE. savePublic écrit la carte avant
+ * saveScore ; un record de circuit qui tombe en contre-la-montre se voit ici
+ * (le $fcTotal du circuit qui baisse), et part aux quêtes et aux mises à prix
+ * comme un score classé — le saveScore qui suit, au même temps, ne compte pas
+ * deux fois (un temps égal n'est pas meilleur).
+ */
+function bkiwiCarteRecords(username, prevStr, nextStr) {
+  const avant = prevStr ? bkiwiTrackBestsFromSlot0(prevStr) : null;
+  const apres = bkiwiTrackBestsFromSlot0(nextStr);
+  if (!apres) return;
+  for (let t = 0; t < 6; t++) {
+    const v = apres.course[t];
+    if (!v) continue;
+    const a = avant && avant.course[t];
+    if (a && a <= v) continue;
+    quetesEvenement(username, { type: 'score', rk: `bkiwi_track${t}_classic`, v, data: '', challenge: false, jeu: 'bkiwi', source: 'carte' });
+  }
 }
 
 function getBkiwiDailyTrack(date = new Date()) {
@@ -11650,17 +11688,18 @@ let quetesPrimesSemaine = null;
 // Les classements à prime : ceux des quêtes, sauf l'arcade de Mini-Fever (dont le
 // score mêle les paliers) et le Challenge MotionBall (un pourcentage de salles :
 // « détrôner » un 100 % n'a pas de sens) ; plus, du Challenge aussi, les deux
-// séries de victoires de Grapiz et de Frutibandas, et les six circuits de
-// Burning Kiwi — leurs classements du Challenge (bkiwi_track{n}_challenge),
-// ceux que le livre des records du Club montre : les « classiques » des
-// circuits sont pollués par un vieux routage (tout tagué Green Hill), et les
-// championnats (une note Elo) ne sont pas des records que l'on bat.
+// séries de victoires de Grapiz et de Frutibandas (les championnats, une note
+// Elo, ne sont pas des records que l'on bat) ; plus les six circuits de
+// Burning Kiwi, en RECORD ABSOLU : le meilleur temps de course du circuit,
+// tous modes confondus, contre-la-montre compris — le classement permanent
+// du circuit (bkiwi_track{n}_classic) tel que le livre des records le lit,
+// fruticards comprises (livreDesRecords).
 const QUETES_PRIMES_EXCLUS = new Set(['minifever_arcade', 'mb2_classic']);
 const QUETES_PRIMES_EN_PLUS = ['grapiz_challenge', 'bandas_challenge']
-  .concat(Array.from({ length: 6 }, (_, i) => `bkiwi_track${i}_challenge`));
-// Une liste réglée par l'admin du temps des anciens classements se relit avec les nouveaux.
+  .concat(Array.from({ length: 6 }, (_, i) => `bkiwi_track${i}_classic`));
+// Une liste réglée par l'admin du temps d'autres classements se relit avec ceux-ci.
 const QUETES_PRIMES_RENOMMES = Object.assign({ grapiz_champion: 'grapiz_challenge', bandas_champion: 'bandas_challenge' },
-  Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`bkiwi_track${i}_classic`, `bkiwi_track${i}_challenge`])));
+  Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`bkiwi_track${i}_challenge`, `bkiwi_track${i}_classic`])));
 function quetesPrimesClassements() {
   const l = quetesReglages.primes.classements;
   const base = (l && l.length ? l.map((rk) => QUETES_PRIMES_RENOMMES[rk] || rk) : QUETES_PERSO_RK.concat(QUETES_PRIMES_EN_PLUS));
@@ -11709,19 +11748,22 @@ function quetesPrimesEtatCompleter() {
   }
   if (neuf) quetesPrimesEtatEnregistrer();
 }
+// Les records du parc sont CEUX DU LIVRE DES RECORDS DU CLUB (livreDesRecords :
+// scores ∪ archive, et les fruticards de Burning Kiwi) — la même vérité que la
+// page du Club, pour que la mise à prix ne dise jamais autre chose qu'elle.
 async function chargerQuetesRecords() {
   const rks = new Set(quetesPrimesClassements());
-  const garder = (u, rk, score, data, at) => {
+  const garder = (u, rk, score, data, at, source) => {
     if (!rks.has(rk) || !Number.isFinite(Number(score)) || NPC_USERNAMES.has(String(u).toLowerCase())) return;
     if (RANKINGS[rk].lowerIsBetter && Number(score) <= 0) return;
     const cur = quetesRecordsParc.get(rk);
     if (!cur || isScoreBetter(rk, Number(score), String(data || ''), Number(cur.score), String(cur.data || ''))) {
-      quetesRecordsParc.set(rk, { username: String(u).toLowerCase(), score: Number(score), data: String(data || ''), at: at || null });
+      quetesRecordsParc.set(rk, { username: String(u).toLowerCase(), score: Number(score), data: String(data || ''), at: at || null, source: source || '' });
     }
   };
-  for (const [u, rlist] of Object.entries(scoresData.users || {})) for (const [rk, e] of Object.entries(rlist || {})) if (e) garder(u, rk, e.score, e.data, e.updatedAt || e.at);
+  const livre = await livreDesRecords();
+  for (const rk of rks) for (const [u, e] of Object.entries(livre[rk] || {})) garder(u, rk, e.score, e.data, e.updatedAt, e.source);
   if (process.env.DATABASE_URL) {
-    for (const r of await db.getAllTimeBestScores()) garder(r.username, r.ranking_id, r.score, r.data, r.updated_at);
     if (!quetesPrimesEtat.size) {
       try {
         const brut = await db.getAppState('quetes_primes_etat');
@@ -11759,7 +11801,7 @@ function quetesPrimeScore(u, evt) {
   if (!Number.isFinite(n) || (RANKINGS[evt.rk].lowerIsBetter && n <= 0)) return;
   const ancien = quetesRecordsParc.get(evt.rk);
   if (ancien && !isScoreBetter(evt.rk, n, data, ancien.score, ancien.data)) return;
-  quetesRecordsParc.set(evt.rk, { username: u, score: n, data, at: new Date().toISOString() });
+  quetesRecordsParc.set(evt.rk, { username: u, score: n, data, at: new Date().toISOString(), source: evt.source || '' });
   const nomRk = (RANKINGS[evt.rk] && RANKINGS[evt.rk].name) || evt.rk;
   // La prime en jeu : celle que le record valait au moment d'être battu.
   const valeur = quetesPrimeValeur(evt.rk, S.lundi);
@@ -11799,17 +11841,11 @@ function quetesPrimeScore(u, evt) {
     .then((neuf) => { if (neuf) payer(); }).catch(dbErr('quetes prime'));
 }
 // La valeur d'un record, lisible (avec l'unité de sa mesure).
-// La mesure des quêtes qui lit ce classement (les persos d'abord, puis toutes).
-// Le Challenge d'un circuit de Burning Kiwi n'a pas la sienne : c'est celle du
-// circuit (bkiwi_track{n}_classic), un temps de course, la même unité.
+// La mesure des quêtes qui lit ce classement (les persos d'abord, puis toutes :
+// les circuits de Burning Kiwi ont la leur, en temps).
 function quetesMesureDe(rk, sansData) {
-  const cibles = [rk].concat(/^bkiwi_track\d_challenge$/.test(rk) ? [rk.replace('_challenge', '_classic')] : []);
-  for (const c of cibles) {
-    const ok = (k) => Quetes.MESURES[k].source.rk === c && (!sansData || Quetes.MESURES[k].source.data === undefined);
-    const cle = Quetes.MESURES_PERSO.find(ok) || Object.keys(Quetes.MESURES).find(ok);
-    if (cle) return cle;
-  }
-  return null;
+  const ok = (k) => Quetes.MESURES[k].source.rk === rk && (!sansData || Quetes.MESURES[k].source.data === undefined);
+  return Quetes.MESURES_PERSO.find(ok) || Object.keys(Quetes.MESURES).find(ok) || null;
 }
 function quetesValeurLisible(rk, score, data) {
   const cle = quetesMesureDe(rk, true);
@@ -11835,6 +11871,8 @@ function quetesPrimesVue(moi) {
       rk, nom: R.name || rk, etiquette: Quetes.ETIQUETTES[jeu] || null, jeu: jeu || null,
       // Le circuit, pour Burning Kiwi (« Burning Kiwi - Green Hill » → « Green Hill ») : l'affiche le dit.
       circuit: R.bkiwiTrack !== undefined ? String(R.name).replace(/^.*? - /, '') : null,
+      // D'où vient le record : 'carte' (un contre-la-montre lu dans la fruticard), sinon un score classé.
+      source: rec.source === 'carte' ? 'carte' : 'classement',
       record: quetesValeurLisible(rk, rec.score, rec.data), tenant: getDisplayName(rec.username), tenantPseudo: rec.username,
       // La prime : celle d'aujourd'hui (elle grossit chaque semaine que le record tient).
       gain: prise ? prise.gain : quetesPrimeValeur(rk, S.lundi), semaines: quetesPrimeSemaines(rk, S.lundi), depuis: etat ? etat.depuis : null,
@@ -21331,6 +21369,8 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
       console.log(`[SLOT]    prev: ${prevPreview}`);
       console.log(`[SLOT]    new:  ${newPreview}`);
     }
+    // Un contre-la-montre battu : aux quêtes et aux mises à prix.
+    try { bkiwiCarteRecords(username, prevSlotData || '', data); } catch (e) { console.error(`[SLOT]  bkiwi records de la carte : ${e.message}`); }
   }
 
   const preview = data.length > 200 ? data.slice(0, 200) + '…' : data;
@@ -27050,7 +27090,9 @@ async function livreDesRecords() {
   // Build per-(rankingId, user) best score across live scores + archive.
   // bestByRanking[rkId] = { user -> { score, data, updatedAt } }
   const bestByRanking = {};
-  const upsertBest = (rkId, user, score, data, updatedAt) => {
+  // `source` : d'où vient le temps — '' pour une ligne de classement, 'carte'
+  // pour un contre-la-montre lu dans la fruticard (Burning Kiwi).
+  const upsertBest = (rkId, user, score, data, updatedAt, source) => {
     if (!RANKINGS[rkId]) return;
     if (!bestByRanking[rkId]) bestByRanking[rkId] = {};
     const cur = bestByRanking[rkId][user];
@@ -27060,7 +27102,7 @@ async function livreDesRecords() {
     const isBetter = !cur ||
       isScoreBetter(rkId, score, data, Number(cur.score), cur.data);
     if (isBetter) {
-      bestByRanking[rkId][user] = { score, data: data || '', updatedAt: updatedAt || '' };
+      bestByRanking[rkId][user] = { score, data: data || '', updatedAt: updatedAt || '', source: source || '' };
     }
   };
 
@@ -27087,55 +27129,41 @@ async function livreDesRecords() {
     }
   }
 
-  // Burning Kiwi: rebuild per-circuit records from each player's card.
-  // The saveScore wire payload carries no track, so live/archive rows were
-  // routed by a date-derived guess and piled up under the wrong circuit
-  // ("tout tagué en Green Hill"). The game itself keeps authoritative per-track
-  // bests in slot 0 ($ts.$t{N}.$bc = classic, $bl = challenge), so for every
-  // player we can read, we drop their mis-tagged bkiwi rows and replace them
-  // with the card's real per-circuit bests. Players whose card we can't read
-  // keep their existing rows (no data loss).
-  const getBkiwiSlot0 = async (username) => {
-    const mem = users[username];
-    const memSlot = mem && mem.frutiSlots && mem.frutiSlots.bkiwi && mem.frutiSlots.bkiwi['0'];
-    if (memSlot) return memSlot;
-    if (!process.env.DATABASE_URL) return null;
+  /*
+   * BURNING KIWI : LES RECORDS ABSOLUS PAR CIRCUIT VIENNENT AUSSI DES CARTES.
+   *
+   * Le classement d'un circuit (bkiwi_track{n}_classic) ne reçoit que les
+   * courses que le jeu déclare (saveScore), et d'époque le circuit y était
+   * deviné : des lignes sont rangées sous le mauvais (« tout tagué Green
+   * Hill »). La fruticard, elle, tient PAR CIRCUIT le meilleur temps de
+   * contre-la-montre ($fcTotal, bkiwiTrackBestsFromSlot0), sans ambiguïté —
+   * et c'est souvent là que se font les records absolus. On lit donc TOUTES
+   * les cartes du jeu (un contre-la-montre ne laisse pas forcément de ligne)
+   * et l'on garde, par circuit et par joueur, le meilleur des deux. Une ligne
+   * n'est jamais effacée : une course d'arcade est un record absolu aussi, et
+   * rien dans la donnée ne permet de reconnaître une ligne mal rangée. Chaque
+   * temps dit d'où il vient (`source` : « carte » pour un contre-la-montre),
+   * et la date d'une carte est celle de sa dernière écriture (au plus tard).
+   * Les classements du Challenge du jour (_challenge) ne sont pas touchés.
+   */
+  const cartes = new Map();   // pseudo → { data, at }
+  if (process.env.DATABASE_URL) {
     try {
-      let dbId = mem && mem._dbId;
-      if (!dbId) { const row = await db.findUserByUsername(username); dbId = row && row.id; }
-      if (dbId) { const slots = await db.getFrutiSlots(dbId, 'bkiwi'); return slots && slots['0']; }
-    } catch (e) { /* ignore this player */ }
-    return null;
-  };
-  // Only re-bucket players who already hold a bkiwi record (live or archive):
-  // that is exactly the set whose rows show up below, and it keeps this to a
-  // handful of card lookups instead of scanning the whole user base.
-  const bkiwiUsers = new Set();
-  for (const rkId of Object.keys(bestByRanking)) {
-    if (!rkId.startsWith('bkiwi_track')) continue;
-    for (const u of Object.keys(bestByRanking[rkId] || {})) bkiwiUsers.add(u);
+      for (const r of await db.getSlot0ForGame('bkiwi')) {
+        cartes.set(String(r.username).toLowerCase(), { data: r.data, at: r.updated_at ? new Date(r.updated_at).toISOString() : '' });
+      }
+    } catch (e) { console.error('[CLUB] cartes de Burning Kiwi :', e.message); }
   }
-  for (const username of bkiwiUsers) {
-    const slot0 = await getBkiwiSlot0(username);
-    if (!slot0) continue;
-    const bests = bkiwiTrackBestsFromSlot0(slot0);
+  for (const [u, ud] of Object.entries(users)) {
+    const memSlot = ud && ud.frutiSlots && ud.frutiSlots.bkiwi && ud.frutiSlots.bkiwi['0'];
+    if (memSlot) cartes.set(u, { data: memSlot, at: (cartes.get(u) || {}).at || '' });   // la mémoire est la plus fraîche
+  }
+  for (const [username, c] of cartes) {
+    if (NPC_USERNAMES.has(username)) continue;
+    const bests = bkiwiTrackBestsFromSlot0(c.data);
     if (!bests) continue;
-    // La carte est la source de vérité PAR CIRCUIT, mais SEULEMENT pour les
-    // (circuit, mode) qu'elle renseigne. On remplace la ligne du joueur pour ces
-    // couples-là (ce qui corrige les scores mal étiquetés routés vers le mauvais
-    // circuit). En revanche on ne SUPPRIME JAMAIS une ligne pour un (circuit,
-    // mode) que la carte ne couvre pas : sinon on efface un record archivé réel
-    // sur un circuit que la carte actuelle ne reflète pas (course d'époque dont
-    // le meilleur temps ne vit que dans l'archive — patchSlot0 ne réamorce la
-    // carte que depuis la table live, jamais l'archive). C'était la cause du
-    // « Green Hill correct, les autres circuits amputés ».
-    const replaceTrack = (rkId, val) => {
-      if (bestByRanking[rkId]) delete bestByRanking[rkId][username];
-      upsertBest(rkId, username, val, '', '');
-    };
     for (let t = 0; t < 6; t++) {
-      if (bests.classic[t]) replaceTrack(`bkiwi_track${t}_classic`, bests.classic[t]);
-      if (bests.challenge[t]) replaceTrack(`bkiwi_track${t}_challenge`, bests.challenge[t]);
+      if (bests.course[t]) upsertBest(`bkiwi_track${t}_classic`, username, bests.course[t], '', c.at, 'carte');
     }
   }
 
@@ -36618,6 +36646,8 @@ case 'createchannel': {
             console.log(`[FCARD]   prev: ${prevPreview}`);
             console.log(`[FCARD]   new:  ${newPreview}`);
           }
+          // Un contre-la-montre battu : aux quêtes et aux mises à prix.
+          try { bkiwiCarteRecords(username, prevSlotData || '', slotData); } catch (e) { console.error(`[FCARD] bkiwi records de la carte : ${e.message}`); }
         }
       }
       sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);

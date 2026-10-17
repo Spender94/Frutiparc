@@ -1252,22 +1252,19 @@ test('le modèle des paliers : paliers du parc, paie au palier, échange, bonus 
   assert.equal(journal[1].gain, 500);
   const etatPrimes = JSON.parse((await sql(`SELECT value FROM app_state WHERE key = 'quetes_primes_etat'`))[0].value);
   assert.equal(etatPrimes.swapou2_classic.base, 100);
-  // Les circuits de Burning Kiwi sont mis à prix aussi — leur classement du
-  // CHALLENGE (celui du livre des records du Club), le circuit du jour : le
-  // record y est un temps (plus petit = mieux), lisible en minutes et
-  // secondes, et l'affiche nomme le circuit.
+  // Les circuits de Burning Kiwi sont mis à prix en RECORD ABSOLU : le meilleur
+  // temps de course du circuit, tous modes confondus — le classement permanent
+  // du circuit (track=0 : Green Hill), un temps lisible en minutes et secondes,
+  // et l'affiche nomme le circuit.
   const bk = new URLSearchParams({ sid: sids['cerise'], game: 'bkiwi', m: '0', score: '72345', data: 'Fury Hun:1:1', track: '0' });
   assert.ok((await (await fetch(BASE + '/api/saveScore', { method: 'POST', body: bk })).json()).ok);
   await wait(300);
   const A2 = await adminEtat();
-  const paris = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
-  const jourDuJour = Math.floor((paris - new Date(paris.getFullYear(), 0, 0)) / 86400000) % 6;
-  const CIRCUITS = ['Green Hill', 'Banana Derby', 'Terre Grise', 'Solstice', 'Jupiter IV', 'Mistral Kiwi'];
-  const kiwi = A2.primes.find((p) => p.rk === 'bkiwi_track' + jourDuJour + '_challenge');
+  const kiwi = A2.primes.find((p) => p.rk === 'bkiwi_track0_classic');
   assert.ok(kiwi && kiwi.tenantPseudo === 'cerise' && /1\s*min\s*12|1:12|72/.test(kiwi.record) && kiwi.jeu === 'bkiwi', JSON.stringify(kiwi));
-  assert.equal(kiwi.circuit, CIRCUITS[jourDuJour], 'l’affiche nomme le circuit');
-  assert.match(kiwi.nom, new RegExp(CIRCUITS[jourDuJour] + '$'));
-  assert.ok(!A2.primes.some((p) => /_classic$/.test(p.rk) && p.jeu === 'bkiwi'), 'pas les classiques des circuits (pollués)');
+  assert.deepEqual([kiwi.circuit, kiwi.source], ['Green Hill', 'classement'], 'l’affiche nomme le circuit, et l’admin sait d’où vient le temps');
+  assert.match(kiwi.nom, /Green Hill$/);
+  assert.ok(!A2.primes.some((p) => /_challenge$/.test(p.rk) && p.jeu === 'bkiwi'), 'pas le Challenge du jour des circuits : le record absolu');
   assert.ok(!A2.primes.some((p) => /_champion$/.test(p.rk)), 'pas les championnats : des notes, pas des records');
   assert.ok(!A2.primes.some((p) => p.rk === 'mb2_classic'), 'pas le Challenge MotionBall');
   // Grapiz et Frutibandas : la série de victoires du Challenge, comme le livre des records.
@@ -1275,6 +1272,36 @@ test('le modèle des paliers : paliers du parc, paie au palier, échange, bonus 
   assert.match(SERVEUR, /const QUETES_PRIMES_EN_PLUS = \['grapiz_challenge', 'bandas_challenge'\]/);
   assert.ok(!/quetesNoteChampion/.test(SERVEUR), 'plus de note de championnat poussée aux mises à prix');
   assert.equal((await sql(`SELECT username, ancien, gain FROM quetes_primes WHERE semaine = $1`, [lundi])).map((r) => [r.username, r.ancien, r.gain]).join(), `figue,${tenant},500`);
+  // UN CONTRE-LA-MONTRE ne s'écrit que dans la fruticard ($ts[rang].$fcTotal,
+  // le tableau du jeu, 9999999 pour « jamais couru ») : c'est souvent là que
+  // se font les records absolus. Cerise en fait un sur Solstice (rang 3) :
+  // record du parc, venu de la carte, et le livre des records du Club le dit aussi.
+  const carte = (sid, ts) => fetch(BASE + '/api/saveFrutiSlot', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ sid, game: 'bkiwi', slotId: '0', data: JSON.stringify({ $ws: false, $wss: false, $wc: false, $wcs: false, $ac: [false, false, true, true, false], $ts: ts }) }) });
+  const ts = (t, total) => { const a = []; for (let i = 0; i < 6; i++) a[i] = { $fcLap: 9999999, $fcTotal: i === t ? total : 9999999 }; return a; };
+  assert.ok((await carte(sids['cerise'], ts(3, 65000))).ok);
+  await wait(300);
+  const sol = (await adminEtat()).primes.find((p) => p.rk === 'bkiwi_track3_classic');
+  assert.ok(sol && sol.tenantPseudo === 'cerise' && sol.source === 'carte' && sol.circuit === 'Solstice' && /1\s*min\s*05|1:05|65/.test(sol.record), JSON.stringify(sol));
+  const club = await (await fetch(BASE + '/api/club/records?limit=3')).json();
+  const rkSol = club.rankings.find((r) => r.id === 'bkiwi_track3_classic');
+  assert.deepEqual([rkSol.scores[0].user.toLowerCase(), rkSol.scores[0].score], ['cerise', 65000], 'le livre des records lit la carte');
+  // Un temps « infini » ou nul n'est pas un record : la carte de Figue, vierge, ne change rien.
+  assert.ok((await carte(sids['figue'], ts(3, 9999999))).ok);
+  await wait(200);
+  assert.equal((await adminEtat()).primes.find((p) => p.rk === 'bkiwi_track3_classic').tenantPseudo, 'cerise');
+  // Figue bat ce contre-la-montre : record absolu, quelqu'un d'autre détrôné — la mise à prix est payée.
+  const avantFigue = await solde('figue');
+  assert.ok((await carte(sids['figue'], ts(3, 60000))).ok);
+  assert.equal(await soldeVaut('figue', avantFigue + 500), avantFigue + 500, 'la prime du contre-la-montre');
+  const sol2 = (await adminEtat()).primes.find((p) => p.rk === 'bkiwi_track3_classic');
+  assert.deepEqual([sol2.tenantPseudo, sol2.source, sol2.ouverte, sol2.prisePar], ['figue', 'carte', false, 'figue']);
+  // Le saveScore qui suit la course (même temps) ne repaie rien, et une course classée plus lente non plus.
+  const bk2 = new URLSearchParams({ sid: sids['figue'], game: 'bkiwi', m: '0', score: '60000', data: 'Fury Hun:1:1', track: '3' });
+  assert.ok((await (await fetch(BASE + '/api/saveScore', { method: 'POST', body: bk2 })).json()).ok);
+  await wait(300);
+  assert.equal(await solde('figue'), avantFigue + 500);
+  assert.equal((await sql(`SELECT count(*)::int AS n FROM quetes_primes WHERE semaine = $1 AND ranking_id = 'bkiwi_track3_classic'`, [lundi]))[0].n, 1);
 
   // OLIVE : une débutante (premiers pas rallumés) ; un score de Challenge compte pour « trois jeux ».
   assert.ok((await post('/api/admin/quetes', { paliers: { budget: 50, maxQuetes: 7, premiersPas: true, activites: 2, exploits: 1 } }, ADMIN)).ok);

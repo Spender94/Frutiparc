@@ -1523,7 +1523,7 @@ async function getAllFrutiSlot0(userId) {
 // importées pour publier rétroactivement leurs records dans l'archive.
 async function getSlot0ForGame(game) {
   const { rows } = await pool.query(
-    `SELECT u.username, fs.data
+    `SELECT u.username, fs.data, fs.updated_at
        FROM fruti_slots fs JOIN users u ON u.id = fs.user_id
       WHERE fs.game = $1 AND fs.slot_id = 0`,
     [game]
