@@ -56,3 +56,23 @@ ok(strongWins >= 4, "le bot fort bat le faible la plupart du temps (" + strongWi
 
 console.log("\nGrapiz bot: " + passed + " passed, " + fails + " failed.");
 process.exit(fails ? 1 : 0);
+
+// ── OUVERTURE : des premiers coups variés ──────────────────────────────────
+// Le plateau de départ est le même à chaque partie : sans tirage au sort
+// parmi les bons coups, le bot jouait toujours la même ouverture.
+(function () {
+  var seen = {};
+  for (var g = 0; g < 12; g++) {
+    var rng = lcg(1000 + g);
+    var mv = B.chooseMove(E.Board.newLambdaBoard(), 0, 0.9, rng, { ply: 0 });
+    seen[mv.from.x + "," + mv.from.y + ">" + mv.direction] = true;
+  }
+  ok(Object.keys(seen).length >= 3, "au moins trois ouvertures différentes sur douze parties (" + Object.keys(seen).length + ")");
+  // Passé l'ouverture, un bot fort rejoue son meilleur coup.
+  var deja = {};
+  for (var h = 0; h < 6; h++) {
+    var mv2 = B.chooseMove(E.Board.newLambdaBoard(), 0, 1, lcg(50 + h), { ply: 10 });
+    deja[mv2.from.x + "," + mv2.from.y + ">" + mv2.direction] = true;
+  }
+  ok(Object.keys(deja).length === 1, "hors ouverture, le meilleur coup à chaque fois");
+})();

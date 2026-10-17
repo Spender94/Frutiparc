@@ -36518,12 +36518,26 @@ const xmlSocketServer = net.createServer((socket) => {
       // Grapiz : la fermeture de SA socket Grapiz retire le joueur du lobby (et
       // clôt sa série), même s'il reste connecté ailleurs (chat / main.swf) —
       // d'où une liste de joueurs qui s'actualise vraiment.
-      if (client.grapiz && client.username) {
+      //
+      // …mais seulement si ce joueur n'a plus AUCUNE autre socket DU JEU : un
+      // rechargement de la page (ou la fenêtre du bureau rouverte) ouvre la
+      // nouvelle socket AVANT que l'ancienne ne se ferme. On retirait alors le
+      // joueur du salon à la fermeture de l'ancienne, pendant que la nouvelle
+      // le croyait encore inscrit : tout ce qu'il tentait ensuite répondait
+      // « unknown-player », et une partie en cours était comptée perdue — sa
+      // série avec.
+      const autreSocketDuJeu = (drapeau) => {
+        for (const [, cl] of xmlSocketClients) {
+          if (cl && cl[drapeau] && cl.logged && cl.username === client.username) return true;
+        }
+        return false;
+      };
+      if (client.grapiz && client.username && !autreSocketDuJeu('grapiz')) {
         try { grapizFlush(grapizNet.onDisconnect(client.username)); }
         catch (e) { console.error('[grapiz] disconnect:', e.message); }
       }
       // Frutibandas : même logique (abandon si en partie, série close).
-      if (client.bandas && client.username) {
+      if (client.bandas && client.username && !autreSocketDuJeu('bandas')) {
         try { grapizFlush(bandasNet.onDisconnect(client.username)); }
         catch (e) { console.error('[bandas] disconnect:', e.message); }
       }

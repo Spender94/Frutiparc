@@ -457,6 +457,16 @@
     }
   });
   function gz(a) { var s = "<gz"; for (var k in a) s += " " + k + '="' + xml(a[k]) + '"'; send(s + " />"); }
+  // Se réinscrire au salon sans rouvrir la socket (le serveur nous a oubliés).
+  function rehello() {
+    state.gotLobby = false;
+    if (state.helloTimer) clearInterval(state.helloTimer);
+    state.helloTimer = setInterval(function () {
+      if (state.gotLobby) { clearInterval(state.helloTimer); return; }
+      send('<gz a="hello" n="' + xml(state.user) + '" f="' + xml(state.myBouille || DEFAULT_BOUILLE) + '" />');
+    }, 600);
+    send('<gz a="hello" n="' + xml(state.user) + '" f="' + xml(state.myBouille || DEFAULT_BOUILLE) + '" />');
+  }
 
   // Le bridge WS renvoie des frames binaires → décoder (comme le client light).
   var buf = "";
@@ -486,6 +496,9 @@
       // Refus FD d'un match classé : popin native (pas une simple ligne d'état).
       if (m === "no-fd" || m === "opp-no-fd") { showFdPopin(m); return; }
       if (state.screen === "differe" && differeUI.erreur) { differeUI.erreur(m); return; }
+      // Le serveur ne nous connaît plus (le salon nous a perdus de vue) : on se
+      // réinscrit avec un nouveau « hello », et l'on rejoue le geste ensuite.
+      if (m === "unknown-player") { setStatus("Réinscription au salon…"); rehello(); return; }
       setStatus("⚠ " + m); return;
     }
   }

@@ -133,10 +133,21 @@
 
   function pick(arr, rng) { return arr[Math.floor(rng() * arr.length) % arr.length]; }
 
-  function chooseMove(board, team, skill, rng) {
+  // Les premiers coups : l'ouverture. Le plateau de départ est le même à
+  // chaque partie et l'évaluation y est déterministe : le bot jouait TOUJOURS
+  // la même ouverture, coup pour coup — « on s'ennuie ». Pendant les
+  // OUVERTURE_PLIS premiers demi-coups, il tire au sort parmi les coups
+  // proches du meilleur (à OUVERTURE_MARGE de la meilleure valeur, les
+  // OUVERTURE_CHOIX premiers au plus) : des débuts de partie variés, sans
+  // jouer de mauvais coups.
+  var OUVERTURE_PLIS = 6, OUVERTURE_CHOIX = 5, OUVERTURE_MARGE = 0.2;
+
+  // opts : { ply } — le nombre de demi-coups déjà joués dans la partie.
+  function chooseMove(board, team, skill, rng, opts) {
     rng = rng || Math.random;
     if (skill == null) skill = 0.5;
     skill = Math.max(0, Math.min(1, skill));
+    var ply = (opts && opts.ply) || 0;
     var opp = other(team);
     var moves = allMoves(board, team);
     if (!moves.length) return null;
@@ -161,6 +172,11 @@
 
     // Sélection selon le niveau.
     if (scored[0].v >= 1e9 && rng() < (0.65 + 0.35 * skill)) return scored[0].m;  // prend un gain immédiat
+    if (ply < OUVERTURE_PLIS && scored[0].v < 1e9) {
+      var best = scored[0].v, marge = Math.max(1, Math.abs(best) * OUVERTURE_MARGE);
+      var proches = scored.filter(function (c, i) { return i < OUVERTURE_CHOIX && c.v >= best - marge; });
+      return pick(proches, rng).m;
+    }
     if (rng() < 0.04 * (1 - skill)) return pick(scored, rng).m;                    // gaffe rare (très faibles)
     var pBest = 0.5 + 0.5 * skill;
     if (rng() < pBest) return scored[0].m;                                         // le meilleur coup

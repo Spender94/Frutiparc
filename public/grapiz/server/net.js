@@ -675,9 +675,18 @@
     if (now < sess._botAt) return [];
     sess._botAt = null;
     var skill = (sess._botSkill && sess._botSkill[p.id]); if (skill == null) skill = 0.5;
-    var mv = Bot.chooseMove(sess.game.getBoard(), sess.game.currentTurn, skill, this._rng);
+    // Le coup : les premiers coups de la partie sont tirés parmi plusieurs
+    // bons coups (pas toujours la même ouverture), cf. bot.js.
+    var mv = Bot.chooseMove(sess.game.getBoard(), sess.game.currentTurn, skill, this._rng, { ply: sess.nbCoups || 0 });
     if (!mv) { sess.forfeit(p.id); return this._concludeGame(sess); }  // bloqué → le bot perd
-    var res = sess.requestMove(p.id, mv.from.x, mv.from.y, mv.direction, now);
+    // Le bot est facturé de son temps de réflexion : la recherche ci-dessus
+    // bloque le serveur quelques dixièmes de seconde, et c'est du temps qui a
+    // passé pour tout le monde. Facturer l'instant d'AVANT la réflexion
+    // rendait au bot ce temps-là — son chrono, que l'écran du joueur avait
+    // décompté en vrai temps, REMONTAIT à chaque coup reçu.
+    var apres = this.clock();
+    if (apres < now) apres = now;
+    var res = sess.requestMove(p.id, mv.from.x, mv.from.y, mv.direction, apres);
     if (!res.ok) { sess._botAt = now + 400; return []; }               // coup refusé → réessaie
     if (res.ended) return this._concludeGame(sess);
     return [{ to: this._public(sess), xml: this._stateXml(sess, "move") }];

@@ -45,6 +45,7 @@
     this.ended = false;
     this.winner = null;       // index d'équipe
     this.endReason = null;    // "connection" | "elimination" | "timeout" | "forfeit"
+    this.nbCoups = 0;         // coups joués (les bots varient leurs ouvertures)
   }
 
   GrapizSession.prototype.teamOf = function (playerId) {
@@ -90,6 +91,7 @@
     // 2) appliquer le coup (validation des règles déléguée à GrapizGame)
     var res = this.game.applyMove(team, fx, fy, direction);
     if (!res.ok) return res;                          // coup illégal etc.
+    this.nbCoups++;
     res.clocks = this.clocks.slice();
     if (res.winner !== undefined) {                  // connexion / élimination
       this.ended = true; this.winner = res.winner;
