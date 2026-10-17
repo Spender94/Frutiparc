@@ -42,8 +42,8 @@
   /* ── Le pilotage au doigt ──
      Pas de manette : la piste elle-même est la commande. On touche la piste
      là où l'on veut aller, la voiture s'y dirige et accélère tant que le
-     doigt est posé. Le doigt sur la voiture freine ; un second doigt (ou un
-     double-tap) met la nitro. Reste une pastille de pause et, au premier
+     doigt est posé. Un second doigt posé freine tant qu'il reste là ; un
+     double-tap met la nitro. Reste une pastille de pause et, au premier
      départ, le mode d'emploi. L'écran entier est pour la course. */
   #vise {
     position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px;
@@ -115,7 +115,7 @@
   <div id="aire"><canvas id="scene" width="350" height="350" tabindex="0"></canvas><div id="bk-multi"></div></div>
   <div id="vise"></div>
   <div id="b-pause" data-touche="80">II</div>
-  <div id="mode-emploi"><b>Touche la piste</b> là où tu veux aller : la voiture y file et accélère tant que ton doigt est posé.<br><b>Doigt sur la voiture</b> : frein. <b>Second doigt</b> ou double-tap : nitro.</div>
+  <div id="mode-emploi"><b>Touche la piste</b> là où tu veux aller : la voiture y file et accélère tant que ton doigt est posé.<br><b>Second doigt posé</b> : frein, tant qu'il reste là. <b>Double-tap</b> : nitro.</div>
 </div>
 <div id="chargement">Chargement de Burning Kiwi…</div>
 
@@ -207,9 +207,11 @@
    * compare le cap de la voiture à la direction du doigt (la voiture est au
    * milieu de l'écran, la caméra la suit), et l'on tient la touche gauche ou
    * droite jusqu'à ce qu'elle pointe dessus ; le doigt posé, c'est
-   * l'accélérateur — relevé, la voiture roule sur son erre. Le doigt sur la
-   * voiture elle-même (ou à moins de vingt pixels), c'est le frein. Un second
-   * doigt posé pendant qu'on pilote, ou un double-tap, met la nitro.
+   * l'accélérateur — relevé, la voiture roule sur son erre. Un second doigt
+   * posé pendant qu'on pilote, c'est le frein, tant qu'il reste posé (on
+   * continue de viser avec le premier : on freine en braquant). Un double-tap
+   * met la nitro. (Le frein « doigt sur la voiture » d'avant demandait de
+   * viser une cible de vingt pixels qui bouge : très dur à prendre.)
    *
    * Pendant le décompte, le doigt posé fait monter la fausse vitesse du super
    * départ, comme la touche d'accélération. Les menus ne sont pas touchés :
@@ -219,9 +221,9 @@
   const aire = document.getElementById('aire');
   const vise = document.getElementById('vise');
   const DOIGT_TOLERANCE = 10;   // degrés : en deçà, tout droit
-  const DOIGT_FREIN = 20;       // pixels de scène : le doigt sur la voiture
   const DOIGT_ARRIERE = 100;    // degrés : au-delà, on tourne sans accélérer
   let doigt = null;             // { id, x, y } en pixels de scène
+  let frein = null;             // l'identifiant du second doigt, posé
   let dernierTap = 0;
   const tenues = {};            // code → true (ce que le pilotage tient enfoncé)
   const tenir = function (i, v) {
@@ -231,8 +233,9 @@
   };
   const lacherPilotage = function () {
     for (const code of Object.keys(tenues)) { delete tenues[code]; K.Key.relacher(Number(code)); }
-    doigt = null;
+    doigt = null; frein = null;
     vise.style.display = 'none';
+    vise.classList.remove('frein');
   };
   const nitro = function () {
     const code = codeCommande(4);
@@ -263,24 +266,23 @@
     // La voiture sur l'écran : le circuit est décalé par la caméra.
     const cx = M.track._x + car._x, cy = M.track._y + car._y;
     const dx = doigt.x - cx, dy = doigt.y - cy;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < DOIGT_FREIN) {
-      tenir(0, false); tenir(2, false); tenir(3, false); tenir(1, true);
-      vise.classList.add('frein');
-      return;
-    }
-    vise.classList.remove('frein');
-    tenir(1, false);
     let ecart = Math.atan2(dy, dx) * 180 / Math.PI - car._rotation;
     while (ecart > 180) ecart -= 360;
     while (ecart < -180) ecart += 360;
     tenir(2, ecart < -DOIGT_TOLERANCE);
     tenir(3, ecart > DOIGT_TOLERANCE);
-    tenir(0, Math.abs(ecart) < DOIGT_ARRIERE);
+    // Le second doigt posé : le frein, et plus de gaz.
+    const freine = frein !== null;
+    tenir(1, freine);
+    tenir(0, !freine && Math.abs(ecart) < DOIGT_ARRIERE);
+    vise.classList.toggle('frein', freine);
   };
   aire.addEventListener('pointerdown', function (ev) {
     if (ev.pointerType === 'mouse' || !enCourse()) return;
-    if (doigt !== null) { if (ev.pointerId !== doigt.id) nitro(); return; }   // le second doigt : la nitro
+    if (doigt !== null) {   // le second doigt : le frein, tant qu'il est posé
+      if (ev.pointerId !== doigt.id && frein === null) { frein = ev.pointerId; piloter(); }
+      return;
+    }
     const t = performance.now();
     if (t - dernierTap < 320) { nitro(); dernierTap = 0; } else dernierTap = t;
     const p = positionScene(ev);
@@ -294,7 +296,10 @@
     doigt.x = p.x; doigt.y = p.y;
     poserVise(ev);
   });
-  const finDoigt = function (ev) { if (doigt && ev.pointerId === doigt.id) lacherPilotage(); };
+  const finDoigt = function (ev) {
+    if (doigt && ev.pointerId === doigt.id) lacherPilotage();
+    else if (frein !== null && ev.pointerId === frein) { frein = null; piloter(); }
+  };
   aire.addEventListener('pointerup', finDoigt);
   aire.addEventListener('pointercancel', finDoigt);
   window.addEventListener('pointerup', finDoigt);

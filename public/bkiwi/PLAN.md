@@ -213,12 +213,14 @@ voiture file). On touche la piste **là où l'on veut aller** : à chaque pas
 du jeu, le cap de la voiture est comparé à la direction du doigt (la caméra
 suit la voiture, elle est au milieu de l'écran), et la touche gauche ou
 droite est tenue jusqu'à ce qu'elle pointe dessus ; le doigt posé est
-l'accélérateur, relevé la voiture roule sur son erre ; le doigt sur la
-voiture (à moins de vingt pixels) freine ; un second doigt, ou un
-double-tap, met la nitro ; une pastille en haut à gauche met en pause. Tout
+l'accélérateur, relevé la voiture roule sur son erre ; un second doigt posé
+freine tant qu'il reste là (le premier continue de viser : on freine en
+braquant) ; un double-tap met la nitro ; une pastille en haut à gauche met en
+pause. (Le frein « doigt sur la voiture » de la première version demandait de
+viser une cible de vingt pixels en mouvement : trop dur.) Tout
 passe par les touches du jeu (`K.Key`, datées par la cadence) : la physique
 ne sait pas qu'on joue au doigt. Pendant le décompte, le doigt posé fait
 monter la fausse vitesse du super départ. Une pastille de visée suit le
-doigt (rouge sur la voiture : le frein), et le mode d'emploi s'affiche au
+doigt (rouge quand on freine), et le mode d'emploi s'affiche au
 premier départ sur l'appareil (`localStorage`). À la souris, rien de tout
 cela : on a le clavier. (`index.html`, « LA PISTE EST LA COMMANDE ».)
