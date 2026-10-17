@@ -11568,10 +11568,13 @@ const quetesPrimesPrises = new Map();  // ranking → { username, score, ancien,
 let quetesPrimesSemaine = null;
 // Les classements à prime : ceux des quêtes, sauf l'arcade de Mini-Fever (dont le
 // score mêle les paliers) et le Challenge MotionBall (un pourcentage de salles :
-// « détrôner » un 100 % n'a pas de sens) ; plus les deux championnats en ligne
-// (Grapiz, Frutibandas), dont le record est la meilleure note.
+// « détrôner » un 100 % n'a pas de sens) ; plus des classements PERMANENTS : les
+// deux championnats en ligne (Grapiz, Frutibandas), dont le record est la
+// meilleure note, et les six circuits de Burning Kiwi, dont le record est le
+// meilleur temps de course (tous modes confondus, comme le livre des records).
 const QUETES_PRIMES_EXCLUS = new Set(['minifever_arcade', 'mb2_classic']);
-const QUETES_PRIMES_EN_PLUS = ['grapiz_champion', 'bandas_champion'];
+const QUETES_PRIMES_EN_PLUS = ['grapiz_champion', 'bandas_champion']
+  .concat(Array.from({ length: 6 }, (_, i) => `bkiwi_track${i}_classic`));
 function quetesPrimesClassements() {
   const l = quetesReglages.primes.classements;
   const base = (l && l.length ? l : QUETES_PERSO_RK.concat(QUETES_PRIMES_EN_PLUS));
@@ -11710,10 +11713,16 @@ function quetesPrimeScore(u, evt) {
     .then((neuf) => { if (neuf) payer(); }).catch(dbErr('quetes prime'));
 }
 // La valeur d'un record, lisible (avec l'unité de sa mesure).
+// La mesure des quêtes qui lit ce classement (les persos d'abord, puis toutes :
+// les circuits de Burning Kiwi ont la leur, en temps).
+function quetesMesureDe(rk, sansData) {
+  const ok = (k) => Quetes.MESURES[k].source.rk === rk && (!sansData || Quetes.MESURES[k].source.data === undefined);
+  return Quetes.MESURES_PERSO.find(ok) || Object.keys(Quetes.MESURES).find(ok) || null;
+}
 function quetesValeurLisible(rk, score, data) {
-  const cle = Quetes.MESURES_PERSO.find((k) => Quetes.MESURES[k].source.rk === rk && Quetes.MESURES[k].source.data === undefined);
+  const cle = quetesMesureDe(rk, true);
   const m = cle && Quetes.MESURES[cle];
-  if (QUETES_PRIMES_EN_PLUS.includes(rk)) return Quetes.nombre(score) + ' pts';   // une note de championnat
+  if (/_champion$/.test(rk)) return Quetes.nombre(score) + ' pts';   // une note de championnat
   if (!m) return Quetes.nombre(score);
   const v = Quetes.valeurDe(m, { type: 'score', rk, v: Number(score), data: String(data || '') });
   return v == null ? Quetes.nombre(score) : Quetes.formater(m, v);
@@ -11727,7 +11736,7 @@ function quetesPrimesVue(moi) {
     const rec = quetesRecordsParc.get(rk);
     if (!rec) return null;
     const prise = quetesPrimesPrises.get(rk);
-    const cle = Quetes.MESURES_PERSO.find((k) => Quetes.MESURES[k].source.rk === rk);
+    const cle = quetesMesureDe(rk, false);
     const jeu = cle ? Quetes.MESURES[cle].jeu : (RANKINGS[rk] && RANKINGS[rk].game);
     const etat = quetesPrimesEtat.get(rk);
     return {

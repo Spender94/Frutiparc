@@ -142,7 +142,7 @@
     var l = (etat && etat.primes) || [];
     if (!l.length) return '';
     return '<div class="qt-enseigne" data-texte="Mises à prix"><span>Mises à prix</span></div>'
-      + '<div class="qt-note qt-note-primes">Bats un <b>record absolu du parc</b> (au Challenge, ou la meilleure note des championnats Grapiz et Frutibandas) en détrônant son tenant : Gromelin paie la prime. '
+      + '<div class="qt-note qt-note-primes">Bats un <b>record absolu du parc</b> (au Challenge, le temps d’un circuit de Burning Kiwi, ou la meilleure note des championnats Grapiz et Frutibandas) en détrônant son tenant : Gromelin paie la prime. '
       + 'La prime <b>grossit chaque semaine</b> que le record tient, et repart de peu une fois payée. Une prime par record et par semaine ; battre son propre record ne compte pas.</div>'
       + '<div class="qt-avis">' + l.map(function (p) {
         var portrait = PORTRAIT[p.jeu];

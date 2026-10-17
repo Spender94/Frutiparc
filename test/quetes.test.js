@@ -1209,8 +1209,14 @@ test('le modèle des paliers : paliers du parc, paie au palier, échange, bonus 
   assert.equal(journal[1].gain, 500);
   const etatPrimes = JSON.parse((await sql(`SELECT value FROM app_state WHERE key = 'quetes_primes_etat'`))[0].value);
   assert.equal(etatPrimes.swapou2_classic.base, 100);
-  // Les championnats en ligne sont mis à prix aussi (dès qu'ils ont un record).
+  // Les circuits de Burning Kiwi sont mis à prix aussi : le record y est un
+  // temps (plus petit = mieux), lisible en minutes et secondes.
+  const bk = new URLSearchParams({ sid: sids['cerise'], game: 'bkiwi', m: '0', score: '72345', data: 'Fury Hun:1:1', track: '0' });
+  assert.ok((await (await fetch(BASE + '/api/saveScore', { method: 'POST', body: bk })).json()).ok);
+  await wait(300);
   const A2 = await adminEtat();
+  const kiwi = A2.primes.find((p) => p.rk === 'bkiwi_track0_classic');
+  assert.ok(kiwi && kiwi.tenantPseudo === 'cerise' && /1\s*min\s*12|1:12|72/.test(kiwi.record) && kiwi.jeu === 'bkiwi', JSON.stringify(kiwi));
   assert.ok(!A2.primes.some((p) => p.rk === 'mb2_classic'), 'pas le Challenge MotionBall');
   assert.equal((await sql(`SELECT username, ancien, gain FROM quetes_primes WHERE semaine = $1`, [lundi])).map((r) => [r.username, r.ancien, r.gain]).join(), `figue,${tenant},500`);
 
