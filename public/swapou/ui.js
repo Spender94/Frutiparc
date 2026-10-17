@@ -736,7 +736,10 @@ const SwapouUI = (function () {
     { x: 47, y: 21, base: { x: -9, y: 1 } },   // 2 Sel     (yeux 53×40 sur un corps 126×117)
     { x: 37, y: 17, base: { x: -9, y: 1 } },   // 3 Poivre  (yeux 62×43, même corps)
     { x: -9, y: -1 },    // 4 Moutarde (139×134)
-    { x: 13, y: -25 },   // 5 Piment   (65×188)
+    // 5 Piment (65×188) — sauf deux poses dessinées plus large : en colère
+    // (176×183, des flammes de part et d'autre) et vaincu (100×166, couché) ;
+    // le corps du piment reste à la même place, c'est le dessin qui déborde.
+    { x: 13, y: -25, etats: { 2: { x: -50, y: -45 }, 5: { x: -10, y: -10 } } },
     { x: -7, y: -7 },    // 6 Wasabi   (127×123)
   ];
 
@@ -933,7 +936,8 @@ const SwapouUI = (function () {
     ctx.restore();
     // Le portrait est posé à sa place d'origine dans la fenêtre de 110, à sa
     // taille naturelle ; on suit l'échelle de la boîte demandée.
-    const pos = FACE_POS[skinId] || { x: 0, y: 0 };
+    const posBase = FACE_POS[skinId] || { x: 0, y: 0 };
+    const pos = (posBase.etats && posBase.etats[stateId]) ? Object.assign({}, posBase, posBase.etats[stateId]) : posBase;
     ctx.translate(x + s / 2 + (shakeX || 0) * k, y + (shakeY || 0) * k);
     if (flipped) ctx.scale(-1, 1);
     // Verrouillé : toute la boîte du portrait vire au vert plat — transparence

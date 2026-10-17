@@ -454,21 +454,26 @@ const SwapouData = (function () {
     ],
   ];
 
-  // cinématique n (CIN) → image de fond ; 5 = composite temple (scene6/*)
+  // cinématique n (CIN) → image de fond ; 5 = composite temple (scene6/*),
+  // 9 = le sucre qui tombe à la mer (scene8 animée, screens.js).
   const CIN_SCENES = ['scene1', 'scene2', 'scene3', 'scene4', 'scene5',
-    'TEMPLE', 'scene7', 'scene7', 'scene8', 'scene8', 'scene9'];
+    'TEMPLE', 'scene7', 'scene7', 'scene8', 'SUCRE', 'scene9'];
 
-  // étapes de la carte (coordonnées sur worldMap 277×287) :
-  // 0 départ, 1 mine (Sel), 2 cascade (Poivre)… cf. HistoMap.as start/endEtape
+  // étapes de la carte (coordonnées sur worldMap 277×287), cf. HistoMap.as
+  // start/endEtape. Les places sont celles des étapes du clip `world` du
+  // .fla, relevées avec les joueurs : Monsieur Sel se terre dans la grotte
+  // du sud-ouest (le rocher gris), Poivre dans celle du nord-ouest, sous la
+  // cascade, Moutarde garde le pont de la rivière ; rien sur le sentier qui
+  // mène au temple. Le sucre, à la fin, est à la pointe sud de l'étang.
   const MAP_ETAPES = [
     [42, 200],   // 0 verger / départ
-    [64, 58],    // 1 la Mine (Sel + trahison)
-    [148, 40],   // 2 la cascade (Poivre)
-    [185, 52],   // 3 le pont (Moutarde)
+    [123, 161],  // 1 la Mine (Sel + trahison) : la grotte du sud-ouest
+    [64, 61],    // 2 la cascade (Poivre) : la grotte du nord-ouest
+    [146, 41],   // 3 le pont (Moutarde)
     [235, 72],   // 4 le temple (TomTom)
     [248, 105],  // 5 parvis du temple (Grand Piquant)
     [218, 152],  // 6 les marais (Wasabiii)
-    [150, 125],  // 7 le sucre
+    [226, 186],  // 7 le sucre : la pointe sud de l'étang, au bord de la mer
   ];
 
   return {

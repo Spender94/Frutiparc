@@ -649,6 +649,7 @@
     }
     if (d.movie !== undefined) {
       this.movie = d.movie;
+      this.sucreT = 0;
       return this.nextDialog();
     }
     if (d.txt === undefined) return this.nextDialog();
@@ -681,6 +682,7 @@
 
   HistoMap.prototype.main = function (tmod) {
     this.brumeX += tmod * 0.3;
+    if (this.movie != null && DATA.CIN_SCENES[this.movie] === 'SUCRE') this.sucreT = (this.sucreT || 0) + tmod;
     if (this.zooming) {
       let s = this.scale + (this.target_scale - this.scale) * Math.pow(0.3, 1 / tmod);
       if (Math.abs(this.scale - this.target_scale) < 2) {
@@ -776,6 +778,16 @@
       ctx.translate(cx, cy);
       ctx.scale(s, s);
       const sceneName = DATA.CIN_SCENES[this.movie] || 'scene1';
+      // La planche de bois (historyAnimBox, 276×287) est OPAQUE : posée
+      // après la scène, elle la cachait entièrement — toutes les cinématiques
+      // de l'histoire étaient des planches vides. Elle se pose donc d'abord,
+      // et la scène (240×240) par-dessus, dans son encadrement.
+      if (frameImg) ctx.drawImage(frameImg, -frameImg.naturalWidth / 2, -frameImg.naturalHeight / 2);
+      else {
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = '#6a4520';
+        ctx.strokeRect(-124, -124, 248, 248);
+      }
       ctx.save();
       ctx.beginPath();
       ctx.rect(-120, -120, 240, 240);
@@ -793,17 +805,13 @@
           ctx.globalAlpha = 1;
         }
         if (p) U.drawCentered(ctx, p, -80, 30, 1);
+      } else if (sceneName === 'SUCRE') {
+        this.drawSucre(ctx);
       } else {
         const img = A.img(sceneName);
         if (img) ctx.drawImage(img, -120, -120, 240, 240);
       }
       ctx.restore();
-      if (frameImg) ctx.drawImage(frameImg, -frameImg.naturalWidth / 2, -frameImg.naturalHeight / 2);
-      else {
-        ctx.lineWidth = 8;
-        ctx.strokeStyle = '#6a4520';
-        ctx.strokeRect(-124, -124, 248, 248);
-      }
       ctx.restore();
     }
 
@@ -864,6 +872,61 @@
     face.bgId = d.bg;
     face.draw(ctx, x, y, 106);
   }
+
+  // LE SUCRE QUI TOMBE À LA MER (cinématique 9). Le .fla l'animait dans le
+  // clip ; ici, sur la falaise de la scène 8 : le tas de sucre (les grains
+  // blancs du sommet) glisse, bascule dans le vide et s'abîme dans la mer
+  // en bas à droite, dans une gerbe d'écume. `sucreT` court depuis l'arrivée
+  // sur cette cinématique (HistoMap.main).
+  HistoMap.prototype.drawSucre = function (ctx) {
+    const img = A.img('scene8');
+    if (img) ctx.drawImage(img, -120, -120, 240, 240);
+    const t = Math.min(1, (this.sucreT || 0) / 90);     // ~2,2 s à 40 images
+    // La falaise : les grains peints du sommet disparaissent sous un peu de
+    // pelouse dès que le tas se met en route.
+    if (t > 0.05) {
+      ctx.fillStyle = '#6fbf3a';
+      ctx.beginPath();
+      ctx.ellipse(70, -12, 40, 7, -0.15, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Le tas : au repos sur le sommet, puis une parabole vers la mer.
+    const tas = (x, y, r) => {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff6d8';
+      for (let i = 0; i < 9; i++) {
+        const a = i * 0.7, d = r * (0.3 + (i % 3) * 0.2);
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.5 - 1, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+    if (t < 0.75) {
+      const k = t / 0.75;
+      const x = 70 + 60 * k;
+      const y = -14 + 130 * k * k;
+      tas(x, y, 22 - 6 * k);
+    } else {
+      // L'écume : des arcs qui s'ouvrent puis s'effacent.
+      const k = (t - 0.75) / 0.25;
+      ctx.strokeStyle = 'rgba(255,255,255,' + (1 - k) + ')';
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.arc(128, 112, 10 + 24 * k + i * 8, Math.PI, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255,255,255,' + (1 - k) * 0.9 + ')';
+      for (let i = 0; i < 7; i++) {
+        ctx.beginPath();
+        ctx.arc(104 + i * 8, 112 - 18 * k - (i % 2) * 10 * k, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  };
 
   // ── GameOver (GameOver.as) ───────────────────────────────────────────────
   function GameOver(mode) {
