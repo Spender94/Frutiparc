@@ -11371,7 +11371,7 @@ function quetesIndivListe(u) {
   if (quetesReglages.mode === 'collectives') return [];
   const l = quetesIndiv.get(u);
   if (!l) return [];
-  return quetesReglages.mode === 'deux' ? l.quetes.filter((q) => q.taillee) : l.quetes;
+  return quetesReglages.mode === 'deux' ? l.quetes.filter((q) => q.taillee || q.gromelin) : l.quetes;
 }
 /** Les quêtes de la semaine d'un joueur (hors contrat), selon le mode réglé. */
 function quetesDe(u) {
@@ -11497,7 +11497,8 @@ const QUETES_BONUS_ID = 'bonus-semaine';
 function quetesBonusPeutEtre(u, lundi) {
   const xp = quetesReglages.paliers.bonusXp;
   if (!xp || !quetesV2(lundi)) return;
-  const defs = quetesDe(u);
+  // Les bricoles de Gromelin sont en plus : elles ne retiennent pas le bonus.
+  const defs = quetesDe(u).filter((d) => !d.gromelin);
   const m = quetesProgres.get(u);
   if (!defs.length || !m || !defs.every((d) => { const p = m.get(d.id); return p && p.faitAt; })) return;
   const b = quetesProgresDe(u, QUETES_BONUS_ID);
@@ -11512,6 +11513,37 @@ function quetesBonusPeutEtre(u, lundi) {
   };
   if (!process.env.DATABASE_URL) return verser();
   db.quetesMarquerFaite(lundi, u, QUETES_BONUS_ID, { xp }, 0).then((neuf) => { if (neuf) verser(); }).catch(dbErr('quetes bonus'));
+}
+
+/*
+ * LA BRICOLE DE GROMELIN (quetes.js, GROMELIN) : la quête de plus qu'il confie
+ * au salon à un joueur présent. Elle entre dans sa liste individuelle de la
+ * semaine (quetes_individuelles, marquée `gromelin`), avance et se paie comme
+ * les autres, mais ne retient pas le bonus de la semaine. Une par joueur et
+ * par jour. Rend la définition, ou null : pas d'accès aux quêtes, mode
+ * collectif, déjà servi aujourd'hui, ou la semaine a tourné entre-temps.
+ * `cle` force la bricole (l'admin) ; sinon le hasard, hors des coins déjà pris.
+ */
+async function gromelinConfierBricole(username, cle) {
+  const u = String(username || '').toLowerCase();
+  if (!quetesPret || !quetesAcces(u) || quetesReglages.mode === 'collectives') return null;
+  const S = quetesSemaineCourante();
+  const l = quetesIndiv.get(u) || await quetesIndivDe(u);
+  if (!l || quetesSemaineCourante().lundi !== S.lundi) return null;
+  const jour = parisDayKey();
+  if (l.quetes.some((q) => q.gromelin && q.gromelin.jour === jour)) return null;
+  const choix = cle && Quetes.GROMELIN[cle] ? cle : Quetes.bricole(quetesDe(u), Math.random);
+  const num = l.quetes.reduce((mx, q) => Math.max(mx, Number((/^grom-(\d+)$/.exec(q.id) || [])[1]) || 0), 0) + 1;
+  const gain = quetesV2(S.lundi) ? quetesReglages.paliers.gains.bronze : quetesReglages.gains.facile;
+  const def = Quetes.definitionGromelin(choix, 'grom-' + num, gain, { jour, at: Date.now() });
+  if (!def) return null;
+  const quetes = l.quetes.concat([def]);
+  if (process.env.DATABASE_URL && !(await db.quetesRemplacerIndividuelles(S.lundi, u, quetes, l.reserve, l.niveaux))) return null;
+  l.quetes = quetes;
+  addAndNotifyUserLog(u, { type: USER_LOG_TYPE.QUETE, flNew: true,
+    content: `Gromelin t'a confié une bricole au salon : « ${Quetes.titre(def)} » (${gain} kikooz, avant dimanche minuit).` });
+  console.log(`[QUETES] ${u} : bricole de Gromelin « ${Quetes.titre(def)} » (${gain} kikooz)`);
+  return def;
 }
 
 // Après une retouche de l'admin (seuil abaissé, quête remplacée) : ce qui est
@@ -11549,6 +11581,7 @@ function quetesEtatPour(username) {
       id: def.id, niveau: def.niveau, niveauNom: Quetes.NIVEAU_NOM[def.niveau], gain,
       palier: def.palier || null, palierNom: def.palier ? Quetes.PALIER_NOM[def.palier] : null,
       decouverte: !!def.decouverte, premiersPas: !!def.premiersPas,
+      gromelin: !!def.gromelin, gromelinAt: def.gromelin ? Number(def.gromelin.at) || 0 : 0,
       titre: Quetes.titre(def), detail: Quetes.detail(def), ligne: av.ligne, pc: av.pc,
       fait: !!p.faitAt, faitLe: p.faitAt || null,
       etiquette: Quetes.ETIQUETTES[def.etiquette] || null, jeu: def.etiquette || null, taillee: !!def.taillee,
@@ -11579,6 +11612,10 @@ function quetesEtatPour(username) {
     }
     const neuves = toutes.filter((q) => q.fait && q.faitLe > vuAt).sort((a, b) => a.faitLe - b.faitLe);
     for (const q of neuves) messages.push(Quetes.parole('faite', { titre: quetesEchapper(q.titre), gain: q.gain }, alea));
+    // Les bricoles confiées au salon depuis la dernière visite, pas encore faites.
+    for (const q of quetes.filter((x) => x.gromelin && !x.fait && x.gromelinAt > vuAt)) {
+      messages.push(Quetes.parole('bricole', { titre: quetesEchapper(q.titre), gain: q.gain }, alea));
+    }
     const reste = toutes.filter((q) => !q.fait).length;
     // Les meilleurs (Platine, Légende) : une mise à prix ouverte dans un de leurs jeux.
     const forts = indiv && indiv.niveaux ? Object.entries(indiv.niveaux).filter(([, n]) => n === 'platine' || n === 'legende')
@@ -11589,7 +11626,7 @@ function quetesEtatPour(username) {
     else if (!reste) messages.push(Quetes.parole('fini', {}, alea));
     else if (!nouvelleSemaine) messages.push(Quetes.parole('reste', { reste, s: reste > 1 ? 's' : '' }, alea));
   }
-  const nouveau = nouvelleSemaine || toutes.some((q) => q.fait && q.faitLe > vuAt);
+  const nouveau = nouvelleSemaine || toutes.some((q) => q.fait && q.faitLe > vuAt) || quetes.some((q) => q.gromelin && !q.fait && q.gromelinAt > vuAt);
   return {
     ok: true, acces: true,
     semaine: { lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi), fin: Quetes.finDeSemaine(S.lundi) },
@@ -11827,6 +11864,8 @@ app.post('/api/quetes/echanger', async (req, res) => {
     const i = l.quetes.findIndex((q) => q.id === String(b.id));
     if (i < 0) return res.status(404).json({ ok: false, error: 'quete_inconnue' });
     const ancienne = l.quetes[i];
+    // Une bricole de Gromelin ne s'échange pas : elle est en plus, et il l'a choisie.
+    if (ancienne.gromelin) return res.status(400).json({ ok: false, error: 'bricole', message: 'Une bricole de Gromelin ne s’échange pas.' });
     const p = (quetesProgres.get(u) || new Map()).get(ancienne.id);
     if (p && p.faitAt) return res.status(400).json({ ok: false, error: 'deja_faite', message: 'Cette quête est déjà faite.' });
     // La remplaçante : même niveau d'abord, jamais une mesure déjà dans la liste.
@@ -12260,10 +12299,12 @@ async function quetesRetaillerSemaine() {
     const neuves = t.quetes.filter((q) => !faites.some((f) => meme(f, q))).slice(0, Math.max(0, R.maxQuetes - faites.length));
     let num = avant.quetes.reduce((n, q) => Math.max(n, Number((/^ind-(\d+)$/.exec(q.id) || [])[1]) || 0), 0);
     for (const q of neuves) if (/^ind-/.test(q.id)) q.id = 'ind-' + (++num);
-    const quetes = faites.concat(neuves);
-    // L'avancement des quêtes remplacées s'efface (celui des faites reste).
+    // Les bricoles de Gromelin en cours restent : elles ne tiennent pas au modèle.
+    const bricoles = avant.quetes.filter((q) => q.gromelin && !faites.includes(q));
+    const quetes = faites.concat(bricoles, neuves);
+    // L'avancement des quêtes remplacées s'efface (celui des faites et des bricoles reste).
     for (const q of avant.quetes) {
-      if (faites.includes(q)) continue;
+      if (faites.includes(q) || bricoles.includes(q)) continue;
       progres.delete(q.id);
       if (process.env.DATABASE_URL) db.quetesOublierProgres(S.lundi, u, q.id).catch(dbErr('quetes retailler'));
     }
@@ -12457,6 +12498,17 @@ app.post('/api/admin/quetes/joueur', adminScope('quetes'), async (req, res) => {
 });
 
 // Remettre à zéro la semaine d'un joueur — pour tester. Les kikooz versés le restent.
+// Faire passer Gromelin maintenant : { username?, cle? } — à ce joueur (sinon
+// un présent du salon des animations), cette bricole (sinon le hasard).
+app.post('/api/admin/quetes/gromelin', adminScope('quetes'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const r = await gromelinVisit({ username: b.username ? String(b.username).toLowerCase() : null, cle: b.cle ? String(b.cle) : null });
+    if (!r.cible) return res.status(400).json({ ok: false, error: 'personne', message: 'Personne à qui confier une bricole au salon des animations.' });
+    res.json({ ok: true, cible: r.cible, quete: r.def ? { id: r.def.id, titre: Quetes.titre(r.def), gain: quetesGainDe(r.def) } : null,
+      message: r.def ? `Bricole confiée à ${getDisplayName(r.cible)} : « ${Quetes.titre(r.def)} »` : `${getDisplayName(r.cible)} a déjà eu sa bricole aujourd'hui (ou n'a pas accès aux quêtes).` });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 app.post('/api/admin/quetes/reinitialiser', adminScope('quetes'), async (req, res) => {
   try {
     const u = normalizeUsername((req.body || {}).username);
@@ -30682,23 +30734,28 @@ function npcLeave(npc) {
   npcChannel[npc] = null;
 }
 
-function npcSay(npc, channelName, text, type) {
+// `mentionnes` : les pseudos (clés) à qui la ligne s'adresse — la trame porte
+// mn="…", et leur onglet clignote comme pour une @mention.
+function npcSay(npc, channelName, text, type, mentionnes) {
   const timeAttrs = buildChatTimeAttrs();
+  const mn = mentionnes && mentionnes.length ? ` mn="${escapeXml(mentionnes.map((u) => getDisplayName(u)).join(','))}"` : '';
   broadcastToChannel(channelName,
-    `<${CMD.send} u="${escapeXml(getDisplayName(npc))}" t="${type || 'm'}" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(text)}</${CMD.send}>`
+    `<${CMD.send} u="${escapeXml(getDisplayName(npc))}" t="${type || 'm'}" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}"${mn}>${escapeXml(text)}</${CMD.send}>`
   );
 }
 
 // Deliver `lines` one at a time (~2.5-5 s apart, after a short initial pause),
 // then call onDone. Bails if the NPC has meanwhile left or moved channel. The
 // optional `type` sets the chat sub-type ('c' = animator/blue styling).
-function npcSaySequence(npc, channelName, lines, onDone, type, gapMs) {
+// `mentionnes` : les lignes qui nomment l'un d'eux (son pseudo affiché) s'adressent à lui.
+function npcSaySequence(npc, channelName, lines, onDone, type, gapMs, mentionnes) {
   let i = 0;
   function step() {
     if (npcChannel[npc] !== channelName) return; // moved/left → stop talking
     if (i >= lines.length) { if (onDone) onDone(); return; }
     const line = lines[i++];
-    if (line) npcSay(npc, channelName, line, type);
+    const a = mentionnes ? mentionnes.filter((u) => line && line.includes(getDisplayName(u))) : null;
+    if (line) npcSay(npc, channelName, line, type, a);
     setTimeout(step, gapMs ? (gapMs + Math.random() * gapMs * 0.5) : (2500 + Math.random() * 2500));
   }
   setTimeout(step, (gapMs ? gapMs * 0.7 : 1500) + Math.random() * 1500);
@@ -30778,17 +30835,21 @@ async function mdamirmaReveal() {
  * croisait plusieurs fois par session, et une apparition qu'on attend cesse
  * d'être une apparition.
  *
- * Désormais : Irma UNE fois par heure, Gromelin UNE fois par jour, et pas
+ * Désormais : Irma UNE fois par heure ; Gromelin QUATRE fois par jour, et pas
  * n'importe quand — entre huit heures et minuit, pour qu'il n'aille pas
- * ronchonner devant un salon vide à quatre heures du matin.
+ * ronchonner devant un salon vide à quatre heures du matin. Depuis qu'il a un
+ * métier (une bricole à confier au salon des animations, gromelinVisit), il
+ * passe plus souvent qu'au temps où il ne faisait que ronchonner : c'est
+ * pour être trouvé.
  *
- * On tire l'instant au sort dans la tranche plutôt que de taper à l'heure
+ * On tire les instants au sort dans la tranche plutôt que de taper à l'heure
  * ronde : la surprise est tout l'intérêt de ces passages. Et l'heure vient de
  * PARIS par Intl, comme le reste du serveur — un changement d'heure ne doit pas
  * décaler Gromelin pendant six mois.
  */
 const GROMELIN_HEURE_MIN = 8;           // pas avant huit heures
 const GROMELIN_HEURE_MAX = 23;          // dernière heure possible : 23 h 59
+const GROMELIN_PASSAGES = 4;            // passages par jour
 
 function heureParis(d = new Date()) {
   const hm = new Intl.DateTimeFormat('en-GB', {
@@ -30800,14 +30861,19 @@ function heureParis(d = new Date()) {
 
 const entierEntre = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
 
+// Les rendez-vous de Gromelin pour un jour : GROMELIN_PASSAGES minutes
+// distinctes de la tranche, dans l'ordre (minute de la journée).
+function tirerRdvGromelin() {
+  const rdv = new Set();
+  while (rdv.size < GROMELIN_PASSAGES) rdv.add(entierEntre(GROMELIN_HEURE_MIN * 60, GROMELIN_HEURE_MAX * 60 + 59));
+  return [...rdv].sort((a, b) => a - b);
+}
+
 // L'état des deux rendez-vous. `cle` est la tranche déjà honorée — jour+heure
-// pour Irma, jour pour Gromelin : tant qu'elle ne change pas, on ne repasse pas.
+// pour Irma, jour pour Gromelin, dont `fait` compte les passages déjà faits
+// parmi les `rdv` du jour : tant que la clé ne change pas, on ne retire pas.
 const irmaRdv = { cle: null, minute: entierEntre(0, 59) };
-const gromelinRdv = {
-  cle: null,
-  heure: entierEntre(GROMELIN_HEURE_MIN, GROMELIN_HEURE_MAX),
-  minute: entierEntre(0, 59),
-};
+const gromelinRdv = { cle: null, rdv: tirerRdvGromelin(), fait: 0 };
 
 function tickVisiteurs(maintenant = new Date()) {
   const { h, m } = heureParis(maintenant);
@@ -30821,25 +30887,28 @@ function tickVisiteurs(maintenant = new Date()) {
     mdamirmaReveal();
   }
 
-  // Gromelin : une fois par jour, à l'heure et à la minute tirées pour CE
-  // jour-là. Le tirage du lendemain se fait au passage, donc jamais deux fois.
-  if (gromelinRdv.cle !== jour
-    && (h > gromelinRdv.heure || (h === gromelinRdv.heure && m >= gromelinRdv.minute))) {
+  // Gromelin : les rendez-vous tirés pour CE jour-là, un par minute au plus.
+  // Un jour neuf retire ses rendez-vous et remet le compte à zéro.
+  if (gromelinRdv.cle !== jour) {
     gromelinRdv.cle = jour;
-    gromelinRdv.heure = entierEntre(GROMELIN_HEURE_MIN, GROMELIN_HEURE_MAX);
-    gromelinRdv.minute = entierEntre(0, 59);
+    gromelinRdv.rdv = tirerRdvGromelin();
+    gromelinRdv.fait = 0;
+  }
+  if (gromelinRdv.fait < gromelinRdv.rdv.length && h * 60 + m >= gromelinRdv.rdv[gromelinRdv.fait]) {
+    gromelinRdv.fait++;
     gromelinVisit();
   }
 }
 
-// Au démarrage, l'heure et le jour courants comptent pour déjà honorés : un
-// redémarrage ne doit pas rappeler Irma dans la minute, ni faire revenir
-// Gromelin une seconde fois le même jour.
+// Au démarrage, l'heure courante et les rendez-vous déjà passés du jour
+// comptent pour honorés : un redémarrage ne doit pas rappeler Irma dans la
+// minute, ni rattraper les passages de Gromelin de la matinée.
 {
-  const { h } = heureParis();
+  const { h, m } = heureParis();
   const jour = parisDayKey();
   irmaRdv.cle = jour + 'T' + h;
   gromelinRdv.cle = jour;
+  gromelinRdv.fait = gromelinRdv.rdv.filter((x) => x <= h * 60 + m).length;
 }
 setInterval(() => {
   try { tickVisiteurs(); } catch (e) { console.error('[NPC] visiteurs:', e.message); }
@@ -30973,16 +31042,53 @@ const GROMELIN_LINES = [
   "On est plus tranquille à Légumia...",
 ];
 
-function gromelinVisit() {
-  const channelName = mostPopulatedChannel(); // the busiest room right now
-  if (!channelName) return;
-  npcJoin('gromelin', channelName);
-  npcSaySequence('gromelin', channelName, GROMELIN_LINES,
-    () => setTimeout(() => npcLeave('gromelin'), 2500 + Math.random() * 3000));
+/*
+ * LE MÉTIER DE GROMELIN. À chaque passage (quatre par jour, tickVisiteurs), il
+ * entre au salon des animations, choisit un frutiz présent — qui a accès aux
+ * quêtes et n'a pas encore eu sa bricole du jour — et lui confie une quête de
+ * plus (gromelinConfierBricole), en le nommant : son onglet clignote. Personne
+ * à servir ? Au premier passage du jour, il va ronchonner dans le salon le
+ * plus peuplé, comme avant ; les autres fois, il ne vient pas. `force` :
+ * l'admin désigne le joueur et la bricole.
+ */
+const GROMELIN_LIGNES_BRICOLE = (nom, titre, gain) => [
+  'Grumpf.',
+  `${nom}. Oui, toi. Approche.`,
+  `J'ai une bricole pour toi : « ${titre} ». ${gain} kikooz si c'est fait avant dimanche minuit.`,
+  `C'est dans ton carnet de quêtes, ${nom}. Ne me fais pas regretter.`,
+];
+function gromelinChoisirJoueur() {
+  const ch = channels[ANIM_CHANNEL];
+  if (!ch) return null;
+  const jour = parisDayKey();
+  const candidats = [...ch.users].filter((u) => {
+    if (NPC_USERNAMES.has(u) || !users[u] || !quetesAcces(u)) return false;
+    const l = quetesIndiv.get(u);
+    return !(l && l.quetes.some((q) => q.gromelin && q.gromelin.jour === jour));
+  });
+  return candidats.length ? candidats[Math.floor(Math.random() * candidats.length)] : null;
+}
+async function gromelinVisit(force) {
+  const cible = (force && force.username) || gromelinChoisirJoueur();
+  if (!cible) {
+    const channelName = mostPopulatedChannel(); // the busiest room right now
+    if (!channelName || (!force && gromelinRdv.fait > 1)) return { cible: null, def: null };
+    npcJoin('gromelin', channelName);
+    npcSaySequence('gromelin', channelName, GROMELIN_LINES,
+      () => setTimeout(() => npcLeave('gromelin'), 2500 + Math.random() * 3000));
+    return { cible: null, def: null };
+  }
+  npcJoin('gromelin', ANIM_CHANNEL);
+  let def = null;
+  try { def = await gromelinConfierBricole(cible, force && force.cle); } catch (e) { console.error('[GROMELIN] bricole :', e.message); }
+  const lignes = def ? GROMELIN_LIGNES_BRICOLE(getDisplayName(cible), Quetes.titre(def), quetesGainDe(def)) : GROMELIN_LINES;
+  npcSaySequence('gromelin', ANIM_CHANNEL, lignes,
+    () => setTimeout(() => npcLeave('gromelin'), 2500 + Math.random() * 3000), undefined, undefined, def ? [cible] : null);
+  return { cible, def };
 }
 
-// Sa cadence est tenue par `tickVisiteurs`, plus haut : une visite par jour,
-// entre huit heures et minuit.
+// Sa cadence est tenue par `tickVisiteurs`, plus haut : quatre passages par
+// jour, entre huit heures et minuit.
 
 // ── MikeHorny — animateur "Question à 60 kikooz" (tous les soirs à 19h Paris) ──
 // NB : la CLÉ de compte reste `kiloute79` (identité interne stable : présence

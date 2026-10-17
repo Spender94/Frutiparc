@@ -503,6 +503,44 @@ test('Gromelin parle : ses répliques, leurs trous remplis', () => {
   }
 });
 
+test('les bricoles de Gromelin : vite faites, de la vie du parc, jamais du coin d’une quête en main', () => {
+  // Le catalogue : des actions sur le site surtout (salons, forum, Prunostics,
+  // Challenge), deux parties de jeu — rien qui demande un score.
+  const cles = Object.keys(Q.GROMELIN);
+  assert.ok(cles.length >= 6);
+  assert.ok(cles.every((k) => /^grom-/.test(k)));
+  assert.ok(!cles.some((k) => Q.GROMELIN[k].type === 'mesure' || Q.GROMELIN[k].type === 'score'), 'pas de seuil de score');
+  const horsJeu = cles.filter((k) => ['salons', 'forum', 'prunostics', 'challenge'].includes(Q.GROMELIN[k].etiquette));
+  assert.ok(horsJeu.length > cles.length / 2, 'surtout la vie du parc');
+  // La quête : bronze, facile, le gain donné, marquée de son passage.
+  const d = Q.definitionGromelin('grom-salons', 'grom-1', 7, { jour: '2026-10-17', at: 123 });
+  assert.deepEqual([d.id, d.niveau, d.palier, d.gain, d.type, d.etiquette, d.famille], ['grom-1', 'facile', 'bronze', 7, 'action', 'salons', 'grom-salons']);
+  assert.deepEqual(d.gromelin, { cle: 'grom-salons', jour: '2026-10-17', at: 123 });
+  assert.equal(Q.titre(d), 'Papote dans les salons : cinq messages');
+  assert.match(Q.detail(d), /^Une bricole de Gromelin/);
+  assert.equal(Q.definitionGromelin('grom-rien', 'grom-1', 7), null);
+  // Elle avance et se fait comme une quête de la vie du parc.
+  let e = {};
+  for (let i = 0; i < 5; i++) e = Q.appliquer(d, e, { type: 'action', action: 'chatMsg' }, 'j');
+  assert.equal(Q.avancement(d, e).ligne, '5 / 5');
+  assert.ok(Q.estFaite(d, e));
+  assert.equal(Q.appliquer(d, {}, { type: 'action', action: 'forumPost' }, 'j'), null);
+  const c = Q.definitionGromelin('grom-course', 'grom-2', 7);
+  assert.ok(Q.estFaite(c, Q.appliquer(c, {}, { type: 'partie', jeu: 'bkiwi' }, 'j')));
+  assert.equal(Q.appliquer(c, {}, { type: 'partie', jeu: 'swapou2' }, 'j'), null);
+  // Le tirage évite les coins des quêtes en main : les salons et le forum pris, on n'a ni l'un ni l'autre.
+  const enMain = [{ etiquette: 'salons' }, { etiquette: 'forum' }];
+  for (let i = 0; i < 30; i++) {
+    const k = Q.bricole(enMain, Math.random);
+    assert.ok(!['salons', 'forum'].includes(Q.GROMELIN[k].etiquette), k);
+  }
+  // Tout pris : n'importe laquelle, plutôt que rien.
+  const tout = cles.map((k) => ({ etiquette: Q.GROMELIN[k].etiquette }));
+  assert.ok(Q.GROMELIN[Q.bricole(tout, () => 0.5)]);
+  // Sa réplique, à la fenêtre.
+  assert.match(Q.parole('bricole', { titre: 'Place un Prunostic', gain: 7 }, () => 0), /« Place un Prunostic »[\s\S]*<em>7 kikooz<\/em>/);
+});
+
 test('le client : un message s’écrit lettre à lettre, ses balises toujours refermées', () => {
   globalThis.window = globalThis;
   require(path.join(ROOT, 'public/js/quetes-light.js'));
@@ -1368,6 +1406,91 @@ test('l’admin retouche les quêtes d’un joueur une à une : un seuil, le gai
   assert.deepEqual(ligne.quetes.map((q) => q.id).sort(), e.quetes.map((q) => q.id).sort());
   e = await etat('mirabelle');
   assert.deepEqual([quete(e, neuve.id).fait, quete(e, neuve.id).gain], [true, 11]);
+});
+
+/*
+ * Un client de salon (la WebSocket du chat), pour mettre quelqu'un au salon
+ * des animations et l'y faire papoter.
+ */
+const WebSocket = require(path.join(ROOT, 'node_modules', 'ws'));
+async function salon(pseudo) {
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/`);
+  const trames = [];
+  let tampon = '';
+  ws.on('message', (d) => {
+    tampon += d.toString('utf8');
+    const bouts = tampon.split('\0');
+    tampon = bouts.pop();
+    for (const b of bouts) if (b.trim()) trames.push(b.trim());
+  });
+  await new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); });
+  ws.send(`<k l="${pseudo}" s="${sids[pseudo]}" lc="1" />\0`);
+  const c = {
+    trames,
+    envoyer: (xml) => ws.send(xml + '\0'),
+    attendre: async (pred, quoi, ms = 6000) => {
+      for (let i = 0; i < ms / 50; i++) { const t = trames.find(pred); if (t) return t; await wait(50); }
+      throw new Error(`${pseudo} : ${quoi} — jamais reçu. Trames : ${trames.join(' ').slice(0, 900)}`);
+    },
+    fermer: () => { try { ws.close(); } catch { /* déjà fermée */ } },
+  };
+  await c.attendre((t) => t.startsWith('<k'), 'accusé d’identification');
+  c.envoyer('<o g="pomme" />');
+  await c.attendre((t) => t.startsWith('<p') && t.includes('g="pomme"'), 'liste du salon');
+  return c;
+}
+
+test('Gromelin passe au salon des animations : il nomme un présent, lui confie une bricole, une par jour, qui se paie comme les autres', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  assert.ok((await post('/api/admin/quetes', { ouverture: 'tous', mode: 'individuelles' }, ADMIN)).ok);
+  await compte('coing');
+  const avant = await etat('coing');
+  const n0 = avant.quetes.length;
+  const coing = await salon('coing');
+  try {
+    // Personne d'autre au salon : c'est coing qui reçoit la bricole (forcée par l'admin : papoter).
+    const r = await post('/api/admin/quetes/gromelin', { cle: 'grom-salons' }, ADMIN);
+    assert.ok(r.ok, JSON.stringify(r));
+    assert.equal(r.cible, 'coing');
+    assert.deepEqual([r.quete.id, r.quete.titre], ['grom-1', 'Papote dans les salons : cinq messages']);
+    // Au salon : Gromelin entre, et la ligne qui nomme coing s'adresse à lui (mn=), son onglet clignote.
+    await coing.attendre((x) => x.startsWith('<v') && /u="Gromelin"/i.test(x) && x.includes('g="pomme"'), 'l’arrivée de Gromelin');
+    const ligne = await coing.attendre((x) => x.startsWith('<t') && /u="Gromelin"/.test(x) && x.includes('Oui, toi'), 'Gromelin qui le nomme', 12000);
+    assert.match(ligne, /mn="coing"/, 'la ligne s’adresse à coing : ' + ligne);
+    await coing.attendre((x) => x.startsWith('<t') && x.includes('Papote dans les salons'), 'la bricole dite au salon', 12000);
+    // La ligne d'historique, poussée en direct.
+    const aw = await coing.attendre((x) => x.startsWith('<aw') && x.includes('bricole'), 'la ligne d’historique');
+    assert.match(aw, /type="72"/);
+    assert.match(aw, /« Papote dans les salons : cinq messages »/);
+    // La fenêtre des quêtes : la bricole en plus, marquée, pas encore faite, et Gromelin en parle.
+    let e = await etat('coing');
+    assert.equal(e.quetes.length, n0 + 1);
+    const b = quete(e, 'grom-1');
+    assert.ok(b && b.gromelin && !b.fait && b.ligne === '0 / 5' && b.palier === 'bronze', JSON.stringify(b));
+    assert.match(b.detail, /^Une bricole de Gromelin/);
+    assert.ok(e.messages.some((m) => /bricole/.test(m) && /Papote dans les salons/.test(m)), JSON.stringify(e.messages));
+    assert.ok(e.nouveau, 'la fenêtre a du neuf');
+    assert.ok(!e.quetes.some((q) => q.id === 'grom-2'));
+    // Une seule par jour : le second passage ne confie rien.
+    const r2 = await post('/api/admin/quetes/gromelin', { username: 'coing', cle: 'grom-forum' }, ADMIN);
+    assert.ok(r2.ok && r2.cible === 'coing' && r2.quete === null, JSON.stringify(r2));
+    assert.equal((await etat('coing')).quetes.length, n0 + 1);
+    // En base : la liste individuelle porte la bricole.
+    const ligneBase = (await sql(`SELECT quetes FROM quetes_individuelles WHERE username = 'coing' AND semaine = $1`, [lundiCourant()]))[0];
+    assert.ok(ligneBase.quetes.some((q) => q.id === 'grom-1' && q.gromelin && q.gromelin.cle === 'grom-salons'), JSON.stringify(ligneBase.quetes.map((q) => q.id)));
+    // Elle se fait en papotant : cinq messages, et Gromelin paie.
+    const solde0 = await solde('coing');
+    for (let i = 1; i <= 5; i++) { coing.envoyer(`<t g="pomme" t="m" p="">message ${i}</t>`); await wait(120); }
+    assert.equal(await soldeVaut('coing', solde0 + b.gain), solde0 + b.gain, 'la bricole payée');
+    e = await etat('coing');
+    assert.ok(quete(e, 'grom-1').fait);
+    // Personne au salon : Gromelin ne confie rien (et le dit à l'admin).
+    coing.fermer();
+    await wait(600);
+    const r3 = await post('/api/admin/quetes/gromelin', {}, ADMIN);
+    assert.equal(r3.ok, false);
+    assert.equal(r3.error, 'personne');
+  } finally { coing.fermer(); }
 });
 
 test('RGPD : l’export du joueur contient ses quêtes', async (t) => {

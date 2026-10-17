@@ -864,6 +864,11 @@ const PAROLES = {
   prime: [
     'Toi qui joues si bien : le record de <em>{nom}</em> est à {tenant}. Bats-le, et je te verse <em>{gain} kikooz</em>.',
   ],
+  // Une bricole confiée au salon, pas encore faite.
+  bricole: [
+    'Au salon, je t’ai confié une bricole : « {titre} ». <em>{gain} kikooz</em> si c’est fait avant dimanche minuit. Ne traîne pas.',
+    '<em>Grumpf.</em> Tu te souviens de la bricole ? « {titre} ». <em>{gain} kikooz</em>, dimanche minuit dernier délai.',
+  ],
   // Le contrat de la semaine, proposé et pas encore signé.
   contrat: [
     'Et pour toi, j’ai préparé un <em>contrat</em>. Taillé sur tes propres scores, pas sur ceux des autres. Choisis-en un, signe, et au travail.',
@@ -1117,6 +1122,50 @@ const PARC = {
 // Le niveau d'une quête de la vie du parc (pour l'échange : même niveau d'abord).
 const PARC_NIVEAU = { bronze: 'facile', argent: 'moyenne', or: 'difficile', platine: 'difficile', legende: 'difficile' };
 
+/*
+ * LES BRICOLES DE GROMELIN — la quête de plus qu'il confie au salon.
+ *
+ * Quatre fois par jour, Gromelin passe au salon des animations et confie à un
+ * joueur présent une quête supplémentaire, hors de ses quêtes de la semaine :
+ * une bricole, vite faite, qui tient à la vie du parc plutôt qu'à un jeu
+ * (papoter, écrire au forum, un Prunostic, un score au Challenge, deux jeux
+ * différents) — et deux fois sur sept, une partie d'un jeu. Elle se paie
+ * comme une quête de bronze et finit avec la semaine. On ne confie jamais une
+ * bricole du coin (l'étiquette) d'une quête que le joueur a déjà en main.
+ */
+const GROMELIN = {
+  'grom-salons': { type: 'action', etiquette: 'salons', params: { action: 'chatMsg', n: 5 },
+    titre: 'Papote dans les salons : cinq messages', detail: 'Une bricole de Gromelin · dans le salon de ton choix' },
+  'grom-forum': { type: 'action', etiquette: 'forum', params: { actions: ['forumPost', 'forumTopic'], n: 1 },
+    titre: 'Écris un message sur le forum', detail: 'Une bricole de Gromelin · un sujet ou une réponse, où tu veux' },
+  'grom-prunostic': { type: 'action', etiquette: 'prunostics', params: { action: 'pari', n: 1 },
+    titre: 'Place un Prunostic', detail: 'Une bricole de Gromelin · sur un match du tournoi ou sur le Challenge de demain' },
+  'grom-challenge': { type: 'jours', etiquette: 'challenge', params: { n: 1 },
+    titre: 'Fais un score au Challenge', detail: 'Une bricole de Gromelin · n’importe quel jeu, un score classé suffit' },
+  'grom-deux-jeux': { type: 'jeux', etiquette: 'challenge', params: { n: 2 },
+    titre: 'Joue à deux jeux différents au Challenge', detail: 'Une bricole de Gromelin · un score dans deux jeux du Challenge' },
+  'grom-course': { type: 'parties', etiquette: 'bkiwi', params: { jeu: 'bkiwi', n: 1 },
+    titre: 'Fais une course de Burning Kiwi', detail: 'Une bricole de Gromelin · au Challenge ou en ligne' },
+  'grom-swapou': { type: 'parties', etiquette: 'swapou2', params: { jeu: 'swapou2', n: 1 },
+    titre: 'Joue une partie de Swapou', detail: 'Une bricole de Gromelin · au Challenge' },
+};
+/** La bricole, en quête : `marque` = { jour, at }, le passage qui l'a confiée. */
+function definitionGromelin(cle, id, gain, marque) {
+  const x = GROMELIN[cle];
+  if (!x) return null;
+  return { id: String(id), niveau: 'facile', palier: 'bronze', gain: Number(gain) || 0, v2: true,
+    gromelin: Object.assign({ cle }, marque || {}),
+    type: x.type, etiquette: x.etiquette, famille: cle, params: Object.assign({}, x.params), titre: x.titre, detail: x.detail };
+}
+/** Laquelle confier : d'un coin absent des quêtes en main (`defs`), au hasard ; à défaut, n'importe laquelle. */
+function bricole(defs, alea) {
+  const pris = new Set((defs || []).map((d) => d && d.etiquette));
+  const toutes = Object.keys(GROMELIN);
+  const libres = toutes.filter((k) => !pris.has(GROMELIN[k].etiquette));
+  const choix = libres.length ? libres : toutes;
+  return choix[Math.floor((alea || Math.random)() * choix.length) % choix.length];
+}
+
 /**
  * Les quêtes d'un joueur au modèle des paliers.
  * @param {object} entree
@@ -1286,6 +1335,7 @@ function definitionV2(spec, id) {
 
 module.exports = {
   PALIERS, PALIER_NOM, PALIER_PART, PALIERS_CONNUS, paliersDe, palierAtteint, proposerV2, definitionV2, PREMIERS_PAS, PARC,
+  GROMELIN, definitionGromelin, bricole,
   MESURES_PERSO, proposerPerso, definitionPerso, proposerContrat, definitionContrat, arrondir, aleaSeme,
   NIVEAUX, NIVEAU_NOM, REGLAGES_DEFAUT, CATALOGUE, ETIQUETTES, KALUGA_EPREUVES, MODES,
   nombre, jourPlus, lundiDe, minuitParis, finDeSemaine, semaineLisible, primeValeur,

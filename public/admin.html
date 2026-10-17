@@ -6468,6 +6468,10 @@ async function quetesPaliers(cle) {
   for (const k of ['bronze', 'argent', 'or', 'platine', 'legende']) seuils[k] = $(`#qt-pl-${cle}-${k}`).value;
   await quetesPost('/api/admin/quetes/paliers', { mesure: cle, seuils }, (d) => d.seuils ? 'Paliers retouchés' : 'Paliers calculés rétablis');
 }
+async function quetesGromelin() {
+  const u = $('#qt-ap-u').value.trim();
+  await quetesPost('/api/admin/quetes/gromelin', u ? { username: u } : {}, (d) => d.message);
+}
 async function quetesRetailler() {
   if (!confirm('Retailler les quêtes de la semaine en cours de tous les joueurs ? Les quêtes faites restent, les autres sont remplacées (le modèle et les paliers du moment).')) return;
   await quetesPost('/api/admin/quetes/retailler', {}, (d) => `${d.joueurs} joueur(s) retaillé(s), ${d.remplacees} quête(s) remplacée(s)`);
@@ -6621,6 +6625,7 @@ async function loadQuetes() {
       <div style="border:1px solid #c9a46a;background:#fffaf0;padding:10px;border-radius:8px;font-size:12px;margin-bottom:10px">
         <input id="qt-ap-u" placeholder="pseudo" style="width:150px"> <button class="btn btn-sm" onclick="quetesApercu()">Voir ses quêtes de lundi</button>
         <button class="btn btn-sm" onclick="quetesRetailler()" title="Recalcule les paliers du parc et retaille les quêtes de la semaine en cours de tout le monde : les quêtes faites restent, les autres suivent le modèle du moment">Retailler la semaine en cours</button>
+        <button class="btn btn-sm" onclick="quetesGromelin()" title="Gromelin passe tout de suite au salon des animations et confie une bricole (une quête de plus, vite faite) à un présent — au pseudo saisi à gauche s'il y en a un. Il passe de lui-même quatre fois par jour.">Faire passer Gromelin</button>
         <small style="color:#777">(d'après les scores connus à ce jour : ceux de la fin de semaine peuvent encore les changer)</small>
         <div id="qt-ap" style="margin-top:6px"></div>
       </div>

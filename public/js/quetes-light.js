@@ -126,7 +126,7 @@
       + '<img src="/minipixiz/sprites/shape981.svg" alt="">' + (fait ? '<img class="coche" src="/minipixiz/sprites/shape983.svg" alt="">' : '') + '</span>';
   }
   function carte(q) {
-    var changer = (!q.fait && !q.contrat && etat && etat.echange && etat.echange.possible)
+    var changer = (!q.fait && !q.contrat && !q.gromelin && etat && etat.echange && etat.echange.possible)
       ? '<button type="button" class="qt-swapou qt-changer" data-id="' + esc(q.id) + '" title="Une fois par semaine, une seule quête">Changer</button>' : '';
     return '<div class="qt-ligne' + (q.fait ? ' faite' : '') + (q.contrat ? ' qt-signee' : '') + '">'
       + (q.contrat ? '<span class="qt-sceau" aria-hidden="true">G</span>' : caseMission(q.fait))
