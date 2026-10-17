@@ -192,8 +192,12 @@ pause en ligne : les autres ne s'arrêtent pas avec vous.
 des voitures, pour tout le monde) : la meilleure valeur de chaque colonne de
 `carStats` parmi les cinq écuries (rotation 9, accélération 1,8, frein 0,93,
 maniabilité 0,992, vitesse 16,2, adhérence 0,7), sept nitros — le plafond du
-jeu —, et la carrosserie de la Final KiwiX (habillage 25) teinte en violet
-(`Color.setTransform`). Dans le menu, c'est la KiwiX teinte qui la figure.
+jeu —, et une carrosserie à part : celle de l'UltraCop (habillage 41 du clip
+`car`, la seule entourée de rayons de lumière), teinte en violet
+(`Color.setTransform`), phares allumés même de jour (`phares` dans ses stats,
+lu par `attachCar`). Les cinq écuries n'ont rien de tel : on la reconnaît de
+loin. Dans le menu, c'est le dessin de l'UltraCop (`car_5`) teint qui la
+figure.
 
 Le salon (hub des courses ouvertes, pilotes au stand, circuit, voitures,
 prêt, lancer) est un panneau HTML posé sur la scène (`index.html`,

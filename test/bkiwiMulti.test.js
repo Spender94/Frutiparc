@@ -32,7 +32,7 @@ test('le menu propose « en ligne », la X Violet n’est que là, et le fil par
   assert.match(menu, /case 160:/);
   const multi = lire('public/bkiwi/multi.js');
   assert.match(multi, /balise: 'kw'/);
-  assert.match(multi, /kiwis: 7, skin: 25, violet: true/);
+  assert.match(multi, /kiwis: 7, skin: 41, violet: true, phares: true/);
   const reseau = lire('public/snake3/reseau.js');
   assert.match(reseau, /this\.balise = opts\.balise \|\| 'sb'/);
   assert.match(reseau, /heureLocale\(st\)/);
@@ -63,6 +63,10 @@ test('la X Violet prend le meilleur de chaque colonne des cinq écuries', () => 
   assert.strictEqual(v.turning, Math.max(...cinq.map((c) => c.turning)));
   assert.strictEqual(v.brake, Math.min(...cinq.map((c) => c.brake)), 'le frein le plus mordant');
   assert.strictEqual(v.kiwis, M.maxKiwis, 'sept nitros, le plafond du jeu');
+  // Son aspect : l'UltraCop (41), teinte en violet, phares allumés — rien de commun avec les cinq.
+  assert.strictEqual(v.skin, 41);
+  assert.ok(v.violet && v.phares);
+  assert.ok(!cinq.some((c) => c.skin === v.skin || c.phares));
   assert.strictEqual(M.MULTI, 9);
   assert.strictEqual(J.nomVoiture(5), 'X Violet');
   assert.strictEqual(J.nomVoiture(2), 'Fury Hun');

@@ -1927,7 +1927,7 @@ J.installerMoteur = function (M) {
     mc = M.track['car_' + id];
 
     if (M.nightMode) J.setColor(mc, 100, -M.nightOffset, 100, -M.nightOffset, 100, -M.nightOffset);
-    else mc.lights._visible = false;
+    else mc.lights._visible = !!stats.phares;   // la X Violet roule phares allumés, même de jour
 
     mc.x = x;
     mc.y = y;
@@ -2019,7 +2019,7 @@ J.installerMoteur = function (M) {
     }
 
     mc.skin.gotoAndStop(mc.skinId);
-    // La X Violet (multi.js) : la carrosserie de la Final KiwiX, en violet.
+    // La X Violet (multi.js) : la carrosserie de l'UltraCop (41), en violet.
     if (stats.violet) { J.teindreViolet(mc.skin); mc.carName = 'X Violet'; }
 
     // Initialisation des forces

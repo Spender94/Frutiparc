@@ -22,9 +22,11 @@
  *
  * LA X VIOLET : la voiture du mode, et de lui seul — la meilleure valeur de
  * chaque caractéristique prise parmi les cinq écuries (la rotation du Fury
- * Hun, l'accélération et l'adhérence… ), sept nitros, et la carrosserie de
- * la Final KiwiX teinte en violet. Tout le monde peut la prendre : c'est un
- * mode pour s'amuser, rien n'y est classé.
+ * Hun, l'accélération et l'adhérence… ), sept nitros, et une carrosserie à
+ * part : celle de l'UltraCop (habillage 41, la seule du SWF qui rayonne),
+ * teinte en violet, phares allumés même en plein jour. Rien ne lui ressemble
+ * sur la piste. Tout le monde peut la prendre : c'est un mode pour s'amuser,
+ * rien n'y est classé.
  *
  * Le salon (hub, salons, pilotes, voiture, prêt, lancer) est un panneau HTML
  * posé sur la scène (index.html, #bk-multi) : des listes et des boutons, ce
@@ -52,8 +54,10 @@ const angleCourt = (a, b, t) => {
 };
 
 // La voiture du mode : le meilleur de chaque colonne de carStats, sept
-// nitros (le plafond du jeu), la carrosserie 25 (Final KiwiX) en violet.
-const X_VIOLET = { rot: 9, accel: 1.8, brake: 0.93, turning: 0.992, maxSpeed: 16.2, grip: 0.7, kiwis: 7, skin: 25, violet: true };
+// nitros (le plafond du jeu), et la carrosserie 41 (l'UltraCop : la seule du
+// clip « car » entourée de rayons de lumière) teinte en violet, phares
+// allumés (`phares`) — les cinq écuries n'ont rien de tel en plein jour.
+const X_VIOLET = { rot: 9, accel: 1.8, brake: 0.93, turning: 0.992, maxSpeed: 16.2, grip: 0.7, kiwis: 7, skin: 41, violet: true, phares: true };
 const TEINTE_VIOLET = [50, 60, 30, 0, 90, 110];   // ra, rb, ga, gb, ba, bb (Color.setTransform)
 
 J.installerMulti = function (M) {
@@ -61,7 +65,6 @@ J.installerMulti = function (M) {
   M.X_VIOLET = 5;                 // l'indice de la voiture
   M.carStats[M.X_VIOLET] = Object.assign({}, X_VIOLET);
   M.staticStats[M.X_VIOLET] = { maxSpeed: 1, accel: 1, grip: 1, rot: 1 };
-  M.carSkinNames[44] = 'X Violet';   // (un nom à part : la 25 reste « Final KiwiX » pour les autres)
   J.multi.M = M;
 };
 J.nomVoiture = function (c) {

@@ -1261,15 +1261,15 @@ J.installerMenu = function (M) {
   // MET A JOUR LES JAUGES DE STATS DU PANNEAU DES ECURIES
   J.updateStats = function (idCar) {
     M.menuMC.carSel.car_5._visible = false;
-    // La X Violet (multi.js) n'a pas de dessin à elle dans le menu : c'est la
-    // KiwiX (car_4) teinte en violet ; la KiwiX reprend ses couleurs sinon.
+    // La X Violet (multi.js) : le dessin de l'UltraCop (car_5, celui du code
+    // secret), teint en violet ; il reprend ses couleurs sinon.
     const violet = (M.X_VIOLET !== undefined && idCar == M.X_VIOLET);        // eslint-disable-line eqeqeq
-    if (M.menuMC.carSel.car_4) {
-      if (violet) J.teindreViolet(M.menuMC.carSel.car_4);
-      else new K.Color(M.menuMC.carSel.car_4).reset();
+    if (M.menuMC.carSel.car_5) {
+      if (violet) { J.teindreViolet(M.menuMC.carSel.car_5); M.menuMC.carSel.car_5._visible = true; }
+      else new K.Color(M.menuMC.carSel.car_5).reset();
     }
     for (let i = 0; i < 5; i++) {
-      if (i == idCar || (violet && i == 4)) {                                 // eslint-disable-line eqeqeq
+      if (i == idCar) {                                                       // eslint-disable-line eqeqeq
         if (idCar == 0 && M.specials[5].state && !M.specials[4].state) M.menuMC.carSel.car_5._visible = true;   // eslint-disable-line eqeqeq
         else M.menuMC.carSel['car_' + i]._visible = true;
       } else {
