@@ -135,6 +135,21 @@ K.telecharger = function (url, surProgres, options, essai) {
   // `catch` et non un second argument de `then` : une coupure EN COURS de
   // lecture du flux doit se rattraper comme un échec de connexion.
   return fetch(url, options).then((r) => {
+    // UN 404 SORTI DU CACHE N'EST PAS UNE ABSENCE. Les bibliothèques se
+    // demandent en `force-cache` (un mégaoctet qu'on ne retélécharge pas à
+    // chaque partie) : le navigateur rend alors ce qu'il a gardé, même
+    // périmé — y compris un 404 d'un jour où le fichier manquait en ligne
+    // (c'est arrivé à Burning Kiwi). Le téléphone restait sur
+    // « introuvable » pour toujours, pendant que le fichier était bien là.
+    // On redemande donc une fois au réseau, cache contourné, avant de
+    // conclure.
+    if ((r.status === 404 || r.status === 410) && options && options.cache === 'force-cache') {
+      return fetch(url, Object.assign({}, options, { cache: 'reload' })).then((r2) => {
+        if (r2.status === 404 || r2.status === 410) throw absent();
+        if (!r2.ok) throw new Error('HTTP ' + r2.status + ' : ' + url);
+        return r2.arrayBuffer().then((b) => { if (surProgres) surProgres(b.byteLength, b.byteLength); return b; });
+      });
+    }
     if (r.status === 404 || r.status === 410) throw absent();
     if (!r.ok) throw new Error('HTTP ' + r.status + ' : ' + url);
     const total = Number(r.headers.get('X-Taille-Reelle'))
