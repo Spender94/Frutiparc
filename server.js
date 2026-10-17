@@ -7928,6 +7928,57 @@ function mentionActive(username, nomPref) {
 }
 
 /*
+ * « @all » : LE STAFF S'ADRESSE À TOUT LE PARC.
+ *
+ * Un modérateur ou un animateur qui écrit « @all » dans un salon public
+ * mentionne tout le monde — chaque frutiz CONNECTÉ, où qu'il soit. Dans le
+ * salon, la trame porte `ma="1"` et son onglet clignote comme pour une
+ * mention ; dans un autre salon ou dans un jeu, il reçoit une ligne
+ * d'historique poussée en direct (la même porte que « tu as été mentionné sur
+ * le forum ») ; l'onglet en arrière-plan, c'est le téléphone, comme pour une
+ * mention ordinaire. La préférence `mention_chat` vaut pour tout cela. Les
+ * absents n'ont rien : « @all » parle à ceux qui sont là.
+ *
+ * PAS PLUS D'UN « @all » PAR MINUTE ET PAR SALON : une annonce qu'on répète
+ * n'est plus une annonce, et chacune s'écrit dans autant d'historiques qu'il
+ * y a de connectés. Le suivant part comme un message ordinaire, et l'auteur
+ * en est prévenu, lui seul. Écrit par qui n'est pas staff, « @all » est un
+ * mot comme un autre.
+ */
+const MENTION_TOUS_DELAI_MS = 60 * 1000;
+const mentionTousDernier = new Map();      // salon → instant du dernier « @all »
+function mentionneTous(texte) {
+  return /(^|[^A-Za-z0-9_.-])@all(?![A-Za-z0-9_.-])/i.test(String(texte || '').replace(/<[^>]*>/g, ' '));
+}
+function peutMentionnerTous(username) { return isModerator(username) || isAnimator(username); }
+// Les frutiz connectés (une socket identifiée), sans l'auteur ni les NPC.
+function frutizConnectes(sauf) {
+  const out = new Set();
+  for (const [, cl] of xmlSocketClients) {
+    if (!cl || !cl.logged || !cl.username) continue;
+    const u = String(cl.username).toLowerCase();
+    if (u === sauf || NPC_USERNAMES.has(u)) continue;
+    out.add(u);
+  }
+  return [...out];
+}
+function notifierMentionTous(g, auteur, texteBrut) {
+  const extrait = String(texteBrut || '').replace(/<[^>]*>/g, '').slice(0, 90);
+  const nomAuteur = getDisplayName(auteur);
+  const salon = channels[g] ? channels[g].desc : String(g || '');
+  const cibles = frutizConnectes(String(auteur || '').toLowerCase()).filter((u) => mentionActive(u, 'mention_chat'));
+  for (const u of cibles) {
+    addAndNotifyUserLog(u, {
+      type: USER_LOG_TYPE.MENTION,
+      content: `📣 ${nomAuteur} s'adresse à tout le monde (${salon}) : « ${extrait} »`,
+    });
+  }
+  pousserNotifMentionChat(g, auteur, texteBrut, cibles);
+  console.log(`[CHAT] @all de ${auteur} dans ${g} : ${cibles.length} connecté(s) prévenu(s)`);
+  return cibles.length;
+}
+
+/*
  * UNE MENTION DANS UN SALON PUBLIC.
  *
  * Le clignotement de l'onglet, lui, est l'affaire du client : la trame porte
@@ -35179,9 +35230,22 @@ case 'send': {
      */
     const salonPublic = !!g && !/^pm2?_/.test(String(g));
     const mentionnes = salonPublic ? mentionsDe(text, client.username) : [];
-    const mn = mentionnes.length
+    // « @all » du staff : tout le parc connecté (notifierMentionTous), une
+    // fois par minute et par salon ; la trame le dit par ma="1".
+    let aTous = false;
+    if (salonPublic && peutMentionnerTous(client.username) && mentionneTous(unescapeXml(text))) {
+      const maintenant = Date.now();
+      if (maintenant - (mentionTousDernier.get(g) || 0) >= MENTION_TOUS_DELAI_MS) {
+        mentionTousDernier.set(g, maintenant);
+        aTous = true;
+      } else {
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Un seul @all par minute et par salon : celui-ci part comme un message ordinaire.</i>]]></${CMD.send}>`);
+      }
+    }
+    const mn = (mentionnes.length
       ? ` mn="${escapeXml(mentionnes.map((u) => getDisplayName(u)).join(','))}"`
-      : '';
+      : '') + (aTous ? ' ma="1"' : '');
+    const prevenirTous = (texteBrut) => { if (aTous) notifierMentionTous(g, client.username, texteBrut); };
 
     // Le CRI rouge gras — un seul droit (être staff DU salon : modérateur
     // partout, animateur sur le sien), deux chemins pour l'exercer :
@@ -35207,6 +35271,7 @@ case 'send': {
           `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${escapeXml(redStamp)}" d="${timeAttrs.d}" st="r" au="${escapeXml(getDisplayName(client.username))}"${mn}>${body}</${CMD.send}>`
         );
         pousserNotifMentionChat(g, client.username, shout, mentionnes);
+        prevenirTous(shout);
         break;
       }
       if (type === 'w') break;
@@ -35236,8 +35301,10 @@ case 'send': {
     // <font color> (which never matched).
     if (blueModeUsers.has(client.username) && (isAnimator(client.username) || isModerator(client.username))) {
       broadcastToChannel(g,
-        `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="c"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
+        `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="c"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"${mn}>${safeText}</${CMD.send}>`
       );
+      pousserNotifMentionChat(g, client.username, unescapeXml(text), mentionnes);
+      prevenirTous(unescapeXml(text));
       trackXpAction(client.username, 'chatMsg');
       break;
     }
@@ -35289,6 +35356,7 @@ case 'send': {
       );
       pousserNotifMpSiAbsent(g, client.username, unescapeXml(text));
       pousserNotifMentionChat(g, client.username, unescapeXml(text), mentionnes);
+      prevenirTous(unescapeXml(text));
       trackXpAction(client.username, 'chatMsg');
       kilouteCheckAnswer(g, client.username, text);
       kilouteSessionCheckAnswer(g, client.username, text);
@@ -35298,7 +35366,7 @@ case 'send': {
     const xml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}"${mn}>${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
     if (type === 'm') pousserNotifMpSiAbsent(g, client.username, unescapeXml(text));
-    if (type === 'm') pousserNotifMentionChat(g, client.username, unescapeXml(text), mentionnes);
+    if (type === 'm') { pousserNotifMentionChat(g, client.username, unescapeXml(text), mentionnes); prevenirTous(unescapeXml(text)); }
     trackXpAction(client.username, 'chatMsg');
     // MikeHorny's "Question à 60 kikooz" (daily single) AND the live quiz event:
     // react if this line is the answer to whichever is running.

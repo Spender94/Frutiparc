@@ -8379,7 +8379,10 @@
         // a reconnue, ou le cri rouge d'un modérateur. C'est cela — et cela
         // seul — qui fait clignoter l'onglet d'un salon public.
         var nommes = mentionsDeTrame(xml);
-        var pourMoi = !enRejeu && (meMentionne(nommes) || attr(xml, "st") === "r");
+        // `ma="1"` : un « @all » du staff — adressé à tout le monde, donc à moi.
+        var aTous = attr(xml, "ma") === "1";
+        if (aTous) nommes.push("all");
+        var pourMoi = !enRejeu && (meMentionne(nommes) || aTous || attr(xml, "st") === "r");
         if (salon && salon !== state.room && !aSonJournal(salon)) {
           var conv = state.prives[salon];
           if (conv && !enRejeu && !(conv.sourdineJusqua > Date.now())) {
@@ -9422,7 +9425,7 @@
       }
       if (ou < 0) break;
       if (ou > pos) hote.appendChild(document.createTextNode(corps.substring(pos, ou)));
-      var m = el("span", "mention" + (quoi.toLowerCase() === state.userLower ? " moi" : ""));
+      var m = el("span", "mention" + (quoi.toLowerCase() === state.userLower || quoi.toLowerCase() === "all" ? " moi" : ""));
       m.textContent = corps.substr(ou, quoi.length + 1);
       hote.appendChild(m);
       pos = ou + quoi.length + 1;
@@ -10460,7 +10463,10 @@
       });
     }
     var tri = function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase(), "fr"); };
-    return dansLeSalon.sort(tri).concat(ailleurs.sort(tri)).slice(0, 8);
+    var liste = dansLeSalon.sort(tri).concat(ailleurs.sort(tri));
+    // « @all », pour le staff du salon : tout le parc connecté d'un mot.
+    if (jeSuisStaff(state.room) && "all".indexOf(bas) === 0) liste.unshift("all");
+    return liste.slice(0, 8);
   }
 
   function mentionFermer() {

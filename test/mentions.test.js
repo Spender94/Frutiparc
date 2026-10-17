@@ -20,6 +20,10 @@
  *   · LE CLIGNOTEMENT, côté client : un salon public ne s'agite plus que pour
  *     une mention ou un cri de modérateur ; une conversation privée, elle,
  *     s'agite toujours.
+ *   · « @ALL ». Le staff (modérateur, animateur) s'adresse à tout le parc
+ *     connecté : la trame porte `ma="1"`, chaque connecté — hors l'auteur —
+ *     reçoit une ligne d'historique, un seul « @all » par minute et par
+ *     salon ; écrit par un joueur ordinaire, c'est un mot comme un autre.
  *
  * Le forum vit en base : PostgreSQL de test requis (cluster port 5433), sinon
  * tout est sauté proprement — comme citationsForum, dont ce fichier reprend le
@@ -66,6 +70,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const NOMME = 'mirabelle' + RUN;   // celui qu'on mentionne
 const AUTEUR = 'bavard' + RUN;     // celui qui mentionne
 const SOURD = 'discret' + RUN;     // celui qui a coupé ses mentions
+const STAFF = 'modo' + RUN;        // le modérateur, celui qui peut dire « @all »
 
 let proc = null, fauxPush = null, dispo = false;
 const recus = [];
@@ -281,6 +286,56 @@ test('un mentionné ABSENT reçoit la notification ; celui qui a coupé, non', a
   } finally { auteur.fermer(); }
 });
 
+test('« @all » du staff : la trame le marque, chaque connecté a sa ligne, un seul par minute, et rien d\'un joueur ordinaire', async (t) => {
+  if (!dispo) return t.skip('pas de base PostgreSQL de test disponible');
+  const sidStaff = await inscrire(STAFF);
+  const role = await fetch(`${BASE}/api/admin/users/${STAFF}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-admin-key': CLE },
+    body: JSON.stringify({ is_moderator: true }),
+  });
+  assert.equal(role.status, 200, 'rôle modérateur posé');
+  const staff = await client(STAFF, sidStaff);
+  const dansLeSalon = await client(NOMME, sidNomme);
+  const ailleurs = await client(AUTEUR, sidAuteur);
+  try {
+    staff.envoyer('<o g="pomme" />');
+    dansLeSalon.envoyer('<o g="pomme" />');
+    ailleurs.envoyer('<o g="poire" />');
+    await staff.attendre((x) => x.startsWith('<p') && x.includes('g="pomme"'), 'liste du salon');
+    await dansLeSalon.attendre((x) => x.startsWith('<p') && x.includes('g="pomme"'), 'liste du salon (témoin)');
+    await ailleurs.attendre((x) => x.startsWith('<p') && x.includes('g="poire"'), 'liste de l\'autre salon');
+
+    // 1. Un joueur ordinaire écrit « @all » : un mot comme un autre.
+    dansLeSalon.envoyer('<t g="pomme" t="m" p="">@all venez voir</t>');
+    const ordinaire = await staff.attendre((x) => x.startsWith('<t') && x.includes('venez voir'), 'la ligne du joueur');
+    assert.ok(!ordinaire.includes('ma='), 'pas de marque pour un joueur ordinaire : ' + ordinaire);
+
+    // 2. Le modérateur : la trame porte ma="1", et celui qui est dans un AUTRE
+    //    salon reçoit une ligne d'historique (type 21, la mention), poussée en
+    //    direct — elle nomme l'auteur, le salon, et cite le message.
+    staff.envoyer('<t g="pomme" t="m" p="">@all animation dans dix minutes !</t>');
+    const marquee = await dansLeSalon.attendre((x) => x.startsWith('<t') && x.includes('dix minutes'), 'la ligne du staff');
+    assert.match(marquee, / ma="1"/, 'la trame dit « à tous » : ' + marquee);
+    const histo = await ailleurs.attendre((x) => x.startsWith('<aw') && x.includes('dix minutes'), 'la ligne d\'historique de l\'autre salon');
+    assert.match(histo, /type="21"/, 'c\'est une mention : ' + histo);
+    assert.match(histo, new RegExp(STAFF, 'i'), 'elle nomme l\'auteur : ' + histo);
+    assert.match(histo, /Salon Pomme/, 'et le salon : ' + histo);
+    await dansLeSalon.attendre((x) => x.startsWith('<aw') && x.includes('dix minutes'), 'la ligne d\'historique de celui du salon');
+    await wait(400);
+    assert.ok(!staff.trames.some((x) => x.startsWith('<aw') && x.includes('dix minutes')), 'l\'auteur ne se prévient pas lui-même');
+
+    // 3. Un second « @all » dans la minute part comme un message ordinaire, et
+    //    l'auteur — lui seul — en est prévenu.
+    staff.envoyer('<t g="pomme" t="m" p="">@all encore une fois</t>');
+    const second = await dansLeSalon.attendre((x) => x.startsWith('<t') && x.includes('encore une fois'), 'le second');
+    assert.ok(!second.includes('ma='), 'pas deux « @all » dans la minute : ' + second);
+    await staff.attendre((x) => x.includes('Un seul @all par minute'), 'l\'avertissement à l\'auteur');
+    await wait(400);
+    assert.ok(!ailleurs.trames.some((x) => x.startsWith('<aw') && x.includes('encore une fois')), 'personne d\'autre n\'en entend parler');
+    assert.ok(!dansLeSalon.trames.some((x) => x.includes('Un seul @all par minute')), 'l\'avertissement ne sort pas du poste de l\'auteur');
+  } finally { staff.fermer(); dansLeSalon.fermer(); ailleurs.fermer(); }
+});
+
 test('le forum : voyant, historique et téléphone, pour le seul mentionné', async (t) => {
   if (!dispo) return t.skip('pas de base PostgreSQL de test disponible');
   const index = await (await fetch(`${BASE}/api/forum/index?sid=${sidAuteur}`)).json();
@@ -409,8 +464,8 @@ test('on n\'a plus à savoir écrire le pseudo : la liste le propose', () => {
   // collection de bouilles, un joueur qui n'y figure pas ne se proposait jamais.
   assert.match(src, /fetch\("\/api\/light\/pseudos\?sid="/, 'le parc vient de /api/light/pseudos');
   assert.doesNotMatch(src, /mentionTrombi/, 'le trombinoscope ne sert plus d’annuaire');
-  assert.match(src, /return dansLeSalon\.sort\(tri\)\.concat\(ailleurs\.sort\(tri\)\)\.slice\(0, 8\);/,
-    'le salon passe devant, et la liste est bornée');
+  assert.match(src, /var liste = dansLeSalon\.sort\(tri\)\.concat\(ailleurs\.sort\(tri\)\);/, 'le salon passe devant');
+  assert.match(src, /return liste\.slice\(0, 8\);/, 'et la liste est bornée');
   // Le clavier : ↑↓ choisissent, Entrée et Tab insèrent, Échap referme. Tant
   // qu'une proposition est en main, Entrée ne POSTE pas — elle complète.
   assert.match(src, /if \(ev\.key === "Enter" \|\| ev\.key === "Tab"\) \{ ev\.preventDefault\(\); mentionPoser\(\); return; \}/,
@@ -436,8 +491,13 @@ test('le client : un salon public ne clignote que pour ce qui s\'adresse à moi'
     'et se tait quand la ligne ne me concerne pas');
   // « et rien d'autre » — pas même une ligne REJOUÉE : l'historique de la
   // reconnexion s'écrit sans réveiller personne (cf. bouilleClignote).
-  assert.match(src, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| attr\(xml, "st"\) === "r"\);/,
-    'une mention OU un cri de modérateur, et rien d\'autre — jamais un rejeu');
+  assert.match(src, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| aTous \|\| attr\(xml, "st"\) === "r"\);/,
+    'une mention, un « @all » OU un cri de modérateur, et rien d\'autre — jamais un rejeu');
+  // « @all » : la marque ma="1" vaut mention de soi, et le mot se met en évidence comme son propre pseudo.
+  assert.match(src, /var aTous = attr\(xml, "ma"\) === "1";/, 'le client lit la marque « à tous »');
+  assert.match(src, /quoi\.toLowerCase\(\) === "all" \? " moi"/, 'et « @all » s\'écrit comme une mention de moi');
+  assert.match(src, /if \(jeSuisStaff\(state\.room\) && "all"\.indexOf\(bas\) === 0\) liste\.unshift\("all"\);/,
+    'la saisie le propose au staff du salon');
   assert.match(src, /avertirOngletChat\(ty, salon, true\);/,
     'une conversation privée avertit toujours');
   // Et le lien de la notification ouvre le BON salon — sinon il faudrait
