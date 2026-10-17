@@ -96,6 +96,10 @@ const REGLAGES_DEFAUT = Object.freeze({
   // les semaines, ne rapporte plus grand-chose, et le record imprenable
   // finit par valoir une fortune.
   primes: { actif: true, gain: 500, relance: 100, pas: 50, plafond: 5000, classements: null },   // classements null : tous ceux des quêtes
+  // LE DÉFI AU DOIGT (definitionDoigt) : chaque semaine, un circuit de Burning
+  // Kiwi à boucler au doigt à moins de `ecart` secondes du record absolu du
+  // parc, payé au `palier`.
+  doigt: { actif: true, ecart: 15, palier: 'or' },
 });
 
 // La valeur d'une mise à prix : la base (gain d'un record neuf, ou relance
@@ -266,6 +270,15 @@ BKIWI_CIRCUITS.forEach((nom, i) => {
     source: { rk: `bkiwi_track${i}_classic` }, unite: 'temps', base: 'ms', inverse: true,
     titre: `Boucle ${nom} en moins de {seuil}`, detail: 'Burning Kiwi, n’importe quel mode de course', records: true });
 });
+// ── Burning Kiwi AU DOIGT ── Les mêmes temps, mais seulement ceux des courses
+// pilotées au toucher de bout en bout (téléphone, tablette : le portage le
+// déclare à l'arrivée, saveScore doigt=1). Ils arrivent en événements à part
+// (type 'doigt'), jamais en 'score' : rien d'autre ne les compte deux fois.
+BKIWI_CIRCUITS.forEach((nom, i) => {
+  mesure('bkiwi-doigt' + i, { jeu: 'bkiwi', groupe: 'Burning Kiwi', nom: `${nom} au doigt : temps de course`,
+    source: { rk: `bkiwi_track${i}_classic`, doigt: true }, unite: 'temps', base: 'ms', inverse: true,
+    titre: `Boucle ${nom} au doigt en moins de {seuil}`, detail: 'Burning Kiwi au doigt, sur téléphone ou tablette' });
+});
 // ── Mini-Fever ──
 MINIFEVER_PALIERS.forEach((nom, p) => {
   mesure('minifever-arcade' + p, { jeu: 'minifever', groupe: 'Mini-Fever', nom: `Arcade ${nom} : épreuves remportées`,
@@ -351,7 +364,9 @@ function valeurDe(m, evt) {
   if (!m || !evt) return null;
   const s = m.source;
   let v;
-  if (s.rk) {
+  if (s.doigt) {
+    if (evt.type !== 'doigt' || evt.rk !== s.rk) return null;
+  } else if (s.rk) {
     if (evt.type !== 'score' || evt.rk !== s.rk) return null;
     if (s.data !== undefined && String(evt.data == null ? '' : evt.data) !== s.data) return null;
   } else if (s.mode) {
@@ -518,6 +533,9 @@ function reglagesNormalises(brut) {
     plafond: borne(PR.plafond, 0, 10000000, REGLAGES_DEFAUT.primes.plafond),
     classements: Array.isArray(PR.classements) ? PR.classements.map(String) : null,
   };
+  const D = Object.assign({}, REGLAGES_DEFAUT.doigt, (R.doigt && typeof R.doigt === 'object') ? R.doigt : {});
+  R.doigt = { actif: D.actif !== false, ecart: borne(D.ecart, 1, 300, REGLAGES_DEFAUT.doigt.ecart),
+    palier: PALIERS.includes(D.palier) ? D.palier : REGLAGES_DEFAUT.doigt.palier };
   // Les quêtes créées par l'admin : une mesure, un seuil, un niveau.
   R.perso = (Array.isArray(R.perso) ? R.perso : []).filter((x) => x && /^perso-\d+$/.test(String(x.id))
     && MESURES[x.mesure] && NIVEAUX.includes(x.niveau) && Number(x.seuil) > 0)
@@ -1149,6 +1167,25 @@ const GROMELIN = {
   'grom-swapou': { type: 'parties', etiquette: 'swapou2', params: { jeu: 'swapou2', n: 1 },
     titre: 'Joue une partie de Swapou', detail: 'Une bricole de Gromelin · au Challenge' },
 };
+/*
+ * LE DÉFI AU DOIGT — une quête de plus chaque semaine, pour donner envie de
+ * jouer à Burning Kiwi sur téléphone. Un circuit (tiré pour le joueur et la
+ * semaine), et un temps : le record absolu du parc sur ce circuit plus
+ * `ecart` secondes, arrondi à la seconde supérieure — au doigt, c'est déjà
+ * une prouesse. Comme les bricoles, elle vient en plus : elle ne retient pas
+ * le bonus de la semaine et ne s'échange pas. `record` : le record du parc au
+ * moment du tirage (ms), `tenant` son nom affiché.
+ */
+function definitionDoigt(piste, record, ecart, id, gain, palier, tenant) {
+  const m = MESURES['bkiwi-doigt' + piste];
+  if (!m || !(Number(record) > 0)) return null;
+  const seuil = Math.ceil((Number(record) + Number(ecart) * 1000) / 1000) * 1000;
+  return { id: String(id), niveau: 'difficile', palier: palier || 'or', gain: Number(gain) || 0, v2: true, doigt: true,
+    type: 'mesure', etiquette: 'bkiwi', famille: m.cle, params: { mesure: m.cle, seuil },
+    detail: `Défi au doigt · sur téléphone ou tablette — le record du parc est à ${formater(m, record)}${tenant ? ' (' + tenant + ')' : ''}`,
+    record: Number(record) };
+}
+
 /** La bricole, en quête : `marque` = { jour, at }, le passage qui l'a confiée. */
 function definitionGromelin(cle, id, gain, marque) {
   const x = GROMELIN[cle];
@@ -1335,7 +1372,7 @@ function definitionV2(spec, id) {
 
 module.exports = {
   PALIERS, PALIER_NOM, PALIER_PART, PALIERS_CONNUS, paliersDe, palierAtteint, proposerV2, definitionV2, PREMIERS_PAS, PARC,
-  GROMELIN, definitionGromelin, bricole,
+  GROMELIN, definitionGromelin, bricole, definitionDoigt,
   MESURES_PERSO, proposerPerso, definitionPerso, proposerContrat, definitionContrat, arrondir, aleaSeme,
   NIVEAUX, NIVEAU_NOM, REGLAGES_DEFAUT, CATALOGUE, ETIQUETTES, KALUGA_EPREUVES, MODES,
   nombre, jourPlus, lundiDe, minuitParis, finDeSemaine, semaineLisible, primeValeur,

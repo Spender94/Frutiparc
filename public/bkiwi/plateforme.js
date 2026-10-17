@@ -377,6 +377,8 @@ class Client {
     const p = new URLSearchParams({
       sid: this.sid, game: 'bkiwi', score: String(Math.max(0, Math.floor(Number(score) || 0))), data,
       track: String(track), gm: String(mode),
+      // Une course pilotée au doigt de bout en bout (index.html) : le défi au doigt des quêtes.
+      doigt: (typeof J.courseAuDoigt === 'function' && J.courseAuDoigt()) ? '1' : '0',
     });
     requete('/api/saveScore?' + p.toString())
       .then((r) => r.json().catch(() => null).then((j) => (j && typeof j === 'object' ? j : { ok: r.ok, error: 'reseau' })))

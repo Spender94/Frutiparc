@@ -9734,6 +9734,20 @@ async function handleSaveScore(req, res) {
   if (Number.isInteger(bkiwiTrackParam) && bkiwiTrackParam >= 0 && bkiwiTrackParam <= 5 && users[username]) {
     users[username].bkiwiCurrentTrack = bkiwiTrackParam;
   }
+  /*
+   * UNE COURSE AU DOIGT. Le portage déclare (doigt=1) une course pilotée au
+   * toucher de bout en bout, sans une touche du clavier (index.html, « la
+   * course au doigt »). Elle compte au classement comme les autres ; elle
+   * fait en plus avancer le défi au doigt de la semaine (type 'doigt', que
+   * seules les mesures au doigt lisent). Le circuit doit venir en clair.
+   */
+  if (params.doigt === '1' && Number.isInteger(bkiwiTrackParam) && bkiwiTrackParam >= 0 && bkiwiTrackParam <= 5
+      && Number(scoreVal) > 0 && quetesPret) {
+    const evtDoigt = { type: 'doigt', rk: `bkiwi_track${bkiwiTrackParam}_classic`, v: Number(scoreVal), jeu: 'bkiwi' };
+    console.log(`[HTTP]  bkiwi course AU DOIGT ${username} circuit ${bkiwiTrackParam} : ${scoreVal} ms`);
+    quetesDoigtAssurer(username).catch((e) => console.error('[QUETES] défi au doigt :', e.message))
+      .then(() => quetesEvenement(username, evtDoigt));
+  }
   {
     // Single source of truth for BKiwi/MB2 routing (see routeRankingForSave):
     // BKiwi daily challenge always lands on today's track so the fiche + table
@@ -11409,7 +11423,7 @@ function quetesIndivListe(u) {
   if (quetesReglages.mode === 'collectives') return [];
   const l = quetesIndiv.get(u);
   if (!l) return [];
-  return quetesReglages.mode === 'deux' ? l.quetes.filter((q) => q.taillee || q.gromelin) : l.quetes;
+  return quetesReglages.mode === 'deux' ? l.quetes.filter((q) => q.taillee || quetesEnPlus(q)) : l.quetes;
 }
 /** Les quêtes de la semaine d'un joueur (hors contrat), selon le mode réglé. */
 function quetesDe(u) {
@@ -11529,7 +11543,7 @@ function quetesBonusPeutEtre(u, lundi) {
   const xp = quetesReglages.paliers.bonusXp;
   if (!xp || !quetesV2(lundi)) return;
   // Les bricoles de Gromelin sont en plus : elles ne retiennent pas le bonus.
-  const defs = quetesDe(u).filter((d) => !d.gromelin);
+  const defs = quetesDe(u).filter((d) => !quetesEnPlus(d));
   const m = quetesProgres.get(u);
   if (!defs.length || !m || !defs.every((d) => { const p = m.get(d.id); return p && p.faitAt; })) return;
   const b = quetesProgresDe(u, QUETES_BONUS_ID);
@@ -11544,6 +11558,45 @@ function quetesBonusPeutEtre(u, lundi) {
   };
   if (!process.env.DATABASE_URL) return verser();
   db.quetesMarquerFaite(lundi, u, QUETES_BONUS_ID, { xp }, 0).then((neuf) => { if (neuf) verser(); }).catch(dbErr('quetes bonus'));
+}
+
+// Les quêtes « en plus » de la liste de la semaine : les bricoles de Gromelin
+// et le défi au doigt. Elles ne retiennent pas le bonus, ne s'échangent pas,
+// survivent à un retaillage.
+function quetesEnPlus(q) { return !!(q && (q.gromelin || q.doigt)); }
+
+/*
+ * LE DÉFI AU DOIGT DE LA SEMAINE (quetes.js, definitionDoigt) : posé dans la
+ * liste individuelle à la première visite de la semaine (ou à la première
+ * course au doigt). Le circuit est tiré pour le joueur et la semaine parmi
+ * ceux qui ont un record du parc ; le temps visé se fige au tirage.
+ */
+async function quetesDoigtAssurer(username) {
+  const u = String(username || '').toLowerCase();
+  const D = quetesReglages.doigt;
+  if (!D || !D.actif || !quetesPret || !quetesAcces(u) || quetesReglages.mode === 'collectives') return null;
+  const S = quetesSemaineCourante();
+  if (!quetesV2(S.lundi)) return null;
+  const l = quetesIndiv.get(u) || await quetesIndivDe(u);
+  if (!l || quetesSemaineCourante().lundi !== S.lundi) return null;
+  const deja = l.quetes.find((q) => q.doigt);
+  if (deja) return deja;
+  const pistes = [];
+  for (let t = 0; t < 6; t++) {
+    const rec = quetesRecordsParc.get(`bkiwi_track${t}_classic`);
+    if (rec && Number(rec.score) > 0) pistes.push({ t, rec });
+  }
+  if (!pistes.length) return null;
+  const alea = Quetes.aleaSeme('doigt:' + u + ':' + S.lundi);
+  const p = pistes[Math.floor(alea() * pistes.length) % pistes.length];
+  const gain = Number(quetesReglages.paliers.gains[D.palier]) || 0;
+  const def = Quetes.definitionDoigt(p.t, p.rec.score, D.ecart, 'doigt-' + p.t, gain, D.palier, getDisplayName(p.rec.username));
+  if (!def) return null;
+  const quetes = l.quetes.concat([def]);
+  if (process.env.DATABASE_URL && !(await db.quetesRemplacerIndividuelles(S.lundi, u, quetes, l.reserve, l.niveaux))) return null;
+  l.quetes = quetes;
+  console.log(`[QUETES] ${u} : défi au doigt « ${Quetes.titre(def)} » (${gain} kikooz)`);
+  return def;
 }
 
 /*
@@ -11612,7 +11665,7 @@ function quetesEtatPour(username) {
       id: def.id, niveau: def.niveau, niveauNom: Quetes.NIVEAU_NOM[def.niveau], gain,
       palier: def.palier || null, palierNom: def.palier ? Quetes.PALIER_NOM[def.palier] : null,
       decouverte: !!def.decouverte, premiersPas: !!def.premiersPas,
-      gromelin: !!def.gromelin, gromelinAt: def.gromelin ? Number(def.gromelin.at) || 0 : 0,
+      gromelin: !!def.gromelin, gromelinAt: def.gromelin ? Number(def.gromelin.at) || 0 : 0, doigt: !!def.doigt,
       titre: Quetes.titre(def), detail: Quetes.detail(def), ligne: av.ligne, pc: av.pc,
       fait: !!p.faitAt, faitLe: p.faitAt || null,
       etiquette: Quetes.ETIQUETTES[def.etiquette] || null, jeu: def.etiquette || null, taillee: !!def.taillee,
@@ -11844,7 +11897,7 @@ function quetesPrimeScore(u, evt) {
 // La mesure des quêtes qui lit ce classement (les persos d'abord, puis toutes :
 // les circuits de Burning Kiwi ont la leur, en temps).
 function quetesMesureDe(rk, sansData) {
-  const ok = (k) => Quetes.MESURES[k].source.rk === rk && (!sansData || Quetes.MESURES[k].source.data === undefined);
+  const ok = (k) => Quetes.MESURES[k].source.rk === rk && !Quetes.MESURES[k].source.doigt && (!sansData || Quetes.MESURES[k].source.data === undefined);
   return Quetes.MESURES_PERSO.find(ok) || Object.keys(Quetes.MESURES).find(ok) || null;
 }
 function quetesValeurLisible(rk, score, data) {
@@ -11910,6 +11963,7 @@ app.post('/api/quetes/echanger', async (req, res) => {
     const ancienne = l.quetes[i];
     // Une bricole de Gromelin ne s'échange pas : elle est en plus, et il l'a choisie.
     if (ancienne.gromelin) return res.status(400).json({ ok: false, error: 'bricole', message: 'Une bricole de Gromelin ne s’échange pas.' });
+    if (ancienne.doigt) return res.status(400).json({ ok: false, error: 'doigt', message: 'Le défi au doigt ne s’échange pas.' });
     const p = (quetesProgres.get(u) || new Map()).get(ancienne.id);
     if (p && p.faitAt) return res.status(400).json({ ok: false, error: 'deja_faite', message: 'Cette quête est déjà faite.' });
     // La remplaçante : même niveau d'abord, jamais une mesure déjà dans la liste.
@@ -11953,6 +12007,7 @@ app.get('/api/quetes/etat', async (req, res) => {
   if (!u) return res.status(401).json({ ok: false, error: 'auth_required' });
   if (!quetesPret || !quetesAcces(u)) return res.json({ ok: true, acces: false });
   await quetesIndivDe(u);
+  try { await quetesDoigtAssurer(u); } catch (e) { console.error('[QUETES] défi au doigt :', e.message); }
   await quetesContratDe(u);
   res.json(quetesEtatPour(u));
 });
@@ -12133,6 +12188,7 @@ app.post('/api/admin/quetes', adminScope('quetes'), async (req, res) => {
         { gains: Object.assign({}, quetesReglages.paliers.gains, b.paliers.gains || {}), seuils: quetesReglages.paliers.seuils });
     }
     if (b.primes && typeof b.primes === 'object') neuf.primes = Object.assign({}, quetesReglages.primes, b.primes);
+    if (b.doigt && typeof b.doigt === 'object') neuf.doigt = Object.assign({}, quetesReglages.doigt, b.doigt);
     const avantLecture = JSON.stringify(quetesReglages.individuelles);
     quetesReglages = Quetes.reglagesNormalises(neuf);
     // Fenêtre ou minimum changés : ceux qui n'avaient pas de quoi faire un contrat
@@ -12331,20 +12387,23 @@ async function quetesRetaillerSemaine() {
     const progres = quetesProgres.get(u) || new Map();
     const faites = avant.quetes.filter((q) => (progres.get(q.id) || {}).faitAt);
     // Tout fait (le bonus de la semaine versé) : on ne lui rouvre pas la semaine.
-    if (avant.quetes.length && faites.length === avant.quetes.length) continue;
-    const gagnes = faites.reduce((n, q) => n + quetesGainDe(q), 0);
+    // Les quêtes en plus (bricoles, défi au doigt) n'entrent pas dans ce compte.
+    const regulieres = avant.quetes.filter((q) => !quetesEnPlus(q));
+    const faitesReg = faites.filter((q) => !quetesEnPlus(q));
+    if (regulieres.length && faitesReg.length === regulieres.length) continue;
+    const gagnes = faitesReg.reduce((n, q) => n + quetesGainDe(q), 0);
     const historique = process.env.DATABASE_URL ? await quetesHistoriqueDe(u, S.lundi) : {};
     const t = await quetesTaillerV2(u, S.lundi, historique, paliers,
-      { budget: Math.max(0, R.budget - gagnes), maxQuetes: Math.max(0, R.maxQuetes - faites.length) });
+      { budget: Math.max(0, R.budget - gagnes), maxQuetes: Math.max(0, R.maxQuetes - faitesReg.length) });
     // Pas deux fois la même : une faite qui reviendrait est écartée (les clés
     // d'un jsonb relu ne sont pas dans l'ordre où on les a écrites).
     const canon = (o) => JSON.stringify(Object.keys(o || {}).sort().map((k) => [k, o[k]]));
     const meme = (a, b) => a.famille === b.famille && canon(a.params) === canon(b.params);
-    const neuves = t.quetes.filter((q) => !faites.some((f) => meme(f, q))).slice(0, Math.max(0, R.maxQuetes - faites.length));
+    const neuves = t.quetes.filter((q) => !faites.some((f) => meme(f, q))).slice(0, Math.max(0, R.maxQuetes - faitesReg.length));
     let num = avant.quetes.reduce((n, q) => Math.max(n, Number((/^ind-(\d+)$/.exec(q.id) || [])[1]) || 0), 0);
     for (const q of neuves) if (/^ind-/.test(q.id)) q.id = 'ind-' + (++num);
     // Les bricoles de Gromelin en cours restent : elles ne tiennent pas au modèle.
-    const bricoles = avant.quetes.filter((q) => q.gromelin && !faites.includes(q));
+    const bricoles = avant.quetes.filter((q) => quetesEnPlus(q) && !faites.includes(q));
     const quetes = faites.concat(bricoles, neuves);
     // L'avancement des quêtes remplacées s'efface (celui des faites et des bricoles reste).
     for (const q of avant.quetes) {
@@ -12612,6 +12671,7 @@ app.get('/api/admin/quetes/calibrage', adminScope('quetes'), async (req, res) =>
       else if (def && def.type === 'record') m = Quetes.MESURES['kaluga-' + def.params.mode];
     }
     if (!m) return res.json({ ok: true, texte: 'Pas de calibrage pour cette quête.' });
+    if (m.source.doigt) return res.json({ ok: true, texte: 'Les courses au doigt ne sont rangées nulle part à part : pas de statistiques. Repère : le record absolu du circuit.' });
     const seuil = req.query.seuil !== undefined && req.query.seuil !== '' ? Quetes.lireValeur(m, req.query.seuil) : null;
     const valeurs = await quetesValeursDeMesure(m);
     const c = Quetes.calibrer(m, valeurs, seuil);

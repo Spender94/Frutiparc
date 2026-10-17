@@ -6600,6 +6600,10 @@ async function loadQuetes() {
             <label style="margin-left:8px">plafond <input type="number" min="0" id="qt-pr-plafond" value="${R.primes.plafond}" style="width:70px"> kz</label>
             <label style="margin-left:8px">après un record payé <input type="number" min="0" id="qt-pr-relance" value="${R.primes.relance}" style="width:64px"> kz</label>
             <div><small style="color:#777">Battre un record absolu du parc (un score du Challenge, la série de victoires de Grapiz ou Frutibandas, le meilleur temps d'un circuit de Burning Kiwi tous modes confondus — contre-la-montre compris, lu dans les fruticards —, ceux du livre des records du Club) en détrônant quelqu'un d'autre ; une prime par record et par semaine. La prime grossit chaque semaine que le record tient, et repart de la relance une fois payée — un record facile, repris sans cesse, ne rapporte plus grand-chose ; un record imprenable finit au plafond.</small></div></div>
+          <div style="margin-top:8px"><label style="margin-right:12px"><input type="checkbox" id="qt-dg-actif" ${R.doigt && R.doigt.actif ? 'checked' : ''}> <b>Défi au doigt</b> (Burning Kiwi sur téléphone)</label>
+            <label>à moins de <input type="number" min="1" max="300" id="qt-dg-ecart" value="${R.doigt ? R.doigt.ecart : 15}" style="width:56px"> s du record absolu du circuit</label>
+            <label style="margin-left:8px">payé au palier <select id="qt-dg-palier">${['bronze', 'argent', 'or', 'platine', 'legende'].map((k) => `<option value="${k}"${R.doigt && R.doigt.palier === k ? ' selected' : ''}>${k}</option>`).join('')}</select></label>
+            <div><small style="color:#777">Chaque semaine, une quête de plus : un circuit tiré pour le joueur, à boucler en pilotant au doigt (le jeu le déclare : course au toucher, sans clavier). Le temps visé se fige au tirage. Elle ne retient pas le bonus de la semaine et ne s'échange pas.</small></div></div>
         </div>
         <div style="margin-bottom:8px"><label><input type="checkbox" id="qt-contrat-actif" ${R.contrat.actif ? 'checked' : ''}> <b>Contrat à signer</b> en plus</label>
           <small style="color:#777">(trois propositions taillées sur ses scores, il en signe une ; seuls les résultats d'après la signature comptent)</small></div>
@@ -6697,8 +6701,9 @@ async function quetesEnregistrer() {
       moyenneTemps: Number($('#qt-p-pas-moyenneTemps').value), difficileTemps: Number($('#qt-p-pas-difficileTemps').value) } };
   const primes = { actif: $('#qt-pr-actif').checked, gain: Number($('#qt-pr-gain').value), pas: Number($('#qt-pr-pas').value),
     plafond: Number($('#qt-pr-plafond').value), relance: Number($('#qt-pr-relance').value) };
+  const doigt = { actif: $('#qt-dg-actif').checked, ecart: Number($('#qt-dg-ecart').value), palier: $('#qt-dg-palier').value };
   await quetesPost('/api/admin/quetes', { ouverture: o ? o.value : 'ferme', mode: md ? md.value : 'individuelles', testeurs: $('#qt-testeurs').value,
-    gains, composition, individuelles, contrat, paliers, primes },
+    gains, composition, individuelles, contrat, paliers, primes, doigt },
     (d) => `Quêtes : ${{ ferme: 'fermées', testeurs: 'testeurs seulement', tous: 'ouvertes à tous' }[d.reglages.ouverture]}`
       + (d.inconnus && d.inconnus.length ? ` — pseudo(s) inconnu(s) : ${d.inconnus.join(', ')}` : ''));
 }

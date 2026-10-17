@@ -541,6 +541,26 @@ test('les bricoles de Gromelin : vite faites, de la vie du parc, jamais du coin 
   assert.match(Q.parole('bricole', { titre: 'Place un Prunostic', gain: 7 }, () => 0), /« Place un Prunostic »[\s\S]*<em>7 kikooz<\/em>/);
 });
 
+test('le défi au doigt : un circuit, le record du parc plus quinze secondes, et seules les courses au doigt comptent', () => {
+  assert.deepEqual(Q.reglagesNormalises({}).doigt, { actif: true, ecart: 15, palier: 'or' });
+  assert.deepEqual(Q.reglagesNormalises({ doigt: { actif: false, ecart: 9999, palier: 'diamant' } }).doigt, { actif: false, ecart: 15, palier: 'or' });
+  // Record de Solstice : 1 min 12,345 s → au doigt, en moins de 1 min 28 s (arrondi à la seconde au-dessus).
+  const d = Q.definitionDoigt(3, 72345, 15, 'doigt-3', 12, 'or', 'Bob');
+  assert.deepEqual([d.id, d.doigt, d.palier, d.gain, d.etiquette, d.params.mesure, d.params.seuil], ['doigt-3', true, 'or', 12, 'bkiwi', 'bkiwi-doigt3', 88000]);
+  assert.equal(Q.titre(d), 'Boucle Solstice au doigt en moins de 1 min 28 s');
+  assert.match(Q.detail(d), /^Défi au doigt · .*record du parc est à 1 min 12,35 s \(Bob\)$/);
+  assert.equal(Q.definitionDoigt(3, 0, 15, 'x', 12), null, 'pas de record : pas de défi');
+  // Une course classée ordinaire (au clavier) ne compte pas ; une course au doigt, si.
+  assert.equal(Q.appliquer(d, {}, { type: 'score', rk: 'bkiwi_track3_classic', v: 80000, data: '' }, 'j'), null);
+  assert.equal(Q.appliquer(d, {}, { type: 'doigt', rk: 'bkiwi_track2_classic', v: 80000 }, 'j'), null, 'pas un autre circuit');
+  const e1 = Q.appliquer(d, {}, { type: 'doigt', rk: 'bkiwi_track3_classic', v: 95000 }, 'j');
+  assert.equal(Q.avancement(d, e1).ligne, 'ton meilleur cette semaine : 1 min 35 s');
+  assert.ok(!Q.estFaite(d, e1));
+  assert.ok(Q.estFaite(d, Q.appliquer(d, e1, { type: 'doigt', rk: 'bkiwi_track3_classic', v: 87990 }, 'j')));
+  // Et l'inverse : une course au doigt ne compte pas deux fois aux mesures ordinaires du circuit.
+  assert.equal(Q.valeurDe(Q.MESURES['bkiwi-circuit3'], { type: 'doigt', rk: 'bkiwi_track3_classic', v: 80000 }), null);
+});
+
 test('le client : un message s’écrit lettre à lettre, ses balises toujours refermées', () => {
   globalThis.window = globalThis;
   require(path.join(ROOT, 'public/js/quetes-light.js'));
@@ -1303,6 +1323,37 @@ test('le modèle des paliers : paliers du parc, paie au palier, échange, bonus 
   assert.equal(await solde('figue'), avantFigue + 500);
   assert.equal((await sql(`SELECT count(*)::int AS n FROM quetes_primes WHERE semaine = $1 AND ranking_id = 'bkiwi_track3_classic'`, [lundi]))[0].n, 1);
 
+  // LE DÉFI AU DOIGT : à la visite, Cerise reçoit un circuit qui a un record du
+  // parc, à boucler au doigt à moins de quinze secondes de lui ; une course au
+  // clavier ne compte pas, une course au doigt (doigt=1) sous le temps la paie.
+  const ec = await etat('cerise');
+  const dg = ec.quetes.find((q) => q.doigt);
+  assert.ok(dg && /^doigt-[0-5]$/.test(dg.id) && dg.jeu === 'bkiwi' && dg.palier === 'or', JSON.stringify(ec.quetes.map((q) => q.id)));
+  assert.match(dg.titre, /au doigt en moins de/);
+  const piste = Number(dg.id.slice(-1));
+  const rec = (await adminEtat()).primes.find((p) => p.rk === 'bkiwi_track' + piste + '_classic');
+  assert.ok(rec, 'le circuit tiré a un record du parc');
+  const ligneDg = (await sql(`SELECT quetes FROM quetes_individuelles WHERE username = 'cerise' AND semaine = $1`, [lundi]))[0].quetes.find((q) => q.doigt);
+  assert.equal(ligneDg.params.seuil, Math.ceil((ligneDg.record + 15000) / 1000) * 1000, 'record + 15 s, à la seconde au-dessus');
+  assert.equal((await etat('cerise')).quetes.filter((q) => q.doigt).length, 1, 'un seul défi par semaine');
+  const course = (doigt, v) => fetch(BASE + '/api/saveScore', { method: 'POST',
+    body: new URLSearchParams({ sid: sids['cerise'], game: 'bkiwi', m: '0', score: String(v), data: 'Fury Hun:1:1', track: String(piste), gm: '3', doigt }) }).then((r) => r.json());
+  const avantDg = await solde('cerise');
+  assert.ok((await course('0', ligneDg.params.seuil - 2000)).ok);
+  await wait(300);
+  assert.ok(!(await etat('cerise')).quetes.find((q) => q.doigt).fait, 'au clavier : rien');
+  assert.ok((await course('1', ligneDg.params.seuil + 5000)).ok);
+  await wait(300);
+  let dg2 = (await etat('cerise')).quetes.find((q) => q.doigt);
+  assert.ok(!dg2.fait && /ton meilleur cette semaine/.test(dg2.ligne), JSON.stringify(dg2));
+  assert.ok((await course('1', ligneDg.params.seuil - 100)).ok);
+  assert.equal(await soldeVaut('cerise', avantDg + dg.gain), avantDg + dg.gain, 'le défi payé');
+  dg2 = (await etat('cerise')).quetes.find((q) => q.doigt);
+  assert.ok(dg2.fait);
+  // Il ne s'échange pas.
+  const echDg = await post('/api/quetes/echanger', { sid: sids['cerise'], id: dg.id });
+  assert.equal(echDg.ok, false);
+
   // OLIVE : une débutante (premiers pas rallumés) ; un score de Challenge compte pour « trois jeux ».
   assert.ok((await post('/api/admin/quetes', { paliers: { budget: 50, maxQuetes: 7, premiersPas: true, activites: 2, exploits: 1 } }, ADMIN)).ok);
   e = await etat('olive');
@@ -1366,9 +1417,12 @@ test('l’admin retaille la semaine : les quêtes faites restent, les autres sui
   for (const q of neuves) assert.ok(!anciens.includes(q.id), 'les nouvelles portent des numéros neufs : ' + q.id);
   assert.equal(apres.gagnes, avant.gagnes, 'rien de repayé');
   assert.deepEqual([apres.echange.possible, apres.echange.fait.titre], [avant.echange.possible, avant.echange.fait.titre], 'l’échange de la semaine n’est pas rendu');
-  // Figue avait tout fini (le bonus versé) : rien ne bouge chez elle.
+  // Figue avait tout fini (le bonus versé) : rien ne bouge chez elle — son
+  // défi au doigt, en plus, ne compte pas pour dire la semaine finie.
   const f = await etat('figue');
-  assert.ok(f.quetes.length === 3 && f.quetes.every((q) => q.fait), JSON.stringify(f.quetes.map((q) => [q.titre, q.fait])));
+  const fReg = f.quetes.filter((q) => !q.doigt && !q.gromelin);
+  assert.ok(fReg.length === 3 && fReg.every((q) => q.fait), JSON.stringify(f.quetes.map((q) => [q.titre, q.fait])));
+  assert.equal(f.quetes.filter((q) => q.doigt).length, 1, 'son défi au doigt reste');
   // La base dit la même chose, et l'avancement des quêtes remplacées est parti.
   const ligne = (await sql(`SELECT quetes FROM quetes_individuelles WHERE username = 'cerise' AND semaine = $1`, [lundiCourant()]))[0];
   assert.deepEqual(ligne.quetes.map((q) => q.id), apres.quetes.map((q) => q.id));

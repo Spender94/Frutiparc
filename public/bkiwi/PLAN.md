@@ -228,3 +228,13 @@ monter la fausse vitesse du super départ. Une pastille de visée suit le
 doigt (rouge quand on freine), et le mode d'emploi s'affiche au
 premier départ sur l'appareil (`localStorage`). À la souris, rien de tout
 cela : on a le clavier. (`index.html`, « LA PISTE EST LA COMMANDE ».)
+
+**La course au doigt, déclarée.** Pour le défi au doigt des quêtes (une
+quête par semaine : un circuit à boucler au doigt à moins de quinze
+secondes du record absolu du parc), l'arrivée dit au serveur si la course a
+été pilotée au toucher et sans une touche du clavier (`saveScore … doigt=1`,
+`J.courseAuDoigt`). Le suivi se fait par voiture (`M.carPJ`, neuve à chaque
+course) : une touche de pilotage frappée au clavier pendant la course la
+disqualifie, une course neuve repart de zéro. C'est une déclaration du
+client, comme le reste du score : elle se triche aussi facilement qu'un
+temps.

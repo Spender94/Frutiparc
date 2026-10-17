@@ -256,11 +256,36 @@
     vise.style.top = (ev.clientY - r.top) + 'px';
     vise.style.display = 'block';
   };
+  /*
+   * LA COURSE AU DOIGT. Pour le défi au doigt des quêtes, l'arrivée déclare
+   * (plateforme.js, saveScore doigt=1) une course pilotée au toucher et sans
+   * une seule touche du clavier. On la suit par voiture : chaque course en
+   * attache une neuve (M.carPJ), et c'est elle qui remet le compte à zéro.
+   */
+  const course = window.BkiwiJeu.pilotage = { car: null, doigt: false, clavier: false };
+  const suivreCourse = function () {
+    const M = window.BkiwiJeu.M;
+    if (M && M.carPJ !== course.car) { course.car = M.carPJ; course.doigt = false; course.clavier = false; }
+  };
+  window.BkiwiJeu.courseAuDoigt = function () {
+    const M = window.BkiwiJeu.M;
+    return !!(M && course.car && course.car === M.carPJ && course.doigt && !course.clavier);
+  };
+  // Une touche de pilotage frappée au clavier pendant la course : ce n'est plus une course au doigt.
+  window.addEventListener('keydown', function (ev) {
+    if (!enCourse()) return;
+    const codes = [0, 1, 2, 3, 4].map(codeCommande);
+    if (codes.indexOf(ev.keyCode) < 0) return;
+    suivreCourse();
+    course.clavier = true;
+  }, true);
   // À chaque pas du jeu : le cap vers le doigt.
   const piloter = function () {
     if (!doigt) return;
     if (!enCourse()) { lacherPilotage(); return; }
     const M = window.BkiwiJeu.M, car = M.carPJ;
+    suivreCourse();
+    course.doigt = true;
     if (M.gamePaused && M.starting) { tenir(0, true); return; }   // le décompte : le super départ
     if (M.gamePaused || car.finished) { lacherPilotage(); return; }
     // La voiture sur l'écran : le circuit est décalé par la caméra.
