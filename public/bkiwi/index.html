@@ -40,58 +40,43 @@
   #aire { flex: 1 1 0; min-height: 0; min-width: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
   canvas { display: block; image-rendering: auto; outline: none; }
   /* ── Le pilotage au doigt ──
-     Comme à Miniwave : pas une rangée de boutons, une BANDE où le pouce
-     PILOTE. Posé, il accélère ; glissé à gauche ou à droite du milieu, il
-     tourne ; relevé, la voiture roule sur son erre. À côté, deux boutons qui
-     comptent en course, nitro et frein, et la pause. */
-  #commandes { display: none; width: 100%; box-sizing: border-box; padding: 0 8px 8px; gap: 10px; align-items: stretch; }
-  @media (pointer: coarse) { #commandes { display: flex; } }
-  #pave {
-    flex: 1 1 auto; min-width: 0; height: clamp(86px, 15vh, 130px);
-    position: relative; border-radius: 18px;
-    background: linear-gradient(180deg, #5a2414, #3a150c);
-    box-shadow: inset 0 0 0 2px rgba(255, 205, 150, .28);
-    display: flex; align-items: center; justify-content: center;
-    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
-    transition: box-shadow .08s;
+     Pas de manette : la piste elle-même est la commande. On touche la piste
+     là où l'on veut aller, la voiture s'y dirige et accélère tant que le
+     doigt est posé. Le doigt sur la voiture freine ; un second doigt (ou un
+     double-tap) met la nitro. Reste une pastille de pause et, au premier
+     départ, le mode d'emploi. L'écran entier est pour la course. */
+  #vise {
+    position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+    border: 3px solid rgba(255, 236, 170, .9); border-radius: 50%;
+    box-shadow: 0 0 12px rgba(255, 200, 80, .6), inset 0 0 8px rgba(255, 200, 80, .35);
+    pointer-events: none; display: none; z-index: 3;
   }
-  #pave.on { box-shadow: inset 0 0 0 2px rgba(255, 221, 120, .85); background: linear-gradient(180deg, #6e2c17, #46190d); }
-  #pave .mode-emploi { color: #e6bf9c; font-size: 11px; line-height: 1.5; text-align: center; pointer-events: none; padding: 0 44px; }
-  #pave.on .mode-emploi { opacity: .3; }
-  #pave .fleche { position: absolute; top: 50%; transform: translateY(-50%); color: rgba(255, 255, 255, .35); font-size: 30px; font-weight: bold; pointer-events: none; }
-  #pave .fleche.g { left: 14px; }
-  #pave .fleche.d { right: 14px; }
-  #pave.gauche .fleche.g, #pave.droite .fleche.d { color: #fff; text-shadow: 0 0 10px #ffd27a; }
-  .boutons { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; width: 96px; }
-  .btn {
-    flex: 1 1 0; min-width: 0; min-height: 34px;
-    border: 3px solid #fff; border-radius: 14px;
-    background: #c9531b; color: #fff;
-    font: bold 17px Verdana, sans-serif;
-    text-shadow: 0 1px 0 rgba(0, 0, 0, .18);
-    display: flex; align-items: center; justify-content: center;
-    overflow: hidden; white-space: nowrap;
-    touch-action: none; -webkit-tap-highlight-color: transparent;
+  #vise::after { content: ''; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; }
+  #vise.frein { border-color: #ff7a5c; box-shadow: 0 0 12px rgba(255, 90, 60, .7); }
+  #b-pause {
+    position: absolute; top: 8px; left: 8px; z-index: 4; display: none;
+    width: 40px; height: 40px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .7);
+    background: rgba(60, 20, 10, .55); color: #fff; font: bold 15px Verdana, sans-serif;
+    align-items: center; justify-content: center; touch-action: none; -webkit-tap-highlight-color: transparent;
   }
-  .btn:active, .btn.presse { background: #f0813d; }
-  #b-pause { flex: 0 0 30px; min-height: 30px; font-size: 12px; background: #8a3610; }
-  @media (orientation: landscape) {
-    #tout { flex-direction: row; gap: 6px; }
-    #aire { width: auto; height: 100%; order: 5; }
-    #pave { order: 0; flex: 0 0 auto; width: clamp(120px, 22vw, 180px); height: 100%; margin: 0 0 0 6px; }
-    #pave .mode-emploi { padding: 0 32px; }
-    .boutons { order: 9; height: 100%; justify-content: center; width: 72px; margin-right: 6px; }
-    .btn { flex: 0 0 auto; height: clamp(44px, 16vh, 64px); font-size: 15px; }
-    #b-pause { height: 32px; }
+  @media (pointer: coarse) { #b-pause { display: flex; } }
+  #b-pause.presse { background: rgba(240, 129, 61, .85); }
+  #mode-emploi {
+    position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%); z-index: 4;
+    width: min(88%, 360px); padding: 10px 14px; box-sizing: border-box; border-radius: 12px;
+    background: rgba(28, 10, 44, .88); color: #fff; font: 13px/1.5 Verdana, sans-serif; text-align: center;
+    display: none; pointer-events: none;
   }
-  @media (orientation: landscape) and (pointer: coarse) { #commandes { display: contents; } }
+  #mode-emploi b { color: #ffd27a; }
+  #mode-emploi.visible { display: block; animation: me-fondu 6s forwards; }
+  @keyframes me-fondu { 0% { opacity: 0; } 8% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
   #chargement {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     color: #fff; font: bold 14px Verdana, sans-serif; text-shadow: 0 1px 0 rgba(0,0,0,.2);
     pointer-events: none;
   }
   /* Le salon du mode en ligne (multi.js) : un panneau posé sur la scène. */
-  #aire { position: relative; }
+  #aire { position: relative; }   /* la pastille de visée, la pause, le mode d'emploi s'y posent */
   #bk-multi {
     position: absolute; inset: 0; display: none; flex-direction: column; gap: 8px;
     margin: auto; width: min(100%, 420px); max-height: 100%; overflow: auto; box-sizing: border-box;
@@ -128,18 +113,9 @@
 <body>
 <div id="tout">
   <div id="aire"><canvas id="scene" width="350" height="350" tabindex="0"></canvas><div id="bk-multi"></div></div>
-  <div id="commandes">
-    <div id="pave" aria-label="Zone de pilotage tactile">
-      <span class="fleche g">&#8592;</span>
-      <span class="mode-emploi">pose le pouce : la voiture accélère<br>glisse-le à gauche ou à droite pour tourner</span>
-      <span class="fleche d">&#8594;</span>
-    </div>
-    <div class="boutons">
-      <div class="btn" data-commande="4">nitro</div>
-      <div class="btn" data-commande="1">frein</div>
-      <div class="btn" id="b-pause" data-touche="80">pause</div>
-    </div>
-  </div>
+  <div id="vise"></div>
+  <div id="b-pause" data-touche="80">II</div>
+  <div id="mode-emploi"><b>Touche la piste</b> là où tu veux aller : la voiture y file et accélère tant que ton doigt est posé.<br><b>Doigt sur la voiture</b> : frein. <b>Second doigt</b> ou double-tap : nitro.</div>
 </div>
 <div id="chargement">Chargement de Burning Kiwi…</div>
 
@@ -202,85 +178,156 @@
   // Les commandes au doigt. Chaque geste vaut une touche du clavier — celle
   // que le joueur a réglée pour cette commande (controls[0..4] : accélérer,
   // freiner, gauche, droite, nitro), lue au moment de l'appui.
-  const codeDe = function (b) {
-    if (b.dataset.touche) return Number(b.dataset.touche);
-    return codeCommande(Number(b.dataset.commande));
-  };
   const codeCommande = function (i) {
     const M = window.BkiwiJeu && window.BkiwiJeu.M;
     const c = M && M.controls ? M.controls[i] : undefined;
     return c !== undefined ? c : [38, 17, 37, 39, 32][i];
   };
-  document.querySelectorAll('#commandes .btn').forEach(function (b) {
+  // La pause : une pastille, en haut à gauche de la piste.
+  (function () {
+    const b = document.getElementById('b-pause');
     let code = null;
     const poser = function (v, ev) {
-      ev.preventDefault();
+      ev.preventDefault(); ev.stopPropagation();
       b.classList.toggle('presse', v);
-      if (v) { code = codeDe(b); K.Key.presser(code); }
+      if (v) { code = Number(b.dataset.touche); K.Key.presser(code); }
       else if (code !== null) { K.Key.relacher(code); code = null; }
     };
     b.addEventListener('pointerdown', function (ev) { poser(true, ev); });
     b.addEventListener('pointerup', function (ev) { poser(false, ev); });
     b.addEventListener('pointercancel', function (ev) { poser(false, ev); });
-    b.addEventListener('pointerleave', function (ev) { if (b.classList.contains('presse')) poser(false, ev); });
-    window.addEventListener('pointerup', function () { if (b.classList.contains('presse')) { b.classList.remove('presse'); if (code !== null) { K.Key.relacher(code); code = null; } } });
-  });
+  })();
 
-  // LA BANDE DE PILOTAGE (comme à Miniwave). Le pouce posé accélère ; sa
-  // position dans la largeur tourne : à gauche du tiers central, on braque à
-  // gauche, à droite, à droite, au milieu on va tout droit. Relever le
-  // pouce lâche tout. Un double-tap met la nitro (le bouton reste là aussi).
-  // Un seul doigt pilote la bande : les autres sont pour les boutons.
-  const pave = document.getElementById('pave');
-  const ZONE = 0.17;   // la demi-largeur du « tout droit », en part de la bande
-  let doigt = null, dernierAppui = 0;
-  const pilote = { gaz: null, gauche: null, droite: null };   // les codes enfoncés
-  const tenir = function (quoi, i, v) {
-    if (v && pilote[quoi] === null) { pilote[quoi] = codeCommande(i); K.Key.presser(pilote[quoi]); }
-    else if (!v && pilote[quoi] !== null) { K.Key.relacher(pilote[quoi]); pilote[quoi] = null; }
+  /*
+   * LA PISTE EST LA COMMANDE.
+   *
+   * Une rangée de boutons sous la piste, c'était six cibles minuscules à
+   * viser sans les regarder, pendant que la voiture file. Ici on regarde la
+   * piste, et on la touche LÀ OÙ L'ON VEUT ALLER : à chaque pas du jeu, on
+   * compare le cap de la voiture à la direction du doigt (la voiture est au
+   * milieu de l'écran, la caméra la suit), et l'on tient la touche gauche ou
+   * droite jusqu'à ce qu'elle pointe dessus ; le doigt posé, c'est
+   * l'accélérateur — relevé, la voiture roule sur son erre. Le doigt sur la
+   * voiture elle-même (ou à moins de vingt pixels), c'est le frein. Un second
+   * doigt posé pendant qu'on pilote, ou un double-tap, met la nitro.
+   *
+   * Pendant le décompte, le doigt posé fait monter la fausse vitesse du super
+   * départ, comme la touche d'accélération. Les menus ne sont pas touchés :
+   * on ne pilote qu'en course, et seulement au toucher (à la souris, on a le
+   * clavier).
+   */
+  const aire = document.getElementById('aire');
+  const vise = document.getElementById('vise');
+  const DOIGT_TOLERANCE = 10;   // degrés : en deçà, tout droit
+  const DOIGT_FREIN = 20;       // pixels de scène : le doigt sur la voiture
+  const DOIGT_ARRIERE = 100;    // degrés : au-delà, on tourne sans accélérer
+  let doigt = null;             // { id, x, y } en pixels de scène
+  let dernierTap = 0;
+  const tenues = {};            // code → true (ce que le pilotage tient enfoncé)
+  const tenir = function (i, v) {
+    const code = codeCommande(i);
+    if (v && !tenues[code]) { tenues[code] = true; K.Key.presser(code); }
+    else if (!v && tenues[code]) { delete tenues[code]; K.Key.relacher(code); }
   };
-  const braquer = function (clientX) {
-    const r = pave.getBoundingClientRect();
-    const k = r.width > 0 ? (clientX - r.left) / r.width - 0.5 : 0;
-    const gauche = k < -ZONE, droite = k > ZONE;
-    tenir('gauche', 2, gauche);
-    tenir('droite', 3, droite);
-    pave.classList.toggle('gauche', gauche);
-    pave.classList.toggle('droite', droite);
-  };
-  const lacherPave = function () {
+  const lacherPilotage = function () {
+    for (const code of Object.keys(tenues)) { delete tenues[code]; K.Key.relacher(Number(code)); }
     doigt = null;
-    tenir('gaz', 0, false); tenir('gauche', 2, false); tenir('droite', 3, false);
-    pave.classList.remove('on', 'gauche', 'droite');
+    vise.style.display = 'none';
   };
-  pave.addEventListener('pointerdown', function (ev) {
-    ev.preventDefault();
-    if (doigt !== null) return;
-    doigt = ev.pointerId;
-    try { pave.setPointerCapture(ev.pointerId); } catch (e) { /* pas de capture : on suit quand même */ }
-    pave.classList.add('on');
-    tenir('gaz', 0, true);
-    braquer(ev.clientX);
+  const nitro = function () {
+    const code = codeCommande(4);
+    K.Key.presser(code);
+    setTimeout(function () { K.Key.relacher(code); }, 120);
+  };
+  const enCourse = function () {
+    const M = window.BkiwiJeu && window.BkiwiJeu.M;
+    return !!(M && M.vs && M.vs.mainPhase === 1 && M.carPJ && M.track);
+  };
+  const positionScene = function (ev) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (ev.clientX - r.left) * L / r.width, y: (ev.clientY - r.top) * H / r.height };
+  };
+  const poserVise = function (ev) {
+    const r = aire.getBoundingClientRect();
+    vise.style.left = (ev.clientX - r.left) + 'px';
+    vise.style.top = (ev.clientY - r.top) + 'px';
+    vise.style.display = 'block';
+  };
+  // À chaque pas du jeu : le cap vers le doigt.
+  const piloter = function () {
+    if (!doigt) return;
+    if (!enCourse()) { lacherPilotage(); return; }
+    const M = window.BkiwiJeu.M, car = M.carPJ;
+    if (M.gamePaused && M.starting) { tenir(0, true); return; }   // le décompte : le super départ
+    if (M.gamePaused || car.finished) { lacherPilotage(); return; }
+    // La voiture sur l'écran : le circuit est décalé par la caméra.
+    const cx = M.track._x + car._x, cy = M.track._y + car._y;
+    const dx = doigt.x - cx, dy = doigt.y - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < DOIGT_FREIN) {
+      tenir(0, false); tenir(2, false); tenir(3, false); tenir(1, true);
+      vise.classList.add('frein');
+      return;
+    }
+    vise.classList.remove('frein');
+    tenir(1, false);
+    let ecart = Math.atan2(dy, dx) * 180 / Math.PI - car._rotation;
+    while (ecart > 180) ecart -= 360;
+    while (ecart < -180) ecart += 360;
+    tenir(2, ecart < -DOIGT_TOLERANCE);
+    tenir(3, ecart > DOIGT_TOLERANCE);
+    tenir(0, Math.abs(ecart) < DOIGT_ARRIERE);
+  };
+  aire.addEventListener('pointerdown', function (ev) {
+    if (ev.pointerType === 'mouse' || !enCourse()) return;
+    if (doigt !== null) { if (ev.pointerId !== doigt.id) nitro(); return; }   // le second doigt : la nitro
     const t = performance.now();
-    if (t - dernierAppui < 320) {
-      // Double-tap : une impulsion de nitro (le jeu ne lit l'appui qu'une image).
-      const code = codeCommande(4);
-      K.Key.presser(code);
-      setTimeout(function () { K.Key.relacher(code); }, 120);
-      dernierAppui = 0;
-    } else dernierAppui = t;
+    if (t - dernierTap < 320) { nitro(); dernierTap = 0; } else dernierTap = t;
+    const p = positionScene(ev);
+    doigt = { id: ev.pointerId, x: p.x, y: p.y };
+    poserVise(ev);
+    piloter();
   });
-  pave.addEventListener('pointermove', function (ev) { if (ev.pointerId === doigt) braquer(ev.clientX); });
-  pave.addEventListener('pointerup', function (ev) { if (ev.pointerId === doigt) lacherPave(); });
-  pave.addEventListener('pointercancel', function (ev) { if (ev.pointerId === doigt) lacherPave(); });
-  pave.addEventListener('lostpointercapture', function (ev) { if (ev.pointerId === doigt) lacherPave(); });
+  aire.addEventListener('pointermove', function (ev) {
+    if (!doigt || ev.pointerId !== doigt.id) return;
+    const p = positionScene(ev);
+    doigt.x = p.x; doigt.y = p.y;
+    poserVise(ev);
+  });
+  const finDoigt = function (ev) { if (doigt && ev.pointerId === doigt.id) lacherPilotage(); };
+  aire.addEventListener('pointerup', finDoigt);
+  aire.addEventListener('pointercancel', finDoigt);
+  window.addEventListener('pointerup', finDoigt);
+  // Le pilotage se recalcule devant chaque pas du jeu, après le chargement
+  // de la scène (demarrerBurningKiwi pose K.scene).
+  const brancherPilotage = function (scene) {
+    const tick0 = scene.tick;
+    scene.tick = function () { piloter(); return tick0.apply(this, arguments); };
+  };
+  // Le mode d'emploi, au premier départ sur un écran tactile (une fois par appareil).
+  const modeEmploi = function () {
+    if (!window.matchMedia || !window.matchMedia('(pointer: coarse)').matches) return;
+    let vu = false;
+    try { vu = localStorage.getItem('bkiwi-doigt') === '1'; } catch (e) { /* stockage fermé */ }
+    if (vu) return;
+    const me = document.getElementById('mode-emploi');
+    me.classList.add('visible');
+    try { localStorage.setItem('bkiwi-doigt', '1'); } catch (e) { /* tant pis */ }
+    setTimeout(function () { me.classList.remove('visible'); }, 6200);
+  };
+  let dejaEnCourse = false;
+  setInterval(function () {
+    const c = enCourse();
+    if (c && !dejaEnCourse) modeEmploi();
+    dejaEnCourse = c;
+  }, 500);
 
   // Quitter l'onglet du light, c'est lâcher les commandes (le contrat
   // `__relacherCommandes` de light.html).
   const lacherTout = function () {
-    lacherPave();
+    lacherPilotage();
     K.Key.toutRelacher();
-    document.querySelectorAll('#commandes .btn.presse').forEach(function (b) { b.classList.remove('presse'); });
+    document.getElementById('b-pause').classList.remove('presse');
   };
   window.__relacherCommandes = lacherTout;
   document.addEventListener('visibilitychange', function () { if (document.hidden) lacherTout(); });
@@ -306,6 +353,7 @@
   adapter();
   window.demarrerBurningKiwi({ canvas, sid: params.get('sid') || '' }).then(function (r) {
     window.__bkiwi = r;
+    brancherPilotage(r.scene);
     document.getElementById('chargement').remove();
     adapter();
     canvas.focus();
