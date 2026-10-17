@@ -142,13 +142,14 @@
     var l = (etat && etat.primes) || [];
     if (!l.length) return '';
     return '<div class="qt-enseigne" data-texte="Mises à prix"><span>Mises à prix</span></div>'
-      + '<div class="qt-note qt-note-primes">Bats un <b>record absolu du parc</b> (au Challenge, le temps d’un circuit de Burning Kiwi, ou la meilleure note des championnats Grapiz et Frutibandas) en détrônant son tenant : Gromelin paie la prime. '
+      + '<div class="qt-note qt-note-primes">Bats un <b>record absolu du parc</b> au Challenge (un score, le temps d’un circuit de Burning Kiwi, la série de victoires à Grapiz ou Frutibandas) en détrônant son tenant : Gromelin paie la prime. '
       + 'La prime <b>grossit chaque semaine</b> que le record tient, et repart de peu une fois payée. Une prime par record et par semaine ; battre son propre record ne compte pas.</div>'
       + '<div class="qt-avis">' + l.map(function (p) {
         var portrait = PORTRAIT[p.jeu];
         return '<div class="qt-affiche' + (p.ouverte ? '' : ' prise') + '">'
           + (portrait ? '<div class="qt-portrait"><img src="/images/' + portrait + '.png" alt=""></div>' : '<div class="qt-portrait vide">' + voyant(p) + '</div>')
           + '<div class="qt-aff-jeu">' + voyant(p) + esc(nomJeu(p)) + '</div>'
+          + (p.circuit ? '<div class="qt-aff-circuit">' + esc(p.circuit) + '</div>' : '')
           + '<div class="qt-aff-record">' + esc(p.record) + '</div>'
           + '<div class="qt-aff-tenant">record de <b>' + esc(p.tenant) + '</b>' + (p.semaines ? '<br>tenu depuis ' + p.semaines + ' semaine' + (p.semaines > 1 ? 's' : '') : '') + '</div>'
           + '<div class="qt-aff-prime">' + piece(p.gain) + '</div>'

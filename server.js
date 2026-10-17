@@ -11424,13 +11424,6 @@ function quetesContratVue(u) {
 }
 
 /** Un événement du parc : il fait peut-être avancer une quête du joueur. */
-// Une note de championnat (Grapiz, Frutibandas) qui monte : un score pour les
-// mises à prix — le record du parc, c'est la meilleure note.
-function quetesNoteChampion(username, rk, note) {
-  const n = Number(note);
-  if (!Number.isFinite(n) || n <= 0 || !RANKINGS[rk]) return;
-  quetesEvenement(username, { type: 'score', rk, v: n, data: '', challenge: false, jeu: RANKINGS[rk].game });
-}
 function quetesEvenement(username, evt) {
   if (!quetesPret) return;
   const u = String(username || '').toLowerCase();
@@ -11656,17 +11649,22 @@ const quetesPrimesPrises = new Map();  // ranking → { username, score, ancien,
 let quetesPrimesSemaine = null;
 // Les classements à prime : ceux des quêtes, sauf l'arcade de Mini-Fever (dont le
 // score mêle les paliers) et le Challenge MotionBall (un pourcentage de salles :
-// « détrôner » un 100 % n'a pas de sens) ; plus des classements PERMANENTS : les
-// deux championnats en ligne (Grapiz, Frutibandas), dont le record est la
-// meilleure note, et les six circuits de Burning Kiwi, dont le record est le
-// meilleur temps de course (tous modes confondus, comme le livre des records).
+// « détrôner » un 100 % n'a pas de sens) ; plus, du Challenge aussi, les deux
+// séries de victoires de Grapiz et de Frutibandas, et les six circuits de
+// Burning Kiwi — leurs classements du Challenge (bkiwi_track{n}_challenge),
+// ceux que le livre des records du Club montre : les « classiques » des
+// circuits sont pollués par un vieux routage (tout tagué Green Hill), et les
+// championnats (une note Elo) ne sont pas des records que l'on bat.
 const QUETES_PRIMES_EXCLUS = new Set(['minifever_arcade', 'mb2_classic']);
-const QUETES_PRIMES_EN_PLUS = ['grapiz_champion', 'bandas_champion']
-  .concat(Array.from({ length: 6 }, (_, i) => `bkiwi_track${i}_classic`));
+const QUETES_PRIMES_EN_PLUS = ['grapiz_challenge', 'bandas_challenge']
+  .concat(Array.from({ length: 6 }, (_, i) => `bkiwi_track${i}_challenge`));
+// Une liste réglée par l'admin du temps des anciens classements se relit avec les nouveaux.
+const QUETES_PRIMES_RENOMMES = Object.assign({ grapiz_champion: 'grapiz_challenge', bandas_champion: 'bandas_challenge' },
+  Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`bkiwi_track${i}_classic`, `bkiwi_track${i}_challenge`])));
 function quetesPrimesClassements() {
   const l = quetesReglages.primes.classements;
-  const base = (l && l.length ? l : QUETES_PERSO_RK.concat(QUETES_PRIMES_EN_PLUS));
-  return base.filter((rk) => !QUETES_PRIMES_EXCLUS.has(rk) && RANKINGS[rk] && (isDailyResetRanking(rk) || QUETES_PRIMES_EN_PLUS.includes(rk)));
+  const base = (l && l.length ? l.map((rk) => QUETES_PRIMES_RENOMMES[rk] || rk) : QUETES_PERSO_RK.concat(QUETES_PRIMES_EN_PLUS));
+  return Array.from(new Set(base)).filter((rk) => !QUETES_PRIMES_EXCLUS.has(rk) && RANKINGS[rk] && (isDailyResetRanking(rk) || QUETES_PRIMES_EN_PLUS.includes(rk)));
 }
 /*
  * LA VALEUR DE CHAQUE MISE À PRIX (quetes.js, primeValeur) : une base — le
@@ -11801,16 +11799,21 @@ function quetesPrimeScore(u, evt) {
     .then((neuf) => { if (neuf) payer(); }).catch(dbErr('quetes prime'));
 }
 // La valeur d'un record, lisible (avec l'unité de sa mesure).
-// La mesure des quêtes qui lit ce classement (les persos d'abord, puis toutes :
-// les circuits de Burning Kiwi ont la leur, en temps).
+// La mesure des quêtes qui lit ce classement (les persos d'abord, puis toutes).
+// Le Challenge d'un circuit de Burning Kiwi n'a pas la sienne : c'est celle du
+// circuit (bkiwi_track{n}_classic), un temps de course, la même unité.
 function quetesMesureDe(rk, sansData) {
-  const ok = (k) => Quetes.MESURES[k].source.rk === rk && (!sansData || Quetes.MESURES[k].source.data === undefined);
-  return Quetes.MESURES_PERSO.find(ok) || Object.keys(Quetes.MESURES).find(ok) || null;
+  const cibles = [rk].concat(/^bkiwi_track\d_challenge$/.test(rk) ? [rk.replace('_challenge', '_classic')] : []);
+  for (const c of cibles) {
+    const ok = (k) => Quetes.MESURES[k].source.rk === c && (!sansData || Quetes.MESURES[k].source.data === undefined);
+    const cle = Quetes.MESURES_PERSO.find(ok) || Object.keys(Quetes.MESURES).find(ok);
+    if (cle) return cle;
+  }
+  return null;
 }
 function quetesValeurLisible(rk, score, data) {
   const cle = quetesMesureDe(rk, true);
   const m = cle && Quetes.MESURES[cle];
-  if (/_champion$/.test(rk)) return Quetes.nombre(score) + ' pts';   // une note de championnat
   if (!m) return Quetes.nombre(score);
   const v = Quetes.valeurDe(m, { type: 'score', rk, v: Number(score), data: String(data || '') });
   return v == null ? Quetes.nombre(score) : Quetes.formater(m, v);
@@ -11827,8 +11830,11 @@ function quetesPrimesVue(moi) {
     const cle = quetesMesureDe(rk, false);
     const jeu = cle ? Quetes.MESURES[cle].jeu : (RANKINGS[rk] && RANKINGS[rk].game);
     const etat = quetesPrimesEtat.get(rk);
+    const R = RANKINGS[rk] || {};
     return {
-      rk, nom: (RANKINGS[rk] && RANKINGS[rk].name) || rk, etiquette: Quetes.ETIQUETTES[jeu] || null, jeu: jeu || null,
+      rk, nom: R.name || rk, etiquette: Quetes.ETIQUETTES[jeu] || null, jeu: jeu || null,
+      // Le circuit, pour Burning Kiwi (« Burning Kiwi - Green Hill » → « Green Hill ») : l'affiche le dit.
+      circuit: R.bkiwiTrack !== undefined ? String(R.name).replace(/^.*? - /, '') : null,
       record: quetesValeurLisible(rk, rec.score, rec.data), tenant: getDisplayName(rec.username), tenantPseudo: rec.username,
       // La prime : celle d'aujourd'hui (elle grossit chaque semaine que le record tient).
       gain: prise ? prise.gain : quetesPrimeValeur(rk, S.lundi), semaines: quetesPrimeSemaines(rk, S.lundi), depuis: etat ? etat.depuis : null,
@@ -32363,7 +32369,6 @@ const grapizNet = new GrapizNet({
   onChampion: (username, fiche, info) => {
     grapizEcrireFicheChampion(username, fiche);
     fixerScore(username, 'grapiz_champion', fiche.ls[0]);
-    quetesNoteChampion(username, 'grapiz_champion', fiche.ls[0]);
     const signe = info.delta >= 0 ? '+' : '';
     console.log(`[grapiz] championnat ${username} ${info.avant} → ${info.apres}`
       + ` (${signe}${info.delta}) contre ${info.adversaire}`);
@@ -32560,7 +32565,6 @@ const bandasNet = new BandasNet({
   onChampion: (username, fiche, info) => {
     bandasEcrireFicheChampion(username, fiche);
     fixerScore(username, 'bandas_champion', fiche.ls[0]);
-    quetesNoteChampion(username, 'bandas_champion', fiche.ls[0]);
     const signe = info.delta >= 0 ? '+' : '';
     console.log(`[bandas] championnat ${username} ${info.avant} → ${info.apres}`
       + ` (${signe}${info.delta}) contre ${info.adversaire}`);

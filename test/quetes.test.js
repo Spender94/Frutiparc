@@ -573,11 +573,16 @@ test('le client : un message s’écrit lettre à lettre, ses balises toujours r
     /<button type="button" class="qt-swapou qt-changer" data-id="ind-2"/);
   // Les mises à prix : sous l'enseigne, des affiches sans « RECHERCHÉ ».
   L._etat({ primes: [{ rk: 'swapou2_classic', jeu: 'swapou2', ouverte: true, record: '26 777 points', tenant: 'goyave29', gain: 500,
-    etiquette: { nom: 'Swapou' } }] });
+    etiquette: { nom: 'Swapou' } },
+  { rk: 'bkiwi_track3_challenge', jeu: 'bkiwi', ouverte: true, record: '1 min 12 s', tenant: 'cerise', gain: 500, circuit: 'Solstice',
+    etiquette: { nom: 'Burning Kiwi' } }] });
   const af = L._primes();
   assert.match(af, /class="qt-enseigne" data-texte="Mises à prix"/);
   assert.match(af, /\/images\/swapou\.png/);
   assert.doesNotMatch(af, /RECHERCH/);
+  // Un circuit de Burning Kiwi : l'affiche le nomme.
+  assert.match(af, /<div class="qt-aff-circuit">Solstice<\/div>/);
+  assert.equal((af.match(/qt-aff-circuit/g) || []).length, 1, 'le circuit, pour les seuls circuits');
   L._etat(null);
   // Le contrat signé : scellé de cire, pas de case à cocher.
   const sc = L._carte({ id: 'contrat', contrat: true, niveau: 'facile', niveauNom: 'Facile', gain: 5, titre: 'x', detail: '', ligne: '', pc: 0 });
@@ -1247,15 +1252,28 @@ test('le modèle des paliers : paliers du parc, paie au palier, échange, bonus 
   assert.equal(journal[1].gain, 500);
   const etatPrimes = JSON.parse((await sql(`SELECT value FROM app_state WHERE key = 'quetes_primes_etat'`))[0].value);
   assert.equal(etatPrimes.swapou2_classic.base, 100);
-  // Les circuits de Burning Kiwi sont mis à prix aussi : le record y est un
-  // temps (plus petit = mieux), lisible en minutes et secondes.
+  // Les circuits de Burning Kiwi sont mis à prix aussi — leur classement du
+  // CHALLENGE (celui du livre des records du Club), le circuit du jour : le
+  // record y est un temps (plus petit = mieux), lisible en minutes et
+  // secondes, et l'affiche nomme le circuit.
   const bk = new URLSearchParams({ sid: sids['cerise'], game: 'bkiwi', m: '0', score: '72345', data: 'Fury Hun:1:1', track: '0' });
   assert.ok((await (await fetch(BASE + '/api/saveScore', { method: 'POST', body: bk })).json()).ok);
   await wait(300);
   const A2 = await adminEtat();
-  const kiwi = A2.primes.find((p) => p.rk === 'bkiwi_track0_classic');
+  const paris = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+  const jourDuJour = Math.floor((paris - new Date(paris.getFullYear(), 0, 0)) / 86400000) % 6;
+  const CIRCUITS = ['Green Hill', 'Banana Derby', 'Terre Grise', 'Solstice', 'Jupiter IV', 'Mistral Kiwi'];
+  const kiwi = A2.primes.find((p) => p.rk === 'bkiwi_track' + jourDuJour + '_challenge');
   assert.ok(kiwi && kiwi.tenantPseudo === 'cerise' && /1\s*min\s*12|1:12|72/.test(kiwi.record) && kiwi.jeu === 'bkiwi', JSON.stringify(kiwi));
+  assert.equal(kiwi.circuit, CIRCUITS[jourDuJour], 'l’affiche nomme le circuit');
+  assert.match(kiwi.nom, new RegExp(CIRCUITS[jourDuJour] + '$'));
+  assert.ok(!A2.primes.some((p) => /_classic$/.test(p.rk) && p.jeu === 'bkiwi'), 'pas les classiques des circuits (pollués)');
+  assert.ok(!A2.primes.some((p) => /_champion$/.test(p.rk)), 'pas les championnats : des notes, pas des records');
   assert.ok(!A2.primes.some((p) => p.rk === 'mb2_classic'), 'pas le Challenge MotionBall');
+  // Grapiz et Frutibandas : la série de victoires du Challenge, comme le livre des records.
+  const SERVEUR = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(SERVEUR, /const QUETES_PRIMES_EN_PLUS = \['grapiz_challenge', 'bandas_challenge'\]/);
+  assert.ok(!/quetesNoteChampion/.test(SERVEUR), 'plus de note de championnat poussée aux mises à prix');
   assert.equal((await sql(`SELECT username, ancien, gain FROM quetes_primes WHERE semaine = $1`, [lundi])).map((r) => [r.username, r.ancien, r.gain]).join(), `figue,${tenant},500`);
 
   // OLIVE : une débutante (premiers pas rallumés) ; un score de Challenge compte pour « trois jeux ».
