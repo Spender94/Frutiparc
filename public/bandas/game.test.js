@@ -166,6 +166,48 @@ g.hands[0] = [CARD.VACHETTE];
 r = g.playCard(0, CARD.VACHETTE, 0, 0);
 eq(g.winner, G.END_DRAW, "vachette wiping both teams = draw (La Vachette)");
 
+// ── Égalité par blocage : deux fruits murés derrière une pierre ─────────────
+// L'orange en (0,0), la banane en (2,0), une pierre entre elles : pousser
+// l'une vers l'autre ne bouge rien. La même position revient — égalité à la
+// troisième fois, et l'événement dit pourquoi.
+g = game(["0#1", "...", "..."], { firstTeam: 0 });
+r = g.move(0, DIR.RIGHT);   // les rangées vides tombent : c'est un progrès
+ok(r.ok && !g.ended, "blocked: first move (borders shrink) is progress");
+eq(g.sansProgres, 0, "progress resets the counter");
+var finNul = null;
+for (var k = 0; k < 6 && !g.ended; k++) {
+  r = g.move(g.currentTeam, g.currentTeam === 0 ? DIR.RIGHT : DIR.LEFT);
+  ok(r.ok, "blocked move accepted");
+  if (g.ended) finNul = find(r, "end")[0];
+}
+ok(g.ended, "blocked position ends the game");
+eq(g.winner, G.END_DRAW, "blocked position = draw");
+eq(finNul && finNul.why, "repetition", "draw by repetition says why");
+eq(k, 4, "third occurrence of the position (after 1 + 4 moves)");
+
+// Sans progrès trop longtemps : égalité « blocage », même sans répétition.
+g = game(["0#1", "...", "..."], { firstTeam: 0 });
+g.move(0, DIR.RIGHT);
+g.sansProgres = G.SANS_PROGRES_MAX - 1;
+r = g.move(1, DIR.LEFT);
+eq(g.winner, G.END_DRAW, "no progress for too long = draw");
+eq(find(r, "end")[0].why, "blocage", "and says it is a blockade");
+
+// Un fruit qui tombe remet tout à zéro : pas d'égalité dans une partie qui avance.
+g = game(["00..", "....", "....", "1..."], { firstTeam: 0 });
+g.sansProgres = G.SANS_PROGRES_MAX - 1;
+r = g.move(0, DIR.RIGHT);     // la colonne vide de gauche tombe ? non : la banane la tient — mais les fruits bougent
+r = g.move(1, DIR.LEFT);      // la banane sort du plateau : elle tombe
+ok(g.ended && g.winner === 0, "a fruit falling is progress, and here it wins");
+
+// Le différé garde le compte entre deux coups (une vraie partie déclare sa taille).
+g = game(["0#1", "...", "..."], { firstTeam: 0, size: 3 });
+g.move(0, DIR.RIGHT); g.move(1, DIR.LEFT); g.move(0, DIR.RIGHT);
+var g2 = G.BandasGame.fromJSON(JSON.parse(JSON.stringify(g.toJSON())), Math.random);
+eq(g2.sansProgres, g.sansProgres, "toJSON/fromJSON keep the no-progress counter");
+g2.move(1, DIR.LEFT); r = g2.move(0, DIR.RIGHT);
+eq(g2.winner, G.END_DRAW, "repetition counted across serialization");
+
 // ── Renfort : jusqu'à 3 fruits sur cases libres, coordonnées encodées ───────
 function seeded(seed) { return function () { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 g = game(["01..", "....", "....", "...."], { firstTeam: 0, rng: seeded(123) });

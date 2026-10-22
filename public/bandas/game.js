@@ -52,6 +52,23 @@
 
   var END_DRAW = -2; // « La Vachette » gagne
 
+  /*
+   * L'ÉGALITÉ PAR BLOCAGE. Le jeu d'origine ne connaissait qu'une égalité :
+   * la Vachette qui emporte les deux derniers camps. Mais une partie peut
+   * tourner en rond — deux fruits murés derrière une pierre (pétrification),
+   * qui « bougent » sans que rien ne bouge, ou des allers-retours sans fin —,
+   * et elle se finissait au chrono, par une défaite pour qui en avait le moins.
+   * Deux règles, à l'image des échecs, jugées après chaque mouvement :
+   *   · la MÊME POSITION pour la troisième fois (plateau, bords, trait, mains
+   *     et effets armés) ;
+   *   · SANS_PROGRES_MAX mouvements de suite sans qu'un fruit ne tombe, que
+   *     le plateau ne rétrécisse ni qu'une carte ne soit jouée.
+   * L'issue est une égalité ordinaire (END_DRAW), et l'événement de fin dit
+   * pourquoi (`why` : « repetition » ou « blocage »).
+   */
+  var SANS_PROGRES_MAX = 40;   // vingt mouvements chacun
+  var REPETITIONS_MAX = 3;
+
   // Cartes par joueur. TROIS, comme le jeu d'origine — le portage en donnait
   // quatre (la première valeur de CreateParameters.as, qui listait aussi des
   // parties plus courtes).
@@ -83,7 +100,37 @@
     this.desordreBy = [null, null];      // qui l'a posé (pour la révélation)
     this.confiscation = [false, false];  // confiscation[t] : t confisquera la prochaine carte adverse
     this.trapOwner = {};                 // "x,y" → équipe qui a posé le piège
+    // l'égalité par blocage (voir SANS_PROGRES_MAX)
+    this.sansProgres = 0;                // mouvements de suite sans progrès
+    this.vues = {};                      // position → nombre de fois vue depuis le dernier progrès
   }
+
+  // Ce qui compte pour le progrès : les fruits de chaque camp et les bords.
+  BandasGame.prototype._etatProgres = function () {
+    var b = this.board;
+    return b.countSpritesOf(0) + "/" + b.countSpritesOf(1) + "/" + b.minX + "," + b.maxX + "," + b.minY + "," + b.maxY;
+  };
+  // Une position, pour la répétition : tout ce qui décide de la suite.
+  BandasGame.prototype._clePosition = function () {
+    var self = this;
+    return [this.board.toContentString(), this._etatProgres(), this.currentTeam, this.cardPlayedThisTurn ? 1 : 0,
+      this.hands[0].join(","), this.hands[1].join(","),
+      this.charge.join(","), this.celerite.join(","), this.desordre.join(","), this.confiscation.join(","),
+      this.nextSolo.map(function (c) { return c ? c.x + ":" + c.y : "-"; }).join(","),
+      Object.keys(this.trapOwner).sort().map(function (k) { return k + "=" + self.trapOwner[k]; }).join(";")].join("|");
+  };
+  // Après un mouvement (le tour passé) : progrès, répétition, blocage.
+  BandasGame.prototype._noterPosition = function (progres, events) {
+    if (this.ended) return;
+    if (progres) { this.sansProgres = 0; this.vues = {}; } else this.sansProgres++;
+    var cle = this._clePosition();
+    this.vues[cle] = (this.vues[cle] || 0) + 1;
+    var why = this.vues[cle] >= REPETITIONS_MAX ? "repetition" : (this.sansProgres >= SANS_PROGRES_MAX ? "blocage" : null);
+    if (!why) return;
+    this.ended = true;
+    this.winner = END_DRAW;
+    events.push({ type: "end", winner: END_DRAW, why: why, to: "all" });
+  };
 
   BandasGame.prototype._randomPool = function (n) {
     var pool = [];
@@ -384,6 +431,9 @@
 
     var reps = this.charge[team] ? 2 : 1;      // charge : mouvement doublé
     this.charge[team] = false;
+    // Le progrès se juge sur tout le tour : une carte jouée en est un.
+    var avant = this._etatProgres();
+    var carteJouee = this.cardPlayedThisTurn;
 
     for (var r = 0; r < reps; r++) {
       if (this.nextSolo[team]) {               // solo : seul ce fruit bouge
@@ -398,7 +448,9 @@
       if (this._checkEnd(events)) return { ok: true, events: events };
     }
 
+    var progres = carteJouee || this._etatProgres() !== avant;
     this._endTurn(events);
+    this._noterPosition(progres, events);
     return { ok: true, events: events };
   };
 
@@ -428,6 +480,7 @@
       desordre: this.desordre.slice(), desordreBy: this.desordreBy.slice(),
       confiscation: this.confiscation.slice(),
       trapOwner: Object.assign({}, this.trapOwner),
+      sansProgres: this.sansProgres, vues: Object.assign({}, this.vues),
     };
   };
   // Le chemin inverse. `rng` : le hasard des coups à venir (renfort).
@@ -451,6 +504,8 @@
     g.desordreBy = (o.desordreBy || [null, null]).slice();
     g.confiscation = (o.confiscation || [false, false]).slice();
     g.trapOwner = Object.assign({}, o.trapOwner || {});
+    g.sansProgres = Number(o.sansProgres) || 0;
+    g.vues = Object.assign({}, o.vues || {});
     return g;
   };
 
@@ -475,5 +530,7 @@
     CARD: CARD, CARD_NAMES: CARD_NAMES, HIDDEN_CARDS: HIDDEN_CARDS,
     PHASE_CARD_SELECTION: PHASE_CARD_SELECTION, PHASE_MOVE: PHASE_MOVE,
     END_DRAW: END_DRAW,
+    SANS_PROGRES_MAX: SANS_PROGRES_MAX,
+    REPETITIONS_MAX: REPETITIONS_MAX,
   };
 });

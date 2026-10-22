@@ -20,7 +20,13 @@ Frutibandas = un **pousse-pousse de fruits** 2 joueurs (oranges, béret rouge,
 - Les **bords vides sont retirés** (`removeEmptyBorders`) : le plateau
   rétrécit pendant la partie.
 - Une équipe **sans fruit a perdu** ; les deux à zéro = égalité (« La
-  Vachette » gagne). Horloge type échecs par équipe (600/480/400/240 s).
+  Vachette » gagne).
+- **Égalité par blocage** (ajout du portage) : la même position pour la
+  troisième fois, ou vingt mouvements chacun sans qu'un fruit ne tombe, que
+  le plateau ne rétrécisse ni qu'une carte ne soit jouée. Sans elle, deux
+  fruits murés derrière une pierre « bougeaient » sans fin, et la partie se
+  jouait au chrono. L'événement de fin dit pourquoi (`r="repetition"` ou
+  `r="blocage"`) ; l'issue est l'égalité ordinaire (`END_DRAW`). Horloge type échecs par équipe (600/480/400/240 s).
 - Avant la partie : **draft alterné** des fruticartes (2×N tirées au sort,
   N = **3**/2/1 par joueur — trois cartes, comme le jeu d'origine). Le draft
   alterne, mais **la partie s'ouvre chez celui qui a choisi en second** :

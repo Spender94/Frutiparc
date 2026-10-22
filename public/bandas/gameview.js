@@ -168,6 +168,7 @@
     GV.clockAt = Date.now();
     GV.ended = el.getAttribute("end") === "1";
     GV.winner = GV.ended ? +el.getAttribute("w") : null;
+    GV.endWhy = null;
     GV.cardPlayedThisTurn = false;
     GV.myTraps = {}; GV.rocks = {}; GV.soloMark = null;
     GV.targetCard = null; GV.queue = []; GV.anims = []; GV.effects = []; GV.hiddenCells = {};
@@ -285,6 +286,7 @@
       case "end": {
         GV.ended = true;
         GV.winner = +el.getAttribute("w");
+        GV.endWhy = el.getAttribute("r") || null;   // « repetition » | « blocage » : une égalité par blocage
         // la bannière de fin s'affiche quand les animations sont finies
         GV.anims.push({ wait: 350, update: function (dt) { this.wait -= dt; return this.wait > 0; }, draw: function () {} });
         GV.afterAnims = showEnd;
@@ -1057,16 +1059,20 @@
     var box = $("#bd-end");
     var mine = GV.winner === GV.myTeam;
     var draw = !(GV.winner === 0 || GV.winner === 1);
+    // L'égalité par blocage (game.js) dit pourquoi ; celle de la Vachette garde son mot.
+    var nul = GV.endWhy === "repetition" ? "Égalité ! La même position pour la troisième fois : la partie tourne en rond."
+      : GV.endWhy === "blocage" ? "Égalité ! Vingt coups chacun sans qu’un fruit ne tombe : la partie est bloquée."
+      : "Égalité ! La Vachette gagne…";
     if (GV.spectator) {
       // L'observateur n'a ni série ni défaite : juste l'issue.
-      $("#bd-endtext").textContent = draw ? "Égalité ! La Vachette gagne…" : "La partie est terminée, " + nameOf(GV.winner) + " a gagné !";
+      $("#bd-endtext").textContent = draw ? nul : "La partie est terminée, " + nameOf(GV.winner) + " a gagné !";
       $("#bd-endsub").textContent = "";
     } else if (GV.differe) {
       // En différé : ni série ni challenge — l'issue, et retour à la liste.
-      $("#bd-endtext").textContent = draw ? "Égalité ! La Vachette gagne…" : mine ? "Partie en différé gagnée !" : "Partie en différé perdue.";
+      $("#bd-endtext").textContent = draw ? nul : mine ? "Partie en différé gagnée !" : "Partie en différé perdue.";
       $("#bd-endsub").textContent = draw ? "" : nameOf(GV.winner) + " remporte la partie.";
     } else if (draw) {
-      $("#bd-endtext").textContent = "Égalité ! La Vachette gagne…\nVous avez encore vos chances sur le challenge.";
+      $("#bd-endtext").textContent = nul + "\nVous avez encore vos chances sur le challenge.";
       $("#bd-endsub").textContent = "";
     } else if (mine) {
       $("#bd-endtext").textContent = "La partie est terminée, " + nameOf(GV.winner) + " a gagné !";
