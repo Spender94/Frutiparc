@@ -455,7 +455,32 @@
       if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       connect();
     }
+    // Retour au premier plan en pleine partie : l'état tout de suite.
+    if (!document.hidden && enDirect()) gz({ a: "sync" });
   });
+  /*
+   * LE BATTEMENT EN PARTIE. Un téléphone perd sa socket sans toujours le
+   * savoir (changement d'antenne, mise en veille) : elle paraît ouverte, et
+   * tout ce qui y passe se perd — le coup du bot, entre autres. On demande
+   * l'état au serveur toutes les quatre secondes ; il répond toujours. Sans
+   * réponse depuis dix secondes, la socket est morte : on la rouvre, et le
+   * « hello » de la reconnexion rapporte la partie (net.js).
+   */
+  function enDirect() { return state.screen === "game" && !state.ended && !state.differe && !!state.gameId; }
+  setInterval(function () {
+    if (document.hidden || !enDirect()) return;
+    if (state.ws && state.ws.readyState === 1 && state.lastRx && Date.now() - state.lastRx > 10000) {
+      setStatus("Reconnexion…");
+      // La nouvelle d'abord : son « hello » nous réinscrit (et rapporte la
+      // partie) ; l'ancienne ne se ferme qu'ensuite.
+      var mort = state.ws;
+      state.lastRx = Date.now();
+      connect();
+      setTimeout(function () { try { mort.close(); } catch (e) {} }, 3000);
+      return;
+    }
+    gz({ a: "sync" });
+  }, 4000);
   function gz(a) { var s = "<gz"; for (var k in a) s += " " + k + '="' + xml(a[k]) + '"'; send(s + " />"); }
   // Se réinscrire au salon sans rouvrir la socket (le serveur nous a oubliés).
   function rehello() {
@@ -482,6 +507,12 @@
     var doc; try { doc = new DOMParser().parseFromString(s, "text/xml"); } catch (e) { return; }
     var el = doc.documentElement; if (!el || el.nodeName !== "gz") return;
     var e = el.getAttribute("e");
+    state.lastRx = Date.now();
+    if (e === "nogame") {
+      // La partie s'est finie pendant une coupure : retour au salon.
+      if (state.screen === "game" && !state.ended && !state.differe) { setStatus("La partie s’est terminée pendant la coupure."); gotoLobby(); }
+      return;
+    }
     if (e === "lobby") return onLobby(el);
     if (e === "dlist") return onDlist(el);
     if (e === "chat") return addChat($("#lobby-chat"), el.getAttribute("u"), el.getAttribute("m"));
@@ -702,6 +733,20 @@
     // l'état de LA partie affichée compte.
     if (df && e !== "start" && (state.screen !== "game" || state.gameId !== el.getAttribute("g"))) return;
     var fresh = state.gameId !== el.getAttribute("g");
+    // La position (trait, jetons, fin) : le battement (« state ») qui la
+    // trouve inchangée ne touche pas au plateau — le jeton qu'on est en train
+    // de choisir reste choisi —, il recale seulement les pendules.
+    var sig = el.getAttribute("turn") + "|" + el.getAttribute("end") + "|" + Array.prototype.map.call(el.getElementsByTagName("t"), function (n) {
+      return n.getAttribute("e") + n.getAttribute("x") + "," + n.getAttribute("y");
+    }).join(";");
+    if (e === "state" && !fresh && sig === state._posSig) {
+      each(el.getElementsByTagName("p"), function (n) {
+        state.players.forEach(function (pl) { if (pl.u === n.getAttribute("u")) pl.rt = +n.getAttribute("rt"); });
+      });
+      startClocks();
+      return;
+    }
+    state._posSig = sig;
     if (fresh) { state.myTeam = -1; state.spectator = el.getAttribute("sp") === "1"; state.differe = df; }
     if (df && el.getAttribute("sa")) state.differeSalle = el.getAttribute("sa");
     $("#screen-game").classList.toggle("differe", state.differe);

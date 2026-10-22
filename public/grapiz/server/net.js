@@ -66,6 +66,7 @@
     this.bots = {};                     // username → config bot ({lo,hi})
     this._botNeuf = {};                 // bot → doit repartir sous une autre identité
     this.watching = {};                 // username → gameId de la partie qu'il REGARDE
+    this._absents = {};                 // username → instant où sa partie est perdue s'il n'est pas revenu (ABSENCE_GRACE)
     this.clock = opts.clock || function () { return Date.now(); };
     this._rng = opts.rng || Math.random;
     this.onResult = opts.onResult || function () {};   // hook (game, winner, reason)
@@ -517,6 +518,7 @@
 
     switch (a) {
       case "hello":
+        delete this._absents[username];                    // revenu à temps : pas de forfait
         this.names[username] = attrs.n || username;
         if (attrs.f) this.bouilles[username] = attrs.f;     // état de frutibouille
         // série de départ : ne la seede qu'une fois (ne pas écraser une série en cours)
@@ -528,7 +530,27 @@
         this._refreshBotIdentities();
         // Ses parties en différé partent avec le salon : l'écran d'accueil
         // peut dire tout de suite « 2 parties t'attendent ».
-        return this._lobbyBroadcast().concat(this.differe ? [this._dliste(username)] : []);
+        out = this._lobbyBroadcast().concat(this.differe ? [this._dliste(username)] : []);
+        // DÉJÀ EN PARTIE : une reconnexion (le téléphone a perdu sa socket
+        // sans prévenir). Les coups joués pendant la coupure — celui du bot,
+        // le plus souvent — sont partis dans le vide ; sans cet état renvoyé,
+        // l'écran restait sur « à l'adversaire de jouer » pendant que la
+        // pendule du joueur, elle, tournait jusqu'à la défaite. Après le salon,
+        // pour que l'écran de jeu reste devant.
+        var enCours = this._sessionDe(username);
+        if (enCours) out.push({ to: [username], xml: this._stateXml(enCours, "start") });
+        return out;
+
+      // Le battement du client en partie : l'état courant, ou « plus de
+      // partie » (finie pendant une coupure). Il vérifie aussi que la socket
+      // vit — sans réponse, le client la rouvre.
+      case "sync": {
+        var sy = this._sessionDe(username);
+        if (sy) return [{ to: [username], xml: this._stateXml(sy, "state") }];
+        var vu = this.watching[username] && this.sessions[this.watching[username]];
+        if (vu) return [{ to: [username], xml: this._stateXml(vu, "state", ' sp="1"') }];
+        return [{ to: [username], xml: '<gz e="nogame"/>' }];
+      }
 
       case "list":
         return [{ to: [username], xml: this._lobbyXml() }];
@@ -633,7 +655,27 @@
   // Déconnexion (= quitter Grapiz) : abandon si en partie ; sinon la série en
   // cours prend fin (enregistrée + remise à 0 — pas de reprise plus tard). Le
   // joueur est retiré du lobby et la liste rediffusée aux autres.
+  /*
+   * LA COUPURE N'EST PAS UN ABANDON. Un téléphone perd sa socket pour un rien
+   * (changement d'antenne, écran éteint) ; perdre la partie sur-le-champ,
+   * c'était perdre sur une coupure de trois secondes — et, quand le client
+   * fermait lui-même une socket morte pour en rouvrir une, AVANT que la
+   * nouvelle ne soit inscrite. En pleine partie, la déconnexion laisse donc
+   * ABSENCE_GRACE au joueur pour revenir (un « hello » efface l'absence) ; la
+   * partie continue entre-temps, sa pendule aussi. Passé le délai, c'est le
+   * forfait d'avant (tick). Hors partie, rien ne change.
+   */
+  var ABSENCE_GRACE = 45000;
+  GrapizNet.ABSENCE_GRACE = ABSENCE_GRACE;
   GrapizNet.prototype.onDisconnect = function (username) {
+    if (this._sessionDe(username)) {
+      this._absents[username] = this.clock() + ABSENCE_GRACE;
+      return [];
+    }
+    return this._partir(username);
+  };
+  GrapizNet.prototype._partir = function (username) {
+    delete this._absents[username];
     var vus = this._quitterSpectacle(username);
     var rm = this.lobby.removePlayer(username);
     if (!rm || !rm.ok) { delete this.streaks[username]; delete this._beaten[username]; return vus; }
@@ -650,6 +692,13 @@
     return vus.concat(this._lobbyBroadcast());
   };
 
+  // La partie EN COURS d'un joueur (pas celle qu'il regarde), ou null.
+  GrapizNet.prototype._sessionDe = function (username) {
+    var p = this.lobby.getPlayer(username);
+    var s = p && p.gameId ? this.sessions[p.gameId] : null;
+    return s && !s.ended ? s : null;
+  };
+
   // Tick périodique des horloges : termine les parties dont le temps est écoulé.
   GrapizNet.prototype.tick = function (now) {
     if (now === undefined) now = this.clock();
@@ -660,6 +709,12 @@
       var to = sess.tick(now);                                // timeout d'horloge
       if (to && to.ended) { out = out.concat(this._concludeGame(sess)); return; }
       out = out.concat(this._tickBot(sess, now));             // coup d'un bot si c'est son tour
+    }, this);
+    // Les absents qui ne sont pas revenus à temps : le forfait d'une vraie
+    // déconnexion (s'ils jouaient encore), ou leur départ du salon.
+    Object.keys(this._absents).forEach(function (u) {
+      if (this._absents[u] > now) return;
+      out = out.concat(this._partir(u));
     }, this);
     // Les parties en différé : échéances dépassées (forfait), rappels,
     // invitations éteintes — les listes des joueurs touchés sont rafraîchies.

@@ -72,11 +72,21 @@ ok(st2, "challenge starts the game right away (no accept)");
 ok(st2 && toHas(st2, "a") && toHas(st2, "b"), "start sent to both players");
 ok(net2.lobby.getPlayer("a").status === "playing" && net2.lobby.getPlayer("b").status === "playing", "both players now playing");
 
-// ── Déconnexion en cours de partie → fin + nettoyage ────────────────────────
+// ── Déconnexion en cours de partie → un délai de grâce, puis fin + nettoyage ─
 var dc = net.onDisconnect("alice");
-ok(find(dc, "end"), "disconnect ends the running game");
+ok(!find(dc, "end") && net.sessions[gameId], "disconnect in game: no forfeit yet (grace)");
+var avantGrace = net.tick(CLOCK + N.GrapizNet.ABSENCE_GRACE - 1000);
+ok(!find(avantGrace, "end") && net.sessions[gameId], "still playing just before the grace ends");
+// Revenue à temps (hello d'une nouvelle socket) : rien n'est perdu.
+net.handle("alice", { a: "hello", n: "Alice" });
+ok(!find(net.tick(CLOCK + N.GrapizNet.ABSENCE_GRACE + 5000), "end") && net.sessions[gameId], "back in time: the game goes on");
+// Repartie pour de bon : le forfait tombe au premier tick après la grâce.
+net.onDisconnect("alice");
+var apresGrace = net.tick(CLOCK + N.GrapizNet.ABSENCE_GRACE + 1000);
+ok(find(apresGrace, "end"), "disconnect ends the running game once the grace is over");
 ok(!net.sessions[gameId], "session cleaned up after disconnect");
 ok(net.lobby.getPlayer("bob") && net.lobby.getPlayer("bob").status === "idle", "opponent freed");
+ok(!net.lobby.getPlayer("alice"), "the absent player left the lobby");
 
 // ── Timeout via tick ────────────────────────────────────────────────────────
 var net3 = new N.GrapizNet({ clock: function () { return CLOCK; }, withBots: false });
@@ -437,6 +447,41 @@ eq(nvide.names["cassis"], "Cassis", "annuaire trop maigre (null) : noms d'origin
   ok(dn.handle("alice", { a: "dopen", id: p.id })[0].xml.indexOf('end="1" w="0" r="delai"') > 0, "différé: la partie finie se relit avec son issue");
   // Le lobby porte la note.
   ok(dn._lobbyXml().indexOf('el="1024"') > 0, "différé: la note au lobby");
+})();
+
+// ── La coupure en pleine partie : le hello de la reconnexion rapporte l'état ──
+// Le coup de l'adversaire part pendant que la socket du joueur est morte ;
+// sans état renvoyé, l'écran restait sur « à l'adversaire » et la pendule du
+// joueur filait jusqu'à la défaite.
+(function () {
+  var T = 0;
+  var rc = new N.GrapizNet({ clock: function () { return T; }, withBots: false });
+  rc.handle("ana", { a: "hello", n: "Ana" });
+  rc.handle("ben", { a: "hello", n: "Ben" });
+  rc.handle("ana", { a: "create", t: "60000" });
+  var gid = rc.lobby.listOpenGames()[0].id;
+  rc.handle("ben", { a: "join", g: gid });
+  var s = rc.sessions[gid];
+  var m0 = s.game.legalMoves(0)[0];
+  T = 1000;
+  rc.handle("ana", { a: "move", x: String(m0.from.x), y: String(m0.from.y), d: String(m0.direction) });   // Ben ne le reçoit pas
+  T = 5000;
+  var re = rc.handle("ben", { a: "hello", n: "Ben" });                                                     // Ben se reconnecte
+  var st = find(re, "start");
+  ok(st && st.to.length === 1 && st.to[0] === "ben", "reconnexion : l'état de la partie est renvoyé au seul joueur revenu");
+  ok(st && st.xml.indexOf('turn="1"') >= 0, "reconnexion : c'est bien à lui de jouer");
+  eq(re.indexOf(st), re.length - 1, "reconnexion : l'état vient après le salon (l'écran de jeu reste devant)");
+  // Le battement : l'état courant au joueur, et « plus de partie » une fois finie.
+  var sy = rc.handle("ben", { a: "sync" });
+  ok(sy.length === 1 && sy[0].xml.indexOf('e="state"') >= 0 && sy[0].to[0] === "ben", "sync : l'état courant");
+  ok(rc.handle("zoe", { a: "sync" })[0].xml.indexOf('e="nogame"') >= 0, "sync : sans partie, « nogame »");
+  // Pas de partie en cours : le hello ne renvoie pas d'état.
+  var hz = rc.handle("zoe", { a: "hello", n: "Zoe" });
+  ok(!find(hz, "start"), "hello hors partie : pas d'état");
+  // La partie finie (forfait) : plus d'état au hello, « nogame » au battement.
+  rc.handle("ana", { a: "part" });
+  ok(!find(rc.handle("ben", { a: "hello", n: "Ben" }), "start"), "partie finie : pas d'état au hello");
+  ok(rc.handle("ben", { a: "sync" })[0].xml.indexOf('e="nogame"') >= 0, "partie finie : « nogame » au battement");
 })();
 
 console.log("\nGrapiz net: " + passed + " passed, " + fails + " failed.");
