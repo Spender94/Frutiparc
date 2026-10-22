@@ -1436,7 +1436,14 @@ class CaterLaunch extends Trial {
           if (this.timer < 0) {
             if (!this.flValidate) {
               this.setCameraFocus(this.squirrel);
-              if (this.timer < -40) { this.loose('Vous avez dépassé la ligne de lancé !'); this.step = 4; }
+              // Deux façons de rater, deux messages. `flValidate` à false, c'est
+              // la faute : le ver a passé la ligne AVANT le lâcher (étape 1).
+              // Jamais posé, c'est qu'il ne l'a pas passée du tout — retombé
+              // derrière, à moins de 0 cm. Le fichier disait « dépassé » aux deux.
+              if (this.timer < -40) {
+                this.loose(this.flValidate === false ? 'Vous avez dépassé la ligne de lancé !' : 'Votre ver n’a pas franchi la ligne de lancer !');
+                this.step = 4;
+              }
             } else {
               this.score = this.caterPoint;
               this.addScore();

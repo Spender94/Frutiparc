@@ -1411,8 +1411,10 @@ test('l’admin retaille la semaine : les quêtes faites restent, les autres sui
     const g = apres.quetes.find((q) => q.id === f.id);
     assert.ok(g && g.fait && g.titre === f.titre && g.gain === f.gain, 'une quête faite reste, payée et cochée : ' + f.titre);
   }
-  const neuves = apres.quetes.filter((q) => !q.fait);
-  assert.ok(neuves.length >= 1 && apres.quetes.length <= 7);
+  // Les quêtes en plus (défi au doigt, bricoles) restent hors du plafond de sept.
+  const ordinaires = apres.quetes.filter((q) => !q.doigt && !q.gromelin);
+  const neuves = ordinaires.filter((q) => !q.fait);
+  assert.ok(neuves.length >= 1 && ordinaires.length <= 7, JSON.stringify(apres.quetes.map((q) => [q.id, q.fait])));
   const anciens = avant.quetes.filter((q) => !q.fait).map((q) => q.id);
   for (const q of neuves) assert.ok(!anciens.includes(q.id), 'les nouvelles portent des numéros neufs : ' + q.id);
   assert.equal(apres.gagnes, avant.gagnes, 'rien de repayé');
@@ -1590,6 +1592,57 @@ test('Gromelin passe au salon des animations : il nomme un présent, lui confie 
     assert.equal(r3.ok, false);
     assert.equal(r3.error, 'personne');
   } finally { coing.fermer(); }
+});
+
+test('Kaluga : le record d’une épreuve, jugé par le serveur d’après la fruticard qu’il garde', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  // Le jeu peut n'avoir en main qu'une carte vide (il dit alors « pas de
+  // record ») : le serveur, lui, garde la vraie — 500 cm au lancer de vers.
+  assert.ok((await post('/api/admin/quetes', { ouverture: 'tous', mode: 'individuelles' }, ADMIN)).ok);
+  const ajouterVers = async (qui) => {
+    await etat(qui);
+    const r = await post('/api/admin/quetes/joueur', { username: qui, action: 'ajouter', modele: 'parc:exploit-vers' }, ADMIN);
+    assert.ok(r.ok, JSON.stringify(r));
+    return (await etat(qui)).quetes.find((q) => /lancer de vers/.test(q.titre));
+  };
+  const carteKaluga = (qui, max) => fetch(BASE + '/api/saveFrutiSlot', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ sid: sids[qui], game: 'kaluga', slotId: '0', data: JSON.stringify({ $trial: { $st: 1, $tria: { $s: 0 }, $hept: { $s: 0 },
+      $list: [{ $list: [], $tz: [], $max: max }] } }) }) });
+  // 1. À la déclaration : 612 cm, le jeu dit « pas de record », le serveur voit 500 sur la carte.
+  await compte('nefle');
+  assert.ok((await carteKaluga('nefle', 500)).ok);
+  const q1 = await ajouterVers('nefle');
+  assert.ok(q1 && !q1.fait, JSON.stringify(q1));
+  const r1 = await declarer('nefle', 'kaluga', 'epreuve0', 612, false);
+  assert.ok(r1.ok && r1.record, JSON.stringify(r1));
+  assert.ok((await etat('nefle')).quetes.find((q) => q.id === q1.id).fait, 'record battu : la quête est faite');
+  // 2. À la sauvegarde de la carte (le jeu n'a rien déclaré, ou trop tard) : 500 → 640.
+  await compte('sorbe');
+  assert.ok((await carteKaluga('sorbe', 500)).ok);
+  const q2 = await ajouterVers('sorbe');
+  assert.ok((await carteKaluga('sorbe', 640)).ok);
+  await wait(300);
+  assert.ok((await etat('sorbe')).quetes.find((q) => q.id === q2.id).fait, 'le $max qui monte sur la carte suffit');
+  // 3. Pas de record : moins bien que la carte, ou un premier record contre une carte vide.
+  await compte('alise');
+  assert.ok((await carteKaluga('alise', 500)).ok);
+  const q3 = await ajouterVers('alise');
+  await wait(1600);
+  assert.equal((await declarer('alise', 'kaluga', 'epreuve0', 480, false)).record, false);
+  assert.ok((await carteKaluga('alise', 500)).ok);
+  assert.ok(!(await etat('alise')).quetes.find((q) => q.id === q3.id).fait);
+  await compte('cormier');
+  assert.ok((await carteKaluga('cormier', 0)).ok);
+  const q4 = await ajouterVers('cormier');
+  assert.equal((await declarer('cormier', 'kaluga', 'epreuve0', 300, false)).record, false, 'un premier lancer ne bat aucun record');
+  assert.ok((await carteKaluga('cormier', 300)).ok);
+  await wait(300);
+  assert.ok(!(await etat('cormier')).quetes.find((q) => q.id === q4.id).fait);
+});
+
+test('Kaluga : un ver retombé derrière la ligne n’est pas une faute de dépassement', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public/kaluga/jeu/modes.js'), 'utf8');
+  assert.match(src, /this\.loose\(this\.flValidate === false \? 'Vous avez dépassé la ligne de lancé !' : 'Votre ver n’a pas franchi la ligne de lancer !'\);/);
 });
 
 test('RGPD : l’export du joueur contient ses quêtes', async (t) => {

@@ -2322,6 +2322,44 @@ function bkiwiTrackBestsFromSlot0(slot0Str) {
  * comme un score classé — le saveScore qui suit, au même temps, ne compte pas
  * deux fois (un temps égal n'est pas meilleur).
  */
+/*
+ * KALUGA : LE RECORD D'UNE ÉPREUVE OLYMPIQUE, JUGÉ PAR LE SERVEUR. La quête
+ * « Bats ton record au lancer de vers » ne croyait que le jeu (`record` de
+ * /api/quetes/mode, calculé sur la carte que le client a en main). Le serveur
+ * garde la fruticard : il juge aussi, de deux côtés, pour qu'aucun ordre
+ * d'arrivée ne fasse rater un record — à la déclaration, contre le $max qu'il
+ * a en mémoire (kalugaMaxEpreuve), et à la sauvegarde de la carte, quand le
+ * $max d'une épreuve monte (kalugaCarteRecords). Un premier record, contre un
+ * $max vide, ne compte pas : ce n'est pas battre un record.
+ */
+function kalugaMaxDeCarte(str, i) {
+  try {
+    const c = JSON.parse(str);
+    const t = c && c.$trial && c.$trial.$list && c.$trial.$list[i];
+    const n = t ? Number(t.$max) : 0;
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch { return 0; }
+}
+async function kalugaMaxEpreuve(username, i) {
+  const ud = users[username];
+  let slot0 = ud && ud.frutiSlots && ud.frutiSlots.kaluga && ud.frutiSlots.kaluga['0'];
+  if (!slot0 && process.env.DATABASE_URL) {
+    try {
+      const dbId = (ud && ud._dbId) || ((await db.findUserByUsername(username)) || {}).id;
+      if (dbId) { const s = await db.getFrutiSlots(dbId, 'kaluga'); slot0 = s && (s['0'] || s[0]); }
+    } catch { /* la carte est illisible : le jeu seul dira */ }
+  }
+  return slot0 ? kalugaMaxDeCarte(slot0, i) : 0;
+}
+function kalugaCarteRecords(username, prevStr, nextStr) {
+  if (!prevStr) return;
+  for (let i = 0; i < Quetes.KALUGA_EPREUVES.length; i++) {
+    const avant = kalugaMaxDeCarte(prevStr, i), apres = kalugaMaxDeCarte(nextStr, i);
+    if (avant > 0 && apres > avant) {
+      quetesEvenement(username, { type: 'mode', jeu: 'kaluga', mode: 'epreuve' + i, v: apres, record: true, source: 'carte' });
+    }
+  }
+}
 function bkiwiCarteRecords(username, prevStr, nextStr) {
   const avant = prevStr ? bkiwiTrackBestsFromSlot0(prevStr) : null;
   const apres = bkiwiTrackBestsFromSlot0(nextStr);
@@ -12049,7 +12087,7 @@ app.post('/api/quetes/vu', (req, res) => {
 // fiable par nature (le navigateur le calcule) : borné, espacé, et il ne fait
 // qu'avancer une quête — il ne classe rien.
 const quetesDernierMode = new Map();
-app.post('/api/quetes/mode', (req, res) => {
+app.post('/api/quetes/mode', async (req, res) => {
   const b = Object.assign({}, req.query || {}, req.body || {});
   const u = resolveUsernameFromSid(String(b.sid || ''));
   if (!u) return res.status(401).json({ ok: false, error: 'auth_required' });
@@ -12058,8 +12096,16 @@ app.post('/api/quetes/mode', (req, res) => {
   const t = Date.now();
   if (t - (quetesDernierMode.get(u) || 0) < 1500) return res.json({ ok: true, ignore: true });
   quetesDernierMode.set(u, t);
-  quetesEvenement(u, { type: 'mode', jeu: rec.jeu, mode: rec.mode, v: rec.v, record: b.record === true || b.record === '1' || b.record === 'true' });
-  res.json({ ok: true });
+  let record = b.record === true || b.record === '1' || b.record === 'true';
+  // Une épreuve olympique de Kaluga : le serveur juge aussi, contre la carte
+  // qu'il garde (le jeu peut n'avoir en main qu'une carte vide ou en retard).
+  const ep = rec.jeu === 'kaluga' && /^epreuve(\d)$/.exec(rec.mode);
+  if (ep && !record) {
+    const max = await kalugaMaxEpreuve(u, Number(ep[1]));
+    if (max > 0 && rec.v > max) record = true;
+  }
+  quetesEvenement(u, { type: 'mode', jeu: rec.jeu, mode: rec.mode, v: rec.v, record });
+  res.json({ ok: true, record });
 });
 
 // ── L'admin des quêtes ──
@@ -21431,6 +21477,10 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
     }
     // Un contre-la-montre battu : aux quêtes et aux mises à prix.
     try { bkiwiCarteRecords(username, prevSlotData || '', data); } catch (e) { console.error(`[SLOT]  bkiwi records de la carte : ${e.message}`); }
+  }
+  // Kaluga : un record d'épreuve olympique qui monte, aux quêtes.
+  if (game === 'kaluga' && slotId === '0') {
+    try { kalugaCarteRecords(username, prevSlotData || '', data); } catch (e) { console.error(`[SLOT]  kaluga records de la carte : ${e.message}`); }
   }
 
   const preview = data.length > 200 ? data.slice(0, 200) + '…' : data;
@@ -36708,6 +36758,9 @@ case 'createchannel': {
           }
           // Un contre-la-montre battu : aux quêtes et aux mises à prix.
           try { bkiwiCarteRecords(username, prevSlotData || '', slotData); } catch (e) { console.error(`[FCARD] bkiwi records de la carte : ${e.message}`); }
+        }
+        if (game === 'kaluga' && slotId === '0') {
+          try { kalugaCarteRecords(username, prevSlotData || '', slotData); } catch (e) { console.error(`[FCARD] kaluga records de la carte : ${e.message}`); }
         }
       }
       sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
