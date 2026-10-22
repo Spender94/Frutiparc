@@ -58,6 +58,15 @@
                border:1px solid #E8C87A; border-radius:6px; padding:7px 9px; margin-top:8px;
                line-height:1.45; }
   .gris { filter:grayscale(1); }
+  /* Les tenues d'une animation : une case par image. */
+  .anim { margin-top:10px; padding:9px 11px; border:1px solid #CFE3B0; border-radius:8px; background:#F6FCEC; }
+  .anim-tete { font-size:12px; display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; }
+  .anim-tout { display:inline; font-weight:normal; font-size:11px; margin:0; }
+  .anim-tout select { width:auto; padding:2px 4px; font-size:11px; }
+  .anim-images { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .anim-images label { display:flex; align-items:center; gap:4px; margin:0; font-size:11px; font-weight:normal;
+    background:#fff; border:1px solid #DCE8C8; border-radius:6px; padding:3px 6px; }
+  .anim-images input { width:46px; padding:2px 4px; font-size:11px; }
 </style>
 </head>
 <body>
@@ -98,16 +107,35 @@
         (contour noir, reflet, logo). Un dessin entièrement hors calques donne donc un
         accessoire à couleurs fixes, que les trois niveaux ne changent pas.<br>
         L'ordre des calques est l'ordre de peinture ; le calque <code>repere</code> (la tête) est
-        un simple fond, à verrouiller.
+        un simple fond, à verrouiller.<br>
+        <b>Animé :</b> range ce qui bouge dans des calques <code>image1</code>, <code>image2</code>…
+        — chaque image montre son calque plus le décor commun (tout ce qui n'est dans aucun
+        calque <code>imageN</code>). Ou dépose plusieurs SVG à la fois, un par image.
       </div>
     </div>
 
     <!-- 3. Import -->
     <div class="carte" style="flex:1; min-width:340px;">
       <h2>3 · Redéposer le SVG retravaillé</h2>
-      <div class="drop" id="drop">Dépose ici ton <b>.svg</b><br>(ou clique pour choisir)</div>
-      <input type="file" id="fichier" accept=".svg,image/svg+xml" style="display:none">
+      <div class="drop" id="drop">Dépose ici ton <b>.svg</b><br>(ou clique pour choisir)<br>
+        <span style="font-size:11px">Plusieurs fichiers d'un coup = une <b>animation</b>, une image par fichier</span></div>
+      <input type="file" id="fichier" accept=".svg,image/svg+xml" multiple style="display:none">
       <div id="imp-etat"></div>
+      <div id="imp-anim" class="anim" style="display:none">
+        <div class="anim-tete">
+          <b>Animation</b> · <span id="anim-resume"></span>
+          <label class="anim-tout">toutes les images à
+            <select id="anim-cadence">
+              <option value="1">24 images/s</option><option value="2">12 images/s</option>
+              <option value="3" selected>8 images/s</option><option value="4">6 images/s</option>
+              <option value="6">4 images/s</option><option value="8">3 images/s</option>
+              <option value="12">2 images/s</option><option value="24">1 image/s</option>
+            </select></label>
+        </div>
+        <div class="anim-images" id="anim-images"></div>
+        <div class="aide" style="max-width:none">Chaque image se tient le nombre de <b>24es de seconde</b>
+          indiqué. Dans le SVG, le suffixe d'un calque (« image2 x5 ») fait la même chose.</div>
+      </div>
       <div id="imp-avert" style="display:none"></div>
       <div class="grille" id="rendu"></div>
     </div>
@@ -296,18 +324,78 @@
     ["dragleave", "drop"].forEach(function (e) {
       drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.remove("survol"); });
     });
-    drop.addEventListener("drop", function (e) { if (e.dataTransfer.files[0]) lire(e.dataTransfer.files[0]); });
-    fichier.addEventListener("change", function () { if (fichier.files[0]) lire(fichier.files[0]); });
-    function lire(f) {
-      var r = new FileReader();
-      r.onload = function () { poser(String(r.result)); };
-      r.readAsText(f);
+    drop.addEventListener("drop", function (e) { if (e.dataTransfer.files.length) lire(e.dataTransfer.files); });
+    fichier.addEventListener("change", function () { if (fichier.files.length) lire(fichier.files); });
+    /*
+     * PLUSIEURS FICHIERS, UNE ANIMATION. Ils sont pris dans l'ordre de leurs
+     * NOMS (« hélice-2 » avant « hélice-10 ») et non dans celui où le
+     * navigateur les rend, qui dépend du clic ou du glisser.
+     */
+    function lire(fichiers) {
+      var liste = Array.prototype.slice.call(fichiers).sort(function (a, b) {
+        return a.name.localeCompare(b.name, "fr", { numeric: true });
+      });
+      Promise.all(liste.map(function (f) {
+        return new Promise(function (ok) {
+          var r = new FileReader();
+          r.onload = function () { ok(String(r.result)); };
+          r.onerror = function () { ok(""); };
+          r.readAsText(f);
+        });
+      })).then(function (textes) {
+        var lots = textes.map(function (t) { try { return C.charger(t); } catch (e) { return []; } })
+          .filter(function (l) { return l.length; });
+        impLots = lots;
+        impTenues = null;
+        poser();
+      });
     }
 
-    function poser(svgTexte) {
-      var paths = C.charger(svgTexte);            // les aplats, niveaux compris
+    /*
+     * CE QU'ON A LU, ET SA PELLICULE. `impLots` garde un lot de tracés par
+     * fichier ; `impTenues`, les tenues retouchées à la main. Changer une tenue
+     * refait la pellicule et l'aperçu sans relire les fichiers.
+     */
+    var impLots = null, impTenues = null;
+    function preparer() {
+      if (!impLots || !impLots.length) return { paths: [], anim: null };
+      var defaut = +$("#anim-cadence").value || 3;
+      var r = impLots.length > 1 ? V.enchainer(impLots, defaut) : V.animer(impLots[0], defaut);
+      if (r.anim && impTenues && impTenues.length === r.anim.durees.length) r.anim.durees = impTenues.slice();
+      return r;
+    }
+    function montrerTenues(anim) {
+      var bloc = $("#imp-anim");
+      if (!anim) { bloc.style.display = "none"; return; }
+      bloc.style.display = "";
+      var total = anim.durees.reduce(function (a, b) { return a + b; }, 0);
+      $("#anim-resume").textContent = anim.durees.length + " images, boucle de "
+        + (total / 24).toFixed(2).replace(".", ",") + " s";
+      var hote = $("#anim-images");
+      hote.innerHTML = "";
+      anim.durees.forEach(function (d, i) {
+        var l = document.createElement("label");
+        l.textContent = "image " + (i + 1) + " ";
+        var n = document.createElement("input");
+        n.type = "number"; n.min = 1; n.max = 96; n.value = d;
+        n.addEventListener("change", function () {
+          var t = anim.durees.slice();
+          t[i] = Math.max(1, Math.min(96, Math.round(+n.value || 1)));
+          impTenues = t;
+          poser();
+        });
+        l.appendChild(n);
+        hote.appendChild(l);
+      });
+    }
+    $("#anim-cadence").addEventListener("change", function () { impTenues = null; poser(); });
+
+    function poser() {
+      var prep = preparer();
+      var paths = prep.paths, anim = prep.anim;
       var etat = $("#imp-etat"), rendu = $("#rendu");
       rendu.innerHTML = "";
+      montrerTenues(anim);
       if (!paths.length) { etat.textContent = "SVG illisible ou sans dessin."; return; }
       var t = +$("#type").value, co = +$("#coif").value;
       // On repart d'une famille NEUVE — sans quoi chaque import empilerait une
@@ -326,16 +414,17 @@
         (r[1] || []).forEach(function (pub) {
           if ((pub.famille || 0) !== 0) return;
           try {
-            V.injecter(defs, { type: pub.type, paths: pub.paths || [],
+            V.injecter(defs, { type: pub.type, paths: pub.paths || [], anim: pub.anim || null,
               coiffureRef: pub.coiffureRef, index: (pub.index == null ? undefined : pub.index),
               vide: !(pub.paths && pub.paths.length) });
           } catch (e) { /* une variante fautive n'empêche pas l'essai */ }
         });
-        var inj = V.injecter(defs, { type: t, paths: paths, coiffureRef: co });
+        var inj = V.injecter(defs, { type: t, paths: paths, anim: anim, coiffureRef: co });
         if (!inj) { etat.textContent = "Injection impossible (aucun tracé exploitable)."; return; }
         var niveaux = {};
         paths.forEach(function (p) { niveaux[p.slot || 0] = (niveaux[p.slot || 0] || 0) + 1; });
         etat.textContent = paths.length + " tracés · niveaux " + JSON.stringify(niveaux)
+          + (anim ? " · " + anim.durees.length + " images" : "")
           + " → variante " + inj.variante + " de l'accessoire #" + inj.accId;
         /*
          * DIRE TOUT DE SUITE QUAND UN NIVEAU S'EST PERDU.
@@ -384,9 +473,10 @@
           var cv = document.createElement("canvas"); cv.width = 224; cv.height = 224;
           var cap = document.createElement("figcaption"); cap.textContent = vue.l;
           fig.appendChild(cv); fig.appendChild(cap); rendu.appendChild(fig);
+          // Animée, elle se montre en mouvement : le moteur tranche seul.
           new M.Bouille(cv, defs, {
             etat: etatAvec(t, inj.variante, vue.co, vue.c),
-            anime: false, alea: function () { return 0.5; },
+            anime: anim ? undefined : false, alea: function () { return 0.5; },
           });
         });
         rafraichir();
@@ -641,6 +731,7 @@
         o.textContent = (v.nom || "sans nom")
           + " — " + (P.ACCESSORIES[v.type] || ("type " + v.type))
           + " · " + (v.paths || []).length + " tracés"
+          + (V.nbImages(v.anim) ? " · animé, " + V.nbImages(v.anim) + " images" : "")
           + (v.auteur ? " · " + v.auteur : "");
         sel.appendChild(o);
       });
@@ -659,7 +750,7 @@
       return Swf.charger("/fbouille/famille0.swf").then(function (d) {
         if (tour !== maisonTour) return;              // une autre reprise a pris la main
         maisonDefs = d;
-        maisonInj = V.injecter(d, { type: v.type, paths: v.paths || [],
+        maisonInj = V.injecter(d, { type: v.type, paths: v.paths || [], anim: v.anim || null,
           coiffureRef: v.coiffureRef, vide: false });
         if (!maisonInj) {
           $("#mai-etat").textContent = "Ce dessin ne s'injecte pas (tracés illisibles).";
@@ -669,7 +760,7 @@
           + (P.ACCESSORIES[v.type] || ("type " + v.type))
           + " · coiffure de référence " + (v.coiffureRef == null ? 8 : v.coiffureRef);
         new M.Bouille($("#mai-apercu"), d,
-          { etat: etatAvec(v.type, maisonInj.variante, co), anime: false,
+          { etat: etatAvec(v.type, maisonInj.variante, co), anime: V.nbImages(v.anim) ? undefined : false,
             alea: function () { return 0.5; } });
         $("#mai-dl").disabled = false;
       });
@@ -679,8 +770,11 @@
       var v = maison[+$("#mai-liste").value];
       if (!v || !maisonInj || !maisonDefs) return;
       var co = +$("#coif").value;
+      // Une variante ANIMÉE se rend depuis ses tracés publiés : l'arbre monté
+      // n'en montre qu'une image, ses calques « imageN » viennent du catalogue.
       var svg = V.exporterSVG(maisonDefs, {
         type: v.type, variante: maisonInj.variante, coiffure: co,
+        source: V.nbImages(v.anim) ? { paths: v.paths || [], anim: v.anim } : null,
         nom: (v.nom || "accessoire maison") + " — " + (P.ACCESSORIES[v.type] || v.type),
         fondTete: V.fondTete(defs, co, 512),
       });

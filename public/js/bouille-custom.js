@@ -409,8 +409,22 @@
         }
         return 0;
       }
+      /*
+       * L'IMAGE D'UNE ANIMATION : un groupe ancêtre « image2 » range le tracé
+       * dans l'image 2 ; « image2 x3 » la tient en plus 3/24 s. Sans un tel
+       * ancêtre, le tracé est de toutes les images — le décor commun. (Cf.
+       * `FPBouilleVariante.animer`, qui en fait la pellicule.)
+       */
+      function imageDe(el) {
+        for (var n = el; n && n !== vivant.parentNode; n = n.parentNode) {
+          var m = /^\s*image\s*[-_ ]?(\d+)(?:\s*[-_ ]?[x×*]\s*(\d+))?/i.exec(nomDe(n));
+          if (m && +m[1] > 0) return { n: +m[1], tenue: m[2] ? +m[2] : 0 };
+        }
+        return null;
+      }
       function faire(d, fill, alpha, m, avant, slot, trait, largeur, blend, degrade) {
         var p = { d: d, fill: fill, alpha: alpha, m: m };
+        if (img) { p.image = img.n; if (img.tenue) p.tenue = img.tenue; }
         if (degrade) p.degrade = degrade;
         if (!avant) p.avant = false;
         if (slot) p.slot = slot;
@@ -459,6 +473,7 @@
       // Une seule passe sur tous les dessinables (hors repère) : l'ordre du
       // document = l'ordre de peinture.
       var els = vivant.querySelectorAll(DESSINABLES);
+      var img = null;
       for (var i = 0; i < els.length; i++) {
         var el = els[i];
         if (repere && repere.contains(el)) continue;          // le fond, jamais
@@ -475,6 +490,7 @@
         var blend = fusionDe(global, el, vivant);
         var avant = !(gArr && gArr.contains(el));
         var slot = slotDe(el);
+        img = imageDe(el);
         var fill = couleur(global, el, "fill");
         var stroke = couleur(global, el, "stroke");
         // Un remplissage « url(#id) » désigne un DÉGRADÉ : on le traduit dans le

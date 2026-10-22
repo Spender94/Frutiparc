@@ -286,6 +286,7 @@
     this.echX = 1; this.echY = 1;      // _xscale/_yscale, en facteur
     this.dx = 0; this.dy = 0;          // décalage de _x/_y par rapport au placement
     this.drot = 0;                     // écart de _rotation, en degrés
+    this.tenu = 0;                     // images déjà tenues (pellicule à `tenue`)
     this.M = IDENTITE;
   }
 
@@ -397,7 +398,14 @@
       if (!e) {
         e = { ch: p.ch, objet: null };
         const sp = this.moteur.defs.sprites.get(p.ch);
-        if (sp) { e.objet = new Clip(this.moteur, sp, this, p.nom); e.objet.poser(1); neufs.push(e.objet); }
+        if (sp) {
+          e.objet = new Clip(this.moteur, sp, this, p.nom);
+          // Un niveau de couleur qui naît DANS la pellicule d'une variante
+          // animée : `apply()` est passé avant lui, il prend la teinte que la
+          // pellicule a gardée pour ses enfants à venir.
+          if (this.teintesVar && sp.varTeinte) e.objet.teinte = this.teintesVar[sp.varTeinte] || null;
+          e.objet.poser(1); neufs.push(e.objet);
+        }
         this.enfants.set(prof, e);
       }
       e.M = p.M; e.nom = p.nom; e.masque = p.masque; e.cx = p.cx; e.ratio = p.ratio;
@@ -452,10 +460,22 @@
     let bouge = false;
     if (this.neuf) { this.neuf = false; }
     else if (this.enLecture && this.def.n > 1) {
-      const n = this.frame >= this.def.n ? 1 : this.frame + 1;
-      this.poser(n);
-      this.moteur.executer(this, n);
-      bouge = true;
+      /*
+       * LA TENUE D'UNE IMAGE. Une pellicule d'époque répète l'image pour la
+       * faire durer ; celle d'une variante animée (bouille-variante.js) dit
+       * plutôt combien de tics chaque image se tient — à 24 images par seconde,
+       * une tenue de 3 fait du 8 images par seconde. Sans `tenue`, une image
+       * par tic, comme toujours.
+       */
+      const tenue = this.def.tenue ? (this.def.tenue[this.frame - 1] || 1) : 1;
+      if (tenue > 1 && ++this.tenu < tenue) { /* la même image, encore un tic */ }
+      else {
+        this.tenu = 0;
+        const n = this.frame >= this.def.n ? 1 : this.frame + 1;
+        this.poser(n);
+        this.moteur.executer(this, n);
+        bouge = true;
+      }
     }
     for (const e of Array.from(this.enfants.values())) if (e.objet && e.objet.avancer()) bouge = true;
     return bouge;
@@ -768,11 +788,26 @@
      * donc un clip par SÉRIE, et ceux-là se teignent tous. Les clips d'époque,
      * eux, gardent la règle du dernier posé (accessoire 9 variante 5 en dépend).
      */
+    /*
+     * UNE VARIANTE ANIMÉE pose, au lieu de ses niveaux, une PELLICULE
+     * (`varFilm`) dont chaque image porte les siens. Ceux de l'image en cours
+     * se teignent ici ; ceux des images suivantes naîtront plus tard, quand
+     * `apply()` sera loin : la pellicule garde donc les trois teintes, et
+     * `poser` les leur donne à la naissance.
+     */
     const teinterNotres = (acc) => {
       const par = [null, accColor1, accColor2, accColor3];
       for (const e of acc.enfants.values()) {
-        const s = e.objet && e.objet.def && e.objet.def.varTeinte;
-        if (s) teinter(e.objet, par[s]);
+        const o = e.objet;
+        if (!o || !o.def) continue;
+        if (o.def.varTeinte) teinter(o, par[o.def.varTeinte]);
+        if (o.def.varFilm) {
+          o.teintesVar = [null, cP(accColor1), cP(accColor2), cP(accColor3)];
+          for (const f of o.enfants.values()) {
+            const s = f.objet && f.objet.def && f.objet.def.varTeinte;
+            if (s) f.objet.teinte = o.teintesVar[s];
+          }
+        }
       }
     };
     const jeu = (avant, arriere) => {

@@ -7020,13 +7020,15 @@ const BLENDS_MAISON = new Set([
 ]);
 
 // Borne un lot d'aplats importés : compact, sûr, et rien que du tracé.
-function nettoyerPathsMaison(paths) {
+function nettoyerPathsMaison(paths, max = 500) {
   if (!Array.isArray(paths)) return [];
-  return paths.slice(0, 500).map((p) => {
+  return paths.slice(0, max).map((p) => {
     const q = { d: String((p && p.d) || '').slice(0, 20000), fill: String((p && p.fill) || '#000').slice(0, 40) };
     if (p.alpha != null && p.alpha < 1) q.alpha = Math.max(0, Math.min(1, Number(p.alpha) || 0));
     if (p.avant === false) q.avant = false;
     if (p.slot === 1 || p.slot === 2 || p.slot === 3) q.slot = p.slot;   // niveau de couleur
+    // L'image d'une variante animée (absente = de toutes les images).
+    if (Number.isInteger(p.image) && p.image >= 1 && p.image <= ANIM_IMAGES_MAX) q.image = p.image;
     if (typeof p.blend === 'string' && BLENDS_MAISON.has(p.blend)) q.blend = p.blend; // ombre/lumière
     const g = nettoyerDegrade(p.degrade);
     if (g) q.degrade = g;
@@ -7063,6 +7065,34 @@ function nettoyerDegrade(g) {
     M: { a: +M.a, b: +M.b, c: +M.c, d: +M.d, e: +M.e, f: +M.f },
     arrets,
   };
+}
+
+/*
+ * L'ANIMATION D'UNE VARIANTE : la tenue de chaque image, en tics de 1/24 s
+ * (cf. bouille-variante.js). Deux images au moins, sinon ce n'est pas une
+ * animation ; une tenue de 1 à 96 (quatre secondes). Les tracés marqués d'une
+ * image au-delà de la dernière tombent, et ceux d'une variante FIXE perdent leur
+ * marque — seule l'image 1 en reste.
+ */
+const ANIM_IMAGES_MAX = 32;
+// Une pellicule répète son décor commun mais pas ses images : on lui laisse
+// plus de tracés qu'à une variante fixe.
+const ANIM_PATHS_MAX = 2000;
+function nettoyerAnim(a) {
+  if (!a || !Array.isArray(a.durees)) return null;
+  const durees = a.durees.slice(0, ANIM_IMAGES_MAX)
+    .map((d) => Math.max(1, Math.min(96, Math.round(Number(d) || 1))));
+  return durees.length >= 2 ? { durees } : null;
+}
+function pathsDeVariante(b) {
+  const anim = nettoyerAnim(b.anim);
+  let paths = nettoyerPathsMaison(b.paths, anim ? ANIM_PATHS_MAX : 500);
+  if (anim) paths = paths.filter((p) => !p.image || p.image <= anim.durees.length);
+  else {
+    paths = paths.filter((p) => !p.image || p.image === 1);
+    for (const p of paths) delete p.image;
+  }
+  return { paths, anim };
 }
 
 // Les trois niveaux de couleur d'un accessoire : jusqu'à trois hex #rrggbb.
@@ -17258,6 +17288,8 @@ app.get('/api/light/variantes', (req, res) => {
       famille: v.famille || 0, type: v.type, coiffureRef: v.coiffureRef || 8,
       index: (Number.isFinite(v.index) ? v.index : null),
       paths: v.retire ? [] : v.paths, retire: !!v.retire,
+      // La tenue de chaque image d'une variante animée ; null pour une fixe.
+      anim: (!v.retire && v.anim) ? v.anim : null,
       // Le NOM et l'AUTEUR voyagent aussi : l'atelier
       // (public/bouille-accessoire.html) redonne le gabarit SVG d'un accessoire
       // maison, et il faut bien le désigner dans la liste. Les deux sont déjà
@@ -17282,6 +17314,7 @@ app.get('/api/admin/variantes', adminScope('shop'), (req, res) => {
       id: v.id, nom: v.nom, famille: v.famille || 0, type: v.type,
       rang, index: (Number.isFinite(v.index) ? v.index : null),
       nb: (v.paths || []).length, retire: !!v.retire, purge: !!v.purge,
+      images: (v.anim && v.anim.durees) ? v.anim.durees.length : 1,
       auteur: v.auteur || '', createdAt: v.createdAt,
     };
   }).filter((v) => !v.purge));
@@ -17303,16 +17336,20 @@ app.put('/api/admin/variantes/:id', adminScope('shop'),
     try { b = JSON.parse(Buffer.isBuffer(req.body) ? req.body.toString('utf8') : (req.body || '{}')); }
     catch (e) { return res.status(400).json({ error: 'JSON invalide' }); }
     if (b.paths !== undefined) {
-      const paths = nettoyerPathsMaison(b.paths);
+      // Le dessin et son animation vont ensemble : un SVG fixe déposé sur une
+      // variante animée l'arrête, et l'inverse la met en mouvement.
+      const { paths, anim } = pathsDeVariante(b);
       if (!paths.length) return res.status(400).json({ error: 'paths vide' });
       v.paths = paths;
+      v.anim = anim;
       v.retire = false;
     }
     if (b.nom !== undefined && String(b.nom).trim()) v.nom = String(b.nom).trim().slice(0, 60);
     if (b.auteur !== undefined) v.auteur = String(b.auteur).trim().slice(0, 40);
     sauverVariantes();
-    console.log(`[VARIANTES] remplacée ${v.id} « ${v.nom} » (${(v.paths || []).length} tracés, index ${v.index})`);
-    res.json({ ok: true, id: v.id, index: v.index, nb: (v.paths || []).length });
+    const nbImg = v.anim ? v.anim.durees.length : 1;
+    console.log(`[VARIANTES] remplacée ${v.id} « ${v.nom} » (${(v.paths || []).length} tracés, ${nbImg} image(s), index ${v.index})`);
+    res.json({ ok: true, id: v.id, index: v.index, nb: (v.paths || []).length, images: nbImg });
   });
 
 // PURGER une variante retirée : elle disparaît de la liste de l'admin. La
@@ -17322,7 +17359,7 @@ app.post('/api/admin/variantes/:id/purger', adminScope('shop'), (req, res) => {
   const v = variantesAcc.find((x) => x.id === req.params.id);
   if (!v) return res.status(404).json({ error: 'not found' });
   if (!v.retire) return res.status(400).json({ error: 'seule une variante retirée se purge' });
-  v.purge = true; v.paths = [];
+  v.purge = true; v.paths = []; v.anim = null;
   sauverVariantes();
   console.log(`[VARIANTES] purgée ${v.id} (sa place reste prise)`);
   res.json({ ok: true });
@@ -17333,7 +17370,7 @@ app.post('/api/admin/variantes', adminScope('shop'),
     let b;
     try { b = JSON.parse(Buffer.isBuffer(req.body) ? req.body.toString('utf8') : (req.body || '{}')); }
     catch (e) { return res.status(400).json({ error: 'JSON invalide' }); }
-    const paths = nettoyerPathsMaison(b.paths);
+    const { paths, anim } = pathsDeVariante(b);
     const type = Number(b.type);
     if (!b.nom || !paths.length || !(type >= 1 && type <= 16)) {
       return res.status(400).json({ error: 'nom + type (1-16) + paths requis' });
@@ -17354,12 +17391,12 @@ app.post('/api/admin/variantes', adminScope('shop'),
       index,
       // Le pseudo du graphiste : l'article de boutique le reprendra.
       auteur: String(b.auteur || '').trim().slice(0, 40),
-      paths, createdAt: new Date().toISOString(),
+      paths, anim, createdAt: new Date().toISOString(),
     };
     variantesAcc.push(v);
     sauverVariantes();
     const rang = variantesAcc.filter((x) => (x.famille || 0) === v.famille && x.type === v.type).length - 1;
-    console.log(`[VARIANTES] publiée ${v.id} « ${v.nom} » (type ${v.type}, rang ${rang}, ${paths.length} tracés)`);
+    console.log(`[VARIANTES] publiée ${v.id} « ${v.nom} » (type ${v.type}, rang ${rang}, ${paths.length} tracés${anim ? ', ' + anim.durees.length + ' images' : ''})`);
     res.json({ ok: true, id: v.id, rang, index: v.index });
   });
 
@@ -17368,7 +17405,7 @@ app.post('/api/admin/variantes', adminScope('shop'),
 app.delete('/api/admin/variantes/:id', adminScope('shop'), (req, res) => {
   const v = variantesAcc.find((x) => x.id === req.params.id);
   if (!v) return res.status(404).json({ error: 'not found' });
-  v.retire = true; v.paths = [];
+  v.retire = true; v.paths = []; v.anim = null;
   sauverVariantes();
   console.log(`[VARIANTES] retirée ${v.id} (sa place est conservée : les index suivants ne bougent pas)`);
   res.json({ ok: true });

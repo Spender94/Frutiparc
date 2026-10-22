@@ -224,7 +224,7 @@
         // endroit chez tout le monde, quel que soit ce qui a été chargé avant.
         // (Sans index — les variantes d'avant ce changement — on empile, comme
         // auparavant : l'ordre du catalogue suffit à les retrouver.)
-        V.injecter(defs, { type: v.type, paths: v.paths || [],
+        V.injecter(defs, { type: v.type, paths: v.paths || [], anim: v.anim || null,
           coiffureRef: v.coiffureRef, index: (v.index == null ? undefined : v.index),
           vide: !(v.paths && v.paths.length) });
       } catch (e) { /* une variante fautive n'empêche pas les autres */ }

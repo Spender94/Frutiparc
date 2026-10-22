@@ -54,11 +54,16 @@
   la bouille témoin avec trois couleurs SENTINELLES, et le clip qu'`apply()` a
   choisi de teindre se reconnaît à l'identité de sa teinte.
 
-  ── CE QU'ON NE FAIT PAS ───────────────────────────────────────────────────────
+  ── LES VARIANTES ANIMÉES ──────────────────────────────────────────────────────
 
-  Les variantes injectées sont STATIQUES : pas de script d'image, donc pas de
-  pièce qui tourne toute seule. Une variante d'époque animée s'exporte dans la
-  pose où on la prend.
+  Pas de script d'image chez nous : une variante qui bouge est une PELLICULE.
+  Chaque tracé peut porter `image` (1, 2, 3…) — sans quoi il est de toutes les
+  images, c'est le décor commun — et la variante porte `anim.durees`, la tenue
+  de chaque image en tics de 1/24 s. L'injection pose alors dans `acc` un clip
+  unique (`varFilm`) dont chaque image est une variante fixe complète, bâtie
+  comme les autres ; le moteur la joue en boucle et teint les niveaux qui y
+  naissent (cf. `teinterNotres` et `Clip.poser`). Une variante d'époque animée,
+  elle, s'exporte toujours dans la pose où on la prend.
 
   Rien de tout cela ne touche au .swf : on enrichit l'arbre que le lecteur JS a
   monté en mémoire (`defs`), après chargement.
@@ -441,7 +446,7 @@
    * profondeur ; chaque niveau est un sous-clip UNIQUE (deux clips du même nom se
    * voleraient la teinte) posé à la profondeur de sa première apparition.
    */
-  function construirePoses(defs, paths, versAcc) {
+  function construirePoses(defs, paths, versAcc, cache) {
     var NOMS = { 1: "col", 2: "col2", 3: "col3" };
     var poses = [], serie = null;
     // Une profondeur PAIRE par tracé, dans l'ordre : les impaires restent libres
@@ -449,9 +454,13 @@
     var prof = function (i) { return (i + 1) * 2; };
 
     function formeDe(p) {
+      // Le décor commun d'une pellicule revient à chaque image : UNE forme pour
+      // toutes, que le rendu reconnaît d'une image à l'autre.
+      if (cache && cache.has(p)) return cache.get(p);
       var rgb = versRgb(p.fill);
       if (!rgb) return 0;
       var fid = prochainId(defs);
+      if (cache) cache.set(p, fid);
       defs.formes.set(fid, {
         id: fid,
         bounds: { x: 0, y: 0, w: 1, h: 1 },     // informatif : le rendu n'en dépend pas
@@ -561,6 +570,98 @@
   }
 
   /*
+   * COMBIEN D'IMAGES une variante anime-t-elle ? Zéro pour une variante fixe —
+   * il en faut deux au moins pour qu'il y ait mouvement.
+   */
+  function nbImages(anim) {
+    var d = anim && anim.durees;
+    return (Array.isArray(d) && d.length >= 2) ? d.length : 0;
+  }
+  // Les tracés de l'image k : le décor commun, et ce qui n'est qu'à elle.
+  function tracesImage(paths, k) {
+    return paths.filter(function (p) { return p && (!p.image || p.image === k); });
+  }
+
+  /*
+   * LA PELLICULE d'une couche animée : un clip dont l'image k est la variante
+   * fixe que donneraient les tracés de l'image k. Chaque image efface tout ce
+   * que la précédente a posé, puis pose les siens — un enfant qui retrouve sa
+   * profondeur avec le même caractère survit (le décor commun ne se refait
+   * pas). La tenue de chaque image voyage avec : c'est le moteur qui la compte.
+   *
+   * Rend la pose à mettre dans le rouleau, ou [] si aucune image ne dessine.
+   */
+  function pellicule(defs, paths, versAcc, anim) {
+    var n = nbImages(anim), cache = new Map(), images = [], toutes = [];
+    for (var k = 1; k <= n; k++) {
+      var ps = construirePoses(defs, tracesImage(paths, k), versAcc, cache);
+      images.push(ps);
+      toutes = toutes.concat(ps);
+    }
+    if (!toutes.length) return [];
+    var retires = effacements({ images: [] }, toutes);
+    var fid = prochainId(defs);
+    defs.sprites.set(fid, {
+      n: n, labels: {}, varFilm: true,
+      images: images.map(function (ps) { return retires.concat(ps); }),
+      tenue: anim.durees.map(function (d) { return Math.max(1, Math.round(Number(d) || 1)); }),
+    });
+    return [{ t: "pose", ch: fid, prof: 2, M: ID, nom: null, masque: 0, cx: null, deplace: false }];
+  }
+
+  /*
+   * DU SVG À LA PELLICULE. `FPBouilleCustom.charger` marque chaque tracé rangé
+   * sous un calque « image2 » (ou « image2 x3 ») de `image: 2` (et `tenue: 3`).
+   * On en fait une variante : les numéros, quels qu'ils soient (1, 2, 5…),
+   * deviennent 1…N dans l'ordre ; chaque image prend la première tenue qu'on
+   * lui a donnée, sinon `tenueDefaut`. Une seule image, ce n'est pas une
+   * animation : ses tracés rejoignent alors le décor.
+   *
+   * @returns {{paths:Array, anim:({durees:number[]}|null)}}
+   */
+  function animer(paths, tenueDefaut) {
+    var td = Math.max(1, Math.round(Number(tenueDefaut) || 3));
+    var nums = [], tenues = {};
+    (paths || []).forEach(function (p) {
+      if (!p || !p.image) return;
+      if (nums.indexOf(p.image) < 0) nums.push(p.image);
+      if (p.tenue && tenues[p.image] == null) tenues[p.image] = p.tenue;
+    });
+    nums.sort(function (a, b) { return a - b; });
+    var vers = {};
+    nums.forEach(function (n, i) { vers[n] = i + 1; });
+    var anime = nums.length >= 2;
+    var out = (paths || []).map(function (p) {
+      var q = {};
+      for (var c in p) if (c !== "image" && c !== "tenue") q[c] = p[c];
+      if (anime && p.image) q.image = vers[p.image];
+      return q;
+    });
+    return {
+      paths: out,
+      anim: anime ? { durees: nums.map(function (n) { return Math.max(1, Math.min(96, Math.round(tenues[n] || td))); }) } : null,
+    };
+  }
+
+  /*
+   * PLUSIEURS FICHIERS, UNE PELLICULE : le n-ième SVG déposé fait l'image n.
+   * Une suite de fichiers exportés image par image (« Calques en fichiers »,
+   * une planche découpée…) s'importe donc telle quelle.
+   */
+  function enchainer(listes, tenueDefaut) {
+    var tous = [];
+    (listes || []).forEach(function (paths, i) {
+      (paths || []).forEach(function (p) {
+        var q = {};
+        for (var c in p) if (c !== "image") q[c] = p[c];
+        q.image = i + 1;
+        tous.push(q);
+      });
+    });
+    return animer(tous, tenueDefaut);
+  }
+
+  /*
    * L'état où un rouleau se BORNE — celui que voient les variantes dont l'index
    * dépasse sa longueur (`allerImage` borne à la dernière image).
    *
@@ -589,6 +690,11 @@
     opts = opts || {};
     var type = (opts.type == null) ? 3 : opts.type;
     var tous = opts.paths || [];
+    // Une variante FIXE ne garde que sa première image : des tracés marqués
+    // d'une image sans `anim` pour les jouer (un essai, un catalogue d'avant)
+    // ne doivent pas s'empiler.
+    var nb = nbImages(opts.anim);
+    if (!nb) tous = tous.filter(function (p) { return !p || !p.image || p.image === 1; });
     // `vide` : une image SANS rien, qui ne sert qu'à garder sa place. Une variante
     // retirée du catalogue s'injecte ainsi — sinon toutes celles publiées après
     // elle reculeraient d'un cran, et les joueurs qui les portent verraient un
@@ -605,7 +711,11 @@
       (tous[k] && tous[k].avant === false ? derriere : devant).push(tous[k]);
     }
 
-    var poses = construirePoses(defs, devant, rep.versAcc);
+    // Une couche où rien n'est propre à une image n'a pas besoin de pellicule :
+    // elle reste une variante fixe, et ne fait rien tourner pour rien.
+    var anime = function (liste) { return nb && liste.some(function (p) { return p && p.image; }); };
+    var poses = anime(devant) ? pellicule(defs, devant, rep.versAcc, opts.anim)
+      : construirePoses(defs, devant, rep.versAcc);
     // Un accessoire qui ne se voit QUE derrière la tête reste un accessoire : il
     // occupe une image du rouleau de devant, vide, pour tenir sa place — le refuser
     // aurait été refuser une queue de cheval ou une écharpe qui pend dans le dos.
@@ -640,7 +750,10 @@
     if (rep.arriere) {
       var spAr = rep.arriere.sprite;
       var bornage = etatDeBornage(spAr);
-      var posesAr = construirePoses(defs, derriere, rep.arriere.versAcc);
+      // Même tenue des deux côtés, posées au même apply() : les deux
+      // pellicules tournent du même pas.
+      var posesAr = anime(derriere) ? pellicule(defs, derriere, rep.arriere.versAcc, opts.anim)
+        : construirePoses(defs, derriere, rep.arriere.versAcc);
       var retiresAr = effacements(spAr, posesAr.concat(bornage));
       // L'arrière doit tomber au MÊME index que l'avant. Deux cas :
       //  · le rouleau arrière est plus court — on le comble jusque-là, puis on
@@ -667,7 +780,7 @@
     taire(rep, index);
     if (rep.arriere) taire(rep.arriere, index);
 
-    return { variante: index, accId: rep.accId };
+    return { variante: index, accId: rep.accId, images: nb || 1 };
   }
 
   function taire(r, index) {
@@ -710,7 +823,18 @@
     var type = (opts.type == null) ? 3 : opts.type;
     var variante = opts.variante || 0;
     var co = (opts.coiffure == null) ? 8 : opts.coiffure;
-    var paths = exporter(defs, type, variante, co, { brut: !!opts.brut });
+    /*
+     * `source` : les tracés STOCKÉS d'une variante maison ({paths, anim}), déjà
+     * en coordonnées de scène. C'est la seule façon de rendre une variante
+     * animée à son graphiste telle qu'il l'a faite — décor commun d'un côté,
+     * calques « imageN » de l'autre — là où l'arbre monté n'en montre qu'une
+     * image à la fois.
+     */
+    var src = opts.source || null;
+    var anim = src ? src.anim : null, nb = nbImages(anim);
+    var paths = src
+      ? (src.paths || []).filter(function (p) { return p && p.d && (nb ? (p.image || 0) <= nb : (!p.image || p.image === 1)); })
+      : exporter(defs, type, variante, co, { brut: !!opts.brut });
     var sc = defs.scene || { x: 0, y: 0, w: 100, h: 100 };
     var NOMS = { 1: "couleur1", 2: "couleur2", 3: "couleur3" };
 
@@ -820,12 +944,34 @@
       }
       return out.join("\n");
     }
+    // Les IMAGES d'une animation : chaque suite de tracés propres à une image
+    // va dans son calque « imageN_xT » (T = sa tenue en 1/24 s) ; le décor
+    // commun reste dehors, à sa place dans la pile. Un même numéro qui revient
+    // plus haut est numéroté comme les niveaux de couleur.
+    var prisImg = {};
+    function corpsImages(liste) {
+      if (!nb) return corpsDe(liste);
+      var out = [], i = 0;
+      while (i < liste.length) {
+        var k = liste[i].image || 0, j = i;
+        while (j < liste.length && (liste[j].image || 0) === k) j++;
+        var bloc = corpsDe(liste.slice(i, j));
+        if (!k) out.push(bloc);
+        else {
+          prisImg[k] = (prisImg[k] || 0) + 1;
+          out.push('    <g id="image' + k + "_x" + anim.durees[k - 1]
+            + (prisImg[k] > 1 ? "-" + prisImg[k] : "") + '">\n' + bloc + "\n    </g>");
+        }
+        i = j;
+      }
+      return out.join("\n");
+    }
     // DEUX CALQUES, comme sur la bouille : ce qui passe derrière la tête et ce
     // qui passe devant. Tout mettre dans « accessoire » — ce qu'on faisait —
     // ramenait la partie arrière devant au réimport : les bananes qui pendent
     // derrière la tête se retrouvaient plaquées sur le visage.
-    var corpsArriere = corpsDe(paths.filter(function (p) { return p.avant === false; }));
-    var corpsAvant = corpsDe(paths.filter(function (p) { return p.avant !== false; }));
+    var corpsArriere = corpsImages(paths.filter(function (p) { return p.avant === false; }));
+    var corpsAvant = corpsImages(paths.filter(function (p) { return p.avant !== false; }));
 
     var fond = opts.fondTete || "";
     var image = fond
@@ -838,7 +984,7 @@
       + 'viewBox="' + sc.x + " " + sc.y + " " + sc.w + " " + sc.h + '" width="' + sc.w + '" height="' + sc.h + '">\n'
       + "  <!--\n"
       + "    Frutiparc — gabarit d'accessoire" + (opts.nom ? " (" + opts.nom + ")" : "")
-      + ", variante " + variante + ".\n"
+      + ", variante " + variante + (nb ? ", animée sur " + nb + " images" : "") + ".\n"
       + "\n"
       + "    DESSINE LES ZONES RECOLORABLES EN NIVEAUX DE GRIS.\n"
       + "    Les calques « couleur1 », « couleur2 » et « couleur3 » sont teintés par les\n"
@@ -869,6 +1015,13 @@
       + "        bonnet, ce qui pend dans le dos). Souvent vide.\n"
       + "      · « accessoire »         : ce qui passe DEVANT. C'est le calque habituel.\n"
       + "    Un tracé rangé dans le mauvais des deux ressortira du mauvais côté du visage.\n"
+      + "\n"
+      + "    UNE ANIMATION ? Range ce qui bouge dans des calques « image1 », « image2 »…\n"
+      + "    (dans « accessoire » ou « accessoire-arriere ») : chaque image montre son\n"
+      + "    calque, plus tout ce qui n'est dans AUCUN calque « imageN » — le décor commun.\n"
+      + "    Le suffixe « x3 » (« image2 x3 ») tient l'image 3/24 de seconde ; sans lui,\n"
+      + "    la durée se règle à l'import. Plusieurs fichiers SVG déposés ensemble font\n"
+      + "    aussi une animation, une image par fichier, dans l'ordre de leurs noms.\n"
       + "\n"
       + "    « repere » (la tête) n'est qu'un fond : verrouille-le, il est ignoré au retour.\n"
       + "    Ne change pas la taille du plan de travail (" + sc.w + "×" + sc.h + ").\n"
@@ -935,7 +1088,7 @@
   }
 
   var API = { repere: repere, exporter: exporter, exporterBrut: exporterBrut,
-    exporterSVG: exporterSVG,
+    exporterSVG: exporterSVG, animer: animer, enchainer: enchainer, nbImages: nbImages,
     dessinee: dessinee, fondTete: fondTete, injecter: injecter, versRgb: versRgb };
   if (typeof module === "object" && module.exports) module.exports = API;
   else global.FPBouilleVariante = API;

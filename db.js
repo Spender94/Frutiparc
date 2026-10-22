@@ -468,6 +468,9 @@ async function initSchema() {
       -- ligne reste — son index est un contrat, la place ne se libère jamais —
       -- mais elle ne se montre plus.
       ALTER TABLE bouille_variantes ADD COLUMN IF NOT EXISTS purge BOOLEAN NOT NULL DEFAULT FALSE;
+      -- L'ANIMATION d'une variante ({durees:[…]}, JSON) : la tenue de chaque
+      -- image. NULL pour une variante fixe — toutes celles d'avant.
+      ALTER TABLE bouille_variantes ADD COLUMN IF NOT EXISTS anim TEXT;
 
       -- Map challenge du jour de Mini-Wave, pour la même raison que celle de
       -- MotionBall : la graine est stable (elle vient de la date), mais les
@@ -5165,19 +5168,21 @@ async function loadBouilleVariantes() {
     coiffureRef: r.coiffure, retire: !!r.retire, purge: !!r.purge,
     auteur: r.auteur || '',
     paths: (() => { try { return JSON.parse(r.paths); } catch (e) { return []; } })(),
+    anim: (() => { try { return r.anim ? JSON.parse(r.anim) : null; } catch (e) { return null; } })(),
     createdAt: r.created_at,
   }));
 }
 async function upsertBouilleVariante(v, rang) {
   await pool.query(
-    'INSERT INTO bouille_variantes (id, nom, famille, type, idx, coiffure, paths, retire, rang, auteur, purge)' +
-    ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)' +
+    'INSERT INTO bouille_variantes (id, nom, famille, type, idx, coiffure, paths, retire, rang, auteur, purge, anim)' +
+    ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)' +
     ' ON CONFLICT (id) DO UPDATE SET nom = EXCLUDED.nom, idx = EXCLUDED.idx,' +
     ' paths = EXCLUDED.paths, retire = EXCLUDED.retire, rang = EXCLUDED.rang,' +
-    ' auteur = EXCLUDED.auteur, purge = EXCLUDED.purge',
+    ' auteur = EXCLUDED.auteur, purge = EXCLUDED.purge, anim = EXCLUDED.anim',
     [v.id, v.nom || '', v.famille || 0, v.type,
      (v.index == null ? null : v.index), v.coiffureRef || 8,
-     JSON.stringify(v.paths || []), !!v.retire, rang || 0, String(v.auteur || ''), !!v.purge]);
+     JSON.stringify(v.paths || []), !!v.retire, rang || 0, String(v.auteur || ''), !!v.purge,
+     v.anim ? JSON.stringify(v.anim) : null]);
 }
 
 module.exports = {

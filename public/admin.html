@@ -809,7 +809,9 @@
   <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
     <div style="border:1px solid #cfe0b3;border-radius:8px;padding:12px;min-width:330px">
       <label style="font-size:12px;color:#555;display:block;margin-bottom:8px">SVG retravaillé :
-        <input type="file" id="va-fichier" accept=".svg,image/svg+xml"></label>
+        <input type="file" id="va-fichier" accept=".svg,image/svg+xml" multiple></label>
+      <label style="font-size:12px;color:#555;display:block;margin:-2px 0 8px" title="Une variante ANIMÉE : des calques « image1 », « image2 »… dans le SVG, ou plusieurs SVG choisis ensemble (une image par fichier, dans l'ordre des noms). Chaque image se tient ce nombre de 24es de seconde, sauf si son calque dit « image2 x5 ».">Animation — tenue d'une image (1/24 s)
+        <input type="number" id="va-tenue" min="1" max="96" value="3" style="width:56px"> <span id="va-cadence" style="color:#888"></span></label>
       <div style="display:flex;gap:12px;align-items:flex-start">
         <span style="display:block;width:96px;height:96px;flex:0 0 96px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden" id="va-apercu-hote"></span>
         <div style="flex:1">
@@ -5340,6 +5342,11 @@ async function toggleBouilleEdit(username, allow) {
 // le fait qu'on ne supprime jamais une entrée (on la retire, sa place reste).
 let vaPaths = null;
 let vaDefs = null;
+// Une variante ANIMÉE : la tenue de chaque image ({durees}), null pour une fixe.
+// `vaSource` garde ce qu'on a lu (un lot de tracés par fichier) pour refaire
+// la pellicule quand la tenue change, sans relire les fichiers.
+let vaAnim = null;
+let vaSource = null;
 
 function vaFamille() {
   if (vaDefs) return Promise.resolve(vaDefs);
@@ -5397,16 +5404,17 @@ function vaApercu(canvas, paths, type) {
       // elle tombera vraiment.
       deja.forEach(function (v) {
         try {
-          FPBouilleVariante.injecter(defs, { type: v.type, paths: v.paths || [],
+          FPBouilleVariante.injecter(defs, { type: v.type, paths: v.paths || [], anim: v.anim || null,
             coiffureRef: v.coiffureRef, index: (v.index == null ? undefined : v.index),
             vide: !(v.paths && v.paths.length) });
         } catch (e) { /* une variante fautive n'empêche pas l'essai */ }
       });
-      const inj = FPBouilleVariante.injecter(defs, { type: type, paths: paths, coiffureRef: 8 });
+      const inj = FPBouilleVariante.injecter(defs, { type: type, paths: paths, anim: vaAnim, coiffureRef: 8 });
       if (!inj) return null;
       const p = (v) => FPBouilleMoteur.encode62(v, 2);
       const etat = p(0) + p(3) + p(0) + p(8) + p(0) + p(2) + p(7) + p(type) + p(inj.variante) + p(29) + p(19) + p(24);
-      new FPBouilleMoteur.Bouille(canvas, defs, { etat: etat, anime: false, alea: () => 0.5 });
+      // Une variante animée se montre EN MOUVEMENT : le moteur tranche seul.
+      new FPBouilleMoteur.Bouille(canvas, defs, { etat: etat, anime: vaAnim ? undefined : false, alea: () => 0.5 });
       return inj;
     });
 }
@@ -5430,14 +5438,38 @@ function vaRepreview() {
     }
     // L'index annoncé est celui qu'elle AURA : les publiées sont déjà en place.
     etat.textContent = vaPaths.length + ' tracés · niveaux ' + JSON.stringify(niv)
+      + (vaAnim ? ' · animée : ' + vaAnim.durees.length + ' images, '
+        + (vaAnim.durees.reduce((a, b) => a + b, 0) / 24).toFixed(2).replace('.', ',') + ' s la boucle' : '')
       + ' → variante ' + inj.variante + ' de l’accessoire #' + inj.accId;
     bouton.disabled = false;
     return inj;
   });
 }
 
+/*
+ * LA PELLICULE, refaite depuis ce qu'on a lu : un fichier → ses calques
+ * « imageN » ; plusieurs fichiers → une image chacun. La tenue par défaut vient
+ * du champ, celle d'un calque « image2 x5 » l'emporte.
+ */
+function vaPreparer() {
+  const tenue = Math.max(1, Math.min(96, Number($('#va-tenue').value) || 3));
+  const cad = $('#va-cadence');
+  if (cad) cad.textContent = '≈ ' + (Math.round(24 / tenue * 10) / 10).toString().replace('.', ',') + ' images/s';
+  if (!vaSource || !vaSource.length) { vaPaths = null; vaAnim = null; return; }
+  const r = vaSource.length > 1
+    ? FPBouilleVariante.enchainer(vaSource, tenue)
+    : FPBouilleVariante.animer(vaSource[0], tenue);
+  vaPaths = r.paths; vaAnim = r.anim;
+}
+
+// `svgTexte` : un texte, ou plusieurs (une image par fichier).
 function vaCharger(svgTexte) {
-  try { vaPaths = FPBouilleCustom.charger(svgTexte); } catch (e) { vaPaths = null; }
+  const textes = Array.isArray(svgTexte) ? svgTexte : [svgTexte];
+  try {
+    vaSource = textes.map(function (t) { return FPBouilleCustom.charger(t); })
+      .filter(function (l) { return l && l.length; });
+  } catch (e) { vaSource = null; }
+  vaPreparer();
   const etat = $('#va-etat'), bouton = $('#va-publier');
   if (!vaPaths || !vaPaths.length) {
     etat.textContent = 'SVG illisible ou sans dessin.'; bouton.disabled = true;
@@ -5459,7 +5491,7 @@ async function publierVariante() {
   const repBase = FPBouilleVariante.repere(await FPBouilleSwf.charger('/fbouille/famille0.swf'), type, 8);
   const corps = JSON.stringify({ nom, famille: 0, type, coiffureRef: 8,
     auteur: ($('#va-auteur').value || '').trim(),
-    base: repBase ? repBase.variantes : 0, paths: vaPaths });
+    base: repBase ? repBase.variantes : 0, paths: vaPaths, anim: vaAnim });
   try {
     const r = await fetch('/api/admin/variantes', { method: 'POST', headers: h,
       body: new Blob([corps], { type: 'application/octet-stream' }) });
@@ -5470,7 +5502,7 @@ async function publierVariante() {
     // index : sans cet oubli, l'aperçu de boutique retomberait sur la dernière
     // image du rouleau — souvent une image vide, donc un accessoire disparu.
     if (window.FPBouilleVignette && FPBouilleVignette.oublierFamilles) FPBouilleVignette.oublierFamilles();
-    $('#va-nom').value = ''; vaPaths = null; $('#va-publier').disabled = true;
+    $('#va-nom').value = ''; vaPaths = null; vaAnim = null; vaSource = null; $('#va-publier').disabled = true;
     $('#va-apercu-hote').innerHTML = ''; $('#va-fichier').value = '';
     loadVariantes();
   } catch (e) { $('#va-etat').textContent = 'Erreur réseau.'; }
@@ -5512,7 +5544,7 @@ async function loadVariantes() {
         + '<td style="white-space:nowrap">' + auteurCell(v.auteur, 'changerAuteurVariante(\'' + v.id + '\')') + '</td>'
         + '<td>' + esc(FPBouille.accName(v.type)) + '</td>'
         + '<td><code>' + (v.index != null ? v.index : (bases[cle] + v.rang)) + '</code></td>'
-        + '<td>' + v.nb + '</td>'
+        + '<td>' + v.nb + (v.images > 1 ? ' <span title="variante animée">· ' + v.images + ' images</span>' : '') + '</td>'
         + '<td style="white-space:nowrap">' + (v.retire
           ? '<button class="btn-danger btn-sm" onclick="purgerVariante(\'' + v.id + '\')" title="L\'effacer de cette liste ; sa place dans le rouleau reste prise.">Purger</button>'
           : '<button class="btn-success btn-sm" onclick="variantEnBoutique(\'' + v.id + '\',' + v.type + ',' + (v.index != null ? v.index : (bases[cle] + v.rang)) + ',this.dataset.nom,this.dataset.auteur)" data-nom="' + esc(v.nom) + '" data-auteur="' + esc(v.auteur || '') + '">→ Boutique</button> '
@@ -5528,7 +5560,7 @@ async function loadVariantes() {
     if (tour !== vaTour) return;
     const index = {};
     (pub.liste || []).forEach(function (v, i) {
-      const inj = FPBouilleVariante.injecter(neuf, { type: v.type, paths: v.paths || [],
+      const inj = FPBouilleVariante.injecter(neuf, { type: v.type, paths: v.paths || [], anim: v.anim || null,
         coiffureRef: v.coiffureRef, vide: !(v.paths && v.paths.length) });
       if (inj) index[i] = inj.variante;
     });
@@ -5540,7 +5572,7 @@ async function loadVariantes() {
       const p = (x) => FPBouilleMoteur.encode62(x, 2);
       new FPBouilleMoteur.Bouille(c, neuf, {
         etat: p(0) + p(3) + p(0) + p(8) + p(0) + p(2) + p(7) + p(v.type) + p(index[i]) + p(29) + p(19) + p(24),
-        anime: false, alea: () => 0.5 });
+        anime: v.images > 1 ? undefined : false, alea: () => 0.5 });
     });
   } catch (e) { /* silencieux */ }
 }
@@ -5595,25 +5627,44 @@ async function retirerVariante(id) {
   loadVariantes();
 }
 
+// Des fichiers SVG lus en texte, DANS L'ORDRE DE LEURS NOMS : une suite
+// « hélice-01.svg, hélice-02.svg… » fait une pellicule dans le bon sens, quel
+// que soit l'ordre où le sélecteur de fichiers les rend.
+function lireSvgs(files) {
+  const liste = Array.prototype.slice.call(files || []).sort(function (a, b) {
+    return a.name.localeCompare(b.name, 'fr', { numeric: true });
+  });
+  return Promise.all(liste.map(function (f) {
+    return new Promise(function (resolve) {
+      const r = new FileReader();
+      r.onload = function () { resolve(String(r.result)); };
+      r.onerror = function () { resolve(''); };
+      r.readAsText(f);
+    });
+  }));
+}
+
 // Un fichier SVG choisi à la volée, lu et rendu en aplats — pour remplacer
 // le dessin d'une variante ou d'un accessoire maison sans rien recréer.
-function choisirSvg() {
+// `plusieurs` : on peut en choisir une suite, et l'on rend un lot de tracés
+// par fichier (une variante animée), ou null.
+function choisirSvg(plusieurs) {
   return new Promise(function (resolve) {
     const inp = document.createElement('input');
     inp.type = 'file'; inp.accept = '.svg,image/svg+xml'; inp.style.display = 'none';
+    if (plusieurs) inp.multiple = true;
     document.body.appendChild(inp);
     inp.addEventListener('change', function () {
-      const f = inp.files[0];
+      const fichiers = inp.files;
       inp.remove();
-      if (!f) return resolve(null);
-      const r = new FileReader();
-      r.onload = function () {
-        let paths = null;
-        try { paths = FPBouilleCustom.charger(String(r.result)); } catch (e) { paths = null; }
-        resolve(paths && paths.length ? paths : null);
-      };
-      r.onerror = function () { resolve(null); };
-      r.readAsText(f);
+      if (!fichiers || !fichiers.length) return resolve(null);
+      lireSvgs(plusieurs ? fichiers : [fichiers[0]]).then(function (textes) {
+        const lots = textes.map(function (t) {
+          try { return FPBouilleCustom.charger(t); } catch (e) { return null; }
+        }).filter(function (l) { return l && l.length; });
+        if (!lots.length) return resolve(null);
+        resolve(plusieurs ? lots : lots[0]);
+      });
     });
     inp.click();
   });
@@ -5625,15 +5676,20 @@ function choisirSvg() {
  * boutique et les têtes qui la portent montrent le nouveau dessin.
  */
 async function remplacerVariante(id) {
-  const paths = await choisirSvg();
-  if (!paths) { toast('SVG illisible ou sans dessin.'); return; }
+  // Plusieurs fichiers, ou des calques « imageN » : la variante devient animée
+  // (et un SVG fixe arrête une variante qui l'était).
+  const lot = await choisirSvg(true);
+  if (!lot) { toast('SVG illisible ou sans dessin.'); return; }
+  const tenue = Math.max(1, Math.min(96, Number(($('#va-tenue') || {}).value) || 3));
+  const { paths, anim } = lot.length > 1
+    ? FPBouilleVariante.enchainer(lot, tenue) : FPBouilleVariante.animer(lot[0], tenue);
   const h = hdr(); h['Content-Type'] = 'application/octet-stream';
   try {
     const r = await fetch('/api/admin/variantes/' + encodeURIComponent(id), { method: 'PUT', headers: h,
-      body: new Blob([JSON.stringify({ paths })], { type: 'application/octet-stream' }) });
+      body: new Blob([JSON.stringify({ paths, anim })], { type: 'application/octet-stream' }) });
     const j = await r.json();
     if (!j.ok) { toast('Erreur : ' + (j.error || '?')); return; }
-    toast('Dessin remplacé (' + j.nb + ' tracés, index ' + j.index + ')');
+    toast('Dessin remplacé (' + j.nb + ' tracés' + (j.images > 1 ? ', ' + j.images + ' images' : '') + ', index ' + j.index + ')');
   } catch (e) { toast('Erreur réseau.'); return; }
   if (window.FPBouilleVignette && FPBouilleVignette.oublierFamilles) FPBouilleVignette.oublierFamilles();
   loadVariantes();
@@ -5678,11 +5734,12 @@ async function purgerVariantesRetirees() {
 (function () {
   const inp = document.getElementById('va-fichier');
   if (inp) inp.addEventListener('change', function () {
-    const f = this.files[0]; if (!f) return;
-    const r = new FileReader();
-    r.onload = function () { vaCharger(String(r.result)); };
-    r.readAsText(f);
+    if (!this.files || !this.files.length) return;
+    lireSvgs(this.files).then(function (textes) { vaCharger(textes.length > 1 ? textes : textes[0]); });
   });
+  // La tenue refait la pellicule sans relire les fichiers.
+  const ten = document.getElementById('va-tenue');
+  if (ten) ten.addEventListener('change', function () { vaPreparer(); vaRepreview(); });
   // Les accessoires extensibles : ceux qui ont déjà plusieurs variantes.
   const sel = document.getElementById('va-type');
   if (sel) {
