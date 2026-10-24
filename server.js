@@ -11651,7 +11651,7 @@ async function quetesDoigtAssurer(username) {
   if (deja) return deja;
   const pistes = [];
   for (let t = 0; t < 6; t++) {
-    const rec = quetesRecordsParc.get(`bkiwi_track${t}_classic`);
+    const rec = quetesRecordBkiwi(t);
     if (rec && Number(rec.score) > 0) pistes.push({ t, rec });
   }
   if (!pistes.length) return null;
@@ -11811,16 +11811,20 @@ let quetesPrimesSemaine = null;
 // « détrôner » un 100 % n'a pas de sens) ; plus, du Challenge aussi, les deux
 // séries de victoires de Grapiz et de Frutibandas (les championnats, une note
 // Elo, ne sont pas des records que l'on bat) ; plus les six circuits de
-// Burning Kiwi, en RECORD ABSOLU : le meilleur temps de course du circuit,
-// tous modes confondus, contre-la-montre compris — le classement permanent
-// du circuit (bkiwi_track{n}_classic) tel que le livre des records le lit,
-// fruticards comprises (livreDesRecords).
+// Burning Kiwi, tels que le Club les affiche sous « Challenge (Classique) » :
+// le Challenge du circuit (bkiwi_track{n}_challenge), meilleur de chacun sur
+// les scores ET l'archive (livreDesRecords). Le classement permanent
+// (bkiwi_track{n}_classic) ne fait pas foi : d'époque, le circuit y était
+// deviné, et des courses sont rangées sous le mauvais — le Club l'écarte
+// pour la même raison (public/club/index.html, bkiwiRankingFor).
 const QUETES_PRIMES_EXCLUS = new Set(['minifever_arcade', 'mb2_classic']);
 const QUETES_PRIMES_EN_PLUS = ['grapiz_challenge', 'bandas_challenge']
-  .concat(Array.from({ length: 6 }, (_, i) => `bkiwi_track${i}_classic`));
+  .concat(Array.from({ length: 6 }, (_, i) => `bkiwi_track${i}_challenge`));
 // Une liste réglée par l'admin du temps d'autres classements se relit avec ceux-ci.
 const QUETES_PRIMES_RENOMMES = Object.assign({ grapiz_champion: 'grapiz_challenge', bandas_champion: 'bandas_challenge' },
-  Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`bkiwi_track${i}_challenge`, `bkiwi_track${i}_classic`])));
+  Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`bkiwi_track${i}_classic`, `bkiwi_track${i}_challenge`])));
+// Le record de Burning Kiwi d'un circuit, celui des mises à prix et du défi au doigt.
+const quetesRecordBkiwi = (t) => quetesRecordsParc.get(`bkiwi_track${t}_challenge`);
 function quetesPrimesClassements() {
   const l = quetesReglages.primes.classements;
   const base = (l && l.length ? l.map((rk) => QUETES_PRIMES_RENOMMES[rk] || rk) : QUETES_PERSO_RK.concat(QUETES_PRIMES_EN_PLUS));
@@ -11878,7 +11882,9 @@ async function chargerQuetesRecords() {
     if (!rks.has(rk) || !Number.isFinite(Number(score)) || NPC_USERNAMES.has(String(u).toLowerCase())) return;
     if (RANKINGS[rk].lowerIsBetter && Number(score) <= 0) return;
     const cur = quetesRecordsParc.get(rk);
-    if (!cur || isScoreBetter(rk, Number(score), String(data || ''), Number(cur.score), String(cur.data || ''))) {
+    // À égalité, le PLUS ANCIEN tient le record — la règle du Club (scoreComparator).
+    const avant = cur && Number(score) === Number(cur.score) && at && cur.at && String(at) < String(cur.at);
+    if (!cur || avant || isScoreBetter(rk, Number(score), String(data || ''), Number(cur.score), String(cur.data || ''))) {
       quetesRecordsParc.set(rk, { username: String(u).toLowerCase(), score: Number(score), data: String(data || ''), at: at || null, source: source || '' });
     }
   };
@@ -11965,14 +11971,21 @@ function quetesPrimeScore(u, evt) {
 // La mesure des quêtes qui lit ce classement (les persos d'abord, puis toutes :
 // les circuits de Burning Kiwi ont la leur, en temps).
 function quetesMesureDe(rk, sansData) {
+  rk = quetesRkMesure(rk);
   const ok = (k) => Quetes.MESURES[k].source.rk === rk && !Quetes.MESURES[k].source.doigt && (!sansData || Quetes.MESURES[k].source.data === undefined);
   return Quetes.MESURES_PERSO.find(ok) || Object.keys(Quetes.MESURES).find(ok) || null;
+}
+// Le Challenge d'un circuit de Burning Kiwi se lit comme le circuit : un temps
+// de course (la mesure « bkiwi-circuitN » porte le classement permanent).
+function quetesRkMesure(rk) {
+  const R = RANKINGS[rk];
+  return (R && R.game === 'bkiwi' && R.bkiwiTrack !== undefined) ? `bkiwi_track${R.bkiwiTrack}_classic` : rk;
 }
 function quetesValeurLisible(rk, score, data) {
   const cle = quetesMesureDe(rk, true);
   const m = cle && Quetes.MESURES[cle];
   if (!m) return Quetes.nombre(score);
-  const v = Quetes.valeurDe(m, { type: 'score', rk, v: Number(score), data: String(data || '') });
+  const v = Quetes.valeurDe(m, { type: 'score', rk: quetesRkMesure(rk), v: Number(score), data: String(data || '') });
   return v == null ? Quetes.nombre(score) : Quetes.formater(m, v);
 }
 function quetesPrimesVue(moi) {
