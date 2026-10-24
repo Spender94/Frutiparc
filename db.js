@@ -1200,6 +1200,27 @@ async function initSchema() {
         pic_at    TIMESTAMPTZ,
         parties   JSONB NOT NULL DEFAULT '{}'::jsonb
       );
+      -- L'ACTIVITÉ DE CHACUN, jour par jour : les minutes où il a vraiment
+      -- interagi (une trame de chat, une partie, un jeu ouvert à l'écran), le
+      -- nombre de sessions qu'elles font (une pause de plus d'un quart d'heure
+      -- en ouvre une autre), et ses messages dans les salons.
+      CREATE TABLE IF NOT EXISTS activite_jour (
+        jour      TEXT NOT NULL,
+        username  TEXT NOT NULL,
+        minutes   INTEGER NOT NULL DEFAULT 0,
+        sessions  INTEGER NOT NULL DEFAULT 0,
+        chat      INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (jour, username)
+      );
+      -- Qui a joué à quoi, jour par jour (les parties classées de stats_jour,
+      -- mais par joueur) : de quoi compter les joueurs DIFFÉRENTS d'un jeu.
+      CREATE TABLE IF NOT EXISTS parties_joueur_jour (
+        jour      TEXT NOT NULL,
+        username  TEXT NOT NULL,
+        jeu       TEXT NOT NULL,
+        n         INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (jour, username, jeu)
+      );
 
       -- Tracks one-off data migrations that can't be expressed as idempotent
       -- DDL (e.g. a one-time UPDATE that must NOT re-run on later boots).
@@ -4125,6 +4146,78 @@ async function statsAdmin(jourDebut) {
   return { totaux, presence, stats, inscrits, forum, chat };
 }
 
+// ── L'activité de chacun (onglet Statistiques, section Communauté) ──
+// Une minute active de plus pour chacun des pseudos, et `sessions` (0 ou 1) :
+// une seule requête pour tous les présents de la minute.
+async function activiteMinutes(jour, lignes) {
+  if (!lignes.length) return;
+  await pool.query(
+    `INSERT INTO activite_jour (jour, username, minutes, sessions)
+       SELECT $1, u, 1, s FROM unnest($2::text[], $3::int[]) AS t(u, s)
+     ON CONFLICT (jour, username) DO UPDATE
+       SET minutes = activite_jour.minutes + 1, sessions = activite_jour.sessions + EXCLUDED.sessions`,
+    [jour, lignes.map((l) => l.u), lignes.map((l) => l.session ? 1 : 0)]);
+}
+async function activiteChat(jour, username) {
+  await pool.query(
+    `INSERT INTO activite_jour (jour, username, chat) VALUES ($1, $2, 1)
+     ON CONFLICT (jour, username) DO UPDATE SET chat = activite_jour.chat + 1`,
+    [jour, String(username).toLowerCase()]);
+}
+async function partieJoueurNoter(jour, username, jeu) {
+  await pool.query(
+    `INSERT INTO parties_joueur_jour (jour, username, jeu, n) VALUES ($1, $2, $3, 1)
+     ON CONFLICT (jour, username, jeu) DO UPDATE SET n = parties_joueur_jour.n + 1`,
+    [jour, String(username).toLowerCase(), jeu]);
+}
+/*
+ * LES DONNÉES BRUTES DE LA SECTION COMMUNAUTÉ, depuis `jourDebut` (inclus) :
+ * le calcul est fait à part (statsCommunaute.js), sur ces lignes, pour qu'il
+ * se teste sans base. Rien que des pseudos en minuscules et des jours de Paris.
+ *
+ *   presence   (jour, u)            les jours où chacun s'est montré
+ *   premierJour                     le premier jour relevé de presence_jour
+ *   inscrits   (u, jour)            tous les comptes et leur jour d'inscription
+ *   forum      (jour, u)            qui a écrit sur le forum, quel jour
+ *   activite   (jour, u, minutes, sessions, chat)
+ *   premiereActivite                le premier jour relevé de activite_jour
+ *   parties    (jour, u, jeu|rk)    qui a joué : relevé par joueur, et, pour les
+ *                                  jours d'avant, l'archive du Challenge et les
+ *                                  records améliorés (rk, à traduire en jeu)
+ *   actives    (u)                  les inscrits de la période qui ont fait
+ *                                  quelque chose : une partie, un message
+ */
+async function statsCommunaute(jourDebut, jourFenetre) {
+  const jourDe = (col) => `to_char(${col} AT TIME ZONE 'Europe/Paris', 'YYYY-MM-DD')`;
+  const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
+  const [presence, premier, inscrits, forum, activite, premiereAct, partiesJ, archive, records, actives] = await Promise.all([
+    q('SELECT jour, username AS u FROM presence_jour WHERE jour >= $1', [jourDebut]),
+    q('SELECT min(jour) AS j FROM presence_jour'),
+    q(`SELECT lower(username) AS u, ${jourDe('created_at')} AS jour FROM users WHERE created_at IS NOT NULL`),
+    q(`SELECT DISTINCT ${jourDe('created_at')} AS jour, lower(author_username) AS u FROM forum_posts
+        WHERE ${jourDe('created_at')} >= $1`, [jourDebut]),
+    q('SELECT jour, username AS u, minutes, sessions, chat FROM activite_jour WHERE jour >= $1', [jourDebut]),
+    q('SELECT min(jour) AS j FROM activite_jour'),
+    q('SELECT jour, username AS u, jeu FROM parties_joueur_jour WHERE jour >= $1', [jourDebut]),
+    q('SELECT DISTINCT day_key AS jour, lower(username) AS u, ranking_id AS rk FROM challenge_score_archive WHERE day_key >= $1', [jourDebut]),
+    q(`SELECT DISTINCT ${jourDe('s.updated_at')} AS jour, lower(u.username) AS u, s.ranking_id AS rk
+         FROM scores s JOIN users u ON u.id = s.user_id WHERE ${jourDe('s.updated_at')} >= $1`, [jourDebut]),
+    // L'ACTIVATION : une trace de jeu ou de parole, de quelque source que ce soit.
+    q(`SELECT lower(u.username) AS u FROM users u
+        WHERE ${jourDe('u.created_at')} >= $1 AND (
+          EXISTS (SELECT 1 FROM scores s WHERE s.user_id = u.id)
+          OR EXISTS (SELECT 1 FROM challenge_score_archive a WHERE lower(a.username) = lower(u.username))
+          OR EXISTS (SELECT 1 FROM parties_joueur_jour p WHERE p.username = lower(u.username))
+          OR EXISTS (SELECT 1 FROM forum_posts f WHERE lower(f.author_username) = lower(u.username))
+          OR EXISTS (SELECT 1 FROM activite_jour c WHERE c.username = lower(u.username) AND c.chat > 0))`, [jourFenetre]),
+  ]);
+  return {
+    presence, premierJour: (premier[0] && premier[0].j) || null,
+    inscrits, forum, activite, premiereActivite: (premiereAct[0] && premiereAct[0].j) || null,
+    parties: partiesJ.concat(archive, records), actives: actives.map((r) => r.u),
+  };
+}
+
 /*
  * LE PALMARÈS — les chiffres « sympas » qu'on partage avec la communauté.
  *
@@ -5480,6 +5573,10 @@ module.exports = {
   statsPicNoter,
   statsPartieNoter,
   statsAdmin,
+  statsCommunaute,
+  activiteMinutes,
+  activiteChat,
+  partieJoueurNoter,
   palmares,
   nomsAffiches,
   forumDernierMessageDe,

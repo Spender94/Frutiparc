@@ -214,6 +214,12 @@
   .st-carte.vif { border-color: #8cc152; }
   .st-carte.vif .v::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #2ecc40; margin-right: 6px; vertical-align: middle; box-shadow: 0 0 0 3px rgba(46,204,64,.2); }
   .st-deux { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .st-note { font-weight: normal; color: #6c8f3a; font-size: 11px; }
+  h4 .st-note { color: #fff; opacity: .85; }
+  .st-table { width: 100%; margin: 0; }
+  .st-table td, .st-table th { padding: 3px 6px; }
+  .st-liste { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px dotted #D6F7B5; }
+  .st-liste span:last-child { color: #6c8f3a; white-space: nowrap; }
   .st-barre { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
   .st-barre .n { width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .st-barre .b { height: 12px; background: #8cc152; border-radius: 3px; min-width: 2px; }
@@ -541,6 +547,18 @@
   </div>
   <h3>Le parc</h3>
   <div class="st-cartes" id="stats-totaux"></div>
+  <h3>La communauté</h3>
+  <div class="st-cartes" id="stats-communaute"></div>
+  <div class="st-deux" style="margin-top:10px">
+    <div><h4>Ancienneté des actifs <span class="st-note">(sur la période)</span></h4><div id="stats-anciennete" class="section-content"></div></div>
+    <div><h4>Rétention par semaine d'inscription</h4><div class="section-content"><table class="st-table">
+      <thead><tr><th>Semaine du</th><th>Inscrits</th><th title="Revenus entre le 7e et le 13e jour après leur inscription">J+7</th><th title="Revenus entre le 30e et le 36e jour après leur inscription">J+30</th></tr></thead>
+      <tbody id="stats-cohortes"></tbody></table></div></div>
+    <div><h4>Jours actifs par joueur — 7 derniers jours</h4><div id="stats-jours7" class="section-content"></div></div>
+    <div><h4>Jours actifs par joueur — 30 derniers jours</h4><div id="stats-jours30" class="section-content"></div></div>
+    <div><h4>Les habitués <span class="st-note">(jours venus sur 30 · sur 7)</span></h4><div id="stats-habitues" class="section-content"></div></div>
+    <div><h4>Derniers retours <span class="st-note">(après 14 jours d'absence ou plus)</span></h4><div id="stats-retours" class="section-content"></div></div>
+  </div>
   <h3>Jour par jour</h3>
   <div class="section-content">
     <div class="st-legende">
@@ -551,15 +569,16 @@
     <div id="stats-graphe"></div>
   </div>
   <table style="margin-top:8px">
-    <thead><tr><th>Jour</th><th>Connectés</th><th>Pic</th><th>Inscriptions</th><th>Forum</th><th>Chat</th><th>Parties</th></tr></thead>
+    <thead><tr><th>Jour</th><th>Connectés</th><th title="Comptes de moins d'un mois parmi les connectés">dont nouveaux</th><th title="Revenus après au moins 14 jours d'absence">Retours</th><th>Pic</th><th>Inscriptions</th><th>Forum</th><th>Chat</th><th>Parties</th><th title="Minutes d'activité réelle par joueur actif">Temps actif</th></tr></thead>
     <tbody id="stats-jours-body"></tbody>
   </table>
   <h3>Parties classées par jeu</h3>
   <table>
-    <thead><tr><th>Jeu</th><th>7 derniers jours</th><th id="stats-jeux-fenetre">Sur la période</th><th style="width:45%"></th></tr></thead>
+    <thead><tr><th>Jeu</th><th>Parties (7 j)</th><th id="stats-jeux-fenetre">Parties (période)</th><th title="Joueurs différents">Joueurs (7 j)</th><th title="Joueurs différents">Joueurs (période)</th><th title="Parties par joueur sur la période">Parties / joueur</th><th style="width:30%"></th></tr></thead>
     <tbody id="stats-jeux"></tbody>
   </table>
-  <p style="color:#6c8f3a;margin-top:10px">Les connectés distincts, le pic et les parties sont relevés depuis la mise en place de cet onglet : les jours d'avant restent vides. « Actifs » compte les comptes dont la dernière connexion tombe dans la période ; « Parties » compte les parties terminées avec un score (le tour et la course d'une même partie de Burning Kiwi ne comptent qu'une fois).</p>
+  <p style="color:#6c8f3a;margin-top:10px"><b>La communauté.</b> <i>Rétention</i> : part des inscrits revenus au moins une fois entre le 7e et le 13e jour (J+7), ou entre le 30e et le 36e (J+30), après leur inscription — le chiffre du haut porte sur les quatre dernières semaines d'inscrits dont la semaine de retour est finie. <i>Activation</i> : inscrits de la période qui ont joué une partie classée ou écrit (forum, chat). <i>Retours</i> : Frutiz revenus après 14 (ou 30) jours sans se montrer, inscrits avant leur absence. <i>Temps actif</i> : minutes où le Frutiz a interagi (message, partie, multi) dans les cinq minutes, ou avait un jeu ouvert à l'écran ; plus d'un quart d'heure sans rien ouvre une nouvelle session. <i>Joueurs différents</i> : relevés par joueur, et, pour les jours d'avant, lus dans l'archive du Challenge et les records améliorés. Ce qui dépend d'un relevé neuf (temps actif, chat par joueur) part de sa mise en place ; une case « – » est une mesure qu'on n'a pas, pas un zéro.</p>
+  <p style="color:#6c8f3a;margin-top:6px">Les connectés distincts, le pic et les parties sont relevés depuis la mise en place de cet onglet : les jours d'avant restent vides. « Actifs » compte les comptes dont la dernière connexion tombe dans la période ; « Parties » compte les parties terminées avec un score (le tour et la course d'une même partie de Burning Kiwi ne comptent qu'une fois).</p>
 </div>
 
 <div class="content" id="tab-palmares" style="display:none">
@@ -2021,6 +2040,63 @@ function statsBarres(obj, nomDe) {
   return e.map(([k, n]) => `<div class="st-barre"><span class="n">${esc(nomDe(k))}</span>`
     + `<span class="b" style="width:${Math.round(260 * n / max)}px"></span><b>${n}</b></div>`).join('');
 }
+// Des barres DANS L'ORDRE donné (des tranches, des nombres de jours), pas triées.
+function statsBarresOrdre(liste) {
+  if (!liste || !liste.some((x) => x.n)) return '<span style="color:#6c8f3a">Personne pour le moment.</span>';
+  const max = Math.max(1, ...liste.map((x) => x.n));
+  return liste.map((x) => `<div class="st-barre"><span class="n">${esc(x.l)}</span>`
+    + `<span class="b" style="width:${Math.round(260 * x.n / max)}px"></span><b>${x.n}</b></div>`).join('');
+}
+const statsNb = (v) => v == null ? '–' : String(v).replace('.', ',');
+const statsPct = (v) => v == null ? '–' : statsNb(v) + ' %';
+const statsDateCourte = (j) => new Date(j + 'T12:00:00Z').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+// Une durée en minutes, lisible : « 38 min », « 1 h 12 ».
+function statsDuree(min) {
+  if (min == null) return '–';
+  const m = Math.round(min);
+  return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0');
+}
+// La section Communauté : les huit indicateurs.
+function statsCommunaute(c, erreur) {
+  const vide = (msg) => `<div class="section-content">${msg}</div>`;
+  if (!c) {
+    $('#stats-communaute').innerHTML = vide(erreur ? 'Indisponible : ' + esc(erreur) : 'Pas de base de données : rien à mesurer.');
+    for (const id of ['#stats-anciennete', '#stats-jours7', '#stats-jours30', '#stats-habitues', '#stats-retours']) $(id).innerHTML = '';
+    $('#stats-cohortes').innerHTML = '';
+    return;
+  }
+  const r7 = c.retention.j7, r30 = c.retention.j30;
+  const coh = (r) => r ? `<small>${r.revenus} / ${r.inscrits} inscrits du ${statsDateCourte(r.du)} au ${statsDateCourte(r.au)}</small>` : '<small>pas encore mesurable</small>';
+  const ja = c.joursActifs, se = c.sessions, pa = c.participants, ac = c.activation;
+  $('#stats-communaute').innerHTML =
+      statsCarte(`${statsPct(r7 && r7.taux)} ${coh(r7)}`, 'rétention J+7')
+    + statsCarte(`${statsPct(r30 && r30.taux)} ${coh(r30)}`, 'rétention J+30')
+    + statsCarte(`${statsPct(ac.taux)} <small>${ac.actives} / ${ac.inscrits} inscrits</small>`, 'inscrits activés (période)')
+    + statsCarte(`${c.reactives.j14} <small>/ ${c.reactives.j30}</small>`, 'revenus après 14 j / 30 j d\'absence (période)')
+    + statsCarte(`${statsNb(ja.s7.moyenne)} <small>j sur 7 · ${statsNb(ja.s30.moyenne)} j sur 30</small>`, 'jours actifs moyens par joueur')
+    + statsCarte(`${statsDuree(se.minutesParJour)} <small>· sessions de ${statsDuree(se.dureeSession)}</small>`,
+      'temps actif par joueur et par jour' + (se.depuis ? ` <small>(relevé depuis le ${statsDateCourte(se.depuis)})</small>` : ' <small>(relevé à venir)</small>'))
+    + statsCarte(`${pa.ensemble.fenetre} <small>forum ${pa.forum.fenetre} · chat ${pa.chat.fenetre}</small>`,
+      `ont écrit (période) · ${pa.ensemble.semaine} sur 7 j`)
+    + statsCarte(`${(c.anciennete.tranches[0] || {}).n || 0} <small>/ ${c.anciennete.total} actifs</small>`, 'nouveaux (compte de moins d\'un mois)');
+  $('#stats-anciennete').innerHTML = statsBarresOrdre(c.anciennete.tranches.map((t) => ({ l: t.nom, n: t.n })))
+    + (c.anciennete.inconnus ? `<div class="st-note">${c.anciennete.inconnus} sans date d'inscription</div>` : '');
+  $('#stats-cohortes').innerHTML = c.retention.semaines.slice().reverse().map((w) => {
+    const cel = (r) => r ? `${statsPct(r.taux)} <span class="st-note">(${r.revenus})</span>` : '<span class="st-note">–</span>';
+    return `<tr><td>${statsDateCourte(w.lundi)}</td><td>${w.inscrits}</td><td>${cel(w.j7)}</td><td>${cel(w.j30)}</td></tr>`;
+  }).join('');
+  const jours = (rep, s) => statsBarresOrdre(rep.map((x) => ({ l: x.jours + (x.jours === '1' ? ' jour' : ' jours'), n: x.n })))
+    + `<div class="st-note">${s.joueurs} joueurs · médiane ${statsNb(s.mediane)} j${s.complet ? '' : ' · présence relevée depuis le ' + statsDateCourte(c.premierJour || '')}</div>`;
+  $('#stats-jours7').innerHTML = jours(ja.repartition7, ja.s7);
+  $('#stats-jours30').innerHTML = jours(ja.repartition30, ja.s30);
+  $('#stats-habitues').innerHTML = ja.habitues.length
+    ? ja.habitues.map((h) => `<div class="st-liste"><span>${esc(h.u)}</span><span>${h.j30} j · ${h.j7} j</span></div>`).join('')
+    : '<span style="color:#6c8f3a">Personne pour le moment.</span>';
+  $('#stats-retours').innerHTML = c.reactives.derniers.length
+    ? c.reactives.derniers.map((r) => `<div class="st-liste"><span>${esc(r.u)}</span><span>le ${statsDateCourte(r.jour)} · `
+      + (r.absence != null ? `absent ${r.absence} j` : `absent ${r.auMoins} j au moins`) + '</span></div>').join('')
+    : '<span style="color:#6c8f3a">Aucun retour sur la période.</span>';
+}
 // Le graphe : une barre par jour (connectés distincts), la ligne du pic, et un
 // point par jour qui a vu des inscriptions — en SVG, sans bibliothèque.
 function statsGraphe(jours) {
@@ -2073,21 +2149,25 @@ async function loadStats() {
         + statsCarte(`${t.forum_7} <small>· ${t.sujets_7} sujets</small>`, 'messages du forum (7 j)')
         + statsCarte(`${t.achats_30} <small>· ${t.boutique_30} kikooz</small>`, 'achats en boutique (30 j)')
       : `<div class="section-content">${d.base ? 'Base indisponible' + (d.erreur ? ' : ' + esc(d.erreur) : '') : 'Pas de base de données : seuls les chiffres en direct sont disponibles.'}</div>`;
+    statsCommunaute(d.communaute, d.erreurCommunaute);
     $('#stats-graphe').innerHTML = statsGraphe(d.jours);
     const tiret = (v) => v == null ? '<span style="color:#9fb37e">–</span>' : v;
     const somme = (o) => Object.values(o || {}).reduce((a, b) => a + (Number(b) || 0), 0);
     $('#stats-jours-body').innerHTML = d.jours.slice().reverse().map((j) => `<tr>
       <td>${new Date(j.jour + 'T12:00:00Z').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}</td>
-      <td>${tiret(j.connectes)}</td><td>${j.pic != null ? j.pic + (j.picAt ? ` <span style="color:#6c8f3a">(${statsHeure(j.picAt)})</span>` : '') : tiret(null)}</td>
+      <td>${tiret(j.connectes)}</td><td>${tiret(j.nouveaux)}</td><td>${tiret(j.reactives)}</td><td>${j.pic != null ? j.pic + (j.picAt ? ` <span style="color:#6c8f3a">(${statsHeure(j.picAt)})</span>` : '') : tiret(null)}</td>
       <td>${tiret(j.inscrits)}</td><td>${tiret(j.forum)}</td><td>${tiret(j.chat)}</td>
       <td title="${esc(Object.entries(j.parties || {}).map(([k, n]) => statsNomJeu(k) + ' : ' + n).join(', '))}">${j.parties ? somme(j.parties) : tiret(null)}</td>
+      <td>${j.minutesParJoueur != null ? statsDuree(j.minutesParJoueur) : tiret(null)}</td>
     </tr>`).join('');
-    $('#stats-jeux-fenetre').textContent = 'Sur ' + d.jours.length + ' jours';
+    $('#stats-jeux-fenetre').textContent = 'Parties (' + d.jours.length + ' j)';
     const jeux = Object.entries(d.jeux || {}).sort((a, b) => b[1].fenetre - a[1].fenetre);
     const maxJ = jeux.length ? jeux[0][1].fenetre || 1 : 1;
     $('#stats-jeux').innerHTML = jeux.length ? jeux.map(([k, v]) => `<tr><td>${esc(statsNomJeu(k))}</td><td>${v.semaine}</td><td>${v.fenetre}</td>`
+      + `<td>${tiret(v.joueursSemaine)}</td><td>${tiret(v.joueursFenetre)}</td>`
+      + `<td>${v.joueursFenetre ? statsNb(Math.round(10 * v.fenetre / v.joueursFenetre) / 10) : tiret(null)}</td>`
       + `<td><div class="st-barre"><span class="b" style="width:${Math.round(100 * v.fenetre / maxJ)}%"></span></div></td></tr>`).join('')
-      : '<tr><td colspan="4">Aucune partie relevée pour l\'instant.</td></tr>';
+      : '<tr><td colspan="7">Aucune partie relevée pour l\'instant.</td></tr>';
     $('#stats-maj').textContent = 'mis à jour à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   } catch (e) { toast('Erreur: ' + e.message); }
 }

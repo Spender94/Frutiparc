@@ -8473,8 +8473,61 @@ function noterPartie(username, jeu) {
   partiesRecentes.set(k, t);
   if (partiesRecentes.size > 5000) for (const [kk, tt] of partiesRecentes) if (t - tt > PARTIE_FUSION_MS) partiesRecentes.delete(kk);
   quetesEvenement(cle, { type: 'partie', jeu });
-  if (process.env.DATABASE_URL) db.statsPartieNoter(parisDayKey(), jeu).catch(dbErr('statsPartieNoter'));
+  noterInteraction(cle);
+  if (process.env.DATABASE_URL) {
+    db.statsPartieNoter(parisDayKey(), jeu).catch(dbErr('statsPartieNoter'));
+    db.partieJoueurNoter(parisDayKey(), cle, jeu).catch(dbErr('partieJoueurNoter'));
+  }
 }
+
+/*
+ * LE TEMPS VRAIMENT PASSÉ — pour la section Communauté des statistiques.
+ *
+ * Être connecté ne dit pas qu'on est là : un onglet oublié garde sa socket des
+ * heures, et le ping du client bat tout seul. Une minute compte donc ACTIVE si
+ * le Frutiz est connecté ET qu'il a interagi dans les cinq dernières minutes —
+ * une trame autre qu'un battement (dire quelque chose, changer de salon,
+ * jouer en multi), une partie classée, un message du forum — ou qu'un jeu est
+ * ouvert à son écran (le voyant « en partie », que le jeu entretient tant
+ * qu'il est visible). Une pause de plus d'un quart d'heure clôt la session ;
+ * la minute active suivante en ouvre une autre.
+ *
+ * Relevé à la minute, en une requête pour tous (activite_jour).
+ */
+const ACTIF_DELAI_MS = 5 * 60 * 1000;
+const SESSION_PAUSE_MS = 15 * 60 * 1000;
+// Les trames qui partent toutes seules : elles ne disent pas que quelqu'un est là.
+const TRAMES_PASSIVES = new Set(['ping', 'time', 'ip', 'serviceinfo', 'status', 'statusobj', 'v']);
+const activiteMem = new Map();   // pseudo → { vu: dernière interaction, actif: dernière minute active }
+function noterInteraction(username) {
+  const cle = String(username || '').toLowerCase();
+  if (!cle || NPC_USERNAMES.has(cle)) return;
+  const a = activiteMem.get(cle) || { vu: 0, actif: 0 };
+  a.vu = Date.now();
+  activiteMem.set(cle, a);
+}
+// Un message dans un salon : une interaction, et une ligne de plus au compteur.
+function noterChat(username) {
+  const cle = String(username || '').toLowerCase();
+  if (!cle || NPC_USERNAMES.has(cle)) return;
+  noterInteraction(cle);
+  if (process.env.DATABASE_URL) db.activiteChat(parisDayKey(), cle).catch(dbErr('activiteChat'));
+}
+function releverActivite() {
+  const t = Date.now(), lignes = [];
+  for (const u of connectesMaintenant()) {
+    const a = activiteMem.get(u) || { vu: 0, actif: 0 };
+    const enJeu = !!STATUS_INTERNAL_JEU[statusInternalOf(u)];
+    if (!enJeu && t - a.vu > ACTIF_DELAI_MS) continue;
+    lignes.push({ u, session: t - a.actif > SESSION_PAUSE_MS });
+    a.actif = t;
+    activiteMem.set(u, a);
+  }
+  if (activiteMem.size > 5000) for (const [u, a] of activiteMem) if (t - Math.max(a.vu, a.actif) > SESSION_PAUSE_MS) activiteMem.delete(u);
+  if (lignes.length && process.env.DATABASE_URL) db.activiteMinutes(parisDayKey(), lignes).catch(dbErr('activiteMinutes'));
+  return lignes;
+}
+setInterval(() => { try { releverActivite(); } catch (e) { console.error('[ACTIVITE]', e.message); } }, 60 * 1000).unref();
 
 /*
  * L'ONGLET STATISTIQUES DE L'ADMIN (administrateurs complets, et le rôle
@@ -8499,6 +8552,29 @@ function joursDepuis(nb) {
     out.push(d.toISOString().slice(0, 10));
   }
   return out;
+}
+/*
+ * LA SECTION COMMUNAUTÉ : les huit indicateurs de statsCommunaute.js, sur la
+ * fenêtre demandée. Les lignes remontent assez loin pour les cohortes de
+ * rétention (douze semaines d'inscrits, plus leur mois de retour) et pour les
+ * absences d'avant la fenêtre (trente jours de plus).
+ */
+async function statsCommunauteDe(fenetre) {
+  const aujourdhui = parisDayKey();
+  const loin = StatsCommunaute.plus(aujourdhui, -130);
+  const avant = StatsCommunaute.plus(fenetre[0], -31);
+  const brut = await db.statsCommunaute(loin < avant ? loin : avant, fenetre[0]);
+  const c = StatsCommunaute.calculer(Object.assign(brut, {
+    aujourdhui, jours: fenetre, pnj: NPC_USERNAMES,
+    jeuDe: (rk) => (RANKINGS[rk] ? RANKINGS[rk].game : null),
+  }));
+  // Les pseudos à leur casse d'affichage — lus en base : la mémoire ne garde
+  // que les comptes récemment actifs.
+  const affiches = await db.nomsAffiches(c.joursActifs.habitues.map((h) => h.u).concat(c.reactives.derniers.map((r) => r.u)));
+  const nom = (u) => affiches.get(u) || getDisplayName(u);
+  c.joursActifs.habitues = c.joursActifs.habitues.map((h) => Object.assign(h, { u: nom(h.u) }));
+  c.reactives.derniers = c.reactives.derniers.map((r) => Object.assign(r, { u: nom(r.u) }));
+  return c;
 }
 app.get('/api/admin/stats', adminScope('stats'), async (req, res) => {
   const nb = Math.max(7, Math.min(90, Math.floor(Number(req.query.jours) || 30)));
@@ -8543,6 +8619,21 @@ app.get('/api/admin/stats', adminScope('stats'), async (req, res) => {
           if (i >= jours.length - 7) e.semaine += Number(n) || 0;
         }
       });
+      // La section Communauté a sa propre prise : si elle échoue, le reste s'affiche.
+      try {
+        sortie.communaute = await statsCommunauteDe(jours.map((j) => j.jour));
+        // Les joueurs différents rejoignent les parties de leur jeu.
+        for (const [jeu, n] of Object.entries(sortie.communaute.joueursParJeu || {})) {
+          const e = sortie.jeux[jeu] || (sortie.jeux[jeu] = { semaine: 0, fenetre: 0 });
+          e.joueursSemaine = n.semaine; e.joueursFenetre = n.fenetre;
+        }
+        for (const j of jours) Object.assign(j, sortie.communaute.jours[j.jour] || {});
+        delete sortie.communaute.jours;
+      } catch (e) {
+        console.error('[STATS] communauté :', e.message);
+        sortie.communaute = null;
+        sortie.erreurCommunaute = e.message;
+      }
     } catch (e) {
       console.error('[STATS] admin :', e.message);
       sortie.erreur = e.message;
@@ -11161,6 +11252,7 @@ app.post('/api/admin/paris-challenge/mois', adminScope('challenge'), async (req,
 // épreuves de Kaluga). Un joueur sans accès n'avance rien.
 // ══════════════════════════════════════════════════════════════════════════
 const Quetes = require('./quetes.js');
+const StatsCommunaute = require('./statsCommunaute.js');
 const LoupGarou = require('./loupgarou.js');
 let quetesReglages = Quetes.reglagesNormalises();
 let quetesSemaine = null;             // { lundi, quetes: [définitions figées] }
@@ -26463,6 +26555,7 @@ app.post('/api/forum/topic/:id/follow', async (req, res) => {
 app.post('/api/forum/topic', async (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.status(401).json({ error: 'auth_required' });
+  noterInteraction(username);
   // Mute lockout: same window as the chat /totoche command. Applies even
   // to moderators so the consequence is consistent across the site.
   const mute = getMuteInfoForUser(username);
@@ -26733,6 +26826,7 @@ app.get('/forum-uploads/:name', async (req, res) => {
 app.post('/api/forum/post', async (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.status(401).json({ error: 'auth_required' });
+  noterInteraction(username);
   const mute = getMuteInfoForUser(username);
   if (mute.muted) {
     return res.status(403).json({
@@ -31994,6 +32088,10 @@ function recordChannelHistory(channelName, xmlStr) {
   // Only store actual chat content frames (CMD.send = `<t …>`), never
   // joins/parts/traces/kicks — those are transient presence events.
   if (!/^<t[\s>]/.test(xmlStr)) return;
+  // Qui parle : pour les statistiques (participants au chat, temps actif).
+  // (« admin » signe les annonces de l'administration, pas un Frutiz.)
+  const auteur = /\su="([^"]*)"/.exec(xmlStr);
+  if (auteur && auteur[1] !== 'admin') noterChat(unescapeXml(auteur[1]));
   if (!channel.history) channel.history = [];
   const now = Date.now();
   channel.history.push({ at: now, xml: xmlStr });
@@ -33967,6 +34065,7 @@ async function handleCBeeMessage(socket, rawXml) {
   // estJoignableEnDirect). Le SWF bureau ping toutes les 60 s, le client
   // light bat toutes les 25 s quand il est visible.
   client.derniereTrame = Date.now();
+  if (client.username && !TRAMES_PASSIVES.has(cmdName)) noterInteraction(client.username);
 
   // (les positions et pings des courses de Burning Kiwi, vingt par seconde et
   // par pilote, ne passent pas au journal)

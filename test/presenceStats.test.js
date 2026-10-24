@@ -147,7 +147,23 @@ test('l’onglet Statistiques : totaux, jour par jour, parties par jeu — admin
   assert.ok(auj.connectes >= 3, JSON.stringify(auj));
   assert.ok(auj.inscrits >= 3, JSON.stringify(auj));
   assert.deepStrictEqual(auj.parties, { bkiwi: 2 }, 'deux courses, pas trois écritures');
-  assert.deepStrictEqual(d.jeux.bkiwi, { semaine: 2, fenetre: 2 });
+  assert.deepStrictEqual(d.jeux.bkiwi, { semaine: 2, fenetre: 2, joueursSemaine: 1, joueursFenetre: 1 }, 'deux parties, une joueuse');
+  // LA COMMUNAUTÉ : trois inscrites aujourd'hui, toutes nouvelles ; une seule a joué.
+  const co = d.communaute;
+  assert.ok(co, JSON.stringify(d.erreurCommunaute));
+  assert.deepStrictEqual(co.activation, { inscrits: 3, actives: 1, taux: 33.3 });
+  assert.deepStrictEqual(co.joueursParJeu.bkiwi, { semaine: 1, fenetre: 1 });
+  assert.strictEqual(co.anciennete.tranches[0].n, 3, 'des comptes de moins d’un mois');
+  assert.strictEqual(auj.nouveaux, 3);
+  assert.strictEqual(co.retention.j7, null, 'les relevés commencent aujourd’hui : rien de mesurable');
+  assert.strictEqual(co.reactives.j14, 0);
+  assert.deepStrictEqual(co.joursActifs.habitues.map((h) => h.u).sort(), ['Cerise', 'Kiwi', 'Pomme']);
+  assert.strictEqual(d.jours[0].nouveaux, null, 'avant presence_jour : « – »');
+  const pg = new Client({ connectionString: DB });
+  await pg.connect();
+  const pj = (await pg.query('SELECT username, jeu, n FROM parties_joueur_jour')).rows;
+  await pg.end();
+  assert.deepStrictEqual(pj, [{ username: 'cerise', jeu: 'bkiwi', n: 2 }]);
   assert.strictEqual(typeof d.direct.enLigne, 'number');
   // Les jours d'avant la table : rien d'inventé.
   assert.strictEqual(d.jours[0].connectes, undefined);
