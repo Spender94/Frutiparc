@@ -63,10 +63,20 @@
     touches[e.key] = false;
     if (e.key === ' ' && espaceAppuye) { espaceBascule = true; espaceAppuye = false; }
   });
-  window.addEventListener('blur', () => {
+  // La fenêtre passe derrière (clic à côté, autre fenêtre, onglet caché) :
+  // les `keyup` partiront ailleurs, on LÂCHE donc tout ce qui est tenu —
+  // flèches, espace, doigt posé. Pas de pause à poser : la partie est un
+  // puzzle au tour par tour, rien n'y tourne sans le joueur (pas de chrono,
+  // les animations ne font que finir le coup joué).
+  function lacherTout() {
     for (const k of Object.keys(touches)) touches[k] = false;
     enAttente = null;
-  });
+    espaceAppuye = false;
+    doigt = null;
+    geste = null;
+  }
+  window.addEventListener('blur', lacherTout);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) lacherTout(); });
 
   // ── la souris et le doigt, en coordonnées 384 ──
   const souris = { x: -1, y: -1, clic: false };
