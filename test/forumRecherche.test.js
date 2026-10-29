@@ -153,9 +153,13 @@ test('les forums du staff ne sortent que pour le staff', async (t) => {
   assert.strictEqual((await chercher('', { q: 'artichaut' })).total, 0, 'un visiteur non plus');
 });
 
-test('le client : la barre sous l’en-tête, la vue des résultats, le saut au message', () => {
+test('le client : le bouton qui déplie la barre, la vue des résultats, le saut au message', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
-  assert.match(html, /<form class="search-bar" id="search-bar" onsubmit="lancerRecherche\(\);return false" role="search">/);
+  // Repliée par défaut : seul le bouton de l'en-tête se voit, et la déplie.
+  assert.match(html, /<form class="search-bar" id="search-bar" onsubmit="lancerRecherche\(\);return false" role="search" hidden>/);
+  assert.match(html, /<button type="button" class="btn btn-green btn-sm search-toggle" id="search-toggle" onclick="basculerRecherche\(\)" aria-expanded="false"/);
+  assert.match(html, /if \(view !== 'search'\) ouvrirRecherche\(false\);/, 'repliée dès qu’on quitte les résultats');
+  assert.match(html, /async function loadSearch\(o\) \{\n  porteeRecherche\(o\.board \|\| null, o\.boardNom \|\| null\);\n  ouvrirRecherche\(true, false\);/, 'dépliée sur les résultats');
   assert.match(html, /else if \(view === 'search'\) loadSearch\(extra \|\| \{\}\);/);
   assert.match(html, /if \(extra && typeof extra === 'object'\) loadTopic\(id, extra\.page, extra\.post\);/);
   assert.match(html, /\/api\/forum\/search\?q=/);

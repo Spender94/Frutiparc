@@ -58,6 +58,9 @@ a:hover {
   background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
 }
+.forum-header .search-toggle[aria-expanded=true] {
+  background: hsl(325 34% 34.5%);
+}
 .search-bar {
   background: hsl(256 30% 21.6%);
 }

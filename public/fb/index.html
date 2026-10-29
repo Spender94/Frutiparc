@@ -102,7 +102,12 @@
     background: #E3756A; color: #fff; text-decoration: none;
   }
 
-  /* La barre de recherche, sous l'en-tête. */
+  /* La recherche : un bouton au bout de l'en-tête, qui déplie la barre en
+     dessous. Repliée par défaut — elle n'apparaît que si on la demande. */
+  .forum-header .search-toggle { flex: none; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .forum-header .search-toggle svg { width: 11px; height: 11px; flex: none; }
+  .forum-header .search-toggle[aria-expanded=true] { background: #d2645a; }
+  .search-bar[hidden] { display: none; }
   .search-bar {
     display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
     padding: 6px 8px; margin: 0 0 6px; background: #D6F7B5; border-radius: 7px;
@@ -1578,10 +1583,12 @@
     <a href="#" class="bc-home" onclick="navigate('index');return false" title="Retour au forum"><img class="bc-icon" src="/fb/ico.gif" alt="Forum Frutiparc.com" width="18" height="18"></a>
     <span class="title-link" id="header-title"><a href="#" onclick="navigate('index');return false">Forum Frutiparc.com</a></span>
     <div class="header-actions" id="header-actions"></div>
+    <button type="button" class="btn btn-green btn-sm search-toggle" id="search-toggle" onclick="basculerRecherche()" aria-expanded="false" aria-controls="search-bar" title="Rechercher dans le forum"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10.2 10.2l4.3 4.3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span class="lb-long">Rechercher</span></button>
   </div>
-  <!-- LA RECHERCHE : toujours là, sous l'en-tête. Dans un forum, on peut la
-       borner à ce forum ; ailleurs, elle cherche partout. -->
-  <form class="search-bar" id="search-bar" onsubmit="lancerRecherche();return false" role="search">
+  <!-- LA RECHERCHE : repliée par défaut. Le bouton de l'en-tête la déplie ;
+       dans un forum, on peut la borner à ce forum ; ailleurs, elle cherche
+       partout. -->
+  <form class="search-bar" id="search-bar" onsubmit="lancerRecherche();return false" role="search" hidden>
     <input type="search" id="search-q" placeholder="Rechercher dans le forum… (auteur:pseudo pour un auteur)" maxlength="200" aria-label="Rechercher dans le forum">
     <label class="search-scope" id="search-scope" hidden><input type="checkbox" id="search-ici" checked> <span id="search-ici-nom">dans ce forum</span></label>
     <button type="submit" class="btn btn-green btn-sm">Rechercher</button>
@@ -2458,12 +2465,14 @@ function pousserHistoire(view, id, extra) {
 window.addEventListener('popstate', function (e) {
   var v = e.state && e.state.fbVue;
   restaurationHistoire = true;
-  try { if (v) navigate(v.view, v.id, v.extra); else loadIndex(); }
+  try { if (v) navigate(v.view, v.id, v.extra); else { ouvrirRecherche(false); loadIndex(); } }
   finally { restaurationHistoire = false; }
 });
 
 function navigate(view, id, extra) {
   pousserHistoire(view, id, extra);
+  // La barre de recherche ne reste dépliée que sur ses résultats.
+  if (view !== 'search') ouvrirRecherche(false);
   if (view === 'index') loadIndex();
   else if (view === 'board') loadBoard(id, extra);
   else if (view === 'topic') {
@@ -2503,7 +2512,9 @@ function pagination(total, perPage, currentPage, onclick) {
 /*
  * LA RECHERCHE.
  *
- * La barre vit sous l'en-tête, sur toutes les pages. Dans un forum, la case
+ * La barre est REPLIÉE par défaut : seul le bouton « Rechercher » de l'en-tête
+ * se voit, et la déplie (Échap la replie). Elle reste ouverte sur les
+ * résultats, et se replie quand on retourne au forum. Dans un forum, la case
  * « dans <ce forum> » borne la recherche à lui ; ailleurs elle disparaît et
  * l'on cherche partout. Les résultats sont des MESSAGES (le plus récent
  * d'abord), chacun avec son sujet, son forum, son auteur, sa date et un
@@ -2511,6 +2522,20 @@ function pagination(total, perPage, currentPage, onclick) {
  * page du message et y descend.
  */
 var porteeBoard = null;   // { id, nom } du forum où l'on est, ou null
+function ouvrirRecherche(ouvrir, focus) {
+  var barre = document.getElementById('search-bar');
+  var bouton = document.getElementById('search-toggle');
+  if (!barre) return;
+  barre.hidden = !ouvrir;
+  if (bouton) bouton.setAttribute('aria-expanded', ouvrir ? 'true' : 'false');
+  if (ouvrir && focus) { var champ = document.getElementById('search-q'); if (champ) champ.focus(); }
+}
+function basculerRecherche() {
+  ouvrirRecherche(document.getElementById('search-bar').hidden, true);
+}
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && e.target && e.target.id === 'search-q') ouvrirRecherche(false);
+});
 function porteeRecherche(id, nom) {
   porteeBoard = id ? { id: id, nom: nom } : null;
   var sc = document.getElementById('search-scope');
@@ -2556,6 +2581,7 @@ function surligner(texteEchappe, mots) {
 }
 async function loadSearch(o) {
   porteeRecherche(o.board || null, o.boardNom || null);
+  ouvrirRecherche(true, false);
   var champ = document.getElementById('search-q');
   if (champ && o.q) champ.value = o.q;
   var app = document.getElementById('app');
