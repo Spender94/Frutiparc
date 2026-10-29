@@ -233,3 +233,157 @@ test('les tuiles d\'un mur se recouvrent de deux pour cent : plus de couture sur
   const tuile = biblio.perso[String(biblio.symboles.wall)].frames[0].ops.find((o) => o.c).c;
   assert.deepStrictEqual(biblio.perso[String(tuile)].b.map(Math.round), [-20, -20, 20, 20]);
 });
+
+// ── La pause automatique quand la fenêtre n'est plus au-dessus ────────────
+//
+// La page (index.html) lève `client.forcePause` — le drapeau de la Frusion,
+// que Game.main lit à chaque image — et appelle Client.onPause, qui pose la
+// pause d'ÉCHAP TOUT DE SUITE (Game.forcerPause) : une fenêtre cachée n'a
+// plus d'images. Seule une partie en cours se met en pause ; le joueur
+// relance par ÉCHAP, comme après sa propre pause.
+
+// Une partie sans scène : les champs que `main`, la pause et sa reprise lisent.
+function partiePause(etat) {
+  K.Key.toutRelacher();
+  const jeu = Object.create(J.Game.prototype);
+  const parent = { attachMovie(link, nom) { parent[nom] = { link, removeMovieClip() { delete parent[nom]; } }; } };
+  Object.assign(jeu, {
+    game_over_flag: false, scroll_on: false, pause: null, pause_key_flag: false, pause_differee: false,
+    space_key_flag: false, boss_update: null, curtime: 60000,
+    options: { has_map: false, has_radar: false },
+    main_color: { setTransform() { jeu.teinte = true; }, reset() { jeu.teinte = false; } },
+    root_mc: { _parent: parent },
+    ball: { hole_death: false, update_jump() {}, update_hole() { return false; }, update() {}, x: 100, y: 100 },
+    level: { interf: { update() {} }, updates: [], bonus: [], dungeon: [], pos_x: 0, pos_y: 0 },
+  }, etat || {});
+  J.Manager.play_mode = J.Const.MODE_CHALLENGE;
+  J.Manager.mode = jeu;
+  J.Manager.client = new J.Client('');
+  return { jeu, parent, client: J.Manager.client };
+}
+const imageMb2 = (jeu, code) => { if (code) K.Key.presser(code); jeu.main(); if (code) K.Key.relacher(code); };
+
+test('pause automatique : une partie en cours prend la pause d\'ÉCHAP, tout de suite', () => {
+  const auto = partiePause();
+  auto.client.onPause();
+  assert.ok(auto.jeu.pause instanceof J.Pause, 'la partie est en pause');
+  assert.ok(auto.parent.pause_mc, 'avec l\'écran de pause');
+  assert.strictEqual(auto.jeu.teinte, true, 'et la scène assombrie');
+  assert.strictEqual(auto.jeu.pause_key_flag, true, 'comme si ÉCHAP venait d\'être pressée');
+
+  const manuelle = partiePause();
+  imageMb2(manuelle.jeu, 27);
+  assert.ok(manuelle.jeu.pause instanceof J.Pause);
+  assert.strictEqual(manuelle.parent.pause_mc.link, auto.parent.pause_mc.link, 'le même écran que la touche');
+});
+
+test('pause automatique : ni hors partie, ni partie finie, ni deux fois', () => {
+  const p = partiePause({ game_over_flag: true });
+  p.client.onPause();
+  assert.strictEqual(p.jeu.pause, null, 'partie finie : rien');
+  // L'intro, le menu, un chargement, une transition, un écran de fin : le
+  // mode courant n'est pas une partie, et il continue.
+  const q = partiePause();
+  J.Manager.mode = Object.create(J.GameOver.prototype);
+  assert.doesNotThrow(() => q.client.onPause());
+  assert.strictEqual(q.jeu.pause, null, 'écran de fin : rien');
+  J.Manager.mode = null;
+  assert.doesNotThrow(() => q.client.onPause());
+  // Déjà en pause : la même pause.
+  const r = partiePause();
+  r.client.onPause();
+  const pause = r.jeu.pause;
+  r.client.onPause();
+  assert.strictEqual(r.jeu.pause, pause, 'pas de seconde pause');
+});
+
+test('pause automatique : pendant un défilement de salle ou une chute, elle attend la fin, comme ÉCHAP', () => {
+  for (const [nom, etat, finir] of [
+    ['défilement', { scroll_on: true }, (jeu) => { jeu.scroll_on = false; }],
+    ['chute dans un trou', null, (jeu) => { jeu.ball.hole_death = false; jeu.ball.update_hole = () => false; }],
+  ]) {
+    const p = partiePause(etat);
+    if (!etat) { p.jeu.ball.hole_death = true; p.jeu.ball.update_hole = () => true; }
+    p.jeu.level.interf.scroll_room = () => {};
+    p.client.onPause();
+    assert.strictEqual(p.jeu.pause, null, nom + ' : pas tout de suite');
+    p.client.forcePause = false;                 // même si la fenêtre est déjà revenue
+    imageMb2(p.jeu);
+    assert.strictEqual(p.jeu.pause, null, nom + ' : toujours pas');
+    finir(p.jeu);
+    imageMb2(p.jeu);
+    assert.ok(p.jeu.pause instanceof J.Pause, nom + ' : la pause se pose à la fin');
+  }
+});
+
+test('pause automatique : rien ne reprend tout seul ; ÉCHAP relance dès que forcePause retombe', () => {
+  const p = partiePause();
+  p.client.forcePause = true;
+  p.client.onPause();
+  for (let i = 0; i < 5; i++) imageMb2(p.jeu);
+  assert.ok(p.jeu.pause, 'la pause tient');
+  imageMb2(p.jeu, 27);
+  assert.ok(p.jeu.pause, 'forcePause levé : ÉCHAP ne relance pas (Pause.main d\'époque)');
+  p.client.forcePause = false;
+  imageMb2(p.jeu);
+  imageMb2(p.jeu, 27);
+  assert.strictEqual(p.jeu.pause, null, 'la fenêtre revenue, ÉCHAP relance');
+  assert.ok(!p.parent.pause_mc, 'l\'écran de pause s\'en va');
+  imageMb2(p.jeu);
+  assert.strictEqual(p.jeu.pause, null, 'et la partie repart pour de bon');
+});
+
+// Le script de index.html, rejoué dans un bac à sable avec les vraies classes.
+function pageMb2() {
+  const vm = require('node:vm');
+  const html = lire('public/mb2/index.html');
+  const src = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).find((s) => s.includes('demarrerMotionBall('));
+  assert.ok(src, 'le script de démarrage de la page');
+  const ecouteurs = { window: {}, document: {} };
+  const ecouter = (cible) => (type, fn) => { (ecouteurs[cible][type] = ecouteurs[cible][type] || []).push(fn); };
+  const element = { clientWidth: 610, clientHeight: 410, style: {}, getBoundingClientRect: () => ({ width: 610, height: 410 }), focus() {}, remove() {} };
+  const bac = {
+    KalugaMoteur: K, Mb2Jeu: J, URLSearchParams, console,
+    location: { search: '' }, devicePixelRatio: 1,
+    addEventListener: ecouter('window'),
+    demarrerMotionBall: () => new Promise(() => {}),
+    document: { hidden: false, getElementById: () => element, querySelectorAll: () => [], addEventListener: ecouter('document') },
+  };
+  bac.window = bac;
+  vm.createContext(bac);
+  vm.runInContext(src, bac, { filename: 'mb2/index.html' });
+  return { bac, emettre: (cible, type) => { for (const fn of ecouteurs[cible][type] || []) fn({ type }); } };
+}
+
+test('pause automatique, la page : blur, onglet caché et __relacherCommandes pausent la partie et lâchent les commandes', () => {
+  for (const [nom, declencher] of [
+    ['blur', (pg) => pg.emettre('window', 'blur')],
+    ['visibilitychange caché', (pg) => { pg.bac.document.hidden = true; pg.emettre('document', 'visibilitychange'); }],
+    ['__relacherCommandes (onglet du light quitté)', (pg) => pg.bac.__relacherCommandes()],
+  ]) {
+    const p = partiePause();
+    const pg = pageMb2();
+    K.Key.presser(37);
+    declencher(pg);
+    assert.ok(p.jeu.pause instanceof J.Pause, nom + ' : la partie est en pause');
+    assert.strictEqual(p.client.forcePause, true, nom + ' : forcePause levé');
+    assert.ok(!K.Key.isDown(37), nom + ' : les commandes sont lâchées');
+  }
+  // Retour (focus, clic, touche) : forcePause retombe, la pause reste.
+  for (const retour of ['focus', 'pointerdown', 'keydown']) {
+    const p = partiePause();
+    const pg = pageMb2();
+    pg.emettre('window', 'blur');
+    pg.emettre('window', retour);
+    assert.strictEqual(p.client.forcePause, false, retour + ' : forcePause retombe');
+    assert.ok(p.jeu.pause, retour + ' : la partie reste en pause');
+  }
+  // Dans le menu : rien en pause. Avant l'init du Manager : rien ne casse.
+  partiePause();
+  J.Manager.mode = Object.create(J.Menu.prototype);
+  const pg = pageMb2();
+  assert.doesNotThrow(() => pg.emettre('window', 'blur'));
+  J.Manager.client = null;
+  assert.doesNotThrow(() => { pg.emettre('window', 'blur'); pg.emettre('window', 'focus'); });
+  J.Manager.mode = null;
+});

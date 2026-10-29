@@ -168,6 +168,20 @@ class Client {
   endGame() { this.gameRunning = false; }
   closeService() { J.Manager.forceNextMode(0); }
 
+  /*
+   * LA PAUSE DEMANDÉE PAR LA PLATEFORME — la page (index.html) lève
+   * `forcePause` et appelle ceci quand la fenêtre perd le focus ou se cache.
+   * D'époque, la Frusion ne faisait que lever `forcePause`, que Game.main lit
+   * à chaque image ; mais une fenêtre cachée n'a plus d'images, d'où l'appel
+   * direct, comme le Client.onPause de Kaluga. Seule une partie en cours y
+   * répond (Game.forcerPause) : l'intro, le menu, les chargements, les
+   * transitions et les écrans de fin continuent.
+   */
+  onPause() {
+    const m = J.Manager.mode;
+    if (m instanceof J.Game) m.forcerPause();
+  }
+
   savePrefs() {
     this.slots[1] = { $music: J.Prefs.music_enabled, $sounds: J.Prefs.sound_enabled };
     this.saveSlot(1);

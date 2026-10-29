@@ -171,13 +171,36 @@
     K.Key.toutRelacher();
     document.querySelectorAll('#commandes .btn.presse').forEach(function (b) { b.classList.remove('presse'); });
   };
-  window.__relacherCommandes = lacherTout;
-  document.addEventListener('visibilitychange', function () { if (document.hidden) lacherTout(); });
+
+  // La fenêtre n'est plus au-dessus (le joueur clique le chat d'à côté,
+  // passe à une autre fenêtre du bureau ou à une autre application, l'onglet
+  // ou le panneau se cache) : on lâche les commandes, et une partie en cours
+  // se met en PAUSE — celle d'ÉCHAP, avec sa carte. C'est le `forcePause` de
+  // la Frusion, plus Client.onPause qui la pose sans attendre une image
+  // (voir plateforme.js). Rien ne reprend tout seul au retour : le joueur
+  // relance par ÉCHAP. `forcePause` bloque cette reprise (Pause.main) : il
+  // retombe dès que la fenêtre revient au joueur — focus, clic, touche ou
+  // doigt.
+  const client = function () { return window.Mb2Jeu.Manager.client; };
+  const quitterPremierPlan = function () {
+    lacherTout();
+    const c = client();
+    if (!c) return;
+    c.forcePause = true;
+    c.onPause();
+  };
+  const revenirAuPremierPlan = function () { const c = client(); if (c) c.forcePause = false; };
+  window.__relacherCommandes = quitterPremierPlan;
+  document.addEventListener('visibilitychange', function () { if (document.hidden) quitterPremierPlan(); });
+  window.addEventListener('blur', quitterPremierPlan);
+  window.addEventListener('focus', revenirAuPremierPlan);
+  window.addEventListener('pointerdown', revenirAuPremierPlan, true);
+  window.addEventListener('keydown', revenirAuPremierPlan, true);
   if (window.ResizeObserver) {
     new ResizeObserver(function () {
       adapter();
       const b = canvas.getBoundingClientRect();
-      if (!b.width || !b.height) lacherTout();
+      if (!b.width || !b.height) quitterPremierPlan();
     }).observe(document.getElementById('aire'));
   }
 

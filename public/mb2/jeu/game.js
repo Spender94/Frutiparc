@@ -36,6 +36,7 @@ class Game {
     this.scroll_on = false;
     this.pause = null;
     this.pause_key_flag = false;
+    this.pause_differee = false;
     this.space_key_flag = false;
     this.boss_update = null;
     this.dmanager = new J.DepthManager(mc);
@@ -197,6 +198,13 @@ class Game {
       }
     } else this.space_key_flag = false;
 
+    // La pause que la plateforme n'a pu poser tout de suite (forcerPause) se
+    // pose ici, là où ÉCHAP pose la sienne.
+    if (this.pause_differee) {
+      this.pause_differee = false;
+      if (this.pause == null) { this.pause_key_flag = true; this.setPause(); return; }
+    }
+
     if (J.Manager.client.forcePause || Key.isDown(Key.ESCAPE)) {
       if (!this.pause_key_flag) {
         this.pause_key_flag = true;
@@ -239,6 +247,28 @@ class Game {
   setPause() {
     this.pause = new J.Pause(this);
     if (this.boss_update && typeof this.boss_update.onPause === 'function') this.boss_update.onPause(true);
+  }
+
+  /*
+   * LA PAUSE DEMANDÉE PAR LA PLATEFORME (Client.onPause : la fenêtre n'est
+   * plus au premier plan). C'est la pause d'ÉCHAP, telle que `main` la pose
+   * (pause_key_flag levé, setPause : l'écran de pause, la carte si on l'a),
+   * et le joueur la quitte de même. On la pose TOUT DE SUITE : une fenêtre
+   * cachée n'a plus d'images, et `forcePause` seul, lu par `main`, ne
+   * servirait qu'au retour — ou jamais, s'il retombe avant la première image.
+   * Pendant le défilement d'une salle ou la chute dans un trou, ÉCHAP n'est
+   * pas lu (`main` rend la main avant) : la pause attend la fin, comme la
+   * touche aurait attendu. Une partie finie ou déjà en pause : rien.
+   */
+  forcerPause() {
+    if (this.game_over_flag || this.pause != null) return false;
+    if (this.scroll_on || this.ball.hole_death) {
+      this.pause_differee = true;
+      return false;
+    }
+    this.pause_key_flag = true;
+    this.setPause();
+    return true;
   }
 
   destroy() {
