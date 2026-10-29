@@ -275,7 +275,7 @@ test('la commande se relâche quand la fenêtre part, et chaque surface tient so
     /this\.entree\.tir = false/, /this\.entree\.bombe = false/,
     /this\.entree\.cibleX = null/,
   ]) assert.match(jeujs, attendu, 'il remet chaque commande à zéro');
-  assert.match(jeujs, /window\.addEventListener\('blur', \(\) => this\.relacherTout\(\)\)/,
+  assert.match(jeujs, /window\.addEventListener\('blur', \(\) => \{ this\.relacherTout\(\);/,
     'la perte de focus relâche tout');
   assert.match(jeujs, /document\.hidden\) \{ this\.relacherTout\(\)/,
     'passer en arrière-plan aussi');
@@ -303,4 +303,108 @@ test('un pseudo ouvre la fiche du frutiz, où qu\'il soit', () => {
   assert.match(html, /pseudoCliquable\(\$\("#mail-lu-qui"\)/, 'l\'expéditeur d\'un courrier');
   // Et « admin » reste du texte : ce n'est pas un frutiz.
   assert.match(html, /p\.toLowerCase\(\) === "admin"/, 'admin n\'a pas de fiche');
+});
+
+// ── 8. La fenêtre qui part met la partie en pause ────────────────────────
+
+/*
+ * L'onglet caché pausait déjà ; la fenêtre qui perd le focus (le chat d'à
+ * côté, une autre fenêtre du bureau, l'onglet quitté au light — qui envoie un
+ * `blur` aux jeux sans `__relacherCommandes`) ne faisait que lâcher les
+ * commandes : le vaisseau encaissait seul. C'est maintenant la même pause que
+ * P et Échap, jamais levée toute seule, et jamais hors partie.
+ *
+ * Le vrai client tourne dans un bac à sable : on écoute ce qu'il pose sur la
+ * fenêtre et le document, et on déclenche nous-mêmes les événements.
+ */
+function clientEcoute() {
+  const vm = require('node:vm');
+  const fenetre = {}, doc = {};
+  const ecouter = (table) => (nom, f) => { (table[nom] = table[nom] || []).push(f); };
+  const bac = {
+    console, Math, JSON, Object, Array, String, Number, Boolean, Date, Map, Set, Promise,
+    MiniwaveEngine: E,
+    requestAnimationFrame: () => 0, cancelAnimationFrame: () => {}, setTimeout, clearTimeout,
+    addEventListener: ecouter(fenetre),
+    document: { hidden: false, addEventListener: ecouter(doc), querySelectorAll: () => [] },
+  };
+  bac.window = bac;
+  vm.createContext(bac);
+  for (const f of ['modes.js', 'game.js']) {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'public/miniwave', f), 'utf8'), bac, { filename: f });
+  }
+  const Client = bac.MiniwaveClient.Client;
+  // Ni toile réelle ni commandes à brancher : seuls les écouteurs de la
+  // fenêtre et du document nous intéressent ici.
+  Client.prototype.brancherCommandes = function () {};
+  Client.prototype.redimensionner = function () {};
+  const annonces = [];
+  const client = new Client({
+    canvas: { getContext: () => ({}) }, sprites: SPRITES, niveaux: ARCADE,
+    surPause: (p) => annonces.push(p),
+  });
+  const lancer = (table, nom) => { for (const f of table[nom] || []) f({}); };
+  return {
+    bac, client, annonces,
+    blur: () => lancer(fenetre, 'blur'),
+    focus: () => lancer(fenetre, 'focus'),
+    cacher: () => { bac.document.hidden = true; lancer(doc, 'visibilitychange'); },
+    montrer: () => { bac.document.hidden = false; lancer(doc, 'visibilitychange'); },
+  };
+}
+
+test('la fenêtre qui perd le focus met la partie en PAUSE — celle de P, sans reprise toute seule', () => {
+  const { client, annonces, blur, focus, montrer } = clientEcoute();
+  client.nouvellePartie({ graine: 3 });
+  client.entree.gauche = true;
+  blur();
+  assert.equal(client.flPause, true, 'le blur pose la pause');
+  assert.equal(client.entree.gauche, false, 'et lâche toujours les commandes');
+  assert.deepEqual(annonces, [true], 'le bouton ⏸/▶ de la page est prévenu');
+
+  // Un second blur ne BASCULE pas : la pause reste posée.
+  blur();
+  assert.equal(client.flPause, true, 'pas de bascule au second blur');
+
+  // Le retour du focus, l'onglet de nouveau visible : rien ne repart.
+  focus(); montrer();
+  assert.equal(client.flPause, true, 'la pause tient au retour');
+
+  // La partie ne bouge plus d'une image.
+  // (`animT` compte les images de jeu jouées : les pellicules en dépendent.)
+  const avant = client.animT;
+  for (let i = 0; i < 10; i++) client.imageFlash(1);
+  assert.equal(client.animT, avant, 'rien n\'avance sous la pause');
+
+  // La reprise est celle de P / Échap / ⏸ : `pauser()` sans argument.
+  client.pauser();
+  assert.equal(client.flPause, false, 'P relance');
+  client.imageFlash(1);
+  assert.equal(client.animT, avant + 1, 'et la partie repart');
+});
+
+test('l\'onglet caché pause toujours ; ni le menu ni l\'écran de fin ne se mettent en pause', () => {
+  const a = clientEcoute();
+  a.client.nouvellePartie({ graine: 3 });
+  a.cacher();
+  assert.equal(a.client.flPause, true, 'onglet caché → pause');
+
+  // Le menu par-dessus la scène : rien à figer.
+  const b = clientEcoute();
+  b.client.nouvellePartie({ graine: 3 });
+  b.client.avant = { visible: true };
+  b.blur();
+  assert.equal(b.client.flPause, false, 'pas de pause sous le menu');
+
+  // La partie finie (écran de fin) : rien à figer non plus.
+  const c = clientEcoute();
+  c.client.nouvellePartie({ graine: 3 });
+  c.client.jeu.termine = true;
+  c.blur();
+  assert.equal(c.client.flPause, false, 'pas de pause sur l\'écran de fin');
+
+  // Avant toute partie : rien.
+  const d = clientEcoute();
+  d.blur();
+  assert.equal(d.client.flPause, false, 'pas de pause sans partie');
 });

@@ -345,7 +345,14 @@ class Client {
     // place, et un pointeur dont le « lever » s'est perdu le ramène à son
     // dernier point de visée à chaque image. C'est le vaisseau qui « ne bouge
     // plus du tout jusqu'à l'explosion ». On lâche donc tout ce qui était tenu.
-    window.addEventListener('blur', () => this.relacherTout());
+    //
+    // Et la partie se met en PAUSE, comme pour l'onglet caché : la fenêtre
+    // n'est plus devant (le chat d'à côté, une autre fenêtre du bureau, une
+    // autre application), le vaisseau ne doit pas encaisser seul. C'est la
+    // pause de P et d'Échap — même voile, même reprise ; rien ne repart au
+    // retour du focus. `pauser` s'y refuse hors partie (menu, écran de fin),
+    // et ne bascule pas une pause déjà posée.
+    window.addEventListener('blur', () => { this.relacherTout(); this.pauser(true); });
   }
 
   // Remet les commandes à zéro : plus rien n'est tenu.
