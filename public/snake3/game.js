@@ -581,9 +581,15 @@ class VuePartie {
     // La cloche de la sonnette, pendue au bout de la queue (PLAN_DUMMIES) —
     // visible tant que la Sonnette est en jeu, pas seulement au coup de
     // cloche : c'est le clip que Sonnette.as attache à la prise et replace à
-    // chaque image. Image 1 au repos, image 2 pendant le coup.
+    // chaque image. Image 1 au repos ; pendant le coup (images 2-3), la
+    // cloche passe à 50 % et sa copie « s1 », à 50 % aussi, balance de
+    // cl.rot degrés autour de l'attache (voir Sonnette.avancerClip).
     const cl = partie.sonnetteMc;
-    if (cl) D.poser(ctx, 'sonnette', cl.frame, cl.x, cl.y, 1, 1, cl.ang);
+    if (cl && cl.frame === 1) D.poser(ctx, 'sonnette', 1, cl.x, cl.y, 1, 1, cl.ang);
+    else if (cl) {
+      D.poser(ctx, 'sonnette', 1, cl.x, cl.y, 1, 1, cl.ang, 50);
+      D.poser(ctx, 'sonnette', 1, cl.x, cl.y, 1, 1, cl.ang + cl.rot * Math.PI / 180, 50);
+    }
 
     // Les débris d'explosion (PLAN_DUMMIES).
     this.particules.dessiner(ctx);

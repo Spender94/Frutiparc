@@ -830,14 +830,34 @@ test('la sonnette pend au bout de la queue, orientée, et sonne à l\'espace', (
   assert.ok(Math.abs(Math.abs(mc.ang) - Math.PI) < 1e-6, 'orientée le long de la queue : ' + mc.ang);
   assert.strictEqual(mc.frame, 1, 'au repos, image 1');
 
-  // ESPACE : le coup de cloche passe à l'image 2 (le clip y superpose son
-  // fantôme à 50 %) et y reste le temps du coup.
+  // ESPACE : Sonnette.as pose r = 25 et lance le clip. Sa timeline (sprite
+  // 647) fait BALANCER une copie de la cloche : ±r degrés, le sens changeant
+  // à chaque image et l'écart rabotant de 10 % — c'est ce qui manquait (« la
+  // sonnette ne remue pas »), le portage figeait l'image 2.
+  const tic = () => { for (const u of partie.unique_slots) u.permanent(1, 1 / 40); };
   partie.entree.espace = true;
-  for (const u of partie.unique_slots) u.permanent(1, 1 / 32);
+  tic();
+  assert.strictEqual(mc.r, 25, 'le coup pose r = 25');
+  tic();
   assert.strictEqual(mc.frame, 2, 'pendant le coup, image 2');
+  assert.strictEqual(mc.rot, -25, 'la copie part à −25°');
+  tic();
+  assert.ok(Math.abs(mc.rot - 22.5) < 1e-9, 'puis bascule à +22,5° : ' + mc.rot);
+  tic();
+  assert.ok(Math.abs(mc.rot + 20.25) < 1e-9, 'puis −20,25° : ' + mc.rot);
+  // Espace tenu : pas de nouveau coup tant que la cloche balance.
+  const r = mc.r;
+  tic();
+  assert.ok(Math.abs(mc.r) < Math.abs(r), 'le coup n\'est pas relancé en plein balancement');
   partie.entree.espace = false;
-  for (let i = 0; i < 20; i++) for (const u of partie.unique_slots) u.permanent(1, 1 / 32);
+  let n = 0;
+  while (mc.frame !== 1 && n < 200) { tic(); n++; }
   assert.strictEqual(mc.frame, 1, 'le coup passé, retour à l\'image 1');
+  assert.ok(n > 30 && n < 60, 'une quarantaine d\'images de balancement : ' + n);
+  assert.strictEqual(mc.rot, 0, 'et la copie disparaît');
+  // Le rendu peint la cloche à 50 % ET sa copie tournée de rot degrés.
+  const vueSrc = fs.readFileSync(path.join(RACINE, 'public/snake3/game.js'), 'utf8');
+  assert.match(vueSrc, /cl\.ang \+ cl\.rot \* Math\.PI \/ 180, 50\)/, 'la copie qui balance est dessinée');
 
   // Et la vue la dessine depuis le moteur, pas depuis une liste d'effets.
   const src = fs.readFileSync(path.join(RACINE, 'public/snake3/game.js'), 'utf8');

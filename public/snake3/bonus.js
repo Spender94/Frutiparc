@@ -806,10 +806,12 @@ class Croix {
 class Sonnette extends Slot {
   constructor(game) {
     super(game, 45);
-    this.balance = 0;                 // > 0 : l'animation du coup joue
-    // Le pendant de s_mc : { x, y, ang (radians), frame }. Image 1 au repos,
-    // image 2 pendant le coup (le clip y superpose son fantôme à 50 %).
-    game.sonnetteMc = { x: 0, y: 0, ang: 0, frame: 1 };
+    // Le pendant de s_mc : { x, y, ang (radians), frame }, plus ce que la
+    // TIMELINE du clip tient d'elle-même (sprite 647, voir avancerClip) :
+    // `r` — la variable que Sonnette.as pose à 25 au coup de cloche —, `rot`
+    // — l'angle de la cloche qui balance, en degrés — et `joue` — le clip
+    // avance-t-il ? Image 1 au repos ; images 2-3 pendant le coup.
+    game.sonnetteMc = { x: 0, y: 0, ang: 0, frame: 1, r: 0, rot: 0, joue: false };
     this.permanent(1, 0);
     game.sonnette_active = true;
   }
@@ -817,6 +819,42 @@ class Sonnette extends Slot {
   close() {
     this.game.sonnetteMc = null;      // s_mc.removeMovieClip()
     super.close();
+  }
+
+  /*
+   * LA CLOCHE QUI BALANCE — la timeline du clip `sonnette` (sprite 647), lue
+   * dans le SWF. Elle ne doit rien au code de Sonnette.as, qui se contente de
+   * poser `r = 25` sur le clip et de faire `play()` :
+   *
+   *   image 1 : stop()                       la cloche seule, opaque
+   *   image 2 : r = -r ; s1._rotation = r ;  la cloche passe à 50 %, et une
+   *             r *= 0.9                     COPIE (« s1 », 50 % aussi) pivote
+   *   image 3 : if (|r| > 0.2)               de ±r degrés autour de l'attache
+   *               gotoAndPlay(2)
+   *
+   * Le gotoAndPlay de l'image 3 rejoue aussitôt le script de l'image 2 : la
+   * copie bascule donc d'un côté à l'autre À CHAQUE IMAGE, l'écart rabotant
+   * de 10 % à chaque fois — 25°, −22,5°, 20,25°… —, une quarantaine d'images
+   * (une seconde) jusqu'à passer sous 0,2°. L'image 3 reste alors affichée
+   * une image, puis la tête de lecture revient à l'image 1 et s'y arrête : la
+   * copie disparaît, la cloche redevient opaque.
+   *
+   * Le portage n'en peignait que l'image 2, immobile, pendant 0,6 s : la
+   * cloche « ne remuait pas ». Le jeu avançant par pas fixes d'une image
+   * Flash (1/40 s), un appel = une image du clip.
+   */
+  avancerClip(mc) {
+    if (!mc.joue) return;
+    const image2 = () => { mc.frame = 2; mc.r = -mc.r; mc.rot = mc.r; mc.r *= 0.9; };
+    if (mc.frame === 1) image2();
+    else if (mc.frame === 2) {
+      mc.frame = 3;
+      if (Math.abs(mc.r) > 0.2) image2();
+    } else {
+      mc.frame = 1;                   // retour à l'image 1 : stop()
+      mc.joue = false;
+      mc.rot = 0;
+    }
   }
 
   permanent(tmod, deltaT) {
@@ -827,6 +865,10 @@ class Sonnette extends Slot {
       game.remove_unique_slot(this);
       return;
     }
+
+    // La timeline du clip tourne d'elle-même, que le jeu le replace ou non.
+    const mc = game.sonnetteMc;
+    if (mc && deltaT > 0) this.avancerClip(mc);
 
     if (!game.sonnette_active) return;
 
@@ -840,16 +882,15 @@ class Sonnette extends Slot {
     // Flash pose `_rotation = ang * 180 / Math.PI` ; le rendu du portage
     // travaille en radians — c'est le même angle.
     const ang = Math.atan2(p1.y - p2.y, p1.x - p2.x);
-    const mc = game.sonnetteMc;
     if (mc) { mc.x = p1.x; mc.y = p1.y; mc.ang = ang; }
 
-    if (this.balance > 0) this.balance -= deltaT;
-
-    if (this.balance <= 0 && game.entree.espace) {
-      this.balance = 0.6;             // la durée du coup de cloche du clip
+    // `if (s_mc._currentframe == 1 && Key.isDown(32))` : un nouveau coup
+    // n'est possible qu'une fois le balancement retombé.
+    if (mc && mc.frame === 1 && !mc.joue && game.entree.espace) {
+      mc.r = 25;                      // Std.setVar(s_mc, r, 25)
+      mc.joue = true;                 // s_mc.play()
       game.evenement('son', { nom: 'sonnette' });
     }
-    if (mc) mc.frame = this.balance > 0 ? 2 : 1;
 
     // La cloche mange ce qu'elle touche — en permanence, coup ou pas : c'est
     // `get_fruit(s_mc)` à chaque image dans le fichier d'origine.
