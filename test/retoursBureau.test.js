@@ -326,9 +326,17 @@ test('le bandeau dit ce qu\'il reste, et se tait sur un jeu sans quota', async (
 test('les fenêtres de jeu portent le bandeau', async () => {
   const popup = fs.readFileSync(path.join(ROOT, 'public/game-popup.html'), 'utf8');
   assert.match(popup, /src="\/js\/fd-badge\.js"/, 'la fenêtre des jeux Flash');
-  const swapou = fs.readFileSync(path.join(ROOT, 'public/swapou/index.html'), 'utf8');
-  assert.match(swapou, /src="\/js\/fd-badge\.js" data-jeu="swapou2"/,
-    'et Swapou côté mobile — le seul jeu rationné que /light propose');
+  // Et CHAQUE portage HTML d'un jeu rationné (FD_LIMITED_GAMES) : Swapou l'a
+  // eu le premier, mais Frutisnake, Kaluga et MotionBall se jouent aussi en
+  // light — sans bandeau, on n'y voyait pas ses parties classées restantes.
+  const limites = /const FD_LIMITED_GAMES = new Set\(\[([^\]]*)\]\)/.exec(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'))[1]
+    .match(/'([^']+)'/g).map((x) => x.slice(1, -1));
+  const PAGE = { swapou2: 'swapou', bkiwi: 'bkiwi', snake3: 'snake3', kaluga: 'kaluga', mb2: 'mb2' };
+  for (const jeu of limites) {
+    assert.ok(PAGE[jeu], 'jeu rationné sans page connue : ' + jeu);
+    const html = fs.readFileSync(path.join(ROOT, 'public', PAGE[jeu], 'index.html'), 'utf8');
+    assert.match(html, new RegExp('src="/js/fd-badge\\.js" data-jeu="' + jeu + '"'), 'le bandeau dans ' + PAGE[jeu]);
+  }
 
   const js = fs.readFileSync(path.join(ROOT, 'public/js/fd-badge.js'), 'utf8');
   assert.match(js, /pointer-events:none/, 'le bandeau ne prend jamais le clic');
