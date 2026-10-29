@@ -1162,6 +1162,9 @@ class Client {
     document.addEventListener('visibilitychange', () => { if (!document.hidden) this.redimensionner(); });
     window.addEventListener('focus', () => this.redimensionner());
     window.addEventListener('pageshow', () => this.redimensionner());
+    // Et l'aller : la fenêtre passe derrière, la partie se met en pause.
+    window.addEventListener('blur', () => this.pauseAuto());
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.pauseAuto(); });
   }
 
   nouvellePartie(opts) {
@@ -2189,6 +2192,39 @@ class Client {
     if (!this.pause && !enJeu) return;
     this.pause = !this.pause;
     if (this.pause) this.pauseAlpha = -90;
+  }
+
+  /**
+   * LA PAUSE QUAND LA FENÊTRE PASSE DERRIÈRE. Le jeu vit dans une fenêtre du
+   * bureau (ou un onglet) : le joueur clique le chat d'à côté, passe à une
+   * autre fenêtre, cache l'onglet — et les billes tombaient sans lui. On pose
+   * alors la pause de P, au panneau près, et rien d'autre : pas de reprise
+   * au retour, il repart par P ou Échap comme d'une pause qu'il aurait prise.
+   *
+   * Seulement en pleine partie : pas sur le bouquet de fin d'un niveau qui
+   * s'envole, une partie finie, le panneau d'expérience, chez Ornegon ou
+   * Gromelin, la carte de la forêt — ces écrans attendent déjà le joueur.
+   * Tous les modes (forêt, bassin, lieux) sont solo : aucun n'est exclu.
+   *
+   * Et dans tous les cas, on LÂCHE tout : le `keyup` d'une flèche tenue part
+   * vers l'autre fenêtre, et la pièce filerait seule au retour.
+   */
+  pauseAuto() {
+    const en = this.entree;
+    if (en) en.gauche = en.droite = en.bas = en.tourner = false;
+    this.doigt = null;
+    this.pulseTourner = 0;
+    this.finPulseTourner = false;
+    this.aideEnfoncee = false;
+    this.pauseEnfoncee = false;
+    if (this.pause) return false;
+    const enPartie = (this.jeu || this.bassin || this.lieu)
+      && !(this.jeu && this.jeu.termine)
+      && !this.cine && !this.nouvelle && !this.carteForet && !this.transition
+      && !this.evolution && !this.ornegon && !this.gromelin;
+    if (!enPartie) return false;
+    this.basculerPause();
+    return this.pause;
   }
 
   dessinerPause(ctx, tmod) {
