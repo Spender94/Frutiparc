@@ -61,6 +61,16 @@
   }
   @media (pointer: coarse) { #b-pause { display: flex; } }
   #b-pause.presse { background: rgba(240, 129, 61, .85); }
+  /* Le sens du doigt : DEVANT la voiture (on touche là où l'on veut aller)
+     ou DERRIÈRE (on la pousse : elle file à l'opposé du doigt, qui ne cache
+     plus la route). Une pastille à côté de la pause, au toucher seulement. */
+  #b-sens {
+    position: absolute; top: 8px; left: 56px; z-index: 4; display: none;
+    height: 40px; padding: 0 12px; border-radius: 20px; border: 2px solid rgba(255, 255, 255, .7);
+    background: rgba(60, 20, 10, .55); color: #fff; font: bold 11px Verdana, sans-serif;
+    align-items: center; justify-content: center; gap: 6px; touch-action: none; -webkit-tap-highlight-color: transparent;
+  }
+  @media (pointer: coarse) { #b-sens { display: flex; } }
   #mode-emploi {
     position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%); z-index: 4;
     width: min(88%, 360px); padding: 10px 14px; box-sizing: border-box; border-radius: 12px;
@@ -115,7 +125,8 @@
   <div id="aire"><canvas id="scene" width="350" height="350" tabindex="0"></canvas><div id="bk-multi"></div></div>
   <div id="vise"></div>
   <div id="b-pause" data-touche="80">II</div>
-  <div id="mode-emploi"><b>Touche la piste</b> là où tu veux aller : la voiture y file et accélère tant que ton doigt est posé.<br><b>Second doigt posé</b> : frein, tant qu'il reste là. <b>Double-tap</b> : nitro.</div>
+  <div id="b-sens" role="button" aria-label="Changer le sens du doigt">Doigt devant</div>
+  <div id="mode-emploi"></div>
 </div>
 <div id="chargement">Chargement de Burning Kiwi…</div>
 
@@ -222,6 +233,27 @@
   const vise = document.getElementById('vise');
   const DOIGT_TOLERANCE = 10;   // degrés : en deçà, tout droit
   const DOIGT_ARRIERE = 100;    // degrés : au-delà, on tourne sans accélérer
+  /*
+   * DOIGT DEVANT OU DOIGT DERRIÈRE.
+   *
+   * Toucher là où l'on veut aller, c'est poser le doigt DEVANT la voiture —
+   * sur la route qui arrive, qu'il cache. Des joueurs ont demandé l'inverse :
+   * le doigt DERRIÈRE, qui pousse la voiture. Le cap visé est alors celui qui
+   * va du doigt à la voiture : elle file à l'opposé du doigt, et la route
+   * devant reste dégagée. Le reste ne change pas (doigt posé = gaz, second
+   * doigt = frein, double-tap = nitro). Le choix se garde sur l'appareil.
+   */
+  let sensDerriere = false;
+  try { sensDerriere = localStorage.getItem('bkiwi-sens') === 'derriere'; } catch (e) { /* stockage fermé */ }
+  const MODE_EMPLOI = {
+    devant: '<b>Touche la piste</b> là où tu veux aller : la voiture y file et accélère tant que ton doigt est posé.',
+    derriere: '<b>Pose le doigt derrière la voiture</b> : elle file à l\'opposé, comme si tu la poussais, et accélère tant que ton doigt est posé.',
+  };
+  const afficherSens = function () {
+    document.getElementById('b-sens').textContent = sensDerriere ? 'Doigt derrière' : 'Doigt devant';
+    document.getElementById('mode-emploi').innerHTML = MODE_EMPLOI[sensDerriere ? 'derriere' : 'devant']
+      + '<br><b>Second doigt posé</b> : frein, tant qu\'il reste là. <b>Double-tap</b> : nitro.';
+  };
   let doigt = null;             // { id, x, y } en pixels de scène
   let frein = null;             // l'identifiant du second doigt, posé
   let dernierTap = 0;
@@ -290,7 +322,8 @@
     if (M.gamePaused || car.finished) { lacherPilotage(); return; }
     // La voiture sur l'écran : le circuit est décalé par la caméra.
     const cx = M.track._x + car._x, cy = M.track._y + car._y;
-    const dx = doigt.x - cx, dy = doigt.y - cy;
+    // Doigt derrière : le cap va du doigt à la voiture.
+    const dx = (doigt.x - cx) * (sensDerriere ? -1 : 1), dy = (doigt.y - cy) * (sensDerriere ? -1 : 1);
     let ecart = Math.atan2(dy, dx) * 180 / Math.PI - car._rotation;
     while (ecart > 180) ecart -= 360;
     while (ecart < -180) ecart += 360;
@@ -302,6 +335,22 @@
     tenir(0, !freine && Math.abs(ecart) < DOIGT_ARRIERE);
     vise.classList.toggle('frein', freine);
   };
+  // La pastille du sens : un appui bascule, et le mode d'emploi se remontre.
+  (function () {
+    const b = document.getElementById('b-sens');
+    b.addEventListener('pointerdown', function (ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      sensDerriere = !sensDerriere;
+      try { localStorage.setItem('bkiwi-sens', sensDerriere ? 'derriere' : 'devant'); } catch (e) { /* tant pis */ }
+      afficherSens();
+      lacherPilotage();
+      const me = document.getElementById('mode-emploi');
+      me.classList.remove('visible'); void me.offsetWidth; me.classList.add('visible');
+      clearTimeout(b.minuterie);
+      b.minuterie = setTimeout(function () { me.classList.remove('visible'); }, 6200);
+    });
+    afficherSens();
+  })();
   aire.addEventListener('pointerdown', function (ev) {
     if (ev.pointerType === 'mouse' || !enCourse()) return;
     if (doigt !== null) {   // le second doigt : le frein, tant qu'il est posé
@@ -359,8 +408,31 @@
     K.Key.toutRelacher();
     document.getElementById('b-pause').classList.remove('presse');
   };
-  window.__relacherCommandes = lacherTout;
-  document.addEventListener('visibilitychange', function () { if (document.hidden) lacherTout(); });
+  /*
+   * LA FENÊTRE PASSE DERRIÈRE : LA COURSE SE MET EN PAUSE.
+   *
+   * On clique le chat à côté, on change d'onglet, une autre fenêtre passe
+   * devant : la voiture filait toute seule dans le décor. Le jeu a déjà ce
+   * qu'il faut — le drapeau `forcePause` du GameClient (KiwiClient.as), que
+   * la Frusion d'origine levait pour arrêter une partie : en course, le jeu
+   * passe en pause (sa boîte « pause », comme à la touche P) et ni P ni
+   * échap ne l'en sortent tant que le drapeau tient. On le lève quand la
+   * fenêtre perd la main, on l'abaisse quand elle la reprend : la course
+   * reste en pause, et c'est le joueur qui la relance, comme une pause à lui.
+   * En ligne, le jeu refuse déjà la pause (togglePause) : les autres roulent.
+   */
+  const forcerPause = function (v) {
+    const c = window.BkiwiJeu && window.BkiwiJeu.client;
+    if (c) c.forcePause = v;
+  };
+  const passerDerriere = function () { lacherTout(); forcerPause(true); };
+  window.__relacherCommandes = passerDerriere;
+  window.addEventListener('blur', passerDerriere);
+  window.addEventListener('focus', function () { forcerPause(false); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) passerDerriere();
+    else if (document.hasFocus()) forcerPause(false);
+  });
   if (window.ResizeObserver) {
     new ResizeObserver(function () {
       adapter();

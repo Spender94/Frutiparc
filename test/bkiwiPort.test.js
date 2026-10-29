@@ -256,7 +256,7 @@ test('le catalogue : le disque light de Burning Kiwi, l\'onglet du light, la fen
     assert.ok(page.includes('<script src="' + s + '"></script>'), s);
   }
   assert.match(page, /<script src="\/js\/eject-watch\.js" data-jeu="bkiwi"><\/script>/);
-  assert.match(page, /window\.__relacherCommandes = lacherTout;/);
+  assert.match(page, /window\.__relacherCommandes = passerDerriere;/, 'quitter l’onglet lâche les commandes ET met la course en pause');
   assert.match(page, /<canvas id="scene" width="350" height="350"/);
 });
 
