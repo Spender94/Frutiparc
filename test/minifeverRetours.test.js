@@ -247,3 +247,131 @@ test('PHOTO : la règle ne dépend pas du miroir du poisson, et rétrécit avec 
   assert.equal(petit(22), true, 'à 22 px en hauteur (plus de 30 % de 60 = 18) : entier, réussi');
   assert.equal(petit(26), false, 'à 26 px : son dos sort du petit cadre, raté');
 });
+
+// ── LA PAUSE QUAND LA FENÊTRE PART ──
+
+/*
+ * Le jeu d'origine n'a pas de pause : quand la fenêtre n'est plus devant (le
+ * chat d'à côté, une autre fenêtre, l'onglet quitté au light, qui envoie un
+ * `blur`), l'épreuve filait sans personne. Le client se fige maintenant :
+ * plus d'image de jeu, un voile, et c'est un appui sur la scène qui relance —
+ * un appui qui ne compte PAS comme un coup. Rien ne repart tout seul.
+ *
+ * Le vrai Client, sur une fenêtre et une toile factices : on tient la boucle
+ * (requestAnimationFrame) et on déclenche nous-mêmes les événements.
+ */
+function clientEcoute() {
+  const fenetre = {}, doc = {}, toile = {};
+  const ecouter = (table) => (nom, f) => { (table[nom] = table[nom] || []).push(f); };
+  const ctx = new Proxy({}, { get: () => () => ({ addColorStop() {} }), set: () => true });
+  const avant = { window: global.window, document: global.document, raf: global.requestAnimationFrame };
+  let boucle = null;
+  global.window = { devicePixelRatio: 1, PointerEvent: function () {}, addEventListener: ecouter(fenetre), focus() {} };
+  global.document = { hidden: false, addEventListener: ecouter(doc) };
+  global.requestAnimationFrame = (f) => { boucle = f; return 1; };
+  const restaurer = () => {
+    for (const [k, v] of [['window', avant.window], ['document', avant.document], ['requestAnimationFrame', avant.raf]]) {
+      if (v === undefined) delete global[k]; else global[k] = v;
+    }
+  };
+  const client = new C.Client({ canvas: {
+    width: 240, height: 240, style: {},
+    parentElement: { clientWidth: 240, clientHeight: 240 },
+    getContext: () => ctx,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 240, height: 240 }),
+    addEventListener: ecouter(toile),
+  } });
+  const lancer = (table, nom, ev) => { for (const f of table[nom] || []) f(ev || {}); };
+  let t = 0;
+  return {
+    client, restaurer,
+    blur: () => lancer(fenetre, 'blur'),
+    focus: () => lancer(fenetre, 'focus'),
+    cacher: () => { global.document.hidden = true; lancer(doc, 'visibilitychange'); global.document.hidden = false; },
+    appui: () => {
+      const ev = { clientX: 120, clientY: 120, pointerType: 'mouse', cancelable: true, preventDefault() {} };
+      lancer(fenetre, 'pointerdown', ev);      // la capture de focus, posée sur la fenêtre
+      lancer(toile, 'pointerdown', ev);
+      lancer(fenetre, 'pointerup', ev);
+    },
+    images: (n) => { for (let i = 0; i < n; i++) { t += 25; boucle(t); } },
+  };
+}
+
+/** Une épreuve nue qui compte ses coups. */
+class Bidon extends E.Jeu {
+  init() { super.init(); this.gameTime = 400; this.coups = 0; }
+  click() { this.coups++; }
+}
+const CATALOGUE = [{ cle: 'bidon', nom: 'bidon', Classe: Bidon }];
+
+test('PAUSE : la fenêtre qui part fige l\'épreuve, un appui relance sans jouer de coup', () => {
+  const b = clientEcoute();
+  try {
+    const socle = b.client.nouvellePartie(E.Fever, CATALOGUE);
+    b.client.demarrer();
+    b.images(10);
+    const t0 = socle.timer;
+    assert.ok(t0 < 400, 'la barre de temps descend : ' + t0);
+
+    b.client.socle.click();                  // un doigt posé au moment de partir
+    b.blur();
+    assert.equal(b.client.enPause, true, 'le blur pose la pause');
+    assert.equal(socle.flPresse, false, 'et lâche toujours l\'appui');
+    b.images(40);
+    assert.equal(socle.timer, t0, 'la barre de temps ne bouge plus');
+
+    // Le retour du focus ne relance pas.
+    b.focus();
+    b.images(5);
+    assert.equal(b.client.enPause, true, 'la pause tient au retour');
+
+    // L'appui qui relance n'est pas un coup.
+    const coups = socle.jeu.coups;
+    b.appui();
+    assert.equal(b.client.enPause, false, 'un appui relance');
+    assert.equal(socle.jeu.coups, coups, 'sans compter comme un coup');
+    b.images(4);
+    assert.ok(socle.timer < t0, 'le temps reprend');
+    b.appui();
+    assert.equal(socle.jeu.coups, coups + 1, 'l\'appui suivant, lui, joue');
+
+    // L'onglet caché pause aussi.
+    b.cacher();
+    assert.equal(b.client.enPause, true, 'page cachée → pause');
+    // Une nouvelle partie repart sans pause.
+    b.client.nouvellePartie(E.Fever, CATALOGUE);
+    assert.equal(b.client.enPause, false, 'une nouvelle partie n\'hérite pas de la pause');
+  } finally { b.restaurer(); }
+});
+
+test('PAUSE : l\'arcade se fige aussi à la console ; ni l\'accueil ni l\'écran de fin', () => {
+  const b = clientEcoute();
+  try {
+    // La console de l'arcade (le briefing) enchaîne seule vers l'épreuve : elle
+    // se fige comme le reste de la partie.
+    const arcade = b.client.nouvellePartie(E.Arcade, CATALOGUE, { palier: 0 });
+    b.client.demarrer();
+    assert.equal(arcade.etape, 3, 'le briefing');
+    b.blur();
+    assert.equal(b.client.enPause, true, 'la console se met en pause');
+    const m = arcade.minuteur;
+    b.images(20);
+    assert.equal(arcade.minuteur, m, 'et ne décompte plus');
+
+    // Une partie close : rien à figer.
+    b.client.nouvellePartie(E.Arcade, CATALOGUE, { palier: 0 }).termine = true;
+    b.blur();
+    assert.equal(b.client.enPause, false, 'pas de pause sur une partie finie');
+
+    // L'écran de fin du fever : il attend un clic, il n'a rien à figer.
+    b.client.nouvellePartie(E.Fever, CATALOGUE).ecranFin = true;
+    b.blur();
+    assert.equal(b.client.enPause, false, 'pas de pause sur l\'écran de fin');
+
+    // L'écran d'accueil.
+    b.client.nouvellePartie(E.Menu, CATALOGUE);
+    b.blur();
+    assert.equal(b.client.enPause, false, 'pas de pause sur l\'accueil');
+  } finally { b.restaurer(); }
+});

@@ -211,6 +211,7 @@ class Client {
     this.tmod = 1;                 // Timer.tmod, initialisé à 1 comme dans le SWF
     this.echelle = 1;
     this.surEvenement = o.surEvenement || null;
+    this.enPause = false;          // la partie figée, fenêtre plus devant (cf. pauser)
     this.redimensionner();
     window.addEventListener('resize', () => this.redimensionner());
     // Le cadre bouge aussi SANS que la fenêtre bouge : le bandeau se
@@ -269,6 +270,9 @@ class Client {
     };
     const bas = (ev) => {
       if (ev.cancelable) ev.preventDefault();
+      // Figée, la partie ne prend pas cet appui pour un coup : il la RELANCE,
+      // et c'est tout — sinon le panier tirerait, la grenouille sauterait.
+      if (this.enPause) { bouger(ev); this.reprendre(); return; }
       bouger(ev);
       if (this.socle) {
         // Doigt ou souris ? Certains jeux en tiennent compte : Tubulo vise la
@@ -303,6 +307,28 @@ class Client {
     }
     // Une fenêtre qui part ne rend jamais le doigt levé.
     window.addEventListener('blur', haut);
+    /*
+     * …ET LA PARTIE SE FIGE. Le jeu d'origine n'a PAS de pause (aucune touche,
+     * aucun bouton : tout se joue à la souris, sous une barre de temps).
+     * Quand la fenêtre n'est plus devant — le chat d'à côté, une autre
+     * fenêtre du bureau, l'onglet quitté au light (qui nous envoie alors un
+     * `blur`), une autre application — l'épreuve continuait de filer sans
+     * personne, et la vie partait. On pose donc la pause la plus petite qui
+     * soit : plus aucune image de jeu, un voile, et un appui sur la scène
+     * pour reprendre. Rien ne repart tout seul au retour.
+     */
+    window.addEventListener('blur', () => this.pauser());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { haut(); this.pauser(); }
+    });
+    // Le FOCUS, que l'appui ne donne plus : `preventDefault` sur pointerdown
+    // annule aussi le transfert de focus vers le cadre du light (comme dans
+    // Mini-Wave). Sans focus, pas de `blur` à recevoir quand le joueur clique
+    // ailleurs — la pause ne viendrait jamais. On le réclame donc à l'appui.
+    const reprendreFocus = () => { try { window.focus(); } catch (e) { /* refusé */ } };
+    for (const ev of ['pointerdown', 'touchstart', 'mousedown']) {
+      window.addEventListener(ev, reprendreFocus, { capture: true, passive: true });
+    }
     // L'appui long d'Android ouvre un menu contextuel ET coupe le flux de
     // pointeurs (pointercancel) : viser en restant appuyé — panier, fusée,
     // arrosage — devenait une loterie au doigt.
@@ -316,6 +342,7 @@ class Client {
       surEvenement: (n, d) => { if (this.surEvenement) this.surEvenement(n, d); },
     }, opt || {}));
     this.socle.demarrer();
+    this.enPause = false;
     this.dernier = 0;
     this.attente = 0;
     this.derniereImage = 0;
@@ -343,13 +370,27 @@ class Client {
         if (ecart > 0 && ecart < TMOD_SAUT) {
           this.tmod = this.tmod * TMOD_LISSAGE + (1 - TMOD_LISSAGE) * ecart * IPS;
         }
-        if (this.socle && !this.socle.termine) this.socle.update(this.tmod);
+        // En pause, l'horloge suit (tmod reste juste) mais le jeu ne bouge pas.
+        if (this.socle && !this.socle.termine && !this.enPause) this.socle.update(this.tmod);
       }
       this.dessiner();
     };
     this.raf = requestAnimationFrame(boucle);
   }
   arreter() { if (this.raf) cancelAnimationFrame(this.raf); this.raf = null; }
+
+  /*
+   * La pause — seulement une partie qui SE JOUE : une épreuve, ou la console
+   * de l'arcade entre deux (elle enchaîne seule vers l'épreuve suivante).
+   * Pas l'écran d'accueil, pas l'écran de fin du fever, pas une partie close.
+   */
+  pauser() {
+    const s = this.socle;
+    if (this.enPause || !s || s.estMenu || s.ecranFin || s.termine) return false;
+    this.enPause = true;
+    return true;
+  }
+  reprendre() { this.enPause = false; }
 
   dessiner() {
     const ctx = this.ctx;
@@ -440,6 +481,24 @@ class Client {
     }
 
     this.dessinerFondu(ctx, s);
+    if (this.enPause) this.dessinerPause(ctx);
+  }
+
+  /** Le voile de pause : la scène assombrie, le mot, et comment repartir. */
+  dessinerPause(ctx) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, LARGEUR, HAUTEUR);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 30px "Trebuchet MS", sans-serif';
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeText('PAUSE', LARGEUR / 2, HAUTEUR / 2);
+    ctx.fillStyle = '#d94f2b';
+    ctx.fillText('PAUSE', LARGEUR / 2, HAUTEUR / 2);
+    ctx.font = 'bold 12px "Trebuchet MS", sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('cliquer pour reprendre', LARGEUR / 2, HAUTEUR / 2 + 24);
+    ctx.textAlign = 'left';
   }
 
   /**
@@ -638,7 +697,8 @@ class Client {
    * pouvoir en garder le trait.
    */
   dessinerConsole(ctx, s) {
-    this.etoiles = (this.etoiles || 0) + 0.5 + (s.dif || 0) * 0.05;
+    // Les étoiles s'arrêtent avec la partie : la pause fige tout l'écran.
+    if (!this.enPause) this.etoiles = (this.etoiles || 0) + 0.5 + (s.dif || 0) * 0.05;
     const d = this.etoiles % 60;
 
     ctx.fillStyle = '#101830';
