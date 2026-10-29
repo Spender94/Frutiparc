@@ -554,7 +554,45 @@ function carteSwapou(c) {
     getRecordLines('swaps', (Number(c.$swap) || 0) + ' swaps'))
     .forEach((l) => droite.lineList.push(l));
   page.list.push(droite);
-  return [page];
+  return [page].concat(lignesCombosSwapou(c));
+}
+
+/*
+ * LES COMBOS DE SWAPOU — un ajout du portage, réclamé par les joueurs.
+ *
+ * Le jeu compte déjà, dans la fiche même, combien de fois chaque nom de combo
+ * est tombé : `$combos[n]`, que `TItem.addCombo` incrémente à chaque chaîne
+ * hors Classique (c'est lui qui donne le titem `$combo0n` à la cinquième).
+ * La carte d'époque n'en montrait rien. On les écrit sous les records, dans
+ * l'ordre des paliers du Challenge (AnimatorChallenge, `comboName.sub`) :
+ * seuls ceux déjà réussis, avec leur compte — le palier suivant reste une
+ * surprise, comme dans le jeu.
+ */
+const COMBOS_SWAPOU = ['confiture de fraise', 'confiture aux abricots',
+  'tarte aux fruits rouges', 'recette crêmeuse', 'suprême crême-orange',
+  'kiwi-ti-kiwi', "orange folie's", 'douceur pistache', 'éclair suprême',
+  'iceberg de fruits', 'cocktail swapolotof'];
+function lignesCombosSwapou(c) {
+  const combos = Array.isArray(c.$combos) ? c.$combos : [];
+  const lignesC = [getTitleLine('combos')];
+  let total = 0;
+  COMBOS_SWAPOU.forEach((nom, i) => {
+    const n = Math.max(0, Math.floor(Number(combos[i]) || 0));
+    if (!n) return;
+    total += n;
+    lignesC.push(getSimpleScoreLine(nom, '× ' + n));
+  });
+  if (!total) {
+    lignesC.push({ list: [
+      { type: 'spacer', big: 1 },
+      { type: 'text', width: 200,
+        param: { sid: 1, text: 'pas encore de combo', textFormat: { align: 'center' } } },
+      { type: 'spacer', big: 1 },
+    ] });
+  }
+  lignesC.push({ height: 10 });
+  lignesC.push(getSepLine());
+  return lignesC;
 }
 
 /* MOTIONBALL 2 — 0x5d9cd. Les cinq donjons en rangée, le cinquième GLISSÉ AU

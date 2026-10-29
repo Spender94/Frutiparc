@@ -192,7 +192,20 @@ test('Swapou : les sept persos en cercle, les verrouillés à l’image i+10', (
   assert.strictEqual(Math.round(im[0].dy), Math.round(80 + Math.sin(-2) * 60));
   const t = textes(carte);
   assert.deepStrictEqual(t, ['personnages', 'normal', '900 points',
-    'classic', '400 points', 'swaps', '12 swaps']);
+    'classic', '400 points', 'swaps', '12 swaps', 'combos', 'pas encore de combo']);
+});
+
+test('Swapou : la fiche compte les combos réussis, palier par palier', () => {
+  // `$combos[n]` : le nombre de fois où le nom de combo n est tombé (TItem.addCombo).
+  const carte = FC.lignes('swapou2',
+    { $chars: [true, true], $record: 0, $classic_record: 0, $swap: 0,
+      $combos: [7, null, 2, 0, 0, 0, 0, 0, 0, 0, 1] }, 'Zorro');
+  const t = textes(carte);
+  const i = t.indexOf('combos');
+  assert.ok(i > 0, 'la rubrique est là');
+  assert.deepStrictEqual(t.slice(i), ['combos', 'confiture de fraise', '× 7',
+    'tarte aux fruits rouges', '× 2', 'cocktail swapolotof', '× 1'],
+  'seuls les combos réussis, dans l’ordre des paliers, avec leur compte');
 });
 
 test('MotionBall : le cinquième donjon se glisse au MILIEU', () => {
