@@ -102,6 +102,26 @@
     background: #E3756A; color: #fff; text-decoration: none;
   }
 
+  /* La barre de recherche, sous l'en-tête. */
+  .search-bar {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 6px 8px; margin: 0 0 6px; background: #D6F7B5; border-radius: 7px;
+  }
+  .search-bar input[type=search] {
+    flex: 1 1 220px; min-width: 0; padding: 5px 8px; font: 12px Verdana, Arial, sans-serif;
+    border: 1px solid #9FCF6B; border-radius: 4px; background: #fff; color: #2C4A0F;
+  }
+  .search-bar .search-scope { font-size: 11px; color: #335511; white-space: nowrap; }
+  /* Les résultats : un message par ligne, son extrait, où il vit. */
+  .search-info { font-size: 12px; color: #2C4A0F; padding: 6px 8px; }
+  .search-hit { display: block; padding: 7px 10px; background: #D6F7B5; border-top: 1px solid #C3EF93; color: #2C4A0F; text-decoration: none; }
+  .search-hit:nth-child(even) { background: #C3EF93; }
+  .search-hit:hover { background: #E8FBD3; text-decoration: none; }
+  .search-hit .hit-titre { font-weight: bold; font-size: 12px; }
+  .search-hit .hit-ou { font-size: 10px; color: #5A7D33; margin-top: 1px; }
+  .search-hit .hit-extrait { font-size: 11px; color: #335511; margin-top: 3px; overflow-wrap: anywhere; }
+  .search-hit mark { background: #F8F866; color: inherit; padding: 0 1px; border-radius: 2px; }
+
   /* Breadcrumb (legacy — hidden) */
   .breadcrumb { display: none; }
 
@@ -1559,6 +1579,13 @@
     <span class="title-link" id="header-title"><a href="#" onclick="navigate('index');return false">Forum Frutiparc.com</a></span>
     <div class="header-actions" id="header-actions"></div>
   </div>
+  <!-- LA RECHERCHE : toujours là, sous l'en-tête. Dans un forum, on peut la
+       borner à ce forum ; ailleurs, elle cherche partout. -->
+  <form class="search-bar" id="search-bar" onsubmit="lancerRecherche();return false" role="search">
+    <input type="search" id="search-q" placeholder="Rechercher dans le forum… (auteur:pseudo pour un auteur)" maxlength="200" aria-label="Rechercher dans le forum">
+    <label class="search-scope" id="search-scope" hidden><input type="checkbox" id="search-ici" checked> <span id="search-ici-nom">dans ce forum</span></label>
+    <button type="submit" class="btn btn-green btn-sm">Rechercher</button>
+  </form>
   <div id="app">
     <div class="loading">Chargement du forum...</div>
   </div>
@@ -2439,7 +2466,12 @@ function navigate(view, id, extra) {
   pousserHistoire(view, id, extra);
   if (view === 'index') loadIndex();
   else if (view === 'board') loadBoard(id, extra);
-  else if (view === 'topic') loadTopic(id, extra);
+  else if (view === 'topic') {
+    // Depuis la recherche : { page, post } — la page du message, et lui.
+    if (extra && typeof extra === 'object') loadTopic(id, extra.page, extra.post);
+    else loadTopic(id, extra);
+  }
+  else if (view === 'search') loadSearch(extra || {});
   else if (view === 'newTopic') showNewTopicForm(id);
   else if (view === 'pictos') loadPictos();
 }
@@ -2468,7 +2500,105 @@ function pagination(total, perPage, currentPage, onclick) {
   return html;
 }
 
+/*
+ * LA RECHERCHE.
+ *
+ * La barre vit sous l'en-tête, sur toutes les pages. Dans un forum, la case
+ * « dans <ce forum> » borne la recherche à lui ; ailleurs elle disparaît et
+ * l'on cherche partout. Les résultats sont des MESSAGES (le plus récent
+ * d'abord), chacun avec son sujet, son forum, son auteur, sa date et un
+ * extrait où les mots cherchés sont surlignés ; un clic ouvre le sujet à la
+ * page du message et y descend.
+ */
+var porteeBoard = null;   // { id, nom } du forum où l'on est, ou null
+function porteeRecherche(id, nom) {
+  porteeBoard = id ? { id: id, nom: nom } : null;
+  var sc = document.getElementById('search-scope');
+  if (!sc) return;
+  sc.hidden = !porteeBoard;
+  if (porteeBoard) document.getElementById('search-ici-nom').textContent = 'dans « ' + nom + ' »';
+}
+function lancerRecherche() {
+  var q = document.getElementById('search-q').value.trim();
+  if (!q) return;
+  var ici = porteeBoard && document.getElementById('search-ici').checked;
+  navigate('search', null, { q: q, board: ici ? porteeBoard.id : null, boardNom: ici ? porteeBoard.nom : null, page: 1 });
+}
+// Les mots cherchés, surlignés dans un texte déjà échappé — sans accents ni
+// casse, comme le serveur les a trouvés.
+function surligner(texteEchappe, mots) {
+  if (!mots || !mots.length) return texteEchappe;
+  var plat = function (c) { return c.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); };
+  var n = '';
+  var carte = [];   // position dans `n` → position dans le texte
+  for (var i = 0; i < texteEchappe.length; i++) {
+    var p = plat(texteEchappe[i]);
+    for (var k = 0; k < p.length; k++) { n += p[k]; carte.push(i); }
+  }
+  carte.push(texteEchappe.length);
+  var plages = [];
+  mots.forEach(function (m) {
+    var d = 0, j;
+    while ((j = n.indexOf(m, d)) >= 0) { plages.push([carte[j], carte[j + m.length - 1] + 1]); d = j + m.length; }
+  });
+  if (!plages.length) return texteEchappe;
+  plages.sort(function (a, b) { return a[0] - b[0]; });
+  var out = '', pos = 0;
+  plages.forEach(function (pl) {
+    if (pl[0] < pos) return;
+    // On ne coupe pas une entité HTML (&amp; …) en deux.
+    var avant = texteEchappe.slice(pos, pl[0]);
+    if (/&[a-z#0-9]*$/i.test(avant)) return;
+    out += avant + '<mark>' + texteEchappe.slice(pl[0], pl[1]) + '</mark>';
+    pos = pl[1];
+  });
+  return out + texteEchappe.slice(pos);
+}
+async function loadSearch(o) {
+  porteeRecherche(o.board || null, o.boardNom || null);
+  var champ = document.getElementById('search-q');
+  if (champ && o.q) champ.value = o.q;
+  var app = document.getElementById('app');
+  app.innerHTML = '<div class="loading">Recherche…</div>';
+  setBreadcrumb([{ text: 'Recherche' }]);
+  var url = '/api/forum/search?q=' + encodeURIComponent(o.q || '') + '&page=' + (o.page || 1)
+    + (o.board ? '&board=' + o.board : '');
+  var data;
+  try { data = await apiFetch(url); } catch (e) { data = null; }
+  if (!data || !data.ok) {
+    app.innerHTML = '<div class="empty">' + escapeHtml((data && data.message) || 'La recherche n’a pas abouti.') + '</div>';
+    return;
+  }
+  window.__rechercheCourante = o;
+  var html = '<div class="search-info">';
+  html += data.total ? '<b>' + data.total + '</b> message' + (data.total > 1 ? 's' : '') + ' trouvé' + (data.total > 1 ? 's' : '')
+    : 'Aucun message ne contient ' + (data.mots.length > 1 ? 'tous ces mots' : 'ce mot');
+  if (data.mots.length) html += ' pour « ' + escapeHtml(data.mots.join(' ')) + ' »';
+  if (data.auteur) html += ' — de ' + escapeHtml(data.auteur);
+  if (o.boardNom) html += ' — dans « ' + escapeHtml(o.boardNom) + ' »';
+  html += '</div>';
+  if (data.total) {
+    html += '<div class="tbl-header"><span class="col-main">Messages</span></div><div class="search-hits">';
+    data.resultats.forEach(function (r) {
+      html += '<a class="search-hit" href="#" onclick="navigate(\'topic\',' + r.topicId + ',{page:' + r.page + ',post:' + r.postId + '});return false">'
+        + '<div class="hit-titre">' + surligner(escapeHtml(r.topicTitle), data.mots) + '</div>'
+        + '<div class="hit-ou">' + escapeHtml(r.boardName) + ' · ' + (r.premier ? 'sujet ouvert par ' : 'réponse de ') + escapeHtml(r.author)
+        + ' · ' + formatDateShort(r.createdAt) + '</div>'
+        + (r.extrait ? '<div class="hit-extrait">' + surligner(escapeHtml(r.extrait), data.mots) + '</div>' : '')
+        + '</a>';
+    });
+    html += '</div>';
+    html += pagination(data.total, data.perPage, data.page, 'pageRecherche');
+  }
+  app.innerHTML = html;
+}
+function pageRecherche(p) {
+  var o = Object.assign({}, window.__rechercheCourante || {}, { page: p });
+  navigate('search', null, o);
+}
+
 async function loadIndex() {
+  porteeRecherche(null);
   var app = document.getElementById('app');
   app.innerHTML = '<div class="loading">Chargement...</div>';
   setBreadcrumb([]);
@@ -2596,6 +2726,7 @@ async function loadBoard(boardId, page) {
 
   var data = await apiFetch('/api/forum/board/' + boardId + '?page=' + page);
   if (!data.board) { app.innerHTML = '<div class="empty">Forum introuvable.</div>'; return; }
+  porteeRecherche(data.board.id, data.board.name);
 
   setBreadcrumb([{ text: data.board.name }]);
 
@@ -2711,6 +2842,7 @@ async function loadTopic(topicId, page, allerA) {
     { text: data.topic.boardName, href: "navigate('board'," + data.topic.boardId + ");return false" },
     { text: data.topic.title },
   ]);
+  porteeRecherche(data.topic.boardId, data.topic.boardName);
 
   // Column header: Auteur | Message
   var html = '<div class="tbl-header"><span class="col-author">Auteur</span><span class="col-main">Message</span></div>';

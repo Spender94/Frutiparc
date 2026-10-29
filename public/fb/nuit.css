@@ -58,6 +58,40 @@ a:hover {
   background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
 }
+.search-bar {
+  background: hsl(256 30% 21.6%);
+}
+.search-bar input[type=search] {
+  border: 1px solid hsl(256 26% 47.5%);
+  background: hsl(256 30% 10%);
+  color: hsl(256 13% 84.8%);
+}
+.search-bar .search-scope {
+  color: hsl(256 13% 84.4%);
+}
+.search-info {
+  color: hsl(256 13% 84.8%);
+}
+.search-hit {
+  background: hsl(256 30% 21.6%);
+  border-top: 1px solid hsl(256 26% 43.3%);
+  color: hsl(256 13% 84.8%);
+}
+.search-hit:nth-child(even) {
+  background: hsl(256 30% 27.5%);
+}
+.search-hit:hover {
+  background: hsl(256 30% 16.8%);
+}
+.search-hit .hit-ou {
+  color: hsl(256 13% 84.6%);
+}
+.search-hit .hit-extrait {
+  color: hsl(256 13% 84.4%);
+}
+.search-hit mark {
+  background: hsl(256 30% 26.1%);
+}
 .tbl-header {
   background: hsl(325 34% 34.6%);
   color: hsl(256 13% 96%);
@@ -807,4 +841,12 @@ img[src$="/fb/trophee.svg"] { content: url("/fb/trophee-nuit.svg?v=162da45b"); f
 body {
   background: var(--nuit-ciel) fixed;
   background-color: hsl(252 30% 10%);
+}
+
+/* Le surlignage des mots trouvés par la recherche : le jaune paille du jour,
+   converti, tombait sur la clarté des lignes et ne se voyait plus. On le
+   repose en ambre doux, lisible sur le panneau de nuit. */
+.search-hit mark {
+  background: hsl(45 70% 24%);
+  color: hsl(45 100% 92%);
 }

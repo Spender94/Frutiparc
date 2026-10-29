@@ -26335,6 +26335,78 @@ app.get('/api/forum/index', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/*
+ * LA RECHERCHE DU FORUM — GET /api/forum/search?q=…&auteur=…&board=…&page=…
+ *
+ * Les mots de `q` doivent TOUS se trouver dans le message ou le titre de son
+ * sujet, sans casse ni accents (db.forumSearch). Un « auteur:pseudo » dans la
+ * question vaut le champ auteur. Lisible par tout le monde, comme le forum ;
+ * les forums réservés au staff ne sortent que pour le staff. Chaque résultat
+ * dit où il vit — sujet, forum, PAGE du sujet — et donne un extrait centré
+ * sur le premier mot trouvé, débarrassé du BBCode.
+ */
+const FORUM_RECHERCHE_PAR_PAGE = 20;
+const sansAccents = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+function forumTexteNu(bb) {
+  return String(bb || '')
+    .replace(/\[quote(?:=[^\]]*)?\][\s\S]*?\[\/quote\]/gi, ' ')
+    .replace(/\[(?:img|youtube|video)\][\s\S]*?\[\/(?:img|youtube|video)\]/gi, ' ')
+    .replace(/\[\/?[a-z*]+(?:=[^\]]*)?\]/gi, '')
+    .replace(/\s+/g, ' ').trim();
+}
+function forumExtrait(texte, mots, largeur = 220) {
+  const t = forumTexteNu(texte);
+  if (t.length <= largeur) return t;
+  const n = sansAccents(t);
+  let i = -1;
+  for (const m of mots) { const k = n.indexOf(m); if (k >= 0 && (i < 0 || k < i)) i = k; }
+  if (i < 0) return t.slice(0, largeur).replace(/\s\S*$/, '') + '…';
+  let debut = Math.max(0, i - Math.floor(largeur / 3));
+  if (debut > 0) { const sp = t.indexOf(' ', debut); if (sp > 0 && sp < i) debut = sp + 1; }
+  let fin = Math.min(t.length, debut + largeur);
+  if (fin < t.length) { const sp = t.lastIndexOf(' ', fin); if (sp > i) fin = sp; }
+  return (debut > 0 ? '…' : '') + t.slice(debut, fin) + (fin < t.length ? '…' : '');
+}
+app.get('/api/forum/search', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, resultats: [], total: 0, page: 1, perPage: FORUM_RECHERCHE_PAR_PAGE });
+  try {
+    const currentUser = forumAuth(req);
+    let q = String(req.query.q || '').slice(0, 200);
+    let auteur = String(req.query.auteur || '').trim().slice(0, 40);
+    const mAuteur = /(?:^|\s)auteur:(\S+)/i.exec(q);
+    if (mAuteur) { if (!auteur) auteur = mAuteur[1]; q = q.replace(mAuteur[0], ' '); }
+    // Les mots : deux lettres au moins, huit au plus (une question, pas un roman).
+    const mots = [...new Set(sansAccents(q).replace(/[^a-z0-9@'’-]+/g, ' ').split(' ')
+      .map((m) => m.replace(/^['’-]+|['’-]+$/g, '')).filter((m) => m.length >= 2))].slice(0, 8);
+    const boardId = Number(req.query.board) || null;
+    if (!mots.length && !auteur) return res.status(400).json({ ok: false, error: 'requete_vide', message: 'Tape au moins un mot de deux lettres, ou un auteur.' });
+    const page = Math.max(1, Math.min(500, Number(req.query.page) || 1));
+    // Les forums du staff restent cachés à qui n'en est pas.
+    let exclusBoards = [];
+    if (!isForumStaff(currentUser)) {
+      const cats = await db.forumGetCategories();
+      const caches = new Set(cats.filter((c) => STAFF_ONLY_FORUM_CATEGORIES.has(c.name)).map((c) => c.id));
+      if (caches.size) exclusBoards = (await db.forumGetBoards(currentUser)).filter((b) => caches.has(b.category_id)).map((b) => b.id);
+    }
+    const auteurCle = auteur ? resolveKnownUsername(auteur) || auteur : '';
+    const { resultats, total } = await db.forumSearch({ mots, auteur: auteurCle, boardId, exclusBoards, page, perPage: FORUM_RECHERCHE_PAR_PAGE });
+    res.json({
+      ok: true, mots, auteur: auteurCle ? getDisplayName(auteurCle) : '', total, page, perPage: FORUM_RECHERCHE_PAR_PAGE,
+      resultats: resultats.map((r) => ({
+        postId: r.id, topicId: r.topic_id, topicTitle: r.topic_title,
+        boardId: r.board_id, boardName: r.board_name,
+        author: getDisplayName(r.author_username), createdAt: r.created_at,
+        page: Math.max(1, Math.ceil(Number(r.rang) / FORUM_POSTS_PER_PAGE)),
+        premier: !!r.premier,
+        extrait: forumExtrait(r.content, mots),
+      })),
+    });
+  } catch (e) {
+    console.error('[FORUM] recherche :', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 /**
  * « Tout marquer comme lu » — le bouton qui ÉTEINT le voyant forum.
  *

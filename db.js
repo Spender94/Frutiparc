@@ -3905,6 +3905,48 @@ async function forumGetTopic(topicId) {
  * Le rang est compté dans l'ordre d'affichage (cf. forumGetPosts juste en
  * dessous, même ORDER BY) : l'appelant en déduit la page.
  */
+/*
+ * LA RECHERCHE DU FORUM. Un message répond quand CHACUN des mots cherchés se
+ * trouve dans son texte ou dans le titre de son sujet — sans tenir compte des
+ * majuscules ni des accents (« quete » trouve « Quête »). Filtres : l'auteur
+ * (pseudo exact, sans casse) et le forum. Les forums réservés au staff sont
+ * exclus quand `exclusBoards` les nomme. Les plus récents d'abord.
+ *
+ * Chaque résultat porte aussi son RANG dans le sujet : c'est ce qui donne la
+ * page où il vit (rang / messages par page), pour y mener directement.
+ *
+ * `mots` arrivent déjà normalisés (minuscules, sans accents) côté serveur.
+ */
+const SQL_SANS_ACCENTS = (col) => `translate(lower(${col}), 'àâäáãåçéèêëíìîïñóòôöõúùûüýÿ', 'aaaaaaceeeeiiiinooooouuuuyy')`;
+async function forumSearch({ mots, auteur, boardId, exclusBoards, page, perPage }) {
+  const params = [];
+  const conds = [];
+  const p = (v) => { params.push(v); return '$' + params.length; };
+  for (const m of mots || []) {
+    const motif = '%' + String(m).replace(/[\\%_]/g, (c) => '\\' + c) + '%';
+    const pm = p(motif);
+    conds.push(`(${SQL_SANS_ACCENTS('fp.content')} LIKE ${pm} OR ${SQL_SANS_ACCENTS('ft.title')} LIKE ${pm})`);
+  }
+  if (auteur) conds.push(`lower(fp.author_username) = ${p(String(auteur).toLowerCase())}`);
+  if (boardId) conds.push(`ft.board_id = ${p(Number(boardId))}`);
+  if (exclusBoards && exclusBoards.length) conds.push(`NOT (ft.board_id = ANY(${p(exclusBoards.map(Number))}))`);
+  if (!conds.length) return { resultats: [], total: 0 };
+  const where = conds.join(' AND ');
+  const de = `FROM forum_posts fp JOIN forum_topics ft ON ft.id = fp.topic_id JOIN forum_boards fb ON fb.id = ft.board_id WHERE ${where}`;
+  const { rows: compte } = await pool.query(`SELECT COUNT(*)::int AS n ${de}`, params);
+  const lim = p(perPage), off = p((Math.max(1, page) - 1) * perPage);
+  const { rows } = await pool.query(
+    `SELECT fp.id, fp.topic_id, fp.author_username, fp.content, fp.created_at,
+            ft.title AS topic_title, ft.board_id, fb.name AS board_name,
+            (SELECT COUNT(*) FROM forum_posts x WHERE x.topic_id = fp.topic_id
+               AND (x.created_at < fp.created_at OR (x.created_at = fp.created_at AND x.id <= fp.id)))::int AS rang,
+            (SELECT MIN(y.id) FROM forum_posts y WHERE y.topic_id = fp.topic_id) = fp.id AS premier
+       ${de}
+      ORDER BY fp.created_at DESC, fp.id DESC
+      LIMIT ${lim} OFFSET ${off}`, params);
+  return { resultats: rows, total: compte[0].n };
+}
+
 async function forumFirstUnreadPost(username, topicId) {
   if (!username) return null;
   const { rows } = await pool.query(
@@ -5628,6 +5670,7 @@ module.exports = {
   addSwapouIaScore,
   listSwapouIaScores,
   getModerationLogs,
+  forumSearch,
   listGaspardHelpTopics,
   getGaspardHelpTopic,
   getGaspardIndexTopic,

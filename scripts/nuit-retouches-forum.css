@@ -83,3 +83,11 @@ body {
   background: var(--nuit-ciel) fixed;
   background-color: hsl(252 30% 10%);
 }
+
+/* Le surlignage des mots trouvés par la recherche : le jaune paille du jour,
+   converti, tombait sur la clarté des lignes et ne se voyait plus. On le
+   repose en ambre doux, lisible sur le panneau de nuit. */
+.search-hit mark {
+  background: hsl(45 70% 24%);
+  color: hsl(45 100% 92%);
+}
