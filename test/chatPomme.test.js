@@ -253,7 +253,7 @@ test('salon pomme : les quatre droits de l\'animateur, et leurs refus ailleurs',
   }
 });
 
-test('la fenêtre des logs : vingt-quatre heures de salon, réservées au staff du salon', async (t) => {
+test('la fenêtre des logs : vingt-quatre heures de salon, ouvertes à tous les Frutiz', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
 
   const sidModo = (await (await fetch(BASE + '/api/auth/login', {
@@ -279,10 +279,11 @@ test('la fenêtre des logs : vingt-quatre heures de salon, réservées au staff 
     await wait(400);
   } finally { modo.fermer(); }
 
-  // Les portes : session obligatoire, staff du salon obligatoire.
+  // Les portes : session obligatoire ; un salon public se relit par tous, une
+  // discussion privée par ses seuls participants.
   assert.equal((await fetch(`${BASE}/api/chat/histo?g=pomme`)).status, 401, 'sans session : 401');
-  assert.equal((await fetch(`${BASE}/api/chat/histo?sid=${sidTemoin}&g=pomme`)).status, 403,
-    'un simple utilisateur : 403');
+  assert.equal((await fetch(`${BASE}/api/chat/histo?sid=${sidTemoin}&g=pomme`)).status, 200,
+    'un simple utilisateur lit les logs du salon');
   assert.equal((await fetch(`${BASE}/api/chat/histo?sid=${sidModo}&g=inconnu`)).status, 404,
     'salon inconnu : 404');
 

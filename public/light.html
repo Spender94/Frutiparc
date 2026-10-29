@@ -8382,7 +8382,11 @@
         // `ma="1"` : un « @all » du staff — adressé à tout le monde, donc à moi.
         var aTous = attr(xml, "ma") === "1";
         if (aTous) nommes.push("all");
-        var pourMoi = !enRejeu && (meMentionne(nommes) || aTous || attr(xml, "st") === "r");
+        // Et une discussion PRIVÉE s'adresse toujours à moi, par construction —
+        // même quand elle a sa fenêtre (`aSonJournal`), où l'on ne passait plus
+        // par le comptage des non-lus : passé le premier message, qui ouvrait
+        // la fenêtre, les suivants n'avertissaient plus personne.
+        var pourMoi = !enRejeu && (meMentionne(nommes) || aTous || attr(xml, "st") === "r" || estPrive(salon));
         if (salon && salon !== state.room && !aSonJournal(salon)) {
           var conv = state.prives[salon];
           if (conv && !enRejeu && !(conv.sourdineJusqua > Date.now())) {
@@ -12024,9 +12028,10 @@
     if (window.BureauFrutiz && BureauFrutiz.actif && BureauFrutiz.actif() && BureauFrutiz.majListeConnectes) BureauFrutiz.majListeConnectes();
   }
 
-  // « … voir les messages précédents … » — le lien des logs du staff, comme au
-  // bureau (box.Chat.onIamMode) : il n'apparaît qu'à ceux dont la ligne porte
-  // m="1" sur ce salon, une fois par salon.
+  // « … voir les messages précédents … » — le lien des logs du salon. Le bureau
+  // (box.Chat.onIamMode) ne le montre qu'à ceux dont la ligne porte m="1" ;
+  // ici il est à TOUS les Frutiz, une fois par salon : les logs sont la
+  // mémoire du salon, pas un registre de modération.
   var histoMontre = {};
   function montrerLienHisto(room, set) {
     if (histoMontre[room] || estPrive(room)) return;
@@ -12035,7 +12040,7 @@
     if (room !== state.room && !aSonJournal(room)) return;
     var moi = null;
     for (var n in set) { if (n.toLowerCase() === state.userLower) { moi = set[n]; break; } }
-    if (!moi || !moi.staff) return;
+    if (!moi) return;
     histoMontre[room] = true;
     systemAction("", "... voir les messages précédents ...", function () {
       window.open("/api/chat/histo?sid=" + encodeURIComponent(state.sid)

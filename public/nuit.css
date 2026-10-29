@@ -2668,6 +2668,9 @@ body.bureau-frutiz .fen #quetes-sheet {
 .qt-aff-jeu {
   color: hsl(256 13% 84.4%);
 }
+.qt-aff-circuit {
+  color: hsl(256 13% 84.4%);
+}
 .qt-aff-record {
   color: hsl(256 13% 84.5%);
 }
@@ -3145,10 +3148,13 @@ img[src$="/fb/signe_mystere.png"] { filter: invert(1) opacity(.5); }
    de jour), l'orange et le jaune avec lui depuis qu'on range le parchemin
    avec le châssis — et il ne restait qu'un dégradé violet, c'est-à-dire plus
    d'arc-en-ciel du tout. Aucune règle de couleur ne peut voir ça : elle ne
-   regarde qu'une couleur à la fois. On le repose donc entier. */
+   regarde qu'une couleur à la fois. On le repose donc entier — ÉCLAIRCI :
+   sur le fond nuit, le bleu (#6666CC) et le violet (#6E3C8D) d'origine
+   s'éteignaient, et deux mots sur sept d'un message multicolore devenaient
+   illisibles. Les sept teintes gardent leur ordre et leur caractère. */
 .pen-swatch.mc,
 .mc-text {
-  background: linear-gradient(90deg, #FF6600, #EBB601, #20D251, #47B9C9, #6666CC, #6E3C8D, #F986E2);
+  background: linear-gradient(90deg, #FF8A3D, #FFD23F, #5BEB7A, #6FD6E8, #9D9DFF, #C98BFF, #FF9EE8);
 }
 body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc,
 body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {

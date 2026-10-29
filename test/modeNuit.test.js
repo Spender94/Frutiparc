@@ -265,9 +265,18 @@ test('les deux décors du parc ressortent au même étage', () => {
   assert.ok(Math.abs(vert - parchemin) <= 4,
     'vert à ' + vert + ' %, parchemin à ' + parchemin + ' % : ils doivent s’accorder');
   // Et l'arc-en-ciel du feutre multicolore, que nulle règle de couleur ne peut
-  // sauver, est reposé entier à la main.
+  // sauver, est reposé entier à la main — éclairci : le bleu et le violet
+  // d'origine s'éteignaient sur le fond nuit, deux mots sur sept illisibles.
   const retouches = lire('scripts/nuit-retouches.css');
-  assert.match(retouches, /linear-gradient\(90deg, #FF6600, #EBB601, #20D251, #47B9C9, #6666CC, #6E3C8D, #F986E2\)/);
+  assert.match(retouches, /linear-gradient\(90deg, #FF8A3D, #FFD23F, #5BEB7A, #6FD6E8, #9D9DFF, #C98BFF, #FF9EE8\)/);
+  // Chaque teinte est assez claire pour le fond nuit (clarté HSL ≥ 60 %).
+  const clarte = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    return Math.round((Math.max(r, g, b) + Math.min(r, g, b)) * 50);
+  };
+  for (const c of ['#FF8A3D', '#FFD23F', '#5BEB7A', '#6FD6E8', '#9D9DFF', '#C98BFF', '#FF9EE8']) {
+    assert.ok(clarte(c) >= 60, c + ' : assez clair pour le fond nuit (' + clarte(c) + ' %)');
+  }
   assert.match(NUIT, /\.pen-swatch\.mc,\s*\n\.mc-text \{/);
 });
 

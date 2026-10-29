@@ -1347,7 +1347,7 @@ const BOUILLE_IMG_DIR = path.join(SCORES_DIR, 'bouille-cache');
 // Animation id → playAnim index (mirrors bouille-preview / demo). '' = no anim.
 const BOUILLE_ANIMS = {
   parle: 1, rire: 2, mdr: 3, langue: 4, rougir: 5, regard: 6,
-  sifflote: 7, gum: 8, question: 9, miam: 10, pleurer: 11,
+  sifflote: 7, gum: 8, question: 9, miam: 10, pleurer: 11, larme: 12,
 };
 function normalizeBouilleImgParams(q) {
   // state: 24-char-ish alnum; keep it conservative.
@@ -23533,16 +23533,12 @@ app.all('/do/give', (req, res) => {
 
   // ── Requête de quota (/meskikooz) ──
   if (source.k === undefined && source.u === undefined) {
-    const anim = isAnimator(username), mod = isModerator(username);
-    if (!anim && !mod) return res.type('text/xml').send('<r k="2" />');
-    // Le plafond ne s'applique qu'aux animateurs : /don ne compte rien pour un
-    // modérateur. On le signale par p="0" — un attribut que le bureau ignore, et
-    // qui permet au mobile de dire « tes dons ne sont pas plafonnés » au lieu
-    // d'annoncer un reste qui n'existe pas. Le bureau, lui, n'a qu'un nombre à
-    // afficher : on lui donne l'allocation pleine, qui est pour un modérateur un
-    // plancher et non un plafond.
-    const plafonne = anim && !mod;
-    const restant = plafonne ? animatorKikoozLeft(username) : ANIMATOR_WEEKLY_KIKOOZ;
+    // L'enveloppe de dons est celle des ANIMATEURS, et d'eux seuls : un
+    // modérateur n'a pas de /don (les rôles se respectent), donc pas de quota.
+    const anim = isAnimator(username);
+    if (!anim) return res.type('text/xml').send('<r k="2" />');
+    const plafonne = true;
+    const restant = animatorKikoozLeft(username);
     return res.type('text/xml').send(`<r k="0" a="${restant}" p="${plafonne ? 1 : 0}" />`);
   }
 
@@ -28951,7 +28947,13 @@ app.get('/api/chat/histo', (req, res) => {
   if (!demandeur) return res.status(401).send('Session inconnue.');
   const g = String(req.query.g || '').trim();
   if (!g || !channels[g]) return res.status(404).send('Salon inconnu.');
-  if (!isChannelStaff(demandeur, g)) return res.status(403).send('Réservé au staff du salon.');
+  // Les logs d'un salon public sont à TOUS les Frutiz — c'est la mémoire du
+  // salon, pas un registre de modération. Une discussion privée, elle, ne se
+  // relit qu'entre ses deux participants.
+  const ch = channels[g];
+  if (ch.private && !(Array.isArray(ch.participants) && ch.participants.includes(demandeur))) {
+    return res.status(403).send('Réservé aux participants de la discussion.');
+  }
 
   const lignes = [];
   for (const e of getChannelHistoryComplete(g)) {
@@ -28984,7 +28986,7 @@ app.get('/api/chat/histo', (req, res) => {
       corps = unescapeXml(corps.replace(/<[^>]*>/g, '')).trim();
     }
     if (!corps) continue;
-    lignes.push({ h, u, corps, rouge: st === 'r', anim: t === 'c', systeme: u === 'admin' });
+    lignes.push({ h, u, corps, rouge: st === 'r', anim: t === 'c', mc: st === 'mc', systeme: u === 'admin' });
   }
 
   const esc = escapeXml;
@@ -28992,6 +28994,7 @@ app.get('/api/chat/histo', (req, res) => {
     const classes = ['ligne'];
     if (l.rouge) classes.push('cri');
     if (l.anim) classes.push('anim');
+    if (l.mc) classes.push('mc');
     if (l.systeme && !l.rouge) classes.push('systeme');
     const qui = (l.systeme || l.rouge) ? '' : '<b>' + esc(l.u) + ' :</b> ';
     return '<div class="' + classes.join(' ') + '"><span class="h">' + esc(l.h) + '</span> '
@@ -29024,6 +29027,13 @@ app.get('/api/chat/histo', (req, res) => {
   .h { color: #8aa15c; }
   .cri { color: #c10000; font-weight: bold; }
   .anim { color: #1d5fa8; font-weight: bold; }
+  /* Le feutre multicolore : le même arc-en-ciel que sur le chat (MC_RAINBOW). */
+  .mc { font-weight: bold; }
+  .mc b, .mc .h { color: inherit; }
+  .mc {
+    background: linear-gradient(90deg, #FF6600, #EBB601, #20D251, #47B9C9, #6666CC, #6E3C8D, #F986E2);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
+  }
   .systeme { font-style: italic; color: #5a7a2a; }
   .vide { padding: 18px; text-align: center; font-style: italic; color: #5a7a2a; }
 </style>
@@ -29031,7 +29041,7 @@ app.get('/api/chat/histo', (req, res) => {
 <body>
 <div class="fenetre">
   <div class="bandeau">Salon <span class="salon">${esc(g)}</span> — les messages des 24 dernières heures</div>
-  <div class="sous">${lignes.length} message${lignes.length > 1 ? 's' : ''} — consultation réservée au staff. Les heures sont celles du chat.</div>
+  <div class="sous">${lignes.length} message${lignes.length > 1 ? 's' : ''} — la mémoire du salon, ouverte à tous les Frutiz. Les heures sont celles du chat.</div>
   <div class="corps">${rendu || '<div class="vide">Aucun message sur ce salon depuis 24 heures.</div>'}</div>
 </div>
 <script>document.querySelector('.corps').scrollTop = 1e9;</script>
@@ -32360,10 +32370,11 @@ function lgPayer(p, e) {
   const gagnants = (e.gagnants || []).filter((u) => users[u]);
   if (prix <= 0 || !gagnants.length) return;
   const donneur = p.meneur;
-  const isMod = isModerator(donneur);
-  if (!isMod && !isAnimator(donneur)) { lgInfo(p.salon, 'Le meneur n’a plus d’enveloppe : pas de prix cette fois.'); return; }
+  // L'enveloppe est celle des animateurs : un modérateur qui mène une partie
+  // n'en a pas (les rôles se respectent) — la gloire, mais pas les kikooz.
+  if (!isAnimator(donneur)) { lgInfo(p.salon, 'Le meneur n’a pas d’enveloppe : pas de prix cette fois.'); return; }
   let part = prix;
-  if (!isMod) {
+  {
     const rec = getAnimatorWeekRecord(donneur);
     const reste = Math.max(0, ANIMATOR_WEEKLY_KIKOOZ - rec.given);
     part = Math.min(prix, Math.floor(reste / gagnants.length));
@@ -32380,7 +32391,7 @@ function lgPayer(p, e) {
     addAndNotifyUserLog(u, { type: USER_LOG_TYPE.CHAT, content: `Victoire au loup-garou ! ${getDisplayName(donneur)} t'offre ${part} kikooz.` });
     if (process.env.DATABASE_URL) {
       db.addKikoozGift({ giver: donneur, recipient: u, amount: part, reason: 'loup-garou',
-        giverRole: isMod ? 'moderateur' : 'animateur', source: 'enveloppe', weekKey: parisWeekKey() })
+        giverRole: 'animateur', source: 'enveloppe', weekKey: parisWeekKey() })
         .catch((err) => console.error('[DB] kikooz gift log error:', err.message));
     }
   }
@@ -33611,7 +33622,10 @@ const CHAT_EMOTES = {};
   add('question', 'se pose des questions', [':?', 'question', 'curieux', 'oO']);
   add('miam', 'se régale', ['miam', 'slurp', 'bave', 'regale']);
   add('pleurer', 'pleure', [':-"(', ';((', 'pleure', 'ouin']);
-  add('pleurer', 'laisse couler une larme', [":'(", ';(', 'larme', 'snif']);
+  // « larme » (12) n'est pas « pleurer » (11) : une seule larme, l'œil
+  // triste, jouée une fois — et sa phrase à elle. Les deux partaient sur la
+  // 11 : « larme » donnait un sanglot, légendé « pleure ».
+  add('larme', 'laisse couler une larme', [":'(", ';(', 'larme', 'snif']);
 })();
 function detectChatEmote(text) {
   const key = String(text == null ? '' : text).trim();
@@ -35108,11 +35122,11 @@ case 'send': {
       }
     }
     const canModHere = isModerator(client.username) || (isAnimator(client.username) && g === ANIM_CHANNEL);
-    // Animator-style commands (/blueon, /blueoff, quiz) are usable by both
-    // animators and moderators, in any salon (not just ANIM_CHANNEL): the
-    // user explicitly asked moderators get the same powers and that they
-    // work everywhere.
-    const canAnimate = isAnimator(client.username) || isModerator(client.username);
+    // Les commandes d'ANIMATION (/blueon, /blueoff, quiz, /don, /mesdons) sont
+    // aux animateurs, dans tout salon. Les modérateurs les avaient reçues en
+    // bloc ; on respecte les rôles : à eux la modération (kick, ban, totoché,
+    // cri rouge, @all), aux animateurs le feutre bleu et l'enveloppe de dons.
+    const canAnimate = isAnimator(client.username);
 
     if (canModHere && text.startsWith('/kick ')) {
       const targetUser = resolveKnownUsername(text.substring(6).trim());
@@ -35378,8 +35392,7 @@ case 'send': {
     // PRIVÉE (sendToClient) : ce que distribue un animateur ne regarde pas le
     // salon.
     if (canAnimate && /^\/(mesdons|mesdon|dons)\s*$/i.test(text)) {
-      const plafonne = isAnimator(client.username) && !isModerator(client.username);
-      const restant = plafonne ? animatorKikoozLeft(client.username) : null;
+      const restant = animatorKikoozLeft(client.username);
       let lignes = [];
       if (process.env.DATABASE_URL) {
         try {
@@ -35534,17 +35547,15 @@ case 'send': {
       break;
     }
 
-    // ── /don <pseudo> <montant> : don de kikooz (animateurs + modérateurs) ──
+    // ── /don <pseudo> <montant> : don de kikooz (animateurs) ──
     // Annonce en bleu gras dans le salon (style t="c", comme les gains MikeHorny).
     // Les animateurs puisent dans un quota hebdomadaire (ANIMATOR_WEEKLY_KIKOOZ,
-    // remis à zéro chaque lundi) ; les modérateurs ne sont pas plafonnés.
+    // remis à zéro chaque lundi).
     if (canAnimate && /^\/don(\s|$)/i.test(text)) {
-      const isMod = isModerator(client.username);
       const reject = (m) => sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(m)}</i>]]></${CMD.send}>`);
       const mm = text.match(/^\/don\s+(\S+)\s+(\d{1,6})\s*$/i);
       if (!mm) {
-        reject(isMod ? 'Usage : /don <pseudo> <montant>'
-                     : `Usage : /don <pseudo> <montant> — il te reste ${animatorKikoozLeft(client.username)} kikooz à distribuer cette semaine.`);
+        reject(`Usage : /don <pseudo> <montant> — il te reste ${animatorKikoozLeft(client.username)} kikooz à distribuer cette semaine.`);
         break;
       }
       const targetName = resolveKnownUsername(mm[1]);
@@ -35553,7 +35564,7 @@ case 'send': {
       if (!target) { reject('Joueur introuvable (doit être connecté).'); break; }
       if (!(amount > 0)) { reject('Montant invalide.'); break; }
       if (targetName === client.username) { reject('Tu ne peux pas te donner des kikooz à toi-même.'); break; }
-      if (!isMod) {
+      {
         const rec = getAnimatorWeekRecord(client.username);
         if (rec.given + amount > ANIMATOR_WEEKLY_KIKOOZ) {
           reject(`Quota hebdo dépassé : il te reste ${ANIMATOR_WEEKLY_KIKOOZ - rec.given} kikooz à distribuer cette semaine.`);
@@ -35577,11 +35588,11 @@ case 'send': {
       if (process.env.DATABASE_URL) {
         db.addKikoozGift({
           giver: client.username, recipient: targetName, amount, reason: '',
-          giverRole: isMod ? 'moderateur' : 'animateur',
+          giverRole: 'animateur',
           source: 'enveloppe', weekKey: parisWeekKey(),
         }).catch((e) => console.error('[DB] kikooz gift log error:', e.message));
       }
-      console.log(`[DON] ${client.username} → ${targetName}: ${amount} kikooz (mod=${isMod})`);
+      console.log(`[DON] ${client.username} → ${targetName}: ${amount} kikooz`);
       break;
     }
 
@@ -35696,7 +35707,7 @@ case 'send': {
     // sender via the chat.msg template. So we just hand it u + the raw text and
     // let the client apply the exact same typo/colour as kikooz — no hand-rolled
     // <font color> (which never matched).
-    if (blueModeUsers.has(client.username) && (isAnimator(client.username) || isModerator(client.username))) {
+    if (blueModeUsers.has(client.username) && isAnimator(client.username)) {
       broadcastToChannel(g,
         `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="c"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"${mn}>${safeText}</${CMD.send}>`
       );

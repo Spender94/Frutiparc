@@ -491,7 +491,7 @@ test('le client : un salon public ne clignote que pour ce qui s\'adresse à moi'
     'et se tait quand la ligne ne me concerne pas');
   // « et rien d'autre » — pas même une ligne REJOUÉE : l'historique de la
   // reconnexion s'écrit sans réveiller personne (cf. bouilleClignote).
-  assert.match(src, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| aTous \|\| attr\(xml, "st"\) === "r"\);/,
+  assert.match(src, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| aTous \|\| attr\(xml, "st"\) === "r" \|\| estPrive\(salon\)\);/,
     'une mention, un « @all » OU un cri de modérateur, et rien d\'autre — jamais un rejeu');
   // « @all » : la marque ma="1" vaut mention de soi, et le mot se met en évidence comme son propre pseudo.
   assert.match(src, /var aTous = attr\(xml, "ma"\) === "1";/, 'le client lit la marque « à tous »');
