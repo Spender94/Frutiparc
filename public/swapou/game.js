@@ -1899,6 +1899,20 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     } else this.key_flag = false;
     return false;
   };
+  // La pause posée de l'extérieur — la fenêtre du jeu est passée derrière
+  // (cf. SW.pauseAuto, screens.js). C'est la pause d'Échap, au même état
+  // près : plateaux masqués, boîte « pause » ; seul l'appui suivant (Échap
+  // ou le bouton) la lève. `key_flag` retombe : la touche qui était peut-être
+  // enfoncée au départ a lâché ailleurs, et le premier appui au retour doit
+  // compter.
+  Pause.prototype.forcer = function () {
+    if (this.flag) return false;
+    this.flag = true;
+    this.key_flag = false;
+    this.want = false;
+    this.togglesVisible(false);
+    return true;
+  };
   Pause.prototype.draw = function (ctx) {
     if (!this.flag) return;
     // Pause.as ne pose que le clip `pauseBox` (#458) : son image, qui porte

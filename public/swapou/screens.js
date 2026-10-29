@@ -1285,6 +1285,23 @@
   };
   SW.setEsc = function (down) { SW.escDown = down; };
 
+  // LA PAUSE QUAND LA FENÊTRE PASSE DERRIÈRE. Le jeu vit dans une fenêtre du
+  // bureau (ou un onglet) : quand le joueur clique le chat à côté, change de
+  // fenêtre ou d'application, la partie ne doit pas filer sans lui — le Duel
+  // décompte son temps de réflexion, l'IA joue. index.html appelle ceci sur
+  // `blur` et sur `visibilitychange` (page cachée). Tous les modes de Swapou
+  // sont solo (Challenge, essai, Classique, Duel et Histoire contre l'IA) :
+  // seule compte la présence d'une `pause` — les menus, la carte de
+  // l'histoire et l'écran de fin n'en ont pas, et continuent. Pas de reprise
+  // au retour : on reprend comme d'une pause d'Échap, par Échap ou le bouton.
+  SW.pauseAuto = function () {
+    // L'Échap tenu au départ lâchera dans une autre fenêtre : on l'oublie.
+    SW.escDown = false;
+    const mode = Manager.mode;
+    if (!mode || !mode.pause || !mode.pause.forcer) return false;
+    return mode.pause.forcer();
+  };
+
   // ── Pop-in « Plus de FD » — reproduction de la popin NATIVE Frutiparc ──
   // Même rendu que l'overlay du popup de jeu (game-popup.html) : bordure noire
   // + liseré gris, coins arrondis, ombre portée, icône + titre, bouton

@@ -221,6 +221,12 @@
   window.addEventListener('keyup', function (e) {
     if (e.key === 'Escape') SW.setEsc(false);
   });
+  // La fenêtre passe derrière (clic à côté, autre fenêtre, onglet caché) :
+  // la partie se met en pause d'elle-même (SW.pauseAuto, screens.js).
+  window.addEventListener('blur', function () { SW.pauseAuto(); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) SW.pauseAuto();
+  });
   // premier geste → déverrouille l'audio (politique mobile)
   window.addEventListener('pointerdown', function () { SwapouAssets.unlock(); }, { once: true });
 
