@@ -399,6 +399,26 @@ class Partie {
     this.fruit_flags[id] = true;
   }
 
+  /*
+   * LA PAUSE DEMANDÉE DU DEHORS — la fenêtre du jeu n'est plus devant.
+   *
+   * C'est ce que fait ÉCHAP plus bas (main) : `pause` levée, l'événement
+   * annoncé — donc le même voile, et la même reprise, à ÉCHAP, quand le
+   * joueur revient. Rien ne la lève toute seule. L'anti-rebond, lui, est
+   * laissé RELÂCHÉ : les commandes viennent d'être lâchées (relacherTout), et
+   * le premier ÉCHAP du retour doit relancer — pas être pris pour la touche
+   * encore tenue de la mise en pause.
+   * Pas de pause pendant l'agonie : ÉCHAP n'y est pas lu non plus (main rend
+   * la main avant), la partie se termine comme elle a commencé à finir.
+   */
+  mettreEnPause() {
+    if (this.pause || this.game_over_flag) return false;
+    this.pause = true;
+    this.pause_flag = false;
+    this.evenement('pause', { active: true });
+    return true;
+  }
+
   /** Game.main — une image. */
   main(tmod, deltaT) {
     // La pause, avec le même anti-rebond que le fichier.

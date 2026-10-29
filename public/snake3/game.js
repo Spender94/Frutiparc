@@ -959,6 +959,27 @@ class Jeu {
     return false;
   }
 
+  /*
+   * LA PAUSE AUTOMATIQUE — la fenêtre du jeu n'est plus devant (le joueur
+   * clique le chat d'à côté, change de fenêtre au bureau, d'onglet au light,
+   * d'application) : la partie solo se fige, comme sous ÉCHAP, et c'est ÉCHAP
+   * qui la relance au retour. Rien ne reprend tout seul : on peut revenir
+   * sans savoir où en était le serpent.
+   *
+   * Seulement une partie qui SE JOUE — Challenge ou tournoi (VuePartie), y
+   * compris pendant le rideau qui l'ouvre, où le serpent avance déjà. Ni les
+   * menus, ni l'écran de fin (`ecran`), ni l'agonie (Partie.mettreEnPause s'y
+   * refuse). Le Battle n'a pas de pause : sur un clavier partagé on ne fige
+   * pas trois adversaires parce qu'un quatrième a cliqué ailleurs, et en
+   * ligne la partie tourne sur le serveur — l'adversaire, lui, joue encore.
+   */
+  pauseAuto() {
+    let m = this.mode;
+    if (m instanceof Transition) m = m.mode;
+    if (!m || !m.partie || m.ecran) return false;
+    return m.partie.mettreEnPause();
+  }
+
   poserModeSuivant(i) {
     if (this.next_mode === -1) {
       this.mode = new Transition(this, this.mode);
@@ -1048,6 +1069,10 @@ class Jeu {
         if (this.mode && this.mode.relacher) this.mode.relacher();
       }
       if (this.padReset) this.padReset();      // les boutons se dé-enfoncent
+      // Et la partie solo se met en PAUSE : chaque appelant ici (perte du
+      // focus, page cachée, scène à zéro, le light qui quitte l'onglet) dit
+      // la même chose — la fenêtre du jeu n'est plus devant (cf. pauseAuto).
+      this.pauseAuto();
     };
     window.__relacherCommandes = this.relacherTout;
 

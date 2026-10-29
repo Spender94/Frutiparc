@@ -1606,3 +1606,135 @@ test('la bataille en ligne : des bombes au rayon du jeu, et rien d\'autre', () =
   // Le souffle du clip est dessiné tel quel : il est taillé pour ce rayon.
   assert.match(enligne, /D\.poser\(ctx, 'bombe', Math\.max\(1, Math\.min\(22, Math\.floor\(b\.frame\)\)\), b\.x, b\.y, 1, 1, 0\)/);
 });
+
+// ── La pause automatique : la fenêtre du jeu n'est plus devant ────────────
+//
+// Le joueur clique le chat d'à côté, change de fenêtre, quitte l'onglet du
+// light : la partie solo se fige, EXACTEMENT comme sous ÉCHAP (même voile, même
+// reprise), et rien ne repart tout seul. Les menus, l'écran de fin, l'agonie
+// et les Battle (clavier partagé ou en ligne) ne sont pas touchés.
+function jeuEcoute() {
+  const w = bacASable();
+  const fenetre = {}, doc = {};
+  const ecouter = (table) => (nom, f) => { (table[nom] = table[nom] || []).push(f); };
+  w.addEventListener = ecouter(fenetre);
+  w.document.addEventListener = ecouter(doc);
+  w.requestAnimationFrame = () => 0;
+  const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'),
+    { fruits: {}, record: 0, options: {}, prefs: { $music: true, $sounds: true, $keys: null },
+      sauverSlot0: () => Promise.resolve(true), sauverScore: () => Promise.resolve(null) },
+    new Proxy({}, { get: () => () => false }));
+  jeu.demarrer();
+  const lancer = (table, nom) => { for (const f of table[nom] || []) f({}); };
+  return {
+    w, jeu,
+    blur: () => lancer(fenetre, 'blur'),
+    focus: () => lancer(fenetre, 'focus'),
+    cacher: () => { w.document.hidden = true; lancer(doc, 'visibilitychange'); w.document.hidden = false; },
+    montrer: () => lancer(doc, 'visibilitychange'),
+  };
+}
+
+test('la fenêtre qui part met la partie solo en pause — celle d\'ÉCHAP, sans reprise toute seule', () => {
+  const { w, jeu, blur, focus, montrer } = jeuEcoute();
+  const vue = new w.SnakeJeu.VuePartie(jeu);
+  jeu.mode = vue;
+  const p = vue.partie;
+  vue.main(1, 1 / 40);
+  assert.strictEqual(p.pause, false, 'la partie tourne');
+
+  jeu.touches.add(37);                       // une flèche tenue au départ
+  blur();
+  assert.strictEqual(p.pause, true, 'le blur pose la pause');
+  assert.strictEqual(jeu.touches.size, 0, 'et les commandes sont toujours lâchées');
+  assert.strictEqual(jeu.releve().pause, true, 'le tableau de bord la voit');
+
+  // Le retour du focus, la page de nouveau visible : rien ne repart.
+  focus(); montrer();
+  for (let i = 0; i < 5; i++) vue.main(1, 1 / 40);
+  assert.strictEqual(p.pause, true, 'la pause tient au retour');
+  const chrono = vue.chrono;
+  vue.main(1, 1 / 40);
+  assert.strictEqual(vue.chrono, chrono, 'le chrono du pack est figé, comme sous ÉCHAP');
+
+  // Le PREMIER appui sur ÉCHAP relance — pas un second.
+  jeu.touches.add(27);
+  vue.main(1, 1 / 40);
+  assert.strictEqual(p.pause, false, 'ÉCHAP lève la pause, du premier coup');
+  // …et la touche toujours tenue ne la remet pas aussitôt.
+  vue.main(1, 1 / 40);
+  assert.strictEqual(p.pause, false, 'l\'anti-rebond tient');
+});
+
+test('la page cachée et le light qui quitte l\'onglet pausent aussi', () => {
+  const a = jeuEcoute();
+  const va = new a.w.SnakeJeu.VuePartie(a.jeu);
+  a.jeu.mode = va;
+  a.cacher();
+  assert.strictEqual(va.partie.pause, true, 'visibilitychange caché → pause');
+
+  // Le light n'envoie PAS de blur à Frutisnake : il appelle
+  // `__relacherCommandes` (light.html, lacherCommandes). Ce chemin-là doit
+  // pauser lui aussi.
+  const b = jeuEcoute();
+  const vb = new b.w.SnakeJeu.VuePartie(b.jeu);
+  b.jeu.mode = vb;
+  b.w.__relacherCommandes();
+  assert.strictEqual(vb.partie.pause, true, '__relacherCommandes → pause');
+
+  // Le tournoi est une partie solo (la même VuePartie, sur carte partagée).
+  const c = jeuEcoute();
+  c.jeu.plateforme.tournoi = { ouvert: true, carte: [] };
+  const vc = new c.w.SnakeJeu.VuePartie(c.jeu, { tournoi: true });
+  assert.ok(vc.tournoi && vc.partie.carte, 'une vraie partie de tournoi');
+  c.jeu.mode = vc;
+  c.blur();
+  assert.strictEqual(vc.partie.pause, true, 'le tournoi se met en pause aussi');
+});
+
+test('pas de pause automatique hors d\'une partie solo qui se joue', () => {
+  const { w, jeu, blur } = jeuEcoute();
+  const J = w.SnakeJeu;
+
+  // Le menu : rien à figer, et rien ne casse.
+  assert.ok(jeu.mode && !jeu.mode.partie, 'le jeu démarre sur le menu');
+  blur();
+  assert.strictEqual(jeu.pauseAuto(), false, 'le menu ne se met pas en pause');
+
+  // L'agonie : ÉCHAP n'y est pas lu, la pause automatique non plus.
+  const vue = new J.VuePartie(jeu);
+  jeu.mode = vue;
+  vue.partie.game_over_flag = true;
+  blur();
+  assert.strictEqual(vue.partie.pause, false, 'pas de pause pendant la fin de partie');
+
+  // L'écran de fin (sauvegarde, gameOver) : pas de pause non plus.
+  const fin = new J.VuePartie(jeu);
+  jeu.mode = fin;
+  fin.ecran = { presser() {}, main() {}, dessiner() {} };
+  blur();
+  assert.strictEqual(fin.partie.pause, false, 'pas de pause derrière l\'écran de fin');
+
+  // Le Battle à plusieurs sur un clavier : il n'a pas de pause, il continue.
+  const bataille = new J.VueBataille(jeu, 2);
+  jeu.mode = bataille;
+  blur();
+  assert.strictEqual(jeu.pauseAuto(), false, 'le Battle local continue');
+  assert.strictEqual(bataille.bataille.pause, undefined, 'et rien ne lui invente une pause');
+
+  // Le Battle EN LIGNE : un mode sans `partie`, que la pause ne regarde pas.
+  jeu.mode = { enligne: true, enJeu: () => true, main() {}, dessiner() {} };
+  blur();
+  assert.strictEqual(jeu.pauseAuto(), false, 'le duel en ligne continue');
+});
+
+test('la partie qui s\'ouvre derrière le rideau se met en pause aussi', () => {
+  const { w, jeu, blur } = jeuEcoute();
+  const vue = new w.SnakeJeu.VuePartie(jeu);
+  // Le rideau (Transition) fait déjà avancer la partie qu'il enveloppe.
+  jeu.mode = vue;
+  jeu.poserModeSuivant(0);                   // le mode courant passe sous un rideau
+  assert.ok(jeu.mode !== vue && jeu.mode.mode === vue, 'la partie est sous le rideau');
+  blur();
+  assert.strictEqual(vue.partie.pause, true, 'la partie sous le rideau se fige');
+});
