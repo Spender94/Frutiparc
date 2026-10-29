@@ -122,7 +122,7 @@ test('les attentes au compteur se soustraient gtmod et bouclent sur l\'image pr�
 
 // ── Le timer de secours ───────────────────────────────────────────────────
 
-test('gtmod : initTimer(32) part de 1 et mainTimer() converge vers 25/32 à 40 images par seconde', () => {
+test('gtmod : initTimer(32) part de 1 et mainTimer() converge vers 25 × 0,032 = 0,800 à 40 images par seconde', () => {
   const M = {};
   let horloge = 0;
   const vrai = K.getTimer;
@@ -134,10 +134,18 @@ test('gtmod : initTimer(32) part de 1 et mainTimer() converge vers 25/32 à 40 i
     assert.strictEqual(M.timerConstant, 32 / 1000);
     // main() appelle mainTimer() sans argument : la moyenne 0,97 / 0,03
     for (let i = 0; i < 400; i++) { horloge += 25; J.mainTimer(M); }
-    assert.ok(Math.abs(J.G.gtmod - 25 / 32) < 1e-4, 'gtmod = ' + J.G.gtmod);
+    // timerConstant × delta, PAS delta / 32 : c'est la branche que le fichier
+    // compilé prend quand timerUseOldTimer est faux (voir biblio.js). Le
+    // portage divisait par 32 (0,78125) et roulait 2,4 % moins vite qu'en Flash.
+    assert.ok(Math.abs(J.G.gtmod - 0.8) < 1e-4, 'gtmod = ' + J.G.gtmod);
+    assert.ok(Math.abs(J.G.gtmod - 25 / 32) > 1e-3, 'pas la branche « / 32 »');
     // averageTimer === false : la valeur brute de l'image
     horloge += 50; J.mainTimer(M, false);
-    assert.strictEqual(J.G.gtmod, 50 / 32);
+    assert.strictEqual(J.G.gtmod, 50 * 0.032);
+    // L'autre branche (jamais allumée par le jeu) divise par timerOptimalFPS.
+    J.useOldTimer(M);
+    horloge += 32; J.mainTimer(M, false);
+    assert.strictEqual(J.G.gtmod, 1);
     // randomT : random(round(n / gtmod))
     J.G.gtmod = 0.5;
     for (let i = 0; i < 50; i++) { const r = J.randomT(3); assert.ok(r >= 0 && r < 6 && Number.isInteger(r)); }

@@ -11,7 +11,8 @@
  * chrono (`getTimer() − timerLap`, moteur.js, comme code.as) et le gtmod du
  * timer de secours (25/32), ne connaissent que les pas. Une image qui tarde
  * est rattrapée par autant de pas, jusqu'à 500 ms. Mesuré au navigateur avec
- * un pilote qui joue DANS le pas : 21,850 s au tour, que les images durent
+ * un pilote qui joue DANS le pas : 21,850 s au tour (21,350 s depuis que le
+ * gtmod suit le fichier compilé, cf. biblio.js), que les images durent
  * 16,7 ms, 33 ms (processeur ralenti quatre fois) ou 150 ms (fil occupé
  * 90 ms toutes les 200 ms, six pas par image).
  *
@@ -41,8 +42,8 @@
  *   · que le test mord : sans la file datée, le rejeu à 10 / 40 / 70 ms ne
  *     boucle même plus le tour ;
  *   · et la physique elle-même, que rien ici ne devait changer : le pilote
- *     automatique du test boucle Green Hill en 21 850 ms — la valeur relevée
- *     au navigateur avant comme après la correction.
+ *     automatique du test boucle Green Hill en 21 350 ms — 21 850 à l'époque
+ *     de la correction, avant que le minuteur ne suive le fichier compilé.
  */
 'use strict';
 
@@ -211,9 +212,9 @@ function simuler(opts) {
     M().vs.gameMode = M().TIMETRIAL; M().vs.selectedTrack = opts.trk || 0; M().vs.selectedCar = 2; M().vs.menuPhase = -1; M().vs.mainPhase = 3;
     for (let i = 0; i < 4000 && !(M().vs.mainPhase === 1 && M().track); i++) await battre(4, [25]);
     if (M().vs.mainPhase !== 1) throw new Error('la course n’a pas démarré');
-    // gtmod : sa valeur convergée (25/32 à 1e-6 près après dix secondes de
-    // menu) — le menu a été court-circuité, on la pose.
-    Jeu.G.gtmod = 25 / 32;
+    // gtmod : sa valeur convergée (25 × 0,032 = 0,8 à 1e-6 près après dix
+    // secondes de menu) — le menu a été court-circuité, on la pose.
+    Jeu.G.gtmod = 0.8;
     const kBase = scene.numeroTick;                            // d'ici au GO, un nombre de pas fixe (dGo)
     const m = M(), s = scene;
     const J = { pas: 0, tours: [], tele: [], touches: [] };
@@ -398,13 +399,16 @@ test('la page et l’amorçage installent la cadence, avant que la scène ne dé
 
 // Un tour de Green Hill (circuit 0), voiture 2, au pilote automatique : la
 // référence, et sa suite de touches datées depuis le GO.
-const TOUR_ATTENDU = 21850;                        // relevé au navigateur, avant comme après la correction
+// 21 850 ms tant que gtmod valait 25/32 ; 21 350 depuis que le minuteur suit
+// le fichier compilé (25 × 0,032 = 0,8, biblio.js) — la même course, 2,4 %
+// plus vite, comme en Flash.
+const TOUR_ATTENDU = 21350;
 let reference;
-test('la référence : le pilote boucle Green Hill en 21 850 ms à 25 ms réguliers — la physique n’a pas bougé', async () => {
+test('la référence : le pilote boucle Green Hill en 21 350 ms à 25 ms réguliers — la physique n’a pas bougé', async () => {
   reference = await courir({ motif: [25], tours: 1 });
   assert.strictEqual(reference.nonBoucle, false);
   assert.strictEqual(reference.total, TOUR_ATTENDU, 'le temps au tour du pilote');
-  assert.strictEqual(reference.pas, TOUR_ATTENDU / 25, 'le chrono compte des pas : 874 × 25 ms');
+  assert.strictEqual(reference.pas, TOUR_ATTENDU / 25, 'le chrono compte des pas : 854 × 25 ms');
   assert.ok(reference.touches.length > 100, 'une suite de touches fournie : ' + reference.touches.length);
   assert.ok(reference.tele.length >= 20);
 });

@@ -22,7 +22,12 @@ Sources de fidélité :
   la main dans `jeu/scripts-images.js` ; le clip principal (sprite 637)
   tient tout le code à son image 1, `main()` à l'image 2, le retour à la 3 ;
 - les bibliothèques compilées sans source : `timer.as` (`_global.gtmod`,
-  la moyenne glissante 0,97 / 0,03 de `delta / 32`), `depth.as` (initDepth,
+  la moyenne glissante 0,97 / 0,03 de `delta × 0,032` — PAS `delta / 32` :
+  la bibliothèque a deux branches et le fichier compilé prend celle de
+  `timerConstant = 32 / 1000`, d'où un gtmod de 0,800 à 40 i/s et non
+  0,78125 ; la transcription les avait inversées, et le portage roulait
+  2,4 % moins vite qu'en Flash à chrono égal — voir `jeu/biblio.js`),
+  `depth.as` (initDepth,
   calcDepth, unlockDepth), `sounds.as` (playSound, fadeSound, forceSoundMC),
   `keyNames` (les noms de touches en français) → `jeu/biblio.js` ;
 - `gameData.as` est **évalué tel quel** par `scripts/gen-bkiwi-donnees.js`
@@ -124,7 +129,7 @@ Le lecteur avance la physique à pas fixes de 25 ms sur une horloge virtuelle
 (`Scene.demarrer`, flash.js) : `getTimer()` — donc le chrono, `getTimer() −
 timerLap`, et le gtmod du timer de secours — ne connaît que les pas, et une
 image qui tarde est rattrapée par autant de pas (jusqu'à 500 ms). Mesuré au
-pilote automatique jouant dans le pas : 21,850 s au tour sur Green Hill, que
+pilote automatique jouant dans le pas : 21,350 s au tour sur Green Hill, que
 les images durent 16,7 ms, 33 ms (processeur ralenti quatre fois) ou 150 ms
 (fil occupé 90 ms toutes les 200 ms, six pas par image).
 

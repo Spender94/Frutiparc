@@ -7,10 +7,24 @@
  *     fonction est compilée avec _global préchargé en registre) que toute la
  *     physique multiplie. initTimer(32) le pose à 1 ; mainTimer(), à chaque
  *     image, lit l'écart de getTimer() depuis l'image précédente et le lisse :
- *     gtmod = 0,97·gtmod + 0,03·(écart / 32). À 40 images par seconde (le SWF),
- *     l'écart vaut 25 ms et gtmod tend vers 0,78125 — c'est LA constante de la
- *     vitesse du jeu, ce que les joueurs ont dans les doigts. Le lecteur
- *     partagé bat à 40 i/s sur une horloge virtuelle de 25 ms : même gtmod.
+ *     gtmod = 0,97·gtmod + 0,03·(écart × timerConstant), avec timerConstant
+ *     = 32 / 1000 = 0,032. À 40 images par seconde (le SWF), l'écart vaut
+ *     25 ms et gtmod tend vers 0,800 — c'est LA constante de la vitesse du
+ *     jeu, ce que les joueurs ont dans les doigts. Le lecteur partagé bat à
+ *     40 i/s sur une horloge virtuelle de 25 ms : même gtmod.
+ *
+ *     LE PIÈGE DES DEUX BRANCHES. La bibliothèque a deux façons de lire
+ *     l'écart, choisies par `timerUseOldTimer` (que rien n'allume jamais) :
+ *     écart / timerOptimalFPS (= / 32) d'un côté, écart × timerConstant
+ *     (= × 0,032, soit / 31,25) de l'autre. La transcription les avait
+ *     INVERSÉES : le portage divisait par 32 et tendait vers 0,78125, là
+ *     où le fichier compilé (If → ‹timerConstant × delta› quand le drapeau
+ *     est faux, désassemblage à 0x4c5b0) multiplie par 0,032. Toute la
+ *     physique — avance, accélération, rotation, nitro — en était 2,4 % plus
+ *     lente par seconde réelle, le chrono restant juste : « 1 à 2 s de plus
+ *     qu'en Flash sur une course », mesuré 0,802 contre 0,781 sur le SWF
+ *     instrumenté sous Ruffle (tracé de gtmod et de getTimer image par
+ *     image), et l'écart implicite valait exactement delta × 1,024.
  *     randomT(n) tire au sort sur n / gtmod ;
  *   · depth.as : les profondeurs par NIVEAUX (initDepth(levels, steps) —
  *     20 niveaux de 200 par défaut, 40 de 150 pour le clip principal) :
@@ -67,7 +81,9 @@ J.mainTimer = function (M, averageTimer) {
   const t = K.getTimer();
   const delta = t - M.oldAlternateTimer;
   M.oldAlternateTimer = t;
-  if (!M.timerUseOldTimer) {
+  // Les branches dans l'ordre du fichier compilé : drapeau à FAUX (toujours),
+  // c'est timerConstant × delta — voir l'en-tête.
+  if (M.timerUseOldTimer) {
     if (averageTimer == false) G.gtmod = delta / M.timerOptimalFPS;                // eslint-disable-line eqeqeq
     else G.gtmod = G.gtmod * 0.97 + (delta / M.timerOptimalFPS) * 0.03;
   } else {
