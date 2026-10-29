@@ -102,6 +102,8 @@ async function initSchema() {
         -- Stockés en base (≠ disque éphémère) pour survivre aux redémarrages.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_kikooz_day TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_streak INTEGER DEFAULT 0;
+        -- Gaspard a souhaité la bienvenue (et versé ses kikooz) : une fois pour toutes.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS gaspard_accueil_at TIMESTAMPTZ;
         -- Compteur de « FD » (disquettes de partie challenge) : JSON
         -- { d:'YYYY-MM-DD', g:{ <jeu>:{ u:parties utilisées, b:FD achetés } } }.
         -- Remis à zéro chaque jour (via la clé d). Stocké en base pour survivre aux

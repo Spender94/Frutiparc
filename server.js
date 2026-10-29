@@ -3459,6 +3459,7 @@ function createDefaultUser(pass) {
     // Must be set from the start: without it the server falls back to a 2005
     // sub-date and a brand-new account shows ~257 months instead of 0.
     createdAt: new Date().toISOString(),
+    gaspardAccueilAt: null,   // la bienvenue de Gaspard, une fois pour toutes
     kikoozLog: [],      // Entries displayed in box.KikoozLog (/ft/log)
     userLog: [],        // Entries displayed in "Mon historique" (/do/onident <ul>)
     siteLog: [],        // Entries displayed in "Evènements" (/do/onident <sl>)
@@ -3532,6 +3533,7 @@ function dbUserToMemory(row) {
     frutiSign: row.fruti_sign ?? -1,
     frutiSignB: row.fruti_sign_b ?? -1,
     createdAt: row.created_at ? (row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)) : '',
+    gaspardAccueilAt: row.gaspard_accueil_at ? (row.gaspard_accueil_at instanceof Date ? row.gaspard_accueil_at.toISOString() : String(row.gaspard_accueil_at)) : null,
     // La colonne last_login était tenue à jour depuis toujours (db.recordLogin
     // à chaque identification) sans jamais remonter jusqu'aux clients. La
     // fiche l'affiche désormais, des deux côtés.
@@ -11252,6 +11254,7 @@ app.post('/api/admin/paris-challenge/mois', adminScope('challenge'), async (req,
 // épreuves de Kaluga). Un joueur sans accès n'avance rien.
 // ══════════════════════════════════════════════════════════════════════════
 const Quetes = require('./quetes.js');
+const Gaspard = require('./gaspard.js');
 const StatsCommunaute = require('./statsCommunaute.js');
 const LoupGarou = require('./loupgarou.js');
 let quetesReglages = Quetes.reglagesNormalises();
@@ -15458,6 +15461,19 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
 // nested entries become sub-topics under their parent. sort_order is
 // the display position within a parent. keywords feeds the in-game
 // search box (space-separated tokens; matching is server-side).
+
+app.get('/api/admin/gaspard/reglages', adminAuth, (req, res) => res.json({ ok: true, reglages: gaspardReglages }));
+app.post('/api/admin/gaspard/reglages', adminAuth, async (req, res) => {
+  gaspardReglages = gaspardReglagesNormaliser(req.body || {});
+  if (process.env.DATABASE_URL) await db.setAppState('gaspard_reglages', JSON.stringify(gaspardReglages)).catch(dbErr('gaspard_reglages'));
+  console.log('[GASPARD] réglages :', JSON.stringify(gaspardReglages));
+  res.json({ ok: true, reglages: gaspardReglages });
+});
+// L'essai de l'admin : ce que Gaspard répondrait à une question.
+app.get('/api/admin/gaspard/essai', adminAuth, async (req, res) => {
+  const r = Gaspard.repondre(String(req.query.q || ''), await gaspardRubriquesDe(), 'toi');
+  res.json({ ok: true, reponse: r });
+});
 
 app.get('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
   try {
@@ -29770,6 +29786,7 @@ async function boot() {
       try { swapouTournoiVerifie = (await db.getAppState('swapou_tournoi_verifie')) === '1'; }
       catch (e) { console.error('[SWAPOU] interrupteur du tournoi :', e.message); }
       await chargerReglagesParisChallenge();
+      await chargerReglagesGaspard();
       // Les quêtes de Gromelin : réglages, semaine tirée, avancement de chacun.
       await chargerQuetes();
       // Les parties de loup-garou en cours reprennent (en pause).
@@ -31059,6 +31076,106 @@ function npcSaySequence(npc, channelName, lines, onDone, type, gapMs, mentionnes
   setTimeout(step, (gapMs ? gapMs * 0.7 : 1500) + Math.random() * 1500);
 }
 
+/*
+ * GASPARD AU CHAT — l'hôte du parc, enfin utile (gaspard.js pour ce qu'il sait).
+ *
+ * Deux offices :
+ *   · il RÉPOND à qui l'interpelle dans un salon public (« @Gaspard comment
+ *     gagner des kikooz ? », « Gaspard, les commandes ? », /gaspard …) avec sa
+ *     base de réponses et les rubriques de l'aide que l'admin entretient ;
+ *   · il ACCUEILLE un nouveau à sa première entrée dans un salon public : trois
+ *     lignes de repères, et des kikooz de bienvenue, une fois pour toutes
+ *     (users.gaspard_accueil_at). « Nouveau » : un compte de moins de
+ *     `joursNouveau` jours, pour que les anciens ne soient pas tous accueillis
+ *     (et payés) au déploiement.
+ * Il entre dans le salon le temps de parler (npcJoin), et le quitte après
+ * trois minutes de silence. Réglages en base (app_state gaspard_reglages),
+ * modifiables depuis l'admin (onglet Aide Gaspard).
+ */
+const GASPARD_REGLAGES_DEFAUT = { actif: true, accueil: true, kikooz: 100, joursNouveau: 30 };
+let gaspardReglages = Object.assign({}, GASPARD_REGLAGES_DEFAUT);
+async function chargerReglagesGaspard() {
+  try {
+    const brut = await db.getAppState('gaspard_reglages');
+    if (brut) gaspardReglages = Object.assign({}, GASPARD_REGLAGES_DEFAUT, JSON.parse(brut));
+  } catch (e) { console.error('[GASPARD] réglages :', e.message); }
+}
+function gaspardReglagesNormaliser(b) {
+  const R = Object.assign({}, gaspardReglages);
+  if (b.actif !== undefined) R.actif = !!b.actif;
+  if (b.accueil !== undefined) R.accueil = !!b.accueil;
+  if (b.kikooz !== undefined) R.kikooz = Math.max(0, Math.min(10000, Math.floor(Number(b.kikooz) || 0)));
+  if (b.joursNouveau !== undefined) R.joursNouveau = Math.max(1, Math.min(365, Math.floor(Number(b.joursNouveau) || 30)));
+  return R;
+}
+// Les rubriques de l'aide, relues au plus toutes les cinq minutes.
+let gaspardRubriques = { at: 0, liste: [] };
+async function gaspardRubriquesDe() {
+  if (!process.env.DATABASE_URL) return [];
+  if (Date.now() - gaspardRubriques.at < 5 * 60 * 1000) return gaspardRubriques.liste;
+  try { gaspardRubriques = { at: Date.now(), liste: await db.listGaspardHelpTopics() }; }
+  catch (e) { gaspardRubriques.at = Date.now(); }
+  return gaspardRubriques.liste;
+}
+let gaspardDepart = null;
+function gaspardVisite(g) {
+  if (npcChannel.gaspard !== g) npcJoin('gaspard', g);
+  if (gaspardDepart) clearTimeout(gaspardDepart);
+  gaspardDepart = setTimeout(() => { gaspardDepart = null; npcLeave('gaspard'); }, 3 * 60 * 1000);
+}
+function gaspardSalonPublic(g) {
+  const ch = channels[g];
+  return !!(ch && !ch.private && !/^pm2?_/.test(String(g)));
+}
+// Une réponse par Frutiz toutes les huit secondes, et par salon toutes les deux.
+const gaspardDernier = { parQui: new Map(), parSalon: new Map() };
+function gaspardEcoute(g, username, texte) {
+  if (!gaspardReglages.actif || !gaspardSalonPublic(g)) return;
+  const u = String(username || '').toLowerCase();
+  if (!u || NPC_USERNAMES.has(u)) return;
+  const q = Gaspard.interpelle(texte);
+  if (q === null) return;
+  const t = Date.now();
+  if (t - (gaspardDernier.parQui.get(u) || 0) < 8000 || t - (gaspardDernier.parSalon.get(g) || 0) < 2000) return;
+  gaspardDernier.parQui.set(u, t); gaspardDernier.parSalon.set(g, t);
+  gaspardRubriquesDe().then((rubriques) => {
+    const nom = getDisplayName(username);
+    const r = Gaspard.repondre(q, rubriques, nom);
+    setTimeout(() => {
+      if (!channels[g]) return;
+      gaspardVisite(g);
+      npcSay('gaspard', g, `@${nom} ${r.texte}`, 'm', [username]);
+      console.log(`[GASPARD] ${u} sur ${g} : « ${q.slice(0, 60)} » → ${r.source}${r.cle ? ' (' + r.cle + ')' : ''}`);
+    }, 900 + Math.random() * 900);
+  });
+}
+function gaspardAccueillir(g, username) {
+  const R = gaspardReglages;
+  if (!R.actif || !R.accueil || !gaspardSalonPublic(g)) return;
+  const u = String(username || '').toLowerCase();
+  const user = users[u];
+  if (!u || !user || NPC_USERNAMES.has(u) || user.gaspardAccueilAt) return;
+  const cree = Date.parse(user.createdAt || '');
+  if (!Number.isFinite(cree) || Date.now() - cree > R.joursNouveau * 86400000) return;
+  // Marqué AVANT de parler : deux entrées à la suite ne doivent pas payer deux fois.
+  const quand = new Date().toISOString();
+  user.gaspardAccueilAt = quand;
+  const k = Math.max(0, Number(R.kikooz) || 0);
+  const nom = getDisplayName(username);
+  if (k > 0) {
+    user.kikooz = (Number(user.kikooz) || 0) + k;
+    journalKikooz(user, { type: 'c', k, c: 'bienvenue de Gaspard' });
+    notifyKikoozUpdate(u, user.kikooz);
+    addAndNotifyUserLog(u, { type: USER_LOG_TYPE.CHAT, content: `Gaspard t'offre ${k} kikooz de bienvenue !` });
+  }
+  if (user._dbId) db.updateUser(u, { kikooz: user.kikooz, gaspard_accueil_at: quand }).catch(dbErr('updateUser gaspard'));
+  setTimeout(() => {
+    if (!channels[g] || !channels[g].users.has(u)) return;   // déjà reparti
+    gaspardVisite(g);
+    npcSaySequence('gaspard', g, Gaspard.bienvenue(nom, k), () => gaspardVisite(g), 'm', 3500, [username]);
+  }, 2500);
+  console.log(`[GASPARD] accueille ${u} sur ${g}${k ? ` (+${k} kikooz)` : ''}`);
+}
 function mdamirmaPickTarget(channelName) {
   const ch = channels[channelName];
   if (!ch) return null;
@@ -34694,6 +34811,8 @@ case 'join': {
   }
   // Notify trace subscribers (cross-channel) that this user is online
   notifyTraceSubscribers(client.username, socket);
+  // Un nouveau dans un salon public : Gaspard l'accueille (une fois).
+  gaspardAccueillir(g, client.username);
   break;
 }
 
@@ -35405,9 +35524,7 @@ case 'send': {
           });
         } catch (e) { console.error('[DB] mesdons error:', e.message); }
       }
-      const entete = plafonne
-        ? `Mes dons — il me reste ${restant} kikooz sur ${ANIMATOR_WEEKLY_KIKOOZ} cette semaine`
-        : 'Mes dons — sans plafond hebdomadaire';
+      const entete = `Mes dons — il me reste ${restant} kikooz sur ${ANIMATOR_WEEKLY_KIKOOZ} cette semaine`;
       const corps = lignes.length
         ? [entete, ...lignes] : [entete, 'Aucun don enregistré pour l\'instant.'];
       sendToClient(socket, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${corps.map(escapeXml).join('<br/>')}]]></${CMD.send}>`);
@@ -35765,6 +35882,7 @@ case 'send': {
       pousserNotifMpSiAbsent(g, client.username, unescapeXml(text));
       pousserNotifMentionChat(g, client.username, unescapeXml(text), mentionnes);
       prevenirTous(unescapeXml(text));
+      gaspardEcoute(g, client.username, unescapeXml(text));
       trackXpAction(client.username, 'chatMsg');
       kilouteCheckAnswer(g, client.username, text);
       kilouteSessionCheckAnswer(g, client.username, text);
@@ -35775,6 +35893,7 @@ case 'send': {
     broadcastToChannel(g, xml);
     if (type === 'm') pousserNotifMpSiAbsent(g, client.username, unescapeXml(text));
     if (type === 'm') { pousserNotifMentionChat(g, client.username, unescapeXml(text), mentionnes); prevenirTous(unescapeXml(text)); }
+    if (type === 'm') gaspardEcoute(g, client.username, unescapeXml(text));
     trackXpAction(client.username, 'chatMsg');
     // MikeHorny's "Question à 60 kikooz" (daily single) AND the live quiz event:
     // react if this line is the answer to whichever is running.

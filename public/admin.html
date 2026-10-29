@@ -1360,6 +1360,22 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
 </div>
 
 <div class="content" id="tab-gaspard" style="display:none">
+  <h3 style="margin:0 0 6px">Gaspard au chat</h3>
+  <p style="color:#888;font-size:12px;margin:0 0 8px">Dans les salons publics, Gaspard répond à qui l'interpelle (« @Gaspard comment gagner des kikooz ? ») avec sa base de réponses et les rubriques ci-dessous (titre, mots-clés, corps). Il accueille aussi les nouveaux à leur première entrée dans un salon, avec des kikooz de bienvenue.</p>
+  <div class="toolbar" style="flex-wrap:wrap;gap:10px">
+    <label style="font-size:12px"><input type="checkbox" id="gaspard-actif"> répond au chat</label>
+    <label style="font-size:12px"><input type="checkbox" id="gaspard-accueil"> accueille les nouveaux</label>
+    <label style="font-size:12px">kikooz de bienvenue <input type="number" id="gaspard-kikooz" min="0" max="10000" style="width:70px"></label>
+    <label style="font-size:12px" title="Un compte plus ancien que cela n'est pas accueilli (ni payé) : les anciens ne sont pas tous salués au déploiement.">« nouveau » = compte de moins de <input type="number" id="gaspard-jours" min="1" max="365" style="width:50px"> jours</label>
+    <button class="btn-success btn-sm" onclick="saveGaspardReglages()">Enregistrer</button>
+    <span id="gaspard-reglages-etat" style="font-size:11px;color:#6c8f3a"></span>
+  </div>
+  <div class="toolbar" style="gap:6px">
+    <input id="gaspard-essai-q" placeholder="Essayer une question : comment gagner des kikooz ?" style="flex:1;min-width:260px" onkeydown="if(event.key==='Enter')essayerGaspard()">
+    <button class="btn btn-sm" onclick="essayerGaspard()">Demander à Gaspard</button>
+  </div>
+  <div id="gaspard-essai-r" style="font-size:12px;color:#444;margin:0 0 12px;white-space:pre-wrap"></div>
+  <h3 style="margin:10px 0 4px">Les rubriques de l'aide</h3>
   <div class="toolbar">
     <button class="btn" onclick="loadGaspardTopics()">Rafraîchir</button>
     <button class="btn-success" onclick="openAddGaspardTopic()">+ Nouvelle rubrique</button>
@@ -4182,7 +4198,37 @@ async function kilouteForumPost() {
 // ─── Gaspard help topics ───
 let __gaspardTopics = [];
 
+// Les réglages de Gaspard au chat (répond, accueille, kikooz de bienvenue).
+async function loadGaspardReglages() {
+  try {
+    const r = await fetch('/api/admin/gaspard/reglages', { headers: hdr() });
+    const j = await r.json();
+    if (!j.ok) return;
+    $('#gaspard-actif').checked = !!j.reglages.actif;
+    $('#gaspard-accueil').checked = !!j.reglages.accueil;
+    $('#gaspard-kikooz').value = j.reglages.kikooz;
+    $('#gaspard-jours').value = j.reglages.joursNouveau;
+  } catch (e) { /* silencieux */ }
+}
+async function saveGaspardReglages() {
+  const corps = { actif: $('#gaspard-actif').checked, accueil: $('#gaspard-accueil').checked,
+    kikooz: Number($('#gaspard-kikooz').value), joursNouveau: Number($('#gaspard-jours').value) };
+  try {
+    const r = await fetch('/api/admin/gaspard/reglages', { method: 'POST', headers: hdr(), body: JSON.stringify(corps) });
+    const j = await r.json();
+    $('#gaspard-reglages-etat').textContent = j.ok ? 'Enregistré.' : 'Erreur : ' + (j.error || '?');
+  } catch (e) { $('#gaspard-reglages-etat').textContent = 'Erreur réseau.'; }
+}
+async function essayerGaspard() {
+  const q = $('#gaspard-essai-q').value.trim();
+  if (!q) return;
+  try {
+    const j = await (await fetch('/api/admin/gaspard/essai?q=' + encodeURIComponent(q), { headers: hdr() })).json();
+    $('#gaspard-essai-r').textContent = j.ok ? 'Gaspard : ' + j.reponse.texte + '   [' + j.reponse.source + (j.reponse.cle ? ' · ' + j.reponse.cle : '') + ']' : 'Erreur';
+  } catch (e) { $('#gaspard-essai-r').textContent = 'Erreur réseau.'; }
+}
 async function loadGaspardTopics() {
+  loadGaspardReglages();
   try {
     const r = await fetch('/api/admin/gaspard/topics', { headers: hdr() });
     if (!r.ok) throw new Error('HTTP ' + r.status);

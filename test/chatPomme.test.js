@@ -305,11 +305,11 @@ test('la fenêtre des logs : vingt-quatre heures de salon, ouvertes à tous les 
   assert.match(page, /class="ligne cri"/, 'le cri y est marqué rouge');
   assert.match(page, /#cfec9a/, 'et la fenêtre porte les couleurs de Frutiparc');
 
-  // L'animateur : son salon oui, les autres non.
+  // L'animateur lit pomme comme poire : les logs d'un salon public sont à tous.
   assert.equal((await fetch(`${BASE}/api/chat/histo?sid=${sidAnim}&g=pomme`)).status, 200,
     'l\'animateur lit les logs de pomme');
-  assert.equal((await fetch(`${BASE}/api/chat/histo?sid=${sidAnim}&g=poire`)).status, 403,
-    'mais pas ceux de poire');
+  assert.equal((await fetch(`${BASE}/api/chat/histo?sid=${sidAnim}&g=poire`)).status, 200,
+    'et ceux de poire');
 });
 
 test('les deux clients embarquent le par-salon : tri, lien des logs, fiche', () => {
