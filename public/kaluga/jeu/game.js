@@ -715,7 +715,20 @@ class Game extends J.Slot {
   onTzDeath() { this.endGame(60); }
   onTzLink() {}
   onTzRelease() {}
-  onPause() { this.mng.setPause(true); }
+  /*
+   * La pause demandée par la plateforme (Client.onPause, la fenêtre n'est
+   * plus au premier plan) : la MÊME que P ou ÉCHAP (Manager.setPause, son
+   * écran mcPause, le chrono décalé à la reprise), et la reprise se fait de
+   * la même façon, au clavier. L'original pausait sans condition ; on ne
+   * pause qu'une partie EN COURS — pas le panneau de consignes du départ
+   * (masterStep 0), pas la fin de partie ni son panneau (flEndingGame,
+   * masterStep 2), et jamais deux fois : un second setPause(true) reposerait
+   * l'écran et perdrait l'heure du début de la pause (barTimer.decal).
+   */
+  onPause() {
+    if (this.masterStep !== 1 || this.flEndGame || this.flEndingGame || this.mng.flPause) return;
+    this.mng.setPause(true);
+  }
   kill() {
     this.mng.music.stopSound('sJeuLoop0', 42);
     if (this.keyListener) Key.removeListener(this.keyListener);

@@ -151,6 +151,20 @@ class Client {
   endGame() {}
   closeService() { this.mng.backToMenu(); }
 
+  /*
+   * LA PAUSE DEMANDÉE PAR LA PLATEFORME — Client.onPause d'époque : la
+   * Frusion l'appelait quand le jeu n'était plus au premier plan, et il
+   * passait la main au slot courant (`mng.current.onPause()`). Seule la
+   * partie y répond (Game.onPause, qui décide si une partie est en cours) :
+   * le menu et les séquences n'en ont pas, et l'appel s'y perdait sans bruit.
+   * Ici c'est la page (index.html) qui l'appelle, quand la fenêtre perd le
+   * focus ou se cache, après avoir levé `forcePause`.
+   */
+  onPause() {
+    const cur = this.mng && this.mng.current;
+    if (cur && typeof cur.onPause === 'function') cur.onPause();
+  }
+
   saveScore(score, data) {
     const tz = data && data.tz != null ? data.tz : 0;
     const gOr = data && data.gOr != null ? data.gOr : 0;

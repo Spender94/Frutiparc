@@ -167,13 +167,36 @@
     K.Key.toutRelacher();
     document.querySelectorAll('#commandes .btn.presse').forEach(function (b) { b.classList.remove('presse'); });
   };
-  window.__relacherCommandes = lacherTout;
-  document.addEventListener('visibilitychange', function () { if (document.hidden) lacherTout(); });
+
+  // La fenêtre n'est plus au-dessus (le joueur clique le chat d'à côté,
+  // passe à une autre fenêtre du bureau ou à une autre application, l'onglet
+  // ou le panneau se cache) : on lâche les commandes, et une partie en cours
+  // se met en PAUSE — la sienne, celle de P ou ÉCHAP, comme la Frusion le
+  // faisait : `forcePause` levé, puis Client.onPause, que seule une partie
+  // en cours écoute (Game.onPause). Rien ne reprend tout seul au retour : le
+  // joueur relance comme après sa propre pause. `forcePause` bloque la
+  // touche de pause (Manager.update) : il retombe dès que la fenêtre revient
+  // au joueur — focus, clic, touche ou doigt.
+  const client = function () { const m = window.KalugaJeu.manager; return m ? m.client : null; };
+  const quitterPremierPlan = function () {
+    lacherTout();
+    const c = client();
+    if (!c) return;
+    c.forcePause = true;
+    c.onPause();
+  };
+  const revenirAuPremierPlan = function () { const c = client(); if (c) c.forcePause = false; };
+  window.__relacherCommandes = quitterPremierPlan;
+  document.addEventListener('visibilitychange', function () { if (document.hidden) quitterPremierPlan(); });
+  window.addEventListener('blur', quitterPremierPlan);
+  window.addEventListener('focus', revenirAuPremierPlan);
+  window.addEventListener('pointerdown', revenirAuPremierPlan, true);
+  window.addEventListener('keydown', revenirAuPremierPlan, true);
   if (window.ResizeObserver) {
     new ResizeObserver(function () {
       adapter();
       const b = canvas.getBoundingClientRect();
-      if (!b.width || !b.height) lacherTout();   // une scène à zéro, c'est un panneau caché
+      if (!b.width || !b.height) quitterPremierPlan();   // une scène à zéro, c'est un panneau caché
     }).observe(document.getElementById('aire'));
   }
 
