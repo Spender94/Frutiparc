@@ -317,6 +317,14 @@
       if (this._over[i] === s) this._over[i] = null;
       if (this._below[i] === s) this._below[i] = null;
     }
+    // Le sprite est-il POSÉ sur le plateau, à sa case ? Un sprite vivant peut
+    // ne plus l'être : la charge qu'un louki a avalée (le fichier cache alors
+    // son clip, _visible = false, jusqu'à ce qu'il la recrache).
+    contient(s) {
+      if (!this.isValid(s.pos)) return false;
+      const i = this._getIndex(s.pos);
+      return this._ether[i] === s || this._over[i] === s || this._below[i] === s;
+    }
     set(p, s) {
       if (!this.isValid(p)) return;
       this.erase(s);
@@ -1114,7 +1122,7 @@
         s.endBurn();
       };
       this.playground.pushEffect(anims.simple(
-        { type: 'eyeShot', uid: this.uid, cible: a.uid, x: a.pos.x, y: a.pos.y },
+        { type: 'eyeShot', uid: this.uid, cible: a.uid, autre: b.uid, x: a.pos.x, y: a.pos.y },
         null, () => { jouer(a); jouer(b); }));
     }
   }
@@ -1413,8 +1421,14 @@
       this._inWater = false;
       Avatar.prototype.move.call(this, d);
     }
-    burn() { return anims.simple({ type: 'burn', uid: this.uid }); }
-    endBurn() { this.destroy(); }
+    // PAS de burn() : le Winkle du fichier n'en a pas (ses méthodes sont
+    // isInWater, show, showEditor, wakeUp, setOrientation, release, canMove,
+    // move, _swim, _wakeupInWater — rien d'autre, ni chez Avatar ni chez
+    // Sprite). Il est donc INCOMBUSTIBLE : la déflagration teste
+    // « s.burn == null » et s'arrête sur sa carapace sans le tuer. Aucun
+    // tireur ne le vise non plus (archer, araignée, lurker, jade : héros,
+    // louki, kohl). C'est ce qui rend la Grotte 14 (« Winkle, Little Star »)
+    // jouable : il pousse des bombes à mèche courte et reste à côté.
   }
 
   // ── La fabrique des sprites ──
@@ -1472,7 +1486,9 @@
       this._quick = [];
       this._effects = [];
       this._lots = [];
+      this._lotsJoues = 0;                                 // combien de _lots ont déjà joué
       this._evenements = [];                               // hors lot (immédiats)
+      this._crochet = null;                                // le lot dont un crochet joue
 
       this._drawPlayground();
       // Un niveau dont la case de départ est prise n'a pas de héros — le
@@ -1508,7 +1524,15 @@
     // — collecte des animations —
     push(a) { this._quick.push(a); }
     pushEffect(a) { this._effects.push(a); }
-    emet(desc) { this._evenements.push(desc); }
+    // Un événement émis par un crochet d'animation n'est pas immédiat : il
+    // appartient au lot qui le porte, à son début (surDebut) ou à sa fin
+    // (surFin). La vue l'applique à ce moment-là — le mur voisin d'un mur
+    // brûlé ne change de forme qu'une fois la flamme éteinte, pas dès que
+    // la bombe est poussée.
+    emet(desc) {
+      if (this._crochet) this._crochet.evenements.push(desc);
+      else this._evenements.push(desc);
+    }
     flush() {
       if (!this._quick.length && !this._effects.length) return;
       this._lots.push({ rapides: this._quick, effets: this._effects });
@@ -1519,12 +1543,21 @@
     // Joue un lot : l'état des crochets s'applique dans l'ordre du lecteur —
     // les rapides (débuts puis fins), puis chaque effet l'un après l'autre.
     _jouerLot(lot) {
+      lot.auDebut = [];
+      lot.aLaFin = [];
+      const debut = { evenements: lot.auDebut }, fin = { evenements: lot.aLaFin };
+      const precedent = this._crochet;
+      this._crochet = debut;
       for (const a of lot.rapides) if (a.surDebut) a.surDebut();
+      this._crochet = fin;
       for (const a of lot.rapides) if (a.surFin) a.surFin();
       for (const a of lot.effets) {
+        this._crochet = debut;
         if (a.surDebut) a.surDebut();
+        this._crochet = fin;
         if (a.surFin) a.surFin();
       }
+      this._crochet = precedent;
     }
 
     // La boucle de GameManager.update, sans tmod : tant que le tour n'est pas
@@ -1533,17 +1566,21 @@
     // Le garde-fou ne change rien aux niveaux sains : un niveau qui ne
     // converge pas est un niveau où le Flash animait sans fin — mais le
     // serveur, lui, ne doit pas rester pendu sur un replay forgé.
+    //
+    // Un lot ne joue qu'UNE fois dans toute la partie : le compteur des lots
+    // joués vit sur la partie, pas dans l'appel. Remis à zéro à chaque
+    // entrée, il rejouait les crochets de TOUS les lots depuis le début du
+    // niveau à chaque coup — la caisse re-détruite, le louki qui recrache
+    // encore sa charge (et l'événement « refreshPositions » qui recalait la
+    // vue avant l'animation : le héros sautait de case en case sans
+    // glisser, d'où le « x1000 » des niveaux à louki), le winkle qui
+    // détruisait le fantôme du moment…
     _resoudre() {
-      let joues = 0;
       let garde = 0;
       for (;;) {
         if (++garde > 5000) { this._ended = true; break; }
         this.flush();
-        while (joues < this._lots.length) {
-          this._jouerLot(this._lots[joues]);
-          joues += 1;
-          this.flush();
-        }
+        this._jouerLotsEnAttente();
         if (this._turnCleared || this._ended) break;
         const avant = this._lots.length;
         this.processReaction();
@@ -1555,9 +1592,13 @@
       // Les lots d'une éventuelle fin de partie (défaite pendant le dernier
       // lot) se jouent aussi.
       this.flush();
-      while (joues < this._lots.length) {
-        this._jouerLot(this._lots[joues]);
-        joues += 1;
+      this._jouerLotsEnAttente();
+    }
+    _jouerLotsEnAttente() {
+      while (this._lotsJoues < this._lots.length) {
+        const lot = this._lots[this._lotsJoues];
+        this._lotsJoues += 1;
+        this._jouerLot(lot);
         this.flush();
       }
     }
@@ -1705,6 +1746,8 @@
         lots: this._lots.slice(debutLots).map((l) => ({
           rapides: l.rapides.map((a) => a.desc),
           effets: l.effets.map((a) => a.desc),
+          auDebut: l.auDebut || [],
+          aLaFin: l.aLaFin || [],
         })),
         evenements: this._evenements.splice(debutEv),
       };

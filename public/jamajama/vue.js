@@ -9,6 +9,13 @@
  * descripteurs — l'état du moteur, lui, est déjà final. À la fin des lots
  * d'une entrée, la vue se RECALE sur le moteur : toute dérive s'efface.
  *
+ * Le recalage ne vaut que ce que vaut `_poserEtat` : l'image de repos de
+ * chaque sprite s'y DÉDUIT de l'état du moteur (eau comblée, pont cassé,
+ * bombe allumée, créature éveillée, héros endormi, charge avalée…), jamais
+ * de la dernière image posée. Une entrée qui ne joue aucun lot (le fantôme
+ * qui sort du corps, celui qui y rentre) se recale tout de suite : sans
+ * quoi l'écran attendait le coup suivant pour montrer ce qui avait changé.
+ *
  * Les cadences sont celles du fichier : 32 images par seconde (Timer),
  * dix pas par case (MoveAnim), quarante images d'arc électrique, l'iris de
  * fin qui se referme à 15 par image. Le hasard de l'arc est le même
@@ -23,6 +30,11 @@
 
   const teinte = (n) => '#' + n.toString(16).padStart(6, '0');
   const NOMS_DIR = ['North', 'East', 'South', 'West'];
+  // Les « stop » des lignes de temps que le jeu laisse filer (gotoAndPlay) :
+  // le pont cassé (jama_Bridge, image 17) et la boucle du héros endormi
+  // (jama_Hero, image 43 : retour à « sleep_loop »).
+  const PONT_CASSE = 17;
+  const FIN_SOMMEIL = 43;
 
   // La plage d'images d'une étiquette : de son image à la veille de la
   // suivante (ou à la fin du clip).
@@ -71,6 +83,7 @@
         alpha: s.id === Element.GHOST ? 0.5 : 1,
         visible: true,
         jJoue: false,                      // le sous-clip j avance tout seul
+        boucle: null,                      // la ligne de temps principale tourne seule
         bande: s.id === Element.GHOST ? 2 : (s.below ? 0 : 1),
       };
       this.vues.set(s.uid, v);
@@ -78,10 +91,15 @@
       return v;
     }
 
-    // L'image de repos d'un sprite — la transcription de chaque show().
+    // L'image de repos d'un sprite — la transcription de chaque show(), et de
+    // ce que les animations du fichier laissent derrière elles quand elles
+    // se taisent (SteppedAnim s'arrête sur la dernière image de son clip).
     _poserEtat(v) {
       const s = v.sprite;
       const b = this.partie.getBoard();
+      const eveille = this.partie.getCurrentAvatar() === s;
+      const boucle = v.boucle;
+      v.boucle = null;
       switch (s.id) {
         case Element.EXIT:
           v.frame = s._opened ? undefined : NOMS_DIR[s.orientation];
@@ -91,11 +109,13 @@
           }
           break;
         case Element.WATER:
-          v.frame = 1;
-          v.clips = { j: Number(R.frameEau(b, s.pos)) };
-          break;
         case Element.BRIDGE:
-          v.frame = s._broken ? 2 : 1;
+          // Comblée d'une caisse, l'eau reste sur la dernière image de
+          // BoxFallInWaterAnim (la caisse affleure) ; le pont cassé s'arrête
+          // sur le « stop » de sa ligne de temps, l'eau à nu.
+          if (s._containsBox) v.frame = Rendu.longueur(v.cle);
+          else if (s.id === Element.BRIDGE && s._broken) v.frame = PONT_CASSE;
+          else v.frame = 1;
           v.clips = { j: Number(R.frameEau(b, s.pos)) };
           break;
         case Element.WALL:
@@ -116,18 +136,23 @@
           v.clips = { j: s.param };
           break;
         case Element.HERO:
+          if (s._sleeping) {
+            // Endormi pendant que le fantôme se promène : la ligne de temps
+            // tourne en boucle sur « sleep_loop » (le script de l'image 43).
+            v.boucle = boucle || this._boucleSommeil(v, 'sleep_loop');
+            break;
+          }
+          v.frame = 1;
+          v.clips = { j: s.orientation + 1 };
+          break;
         case Element.GHOST:
           v.frame = 1;
           v.clips = { j: s.orientation + 1 };
           break;
         case Element.LOUKI:
-          v.frame = s._active ? ('move' + (s._loaded ? 'Full' : '') + NOMS_DIR[s.orientation]) : 'default';
-          break;
         case Element.KOHL:
-          v.frame = s._active === undefined ? 1 : 1;
-          break;
         case Element.WINKLE:
-          v.frame = s._inWater ? 'swim' : 'default';
+          this._poserCreature(v, eveille);
           break;
         case Element.SPIDER:
           v.frame = s._inCocoon ? 'cocon' : NOMS_DIR[s.orientation];
@@ -142,12 +167,58 @@
           v.frame = 'default';
           break;
         case Element.BOMB:
-          v.frame = 1;
+          // Touchée, la mèche brûle : gotoAndPlay("2"), et l'image 5 relance
+          // l'image 2 — la boucle ne s'arrête qu'avec la bombe.
+          if (s._touched) v.boucle = boucle || { debut: 2, fin: 5, retour: 2, t: 2 };
+          else v.frame = 1;
           v.compteur = s._countDown > 0 ? s._countDown : 0;
           break;
         default:
           v.frame = 1;
       }
+    }
+
+    // Les trois créatures que le fantôme possède. Éveillée, c'est-à-dire
+    // l'avatar du moment : l'image de sa direction (le setOrientation propre
+    // à chacune — le kohl y montre sa flamme, et la fin de son « wakeUp » est
+    // cette même image). Endormie : la fin de son clip « sleep » si elle en
+    // vient, sinon son image de départ. Le winkle qui nage reste à la nage.
+    _poserCreature(v, eveille) {
+      const s = v.sprite;
+      const dir = NOMS_DIR[s.orientation] || 'South';
+      if (s.id === Element.WINKLE && s._inWater) {
+        v.frame = 'swim';
+        v.jJoue = true;
+        return;
+      }
+      const actif = s.id === Element.LOUKI ? s._active : eveille;
+      if (actif) {
+        if (s.id === Element.LOUKI) v.frame = 'move' + (s._loaded ? 'Full' : '') + dir;
+        else v.frame = dir;
+        v.clips = {};
+        return;
+      }
+      if (v.frame === 'sleep') {
+        v.clips = { j: this._longueurJ(v) };
+        return;
+      }
+      v.frame = s.id === Element.KOHL ? 'base' : 'default';
+      v.clips = {};
+    }
+
+    // La boucle du sommeil du héros, à partir d'une étiquette.
+    _boucleSommeil(v, depuis) {
+      const etqs = Rendu.etiquettes(v.cle);
+      const debut = etqs[depuis] || 12;
+      return { debut, fin: FIN_SOMMEIL, retour: etqs.sleep_loop || 31, t: debut };
+    }
+
+    // Visible : vivant ET posé sur le plateau. La charge d'un louki est
+    // vivante mais hors du plateau tant qu'il ne l'a pas recrachée — c'est
+    // le mur mangé qui restait affiché. La sortie, elle, ne meurt jamais.
+    _estVisible(s) {
+      if (s.id === Element.EXIT) return true;
+      return s.alive && this.partie.getBoard().contient(s);
     }
 
     // ── recalage : la vérité du moteur reprend la main ──
@@ -159,7 +230,7 @@
         if (!v) v = this._creerVue(s);
         v.x = s.pos.x * 32;
         v.y = s.pos.y * 32;
-        v.visible = s.alive || s.id === Element.EXIT;
+        v.visible = this._estVisible(s);
         v.jJoue = false;
         v.alpha = s.id === Element.GHOST ? 0.5 : 1;
         this._poserEtat(v);
@@ -173,23 +244,47 @@
 
     // ── réception d'une entrée jouée : les lots + les événements immédiats ──
     jouer(resultat) {
+      // Les sprites nés pendant l'entrée (le fantôme) ont leur vue tout de
+      // suite — cachée tant que des lots restent à jouer : le fantôme d'une
+      // créature brûlée ne sort qu'à la fin de la brûlure, au recalage.
+      for (const s of this.partie.sprites()) {
+        if (!this.vues.has(s.uid)) this._creerVue(s).visible = false;
+      }
       for (const e of resultat.evenements) this._evenement(e);
       for (const lot of resultat.lots) this._lots.push(lot);
       this.compteur = this.partie.countMoves();
+      // Rien à animer : l'état du moteur se montre sans attendre le coup
+      // suivant.
+      if (!resultat.lots.length && !this._courant && !this._lots.length) {
+        this._finis = true;
+        this._recaler();
+      }
     }
     _evenement(e) {
       const v = e.uid !== undefined ? this.vues.get(e.uid) : null;
       switch (e.type) {
-        case 'orientation':
+        case 'orientation': {
           if (!v) break;
-          if (v.sprite.isAvatar && v.sprite.isAvatar()) v.clips.j = e.d + 1;
-          else if (v.sprite.id !== Element.JADE) v.frame = NOMS_DIR[e.d] || v.frame;
+          const s = v.sprite;
+          if (s.id === Element.HERO || s.id === Element.GHOST) {
+            if (!v.boucle) v.clips = Object.assign({}, v.clips, { j: e.d + 1 });
+          } else if (s.id === Element.KOHL) {
+            v.frame = NOMS_DIR[e.d] || v.frame;
+            v.clips = {};
+          } else if (s.id === Element.LOUKI) {
+            if (s._active) { v.frame = 'move' + (s._loaded ? 'Full' : '') + NOMS_DIR[e.d]; v.clips = {}; }
+          } else if (s.id === Element.WINKLE) {
+            if (this.partie.getCurrentAvatar() === s && !s._inWater) { v.frame = NOMS_DIR[e.d] || v.frame; v.clips = {}; }
+          } else if (s.id !== Element.JADE) {
+            v.frame = NOMS_DIR[e.d] || v.frame;
+          }
           break;
+        }
         case 'compteBombe':
         case 'bombeAllumee':
           if (v) { v.compteur = e.valeur; v.brule = true; }
           break;
-        case 'refresh': this._refreshAutotiles(); break;
+        case 'refresh': case 'refreshAutour': this._refreshAutotiles(); break;
         case 'refreshPositions':
           for (const [, w] of this.vues) {
             w.x = w.sprite.pos.x * 32;
@@ -197,8 +292,25 @@
           }
           this._refreshAutotiles();
           break;
-        case 'heroSleep': if (v) v.frame = 'sleep'; break;
-        case 'heroWake': if (v) v.frame = 1; break;
+        case 'heroSleep':
+          // gotoAndPlay("sleep") : l'endormissement, puis la boucle.
+          if (v) v.boucle = this._boucleSommeil(v, 'sleep');
+          // …et le fantôme sort du corps à cet instant, même si d'autres
+          // lots suivent (un zoeil qui l'a déjà dans sa ligne de mire).
+          {
+            const g = this.partie.getGhost();
+            const gv = g && g.alive ? this.vues.get(g.uid) : null;
+            if (gv) gv.visible = true;
+          }
+          break;
+        case 'heroWake':
+          // (Un héros que burn() réveille brûle déjà : on ne le redresse pas.)
+          if (v && v.sprite.alive) { v.boucle = null; v.frame = 1; v.clips = { j: v.sprite.orientation + 1 }; }
+          // Le retour au corps détruit le fantôme sur-le-champ.
+          for (const [, w] of this.vues) {
+            if (w.sprite.id === Element.GHOST && !w.sprite.alive) w.visible = false;
+          }
+          break;
         case 'cacher': if (v) v.visible = false; break;
         case 'nage': if (v) { v.frame = 'swim'; v.jJoue = true; } break;
         case 'oeil': if (v) v.frame = e.ouvert ? 'Open' : 'Close'; break;
@@ -210,7 +322,7 @@
       for (const [, v] of this.vues) {
         const s = v.sprite;
         if (s.id === Element.WALL && s.alive) v.frame = Number(R.frameMur(b, s.pos));
-        if ((s.id === Element.WATER || s.id === Element.BRIDGE) && !v.enChute) {
+        if (s.id === Element.WATER || s.id === Element.BRIDGE) {
           v.clips = Object.assign({}, v.clips, { j: Number(R.frameEau(b, s.pos)) });
         }
       }
@@ -226,6 +338,12 @@
           v.vol = (v.vol || 0) + tmod / 5;
           v.dy = -1 + Math.cos(v.vol) * 2;
         }
+        if (v.boucle) {
+          const bo = v.boucle;
+          bo.t += tmod;
+          if (bo.t >= bo.fin + 1) bo.t = bo.retour + ((bo.t - bo.fin - 1) % (bo.fin + 1 - bo.retour));
+          v.frame = Math.min(bo.fin, Math.floor(bo.t));
+        }
         if (v.jJoue) {
           const long = this._longueurJ(v);
           if (long > 1) {
@@ -239,9 +357,11 @@
         const lot = this._lots.shift();
         if (!lot) { this._finis = true; return; }
         this._finis = false;
+        for (const e of lot.auDebut || []) this._evenement(e);
         this._courant = {
           rapides: lot.rapides.map((d) => this._creerAnim(d)).filter(Boolean),
           effets: lot.effets.map((d) => this._creerAnim(d)).filter(Boolean),
+          aLaFin: lot.aLaFin || [],
         };
       }
       const c = this._courant;
@@ -258,6 +378,7 @@
         break;                             // les effets jouent l'un après l'autre
       }
       if (!resteRapide && !resteEffet) {
+        for (const e of c.aLaFin) this._evenement(e);
         this._courant = null;
         if (!this._lots.length) {
           this._finis = true;
@@ -318,8 +439,10 @@
           return { update(t) {
             if (etape == null) {
               if (caisse) caisse.visible = false;
-              eau.enChute = true;
-              eau.clips = { mask: eau.sprite.hasWaterBelow && eau.sprite.hasWaterBelow() ? 2 : 1 };
+              // Le sous-clip j (l'autotile de l'eau) garde son image : seul
+              // le clip principal saute à « fallBox ».
+              eau.clips = Object.assign({}, eau.clips,
+                { mask: eau.sprite.hasWaterBelow && eau.sprite.hasWaterBelow() ? 2 : 1 });
               etape = p.debut;
             }
             etape += t;
@@ -330,8 +453,10 @@
         case 'bridgeFall': {
           const v = vue(d.uid);
           if (!v) return null;
+          // gotoAndPlay("break") : la ligne de temps file jusqu'au stop de
+          // l'image 17, le pont tombé.
           const p = plage(v.cle, 'break') || { debut: 2, fin: 23 };
-          const fin = (plage(v.cle, 'fallBox') || { debut: Rendu.longueur(v.cle) + 1 }).debut - 1;
+          const fin = PONT_CASSE;
           let etape = null;
           const delai = (d.delai || 0);
           let attente = delai;
@@ -349,8 +474,11 @@
           // La porte coulisse sur quatorze images (ManualAnim) ; le TROU,
           // lui, est un second clip que le fichier attache juste en dessous
           // — ici c'est `_dessinerSortie` qui le pose, sous la porte.
-          const debut = typeof v.frame === 'string'
-            ? (plage(v.cle, v.frame) || { debut: 1 }).debut : v.frame;
+          // Le départ se lit sur l'orientation de la porte, pas sur l'image
+          // posée : le recalage a pu la mettre DÉJÀ ouverte (une sortie qui
+          // s'ouvre dès le lever de rideau), et la porte filait alors au-delà
+          // de son image d'arrêt, sur des images vides — elle clignotait.
+          const debut = (plage(v.cle, NOMS_DIR[v.sprite.orientation]) || { debut: 1 }).debut;
           let etape = debut;
           return { update(t) {
             etape += t;
@@ -374,6 +502,15 @@
         case 'burn': {
           const v = vue(d.uid);
           if (!v) return null;
+          // BurnSprite joue l'animation que rend burn() : le héros a la
+          // sienne (HeroBurn), l'archer cligne et RESTE (archerBurn) — le
+          // clip « burn » nu le faisait disparaître jusqu'au recalage.
+          if (v.sprite.id === Element.HERO || v.sprite.id === Element.GHOST) {
+            return this._creerAnim({ type: 'heroBurn', uid: d.uid, delai: d.delai });
+          }
+          if (v.sprite.id === Element.ARCHER) {
+            return this._creerAnim({ type: 'archerBurn', uid: d.uid, delai: d.delai });
+          }
           let attente = (d.delai || 0);
           let p = null, etape = null;
           return { update(t) {
@@ -396,7 +533,9 @@
           if (!p) return null;
           // mc.counter = 2 : le clignotement se joue deux fois.
           let etape = p.debut, tours = 2;
+          let attente = (d.delai || 0);
           return { update(t) {
+            if (attente > 0) { attente -= t; return true; }
             etape += t;
             if (etape >= p.fin) {
               tours -= 1;
@@ -430,15 +569,25 @@
           this.fx.push(arc);
           let pas = 40;
           const avantFrame = tireur ? tireur.frame : null;
+          // ParallelAnimations : l'arc, et à côté le BurnSprite de chaque
+          // victime (le héros brûle pendant que l'éclair crépite).
+          const brulures = [d.cible, d.autre].filter((uid) => uid !== undefined)
+            .map((uid) => this._creerAnim({ type: 'burn', uid })).filter(Boolean);
           return { update(t) {
-            if (tireur) tireur.frame = 3;
-            pas -= t;
-            if (pas <= 0) {
-              arc.mort = true;
-              if (tireur) tireur.frame = d.type === 'eyeShot' ? avantFrame : 'default';
-              return false;
+            let reste = false;
+            for (const a of brulures) {
+              if (a.finie) continue;
+              if (!a.update(t)) a.finie = true; else reste = true;
             }
-            return true;
+            if (pas > 0) {
+              if (tireur) tireur.frame = 3;
+              pas -= t;
+              if (pas <= 0) {
+                arc.mort = true;
+                if (tireur) tireur.frame = d.type === 'eyeShot' ? avantFrame : 'default';
+              }
+            }
+            return reste || pas > 0;
           } };
         }
         case 'lurkerShot': {
@@ -520,8 +669,11 @@
         }
         case 'loukiPuke': {
           const v = vue(d.uid);
+          const charge = v && v.sprite._load ? vue(v.sprite._load.uid) : null;
           return { update() {
             if (v) v.visible = false;
+            // unload() : load.mc._visible = true, la charge reprend la case.
+            if (charge) charge.visible = moi._estVisible(charge.sprite);
             for (const [, w] of moi.vues) { w.x = w.sprite.pos.x * 32; w.y = w.sprite.pos.y * 32; }
             moi._refreshAutotiles();
             return false;
@@ -553,11 +705,18 @@
           const v = vue(d.uid);
           if (!v) return null;
           let etat = 0, compteur = 0, etape = 2;
+          let attente = (d.delai || 0);
           const flash = { genre: 'flash', vie: 2 };
-          this.fx.push(flash);
           return { update(t) {
+            if (attente > 0) { attente -= t; return true; }
             switch (etat) {
-              case 0: etat = 1; return true;
+              case 0:
+                // HeroBurn : l'éclair blanc, puis le clip « burn ».
+                moi.fx.push(flash);
+                v.boucle = null;
+                v.frame = 'burn';
+                etat = 1;
+                return true;
               case 1:
                 flash.vie -= t;
                 if (flash.vie <= 0) { flash.mort = true; etat = 2; etape = 2; compteur = 2; }

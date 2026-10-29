@@ -45,14 +45,28 @@
   // brève tombée entre deux tours de boucle, ou pendant qu'une animation
   // joue, serait perdue. C'est la différence entre un jeu qui répond et un
   // jeu qui « saute » des touches.
+  //
+  // Un appui = un pas : la répétition automatique du clavier (e.repeat) ne
+  // remet rien en attente — sans quoi, la flèche lâchée, un pas de plus
+  // partait encore. Le maintien, lui, avance au rythme du fichier : un pas
+  // chaque fois que le tour est rendu (dix images de glissade par case).
+  // Les flèches tenues se suivent par TOUCHE PHYSIQUE (e.code) : si e.key
+  // change entre l'appui et le relâché (Maj sur le pavé numérique, Verr
+  // Num…), le relâché retrouve quand même sa flèche, qui ne reste pas
+  // « enfoncée » à faire courir le personnage tout seul.
   const touches = {};
+  const flechesTenues = new Map();             // e.code → direction
   let enAttente = null;
   let toucheTexte = null;                      // pour le champ de recherche
   let espaceAppuye = false, espaceBascule = false, echapDemande = false;
   const FLECHES = { ArrowUp: 0, ArrowRight: 1, ArrowDown: 2, ArrowLeft: 3 };
   window.addEventListener('keydown', (e) => {
     touches[e.key] = true;
-    if (FLECHES[e.key] !== undefined) { enAttente = FLECHES[e.key]; e.preventDefault(); }
+    if (FLECHES[e.key] !== undefined) {
+      flechesTenues.set(e.code || e.key, FLECHES[e.key]);
+      if (!e.repeat) enAttente = FLECHES[e.key];
+      e.preventDefault();
+    }
     if (e.key === ' ') { espaceAppuye = true; e.preventDefault(); }
     if (e.key === 'Escape') echapDemande = true;
     if (e.key === 'Enter' || e.key === 'Backspace' || (e.key.length === 1 && !e.ctrlKey && !e.metaKey)) {
@@ -61,6 +75,7 @@
   });
   window.addEventListener('keyup', (e) => {
     touches[e.key] = false;
+    flechesTenues.delete(e.code || e.key);
     if (e.key === ' ' && espaceAppuye) { espaceBascule = true; espaceAppuye = false; }
   });
   // La fenêtre passe derrière (clic à côté, autre fenêtre, onglet caché) :
@@ -70,6 +85,7 @@
   // les animations ne font que finir le coup joué).
   function lacherTout() {
     for (const k of Object.keys(touches)) touches[k] = false;
+    flechesTenues.clear();
     enAttente = null;
     espaceAppuye = false;
     doigt = null;
@@ -489,10 +505,11 @@
         // puis les flèches (maintien ou appui en attente), puis le doigt.
         let resultat = null;
         let direction = null;
-        if (touches.ArrowUp) direction = Direction.NORTH;
-        else if (touches.ArrowDown) direction = Direction.SOUTH;
-        else if (touches.ArrowLeft) direction = Direction.WEST;
-        else if (touches.ArrowRight) direction = Direction.EAST;
+        const tenues = new Set(flechesTenues.values());
+        if (tenues.has(Direction.NORTH)) direction = Direction.NORTH;
+        else if (tenues.has(Direction.SOUTH)) direction = Direction.SOUTH;
+        else if (tenues.has(Direction.WEST)) direction = Direction.WEST;
+        else if (tenues.has(Direction.EAST)) direction = Direction.EAST;
         else if (enAttente != null) direction = enAttente;
         else if (geste != null) direction = geste;
         if (espaceBascule) {
