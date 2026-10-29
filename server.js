@@ -16386,6 +16386,19 @@ app.get('/api/jamajama/aide', (req, res) => {
         .replace(/src="images\//g, 'src="/games/poulpi/images/')
         .trim();
     }
+    // L'ANNEXE « Détails des éléments » n'a dans le fichier que son en-tête —
+    // « la suite du texte est complétée automatiquement avec les noeuds
+    // ci-dessous ». C'est l'extension de Toad06 (extension.swf,
+    // ExternalData.getHelpSection) qui la complète : pour index_annex, elle
+    // ajoute les vingt-deux fiches de l'aide contextuelle de l'éditeur, dans
+    // cet ordre, chacune précédée d'un <br />. On ne le faisait pas : l'annexe
+    // restait vide.
+    const ANNEXE = ['Hero', 'Exit', 'Fruit', 'Box', 'Wall', 'Water', 'Bridge', 'Peeble',
+      'Rune', 'OneWay', 'OneWayStrict', 'Magnet', 'GoldMagnet', 'Bomb', 'Louki', 'Kohl',
+      'Winkle', 'Archer', 'Spider', 'Lurker', 'Jade', 'Eye'];
+    if (sections.index_annex) {
+      for (const cle of ANNEXE) if (sections[cle]) sections.index_annex += '<br />' + sections[cle];
+    }
     jamaAideCache = { style: style.trim(), sections };
   }
   res.json(Object.assign({ ok: true }, jamaAideCache));
