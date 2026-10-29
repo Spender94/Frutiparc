@@ -425,13 +425,29 @@
     const c = window.BkiwiJeu && window.BkiwiJeu.client;
     if (c) c.forcePause = v;
   };
-  const passerDerriere = function () { lacherTout(); forcerPause(true); };
+  // Le drapeau seul ne suffit pas : le jeu ne le lit qu'à l'image suivante,
+  // et une fenêtre CACHÉE n'a plus d'images — au retour, le focus l'abaissait
+  // avant la première, et la course repartait sans avoir jamais été mise en
+  // pause. On pose donc la pause tout de suite, en pleine course (pas pendant
+  // le décompte, ni sur la ligne d'arrivée ; en ligne, togglePause refuse).
+  const pauserMaintenant = function () {
+    const J = window.BkiwiJeu, M = J && J.M;
+    if (!M || !M.vs || M.vs.mainPhase !== 1 || M.gamePaused || M.starting || !M.carPJ || M.carPJ.finished) return;
+    J.togglePause();
+  };
+  const passerDerriere = function () { lacherTout(); forcerPause(true); pauserMaintenant(); };
+  // Le retour : le focus, mais aussi un clic ou une touche — un panneau caché
+  // puis remontré sans perte de focus laisserait sinon le drapeau levé, et P
+  // ne relancerait plus rien.
+  const revenir = function () { forcerPause(false); };
   window.__relacherCommandes = passerDerriere;
   window.addEventListener('blur', passerDerriere);
-  window.addEventListener('focus', function () { forcerPause(false); });
+  window.addEventListener('focus', revenir);
+  window.addEventListener('pointerdown', revenir, true);
+  window.addEventListener('keydown', revenir, true);
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) passerDerriere();
-    else if (document.hasFocus()) forcerPause(false);
+    else if (document.hasFocus()) revenir();
   });
   if (window.ResizeObserver) {
     new ResizeObserver(function () {

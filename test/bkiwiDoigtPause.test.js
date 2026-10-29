@@ -18,10 +18,15 @@ const lire = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 
 test('la fenêtre passe derrière : forcePause est levé, et abaissé au retour', () => {
   const page = lire('public/bkiwi/index.html');
-  assert.match(page, /const passerDerriere = function \(\) \{ lacherTout\(\); forcerPause\(true\); \};/);
+  assert.match(page, /const passerDerriere = function \(\) \{ lacherTout\(\); forcerPause\(true\); pauserMaintenant\(\); \};/);
+  // La pause est posée tout de suite : une fenêtre cachée n'a plus d'images
+  // pour lire le drapeau.
+  assert.match(page, /if \(!M \|\| !M\.vs \|\| M\.vs\.mainPhase !== 1 \|\| M\.gamePaused \|\| M\.starting \|\| !M\.carPJ \|\| M\.carPJ\.finished\) return;\s*\n\s*J\.togglePause\(\);/);
   assert.match(page, /window\.addEventListener\('blur', passerDerriere\);/);
-  assert.match(page, /window\.addEventListener\('focus', function \(\) \{ forcerPause\(false\); \}\);/);
-  assert.match(page, /if \(document\.hidden\) passerDerriere\(\);\s*\n\s*else if \(document\.hasFocus\(\)\) forcerPause\(false\);/);
+  for (const ev of ['focus', 'pointerdown', 'keydown']) {
+    assert.match(page, new RegExp("window\\.addEventListener\\('" + ev + "', revenir"), 'le drapeau retombe au retour : ' + ev);
+  }
+  assert.match(page, /if \(document\.hidden\) passerDerriere\(\);\s*\n\s*else if \(document\.hasFocus\(\)\) revenir\(\);/);
   // Le jeu, lui, fait le reste : en course, forcePause ouvre la pause (sa
   // boîte, comme à la touche P), P et échap ne la referment pas tant qu'il
   // tient, et en ligne togglePause refuse.
