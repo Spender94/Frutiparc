@@ -207,6 +207,13 @@ const RECOMPENSE = { x: 174, y: 193 };
 const BULLE_PORTE = { x: 60, y: 40 };
 const ORNEGON = { barreX: 99, barreY: 12, centre: 75,
   texteX: 47, texteY: 82, texteL: 80, nomX: 163, nomY: 222 };
+// LE BOUTON DE SORTIE CHEZ ORNEGON. Partout ailleurs, le coin entier (50 px)
+// fait sortir : rien d'autre ne s'y trouve. Ici les barres de sort descendent
+// jusqu'au coin quand la fée en connaît beaucoup — régler la dernière
+// ramenait à la clairière. La zone s'en tient donc à la croix dessinée
+// (mcButQuit : 9 px à (228, 229)), avec une marge pour le doigt, et les
+// barres passent AVANT elle.
+const ORNEGON_QUITTER = { x: SCENE - 22, y: SCENE - 20 };
 
 // Le bleu de la nuit, et la force du voile (Menu.setNight). Le coefficient de
 // nuit vaut zéro à minuit, un demi à midi : |nc - 0.5| × 2 donne donc zéro en
@@ -1084,6 +1091,31 @@ class Client {
       this.evolution.survole = c ? c.i : null;
     });
     this.canvas.addEventListener('mouseleave', () => { this.pointeur = null; });
+    // CHEZ ORNEGON, LES BARRES SE GLISSENT. Appuyer sur une barre y porte le
+    // curseur, qui suit ensuite le doigt (ou la souris) tant qu'on appuie —
+    // un vrai curseur, plutôt que cinq pixels par clic. Le clic qui suit le
+    // lâcher est avalé : il pousserait encore le curseur de cinq pixels.
+    this.canvas.addEventListener('pointerdown', (ev) => {
+      if (!this.ornegon) return;
+      suivre(ev.clientX, ev.clientY);
+      if (!this.saisirBarreOrnegon(this.pointeur.x, this.pointeur.y, ev.pointerId)) return;
+      try { this.canvas.setPointerCapture(ev.pointerId); } catch (e) { /* pas de capture : tant pis */ }
+      ev.preventDefault();
+    });
+    this.canvas.addEventListener('pointermove', (ev) => {
+      const g = this.ornegon && this.ornegon.glisse;
+      if (!g || g.id !== ev.pointerId) return;
+      suivre(ev.clientX, ev.clientY);
+      this.glisserBarreOrnegon(this.pointeur.x);
+    });
+    const lacher = (ev) => {
+      const or = this.ornegon;
+      if (!or || !or.glisse || or.glisse.id !== ev.pointerId) return;
+      or.glisse = null;
+      or.avalerClic = true;
+    };
+    this.canvas.addEventListener('pointerup', lacher);
+    this.canvas.addEventListener('pointercancel', lacher);
     this.brancherToucher();
     this.canvas.addEventListener('click', (ev) => {
       if (!this.carteForet && !this.nouvelle && !this.ornegon && !this.gromelin
@@ -1738,8 +1770,9 @@ class Client {
    * Frog.mt — chez ORNEGON. La grenouille demande à la fée ses sorts préférés :
    * une barre par sort appris, un curseur par barre, et chaque réglage écrit
    * `$spellCoef` — le goût qui pèse dans le choix des sorts en pleine partie.
-   * Un clic sur la barre pousse le curseur de cinq pixels vers le doigt, comme
-   * l'original.
+   * Les barres sont de vrais curseurs : on appuie, le curseur vient au doigt
+   * et le suit tant qu'on glisse (voir saisirBarreOrnegon). Un simple clic
+   * sans appui le pousse encore de cinq pixels, comme l'original.
    *
    * @param {object} o  { fee, surFermer }
    */
@@ -1819,7 +1852,7 @@ class Client {
         ctx.fillText(sort.nom(), ORNEGON.nomX, ORNEGON.nomY);
       }
     }
-    this.dessinerBoutonQuitter(ctx);
+    this.dessinerBoutonQuitter(ctx, ORNEGON_QUITTER);
   }
 
   coefDuSort(sid) {
@@ -1831,25 +1864,55 @@ class Client {
     return fs.$spellCoef[sid];
   }
 
+  /*
+   * Le curseur d'une barre, porté en `bx` (pixels depuis le début de la
+   * barre, entre 17 et 133 comme Frog.clickBar) ; le goût s'en déduit comme
+   * dans Frog.release : c = 1 + (bx − 75)/58, gardé en dixièmes (0 à 20).
+   */
+  placerCurseurOrnegon(sid, bx) {
+    const or = this.ornegon;
+    bx = Math.max(17, Math.min(133, bx));
+    or.positions[sid] = bx;
+    this.coefDuSort(sid);
+    or.fee.fs.$spellCoef[sid] = Math.floor((1 + (bx - ORNEGON.centre) / 58) * 10);
+  }
+
+  saisirBarreOrnegon(x, y, id) {
+    const or = this.ornegon;
+    const barre = (or.zones || []).find((z) => x >= z.x && x <= z.x + z.l && y >= z.y && y <= z.y + z.h);
+    if (!barre) return false;
+    or.glisse = { sid: barre.sid, id };
+    // Au doigt, pas de survol : le nom du sort s'affiche pendant qu'on règle.
+    or.survole = barre.sid;
+    this.placerCurseurOrnegon(barre.sid, x - ORNEGON.barreX);
+    return true;
+  }
+
+  glisserBarreOrnegon(x) {
+    const or = this.ornegon;
+    if (!or || !or.glisse) return;
+    this.placerCurseurOrnegon(or.glisse.sid, x - ORNEGON.barreX);
+  }
+
   clicOrnegon(x, y) {
     const or = this.ornegon;
-    if (x > SCENE - 50 && y > SCENE - 50) {
+    if (or.avalerClic) { or.avalerClic = false; return; }
+    const barre = (or.zones || []).find((z) => x >= z.x && x <= z.x + z.l && y >= z.y && y <= z.y + z.h);
+    if (!barre && x >= ORNEGON_QUITTER.x && y >= ORNEGON_QUITTER.y) {
       const f = or.surFermer;
       this.ornegon = null;
-    this.gromelin = null;
-    this.evolution = null;
+      this.gromelin = null;
+      this.evolution = null;
       if (f) f();
       return;
     }
-    for (const z of (or.zones || [])) {
+    for (const z of (barre ? [barre] : [])) {
       if (x < z.x || x > z.x + z.l || y < z.y || y > z.y + z.h) continue;
-      // Frog.clickBar : cinq pixels vers le doigt, entre 17 et 133.
+      // Frog.clickBar : cinq pixels vers le doigt, entre 17 et 133 — le clic
+      // sans appui préalable (le glisser l'a déjà réglé sinon).
       const local = x - ORNEGON.barreX;
-      let bx = or.positions[z.sid];
-      bx = local < bx ? Math.max(17, bx - 5) : Math.min(133, bx + 5);
-      or.positions[z.sid] = bx;
-      // Frog.release : c = 1 + (x − 75)/58, gardé en dixièmes.
-      or.fee.fs.$spellCoef[z.sid] = Math.floor((1 + (bx - ORNEGON.centre) / 58) * 10);
+      const bx = or.positions[z.sid];
+      this.placerCurseurOrnegon(z.sid, local < bx ? bx - 5 : bx + 5);
       return;
     }
   }
@@ -2514,11 +2577,12 @@ class Client {
     this.dessinerBoutonQuitter(ctx);
   }
 
-  dessinerBoutonQuitter(ctx) {
+  dessinerBoutonQuitter(ctx, zone) {
     const s = this.sprites;
     if (!s.boutonQuitter) return;
     const p = this.pointeur;
-    const dessus = p && p.x > SCENE - 46 && p.y > SCENE - 46;
+    const z = zone || { x: SCENE - 46, y: SCENE - 46 };
+    const dessus = p && p.x > z.x && p.y > z.y;
     poserRendu(ctx, rendre(s.boutonQuitter, dessus ? 2 : 1, 100), SCENE, SCENE);
   }
 
