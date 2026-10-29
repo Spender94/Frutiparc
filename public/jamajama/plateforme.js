@@ -131,6 +131,14 @@
      * source : {type:'aventure', pack, niveau} ou {type:'tournoi', id}.
      */
     envoyerScore(source, mouvements) {
+      // Une partie d'ESSAI (le test ou la validation d'un niveau de l'éditeur)
+      // ne part pas au classement — game.TestState et game.ValidateState
+      // n'appelaient pas SaveScore non plus. L'état d'essai reçoit les
+      // mouvements, et décide seul de la suite (cf. EtatEssai, edition.js).
+      if (source.type === 'essai') {
+        if (source.surFin) source.surFin(mouvements);
+        return Promise.resolve({ ok: true, essai: true });
+      }
       if (!this.sid) return Promise.resolve({ ok: false, horsLigne: true });
       const corps = { sid: this.sid, source: source.type, mouvements };
       if (source.type === 'tournoi') corps.id = source.id;
@@ -150,6 +158,51 @@
         })
         .catch(() => ({ ok: false }));
     }
+    // ── le MODE ÉDITION : les cases du joueur (slotList, slotSave…) ──
+    _poster(chemin, corps) {
+      if (!this.sid) return Promise.resolve({ ok: false, error: 'horsLigne' });
+      return fetch(chemin, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ sid: this.sid }, corps)),
+      }).then((r) => r.json()).catch(() => ({ ok: false, error: 'reseau' }));
+    }
+    listeEdition() {
+      if (!this.sid) return Promise.resolve({ ok: true, cases: 0, niveaux: [] });
+      return fetch('/api/jamajama/edition?sid=' + encodeURIComponent(this.sid), { cache: 'no-store' })
+        .then((r) => r.json()).catch(() => ({ ok: false, error: 'reseau' }));
+    }
+    /** niveau : un R.Level, avec son id (−1 pour une case neuve) et son titre. */
+    sauverNiveau(niveau) {
+      return this._poster('/api/jamajama/edition/sauver', {
+        id: niveau.id > 0 ? niveau.id : null, titre: niveau.title, contenu: niveau.dump(),
+      });
+    }
+    renommerNiveau(id, titre) {
+      return this._poster('/api/jamajama/edition/renommer', { id, titre });
+    }
+    supprimerNiveau(id) {
+      return this._poster('/api/jamajama/edition/supprimer', { id });
+    }
+    /** La partie gagnée par l'auteur part avec le niveau ; le serveur rejoue. */
+    validerNiveau(niveau, mouvements) {
+      return this._poster('/api/jamajama/edition/valider', {
+        id: niveau.id > 0 ? niveau.id : null, titre: niveau.title, contenu: niveau.dump(), mouvements,
+      }).then((d) => {
+        // Le niveau entre au tournoi tout de suite, sans recharger le jeu.
+        if (d && d.ok && d.tournoi && !this.tournoi.some((t) => t.id === d.tournoi.id)) {
+          this.tournoi.push(d.tournoi);
+        }
+        return d;
+      });
+    }
+    /** Les statistiques (listStats) : mode P, C, L ou O ; page depuis 0. */
+    statistiques(mode, page) {
+      if (!this.sid) return Promise.resolve({ ok: true, total: 0, lignes: [] });
+      return fetch('/api/jamajama/stats?sid=' + encodeURIComponent(this.sid)
+        + '&mode=' + encodeURIComponent(mode) + '&page=' + (page | 0), { cache: 'no-store' })
+        .then((r) => r.json()).catch(() => ({ ok: false, error: 'reseau' }));
+    }
+
     niveauAventure(pack, indice) {
       const p = this.packs[pack];
       const n = p && p.niveaux[indice];

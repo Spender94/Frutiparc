@@ -16346,10 +16346,11 @@ function jamaEcrireSlot(username, slot) {
 }
 
 // Tout ce qu'il faut au jeu pour démarrer, en une requête.
-app.get('/api/jamajama/donnees', (req, res) => {
+app.get('/api/jamajama/donnees', async (req, res) => {
   const sid = getSidFromRequest(req);
   const username = resolveUsernameFromSid(sid);
   if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
+  await jamaNiveauxCharger();
   const slot = jamaLireSlot(username);
   const lv = jamaLevels();
   res.json({
@@ -16359,11 +16360,10 @@ app.get('/api/jamajama/donnees', (req, res) => {
     aventure: slot.aventure,
     packs: lv.packs.map((p) => ({ titre: p.titre, total: p.total,
       niveaux: p.niveaux.map((n) => ({ titre: n.titre, contenu: n.contenu })) })),
-    tournoi: lv.tournoi.map((t) => ({
-      id: t.id, titre: t.titre, auteur: t.auteur, score: t.score, date: t.date,
-      difficulte: t.difficulte, contenu: t.contenu,
-      moi: slot.niveaux[t.id] || null,
-    })),
+    // Le tournoi : les niveaux gravés dans levels.xml, puis ceux que les
+    // joueurs ont validés depuis le mode Édition (le sien compris, comme le
+    // dit l'aide : « Vos propres niveaux validés y figurent également »).
+    tournoi: jamaTournoi().map((t) => jamaEntreeTournoi(t, slot)),
   });
 });
 
@@ -16440,7 +16440,7 @@ app.post('/api/jamajama/options', (req, res) => {
  * au score de l'auteur, comme l'extension) et nourrit le classement
  * jamajama_classic (le moins de coups — lowerIsBetter est déjà dans RANKINGS).
  */
-app.post('/api/jamajama/score', (req, res) => {
+app.post('/api/jamajama/score', async (req, res) => {
   const sid = getSidFromRequest(req, req.body || {});
   const username = resolveUsernameFromSid(sid);
   if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
@@ -16457,7 +16457,8 @@ app.post('/api/jamajama/score', (req, res) => {
   let cleTournoi = null;
   let auteurScore = 0;
   if (b.source === 'tournoi') {
-    const t = lv.tournoi.find((x) => x.id === Math.trunc(Number(b.id)));
+    await jamaNiveauxCharger();
+    const t = jamaTournoi().find((x) => x.id === Math.trunc(Number(b.id)));
     if (!t) return res.json({ ok: false, error: 'niveau' });
     contenu = t.contenu;
     cleTournoi = String(t.id);
@@ -16527,6 +16528,346 @@ app.post('/api/jamajama/score', (req, res) => {
     statut,
     classement: classement ? { classe: !!classement.updated, position: classement.newPos } : null,
     pictos,
+  });
+});
+
+// ─────────────────────────────────────────────
+// JamaJama — le MODE ÉDITION et les STATISTIQUES.
+//
+// Le SWF les servait par le réseau : slotList / slotSave / slotRename /
+// slotFree / slotSubmit pour les niveaux du joueur, listStats pour les
+// statistiques. Extension.swf, faute de serveur, rangeait tout dans un
+// SharedObject et répondait « Statistiques globales non disponibles » pour les
+// onglets Joueurs et Créateurs. Ici le serveur reprend le rôle d'origine :
+//
+// · un niveau s'écrit dans jama_niveaux (le format de chaîne du jeu, relu et
+//   réécrit par regles.js pour n'accepter qu'un niveau bien formé) ;
+// · VALIDER, c'est envoyer la partie gagnée par l'auteur : le serveur la
+//   REJOUE comme un score, et seul un replay victorieux fait entrer le niveau
+//   au tournoi, avec son nombre de coups pour record (le « s » de l'auteur) ;
+// · un niveau validé ne s'édite plus, ne se renomme plus (l'aide : « Il n'est
+//   plus possible de l'éditer, ni même de le tester ») ; il se supprime.
+//
+// Sans Postgres (serveur de mise au point, tests), les niveaux tiennent en
+// mémoire : le mode reste entier, il ne survit pas au redémarrage.
+// ─────────────────────────────────────────────
+
+// Le nombre de cases d'un joueur. Le jeu le recevait du serveur (« ms ») ;
+// l'extension en donnait 14985, autant dire sans fond. Une borne raisonnable
+// suffit à un créateur (quatre pages de la liste) et protège la base.
+const JAMA_EDITION_CASES = 60;
+const JAMA_TITRE_MAX = 40;                 // le maxChars de LevelInfoEdit
+const jamaNiveaux = new Map();             // id → { id, auteur, titre, contenu, valide, record, date }
+let jamaNiveauxProchainId = 1;             // sans base seulement
+let jamaNiveauxCharges = null;             // la promesse du premier chargement
+
+function jamaNiveauxCharger() {
+  if (!process.env.DATABASE_URL) return Promise.resolve();
+  if (jamaNiveauxCharges) return jamaNiveauxCharges;
+  jamaNiveauxCharges = db.listJamaNiveaux().then((rows) => {
+    for (const r of rows) {
+      jamaNiveaux.set(Number(r.id), {
+        id: Number(r.id), auteur: r.auteur, titre: r.titre, contenu: r.contenu,
+        valide: !!r.valide, record: Number(r.record) || 0,
+        date: Number(r.valide_le) || Number(r.created_at) || 0,
+      });
+    }
+  }).catch((e) => {
+    // Le schéma peut ne pas être prêt au tout premier appel : on retentera.
+    console.error('[JAMA]  chargement des niveaux d\'édition :', e.message);
+    jamaNiveauxCharges = null;
+  });
+  return jamaNiveauxCharges;
+}
+
+// Le tournoi complet : levels.xml d'abord, puis les niveaux validés.
+function jamaTournoi() {
+  const liste = jamaLevels().tournoi.slice();
+  for (const n of jamaNiveaux.values()) {
+    if (!n.valide) continue;
+    liste.push({
+      id: n.id, titre: n.titre, auteur: n.auteur, score: n.record, date: n.date,
+      // La « valeur » de l'extension : le record de l'auteur, au carré sur 290.
+      difficulte: Math.round(n.record * (n.record / 290)), contenu: n.contenu,
+    });
+  }
+  return liste;
+}
+function jamaEntreeTournoi(t, slot) {
+  return {
+    id: t.id, titre: t.titre, auteur: t.auteur, score: t.score, date: t.date,
+    difficulte: t.difficulte, contenu: t.contenu,
+    moi: (slot && slot.niveaux[t.id]) || null,
+  };
+}
+
+// Un titre propre : sans caractère de contrôle, borné ; vide, il devient le
+// « sans nom » du jeu (Consts.WITHOUT_TITLE).
+function jamaTitre(v) {
+  const t = String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').trim()
+    .slice(0, JAMA_TITRE_MAX);
+  return t && t !== '... vide ...' ? t : 'sans nom';
+}
+
+/**
+ * Un niveau envoyé par l'éditeur est-il un niveau que l'éditeur a pu faire ?
+ * La chaîne doit se relire puis se réécrire à l'identique (un casier de
+ * travers et le plateau serait faux), tenir dans 12×11 cases, ne poser que
+ * des éléments de la palette, un seul par case (l'éditeur vide la case avant
+ * d'y poser), à l'intérieur du plateau.
+ */
+function jamaNiveauValide(contenu) {
+  // Cinq casiers d'en-tête, puis six caractères au plus par élément (le
+  // paramètre « -1 » en prend deux), un élément par case de 12×11.
+  if (typeof contenu !== 'string' || contenu.length < 5 || contenu.length > 5 + 6 * 132) return null;
+  if (!/^[0-9a-zA-Z-]+$/.test(contenu)) return null;
+  let l;
+  try { l = jamaRegles.Level.depuisChaine(contenu); } catch { return null; }
+  if (l.dump() !== contenu || l.version !== 1) return null;
+  const C = jamaRegles.Consts;
+  const w = l.size.width, h = l.size.height;
+  if (!(w >= 1 && w <= C.MAX_LEVEL_WIDTH && h >= 1 && h <= C.MAX_LEVEL_HEIGHT)) return null;
+  const dedans = (p) => p.x >= 0 && p.y >= 0 && p.x < w && p.y < h;
+  if (!dedans(l.startPos)) return null;
+  const palette = jamaRegles.Element.EDITOR_IDS.filter((id) => id !== jamaRegles.Element.HERO);
+  const prises = new Set();
+  for (const t of l.tiles) {
+    if (palette.indexOf(t.id) < 0 || !dedans(t.pos)) return null;
+    if (!(t.orientation >= 0 && t.orientation <= 3) || !(t.param >= -1 && t.param <= 9)) return null;
+    const cle = t.pos.x + ',' + t.pos.y;
+    if (prises.has(cle)) return null;
+    prises.add(cle);
+  }
+  return l;
+}
+
+function jamaAuteur(req) {
+  const b = req.body || {};
+  const username = resolveUsernameFromSid(getSidFromRequest(req, b));
+  return username && users[username] ? username : null;
+}
+function jamaNiveauDuJoueur(id, username) {
+  const n = jamaNiveaux.get(Math.trunc(Number(id)));
+  return n && n.auteur === username ? n : null;
+}
+const jamaCase = (n) => ({
+  id: n.id, titre: n.titre, contenu: n.contenu, valide: n.valide,
+  record: n.valide ? n.record : null, date: n.date,
+});
+const jamaMesNiveaux = (username) => [...jamaNiveaux.values()]
+  .filter((n) => n.auteur === username).sort((a, b) => a.id - b.id);
+
+// La liste du joueur (slotList). Toutes ses cases d'un coup : il y en a peu.
+app.get('/api/jamajama/edition', async (req, res) => {
+  const username = jamaAuteur(req);
+  if (!username) return res.json({ ok: false, error: 'session' });
+  await jamaNiveauxCharger();
+  res.json({ ok: true, cases: JAMA_EDITION_CASES, niveaux: jamaMesNiveaux(username).map(jamaCase) });
+});
+
+// Écrire un niveau (slotSave) : une case neuve sans id, sa case sinon.
+async function jamaEcrireNiveau(username, id, titre, contenu) {
+  const existant = id != null && Number(id) > 0 ? jamaNiveauDuJoueur(id, username) : null;
+  if (id != null && Number(id) > 0 && !existant) return { error: 'niveau' };
+  if (existant && existant.valide) return { error: 'valide' };
+  if (!existant) {
+    if (jamaMesNiveaux(username).length >= JAMA_EDITION_CASES) return { error: 'plein' };
+    let nouvelId;
+    if (process.env.DATABASE_URL) {
+      const u = users[username];
+      nouvelId = await db.insertJamaNiveau(u && u._dbId, username, titre, contenu);
+    } else {
+      nouvelId = jamaNiveauxProchainId++;
+    }
+    const n = { id: Number(nouvelId), auteur: username, titre, contenu, valide: false, record: 0, date: Date.now() };
+    jamaNiveaux.set(n.id, n);
+    return { niveau: n };
+  }
+  if (process.env.DATABASE_URL && !(await db.updateJamaNiveau(existant.id, username, titre, contenu))) {
+    return { error: 'valide' };
+  }
+  existant.titre = titre;
+  existant.contenu = contenu;
+  return { niveau: existant };
+}
+
+app.post('/api/jamajama/edition/sauver', async (req, res) => {
+  const username = jamaAuteur(req);
+  if (!username) return res.json({ ok: false, error: 'session' });
+  const b = req.body || {};
+  if (!jamaNiveauValide(b.contenu)) return res.json({ ok: false, error: 'contenu' });
+  await jamaNiveauxCharger();
+  try {
+    const r = await jamaEcrireNiveau(username, b.id, jamaTitre(b.titre), b.contenu);
+    if (r.error) return res.json({ ok: false, error: r.error });
+    res.json({ ok: true, niveau: jamaCase(r.niveau) });
+  } catch (e) {
+    console.error('[JAMA]  sauver un niveau :', e.message);
+    res.json({ ok: false, error: 'base' });
+  }
+});
+
+// Renommer (slotRename) : seulement tant que le niveau n'est pas validé —
+// c'est là que editlist.State ouvre la fenêtre du titre.
+app.post('/api/jamajama/edition/renommer', async (req, res) => {
+  const username = jamaAuteur(req);
+  if (!username) return res.json({ ok: false, error: 'session' });
+  await jamaNiveauxCharger();
+  const n = jamaNiveauDuJoueur((req.body || {}).id, username);
+  if (!n) return res.json({ ok: false, error: 'niveau' });
+  if (n.valide) return res.json({ ok: false, error: 'valide' });
+  try {
+    const r = await jamaEcrireNiveau(username, n.id, jamaTitre((req.body || {}).titre), n.contenu);
+    if (r.error) return res.json({ ok: false, error: r.error });
+    res.json({ ok: true, niveau: jamaCase(r.niveau) });
+  } catch (e) {
+    console.error('[JAMA]  renommer un niveau :', e.message);
+    res.json({ ok: false, error: 'base' });
+  }
+});
+
+// Supprimer (slotFree). Un niveau validé quitte aussi le tournoi.
+app.post('/api/jamajama/edition/supprimer', async (req, res) => {
+  const username = jamaAuteur(req);
+  if (!username) return res.json({ ok: false, error: 'session' });
+  await jamaNiveauxCharger();
+  const n = jamaNiveauDuJoueur((req.body || {}).id, username);
+  if (!n) return res.json({ ok: false, error: 'niveau' });
+  try {
+    if (process.env.DATABASE_URL) await db.deleteJamaNiveau(n.id, username);
+  } catch (e) {
+    console.error('[JAMA]  supprimer un niveau :', e.message);
+    return res.json({ ok: false, error: 'base' });
+  }
+  jamaNiveaux.delete(n.id);
+  res.json({ ok: true });
+});
+
+/**
+ * Valider (ValidateState : slotSave puis slotSubmit). Le corps porte le niveau
+ * tel que l'auteur vient de le jouer et la liste de ses mouvements ; le
+ * serveur rejoue, et seule une victoire publie — avec, pour record, le nombre
+ * de coups de cette partie (« Évitez tant que possible les déplacements
+ * inutiles », dit l'aide : c'est lui que les autres devront égaler).
+ */
+app.post('/api/jamajama/edition/valider', async (req, res) => {
+  const username = jamaAuteur(req);
+  if (!username) return res.json({ ok: false, error: 'session' });
+  const b = req.body || {};
+  const niveau = jamaNiveauValide(b.contenu);
+  if (!niveau) return res.json({ ok: false, error: 'contenu' });
+  const mouvements = Array.isArray(b.mouvements)
+    ? b.mouvements.map((v) => Math.trunc(Number(v))).filter((v) => v >= 0 && v <= 5) : null;
+  if (!mouvements || mouvements.length !== b.mouvements.length || mouvements.length > 20000) {
+    return res.json({ ok: false, error: 'mouvements' });
+  }
+  let verdict;
+  try { verdict = jamaRegles.rejouer(niveau, mouvements); } catch (e) {
+    console.error('[JAMA]  rejouer une validation :', e.message);
+    return res.json({ ok: false, error: 'rejeu' });
+  }
+  if (!verdict.victorieux) return res.json({ ok: false, error: 'perdu' });
+  await jamaNiveauxCharger();
+  const titre = jamaTitre(b.titre);
+  try {
+    const r = await jamaEcrireNiveau(username, b.id, titre, b.contenu);
+    if (r.error) return res.json({ ok: false, error: r.error });
+    const n = r.niveau;
+    if (process.env.DATABASE_URL
+      && !(await db.validerJamaNiveau(n.id, username, titre, b.contenu, verdict.coups))) {
+      return res.json({ ok: false, error: 'valide' });
+    }
+    n.valide = true;
+    n.record = verdict.coups;
+    n.date = Date.now();
+    console.log(`[JAMA]  ${username} valide « ${n.titre} » (#${n.id}) en ${n.record} coups`);
+    const entree = jamaTournoi().find((t) => t.id === n.id);
+    res.json({ ok: true, niveau: jamaCase(n), tournoi: jamaEntreeTournoi(entree, jamaLireSlot(username)) });
+  } catch (e) {
+    console.error('[JAMA]  valider un niveau :', e.message);
+    res.json({ ok: false, error: 'base' });
+  }
+});
+
+/**
+ * Les STATISTIQUES (listStats) : quatre onglets, quinze lignes par page.
+ *
+ *   P  Joueurs     le pseudo, et le nombre de niveaux du tournoi qu'il a
+ *                  terminés (tiki blanc ou d'or) ;
+ *   C  Créateurs   l'auteur, et le nombre de niveaux qu'il a publiés ;
+ *   L  Niveaux     les niveaux des AUTRES créateurs : « auteur -- titre », et
+ *                  son meilleur score, ou « N essai(s) » s'il n'en a pas ;
+ *   O  Mes niveaux ses niveaux validés, même colonne de droite.
+ *
+ * L et O sont les deux onglets que l'extension savait remplir, avec la même
+ * forme de ligne. P et C, que la version hors ligne laissait vides, reprennent
+ * vie avec ce que le serveur sait : le jeu de 2005 n'en a pas laissé la
+ * formule, on compte donc ce qui se lit dans l'icône des listes.
+ */
+const JAMA_STATS_PAGE = 15;
+let jamaStatsJoueursCache = null;          // { t, lignes }
+async function jamaStatsJoueurs() {
+  if (jamaStatsJoueursCache && Date.now() - jamaStatsJoueursCache.t < 60000) return jamaStatsJoueursCache.lignes;
+  const comptes = new Map();
+  const compter = (pseudo, brut) => {
+    let o = null;
+    try { o = typeof brut === 'string' ? JSON.parse(brut) : brut; } catch { o = null; }
+    const niveaux = o && o.niveaux && typeof o.niveaux === 'object' ? o.niveaux : {};
+    let n = 0;
+    for (const s of Object.values(niveaux)) if (s && Number(s.s) >= 1) n += 1;
+    comptes.set(pseudo, n);
+  };
+  if (process.env.DATABASE_URL) {
+    try {
+      for (const row of await db.getSlot0ForGame('jamajama')) compter(row.username, row.data);
+    } catch (e) { console.error('[JAMA]  statistiques des joueurs :', e.message); }
+  }
+  // La mémoire a le dernier mot : elle est plus fraîche que la base.
+  for (const [pseudo, u] of Object.entries(users)) {
+    const brut = u && u.frutiSlots && u.frutiSlots.jamajama && u.frutiSlots.jamajama['0'];
+    if (brut) compter(pseudo, brut);
+  }
+  const lignes = [...comptes.entries()].filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([u, n]) => ({ u, s: String(n) }));
+  jamaStatsJoueursCache = { t: Date.now(), lignes };
+  return lignes;
+}
+function jamaLigneScore(statut) {
+  // La colonne de droite de l'extension : le score si l'on a gagné, sinon le
+  // nombre de parties jouées.
+  if (statut && Number(statut.s) > 0 && statut.b) return { s: String(statut.b) };
+  return { np: (statut ? Number(statut.p) || 0 : 0) + ' essai(s)' };
+}
+app.get('/api/jamajama/stats', async (req, res) => {
+  const username = jamaAuteur(req);
+  if (!username) return res.json({ ok: false, error: 'session' });
+  const mode = String(req.query.mode || 'P');
+  if (['P', 'C', 'L', 'O'].indexOf(mode) < 0) return res.json({ ok: false, error: 'mode' });
+  const page = Math.max(0, Math.trunc(Number(req.query.page)) || 0);
+  await jamaNiveauxCharger();
+  const slot = jamaLireSlot(username);
+  let lignes = [];
+  if (mode === 'P') {
+    lignes = await jamaStatsJoueurs();
+  } else if (mode === 'C') {
+    const parAuteur = new Map();
+    for (const n of jamaNiveaux.values()) if (n.valide) parAuteur.set(n.auteur, (parAuteur.get(n.auteur) || 0) + 1);
+    lignes = [...parAuteur.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([u, n]) => ({ u, s: String(n) }));
+  } else if (mode === 'L') {
+    // L'ordre « ATSvd » de l'extension : auteur, puis titre.
+    lignes = jamaTournoi().filter((t) => t.auteur !== username)
+      .sort((a, b) => a.auteur.localeCompare(b.auteur) || a.titre.localeCompare(b.titre))
+      .map((t) => Object.assign({ u: t.auteur, t: t.titre }, jamaLigneScore(slot.niveaux[t.id])));
+  } else {
+    lignes = jamaMesNiveaux(username).filter((n) => n.valide)
+      .sort((a, b) => a.titre.localeCompare(b.titre))
+      .map((n) => Object.assign({ t: n.titre }, jamaLigneScore(slot.niveaux[n.id])));
+  }
+  res.json({
+    ok: true, mode, page, total: lignes.length,
+    lignes: lignes.slice(page * JAMA_STATS_PAGE, (page + 1) * JAMA_STATS_PAGE),
   });
 });
 

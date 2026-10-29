@@ -140,11 +140,27 @@
   // ── la ronde des états ──
   let etat = null;
   function passer(nouvel) {
+    // Un état peut garder la main sur la suite : la partie d'ESSAI de
+    // l'éditeur (edition.js) laisse jouer la vraie partie, qui croit
+    // retourner au menu — c'est l'essai qui décide où l'on va.
+    if (etat && etat.intercepter && etat.intercepter(nouvel)) return;
     // Un écran qui a posé quelque chose HORS du canevas (l'aide et son texte)
     // le retire en partant.
     if (etat && etat.quitter) etat.quitter();
     etat = nouvel;
   }
+
+  // — l'ÉDITION et les STATISTIQUES vivent dans edition.js et stats.js ;
+  // leurs états reçoivent ce qu'il leur faut d'ici. —
+  const hote = {
+    plateforme, souris, ctx, canvas,
+    echelle: () => K,
+    passer: (e) => passer(e),
+    menu: () => EtatMenu(),
+    partie: (niveau, source) => EtatPartie(niveau, source, null),
+    // Échap, consommé : rend vrai une fois par appui.
+    echap() { const e = echapDemande; echapDemande = false; return e; },
+  };
 
   // — le menu —
   function EtatMenu() {
@@ -157,8 +173,11 @@
         if (id === 1) passer(EtatTournoi());
         if (id === 6) passer(EtatAide());
         if (id === 7) passer(EtatOptions());
-        // 4 éditeur, 5 statistiques : les prochaines étapes du portage — le
-        // menu les montre déjà, fidèle au fichier.
+        // L'éditeur (editlist.State) et les statistiques (statlist.State).
+        // Le fichier montrait jama_gui_Banned aux joueurs privés de création
+        // (canCreateLevel) ; ici tout joueur connecté crée.
+        if (id === 4) passer(window.JamaEdition.EtatEdition(hote));
+        if (id === 5) passer(window.JamaStats.EtatStats(hote));
       },
       dessiner() { ecran.dessiner(ctx); },
     };
@@ -177,8 +196,12 @@
       select: null,
     };
     function surPack(packId) {
-      moi.packId = packId;
       const pack = plateforme.packs[packId];
+      // Un pack sans niveau (hors session, le serveur n'en a rien envoyé) :
+      // il n'y a pas de parchemin à ouvrir, on reste sur la liste — sans quoi
+      // le parchemin lisait le titre d'un niveau qui n'existe pas et plantait.
+      if (!pack || !pack.niveaux || !pack.niveaux.length) return;
+      moi.packId = packId;
       moi.niveaux = pack.niveaux.map((n, i) => ({
         titre: n.titre,
         complete: plateforme.aventure.hasCompletedLevel(packId, i),

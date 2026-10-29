@@ -508,6 +508,27 @@ async function initSchema() {
         PRIMARY KEY (user_id, track)
       );
 
+      -- JamaJama : les niveaux du MODE ÉDITION, ceux que les joueurs dessinent.
+      -- Le SWF les rangeait côté serveur (slotSave / slotList / slotFree /
+      -- slotSubmit) ; la version déployée, hors ligne, les gardait dans un
+      -- SharedObject. Un niveau VALIDÉ (gagné par son auteur, qui pose alors le
+      -- record) entre au tournoi pour tout le monde et ne s'édite plus. Une
+      -- table à part, pas la case de fruticard du joueur : le tournoi lit les
+      -- niveaux de TOUS les auteurs, connectés ou non.
+      CREATE TABLE IF NOT EXISTS jama_niveaux (
+        id          SERIAL PRIMARY KEY,
+        user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        auteur      TEXT NOT NULL,
+        titre       TEXT NOT NULL DEFAULT '',
+        contenu     TEXT NOT NULL,
+        valide      BOOLEAN NOT NULL DEFAULT FALSE,
+        record      INTEGER NOT NULL DEFAULT 0,
+        valide_le   TIMESTAMPTZ,
+        created_at  TIMESTAMPTZ DEFAULT now(),
+        updated_at  TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_jama_niveaux_auteur ON jama_niveaux(auteur);
+
       -- Frutisnake : la CARTE du tournoi (mode « Entraînement » du light).
       -- Générée d'une graine par l'admin, ouverte/fermée à la demande ; la
       -- copie en base fait survivre la carte (et son état) aux redéploiements,
@@ -3049,6 +3070,49 @@ async function upsertBkiwiGhost(userId, track, car, raceTime, data) {
   return rows.length > 0;
 }
 
+/**
+ * JamaJama — les niveaux du mode Édition (cf. jama_niveaux). Le serveur les
+ * charge tous au démarrage (le tournoi et les statistiques les lisent sans
+ * attendre) ; chaque écriture repasse ici.
+ */
+async function listJamaNiveaux() {
+  const { rows } = await pool.query(
+    `SELECT id, auteur, titre, contenu, valide, record,
+            EXTRACT(EPOCH FROM valide_le) * 1000 AS valide_le,
+            EXTRACT(EPOCH FROM created_at) * 1000 AS created_at
+       FROM jama_niveaux ORDER BY id`);
+  return rows;
+}
+async function insertJamaNiveau(userId, auteur, titre, contenu) {
+  const { rows } = await pool.query(
+    `INSERT INTO jama_niveaux (user_id, auteur, titre, contenu)
+     VALUES ($1, $2, $3, $4) RETURNING id`,
+    [userId || null, auteur, titre, contenu]);
+  return rows[0].id;
+}
+// Un niveau validé ne bouge plus : la garde « NOT valide » vaut aussi en base,
+// pour qu'une requête en retard ne réécrive pas un niveau du tournoi.
+async function updateJamaNiveau(id, auteur, titre, contenu) {
+  const { rowCount } = await pool.query(
+    `UPDATE jama_niveaux SET titre = $3, contenu = $4, updated_at = now()
+      WHERE id = $1 AND auteur = $2 AND NOT valide`,
+    [id, auteur, titre, contenu]);
+  return rowCount > 0;
+}
+async function validerJamaNiveau(id, auteur, titre, contenu, record) {
+  const { rowCount } = await pool.query(
+    `UPDATE jama_niveaux SET titre = $3, contenu = $4, record = $5, valide = TRUE,
+            valide_le = now(), updated_at = now()
+      WHERE id = $1 AND auteur = $2 AND NOT valide`,
+    [id, auteur, titre, contenu, record]);
+  return rowCount > 0;
+}
+async function deleteJamaNiveau(id, auteur) {
+  const { rowCount } = await pool.query(
+    'DELETE FROM jama_niveaux WHERE id = $1 AND auteur = $2', [id, auteur]);
+  return rowCount > 0;
+}
+
 async function getSnake3Tournoi() {
   const { rows } = await pool.query(
     'SELECT graine, carte, exigences, ouvert, classement, organique, manuelle, updated_at '
@@ -5351,6 +5415,11 @@ module.exports = {
   quetesArchive,
   getBkiwiGhost,
   upsertBkiwiGhost,
+  listJamaNiveaux,
+  insertJamaNiveau,
+  updateJamaNiveau,
+  validerJamaNiveau,
+  deleteJamaNiveau,
   loadBouilleVariantes,
   upsertBouilleVariante,
   insertShopSale,
