@@ -44,9 +44,21 @@
       const ox = p.m ? p.m[4] : 0, oy = p.m ? p.m[5] : 0;
       if (p.x !== undefined) etendre(p.x, p.y, p.w, p.h);
       else if (p.clip) {
+        // Le clip enfant est posé par une MATRICE, pas une simple translation :
+        // la flèche « suivante » est la « précédente » retournée (a = −1). On
+        // ne décalait que de (ox, oy) — la zone de la flèche droite tombait
+        // donc À DROITE d'elle, et il fallait cliquer dans le vide pour changer
+        // de niveau. Les deux coins passent par la matrice entière.
+        const m = p.m || [1, 0, 0, 1, 0, 0];
+        const tx = (x, y) => m[0] * x + m[2] * y + m[4];
+        const ty = (x, y) => m[1] * x + m[3] * y + m[5];
         const enfant = Rendu.etatDe(Rendu.symbole(p.clip), p.frame || 1);
         for (const q of enfant.pieces) {
-          if (q.x !== undefined) etendre(ox + q.x, oy + q.y, q.w, q.h);
+          if (q.x === undefined) continue;
+          const xs = [tx(q.x, q.y), tx(q.x + q.w, q.y), tx(q.x, q.y + q.h), tx(q.x + q.w, q.y + q.h)];
+          const ys = [ty(q.x, q.y), ty(q.x + q.w, q.y), ty(q.x, q.y + q.h), ty(q.x + q.w, q.y + q.h)];
+          const x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
+          etendre(x0, y0, Math.max.apply(null, xs) - x0, Math.max.apply(null, ys) - y0);
         }
       } else if (p.champ !== undefined) {
         const c = Rendu.manifeste().champs[p.champ];
