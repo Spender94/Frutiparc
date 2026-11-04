@@ -238,13 +238,13 @@ test('le score part avec le circuit et le mode, le claim de FD avec le mode ; le
 
 test('le catalogue : le disque light de Burning Kiwi, l\'onglet du light, la fenêtre du bureau', () => {
   const S = lire('server.js');
-  assert.match(S, /bkiwilight: \{\s*discType: '0',\s*playMode: 'single',\s*swfName: 'bkiwi',\s*iconName: 'bkiwi',\s*gameId: 'light\/bkiwi',\s*props: 'w=362;h=376;m=p'/);
+  assert.match(S, /bkiwilight: \{\s*discType: '3',\s*playMode: 'single',\s*swfName: 'bkiwi',\s*iconName: 'bkiwi',\s*gameId: 'light\/bkiwi',\s*props: 'w=362;h=376;m=p'/);
   const L = lire('public/light.html');
   assert.match(L, /bkiwi: "#bkiwi-frame"/);
   assert.match(L, /bkiwi: "\/bkiwi\/"/);
   assert.match(L, /<iframe id="bkiwi-frame" title="Burning Kiwi"/);
   assert.match(L, /\$\("#bkiwi-panel"\)\.classList\.toggle\("active", tab === "bkiwi"\);/);
-  assert.match(L, /\{ tab: "bkiwi", jaquette: "bkiwi", name: "Burning Kiwi" \}/);
+  assert.match(L, /\{ tab: "bkiwi", jaquette: "bkiwi", anneau: "3", name: "Burning Kiwi" \}/);
   assert.ok(!/flash: "bkiwi"/.test(L), 'Burning Kiwi n\'est plus dans la liste des jeux Flash du light');
   assert.match(lire('public/ruffle.html'), /"light\/bkiwi": \{ url: "\/bkiwi\/", w: 390, h: 410 \}/);
   const B = lire('public/bureau-frutiz.js');

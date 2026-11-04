@@ -12,6 +12,7 @@
  * en permanence et se met à jour tout seul :
  *
  *     Challenge · 2 parties sur 3
+ *     Challenge · 3 parties sur 3 · Frutisigne +1   (le cadeau du jour)
  *     Challenge · plus de partie classée   (en corail)
  *
  *     <script src="/js/fd-badge.js" data-jeu="kaluga"></script>
@@ -64,8 +65,10 @@
         }
         var reste = Number(j.remaining) || 0;
         if (reste <= 0) { poser('Challenge · plus de partie classée', true); return; }
+        // Le cadeau du Frutisigne (semaine du signe, jour de l'ascendant) est
+        // déjà dans le total : on dit seulement d'où vient la partie de plus.
         poser('Challenge · ' + reste + ' partie' + (reste > 1 ? 's' : '')
-          + ' sur ' + j.allowance, false);
+          + ' sur ' + j.allowance + (Number(j.frutisigne) > 0 ? ' · Frutisigne +1' : ''), false);
       })
       .catch(function () { /* le serveur répondra au prochain tour */ });
   }

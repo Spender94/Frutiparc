@@ -199,7 +199,7 @@ test('le catalogue : le disque light de MotionBall à côté du disque Flash, et
   const light = lire('public/light.html');
   assert.match(light, /mb2: "#mb2-frame"/);
   assert.match(light, /mb2: "\/mb2\/"/);
-  assert.match(light, /\{ tab: "mb2", jaquette: "mb2", name: "Motion-Ball 2" \}/);
+  assert.match(light, /\{ tab: "mb2", jaquette: "mb2", anneau: "3", name: "Motion-Ball 2" \}/);
   assert.ok(!/flash: "mb2"/.test(light), 'MotionBall n\'est plus dans la liste des jeux Flash du light');
   assert.match(lire('public/ruffle.html'), /"light\/mb2": \{ url: "\/mb2\/"/);
   assert.match(lire('public/bureau-frutiz.js'), /mb2:\s*\{ panneau: '#mb2-panel'/);
