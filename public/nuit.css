@@ -404,6 +404,9 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
 .msg.lg, .msg.lg .body, .msg.lg .time {
   color: hsl(272 30% 85.6%);
 }
+.msg.pv, .msg.pv .body, .msg.pv .time {
+  color: hsl(277 30% 85.6%);
+}
 .lg-panneau {
   background: hsl(256 30% 10%);
   color: hsl(256 13% 84.9%);
