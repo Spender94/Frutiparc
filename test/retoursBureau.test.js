@@ -20,6 +20,12 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+// Mini-Fever ne classe plus qu'une partie REJOUÉE par le serveur (l'anti-triche
+// des portages) : le banc joue une vraie partie, signée de son propre secret.
+const AT = require(path.join(__dirname, '..', 'antitricheLight.js'));
+const AIDE_AT = require('./aideAntitriche.js');
+const SECRET_AT = 'banc-retours-' + Date.now().toString(36) + '-0123456789';
+AT.poserSecret(SECRET_AT);
 
 const ROOT = path.join(__dirname, '..');
 const PORT = 3495;
@@ -36,7 +42,7 @@ before(async () => {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5260', FRUTISCORE_PORT: '5261',
+      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5260', FRUTISCORE_PORT: '5261', ANTITRICHE_SECRET: SECRET_AT,
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -207,15 +213,18 @@ test('les pictos se rangent par jeu, dans l\'arbre COMME dans le dossier', async
   assert.match(videArbre, /<f u="inv_pictos" n="Pictos" t="inventory" \/>/,
     'l\'arbre garde son dossier sans enfant');
 
-  // Une partie de Mini-Fever : cinq pictos, donc un jeu.
+  // Une partie de Mini-Fever, vraiment jouée : un picto par épreuve
+  // DIFFÉRENTE gagnée, tous du même jeu.
+  const c = AIDE_AT.arcadeConstruite(9090, 0, 5);
+  const jeton = AT.creerJeton({ jeu: 'minifever', username: ('rburpic' + RUN).toLowerCase(), mode: 0,
+    graine: 9090, t: Date.now() - (c.minimumMs + 60000) }).jeton;
   const r = await fetch(BASE + '/api/minifever/score', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sid, palier: 0, niveau: 5, jouees: 5,
-      gagnees: ['gameBasket', 'gameLander', 'gameFlower', 'gamePong', 'gameAstero'],
-    }),
+    body: JSON.stringify(Object.assign({ sid, jeton }, c.corps)),
   }).then((x) => x.json());
-  assert.equal(r.ok, true, 'la partie compte');
+  assert.equal(r.ok, true, 'la partie compte : ' + JSON.stringify(r));
+  const attendus = new Set(c.gagnees).size;
+  assert.ok(attendus >= 1, 'au moins une épreuve gagnée');
 
   // L'ARBRE porte le sous-dossier — c'est lui qui lui donne son nom, et son
   // absence est ce qui affichait « Undefined ».
@@ -233,13 +242,13 @@ test('les pictos se rangent par jeu, dans l\'arbre COMME dans le dossier', async
   assert.match(dossier, /__pictos_gallery__/, 'la galerie reste en tête');
   assert.match(dossier, /<f u="inv_pictos_minifever" n="Mini-Fever" t="folder" \/>/,
     'le sous-dossier est proposé');
-  assert.equal(/\$fvBasket/.test(dossier), false,
+  assert.equal(/\$fv[A-Z]/.test(dossier), false,
     'les pictos ne sont plus déversés à la racine');
 
-  // Et le sous-dossier, lui, porte les cinq pictos.
+  // Et le sous-dossier, lui, porte les pictos gagnés.
   const sous = await texte('/ff/ls?sid=' + encodeURIComponent(sid) + '&uid=inv_pictos_minifever');
-  assert.match(sous, /\$fvBasket/, 'le panier est là');
-  assert.equal((sous.match(/<e /g) || []).length, 5, 'les cinq, et rien d\'autre');
+  assert.match(sous, /\$fv[A-Z]/, 'les pictos de Mini-Fever sont là');
+  assert.equal((sous.match(/<e /g) || []).length, attendus, 'un par épreuve gagnée, et rien d\'autre');
 });
 
 test('un sous-dossier de pictos ne se déplace ni ne se jette', async () => {
