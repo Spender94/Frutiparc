@@ -11,6 +11,13 @@
  *
  * L'album suit la même règle que les monstres de MiniWave : une épreuve
  * remportée pour la première fois donne son picto.
+ *
+ * Et la partie se PROUVE (antitricheLight.js) : un jeton au départ, le journal
+ * à la fin, et le serveur rejoue chaque épreuve — seules les victoires qu'il
+ * voit lui-même comptent, au score comme à l'album. Les parties d'ici sont
+ * fabriquées par test/aideAntitriche.js (des épreuves aux issues choisies),
+ * et le test signe lui-même des jetons « donnés il y a un moment » avec le
+ * secret qu'il passe au serveur, pour ne pas attendre leurs minutes réelles.
  */
 'use strict';
 
@@ -26,6 +33,10 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const RUN = Date.now().toString(36).slice(-5);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const CLE = 'fever-' + RUN;
+const SECRET = 'fever-secret-' + RUN + '-0123456789';
+const AT = require(path.join(ROOT, 'antitricheLight.js'));
+const A = require('./aideAntitriche.js');
+AT.poserSecret(SECRET);
 
 const PALIERS = require(path.join(ROOT, 'public/minifever/engine.js')).PALIERS;
 const JEUX = require(path.join(ROOT, 'public/minifever/jeux.js')).JEUX;
@@ -55,6 +66,7 @@ before(async () => {
       XMLSOCKET_PORT: '5232', FRUTISCORE_PORT: '5233',
       // Pour déclencher le tirage quotidien à la main, en fin de fichier.
       ADMIN_KEY: CLE,
+      ANTITRICHE_SECRET: SECRET,
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -94,23 +106,41 @@ const finir = (sid, corps) => fetch(BASE + '/api/minifever/score', {
   body: JSON.stringify(Object.assign({ sid }, corps)),
 }).then((r) => r.json());
 
+// Une partie VÉRIFIABLE : `victoires` épreuves gagnées au palier donné (autant
+// que le bac à sable en trouve), avec son jeton signé « il y a un moment ».
+const parties = new Map();
+function partie(username, palier, victoires, graine) {
+  const cle = [palier, victoires, graine].join('|');
+  if (!parties.has(cle)) parties.set(cle, A.arcadeConstruite(graine, palier, victoires));
+  const c = parties.get(cle);
+  const j = AT.creerJeton({ jeu: 'minifever', username, mode: palier, graine, t: Date.now() - c.minimumMs - 60000 });
+  return Object.assign({}, c, { corps: Object.assign({ jeton: j.jeton }, c.corps) });
+}
+
 test('le barème du tableau unique : dix points l\'épreuve, fois (1 + palier)', async () => {
-  const sid = await sidPour(joueur('a'));
-  const facile = await finir(sid, { palier: 0, niveau: 12, jouees: 15 });
-  assert.equal(facile.ok, true);
-  assert.equal(facile.score, 12 * 10 * 1);
+  const u = joueur('a');
+  const sid = await sidPour(u);
+  const f = partie(u, 0, 3, 101);
+  const facile = await finir(sid, f.corps);
+  assert.equal(facile.ok, true, JSON.stringify(facile));
+  assert.equal(facile.score, f.niveau * 10 * 1);
   assert.equal(facile.classe, true);
 
-  // La règle, noir sur blanc : la même partie en infernal vaut quatre fois
-  // plus — choisir plus dur rapporte plus, dans le MÊME tableau.
-  const infernal = await finir(sid, { palier: 3, niveau: 12, jouees: 15 });
-  assert.equal(infernal.score, 12 * 10 * 4, 'une épreuve infernale vaut quatre faciles');
+  // La règle, noir sur blanc : une épreuve en infernal vaut quatre fois plus
+  // — choisir plus dur rapporte plus, dans le MÊME tableau.
+  const i = partie(u, 3, 6, 102);
+  assert.ok(i.niveau > f.niveau, 'la partie infernale de banc gagne plus d\'épreuves');
+  const infernal = await finir(sid, i.corps);
+  assert.equal(infernal.score, i.niveau * 10 * 4, 'une épreuve infernale vaut quatre faciles');
   assert.equal(infernal.classe, true, 'et elle passe donc devant');
 
   // Un score MOINDRE au barème ne remplace pas le record.
-  const petit = await finir(sid, { palier: 0, niveau: 20, jouees: 22 });
-  assert.equal(petit.score, 200);
-  assert.equal(petit.classe, false, 'deux cents points ne délogent pas quatre cent quatre-vingts');
+  const p = partie(u, 0, 4, 103);
+  const petit = await finir(sid, p.corps);
+  assert.equal(petit.score, p.niveau * 10);
+  assert.ok(petit.score < infernal.score);
+  assert.equal(petit.classe, false, 'un score moindre ne déloge pas le record du jour');
+  assert.equal(petit.record, infernal.score, 'et le client apprend quel record reste');
 });
 
 test('une partie qui ne tient pas debout est refusée', async () => {
@@ -135,21 +165,29 @@ test('une partie qui ne tient pas debout est refusée', async () => {
 test('une épreuve remportée entre à l\'album, une seule fois', async () => {
   const u = joueur('c');
   const sid = await sidPour(u);
-  const r = await finir(sid, { palier: 0, niveau: 2, jouees: 3, gagnees: ['gameBasket', 'gameLander'] });
-  assert.deepEqual(r.pictos.sort(), ['Alunissage', 'Panier']);
+  const p1 = partie(u, 0, 4, 201);
+  const r = await finir(sid, p1.corps);
+  const vus = new Set(p1.gagnees);
+  assert.equal(r.pictos.length, vus.size, 'un picto par épreuve gagnée, une fois chacune');
 
-  // Rejouée, elle ne redonne rien ; une nouvelle, si.
-  const r2 = await finir(sid, { palier: 0, niveau: 3, jouees: 3, gagnees: ['gameBasket', 'gameFlower'] });
-  assert.deepEqual(r2.pictos, ['Arrosage']);
+  // Rejouées, elles ne redonnent rien ; les nouvelles, si.
+  const p2 = partie(u, 0, 4, 202);
+  const r2 = await finir(sid, p2.corps);
+  const neuves = new Set(p2.gagnees.filter((c) => !vus.has(c)));
+  assert.equal(r2.pictos.length, neuves.size, 'seules les épreuves jamais gagnées donnent un picto');
+  for (const c of p2.gagnees) vus.add(c);
 
-  // Une clef inconnue ne débloque rien.
-  const r3 = await finir(sid, { palier: 0, niveau: 1, jouees: 1, gagnees: ['gameInexistant', '$ultitem'] });
-  assert.deepEqual(r3.pictos, []);
+  // La liste que le client d'avant envoyait ne compte plus : une clef
+  // inventée, ou une épreuve non gagnée, ne débloque rien.
+  const p3 = partie(u, 0, 1, 203);
+  const r3 = await finir(sid, Object.assign({}, p3.corps, { gagnees: ['gameInexistant', '$ultitem', 'gameTaquin'] }));
+  assert.equal(r3.pictos.length, new Set(p3.gagnees.filter((c) => !vus.has(c))).size);
+  for (const c of p3.gagnees) vus.add(c);
 
   // Et l'album affiche bien ce qu'on a gagné.
   const inv = await (await fetch(`${BASE}/api/pictos?sid=${encodeURIComponent(sid)}`)).json();
   const miens = inv.filter((p) => (p.game || p.category) === 'Mini-Fever').map((p) => p.name || p.item);
-  assert.equal(miens.length, 3, `trois pictos Mini-Fever (${JSON.stringify(miens)})`);
+  assert.equal(miens.length, vus.size, `autant de pictos Mini-Fever que d'épreuves gagnées (${JSON.stringify(miens)})`);
 });
 
 /*
@@ -163,7 +201,9 @@ test('une épreuve remportée entre à l\'album, une seule fois', async () => {
 test('les pictos Mini-Fever ne touchent pas à la consécration', async () => {
   const sid = await sidPour(joueur('e'));
   const avant = await (await fetch(`${BASE}/api/consecration?sid=${encodeURIComponent(sid)}`)).json();
-  await finir(sid, { palier: 0, niveau: 4, jouees: 4, gagnees: JEUX.map((j) => j.cle) });
+  const p = partie(joueur('e'), 0, 6, 301);
+  const r = await finir(sid, p.corps);
+  assert.ok(r.pictos.length > 0, 'la partie donne des pictos');
   const apres = await (await fetch(`${BASE}/api/consecration?sid=${encodeURIComponent(sid)}`)).json();
   assert.equal(apres.enabledCount, avant.enabledCount, 'le nombre de jeux comptés ne bouge pas');
   assert.equal(apres.overall, avant.overall, 'et le pourcentage non plus');
@@ -171,7 +211,7 @@ test('les pictos Mini-Fever ne touchent pas à la consécration', async () => {
     'Mini-Fever n\'apparaît pas dans le détail');
   // Mais les pictos, eux, sont bien là.
   const inv = await (await fetch(`${BASE}/api/pictos?sid=${encodeURIComponent(sid)}`)).json();
-  assert.equal(inv.filter((p) => (p.game || p.category) === 'Mini-Fever').length, JEUX.length);
+  assert.equal(inv.filter((x) => (x.game || x.category) === 'Mini-Fever').length, r.pictos.length);
 });
 
 test('chaque épreuve portée a son picto, et son image existe', async () => {
@@ -189,7 +229,10 @@ test('chaque épreuve portée a son picto, et son image existe', async () => {
 
 test('le classement du light : un seul onglet Mini-Fever, la règle sur chaque ligne', async () => {
   const sid = await sidPour(joueur('d'));
-  await finir(sid, { palier: 2, niveau: 30, jouees: 33 });
+  const p = partie(joueur('d'), 2, 5, 401);
+  const N = p.niveau;
+  const r = await finir(sid, p.corps);
+  assert.equal(r.ok, true, JSON.stringify(r));
   const d = await (await fetch(`${BASE}/api/light/challenge?sid=${encodeURIComponent(sid)}`)).json();
   const onglets = (d.games || []).filter((g) => g.game === 'minifever');
   assert.equal(onglets.length, 1, 'un seul tableau pour tous les modes');
@@ -206,12 +249,12 @@ test('le classement du light : un seul onglet Mini-Fever, la règle sur chaque l
     'plus aucune exclusion : le tableau se remet à zéro et médaille comme les autres');
   const moi = onglets[0].scores.find((s) => s.isMe);
   assert.ok(moi, 'ma partie y figure');
-  assert.equal(moi.score, 30 * 10 * 3);
-  assert.equal(moi.label, '900 · 30 épreuves en difficile',
-    'le libellé dit les points ET d\'où ils viennent');
+  assert.equal(moi.score, N * 10 * 3);
+  const libelle = `${N * 30} · ${N} épreuve${N > 1 ? 's' : ''} en difficile`;
+  assert.equal(moi.label, libelle, 'le libellé dit les points ET d\'où ils viennent');
   const mien = onglets[0].me;
   assert.ok(mien && mien.pos >= 1, 'et « Je suis Nème » est servi');
-  assert.equal(mien.label, '900 · 30 épreuves en difficile');
+  assert.equal(mien.label, libelle);
 });
 
 test('la parenthèse des tableaux par palier se replie au boot, meilleure ligne gardée', async () => {
@@ -278,12 +321,15 @@ test('un refus s\'écrit au journal, et la page dit au joueur ce qu\'il advient 
   // Une partie acceptée mais moindre que le record du jour : le record voyage
   // dans la réponse, pour que la page l'explique au lieu de laisser croire à
   // une perte.
-  const bon = await finir(sid, { palier: 1, niveau: 10, jouees: 10 });     // 200
+  const pb = partie(joueur('g'), 1, 5, 501);
+  const bon = await finir(sid, pb.corps);
   assert.equal(bon.classe, true);
-  const moindre = await finir(sid, { palier: 0, niveau: 5, jouees: 5 });   // 50
+  const pm = partie(joueur('g'), 0, 2, 502);
+  assert.ok(pm.niveau * 10 < pb.niveau * 20, 'la seconde partie vaut moins');
+  const moindre = await finir(sid, pm.corps);
   assert.equal(moindre.ok, true);
   assert.equal(moindre.classe, false);
-  assert.equal(moindre.record, 200, 'le record du jour, pour le dire au joueur');
+  assert.equal(moindre.record, pb.niveau * 20, 'le record du jour, pour le dire au joueur');
   // La page : chaque issue a sa phrase, et un serveur injoignable se réessaie.
   const page = fs.readFileSync(path.join(ROOT, 'public/minifever/index.html'), 'utf8');
   assert.match(page, /dire\('score NON enregistré : ' \+ \(MOTIFS\[r\.error\] \|\| MOTIFS\.reseau\)\)/);
@@ -312,11 +358,19 @@ test('le tirage quotidien : Mini-Fever se remet à zéro et médaille son podium
   const or = joueur('or');
   const argent = joueur('ar');
   const bronze = joueur('br');
-  // Trois parties d'arcade en infernal, trois scores distincts — au-dessus
+  // Trois scores d'arcade en infernal, trois scores distincts — au-dessus
   // des 900 points du joueur semé avant le boot, pour tenir tout le podium.
-  await finir(await sidPour(or), { palier: 3, niveau: 100, jouees: 100 });
-  await finir(await sidPour(argent), { palier: 3, niveau: 80, jouees: 80 });
-  await finir(await sidPour(bronze), { palier: 3, niveau: 60, jouees: 60 });
+  // Ils sont posés par l'admin : ce test-ci parle du tirage, pas de la partie
+  // (qu'un banc d'essai ne gagne pas cent fois de suite en infernal).
+  const poser = async (u, score) => {
+    await sidPour(u);
+    await fetch(`${BASE}/api/admin/scores/${u}/minifever_arcade`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-admin-key': CLE },
+      body: JSON.stringify({ score, data: '3' }) });
+  };
+  await poser(or, 4000);
+  await poser(argent, 3200);
+  await poser(bronze, 2400);
 
   const avant = await (await fetch(`${BASE}/api/light/challenge`)).json();
   const tableau = (avant.games || []).find((g) => g.id === 'minifever_arcade');

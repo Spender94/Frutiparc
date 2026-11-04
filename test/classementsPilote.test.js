@@ -10,7 +10,9 @@
  * Ce que ce fichier vérifie, de bout en bout :
  *   · une partie enregistre bien un score dans la bonne cuve ;
  *   · les garde-fous de plausibilité écartent l'absurde (le score est calculé
- *     par le NAVIGATEUR dans ces deux portages) sans gêner une vraie partie ;
+ *     par le NAVIGATEUR dans ces deux portages) sans gêner une vraie partie —
+ *     et l'Arbre creux, lui, ne classe plus qu'une partie REJOUÉE par le
+ *     serveur (antitricheLight.js ; le détail dans antitricheServeur.test.js) ;
  *   · le niveau atteint voyage et s'affiche à côté des points ;
  *   · les vignettes de médaille pointent sur des dessins qui EXISTENT dans
  *     public/awards.swf (miniwave → « wave », minipixiz → « tris ») ;
@@ -30,6 +32,14 @@ const PORT = 3494;
 const BASE = `http://127.0.0.1:${PORT}`;
 const RUN = Date.now().toString(36).slice(-5);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// L'Arbre creux se prouve : le test joue de vraies parties (le moteur du
+// portage, test/aideAntitriche.js) et signe leurs jetons avec le secret qu'il
+// passe au serveur — « donnés il y a un moment », pour ne pas attendre.
+const SECRET = 'pilote-secret-' + RUN + '-0123456789';
+const AT = require(path.join(ROOT, 'antitricheLight.js'));
+const A = require('./aideAntitriche.js');
+AT.poserSecret(SECRET);
+const CLE_ADMIN = 'pilote-admin-' + RUN;
 
 // La taille de la map du Challenge : la borne de niveau du classement MiniWave
 // se dérive du module du mode (même source que le serveur).
@@ -42,6 +52,7 @@ before(async () => {
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
       XMLSOCKET_PORT: '5230', FRUTISCORE_PORT: '5231',
+      ANTITRICHE_SECRET: SECRET, ADMIN_KEY: CLE_ADMIN,
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -81,6 +92,19 @@ const enregistrer = (sid, game, score, data) =>
     + `&score=${score}&data=${encodeURIComponent(data === undefined ? '' : data)}`)
     .then(async (r) => Object.assign({ statut: r.status }, await r.json()));
 
+// Une partie d'arbre jouée pour de bon, rendue avec son journal.
+const arbres = new Map();
+async function jouerArbre(sid, username, graine) {
+  if (!arbres.has(graine)) arbres.set(graine, A.arbreHonnete(graine, graine + 1));
+  const jeu = arbres.get(graine);
+  const j = AT.creerJeton({ jeu: 'minipixiz', username, graine, t: Date.now() - jeu.tempsJeuMs - 30000 });
+  const r = await fetch(BASE + '/api/minipixiz/arbre/fin', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid, jeton: j.jeton, score: jeu.score, journal: jeu.journal }),
+  }).then((x) => x.json());
+  return Object.assign({ attendu: jeu.score }, r);
+}
+
 async function onglets() {
   const j = await (await fetch(`${BASE}/api/light/challenge?limit=50`)).json();
   const par = {};
@@ -95,22 +119,28 @@ const ligne = (onglet, pseudo) =>
 test('une partie d\'Arbre creux entre au challenge du jour', async () => {
   const u = joueur('arbre');
   const sid = await sidPour(u);
-  const r = await enregistrer(sid, 'minipixiz', 7400);
-  assert.equal(r.ok, true, 'le score passe');
+  // Trois parties de banc, de scores différents : on les range.
+  const essais = [11, 12, 13, 14, 15, 16].map((g) => ({ g, s: A.arbreHonnete(g, g + 1).score }));
+  const parScore = essais.filter((e, i, t) => t.findIndex((x) => x.s === e.s) === i).sort((a, b) => a.s - b.s);
+  assert.ok(parScore.length >= 3, 'trois scores distincts');
+  const [faible, moyen, fort] = [parScore[0], parScore[1], parScore[parScore.length - 1]];
+
+  const r = await jouerArbre(sid, u, moyen.g);
+  assert.equal(r.ok, true, 'la partie rejouée passe');
   assert.equal(r.rankingId, 'minipixiz_classic', 'et dans la bonne cuve');
 
   const o = await onglets();
   assert.ok(o.minipixiz_classic, 'l\'onglet existe dans le challenge du light');
   assert.equal(o.minipixiz_classic.name, 'MiniPixiz');
-  assert.equal((ligne(o.minipixiz_classic, u) || {}).score, 7400);
+  assert.equal((ligne(o.minipixiz_classic, u) || {}).score, moyen.s);
 
   // Le challenge du jour garde le MEILLEUR du jour, pas le dernier envoyé —
   // c'est pour ça que le client envoie à chaque partie.
-  await enregistrer(sid, 'minipixiz', 3200);
-  assert.equal((ligne((await onglets()).minipixiz_classic, u) || {}).score, 7400,
+  await jouerArbre(sid, u, faible.g);
+  assert.equal((ligne((await onglets()).minipixiz_classic, u) || {}).score, moyen.s,
     'une partie plus faible ne fait pas redescendre');
-  await enregistrer(sid, 'minipixiz', 9100);
-  assert.equal((ligne((await onglets()).minipixiz_classic, u) || {}).score, 9100,
+  await jouerArbre(sid, u, fort.g);
+  assert.equal((ligne((await onglets()).minipixiz_classic, u) || {}).score, fort.s,
     'une meilleure partie monte');
 });
 
@@ -133,18 +163,22 @@ test('une partie de Challenge entre avec son niveau, affiché à côté des poin
 
 // ── Les garde-fous (le score vient du navigateur) ─────────────────────────
 
-test('un score d\'arbre absurde est refusé, une vraie partie passe', async () => {
+test('un score d\'arbre posté sans partie est refusé, une vraie partie passe', async () => {
   const u = joueur('triche');
   const sid = await sidPour(u);
-  const r = await enregistrer(sid, 'minipixiz', 999999999);
-  assert.equal(r.statut, 400, 'refusé');
-  assert.equal(r.error, 'implausible_score');
+  // Le score nu, par la porte générique : refusé, QUEL QU'IL SOIT — l'absurde
+  // comme le vraisemblable (c'est la vraisemblance qu'un tricheur imite).
+  for (const score of [999999999, 7400]) {
+    const r = await enregistrer(sid, 'minipixiz', score);
+    assert.equal(r.statut, 400, 'refusé');
+    assert.equal(r.error, 'partie_non_verifiee');
+  }
   assert.equal(ligne((await onglets()).minipixiz_classic, u), null, 'et rien n\'est écrit');
 
-  // Le rail est TRÈS au-dessus du jeu réel : le dernier picto du jeu est à
-  // 8 000, une partie d'exception reste largement en dessous du plafond.
-  const ok = await enregistrer(sid, 'minipixiz', 60000);
-  assert.equal(ok.ok, true, 'une partie hors norme mais humaine passe');
+  // Une partie rejouée, elle, passe.
+  const ok = await jouerArbre(sid, u, 21);
+  assert.equal(ok.ok, true, 'une vraie partie passe');
+  assert.equal((ligne((await onglets()).minipixiz_classic, u) || {}).score, ok.attendu);
 });
 
 test('un score de Challenge incohérent avec le niveau est refusé', async () => {
@@ -176,12 +210,14 @@ test('les deux pilotes ne consomment aucun fruit défendu', async () => {
   const sid = await sidPour(u);
   // Bien plus de parties que le quota quotidien des jeux rationnés : toutes
   // doivent être classées, le pilote est hors quota.
+  let meilleur = 0;
   for (let i = 1; i <= 8; i++) {
-    const r = await enregistrer(sid, 'minipixiz', 1000 + i * 10);
+    const r = await jouerArbre(sid, u, 100 + i);
     assert.equal(r.ok, true, `partie ${i} acceptée`);
     assert.notEqual(r.fdBlocked, true, `partie ${i} classée`);
+    meilleur = Math.max(meilleur, r.attendu);
   }
-  assert.equal((ligne((await onglets()).minipixiz_classic, u) || {}).score, 1080,
+  assert.equal((ligne((await onglets()).minipixiz_classic, u) || {}).score, meilleur,
     'la meilleure des huit est au classement');
 });
 
@@ -288,9 +324,12 @@ test('les deux portages envoient leur score en fin de partie', () => {
   const pix = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
   assert.match(pix, /classe === 'Arbre' && client\.lieu && client\.lieu\.score > 0/,
     'l\'arbre creux, et lui seul, est classé');
-  assert.match(pix, /plateforme\.envoyerScore\(client\.lieu\.score\)/);
+  assert.match(pix, /plateforme\.envoyerPartieArbre\(partie, client\.lieu\.score, journalArbre\)/,
+    'avec sa preuve : le jeton et le journal de la partie');
+  assert.match(pix, /MinipixizRejeu\.brancher\(l\)/, 'l\'enregistreur est branché sur le lieu');
   const pixP = fs.readFileSync(path.join(ROOT, 'public/minipixiz/plateforme.js'), 'utf8');
-  assert.match(pixP, /game: 'minipixiz', m: '0'/, 'vers la cuve du jour');
+  assert.match(pixP, /\/api\/minipixiz\/arbre\/fin/, 'vers le rejeu du serveur');
+  assert.ok(!/\/api\/saveScore/.test(pixP), 'plus par la porte générique');
 
   const mw = fs.readFileSync(path.join(ROOT, 'public/miniwave/index.html'), 'utf8');
   assert.match(mw, /l\.mode === 'challenge'/, 'le Challenge, et lui seul, est classé');
@@ -343,7 +382,12 @@ test('l\'arbre émet finPartie à chaque partie, record personnel ou non', () =>
 
 // ── Le rattrapage du BUREAU (le SWF n'envoie aucun score) ─────────────────
 
-test('un record d\'arbre battu au bureau entre au classement du jour', async () => {
+test('un record d\'arbre battu au bureau entre au classement du jour — si l\'admin rouvre ce pont', async () => {
+  // La fiche du bureau est écrite par le navigateur : rien ne s'y rejoue. Par
+  // défaut, le record qui monte est noté « non vérifiable » et ne classe pas
+  // (antitricheServeur.test.js) ; l'admin peut rouvrir le pont.
+  const hdrA = { 'Content-Type': 'application/json', 'x-admin-key': CLE_ADMIN };
+  await fetch(BASE + '/api/admin/antitriche/bureau', { method: 'POST', headers: hdrA, body: JSON.stringify({ on: true }) });
   const u = joueur('bureau');
   const sid = await sidPour(u);
   const fiche = (treeMax) => JSON.stringify({
@@ -374,6 +418,7 @@ test('un record d\'arbre battu au bureau entre au classement du jour', async () 
   await sauver(5600);
   assert.equal((ligne((await onglets()).minipixiz_classic, u) || {}).score, 5600,
     'le classement ne bouge pas — le bureau ne dit rien des parties non-records');
+  await fetch(BASE + '/api/admin/antitriche/bureau', { method: 'POST', headers: hdrA, body: JSON.stringify({ on: false }) });
 });
 
 test('le record d\'arcade du bureau n\'entre PAS au classement — le Challenge classe', async () => {

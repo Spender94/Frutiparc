@@ -184,6 +184,7 @@
   <script src="/js/bouille-moteur.js"></script>
   <script src="/js/bouille-custom.js"></script>
   <script src="/js/bouille-variante.js"></script>
+  <script src="/js/bouille-vignette.js"></script>
   <script>
   (function () {
     var M = window.FPBouilleMoteur, Swf = window.FPBouilleSwf;
@@ -191,6 +192,28 @@
     var $ = function (s) { return document.querySelector(s); };
     var defs = null;                 // la famille 0, telle qu'on l'enrichit
     var COLS = [29, 19, 24];         // les trois couleurs d'aperçu
+    var BV = window.FPBouilleVignette;
+    /*
+     * LES APERÇUS DISENT CE QUE LES BOUILLES PORTERONT.
+     *
+     * Chaque encart montait jusqu'ici sa propre famille à la main — le fichier
+     * brut, le catalogue parfois, sans index parfois — et la posait dans un
+     * canevas sans air autour : la visière d'une casquette, le bord d'un
+     * chapeau, la pointe d'un bonnet sortaient de la scène et se perdaient,
+     * alors qu'un salon, lui, les montre en entier (`MARGE_ECRAN`). On passe
+     * désormais par le chemin du site : la famille de `FPBouilleVignette`
+     * (mêmes greffes, même catalogue, mêmes index), et le cadrage d'un écran.
+     */
+    var MARGE = (BV && BV.MARGE_ECRAN) || 0;
+    // Une bouille d'essai (variante pas encore publiée), posée comme une vignette.
+    function poserEssai(cv, d, etat) {
+      return new M.Bouille(cv, d, { etat: etat, marge: MARGE, alea: function () { return 0.5; } });
+    }
+    // Une bouille qui ne porte que du PUBLIÉ : le chemin même du site.
+    function poserReelle(cv, etat) {
+      cv.setAttribute("data-marge", String(MARGE));
+      BV.rafraichir(cv, etat);
+    }
 
     function pair(v) { return M.encode62(v, 2); }
     // Une tête neutre qui porte l'accessoire demandé.
@@ -298,7 +321,8 @@
       var r = V.repere(defs, t, co);
       var etat = etatAvec(t, v, co);
       $("#etat").textContent = etat + "   (acc #" + (r ? r.accId : "?") + ")";
-      new M.Bouille($("#apercu"), defs, { etat: etat, anime: false, alea: function () { return 0.5; } });
+      // Une variante d'époque : la bouille telle que le site la dessine.
+      poserReelle($("#apercu"), etat);
     }
 
     // ── Téléchargement du gabarit ──
@@ -398,33 +422,22 @@
       montrerTenues(anim);
       if (!paths.length) { etat.textContent = "SVG illisible ou sans dessin."; return; }
       var t = +$("#type").value, co = +$("#coif").value;
+      // LA COIFFURE DE RÉFÉRENCE est celle du GABARIT (son calque de repère la
+      // nomme), pas celle qu'on regarde : l'admin publie avec celle du fichier.
+      var coRef = (impLots[0] && impLots[0].coiffure != null) ? impLots[0].coiffure : co;
       // On repart d'une famille NEUVE — sans quoi chaque import empilerait une
-      // variante de plus au fil des essais — ET on y rejoue d'abord le CATALOGUE
-      // PUBLIÉ. Sans lui, l'atelier montrait un rouleau où la variante essayée
-      // était la seule : elle ne pouvait rien hériter, là où la production, elle,
-      // en avait d'autres avant. L'aperçu ne disait donc pas la vérité.
-      Promise.all([
-        Swf.charger("/fbouille/famille0.swf"),
-        fetch("/api/light/variantes", { cache: "no-store" })
-          .then(function (r) { return r.ok ? r.json() : null; })
-          .then(function (j) { return (j && j.ok) ? j.liste : []; })
-          .catch(function () { return []; }),
-      ]).then(function (r) {
-        defs = r[0];
-        (r[1] || []).forEach(function (pub) {
-          if ((pub.famille || 0) !== 0) return;
-          try {
-            V.injecter(defs, { type: pub.type, paths: pub.paths || [], anim: pub.anim || null,
-              coiffureRef: pub.coiffureRef, index: (pub.index == null ? undefined : pub.index),
-              vide: !(pub.paths && pub.paths.length) });
-          } catch (e) { /* une variante fautive n'empêche pas l'essai */ }
-        });
-        var inj = V.injecter(defs, { type: t, paths: paths, anim: anim, coiffureRef: co });
+      // variante de plus au fil des essais — montée comme celle du site : le
+      // CATALOGUE PUBLIÉ d'abord, à ses index, puis l'essai à la place qu'il
+      // prendrait. C'est `familleNeuve`, la recette même des pages du parc.
+      BV.familleNeuve(0, [{ type: t, paths: paths, anim: anim, coiffureRef: coRef }]).then(function (r) {
+        defs = r.defs;
+        var inj = r.essais[0];
         if (!inj) { etat.textContent = "Injection impossible (aucun tracé exploitable)."; return; }
         var niveaux = {};
         paths.forEach(function (p) { niveaux[p.slot || 0] = (niveaux[p.slot || 0] || 0) + 1; });
         etat.textContent = paths.length + " tracés · niveaux " + JSON.stringify(niveaux)
           + (anim ? " · " + anim.durees.length + " images" : "")
+          + " · coiffure de référence " + coRef
           + " → variante " + inj.variante + " de l'accessoire #" + inj.accId;
         /*
          * DIRE TOUT DE SUITE QUAND UN NIVEAU S'EST PERDU.
@@ -474,10 +487,7 @@
           var cap = document.createElement("figcaption"); cap.textContent = vue.l;
           fig.appendChild(cv); fig.appendChild(cap); rendu.appendChild(fig);
           // Animée, elle se montre en mouvement : le moteur tranche seul.
-          new M.Bouille(cv, defs, {
-            etat: etatAvec(t, inj.variante, vue.co, vue.c),
-            anime: anim ? undefined : false, alea: function () { return 0.5; },
-          });
+          poserEssai(cv, defs, etatAvec(t, inj.variante, vue.co, vue.c));
         });
         rafraichir();
       });
@@ -620,13 +630,16 @@
       if (!lot.length) { etat.textContent = "Rien à puiser dans cette famille."; return; }
       var co = +$("#coif").value;
       etat.textContent = "Greffe de " + lot.length + " pièces sur une bouille classique…";
-      // Un hôte NEUF : chaque greffe allonge le rouleau de la famille 0.
-      return Swf.charger("/fbouille/famille0.swf").then(function (hote) {
+      // Un hôte NEUF : chaque greffe allonge le rouleau de la famille 0. Il est
+      // monté comme celui du site (catalogue publié compris) : la pièce tombe
+      // là où elle tomberait si on la publiait.
+      return BV.familleNeuve(0, lot.map(function (piece) {
+        return { type: piece.type, paths: piece.paths, coiffureRef: co };
+      })).then(function (r) {
+        var hote = r.defs;
         var poses = 0;
-        lot.forEach(function (piece) {
-          var inj = null;
-          try { inj = V.injecter(hote, { type: piece.type, paths: piece.paths, coiffureRef: co }); }
-          catch (e) { inj = null; }
+        lot.forEach(function (piece, k) {
+          var inj = r.essais[k];
           if (!inj) return;
           poses++;
           var fig = document.createElement("figure");
@@ -639,10 +652,7 @@
           bt.className = "prendre"; bt.type = "button"; bt.textContent = "⬇ gabarit";
           fig.appendChild(cv); fig.appendChild(cap); fig.appendChild(bt);
           grille.appendChild(fig);
-          new M.Bouille(cv, hote, {
-            etat: etatAvec(piece.type, inj.variante, co),
-            anime: false, alea: function () { return 0.5; },
-          });
+          poserEssai(cv, hote, etatAvec(piece.type, inj.variante, co));
           var prendre = function () { telechargerPiece(piece, co); };
           bt.addEventListener("click", prendre);
           cv.addEventListener("click", prendre);
@@ -714,6 +724,7 @@
      * sous le nom du nouveau. Au retour, un tour périmé rend la main.
      */
     var maisonTour = 0;
+    var maisonEssai = null;            // la bouille d'essai posée sur l'aperçu, s'il y en a une
 
     function remplirMaison() {
       var sel = $("#mai-liste");
@@ -759,9 +770,21 @@
         $("#mai-etat").textContent = (v.paths || []).length + " tracés · "
           + (P.ACCESSORIES[v.type] || ("type " + v.type))
           + " · coiffure de référence " + (v.coiffureRef == null ? 8 : v.coiffureRef);
-        new M.Bouille($("#mai-apercu"), d,
-          { etat: etatAvec(v.type, maisonInj.variante, co), anime: V.nbImages(v.anim) ? undefined : false,
-            alea: function () { return 0.5; } });
+        /*
+         * L'APERÇU, C'EST LA BOUILLE QUI LE PORTE. La variante est publiée : elle
+         * a son INDEX, et la famille du site l'a déjà à cette place. On la montre
+         * donc par le chemin même des pages du parc — et non sur la famille de
+         * la reprise, qui ne sert qu'à rendre le gabarit. (Une variante d'avant
+         * les index n'en a pas : on se rabat sur cette famille-là.)
+         */
+        // Un seul occupant par canevas : deux bouilles vivantes y peindraient
+        // chacune la sienne.
+        if (maisonEssai) { maisonEssai.arreter(); maisonEssai = null; }
+        if (v.index != null) poserReelle($("#mai-apercu"), etatAvec(v.type, v.index, co));
+        else {
+          BV.oublier($("#mai-apercu"));
+          maisonEssai = poserEssai($("#mai-apercu"), d, etatAvec(v.type, maisonInj.variante, co));
+        }
         $("#mai-dl").disabled = false;
       });
     }

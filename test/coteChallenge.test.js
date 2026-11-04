@@ -154,3 +154,47 @@ test('le règlement : le gagnant reçoit son retour, le perdant rien ; pas de m�
   ]);
   assert.deepEqual(C.reglerCotes(paris, []).map((d) => [d.statut, d.gain]), [['rembourse', 10], ['rembourse', 20]]);
 });
+
+// ── LE DÉFI MÉDAILLE (cotesDefi) : sur soi, plus la couleur est haute, plus ça paie ──
+test('le défi médaille : trois cotes croissantes, bornées, tirées de mes jours joués', () => {
+  const r = C.cotesDuJeu(historique());
+  assert.equal(r.participations, 300);
+  assert.ok(Math.abs(r.base.argent - 0.2) < 1e-9, 'deux médailles sur dix (or et argent) chaque jour');
+  assert.equal(r.joueurs.as.argents, 12, 'six ors et six argents');
+  const as = C.cotesDefi(r, 'As');
+  const D = C.REGLES.defi;
+  // Le podium : (12 + 5 × 0,3) / (30 + 5) ; pas de facteur de présence.
+  const pBronze = (12 + 5 * 0.3) / 35;
+  assert.equal(as.bronze, Math.floor((0.85 / pBronze) * 100) / 100);
+  assert.deepEqual([as.joues, as.podiums, as.argents, as.ors, as.decouverte], [30, 12, 12, 6, false]);
+  for (const x of [as, C.cotesDefi(r, 'b'), C.cotesDefi(r, 'inconnu')]) {
+    assert.ok(x.bronze >= D.bronze.min && x.bronze <= D.bronze.max);
+    assert.ok(x.or <= D.or.max);
+    assert.ok(x.argent >= Math.min(D.argent.max, Math.floor(x.bronze * D.ecart * 100) / 100), 'l’argent paie au moins 1,05 × le bronze');
+    assert.ok(x.or >= Math.min(D.or.max, Math.floor(x.argent * D.ecart * 100) / 100), 'l’or paie au moins 1,05 × l’argent');
+    assert.ok(x.bronze < x.argent && x.argent <= x.or, JSON.stringify(x));
+  }
+  // Un inconnu du jeu : la chance d'un joueur moyen (le taux de base).
+  const inconnu = C.cotesDefi(r, 'inconnu');
+  assert.equal(inconnu.decouverte, true);
+  assert.equal(inconnu.bronze, Math.floor((0.85 / 0.3) * 100) / 100);
+  // L'inconnu (rien gagné ici) paie plus cher que le grand habitué.
+  assert.ok(inconnu.or > as.or && inconnu.bronze > as.bronze, JSON.stringify([inconnu, as]));
+});
+
+test('le défi médaille : pas de défi sur un jeu trop peu joué, et un champion ne gagne pas d’avance', () => {
+  // Trois jours, deux joueurs : on y serait presque seul, la médaille serait donnée.
+  const maigre = C.cotesDuJeu({ joues: [{ username: 'a', jour: '2026-09-01' }, { username: 'b', jour: '2026-09-02' }], medailles: [] });
+  assert.equal(C.cotesDefi(maigre, 'a'), null);
+  assert.equal(C.cotesDefi(null, 'a'), null);
+  // Le champion : l'or tous les jours. Ses cotes touchent les planchers bas :
+  // son gain moyen ne dépasse pas sa mise (p ≈ 0,87 pour l'or, × 1,15 ≈ 1).
+  const joues = [], medailles = [];
+  JOURS.forEach((jour) => {
+    for (const u of ['champion'].concat(AUTRES)) joues.push({ username: u, jour });
+    ['champion', 'b', 'c'].forEach((u, i) => medailles.push({ username: u, jour, rang: i + 1 }));
+  });
+  const ch = C.cotesDefi(C.cotesDuJeu({ joues, medailles }), 'champion');
+  assert.deepEqual([ch.bronze, ch.argent, ch.or], [C.REGLES.defi.bronze.min, C.REGLES.defi.argent.min, C.REGLES.defi.or.min]);
+  assert.ok(((30 + 5 * 0.1) / 35) * ch.or <= 1.01, 'pas de gain moyen au-dessus de la mise');
+});

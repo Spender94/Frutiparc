@@ -203,7 +203,8 @@ test('l’atelier recense pour de vrai, et ne salit pas son propre rouleau', () 
      famille 0. Garder le même hôte d'un rendu à l'autre l'allongerait de
      trente-quatre à chaque changement de coiffure — et l'atelier, lui, ne doit
      jamais recevoir les greffes de la récolte. */
-  assert.match(PAGE, /return Swf\.charger\("\/fbouille\/famille0\.swf"\)\.then\(function \(hote\) \{/);
+  // (Neuf, mais monté comme celui du site : `familleNeuve`, catalogue compris.)
+  assert.match(PAGE, /return BV\.familleNeuve\(0, lot\.map\(function \(piece\) \{/);
   const rendu = PAGE.slice(PAGE.indexOf('function rendreRecolte()'),
     PAGE.indexOf('function telechargerPiece'));
   assert.ok(!/V\.injecter\(defs,/.test(rendu), 'la récolte n’injecte jamais dans `defs`');

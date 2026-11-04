@@ -302,6 +302,11 @@
   .vd-divergent { background: #b31111; }
   .vd-non_verifiable { background: #888; }
   .vd-en_cours { background: #c8860a; }
+  .vd-ecart { background: #d08a00; }
+  .vd-refuse { background: #7a1010; }
+  .grav-fort { color: #b31111; font-weight: bold; }
+  .grav-moyen { color: #c8860a; font-weight: bold; }
+  .grav-faible { color: #777; }
   .integ-note { font-size: 12px; color: #555; margin: 4px 2px 10px; line-height: 1.45; }
   .integ-inter { background: #fff; border: 2px solid #D6F7B5; border-radius: 8px; padding: 10px 12px; margin: 8px 0 14px; }
   .integ-inter label { font-weight: bold; color: #2C4A0F; display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
@@ -449,6 +454,7 @@
     </div></div>
     <div class="tab-group"><span class="lbl">Intégrité</span><div class="grp">
       <button class="tab" data-tab="swapouverif" onclick="switchTab('swapouverif')">Swapou vérifié</button>
+      <button class="tab" data-tab="portagesverif" onclick="switchTab('portagesverif')">Portages vérifiés</button>
       <button class="tab" data-tab="compteslies" onclick="switchTab('compteslies')">Comptes liés</button>
     </div></div>
   </div>
@@ -503,6 +509,90 @@
   <table>
     <thead><tr><th>Fin</th><th>Joueur</th><th>Score déclaré</th><th>Rejoué</th><th>Verdict</th><th>Coups</th><th>Durée</th><th>Réflexion médiane</th><th>Régularité</th><th>Accord avec l'IA</th><th></th></tr></thead>
     <tbody id="sv-parties"></tbody>
+  </table>
+</div>
+
+<div class="content" id="tab-portagesverif" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadPortagesVerif()">Rafraîchir</button>
+    <select id="pv-jeu" onchange="loadPortagesVerif()">
+      <option value="">les deux jeux</option>
+      <option value="minipixiz">MiniPixiz (Arbre creux)</option>
+      <option value="minifever">Mini-Fever (arcade)</option>
+    </select>
+    <select id="pv-jours" onchange="loadPortagesVerif()">
+      <option value="1">Aujourd'hui (24 h)</option>
+      <option value="7" selected>7 derniers jours</option>
+      <option value="30">30 derniers jours</option>
+      <option value="183">6 mois</option>
+    </select>
+    <input id="pv-joueur" placeholder="joueur" style="width:120px" onkeydown="if(event.key==='Enter')loadPortagesVerif()">
+    <select id="pv-verdict" onchange="loadPortagesVerif()">
+      <option value="">tous les verdicts</option>
+      <option value="conforme">conformes</option>
+      <option value="ecart">avec écart toléré</option>
+      <option value="divergent">divergentes</option>
+      <option value="refuse">refusées</option>
+      <option value="non_verifiable">non vérifiables</option>
+    </select>
+    <span id="pv-etat" style="margin-left:auto;font-size:13px"></span>
+  </div>
+  <p class="integ-note">
+    Le challenge de <b>MiniPixiz</b> (l'Arbre creux) et celui de <b>Mini-Fever</b> (l'arcade) ne classent plus que des
+    parties <b>rejouées par le serveur</b> : au départ, le serveur donne la graine et un jeton ; à la fin, le jeu rend le
+    journal de ce qu'il a joué, et le serveur repasse le même moteur dessus. <span class="vd vd-conforme">conforme</span> :
+    la partie rejouée donne le score déclaré — elle est classée. <span class="vd vd-ecart">ecart</span> (Mini-Fever) : une
+    épreuve sur vingt-cinq au plus ne se rejoue pas pareil (arrondis d'un navigateur) — classée, sans les points de ces
+    épreuves. <span class="vd vd-divergent">divergent</span> : la partie ne se rejoue pas comme déclaré — un score
+    <b>trafiqué</b>, non classé. <span class="vd vd-refuse">refuse</span> : pas de jeton, jeton faux ou expiré, score posté par
+    une porte générique (saveScore, URL du SWF), ou une horloge impossible (plus de jeu que de temps écoulé, cadence qu'aucun
+    écran ne produit) — non classé. <span class="vd vd-non_verifiable">non vérifiable</span> : le record d'arbre lu dans la
+    fiche du bureau (rien à rejouer). Les <b>indices</b> n'écartent rien : longues pauses (la partie se fige quand la fenêtre
+    perd le focus — légitime, mais c'est aussi ce que donnerait un ralenti), rythme de commandes surhumain, score très au-dessus
+    de l'exploit connu. Le rejeu prouve que la partie a été <i>jouée</i>, pas <i>qui</i> l'a jouée. Personne n'est banni
+    automatiquement ; une partie écartée du jour peut être classée à la main.
+  </p>
+  <div class="integ-inter">
+    <label><input type="checkbox" id="pv-bureau" onchange="portagesBureau(this.checked)">
+      MiniPixiz : classer aussi le record d'arbre battu au bureau (SWF) — non vérifiable</label>
+    <div class="integ-note" style="margin:6px 0 0">
+      Baissé (par défaut), un record d'arbre lu dans la fiche du jeu Flash est noté ici « non vérifiable » mais n'entre pas
+      au classement : la fiche est écrite par le navigateur, et y poser un faux record suffisait à se classer.
+      <span class="integ-alerte">Levé, ce pont est rouvert</span> pour les joueurs du bureau — et pour les tricheurs avec eux.
+    </div>
+  </div>
+  <h3>Par joueur</h3>
+  <table>
+    <thead><tr><th>Joueur</th><th>Jeu</th><th>Parties</th><th>Conformes</th><th>Écart toléré</th><th>Écartées</th><th>Non vérifiables</th><th>Avec indices</th><th>Meilleur classé</th><th>Meilleur déclaré</th></tr></thead>
+    <tbody id="pv-bilan"></tbody>
+  </table>
+  <h3>Les parties</h3>
+  <table>
+    <thead><tr><th>Fin</th><th>Joueur</th><th>Jeu</th><th>Déclaré</th><th>Vérifié</th><th>Verdict</th><th>Indices</th><th>Temps de jeu</th><th>Durée réelle</th><th>Classée</th><th></th></tr></thead>
+    <tbody id="pv-parties"></tbody>
+  </table>
+  <h3>Audit des scores déjà classés</h3>
+  <p class="integ-note">
+    Lecture seule. Les scores du challenge (le jour en cours et les archives) confrontés à ce que la base sait du joueur :
+    pour MiniPixiz, le record personnel et le nombre de parties d'arbre de sa fiche (un score au-dessus du record de la
+    fiche, ou sans aucune partie d'arbre, n'a pas été joué dans le portage) ; pour Mini-Fever, le barème (multiple exact de
+    10 × (1 + palier)) et les pictos (chaque épreuve gagnée pour la première fois en donne un — un joueur classé avec
+    bien moins de pictos que d'épreuves gagnées a posté son score sans jouer) ; pour les deux, depuis la mise en service,
+    l'existence d'une partie vérifiée derrière le score.
+  </p>
+  <div class="toolbar">
+    <select id="pv-audit-jours">
+      <option value="7">7 jours</option>
+      <option value="30" selected>30 jours</option>
+      <option value="90">90 jours</option>
+      <option value="365">1 an</option>
+    </select>
+    <button class="btn" onclick="auditPortages()">Auditer</button>
+    <span id="pv-audit-etat" style="margin-left:auto;font-size:13px"></span>
+  </div>
+  <table>
+    <thead><tr><th>Jour</th><th>Joueur</th><th>Jeu</th><th>Score</th><th>Gravité</th><th>Raisons</th></tr></thead>
+    <tbody id="pv-audit"></tbody>
   </table>
 </div>
 
@@ -1532,7 +1622,7 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
                à chaque réglage (changer d'état, dans la même famille, c'est un
                apply() sur un arbre déjà monté). C'était une iframe Ruffle
                rechargée à chaque frappe. -->
-          <canvas class="fp-bvig" id="pack-preview-canvas" data-s="0004060h0407000000000000" data-e="0"
+          <canvas class="fp-bvig" id="pack-preview-canvas" data-s="0004060h0407000000000000" data-e="0" data-marge="0.08"
                   width="1" height="1" aria-hidden="true" style="width:100%;height:100%;display:block"></canvas>
         </div>
         <div style="margin-top:8px;font-size:11px;color:#666">Aperçu en direct</div>
@@ -1601,7 +1691,9 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
     <label><span>ID :</span> <input id="acc-id" placeholder="shop_101"></label>
     <label><span>Shop ID :</span> <input id="acc-shopid" type="number" value="0"></label>
     <label><span>Nom :</span> <input id="acc-name" placeholder="Pack Lunettes"></label>
-    <label><span>Valeur :</span> <input id="acc-value" placeholder="suffix9 / url"></label>
+    <!-- Vide : la valeur de l'article (Shop ID). Un suffix9 se complète des
+         quinze premiers caractères de la bouille du joueur, côté serveur. -->
+    <label><span>Valeur :</span> <input id="acc-value" placeholder="vide = l'article · suffix9 · bouille 24"></label>
     <label><span>Prix :</span> <input id="acc-price" value="0"></label>
     <div class="actions">
       <button class="btn" onclick="closeModal('modal-add-acc')">Annuler</button>
@@ -1758,7 +1850,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['stats','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons','swapouverif','compteslies','quetes'].forEach(t => {
+  ['stats','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons','swapouverif','portagesverif','compteslies','quetes'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -1784,7 +1876,109 @@ function switchTab(name) {
   if (name === 'swapouverif') loadSwapouVerif();
   else swapouVerifSuivre(false);
   if (name === 'compteslies') loadComptesLies();
+  if (name === 'portagesverif') loadPortagesVerif();
   if (name === 'quetes') loadQuetes();
+}
+
+// ─── Intégrité : MiniPixiz et Mini-Fever vérifiés ───
+const PV_JEU = { minipixiz: 'MiniPixiz', minifever: 'Mini-Fever' };
+let pvJour = '';
+async function loadPortagesVerif() {
+  try {
+    const q = new URLSearchParams({ jeu: $('#pv-jeu').value, jours: $('#pv-jours').value,
+      joueur: $('#pv-joueur').value.trim(), verdict: $('#pv-verdict').value });
+    const r = await fetch('/api/admin/antitriche/parties?' + q, { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    pvJour = d.jour || '';
+    $('#pv-bureau').checked = !!d.bureauAccepte;
+    const n = d.parties.length;
+    const ecartees = d.parties.filter((p) => p.verdict === 'divergent' || p.verdict === 'refuse').length;
+    $('#pv-etat').innerHTML = d.sansBase ? 'sans base de données : rien à montrer'
+      : `<span class="count">${n}</span> partie${n > 1 ? 's' : ''}${ecartees ? ` · <b style="color:#b31111">${ecartees} écartée${ecartees > 1 ? 's' : ''}</b>` : ''}`;
+    const nb = (v) => (v == null ? '—' : Number(v).toLocaleString('fr-FR'));
+    $('#pv-bilan').innerHTML = d.bilan.map((b) => `<tr>
+      <td><a href="#" class="uname" onclick="$('#pv-joueur').value='${esc(b.username)}';loadPortagesVerif();return false">${esc(b.username)}</a></td>
+      <td>${esc(PV_JEU[b.jeu] || b.jeu)}</td>
+      <td>${b.parties}</td><td>${b.conformes}</td><td>${b.ecarts || 0}</td>
+      <td>${b.ecartees ? `<b style="color:#b31111">${b.ecartees}</b>` : 0}</td>
+      <td>${b.non_verifiables || 0}</td>
+      <td>${b.signalees ? `<b style="color:#c8860a">${b.signalees}</b>` : 0}</td>
+      <td>${nb(b.meilleur_classe)}</td><td>${nb(b.meilleur_declare)}</td>
+    </tr>`).join('') || '<tr><td colspan="10" style="text-align:center;color:#999;padding:14px">Aucune partie sur la période.</td></tr>';
+    $('#pv-parties').innerHTML = d.parties.map((p) => {
+      const ind = Array.isArray(p.indices) ? p.indices : [];
+      const peutClasser = !p.classe && p.jour === pvJour && Number(p.score_declare) > 0;
+      const peutRejouer = p.source === 'serveur' && p.taille_journal > 0;
+      return `<tr>
+        <td style="white-space:nowrap">${tFmtDate(p.fini_le)}</td>
+        <td><a href="#" onclick="viewUser('${esc(p.username)}');return false" class="uname">${esc(p.username)}</a>
+          ${p.source !== 'serveur' ? `<span class="badge" style="background:#ddd;color:#555">${esc(p.source)}</span>` : ''}</td>
+        <td>${esc(PV_JEU[p.jeu] || p.jeu)}${p.jeu === 'minifever' ? ` <span style="color:#777;font-size:11px">palier ${p.mode}</span>` : ''}</td>
+        <td>${nb(p.score_declare)}</td>
+        <td>${nb(p.score_verifie)}</td>
+        <td><span class="vd vd-${esc(p.verdict)}">${esc(p.verdict.replace('_', ' '))}</span>${p.raison ? `<div style="font-size:11px;color:#777">${esc(p.raison)}</div>` : ''}</td>
+        <td style="font-size:11px;color:#c8860a">${ind.map(esc).join('<br>') || '—'}</td>
+        <td>${p.temps_jeu_ms ? svDuree(p.temps_jeu_ms) : '—'}</td>
+        <td>${p.duree_ms ? svDuree(p.duree_ms) : '—'}</td>
+        <td>${p.classe ? 'oui' + (p.valide_par ? ` <span style="color:#777;font-size:11px">(${esc(p.valide_par)})</span>` : '') : 'non'}</td>
+        <td style="white-space:nowrap">${peutRejouer ? `<button class="btn btn-sm" title="Rejouer la partie à nouveau" onclick="portagesRejouer('${esc(p.id)}')">Rejouer</button>` : ''}
+          ${peutClasser ? `<button class="btn btn-sm" title="Classer cette partie au challenge du jour malgré le verdict" onclick="portagesClasser('${esc(p.id)}')">Classer</button>` : ''}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="11" style="text-align:center;color:#999;padding:14px">Aucune partie.</td></tr>';
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function portagesBureau(on) {
+  const msg = on
+    ? 'Classer de nouveau le record d’arbre battu au bureau ?\n\nIl n’est pas vérifiable : une fiche trafiquée se classera aussi.'
+    : 'Ne plus classer le record d’arbre du bureau (il restera noté ici) ?';
+  if (!confirm(msg)) { $('#pv-bureau').checked = !on; return; }
+  try {
+    const r = await fetch('/api/admin/antitriche/bureau', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()), body: JSON.stringify({ on }) });
+    const d = await r.json();
+    if (d.ok) toast(d.bureauAccepte ? 'Record du bureau : classé (non vérifiable)' : 'Record du bureau : noté, non classé');
+    else toast('Erreur: ' + JSON.stringify(d));
+    $('#pv-bureau').checked = !!d.bureauAccepte;
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function portagesRejouer(id) {
+  try {
+    const r = await fetch('/api/admin/antitriche/parties/' + encodeURIComponent(id) + '/rejouer', { method: 'POST', headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    toast('Rejouée : ' + d.verdict.replace('_', ' ') + (d.raison ? ' — ' + d.raison : ''));
+    loadPortagesVerif();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function portagesClasser(id) {
+  if (!confirm('Classer cette partie au challenge du jour, malgré le verdict ?')) return;
+  try {
+    const r = await fetch('/api/admin/antitriche/parties/' + encodeURIComponent(id) + '/classer', { method: 'POST', headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.message || d.error || r.status)); return; }
+    toast(d.deja ? 'Déjà classée' : 'Classée (' + d.score + ')');
+    loadPortagesVerif();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function auditPortages() {
+  $('#pv-audit-etat').textContent = 'audit en cours…';
+  try {
+    const r = await fetch('/api/admin/antitriche/audit?jours=' + $('#pv-audit-jours').value, { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || r.status)); $('#pv-audit-etat').textContent = ''; return; }
+    const forts = d.suspects.filter((x) => x.gravite === 'fort').length;
+    $('#pv-audit-etat').innerHTML = `${d.examines} score(s) examiné(s) depuis le ${esc(d.depuisJour)}`
+      + ` · <b>${d.suspects.length}</b> à regarder${forts ? ` dont <b style="color:#b31111">${forts} fort${forts > 1 ? 's' : ''}</b>` : ''}`
+      + (d.sansBase ? ' · sans base : le jour en cours seulement' : '');
+    $('#pv-audit').innerHTML = d.suspects.map((x) => `<tr>
+      <td style="white-space:nowrap">${esc(x.jour)}</td>
+      <td><a href="#" onclick="viewUser('${esc(x.username)}');return false" class="uname">${esc(x.username)}</a></td>
+      <td>${esc(PV_JEU[x.jeu] || x.jeu)}</td>
+      <td>${Number(x.score).toLocaleString('fr-FR')}</td>
+      <td class="grav-${esc(x.gravite)}">${esc(x.gravite)}</td>
+      <td style="font-size:12px">${x.raisons.map(esc).join('<br>')}</td>
+    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:#999;padding:14px">Rien à signaler.</td></tr>';
+  } catch (e) { toast('Erreur: ' + e.message); $('#pv-audit-etat').textContent = ''; }
 }
 
 // ─── Intégrité : Swapou vérifié ───
@@ -5510,37 +5704,26 @@ function vaFamille() {
  * que `dessiner` (bouille-vignette.js) et `amApercu`.
  */
 let vaApercuTour = 0;
-// Les variantes déjà publiées, comme le site les voit. Une seule demande.
-let vaPubliees = null;
-function vaCatalogue() {
-  if (vaPubliees) return vaPubliees;
-  vaPubliees = fetch('/api/light/variantes')
-    .then(function (r) { return r.json(); })
-    .then(function (d) { return (d && d.liste) || []; })
-    .catch(function () { return []; });
-  return vaPubliees;
+// La coiffure de référence d'un import : celle que le GABARIT nomme dans son
+// calque de repère (l'atelier l'y écrit), la 8 pour un fichier d'avant.
+function vaCoiffureRef() {
+  const lue = vaSource && vaSource[0] && vaSource[0].coiffure;
+  return (lue != null && lue >= 0) ? lue : 8;
 }
 function vaApercu(canvas, paths, type) {
   const tour = ++vaApercuTour;
-  return Promise.all([FPBouilleSwf.charger('/fbouille/famille0.swf'), vaCatalogue()])
+  // La famille montée COMME CELLE DU SITE (`familleNeuve` : greffes, catalogue
+  // publié à ses index), puis la nôtre par-dessus — là où elle tombera vraiment.
+  return FPBouilleVignette.familleNeuve(0, [{ type: type, paths: paths, anim: vaAnim, coiffureRef: vaCoiffureRef() }])
     .then(function (r) {
-      const defs = r[0], deja = r[1];
+      const defs = r.defs, inj = r.essais[0];
       if (tour !== vaApercuTour || !canvas.isConnected) return null;
-      // Les publiées d'abord, dans l'ordre : la nôtre tombe après elles, là où
-      // elle tombera vraiment.
-      deja.forEach(function (v) {
-        try {
-          FPBouilleVariante.injecter(defs, { type: v.type, paths: v.paths || [], anim: v.anim || null,
-            coiffureRef: v.coiffureRef, index: (v.index == null ? undefined : v.index),
-            vide: !(v.paths && v.paths.length) });
-        } catch (e) { /* une variante fautive n'empêche pas l'essai */ }
-      });
-      const inj = FPBouilleVariante.injecter(defs, { type: type, paths: paths, anim: vaAnim, coiffureRef: 8 });
       if (!inj) return null;
       const p = (v) => FPBouilleMoteur.encode62(v, 2);
       const etat = p(0) + p(3) + p(0) + p(8) + p(0) + p(2) + p(7) + p(type) + p(inj.variante) + p(29) + p(19) + p(24);
-      // Une variante animée se montre EN MOUVEMENT : le moteur tranche seul.
-      new FPBouilleMoteur.Bouille(canvas, defs, { etat: etat, anime: vaAnim ? undefined : false, alea: () => 0.5 });
+      // Cadrée comme un écran (la marge des salons) ; animée, elle se montre
+      // EN MOUVEMENT : le moteur tranche seul, comme pour une vignette.
+      new FPBouilleMoteur.Bouille(canvas, defs, { etat: etat, marge: FPBouilleVignette.MARGE_ECRAN, alea: () => 0.5 });
       return inj;
     });
 }
@@ -5615,7 +5798,7 @@ async function publierVariante() {
   // connaître (elle est dans le SWF) et en a besoin pour attribuer un index qui
   // ne recouvre aucune variante d'époque.
   const repBase = FPBouilleVariante.repere(await FPBouilleSwf.charger('/fbouille/famille0.swf'), type, 8);
-  const corps = JSON.stringify({ nom, famille: 0, type, coiffureRef: 8,
+  const corps = JSON.stringify({ nom, famille: 0, type, coiffureRef: vaCoiffureRef(),
     auteur: ($('#va-auteur').value || '').trim(),
     base: repBase ? repBase.variantes : 0, paths: vaPaths, anim: vaAnim });
   try {
@@ -5642,9 +5825,9 @@ async function publierVariante() {
 let vaTour = 0;
 async function loadVariantes() {
   const tour = ++vaTour;
-  // Le catalogue que l'aperçu d'import rejoue vient de vieillir : toute
-  // publication, tout retrait, tout remplacement passe par ici.
-  vaPubliees = null;
+  // Le catalogue que l'aperçu d'import rejoue (celui de FPBouilleVignette)
+  // vient de vieillir : toute publication, tout retrait, tout remplacement
+  // passe par ici — il est oublié plus bas, avant les aperçus.
   try {
     const r = await fetch('/api/admin/variantes', { headers: hdr() });
     if (!r.ok || tour !== vaTour) return;
@@ -5678,28 +5861,31 @@ async function loadVariantes() {
           + '<button class="btn btn-sm" onclick="retirerVariante(\'' + v.id + '\')">Retirer</button>') + '</td>';
       body.appendChild(tr);
     });
-    // Les aperçus : une famille par ligne, avec TOUTES les variantes injectées
-    // dans l'ordre — c'est ainsi que le site les voit.
-    const pub = await (await fetch('/api/light/variantes')).json();
-    if (tour !== vaTour) return;
-    const neuf = await FPBouilleSwf.charger('/fbouille/famille0.swf');
-    if (tour !== vaTour) return;
-    const index = {};
-    (pub.liste || []).forEach(function (v, i) {
-      const inj = FPBouilleVariante.injecter(neuf, { type: v.type, paths: v.paths || [], anim: v.anim || null,
-        coiffureRef: v.coiffureRef, vide: !(v.paths && v.paths.length) });
-      if (inj) index[i] = inj.variante;
+    /*
+     * LES APERÇUS, PAR LE CHEMIN DU SITE.
+     *
+     * Ils rejouaient le catalogue public dans une famille à part, SANS ses
+     * index, et rangeaient le résultat par RANG dans ce catalogue — qui compte
+     * les variantes purgées, quand ce tableau les tait. Une seule purge, et
+     * chaque ligne montrait le dessin de la précédente : un accessoire qui
+     * n'était pas le sien, voire une tête nue. Les variantes d'une autre
+     * famille s'y glissaient aussi, injectées dans la famille 0.
+     *
+     * Chaque aperçu est maintenant la bouille qui porte l'index de SA ligne —
+     * celui que la colonne affiche et que « → Boutique » écrit dans l'article —,
+     * dessinée par `FPBouilleVignette` comme partout ailleurs, cadrée comme un
+     * écran.
+     */
+    if (window.FPBouilleVignette && FPBouilleVignette.oublierFamilles) FPBouilleVignette.oublierFamilles();
+    const p = (x) => FPBouilleMoteur.encode62(x, 2);
+    Array.prototype.forEach.call(body.querySelectorAll('.va-vig'), function (sp) {
+      const v = liste.find(function (x) { return x.id === sp.getAttribute('data-id'); });
+      if (!v || v.retire || v.famille !== 0) return;
+      const idx = v.index != null ? v.index : (bases[v.famille + ':' + v.type] + v.rang);
+      sp.innerHTML = FPBouilleVignette.html(p(0) + p(3) + p(0) + p(8) + p(0) + p(2) + p(7)
+        + p(v.type) + p(idx) + p(29) + p(19) + p(24), { marge: FPBouilleVignette.MARGE_ECRAN });
     });
-    Array.prototype.forEach.call(body.querySelectorAll('.va-vig'), function (sp, i) {
-      const v = liste[i]; if (!v || v.retire || index[i] === undefined) return;
-      const c = document.createElement('canvas'); c.width = 112; c.height = 112;
-      c.style.cssText = 'width:100%;height:100%;display:block';
-      sp.appendChild(c);
-      const p = (x) => FPBouilleMoteur.encode62(x, 2);
-      new FPBouilleMoteur.Bouille(c, neuf, {
-        etat: p(0) + p(3) + p(0) + p(8) + p(0) + p(2) + p(7) + p(v.type) + p(index[i]) + p(29) + p(19) + p(24),
-        anime: v.images > 1 ? undefined : false, alea: () => 0.5 });
-    });
+    FPBouilleVignette.brancher(body);
   } catch (e) { /* silencieux */ }
 }
 
@@ -7062,7 +7248,7 @@ async function chargerParisChallengeAdmin() {
       <td><label><input type="checkbox" class="pc-dujour" value="${esc(j.cle)}" ${j.duJour ? 'checked' : ''}> ${j.duJour ? '<b>du jour</b>' : ''}</label></td>
       <td>${j.habitues} <small style="color:#777">(${j.jours} j. joués sur 30)</small></td>
       <td style="font-size:11px">${(j.favoris || []).map((f) => `${esc(f.nom)} <span style="color:#777">${f.podiums}/${f.joues}${f.ors ? ' · ' + f.ors + ' or' : ''}</span>`).join('<br>') || '—'}</td>
-      <td>${j.duJour || j.demain.podium + j.demain.or ? `${j.demain.parieurs} parieur(s) · pot médaillé ${j.demain.podium} · pot or ${j.demain.or}` : '—'}</td>
+      <td>${j.duJour || j.demain.podium + j.demain.or ? `${j.demain.parieurs} parieur(s) · pot médaillé ${j.demain.podium} · pot or ${j.demain.or}` : (j.demain.defi ? '' : '—')}${j.demain.defi ? `<br><small>défis : ${j.demain.defi} misés, ${j.demain.retourDefi} promis</small>` : ''}</td>
       <td>${j.hier.mises || j.hier.ouverts ? `${j.hier.mises} misés · ${j.hier.payes} rendus · ${j.hier.gagnes} gagnés · ${j.hier.perdus} perdus${j.hier.rembourses ? ' · ' + j.hier.rembourses + ' remboursés' : ''}${j.hier.ouverts ? ' · <b style="color:#c8860a">' + j.hier.ouverts + ' en attente du roll</b>' : ''}` : '—'}</td>
     </tr>`).join('');
     const B = d.bilan || { jours: [], mises: 0, gains: 0 };
@@ -7076,6 +7262,11 @@ async function chargerParisChallengeAdmin() {
         <label style="margin-left:14px">Jeux par jour : <input type="number" id="pc-nbjeux" min="1" value="${R.nbJeux || 2}" style="width:50px"></label>
         <label style="margin-left:14px" title="Gain net (gain − mise) à partir duquel Dimitri annonce le pari sur le forum — tournois compris">Gros coup à partir de : <input type="number" id="pc-groscoup" min="1" value="${R.grosCoup || 100}" style="width:70px"> kikooz de bénéfice</label>
         <label style="margin-left:14px" title="La cagnotte ne dépasse jamais ce montant : au-delà, les mises des pots sans gagnant quittent le parc">Cagnotte plafonnée à : <input type="number" id="pc-plafondcagnotte" min="0" value="${R.plafondCagnotte == null ? 500 : R.plafondCagnotte}" style="width:80px"> kikooz</label>
+        <br><label style="font-weight:bold" title="Un pari sur soi, à cote fixe, sur n'importe quel jeu ouvert : une médaille (bronze ou mieux), l'argent ou l'or, l'or. Fermer rembourse les défis en jeu."><input type="checkbox" id="pc-defi" ${R.defiActif !== false ? 'checked' : ''}> Défi médaille</label>
+        <label style="margin-left:6px" title="Ce qu'un joueur peut miser par jour sur ses défis, dans le plafond du jour">plafonné à <input type="number" id="pc-plafonddefi" min="1" value="${R.plafondDefi || 20}" style="width:60px"> kikooz par jour</label>
+        <label style="margin-left:14px" title="Un seul message de Dimitri par jour dans son sujet, complété au fil de la journée (gros coups des tournois, sacre du mois) — ou un message à chaque règlement">Annonces de Dimitri : <select id="pc-cadence">
+          <option value="jour" ${R.dimitriCadence !== 'direct' ? 'selected' : ''}>un message par jour</option>
+          <option value="direct" ${R.dimitriCadence === 'direct' ? 'selected' : ''}>un message par règlement</option></select></label>
         <button class="btn btn-sm" onclick="enregistrerParisChallenge()">Enregistrer</button>
         <div style="color:#777;margin:6px 0 10px;line-height:1.45">
           Les joueurs misent <b>la veille, jusqu'à minuit</b>, sur les médaillés du Challenge du lendemain (icône « Prunostics » : une fenêtre du bureau, une feuille sur mobile) :
@@ -7085,7 +7276,10 @@ async function chargerParisChallengeAdmin() {
           Seuls les <b>jeux du jour</b> sont ouverts : tirés au sort parmi les jeux vraiment joués (7 jours sur 30), sans reprendre ceux de la veille, et figés dès le tirage.
           Tu peux les choisir toi-même ci-dessous (colonne « Jeux du ${esc(d.demain || '')} ») ; retirer un jeu rembourse ses mises.
           Les anciens paris à cote fixe se règlent à leur cote, comme promis.
-          Un gain net d'au moins le seuil « gros coup » est annoncé par <b>Dimitri</b> dans son sujet (Jeux Frutiparc › « Les Prunostics du parc : débats, pronos et gros coups »).
+          Un gain net d'au moins le seuil « gros coup » est annoncé par <b>Dimitri</b> dans son sujet (Jeux Frutiparc › « Les Prunostics du parc : débats, pronos et gros coups ») —
+          en « un message par jour », ce qui tombe après son premier message du jour vient le compléter au lieu d'en poster un autre.
+          Le <b>défi médaille</b> : chacun parie sur <b>lui-même</b>, à n'importe quel jeu ouvert qui a assez tourné, une médaille (bronze ou mieux, ×1,05 à ×3), l'argent ou l'or (×1,1 à ×4) ou l'or (×1,15 à ×5) ;
+          <b>cote fixe</b> tirée de ses 30 derniers jours sur le jeu, figée à la mise ; le parc paie les gains et garde les mises perdues, d'où son plafond propre.
           ⚠ « Terminer le cycle » à la main règle les paris de la veille, pas ceux du jour.
         </div>
         <div style="margin:0 0 8px">Jeux du ${esc(d.demain || '')} : <b>${(d.jeuxDuJour || []).map((k) => esc(((d.jeux || []).find((j) => j.cle === k) || {}).nom || k)).join(' et ') || '—'}</b>
@@ -7114,7 +7308,8 @@ async function enregistrerParisChallenge() {
   const actif = $('#pc-actif').checked;
   const exclus = Array.from(document.querySelectorAll('.pc-jeu')).filter((c) => !c.checked).map((c) => c.value);
   await postParisChallenge({ actif, plafond: Number($('#pc-plafond').value), nbJeux: Number($('#pc-nbjeux').value),
-    grosCoup: Number($('#pc-groscoup').value), plafondCagnotte: Number($('#pc-plafondcagnotte').value), exclus },
+    grosCoup: Number($('#pc-groscoup').value), plafondCagnotte: Number($('#pc-plafondcagnotte').value), exclus,
+    defiActif: $('#pc-defi').checked, plafondDefi: Number($('#pc-plafonddefi').value), dimitriCadence: $('#pc-cadence').value },
     actif ? 'Prunostics du Challenge ouverts' : 'Prunostics du Challenge fermés (mises remboursées)');
 }
 async function enregistrerJeuxDuJour() {

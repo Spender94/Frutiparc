@@ -8,7 +8,9 @@
  * qu'il ouvre lui-même au démarrage du serveur s'il n'existe pas. Et quand un
  * pari rapporte gros (tournoi ou Challenge), il y annonce le coup en citant
  * le parieur (@mention : il est prévenu) : la mise, la cote, le gain.
- * Plusieurs gros coups réglés ensemble (le roll de minuit) font UN message.
+ * Plusieurs gros coups réglés ensemble (le roll de minuit) font UN message,
+ * et il ne poste qu'un message par jour : la suite du jour le complète
+ * (completerMessageDuJour).
  *
  * Le tirage des phrases est SEMÉ par les paris eux-mêmes : le même lot rejoué
  * donne le même texte, et les tests peuvent le vérifier.
@@ -151,4 +153,18 @@ function messageMois(s) {
   return l.join('\n');
 }
 
-module.exports = { PSEUDO_NPC, NOM, BOUILLE, HUMEUR, RUBRIQUE, SUJET, INTRO, messageGrosCoups, messageMois };
+/**
+ * LE MESSAGE DU JOUR. Dimitri ne poste qu'UN message par jour dans son sujet
+ * (le réglage `dimitriCadence` des Prunostics) : ce qu'il a encore à dire le
+ * même jour — un gros coup de tournoi l'après-midi, le sacre du mois — vient
+ * COMPLÉTER ce message, sous une ligne qui donne l'heure, au lieu d'en poster
+ * un autre. Rend le message complété.
+ * @param {string} avant — le message du jour, tel qu'il est sur le forum
+ * @param {string} ajout — ce que Dimitri veut y ajouter
+ * @param {string} heure — « 14 h 05 », heure de Paris
+ */
+function completerMessageDuJour(avant, ajout, heure) {
+  return `${String(avant || '').replace(/\s+$/, '')}\n\n[b]— Mise à jour de ${heure} —[/b]\n\n${ajout}`;
+}
+
+module.exports = { PSEUDO_NPC, NOM, BOUILLE, HUMEUR, RUBRIQUE, SUJET, INTRO, messageGrosCoups, messageMois, completerMessageDuJour };

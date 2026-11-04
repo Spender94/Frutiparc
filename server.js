@@ -134,6 +134,11 @@ if (compression) {
   }));
 }
 
+// MINIPIXIZ ET MINI-FEVER — le journal d'une partie rejouée par le serveur
+// (antitricheLight.js) dépasse vite les cent kilo-octets du lecteur général :
+// une longue partie d'arbre, cent épreuves d'arcade. Même lecteur, plafond
+// plus haut, sur ces deux routes seulement.
+app.use(['/api/minipixiz/arbre/fin', '/api/minifever/score'], express.json({ limit: '4mb' }));
 app.use(express.json());
 // BURNING KIWI — LA TRACE D'UN FANTÔME EST PLUS GROSSE QUE LE RESTE.
 // Le lecteur de formulaire d'Express plafonne à cent kilo-octets ; une course
@@ -2191,6 +2196,18 @@ function minipixizClasserArbreDepuisFiche(username, avantBrut, apresBrut, voie) 
     console.log(`[${voie}] ${username} arbre creux ${neuf} REFUSÉ — ${refus}`);
     return null;
   }
+  // LA FICHE SE FORGE AUSSI : c'est le navigateur qui l'écrit, et poser un
+  // `$treeMax` à cent mille dans une sauvegarde classait cent mille. Rien ne
+  // se rejoue ici. Par défaut, le record du bureau est donc NOTÉ (non
+  // vérifiable, l'admin le voit et peut le classer) mais ne classe plus ;
+  // l'admin peut rouvrir ce pont (onglet « Portages vérifiés »).
+  if (!antitricheBureauAccepte) {
+    antitricheNoterSansPartie(username, 'minipixiz', 0, neuf, 'bureau',
+      `record d'arbre du bureau ${vieux} -> ${neuf} : non vérifiable, non classé`, false);
+    return null;
+  }
+  antitricheNoterSansPartie(username, 'minipixiz', 0, neuf, 'bureau',
+    `record d'arbre du bureau ${vieux} -> ${neuf} : non vérifiable, classé (pont ouvert par l'admin)`, true);
   const r = persistScore(username, 'minipixiz_classic', neuf, '');
   console.log(`[${voie}] ${username} minipixiz_classic: ${r.oldScore} -> ${r.newScore}`
     + ` (updated=${r.updated}, record d'arbre du bureau ${vieux} -> ${neuf})`);
@@ -4932,6 +4949,12 @@ const medalAwardFrame = (game) => MEDAL_AWARD_FRAME[String(game || '').toLowerCa
 // Récompense kikooz d'une médaille du challenge du jour (versée UNE fois, au roll
 // quotidien) : or → 15, argent → 10, bronze → 5.
 const MEDAL_KIKOOZ = { or: 15, argent: 10, bronze: 5 };
+// XP d'une médaille du challenge du jour, dans les mêmes proportions que les
+// kikooz (1 / 2 / 3) : le bronze vaut deux réponses au forum, l'or une fois et
+// demie le bonus de connexion. Versée UNE fois par médaille — le registre
+// `challenge_medailles_xp` en garde la trace (cf. recompenserMedaillesXp) —
+// et seulement pour les médailles gagnées depuis son arrivée (pas de rattrapage).
+const MEDAL_XP = { or: 7500, argent: 5000, bronze: 2500 };
 
 // Crédite `reward` kikooz à un joueur pour ses médailles. Joueur EN LIGNE :
 // crédit en mémoire (source de vérité) + persistance + journal + rafraîchissement
@@ -4954,21 +4977,71 @@ function awardMedalKikooz(username, reward, reason) {
   }
 }
 
+// L'XP des médailles d'un joueur pour un jour : seules celles que le registre
+// ne connaît pas encore sont payées (un roll rejoué ne paie pas deux fois).
+// Rend { rankingId: xp } pour les médailles payées maintenant. Sans base, pas
+// de registre : le roll ne passe qu'une fois par jour (lastRollDay), on paie.
+async function recompenserMedaillesXp(username, medals, visibleDay) {
+  const lignes = (medals || []).map((m) => ({ rankingId: m.rankingId, medal: m.medal, xp: MEDAL_XP[m.medal] || 0 })).filter((l) => l.xp > 0);
+  if (!lignes.length) return {};
+  const nouvelles = process.env.DATABASE_URL
+    ? new Set(await db.marquerXpMedailles(username, visibleDay, lignes))
+    : new Set(lignes.map((l) => l.rankingId));
+  const payees = {};
+  let total = 0;
+  for (const l of lignes) if (nouvelles.has(l.rankingId)) { payees[l.rankingId] = l.xp; total += l.xp; }
+  if (total <= 0) return payees;
+  const raison = `médailles du challenge (${visibleDay})`;
+  if (users[username]) awardImmediateXp(username, total, raison);
+  else if (process.env.DATABASE_URL) {
+    // Hors ligne : crédit atomique en base, et le passage de niveau l'attend
+    // dans son historique, non lu.
+    const apres = await db.incrementXp(username, total);
+    if (apres != null) {
+      const avant = getLevelForXp(apres - total), niveau = getLevelForXp(apres);
+      if (niveau > avant) {
+        addAndNotifyUserLog(username, { type: USER_LOG_TYPE.LEVEL_UP, content: `Bravo ! Tu passes au niveau ${niveau} ! (${apres} XP)` });
+        maybeUnlockReferral(username, avant, niveau).catch(() => {});
+      }
+      console.log(`[XP]  ${username}: +${total} XP (${raison}, hors ligne) → total=${apres}`);
+    }
+  }
+  return payees;
+}
+
+// Le message de chaque médaille, qui dit ce qu'elle a rapporté — kikooz ET
+// XP. L'XP d'abord (le registre dit ce qui est dû). Appelé par le roll APRÈS
+// l'XP du jour (awardDailyXp) : celle-ci hydrate et réécrit l'XP des joueurs
+// actifs hors ligne, un crédit en base passé entre-temps serait écrasé.
+async function annoncerMedaillesDuJour(winnersByUser, visibleDay) {
+  for (const [username, medals] of Object.entries(winnersByUser || {})) {
+    let xpPayees = {};
+    try { xpPayees = await recompenserMedaillesXp(username, medals, visibleDay); }
+    catch (e) { console.error(`[XP] médailles de ${username} :`, e.message); }
+    for (const m of medals || []) {
+      const gameName = GAME_DISPLAY_NAMES[m.game] || m.game;
+      const medalName = MEDAL_DISPLAY_NAMES[m.medal] || m.medal;
+      const reward = MEDAL_KIKOOZ[m.medal] || 0;
+      const xp = xpPayees[m.rankingId] || 0;
+      const gains = [reward > 0 ? `${reward} kikooz` : '', xp > 0 ? `${xp} XP` : ''].filter(Boolean).join(' et ');
+      const text = gains
+        ? `Félicitations ! Vous avez gagné la médaille ${medalName} à ${gameName} et empoché ${gains} ! (${visibleDay})`
+        : `Félicitations ! Vous avez gagné la médaille ${medalName} à ${gameName} ! (${visibleDay})`;
+      // Notify online (live + DB) AND offline (DB, shown unread on next login)
+      // through the unified path — no more "only if connected at push time".
+      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.MEDAL, content: text, flNew: true });
+    }
+  }
+}
+
+// Les médailles d'un roll : enregistrées, payées en kikooz. Leur message (et
+// leur XP) part avec annoncerMedaillesDuJour, juste après l'XP du jour.
 function notifyChallengeWinners(winnersByUser, visibleDay) {
   for (const [username, medals] of Object.entries(winnersByUser || {})) {
     let totalReward = 0;
     if (medals && medals.length) quetesEvenement(username, { type: 'action', action: 'medaille' });
     for (const m of medals) {
-      const gameName = GAME_DISPLAY_NAMES[m.game] || m.game;
-      const medalName = MEDAL_DISPLAY_NAMES[m.medal] || m.medal;
-      const reward = MEDAL_KIKOOZ[m.medal] || 0;
-      totalReward += reward;
-      const text = reward > 0
-        ? `Félicitations ! Vous avez gagné la médaille ${medalName} à ${gameName} et empoché ${reward} kikooz ! (${visibleDay})`
-        : `Félicitations ! Vous avez gagné la médaille ${medalName} à ${gameName} ! (${visibleDay})`;
-      // Notify online (live + DB) AND offline (DB, shown unread on next login)
-      // through the unified path — no more "only if connected at push time".
-      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.MEDAL, content: text, flNew: true });
+      totalReward += MEDAL_KIKOOZ[m.medal] || 0;
       const user = users[username];
       if (user && user._dbId) {
         db.saveMedal(user._dbId, username, m.rankingId, m.game, m.rank, m.medal, visibleDay).catch(dbErr('saveMedal'));
@@ -5103,6 +5176,8 @@ async function performChallengeRoll(today) {
   try { await awardDailyXp(); } catch (e) {
     console.error('[XP] awardDailyXp error:', e.message);
   }
+  // Puis l'XP des médailles, et le message de chacune.
+  annoncerMedaillesDuJour(winnersByUser, archiveDay).catch((e) => console.error('[XP] médailles du jour :', e.message));
 
   if (process.env.DATABASE_URL) {
     const rankingIds = challengeRankingIds();
@@ -6170,6 +6245,23 @@ function resolveQuizImage(id) {
   return { url: `/quiz-img/${m.id}.${m.ext}`, w: m.w, h: m.h, title: m.title || '' };
 }
 
+/*
+ * « CHAUVE » — l'accessoire qui retire la coupe de cheveux.
+ *
+ * Il s'écrit comme un accessoire d'époque, dans les neuf derniers caractères :
+ * TYPE 0 (« Rien ») et une VARIANTE qu'aucun rouleau n'atteint, « ZZ » (3843).
+ * Le moteur JS la reconnaît (`CHAUVE_VARIANTE` de bouille-moteur.js) et ne
+ * dessine plus que le crâne : sous `ca.c` et `cb.c`, rien que les rouleaux
+ * d'accessoire. Le SWF d'époque, lui, lit un type « Rien » — dont l'image ne
+ * porte aucun rouleau à caler — et dessine la bouille avec ses cheveux, sans
+ * accessoire : un lecteur Flash n'y voit rien de cassé.
+ *
+ * Offert à tous, comme le Bananocle : il est dans la liste des accessoires de
+ * base, que chaque inventaire sert sans rien inscrire nulle part — les comptes
+ * existants l'ont donc d'office, sans migration.
+ */
+const CHAUVE_SUFFIX9 = '0ZZ000000';
+
 // Accessories = last 9 chars of a 24-char bouille string.
 // The first 15 chars are filled from the user's current bouille at serve time.
 const DEFAULT_ACCESSORIES = [
@@ -6177,6 +6269,7 @@ const DEFAULT_ACCESSORIES = [
   { u: 'beaute',    n: 'Beauté',    suffix: 'b000k0w0g' },
   { u: 'normal',    n: 'Normal',    suffix: '000000000' },
   { u: 'Kiwix',    n: 'Kiwix',    suffix: '30x000000' },
+  { u: 'chauve',    n: 'Chauve',    suffix: CHAUVE_SUFFIX9 },
 ];
 
 // ─────────────────────────────────────────────
@@ -7077,7 +7170,7 @@ function incarnationsDe(user, username) {
 // `paths` = les aplats { d, fill, alpha, m, avant } produits par
 // FPBouilleCustom.charger — le fond de repère est retiré, il ne reste que le
 // dessin. Persistés dans data/accessoires-maison.json (hors dépôt).
-const ACC_MAISON_FILE = path.join(__dirname, 'data', 'accessoires-maison.json');
+const ACC_MAISON_FILE = path.join(SCORES_DIR, 'accessoires-maison.json');
 const accessoiresMaison = {};   // id → { id, name, price, paths, createdAt }
 let accMaisonSeq = 0;
 
@@ -7089,11 +7182,29 @@ function chargerAccMaison() {
     console.log(`[ACC-MAISON] ${Object.keys(accessoiresMaison).length} accessoire(s) chargé(s)`);
   } catch (e) { /* pas de fichier : rien à charger */ }
 }
-function sauverAccMaison() {
+/*
+ * LE DISQUE DU CONTENEUR EST ÉPHÉMÈRE — la base, elle, reste.
+ *
+ * Le catalogue des accessoires maison et le port de chacun ne vivaient que dans
+ * data/ : chaque redéploiement les effaçait. L'admin dessinait un accessoire,
+ * le joueur l'enfilait, et au reboot suivant il n'y avait plus rien — ni
+ * l'accessoire, ni la trace qu'il le portait. Le fichier reste le filet du
+ * développement sans base ; la base fait foi (cf. le chargement au démarrage).
+ *
+ * `a` : l'accessoire qui vient de changer. Sans lui, on les réécrit tous — un
+ * UPSERT, jamais un effacement : une écriture partie avant le chargement de la
+ * base ne peut donc rien y détruire.
+ */
+function sauverAccMaison(a) {
   try {
     fs.mkdirSync(path.dirname(ACC_MAISON_FILE), { recursive: true });
     fs.writeFileSync(ACC_MAISON_FILE, JSON.stringify({ seq: accMaisonSeq, liste: Object.values(accessoiresMaison) }));
   } catch (e) { console.error('[ACC-MAISON] sauvegarde:', e.message); }
+  if (process.env.DATABASE_URL) {
+    for (const x of (a ? [a] : Object.values(accessoiresMaison))) {
+      db.enregistrerAccessoireMaison(x).catch(dbErr('enregistrerAccessoireMaison'));
+    }
+  }
 }
 function nextAccMaisonId() { accMaisonSeq += 1; return 'm' + accMaisonSeq; }
 
@@ -7203,7 +7314,7 @@ chargerAccMaison();
 // verraient un autre accessoire du jour au lendemain. On n'enlève donc jamais
 // une entrée — on la marque `retire`, et le client injecte une image VIDE à sa
 // place pour que les rangs suivants ne bougent pas.
-const VARIANTES_FILE = path.join(__dirname, 'data', 'variantes-accessoire.json');
+const VARIANTES_FILE = path.join(SCORES_DIR, 'variantes-accessoire.json');
 const variantesAcc = [];      // ordonné : le rang EST l'index (à la base près)
 let variantesSeq = 0;
 
@@ -7236,7 +7347,7 @@ chargerVariantes();
 // Qui porte quoi — persisté à part (data/acc-maison-equip.json), indépendamment
 // de la base : un accessoire porté survit à un redémarrage même en mode mémoire.
 // { usernameMinuscule → idAccessoire }
-const ACC_MAISON_EQUIP_FILE = path.join(__dirname, 'data', 'acc-maison-equip.json');
+const ACC_MAISON_EQUIP_FILE = path.join(SCORES_DIR, 'acc-maison-equip.json');
 const accMaisonEquip = {};
 function chargerEquip() {
   try {
@@ -7244,19 +7355,58 @@ function chargerEquip() {
     for (const [u, id] of Object.entries(brut || {})) if (id) accMaisonEquip[u] = id;
   } catch (e) { /* pas de fichier */ }
 }
-function sauverEquip() {
+// `cles` : les pseudos (minuscules) dont le port vient de changer — la base ne
+// réécrit que ces lignes-là (une ligne absente de la table = rien de porté).
+function sauverEquip(...cles) {
   try {
     fs.mkdirSync(path.dirname(ACC_MAISON_EQUIP_FILE), { recursive: true });
     fs.writeFileSync(ACC_MAISON_EQUIP_FILE, JSON.stringify(accMaisonEquip));
   } catch (e) { console.error('[ACC-MAISON] sauvegarde équipement:', e.message); }
+  if (process.env.DATABASE_URL) {
+    for (const cle of cles) {
+      if (!cle) continue;
+      db.definirPortMaison(cle, accMaisonEquip[cle] || null).catch(dbErr('definirPortMaison'));
+    }
+  }
 }
-// Pose (ou retire) l'accessoire porté d'un utilisateur, en mémoire ET sur disque.
+// Pose (ou retire) l'accessoire porté d'un utilisateur, en mémoire, sur disque
+// ET en base (survit au redéploiement).
 function definirEquip(username, id) {
   const cle = String(username || '').toLowerCase();
   if (!cle) return;
   if (id) accMaisonEquip[cle] = id; else delete accMaisonEquip[cle];
   if (users[username]) users[username].accMaisonId = id || null;
-  sauverEquip();
+  sauverEquip(cle);
+}
+/*
+ * AU DÉMARRAGE, LA BASE FAIT FOI. Ce qu'elle connaît remplace ce que le fichier
+ * disait ; ce que seul le fichier connaît (les accessoires d'avant ce
+ * changement, un développement sans base) y est versé une fois, sans rien perdre.
+ */
+async function chargerAccMaisonDeBase() {
+  const enBase = await db.chargerAccessoiresMaison();
+  const connus = new Set(enBase.map((a) => a.id));
+  const orphelins = Object.values(accessoiresMaison).filter((a) => a && !connus.has(a.id));
+  for (const a of enBase) accessoiresMaison[a.id] = a;
+  for (const a of orphelins) await db.enregistrerAccessoireMaison(a);
+  // La suite des identifiants repart au-dessus de tout ce qui existe.
+  for (const id of Object.keys(accessoiresMaison)) {
+    const n = parseInt(String(id).replace(/^m/, ''), 10);
+    if (Number.isFinite(n) && n > accMaisonSeq) accMaisonSeq = n;
+  }
+  const port = await db.chargerPortMaison();
+  const portOrphelin = Object.entries(accMaisonEquip).filter(([u]) => !(u in port));
+  Object.assign(accMaisonEquip, port);
+  for (const [u, id] of portOrphelin) await db.definirPortMaison(u, id);
+  // Un compte déjà en mémoire (hydraté pendant le chargement) reprend son port.
+  for (const [nom, u] of Object.entries(users)) {
+    const id = accMaisonEquip[String(nom).toLowerCase()];
+    if (u && id && accessoiresMaison[id]) u.accMaisonId = id;
+  }
+  if (orphelins.length || portOrphelin.length) {
+    console.log(`[ACC-MAISON] versé en base : ${orphelins.length} accessoire(s), ${portOrphelin.length} port(s)`);
+  }
+  console.log(`[DB] Loaded ${Object.keys(accessoiresMaison).length} accessoire(s) maison, ${Object.keys(accMaisonEquip).length} porté(s)`);
 }
 chargerEquip();
 
@@ -9945,6 +10095,13 @@ async function handleSaveScore(req, res) {
   if (!rankingId) {
     return res.status(400).json({ ok: false, error: 'unknown_game', game: gameName });
   }
+  // Les classements RÉSERVÉS aux parties vérifiées (l'Arbre creux, Mini-Fever) :
+  // cette porte ne prouve rien, elle ne les écrit plus (antitricheLight.js).
+  if (classementReserveAuxPartiesVerifiees(rankingId)) {
+    antitricheRefusPorteGenerique(username, rankingId, scoreVal, 'saveScore');
+    return res.status(400).json({ ok: false, error: 'partie_non_verifiee', rankingId,
+      raison: 'ce classement n\'accepte que les parties vérifiées par le serveur' });
+  }
   // Garde-fou de plausibilité des classements pilotes (score calculé par le
   // navigateur). On refuse AVANT toute écriture, et sans consommer de FD.
   {
@@ -10841,6 +10998,9 @@ app.post('/api/admin/tournaments/:id/match/:mid/paris', tournoiScope, async (req
  *     circuit du jour, quel qu'il soit.
  *   · Les paris posés à COTE FIXE (colonne `retour` remplie, la règle d'une
  *     semaine) se règlent comme promis, à leur cote.
+ *   · Le DÉFI MÉDAILLE (types 'defi_bronze', 'defi_argent', 'defi_or') : sur
+ *     soi, sur n'importe quel jeu ouvert, à cote fixe selon la couleur
+ *     demandée — cf. defiDuJoueur / parierDefi.
  *   · Le filet : un pari resté ouvert plus d'un jour après son Challenge (le
  *     roll n'a pas eu lieu) est remboursé.
  *   · Au début de chaque mois, Dimitri sacre le Prunostiqueur du mois (le
@@ -10857,7 +11017,12 @@ const CoteChallenge = require('./coteChallenge.js');
 // offert au Prunostiqueur du mois (aucun par défaut). `plafondCagnotte` : la
 // cagnotte ne dépasse jamais ce montant — au-delà, les mises des pots sans
 // gagnant quittent le parc, pour que le Prunostiqueur ne s'enrichisse pas trop.
-const PARIS_CHALLENGE_DEFAUT = { actif: true, plafond: 50, exclus: [], grosCoup: 100, nbJeux: 2, choix: {}, recompenseMois: null, plafondCagnotte: 500 };
+// `dimitriCadence` : 'jour' (UN message de Dimitri par jour, complété au fil
+// de la journée — cf. dimitriPublier) ou 'direct' (un message par règlement).
+// `defiActif` / `plafondDefi` : le DÉFI MÉDAILLE (plus bas), ouvert ou non, et
+// ce qu'on peut y miser par jour, dans le plafond du jour.
+const PARIS_CHALLENGE_DEFAUT = { actif: true, plafond: 50, exclus: [], grosCoup: 100, nbJeux: 2, choix: {}, recompenseMois: null, plafondCagnotte: 500,
+  dimitriCadence: 'jour', defiActif: true, plafondDefi: 20 };
 let parisChallengeReglages = Object.assign({}, PARIS_CHALLENGE_DEFAUT);
 async function chargerReglagesParisChallenge() {
   try {
@@ -10977,10 +11142,35 @@ async function jeuxDuJourMaintenant(jour) {
   console.log(`[PARIS] jeux du Challenge du ${jour} : ${choix[jour].join(', ')}`);
   return elus;
 }
+// LES SORTES DE PARIS DU CHALLENGE (colonne `type`) :
+//   'podium', 'or'   les pots mutuels des jeux du jour (sur n'importe qui) ;
+//   'defi_bronze', 'defi_argent', 'defi_or'
+//                    le DÉFI MÉDAILLE : sur soi, à cote fixe, une médaille de
+//                    cette couleur OU MIEUX, sur n'importe quel jeu ouvert.
+// `rang` : le rang qu'il faut atteindre (3 : le podium, 1 : l'or).
+const TYPES_DEFI = { defi_bronze: { couleur: 'bronze', rang: 3 }, defi_argent: { couleur: 'argent', rang: 2 }, defi_or: { couleur: 'or', rang: 1 } };
+const estDefi = (type) => Object.prototype.hasOwnProperty.call(TYPES_DEFI, String(type));
+function rangDuType(type) {
+  if (estDefi(type)) return TYPES_DEFI[type].rang;
+  return type === 'or' ? 1 : 3;
+}
+// « Myrtille en or à Swapou 2 », « le défi de Myrtille : l'argent ou l'or à Swapou 2 »…
+function quoiPariChallenge(type, nom, nomJeu) {
+  if (type === 'or') return `${nom} en or à ${nomJeu}`;
+  if (type === 'defi_or') return `le défi de ${nom} : l’or à ${nomJeu}`;
+  if (type === 'defi_argent') return `le défi de ${nom} : l’argent ou l’or à ${nomJeu}`;
+  if (type === 'defi_bronze') return `le défi de ${nom} : une médaille à ${nomJeu}`;
+  return `${nom} médaillé à ${nomJeu}`;
+}
+// Ceux qui font gagner un pari d'une sorte, dans un jeu : les `rang` premiers
+// de chacun de ses classements (Burning Kiwi : le circuit du jour, quel qu'il soit).
+function gagnantsDuType(jeu, podiums, type) {
+  const n = rangDuType(type);
+  return jeu.rankings.flatMap((rk) => (podiums[rk] || []).slice(0, n)).filter(Boolean);
+}
 function libellePariChallenge(p, jeux) {
   const j = (jeux || jeuxChallengeParis()).find((x) => x.cle === p.jeu);
-  const nom = getDisplayName(p.choix);
-  return `${nom} ${p.type === 'or' ? 'en or' : 'médaillé'} à ${j ? j.nom : p.jeu} (${jourLisible(p.jour)})`;
+  return `${quoiPariChallenge(p.type, getDisplayName(p.choix), j ? j.nom : p.jeu)} (${jourLisible(p.jour)})`;
 }
 // Les cotes du Challenge d'un jour, jeu par jeu : les 30 jours d'historique
 // qui précèdent la veille (la veille se joue encore quand on mise). Elles ne
@@ -11023,7 +11213,7 @@ async function parisChallengeAppliquer(decisions) {
     const j = jeux.find((x) => x.cle === f.jeu);
     return { id: 'c' + f.id, statut: f.statut, username: f.username, choix: f.choix, mise: f.mise, gain: f.gain,
       cote: f.cote == null ? null : Number(f.cote),
-      quoi: (nom) => `${nom} ${f.type === 'or' ? 'en or' : 'médaillé'} à ${j ? j.nom : f.jeu}` };
+      quoi: (nom) => quoiPariChallenge(f.type, nom, j ? j.nom : f.jeu) };
   }));
   return faits;
 }
@@ -11033,10 +11223,7 @@ async function parisChallengeRegler(jour, podiums) {
   if (!process.env.DATABASE_URL) return;
   const ouverts = (await db.parisChallengeDuJour(jour)).filter((p) => p.statut === 'ouvert');
   if (!ouverts.length) { console.log(`[PARIS] Challenge ${jour} : aucun pari ouvert à régler`); return; }
-  const parJeu = new Map(jeuxChallengeParis().map((j) => [j.cle, {
-    podium: j.rankings.flatMap((rk) => podiums[rk] || []),
-    or: j.rankings.map((rk) => (podiums[rk] || [])[0]).filter(Boolean),
-  }]));
+  const parJeu = new Map(jeuxChallengeParis().map((j) => [j.cle, j]));
   const pots = new Map();
   for (const p of ouverts) {
     const k = p.jeu + '|' + p.type;
@@ -11046,9 +11233,11 @@ async function parisChallengeRegler(jour, podiums) {
   const decisions = [];
   for (const [k, liste] of pots) {
     const [jeu, type] = k.split('|');
-    const gagnants = parJeu.get(jeu);
-    if (!gagnants) { for (const p of liste) decisions.push({ id: p.id, statut: 'rembourse', gain: p.mise }); continue; }
-    const g = type === 'or' ? gagnants.or : gagnants.podium;
+    const leJeu = parJeu.get(jeu);
+    if (!leJeu) { for (const p of liste) decisions.push({ id: p.id, statut: 'rembourse', gain: p.mise }); continue; }
+    // Le défi médaille se règle à sa cote fixe, comme les anciens paris à cote
+    // fixe : un jeu sans aucun médaillé ce jour-là (il n'a pas tourné) rembourse.
+    const g = gagnantsDuType(leJeu, podiums, type);
     decisions.push(...CoteChallenge.reglerCotes(liste.filter((p) => p.retour != null), g));
     const anciens = liste.filter((p) => p.retour == null);
     if (anciens.length) decisions.push(...Paris.reglerEnsemble(anciens, g));
@@ -11104,6 +11293,91 @@ app.post('/api/admin/paris-challenge/rattraper', adminScope('challenge'), async 
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+/*
+ * LE DÉFI MÉDAILLE — « je décroche une médaille à tel jeu demain ».
+ *
+ * Un pari SUR SOI, sur n'importe quel jeu ouvert du Challenge (pas seulement
+ * les deux du jour), à COTE FIXE (CoteChallenge.cotesDefi) : le bronze ou
+ * mieux, l'argent ou mieux, l'or — plus la couleur est haute, plus la cote
+ * l'est. Il n'y a personne en face : un pot mutuel n'aurait rien à partager.
+ * Les garde-fous : un plafond propre (`plafondDefi`, 20 kikooz par jour
+ * d'origine) DANS le plafond du jour ; pas de défi sur un jeu trop peu joué
+ * (on y serait seul, la médaille serait donnée) ; la mise la veille jusqu'à
+ * minuit, comme le reste ; le règlement au roll, à la cote figée à la mise
+ * (un jeu qui n'a pas tourné rembourse). Le parc paie les gains et garde les
+ * mises perdues — d'où le plafond serré.
+ */
+async function defiDuJoueur(moi, jour, paris, hist) {
+  const R = parisChallengeReglages;
+  const out = { actif: R.actif !== false && R.defiActif !== false, plafond: Number(R.plafondDefi) || 20, dejaMise: 0, jeux: [], mesDefis: [] };
+  if (!out.actif || !moi) return out;
+  const miens = (paris || []).filter((p) => p.username === moi && estDefi(p.type) && p.statut !== 'rembourse');
+  out.dejaMise = miens.reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
+  const tous = jeuxChallengeParis();
+  for (const j of jeuxChallengeOuverts()) {
+    const c = CoteChallenge.cotesDefi(hist.get(j.cle), moi);
+    if (!c) continue;
+    out.jeux.push({ cle: j.cle, nom: j.nom, cotes: { bronze: c.bronze, argent: c.argent, or: c.or },
+      joues: c.joues, podiums: c.podiums, argents: c.argents, ors: c.ors, decouverte: c.decouverte });
+  }
+  out.mesDefis = miens.map((p) => {
+    const j = tous.find((x) => x.cle === p.jeu);
+    return { jeu: p.jeu, nomJeu: j ? j.nom : p.jeu, type: p.type, couleur: TYPES_DEFI[p.type].couleur, mise: p.mise,
+      cote: p.cote == null ? null : Number(p.cote), retour: p.retour, statut: p.statut };
+  });
+  return out;
+}
+// Un défi médaille : les refus, puis la mise (appelé par POST /api/paris/challenge).
+async function parierDefi(res, moi, user, b, type) {
+  const non = (code, message, status) => res.status(status || 400).json({ ok: false, code, message });
+  const R = parisChallengeReglages;
+  if (R.defiActif === false) return non('fermes', 'Le défi médaille est fermé pour le moment.');
+  const jour = parisChallengeDemain();
+  const jeu = jeuxChallengeOuverts().find((j) => j.cle === String(b.jeu || ''));
+  if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux Prunostics.');
+  // Un défi se relève pour soi : on ne parie pas la médaille d'un autre ici.
+  if (b.choix != null && b.choix !== '' && normalizeUsername(b.choix) !== moi) {
+    return non('soi', 'Le défi médaille se joue sur toi-même. Pour miser sur un autre, prends les pots « médaillé » ou « en or ».');
+  }
+  const mise = Number(b.mise);
+  if (!Number.isInteger(mise) || mise < 1) return non('mise', 'La mise est un nombre entier de kikooz.');
+  const cotes = CoteChallenge.cotesDefi((await cotesChallenge(jour)).get(jeu.cle), moi);
+  if (!cotes) return non('jeu', `${jeu.nom} n’a pas assez tourné ces 30 jours pour un défi médaille.`);
+  const cote = cotes[TYPES_DEFI[type].couleur];
+  const paris = await db.parisChallengeDuJour(jour);
+  const plafond = Number(R.plafond) || 50;
+  const plafondDefi = Number(R.plafondDefi) || 20;
+  const deja = paris.filter((p) => p.username === moi).reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
+  const dejaDefi = paris.filter((p) => p.username === moi && estDefi(p.type)).reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
+  if (dejaDefi + mise > plafondDefi) {
+    return non('plafond', `Le défi médaille est plafonné à ${plafondDefi} kikooz par jour : tu peux encore y miser ${Math.max(0, plafondDefi - dejaDefi)}.`);
+  }
+  if (deja + mise > plafond) {
+    return non('plafond', `Le plafond est de ${plafond} kikooz par jour : tu peux encore miser ${Math.max(0, plafond - deja)}.`);
+  }
+  if ((Number(user.kikooz) || 0) < mise) return non('solde', 'Tu n’as pas assez de kikooz.');
+  const retour = CoteChallenge.retourDe(mise, cote);
+  const pari = await db.poserPariChallenge({ jour, jeu: jeu.cle, type, username: moi, choix: moi, mise, cote, retour });
+  if (!pari) return non('fermes', 'Ce pari est déjà réglé.');
+  // Deux mises simultanées ont pu passer un plafond, ou le solde bouger.
+  const apres = (await db.parisChallengeDuJour(jour)).filter((p) => p.username === moi);
+  const total = apres.reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
+  const totalDefi = apres.filter((p) => estDefi(p.type)).reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
+  if (total > plafond || totalDefi > plafondDefi || (Number(user.kikooz) || 0) < mise) {
+    await db.retirerMiseChallenge(pari.id, mise, retour).catch(dbErr('retirerMiseChallenge'));
+    return non('plafond', 'Ta mise dépasse le plafond du jour ou ton solde.');
+  }
+  user.kikooz = (Number(user.kikooz) || 0) - mise;
+  if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
+  journalKikooz(user, { type: 'p', k: mise, n: libellePariChallenge({ jour, jeu: jeu.cle, type, choix: moi }) });
+  notifyKikoozUpdate(moi, user.kikooz);
+  quetesEvenement(moi, { type: 'pari', mise: Number(pari.mise) || mise });
+  if (Number(pari.mise) === mise) trackXpAction(moi, 'pari');
+  console.log(`[PARIS] Challenge ${jour} ${jeu.cle}/${type} : ${moi} relève le défi, ${mise} à ${cote}`);
+  res.json({ ok: true, mise: pari.mise, cote: Number(pari.cote), retour: pari.retour, solde: user.kikooz,
+    dejaMise: deja + mise, dejaDefi: dejaDefi + mise });
+}
+
 app.get('/api/paris/challenge', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true, actif: false });
   try {
@@ -11128,7 +11402,8 @@ app.get('/api/paris/challenge', async (req, res) => {
     };
     const jeux = [];
     for (const j of await jeuxDuJour(demain)) {
-      const ici = paris.filter((p) => p.jeu === j.cle && p.statut !== 'rembourse');
+      // Les défis médaille ont leur propre bloc (`defi`, plus bas).
+      const ici = paris.filter((p) => p.jeu === j.cle && p.statut !== 'rembourse' && !estDefi(p.type));
       // Les pots mutuels : les paris à cote fixe (l'ancienne règle) n'y entrent pas.
       const mutuels = ici.filter((p) => p.retour == null);
       const potP = Paris.potLibre(mutuels.filter((p) => p.type === 'podium'));
@@ -11157,7 +11432,7 @@ app.get('/api/paris/challenge', async (req, res) => {
       });
     }
     // Mes paris de demain sur un jeu qui n'est plus du jour (cote fixe d'avant) : on les montre aussi.
-    const autres = moi ? paris.filter((p) => p.username === moi && p.statut === 'ouvert' && !jeux.some((j) => j.cle === p.jeu)) : [];
+    const autres = moi ? paris.filter((p) => p.username === moi && p.statut === 'ouvert' && !estDefi(p.type) && !jeux.some((j) => j.cle === p.jeu)) : [];
     // Hier : les médaillés, et ce que j'y avais misé.
     const medailles = challengeMedalsData.medalsByVisibleDay[hier] || {};
     const mesHier = moi ? (await db.parisChallengeDuJour(hier)).filter((p) => p.username === moi) : [];
@@ -11170,7 +11445,9 @@ app.get('/api/paris/challenge', async (req, res) => {
       }
     }
     const jeuxHier = (R.choix || {})[hier];
+    const defi = await defiDuJoueur(moi, demain, paris, hist);
     res.json(Object.assign(base, {
+      defi,
       jour: demain, jourLisible: jourLisible(demain), plafond: Number(R.plafond) || 50,
       cagnotte: await db.prunosticsCagnotte().catch(() => 0),
       dejaMise: moi ? await db.miseChallengeDuJour(moi, demain) : 0, jeux,
@@ -11302,10 +11579,8 @@ async function prunostiqueurDuMois(opts) {
   await dimitriFile(async () => {
     const topic = await dimitriSujet();
     if (!topic) return;
-    await db.forumCreatePost(topic.id, Dimitri.PSEUDO_NPC, contenu, users[Dimitri.PSEUDO_NPC].fbouille, Dimitri.HUMEUR);
-    const suiveurs = await db.forumTopicFollowers(topic.id).catch(() => []);
-    notifyForumNews(Dimitri.PSEUDO_NPC, suiveurs, { id: topic.id, titre: topic.title });
-    await notifierMentionsForum(Dimitri.PSEUDO_NPC, topic.id, topic.title, contenu).catch(() => []);
+    // Le sacre suit le roll du même matin : il complète le message du jour.
+    await dimitriPublier(topic, contenu);
   }, 'Prunostiqueur du mois');
   console.log(`[PARIS] Prunostiqueur du mois ${mois.cle} : ${premier.username} (+${premier.net})${objet ? ' — ' + objet : ''}${cagnotte ? ` — cagnotte ${cagnotte}` : ''}${titre ? ` — « ${titre} »` : ''}`);
   return { mois, gagnant: Object.assign({ nom: nomDe(premier.username), objet, cagnotte, titre }, premier) };
@@ -12971,7 +13246,7 @@ app.get('/api/paris/registre', async (req, res) => {
     const quoi = (p) => {
       if (p.sorte === 'challenge') {
         const j = jeux.find((x) => x.cle === p.jeu);
-        return `${nomDe(p.choix)} ${p.type === 'or' ? 'en or' : 'médaillé'} à ${j ? j.nom : p.jeu} (${jourLisible(p.jour)})`;
+        return `${quoiPariChallenge(p.type, nomDe(p.choix), j ? j.nom : p.jeu)} (${jourLisible(p.jour)})`;
       }
       return `la victoire de ${nomDe(p.choix)}${p.affiche ? ` (${p.affiche})` : ''}${p.tournoi ? `, ${p.tournoi}` : ''}`;
     };
@@ -13126,10 +13401,18 @@ app.post('/api/paris/challenge', async (req, res) => {
   if (!moi) return non('auth', 'Connecte-toi pour parier.', 401);
   const user = users[moi];
   if (!user) return non('auth', 'Compte indisponible, réessaie.', 503);
+  const type = String(b.type || '');
+  if (estDefi(type)) {
+    if (parisVerrous.has(moi)) return non('patience', 'Un pari est déjà en cours d’enregistrement.', 429);
+    parisVerrous.add(moi);
+    try { return await parierDefi(res, moi, user, b, type); } catch (e) {
+      console.error('[PARIS] défi médaille :', e.message);
+      return non('erreur', 'Le pari n’a pas pu être enregistré.', 500);
+    } finally { parisVerrous.delete(moi); }
+  }
   const jour = parisChallengeDemain();
   const jeu = (await jeuxDuJour(jour).catch(() => [])).find((j) => j.cle === String(b.jeu || ''));
   if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux paris demain.');
-  const type = String(b.type || '');
   if (type !== 'podium' && type !== 'or') return non('type', 'Pari inconnu.');
   const mise = Number(b.mise);
   if (!Number.isInteger(mise) || mise < 1) return non('mise', 'La mise est un nombre entier de kikooz.');
@@ -13213,7 +13496,8 @@ app.get('/api/admin/paris-challenge', adminScope('challenge'), async (req, res) 
         return {
           cle: j.cle, nom: j.nom, exclu: exclus.has(j.cle), duJour: duJour.includes(j.cle), jours: c.jours, habitues: habitues.length,
           favoris: habitues.slice(0, 3).map(([u, l]) => ({ pseudo: u, nom: getDisplayName(u), joues: l.joues, podiums: l.podiums, ors: l.ors })),
-          demain: { parieurs: new Set(d.map((p) => p.username)).size, podium: somme(d.filter((p) => p.type === 'podium')), or: somme(d.filter((p) => p.type === 'or')) },
+          demain: { parieurs: new Set(d.map((p) => p.username)).size, podium: somme(d.filter((p) => p.type === 'podium')), or: somme(d.filter((p) => p.type === 'or')),
+            defi: somme(d.filter((p) => estDefi(p.type))), retourDefi: somme(d.filter((p) => estDefi(p.type)), 'retour') },
           hier: { mises: somme(h.filter((p) => p.statut !== 'rembourse')), payes: somme(h.filter((p) => p.statut === 'gagne'), 'gain'),
             gagnes: h.filter((p) => p.statut === 'gagne').length,
             perdus: h.filter((p) => p.statut === 'perdu').length, rembourses: h.filter((p) => p.statut === 'rembourse').length,
@@ -13254,6 +13538,16 @@ app.post('/api/admin/paris-challenge', adminScope('challenge'), async (req, res)
     if (!Number.isFinite(c) || c < 0 || c > 1000000) return res.status(400).json({ error: 'bad_plafond_cagnotte', message: 'Plafond de la cagnotte : un nombre de kikooz, 0 ou plus.' });
     apres.plafondCagnotte = c;
   }
+  if (b.dimitriCadence !== undefined) {
+    if (!['jour', 'direct'].includes(String(b.dimitriCadence))) return res.status(400).json({ error: 'bad_cadence', message: 'Cadence de Dimitri : « jour » ou « direct ».' });
+    apres.dimitriCadence = String(b.dimitriCadence);
+  }
+  if (b.defiActif !== undefined) apres.defiActif = b.defiActif === true || b.defiActif === '1' || b.defiActif === 1;
+  if (b.plafondDefi !== undefined) {
+    const d = Math.floor(Number(b.plafondDefi));
+    if (!Number.isFinite(d) || d < 1 || d > 100000) return res.status(400).json({ error: 'bad_plafond_defi', message: 'Plafond du défi médaille : un nombre de kikooz, au moins 1.' });
+    apres.plafondDefi = d;
+  }
   if (Array.isArray(b.exclus)) apres.exclus = b.exclus.map(String).filter((k) => connus.has(k));
   // Les jeux d'un jour, choisis à la main (demain, d'ordinaire).
   if (b.jeuxDuJour && typeof b.jeuxDuJour === 'object') {
@@ -13280,7 +13574,9 @@ app.post('/api/admin/paris-challenge', adminScope('challenge'), async (req, res)
       const choixFinal = parisChallengeReglages.choix || {};
       // L'option baissée, un jeu retiré ou qui n'est plus du jour : les mises en jeu reviennent.
       const exclus = new Set(apres.exclus || []);
+      // Le défi médaille fermé : ses mises reviennent ; il ne dépend pas des jeux du jour.
       const r = await parisChallengeRembourser((p) => !apres.actif || exclus.has(p.jeu)
+        || (estDefi(p.type) && apres.defiActif === false)
         || (Array.isArray(choixFinal[p.jour]) && !choixFinal[p.jour].includes(p.jeu) && p.retour == null));
       if (r.length) console.log(`[PARIS] Challenge : ${r.length} pari(s) remboursé(s)`);
     }
@@ -14226,7 +14522,7 @@ function renommerEnMemoire(a, n, affichage) {
   // 4. Les tables et les fichiers de travail, tous indexés par pseudo.
   if (deplacerCle(scoresData.users, a, n)) { saveScoresFile(); bilan.push('scores'); }
   if (deplacerCle(dailyXpActions, a, n)) { saveXpActions(); bilan.push('actions XP'); }
-  if (deplacerCle(accMaisonEquip, a, n)) { sauverEquip(); bilan.push('accessoire maison porté'); }
+  if (deplacerCle(accMaisonEquip, a, n)) { sauverEquip(a, n); bilan.push('accessoire maison porté'); }
   // Les quêtes de Gromelin : l'avancement de la semaine et la dernière visite.
   for (const sac of [quetesProgres, quetesVisites, quetesContrats, quetesIndiv]) {
     if (sac.has(a)) { sac.set(n, sac.get(a)); sac.delete(a); }
@@ -14566,6 +14862,8 @@ async function rgpdBalayage() {
     // comme l'IP d'inscription.
     bilan.connexions = await db.purgerConnexions(RGPD_IP_JOURS);
     bilan.swapou = await db.purgerPartiesSwapou(RGPD_IP_JOURS);
+    // Les parties vérifiées de MiniPixiz et Mini-Fever : la même durée.
+    bilan.partiesVerifiees = await db.purgerPartiesVerifiees(RGPD_IP_JOURS);
   } catch (e) {
     bilan.erreurs.push(e.message);
   } finally {
@@ -15970,12 +16268,43 @@ app.post('/api/admin/users/:username/accessories', adminAuth, async (req, res) =
   try {
     const row = await db.findUserByUsername(req.params.username);
     if (!row) return res.status(404).json({ error: 'not found' });
-    const acc = { id: req.body.id || `admin_${Date.now()}`, shopId: req.body.shopId || 0, n: req.body.name || '', v: req.body.value || '', q: req.body.quantity || '1', p: req.body.price || '0' };
+    /*
+     * UN ACCESSOIRE DONNÉ DOIT ÊTRE UN ACCESSOIRE PORTABLE.
+     *
+     * La fiche demandait « Valeur : suffix9 / url » et rangeait tel quel ce
+     * qu'on y tapait — neuf caractères là où tout le parc attend une bouille de
+     * vingt-quatre (l'achat, « Pousser à tous », Kaluga écrivent tous
+     * `bouille(15) + suffix9`). L'inventaire du light écarte une telle ligne,
+     * le bureau la montre sans pouvoir l'enfiler : l'accessoire offert
+     * n'apparaissait jamais, ou ne se portait pas. On complète donc comme les
+     * autres chemins : un suffixe reçoit les quinze premiers caractères de la
+     * bouille du joueur, et un article désigné par son numéro fournit, à
+     * défaut, son nom, son suffixe ou son fond d'écran.
+     */
+    const b = req.body || {};
+    const pack = Number(b.shopId) ? getShopPack(b.shopId) : null;
+    const cle = String(row.username || req.params.username).toLowerCase();
+    const connu = resolveKnownUsername(row.username || req.params.username);
+    const u = users[connu] || users[cle] || null;
+    const source = u ? bouilleOf(u, cle) : (row.fbouille || bouilleOf(null, cle));
+    const base15 = normalizeBouilleState(String(source).split('|')[0]).substring(0, 15);
+    const wp = pack && pack.wallpaperId ? WALLPAPER_BY_ID[pack.wallpaperId] : null;
+    let v = String(b.value || '').trim();
+    if (!v && wp) v = `wp:${wp.url}:${wp.color}`;
+    else if (!v && pack && pack.suffix9) v = base15 + pack.suffix9;
+    else if (/^[0-9A-Za-z]{9}$/.test(v)) v = base15 + v;
+    const acc = {
+      id: String(b.id || '').trim() || (pack ? (wp ? 'wp_' + pack.wallpaperId : 'shop_' + pack.id) : `admin_${Date.now()}`),
+      shopId: pack ? pack.id : (Number(b.shopId) || 0),
+      n: String(b.name || '').trim() || (pack ? pack.name : ''),
+      v, q: b.quantity || '1', p: b.price || '0',
+    };
     await db.addAccessory(row.id, acc);
-    if (users[req.params.username]) {
-      users[req.params.username].customAccessories = await db.getUserAccessories(row.id);
-    }
-    res.json({ ok: true });
+    // La mémoire du joueur connecté suit — sous SA clé, quelle que soit la casse
+    // tapée dans l'admin : sans quoi il ne voyait rien avant le prochain reboot.
+    if (u) u.customAccessories = await db.getUserAccessories(row.id);
+    console.log(`[ADMIN] accessoire ${acc.id} (« ${acc.n} ») donné à ${row.username}`);
+    res.json({ ok: true, accessoire: acc });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -15984,9 +16313,8 @@ app.delete('/api/admin/users/:username/accessories/:accRowId', adminAuth, async 
   try {
     await db.deleteAccessory(req.params.accRowId);
     const row = await db.findUserByUsername(req.params.username);
-    if (row && users[req.params.username]) {
-      users[req.params.username].customAccessories = await db.getUserAccessories(row.id);
-    }
+    const u = row ? (users[resolveKnownUsername(row.username)] || users[String(row.username).toLowerCase()]) : null;
+    if (u) u.customAccessories = await db.getUserAccessories(row.id);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -16275,7 +16603,34 @@ function minifeverScore(palier, niveau) {
   return niveau * MINIFEVER_POINTS * (1 + palier);
 }
 
+/*
+ * LA PARTIE SE PROUVE (antitricheLight.js). Le déroulé déclaré ne suffit plus :
+ * il se postait à la main, en une requête, sans jouer. Le client demande un
+ * JETON au départ (/api/minifever/partie : la graine, le palier, l'heure,
+ * signés), joue chaque épreuve sur la graine qui en découle, et rend avec son
+ * bilan le JOURNAL de la partie (public/minifever/rejeu.js). Le serveur rejoue
+ * chaque épreuve : seules les victoires qu'il voit lui-même comptent, au score
+ * comme à l'album. Sans jeton, ou sur un jeton déjà rendu, rien n'est classé.
+ */
+app.post('/api/minifever/partie', (req, res) => {
+  const sid = getSidFromRequest(req, req.body || {});
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
+  const palier = Math.trunc(Number((req.body || {}).palier));
+  const info = MINIFEVER_PALIERS[palier];
+  if (!info || !info.nom) return res.json({ ok: false, error: 'palier' });
+  if (!antitricheDebit(username)) return res.json({ ok: false, error: 'rate_limited' });
+  const p = AT.creerJeton({ jeu: 'minifever', username, mode: palier });
+  if (process.env.DATABASE_URL) {
+    db.creerPartieVerifiee({ id: p.id, jeu: 'minifever', username, graine: p.graine, mode: palier, jour: parisDayKey() })
+      .catch(dbErr('creerPartieVerifiee'));
+  }
+  res.json({ ok: true, id: p.id, graine: p.graine, jeton: p.jeton });
+});
+
 app.post('/api/minifever/score', async (req, res) => {
+  await rollDailyChallengeIfNeeded();
+  const recuA = Date.now();
   const sid = getSidFromRequest(req, req.body || {});
   const username = resolveUsernameFromSid(sid);
   const b = req.body || {};
@@ -16283,10 +16638,10 @@ app.post('/api/minifever/score', async (req, res) => {
   // aussi : des joueurs finissaient une partie sans rien voir au classement,
   // et personne ne pouvait dire pourquoi. Le motif et la partie telle
   // qu'envoyée, pour que la prochaine plainte se lise ici.
-  const refus = (motif) => {
+  const refus = (motif, raison) => {
     console.log(`[MINIFEVER] refus « ${motif} » pour ${username || ('sid ' + String(sid || '').slice(0, 8) + '… inconnu')}`
-      + ` : palier=${b.palier} niveau=${b.niveau} jouees=${b.jouees}`);
-    return res.json({ ok: false, error: motif });
+      + ` : palier=${b.palier} niveau=${b.niveau} jouees=${b.jouees}${raison ? ' — ' + raison : ''}`);
+    return res.json({ ok: false, error: motif, raison: raison || undefined });
   };
   if (!username || !users[username]) return refus('session');
 
@@ -16300,8 +16655,37 @@ app.post('/api/minifever/score', async (req, res) => {
   // pas plus souvent qu'on n'a de vies.
   if (!Number.isFinite(jouees) || jouees < niveau || jouees - niveau > info.vies) return refus('partie');
 
-  // Les pictos : une épreuve remportée pour la première fois entre à l'album.
-  const gagnees = Array.isArray(b.gagnees) ? b.gagnees.map(String) : [];
+  // Le jeton : sans lui, la partie n'a pas de graine connue du serveur, donc
+  // rien à rejouer. Elle est notée (l'admin voit qui poste sans jouer).
+  const declareScore = minifeverScore(palier, niveau);
+  if (!b.jeton) {
+    antitricheNoterSansPartie(username, 'minifever', palier, declareScore, 'sans_jeton',
+      'score envoyé sans jeton de partie');
+    return refus('partie_non_verifiee', 'pas de jeton de partie');
+  }
+  const c = AT.lireJeton(b.jeton, { jeu: 'minifever', username, maintenant: recuA });
+  if (c.erreur) {
+    antitricheNoterSansPartie(username, 'minifever', palier, declareScore, 'jeton_invalide', c.erreur);
+    return refus('jeton', c.erreur);
+  }
+  if (c.m !== palier) {
+    antitricheNoterSansPartie(username, 'minifever', palier, declareScore, 'jeton_invalide', `palier ${palier}, le jeton dit ${c.m}`);
+    return refus('jeton', 'palier différent de celui du départ');
+  }
+  if (await antitricheDejaRendu(c.id)) {
+    console.log(`[ANTITRICHE] ${username} rend une 2e fois la partie Mini-Fever ${c.id}`);
+    return refus('jeton_deja_rendu', 'cette partie a déjà été rendue');
+  }
+
+  // Le rejeu, dans son fil (hors de la boucle du serveur).
+  const v = await AT.verifierEnFil('arcade', { graine: c.g, palier, journal: b.journal,
+    declare: { niveau, jouees }, dureeMs: recuA - c.t });
+  const classable = v.verdict === 'conforme' || v.verdict === 'ecart';
+  const score = classable ? minifeverScore(palier, v.niveauVerifie) : 0;
+
+  // Les pictos : une épreuve remportée — et rejouée gagnée — pour la première
+  // fois entre à l'album.
+  const gagnees = classable ? v.gagneesVerifiees : [];
   const user = users[username];
   if (!Array.isArray(user.gameItems)) user.gameItems = [];
   const neufs = [];
@@ -16322,16 +16706,340 @@ app.post('/api/minifever/score', async (req, res) => {
     }
   }
 
-  const score = minifeverScore(palier, niveau);
   let r = { updated: false, newScore: score, oldScore: 0 };
   if (score > 0) r = persistScore(username, 'minifever_arcade', score, String(palier));
-  console.log(`[MINIFEVER] ${username} : ${info.nom}, ${niveau}/${info.lvl} épreuves`
+  antitricheNoterPartie({
+    id: c.id, jeu: 'minifever', username, graine: c.g, mode: palier,
+    scoreDeclare: declareScore, scoreVerifie: classable ? score : null, verdict: v.verdict,
+    raison: v.raison, indices: v.indices, details: v.details, classe: score > 0,
+    dureeMs: recuA - c.t, tempsJeuMs: v.tempsJeuMs,
+    journal: typeof b.journal === 'string' ? b.journal : JSON.stringify(b.journal || null),
+  });
+  console.log(`[MINIFEVER] ${username} : ${info.nom}, ${niveau}/${info.lvl} épreuves déclarées,`
+    + ` ${v.niveauVerifie} rejouées gagnées — ${v.verdict}${v.raison ? ' (' + v.raison + ')' : ''}`
     + `${b.gagnee ? ' (terminé)' : ''} → ${score} pts`
-    + (r.updated ? '' : ` (record du jour ${r.oldScore}, inchangé)`)
-    + (neufs.length ? ` · ${neufs.length} picto(s)` : ''));
+    + (score > 0 && !r.updated ? ` (record du jour ${r.oldScore}, inchangé)` : '')
+    + (neufs.length ? ` · ${neufs.length} picto(s)` : '')
+    + (v.indices && v.indices.length ? ` · indices : ${v.indices.join(' ; ')}` : ''));
+  if (!classable) return refus('partie_refusee', v.raison);
   // `record` : le meilleur du jour qui reste quand la partie ne le bat pas —
   // le client le dit au joueur, au lieu de le laisser croire à une perte.
-  res.json({ ok: true, score, classe: !!r.updated, record: Number(r.oldScore) || 0, pictos: neufs.map((e) => e.nom) });
+  res.json({ ok: true, score, classe: !!r.updated, record: Number(r.oldScore) || 0,
+    pictos: neufs.map((e) => e.nom), verdict: v.verdict });
+});
+
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * L'ANTI-TRICHE DES PORTAGES — l'Arbre creux de MiniPixiz, l'arcade de
+ * Mini-Fever (antitricheLight.js pour le principe et les seuils)
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Deux classements sont RÉSERVÉS aux parties vérifiées : minipixiz_classic et
+ * minifever_arcade. Aucune des portes génériques d'enregistrement
+ * (/api/saveScore, le repli loadVariables des SWF, FrutiScore) ne les écrit
+ * plus : un score qui s'y présente est refusé et noté — c'est exactement la
+ * forme que prend un score forgé.
+ *
+ * Le rattrapage du BUREAU (le record d'arbre lu dans la fiche du SWF) n'est
+ * pas vérifiable : la fiche est écrite par le navigateur. Il est noté « non
+ * vérifiable » et ne classe plus, sauf si l'admin l'autorise (onglet
+ * « Portages vérifiés »).
+ */
+const AT = require('./antitricheLight.js');
+const CLASSEMENTS_VERIFIES = new Set(['minipixiz_classic', 'minifever_arcade']);
+let antitricheBureauAccepte = false;
+
+function classementReserveAuxPartiesVerifiees(rankingId) {
+  return CLASSEMENTS_VERIFIES.has(String(rankingId || ''));
+}
+
+// Le secret des jetons : celui de l'environnement, sinon celui que la base
+// garde (tiré une fois pour toutes), sinon un secret de passage — les jetons
+// ne survivent alors pas à un redémarrage, et une partie en cours à ce
+// moment-là n'est pas classée.
+if (process.env.ANTITRICHE_SECRET) AT.poserSecret(process.env.ANTITRICHE_SECRET);
+async function antitricheCharger() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    antitricheBureauAccepte = (await db.getAppState('antitriche_bureau_minipixiz')) === '1';
+    if (!process.env.ANTITRICHE_SECRET) {
+      let s = await db.getAppState('antitriche_secret');
+      if (!s) {
+        s = crypto.randomBytes(32).toString('hex');
+        await db.setAppState('antitriche_secret', s);
+      }
+      AT.poserSecret(s);
+    }
+  } catch (e) {
+    console.error('[ANTITRICHE] réglages :', e.message);
+  }
+}
+
+// Trente parties par minute et par joueur : beaucoup plus qu'on n'en joue.
+const antitricheDemandes = new Map();     // username -> [horodatages]
+function antitricheDebit(username) {
+  const t = Date.now();
+  const l = (antitricheDemandes.get(username) || []).filter((x) => t - x < 60000);
+  if (l.length >= 30) return false;
+  l.push(t);
+  antitricheDemandes.set(username, l);
+  return true;
+}
+setInterval(() => {
+  const t = Date.now();
+  for (const [u, l] of antitricheDemandes) if (!l.some((x) => t - x < 60000)) antitricheDemandes.delete(u);
+}, 10 * 60 * 1000).unref();
+
+// Un jeton ne se rend qu'une fois — la mémoire d'abord, la base ensuite (elle
+// seule survit à un redémarrage). Le jeton est retenu AVANT d'attendre la
+// base : deux envois simultanés du même jeton ne passent pas tous les deux.
+async function antitricheDejaRendu(id) {
+  if (AT.dejaRendu(id)) return true;
+  AT.marquerRendu(id);
+  if (!process.env.DATABASE_URL) return false;
+  try { return await db.partieVerifieeDejaRendue(id); } catch { return false; }
+}
+
+// La partie rendue, notée pour l'admin (après la réponse, sans l'attendre).
+function antitricheNoterPartie(p) {
+  if (p.indices && p.indices.length) {
+    console.log(`[ANTITRICHE] ${p.username} ${p.jeu} ${p.id} : ${p.verdict} — indices : ${p.indices.join(' ; ')}`);
+  }
+  if (p.verdict !== 'conforme' && p.verdict !== 'ecart') {
+    console.log(`[ANTITRICHE] ${p.username} ${p.jeu} ${p.id} ÉCARTÉE (${p.verdict}) — ${p.raison}`);
+  }
+  if (!process.env.DATABASE_URL) return;
+  db.finirPartieVerifiee(Object.assign({ source: 'serveur', jour: parisDayKey() }, p))
+    .then((ok) => { if (!ok) console.log(`[ANTITRICHE] partie ${p.id} : déjà rendue en base`); })
+    .catch(dbErr('finirPartieVerifiee'));
+}
+
+// Un score arrivé SANS partie (porte générique, jeton absent ou faux, fiche
+// du bureau) : rien à rejouer. On le note quand même — c'est la trace d'un
+// essai de forgeage, ou d'un vieux client en cache.
+function antitricheNoterSansPartie(username, jeu, mode, score, source, raison, classe) {
+  console.log(`[ANTITRICHE] ${username} ${jeu} ${score} sans partie vérifiable (${source}) — ${raison}`);
+  if (!process.env.DATABASE_URL || !username) return;
+  const id = 'x' + crypto.randomBytes(11).toString('hex');
+  db.finirPartieVerifiee({
+    id, jeu, username, graine: 0, mode, source, jour: parisDayKey(),
+    scoreDeclare: score, scoreVerifie: null,
+    verdict: classe ? 'non_verifiable' : 'refuse', raison, classe: !!classe,
+  }).catch(dbErr('finirPartieVerifiee'));
+}
+
+// Les portes génériques : le refus, dit une fois pour toutes.
+function antitricheRefusPorteGenerique(username, rankingId, score, voie) {
+  const jeu = rankingId === 'minifever_arcade' ? 'minifever' : 'minipixiz';
+  antitricheNoterSansPartie(username, jeu, 0, Number(score) || 0, voie,
+    `score envoyé par ${voie} : ce classement n'accepte que les parties vérifiées`);
+}
+
+// ── MiniPixiz : l'Arbre creux ───────────────────────────────────────────
+app.post('/api/minipixiz/arbre/partie', (req, res) => {
+  const sid = getSidFromRequest(req, req.body || {});
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'not_authenticated' });
+  if (!antitricheDebit(username)) return res.json({ ok: false, error: 'rate_limited' });
+  const p = AT.creerJeton({ jeu: 'minipixiz', username, mode: 0 });
+  if (process.env.DATABASE_URL) {
+    db.creerPartieVerifiee({ id: p.id, jeu: 'minipixiz', username, graine: p.graine, mode: 0, jour: parisDayKey() })
+      .catch(dbErr('creerPartieVerifiee'));
+  }
+  res.json({ ok: true, id: p.id, graine: p.graine, jeton: p.jeton });
+});
+
+app.post('/api/minipixiz/arbre/fin', async (req, res) => {
+  await rollDailyChallengeIfNeeded();
+  const recuA = Date.now();
+  const b = req.body || {};
+  const sid = getSidFromRequest(req, b);
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'not_authenticated' });
+  const declare = Math.max(0, Math.round(Number(b.score) || 0));
+  const refus = (motif, raison) => {
+    console.log(`[MINIPIXIZ] arbre de ${username} : ${declare} REFUSÉ (${motif}) — ${raison}`);
+    return res.json({ ok: false, error: motif, raison });
+  };
+  if (!b.jeton) {
+    antitricheNoterSansPartie(username, 'minipixiz', 0, declare, 'sans_jeton', 'score envoyé sans jeton de partie');
+    return refus('partie_non_verifiee', 'pas de jeton de partie');
+  }
+  const c = AT.lireJeton(b.jeton, { jeu: 'minipixiz', username, maintenant: recuA });
+  if (c.erreur) {
+    antitricheNoterSansPartie(username, 'minipixiz', 0, declare, 'jeton_invalide', c.erreur);
+    return refus('jeton', c.erreur);
+  }
+  if (await antitricheDejaRendu(c.id)) return refus('jeton_deja_rendu', 'cette partie a déjà été rendue');
+  const v = await AT.verifierEnFil('arbre', { graine: c.g, journal: String(b.journal || ''),
+    scoreDeclare: declare, dureeMs: recuA - c.t });
+  const classable = v.verdict === 'conforme';
+  let r = { updated: false, newScore: 0, oldScore: 0, oldPos: 0, newPos: 0 };
+  if (classable && v.scoreVerifie > 0) r = persistScore(username, 'minipixiz_classic', v.scoreVerifie, '');
+  antitricheNoterPartie({
+    id: c.id, jeu: 'minipixiz', username, graine: c.g, mode: 0,
+    scoreDeclare: declare, scoreVerifie: v.scoreVerifie, verdict: v.verdict, raison: v.raison,
+    indices: v.indices, details: v.details, classe: classable && v.scoreVerifie > 0,
+    dureeMs: recuA - c.t, tempsJeuMs: v.tempsJeuMs, journal: String(b.journal || ''),
+  });
+  if (!classable) return refus('partie_refusee', v.raison);
+  console.log(`[MINIPIXIZ] arbre de ${username} : ${v.scoreVerifie} rejoué conforme`
+    + ` (${Math.round(v.tempsJeuMs / 1000)} s de jeu) — classé ${r.oldScore} -> ${r.newScore} (updated=${r.updated})`);
+  res.json({ ok: true, verdict: v.verdict, score: v.scoreVerifie, updated: r.updated,
+    newScore: r.newScore, oldScore: r.oldScore, oldPos: r.oldPos, newPos: r.newPos,
+    rankingId: 'minipixiz_classic' });
+});
+
+// La rétention (six mois, comme les parties de Swapou) : rgpdBalayage().
+
+// ── L'admin : les parties, le bilan, l'audit ────────────────────────────
+app.get('/api/admin/antitriche/parties', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, parties: [], bilan: [], bureauAccepte: antitricheBureauAccepte, sansBase: true, seuils: AT.SEUILS });
+  try {
+    const jours = Math.max(1, Math.min(Number(req.query.jours) || 7, 400));
+    const depuis = new Date(Date.now() - jours * 86400000);
+    const jeu = ['minipixiz', 'minifever'].includes(req.query.jeu) ? req.query.jeu : '';
+    const parties = await db.listerPartiesVerifiees({
+      jeu, username: req.query.joueur ? normalizeUsername(req.query.joueur) : '',
+      verdict: req.query.verdict || '', depuis, limit: req.query.limit || 300,
+    });
+    const bilan = await db.bilanPartiesVerifiees(jeu, depuis);
+    res.json({ ok: true, parties, bilan, bureauAccepte: antitricheBureauAccepte, seuils: AT.SEUILS, jour: parisDayKey() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Rejouer à nouveau une partie gardée (après une correction du moteur, par
+// exemple). Le verdict est mis à jour ; le classement, lui, n'est pas touché.
+app.post('/api/admin/antitriche/parties/:id/rejouer', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, error: 'no db' });
+  const p = await db.lirePartieVerifiee(req.params.id).catch(() => null);
+  if (!p) return res.status(404).json({ ok: false, error: 'introuvable' });
+  if (!p.journal || p.source !== 'serveur') return res.status(400).json({ ok: false, error: 'rien à rejouer' });
+  const dureeMs = Number(p.duree_ms) || 0;
+  let v;
+  try {
+    if (p.jeu === 'minipixiz') {
+      v = await AT.verifierEnFil('arbre', { graine: Number(p.graine), journal: p.journal, scoreDeclare: p.score_declare, dureeMs });
+    } else {
+      let j = null;
+      try { j = JSON.parse(p.journal); } catch { /* illisible : le rejeu le dira */ }
+      const verdicts = (j && Array.isArray(j.epreuves)) ? j.epreuves.map((e) => !!(e && e.g)) : [];
+      const info = MINIFEVER_PALIERS[p.mode] || {};
+      const fin = require('./public/minifever/rejeu.js').derouler(info, verdicts);
+      v = await AT.verifierEnFil('arcade', { graine: Number(p.graine), palier: Number(p.mode), journal: j,
+        declare: { niveau: fin.niveau, jouees: fin.jouees }, dureeMs });
+      if (v.verdict === 'conforme' || v.verdict === 'ecart') v.scoreVerifie = minifeverScore(Number(p.mode), v.niveauVerifie);
+    }
+  } catch (e) {
+    v = { verdict: 'non_verifiable', raison: 'rejeu en panne : ' + e.message };
+  }
+  await db.majVerdictPartieVerifiee(p.id, v);
+  res.json({ ok: true, verdict: v.verdict, raison: v.raison || '', scoreVerifie: v.scoreVerifie == null ? null : v.scoreVerifie, indices: v.indices || [] });
+});
+
+// Classer à la main une partie écartée — le jour même seulement : un score
+// d'hier posé aujourd'hui fausserait le challenge du jour.
+app.post('/api/admin/antitriche/parties/:id/classer', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, error: 'no db' });
+  const p = await db.lirePartieVerifiee(req.params.id).catch(() => null);
+  if (!p) return res.status(404).json({ ok: false, error: 'introuvable' });
+  if (p.classe) return res.json({ ok: true, deja: true });
+  if (p.jour !== parisDayKey()) return res.status(400).json({ ok: false, error: 'jour_clos', message: 'Seule une partie du jour peut entrer au challenge du jour.' });
+  const username = normalizeUsername(p.username);
+  if (!users[username]) return res.status(404).json({ ok: false, error: 'joueur introuvable' });
+  const rk = p.jeu === 'minifever' ? 'minifever_arcade' : 'minipixiz_classic';
+  const score = Number(p.score_declare) || 0;
+  if (score <= 0) return res.status(400).json({ ok: false, error: 'score nul' });
+  const r = persistScore(username, rk, score, p.jeu === 'minifever' ? String(p.mode) : '');
+  await db.classerPartieVerifiee(p.id, 'admin');
+  console.log(`[ADMIN] antitriche : partie ${p.id} de ${username} classée à la main (${rk} ${score}, updated=${r.updated})`);
+  res.json({ ok: true, updated: r.updated, score });
+});
+
+app.post('/api/admin/antitriche/bureau', adminAuth, async (req, res) => {
+  const on = !!(req.body && (req.body.on === true || req.body.on === '1' || req.body.on === 1));
+  antitricheBureauAccepte = on;
+  if (process.env.DATABASE_URL) await db.setAppState('antitriche_bureau_minipixiz', on ? '1' : '0').catch(dbErr('antitriche_bureau'));
+  console.log(`[ANTITRICHE] MiniPixiz : rattrapage du bureau (non vérifiable) accepté = ${on}`);
+  res.json({ ok: true, bureauAccepte: on });
+});
+
+/*
+ * L'AUDIT des scores déjà classés — LECTURE SEULE. Le classement du jour (en
+ * mémoire) et les archives du challenge (en base), confrontés à la fiche
+ * MiniPixiz du joueur, à ses pictos Mini-Fever, et aux parties vérifiées
+ * (cf. AT.auditer pour les règles). Rien n'est retiré : l'admin juge.
+ */
+async function antitricheAudit(jours) {
+  const depuisJour = parisDayKey(new Date(Date.now() - jours * 86400000));
+  const aujourdhui = parisDayKey();
+  const lignes = [];        // { rk, username, jour, score, data }
+  for (const [u, rks] of Object.entries(scoresData.users || {})) {
+    for (const rk of CLASSEMENTS_VERIFIES) {
+      const s = rks && rks[rk];
+      if (s && Number(s.score) > 0) lignes.push({ rk, username: u, jour: aujourdhui, score: Number(s.score), data: s.data });
+    }
+  }
+  let verifies = [];
+  if (process.env.DATABASE_URL) {
+    for (const a of await db.archivesChallengeDepuis([...CLASSEMENTS_VERIFIES], depuisJour)) {
+      lignes.push({ rk: a.ranking_id, username: String(a.username).toLowerCase(), jour: a.day_key, score: Number(a.score), data: a.data });
+    }
+    verifies = (await db.meilleursVerifiesParJour('minipixiz', depuisJour)).map((x) => Object.assign({ jeu: 'minipixiz' }, x))
+      .concat((await db.meilleursVerifiesParJour('minifever', depuisJour)).map((x) => Object.assign({ jeu: 'minifever' }, x)));
+  }
+  // La mise en service : le premier jour où une partie vérifiée a été classée.
+  const debut = {};
+  const verifie = new Map();
+  for (const x of verifies) {
+    if (!debut[x.jeu] || x.jour < debut[x.jeu]) debut[x.jeu] = x.jour;
+    verifie.set(`${x.jeu}|${x.username}|${x.jour}`, Number(x.score) || 0);
+  }
+  const fiches = new Map();
+  const ficheDe = async (u) => {
+    if (fiches.has(u)) return fiches.get(u);
+    let brut = null;
+    const mu = users[u];
+    if (mu && mu.frutiSlots && mu.frutiSlots.minipixiz && mu.frutiSlots.minipixiz['0']) brut = mu.frutiSlots.minipixiz['0'];
+    else if (mu && mu._dbId && process.env.DATABASE_URL) {
+      try { const sl = await db.getFrutiSlots(mu._dbId, 'minipixiz'); brut = sl && sl['0']; } catch { /* pas de fiche */ }
+    }
+    let f = null;
+    try {
+      const c = brut ? (typeof brut === 'string' ? JSON.parse(brut) : brut) : null;
+      if (c && c.$stat) f = { treeMax: Number(c.$stat.$treeMax) || 0, partiesArbre: Number((c.$stat.$game || [])[4]) || 0 };
+    } catch { /* fiche illisible : rien à confronter */ }
+    fiches.set(u, f);
+    return f;
+  };
+  const items = new Set(MINIFEVER_EPREUVES.map((e) => e.item));
+  const arbre = [], arcade = [];
+  for (const l of lignes) {
+    const jeu = l.rk === 'minifever_arcade' ? 'minifever' : 'minipixiz';
+    const base = {
+      username: l.username, jour: l.jour, score: l.score, data: l.data,
+      verificationActive: !!(debut[jeu] && l.jour >= debut[jeu]),
+      verifie: verifie.get(`${jeu}|${l.username}|${l.jour}`),
+    };
+    if (jeu === 'minipixiz') arbre.push(Object.assign(base, { fiche: await ficheDe(l.username) }));
+    else {
+      const mu = users[l.username];
+      const pictos = mu && Array.isArray(mu.gameItems) ? mu.gameItems.filter((i) => items.has(i)).length : null;
+      arcade.push(Object.assign(base, { pictos }));
+    }
+  }
+  return { depuisJour, debutVerification: debut, examines: lignes.length,
+    suspects: AT.auditer({ arbre, arcade, paliers: MINIFEVER_PALIERS }) };
+}
+app.get('/api/admin/antitriche/audit', adminAuth, async (req, res) => {
+  try {
+    const jours = Math.max(1, Math.min(Number(req.query.jours) || 30, 400));
+    res.json(Object.assign({ ok: true, jours, sansBase: !process.env.DATABASE_URL }, await antitricheAudit(jours)));
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 // ─────────────────────────────────────────────
@@ -18037,7 +18745,7 @@ app.post('/api/admin/acc-maison', adminScope('shop'),
     // de boutique, où il vaut dix pour cent de chaque vente.
     const a = { id, name: String(b.name).slice(0, 60), price: Number(b.price) || 0,
       auteur: String(b.auteur || '').trim().slice(0, 40), paths, couleurs, createdAt: new Date().toISOString() };
-    accessoiresMaison[id] = a; sauverAccMaison();
+    accessoiresMaison[id] = a; sauverAccMaison(a);
     console.log(`[ACC-MAISON] créé ${id} « ${a.name} » (${paths.length} aplats)`);
     res.json({ ok: true, id, name: a.name });
   });
@@ -18059,13 +18767,15 @@ app.put('/api/admin/acc-maison/:id', adminScope('shop'),
     if (b.name !== undefined && String(b.name).trim()) a.name = String(b.name).trim().slice(0, 60);
     if (b.price !== undefined) a.price = Number(b.price) || 0;
     if (b.auteur !== undefined) a.auteur = String(b.auteur).trim().slice(0, 40);
-    sauverAccMaison();
+    sauverAccMaison(a);
     console.log(`[ACC-MAISON] remplacé ${a.id} « ${a.name} » (${(a.paths || []).length} aplats)`);
     res.json({ ok: true, id: a.id, name: a.name, nb: (a.paths || []).length });
   });
 app.delete('/api/admin/acc-maison/:id', adminScope('shop'), (req, res) => {
   if (!accessoiresMaison[req.params.id]) return res.status(404).json({ error: 'not found' });
   delete accessoiresMaison[req.params.id]; sauverAccMaison();
+  // La base aussi : le dessin et les ports qui le désignaient.
+  if (process.env.DATABASE_URL) db.supprimerAccessoireMaison(req.params.id).catch(dbErr('supprimerAccessoireMaison'));
   // Personne ne le porte plus : on retire l'id des porteurs (mémoire + disque).
   for (const u of Object.values(users)) if (u && u.accMaisonId === req.params.id) u.accMaisonId = null;
   let change = false;
@@ -19684,7 +20394,8 @@ async function natachaAccueillirMaintenant(username, parrain) {
 // Un pari gagné dont le gain net (gain − mise) atteint le seuil des réglages
 // (100 kikooz d'origine) est un GROS COUP : Dimitri l'annonce dans ce sujet,
 // d'humeur ravie, en @mentionnant le parieur. Les coups réglés ensemble font
-// un seul message. Chaque pari ne se règle qu'une fois (db.reglerParis*), il
+// un seul message, et Dimitri ne poste qu'UN message par jour : ce qui tombe
+// ensuite le même jour le complète (dimitriPublier). Chaque pari ne se règle qu'une fois (db.reglerParis*), il
 // n'est donc annoncé qu'une fois. Tout passe par une file : le démarrage et
 // un règlement qui se croisent n'ouvrent pas deux sujets.
 const Dimitri = require('./dimitri.js');
@@ -19768,11 +20479,45 @@ async function dimitriAnnoncerMaintenant(gros) {
   const contenu = Dimitri.messageGrosCoups(gros.map((c) => ({
     id: c.id, parieur: nomDe(c.username), quoi: c.quoi(nomDe(c.choix)), mise: c.mise, cote: c.cote, gain: c.gain,
   })));
+  const r = await dimitriPublier(topic, contenu);
+  console.log(`[DIMITRI] annonce ${gros.length} gros coup(s) — message #${r.postId}${r.complete ? ' (complété)' : ''}, sujet #${topic.id}`);
+  return r;
+}
+// UN MESSAGE PAR JOUR (réglage `dimitriCadence` des Prunostics, 'jour' par
+// défaut). Avant, chaque règlement qui portait un gros coup faisait son
+// message — chaque match de tournoi réglé, le roll de minuit, le sacre du
+// mois : plusieurs messages par jour, autant de « nouveau » sur le forum.
+// Désormais, le premier message du jour (heure de Paris) est retenu en base
+// (app_state `dimitri_message_jour`) et ce qui tombe ensuite le même jour
+// vient le COMPLÉTER (Dimitri.completerMessageDuJour) : rien n'est perdu, le
+// sujet ne remonte qu'une fois, et seuls les nouveaux @mentionnés sont
+// prévenus. Le message du jour supprimé ou déplacé : on en poste un autre.
+// 'direct' : l'ancienne règle, un message par règlement.
+const DIMITRI_JOUR_ETAT = 'dimitri_message_jour';
+async function dimitriPublier(topic, contenu) {
+  const jour = parisDayKey();
+  if (parisChallengeReglages.dimitriCadence !== 'direct') {
+    let memo = null;
+    try { memo = JSON.parse((await db.getAppState(DIMITRI_JOUR_ETAT)) || 'null'); } catch { memo = null; }
+    if (memo && memo.jour === jour && Number(memo.topicId) === Number(topic.id) && memo.postId) {
+      const { rows } = await db.pool.query('SELECT id, topic_id, author_username, content FROM forum_posts WHERE id = $1', [memo.postId]);
+      const p = rows[0];
+      if (p && Number(p.topic_id) === Number(topic.id) && p.author_username === Dimitri.PSEUDO_NPC) {
+        const heure = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }).replace(':', ' h ');
+        const complet = Dimitri.completerMessageDuJour(p.content, contenu, heure);
+        await db.forumUpdatePost(p.id, complet);
+        await notifierMentionsForum(Dimitri.PSEUDO_NPC, topic.id, topic.title, contenu).catch(() => []);
+        return { topicId: topic.id, postId: p.id, contenu: complet, complete: true };
+      }
+    }
+  }
   const post = await db.forumCreatePost(topic.id, Dimitri.PSEUDO_NPC, contenu, users[Dimitri.PSEUDO_NPC].fbouille, Dimitri.HUMEUR);
+  if (parisChallengeReglages.dimitriCadence !== 'direct') {
+    await db.setAppState(DIMITRI_JOUR_ETAT, JSON.stringify({ jour, topicId: topic.id, postId: post.id }));
+  }
   const suiveurs = await db.forumTopicFollowers(topic.id).catch(() => []);
   notifyForumNews(Dimitri.PSEUDO_NPC, suiveurs, { id: topic.id, titre: topic.title });
   await notifierMentionsForum(Dimitri.PSEUDO_NPC, topic.id, topic.title, contenu).catch(() => []);
-  console.log(`[DIMITRI] annonce ${gros.length} gros coup(s) — message #${post.id}, sujet #${topic.id}`);
   return { topicId: topic.id, postId: post.id, contenu };
 }
 
@@ -20361,6 +21106,12 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
   let rankingId = rankingIdForGame(gameName, swfMode);
   if (!rankingId) {
     console.log(`[SWF-SCORE] unknown ranking game="${gameName}" sid="${effectiveSid}" user="${username}"`);
+    return res.type('text/plain').send('ok=0');
+  }
+  // Une URL à taper suffisait à classer n'importe quel score d'arbre : les
+  // classements vérifiés ne passent plus par ici (antitricheLight.js).
+  if (classementReserveAuxPartiesVerifiees(rankingId)) {
+    antitricheRefusPorteGenerique(username, rankingId, scoreVal, 'loadVariables');
     return res.type('text/plain').send('ok=0');
   }
   /*
@@ -24358,12 +25109,7 @@ const PREF_CATEGORIES = [
  * sélecteur du forum (`/api/forum/me`) et les choix de l'accessoire par défaut
  * (juste en dessous).
  */
-const ACCESSOIRES_DEFAUT = [
-  { id: 'bananocle', name: 'Bananocle', suffix: '6010k0w0g' },
-  { id: 'beaute',    name: 'Beauté',    suffix: 'b000k0w0g' },
-  { id: 'normal',    name: 'Normal',    suffix: '000000000' },
-  { id: 'Kiwix',     name: 'Kiwix',     suffix: '30x000000' },
-];
+const ACCESSOIRES_DEFAUT = DEFAULT_ACCESSORIES.map((a) => ({ id: a.u, name: a.n, suffix: a.suffix }));
 
 /*
  * LES CHOIX DE « L'ACCESSOIRE PAR DÉFAUT » — ils dépendent du JOUEUR.
@@ -30302,6 +31048,7 @@ async function boot() {
       console.log('[DB] Connected and schema ready');
       try { swapouTournoiVerifie = (await db.getAppState('swapou_tournoi_verifie')) === '1'; }
       catch (e) { console.error('[SWAPOU] interrupteur du tournoi :', e.message); }
+      await antitricheCharger();
       await chargerReglagesParisChallenge();
       await chargerReglagesGaspard();
       // Les quêtes de Gromelin : réglages, semaine tirée, avancement de chacun.
@@ -30548,6 +31295,9 @@ async function boot() {
         }
         if (variantesAcc.length) console.log(`[DB] Loaded ${variantesAcc.length} variante(s) d'accessoire`);
       } catch (e) { console.error('[DB] Variantes load error:', e.message); }
+      // Les accessoires maison et leur port : même règle que les variantes.
+      try { await chargerAccMaisonDeBase(); }
+      catch (e) { console.error('[DB] Accessoires maison load error:', e.message); }
       try {
         // Chat banned words: on first run (empty table), seed defaults.
         let bw = await db.loadChatBannedWords();
@@ -35157,6 +35907,11 @@ async function handleCBeeMessage(socket, rawXml) {
         console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)} data="${scoreData}" mode=${scoreMode} children=${JSON.stringify(msg.children || [])}`);
         let rankingId = rankingIdForGame(discId, scoreMode);
         if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame, scoreMode);
+        // Les classements vérifiés ne s'écrivent pas par ce chemin non plus.
+        if (classementReserveAuxPartiesVerifiees(rankingId)) {
+          antitricheRefusPorteGenerique(username, rankingId, scoreVal, 'FrutiScore');
+          rankingId = null;
+        }
         let extraRankingId = null;
         let routedInfo = null;
         {

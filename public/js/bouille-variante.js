@@ -1029,7 +1029,12 @@
       + ((defsGrad.length || defsDecoupe.length)
         ? "  <defs>\n" + defsGrad.concat(defsDecoupe).join("\n") + "\n  </defs>\n" : "")
       + '  <g id="accessoire-arriere">\n' + corpsArriere + "\n  </g>\n"
-      + '  <g id="repere" opacity="0.9" style="pointer-events:none">\n' + image + "\n  </g>\n"
+      // LA COIFFURE DU GABARIT voyage dans le NOM du calque de repère — le seul
+      // endroit qu'Illustrator rende tel quel (un attribut maison, il le jette).
+      // Quatre types (6, 7, 12, 13) ne se posent pas pareil d'une coiffure à
+      // l'autre : un dessin fait sur la 20, relu comme s'il venait de la 8,
+      // tomberait à côté. Le lecteur ne regarde que le début du nom (« repere »).
+      + '  <g id="repere-coiffure-' + co + '" opacity="0.9" style="pointer-events:none">\n' + image + "\n  </g>\n"
       + '  <g id="accessoire">\n' + corpsAvant + "\n  </g>\n"
       + "</svg>\n";
   }

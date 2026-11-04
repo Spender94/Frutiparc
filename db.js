@@ -474,6 +474,22 @@ async function initSchema() {
       -- image. NULL pour une variante fixe — toutes celles d'avant.
       ALTER TABLE bouille_variantes ADD COLUMN IF NOT EXISTS anim TEXT;
 
+      -- LES ACCESSOIRES MAISON (dessins SVG posés par-dessus la bouille) et QUI
+      -- les porte. Ils ne vivaient que dans data/, sur le disque ÉPHÉMÈRE du
+      -- conteneur : chaque redéploiement les effaçait, catalogue et port
+      -- compris — l'accessoire tout juste donné par l'admin sautait au reboot.
+      -- Le dessin (paths, couleurs…) est rangé tel quel, en JSON.
+      CREATE TABLE IF NOT EXISTS accessoires_maison (
+        id          TEXT PRIMARY KEY,
+        donnees     TEXT NOT NULL DEFAULT '{}',
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS accessoires_maison_port (
+        username    TEXT PRIMARY KEY,
+        acc_id      TEXT NOT NULL,
+        updated_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- Map challenge du jour de Mini-Wave, pour la même raison que celle de
       -- MotionBall : la graine est stable (elle vient de la date), mais les
       -- NIVEAUX sont l'œuvre d'un générateur qu'on fait évoluer. Sans cette
@@ -733,6 +749,21 @@ async function initSchema() {
       ALTER TABLE challenge_paris ADD COLUMN IF NOT EXISTS retour INTEGER;
       CREATE INDEX IF NOT EXISTS idx_cparis_jour ON challenge_paris(jour, statut);
       CREATE INDEX IF NOT EXISTS idx_cparis_user ON challenge_paris(LOWER(username), cree_le DESC);
+
+      -- L'XP DES MÉDAILLES DU CHALLENGE : une ligne par médaille déjà payée en
+      -- XP. C'est ce registre, et lui seul, qui garantit qu'une médaille ne
+      -- rapporte son XP qu'une fois — un roll rejoué, un redémarrage au mauvais
+      -- moment, des médailles régénérées par l'admin (qui effacent et réécrivent
+      -- challenge_medals) ne paient pas deux fois.
+      CREATE TABLE IF NOT EXISTS challenge_medailles_xp (
+        username    TEXT NOT NULL,
+        ranking_id  TEXT NOT NULL,
+        awarded_day TEXT NOT NULL,
+        medal       TEXT NOT NULL,
+        xp          INTEGER NOT NULL,
+        cree_le     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (username, ranking_id, awarded_day)
+      );
 
       -- LES PARTIES EN DIFFÉRÉ (Grapiz, Frutibandas) : une partie par
       -- correspondance dort des jours entre deux coups, elle doit survivre à
@@ -1152,6 +1183,45 @@ async function initSchema() {
       CREATE INDEX IF NOT EXISTS idx_swapou_parties_user ON swapou_parties(LOWER(username), cree_le DESC);
       CREATE INDEX IF NOT EXISTS idx_swapou_parties_date ON swapou_parties(cree_le DESC);
 
+      -- LES PARTIES VÉRIFIÉES des autres jeux classés au challenge : l'Arbre
+      -- creux de MiniPixiz et l'arcade de Mini-Fever (antitricheLight.js). Le
+      -- serveur donne la graine et un jeton au départ, le navigateur rend le
+      -- journal de la partie, le serveur la rejoue. Contrairement à Swapou, le
+      -- verdict DÉCIDE : seul un score rejoué conforme entre au classement
+      -- (colonne classe). L'admin relit tout ici, et peut classer à la main une
+      -- partie écartée (colonne valide_par).
+      --   jeu     : 'minipixiz' (l'arbre) ou 'minifever' (l'arcade) ;
+      --   source  : 'serveur' (jeton du serveur), 'saveScore' / 'bureau' (un
+      --             score arrivé sans partie : refusé ou non vérifiable) ;
+      --   verdict : 'en_cours', 'conforme', 'ecart', 'divergent', 'refuse',
+      --             'non_verifiable' ;
+      --   indices : les signaux faibles (pauses très longues, cadence…), qui
+      --             n'écartent rien seuls mais se lisent.
+      CREATE TABLE IF NOT EXISTS parties_verifiees (
+        id             TEXT PRIMARY KEY,
+        jeu            TEXT NOT NULL,
+        username       TEXT NOT NULL,
+        graine         BIGINT NOT NULL DEFAULT 0,
+        mode           INTEGER NOT NULL DEFAULT 0,
+        source         TEXT NOT NULL DEFAULT 'serveur',
+        cree_le        TIMESTAMPTZ NOT NULL DEFAULT now(),
+        fini_le        TIMESTAMPTZ,
+        jour           TEXT NOT NULL DEFAULT '',
+        score_declare  INTEGER,
+        score_verifie  INTEGER,
+        verdict        TEXT NOT NULL DEFAULT 'en_cours',
+        raison         TEXT NOT NULL DEFAULT '',
+        indices        JSONB,
+        details        JSONB,
+        classe         BOOLEAN NOT NULL DEFAULT false,
+        duree_ms       INTEGER NOT NULL DEFAULT 0,
+        temps_jeu_ms   INTEGER NOT NULL DEFAULT 0,
+        journal        TEXT NOT NULL DEFAULT '',
+        valide_par     TEXT NOT NULL DEFAULT ''
+      );
+      CREATE INDEX IF NOT EXISTS idx_parties_verifiees_user ON parties_verifiees(LOWER(username), cree_le DESC);
+      CREATE INDEX IF NOT EXISTS idx_parties_verifiees_jeu ON parties_verifiees(jeu, fini_le DESC);
+
       -- LE JOURNAL DES CONNEXIONS, pour démasquer les multi-comptes. Une ligne
       -- par joueur, par jour, par adresse et par appareil — les connexions
       -- suivantes du même jour ne font que monter le compteur. On y range
@@ -1424,6 +1494,31 @@ async function incrementKikooz(username, delta) {
     [username, Math.trunc(Number(delta) || 0)]
   );
   return rows[0] ? rows[0].kikooz : null;
+}
+
+// Crédit ATOMIQUE d'XP pour un joueur hors ligne (même raison qu'incrementKikooz).
+// Renvoie le nouveau total, ou null si l'utilisateur n'existe pas.
+async function incrementXp(username, delta) {
+  const { rows } = await pool.query(
+    `UPDATE users SET xp = COALESCE(xp, 0) + $2, updated_at = now() WHERE username = $1 RETURNING xp`,
+    [username, Math.trunc(Number(delta) || 0)]
+  );
+  return rows[0] ? Number(rows[0].xp) : null;
+}
+
+// L'XP des médailles : inscrit au registre celles qui n'y sont pas encore, et
+// rend les classements (ranking_id) qu'on vient d'y inscrire — ceux-là, et
+// eux seuls, sont à payer. `medailles` : [{ rankingId, medal, xp }].
+async function marquerXpMedailles(username, jour, medailles) {
+  const nouvelles = [];
+  for (const m of medailles || []) {
+    const { rows } = await pool.query(
+      `INSERT INTO challenge_medailles_xp (username, ranking_id, awarded_day, medal, xp)
+       VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING RETURNING ranking_id`,
+      [String(username).toLowerCase(), String(m.rankingId), String(jour), String(m.medal), Math.trunc(Number(m.xp) || 0)]);
+    if (rows[0]) nouvelles.push(rows[0].ranking_id);
+  }
+  return nouvelles;
 }
 
 async function recordLogin(username) {
@@ -1997,12 +2092,15 @@ async function anonymiserJoueur(username) {
       ['contacts', 'contact_name', 'adresse'],
       ['blacklist', 'blocked_name', 'adresse'],
       ['swapou_parties', 'username', 'brut'],
+      ['parties_verifiees', 'username', 'brut'],
       ['connexions', 'username', 'brut'],
       // Ses paris : déjà payés ou bientôt sans objet. Les garder sous la
       // pierre tombale heurterait « un pari par joueur et par match » dès que
       // deux comptes supprimés auraient misé sur le même match.
       ['tournament_paris', 'username', 'brut'],
       ['challenge_paris', 'username', 'brut'],
+      // Le registre de l'XP de ses médailles : l'XP part avec le compte.
+      ['challenge_medailles_xp', 'username', 'brut'],
       // Ses quêtes : payées ou perdues, elles ne racontent plus rien.
       ['quetes_progres', 'username', 'brut'],
       ['quetes_visites', 'username', 'brut'],
@@ -2025,8 +2123,8 @@ async function anonymiserJoueur(username) {
     // d'un courrier, un don, un achat, un tournoi — prend la pierre tombale.
     const retirees = new Set(['push_subscriptions.username', 'trombinoscope.pseudo',
       'forum_topic_reads.username', 'forum_topic_follows.username', 'users.referred_by',
-      'swapou_parties.username', 'connexions.username', 'tournament_paris.username',
-      'challenge_paris.username', 'parties_differees.joueur_a', 'parties_differees.joueur_b']);
+      'swapou_parties.username', 'parties_verifiees.username', 'connexions.username', 'tournament_paris.username',
+      'challenge_paris.username', 'challenge_medailles_xp.username', 'parties_differees.joueur_a', 'parties_differees.joueur_b']);
     for (const [table, col] of RENOMMAGE_COLONNES) {
       if (retirees.has(`${table}.${col}`)) continue;
       const r = await client.query(
@@ -2098,6 +2196,7 @@ async function exporterDonnees(userId, username) {
     tournois: await q('SELECT tournament_id, seed, qualif_score, status, created_at FROM tournament_players WHERE LOWER(username) = $1', [u]),
     swapou_ia: await q('SELECT score, data, created_at FROM swapou_ia_scores WHERE LOWER(username) = $1 ORDER BY created_at', [u]),
     swapou_parties: await q('SELECT id, graine, source, perso, cree_le, fini_le, score_declare, score_rejoue, verdict, raison, coups, nb_coups, duree_ms, rythme FROM swapou_parties WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
+    parties_verifiees: await q('SELECT id, jeu, graine, mode, source, cree_le, fini_le, score_declare, score_verifie, verdict, raison, indices, classe, duree_ms, temps_jeu_ms FROM parties_verifiees WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     connexions: await q('SELECT jour, ip, xff, socket_ip, appareil, navigateur, origine, premiere, derniere, n FROM connexions WHERE LOWER(username) = $1 ORDER BY premiere', [u]),
     paris: await q('SELECT tournament_id, affiche, choix, mise, cote, statut, gain, cree_le, regle_le FROM tournament_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     paris_challenge: await q('SELECT jour, jeu, type, choix, mise, cote, statut, gain, cree_le, regle_le FROM challenge_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
@@ -2175,11 +2274,13 @@ const RENOMMAGE_COLONNES = [
   ['kikooz_gifts', 'recipient'],
   ['swapou_ia_scores', 'username'],
   ['swapou_parties', 'username'],
+  ['parties_verifiees', 'username'],
   ['connexions', 'username'],
   ['tournament_paris', 'username'],
   ['tournament_paris', 'choix'],
   ['challenge_paris', 'username'],
   ['challenge_paris', 'choix'],
+  ['challenge_medailles_xp', 'username'],
   ['quetes_progres', 'username'],
   ['quetes_visites', 'username'],
   ['quetes_contrats', 'username'],
@@ -2668,6 +2769,141 @@ async function purgerPartiesSwapou(jours) {
     `DELETE FROM swapou_parties WHERE fini_le IS NULL AND cree_le < now() - interval '2 days'`);
   const vieilles = await pool.query(
     'DELETE FROM swapou_parties WHERE cree_le < now() - make_interval(days => $1)',
+    [Math.max(1, Number(jours) || 0)]);
+  return orph.rowCount + vieilles.rowCount;
+}
+
+// ── Les parties vérifiées de MiniPixiz et Mini-Fever (parties_verifiees) ──
+// Le départ : la graine donnée. `ON CONFLICT DO NOTHING` — un même jeton ne
+// naît qu'une fois.
+async function creerPartieVerifiee(p) {
+  await pool.query(
+    `INSERT INTO parties_verifiees (id, jeu, username, graine, mode, source, jour)
+     VALUES ($1, $2, $3, $4, $5, 'serveur', $6) ON CONFLICT (id) DO NOTHING`,
+    [String(p.id), String(p.jeu), String(p.username || '').toLowerCase(), Number(p.graine) >>> 0,
+     Math.trunc(Number(p.mode) || 0), String(p.jour || '')]);
+}
+/**
+ * La fin : la partie rendue, son verdict. Rend false si ce jeton a DÉJÀ été
+ * rendu une fois (le rejeu d'un même jeton est refusé, même après un
+ * redémarrage du serveur qui aurait vidé la mémoire).
+ */
+async function finirPartieVerifiee(p) {
+  const valeurs = [String(p.id), String(p.jeu), String(p.username || '').toLowerCase(),
+    Number(p.graine) >>> 0, Math.trunc(Number(p.mode) || 0), String(p.source || 'serveur'),
+    String(p.jour || ''),
+    Number.isFinite(Number(p.scoreDeclare)) ? Math.round(Number(p.scoreDeclare)) : null,
+    Number.isFinite(Number(p.scoreVerifie)) ? Math.round(Number(p.scoreVerifie)) : null,
+    String(p.verdict || 'non_verifiable'), String(p.raison || '').slice(0, 300),
+    p.indices ? JSON.stringify(p.indices) : null, p.details ? JSON.stringify(p.details) : null,
+    !!p.classe,
+    Math.max(0, Math.min(Math.round(Number(p.dureeMs) || 0), 2147483647)),
+    Math.max(0, Math.min(Math.round(Number(p.tempsJeuMs) || 0), 2147483647)),
+    String(p.journal || '')];
+  // La ligne du départ existe d'ordinaire ; on ne la clôt que si elle est
+  // encore ouverte.
+  const maj = await pool.query(
+    `UPDATE parties_verifiees SET fini_le = now(), source = $6, jour = CASE WHEN $7::text = '' THEN jour ELSE $7::text END,
+       graine = CASE WHEN graine = 0 THEN $4::bigint ELSE graine END, mode = $5::int,
+       score_declare = $8, score_verifie = $9, verdict = $10, raison = $11, indices = $12,
+       details = $13, classe = $14, duree_ms = $15, temps_jeu_ms = $16, journal = $17
+     WHERE id = $1 AND fini_le IS NULL AND jeu = $2 AND LOWER(username) = $3 RETURNING id`, valeurs);
+  if (maj.rowCount) return true;
+  // Pas de ligne ouverte : soit le départ n'a jamais été écrit (la base était
+  // en retard), soit la partie a déjà été rendue.
+  const ins = await pool.query(
+    `INSERT INTO parties_verifiees (id, jeu, username, graine, mode, source, jour, fini_le,
+       score_declare, score_verifie, verdict, raison, indices, details, classe, duree_ms,
+       temps_jeu_ms, journal)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, now(), $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+     ON CONFLICT (id) DO NOTHING RETURNING id`, valeurs);
+  return ins.rowCount > 0;
+}
+async function partieVerifieeDejaRendue(id) {
+  const { rows } = await pool.query('SELECT fini_le FROM parties_verifiees WHERE id = $1', [String(id || '')]);
+  return !!(rows[0] && rows[0].fini_le);
+}
+async function lirePartieVerifiee(id) {
+  const { rows } = await pool.query('SELECT * FROM parties_verifiees WHERE id = $1', [String(id || '')]);
+  return rows[0] || null;
+}
+async function majVerdictPartieVerifiee(id, v) {
+  await pool.query(
+    `UPDATE parties_verifiees SET verdict = $2, score_verifie = $3, raison = $4,
+       indices = COALESCE($5, indices), details = COALESCE($6, details) WHERE id = $1`,
+    [String(id), String(v.verdict || 'non_verifiable'),
+     Number.isFinite(Number(v.scoreVerifie)) ? Math.round(Number(v.scoreVerifie)) : null,
+     String(v.raison || '').slice(0, 300),
+     v.indices ? JSON.stringify(v.indices) : null, v.details ? JSON.stringify(v.details) : null]);
+}
+async function classerPartieVerifiee(id, admin) {
+  await pool.query('UPDATE parties_verifiees SET classe = true, valide_par = $2 WHERE id = $1',
+    [String(id), String(admin || 'admin').slice(0, 60)]);
+}
+// La liste de l'admin, sans le journal (lourd : il se relit partie par partie).
+async function listerPartiesVerifiees(opts = {}) {
+  const cond = ['fini_le IS NOT NULL'];
+  const params = [];
+  if (opts.jeu) { params.push(String(opts.jeu)); cond.push(`jeu = $${params.length}`); }
+  if (opts.username) { params.push(String(opts.username).toLowerCase()); cond.push(`LOWER(username) = $${params.length}`); }
+  if (opts.verdict) { params.push(String(opts.verdict)); cond.push(`verdict = $${params.length}`); }
+  if (opts.depuis) { params.push(new Date(opts.depuis)); cond.push(`fini_le >= $${params.length}`); }
+  params.push(Math.max(1, Math.min(Number(opts.limit) || 200, 1000)));
+  const { rows } = await pool.query(
+    `SELECT id, jeu, username, graine, mode, source, cree_le, fini_le, jour, score_declare,
+            score_verifie, verdict, raison, indices, details, classe, duree_ms, temps_jeu_ms,
+            valide_par, length(journal)::int AS taille_journal
+       FROM parties_verifiees WHERE ${cond.join(' AND ')}
+      ORDER BY fini_le DESC LIMIT $${params.length}`, params);
+  return rows;
+}
+// Par joueur : combien de parties, combien écartées, le meilleur classé.
+async function bilanPartiesVerifiees(jeu, depuis) {
+  const { rows } = await pool.query(
+    `SELECT username, jeu,
+            COUNT(*)::int AS parties,
+            COUNT(*) FILTER (WHERE verdict = 'conforme')::int AS conformes,
+            COUNT(*) FILTER (WHERE verdict = 'ecart')::int AS ecarts,
+            COUNT(*) FILTER (WHERE verdict IN ('divergent', 'refuse'))::int AS ecartees,
+            COUNT(*) FILTER (WHERE verdict = 'non_verifiable')::int AS non_verifiables,
+            COUNT(*) FILTER (WHERE indices IS NOT NULL AND jsonb_array_length(indices) > 0)::int AS signalees,
+            MAX(score_verifie) FILTER (WHERE classe) AS meilleur_classe,
+            MAX(score_declare) AS meilleur_declare
+       FROM parties_verifiees
+      WHERE fini_le IS NOT NULL AND fini_le >= $1 AND ($2::text = '' OR jeu = $2::text)
+      GROUP BY username, jeu
+      ORDER BY COUNT(*) FILTER (WHERE verdict IN ('divergent', 'refuse')) DESC, MAX(score_declare) DESC NULLS LAST`,
+    [depuis ? new Date(depuis) : new Date(0), String(jeu || '')]);
+  return rows;
+}
+// Le meilleur score CLASSÉ par une partie vérifiée, par joueur et par jour —
+// sert à l'audit : un score au classement sans partie vérifiée derrière lui.
+async function meilleursVerifiesParJour(jeu, depuisJour) {
+  const { rows } = await pool.query(
+    `SELECT LOWER(username) AS username, jour, MAX(score_verifie)::int AS score
+       FROM parties_verifiees
+      WHERE jeu = $1 AND classe AND jour >= $2
+      GROUP BY LOWER(username), jour`,
+    [String(jeu), String(depuisJour || '')]);
+  return rows;
+}
+// Les archives du challenge, pour l'audit (lecture seule).
+async function archivesChallengeDepuis(rankingIds, depuisJour) {
+  const { rows } = await pool.query(
+    `SELECT day_key, ranking_id, username, score, data, updated_at
+       FROM challenge_score_archive
+      WHERE ranking_id = ANY($1) AND day_key >= $2
+      ORDER BY day_key DESC, score DESC`,
+    [rankingIds, String(depuisJour || '')]);
+  return rows;
+}
+// La rétention, comme Swapou : un jeton jamais rendu vit deux jours ; une
+// partie, le temps annoncé par la politique de confidentialité.
+async function purgerPartiesVerifiees(jours) {
+  const orph = await pool.query(
+    `DELETE FROM parties_verifiees WHERE fini_le IS NULL AND cree_le < now() - interval '2 days'`);
+  const vieilles = await pool.query(
+    'DELETE FROM parties_verifiees WHERE cree_le < now() - make_interval(days => $1)',
     [Math.max(1, Number(jours) || 0)]);
   return orph.rowCount + vieilles.rowCount;
 }
@@ -5373,6 +5609,43 @@ async function loadBouilleVariantes() {
     createdAt: r.created_at,
   }));
 }
+// ── Accessoires maison : le catalogue et le port (cf. server.js) ──
+async function chargerAccessoiresMaison() {
+  const { rows } = await pool.query('SELECT id, donnees FROM accessoires_maison ORDER BY created_at ASC, id ASC');
+  const out = [];
+  for (const r of rows) {
+    try { const a = JSON.parse(r.donnees); if (a && typeof a === 'object') out.push(Object.assign(a, { id: r.id })); }
+    catch (e) { /* une ligne illisible n'empêche pas les autres */ }
+  }
+  return out;
+}
+async function enregistrerAccessoireMaison(a) {
+  await pool.query(
+    'INSERT INTO accessoires_maison (id, donnees) VALUES ($1, $2)' +
+    ' ON CONFLICT (id) DO UPDATE SET donnees = EXCLUDED.donnees',
+    [String(a.id), JSON.stringify(a)]);
+}
+async function supprimerAccessoireMaison(id) {
+  await pool.query('DELETE FROM accessoires_maison WHERE id = $1', [String(id)]);
+  await pool.query('DELETE FROM accessoires_maison_port WHERE acc_id = $1', [String(id)]);
+}
+async function chargerPortMaison() {
+  const { rows } = await pool.query('SELECT username, acc_id FROM accessoires_maison_port');
+  const out = {};
+  for (const r of rows) out[String(r.username).toLowerCase()] = r.acc_id;
+  return out;
+}
+// `accId` vide : le joueur ne porte plus d'accessoire maison.
+async function definirPortMaison(username, accId) {
+  const u = String(username || '').toLowerCase();
+  if (!u) return;
+  if (!accId) { await pool.query('DELETE FROM accessoires_maison_port WHERE username = $1', [u]); return; }
+  await pool.query(
+    'INSERT INTO accessoires_maison_port (username, acc_id, updated_at) VALUES ($1, $2, now())' +
+    ' ON CONFLICT (username) DO UPDATE SET acc_id = EXCLUDED.acc_id, updated_at = now()',
+    [u, String(accId)]);
+}
+
 async function upsertBouilleVariante(v, rang) {
   await pool.query(
     'INSERT INTO bouille_variantes (id, nom, famille, type, idx, coiffure, paths, retire, rang, auteur, purge, anim)' +
@@ -5422,6 +5695,11 @@ module.exports = {
   deleteJamaNiveau,
   loadBouilleVariantes,
   upsertBouilleVariante,
+  chargerAccessoiresMaison,
+  enregistrerAccessoireMaison,
+  supprimerAccessoireMaison,
+  chargerPortMaison,
+  definirPortMaison,
   insertShopSale,
   bilanAchatsRevente,
   deleteAccessoryByShopId,
@@ -5442,6 +5720,18 @@ module.exports = {
   listerPartiesSwapou,
   bilanPartiesSwapou,
   purgerPartiesSwapou,
+  // MiniPixiz et Mini-Fever vérifiés
+  creerPartieVerifiee,
+  finirPartieVerifiee,
+  partieVerifieeDejaRendue,
+  lirePartieVerifiee,
+  majVerdictPartieVerifiee,
+  classerPartieVerifiee,
+  listerPartiesVerifiees,
+  bilanPartiesVerifiees,
+  meilleursVerifiesParJour,
+  archivesChallengeDepuis,
+  purgerPartiesVerifiees,
   noterConnexion,
   connexionsDe,
   purgerConnexions,
@@ -5628,6 +5918,8 @@ module.exports = {
   deleteQuizImage,
   getAppState,
   setAppState,
+  incrementXp,
+  marquerXpMedailles,
   prunosticsCagnotte,
   prunosticsCagnotteAjouter,
   prunosticsCagnotteVider,

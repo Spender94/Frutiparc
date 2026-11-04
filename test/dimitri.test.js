@@ -65,3 +65,13 @@ test('le Prunostiqueur du mois : le sacré, son bénéfice, son titre, la cagnot
   assert.match(sansObjet, /1 pari gagné sur 3/);
   assert.match(Dimitri.INTRO, /Prunostiqueur du mois/);
 });
+
+test('le message du jour : ce qui tombe ensuite le complète, sous l’heure', () => {
+  const avant = Dimitri.messageGrosCoups([{ id: 1, parieur: 'Noisette', quoi: 'Myrtille en or à Swapou 2', mise: 50, cote: 3, gain: 150 }]);
+  const ajout = Dimitri.messageGrosCoups([{ id: 2, parieur: 'Cassis', quoi: 'la victoire de Sureau', mise: 20, cote: 6, gain: 120 }]);
+  const m = Dimitri.completerMessageDuJour(avant + '\n', ajout, '14 h 05');
+  assert.ok(m.startsWith(avant.trimEnd()), 'le message d’origine reste en tête');
+  assert.match(m, /\n\n\[b\]— Mise à jour de 14 h 05 —\[\/b\]\n\n/);
+  assert.ok(m.endsWith(ajout));
+  assert.match(m, /@Noisette avait misé[\s\S]*@Cassis avait misé/);
+});

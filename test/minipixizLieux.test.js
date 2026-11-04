@@ -159,7 +159,8 @@ test('le donjon vaincu paie — le diamant, le rang suivant, la rangée de l\'in
   const page = fsMod.readFileSync(path.join(__dirname, '../public/minipixiz/index.html'), 'utf8');
   assert.match(page, /if \(nom === 'donjonGagne'\) \{[\s\S]*?gainsDonjon = info \|\| \{\};[\s\S]*?plateforme\.ecrire\(avant\);/);
   assert.match(page, /if \(client\.cine && client\.cine\.phase === 'diamant'\) return;/);
-  assert.match(page, /if \(nom === 'rideau'\) \{ ouvrirMenu\(\); direLesGainsDuDonjon\(\); return; \}/);
+  // (L'arbre creux y ajoute ce que le serveur dit de sa partie rejouée.)
+  assert.match(page, /if \(nom === 'rideau'\) \{ [^}]*ouvrirMenu\(\); direLesGainsDuDonjon\(\);[^}]*return; \}/);
   assert.match(page, /un diamant de plus dans le sac/);
   assert.match(page, /Ornegon est libéré !/);
 });
@@ -642,7 +643,8 @@ test('la page charge les quatre lieux, et chacun est atteignable', () => {
     assert.match(html, new RegExp('src="/minipixiz/' + f + '\\.js"'));
   }
   assert.match(html, /ouvrirLieu\('Donjon'\)/);
-  assert.match(html, /ouvrirLieu\('Arbre'\)/);
+  // L'arbre part avec la graine du serveur (sa partie est rejouée).
+  assert.match(html, /ouvrirLieu\('Arbre', partie\)/);
   assert.match(html, /ouvrirLieu\('ArcEnCiel'\)/);
   assert.match(html, /ouvrirGromelin\(\)/);
   assert.match(html, /client\.nouveauLieu\(/);

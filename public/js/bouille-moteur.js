@@ -81,6 +81,14 @@
   }
 
   // ── generalPalette (loader_bouille.swf, _global.generalPalette) ──────────
+  /*
+   * L'ACCESSOIRE « CHAUVE » : type 0 (« Rien ») et cette variante-ci, « ZZ » en
+   * base 62 — la plus haute que deux caractères puissent écrire, qu'aucun
+   * rouleau n'atteint (l'admin borne les variantes publiées à 61). Le serveur
+   * l'offre à tous (CHAUVE_SUFFIX9 = « 0ZZ000000 »).
+   */
+  const CHAUVE_VARIANTE = 62 * 62 - 1;
+
   const PALETTE = [
     [255, 231, 206], [252, 220, 216], [251, 200, 190], [250, 180, 164], [230, 155, 80],
     [215, 125, 60], [200, 100, 40], [160, 100, 45], [138, 87, 37], [108, 68, 30],
@@ -697,6 +705,10 @@
     this.racine.s = s;
     this.etat = { eyeId, eyeSc, hairId, mouthId, faceColor, secondColor,
       accId, accSecId, accColor1, accColor2, accColor3, famille: n(0) };
+    // L'accessoire « Chauve » : type « Rien », variante hors de tout rouleau
+    // (cf. CHAUVE_VARIANTE). Le dessin s'en charge — `dessinerClip` tond la
+    // coiffure à chaque image, y compris pendant une émote qui la remonte.
+    this.chauve = accId === 0 && accSecId === CHAUVE_VARIANTE;
     // `apply(s)` du SWF pose ces douze valeurs en VARIABLES DE RACINE — c'est
     // là que `applyColor` va chercher `faceColor` quand une pièce se recolore
     // toute seule. Sans elles, la fonction rendait la palette 0 à tout le monde.
@@ -1884,12 +1896,37 @@
     return grad;
   };
 
+  /*
+   * LA TONTE — ce que l'accessoire « Chauve » retire.
+   *
+   * La coiffure n'est pas un calque à part : c'est l'image `hairId + 1` des
+   * rouleaux `ca` (devant) et `cb` (derrière), et SOUS leur clip `c` vivent
+   * ensemble les cheveux (le sous-clip `col`, teint de la seconde couleur ;
+   * `col3`, teint de la peau ; des formes en couleur fixe — reflets, ombres,
+   * les coiffes de laine des coupes 1 à 3) et les rouleaux d'accessoire
+   * (`acc`, `acc2`…). Relevé sur les 67 coupes de la famille 0 : le crâne,
+   * lui, est dessiné par le visage. Tondre, c'est donc ne garder sous ces deux
+   * `c` que les rouleaux d'accessoire.
+   *
+   * On le décide AU DESSIN plutôt qu'en marquant les clips dans `definir` :
+   * une émote remonte la tête, et des clips neufs, non marqués, auraient
+   * rendu ses cheveux au chauve le temps d'un rire.
+   */
+  function sousCoiffure(clip) {
+    const p = clip && clip.nom === 'c' ? clip.parent : null;
+    return !!(p && (p.nom === 'ca' || p.nom === 'cb') && p.parent && p.parent.nom === 'face');
+  }
+  const RE_ROULEAU_ACC = /^acc\d*$/;
+
   // Dessine un clip : ses enfants par profondeur croissante, avec les masques.
   Moteur.prototype.dessinerClip = function (ctx, clip, M, cx, alpha) {
     if (!clip.visible) return;
     // Le marqueur d'atelier ne se dessine pas (cf. definir) : il couvrirait
     // toute la bouille d'un aplat.
     if (clip.marqueur) return;
+    // Un chauve : sous la coiffure, seuls les rouleaux d'accessoire restent.
+    const tondre = this.chauve && sousCoiffure(clip);
+    const garder = (e) => !tondre || RE_ROULEAU_ACC.test(e.nom || '');
     const mc = clip.teinte ? cxTeinte(clip.teinte) : clip.cxPlacement;
     const cxi = composerCx(cx, mc || null);
     const ai = alpha * (clip.alpha / 100);
@@ -1908,13 +1945,14 @@
         ctx.clip(chemin, 'evenodd');
         i++;
         while (i < profs.length && profs[i] <= e.masque) {
-          this.dessinerEnfant(ctx, clip.enfants.get(profs[i]), Mi, cxi, ai);
+          const sous = clip.enfants.get(profs[i]);
+          if (garder(sous)) this.dessinerEnfant(ctx, sous, Mi, cxi, ai);
           i++;
         }
         ctx.restore();
         continue;
       }
-      this.dessinerEnfant(ctx, e, Mi, cxi, ai);
+      if (garder(e)) this.dessinerEnfant(ctx, e, Mi, cxi, ai);
       i++;
     }
   };
@@ -2572,7 +2610,7 @@
 
   const API = {
     Moteur, Bouille, Clip,
-    PALETTE, HUMEURS, ANIMATIONS, NOMS_HUMEURS, NOMS_ANIMATIONS, ETIQUETTES,
+    PALETTE, CHAUVE_VARIANTE, HUMEURS, ANIMATIONS, NOMS_HUMEURS, NOMS_ANIMATIONS, ETIQUETTES,
     decode62, encode62, teindre, cxTeinte, composerCx, composerM, etatsDe, facteurPour,
     // Les prunelles : le rouleau d'iris d'une famille, et la greffe de celles
     // qu'on récolte ailleurs (cf. scripts/extract-prunelles-bouille.js).

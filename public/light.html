@@ -6110,9 +6110,21 @@
     // Une INCARNATION ne se compose pas d'un suffixe : le serveur envoie l'état
     // complet — la bouille principale du joueur, incarnée —, on le pose tel
     // quel. (L'iris animé tourne dans l'aperçu, comme il tournera partout.)
-    if (it.kind === "incarnation" && it.etat) return previewIframe(it.etat);
+    if (it.kind === "incarnation" && it.etat) return apercuBoutique(it.etat);
     // Accessoire : posé sur la bouille du joueur, comme l'aperçu du bureau.
-    return previewIframe(buildState(myBase, it.suffix9, null));
+    return apercuBoutique(buildState(myBase, it.suffix9, null));
+  }
+  /*
+   * L'ÉCRAN DE LA BOUTIQUE EST UN ÉCRAN — cadré comme ceux des salons.
+   *
+   * `shopScreen` fait cent pixels, comme `cp.FrutiScreen`, et la bouille y
+   * était posée bord à bord : le bord d'un chapeau de shérif, la visière d'une
+   * casquette, la pointe d'un bonnet sortaient de la scène et disparaissaient.
+   * On achetait donc un accessoire qu'on n'avait jamais vu en entier — et que
+   * les salons, eux, montrent entier (`MARGE_ECRAN`). Même air ici.
+   */
+  function apercuBoutique(etat) {
+    return FPBouilleVignette.html(etat || DEFAULT_BOUILLE, { marge: FPBouilleVignette.MARGE_ECRAN });
   }
 
   function renderShopFiche() {

@@ -97,6 +97,8 @@
 <script src="/minifever/engine.js"></script>
 <script src="/minifever/client.js"></script>
 <script src="/minifever/jeux.js"></script>
+<script src="/js/journal-partie.js"></script>
+<script src="/minifever/rejeu.js"></script>
 <script>
 (function () {
 'use strict';
@@ -114,7 +116,7 @@ let client = null;
 let socle = null;
 let modeChoisi = 'menu';            // l'écran d'accueil officiel, d'abord
 let enCours = null;                 // la clef de l'épreuve à l'écran
-const gagnees = new Set();          // celles remportées dans la partie : les pictos
+let demandes = 0;                   // la dernière demande de partie (cf. jouer)
 
 /*
  * Les modes, sous la scène — un raccourci : le VRAI choix se fait sur l'écran
@@ -155,9 +157,31 @@ function direEnPartie(on) {
 }
 window.addEventListener('pagehide', () => direEnPartie(false));
 
+/*
+ * L'ARCADE SE PROUVE (rejeu.js, et antitricheLight.js côté serveur). Avant la
+ * première épreuve, on demande au serveur la graine de la partie et le jeton
+ * qui la scelle (trois secondes au plus) ; l'enregistreur se branche sur le
+ * socle AVANT son départ, et le journal part avec le bilan en fin de partie.
+ * Sans session ou sans réponse, la partie se joue sur une graine locale —
+ * elle ne se classera pas, et le bandeau le dira.
+ */
+function demanderPartie(palier) {
+  if (!sid) return Promise.resolve(null);
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const minuteur = setTimeout(() => { if (ctrl) ctrl.abort(); }, 3000);
+  return fetch('/api/minifever/partie', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid, palier }), signal: ctrl ? ctrl.signal : undefined,
+  })
+    .then((r) => r.json())
+    .then((j) => (j && j.ok && j.jeton ? { graine: Number(j.graine) >>> 0, jeton: j.jeton } : null))
+    .catch(() => null)
+    .then((p) => { clearTimeout(minuteur); return p; });
+}
+
 function jouer() {
-  gagnees.clear();
   enCours = null;
+  const n = ++demandes;
   const m = MODES.find((x) => x.id === modeChoisi) || MODES[0];
   if (m.id === 'menu') {
     // L'écran d'accueil : pas une partie — le voyant reste éteint.
@@ -167,13 +191,32 @@ function jouer() {
     majEtat();
     return;
   }
-  socle = client.nouvellePartie(
-    m.id === 'fever' ? E.Fever : E.Arcade,
-    JEUX,
-    m.id === 'fever' ? {} : { palier: m.palier });
-  client.demarrer();
-  direEnPartie(true);
-  majEtat();
+  if (m.id === 'fever') {
+    socle = client.nouvellePartie(E.Fever, JEUX, {});
+    client.demarrer();
+    direEnPartie(true);
+    majEtat();
+    return;
+  }
+  majEtat('préparation de la partie…');
+  demanderPartie(m.palier).then((partie) => {
+    if (n !== demandes) return;       // le joueur a choisi autre chose entre-temps
+    const verif = { partie, enregistreur: null };
+    const graine = partie ? partie.graine : (Math.floor(Math.random() * 4294967296) >>> 0);
+    // Le socle s'enregistre dès sa construction : `nouvellePartie` le
+    // démarre aussitôt, et la première épreuve se tire au démarrage.
+    class ArcadeVerifiee extends E.Arcade {
+      constructor(o) {
+        super(o);
+        verif.enregistreur = window.MinifeverRejeu.brancher(this, graine);
+      }
+    }
+    socle = client.nouvellePartie(ArcadeVerifiee, JEUX, { palier: m.palier });
+    socle.verif = verif;
+    client.demarrer();
+    direEnPartie(true);
+    majEtat();
+  });
 }
 
 function majEtat(texte) {
@@ -226,6 +269,10 @@ const MOTIFS = {
   partie: 'le serveur a refusé cette partie',
   niveau: 'le serveur a refusé cette partie',
   palier: 'ce palier n\'est pas classé',
+  partie_refusee: 'le serveur n\'a pas retrouvé cette partie en la rejouant',
+  partie_non_verifiee: 'partie jouée sans le serveur : non classée',
+  jeton: 'jeton de partie refusé',
+  jeton_deja_rendu: 'cette partie a déjà été rendue',
 };
 function finArcade(d) {
   majEtat(d.gagnee
@@ -236,8 +283,10 @@ function finArcade(d) {
   const dire = (t) => { if (socle === cette) $('etat').textContent = base + ' · ' + t; };
   if (!sid) { dire('connecte-toi pour enregistrer tes scores'); return; }
   if (!(d.niveau > 0)) { dire('aucune épreuve remportée : rien à classer'); return; }
+  const verif = (cette && cette.verif) || {};
+  if (!verif.partie || !verif.enregistreur) { dire('score NON enregistré : ' + MOTIFS.partie_non_verifiee); return; }
   const corps = JSON.stringify({ sid, palier: d.palier, niveau: d.niveau, jouees: d.jouees,
-    gagnee: d.gagnee, gagnees: [...gagnees] });
+    gagnee: d.gagnee, jeton: verif.partie.jeton, journal: verif.enregistreur.journal() });
   let essais = 0;
   const envoyer = () => {
     essais++;
@@ -284,7 +333,6 @@ C.charger('/minifever/sprites/', (c) => {
         return;
       }
       if (nom === 'jeu') enCours = d.cle;
-      else if (nom === 'resultat' && d.gagne && enCours) gagnees.add(enCours);
       if (nom === 'finPartie') {
         direEnPartie(false);
         if (modeChoisi === 'fever') finFever(d); else finArcade(d);

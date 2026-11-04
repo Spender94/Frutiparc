@@ -333,6 +333,38 @@
   }
 
   /*
+   * UNE FAMILLE NEUVE, MONTÉE COMME CELLE DU SITE — pour les ESSAIS.
+   *
+   * L'atelier et l'admin montrent des accessoires qui n'existent pas encore
+   * (un SVG qu'on vient de déposer) ou qu'on veut voir sans toucher à la
+   * famille partagée de la page. Chacun refaisait donc SA famille à la main :
+   * le fichier brut, puis — parfois — le catalogue, parfois sans les index,
+   * jamais les prunelles ni le maquillage. Autant de façons de montrer autre
+   * chose que ce que porteront les bouilles.
+   *
+   * Ici, la recette de `famille()` au mot près — mêmes greffes, même catalogue,
+   * mêmes index —, sans le cache (chaque essai repart d'un rouleau propre),
+   * puis les ESSAIS par-dessus, à la place qu'ils auraient s'ils étaient
+   * publiés maintenant. Rend { defs, essais: [résultat d'injecter | null] }.
+   */
+  function familleNeuve(n, essais) {
+    if (FAMILLES.indexOf(n) < 0) n = FAMILLE_DE_REPLI;
+    return Promise.all([Swf.charger(DOSSIER + 'famille' + n + '.swf'), variantes(), prunelles(), maquillage()])
+      .then(function (r) {
+        var defs = r[0];
+        try { if (r[2]) M.grefferPrunelles(defs, r[2]); } catch (e) { /* sans prunelles */ }
+        try { if (r[3]) M.grefferMaquillage(defs, r[3]); } catch (e) { /* sans maquillage */ }
+        injecterVariantes(defs, n, r[1]);
+        var V = global.FPBouilleVariante;
+        var faits = (essais || []).map(function (e) {
+          if (!V || !e) return null;
+          try { return V.injecter(defs, e); } catch (err) { return null; }
+        });
+        return { defs: defs, essais: faits };
+      });
+  }
+
+  /*
    * LES ÉMOTES QUI VIENNENT D'AILLEURS.
    *
    * Trois animations empruntent leurs dessins à une autre famille — la fumée
@@ -623,6 +655,8 @@
     // La famille chargée, variantes injectées et prunelles greffées — le seul
     // point de passage, pour que les index veuillent dire la même chose partout.
     famille: famille,
+    // La même famille, NEUVE (hors cache), avec des variantes d'essai en plus.
+    familleNeuve: familleNeuve,
     //  est REMPLACÉ par oublierFamilles : on l'expose par une
     // fonction, sinon on servirait pour toujours la première table.
     familles: function () { return chargements; },

@@ -24,6 +24,13 @@ const { spawn } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 const PORT = 3432;
 const BASE = `http://127.0.0.1:${PORT}`;
+// Mini-Fever ne classe plus qu'une partie REJOUÉE (antitricheLight.js) : le
+// test joue une vraie arcade avec le moteur et signe son jeton « donné il y a
+// quelques minutes » avec le secret qu'il passe au serveur.
+const AT = require(path.join(ROOT, 'antitricheLight.js'));
+const AIDE_AT = require('./aideAntitriche.js');
+const SECRET_AT = 'banc-inventaire-' + Date.now().toString(36) + '-0123456789';
+AT.poserSecret(SECRET_AT);
 const RUN = Date.now().toString(36).slice(-5);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -33,7 +40,7 @@ before(async () => {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      XMLSOCKET_PORT: '5238', FRUTISCORE_PORT: '5239',
+      XMLSOCKET_PORT: '5238', FRUTISCORE_PORT: '5239', ANTITRICHE_SECRET: SECRET_AT,
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -80,9 +87,9 @@ test('les trois rubriques du bureau existent au mobile, et chaque objet est dans
 
   const neuf = await inventaire(sid);
   assert.equal(neuf.ok, true);
-  // Les quatre accessoires d'origine sont donnés à tout le monde ; un compte
-  // neuf n'a en revanche ni fond ni picto.
-  assert.equal(neuf.accessoires.length, 4, 'les accessoires par défaut');
+  // Les quatre accessoires d'origine, et le Chauve, sont donnés à tout le
+  // monde ; un compte neuf n'a en revanche ni fond ni picto.
+  assert.equal(neuf.accessoires.length, 5, 'les accessoires par défaut');
   assert.deepEqual(neuf.fonds, [], 'aucun fond au départ');
   assert.deepEqual(neuf.pictos, [], 'aucun picto au départ');
   assert.equal(neuf.fond, null, 'aucun fond posé');
@@ -93,7 +100,7 @@ test('les trois rubriques du bureau existent au mobile, et chaque objet est dans
 
   const apres = await inventaire(sid);
   assert.equal(apres.fonds.length, 2, 'les deux fonds achetés sont là');
-  assert.equal(apres.accessoires.length, 4,
+  assert.equal(apres.accessoires.length, 5,
     "un fond d'écran ne doit PAS se retrouver parmi les accessoires");
   const noms = apres.fonds.map((f) => f.nom).sort();
   assert.deepEqual(noms, ['Chevalier moutarde', 'Mini-Wave Nostromo']);
@@ -108,22 +115,24 @@ test('les trois rubriques du bureau existent au mobile, et chaque objet est dans
 test('les pictos remontent des gameItems, groupables par jeu', async () => {
   const sid = await sidPour('lpic' + RUN);
 
-  // Une partie de Mini-Fever : cinq épreuves remportées, donc cinq pictos.
+  // Une partie de Mini-Fever, vraiment jouée : cinq épreuves remportées, et
+  // un picto par épreuve DIFFÉRENTE gagnée (rejouée par le serveur).
+  const c = AIDE_AT.arcadeConstruite(9090, 0, 5);
+  const jeton = AT.creerJeton({ jeu: 'minifever', username: ('lpic' + RUN).toLowerCase(), mode: 0,
+    graine: 9090, t: Date.now() - (c.minimumMs + 60000) }).jeton;
   const r = await fetch(BASE + '/api/minifever/score', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sid, palier: 0, niveau: 5, jouees: 5,
-      gagnees: ['gameBasket', 'gameLander', 'gameFlower', 'gamePong', 'gameAstero'],
-    }),
+    body: JSON.stringify(Object.assign({ sid, jeton }, c.corps)),
   }).then((x) => x.json());
-  assert.equal(r.ok, true);
+  assert.equal(r.ok, true, JSON.stringify(r));
 
   const inv = await inventaire(sid);
-  assert.equal(inv.pictos.length, 5, 'les cinq pictos entrent à l’album');
-  const panier = inv.pictos.find((p) => p.id === '$fvBasket');
-  assert.equal(panier.nom, 'Panier');
-  assert.equal(panier.jeu, 'Mini-Fever', 'le jeu sert de titre de rubrique');
-  assert.equal(panier.url, '/api/picto/%24fvBasket');
+  const attendus = [...new Set(c.gagnees)];
+  assert.equal(inv.pictos.length, attendus.length, 'un picto par épreuve gagnée entre à l’album');
+  const p0 = inv.pictos[0];
+  assert.ok(/^\$fv/.test(p0.id) && p0.nom, 'un picto de Mini-Fever, avec son nom');
+  assert.equal(p0.jeu, 'Mini-Fever', 'le jeu sert de titre de rubrique');
+  assert.equal(p0.url, '/api/picto/' + encodeURIComponent(p0.id));
 });
 
 test('poser un fond au mobile écrit la préférence n° 5 du bureau, au format de WallPaperMng', async () => {

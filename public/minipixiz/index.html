@@ -325,6 +325,8 @@
 <script src="/minipixiz/langue.js"></script>
 <script src="/minipixiz/missions.js"></script>
 <script src="/minipixiz/lieux.js"></script>
+<script src="/js/journal-partie.js"></script>
+<script src="/minipixiz/rejeu.js"></script>
 <script src="/minipixiz/sorts.js"></script>
 <script src="/minipixiz/game.js"></script>
 <script src="/minipixiz/plateforme.js"></script>
@@ -810,7 +812,21 @@
             }
             fermerMenu(); ouvrirLieu('Donjon'); irisVersJeu(); return;
           }
-          if (lieu.va === 'tree') { fermerMenu(); ouvrirLieu('Arbre'); irisVersJeu(); return; }
+          if (lieu.va === 'tree') {
+            // L'arbre creux est classé : on demande d'abord au serveur la
+            // graine et le jeton de la partie (plateforme.demanderPartieArbre,
+            // trois secondes au plus). Un second clic pendant l'attente ne
+            // lance pas deux parties.
+            if (arbreEnPreparation) return;
+            arbreEnPreparation = true;
+            if (plateforme.sid) menu.dire('L\u2019arbre se prépare…');
+            plateforme.demanderPartieArbre().then(function (partie) {
+              arbreEnPreparation = false;
+              menu.dire('');
+              fermerMenu(); ouvrirLieu('Arbre', partie); irisVersJeu();
+            });
+            return;
+          }
           if (lieu.va === 'rainbow') {
             if (!plateforme.carte.$rainbow.$f) {
               menu.dire('Il n\'y a pas d\'arc-en-ciel aujourd\'hui.');
@@ -993,15 +1009,45 @@
         menu.dire(phrases.join(' '));
       }
 
-      function ouvrirLieu(classe) {
+      /*
+       * L'ARBRE CREUX VÉRIFIÉ. Le serveur a donné la graine (`partie`) ;
+       * l'enregistreur (rejeu.js) note chaque pas du moteur, et le journal
+       * part avec le score en fin de partie. Ce que le serveur en dit se lit
+       * au retour dans la clairière.
+       */
+      var arbreEnPreparation = false;
+      var classementArbre = null;
+      var MOTIFS_ARBRE = {
+        hors_ligne: 'partie jouée sans le serveur : elle n\u2019est pas classée.',
+        partie_refusee: 'le serveur n\u2019a pas retrouvé cette partie en la rejouant : elle n\u2019est pas classée.',
+        jeton: 'partie non classée (jeton de partie refusé).',
+        jeton_deja_rendu: 'cette partie a déjà été rendue.',
+        not_authenticated: 'ta session a expiré : reconnecte-toi pour être classé.',
+        reseau: 'le serveur n\u2019a pas répondu : partie non classée.',
+      };
+      function direLeClassementDeLArbre() {
+        if (!classementArbre) return;
+        var r = classementArbre;
+        classementArbre = null;
+        if (r.ok) {
+          menu.dire(r.updated ? 'Arbre creux : ' + r.score + ' points, au classement du jour !'
+            : 'Arbre creux : ' + r.score + ' points (ton meilleur du jour reste ' + r.oldScore + ').');
+        } else if (MOTIFS_ARBRE[r.error]) {
+          menu.dire('Arbre creux : ' + MOTIFS_ARBRE[r.error]);
+        }
+      }
+
+      function ouvrirLieu(classe, partie) {
         direEnPartie(true);
         var avant = JSON.parse(JSON.stringify(plateforme.carte));
+        var enregistreur = null;
+        var rentre = false;
         var l = client.nouveauLieu(classe, {
           carte: plateforme.carte,
           // La même règle qu'en forêt : une fée en mission ou en bocal ne
           // descend pas au donjon non plus.
           fee: feeCouranteSeed(),
-          graine: Math.floor(Math.random() * 1e9),
+          graine: partie ? partie.graine : Math.floor(Math.random() * 1e9),
           surEvenement: function (nom, info) {
             // Les impys du donjon se comptent au même endroit que ceux de la
             // forêt : par rang, dans $stat.$kill (Imp.harm).
@@ -1038,15 +1084,23 @@
             // Perdu : le client joue le fondu et le panneau, puis `rideau`.
             // Gagné (le donjon vaincu) : le client joue la chute du diamant et
             // l'éclair, puis `rideau` aussi — et la clairière dit la nouvelle.
-            if (nom === 'rideau') { ouvrirMenu(); direLesGainsDuDonjon(); return; }
+            if (nom === 'rideau') { rentre = true; ouvrirMenu(); direLesGainsDuDonjon(); direLeClassementDeLArbre(); return; }
             if (nom !== 'finPartie') return;
             // L'ARBRE CREUX est le mode classé : son score part au challenge du
             // jour à CHAQUE fin de partie, et le serveur garde le meilleur.
             // C'est le score de l'arbre (base/Tree : les grappes fois le
             // multiplicateur), pas celui du moteur de puzzle — d'où la lecture
-            // sur le lieu et non sur `info`.
-            if (classe === 'Arbre' && client.lieu && client.lieu.score > 0) {
-              plateforme.envoyerScore(client.lieu.score);
+            // sur le lieu et non sur `info`. Il part avec le journal de la
+            // partie : le serveur la rejoue avant de la classer.
+            if (classe === 'Arbre' && client.lieu && client.lieu.score > 0 && plateforme.sid) {
+              var journalArbre = enregistreur ? enregistreur.journal() : '';
+              plateforme.envoyerPartieArbre(partie, client.lieu.score, journalArbre)
+                .then(function (r) {
+                  classementArbre = r;
+                  if (!r.ok) console.warn('[arbre] partie non classée :', r.error, r.raison || '');
+                  // Déjà rentré à la clairière : on le dit tout de suite.
+                  if (rentre) direLeClassementDeLArbre();
+                });
             }
             plateforme.ecrire(avant);
             // `finPartie` marque la fin d'un NIVEAU, pas celle du lieu.
@@ -1103,6 +1157,9 @@
             }
           },
         });
+        // L'enregistreur se branche AVANT la première image : rien ne lui
+        // échappe, et le pas qu'il arrondit est celui que le moteur joue.
+        if (classe === 'Arbre' && l && window.MinipixizRejeu) enregistreur = window.MinipixizRejeu.brancher(l);
         client.demarrer();
         return l;
       }

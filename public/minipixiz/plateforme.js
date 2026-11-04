@@ -58,6 +58,12 @@ const RELAIS = [
 // Sans sac — $bag à zéro — il n'y a AUCUNE place, et c'est voulu : Item.getRandomId
 // ne fait alors tomber que des sacs. Le premier sac ouvre le jeu.
 const PLACES_SAC = [0, 4, 6, 8, 9];
+// L'arbre creux vérifié : trois secondes pour obtenir la graine du serveur, et
+// une minute de nouveaux essais (toutes les cinq secondes) pour rendre la
+// partie quand le serveur ne répond pas.
+const DELAI_PARTIE = 3000;
+const ENVOI_ESSAIS = 12;
+const ENVOI_DELAI = 5000;
 const IT_CLE = 31;                    // it/Key  — flGeneral : va au trousseau
 const IT_SAC = 80;                    // it/Bag  — flGeneral : agrandit l'inventaire
 const IT_FLASQUE = 30;
@@ -576,28 +582,69 @@ class Plateforme {
   }
 
   /**
-   * Le score d'une partie part au classement du jour.
+   * L'ARBRE CREUX SE PROUVE (rejeu.js, et antitricheLight.js côté serveur).
+   *
+   * Le score ne part plus seul : il voyageait par la porte générique des
+   * scores (saveScore), et une ligne de console suffisait à en poser un faux.
+   * Au départ, on demande au serveur la graine de la partie et le jeton qui
+   * la scelle ; à la fin, on lui rend le journal de ce qu'on a joué, et il
+   * rejoue la partie pour la classer.
+   *
+   * Sans session, ou sans réponse dans les trois secondes, la partie se joue
+   * quand même (graine locale) — mais elle ne se classera pas, et on le dit.
+   *
+   * @returns {Promise<{id, graine, jeton}|null>}
+   */
+  demanderPartieArbre() {
+    if (!this.sid) return Promise.resolve(null);
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const minuteur = setTimeout(() => { if (ctrl) ctrl.abort(); }, DELAI_PARTIE);
+    return fetch('/api/minipixiz/arbre/partie', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: this.sid }), signal: ctrl ? ctrl.signal : undefined,
+    })
+      .then((r) => r.json())
+      .then((j) => (j && j.ok && j.jeton ? { id: j.id, graine: Number(j.graine) >>> 0, jeton: j.jeton } : null))
+      .catch(() => null)
+      .then((p) => { clearTimeout(minuteur); return p; });
+  }
+
+  /**
+   * Le score d'une partie d'arbre part au classement du jour, AVEC sa preuve.
    *
    * Le challenge quotidien veut le meilleur score DU JOUR, pas le record
    * personnel : on envoie donc à CHAQUE fin de partie, et c'est le serveur qui
    * garde le meilleur (persistScore). N'envoyer qu'au record personnel
    * priverait de classement le joueur déjà bien installé.
    *
-   * Sans session (le jeu ouvert hors du site), il n'y a personne à classer.
+   * Un serveur injoignable (mise en ligne, réseau coupé) se réessaie une
+   * minute durant ; un refus, lui, est définitif et se dit.
    *
+   * @param {{jeton}} partie  ce que demanderPartieArbre a rendu
    * @param {number} score
-   * @param {string} [donnee]  la donnée annexe du classement (vide ici)
+   * @param {string} journal  le journal de l'enregistreur (rejeu.js)
+   * @returns {Promise<object>} la réponse du serveur ({ ok, error, raison… })
    */
-  envoyerScore(score, donnee) {
+  envoyerPartieArbre(partie, score, journal) {
     const n = Math.max(0, Math.round(Number(score) || 0));
-    if (!this.sid || n <= 0) return Promise.resolve({ ok: false });
-    const p = new URLSearchParams({
-      sid: this.sid, game: 'minipixiz', m: '0', score: String(n),
-      data: donnee === undefined || donnee === null ? '' : String(donnee),
-    });
-    return fetch('/api/saveScore?' + p.toString())
-      .then((r) => r.json())
-      .catch(() => ({ ok: false }));
+    if (!this.sid || n <= 0) return Promise.resolve({ ok: false, error: 'rien' });
+    if (!partie || !partie.jeton) return Promise.resolve({ ok: false, error: 'hors_ligne' });
+    const corps = JSON.stringify({ sid: this.sid, jeton: partie.jeton, score: n, journal: String(journal || '') });
+    let essais = 0;
+    const envoyer = () => {
+      essais++;
+      return fetch('/api/minipixiz/arbre/fin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps,
+      })
+        .then((r) => r.json().catch(() => null))
+        .then((j) => (j && typeof j === 'object' ? j : { ok: false, error: 'reseau' }))
+        .catch(() => ({ ok: false, error: 'reseau' }))
+        .then((j) => {
+          if (j.error !== 'reseau' || essais >= ENVOI_ESSAIS) return j;
+          return new Promise((res) => setTimeout(res, ENVOI_DELAI)).then(envoyer);
+        });
+    };
+    return envoyer();
   }
 
   // Où le joueur peut reprendre : les relais acquis, tous les vingt niveaux

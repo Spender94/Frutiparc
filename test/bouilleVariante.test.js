@@ -564,14 +564,15 @@ test('l’aperçu d’import rejoue les variantes déjà publiées', async () =>
   // voisinage qui n'est pas celui du site.
   const ap = /function vaApercu\(canvas, paths, type\) \{[\s\S]*?\n\}/.exec(ADMIN);
   assert.ok(ap, 'vaApercu');
-  assert.match(ap[0], /vaCatalogue\(\)/);
-  assert.match(ap[0], /deja\.forEach\(/);
-  assert.match(ap[0], /index: \(v\.index == null \? undefined : v\.index\)/);
-  assert.match(ap[0], /vide: !\(v\.paths && v\.paths\.length\)/);
-  // La demande du catalogue ne part qu'une fois, et toute publication ou tout
-  // retrait la périme (loadVariantes est le passage obligé).
-  assert.match(ADMIN, /function vaCatalogue\(\) \{[\s\S]*?fetch\('\/api\/light\/variantes'\)/);
-  const lv = /async function loadVariantes\(\) \{[\s\S]*?\n  vaPubliees = null;/.exec(ADMIN);
+  // Il passe désormais par la recette même du site (`familleNeuve` de
+  // bouille-vignette.js) : le catalogue rejoué À SES INDEX, retirées comprises.
+  assert.match(ap[0], /FPBouilleVignette\.familleNeuve\(0, \[/);
+  const VIG = fs.readFileSync(path.join(ROOT, 'public/js/bouille-vignette.js'), 'utf8');
+  assert.match(VIG, /index: \(v\.index == null \? undefined : v\.index\)/);
+  assert.match(VIG, /vide: !\(v\.paths && v\.paths\.length\) \}\);/);
+  // Toute publication ou tout retrait périme le catalogue (loadVariantes est le
+  // passage obligé).
+  const lv = /async function loadVariantes\(\) \{[\s\S]*?FPBouilleVignette\.oublierFamilles\(\)/.exec(ADMIN);
   assert.ok(lv, 'loadVariantes doit périmer le catalogue');
 
   // ET LA DIFFÉRENCE EST RÉELLE : sur une famille nue la casquette tombe à

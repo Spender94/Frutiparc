@@ -397,6 +397,18 @@
         return null;
       }
       var repere = premier("repere");
+      /*
+       * LA COIFFURE D'ORIGINE DU GABARIT, si son nom la porte (« repere-coiffure-20 »,
+       * ou « repere_x2D_coiffure_x2D_20 » une fois passé par Illustrator).
+       * L'injection s'en sert comme coiffure de référence : sans elle, un dessin
+       * fait sur une autre coiffure que la 8 se posait de travers sur les quatre
+       * types dont le repère suit la coiffure (6, 7, 12, 13).
+       */
+      var coiffureLue = null;
+      if (repere) {
+        var mc = /^repere\D*?(\d{1,2})\b/i.exec(nomDe(repere));
+        if (mc && Number(mc[1]) < 100) coiffureLue = Number(mc[1]);
+      }
       var gArr = premier("accessoire-arriere");
       // L'AVANT / ARRIÈRE vient du calque de tête (« accessoire-arriere »). Le
       // NIVEAU DE COULEUR (1, 2 ou 3) vient d'un groupe ancêtre nommé
@@ -526,6 +538,8 @@
     } finally {
       global.document.body.removeChild(hote);
     }
+    // Hors des indices : JSON.stringify l'ignore, rien ne part au serveur en trop.
+    if (coiffureLue != null) out.coiffure = coiffureLue;
     return out;
   }
 

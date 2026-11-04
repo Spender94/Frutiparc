@@ -184,5 +184,7 @@ test('le réglage est au même endroit pour le téléphone et pour le bureau', (
   assert.match(SERVEUR, /\{ name: 'Apparence',\s+ids: \[5, 17\] \},/);
   assert.match(SERVEUR, /def\.name === 'default_accessory'\n\s+\? choixAccessoireDefaut\(user\)/);
   // La liste des accessoires de base n'est écrite qu'une fois.
-  assert.equal((SERVEUR.match(/name: 'Bananocle', suffix: '6010k0w0g'/g) || []).length, 1);
+  // (DEFAULT_ACCESSORIES ; ACCESSOIRES_DEFAUT en est dérivée.)
+  assert.equal((SERVEUR.match(/'Bananocle',\s+suffix: '6010k0w0g'/g) || []).length, 1);
+  assert.match(SERVEUR, /const ACCESSOIRES_DEFAUT = DEFAULT_ACCESSORIES\.map/);
 });

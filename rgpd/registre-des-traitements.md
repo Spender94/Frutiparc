@@ -114,6 +114,18 @@ de confidentialité : public adulte, accord parental avant 15 ans), pas mesurée
 | **Où** | `swapou_parties` ; exporté (`swapou_parties`), effacé à la suppression du compte, suivi au renommage |
 | **Décision automatisée** | aucune sur le compte ni sur le classement ; seul le tournoi, si l'administrateur lève l'interrupteur « parties vérifiées seulement », n'y fait entrer que les parties conformes |
 
+## 6 quater. Vérification des scores de MiniPixiz (Arbre creux) et de Mini-Fever
+
+| | |
+|---|---|
+| **Finalité** | Ne classer au challenge du jour que des parties réellement jouées, en les rejouant sur le serveur |
+| **Base légale** | Intérêt légitime (l'équité des classements) |
+| **Données** | numéro, graine et palier de la partie, journal de ce que le jeu a reçu (pas de temps, commandes, position du pointeur dans l'aire de jeu), score déclaré et score rejoué, verdict et sa raison, indices (pauses, cadence, rythme des commandes), durée réelle et temps de jeu ; les scores refusés (envoyés sans partie) et les records d'arbre du bureau, notés sans journal |
+| **Destinataires** | serveur ; administrateur (clé maître seule), onglet « Portages vérifiés » |
+| **Durée** | 6 mois (`RGPD_IP_JOURS`), purge par `rgpdBalayage()` ; un jeton jamais rendu : 2 jours |
+| **Où** | `parties_verifiees` ; exporté (`parties_verifiees`, sans le journal), effacé à la suppression du compte, suivi au renommage |
+| **Décision automatisée** | sur le classement seulement : une partie qui ne se rejoue pas comme déclaré (ou rendue sans jeton, ou sur une horloge impossible) n'entre pas au challenge du jour. Aucune sur le compte (ni sanction, ni bannissement) ; l'administrateur relit chaque partie écartée et peut la classer à la main |
+
 ## 7. Notifications push
 
 | | |

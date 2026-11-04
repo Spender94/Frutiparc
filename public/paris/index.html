@@ -2,8 +2,9 @@
 <html lang="fr">
 <!-- LES PRUNOSTICS — les paris du parc.
 
-     Trois onglets : le Challenge de demain (médaillé ou or, cote fixe tirée
-     de l'historique), les tournois dont l'organisateur a ouvert les paris
+     Quatre onglets : le Challenge de demain (médaillé ou or en pari mutuel,
+     et le DÉFI MÉDAILLE : une médaille sur soi, à cote fixe tirée de son
+     historique, plus haute pour l'or que pour le bronze), les tournois dont l'organisateur a ouvert les paris
      (pari MUTUEL : le pot d'un match va à ceux qui ont vu juste, au prorata
      de leur mise), et le registre — mes paris et les gros coups du parc.
 
@@ -90,6 +91,16 @@
   .c b { display: block; font: bold 14px Arial, sans-serif; color: #E3756A; }
   .c span { font-size: 9px; color: #6c8f3a; }
   .c.or { border-color: #F1D27A; } .c.or b { color: #C8860A; }
+  .c.argent { border-color: #C9CED6; } .c.argent b { color: #6F7984; }
+  .c.bronze { border-color: #E2B48A; } .c.bronze b { color: #A0612A; }
+  /* Le défi médaille : sur soi, trois couleurs, trois cotes fixes. */
+  .defi { margin: 10px 12px 0; border-top: 2px solid #E5F8D2; padding-top: 8px; }
+  .defi .soustitre { padding: 0 0 4px; }
+  .defi details.regle { margin: 0 0 6px; }
+  .defi .jeux { padding: 4px 0; }
+  .defi .trois { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 6px 0; }
+  .defi .stats { color: #6c8f3a; font-size: 10px; line-height: 1.5; }
+  .defi .ticket { margin: 0 0 6px; border-top: 2px solid #E3756A; border-radius: 8px; }
   /* Les médailles du site (awards.swf) : les trois jetons, et celles de chaque jeu. */
   img.md { width: 13px; height: 13px; vertical-align: -2px; }
   .trio { display: inline-flex; vertical-align: -2px; }
@@ -244,8 +255,17 @@
   var METAL = { or: 'gold', argent: 'silver', bronze: 'bronze' };
   function jeton(metal) { return '<img class="md" src="/fb/medal_' + METAL[metal] + '.svg" alt="">'; }
   // « en or » : le jeton d'or ; « médaillé » : les trois, l'un sur l'autre.
+  // Le défi médaille : le jeton de la couleur demandée.
+  var DEFI = { defi_bronze: 'bronze', defi_argent: 'argent', defi_or: 'or' };
+  var DEFI_QUOI = { bronze: 'une médaille', argent: 'l’argent ou l’or', or: 'l’or' };
   function iconePari(type) {
+    if (DEFI[type]) return jeton(DEFI[type]);
     return type === 'or' ? jeton('or') : '<span class="trio">' + jeton('or') + jeton('argent') + jeton('bronze') + '</span>';
+  }
+  // « médaillé », « en or », « décroche l'argent ou l'or ».
+  function quoiType(type) {
+    if (DEFI[type]) return 'décroche ' + DEFI_QUOI[DEFI[type]];
+    return type === 'or' ? 'en or' : 'médaillé';
   }
   var TROPHEE = '<img class="tro" src="/fb/trophee.svg" alt="">';
   // jeu (clé du Challenge) → suffixe des médailles du jeu, comme sur la fiche.
@@ -262,6 +282,7 @@
   var vue = 'challenge';
   var etatC = null, etatT = null;
   var jeuActif = null;          // la pastille choisie
+  var jeuDefi = null;           // le jeu choisi pour le défi médaille
   var toutVoir = {};            // jeu -> la liste entière dépliée
   var trouve = {};              // jeu -> le joueur cherché (hors liste)
   var ticket = null;            // { sorte: 'c'|'t', ... } : le ticket ouvert
@@ -366,7 +387,8 @@
       + 'Un pari perdu est perdu : ta mise paie ceux qui ont vu juste. Et si <b>personne</b> n’a vu juste, toutes les mises vont dans la <b>cagnotte</b>. '
       + 'Tu peux miser sur toi — et tout le monde sur n’importe qui : cherche son pseudo. '
       + 'Maximum : ' + kz(d.plafond) + ' par jour, tous jeux confondus. Et au début de chaque mois, Dimitri sacre le <b>Prunostiqueur du mois</b> : '
-      + 'il remporte la cagnotte' + (d.cagnotte > 0 ? ' (' + kz(d.cagnotte) + ' en ce moment)' : '') + ' et porte le titre tout le mois suivant.</div></details>';
+      + 'il remporte la cagnotte' + (d.cagnotte > 0 ? ' (' + kz(d.cagnotte) + ' en ce moment)' : '') + ' et porte le titre tout le mois suivant.'
+      + (d.defi && d.defi.actif ? ' Plus bas, le <b>défi médaille</b> : parie sur toi, à n’importe quel jeu.' : '') + '</div></details>';
     if (!d.moi) h += CONNEXION;
     else {
       h += '<div class="budget"><div class="l"><span>Misé pour demain : <b>' + kz(d.dejaMise) + '</b></span><span>il te reste <b>' + nombre(reste) + '</b> sur ' + nombre(d.plafond) + '</span></div>'
@@ -376,7 +398,14 @@
     // Mes paris pour demain, tous jeux confondus.
     var mes = [];
     d.jeux.forEach(function (j) { j.mesParis.forEach(function (p) { mes.push({ j: j, p: p }); }); });
-    if (mes.length) {
+    var defis = (d.defi && d.defi.mesDefis) || [];
+    var ligneDefi = function (p) {
+      return jeton(p.couleur) + ' Défi : ' + DEFI_QUOI[p.couleur] + ' à ' + esc(p.nomJeu) + ' — ' + nombre(p.mise)
+        + ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)';
+    };
+    if (defis.length && !mes.length && !(d.autresParis || []).length) {
+      h += '<div class="mes"><h4>Mes paris pour demain</h4>' + defis.map(ligneDefi).join('<br>') + '</div>';
+    } else if (mes.length) {
       h += '<div class="mes"><h4>Mes paris pour demain</h4>' + mes.map(function (x) {
         var p = x.p;
         var fin = p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)'
@@ -384,11 +413,11 @@
         return iconePari(p.type) + ' ' + esc(p.nom) + (p.type === 'or' ? ' en or' : ' médaillé') + ' à ' + esc(x.j.nom) + ' — ' + nombre(p.mise) + fin;
       }).join('<br>') + (d.autresParis || []).map(function (p) {
         return '<br>' + iconePari(p.type) + ' ' + esc(p.texte) + ' — ' + nombre(p.mise) + (p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)' : '');
-      }).join('') + '</div>';
+      }).join('') + defis.map(function (p) { return '<br>' + ligneDefi(p); }).join('') + '</div>';
     } else if ((d.autresParis || []).length) {
       h += '<div class="mes"><h4>Mes paris pour demain</h4>' + d.autresParis.map(function (p) {
         return iconePari(p.type) + ' ' + esc(p.texte) + ' — ' + nombre(p.mise) + (p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)' : '');
-      }).join('<br>') + '</div>';
+      }).join('<br>') + defis.map(function (p) { return '<br>' + ligneDefi(p); }).join('') + '</div>';
     }
     // Les jeux en pastilles : celui choisi, sinon le premier où il se passe quelque chose.
     if (!jeuActif || !d.jeux.some(function (j) { return j.cle === jeuActif; })) {
@@ -419,6 +448,7 @@
     } else {
       h += '<p class="vide">Aucun jeu n’est ouvert aux Prunostics demain.</p>';
     }
+    h += blocDefi(d);
     // Hier : les podiums, et ce que j'y avais misé.
     var hier = d.hier || {};
     if ((hier.podiums && hier.podiums.length) || (hier.mesParis && hier.mesParis.length)) {
@@ -436,6 +466,87 @@
       h += '</div>';
     }
     zoneC.innerHTML = h;
+  }
+  // ── LE DÉFI MÉDAILLE ───────────────────────────────────────────────────
+  // Sur soi, à n'importe quel jeu ouvert : une médaille (bronze ou mieux),
+  // l'argent ou l'or, l'or. Trois cotes FIXES, tirées de mon historique sur
+  // le jeu : plus la couleur est haute, plus elle paie.
+  function resteDefi() {
+    var df = etatC && etatC.defi;
+    return df ? Math.max(0, Math.min(df.plafond - (df.dejaMise || 0), resteDuJour())) : 0;
+  }
+  function blocDefi(d) {
+    var df = d.defi;
+    if (!df || !df.actif || !d.moi) return '';
+    var h = '<div class="defi"><div class="soustitre"><b>Défi médaille</b><span>sur toi-même, à n’importe quel jeu · cote fixe · '
+      + kz(df.plafond) + ' par jour au plus</span></div>'
+      + '<details class="regle"><summary>Le défi ?</summary><div>'
+      + 'Parie que <b>tu</b> décroches une médaille demain, au jeu de ton choix : <b>une médaille</b> (bronze ou mieux), '
+      + '<b>l’argent ou l’or</b>, ou <b>l’or</b>. Plus la couleur est haute, plus c’est dur… et plus ça paie. '
+      + 'La cote est <b>fixe</b>, tirée de tes 30 derniers jours sur le jeu (celle d’un joueur moyen si tu y viens peu), et figée au moment où tu paries : '
+      + 'réussi, tu reçois ta mise × la cote ; raté, ta mise est perdue. Si le jeu n’a donné aucune médaille ce jour-là, tu es remboursé. '
+      + 'Au plus ' + kz(df.plafond) + ' par jour sur les défis, dans ton plafond du jour. Pas de défi sur un jeu trop peu joué.</div></details>';
+    if (!df.jeux.length) return h + '<p class="vide" style="padding-left:0">Aucun jeu n’a assez tourné ces 30 jours pour un défi.</p></div>';
+    if (!jeuDefi || !df.jeux.some(function (j) { return j.cle === jeuDefi; })) {
+      var mien = df.mesDefis[0];
+      jeuDefi = mien && df.jeux.some(function (j) { return j.cle === mien.jeu; }) ? mien.jeu : df.jeux[0].cle;
+    }
+    h += '<div class="jeux">' + df.jeux.map(function (j) {
+      var engage = df.mesDefis.some(function (p) { return p.jeu === j.cle; });
+      return '<button data-pastille-defi="' + esc(j.cle) + '" class="' + (j.cle === jeuDefi ? 'on' : '') + '">' + esc(j.nom)
+        + (engage ? ' <span class="pt">●</span>' : '') + '</button>';
+    }).join('') + '</div>';
+    var j = df.jeux.filter(function (x) { return x.cle === jeuDefi; })[0];
+    h += '<div class="stats">' + (j.joues
+      ? 'Toi à ' + esc(j.nom) + ', ces 30 jours : ' + j.podiums + ' médaille' + (j.podiums > 1 ? 's' : '') + ' en ' + j.joues + ' jour' + (j.joues > 1 ? 's' : '') + ' joué' + (j.joues > 1 ? 's' : '')
+        + (j.argents ? ' · ' + j.argents + ' argent ou or' : '') + (j.ors ? ' · ' + j.ors + ' en or' : '') + (j.decouverte ? ' — peu de jours : la cote d’un joueur moyen, au plus' : '')
+      : 'Tu n’es pas venu à ' + esc(j.nom) + ' ces 30 jours : la cote d’un joueur moyen du jeu.') + '</div>';
+    h += '<div class="trois">' + ['bronze', 'argent', 'or'].map(function (couleur) {
+      var type = 'defi_' + couleur;
+      var p = df.mesDefis.filter(function (x) { return x.jeu === j.cle && x.type === type; })[0];
+      var choisi = ticket && ticket.sorte === 'd' && ticket.jeu === j.cle && ticket.type === type;
+      return '<button class="c ' + couleur + (choisi ? ' choisi' : '') + '" data-defi="' + type + '" data-jeu="' + esc(j.cle) + '"><b>' + cote(j.cotes[couleur])
+        + '</b><span>' + jeton(couleur) + DEFI_QUOI[couleur] + '</span><i>' + (p ? kz(p.mise) + ' misés' : '&nbsp;') + '</i></button>';
+    }).join('') + '</div>';
+    if (ticket && ticket.sorte === 'd' && ticket.jeu === j.cle) h += ticketHtml(ticket);
+    return h + '</div>';
+  }
+  function ouvrirTicketDefi(cleJeu, type) {
+    var df = etatC.defi;
+    var j = df.jeux.filter(function (x) { return x.cle === cleJeu; })[0];
+    if (!j) return;
+    var couleur = type.replace('defi_', '');
+    var c = j.cotes[couleur];
+    var parDefi = df.plafond - (df.dejaMise || 0) <= resteDuJour();
+    ticket = {
+      sorte: 'd', jeu: j.cle, type: type, mise: ticket && ticket.mise, reste: resteDefi(),
+      plein: parDefi ? 'Tu as misé ton maximum de ' + kz(df.plafond) + ' sur les défis de demain.' : 'Tu as misé ton maximum de ' + kz(etatC.plafond) + ' pour demain.',
+      titre: jeton(couleur) + ' Défi : je décroche ' + DEFI_QUOI[couleur] + ' à ' + esc(j.nom) + ', demain'
+        + ' <small style="font-weight:normal;color:#6c8f3a">— cote fixe ' + cote(c) + '</small>',
+      gainHtml: function (mise) {
+        if (!(mise >= 1)) return '<small>Indique une mise d’au moins 1 kikooz.</small>';
+        return 'Réussi, tu reçois <b>' + kz(retour(mise, c)) + '</b> <small>(' + cote(c) + ', figée à la mise) — raté, ta mise est perdue.</small>';
+      },
+    };
+  }
+  function parierDefi() {
+    var t = ticket;
+    if (!t || t.envoi) return;
+    if (!(t.mise >= 1)) { t.erreur = 'Indique une mise d’au moins 1 kikooz.'; rendreChallenge(); return; }
+    t.envoi = true; t.erreur = null; rendreChallenge();
+    fetch('/api/paris/challenge', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: sid, jeu: t.jeu, type: t.type, mise: t.mise }),
+    }).then(json).then(function (r) {
+      t.envoi = false;
+      if (!r.ok) { t.erreur = r.message || 'Le pari n’a pas pu être enregistré.'; rendreChallenge(); return; }
+      var j = etatC.defi.jeux.filter(function (x) { return x.cle === t.jeu; })[0];
+      toast = { vue: 'challenge', texte: 'Défi relevé ! ' + kz(t.mise) + ' : ' + DEFI_QUOI[DEFI[t.type]] + ' à ' + (j ? j.nom : t.jeu)
+        + ' — ' + kz(r.retour) + ' pour toi si tu y arrives.' };
+      ticket = null;
+      majSolde(r.solde);
+      return chargerChallenge();
+    }).catch(function () { t.envoi = false; t.erreur = 'Le serveur ne répond pas.'; rendreChallenge(); });
   }
   function trouverCandidat(cleJeu, pseudo) {
     var j = etatC.jeux.filter(function (x) { return x.cle === cleJeu; })[0];
@@ -479,6 +590,17 @@
     var b;
     if ((b = ev.target.closest('[data-pastille]'))) { jeuActif = b.getAttribute('data-pastille'); ticket = null; toast = null; rendreChallenge(); return; }
     if ((b = ev.target.closest('[data-toutvoir]'))) { toutVoir[b.getAttribute('data-toutvoir')] = true; rendreChallenge(); return; }
+    if ((b = ev.target.closest('[data-pastille-defi]'))) { jeuDefi = b.getAttribute('data-pastille-defi'); if (ticket && ticket.sorte === 'd') ticket = null; toast = null; rendreChallenge(); return; }
+    if ((b = ev.target.closest('[data-defi]'))) {
+      var memeDefi = ticket && ticket.sorte === 'd' && ticket.jeu === b.getAttribute('data-jeu') && ticket.type === b.getAttribute('data-defi');
+      if (memeDefi) ticket = null;
+      else ouvrirTicketDefi(b.getAttribute('data-jeu'), b.getAttribute('data-defi'));
+      toast = null;
+      rendreChallenge();
+      var champD = document.querySelector('.ticket [data-saisie]');
+      if (champD && !(window.matchMedia && matchMedia('(pointer: coarse)').matches)) champD.focus({ preventScroll: true });
+      return;
+    }
     if ((b = ev.target.closest('button.c'))) {
       if (b.disabled) return;
       var memeChoix = ticket && ticket.sorte === 'c' && ticket.jeu === b.getAttribute('data-jeu')
@@ -520,6 +642,7 @@
   }
   function parierChallenge() {
     var t = ticket;
+    if (t && t.sorte === 'd') return parierDefi();
     if (!t || t.envoi) return;
     if (!(t.mise >= 1)) { t.erreur = 'Indique une mise d’au moins 1 kikooz.'; rendreChallenge(); return; }
     t.envoi = true; t.erreur = null; rendreChallenge();
@@ -764,7 +887,7 @@
   var zoneP = $('#vue-parc');
   var parc = { jour: null, parieur: null };
   function decrirePari(l) {
-    if (l.sorte === 'challenge') return iconePari(l.type) + ' ' + esc(l.choix) + ' ' + (l.type === 'or' ? 'en or' : 'médaillé') + ' à ' + esc(l.jeu || '');
+    if (l.sorte === 'challenge') return iconePari(l.type) + ' ' + esc(l.choix) + ' ' + quoiType(l.type) + ' à ' + esc(l.jeu || '') + (DEFI[l.type] ? ' (défi)' : '');
     return TROPHEE + ' la victoire de ' + esc(l.choix) + (l.affiche ? ' <small>(' + esc(l.affiche) + ')</small>' : '');
   }
   function resultatPari(l) {

@@ -195,8 +195,10 @@ test('le disque light livre un marqueur, pas un SWF', async () => {
   assert.match(flash, /games\/miniTroll\/minipixiz\.swf/, 'et charge toujours son SWF');
 });
 
-test('jouer en light se classe comme jouer en Flash', async () => {
-  // Le portage poste `game=minipixiz` : même cuve que le disque d'origine.
+test('jouer en light se classe dans la cuve MiniPixiz — par une partie vérifiée', async () => {
+  // Le portage rend sa partie au rejeu du serveur (antitricheLight.js) : même
+  // cuve que le disque d'origine, mais plus par la porte générique, où un
+  // score nu se forgeait d'une ligne de console.
   const creds = { username: 'fdlsc' + RUN, password: 'secret123' };
   await fetch(BASE + '/api/auth/register', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(creds),
@@ -208,8 +210,15 @@ test('jouer en light se classe comme jouer en Flash', async () => {
 
   const rep = await fetch(`${BASE}/api/saveScore?sid=${sid}&game=minipixiz&m=0&score=1234`);
   const j = await rep.json();
-  assert.ok(j.ok, `score accepté (${JSON.stringify(j)})`);
-  assert.equal(j.rankingId, 'minipixiz_classic', 'et rangé dans la cuve MiniPixiz');
+  assert.equal(j.ok, false, `le score nu est refusé (${JSON.stringify(j)})`);
+  assert.equal(j.rankingId, 'minipixiz_classic', 'la cuve visée est bien celle de MiniPixiz');
+  assert.equal(j.error, 'partie_non_verifiee');
+  // La partie vérifiée commence par sa graine et son jeton.
+  const p = await (await fetch(BASE + '/api/minipixiz/arbre/partie', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sid }),
+  })).json();
+  assert.equal(p.ok, true);
+  assert.ok(p.jeton && Number.isInteger(p.graine), 'graine et jeton donnés');
 });
 
 // ── Ce que les SWF et le client en font ───────────────────────────────────
