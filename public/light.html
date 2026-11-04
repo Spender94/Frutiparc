@@ -13176,7 +13176,9 @@
     }
     var parJeu = {};
     invPictos.forEach(function (p) { (parJeu[p.jeu || "Autre"] = parJeu[p.jeu || "Autre"] || []).push(p); });
-    Object.keys(parJeu).sort(function (a, b) { return a.localeCompare(b, "fr"); }).forEach(function (jeu) {
+    // L'ordre des jeux est celui du serveur (pictosRangesParJeu) : par ordre
+    // alphabétique, « Autre » en dernier — le même que le sélecteur du forum.
+    Object.keys(parJeu).forEach(function (jeu) {
       var bloc = el("div", "picto-jeu");
       var cases = parJeu[jeu].map(function (p) {
         return '<div class="picto-case"><img src="' + xmlEscape(p.url) + '" alt="" loading="lazy">'

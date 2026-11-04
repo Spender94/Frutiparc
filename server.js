@@ -1272,13 +1272,47 @@ function renderPictoEntryXml(itemName) {
  *
  * @returns {Array<{uid: string, nom: string, jeu: string, pictos: string[]}>}
  */
+/**
+ * L'ORDRE DES PICTOS DANS UN JEU, ET DES JEUX ENTRE EUX.
+ *
+ * « Les pictos qu'on peut poster dans un message sont dans le désordre » :
+ * le sélecteur du forum les montrait dans l'ordre où le joueur les avait
+ * gagnés — un Papillon de Kaluga, trois fruits de Frutisnake, une Dague de
+ * Swapou, encore un Papillon… Un ordre qui change à chaque partie n'est pas
+ * un ordre. On range donc :
+ *   · les JEUX par ordre alphabétique, « Autre » en dernier (comme les
+ *     dossiers du bureau, dossiersPictos) ;
+ *   · dans un jeu, les pictos dans l'ordre du CATALOGUE (GAME_ITEM_INFO, qui
+ *     suit la progression de chaque jeu), puis les autres par nom, les nombres
+ *     comptés comme des nombres (« Fruit 2 » avant « Fruit 10 »).
+ * Les doublons éventuels de gameItems ne sortent qu'une fois.
+ *
+ * @returns {Array<{id: string, nom: string, jeu: string}>}
+ */
+const RANG_CATALOGUE_PICTO = new Map(Object.keys(GAME_ITEM_INFO).map((k, i) => [k, i]));
+function pictosRangesParJeu(gameItems) {
+  const vus = new Set();
+  const liste = [];
+  for (const id of Array.isArray(gameItems) ? gameItems : []) {
+    if (typeof id !== 'string' || vus.has(id)) continue;
+    vus.add(id);
+    liste.push({ id, nom: getGameItemDisplayName(id), jeu: getGameItemGame(id) || 'Autre' });
+  }
+  const rang = (p) => (RANG_CATALOGUE_PICTO.has(p.id) ? RANG_CATALOGUE_PICTO.get(p.id) : Infinity);
+  return liste.sort((a, b) => (a.jeu === 'Autre') - (b.jeu === 'Autre')
+    || a.jeu.localeCompare(b.jeu, 'fr')
+    || (rang(a) - rang(b) || 0)
+    || a.nom.localeCompare(b.nom, 'fr', { numeric: true })
+    || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
 function dossiersPictos(user) {
-  const gi = Array.isArray(user && user.gameItems) ? user.gameItems : [];
+  // Dans un dossier, l'ordre du catalogue (pictosRangesParJeu) plutôt que
+  // celui des parties gagnées.
   const parJeu = new Map();
-  for (const item of gi) {
-    const jeu = getGameItemGame(item) || 'Autre';
-    if (!parJeu.has(jeu)) parJeu.set(jeu, []);
-    parJeu.get(jeu).push(item);
+  for (const p of pictosRangesParJeu(user && user.gameItems)) {
+    if (!parJeu.has(p.jeu)) parJeu.set(p.jeu, []);
+    parJeu.get(p.jeu).push(p.id);
   }
   const dossiers = [];
   for (const [jeu, pictos] of parJeu) {
@@ -16463,13 +16497,13 @@ app.get('/api/pictos', (req, res) => {
   const username = resolveUsernameFromSid(sid);
   console.log(`[PICTOS] /api/pictos sid=${sid ? sid.slice(0,8) + '…' : '(none)'} user=${username || '(none)'} gameItems=${username && users[username] ? (users[username].gameItems || []).length : 'N/A'}`);
   if (!username || !users[username]) return res.json([]);
-  const user = users[username];
-  const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
-  const result = gi.map((itemName) => ({
-    id: itemName,
-    name: getGameItemDisplayName(itemName),
-    game: getGameItemGame(itemName),
-    url: `/api/picto/${encodeURIComponent(itemName)}`,
+  // Rangés par jeu, dans un ordre stable (pictosRangesParJeu) : le sélecteur
+  // de l'éditeur les pose tels quels, sous un intertitre par jeu.
+  const result = pictosRangesParJeu(users[username].gameItems).map((p) => ({
+    id: p.id,
+    name: p.nom,
+    game: p.jeu,
+    url: `/api/picto/${encodeURIComponent(p.id)}`,
   }));
   res.json(result);
 });
@@ -30900,9 +30934,9 @@ app.get('/api/light/inventaire', (req, res) => {
     });
   }
 
-  const pictos = (Array.isArray(user.gameItems) ? user.gameItems : []).map((n) => ({
-    id: n, nom: getGameItemDisplayName(n), jeu: getGameItemGame(n) || 'Autre',
-    url: `/api/picto/${encodeURIComponent(n)}`,
+  const pictos = pictosRangesParJeu(user.gameItems).map((p) => ({
+    id: p.id, nom: p.nom, jeu: p.jeu,
+    url: `/api/picto/${encodeURIComponent(p.id)}`,
   }));
 
   // Même rattrapage que /do/mypref : le mobile et le bureau doivent lire la

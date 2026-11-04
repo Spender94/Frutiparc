@@ -273,6 +273,10 @@ a:hover {
 .picto-picker .picto-empty {
   color: hsl(256 13% 84.8%);
 }
+.picto-picker .picto-picker-jeu {
+  border-bottom: 1px solid hsl(256 26% 44.1%);
+  color: hsl(256 13% 84.8%);
+}
 .picto-card {
   background: hsl(256 30% 10%);
   border: 1px solid hsl(256 26% 44.1%);
