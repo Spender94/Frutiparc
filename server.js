@@ -3941,7 +3941,9 @@ function trackXpAction(username, action) {
 // several early levels per week instead of one level every week or two.
 const XP_REWARDS = {
   chatMsg:    { base: 250,  cap: 50 },  // 250 XP per message, max 12500/day
-  forumTopic: { base: 2500, cap: 3  },  // 2500 XP per topic, max 7500/day
+  // Un seul sujet payé par jour : trois poussaient à ouvrir des sujets à la
+  // chaîne pour l'XP (les réponses, elles, restent payées jusqu'à huit).
+  forumTopic: { base: 2500, cap: 1  },  // 2500 XP per topic, max 2500/day
   forumPost:  { base: 1250, cap: 8  },  // 1250 XP per reply, max 10000/day
   gamePlayed: { base: 1500, cap: 10 },  // 1500 XP per challenge score, max 15000/day
   // Les Prunostics : parier fait gagner un peu d'XP, quelle que soit l'issue.
