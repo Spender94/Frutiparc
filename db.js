@@ -2883,12 +2883,37 @@ async function bilanPartiesVerifiees(jeu, depuis) {
             COUNT(*) FILTER (WHERE verdict = 'non_verifiable')::int AS non_verifiables,
             COUNT(*) FILTER (WHERE indices IS NOT NULL AND jsonb_array_length(indices) > 0)::int AS signalees,
             MAX(score_verifie) FILTER (WHERE classe) AS meilleur_classe,
-            MAX(score_declare) AS meilleur_declare
+            MAX(score_declare) AS meilleur_declare,
+            ROUND(MAX(score_verifie * 60000.0 / temps_jeu_ms)
+              FILTER (WHERE verdict = 'conforme' AND temps_jeu_ms > 0 AND score_verifie > 0))::int AS rythme_max
        FROM parties_verifiees
       WHERE fini_le IS NOT NULL AND fini_le >= $1 AND ($2::text = '' OR jeu = $2::text)
       GROUP BY username, jeu
       ORDER BY COUNT(*) FILTER (WHERE verdict IN ('divergent', 'refuse')) DESC, MAX(score_declare) DESC NULLS LAST`,
     [depuis ? new Date(depuis) : new Date(0), String(jeu || '')]);
+  return rows;
+}
+// Le RYTHME de référence (antitricheLight.rythmePartie) : le 9e décile des
+// points par minute de jeu des parties CONFORMES depuis `depuis`, par jeu et
+// par palier — tous joueurs confondus, quel que soit le filtre de l'admin.
+async function rythmesDeReference(depuis) {
+  const { rows } = await pool.query(
+    `SELECT jeu, mode, COUNT(*)::int AS n,
+            percentile_cont(0.9) WITHIN GROUP (ORDER BY score_verifie * 60000.0 / temps_jeu_ms) AS decile
+       FROM parties_verifiees
+      WHERE fini_le IS NOT NULL AND fini_le >= $1 AND verdict = 'conforme'
+        AND temps_jeu_ms > 0 AND score_verifie > 0
+      GROUP BY jeu, mode`,
+    [depuis ? new Date(depuis) : new Date(0)]);
+  return rows.map((r) => ({ jeu: r.jeu, mode: Number(r.mode), n: r.n, decile: Number(r.decile) || 0 }));
+}
+// Le nombre de parties classées par joueur et par jour (noterPartie : chaque
+// score envoyé, record battu ou non) — pour l'audit des scores anciens, qui
+// n'ont pas d'autre trace de leurs parties. Aucune heure : un compteur.
+async function partiesJoueurJourDepuis(jeux, depuisJour) {
+  const { rows } = await pool.query(
+    `SELECT jour, username, jeu, n FROM parties_joueur_jour WHERE jeu = ANY($1) AND jour >= $2`,
+    [jeux, String(depuisJour || '')]);
   return rows;
 }
 // Le meilleur score CLASSÉ par une partie vérifiée, par joueur et par jour —
@@ -5745,6 +5770,8 @@ module.exports = {
   listerPartiesVerifiees,
   bilanPartiesVerifiees,
   meilleursVerifiesParJour,
+  rythmesDeReference,
+  partiesJoueurJourDepuis,
   archivesChallengeDepuis,
   purgerPartiesVerifiees,
   noterConnexion,

@@ -16972,7 +16972,12 @@ app.get('/api/admin/antitriche/parties', adminAuth, async (req, res) => {
       verdict: req.query.verdict || '', depuis, limit: req.query.limit || 300,
     });
     const bilan = await db.bilanPartiesVerifiees(jeu, depuis);
-    res.json({ ok: true, parties, bilan, bureauAccepte: antitricheBureauAccepte, seuils: AT.SEUILS, jour: parisDayKey() });
+    // Le RYTHME de chaque partie (durées, images, points par minute de jeu)
+    // et son signal, au regard des parties conformes de la même période.
+    const reference = {};
+    for (const r of await db.rythmesDeReference(depuis)) reference[`${r.jeu}|${r.mode}`] = r;
+    for (const p of parties) p.rythme = AT.rythmePartie(p, reference[`${p.jeu}|${p.mode}`]);
+    res.json({ ok: true, parties, bilan, reference, bureauAccepte: antitricheBureauAccepte, seuils: AT.SEUILS, jour: parisDayKey() });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -17043,20 +17048,27 @@ app.post('/api/admin/antitriche/bureau', adminAuth, async (req, res) => {
 async function antitricheAudit(jours) {
   const depuisJour = parisDayKey(new Date(Date.now() - jours * 86400000));
   const aujourdhui = parisDayKey();
-  const lignes = [];        // { rk, username, jour, score, data }
+  // `enregistreLe` : l'heure où ce meilleur score du jour a été écrit — la
+  // seule heure que le serveur gardait d'une partie d'avant la vérification
+  // (cf. AT.auditer : la durée, elle, ne se reconstitue pas).
+  const lignes = [];        // { rk, username, jour, score, data, enregistreLe }
   for (const [u, rks] of Object.entries(scoresData.users || {})) {
     for (const rk of CLASSEMENTS_VERIFIES) {
       const s = rks && rks[rk];
-      if (s && Number(s.score) > 0) lignes.push({ rk, username: u, jour: aujourdhui, score: Number(s.score), data: s.data });
+      if (s && Number(s.score) > 0) lignes.push({ rk, username: u, jour: aujourdhui, score: Number(s.score), data: s.data, enregistreLe: s.updatedAt || null });
     }
   }
   let verifies = [];
+  const partiesDuJour = new Map();      // 'jeu|pseudo|jour' -> n
   if (process.env.DATABASE_URL) {
     for (const a of await db.archivesChallengeDepuis([...CLASSEMENTS_VERIFIES], depuisJour)) {
-      lignes.push({ rk: a.ranking_id, username: String(a.username).toLowerCase(), jour: a.day_key, score: Number(a.score), data: a.data });
+      lignes.push({ rk: a.ranking_id, username: String(a.username).toLowerCase(), jour: a.day_key, score: Number(a.score), data: a.data, enregistreLe: a.updated_at || null });
     }
     verifies = (await db.meilleursVerifiesParJour('minipixiz', depuisJour)).map((x) => Object.assign({ jeu: 'minipixiz' }, x))
       .concat((await db.meilleursVerifiesParJour('minifever', depuisJour)).map((x) => Object.assign({ jeu: 'minifever' }, x)));
+    for (const x of await db.partiesJoueurJourDepuis(['minipixiz', 'minifever'], depuisJour)) {
+      partiesDuJour.set(`${x.jeu}|${x.username}|${x.jour}`, Number(x.n) || 0);
+    }
   }
   // La mise en service : le premier jour où une partie vérifiée a été classée.
   const debut = {};
@@ -17090,6 +17102,10 @@ async function antitricheAudit(jours) {
       username: l.username, jour: l.jour, score: l.score, data: l.data,
       verificationActive: !!(debut[jeu] && l.jour >= debut[jeu]),
       verifie: verifie.get(`${jeu}|${l.username}|${l.jour}`),
+      enregistreLe: l.enregistreLe,
+      // Pas de ligne : le compteur n'était pas encore là ce jour-là (ou le score
+      // a été posé à la main) — inconnu, pas zéro.
+      partiesDuJour: partiesDuJour.get(`${jeu}|${l.username}|${l.jour}`) || null,
     };
     if (jeu === 'minipixiz') arbre.push(Object.assign(base, { fiche: await ficheDe(l.username) }));
     else {

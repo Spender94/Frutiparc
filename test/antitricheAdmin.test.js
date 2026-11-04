@@ -9,7 +9,11 @@
  *   · l'admin rejoue une partie gardée, et peut classer à la main une partie
  *     écartée du jour ;
  *   · l'audit (lecture seule) des scores déjà classés lève les scores que la
- *     fiche, les pictos ou les parties vérifiées contredisent.
+ *     fiche, les pictos ou les parties vérifiées contredisent ;
+ *   · chaque partie montre sa durée réelle, son temps de jeu, ses images et
+ *     son rythme (points par minute) — un gros score en très peu de temps est
+ *     signalé ; l'audit des scores anciens ne montre que l'heure du score et
+ *     le nombre de scores du jour : leur durée ne se reconstitue pas.
  */
 'use strict';
 
@@ -263,4 +267,78 @@ test('l\'audit lit les scores classés et lève ceux que rien ne soutient', asyn
   assert.equal(today.length, 0, 'la partie vérifiée et classée du jour passe l\'audit');
   // Lecture seule : rien n'a bougé au classement.
   assert.equal((await ligne('minipixiz_classic', nom(4)) || {}).score, 4321);
+});
+
+// ── Les durées et le rythme des parties ────────────────────────────────────
+
+const aujourdhuiParis = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+// Une partie déjà jugée, posée telle que le serveur l'aurait notée.
+function noterEnBase(id, jeu, username, mode, score, tempsJeuMs, dureeMs) {
+  return sql(`INSERT INTO parties_verifiees (id, jeu, username, mode, source, cree_le, fini_le, jour,
+                score_declare, score_verifie, verdict, classe, duree_ms, temps_jeu_ms, details)
+              VALUES ($1, $2, $3, $4, 'serveur', now() - make_interval(secs => $7::int / 1000), now(), $8,
+                $5, $5, 'conforme', true, $7, $6, '{"pas": 4000}'::jsonb)`,
+  [id, jeu, username, mode, score, tempsJeuMs, dureeMs, aujourdhuiParis()]);
+}
+
+test('chaque partie montre sa durée réelle, son temps de jeu, ses images et son rythme', async (t) => {
+  if (!dispo) return t.skip('pas de Postgres de test');
+  const { u, jeu, id } = partieHonnete;
+  const d = await parties('&joueur=' + u);
+  const row = d.parties.find((x) => x.id === id);
+  assert.ok(row.cree_le && row.fini_le, 'départ et fin datés');
+  const r = row.rythme;
+  assert.ok(r, 'le serveur joint le rythme à chaque partie');
+  assert.ok(r.dureeMs >= jeu.tempsJeuMs + 25000, `durée réelle : du jeton (donné ${jeu.tempsJeuMs + 30000} ms avant) à la fin (${r.dureeMs})`);
+  assert.equal(r.tempsJeuMs, jeu.tempsJeuMs, 'le temps de jeu du journal rejoué');
+  assert.equal(r.images, row.details.pas, 'le nombre d\'images rejouées');
+  assert.ok(r.images > 1000);
+  assert.equal(r.pointsParMinute, Math.round(jeu.score / (jeu.tempsJeuMs / 60000)));
+  assert.equal(r.signal, null, 'une partie au hasard ne va pas vite');
+});
+
+test('un gros score en très peu de temps est signalé dans la liste et au bilan', async (t) => {
+  if (!dispo) return t.skip('pas de Postgres de test');
+  const u = nom(5);
+  // 12 000 points en 2 min 10 s de jeu : plus de 5 500 points par minute.
+  await noterEnBase('rythme-' + RUN, 'minipixiz', u, 0, 12000, 130000, 140000);
+  const d = await parties('&joueur=' + u);
+  const row = d.parties.find((x) => x.id === 'rythme-' + RUN);
+  assert.equal(row.rythme.signal, 'fort');
+  assert.match(row.rythme.raisons.join(), /12000 points en 2 min 10 s de jeu/);
+  assert.equal(d.bilan.find((b) => b.username === u).rythme_max, Math.round(12000 / (130000 / 60000)));
+  assert.equal(d.seuils.arbre.pointsParMinute, AT.SEUILS.arbre.pointsParMinute, 'les seuils partent avec la liste');
+});
+
+test('le 9e décile de la période sert de référence, quel que soit le filtre', async (t) => {
+  if (!dispo) return t.skip('pas de Postgres de test');
+  // Palier 2 (30 points la victoire) : dix parties de 300 points en 5 min
+  // (60 par minute), puis une de 600 points en 2 min (300 par minute).
+  for (let k = 0; k < 10; k++) await noterEnBase(`ref${k}-${RUN}`, 'minifever', nom('r' + k), 2, 300, 300000, 310000);
+  const u = nom(6);
+  await noterEnBase('vite-' + RUN, 'minifever', u, 2, 600, 120000, 125000);
+  const d = await parties('&jeu=minifever&joueur=' + u);
+  const ref = d.reference['minifever|2'];
+  assert.equal(ref.n, 11, 'toutes les parties conformes du palier, pas seulement celles du joueur filtré');
+  assert.equal(Math.round(ref.decile), 60);
+  const row = d.parties.find((x) => x.id === 'vite-' + RUN);
+  assert.equal(row.rythme.signal, 'moyen');
+  assert.match(row.rythme.raisons.join(), /5 fois le 9e décile/);
+});
+
+test('l\'audit montre l\'heure du score ancien et les scores du jour, sans inventer de durée', async (t) => {
+  if (!dispo) return t.skip('pas de Postgres de test');
+  const u = nom(5);
+  const avantHier = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(Date.now() - 2 * 86400000));
+  await sql(`INSERT INTO challenge_score_archive (day_key, ranking_id, username, score, data, updated_at)
+             VALUES ($1, 'minipixiz_classic', $2, 45000, '', '2026-01-02T13:02:07Z')`, [avantHier, u]);
+  await sql(`INSERT INTO parties_joueur_jour (jour, username, jeu, n) VALUES ($1, $2, 'minipixiz', 3)`, [avantHier, u]);
+  const r = await (await fetch(BASE + '/api/admin/antitriche/audit?jours=7', { headers: hdrAdmin })).json();
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const x = r.suspects.find((s) => s.username === u && s.jour === avantHier);
+  assert.ok(x, 'le score au-delà de l\'exploit connu est levé');
+  assert.equal(x.enregistreLe, '2026-01-02T13:02:07.000Z', 'challenge_score_archive.updated_at');
+  assert.equal(x.partiesDuJour, 3, 'parties_joueur_jour.n');
+  assert.ok(!('dureeMs' in x), 'pas de durée : aucune heure de départ n\'était gardée');
 });

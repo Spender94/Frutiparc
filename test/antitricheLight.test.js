@@ -11,7 +11,9 @@
  *   · un score impossible, un journal retouché, une partie rendue plus vite
  *     qu'elle ne se joue, une cadence qu'aucun écran ne produit sont écartés ;
  *   · le jeton se refuse falsifié, expiré, d'un autre joueur ou d'un autre jeu ;
- *   · l'audit des scores déjà classés lève ce qui ne peut pas venir du jeu.
+ *   · l'audit des scores déjà classés lève ce qui ne peut pas venir du jeu ;
+ *   · le rythme d'une partie (points par minute de jeu) signale un gros score
+ *     en très peu de temps, sans rien écarter.
  */
 'use strict';
 
@@ -218,4 +220,90 @@ test('l\'audit lève ce qui ne peut pas venir du jeu, et laisse le reste', () =>
   assert.equal(par.trop.gravite, 'fort');
   assert.equal(par.sanspicto.gravite, 'moyen');
   assert.equal(s[0].gravite, 'fort', 'les plus graves d\'abord');
+});
+
+test('l\'audit ne rend que les heures que la base connaît, jamais une durée', () => {
+  const s = AT.auditer({
+    arbre: [
+      { username: 'date', jour: '2026-11-01', score: 9000, fiche: { treeMax: 3000, partiesArbre: 4 },
+        enregistreLe: '2026-11-01T13:02:07.000Z', partiesDuJour: 2 },
+      { username: 'sansdate', jour: '2026-11-01', score: 9000, fiche: { treeMax: 3000, partiesArbre: 4 } },
+    ],
+    arcade: [],
+  });
+  const par = Object.fromEntries(s.map((x) => [x.username, x]));
+  assert.equal(par.date.enregistreLe, '2026-11-01T13:02:07.000Z');
+  assert.equal(par.date.partiesDuJour, 2);
+  assert.equal(par.sansdate.enregistreLe, null, 'sans heure en base, rien d\'inventé');
+  assert.equal(par.sansdate.partiesDuJour, null);
+  for (const x of s) assert.ok(!('dureeMs' in x) && !('duree' in x), 'aucune durée n\'est fabriquée');
+});
+
+// ── Le rythme : durées lisibles, points par minute, signal ─────────────────
+
+test('les durées se lisent « 2 min 13 s »', () => {
+  assert.equal(AT.dureeLisible(45000), '45 s');
+  assert.equal(AT.dureeLisible(133000), '2 min 13 s');
+  assert.equal(AT.dureeLisible(65000), '1 min 05 s');
+  assert.equal(AT.dureeLisible(3840000), '1 h 04 min');
+  assert.equal(AT.dureeLisible(0), '0 s');
+});
+
+test('rythme : une partie honnête rejouée donne ses durées, ses images, et pas de signal', () => {
+  const jeu = A.arbreHonnete(4242, 5);
+  const v = AT.verifierArbre({ graine: 4242, journal: jeu.journal, scoreDeclare: jeu.score, dureeMs: jeu.tempsJeuMs + 20000 });
+  assert.equal(v.verdict, 'conforme');
+  // La ligne telle que parties_verifiees la garde.
+  const p = { jeu: 'minipixiz', mode: 0, score_declare: jeu.score, score_verifie: v.scoreVerifie,
+    duree_ms: jeu.tempsJeuMs + 20000, temps_jeu_ms: v.tempsJeuMs, details: v.details };
+  const r = AT.rythmePartie(p);
+  assert.equal(r.dureeMs, jeu.tempsJeuMs + 20000);
+  assert.equal(r.tempsJeuMs, jeu.tempsJeuMs, 'le temps de jeu du journal, au rejeu près');
+  assert.ok(r.images > 1000, 'le nombre d\'images rejouées (details.pas)');
+  assert.equal(r.pointsParMinute, Math.round(jeu.score / (jeu.tempsJeuMs / 60000)));
+  assert.equal(r.signal, null);
+  assert.deepEqual(r.raisons, []);
+});
+
+test('rythme : un gros score en peu de temps est signalé, d\'autant plus qu\'il va vite', () => {
+  const S = AT.SEUILS;
+  const ligne = (score, tempsMs) => ({ jeu: 'minipixiz', mode: 0, score_declare: score, score_verifie: score,
+    duree_ms: tempsMs + 5000, temps_jeu_ms: tempsMs, details: { pas: 1000 } });
+  // 12 000 points en 2 min 10 s : plus de 5 500 points par minute.
+  const fort = AT.rythmePartie(ligne(12000, 130000));
+  assert.equal(fort.signal, 'fort');
+  assert.match(fort.raisons[0], /12000 points en 2 min 10 s de jeu/);
+  assert.match(fort.raisons[0], /il faudrait au moins 4 min 48 s de jeu/);
+  // Au-dessus du seuil, sous le double.
+  const moyen = AT.rythmePartie(ligne(6000, 120000));
+  assert.ok(3000 > S.arbre.pointsParMinute && 3000 < S.arbre.pointsParMinute * S.rythme.facteurFort);
+  assert.equal(moyen.signal, 'moyen');
+  // Une cascade chanceuse en vingt secondes : rapide, mais elle ne pèse pas.
+  const petit = AT.rythmePartie(ligne(S.arbre.scoreRythme - 1, 20000));
+  assert.ok(petit.pointsParMinute > S.arbre.pointsParMinute);
+  assert.equal(petit.signal, null);
+  // Le même score en dix minutes : rien à dire.
+  assert.equal(AT.rythmePartie(ligne(12000, 600000)).signal, null);
+  // Le score déclaré compte quand rien n'est vérifié ; sans aucune durée, pas de rythme.
+  const declare = AT.rythmePartie({ jeu: 'minipixiz', mode: 0, score_declare: 20000, score_verifie: null, duree_ms: 60000, temps_jeu_ms: 0 });
+  assert.equal(declare.signal, 'fort');
+  assert.match(declare.raisons[0], /réelles/, 'faute de journal, la durée réelle');
+  const sansDuree = AT.rythmePartie({ jeu: 'minipixiz', mode: 0, score_declare: 88888, score_verifie: null, duree_ms: 0, temps_jeu_ms: 0 });
+  assert.equal(sansDuree.pointsParMinute, null);
+  assert.equal(sansDuree.signal, null);
+});
+
+test('rythme : au-delà de deux fois le 9e décile des parties conformes, même à Mini-Fever', () => {
+  const S = AT.SEUILS;
+  // Palier 1 : 10 victoires = 200 points. 400 points en 2 min = 200 par minute.
+  const p = { jeu: 'minifever', mode: 1, score_declare: 400, score_verifie: 400, duree_ms: 130000, temps_jeu_ms: 120000, details: { images: 9000 } };
+  assert.equal(AT.rythmePartie(p).signal, null, 'sans référence, pas de comparaison');
+  assert.equal(AT.rythmePartie(p, { decile: 60, n: S.rythme.referenceMin - 1 }).signal, null, 'trop peu de parties de référence');
+  const r = AT.rythmePartie(p, { decile: 60, n: 40 });
+  assert.equal(r.signal, 'moyen');
+  assert.equal(r.images, 9000, 'details.images pour l\'arcade');
+  assert.match(r.raisons[0], /3,3 fois le 9e décile/);
+  assert.equal(AT.rythmePartie(p, { decile: 150, n: 40 }).signal, null, 'sous le double du décile');
+  // Une partie qui ne pèse pas (moins de dix victoires) n'est pas comparée.
+  assert.equal(AT.rythmePartie(Object.assign({}, p, { score_verifie: 100, score_declare: 100, temps_jeu_ms: 5000 }), { decile: 60, n: 40 }).signal, null);
 });

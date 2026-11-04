@@ -311,6 +311,10 @@
   .integ-inter { background: #fff; border: 2px solid #D6F7B5; border-radius: 8px; padding: 10px 12px; margin: 8px 0 14px; }
   .integ-inter label { font-weight: bold; color: #2C4A0F; display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
   .integ-alerte { color: #b31111; font-weight: bold; }
+  .rythme-moyen { color: #c8860a; font-weight: bold; }
+  .rythme-fort { color: #b31111; font-weight: bold; }
+  tr.rythme-ligne-fort td { background: #fbe9e9; }
+  tr.rythme-ligne-moyen td { background: #fdf5e6; }
   .cl-groupe { background: #fff; border: 2px solid #D6F7B5; border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; }
   .cl-groupe.fort { border-color: #e3a0a0; }
   .cl-groupe h4 { margin: 0 0 6px; font-size: 14px; color: #2C4A0F; }
@@ -535,6 +539,15 @@
       <option value="refuse">refusées</option>
       <option value="non_verifiable">non vérifiables</option>
     </select>
+    <select id="pv-tri" onchange="pvAfficherParties()" title="Ordre de la liste des parties">
+      <option value="fin">plus récentes d'abord</option>
+      <option value="rythme">rythme (points/min) décroissant</option>
+      <option value="score">score décroissant</option>
+      <option value="duree">temps de jeu croissant</option>
+      <option value="joueur">par joueur</option>
+    </select>
+    <label style="font-size:13px" title="Seulement les parties dont le score est anormalement élevé pour leur durée">
+      <input type="checkbox" id="pv-rythme-seul" onchange="pvAfficherParties()"> rythme anormal seulement</label>
     <span id="pv-etat" style="margin-left:auto;font-size:13px"></span>
   </div>
   <p class="integ-note">
@@ -552,6 +565,18 @@
     de l'exploit connu. Le rejeu prouve que la partie a été <i>jouée</i>, pas <i>qui</i> l'a jouée. Personne n'est banni
     automatiquement ; une partie écartée du jour peut être classée à la main.
   </p>
+  <p class="integ-note">
+    <b>Durées.</b> <i>Durée réelle</i> : du départ (le jeton donné à l'entrée dans l'arbre ou au lancement de l'arcade) à la
+    fin (le score rendu), pauses comprises. <i>Temps de jeu</i> : ce que dit le journal rejoué, sans les pauses (le jeu se fige
+    quand la fenêtre perd le focus), avec le nombre d'images du rejeu. <b>Rythme</b> : les points par minute de temps de jeu
+    (du score vérifié, à défaut du déclaré). <span class="rythme-moyen">Orange</span> / <span class="rythme-fort">rouge</span> :
+    un score anormalement élevé pour sa durée — à l'Arbre, au-delà de <span id="pv-seuil-ppm">2 500</span> points par minute
+    sur une partie d'au moins <span id="pv-seuil-score">3 000</span> points (rouge au double) ; aux deux jeux, plus de deux
+    fois le rythme du 9e décile des parties conformes de la période (même jeu, même palier, dès dix parties). C'est un
+    indice, pas une preuve : le multiplicateur de l'Arbre ne monte qu'avec le temps de jeu (×2 après 1 min 34 s, ×3 après
+    5 min 12 s, ×4 après 10 min 25 s), un gros score en peu de temps est donc rare — un programme qui joue à la place du
+    joueur, lui, se rejoue parfaitement.
+  </p>
   <div class="integ-inter">
     <label><input type="checkbox" id="pv-bureau" onchange="portagesBureau(this.checked)">
       MiniPixiz : classer aussi le record d'arbre battu au bureau (SWF) — non vérifiable</label>
@@ -563,12 +588,12 @@
   </div>
   <h3>Par joueur</h3>
   <table>
-    <thead><tr><th>Joueur</th><th>Jeu</th><th>Parties</th><th>Conformes</th><th>Écart toléré</th><th>Écartées</th><th>Non vérifiables</th><th>Avec indices</th><th>Meilleur classé</th><th>Meilleur déclaré</th></tr></thead>
+    <thead><tr><th>Joueur</th><th>Jeu</th><th>Parties</th><th>Conformes</th><th>Écart toléré</th><th>Écartées</th><th>Non vérifiables</th><th>Avec indices</th><th>Meilleur classé</th><th>Meilleur déclaré</th><th title="Le plus haut rythme (points par minute de jeu) parmi ses parties conformes">Rythme max</th></tr></thead>
     <tbody id="pv-bilan"></tbody>
   </table>
   <h3>Les parties</h3>
   <table>
-    <thead><tr><th>Fin</th><th>Joueur</th><th>Jeu</th><th>Déclaré</th><th>Vérifié</th><th>Verdict</th><th>Indices</th><th>Temps de jeu</th><th>Durée réelle</th><th>Classée</th><th></th></tr></thead>
+    <thead><tr><th>Fin</th><th>Joueur</th><th>Jeu</th><th>Déclaré</th><th>Vérifié</th><th>Verdict</th><th>Indices</th><th>Durée réelle</th><th>Temps de jeu</th><th>Rythme</th><th>Classée</th><th></th></tr></thead>
     <tbody id="pv-parties"></tbody>
   </table>
   <h3>Audit des scores déjà classés</h3>
@@ -579,6 +604,10 @@
     10 × (1 + palier)) et les pictos (chaque épreuve gagnée pour la première fois en donne un — un joueur classé avec
     bien moins de pictos que d'épreuves gagnées a posté son score sans jouer) ; pour les deux, depuis la mise en service,
     l'existence d'une partie vérifiée derrière le score.
+    <br><b>Durée des parties d'avant la vérification : elle ne se reconstitue pas.</b> Le serveur ne gardait que la
+    <i>fin</i> — l'heure où le meilleur score du jour a été écrit (colonne « Score écrit à ») — et le nombre de scores
+    envoyés ce jour-là, sans heure. L'heure de <i>départ</i> d'une partie n'a jamais été enregistrée (le voyant « en
+    partie » ne vivait qu'en mémoire), et un score qui ne battait pas le meilleur du jour n'était pas daté.
   </p>
   <div class="toolbar">
     <select id="pv-audit-jours">
@@ -591,7 +620,7 @@
     <span id="pv-audit-etat" style="margin-left:auto;font-size:13px"></span>
   </div>
   <table>
-    <thead><tr><th>Jour</th><th>Joueur</th><th>Jeu</th><th>Score</th><th>Gravité</th><th>Raisons</th></tr></thead>
+    <thead><tr><th>Jour</th><th>Joueur</th><th>Jeu</th><th>Score</th><th title="L'heure où ce meilleur score du jour a été enregistré (scores.updated_at, archivé dans challenge_score_archive.updated_at), et le nombre de scores envoyés ce jour-là (parties_joueur_jour). Aucune heure de départ n'était gardée : pas de durée.">Score écrit à</th><th>Gravité</th><th>Raisons</th></tr></thead>
     <tbody id="pv-audit"></tbody>
   </table>
 </div>
@@ -1905,28 +1934,69 @@ async function loadPortagesVerif() {
       <td>${b.non_verifiables || 0}</td>
       <td>${b.signalees ? `<b style="color:#c8860a">${b.signalees}</b>` : 0}</td>
       <td>${nb(b.meilleur_classe)}</td><td>${nb(b.meilleur_declare)}</td>
-    </tr>`).join('') || '<tr><td colspan="10" style="text-align:center;color:#999;padding:14px">Aucune partie sur la période.</td></tr>';
-    $('#pv-parties').innerHTML = d.parties.map((p) => {
-      const ind = Array.isArray(p.indices) ? p.indices : [];
-      const peutClasser = !p.classe && p.jour === pvJour && Number(p.score_declare) > 0;
-      const peutRejouer = p.source === 'serveur' && p.taille_journal > 0;
-      return `<tr>
-        <td style="white-space:nowrap">${tFmtDate(p.fini_le)}</td>
-        <td><a href="#" onclick="viewUser('${esc(p.username)}');return false" class="uname">${esc(p.username)}</a>
-          ${p.source !== 'serveur' ? `<span class="badge" style="background:#ddd;color:#555">${esc(p.source)}</span>` : ''}</td>
-        <td>${esc(PV_JEU[p.jeu] || p.jeu)}${p.jeu === 'minifever' ? ` <span style="color:#777;font-size:11px">palier ${p.mode}</span>` : ''}</td>
-        <td>${nb(p.score_declare)}</td>
-        <td>${nb(p.score_verifie)}</td>
-        <td><span class="vd vd-${esc(p.verdict)}">${esc(p.verdict.replace('_', ' '))}</span>${p.raison ? `<div style="font-size:11px;color:#777">${esc(p.raison)}</div>` : ''}</td>
-        <td style="font-size:11px;color:#c8860a">${ind.map(esc).join('<br>') || '—'}</td>
-        <td>${p.temps_jeu_ms ? svDuree(p.temps_jeu_ms) : '—'}</td>
-        <td>${p.duree_ms ? svDuree(p.duree_ms) : '—'}</td>
-        <td>${p.classe ? 'oui' + (p.valide_par ? ` <span style="color:#777;font-size:11px">(${esc(p.valide_par)})</span>` : '') : 'non'}</td>
-        <td style="white-space:nowrap">${peutRejouer ? `<button class="btn btn-sm" title="Rejouer la partie à nouveau" onclick="portagesRejouer('${esc(p.id)}')">Rejouer</button>` : ''}
-          ${peutClasser ? `<button class="btn btn-sm" title="Classer cette partie au challenge du jour malgré le verdict" onclick="portagesClasser('${esc(p.id)}')">Classer</button>` : ''}</td>
-      </tr>`;
-    }).join('') || '<tr><td colspan="11" style="text-align:center;color:#999;padding:14px">Aucune partie.</td></tr>';
+      <td>${b.rythme_max == null ? '—' : nb(b.rythme_max) + ' pts/min'}</td>
+    </tr>`).join('') || '<tr><td colspan="11" style="text-align:center;color:#999;padding:14px">Aucune partie sur la période.</td></tr>';
+    const S = d.seuils || {};
+    if (S.arbre) {
+      $('#pv-seuil-ppm').textContent = Number(S.arbre.pointsParMinute).toLocaleString('fr-FR');
+      $('#pv-seuil-score').textContent = Number(S.arbre.scoreRythme).toLocaleString('fr-FR');
+    }
+    pvParties = d.parties;
+    const signalees = d.parties.filter((p) => p.rythme && p.rythme.signal).length;
+    if (signalees) $('#pv-etat').innerHTML += ` · <b class="rythme-moyen">${signalees} rythme${signalees > 1 ? 's' : ''} anormal${signalees > 1 ? 'aux' : ''}</b>`;
+    pvAfficherParties();
   } catch (e) { toast('Erreur: ' + e.message); }
+}
+// « 2 min 13 s », « 45 s », « 1 h 04 min ».
+function pvDuree(ms) {
+  const s = Math.round((Number(ms) || 0) / 1000);
+  if (s < 60) return s + ' s';
+  if (s < 3600) return Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0') + ' s';
+  return Math.floor(s / 3600) + ' h ' + String(Math.floor(s / 60) % 60).padStart(2, '0') + ' min';
+}
+// La liste des parties, triée et filtrée sans retourner au serveur.
+let pvParties = [];
+const PV_TRI = {
+  fin: (a, b) => String(b.fini_le).localeCompare(String(a.fini_le)),
+  rythme: (a, b) => ((b.rythme && b.rythme.pointsParMinute) || -1) - ((a.rythme && a.rythme.pointsParMinute) || -1),
+  score: (a, b) => (Number(b.score_verifie ?? b.score_declare) || 0) - (Number(a.score_verifie ?? a.score_declare) || 0),
+  // Les parties sans temps (sans journal) en dernier.
+  duree: (a, b) => (Number(a.temps_jeu_ms || a.duree_ms) || Infinity) - (Number(b.temps_jeu_ms || b.duree_ms) || Infinity),
+  joueur: (a, b) => String(a.username).localeCompare(String(b.username)) || String(b.fini_le).localeCompare(String(a.fini_le)),
+};
+function pvAfficherParties() {
+  const nb = (v) => (v == null ? '—' : Number(v).toLocaleString('fr-FR'));
+  const seul = $('#pv-rythme-seul').checked;
+  const liste = pvParties.filter((p) => !seul || (p.rythme && p.rythme.signal))
+    .sort(PV_TRI[$('#pv-tri').value] || PV_TRI.fin);
+  $('#pv-parties').innerHTML = liste.map((p) => {
+    const ind = Array.isArray(p.indices) ? p.indices : [];
+    const ry = p.rythme || {};
+    const peutClasser = !p.classe && p.jour === pvJour && Number(p.score_declare) > 0;
+    const peutRejouer = p.source === 'serveur' && p.taille_journal > 0;
+    const debutFin = `Départ ${tFmtDate(p.cree_le)} · fin ${tFmtDate(p.fini_le)}`;
+    const fps = ry.images && ry.tempsJeuMs ? Math.round(ry.images / (ry.tempsJeuMs / 1000)) : 0;
+    return `<tr${ry.signal ? ` class="rythme-ligne-${esc(ry.signal)}"` : ''}>
+      <td style="white-space:nowrap">${tFmtDate(p.fini_le)}</td>
+      <td><a href="#" onclick="viewUser('${esc(p.username)}');return false" class="uname">${esc(p.username)}</a>
+        <a href="#" title="Ne voir que ce joueur" style="font-size:11px;color:#777" onclick="$('#pv-joueur').value='${esc(p.username)}';loadPortagesVerif();return false">filtrer</a>
+        ${p.source !== 'serveur' ? `<span class="badge" style="background:#ddd;color:#555">${esc(p.source)}</span>` : ''}</td>
+      <td>${esc(PV_JEU[p.jeu] || p.jeu)}${p.jeu === 'minifever' ? ` <span style="color:#777;font-size:11px">palier ${p.mode}</span>` : ''}</td>
+      <td>${nb(p.score_declare)}</td>
+      <td>${nb(p.score_verifie)}</td>
+      <td><span class="vd vd-${esc(p.verdict)}">${esc(p.verdict.replace('_', ' '))}</span>${p.raison ? `<div style="font-size:11px;color:#777">${esc(p.raison)}</div>` : ''}</td>
+      <td style="font-size:11px;color:#c8860a">${ind.map(esc).join('<br>') || '—'}</td>
+      <td style="white-space:nowrap" title="${esc(debutFin)}">${p.duree_ms ? pvDuree(p.duree_ms) : '—'}</td>
+      <td style="white-space:nowrap">${p.temps_jeu_ms ? pvDuree(p.temps_jeu_ms) : '—'}${ry.images
+        ? `<div style="font-size:11px;color:#777" title="Images rejouées par le serveur${fps ? ', ≈ ' + fps + ' par seconde' : ''}">${nb(ry.images)} images</div>` : ''}</td>
+      <td style="white-space:nowrap">${ry.pointsParMinute == null ? '—'
+        : `<span class="${ry.signal ? 'rythme-' + esc(ry.signal) : ''}">${nb(ry.pointsParMinute)} pts/min</span>`}${(ry.raisons || []).length
+        ? `<div style="font-size:11px;white-space:normal;max-width:260px" class="rythme-${esc(ry.signal)}">${ry.raisons.map(esc).join('<br>')}</div>` : ''}</td>
+      <td>${p.classe ? 'oui' + (p.valide_par ? ` <span style="color:#777;font-size:11px">(${esc(p.valide_par)})</span>` : '') : 'non'}</td>
+      <td style="white-space:nowrap">${peutRejouer ? `<button class="btn btn-sm" title="Rejouer la partie à nouveau" onclick="portagesRejouer('${esc(p.id)}')">Rejouer</button>` : ''}
+        ${peutClasser ? `<button class="btn btn-sm" title="Classer cette partie au challenge du jour malgré le verdict" onclick="portagesClasser('${esc(p.id)}')">Classer</button>` : ''}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="12" style="text-align:center;color:#999;padding:14px">${seul ? 'Aucun rythme anormal.' : 'Aucune partie.'}</td></tr>`;
 }
 async function portagesBureau(on) {
   const msg = on
@@ -1975,9 +2045,12 @@ async function auditPortages() {
       <td><a href="#" onclick="viewUser('${esc(x.username)}');return false" class="uname">${esc(x.username)}</a></td>
       <td>${esc(PV_JEU[x.jeu] || x.jeu)}</td>
       <td>${Number(x.score).toLocaleString('fr-FR')}</td>
+      <td style="white-space:nowrap">${x.enregistreLe ? tFmtDate(x.enregistreLe) : '—'}${x.partiesDuJour != null
+        ? `<div style="font-size:11px;color:#777" title="Scores envoyés ce jour-là (record battu ou non), sans heure">${x.partiesDuJour} score${x.partiesDuJour > 1 ? 's' : ''} envoyé${x.partiesDuJour > 1 ? 's' : ''} ce jour</div>` : ''}
+        <div style="font-size:11px;color:#999">durée inconnue</div></td>
       <td class="grav-${esc(x.gravite)}">${esc(x.gravite)}</td>
       <td style="font-size:12px">${x.raisons.map(esc).join('<br>')}</td>
-    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:#999;padding:14px">Rien à signaler.</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:#999;padding:14px">Rien à signaler.</td></tr>';
   } catch (e) { toast('Erreur: ' + e.message); $('#pv-audit-etat').textContent = ''; }
 }
 

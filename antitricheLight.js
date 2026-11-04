@@ -80,16 +80,36 @@ const FeverRejeu = require('./public/minifever/rejeu.js');
  * de 30 000, une partie même vérifiée mérite un regard (un programme qui joue
  * à la place du joueur rejoue parfaitement — le rejeu prouve qu'une partie a
  * été jouée, pas QUI l'a jouée).
+ *
+ * Le rythme de l'Arbre (un indice pour l'admin, il n'écarte rien). Le
+ * multiplicateur ne monte qu'avec le TEMPS DE JEU (base/Tree : un tour
+ * d'escargot = ARBRE_TEMPS = 1000 images ≈ 31 s, la chute accélère à chaque
+ * tour) : ×1 jusqu'à 1 min 34 s de jeu, ×2 jusqu'à 5 min 12 s, ×3 jusqu'à
+ * 10 min 25 s, ×4 ensuite. Un gros score se gagne donc surtout en durant. Le
+ * joueur au hasard du banc d'essai (test/aideAntitriche.js, vingt-cinq
+ * graines) fait 100 à 430 points par minute de jeu ; l'exploit connu
+ * (≈ 10 000) en une dizaine de minutes en fait un millier. Au-delà de 2 500
+ * points par minute sur une partie qui pèse (3 000 points et plus), la partie
+ * mérite un regard ; au double, un regard appuyé. Ces deux nombres sont des
+ * estimations à revoir quand les vraies parties se seront accumulées : le
+ * second signal, lui, se cale tout seul — une partie qui va plus de deux fois
+ * plus vite que le 9e décile des parties conformes de la période (même jeu,
+ * même palier, au moins dix parties de référence).
  */
 const SEUILS = {
   jetonDureeMs: 24 * 3600 * 1000,
   tempsMarge: 1.10,
   tempsMargeMs: 15000,
-  arbre: { tmodMin: 0.05, tmodSuspect: 0.08, exploit: 30000, commandesParSeconde: 20 },
-  arcade: { tmodMin: 0.4, tmodSuspect: 0.6, tolerance: 25, epreuvesMax: 400 },
+  arbre: { tmodMin: 0.05, tmodSuspect: 0.08, exploit: 30000, commandesParSeconde: 20,
+    pointsParMinute: 2500, scoreRythme: 3000 },
+  arcade: { tmodMin: 0.4, tmodSuspect: 0.6, tolerance: 25, epreuvesMax: 400, victoiresRythme: 10 },
   // Longues pauses : plus de trois fois le temps de jeu, et cinq minutes.
   pauseFacteur: 3,
   pauseMargeMs: 300000,
+  // Le rythme comparé aux autres : facteur au-dessus du 9e décile, nombre
+  // minimal de parties conformes pour que ce décile veuille dire quelque chose ;
+  // `facteurFort` : au-delà de tant de fois le seuil, le signal est fort.
+  rythme: { facteurDecile: 2, referenceMin: 10, facteurFort: 2 },
 };
 
 // ── Le jeton ────────────────────────────────────────────────────────────
@@ -293,6 +313,79 @@ function verifierArcade(partie) {
 }
 
 /*
+ * ── LE RYTHME d'une partie notée, pour l'admin ──────────────────────────
+ *
+ * Trois mesures, toutes gardées dans parties_verifiees : la durée RÉELLE (du
+ * jeton à la fin, duree_ms — cree_le → fini_le), le TEMPS DE JEU que dit le
+ * journal (temps_jeu_ms, la somme des tmod : les pauses n'y sont pas, le jeu
+ * se fige quand la fenêtre perd le focus) et le nombre d'IMAGES rejouées
+ * (details.pas pour l'arbre, details.images pour l'arcade). Le rythme se
+ * mesure sur le temps de jeu ; à défaut (partie sans journal rejoué), sur la
+ * durée réelle. Rien n'est écarté ici : c'est un signal, l'admin juge.
+ */
+function dureeLisible(ms) {
+  const s = Math.round((Number(ms) || 0) / 1000);
+  if (s < 60) return s + ' s';
+  if (s < 3600) return Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0') + ' s';
+  return Math.floor(s / 3600) + ' h ' + String(Math.floor(s / 60) % 60).padStart(2, '0') + ' min';
+}
+
+// Le score qui compte pour le rythme : le vérifié s'il existe, sinon le déclaré
+// (un score trafiqué posé en trente secondes se lit aussi).
+const scoreDuRythme = (p) => Number(p.score_verifie != null ? p.score_verifie : p.score_declare) || 0;
+const tempsDuRythme = (p) => (Number(p.temps_jeu_ms) > 0 ? Number(p.temps_jeu_ms) : Number(p.duree_ms) || 0);
+
+/** Les points par minute d'une partie notée, ou null s'il n'y a rien à mesurer. */
+function pointsParMinute(p) {
+  const score = scoreDuRythme(p), ms = tempsDuRythme(p);
+  return score > 0 && ms > 0 ? score / (ms / 60000) : null;
+}
+
+// Une partie qui PÈSE : en dessous, une cascade chanceuse en vingt secondes
+// fait un rythme énorme qui ne veut rien dire.
+function partiePese(p) {
+  const score = scoreDuRythme(p);
+  if (p.jeu === 'minifever') return score >= SEUILS.arcade.victoiresRythme * 10 * (1 + (Number(p.mode) || 0));
+  return score >= SEUILS.arbre.scoreRythme;
+}
+
+/**
+ * Le rythme d'une partie de parties_verifiees. `ref` : { decile, n } — le
+ * 9e décile des points par minute des parties conformes de la période, pour
+ * le même jeu et le même palier (db.rythmesDeReference).
+ *
+ * @returns {{ dureeMs, tempsJeuMs, images, pointsParMinute: number|null,
+ *             signal: null|'moyen'|'fort', raisons: string[] }}
+ */
+function rythmePartie(p, ref) {
+  const d = (p && p.details) || {};
+  const out = {
+    dureeMs: Number(p.duree_ms) || 0,
+    tempsJeuMs: Number(p.temps_jeu_ms) || 0,
+    images: Number(p.jeu === 'minifever' ? d.images : d.pas) || 0,
+    pointsParMinute: null, signal: null, raisons: [],
+  };
+  const ppm = pointsParMinute(p);
+  if (ppm === null) return out;
+  out.pointsParMinute = Math.round(ppm);
+  if (!partiePese(p)) return out;
+  const note = (g, txt) => { out.raisons.push(txt); if (out.signal !== 'fort') out.signal = g; };
+  const score = scoreDuRythme(p);
+  const quoi = `${score} points en ${dureeLisible(tempsDuRythme(p))} ${out.tempsJeuMs > 0 ? 'de jeu' : 'réelles'}`;
+  const seuil = SEUILS.arbre.pointsParMinute;
+  if (p.jeu === 'minipixiz' && ppm > seuil) {
+    note(ppm > seuil * SEUILS.rythme.facteurFort ? 'fort' : 'moyen',
+      `${quoi} : ${out.pointsParMinute} points par minute (au-delà de ${seuil}, il faudrait au moins ${dureeLisible(score / seuil * 60000)} de jeu)`);
+  }
+  if (ref && Number(ref.n) >= SEUILS.rythme.referenceMin && Number(ref.decile) > 0
+      && ppm > Number(ref.decile) * SEUILS.rythme.facteurDecile) {
+    note('moyen', `${quoi} : ${String(Math.round(ppm / ref.decile * 10) / 10).replace('.', ',')} fois le 9e décile`
+      + ` des parties conformes de la période (${Math.round(ref.decile)} points par minute, ${ref.n} parties)`);
+  }
+  return out;
+}
+
+/*
  * ── L'AUDIT des scores déjà classés (lecture seule) ─────────────────────
  *
  * Les scores d'avant la vérification n'ont pas de journal : on ne peut que
@@ -314,11 +407,32 @@ function verifierArcade(partie) {
  *   Les deux — après la mise en service, un score classé sans partie
  *   vérifiée du même jour derrière lui est passé par une porte dérobée.
  *
+ *   LA DURÉE de ces parties-là ne se reconstitue PAS. Le serveur ne gardait
+ *   que la FIN : l'heure où le meilleur score du jour a été écrit
+ *   (scores.updated_at, recopiée chaque nuit dans
+ *   challenge_score_archive.updated_at). Le départ, lui, n'a jamais été écrit
+ *   nulle part : le voyant « en partie » (/api/light/jeu-en-cours) ne vivait
+ *   qu'en mémoire (partiesEnCours, une échéance et rien d'autre), et un score
+ *   qui ne battait pas le meilleur du jour ne laissait qu'un +1 sans heure
+ *   (parties_joueur_jour.n). L'audit montre donc ces deux faits — l'heure du
+ *   score (`enregistreLe`) et le nombre de parties envoyées ce jour-là
+ *   (`partiesDuJour`) — et rien de plus.
+ *
  * `gravite` : 'fort' (le score ne peut pas venir du jeu), 'moyen' (très
  * improbable), 'faible' (à regarder).
  */
 const NB_EPREUVES = 27;
 function pictosAttendus(n) { return NB_EPREUVES * (1 - Math.pow((NB_EPREUVES - 1) / NB_EPREUVES, n)); }
+
+// Ce que la base sait vraiment de l'heure d'un score ancien (cf. plus haut) :
+// la fin, et le nombre de parties du jour. Jamais une durée.
+function traces(s) {
+  const t = s.enregistreLe ? new Date(s.enregistreLe) : null;
+  return {
+    enregistreLe: t && !Number.isNaN(t.getTime()) ? t.toISOString() : null,
+    partiesDuJour: s.partiesDuJour == null ? null : (Number(s.partiesDuJour) || 0),
+  };
+}
 
 function auditer(o) {
   const out = [];
@@ -340,7 +454,7 @@ function auditer(o) {
     }
     if (score > SEUILS.arbre.exploit) note('moyen', `au-delà de l'exploit connu (${SEUILS.arbre.exploit})`);
     if (s.verificationActive && !(Number(s.verifie) >= score)) note('fort', 'aucune partie vérifiée derrière ce score');
-    if (raisons.length) out.push({ jeu: 'minipixiz', username: s.username, jour: s.jour, score, gravite: g, raisons });
+    if (raisons.length) out.push({ jeu: 'minipixiz', username: s.username, jour: s.jour, score, gravite: g, raisons, ...traces(s) });
   }
   for (const s of (o && o.arcade) || []) {
     const raisons = [];
@@ -368,7 +482,7 @@ function auditer(o) {
       }
     }
     if (s.verificationActive && !(Number(s.verifie) >= score)) note('fort', 'aucune partie vérifiée derrière ce score');
-    if (raisons.length) out.push({ jeu: 'minifever', username: s.username, jour: s.jour, score, gravite: g, raisons });
+    if (raisons.length) out.push({ jeu: 'minifever', username: s.username, jour: s.jour, score, gravite: g, raisons, ...traces(s) });
   }
   const ordre = { fort: 0, moyen: 1, faible: 2 };
   return out.sort((a, b) => ordre[a.gravite] - ordre[b.gravite] || String(b.jour).localeCompare(String(a.jour)) || b.score - a.score);
@@ -444,4 +558,5 @@ function verifierEnFil(type, partie) {
 module.exports = {
   SEUILS, poserSecret, creerJeton, lireJeton, dejaRendu, marquerRendu,
   verifierArbre, verifierArcade, verifierEnFil, auditer, pictosAttendus, moteurFever,
+  rythmePartie, pointsParMinute, dureeLisible,
 };
