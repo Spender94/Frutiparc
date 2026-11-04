@@ -20907,6 +20907,22 @@ app.get('/api/admin/channels', adminScope('channels', 'kiloute'), (req, res) => 
 // où en est l'extrait, de sorte qu'un retardataire tombe sur la même seconde
 // de la chanson que les autres.
 app.get('/api/blindtest/embed', (req, res) => {
+  // LE LIEN N'EST PAS UNE PAGE. Coller l'adresse de l'iframe dans la barre
+  // d'adresse (ou « ouvrir le cadre dans un nouvel onglet ») menait tout droit
+  // à la page YouTube de la chanson — titre compris : la triche à la portée du
+  // premier venu, sans outil. Un navigateur dit ce qu'il charge
+  // (`Sec-Fetch-Dest`) et d'où (`Sec-Fetch-Site`) : on ne sert l'extrait qu'à
+  // un CADRE de nos propres pages. Ces en-têtes ne se forgent pas depuis une
+  // page ; un `curl` peut les forger, et un navigateur trop vieux ne les envoie
+  // pas (on le laisse passer). Ce n'est donc pas un coffre-fort — l'outil de
+  // développement montre toujours la redirection —, c'est une marche de plus.
+  const dest = String(req.get('sec-fetch-dest') || '');
+  const site = String(req.get('sec-fetch-site') || '');
+  res.set('Cache-Control', 'no-store');
+  res.set('Referrer-Policy', 'no-referrer');
+  if ((dest && dest !== 'iframe') || (site && site !== 'same-origin')) {
+    return res.status(403).type('text').send('L\'extrait du blindtest ne s\'écoute que dans le salon.');
+  }
   const salon = blindtestParJeton.get(String(req.query.k || ''));
   const b = salon ? blindtestEnCours(salon) : null;
   if (!b) return res.status(404).send('Extrait terminé.');

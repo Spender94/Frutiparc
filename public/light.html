@@ -10026,6 +10026,8 @@
         btDemanderSon();
         btArmerRecours();
       }
+      // Le leurre part DU clic, qui lui donne le droit de jouer.
+      btNommerLecteur(true);
     }
     majBlindtest();
   }
@@ -10123,12 +10125,52 @@
    * cours » de Chrome. Le blindtest annonçait donc sa réponse dans la barre de
    * notifications du téléphone.
    *
-   * La page du dessus a le dernier mot sur ces métadonnées : on les écrase par
-   * les nôtres, qui ne disent rien. (`mediaSession` manque encore à quelques
-   * navigateurs, et `MediaMetadata` peut jeter : les deux sont gardés.)
+   * On les écrase par les nôtres, qui ne disent rien. (`mediaSession` manque
+   * encore à quelques navigateurs, et `MediaMetadata` peut jeter : les deux
+   * sont gardés.)
+   *
+   * MAIS LA PAGE DU DESSUS N'A PAS LE DERNIER MOT CHEZ CHROME. Il n'écoute que
+   * la session d'un cadre qui JOUE quelque chose — le plus haut d'entre eux.
+   * La page ne jouait rien : Chrome, Edge, Brave et Android lisaient donc
+   * celle de l'iframe YouTube, titre et vignette compris, et nos métadonnées
+   * restaient lettre morte (« certains voient le titre dans leur navigateur »).
+   * D'où le LEURRE : un son muet joué par la page elle-même tant que le
+   * lecteur est là. La page devient le cadre le plus haut qui joue, et c'est
+   * sa session — « Blindtest — Frutiparc » — que le navigateur affiche. Plus
+   * de cinq secondes (en dessous, Chrome le prend pour un bruitage et l'ignore),
+   * en boucle, fabriqué sur place : pas un octet à télécharger.
    */
   var btAnonyme = null;
+  var btLeurreSon = null;
+  function btLeurre(actif) {
+    try {
+      if (!actif) {
+        if (btLeurreSon) btLeurreSon.pause();
+        return;
+      }
+      if (!btLeurreSon) {
+        // Un WAV de six secondes de silence : 8 bits, mono, 8 kHz.
+        var n = 6 * 8000, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+        var ecrire = function (o, t) { for (var i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+        ecrire(0, "RIFF"); v.setUint32(4, 36 + n, true); ecrire(8, "WAVEfmt ");
+        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+        v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true);
+        v.setUint16(34, 8, true); ecrire(36, "data"); v.setUint32(40, n, true);
+        for (var j = 0; j < n; j++) v.setUint8(44 + j, 128);
+        btLeurreSon = new Audio(URL.createObjectURL(new Blob([buf], { type: "audio/wav" })));
+        btLeurreSon.loop = true;
+        btLeurreSon.setAttribute("aria-hidden", "true");
+      }
+      if (btLeurreSon.paused) {
+        var p = btLeurreSon.play();
+        if (p && p.catch) p.catch(function () { /* sans geste : on réessaiera au prochain battement */ });
+      }
+    } catch (e) { /* pas d'Audio, pas de Blob : tant pis */ }
+  }
   function btNommerLecteur(actif) {
+    // Le leurre ne joue que si le lecteur YouTube est là : sans lui, il n'y a
+    // pas de titre à couvrir.
+    btLeurre(actif && !!btLecteur());
     if (!("mediaSession" in navigator)) return;
     try {
       if (!btAnonyme && window.MediaMetadata) {

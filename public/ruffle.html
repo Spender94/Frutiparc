@@ -247,7 +247,10 @@
                 b.innerHTML = '<span>Blindtest</span><span id="bt-b-temps"></span>'
                     + '<button id="bt-b-bouton" style="border:0;border-radius:6px;padding:4px 10px;'
                     + 'cursor:pointer;background:#fff;color:#000046;font:bold 12px Verdana,Arial,sans-serif"></button>'
-                    + '<div id="bt-b-cadre" style="width:1px;height:1px;overflow:hidden;opacity:.01"></div>';
+                    // pointer-events:none : même d'un pixel, le cadre se laissait
+                    // viser — et le clic droit de YouTube propose « copier l'URL
+                    // de la vidéo ».
+                    + '<div id="bt-b-cadre" style="width:1px;height:1px;overflow:hidden;opacity:.01;pointer-events:none"></div>';
                 document.body.appendChild(b);
                 b.querySelector("#bt-b-bouton").addEventListener("click", function () {
                     // Le geste, c'est ICI : la demande de son doit partir du clic.
@@ -263,6 +266,7 @@
                         try { localStorage.setItem("fp_bt_son", "1"); } catch (e) {}
                         if (!document.querySelector("#bt-b-cadre iframe")) cadre(true);
                         else { demanderSon(); armerRecours(); }
+                        nommerLecteur(true);    // le leurre part du clic
                     }
                     tic();
                 });
@@ -320,11 +324,41 @@
              * un. Mais un lecteur qui joue du son renseigne la SESSION MÉDIA du
              * navigateur, et c'est le système qui l'affiche alors — la pastille
              * « média en cours », la notification, l'écran de verrouillage. Le
-             * blindtest annonçait donc sa réponse hors de la page. La page du
-             * dessus a le dernier mot : on pose les nôtres, qui ne disent rien.
+             * blindtest annonçait donc sa réponse hors de la page. On pose les
+             * nôtres, qui ne disent rien.
+             *
+             * Chrome n'écoute pourtant que la session d'un cadre qui JOUE (le
+             * plus haut d'entre eux) : la page ne jouant rien, il lisait celle
+             * de l'iframe YouTube, titre compris. D'où le LEURRE, comme sur
+             * light.html : six secondes de silence en boucle, jouées par la
+             * page tant que le lecteur est là — c'est alors sa session, muette
+             * sur la chanson, que le navigateur affiche.
              */
             var anonyme = null;
+            var leurreSon = null;
+            function leurre(actif) {
+                try {
+                    if (!actif) { if (leurreSon) leurreSon.pause(); return; }
+                    if (!leurreSon) {
+                        // Un WAV de six secondes de silence : 8 bits, mono, 8 kHz.
+                        var n = 6 * 8000, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+                        var ecrire = function (o, t) { for (var i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+                        ecrire(0, "RIFF"); v.setUint32(4, 36 + n, true); ecrire(8, "WAVEfmt ");
+                        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+                        v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true);
+                        v.setUint16(34, 8, true); ecrire(36, "data"); v.setUint32(40, n, true);
+                        for (var j = 0; j < n; j++) v.setUint8(44 + j, 128);
+                        leurreSon = new Audio(URL.createObjectURL(new Blob([buf], { type: "audio/wav" })));
+                        leurreSon.loop = true;
+                    }
+                    if (leurreSon.paused) {
+                        var p = leurreSon.play();
+                        if (p && p.catch) p.catch(function () { /* sans geste : au prochain battement */ });
+                    }
+                } catch (e) { /* pas d'Audio, pas de Blob : tant pis */ }
+            }
             function nommerLecteur(actif) {
+                leurre(actif && !!document.querySelector("#bt-b-cadre iframe"));
                 if (!("mediaSession" in navigator)) return;
                 try {
                     if (!anonyme && window.MediaMetadata) {
