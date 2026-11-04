@@ -37475,7 +37475,15 @@ case 'send': {
     // sender via the chat.msg template. So we just hand it u + the raw text and
     // let the client apply the exact same typo/colour as kikooz — no hand-rolled
     // <font color> (which never matched).
-    if (blueModeUsers.has(client.username) && isAnimator(client.username)) {
+    //
+    // UNE ÉMOTE PASSE AVANT LE MODE BLEU. « lol », « regarde », « miam »… tapés
+    // seuls sont une ACTION (la bouille qui rit, la ligne « pseudo éclate de
+    // rire »), pas une phrase de l'animateur : quand le mode bleu était testé
+    // d'abord, l'émote partait en t="c" comme du texte — « mdr » en bleu gras,
+    // et aucune bouille ne bougeait, sur le light, le bureau comme le SWF.
+    // On la détecte donc ici, et le mode bleu la laisse passer.
+    const emo = (type === 'm') ? detectChatEmote(unescapeXml(text)) : null;
+    if (!emo && blueModeUsers.has(client.username) && isAnimator(client.username)) {
       broadcastToChannel(g,
         `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="c"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"${mn}>${safeText}</${CMD.send}>`
       );
@@ -37490,7 +37498,7 @@ case 'send': {
     // « pseudo éclate de rire » (et non « mdr »). Corps = htmlText italique
     // « pseudo phrase » (u="admin" → le SWF n'ajoute pas de préfixe « pseudo : » ) ;
     // attributs e/el/eu pour que le client Light rejoue l'émote + la bouille.
-    const emo = (type === 'm') ? detectChatEmote(unescapeXml(text)) : null;
+    // (`emo` est relevée plus haut, avant le mode bleu.)
     if (emo) {
       const who = getDisplayName(client.username);
       const emBody = `<![CDATA[<i>${escapeXml(who + ' ' + emo.label)}</i>]]>`;
