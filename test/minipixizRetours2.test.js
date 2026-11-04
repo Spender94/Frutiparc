@@ -223,9 +223,13 @@ function fauxInventaire(carte) {
     get: (o, k) => (k in o ? o[k] : () => {}),
     set: (o, k, v) => { o[k] = v; return true; },
   });
+  const ecoutes = {};
   const canvas = {
     getContext: () => ctx,
-    addEventListener() {},
+    // Les écouteurs sont retenus : un test peut rejouer la suite d'événements
+    // qu'émet un vrai navigateur (canvas.emettre).
+    addEventListener(n, f) { (ecoutes[n] = ecoutes[n] || []).push(f); },
+    emettre(n, ev) { (ecoutes[n] || []).forEach((f) => f(Object.assign({ preventDefault() {} }, ev))); },
     setPointerCapture() {},
     getBoundingClientRect: () => ({ left: 0, top: 0 }),
     style: {},
@@ -285,6 +289,56 @@ test('$current nul : le sac s\'ouvre sur un médaillon vide, pas sur la fée 0',
   inv.toucher('joueur', 0);
   assert.equal(carte.$current, 1);
   assert.equal(inv.feeCourante, 1, 'la vraie fée revient au médaillon');
+});
+
+// « Impossible de faire entrer/sortir une fée d'un bocal sur mobile. » Après un
+// toucher, le navigateur émet mousemove, mousedown, mouseup puis click. Le
+// mousemove passait le sac en mode souris ; et le click de Safari (iPhone) n'a
+// pas de pointerType pour le détromper : l'appui PRENAIT le bocal en main.
+test('au doigt, un toucher fait entrer puis sortir la fée, même sans pointerType au click', () => {
+  const carte = carteAvecBocal();
+  const inv = fauxInventaire(carte);
+  inv.ouvrir();
+  inv.zones = [{ quoi: { sac: 'joueur', case: 0 }, x: 0, y: 0, l: 20, h: 20 }];
+  const toucher = () => {
+    const ici = { clientX: 10, clientY: 10, pointerId: 1 };
+    inv.canvas.emettre('pointerdown', Object.assign({ pointerType: 'touch' }, ici));
+    inv.canvas.emettre('pointerup', Object.assign({ pointerType: 'touch' }, ici));
+    inv.canvas.emettre('mousemove', ici);            // la souris de compatibilité
+    inv.canvas.emettre('click', ici);                // WebKit : un MouseEvent nu
+  };
+  toucher();
+  assert.equal(inv.main, null, 'le bocal n\'est pas pris en main');
+  assert.equal(carte.$faerie[1].$pos, 0, 'Mimi entre au bocal');
+  assert.equal(carte.$current, null);
+  // Et on le VOIT : la souris émulée ne pose pas d'infobulle de survol, qui
+  // passerait devant la réponse et redirait « touchez-le » comme si de rien.
+  assert.equal(inv.survol, null, 'pas de survol au doigt');
+  assert.match(inv.message, /Mimi s'installe dans le bocal/);
+  toucher();
+  assert.equal(carte.$faerie[1].$pos, null, 'et en ressort au toucher suivant');
+  assert.equal(carte.$current, 1);
+});
+
+test('à la vraie souris, le clic simple prend toujours le bocal en main', () => {
+  const carte = carteAvecBocal();
+  const inv = fauxInventaire(carte);
+  inv.ouvrir();
+  inv.zones = [{ quoi: { sac: 'joueur', case: 0 }, x: 0, y: 0, l: 20, h: 20 }];
+  const ici = { clientX: 10, clientY: 10, pointerId: 1 };
+  // Même juste après un toucher (écran hybride) : l'appui souris remet la souris.
+  inv.canvas.emettre('pointerdown', Object.assign({ pointerType: 'touch' }, ici));
+  inv.canvas.emettre('pointerup', Object.assign({ pointerType: 'touch' }, ici));
+  inv.canvas.emettre('click', Object.assign({ pointerType: 'touch' }, ici));
+  assert.equal(carte.$faerie[1].$pos, 0, 'le toucher l\'a rangée');
+  inv.canvas.emettre('pointerdown', Object.assign({ pointerType: 'mouse' }, ici));
+  inv.canvas.emettre('pointerup', Object.assign({ pointerType: 'mouse' }, ici));
+  inv.canvas.emettre('mousemove', ici);
+  const avant = global.requestAnimationFrame;
+  global.requestAnimationFrame = () => 0;          // la main qui suit la souris
+  try { inv.canvas.emettre('click', ici); } finally { global.requestAnimationFrame = avant; }
+  assert.deepEqual(inv.main, { sac: 'joueur', case: 0 }, 'le clic de souris prend le bocal (inv/Slot.click)');
+  assert.equal(carte.$faerie[1].$pos, 0, 'sans toucher à sa locataire');
 });
 
 test('la locataire SUIT son bocal : déplacement, échange, et jamais hors du sac', () => {
