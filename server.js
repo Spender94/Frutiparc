@@ -4529,13 +4529,77 @@ function fdPassCount(user, game) {
   const st = fdEnsureToday(user);
   return Math.max(0, Math.floor(Number(st.p[String(game || '').toLowerCase()]) || 0));
 }
-// Parties challenge autorisées aujourd'hui = gratuites + pass (+ d'éventuels FD
-// « du jour » crédités par l'ancien modèle d'achat à l'unité, champ b hérité).
+// Parties challenge DE CHAQUE JOUR = gratuites + pass (+ d'éventuels FD « du
+// jour » crédités par l'ancien modèle d'achat à l'unité, champ b hérité). C'est
+// le chiffre que la boutique annonce pour un Pass : il ne compte pas le bonus
+// du Frutisigne, qui ne vaut que pour aujourd'hui.
 // `game` accepte un SEAU (« kaluga:freestyle ») : la limite gratuite et le
 // Pass se lisent alors sur le jeu, le crédit hérité `b` sur le seau.
-function fdAllowance(user, game) {
+function fdAllowanceBase(user, game) {
   const e = fdGameEntry(user, game);
   return FD_FREE_PER_DAY + fdPassCount(user, fdJeuDuSeau(game)) + Math.max(0, Number(e.b) || 0);
+}
+// Parties challenge autorisées AUJOURD'HUI : celles de chaque jour, plus le
+// cadeau du Frutisigne s'il tombe sur ce jeu. Comme le Pass, il se lit sur le
+// jeu et vaut pour chacun de ses tableaux.
+function fdAllowance(user, game) {
+  return fdAllowanceBase(user, game) + fdBonusFrutisigne(user, game);
+}
+
+// ── Le cadeau du Frutisigne (cf. frutisignes.js) ─────────────────────────────
+// Semaine du signe : deux parties de plus par jour, à deux jeux du Challenge
+// tirés au sort ; jour de l'ascendant : une. Le tirage ne dépend que du pseudo
+// et du jour : rien à stocker, et un redémarrage ne retire ni ne redonne rien.
+const FRUTISIGNES = require('./frutisignes.js');
+// L'objet joueur ne porte pas son pseudo : on le retrouve dans `users` une
+// fois, puis on le garde (WeakMap : l'objet remplacé à la réhydratation est
+// simplement oublié).
+const fdPseudoParJoueur = new WeakMap();
+function fdPseudoDe(user) {
+  const connu = fdPseudoParJoueur.get(user);
+  if (connu && users[connu] === user) return connu;
+  for (const k of Object.keys(users)) {
+    if (users[k] === user) { fdPseudoParJoueur.set(user, k); return k; }
+  }
+  return '';
+}
+// Le bonus du jour, recalculé seulement quand le jour, le signe ou
+// l'ascendant change (fdAllowance est lu à chaque partie, à chaque sondage).
+const fdFrutisigneCache = new WeakMap();
+function fdFrutisigne(user, pseudo) {
+  if (!user) return FRUTISIGNES.bonusDuJour({ cleJour: parisDayKey() });
+  const cleJour = parisDayKey();
+  const nom = String(pseudo || fdPseudoDe(user) || '').toLowerCase();
+  const cle = `${cleJour}|${nom}|${user.frutiSign}|${user.frutiSignB}`;
+  const vu = fdFrutisigneCache.get(user);
+  if (vu && vu.cle === cle) return vu.bonus;
+  const bonus = FRUTISIGNES.bonusDuJour({
+    pseudo: nom, signe: user.frutiSign, ascendant: user.frutiSignB, cleJour, jeux: [...FD_LIMITED_GAMES],
+  });
+  fdFrutisigneCache.set(user, { cle, bonus });
+  return bonus;
+}
+function fdBonusFrutisigne(user, game) {
+  if (!user) return 0;
+  return fdFrutisigne(user).jeux.includes(fdJeuDuSeau(String(game || '').toLowerCase())) ? 1 : 0;
+}
+// Le dire au joueur, UNE fois par jour : à la connexion (ident du salon, et
+// /do/onident du bureau Flash). Le drapeau vit dans l'état FD du jour (`fs`),
+// effacé tout seul au changement de journée et persisté avec lui — un
+// redémarrage ne refait pas l'annonce.
+function frutisigneAnnoncer(username) {
+  const user = username ? users[username] : null;
+  if (!user) return false;
+  const bonus = fdFrutisigne(user, username);
+  if (!bonus.jeux.length) return false;
+  const st = fdEnsureToday(user);
+  if (st.fs) return false;
+  st.fs = 1;
+  fdPersist(username, user);
+  const phrase = FRUTISIGNES.phraseDuBonus(bonus, fdGameLabel);
+  addAndNotifyUserLog(username, { type: USER_LOG_TYPE.CHAT, content: phrase });
+  console.log(`[FD] ${username} : Frutisigne du jour → ${bonus.jeux.join(', ')}`);
+  return true;
 }
 function fdRemaining(user, game) {
   const e = fdGameEntry(user, game);
@@ -4835,6 +4899,9 @@ function fdSnapshot(user, game) {
     limited,
     free: FD_FREE_PER_DAY * seaux.length,
     passes: fdPassCount(user, game),
+    // La partie offerte par le Frutisigne aujourd'hui (0 ou 1, par tableau
+    // comme le Pass) — déjà comprise dans `allowance`.
+    frutisigne: fdBonusFrutisigne(user, game),
     allowance: somme((s) => fdAllowance(user, s)),
     used: somme((s) => Number(fdGameEntry(user, s).u) || 0),
     remaining: limited ? somme((s) => fdRemaining(user, s)) : null, // null = illimité
@@ -7720,7 +7787,7 @@ function buildShopPackXml(pack, user) {
     let comment = pack.comment || '';
     if (pack.fdPassGame && user) {
       const n = fdPassCount(user, pack.fdPassGame);
-      const parties = fdAllowance(user, pack.fdPassGame);
+      const parties = fdAllowanceBase(user, pack.fdPassGame);
       // EN TOUTES LETTRES. La phrase disait « Vous en possédez 5 → 7 parties
       // par jour » ; la police de shopitem.swf est un jeu de glyphes RÉDUIT,
       // découpé en 2005 sur les caractères des textes d'époque, et la flèche
@@ -14343,7 +14410,15 @@ app.get('/api/admin/users/:username', adminAuth, async (req, res) => {
     // Les parties de Swapou jouées avec l'IA : classées nulle part, lisibles ici.
     let iaScores = [];
     try { iaScores = await db.listSwapouIaScores(row.username || u, 100); } catch { iaScores = []; }
-    res.json({ user: row, items, accessories: accs, scores, gameItems, iaScores, ban: banInfoFromUntil(row.banned_until) });
+    // Le cadeau du Frutisigne aujourd'hui (fiche joueur) : lu sur la base,
+    // la source de vérité du signe, même pour un joueur hors ligne.
+    const frutisigne = FRUTISIGNES.bonusDuJour({
+      pseudo: String(row.username || u).toLowerCase(), signe: row.fruti_sign, ascendant: row.fruti_sign_b,
+      cleJour: parisDayKey(), jeux: [...FD_LIMITED_GAMES],
+    });
+    frutisigne.semaineDuSigne = FRUTISIGNES.bornesDeLaSemaine(parisDayKey());
+    frutisigne.libelles = frutisigne.jeux.map(fdGameLabel);
+    res.json({ user: row, items, accessories: accs, scores, gameItems, iaScores, frutisigne, ban: banInfoFromUntil(row.banned_until) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -25390,6 +25465,9 @@ app.get('/do/onident', (req, res) => {
   const hasDefaultBouille = !user.fbouille || user.fbouille === DEFAULT_BOUILLE_STATE;
   const fAttr = (hasDefaultBouille || user.needsBouille === true) ? ' f="0,1,2,3,4,5,6,7,8"' : '';
 
+  // Le mot du Frutisigne, s'il y a lieu et pas encore dit aujourd'hui : le
+  // bureau Flash lit son historique ici, juste après l'ident.
+  frutisigneAnnoncer(auth.username);
   const userLogXml = buildUserLogXml(user.userLog);
   const siteLogXml = buildUserLogXml(user.siteLog);
   // previousTime (p=): the client flags an entry as "new" when its date is
@@ -26043,10 +26121,10 @@ function purchaseShopPack(user, username, packIdRaw) {
     notifyKikoozUpdate(username, user.kikooz);
     addAndNotifyUserLog(username, {
       type: USER_LOG_TYPE.CHAT,
-      content: `${pack.name} acheté : tu as désormais droit à ${fdAllowance(user, pack.fdPassGame)} parties par jour sur la course du jour !`,
+      content: `${pack.name} acheté : tu as désormais droit à ${fdAllowanceBase(user, pack.fdPassGame)} parties par jour sur la course du jour !`,
     });
     console.log(`[ft/buy] ${username} bought PASS #${pack.id} (${pack.name}) — pass=${passes}, kikooz now ${user.kikooz}`);
-    return { ok: true, kikooz: user.kikooz, isPass: true, pack, passes, allowance: fdAllowance(user, pack.fdPassGame) };
+    return { ok: true, kikooz: user.kikooz, isPass: true, pack, passes, allowance: fdAllowanceBase(user, pack.fdPassGame) };
   }
 
   // Feutre spécial : cosmétique PERMANENT (stylo de chat). On accorde le stylo
@@ -30848,7 +30926,7 @@ app.get('/api/light/shop', (req, res) => {
       a.owned = false;
       a.cumulable = true;
       a.pass = { jeu: p.fdPassGame, possede: fdPassCount(user, p.fdPassGame),
-        parJour: fdAllowance(user, p.fdPassGame) };
+        parJour: fdAllowanceBase(user, p.fdPassGame) };
     }
     return a;
   };
@@ -35998,6 +36076,9 @@ async function handleCBeeMessage(socket, rawXml) {
       // bonus XP, l'entrée userLog qu'elle ajoute est délivrée par la boucle de
       // flush ci-dessous (exactement une fois).
       awardDailyLoginKikooz(effectiveLogin);
+      // Semaine du signe, jour de l'ascendant : le Frutisigne offre des parties
+      // du Challenge, et le dit une fois par jour (cf. frutisigneAnnoncer).
+      frutisigneAnnoncer(effectiveLogin);
 
       // Reconnect: if a previous socket dropped within the grace window, re-bind
       // this new socket to the salons the user was in (they were never removed,
