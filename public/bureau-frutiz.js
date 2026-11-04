@@ -5089,7 +5089,8 @@ window.BureauFrutiz = (function () {
   var MAIL_DOSSIERS = {
     inbox: 'Boîte de réception', outbox: 'Messages envoyés', blackbox: 'Indésirables',
   };
-  function retitrerMail(vue) {
+  function retitrerMail(vue, dossier) {
+    if (dossier) mailDossierVu = dossier;
     if (!actif) return;
     // Trois fenêtres d'époque dans un seul panneau : la classe dit LAQUELLE
     // on regarde, et la feuille de style rend à chacune ses couleurs (la

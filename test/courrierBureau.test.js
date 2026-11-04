@@ -131,5 +131,9 @@ test('trois fenêtres d’époque, trois titres', () => {
   assert.match(JS, /else if \(vue === 'liste'\) retitrer\('mail-panel', MAIL_DOSSIERS\[mailDossierVu\] \|\| 'Courrier'\);/);
   assert.match(JS, /retitrerMail: retitrerMail,/);
   // Le light prévient à chaque changement de vue, et seulement lui.
-  assert.match(LIGHT, /if \(window\.BureauFrutiz && BureauFrutiz\.retitrerMail\) BureauFrutiz\.retitrerMail\(nom\);/);
+  // …avec le DOSSIER : le bureau ne l'apprenait qu'à l'arrivée de la liste,
+  // et titrait d'abord avec le précédent — « Messages envoyés » s'ouvrait
+  // sous « Boîte de réception », et l'inverse.
+  assert.match(LIGHT, /if \(window\.BureauFrutiz && BureauFrutiz\.retitrerMail\) BureauFrutiz\.retitrerMail\(nom, mailDossier\);/);
+  assert.match(JS, /function retitrerMail\(vue, dossier\) \{\s*\n\s*if \(dossier\) mailDossierVu = dossier;/);
 });

@@ -47,7 +47,7 @@ const LANG = fs.readFileSync(path.join(ROOT, 'frutiparc/lang_french.as'), 'latin
 
 test('la classe de la vue décide de la couleur, et le jaune reste à la liste', () => {
   // Trois vues dans un panneau : la classe dit laquelle on regarde.
-  const bloc = /function retitrerMail\(vue\) \{[\s\S]*?\n  \}/.exec(JS);
+  const bloc = /function retitrerMail\(vue, dossier\) \{[\s\S]*?\n  \}/.exec(JS);
   assert.ok(bloc, 'retitrerMail doit exister');
   assert.match(bloc[0], /panneau\.classList\.toggle\('mx-lit', vue === 'lecture'\);/);
   assert.match(bloc[0], /panneau\.classList\.toggle\('mx-ecrit', vue === 'ecriture'\);/);

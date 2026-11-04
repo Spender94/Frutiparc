@@ -6876,7 +6876,11 @@
     // Le bureau tient TROIS fenêtres d'époque dans ce seul panneau : son
     // bandeau suit la vue (le dossier, le sujet, « Composer un nouveau
     // message »). Sur mobile, il n'y a pas de bandeau à suivre.
-    if (window.BureauFrutiz && BureauFrutiz.retitrerMail) BureauFrutiz.retitrerMail(nom);
+    // Le dossier part AVEC la vue : le bureau titrait avec celui qu'il avait
+    // gardé, celui d'AVANT le clic (il ne l'apprend qu'à l'arrivée de la
+    // liste) — « Messages envoyés » s'ouvrait sous « Boîte de réception », et
+    // l'inverse : les deux boîtes semblaient échanger leurs noms.
+    if (window.BureauFrutiz && BureauFrutiz.retitrerMail) BureauFrutiz.retitrerMail(nom, mailDossier);
   }
   // « 2026-08-01 14:32:05 » → « 01/08 14:32 » (aujourd'hui : juste l'heure).
   function mailDate(s) {
