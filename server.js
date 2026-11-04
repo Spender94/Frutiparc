@@ -5662,6 +5662,69 @@ function estEnListeNoire(user, pseudo) { return !!user && estDansLaListe(user.bl
 function estContact(user, pseudo) { return !!user && estDansLaListe(user.contacts, pseudo); }
 
 /*
+ * IGNORER QUELQU'UN SUR LES SALONS, C'EST LA LISTE NOIRE.
+ *
+ * `/ignore pseudo` n'ouvre pas une seconde liste : il range le frutiz dans la
+ * liste noire, celle que le bureau et le light savent déjà afficher et vider.
+ * Une seule liste, un seul endroit où se raviser — et qui ne veut plus lire
+ * quelqu'un ne veut pas davantage de ses invitations ni de son courrier.
+ * Réciproquement, un frutiz mis en liste noire depuis sa fiche est ignoré sur
+ * les salons.
+ *
+ * Le filtre se tient AU RELAIS, côté serveur : les lignes de l'ignoré ne
+ * partent pas vers celui qui l'ignore — ni en direct (`broadcastToChannel`),
+ * ni au rejeu des cinq dernières minutes, ni dans les logs qu'il relit. Le
+ * SWF comme le light en profitent sans rien savoir. Ce qui passe toujours :
+ *  · tout ce que dit un MODÉRATEUR (comme pour les invitations, plus haut) ;
+ *  · les lignes du staff : le cri rouge (`st="r"`), le bleu d'animation
+ *    (`t="c"`, gains, quiz, dons d'animateur) ;
+ *  · les lignes système (`u="admin"` sans auteur) : annonces, totoches,
+ *    expulsions, dés. Une sanction contre l'ignoré se lit donc toujours, et
+ *    les présences (arrivées, départs) ne sont pas des messages.
+ * Seuls les salons sont concernés : une discussion privée avec un frutiz en
+ * liste noire est déjà fermée, à l'ouverture comme à l'envoi.
+ */
+function auteurIgnorable(xmlStr) {
+  const s = String(xmlStr || '');
+  if (!/^<t[\s>/]/.test(s)) return null;
+  const fin = s.indexOf('>');
+  const tete = fin > 0 ? s.slice(0, fin) : s;
+  const attr = (n) => {
+    const m = new RegExp('\\s' + n + '="([^"]*)"').exec(tete);
+    return m ? unescapeXml(m[1]) : '';
+  };
+  if (attr('t') === 'c' || attr('st') === 'r') return null;
+  const u = attr('u');
+  if (u && u !== 'admin') return u;
+  // L'émote part en u="admin" (le SWF n'y met pas de préfixe) : son auteur
+  // voyage dans `eu`.
+  return attr('eu') || null;
+}
+// La clé de `users` pour un nom affiché (« Bob » → « bob »), sans parcourir
+// tout le parc quand la casse suffit.
+function cleDuFrutiz(nom) {
+  const bas = String(nom || '').toLowerCase();
+  return users[bas] ? bas : resolveKnownUsername(nom);
+}
+// `qui` (une clé) ignore-t-il `auteur` (clé ou nom affiché) sur les salons ?
+function ignoreSurLesSalons(qui, auteur) {
+  if (!qui || !auteur) return false;
+  const u = users[qui];
+  if (!u || !Array.isArray(u.blacklist) || !u.blacklist.length) return false;
+  const a = cleDuFrutiz(auteur);
+  if (a === qui || isModerator(a)) return false;
+  return estEnListeNoire(u, a);
+}
+// Une trame de salon que `qui` ne doit pas recevoir.
+function trameIgnoreePar(qui, salon, xmlStr) {
+  if (!qui || isPrivateChannel(salon)) return false;
+  const u = users[qui];
+  if (!u || !Array.isArray(u.blacklist) || !u.blacklist.length) return false;
+  const auteur = auteurIgnorable(xmlStr);
+  return !!auteur && ignoreSurLesSalons(qui, auteur);
+}
+
+/*
  * LE CARNET ET LA LISTE NOIRE S'EXCLUENT.
  *
  * D'époque, un contact est un FICHIER : il vit dans un dossier, et un seul.
@@ -8119,6 +8182,11 @@ function pousserNotifMentionChat(g, auteur, texteBrut, cibles) {
   for (const cible of cibles) {
     if (!mentionActive(cible, 'mention_chat')) {
       noterDecisionPush(cible, 'mention', false, 'mentions des salons coupées (mention_chat = N)');
+      continue;
+    }
+    // Un frutiz qu'on ignore ne fait pas sonner le téléphone non plus.
+    if (ignoreSurLesSalons(String(cible).toLowerCase(), auteur)) {
+      noterDecisionPush(cible, 'mention', false, 'auteur ignoré (liste noire)');
       continue;
     }
     if (estJoignableEnDirect(cible)) {
@@ -29417,8 +29485,12 @@ app.get('/api/chat/histo', (req, res) => {
   }
 
   const lignes = [];
+  // Celui qui ignore quelqu'un ne le relit pas non plus ici — sauf un
+  // modérateur : pour lui, les logs restent la pièce du dossier.
+  const filtrer = !isModerator(demandeur);
   for (const e of getChannelHistoryComplete(g)) {
     const x = e.xml;
+    if (filtrer && trameIgnoreePar(demandeur, g, x)) continue;
     const attr = (n) => { const m = x.match(new RegExp('\\b' + n + '="([^"]*)"')); return m ? m[1] : ''; };
     const u = unescapeXml(attr('u'));
     const t = attr('t') || 'm';
@@ -30569,6 +30641,9 @@ async function boot() {
                   body: "Quelques commandes utiles dans le chat&#160;:<br/>"
                     + "&#8226; <i>/aide</i> ou <i>/help</i>&#160;: ouvre cette fen&#234;tre<br/>"
                     + "&#8226; <i>/fiche pseudo</i>&#160;: affiche la fiche d&#8217;un Frutiz<br/>"
+                    + "&#8226; <i>/! pseudo message</i>&#160;: un message que seul ce Frutiz, pr&#233;sent dans le salon, verra (il n&#8217;appara&#238;t pas dans les logs)<br/>"
+                    + "&#8226; <i>/ignore pseudo</i>&#160;: vous ne voyez plus ses messages sur les salons (il rejoint votre liste noire)&#160;; "
+                    + "<i>/unignore pseudo</i> pour revenir en arri&#232;re, <i>/ignore</i> seul pour la liste<br/>"
                     + "&#8226; <i>/status away</i>, <i>phone</i>, <i>zzz</i>, <i>work</i>, <i>eat</i>&#160;: "
                     + "remplace votre pastille verte par une petite ic&#244;ne qui dit ce que vous faites "
                     + "(<i>/status off</i> pour l&#8217;enlever)<br/>"
@@ -32718,12 +32793,109 @@ function broadcastToChannel(channelName, xmlStr, excludeSocket = null) {
   if (!channel) return;
   xmlStr = numeroterMessage(xmlStr);
   recordChannelHistory(channelName, xmlStr);
+  // L'auteur d'une ligne qu'on peut ignorer (cf. `auteurIgnorable`) : relevé
+  // une fois, puis chaque spectateur qui l'a en liste noire est sauté.
+  const auteur = isPrivateChannel(channelName) ? null : auteurIgnorable(xmlStr);
   for (const [sock, client] of xmlSocketClients) {
     if (sock === excludeSocket) continue;
     if (client.channels.has(channelName)) {
+      if (auteur && ignoreSurLesSalons(client.username, auteur)) continue;
       sendToClient(sock, xmlStr);
     }
   }
+}
+
+/*
+ * `/! pseudo message` : UN MOT À UN SEUL FRUTIZ DU SALON.
+ *
+ * D'époque, c'était l'avertissement d'un modérateur : le SWF envoyait
+ * `<bk g u t="w">` (senduserongroup) et affichait chez lui « Envoyé à X : … »
+ * (chat.cmd.warn_send_to_user). Le parc l'ouvre à tout le monde (le SWF par
+ * scripts/patch-main-chuchoter-tous.js, le light en envoyant la ligne telle
+ * quelle), avec les bornes d'époque et celles du bon sens :
+ *  · le destinataire est DANS CE SALON (`senduserongroup`), et le salon n'est
+ *    pas une discussion privée (elle l'est déjà) ;
+ *  · personne d'autre ne le reçoit, et rien n'est rangé : ni historique, ni
+ *    base, ni logs — `sendToClient` seul, jamais `broadcastToChannel` ;
+ *  · la liste noire du destinataire l'arrête (sauf modérateur), avec la même
+ *    réponse neutre que les discussions privées ;
+ *  · une partie de loup-garou en cours l'interdit (sinon la nuit aurait des
+ *    fuites) ; une cadence bornée, puisque le salon ne voit pas ces messages.
+ * La totoche et les mots interdits sont déjà passés en amont (`case 'send'`).
+ *
+ * La trame part en `u="admin"` : le SWF la rend en italique sans préfixe
+ * (chat.msg_admin), le corps porte sa couleur et « (de X) » / « (à X) ».
+ * `st="pv"`, `au` (l'auteur) et `ad` (le destinataire) sont pour le light.
+ */
+const CHUCHO_COULEUR = '#7B3FA0';
+const CHUCHO_MAX_CAR = 500;
+const CHUCHO_FENETRE_MS = 10 * 1000;
+const CHUCHO_MAX_PAR_FENETRE = 5;
+const chuchoCadence = new Map();               // username → instants récents
+function chuchoter(client, socket, g, reste, depuisSwf) {
+  const ta = buildChatTimeAttrs();
+  const dire = (txt) => sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${ta.h}" d="${ta.d}"><![CDATA[<i>${escapeXml(txt)}</i>]]></${CMD.send}>`);
+  const channel = channels[g];
+  if (!channel || !channel.users) return;
+  if (isPrivateChannel(g)) {
+    dire('/! sert dans un salon : ici, la discussion est déjà privée.');
+    return;
+  }
+  const mm = String(reste || '').trim().match(/^(\S+)\s+([\s\S]+)$/);
+  if (!mm) {
+    dire('Syntaxe : /! pseudo message — seul ce frutiz, présent dans le salon, le verra.');
+    return;
+  }
+  const nomCible = mm[1].replace(/^@/, '');
+  const message = mm[2].trim().slice(0, CHUCHO_MAX_CAR);
+  const bas = nomCible.toLowerCase();
+  const cible = [...channel.users].find((u) => u.toLowerCase() === bas
+    || String(getDisplayName(u)).toLowerCase() === bas);
+  if (!cible) {
+    // Le SWF résout le pseudo dans SA liste des présents : un absent y donne
+    // « undefined ».
+    dire(!nomCible || nomCible === 'undefined'
+      ? 'Ce frutiz n\'est pas dans ce salon.'
+      : `${nomCible} n'est pas dans ce salon : /! ne parle qu'à quelqu'un qui est là.`);
+    return;
+  }
+  if (cible === client.username) {
+    dire('Tu ne peux pas t\'envoyer un message privé à toi-même.');
+    return;
+  }
+  const modo = isModerator(client.username);
+  if (lgParties.has(g) && !isChannelStaff(client.username, g)) {
+    dire('Pas de messages privés pendant une partie de loup-garou : chacun doit entendre la même chose.');
+    return;
+  }
+  const maintenant = Date.now();
+  const recents = (chuchoCadence.get(client.username) || []).filter((t) => maintenant - t < CHUCHO_FENETRE_MS);
+  if (!modo && recents.length >= CHUCHO_MAX_PAR_FENETRE) {
+    chuchoCadence.set(client.username, recents);
+    dire('Doucement : trop de messages privés d\'affilée, attends quelques secondes.');
+    return;
+  }
+  recents.push(maintenant);
+  chuchoCadence.set(client.username, recents);
+  if (!modo && estEnListeNoire(users[cible], client.username)) {
+    dire(`${getDisplayName(cible)} ne reçoit pas les messages privés pour le moment.`);
+    return;
+  }
+  const qui = getDisplayName(client.username);
+  const aQui = getDisplayName(cible);
+  const trame = (prefixe) => `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${ta.h}" d="${ta.d}" st="pv" au="${escapeXml(qui)}" ad="${escapeXml(aQui)}">`
+    + `<![CDATA[<font color="${CHUCHO_COULEUR}">${prefixe} ${escapeXml(message)}</font>]]></${CMD.send}>`;
+  const versLui = trame(`(de <b>${escapeXml(qui)}</b>)`);
+  const versMoi = trame(`(à <b>${escapeXml(aQui)}</b>)`);
+  for (const [s, cl] of xmlSocketClients) {
+    if (!cl || !cl.channels || !cl.channels.has(g)) continue;
+    if (cl.username === cible) sendToClient(s, versLui);
+    // Le SWF a déjà écrit « Envoyé à X : … » chez lui : pas de doublon sur
+    // la socket d'où part la commande. Ses autres fenêtres, elles, le voient.
+    else if (cl.username === client.username && !(depuisSwf && s === socket)) sendToClient(s, versMoi);
+  }
+  // Le journal du serveur garde la trace de l'envoi, pas son contenu.
+  console.log(`[CHAT] /! ${client.username} → ${cible} (${g})`);
 }
 
 /*
@@ -35229,6 +35401,8 @@ case 'join': {
     // ne reçoit jamais ce rejeu (lc="1"), et un attribut inconnu ne le
     // gênerait pas davantage.
     for (const frame of getChannelHistory(g)) {
+      // Les lignes d'un frutiz qu'il ignore ne reviennent pas par le rejeu.
+      if (trameIgnoreePar(client.username, g, frame)) continue;
       sendToClient(socket, frame.replace(/^<t(?=[\s>])/, '<t rj="1"'));
     }
   }
@@ -35560,6 +35734,18 @@ case 'join': {
       break;
     }
 
+    // ── senduserongroup (bk) : le `/! pseudo message` du SWF ──
+    // Le SWF compose `<bk g="salon" u="pseudo" t="w">texte</bk>` (cf.
+    // `chuchoter`). On la récrit en la ligne que tape le light — « /! pseudo
+    // texte » — et elle CONTINUE dans `send` : totoche, mots interdits et
+    // adhésion au salon s'y appliquent de la même façon aux deux clients.
+    case 'senduserongroup': {
+      msg.content = '/! ' + (msg.attrs.u || '') + ' ' + (msg.content || '');
+      msg.attrs = { g: msg.attrs.g, t: 'm', p: '' };
+      msg.chuchoSwf = true;
+    }
+    // falls through
+
     // ── send: chat message ──
 case 'send': {
   const g = msg.attrs.g;
@@ -35650,8 +35836,11 @@ case 'send': {
   // ── Auto-moderation: forbidden words → instant 10-min totoché ──
   // Applies to normal chat lines (not slash-commands). The offending message
   // is dropped (not broadcast); the author is muted, notified, and logged.
+  // Le message privé `/!` y passe aussi : que le salon ne le voie pas ne le
+  // rend pas plus fréquentable.
   if (g && client.logged && (type === 'm' || type === undefined)
-      && !text.startsWith('/') && !isModerator(client.username) && chatHasBannedWord(text)) {
+      && (!text.startsWith('/') || /^\/!(\s|$)/.test(text))
+      && !isModerator(client.username) && chatHasBannedWord(text)) {
     const until = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
     if (users[client.username]) users[client.username].mutedUntil = until;
     programmerFinDeTotoche(client.username);
@@ -35691,6 +35880,69 @@ case 'send': {
     // bloc ; on respecte les rôles : à eux la modération (kick, ban, totoché,
     // cri rouge, @all), aux animateurs le feutre bleu et l'enveloppe de dons.
     const canAnimate = isAnimator(client.username);
+
+    // ── /! pseudo message : un mot à un seul frutiz du salon (cf. chuchoter) ──
+    if (/^\/!(\s|$)/.test(text)) {
+      chuchoter(client, socket, g, unescapeXml(text).replace(/^\/!/, ''), !!msg.chuchoSwf);
+      break;
+    }
+
+    // ── /ignore, /unignore : ne plus lire quelqu'un sur les salons ──
+    //
+    //   /ignore            la liste de ceux qu'on ignore
+    //   /ignore pseudo     l'ignorer (il entre dans la liste noire)
+    //   /unignore pseudo   le relire (il en sort)
+    //
+    // Une seule liste, la liste noire (cf. `auteurIgnorable`) : le dossier du
+    // bureau, la tuile « Liste noire » du light et cette commande montrent et
+    // modifient la même chose. Réponses privées, comme /mesdons.
+    {
+      const mi = unescapeXml(text).trim().match(/^\/(ignore|ignorer|unignore|designore|désignore|deignore)(?:\s+([\s\S]*))?$/i);
+      if (mi) {
+        const dire = (html) => sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${html}</i>]]></${CMD.send}>`);
+        const moi = users[client.username];
+        if (!moi) break;
+        ensureContactLists(moi);
+        const retirer = !/^ignorer?$/i.test(mi[1]);
+        const args = String(mi[2] || '').trim().split(/\s+/).filter(Boolean);
+        if (args.length > 1 || (retirer && !args.length)) {
+          dire(escapeXml(retirer ? 'Syntaxe : /unignore pseudo' : 'Syntaxe : /ignore pseudo — ou /ignore seul pour la liste.'));
+          break;
+        }
+        if (!args.length) {
+          const noms = moi.blacklist.map((a) => getDisplayName(String(a).split('@')[0].trim())).filter(Boolean);
+          dire(noms.length
+            ? escapeXml(`Tu ignores sur les salons : ${noms.join(', ')} (ta liste noire). /unignore pseudo pour relire quelqu'un.`)
+            : escapeXml('Tu n\'ignores personne. /ignore pseudo pour ne plus voir les messages de quelqu\'un sur les salons.'));
+          break;
+        }
+        const cle = await addressToUsername(args[0].replace(/^@/, ''));
+        if (!cle) { dire(escapeXml(`Aucun frutiz ne s'appelle « ${args[0]} ».`)); break; }
+        const nom = getDisplayName(cle);
+        if (cle === client.username) { dire(escapeXml('Tu ne peux pas t\'ignorer toi-même.')); break; }
+        if (retirer) {
+          const ote = retirerDuCarnet(moi, 'blacklist', cle);
+          dire(escapeXml(ote
+            ? `Tu n'ignores plus ${nom} : ses messages sur les salons te parviennent de nouveau, et ${nom} quitte ta liste noire.`
+            : `Tu n'ignorais pas ${nom}.`));
+          break;
+        }
+        // Un modérateur passe toujours : l'ignorer ne cacherait rien, mieux
+        // vaut le dire que laisser croire le contraire.
+        if (isModerator(cle)) { dire(escapeXml(`${nom} est modérateur : ses messages passent toujours.`)); break; }
+        if (estEnListeNoire(moi, cle)) { dire(escapeXml(`Tu ignores déjà ${nom}. /unignore ${nom} pour le relire.`)); break; }
+        // Même arithmétique que la fiche (`/ff/mk`) : entrer en liste noire,
+        // c'est sortir du carnet.
+        const adresse = normalizeContactAddress(nom);
+        retirerDuCarnet(moi, 'mycontact', adresse);
+        moi.blacklist.push(adresse);
+        if (moi._dbId) db.addBlacklist(moi._dbId, adresse).catch((e) => console.error('[DB] blacklist add error:', e.message));
+        dire(escapeXml(`Tu ignores désormais ${nom} : tu ne verras plus ses messages sur les salons. `
+          + `${nom} rejoint aussi ta liste noire (invitations et discussions privées refusées, courrier dans la Boîte noire). `
+          + `/unignore ${nom} pour annuler.`));
+        break;
+      }
+    }
 
     if (canModHere && text.startsWith('/kick ')) {
       const targetUser = resolveKnownUsername(text.substring(6).trim());
@@ -36161,6 +36413,28 @@ case 'send': {
     // ── /lg … : le loup-garou du salon (cf. lgCommande) ──
     if (/^\/(lg|loupgarou|loup-garou)(\s|$)/i.test(text)) {
       lgCommande(client, g, text.replace(/^\/\S+\s*/, ''));
+      break;
+    }
+
+    // ── /aide, /help, /? : les commandes du chat ──
+    // Le SWF répond lui-même (chat.cmd.help, dans le client) et n'envoie
+    // jamais la ligne ; le light, lui, n'avait rien — « Commande inconnue ».
+    // Réponse privée, en bleu d'animation (t="c" garde les retours à la ligne).
+    if (/^\/(aide|help|\?|commandes)\s*$/i.test(text)) {
+      const aide = [
+        'Commandes du chat :',
+        '/! pseudo message — un message que seul ce frutiz (présent dans le salon) verra ; rien dans les logs',
+        '/ignore pseudo — ne plus voir ses messages sur les salons (il rejoint ta liste noire) ; /ignore seul : la liste',
+        '/unignore pseudo — le relire',
+        '/donne kikooz pseudo [message] — offrir des kikooz',
+        '/image largeur hauteur adresse titre — montrer une image au salon',
+        '/d6, /d20… — lancer un dé devant tout le salon',
+        '/status away, phone, zzz, work, eat ou off — ta pastille',
+        '/stats — les statistiques du salon',
+        '/lg aide — le loup-garou, quand une partie se joue',
+      ];
+      if (canModHere) aide.push('Équipe du salon : !message (cri rouge), /kick pseudo, /sujet texte, @all');
+      sendToClient(socket, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${aide.map(escapeXml).join('<br/>')}]]></${CMD.send}>`);
       break;
     }
 

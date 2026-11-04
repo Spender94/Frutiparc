@@ -216,7 +216,9 @@ test('l’onglet d’une conversation CLIGNOTE à l’arrivée d’un message', 
   /* Un « @all » du staff s'adresse à tout le monde ; et une discussion
      PRIVÉE s'adresse toujours à moi, même quand elle a sa fenêtre : passé le
      premier message, qui l'ouvrait, les suivants n'avertissaient plus. */
-  assert.match(bloc, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| aTous \|\| attr\(xml, "st"\) === "r" \|\| estPrive\(salon\)\);/);
+  assert.match(bloc, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| aTous \|\| attr\(xml, "st"\) === "r" \|\| chuchoPourMoi \|\| estPrive\(salon\)\);/);
+  // Un message « /! » REÇU avertit (pas l'écho de celui qu'on envoie).
+  assert.match(bloc, /var chuchoPourMoi = attr\(xml, "st"\) === "pv" && !sameName\(xmlUnescape\(attr\(xml, "au"\)\), state\.user\);/);
   assert.match(bloc, /var enRejeu = attr\(xml, "rj"\) === "1";/);
   assert.match(bloc, /conv\.nonLus \+= 1;[\s\S]*?avertirOngletChat\(ty, salon, true\);/);      // en privé
   assert.match(bloc, /\/\/ Le salon qu'on regarde[\s\S]*?avertirOngletChat\(ty, salon, pourMoi\);/); // en salon

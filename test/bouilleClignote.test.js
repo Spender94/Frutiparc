@@ -256,7 +256,7 @@ test('le rejeu d’historique s’écrit mais ne fait RÉAGIR personne', () => {
   assert.match(LIGHT, /if \(emWho && !enRejeu\) showBouilleOverlay/);
   assert.match(LIGHT, /if \(from && !isAdmin && !enRejeu\) showBouilleOverlay/);
   // …ni clignotement d'onglet ou de mention…
-  assert.match(LIGHT, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| attr\(xml, "st"\) === "r"\);/);
+  assert.match(LIGHT, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| aTous \|\| attr\(xml, "st"\) === "r" \|\| chuchoPourMoi \|\| estPrive\(salon\)\);/);
   assert.match(LIGHT, /if \(!enRejeu\) avertirOngletChat\(ty, salon, pourMoi\);/);
   // …ni non-lus d'une conversation privée.
   assert.match(LIGHT, /if \(conv && !enRejeu && !\(conv\.sourdineJusqua > Date\.now\(\)\)\)/);
