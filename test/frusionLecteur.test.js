@@ -162,7 +162,9 @@ test('« redémarrer le jeu » RELANCE, il n’éjecte pas', () => {
 test('le disque qui tourne quitte la boîte, le bureau et les dossiers', () => {
   assert.match(JS, /function dansLeLecteur\(o\) \{\s*\n\s*return !!\(frusion && frusion\.disque && !frusion\.rendu/);
   // la boîte
-  assert.match(JS, /if \(x\.type !== 'disc'\) return true;\s*\n\s*return !dansLeLecteur\(x\) && !trouverObjet\(x\.uid\);/);
+  // (Entre les deux, la boîte « Mes disques » peut taire le disque d'époque
+  // d'un jeu porté : celui du portage le remplace sur le bureau HTML.)
+  assert.match(JS, /if \(x\.type !== 'disc'\) return true;\s*\n(?:\s*if \(uid === 'disccollector' && x\.portage\) return false;\s*\n)?\s*return !dansLeLecteur\(x\) && !trouverObjet\(x\.uid\);/);
   // le bureau
   assert.match(JS, /if \(dansLeLecteur\(o\)\) return;\s+\/\/ `fileMng\.frusionOn`/);
   // et les dossiers du bureau
