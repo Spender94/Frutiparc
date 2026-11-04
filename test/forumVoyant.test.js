@@ -507,13 +507,16 @@ test('l\'en-tête du forum tient sur UNE ligne, même sur un téléphone', () =>
   assert.match(forum, /\.forum-header \.bc-home \{ flex: none;/,
     'l\'orange garde sa taille quoi qu\'il arrive');
 
-  // 2. L'orange EST la racine : sur un petit écran elle remplace le nom du
-  // forum, qui coûte la moitié de la ligne. Elle mène au même endroit.
+  // 2. La racine RESTE sur un petit écran (« on ne pouvait plus cliquer en
+  // haut pour retourner sur le forum principal ») : seul son « .com » cède,
+  // et l'orange, qui ferait doublon, laisse sa place.
   assert.match(forum, /class="bc-home" onclick="navigate\('index'\);return false"/,
     'l\'icône est un lien vers l\'accueil du forum');
   assert.match(forum, /alt="Forum Frutiparc\.com"/, 'et elle le dit aux lecteurs d\'écran');
-  assert.match(forum, /\.forum-header\.deep \.bc-root \{ display: none; \}/,
-    'la racine s\'efface dès qu\'on est descendu d\'un cran');
+  assert.doesNotMatch(forum, /\.bc-root \{ display: none; \}/,
+    'la racine ne s\'efface plus');
+  assert.match(forum, /\.forum-header\.deep \.bc-com \{ display: none; \}/,
+    'seul le « .com » s\'efface en profondeur');
   assert.match(forum, /entete\.classList\.toggle\('deep', parts\.length > 0\)/,
     'et « deep » se pose exactement là');
   // La racine emporte son chevron : sinon « > Frutiz » ouvrirait la ligne.
@@ -524,8 +527,10 @@ test('l\'en-tête du forum tient sur UNE ligne, même sur un téléphone', () =>
   assert.match(fil, /if \(i > 0\) html \+= ' <span class="bc-sep">&gt;<\/span> ';/,
     'les suivants restent entre les niveaux');
 
-  // 3. Un titre à rallonge ne fait pas un pavé : deux lignes au plus.
-  assert.match(forum, /-webkit-line-clamp: 2;/, 'le titre est borné à deux lignes');
+  // 3. Un titre à rallonge ne fait pas un pavé : une ligne, des points de
+  // suspension (voir test/forumRetourNiveaux.test.js).
+  assert.match(forum, /\.forum-header \.title-link \.bc-current \{ flex: 0 1 auto; min-width: 2\.6em; \}/,
+    'le titre du sujet rétrécit, sans disparaître');
 
   // 4. Le bouton partage la ligne du titre au lieu d'ouvrir une bande.
   assert.match(forum, /<div class="header-actions" id="header-actions"><\/div>/,
