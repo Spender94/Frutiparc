@@ -495,6 +495,17 @@
     color: #666;
     padding: 8px;
   }
+  /* L'intertitre d'un jeu : toute la largeur, les pictos du jeu en dessous. */
+  .picto-picker .picto-picker-jeu {
+    flex: 0 0 100%;
+    margin: 4px 0 1px;
+    padding-bottom: 1px;
+    border-bottom: 1px solid #C8D89D;
+    font-size: 11px;
+    font-weight: bold;
+    color: #2C4A0F;
+  }
+  .picto-picker .picto-picker-jeu:first-child { margin-top: 0; }
 
   /* Pictos gallery page */
   .picto-gallery {
@@ -3735,11 +3746,24 @@ async function bbTogglePictos(targetId, btn) {
     picker.innerHTML = '<span class="picto-empty">Aucun picto. Jouez aux jeux pour en collecter !</span>';
     return;
   }
+  // Rangés PAR JEU, sous un intertitre chacun : le serveur les envoie déjà
+  // dans l'ordre (jeux par ordre alphabétique, « Autre » en dernier, pictos
+  // dans l'ordre du catalogue de leur jeu) — on n'a qu'à poser un titre à
+  // chaque changement de jeu. Avant, c'était l'ordre des parties gagnées.
+  var jeuCourant = null;
   pictos.forEach(function(p) {
+    var jeu = p.game || 'Autre';
+    if (jeu !== jeuCourant) {
+      jeuCourant = jeu;
+      var titre = document.createElement('div');
+      titre.className = 'picto-picker-jeu';
+      titre.textContent = jeu;
+      picker.appendChild(titre);
+    }
     var img = document.createElement('img');
     img.src = p.url;
     img.alt = p.name;
-    img.title = p.name + ' (' + p.game + ')';
+    img.title = p.name;
     img.onclick = function() {
       var ta = document.getElementById(targetId);
       if (!ta) return;

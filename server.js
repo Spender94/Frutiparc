@@ -1272,13 +1272,47 @@ function renderPictoEntryXml(itemName) {
  *
  * @returns {Array<{uid: string, nom: string, jeu: string, pictos: string[]}>}
  */
+/**
+ * L'ORDRE DES PICTOS DANS UN JEU, ET DES JEUX ENTRE EUX.
+ *
+ * « Les pictos qu'on peut poster dans un message sont dans le désordre » :
+ * le sélecteur du forum les montrait dans l'ordre où le joueur les avait
+ * gagnés — un Papillon de Kaluga, trois fruits de Frutisnake, une Dague de
+ * Swapou, encore un Papillon… Un ordre qui change à chaque partie n'est pas
+ * un ordre. On range donc :
+ *   · les JEUX par ordre alphabétique, « Autre » en dernier (comme les
+ *     dossiers du bureau, dossiersPictos) ;
+ *   · dans un jeu, les pictos dans l'ordre du CATALOGUE (GAME_ITEM_INFO, qui
+ *     suit la progression de chaque jeu), puis les autres par nom, les nombres
+ *     comptés comme des nombres (« Fruit 2 » avant « Fruit 10 »).
+ * Les doublons éventuels de gameItems ne sortent qu'une fois.
+ *
+ * @returns {Array<{id: string, nom: string, jeu: string}>}
+ */
+const RANG_CATALOGUE_PICTO = new Map(Object.keys(GAME_ITEM_INFO).map((k, i) => [k, i]));
+function pictosRangesParJeu(gameItems) {
+  const vus = new Set();
+  const liste = [];
+  for (const id of Array.isArray(gameItems) ? gameItems : []) {
+    if (typeof id !== 'string' || vus.has(id)) continue;
+    vus.add(id);
+    liste.push({ id, nom: getGameItemDisplayName(id), jeu: getGameItemGame(id) || 'Autre' });
+  }
+  const rang = (p) => (RANG_CATALOGUE_PICTO.has(p.id) ? RANG_CATALOGUE_PICTO.get(p.id) : Infinity);
+  return liste.sort((a, b) => (a.jeu === 'Autre') - (b.jeu === 'Autre')
+    || a.jeu.localeCompare(b.jeu, 'fr')
+    || (rang(a) - rang(b) || 0)
+    || a.nom.localeCompare(b.nom, 'fr', { numeric: true })
+    || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
 function dossiersPictos(user) {
-  const gi = Array.isArray(user && user.gameItems) ? user.gameItems : [];
+  // Dans un dossier, l'ordre du catalogue (pictosRangesParJeu) plutôt que
+  // celui des parties gagnées.
   const parJeu = new Map();
-  for (const item of gi) {
-    const jeu = getGameItemGame(item) || 'Autre';
-    if (!parJeu.has(jeu)) parJeu.set(jeu, []);
-    parJeu.get(jeu).push(item);
+  for (const p of pictosRangesParJeu(user && user.gameItems)) {
+    if (!parJeu.has(p.jeu)) parJeu.set(p.jeu, []);
+    parJeu.get(p.jeu).push(p.id);
   }
   const dossiers = [];
   for (const [jeu, pictos] of parJeu) {
@@ -16552,13 +16586,13 @@ app.get('/api/pictos', (req, res) => {
   const username = resolveUsernameFromSid(sid);
   console.log(`[PICTOS] /api/pictos sid=${sid ? sid.slice(0,8) + '…' : '(none)'} user=${username || '(none)'} gameItems=${username && users[username] ? (users[username].gameItems || []).length : 'N/A'}`);
   if (!username || !users[username]) return res.json([]);
-  const user = users[username];
-  const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
-  const result = gi.map((itemName) => ({
-    id: itemName,
-    name: getGameItemDisplayName(itemName),
-    game: getGameItemGame(itemName),
-    url: `/api/picto/${encodeURIComponent(itemName)}`,
+  // Rangés par jeu, dans un ordre stable (pictosRangesParJeu) : le sélecteur
+  // de l'éditeur les pose tels quels, sous un intertitre par jeu.
+  const result = pictosRangesParJeu(users[username].gameItems).map((p) => ({
+    id: p.id,
+    name: p.nom,
+    game: p.jeu,
+    url: `/api/picto/${encodeURIComponent(p.id)}`,
   }));
   res.json(result);
 });
@@ -20962,6 +20996,22 @@ app.get('/api/admin/channels', adminScope('channels', 'kiloute'), (req, res) => 
 // où en est l'extrait, de sorte qu'un retardataire tombe sur la même seconde
 // de la chanson que les autres.
 app.get('/api/blindtest/embed', (req, res) => {
+  // LE LIEN N'EST PAS UNE PAGE. Coller l'adresse de l'iframe dans la barre
+  // d'adresse (ou « ouvrir le cadre dans un nouvel onglet ») menait tout droit
+  // à la page YouTube de la chanson — titre compris : la triche à la portée du
+  // premier venu, sans outil. Un navigateur dit ce qu'il charge
+  // (`Sec-Fetch-Dest`) et d'où (`Sec-Fetch-Site`) : on ne sert l'extrait qu'à
+  // un CADRE de nos propres pages. Ces en-têtes ne se forgent pas depuis une
+  // page ; un `curl` peut les forger, et un navigateur trop vieux ne les envoie
+  // pas (on le laisse passer). Ce n'est donc pas un coffre-fort — l'outil de
+  // développement montre toujours la redirection —, c'est une marche de plus.
+  const dest = String(req.get('sec-fetch-dest') || '');
+  const site = String(req.get('sec-fetch-site') || '');
+  res.set('Cache-Control', 'no-store');
+  res.set('Referrer-Policy', 'no-referrer');
+  if ((dest && dest !== 'iframe') || (site && site !== 'same-origin')) {
+    return res.status(403).type('text').send('L\'extrait du blindtest ne s\'écoute que dans le salon.');
+  }
   const salon = blindtestParJeton.get(String(req.query.k || ''));
   const b = salon ? blindtestEnCours(salon) : null;
   if (!b) return res.status(404).send('Extrait terminé.');
@@ -30416,7 +30466,10 @@ app.get('/api/chat/histo', (req, res) => {
     const st = attr('st');
     // L'heure du chat ([hh:mm:ss] dans h, débarrassée du <font> des cris) —
     // sinon l'horloge du serveur au moment de l'enregistrement.
-    let h = unescapeXml(attr('h')).replace(/<[^>]*>/g, '').trim();
+    // `&nbsp;` aussi : l'horodatage d'une ligne multicolore est un htmlText
+    // dont les espaces voyagent en entités (rainbowSpan) — il s'affichait
+    // « [13:27:40]&nbsp; ».
+    let h = unescapeXml(attr('h')).replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
     if (!h) {
       h = '[' + new Date(e.at).toLocaleTimeString('fr-FR',
         { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ']';
@@ -30434,8 +30487,11 @@ app.get('/api/chat/histo', (req, res) => {
       const gu = corps.match(/\bu="([^"]*)"/);
       corps = '[don] ' + (gk ? gk[1] : '?') + ' kikooz à ' + (gu ? unescapeXml(gu[1]) : '?');
     } else {
-      // Le htmlText du bureau (font, b, i…) redevient du texte nu.
-      corps = unescapeXml(corps.replace(/<[^>]*>/g, '')).trim();
+      // Le htmlText du bureau (font, b, i…) redevient du texte nu. Dans un
+      // CDATA, c'est du HTML tel quel : ses entités se décodent comme celles
+      // d'un courrier (texteMailLight) — `&nbsp;` compris, qui porte chaque
+      // espace d'un message multicolore, et que l'on lisait en toutes lettres.
+      corps = (cd ? texteMailLight(corps) : unescapeXml(corps.replace(/<[^>]*>/g, ''))).trim();
     }
     if (!corps) continue;
     lignes.push({ h, u, corps, rouge: st === 'r', anim: t === 'c', mc: st === 'mc', systeme: u === 'admin' });
@@ -30449,8 +30505,14 @@ app.get('/api/chat/histo', (req, res) => {
     if (l.mc) classes.push('mc');
     if (l.systeme && !l.rouge) classes.push('systeme');
     const qui = (l.systeme || l.rouge) ? '' : '<b>' + esc(l.u) + ' :</b> ';
-    return '<div class="' + classes.join(' ') + '"><span class="h">' + esc(l.h) + '</span> '
-      + qui + esc(l.corps) + '</div>';
+    const dedans = '<span class="h">' + esc(l.h) + '</span> ' + qui + esc(l.corps);
+    // Le multicolore se peint dans un <span class="arc"> intérieur, pas sur la
+    // ligne : une ligne paire a son propre fond (le zébrage), et le raccourci
+    // `background` de `.ligne:nth-child(even)`, plus spécifique que `.mc`,
+    // remettait le découpage au texte à border-box — une ligne sur deux
+    // s'effaçait (lettres transparentes sur un fond uni).
+    return '<div class="' + classes.join(' ') + '">'
+      + (l.mc ? '<span class="arc">' + dedans + '</span>' : dedans) + '</div>';
   }).join('\n');
 
   const page = `<!DOCTYPE html>
@@ -30482,13 +30544,40 @@ app.get('/api/chat/histo', (req, res) => {
   /* Le feutre multicolore : le même arc-en-ciel que sur le chat (MC_RAINBOW). */
   .mc { font-weight: bold; }
   .mc b, .mc .h { color: inherit; }
-  .mc {
-    background: linear-gradient(90deg, #FF6600, #EBB601, #20D251, #47B9C9, #6666CC, #6E3C8D, #F986E2);
+  .mc .arc {
+    background-image: linear-gradient(90deg, #FF6600, #EBB601, #20D251, #47B9C9, #6666CC, #6E3C8D, #F986E2);
     -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
   }
   .systeme { font-style: italic; color: #5a7a2a; }
   .vide { padding: 18px; text-align: center; font-style: italic; color: #5a7a2a; }
+  /* LA NUIT. La fenêtre s'ouvre depuis un parc éteint : elle suit le même
+     choix (fp_nuit, par appareil — même origine, même localStorage), sinon
+     elle éblouit. Le multicolore y reprend l'arc-en-ciel ÉCLAIRCI de
+     nuit-retouches.css, en \`background-image\` : le raccourci \`background\`
+     remettrait \`background-clip\` à border-box, et le message deviendrait une
+     barre de couleurs sans un mot lisible. */
+  html[data-nuit] body { background: hsl(256 30% 8%); color: hsl(256 13% 84%); }
+  html[data-nuit] .fenetre { background: hsl(256 30% 12%); border-color: hsl(256 26% 40%); }
+  html[data-nuit] .bandeau { background: hsl(256 30% 16%); border-color: hsl(256 26% 40%); color: hsl(256 13% 90%); }
+  html[data-nuit] .bandeau .salon { color: hsl(325 68% 72%); }
+  html[data-nuit] .sous { background: hsl(256 30% 14%); color: hsl(256 13% 72%); border-color: hsl(256 26% 30%); }
+  html[data-nuit] .corps { background: hsl(256 30% 10%); }
+  html[data-nuit] .ligne:nth-child(even) { background: hsl(256 30% 13%); }
+  html[data-nuit] .h { color: hsl(256 13% 62%); }
+  html[data-nuit] .cri { color: hsl(0 85% 68%); }
+  html[data-nuit] .anim { color: hsl(210 80% 74%); }
+  html[data-nuit] .systeme, html[data-nuit] .vide { color: hsl(256 13% 70%); }
+  html[data-nuit] .mc .arc {
+    background-image: linear-gradient(90deg, #FF8A3D, #FFD23F, #5BEB7A, #6FD6E8, #9D9DFF, #C98BFF, #FF9EE8);
+  }
 </style>
+<script>
+  (function () {
+    var v; try { v = localStorage.getItem('fp_nuit'); } catch (e) { v = null; }
+    var auto = v === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+    if (v === '1' || auto) document.documentElement.setAttribute('data-nuit', '1');
+  })();
+</script>
 </head>
 <body>
 <div class="fenetre">
@@ -30950,9 +31039,9 @@ app.get('/api/light/inventaire', (req, res) => {
     });
   }
 
-  const pictos = (Array.isArray(user.gameItems) ? user.gameItems : []).map((n) => ({
-    id: n, nom: getGameItemDisplayName(n), jeu: getGameItemGame(n) || 'Autre',
-    url: `/api/picto/${encodeURIComponent(n)}`,
+  const pictos = pictosRangesParJeu(user.gameItems).map((p) => ({
+    id: p.id, nom: p.nom, jeu: p.jeu,
+    url: `/api/picto/${encodeURIComponent(p.id)}`,
   }));
 
   // Même rattrapage que /do/mypref : le mobile et le bureau doivent lire la
@@ -37491,7 +37580,15 @@ case 'send': {
     // sender via the chat.msg template. So we just hand it u + the raw text and
     // let the client apply the exact same typo/colour as kikooz — no hand-rolled
     // <font color> (which never matched).
-    if (blueModeUsers.has(client.username) && isAnimator(client.username)) {
+    //
+    // UNE ÉMOTE PASSE AVANT LE MODE BLEU. « lol », « regarde », « miam »… tapés
+    // seuls sont une ACTION (la bouille qui rit, la ligne « pseudo éclate de
+    // rire »), pas une phrase de l'animateur : quand le mode bleu était testé
+    // d'abord, l'émote partait en t="c" comme du texte — « mdr » en bleu gras,
+    // et aucune bouille ne bougeait, sur le light, le bureau comme le SWF.
+    // On la détecte donc ici, et le mode bleu la laisse passer.
+    const emo = (type === 'm') ? detectChatEmote(unescapeXml(text)) : null;
+    if (!emo && blueModeUsers.has(client.username) && isAnimator(client.username)) {
       broadcastToChannel(g,
         `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="c"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"${mn}>${safeText}</${CMD.send}>`
       );
@@ -37506,7 +37603,7 @@ case 'send': {
     // « pseudo éclate de rire » (et non « mdr »). Corps = htmlText italique
     // « pseudo phrase » (u="admin" → le SWF n'ajoute pas de préfixe « pseudo : » ) ;
     // attributs e/el/eu pour que le client Light rejoue l'émote + la bouille.
-    const emo = (type === 'm') ? detectChatEmote(unescapeXml(text)) : null;
+    // (`emo` est relevée plus haut, avant le mode bleu.)
     if (emo) {
       const who = getDisplayName(client.username);
       const emBody = `<![CDATA[<i>${escapeXml(who + ' ' + emo.label)}</i>]]>`;
