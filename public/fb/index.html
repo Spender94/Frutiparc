@@ -1434,24 +1434,44 @@
      illisible autrement sur mobile. */
   @media (max-width: 640px) {
     body { padding: 5px; }
-    /* L'EN-TÊTE TIENT SUR UNE LIGNE.
+    /* L'EN-TÊTE TIENT SUR UNE LIGNE, ET LE FIL D'ARIANE Y RESTE ENTIER.
        « Forum Frutiparc.com > Frutiz > Vos anciens pseudos ! » ne rentre pas
-       dans 390 px : la racine passe donc sous l'orange, qui la remplace (elle
-       mène au même endroit, et son alt le dit). Reste « Frutiz > Vos anciens
-       pseudos ! », qui tient. Sur l'accueil, où il n'y a pas de niveau plus
-       bas, `deep` n'est pas posé : le nom du forum reste écrit en entier. */
+       dans 390 px. On effaçait la racine dès qu'on descendait d'un cran — et
+       sur un téléphone on ne pouvait plus « cliquer en haut pour retourner
+       sur le forum principal ». Elle reste maintenant, toujours :
+         · le fil est une RANGÉE DE BOÎTES sur une ligne ;
+         · la racine ne rétrécit jamais (« Forum Frutiparc », son « .com »
+           s'efface en profondeur, seule concession) ;
+         · le sous-forum et le sujet rétrécissent, chacun avec ses points de
+           suspension — le sujet, plus long, cède le plus ; aucun ne
+           disparaît tout à fait. Le titre entier est dans l'infobulle. */
     .forum-header { flex-wrap: nowrap; }
-    .forum-header.deep .bc-root { display: none; }
-    /* Le titre du sujet peut être long : deux lignes au plus, la fin en
-       points de suspension — jamais un pavé qui repousse la liste. */
+    .forum-header.deep .bc-com { display: none; }
     .forum-header .title-link {
       font-size: 13px;
-      line-height: 1.25;
-      display: -webkit-box;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
+      line-height: 1.3;
+      display: flex;
+      align-items: center;
+      white-space: nowrap;
       overflow: hidden;
     }
+    .forum-header .title-link > * { flex: none; }
+    .forum-header .title-link a.bc-retour { margin-right: 5px; }
+    .forum-header .title-link .bc-sep { margin: 0 4px; }
+    /* Celui de la racine a déjà son espace devant lui (il vit dans la boîte). */
+    .forum-header .title-link .bc-root .bc-sep { margin: 0 4px 0 0; }
+    .forum-header .title-link .bc-niveau,
+    .forum-header .title-link .bc-current {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* Le sous-forum (un nom court : « Frutiz ») reste entier tant qu'il ne
+       dépasse pas un gros tiers de la ligne ; le sujet prend le reste. */
+    .forum-header .title-link .bc-niveau { flex: 0 0 auto; max-width: 38%; }
+    .forum-header .title-link .bc-current { flex: 0 1 auto; min-width: 2.6em; }
+    /* En profondeur, l'orange ferait doublon avec la racine, toujours là et
+       qui mène au même endroit : elle laisse sa place au titre. */
+    .forum-header.deep .bc-home { display: none; }
     .forum-header .header-actions .btn { white-space: nowrap; }
     .forum-header .lb-long { display: none; }
     .forum-header .lb-court { display: inline; }
@@ -2421,32 +2441,36 @@ function setBreadcrumb(parts) {
   // plain text.
   var headerTitle = document.getElementById('header-title');
   if (headerTitle) {
-    // La RACINE porte son séparateur avec elle : sur un téléphone elle
-    // disparaît d'un bloc (voir .forum-header.deep .bc-root), et le chevron
-    // orphelin ne reste pas en tête de ligne.
-    // « ‹ » — reculer d'un cran, comme le Retour du navigateur. Il n'apparaît
-    // que si l'on est descendu quelque part : à la racine, il n'aurait rien à
-    // dépiler.
+    // La RACINE porte son séparateur avec elle : sur un téléphone, le fil est
+    // une rangée de boîtes (voir le bloc mobile) et la racine en est une qui
+    // ne rétrécit jamais — « Forum Frutiparc » reste écrit à toute
+    // profondeur. Seul son « .com » (`bc-com`) cède sa place à l'étroit.
+    // « ‹ » — remonter d'un niveau, comme le Retour du navigateur. Il
+    // n'apparaît que si l'on est descendu quelque part : à la racine, il
+    // n'aurait rien à dépiler.
     var html = '';
     if (parts.length) {
-      html += '<a href="#" class="bc-retour" title="Reculer d\'une page" '
+      html += '<a href="#" class="bc-retour" title="Remonter d\'un niveau" '
         + 'onclick="reculerForum();return false">&lsaquo;</a> ';
     }
-    html += '<span class="bc-root"><a href="#" onclick="navigate(\'index\');return false">Forum Frutiparc.com</a>';
+    html += '<span class="bc-root"><a href="#" onclick="navigate(\'index\');return false" title="Forum Frutiparc.com">Forum Frutiparc<span class="bc-com">.com</span></a>';
     if (parts.length) html += ' <span class="bc-sep">&gt;</span> ';
     html += '</span>';
     for (var i = 0; i < parts.length; i++) {
       if (i > 0) html += ' <span class="bc-sep">&gt;</span> ';
+      // Le titre complet en infobulle : à l'étroit, le niveau peut finir en
+      // points de suspension.
+      var t = escapeHtml(parts[i].text);
       if (parts[i].href) {
-        html += '<a href="#" onclick="' + parts[i].href + '">' + escapeHtml(parts[i].text) + '</a>';
+        html += '<a href="#" class="bc-niveau" title="' + t + '" onclick="' + parts[i].href + '">' + t + '</a>';
       } else {
-        html += '<span class="bc-current">' + escapeHtml(parts[i].text) + '</span>';
+        html += '<span class="bc-current" title="' + t + '">' + t + '</span>';
       }
     }
     headerTitle.innerHTML = html;
   }
-  // `deep` = on est descendu d'au moins un cran. Il commande l'effacement de
-  // la racine sur les petits écrans.
+  // `deep` = on est descendu d'au moins un cran. Sur les petits écrans, il
+  // retire le « .com » de la racine pour laisser la place aux niveaux.
   var entete = document.getElementById('forum-header');
   if (entete) entete.classList.toggle('deep', parts.length > 0);
   // Les actions de l'en-tête appartiennent à la page qu'on quitte : chaque vue
@@ -2457,31 +2481,157 @@ function setBreadcrumb(parts) {
   if (bc) bc.innerHTML = '';
 }
 
-// ── RECULER D'UNE PAGE ────────────────────────────────────────────────────
+// ── LE RETOUR RECULE D'UN NIVEAU, PAS D'UN CLIC ──────────────────────────
 //
 // Le forum est une page unique : on descend d'une section à un sujet, puis de
-// page en page, sans que le navigateur en sache rien — son bouton Retour
-// faisait donc sortir du forum d'un seul coup. On tient l'historique nous-mêmes.
+// page en page, sans que le navigateur en sache rien. On tient donc
+// l'historique nous-mêmes — mais une entrée par CLIC faisait repasser le
+// Retour du téléphone par chaque page lue : « on recule à travers tous les
+// clics au lieu de reculer sur le sous-forum, puis sur le forum principal ».
 //
-// Chaque vue pousse une entrée SANS TOUCHER À L'URL (`location.href` tel quel) :
-// le sid de session y vit, et le réécrire l'emporterait. Reculer rejoue la vue
-// précédente sans repousser d'entrée — d'où le drapeau.
-var restaurationHistoire = false;
-function pousserHistoire(view, id, extra) {
-  if (restaurationHistoire) return;
-  try {
-    history.pushState({ fbVue: { view: view, id: id, extra: extra } }, '', location.href);
-  } catch (e) { /* pas d'historique : le bouton « Retour » du forum reste */ }
+// L'historique du forum est maintenant une PILE DE NIVEAUX : accueil (0) ›
+// forum (1) › sujet (2). Chaque entrée garde la pile qui y mène
+// (`fbChemin`), si bien qu'on sait toujours ce qu'il y a derrière :
+//   · même vue, même sujet ou même liste (page 2, page 3…) : on REMPLACE
+//     l'entrée, rien ne s'empile ;
+//   · un niveau plus profond : on EMPILE ;
+//   · un niveau déjà dans la pile (le fil d'Ariane, « Annuler ») : on y
+//     RECULE, plutôt que d'empiler un doublon ;
+//   · ailleurs (un autre forum, « Mes Pictos ») : on recule jusqu'au
+//     parent commun, puis on empile.
+// Le Retour du téléphone fait donc : sujet → forum → accueil du forum.
+//
+// La recherche est un niveau intercalé (un demi-cran sous la vue d'où on la
+// lance) : ses résultats s'ouvrent par-dessus, et Retour y ramène.
+//
+// Rien de tout cela ne touche à l'URL (`location.href` tel quel) : le sid de
+// session y vit, et le réécrire l'emporterait.
+var NIVEAU_VUE = { index: 0, board: 1, pictos: 1, topic: 2, newTopic: 2 };
+function cheminHistoire() {
+  var s = history.state;
+  return (s && Array.isArray(s.fbChemin)) ? s.fbChemin : [];
 }
-window.addEventListener('popstate', function (e) {
-  var v = e.state && e.state.fbVue;
-  restaurationHistoire = true;
-  try { if (v) navigate(v.view, v.id, v.extra); else { ouvrirRecherche(false); loadIndex(); } }
-  finally { restaurationHistoire = false; }
+function memeVue(a, b) {
+  return !!a && !!b && a.view === b.view
+    && (a.id == null ? null : a.id) === (b.id == null ? null : b.id);
+}
+function niveauCible(view, sommet) {
+  var base = sommet ? sommet.niveau : 0;
+  if (view === 'search') return sommet && sommet.view === 'search' ? base : base + 0.5;
+  if (view === 'topic' && sommet && sommet.view === 'search') return Math.max(2, base + 0.5);
+  return NIVEAU_VUE[view] || 0;
+}
+function ecrireHistoire(faire, chemin) {
+  var etat = { fbVue: chemin[chemin.length - 1], fbChemin: chemin };
+  try {
+    if (faire === 'push') history.pushState(etat, '', location.href);
+    else history.replaceState(etat, '', location.href);
+  } catch (e) { /* pas d'historique : le bouton « ‹ » du forum reste */ }
+}
+// Recule jusqu'à l'entrée `j` de la pile, puis y place `cible` (en la
+// remplaçant, ou par-dessus). Le recul est asynchrone : c'est `popstate` qui
+// termine le geste.
+var reculEnCours = null;
+function reculerPuis(chemin, j, faire, cible) {
+  var pas = chemin.length - 1 - j;
+  if (pas <= 0) { terminerRecul(chemin.slice(0, j + 1), faire, cible); return; }
+  var r = { longueur: j + 1, faire: faire, cible: cible };
+  reculEnCours = r;
+  try { history.go(-pas); } catch (e) { reculEnCours = null; terminerRecul(chemin, 'push', cible); return; }
+  // Filet : un navigateur qui n'a pas reculé n'enverra pas de popstate. On
+  // affiche quand même la vue demandée, empilée.
+  setTimeout(function () {
+    if (reculEnCours !== r) return;
+    reculEnCours = null;
+    terminerRecul(cheminHistoire(), 'push', cible);
+  }, 1500);
+}
+function terminerRecul(base, faire, cible) {
+  if (faire === 'push') ecrireHistoire('push', base.concat([cible]));
+  else ecrireHistoire('replace', base.slice(0, -1).concat([cible]));
+  afficherVue(cible.view, cible.id, cible.extra);
+}
+window.addEventListener('popstate', function () {
+  var chemin = cheminHistoire();
+  var r = reculEnCours;
+  reculEnCours = null;
+  if (r) {
+    // Arrivé là où on visait : on y pose la cible. Sinon (une entrée de la
+    // page hôte s'est glissée dans la pile), on l'affiche par-dessus.
+    if (chemin.length === r.longueur) terminerRecul(chemin, r.faire, r.cible);
+    else terminerRecul(chemin, 'push', r.cible);
+    return;
+  }
+  var v = chemin[chemin.length - 1];
+  if (v) afficherVue(v.view, v.id, v.extra);
+  else { ouvrirRecherche(false); loadIndex(); }
 });
+// Note la vue dans l'historique. Rend `false` quand il faut d'abord reculer :
+// c'est alors `popstate` qui affichera la vue.
+function noterHistoire(view, id, extra) {
+  var chemin = cheminHistoire();
+  var n = chemin.length;
+  var sommet = chemin[n - 1];
+  var cible = { view: view, id: id == null ? null : id, extra: extra == null ? null : extra };
+  // Rien encore (on vient d'arriver) : la vue prend l'entrée courante.
+  if (!n) {
+    cible.niveau = niveauCible(view, null);
+    ecrireHistoire('replace', [cible]);
+    return true;
+  }
+  // Même sujet, même liste : on change de page, on REMPLACE.
+  if (memeVue(sommet, cible)) {
+    cible.niveau = sommet.niveau;
+    ecrireHistoire('replace', chemin.slice(0, -1).concat([cible]));
+    return true;
+  }
+  // Un niveau déjà dans la pile : on y recule.
+  for (var k = n - 2; k >= 0; k--) {
+    if (memeVue(chemin[k], cible)) {
+      cible.niveau = chemin[k].niveau;
+      reculerPuis(chemin, k, 'replace', cible);
+      return false;
+    }
+  }
+  // Ailleurs : on garde les niveaux au-dessus de la cible, et on empile.
+  cible.niveau = niveauCible(view, sommet);
+  var p = 0;
+  while (p < n && chemin[p].niveau < cible.niveau) p++;
+  if (p === n) { ecrireHistoire('push', chemin.concat([cible])); return true; }
+  if (p === 0) reculerPuis(chemin, 0, 'replace', cible);
+  else reculerPuis(chemin, p - 1, 'push', cible);
+  return false;
+}
+// Une vue chargée corrige son entrée : le sujet ouvert « au premier non lu »
+// ou « à la dernière page » y note la page réellement affichée — Retour y
+// ramènera exactement.
+function retoucherHistoire(view, id, extra) {
+  var chemin = cheminHistoire();
+  var sommet = chemin[chemin.length - 1];
+  if (!memeVue(sommet, { view: view, id: id })) return;
+  var v = Object.assign({}, sommet, { extra: extra });
+  ecrireHistoire('replace', chemin.slice(0, -1).concat([v]));
+}
+// Un sujet ouvert DIRECTEMENT (lien d'une notification) n'a rien derrière
+// lui. Une fois son forum connu, on pose les niveaux qui manquent — accueil,
+// puis forum — pour que Retour y remonte au lieu de quitter le forum.
+function ancrerSujet(topicId, boardId, page) {
+  var chemin = cheminHistoire();
+  if (chemin.length !== 1 || !boardId || !memeVue(chemin[0], { view: 'topic', id: topicId })) return;
+  var accueil = { view: 'index', id: null, extra: null, niveau: 0 };
+  var forum = { view: 'board', id: boardId, extra: null, niveau: 1 };
+  var sujet = { view: 'topic', id: topicId, extra: page, niveau: 2 };
+  ecrireHistoire('replace', [accueil]);
+  ecrireHistoire('push', [accueil, forum]);
+  ecrireHistoire('push', [accueil, forum, sujet]);
+}
 
 function navigate(view, id, extra) {
-  pousserHistoire(view, id, extra);
+  // Le recul vers un niveau déjà empilé se termine dans `popstate`, qui
+  // affiche la vue lui-même.
+  if (noterHistoire(view, id, extra)) afficherVue(view, id, extra);
+}
+function afficherVue(view, id, extra) {
   // La barre de recherche ne reste dépliée que sur ses résultats.
   if (view !== 'search') ouvrirRecherche(false);
   if (view === 'index') loadIndex();
@@ -2495,11 +2645,16 @@ function navigate(view, id, extra) {
   else if (view === 'newTopic') showNewTopicForm(id);
   else if (view === 'pictos') loadPictos();
 }
-// Le bouton « ‹ Retour » de l'en-tête, et le Retour du navigateur : le même
-// geste. Sans entrée à dépiler (on vient d'arriver), on remonte à l'accueil.
+// Le bouton « ‹ » de l'en-tête, et le Retour du navigateur : le même geste,
+// remonter d'un niveau. Sans niveau derrière soi (on vient d'arriver), on
+// monte au parent : le forum du sujet, ou l'accueil.
 function reculerForum() {
-  if (history.state && history.state.fbVue) history.back();
-  else navigate('index');
+  var chemin = cheminHistoire();
+  if (chemin.length > 1) { history.back(); return; }
+  var sommet = chemin[0];
+  if (sommet && sommet.view === 'topic' && currentTopicData && currentTopicData.topic) {
+    navigate('board', currentTopicData.topic.boardId);
+  } else navigate('index');
 }
 
 function pagination(total, perPage, currentPage, onclick) {
@@ -2755,6 +2910,7 @@ async function marquerToutLu() {
 }
 
 var currentBoardId = null;
+var currentBoardName = '';   // pour le fil d'Ariane du « nouveau sujet »
 async function loadBoard(boardId, page) {
   page = page || 1;
   currentBoardId = boardId;
@@ -2765,6 +2921,7 @@ async function loadBoard(boardId, page) {
   if (!data.board) { app.innerHTML = '<div class="empty">Forum introuvable.</div>'; return; }
   porteeRecherche(data.board.id, data.board.name);
 
+  currentBoardName = data.board.name;
   setBreadcrumb([{ text: data.board.name }]);
 
   var html = '<div class="tbl-header"><span class="col-main">' + escapeHtml(data.board.name) + '</span><span class="col-num">Rép.</span><span class="col-num">Vues</span><span class="col-last">Dernier message</span></div>';
@@ -2832,7 +2989,7 @@ async function loadBoard(boardId, page) {
   html += '</div>';
   app.innerHTML = html;
 }
-function boardPage(p) { pousserHistoire('board', currentBoardId, p); loadBoard(currentBoardId, p); }
+function boardPage(p) { navigate('board', currentBoardId, p); }
 
 var currentTopicId = null;
 var currentTopicData = null;
@@ -2864,6 +3021,10 @@ async function loadTopic(topicId, page, allerA) {
   }
   currentTopicData = data;
   if (!data.topic) { app.innerHTML = '<div class="empty">Sujet introuvable.</div>'; return; }
+  // L'historique note la page vraiment ouverte, et pose les niveaux qui
+  // manquent derrière un sujet ouvert par un lien direct.
+  retoucherHistoire('topic', topicId, data.page);
+  ancrerSujet(topicId, data.topic.boardId, data.page);
 
   // LIRE UN SUJET ÉTEINT LE VOYANT, quand il ne reste rien. Le serveur pose la
   // marque de lecture et recompte ; on relaie le chiffre à la page qui nous
@@ -3016,7 +3177,7 @@ function allerAuNonLu(postId) {
   window.addEventListener('keydown', oter, true);
   setTimeout(oter, 8000);
 }
-function topicPage(p) { pousserHistoire('topic', currentTopicId, p); loadTopic(currentTopicId, p); }
+function topicPage(p) { navigate('topic', currentTopicId, p); }
 
 // ── LE ❤ DES SUJETS SUIVIS ────────────────────────────────────────────
 // Rien de tout cela n'existait en 2005 : le forum d'époque ne prévenait de
@@ -4162,7 +4323,13 @@ function previewEditor(formId, hasTitle) {
 }
 
 function showNewTopicForm(boardId) {
-  setBreadcrumb([{ text: 'Poster un nouveau message' }]);
+  // Le forum où l'on poste reste un niveau cliquable du fil d'Ariane.
+  var fil = [];
+  if (boardId === currentBoardId && currentBoardName) {
+    fil.push({ text: currentBoardName, href: "navigate('board'," + boardId + ");return false" });
+  }
+  fil.push({ text: 'Poster un nouveau message' });
+  setBreadcrumb(fil);
   var app = document.getElementById('app');
   app.innerHTML = renderEditor({
     mode: 'new',
@@ -4295,8 +4462,12 @@ async function init() {
   // Lien profond d'une notification (« untel te cite ») : ouvrir directement
   // le sujet cité plutôt que l'accueil du forum.
   var sujetDemande = Number(new URLSearchParams(window.location.search).get('sujet'));
-  if (sujetDemande > 0) { loadTopic(sujetDemande); return; }
-  loadIndex();
+  // Un rechargement de la page rouvre la vue où l'on était (l'historique la
+  // garde) ; sinon le sujet du lien, ou l'accueil.
+  var ici = cheminHistoire();
+  if (ici.length) { var v = ici[ici.length - 1]; afficherVue(v.view, v.id, v.extra); return; }
+  if (sujetDemande > 0) { navigate('topic', sujetDemande); return; }
+  navigate('index');
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

@@ -103,5 +103,6 @@ test('le client ouvre sur le non-lu, y défile, et l’entoure', () => {
   // Un LISERÉ, pas un fond : les deux fonds de la page alternent déjà.
   assert.match(FORUM, /\.post\.post-nonlu \{\s*\n\s*outline: 2px solid/);
   // Les clics de pagination gardent leur page exacte.
-  assert.match(FORUM, /function topicPage\(p\) \{ pousserHistoire\('topic', currentTopicId, p\); loadTopic\(currentTopicId, p\); \}/);
+  assert.match(FORUM, /function topicPage\(p\) \{ navigate\('topic', currentTopicId, p\); \}/);
+  assert.match(FORUM, /else loadTopic\(id, extra\);/);
 });

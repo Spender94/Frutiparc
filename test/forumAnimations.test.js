@@ -217,17 +217,19 @@ test('on prévisualise une CORRECTION, pas seulement un message neuf', () => {
   assert.match(forum, /renderBBCode\(ta\.value \|\| ''\)/, 'elle rend le BBCode saisi');
 });
 
-test('reculer d\'une page : le forum tient son propre historique', () => {
+test('reculer d\'un niveau : le forum tient son propre historique', () => {
   const forum = require('node:fs').readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
-  assert.match(forum, /function pousserHistoire\(view, id, extra\)/, 'chaque vue pousse une entrée');
+  assert.match(forum, /function noterHistoire\(view, id, extra\)/, 'chaque vue se note dans l\'historique');
   // SANS toucher à l'URL : le sid de session y vit.
-  assert.match(forum, /history\.pushState\([\s\S]{0,90}?, '', location\.href\)/,
+  assert.match(forum, /history\.pushState\(etat, '', location\.href\)/,
     'l\'URL n\'est pas réécrite');
+  assert.match(forum, /history\.replaceState\(etat, '', location\.href\)/,
+    'ni quand on remplace une entrée');
   assert.match(forum, /window\.addEventListener\('popstate'/, 'et le Retour du navigateur est écouté');
-  assert.match(forum, /restaurationHistoire = true;/, 'une restauration ne repousse pas d\'entrée');
-  // La pagination compte aussi comme un pas — « reculer d'une page », au sens propre.
-  assert.match(forum, /function topicPage\(p\) \{ pousserHistoire\('topic'/, 'la pagination d\'un sujet');
-  assert.match(forum, /function boardPage\(p\) \{ pousserHistoire\('board'/, 'et celle d\'un forum');
+  // La pagination passe par navigate, qui REMPLACE l'entrée d'un même sujet
+  // ou d'une même liste (voir test/forumRetourNiveaux.test.js).
+  assert.match(forum, /function topicPage\(p\) \{ navigate\('topic', currentTopicId, p\); \}/, 'la pagination d\'un sujet');
+  assert.match(forum, /function boardPage\(p\) \{ navigate\('board', currentBoardId, p\); \}/, 'et celle d\'un forum');
   // Et le bouton visible, pour ceux qui ne pensent pas au geste du navigateur.
   assert.match(forum, /onclick="reculerForum\(\);return false"/, 'le bouton « ‹ » de l\'en-tête');
   assert.match(forum, /function reculerForum\(\)/, 'et ce qu\'il fait');
