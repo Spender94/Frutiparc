@@ -2016,6 +2016,7 @@ class Client {
       // c'est là qu'il touche pour feuilleter les six missions du jour.
       g.zones.push({ quoi: 'avant', x: 3.75, y: 37.75, l: 26, h: 192 });
       g.zones.push({ quoi: 'apres', x: 210.25, y: 37.75, l: 26, h: 192 });
+      if (g.etape === 2 && info) this.dessinerFlechesGromelin(ctx, g, infos.length);
       // Ceinture : le panneau ne doit JAMAIS rester muet. `accueil` refuse
       // désormais d'ouvrir sur une liste vide, mais une fiche ancienne ou une
       // offre disparue en cours de route mènerait ici, devant un parchemin nu
@@ -2116,6 +2117,39 @@ class Client {
         g.porteOuverte);
     }
     this.dessinerBoutonQuitter(ctx);
+  }
+
+  /*
+   * LES FLÈCHES DES RAILS. Le rail doré suffit au bureau — la main de Flash
+   * s'y allume au survol —, mais rien ne le DIT : au doigt, sans survol, le
+   * joueur ne devinait pas qu'on y feuillette les six missions du jour (« pas
+   * de flèches à gauche et à droite pour naviguer entre les missions chez
+   * Gromelin »). On y pose donc la flèche du jeu lui-même, celle qui fait
+   * défiler les objets à ranger au sac (flecheExtra, l'aile gauche
+   * retournée), au milieu de chaque rail, et seulement s'il y a une mission
+   * de ce côté-là — comme elle. La zone touchée reste le rail entier.
+   */
+  dessinerFlechesGromelin(ctx, g, n) {
+    const s = this.sprites;
+    const y = 37.75 + 192 * 0.5;
+    for (const [sens, x] of [[-1, 3.75 + 13], [1, 210.25 + 13]]) {
+      const visible = sens < 0 ? g.index > 0 : g.index < n - 1;
+      if (!visible) continue;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(sens, 1);
+      // Une ombre brune sous l'aile blanche : sur l'or du rail, le blanc seul
+      // se perdait.
+      ctx.fillStyle = 'rgba(81,61,47,0.55)';
+      ctx.beginPath();
+      ctx.moveTo(-3.6, -10.6);
+      ctx.lineTo(8.6, 0);
+      ctx.lineTo(-3.6, 10.6);
+      ctx.closePath();
+      ctx.fill();
+      if (s.flecheExtra) poserRendu(ctx, rendre(s.flecheExtra, 1, 100), 0, 0);
+      ctx.restore();
+    }
   }
 
   // Le corps d'une bulle de dialogue, sans locuteur — Gromelin parle derrière

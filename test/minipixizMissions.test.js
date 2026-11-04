@@ -223,6 +223,69 @@ test('les rails dorés du panneau sont les boutons de feuilletage', () => {
   assert.match(src, /\{ quoi: 'apres', x: 210\.25, y: 37\.75, l: 26, h: 192 \}/);
 });
 
+// « Pas de flèches à gauche et à droite de l'écran pour naviguer entre les
+// différentes missions chez Gromelin. » Le rail se touchait, mais rien ne le
+// disait. Une flèche y est posée — celle du sac (flecheExtra) — et seulement
+// s'il y a une mission de ce côté-là.
+function gromelinOuvert() {
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  const fenetre = {
+    MinipixizLangue: require('../public/minipixiz/langue.js'),
+    MinipixizEngine: require('../public/minipixiz/engine.js'),
+    MinipixizCombat: require('../public/minipixiz/combat.js'),
+  };
+  new Function('window', 'document', 'navigator', 'Image', src)(
+    fenetre, { createElement: () => ({ getContext: () => ({}), width: 0, height: 0 }) },
+    { userAgent: '' }, function () {});
+  const c = Object.create(fenetre.MinipixizClient.Client.prototype);
+  c.sprites = {};
+  const carte = { $mission: [] };
+  N.genererMissions(carte, fenetre.MinipixizEngine.generateur(5));
+  const g = c.ouvrirChezGromelin({ carte, dial: [], fees: [] });
+  g.etape = 2;
+  g.frame = 3;
+  // Un contexte qui retient où chaque flèche est posée (et dans quel sens).
+  const fleches = [];
+  let pos = null;
+  const ctx = {
+    save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {},
+    translate(x, y) { pos = { x, y }; },
+    scale(sx) { pos.sens = sx; },
+    fill() { fleches.push(pos); },
+  };
+  return { c, g, ctx, fleches };
+}
+
+test('chez Gromelin, une flèche sur chaque rail qui mène à une autre mission', () => {
+  const { c, g, ctx, fleches } = gromelinOuvert();
+  const n = g.carte.$mission.length;
+  assert.equal(n, 6, 'les six missions du jour');
+  const poser = (i) => { fleches.length = 0; g.index = i; c.dessinerFlechesGromelin(ctx, g, n); return fleches.slice(); };
+  assert.deepEqual(poser(0).map((f) => f.sens), [1], 'à la première : seulement la flèche de droite');
+  assert.deepEqual(poser(3).map((f) => f.sens), [-1, 1], 'au milieu : les deux');
+  assert.deepEqual(poser(5).map((f) => f.sens), [-1], 'à la dernière : seulement celle de gauche');
+  // Posées au milieu de chaque rail, dans la zone qu'on touche.
+  const [gauche, droite] = poser(2);
+  assert.ok(gauche.x > 3.75 && gauche.x < 3.75 + 26, 'sur le rail de gauche');
+  assert.ok(droite.x > 210.25 && droite.x < 210.25 + 26, 'sur le rail de droite');
+  assert.equal(gauche.y, 37.75 + 96, 'à mi-hauteur');
+});
+
+test('chez Gromelin, toucher une flèche feuillette les missions sans déborder', () => {
+  const { c, g } = gromelinOuvert();
+  g.zones = [
+    { quoi: 'avant', x: 3.75, y: 37.75, l: 26, h: 192 },
+    { quoi: 'apres', x: 210.25, y: 37.75, l: 26, h: 192 },
+  ];
+  const n = g.carte.$mission.length;
+  c.clicGromelin(16.75, 133.75);
+  assert.equal(g.index, 0, 'pas avant la première (Mission.incIndex borne)');
+  for (let i = 1; i < n + 3; i++) c.clicGromelin(223.25, 133.75);
+  assert.equal(g.index, n - 1, 'pas après la dernière');
+  c.clicGromelin(16.75, 133.75);
+  assert.equal(g.index, n - 2, 'et l\'on revient en arrière');
+});
+
 test('le panneau écrit ses champs là où le fichier les pose', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
   // fieldTitle : 16 px (fontHeight 320), à gauche, en (5,75 ; 5,95).
