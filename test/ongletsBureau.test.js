@@ -202,8 +202,8 @@ test('l’onglet d’une conversation CLIGNOTE à l’arrivée d’un message', 
   assert.match(JS, /avertirConversation: avertirConversation,/);
   // Côté light : ni les annonces (t="b") ni les images (t="i") — le garde-fou
   // d'`onSend`. Et, depuis les @mentions, un troisième argument : un salon
-  // PUBLIC ne s'agite plus que pour ce qui s'adresse à vous (une mention, ou le
-  // cri rouge d'un modérateur), là où il clignotait pour tout ce qui passait et
+  // PUBLIC ne s'agite plus que pour ce qui s'adresse à vous (une mention — le
+  // cri rouge d'un modérateur, lui, n'avertit plus), là où il clignotait pour tout ce qui passait et
   // ne s'éteignait donc jamais. Une conversation PRIVÉE, elle, avertit
   // toujours — un message privé est adressé par construction.
   assert.match(LIGHT, /function avertirOngletChat\(ty, salon, pourMoi\) \{\s*\n\s*if \(ty === "b" \|\| ty === "i"\) return;\s*\n\s*if \(pourMoi === false\) return;/);
@@ -216,7 +216,7 @@ test('l’onglet d’une conversation CLIGNOTE à l’arrivée d’un message', 
   /* Un « @all » du staff s'adresse à tout le monde ; et une discussion
      PRIVÉE s'adresse toujours à moi, même quand elle a sa fenêtre : passé le
      premier message, qui l'ouvrait, les suivants n'avertissaient plus. */
-  assert.match(bloc, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| aTous \|\| attr\(xml, "st"\) === "r" \|\| chuchoPourMoi \|\| estPrive\(salon\)\);/);
+  assert.match(bloc, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| aTous \|\| chuchoPourMoi \|\| estPrive\(salon\)\);/);
   // Un message « /! » REÇU avertit (pas l'écho de celui qu'on envoie).
   assert.match(bloc, /var chuchoPourMoi = attr\(xml, "st"\) === "pv" && !sameName\(xmlUnescape\(attr\(xml, "au"\)\), state\.user\);/);
   assert.match(bloc, /var enRejeu = attr\(xml, "rj"\) === "1";/);

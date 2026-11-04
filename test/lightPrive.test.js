@@ -200,8 +200,9 @@ test('le client mobile sait ouvrir, router et signaler les discussions privées'
   // public. (La branche du FOND D'ÉCRAN — t="b" — s'intercale entre les deux :
   // elle passe AVANT le tri, une conversation en arrière-plan a droit au fond
   // de l'autre. D'où l'écart, désormais large — et le verrou du rejeu (`mi`)
-  // s'y glisse aussi, avant le fond d'écran.)
-  assert.ok(/var salon = attr\(xml, "g"\);[\s\S]{0,4000}salon !== state\.room/.test(html),
+  // s'y glisse aussi, avant le fond d'écran — puis le « /! » reçu,
+  // `chuchoPourMoi`, qui avait déjà fait passer l'écart au-delà de 4000.)
+  assert.ok(/var salon = attr\(xml, "g"\);[\s\S]{0,4500}salon !== state\.room/.test(html),
     'les messages sont triés par salon');
 
   // On ne quitte JAMAIS une discussion privée : sinon on cesse d'en recevoir.

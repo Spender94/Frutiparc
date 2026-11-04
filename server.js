@@ -37242,6 +37242,22 @@ case 'send': {
       break;
     }
 
+    // ── /log, /logs, /chatlog, /chatlogs, /histo : les logs du salon ──
+    // Le light et le bureau ouvrent la fenêtre eux-mêmes (`traiterCommande`),
+    // et le SWF traite /log, /logs, /histo (`fp_openHisto`). Ce qui arrive
+    // ici, c'est le reste : /chatlog et /chatlogs, que le SWF ne connaît pas
+    // et fait suivre (patch-main-anim-commands), ou un client d'avant. La
+    // ligne partait en « Commande inconnue » ; on répond au seul demandeur par
+    // le lien d'époque (box.Chat.onIamMode), que le SWF rend cliquable. Les
+    // logs d'un salon sont à tous les Frutiz — /api/chat/histo juge des droits.
+    if (/^\/(log|logs|chatlog|chatlogs|histo)\s*$/i.test(text)) {
+      // Rien qui sorte de la chaîne JavaScript, de l'attribut ou du CDATA.
+      const propre = (v) => String(v || '').replace(/['"\\<>&\s]/g, '');
+      const lien = `<a href="javascript:fp_openHisto('${propre(client.sid)}','${propre(g)}')">... voir les messages précédents ...</a>`;
+      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[Les logs du salon : ${lien}]]></${CMD.send}>`);
+      break;
+    }
+
     // ── /aide, /help, /? : les commandes du chat ──
     // Le SWF répond lui-même (chat.cmd.help, dans le client) et n'envoie
     // jamais la ligne ; le light, lui, n'avait rien — « Commande inconnue ».
@@ -37249,6 +37265,7 @@ case 'send': {
     if (/^\/(aide|help|\?|commandes)\s*$/i.test(text)) {
       const aide = [
         'Commandes du chat :',
+        '/log, /logs, /chatlog ou /chatlogs — les logs du salon (ses messages des dernières 24 heures)',
         '/! pseudo message — un message que seul ce frutiz (présent dans le salon) verra ; rien dans les logs',
         '/ignore pseudo — ne plus voir ses messages sur les salons (il rejoint ta liste noire) ; /ignore seul : la liste',
         '/unignore pseudo — le relire',

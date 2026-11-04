@@ -8397,8 +8397,8 @@
          */
         var enRejeu = attr(xml, "rj") === "1";
         // Ce qui s'adresse à MOI dans cette ligne : une @mention que le serveur
-        // a reconnue, ou le cri rouge d'un modérateur. C'est cela — et cela
-        // seul — qui fait clignoter l'onglet d'un salon public.
+        // a reconnue. Le cri rouge (`st="r"`) n'en est plus : il clignotait
+        // comme un message privé (cf. avertirOngletChat).
         var nommes = mentionsDeTrame(xml);
         // `ma="1"` : un « @all » du staff — adressé à tout le monde, donc à moi.
         var aTous = attr(xml, "ma") === "1";
@@ -8409,7 +8409,7 @@
         // la fenêtre, les suivants n'avertissaient plus personne.
         // Un message « /! » qu'on REÇOIT (pas l'écho de celui qu'on envoie).
         var chuchoPourMoi = attr(xml, "st") === "pv" && !sameName(xmlUnescape(attr(xml, "au")), state.user);
-        var pourMoi = !enRejeu && (meMentionne(nommes) || aTous || attr(xml, "st") === "r" || chuchoPourMoi || estPrive(salon));
+        var pourMoi = !enRejeu && (meMentionne(nommes) || aTous || chuchoPourMoi || estPrive(salon));
         if (salon && salon !== state.room && !aSonJournal(salon)) {
           var conv = state.prives[salon];
           if (conv && !enRejeu && !(conv.sourdineJusqua > Date.now())) {
@@ -9819,8 +9819,11 @@
    * UN SALON PUBLIC N'AVERTIT PLUS À CHAQUE LIGNE. Il clignotait pour tout ce
    * qui passait — dans un salon vivant, l'onglet ne s'éteignait jamais et ne
    * voulait donc plus rien dire. Il ne s'allume désormais que pour ce qui
-   * s'adresse à vous : une @mention, ou un cri de modérateur (le rouge gras,
-   * `st="r"`, qui est justement fait pour être vu de tous).
+   * s'adresse à vous : une @mention, un « @all » du staff, un message « /! »
+   * reçu. Le cri d'un modérateur (le rouge gras, `st="r"`) n'avertit PAS : il
+   * est fait pour être vu de tous, dans le fil, et l'onglet qui clignotait à
+   * chaque ligne rouge se confondait avec un vrai appel (authentification,
+   * message privé).
    *
    * Une conversation PRIVÉE, elle, avertit toujours : un message privé est
    * adressé par construction. C'est `pourMoi` qui porte la différence.
@@ -10429,9 +10432,20 @@
       + xmlEscape(titre) + '</i></t>');
   }
 
+  /*
+   * LES LOGS DU SALON : /log, /logs, /chatlog, /chatlogs (et /histo, l'alias
+   * du SWF). Le bureau d'époque traite /log, /logs et /histo lui-même
+   * (`fp_openHisto`, réservé au staff) ; le light n'en connaissait aucune, et
+   * la ligne partait au serveur qui répondait « Commande inconnue ». Les logs
+   * étant à tous les Frutiz, on ouvre ici celle du salon où l'on tape — le
+   * panneau mobile ou la fenêtre de salon du bureau.
+   */
+  var CMD_LOGS = ["/log", "/logs", "/chatlog", "/chatlogs", "/histo"];
+
   function traiterCommande(texte, salon) {
     var mots = texte.trim().split(/\s+/);
     var cmd = mots[0].toLowerCase();
+    if (CMD_LOGS.indexOf(cmd) !== -1) { ouvrirLogs(salon || state.room); return true; }
     if (CMD_DON.indexOf(cmd) !== -1) { commandeDon(mots, texte.trim(), salon); return true; }
     if (CMD_IMAGE.indexOf(cmd) !== -1) { commandeImage(mots, salon); return true; }
     if (CMD_QUOTA.indexOf(cmd) !== -1) { commandeQuota(salon); return true; }
@@ -12075,9 +12089,17 @@
     if (!moi) return;
     histoMontre[room] = true;
     systemAction("", "... voir les messages précédents ...", function () {
-      window.open("/api/chat/histo?sid=" + encodeURIComponent(state.sid)
-        + "&g=" + encodeURIComponent(room), "fp_histo", "width=680,height=720");
+      ouvrirLogs(room);
     }, room);
+  }
+  // La fenêtre des logs d'un salon — la même pour le lien ci-dessus et pour
+  // les commandes /log, /logs, /chatlog, /chatlogs et /histo
+  // (`traiterCommande`). Le serveur juge des droits : salon public, à tous ;
+  // discussion privée, à ses deux participants.
+  function ouvrirLogs(room) {
+    if (!room) return;
+    window.open("/api/chat/histo?sid=" + encodeURIComponent(state.sid)
+      + "&g=" + encodeURIComponent(room), "fp_histo", "width=680,height=720");
   }
 
   // Vue « tout le site ». Le lieu affiché est le salon PUBLIC où se trouve le

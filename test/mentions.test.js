@@ -482,7 +482,7 @@ test('on n\'a plus à savoir écrire le pseudo : la liste le propose', () => {
 test('le client : un salon public ne clignote que pour ce qui s\'adresse à moi', () => {
   // La règle vit dans le client (public/light.html) : `avertirOngletChat` reçoit
   // désormais un troisième argument, et le salon public le calcule à partir de
-  // `mn` et du cri rouge. On tient ici le CÂBLAGE — le rendu, lui, se regarde
+  // `mn` (le cri rouge n'avertit plus : cf. chatLogsCri). On tient ici le CÂBLAGE — le rendu, lui, se regarde
   // dans un navigateur.
   const src = fs.readFileSync(path.join(ROOT, 'public', 'light.html'), 'utf8');
   assert.match(src, /function avertirOngletChat\(ty, salon, pourMoi\)/,
@@ -491,8 +491,8 @@ test('le client : un salon public ne clignote que pour ce qui s\'adresse à moi'
     'et se tait quand la ligne ne me concerne pas');
   // « et rien d'autre » — pas même une ligne REJOUÉE : l'historique de la
   // reconnexion s'écrit sans réveiller personne (cf. bouilleClignote).
-  assert.match(src, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| aTous \|\| attr\(xml, "st"\) === "r" \|\| chuchoPourMoi \|\| estPrive\(salon\)\);/,
-    'une mention, un « @all », un cri de modérateur, un message « /! » reçu (ou une discussion privée), et rien d\'autre — jamais un rejeu');
+  assert.match(src, /var pourMoi = !enRejeu && \(meMentionne\(nommes\) \|\| aTous \|\| chuchoPourMoi \|\| estPrive\(salon\)\);/,
+    'une mention, un « @all », un message « /! » reçu (ou une discussion privée), et rien d\'autre — ni un cri rouge, ni un rejeu');
   // « @all » : la marque ma="1" vaut mention de soi, et le mot se met en évidence comme son propre pseudo.
   assert.match(src, /var aTous = attr\(xml, "ma"\) === "1";/, 'le client lit la marque « à tous »');
   assert.match(src, /quoi\.toLowerCase\(\) === "all" \? " moi"/, 'et « @all » s\'écrit comme une mention de moi');
