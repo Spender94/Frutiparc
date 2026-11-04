@@ -116,3 +116,127 @@ test('le re-calcul de l’échelle au retour est intact', () => {
   assert.match(src, /document\.addEventListener\('visibilitychange', \(\) => \{ if \(!document\.hidden\) this\.redimensionner\(\); \}\);/);
   assert.match(src, /window\.addEventListener\('blur', \(\) => this\.pauseAuto\(\)\);/);
 });
+
+// ── Le bouton PAUSE, pour qui joue au doigt ───────────────────────────────
+//
+// « Pas de bouton Pause pour mettre ou retirer la pause sur mobile. » Le bouton
+// de la page fait exactement ce que fait P (basculerPause), son libellé suit
+// l'état quelle que soit la voie qui l'a changé, et toucher le plateau en
+// pause la lève.
+function bouton() {
+  const attrs = {};
+  const classes = new Set();
+  return Object.assign(bus(), {
+    textContent: '',
+    setAttribute(k, v) { attrs[k] = String(v); },
+    getAttribute(k) { return attrs[k]; },
+    classList: { toggle(c, on) { if (on) classes.add(c); else classes.delete(c); }, contains: (c) => classes.has(c) },
+  });
+}
+function clientAvecBouton() {
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  const fenetre = Object.assign(bus(), {
+    MinipixizLangue: require('../public/minipixiz/langue.js'), MinipixizEngine: E, MinipixizCombat: C,
+    devicePixelRatio: 1,
+  });
+  const b = bouton();
+  const doc = Object.assign(bus(), {
+    hidden: false,
+    body: { clientWidth: 0, clientHeight: 0 },
+    createElement: () => ({ getContext: () => ({}), width: 0, height: 0 }),
+    querySelectorAll: () => [],
+    querySelector: (q) => (q === '[data-cmd-pause]' ? b : null),
+  });
+  new Function('window', 'document', 'navigator', 'Image', src)(fenetre, doc, { userAgent: '' }, function () {});
+  const canevas = Object.assign(bus(), {
+    getContext: () => ({}), parentElement: null, style: {},
+    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+  });
+  const c = new fenetre.MinipixizClient.Client({ canvas: canevas, sprites: {} });
+  return { c, fenetre, doc, b, canevas };
+}
+
+test('le bouton pause bascule la pause comme P, et son libellé suit', () => {
+  const { c, b, fenetre } = clientAvecBouton();
+  assert.ok(b.classList.contains('inerte'), 'hors partie, il se retire');
+  b.emettre('touchstart');
+  assert.ok(!c.pause, 'et ne pose rien : il n\'y a rien à suspendre');
+  c.lieu = {};
+  c.majBoutonPause();
+  assert.ok(!b.classList.contains('inerte'), 'en partie, il est actif');
+  assert.match(b.textContent, /pause/);
+  b.emettre('touchstart');
+  assert.strictEqual(c.pause, true, 'un toucher : la pause');
+  assert.strictEqual(c.pauseAlpha, -90, 'avec le même voile que P');
+  assert.strictEqual(b.getAttribute('aria-pressed'), 'true');
+  assert.match(b.textContent, /reprendre/);
+  b.emettre('touchstart');
+  assert.strictEqual(c.pause, false, 'un second : la reprise');
+  assert.strictEqual(b.getAttribute('aria-pressed'), 'false');
+  // À la souris aussi (petit écran sans tactile).
+  b.emettre('mousedown');
+  assert.strictEqual(c.pause, true);
+  // P lève une pause prise au bouton, et le bouton suit à l'image suivante.
+  fenetre.emettre('keydown', touche('p', 80));
+  assert.strictEqual(c.pause, false);
+  c.majBoutonPause();
+  assert.strictEqual(b.getAttribute('aria-pressed'), 'false');
+});
+
+test('la pause automatique reste intacte, et le bouton la lève', () => {
+  const { c, b, fenetre } = clientAvecBouton();
+  c.jeu = { termine: false };
+  fenetre.emettre('blur');
+  assert.strictEqual(c.pause, true, 'la fenêtre passe derrière : pause');
+  c.majBoutonPause();
+  assert.strictEqual(b.getAttribute('aria-pressed'), 'true', 'le bouton l\'affiche');
+  b.emettre('touchstart');
+  assert.strictEqual(c.pause, false, 'le bouton la lève comme P');
+});
+
+test('en pause, toucher le plateau reprend la partie (sans pivoter la pièce)', () => {
+  const { c, canevas } = clientAvecBouton();
+  c.jeu = { termine: false, piece: null };
+  c.basculerPause();
+  let empeche = false;
+  canevas.emettre('touchstart', {
+    changedTouches: [{ identifier: 1, clientX: 50, clientY: 50 }], preventDefault() { empeche = true; },
+  });
+  assert.strictEqual(c.pause, false, 'la pause est levée');
+  assert.ok(empeche, 'pas de clic synthétisé derrière');
+  assert.strictEqual(c.doigt, null, 'ce toucher ne pilote pas la pièce');
+  canevas.emettre('touchend', { changedTouches: [{ identifier: 1 }], type: 'touchend', preventDefault() {} });
+  assert.ok(!c.pulseTourner, 'et ne la fait pas pivoter');
+});
+
+test('en pause, le moteur ne fait aucun pas : rien n\'entre au journal du rejeu', () => {
+  // Le journal de l'Arbre creux (rejeu.js) enveloppe `lieu.update` : il n'y
+  // note que des PAS. La pause — au clavier comme au doigt — n'en fait aucun.
+  const { c, b } = clientAvecBouton();
+  let pas = 0;
+  c.lieu = { update() { pas++; } };
+  c.dessiner = () => {};
+  let boucle = null;
+  const avant = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = (f) => { boucle = f; return 1; };
+  try {
+    c.demarrer();
+    boucle(1000); boucle(1016);
+    assert.ok(pas > 0, 'la partie tourne');
+    b.emettre('touchstart');
+    const figes = pas;
+    for (let t = 1032; t < 3000; t += 16) boucle(t);
+    assert.strictEqual(pas, figes, 'aucun pas pendant la pause');
+    b.emettre('touchstart');
+    boucle(3016);
+    assert.ok(pas > figes, 'et la partie repart');
+  } finally {
+    globalThis.requestAnimationFrame = avant;
+  }
+});
+
+test('la page porte le bouton pause, montré là où la manette l\'est', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(html, /<button type="button" id="pause-but" data-cmd-pause aria-pressed="false"/);
+  assert.match(html, /@media \(min-width: 700px\) and \(pointer: fine\) \{ #pause-but \{ display: none; \} \}/);
+});
