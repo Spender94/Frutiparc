@@ -6529,8 +6529,11 @@
      dans le binaire — image 12 de #583 → forme #582 → bitmap #581, 24 × 22,
      `/fb/score_pantheon.png`. Le portage mettait la médaille sur ces deux
      lignes-là, comme sur toutes les autres. */
+  /* Le CLASSEMENT KIKOOZ est le troisième classement « joueur », monté par
+     le portage à côté des deux autres (section Championnat, cf. LEGACY_RANKINGS
+     dans server.js) : il prend leur panthéon, pas la médaille des jeux. */
   function puceDeClassement(g) {
-    return (g && (g.id === '_xp' || g.id === '_rate'))
+    return (g && (g.id === '_xp' || g.id === '_rate' || g.id === 'kikooz'))
       ? '/fb/score_pantheon.png' : '/fb/score_medaille.png';
   }
 

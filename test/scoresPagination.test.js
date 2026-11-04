@@ -118,7 +118,8 @@ test('la puce du panthéon ne coiffe QUE les deux classements joueur', () => {
   assert.strictEqual(puce({ id: '_xp' }), '/fb/score_pantheon.png');
   assert.strictEqual(puce({ id: '_rate' }), '/fb/score_pantheon.png');
   assert.strictEqual(puce({ id: 'snake3_classic' }), '/fb/score_medaille.png');
-  assert.strictEqual(puce({ id: 'kikooz' }), '/fb/score_medaille.png');
+  // Le classement kikooz est un classement « joueur » : le panthéon, comme XP et consécration.
+  assert.strictEqual(puce({ id: 'kikooz' }), '/fb/score_pantheon.png');
   assert.strictEqual(puce(null), '/fb/score_medaille.png');
 });
 
