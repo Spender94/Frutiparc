@@ -115,7 +115,10 @@ test('un sort dont le curseur est à zéro ne se lance plus', () => {
 test('la bande du panneau de pause porte sa consigne', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
   assert.match(src, /const PAUSE_CONSIGNE = 'Appuyez sur P pour continuer';/);
-  assert.match(src, /ctx\.fillText\(PAUSE_CONSIGNE, 117\.35, 128\.5\);/, 'centrée dans la bande (x 42…193, y 123…134)');
+  // Au doigt, il n'y a pas de P : la même bande dit de toucher l'écran.
+  assert.match(src, /const PAUSE_CONSIGNE_TACTILE = 'Touchez l\\'écran pour continuer';/);
+  assert.match(src, /ctx\.fillText\(this\.auDoigt\(\) \? PAUSE_CONSIGNE_TACTILE : PAUSE_CONSIGNE, 117\.35, 128\.5\);/,
+    'centrée dans la bande (x 42…193, y 123…134)');
   // La bande est bien là, dans le dessin du panneau : le rectangle #938dc3.
   const svg = fs.readFileSync(path.join(ROOT, 'public/minipixiz/sprites/shape1051.svg'), 'utf8');
   assert.match(svg, /fill="#938dc3"/);

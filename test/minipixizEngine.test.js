@@ -576,15 +576,18 @@ test('la flasque se raréfie à mesure qu\'on en a', () => {
 
 test('les parchemins et les grimoires suivent la table des sorts', () => {
   // Item.initItemList : parchemin = moitié de la fréquence du sort, grimoire =
-  // un cinquième, et au double du niveau.
+  // un cinquième, et au double du niveau. Seule exception, voulue : la
+  // Pigmentation (16), corrigée à la main — parchemin 2, grimoire 1 au lieu de
+  // 1 et 0 (minipixizObjets.test.js).
+  const corrige = { 116: 2, 216: 1 };
   for (const s of E.SORTS) {
     const parchemin = E.OBJETS.find((o) => o.id === 100 + s.id);
     const grimoire = E.OBJETS.find((o) => o.id === 200 + s.id);
     assert.ok(parchemin, `parchemin du sort ${s.id}`);
     assert.ok(grimoire, `grimoire du sort ${s.id}`);
-    assert.equal(parchemin.freq, Math.floor(s.freq * 0.5));
+    assert.equal(parchemin.freq, corrige[parchemin.id] ?? Math.floor(s.freq * 0.5));
     assert.equal(parchemin.lvl, s.lvl);
-    assert.equal(grimoire.freq, Math.floor(s.freq * 0.2));
+    assert.equal(grimoire.freq, corrige[grimoire.id] ?? Math.floor(s.freq * 0.2));
     assert.equal(grimoire.lvl, s.lvl * 2, 'le grimoire attend deux fois plus longtemps');
   }
   assert.equal(E.SORTS.length, 24, 'les vingt-quatre sorts du jeu');

@@ -386,3 +386,29 @@ test('la page ouvre l\'inventaire sur son propre canevas', () => {
   assert.match(html, /canvas: \$\('#inv-stage'\)/);
   assert.match(html, /surChangement: function \(\) \{\s*plateforme\.ecrire/);
 });
+
+// ── La Pigmentation, enfin tirable ────────────────────────────────────────
+//
+// Sa fréquence de 2 donnait, par les arrondis d'Item.initItemList, un
+// parchemin à 1 et un grimoire à 0 : le grimoire ne tombait jamais. Corrigé à
+// la main, parchemin 2 et grimoire 1 — et rien d'autre ne bouge.
+test('le parchemin de Pigmentation pèse 2, son grimoire 1 (et non plus 0)', () => {
+  const de = (id) => E.OBJETS.find((o) => o.id === id);
+  assert.equal(de(116).freq, 2, 'parchemin de Pigmentation');
+  assert.equal(de(216).freq, 1, 'grimoire de Pigmentation');
+  assert.equal(de(116).lvl, 20, 'le niveau minimum reste celui du sort');
+  assert.equal(de(216).lvl, 40, 'doublé pour le grimoire');
+  assert.equal(E.SORTS.find((s) => s.id === 16).freq, 2, 'le sort garde sa fréquence');
+  // Les autres gardent la règle du jeu : moitié et cinquième, arrondis.
+  for (const s of E.SORTS) {
+    if (s.id === 16) continue;
+    assert.equal(de(100 + s.id).freq, Math.floor(s.freq * 0.5), 'parchemin ' + s.id);
+    assert.equal(de(200 + s.id).freq, Math.floor(s.freq * 0.2), 'grimoire ' + s.id);
+  }
+  // Et le grimoire finit bel et bien par sortir de la pioche.
+  const r = E.generateur(7);
+  const h = (n) => Math.floor(r() * n);
+  let vu = false;
+  for (let i = 0; i < 2000000 && !vu; i++) vu = E.tirerObjet(60, h, { sac: 3, flasques: 99 }) === 216;
+  assert.ok(vu, 'le grimoire de Pigmentation est tiré');
+});

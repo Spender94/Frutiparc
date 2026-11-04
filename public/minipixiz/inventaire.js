@@ -240,6 +240,21 @@ class Inventaire {
     // (ci-dessous) fait le reste.
     this.mainPos = null;              // {x, y} de l'objet tenu, à la souris
     this.dernierPointeur = 'mouse';   // 'mouse' | 'touch' | 'pen' : le dernier appui
+    /*
+     * LE BOCAL QUI NE RÉPONDAIT PAS AU DOIGT. Après un toucher, le navigateur
+     * émet ses événements souris « de compatibilité » : mousemove, mousedown,
+     * mouseup, puis click. Le mousemove ci-dessous écrivait alors
+     * `dernierPointeur = 'mouse'` juste avant le click. Chrome s'en remet
+     * puisque son click porte `pointerType: 'touch'` ; mais celui de Safari
+     * (iPhone, iPad) est un simple MouseEvent, sans pointerType : le toucher
+     * passait pour un clic de souris sans ESPACE, et PRENAIT le bocal en main
+     * au lieu d'y faire entrer la fée — « impossible de faire entrer/sortir
+     * une fée d'un bocal sur mobile ». On retient donc l'heure du dernier
+     * appui au doigt (pointerdown/pointerup, qui disent toujours leur type),
+     * et une souris émulée dans la seconde qui suit n'efface plus le doigt —
+     * ni ne pose d'infobulle de survol (voir le mousemove).
+     */
+    this.appuiTactile = 0;
     // inv/Slot.click — la fée entre et sort de son bocal TOUCHE ENFONCÉE
     // (ESPACE au bureau ; on accepte aussi Ctrl, le geste qu'on attend
     // aujourd'hui). Un clic simple prend le bocal en main, comme tout objet.
@@ -249,6 +264,12 @@ class Inventaire {
     window.addEventListener('keyup', (ev) => { if (ev.key === ' ' || ev.code === 'Space') this.espace = false; });
     window.addEventListener('blur', () => { this.espace = false; });
     this.canvas.addEventListener('mousemove', (ev) => {
+      // La souris émulée d'un toucher n'est pas un survol : sinon l'infobulle
+      // de la case (prise AVANT le geste, et qui passe devant tout message)
+      // restait affichée et cachait la réponse — « Noisette s'installe dans
+      // le bocal » s'effaçait sous « Pour y loger votre fée, touchez-le » :
+      // au doigt, on croyait que rien ne s'était passé.
+      if (this.sourisEmulee()) return;
       const r = this.canvas.getBoundingClientRect();
       const x = (ev.clientX - r.left) / this.echelle;
       const y = (ev.clientY - r.top) / this.echelle;
@@ -1059,8 +1080,25 @@ class Inventaire {
     return null;
   }
 
+  // Une souris émulée par le navigateur à la suite d'un toucher ?
+  sourisEmulee() {
+    return !!this.appuiTactile && Date.now() - this.appuiTactile < 1000;
+  }
+
+  // pointerdown / pointerup : le type d'appui, et l'heure s'il est tactile.
+  noterAppui(ev) {
+    const type = ev.pointerType || 'mouse';
+    if (type !== 'mouse') {
+      this.appuiTactile = Date.now();
+      this.survol = null;              // au doigt, pas de survol qui traîne
+    } else {
+      this.appuiTactile = 0;
+    }
+    this.dernierPointeur = type;
+  }
+
   doigtPose(ev) {
-    this.dernierPointeur = ev.pointerType || 'mouse';
+    this.noterAppui(ev);
     const p = this.pointDe(ev);
     const quoi = this.zoneSous(p.x, p.y);
     if (quoi && quoi.sac !== undefined && this.objetA(quoi.sac, quoi.case)) {
@@ -1096,6 +1134,7 @@ class Inventaire {
   }
 
   doigtLeve(ev) {
+    if (ev && ev.pointerType) this.noterAppui(ev);
     const g = this.glisse;
     this.glisse = null;
     if (!g || !g.pris) return;                         // l'appui simple : le click suivra

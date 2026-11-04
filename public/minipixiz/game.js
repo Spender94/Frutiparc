@@ -403,6 +403,9 @@ function teinter(g, x, y, l, h, couleur, ajout) {
 // se met en cache une fois par (fichier, couleur) au lieu d'une fois par image.
 const peintes = new Map();
 const PAUSE_CONSIGNE = 'Appuyez sur P pour continuer';   // la bande sous « Pause »
+// Au doigt il n'y a pas de P : le bouton pause de la page, ou le plateau
+// lui-même, lèvent la pause (voir brancherCommandes et brancherToucher).
+const PAUSE_CONSIGNE_TACTILE = 'Touchez l\'écran pour continuer';
 const SUPER = 4;                       // le rendu tramé est fait plus grand que
                                        // nature : la matrice l'agrandit souvent
 
@@ -1677,6 +1680,7 @@ class Client {
     this.majTransition(tmod);
     this.dessinerScene(tmod);
     this.dessinerPause(this.ctx, tmod);
+    this.majBoutonPause();
     if (this.iris && !this.iris.dessiner(this.ctx, tmod)) this.iris = null;
   }
 
@@ -2012,6 +2016,7 @@ class Client {
       // c'est là qu'il touche pour feuilleter les six missions du jour.
       g.zones.push({ quoi: 'avant', x: 3.75, y: 37.75, l: 26, h: 192 });
       g.zones.push({ quoi: 'apres', x: 210.25, y: 37.75, l: 26, h: 192 });
+      if (g.etape === 2 && info) this.dessinerFlechesGromelin(ctx, g, infos.length);
       // Ceinture : le panneau ne doit JAMAIS rester muet. `accueil` refuse
       // désormais d'ouvrir sur une liste vide, mais une fiche ancienne ou une
       // offre disparue en cours de route mènerait ici, devant un parchemin nu
@@ -2114,6 +2119,39 @@ class Client {
     this.dessinerBoutonQuitter(ctx);
   }
 
+  /*
+   * LES FLÈCHES DES RAILS. Le rail doré suffit au bureau — la main de Flash
+   * s'y allume au survol —, mais rien ne le DIT : au doigt, sans survol, le
+   * joueur ne devinait pas qu'on y feuillette les six missions du jour (« pas
+   * de flèches à gauche et à droite pour naviguer entre les missions chez
+   * Gromelin »). On y pose donc la flèche du jeu lui-même, celle qui fait
+   * défiler les objets à ranger au sac (flecheExtra, l'aile gauche
+   * retournée), au milieu de chaque rail, et seulement s'il y a une mission
+   * de ce côté-là — comme elle. La zone touchée reste le rail entier.
+   */
+  dessinerFlechesGromelin(ctx, g, n) {
+    const s = this.sprites;
+    const y = 37.75 + 192 * 0.5;
+    for (const [sens, x] of [[-1, 3.75 + 13], [1, 210.25 + 13]]) {
+      const visible = sens < 0 ? g.index > 0 : g.index < n - 1;
+      if (!visible) continue;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(sens, 1);
+      // Une ombre brune sous l'aile blanche : sur l'or du rail, le blanc seul
+      // se perdait.
+      ctx.fillStyle = 'rgba(81,61,47,0.55)';
+      ctx.beginPath();
+      ctx.moveTo(-3.6, -10.6);
+      ctx.lineTo(8.6, 0);
+      ctx.lineTo(-3.6, 10.6);
+      ctx.closePath();
+      ctx.fill();
+      if (s.flecheExtra) poserRendu(ctx, rendre(s.flecheExtra, 1, 100), 0, 0);
+      ctx.restore();
+    }
+  }
+
   // Le corps d'une bulle de dialogue, sans locuteur — Gromelin parle derrière
   // sa porte.
   dessinerBulleTexte(ctx, texte, x, y, pointe) {
@@ -2187,11 +2225,45 @@ class Client {
    * n'ont rien à suspendre.
    */
   basculerPause() {
-    const enJeu = (this.jeu || this.bassin || this.lieu)
-      && !this.cine && !this.nouvelle && !this.carteForet;
-    if (!this.pause && !enJeu) return;
+    if (!this.pause && !this.peutPauser()) return;
     this.pause = !this.pause;
     if (this.pause) this.pauseAlpha = -90;
+  }
+
+  peutPauser() {
+    return !!((this.jeu || this.bassin || this.lieu)
+      && !this.cine && !this.nouvelle && !this.carteForet);
+  }
+
+  /**
+   * LE BOUTON PAUSE DE LA PAGE. Au téléphone il n'y a ni P ni Échap : la
+   * manette porte donc un bouton qui fait EXACTEMENT ce que fait P —
+   * basculerPause, rien d'autre. La pause ne s'écrit pas dans le journal de
+   * l'Arbre creux (rejeu.js) : pendant qu'elle dure le moteur ne fait aucun
+   * pas, et le serveur ne rejoue que des pas. Une pause au doigt est donc
+   * aussi invisible au rejeu qu'une pause au clavier.
+   *
+   * Son libellé suit l'état, quelle que soit la voie qui l'a changé (P, le
+   * bouton, le plateau touché, ou la fenêtre passée derrière) ; il se retire
+   * quand il n'y a rien à suspendre (classe `inerte`).
+   */
+  majBoutonPause() {
+    const b = this.boutonPause;
+    if (!b) return;
+    const etat = this.pause ? 'pause' : (this.peutPauser() ? 'jeu' : 'inerte');
+    if (etat === this.etatBoutonPause) return;
+    this.etatBoutonPause = etat;
+    b.textContent = this.pause ? '▶ reprendre' : '❚❚ pause';
+    b.setAttribute('aria-pressed', this.pause ? 'true' : 'false');
+    b.setAttribute('aria-label', this.pause ? 'Reprendre la partie' : 'Mettre en pause');
+    if (b.classList) b.classList.toggle('inerte', etat === 'inerte');
+  }
+
+  // Un appareil sans clavier ni souris fine : le panneau dit de toucher.
+  auDoigt() {
+    try {
+      return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    } catch (e) { return false; }
   }
 
   /**
@@ -2246,7 +2318,7 @@ class Client {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(PAUSE_CONSIGNE, 117.35, 128.5);
+      ctx.fillText(this.auDoigt() ? PAUSE_CONSIGNE_TACTILE : PAUSE_CONSIGNE, 117.35, 128.5);
       ctx.restore();
     }
   }
@@ -3566,6 +3638,15 @@ class Client {
         }
         return;
       }
+      // En pause, toucher le plateau la LÈVE — c'est ce que dit le panneau au
+      // doigt, et c'est le geste qu'on fait en revenant à l'appli. Rien d'autre :
+      // ce toucher-là ne pivote pas la pièce.
+      if (this.pause) {
+        ev.preventDefault();
+        this.basculerPause();
+        this.majBoutonPause();
+        return;
+      }
       if (!enJeu()) return;            // les écrans gardent leurs clics
       const t = ev.changedTouches[0];
       if (this.doigt) return;          // un seul doigt pilote
@@ -3764,6 +3845,17 @@ class Client {
       const appel = (ev) => { ev.preventDefault(); this.appelerFee(); };
       aide.addEventListener('touchstart', appel, { passive: false });
       aide.addEventListener('mousedown', appel);
+    }
+    // Le bouton pause : le P de ceux qui n'ont pas de clavier (majBoutonPause).
+    // `touchstart` empêche le clic synthétisé, qui basculerait une seconde fois.
+    const pause = racine.querySelector('[data-cmd-pause]');
+    this.boutonPause = pause || null;
+    this.etatBoutonPause = null;
+    if (pause) {
+      const basculer = (ev) => { ev.preventDefault(); this.basculerPause(); this.majBoutonPause(); };
+      pause.addEventListener('touchstart', basculer, { passive: false });
+      pause.addEventListener('mousedown', basculer);
+      this.majBoutonPause();
     }
   }
 

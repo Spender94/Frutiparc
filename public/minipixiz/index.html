@@ -212,6 +212,21 @@
     background: rgba(36,28,58,.85); color: #e9dcff;
     font: bold 13px inherit; cursor: pointer;
   }
+  /* Le bouton PAUSE : le P de ceux qui jouent au doigt. En haut à gauche, en
+     pendant du sac, et montré partout où la manette l'est (pas sur un grand
+     écran à la souris, où P et Échap suffisent). Il ne sert que pendant une
+     partie : ailleurs (Gromelin, Ornegon, la carte…) il se retire. */
+  #pause-but {
+    position: fixed; top: 8px; left: 8px; z-index: 4;
+    min-width: 44px; min-height: 36px;
+    border: 0; border-radius: 12px; padding: 8px 12px;
+    background: rgba(36,28,58,.85); color: #e9dcff;
+    font: bold 13px inherit; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #pause-but[aria-pressed="true"] { background: #5b3a86; color: #ffe9a8; }
+  #pause-but.inerte { visibility: hidden; }
+  @media (min-width: 700px) and (pointer: fine) { #pause-but { display: none; } }
   #inventaire {
     /* Au-dessus du MENU (9) : le sac s'ouvre depuis la clairière comme depuis
        la partie, et il doit passer devant les deux. */
@@ -250,6 +265,7 @@
 </div>
 
 <button type="button" id="sac-but">🎒 sac</button>
+<button type="button" id="pause-but" data-cmd-pause aria-pressed="false" aria-label="Mettre en pause">❚❚ pause</button>
 
 <!-- Le menu de l'aventure (Menu.mt) : l'écran d'où tout part. -->
 <div id="menu">
