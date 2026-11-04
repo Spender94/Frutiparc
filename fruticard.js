@@ -947,9 +947,121 @@ function carteMinipixiz(c) {
   return lignes;
 }
 
+/*
+ * JAMAJAMA — un ajout du portage, comme les combos de Swapou.
+ *
+ * Le `switch` d'époque n'a pas de branche pour JamaJama : le jeu de 2005
+ * tournait hors de Frutiparc (extension.swf rangeait tout dans un
+ * SharedObject), et la carte du bureau restait vide. Le portage, lui, garde
+ * tout dans le slot « jamajama » ; la carte n'écrit QUE ce qui s'y trouve,
+ * ou ce que le serveur sait déjà :
+ *
+ *   · aventure   la chaîne de sauvegarde du jeu (« N[l,l,…; », celle que
+ *                relit AdventureSetLevels) : les niveaux finis, comptés sur
+ *                les niveaux JOUABLES de levels.xml — trois packs n'ont
+ *                qu'une entrée sans contenu, un palier d'attente, qui ne se
+ *                compte pas ;
+ *   · tournoi    les statuts par niveau, posés par le serveur après REJEU de
+ *                la partie : terminé (tiki blanc ou d'or, la règle de
+ *                l'onglet Joueurs des Statistiques), et d'or (aussi bien que
+ *                l'auteur) ;
+ *   · niveaux joués  `$plays`, l'assiette des pictos ;
+ *   · niveaux publiés  ceux du mode Édition validés au tournoi (l'onglet
+ *                Créateurs) ;
+ *   · pictos     les paliers JamaJama obtenus, sur ceux qui existent.
+ *
+ * `ctx` vient du serveur (levels.xml, le tournoi, jama_niveaux, l'inventaire) :
+ *   { packs: [{ titre, jouables: [bool…] }], tournoi: [id…], publies,
+ *     pictos: [{ nom, obtenu }] }
+ */
+// La chaîne d'aventure, lue comme AventureData (public/jamajama/plateforme.js).
+function aventureJama(chaine) {
+  const packs = {};
+  for (const morceau of String(chaine || '').split(';')) {
+    if (!morceau) continue;
+    const pack = parseInt(morceau, 10);
+    if (!(pack >= 0)) continue;
+    const faits = new Set();
+    for (const n of morceau.substring(String(pack).length + 1).split(',')) {
+      const i = parseInt(n, 10);
+      if (i >= 0) faits.add(i);
+    }
+    packs[pack] = faits;
+  }
+  return packs;
+}
+
+// Le résumé, sans dessin — testé seul, et rendu par `carteJamajama`.
+function resumeJamajama(c, ctx) {
+  const x = ctx || {};
+  const faits = aventureJama(c.aventure);
+  const packs = (Array.isArray(x.packs) ? x.packs : []).map((p, i) => {
+    const jouables = Array.isArray(p.jouables) ? p.jouables : [];
+    let total = 0, finis = 0;
+    jouables.forEach((ok, j) => {
+      if (!ok) return;
+      total += 1;
+      if (faits[i] && faits[i].has(j)) finis += 1;
+    });
+    return { titre: String(p.titre || '').trim(), total, finis };
+  }).filter((p) => p.total > 0);
+  const statuts = (c.niveaux && typeof c.niveaux === 'object') ? c.niveaux : {};
+  const ids = Array.isArray(x.tournoi) ? x.tournoi : [];
+  let termines = 0, ors = 0;
+  for (const id of ids) {
+    const s = statuts[id];
+    const st = s ? Number(s.s) : -1;
+    if (st >= 1) termines += 1;
+    if (st === 2) ors += 1;
+  }
+  const pictos = Array.isArray(x.pictos) ? x.pictos : [];
+  return {
+    aventure: {
+      finis: packs.reduce((n, p) => n + p.finis, 0),
+      total: packs.reduce((n, p) => n + p.total, 0),
+      packs,
+    },
+    tournoi: { termines, ors, total: ids.length },
+    joues: Math.max(0, Math.floor(Number(c.$plays) || 0)),
+    publies: Math.max(0, Math.floor(Number(x.publies) || 0)),
+    pictos: {
+      obtenus: pictos.filter((p) => p && p.obtenu).map((p) => String(p.nom)),
+      total: pictos.length,
+    },
+  };
+}
+
+function carteJamajama(c, pseudo, ctx) {
+  const r = resumeJamajama(c, ctx);
+  const lignes = [];
+  getRecordLines('aventure', r.aventure.finis + ' / ' + r.aventure.total + ' niveaux')
+    .forEach((l) => lignes.push(l));
+  r.aventure.packs.forEach((p) => lignes.push(getSimpleScoreLine(p.titre, p.finis + ' / ' + p.total)));
+  lignes.push({ height: 10 });
+  lignes.push(getTitleLine('tournoi'));
+  lignes.push(getSimpleScoreLine('niveaux terminés', r.tournoi.termines + ' / ' + r.tournoi.total));
+  lignes.push(getSimpleScoreLine("dont tikis d'or", r.tournoi.ors));
+  lignes.push(getSimpleScoreLine('niveaux publiés', r.publies));
+  lignes.push({ height: 10 });
+  // Toutes les parties finies, aventure et tournoi : l'assiette des pictos.
+  getRecordLines('parties', r.joues + (r.joues > 1 ? ' niveaux joués' : ' niveau joué'))
+    .forEach((l) => lignes.push(l));
+  getRecordLines('pictos', r.pictos.obtenus.length + ' / ' + r.pictos.total)
+    .forEach((l) => lignes.push(l));
+  r.pictos.obtenus.forEach((nom) => lignes.push({ list: [
+    { type: 'spacer', big: 1 },
+    { type: 'text', width: 200, param: { sid: 1, text: nom, textFormat: { align: 'center' } } },
+    { type: 'spacer', big: 1 },
+  ] }));
+  lignes.push({ height: 10 });
+  lignes.push(getSepLine());
+  return lignes;
+}
+
 // ── L'AIGUILLAGE ───────────────────────────────────────────────────────────
 // L'ordre et les noms sont ceux du `switch` d'époque. Grapiz et Frutibandas y
 // figurent et n'y font rien : leur branche retombe sur le retour commun.
+// JamaJama, absent du `switch`, est l'ajout du portage (voir plus haut).
 const CARTES = {
   bkiwi: carteBkiwi,
   snake3: carteSnake,
@@ -959,6 +1071,7 @@ const CARTES = {
   miniwave: carteMiniwave,
   miniwave2: carteMiniwave,
   minipixiz: carteMinipixiz,
+  jamajama: carteJamajama,
   grapiz: null,
   bandas: null,
 };
@@ -969,13 +1082,15 @@ const CARTES = {
  * @param {string} jeu     l'identifiant d'époque (bkiwi, snake3, …)
  * @param {object} carte   la sauvegarde (slot 0), déjà rembourrée
  * @param {string} pseudo  le nom du joueur (Frutisnake s'en sert)
+ * @param {object} [ctx]   ce que la sauvegarde ne porte pas (JamaJama : les
+ *                         niveaux, le tournoi, l'inventaire)
  */
-function lignes(jeu, carte, pseudo) {
+function lignes(jeu, carte, pseudo, ctx) {
   const f = CARTES[String(jeu || '')];
   if (!f) return [];
   const c = (carte && typeof carte === 'object') ? carte : {};
   try {
-    return f(c, String(pseudo || ''));
+    return f(c, String(pseudo || ''), ctx || null);
   } catch (e) {
     console.warn(`[FCARD] carte ${jeu} illisible : ${e.message}`);
     return [];
@@ -997,6 +1112,7 @@ const NOMS_JEUX = {
   miniwave: 'MiniWave',
   miniwave2: 'MiniWave',
   minipixiz: 'MiniPixiz',
+  jamajama: 'JamaJama',
 };
 
 function nomJeu(jeu) { return NOMS_JEUX[String(jeu || '')] || String(jeu || ''); }
@@ -1015,6 +1131,7 @@ module.exports = {
   getSimpleScoreLine,
   getWildScoreLine,
   getKalugaModeLines,
+  resumeJamajama,
   ECURIES_BKIWI,
   MINIWAVE_BADS,
   MINIPIXIZ_GRADES,

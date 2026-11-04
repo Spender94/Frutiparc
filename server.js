@@ -17224,6 +17224,23 @@ function jamaEcrireSlot(username, slot) {
   }
 }
 
+// LA FICHE JOUEUR — ce que la carte JamaJama (fruticard.js) ne trouve pas
+// dans la sauvegarde : quels niveaux d'aventure sont jouables (trois packs
+// n'ont qu'un palier sans contenu), les niveaux du tournoi du moment, les
+// niveaux que ce joueur y a publiés, et les pictos JamaJama qu'il a.
+async function jamaContexteFiche(username, inventaire) {
+  await jamaNiveauxCharger();
+  const items = new Set(Array.isArray(inventaire) ? inventaire : []);
+  return {
+    packs: jamaLevels().packs.map((p) => ({
+      titre: p.titre, jouables: p.niveaux.map((n) => !!n.contenu),
+    })),
+    tournoi: jamaTournoi().map((t) => t.id),
+    publies: jamaMesNiveaux(username).filter((n) => n.valide).length,
+    pictos: Object.entries(JAMA_MILESTONES).map(([id, m]) => ({ nom: m.name, obtenu: items.has(id) })),
+  };
+}
+
 // Tout ce qu'il faut au jeu pour démarrer, en une requête.
 app.get('/api/jamajama/donnees', async (req, res) => {
   const sid = getSidFromRequest(req);
@@ -30643,8 +30660,10 @@ app.get('/api/light/fruticard', async (req, res) => {
   // même carte.
   let brut = '';
   let ctx = null;
+  let inventaire = [];          // les pictos du joueur — la carte JamaJama les compte
   const tu = users[u];
   if (tu) {
+    inventaire = Array.isArray(tu.gameItems) ? tu.gameItems : [];
     if (tu.frutiSlots && tu.frutiSlots[jeu] && tu.frutiSlots[jeu]['0']) {
       brut = tu.frutiSlots[jeu]['0'];
     } else if (tu._dbId) {
@@ -30668,17 +30687,21 @@ app.get('/api/light/fruticard', async (req, res) => {
       ]);
       if (slots && slots['0']) brut = slots['0'];
       ctx = { gameItems: items || [], scores: sc || {}, jamaPlayCount: 0 };
+      inventaire = ctx.gameItems;
     } catch (e) {
       console.warn(`[FCARD] chargement hors ligne impossible (${u}/${jeu}) : ${e.message}`);
     }
   }
   let carte = {};
   try { carte = JSON.parse(patchSlot0(u, jeu, brut, ctx)) || {}; } catch (e) { carte = {}; }
+  // JamaJama n'a pas tout dans sa sauvegarde : le nombre de niveaux, le
+  // tournoi du moment, ses niveaux publiés et ses pictos viennent d'ici.
+  const contexte = jeu === 'jamajama' ? await jamaContexteFiche(u, inventaire) : null;
   res.json({
     ok: true,
     jeu,
     titre: FCard.nomJeu(jeu),
-    lignes: FCard.lignes(jeu, carte, getDisplayName(u)),
+    lignes: FCard.lignes(jeu, carte, getDisplayName(u), contexte),
   });
 });
 
@@ -34677,8 +34700,9 @@ const FCARD_GAMES = ['bkiwi', 'snake3', 'swapou2', 'kaluga', 'mb2', 'miniwave', 
 // Le DESSIN de ces cartes — `Standard.getFrutiCardLines` (main.swf 0x5c370),
 // transcrite. Le SWF la porte déjà ; le light ne l'avait pas.
 const FCard = require('./fruticard.js');
-// Les jeux dont le MOTEUR sait faire une carte. `jamajama` a un slot mais pas
-// de branche dans le `switch` d'époque : il n'a donc pas de carte non plus ici.
+// Les jeux dont le MOTEUR sait faire une carte. `jamajama` n'a pas de branche
+// dans le `switch` d'époque (la carte du bureau Flash reste vide) ; la sienne
+// est un ajout du portage, que le light dessine (fruticard.js, carteJamajama).
 const FCARD_DESSINABLES = FCARD_GAMES.filter((g) => FCard.aUneCarte(g));
 
 // Convert a JSON string (or JS value) to Motion-Twin serialization format (2004).

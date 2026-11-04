@@ -296,7 +296,7 @@ test('la fiche liste les jeux, et une route rend la carte', () => {
   assert.match(SERVEUR, /const FCARD_DESSINABLES = FCARD_GAMES\.filter\(\(g\) => FCard\.aUneCarte\(g\)\);/);
   assert.match(SERVEUR, /fcards: FCARD_DESSINABLES\.map\(\(g\) => \(\{ id: g, nom: FCard\.nomJeu\(g\) \}\)\)/);
   assert.match(SERVEUR, /app\.get\('\/api\/light\/fruticard', async \(req, res\) => \{/);
-  assert.match(SERVEUR, /lignes: FCard\.lignes\(jeu, carte, getDisplayName\(u\)\),/);
+  assert.match(SERVEUR, /lignes: FCard\.lignes\(jeu, carte, getDisplayName\(u\), contexte\),/);
   // La sauvegarde vient des MÊMES trois sources que `fcardgetpublicslot`.
   assert.match(SERVEUR, /if \(!FCard\.aUneCarte\(jeu\)\) return res\.status\(400\)\.json\(\{ ok: false, error: 'jeu' \}\);/);
   assert.match(SERVEUR, /carte = JSON\.parse\(patchSlot0\(u, jeu, brut, ctx\)\) \|\| \{\};/);
