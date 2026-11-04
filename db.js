@@ -1694,6 +1694,21 @@ async function addAccessory(userId, acc) {
   );
 }
 
+// Les lignes d'inventaire qui ne sont ni une bouille de 24 caractères ni un
+// fond d'écran (`wp:`) — les dons d'avant le correctif de la fiche joueur.
+async function accessoiresIncomplets() {
+  const { rows } = await pool.query(
+    `SELECT a.id, a.user_id, a.acc_id, a.shop_id, a.name, a.value, u.username, u.fbouille
+       FROM user_accessories a JOIN users u ON u.id = a.user_id
+      WHERE length(coalesce(a.value, '')) <> 24 AND coalesce(a.value, '') NOT LIKE 'wp:%'
+      ORDER BY a.id`);
+  return rows;
+}
+
+async function corrigerValeurAccessoire(rowId, value) {
+  await pool.query('UPDATE user_accessories SET value = $2 WHERE id = $1', [rowId, String(value)]);
+}
+
 async function getUserAccessories(userId) {
   const { rows } = await pool.query(
     'SELECT * FROM user_accessories WHERE user_id = $1 ORDER BY created_at',
@@ -5992,6 +6007,8 @@ module.exports = {
   forumSetTopicFollow,
   forumIsTopicFollowed,
   forumTopicFollowers,
+  accessoiresIncomplets,
+  corrigerValeurAccessoire,
   forumGetBoard,
   forumCreateBoard,
   forumUpdateBoard,

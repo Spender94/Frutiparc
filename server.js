@@ -16265,6 +16265,77 @@ app.get('/api/admin/users/:username/accessories', adminAuth, async (req, res) =>
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/*
+ * LA VALEUR D'UN ACCESSOIRE DONNÉ, COMPLÉTÉE — la règle du don depuis la fiche
+ * joueur, écrite une fois pour le don ET pour la réparation des dons d'avant.
+ *
+ *   · un fond d'écran désigné par son article : `wp:url:couleur` ;
+ *   · un suffixe de neuf caractères (ou rien, avec un article qui en a un) :
+ *     les quinze premiers caractères de la bouille du joueur, puis le suffixe ;
+ *   · le reste passe tel quel (une bouille entière, une valeur déjà bonne).
+ */
+function valeurAccessoireComplete(valeur, pack, base15) {
+  const wp = pack && pack.wallpaperId ? WALLPAPER_BY_ID[pack.wallpaperId] : null;
+  let v = String(valeur || '').trim();
+  if (!v && wp) v = `wp:${wp.url}:${wp.color}`;
+  else if (!v && pack && pack.suffix9) v = base15 + pack.suffix9;
+  else if (/^[0-9A-Za-z]{9}$/.test(v)) v = base15 + v;
+  return v;
+}
+// Les quinze premiers caractères de la bouille d'un joueur : celle qu'il a en
+// mémoire s'il est connecté, sinon celle de la base.
+function base15Accessoire(u, cle, fbouilleBase) {
+  const source = u ? bouilleOf(u, cle) : (fbouilleBase || bouilleOf(null, cle));
+  return normalizeBouilleState(String(source).split('|')[0]).substring(0, 15);
+}
+
+/*
+ * LES DONS D'AVANT LE CORRECTIF — on les répare au lieu de les redonner.
+ *
+ * Jusqu'au correctif du don (cf. la route ci-dessous), la fiche joueur rangeait
+ * tel quel le suffixe tapé — neuf caractères — ou rien du tout quand on ne
+ * choisissait que l'article. La ligne est restée en base, mais l'inventaire du
+ * light, le forum et l'atelier n'acceptent qu'une bouille de vingt-quatre : les
+ * accessoires offerts avant Halloween (Kirby, SOAD…) y étaient invisibles.
+ *
+ * Au démarrage (et à la demande, depuis l'admin), chaque ligne incomplète est
+ * complétée par la même règle que le don. Ce qu'on ne sait pas compléter (une
+ * URL, un texte quelconque, un article disparu sans suffixe) est laissé tel
+ * quel et listé : rien ne s'efface. Une ligne réparée a vingt-quatre
+ * caractères — la requête ne la revoit plus : c'est idempotent.
+ */
+async function reparerAccessoiresIncomplets() {
+  const bilan = { repares: [], restes: [] };
+  if (!process.env.DATABASE_URL) return bilan;
+  const lignes = await db.accessoiresIncomplets();
+  const aRafraichir = new Map();
+  for (const r of lignes) {
+    const pack = Number(r.shop_id) ? getShopPack(r.shop_id) : null;
+    const cle = String(r.username || '').toLowerCase();
+    const u = users[resolveKnownUsername(r.username)] || users[cle] || null;
+    const v = valeurAccessoireComplete(r.value, pack, base15Accessoire(u, cle, r.fbouille));
+    const qui = { username: r.username, nom: r.name || (pack && pack.name) || '', avant: r.value || '' };
+    if (v !== String(r.value || '') && (v.length === 24 || v.startsWith('wp:'))) {
+      await db.corrigerValeurAccessoire(r.id, v);
+      bilan.repares.push(Object.assign(qui, { apres: v }));
+      if (u) aRafraichir.set(u, r.user_id);
+    } else {
+      bilan.restes.push(qui);
+    }
+  }
+  for (const [u, userId] of aRafraichir) u.customAccessories = await db.getUserAccessories(userId);
+  if (bilan.repares.length || bilan.restes.length) {
+    console.log(`[ACCESSOIRES] dons incomplets : ${bilan.repares.length} réparé(s), ${bilan.restes.length} laissé(s) tel(s) quel(s)`
+      + (bilan.restes.length ? ' — ' + bilan.restes.map((x) => `${x.username} « ${x.nom} » (${x.avant || 'vide'})`).join(', ') : ''));
+  }
+  return bilan;
+}
+
+app.post('/api/admin/accessoires/reparer', adminAuth, async (req, res) => {
+  try { res.json(Object.assign({ ok: true }, await reparerAccessoiresIncomplets())); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 app.post('/api/admin/users/:username/accessories', adminAuth, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
   try {
@@ -16288,13 +16359,8 @@ app.post('/api/admin/users/:username/accessories', adminAuth, async (req, res) =
     const cle = String(row.username || req.params.username).toLowerCase();
     const connu = resolveKnownUsername(row.username || req.params.username);
     const u = users[connu] || users[cle] || null;
-    const source = u ? bouilleOf(u, cle) : (row.fbouille || bouilleOf(null, cle));
-    const base15 = normalizeBouilleState(String(source).split('|')[0]).substring(0, 15);
     const wp = pack && pack.wallpaperId ? WALLPAPER_BY_ID[pack.wallpaperId] : null;
-    let v = String(b.value || '').trim();
-    if (!v && wp) v = `wp:${wp.url}:${wp.color}`;
-    else if (!v && pack && pack.suffix9) v = base15 + pack.suffix9;
-    else if (/^[0-9A-Za-z]{9}$/.test(v)) v = base15 + v;
+    const v = valeurAccessoireComplete(b.value, pack, base15Accessoire(u, cle, row.fbouille));
     const acc = {
       id: String(b.id || '').trim() || (pack ? (wp ? 'wp_' + pack.wallpaperId : 'shop_' + pack.id) : `admin_${Date.now()}`),
       shopId: pack ? pack.id : (Number(b.shopId) || 0),
@@ -31300,6 +31366,9 @@ async function boot() {
       // Les accessoires maison et leur port : même règle que les variantes.
       try { await chargerAccMaisonDeBase(); }
       catch (e) { console.error('[DB] Accessoires maison load error:', e.message); }
+      // Les dons d'avant le correctif (une valeur trop courte) : complétés.
+      try { await reparerAccessoiresIncomplets(); }
+      catch (e) { console.error('[DB] Réparation des accessoires donnés :', e.message); }
       try {
         // Chat banned words: on first run (empty table), seed defaults.
         let bw = await db.loadChatBannedWords();
