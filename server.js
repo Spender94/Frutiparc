@@ -1158,6 +1158,25 @@ function computeConsecration(username) {
   };
 }
 
+/*
+ * FRUTISNAKE : LE NUMÉRO D'UN PICTO N'EST PAS L'IDENTIFIANT DU FRUIT.
+ *
+ * Le jeu numérote ses fruits de 1 à 300, puis ses 22 pourris de 321 à 342 —
+ * les identifiants 301 à 320 n'existent pas. Le picto se donne avec
+ * l'identifiant (`giveItem("Fruit " + k)`, Game.as), mais les images et les
+ * noms, eux, se suivent sans trou : snakeFruit0301.gif est le PREMIER pourri,
+ * et Const.TXT_FRUIT_NAME retire 20 à tout identifiant ≥ 320. On ne le
+ * faisait pas : « Fruit 321 » s'affichait avec l'image n° 321 — l'avant-
+ * dernière de la collection — si bien qu'avaler vingt pourris du départ
+ * semblait débloquer les tout derniers pictos, et la galerie sautait de 300 à
+ * 321. L'objet garde son nom d'époque (« Fruit 321 », celui que le jeu donne) ;
+ * seuls l'image et le numéro affiché sont recalés.
+ */
+function numeroPictoSnake(id) {
+  const n = Number(id) || 0;
+  return n >= 321 ? n - 20 : n;
+}
+
 function resolveGameItemGif(itemName) {
   const info = GAME_ITEM_INFO[itemName];
   if (info && info.gif) {
@@ -1167,7 +1186,7 @@ function resolveGameItemGif(itemName) {
   // Snake3: "Fruit N" → snakeFruitNNNN.gif
   const snakeMatch = /^Fruit (\d+)$/.exec(itemName);
   if (snakeMatch) {
-    const pad = String(snakeMatch[1]).padStart(4, '0');
+    const pad = String(numeroPictoSnake(snakeMatch[1])).padStart(4, '0');
     const abs = path.join(__dirname, 'Games', 'snake3', 'gif', `snakeFruit${pad}.gif`);
     try { if (fs.statSync(abs).isFile()) return abs; } catch {}
   }
@@ -1211,7 +1230,7 @@ function getGameItemDisplayName(itemName) {
   const custom = CUSTOM_PICTOS[itemName];
   if (custom) return custom.displayName;
   const snakeMatch = /^Fruit (\d+)$/.exec(itemName);
-  if (snakeMatch) return `Fruit ${snakeMatch[1]}`;
+  if (snakeMatch) return `Fruit ${numeroPictoSnake(snakeMatch[1])}`;
   return itemName.replace(/^\$/, '');
 }
 
