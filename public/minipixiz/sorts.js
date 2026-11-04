@@ -2043,11 +2043,29 @@ class BillesDeLumiere extends Sort {
        * cadre, la bille peut enfin aller la frapper, ce qui est le
        * comportement que le joueur attend.
        */
+      /*
+       * LA_BILLE_COLLEE_AU_MUR. Le rebond de l'original (`vitx *= -0.8`)
+       * retourne la vitesse quel que soit son sens — et il passe APRÈS
+       * `towardSpeed`. Une bille qui touche un bord doucement (lancée à
+       * l'opposé de sa cible par une fée qui frôle le mur, ce qui est la
+       * règle du sort) reçoit l'attraction qui la ramène vers l'intérieur…
+       * puis le rebond retourne cette vitesse VERS le mur. Image après image
+       * elle reste là, plaquée, à vibrer d'un dixième de pixel (point fixe
+       * vers +0,26) : elle ne touche jamais sa cible et finit par renoncer
+       * au bout d'ATTENTE_MAX. C'est le « certaines billes restent bloquées
+       * sur un côté » remonté par l'admin (≈ 1,4 % des billes).
+       *
+       * Le rebond ne renvoie donc plus que VERS L'INTÉRIEUR : une bille qui
+       * fonce dans le mur repart exactement comme avant (même amorti de 0,8),
+       * une bille qui s'en éloigne déjà garde son élan.
+       */
       const m = 10;
       const x0 = Math.min(m, trg.x), x1 = Math.max(this.jeu.largeur - m, trg.x);
       const y0 = Math.min(m, trg.y), y1 = Math.max(this.jeu.hauteur - m, trg.y);
-      if (p.x < x0 || p.x > x1) { p.vitx *= -0.8; p.x = borner(x0, p.x, x1); }
-      if (p.y < y0 || p.y > y1) { p.vity *= -0.8; p.y = borner(y0, p.y, y1); }
+      if (p.x < x0) { p.vitx = Math.abs(p.vitx) * 0.8; p.x = x0; }
+      else if (p.x > x1) { p.vitx = -Math.abs(p.vitx) * 0.8; p.x = x1; }
+      if (p.y < y0) { p.vity = Math.abs(p.vity) * 0.8; p.y = y0; }
+      else if (p.y > y1) { p.vity = -Math.abs(p.vity) * 0.8; p.y = y1; }
       if (p.distance(trg) < 10) {
         if (p.trgType === 0) {
           p.trg.vitx += p.vitx * 0.5;

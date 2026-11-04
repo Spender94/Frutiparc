@@ -763,6 +763,67 @@ test('les Billes de lumière rendent la main même contre une cible inatteignabl
   assert.ok(images < 800, 'et sans faire attendre le joueur (' + images + ' images)');
 });
 
+// « Certaines billes restent bloquées sur un côté au lieu d'aller taper leur
+// cible. » Une bille qui touche un bord en douceur recevait l'attraction vers
+// l'intérieur, que le rebond (`vitx *= -0.8`, appliqué après) retournait aussitôt
+// vers le mur : plaquée, elle vibrait sur place puis renonçait. Les graines 3 et
+// 22 en montraient chacune une ; la bille frappe désormais toujours.
+test('aucune bille de lumière ne reste collée à un bord', () => {
+  const ratees = [];
+  for (let graine = 1; graine <= 40; graine++) {
+    const { jeu, f } = partie({
+      sorts: [20, 15], graine, niveau: 10 + (graine % 60), carac: [4, 4, 4, 4, graine % 9, 8],
+    });
+    let i = 0;
+    while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+    for (let k = 0; k < (graine % 7) * 20; k++) jeu.update(1);
+    const s = f.sortList[0];
+    s.pertinence();
+    s.ranger();
+    jeu.initStep(E.ETAPE.MAGIE);
+    let images = 0;
+    while (jeu.saList.length > 0 && images < 1000) {
+      const avant = s.bList.slice();
+      jeu.update(1);
+      images++;
+      // Une bille qui frappe repart en grossissant (`vits = 20`) ; une bille
+      // qui renonce s'éteint sans.
+      for (const p of avant) {
+        if (!s.bList.includes(p) && p.vits !== 20) ratees.push({ graine, x: Math.round(p.x), y: Math.round(p.y) });
+      }
+    }
+  }
+  assert.deepEqual(ratees, [], 'chaque bille va frapper sa cible');
+});
+
+test('le rebond d\'une bille de lumière la renvoie toujours vers l\'intérieur', () => {
+  const { jeu, champ, f } = partie({ sorts: [20, 15] });
+  let i = 0;
+  while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+  const s = f.sortList[0];
+  s.step = 0;
+  // Une bille déjà passée d'un pixel derrière le mur de droite, qui s'en
+  // éloigne déjà (l'attraction l'a ramenée) : elle doit garder ce sens.
+  const cible = jeu.eList.find((e) => e.px === 0);
+  const p = champ.nouvellePart('partFlipGlow');
+  p.trg = cible;
+  p.trgType = 1;
+  p.x = jeu.largeur - 9;
+  p.y = 100;
+  p.vitx = -0.5;
+  p.vity = 0;
+  s.bList = [p];
+  s.attente = 0;
+  s.updateActif(1);
+  assert.equal(p.x, jeu.largeur - 10, 'ramenée sur le bord');
+  assert.ok(p.vitx < 0, 'et repartie vers l\'intérieur (' + p.vitx + ')');
+  // Celle qui fonce dans le mur rebondit comme dans l'original : -0,8 × vitesse.
+  p.x = jeu.largeur - 9;
+  p.vitx = 5;
+  s.updateActif(1);
+  assert.ok(Math.abs(p.vitx - (-0.8 * (5 - 0.6))) < 1e-9, 'amorti de 0,8 (' + p.vitx + ')');
+});
+
 test('un sort dont la fée n\'atteint jamais son point finit tout de même', () => {
   // Gobeur de perles, Dépressurisation, Tranche-Cimes, le Schème : tous
   // commencent par « envoie la fée là-bas et attends ». On cloue la fée sur
