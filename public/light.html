@@ -5628,6 +5628,12 @@
    *
    * Les cinq PNG qui restent ont été relevés au pixel près sur ces mêmes
    * dessins : on ne les refait pas.
+   *
+   * L'ANNEAU (`anneau`, le discType) suit la règle du serveur (« LES COULEURS
+   * DES FD », server.js) : cette feuille montre le disque que le bureau HTML
+   * montre pour le même jeu — le disque de PORTAGE, rouge, quand le jeu en a
+   * un (Frutisnake, Kaluga, Motion-Ball 2, Burning Kiwi), sinon le disque
+   * d'époque, noir. test/fdCouleurs.test.js garde les deux listes d'accord.
    */
   var DISCS = [
     { tab: "bandas", img: "/fb/fd_bandas.png", name: "Frutibandas" },
@@ -5635,14 +5641,14 @@
     { tab: "swapou", img: "/fb/fd_swapou.png", name: "Swapou" },
     { tab: "miniwave", img: "/fb/fd_miniwave.png?v=2", name: "Mini-Wave" },
     { tab: "minipixiz", img: "/fb/fd_minipixiz.png?v=2", name: "Minipixiz" },
-    { tab: "snake3", jaquette: "snake", name: "Frutisnake" },
-    { tab: "kaluga", jaquette: "kaluga", name: "Kaluga" },
-    { tab: "mb2", jaquette: "mb2", name: "Motion-Ball 2" },
+    { tab: "snake3", jaquette: "snake", anneau: "3", name: "Frutisnake" },
+    { tab: "kaluga", jaquette: "kaluga", anneau: "3", name: "Kaluga" },
+    { tab: "mb2", jaquette: "mb2", anneau: "3", name: "Motion-Ball 2" },
     // Mini-Fever n'a jamais eu de jaquette : la sienne est composée des
     // épreuves portées (scripts/make-minifever-pictos.js), en SVG.
     { tab: "minifever", img: "/fb/fd_minifever.svg", name: "Mini-Fever" },
     { tab: "jamajama", jaquette: "jama", name: "JamaJama" },
-    { tab: "bkiwi", jaquette: "bkiwi", name: "Burning Kiwi" },
+    { tab: "bkiwi", jaquette: "bkiwi", anneau: "3", name: "Burning Kiwi" },
     /*
      * PLUS AUCUN DISQUE EN FLASH.
      *
@@ -5651,7 +5657,7 @@
      * `{ flash, swf, w, h, ct, cb }` reprenant les `props` du catalogue
      * serveur (`GAME_DISCS`). Kaluga (kaluga1, w=640 h=480 ct=20 cb=20) a
      * quitté cette liste avec son portage (/kaluga/), Motion-Ball 2 (mb2,
-     * w=550 h=400, FD blanc) avec le sien (/mb2/), et Burning Kiwi (bkiwi1,
+     * w=550 h=400, FD gris) avec le sien (/mb2/), et Burning Kiwi (bkiwi1,
      * w=350 h=350, FD noir) avec /bkiwi/. Le mécanisme reste (`JeuxFlash`),
      * pour le jour où un disque reviendrait sous Ruffle.
      */

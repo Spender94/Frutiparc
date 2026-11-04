@@ -2080,6 +2080,10 @@ window.BureauFrutiz = (function () {
           // sait — prix payé, cadeau, rubrique). Attribut ajouté par le
           // revival ; le SWF d'époque ignore ce qu'il ne connaît pas.
           vendable: n.getAttribute('v') === '1',
+          // `l="…"` : un disque d'époque qui a un disque de PORTAGE au
+          // catalogue (attribut du revival, lui aussi). Ici, où les deux
+          // ouvrent le même portage, c'est un doublon — cf. `dessinerDossier`.
+          portage: n.getAttribute('l') || '',
           desc: String(n.textContent || '').split(/\r\n|\r|\n/),
         });
       } else if (n.nodeName === 'f') {
@@ -2198,8 +2202,14 @@ window.BureauFrutiz = (function () {
     // dossier — a QUITTÉ la boîte. Un déménagement, pas une copie : sans ce
     // filtre, glisser un disque sur le bureau en laissait un second dans
     // « Mes disques », et l'on se retrouvait avec deux fois le même FD.
+    //
+    // UN DISQUE PAR JEU. Le disque d'époque d'un jeu porté (`portage`) n'est
+    // pas montré : sur ce bureau il ouvre le même portage que son voisin
+    // rouge — deux pastilles Kaluga pour une seule chose. Il reste au
+    // catalogue pour le bureau Flash, le seul où il lance encore son SWF.
     entrees = entrees.filter(function (x) {
       if (x.type !== 'disc') return true;
+      if (uid === 'disccollector' && x.portage) return false;
       return !dansLeLecteur(x) && !trouverObjet(x.uid);
     });
     // `box.Explorer.displayList` trie par NOM, croissant, sans tenir compte de
@@ -2478,9 +2488,9 @@ window.BureauFrutiz = (function () {
     // les deux ouvrent le portage, et c'est le serveur qui fait la part du
     // Fruit Défendu au classement. Sous Ruffle, le FD noir joue le SWF.
     kaluga: 'kaluga',
-    // MotionBall, pareil : le FD blanc et le disque light ouvrent le portage.
+    // MotionBall, pareil : le FD gris et le disque light ouvrent le portage.
     mb2: 'mb2',
-    // Burning Kiwi, pareil : le FD noir et le disque light ouvrent le portage
+    // Burning Kiwi, pareil : le FD noir et le disque rouge ouvrent le portage
     // (/bkiwi/) ; le quota de Fruits Défendus se règle au serveur (/do/fdclaim).
     bkiwi: 'bkiwi',
   };

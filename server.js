@@ -25521,6 +25521,51 @@ app.get('/api/jeu/fenetre', (req, res) => {
   res.json({ ok: true });
 });
 
+/*
+ * ══ LES COULEURS DES FD — UNE RÈGLE, PARTOUT ═══════════════════════════════
+ *
+ * L'anneau d'un disque est son `discType`. Ce n'est pas une décoration :
+ * main.swf en fait deux usages (constantes de frusion.Context, relevées dans
+ * le SWF — BLACK 0, GREY 1, WHITE 2, RED 3) :
+ *
+ *   · `but.icon.Full` peint l'anneau par `ico.disc.gotoAndStop(discType + 1)`.
+ *     Le clip `disc` de fileIcon.swf n'a que CINQ images, donc cinq anneaux
+ *     possibles : noir, gris, blanc, rouge, et le dégradé vert du FD démo ;
+ *   · en fin de partie, le disque ÉCLATE si `discType < GAMEDISC_WHITE` (2) —
+ *     le « FD noir » d'époque se consommait — et il est RELÂCHÉ au-delà.
+ *
+ * Et le jeu lui-même lit la couleur (`client.isBlack()`, `isWhite()`…) pour
+ * ouvrir ou fermer ses modes : changer l'anneau d'un disque d'époque change
+ * donc ce que fait son SWF. D'où une règle qui ne touche pas à ceux-là :
+ *
+ *   NOIR (0)  le disque D'ÉPOQUE d'un jeu — son identifiant d'origine
+ *             (kaluga1, swapou1…), qu'il lance le SWF sous Ruffle ou, pour
+ *             Grapiz et Frutibandas, leur client natif. C'est le FD tel que
+ *             les joueurs le connaissent (« les FD noirs », lang_french.as).
+ *   ROUGE (3) le disque ajouté par le revival pour un PORTAGE HTML — son
+ *             gameId est le marqueur `light/<jeu>` que ruffle.html détourne.
+ *             Rouge pour qu'on le distingue du noir d'à côté ; au-delà de
+ *             WHITE, il n'éclate jamais.
+ *   GRIS (1)  une seule exception, MotionBall : son SWF lit ce type comme
+ *             son disque complet, tous modes ouverts (cf. l'historique du
+ *             disque `mb2`). Le repeindre en noir fermerait des modes.
+ *   BLANC (2) et le FD démo (4) : non distribués. Le FD blanc d'époque
+ *             était un disque d'entraînement vendu en boutique, sans
+ *             équivalent ici ; la démo de Kaluga a été retirée.
+ *
+ * Les parties du Challenge, elles, ne sont pas des disques : c'est un
+ * COMPTE par jeu (fd_state — parties gratuites, Pass, bonus du Frutisigne),
+ * le même quel que soit le disque qui a lancé la partie.
+ *
+ * LES DOUBLONS. Un jeu porté a deux disques au catalogue, l'époque et le
+ * portage. Sur le bureau Flash ce sont deux moteurs, et le joueur choisit.
+ * Partout ailleurs — bureau HTML, feuille « Mes disques » du téléphone —
+ * les deux ouvrent le MÊME portage : c'est un doublon. Le listing marque
+ * donc le disque d'époque de son remplaçant (`l="<disque du portage>"`,
+ * attribut du revival que main.swf ignore), et le bureau HTML ne montre que
+ * le disque du portage : un disque par jeu, comme la feuille du téléphone.
+ * Test : test/fdCouleurs.test.js.
+ */
 const GAME_DISCS = {
   // Grapiz est un jeu NATIF (client web /grapiz/), pas un SWF : ruffle.html
   // intercepte le lancement et ouvre le client web au lieu d'un SWF. gameId
@@ -25718,6 +25763,8 @@ const GAME_DISCS = {
     props: 'w=820;h=760;m=p',
     files: [],
   },
+  // Le seul disque GRIS : son SWF lit ce type comme le disque complet (tous
+  // ses modes ouverts) — cf. « LES COULEURS DES FD » plus haut.
   mb2: {
     discType: '1',
     playMode: 'single',
@@ -25749,8 +25796,10 @@ const GAME_DISCS = {
   // écuries, records par circuit) et classement (bkiwi_track<N>_classic et
   // le challenge du jour, barrière FD par /do/fdclaim) se comportent comme
   // pour le disque Flash. 362×376 : la scène de 350×350 plus le cadre.
+  // Anneau ROUGE comme les autres disques de portage : il était noir, et donc
+  // INDISCERNABLE de bkiwi1 — même anneau, même jaquette, deux moteurs.
   bkiwilight: {
-    discType: '0',
+    discType: '3',
     playMode: 'single',
     swfName: 'bkiwi',
     iconName: 'bkiwi',
@@ -25773,6 +25822,23 @@ const GAME_DISCS = {
     ],
   },
 };
+
+// Le disque d'époque → le disque de portage du même jeu (même swfName), pour
+// les seuls jeux qui ont les deux : kaluga1 → kalugalight, snake3 →
+// snake3light… Tiré du catalogue, pour qu'un portage de plus n'ait rien à
+// déclarer ici. Cf. « LES DOUBLONS » plus haut.
+const FD_PORTAGE_DE = (() => {
+  const portages = {};
+  for (const [id, d] of Object.entries(GAME_DISCS)) {
+    if (String(d.gameId || '').startsWith('light/')) portages[d.swfName] = id;
+  }
+  const out = {};
+  for (const [id, d] of Object.entries(GAME_DISCS)) {
+    const portage = portages[d.swfName];
+    if (portage && portage !== id) out[id] = portage;
+  }
+  return out;
+})();
 
 // ─────────────────────────────────────────────
 // ENDPOINT: do/ld — Game disc loading
@@ -26412,11 +26478,15 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     // qu'attend le joueur — un disque est un objet, pas un raccourci — et
     // c'est ce qui fait disparaître le double. Sorti du bureau (ou jeté), il
     // revient tout seul dans ce catalogue.
+    //
+    // `l="…"` : ce disque d'époque a un disque de portage (FD_PORTAGE_DE). Le
+    // bureau HTML, où les deux ouvrent le même portage, ne garde que celui-ci.
     let discNodes = '';
     for (const [id, disc] of Object.entries(GAME_DISCS)) {
       if (desktopHasDisc(user, id)) continue;
       const displayName = disc.iconName || disc.swfName;
-      discNodes += `<e u="${escapeXml(id)}" t="disc" s="10" d="0" a="0">${disc.discType}\n${escapeXml(displayName)}</e>`;
+      const portage = FD_PORTAGE_DE[id] ? ` l="${escapeXml(FD_PORTAGE_DE[id])}"` : '';
+      discNodes += `<e u="${escapeXml(id)}" t="disc" s="10" d="0" a="0"${portage}>${disc.discType}\n${escapeXml(displayName)}</e>`;
     }
     return res.type('text/xml').send(`<f u="disccollector">${discNodes || '<i />'}</f>`);
   }

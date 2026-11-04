@@ -76,7 +76,7 @@ test('les neuf portages JS sont sur la feuille mobile', () => {
     assert.ok(noms.includes(n), n + ' manque à la feuille mobile');
   }
   // Kaluga a rejoint les portages : un onglet (/kaluga/), plus une fenêtre Ruffle.
-  assert.match(LIGHT, /\{ tab: "kaluga", jaquette: "kaluga", name: "Kaluga" \}/);
+  assert.match(LIGHT, /\{ tab: "kaluga", jaquette: "kaluga", anneau: "3", name: "Kaluga" \}/);
   assert.doesNotMatch(LIGHT, /\{ flash: "kaluga"/);
   assert.match(LIGHT, /kaluga: "#kaluga-frame"/);
   assert.match(LIGHT, /kaluga: "\/kaluga\/"/);
@@ -139,15 +139,15 @@ test('plus aucun jeu en Flash : Burning Kiwi a rejoint les portages, comme Motio
     assert.ok(noms.includes(n), n + ' manque à la feuille mobile');
   }
   // Burning Kiwi s'ouvre en onglet (/bkiwi/) ; son entrée Flash a disparu.
-  assert.match(LIGHT, /\{ tab: "bkiwi", jaquette: "bkiwi", name: "Burning Kiwi" \}/);
+  assert.match(LIGHT, /\{ tab: "bkiwi", jaquette: "bkiwi", anneau: "3", name: "Burning Kiwi" \}/);
   assert.doesNotMatch(LIGHT, /flash: "bkiwi"/);
   // Motion-Ball 2 s'ouvre en onglet (/mb2/), comme Kaluga.
-  assert.match(LIGHT, /\{ tab: "mb2", jaquette: "mb2", name: "Motion-Ball 2" \}/);
+  assert.match(LIGHT, /\{ tab: "mb2", jaquette: "mb2", anneau: "3", name: "Motion-Ball 2" \}/);
   assert.doesNotMatch(LIGHT, /flash: "mb2"/);
   // Le disque Flash de Burning Kiwi reste au catalogue (le bureau Ruffle le
   // joue encore), à côté de son disque light.
   assert.match(SERVEUR, /props: 'w=350;h=350;m=i'/);
-  assert.match(SERVEUR, /bkiwilight: \{\s*discType: '0',\s*playMode: 'single',\s*swfName: 'bkiwi',\s*iconName: 'bkiwi',\s*gameId: 'light\/bkiwi',\s*props: 'w=362;h=376;m=p'/);
+  assert.match(SERVEUR, /bkiwilight: \{\s*discType: '3',\s*playMode: 'single',\s*swfName: 'bkiwi',\s*iconName: 'bkiwi',\s*gameId: 'light\/bkiwi',\s*props: 'w=362;h=376;m=p'/);
   // Le disque Flash de Kaluga reste au catalogue (le bureau Ruffle le joue
   // encore), avec son rognage d'époque.
   assert.match(SERVEUR, /props: 'w=640;h=480;ct=20;cb=20;m=i'/);
