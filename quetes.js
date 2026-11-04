@@ -77,12 +77,17 @@ const REGLAGES_DEFAUT = Object.freeze({
     // et les exploits (podium, Question à 60 kikooz, records de Kaluga).
     activites: 2,
     exploits: 1,
-    // Le pas personnel : une moyenne vise au plus ×1,25 le score habituel du
-    // joueur, une difficile ×1,5 (les temps : ÷1,1 et ÷1,2) — le palier du parc
-    // s'il est plus proche. Sans quoi un Bronze à 11 000 se voyait demander
-    // l'Argent à 20 000 : le double.
+    // LES NIVEAUX DES QUÊTES, en part du parc : une facile vise le score
+    // habituel qu'atteignent 55 % des joueurs, une moyenne 25 %, une difficile
+    // 12,5 % (le milieu des fourchettes 50–60, 20–30 et 10–15 % demandées).
+    parts: { facile: 0.55, moyenne: 0.25, difficile: 0.125 },
+    // Le pas personnel, pour qui fait DÉJÀ mieux, d'habitude, que la cible du
+    // parc : la quête vise alors son score habituel (facile), ×1,25 (moyenne),
+    // ×1,5 (difficile) — les temps : ÷1,1 et ÷1,2 —, jamais au-delà du plafond
+    // de la mesure (voir plafondDe).
     pas: { moyenne: 1.25, difficile: 1.5, moyenneTemps: 1.1, difficileTemps: 1.2 },
-    seuils: {},           // retouches de l'admin : { mesure: { bronze, …, legende } }
+    // retouches de l'admin : { mesure: { bronze, …, legende, facile, moyenne, difficile } }
+    seuils: {},
   },
   // LES MISES À PRIX : battre un record absolu du parc (le livre des records du
   // Club) sur un classement du Challenge. Une prime par classement et par
@@ -149,7 +154,11 @@ const MB2_COURSES = ['jaune', 'verte', 'rouge', 'orange', 'bleue', 'métal', 'vi
 const MB2_DONJONS = ['de l’eau', 'du feu', 'de l’air', 'de la terre', 'de la Tourneboule'];
 const BKIWI_CIRCUITS = ['Green Hill', 'Banana Derby', 'Terre Grise', 'Solstice', 'Jupiter IV', 'Mistral Kiwi'];
 const MINIFEVER_PALIERS = ['facile', 'normal', 'difficile', 'infernal'];
+// Les épreuves à remporter pour finir chaque palier (public/minifever/engine.js,
+// PALIERS[].lvl) : la partie s'arrête là, on ne peut pas en remporter plus.
 const MINIFEVER_OBJECTIFS = [40, 80, 100, 100];
+// Les niveaux du Challenge MiniWave (public/miniwave/challenge.js, NIVEAUX_PAR_JOUR).
+const MINIWAVE_NIVEAUX = 40;
 const JAMAJAMA_AUTEUR = [41, 95, 51, 188, 5, 5, 62];
 
 /*
@@ -165,6 +174,11 @@ const JAMAJAMA_AUTEUR = [41, 95, 51, 188, 5, 5, 62];
  *
  * `unite` : points, temps (en `base` : ms ou cs), cm, %, salles, épreuves,
  * victoires, coups, niveau, boss (oui/non). `inverse` : plus petit = meilleur.
+ * `plafond` : le MAXIMUM THÉORIQUE d'une partie, quand le jeu en a un (cent
+ * épreuves en arcade difficile de Mini-Fever, 100 % des salles, le quarantième
+ * niveau de MiniWave, un boss vaincu) : aucune cible ne le dépasse. Sans lui,
+ * c'est le record du parc qui borne (voir plafondDe). À ne pas confondre avec
+ * `max`, la borne de vraisemblance d'une déclaration.
  * `titre` : la quête, `{seuil}` y est posé. `reperes` : les chiffres que le
  * JEU LUI-MÊME donne (objectifs de niveau, temps de l'ordinateur) — de quoi
  * régler un seuil sans statistiques. `carte(fiche)` : où lire le record du
@@ -239,10 +253,10 @@ mesure('kaluga-heptathlon', { jeu: 'kaluga', groupe: 'Kaluga', nom: 'Heptathlon 
   carte: (c) => (c.$trial && c.$trial.$hept ? c.$trial.$hept.$s : null) });
 // ── MotionBall ──
 mesure('mb2-challenge-salles', { jeu: 'mb2', groupe: 'MotionBall', nom: 'Challenge : salles explorées',
-  source: { rk: 'mb2_classic' }, unite: '%', valeur: (v) => (v >= 100 ? 100 : v + 1),
+  source: { rk: 'mb2_classic' }, unite: '%', valeur: (v) => (v >= 100 ? 100 : v + 1), plafond: 100,
   titre: 'Explore {seuil} des salles du Challenge MotionBall', detail: 'Au Challenge du jour' });
 mesure('mb2-challenge-boss', { jeu: 'mb2', groupe: 'MotionBall', nom: 'Challenge : poulpe vaincu',
-  source: { rk: 'mb2_classic' }, unite: 'boss', valeur: (v) => (v >= 100 ? 1 : 0),
+  source: { rk: 'mb2_classic' }, unite: 'boss', valeur: (v) => (v >= 100 ? 1 : 0), plafond: 1,
   titre: 'Vaincs le poulpe au Challenge MotionBall', detail: 'Au Challenge du jour' });
 mesure('mb2-classique', { jeu: 'mb2', groupe: 'MotionBall', nom: 'Classique : salle atteinte',
   source: { mode: 'classique' }, unite: 'salles', max: 1000,
@@ -260,7 +274,7 @@ MB2_COURSES.forEach((coul, i) => {
 });
 MB2_DONJONS.forEach((nom, i) => {
   mesure('mb2-donjon' + i, { jeu: 'mb2', groupe: 'MotionBall', nom: `Aventure : boss du donjon ${nom}`,
-    source: { mode: 'aventure' + i }, unite: 'boss', valeur: (v) => (v >= 100 ? 1 : 0), max: 1e7,
+    source: { mode: 'aventure' + i }, unite: 'boss', valeur: (v) => (v >= 100 ? 1 : 0), max: 1e7, plafond: 1,
     titre: `Vaincs le boss du donjon ${nom}`, detail: 'MotionBall, mode Aventure',
     carte: (c) => (Array.isArray(c.$dungeons_done) ? (c.$dungeons_done[i] ? 1 : 0) : null) });
 });
@@ -283,6 +297,7 @@ BKIWI_CIRCUITS.forEach((nom, i) => {
 MINIFEVER_PALIERS.forEach((nom, p) => {
   mesure('minifever-arcade' + p, { jeu: 'minifever', groupe: 'Mini-Fever', nom: `Arcade ${nom} : épreuves remportées`,
     source: { rk: 'minifever_arcade', data: String(p) }, unite: 'épreuves', valeur: (v) => v / (10 * (1 + p)),
+    plafond: MINIFEVER_OBJECTIFS[p],
     titre: `Remporte {seuil} en arcade ${nom}`, detail: 'Mini-Fever, mode arcade',
     reperes: [{ nom: 'Mode terminé', v: MINIFEVER_OBJECTIFS[p] }] });
 });
@@ -304,9 +319,9 @@ mesure('miniwave-challenge', { jeu: 'miniwave', groupe: 'MiniWave', nom: 'Challe
   source: { rk: 'miniwave_classic' }, unite: 'points',
   titre: 'Fais {seuil} au Challenge MiniWave', detail: 'MiniWave, au Challenge' });
 mesure('miniwave-niveau', { jeu: 'miniwave', groupe: 'MiniWave', nom: 'Challenge : niveau atteint',
-  source: { rk: 'miniwave_classic' }, unite: 'niveau', valeur: (v, d) => (Number(d) > 0 ? Number(d) : null),
+  source: { rk: 'miniwave_classic' }, unite: 'niveau', valeur: (v, d) => (Number(d) > 0 ? Number(d) : null), plafond: MINIWAVE_NIVEAUX,
   titre: 'Atteins le {seuil} au Challenge MiniWave', detail: 'MiniWave, au Challenge',
-  reperes: [{ nom: 'Dernier niveau', v: 40 }] });
+  reperes: [{ nom: 'Dernier niveau', v: MINIWAVE_NIVEAUX }] });
 // ── Grapiz, Frutibandas ──
 mesure('grapiz-serie', { jeu: 'grapiz', groupe: 'Grapiz', nom: 'Challenge : victoires d’affilée',
   source: { rk: 'grapiz_challenge' }, unite: 'victoires',
@@ -476,6 +491,16 @@ function pasNormalises(brut, defaut) {
   }
   return out;
 }
+// Les parts du parc des trois niveaux : entre 1 % et 95 %, la facile la plus
+// large, la difficile la plus étroite — sinon celles par défaut.
+function partsNormalisees(brut, defaut) {
+  const out = {};
+  for (const k of NIVEAUX) {
+    const v = Number(brut && brut[k]);
+    out[k] = Number.isFinite(v) && v >= 0.01 && v <= 0.95 ? Math.round(v * 1000) / 1000 : defaut[k];
+  }
+  return out.facile > out.moyenne && out.moyenne > out.difficile ? out : Object.assign({}, defaut);
+}
 function reglagesNormalises(brut) {
   const R = Object.assign({}, REGLAGES_DEFAUT, brut || {});
   R.ouverture = ['ferme', 'testeurs', 'tous'].includes(R.ouverture) ? R.ouverture : 'ferme';
@@ -507,7 +532,7 @@ function reglagesNormalises(brut) {
   for (const [cle, x] of Object.entries((P.seuils && typeof P.seuils === 'object') ? P.seuils : {})) {
     if (!MESURES[cle] || !x || typeof x !== 'object') continue;
     const o = {};
-    for (const k of PALIERS) if (Number(x[k]) > 0) o[k] = Number(x[k]);
+    for (const k of PALIERS.concat(NIVEAUX)) if (Number(x[k]) > 0) o[k] = Number(x[k]);
     if (Object.keys(o).length) seuils[cle] = o;
   }
   R.paliers = {
@@ -522,6 +547,7 @@ function reglagesNormalises(brut) {
     activites: borne(P.activites, 0, 4, P0.activites),
     exploits: borne(P.exploits, 0, 2, P0.exploits),
     pas: pasNormalises(P.pas, P0.pas),
+    parts: partsNormalisees(P.parts, P0.parts),
     seuils,
   };
   const PR = Object.assign({}, REGLAGES_DEFAUT.primes, (R.primes && typeof R.primes === 'object') ? R.primes : {});
@@ -922,7 +948,6 @@ function parole(cle, vars, alea) {
 const MESURES_PERSO = ['swapou-challenge', 'snake-challenge', 'kaluga-grappe', 'kaluga-freestyle', 'mb2-challenge-salles',
   'minipixiz-arbre', 'miniwave-challenge', 'minifever-arcade0', 'minifever-arcade1', 'minifever-arcade2', 'minifever-arcade3'];
 for (const k of MESURES_PERSO) MESURES[k].perso = true;
-MESURES['mb2-challenge-salles'].plafond = 100;
 
 function pas(v) { const a = Math.abs(v); return a >= 10000 ? 100 : a >= 1000 ? 50 : a >= 100 ? 10 : 1; }
 /** Une cible ronde, arrondie dans le sens du joueur. */
@@ -1051,9 +1076,22 @@ function definitionContrat(prop) {
  * Légende (1 %). L'admin peut retoucher chacun.
  *
  * LE NIVEAU D'UN JOUEUR dans un jeu : le palier qu'atteint son résultat
- * habituel (la médiane de ses meilleurs du jour). Ses quêtes : facile = son
- * palier, moyenne = le suivant, difficile = deux au-dessus (Légende au plus).
- * Le nombre de jours joués n'y change rien.
+ * habituel (la médiane de ses meilleurs du jour). Il dit ce qu'on lui montre
+ * (son niveau, les exploits qu'on lui propose) ; le nombre de jours joués n'y
+ * change rien.
+ *
+ * LES CIBLES DE SES QUÊTES suivent le parc, pas lui : sur la même lecture
+ * (un joueur, une voix : son score habituel), une facile vise ce qu'atteignent
+ * 55 % des joueurs, une moyenne 25 %, une difficile 12,5 % (réglage `parts`).
+ * Qui fait déjà mieux, d'habitude, qu'une de ces cibles a la sienne relevée
+ * d'un PAS au-dessus de son score habituel — une quête qu'il réussit tous les
+ * jours n'en est pas une.
+ *
+ * LE PLAFOND (plafondDe) : aucune cible ne dépasse ce qu'on peut faire en UNE
+ * partie — le maximum théorique de la mesure quand le jeu en a un (cent
+ * épreuves en arcade difficile de Mini-Fever), sinon le record du parc sur la
+ * fenêtre. Sans lui, le pas d'un joueur de Mini-Fever habitué à 83 épreuves
+ * sur 100 lui demandait d'en remporter 83 × 1,5 = 124.
  *
  * LA PAIE suit le palier (Bronze 5 … Légende 25), et chacun reçoit des quêtes
  * jusqu'à un BUDGET de kikooz possibles : un débutant en a davantage, plus
@@ -1089,10 +1127,72 @@ function paliersDe(m, joueurs, options) {
   const tries = v.sort((a, b) => (m.inverse ? a - b : b - a));
   const au = (part) => tries[Math.min(tries.length - 1, Math.max(0, Math.ceil(part * tries.length) - 1))];
   const r = {};
-  for (const k of PALIERS) r[k] = arrondir(m, au(PALIER_PART[k]));
-  if (m.plafond != null) for (const k of PALIERS) r[k] = Math.min(r[k], m.plafond);
-  r.decouverte = arrondir(m, au(DECOUVERTE_PART));
+  // Le record du parc sur la fenêtre : la meilleure journée de tous (pas une médiane).
+  let record = null;
+  for (const j of listes) for (const x of j) if (record == null || mieux(m, x, record)) record = x;
+  r.record = record;
+  const borne = (x) => borner(m, x, r).seuil;
+  for (const k of PALIERS) r[k] = borne(arrondir(m, au(PALIER_PART[k])));
+  r.decouverte = borne(arrondir(m, au(DECOUVERTE_PART)));
+  // Les cibles des trois niveaux de quête : la part du parc qui les atteint.
+  const parts = partsNormalisees(o.parts, REGLAGES_DEFAUT.paliers.parts);
+  for (const k of NIVEAUX) r[k] = borne(arrondir(m, au(parts[k])));
   return r;
+}
+/**
+ * LE PLAFOND d'une mesure : le plus haut qu'on puisse viser en UNE partie —
+ * son maximum théorique s'il existe (`m.plafond`), sinon le record du parc
+ * (`P.record`, arrondi dans le sens du joueur : jamais au-delà du record).
+ * Null : rien ne borne (une mesure sans maximum, un parc sans record).
+ */
+function plafondDe(m, P) {
+  if (!m) return null;
+  if (m.plafond != null) return m.plafond;
+  const rec = P && Number(P.record);
+  return P && P.record != null && Number.isFinite(rec) ? arrondir(m, rec) : null;
+}
+/** Une cible ramenée sous le plafond : { seuil, borne: 'max'|'record'|null }. */
+function borner(m, seuil, P) {
+  const plafond = plafondDe(m, P);
+  if (seuil == null || plafond == null || !atteint(m, seuil, plafond, true)) return { seuil, borne: null };
+  return { seuil: plafond, borne: m.plafond != null ? 'max' : 'record' };
+}
+/** La cible de la mesure dépasse-t-elle son maximum théorique ? (les retouches de l'admin) */
+function horsPlafond(m, seuil) {
+  return !!m && m.plafond != null && !m.inverse && Number(seuil) > m.plafond;
+}
+const BORNE_TEXTE = { max: 'le maximum possible en une partie', record: 'le record du parc' };
+/**
+ * LE RATTRAPAGE d'une quête taillée avant le plafond : une cible au-delà de ce
+ * qu'une partie permet (« 124 épreuves » sur 100) est ramenée au plafond. Le
+ * gain promis ne bouge pas, l'avancement non plus (même id, même mesure) : le
+ * meilleur de la semaine qui atteint désormais la cible fait la quête. Rend la
+ * définition corrigée (une copie), ou null s'il n'y a rien à corriger.
+ */
+function rattraper(def, P) {
+  if (!def || def.type !== 'mesure' || !def.params) return null;
+  const m = MESURES[def.params.mesure];
+  const plafond = plafondDe(m, P);
+  if (plafond == null) return null;
+  const s = Number(def.params.seuil);
+  if (!Number.isFinite(s)) return null;
+  // Battre strictement une cible égale au maximum théorique : impossible aussi.
+  const impossible = atteint(m, s, plafond, true) || (!!def.params.strict && m.plafond != null && atteint(m, s, plafond));
+  if (!impossible) return null;
+  const neuf = JSON.parse(JSON.stringify(def));
+  neuf.params.seuil = plafond;
+  if (neuf.params.strict) { neuf.params.strict = false; delete neuf.titre; }
+  neuf.rattrapee = { de: s };
+  neuf.detail = `${m.nom} · ${BORNE_TEXTE[m.plafond != null ? 'max' : 'record']} (cible corrigée)`;
+  return neuf;
+}
+/** Le même rattrapage pour une proposition gardée en réserve (l'échange). */
+function rattraperSpec(spec, P) {
+  if (!spec || !spec.mesure || spec.seuil == null) return null;
+  const m = MESURES[spec.mesure];
+  const b = borner(m, Number(spec.seuil), P);
+  if (!b.borne) return null;
+  return Object.assign({}, spec, { seuil: b.seuil, borne: b.borne, part: null, parc: false });
 }
 /** Le palier qu'atteint une valeur (index dans PALIERS), -1 sous le Bronze. */
 function palierAtteint(m, paliers, v) {
@@ -1228,33 +1328,41 @@ function proposerV2(entree, alea, options) {
   const niveaux = {};
   const F = [], M = [], D = [];
   const pasDe = o.pas || REGLAGES_DEFAUT.paliers.pas;
+  const parts = partsNormalisees(o.parts, REGLAGES_DEFAUT.paliers.parts);
   for (const c of ordre) {
     const m = c.m, P = paliers[m.cle];
     const mediane = quantile(c.tries, 0.5);
     const L = palierAtteint(m, P, mediane);
     niveaux[m.cle] = L < 0 ? null : PALIERS[L];
     const vus = new Set();
-    // Le palier du parc, ou — s'il est plus proche — un pas au-dessus du score
-    // habituel : facile = ce qu'il fait la moitié du temps ; moyenne et difficile
-    // un cran et deux crans au-dessus, sans jamais lui demander le double.
-    const pas = (k) => (m.inverse ? pasDe[k + 'Temps'] : pasDe[k]);
+    // La cible du parc d'un niveau (à défaut — des paliers fixés à la main —,
+    // le palier qui s'en approche le plus : Bronze, Argent, Or).
+    const duParc = (k) => (P[k] != null ? P[k] : P[PALIERS[NIVEAUX.indexOf(k)]]);
+    // Le pas au-dessus de son score habituel (la facile : ce score même).
+    const pas = (k) => (k === 'facile' ? 1 : m.inverse ? pasDe[k + 'Temps'] : pasDe[k]);
+    const perso = (k) => arrondir(m, m.inverse ? mediane / pas(k) : mediane * pas(k));
+    let avant = null;   // la cible du niveau d'en dessous
     const vers = (k) => {
-      const perso = arrondir(m, m.inverse ? mediane / pas(k) : mediane * pas(k));
-      const cran = PALIERS[Math.min(L + (k === 'moyenne' ? 1 : 2), 4)];
-      const parc = L + (k === 'moyenne' ? 1 : 2) > 4 ? null : P[cran];
-      if (parc == null) return perso;
-      return atteint(m, perso, parc) ? parc : perso;   // le plus proche de lui des deux
+      const T = duParc(k);
+      // Il fait déjà aussi bien d'habitude (ou le niveau d'en dessous y est
+      // déjà) : la cible du parc ne lui demanderait rien, on vise au-dessus de lui.
+      const releve = T == null || atteint(m, mediane, T) || (avant != null && atteint(m, avant, T));
+      const b = borner(m, releve ? perso(k) : T, P);
+      avant = b.seuil;
+      return { seuil: b.seuil, part: releve || b.borne ? null : parts[k], borne: b.borne };
     };
-    const poser = (niveau, seuil, pile) => {
-      if (seuil == null || (m.plafond != null && !m.inverse && seuil > m.plafond)) return;
+    const poser = (niveau, cible, pile) => {
+      const seuil = cible.seuil;
+      if (seuil == null) return;
       if (vus.has(seuil) || [...vus].some((v) => atteint(m, v, seuil))) return;   // pas plus bas qu'une cible déjà posée
       vus.add(seuil);
       // La paie : le palier qu'atteint la cible (le Bronze pour ce qui est dessous).
       const k = Math.max(0, palierAtteint(m, P, seuil));
       const palier = PALIERS[k];
-      pile.push({ genre: 'palier', mesure: m.cle, palier, seuil, niveau, jours: c.jours, gain: gains[palier], parc: seuil === P[palier] });
+      pile.push({ genre: 'palier', mesure: m.cle, palier, seuil, niveau, jours: c.jours, gain: gains[palier],
+        part: cible.part, borne: cible.borne, parc: cible.part != null });
     };
-    poser('facile', L >= 0 ? P[PALIERS[L]] : arrondir(m, mediane), F);
+    poser('facile', vers('facile'), F);
     poser('moyenne', vers('moyenne'), M);
     poser('difficile', vers('difficile'), D);
   }
@@ -1361,17 +1469,24 @@ function definitionV2(spec, id) {
   const m = MESURES[spec.mesure];
   if (!m) return null;
   const decouverte = spec.genre === 'decouverte';
+  // (une part : « 12,5 % » ; les réserves d'avant les parts n'ont que leur palier)
+  const pc = (x) => String(Math.round(x * 1000) / 10).replace('.', ',') + ' %';
   const detail = decouverte
     ? `Découverte · ${m.nom} — un jeu que tu n’as pas joué ces dernières semaines`
-    : spec.parc !== false
-      ? `${m.nom} · atteint par ${Math.round(PALIER_PART[spec.palier] * 100)} % du parc`
-      : `${m.nom} · ${spec.niveau === 'facile' ? 'ton score habituel' : spec.niveau === 'moyenne' ? 'un cran au-dessus de tes scores habituels' : 'bien au-dessus de tes scores habituels'}`;
+    : spec.borne
+      ? `${m.nom} · ${BORNE_TEXTE[spec.borne] || BORNE_TEXTE.record}`
+      : spec.part != null
+        ? `${m.nom} · atteint par ${pc(Number(spec.part))} du parc`
+        : spec.part === undefined && spec.parc !== false
+          ? `${m.nom} · atteint par ${pc(PALIER_PART[spec.palier])} du parc`
+          : `${m.nom} · ${spec.niveau === 'facile' ? 'ton score habituel' : spec.niveau === 'moyenne' ? 'un cran au-dessus de tes scores habituels' : 'bien au-dessus de tes scores habituels'}`;
   return { id: String(id), niveau: spec.niveau, palier: spec.palier, gain: spec.gain, type: 'mesure', etiquette: m.jeu, famille: m.cle,
     taillee: true, v2: true, decouverte, params: { mesure: m.cle, seuil: spec.seuil }, detail };
 }
 
 module.exports = {
   PALIERS, PALIER_NOM, PALIER_PART, PALIERS_CONNUS, paliersDe, palierAtteint, proposerV2, definitionV2, PREMIERS_PAS, PARC,
+  plafondDe, borner, horsPlafond, rattraper, rattraperSpec, partsNormalisees,
   GROMELIN, definitionGromelin, bricole, definitionDoigt,
   MESURES_PERSO, proposerPerso, definitionPerso, proposerContrat, definitionContrat, arrondir, aleaSeme,
   NIVEAUX, NIVEAU_NOM, REGLAGES_DEFAUT, CATALOGUE, ETIQUETTES, KALUGA_EPREUVES, MODES,

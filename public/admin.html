@@ -6907,7 +6907,7 @@ const QT_PALIER = { bronze: ['Bronze', '#9C5F28'], argent: ['Argent', '#7E878E']
 function qtPalier(k) { const p = QT_PALIER[k] || [k, '#333']; return `<b style="color:${p[1]}">${p[0]}</b>`; }
 async function quetesPaliers(cle) {
   const seuils = {};
-  for (const k of ['bronze', 'argent', 'or', 'platine', 'legende']) seuils[k] = $(`#qt-pl-${cle}-${k}`).value;
+  for (const k of ['bronze', 'argent', 'or', 'platine', 'legende', 'facile', 'moyenne', 'difficile']) seuils[k] = $(`#qt-pl-${cle}-${k}`).value;
   await quetesPost('/api/admin/quetes/paliers', { mesure: cle, seuils }, (d) => d.seuils ? 'Paliers retouchés' : 'Paliers calculés rétablis');
 }
 async function quetesGromelin() {
@@ -7018,19 +7018,26 @@ async function loadQuetes() {
           <b>Modèle des paliers</b> — à partir de la semaine du <input type="date" id="qt-p-depuis" value="${esc(R.paliers.depuis)}">
           ${d.v2 ? '<b style="color:#2f8f2f">(en vigueur cette semaine)</b>' : '<span style="color:#c8860a">(pas encore en vigueur cette semaine)</span>'}
           <div style="color:#777;font-size:12px;margin:3px 0 6px;line-height:1.45">Chaque lundi, cinq paliers par jeu sont calculés sur les meilleurs du jour de tout le parc (fenêtre ci-dessus) :
-            Bronze (la moitié du parc l'atteint), Argent (30 %), Or (15 %), Platine (5 %), Légende (1 %). Le niveau d'un joueur est le palier de son résultat habituel ;
-            ses quêtes visent son palier (facile), le suivant (moyenne) et deux au-dessus (difficile). La paie suit le palier, et chacun reçoit des quêtes jusqu'au budget.</div>
+            Bronze (la moitié du parc l'atteint), Argent (30 %), Or (15 %), Platine (5 %), Légende (1 %). Le niveau d'un joueur est le palier de son résultat habituel.
+            Ses quêtes visent ce qu'atteint une part du parc (réglée ci-dessous) ; qui fait déjà mieux d'habitude est relevé d'un pas au-dessus de lui.
+            Aucune cible ne dépasse le plafond de la mesure : le maximum d'une partie (100 épreuves en arcade difficile de Mini-Fever, 100 % des salles…), sinon le record du parc.
+            La paie suit le palier qu'atteint la cible, et chacun reçoit des quêtes jusqu'au budget.</div>
+          <div style="margin-bottom:6px"><b>Niveaux des quêtes :</b> une facile vise ce qu'atteignent
+            <input type="number" min="1" max="95" step="0.5" id="qt-p-part-facile" value="${Math.round(R.paliers.parts.facile * 1000) / 10}" style="width:52px"> % du parc, une moyenne
+            <input type="number" min="1" max="95" step="0.5" id="qt-p-part-moyenne" value="${Math.round(R.paliers.parts.moyenne * 1000) / 10}" style="width:52px"> %, une difficile
+            <input type="number" min="1" max="95" step="0.5" id="qt-p-part-difficile" value="${Math.round(R.paliers.parts.difficile * 1000) / 10}" style="width:52px"> %
+            <small style="color:#777">(un joueur, une voix : son score habituel ; les temps, dans le bon sens)</small></div>
           <div style="margin-bottom:6px"><b>Gains par palier :</b> ${['bronze', 'argent', 'or', 'platine', 'legende'].map((k) => `<label style="margin-right:8px">${qtPalier(k)} <input type="number" min="0" id="qt-gp-${k}" value="${R.paliers.gains[k]}" style="width:50px"></label>`).join('')}</div>
           <div style="margin-bottom:6px"><label style="margin-right:12px"><b>Budget</b> <input type="number" min="5" id="qt-p-budget" value="${R.paliers.budget}" style="width:56px"> kikooz possibles par semaine</label>
             <label><b>au plus</b> <input type="number" min="3" max="10" id="qt-p-max" value="${R.paliers.maxQuetes}" style="width:44px"> quêtes</label></div>
           <div style="margin-bottom:6px"><b>Hors scores :</b>
             <label style="margin-right:12px"><input type="number" min="0" max="4" id="qt-p-activites" value="${R.paliers.activites}" style="width:40px"> quête(s) de la vie du parc (forum, salons, Prunostics, assiduité)</label>
             <label><input type="number" min="0" max="2" id="qt-p-exploits" value="${R.paliers.exploits}" style="width:40px"> exploit(s) (podium, Question à 60 kikooz, records de Kaluga)</label></div>
-          <div style="margin-bottom:6px"><b>Pas personnel :</b> une moyenne vise au plus
-            <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-moyenne" value="${R.paliers.pas.moyenne}" style="width:52px"> × le score habituel du joueur, une difficile
+          <div style="margin-bottom:6px"><b>Pas personnel</b> (qui fait déjà mieux que la cible du parc) : une facile vise son score habituel, une moyenne
+            <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-moyenne" value="${R.paliers.pas.moyenne}" style="width:52px"> × ce score, une difficile
             <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-difficile" value="${R.paliers.pas.difficile}" style="width:52px"> × (les temps : ÷
             <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-moyenneTemps" value="${R.paliers.pas.moyenneTemps}" style="width:52px"> et ÷
-            <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-difficileTemps" value="${R.paliers.pas.difficileTemps}" style="width:52px">) — le palier du parc s'il est plus proche. La paie suit le palier qu'atteint la cible.</div>
+            <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-difficileTemps" value="${R.paliers.pas.difficileTemps}" style="width:52px">) — jamais au-delà du plafond. La paie suit le palier qu'atteint la cible.</div>
           <div style="margin-bottom:6px">
             <label style="margin-right:12px"><input type="checkbox" id="qt-p-decouverte" ${R.paliers.decouverte ? 'checked' : ''}> Découverte (un jeu pas joué)</label>
             <label style="margin-right:12px"><input type="checkbox" id="qt-p-pas" ${R.paliers.premiersPas ? 'checked' : ''}> Premiers pas (débutants)</label>
@@ -7077,11 +7084,14 @@ async function loadQuetes() {
       </div>
       <h4>Paliers du parc — semaine du ${esc(d.paliers.lundi)}</h4>
       <div style="color:#777;font-size:12px;margin-bottom:6px">Calculés sur les meilleurs du jour de tout le parc. Une case remplie remplace le palier calculé (vide : le calculé) ;
-        les retouches valent pour les quêtes taillées ensuite. Un jeu trop peu joué (moins de 20 journées, ou de 4 joueurs) n'a pas de paliers : pas de quête dans ce jeu, sauf à les fixer ici.</div>
-      <table><thead><tr><th>Mesure</th>${['bronze', 'argent', 'or', 'platine', 'legende'].map((k) => `<th>${qtPalier(k)}</th>`).join('')}<th></th></tr></thead><tbody>
+        les retouches valent pour les quêtes taillées ensuite. Un jeu trop peu joué (moins de 20 journées, ou de 4 joueurs) n'a pas de paliers : pas de quête dans ce jeu, sauf à les fixer ici.
+        À droite, les cibles des trois niveaux de quête (les parts réglées plus haut) et le plafond de la mesure : le maximum d'une partie (max) ou, à défaut, le record du parc (record).</div>
+      <table><thead><tr><th>Mesure</th>${['bronze', 'argent', 'or', 'platine', 'legende'].map((k) => `<th>${qtPalier(k)}</th>`).join('')}
+        ${['facile', 'moyenne', 'difficile'].map((k) => `<th style="background:#f3ead8">${k === 'facile' ? 'Facile' : k === 'moyenne' ? 'Moyenne' : 'Difficile'}</th>`).join('')}<th>Plafond</th><th></th></tr></thead><tbody>
       ${d.paliers.mesures.map((m) => `<tr><td><b>${esc(m.groupe)}</b><br><small style="color:#777">${esc(m.nom)} · ${esc(m.sens)}</small></td>
-        ${['bronze', 'argent', 'or', 'platine', 'legende'].map((k) => `<td style="font-size:11px">${m.calcules ? esc(m.calcules[k] || '—') : '<i style="color:#999">—</i>'}<br>
+        ${['bronze', 'argent', 'or', 'platine', 'legende', 'facile', 'moyenne', 'difficile'].map((k) => `<td style="font-size:11px">${m.calcules ? esc(m.calcules[k] || '—') : '<i style="color:#999">—</i>'}<br>
           <input id="qt-pl-${esc(m.cle)}-${k}" value="${esc(m.retouches && m.retouches[k] ? m.retouches[k] : '')}" placeholder="retouche" style="width:90px;font-size:11px"></td>`).join('')}
+        <td style="font-size:11px">${m.plafond ? `${esc(m.plafond.texte)}<br><small style="color:#777">${m.plafond.source === 'max' ? 'max' : 'record'}</small>` : '<i style="color:#999">—</i>'}</td>
         <td><button class="btn btn-sm" onclick="quetesPaliers('${esc(m.cle)}')">Enregistrer</button></td></tr>`).join('')}
       </tbody></table>
       ${(d.primes || []).length ? `<h4>Mises à prix</h4><table><thead><tr><th>Classement</th><th>Record du parc</th><th>Tenant</th><th>Source</th><th>Tenu depuis</th><th>Prime</th><th>Cette semaine</th></tr></thead><tbody>
@@ -7140,7 +7150,9 @@ async function quetesEnregistrer() {
     decouverte: $('#qt-p-decouverte').checked, premiersPas: $('#qt-p-pas').checked, echange: $('#qt-p-echange').checked, bonusXp: Number($('#qt-p-bonus').value),
     activites: Number($('#qt-p-activites').value), exploits: Number($('#qt-p-exploits').value),
     pas: { moyenne: Number($('#qt-p-pas-moyenne').value), difficile: Number($('#qt-p-pas-difficile').value),
-      moyenneTemps: Number($('#qt-p-pas-moyenneTemps').value), difficileTemps: Number($('#qt-p-pas-difficileTemps').value) } };
+      moyenneTemps: Number($('#qt-p-pas-moyenneTemps').value), difficileTemps: Number($('#qt-p-pas-difficileTemps').value) },
+    parts: { facile: Number($('#qt-p-part-facile').value) / 100, moyenne: Number($('#qt-p-part-moyenne').value) / 100,
+      difficile: Number($('#qt-p-part-difficile').value) / 100 } };
   const primes = { actif: $('#qt-pr-actif').checked, gain: Number($('#qt-pr-gain').value), pas: Number($('#qt-pr-pas').value),
     plafond: Number($('#qt-pr-plafond').value), relance: Number($('#qt-pr-relance').value) };
   const doigt = { actif: $('#qt-dg-actif').checked, ecart: Number($('#qt-dg-ecart').value), palier: $('#qt-dg-palier').value };

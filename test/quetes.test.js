@@ -327,42 +327,54 @@ test('les paliers du parc : cinq seuils communs, le niveau d’un joueur, la pai
   const gains = { bronze: 5, argent: 8, or: 12, platine: 18, legende: 25 };
   // (Les scores seuls ici : la vie du parc et les exploits ont leur propre test.)
   const sansParc = { activites: 0, exploits: 0 };
-  // Un habitué de niveau Or à Swapou : Or, Platine, Légende — et rien sur le nombre de jours joués.
+  // LES CIBLES SUIVENT LE PARC : une facile, ce qu'atteignent 55 % des joueurs
+  // (4 500), une moyenne 25 % (7 600), une difficile 12,5 % (8 800) — un joueur,
+  // une voix. Le record du parc (10 000) les borne toutes.
+  assert.deepEqual([P.facile, P.moyenne, P.difficile, P.record], [4500, 7600, 8800, 10000]);
+  // Un habitué de niveau Or à Swapou (8 800) fait déjà mieux que les trois
+  // cibles du parc : elles se relèvent d'un pas au-dessus de lui (8 800, puis
+  // ×1,25 = 11 000), jamais au-delà du record du parc — la difficile (×1,5 =
+  // 13 200) y retombe aussi, une seule quête alors. Rien sur le nombre de jours joués.
   const habitue = Q.proposerV2({ historique: { 'swapou-challenge': Array(40).fill(8800) }, paliers }, () => 0.3, sansParc);
   assert.equal(habitue.niveaux['swapou-challenge'], 'or');
   const sw = habitue.quetes.filter((q) => q.mesure === 'swapou-challenge');
-  assert.deepEqual(sw.map((q) => [q.niveau, q.palier, q.seuil, q.gain]),
-    [['facile', 'or', 8600, 12], ['moyenne', 'platine', 9600, 18], ['difficile', 'legende', 10000, 25]]);
+  assert.deepEqual(sw.map((q) => [q.niveau, q.palier, q.seuil, q.gain, q.borne]),
+    [['facile', 'or', 8800, 12, null], ['moyenne', 'legende', 10000, 25, 'record']]);
   const occasionnel = Q.proposerV2({ historique: { 'swapou-challenge': [8800, 8800, 8800] }, paliers }, () => 0.3, sansParc);
   assert.deepEqual(occasionnel.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => q.seuil), sw.map((q) => q.seuil),
     'trois jours ou quarante : les mêmes cibles');
-  // Sous le Bronze : son score habituel, puis un pas au-dessus (×1,25, ×1,5),
-  // jamais le Bronze à 5 100 pour qui fait 2 500 — tout au Bronze pour la paie.
+  // Sous les cibles du parc : les cibles du parc, telles quelles, et la paie au
+  // palier qu'elles atteignent (Bronze, Argent, Or).
   const faible = Q.proposerV2({ historique: { 'swapou-challenge': [2000, 2500, 3000] }, paliers }, () => 0.3, sansParc);
-  assert.deepEqual(faible.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => [q.niveau, q.palier, q.seuil, q.parc]),
-    [['facile', 'bronze', 2500, false], ['moyenne', 'bronze', 3100, false], ['difficile', 'bronze', 3750, false]]);
-  // Entre deux paliers : le pas personnel quand le palier est trop loin, le
-  // palier quand il est plus proche (un 7 000 : Argent 7 100 à portée, l'Or
-  // 8 600 plus proche que 10 500 ; un 5 200 : Bronze, puis 6 500 et 7 800, pas
-  // l'Argent à 7 100… si, l'Argent, plus proche que 6 500 ? non : 6 500 < 7 100).
+  assert.deepEqual(faible.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => [q.niveau, q.palier, q.seuil, q.part]),
+    [['facile', 'bronze', 4500, 0.55], ['moyenne', 'argent', 7600, 0.25], ['difficile', 'or', 8800, 0.125]]);
+  // Entre deux : la facile se relève à son score habituel (5 200 > 4 500), la
+  // moyenne et la difficile restent celles du parc.
   const entre = Q.proposerV2({ historique: { 'swapou-challenge': [5200, 5200, 5200] }, paliers }, () => 0.3, sansParc);
-  assert.deepEqual(entre.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => [q.niveau, q.palier, q.seuil, q.parc]),
-    [['facile', 'bronze', 5100, true], ['moyenne', 'bronze', 6500, false], ['difficile', 'argent', 7800, false]]);
-  const pres = Q.proposerV2({ historique: { 'swapou-challenge': [7000, 7000, 7000] }, paliers }, () => 0.3, sansParc);
-  assert.deepEqual(pres.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => [q.niveau, q.palier, q.seuil, q.parc]),
-    [['facile', 'bronze', 5100, true], ['moyenne', 'argent', 7100, true], ['difficile', 'or', 8600, true]]);
-  // Le pas se règle, et il a ses bornes.
-  const serre = Q.proposerV2({ historique: { 'swapou-challenge': [5200, 5200, 5200] }, paliers }, () => 0.3, Object.assign({ pas: { moyenne: 1.1, difficile: 1.2, moyenneTemps: 1.1, difficileTemps: 1.2 } }, sansParc));
-  assert.deepEqual(serre.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => q.seuil), [5100, 5700, 6200]);
+  assert.deepEqual(entre.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => [q.niveau, q.palier, q.seuil, q.part]),
+    [['facile', 'bronze', 5200, null], ['moyenne', 'argent', 7600, 0.25], ['difficile', 'or', 8800, 0.125]]);
+  // Le pas se règle, et il a ses bornes : un 8 000 (déjà au-dessus de la
+  // moyenne du parc) vise 8 800 (×1,1) puis — la difficile du parc déjà
+  // atteinte par sa moyenne — 9 600 (×1,2).
+  const serre = Q.proposerV2({ historique: { 'swapou-challenge': [8000, 8000, 8000] }, paliers }, () => 0.3, Object.assign({ pas: { moyenne: 1.1, difficile: 1.2, moyenneTemps: 1.1, difficileTemps: 1.2 } }, sansParc));
+  assert.deepEqual(serre.quetes.filter((q) => q.mesure === 'swapou-challenge').map((q) => q.seuil), [8000, 8800, 9600]);
   assert.deepEqual(Q.reglagesNormalises({ paliers: { pas: { moyenne: 0.5, difficile: 1.4 } } }).paliers.pas, { moyenne: 1.25, difficile: 1.4, moyenneTemps: 1.1, difficileTemps: 1.2 });
+  // Les parts se règlent aussi — dans l'ordre (la facile la plus large), sinon celles par défaut.
+  assert.deepEqual(Q.REGLAGES_DEFAUT.paliers.parts, { facile: 0.55, moyenne: 0.25, difficile: 0.125 });
+  assert.deepEqual(Q.reglagesNormalises({ paliers: { parts: { facile: 0.6, moyenne: 0.2, difficile: 0.1 } } }).paliers.parts, { facile: 0.6, moyenne: 0.2, difficile: 0.1 });
+  assert.deepEqual(Q.reglagesNormalises({ paliers: { parts: { facile: 0.1, moyenne: 0.2, difficile: 0.3 } } }).paliers.parts, Q.REGLAGES_DEFAUT.paliers.parts);
+  const reparti = Q.paliersDe(m, parc, { parts: { facile: 0.6, moyenne: 0.2, difficile: 0.1 } });
+  assert.deepEqual([reparti.facile, reparti.moyenne, reparti.difficile], [4100, 8100, 9100]);
   // Les repères connus : Swapou.
   assert.deepEqual(Q.PALIERS_CONNUS['swapou-challenge'], { bronze: 10000, argent: 20000, or: 25000, platine: 30000 });
   // Le budget : un faible reçoit plus de quêtes (plus douces), un fort moins.
   for (const r of [habitue, faible]) {
     const total = r.quetes.reduce((n, q) => n + q.gain, 0);
     assert.ok(r.quetes.length >= 3 && r.quetes.length <= 7);
-    // Le budget atteint, ou la limite, ou plus rien à proposer (ici, trois jeux seulement ont des paliers).
-    assert.ok(total >= 50 || r.quetes.length === 7 || !r.reserve.length, JSON.stringify(r.quetes.map((q) => [q.palier, q.gain])));
+    // Le budget atteint, ou la limite, ou plus rien à proposer (ici, trois jeux
+    // seulement ont des paliers ; « un cran plus bas » ne sert qu'à l'échange).
+    const plusBas = (x) => x.genre === 'palier' && x.niveau === 'facile' && x.part === undefined;
+    assert.ok(total >= 50 || r.quetes.length === 7 || r.reserve.every(plusBas), JSON.stringify(r.quetes.map((q) => [q.palier, q.gain])));
     for (const q of r.quetes) assert.equal(q.gain, gains[q.palier]);
   }
   assert.ok(faible.quetes.length > habitue.quetes.length, `${faible.quetes.length} contre ${habitue.quetes.length}`);
@@ -382,11 +394,127 @@ test('les paliers du parc : cinq seuils communs, le niveau d’un joueur, la pai
   // Les définitions.
   const d = Q.definitionV2(sw[0], 'ind-1');
   assert.deepEqual([d.id, d.palier, d.gain, d.type, d.etiquette], ['ind-1', 'or', 12, 'mesure', 'swapou2']);
-  assert.equal(Q.titre(d).replace(/\s/g, ' '), 'Dépasse 8 600 points à Swapou');
-  assert.match(Q.detail(d), /atteint par 15 % du parc/);
-  assert.match(Q.detail(Q.definitionV2(entre.quetes.find((q) => q.niveau === 'moyenne' && q.mesure === 'swapou-challenge'), 'ind-2')), /un cran au-dessus de tes scores habituels/);
-  assert.equal(Q.estFaite(d, { m: 8600 }), true);
+  assert.equal(Q.titre(d).replace(/\s/g, ' '), 'Dépasse 8 800 points à Swapou');
+  assert.match(Q.detail(d), /ton score habituel/);
+  assert.match(Q.detail(Q.definitionV2(sw[1], 'ind-2')), /le record du parc$/);
+  assert.match(Q.detail(Q.definitionV2(faible.quetes.find((q) => q.niveau === 'difficile'), 'ind-3')), /atteint par 12,5 % du parc$/);
+  assert.match(Q.detail(Q.definitionV2(faible.quetes.find((q) => q.niveau === 'moyenne'), 'ind-3')), /atteint par 25 % du parc$/);
+  assert.match(Q.detail(Q.definitionV2(serre.quetes.find((q) => q.niveau === 'moyenne' && q.mesure === 'swapou-challenge'), 'ind-2')), /un cran au-dessus de tes scores habituels/);
+  // Une réserve d'avant les parts (son palier seul) garde sa ligne.
+  assert.match(Q.detail(Q.definitionV2({ genre: 'palier', mesure: 'swapou-challenge', palier: 'or', seuil: 8600, niveau: 'difficile', gain: 12, parc: true }, 'r')), /atteint par 15 % du parc/);
+  assert.equal(Q.estFaite(d, { m: 8800 }), true);
   assert.match(Q.detail(Q.definitionV2(dec[0], 'ind-9')), /^Découverte/);
+});
+
+test('Mini-Fever : jamais plus d’épreuves qu’une partie n’en offre — les cibles aux parts du parc, le plafond, les temps', () => {
+  const m = Q.MESURES['minifever-arcade2'];
+  // Les maxima théoriques : les épreuves de chaque palier d'arcade, 100 % des
+  // salles, le dernier niveau de MiniWave, un boss vaincu.
+  assert.deepEqual([0, 1, 2, 3].map((p) => Q.MESURES['minifever-arcade' + p].plafond), [40, 80, 100, 100]);
+  assert.deepEqual(['mb2-challenge-salles', 'mb2-challenge-boss', 'mb2-donjon0', 'miniwave-niveau'].map((k) => Q.MESURES[k].plafond), [100, 1, 1, 40]);
+  // L'HISTORIQUE DU SIGNALEMENT : dix-neuf joueurs habitués de 10 à 82 épreuves
+  // en arcade difficile, et le meilleur du parc, habitué à 83 (un jour à 95).
+  const joueurs = Array.from({ length: 19 }, (_, i) => Array(5).fill(10 + 4 * i));
+  joueurs.push([83, 83, 83, 83, 95]);
+  const P = Q.paliersDe(m, joueurs);
+  assert.equal(P.legende, 83, 'le meilleur du parc est Légende');
+  // L'ancien calcul : Légende, rien au-dessus dans le parc, donc le pas seul —
+  // 83 × 1,25 = 103 en moyenne, 83 × 1,5 = 124 en difficile, sans plafond.
+  assert.deepEqual([Q.arrondir(m, 83 * 1.25), Q.arrondir(m, 83 * 1.5)], [103, 124]);
+  // LES CIBLES DU PARC : 55 % du parc atteint 46 épreuves, 25 % 70, 12,5 % 78
+  // (un joueur, une voix : son score habituel) ; le record, 95.
+  assert.deepEqual([P.facile, P.moyenne, P.difficile, P.record], [46, 70, 78, 95]);
+  assert.equal(Q.plafondDe(m, P), 100, 'le maximum théorique d’abord, pas le record du parc');
+  const sansParc = { activites: 0, exploits: 0, decouverte: false };
+  const cibles = (h) => Q.proposerV2({ historique: { 'minifever-arcade2': h }, paliers: { 'minifever-arcade2': P } }, () => 0.3, sansParc)
+    .quetes.map((q) => [q.niveau, q.seuil, q.palier, q.gain]);
+  // Le joueur du signalement : son score habituel, puis le mode en entier — jamais 124.
+  assert.deepEqual(cibles([83, 83, 83, 83, 95]), [['facile', 83, 'legende', 25], ['moyenne', 100, 'legende', 25]]);
+  // Un joueur moyen : les cibles du parc telles quelles, payées au palier qu'elles atteignent.
+  assert.deepEqual(cibles([20, 20, 20]), [['facile', 46, 'bronze', 5], ['moyenne', 70, 'argent', 8], ['difficile', 78, 'or', 12]]);
+  assert.deepEqual(cibles([50, 50, 50]), [['facile', 50, 'bronze', 5], ['moyenne', 70, 'argent', 8], ['difficile', 78, 'or', 12]]);
+  // Qui finit déjà le mode d'habitude : une seule quête, le mode en entier.
+  assert.deepEqual(cibles([100, 100, 100]), [['facile', 100, 'legende', 25]]);
+  const d = Q.definitionV2(Q.proposerV2({ historique: { 'minifever-arcade2': [83, 83, 83] }, paliers: { 'minifever-arcade2': P } }, () => 0.3, sansParc)
+    .quetes.find((q) => q.niveau === 'moyenne'), 'ind-2');
+  assert.equal(Q.titre(d), 'Remporte 100 épreuves en arcade difficile');
+  assert.match(Q.detail(d), /le maximum possible en une partie$/);
+  // Tous les joueurs, tous les paliers d'arcade : aucune cible au-delà du mode.
+  for (let p = 0; p < 4; p++) {
+    const mp = Q.MESURES['minifever-arcade' + p];
+    const parc = Array.from({ length: 30 }, (_, i) => Array(4).fill(Math.round(mp.plafond * (i + 1) / 30)));
+    const Pp = Q.paliersDe(mp, parc);
+    for (let v = 1; v <= mp.plafond; v++) {
+      const r = Q.proposerV2({ historique: { ['minifever-arcade' + p]: [v, v, v] }, paliers: { ['minifever-arcade' + p]: Pp } }, () => 0.3, sansParc);
+      for (const q of r.quetes.concat(r.reserve)) assert.ok(q.seuil <= mp.plafond, `arcade ${p}, habitué à ${v} : ${q.niveau} ${q.seuil}`);
+    }
+  }
+  // Une mesure sans maximum (Swapou) : le record du parc borne, arrondi sous lui.
+  const sw = Q.MESURES['swapou-challenge'];
+  assert.deepEqual(Q.borner(sw, 13200, { record: 10049 }), { seuil: 10000, borne: 'record' });
+  assert.deepEqual(Q.borner(sw, 9000, { record: 10049 }), { seuil: 9000, borne: null });
+  assert.deepEqual(Q.borner(sw, 13200, null), { seuil: 13200, borne: null }, 'ni maximum ni record : rien ne borne');
+
+  // LES TEMPS (le moins est le mieux) : les parts se lisent depuis le plus
+  // rapide, le record est le temps le plus court, et le plafond s'arrondit
+  // au-dessus de lui (58,321 s → 58,5 s) : jamais plus vite que le record.
+  const t = Q.MESURES['bkiwi-circuit0'];
+  const tj = Array.from({ length: 20 }, (_, i) => Array(3).fill(60000 + 2000 * i));
+  tj[0] = [60000, 60000, 58321];
+  const PT = Q.paliersDe(t, tj);
+  assert.deepEqual([PT.facile, PT.moyenne, PT.difficile, PT.record], [80000, 68000, 64000, 58321]);
+  assert.ok(PT.bronze > PT.argent && PT.argent > PT.or);
+  assert.equal(Q.plafondDe(t, PT), 58500);
+  assert.deepEqual(Q.borner(t, 55000, PT), { seuil: 58500, borne: 'record' });
+  // (Aucune mesure de temps n'est taillée aux paliers aujourd'hui : on en prête une.)
+  t.perso = true;
+  try {
+    const temps = (h) => Q.proposerV2({ historique: { 'bkiwi-circuit0': h }, paliers: { 'bkiwi-circuit0': PT } }, () => 0.3, sansParc)
+      .quetes.map((q) => [q.niveau, q.seuil, q.borne]);
+    assert.deepEqual(temps([100000, 100000, 100000]), [['facile', 80000, null], ['moyenne', 68000, null], ['difficile', 64000, null]]);
+    // Le plus rapide du parc : ÷1,1 serait plus vite que le record — ramené au record.
+    assert.deepEqual(temps([61000, 61000, 61000]), [['facile', 61000, null], ['moyenne', 58500, 'record']]);
+  } finally { delete t.perso; }
+});
+
+test('le rattrapage : une cible distribuée au-delà du maximum revient au plafond, sans rien perdre', () => {
+  const P = { record: 95 };
+  // La quête du signalement, telle que l'ancien calcul l'a figée.
+  const vieille = { id: 'ind-3', niveau: 'difficile', palier: 'legende', gain: 25, type: 'mesure', etiquette: 'minifever', famille: 'minifever-arcade2',
+    taillee: true, v2: true, decouverte: false, params: { mesure: 'minifever-arcade2', seuil: 124 }, detail: 'Arcade difficile : épreuves remportées · bien au-dessus de tes scores habituels' };
+  assert.equal(Q.titre(vieille), 'Remporte 124 épreuves en arcade difficile');
+  const r = Q.rattraper(vieille, P);
+  assert.equal(Q.titre(r), 'Remporte 100 épreuves en arcade difficile');
+  assert.deepEqual([r.id, r.gain, r.palier, r.niveau, r.rattrapee.de], ['ind-3', 25, 'legende', 'difficile', 124], 'même id, même gain promis');
+  assert.match(r.detail, /maximum possible en une partie \(cible corrigée\)$/);
+  assert.equal(vieille.params.seuil, 124, 'une copie : l’original ne bouge pas');
+  // Son meilleur de la semaine (100 épreuves) la fait désormais.
+  assert.equal(Q.estFaite(vieille, { m: 100 }), false);
+  assert.equal(Q.estFaite(r, { m: 100 }), true);
+  // Rien à corriger : sous le plafond, une autre sorte de quête, une mesure sans borne connue.
+  assert.equal(Q.rattraper(Object.assign({}, vieille, { params: { mesure: 'minifever-arcade2', seuil: 90 } }), P), null);
+  assert.equal(Q.rattraper({ type: 'action', params: { action: 'forumPost', n: 3 } }, P), null);
+  assert.equal(Q.rattraper({ type: 'mesure', params: { mesure: 'swapou-challenge', seuil: 40000 } }, null), null);
+  assert.equal(Q.rattraper(r, P), null, 'idempotent');
+  // Sans maximum théorique : le record du parc.
+  const sw = Q.rattraper({ type: 'mesure', params: { mesure: 'swapou-challenge', seuil: 13200 }, gain: 25 }, { record: 10049 });
+  assert.deepEqual([sw.params.seuil, sw.gain], [10000, 25]);
+  assert.match(sw.detail, /le record du parc \(cible corrigée\)$/);
+  // « Bats ton record » strictement, au maximum : impossible aussi — on vise de l'égaler.
+  const strict = Q.rattraper({ type: 'mesure', params: { mesure: 'minifever-arcade0', seuil: 40, strict: true }, titre: 'Bats ton record à {seuil}' }, null);
+  assert.deepEqual([strict.params.seuil, strict.params.strict, strict.titre], [40, false, undefined]);
+  // Les temps : plus vite que le record, ramené au record.
+  const t = Q.rattraper({ type: 'mesure', params: { mesure: 'bkiwi-circuit0', seuil: 50000 } }, { record: 58321 });
+  assert.equal(t.params.seuil, 58500);
+  // La réserve des échanges suit.
+  const sp = Q.rattraperSpec({ genre: 'palier', mesure: 'minifever-arcade1', palier: 'legende', seuil: 98, niveau: 'difficile', gain: 25, parc: false }, null);
+  assert.deepEqual([sp.seuil, sp.borne, sp.gain], [80, 'max', 25]);
+  assert.equal(Q.rattraperSpec({ genre: 'palier', mesure: 'minifever-arcade1', seuil: 60 }, null), null);
+  assert.equal(Q.rattraperSpec({ genre: 'parc', cle: 'parc-forum' }, null), null);
+  // Les retouches de l'admin : jamais au-delà du maximum théorique.
+  assert.equal(Q.horsPlafond(Q.MESURES['minifever-arcade2'], 124), true);
+  assert.equal(Q.horsPlafond(Q.MESURES['minifever-arcade2'], 100), false);
+  assert.equal(Q.horsPlafond(Q.MESURES['swapou-challenge'], 1e9), false);
 });
 
 test('la vie du parc et les exploits : des actions sur le site, pas seulement des scores', () => {
@@ -1429,6 +1557,70 @@ test('l’admin retaille la semaine : les quêtes faites restent, les autres sui
   const restes = await sql(`SELECT quete_id FROM quetes_progres WHERE username = 'cerise' AND semaine = $1 AND fait_at IS NULL`, [lundiCourant()]);
   for (const x of restes) assert.ok(!anciens.includes(x.quete_id), 'avancement effacé : ' + x.quete_id);
   assert.ok((await post('/api/admin/quetes', { paliers: { pas: { moyenne: 1.25, difficile: 1.5, moyenneTemps: 1.1, difficileTemps: 1.2 } } }, ADMIN)).ok);
+});
+
+test('le rattrapage : « 124 épreuves » distribuées avant le plafond reviennent au maximum d’une partie — payées si déjà atteintes, les faites intactes', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  const lundi = lundiCourant();
+  await compte('pomelo');
+  const mf = (id, p, seuil, gain, palier) => ({ id, niveau: 'difficile', palier, gain, type: 'mesure', etiquette: 'minifever', famille: 'minifever-arcade' + p,
+    taillee: true, v2: true, decouverte: false, params: { mesure: 'minifever-arcade' + p, seuil }, detail: 'bien au-dessus de tes scores habituels' });
+  // Ses quêtes de la semaine, telles que l'ancien calcul les a figées.
+  const quetes = [
+    mf('ind-1', 2, 124, 25, 'legende'),   // impossible, et ses 100 épreuves de la semaine l'auraient faite
+    mf('ind-2', 1, 95, 18, 'platine'),    // impossible (80 épreuves en arcade normal), rien de joué
+    mf('ind-3', 0, 50, 12, 'or'),         // impossible, mais déjà marquée faite : on n'y touche pas
+    { id: 'ind-4', niveau: 'facile', palier: 'bronze', gain: 5, type: 'mesure', etiquette: 'swapou2', famille: 'swapou-challenge',
+      taillee: true, v2: true, params: { mesure: 'swapou-challenge', seuil: 900000 } },   // au-delà du record du parc
+    { id: 'ind-5', niveau: 'facile', palier: 'bronze', gain: 5, type: 'mesure', etiquette: 'swapou2', famille: 'swapou-challenge',
+      taillee: true, v2: true, params: { mesure: 'swapou-challenge', seuil: 6000 } },     // possible : intacte
+  ];
+  const reserve = [{ genre: 'palier', mesure: 'minifever-arcade3', palier: 'legende', seuil: 150, niveau: 'difficile', jours: 5, gain: 25, parc: false }];
+  await sql(`INSERT INTO quetes_individuelles (semaine, username, quetes, connu, reserve, niveaux) VALUES ($1, 'pomelo', $2::jsonb, true, $3::jsonb, '{}'::jsonb)`,
+    [lundi, JSON.stringify(quetes), JSON.stringify(reserve)]);
+  await sql(`INSERT INTO quetes_progres (semaine, username, quete_id, etat) VALUES ($1, 'pomelo', 'ind-1', '{"m": 100}'::jsonb)`, [lundi]);
+  await sql(`INSERT INTO quetes_progres (semaine, username, quete_id, etat, fait_at, gain) VALUES ($1, 'pomelo', 'ind-3', '{"m": 40}'::jsonb, now(), 12)`, [lundi]);
+  const avant = await solde('pomelo');
+  // Le serveur les relit au démarrage, comme après la mise en ligne du correctif.
+  await arreter();
+  await demarrer();
+  for (const u of ['pomelo', 'cerise', 'figue']) await reconnecter(u);
+  const e = await etat('pomelo');
+  const vue = (id) => quete(e, id);
+  assert.equal(vue('ind-1').titre, 'Remporte 100 épreuves en arcade difficile');
+  assert.equal(vue('ind-2').titre, 'Remporte 80 épreuves en arcade normal');
+  assert.match(vue('ind-1').detail, /maximum possible en une partie \(cible corrigée\)/);
+  assert.deepEqual([vue('ind-1').gain, vue('ind-2').gain], [25, 18], 'le gain promis ne bouge pas');
+  assert.deepEqual([vue('ind-1').fait, vue('ind-2').fait], [true, false], 'ses 100 épreuves de la semaine font la première');
+  assert.equal(await soldeVaut('pomelo', avant + 25), avant + 25, 'payée tout de suite');
+  assert.deepEqual([vue('ind-3').titre, vue('ind-3').fait, vue('ind-3').gain], ['Remporte 50 épreuves en arcade facile', true, 12], 'une quête faite reste telle quelle');
+  assert.equal(vue('ind-5').titre.replace(/\s/g, ' '), 'Dépasse 6 000 points à Swapou');
+  // Swapou n'a pas de maximum : le record du parc sur la fenêtre, arrondi sous lui.
+  const rec = Number((await sql(`SELECT max(score) AS m FROM challenge_score_archive WHERE ranking_id = 'swapou2_classic' AND day_key >= $1 AND day_key < $2`,
+    [Q.jourPlus(lundi, -28), lundi]))[0].m);
+  assert.equal(vue('ind-4').titre.replace(/\s/g, ' '), `Dépasse ${Q.nombre(Q.arrondir(Q.MESURES['swapou-challenge'], rec))} points à Swapou`.replace(/\s/g, ' '));
+  assert.match(vue('ind-4').detail, /record du parc/);
+  // La base suit (la réserve des échanges aussi), et un second passage ne change plus rien.
+  const ligne = (await sql(`SELECT quetes, reserve FROM quetes_individuelles WHERE username = 'pomelo' AND semaine = $1`, [lundi]))[0];
+  assert.deepEqual(ligne.quetes.map((q) => q.params.seuil).slice(0, 3), [100, 80, 50]);
+  assert.equal(ligne.reserve[0].seuil, 100);
+  await arreter();
+  await demarrer();
+  for (const u of ['pomelo', 'cerise', 'figue']) await reconnecter(u);
+  const e2 = await etat('pomelo');
+  assert.deepEqual(e2.quetes.filter((q) => /^ind-[1-5]$/.test(q.id)).map((q) => [q.id, q.titre, q.fait]), e.quetes.filter((q) => /^ind-[1-5]$/.test(q.id)).map((q) => [q.id, q.titre, q.fait]));
+  assert.equal(await solde('pomelo'), avant + 25, 'rien de repayé');
+  // L'admin ne peut plus poser une cible au-delà du maximum d'une partie.
+  const refus = await post('/api/admin/quetes/perso', { mesure: 'minifever-arcade2', niveau: 'difficile', seuil: '124' }, ADMIN);
+  assert.equal(refus.error, 'hors_plafond', JSON.stringify(refus));
+  // Et il voit les cibles des niveaux et le plafond de chaque mesure.
+  const A = await adminEtat();
+  const ligneMf = A.paliers.mesures.find((x) => x.cle === 'minifever-arcade2');
+  assert.deepEqual(ligneMf.plafond, { texte: '100 épreuves', source: 'max' });
+  assert.deepEqual(A.reglages.paliers.parts, { facile: 0.55, moyenne: 0.25, difficile: 0.125 });
+  const R = (await post('/api/admin/quetes', { paliers: { parts: { difficile: 0.1 } } }, ADMIN)).reglages;
+  assert.deepEqual(R.paliers.parts, { facile: 0.55, moyenne: 0.25, difficile: 0.1 });
+  assert.ok((await post('/api/admin/quetes', { paliers: { parts: { difficile: 0.125 } } }, ADMIN)).ok);
 });
 
 test('l’admin retouche les quêtes d’un joueur une à une : un seuil, le gain, le titre ; en retire, en ajoute', async (t) => {

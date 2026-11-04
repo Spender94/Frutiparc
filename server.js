@@ -11730,6 +11730,8 @@ async function chargerQuetes() {
   // Les records du parc (pour les mises à prix) : tout le livre des records,
   // plus long à lire — en arrière-plan, sans retarder l'ouverture des quêtes.
   chargerQuetesRecords().catch((e) => console.error('[QUETES] records du parc :', e.message));
+  // Les cibles impossibles distribuées avant le plafond : ramenées, en arrière-plan.
+  quetesRattraperTous().catch((e) => console.error('[QUETES] rattrapage :', e.message));
 }
 
 // ── Le contrat de la semaine ──
@@ -11782,7 +11784,12 @@ async function quetesIndivDe(u) {
   if (quetesReglages.mode === 'collectives') return null;
   const S = quetesSemaineCourante();
   const deja = quetesIndiv.get(u);
-  if (deja) return deja;
+  if (deja) {
+    if (deja.rattrapage !== S.lundi && quetesV2(S.lundi)) {
+      try { await quetesRattraper(u, deja); } catch (e) { console.error('[QUETES] rattrapage :', e.message); }
+    }
+    return deja;
+  }
   if (quetesIndivEnCours.has(u)) return quetesIndivEnCours.get(u);
   const travail = (async () => {
     const historique = process.env.DATABASE_URL ? await quetesHistoriqueDe(u, S.lundi) : {};
@@ -11818,6 +11825,58 @@ async function quetesIndivDe(u) {
   quetesIndivEnCours.set(u, travail);
   try { return await travail; } catch (e) { console.error('[QUETES] quêtes individuelles :', e.message); return null; } finally { quetesIndivEnCours.delete(u); }
 }
+/*
+ * LE RATTRAPAGE DES CIBLES IMPOSSIBLES. Avant le plafond des mesures, le pas
+ * personnel pouvait viser au-delà de ce qu'une partie permet (« Remporte 124
+ * épreuves en arcade difficile » quand il n'y en a que cent). Au premier
+ * chargement de ses quêtes de la semaine, chaque quête de score PAS ENCORE
+ * FAITE dont la cible dépasse le plafond de sa mesure (Quetes.rattraper : le
+ * maximum théorique, sinon le record du parc) y est ramenée — même id, même
+ * gain promis, même avancement : si le meilleur de la semaine l'atteint déjà,
+ * elle se fait et se paie tout de suite. Une quête faite n'est jamais touchée.
+ * La réserve des échanges suit. Idempotent : une liste déjà au plafond ne
+ * bouge plus ; la marque `rattrapage` évite seulement de relire chaque fois.
+ */
+async function quetesRattraper(u, liste) {
+  const S = quetesSemaineCourante();
+  const paliers = quetesPaliersEffectifs(await quetesPaliersBruts(S));
+  if (quetesSemaineCourante().lundi !== S.lundi || quetesIndiv.get(u) !== liste) return 0;
+  const progres = quetesProgres.get(u) || new Map();
+  let n = 0;
+  const quetes = liste.quetes.map((q) => {
+    if ((progres.get(q.id) || {}).faitAt) return q;
+    const neuf = q && q.type === 'mesure' ? Quetes.rattraper(q, paliers[q.params && q.params.mesure]) : null;
+    if (!neuf) return q;
+    n++;
+    console.log(`[QUETES] ${u} : « ${Quetes.titre(q)} » ramenée à « ${Quetes.titre(neuf)} » (au-delà du plafond de la mesure)`);
+    return neuf;
+  });
+  const reserve = (liste.reserve || []).map((sp) => Quetes.rattraperSpec(sp, sp && paliers[sp.mesure]) || sp);
+  const reserveTouchee = reserve.some((sp, i) => sp !== liste.reserve[i]);
+  liste.rattrapage = S.lundi;
+  if (!n && !reserveTouchee) return 0;
+  liste.quetes = quetes;
+  liste.reserve = reserve;
+  if (process.env.DATABASE_URL) await db.quetesRemplacerIndividuelles(S.lundi, u, quetes, reserve, liste.niveaux || {});
+  // Ce que le meilleur de la semaine atteint déjà se paie tout de suite.
+  for (const def of quetes) {
+    if (!def.rattrapee) continue;
+    const p = progres.get(def.id);
+    if (p && !p.faitAt && Quetes.estFaite(def, p.etat)) quetesAccomplir(u, def, p, S.lundi);
+  }
+  return n;
+}
+// Au démarrage : toutes les listes de la semaine, en arrière-plan.
+async function quetesRattraperTous() {
+  const S = quetesSemaineCourante();
+  if (!quetesV2(S.lundi)) return;
+  let n = 0;
+  for (const [u, liste] of Array.from(quetesIndiv.entries())) {
+    if (liste.rattrapage === S.lundi) continue;
+    try { n += await quetesRattraper(u, liste); } catch (e) { console.error(`[QUETES] rattrapage (${u}) :`, e.message); }
+  }
+  if (n) console.log(`[QUETES] rattrapage : ${n} quête(s) ramenée(s) au plafond de leur mesure`);
+}
 // Une liste lue en base (ou tout juste écrite).
 function quetesIndivLu(row) {
   return {
@@ -11835,7 +11894,13 @@ function quetesV2(lundi) { return quetesReglages.mode !== 'collectives' && Strin
  * la fenêtre avant le lundi, puis gardés avec la semaine (quetes_semaine).
  * Les retouches de l'admin (reglages.paliers.seuils) s'y superposent à la
  * lecture : elles valent pour les quêtes taillées après elles.
+ *
+ * QUETES_PALIERS_V : la forme du calcul. Des paliers gardés d'une version
+ * d'avant (sans les cibles des niveaux ni le record du parc, qui borne les
+ * cibles) se recalculent — sur la même archive d'avant le lundi, donc les
+ * mêmes paliers, plus ce qui leur manquait.
  */
+const QUETES_PALIERS_V = 2;
 let quetesPaliersEnCours = null;
 async function quetesParcPaliers(lundi) {
   const parJour = {};   // mesure → { pseudo → { jour → meilleur } }
@@ -11857,16 +11922,17 @@ async function quetesParcPaliers(lundi) {
   const out = {};
   for (const cle of Quetes.MESURES_PERSO) {
     // Un joueur, une voix : ses meilleurs du jour, dont paliersDe prend la médiane.
-    out[cle] = parJour[cle] ? Quetes.paliersDe(Quetes.MESURES[cle], Object.values(parJour[cle]).map((j) => Object.values(j))) : null;
+    out[cle] = parJour[cle] ? Quetes.paliersDe(Quetes.MESURES[cle], Object.values(parJour[cle]).map((j) => Object.values(j)),
+      { parts: quetesReglages.paliers.parts }) : null;
   }
   return out;
 }
 async function quetesPaliersBruts(S) {
-  if (S.paliers && S.paliers.lundi === S.lundi) return S.paliers.mesures;
+  if (S.paliers && S.paliers.lundi === S.lundi && S.paliers.v === QUETES_PALIERS_V) return S.paliers.mesures;
   if (!quetesPaliersEnCours) {
     quetesPaliersEnCours = quetesParcPaliers(S.lundi).then((mesures) => {
       if (quetesSemaineCourante().lundi === S.lundi) {
-        S.paliers = { lundi: S.lundi, mesures, calculeAt: Date.now() };
+        S.paliers = { lundi: S.lundi, v: QUETES_PALIERS_V, mesures, calculeAt: Date.now() };
         quetesEnregistrerSemaine();
         console.log(`[QUETES] paliers du parc (semaine du ${S.lundi}) : ${Object.entries(mesures).filter(([, v]) => v).map(([k]) => k).join(', ') || 'aucun jeu assez joué'}`);
       }
@@ -11875,10 +11941,12 @@ async function quetesPaliersBruts(S) {
   }
   return quetesPaliersEnCours;
 }
-// Les paliers bruts, retouchés par l'admin.
 // Les paliers bruts, sous les repères connus du parc (Quetes.PALIERS_CONNUS),
 // sous les retouches de l'admin ; et l'échelle ne redescend jamais (un palier
 // calculé sous le repère connu du dessous le rejoint — une seule quête alors).
+// De même pour les cibles des trois niveaux (facile, moyenne, difficile) :
+// retouchables, jamais dans le désordre, et jamais au-delà du plafond de la
+// mesure (son maximum théorique, ou le record du parc).
 function quetesPaliersEffectifs(bruts) {
   const out = {};
   for (const cle of Quetes.MESURES_PERSO) {
@@ -11892,6 +11960,13 @@ function quetesPaliersEffectifs(bruts) {
       if (bas != null && haut != null && (m.inverse ? haut > bas : haut < bas)) p[Quetes.PALIERS[i]] = bas;
     }
     if (p.decouverte == null || (m.inverse ? p.decouverte < p.bronze : p.decouverte > p.bronze)) p.decouverte = p.bronze;
+    for (let i = 0; i < Quetes.NIVEAUX.length; i++) {
+      const k = Quetes.NIVEAUX[i];
+      if (p[k] == null) continue;
+      p[k] = Quetes.borner(m, p[k], p).seuil;
+      const bas = i ? p[Quetes.NIVEAUX[i - 1]] : null;
+      if (bas != null && (m.inverse ? p[k] > bas : p[k] < bas)) p[k] = bas;
+    }
     out[cle] = p;
   }
   return out;
@@ -11933,7 +12008,7 @@ async function quetesTaillerV2(u, lundi, historique, paliers, ajust) {
   }
   const r = Quetes.proposerV2({ historique, paliers, premiersPas }, Quetes.aleaSeme('paliers:' + u + ':' + lundi),
     { minJours: quetesReglages.individuelles.minJours, budget: R.budget, maxQuetes: R.maxQuetes, gains: R.gains, decouverte: R.decouverte,
-      activites: R.activites, exploits: R.exploits, pas: R.pas });
+      activites: R.activites, exploits: R.exploits, pas: R.pas, parts: R.parts });
   let n = 0;
   const quetes = r.quetes.map((sp) => Quetes.definitionV2(sp, sp.genre === 'premierspas' ? sp.cle : 'ind-' + (++n))).filter(Boolean);
   const connu = Object.keys(r.niveaux).length > 0;
@@ -12675,9 +12750,11 @@ async function quetesAdminPaliers(S) {
   return { lundi, mesures: Quetes.MESURES_PERSO.map((cle) => {
     const m = Quetes.MESURES[cle];
     const f = (v) => (v == null ? null : Quetes.formater(m, v));
-    const ligne = (o) => (o ? Object.fromEntries(Quetes.PALIERS.map((k) => [k, f(o[k])])) : null);
+    const ligne = (o) => (o ? Object.fromEntries(Quetes.PALIERS.concat(Quetes.NIVEAUX).map((k) => [k, f(o[k])])) : null);
+    const plafond = Quetes.plafondDe(m, eff[cle]);
     return { cle, groupe: m.groupe, nom: m.nom, sens: m.inverse ? 'au plus' : 'au moins',
-      calcules: ligne(bruts && bruts[cle]), retouches: ligne(quetesReglages.paliers.seuils[cle]), effectifs: ligne(eff[cle]) };
+      calcules: ligne(bruts && bruts[cle]), retouches: ligne(quetesReglages.paliers.seuils[cle]), effectifs: ligne(eff[cle]),
+      plafond: plafond == null ? null : { texte: f(plafond), source: m.plafond != null ? 'max' : 'record' } };
   }) };
 }
 app.get('/api/admin/quetes', adminScope('quetes'), async (req, res) => {
@@ -12733,12 +12810,17 @@ app.post('/api/admin/quetes', adminScope('quetes'), async (req, res) => {
     if (b.contrat && typeof b.contrat === 'object') neuf.contrat = Object.assign({}, quetesReglages.contrat, b.contrat);
     if (b.paliers && typeof b.paliers === 'object') {
       neuf.paliers = Object.assign({}, quetesReglages.paliers, b.paliers,
-        { gains: Object.assign({}, quetesReglages.paliers.gains, b.paliers.gains || {}), seuils: quetesReglages.paliers.seuils });
+        { gains: Object.assign({}, quetesReglages.paliers.gains, b.paliers.gains || {}), seuils: quetesReglages.paliers.seuils,
+          parts: Object.assign({}, quetesReglages.paliers.parts, b.paliers.parts || {}) });
     }
     if (b.primes && typeof b.primes === 'object') neuf.primes = Object.assign({}, quetesReglages.primes, b.primes);
     if (b.doigt && typeof b.doigt === 'object') neuf.doigt = Object.assign({}, quetesReglages.doigt, b.doigt);
     const avantLecture = JSON.stringify(quetesReglages.individuelles);
+    const avantParts = JSON.stringify(quetesReglages.paliers.parts);
     quetesReglages = Quetes.reglagesNormalises(neuf);
+    // Les parts des niveaux changées : les cibles du parc se recalculent au
+    // prochain besoin (elles valent pour les quêtes taillées ensuite).
+    if (JSON.stringify(quetesReglages.paliers.parts) !== avantParts && quetesSemaine) quetesSemaine.paliers = null;
     // Fenêtre ou minimum changés : ceux qui n'avaient pas de quoi faire un contrat
     // retentent leur chance dès leur prochaine visite (les contrats proposés et
     // les quêtes individuelles déjà taillées restent : la semaine prochaine).
@@ -12764,6 +12846,7 @@ app.post('/api/admin/quetes/catalogue', adminScope('quetes'), async (req, res) =
     if (b.seuil !== undefined && b.seuil !== '') {
       seuil = m ? Quetes.lireValeur(m, b.seuil) : (Number(b.seuil) > 0 ? Number(b.seuil) : null);
       if (seuil == null) return res.status(400).json({ ok: false, error: 'seuil_illisible', message: 'Seuil illisible (exemples : 25000, 4:40, 45,5).' });
+      if (Quetes.horsPlafond(m, seuil)) return res.status(400).json({ ok: false, error: 'hors_plafond', message: `Au-delà du maximum d’une partie (${Quetes.formater(m, m.plafond)}).` });
     }
     if (avant.perso) {
       // Une quête de l'admin se retouche en place.
@@ -12859,6 +12942,7 @@ app.post('/api/admin/quetes/perso', adminScope('quetes'), async (req, res) => {
     if (!Quetes.NIVEAUX.includes(b.niveau)) return res.status(400).json({ ok: false, error: 'niveau', message: 'Choisis un niveau.' });
     const seuil = m.unite === 'boss' ? 1 : Quetes.lireValeur(m, b.seuil);
     if (seuil == null) return res.status(400).json({ ok: false, error: 'seuil_illisible', message: 'Seuil illisible (exemples : 25000, 4:40, 45,5).' });
+    if (Quetes.horsPlafond(m, seuil)) return res.status(400).json({ ok: false, error: 'hors_plafond', message: `Au-delà du maximum d’une partie (${Quetes.formater(m, m.plafond)}).` });
     const n = quetesReglages.perso.reduce((mx, x) => Math.max(mx, Number(String(x.id).replace('perso-', '')) || 0), 0) + 1;
     const neuve = { id: 'perso-' + n, mesure: m.cle, seuil, niveau: b.niveau, titre: String(b.titre || '').trim().slice(0, 120), actif: true };
     quetesReglages = Quetes.reglagesNormalises(Object.assign({}, quetesReglages, { perso: quetesReglages.perso.concat([neuve]) }));
@@ -12869,19 +12953,22 @@ app.post('/api/admin/quetes/perso', adminScope('quetes'), async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// Retoucher les paliers d'une mesure : { mesure, seuils: { bronze: '15000', … } }
-// (une valeur vide rend le palier calculé). Valent pour les quêtes taillées après.
+// Retoucher les paliers d'une mesure : { mesure, seuils: { bronze: '15000', …,
+// facile, moyenne, difficile } } (une valeur vide rend le calculé). Valent pour
+// les quêtes taillées après. Jamais au-delà du maximum théorique de la mesure.
 app.post('/api/admin/quetes/paliers', adminScope('quetes'), async (req, res) => {
   try {
     const b = req.body || {};
     const m = Quetes.MESURES[String(b.mesure || '')];
     if (!m || !Quetes.MESURES_PERSO.includes(m.cle)) return res.status(400).json({ ok: false, error: 'mesure_inconnue' });
     const o = {};
-    for (const k of Quetes.PALIERS) {
+    for (const k of Quetes.PALIERS.concat(Quetes.NIVEAUX)) {
       const t = b.seuils ? b.seuils[k] : undefined;
       if (t === undefined || t === null || String(t).trim() === '') continue;
       const v = Quetes.lireValeur(m, t);
-      if (v == null) return res.status(400).json({ ok: false, error: 'seuil_illisible', message: `${Quetes.PALIER_NOM[k]} : valeur illisible.` });
+      const nom = Quetes.PALIER_NOM[k] || Quetes.NIVEAU_NOM[k];
+      if (v == null) return res.status(400).json({ ok: false, error: 'seuil_illisible', message: `${nom} : valeur illisible.` });
+      if (Quetes.horsPlafond(m, v)) return res.status(400).json({ ok: false, error: 'hors_plafond', message: `${nom} : au-delà du maximum d’une partie (${Quetes.formater(m, m.plafond)}).` });
       o[k] = v;
     }
     const seuils = Object.assign({}, quetesReglages.paliers.seuils);
@@ -13071,6 +13158,7 @@ app.post('/api/admin/quetes/joueur', adminScope('quetes'), async (req, res) => {
           if (m.unite === 'boss') return refus('pas_reglable', 'Cette quête n’a pas de seuil à régler.');
           const s = Quetes.lireValeur(m, b.valeur);
           if (s == null) return refus('seuil_illisible', 'Seuil illisible (exemples : 25000, 4:40, 45,5).');
+          if (Quetes.horsPlafond(m, s)) return refus('hors_plafond', `Au-delà du maximum d’une partie (${Quetes.formater(m, m.plafond)}).`);
           def.params.seuil = s;
         } else if (def.type === 'pari') {
           const s = entier(b.valeur, 1);
@@ -13109,6 +13197,7 @@ app.post('/api/admin/quetes/joueur', adminScope('quetes'), async (req, res) => {
         const m = Quetes.MESURES[cle];
         const seuil = m.unite === 'boss' ? 1 : Quetes.lireValeur(m, b.valeur);
         if (seuil == null) return refus('seuil_illisible', 'Seuil illisible (exemples : 25000, 4:40, 45,5).');
+        if (Quetes.horsPlafond(m, seuil)) return refus('hors_plafond', `Au-delà du maximum d’une partie (${Quetes.formater(m, m.plafond)}).`);
         // Le palier du seuil dans le parc, quand il en a : il donne le niveau et le gain par défaut.
         const v2 = quetesV2(S.lundi);
         const P = v2 ? quetesPaliersEffectifs(await quetesPaliersBruts(S))[cle] : null;
