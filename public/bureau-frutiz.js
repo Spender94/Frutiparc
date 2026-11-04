@@ -6632,6 +6632,24 @@ window.BureauFrutiz = (function () {
         f.fen.style.left = f.poseBureau.left; f.fen.style.top = f.poseBureau.top;
         f.fen.style.width = f.poseBureau.width; f.fen.style.height = f.poseBureau.height;
       }
+      /*
+       * …MAIS DANS LA ZONE UTILE. Un jeu lancé depuis la Frusion passe en
+       * onglet à peine sa fenêtre bâtie, avant qu'elle ait glissé du coin à
+       * sa place : la pose retenue était (0, 0), SOUS la main bar (bouille,
+       * mandala), et « Vers bureau » l'y rendait telle quelle — sa barre de
+       * titre cachée, il fallait passer en mode rapide pour l'attraper.
+       * `WinStandard.moveToDesktop` repasse par `updateDeskPos`, donc par
+       * `recal` : la fenêtre revient bornée au coin, comme toute fenêtre.
+       */
+      // La taille se lit dans la pose, pas à l'écran : la fenêtre est encore
+      // cachée avec son onglet, et `offsetWidth` y vaut zéro (elle revenait
+      // à son minimum).
+      var pose = posDe(f.fen);
+      pose.w = parseFloat(f.fen.style.width) || pose.w;
+      pose.h = parseFloat(f.fen.style.height) || pose.h;
+      var pos = recal(pose, f.minimum || { w: 160, h: 60 });
+      f.fen.style.left = pos.x + 'px'; f.fen.style.top = pos.y + 'px';
+      f.fen.style.width = pos.w + 'px'; f.fen.style.height = pos.h + 'px';
       premierPlan(f.fen);
     }
     slotActif = null;                   // pour forcer la bascule

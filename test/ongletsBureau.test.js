@@ -541,3 +541,24 @@ test('`JeuxPortes` : une adresse par jeu, et une seule fenêtre à la fois', () 
   assert.match(LIGHT, /window\.__jeuPopup = window\.open\(url, "frutiparc_jeu", traits\);/);
   assert.match(LIGHT, /if \(!window\.__jeuPopup\) return false;/);
 });
+
+// ── « Vers bureau » rend une fenêtre ATTRAPABLE ─────────────────────────────
+//
+// Un jeu lancé depuis la Frusion passe en onglet à peine sa fenêtre bâtie,
+// avant qu'elle ait glissé du coin (0, 0) à sa place : la pose retenue était
+// SOUS la main bar, et « Vers bureau » l'y rendait — barre de titre cachée par
+// la bouille et le mandala, il fallait le mode rapide pour la déplacer.
+test('« Vers bureau » borne la pose rendue à la zone utile (recal), à sa vraie taille', () => {
+  const corps = /function versBureau\(idOnglet\) \{[\s\S]*?\n  \}/.exec(JS)[0];
+  assert.match(corps, /pose\.w = parseFloat\(f\.fen\.style\.width\) \|\| pose\.w;/,
+    'la taille vient de la pose : la fenêtre, cachée avec son onglet, mesure zéro à l’écran');
+  assert.match(corps, /var pos = recal\(pose, f\.minimum \|\| \{ w: 160, h: 60 \}\);/);
+  assert.match(corps, /f\.fen\.style\.top = pos\.y \+ 'px';/);
+  // Et recal ramène bien (0, 0) au coin du bureau, sous la main bar.
+  const src = /var CORNER_Y = (\d+), CORNER_X = (\d+);/.exec(JS);
+  const recalSrc = /function recal\(pos, minimum\) \{[\s\S]*?\n  \}/.exec(JS)[0];
+  const recal = new Function('window', 'minDe', 'CORNER_X', 'CORNER_Y', recalSrc + '; return recal;')(
+    { innerWidth: 1280, innerHeight: 860 }, (m) => m, Number(src[2]), Number(src[1]));
+  const p = recal({ x: 0, y: 0, w: 900, h: 660 }, { w: 160, h: 60 });
+  assert.deepStrictEqual([p.x, p.y, p.w, p.h], [9, 106, 900, 660]);
+});
