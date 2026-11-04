@@ -70,7 +70,10 @@ test('le serveur ne réserve plus la trame image au staff', () => {
     'le refus « réservé au salon Pomme » subsiste');
   const bloc = SERVEUR.slice(SERVEUR.indexOf("if (type === 'i' && imgChild)"),
     SERVEUR.indexOf('const proxied ='));
-  assert.ok(!/isChannelStaff/.test(bloc), 'la branche image teste encore le grade');
+  // Le Loup-garou, lui, demande le grade pour savoir qui a la PAROLE pendant
+  // une partie (le meneur parle toujours) : ce n'est pas une garde d'image.
+  const sansLoupGarou = bloc.split('\n').filter((l) => !/LoupGarou\.parole\(/.test(l)).join('\n');
+  assert.ok(!/isChannelStaff/.test(sansLoupGarou), 'la branche image teste encore le grade');
   // Ce qui protège encore, et qui n'est pas une question de grade.
   assert.match(bloc, /if \(!g \|\| !client\.logged\) break;/, 'il faut être connecté');
   assert.match(bloc, /!channel\.users\.has\(client\.username\)/, 'et membre du salon');
