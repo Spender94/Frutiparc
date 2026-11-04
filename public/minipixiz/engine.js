@@ -1569,6 +1569,13 @@ const SORTS = [
   { id: 25, freq: 150, lvl: 50 }, { id: 26, freq: 300, lvl: 30 }, { id: 27, freq: 200, lvl: 100 },
 ];
 
+// Correction du portage (demande de l'admin). La Pigmentation (16) n'a qu'une
+// fréquence de 2 : par les arrondis d'Item.initItemList, son parchemin tombait
+// à int(2×0,5) = 1 et son grimoire à int(2×0,2) = 0 — jamais tiré, alors que
+// son picto existe. Un oubli plutôt qu'un choix : on les fixe à la main,
+// parchemin 2 et grimoire 1. Le sort lui-même (SORTS) garde sa fréquence.
+const FREQ_CORRIGEE = { 116: 2, 216: 1 };
+
 const OBJETS = [
   { id: 0, freq: 400, lvl: 10 }, { id: 1, freq: 50, lvl: 30 }, { id: 2, freq: 10, lvl: 70 },
   { id: 5, freq: 400, lvl: 10 }, { id: 6, freq: 50, lvl: 30 }, { id: 7, freq: 10, lvl: 70 },
@@ -1583,8 +1590,8 @@ const OBJETS = [
   { id: 46, freq: 100, lvl: 10 },
   { id: 70, freq: 700, lvl: 0 }, { id: 71, freq: 300, lvl: 10 }, { id: 72, freq: 80, lvl: 20 },
 ].concat(
-  SORTS.map((s) => ({ id: 100 + s.id, freq: Math.floor(s.freq * 0.5), lvl: s.lvl })),
-  SORTS.map((s) => ({ id: 200 + s.id, freq: Math.floor(s.freq * 0.2), lvl: Math.floor(s.lvl * 2) })),
+  SORTS.map((s) => ({ id: 100 + s.id, freq: FREQ_CORRIGEE[100 + s.id] ?? Math.floor(s.freq * 0.5), lvl: s.lvl })),
+  SORTS.map((s) => ({ id: 200 + s.id, freq: FREQ_CORRIGEE[200 + s.id] ?? Math.floor(s.freq * 0.2), lvl: Math.floor(s.lvl * 2) })),
 );
 
 const NOURRITURE = [
