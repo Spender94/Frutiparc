@@ -30327,7 +30327,10 @@ app.get('/api/chat/histo', (req, res) => {
     const st = attr('st');
     // L'heure du chat ([hh:mm:ss] dans h, débarrassée du <font> des cris) —
     // sinon l'horloge du serveur au moment de l'enregistrement.
-    let h = unescapeXml(attr('h')).replace(/<[^>]*>/g, '').trim();
+    // `&nbsp;` aussi : l'horodatage d'une ligne multicolore est un htmlText
+    // dont les espaces voyagent en entités (rainbowSpan) — il s'affichait
+    // « [13:27:40]&nbsp; ».
+    let h = unescapeXml(attr('h')).replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
     if (!h) {
       h = '[' + new Date(e.at).toLocaleTimeString('fr-FR',
         { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ']';
@@ -30345,8 +30348,11 @@ app.get('/api/chat/histo', (req, res) => {
       const gu = corps.match(/\bu="([^"]*)"/);
       corps = '[don] ' + (gk ? gk[1] : '?') + ' kikooz à ' + (gu ? unescapeXml(gu[1]) : '?');
     } else {
-      // Le htmlText du bureau (font, b, i…) redevient du texte nu.
-      corps = unescapeXml(corps.replace(/<[^>]*>/g, '')).trim();
+      // Le htmlText du bureau (font, b, i…) redevient du texte nu. Dans un
+      // CDATA, c'est du HTML tel quel : ses entités se décodent comme celles
+      // d'un courrier (texteMailLight) — `&nbsp;` compris, qui porte chaque
+      // espace d'un message multicolore, et que l'on lisait en toutes lettres.
+      corps = (cd ? texteMailLight(corps) : unescapeXml(corps.replace(/<[^>]*>/g, ''))).trim();
     }
     if (!corps) continue;
     lignes.push({ h, u, corps, rouge: st === 'r', anim: t === 'c', mc: st === 'mc', systeme: u === 'admin' });
@@ -30360,8 +30366,14 @@ app.get('/api/chat/histo', (req, res) => {
     if (l.mc) classes.push('mc');
     if (l.systeme && !l.rouge) classes.push('systeme');
     const qui = (l.systeme || l.rouge) ? '' : '<b>' + esc(l.u) + ' :</b> ';
-    return '<div class="' + classes.join(' ') + '"><span class="h">' + esc(l.h) + '</span> '
-      + qui + esc(l.corps) + '</div>';
+    const dedans = '<span class="h">' + esc(l.h) + '</span> ' + qui + esc(l.corps);
+    // Le multicolore se peint dans un <span class="arc"> intérieur, pas sur la
+    // ligne : une ligne paire a son propre fond (le zébrage), et le raccourci
+    // `background` de `.ligne:nth-child(even)`, plus spécifique que `.mc`,
+    // remettait le découpage au texte à border-box — une ligne sur deux
+    // s'effaçait (lettres transparentes sur un fond uni).
+    return '<div class="' + classes.join(' ') + '">'
+      + (l.mc ? '<span class="arc">' + dedans + '</span>' : dedans) + '</div>';
   }).join('\n');
 
   const page = `<!DOCTYPE html>
@@ -30393,13 +30405,40 @@ app.get('/api/chat/histo', (req, res) => {
   /* Le feutre multicolore : le même arc-en-ciel que sur le chat (MC_RAINBOW). */
   .mc { font-weight: bold; }
   .mc b, .mc .h { color: inherit; }
-  .mc {
-    background: linear-gradient(90deg, #FF6600, #EBB601, #20D251, #47B9C9, #6666CC, #6E3C8D, #F986E2);
+  .mc .arc {
+    background-image: linear-gradient(90deg, #FF6600, #EBB601, #20D251, #47B9C9, #6666CC, #6E3C8D, #F986E2);
     -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
   }
   .systeme { font-style: italic; color: #5a7a2a; }
   .vide { padding: 18px; text-align: center; font-style: italic; color: #5a7a2a; }
+  /* LA NUIT. La fenêtre s'ouvre depuis un parc éteint : elle suit le même
+     choix (fp_nuit, par appareil — même origine, même localStorage), sinon
+     elle éblouit. Le multicolore y reprend l'arc-en-ciel ÉCLAIRCI de
+     nuit-retouches.css, en \`background-image\` : le raccourci \`background\`
+     remettrait \`background-clip\` à border-box, et le message deviendrait une
+     barre de couleurs sans un mot lisible. */
+  html[data-nuit] body { background: hsl(256 30% 8%); color: hsl(256 13% 84%); }
+  html[data-nuit] .fenetre { background: hsl(256 30% 12%); border-color: hsl(256 26% 40%); }
+  html[data-nuit] .bandeau { background: hsl(256 30% 16%); border-color: hsl(256 26% 40%); color: hsl(256 13% 90%); }
+  html[data-nuit] .bandeau .salon { color: hsl(325 68% 72%); }
+  html[data-nuit] .sous { background: hsl(256 30% 14%); color: hsl(256 13% 72%); border-color: hsl(256 26% 30%); }
+  html[data-nuit] .corps { background: hsl(256 30% 10%); }
+  html[data-nuit] .ligne:nth-child(even) { background: hsl(256 30% 13%); }
+  html[data-nuit] .h { color: hsl(256 13% 62%); }
+  html[data-nuit] .cri { color: hsl(0 85% 68%); }
+  html[data-nuit] .anim { color: hsl(210 80% 74%); }
+  html[data-nuit] .systeme, html[data-nuit] .vide { color: hsl(256 13% 70%); }
+  html[data-nuit] .mc .arc {
+    background-image: linear-gradient(90deg, #FF8A3D, #FFD23F, #5BEB7A, #6FD6E8, #9D9DFF, #C98BFF, #FF9EE8);
+  }
 </style>
+<script>
+  (function () {
+    var v; try { v = localStorage.getItem('fp_nuit'); } catch (e) { v = null; }
+    var auto = v === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+    if (v === '1' || auto) document.documentElement.setAttribute('data-nuit', '1');
+  })();
+</script>
 </head>
 <body>
 <div class="fenetre">

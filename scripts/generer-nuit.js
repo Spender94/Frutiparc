@@ -914,12 +914,32 @@ function porteUnSprite(enfants) {
   return image;
 }
 
+/*
+ * LE RACCOURCI `background` REMET TOUT À ZÉRO — Y COMPRIS LE DÉCOUPAGE.
+ *
+ * Le feutre multicolore s'écrit `background: linear-gradient(…)` suivi de
+ * `background-clip: text` : le dégradé n'est peint QUE dans les lettres, et
+ * le texte lui-même est transparent. La surcharge, elle, ne recopie que les
+ * déclarations colorées — donc le `background:` seul. Or ce raccourci remet
+ * à leur valeur initiale toutes les sous-propriétés qu'il ne nomme pas, et
+ * `background-clip` revient à `border-box` : le dégradé repeint toute la
+ * boîte, les lettres restent transparentes, et chaque message multicolore
+ * devient une barre d'arc-en-ciel sans un mot dedans (capture de l'admin).
+ *
+ * Quand une règle porte à la fois un `background:` coloré et un
+ * `background-clip`, on recopie donc le découpage APRÈS le raccourci.
+ */
+const RE_RACCOURCI_FOND = /^\s*background\s*:/i;
+const RE_DECOUPAGE = /^\s*(-webkit-)?background-clip\s*:/i;
+
 function rendre(noeuds, indent, tout, tete) {
   const out = [];
+  let raccourci = false;
   for (const nd of noeuds) {
     if (nd.type === 'decl') {
       const d = teindreDecl(nd.texte, { tout, tete });
       if (d) out.push(indent + d + ';');
+      if (d && RE_RACCOURCI_FOND.test(d)) raccourci = true;
       continue;
     }
     if (aIgnorer(nd.tete)) continue;
@@ -929,6 +949,11 @@ function rendre(noeuds, indent, tout, tete) {
     if (sprite) dedans.push(indent + '  filter: var(--nuit-chassis);');
     if (!dedans.length) continue;
     out.push(indent + nd.tete + ' {', ...dedans, indent + '}');
+  }
+  if (raccourci && !tout) {
+    for (const nd of noeuds) {
+      if (nd.type === 'decl' && RE_DECOUPAGE.test(nd.texte)) out.push(indent + nd.texte.trim() + ';');
+    }
   }
   return out;
 }

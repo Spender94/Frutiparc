@@ -132,10 +132,12 @@ const engendre = (css) => css.slice(0, Math.min(
 test('la feuille de nuit ne fait que surcharger : elle ne garde que des couleurs', () => {
   // Une déclaration sans couleur n'a rien à faire dans une surcharge : elle
   // rejouerait une mise en page déjà posée par le thème de jour, et le jour où
-  // les deux divergeraient, la nuit gagnerait à tort. Deux exceptions
-  // assumées : le fanage des sprites, et les corps de @keyframes — une règle
+  // les deux divergeraient, la nuit gagnerait à tort. Trois exceptions
+  // assumées : le fanage des sprites, les corps de @keyframes — une règle
   // d'animation se REMPLACE en entier, une copie partielle effacerait ses
-  // propriétés non colorées.
+  // propriétés non colorées —, et le `background-clip` recopié derrière un
+  // raccourci `background:` coloré, qui le remettrait sinon à border-box (le
+  // feutre multicolore devenait des barres de dégradé sans texte).
   const corps = engendre(NUIT)
     .replace(/@(?:-\w+-)?keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '')
     .replace(/\s+/g, ' ');
@@ -143,6 +145,7 @@ test('la feuille de nuit ne fait que surcharger : elle ne garde que des couleurs
   for (const m of corps.matchAll(/([-a-zA-Z]+)\s*:\s*([^;{}]*?)\s*(?=[;}])/g)) {
     // Trois raisons d'être là, et pas une de plus : une couleur convertie, le
     // filtre du châssis, ou l'URL d'un dessin de nuit.
+    if (/^(-webkit-)?background-clip$/.test(m[1])) continue;
     if (!/hsl\(|var\(--nuit-|-nuit\.[a-z]/.test(m[2])) fuites.push(m[1] + ': ' + m[2]);
   }
   assert.deepStrictEqual(fuites, [], 'des déclarations sans couleur ont fui dans la surcharge');

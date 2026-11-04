@@ -231,10 +231,20 @@ img[src$="/fb/signe_mystere.png"] { filter: invert(1) opacity(.5); }
    regarde qu'une couleur à la fois. On le repose donc entier — ÉCLAIRCI :
    sur le fond nuit, le bleu (#6666CC) et le violet (#6E3C8D) d'origine
    s'éteignaient, et deux mots sur sept d'un message multicolore devenaient
-   illisibles. Les sept teintes gardent leur ordre et leur caractère. */
+   illisibles. Les sept teintes gardent leur ordre et leur caractère.
+
+   `background-image`, JAMAIS le raccourci `background` : celui-ci remet
+   `background-clip` à `border-box`, le dégradé repeint toute la boîte au lieu
+   des seules lettres (transparentes), et chaque message multicolore devenait
+   une barre d'arc-en-ciel sans un mot lisible. Le découpage est reposé
+   juste après, pour qu'aucune règle venue d'ailleurs ne le défasse. */
 .pen-swatch.mc,
 .mc-text {
-  background: linear-gradient(90deg, #FF8A3D, #FFD23F, #5BEB7A, #6FD6E8, #9D9DFF, #C98BFF, #FF9EE8);
+  background-image: linear-gradient(90deg, #FF8A3D, #FFD23F, #5BEB7A, #6FD6E8, #9D9DFF, #C98BFF, #FF9EE8);
+}
+.mc-text {
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
 }
 body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc,
 body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc:hover {
