@@ -1345,6 +1345,20 @@ async function initSchema() {
   }
 }
 
+// Les comptes dont la série de connexion quotidienne a atteint `n` jours, et
+// qui n'ont pas encore l'article `shopId` (le cadeau des 100 jours, cf.
+// server.js offrirCadeauSerie) : de quoi rattraper ceux que le premier passage
+// avait manqués.
+async function seriesSansArticle(n, shopId) {
+  const { rows } = await pool.query(
+    `SELECT u.id, u.username, u.fbouille, u.daily_streak FROM users u
+      WHERE u.daily_streak >= $1
+        AND NOT EXISTS (SELECT 1 FROM user_accessories a WHERE a.user_id = u.id AND a.shop_id = $2)
+      ORDER BY u.daily_streak DESC`,
+    [Math.trunc(Number(n) || 0), Math.trunc(Number(shopId) || 0)]);
+  return rows;
+}
+
 async function findUserByUsername(username) {
   const { rows } = await pool.query(
     'SELECT * FROM users WHERE username = $1',
@@ -5849,6 +5863,7 @@ module.exports = {
   getTournamentsByStatus,
   rankingHasActiveTournament,
   findUserByUsername,
+  seriesSansArticle,
   searchUsernames,
   findUserByEmail,
   createPasswordReset,

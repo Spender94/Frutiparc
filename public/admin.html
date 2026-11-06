@@ -932,6 +932,8 @@
          revendre ni les jeter. Le bouton recense d'abord, puis nettoie. -->
     <button class="btn btn-sm" onclick="purgerOrphelins()"
       title="Retirer des inventaires les accessoires dont l'article n'existe plus">Réparer les orphelins</button>
+    <button class="btn btn-sm" onclick="rattraperCadeauSerie()"
+      title="Le cadeau des 100 jours de connexion, à tous ceux qui y ont droit sans l'avoir reçu (fait aussi à chaque démarrage du serveur)">🎁 Rattraper le cadeau des 100 jours</button>
     <span id="shop-count"></span>
   </div>
   <table>
@@ -1731,6 +1733,22 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
   </div>
 </div>
 
+<!-- DONNER UN ARTICLE : le catalogue, filtrable, avec l'aperçu sur la bouille
+     du joueur. Un clic sur « Donner » suffit. -->
+<div class="modal-bg" id="modal-donner">
+  <div class="modal" style="max-width:720px;width:94vw">
+    <h3>Donner un article à&nbsp;<span id="donner-cible"></span></h3>
+    <label><span>Chercher :</span> <input id="donner-filtre" placeholder="nom, numéro, rubrique…" oninput="rendreDonner()"></label>
+    <label style="align-items:flex-start"><span>Message :</span>
+      <input id="donner-message" placeholder="vide = « Un cadeau pour toi ! L'accessoire … t'attend dans ton inventaire. »"></label>
+    <div style="font-size:12px;margin:2px 0 0 4px"><label style="display:inline-flex;align-items:center;gap:6px;font-weight:normal;cursor:pointer"><input type="checkbox" id="donner-silencieux" style="width:auto;margin:0"> ne rien écrire dans son historique</label></div>
+    <div id="donner-liste" style="max-height:55vh;overflow:auto;border:1px solid #cfe0b3;border-radius:6px;margin-top:8px"></div>
+    <div class="actions">
+      <button class="btn" onclick="closeModal('modal-donner')">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-add-item">
   <div class="modal">
     <h3>Ajouter un item</h3>
@@ -1789,6 +1807,10 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 let currentDetailUser = '';
+// La bouille et les accessoires du joueur affiché : le sélecteur « Donner un
+// article » s'en sert pour l'aperçu (sa tête + l'accessoire) et le « déjà ».
+let currentDetailBouille = '';
+let currentDetailAccs = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
   $('#adminKey').value = localStorage.getItem('adminKey') || '';
@@ -5061,8 +5083,10 @@ async function loadDetail() {
     }
 
     // Accessories
-    html += `<h4>Accessoires <button class="btn btn-sm" onclick="openAddAcc()" style="margin-left:auto">+ Ajouter</button></h4>`;
+    html += `<h4>Accessoires <span style="margin-left:auto;display:flex;gap:6px"><button class="btn-success btn-sm" onclick="ouvrirDonner(currentDetailUser)" title="Choisir un article dans le catalogue (aperçu sur sa bouille) et le lui donner, avec un message dans son historique.">🎁 Donner un article</button><button class="btn btn-sm" onclick="openAddAcc()" title="Saisie à la main : identifiant, valeur, suffixe… pour les cas que le catalogue ne couvre pas.">+ Avancé</button></span></h4>`;
     const accs = d.accessories || [];
+    currentDetailBouille = user.fbouille || '';
+    currentDetailAccs = accs;
     if (accs.length) {
       html += '<table style="max-width:700px;margin-bottom:24px"><thead><tr><th>ID</th><th>Nom</th><th>Valeur</th><th>Shop</th><th>Actions</th></tr></thead><tbody>';
       accs.forEach(a => {
@@ -5136,6 +5160,109 @@ async function loadDetail() {
 }
 
 function openAddAcc() { $('#modal-add-acc').classList.add('open'); }
+
+/*
+ * DONNER UN ARTICLE — en deux clics au lieu d'un formulaire à remplir.
+ *
+ * L'ancien geste demandait l'identifiant, le numéro, le nom et la valeur
+ * (« Avancé » le garde pour les cas à part). Ici on choisit dans le catalogue,
+ * avec l'aperçu de l'accessoire SUR la bouille du joueur, et le serveur fait le
+ * reste (POST /api/admin/donner : valeur complétée, mémoire du joueur connecté,
+ * message dans son historique). Un article déjà possédé est signalé ; le
+ * redonner demande une confirmation.
+ *
+ * Ne s'y trouvent que les articles qui déposent un accessoire (la règle de
+ * `articleDonnable` côté serveur) : options, feutres, pass et incarnations ont
+ * leurs propres boutons sur la fiche.
+ */
+let donnerCible = '';
+function articleDonnableAdmin(p) {
+  return !!p && !p.gameFeature && !p.feutrePen && !p.fdPassGame && !p.prunelle && !p.maquillage && !p.incarnation
+    && !!(p.wallpaperId || (p.suffix9 && p.suffix9 !== '000000000'));
+}
+async function ouvrirDonner(pseudo) {
+  if (!pseudo) return;
+  donnerCible = pseudo;
+  $('#donner-cible').textContent = pseudo;
+  $('#donner-filtre').value = '';
+  $('#donner-message').value = '';
+  $('#donner-silencieux').checked = false;
+  $('#modal-donner').classList.add('open');
+  if (!shopPacks.length) {
+    try { shopPacks = await (await fetch('/api/admin/shop', { headers: hdr() })).json(); } catch (e) { shopPacks = []; }
+  }
+  rendreDonner();
+  $('#donner-filtre').focus();
+}
+function rendreDonner() {
+  const q = $('#donner-filtre').value.trim().toLowerCase();
+  const possedes = new Set((currentDetailUser === donnerCible ? currentDetailAccs : [])
+    .map((a) => Number(a.shopId)).filter(Boolean));
+  const base = (currentDetailUser === donnerCible && currentDetailBouille.length >= 15)
+    ? currentDetailBouille.substring(0, 15) : '000300080002070';
+  const liste = shopPacks.filter(articleDonnableAdmin).filter((p) => !q
+    || String(p.id).includes(q) || String(p.name || '').toLowerCase().includes(q)
+    || String(p.category || '').toLowerCase().includes(q));
+  const vus = liste.slice(0, 80);
+  const box = $('#donner-liste');
+  box.innerHTML = vus.length ? vus.map((p) => {
+    const apercu = p.wallpaperId
+      ? '<span style="font-size:10px;color:#888">fond<br>d’écran</span>'
+      : FPBouilleVignette.html(base + p.suffix9, { marge: FPBouilleVignette.MARGE_ECRAN });
+    const deja = possedes.has(Number(p.id));
+    return `<div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-bottom:1px solid #eef5e2;${p.disabled ? 'opacity:.6' : ''}">
+      <span style="display:flex;align-items:center;justify-content:center;flex:0 0 52px;width:52px;height:52px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden;text-align:center">${apercu}</span>
+      <span style="flex:1;min-width:0"><b>${esc(p.name)}</b> <span style="color:#888">#${p.id}</span>${badgeAccorde(p)}
+        <br><span style="font-size:11px;color:#888">${esc(p.category || '')}${p.price ? ' · ' + p.price + ' K' : ''}${p.disabled ? ' · désactivé' : ''}</span></span>
+      ${deja ? '<span class="badge badge-mod" title="Le joueur l’a déjà">déjà</span>' : ''}
+      <button class="btn-success btn-sm" onclick="donnerArticleA(${p.id})">Donner</button>
+    </div>`;
+  }).join('') + (liste.length > vus.length ? `<p class="empty">… et ${liste.length - vus.length} autres : affinez la recherche.</p>` : '')
+    : '<p class="empty">Aucun article ne correspond.</p>';
+  FPBouilleVignette.brancher(box);
+}
+// Le don lui-même — depuis le sélecteur, ou depuis « Donner à… » de l'onglet
+// Boutique. `deja` : on demande avant de redonner.
+async function envoyerDon(pseudo, shopId, opts) {
+  opts = opts || {};
+  const corps = { username: pseudo, shopId, message: opts.message || '', silencieux: !!opts.silencieux, force: !!opts.force };
+  const r = await fetch('/api/admin/donner', { method: 'POST', headers: hdr(), body: JSON.stringify(corps) });
+  const j = await r.json().catch(() => ({}));
+  if (j.ok) return j;
+  if (j.code === 'deja' && !opts.force && confirm((j.error || 'Déjà possédé.') + '\nLe donner quand même (un second exemplaire) ?')) {
+    return envoyerDon(pseudo, shopId, Object.assign({}, opts, { force: true }));
+  }
+  if (j.code !== 'deja') toast('Erreur : ' + (j.error || r.status));
+  return null;
+}
+async function donnerArticleA(shopId) {
+  const p = shopPacks.find((x) => x.id === shopId);
+  const j = await envoyerDon(donnerCible, shopId, { message: $('#donner-message').value, silencieux: $('#donner-silencieux').checked });
+  if (!j) return;
+  toast(`« ${p ? p.name : '#' + shopId} » donné à ${donnerCible}${j.enLigne ? '' : ' (hors ligne : il le verra à son retour)'}`);
+  if (currentDetailUser === donnerCible) {
+    currentDetailAccs = currentDetailAccs.concat([{ shopId }]);
+    rendreDonner();
+    loadDetail();
+  }
+}
+async function donnerDepuisBoutique(shopId, nom) {
+  const pseudo = (prompt('Donner « ' + nom + ' » à quel joueur ? (pseudo)') || '').trim();
+  if (!pseudo) return;
+  const j = await envoyerDon(pseudo, shopId, {});
+  if (j) toast(`« ${nom} » donné à ${pseudo}${j.enLigne ? '' : ' (hors ligne : il le verra à son retour)'}`);
+}
+// Le cadeau des 100 jours à tous ceux qui y ont droit et ne l'ont pas (le
+// serveur le fait aussi à chaque démarrage).
+async function rattraperCadeauSerie() {
+  if (!confirm('Donner le cadeau des 100 jours à tous les joueurs dont la série a atteint 100 jours et qui ne l’ont pas encore ?')) return;
+  const j = await (await fetch('/api/admin/cadeau-serie/rattraper', { method: 'POST', headers: hdr() })).json().catch(() => ({}));
+  if (!j.ok) { toast('Erreur : ' + (j.error || '?')); return; }
+  const noms = (j.donnes || []).map((x) => x.username + ' (' + x.serie + ' j)');
+  alert(noms.length ? 'Cadeau donné à ' + noms.length + ' joueur(s) :\n' + noms.join(', ')
+    + ((j.echecs || []).length ? '\n\nÉchecs : ' + j.echecs.map((x) => x.username + ' (' + x.code + ')').join(', ') : '')
+    : 'Personne à rattraper : tous ceux qui ont 100 jours ou plus l’ont déjà.');
+}
 function openAddItem() { $('#modal-add-item').classList.add('open'); }
 let _gameItemListLoaded = false;
 async function openAddGameItem() {
@@ -6488,6 +6615,7 @@ async function loadShop() {
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.description||'')}">${esc(p.description || '-')}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="editPack(${p.id})">Modifier</button>
+        ${articleDonnableAdmin(p) ? `<button class="btn-success btn-sm" onclick="donnerDepuisBoutique(${p.id}, this.dataset.nom)" data-nom="${esc(p.name)}" title="Le donner à un joueur, par son pseudo (un message l'attend dans son historique).">🎁 Donner à…</button>` : ''}
         ${accordeUnAccessoire(p) ? `
         <button class="btn-success btn-sm" onclick="pushPackAll(${p.id},'${esc(p.name)}')">Pousser à tous</button>
         <button class="btn-danger btn-sm" onclick="retirerPackTous(${p.id},'${esc(p.name)}')" title="Reprend cet accessoire à TOUS les joueurs, et le retire de la tête de ceux qui le portent. « Désactiver » ne fait que le retirer de la vente.">Retirer à tous</button>` : ''}

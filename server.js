@@ -4442,7 +4442,6 @@ function awardDailyLoginKikooz(username) {
     flNew: true,
   });
   console.log(`[KIKOOZ] ${username}: +${reward} kikooz (connexion quotidienne, série ${streak})`);
-  if (streak >= SERIE_CADEAU_JOURS) offrirCadeauSerie(username, streak);
   return reward;
 }
 
@@ -4453,8 +4452,22 @@ function awardDailyLoginKikooz(username) {
 // possession fait foi, une série cassée puis refaite ne le redonne pas. Comme
 // le reste de la connexion quotidienne, le message part avec la boucle de
 // flush de l'ident (addUserHistoryEntry, pas de notification ici).
+//
+// À CHAQUE CONNEXION, PAS SEULEMENT À LA PREMIÈRE DU JOUR. Le cadeau ne partait
+// qu'avec la récompense quotidienne : un joueur déjà passé AVANT le déploiement
+// (sa journée déjà comptée, `daily_kikooz_day` à aujourd'hui) n'avait rien,
+// et ceux dont l'admin répare la série (le jour est calé sur aujourd'hui) non
+// plus. L'ident vérifie donc la série tous les coups (verifierCadeauSerie) ;
+// le rattrapage (rattraperCadeauSerie) sert ceux qui ne se reconnectent pas.
 const SERIE_CADEAU_JOURS = 100;
 const SERIE_CADEAU_PACK_ID = 630100;
+const messageCadeauSerie = (streak, nom) =>
+  `${streak} jours de connexion d'affilée ! Pour te remercier de ta fidélité, l'accessoire ${nom} t'attend dans ton inventaire.`;
+function verifierCadeauSerie(username) {
+  const user = users[username];
+  const streak = user ? Number(user.dailyStreak) || 0 : 0;
+  return streak >= SERIE_CADEAU_JOURS ? offrirCadeauSerie(username, streak) : false;
+}
 function offrirCadeauSerie(username, streak) {
   const user = users[username];
   const pack = getShopPack(SERIE_CADEAU_PACK_ID);
@@ -4476,11 +4489,30 @@ function offrirCadeauSerie(username, streak) {
   }
   addUserHistoryEntry(user, {
     type: USER_LOG_TYPE.PICTO,
-    content: `${streak} jours de connexion d'affilée ! Pour te remercier de ta fidélité, l'accessoire ${pack.name} t'attend dans ton inventaire.`,
+    content: messageCadeauSerie(streak, pack.name),
     flNew: true,
   });
   console.log(`[SERIE] ${username} reçoit l'accessoire #${pack.id} (${pack.name}) — série de ${streak} jours`);
   return true;
+}
+
+// LE RATTRAPAGE : tous les comptes à 100 jours ou plus qui n'ont pas le cadeau,
+// connectés ou non (ceux-là le trouvent, message compris, à leur retour). Passé
+// au démarrage, et à la demande depuis l'admin (onglet Boutique).
+async function rattraperCadeauSerie() {
+  const bilan = { donnes: [], echecs: [] };
+  const pack = getShopPack(SERIE_CADEAU_PACK_ID);
+  if (!process.env.DATABASE_URL || !pack || pack.disabled) return bilan;
+  for (const r of await db.seriesSansArticle(SERIE_CADEAU_JOURS, pack.id)) {
+    const d = await donnerArticle(r.username, pack, { row: r, message: messageCadeauSerie(Number(r.daily_streak) || 0, pack.name) })
+      .catch((e) => ({ ok: false, code: e.message }));
+    (d.ok ? bilan.donnes : bilan.echecs).push({ username: r.username, serie: Number(r.daily_streak) || 0, code: d.code });
+  }
+  if (bilan.donnes.length || bilan.echecs.length) {
+    console.log(`[SERIE] rattrapage du cadeau : ${bilan.donnes.length} donné(s)`
+      + (bilan.echecs.length ? `, ${bilan.echecs.length} échec(s) : ` + bilan.echecs.map((x) => `${x.username} (${x.code})`).join(', ') : ''));
+  }
+  return bilan;
 }
 
 // ── FD : disquettes de partie « challenge » (limite quotidienne + FD payants) ──
@@ -16052,6 +16084,12 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
       fields.daily_streak = v;
       fields.daily_kikooz_day = parisDayKey();
       if (users[u]) { users[u].dailyStreak = v; users[u].dailyKikoozDay = fields.daily_kikooz_day; }
+      // Une série réparée à 100 ou plus ouvre droit au cadeau, tout de suite
+      // (hors ligne : le rattrapage, ou sa prochaine connexion, s'en charge).
+      if (users[u] && v >= SERIE_CADEAU_JOURS && verifierCadeauSerie(u)) {
+        const dernier = users[u].userLog && users[u].userLog[0];
+        if (dernier) notifyNewUserLog(u, dernier);
+      }
     }
     if (body.fruti_sign !== undefined) {
       const v = Number(body.fruti_sign);
@@ -16573,6 +16611,61 @@ function base15Accessoire(u, cle, fbouilleBase) {
 }
 
 /*
+ * DONNER UN ARTICLE À UN JOUEUR — connecté ou non, en une ligne.
+ *
+ * Le chemin commun du don depuis l'admin (fiche joueur, « Donner à… » de
+ * l'onglet Boutique) et du rattrapage du cadeau des 100 jours : la valeur est
+ * complétée comme partout (valeurAccessoireComplete : la bouille du joueur +
+ * le suffixe, ou le fond d'écran), la ligne part en base, la mémoire d'un
+ * joueur connecté suit, et un message l'attend dans son historique — tout de
+ * suite s'il est là, à sa prochaine connexion sinon.
+ *
+ * Un article déjà possédé n'est pas redonné (`code: 'deja'`), sauf `force`.
+ * Ne passent ici que les articles qui DÉPOSENT un accessoire : une option de
+ * jeu, un feutre, un pass ou une incarnation ont leurs propres chemins.
+ */
+function articleDonnable(pack) {
+  return !!pack && !pack.gameFeature && !pack.feutrePen && !pack.fdPassGame && !pack.prunelle
+    && !pack.maquillage && !pack.incarnation
+    && !!(pack.wallpaperId || (pack.suffix9 && pack.suffix9 !== '000000000'));
+}
+async function donnerArticle(nom, pack, { row = null, message = '', force = false } = {}) {
+  if (!articleDonnable(pack)) return { ok: false, code: 'article' };
+  const connu = resolveKnownUsername(nom) || nom;
+  const cle = String((row && row.username) || nom || '').toLowerCase();
+  if (!row && process.env.DATABASE_URL) {
+    row = (await db.findUserByUsername(nom)) || (cle !== nom ? await db.findUserByUsername(cle) : null);
+  }
+  const u = users[connu] || users[cle] || (row ? users[resolveKnownUsername(row.username)] : null) || null;
+  if (!u && !row) return { ok: false, code: 'inconnu' };
+  const userId = (u && u._dbId) || (row && row.id) || null;
+  if (!force) {
+    const deja = u ? userOwnsShopPack(u, pack.id)
+      : (userId ? (await db.getUserAccessories(userId)).some((a) => a && Number(a.shopId) === pack.id) : false);
+    if (deja) return { ok: false, code: 'deja' };
+  }
+  const wp = pack.wallpaperId ? WALLPAPER_BY_ID[pack.wallpaperId] : null;
+  const acc = {
+    id: wp ? 'wp_' + pack.wallpaperId : 'shop_' + pack.id,
+    shopId: pack.id, n: pack.name,
+    v: valeurAccessoireComplete('', pack, base15Accessoire(u, cle, row && row.fbouille)),
+    q: '1', p: '0',
+    at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+  };
+  if (userId && process.env.DATABASE_URL) {
+    await db.addAccessory(userId, acc);
+    if (u) u.customAccessories = await db.getUserAccessories(userId);
+  } else {
+    if (!Array.isArray(u.customAccessories)) u.customAccessories = [];
+    u.customAccessories.push(acc);
+  }
+  const destinataire = u ? (resolveKnownUsername(connu) || connu) : row.username;
+  if (message) addAndNotifyUserLog(destinataire, { type: USER_LOG_TYPE.PICTO, content: message, flNew: true });
+  console.log(`[DON] « ${pack.name} » (#${pack.id}) donné à ${(row && row.username) || connu}${u ? '' : ' (hors ligne)'}`);
+  return { ok: true, accessoire: acc, enLigne: !!u };
+}
+
+/*
  * LES DONS D'AVANT LE CORRECTIF — on les répare au lieu de les redonner.
  *
  * Jusqu'au correctif du don (cf. la route ci-dessous), la fiche joueur rangeait
@@ -16613,6 +16706,38 @@ async function reparerAccessoiresIncomplets() {
   }
   return bilan;
 }
+
+// Donner un article à un joueur, par son pseudo et le numéro de l'article —
+// le geste de « Donner à… » (onglet Boutique) et du sélecteur de la fiche
+// joueur. `message` vide : le message par défaut ; `silencieux` : aucun.
+app.post('/api/admin/donner', adminAuth, async (req, res) => {
+  const b = req.body || {};
+  const pack = getShopPack(b.shopId);
+  if (!pack) return res.status(404).json({ ok: false, code: 'article', error: 'Article inconnu.' });
+  if (!articleDonnable(pack)) {
+    return res.status(400).json({ ok: false, code: 'article',
+      error: 'Cet article ne dépose pas d’accessoire (option, feutre, pass, incarnation) : il se donne depuis la fiche joueur.' });
+  }
+  const pseudo = String(b.username || '').trim();
+  if (!pseudo) return res.status(400).json({ ok: false, code: 'inconnu', error: 'Pseudo requis.' });
+  const message = b.silencieux ? ''
+    : (String(b.message || '').trim().slice(0, 300) || `Un cadeau pour toi ! L'accessoire ${pack.name} t'attend dans ton inventaire.`);
+  try {
+    const r = await donnerArticle(pseudo, pack, { message, force: !!b.force });
+    if (!r.ok) {
+      const error = r.code === 'deja' ? `${pseudo} a déjà « ${pack.name} ».`
+        : r.code === 'inconnu' ? `Aucun joueur « ${pseudo} ».` : 'Don impossible.';
+      return res.status(r.code === 'inconnu' ? 404 : 409).json({ ok: false, code: r.code, error });
+    }
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Le cadeau des 100 jours, à tous ceux qui y ont droit et ne l'ont pas.
+app.post('/api/admin/cadeau-serie/rattraper', adminAuth, async (req, res) => {
+  try { res.json(Object.assign({ ok: true }, await rattraperCadeauSerie())); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 
 app.post('/api/admin/accessoires/reparer', adminAuth, async (req, res) => {
   try { res.json(Object.assign({ ok: true }, await reparerAccessoiresIncomplets())); }
@@ -31736,6 +31861,9 @@ async function boot() {
           }
         }
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
+      // Le cadeau des 100 jours à ceux qui y ont droit sans l'avoir reçu
+      // (cf. rattraperCadeauSerie) — une fois le catalogue chargé.
+      rattraperCadeauSerie().catch((e) => console.error('[SERIE] rattrapage :', e.message));
       try {
         // Notifications push : la paire VAPID vit en base (la changer
         // invaliderait tous les abonnements), l'environnement prime.
@@ -36432,6 +36560,9 @@ async function handleCBeeMessage(socket, rawXml) {
       // bonus XP, l'entrée userLog qu'elle ajoute est délivrée par la boucle de
       // flush ci-dessous (exactement une fois).
       awardDailyLoginKikooz(effectiveLogin);
+      // Le cadeau des 100 jours — à chaque connexion, pas seulement à la
+      // première du jour (cf. verifierCadeauSerie).
+      verifierCadeauSerie(effectiveLogin);
       // Semaine du signe, jour de l'ascendant : le Frutisigne offre des parties
       // du Challenge, et le dit une fois par jour (cf. frutisigneAnnoncer).
       frutisigneAnnoncer(effectiveLogin);

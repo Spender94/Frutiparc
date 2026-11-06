@@ -58,10 +58,17 @@ async function demarrer() {
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  proc.stdout.on('data', () => {});
+  // Le HTTP répond AVANT que la base soit branchée (boot() est asynchrone) :
+  // une connexion tentée dans l'intervalle est refusée. On attend donc la
+  // ligne qui dit la base prête, en plus du HTTP.
+  let journal = '';
+  proc.stdout.on('data', (d) => { journal += d.toString('utf8'); });
   proc.stderr.on('data', () => {});
-  for (let i = 0; i < 160; i++) {
-    try { if ((await fetch(BASE + '/api/loadFrutiSlots?game=snake3')).ok) return; } catch {}
+  for (let i = 0; i < 240; i++) {
+    try {
+      if (journal.includes('[DB] Connected and schema ready')
+        && (await fetch(BASE + '/api/loadFrutiSlots?game=snake3')).ok) { await wait(500); return; }
+    } catch {}
     await wait(250);
   }
   throw new Error('serveur indisponible');
@@ -115,7 +122,9 @@ const cadeaux = (pseudo) => sql(
 test('l’article est une récompense hors rayons, avec l’accessoire demandé', () => {
   assert.match(SERVEUR, /id: 630100,\s*\n\s*name: 'Cadeau des 100 jours',[\s\S]{0,300}?suffix9: '40f0t0j0o',\s*\n\s*recompense: true,/);
   assert.match(SERVEUR, /const SERIE_CADEAU_JOURS = 100;/);
-  assert.match(SERVEUR, /if \(streak >= SERIE_CADEAU_JOURS\) offrirCadeauSerie\(username, streak\);/);
+  // Vérifié à CHAQUE connexion (pas seulement à la première du jour).
+  assert.match(SERVEUR, /return streak >= SERIE_CADEAU_JOURS \? offrirCadeauSerie\(username, streak\) : false;/);
+  assert.match(SERVEUR, /awardDailyLoginKikooz\(effectiveLogin\);\n[^\n]*\n[^\n]*\n\s*verifierCadeauSerie\(effectiveLogin\);/);
 });
 
 test('la 100e connexion d’affilée offre l’accessoire, sur la bouille du joueur, une seule fois', async (t) => {
@@ -162,4 +171,100 @@ test('la 100e connexion d’affilée offre l’accessoire, sur la bouille du jou
   await connecter('fidele');
   assert.equal(Number((await sql(`SELECT daily_streak FROM users WHERE username = 'fidele'`))[0].daily_streak), 101);
   assert.equal((await cadeaux('fidele')).length, 1, 'un seul cadeau');
+});
+
+const ADMIN = { 'x-admin-key': 'cle-cadeau-serie', 'Content-Type': 'application/json' };
+const aujourdhui = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date());
+async function inscrireEnBase(pseudos) {
+  for (const p of pseudos) await post('/api/auth/register', { username: p, password: 'secret123' });
+  for (let i = 0; i < 80; i++) {
+    const n = (await sql(`SELECT COUNT(*)::int AS n FROM users WHERE username = ANY($1) AND fbouille IS NOT NULL`, [pseudos]))[0].n;
+    if (n === pseudos.length) break;
+    await wait(150);
+  }
+  await wait(300);
+}
+
+/*
+ * « Les users m'informent qu'ils n'ont pas reçu l'accessoire, alors qu'ils ont
+ * dépassé les 100 jours. » Le cadeau ne partait qu'avec la récompense du jour :
+ * qui s'était connecté AVANT le déploiement (sa journée déjà comptée) n'avait
+ * rien, et qui ne revenait pas non plus. Désormais : vérifié à chaque
+ * connexion, et rattrapé au démarrage pour tous les comptes concernés.
+ */
+test('déjà passé aujourd’hui, ou absent : le cadeau arrive quand même', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  await inscrireEnBase(['matinal', 'absent']);
+  await arreter();
+  // absent : 150 jours, parti depuis cinq jours — le démarrage le rattrape.
+  await sql(`UPDATE users SET daily_kikooz_day = '2026-01-01', daily_streak = 150 WHERE username = 'absent'`);
+  await sql(`UPDATE users SET daily_kikooz_day = $1, daily_streak = 5 WHERE username = 'matinal'`, [aujourdhui()]);
+  await demarrer();
+  let recu = [];
+  for (let i = 0; i < 40 && !recu.length; i++) { recu = await cadeaux('absent'); if (!recu.length) await wait(150); }
+  assert.equal(recu.length, 1, 'rattrapé au démarrage, hors ligne');
+  assert.equal(recu[0].value, String(recu[0].fbouille).substring(0, 15) + '40f0t0j0o');
+  const msg = await sql(`SELECT l.content, l.is_new FROM user_logs l JOIN users u ON u.id = l.user_id
+    WHERE u.username = 'absent' AND l.content LIKE '%Cadeau des 100 jours%'`);
+  assert.equal(msg.length, 1, 'le message l’attend');
+  assert.match(msg[0].content, /^150 jours de connexion d'affilée !/);
+
+  // matinal : sa journée est DÉJÀ comptée quand sa série passe à 100 — la
+  // connexion suivante, le même jour, donne le cadeau.
+  await sql(`UPDATE users SET daily_streak = 100 WHERE username = 'matinal'`);
+  await connecter('matinal');
+  assert.equal(Number((await sql(`SELECT daily_streak FROM users WHERE username = 'matinal'`))[0].daily_streak), 100,
+    'le même jour : la série ne bouge pas');
+  assert.equal((await cadeaux('matinal')).length, 1, 'mais le cadeau arrive');
+
+  // L'admin rattrape à la demande : plus personne à servir.
+  const r = await (await fetch(BASE + '/api/admin/cadeau-serie/rattraper', { method: 'POST', headers: ADMIN })).json();
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.donnes, []);
+});
+
+test('l’admin donne un article en un geste, connecté ou non', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  const donner = async (corps) => {
+    const r = await fetch(BASE + '/api/admin/donner', { method: 'POST', headers: ADMIN, body: JSON.stringify(corps) });
+    return Object.assign({ status: r.status }, await r.json());
+  };
+  const lignes = (pseudo, shopId) => sql(`SELECT a.value, a.name, u.fbouille FROM user_accessories a JOIN users u ON u.id = a.user_id
+    WHERE u.username = $1 AND a.shop_id = $2`, [pseudo, shopId]);
+  // Le Masque de ski (#103), à presque — hors ligne depuis le redémarrage.
+  const d1 = await donner({ username: 'presque', shopId: 103 });
+  assert.equal(d1.ok, true, JSON.stringify(d1));
+  const [l] = await lignes('presque', 103);
+  assert.equal(l.name, 'Masque de ski');
+  assert.equal(l.value, String(l.fbouille).substring(0, 15) + 'a0b0a080m', 'sa bouille + le suffixe de l’article');
+  const m = await sql(`SELECT l.content FROM user_logs l JOIN users u ON u.id = l.user_id
+    WHERE u.username = 'presque' AND l.content LIKE '%Masque de ski%'`);
+  assert.deepEqual(m.map((x) => x.content), ["Un cadeau pour toi ! L'accessoire Masque de ski t'attend dans ton inventaire."]);
+  // Déjà possédé : refusé, sauf à forcer.
+  const d2 = await donner({ username: 'presque', shopId: 103 });
+  assert.deepEqual([d2.status, d2.code], [409, 'deja']);
+  assert.equal((await donner({ username: 'presque', shopId: 103, force: true, silencieux: true })).ok, true);
+  assert.equal((await lignes('presque', 103)).length, 2);
+  // Un message choisi, à un joueur connecté (pseudo tapé en majuscules).
+  await connecter('fidele');
+  const d3 = await donner({ username: 'FIDELE', shopId: 101, message: 'Merci pour ton aide au salon !' });
+  assert.equal(d3.ok, true, JSON.stringify(d3));
+  assert.equal((await lignes('fidele', 101)).length, 1);
+  // Les refus.
+  const shop = await (await fetch(BASE + '/api/admin/shop', { headers: ADMIN })).json();
+  const feutre = shop.find((p) => p.feutrePen);
+  assert.ok(feutre, 'un feutre au catalogue');
+  assert.equal((await donner({ username: 'presque', shopId: feutre.id })).code, 'article', 'un feutre ne se donne pas par ici');
+  assert.equal((await donner({ username: 'personne-ici', shopId: 103 })).status, 404);
+  assert.ok([401, 403].includes((await fetch(BASE + '/api/admin/donner', { method: 'POST', headers: H, body: '{}' })).status));
+});
+
+test('l’admin : « Donner un article » depuis la fiche, « Donner à… » depuis la boutique', () => {
+  const ADMIN_HTML = fs.readFileSync(path.join(ROOT, 'public', 'admin.html'), 'utf8');
+  assert.match(ADMIN_HTML, /onclick="ouvrirDonner\(currentDetailUser\)"[^>]*>🎁 Donner un article<\/button>/);
+  assert.match(ADMIN_HTML, /<div class="modal-bg" id="modal-donner">/);
+  assert.match(ADMIN_HTML, /FPBouilleVignette\.html\(base \+ p\.suffix9/, 'l’aperçu sur la bouille du joueur');
+  assert.match(ADMIN_HTML, /onclick="donnerDepuisBoutique\(\$\{p\.id\}, this\.dataset\.nom\)"/);
+  assert.match(ADMIN_HTML, /onclick="rattraperCadeauSerie\(\)"/);
+  assert.match(ADMIN_HTML, /fetch\('\/api\/admin\/donner', \{ method: 'POST'/);
 });
