@@ -1,5 +1,5 @@
 /*
- * Le neuvième lot de retours MiniPixiz : les sorts et l'expérience.
+ * Le neuvième lot de retours MiniPixiz : les sorts, l'expérience, la poubelle.
  *
  *   · « Pixiz (Ornegon) : si un sort a été appris une deuxième fois, il
  *     apparaît également deux fois sur la page d'Ornegon. » — setNextLevelUp
@@ -16,6 +16,9 @@
  *     comme chez Ornegon, une bille par sort, même appris deux fois.
  *   · « Ajouter le % d'xp de la fée en forêt sous le portrait » — sous les
  *     cœurs de la colonne de la fée, « XP 42 % » et une jauge fine.
+ *   · « Un raccourci pour tout balarguer à la poubelle d'un seul coup » —
+ *     la poubelle touchée mains vides propose de jeter toute la rangée des
+ *     objets à ranger, et la toucher une seconde fois confirme.
  */
 'use strict';
 
@@ -371,4 +374,86 @@ test('dans Chromium : la forêt dit l\'XP, Ornegon une barre par sort, le sac te
     if (navigateur) await navigateur.close();
     proc.kill();
   }
+});
+
+// ── 5. Tout à la poubelle ───────────────────────────────────────────────────
+
+function sacARanger(aRanger) {
+  const fs = { $name: 'Noisette', $inv: [301, null], $pos: null, $mission: null };
+  const carte = { $bag: 1, $inv: [203, 300, 304, 351], $faerie: [fs], $current: 0 };
+  const inv = Object.create(I.Inventaire.prototype);
+  inv.plateforme = { carte };
+  inv.rendre = () => {};
+  inv.main = null;
+  inv.glisse = null;
+  inv.aConfirmer = null;
+  inv.poubelleAConfirmer = false;
+  inv.feeCourante = 0;
+  inv.extraList = null;
+  inv.changements = 0;
+  inv.surChangement = () => { inv.changements++; };
+  if (aRanger) inv.setExtraList(aRanger);
+  return { inv, carte, fs };
+}
+
+test('la poubelle mains vides propose de tout jeter, et la seconde touche confirme', () => {
+  const { inv, carte, fs } = sacARanger([301, 302, 305, 306, 310, 311]);
+  const sacAvant = carte.$inv.slice(), feeAvant = fs.$inv.slice();
+  inv.agir('poubelle');
+  assert.strictEqual(inv.titre, 'Tout jeter ?');
+  assert.strictEqual(inv.message, 'Touchez encore la poubelle pour jeter les 6 objets à ranger.');
+  assert.strictEqual(inv.resteARanger(), true, 'rien n\'est jeté sans le oui');
+  assert.strictEqual(inv.changements, 0);
+  inv.agir('poubelle');
+  assert.strictEqual(inv.resteARanger(), false, 'la rangée est vide : la sortie est rouverte');
+  assert.strictEqual(inv.message, '6 objets jetés. Tout est rangé. Vous pouvez repartir.');
+  assert.strictEqual(inv.changements, 1);
+  assert.deepStrictEqual(carte.$inv, sacAvant, 'le sac du joueur n\'est pas touché');
+  assert.deepStrictEqual(fs.$inv, feeAvant, 'ce que porte la fée non plus');
+  // Fermer, maintenant, est permis.
+  let ferme = 0;
+  inv.surFermeture = () => { ferme++; };
+  inv.setExtraList = function (l) { this.extraList = l; };
+  inv.fermer();
+  assert.strictEqual(ferme, 1);
+});
+
+test('un autre geste entre les deux touches annule le « Tout jeter ? »', () => {
+  const { inv } = sacARanger([301, 302]);
+  inv.agir('poubelle');
+  assert.strictEqual(inv.poubelleAConfirmer, true);
+  inv.agir('volet');
+  assert.strictEqual(inv.poubelleAConfirmer, false);
+  inv.agir('poubelle');
+  assert.strictEqual(inv.titre, 'Tout jeter ?', 'on redemande');
+  assert.strictEqual(inv.resteARanger(), true);
+  // Glisser un objet jusqu'à la poubelle n'en jette qu'un, et annule aussi.
+  inv.deposer({ sac: 'extra', case: 0 }, 'poubelle');
+  assert.strictEqual(inv.poubelleAConfirmer, false);
+  assert.deepStrictEqual(inv.extraList, [null, 302]);
+  inv.agir('poubelle');
+  assert.strictEqual(inv.message, 'Touchez encore la poubelle pour jeter l\'objet à ranger.');
+  inv.agir('poubelle');
+  assert.strictEqual(inv.message, '1 objet jeté. Tout est rangé. Vous pouvez repartir.');
+});
+
+test('l\'objet en main va seul à la poubelle, comme avant', () => {
+  const { inv } = sacARanger([301, 302, 305]);
+  inv.agir('poubelle');                       // la question est posée…
+  inv.main = { sac: 'extra', case: 1 };       // …puis on prend un objet
+  inv.agir('poubelle');
+  assert.deepStrictEqual(inv.extraList, [301, null, 305], 'un seul objet jeté');
+  assert.strictEqual(inv.poubelleAConfirmer, false);
+});
+
+test('sans rien à ranger, la poubelle mains vides ne vide rien', () => {
+  const { inv, carte, fs } = sacARanger(null);
+  const sacAvant = carte.$inv.slice(), feeAvant = fs.$inv.slice();
+  inv.agir('poubelle');
+  inv.agir('poubelle');
+  assert.strictEqual(inv.message, 'Prenez un objet, puis touchez la poubelle.');
+  assert.strictEqual(inv.poubelleAConfirmer, false);
+  assert.deepStrictEqual(carte.$inv, sacAvant);
+  assert.deepStrictEqual(fs.$inv, feeAvant);
+  assert.strictEqual(inv.changements, 0);
 });

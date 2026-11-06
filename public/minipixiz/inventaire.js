@@ -214,6 +214,7 @@ class Inventaire {
     this.feeCourante = 0;
     this.volet = 0;                   // faerieIntMode
     this.aConfirmer = null;           // la fée qu'on s'apprête à relâcher
+    this.poubelleAConfirmer = false;  // « Tout jeter ? » posé, en attente du oui
     this.message = '';
     this.titre = '';
     this.zones = [];                  // les rectangles cliquables, refaits à chaque rendu
@@ -815,6 +816,7 @@ class Inventaire {
    * (y = 158), et une flèche de chaque côté quand la file dépasse.
    */
   setExtraList(list) {
+    this.poubelleAConfirmer = false;
     this.extraList = (list && list.length) ? list.slice() : null;
     this.extraIndex = 0;
     this.extraMax = this.extraList ? Math.min(this.extraList.length, 4) : 0;
@@ -1229,6 +1231,7 @@ class Inventaire {
   // Là où le doigt lâche : une case (déplacer/échanger), la poubelle (jeter),
   // le portrait (donner à manger) — sinon l'objet reste où il était.
   deposer(g, quoi) {
+    this.poubelleAConfirmer = false;
     const de = { sac: g.sac, case: g.case };
     if (quoi && quoi.sac !== undefined) {
       if (quoi.sac === de.sac && quoi.case === de.case) { this.rendre(); return; }
@@ -1269,8 +1272,10 @@ class Inventaire {
   }
 
   agir(quoi) {
-    // Un geste, quel qu'il soit, annule la libération qu'on venait d'annoncer.
+    // Un geste, quel qu'il soit, annule la libération qu'on venait d'annoncer
+    // — et la poubelle qu'on s'apprêtait à vider.
     if (quoi !== 'liberer') this.aConfirmer = null;
+    if (quoi !== 'poubelle') this.poubelleAConfirmer = false;
     if (quoi === 'volet') {
       // Le bouton fait tourner les quatre volets, mais pas les mains pleines :
       // `if( me.hand == null )` dans initFaerieIntMode.
@@ -1511,13 +1516,51 @@ class Inventaire {
   // Inventory.trash : ce qu'on jette ne revient pas — les objets en attente de
   // rangement aussi peuvent y passer, c'est même souvent le prix de la place.
   jeter() {
-    if (!this.main) { this.dire('Prenez un objet, puis touchez la poubelle.'); return; }
+    if (!this.main) { this.toutJeter(); return; }
+    this.poubelleAConfirmer = false;
     const src = this.main;
     this.main = null;
     this.jeterDepuis(src);
   }
 
+  /*
+   * TOUT À LA POUBELLE. Le retour d'une longue course, le sac plein : dix,
+   * quinze objets à ranger, et la sortie condamnée tant qu'il en reste
+   * (Inventory.update). Les jeter un à un, c'était autant d'allers-retours
+   * jusqu'à la poubelle. Toucher la poubelle LES MAINS VIDES propose donc de
+   * jeter toute la rangée ; la toucher une seconde fois confirme — la même
+   * confirmation que pour rendre sa liberté à une fée (`attachChoice`, voir
+   * liberer) : la question dans le tableau de bois, le geste répété pour dire
+   * oui, n'importe quel autre geste pour dire non.
+   *
+   * Seule la rangée des objets à ranger y passe : ils ne sont encore à
+   * personne. Le sac du joueur (ses grimoires, ses bocaux — habités ou non)
+   * et ce que portent les fées ne se vident pas d'un geste ; pour eux, la
+   * poubelle reste un objet à la fois.
+   */
+  toutJeter() {
+    if (!this.resteARanger()) {
+      this.poubelleAConfirmer = false;
+      this.dire('Prenez un objet, puis touchez la poubelle.');
+      return;
+    }
+    const n = this.extraList.filter((v) => v !== null && v !== undefined).length;
+    const objets = n + (n > 1 ? ' objets' : ' objet');
+    if (!this.poubelleAConfirmer) {
+      this.poubelleAConfirmer = true;
+      this.dire('Touchez encore la poubelle pour jeter ' + (n > 1 ? 'les ' + objets : 'l\'objet')
+        + ' à ranger.', 'Tout jeter ?');
+      return;
+    }
+    this.poubelleAConfirmer = false;
+    for (let i = 0; i < this.extraList.length; i++) this.extraList[i] = null;
+    this.extraIndex = 0;
+    this.dire(objets + (n > 1 ? ' jetés' : ' jeté') + '. Tout est rangé. Vous pouvez repartir.');
+    this.changer();
+  }
+
   jeterDepuis(src) {
+    this.poubelleAConfirmer = false;
     const it = this.objetA(src.sac, src.case);
     // Un bocal HABITÉ ne part pas à la poubelle avec sa locataire dedans.
     if (src.sac === 'joueur' && it && it.famille === 'bocal') {
@@ -1666,6 +1709,7 @@ class Inventaire {
   }
 
   ouvrir() {
+    this.poubelleAConfirmer = false;
     this.main = null;
     this.mainPos = null;
     this.glisse = null;
