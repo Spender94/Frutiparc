@@ -2554,8 +2554,13 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     if (this.panne) return;
     if (!this.worker) {
       const me = this;
+      // Le Worker et ses importScripts ne sont servis qu'à l'ayant droit : le
+      // serveur reconnaît le joueur au sid que porte l'adresse (le Worker le
+      // repasse à bot.js et analyse.js, cf. analyse.worker.js).
+      const c = SW.Manager && SW.Manager.client;
+      const sid = (c && c.sid) || '';
       try {
-        this.worker = new Worker('analyse.worker.js');
+        this.worker = new Worker('analyse.worker.js' + (sid ? '?sid=' + encodeURIComponent(sid) : ''));
       } catch (e) { this.panne = true; return; }
       this.worker.onmessage = function (ev) {
         const m = ev.data || {};

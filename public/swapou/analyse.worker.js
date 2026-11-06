@@ -11,7 +11,10 @@
  * périmée, et c'est le client qui la jette (AnalyseChallenge, game.js).
  */
 'use strict';
-importScripts('engine.js', 'bot.js', 'analyse.js');
+// bot.js et analyse.js ne sont servis qu'au joueur qui a l'option (et à
+// l'admin) : le serveur le reconnaît au sid que game.js a mis dans l'adresse
+// de ce Worker, et qu'on repasse tel quel. engine.js, lui, est public.
+importScripts('engine.js', 'bot.js' + self.location.search, 'analyse.js' + self.location.search);
 
 self.onmessage = function (ev) {
   const m = ev.data || {};

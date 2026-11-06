@@ -32611,6 +32611,60 @@ app.use('/fb', express.static(path.join(__dirname, 'public', 'fb'), {
 const tailleReelle = (res, chemin, stat) => {
   if (stat && stat.size) res.setHeader('X-Taille-Reelle', String(stat.size));
 };
+
+/*
+ * LE BOT ET L'ANALYSEUR DE SWAPOU NE SONT PLUS PUBLICS.
+ *
+ * public/swapou/bot.js et analyse.js jouent le meilleur coup du mode
+ * Challenge ; analyse.worker.js les fait tourner à côté du jeu ; bot.run.js
+ * est le harnais qui les fait jouer des parties entières, et ia.html explique
+ * comment ils choisissent. Servis comme le reste de public/, n'importe qui
+ * pouvait les charger dans la console de sa partie et se faire souffler
+ * chaque coup — exactement ce que l'option `swapouAnalyse` réserve, à la main
+ * de l'admin, et que le serveur refuse de classer.
+ *
+ * Ils ne se servent donc plus qu'au joueur qui a l'option (session + option),
+ * et à l'admin (clé maître). Le jeu ne les charge que par le Worker de
+ * l'analyse, qui reçoit le sid dans son adresse (game.js) et le repasse à ses
+ * importScripts (analyse.worker.js). engine.js, le moteur du jeu lui-même,
+ * reste public. `private, no-store` : un cache partagé ne doit pas les
+ * resservir à quelqu'un d'autre.
+ *
+ * Le chemin est décodé et normalisé avant d'être comparé : express.static le
+ * fait aussi, et « /swapou/./bot.js » ou « /swapou/%62ot.js » aboutissaient au
+ * même fichier.
+ */
+const SWAPOU_FICHIERS_RESERVES = new Set([
+  'bot.js', 'analyse.js', 'analyse.worker.js', 'bot.run.js', 'ia.html',
+  'bot.test.js', 'analyse.test.js',
+]);
+function swapouFichierReserve(req) {
+  let p;
+  try { p = path.posix.normalize(decodeURIComponent(req.path || '')); } catch { return null; }
+  const m = /^\/swapou\/([^/]+)$/i.exec(p);
+  if (!m) return null;
+  const nom = m[1];
+  // Le disque peut ne pas distinguer la casse (un poste de développement) :
+  // on compare en minuscules, et l'on sert toujours le nom canonique.
+  for (const f of SWAPOU_FICHIERS_RESERVES) if (f === nom.toLowerCase()) return f;
+  return null;
+}
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const fichier = swapouFichierReserve(req);
+  if (!fichier) return next();
+  const admin = resolveAdmin(req);
+  const sid = getSidPorteParLaRequete(req, req.query || {});
+  const username = sid && sessions[sid] ? sessions[sid].user : '';
+  const ayantDroit = (admin && admin.full)
+    || (username && users[username] && userOwnsGameFeature(users[username], 'swapouAnalyse'));
+  res.set('Cache-Control', 'private, no-store');
+  if (!ayantDroit) {
+    console.log(`[SWAPOU] ${fichier} refusé (${username || 'sans session'})`);
+    return res.status(403).type('text/plain').send('Réservé aux joueurs qui ont l\'analyse de Swapou.');
+  }
+  res.sendFile(path.join(__dirname, 'public', 'swapou', fichier));
+});
 app.use(express.static(path.join(__dirname, 'public'), { setHeaders: tailleReelle }));
 // Fallback: swf.frutiparc.com URLs resolve to root paths (/wheel/wheel1.swf)
 // but files live under public/swf/. This second mount acts as fallback.

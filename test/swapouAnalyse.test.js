@@ -56,9 +56,10 @@ test('le client : Challenge seulement, dans un Worker, et rien de périmé', () 
   // Le mode : Challenge, pas Classique (qui partage le code).
   assert.match(JEU, /return SW\.Data\.gameMode === SW\.Data\.CHALLENGE\s*\n\s*&& !!\(c && c\.features && c\.features\.swapouAnalyse\)\s*\n\s*&& typeof Worker === 'function';/);
   // Le Worker, et son protocole numéroté.
-  assert.match(JEU, /this\.worker = new Worker\('analyse\.worker\.js'\);/);
+  // Le Worker porte le sid : bot.js et analyse.js ne sont servis qu'à l'ayant droit.
+  assert.match(JEU, /this\.worker = new Worker\('analyse\.worker\.js' \+ \(sid \? '\?sid=' \+ encodeURIComponent\(sid\) : ''\)\);/);
   assert.match(JEU, /if \(m\.id !== me\.serie\) return;\s*\/\/ périmée/);
-  assert.match(WORKER, /importScripts\('engine\.js', 'bot\.js', 'analyse\.js'\);/);
+  assert.match(WORKER, /importScripts\('engine\.js', 'bot\.js' \+ self\.location\.search, 'analyse\.js' \+ self\.location\.search\);/);
   assert.match(WORKER, /self\.postMessage\(\{ id: m\.id, resultat: resultat \}\);/);
   // On demande quand le plateau est stable, on oublie dès qu'on joue.
   assert.match(JEU, /this\.analyse = AnalyseChallenge\.active\(\) \? new AnalyseChallenge\(this\) : null;\s*\n\s*if \(this\.analyse\) this\.analyse\.demander\(\);/);
