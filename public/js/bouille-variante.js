@@ -907,7 +907,10 @@
         ? ' fill="none" stroke="' + teinte + '" stroke-width="' + (p.largeur || 1) + '" stroke-linejoin="round" stroke-linecap="round"'
         : ' fill="' + teinte + '"';
       var op = (p.alpha != null && p.alpha < 1) ? ' opacity="' + (Math.round(p.alpha * 1000) / 1000) + '"' : "";
-      return '      <path d="' + p.d + '"' + peint + op + t + " />";
+      // Le MODE DE FUSION (ombres en « Produit », lumières en « Superposition
+      // d'écran ») : l'import le relit dans `mix-blend-mode`, l'aller-retour le garde.
+      var fu = /^[a-z-]+$/.test(String(p.blend || "")) ? ' style="mix-blend-mode:' + p.blend + '"' : "";
+      return '      <path d="' + p.d + '"' + peint + op + fu + t + " />";
     }
     // Les tracés d'UNE couche, groupés par séries de même niveau de couleur.
     function serieDe(liste) {

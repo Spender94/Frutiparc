@@ -18970,6 +18970,20 @@ app.get('/api/admin/variantes', adminScope('shop'), (req, res) => {
   }).filter((v) => !v.purge));
 });
 
+// Admin : UNE variante, tracés compris — de quoi la retélécharger en SVG depuis
+// l'admin (public/admin.html, « ⬇ SVG »). La liste publique porte aussi les
+// tracés, mais sans identifiant : on ne s'y fie pas pour retrouver une ligne.
+app.get('/api/admin/variantes/:id', adminScope('shop'), (req, res) => {
+  const v = variantesAcc.find((x) => x.id === req.params.id);
+  if (!v) return res.status(404).json({ error: 'not found' });
+  res.json({
+    id: v.id, nom: String(v.nom || ''), auteur: String(v.auteur || ''),
+    famille: v.famille || 0, type: v.type, coiffureRef: v.coiffureRef || 8,
+    index: (Number.isFinite(v.index) ? v.index : null), retire: !!v.retire,
+    paths: v.paths || [], anim: v.anim || null,
+  });
+});
+
 /*
  * REMPLACER LE DESSIN D'UNE VARIANTE — pour les artistes qui ne peuvent pas
  * s'arrêter de retoucher. La variante garde son identifiant, son type et

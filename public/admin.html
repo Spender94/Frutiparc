@@ -5946,6 +5946,7 @@ async function loadVariantes() {
         + '<td style="white-space:nowrap">' + (v.retire
           ? '<button class="btn-danger btn-sm" onclick="purgerVariante(\'' + v.id + '\')" title="L\'effacer de cette liste ; sa place dans le rouleau reste prise.">Purger</button>'
           : '<button class="btn-success btn-sm" onclick="variantEnBoutique(\'' + v.id + '\',' + v.type + ',' + (v.index != null ? v.index : (bases[cle] + v.rang)) + ',this.dataset.nom,this.dataset.auteur)" data-nom="' + esc(v.nom) + '" data-auteur="' + esc(v.auteur || '') + '">→ Boutique</button> '
+          + '<button class="btn btn-sm" onclick="telechargerSvgVariante(\'' + v.id + '\')" title="Le dessin publié, au format du gabarit : à retravailler dans Illustrator puis à redéposer avec « Remplacer le SVG ».">⬇ SVG</button> '
           + '<button class="btn btn-sm" onclick="remplacerVariante(\'' + v.id + '\')" title="Déposer un nouveau SVG à la place de celui-ci : même index, même article, les porteurs voient le nouveau dessin.">Remplacer le SVG</button> '
           + '<button class="btn btn-sm" onclick="retirerVariante(\'' + v.id + '\')">Retirer</button>') + '</td>';
       body.appendChild(tr);
@@ -6019,6 +6020,73 @@ function variantEnBoutique(id, type, index, nom, auteur) {
   const e = FPBouille.enc;
   $('#pack-suffix9').value = e(type) + '0' + e(index) + '0' + e(29) + '0' + e(19) + '0' + e(24);
   updatePackPreview();
+}
+
+/*
+ * TÉLÉCHARGER LE SVG D'UN ACCESSOIRE PUBLIÉ — variante ou accessoire maison.
+ *
+ * Le dessin n'existe nulle part sous forme de fichier : ses tracés vivent au
+ * catalogue. On le rend au FORMAT DU GABARIT (FPBouilleVariante.exporterSVG,
+ * le même que l'atelier) : calques « accessoire » / « accessoire-arriere »,
+ * niveaux « couleurN », images « imageN_xT » d'une animation, dégradés,
+ * découpes, modes de fusion, et la tête en repère. Le fichier se redépose tel
+ * quel avec « Remplacer le SVG » — les deux lisent par FPBouilleCustom.charger.
+ *
+ * On part des tracés STOCKÉS (`source`), pas d'une bouille montée : c'est ce
+ * que portent les joueurs, et un accessoire maison n'a pas de place dans un
+ * rouleau. Les deux sont en coordonnées de scène de la famille.
+ */
+const svgFamilles = {};
+function svgFamille(f) {
+  if (!f) return vaFamille();
+  if (!svgFamilles[f]) svgFamilles[f] = FPBouilleSwf.charger('/fbouille/famille' + f + '.swf');
+  return svgFamilles[f];
+}
+function nomFichierSvg(prefixe, nom) {
+  const slug = String(nom || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return prefixe + '-' + (slug || 'accessoire') + '.svg';
+}
+function enregistrerSvg(svg, fichier) {
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = fichier;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+}
+// Le nom finit dans un commentaire XML : pas de « -- » dedans.
+const nomCommentaire = (s) => String(s || '').replace(/-{2,}/g, '-');
+function svgDesTraces(defs, o) {
+  const co = o.coiffure == null ? 8 : o.coiffure;
+  return FPBouilleVariante.exporterSVG(defs, {
+    type: o.type || 0, variante: o.variante || 0, coiffure: co,
+    source: { paths: o.paths || [], anim: o.anim || null },
+    nom: nomCommentaire(o.nom),
+    fondTete: FPBouilleVariante.fondTete(defs, co, 512),
+  });
+}
+async function telechargerSvgVariante(id) {
+  try {
+    const r = await fetch('/api/admin/variantes/' + encodeURIComponent(id), { headers: hdr() });
+    if (!r.ok) { toast('Variante introuvable.'); return; }
+    const v = await r.json();
+    if (!(v.paths || []).length) { toast('Cette variante n\'a plus de dessin.'); return; }
+    const defs = await svgFamille(v.famille || 0);
+    const svg = svgDesTraces(defs, { type: v.type, variante: v.index, coiffure: v.coiffureRef,
+      paths: v.paths, anim: v.anim, nom: v.nom + ' — ' + FPBouille.accName(v.type) });
+    enregistrerSvg(svg, nomFichierSvg('variante', v.nom));
+  } catch (e) { toast('Export impossible : ' + e.message); }
+}
+async function telechargerSvgAccMaison(id) {
+  try {
+    const r = await fetch('/api/light/acc-maison/' + encodeURIComponent(id), { cache: 'no-store' });
+    if (!r.ok) { toast('Accessoire introuvable.'); return; }
+    const a = await r.json();
+    if (!(a.paths || []).length) { toast('Cet accessoire n\'a pas de dessin.'); return; }
+    const defs = await svgFamille(0);
+    enregistrerSvg(svgDesTraces(defs, { paths: a.paths, nom: a.name + ' (accessoire maison)' }),
+      nomFichierSvg('maison', a.name));
+  } catch (e) { toast('Export impossible : ' + e.message); }
 }
 
 async function retirerVariante(id) {
@@ -6277,7 +6345,8 @@ async function loadAccMaison() {
         + '<td>' + esc(a.name) + '</td>'
         + '<td style="white-space:nowrap">' + auteurCell(a.auteur, 'changerAuteurAccMaison(\'' + a.id + '\')') + '</td>'
         + '<td>' + (a.price || 0) + ' K</td><td>' + a.nb + '</td>'
-        + '<td style="white-space:nowrap"><button class="btn btn-sm" onclick="remplacerAccMaison(\'' + a.id + '\')" title="Déposer un nouveau SVG à la place : même accessoire, ceux qui le portent voient le nouveau dessin.">Remplacer le SVG</button> '
+        + '<td style="white-space:nowrap"><button class="btn btn-sm" onclick="telechargerSvgAccMaison(\'' + a.id + '\')" title="Le dessin publié, au format du gabarit : à retravailler dans Illustrator puis à redéposer avec « Remplacer le SVG ».">⬇ SVG</button> '
+        + '<button class="btn btn-sm" onclick="remplacerAccMaison(\'' + a.id + '\')" title="Déposer un nouveau SVG à la place : même accessoire, ceux qui le portent voient le nouveau dessin.">Remplacer le SVG</button> '
         + '<button class="btn btn-sm" onclick="supprimerAccMaison(\'' + a.id + '\')">Suppr.</button></td>';
       body.appendChild(tr);
     });
