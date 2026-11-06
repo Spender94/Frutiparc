@@ -321,6 +321,29 @@
   .cl-groupe .preuve { display: inline-block; background: #f4dca0; color: #7a5b00; border-radius: 8px; padding: 1px 7px; font-size: 11px; margin: 1px 2px; }
   .cl-journal { margin-top: 8px; font-size: 11px; }
   .cl-journal td { font-family: monospace; }
+  /* Intégrité : les alertes et la fiche de suspicion */
+  .gr { display: inline-block; padding: 1px 7px; border-radius: 8px; font-size: 11px; font-weight: bold; color: #fff; }
+  .gr-grave { background: #b31111; }
+  .gr-suspect { background: #d08a00; }
+  .gr-info { background: #888; }
+  .st-ouverte { color: #b31111; font-weight: bold; }
+  .st-classee { color: #777; }
+  .st-traitee { color: #2f8f2f; font-weight: bold; }
+  .al-details pre { white-space: pre-wrap; word-break: break-all; font-size: 10px; max-height: 160px; overflow: auto; background: #f6faef; padding: 4px; margin-top: 3px; }
+  .al-fiche { background: #fff; border: 2px solid #e3a0a0; border-radius: 8px; padding: 10px 12px; margin: 0 0 16px; }
+  .al-fiche > h3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 4px; }
+  .al-fiche .al-resume { font-size: 12px; color: #555; margin: 0 0 8px; }
+  .al-fiche details { border-top: 1px solid #D6F7B5; padding: 6px 0; }
+  .al-fiche summary { cursor: pointer; font-weight: bold; color: #2C4A0F; font-size: 13px; }
+  .al-fiche summary .count { margin-left: 4px; }
+  .al-fiche table { margin-top: 6px; }
+  .al-fiche .al-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+  .al-pictos { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0; font-size: 11px; }
+  .al-pictos label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
+  .al-ecart-net { color: #c8860a; font-weight: bold; }
+  .al-ecart-fort { color: #b31111; font-weight: bold; }
+  tr.al-ligne-fort td { background: #fbe9e9; }
+  .al-vide { color: #999; font-style: italic; padding: 4px 0; font-size: 12px; }
 
   /* Badges */
   .badge {
@@ -457,11 +480,67 @@
       <button class="tab" data-tab="forumcensor" onclick="switchTab('forumcensor')">Censure forum</button>
     </div></div>
     <div class="tab-group"><span class="lbl">Intégrité</span><div class="grp">
+      <button class="tab" data-tab="alertes" onclick="switchTab('alertes')">Alertes</button>
       <button class="tab" data-tab="swapouverif" onclick="switchTab('swapouverif')">Swapou vérifié</button>
       <button class="tab" data-tab="portagesverif" onclick="switchTab('portagesverif')">Portages vérifiés</button>
       <button class="tab" data-tab="compteslies" onclick="switchTab('compteslies')">Comptes liés</button>
     </div></div>
   </div>
+
+<div class="content" id="tab-alertes" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadAlertes()">Rafraîchir</button>
+    <select id="al-statut" onchange="loadAlertes()">
+      <option value="ouverte" selected>ouvertes</option>
+      <option value="classee">classées sans suite</option>
+      <option value="traitee">traitées</option>
+      <option value="">tous les statuts</option>
+    </select>
+    <select id="al-gravite" onchange="loadAlertes()">
+      <option value="">toutes les gravités</option>
+      <option value="grave">graves</option>
+      <option value="suspect">suspectes</option>
+      <option value="info">pour information</option>
+    </select>
+    <select id="al-jeu" onchange="loadAlertes()">
+      <option value="">tous les jeux</option>
+      <option value="swapou2">Swapou</option>
+      <option value="bkiwi">Burning Kiwi</option>
+      <option value="kaluga">Kaluga</option>
+      <option value="miniwave">Mini-Wave</option>
+      <option value="minipixiz">MiniPixiz</option>
+      <option value="minifever">Mini-Fever</option>
+      <option value="jamajama">JamaJama</option>
+      <option value="mb2">MotionBall 2</option>
+      <option value="snake3">Frutisnake</option>
+    </select>
+    <input id="al-joueur" placeholder="joueur" style="width:120px" onkeydown="if(event.key==='Enter')loadAlertes()">
+    <label style="font-size:12px" title="Les annulations, retraits et exclusions faits depuis les fiches">
+      <input type="checkbox" id="al-actions" onchange="loadAlertes()"> actions de l'admin</label>
+    <span id="al-etat" style="margin-left:auto;font-size:13px"></span>
+  </div>
+  <p class="integ-note">
+    La règle du parc : ce qui ne passe pas une vérification <b>n'est pas classé</b>, et part ici. C'est toi qui tranches :
+    <b>classer sans suite</b> (un faux pas, un vieux client en cache), ou <b>traiter</b> — ouvrir la fiche du joueur et
+    sanctionner (annuler un score, retirer des pictos, l'exclure des classements). Les sauvegardes des jeux sont
+    comparées à chaque écriture ; trois règles en tirent des alertes : <b>pictos en rafale</b> (une seule sauvegarde
+    débloque plus de pictos qu'une partie ne le peut), <b>combos sans partie</b> (Swapou : des cocktails ou des
+    centaines de combos sans aucune partie depuis la veille) et <b>saut de compteur</b> (combos, crédits ou fruits qui
+    bondissent plus qu'une longue séance ne le permet). Une alerte est un indice, pas une preuve : lis la fiche.
+  </p>
+  <div id="al-fiche"></div>
+  <h3>Par joueur</h3>
+  <p class="integ-note">Les 90 derniers jours, les actions de l'admin mises à part. Un clic sur un joueur ouvre sa fiche de suspicion.</p>
+  <table>
+    <thead><tr><th>Joueur</th><th>Alertes</th><th>Ouvertes</th><th>Graves</th><th>Dernière</th><th></th></tr></thead>
+    <tbody id="al-joueurs"></tbody>
+  </table>
+  <h3>Les alertes</h3>
+  <table>
+    <thead><tr><th>Quand</th><th>Joueur</th><th>Jeu</th><th>Type</th><th>Gravité</th><th>Résumé</th><th>Statut</th><th></th></tr></thead>
+    <tbody id="al-liste"></tbody>
+  </table>
+</div>
 
 <div class="content" id="tab-swapouverif" style="display:none">
   <div class="toolbar">
@@ -1901,7 +1980,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['stats','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons','swapouverif','portagesverif','compteslies','quetes'].forEach(t => {
+  ['stats','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons','alertes','swapouverif','portagesverif','compteslies','quetes'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -1927,6 +2006,7 @@ function switchTab(name) {
   if (name === 'swapouverif') loadSwapouVerif();
   else swapouVerifSuivre(false);
   if (name === 'compteslies') loadComptesLies();
+  if (name === 'alertes') loadAlertes();
   if (name === 'portagesverif') loadPortagesVerif();
   if (name === 'quetes') loadQuetes();
 }
@@ -2187,6 +2267,313 @@ async function swapouRejouer(id) {
     toast('Rejouée : ' + d.verdict.replace('_', ' ') + (d.raison ? ' — ' + d.raison : ''));
     loadSwapouVerif();
   } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// ─── Intégrité : les alertes de triche et la fiche de suspicion ───
+const AL_TYPES = {
+  score_sans_partie: 'score sans partie', pictos_en_rafale: 'pictos en rafale', combos_sans_partie: 'combos sans partie',
+  saut_compteur: 'saut de compteur', score_exclu: 'score d’un exclu', action_admin: 'action de l’admin',
+};
+const AL_JEUX = { swapou2: 'Swapou', bkiwi: 'Burning Kiwi', kaluga: 'Kaluga', miniwave: 'Mini-Wave', miniwave2: 'Mini-Wave',
+  minipixiz: 'MiniPixiz', minitroll: 'MiniPixiz', minifever: 'Mini-Fever', jamajama: 'JamaJama', mb2: 'MotionBall 2', snake3: 'Frutisnake' };
+const AL_STATUTS = { ouverte: 'ouverte', classee: 'classée sans suite', traitee: 'traitée' };
+let alFiche = '';
+// esc() ne touche pas aux guillemets : dans un attribut, il faut aussi les leurs.
+const alAttr = (s) => esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const alNb = (v) => (v == null || v === '' ? '—' : Number(v).toLocaleString('fr-FR'));
+const alJeu = (j) => esc(AL_JEUX[j] || j || '—');
+const alPost = (route, corps) => fetch(route, { method: 'POST', headers: hdr(), body: JSON.stringify(corps || {}) }).then((r) => r.json());
+
+function alLigneAlerte(a, avecJoueur) {
+  const details = a.details ? `<details class="al-details"><summary style="font-size:11px;color:#777">détails</summary><pre>${esc(JSON.stringify(a.details, null, 1))}</pre></details>` : '';
+  const actions = a.type === 'action_admin' ? ''
+    : a.statut === 'ouverte'
+      ? `<button class="btn btn-sm" title="Un faux pas, rien à reprocher" onclick="alTraiter(${a.id}, 'classee')">Classer</button>
+         <button class="btn btn-sm" title="Sanction prise : la note dit laquelle" onclick="alTraiter(${a.id}, 'traitee')">Traiter…</button>`
+      : `<button class="btn btn-sm" onclick="alTraiter(${a.id}, 'ouverte')">Rouvrir</button>`;
+  const suite = a.statut !== 'ouverte' ? `<div style="font-size:11px;color:#777">${esc(a.traite_par || '')}${a.traite_le ? ', ' + tFmtDate(a.traite_le) : ''}${a.note ? ' — ' + esc(a.note) : ''}</div>` : '';
+  return `<tr>
+    <td style="white-space:nowrap">${tFmtDate(a.cree_le)}</td>
+    ${avecJoueur ? `<td><a href="#" class="uname" onclick="ouvrirFicheTriche('${alAttr(a.username)}');return false">${esc(a.username)}</a></td>` : ''}
+    <td>${alJeu(a.jeu)}</td>
+    <td>${esc(AL_TYPES[a.type] || String(a.type).replace(/_/g, ' '))}</td>
+    <td><span class="gr gr-${esc(a.gravite)}">${esc(a.gravite)}</span></td>
+    <td>${esc(a.resume)}${details}</td>
+    <td><span class="st-${esc(a.statut)}">${esc(AL_STATUTS[a.statut] || a.statut)}</span>${suite}</td>
+    <td style="white-space:nowrap">${actions}</td>
+  </tr>`;
+}
+
+async function loadAlertes() {
+  try {
+    const q = new URLSearchParams({ statut: $('#al-statut').value, gravite: $('#al-gravite').value,
+      jeu: $('#al-jeu').value, username: $('#al-joueur').value.trim().toLowerCase(), limite: 500 });
+    const [ra, rj] = await Promise.all([
+      fetch('/api/admin/triche/alertes?' + q, { headers: hdr() }).then((r) => r.json()),
+      fetch('/api/admin/triche/joueurs?jours=90', { headers: hdr() }).then((r) => r.json()),
+    ]);
+    if (!ra.ok) { toast('Erreur: ' + (ra.error || 'alertes')); return; }
+    const liste = ra.alertes.filter((a) => $('#al-actions').checked || a.type !== 'action_admin');
+    const graves = liste.filter((a) => a.gravite === 'grave').length;
+    $('#al-etat').innerHTML = `<span class="count">${liste.length}</span> alerte${liste.length > 1 ? 's' : ''}`
+      + (graves ? ` · <b style="color:#b31111">${graves} grave${graves > 1 ? 's' : ''}</b>` : '');
+    $('#al-liste').innerHTML = liste.map((a) => alLigneAlerte(a, true)).join('')
+      || '<tr><td colspan="8" style="text-align:center;color:#999;padding:14px">Aucune alerte avec ces filtres.</td></tr>';
+    $('#al-joueurs').innerHTML = (rj.joueurs || []).map((j) => `<tr>
+      <td><a href="#" class="uname" onclick="ouvrirFicheTriche('${alAttr(j.username)}');return false">${esc(j.username)}</a></td>
+      <td>${j.total}</td>
+      <td>${j.ouvertes ? `<b style="color:#b31111">${j.ouvertes}</b>` : 0}</td>
+      <td>${j.graves ? `<span class="gr gr-grave">${j.graves}</span>` : 0}</td>
+      <td>${tFmtDate(j.derniere)}</td>
+      <td><button class="btn btn-sm" onclick="ouvrirFicheTriche('${alAttr(j.username)}')">Fiche</button></td>
+    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:#999;padding:14px">Aucune alerte sur 90 jours.</td></tr>';
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function alTraiter(id, statut) {
+  let note = '';
+  if (statut === 'traitee') {
+    note = prompt('Traiter l’alerte — quelle suite (sanction, avertissement…) ?', '');
+    if (note === null) return;
+  } else if (statut === 'classee') {
+    note = prompt('Classer sans suite — une note (facultative) ?', '');
+    if (note === null) return;
+  }
+  try {
+    const d = await alPost('/api/admin/triche/alertes/' + id, { statut, note });
+    if (!d.ok) { toast('Erreur: ' + (d.error || 'traitement')); return; }
+    toast(statut === 'ouverte' ? 'Alerte rouverte' : statut === 'classee' ? 'Classée sans suite' : 'Alerte traitée');
+    loadAlertes();
+    if (alFiche) ouvrirFicheTriche(alFiche, true);
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// La fiche de suspicion : tout ce qu'on sait d'un joueur, pour trancher.
+async function ouvrirFicheTriche(username, sansDefiler) {
+  alFiche = String(username || '').toLowerCase();
+  const cible = $('#al-fiche');
+  cible.innerHTML = '<div class="al-fiche">Chargement de la fiche…</div>';
+  try {
+    const r = await fetch('/api/admin/triche/joueur/' + encodeURIComponent(alFiche), { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { cible.innerHTML = ''; toast('Erreur: ' + (d.error || r.status)); return; }
+    cible.innerHTML = alRenduFiche(d);
+    if (!sansDefiler) cible.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) { cible.innerHTML = ''; toast('Erreur: ' + e.message); }
+}
+function fermerFicheTriche() { alFiche = ''; $('#al-fiche').innerHTML = ''; }
+
+function alSection(titre, n, corps, ouverte) {
+  return `<details${ouverte ? ' open' : ''}><summary>${titre}${n == null ? '' : ` <span class="count">${n}</span>`}</summary>${corps}</details>`;
+}
+function alRapport(x) {
+  if (x.rapport == null) return x.n ? '—' : '<span style="color:#999">pas d’historique</span>';
+  const txt = '×' + String(x.rapport).replace('.', ',');
+  if (x.ecart === 'fort') return `<span class="al-ecart-fort" title="Le meilleur score est au moins trois fois sa médiane habituelle">${txt} ⚠</span>`;
+  if (x.ecart === 'net') return `<span class="al-ecart-net" title="Le meilleur score est au moins deux fois sa médiane habituelle">${txt}</span>`;
+  return x.n < 5 ? `<span style="color:#999" title="Moins de cinq journées : trop peu pour comparer">${txt}</span>` : txt;
+}
+
+// L'historique arrive champ par champ ; on le relit sauvegarde par sauvegarde
+// (même instant, même jeu), et les cases d'un même tableau qui bougent
+// ensemble (« $items[3] », « $items[4] »…) tiennent sur une ligne.
+function alEcritures(historique) {
+  const court = (v) => { const t = v == null ? '—' : String(v); return esc(t.length > 24 ? t.slice(0, 23) + '…' : t); };
+  const groupes = [];
+  for (const x of historique) {
+    const cle = x.cree_le + '|' + x.jeu;
+    let g = groupes[groupes.length - 1];
+    if (!g || g.cle !== cle) { g = { cle, cree_le: x.cree_le, jeu: x.jeu, ip: x.ip, appareil: x.appareil, navigateur: x.navigateur, canal: x.canal, lignes: [] }; groupes.push(g); }
+    g.lignes.push(x);
+  }
+  for (const g of groupes) {
+    const parBase = new Map();
+    for (const x of g.lignes) {
+      const m = /^(.*)\[(\d+)\]$/.exec(x.champ);
+      const base = m ? m[1] : x.champ;
+      if (!parBase.has(base)) parBase.set(base, []);
+      parBase.get(base).push(Object.assign({ indice: m ? Number(m[2]) : null }, x));
+    }
+    g.changements = [];
+    for (const [base, l] of parBase) {
+      const memes = l.length >= 4 && l.every((x) => x.indice != null && x.avant === l[0].avant && x.apres === l[0].apres);
+      if (memes) {
+        const ind = l.map((x) => x.indice).sort((a, b) => a - b);
+        g.changements.push(`<b>${esc(base)}</b> : ${l.length} cases (${ind.slice(0, 8).join(', ')}${ind.length > 8 ? '…' : ''}) ${court(l[0].avant)} → <b>${court(l[0].apres)}</b>`);
+      } else {
+        for (const x of l) g.changements.push(`${esc(x.champ)} : <span style="color:#777">${court(x.avant)}</span> → <b>${court(x.apres)}</b>`);
+      }
+    }
+  }
+  return groupes;
+}
+
+function alRenduFiche(d) {
+  const u = d.username, c = d.compte || {};
+  const ux = alAttr(u);
+  const ouvertes = d.alertes.filter((a) => a.statut === 'ouverte' && a.type !== 'action_admin').length;
+  const exclu = c.exclusion;
+  let h = `<div class="al-fiche">
+    <h3>Fiche de suspicion — ${esc(c.affichage || u)}
+      ${c.banni ? '<span class="badge" style="background:#b31111;color:#fff">banni</span>' : ''}
+      ${exclu ? `<span class="badge" style="background:#7a1010;color:#fff" title="${alAttr(exclu.motif || '')}">exclu des classements</span>` : ''}
+      ${!c.existe ? '<span class="badge" style="background:#ddd;color:#555">compte introuvable</span>' : ''}
+      <span class="al-actions">
+        ${exclu ? `<button class="btn btn-sm" onclick="alExclure('${ux}', false)">Lever l’exclusion</button>`
+          : `<button class="btn btn-sm" onclick="alExclure('${ux}', true)">Exclure des classements…</button>`}
+        <button class="btn btn-sm" onclick="viewUser('${ux}')">Détail joueur</button>
+        <button class="btn btn-sm" onclick="ouvrirFicheTriche('${ux}', true)">Rafraîchir</button>
+        <button class="btn btn-sm" onclick="fermerFicheTriche()">Fermer</button>
+      </span>
+    </h3>
+    <div class="al-resume">inscrit le ${c.creeLe ? new Date(c.creeLe).toLocaleDateString('fr-FR') : '—'}
+      · dernière connexion ${c.derniere ? tFmtDate(c.derniere) : '—'} · ${alNb(c.xp)} XP · ${alNb(c.kikooz)} kikooz
+      · <b style="color:${ouvertes ? '#b31111' : '#2C4A0F'}">${ouvertes} alerte${ouvertes > 1 ? 's' : ''} ouverte${ouvertes > 1 ? 's' : ''}</b>
+      ${exclu ? ` · exclu depuis le ${tFmtDate(exclu.depuis)}${exclu.motif ? ' (' + esc(exclu.motif) + ')' : ''}` : ''}
+      ${d.sansBase ? ' · <i>sans base de données : fiche partielle</i>' : ''}</div>`;
+
+  // 1. Les alertes.
+  h += alSection('Alertes', d.alertes.length, d.alertes.length
+    ? `<table><thead><tr><th>Quand</th><th>Jeu</th><th>Type</th><th>Gravité</th><th>Résumé</th><th>Statut</th><th></th></tr></thead><tbody>${d.alertes.map((a) => alLigneAlerte(a, false)).join('')}</tbody></table>`
+    : '<div class="al-vide">Aucune alerte.</div>', true);
+
+  // 2. Les scores, contre sa distribution habituelle.
+  const lignesScores = d.scores.map((x) => {
+    const actions = [];
+    if (x.enPlace) actions.push(`<button class="btn btn-sm" title="${x.challenge ? 'Le score du Challenge du jour : il ne sera ni archivé ni médaillé' : 'Le record en place : il part en entier'}" onclick="alAnnulerScore('${ux}', '${alAttr(x.rankingId)}', '')">Annuler ${x.challenge ? 'le score du jour' : 'le record'}</button>`);
+    if (x.meilleurJour) actions.push(`<button class="btn btn-sm" title="La journée archivée du ${esc(x.meilleurJour)} (médailles déjà données : intactes)" onclick="alAnnulerScore('${ux}', '${alAttr(x.rankingId)}', '${alAttr(x.meilleurJour)}')">Annuler le ${esc(x.meilleurJour)}</button>`);
+    const jours = (x.jours || []).map((j) => j.jour + ' : ' + j.score).join('\n');
+    return `<tr class="${x.ecart === 'fort' ? 'al-ligne-fort' : ''}">
+      <td>${esc(x.nom)}${x.challenge ? ' <span class="badge">challenge</span>' : ''}</td>
+      <td>${x.enPlace ? alNb(x.enPlace.score) + `<div style="font-size:10px;color:#777">${tFmtDate(x.enPlace.at)}</div>` : '—'}</td>
+      <td><b>${alNb(x.meilleur)}</b>${x.meilleurJour ? `<div style="font-size:10px;color:#777">le ${esc(x.meilleurJour)}</div>` : ''}</td>
+      <td title="${alAttr(jours)}">${x.mediane == null ? '—' : alNb(Math.round(x.mediane))} <span style="color:#777">(${x.n} j.)</span></td>
+      <td>${alRapport(x)}${x.plusBasMieux ? ' <span style="color:#999;font-size:10px">(le plus bas gagne)</span>' : ''}</td>
+      <td style="white-space:nowrap">${actions.join(' ')}</td>
+    </tr>`;
+  }).join('');
+  const lignesParties = (d.parPartie || []).map((x) => `<tr class="${x.ecart === 'fort' ? 'al-ligne-fort' : ''}">
+    <td>${esc(x.nom)}</td><td><b>${alNb(x.meilleur)}</b></td>
+    <td>${x.mediane == null ? '—' : alNb(Math.round(x.mediane))} <span style="color:#777">(${x.n} parties)</span></td><td>${alRapport(x)}</td></tr>`).join('');
+  h += alSection('Scores, comparés à sa distribution habituelle', d.scores.length,
+    (lignesScores ? `<div class="integ-note" style="margin:6px 0 0">Meilleur score connu (en place ou archivé) contre la médiane de ses vingt dernières journées du même classement.
+      Deux fois au-dessus : <span class="al-ecart-net">net</span> ; trois fois : <span class="al-ecart-fort">fort</span> — à partir de cinq journées.
+      L'annulation d'une journée passée ne reprend pas les médailles déjà données.</div>
+      <table><thead><tr><th>Classement</th><th>En place</th><th>Meilleur</th><th>Médiane</th><th>Rapport</th><th></th></tr></thead><tbody>${lignesScores}</tbody></table>`
+      : '<div class="al-vide">Aucun score.</div>')
+    + (lignesParties ? `<table><thead><tr><th>Partie par partie</th><th>Meilleur déclaré</th><th>Médiane</th><th>Rapport</th></tr></thead><tbody>${lignesParties}</tbody></table>` : ''),
+    d.scores.some((x) => x.ecart) || (d.parPartie || []).some((x) => x.ecart));
+
+  // 3. L'historique des sauvegardes.
+  const court = (s, n) => { s = String(s == null ? '' : s); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+  const ecritures = alEcritures(d.historique);
+  h += alSection('Historique des sauvegardes (champs sensibles)', ecritures.length, ecritures.length
+    ? `<div class="integ-note" style="margin:6px 0 0">Une ligne par sauvegarde : les cases qui ont bougé, valeur d'avant → valeur d'après
+      (— : vide). Les cases d'un même tableau qui changent ensemble sont regroupées.</div>
+      <table><thead><tr><th>Quand</th><th>Jeu</th><th>Ce qui a changé</th><th>Adresse</th><th>Appareil</th><th>Canal</th></tr></thead><tbody>${ecritures.slice(0, 150).map((e) => `<tr>
+        <td style="white-space:nowrap">${tFmtDate(e.cree_le)}</td><td>${alJeu(e.jeu)}</td>
+        <td style="font-family:monospace;font-size:11px">${e.changements.join('<br>')}</td>
+        <td>${esc(e.ip || '—')}</td><td title="${alAttr(e.navigateur || '')}">${esc(court(e.appareil, 14) || '—')}</td><td>${esc(e.canal || '')}</td></tr>`).join('')}</tbody></table>`
+      + (ecritures.length > 150 ? `<div class="al-vide">… et ${ecritures.length - 150} sauvegardes plus anciennes.</div>` : '')
+    : '<div class="al-vide">Aucune sauvegarde sensible notée (l’historique se remplit depuis cette version, six mois de rétention).</div>');
+
+  // 4. Swapou.
+  const sb = d.swapou.bilan;
+  const lignesSw = d.swapou.parties.map((p) => {
+    const ry = p.rythme || {};
+    return `<tr><td style="white-space:nowrap">${tFmtDate(p.fini_le)}</td>
+      <td>${alNb(p.score_declare)}</td><td>${p.score_rejoue == null ? '—' : alNb(p.score_rejoue)}</td>
+      <td><span class="vd vd-${esc(p.verdict)}">${esc(String(p.verdict).replace('_', ' '))}</span>${p.raison ? `<div style="font-size:11px;color:#777">${esc(p.raison)}</div>` : ''}</td>
+      <td>${p.source === 'locale' ? '<span class="badge" style="background:#ddd;color:#555">locale</span>' : 'serveur'}</td>
+      <td>${p.nb_coups}${ry.parIa ? ` <span style="color:#b31111">(${ry.parIa} IA)</span>` : ''}</td>
+      <td>${svDuree(p.duree_ms)}</td><td>${svMs(ry.medianeMs)}</td><td>${svRegularite(ry.variation)}</td>
+      <td>${p.accord ? `<b>${String(p.accord.premierPct).replace('.', ',')} %</b>` : '—'}</td></tr>`;
+  }).join('');
+  h += alSection('Swapou : parties à graine et scores joués avec l’IA', d.swapou.parties.length + d.swapou.ia.length,
+    `<div class="al-resume" style="margin-top:6px">${sb.parties} partie${sb.parties > 1 ? 's' : ''} · ${sb.conformes} conforme${sb.conformes > 1 ? 's' : ''}
+      · <b style="color:${sb.divergentes ? '#b31111' : 'inherit'}">${sb.divergentes} divergente${sb.divergentes > 1 ? 's' : ''}</b>
+      · ${sb.nonVerifiables} non vérifiable${sb.nonVerifiables > 1 ? 's' : ''} · ${sb.grainesLocales} à graine locale · ${sb.coupsIa} coups joués par le bouton IA</div>`
+    + (lignesSw ? `<table><thead><tr><th>Fin</th><th>Déclaré</th><th>Rejoué</th><th>Verdict</th><th>Graine</th><th>Coups</th><th>Durée</th><th>Réflexion médiane</th><th>Régularité</th><th>Accord IA</th></tr></thead><tbody>${lignesSw}</tbody></table>` : '')
+    + (d.swapou.ia.length ? `<table><thead><tr><th>Joué avec l’IA, le</th><th>Score</th><th>Donnée</th></tr></thead><tbody>${d.swapou.ia.map((x) => `<tr><td>${tFmtDate(x.created_at)}</td><td>${alNb(x.score)}</td><td>${esc(x.data || '')}</td></tr>`).join('')}</tbody></table>` : ''));
+
+  // 5. Les parties vérifiées des portages.
+  h += alSection('Parties vérifiées (MiniPixiz, Mini-Fever)', d.partiesVerifiees.length, d.partiesVerifiees.length
+    ? `<table><thead><tr><th>Fin</th><th>Jeu</th><th>Déclaré</th><th>Vérifié</th><th>Verdict</th><th>Classée</th><th>Temps de jeu</th></tr></thead><tbody>${d.partiesVerifiees.map((p) => `<tr>
+        <td style="white-space:nowrap">${tFmtDate(p.fini_le)}</td><td>${alJeu(p.jeu)}</td>
+        <td>${alNb(p.score_declare)}</td><td>${p.score_verifie == null ? '—' : alNb(p.score_verifie)}</td>
+        <td><span class="vd vd-${esc(p.verdict)}">${esc(String(p.verdict).replace('_', ' '))}</span>${p.raison ? `<div style="font-size:11px;color:#777">${esc(p.raison)}</div>` : ''}</td>
+        <td>${p.classe ? 'oui' : 'non'}</td><td>${p.temps_jeu_ms ? svDuree(p.temps_jeu_ms) : '—'}</td></tr>`).join('')}</tbody></table>`
+    : '<div class="al-vide">Aucune partie vérifiée.</div>');
+
+  // 6. Les pictos : retirer, rendre.
+  const p = d.pictos;
+  h += alSection('Pictos', p.actuels.length + (p.retires.length ? ' + ' + p.retires.length + ' retirés' : ''),
+    (p.actuels.length ? `<div class="al-pictos" id="al-pictos-actuels">${p.actuels.map((x) => `<label title="${alAttr(x.id)}"><input type="checkbox" value="${alAttr(x.id)}">${esc(x.nom)} <span style="color:#999">${esc(x.jeu)}</span></label>`).join('')}</div>
+      <button class="btn btn-sm" onclick="alRetirerPictos('${ux}')">Retirer la sélection…</button>
+      <span style="font-size:11px;color:#777">La sauvegarde suivante ne les rendra pas : ils restent retirés jusqu'à ce que tu les rendes.</span>` : '<div class="al-vide">Aucun picto.</div>')
+    + (p.retires.length ? `<h4 style="margin-top:8px">Retirés</h4><div class="al-pictos" id="al-pictos-retires">${p.retires.map((x) => `<label title="${alAttr(x.id)}"><input type="checkbox" value="${alAttr(x.id)}">${esc(x.nom)} <span style="color:#999">${esc(x.jeu)}</span></label>`).join('')}</div>
+      <button class="btn btn-sm" onclick="alRendrePictos('${ux}')">Rendre la sélection</button>` : ''));
+
+  // 7. Les comptes liés.
+  const g = d.comptesLies.groupe;
+  h += alSection('Comptes liés', g ? g.comptes.length - 1 : 0,
+    (g ? `<div class="cl-groupe${g.poids >= 100 ? ' fort' : ''}" style="margin-top:6px">${g.comptes.filter((x) => x.username !== u).map((x) =>
+      `<a href="#" class="uname" onclick="ouvrirFicheTriche('${alAttr(x.username)}');return false">${esc(x.affichage || x.username)}</a>${x.banni ? ' <span class="badge" style="background:#b31111;color:#fff">banni</span>' : ''}`).join(' · ')}
+      <div style="margin-top:4px">${g.paires.filter((x) => x.a === u || x.b === u).map((x) => `<div style="font-size:12px"><b>${esc(x.a === u ? x.b : x.a)}</b> <span style="color:#777">(${x.poids})</span> : ${x.preuves.map((y) => `<span class="preuve">${esc(y)}</span>`).join('')}</div>`).join('')}</div></div>`
+      : '<div class="al-vide">Aucun compte lié sur 90 jours.</div>')
+    + (d.comptesLies.connexions.length ? `<table class="cl-journal"><thead><tr><th>Jour</th><th>Adresse</th><th>Appareil</th><th>Navigateur</th><th>Origine</th><th>Fois</th></tr></thead><tbody>${d.comptesLies.connexions.slice(0, 30).map((x) =>
+      `<tr><td>${esc(x.jour)}</td><td>${esc(x.ip || '—')}</td><td title="${alAttr(x.appareil)}">${esc(court(x.appareil, 14) || '—')}</td><td title="${alAttr(x.navigateur)}">${esc(court(x.navigateur, 40))}</td><td>${esc(x.origine)}</td><td>${x.n}</td></tr>`).join('')}</tbody></table>` : ''));
+
+  // 8. Les kikooz reçus.
+  const k = d.kikooz;
+  h += alSection('Kikooz reçus', k.dons.length + k.journal.length,
+    (k.dons.length ? `<table><thead><tr><th>Le</th><th>De</th><th>Montant</th><th>Raison</th><th>Source</th></tr></thead><tbody>${k.dons.map((x) => `<tr>
+      <td>${tFmtDate(x.created_at)}</td><td><a href="#" class="uname" onclick="ouvrirFicheTriche('${alAttr(x.giver)}');return false">${esc(x.giver)}</a></td>
+      <td><b>${alNb(x.amount)}</b></td><td>${esc(x.reason || '')}</td><td>${esc(x.source || '')}${x.giver_role ? ' (' + esc(x.giver_role) + ')' : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="al-vide">Aucun don au registre.</div>')
+    + (k.journal.length ? `<table><thead><tr><th>Le</th><th>Reçus (historique kikooz)</th><th>Montant</th></tr></thead><tbody>${k.journal.slice(0, 50).map((x) => `<tr><td>${tFmtDate(x.created_at)}</td><td>${esc(x.label)}</td><td>${alNb(x.amount)}</td></tr>`).join('')}</tbody></table>` : ''));
+
+  // 9. Le journal de modération.
+  h += alSection('Journal de modération', d.moderation.length, d.moderation.length
+    ? `<table><thead><tr><th>Le</th><th>Par</th><th>Action</th><th>Détail</th></tr></thead><tbody>${d.moderation.map((x) => `<tr><td>${tFmtDate(x.created_at)}</td><td>${esc(x.moderator)}</td><td>${esc(x.action)}</td><td>${esc(x.detail || '')}</td></tr>`).join('')}</tbody></table>`
+    : '<div class="al-vide">Rien au journal.</div>');
+  return h + '</div>';
+}
+
+async function alApresAction(d, message) {
+  if (!d.ok) { toast('Erreur: ' + (d.error || 'action refusée')); return; }
+  toast(message);
+  await ouvrirFicheTriche(alFiche, true);
+  loadAlertes();
+}
+async function alAnnulerScore(u, ranking, jour) {
+  const quoi = jour ? `la journée du ${jour} (les médailles déjà données restent)` : 'le score en place';
+  const note = prompt(`Annuler ${quoi} — ${ranking} — pour ${u} ?\nUne note pour le journal :`, '');
+  if (note === null) return;
+  try { await alApresAction(await alPost('/api/admin/triche/joueur/' + encodeURIComponent(u) + '/annuler-score', { ranking, jour, note }), 'Score annulé'); }
+  catch (e) { toast('Erreur: ' + e.message); }
+}
+async function alRetirerPictos(u) {
+  const pictos = [...document.querySelectorAll('#al-pictos-actuels input:checked')].map((x) => x.value);
+  if (!pictos.length) { toast('Coche les pictos à retirer'); return; }
+  const note = prompt(`Retirer ${pictos.length} picto${pictos.length > 1 ? 's' : ''} à ${u} ?\nUne note pour le journal :`, '');
+  if (note === null) return;
+  try { await alApresAction(await alPost('/api/admin/triche/joueur/' + encodeURIComponent(u) + '/retirer-pictos', { pictos, note }), 'Pictos retirés'); }
+  catch (e) { toast('Erreur: ' + e.message); }
+}
+async function alRendrePictos(u) {
+  const pictos = [...document.querySelectorAll('#al-pictos-retires input:checked')].map((x) => x.value);
+  if (!pictos.length) { toast('Coche les pictos à rendre'); return; }
+  try { await alApresAction(await alPost('/api/admin/triche/joueur/' + encodeURIComponent(u) + '/rendre-pictos', { pictos }), 'Pictos rendus'); }
+  catch (e) { toast('Erreur: ' + e.message); }
+}
+async function alExclure(u, exclu) {
+  let motif = '';
+  if (exclu) {
+    motif = prompt(`Exclure ${u} des classements ?\nSes nouveaux scores ne seront plus classés (ils partiront en alerte) ; ceux déjà en place restent, sauf annulation.\nLe motif :`, '');
+    if (motif === null) return;
+  } else if (!confirm(`Lever l’exclusion de ${u} ? Ses prochains scores seront de nouveau classés.`)) return;
+  try { await alApresAction(await alPost('/api/admin/triche/joueur/' + encodeURIComponent(u) + '/exclusion', { exclu, motif }), exclu ? 'Exclu des classements' : 'Exclusion levée'); }
+  catch (e) { toast('Erreur: ' + e.message); }
 }
 
 // ─── Intégrité : comptes liés ───
