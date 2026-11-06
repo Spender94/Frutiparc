@@ -556,42 +556,63 @@
       <option value="">tous les verdicts</option>
       <option value="conforme">conformes</option>
       <option value="divergent">divergentes</option>
+      <option value="refuse">refusées (règle)</option>
       <option value="non_verifiable">non vérifiables</option>
       <option value="en_cours">en cours</option>
     </select>
     <span id="sv-etat" style="margin-left:auto;font-size:13px"></span>
   </div>
   <p class="integ-note">
-    Chaque partie de <b>Swapou Challenge</b> jouée dans le portage part avec la liste de ses coups ; le serveur la
-    <b>rejoue</b> avec le vrai code du jeu, à partir de la graine qu'il a lui-même donnée. <span class="vd vd-conforme">conforme</span> :
-    la partie rejouée finit au score déclaré. <span class="vd vd-divergent">divergent</span> : un coup impossible, une fin
-    qui ne tombe pas, un score différent — un score <b>trafiqué</b>. Le rejeu prouve que la partie a été <i>jouée</i>, pas
-    <i>qui</i> l'a jouée : pour l'aide d'une IA, regarde le <b>rythme</b> (réflexion médiane, et régularité : l'écart des
-    temps de réflexion rapporté à leur moyenne — un humain varie d'un coup à l'autre, un programme à cadence fixe presque pas ;
-    en rouge sous 0,35) et l'<b>accord avec l'IA</b> (la part des coups qui sont exactement le meilleur coup de
-    l'analyseur du jeu ; quelques minutes de calcul par partie, à la demande).
-    Rien ici ne touche au classement : les scores sont enregistrés comme avant.
+    Chaque partie de <b>Swapou Challenge</b> part avec la liste de ses coups ; le serveur la <b>rejoue</b> avec le vrai
+    code du jeu, à partir de la graine qu'il a lui-même donnée, <b>avant</b> d'écrire le score. Seule une partie
+    <span class="vd vd-conforme">conforme</span> — les coups mènent au score déclaré, la graine a été donnée à ce joueur
+    et rendue une fois, sans l'IA, dans un temps possible — entre au classement (et donc aux médailles, aux primes, aux
+    quêtes, au tournoi). <span class="vd vd-divergent">divergent</span> : un coup impossible, une fin qui ne tombe pas,
+    un score différent — un score <b>trafiqué</b>. <span class="vd vd-refuse">refuse</span> : rejouée, mais écartée par
+    une règle (graine locale ou d'un autre, déjà rendue, sans journal, <b>durée impossible</b>…).
+    Chaque refus part aussi au registre des alertes ; le joueur, lui, ne lit qu'un message neutre.
+    <b>Classer</b> fait entrer à la main le score déclaré d'une partie écartée (du jour seulement : le Challenge est
+    celui du jour), et compte ses combos si le rejeu a pu les compter.
   </p>
-  <div class="integ-inter">
-    <label><input type="checkbox" id="sv-tournoi" onchange="swapouTournoiVerifie(this.checked)">
-      Tournoi Swapou : ne compter que les parties vérifiées</label>
-    <div class="integ-note" style="margin:6px 0 0">
-      Baissé (par défaut), un score entre au tour du tournoi dès qu'il est posé, comme avant.
-      Levé, il n'y entre qu'une fois sa partie rejouée et trouvée <b>conforme</b>, avec une graine donnée par le serveur
-      (quelques dixièmes de seconde après la fin de partie). <span class="integ-alerte">Les parties du jeu Flash, et celles
-      jouées sans réseau au lancement, n'entrent alors plus au tour</span> : annonce-le aux joueurs (« le tournoi se joue
-      sur la version du parc »). Le classement Challenge habituel, lui, ne change pas.
-    </div>
-  </div>
+  <p class="integ-note">
+    <b>Les durées</b> : <i>serveur</i>, de la graine donnée au score reçu (la seule horloge que le joueur ne touche
+    pas) ; <i>déclarée</i>, par le navigateur ; <i>minimum</i>, la durée des animations de la partie d'après le rejeu,
+    dont on retient <span id="sv-seuil-part">85 %</span> moins <span id="sv-seuil-marge">5 s</span>. Une partie rendue
+    plus vite que ce minimum, ou déclarée plus longue que la durée serveur, ne s'est pas jouée en vrai.
+    Le rejeu prouve que la partie a été <i>jouée</i>, pas <i>qui</i> l'a jouée : pour l'aide d'une IA, regarde le
+    <b>rythme</b> (réflexion médiane, et régularité : l'écart des temps de réflexion rapporté à leur moyenne — en rouge
+    sous 0,35) et l'<b>accord avec l'IA</b> (la part des coups qui sont exactement le meilleur coup de l'analyseur du
+    jeu ; quelques minutes de calcul par partie, à la demande).
+  </p>
   <h3>Par joueur</h3>
   <table>
-    <thead><tr><th>Joueur</th><th>Parties</th><th>Conformes</th><th>Divergentes</th><th>Graine locale</th><th>Meilleur vérifié</th><th>Meilleur déclaré</th><th>Coups joués par le bouton IA</th><th>Réflexion médiane</th><th>Régularité</th></tr></thead>
+    <thead><tr><th>Joueur</th><th>Parties</th><th>Classées</th><th>Conformes</th><th>Divergentes</th><th>Refusées</th><th>Graine locale</th><th>Meilleur vérifié</th><th>Meilleur déclaré</th><th>Coups joués par le bouton IA</th><th>Réflexion médiane</th><th>Régularité</th></tr></thead>
     <tbody id="sv-bilan"></tbody>
   </table>
   <h3>Les parties</h3>
   <table>
-    <thead><tr><th>Fin</th><th>Joueur</th><th>Score déclaré</th><th>Rejoué</th><th>Verdict</th><th>Coups</th><th>Durée</th><th>Réflexion médiane</th><th>Régularité</th><th>Accord avec l'IA</th><th></th></tr></thead>
+    <thead><tr><th>Fin</th><th>Joueur</th><th>Score déclaré</th><th>Rejoué</th><th>Verdict</th><th>Coups</th><th title="serveur / déclarée / minimum d'après le rejeu">Durées</th><th>Combos comptés</th><th>Réflexion médiane</th><th>Régularité</th><th>Accord avec l'IA</th><th></th></tr></thead>
     <tbody id="sv-parties"></tbody>
+  </table>
+  <h3>Les combos par joueur : hérités et vérifiés</h3>
+  <p class="integ-note">
+    Le serveur compte lui-même les combos de chaque partie rejouée conforme (essais compris) et donne le picto d'un
+    combo au cinquième ; ce que le navigateur écrit dans la fiche est remplacé par ses comptes. Les compteurs que les
+    fiches portaient <b>avant</b> — le navigateur les écrivait seul, ils ont pu être forgés — sont gardés à part, comme
+    <b>hérités</b> : la fiche du joueur montre hérités + vérifiés. Ils ne sont pas effacés d'office ; à toi de décider,
+    joueur par joueur : <b>remettre à zéro</b>, ou <b>ne garder que ce que couvrent</b> ses parties rejouées conformes
+    d'avant le rejeu décisif (recomptées à la demande). Les pictos déjà donnés restent, sauf si tu coches
+    « reprendre les pictos » : ceux que le nouveau total ne justifie plus (moins de cinq) sont alors retirés.
+    Les joueurs dont les cocktails Swapolotof hérités dépassent le plus les vérifiés viennent en tête.
+  </p>
+  <div class="toolbar">
+    <button class="btn" onclick="loadSwapouCombos()">Rafraîchir</button>
+    <label style="font-size:13px"><input type="checkbox" id="svc-pictos"> reprendre les pictos qui ne sont plus justifiés</label>
+    <span id="svc-etat" style="margin-left:auto;font-size:13px"></span>
+  </div>
+  <table>
+    <thead><tr><th>Joueur</th><th>Cocktail Swapolotof<br><span style="font-weight:normal">hérités / vérifiés</span></th><th>Total hérités</th><th>Total vérifiés</th><th>Détail (hérités / vérifiés, par combo)</th><th>Décision</th><th></th></tr></thead>
+    <tbody id="svc-joueurs"></tbody>
   </table>
 </div>
 
@@ -2003,7 +2024,7 @@ function switchTab(name) {
   if (name === 'stats') loadStats();
   else statsAuto(false);
   if (name === 'palmares') loadPalmares();
-  if (name === 'swapouverif') loadSwapouVerif();
+  if (name === 'swapouverif') { loadSwapouVerif(); loadSwapouCombos(); }
   else swapouVerifSuivre(false);
   if (name === 'compteslies') loadComptesLies();
   if (name === 'alertes') loadAlertes();
@@ -2190,64 +2211,147 @@ function svAccord(p) {
   if (!p.nb_coups || !p.graine) return '—';
   return `<button class="btn btn-sm" onclick="swapouAccord('${p.id}')">Calculer</button>`;
 }
+// Les onze combos du Challenge, dans l'ordre des paliers (le onzième : le cocktail Swapolotof).
+const SV_COMBOS = ['confiture de fraise', 'confiture aux abricots', 'tarte aux fruits rouges', 'recette crêmeuse',
+  'suprême crême-orange', 'kiwi-ti-kiwi', "orange folie's", 'douceur pistache', 'éclair suprême', 'iceberg de fruits',
+  'cocktail swapolotof'];
+function svCombos(c) {
+  if (!Array.isArray(c)) return '—';
+  const l = c.map((n, i) => n ? { n, i } : null).filter(Boolean);
+  if (!l.length) return '<span style="color:#999">aucun</span>';
+  return l.map(({ n, i }) => `<span title="${esc(SV_COMBOS[i])}" style="white-space:nowrap${i === 10 ? ';color:#b31111;font-weight:bold' : ''}">${i + 1}×${n}</span>`).join(' ');
+}
+function svDurees(p) {
+  const srv = p.duree_serveur_ms == null ? '—' : svDuree(p.duree_serveur_ms);
+  const min = p.temps_jeu_ms == null || !svSeuils ? null : Math.max(0, p.temps_jeu_ms * svSeuils.tempsJeuPart - svSeuils.margeMs);
+  const court = min != null && p.duree_serveur_ms != null && p.duree_serveur_ms < min;
+  return `<span title="de la graine au score, horloge du serveur" style="${court ? 'color:#b31111;font-weight:bold' : ''}">${srv}</span>`
+    + ` <span style="color:#777">/</span> <span title="déclarée par le navigateur">${svDuree(p.duree_ms)}</span>`
+    + (min != null ? `<div style="font-size:11px;color:#777" title="les animations de la partie, d'après le rejeu (${svDuree(p.temps_jeu_ms)}), moins la marge">min. ${svDuree(min)}</div>` : '');
+}
+let svSeuils = null;
 async function loadSwapouVerif() {
   try {
     const q = new URLSearchParams({ jours: $('#sv-jours').value, joueur: $('#sv-joueur').value.trim(), verdict: $('#sv-verdict').value });
     const r = await fetch('/api/admin/swapou/parties?' + q, { headers: hdr() });
     const d = await r.json();
     if (!d.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
-    $('#sv-tournoi').checked = !!d.tournoiVerifie;
+    svSeuils = d.seuils || null;
+    if (svSeuils) {
+      $('#sv-seuil-part').textContent = Math.round(svSeuils.tempsJeuPart * 100) + ' %';
+      $('#sv-seuil-marge').textContent = Math.round(svSeuils.margeMs / 1000) + ' s';
+    }
     const n = d.parties.length;
     const div = d.parties.filter((p) => p.verdict === 'divergent').length;
+    const ecartees = d.parties.filter((p) => !p.classe && !p.essai && !p.ia_detenteur).length;
     $('#sv-etat').innerHTML = d.sansBase ? 'sans base de données : rien à montrer'
       : `<span class="count">${n}</span> partie${n > 1 ? 's' : ''}${div ? ` · <b style="color:#b31111">${div} divergente${div > 1 ? 's' : ''}</b>` : ''}`
+        + (ecartees ? ` · ${ecartees} écartée${ecartees > 1 ? 's' : ''}` : '')
         + (d.attente ? ` · ${d.attente} en vérification` : '') + (d.attenteAccord ? ` · ${d.attenteAccord} accord(s) en calcul` : '');
     $('#sv-bilan').innerHTML = d.bilan.map((b) => `<tr>
       <td><a href="#" class="uname" onclick="$('#sv-joueur').value='${esc(b.username)}';loadSwapouVerif();return false">${esc(b.username)}</a></td>
-      <td>${b.parties}</td><td>${b.conformes}</td>
+      <td>${b.parties}</td><td>${b.classees || 0}</td><td>${b.conformes}</td>
       <td>${b.divergentes ? `<b style="color:#b31111">${b.divergentes}</b>` : 0}</td>
+      <td>${b.refusees || 0}</td>
       <td>${b.locales || 0}</td>
       <td>${b.meilleur_verifie == null ? '—' : Number(b.meilleur_verifie).toLocaleString('fr-FR')}</td>
       <td>${b.meilleur_declare == null ? '—' : Number(b.meilleur_declare).toLocaleString('fr-FR')}</td>
       <td>${b.coups_ia || 0}</td>
       <td>${svMs(b.mediane_moy)}</td>
       <td>${svRegularite(b.variation_moy)}</td>
-    </tr>`).join('') || '<tr><td colspan="10" style="text-align:center;color:#999;padding:14px">Aucune partie sur la période.</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="12" style="text-align:center;color:#999;padding:14px">Aucune partie sur la période.</td></tr>';
     $('#sv-parties').innerHTML = d.parties.map((p) => {
       const ry = p.rythme || {};
       const rejoue = p.score_rejoue == null ? '—' : Number(p.score_rejoue).toLocaleString('fr-FR');
+      const indices = Array.isArray(p.indices) && p.indices.length
+        ? `<div style="font-size:11px;color:#c8860a">${p.indices.map(esc).join('<br>')}</div>` : '';
+      // Le sort du score : classé (par le rejeu ou à la main), ou écarté.
+      const sort = p.classe
+        ? `<span class="badge" style="background:#2f8f2f;color:#fff" title="${p.classe_par === 'admin' ? 'classée à la main' : 'classée par le rejeu'}">classée${p.classe_par === 'admin' ? ' (admin)' : ''}</span>`
+        : (p.essai ? '<span class="badge" style="background:#ddd;color:#555">essai</span>'
+          : (p.ia_detenteur ? '' : (p.verdict === 'en_cours' ? '' : '<span class="badge" style="background:#7a1010;color:#fff">écartée</span>')));
+      const peutClasser = !p.classe && !p.essai && !p.ia_detenteur && p.verdict !== 'en_cours';
       return `<tr>
         <td style="white-space:nowrap">${tFmtDate(p.fini_le)}</td>
         <td><a href="#" onclick="viewUser('${esc(p.username)}');return false" class="uname">${esc(p.username)}</a>
           ${p.ia_detenteur ? '<span class="badge" title="Joueur à qui l’admin a accordé l’IA : score non classé">IA accordée</span>' : ''}
           ${p.tournoi ? '<span class="badge" style="background:#7a5bd0;color:#fff">tournoi</span>' : ''}
+          ${p.fd === false ? '<span class="badge" style="background:#ddd;color:#555" title="Plus de FD : classable, mais pas classé">sans FD</span>' : ''}
           ${p.source === 'locale' ? '<span class="badge" style="background:#ddd;color:#555" title="Le serveur n’a pas répondu à temps : graine tirée par le navigateur">graine locale</span>' : ''}</td>
         <td>${Number(p.score_declare || 0).toLocaleString('fr-FR')}</td>
         <td>${rejoue}</td>
-        <td><span class="vd vd-${p.verdict}">${esc(p.verdict.replace('_', ' '))}</span>${p.raison ? `<div style="font-size:11px;color:#777">${esc(p.raison)}</div>` : ''}</td>
+        <td><span class="vd vd-${p.verdict}">${esc(p.verdict.replace('_', ' '))}</span> ${sort}${p.raison ? `<div style="font-size:11px;color:#777">${esc(p.raison)}</div>` : ''}${indices}</td>
         <td>${p.nb_coups}${ry.parIa ? ` <span style="color:#b31111" title="coups joués par le bouton de l’IA">(${ry.parIa} IA)</span>` : ''}${ry.defenses ? ` <span style="color:#777;font-size:11px">${ry.defenses} déf.</span>` : ''}</td>
-        <td>${svDuree(p.duree_ms)}</td>
+        <td style="white-space:nowrap">${svDurees(p)}</td>
+        <td style="font-size:12px">${svCombos(p.combos)}${p.combos && !p.combos_comptes && p.verdict !== 'conforme' ? '<div style="font-size:11px;color:#999">non comptés</div>' : ''}</td>
         <td>${svMs(ry.medianeMs)}</td>
         <td>${svRegularite(ry.variation)}</td>
         <td>${svAccord(p)}</td>
-        <td><button class="btn btn-sm" title="Rejouer la partie à nouveau" onclick="swapouRejouer('${p.id}')">Rejouer</button></td>
+        <td style="white-space:nowrap"><button class="btn btn-sm" title="Rejouer la partie à nouveau (le classement n’est pas touché)" onclick="swapouRejouer('${p.id}')">Rejouer</button>
+          ${peutClasser ? `<button class="btn-success btn-sm" title="Faire entrer à la main le score déclaré au classement" onclick="swapouClasser('${p.id}', ${Number(p.score_declare) || 0}, '${esc(p.verdict)}')">Classer</button>` : ''}</td>
       </tr>`;
-    }).join('') || '<tr><td colspan="11" style="text-align:center;color:#999;padding:14px">Aucune partie.</td></tr>';
+    }).join('') || '<tr><td colspan="12" style="text-align:center;color:#999;padding:14px">Aucune partie.</td></tr>';
     // Un accord en calcul : on suit l'avancement.
     swapouVerifSuivre(d.parties.some((p) => p.accordEnCours || p.verdict === 'en_cours'));
   } catch (e) { toast('Erreur: ' + e.message); }
 }
-async function swapouTournoiVerifie(on) {
-  const msg = on
-    ? 'Ne compter au tournoi Swapou que les parties vérifiées ?\n\nLes parties du jeu Flash (et celles jouées sans réseau au lancement) n’entreront plus au tour.'
-    : 'Revenir au fonctionnement habituel (tout score entre au tour du tournoi) ?';
-  if (!confirm(msg)) { $('#sv-tournoi').checked = !on; return; }
+async function swapouClasser(id, score, verdict) {
+  const msg = `Classer à la main cette partie (${score.toLocaleString('fr-FR')} points déclarés) ?`
+    + (verdict === 'divergent' ? '\n\nAttention : le rejeu ne retombe PAS sur ce score (partie divergente).' : '')
+    + '\n\nLe score entre au classement du jour (et au tournoi si sa fenêtre est ouverte).';
+  if (!confirm(msg)) return;
   try {
-    const r = await fetch('/api/admin/swapou/tournoi-verifie', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()), body: JSON.stringify({ on }) });
+    const r = await fetch('/api/admin/swapou/parties/' + id + '/classer', { method: 'POST', headers: hdr() });
     const d = await r.json();
-    if (d.ok) toast(d.tournoiVerifie ? 'Tournoi : parties vérifiées seulement' : 'Tournoi : fonctionnement habituel');
-    else toast('Erreur: ' + JSON.stringify(d));
-    $('#sv-tournoi').checked = !!d.tournoiVerifie;
+    if (!d.ok) { toast('Erreur: ' + (d.message || d.error || r.status)); return; }
+    toast(d.deja ? 'Déjà classée' : 'Classée' + (d.updated ? ' (nouveau record)' : ' (le record du joueur était meilleur)') + (d.combos ? ' — combos comptés' : ''));
+    loadSwapouVerif();
+    loadSwapouCombos();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function loadSwapouCombos() {
+  try {
+    const r = await fetch('/api/admin/swapou/combos', { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    const total = (t) => t.reduce((a, x) => a + x, 0);
+    const n = d.joueurs.length;
+    const avecHeritage = d.joueurs.filter((j) => total(j.herites) > 0).length;
+    $('#svc-etat').innerHTML = `<span class="count">${n}</span> joueur${n > 1 ? 's' : ''} · ${avecHeritage} avec des combos hérités`;
+    $('#svc-joueurs').innerHTML = d.joueurs.map((j) => {
+      const s = j.swapolotof;
+      const ecart = s.herites > s.verifies;
+      const detail = SV_COMBOS.map((nom, i) => (j.herites[i] || j.verifies[i])
+        ? `<span title="${esc(nom)}${j.pictos[i] ? ' — picto donné' : ''}" style="white-space:nowrap;${j.herites[i] > j.verifies[i] ? 'color:#b31111' : ''}">${i + 1}: ${j.herites[i]}/${j.verifies[i]}${j.pictos[i] ? '★' : ''}</span>`
+        : '').filter(Boolean).join(' · ');
+      return `<tr>
+        <td><a href="#" class="uname" onclick="$('#sv-joueur').value='${esc(j.username)}';loadSwapouVerif();return false">${esc(j.username)}</a></td>
+        <td style="${ecart ? 'color:#b31111;font-weight:bold' : ''}">${s.herites} / ${s.verifies}${j.pictos[10] ? ' ★' : ''}</td>
+        <td>${total(j.herites)}</td>
+        <td>${total(j.verifies)}</td>
+        <td style="font-size:12px">${detail || '—'}</td>
+        <td style="font-size:12px;color:#555">${esc(j.note || 'aucune (hérités gardés)')}</td>
+        <td style="white-space:nowrap">${total(j.herites) ? `<button class="btn-danger btn-sm" title="Remettre à zéro les compteurs hérités" onclick="swapouHeritage('${esc(j.username)}', 'zero')">Zéro</button>
+          <button class="btn btn-sm" title="Ne garder que ce que couvrent ses parties rejouées conformes d’avant" onclick="swapouHeritage('${esc(j.username)}', 'couverts')">Couverts</button>` : ''}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="7" style="text-align:center;color:#999;padding:14px">Aucun combo, hérité ou vérifié.</td></tr>';
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function swapouHeritage(username, action) {
+  const reprendre = $('#svc-pictos').checked;
+  const msg = (action === 'zero'
+    ? `Remettre à zéro les combos hérités de ${username} ?`
+    : `Ne garder des combos hérités de ${username} que ce que couvrent ses parties rejouées conformes d’avant ? (recompte, quelques secondes)`)
+    + (reprendre ? '\n\nLes pictos de combo qui ne sont plus justifiés seront REPRIS.' : '\n\nSes pictos de combo restent.');
+  if (!confirm(msg)) return;
+  try {
+    const r = await fetch('/api/admin/swapou/combos/' + encodeURIComponent(username), {
+      method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()),
+      body: JSON.stringify({ action, retirerPictos: reprendre }) });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    toast(username + ' : ' + d.note + (d.pictosRetires && d.pictosRetires.length ? ' — pictos repris : ' + d.pictosRetires.join(', ') : ''));
+    loadSwapouCombos();
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 async function swapouAccord(id) {
