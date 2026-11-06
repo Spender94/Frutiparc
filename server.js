@@ -10460,7 +10460,10 @@ async function handleSaveScore(req, res) {
 app.post('/api/saveScore', handleSaveScore);
 app.get('/api/saveScore', handleSaveScore);
 
-app.post('/api/admin/clearScores', async (req, res) => {
+// Réservée à l'admin, comme toutes les routes /api/admin : elle n'avait AUCUN
+// contrôle d'accès — un simple POST suffisait à vider un classement entier,
+// en mémoire et en base.
+app.post('/api/admin/clearScores', adminAuth, async (req, res) => {
   const ranking = String(req.body.ranking || '').trim();
   if (!ranking) return res.status(400).json({ ok: false, error: 'missing ranking' });
   for (const [u, rlist] of Object.entries(scoresData.users || {})) {
