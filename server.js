@@ -17293,11 +17293,96 @@ function antitricheNoterPartie(p) {
     .catch(dbErr('finirPartieVerifiee'));
 }
 
+/*
+ * LES ALERTES DE TRICHE — le registre commun (table alertes_triche).
+ *
+ * Tout mécanisme qui écarte quelque chose, ou le trouve louche, le DIT ici :
+ * une partie Swapou qui ne se rejoue pas, un score implausible, une porte de
+ * côté refusée, une sauvegarde qui gonfle un compteur sans partie derrière…
+ * La règle du parc (novembre 2026) : ce qui ne passe pas la vérification
+ * n'est PAS classé, et part en alerte ; l'admin tranche (onglet Alertes :
+ * classer sans suite, ou sanctionner — annuler un score, retirer des pictos).
+ *
+ *   signalerTriche(username, { jeu, type, gravite, resume, details })
+ *     gravite : 'info' | 'suspect' | 'grave'
+ *
+ * Sans base, les alertes vivent en mémoire (les 500 dernières). Le même
+ * signal répété dans les deux minutes (même joueur, même jeu, même type, même
+ * résumé) ne s'écrit qu'une fois : une boucle de requêtes ne noie pas la liste.
+ */
+const ALERTES_TRICHE_MEMOIRE = [];
+const alertesTricheRecentes = new Map();     // clé → horodatage
+let alertesTricheSeq = 0;
+function signalerTriche(username, { jeu = '', type = '', gravite = 'suspect', resume = '', details = null } = {}) {
+  if (!username || !type) return;
+  const cle = [String(username).toLowerCase(), jeu, type, resume].join('|');
+  const maintenant = Date.now();
+  if (maintenant - (alertesTricheRecentes.get(cle) || 0) < 2 * 60 * 1000) return;
+  alertesTricheRecentes.set(cle, maintenant);
+  if (alertesTricheRecentes.size > 5000) {
+    for (const [k, t] of alertesTricheRecentes) if (maintenant - t > 2 * 60 * 1000) alertesTricheRecentes.delete(k);
+  }
+  const g = ['info', 'suspect', 'grave'].includes(gravite) ? gravite : 'suspect';
+  console.log(`[TRICHE] ${username} ${jeu || '-'} ${type} (${g}) — ${resume}`);
+  const a = { username: String(username).toLowerCase(), jeu, type, gravite: g, resume, details };
+  if (process.env.DATABASE_URL) {
+    db.ajouterAlerteTriche(a).catch(dbErr('ajouterAlerteTriche'));
+  } else {
+    ALERTES_TRICHE_MEMOIRE.unshift(Object.assign({ id: ++alertesTricheSeq, cree_le: new Date().toISOString(),
+      statut: 'ouverte', traite_par: '', traite_le: null, note: '' }, a));
+    if (ALERTES_TRICHE_MEMOIRE.length > 500) ALERTES_TRICHE_MEMOIRE.length = 500;
+  }
+}
+
+// Admin : la liste (filtrable), le décompte par joueur, et le traitement.
+app.get('/api/admin/triche/alertes', adminAuth, async (req, res) => {
+  const f = { statut: String(req.query.statut || ''), username: String(req.query.username || ''),
+    jeu: String(req.query.jeu || ''), limite: Number(req.query.limite) || 200 };
+  try {
+    if (process.env.DATABASE_URL) return res.json({ ok: true, alertes: await db.listerAlertesTriche(f) });
+    const l = ALERTES_TRICHE_MEMOIRE.filter((a) => (!f.statut || a.statut === f.statut)
+      && (!f.username || a.username === f.username.toLowerCase()) && (!f.jeu || a.jeu === f.jeu));
+    res.json({ ok: true, alertes: l.slice(0, f.limite) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get('/api/admin/triche/joueurs', adminAuth, async (req, res) => {
+  try {
+    if (process.env.DATABASE_URL) return res.json({ ok: true, joueurs: await db.compterAlertesTriche(Number(req.query.jours) || 90) });
+    const par = new Map();
+    for (const a of ALERTES_TRICHE_MEMOIRE) {
+      const j = par.get(a.username) || { username: a.username, total: 0, ouvertes: 0, graves: 0, derniere: a.cree_le };
+      j.total++; if (a.statut === 'ouverte') j.ouvertes++; if (a.gravite === 'grave') j.graves++;
+      par.set(a.username, j);
+    }
+    res.json({ ok: true, joueurs: [...par.values()].sort((x, y) => y.graves - x.graves || y.ouvertes - x.ouvertes || y.total - x.total) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post('/api/admin/triche/alertes/:id', adminAuth, async (req, res) => {
+  const statut = String((req.body && req.body.statut) || '');
+  if (!['ouverte', 'classee', 'traitee'].includes(statut)) return res.status(400).json({ ok: false, error: 'statut' });
+  const note = String((req.body && req.body.note) || '');
+  const par = 'admin';      // adminAuth : la clé complète, pas d'identité de rôle
+  try {
+    if (process.env.DATABASE_URL) {
+      const a = await db.traiterAlerteTriche(req.params.id, statut, par, note);
+      return a ? res.json({ ok: true, alerte: a }) : res.status(404).json({ ok: false });
+    }
+    const a = ALERTES_TRICHE_MEMOIRE.find((x) => String(x.id) === String(req.params.id));
+    if (!a) return res.status(404).json({ ok: false });
+    Object.assign(a, { statut, note, traite_par: par, traite_le: new Date().toISOString() });
+    res.json({ ok: true, alerte: a });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // Un score arrivé SANS partie (porte générique, jeton absent ou faux, fiche
 // du bureau) : rien à rejouer. On le note quand même — c'est la trace d'un
 // essai de forgeage, ou d'un vieux client en cache.
 function antitricheNoterSansPartie(username, jeu, mode, score, source, raison, classe) {
   console.log(`[ANTITRICHE] ${username} ${jeu} ${score} sans partie vérifiable (${source}) — ${raison}`);
+  if (!classe) {
+    signalerTriche(username, { jeu, type: 'score_sans_partie', gravite: 'suspect',
+      resume: `score ${score} sans partie vérifiable (${source})`, details: { score, source, raison, mode } });
+  }
   if (!process.env.DATABASE_URL || !username) return;
   const id = 'x' + crypto.randomBytes(11).toString('hex');
   db.finirPartieVerifiee({

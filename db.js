@@ -1222,6 +1222,30 @@ async function initSchema() {
       CREATE INDEX IF NOT EXISTS idx_parties_verifiees_user ON parties_verifiees(LOWER(username), cree_le DESC);
       CREATE INDEX IF NOT EXISTS idx_parties_verifiees_jeu ON parties_verifiees(jeu, fini_le DESC);
 
+      -- LES ALERTES DE TRICHE — le registre commun de tout ce qui a été
+      -- écarté ou paraît louche : une partie Swapou qui ne se rejoue pas, un
+      -- score implausible, une porte de côté refusée, une sauvegarde qui
+      -- gonfle sans partie… Chaque mécanisme y écrit par signalerTriche
+      -- (server.js) ; l'admin les lit, les classe, et agit (onglet Alertes).
+      --   gravite : 'info' | 'suspect' | 'grave' ;
+      --   statut  : 'ouverte' | 'classee' (sans suite) | 'traitee' (sanctionnée).
+      CREATE TABLE IF NOT EXISTS alertes_triche (
+        id          BIGSERIAL PRIMARY KEY,
+        cree_le     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        username    TEXT NOT NULL,
+        jeu         TEXT NOT NULL DEFAULT '',
+        type        TEXT NOT NULL,
+        gravite     TEXT NOT NULL DEFAULT 'suspect',
+        resume      TEXT NOT NULL DEFAULT '',
+        details     JSONB,
+        statut      TEXT NOT NULL DEFAULT 'ouverte',
+        traite_par  TEXT NOT NULL DEFAULT '',
+        traite_le   TIMESTAMPTZ,
+        note        TEXT NOT NULL DEFAULT ''
+      );
+      CREATE INDEX IF NOT EXISTS idx_alertes_triche_user ON alertes_triche(LOWER(username), cree_le DESC);
+      CREATE INDEX IF NOT EXISTS idx_alertes_triche_statut ON alertes_triche(statut, cree_le DESC);
+
       -- LE JOURNAL DES CONNEXIONS, pour démasquer les multi-comptes. Une ligne
       -- par joueur, par jour, par adresse et par appareil — les connexions
       -- suivantes du même jour ne font que monter le compteur. On y range
@@ -1523,6 +1547,45 @@ async function incrementXp(username, delta) {
 // L'XP des médailles : inscrit au registre celles qui n'y sont pas encore, et
 // rend les classements (ranking_id) qu'on vient d'y inscrire — ceux-là, et
 // eux seuls, sont à payer. `medailles` : [{ rankingId, medal, xp }].
+// ── Les alertes de triche (cf. la table alertes_triche) ──
+async function ajouterAlerteTriche(a) {
+  const { rows } = await pool.query(
+    `INSERT INTO alertes_triche (username, jeu, type, gravite, resume, details)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, cree_le`,
+    [String(a.username || '').toLowerCase(), String(a.jeu || ''), String(a.type || ''),
+      String(a.gravite || 'suspect'), String(a.resume || '').slice(0, 500), a.details ? JSON.stringify(a.details) : null]);
+  return rows[0];
+}
+async function listerAlertesTriche({ statut = '', username = '', jeu = '', limite = 200 } = {}) {
+  const conds = [], vals = [];
+  if (statut) { vals.push(statut); conds.push('statut = $' + vals.length); }
+  if (username) { vals.push(String(username).toLowerCase()); conds.push('LOWER(username) = $' + vals.length); }
+  if (jeu) { vals.push(jeu); conds.push('jeu = $' + vals.length); }
+  vals.push(Math.max(1, Math.min(2000, Math.trunc(Number(limite) || 200))));
+  const { rows } = await pool.query(
+    'SELECT * FROM alertes_triche ' + (conds.length ? 'WHERE ' + conds.join(' AND ') : '')
+      + ' ORDER BY cree_le DESC LIMIT $' + vals.length, vals);
+  return rows;
+}
+async function traiterAlerteTriche(id, statut, par, note) {
+  const { rows } = await pool.query(
+    `UPDATE alertes_triche SET statut = $2, traite_par = $3, traite_le = now(), note = $4
+      WHERE id = $1 RETURNING *`, [Number(id), statut, String(par || ''), String(note || '').slice(0, 500)]);
+  return rows[0] || null;
+}
+// Le décompte par joueur : combien d'alertes, de quelle gravité, ouvertes ou non.
+async function compterAlertesTriche(jours = 90) {
+  const { rows } = await pool.query(
+    `SELECT LOWER(username) AS username, COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE statut = 'ouverte')::int AS ouvertes,
+            COUNT(*) FILTER (WHERE gravite = 'grave')::int AS graves,
+            MAX(cree_le) AS derniere
+       FROM alertes_triche WHERE cree_le > now() - make_interval(days => $1)
+      GROUP BY LOWER(username) ORDER BY graves DESC, ouvertes DESC, total DESC`,
+    [Math.max(1, Math.trunc(Number(jours) || 90))]);
+  return rows;
+}
+
 async function marquerXpMedailles(username, jour, medailles) {
   const nouvelles = [];
   for (const m of medailles || []) {
@@ -5977,6 +6040,10 @@ module.exports = {
   setAppState,
   incrementXp,
   marquerXpMedailles,
+  ajouterAlerteTriche,
+  listerAlertesTriche,
+  traiterAlerteTriche,
+  compterAlertesTriche,
   prunosticsCagnotte,
   prunosticsCagnotteAjouter,
   prunosticsCagnotteVider,
