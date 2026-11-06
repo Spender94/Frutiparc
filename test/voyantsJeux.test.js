@@ -45,6 +45,7 @@ test('la table du bureau suit internalList, et l\'extracteur suit les étiquette
   // rustines DoInitAction, et le serveur le dit.
   assert.match(serveur, /minipixiz:\s*12,/, 'minipixiz → interne 12');
   assert.match(serveur, /minifever:\s*13,/, 'minifever → interne 13');
+  assert.match(serveur, /jamajama:\s*14,/, 'jamajama → interne 14');
   assert.match(serveur, /OUTSIDE the SWF's original internalList/);
   // L'extracteur choisit les images PAR ÉTIQUETTE — la source de vérité du
   // gotoAndStop(nom) du SWF — plus jamais par décalage.
@@ -95,7 +96,7 @@ test('main.swf porte les rustines qui branchent la fée et les cerises au bureau
     o += hs + len;
   }
   const porteurs = new Set();
-  for (const [index, nom] of [[12, 'minipixiz'], [13, 'minifever']]) {
+  for (const [index, nom] of [[12, 'minipixiz'], [13, 'minifever'], [14, 'jamajama']]) {
     const graine = graineDe(index);
     let n = 0, i = 0;
     while ((i = corps.indexOf(graine, i)) >= 0) { n++; i++; }
@@ -127,6 +128,27 @@ test('main.swf porte les rustines qui branchent la fée et les cerises au bureau
     'le patch de la fée est rejouable');
   assert.ok(fs.existsSync(path.join(ROOT, 'scripts/patch-main-statusmng-minifever.js')),
     'celui des cerises aussi');
+  assert.ok(fs.existsSync(path.join(ROOT, 'scripts/patch-main-statusmng-jamajama.js')),
+    'et celui du fantôme de JamaJama');
+});
+
+test('JamaJama : son image à la feuille d\'icônes, son battement, son voyant mobile', () => {
+  // L'image 38 du clip 246 porte l'étiquette « jamajama », après « minifever ».
+  const extracteur = fs.readFileSync(path.join(ROOT, 'scripts/extract-voyants-jeux.js'), 'utf8');
+  const fn = extracteur.match(/function etiquettesDuClip[\s\S]*?\n}\n/)[0];
+  const etiquettes = new Function('fs', 'require', fn + '; return etiquettesDuClip;')(fs, require)(
+    path.join(ROOT, 'legacy/main.swf'), 246);
+  assert.equal(etiquettes.minifever, 37);
+  assert.equal(etiquettes.jamajama, 38, 'le fantôme suit les cerises');
+  // Le portage bat comme les autres jeux : c'est ce qui l'allume.
+  const page = fs.readFileSync(path.join(ROOT, 'public/jamajama/index.html'), 'utf8');
+  assert.match(page, /<script src="\/js\/eject-watch\.js" data-jeu="jamajama"><\/script>/);
+  assert.match(serveur, /swfName: 'jamajama'/, 'la clé du battement est le swfName du disque');
+  // Le mobile lit le code 14, sous son nom, avec son image.
+  assert.match(light, /13: "minifever", 14: "jamajama" \};/);
+  assert.match(light, /jamajama: "JamaJama" \};/);
+  assert.ok(fs.existsSync(path.join(ROOT, 'public/fb/voyant_jamajama.png')));
+  assert.ok(fs.existsSync(path.join(ROOT, 'scripts/assets-jamajama/voyant-34.png')));
 });
 
 test('le serveur sait traduire le code interne en nom de jeu', () => {
@@ -294,6 +316,7 @@ test('Swapou retrouve son voyant : swapou2 côté SWF, swapou côté assets', ()
   assert.equal(table[6], 'bandas');
   assert.equal(table[12], 'minipixiz');
   assert.equal(table[13], 'minifever');
+  assert.equal(table[14], 'jamajama');
   // Le forum est publié lui aussi : le bureau montre son icône, le mobile
   // doit pouvoir en faire autant (avec sa propre phrase).
   assert.equal(table[1], 'forum', 'le forum a repris sa place');

@@ -12346,18 +12346,20 @@
   // (scripts/extract-voyants-jeux.js). Minipixiz (12) et Mini-Fever (13) sont
   // hors liste d'origine : deux rustines DoInitAction les branchent au bureau
   // (patch-main-statusmng-*.js) — les cerises de Mini-Fever, dessinées pour la
-  // greffe, sont servies ici par le même voyant_minifever.png.
+  // greffe, sont servies ici par le même voyant_minifever.png. JamaJama (14)
+  // de même : son fantôme (make-jamajama-emblemes.js) est greffé au bureau et
+  // servi ici par voyant_jamajama.png.
   // LA LISTE COMPLÈTE, dans l'ordre de l'internalList du SWF. Elle n'en tenait
   // que six : Burning Kiwi, MotionBall, Frutisnake, Kaluga et le FORUM
   // n'avaient aucun voyant sur mobile — le serveur envoyait bien leur code, le
   // client ne savait pas le lire et n'affichait rien.
   var VOYANTS_JEU = { 1: "forum", 2: "bkiwi", 3: "mb2", 4: "swapou", 5: "snake3",
     6: "bandas", 7: "grapiz", 8: "kaluga", 9: "miniwave", 12: "minipixiz",
-    13: "minifever" };
+    13: "minifever", 14: "jamajama" };
   var VOYANTS_NOM = { forum: "Forum", bkiwi: "Burning Kiwi", mb2: "MotionBall 2",
     swapou: "Swapou", snake3: "Frutisnake", bandas: "Frutibandas", grapiz: "Grapiz",
     kaluga: "Kaluga", miniwave: "Mini-Wave", minipixiz: "Minipixiz",
-    minifever: "Mini-Fever" };
+    minifever: "Mini-Fever", jamajama: "JamaJama" };
   // Lire le forum n'est pas jouer : même emplacement, autre phrase.
   function libelleActivite(jeu) {
     return jeu === "forum" ? "Lit le forum" : "Joue à " + VOYANTS_NOM[jeu];

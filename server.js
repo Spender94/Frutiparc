@@ -308,7 +308,7 @@ const USER_LOG_TYPE = {
 // and the SWF then does gotoAndStop(<name>) on the activity-icon sprite
 // (id=246), whose frames carry FrameLabels — snake3=f1, mb2=f2, swapou2=f5,
 // kaluga=f8, bkiwi=f10, grapiz=f12, bandas=f13, miniwave=f14, minipixiz=f15,
-// forum=f36, minifever=f37 (greffée). The labels DO match their drawings
+// forum=f36, minifever=f37, jamajama=f38 (greffées). The labels DO match their drawings
 // (bandas = the red beret, grapiz = the blue marble…) — the old "+3 offset"
 // note here was a wrong rationalization that only held by accident for
 // minipixiz.
@@ -330,6 +330,10 @@ const STATUS_INTERNAL_FRAME = {
   // same codes itself (VOYANTS_JEU in light.html).
   minipixiz: 12,
   minifever: 13,
+  // JamaJama : internalList[14]="jamajama" et l'image 38 de la feuille (le
+  // fantôme du jeu), greffés par patch-main-statusmng-jamajama.js. Le portage
+  // bat par eject-watch.js comme les autres, c'est ce qui l'allume.
+  jamajama:  14,
   // Le forum : index 1 de la liste du SWF. Ce n'est pas une partie, mais il
   // occupe le même emplacement et le bureau lui donne son icône — le mobile
   // l'affiche donc aussi, avec sa propre phrase (« Lit le forum »).
