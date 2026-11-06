@@ -1270,6 +1270,24 @@ async function initSchema() {
       CREATE INDEX IF NOT EXISTS idx_historique_slots_user ON historique_slots(LOWER(username), cree_le DESC);
       CREATE INDEX IF NOT EXISTS idx_historique_slots_date ON historique_slots(cree_le);
 
+      -- LES SANCTIONS de l'onglet Alertes. L'exclusion des classements : ses
+      -- nouveaux scores ne sont plus classés (persistScore) et partent en
+      -- alerte ; on la lève en supprimant la ligne. Les pictos retirés : la
+      -- prochaine sauvegarde ne les redonne pas (extractGameItemsFromSlot).
+      CREATE TABLE IF NOT EXISTS triche_exclusions (
+        username  TEXT PRIMARY KEY,
+        depuis    TIMESTAMPTZ NOT NULL DEFAULT now(),
+        par       TEXT NOT NULL DEFAULT '',
+        motif     TEXT NOT NULL DEFAULT ''
+      );
+      CREATE TABLE IF NOT EXISTS triche_pictos_retires (
+        username   TEXT NOT NULL,
+        item_name  TEXT NOT NULL,
+        par        TEXT NOT NULL DEFAULT '',
+        le         TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (username, item_name)
+      );
+
       -- LE JOURNAL DES CONNEXIONS, pour démasquer les multi-comptes. Une ligne
       -- par joueur, par jour, par adresse et par appareil — les connexions
       -- suivantes du même jour ne font que monter le compteur. On y range
@@ -1568,23 +1586,27 @@ async function incrementXp(username, delta) {
   return rows[0] ? Number(rows[0].xp) : null;
 }
 
-// L'XP des médailles : inscrit au registre celles qui n'y sont pas encore, et
-// rend les classements (ranking_id) qu'on vient d'y inscrire — ceux-là, et
-// eux seuls, sont à payer. `medailles` : [{ rankingId, medal, xp }].
 // ── Les alertes de triche (cf. la table alertes_triche) ──
+// Une action de l'admin (type 'action_admin') s'écrit d'emblée traitée, avec
+// son auteur et sa note : c'est une trace, pas une alerte à instruire.
 async function ajouterAlerteTriche(a) {
+  const traitee = !!a.statut && a.statut !== 'ouverte';
   const { rows } = await pool.query(
-    `INSERT INTO alertes_triche (username, jeu, type, gravite, resume, details)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, cree_le`,
+    `INSERT INTO alertes_triche (username, jeu, type, gravite, resume, details, statut, traite_par, traite_le, note)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, cree_le`,
     [String(a.username || '').toLowerCase(), String(a.jeu || ''), String(a.type || ''),
-      String(a.gravite || 'suspect'), String(a.resume || '').slice(0, 500), a.details ? JSON.stringify(a.details) : null]);
+      String(a.gravite || 'suspect'), String(a.resume || '').slice(0, 500), a.details ? JSON.stringify(a.details) : null,
+      traitee ? String(a.statut) : 'ouverte', String(a.traitePar || ''), traitee ? new Date() : null,
+      String(a.note || '').slice(0, 500)]);
   return rows[0];
 }
-async function listerAlertesTriche({ statut = '', username = '', jeu = '', limite = 200 } = {}) {
+async function listerAlertesTriche({ statut = '', username = '', jeu = '', gravite = '', type = '', limite = 200 } = {}) {
   const conds = [], vals = [];
   if (statut) { vals.push(statut); conds.push('statut = $' + vals.length); }
   if (username) { vals.push(String(username).toLowerCase()); conds.push('LOWER(username) = $' + vals.length); }
   if (jeu) { vals.push(jeu); conds.push('jeu = $' + vals.length); }
+  if (gravite) { vals.push(gravite); conds.push('gravite = $' + vals.length); }
+  if (type) { vals.push(type); conds.push('type = $' + vals.length); }
   vals.push(Math.max(1, Math.min(2000, Math.trunc(Number(limite) || 200))));
   const { rows } = await pool.query(
     'SELECT * FROM alertes_triche ' + (conds.length ? 'WHERE ' + conds.join(' AND ') : '')
@@ -1597,7 +1619,9 @@ async function traiterAlerteTriche(id, statut, par, note) {
       WHERE id = $1 RETURNING *`, [Number(id), statut, String(par || ''), String(note || '').slice(0, 500)]);
   return rows[0] || null;
 }
-// Le décompte par joueur : combien d'alertes, de quelle gravité, ouvertes ou non.
+// Le décompte par joueur : combien d'alertes, de quelle gravité, ouvertes ou
+// non. Les actions de l'admin n'y comptent pas : ce sont des suites, pas des
+// soupçons.
 async function compterAlertesTriche(jours = 90) {
   const { rows } = await pool.query(
     `SELECT LOWER(username) AS username, COUNT(*)::int AS total,
@@ -1605,6 +1629,7 @@ async function compterAlertesTriche(jours = 90) {
             COUNT(*) FILTER (WHERE gravite = 'grave')::int AS graves,
             MAX(cree_le) AS derniere
        FROM alertes_triche WHERE cree_le > now() - make_interval(days => $1)
+        AND type <> 'action_admin'
       GROUP BY LOWER(username) ORDER BY graves DESC, ouvertes DESC, total DESC`,
     [Math.max(1, Math.trunc(Number(jours) || 90))]);
   return rows;
@@ -1659,6 +1684,59 @@ async function partiesRecentesJoueur(username, jeu, jours) {
   return rows[0] || { parties: 0, swapou: 0 };
 }
 
+// ── Les sanctions de l'onglet Alertes ──
+// L'exclusion des classements : un drapeau par joueur, relu au démarrage.
+async function listerExclusionsClassement() {
+  const { rows } = await pool.query('SELECT username, depuis, par, motif FROM triche_exclusions');
+  return rows;
+}
+async function exclureDesClassements(username, par, motif) {
+  await pool.query(
+    `INSERT INTO triche_exclusions (username, par, motif) VALUES ($1, $2, $3)
+     ON CONFLICT (username) DO UPDATE SET par = EXCLUDED.par, motif = EXCLUDED.motif`,
+    [String(username || '').toLowerCase(), String(par || ''), String(motif || '').slice(0, 500)]);
+}
+async function leverExclusionClassement(username) {
+  const r = await pool.query('DELETE FROM triche_exclusions WHERE username = $1', [String(username || '').toLowerCase()]);
+  return r.rowCount;
+}
+// Les pictos retirés : la sauvegarde suivante ne doit pas les rendre.
+async function listerPictosRetires() {
+  const { rows } = await pool.query('SELECT username, item_name, par, le FROM triche_pictos_retires');
+  return rows;
+}
+async function noterPictoRetire(username, itemName, par) {
+  await pool.query(
+    `INSERT INTO triche_pictos_retires (username, item_name, par) VALUES ($1, $2, $3)
+     ON CONFLICT (username, item_name) DO NOTHING`,
+    [String(username || '').toLowerCase(), String(itemName || ''), String(par || '')]);
+}
+async function oublierPictoRetire(username, itemName) {
+  const r = await pool.query('DELETE FROM triche_pictos_retires WHERE username = $1 AND item_name = $2',
+    [String(username || '').toLowerCase(), String(itemName || '')]);
+  return r.rowCount;
+}
+// L'archive du Challenge d'un joueur, jour par jour (la fiche de suspicion
+// en tire sa distribution habituelle par classement).
+async function archiveChallengeDe(username, limite = 3000) {
+  const { rows } = await pool.query(
+    `SELECT ranking_id, day_key, score, data FROM challenge_score_archive
+      WHERE LOWER(username) = LOWER($1) ORDER BY day_key DESC LIMIT $2`,
+    [String(username || ''), Math.max(1, Math.min(Number(limite) || 3000, 10000))]);
+  return rows;
+}
+// Une seule journée archivée d'un classement — l'annulation d'un score passé.
+async function supprimerScoreArchiveJour(username, rankingId, jour) {
+  const r = await pool.query(
+    `DELETE FROM challenge_score_archive
+      WHERE LOWER(username) = LOWER($1) AND ranking_id = $2 AND day_key = $3 RETURNING score`,
+    [String(username || ''), String(rankingId || ''), String(jour || '')]);
+  return r.rows;
+}
+
+// L'XP des médailles : inscrit au registre celles qui n'y sont pas encore, et
+// rend les classements (ranking_id) qu'on vient d'y inscrire — ceux-là, et
+// eux seuls, sont à payer. `medailles` : [{ rankingId, medal, xp }].
 async function marquerXpMedailles(username, jour, medailles) {
   const nouvelles = [];
   for (const m of medailles || []) {
@@ -2259,8 +2337,12 @@ async function anonymiserJoueur(username) {
       ['swapou_parties', 'username', 'brut'],
       ['parties_verifiees', 'username', 'brut'],
       ['connexions', 'username', 'brut'],
-      // L'historique de ses sauvegardes : sans lui, plus rien à instruire.
+      // L'anti-triche : l'historique de ses sauvegardes, ses alertes, ses
+      // sanctions — sans lui, plus rien à instruire.
       ['historique_slots', 'username', 'brut'],
+      ['alertes_triche', 'username', 'brut'],
+      ['triche_exclusions', 'username', 'brut'],
+      ['triche_pictos_retires', 'username', 'brut'],
       // Ses paris : déjà payés ou bientôt sans objet. Les garder sous la
       // pierre tombale heurterait « un pari par joueur et par match » dès que
       // deux comptes supprimés auraient misé sur le même match.
@@ -2291,7 +2373,7 @@ async function anonymiserJoueur(username) {
     const retirees = new Set(['push_subscriptions.username', 'trombinoscope.pseudo',
       'forum_topic_reads.username', 'forum_topic_follows.username', 'users.referred_by',
       'swapou_parties.username', 'parties_verifiees.username', 'connexions.username', 'tournament_paris.username',
-      'historique_slots.username',
+      'historique_slots.username', 'alertes_triche.username', 'triche_exclusions.username', 'triche_pictos_retires.username',
       'challenge_paris.username', 'challenge_medailles_xp.username', 'parties_differees.joueur_a', 'parties_differees.joueur_b']);
     for (const [table, col] of RENOMMAGE_COLONNES) {
       if (retirees.has(`${table}.${col}`)) continue;
@@ -2446,6 +2528,9 @@ const RENOMMAGE_COLONNES = [
   ['parties_verifiees', 'username'],
   ['connexions', 'username'],
   ['historique_slots', 'username'],
+  ['alertes_triche', 'username'],
+  ['triche_exclusions', 'username'],
+  ['triche_pictos_retires', 'username'],
   ['tournament_paris', 'username'],
   ['tournament_paris', 'choix'],
   ['challenge_paris', 'username'],
@@ -6126,6 +6211,14 @@ module.exports = {
   listerHistoriqueSlots,
   purgerHistoriqueSlots,
   partiesRecentesJoueur,
+  listerExclusionsClassement,
+  exclureDesClassements,
+  leverExclusionClassement,
+  listerPictosRetires,
+  noterPictoRetire,
+  oublierPictoRetire,
+  archiveChallengeDe,
+  supprimerScoreArchiveJour,
   prunosticsCagnotte,
   prunosticsCagnotteAjouter,
   prunosticsCagnotteVider,

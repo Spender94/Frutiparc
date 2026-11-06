@@ -2944,6 +2944,8 @@ function persistScore(username, rankingId, score, data) {
   if (!username || !rankingId || !RANKINGS[rankingId]) {
     return { updated: false, newScore: score, oldScore: 0, oldPos: 0, newPos: 0 };
   }
+  // Un joueur exclu des classements (onglet Alertes) : la partie compte, pas le score.
+  if (joueurExcluDesClassements(username)) return scoreExclu(username, rankingId, score);
   if (!scoresData.users[username]) scoresData.users[username] = {};
   const prev = scoresData.users[username][rankingId];
   const oldScore = (prev && Number.isFinite(Number(prev.score))) ? Number(prev.score) : 0;
@@ -3053,6 +3055,7 @@ function closeTournamentWindow(rankingId) { tournamentWindows.delete(rankingId);
 function captureTournamentScore(username, rankingId, score, data, opts) {
   const win = tournamentWindows.get(rankingId);
   if (!win) return;
+  if (joueurExcluDesClassements(username)) return;
   if (swapouTournoiVerifie && /^swapou2/.test(rankingId) && !(opts && opts.verifie)) return;
   if (win.endsAt && ((opts && opts.a) || Date.now()) > win.endsAt) return;
   const key = tRoundKey(win.tid, win.round);
@@ -14844,7 +14847,8 @@ function renommerEnMemoire(a, n, affichage) {
   if (deplacerCle(dailyXpActions, a, n)) { saveXpActions(); bilan.push('actions XP'); }
   if (deplacerCle(accMaisonEquip, a, n)) { sauverEquip(a, n); bilan.push('accessoire maison porté'); }
   // Les quêtes de Gromelin : l'avancement de la semaine et la dernière visite.
-  for (const sac of [quetesProgres, quetesVisites, quetesContrats, quetesIndiv]) {
+  // Et les sanctions de l'anti-triche : un renommage n'efface pas une exclusion.
+  for (const sac of [quetesProgres, quetesVisites, quetesContrats, quetesIndiv, exclusionsClassement, pictosRetires]) {
     if (sac.has(a)) { sac.set(n, sac.get(a)); sac.delete(a); }
   }
   // Les records du parc et les primes de la semaine qu'il tient.
@@ -14980,6 +14984,8 @@ async function supprimerJoueurPartout(username, { par = 'admin' } = {}) {
   if (scoresData.users[u]) delete scoresData.users[u];
   saveScoresFile();
   delete bouilleCache[u];
+  exclusionsClassement.delete(u);
+  pictosRetires.delete(u);
   console.log(`[RGPD] compte supprimé : ${u} (par ${par})`
     + (journal.anonymise ? ' — anonymisé : ' + JSON.stringify(journal.anonymise) : ''));
   return { ok: true, ...journal };
@@ -17339,11 +17345,13 @@ function signalerTriche(username, { jeu = '', type = '', gravite = 'suspect', re
 // Admin : la liste (filtrable), le décompte par joueur, et le traitement.
 app.get('/api/admin/triche/alertes', adminAuth, async (req, res) => {
   const f = { statut: String(req.query.statut || ''), username: String(req.query.username || ''),
-    jeu: String(req.query.jeu || ''), limite: Number(req.query.limite) || 200 };
+    jeu: String(req.query.jeu || ''), gravite: String(req.query.gravite || ''), type: String(req.query.type || ''),
+    limite: Number(req.query.limite) || 200 };
   try {
     if (process.env.DATABASE_URL) return res.json({ ok: true, alertes: await db.listerAlertesTriche(f) });
     const l = ALERTES_TRICHE_MEMOIRE.filter((a) => (!f.statut || a.statut === f.statut)
-      && (!f.username || a.username === f.username.toLowerCase()) && (!f.jeu || a.jeu === f.jeu));
+      && (!f.username || a.username === f.username.toLowerCase()) && (!f.jeu || a.jeu === f.jeu)
+      && (!f.gravite || a.gravite === f.gravite) && (!f.type || a.type === f.type));
     res.json({ ok: true, alertes: l.slice(0, f.limite) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -17352,6 +17360,7 @@ app.get('/api/admin/triche/joueurs', adminAuth, async (req, res) => {
     if (process.env.DATABASE_URL) return res.json({ ok: true, joueurs: await db.compterAlertesTriche(Number(req.query.jours) || 90) });
     const par = new Map();
     for (const a of ALERTES_TRICHE_MEMOIRE) {
+      if (a.type === 'action_admin') continue;
       const j = par.get(a.username) || { username: a.username, total: 0, ouvertes: 0, graves: 0, derniere: a.cree_le };
       j.total++; if (a.statut === 'ouverte') j.ouvertes++; if (a.gravite === 'grave') j.graves++;
       par.set(a.username, j);
@@ -17614,6 +17623,347 @@ function detecterSautsFiche(u, jeu, avantBrut, apresBrut, avant, apres) {
     }
   }
 }
+
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * LES SANCTIONS — exclure des classements, retirer des pictos, annuler un score
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Toutes partent de la fiche de suspicion (onglet Alertes), toutes laissent
+ * leur trace : une ligne 'action_admin' dans alertes_triche (déjà traitée,
+ * avec la note), et une ligne au journal de modération du joueur.
+ *
+ * L'EXCLUSION est un drapeau (triche_exclusions) relu au démarrage dans
+ * `exclusionsClassement`. persistScore — par où passent tous les scores de
+ * partie — ne classe plus rien pour un joueur exclu, et chaque score écarté
+ * part en alerte (une par classement et par heure). La fenêtre de tournoi
+ * (captureTournamentScore) le refuse aussi. Les scores déjà en place restent :
+ * on les annule un par un. Les notes Elo (fixerScore) ne passent pas par là.
+ *
+ * LES PICTOS RETIRÉS sont notés (triche_pictos_retires) : sans cela, la
+ * sauvegarde suivante, qui porte encore la case cochée, les rendait aussitôt.
+ */
+const exclusionsClassement = new Map();     // pseudo → { depuis, par, motif }
+const pictosRetires = new Map();            // pseudo → Set(nom du picto)
+const scoresExclusSignales = new Map();     // pseudo|classement → horodatage
+
+async function sanctionsTricheCharger() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    for (const r of await db.listerExclusionsClassement()) {
+      exclusionsClassement.set(r.username, { depuis: r.depuis, par: r.par, motif: r.motif });
+    }
+    for (const r of await db.listerPictosRetires()) {
+      if (!pictosRetires.has(r.username)) pictosRetires.set(r.username, new Set());
+      pictosRetires.get(r.username).add(r.item_name);
+    }
+    if (exclusionsClassement.size || pictosRetires.size) {
+      console.log(`[TRICHE] ${exclusionsClassement.size} joueur(s) exclu(s) des classements, ${pictosRetires.size} avec des pictos retirés`);
+    }
+  } catch (e) { console.error('[TRICHE] chargement des sanctions :', e.message); }
+}
+function joueurExcluDesClassements(username) {
+  return exclusionsClassement.has(String(username || '').toLowerCase());
+}
+function pictoRetire(username, nom) {
+  const s = pictosRetires.get(String(username || '').toLowerCase());
+  return !!(s && s.has(nom));
+}
+// Le score d'un joueur exclu : la partie compte (statistiques, quêtes), le
+// classement non. Même forme de retour que persistScore.
+function scoreExclu(username, rankingId, score) {
+  const u = String(username).toLowerCase();
+  noterPartie(u, (RANKINGS[rankingId] && RANKINGS[rankingId].game) || '');
+  const cle = u + '|' + rankingId, t = Date.now();
+  if (t - (scoresExclusSignales.get(cle) || 0) > 60 * 60 * 1000) {
+    scoresExclusSignales.set(cle, t);
+    signalerTriche(u, { jeu: (RANKINGS[rankingId] && RANKINGS[rankingId].game) || '', type: 'score_exclu', gravite: 'info',
+      resume: `score non classé (joueur exclu des classements) : ${rankingId}`, details: { rankingId, score: Number(score) || 0 } });
+  }
+  const prev = scoresData.users[username] && scoresData.users[username][rankingId];
+  const ancien = (prev && Number(prev.score)) || 0;
+  const pos = computePosition(rankingId, username);
+  return { updated: false, newScore: ancien, oldScore: ancien, oldPos: pos, newPos: pos, exclu: true };
+}
+// La trace d'une action : alertes_triche (traitée d'office) et journal de modération.
+function journaliserActionTriche(username, { jeu = '', action, resume, details = {}, note = '' }) {
+  const u = String(username).toLowerCase();
+  const a = { username: u, jeu, type: 'action_admin', gravite: 'info', resume,
+    details: Object.assign({ action }, details), statut: 'traitee', traitePar: 'admin', note };
+  console.log(`[TRICHE] action admin sur ${u} : ${resume}`);
+  if (process.env.DATABASE_URL) {
+    db.ajouterAlerteTriche(a).catch(dbErr('ajouterAlerteTriche'));
+    db.addModerationLog(u, 'admin', 'triche:' + action, (resume + (note ? ' — ' + note : '')).slice(0, 500)).catch(dbErr('addModerationLog'));
+  } else {
+    ALERTES_TRICHE_MEMOIRE.unshift(Object.assign({ id: ++alertesTricheSeq, cree_le: new Date().toISOString(),
+      traite_le: new Date().toISOString(), traite_par: 'admin' }, a, { statut: 'traitee' }));
+  }
+}
+// Une action peut clore l'alerte qui l'a motivée.
+async function cloreAlerteTriche(id, note) {
+  if (!id) return;
+  if (process.env.DATABASE_URL) { await db.traiterAlerteTriche(id, 'traitee', 'admin', note).catch(dbErr('traiterAlerteTriche')); return; }
+  const a = ALERTES_TRICHE_MEMOIRE.find((x) => String(x.id) === String(id));
+  if (a) Object.assign(a, { statut: 'traitee', note: String(note || ''), traite_par: 'admin', traite_le: new Date().toISOString() });
+}
+
+/*
+ * ANNULER UN SCORE.
+ *   · sans `jour` : le score EN PLACE (mémoire, fichier, table scores). Pour
+ *     un classement du Challenge, c'est le score du jour, pas encore archivé :
+ *     retiré, il ne sera ni archivé ni médaillé au roulement de minuit. Pour
+ *     un classement permanent, c'est le record lui-même qui part — l'ancien
+ *     record n'est gardé nulle part, le joueur repart de zéro.
+ *   · avec `jour` : la ligne archivée de CE jour-là (challenge_score_archive).
+ *     Les médailles déjà distribuées ce jour-là ne bougent pas : elles ont été
+ *     annoncées, payées en XP et réglé les paris ; les reprendre à la main
+ *     (onglet Challenge) reste possible, pas d'ici.
+ * Les tours de tournoi déjà capturés ne sont pas touchés non plus.
+ */
+async function annulerScoreTriche(username, rankingId, jour) {
+  const u = String(username).toLowerCase();
+  if (jour) {
+    if (!process.env.DATABASE_URL) return { ok: false, error: 'sans base, pas d’archive' };
+    const lignes = await db.supprimerScoreArchiveJour(u, rankingId, jour);
+    if (!lignes.length) return { ok: false, error: 'aucun score archivé ce jour-là' };
+    return { ok: true, score: Number(lignes[0].score), jour, archive: true };
+  }
+  const entree = scoresData.users[u] && scoresData.users[u][rankingId];
+  if (!entree) return { ok: false, error: 'aucun score en place' };
+  delete scoresData.users[u][rankingId];
+  if (Object.keys(scoresData.users[u]).length === 0) delete scoresData.users[u];
+  saveScoresFile();
+  if (process.env.DATABASE_URL) {
+    const row = await db.findUserByUsername(u);
+    if (row) await db.deleteScore(row.id, rankingId);
+  }
+  return { ok: true, score: Number(entree.score), duJour: isDailyResetRanking(rankingId) };
+}
+
+/*
+ * LA FICHE DE SUSPICION — tout ce qu'on sait d'un joueur, en une page, pour
+ * trancher. Lecture seule : les actions ont leurs propres routes.
+ *
+ * Les scores sont mis en regard de sa distribution HABITUELLE : pour chaque
+ * classement, son meilleur score connu (en place ou archivé) contre la
+ * médiane de ses vingt dernières journées archivées (plus celle du jour). Un
+ * record deux fois au-dessus de cette médiane se signale (« net »), trois
+ * fois (« fort ») — à partir de cinq journées, pas avant. Les classements
+ * permanents n'ont pas d'archive jour par jour : pour eux, rien à comparer,
+ * sauf Swapou et les portages vérifiés, dont chaque partie est gardée.
+ */
+function distributionScores(valeurs, meilleur, plusBasMieux) {
+  const v = valeurs.map(Number).filter((x) => Number.isFinite(x) && x > 0).slice(0, 20);
+  if (!v.length || !(meilleur > 0)) return { n: v.length, mediane: null, rapport: null, ecart: '' };
+  const tri = v.slice().sort((a, b) => a - b);
+  const mediane = tri.length % 2 ? tri[(tri.length - 1) / 2] : (tri[tri.length / 2 - 1] + tri[tri.length / 2]) / 2;
+  const rapport = plusBasMieux ? mediane / meilleur : meilleur / mediane;
+  const ecart = v.length >= 5 && rapport >= 2 ? (rapport >= 3 ? 'fort' : 'net') : '';
+  return { n: v.length, mediane, rapport: Math.round(rapport * 100) / 100, ecart };
+}
+
+async function ficheSuspicion(u) {
+  const base = !!process.env.DATABASE_URL;
+  const sur = (p, defaut) => Promise.resolve(p).catch((e) => { console.error('[TRICHE] fiche :', e.message); return defaut; });
+  const mem = users[u] || null;
+  const row = base ? await sur(db.findUserByUsername(u), null) : null;
+  const [alertes, historique, partiesVerifiees, partiesSwapou, swapouIa, archive, connexions, dons, moderation] = await Promise.all([
+    base ? sur(db.listerAlertesTriche({ username: u, limite: 300 }), []) : ALERTES_TRICHE_MEMOIRE.filter((a) => a.username === u),
+    base ? sur(db.listerHistoriqueSlots({ username: u, limite: 400 }), []) : HISTORIQUE_SLOTS_MEMOIRE.filter((h) => h.username === u).slice(0, 400),
+    base ? sur(db.listerPartiesVerifiees({ username: u, limit: 200 }), []) : [],
+    base ? sur(db.listerPartiesSwapou({ username: u, limit: 200 }), []) : [],
+    base ? sur(db.listSwapouIaScores(u, 100), []) : [],
+    base ? sur(db.archiveChallengeDe(u), []) : [],
+    base ? sur(db.connexionsDe(u, 60), []) : [],
+    base ? sur(db.listKikoozGifts({ recipient: u }, 200), []) : [],
+    base ? sur(db.getModerationLogs(u, 50), []) : [],
+  ]);
+  const kikoozRecus = base && row ? (await sur(db.getKikoozLog(row.id, 300), [])).filter((e) => e.entry_type === 'c') : [];
+  const groupes = base ? await sur(calculerComptesLies(90), []) : [];
+  const groupe = groupes.find((g) => g.comptes.some((c) => c.username === u)) || null;
+
+  // Les scores, classement par classement.
+  const live = scoresData.users[u] || {};
+  const parClassement = new Map();
+  for (const a of archive) {
+    if (!parClassement.has(a.ranking_id)) parClassement.set(a.ranking_id, []);
+    parClassement.get(a.ranking_id).push({ jour: a.day_key, score: Number(a.score) || 0 });
+  }
+  const ids = new Set([...Object.keys(live), ...parClassement.keys()]);
+  const scores = [...ids].filter((rk) => RANKINGS[rk]).map((rk) => {
+    const plusBas = isLowerBetter(rk);
+    const mieux = (x, y) => (plusBas ? x < y : x > y);
+    const enPlace = live[rk] ? { score: Number(live[rk].score) || 0, at: live[rk].updatedAt || '' } : null;
+    const jours = parClassement.get(rk) || [];
+    const echantillon = (enPlace && isDailyResetRanking(rk) ? [enPlace.score] : []).concat(jours.map((j) => j.score));
+    let meilleur = enPlace ? enPlace.score : null, meilleurJour = enPlace ? '' : null;
+    for (const j of jours) if (j.score > 0 && (meilleur == null || !(meilleur > 0) || mieux(j.score, meilleur))) { meilleur = j.score; meilleurJour = j.jour; }
+    return Object.assign({ rankingId: rk, nom: RANKINGS[rk].name, jeu: RANKINGS[rk].game, plusBasMieux: plusBas,
+      challenge: isDailyResetRanking(rk), enPlace, meilleur, meilleurJour, jours: jours.slice(0, 20) },
+    distributionScores(echantillon, meilleur, plusBas));
+  }).sort((a, b) => (b.ecart ? 1 : 0) - (a.ecart ? 1 : 0) || a.nom.localeCompare(b.nom));
+  // Swapou et les portages vérifiés : partie par partie.
+  const parPartie = [];
+  const declarees = partiesSwapou.map((p) => Number(p.score_declare) || 0);
+  if (declarees.length) {
+    parPartie.push(Object.assign({ jeu: 'swapou2', nom: 'Swapou Challenge (parties à graine)', meilleur: Math.max(...declarees) },
+      distributionScores(declarees, Math.max(...declarees), false)));
+  }
+  for (const jeu of [...new Set(partiesVerifiees.map((p) => p.jeu))]) {
+    const v = partiesVerifiees.filter((p) => p.jeu === jeu).map((p) => Number(p.score_declare) || 0);
+    parPartie.push(Object.assign({ jeu, nom: jeu === 'minipixiz' ? 'MiniPixiz (Arbre creux)' : jeu === 'minifever' ? 'Mini-Fever (arcade)' : jeu,
+      meilleur: Math.max(...v) }, distributionScores(v, Math.max(...v), false)));
+  }
+
+  const items = mem && Array.isArray(mem.gameItems) ? mem.gameItems
+    : (row ? await sur(db.getUserGameItems(row.id), []) : []);
+  const info = (nom) => {
+    const i = GAME_ITEM_INFO[nom] || (CUSTOM_PICTOS[nom] ? { name: CUSTOM_PICTOS[nom].displayName, game: CUSTOM_PICTOS[nom].category } : null);
+    return { id: nom, nom: i ? i.name : nom, jeu: i ? i.game : '' };
+  };
+  const iso = (d) => (d ? new Date(d).toISOString() : '');
+  const swapouBilan = {
+    parties: partiesSwapou.length,
+    conformes: partiesSwapou.filter((p) => p.verdict === 'conforme').length,
+    divergentes: partiesSwapou.filter((p) => p.verdict === 'divergent').length,
+    nonVerifiables: partiesSwapou.filter((p) => p.verdict === 'non_verifiable').length,
+    grainesLocales: partiesSwapou.filter((p) => p.source === 'locale').length,
+    coupsIa: partiesSwapou.reduce((n, p) => n + ((p.rythme && Number(p.rythme.parIa)) || 0), 0),
+  };
+  return {
+    username: u,
+    compte: {
+      existe: !!(row || mem), affichage: getDisplayName(u),
+      creeLe: iso(row && row.created_at) || (mem && mem.createdAt) || '',
+      derniere: iso(row && row.last_login) || (mem && mem.lastLogin) || '',
+      xp: Number(row && row.xp != null ? row.xp : (mem && mem.xp)) || 0,
+      kikooz: Number(row && row.kikooz != null ? row.kikooz : (mem && mem.kikooz)) || 0,
+      banni: banInfoFromUntil((row && row.banned_until) || (mem && mem.bannedUntil)).banned,
+      exclusion: exclusionsClassement.get(u) || null,
+    },
+    alertes, historique, scores, parPartie,
+    swapou: { bilan: swapouBilan, parties: partiesSwapou, ia: swapouIa },
+    partiesVerifiees,
+    comptesLies: { groupe, connexions },
+    kikooz: { dons, journal: kikoozRecus },
+    pictos: { actuels: items.map(info), retires: [...(pictosRetires.get(u) || [])].map(info) },
+    moderation,
+    sansBase: !base,
+  };
+}
+
+app.get('/api/admin/triche/joueur/:username', adminAuth, async (req, res) => {
+  const u = normalizeUsername(req.params.username);
+  if (!u) return res.status(400).json({ ok: false, error: 'pseudo' });
+  try { res.json(Object.assign({ ok: true }, await ficheSuspicion(u))); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// L'historique des sauvegardes, seul (filtrable par jeu).
+app.get('/api/admin/triche/historique', adminAuth, async (req, res) => {
+  const f = { username: normalizeUsername(req.query.username), jeu: String(req.query.jeu || ''), limite: Number(req.query.limite) || 300 };
+  try {
+    if (process.env.DATABASE_URL) return res.json({ ok: true, historique: await db.listerHistoriqueSlots(f) });
+    res.json({ ok: true, historique: HISTORIQUE_SLOTS_MEMOIRE.filter((h) => (!f.username || h.username === f.username)
+      && (!f.jeu || h.jeu === f.jeu)).slice(0, f.limite) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Les actions, depuis la fiche ──
+app.post('/api/admin/triche/joueur/:username/annuler-score', adminAuth, async (req, res) => {
+  const u = normalizeUsername(req.params.username);
+  const b = req.body || {};
+  const rk = String(b.ranking || '');
+  const jour = String(b.jour || '').trim();
+  const note = String(b.note || '');
+  if (!u || !RANKINGS[rk]) return res.status(400).json({ ok: false, error: 'classement inconnu' });
+  if (jour && !/^\d{4}-\d{2}-\d{2}$/.test(jour)) return res.status(400).json({ ok: false, error: 'jour (AAAA-MM-JJ)' });
+  try {
+    const r = await annulerScoreTriche(u, rk, jour);
+    if (!r.ok) return res.status(404).json(r);
+    journaliserActionTriche(u, { jeu: RANKINGS[rk].game, action: 'annuler_score', note,
+      resume: `score annulé : ${RANKINGS[rk].name} ${r.score}${jour ? ` (journée du ${jour}, médailles intactes)` : r.duJour ? ' (Challenge du jour)' : ''}`,
+      details: { rankingId: rk, score: r.score, jour: jour || null } });
+    await cloreAlerteTriche(b.alerte, note || 'score annulé');
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post('/api/admin/triche/joueur/:username/retirer-pictos', adminAuth, async (req, res) => {
+  const u = normalizeUsername(req.params.username);
+  const b = req.body || {};
+  const pictos = [...new Set((Array.isArray(b.pictos) ? b.pictos : []).map(String).filter(Boolean))].slice(0, 500);
+  const note = String(b.note || '');
+  if (!u || !pictos.length) return res.status(400).json({ ok: false, error: 'pictos' });
+  try {
+    const mem = users[u];
+    let dbId = mem ? mem._dbId : null;
+    if (!dbId && process.env.DATABASE_URL) { const row = await db.findUserByUsername(u); if (row) dbId = row.id; }
+    if (!dbId && !mem) return res.status(404).json({ ok: false, error: 'joueur inconnu' });
+    if (!pictosRetires.has(u)) pictosRetires.set(u, new Set());
+    for (const p of pictos) {
+      pictosRetires.get(u).add(p);
+      if (mem && Array.isArray(mem.gameItems)) { const i = mem.gameItems.indexOf(p); if (i >= 0) mem.gameItems.splice(i, 1); }
+      if (dbId) {
+        await db.removeGameItem(dbId, p).catch(dbErr('removeGameItem'));
+        await db.noterPictoRetire(u, p, 'admin').catch(dbErr('noterPictoRetire'));
+      }
+    }
+    journaliserActionTriche(u, { action: 'retirer_pictos', note,
+      resume: `${pictos.length} picto${pictos.length > 1 ? 's' : ''} retiré${pictos.length > 1 ? 's' : ''} : ${pictos.slice(0, 12).join(', ')}${pictos.length > 12 ? '…' : ''}`,
+      details: { pictos } });
+    await cloreAlerteTriche(b.alerte, note || 'pictos retirés');
+    res.json({ ok: true, retires: pictos, gameItems: mem ? mem.gameItems : (dbId ? await db.getUserGameItems(dbId).catch(() => []) : []) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Rendre un picto retiré : la note tombe, le picto revient.
+app.post('/api/admin/triche/joueur/:username/rendre-pictos', adminAuth, async (req, res) => {
+  const u = normalizeUsername(req.params.username);
+  const b = req.body || {};
+  const pictos = [...new Set((Array.isArray(b.pictos) ? b.pictos : []).map(String).filter(Boolean))].slice(0, 500);
+  if (!u || !pictos.length) return res.status(400).json({ ok: false, error: 'pictos' });
+  try {
+    const mem = users[u];
+    let dbId = mem ? mem._dbId : null;
+    if (!dbId && process.env.DATABASE_URL) { const row = await db.findUserByUsername(u); if (row) dbId = row.id; }
+    const s = pictosRetires.get(u);
+    for (const p of pictos) {
+      if (s) s.delete(p);
+      if (mem) { if (!Array.isArray(mem.gameItems)) mem.gameItems = []; if (!mem.gameItems.includes(p)) mem.gameItems.push(p); }
+      if (dbId) {
+        await db.oublierPictoRetire(u, p).catch(dbErr('oublierPictoRetire'));
+        await db.addGameItem(dbId, p).catch(dbErr('addGameItem'));
+      }
+    }
+    if (s && !s.size) pictosRetires.delete(u);
+    journaliserActionTriche(u, { action: 'rendre_pictos', note: String(b.note || ''),
+      resume: `${pictos.length} picto${pictos.length > 1 ? 's' : ''} rendu${pictos.length > 1 ? 's' : ''} : ${pictos.slice(0, 12).join(', ')}`, details: { pictos } });
+    res.json({ ok: true, rendus: pictos });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post('/api/admin/triche/joueur/:username/exclusion', adminAuth, async (req, res) => {
+  const u = normalizeUsername(req.params.username);
+  const b = req.body || {};
+  const exclu = b.exclu === true || b.exclu === 'true' || b.exclu === 1 || b.exclu === '1';
+  const motif = String(b.motif || b.note || '');
+  if (!u) return res.status(400).json({ ok: false, error: 'pseudo' });
+  try {
+    if (exclu) {
+      exclusionsClassement.set(u, { depuis: new Date().toISOString(), par: 'admin', motif });
+      if (process.env.DATABASE_URL) await db.exclureDesClassements(u, 'admin', motif);
+    } else {
+      if (!exclusionsClassement.has(u)) return res.status(404).json({ ok: false, error: 'pas exclu' });
+      exclusionsClassement.delete(u);
+      if (process.env.DATABASE_URL) await db.leverExclusionClassement(u);
+    }
+    journaliserActionTriche(u, { action: exclu ? 'exclure' : 'lever_exclusion', note: motif,
+      resume: exclu ? 'exclu des classements' : 'exclusion des classements levée' });
+    if (exclu) await cloreAlerteTriche(b.alerte, motif || 'exclu des classements');
+    res.json({ ok: true, exclu, exclusion: exclusionsClassement.get(u) || null });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get('/api/admin/triche/exclusions', adminAuth, (req, res) => {
+  res.json({ ok: true, exclusions: [...exclusionsClassement].map(([username, e]) => Object.assign({ username }, e)) });
+});
+
 
 // Un score arrivé SANS partie (porte générique, jeton absent ou faux, fiche
 // du bureau) : rien à rejouer. On le note quand même — c'est la trace d'un
@@ -22064,7 +22414,8 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
 
   const newItems = [];
   function addIfNew(name) {
-    if (!name || user.gameItems.includes(name)) return;
+    // Un picto retiré par l'admin (onglet Alertes) ne revient pas avec la fiche.
+    if (!name || user.gameItems.includes(name) || pictoRetire(username, name)) return;
     user.gameItems.push(name);
     newItems.push(name);
   }
@@ -32093,6 +32444,7 @@ async function boot() {
       try { swapouTournoiVerifie = (await db.getAppState('swapou_tournoi_verifie')) === '1'; }
       catch (e) { console.error('[SWAPOU] interrupteur du tournoi :', e.message); }
       await antitricheCharger();
+      await sanctionsTricheCharger();
       await chargerReglagesParisChallenge();
       await chargerReglagesGaspard();
       // Les quêtes de Gromelin : réglages, semaine tirée, avancement de chacun.
