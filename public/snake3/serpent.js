@@ -286,6 +286,26 @@ class Serpent {
       p2 = this.end_queue_pos(delta++);
     } while (p1 === p2 && delta < 20);
 
+    /*
+     * LE SERPENT SANS QUEUE. À len 0 (deux dynamites, un Pentacle, une
+     * Cloche… le laissent là), p1 est déjà le DERNIER point de la file : la
+     * recherche d'un point distinct déborde aussitôt au-delà de la tête, et
+     * p2 vaut `undefined` — de même à len 1 quand les points du bout sont
+     * tous le même objet. Snake.as faisait la même chose : en AS2,
+     * `undefined.y` donne undefined, atan2 donne NaN, et ce NaN passait au
+     * move suivant dans x et y — le serpent restait figé pour de bon, sans
+     * pouvoir mourir (toute comparaison avec NaN est fausse). C'était donc
+     * déjà le cas dans le Flash de 2004 ; ici c'était pire, `p2.y` levait une
+     * exception qui arrêtait toute la boucle du jeu.
+     *
+     * On le rencontrait surtout sous Potion jaune, où BAS sert à piloter :
+     * avec l'Inverseur en poche, chaque appui sur BAS retournait le serpent.
+     *
+     * Sans corps, se retourner, c'est faire demi-tour sur place : p2 est pris
+     * un pas DEVANT la tête, l'angle qui en sort est le cap opposé.
+     */
+    if (p2 == null) p2 = { x: p1.x + this.dx, y: p1.y + this.dy };
+
     this.queue.splice(0, Math.max(0, this.queue.length - this.len * 5 - 1));
     const qlen = this.queue.length;
     for (let i = 0; i < Math.trunc(qlen / 2); i++) {
