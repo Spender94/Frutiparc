@@ -176,12 +176,15 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
    * tirages qui DÉCIDENT de la partie — la couleur et les marques (gel,
    * métal) des fruits qui montent — en sortent ; tout le reste (particules,
    * sons, secousses) garde Math.random. La loi est la même, uniforme : la
-   * partie ne change pas, elle devient seulement REJOUABLE, et le serveur
-   * peut vérifier le score en la rejouant coup par coup.
+   * partie ne change pas, elle devient REJOUABLE, et le serveur vérifie le
+   * score en la rejouant coup par coup AVANT de le classer.
    *
-   * Tout est à sens unique et sans risque : si le serveur ne répond pas
-   * (1,5 s au plus), la partie se joue sur une graine locale et n'est
-   * simplement pas vérifiée.
+   * Une partie jouée sur une graine que le serveur n'a pas donnée ne peut
+   * donc plus être classée. Le jeu insiste pour l'obtenir (plusieurs essais,
+   * une quinzaine de secondes au plus, menu verrouillé) plutôt que de faire
+   * jouer pour rien : ce n'est qu'en dernier recours, serveur muet, que la
+   * partie part sur une graine locale — et l'écran le dit dès le début
+   * (« hors classement »), pas à la fin.
    */
   SW.tirage = function (graine) {                 // mulberry32
     let a = graine >>> 0;
@@ -196,23 +199,88 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   SW.maintenant = function () {
     return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   };
-  Client.prototype.demanderPartie = function () {
+  // Les délais de chaque demande : une réponse lente n'est pas perdue (la
+  // première qui arrive, même en retard, l'emporte), une panne réseau se
+  // retente aussitôt.
+  Client.DELAIS_GRAINE = [3000, 4000, 6000];
+  Client.prototype.demanderPartie = function (essai) {
     const me = this;
     me.partie = null;
     if (me.standalone || !me.sid || typeof fetch === 'undefined') return Promise.resolve(null);
+    return new Promise(function (fin) {
+      let fini = false, n = 0, minuteur = null;
+      function conclure(p) {
+        if (fini) return;
+        fini = true;
+        clearTimeout(minuteur);
+        me.partie = p;
+        fin(p);
+      }
+      function tenter() {
+        if (fini) return;
+        if (n >= Client.DELAIS_GRAINE.length) { conclure(null); return; }
+        minuteur = setTimeout(tenter, Client.DELAIS_GRAINE[n++]);
+        const body = new URLSearchParams();
+        body.set('sid', me.sid);
+        if (essai) body.set('essai', '1');
+        fetch('/api/swapou/partie', { method: 'POST', body: body })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (j && j.ok && j.id && Number.isFinite(Number(j.graine))) {
+              conclure({ id: String(j.id), graine: Number(j.graine) >>> 0 });
+            } else if (j && (j.error === 'rate_limited' || j.error === 'not_authenticated')) {
+              conclure(null);           // inutile d'insister
+            }
+          })
+          .catch(function () {
+            if (fini) return;
+            clearTimeout(minuteur);
+            minuteur = setTimeout(tenter, 500);
+          });
+      }
+      tenter();
+    });
+  };
+  // Ce que le serveur sait des combos (ses comptes, les pictos donnés) : la
+  // fiche du jeu s'y range, pour afficher la vérité — c'est aussi ce qu'il
+  // réécrira dans la sauvegarde.
+  Client.prototype.appliquerFiche = function (f) {
+    if (!f || !Array.isArray(f.combos)) return;
+    const s = this.slots[0];
+    if (!s) return;
+    s.$combos = f.combos.slice();
+    if (!Array.isArray(s.$items)) s.$items = [];
+    for (let n = 0; n < f.combos.length; n++) {
+      const i = TItem.COMBO_TITEMS + n;
+      if (f.pictos && f.pictos[n]) s.$items[i] = true;
+      else if (i < s.$items.length) s.$items[i] = null;
+    }
+  };
+  // Le récit de la partie, tel que le serveur le relit (numéro ou graine
+  // locale, coups, durée).
+  function recit(body, pf) {
+    if (!pf || String(pf.coups).length > 600000) return;
+    if (pf.id) body.set('partie', pf.id);
+    else body.set('graine', String(pf.graine));
+    body.set('coups', pf.coups);
+    body.set('duree', String(pf.duree));
+  }
+  // La fin d'une partie d'ESSAI : pas de score classé, mais la partie se
+  // vérifie — ses combos ne comptent qu'ainsi.
+  Client.prototype.rendreEssai = function (score, cb) {
+    const pf = this.partieFinie;
+    this.partieFinie = null;
+    if (this.standalone || !this.sid || !pf) { cb(null); return; }
+    const me = this;
     const body = new URLSearchParams();
-    body.set('sid', me.sid);
-    const demande = fetch('/api/swapou/partie', { method: 'POST', body: body })
+    body.set('sid', this.sid);
+    body.set('score', String(score));
+    body.set('data', 'S' + SW.Data.players[0] + ':');
+    recit(body, pf);
+    fetch('/api/swapou/essai', { method: 'POST', body: body })
       .then(function (r) { return r.json(); })
-      .then(function (j) {
-        if (j && j.ok && j.id && Number.isFinite(Number(j.graine))) {
-          me.partie = { id: String(j.id), graine: Number(j.graine) >>> 0 };
-        }
-        return me.partie;
-      })
-      .catch(function () { return null; });
-    const delai = new Promise(function (ok) { setTimeout(function () { ok(null); }, 1500); });
-    return Promise.race([demande, delai]);
+      .then(function (j) { if (j && j.fiche) me.appliquerFiche(j.fiche); cb(j); })
+      .catch(function () { cb(null); });
   };
 
   Client.prototype.saveScore = function (score, mode, cb) {
@@ -223,22 +291,16 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     body.set('m', String(mode));
     body.set('score', String(score));
     body.set('data', 'S' + SW.Data.players[0] + ':');
-    // Le récit de la partie (numéro, coups, temps de réflexion), pour que le
-    // serveur la rejoue. Des champs EN PLUS : le score s'enregistre comme
-    // avant, et un serveur qui ne les lit pas les ignore.
+    // Le récit de la partie (numéro, coups, temps de réflexion) : le serveur
+    // la rejoue avant de classer le score. Un journal démesuré (plus de
+    // 600 000 caractères) ne part pas — et la partie ne sera pas classée.
     const pf = this.partieFinie;
     this.partieFinie = null;
-    // Un journal démesuré (plus de 600 000 caractères, des dizaines de milliers
-    // de coups) ne part pas : le score, lui, part toujours.
-    if (pf && String(pf.coups).length <= 600000) {
-      if (pf.id) body.set('partie', pf.id);
-      else body.set('graine', String(pf.graine));
-      body.set('coups', pf.coups);
-      body.set('duree', String(pf.duree));
-    }
+    recit(body, pf);
+    const me = this;
     fetch('/api/saveScore', { method: 'POST', body: body })
       .then(function (r) { return r.json(); })
-      .then(function (j) { cb(j); })
+      .then(function (j) { if (j && j.fiche) me.appliquerFiche(j.fiche); cb(j); })
       .catch(function () { cb(null); });
   };
   // fin de partie challenge (Client.as:doEndGame).
@@ -258,8 +320,13 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.saveScore(score, 0, function (j) {
       // `iaNonClasse` : le joueur a l'analyse en partie, le serveur a rangé
       // le score à part (fiche admin) et ne l'a classé nulle part.
+      // `nonClasse` : la partie n'a pas passé la vérification ; `enVerification` :
+      // le rejeu tarde, le score sera classé à sa fin. Le serveur donne le
+      // message.
       if (j && j.ok && j.iaNonClasse)
         SW.Manager.scoreSaved(score, oldRecord, 0, 0, 'partie jouée avec l\'IA : score non classé');
+      else if (j && (j.nonClasse || j.enVerification))
+        SW.Manager.scoreSaved(score, oldRecord, 0, 0, j.message || 'Partie non classée.');
       else if (j && j.ok)
         SW.Manager.scoreSaved(score, j.oldScore || 0, j.oldPos || 0, j.newPos || 0);
       else
@@ -2309,6 +2376,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
         { size: 12, color: '#b37851', font: 'cipher', align: 'left', baseline: 'alphabetic' });
       // Une partie d'essai le dit : son score ne part pas au classement.
       if (SW.Data.essai) U.text(ctx, 'PARTIE D’ESSAI', 74, 112, { size: 11, color: '#fff1c9', align: 'center', baseline: 'alphabetic' });
+      else if (this.game && this.game.horsClassement) U.text(ctx, 'HORS CLASSEMENT', 74, 112, { size: 11, color: '#fff1c9', align: 'center', baseline: 'alphabetic' });
     }
     // Compteur de coups : sur SON parchemin, à la même place relative que le
     // score sur le sien, surmonté de son étiquette. N'apparaît que si le serveur
@@ -2778,6 +2846,10 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     if (client) client.partie = null;              // une graine ne sert qu'une fois
     this.graine = this.partie ? this.partie.graine : Math.floor(Math.random() * 4294967296);
     this.hasard = SW.tirage(this.graine);
+    // Sans graine du serveur (il n'a pas répondu), la partie ne pourra pas
+    // être classée : on le dit tout de suite, pas à la fin.
+    this.horsClassement = !this.partie && !!(client && !client.standalone && client.sid)
+      && !SW.Data.essai && SW.Data.gameMode === SW.Data.CHALLENGE;
     // Le journal : chaque coup, et le temps de réflexion qui l'a précédé
     // (depuis que le plateau s'est rendu la main).
     this.journal = [];

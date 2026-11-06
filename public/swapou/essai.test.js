@@ -2,10 +2,13 @@
 //
 // Une partie de Challenge à l'identique, illimitée et hors classement : le
 // bouton « essai » du menu lance le Challenge SANS réserver de FD
-// (/do/fdclaim) ni de graine (/api/swapou/partie) ; la fin de partie
-// n'envoie AUCUN score (/api/saveScore) et le dit ; les pictos de combo,
-// eux, se gagnent comme en Challenge (ils vont dans la fiche, slot 0). Un
-// Challenge lancé ensuite redevient un Challenge normal.
+// (/do/fdclaim). Il prend en revanche une graine du serveur, marquée
+// « essai » (/api/swapou/partie, essai=1) : depuis que le serveur compte
+// lui-même les combos au rejeu, une partie d'essai se vérifie aussi. La fin
+// de partie n'envoie AUCUN score au classement (/api/saveScore) et le dit ;
+// elle rend son récit à /api/swapou/essai, et la fiche se range sur ce que
+// le serveur répond (ses comptes de combos, ses pictos). Un Challenge lancé
+// ensuite redevient un Challenge normal.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -19,13 +22,21 @@ function assert(cond, msg) {
 
 // Les appels réseau du jeu, relevés (et servis à blanc).
 const appels = [];
-function fetchFactice(url) {
+const corpsEnvoyes = [];
+function fetchFactice(url, opts) {
   appels.push(String(url));
-  const corps = /fdclaim/.test(url) ? 'ok=1' : JSON.stringify({ ok: true });
+  corpsEnvoyes.push({ url: String(url), body: opts && opts.body ? String(opts.body) : '' });
+  let corps = JSON.stringify({ ok: true });
+  if (/fdclaim/.test(url)) corps = 'ok=1';
+  else if (/swapou\/partie/.test(url)) corps = JSON.stringify({ ok: true, id: 'a'.repeat(24), graine: 1234 });
+  // Le serveur a vérifié l'essai : il compte 3 confitures de fraise, et
+  // n'a donné aucun picto.
+  else if (/swapou\/essai/.test(url)) corps = JSON.stringify({ ok: true, essai: true, verifiee: true,
+    fiche: { combos: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], pictos: [false, false, false, false, false, false, false, false, false, false, false] } });
   return Promise.resolve({ text: () => Promise.resolve(corps), json: () => Promise.resolve(JSON.parse(/fdclaim/.test(url) ? '{"ok":true}' : corps)) });
 }
 const sandbox = {
-  console, setTimeout, URLSearchParams, Date, Math, JSON, Promise,
+  console, setTimeout, clearTimeout, URLSearchParams, Date, Math, JSON, Promise,
   performance: { now: () => Date.now() },
   fetch: fetchFactice,
   navigator: { sendBeacon: (u) => { appels.push(String(u)); return true; } },
@@ -65,22 +76,34 @@ const attendre = () => new Promise((r) => setTimeout(r, 20));
   cliquer(face0);
   pump(400, 2);
   await attendre();
-  assert(Manager.mode.constructor === SW.Challenge, 'une partie de Challenge est lancée');
+  assert(Manager.mode.constructor === SW.Challenge, 'une partie de Challenge est lancée : ' + appels.join(', '));
   assert(SW.Data.gameMode === SW.Data.CHALLENGE && SW.Data.essai === true, 'en mode essai');
-  assert(!appels.some((u) => /fdclaim|swapou\/partie/.test(u)), 'ni FD réservé, ni graine demandée : ' + appels.join(', '));
+  assert(!appels.some((u) => /fdclaim/.test(u)), 'pas de FD réservé : ' + appels.join(', '));
+  const demande = corpsEnvoyes.find((c) => /swapou\/partie/.test(c.url));
+  assert(demande && /(^|&)essai=1(&|$)/.test(demande.body), 'une graine d’essai est demandée : ' + (demande && demande.body));
+  assert(Manager.mode.partie && Manager.mode.partie.id === 'a'.repeat(24), 'la partie joue la graine du serveur');
+  assert(!Manager.mode.horsClassement, 'un essai n’est pas annoncé « hors classement »');
 
-  // Les pictos de combo se gagnent comme en Challenge.
+  // En cours de partie, le jeu compte ses combos comme en Challenge (le
+  // picto s'affiche tout de suite) ; c'est le serveur qui tranchera.
   const fiche = Manager.client.slots[0];
   for (let i = 0; i < 5; i++) SW.TItem.addCombo(2);
-  assert(fiche.$items[27 + 2] === true, 'le picto du combo est gagné en essai');
+  assert(fiche.$items[27 + 2] === true, 'le picto du combo s’affiche en partie');
 
-  // La fin de partie : aucun score envoyé, et l'écran le dit.
+  // La fin de partie : aucun score envoyé au classement, le récit part à
+  // /api/swapou/essai, et l'écran le dit.
   const appelsAvant = appels.length;
+  Manager.client.partieFinie = { id: 'a'.repeat(24), graine: 1234, coups: 's1,1,0@10', duree: 5000 };
   const g = Manager.gameOver(12345);
   await attendre();
   assert(!appels.slice(appelsAvant).some((u) => /saveScore/.test(u)), 'aucun score envoyé au classement');
+  const rendu = corpsEnvoyes.slice(appelsAvant).find((c) => /swapou\/essai/.test(c.url));
+  assert(rendu && /partie=a{24}/.test(rendu.body) && /coups=/.test(rendu.body), 'le récit de l’essai part au serveur : ' + (rendu && rendu.body));
   assert(/essai/i.test(g.text || g.txt || ''), 'l’écran de fin parle d’une partie d’essai : ' + (g.text || g.txt));
   assert(!(fiche.$record >= 12345), 'le record de Challenge n’est pas touché');
+  // La fiche se range sur le serveur : ses comptes, ses pictos.
+  assert(fiche.$combos[0] === 3 && !fiche.$combos[2], 'les combos sont ceux du serveur : ' + JSON.stringify(fiche.$combos));
+  assert(!fiche.$items[27 + 2], 'le picto que le serveur n’a pas donné s’efface de la fiche');
 
   // Retour au menu : un Challenge relancé redevient normal (FD réservé).
   Manager.startMenu();

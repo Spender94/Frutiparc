@@ -1084,9 +1084,9 @@
       body.set('sid', sid);
       body.set('game', 'swapou2');
       // En même temps que la réservation : la graine de la partie (cf.
-      // SW.tirage, game.js). Elle ne retarde jamais le départ de plus
-      // d'1,5 s, et son absence n'empêche rien.
-      var graine = Manager.client.demanderPartie ? Manager.client.demanderPartie() : Promise.resolve(null);
+      // SW.tirage, game.js). Sans elle, la partie ne serait pas classée : le
+      // jeu insiste (Client.demanderPartie), et le dit si ça traîne.
+      var graine = Manager.attendreGraine(false);
       fetch('/do/fdclaim', { method: 'POST', body: body })
         .then(function (r) { return r.text(); })
         .then(function (t) {
@@ -1096,12 +1096,31 @@
         })
         .catch(function () { graine.then(function () { Manager.started(); }); });
     },
-    // LE MODE ESSAI : la partie de Challenge, sans réserver de FD ni de graine
-    // (rien n'est envoyé au classement, il n'y a rien à vérifier).
+    // La graine, demandée au serveur — et, si elle tarde, le menu le dit.
+    attendreGraine: function (essai) {
+      var c = Manager.client;
+      if (!c || !c.demanderPartie) return Promise.resolve(null);
+      var menu = Manager.mode;
+      var mot = setTimeout(function () {
+        if (Manager.mode === menu && menu && menu.help) menu.help('Connexion au serveur…');
+      }, 1500);
+      return c.demanderPartie(essai).then(function (p) {
+        clearTimeout(mot);
+        if (Manager.mode === menu && menu && menu.hideHelp) menu.hideHelp();
+        return p;
+      });
+    },
+    // LE MODE ESSAI : la partie de Challenge, sans réserver de FD (rien
+    // n'est classé). Elle prend pourtant une graine du serveur, marquée
+    // « essai » : la partie se vérifie à la fin, et ses combos ne comptent
+    // qu'ainsi.
     startEssai: function () {
       SW.Data.essai = true;
       if (Manager.client) Manager.client.partie = null;
-      Manager.started();
+      var sid = (Manager.client && Manager.client.sid) || '';
+      if (!sid || Manager.client.standalone) { Manager.started(); return; }
+      if (Manager.mode && Manager.mode.netLock) Manager.mode.netLock();
+      Manager.attendreGraine(true).then(function () { Manager.started(); });
     },
     startDuel: function () {
       Manager.mode.destroy();
@@ -1164,12 +1183,18 @@
           break;
         }
         case SW.Data.CHALLENGE:
-          // Essai : pas de classement, pas de record — les pictos gagnés en
-          // route sont déjà rangés dans la fiche (TItem.addCombo).
+          // Essai : pas de classement, pas de record. La partie part au
+          // serveur pour être vérifiée : ses combos (et leurs pictos) ne
+          // comptent qu'une fois rejouée.
           if (SW.Data.essai) {
-            Manager.client.partieFinie = null;
             Manager.client.direEnPartie(false);
-            g.scoreSaved(score, 0, 0, 0, 'Partie d\'essai : score non classé.\nLes pictos gagnés sont gardés.');
+            g.connecting();
+            g.netLock();
+            Manager.client.rendreEssai(score, function (j) {
+              g.scoreSaved(score, 0, 0, 0, j && j.verifiee
+                ? 'Partie d\'essai : score non classé.\nSes combos sont comptés.'
+                : 'Partie d\'essai : score non classé.');
+            });
             break;
           }
           g.connecting();
