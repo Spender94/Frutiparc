@@ -250,7 +250,9 @@ test('le mobile pose le voyant à côté des pseudos', () => {
   assert.match(light, /rememberStatut\(attr\(zf, "u"\), attr\(zf, "s"\)\)/, 'depuis les traces imbriquées');
   assert.match(light, /rememberStatut\(attr\(xml, "u"\), attr\(xml, "s"\)\)/, 'et les traces directes');
   // Et posée dans la ligne, pour le salon comme pour tout le site.
-  assert.match(light, /voyant_" \+ jeu \+ "\.png/, 'l\'icône vient des PNG extraits');
+  // srcVoyant : /fb/voyant_<jeu>.png, plus le `?v=` d'un voyant redessiné.
+  assert.match(light, /return "\/fb\/voyant_" \+ k \+ "\.png" \+ \(VOYANT_VERSION\[k\]/, 'l\'icône vient des PNG extraits');
+  assert.match(light, /vj\.src = srcVoyant\(jeu\);/);
   assert.match(light, /vj\.title = libelleActivite\(jeu\)/, 'avec l\'activité en infobulle');
   // Lire le forum n'est pas jouer : même emplacement, autre phrase.
   assert.match(light, /jeu === "forum" \? "Lit le forum" : "Joue à " \+ VOYANTS_NOM\[jeu\]/,
@@ -281,7 +283,7 @@ test('le voyant remplace le point de présence, sans l\'écraser', () => {
   // suivait sinon le statut qu'elle avait à l'ouverture, pour toujours (cf.
   // test/statutsVivants.test.js).
   assert.match(light, /function peindreStatutFiche\(\) \{[\s\S]*?var s = statutDe\(ficheEtat\.pseudo\);/);
-  assert.match(light, /st\.src = "\/fb\/voyant_" \+ s\.jeu \+ "\.png";/,
+  assert.match(light, /st\.src = srcVoyant\(s\.jeu\);/,
     'la même icône que la liste des connectés');
   assert.match(light, /st\.title = s\.jeu === "forum" \? "Lit le forum" : "En partie — " \+ VOYANTS_NOM\[s\.jeu\];/,
     'et elle dit à quoi il joue — ou qu\'il lit le forum');

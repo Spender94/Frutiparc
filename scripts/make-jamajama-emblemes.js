@@ -68,11 +68,13 @@ function composer(nom, image) {
   }).join('');
 }
 
-// Le fantôme tient dans (-4.55,-4.85)-(37.5,25.85) : 42×31. On le cadre dans
-// un carré de 44 unités centré sur sa boîte — un peu d'air autour, comme les
-// voisins de la feuille.
+// Le fantôme tient dans (-4.55,-4.85)-(37.5,25.85) : 42×31. Cadré sur toute
+// sa largeur (44 unités), il paraissait plus petit que ses voisins — il est
+// large et bas, eux remplissent leur carré (les cerises, le béret). On le
+// cadre donc sur 36 unités, centré sur sa boîte : la tête emplit le voyant,
+// seul le bout des deux petites ailes frôle le bord.
 const BOITE = { x: -4.55, y: -4.85, w: 42.05, h: 30.7 };
-const COTE = 44;
+const COTE = 36;
 const vb = [BOITE.x + BOITE.w / 2 - COTE / 2, BOITE.y + BOITE.h / 2 - COTE / 2, COTE, COTE];
 const fantome = composer('heroGFX', 1);
 

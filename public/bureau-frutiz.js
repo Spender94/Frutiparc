@@ -751,8 +751,10 @@ window.BureauFrutiz = (function () {
   // Le voyant d'un jeu, celui-là même que la liste des connectés pose à
   // gauche du pseudo. Seul Swapou change de nom au passage (swapou2 côté
   // serveur), comme dans `VOYANT_ASSET_KEY` du light.
+  // `?v=` : le voyant redessiné (JamaJama, recadré) — /fb est « immutable »,
+  // même règle que `VOYANT_VERSION` du light.
   function voyantUrl(jeu) {
-    return '/fb/voyant_' + (jeu === 'swapou2' ? 'swapou' : jeu) + '.png';
+    return '/fb/voyant_' + (jeu === 'swapou2' ? 'swapou' : jeu) + '.png' + (jeu === 'jamajama' ? '?v=2' : '');
   }
   /*
    * Le STATUT D'ABSENCE (`/status work`) : l'autre chose que le clip `status`

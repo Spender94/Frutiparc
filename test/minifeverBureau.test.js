@@ -74,6 +74,12 @@ function derniereImage(liste) {
   const debut = shows.length > 1 ? shows[shows.length - 2] + 1 : 0;
   return liste.slice(debut, shows[shows.length - 1] + 1);
 }
+// L'image n° `n` (1 = la première) : les tags entre le (n-1)e ShowFrame et le n-ième.
+function imageNumero(liste, n) {
+  const shows = liste.map((t, i) => (t.code === 1 ? i : -1)).filter((i) => i >= 0);
+  const debut = n > 1 ? shows[n - 2] + 1 : 0;
+  return liste.slice(debut, shows[n - 1] + 1);
+}
 
 // La forme posée : DefineShape (code 2) d'id donné → ses bornes et le bitmap
 // (0x41 « clipped ») qu'elle étale. Disposition de tagFormeBitmap :
@@ -172,13 +178,15 @@ test('main.swf : l\'image du voyant, greffée à la feuille d\'icônes (clip 246
   const { body } = G.lireSwf(path.join(ROOT, 'legacy/main.swf'));
   const sp = G.trouverSprite(body, 246);
   assert.ok(sp, 'le clip 246 (la feuille d\'icônes de statut) existe');
-  assert.equal(body.readUInt16LE(sp.offset + sp.entete + 2), 37,
-    '37 images (36 d\'époque + la greffe)');
+  // 38 depuis la greffe de JamaJama (image 38, patch-main-statusmng-jamajama.js),
+  // posée après celle-ci : les cerises restent l'image 37.
+  assert.equal(body.readUInt16LE(sp.offset + sp.entete + 2), 38,
+    '38 images (36 d\'époque + les cerises + le fantôme de JamaJama)');
 
   const interne = body.slice(sp.offset + sp.entete + 4, sp.offset + sp.entete + sp.longueur);
-  const image = derniereImage(tags(interne, 0, interne.length));
+  const image = imageNumero(tags(interne, 0, interne.length), 37);
   const etiquette = image.find((t) => t.code === 43);
-  assert.ok(etiquette, 'la dernière image est étiquetée');
+  assert.ok(etiquette, 'l\'image 37 est étiquetée');
   assert.equal(interne.slice(etiquette.o, etiquette.o + etiquette.len - 1).toString('latin1'),
     'minifever', 'l\'étiquette que gotoAndStop(internalList[13]) demandera');
 

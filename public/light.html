@@ -6532,9 +6532,17 @@
   // celle que la fiche du bureau pose à gauche de chaque ligne de scores.
   // Seul Swapou change de nom au passage (swapou2 côté serveur).
   var VOYANT_ASSET_KEY = { swapou2: "swapou" };
+  /* Le NUMÉRO DE VERSION d'un voyant redessiné : /fb est servi « immutable »,
+     un PNG remplacé sous le même nom resterait celui d'avant chez qui l'a déjà
+     vu. JamaJama a été recadré (le fantôme paraissait plus petit que ses
+     voisins). Les quatre adresses de voyant passent par srcVoyant. */
+  var VOYANT_VERSION = { jamajama: 2 };
+  function srcVoyant(k) {
+    return "/fb/voyant_" + k + ".png" + (VOYANT_VERSION[k] ? "?v=" + VOYANT_VERSION[k] : "");
+  }
   function voyantDuJeu(jeu) {
     var k = VOYANT_ASSET_KEY[jeu] || jeu;
-    return k ? "/fb/voyant_" + k + ".png" : "";
+    return k ? srcVoyant(k) : "";
   }
   var SC_MOIS = ["janv.", "fevr.", "mars", "avril", "mai", "juin",
     "juil.", "aout", "sept.", "oct.", "nov.", "dec."];
@@ -11451,7 +11459,7 @@
     if (!st) return;
     var s = statutDe(ficheEtat.pseudo);
     if (s.jeu && VOYANTS_NOM[s.jeu]) {
-      st.src = "/fb/voyant_" + s.jeu + ".png";
+      st.src = srcVoyant(s.jeu);
       st.title = s.jeu === "forum" ? "Lit le forum" : "En partie — " + VOYANTS_NOM[s.jeu];
       st.classList.add("en-partie");
     } else if (s.absence && STATUTS_NOM[s.absence]) {
@@ -12070,7 +12078,7 @@
     var abs = absenceDe(pseudo);
     if (jeu && VOYANTS_NOM[jeu]) {
       var vj = el("img", "voyant");
-      vj.src = "/fb/voyant_" + jeu + ".png";
+      vj.src = srcVoyant(jeu);
       vj.alt = "";
       vj.title = libelleActivite(jeu);
       contenu.appendChild(vj);
