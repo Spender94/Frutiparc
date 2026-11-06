@@ -4438,7 +4438,45 @@ function awardDailyLoginKikooz(username) {
     flNew: true,
   });
   console.log(`[KIKOOZ] ${username}: +${reward} kikooz (connexion quotidienne, série ${streak})`);
+  if (streak >= SERIE_CADEAU_JOURS) offrirCadeauSerie(username, streak);
   return reward;
+}
+
+// ── LE CADEAU DES 100 JOURS ──────────────────────────────────────────────────
+// À 100 connexions quotidiennes d'affilée, un accessoire (l'article
+// SERIE_CADEAU_PACK_ID, hors rayons), posé sur la bouille du joueur : ses
+// quinze premiers caractères + les neuf de l'accessoire. Une seule fois — la
+// possession fait foi, une série cassée puis refaite ne le redonne pas. Comme
+// le reste de la connexion quotidienne, le message part avec la boucle de
+// flush de l'ident (addUserHistoryEntry, pas de notification ici).
+const SERIE_CADEAU_JOURS = 100;
+const SERIE_CADEAU_PACK_ID = 630100;
+function offrirCadeauSerie(username, streak) {
+  const user = users[username];
+  const pack = getShopPack(SERIE_CADEAU_PACK_ID);
+  if (!user || !pack || pack.disabled || userOwnsShopPack(user, pack.id)) return false;
+  const entry = {
+    id: 'shop_' + pack.id,
+    shopId: pack.id,
+    n: pack.name,
+    v: bouilleOf(user, username).substring(0, 15) + pack.suffix9,
+    at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+  };
+  if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
+  user.customAccessories.push(entry);
+  if (user._dbId) db.addAccessory(user._dbId, entry).catch(dbErr('addAccessory cadeau série'));
+  else if (process.env.DATABASE_URL) {
+    db.findUserByUsername(username)
+      .then((row) => row && db.addAccessory(row.id, entry))
+      .catch(dbErr('addAccessory cadeau série'));
+  }
+  addUserHistoryEntry(user, {
+    type: USER_LOG_TYPE.PICTO,
+    content: `${streak} jours de connexion d'affilée ! Pour te remercier de ta fidélité, l'accessoire ${pack.name} t'attend dans ton inventaire.`,
+    flNew: true,
+  });
+  console.log(`[SERIE] ${username} reçoit l'accessoire #${pack.id} (${pack.name}) — série de ${streak} jours`);
+  return true;
 }
 
 // ── FD : disquettes de partie « challenge » (limite quotidienne + FD payants) ──
@@ -7057,6 +7095,24 @@ const SHOP_PACKS_DEFAULT = [
     description: 'La tête de tzongre des Épreuves.',
     comment: 'Se gagne en bouclant le défi DIFFICILE des Épreuves de Kaluga.',
     suffix9: '50h0t0j0o',
+    recompense: true,
+  },
+  /*
+   * LE CADEAU DES 100 JOURS — même principe que le Makulo : une récompense,
+   * hors des rayons. Offert une fois, à la connexion qui porte la série de
+   * connexions quotidiennes à 100 jours (ou plus : ceux qui y étaient déjà le
+   * reçoivent à leur prochaine connexion). Cf. offrirCadeauSerie. Numéro pris
+   * dans la plage réservée au code (600 000 – 700 000, cf. les incarnations) ;
+   * le nom et la description se changent depuis l'admin, une ligne en base gagne.
+   */
+  {
+    id: 630100,
+    name: 'Cadeau des 100 jours',
+    category: 'Accessoires',
+    price: 0,
+    description: 'Offert aux Frutiz qui se connectent 100 jours d’affilée.',
+    comment: 'Se gagne en se connectant 100 jours de suite.',
+    suffix9: '40f0t0j0o',
     recompense: true,
   },
   /*
