@@ -10338,12 +10338,8 @@ async function handleSaveScore(req, res) {
   // faire au classement Challenge — ni ailleurs. Il se range dans une table à
   // part, que seule la fiche admin relit ; rien n'est classé, donc aucun FD
   // n'est consommé.
-  if (/^swapou2/.test(rankingId) && userOwnsGameFeature(users[username], 'swapouAnalyse')) {
-    if (process.env.DATABASE_URL) {
-      db.addSwapouIaScore(username, scoreVal, scoreData).catch(dbErr('swapou_ia_scores'));
-    }
+  if (scoreIaSwapouMisDeCote(username, rankingId, scoreVal, scoreData, 'saveScore')) {
     swapouNoterPartie(username, params, scoreVal, scoreData, null, true);
-    console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} NON classé (IA de Swapou) → swapou_ia_scores`);
     return res.json({
       ok: true, updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0,
       rankingId, fdBlocked: false, iaNonClasse: true,
@@ -18056,6 +18052,30 @@ function controlePorteGenerique(username, rankingId, score, data, voie) {
   return null;
 }
 
+/*
+ * L'IA DE SWAPOU NE SE CLASSE PAS — quelle que soit la porte.
+ *
+ * Le joueur à qui l'admin a accordé l'analyse en partie (`swapouAnalyse`)
+ * joue avec le meilleur coup dessiné sous ses yeux : son score n'a rien à
+ * faire au classement. Seule /api/saveScore le savait ; le SWF du bureau, par
+ * loadVariables ou par FrutiScore, classait sans regarder l'option. Le score
+ * est rangé à part (swapou_ia_scores, que seule la fiche admin relit) et rien
+ * n'est classé, donc aucun FD n'est consommé. Ce n'est pas une triche (l'IA
+ * est accordée par l'admin) : pas d'alerte.
+ *
+ * @returns {boolean} true si le score a été mis de côté (et ne doit pas
+ *   continuer son chemin).
+ */
+function scoreIaSwapouMisDeCote(username, rankingId, score, data, voie) {
+  if (!username || !/^swapou2/.test(String(rankingId || ''))) return false;
+  if (!userOwnsGameFeature(users[username], 'swapouAnalyse')) return false;
+  if (process.env.DATABASE_URL) {
+    db.addSwapouIaScore(username, Number(score) || 0, data || '').catch(dbErr('swapou_ia_scores'));
+  }
+  console.log(`[${voie}] ${username} ${rankingId} ${score} NON classé (IA de Swapou) → swapou_ia_scores`);
+  return true;
+}
+
 // ── MiniPixiz : l'Arbre creux ───────────────────────────────────────────
 app.post('/api/minipixiz/arbre/partie', (req, res) => {
   const sid = getSidFromRequest(req, req.body || {});
@@ -22399,6 +22419,10 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
   // (MiniWave) borne donc le score comme au premier niveau.
   if (controlePorteGenerique(username, rankingId, scoreVal, '', 'loadVariables')) {
     return res.type('text/plain').send('ok=0');
+  }
+  // L'IA de Swapou ne se classe pas, par ce repli non plus.
+  if (scoreIaSwapouMisDeCote(username, rankingId, scoreVal, '', 'SWF-SCORE')) {
+    return res.type('text/plain').send('ok=1');
   }
   /*
    * Même routage que les deux autres chemins de save (une seule source de
@@ -37389,6 +37413,11 @@ async function handleCBeeMessage(socket, rawXml) {
         // de plausibilité. Un refus ne classe rien — la réponse part quand
         // même, sans position, pour que le jeu ne reste pas en attente.
         if (username && controlePorteGenerique(username, rankingId, scoreVal, scoreData, 'FrutiScore')) {
+          rankingId = null;
+        }
+        // L'IA de Swapou ne se classe pas par la socket non plus : le SWF du
+        // bureau envoie ses scores par ici.
+        if (scoreIaSwapouMisDeCote(username, rankingId, scoreVal, scoreData, 'FSCORE')) {
           rankingId = null;
         }
         let extraRankingId = null;

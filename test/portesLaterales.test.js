@@ -189,3 +189,31 @@ test('porte C : FrutiScore refuse les classements arbitrés et l’implausible, 
   assert.match(r3, / p="[1-9]\d*" /, 'une position au classement');
   assert.equal((await record('miniwave_classic', pseudo) || {}).score, 3100);
 });
+
+// ── L'IA de Swapou, par les trois portes ───────────────────────────────────
+
+test('l’IA de Swapou ne se classe ni par loadVariables ni par FrutiScore', async () => {
+  const pseudo = 'porteia';
+  const sid = await inscrire(pseudo);
+  const option = (owned) => fetch(`${BASE}/api/admin/users/${pseudo}/game-feature`, {
+    method: 'POST', headers: Object.assign({}, JSN, ADMIN), body: JSON.stringify({ feature: 'swapouAnalyse', owned }),
+  });
+  assert.equal((await option(true)).status, 200, 'l’admin accorde l’IA');
+  // B : le SWF reçoit sa réponse habituelle, mais rien n'est classé.
+  assert.match(await (await fetch(`${BASE}/swf/games/swapou2/s5000?sid=${sid}`)).text(), /ok=1/);
+  assert.match(journal, new RegExp(`\\[SWF-SCORE\\] ${pseudo} swapou2_classic 5000 NON classé \\(IA de Swapou\\)`));
+  // C : pas de position.
+  const sock = await brancher(pseudo, sid, XML_PORT);
+  assert.match(await frutiScore(sock, 'd="swapou2" m="0" s="6000"'), / p="0" /);
+  assert.match(journal, new RegExp(`\\[FSCORE\\] ${pseudo} swapou2_classic 6000 NON classé \\(IA de Swapou\\)`));
+  // A : comme avant.
+  const a = await saveScore({ sid, game: 'swapou2', m: '0', score: '7000', data: 'S0:' });
+  assert.equal(a.iaNonClasse, true);
+  assert.equal(await record('swapou2_classic', pseudo), null, 'aucune des trois portes ne classe');
+  // L'IA n'est pas une triche : pas d'alerte.
+  assert.equal((await alertes(pseudo)).length, 0);
+  // Sans l'option, le même SWF se classe.
+  assert.equal((await option(false)).status, 200);
+  assert.match(await (await fetch(`${BASE}/swf/games/swapou2/s12?sid=${sid}`)).text(), /ok=1/);
+  assert.equal((await record('swapou2_classic', pseudo) || {}).score, 12);
+});
