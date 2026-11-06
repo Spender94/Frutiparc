@@ -189,7 +189,7 @@ test('le défi médaille : sur soi, trois cotes fixes croissantes, son plafond, 
   assert.equal(adm.jeux.find((j) => j.cle === 'swapou2_classic').demain.defi, 25);
 });
 
-test('la nuit passe : le défi se règle à sa cote, les médailles rapportent de l’XP, Dimitri poste une fois', async (t) => {
+test('la nuit passe : le défi se règle à sa cote, les quinze premiers gagnent de l’XP, Dimitri poste une fois', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
   const retourGrenade = (await sql(`SELECT retour FROM challenge_paris WHERE username = 'grenade'`))[0].retour;
   await sql(`UPDATE challenge_paris SET jour = $1`, [jourParis(-1)]);
@@ -198,7 +198,7 @@ test('la nuit passe : le défi se règle à sa cote, les médailles rapportent d
   await jouer('myrtille', 7000);
   await jouer('clemence', 6000);
   const avant = { grenade: await solde('grenade'), myrtille: await solde('myrtille'), clemence: await solde('clemence') };
-  const xpAvant = { papaye: await xp('papaye'), myrtille: await xp('myrtille') };
+  const xpAvant = { papaye: await xp('papaye'), myrtille: await xp('myrtille'), clemence: await xp('clemence') };
   assert.ok((await post('/api/admin/challenge/roll', {}, ADMIN)).ok);
   const regles = await attendre(async () => {
     const r = await sql(`SELECT username, type, statut, gain FROM challenge_paris ORDER BY username`);
@@ -215,18 +215,26 @@ test('la nuit passe : le défi se règle à sa cote, les médailles rapportent d
   assert.equal(await attendre(async () => (await solde('grenade')) === avant.grenade + retourGrenade + 15), true);
   assert.equal(await solde('myrtille'), avant.myrtille + 5);
   assert.equal(await solde('clemence'), avant.clemence + 8);
-  // L'XP DES MÉDAILLES, dans le registre et dans le message de chacune.
+  // L'XP PAR RANG (les quinze premiers, en dégressif), dans le registre et
+  // dans le message de chacun : clémence, 4e, n'a pas de médaille mais 1 300 XP.
   const registre = await attendre(async () => {
     const r = await sql(`SELECT username, medal, xp FROM challenge_medailles_xp WHERE ranking_id = 'swapou2_classic' ORDER BY xp DESC`);
-    return r.length === 3 && r;
+    return r.length === 4 && r;
   });
-  assert.deepEqual(registre.map((r) => [r.username, r.medal, r.xp]), [['grenade', 'or', 7500], ['papaye', 'argent', 5000], ['myrtille', 'bronze', 2500]]);
+  assert.deepEqual(registre.map((r) => [r.username, r.medal, r.xp]),
+    [['grenade', 'or', 2500], ['papaye', 'argent', 2000], ['myrtille', 'bronze', 1600], ['clemence', 'rang4', 1300]]);
   const messages = await attendre(async () => {
     const r = await sql(`SELECT l.content FROM user_logs l JOIN users u ON u.id = l.user_id WHERE u.username = 'papaye' AND l.entry_type = 60`);
     return r.length && r;
   });
-  assert.match(messages[0].content, /médaille d'argent à .* et empoché 10 kikooz et 5000 XP !/);
+  assert.match(messages[0].content, /médaille d'argent à .* et empoché 10 kikooz et 2000 XP !/);
+  const quatrieme = await attendre(async () => {
+    const r = await sql(`SELECT l.content FROM user_logs l JOIN users u ON u.id = l.user_id WHERE u.username = 'clemence' AND l.entry_type = 60`);
+    return r.length && r;
+  });
+  assert.match(quatrieme[0].content, /^Bien joué ! Tu termines 4e à Swapou au challenge du jour et empoches 1300 XP !/);
   const xp1 = { papaye: (await xp('papaye')) - xpAvant.papaye, myrtille: (await xp('myrtille')) - xpAvant.myrtille };
+  assert.equal((await xp('clemence')) - xpAvant.clemence, 1000 + 1500 + 1300, 'son pari, sa partie du jour, et sa 4e place');
   // DIMITRI : le gros coup de grenade, en un message.
   const posts = await attendre(async () => { const r = await dimitri(); return r.length && r; });
   assert.equal(posts.length, 1);
@@ -248,10 +256,10 @@ test('la nuit passe : le défi se règle à sa cote, les médailles rapportent d
   assert.match(seconds[1].content, /empoché 10 kikooz ! /, 'plus d’XP annoncée : elle est déjà payée');
   await wait(500);
   const xp2 = { papaye: (await xp('papaye')) - xpMilieu.papaye, myrtille: (await xp('myrtille')) - xpMilieu.myrtille };
-  assert.equal(xp1.papaye - xp2.papaye, 5000, `l’argent ne paie son XP qu’une fois (${xp1.papaye} puis ${xp2.papaye})`);
+  assert.equal(xp1.papaye - xp2.papaye, 2000, `l’argent ne paie son XP qu’une fois (${xp1.papaye} puis ${xp2.papaye})`);
   // myrtille avait parié (1 000 XP le premier soir) : son bronze, lui aussi, une fois.
-  assert.equal(xp1.myrtille - xp2.myrtille, 1000 + 2500);
-  assert.equal((await sql(`SELECT COUNT(*)::int AS n FROM challenge_medailles_xp`))[0].n, 3);
+  assert.equal(xp1.myrtille - xp2.myrtille, 1000 + 1600);
+  assert.equal((await sql(`SELECT COUNT(*)::int AS n FROM challenge_medailles_xp`))[0].n, 4);
 });
 
 test('Dimitri : le même jour, il complète son message ; en « direct », il en poste un autre', async (t) => {

@@ -4992,7 +4992,8 @@ function isDailyResetRanking(rkId) {
   return DAILY_RESET_RANKING_SET.has(rkId);
 }
 
-function collectTop3ForRanking(rankingId) {
+// Les `n` premiers d'un classement (3 pour le podium, 15 pour l'XP du jour).
+function collectTopForRanking(rankingId, n = 3) {
   const all = [];
   for (const [u, rlist] of Object.entries(scoresData.users || {})) {
     if (rlist && rlist[rankingId] && Number.isFinite(Number(rlist[rankingId].score))) {
@@ -5002,7 +5003,7 @@ function collectTop3ForRanking(rankingId) {
     }
   }
   all.sort(scoreComparator(rankingId));
-  return all.slice(0, 3);
+  return all.slice(0, n);
 }
 
 const GAME_DISPLAY_NAMES = {
@@ -5052,12 +5053,16 @@ const medalAwardFrame = (game) => MEDAL_AWARD_FRAME[String(game || '').toLowerCa
 // Récompense kikooz d'une médaille du challenge du jour (versée UNE fois, au roll
 // quotidien) : or → 15, argent → 10, bronze → 5.
 const MEDAL_KIKOOZ = { or: 15, argent: 10, bronze: 5 };
-// XP d'une médaille du challenge du jour, dans les mêmes proportions que les
-// kikooz (1 / 2 / 3) : le bronze vaut deux réponses au forum, l'or une fois et
-// demie le bonus de connexion. Versée UNE fois par médaille — le registre
-// `challenge_medailles_xp` en garde la trace (cf. recompenserMedaillesXp) —
-// et seulement pour les médailles gagnées depuis son arrivée (pas de rattrapage).
-const MEDAL_XP = { or: 7500, argent: 5000, bronze: 2500 };
+// L'XP du challenge du jour, PAR RANG : les quinze premiers de chaque
+// classement sont payés, en dégressif (débat du forum, novembre 2026 — l'or à
+// 7 500 XP pesait plus que toute une journée de forum, et le 4e repartait sans
+// rien). Versée UNE fois par place — le registre `challenge_medailles_xp` en
+// garde la trace (cf. recompenserMedaillesXp) — et seulement pour les places
+// prises depuis son arrivée (pas de rattrapage). Hors des plafonds quotidiens
+// de XP_REWARDS : elle s'ajoute à l'XP du jour.
+const RANG_XP = [2500, 2000, 1600, 1300, 1100, 1000, 900, 800, 700, 600, 500, 400, 300, 200, 100];
+const RANGS_PAYES = RANG_XP.length;
+const xpDuRang = (rank) => RANG_XP[Math.trunc(Number(rank)) - 1] || 0;
 
 // Crédite `reward` kikooz à un joueur pour ses médailles. Joueur EN LIGNE :
 // crédit en mémoire (source de vérité) + persistance + journal + rafraîchissement
@@ -5080,12 +5085,13 @@ function awardMedalKikooz(username, reward, reason) {
   }
 }
 
-// L'XP des médailles d'un joueur pour un jour : seules celles que le registre
-// ne connaît pas encore sont payées (un roll rejoué ne paie pas deux fois).
-// Rend { rankingId: xp } pour les médailles payées maintenant. Sans base, pas
-// de registre : le roll ne passe qu'une fois par jour (lastRollDay), on paie.
-async function recompenserMedaillesXp(username, medals, visibleDay) {
-  const lignes = (medals || []).map((m) => ({ rankingId: m.rankingId, medal: m.medal, xp: MEDAL_XP[m.medal] || 0 })).filter((l) => l.xp > 0);
+// L'XP des places d'un joueur pour un jour (médailles comprises) : seules
+// celles que le registre ne connaît pas encore sont payées (un roll rejoué ne
+// paie pas deux fois). Rend { rankingId: xp } pour les places payées
+// maintenant. Sans base, pas de registre : le roll ne passe qu'une fois par
+// jour (lastRollDay), on paie. Le registre note la médaille, ou « rang7 ».
+async function recompenserMedaillesXp(username, places, visibleDay) {
+  const lignes = (places || []).map((m) => ({ rankingId: m.rankingId, medal: m.medal || `rang${m.rank}`, xp: xpDuRang(m.rank) })).filter((l) => l.xp > 0);
   if (!lignes.length) return {};
   const nouvelles = process.env.DATABASE_URL
     ? new Set(await db.marquerXpMedailles(username, visibleDay, lignes))
@@ -5094,7 +5100,7 @@ async function recompenserMedaillesXp(username, medals, visibleDay) {
   let total = 0;
   for (const l of lignes) if (nouvelles.has(l.rankingId)) { payees[l.rankingId] = l.xp; total += l.xp; }
   if (total <= 0) return payees;
-  const raison = `médailles du challenge (${visibleDay})`;
+  const raison = `classements du challenge (${visibleDay})`;
   if (users[username]) awardImmediateXp(username, total, raison);
   else if (process.env.DATABASE_URL) {
     // Hors ligne : crédit atomique en base, et le passage de niveau l'attend
@@ -5116,12 +5122,24 @@ async function recompenserMedaillesXp(username, medals, visibleDay) {
 // XP. L'XP d'abord (le registre dit ce qui est dû). Appelé par le roll APRÈS
 // l'XP du jour (awardDailyXp) : celle-ci hydrate et réécrit l'XP des joueurs
 // actifs hors ligne, un crédit en base passé entre-temps serait écrasé.
-async function annoncerMedaillesDuJour(winnersByUser, visibleDay) {
-  for (const [username, medals] of Object.entries(winnersByUser || {})) {
+// `placesByUser` : les rangs 1 à 15 de chacun ; ceux de 4 à 15 n'ont pas de
+// médaille, un seul message les résume (« 5e à Kaluga, 9e au Swapou »).
+async function annoncerMedaillesDuJour(winnersByUser, visibleDay, placesByUser = winnersByUser) {
+  const joueurs = new Set([...Object.keys(winnersByUser || {}), ...Object.keys(placesByUser || {})]);
+  for (const username of joueurs) {
+    const medals = (winnersByUser || {})[username] || [];
+    const places = (placesByUser || {})[username] || medals;
     let xpPayees = {};
-    try { xpPayees = await recompenserMedaillesXp(username, medals, visibleDay); }
-    catch (e) { console.error(`[XP] médailles de ${username} :`, e.message); }
-    for (const m of medals || []) {
+    try { xpPayees = await recompenserMedaillesXp(username, places, visibleDay); }
+    catch (e) { console.error(`[XP] places de ${username} :`, e.message); }
+    const sansMedaille = places.filter((p) => !p.medal && xpPayees[p.rankingId] > 0);
+    if (sansMedaille.length) {
+      const total = sansMedaille.reduce((n, p) => n + xpPayees[p.rankingId], 0);
+      const liste = sansMedaille.map((p) => `${p.rank}e à ${GAME_DISPLAY_NAMES[p.game] || p.game}`).join(', ');
+      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.MEDAL, flNew: true,
+        content: `Bien joué ! Tu termines ${liste} au challenge du jour et empoches ${total} XP ! (${visibleDay})` });
+    }
+    for (const m of medals) {
       const gameName = GAME_DISPLAY_NAMES[m.game] || m.game;
       const medalName = MEDAL_DISPLAY_NAMES[m.medal] || m.medal;
       const reward = MEDAL_KIKOOZ[m.medal] || 0;
@@ -5247,10 +5265,17 @@ async function performChallengeRoll(today) {
   console.log(`[CHALLENGE] Rolling cycle: archiveDay=${archiveDay} newDay=${today}`);
 
   const winnersByUser = {};
+  const placesByUser = {};      // les rangs 1 à 15, pour l'XP (cf. RANG_XP)
   const podiums = {};           // rankingId -> [or, argent, bronze] (paris du Challenge)
   for (const rkId of challengeRankingIds()) {
-    const top = collectTop3ForRanking(rkId);
+    const classement = collectTopForRanking(rkId, RANGS_PAYES);
+    const top = classement.slice(0, 3);
     podiums[rkId] = top.map((x) => x.u);
+    classement.forEach((x, i) => {
+      if (!placesByUser[x.u]) placesByUser[x.u] = [];
+      placesByUser[x.u].push({ game: (RANKINGS[rkId] && RANKINGS[rkId].game) || rkId, rankingId: rkId,
+        rank: i + 1, medal: i === 0 ? 'or' : i === 1 ? 'argent' : i === 2 ? 'bronze' : null });
+    });
     const direction = isLowerBetter(rkId) ? 'asc (lower=better)' : 'desc (higher=better)';
     console.log(`[CHALLENGE] ${rkId} sort=${direction} top=${JSON.stringify(top)}`);
     for (let i = 0; i < top.length; i++) {
@@ -5280,7 +5305,7 @@ async function performChallengeRoll(today) {
     console.error('[XP] awardDailyXp error:', e.message);
   }
   // Puis l'XP des médailles, et le message de chacune.
-  annoncerMedaillesDuJour(winnersByUser, archiveDay).catch((e) => console.error('[XP] médailles du jour :', e.message));
+  annoncerMedaillesDuJour(winnersByUser, archiveDay, placesByUser).catch((e) => console.error('[XP] médailles du jour :', e.message));
 
   if (process.env.DATABASE_URL) {
     const rankingIds = challengeRankingIds();
@@ -9006,7 +9031,7 @@ app.get('/api/admin/palmares', adminScope('stats', 'palmares'), async (req, res)
   const records = {};
   for (const rk of Object.keys(RANKINGS)) {
     if (isDailyResetRanking(rk)) continue;
-    const top = collectTop3ForRanking(rk)[0];
+    const top = collectTopForRanking(rk, 1)[0];
     const cle = top && String(top.u).toLowerCase();
     if (!top || NPC_USERNAMES.has(cle)) continue;
     const e = records[cle] || (records[cle] = { u: cle, n: 0, classements: [] });
