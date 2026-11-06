@@ -2232,6 +2232,9 @@ function minipixizClasserArbreDepuisFiche(username, avantBrut, apresBrut, voie) 
   const refus = raisonScoreImplausible('minipixiz_classic', neuf, '');
   if (refus) {
     console.log(`[${voie}] ${username} arbre creux ${neuf} REFUSÉ — ${refus}`);
+    signalerTriche(username, { jeu: 'minipixiz', type: 'plausibilite', gravite: 'suspect',
+      resume: `record d'arbre ${neuf} refusé dans la fiche du bureau (${voie}) : ${refus}`,
+      details: { rankingId: 'minipixiz_classic', score: neuf, avant: vieux, voie, raison: refus } });
     return null;
   }
   // LA FICHE SE FORGE AUSSI : c'est le navigateur qui l'écrit, et poser un
@@ -10318,20 +10321,15 @@ async function handleSaveScore(req, res) {
   if (!rankingId) {
     return res.status(400).json({ ok: false, error: 'unknown_game', game: gameName });
   }
-  // Les classements RÉSERVÉS aux parties vérifiées (l'Arbre creux, Mini-Fever) :
-  // cette porte ne prouve rien, elle ne les écrit plus (antitricheLight.js).
-  if (classementReserveAuxPartiesVerifiees(rankingId)) {
-    antitricheRefusPorteGenerique(username, rankingId, scoreVal, 'saveScore');
-    return res.status(400).json({ ok: false, error: 'partie_non_verifiee', rankingId,
-      raison: 'ce classement n\'accepte que les parties vérifiées par le serveur' });
-  }
-  // Garde-fou de plausibilité des classements pilotes (score calculé par le
-  // navigateur). On refuse AVANT toute écriture, et sans consommer de FD.
+  // Le contrôle commun des portes génériques (controlePorteGenerique) : les
+  // classements réservés aux parties vérifiées (l'Arbre creux, Mini-Fever),
+  // ceux que seul le serveur arbitre (séries de Grapiz et de Frutibandas,
+  // JamaJama rejoué), et les plafonds de plausibilité. On refuse AVANT toute
+  // écriture, sans consommer de FD, et chaque refus part en alerte.
   {
-    const refus = raisonScoreImplausible(rankingId, scoreVal, scoreData);
+    const refus = controlePorteGenerique(username, rankingId, scoreVal, scoreData, 'saveScore');
     if (refus) {
-      console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} REFUSÉ — ${refus}`);
-      return res.status(400).json({ ok: false, error: 'implausible_score', rankingId, raison: refus });
+      return res.status(400).json({ ok: false, error: refus.motif, rankingId, raison: refus.raison });
     }
   }
   // ── L'IA DE SWAPOU NE SE CLASSE PAS ───────────────────────────────────────
@@ -17990,6 +17988,74 @@ function antitricheRefusPorteGenerique(username, rankingId, score, voie) {
     `score envoyé par ${voie} : ce classement n'accepte que les parties vérifiées`);
 }
 
+/*
+ * LES CLASSEMENTS ARBITRÉS PAR LE SERVEUR — ceux qu'aucun navigateur n'écrit.
+ *
+ * Une série de Grapiz ou de Frutibandas se compte sur le serveur, partie
+ * après partie (onStreak) ; un niveau de JamaJama se REJOUE avant d'être
+ * classé (/api/jamajama/score) ; une note de Championnat sort de l'Elo que
+ * tient le serveur (onChampion). Aucun client honnête ne pose donc lui-même
+ * un score dans ces tableaux.
+ *
+ * Or `rankingIdForGame` accepte toute clé `<jeu>_classic` ou
+ * `<jeu>_challenge` de RANKINGS : envoyer « grapiz », mode 1, à
+ * /api/saveScore ou par FrutiScore posait une série de cent victoires sans
+ * jouer un seul match. Ces classements-là ne s'écrivent plus que par leur
+ * chemin serveur. Les trois notes de Championnat ne sont pas joignables par
+ * les portes aujourd'hui (aucune clé ne finit en `_champion` ou `_battle`) ;
+ * elles sont dans la liste pour qu'un nouveau routage ne les ouvre pas sans
+ * qu'on y pense.
+ */
+const CLASSEMENTS_ARBITRES = new Set([
+  'grapiz_challenge', 'bandas_challenge', 'jamajama_classic',
+  'grapiz_champion', 'bandas_champion', 'snake3_battle',
+]);
+function classementArbitreParLeServeur(rankingId) {
+  return CLASSEMENTS_ARBITRES.has(String(rankingId || ''));
+}
+
+/*
+ * LE CONTRÔLE COMMUN DES TROIS PORTES GÉNÉRIQUES — /api/saveScore (A), le
+ * repli `loadVariables` des SWF (B) et FrutiScore sur la socket (C).
+ *
+ * Les trois reçoivent un score que le client DÉCLARE. Elles appliquaient des
+ * contrôles différents : seule la porte A connaissait les plafonds de
+ * plausibilité, et ses refus n'allaient qu'à la console. Il n'y a plus qu'un
+ * contrôle, et chaque refus part en alerte (signalerTriche) :
+ *   · classement réservé aux parties vérifiées (Arbre creux, Mini-Fever) ;
+ *   · classement arbitré par le serveur (cf. CLASSEMENTS_ARBITRES) ;
+ *   · score implausible (raisonScoreImplausible).
+ * Le refus a lieu AVANT tout portillon FD : rien n'est consommé, rien n'est
+ * classé, aucune médaille ni prime ne peut suivre.
+ *
+ * @returns {null|{motif: string, raison: string}} null si le score peut
+ *   continuer son chemin.
+ */
+function controlePorteGenerique(username, rankingId, score, data, voie) {
+  if (!rankingId) return null;
+  if (classementReserveAuxPartiesVerifiees(rankingId)) {
+    antitricheRefusPorteGenerique(username, rankingId, score, voie);
+    return { motif: 'partie_non_verifiee', raison: 'ce classement n\'accepte que les parties vérifiées par le serveur' };
+  }
+  const jeu = (RANKINGS[rankingId] && RANKINGS[rankingId].game) || '';
+  if (classementArbitreParLeServeur(rankingId)) {
+    signalerTriche(username, { jeu, type: 'classement_arbitre', gravite: 'suspect',
+      resume: `score ${Number(score) || 0} envoyé par ${voie} au classement ${rankingId}, que seul le serveur écrit`,
+      details: { rankingId, score: Number(score) || 0, data: String(data || '').slice(0, 200), voie } });
+    console.log(`[ANTITRICHE] ${voie} ${username} ${rankingId} ${score} REFUSÉ — classement arbitré par le serveur`);
+    return { motif: 'classement_arbitre', raison: 'ce classement ne s\'écrit que par les parties jouées sur le serveur' };
+  }
+  const refus = raisonScoreImplausible(rankingId, score, data);
+  if (refus) {
+    signalerTriche(username, { jeu, type: 'plausibilite', gravite: 'suspect',
+      resume: `score ${Number(score) || 0} refusé au classement ${rankingId} (${voie}) : ${refus}`,
+      details: { rankingId, score: Number(score) || 0, data: String(data || '').slice(0, 200), voie, raison: refus } });
+    console.log(`[ANTITRICHE] ${voie} ${username} ${rankingId} ${score} REFUSÉ — ${refus}`);
+    return { motif: 'implausible_score', raison: refus };
+  }
+  return null;
+}
+
 // ── MiniPixiz : l'Arbre creux ───────────────────────────────────────────
 app.post('/api/minipixiz/arbre/partie', (req, res) => {
   const sid = getSidFromRequest(req, req.body || {});
@@ -22326,10 +22392,12 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
     console.log(`[SWF-SCORE] unknown ranking game="${gameName}" sid="${effectiveSid}" user="${username}"`);
     return res.type('text/plain').send('ok=0');
   }
-  // Une URL à taper suffisait à classer n'importe quel score d'arbre : les
-  // classements vérifiés ne passent plus par ici (antitricheLight.js).
-  if (classementReserveAuxPartiesVerifiees(rankingId)) {
-    antitricheRefusPorteGenerique(username, rankingId, scoreVal, 'loadVariables');
+  // Une URL à taper suffisait à classer n'importe quel score d'arbre — ou une
+  // série de Grapiz, ou un score au-delà de tout plafond : ce repli passe
+  // désormais par le même contrôle que /api/saveScore (controlePorteGenerique).
+  // L'URL ne porte pas de donnée : un plafond qui se lit au niveau atteint
+  // (MiniWave) borne donc le score comme au premier niveau.
+  if (controlePorteGenerique(username, rankingId, scoreVal, '', 'loadVariables')) {
     return res.type('text/plain').send('ok=0');
   }
   /*
@@ -37316,9 +37384,11 @@ async function handleCBeeMessage(socket, rawXml) {
         console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)} data="${scoreData}" mode=${scoreMode} children=${JSON.stringify(msg.children || [])}`);
         let rankingId = rankingIdForGame(discId, scoreMode);
         if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame, scoreMode);
-        // Les classements vérifiés ne s'écrivent pas par ce chemin non plus.
-        if (classementReserveAuxPartiesVerifiees(rankingId)) {
-          antitricheRefusPorteGenerique(username, rankingId, scoreVal, 'FrutiScore');
+        // Le même contrôle que les deux autres portes (controlePorteGenerique) :
+        // classements vérifiés, classements arbitrés par le serveur, plafonds
+        // de plausibilité. Un refus ne classe rien — la réponse part quand
+        // même, sans position, pour que le jeu ne reste pas en attente.
+        if (username && controlePorteGenerique(username, rankingId, scoreVal, scoreData, 'FrutiScore')) {
           rankingId = null;
         }
         let extraRankingId = null;
