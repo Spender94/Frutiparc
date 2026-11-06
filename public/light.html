@@ -172,6 +172,23 @@
   .sheet .sheet-head button { min-width: 40px; min-height: 36px; border-radius: 8px; }
   .sheet .sheet-head button:active { background: rgba(44,74,15,.12); }
   #paris-cadre { flex: 1; min-height: 0; width: 100%; border: 0; display: block; background: #fff; }
+  /* LES LOGS DU SALON — une feuille, plus une fenêtre à part. Dans l'appli
+     installée sur iPhone, `window.open` n'ouvre pas de seconde fenêtre : la
+     page des logs prenait toute la place, sans barre d'adresse, sans onglets
+     ni bouton retour, et il fallait quitter l'appli pour revenir au chat. La
+     feuille garde sa croix en haut quoi qu'il arrive : elle ne monte jamais
+     plus haut que la zone sûre (l'encoche, la barre d'état), et son pied
+     laisse la place à la barre d'accueil. Elle passe devant tout — fiche,
+     fenêtres du bureau d'une tablette — puisqu'on l'ouvre de n'importe où. */
+  .sheet.sheet-logs {
+    z-index: 100002;
+    height: calc(var(--app-h, 100dvh) * .9);
+    max-height: calc(var(--app-h, 100dvh) - env(safe-area-inset-top, 0px) - 12px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .sheet-backdrop.sheet-logs-fond { z-index: 100001; }
+  .sheet.sheet-logs .sheet-head button { font-size: 20px; min-width: 44px; min-height: 40px; }
+  #logs-cadre { flex: 1; min-height: 0; width: 100%; border: 0; display: block; background: #f4fbe4; }
   .sheet-preview { display: none; justify-content: center; margin-bottom: 10px; }
   #bouille-sheet-preview {
     width: 132px; height: 132px; background: #fff; border: 2px solid #DDDDDD;
@@ -3437,6 +3454,18 @@
       <button id="paris-sheet-close">✕</button>
     </div>
     <iframe id="paris-cadre" title="Prunostics" src="about:blank"></iframe>
+  </div>
+
+  <!-- LES LOGS DU SALON (« … voir les messages précédents … », /logs) — la
+       page /api/chat/histo dans un cadre, sur une feuille qui garde sa croix.
+       Le cadre ne se charge qu'à l'ouverture et se vide à la fermeture. -->
+  <div id="logs-sheet-backdrop" class="sheet-backdrop sheet-logs-fond"></div>
+  <div id="logs-sheet" class="sheet sheet-logs" role="dialog" aria-modal="true" aria-labelledby="logs-sheet-titre">
+    <div class="sheet-head">
+      <span id="logs-sheet-titre"><img class="sheet-ico" src="/fb/Historique.svg" alt="">Messages précédents</span>
+      <button type="button" id="logs-sheet-close" aria-label="Fermer les logs" title="Fermer (Échap)">✕</button>
+    </div>
+    <iframe id="logs-cadre" title="Messages précédents du salon" src="about:blank"></iframe>
   </div>
 
   <!-- LES QUÊTES DE GROMELIN — une feuille sur mobile, une fenêtre sur le
@@ -12144,11 +12173,59 @@
   // les commandes /log, /logs, /chatlog, /chatlogs et /histo
   // (`traiterCommande`). Le serveur juge des droits : salon public, à tous ;
   // discussion privée, à ses deux participants.
+  //
+  // Une fenêtre à part (`window.open`) seulement sur le bureau d'un vrai
+  // navigateur, comme `fp_openHisto` d'époque. Partout ailleurs — le
+  // téléphone, et surtout l'appli installée — une feuille dans la page :
+  // l'appli de l'écran d'accueil n'a ni onglets ni bouton retour, et la page
+  // des logs ouverte « à côté » y recouvrait le chat sans aucun moyen d'en
+  // revenir, sinon tuer l'appli.
   function ouvrirLogs(room) {
     if (!room) return;
-    window.open("/api/chat/histo?sid=" + encodeURIComponent(state.sid)
-      + "&g=" + encodeURIComponent(room), "fp_histo", "width=680,height=720");
+    var url = "/api/chat/histo?sid=" + encodeURIComponent(state.sid)
+      + "&g=" + encodeURIComponent(room);
+    var surBureau = window.BureauFrutiz && BureauFrutiz.actif && BureauFrutiz.actif();
+    if (surBureau && !estInstallee()) {
+      window.open(url, "fp_histo", "width=680,height=720");
+      return;
+    }
+    ouvrirFeuilleLogs(url, room);
   }
+  function ouvrirFeuilleLogs(url, room) {
+    var c = $("#logs-cadre");
+    if (!c) return;
+    // Le clavier se replie : la commande vient d'être tapée, et un corps calé
+    // sous le clavier (applyViewport) décalerait la feuille.
+    try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
+    $("#logs-sheet-titre").lastChild.textContent = "Messages précédents — " + roomLabel(room);
+    // `cadre=1` : la page sait qu'elle est dans la feuille, et laisse la
+    // croix à celle-ci.
+    c.setAttribute("src", url + "&cadre=1");
+    $("#logs-sheet-backdrop").classList.add("show");
+    $("#logs-sheet").classList.add("show");
+    try { $("#logs-sheet-close").focus({ preventScroll: true }); } catch (e) {}
+  }
+  function fermerFeuilleLogs() {
+    if (!$("#logs-sheet").classList.contains("show")) return;
+    $("#logs-sheet-backdrop").classList.remove("show");
+    $("#logs-sheet").classList.remove("show");
+    var c = $("#logs-cadre");
+    if (c && c.getAttribute("src") !== "about:blank") c.setAttribute("src", "about:blank");
+  }
+  $("#logs-sheet-close").addEventListener("click", fermerFeuilleLogs);
+  $("#logs-sheet-backdrop").addEventListener("click", fermerFeuilleLogs);
+  // Échap ferme, d'ici comme depuis le cadre (qui relaie la touche : une
+  // page dans un cadre garde ses touches pour elle).
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape" && $("#logs-sheet").classList.contains("show")) {
+      ev.preventDefault();
+      fermerFeuilleLogs();
+    }
+  });
+  window.addEventListener("message", function (ev) {
+    if (ev.origin !== location.origin || !ev.data || ev.data.fpLogs !== "fermer") return;
+    fermerFeuilleLogs();
+  });
 
   // Vue « tout le site ». Le lieu affiché est le salon PUBLIC où se trouve le
   // joueur ; qui n'en a rejoint aucun (il joue, il lit le forum…) est simplement

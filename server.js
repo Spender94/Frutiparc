@@ -30783,7 +30783,7 @@ app.get('/api/chat/histo', (req, res) => {
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Salon ${esc(g)} — messages précédents</title>
 <style>
   body { margin: 0; background: #8A9F60; font: 12px Verdana, Arial, sans-serif; color: #2c3a10; }
@@ -30814,6 +30814,31 @@ app.get('/api/chat/histo', (req, res) => {
   }
   .systeme { font-style: italic; color: #5a7a2a; }
   .vide { padding: 18px; text-align: center; font-style: italic; color: #5a7a2a; }
+  /* LA CROIX. Ouverte toute seule — une fenêtre à part du bureau, ou la
+     page qui recouvre l'appli installée sur iPhone (pas d'onglets, pas de
+     bouton retour) —, la page doit pouvoir se fermer d'elle-même : la croix
+     reste en haut à droite, sous l'encoche et la barre d'état. Dans la
+     feuille du light (\`cadre=1\`, ou tout autre cadre), c'est la feuille qui
+     porte la croix : la page se fait alors pleine hauteur, sans marge. */
+  .fermer {
+    position: fixed; z-index: 2;
+    top: max(8px, calc(env(safe-area-inset-top, 0px) + 6px));
+    right: max(8px, calc(env(safe-area-inset-right, 0px) + 6px));
+    min-width: 44px; min-height: 40px; padding: 0 12px;
+    border: 2px solid #6f9b2e; border-radius: 8px; background: #e9f7cd;
+    color: #4a7016; font: bold 14px Verdana, Arial, sans-serif; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+  }
+  body { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .bandeau { padding-right: 96px; }
+  html[data-cadre] .fermer { display: none; }
+  html[data-cadre] body { padding: 0; background: #f4fbe4; }
+  html[data-cadre] .fenetre {
+    max-width: none; margin: 0; border: 0; border-radius: 0; box-shadow: none;
+    height: 100vh; display: flex; flex-direction: column;
+  }
+  html[data-cadre] .bandeau { padding-right: 12px; }
+  html[data-cadre] .corps { flex: 1; min-height: 0; max-height: none; }
   /* LA NUIT. La fenêtre s'ouvre depuis un parc éteint : elle suit le même
      choix (fp_nuit, par appareil — même origine, même localStorage), sinon
      elle éblouit. Le multicolore y reprend l'arc-en-ciel ÉCLAIRCI de
@@ -30834,8 +30859,15 @@ app.get('/api/chat/histo', (req, res) => {
   html[data-nuit] .mc .arc {
     background-image: linear-gradient(90deg, #FF8A3D, #FFD23F, #5BEB7A, #6FD6E8, #9D9DFF, #C98BFF, #FF9EE8);
   }
+  html[data-nuit] .fermer { background: hsl(256 30% 16%); border-color: hsl(256 26% 40%); color: hsl(256 13% 90%); }
+  html[data-nuit][data-cadre] body { background: hsl(256 30% 10%); }
 </style>
 <script>
+  (function () {
+    var dansCadre = false;
+    try { dansCadre = window.self !== window.top; } catch (e) { dansCadre = true; }
+    if (dansCadre || /[?&]cadre=1(&|$)/.test(location.search)) document.documentElement.setAttribute('data-cadre', '1');
+  })();
   (function () {
     var v; try { v = localStorage.getItem('fp_nuit'); } catch (e) { v = null; }
     var auto = v === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
@@ -30844,12 +30876,35 @@ app.get('/api/chat/histo', (req, res) => {
 </script>
 </head>
 <body>
+<button type="button" class="fermer" id="fermer" aria-label="Fermer les logs" title="Fermer (Échap)">✕ Fermer</button>
 <div class="fenetre">
   <div class="bandeau">Salon <span class="salon">${esc(g)}</span> — les messages des 24 dernières heures</div>
   <div class="sous">${lignes.length} message${lignes.length > 1 ? 's' : ''} — la mémoire du salon, ouverte à tous les Frutiz. Les heures sont celles du chat.</div>
   <div class="corps">${rendu || '<div class="vide">Aucun message sur ce salon depuis 24 heures.</div>'}</div>
 </div>
-<script>document.querySelector('.corps').scrollTop = 1e9;</script>
+<script>
+  document.querySelector('.corps').scrollTop = 1e9;
+  // Fermer : la fenêtre à part se ferme ; la page qui a pris la place de
+  // l'appli (window.close n'y peut rien) revient en arrière, ou au chat si
+  // elle n'a pas d'avant. Dans la feuille du light, Échap est relayée à la
+  // page parente, qui referme la feuille.
+  function fermer() {
+    if (document.documentElement.hasAttribute('data-cadre')) {
+      try { window.parent.postMessage({ fpLogs: 'fermer' }, location.origin); } catch (e) {}
+      return;
+    }
+    try { window.close(); } catch (e) {}
+    setTimeout(function () {
+      if (window.closed) return;
+      if (history.length > 1) history.back();
+      else location.replace('/light');
+    }, 150);
+  }
+  document.getElementById('fermer').addEventListener('click', fermer);
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') { ev.preventDefault(); fermer(); }
+  });
+</script>
 </body>
 </html>`;
   res.type('html').send(page);

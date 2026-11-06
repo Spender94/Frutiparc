@@ -74,6 +74,9 @@ a {
 #paris-cadre {
   background: hsl(256 30% 10%);
 }
+#logs-cadre {
+  background: hsl(256 30% 14.4%);
+}
 #bouille-sheet-preview {
   background: hsl(256 30% 10%);
   border: 2px solid hsl(256 26% 40%);

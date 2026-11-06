@@ -96,18 +96,26 @@ test('le cri garde son rendu rouge — seule l\'alerte s\'en va', () => {
 
 // ── B. /log, /logs, /chatlog, /chatlogs ─────────────────────────────────────
 
-// `traiterCommande` et `ouvrirLogs`, extraits et lancés avec un window.open espion.
-function lightCommandes() {
+// `traiterCommande` et `ouvrirLogs`, extraits et lancés avec un window.open
+// espion. Par défaut, le bureau d'un navigateur d'ordinateur (la fenêtre à
+// part) ; `{ bureau: false }` joue le téléphone, `{ installee: true }`
+// l'appli de l'écran d'accueil — toutes deux ouvrent la FEUILLE.
+function lightCommandes({ bureau = true, installee = false } = {}) {
   const debut = LIGHT.indexOf('var CMD_LOGS = ');
   const fin = LIGHT.indexOf('\n  }\n', LIGHT.indexOf('function traiterCommande(texte, salon) {')) + 4;
   const fo = LIGHT.indexOf('function ouvrirLogs(room) {');
   const foFin = LIGHT.indexOf('\n  }\n', fo) + 4;
   assert.ok(debut > 0 && fin > debut && fo > 0, 'CMD_LOGS, traiterCommande et ouvrirLogs existent');
   const ouverts = [];
+  const feuilles = [];
   const autres = [];
+  const BureauFrutiz = { actif: () => bureau };
   const ctx = {
     state: { sid: 'SID123', room: 'pomme' },
-    window: { open: (u, nom) => ouverts.push({ u, nom }) },
+    window: { open: (u, nom) => ouverts.push({ u, nom }), BureauFrutiz },
+    BureauFrutiz,
+    estInstallee: () => installee,
+    ouvrirFeuilleLogs: (u, salon) => feuilles.push({ u, salon }),
     CMD_DON: ['/donne'], CMD_IMAGE: ['/image'], CMD_QUOTA: ['/quota'], CMD_KICK: ['/kick'], CMD_TOTOCHE: ['/totoch'],
     commandeDon: () => autres.push('don'), commandeImage: () => autres.push('image'),
     commandeQuota: () => autres.push('quota'), commandeModeration: () => autres.push('modo'),
@@ -115,7 +123,7 @@ function lightCommandes() {
   };
   vm.runInNewContext(LIGHT.slice(debut, fin) + '\n' + LIGHT.slice(fo, foFin)
     + '\nthis.traiterCommande = traiterCommande;', ctx);
-  return { traiter: ctx.traiterCommande, ouverts, autres, state: ctx.state };
+  return { traiter: ctx.traiterCommande, ouverts, feuilles, autres, state: ctx.state };
 }
 
 test('light et bureau : /log, /logs, /chatlog, /chatlogs (et /histo) ouvrent les logs du salon', () => {
@@ -139,6 +147,17 @@ test('light et bureau : /log, /logs, /chatlog, /chatlogs (et /histo) ouvrent les
   // Les commandes d'avant passent toujours.
   assert.strictEqual(L.traiter('/donne 3 toto', 'pomme'), true);
   assert.deepStrictEqual(L.autres, ['don']);
+
+  // Sur le téléphone, et dans l'appli installée même sur le bureau d'une
+  // tablette : jamais de window.open (l'appli iOS n'a ni onglets ni retour,
+  // la page des logs y recouvrait le chat sans issue) — la feuille.
+  for (const opts of [{ bureau: false }, { bureau: true, installee: true }, { bureau: false, installee: true }]) {
+    const M = lightCommandes(opts);
+    assert.strictEqual(M.traiter('/logs', 'sal_bavards'), true);
+    assert.strictEqual(M.ouverts.length, 0, JSON.stringify(opts) + ' : aucune fenêtre à part');
+    assert.deepStrictEqual(M.feuilles, [{ u: '/api/chat/histo?sid=SID123&g=sal_bavards', salon: 'sal_bavards' }],
+      JSON.stringify(opts) + ' : la feuille des logs du salon');
+  }
 
   // Les deux saisies — le panneau mobile et chaque fenêtre de salon du bureau
   // (envoyerDansSalon) — passent par traiterCommande, avec LEUR salon.
