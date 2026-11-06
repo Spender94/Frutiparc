@@ -2091,6 +2091,38 @@ def(23, {                                                         // Cosmirabell
     t.killMargin = 160;
   },
 });
+/*
+ * LE CHAMP DE FORCE DE L'ASTRO-QUETSCH — atténué, sciemment.
+ *
+ * « Les astro-quetsch ont un forcefield trop puissant, quasi aucun vaisseau
+ *   n'arrive à les atteindre. »
+ *
+ * Quetsch.as (et le bytecode de miniwave.swf, qui porte les mêmes valeurs :
+ * `zone = 26`, `power = 2`) repousse chaque tir du vaisseau de DEUX pixels par
+ * image, dans un rayon de 26, sans passer par tmod. Le portage les reprenait
+ * tels quels — et c'est bien le jeu d'origine qui était ainsi. Mais à quarante
+ * images par seconde (tmod 0,8), le tir le plus lent, celui du Pastaga, ne
+ * monte que de 2,6 × 0,8 = 2,08 px par image : face au champ, il lui reste
+ * 0,08 px — il fait du surplace, puis la moindre composante latérale l'éjecte.
+ * Le Tequila, le Porto (3) et le Curaso (3,5) ne s'en sortent guère mieux.
+ * Mesuré sur une Quetsch isolée, tirs droits à la vitesse de chaque vaisseau,
+ * visés sur toute la largeur de son dessin (± 9 px, un par pixel) : 1 sur 19
+ * touche pour le Pastaga, le Tequila, le Porto et le Curaso, 9 sur 19 pour le
+ * seul Manzana (6) — sans champ, 19 sur 19.
+ *
+ *   · power 2 → 1 : la poussée tombe sous la MOITIÉ de la vitesse du tir le
+ *     plus lent ; un tir bien centré garde au moins la moitié de son élan et
+ *     passe toujours.
+ *   · zone 26 → 20 : le champ ne déborde plus de toute une case de la grille
+ *     (24 px) — il ne protège plus le voisin, et un tir qui frôle le bord du
+ *     dessin n'est plus happé de si loin.
+ *
+ * Même mesure, après : 7, 9, 11 et 15 sur 19 (Pastaga, Tequila/Porto, Curaso,
+ * Manzana). Le champ se sent toujours — un tir mal centré est dévié, plus
+ * nettement pour les vaisseaux lents —, mais viser juste suffit.
+ */
+const QUETSCH_ZONE = 20;               // Quetsch.zone : 26 dans le SWF
+const QUETSCH_POUSSEE = 1;             // Quetsch.power : 2 dans le SWF
 def(24, {                                                         // Astro-Quetsch : dévie les tirs qui l'approchent
   freq: 320, cdSpeed: 2,
   tirer: (b) => { base(b).vity = 4; },
@@ -2098,7 +2130,11 @@ def(24, {                                                         // Astro-Quets
     for (const m of b.jeu.hShotList) {
       const dx = m.x - b.x, dy = m.y - b.y;
       const d = Math.sqrt(dx * dx + dy * dy);
-      if (d < 26 && d > 0) { const a = Math.atan2(dy, dx); m.x += Math.cos(a) * 2; m.y += Math.sin(a) * 2; }
+      if (d < QUETSCH_ZONE && d > 0) {
+        const a = Math.atan2(dy, dx);
+        m.x += Math.cos(a) * QUETSCH_POUSSEE;
+        m.y += Math.sin(a) * QUETSCH_POUSSEE;
+      }
     }
   },
 });
