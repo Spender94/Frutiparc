@@ -22474,6 +22474,68 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
 // ENDPOINT: /api/saveFrutiSlot — Persist FrutiCard slot data (modes, prefs, stats).
 // POST params: sid, game, slotId, data (JSON string).
 // ─────────────────────────────────────────────
+/*
+ * LES SLOTS QU'UN CLIENT ÉCRIT — la liste blanche de /api/saveFrutiSlot.
+ *
+ * La route acceptait n'importe quel couple (jeu, slot). Or plusieurs slots
+ * ne sont écrits QUE par le serveur, et il les relit pour décider : la fiche
+ * de Championnat de Grapiz (grapiz/2) et de Frutisnake (snake3/2), celle de
+ * Frutibandas (bandas/0, champ $ls), la sauvegarde de JamaJama (jamajama/0,
+ * dont $plays ouvre des pictos). Les écrire depuis la console revenait à se
+ * donner une note d'Elo ou des pictos.
+ *
+ * La liste est celle des clients réels, relevée dans leur code :
+ *   · game-popup.html et frusion-ruffle.html (SWF du bureau sous Ruffle) —
+ *     MotionBall, Mini-Wave et MiniPixiz rustinés (« slot:<jeu>:<n>: »,
+ *     saveSlotData), slots 0 (la fiche) et 1 (les préférences) ;
+ *   · les portages (public/<jeu>/plateforme.js, swapou/game.js) — Kaluga,
+ *     MotionBall, Mini-Wave, MiniPixiz, Frutisnake et Swapou : 0 et 1 ;
+ *     Burning Kiwi : 0 (public), 1 (préférences), 2 (modes), comme le SWF
+ *     (M.SLOT_PUBLIC / SLOT_PREFS / SLOT_MODES).
+ * `miniwave2` et `minitroll` sont les autres noms que les deux SWF rustinés
+ * ont portés : la route les traite déjà comme leurs jumeaux.
+ *
+ * Le reste est refusé et part en alerte — grave quand c'est un slot que le
+ * serveur tient lui-même (SLOTS_TENUS_PAR_LE_SERVEUR).
+ */
+const SLOTS_ECRITS_PAR_LES_CLIENTS = {
+  swapou2: ['0', '1'],
+  snake3: ['0', '1'],
+  kaluga: ['0', '1'],
+  mb2: ['0', '1'],
+  miniwave: ['0', '1'],
+  miniwave2: ['0', '1'],
+  minipixiz: ['0', '1'],
+  minitroll: ['0', '1'],
+  bkiwi: ['0', '1', '2'],
+};
+const SLOTS_TENUS_PAR_LE_SERVEUR = {
+  grapiz: ['2'],
+  snake3: ['2'],
+  bandas: ['0'],
+  jamajama: ['0'],
+};
+function slotEcritParLesClients(game, slotId) {
+  const l = Object.prototype.hasOwnProperty.call(SLOTS_ECRITS_PAR_LES_CLIENTS, game)
+    ? SLOTS_ECRITS_PAR_LES_CLIENTS[game] : null;
+  return !!(l && l.includes(String(slotId)));
+}
+function slotTenuParLeServeur(game, slotId) {
+  const l = Object.prototype.hasOwnProperty.call(SLOTS_TENUS_PAR_LE_SERVEUR, game)
+    ? SLOTS_TENUS_PAR_LE_SERVEUR[game] : null;
+  return !!(l && l.includes(String(slotId)));
+}
+// Le refus d'une écriture de slot, dit une fois pour toutes (HTTP et fil).
+function signalerSlotRefuse(username, game, slotId, data, voie) {
+  const tenu = slotTenuParLeServeur(game, slotId);
+  signalerTriche(username, { jeu: String(game).slice(0, 40), type: 'slot_refuse', gravite: tenu ? 'grave' : 'suspect',
+    resume: tenu
+      ? `écriture du slot ${game}/${slotId}, que seul le serveur écrit (${voie})`
+      : `écriture d'un slot qu'aucun client n'écrit : ${game}/${slotId} (${voie})`,
+    details: { game: String(game).slice(0, 40), slotId: String(slotId).slice(0, 10), voie,
+      taille: String(data || '').length, debut: String(data || '').slice(0, 300) } });
+  console.log(`[SLOT]  ${voie} ${username} ${game}/${slotId} REFUSÉ — ${tenu ? 'slot tenu par le serveur' : 'hors liste blanche'}`);
+}
 // ─────────────────────────────────────────────
 // Extract game items (pictos/titems) from FrutiCard slot 0 data.
 // Each game stores unlock state differently in its slot JSON.
@@ -23635,6 +23697,12 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
   }
   if (!users[username]) {
     console.log(`[SLOT]  save REJECTED — user ${username} not in memory`);
+    return res.type('text/plain').send('ok=0');
+  }
+  // La liste blanche : seuls les couples (jeu, slot) qu'un client écrit
+  // vraiment passent (cf. SLOTS_ECRITS_PAR_LES_CLIENTS).
+  if (!slotEcritParLesClients(game, slotId)) {
+    signalerSlotRefuse(username, game, slotId, data, 'saveFrutiSlot');
     return res.type('text/plain').send('ok=0');
   }
 
@@ -39930,6 +39998,15 @@ case 'createchannel': {
       const username = client.username || '';
       if (!username || !users[username]) {
         console.log(`[FCARD] updateSlot REJECTED (no auth) game=${game} slot=${slotId} len=${slotData.length} client.username="${username}" client.logged=${!!client.logged}`);
+      }
+      // Le fil du bureau Flash : les noms de jeu y viennent des SWF d'époque,
+      // trop variés pour une liste blanche sûre. On y ferme au moins les slots
+      // que le serveur tient lui-même (fiches de Championnat, JamaJama) : aucun
+      // SWF lancé aujourd'hui ne les écrit, et les écrire réglait une note.
+      if (username && users[username] && slotTenuParLeServeur(game, slotId)) {
+        signalerSlotRefuse(username, game, slotId, slotData, 'FCARD');
+        sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
+        break;
       }
       if (username && users[username]) {
         const u = users[username];

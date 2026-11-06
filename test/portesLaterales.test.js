@@ -218,6 +218,44 @@ test('le SWF sous Ruffle se reconnaît au Referer de sa fenêtre de jeu', async 
   assert.equal((await record('miniwave_classic', pseudo) || {}).score, 2600);
 });
 
+// ── La liste blanche des slots ─────────────────────────────────────────────
+
+const sauverSlot = (sid, game, slotId, data) => fetch(BASE + '/api/saveFrutiSlot', { method: 'POST',
+  body: new URLSearchParams({ sid, game, slotId: String(slotId), data }) }).then((r) => r.text());
+const lireSlots = (sid, game) => fetch(`${BASE}/api/loadFrutiSlots?sid=${sid}&game=${game}`).then((r) => r.text());
+
+test('saveFrutiSlot n’écrit que les slots des clients ; la fiche de Championnat est refusée', async () => {
+  const pseudo = 'porteslot';
+  const sid = await inscrire(pseudo);
+  const fiche = JSON.stringify({ linit: true, l: [40, 0, 0], ls: [2900, 1000, 2900] });
+  for (const [game, slot] of [['grapiz', 2], ['snake3', 2], ['bandas', 0], ['jamajama', 0]]) {
+    assert.match(await sauverSlot(sid, game, slot, fiche), /ok=0/, `${game}/${slot} refusé`);
+    assert.ok(!new RegExp(`slot${slot}=`).test(await lireSlots(sid, game)) || game === 'jamajama',
+      `${game}/${slot} : rien d’écrit`);
+  }
+  assert.match(await sauverSlot(sid, 'pirate', 7, '{}'), /ok=0/);
+  const l = (await alertes(pseudo)).filter((a) => a.type === 'slot_refuse');
+  assert.deepEqual(l.filter((a) => a.gravite === 'grave').map((a) => a.jeu).sort(), ['bandas', 'grapiz', 'jamajama', 'snake3']);
+  const pirate = l.find((a) => a.jeu === 'pirate');
+  assert.ok(pirate && pirate.gravite === 'suspect', JSON.stringify(l));
+  assert.match(pirate.resume, /pirate\/7 \(saveFrutiSlot\)/);
+  // Les clients honnêtes : les préférences de Frutisnake, les trois slots de Burning Kiwi.
+  assert.match(await sauverSlot(sid, 'snake3', 1, JSON.stringify({ $sound: true })), /ok=1/);
+  for (const n of [0, 1, 2]) assert.match(await sauverSlot(sid, 'bkiwi', n, JSON.stringify({ $n: n })), /ok=1/);
+  assert.match(await lireSlots(sid, 'bkiwi'), /slot2=/);
+});
+
+test('le fil FrutiCard du bureau refuse les slots que le serveur tient', async () => {
+  const pseudo = 'porteslotfil';
+  const sid = await inscrire(pseudo);
+  const sock = await brancher(pseudo, sid, XML_PORT);
+  sock.write(`<fcardupdateslot g="grapiz" s="2" r="1">${JSON.stringify({ linit: true, l: [9, 0, 0], ls: [2500, 1000, 2500] })}</fcardupdateslot>\0`);
+  await wait(300);
+  assert.ok(!/slot2=/.test(await lireSlots(sid, 'grapiz')), 'la fiche n’est pas écrite');
+  const l = await alertes(pseudo);
+  assert.ok(l.find((a) => a.type === 'slot_refuse' && a.gravite === 'grave' && /\(FCARD\)/.test(a.resume)), JSON.stringify(l));
+});
+
 // ── L'IA de Swapou, par les trois portes ───────────────────────────────────
 
 test('l’IA de Swapou ne se classe ni par loadVariables ni par FrutiScore', async () => {
