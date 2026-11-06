@@ -24,7 +24,7 @@ const { Client } = require('pg');
 const WebSocket = require(path.join(__dirname, '..', 'node_modules', 'ws'));
 
 const ROOT = path.join(__dirname, '..');
-const PORT = 3667;
+const PORT = 3683;
 const BASE = `http://127.0.0.1:${PORT}`;
 const DB = process.env.TEST_DATABASE_URL_SERIE || 'postgres://postgres@127.0.0.1:5433/frutiparc_cadeau_serie';
 const DONNEES = fs.mkdtempSync(path.join(os.tmpdir(), 'frutiparc-cadeau-serie-'));
@@ -54,7 +54,7 @@ async function demarrer() {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: DB, REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      ADMIN_KEY: 'cle-cadeau-serie', XMLSOCKET_PORT: '5797', FRUTISCORE_PORT: '5798', FRUTI_DATA_DIR: DONNEES,
+      ADMIN_KEY: 'cle-cadeau-serie', XMLSOCKET_PORT: '5821', FRUTISCORE_PORT: '5822', FRUTI_DATA_DIR: DONNEES,
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -120,8 +120,18 @@ test('l’article est une récompense hors rayons, avec l’accessoire demandé'
 
 test('la 100e connexion d’affilée offre l’accessoire, sur la bouille du joueur, une seule fois', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
-  for (const p of ['fidele', 'presque', 'ancien']) await post('/api/auth/register', { username: p, password: 'secret123' });
-  await wait(500);
+  for (const p of ['fidele', 'presque', 'ancien']) {
+    const r = await post('/api/auth/register', { username: p, password: 'secret123' });
+    assert.ok(r.ok !== false, 'inscription de ' + p + ' : ' + JSON.stringify(r));
+  }
+  // L'écriture en base suit l'inscription : on ne coupe qu'une fois les trois
+  // comptes (et leur bouille) posés.
+  for (let i = 0; i < 80; i++) {
+    const n = (await sql(`SELECT COUNT(*)::int AS n FROM users WHERE username IN ('fidele', 'presque', 'ancien') AND fbouille IS NOT NULL`))[0].n;
+    if (n === 3) break;
+    await wait(150);
+  }
+  await wait(300);
   await arreter();
   // fidele en est à 99 jours, presque à 98, ancien a déjà dépassé les 100.
   await sql(`UPDATE users SET daily_kikooz_day = $1, daily_streak = 99 WHERE username = 'fidele'`, [hier()]);
