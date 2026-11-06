@@ -1246,6 +1246,30 @@ async function initSchema() {
       CREATE INDEX IF NOT EXISTS idx_alertes_triche_user ON alertes_triche(LOWER(username), cree_le DESC);
       CREATE INDEX IF NOT EXISTS idx_alertes_triche_statut ON alertes_triche(statut, cree_le DESC);
 
+      -- L'HISTORIQUE DES SAUVEGARDES. Les fiches de jeu (fruti_slots) sont
+      -- écrites par le navigateur, et portent ce qui donne pictos, records et
+      -- statistiques. À chaque écriture, le serveur compare les champs qui
+      -- comptent (historiserSlot, server.js) et range ici, champ par champ, la
+      -- valeur d'avant et celle d'après — rien quand rien de sensible n'a
+      -- bougé. Avec l'IP et l'appareil : six mois de rétention (RGPD_IP_JOURS).
+      --   canal : 'http' (/api/saveFrutiSlot) ou 'fil' (la socket du bureau).
+      CREATE TABLE IF NOT EXISTS historique_slots (
+        id          BIGSERIAL PRIMARY KEY,
+        cree_le     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        username    TEXT NOT NULL,
+        jeu         TEXT NOT NULL,
+        slot        SMALLINT NOT NULL DEFAULT 0,
+        champ       TEXT NOT NULL,
+        avant       TEXT,
+        apres       TEXT,
+        ip          TEXT NOT NULL DEFAULT '',
+        appareil    TEXT NOT NULL DEFAULT '',
+        navigateur  TEXT NOT NULL DEFAULT '',
+        canal       TEXT NOT NULL DEFAULT ''
+      );
+      CREATE INDEX IF NOT EXISTS idx_historique_slots_user ON historique_slots(LOWER(username), cree_le DESC);
+      CREATE INDEX IF NOT EXISTS idx_historique_slots_date ON historique_slots(cree_le);
+
       -- LE JOURNAL DES CONNEXIONS, pour démasquer les multi-comptes. Une ligne
       -- par joueur, par jour, par adresse et par appareil — les connexions
       -- suivantes du même jour ne font que monter le compteur. On y range
@@ -1584,6 +1608,55 @@ async function compterAlertesTriche(jours = 90) {
       GROUP BY LOWER(username) ORDER BY graves DESC, ouvertes DESC, total DESC`,
     [Math.max(1, Math.trunc(Number(jours) || 90))]);
   return rows;
+}
+
+// ── L'historique des sauvegardes (cf. la table historique_slots) ──
+// Une écriture de fiche = quelques lignes, une par champ sensible qui a bougé.
+async function ajouterHistoriqueSlots(lignes) {
+  if (!Array.isArray(lignes) || !lignes.length) return 0;
+  const vals = [], parts = [];
+  for (const l of lignes) {
+    const b = vals.length;
+    vals.push(String(l.username || '').toLowerCase(), String(l.jeu || ''), Math.trunc(Number(l.slot) || 0),
+      String(l.champ || '').slice(0, 120), l.avant == null ? null : String(l.avant).slice(0, 300),
+      l.apres == null ? null : String(l.apres).slice(0, 300), String(l.ip || '').slice(0, 64),
+      String(l.appareil || '').slice(0, 80), String(l.navigateur || '').slice(0, 200), String(l.canal || '').slice(0, 10));
+    parts.push('(' + Array.from({ length: 10 }, (_, i) => '$' + (b + i + 1)).join(', ') + ')');
+  }
+  const r = await pool.query(
+    `INSERT INTO historique_slots (username, jeu, slot, champ, avant, apres, ip, appareil, navigateur, canal)
+     VALUES ${parts.join(', ')}`, vals);
+  return r.rowCount;
+}
+async function listerHistoriqueSlots({ username = '', jeu = '', limite = 300 } = {}) {
+  const conds = [], vals = [];
+  if (username) { vals.push(String(username).toLowerCase()); conds.push('LOWER(username) = $' + vals.length); }
+  if (jeu) { vals.push(jeu); conds.push('jeu = $' + vals.length); }
+  vals.push(Math.max(1, Math.min(3000, Math.trunc(Number(limite) || 300))));
+  const { rows } = await pool.query(
+    'SELECT * FROM historique_slots ' + (conds.length ? 'WHERE ' + conds.join(' AND ') : '')
+      + ' ORDER BY cree_le DESC, id DESC LIMIT $' + vals.length, vals);
+  return rows;
+}
+// Six mois, comme le journal des connexions : l'IP y figure.
+async function purgerHistoriqueSlots(jours) {
+  const r = await pool.query(
+    'DELETE FROM historique_slots WHERE cree_le < now() - make_interval(days => $1)',
+    [Math.max(1, Number(jours) || 0)]);
+  return r.rowCount;
+}
+// A-t-il joué à ce jeu dernièrement ? Les parties classées (parties_joueur_jour,
+// aujourd'hui ou hier — une partie finie à minuit moins une se sauve à minuit
+// passé) et, pour Swapou, les parties à graine des dernières 24 heures.
+async function partiesRecentesJoueur(username, jeu, jours) {
+  const u = String(username || '').toLowerCase();
+  const { rows } = await pool.query(
+    `SELECT (SELECT COALESCE(SUM(n), 0) FROM parties_joueur_jour
+              WHERE username = $1 AND jeu = $2 AND jour = ANY($3::text[]))::int AS parties,
+            (SELECT COUNT(*) FROM swapou_parties
+              WHERE LOWER(username) = $1 AND cree_le > now() - interval '24 hours')::int AS swapou`,
+    [u, String(jeu || ''), (jours || []).map(String)]);
+  return rows[0] || { parties: 0, swapou: 0 };
 }
 
 async function marquerXpMedailles(username, jour, medailles) {
@@ -2186,6 +2259,8 @@ async function anonymiserJoueur(username) {
       ['swapou_parties', 'username', 'brut'],
       ['parties_verifiees', 'username', 'brut'],
       ['connexions', 'username', 'brut'],
+      // L'historique de ses sauvegardes : sans lui, plus rien à instruire.
+      ['historique_slots', 'username', 'brut'],
       // Ses paris : déjà payés ou bientôt sans objet. Les garder sous la
       // pierre tombale heurterait « un pari par joueur et par match » dès que
       // deux comptes supprimés auraient misé sur le même match.
@@ -2216,6 +2291,7 @@ async function anonymiserJoueur(username) {
     const retirees = new Set(['push_subscriptions.username', 'trombinoscope.pseudo',
       'forum_topic_reads.username', 'forum_topic_follows.username', 'users.referred_by',
       'swapou_parties.username', 'parties_verifiees.username', 'connexions.username', 'tournament_paris.username',
+      'historique_slots.username',
       'challenge_paris.username', 'challenge_medailles_xp.username', 'parties_differees.joueur_a', 'parties_differees.joueur_b']);
     for (const [table, col] of RENOMMAGE_COLONNES) {
       if (retirees.has(`${table}.${col}`)) continue;
@@ -2290,6 +2366,7 @@ async function exporterDonnees(userId, username) {
     swapou_parties: await q('SELECT id, graine, source, perso, cree_le, fini_le, score_declare, score_rejoue, verdict, raison, coups, nb_coups, duree_ms, rythme FROM swapou_parties WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     parties_verifiees: await q('SELECT id, jeu, graine, mode, source, cree_le, fini_le, score_declare, score_verifie, verdict, raison, indices, classe, duree_ms, temps_jeu_ms FROM parties_verifiees WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     connexions: await q('SELECT jour, ip, xff, socket_ip, appareil, navigateur, origine, premiere, derniere, n FROM connexions WHERE LOWER(username) = $1 ORDER BY premiere', [u]),
+    historique_sauvegardes: await q('SELECT cree_le, jeu, slot, champ, avant, apres, ip, appareil, canal FROM historique_slots WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     paris: await q('SELECT tournament_id, affiche, choix, mise, cote, statut, gain, cree_le, regle_le FROM tournament_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     paris_challenge: await q('SELECT jour, jeu, type, choix, mise, cote, statut, gain, cree_le, regle_le FROM challenge_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     quetes: await q('SELECT semaine, quete_id, etat, fait_at, gain FROM quetes_progres WHERE username = $1 ORDER BY semaine, quete_id', [u]),
@@ -2368,6 +2445,7 @@ const RENOMMAGE_COLONNES = [
   ['swapou_parties', 'username'],
   ['parties_verifiees', 'username'],
   ['connexions', 'username'],
+  ['historique_slots', 'username'],
   ['tournament_paris', 'username'],
   ['tournament_paris', 'choix'],
   ['challenge_paris', 'username'],
@@ -6044,6 +6122,10 @@ module.exports = {
   listerAlertesTriche,
   traiterAlerteTriche,
   compterAlertesTriche,
+  ajouterHistoriqueSlots,
+  listerHistoriqueSlots,
+  purgerHistoriqueSlots,
+  partiesRecentesJoueur,
   prunosticsCagnotte,
   prunosticsCagnotteAjouter,
   prunosticsCagnotteVider,

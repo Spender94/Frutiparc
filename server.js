@@ -15184,6 +15184,8 @@ async function rgpdBalayage() {
     bilan.swapou = await db.purgerPartiesSwapou(RGPD_IP_JOURS);
     // Les parties vérifiées de MiniPixiz et Mini-Fever : la même durée.
     bilan.partiesVerifiees = await db.purgerPartiesVerifiees(RGPD_IP_JOURS);
+    // L'historique des sauvegardes (l'IP y figure) : la même durée.
+    bilan.historiqueSlots = await db.purgerHistoriqueSlots(RGPD_IP_JOURS);
   } catch (e) {
     bilan.erreurs.push(e.message);
   } finally {
@@ -17373,6 +17375,245 @@ app.post('/api/admin/triche/alertes/:id', adminAuth, async (req, res) => {
     res.json({ ok: true, alerte: a });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * L'HISTORIQUE DES SAUVEGARDES — ce que chaque écriture d'une fiche change
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Les fiches de jeu (slot 0) sont écrites par le navigateur, et le serveur en
+ * tire pictos, records et statistiques. Une fiche forgée — `$items` coché de
+ * bout en bout, un compteur de combos à mille — passait sans laisser d'autre
+ * trace que son résultat. Désormais, à chaque écriture (la route HTTP comme
+ * le fil du bureau), `historiserSlot` compare les champs SENSIBLES d'avant et
+ * d'après, et range dans `historique_slots` chaque valeur qui a bougé, avec
+ * l'heure, l'IP et l'appareil quand on le connaît. Une écriture qui ne touche
+ * à rien de sensible (les préférences, un compteur de swaps) ne s'écrit pas.
+ *
+ * Les champs, relevés dans extractGameItemsFromSlot et fruticard.js :
+ *   Swapou        $combos, $items, $record, $classic_record, $chars
+ *   Burning Kiwi  $ts (records de circuit), les coupes $wc $wcs $ws $wss, $ac
+ *   Kaluga        $titem, $mode, $tz
+ *   Mini-Wave     $credit, $badsKill, $arcade, $ship, $shop, $cons
+ *   MiniPixiz     $stat.$treeMax, $stat.$item, $stat.$eat, $dungeon, $diam
+ *   JamaJama      $plays, $best
+ *   MotionBall 2  $items, $records, $dungeons_done, $classic_score
+ *   Frutisnake    $fruits, $record
+ *
+ * Un champ composé est déplié jusqu'à ses feuilles (« $combos[10] »,
+ * « $ts[2].$fcLap ») : l'admin lit la case exacte qui a bougé. Absent, nul,
+ * faux, zéro et vide se valent — une case jamais touchée et une case à zéro
+ * ne font pas une différence.
+ *
+ * Purge à six mois (RGPD_IP_JOURS), avec le journal des connexions. Sans
+ * base, les 3 000 dernières lignes vivent en mémoire.
+ */
+const CHAMPS_SENSIBLES = {
+  swapou2: ['$combos', '$items', '$record', '$classic_record', '$chars'],
+  bkiwi: ['$ts', '$wc', '$wcs', '$ws', '$wss', '$ac'],
+  kaluga: ['$titem', '$mode', '$tz'],
+  miniwave: ['$credit', '$badsKill', '$arcade', '$ship', '$shop', '$cons'],
+  minipixiz: ['$stat.$treeMax', '$stat.$item', '$stat.$eat', '$dungeon', '$diam'],
+  jamajama: ['$plays', '$best'],
+  mb2: ['$items', '$records', '$dungeons_done', '$classic_score'],
+  snake3: ['$fruits', '$record'],
+};
+CHAMPS_SENSIBLES.miniwave2 = CHAMPS_SENSIBLES.miniwave;
+CHAMPS_SENSIBLES.minitroll = CHAMPS_SENSIBLES.minipixiz;
+const HISTO_FEUILLES_MAX = 4000;   // un champ démesuré n'est pas déplié au-delà
+const HISTO_LIGNES_MAX = 150;      // lignes par écriture ; au-delà, une ligne résume le reste
+const HISTORIQUE_SLOTS_MEMOIRE = [];
+let historiqueSlotsSeq = 0;
+
+function histoLire(brut) {
+  if (!brut) return null;
+  try {
+    const o = JSON.parse(brut);
+    return o && typeof o === 'object' && !Array.isArray(o) ? o : null;
+  } catch { return null; }
+}
+function histoChemin(o, chemin) {
+  let v = o;
+  for (const k of chemin.split('.')) {
+    if (v == null || typeof v !== 'object') return undefined;
+    v = v[k];
+  }
+  return v;
+}
+function histoDeplier(v, chemin, out, prof) {
+  if (out.size >= HISTO_FEUILLES_MAX) return;
+  if (v && typeof v === 'object') {
+    if (prof >= 5) { out.set(chemin, JSON.stringify(v).slice(0, 120)); return; }
+    if (Array.isArray(v)) v.forEach((x, i) => histoDeplier(x, `${chemin}[${i}]`, out, prof + 1));
+    else for (const k of Object.keys(v)) histoDeplier(v[k], `${chemin}.${k}`, out, prof + 1);
+    return;
+  }
+  if (v === undefined || v === null || v === false || v === 0 || v === '') return;
+  out.set(chemin, typeof v === 'string' ? v.slice(0, 120) : String(v));
+}
+// Les feuilles sensibles qui diffèrent : [{ champ, avant, apres }].
+function differencesSensibles(jeu, avant, apres) {
+  const diffs = [];
+  for (const champ of CHAMPS_SENSIBLES[jeu] || []) {
+    const fa = new Map(), fb = new Map();
+    histoDeplier(histoChemin(avant || {}, champ), champ, fa, 0);
+    histoDeplier(histoChemin(apres || {}, champ), champ, fb, 0);
+    for (const [k, v] of fb) if (fa.get(k) !== v) diffs.push({ champ: k, avant: fa.has(k) ? fa.get(k) : null, apres: v });
+    for (const [k, v] of fa) if (!fb.has(k)) diffs.push({ champ: k, avant: v, apres: null });
+  }
+  return diffs;
+}
+// D'où vient l'écriture : la requête HTTP, ou ce que le fil du bureau en sait.
+function histoOrigine(o) {
+  if (!o) return { ip: '', appareil: '', navigateur: '', canal: '' };
+  if (o.headers) {
+    const p = Object.assign({}, o.query || {}, (o.body && typeof o.body === 'object') ? o.body : {});
+    return {
+      ip: String(getClientIp(o) || ''),
+      appareil: String(p.appareil || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80),
+      navigateur: String(o.headers['user-agent'] || ''),
+      canal: 'http',
+    };
+  }
+  return { ip: String(o.ip || ''), appareil: String(o.appareil || ''), navigateur: String(o.navigateur || ''), canal: String(o.canal || 'fil') };
+}
+
+/**
+ * Appelée par les deux chemins d'écriture d'une fiche (/api/saveFrutiSlot et
+ * le fil du bureau), au moment où l'ancienne et la nouvelle valeur sont
+ * connues, juste avant que la nouvelle ne remplace l'ancienne. Ne lève
+ * jamais : un relevé ne casse pas une sauvegarde.
+ */
+function historiserSlot(username, jeu, slotId, avantBrut, apresBrut, origine) {
+  try {
+    if (!username || !CHAMPS_SENSIBLES[jeu] || String(slotId) !== '0') return;
+    const u = String(username).toLowerCase();
+    if (NPC_USERNAMES.has(u)) return;
+    const avant = histoLire(avantBrut), apres = histoLire(apresBrut);
+    if (!apres) return;
+    const diffs = differencesSensibles(jeu, avant, apres);
+    if (!diffs.length) return;
+    const o = histoOrigine(origine);
+    let lignes = diffs;
+    if (lignes.length > HISTO_LIGNES_MAX) {
+      const reste = lignes.length - (HISTO_LIGNES_MAX - 1);
+      lignes = lignes.slice(0, HISTO_LIGNES_MAX - 1).concat([{ champ: `(+${reste} autres champs)`, avant: null, apres: null }]);
+    }
+    lignes = lignes.map((d) => Object.assign({ username: u, jeu, slot: 0 }, o, d));
+    if (process.env.DATABASE_URL) {
+      db.ajouterHistoriqueSlots(lignes).catch(dbErr('ajouterHistoriqueSlots'));
+    } else {
+      const t = new Date().toISOString();
+      for (const l of lignes.slice().reverse()) HISTORIQUE_SLOTS_MEMOIRE.unshift(Object.assign({ id: ++historiqueSlotsSeq, cree_le: t }, l));
+      if (HISTORIQUE_SLOTS_MEMOIRE.length > 3000) HISTORIQUE_SLOTS_MEMOIRE.length = 3000;
+    }
+    detecterSautsFiche(u, jeu, avantBrut, apresBrut, avant, apres);
+  } catch (e) {
+    console.error(`[TRICHE] historique de ${username}/${jeu} : ${e.message}`);
+  }
+}
+
+/*
+ * LES TROIS RÈGLES, tirées de ces différences. Peu nombreuses et prudentes :
+ * une alerte doit valoir qu'on la lise, et l'admin tranche toujours.
+ *
+ * 1. PICTOS EN RAFALE (pictos_en_rafale). On calcule les pictos que la fiche
+ *    D'AVANT donnait et ceux que la fiche D'APRÈS donne (la règle même
+ *    d'extractGameItemsFromSlot) : la différence est ce que CETTE écriture
+ *    débloque. En jeu, un picto se gagne à la fois et la fiche part aussitôt
+ *    (Swapou : TItem.giveItem → saveSlot) — deux d'un coup, c'est déjà rare.
+ *    Seuils : 4 pour Swapou, MotionBall 2 et Kaluga (un niveau gagné, une
+ *    sauvegarde), 5 pour Burning Kiwi (un adversaire battu donne deux pictos,
+ *    une coupe un), 6 pour Frutisnake et Mini-Wave (une longue partie peut
+ *    franchir plusieurs paliers), 12 pour MiniPixiz (le bureau ne sauve qu'en
+ *    fin de séance, les plats se cumulent). 'suspect' ; 'grave' au triple du
+ *    seuil — un album entier d'un coup.
+ *
+ * 2. DES COMBOS SANS PARTIE (combos_sans_partie, Swapou). Les combos ne
+ *    montent qu'en jouant. Une écriture qui ajoute au moins 2 cocktails
+ *    swapolotof (`$combos[10]`, une chaîne de 21 : l'analyseur du jeu, à
+ *    52 000 points, en fait un par partie) ou au moins 150 combos en tout, et
+ *    AUCUNE partie de Swapou du joueur — ni score classé aujourd'hui ou hier
+ *    (parties_joueur_jour), ni partie à graine dans les 24 heures
+ *    (swapou_parties) — est 'grave'. On regarde trois minutes APRÈS
+ *    l'écriture : la fin de partie sauve la fiche avant d'envoyer le score.
+ *    Les seuils laissent passer les modes sans score (essai, duel, histoire),
+ *    qui gagnent des combos sans trace : seuls, une séance entière n'y
+ *    atteint pas en une sauvegarde — un combo sous les cinq part aussitôt.
+ *
+ * 3. UN SAUT DE COMPTEUR (saut_compteur), partie ou pas : plus qu'une longue
+ *    séance ne peut donner en une écriture. Combos de Swapou : +400 (le bot
+ *    du jeu en fait 30 à 70 par partie, l'analyseur une quarantaine) ;
+ *    crédits de Mini-Wave : +1 000 (plus que le vaisseau le plus cher de la
+ *    boutique, 680) ; fruits de Frutisnake : +1 500. 'suspect'.
+ */
+const PICTOS_RAFALE_SEUIL = { swapou2: 4, mb2: 4, kaluga: 4, bkiwi: 5, snake3: 6, miniwave: 6, miniwave2: 6, minipixiz: 12, minitroll: 12 };
+const COMBOS_SANS_PARTIE = { cocktails: 2, total: 150 };
+const SAUTS_COMPTEUR = [
+  { jeux: ['swapou2'], champ: '$combos', nom: 'combos de Swapou', max: 400 },
+  { jeux: ['miniwave', 'miniwave2'], champ: '$credit', nom: 'crédits de Mini-Wave', max: 1000 },
+  { jeux: ['snake3'], champ: '$fruits', nom: 'fruits de Frutisnake', max: 1500 },
+];
+// Le délai de la règle 2 (réglable pour les tests).
+const TRICHE_DELAI_VERIF_MS = Math.max(0, Number(process.env.TRICHE_DELAI_VERIF_MS) || 3 * 60 * 1000);
+
+function histoTotal(v) {
+  if (Array.isArray(v)) return v.reduce((n, x) => n + histoTotal(x), 0);
+  if (v && typeof v === 'object') return histoTotal(Object.values(v));
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+// Les pictos qu'une fiche donne à elle seule (sans le joueur ni la base).
+function pictosDeLaFiche(username, jeu, brut) {
+  const u = { gameItems: [] };
+  if (!brut) return new Set();
+  try { extractGameItemsFromSlot(username, jeu, brut, { silent: true, userOverride: u, trace: false }); } catch { /* fiche illisible : rien */ }
+  return new Set(u.gameItems);
+}
+
+function detecterSautsFiche(u, jeu, avantBrut, apresBrut, avant, apres) {
+  const premiere = !avant;
+  // 1. Les pictos en rafale.
+  const seuil = PICTOS_RAFALE_SEUIL[jeu];
+  if (seuil) {
+    const deja = pictosDeLaFiche(u, jeu, avantBrut);
+    const nouveaux = [...pictosDeLaFiche(u, jeu, apresBrut)].filter((p) => !deja.has(p));
+    if (nouveaux.length >= seuil) {
+      signalerTriche(u, { jeu, type: 'pictos_en_rafale', gravite: nouveaux.length >= 3 * seuil ? 'grave' : 'suspect',
+        resume: `${nouveaux.length} pictos débloqués par une seule sauvegarde (seuil ${seuil})`,
+        details: { pictos: nouveaux.slice(0, 80), seuil, premiereSauvegarde: premiere } });
+    }
+  }
+  // 3. Les sauts de compteur.
+  for (const s of SAUTS_COMPTEUR) {
+    if (!s.jeux.includes(jeu)) continue;
+    const a = histoTotal(histoChemin(avant || {}, s.champ)), b = histoTotal(histoChemin(apres, s.champ));
+    if (b - a > s.max) {
+      signalerTriche(u, { jeu, type: 'saut_compteur', gravite: 'suspect',
+        resume: `${s.nom} : +${b - a} en une sauvegarde (${a} → ${b}, plafond ${s.max})`,
+        details: { champ: s.champ, avant: a, apres: b, plafond: s.max, premiereSauvegarde: premiere } });
+    }
+  }
+  // 2. Des combos sans partie (Swapou) — vérifié plus tard, en base seulement.
+  if (jeu === 'swapou2' && process.env.DATABASE_URL) {
+    const ca = Array.isArray(avant && avant.$combos) ? avant.$combos : [];
+    const cb = Array.isArray(apres.$combos) ? apres.$combos : [];
+    let total = 0;
+    for (let i = 0; i < cb.length; i++) total += Math.max(0, (Number(cb[i]) || 0) - (Number(ca[i]) || 0));
+    const cocktails = Math.max(0, (Number(cb[10]) || 0) - (Number(ca[10]) || 0));
+    if (cocktails >= COMBOS_SANS_PARTIE.cocktails || total >= COMBOS_SANS_PARTIE.total) {
+      setTimeout(async () => {
+        try {
+          const r = await db.partiesRecentesJoueur(u, 'swapou2', [parisDayKey(), yesterdayParisDayKey()]);
+          if ((r.parties || 0) + (r.swapou || 0) > 0) return;
+          signalerTriche(u, { jeu, type: 'combos_sans_partie', gravite: 'grave',
+            resume: `+${total} combos dont +${cocktails} cocktails, sans aucune partie de Swapou depuis la veille`,
+            details: { combos: total, cocktails, avant: ca, apres: cb, premiereSauvegarde: premiere } });
+        } catch (e) { console.error(`[TRICHE] combos sans partie (${u}) : ${e.message}`); }
+      }, TRICHE_DELAI_VERIF_MS).unref();
+    }
+  }
+}
 
 // Un score arrivé SANS partie (porte générique, jeton absent ou faux, fiche
 // du bureau) : rien à rejouer. On le note quand même — c'est la trace d'un
@@ -21801,7 +22042,9 @@ const MB2_TITEMS = [
   '$eca0','$eca1','$eca2','$eca3','$symb0','$symb1','$symb2','$symb3',
 ];
 
-function extractGameItemsFromSlot(username, game, dataStr, { silent = false, userOverride = null } = {}) {
+// `trace: false` : un calcul de l'anti-triche (pictosDeLaFiche), pas une
+// extraction — aucune ligne de console.
+function extractGameItemsFromSlot(username, game, dataStr, { silent = false, userOverride = null, trace = true } = {}) {
   let parsed;
   try { parsed = JSON.parse(dataStr); } catch {
     if (dataStr && dataStr.indexOf('|') >= 0) {
@@ -21812,7 +22055,7 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
     if (!parsed) return;
   }
   if (!parsed || typeof parsed !== 'object') return;
-  if (game === 'bkiwi') {
+  if (game === 'bkiwi' && trace) {
     console.log(`[SLOT]  bkiwi extraction for ${username}: $wc=${parsed.$wc} $wcs=${parsed.$wcs} $ws=${parsed.$ws} $wss=${parsed.$wss} $ac=${JSON.stringify(parsed.$ac)}`);
   }
   const user = userOverride || users[username];
@@ -21937,7 +22180,7 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
     const bkSummary = Array.isArray(bk)
       ? bk.map((v, i) => v >= 200 ? `${i}=${v}` : null).filter(Boolean).join(',')
       : 'not-array';
-    console.log(`[SLOT]  miniwave extraction for ${username}: $ship=${JSON.stringify(parsed.$ship)} $badsKill≥200=[${bkSummary}] $arcade.$bestLevel=${parsed.$arcade && parsed.$arcade.$bestLevel} $cons.$letter=${parsed.$cons && parsed.$cons.$letter} $cons.$bonus=${JSON.stringify(parsed.$cons && parsed.$cons.$bonus)} $shop=${JSON.stringify(parsed.$shop)}`);
+    if (trace) console.log(`[SLOT]  miniwave extraction for ${username}: $ship=${JSON.stringify(parsed.$ship)} $badsKill≥200=[${bkSummary}] $arcade.$bestLevel=${parsed.$arcade && parsed.$arcade.$bestLevel} $cons.$letter=${parsed.$cons && parsed.$cons.$letter} $cons.$bonus=${JSON.stringify(parsed.$cons && parsed.$cons.$bonus)} $shop=${JSON.stringify(parsed.$shop)}`);
     const ship = parsed.$ship;
     if (Array.isArray(ship)) {
       for (let i = 0; i < ship.length; i++) {
@@ -22049,7 +22292,7 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
         db.addGameItem(dbId, item).catch((e) => console.error('[DB] addGameItem:', e.message));
       }
     }
-    console.log(`[SLOT]  extracted ${newItems.length} new pictos for ${username}/${game}: ${newItems.join(', ')}`);
+    if (trace) console.log(`[SLOT]  extracted ${newItems.length} new pictos for ${username}/${game}: ${newItems.join(', ')}`);
     if (!silent) {
       for (const item of newItems) {
         const info = GAME_ITEM_INFO[item];
@@ -23420,6 +23663,7 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
   // mode du portage light seulement (le SWF du bureau n'a que l'arcade, qui ne
   // classe pas). Rien de rattrapable dans une fiche du bureau.
 
+  historiserSlot(username, game, slotId, users[username].frutiSlots[game][slotId], data, req);
   users[username].frutiSlots[game][slotId] = data;
   if (dbId) {
     // Surface DB errors instead of swallowing them — silent catch here was
@@ -39322,6 +39566,7 @@ case 'createchannel': {
         }
         // (Pas de miroir Mini-Wave : le classement mesure le Challenge, un mode
         // du light seulement — la fiche du bureau n'a rien à y verser.)
+        historiserSlot(username, game, slotId, u.frutiSlots[game][slotId], normalizedSlotData, { ip: normalizeClientIp(socket.remoteAddress), canal: 'fil' });
         u.frutiSlots[game][slotId] = normalizedSlotData;
         if (u._dbId) {
           db.upsertFrutiSlot(u._dbId, game, Number(slotId), normalizedSlotData).catch((e) => {
