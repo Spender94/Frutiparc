@@ -284,8 +284,13 @@ test('l’IA de Swapou ne se classe ni par loadVariables ni par FrutiScore', asy
   assert.equal(await record('swapou2_classic', pseudo), null, 'aucune des trois portes ne classe');
   // L'IA n'est pas une triche : pas d'alerte.
   assert.equal((await alertes(pseudo)).length, 0);
-  // Sans l'option, le même SWF se classe.
+  // Sans l'option, le SWF ne se classe pas non plus : Swapou ne se classe
+  // qu'au rejeu de sa partie, et le bureau Flash n'envoie aucun journal de
+  // coups. Alerte « info » seulement — le vieux client n'est pas un tricheur.
   assert.equal((await option(false)).status, 200);
-  assert.match(await (await fetch(`${BASE}/swf/games/swapou2/s12?sid=${sid}`)).text(), /ok=1/);
-  assert.equal((await record('swapou2_classic', pseudo) || {}).score, 12);
+  assert.match(await (await fetch(`${BASE}/swf/games/swapou2/s12?sid=${sid}`)).text(), /ok=0/);
+  assert.equal(await record('swapou2_classic', pseudo), null);
+  const a2 = (await alertes(pseudo)).filter((x) => x.type === 'swapou_sans_journal');
+  assert.equal(a2.length, 1);
+  assert.equal(a2[0].gravite, 'info');
 });

@@ -110,15 +110,17 @@ test('l’historique : les différences sensibles, rien sans changement, une par
   await sql(`INSERT INTO parties_joueur_jour (jour, username, jeu, n) VALUES ($1, 'honnete', 'swapou2', 1)`, [jourParis()]);
   assert.equal(await sauver(sidH, 'swapou2', ficheSwapou({ items: [27], combos: [30, 10, 4, 0, 0, 0, 0, 0, 0, 0, 5], record: 12000 })), 'ok=1');
 
-  // Le tricheur : une fiche modeste…
-  assert.equal(await sauver(sidT, 'swapou2', ficheSwapou({ combos: [3, 1], record: 1000 })), 'ok=1');
+  // Le tricheur : une fiche modeste, sans combos (le serveur réécrit ceux
+  // d'une fiche Swapou avec SON compte — swapouFicheReecrite —, une fiche qui
+  // en porterait les reprendrait donc à chaque écriture)…
+  assert.equal(await sauver(sidT, 'swapou2', ficheSwapou({ record: 1000 })), 'ok=1');
   await wait(300);
   const h0 = await sql(`SELECT champ, avant, apres, ip, canal FROM historique_slots WHERE username = 'tricheur' ORDER BY id`);
   assert.deepEqual(h0.map((h) => [h.champ, h.avant, h.apres]).sort(),
-    [['$chars[0]', null, 'true'], ['$combos[0]', null, '3'], ['$combos[1]', null, '1'], ['$record', null, '1000']].sort());
+    [['$chars[0]', null, 'true'], ['$record', null, '1000']].sort());
   assert.ok(h0.every((h) => h.canal === 'http' && h.ip), 'l’IP et le canal sont notés');
   // … une écriture qui ne touche rien de sensible ($swap seul) ne s'écrit pas…
-  assert.equal(await sauver(sidT, 'swapou2', ficheSwapou({ combos: [3, 1], record: 1000, swap: 42 })), 'ok=1');
+  assert.equal(await sauver(sidT, 'swapou2', ficheSwapou({ record: 1000, swap: 42 })), 'ok=1');
   await wait(300);
   assert.equal((await sql(`SELECT COUNT(*)::int AS n FROM historique_slots WHERE username = 'tricheur'`))[0].n, h0.length);
   // … puis la fiche forgée : l'album entier, des combos par centaines, dix cocktails.
@@ -136,9 +138,10 @@ test('l’historique : les différences sensibles, rien sans changement, une par
   const types = Object.fromEntries(aT.map((a) => [a.type, a]));
   assert.ok(types.pictos_en_rafale, 'pictos en rafale : ' + JSON.stringify(aT.map((a) => a.type)));
   assert.equal(types.pictos_en_rafale.gravite, 'grave');
-  assert.equal(types.pictos_en_rafale.details.pictos.length, 45);
+  // 45 cases d'album, moins les 11 pictos de combo que le serveur seul donne.
+  assert.equal(types.pictos_en_rafale.details.pictos.length, 34);
   assert.ok(types.saut_compteur, 'saut de compteur');
-  assert.match(types.saut_compteur.resume, /combos de Swapou : \+766/);
+  assert.match(types.saut_compteur.resume, /combos de Swapou : \+770/);
   assert.ok(types.combos_sans_partie, 'combos sans partie');
   assert.equal(types.combos_sans_partie.gravite, 'grave');
   assert.equal(types.combos_sans_partie.details.cocktails, 10);

@@ -151,7 +151,10 @@ test('la fiche de suspicion réunit tout', async (t) => {
   assert.equal(mw.ecart, 'fort', 'un record dix fois au-dessus de sa médiane');
   const sw = f.parPartie.find((x) => x.jeu === 'swapou2');
   assert.equal(sw.meilleur, 90000);
-  assert.ok(f.pictos.actuels.some((p) => p.id === '$combo10'), 'les pictos de la fiche forgée');
+  // Les pictos de la fiche forgée — sauf ceux des combos : depuis le rejeu
+  // décisif de Swapou, seul le serveur les donne (swapouFicheReecrite).
+  assert.ok(f.pictos.actuels.length > 0, 'les pictos de la fiche forgée');
+  assert.ok(!f.pictos.actuels.some((p) => /^\$combo/.test(p.id)), 'aucun picto de combo tiré de la fiche');
 });
 
 test('annuler un score : en place, puis d’une journée archivée (médailles intactes)', async (t) => {

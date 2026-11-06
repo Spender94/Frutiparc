@@ -18513,6 +18513,21 @@ function controlePorteGenerique(username, rankingId, score, data, voie) {
     console.log(`[ANTITRICHE] ${voie} ${username} ${rankingId} ${score} REFUSÉ — classement arbitré par le serveur`);
     return { motif: 'classement_arbitre', raison: 'ce classement ne s\'écrit que par les parties jouées sur le serveur' };
   }
+  // SWAPOU ne se classe plus qu'au rejeu de sa partie (swapouEnregistrerScore,
+  // par /api/saveScore avec le journal des coups). Les deux portes du bureau
+  // Flash n'en portent aucun : un score de Swapou qui arrive par elles ne
+  // prouve rien — il n'est pas classé, comme un score sans journal par
+  // saveScore (alerte « info » : le vieux client n'est pas un tricheur).
+  // (L'ayant droit à l'IA passe : son score est mis de côté juste après, par
+  // scoreIaSwapouMisDeCote, sans alerte.)
+  if (voie !== 'saveScore' && /^swapou2_(classic|challenge)$/.test(String(rankingId))
+      && !userOwnsGameFeature(users[username], 'swapouAnalyse')) {
+    signalerTriche(username, { jeu: 'swapou2', type: 'swapou_sans_journal', gravite: 'info',
+      resume: `score ${Number(score) || 0} de Swapou envoyé par ${voie}, sans journal de coups : non classé`,
+      details: { rankingId, score: Number(score) || 0, voie } });
+    console.log(`[ANTITRICHE] ${voie} ${username} ${rankingId} ${score} REFUSÉ — Swapou sans journal de coups`);
+    return { motif: 'partie_non_verifiee', raison: 'les parties de Swapou ne se classent qu\'une fois rejouées par le serveur' };
+  }
   const refus = raisonScoreImplausible(rankingId, score, data);
   if (refus) {
     signalerTriche(username, { jeu, type: 'plausibilite', gravite: 'suspect',
@@ -40835,6 +40850,18 @@ case 'createchannel': {
           db.upsertFrutiSlot(u._dbId, game, Number(slotId), normalizedSlotData).catch((e) => {
             console.error(`[FCARD] DB upsert FAILED for ${username}/${game}/slot${slotId}: ${e.message}`);
           });
+        }
+        // Swapou : les combos et leurs pictos sont ceux que le SERVEUR a
+        // comptés (swapouFicheReecrite), par ce fil comme par la route HTTP.
+        // La fiche reçue est d'abord rangée telle quelle (et historisée : une
+        // fiche forgée reste une preuve), puis remplacée par la réécrite —
+        // sauf si une sauvegarde plus récente est passée entre-temps.
+        if (game === 'swapou2' && slotId === '0' && normalizedSlotData) {
+          swapouFicheReecrite(username, normalizedSlotData).then((neuve) => {
+            if (!neuve || neuve === normalizedSlotData || u.frutiSlots[game][slotId] !== normalizedSlotData) return;
+            u.frutiSlots[game][slotId] = neuve;
+            if (u._dbId) db.upsertFrutiSlot(u._dbId, game, 0, neuve).catch(dbErr('upsertFrutiSlot swapou réécrite'));
+          }).catch((e) => console.error(`[FCARD] swapou2 : réécriture des combos de ${username} : ${e.message}`));
         }
         if (slotId === '0' && normalizedSlotData) {
           try { extractGameItemsFromSlot(username, game, normalizedSlotData); } catch (e) {
