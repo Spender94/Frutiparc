@@ -58,6 +58,151 @@ test('il répond juste sur les grands sujets du parc', () => {
   }
 });
 
+/*
+ * LA BASE ENRICHIE — une ou deux questions de joueur par entrée, et les pièges
+ * où un mot partagé tirerait la question ailleurs. Chaque réponse est vérifiée
+ * contre le code du parc (voir les entrées de gaspard.js) ; ici, on vérifie
+ * qu'elle arrive à la bonne question.
+ */
+test('il trouve la bonne entrée sur tous les sujets du parc', () => {
+  const cas = [
+    // Le Challenge, les FD, les médailles, les classements
+    ['comment marche le challenge du jour ?', 'challenge'],
+    ['c’est quoi les FD et les disquettes ?', 'challenge'],
+    ['c’est quoi les disquettes ?', 'challenge'],
+    ['combien de parties classées par jour ?', 'challenge'],
+    ['combien de kikooz rapporte une médaille d’or ?', 'medailles'],
+    ['quand tombent les médailles ?', 'medailles'],
+    ['les kikooz des médailles', 'medailles'],
+    ['où voir les classements ?', 'classements'],
+    ['c’est quoi la consécration ?', 'classements'],
+    ['c’est quoi le championnat ?', 'championnat'],
+    ['comment marche la note elo ?', 'championnat'],
+    ['c’est quoi les pictos ?', 'pictos'],
+    ['c’est quoi le livre des records du club', 'club'],
+    // L'XP, la série de connexion
+    ['comment gagner de l’xp ?', 'niveau'],
+    ['combien d’xp pour passer niveau 3', 'niveau'],
+    ['comment marche la série de connexion ?', 'serie'],
+    ['c’est quoi le cadeau des 100 jours ?', 'serie'],
+    ['récompense de connexion quotidienne', 'serie'],
+    ['kikooz de la série de connexion', 'serie'],
+    // Quêtes, Prunostics, Frutisigne
+    ['les quêtes de la semaine', 'quetes'],
+    ['c’est quoi les prunostics ?', 'prunostic'],
+    ['comment parier sur le challenge ?', 'prunostic'],
+    ['c’est quoi mon frutisigne ?', 'frutisigne'],
+    ['quand est-ce que m’dam Irma passe ?', 'frutisigne'],
+    // Boutique, inventaire, accessoires, fonds, feutres, atelier
+    ['comment porter un accessoire ?', 'inventaire'],
+    ['comment mettre un accessoire par défaut ?', 'inventaire'],
+    ['comment acheter un accessoire ?', 'boutique'],
+    ['comment changer de fond d’écran ?', 'fonds'],
+    ['comment changer la couleur de mon feutre ?', 'feutres'],
+    ['comment avoir le feutre multicolore', 'feutres'],
+    ['comment créer un accessoire maison ?', 'atelier'],
+    ['c’est quoi l’atelier ?', 'atelier'],
+    // Le mode nuit, l'appli, le bureau
+    ['comment activer le mode nuit sur mon téléphone', 'nuit'],
+    ['le thème noir', 'nuit'],
+    ['comment installer l’appli sur mon iphone ?', 'appli'],
+    ['comment installer l’application sur android', 'appli'],
+    ['c’est quoi la version flash ?', 'bureau'],
+    // Les salons et leurs commandes
+    ['à quoi sert /log ?', 'logs'],
+    ['comment voir les messages précédents du salon', 'logs'],
+    ['comment ignorer quelqu’un ?', 'ignorer'],
+    ['comment bloquer quelqu’un', 'ignorer'],
+    ['c’est quoi la liste noire', 'ignorer'],
+    ['comment envoyer un message privé sur un salon public ?', 'chuchoter'],
+    ['comment chuchoter à quelqu’un ?', 'chuchoter'],
+    ['c’est quoi les émotes ?', 'emotes'],
+    ['à quoi sert /blueon ?', 'blueon'],
+    ['comment voter au sondage ?', 'blueon'],
+    ['comment créer un salon ?', 'salons'],
+    ['comment changer de salon ?', 'salons'],
+    ['quelles sont les commandes du salon ?', 'commandes'],
+    ['comment changer mon statut', 'statut'],
+    ['comment mentionner quelqu’un ?', 'mentions'],
+    // Courrier, contacts, fiche, Bouilloscope, compte
+    ['comment envoyer un frutimail ?', 'frutimail'],
+    ['où est mon courrier ?', 'frutimail'],
+    ['comment marche la messagerie ?', 'frutimail'],
+    ['comment ajouter un ami dans mes contacts ?', 'contacts'],
+    ['comment voir la fiche d’un joueur ?', 'fiche'],
+    ['comment modifier ma fiche ?', 'profil'],
+    ['comment supprimer mon compte ?', 'profil'],
+    ['j’ai oublié mon code secret', 'motdepasse'],
+    ['comment retrouver quelqu’un dans le bouilloscope ?', 'bouilloscope'],
+    ['comment inviter un ami ?', 'parrainage'],
+    ['combien de kikooz pour le parrainage', 'parrainage'],
+    // Forum, modération, animations
+    ['comment poster sur le forum ?', 'forum'],
+    ['comment signaler quelqu’un qui m’insulte ?', 'moderation'],
+    ['comment appeler un modérateur ?', 'moderation'],
+    ['c’est quoi un modérateur ?', 'moderation'],
+    ['qui sont les animateurs ?', 'animateurs'],
+    ['qui est dans l’équipe ?', 'animateurs'],
+    ['c’est quoi la question à 60 kikooz ?', 'kiloute'],
+    ['à quelle heure passe Kiloutou ?', 'kiloute'],
+    ['comment marche le blindtest ?', 'blindtest'],
+    ['comment jouer au loup-garou ?', 'loupgarou'],
+    // Les jeux, un par un
+    ['comment jouer à Frutisnake en ligne ?', 'frutisnake'],
+    ['le mode battle de snake', 'frutisnake'],
+    ['comment marche Swapou ?', 'swapou'],
+    ['c’est quoi grappe et freestyle à Kaluga ?', 'kaluga'],
+    ['comment marche kaluga', 'kaluga'],
+    ['la carte de MotionBall change quand ?', 'motionball'],
+    ['comment marche Motion Ball 2', 'motionball'],
+    ['c’est quoi le circuit du jour de Burning Kiwi ?', 'burningkiwi'],
+    ['comment jouer à Grapiz ?', 'grapiz'],
+    ['les règles de Frutibandas', 'frutibandas'],
+    ['c’est quoi les fruticartes ?', 'frutibandas'],
+    ['comment marche MiniWave ?', 'miniwave'],
+    ['c’est quoi le mode letter de mini wave', 'miniwave'],
+    ['à quoi servent les fées de MiniPixiz ?', 'minipixiz'],
+    ['c’est quoi Mini-Fever ?', 'minifever'],
+    ['comment jouer à JamaJama ?', 'jamajama'],
+    ['comment lancer un jeu ?', 'jeux'],
+    ['où sont les jeux ?', 'jeux'],
+    // Les pièges : un mot partagé ne doit pas tirer la question ailleurs.
+    ['j’ai perdu mon mot de passe et mes kikooz', 'motdepasse'],
+    ['j’ai perdu mes kikooz', 'kikooz'],
+    ['comment avoir des kikooz en jouant', 'kikooz'],
+    ['kikoo', 'kikooz'],
+    ['j’ai un bug', 'bug'],
+    ['c’est quoi le pass ?', 'challenge'],
+    ['la boîte noire', 'ignorer'],
+    ['médaille d’argent', 'medailles'],
+    ['gagner de l’argent', 'kikooz'],
+  ];
+  for (const [q, cle] of cas) {
+    const r = G.repondre(q, [], 'Remi');
+    assert.strictEqual(r.source, 'base', q + ' → ' + r.source);
+    assert.strictEqual(r.cle, cle, q + ' → ' + r.cle);
+  }
+  // Les rubriques que le serveur sème dans l'aide (mêmes titres, mêmes
+  // mots-clés) ne prennent pas la main quand la base en sait autant : à
+  // égalité, la base passe.
+  const semees = [
+    { title: 'Les Kikooz', keywords: 'kikooz monnaie boutique cadeau donne', body: 'Les Kikooz sont la monnaie virtuelle de Frutiparc.' },
+    { title: 'Les scores et le challenge', keywords: 'score classement challenge medaille or argent bronze daily', body: 'Vos scores se séparent en deux familles.' },
+  ];
+  for (const [q, cle] of [['comment gagner des kikooz ?', 'kikooz'], ['comment marche le challenge du jour ?', 'challenge'],
+    ['combien de kikooz rapporte une médaille d’or ?', 'medailles'], ['les kikooz des médailles', 'medailles']]) {
+    const r = G.repondre(q, semees, 'Remi');
+    assert.strictEqual(r.source + ':' + r.cle, 'base:' + cle, q);
+  }
+  // Chaque entrée a sa réponse, sans gabarit oublié, et une clé à elle.
+  const cles = new Set();
+  for (const e of G.BASE) {
+    assert.ok(e.reponse.length > 40 && !/\{nom\}/.test(e.reponse), e.cle);
+    assert.ok(!cles.has(e.cle), 'clé en double : ' + e.cle);
+    cles.add(e.cle);
+  }
+});
+
 test('une rubrique de l’aide l’emporte quand elle colle mieux, et son corps devient du texte de chat', () => {
   const rubriques = [
     { title: 'Index', keywords: 'index accueil', body: 'x', is_index: true },
