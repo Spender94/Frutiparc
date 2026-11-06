@@ -190,6 +190,34 @@ test('porte C : FrutiScore refuse les classements arbitrés et l’implausible, 
   assert.equal((await record('miniwave_classic', pseudo) || {}).score, 3100);
 });
 
+// ── Plus de repli par IP pour écrire un score ou un slot ───────────────────
+
+test('sans sid, aucune écriture ne prend la dernière session vue depuis la même IP', async () => {
+  const pseudo = 'portesansid';
+  const sid = await inscrire(pseudo);
+  // Une requête AVEC sid : le serveur retient « 127.0.0.1 → ce sid ».
+  await fetch(`${BASE}/api/features?sid=${sid}`);
+  const a = await saveScore({ game: 'miniwave', m: '0', score: '1200', data: '1' });
+  assert.equal(a.statut, 401, 'saveScore sans sid : personne');
+  assert.match(await (await fetch(`${BASE}/swf/games/miniwave/s1300`)).text(), /ok=0/, 'loadVariables sans sid ni Referer');
+  const slot = await (await fetch(BASE + '/api/saveFrutiSlot', { method: 'POST',
+    body: new URLSearchParams({ game: 'snake3', slotId: '1', data: '{"$son":true}' }) })).text();
+  assert.match(slot, /ok=0/, 'saveFrutiSlot sans sid');
+  assert.equal(await record('miniwave_classic', pseudo), null, 'rien n’a été classé au nom du joueur');
+  assert.match(journal, /\[SWF-SCORE\] skip save user="" sid=""/);
+});
+
+test('le SWF sous Ruffle se reconnaît au Referer de sa fenêtre de jeu', async () => {
+  // loadVariables("s<score>") : l'URL relative ne porte que le score, la page
+  // qui l'émet (game-popup.html, ouverte par le bureau) porte le sid.
+  const pseudo = 'porteruffle';
+  const sid = await inscrire(pseudo);
+  const fenetre = `${BASE}/game-popup.html?swf=games%2FminiWave2%2Fminiwave.swf&width=600&height=500&game=miniwave&sid=${sid}`;
+  const r = await (await fetch(`${BASE}/swf/games/miniwave/s2600`, { headers: { Referer: fenetre } })).text();
+  assert.match(r, /ok=1/);
+  assert.equal((await record('miniwave_classic', pseudo) || {}).score, 2600);
+});
+
 // ── L'IA de Swapou, par les trois portes ───────────────────────────────────
 
 test('l’IA de Swapou ne se classe ni par loadVariables ni par FrutiScore', async () => {

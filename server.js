@@ -1362,7 +1362,10 @@ function bouilleOf(user, username) {
 // ─────────────────────────────────────────────
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
-const recentSidByIp = new Map(); // ip -> sid fallback for legacy calls missing sid
+// ip -> sid : repli des LECTURES d'époque qui oublient le sid (getSidFromRequest).
+// Aucune écriture de score ni de slot ne s'en sert plus — une box partagée
+// donnerait la session d'un autre joueur.
+const recentSidByIp = new Map();
 /*
  * LES SESSIONS DORMANTES — celles que la base connaît et que la mémoire a
  * perdues.
@@ -10292,7 +10295,9 @@ app.get('/api/admin/connexions/:username', adminAuth, async (req, res) => {
 async function handleSaveScore(req, res) {
   await rollDailyChallengeIfNeeded();
   const params = Object.assign({}, req.query || {}, req.body || {});
-  const sid = String(params.sid || '');
+  // Le sid que la requête porte (paramètre, ou Referer de notre fenêtre de
+  // jeu) — jamais celui de la dernière session vue depuis la même IP.
+  const sid = String(params.sid || sidDuReferer(req) || '');
   const gameName = String(params.game || params.g || params.disc || '');
   let mode = Number(params.m ?? params.mode ?? 0) || 0;
   if (mode === 0 && sid && sessions[sid] && sessions[sid].challengeMode) {
@@ -10304,14 +10309,16 @@ async function handleSaveScore(req, res) {
   );
 
   // Resolve user from session.
+  //
+  // PLUS DE REPLI PAR IP. Un appel sans sid prenait la dernière session vue
+  // depuis la même adresse : derrière une box partagée (une famille, un
+  // internat, un téléphone en 4G), le score d'un joueur pouvait atterrir sur
+  // la fiche d'un autre, et n'importe qui sur le réseau pouvait en poster au
+  // nom de celui qui venait de se connecter. Tous les clients d'aujourd'hui
+  // envoient leur sid (game-popup.html, les portages, le Swapou web) ; un
+  // getURL d'époque lancé de la fenêtre de jeu est reconnu par son Referer.
   let username = '';
   if (sid && sessions[sid]) username = sessions[sid].user || '';
-  if (!username) {
-    // SWF getURL calls may arrive without sid — try IP fallback.
-    const ip = getClientIp(req);
-    const fallbackSid = ip ? recentSidByIp.get(ip) : undefined;
-    if (fallbackSid && sessions[fallbackSid]) username = sessions[fallbackSid].user || '';
-  }
 
   if (!username) {
     return res.status(401).json({ ok: false, error: 'not_authenticated' });
@@ -22395,17 +22402,21 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
   await rollDailyChallengeIfNeeded();
   const gameName = req.params[0];
   const scoreVal = parseInt(req.params[1]) || 0;
+  // QUI joue : le sid de l'URL, sinon celui du Referer — la fenêtre de jeu
+  // (game-popup.html?…&sid=…) d'où Ruffle émet cette URL relative. Le SWF
+  // ne sait pas y ajouter le sid, mais le navigateur joint l'adresse de la
+  // page à chaque requête de même origine : c'est le seul repli légitime, et
+  // le plus étroit (getSidPorteParLaRequete). Le repli par IP, lui, prenait
+  // la dernière session vue depuis la même box — un joueur pouvait classer
+  // au nom d'un autre. Il n'a plus cours pour une écriture de score.
   let username = '';
-  const sid = getSidFromRequest(req, req.query || {});
+  const sid = getSidPorteParLaRequete(req, req.query || {});
   if (sid && sessions[sid]) username = sessions[sid].user || '';
-  const ip = getClientIp(req);
-  const fallbackSid = ip ? recentSidByIp.get(ip) : undefined;
-  if (!username && fallbackSid && sessions[fallbackSid]) username = sessions[fallbackSid].user || '';
   if (!username || !scoreVal) {
-    console.log(`[SWF-SCORE] skip save user="${username}" sid="${sid}" ip="${ip}" game="${gameName}" score=${scoreVal}`);
+    console.log(`[SWF-SCORE] skip save user="${username}" sid="${sid}" ip="${getClientIp(req)}" game="${gameName}" score=${scoreVal}`);
     return res.type('text/plain').send('ok=0');
   }
-  const effectiveSid = sid || fallbackSid || '';
+  const effectiveSid = sid;
   const swfMode = (effectiveSid && sessions[effectiveSid] && sessions[effectiveSid].challengeMode) ? 1 : 0;
   let rankingId = rankingIdForGame(gameName, swfMode);
   if (!rankingId) {
@@ -23612,13 +23623,12 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
     console.log(`[SLOT]  mb2 prefs pipe → JSON ${data}`);
   }
 
+  // Le sid porté par la requête, et lui seul : plus de repli sur la dernière
+  // session vue depuis la même IP (cf. handleSaveScore). Tous les clients qui
+  // écrivent un slot (game-popup.html, frusion-ruffle.html, les portages)
+  // l'envoient dans le corps.
   let username = '';
   if (sid && sessions[sid]) username = sessions[sid].user || '';
-  if (!username) {
-    const ip = getClientIp(req);
-    const fallbackSid = ip ? recentSidByIp.get(ip) : undefined;
-    if (fallbackSid && sessions[fallbackSid]) username = sessions[fallbackSid].user || '';
-  }
   if (!username || !game) {
     console.log(`[SLOT]  save REJECTED — sid=${sid} username=${username} game=${game}`);
     return res.type('text/plain').send('ok=0');
@@ -25980,12 +25990,29 @@ function getSidFromParams(source) {
   return Array.isArray(raw) ? raw[0] : raw;
 }
 
-function getSidFromRequest(req, source = null) {
+/*
+ * LE SID QUE LA REQUÊTE PORTE ELLE-MÊME — dans ses paramètres, ou dans le
+ * Referer de la page qui l'a émise. Jamais deviné d'après l'adresse IP.
+ *
+ * Le Referer n'est pas une devinette : c'est l'adresse de NOTRE page (la
+ * fenêtre de jeu `game-popup.html?…&sid=…`, le bureau `/legacy?sid=…`), que le
+ * navigateur joint à chaque requête de même origine. C'est par lui que le
+ * repli `loadVariables` des SWF sous Ruffle se reconnaît : l'URL relative
+ * « s<score> » que le jeu appelle ne porte que le score, mais la fenêtre qui
+ * l'émet porte le sid. Une page tierce ne peut pas fabriquer ce Referer.
+ *
+ * Les ÉCRITURES de score et de slot n'acceptent que ce sid-là (cf.
+ * getSidFromRequest pour le repli par IP qu'elles n'ont plus).
+ */
+function getSidPorteParLaRequete(req, source = null) {
   const direct = getSidFromParams(source) || getSidFromParams(req && req.query);
   if (direct) return direct;
+  return sidDuReferer(req);
+}
 
-  // Some legacy calls (notably /do/smi) omit sid/c entirely.
-  // Recover sid from Referer (e.g. /legacy?sid=...).
+// Some legacy calls (notably /do/smi) omit sid/c entirely.
+// Recover sid from Referer (e.g. /legacy?sid=...).
+function sidDuReferer(req) {
   const referer = String((req && req.headers && req.headers.referer) || '');
   if (referer) {
     try {
@@ -25996,7 +26023,16 @@ function getSidFromRequest(req, source = null) {
       // ignore malformed referer
     }
   }
+  return '';
+}
 
+function getSidFromRequest(req, source = null) {
+  const porte = getSidPorteParLaRequete(req, source);
+  if (porte) return porte;
+
+  // Dernier recours des LECTURES d'époque : la dernière session vue depuis la
+  // même adresse. Deux joueurs derrière la même box partagent cette adresse —
+  // c'est pourquoi aucune écriture de score ni de slot ne passe plus par ici.
   const ip = req ? getClientIp(req) : '';
   if (ip && recentSidByIp.has(ip)) {
     return recentSidByIp.get(ip) || '';
