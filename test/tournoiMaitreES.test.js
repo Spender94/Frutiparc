@@ -16,6 +16,12 @@
  * vrai chemin du jeu (/api/saveScore) au tour préliminaire, puis par la saisie
  * de l'organisateur pour les tours suivants (les FD d'un compte neuf ne
  * suffiraient pas à jouer quatre tours dans la même journée de test).
+ *
+ * Le vrai chemin du jeu ne prend plus un score sur parole : la partie est
+ * rejouée avant d'être classée. Les parties du tour préliminaire sont donc de
+ * vraies parties, jouées par le bot (test/aideSwapou.js) et PRÉPARÉES pendant
+ * la pause — un tour ne dure ici que huit secondes —, rendues une fois le
+ * tour ouvert ; leurs scores sont ceux que le bot a faits.
  */
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
@@ -88,12 +94,20 @@ async function compte(pseudo, kikooz) {
   sids[pseudo] = (await post('/api/auth/login', { username: pseudo, password: 'secret123', device_token: 'd' + pseudo })).sid;
   if (kikooz) await fetch(BASE + '/api/admin/users/' + pseudo, { method: 'PATCH', headers: ADMIN, body: JSON.stringify({ kikooz }) });
 }
-// Un score posé par le jeu lui-même (le portage Swapou envoie data « S<perso>: »).
-async function jouer(pseudo, score) {
-  const b = new URLSearchParams({ sid: sids[pseudo], game: 'swapou2', m: '0', score: String(score), data: 'S0:' });
-  const r = await (await fetch(BASE + '/api/saveScore', { method: 'POST', body: b })).json();
-  assert.ok(r.ok, JSON.stringify(r));
-  return r;
+// Une vraie partie, préparée d'avance (graine, coups joués par le bot, graine
+// vieillie de la durée de la partie), puis rendue par le jeu lui-même.
+const A = require('./aideSwapou.js');
+const sb = A.bac();
+async function preparer(pseudo, perso) {
+  const partie = await A.nouvellePartie(BASE, sids[pseudo]);
+  const j = A.jouer(sb, partie, perso || 0);
+  await A.vieillir(sql, partie.id, j.pf.duree + 1000);
+  return Object.assign({ pseudo, perso: perso || 0 }, j);
+}
+async function jouer(prep) {
+  const r = await A.rendre(BASE, sids[prep.pseudo], prep.score, prep.pf, prep.perso);
+  assert.ok(r.json.ok, JSON.stringify(r.json));
+  return r.json;
 }
 const detail = async (tid) => (await fetch(BASE + '/api/admin/tournaments/' + tid, { headers: ADMIN })).json();
 async function attendre(tid, quoi, pred, ms = 40000) {
@@ -162,6 +176,14 @@ test('tour préliminaire : on parie pendant la pause, plus une fois le tour ouve
   assert.equal(surP10.ok, true);
   const surP07 = await post('/api/paris', { sid: sids.parieur, match: m710.id, choix: 'p07', mise: 30 });
   assert.equal(surP07.ok, true);
+  // Les parties du tour, préparées pendant la pause : p10 doit battre p07
+  // (l'outsider gagne) — le bot rejoue la partie de p07 tant qu'elle ne
+  // lui est pas inférieure.
+  const pP10 = await preparer('p10', 1);
+  let pP07 = await preparer('p07', 0);
+  for (let i = 0; i < 12 && pP07.score >= pP10.score; i++) pP07 = await preparer('p07', i % 7);
+  assert.ok(pP07.score < pP10.score, 'une partie de p07 sous celle de p10');
+  const pP09 = await preparer('p09', 2);
   // Les cotes fixes : le 10e qualifié est l'outsider du 7e.
   assert.ok(surP10.cote > surP07.cote, `p10 ×${surP10.cote} contre p07 ×${surP07.cote}`);
   assert.equal(surP10.retour, Math.floor(50 * surP10.cote + 1e-9));
@@ -173,13 +195,13 @@ test('tour préliminaire : on parie pendant la pause, plus une fois le tour ouve
   const tard = await post('/api/paris', { sid: sids.parieur, match: m710.id, choix: 'p07', mise: 10 });
   assert.equal(tard.code, 'joue', 'le tour a commencé : plus de mise');
   // Les parties, par le jeu.
-  await jouer('p10', 9000);
-  await jouer('p07', 5000);
-  await jouer('p09', 300);            // p08 ne joue pas
+  await jouer(pP10);
+  await jouer(pP07);
+  await jouer(pP09);                  // p08 ne joue pas
   d = await attendre(tid, 'le tour préliminaire tranché', (x) => tour(x, 1).every((m) => m.winner) && programme(x, 2));
   const a = affiche(d, 1, 'p10');
   assert.equal(a.winner, 'p10');
-  assert.deepEqual([a.score1, a.score2].map(Number).sort((x, y) => x - y), [5000, 9000]);
+  assert.deepEqual([a.score1, a.score2].map(Number).sort((x, y) => x - y), [pP07.score, pP10.score]);
   assert.equal(affiche(d, 1, 'p08').winner, 'p09', 'seul à avoir joué');
   assert.equal(Number(d.tournament.current_round), 2);
   // Les vainqueurs ont rejoint les quarts.
@@ -225,7 +247,7 @@ test('quarts, demies, finale : égalités, absences, et le champion', async (t) 
   assert.deepEqual(d.classement.map((l) => l.rang), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   // Plus de fenêtre ouverte : un score de plus n'entre nulle part.
   const avant = (await sql(`SELECT COUNT(*)::int AS n FROM tournament_round_scores WHERE tournament_id = $1`, [tid]))[0].n;
-  await jouer('p05', 7777);
+  await jouer(await preparer('p05', 3));
   await wait(300);
   assert.equal((await sql(`SELECT COUNT(*)::int AS n FROM tournament_round_scores WHERE tournament_id = $1`, [tid]))[0].n, avant);
 });

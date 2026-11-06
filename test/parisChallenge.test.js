@@ -108,9 +108,13 @@ async function compte(pseudo, kikooz) {
 const parier = (qui, jeu, type, choix, mise) => post('/api/paris/challenge', { sid: sids[qui], jeu, type, choix, mise });
 const etat = async (qui) => (await fetch(BASE + '/api/paris/challenge?sid=' + (sids[qui] || ''))).json();
 const solde = async (qui) => (await (await fetch(BASE + '/api/paris?sid=' + sids[qui])).json()).solde;
+// Le classement du jour, posé par l'admin : depuis que le serveur rejoue une
+// partie de Swapou avant de classer son score, un formulaire ne suffit plus
+// à poser « 9000 points » (test/swapouVerif.test.js), et ces tests-ci ne
+// parlent que des paris.
 async function jouer(pseudo, score) {
-  const b = new URLSearchParams({ sid: sids[pseudo], game: 'swapou2', m: '0', score: String(score), data: 'S0:' });
-  const r = await (await fetch(BASE + '/api/saveScore', { method: 'POST', body: b })).json();
+  const r = await (await fetch(BASE + '/api/admin/scores/' + pseudo + '/swapou2_classic', {
+    method: 'PATCH', headers: ADMIN, body: JSON.stringify({ score, data: 'S0:' }) })).json();
   assert.ok(r.ok, JSON.stringify(r));
 }
 const PARIEURS = ['anais', 'basile', 'cyril'];

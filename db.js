@@ -1152,14 +1152,18 @@ async function initSchema() {
 
       -- LES PARTIES DE SWAPOU CHALLENGE, VÉRIFIÉES. Le serveur donne la graine
       -- (/api/swapou/partie), le navigateur rend le journal des coups avec le
-      -- score ; le serveur rejoue la partie (swapouRejeu.js) et note le
-      -- verdict. Mode OBSERVATEUR : le score, lui, a été enregistré comme
-      -- avant — la ligne ne sert qu'à l'admin (et, si l'interrupteur du
-      -- tournoi est levé, à n'y compter que les parties conformes).
+      -- score ; le serveur rejoue la partie (swapouRejeu.js) AVANT de classer
+      -- quoi que ce soit : seule une partie rejouée conforme, sur une graine
+      -- qu'il a donnée à ce joueur, rendue une fois, sans l'IA et dans un
+      -- temps possible, entre au classement (colonne classe). Les lignes
+      -- d'avant (le « mode observateur ») n'ont décidé de rien.
       --   source  : 'serveur' (graine donnée par le serveur) ou 'locale' (le
-      --             serveur n'a pas répondu à temps, le navigateur a tiré la
-      --             sienne : rejouable, mais preuve plus faible) ;
-      --   verdict : 'en_cours', 'conforme', 'divergent', 'non_verifiable'.
+      --             serveur n'a pas répondu, le navigateur a tiré la sienne :
+      --             rejouable, mais jamais classée) ;
+      --   verdict : 'en_cours', 'conforme', 'divergent' (le rejeu ne retombe
+      --             pas sur le score déclaré), 'refuse' (rejouée, mais écartée
+      --             par une règle : graine locale, durée impossible…),
+      --             'non_verifiable' (rien à rejouer, ou le rejeu a échoué).
       CREATE TABLE IF NOT EXISTS swapou_parties (
         id             TEXT PRIMARY KEY,
         username       TEXT NOT NULL,
@@ -1182,6 +1186,49 @@ async function initSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_swapou_parties_user ON swapou_parties(LOWER(username), cree_le DESC);
       CREATE INDEX IF NOT EXISTS idx_swapou_parties_date ON swapou_parties(cree_le DESC);
+      -- Le rejeu décisif : ce qui a été décidé, et de quoi.
+      --   classe          : le score est entré au classement (rejeu, ou l'admin) ;
+      --   classe_par      : 'rejeu' ou 'admin' ;
+      --   ranking_id, data, fd : où le score devait aller, sa donnée (le
+      --             perso), et si le joueur avait encore un FD — de quoi le
+      --             classer à la main plus tard ;
+      --   essai           : une partie d'essai (jamais classée ; ses combos
+      --             comptent comme les autres) ;
+      --   duree_serveur_ms : de la graine donnée au score reçu, à l'horloge du
+      --             serveur (duree_ms, elle, est déclarée par le navigateur) ;
+      --   temps_jeu_ms    : la durée minimale de la partie, d'après le rejeu ;
+      --   combos          : les combos tombés dans la partie, comptés au rejeu ;
+      --   combos_comptes  : déjà ajoutés au compteur du joueur (une fois).
+      ALTER TABLE swapou_parties ADD COLUMN IF NOT EXISTS classe BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE swapou_parties ADD COLUMN IF NOT EXISTS classe_par TEXT NOT NULL DEFAULT '';
+      ALTER TABLE swapou_parties ADD COLUMN IF NOT EXISTS ranking_id TEXT NOT NULL DEFAULT '';
+      ALTER TABLE swapou_parties ADD COLUMN IF NOT EXISTS data TEXT NOT NULL DEFAULT '';
+      ALTER TABLE swapou_parties ADD COLUMN IF NOT EXISTS fd BOOLEAN NOT NULL DEFAULT true;
+      ALTER TABLE swapou_parties ADD COLUMN IF NOT EXISTS essai BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE swapou_parties ADD COLUMN IF NOT EXISTS duree_serveur_ms INTEGER;
+      ALTER TABLE swapou_parties ADD COLUMN IF NOT EXISTS temps_jeu_ms INTEGER;
+      ALTER TABLE swapou_parties ADD COLUMN IF NOT EXISTS combos JSONB;
+      ALTER TABLE swapou_parties ADD COLUMN IF NOT EXISTS combos_comptes BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE swapou_parties ADD COLUMN IF NOT EXISTS indices JSONB;
+
+      -- LES COMBOS DE SWAPOU, TENUS PAR LE SERVEUR. Le jeu les comptait dans
+      -- la fiche (« $combos » du slot 0), que le navigateur écrit à sa guise :
+      -- le serveur les compte désormais lui-même, au rejeu des parties.
+      --   verifies : les combos des parties rejouées conformes (11 cases, de
+      --              la confiture de fraise au cocktail swapolotof) ;
+      --   herites  : ce que la fiche disait à la mise en service — gardé à
+      --              part, ni effacé ni cru : l'admin décide (herites_note dit
+      --              ce qui en a été fait).
+      -- La fiche montre herites + verifies ; le picto d'un combo vient au
+      -- cinquième.
+      CREATE TABLE IF NOT EXISTS swapou_combos (
+        username     TEXT PRIMARY KEY,
+        verifies     JSONB NOT NULL DEFAULT '[]',
+        herites      JSONB NOT NULL DEFAULT '[]',
+        herites_le   TIMESTAMPTZ NOT NULL DEFAULT now(),
+        herites_note TEXT NOT NULL DEFAULT '',
+        maj_le       TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
 
       -- LES PARTIES VÉRIFIÉES des autres jeux classés au challenge : l'Arbre
       -- creux de MiniPixiz et l'arcade de Mini-Fever (antitricheLight.js). Le
@@ -2368,6 +2415,7 @@ async function anonymiserJoueur(username) {
       ['contacts', 'contact_name', 'adresse'],
       ['blacklist', 'blocked_name', 'adresse'],
       ['swapou_parties', 'username', 'brut'],
+      ['swapou_combos', 'username', 'brut'],
       ['parties_verifiees', 'username', 'brut'],
       ['connexions', 'username', 'brut'],
       // L'anti-triche : l'historique de ses sauvegardes, ses alertes, ses
@@ -2405,7 +2453,7 @@ async function anonymiserJoueur(username) {
     // d'un courrier, un don, un achat, un tournoi — prend la pierre tombale.
     const retirees = new Set(['push_subscriptions.username', 'trombinoscope.pseudo',
       'forum_topic_reads.username', 'forum_topic_follows.username', 'users.referred_by',
-      'swapou_parties.username', 'parties_verifiees.username', 'connexions.username', 'tournament_paris.username',
+      'swapou_parties.username', 'swapou_combos.username', 'parties_verifiees.username', 'connexions.username', 'tournament_paris.username',
       'historique_slots.username', 'alertes_triche.username', 'triche_exclusions.username', 'triche_pictos_retires.username',
       'challenge_paris.username', 'challenge_medailles_xp.username', 'parties_differees.joueur_a', 'parties_differees.joueur_b']);
     for (const [table, col] of RENOMMAGE_COLONNES) {
@@ -2478,7 +2526,8 @@ async function exporterDonnees(userId, username) {
     forum_suivis: await q('SELECT topic_id, created_at FROM forum_topic_follows WHERE LOWER(username) = $1', [u]),
     tournois: await q('SELECT tournament_id, seed, qualif_score, status, created_at FROM tournament_players WHERE LOWER(username) = $1', [u]),
     swapou_ia: await q('SELECT score, data, created_at FROM swapou_ia_scores WHERE LOWER(username) = $1 ORDER BY created_at', [u]),
-    swapou_parties: await q('SELECT id, graine, source, perso, cree_le, fini_le, score_declare, score_rejoue, verdict, raison, coups, nb_coups, duree_ms, rythme FROM swapou_parties WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
+    swapou_parties: await q('SELECT id, graine, source, perso, cree_le, fini_le, score_declare, score_rejoue, verdict, raison, coups, nb_coups, duree_ms, duree_serveur_ms, rythme, classe, essai, combos FROM swapou_parties WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
+    swapou_combos: await q('SELECT verifies, herites, herites_note, maj_le FROM swapou_combos WHERE LOWER(username) = $1', [u]),
     parties_verifiees: await q('SELECT id, jeu, graine, mode, source, cree_le, fini_le, score_declare, score_verifie, verdict, raison, indices, classe, duree_ms, temps_jeu_ms FROM parties_verifiees WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     notes_championnat: await q('SELECT jeu, note, fiche, origine, maj FROM notes_championnat WHERE LOWER(username) = $1 ORDER BY jeu', [u]),
     connexions: await q('SELECT jour, ip, xff, socket_ip, appareil, navigateur, origine, premiere, derniere, n FROM connexions WHERE LOWER(username) = $1 ORDER BY premiere', [u]),
@@ -2559,6 +2608,7 @@ const RENOMMAGE_COLONNES = [
   ['kikooz_gifts', 'recipient'],
   ['swapou_ia_scores', 'username'],
   ['swapou_parties', 'username'],
+  ['swapou_combos', 'username'],
   ['parties_verifiees', 'username'],
   ['notes_championnat', 'username'],
   ['connexions', 'username'],
@@ -2961,28 +3011,29 @@ async function listSwapouIaScores(username, limit = 50) {
 /**
  * Le meilleur score de Swapou Challenge de chacun, entre deux instants : sert
  * à rattraper un tour de tournoi qui se jouait déjà avant d'être ouvert sur le
- * site. Les parties au score rejoué divergent ne comptent pas ; `verifiees` :
- * seulement les parties vérifiées conformes, à graine du serveur, sans l'IA
- * (l'interrupteur « tournoi vérifié »).
+ * site. Seules comptent les parties qui auraient été classées : classées
+ * (par le rejeu ou par l'admin), ou — pour les lignes d'avant le rejeu
+ * décisif — rejouées conformes, à graine du serveur, sans l'IA. Jamais une
+ * partie d'essai.
  */
-async function meilleursSwapouEntre(usernames, debut, fin, verifiees) {
+async function meilleursSwapouEntre(usernames, debut, fin) {
   const noms = (usernames || []).map((u) => String(u || '').toLowerCase()).filter(Boolean);
   if (!noms.length) return [];
   const { rows } = await pool.query(
     `SELECT LOWER(username) AS username, MAX(score_declare)::int AS score, COUNT(*)::int AS parties
        FROM swapou_parties
       WHERE LOWER(username) = ANY($1) AND fini_le IS NOT NULL AND score_declare IS NOT NULL
-        AND fini_le >= $2 AND fini_le <= $3 AND verdict <> 'divergent'
-        AND ($4::boolean IS NOT TRUE OR (verdict = 'conforme' AND source = 'serveur' AND NOT ia_detenteur))
+        AND fini_le >= $2 AND fini_le <= $3 AND NOT essai
+        AND (classe OR (verdict = 'conforme' AND source = 'serveur' AND NOT ia_detenteur))
       GROUP BY LOWER(username)`,
-    [noms, new Date(debut), new Date(fin), !!verifiees]);
+    [noms, new Date(debut), new Date(fin)]);
   return rows;
 }
-async function creerPartieSwapou(id, username, graine) {
+async function creerPartieSwapou(id, username, graine, essai) {
   await pool.query(
-    `INSERT INTO swapou_parties (id, username, graine, source) VALUES ($1, $2, $3, 'serveur')
+    `INSERT INTO swapou_parties (id, username, graine, source, essai) VALUES ($1, $2, $3, 'serveur', $4)
      ON CONFLICT (id) DO NOTHING`,
-    [String(id), String(username || '').toLowerCase(), Number(graine) >>> 0]);
+    [String(id), String(username || '').toLowerCase(), Number(graine) >>> 0, !!essai]);
 }
 async function lirePartieSwapou(id) {
   const { rows } = await pool.query('SELECT * FROM swapou_parties WHERE id = $1', [String(id || '')]);
@@ -2990,26 +3041,118 @@ async function lirePartieSwapou(id) {
 }
 // La partie rendue avec son score. Une partie à graine LOCALE n'a pas de
 // ligne encore : elle naît ici.
+const msBorne = (v) => (v == null || !Number.isFinite(Number(v)) ? null
+  : Math.max(0, Math.min(Math.round(Number(v)), 2147483647)));
 async function finirPartieSwapou(p) {
   await pool.query(
     `INSERT INTO swapou_parties (id, username, graine, source, perso, fini_le, score_declare,
-                                 coups, nb_coups, duree_ms, rythme, ia_detenteur, tournoi, verdict)
-     VALUES ($1, $2, $3, $4, $5, now(), $6, $7, $8, $9, $10, $11, $12, 'en_cours')
+                                 coups, nb_coups, duree_ms, rythme, ia_detenteur, tournoi, verdict,
+                                 ranking_id, data, fd, essai, duree_serveur_ms)
+     VALUES ($1, $2, $3, $4, $5, now(), $6, $7, $8, $9, $10, $11, $12, 'en_cours', $13, $14, $15, $16, $17)
      ON CONFLICT (id) DO UPDATE SET perso = $5, fini_le = now(), score_declare = $6, coups = $7,
-       nb_coups = $8, duree_ms = $9, rythme = $10, ia_detenteur = $11, tournoi = $12`,
+       nb_coups = $8, duree_ms = $9, rythme = $10, ia_detenteur = $11, tournoi = $12,
+       ranking_id = $13, data = $14, fd = $15, essai = $16, duree_serveur_ms = $17`,
     [String(p.id), String(p.username || '').toLowerCase(), Number(p.graine) >>> 0,
      p.source === 'locale' ? 'locale' : 'serveur',
-     Number.isFinite(Number(p.perso)) ? Number(p.perso) : null,
+     p.perso !== null && p.perso !== undefined && Number.isFinite(Number(p.perso)) ? Number(p.perso) : null,
      Math.round(Number(p.score) || 0), String(p.coups || ''), Number(p.nbCoups) || 0,
-     Math.max(0, Math.min(Math.round(Number(p.dureeMs) || 0), 2147483647)),
-     p.rythme ? JSON.stringify(p.rythme) : null, !!p.iaDetenteur, !!p.tournoi]);
+     msBorne(p.dureeMs) || 0,
+     p.rythme ? JSON.stringify(p.rythme) : null, !!p.iaDetenteur, !!p.tournoi,
+     String(p.rankingId || ''), String(p.data || '').slice(0, 200), p.fd !== false, !!p.essai,
+     msBorne(p.dureeServeurMs)]);
 }
+// Le verdict du rejeu, et ce qu'il a mesuré. `classe` n'est posé que par
+// l'appelant qui a vraiment écrit le score (cf. classerPartieSwapou).
 async function verdictPartieSwapou(id, v) {
   await pool.query(
-    'UPDATE swapou_parties SET verdict = $2, score_rejoue = $3, raison = $4 WHERE id = $1',
+    `UPDATE swapou_parties SET verdict = $2, score_rejoue = $3, raison = $4,
+            temps_jeu_ms = COALESCE($5, temps_jeu_ms), combos = COALESCE($6, combos),
+            indices = COALESCE($7, indices)
+      WHERE id = $1`,
     [String(id), String(v.verdict || 'non_verifiable'),
-     Number.isFinite(Number(v.scoreRejoue)) ? Math.round(Number(v.scoreRejoue)) : null,
-     String(v.raison || '').slice(0, 200)]);
+     v.scoreRejoue !== null && v.scoreRejoue !== undefined && Number.isFinite(Number(v.scoreRejoue))
+       ? Math.round(Number(v.scoreRejoue)) : null,
+     String(v.raison || '').slice(0, 200), msBorne(v.tempsJeuMs),
+     Array.isArray(v.combos) ? JSON.stringify(v.combos) : null,
+     Array.isArray(v.indices) ? JSON.stringify(v.indices) : null]);
+}
+// Le score de la partie est entré au classement : par le rejeu, ou par l'admin.
+async function classerPartieSwapou(id, par) {
+  await pool.query(`UPDATE swapou_parties SET classe = true, classe_par = $2 WHERE id = $1`,
+    [String(id), String(par || '')]);
+}
+// Les combos de la partie passent au compteur du joueur — UNE fois : rend
+// vrai si c'est cet appel qui les a pris (un rejeu relancé, ou un
+// reclassement de l'admin après le rejeu, ne comptent pas deux fois).
+async function prendreCombosPartieSwapou(id) {
+  const r = await pool.query(
+    `UPDATE swapou_parties SET combos_comptes = true WHERE id = $1 AND NOT combos_comptes RETURNING id`,
+    [String(id)]);
+  return r.rowCount > 0;
+}
+
+// ── Les combos de Swapou, comptés par le serveur (swapou_combos) ──────────
+const tableau11 = (t) => {
+  const a = Array.isArray(t) ? t : [];
+  const r = [];
+  for (let i = 0; i < 11; i++) r.push(Math.max(0, Math.floor(Number(a[i]) || 0)));
+  return r;
+};
+async function lireCombosSwapou(username) {
+  const { rows } = await pool.query('SELECT * FROM swapou_combos WHERE username = $1',
+    [String(username || '').toLowerCase()]);
+  return rows[0] || null;
+}
+async function tousCombosSwapou() {
+  const { rows } = await pool.query('SELECT * FROM swapou_combos ORDER BY username');
+  return rows;
+}
+// La première fois qu'on voit un joueur : ses compteurs hérités de la fiche.
+// `ON CONFLICT DO NOTHING` — l'héritage ne se prend qu'une fois.
+async function heriterCombosSwapou(username, herites) {
+  await pool.query(
+    `INSERT INTO swapou_combos (username, herites, verifies) VALUES ($1, $2, $3)
+     ON CONFLICT (username) DO NOTHING`,
+    [String(username || '').toLowerCase(), JSON.stringify(tableau11(herites)), JSON.stringify(tableau11([]))]);
+}
+// Les combos d'une partie vérifiée, ajoutés case à case. Rend la ligne à jour.
+async function ajouterCombosSwapou(username, combos) {
+  const u = String(username || '').toLowerCase();
+  const { rows } = await pool.query(
+    `INSERT INTO swapou_combos (username, verifies) VALUES ($1, $2)
+     ON CONFLICT (username) DO UPDATE SET maj_le = now(), verifies = (
+       SELECT jsonb_agg(COALESCE((swapou_combos.verifies->>(i - 1))::int, 0)
+                        + COALESCE((EXCLUDED.verifies->>(i - 1))::int, 0) ORDER BY i)
+         FROM generate_series(1, 11) AS i)
+     RETURNING *`,
+    [u, JSON.stringify(tableau11(combos))]);
+  return rows[0] || null;
+}
+// La décision de l'admin sur l'héritage : `herites` remplacé, la note dit ce
+// qui en a été fait (« remis à zéro », « couverts par les parties rejouées »…).
+async function fixerHeritesCombosSwapou(username, herites, note) {
+  await pool.query(
+    `UPDATE swapou_combos SET herites = $2, herites_note = $3, maj_le = now() WHERE username = $1`,
+    [String(username || '').toLowerCase(), JSON.stringify(tableau11(herites)), String(note || '').slice(0, 200)]);
+}
+// Les fiches Swapou de tous les joueurs (slot 0) : l'héritage à la mise en
+// service.
+async function fichesSwapouTous() {
+  const { rows } = await pool.query(
+    `SELECT LOWER(u.username) AS username, f.data FROM fruti_slots f JOIN users u ON u.id = f.user_id
+      WHERE f.game = 'swapou2' AND f.slot_id = 0`);
+  return rows;
+}
+// Les parties d'un joueur dont les combos se recomptent : rejouées
+// conformes (celles d'avant le rejeu décisif ont gardé leurs coups), à
+// graine du serveur, hors IA.
+async function partiesRejouablesSwapou(username) {
+  const { rows } = await pool.query(
+    `SELECT id, graine, coups, perso, combos, combos_comptes, fini_le FROM swapou_parties
+      WHERE LOWER(username) = $1 AND fini_le IS NOT NULL AND verdict = 'conforme'
+        AND source = 'serveur' AND NOT ia_detenteur AND coups <> '' ORDER BY fini_le`,
+    [String(username || '').toLowerCase()]);
+  return rows;
 }
 async function accordPartieSwapou(id, accord) {
   await pool.query('UPDATE swapou_parties SET accord = $2 WHERE id = $1',
@@ -3027,7 +3170,9 @@ async function listerPartiesSwapou(opts = {}) {
   params.push(Math.max(1, Math.min(Number(opts.limit) || 100, 1000)));
   const { rows } = await pool.query(
     `SELECT id, username, graine, source, perso, cree_le, fini_le, score_declare, score_rejoue,
-            verdict, raison, nb_coups, duree_ms, rythme, accord, ia_detenteur, tournoi
+            verdict, raison, nb_coups, duree_ms, rythme, accord, ia_detenteur, tournoi,
+            classe, classe_par, ranking_id, fd, essai, duree_serveur_ms, temps_jeu_ms, combos,
+            combos_comptes, indices
        FROM swapou_parties WHERE ${cond.join(' AND ')}
       ORDER BY fini_le DESC LIMIT $${params.length}`, params);
   return rows;
@@ -3040,6 +3185,8 @@ async function bilanPartiesSwapou(depuis) {
             COUNT(*)::int AS parties,
             COUNT(*) FILTER (WHERE verdict = 'conforme')::int AS conformes,
             COUNT(*) FILTER (WHERE verdict = 'divergent')::int AS divergentes,
+            COUNT(*) FILTER (WHERE verdict = 'refuse')::int AS refusees,
+            COUNT(*) FILTER (WHERE classe)::int AS classees,
             COUNT(*) FILTER (WHERE source = 'locale')::int AS locales,
             MAX(score_rejoue) FILTER (WHERE verdict = 'conforme') AS meilleur_verifie,
             MAX(score_declare) AS meilleur_declare,
@@ -6031,6 +6178,15 @@ module.exports = {
   lirePartieSwapou,
   finirPartieSwapou,
   verdictPartieSwapou,
+  classerPartieSwapou,
+  prendreCombosPartieSwapou,
+  lireCombosSwapou,
+  tousCombosSwapou,
+  heriterCombosSwapou,
+  ajouterCombosSwapou,
+  fixerHeritesCombosSwapou,
+  fichesSwapouTous,
+  partiesRejouablesSwapou,
   accordPartieSwapou,
   listerPartiesSwapou,
   bilanPartiesSwapou,

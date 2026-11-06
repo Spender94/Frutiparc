@@ -151,7 +151,7 @@ app.use('/api/bkiwi/ghost', express.urlencoded({ extended: false, limit: '512kb'
 // très longue partie peut dépasser les cent kilo-octets : sans ce lecteur, le
 // SCORE lui-même serait refusé avec le journal. Même lecteur que le général
 // (extended), seul le plafond change.
-app.use('/api/saveScore', express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(['/api/saveScore', '/api/swapou/essai'], express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 // Ruffle's LoadVars.sendAndLoad may send POST bodies as text/plain or
 // with no Content-Type at all. Capture any unparsed body as raw text,
@@ -2946,7 +2946,10 @@ function isScoreBetter(rankingId, newScore, newData, oldScore, oldData) {
 }
 
 // Save a score for user+ranking. Returns { updated, newScore, oldScore, oldPos, newPos }.
-function persistScore(username, rankingId, score, data) {
+// `opts.a` : l'heure où le score est ARRIVÉ, quand on l'écrit plus tard (une
+// partie de Swapou classée à la fin d'un rejeu qui a tardé) — le tournoi la
+// juge à cette heure-là.
+function persistScore(username, rankingId, score, data, opts) {
   if (!username || !rankingId || !RANKINGS[rankingId]) {
     return { updated: false, newScore: score, oldScore: 0, oldPos: 0, newPos: 0 };
   }
@@ -2960,7 +2963,7 @@ function persistScore(username, rankingId, score, data) {
   const newData = (data === undefined || data === null) ? '' : String(data);
   // Tournoi : si une fenêtre de capture est ouverte sur ce ranking, on retient le
   // meilleur score du joueur pour le tour en cours (indépendant de son record perso).
-  captureTournamentScore(username, rankingId, n, newData);
+  captureTournamentScore(username, rankingId, n, newData, opts);
   noterPartie(username, RANKINGS[rankingId].game);
   quetesEvenement(username, { type: 'score', rk: rankingId, v: n, data: newData, challenge: isDailyResetRanking(rankingId), jeu: RANKINGS[rankingId].game });
   const oldPos = computePosition(rankingId, username);
@@ -3038,9 +3041,6 @@ function fixerScore(username, rankingId, score, data) {
 // meilleurs scores du tour en cours (`${tid}:${round}` -> Map(user -> {score,data})).
 const tournamentWindows = new Map();
 const tournamentRoundScores = new Map();
-// Swapou : le tournoi ne compte-t-il que les parties vérifiées ? Baissé par
-// défaut ; l'admin le lève (onglet Swapou), la marque vit dans app_state.
-let swapouTournoiVerifie = false;
 const tRoundKey = (tid, round) => `${tid}:${round}`;
 
 function openTournamentWindow(tid, round, rankingId, endsAt) {
@@ -3052,17 +3052,14 @@ function closeTournamentWindow(rankingId) { tournamentWindows.delete(rankingId);
 // Hook appelé par persistScore : retient le meilleur score du joueur pour le tour
 // en cours si une fenêtre est ouverte sur ce ranking (sens géré par isScoreBetter).
 //
-// SWAPOU, TOURNOI « PARTIES VÉRIFIÉES SEULEMENT » (interrupteur de l'admin,
-// baissé par défaut) : levé, un score Swapou n'entre au tour qu'une fois sa
-// partie rejouée et trouvée conforme — c'est le rejeu qui rappelle cette
-// fonction, avec `opts.verifie` et l'heure où le score était arrivé
-// (`opts.a`), pour qu'une vérification finie une seconde après la clôture
-// compte quand même.
+// SWAPOU : un score n'arrive ici qu'une fois sa partie rejouée et admise
+// (swapouEnregistrerScore) — il n'y a plus d'interrupteur. Quand le rejeu a
+// tardé, `opts.a` est l'heure où le score était arrivé : une vérification
+// finie une seconde après la clôture compte quand même.
 function captureTournamentScore(username, rankingId, score, data, opts) {
   const win = tournamentWindows.get(rankingId);
   if (!win) return;
   if (joueurExcluDesClassements(username)) return;
-  if (swapouTournoiVerifie && /^swapou2/.test(rankingId) && !(opts && opts.verifie)) return;
   if (win.endsAt && ((opts && opts.a) || Date.now()) > win.endsAt) return;
   const key = tRoundKey(win.tid, win.round);
   let cache = tournamentRoundScores.get(key);
@@ -9845,27 +9842,52 @@ app.post('/api/auth/reset', async (req, res) => {
 
 /*
  * ══════════════════════════════════════════════════════════════════════════
- * SWAPOU CHALLENGE — LES PARTIES VÉRIFIÉES (mode observateur)
+ * SWAPOU CHALLENGE — LES PARTIES VÉRIFIÉES (rejeu décisif)
  * ══════════════════════════════════════════════════════════════════════════
  *
- * Le score de Swapou est calculé par le navigateur. Pour savoir s'il est
- * vrai, le serveur donne à chaque partie une GRAINE (d'où sortent la couleur
+ * Le score de Swapou est calculé par le navigateur : seul, il ne prouve rien.
+ * Le serveur donne donc à chaque partie une GRAINE (d'où sortent la couleur
  * et les marques des fruits qui montent), le navigateur rend avec le score la
  * liste des coups joués, et le serveur REJOUE la partie avec le vrai code du
- * jeu (swapouRejeu.js, dans un fil à part : swapouRejeuFil.js).
+ * jeu (swapouRejeu.js, dans un fil à part : swapouRejeuFil.js) — AVANT
+ * d'écrire quoi que ce soit.
  *
- * CE QUE ÇA NE CHANGE PAS — c'est la règle : le score s'enregistre exactement
- * comme avant, que la vérification ait lieu ou non, qu'elle réussisse ou non.
- * Le rejeu arrive APRÈS la réponse au joueur, et toute erreur s'y tait. Un
- * serveur qui ne répond pas à temps à la demande de graine laisse le jeu tirer
- * la sienne (« graine locale ») : la partie se joue pareil.
+ * LA RÈGLE (décidée par le propriétaire) : un score de Swapou Challenge
+ * n'entre au classement — et donc ne donne ni médaille, ni prime, ni quête,
+ * ni place au tournoi — que si sa partie est
+ *   · rejouée « conforme » (les coups mènent au score déclaré) ;
+ *   · jouée sur une graine que le serveur a donnée À CE JOUEUR, et rendue une
+ *     seule fois ;
+ *   · jouée sans l'IA (l'analyse en partie, accordée par l'admin, range ses
+ *     scores à part — swapou_ia_scores) ;
+ *   · rendue dans un temps possible (swapouVerdict.js : les horloges).
+ * Ce qui ne passe pas n'est pas classé, le joueur reçoit un message neutre,
+ * et le refus part au registre des alertes (signalerTriche) ; l'admin peut
+ * reclasser à la main une partie écartée (onglet « Swapou vérifié »).
  *
- * La seule chose qui peut en dépendre, c'est le TOURNOI, et seulement si
- * l'admin lève l'interrupteur « parties vérifiées seulement » (baissé par
- * défaut) : un score n'y entre alors qu'une fois sa partie trouvée conforme.
+ * LE COÛT. Le rejeu d'une partie prend de l'ordre de 0,3 ms par coup dans le
+ * fil (mesuré : 20 à 60 ms pour 100 à 170 coups, une demi-seconde pour mille),
+ * plus le démarrage du fil la première fois. La réponse au joueur l'ATTEND
+ * donc, jusqu'à SWAPOU_REPONSE_DELAI_MS : il voit son classement comme avant.
+ * Au-delà (une file chargée, une partie démesurée), il reçoit « score en
+ * vérification » ; la partie est classée à la fin du rejeu, à l'heure où le
+ * score était arrivé (le tournoi la compte même si sa fenêtre s'est fermée
+ * entre-temps), et le joueur en est averti par son historique.
+ *
+ * LES COMBOS. Le rejeu compte aussi les combos de la partie (le cocktail
+ * Swapolotof est le onzième) : seul ce compte-là nourrit le compteur du
+ * joueur (swapou_combos) et les pictos de combo — la fiche que le navigateur
+ * écrit est réécrite avec les valeurs du serveur (swapouFicheReecrite,
+ * appelée par /api/saveFrutiSlot).
  */
 const SWAPOU_REJEU_DELAI_MS = 60 * 1000;
 const SWAPOU_ACCORD_DELAI_MS = 60 * 60 * 1000;
+// Ce que la réponse au joueur attend le rejeu, au plus. Huit secondes : un
+// rejeu ordinaire en prend un dixième, et l'écran de fin de partie montre
+// déjà « connexion… » ; au-delà, mieux vaut dire « en vérification » que de
+// laisser croire à une panne.
+const SWAPOU_REPONSE_DELAI_MS = 8000;
+const SV = require('./swapouVerdict.js');
 
 // Un fil de rejeu : une file, une partie à la fois, un délai de garde. Un fil
 // qui plante ou dépasse son délai est remplacé ; la partie en cours est
@@ -9936,9 +9958,16 @@ const swapouAccordsEnCours = new Map();   // id -> { fait, total }
 
 // Les parties distribuées, gardées en mémoire (la base suit, sans qu'on
 // l'attende) : la graine part tout de suite, la base écrit ensuite.
-const swapouPartiesDonnees = new Map();   // id -> { username, graine, at }
+const swapouPartiesDonnees = new Map();   // id -> { username, graine, at, essai }
+// Les parties RENDUES dans ce processus, prises dès l'arrivée du score —
+// avant toute attente : deux envois simultanés du même numéro ne passent pas
+// tous les deux (la base, elle, ne note la fin qu'un instant plus tard).
+const swapouPartiesRendues = new Map();   // id -> horodatage
 const swapouDemandesRecentes = new Map(); // username -> [horodatages]
 const SWAPOU_PARTIE_ID = /^[a-f0-9]{24}$/;
+// Une graine se joue dans les deux jours (au-delà, la base l'oublie aussi :
+// purgerPartiesSwapou).
+const SWAPOU_GRAINE_VIE_MS = 2 * 86400000;
 
 app.post('/api/swapou/partie', (req, res) => {
   try {
@@ -9946,15 +9975,19 @@ app.post('/api/swapou/partie', (req, res) => {
     const username = (sid && sessions[sid] && sessions[sid].user) || '';
     if (!username) return res.status(401).json({ ok: false, error: 'not_authenticated' });
     // Garde-fou : trente parties par minute, c'est déjà beaucoup plus qu'on
-    // n'en joue. Au-delà, pas de graine — le jeu tire la sienne.
+    // n'en joue. Au-delà, pas de graine — le jeu le dit avant la partie.
     const t = Date.now();
     const liste = (swapouDemandesRecentes.get(username) || []).filter((x) => t - x < 60000);
     if (liste.length >= 30) return res.json({ ok: false, error: 'rate_limited' });
     liste.push(t);
     swapouDemandesRecentes.set(username, liste);
+    // Une partie d'ESSAI le dit dès la graine : son score ne pourra pas
+    // entrer au classement par /api/saveScore (sinon on jouerait dix essais
+    // gratuits pour ne rendre au Challenge que le meilleur).
+    const essai = String((req.body && req.body.essai) || req.query.essai || '') === '1';
     const id = crypto.randomBytes(12).toString('hex');
     const graine = crypto.randomBytes(4).readUInt32LE(0);
-    swapouPartiesDonnees.set(id, { username, graine, at: t });
+    swapouPartiesDonnees.set(id, { username, graine, at: t, essai });
     if (swapouPartiesDonnees.size > 20000) {
       // Les plus anciennes d'abord (l'ordre d'insertion d'une Map).
       for (const k of swapouPartiesDonnees.keys()) {
@@ -9962,95 +9995,405 @@ app.post('/api/swapou/partie', (req, res) => {
         if (swapouPartiesDonnees.size <= 15000) break;
       }
     }
-    if (process.env.DATABASE_URL) db.creerPartieSwapou(id, username, graine).catch(dbErr('creerPartieSwapou'));
+    if (process.env.DATABASE_URL) db.creerPartieSwapou(id, username, graine, essai).catch(dbErr('creerPartieSwapou'));
     return res.json({ ok: true, id, graine });
   } catch (e) {
     return res.json({ ok: false });
   }
 });
 setInterval(() => {
-  const limite = Date.now() - 2 * 86400000;
+  const limite = Date.now() - SWAPOU_GRAINE_VIE_MS;
   for (const [id, p] of swapouPartiesDonnees) if (p.at < limite) swapouPartiesDonnees.delete(id);
+  for (const [id, a] of swapouPartiesRendues) if (a < limite) swapouPartiesRendues.delete(id);
   for (const [u, l] of swapouDemandesRecentes) if (!l.some((x) => Date.now() - x < 60000)) swapouDemandesRecentes.delete(u);
 }, 10 * 60 * 1000).unref();
 
 /*
- * La partie rendue avec son score : notée, puis rejouée — le tout APRÈS la
- * réponse au joueur, sans jamais la retarder ni la changer. `classe` est le
- * classement où le score a été rangé (null s'il ne l'a pas été) : c'est lui
- * que le tournoi vérifié rappellera.
+ * D'où vient la graine de la partie rendue ? Rend { partie } ou { refus }.
+ * `partie` : { id, graine, source, debut } — `debut`, l'heure où le serveur a
+ * donné la graine (la plus ancienne des deux qu'il connaît, la mémoire et la
+ * base). `refus` : { type, gravite, raison } pour signalerTriche.
  */
-function swapouNoterPartie(username, params, score, data, classe, iaDetenteur) {
-  if (!process.env.DATABASE_URL || params.coups === undefined) return;
-  const recuA = Date.now();
-  const tournoiOuvert = !!(classe && tournamentWindows.has(classe));
-  setImmediate(() => {
-    swapouVerifierPartie(username, params, score, data, classe, iaDetenteur, recuA, tournoiOuvert)
-      .catch((e) => console.error('[SWAPOU] vérification :', e.message));
-  });
+async function swapouPrendrePartie(username, params) {
+  const id = String(params.partie || '');
+  if (!id) {
+    if (params.graine !== undefined && /^\d{1,10}$/.test(String(params.graine))) {
+      // La graine tirée par le navigateur (le serveur n'a pas répondu) : la
+      // partie se rejoue pour l'admin, mais n'est jamais classée.
+      return { partie: { id: 'l' + crypto.randomBytes(11).toString('hex'), graine: Number(params.graine) >>> 0, source: 'locale', debut: null } };
+    }
+    return { refus: { type: 'swapou_sans_graine', gravite: 'suspect', raison: 'journal sans graine ni numéro de partie' } };
+  }
+  if (!SWAPOU_PARTIE_ID.test(id)) return { refus: { type: 'swapou_partie_inconnue', gravite: 'suspect', raison: 'numéro de partie invalide' } };
+  const autre = (d) => ({ refus: { type: 'swapou_graine_autre_joueur', gravite: 'grave',
+    raison: `partie donnée à un autre joueur (${String(d.username).toLowerCase()})` } });
+  const aLui = (d) => String(d.username).toLowerCase() === String(username).toLowerCase();
+  // Prise SYNCHRONE : rien ne s'intercale entre la lecture et la marque. Le
+  // numéro d'un autre ne se consume pas — son vrai joueur peut encore rendre
+  // sa partie.
+  const enMemoire = swapouPartiesDonnees.get(id);
+  if (enMemoire && !aLui(enMemoire)) return autre(enMemoire);
+  if (swapouPartiesRendues.has(id)) return { refus: { type: 'swapou_partie_rejouee', gravite: 'suspect', raison: 'partie déjà rendue une fois' } };
+  swapouPartiesRendues.set(id, Date.now());
+  swapouPartiesDonnees.delete(id);
+  const ligne = process.env.DATABASE_URL ? await db.lirePartieSwapou(id).catch(() => null) : null;
+  const donnee = enMemoire || (ligne && { username: ligne.username, graine: Number(ligne.graine), at: new Date(ligne.cree_le).getTime(), essai: !!ligne.essai });
+  if (!donnee) return { refus: { type: 'swapou_partie_inconnue', gravite: 'suspect', raison: 'numéro de partie inconnu' } };
+  if (!aLui(donnee)) {
+    swapouPartiesRendues.delete(id);
+    return autre(donnee);
+  }
+  if (ligne && ligne.fini_le) return { refus: { type: 'swapou_partie_rejouee', gravite: 'suspect', raison: 'partie déjà rendue une fois' } };
+  const temps = [donnee.at, ligne && new Date(ligne.cree_le).getTime()].filter((x) => Number.isFinite(x));
+  const debut = temps.length ? Math.min(...temps) : null;
+  if (debut !== null && Date.now() - debut > SWAPOU_GRAINE_VIE_MS) {
+    return { refus: { type: 'swapou_graine_perimee', gravite: 'info', raison: 'graine donnée il y a plus de deux jours' } };
+  }
+  return { partie: { id, graine: donnee.graine, source: 'serveur', debut, essai: !!(donnee.essai || (ligne && ligne.essai)) } };
 }
-async function swapouVerifierPartie(username, params, score, data, classe, iaDetenteur, recuA, tournoiOuvert) {
+
+/*
+ * LA VÉRIFICATION d'une partie rendue (Challenge ou essai). Ne classe rien :
+ * rend le verdict, ce que le rejeu a compté, et si la partie est classable.
+ * Les combos d'une partie validée vont au compteur du joueur ici même.
+ *
+ * ctx : { essai, rankingId, data, fd, iaDetenteur, recuA, tournoi, perso }
+ * → { verdict, raison, classable, id, combos, scoreRejoue, refus, indices }
+ */
+async function swapouVerifierPartie(username, params, ctx) {
   const coups = String(params.coups || '').slice(0, 1000000);
-  const m = /^S(\d+):/.exec(String(params.data || ''));
-  const perso = m ? Number(m[1]) : null;
   const R = require('./swapouRejeu.js');
   const rythme = R.rythme(coups);
+  const declare = Math.round(Number(params.score) || 0);
   const base = {
-    username, perso, score, coups, nbCoups: rythme.coups,
-    dureeMs: Number(params.duree) || 0, rythme, iaDetenteur: !!iaDetenteur, tournoi: tournoiOuvert,
+    username, perso: ctx.perso, score: declare, coups, nbCoups: rythme.coups,
+    dureeMs: Number(params.duree) || 0, rythme, iaDetenteur: !!ctx.iaDetenteur, tournoi: !!ctx.tournoi,
+    rankingId: ctx.rankingId || '', data: ctx.data || '', fd: ctx.fd !== false, essai: !!ctx.essai,
   };
-  // D'où vient la graine ?
-  let partie = null, refus = '';
-  const id = String(params.partie || '');
-  if (id) {
-    if (!SWAPOU_PARTIE_ID.test(id)) refus = 'numéro de partie invalide';
-    else {
-      const enMemoire = swapouPartiesDonnees.get(id);
-      const ligne = await db.lirePartieSwapou(id);
-      const donnee = enMemoire || (ligne && { username: ligne.username, graine: Number(ligne.graine) });
-      if (!donnee) refus = 'numéro de partie inconnu';
-      else if (String(donnee.username).toLowerCase() !== String(username).toLowerCase()) refus = 'partie donnée à un autre joueur';
-      else if (ligne && ligne.fini_le) refus = 'partie déjà rendue une fois';
-      else partie = { id, graine: donnee.graine, source: 'serveur' };
-    }
-    swapouPartiesDonnees.delete(id);
-  } else if (params.graine !== undefined && /^\d{1,10}$/.test(String(params.graine))) {
-    partie = { id: 'l' + crypto.randomBytes(11).toString('hex'), graine: Number(params.graine) >>> 0, source: 'locale' };
-  } else {
-    refus = 'graine absente';
-  }
-  if (!partie) {
-    // Rien à rejouer : la partie est notée telle quelle, « non vérifiable ».
+  const sortie = (o) => Object.assign({ verdict: 'non_verifiable', raison: '', classable: false, id: null,
+    combos: null, scoreRejoue: null, refus: null, indices: [] }, o);
+  const avec = !!process.env.DATABASE_URL;
+
+  // Pas de journal du tout (le jeu Flash du bureau, un vieux client), ou un
+  // numéro de partie qui ne mène à rien : la partie est notée telle quelle,
+  // sous un numéro à elle, pour que l'admin la voie et puisse la classer.
+  const prise = coups ? await swapouPrendrePartie(username, params)
+    : { refus: { type: 'swapou_sans_journal', gravite: 'info', raison: 'score sans journal de partie (jeu Flash ou ancien client)' } };
+  if (prise.refus) {
+    // Rien de rejouable sous ce numéro : la partie est notée telle quelle.
     const nid = 'x' + crypto.randomBytes(11).toString('hex');
-    await db.finirPartieSwapou(Object.assign({ id: nid, graine: 0, source: 'serveur' }, base));
-    await db.verdictPartieSwapou(nid, { verdict: 'non_verifiable', raison: refus });
-    return;
+    // Sans journal, il n'y avait rien à rejouer ; sinon, c'est une règle qui écarte.
+    const verdict = coups ? 'refuse' : 'non_verifiable';
+    if (avec) {
+      await db.finirPartieSwapou(Object.assign({ id: nid, graine: 0, source: 'serveur' }, base)).catch(dbErr('finirPartieSwapou'));
+      await db.verdictPartieSwapou(nid, { verdict, raison: prise.refus.raison }).catch(dbErr('verdictPartieSwapou'));
+    }
+    return sortie({ verdict, raison: prise.refus.raison, id: nid, refus: prise.refus });
   }
-  await db.finirPartieSwapou(Object.assign({ id: partie.id, graine: partie.graine, source: partie.source }, base));
-  const rep = await swapouFilVerif.demander({ type: 'verifier', graine: partie.graine, coups, perso });
-  let verdict, raison = '', scoreRejoue = null;
-  if (rep.erreur || !rep.resultat) {
-    verdict = 'non_verifiable'; raison = rep.erreur || 'rejeu sans réponse';
+  const partie = prise.partie;
+  // Une graine d'essai rendue au Challenge : jouée sans FD, elle ne se classe pas.
+  if (!ctx.essai && partie.essai) {
+    const refus = { type: 'swapou_graine_essai', gravite: 'suspect', raison: 'graine d’une partie d’essai rendue au Challenge' };
+    if (avec) {
+      await db.finirPartieSwapou(Object.assign({}, base, { id: partie.id, graine: partie.graine, source: partie.source, essai: true })).catch(dbErr('finirPartieSwapou'));
+      await db.verdictPartieSwapou(partie.id, { verdict: 'refuse', raison: refus.raison }).catch(dbErr('verdictPartieSwapou'));
+    }
+    return sortie({ verdict: 'refuse', raison: refus.raison, id: partie.id, refus });
+  }
+  const dureeServeurMs = partie.debut === null ? null : Math.max(0, (ctx.recuA || Date.now()) - partie.debut);
+  if (avec) {
+    await db.finirPartieSwapou(Object.assign({ id: partie.id, graine: partie.graine, source: partie.source, dureeServeurMs }, base))
+      .catch(dbErr('finirPartieSwapou'));
+  }
+  const rep = await swapouFilVerif.demander({ type: 'verifier', graine: partie.graine, coups, perso: ctx.perso });
+  const r = (rep && !rep.erreur && rep.resultat) || null;
+  const v = SV.juger(r, { scoreDeclare: declare, dureeDeclareeMs: Number(params.duree) || 0,
+    dureeServeurMs, reflexionMs: SV.reflexionTotale(coups) });
+  let { verdict, raison } = v;
+  if (!r) raison = (rep && rep.erreur) || raison;
+  let refus = null;
+  if (verdict === 'divergent') refus = { type: 'swapou_divergent', gravite: 'grave', raison };
+  else if (verdict === 'refuse') refus = { type: 'swapou_duree_impossible', gravite: 'grave', raison };
+  else if (verdict === 'non_verifiable') refus = { type: 'swapou_non_verifiable', gravite: 'info', raison };
+  else if (partie.source === 'locale') {
+    verdict = 'refuse'; raison = 'graine tirée par le navigateur (le serveur n’a pas répondu au départ)';
+    refus = { type: 'swapou_graine_locale', gravite: 'info', raison };
+  } else if (rythme.parIa > 0 && !ctx.iaDetenteur) {
+    // Le bouton de l'IA n'existe que pour qui l'admin l'a accordée.
+    verdict = 'refuse'; raison = `${rythme.parIa} coup(s) joué(s) par le bouton de l’IA, qui n’est pas accordée à ce joueur`;
+    refus = { type: 'swapou_ia', gravite: 'grave', raison };
+  }
+  const combos = r && r.ok ? r.combos : null;
+  if (avec) {
+    await db.verdictPartieSwapou(partie.id, { verdict, scoreRejoue: r ? r.score : null, raison,
+      tempsJeuMs: r ? r.tempsJeuMs : null, combos, indices: v.indices }).catch(dbErr('verdictPartieSwapou'));
+  }
+  if (verdict === 'divergent') console.log(`[SWAPOU] partie ${partie.id} de ${username} DIVERGENTE — ${raison}`);
+  // Une partie validée (conforme, à graine du serveur, sans l'IA) : ses
+  // combos comptent, essai compris.
+  const validee = verdict === 'conforme';
+  if (validee && combos && !ctx.iaDetenteur) {
+    await swapouCompterCombos(username, partie.id, combos).catch((e) => console.error('[SWAPOU] combos :', e.message));
+  }
+  return sortie({ verdict, raison, id: partie.id, combos, scoreRejoue: r ? r.score : null, refus,
+    indices: v.indices, classable: validee && !ctx.essai && !ctx.iaDetenteur, dureeServeurMs,
+    tempsJeuMs: r ? r.tempsJeuMs : null });
+}
+
+// Le refus part au registre des alertes ; les indices d'une partie classée
+// (des horloges étranges, pas impossibles) aussi, en « info ».
+function swapouAlerter(username, ctx, v) {
+  const details = { partie: v.id, verdict: v.verdict, score: Number(ctx.score) || 0, scoreRejoue: v.scoreRejoue,
+    rankingId: ctx.rankingId || '', essai: !!ctx.essai, dureeDeclareeMs: Number(ctx.duree) || 0,
+    dureeServeurMs: v.dureeServeurMs == null ? null : v.dureeServeurMs, tempsJeuMs: v.tempsJeuMs == null ? null : v.tempsJeuMs,
+    indices: v.indices || [] };
+  if (v.refus) {
+    signalerTriche(username, { jeu: 'swapou2', type: v.refus.type, gravite: v.refus.gravite,
+      resume: (ctx.essai ? 'essai — ' : '') + v.refus.raison, details });
+  } else if (v.indices && v.indices.length) {
+    signalerTriche(username, { jeu: 'swapou2', type: 'swapou_horloges', gravite: 'info',
+      resume: v.indices.join(' ; '), details });
+  }
+}
+
+// Le message neutre : le joueur sait que sa partie n'est pas classée, pas
+// pourquoi le serveur en doute.
+const SWAPOU_MESSAGE_NON_CLASSE = 'Partie non classée : elle n’a pas pu être vérifiée.';
+const SWAPOU_MESSAGE_EN_VERIFICATION = 'Score en vérification :\nil sera classé dans un instant.';
+
+/*
+ * /api/saveScore, pour Swapou Challenge (swapou2_classic, swapou2_challenge).
+ * Appelée par handleSaveScore une fois le classement connu.
+ */
+async function swapouEnregistrerScore(res, o) {
+  const { params, sid, username, rankingId, scoreVal, scoreData } = o;
+  const recuA = Date.now();
+  // Le portillon FD, comme avant, à l'arrivée du score : une partie jouée
+  // compte son FD, qu'elle soit classée ou non.
+  const fdg = fdApplyToSave(sid, username, rankingId, null, o.routed, { score: scoreVal, data: scoreData });
+  const m = /^S(\d+):/.exec(String(params.data || ''));
+  const ctx = { essai: false, rankingId, data: scoreData, fd: !!fdg.direct, iaDetenteur: false, recuA,
+    tournoi: tournamentWindows.has(rankingId), perso: m ? Number(m[1]) : null, score: scoreVal, duree: params.duree };
+  const travail = swapouVerifierPartie(username, params, ctx).then((v) => {
+    swapouAlerter(username, ctx, v);
+    let result = null;
+    if (v.classable && fdg.direct) {
+      result = persistScore(username, rankingId, scoreVal, scoreData, { a: recuA });
+      if (process.env.DATABASE_URL && v.id) db.classerPartieSwapou(v.id, 'rejeu').catch(dbErr('classerPartieSwapou'));
+    }
+    console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} — ${v.verdict}${v.raison ? ' (' + v.raison + ')' : ''}`
+      + (result ? ` classé updated=${result.updated}` : (v.classable ? ' NON classé (plus de FD)' : ' NON classé')));
+    return { v, result };
+  });
+  const delai = new Promise((ok) => { const t = setTimeout(() => ok(null), SWAPOU_REPONSE_DELAI_MS); if (t.unref) t.unref(); });
+  const fini = await Promise.race([travail, delai]).catch((e) => {
+    console.error('[SWAPOU] vérification :', e.message);
+    return { v: { verdict: 'non_verifiable', classable: false }, result: null };
+  });
+  if (!fini) {
+    // Le rejeu tarde : le joueur l'apprend, et le saura à la fin.
+    travail.then(({ v, result }) => {
+      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: result
+        ? `Swapou : ta partie à ${scoreVal} points est vérifiée et classée.`
+        : `Swapou : ta partie à ${scoreVal} points n’a pas pu être vérifiée, elle n’est pas classée.` });
+      void v;
+    }).catch((e) => console.error('[SWAPOU] vérification différée :', e.message));
+    return res.json({ ok: true, enVerification: true, updated: false, newScore: scoreVal, oldScore: 0,
+      oldPos: 0, newPos: 0, rankingId, fdBlocked: !!fdg.blocked, message: SWAPOU_MESSAGE_EN_VERIFICATION });
+  }
+  const { v, result } = fini;
+  const fiche = await swapouFicheJoueur(username).catch(() => null);
+  if (!v.classable) {
+    return res.json({ ok: false, error: 'partie_non_classee', nonClasse: true, rankingId,
+      message: SWAPOU_MESSAGE_NON_CLASSE, fiche });
+  }
+  const r = result || { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
+  return res.json({ ok: true, updated: r.updated, newScore: r.newScore, oldScore: r.oldScore,
+    oldPos: r.oldPos, newPos: r.newPos, rankingId, fdBlocked: !!fdg.blocked, verifie: true, fiche });
+}
+
+/*
+ * /api/swapou/essai — la fin d'une partie d'ESSAI. Rien n'est classé (c'est
+ * la règle de l'essai), mais la partie se vérifie comme une autre : ses
+ * combos ne comptent qu'ainsi.
+ */
+app.post('/api/swapou/essai', async (req, res) => {
+  const params = Object.assign({}, req.query || {}, req.body || {});
+  const sid = String(params.sid || '');
+  const username = (sid && sessions[sid] && sessions[sid].user) || '';
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'not_authenticated' });
+  const m = /^S(\d+):/.exec(String(params.data || ''));
+  const ia = userOwnsGameFeature(users[username], 'swapouAnalyse');
+  const ctx = { essai: true, rankingId: '', data: String(params.data || ''), fd: false, iaDetenteur: ia,
+    recuA: Date.now(), tournoi: false, perso: m ? Number(m[1]) : null, score: params.score, duree: params.duree };
+  try {
+    const v = await swapouVerifierPartie(username, params, ctx);
+    swapouAlerter(username, ctx, v);
+    res.json({ ok: true, essai: true, verifiee: v.verdict === 'conforme', fiche: await swapouFicheJoueur(username) });
+  } catch (e) {
+    console.error('[SWAPOU] essai :', e.message);
+    res.json({ ok: false });
+  }
+});
+
+/*
+ * ══ LES COMBOS, COMPTÉS PAR LE SERVEUR ══════════════════════════════════
+ *
+ * Par joueur : `verifies` (les parties rejouées conformes) et `herites` (ce
+ * que sa fiche disait à la première rencontre — le navigateur l'écrivait seul,
+ * il a pu être forgé : gardé à part, ni effacé ni cru, l'admin décide). La
+ * fiche du jeu et la fruticard montrent la somme ; le picto d'un combo vient
+ * au cinquième, donné par le serveur à la partie vérifiée qui l'atteint.
+ */
+const SWAPOU_NB_COMBOS = 11;
+const SWAPOU_COMBO_TITEMS = 27;      // $items[27 + n] : le picto du combo n (cf. SWAPOU2_TITEMS)
+const swapouComboPicto = (n) => '$combo' + String(n + 1).padStart(2, '0');
+const swapouTableau = (t) => {
+  const a = Array.isArray(t) ? t : [];
+  const r = [];
+  for (let i = 0; i < SWAPOU_NB_COMBOS; i++) r.push(Math.max(0, Math.floor(Number(a[i]) || 0)));
+  return r;
+};
+const swapouCombosCache = new Map();   // username -> Promise<{ verifies, herites, note }>
+
+// Les $combos de la fiche stockée (la mémoire, sinon la base) — l'héritage.
+async function swapouCombosDeLaFiche(username) {
+  const u = users[username];
+  let brut = u && u.frutiSlots && u.frutiSlots.swapou2 && u.frutiSlots.swapou2['0'];
+  if (!brut && process.env.DATABASE_URL && u && u._dbId) {
+    const slots = await db.getFrutiSlots(u._dbId, 'swapou2').catch(() => null);
+    brut = slots && (slots['0'] || slots[0]);
+  }
+  try { return swapouTableau(JSON.parse(brut || '{}').$combos); } catch { return swapouTableau([]); }
+}
+function swapouCombosDe(username) {
+  const u = String(username || '').toLowerCase();
+  if (!swapouCombosCache.has(u)) {
+    const p = (async () => {
+      if (process.env.DATABASE_URL) {
+        let ligne = await db.lireCombosSwapou(u);
+        if (!ligne) {
+          await db.heriterCombosSwapou(u, await swapouCombosDeLaFiche(username));
+          ligne = await db.lireCombosSwapou(u);
+        }
+        return { verifies: swapouTableau(ligne.verifies), herites: swapouTableau(ligne.herites), note: ligne.herites_note || '' };
+      }
+      return { verifies: swapouTableau([]), herites: await swapouCombosDeLaFiche(username), note: '' };
+    })();
+    p.catch(() => swapouCombosCache.delete(u));
+    swapouCombosCache.set(u, p);
+  }
+  return swapouCombosCache.get(u);
+}
+function swapouADejaPicto(username, n) {
+  const u = users[username];
+  return !!(u && Array.isArray(u.gameItems) && u.gameItems.includes(swapouComboPicto(n)));
+}
+function swapouDonnerPicto(username, n) {
+  const u = users[username];
+  if (!u) return false;
+  if (!Array.isArray(u.gameItems)) u.gameItems = [];
+  const nom = swapouComboPicto(n);
+  if (u.gameItems.includes(nom)) return false;
+  u.gameItems.push(nom);
+  if (u._dbId) db.addGameItem(u._dbId, nom).catch((e) => console.error('[DB] addGameItem:', e.message));
+  const info = GAME_ITEM_INFO[nom];
+  addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: `Nouveau picto débloqué sur ${info ? info.game : 'Swapou'} : ${info ? info.name : nom} !` });
+  console.log(`[SWAPOU] picto ${nom} donné à ${username} (cinquième combo vérifié)`);
+  return true;
+}
+// Ce que le jeu doit afficher : les compteurs (héritage + vérifiés) et les
+// pictos de combo que le joueur possède.
+async function swapouFicheJoueur(username) {
+  const e = await swapouCombosDe(username);
+  const combos = e.verifies.map((x, i) => x + e.herites[i]);
+  const pictos = combos.map((_, n) => swapouADejaPicto(username, n));
+  return { combos, pictos };
+}
+/*
+ * Les combos d'une partie validée, au compteur du joueur — une seule fois
+ * par partie (prendreCombosPartieSwapou). Un combo qui atteint ici son
+ * cinquième donne son picto. La fiche stockée est réécrite dans la foulée :
+ * la fruticard montre la vérité même si le jeu ne sauvegarde plus.
+ */
+async function swapouCompterCombos(username, partieId, combos) {
+  const c = swapouTableau(combos);
+  if (!c.some((x) => x > 0)) return;
+  const u = String(username || '').toLowerCase();
+  const e = await swapouCombosDe(username);
+  if (process.env.DATABASE_URL) {
+    if (!(await db.prendreCombosPartieSwapou(partieId))) return;
+    const ligne = await db.ajouterCombosSwapou(u, c);
+    if (ligne) e.verifies = swapouTableau(ligne.verifies);
   } else {
-    const r = rep.resultat;
-    scoreRejoue = r.score;
-    if (!r.ok) { verdict = 'divergent'; raison = r.raison || 'partie non terminée'; }
-    else if (r.score !== Number(score)) { verdict = 'divergent'; raison = `score rejoué ${r.score}, déclaré ${score}`; }
-    else verdict = 'conforme';
+    for (let i = 0; i < SWAPOU_NB_COMBOS; i++) e.verifies[i] += c[i];
   }
-  await db.verdictPartieSwapou(partie.id, { verdict, scoreRejoue, raison });
-  if (verdict === 'divergent') {
-    console.log(`[SWAPOU] partie ${partie.id} de ${username} DIVERGENTE — ${raison}`);
+  for (let n = 0; n < SWAPOU_NB_COMBOS; n++) {
+    if (c[n] > 0 && e.verifies[n] + e.herites[n] >= 5) swapouDonnerPicto(username, n);
   }
-  // Le tournoi vérifié : seules les parties conformes, à graine du serveur.
-  if (swapouTournoiVerifie && classe && verdict === 'conforme' && partie.source === 'serveur' && !iaDetenteur) {
-    captureTournamentScore(username, classe, Number(score) || 0, data, { verifie: true, a: recuA });
+  await swapouMajFicheStockee(username);
+}
+/*
+ * LA FICHE RÉÉCRITE. Ce que le navigateur écrit dans `$combos`, et dans les
+ * cases de pictos de combo de `$items`, est remplacé par ce que sait le
+ * serveur : le jeu et la fruticard affichent la vérité, et l'extraction des
+ * pictos (extractGameItemsFromSlot) ne trouve plus de picto de combo qu'il
+ * n'aurait pas donné. Le reste de la fiche passe tel quel. Rend la fiche
+ * (texte) à enregistrer.
+ */
+async function swapouFicheReecrite(username, data) {
+  let o;
+  try { o = JSON.parse(data); } catch { return data; }
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return data;
+  const f = await swapouFicheJoueur(username);
+  const avant = JSON.stringify([o.$combos, Array.isArray(o.$items) ? o.$items.slice(SWAPOU_COMBO_TITEMS, SWAPOU_COMBO_TITEMS + SWAPOU_NB_COMBOS) : null]);
+  o.$combos = f.combos;
+  if (!Array.isArray(o.$items)) o.$items = [];
+  for (let n = 0; n < SWAPOU_NB_COMBOS; n++) {
+    const i = SWAPOU_COMBO_TITEMS + n;
+    if (f.pictos[n]) o.$items[i] = true;
+    else if (i < o.$items.length) o.$items[i] = null;
   }
+  const apres = JSON.stringify([o.$combos, o.$items.slice(SWAPOU_COMBO_TITEMS, SWAPOU_COMBO_TITEMS + SWAPOU_NB_COMBOS)]);
+  if (avant !== apres) console.log(`[SLOT]  swapou2 : combos de ${username} réécrits par le serveur`);
+  return JSON.stringify(o);
+}
+async function swapouMajFicheStockee(username) {
+  const u = users[username];
+  if (!u) return;
+  let brut = u.frutiSlots && u.frutiSlots.swapou2 && u.frutiSlots.swapou2['0'];
+  if (!brut && process.env.DATABASE_URL && u._dbId) {
+    const slots = await db.getFrutiSlots(u._dbId, 'swapou2').catch(() => null);
+    brut = slots && (slots['0'] || slots[0]);
+  }
+  if (!brut) return;
+  const neuf = await swapouFicheReecrite(username, brut);
+  if (neuf === brut) return;
+  if (!u.frutiSlots) u.frutiSlots = {};
+  if (!u.frutiSlots.swapou2) u.frutiSlots.swapou2 = {};
+  u.frutiSlots.swapou2['0'] = neuf;
+  if (u._dbId) db.upsertFrutiSlot(u._dbId, 'swapou2', 0, neuf).catch(dbErr('upsertFrutiSlot swapou2'));
+}
+// L'héritage de tous, à la mise en service : l'admin voit d'emblée ce que
+// chaque fiche disait, même d'un joueur qui ne revient pas. Une fois.
+async function swapouHeritageAuDemarrage() {
+  if (!process.env.DATABASE_URL) return;
+  if ((await db.getAppState('swapou_combos_herites')) === '1') return;
+  let n = 0;
+  for (const r of await db.fichesSwapouTous()) {
+    let c;
+    try { c = swapouTableau(JSON.parse(r.data || '{}').$combos); } catch { continue; }
+    if (!c.some((x) => x > 0)) continue;
+    await db.heriterCombosSwapou(r.username, c);
+    n++;
+  }
+  await db.setAppState('swapou_combos_herites', '1');
+  console.log(`[SWAPOU] combos hérités des fiches : ${n} joueur(s) relevé(s)`);
 }
 
 // ── L'admin : les parties, le bilan, le journal d'une partie, l'accord ──────
 app.get('/api/admin/swapou/parties', adminAuth, async (req, res) => {
-  if (!process.env.DATABASE_URL) return res.json({ ok: true, parties: [], bilan: [], tournoiVerifie: swapouTournoiVerifie, sansBase: true });
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, parties: [], bilan: [], sansBase: true, seuils: SV.SEUILS });
   try {
     const jours = Math.max(1, Math.min(Number(req.query.jours) || 30, 400));
     const depuis = new Date(Date.now() - jours * 86400000);
@@ -10063,7 +10406,7 @@ app.get('/api/admin/swapou/parties', adminAuth, async (req, res) => {
       const a = swapouAccordsEnCours.get(p.id);
       if (a) p.accordEnCours = a;
     }
-    res.json({ ok: true, parties, bilan, tournoiVerifie: swapouTournoiVerifie,
+    res.json({ ok: true, parties, bilan, seuils: SV.SEUILS, jour: parisDayKey(),
       attente: swapouFilVerif.attente, attenteAccord: swapouFilAccord.attente });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -10097,28 +10440,135 @@ app.post('/api/admin/swapou/parties/:id/accord', adminAuth, async (req, res) => 
     .catch((e) => console.error('[SWAPOU] accord :', e.message))
     .finally(() => swapouAccordsEnCours.delete(p.id));
 });
-// Rejouer à nouveau (après une panne du fil, par exemple).
+// Rejouer à nouveau (après une panne du fil, une correction du moteur…). Le
+// verdict est mis à jour avec les mêmes horloges ; le classement, lui, n'est
+// pas touché (pour classer, il y a le bouton « Classer »).
 app.post('/api/admin/swapou/parties/:id/rejouer', adminAuth, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, error: 'no db' });
   const p = await db.lirePartieSwapou(req.params.id).catch(() => null);
   if (!p || !p.coups || p.graine == null || p.fini_le == null) return res.status(404).json({ ok: false, error: 'introuvable' });
   const rep = await swapouFilVerif.demander({ type: 'verifier', graine: Number(p.graine), coups: p.coups, perso: p.perso });
-  let verdict = 'non_verifiable', raison = rep.erreur || '', scoreRejoue = null;
-  if (rep.resultat) {
-    scoreRejoue = rep.resultat.score;
-    if (!rep.resultat.ok) { verdict = 'divergent'; raison = rep.resultat.raison || 'partie non terminée'; }
-    else if (rep.resultat.score !== Number(p.score_declare)) { verdict = 'divergent'; raison = `score rejoué ${rep.resultat.score}, déclaré ${p.score_declare}`; }
-    else { verdict = 'conforme'; raison = ''; }
-  }
-  await db.verdictPartieSwapou(p.id, { verdict, scoreRejoue, raison });
-  res.json({ ok: true, verdict, scoreRejoue, raison });
+  const r = (rep && !rep.erreur && rep.resultat) || null;
+  const v = SV.juger(r, { scoreDeclare: p.score_declare, dureeDeclareeMs: Number(p.duree_ms) || 0,
+    dureeServeurMs: p.duree_serveur_ms == null ? null : Number(p.duree_serveur_ms), reflexionMs: SV.reflexionTotale(p.coups) });
+  let verdict = v.verdict, raison = r ? v.raison : (rep.erreur || v.raison);
+  if (verdict === 'conforme' && p.source === 'locale') { verdict = 'refuse'; raison = 'graine tirée par le navigateur (le serveur n’a pas répondu au départ)'; }
+  await db.verdictPartieSwapou(p.id, { verdict, scoreRejoue: r ? r.score : null, raison,
+    tempsJeuMs: r ? r.tempsJeuMs : null, combos: r && r.ok ? r.combos : null, indices: v.indices });
+  res.json({ ok: true, verdict, scoreRejoue: r ? r.score : null, raison, indices: v.indices });
 });
-app.post('/api/admin/swapou/tournoi-verifie', adminAuth, async (req, res) => {
-  const on = !!(req.body && (req.body.on === true || req.body.on === '1' || req.body.on === 1));
-  swapouTournoiVerifie = on;
-  if (process.env.DATABASE_URL) await db.setAppState('swapou_tournoi_verifie', on ? '1' : '0').catch(dbErr('swapou_tournoi_verifie'));
-  console.log(`[SWAPOU] tournoi : parties vérifiées seulement = ${on}`);
-  res.json({ ok: true, tournoiVerifie: on });
+/*
+ * CLASSER À LA MAIN une partie écartée (l'équivalent, pour Swapou, de
+ * /api/admin/antitriche/parties/:id/classer). Le score déclaré entre au
+ * classement où il devait aller, comme si le rejeu l'avait admis — tournoi
+ * compris, si sa fenêtre est ouverte ; et, si le rejeu a pu compter ses
+ * combos, ils passent au compteur. Le classement du Challenge étant celui du
+ * jour, une partie d'hier ne s'y pose plus.
+ */
+app.post('/api/admin/swapou/parties/:id/classer', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, error: 'no db' });
+  const p = await db.lirePartieSwapou(req.params.id).catch(() => null);
+  if (!p || !p.fini_le) return res.status(404).json({ ok: false, error: 'introuvable' });
+  if (p.classe) return res.json({ ok: true, deja: true });
+  if (p.essai) return res.status(400).json({ ok: false, error: 'essai', message: 'Une partie d’essai ne se classe pas.' });
+  const rk = RANKINGS[p.ranking_id] ? p.ranking_id : 'swapou2_classic';
+  if (isDailyResetRanking(rk) && parisDayKey(new Date(p.fini_le)) !== parisDayKey()) {
+    return res.status(400).json({ ok: false, error: 'jour_clos', message: 'Seule une partie du jour peut entrer au challenge du jour.' });
+  }
+  const username = normalizeUsername(p.username);
+  if (!users[username]) return res.status(404).json({ ok: false, error: 'joueur introuvable' });
+  const score = Number(p.score_declare) || 0;
+  if (score <= 0) return res.status(400).json({ ok: false, error: 'score nul' });
+  const r = persistScore(username, rk, score, p.data || '');
+  await db.classerPartieSwapou(p.id, 'admin');
+  if (Array.isArray(p.combos)) await swapouCompterCombos(username, p.id, p.combos).catch((e) => console.error('[SWAPOU] combos :', e.message));
+  console.log(`[ADMIN] swapou : partie ${p.id} de ${username} classée à la main (${rk} ${score}, updated=${r.updated})`);
+  res.json({ ok: true, updated: r.updated, score, rankingId: rk, combos: Array.isArray(p.combos) && !p.combos_comptes });
+});
+
+// Les combos par joueur : hérités (la fiche d'avant) face aux vérifiés.
+app.get('/api/admin/swapou/combos', adminAuth, async (req, res) => {
+  try {
+    let lignes;
+    if (process.env.DATABASE_URL) lignes = await db.tousCombosSwapou();
+    else {
+      lignes = [];
+      for (const [u, p] of swapouCombosCache) {
+        const e = await p.catch(() => null);
+        if (e) lignes.push({ username: u, verifies: e.verifies, herites: e.herites, herites_note: e.note });
+      }
+    }
+    const joueurs = lignes.map((l) => {
+      const herites = swapouTableau(l.herites), verifies = swapouTableau(l.verifies);
+      const nom = normalizeUsername(l.username) || l.username;
+      return { username: l.username, herites, verifies, note: l.herites_note || '',
+        pictos: herites.map((_, n) => swapouADejaPicto(nom, n)),
+        // L'écart le plus parlant : des combos dans la fiche que rien n'a vérifié.
+        ecart: herites.reduce((a, x) => a + x, 0), swapolotof: { herites: herites[10], verifies: verifies[10] } };
+    }).filter((j) => j.ecart > 0 || j.verifies.some((x) => x > 0));
+    joueurs.sort((a, b) => (b.swapolotof.herites - b.swapolotof.verifies) - (a.swapolotof.herites - a.swapolotof.verifies)
+      || b.ecart - a.ecart || a.username.localeCompare(b.username));
+    res.json({ ok: true, joueurs });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+/*
+ * LA DÉCISION DE L'ADMIN sur l'héritage d'un joueur :
+ *   · 'zero'     : les compteurs hérités sont remis à zéro ;
+ *   · 'couverts' : chaque compteur hérité est ramené à ce que couvrent ses
+ *                  parties rejouées conformes d'avant le rejeu décisif (le
+ *                  mode observateur gardait leurs coups : on les recompte).
+ * `retirerPictos` : les pictos de combo que le nouveau total (hérités +
+ * vérifiés) ne justifie plus — sous cinq — sont repris. Par défaut, ils
+ * restent.
+ */
+app.post('/api/admin/swapou/combos/:username', adminAuth, async (req, res) => {
+  const username = normalizeUsername(req.params.username);
+  const u = String(username || req.params.username || '').toLowerCase();
+  const action = String((req.body && req.body.action) || '');
+  if (!['zero', 'couverts'].includes(action)) return res.status(400).json({ ok: false, error: 'action' });
+  try {
+    const e = await swapouCombosDe(username || u);
+    let herites = swapouTableau([]);
+    let note = 'remis à zéro par l’admin';
+    let parties = 0;
+    if (action === 'couverts') {
+      if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, error: 'no db' });
+      const couverts = swapouTableau([]);
+      for (const p of await db.partiesRejouablesSwapou(u)) {
+        if (p.combos_comptes) continue;       // déjà dans les vérifiés
+        let c = Array.isArray(p.combos) ? p.combos : null;
+        if (!c) {
+          const rep = await swapouFilVerif.demander({ type: 'verifier', graine: Number(p.graine), coups: p.coups, perso: p.perso });
+          c = rep && rep.resultat && rep.resultat.ok ? rep.resultat.combos : null;
+        }
+        if (!c) continue;
+        parties++;
+        for (let i = 0; i < SWAPOU_NB_COMBOS; i++) couverts[i] += Math.max(0, Number(c[i]) || 0);
+      }
+      herites = e.herites.map((x, i) => Math.min(x, couverts[i]));
+      note = `ramenés à ${parties} partie(s) rejouée(s) d’avant le rejeu décisif`;
+    }
+    if (process.env.DATABASE_URL) await db.fixerHeritesCombosSwapou(u, herites, note);
+    e.herites = herites; e.note = note;
+    const retires = [];
+    if (req.body && (req.body.retirerPictos === true || req.body.retirerPictos === '1')) {
+      const user = users[username];
+      for (let n = 0; n < SWAPOU_NB_COMBOS; n++) {
+        const nom = swapouComboPicto(n);
+        if (e.herites[n] + e.verifies[n] >= 5 || !swapouADejaPicto(username, n)) continue;
+        user.gameItems = user.gameItems.filter((x) => x !== nom);
+        if (user._dbId) await db.removeGameItem(user._dbId, nom).catch(dbErr('removeGameItem'));
+        retires.push(nom);
+      }
+    }
+    await swapouMajFicheStockee(username);
+    console.log(`[ADMIN] swapou : combos hérités de ${u} — ${note}${retires.length ? ', pictos repris : ' + retires.join(', ') : ''}`);
+    res.json({ ok: true, herites, verifies: e.verifies, note, parties, pictosRetires: retires });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 /*
@@ -10346,7 +10796,16 @@ async function handleSaveScore(req, res) {
   // part, que seule la fiche admin relit ; rien n'est classé, donc aucun FD
   // n'est consommé.
   if (scoreIaSwapouMisDeCote(username, rankingId, scoreVal, scoreData, 'saveScore')) {
-    swapouNoterPartie(username, params, scoreVal, scoreData, null, true);
+    // La partie se rejoue quand même, pour l'admin (et ses combos) — après
+    // la réponse : elle ne décide de rien ici.
+    {
+      const mIa = /^S(\d+):/.exec(String(params.data || ''));
+      const ctxIa = { essai: false, rankingId, data: scoreData, fd: false, iaDetenteur: true, recuA: Date.now(),
+        tournoi: false, perso: mIa ? Number(mIa[1]) : null, score: scoreVal, duree: params.duree };
+      setImmediate(() => swapouVerifierPartie(username, params, ctxIa)
+        .then((v) => { if (v.verdict === 'divergent') swapouAlerter(username, ctxIa, v); })
+        .catch((e) => console.error('[SWAPOU] vérification (IA) :', e.message)));
+    }
     return res.json({
       ok: true, updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0,
       rankingId, fdBlocked: false, iaNonClasse: true,
@@ -10410,6 +10869,13 @@ async function handleSaveScore(req, res) {
     }
   }
 
+  // SWAPOU CHALLENGE : le rejeu décide (cf. swapouEnregistrerScore). Le
+  // portillon FD y est appliqué comme ci-dessous, puis la partie est rejouée,
+  // et le score n'est écrit que si elle est admise.
+  if (/^swapou2/.test(rankingId)) {
+    return swapouEnregistrerScore(res, { params, sid, username, rankingId, scoreVal, scoreData, routed: routedInfo });
+  }
+
   // Portillon FD (bucket direct) : pour snake3/swapou2/mb2/kaluga, le classement
   // visé (<jeu>_classic) EST le bucket du mode Challenge → il n'est classé que si
   // le joueur a un FD (marqueur du claim pré-partie, sinon consommation ici).
@@ -10438,12 +10904,6 @@ async function handleSaveScore(req, res) {
     awardJamaPictosOnScore(username);
   }
   console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} updated=${result.updated}`);
-  // Swapou : la partie est rejouée pour vérification, APRÈS cette réponse et
-  // sans rien y changer (cf. swapouNoterPartie).
-  if (/^swapou2/.test(rankingId)) {
-    try { swapouNoterPartie(username, params, scoreVal, scoreData, fdg.direct ? rankingId : null, false); }
-    catch (e) { /* la vérification ne touche jamais au score */ }
-  }
 
   // On n'éteint PLUS le voyant ici. Poser un score ne veut pas dire quitter :
   // le joueur enchaîne souvent une autre manche, et le voyant s'éteignait sous
@@ -14274,7 +14734,7 @@ app.post('/api/admin/tournaments/:id/fenetre', tournoiScope, async (req, res) =>
       if (!/^swapou2/.test(t.ranking_id)) return res.status(400).json({ error: 'recuperation', message: 'La récupération des scores déjà joués ne vaut que pour Swapou. Saisis-les à la main.' });
       const joueurs = [...new Set(aJouer.flatMap((m) => [m.player1, m.player2]).map((u) => String(u).toLowerCase()))];
       const jusqua = new Date(Math.min(fin.getTime(), Date.now()));
-      const lus = await db.meilleursSwapouEntre(joueurs, debut, jusqua, swapouTournoiVerifie);
+      const lus = await db.meilleursSwapouEntre(joueurs, debut, jusqua);
       const deja = new Map((await db.getRoundScores(t.id, round)).map((r) => [String(r.username).toLowerCase(), r]));
       recuperes = [];
       for (const r of lus) {
@@ -14802,6 +15262,8 @@ function renommerEnMemoire(a, n, affichage) {
   }
 
   // 2. Le compte change de clé, et de nom d'affichage.
+  // (Les combos de Swapou se relisent en base, sous le nouveau nom.)
+  swapouCombosCache.delete(a); swapouCombosCache.delete(n);
   if (compte) {
     delete users[a];
     users[n] = compte;
@@ -14980,6 +15442,7 @@ async function supprimerJoueurPartout(username, { par = 'admin' } = {}) {
     ch.history = ch.history.filter((e) => !new RegExp(`\\bu="${nomAff.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i').test(e.xml));
   }
   if (users[u]) delete users[u];
+  swapouCombosCache.delete(u);
   for (const [sid, s] of Object.entries(sessions)) {
     if (s.user === u) delete sessions[sid];
   }
@@ -22592,6 +23055,10 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
     const items = parsed.$items;
     if (Array.isArray(items)) {
       for (let i = 0; i < items.length && i < SWAPOU2_TITEMS.length; i++) {
+        // Les pictos de combo ($combo01..11) ne se lisent PAS dans la fiche :
+        // c'est le serveur qui les donne, au cinquième combo vérifié par le
+        // rejeu (swapouCompterCombos). Ceux déjà donnés restent.
+        if (/^\$combo\d\d$/.test(SWAPOU2_TITEMS[i])) continue;
         if (items[i] && SWAPOU2_TITEMS[i]) addIfNew(SWAPOU2_TITEMS[i]);
       }
     }
@@ -24188,6 +24655,15 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
   // classe pas). Rien de rattrapable dans une fiche du bureau.
 
   historiserSlot(username, game, slotId, users[username].frutiSlots[game][slotId], data, req);
+
+  // Swapou : les combos et leurs pictos sont ceux que le SERVEUR a comptés au
+  // rejeu des parties, pas ceux que la fiche prétend (swapouFicheReecrite).
+  if (game === 'swapou2' && slotId === '0' && data) {
+    try { data = await swapouFicheReecrite(username, data); } catch (e) {
+      console.error(`[SLOT]  swapou2 : réécriture des combos de ${username} : ${e.message}`);
+    }
+  }
+
   users[username].frutiSlots[game][slotId] = data;
   if (dbId) {
     // Surface DB errors instead of swallowing them — silent catch here was
@@ -32697,8 +33173,9 @@ async function boot() {
       // Les notes de Championnat que le serveur tient (championFicheTenue) :
       // en premier, les sockets sont déjà ouvertes et un salon peut en lire une.
       await chargerNotesChampionnat();
-      try { swapouTournoiVerifie = (await db.getAppState('swapou_tournoi_verifie')) === '1'; }
-      catch (e) { console.error('[SWAPOU] interrupteur du tournoi :', e.message); }
+      // Swapou : les compteurs de combos des fiches, relevés une fois comme
+      // « hérités » (cf. swapouHeritageAuDemarrage). En tâche de fond.
+      swapouHeritageAuDemarrage().catch((e) => console.error('[SWAPOU] combos hérités :', e.message));
       await antitricheCharger();
       await sanctionsTricheCharger();
       await chargerReglagesParisChallenge();
