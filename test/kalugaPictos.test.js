@@ -340,6 +340,8 @@ function chargerExtracteur() {
     users: {}, db: {}, addAndNotifyUserLog() {}, USER_LOG_TYPE: { PICTO: 10 },
     parseMiniwavePipe() { return null; }, parseMinipixizPipe() { return null; }, parseMb2Pipe() { return null; },
     SWAPOU2_TITEMS: [], MB2_TITEMS: [],
+    // Les pictos retirés par l'admin (sanctions anti-triche) : aucun ici.
+    pictoRetire() { return false; },
   };
   vm.createContext(bac);
   vm.runInContext(info + '\n' + fn + '\nthis.extraire = extractGameItemsFromSlot; this.INFO = GAME_ITEM_INFO;', bac, { filename: 'server.js' });
