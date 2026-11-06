@@ -895,9 +895,12 @@ async function soldeVaut(qui, attendu) {
   return v;
 }
 const adminEtat = async () => (await fetch(BASE + '/api/admin/quetes', { headers: ADMIN })).json();
+// Un score de Swapou au point près : depuis que le rejeu décide, il passe par
+// le classement à la main de l'admin, qui suit le même chemin (persistScore)
+// qu'une partie admise (cf. test/aideSwapou.js).
+const AS = require('./aideSwapou.js');
 async function swapou(pseudo, score) {
-  const b = new URLSearchParams({ sid: sids[pseudo], game: 'swapou2', m: '0', score: String(score), data: 'S0:' });
-  const r = await (await fetch(BASE + '/api/saveScore', { method: 'POST', body: b })).json();
+  const r = await AS.classerParLAdmin(BASE, sql, ADMIN, sids[pseudo], pseudo, score);
   assert.ok(r.ok, JSON.stringify(r));
 }
 const quete = (e, id) => e.quetes.find((q) => q.id === id);

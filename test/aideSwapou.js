@@ -131,4 +131,29 @@ async function partieHonnete(base, sql, sid, perso, o) {
   return Object.assign({ partie, rep }, j);
 }
 
-module.exports = { bac, jouer, formulaire, nouvellePartie, vieillir, rendre, partieHonnete };
+/*
+ * UN SCORE AU POINT PRÈS, par le chemin de l'admin. Les tests des quêtes, des
+ * primes ou des défis ont besoin de « 30 000 points » pile, qu'aucune partie
+ * du bot ne donne. Le score part comme avant par /api/saveScore — sans
+ * journal, il est refusé et noté —, puis l'admin le classe à la main
+ * (/api/admin/swapou/parties/:id/classer) : c'est le même persistScore, donc
+ * les mêmes quêtes, primes, médailles et tournois, que pour une partie
+ * admise par le rejeu.
+ */
+async function classerParLAdmin(base, sql, admin, sid, username, score, data) {
+  const r = await rendre(base, sid, score, null, 0, data ? { data } : undefined);
+  if (r.json.ok !== false || !r.json.nonClasse) throw new Error('le score sans journal devait être refusé : ' + JSON.stringify(r.json));
+  let ligne = null;
+  for (let i = 0; i < 60 && !ligne; i++) {
+    ligne = (await sql(`SELECT id FROM swapou_parties WHERE LOWER(username) = $1 AND score_declare = $2 AND NOT classe
+                         ORDER BY fini_le DESC LIMIT 1`, [String(username).toLowerCase(), Math.round(Number(score))]))[0];
+    if (!ligne) await new Promise((ok) => setTimeout(ok, 50));
+  }
+  if (!ligne) throw new Error('la partie refusée n’est pas notée');
+  const c = await (await fetch(base + '/api/admin/swapou/parties/' + ligne.id + '/classer',
+    { method: 'POST', headers: admin })).json();
+  if (!c.ok) throw new Error('classement à la main refusé : ' + JSON.stringify(c));
+  return c;
+}
+
+module.exports = { bac, jouer, formulaire, nouvellePartie, vieillir, rendre, partieHonnete, classerParLAdmin };

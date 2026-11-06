@@ -93,9 +93,12 @@ const parier = (qui, jeu, type, mise, choix) => post('/api/paris/challenge', { s
 const etat = async (qui) => (await fetch(BASE + '/api/paris/challenge?sid=' + (sids[qui] || ''))).json();
 const solde = async (qui) => (await (await fetch(BASE + '/api/paris?sid=' + sids[qui])).json()).solde;
 const xp = async (u) => Number((await sql(`SELECT xp FROM users WHERE username = $1`, [u]))[0].xp) || 0;
+// Un score de Swapou au point près : depuis que le rejeu décide, il passe par
+// le classement à la main de l'admin, qui suit le même chemin (persistScore)
+// qu'une partie admise (cf. test/aideSwapou.js).
+const AS = require('./aideSwapou.js');
 async function jouer(pseudo, score) {
-  const b = new URLSearchParams({ sid: sids[pseudo], game: 'swapou2', m: '0', score: String(score), data: 'S0:' });
-  const r = await (await fetch(BASE + '/api/saveScore', { method: 'POST', body: b })).json();
+  const r = await AS.classerParLAdmin(BASE, sql, ADMIN, sids[pseudo], pseudo, score);
   assert.ok(r.ok, JSON.stringify(r));
 }
 // Attendre qu'une condition (asynchrone) tienne.

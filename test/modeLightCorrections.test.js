@@ -300,12 +300,11 @@ test('un score de Swapou joué avec l\'IA ne se classe pas — il se range pour 
   assert.equal(fiche.iaScores[0].score, 4321);
   assert.ok(!(fiche.scores && fiche.scores.swapou2_classic), 'et rien au classement');
 
-  // Sans l'option, le score suit le chemin normal. (Un point, pas plus : le
-  // fichier des scores est partagé par tous les serveurs d'essai, et un score
-  // qui prendrait la tête d'un classement dérèglerait les tests des médailles.)
+  // Sans l'option, le score suit le chemin normal — qui, depuis que le rejeu
+  // décide, refuse un score sans journal de partie (test/swapouVerif.test.js).
   assert.equal((await option(false)).status, 200);
   const r2 = await sauver(1);
-  assert.equal(r2.ok, true);
+  assert.equal(r2.nonClasse, true);
   assert.equal(r2.iaNonClasse, undefined);
   await wait(300);
   assert.equal((await admin('/api/admin/users/joueuria')).iaScores.length, 1, 'pas de ligne IA pour une partie sans IA');
