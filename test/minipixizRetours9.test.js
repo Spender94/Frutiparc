@@ -7,6 +7,13 @@
  *     jeune fée qui sait déjà tout ce qui est à sa portée se voit offrir un
  *     doublon, que levelUp pousse dans `$spell`. La fiche le garde ; Ornegon
  *     n'en montre plus qu'un (Fee.sortsConnus).
+ *   · « Sur la fiche des stats de la fée, il est impossible de savoir si le
+ *     sort affiché a été appris au lvl up ou grâce à un grimoire. » — l'origine
+ *     se lit déjà dans la fiche (`$spell` ne reçoit que la naissance et les
+ *     montées ; grimoires et parchemins se rejouent à chaque chargement) : la
+ *     bille est dorée pour un grimoire, rose pour un parchemin, la phrase le
+ *     dit au toucher, et une légende l'explique dans le tableau de bois. Et
+ *     comme chez Ornegon, une bille par sort, même appris deux fois.
  */
 'use strict';
 
@@ -112,4 +119,102 @@ test('chez Ornegon, une barre par sort — plus de barre en double', () => {
   // dédoublonnée tout de même.
   c.ouvrirOrnegon({ fee: { fs: { $name: 'Lili', $spellCoef: [] }, sorts: [1, 2, 1, 20, 2] } });
   assert.deepStrictEqual(c.ornegon.sorts, [1, 2]);
+});
+
+// ── 2. La fiche : d'où vient le sort ────────────────────────────────────────
+
+test('l\'origine se lit dans la fiche : naissance, montée, parchemin, grimoire', () => {
+  const { fee } = feeDuJoueur();
+  const par = Object.fromEntries(fee.sortsConnus().map((k) => [k.sid, k]));
+  assert.strictEqual(par[20].origine, 'naissance');
+  assert.strictEqual(par[0].origine, 'naissance');
+  assert.strictEqual(par[5].origine, 'niveau');
+  assert.deepStrictEqual(par[3].sources, ['niveau', 'grimoire'],
+    'appris ET donné par un grimoire : appris d\'abord — il reste sans le livre');
+  assert.strictEqual(par[3].origine, 'niveau');
+  assert.strictEqual(par[7].origine, 'parchemin');
+  assert.strictEqual(par[9].origine, 'grimoire');
+  assert.deepStrictEqual(F.SORTS_DE_NAISSANCE, [20, 0]);
+});
+
+test('une vieille fiche, sans rien de neuf, se lit comme avant', () => {
+  // Rien n'est écrit dans la fiche pour l'origine : une fée d'avant n'a ni
+  // champ manquant ni affichage changé — ses sorts appris restent blancs.
+  const fs = { $name: 'Ancienne', $carac: [2, 2, 2, 2, 2, 2], $spell: [20, 0, 12], $inv: [] };
+  const avant = JSON.stringify(fs);
+  const fee = new F.Fee(fs, null, null);
+  fee.sortsConnus();
+  assert.strictEqual(JSON.stringify(fs), avant, 'la lecture n\'écrit rien dans la fiche');
+  assert.deepStrictEqual(fee.sortsConnus().map((k) => k.origine), ['naissance', 'naissance', 'niveau']);
+  // Et une fée sans $spell du tout ne casse rien.
+  assert.deepStrictEqual(new F.Fee({ $carac: [], $inv: [] }, null, null).sortsConnus(), []);
+});
+
+// Un sac sans canevas : rendreVolet dessine dans un faux client qui retient
+// la teinte de chaque bille.
+function voletMagie(fee) {
+  const poses = [];
+  globalThis.MinipixizClient = {
+    rendre: (sp, frame, taille, couleur) => ({ cle: sp.cle, frame, couleur }),
+    poserRendu: (ctx, r, x, y) => poses.push(Object.assign({ x, y }, r)),
+  };
+  const inv = Object.create(I.Inventaire.prototype);
+  inv.sprites = { sortBille: { cle: 'sortBille' }, sortSymbole: { cle: 'sortSymbole', etats: [] } };
+  inv.ctx = ctxEspion();
+  inv.zones = [];
+  inv.volet = 1;
+  inv.rendreVolet(fee);
+  delete globalThis.MinipixizClient;
+  return { inv, billes: poses.filter((p) => p.cle === 'sortBille') };
+}
+
+test('la bille d\'un sort de grimoire est dorée, celle d\'un parchemin rose ; un sort appris garde la sienne', () => {
+  const { fee } = feeDuJoueur();
+  const { inv, billes } = voletMagie(fee);
+  const pleines = billes.filter((b) => b.frame === 1);
+  assert.strictEqual(pleines.length, 6, 'six sorts, six billes — le Météore n\'est plus en double');
+  assert.deepStrictEqual(pleines.map((b) => b.couleur),
+    [undefined, undefined, undefined, undefined, I.TEINTE_SORT.parchemin, I.TEINTE_SORT.grimoire]);
+  assert.strictEqual(billes.filter((b) => b.frame === 2).length, 20 - 6, 'les autres restent vides');
+  const zones = inv.zones.filter((z) => z.quoi.sort !== undefined);
+  assert.deepStrictEqual(zones.map((z) => z.quoi.sort), [20, 0, 5, 3, 7, 9]);
+  assert.deepStrictEqual(zones[3].quoi.sources, ['niveau', 'grimoire']);
+});
+
+test('toucher un sort dit d\'où il vient', () => {
+  const inv = Object.create(I.Inventaire.prototype);
+  inv.rendre = () => {};
+  inv.agir({ sort: 3, sources: ['niveau', 'grimoire'] });
+  assert.match(inv.message, /\(appris en montant de niveau \+ grimoire du sac\)$/);
+  assert.match(inv.titre, / :$/);
+  inv.agir({ sort: 9, sources: ['grimoire'] });
+  assert.match(inv.message, /\(grimoire du sac\)$/);
+  inv.agir({ sort: 7, sources: ['parchemin'] });
+  assert.match(inv.message, /\(parchemin porté\)$/);
+  inv.agir({ sort: 0, sources: ['naissance'] });
+  assert.match(inv.message, /\(connu de naissance\)$/);
+  // Une zone sans sources (un appelant d'avant) dit l'effet seul.
+  inv.agir({ sort: 9 });
+  assert.doesNotMatch(inv.message, /\(/);
+  // Le plus long des cas — trois sources sur la plus longue description —
+  // passe en 8 px, pour tenir dans les trois lignes du tableau de bois.
+  inv.agir({ sort: 27, sources: ['niveau', 'parchemin', 'grimoire'] });
+  assert.strictEqual(inv.messageTaille, 8);
+});
+
+test('la légende ne parle que des teintes présentes', () => {
+  const inv = Object.create(I.Inventaire.prototype);
+  inv.ctx = ctxEspion();
+  const { fee } = feeDuJoueur();
+  assert.strictEqual(inv.legendeSorts(fee, 220), true);
+  assert.deepStrictEqual(inv.ctx.textes.map((t) => t.t), ['grimoire du sac', 'parchemin porté']);
+  // Une fée qui n'a que des sorts appris : rien à expliquer.
+  inv.ctx = ctxEspion();
+  const seule = new F.Fee({ $carac: [], $inv: [], $spell: [20, 0, 4] }, null, null);
+  assert.strictEqual(inv.legendeSorts(seule, 220), false);
+  assert.strictEqual(inv.ctx.textes.length, 0);
+  // Et elle s'affiche sous le mot par défaut du volet des sortilèges, pas
+  // par-dessus un message.
+  const src = lire('public/minipixiz/inventaire.js');
+  assert.match(src, /if \(fee && this\.volet === 1 && !this\.message && [^\n]*\) \{\s*this\.legendeSorts\(fee,/);
 });

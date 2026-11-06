@@ -127,6 +127,32 @@ const LETTRE_BASE = 3.3;              // repli, si le navigateur ne mesure pas l
 // Les points au-delà de huit : dorés, posés par-dessus les premiers.
 const POINT_OR = 0xFFD040;
 const POINT_OR_DX = 1.6, POINT_OR_DY = -1.8;
+// La bille d'un sort qui ne tient qu'à un objet (voir le volet MAGIE) : dorée
+// comme la reliure des grimoires, rose pour le parchemin. Une teinte de Flash
+// (Mc.setColor), donc un décalage : la bille blanche prend la couleur, le
+// symbole posé dessus reste lisible. Un sort appris garde sa bille d'origine.
+const TEINTE_SORT = { grimoire: 0xFFC850, parchemin: 0xFFA8D8 };
+// Ce que la phrase ajoute, selon les sources du sort (Fee.sortsConnus).
+// Court : la phrase s'ajoute à la description du sort, dans un tableau de
+// bois de trois lignes.
+const ORIGINE_SORT = {
+  naissance: 'connu de naissance',
+  niveau: 'appris en montant de niveau',
+  grimoire: 'grimoire du sac',
+  parchemin: 'parchemin porté',
+};
+function origineEnClair(sources) {
+  const l = (sources || []).map((s) => ORIGINE_SORT[s]).filter(Boolean);
+  // « appris en montant de niveau + grimoire du sac » : le grimoire fait
+  // doublon, le jeter ne lui ôtera rien.
+  return l.join(' + ');
+}
+// Les sorts du volet MAGIE : une bille par sort. Une fée sans `sortsConnus`
+// (un appelant qui fabrique la sienne) garde l'affichage d'avant.
+function sortsAffiches(fee) {
+  if (fee && typeof fee.sortsConnus === 'function') return fee.sortsConnus();
+  return ((fee && fee.sorts) || []).map((sid) => ({ sid, origine: 'niveau', sources: [] }));
+}
 // Le compteur de clés et d'étoiles : même fonte, deux fois plus haute, centrée
 // dans une boîte qui déborde à droite de l'alvéole, et à peine opaque.
 const COMPTE_COULEUR = 'rgba(67,100,175,.70)';
@@ -424,9 +450,16 @@ class Inventaire {
       : this.message ? { message: this.message, titre: this.titre, taille: this.messageTaille }
         : this.prochainNiveau(fee);
     poser('invMessage', mot && mot.titre ? 2 : 1, 100, 0, MSG_Y);
+    let lignesMot = 0;
     if (mot && mot.message) {
-      this.texte(mot.message, SCENE / 2, MSG_Y + (mot.titre ? 25 : 22), '#2a2416', mot.taille || 9, 200);
+      lignesMot = this.texte(mot.message, SCENE / 2, MSG_Y + (mot.titre ? 25 : 22), '#2a2416', mot.taille || 9, 200);
       if (mot.titre) this.texte(mot.titre, SCENE / 2, MSG_Y + 10, '#6b3a1a', 10);
+    }
+    // La légende des billes, sous le mot par défaut du volet des sortilèges —
+    // seulement si une bille est teintée : sans grimoire ni parchemin, toutes
+    // sont blanches et il n'y a rien à expliquer.
+    if (fee && this.volet === 1 && !this.message && !(this.survol && !(this.glisse && this.glisse.pris))) {
+      this.legendeSorts(fee, MSG_Y + (mot && mot.titre ? 25 : 22) + lignesMot * 11 + 2);
     }
     poser('invDevant', 1, 100, 0, 0);
     if (this.extraList) this.rendreFlechesARanger();
@@ -490,6 +523,44 @@ class Inventaire {
           this.glisse.x, this.glisse.y);
       }
     }
+  }
+
+  /**
+   * « ● grimoire du sac   ● parchemin porté » — une pastille de la teinte de
+   * la bille, puis son sens, centrés dans le tableau de bois. Les billes
+   * blanches (sorts appris) n'ont pas besoin d'y figurer : c'est la bille
+   * telle que le jeu l'a toujours dessinée.
+   */
+  legendeSorts(fee, y) {
+    const connus = sortsAffiches(fee);
+    const vues = ['grimoire', 'parchemin'].filter((o) => connus.some((k) => k.origine === o));
+    if (!vues.length) return false;
+    const ctx = this.ctx;
+    const mots = { grimoire: 'grimoire du sac', parchemin: 'parchemin porté' };
+    ctx.save();
+    ctx.font = 'bold 8px Verdana, Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const r = 3, ecart = 10;
+    const largeurs = vues.map((o) => 2 * r + 3 + ctx.measureText(mots[o]).width);
+    const total = largeurs.reduce((a, b) => a + b, 0) + ecart * (vues.length - 1);
+    let x = SCENE / 2 - total / 2;
+    const cy = y + 4;
+    vues.forEach((o, i) => {
+      const c = TEINTE_SORT[o];
+      ctx.beginPath();
+      ctx.arc(x + r, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#' + ('00000' + c.toString(16)).slice(-6);
+      ctx.fill();
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = '#6b3a1a';
+      ctx.stroke();
+      ctx.fillStyle = '#2a2416';
+      ctx.fillText(mots[o], x + 2 * r + 3, cy + 0.5);
+      x += largeurs[i] + ecart;
+    });
+    ctx.restore();
+    return true;
   }
 
   /**
@@ -908,19 +979,28 @@ class Inventaire {
         break;
       }
       case 1: {                        // MAGIE
+        // Un sort par bille, appris deux fois ou non (Fee.sortsConnus), et la
+        // bille dit d'où il vient : blanche s'il est APPRIS — de naissance ou
+        // au passage de niveau, il reste —, dorée s'il ne tient qu'à un
+        // grimoire du sac, rose s'il ne tient qu'au parchemin qu'elle porte.
+        // Les deux derniers s'en vont avec l'objet : c'est ce qu'on veut
+        // savoir au moment de choisir entre un sort et un point.
+        const connus = sortsAffiches(fee);
         let i = 0;
         for (let y = 0; y < SORT.lignes; y++) {
           for (let x = 0; x < SORT.colonnes; x++, i++) {
             const px = SORT.x + x * SORT.pas, py = SORT.y + y * SORT.pas;
-            const t = fee.sorts[i];
+            const k = connus[i];
+            const t = k ? k.sid : null;
             const vide = (t === undefined || t === null);
-            if (s.sortBille) C.poserRendu(ctx, C.rendre(s.sortBille, vide ? 2 : 1, 100), px, py);
+            const teinte = vide ? undefined : TEINTE_SORT[k.origine];
+            if (s.sortBille) C.poserRendu(ctx, C.rendre(s.sortBille, vide ? 2 : 1, 100, teinte), px, py);
             if (!vide && s.sortSymbole && s.sortSymbole.etats.some((e) => e.frame === t + 1)) {
               C.poserRendu(ctx, C.rendre(s.sortSymbole, t + 1, 100), px, py);
             }
             // Toucher un sort en dit le nom et l'effet (Spell.getDesc du
-            // bureau, montré là-bas en infobulle).
-            if (!vide) this.zoneRect({ sort: t }, px - 9, py - 9, 18, 18);
+            // bureau, montré là-bas en infobulle) — et d'où il vient.
+            if (!vide) this.zoneRect({ sort: t, sources: k.sources }, px - 9, py - 9, 18, 18);
           }
         }
         break;
@@ -1058,9 +1138,10 @@ class Inventaire {
       }
       if (l) lignes.push(l);
       lignes.forEach((li, i) => ctx.fillText(li, x, y + i * ((taille || 10) + 2)));
-    } else {
-      ctx.fillText(t, x, y);
+      return lignes.length;
     }
+    ctx.fillText(t, x, y);
+    return 1;
   }
 
   zoneRect(quoi, x, y, l, h) { this.zones.push({ quoi, x, y, l, h }); }
@@ -1215,11 +1296,19 @@ class Inventaire {
       }
       return;
     }
-    // Le sort touché se présente : son nom, puis son effet (Spell.getDesc).
+    // Le sort touché se présente : son nom, puis son effet (Spell.getDesc),
+    // puis d'où il vient — la couleur de la bille le dit, la phrase l'explique.
     if (quoi && quoi.sort !== undefined) {
       const S = racine.MinipixizSorts;
       const sort = S && S.nouveauSort ? S.nouveauSort(quoi.sort, null) : null;
-      if (sort) this.dire(sort.description(), sort.nom() + ' :');
+      if (sort) {
+        const d = sort.description();
+        const o = origineEnClair(quoi.sources);
+        const t = o ? d + ' (' + o + ')' : d;
+        // Le tableau de bois tient trois lignes à 9 px : au-delà, un cran plus
+        // petit, comme pour les goûts (montrerGouts).
+        this.dire(t, sort.nom() + ' :', t.length > 120 ? 8 : 0);
+      }
       return;
     }
     // La pastille de niveau dit la progression, comme l'infobulle du bureau.
@@ -1609,7 +1698,8 @@ class Inventaire {
 }
 
 const API = { Inventaire, dessinObjet, INV_SHAPE, SLOT_SIZE, INV_WIDTH, INV_HEIGHT,
-  SECTION, PANNEAU, EXTRA, BARRE, LETTRES, FLASK_ACTION, SECTION_BULLE, NIVEAU_SURPRISE };
+  SECTION, PANNEAU, EXTRA, BARRE, LETTRES, FLASK_ACTION, SECTION_BULLE, NIVEAU_SURPRISE,
+  TEINTE_SORT, ORIGINE_SORT, origineEnClair, sortsAffiches };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinipixizInventaire = API;
 

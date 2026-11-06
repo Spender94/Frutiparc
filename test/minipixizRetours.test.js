@@ -144,8 +144,10 @@ test('le sac dit le % d\'XP et décrit les sorts', () => {
   assert.match(src, /'niveau ' \+ \(nombre\(fee\.fs\.\$level\) \+ 1\) \+ ' \(' \+ prc \+ ' %\)'/,
     'l\'infobulle du bureau, dite dans le bandeau');
   // Les sorts se présentent au toucher.
-  assert.match(src, /zoneRect\(\{ sort: t \}/, 'chaque sort est touchable');
-  assert.match(src, /this\.dire\(sort\.description\(\), sort\.nom\(\) \+ ' :'\)/,
+  // (Depuis le retour sur l'origine des sorts, la zone porte aussi ses
+  // sources, et la phrase les ajoute à l'effet — voir minipixizRetours9.)
+  assert.match(src, /zoneRect\(\{ sort: t, sources: k\.sources \}/, 'chaque sort est touchable');
+  assert.match(src, /const d = sort\.description\(\);[\s\S]{0,400}this\.dire\(t, sort\.nom\(\) \+ ' :'/,
     'nom et effet dans le bandeau');
 });
 
