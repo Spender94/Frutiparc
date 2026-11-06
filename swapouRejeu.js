@@ -35,6 +35,9 @@ const TMOD = 6;
 const DT = TMOD / 40;
 const GARDE_IMAGES = 4000000;
 const MAX_COUPS = 20000;
+// Les noms de combo du Challenge (E.COMBOS : de la « confiture de fraise » au
+// « cocktail swapolotof », le onzième).
+const NB_COMBOS = 11;
 
 let moteur = null;
 function charger() {
@@ -91,7 +94,10 @@ function cleEchange(x, y, dx, dy) {
  * @param {{ analyse?: { budgetMs?:number }, surCoup?: function }} [opts]
  *   `analyse` : avant chaque coup, demander à l'analyseur de l'IA son
  *   classement des coups possibles, et noter le rang du coup joué (l'accord).
- * @returns {{ ok:boolean, fini:boolean, score:number, joues:number, total:number, raison?:string, accord?:object }}
+ * @returns {{ ok:boolean, fini:boolean, score:number, joues:number, total:number, raison?:string,
+ *             combos:number[], tempsJeuMs:number, accord?:object }}
+ *   `combos[n]` : combien de fois le combo n est tombé dans la partie ;
+ *   `tempsJeuMs` : la durée minimale de la partie (ses animations).
  */
 function rejouer(p, opts) {
   opts = opts || {};
@@ -109,34 +115,49 @@ function rejouer(p, opts) {
   Manager.client.partie = { id: 'rejeu', graine: Number(p.graine) >>> 0 };
   Manager.mode = new SW.Challenge();
   const chal = Manager.mode;
+  // LES COMBOS, COMPTÉS PAR LE REJEU. Le jeu appelle `TItem.addCombo(n)` à
+  // chaque chaîne qui atteint un palier (AnimatorChallenge.finalComboScore) :
+  // c'est là, et nulle part ailleurs, qu'un cocktail « tombe ». On prend la
+  // place de cette fonction le temps du rejeu — elle n'écrit alors que dans
+  // le relevé de la partie, pas dans la fiche du bac à sable — et on la rend
+  // à la fin, quoi qu'il arrive.
+  const combos = new Array(NB_COMBOS).fill(0);
+  const addComboJeu = SW.TItem.addCombo;
+  SW.TItem.addCombo = function (n) {
+    if (n >= 0 && n < NB_COMBOS) combos[n]++;
+  };
   let i = 0, images = 0, raison = null;
   const A = opts.analyse ? chargerAnalyseur() : null;
   const aide = A ? new SW.AnalyseChallenge(chal) : null;
   const rangs = [];
-  while (Manager.mode === chal) {
-    if (++images > GARDE_IMAGES) { raison = 'rejeu interrompu (trop long)'; break; }
-    if (!chal.lock && !chal.pause.activated()) {
-      if (i >= coups.length) { raison = 'la partie continue après le dernier coup'; break; }
-      const c = coups[i++];
-      if (A) rangs.push(rangDuCoup(A, aide, c, opts.analyse));
-      if (opts.surCoup) opts.surCoup(i, coups.length);
-      if (c.t === 'd') {
-        chal.defend();
-        if (!chal.lock) { raison = 'défense impossible au coup ' + i; break; }
-      } else {
-        const lvl = chal.player.level;
-        const [dx, dy] = SENS[c.sens];
-        const col = lvl.fruits[c.x];
-        const col2 = lvl.fruits[c.x + dx];
-        const paire = {
-          x: c.x, y: c.y, dx, dy,
-          f1: col ? (col[c.y] === undefined ? null : col[c.y]) : null,
-          f2: col2 ? (col2[c.y + dy] === undefined ? null : col2[c.y + dy]) : null,
-        };
-        if (!paire.f1 || !chal.jouerPaire(paire)) { raison = 'échange impossible au coup ' + i; break; }
+  try {
+    while (Manager.mode === chal) {
+      if (++images > GARDE_IMAGES) { raison = 'rejeu interrompu (trop long)'; break; }
+      if (!chal.lock && !chal.pause.activated()) {
+        if (i >= coups.length) { raison = 'la partie continue après le dernier coup'; break; }
+        const c = coups[i++];
+        if (A) rangs.push(rangDuCoup(A, aide, c, opts.analyse));
+        if (opts.surCoup) opts.surCoup(i, coups.length);
+        if (c.t === 'd') {
+          chal.defend();
+          if (!chal.lock) { raison = 'défense impossible au coup ' + i; break; }
+        } else {
+          const lvl = chal.player.level;
+          const [dx, dy] = SENS[c.sens];
+          const col = lvl.fruits[c.x];
+          const col2 = lvl.fruits[c.x + dx];
+          const paire = {
+            x: c.x, y: c.y, dx, dy,
+            f1: col ? (col[c.y] === undefined ? null : col[c.y]) : null,
+            f2: col2 ? (col2[c.y + dy] === undefined ? null : col2[c.y + dy]) : null,
+          };
+          if (!paire.f1 || !chal.jouerPaire(paire)) { raison = 'échange impossible au coup ' + i; break; }
+        }
       }
+      Manager.main(TMOD, DT);
     }
-    Manager.main(TMOD, DT);
+  } finally {
+    SW.TItem.addCombo = addComboJeu;
   }
   const fini = Manager.mode !== chal;
   if (fini && i < coups.length) raison = raison || ('partie finie au coup ' + i + ' sur ' + coups.length);
@@ -144,7 +165,20 @@ function rejouer(p, opts) {
   // L'écran de fin, refermé : le bac à sable est prêt pour la suivante.
   if (Manager.mode && Manager.mode.destroy) Manager.mode.destroy();
   Manager.mode = null;
-  const r = { ok: !raison && fini, fini, score, joues: i, total: coups.length, raison: raison || undefined };
+  const r = {
+    ok: !raison && fini, fini, score, joues: i, total: coups.length, raison: raison || undefined,
+    combos,
+    // LE TEMPS DE JEU : ce que durent, bout à bout, les animations de la
+    // partie quand le joueur rejoue à l'instant où le plateau lui rend la
+    // main. Une image vaut 25 ms (le jeu tourne à 40 images par seconde,
+    // tmod = dt × 40), et le navigateur ne peut pas aller plus vite que
+    // l'horloge (screens.js plafonne le pas, il ne l'accélère jamais) :
+    // c'est la durée MINIMALE de la partie. Au pas de six images, chaque
+    // animation se finit un peu après son terme — le rejeu surestime ce
+    // minimum d'environ 5 % (mesuré sur des parties du bot jouées au pas de
+    // 0,4) ; c'est à l'appelant d'en tenir compte (swapouVerdict.js).
+    tempsJeuMs: Math.round(images * TMOD * 25),
+  };
   if (A) r.accord = bilanAccord(rangs, coups);
   return r;
 }
@@ -227,4 +261,4 @@ function rythme(texte) {
   };
 }
 
-module.exports = { rejouer, rythme, lireCoups, charger, cleEchange };
+module.exports = { rejouer, rythme, lireCoups, charger, cleEchange, NB_COMBOS, TMOD };
