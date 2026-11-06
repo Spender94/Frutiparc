@@ -203,6 +203,12 @@ test('sans sid, aucune écriture ne prend la dernière session vue depuis la mê
   const slot = await (await fetch(BASE + '/api/saveFrutiSlot', { method: 'POST',
     body: new URLSearchParams({ game: 'snake3', slotId: '1', data: '{"$son":true}' }) })).text();
   assert.match(slot, /ok=0/, 'saveFrutiSlot sans sid');
+  // Les parties vérifiées non plus : sans sid, pas de jeton au nom d'un autre.
+  const arbre = await fetch(BASE + '/api/minipixiz/arbre/partie', { method: 'POST', headers: JSN, body: '{}' });
+  assert.equal(arbre.status, 401, 'arbre creux sans sid');
+  const fever = await (await fetch(BASE + '/api/minifever/partie', { method: 'POST', headers: JSN,
+    body: JSON.stringify({ palier: 0 }) })).json();
+  assert.equal(fever.error, 'session', 'Mini-Fever sans sid');
   assert.equal(await record('miniwave_classic', pseudo), null, 'rien n’a été classé au nom du joueur');
   assert.match(journal, /\[SWF-SCORE\] skip save user="" sid=""/);
 });

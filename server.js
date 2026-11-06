@@ -17103,7 +17103,7 @@ function minifeverScore(palier, niveau) {
  * comme à l'album. Sans jeton, ou sur un jeton déjà rendu, rien n'est classé.
  */
 app.post('/api/minifever/partie', (req, res) => {
-  const sid = getSidFromRequest(req, req.body || {});
+  const sid = getSidPorteParLaRequete(req, req.body || {});
   const username = resolveUsernameFromSid(sid);
   if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
   const palier = Math.trunc(Number((req.body || {}).palier));
@@ -17121,7 +17121,7 @@ app.post('/api/minifever/partie', (req, res) => {
 app.post('/api/minifever/score', async (req, res) => {
   await rollDailyChallengeIfNeeded();
   const recuA = Date.now();
-  const sid = getSidFromRequest(req, req.body || {});
+  const sid = getSidPorteParLaRequete(req, req.body || {});
   const username = resolveUsernameFromSid(sid);
   const b = req.body || {};
   // UN REFUS S'ÉCRIT AU JOURNAL. Il partait muet, et le client le taisait
@@ -18087,7 +18087,7 @@ function scoreIaSwapouMisDeCote(username, rankingId, score, data, voie) {
 
 // ── MiniPixiz : l'Arbre creux ───────────────────────────────────────────
 app.post('/api/minipixiz/arbre/partie', (req, res) => {
-  const sid = getSidFromRequest(req, req.body || {});
+  const sid = getSidPorteParLaRequete(req, req.body || {});
   const username = resolveUsernameFromSid(sid);
   if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'not_authenticated' });
   if (!antitricheDebit(username)) return res.json({ ok: false, error: 'rate_limited' });
@@ -18103,7 +18103,7 @@ app.post('/api/minipixiz/arbre/fin', async (req, res) => {
   await rollDailyChallengeIfNeeded();
   const recuA = Date.now();
   const b = req.body || {};
-  const sid = getSidFromRequest(req, b);
+  const sid = getSidPorteParLaRequete(req, b);
   const username = resolveUsernameFromSid(sid);
   if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'not_authenticated' });
   const declare = Math.max(0, Math.round(Number(b.score) || 0));
@@ -18484,7 +18484,7 @@ app.get('/api/jamajama/aide', (req, res) => {
 
 // L'aventure (le format de chaîne du jeu d'origine) et les options.
 app.post('/api/jamajama/aventure', (req, res) => {
-  const sid = getSidFromRequest(req, req.body || {});
+  const sid = getSidPorteParLaRequete(req, req.body || {});
   const username = resolveUsernameFromSid(sid);
   if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
   const dt = String((req.body || {}).dt || '');
@@ -18495,7 +18495,7 @@ app.post('/api/jamajama/aventure', (req, res) => {
   res.json({ ok: true });
 });
 app.post('/api/jamajama/options', (req, res) => {
-  const sid = getSidFromRequest(req, req.body || {});
+  const sid = getSidPorteParLaRequete(req, req.body || {});
   const username = resolveUsernameFromSid(sid);
   if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
   const p = String((req.body || {}).p || '');
@@ -18519,7 +18519,7 @@ app.post('/api/jamajama/options', (req, res) => {
  * jamajama_classic (le moins de coups — lowerIsBetter est déjà dans RANKINGS).
  */
 app.post('/api/jamajama/score', async (req, res) => {
-  const sid = getSidFromRequest(req, req.body || {});
+  const sid = getSidPorteParLaRequete(req, req.body || {});
   const username = resolveUsernameFromSid(sid);
   if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
   const b = req.body || {};
