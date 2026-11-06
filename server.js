@@ -22530,13 +22530,14 @@ function slotTenuParLeServeur(game, slotId) {
 // Le refus d'une écriture de slot, dit une fois pour toutes (HTTP et fil).
 function signalerSlotRefuse(username, game, slotId, data, voie) {
   const tenu = slotTenuParLeServeur(game, slotId);
-  signalerTriche(username, { jeu: String(game).slice(0, 40), type: 'slot_refuse', gravite: tenu ? 'grave' : 'suspect',
+  // Le jeu et le slot viennent du client : bornés avant d'entrer au registre.
+  const g = String(game).slice(0, 40), n = String(slotId).slice(0, 10);
+  signalerTriche(username, { jeu: g, type: 'slot_refuse', gravite: tenu ? 'grave' : 'suspect',
     resume: tenu
-      ? `écriture du slot ${game}/${slotId}, que seul le serveur écrit (${voie})`
-      : `écriture d'un slot qu'aucun client n'écrit : ${game}/${slotId} (${voie})`,
-    details: { game: String(game).slice(0, 40), slotId: String(slotId).slice(0, 10), voie,
-      taille: String(data || '').length, debut: String(data || '').slice(0, 300) } });
-  console.log(`[SLOT]  ${voie} ${username} ${game}/${slotId} REFUSÉ — ${tenu ? 'slot tenu par le serveur' : 'hors liste blanche'}`);
+      ? `écriture du slot ${g}/${n}, que seul le serveur écrit (${voie})`
+      : `écriture d'un slot qu'aucun client n'écrit : ${g}/${n} (${voie})`,
+    details: { game: g, slotId: n, voie, taille: String(data || '').length, debut: String(data || '').slice(0, 300) } });
+  console.log(`[SLOT]  ${voie} ${username} ${g}/${n} REFUSÉ — ${tenu ? 'slot tenu par le serveur' : 'hors liste blanche'}`);
 }
 // ─────────────────────────────────────────────
 // Extract game items (pictos/titems) from FrutiCard slot 0 data.
