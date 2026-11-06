@@ -1,5 +1,5 @@
 /*
- * Le neuvième lot de retours MiniPixiz : les sorts.
+ * Le neuvième lot de retours MiniPixiz : les sorts et l'expérience.
  *
  *   · « Pixiz (Ornegon) : si un sort a été appris une deuxième fois, il
  *     apparaît également deux fois sur la page d'Ornegon. » — setNextLevelUp
@@ -14,6 +14,8 @@
  *     bille est dorée pour un grimoire, rose pour un parchemin, la phrase le
  *     dit au toucher, et une légende l'explique dans le tableau de bois. Et
  *     comme chez Ornegon, une bille par sort, même appris deux fois.
+ *   · « Ajouter le % d'xp de la fée en forêt sous le portrait » — sous les
+ *     cœurs de la colonne de la fée, « XP 42 % » et une jauge fine.
  */
 'use strict';
 
@@ -217,4 +219,156 @@ test('la légende ne parle que des teintes présentes', () => {
   // par-dessus un message.
   const src = lire('public/minipixiz/inventaire.js');
   assert.match(src, /if \(fee && this\.volet === 1 && !this\.message && [^\n]*\) \{\s*this\.legendeSorts\(fee,/);
+});
+
+// ── 3. L'expérience en forêt ────────────────────────────────────────────────
+
+test('pourcentExp : le chemin vers le niveau suivant, en pour cent entiers', () => {
+  const fee = new F.Fee({ $carac: [], $inv: [], $spell: [], $level: 4, $exp: 700 }, null, null);
+  assert.strictEqual(fee.limiteExp(), 1250);
+  assert.strictEqual(fee.pourcentExp(), 56);
+  fee.fs.$exp = 0; assert.strictEqual(fee.pourcentExp(), 0);
+  fee.fs.$exp = 1249.5; assert.strictEqual(fee.pourcentExp(), 99, 'pas d\'arrondi qui annonce 100 trop tôt');
+  fee.fs.$exp = 1250; assert.strictEqual(fee.pourcentExp(), 100, 'de quoi monter');
+  fee.fs.$exp = 4000; assert.strictEqual(fee.pourcentExp(), 100, 'borné');
+  fee.fs.$level = F.NIVEAU_MAX; assert.strictEqual(fee.pourcentExp(), null, 'au plafond, plus de chemin');
+});
+
+test('la colonne de la fée écrit « XP 56 % » sous les cœurs, avec sa jauge', () => {
+  const K = chargerClient();
+  const c = Object.create(K.Client.prototype);
+  const { fee } = feeDuJoueur();
+  const ctx = ctxEspion();
+  const boite = { vie: { x: 136, y: 86, l: 100, h: 18 } };
+  c.dessinerExperience(ctx, fee, boite, { decalBas: 0 });
+  assert.strictEqual(ctx.textes.length, 1);
+  assert.strictEqual(ctx.textes[0].t, 'XP 56 %');
+  assert.strictEqual(ctx.textes[0].x, 186, 'centré dans la colonne');
+  assert.ok(ctx.textes[0].y > 86 + 12, 'sous la rangée de cœurs');
+  const [fond, plein] = ctx.rects;
+  assert.ok(Math.abs(plein.l - fond.l * 0.56) < 1e-9, 'la jauge remplie à 56 %');
+  // Deux rangées de cœurs : le texte descend d'autant.
+  const ctx2 = ctxEspion();
+  c.dessinerExperience(ctx2, fee, boite, { decalBas: 14 });
+  assert.strictEqual(ctx2.textes[0].y, ctx.textes[0].y + 14);
+  // Au plafond : « niveau max », sans jauge.
+  fee.fs.$level = F.NIVEAU_MAX;
+  const ctx3 = ctxEspion();
+  c.dessinerExperience(ctx3, fee, boite, { decalBas: 0 });
+  assert.strictEqual(ctx3.textes[0].t, 'niveau max');
+  assert.strictEqual(ctx3.rects.length, 0);
+});
+
+test('en forêt seulement : le donjon et l\'arc-en-ciel n\'ont pas la ligne', () => {
+  const src = lire('public/minipixiz/game.js');
+  assert.match(src, /if \(fee && !this\.lieu\) this\.dessinerExperience\(ctx, fee, boite, lignes\);/);
+  // Elle vient APRÈS les cœurs, dans dessinerInterface.
+  const corps = src.slice(src.indexOf('  dessinerInterface(ctx, tmod) {'), src.indexOf('  dessinerExperience(ctx, fee, boite, lignes) {'));
+  assert.ok(corps.indexOf('LA VIE (inter.Life)') < corps.indexOf('this.dessinerExperience('));
+});
+
+// ── 4. Dans un vrai navigateur ──────────────────────────────────────────────
+//
+// Le jeu complet, sans compte (pas de ?sid : la fiche reste locale) : la fée
+// du joueur entre en forêt, chez Ornegon, puis dans le sac. On espionne
+// fillText pour lire ce que la colonne écrit, et on lit les pixels des billes.
+
+function chromium() {
+  for (const p of ['playwright', '/opt/node22/lib/node_modules/playwright']) {
+    try { return require(p).chromium; } catch { /* suivant */ }
+  }
+  return null;
+}
+
+test('dans Chromium : la forêt dit l\'XP, Ornegon une barre par sort, le sac teinte ses billes', async (t) => {
+  const pw = chromium();
+  if (!pw) { t.skip('Playwright absent'); return; }
+  const { spawn } = require('node:child_process');
+  const PORT = 5611;
+  const proc = spawn(process.execPath, ['server.js'], {
+    cwd: ROOT,
+    env: Object.assign({}, process.env, {
+      PORT: String(PORT), DATABASE_URL: '', ADMIN_KEY: 'cle-test',
+      XMLSOCKET_PORT: '5612', FRUTISCORE_PORT: '5613',
+    }),
+    stdio: ['ignore', 'ignore', 'ignore'],
+  });
+  let navigateur = null;
+  try {
+    let pret = false;
+    for (let i = 0; i < 100 && !pret; i++) {
+      try { pret = (await fetch(`http://localhost:${PORT}/minipixiz/index.html`)).ok; } catch { /* pas encore */ }
+      if (!pret) await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!pret) { t.skip('le serveur ne répond pas'); return; }
+    try { navigateur = await pw.launch(); } catch (e) { t.skip('Chromium absent : ' + e.message); return; }
+    const p = await navigateur.newPage({ viewport: { width: 760, height: 760 }, deviceScaleFactor: 1 });
+    const erreurs = [];
+    p.on('pageerror', (e) => erreurs.push(e.message));
+    await p.addInitScript(() => {
+      window.__textes = [];
+      const f = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (txt, x, y) {
+        window.__textes.push(String(txt));
+        return f.apply(this, arguments);
+      };
+    });
+    await p.goto(`http://localhost:${PORT}/minipixiz/index.html`);
+    await p.waitForFunction(() => window.__plateforme && window.__client && window.__entrerEnForet);
+    await p.evaluate(() => {
+      const c = window.__plateforme.carte;
+      const fs = window.MinipixizFee.genererGraine();
+      fs.$carac = [3, 3, 3, 3, 3, 4]; fs.$life = 3; fs.$mana = 8; fs.$hunger = 20; fs.$moral = 20;
+      fs.$level = 4; fs.$exp = 700;
+      fs.$spell = [20, 0, 5, 3, 5];
+      fs.$inv = [107, null];
+      c.$faerie.push(fs); c.$current = c.$faerie.length - 1;
+      c.$bag = 2;
+      c.$inv[0] = 203; c.$inv[1] = 209;
+    });
+
+    // La forêt : « XP 56 % » finit par s'écrire (la gerbe d'ouverture passée).
+    await p.evaluate(() => window.__entrerEnForet());
+    await p.waitForFunction(() => window.__textes.indexOf('XP 56 %') >= 0, null, { timeout: 15000 });
+
+    // Ornegon : cinq barres, pas six.
+    const barres = await p.evaluate(() => {
+      window.__client.jeu = null;
+      const fi = new window.MinipixizFee.Fee(window.__feeCouranteSeed(), null, window.__plateforme.carte);
+      const or = window.__client.ouvrirOrnegon({ fee: fi, surFermer() {} });
+      return or.sorts;
+    });
+    assert.deepStrictEqual(barres, [0, 5, 3, 7, 9]);
+
+    // Le sac, volet des sortilèges : six billes, la légende, et des teintes.
+    const sac = await p.evaluate(() => {
+      window.__client.ornegon = null;
+      window.__ouvrirSac();
+      const inv = window.__inventaire;
+      inv.volet = 1;
+      window.__textes = [];
+      inv.rendre();
+      const zones = inv.zones.filter((z) => z.quoi && z.quoi.sort !== undefined);
+      // Le pixel du bord gauche de chaque bille (le symbole occupe le centre).
+      const g = inv.canvas.getContext('2d');
+      const k = inv.nettete;
+      const pixels = zones.map((z) => {
+        const d = g.getImageData(Math.round((z.x + 3) * k), Math.round((z.y + 9) * k), 1, 1).data;
+        return [d[0], d[1], d[2]];
+      });
+      return { sorts: zones.map((z) => z.quoi.sort), pixels, textes: window.__textes.slice() };
+    });
+    assert.deepStrictEqual(sac.sorts, [20, 0, 5, 3, 7, 9]);
+    assert.ok(sac.textes.includes('grimoire du sac') && sac.textes.includes('parchemin porté'), 'la légende');
+    const [, , , appris, parchemin, grimoire] = sac.pixels;
+    // Doré : plus de rouge que de bleu ; rose : le bleu ne domine plus ; un
+    // sort appris garde sa bille bleutée.
+    assert.ok(appris[2] >= appris[0], 'bille apprise bleutée : ' + appris);
+    assert.ok(grimoire[0] > grimoire[2] + 40, 'bille du grimoire dorée : ' + grimoire);
+    assert.ok(parchemin[0] > parchemin[2], 'bille du parchemin rose : ' + parchemin);
+    assert.deepStrictEqual(erreurs, []);
+  } finally {
+    if (navigateur) await navigateur.close();
+    proc.kill();
+  }
 });

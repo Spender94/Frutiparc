@@ -363,6 +363,13 @@ class Fee {
   // getNextExpLimit : (niveau+1)² × 50. Le premier niveau coûte 50 points, le
   // dixième 5 000 : la courbe est ce qui rend une fée de niveau 15 précieuse.
   limiteExp() { return Math.pow(nombre(this.fs.$level) + 1, 2) * 50; }
+  // Le chemin fait vers le niveau suivant, en pour cent ENTIERS, de 0 à 100 :
+  // 100, c'est « de quoi monter » — le panneau de choix s'ouvrira à la fin du
+  // niveau en cours. Au plafond (NIVEAU_MAX), il n'y a plus de chemin : null.
+  pourcentExp() {
+    if (nombre(this.fs.$level) >= NIVEAU_MAX) return null;
+    return Math.max(0, Math.min(100, Math.floor((nombre(this.fs.$exp) / this.limiteExp()) * 100)));
+  }
   peutMonter() { return nombre(this.fs.$exp) >= this.limiteExp() && nombre(this.fs.$level) < NIVEAU_MAX; }
 
   /**

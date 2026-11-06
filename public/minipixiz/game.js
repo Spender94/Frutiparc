@@ -121,6 +121,11 @@ function pilerInterface(margeFace) {
 const INTER = pilerInterface(0);
 const ECART_COEUR = 14;               // inter.Life : un cœur tous les 14 px
 const ECART_MANA = 6;                 // inter.Mana : une goutte tous les 6 px
+// L'expérience en forêt (dessinerExperience) : sous la dernière rangée de
+// cœurs, du bleu des lettres de la fiche, et une jauge de soixante pixels.
+const XP_SOUS_COEURS = 16;
+const XP_COULEUR = 'rgb(73,116,186)';
+const XP_JAUGE = { l: 60, h: 4, fond: 'rgba(255,255,255,.7)', plein: 'rgb(110,190,255)' };
 // À LA LIGNE. Le jeu d'origine plafonnait les caractéristiques à sept : au
 // plus quatorze gouttes (7 × 2) et sept cœurs, et chaque rangée tenait dans
 // ses cent pixels. Une fée qui continue de monter en a seize, dix-huit… et la
@@ -3554,6 +3559,15 @@ class Client {
       }
     }
 
+    // ── L'EXPÉRIENCE, en forêt ── Le jeu d'origine ne la montrait qu'au
+    // bureau, dans l'infobulle de la pastille de niveau (« niveau 3
+    // (42.3 %) ») : en pleine course, on ne savait pas si la montée était
+    // pour ce niveau-ci ou pour dans dix. Une ligne sous les cœurs, et une
+    // jauge fine : c'est la colonne de la fée, elle a la place. La forêt
+    // seulement — le donjon et l'arc-en-ciel ne nourrissent pas la fée
+    // d'expérience à chaque niveau, et y empilent leur propre interface.
+    if (fee && !this.lieu) this.dessinerExperience(ctx, fee, boite, lignes);
+
     // Et c'est TOUT. `base/Aventure.initFaerieInterface` ne construit que ces
     // trois éléments-là — le portrait, le mana, la vie. Le nom de la fée, la
     // rangée des couleurs restantes, une deuxième boîte « pièce suivante » et le
@@ -3566,6 +3580,36 @@ class Client {
     // épuisée par rien du tout — `Game.updatecolorList` lève un simple drapeau
     // interne, `flColorKill`, qui ne sert qu'à couper la recharge de mana du
     // tour (`Aventure.getManaReplenishCoef`).
+  }
+
+  /*
+   * « XP 42 % » centré sous la dernière rangée de cœurs, puis la jauge. Le
+   * chiffre vient de Fee.pourcentExp — le même calcul que la montée de
+   * niveau (getNextExpLimit) — et suit la fée VIVANTE : chaque niveau franchi
+   * (`incExp`) le fait avancer aussitôt. À 100 %, le panneau de choix
+   * s'ouvrira à la fin du niveau en cours ; au plafond, plus de jauge.
+   */
+  dessinerExperience(ctx, fee, boite, lignes) {
+    const prc = fee.pourcentExp ? fee.pourcentExp() : null;
+    const cx = boite.vie.x + boite.vie.l * 0.5;
+    const y = boite.vie.y + lignes.decalBas + XP_SOUS_COEURS;
+    ctx.save();
+    ctx.font = 'bold 9px Verdana, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = XP_COULEUR;
+    ctx.fillText(prc === null ? 'niveau max' : 'XP ' + prc + ' %', cx, y);
+    if (prc !== null) {
+      const x0 = cx - XP_JAUGE.l * 0.5, y0 = y + 12;
+      ctx.fillStyle = XP_JAUGE.fond;
+      ctx.fillRect(x0, y0, XP_JAUGE.l, XP_JAUGE.h);
+      ctx.fillStyle = XP_JAUGE.plein;
+      ctx.fillRect(x0, y0, XP_JAUGE.l * prc / 100, XP_JAUGE.h);
+      ctx.strokeStyle = XP_COULEUR;
+      ctx.lineWidth = 0.6;
+      ctx.strokeRect(x0, y0, XP_JAUGE.l, XP_JAUGE.h);
+    }
+    ctx.restore();
   }
 
   // La scène est carrée (240 × 240, Cs.mcw × Cs.mch) : on l'agrandit du facteur
