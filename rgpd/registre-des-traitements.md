@@ -106,13 +106,13 @@ de confidentialité : public adulte, accord parental avant 15 ans), pas mesurée
 
 | | |
 |---|---|
-| **Finalité** | S'assurer qu'un score est réel, en rejouant la partie sur le serveur |
-| **Base légale** | Intérêt légitime (l'équité des classements et des tournois) |
-| **Données** | numéro et graine de la partie, coups joués et temps de réflexion de chacun, score déclaré et score rejoué, verdict, rythme (médiane, régularité), accord avec l'IA du jeu (calculé à la demande) |
-| **Destinataires** | serveur ; administrateur (clé maître seule), onglet « Swapou » |
-| **Durée** | 6 mois (`RGPD_IP_JOURS`) ; une graine jamais jouée : 2 jours |
-| **Où** | `swapou_parties` ; exporté (`swapou_parties`), effacé à la suppression du compte, suivi au renommage |
-| **Décision automatisée** | aucune sur le compte ni sur le classement ; seul le tournoi, si l'administrateur lève l'interrupteur « parties vérifiées seulement », n'y fait entrer que les parties conformes |
+| **Finalité** | S'assurer qu'un score est réel, en rejouant la partie sur le serveur avant de le classer ; compter les combos (et donner leurs pictos) d'après les parties rejouées |
+| **Base légale** | Intérêt légitime (l'équité des classements, des tournois et des pictos) |
+| **Données** | numéro et graine de la partie, coups joués et temps de réflexion de chacun, score déclaré et score rejoué, verdict, durée déclarée et durée mesurée par le serveur, temps de jeu minimal, combos de la partie, rythme (médiane, régularité), accord avec l'IA du jeu (calculé à la demande) ; par joueur, les compteurs de combos vérifiés et ceux hérités de la fiche |
+| **Destinataires** | serveur ; administrateur (clé maître seule), onglet « Swapou vérifié » ; un refus est aussi noté au registre des alertes (§ anti-triche) |
+| **Durée** | parties : 6 mois (`RGPD_IP_JOURS`) ; une graine jamais jouée : 2 jours ; compteurs de combos : le temps du compte |
+| **Où** | `swapou_parties`, `swapou_combos` ; exportés, effacés à la suppression du compte, suivis au renommage |
+| **Décision automatisée** | oui, sur le classement seulement : un score dont la partie n'est pas rejouée conforme (graine donnée au joueur, rendue une fois, sans l'IA, dans un temps possible) n'est pas classé, et ses combos ne comptent pas. Le joueur en est averti (message neutre) ; l'administrateur revoit chaque refus et peut classer la partie à la main. Rien n'est décidé sur le compte lui-même |
 
 ## 6 quater. Vérification des scores de MiniPixiz (Arbre creux) et de Mini-Fever
 
