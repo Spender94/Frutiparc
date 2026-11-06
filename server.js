@@ -14808,6 +14808,8 @@ function renommerEnMemoire(a, n, affichage) {
     compte.displayName = affichage;
     bilan.push('compte déplacé en mémoire');
   }
+  // Ses notes de Championnat, que le serveur tient à part de la fruticarte.
+  if (championNotesRenommer(a, n)) bilan.push('notes de Championnat déplacées');
 
   // 3. Ce que les AUTRES ont de lui : carnet, liste noire, parrainage.
   let carnets = 0, noires = 0, filleuls = 0;
@@ -32641,6 +32643,8 @@ async function boot() {
       catch (e) { console.error('[SWAPOU] interrupteur du tournoi :', e.message); }
       await antitricheCharger();
       await sanctionsTricheCharger();
+      // Les notes de Championnat que le serveur tient (championFicheTenue).
+      await chargerNotesChampionnat();
       await chargerReglagesParisChallenge();
       await chargerReglagesGaspard();
       // Les quêtes de Gromelin : réglages, semaine tirée, avancement de chacun.
@@ -35704,24 +35708,164 @@ async function chargerPartiesDifferees() {
   } catch (e) { console.error('[DIFFERE] chargement :', e.message); }
 }
 
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * LES NOTES DE CHAMPIONNAT, TENUES PAR LE SERVEUR (Grapiz, Frutibandas,
+ * Frutisnake)
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * L'Elo de ces trois championnats se calcule sur le serveur, mais la note de
+ * DÉPART de chaque partie se lisait dans un slot de la fruticarte — grapiz/2,
+ * bandas/0 (champ $ls), snake3/2 — que le navigateur pouvait écrire par
+ * /api/saveFrutiSlot. Poser `ls: [2900, …]` dans son slot, puis jouer une
+ * partie, inscrivait 2900 au classement : l'Elo du serveur partait de la note
+ * que le client lui donnait.
+ *
+ * La note vit désormais ici (table notes_championnat, et cette mémoire), écrite
+ * après chaque partie classée. Le slot n'en est plus qu'une copie, gardée pour
+ * le client d'époque et l'export de progression :
+ *   · le serveur LIT sa note, jamais celle du slot ;
+ *   · si le slot en porte une autre, c'est celle du serveur qui vaut, le slot
+ *     est réécrit, et l'écart part en alerte (type elo_slot) ;
+ *   · LA PREMIÈRE FOIS (aucune note tenue pour ce joueur), on reprend la fiche
+ *     du slot telle qu'elle est — c'est l'existant, rien d'autre ne la
+ *     connaît —, ou à défaut la note du classement. Si le slot ne dit pas la
+ *     même note que le classement (que le serveur écrit en même temps que lui,
+ *     par fixerScore), c'est l'indice d'un slot retouché avant cette reprise :
+ *     on le signale aussi.
+ *
+ * Le démarrage charge les notes de la base APRÈS l'ouverture des sockets :
+ * tant qu'elles ne sont pas là, on lit comme avant (le slot) sans rien
+ * reprendre — une reprise faite trop tôt écraserait en base la vraie note.
+ */
+const NOTES_CHAMPIONNAT = new Map();   // `${jeu}|${username}` → { l, ls, origine }
+let notesChampionnatChargees = !process.env.DATABASE_URL;
+const cleNoteChampion = (jeu, username) => jeu + '|' + String(username || '').toLowerCase();
+
+// Une fiche lisible : trois nombres finis pour `ls` (note, minimum, maximum),
+// trois compteurs pour `l`. Sinon null — un slot illisible ne se reprend pas.
+function ficheChampionPropre(f) {
+  if (!f || !Array.isArray(f.ls) || f.ls.length < 1) return null;
+  const ls = f.ls.slice(0, 3).map(Number);
+  if (!ls.every(Number.isFinite)) return null;
+  while (ls.length < 3) ls.push(ls[0]);
+  const l = (Array.isArray(f.l) ? f.l.slice(0, 3).map((x) => Math.max(0, Math.trunc(Number(x) || 0))) : []);
+  while (l.length < 3) l.push(0);
+  return { l, ls: ls.map((x) => Math.round(x)) };
+}
+
+async function chargerNotesChampionnat() {
+  if (!process.env.DATABASE_URL) { notesChampionnatChargees = true; return; }
+  try {
+    let n = 0;
+    for (const r of await db.listerNotesChampionnat()) {
+      const cle = cleNoteChampion(r.jeu, r.username);
+      // Une partie jouée pendant le démarrage a déjà écrit la note la plus
+      // fraîche en mémoire (et en base) : on ne la remplace pas.
+      if (NOTES_CHAMPIONNAT.has(cle)) continue;
+      const f = ficheChampionPropre(r.fiche || {});
+      if (!f) continue;
+      NOTES_CHAMPIONNAT.set(cle, Object.assign(f, { origine: r.origine || 'partie' }));
+      n++;
+    }
+    notesChampionnatChargees = true;
+    console.log(`[CHAMPIONNAT] ${n} note(s) de championnat chargée(s) de la base`);
+  } catch (e) {
+    // Sans ses notes, le serveur lit comme avant (le slot), sans rien
+    // reprendre : notesChampionnatChargees reste faux.
+    console.error('[CHAMPIONNAT] notes non chargées :', e.message);
+  }
+}
+
+function championRetenir(jeu, username, fiche, origine) {
+  const f = ficheChampionPropre(fiche);
+  if (!f || !username) return null;
+  const tenue = Object.assign(f, { origine: origine || 'partie' });
+  NOTES_CHAMPIONNAT.set(cleNoteChampion(jeu, username), tenue);
+  if (process.env.DATABASE_URL) {
+    db.ecrireNoteChampionnat(username, jeu, tenue, tenue.origine).catch(dbErr('ecrireNoteChampionnat'));
+  }
+  return tenue;
+}
+
+// Le renommage d'un compte emporte ses notes (la base suit par
+// RENOMMAGE_COLONNES).
+function championNotesRenommer(ancien, nouveau) {
+  let n = 0;
+  for (const jeu of ['grapiz', 'bandas', 'snake3']) {
+    const a = cleNoteChampion(jeu, ancien);
+    if (!NOTES_CHAMPIONNAT.has(a)) continue;
+    NOTES_CHAMPIONNAT.set(cleNoteChampion(jeu, nouveau), NOTES_CHAMPIONNAT.get(a));
+    NOTES_CHAMPIONNAT.delete(a);
+    n++;
+  }
+  return n;
+}
+
+/**
+ * La fiche de Championnat d'un joueur, telle que le SERVEUR la tient.
+ *
+ * @param {string} jeu  'grapiz' | 'bandas' | 'snake3'
+ * @param {function} lireSlot  (username) → { fiche, source: 'slot'|'classement' } | null
+ * @param {function} reecrireSlot  (username, fiche) — remet le slot d'accord
+ * @param {string} classement  le classement que fixerScore tient à jour
+ * @returns {{linit: true, l: number[], ls: number[]}|null}
+ */
+function championFicheTenue(jeu, username, lireSlot, reecrireSlot, classement) {
+  const lu = lireSlot(username);
+  const luPropre = lu ? ficheChampionPropre(lu.fiche) : null;
+  if (!notesChampionnatChargees) {
+    return luPropre ? { linit: true, l: luPropre.l, ls: luPropre.ls } : null;
+  }
+  const cle = cleNoteChampion(jeu, username);
+  const tenue = NOTES_CHAMPIONNAT.get(cle);
+  if (!tenue) {
+    if (!luPropre) return null;
+    // LA REPRISE : la première fois, la fiche du slot devient la note tenue.
+    const note = getUserScore(username, classement);
+    if (lu.source === 'slot' && note && note.score > 0 && Number(note.score) !== luPropre.ls[0]) {
+      signalerTriche(username, { jeu, type: 'elo_slot', gravite: luPropre.ls[0] > Number(note.score) ? 'suspect' : 'info',
+        resume: `note de championnat reprise du slot : ${luPropre.ls[0]}, alors que le classement dit ${note.score}`,
+        details: { slot: luPropre, classement: Number(note.score), moment: 'reprise' } });
+    }
+    championRetenir(jeu, username, luPropre, 'reprise');
+    console.log(`[CHAMPIONNAT] ${jeu} ${username} : note ${luPropre.ls[0]} reprise du ${lu.source}`);
+    return { linit: true, l: luPropre.l.slice(), ls: luPropre.ls.slice() };
+  }
+  if (lu && lu.source === 'slot' && (!luPropre || luPropre.ls[0] !== tenue.ls[0])) {
+    const vue = luPropre ? luPropre.ls[0] : 'illisible';
+    signalerTriche(username, { jeu, type: 'elo_slot',
+      gravite: (luPropre && luPropre.ls[0] > tenue.ls[0]) ? 'suspect' : 'info',
+      resume: `le slot porte la note ${vue}, le serveur tient ${tenue.ls[0]} : c'est celle du serveur qui vaut`,
+      details: { slot: luPropre || String(JSON.stringify(lu.fiche) || '').slice(0, 300), serveur: { l: tenue.l, ls: tenue.ls } } });
+    try { reecrireSlot(username, tenue); } catch (e) { /* le slot n'est qu'une copie */ }
+  }
+  return { linit: true, l: tenue.l.slice(), ls: tenue.ls.slice() };
+}
+
 // ── La fiche CHAMPIONNAT de Grapiz ──────────────────────────────────────────
 // Comme Frutisnake : { linit, l, ls } dans le slot 2 du disque grapiz (le jeu
 // d'origine n'écrit que le slot 0), et la note recopiée au classement
-// `grapiz_champion` — c'est lui qui fait foi si le slot a été vidé.
+// `grapiz_champion`. La note qui FAIT FOI est celle que le serveur tient
+// (championFicheTenue, plus haut) ; le slot et le classement en sont des copies.
 const GRAPIZ_SLOT = 'grapiz';
 const GRAPIZ_SLOT_CHAMPION = '2';
-function grapizLireFicheChampion(username) {
+// Ce que le slot (ou, à défaut, le classement) dit — la reprise s'en sert.
+function grapizFicheDuSlot(username) {
   const u = users[username];
   const brut = u && u.frutiSlots && u.frutiSlots[GRAPIZ_SLOT] && u.frutiSlots[GRAPIZ_SLOT][GRAPIZ_SLOT_CHAMPION];
   let fiche = null;
   if (brut) { try { fiche = typeof brut === 'string' ? JSON.parse(brut) : brut; } catch (e) { fiche = null; } }
-  if (fiche && fiche.linit) return { linit: true, l: fiche.l, ls: fiche.ls };
+  if (fiche && fiche.linit) return { fiche: { l: fiche.l, ls: fiche.ls }, source: 'slot' };
   const note = getUserScore(username, 'grapiz_champion');
   if (note && note.score > 0) {
     const l = (fiche && Array.isArray(fiche.l)) ? fiche.l : [0, 0, 0];
-    return { linit: true, l, ls: [note.score, note.score, note.score] };
+    return { fiche: { l, ls: [note.score, note.score, note.score] }, source: 'classement' };
   }
   return null;
+}
+function grapizLireFicheChampion(username) {
+  return championFicheTenue('grapiz', username, grapizFicheDuSlot, grapizEcrireFicheChampion, 'grapiz_champion');
 }
 function grapizEcrireFicheChampion(username, fiche) {
   const u = users[username];
@@ -35746,6 +35890,7 @@ const grapizNet = new GrapizNet({
   // après chaque partie classée, recopiée au classement.
   getChampion: (username) => grapizLireFicheChampion(username),
   onChampion: (username, fiche, info) => {
+    championRetenir('grapiz', username, fiche, 'partie');
     grapizEcrireFicheChampion(username, fiche);
     fixerScore(username, 'grapiz_champion', fiche.ls[0]);
     const signe = info.delta >= 0 ? '+' : '';
@@ -35853,24 +35998,31 @@ const { BandasNet } = require('./public/bandas/server/net.js');
 // lisible par le client d'époque, et l'export de progression de l'admin la
 // montre telle qu'elle était. La NOTE est en outre recopiée au classement
 // `bandas_champion` — c'est lui qui alimente le tableau des scores, le light et
-// le livre des records, et lui seul qui survit à un vidage de slot.
+// le livre des records. La note qui fait foi, elle, est celle que le serveur
+// tient à part (notes_championnat, cf. championFicheTenue).
 const BANDAS_SLOT = 'bandas';
+// Ce que la fruticarte (ou, à défaut, le classement) dit — la reprise s'en
+// sert ; la note qui fait foi est celle que le serveur tient
+// (championFicheTenue).
 function bandasLireFicheChampion(username) {
+  return championFicheTenue('bandas', username, bandasFicheDuSlot, bandasEcrireFicheChampion, 'bandas_champion');
+}
+function bandasFicheDuSlot(username) {
   const u = users[username];
   const brut = u && u.frutiSlots && u.frutiSlots[BANDAS_SLOT] && u.frutiSlots[BANDAS_SLOT]['0'];
   let carte = null;
   if (brut) { try { carte = typeof brut === 'string' ? JSON.parse(brut) : brut; } catch (e) { carte = null; } }
-  if (carte && carte.$linit) return { linit: true, l: carte.$l, ls: carte.$ls };
+  if (carte && carte.$linit) return { fiche: { l: carte.$l, ls: carte.$ls }, source: 'slot' };
   // Pas (ou plus) de fiche sur la fruticarte, mais une note au classement : on
   // repart de la note. Les deux écritures ne tombent pas dans le même panier
   // (slot d'un côté, magasin de scores de l'autre) et la seconde est la plus
-  // sûre — c'est elle qui fait foi. Sans cela, un joueur dont le slot a été
+  // sûre des deux copies. Sans cela, un joueur dont le slot a été
   // vidé (import de progression, base neuve) repartirait à 1000 alors que le
   // classement le donne à 1240.
   const note = getUserScore(username, 'bandas_champion');
   if (note && note.score > 0) {
     const l = (carte && Array.isArray(carte.$l)) ? carte.$l : [0, 0, 0];
-    return { linit: true, l, ls: [note.score, note.score, note.score] };
+    return { fiche: { l, ls: [note.score, note.score, note.score] }, source: 'classement' };
   }
   return null;
 }
@@ -35942,6 +36094,7 @@ const bandasNet = new BandasNet({
   // réécrit après chaque partie classée — plus une copie au classement.
   getChampion: (username) => bandasLireFicheChampion(username),
   onChampion: (username, fiche, info) => {
+    championRetenir('bandas', username, fiche, 'partie');
     bandasEcrireFicheChampion(username, fiche);
     fixerScore(username, 'bandas_champion', fiche.ls[0]);
     const signe = info.delta >= 0 ? '+' : '';
@@ -35982,9 +36135,11 @@ const snakeNet = new SnakeNet({
   // snake3 (les slots 0 et 1 sont la collection et les préférences du jeu ;
   // le light ne relit ni n'écrit le 2), et sa note est recopiée au classement
   // `snake3_battle` — c'est lui qui alimente le tableau des scores et le
-  // livre des records, et lui seul qui survit à un vidage de slot.
+  // livre des records. La note qui fait foi est celle que le serveur tient à
+  // part (notes_championnat, cf. championFicheTenue).
   getChampion: (username) => snakeLireFicheChampion(username),
   onChampion: (username, fiche, info) => {
+    championRetenir('snake3', username, fiche, 'partie');
     snakeEcrireFicheChampion(username, fiche);
     fixerScore(username, 'snake3_battle', fiche.ls[0]);
     const signe = info.delta >= 0 ? '+' : '';
@@ -36001,18 +36156,23 @@ const snakeNet = new SnakeNet({
 });
 const SNAKE_SLOT = 'snake3';
 const SNAKE_SLOT_CHAMPION = '2';
+// La note qui fait foi est celle que le serveur tient (championFicheTenue) ;
+// le slot 2 n'en est qu'une copie, relue seulement pour la reprise.
 function snakeLireFicheChampion(username) {
+  return championFicheTenue('snake3', username, snakeFicheDuSlot, snakeEcrireFicheChampion, 'snake3_battle');
+}
+function snakeFicheDuSlot(username) {
   const u = users[username];
   const brut = u && u.frutiSlots && u.frutiSlots[SNAKE_SLOT] && u.frutiSlots[SNAKE_SLOT][SNAKE_SLOT_CHAMPION];
   let fiche = null;
   if (brut) { try { fiche = typeof brut === 'string' ? JSON.parse(brut) : brut; } catch (e) { fiche = null; } }
-  if (fiche && fiche.linit) return { linit: true, l: fiche.l, ls: fiche.ls };
+  if (fiche && fiche.linit) return { fiche: { l: fiche.l, ls: fiche.ls }, source: 'slot' };
   // Pas de fiche, mais une note au classement (slot vidé, base neuve) : on
   // repart de la note, comme pour Frutibandas.
   const note = getUserScore(username, 'snake3_battle');
   if (note && note.score > 0) {
     const l = (fiche && Array.isArray(fiche.l)) ? fiche.l : [0, 0, 0];
-    return { linit: true, l, ls: [note.score, note.score, note.score] };
+    return { fiche: { l, ls: [note.score, note.score, note.score] }, source: 'classement' };
   }
   return null;
 }

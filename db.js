@@ -1288,6 +1288,23 @@ async function initSchema() {
         PRIMARY KEY (username, item_name)
       );
 
+      -- LES NOTES DE CHAMPIONNAT, tenues par le serveur (Grapiz, Frutibandas,
+      -- Frutisnake). La fiche { l, ls } vivait seulement dans un slot de la
+      -- fruticarte, que le navigateur peut écrire : la note d'Elo de départ
+      -- s'y lisait, donc s'y gonflait. Elle vit désormais ici, écrite après
+      -- chaque partie classée ; le slot n'en est plus qu'une copie.
+      --   origine : 'partie' (écrite par l'Elo du serveur) | 'reprise'
+      --             (la fiche du slot reprise telle quelle, la première fois).
+      CREATE TABLE IF NOT EXISTS notes_championnat (
+        username   TEXT NOT NULL,
+        jeu        TEXT NOT NULL,
+        note       INTEGER NOT NULL,
+        fiche      JSONB NOT NULL,
+        origine    TEXT NOT NULL DEFAULT 'partie',
+        maj        TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (username, jeu)
+      );
+
       -- LE JOURNAL DES CONNEXIONS, pour démasquer les multi-comptes. Une ligne
       -- par joueur, par jour, par adresse et par appareil — les connexions
       -- suivantes du même jour ne font que monter le compteur. On y range
@@ -1619,6 +1636,22 @@ async function traiterAlerteTriche(id, statut, par, note) {
       WHERE id = $1 RETURNING *`, [Number(id), statut, String(par || ''), String(note || '').slice(0, 500)]);
   return rows[0] || null;
 }
+// ── Les notes de Championnat (cf. la table notes_championnat) ──
+async function listerNotesChampionnat() {
+  const { rows } = await pool.query('SELECT username, jeu, note, fiche, origine FROM notes_championnat');
+  return rows;
+}
+async function ecrireNoteChampionnat(username, jeu, fiche, origine = 'partie') {
+  const ls = Array.isArray(fiche && fiche.ls) ? fiche.ls : [];
+  await pool.query(
+    `INSERT INTO notes_championnat (username, jeu, note, fiche, origine, maj)
+     VALUES ($1, $2, $3, $4, $5, now())
+     ON CONFLICT (username, jeu) DO UPDATE
+       SET note = EXCLUDED.note, fiche = EXCLUDED.fiche, origine = EXCLUDED.origine, maj = now()`,
+    [String(username).toLowerCase(), String(jeu), Math.round(Number(ls[0]) || 0),
+      JSON.stringify({ l: fiche && fiche.l, ls }), String(origine || 'partie')]);
+}
+
 // Le décompte par joueur : combien d'alertes, de quelle gravité, ouvertes ou
 // non. Les actions de l'admin n'y comptent pas : ce sont des suites, pas des
 // soupçons.
@@ -2447,6 +2480,7 @@ async function exporterDonnees(userId, username) {
     swapou_ia: await q('SELECT score, data, created_at FROM swapou_ia_scores WHERE LOWER(username) = $1 ORDER BY created_at', [u]),
     swapou_parties: await q('SELECT id, graine, source, perso, cree_le, fini_le, score_declare, score_rejoue, verdict, raison, coups, nb_coups, duree_ms, rythme FROM swapou_parties WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     parties_verifiees: await q('SELECT id, jeu, graine, mode, source, cree_le, fini_le, score_declare, score_verifie, verdict, raison, indices, classe, duree_ms, temps_jeu_ms FROM parties_verifiees WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
+    notes_championnat: await q('SELECT jeu, note, fiche, origine, maj FROM notes_championnat WHERE LOWER(username) = $1 ORDER BY jeu', [u]),
     connexions: await q('SELECT jour, ip, xff, socket_ip, appareil, navigateur, origine, premiere, derniere, n FROM connexions WHERE LOWER(username) = $1 ORDER BY premiere', [u]),
     historique_sauvegardes: await q('SELECT cree_le, jeu, slot, champ, avant, apres, ip, appareil, canal FROM historique_slots WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
     paris: await q('SELECT tournament_id, affiche, choix, mise, cote, statut, gain, cree_le, regle_le FROM tournament_paris WHERE LOWER(username) = $1 ORDER BY cree_le', [u]),
@@ -2526,6 +2560,7 @@ const RENOMMAGE_COLONNES = [
   ['swapou_ia_scores', 'username'],
   ['swapou_parties', 'username'],
   ['parties_verifiees', 'username'],
+  ['notes_championnat', 'username'],
   ['connexions', 'username'],
   ['historique_slots', 'username'],
   ['alertes_triche', 'username'],
@@ -6219,6 +6254,8 @@ module.exports = {
   oublierPictoRetire,
   archiveChallengeDe,
   supprimerScoreArchiveJour,
+  listerNotesChampionnat,
+  ecrireNoteChampionnat,
   prunosticsCagnotte,
   prunosticsCagnotteAjouter,
   prunosticsCagnotteVider,
