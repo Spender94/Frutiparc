@@ -32693,12 +32693,13 @@ async function boot() {
     try {
       await db.initSchema();
       console.log('[DB] Connected and schema ready');
+      // Les notes de Championnat que le serveur tient (championFicheTenue) :
+      // en premier, les sockets sont déjà ouvertes et un salon peut en lire une.
+      await chargerNotesChampionnat();
       try { swapouTournoiVerifie = (await db.getAppState('swapou_tournoi_verifie')) === '1'; }
       catch (e) { console.error('[SWAPOU] interrupteur du tournoi :', e.message); }
       await antitricheCharger();
       await sanctionsTricheCharger();
-      // Les notes de Championnat que le serveur tient (championFicheTenue).
-      await chargerNotesChampionnat();
       await chargerReglagesParisChallenge();
       await chargerReglagesGaspard();
       // Les quêtes de Gromelin : réglages, semaine tirée, avancement de chacun.
@@ -35824,6 +35825,12 @@ async function chargerNotesChampionnat() {
     }
     notesChampionnatChargees = true;
     console.log(`[CHAMPIONNAT] ${n} note(s) de championnat chargée(s) de la base`);
+    // Les salons gardent la fiche qu'ils ont lue : celles lues AVANT ce
+    // chargement venaient du slot. On les oublie — la prochaine lecture (au
+    // plus tard, le calcul d'Elo de fin de partie) passera par la note tenue.
+    for (const net of [grapizNet, bandasNet, snakeNet]) {
+      if (net && net.champions) for (const u of Object.keys(net.champions)) delete net.champions[u];
+    }
   } catch (e) {
     // Sans ses notes, le serveur lit comme avant (le slot), sans rien
     // reprendre : notesChampionnatChargees reste faux.
