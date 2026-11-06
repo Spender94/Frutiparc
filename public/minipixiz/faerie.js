@@ -37,6 +37,10 @@ const NB_CARAC = 6;                   // it.Carac.carNameList — six, pas huit
 const CARAC_MAX = 7;                  // setNextLevelUp : on n'améliore pas au-delà
 const NIVEAU_MAX = 50;                // Cs.FAERIE_LEVEL_MAX
 const POW_EXP = 4;                    // Cs.POW_EXP — l'index dans sPow / pouvoirs
+// genFaerieSeed : `$spell = [20, 0]` — le tir de lumière et l'échange. La
+// table de tirage ne les offre jamais (20 a une fréquence nulle, 0 n'y est
+// pas) : s'ils sont dans `$spell`, c'est de naissance.
+const SORTS_DE_NAISSANCE = [20, 0];
 
 const NOM_CARAC = ['force', 'rapidité', 'vie', 'intelligence', 'concentration', 'mana'];
 
@@ -206,6 +210,9 @@ class Fee {
     this.pouvoirs = [];               // FaerieInfo.sPow
     this.couleurCheveux = null;       // posée par une coloration portée
     this.messages = [];               // ce que Manager.addMsg aurait dit
+    // D'où viennent les sorts que les objets ajoutent (voir sortsConnus) :
+    // sid → ['parchemin', 'grimoire']. Recalculé comme les effets eux-mêmes.
+    this.sourcesSorts = {};
     this.initItems(carte);
     this.assainirProchain();
   }
@@ -249,12 +256,66 @@ class Fee {
     if (!O) return;
     for (const n of (this.fs.$inv || [])) {
       const it = O.info(n);
-      if (it) O.effetPorte(it, this);
+      if (!it) continue;
+      O.effetPorte(it, this);
+      if (it.famille === 'parchemin') this.noterSourceSort(it.sort, 'parchemin');
     }
     for (const n of ((carte && carte.$inv) || [])) {
       const it = O.info(n);
-      if (it) O.effetGroupe(it, this);
+      if (!it) continue;
+      O.effetGroupe(it, this);
+      if (it.famille === 'grimoire') this.noterSourceSort(it.sort, 'grimoire');
     }
+  }
+
+  noterSourceSort(sid, source) {
+    const l = this.sourcesSorts[sid] || (this.sourcesSorts[sid] = []);
+    if (l.indexOf(source) < 0) l.push(source);
+  }
+
+  /**
+   * LES SORTS QU'ELLE SAIT, UNE FOIS CHACUN, ET D'OÙ ILS LUI VIENNENT.
+   *
+   * `this.sorts` est la liste de combat (FaerieInfo.spellList) : `$spell`
+   * d'abord, puis ce qu'ajoutent les parchemins qu'elle porte et les grimoires
+   * du sac du joueur. Deux choses la rendent impropre à l'AFFICHAGE :
+   *
+   *   · elle peut porter un sort DEUX FOIS. setNextLevelUp tire au plus cent
+   *     fois un sort qu'elle ne connaît pas, puis garde le dernier tiré : une
+   *     jeune fée dont tous les sorts à portée sont déjà sus se voit offrir un
+   *     doublon, et `levelUp` le pousse dans `$spell` sans regarder. La fiche
+   *     en garde la trace — on n'y touche pas, et le combat non plus —, mais
+   *     Ornegon montrait deux barres pour un même goût, et la fiche deux billes ;
+   *
+   *   · elle ne dit pas d'où vient le sort. Or c'est toute la différence au
+   *     moment de monter : un sort APPRIS reste, celui d'un grimoire s'en va
+   *     avec le livre, celui d'un parchemin avec le parchemin.
+   *
+   * L'origine n'a pas besoin d'être écrite dans la fiche, elle s'y lit déjà :
+   * `$spell` ne reçoit que la naissance (le tir de lumière 20 et l'échange 0,
+   * que la table de tirage n'offre jamais) et les passages de niveau ; les
+   * objets, eux, ne laissent rien dans `$spell` et se rejouent à chaque
+   * chargement. Les vieilles fiches se lisent donc comme les neuves.
+   *
+   * @returns {Array<{sid:number, origine:string, sources:string[], fois:number}>}
+   *   `origine` est la première des `sources` — 'naissance', 'niveau',
+   *   'parchemin' ou 'grimoire' —, `fois` le nombre d'apprentissages.
+   */
+  sortsConnus() {
+    const appris = Array.isArray(this.fs.$spell) ? this.fs.$spell : [];
+    const vus = new Set();
+    const liste = [];
+    for (const sid of this.sorts) {
+      if (sid === null || sid === undefined || vus.has(sid)) continue;
+      vus.add(sid);
+      const fois = appris.filter((s) => s === sid).length;
+      const sources = [];
+      if (fois) sources.push(SORTS_DE_NAISSANCE.indexOf(sid) >= 0 ? 'naissance' : 'niveau');
+      for (const s of (this.sourcesSorts[sid] || [])) sources.push(s);
+      if (!sources.length) sources.push('niveau');
+      liste.push({ sid, origine: sources[0], sources, fois });
+    }
+    return liste;
   }
 
   dire(texte) { this.messages.push(texte); }
@@ -772,7 +833,7 @@ class Fee {
 
 const API = {
   Fee, genererGraine, genererNom, enrichirGraine,
-  CARAC, NOM_CARAC, RESUME_CARAC, NB_CARAC, CARAC_MAX, NIVEAU_MAX,
+  CARAC, NOM_CARAC, RESUME_CARAC, NB_CARAC, CARAC_MAX, NIVEAU_MAX, SORTS_DE_NAISSANCE,
   NOM_COMPORTEMENT, RARETE_COMPORTEMENT,
   PSYCHANALYSTE, CANNIBALISME, CLEPTOMANIE, APATHIE, SCHIZOPHRENIE, HYPOCONDRIE,
   ENGOURDIE, MALADE, SYLLABES_1, SYLLABES_2,

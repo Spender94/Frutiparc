@@ -1795,8 +1795,15 @@ class Client {
     this.pause = false;
     this.carteForet = null;
     const fee = o.fee;
-    const sorts = (fee && fee.sorts ? fee.sorts : [])
-      .filter((sid) => sid !== null && sid !== undefined && sid < 20);
+    // UNE BARRE PAR SORT, pas par apprentissage. Un sort appris deux fois (le
+    // tirage de setNextLevelUp peut retomber sur un sort déjà su, voir
+    // Fee.sortsConnus) est deux fois dans `$spell` : Frog.initSpellBars
+    // dessinait deux barres pour un seul goût, `$spellCoef[sid]`. La fiche
+    // garde ses deux entrées ; c'est l'affichage qui n'en montre qu'une.
+    const tous = fee && fee.sortsConnus ? fee.sortsConnus().map((x) => x.sid)
+      : (fee && fee.sorts ? fee.sorts : []);
+    const sorts = tous
+      .filter((sid, i) => sid !== null && sid !== undefined && sid < 20 && tous.indexOf(sid) === i);
     this.ornegon = {
       fee,
       sorts,
