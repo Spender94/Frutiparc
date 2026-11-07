@@ -33,10 +33,17 @@
  *      le temps écoulé depuis le jeton (une partie « accélérée », ou fabriquée
  *      d'avance, tombe là) — et la cadence doit être celle d'un écran.
  *
+ *   5. les BATTEMENTS (cf. plus bas, « LE RALENTI ») : pendant la partie, le
+ *      jeu dit toutes les deux secondes où en est son journal, et c'est
+ *      l'horloge du SERVEUR qui date chaque battement. Un jeu ralenti par une
+ *      extension (« speed hack ») avance moins vite que cette horloge-là :
+ *      sa partie n'est pas classée.
+ *
  * Ce qui ne fait que SIGNALER (indices, l'admin juge) : les très longues
  * pauses (le jeu se fige quand la fenêtre perd le focus : légitime, mais c'est
  * aussi ce que ferait un ralenti), une cadence à la limite du possible, un
- * rythme de commandes surhumain, un score très au-dessus de l'exploit connu.
+ * rythme de commandes surhumain, un score très au-dessus de l'exploit connu,
+ * un jeu un peu en retard sur l'horloge du serveur, des pauses en rafale.
  *
  * Personne n'est banni par ce module : un score écarté n'entre pas au
  * classement, la partie est notée (table parties_verifiees), l'admin la relit
@@ -110,6 +117,24 @@ const SEUILS = {
   // minimal de parties conformes pour que ce décile veuille dire quelque chose ;
   // `facteurFort` : au-delà de tant de fois le seuil, le signal est fort.
   rythme: { facteurDecile: 2, referenceMin: 10, facteurFort: 2 },
+  // Les battements et le ralenti : cf. « LE RALENTI », plus bas, pour la
+  // provenance de chaque nombre.
+  battements: {
+    periodeMs: 2000, periodePauseMs: 10000,
+    parPartie: 3000, partiesParJoueur: 6, partiesMax: 20000,
+    debitCapacite: 30, debitParSeconde: 2,
+    intervalleMinMs: 1000,
+    rapportRefus: 0.8, rapportIndice: 0.9, intervallesMin: 20,
+    globalRefus: 0.6, globalIndice: 0.75, globalReelMinMs: 40000,
+    jeuSignificatifMs: 60000, couvertureMin: 0.75, actifsMinAbsents: 10, trouMs: 20000,
+    masqueRefus: 0.5, masqueIndice: 0.2, masqueRefusMs: 30000, masqueIndiceMs: 15000,
+    excesFacteur: 1.1, excesIndiceMs: 5000, excesRefusMs: 10000,
+    transitionsParMinute: 6, transitionsDureeMinMs: 120000, pauseCourteMs: 5000,
+  },
+  // La tendance : cinq parties conformes d'affilée (de plus d'une minute de
+  // jeu chacune) dont la durée réelle dépasse une fois et demie le temps de
+  // jeu. Une alerte à 5, 10, 15… parties de suite, pas à chacune.
+  tendance: { parties: 5, rapport: 1.5, jeuMinMs: 60000, lecture: 20 },
 };
 
 // ── Le jeton ────────────────────────────────────────────────────────────
@@ -199,20 +224,551 @@ function horloges(indices, tempsJeuMs, dureeMs, minimumMs) {
   return null;
 }
 
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * LE RALENTI — les battements, datés par le serveur
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * LA FAILLE. Les deux moteurs avancent selon l'horloge du NAVIGATEUR
+ * (requestAnimationFrame, performance.now). Une extension de « speed hack »
+ * ralentit cette horloge — et les minuteries avec elle : tout le jeu tourne
+ * deux fois moins vite, le joueur a deux fois plus de temps pour réfléchir à
+ * chaque pièce. Le journal est authentique (c'est bien ce que le moteur a
+ * reçu), le rejeu retombe juste, la partie se classe. Aucun contrôle d'avant
+ * ne l'attrapait :
+ *   · la cadence : un ralenti ×2 sur un écran à 60 Hz donne des pas de
+ *     0,27 image — ce que donne un écran à 120 Hz ;
+ *   · les horloges : le temps de jeu reste SOUS le temps réel (c'est l'inverse
+ *     de l'accéléré), et un temps réel très supérieur n'est qu'un indice
+ *     « longues pauses » — le jeu se fige légitimement quand la fenêtre perd
+ *     le focus.
+ *
+ * LA PARADE. Seule l'horloge du serveur est sûre. Pendant une partie
+ * vérifiée (du jeton à l'envoi de la fin), le jeu envoie un BATTEMENT toutes
+ * les deux secondes (public/js/journal-partie.js, battements) :
+ * `{ id, n, pas, pause, console }` — le numéro d'ordre, le nombre de pas déjà
+ * écrits au journal, et l'état. Il en envoie un AUSSITÔT à chaque changement
+ * d'état (pause posée ou levée, épreuve finie ou lancée) et un juste avant la
+ * fin. Le serveur note l'heure d'ARRIVÉE (noterBattement). À la fin, il
+ * recalcule depuis le journal le temps de jeu à chaque pas — la somme des
+ * tmod / 32, comme le rejeu — et compare, battement après battement, le jeu
+ * écoulé à l'heure écoulée (examinerBattements). Un speed hack ralentit
+ * aussi les minuteries : les battements arrivent plus espacés, et c'est sans
+ * importance, puisque c'est le serveur qui date.
+ *
+ * Le compteur `pas`, jeu par jeu :
+ *   · l'Arbre — le nombre de pas de l'enregistreur (rejeu.js, `nombre`), un
+ *     par appel du moteur. Le serveur relit le journal et cumule les tmod.
+ *     La pause de l'Arbre (P, Échap, le bouton, la fenêtre passée derrière)
+ *     ne fait AUCUN pas, et cache le plateau sous un voile violet à 90 % :
+ *     le jeu dit `pause: 1`, comme pendant le bouquet d'ouverture, le panneau
+ *     d'expérience et les cinématiques, où le moteur de l'arbre ne fait pas
+ *     de pas non plus.
+ *   · Mini-Fever — le journal ne garde QUE les épreuves (de leur lancement à
+ *     leur verdict) ; la console qui les sépare (débriefing, tirage,
+ *     briefing, fondus) n'y est pas. Le compteur est donc celui des images
+ *     JOURNALISÉES, toutes épreuves bout à bout, et le battement dit
+ *     `console: 1` quand aucune épreuve n'est en cours. Le serveur sait
+ *     reconstituer la console : elle dure un temps de jeu FIXE
+ *     (FeverRejeu.consoleMinimale, 145 images à une image par pas ; mesuré à
+ *     0,4, 0,53, 0,8 et 1,6 image par pas, irrégulier ou non : 136 à 147,
+ *     ±4 %). La ligne du temps de jeu d'une arcade est donc : les images de
+ *     l'épreuve 1, une console, les images de l'épreuve 2, une console… Un
+ *     battement pris DANS une console n'a pas de position connue (on ne sait
+ *     pas où elle en est) : il est sauté, et l'intervalle qui l'enjambe va du
+ *     dernier battement d'une épreuve au premier de la suivante, console
+ *     comprise. La console n'est donc PAS une pause : elle se compte. La
+ *     vraie pause de Mini-Fever (la fenêtre passée derrière) fige tout, ne
+ *     fait aucune image, et pose un voile noir à 50 %.
+ *
+ * Ce qu'on en tire (examinerBattements), sur les battements remis dans
+ * l'ordre où le jeu les a envoyés (`n`), dans cet ordre :
+ *   1. le compteur ne recule jamais et ne dépasse jamais le journal final —
+ *      sinon le battement ment : REFUS ;
+ *   2. les intervalles ACTIFS — aucun battement en pause d'un bout à l'autre
+ *      (ni aux deux bouts, ni sur un battement de console sauté entre eux :
+ *      la pause peut tomber pendant une console), du jeu entre eux, au moins
+ *      une seconde réelle — donnent chacun un rapport jeu / réel. Leur
+ *      MÉDIANE vaut ≈ 1 chez un joueur normal, ≈ 0,5 sous un ralenti ×2. La
+ *      médiane, et pas la somme : une pause commencée en cours d'intervalle
+ *      (un battement perdu) fait un intervalle aberrant, pas une tendance.
+ *      Sous le seuil, sur assez d'intervalles : REFUS ; entre le seuil et
+ *      0,9 : indice ;
+ *   3. le jeu sous les pauses : un intervalle en pause ne compte pas — mais
+ *      le jeu qui s'y écoule se mesure. Une vraie pause n'en masque presque
+ *      rien (le battement part à l'instant où elle commence et à l'instant où
+ *      elle finit). Des pauses déclarées un battement sur deux pour masquer
+ *      le ralenti en masquent presque tout : REFUS au-delà de la moitié du
+ *      jeu (et trente secondes), indice au-delà d'un cinquième. Les bascules
+ *      pause ↔ jeu par minute et les pauses très courtes se lisent aussi
+ *      (indice au-delà de six par minute sur deux minutes) ;
+ *   4. une partie qui pèse (plus d'une minute de jeu) dont le jeu n'est pas
+ *      couvert aux trois quarts par des intervalles actifs : les battements
+ *      ont été bloqués — en tout, ou le temps de jouer au ralenti, ce qui
+ *      laisse un TROU (plus de vingt secondes sans battement en plein jeu ;
+ *      le jeu d'un trou n'est pas couvert) — REFUS (« battements absents »,
+ *      gravité « suspect »). Tant pis pour un réseau très capricieux : l'admin
+ *      peut classer à la main ;
+ *   5. la SOMME des intervalles actifs (temps de jeu sur temps réel,
+ *      intervalles sans jeu et trous compris) : elle attrape le compteur qui
+ *      « prend de l'avance » puis reste figé sans se dire en pause, que la
+ *      médiane ne voit pas ;
+ *   6. entre DEUX battements quelconques (et jusqu'à la fin, reçue elle aussi
+ *      à l'heure du serveur), le jeu n'a pas pu avancer plus vite que
+ *      l'horloge du serveur, au facteur 1,1 près et dix secondes de marge —
+ *      celle d'un battement resté coincé dans le réseau : REFUS. C'est le
+ *      compteur qui « rattrape » d'un coup ce qu'il avait annoncé en retard.
+ *
+ * Les SEUILS (SEUILS.battements) ont été relevés le 7 novembre 2026 sur de
+ * vraies parties jouées dans Chromium (sans écran, 60 Hz) par un script —
+ * clavier pour l'Arbre, souris pour l'arcade facile —, contre ce serveur :
+ *
+ *                              Arbre creux           Mini-Fever
+ *     normale                  médiane 1,00          1,00
+ *                              somme 1,004           1,001
+ *     deux pauses de 32 s      1,00 (1,2 % masqué)   1,00 (0,3 à 3,6 %)
+ *     ralenti ×2               0,50                  0,50
+ *     ralenti ×1,3             0,769                 0,769
+ *     battements bloqués       0 reçu : refusée      0 reçu : refusée
+ *     fausses pauses, ×2       0 actif, 100 % masqué 6 actifs, 76 % masqué
+ *                              90 bascules           85 bascules
+ *
+ * (La couverture d'une partie normale : 98 à 99 % ; 94 % quand une pause
+ * tombe pendant une console, que l'intervalle qui l'enjambe masque. Le
+ * rapport réel / jeu : 1,01 et 0,97 à 0,98 en partie normale, 1,37 et 1,50
+ * à 1,60 avec les deux pauses, 2,01 et 1,96 au ralenti ×2.)
+ *
+ * D'où : le refus sous 0,8 — un ralenti de 25 % et plus ; à ×1,3 la partie
+ * tombe à 0,77 et elle est refusée —, l'indice sous 0,9 (un ralenti de 10 à
+ * 25 % : on le voit, l'admin juge), sur au moins vingt intervalles (≈
+ * quarante secondes de jeu ; une partie plus courte ne pèse rien au
+ * classement, l'Arbre reste à ×1 jusqu'à 1 min 34 s de jeu). Un écran normal
+ * ne perd que les images de plus d'une demi-seconde (Timer.maxDeltaTime) :
+ * les parties relevées tournaient jusqu'à cinq navigateurs à la fois sur la
+ * même machine, et la médiane n'a pas bougé de 1,00. La somme : refus sous
+ * 0,6, indice sous 0,75 — plus large que la médiane, parce qu'une image figée
+ * par le système, non déclarée, la tire vers le bas sans rien dire. Le jeu sous les
+ * pauses : une vraie pause en masque au plus un battement (deux secondes) ;
+ * trente pauses dans une partie de dix minutes, c'est encore 10 %, loin des
+ * 50 % du refus. La couverture : 98 % d'ordinaire, le refus à 75 % laisse une
+ * minute de réseau coupé sur cinq.
+ *
+ * CE QUI RESTE CONTOURNABLE (dit tel quel) — le battement est écrit par le
+ * navigateur, le serveur n'en garantit que l'HEURE :
+ *   · un ralenti léger : ×1,1 donne 0,91 (rien), ×1,15 donne 0,87 (un
+ *     indice) ; c'est 10 à 15 % de temps de réflexion en plus ;
+ *   · de FAUSSES pauses longues (et non plus un battement sur deux) : le
+ *     tricheur outillé fait « avancer » son compteur au rythme de l'horloge
+ *     du serveur, puis se déclare en pause le temps que le jeu ralenti
+ *     rattrape — la partie ressemble à celle d'un joueur qui fait de grandes
+ *     pauses. Le temps réel le trahit quand même : la TENDANCE
+ *     (tendanceRalenti) relève les joueurs dont les parties durent, l'une
+ *     après l'autre, bien plus que leur temps de jeu (2 sous un ralenti ×2) ;
+ *   · bloquer les battements d'une partie de moins d'une minute de jeu : rien
+ *     n'est exigé d'elle (elle ne pèse rien) ; en bloquer un quart sur une
+ *     partie plus longue : la couverture passe encore ;
+ *   · la pause elle-même, honnête : elle fige le jeu, mais laisse voir le
+ *     plateau sous son voile (90 % à l'Arbre, 50 % à Mini-Fever) — qui pause
+ *     sans arrêt pour réfléchir n'est pas un ralenti ; la tendance et les
+ *     « pauses en rafale » le montrent, l'admin juge ;
+ *   · et toujours : le rejeu prouve qu'une partie a été jouée, pas QUI l'a
+ *     jouée (un programme qui joue à la place du joueur suit l'horloge).
+ */
+const B = SEUILS.battements;
+const DEMARRAGE = Date.now();          // une partie née avant ce démarrage n'a pas pu tout battre
+
+// Le registre, en mémoire : id -> { u, jeu, t0, liste, plein, reprise, vu }.
+const registre = new Map();
+const parJoueur = new Map();           // username -> [id…], du plus ancien au plus récent
+
+function oublier(id) {
+  const e = registre.get(id);
+  if (!e) return;
+  registre.delete(id);
+  const l = parJoueur.get(e.u);
+  if (l) {
+    const i = l.indexOf(id);
+    if (i >= 0) l.splice(i, 1);
+    if (!l.length) parJoueur.delete(e.u);
+  }
+}
+
 /**
- * L'ARBRE CREUX. `partie` = { graine, journal, scoreDeclare, dureeMs }.
+ * Une partie vérifiée commence (le jeton vient d'être donné). `reprise` : la
+ * partie est née avant ce démarrage du serveur et se réinscrit à son premier
+ * battement — ses battements d'avant sont perdus, on ne les exigera pas.
+ */
+function ouvrirBattements(id, username, jeu, t0, o) {
+  id = String(id);
+  const u = String(username || '').toLowerCase();
+  if (registre.has(id)) return registre.get(id);
+  const maintenant = Date.now();
+  // Le ménage : les jetons expirés, puis le plafond global.
+  if (registre.size >= B.partiesMax) {
+    for (const [k, e] of registre) if (maintenant - e.t0 > SEUILS.jetonDureeMs) oublier(k);
+    for (const k of registre.keys()) { if (registre.size < B.partiesMax) break; oublier(k); }
+  }
+  const e = { u, jeu: String(jeu || ''), t0: Number(t0) || maintenant, liste: [], plein: false,
+    reprise: !!(o && o.reprise), vu: maintenant };
+  registre.set(id, e);
+  const l = parJoueur.get(u) || [];
+  l.push(id);
+  // Un joueur ne mène pas six parties à la fois : la plus ancienne, sans
+  // doute abandonnée, part. (Si elle revient, ses battements manquent — et
+  // c'est voulu : ouvrir des parties pour en chasser une ne la blanchit pas.)
+  while (l.length > B.partiesParJoueur) {
+    const vieux = l.shift();
+    registre.delete(vieux);
+  }
+  parJoueur.set(u, l);
+  return e;
+}
+
+/** Le débit : un seau de trente battements, qui se remplit de deux par seconde. */
+const seaux = new Map();               // username -> { j, t }
+function debitBattement(username, maintenant) {
+  const t = maintenant || Date.now();
+  const u = String(username || '').toLowerCase();
+  const s = seaux.get(u) || { j: B.debitCapacite, t };
+  s.j = Math.min(B.debitCapacite, s.j + (t - s.t) / 1000 * B.debitParSeconde);
+  s.t = t;
+  if (s.j < 1) { seaux.set(u, s); return false; }
+  s.j -= 1;
+  seaux.set(u, s);
+  if (seaux.size > 20000) for (const [k, v] of seaux) if (t - v.t > 60000) seaux.delete(k);
+  return true;
+}
+
+const entier = (v, max) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= max ? n : null;
+};
+
+/**
+ * Un battement reçu. Rend { ok: true } ou { erreur } :
+ *   'inconnue'      aucune partie ouverte sous ce numéro ;
+ *   'autre_joueur'  la partie est à quelqu'un d'autre ;
+ *   'battement'     un champ illisible ;
+ *   'pleine'        le plafond de battements de la partie est atteint.
+ */
+function noterBattement(id, username, b, maintenant) {
+  const e = registre.get(String(id || ''));
+  if (!e) return { erreur: 'inconnue' };
+  if (e.u !== String(username || '').toLowerCase()) return { erreur: 'autre_joueur' };
+  const pas = entier(b && b.pas, 2000000);          // PAS_MAX de rejeu.js
+  const n = entier(b && b.n, 1e7);
+  if (pas === null || n === null) return { erreur: 'battement' };
+  if (e.liste.length >= B.parPartie) { e.plein = true; return { erreur: 'pleine' }; }
+  const t = Number(maintenant) || Date.now();
+  e.liste.push({ t, n, pas, pause: b.pause ? 1 : 0, console: b.console ? 1 : 0 });
+  e.vu = t;
+  return { ok: true };
+}
+
+/**
+ * La partie est rendue : ses battements sortent du registre. `t0` : l'heure
+ * du jeton. Rend { liste, exiges, plein } — `exiges` est faux pour une partie
+ * née avant ce démarrage du serveur (ses premiers battements sont perdus).
+ */
+function fermerBattements(id, username, t0) {
+  id = String(id || '');
+  const e = registre.get(id);
+  const ne = Number(t0) || 0;
+  if (!e || e.u !== String(username || '').toLowerCase()) {
+    return { liste: [], exiges: ne >= DEMARRAGE, plein: false };
+  }
+  oublier(id);
+  return { liste: e.liste, exiges: !e.reprise && ne >= DEMARRAGE, plein: e.plein };
+}
+
+// Les battements, gardés dans details.battementsBruts pour pouvoir rejouer
+// la partie plus tard (onglet « Portages vérifiés ») : « B1 », puis des
+// entiers (journal-partie.js) — exigés, plein, fin − t0, et par battement
+// l'écart d'heure, l'écart de pas, l'état (pause + 2 × console), l'écart de
+// numéro. Trois mille battements tiennent en une vingtaine de kilo-octets.
+function encoderBattements(bat, t0) {
+  if (!bat || !Array.isArray(bat.liste)) return '';
+  const ent = [bat.exiges ? 1 : 0, bat.plein ? 1 : 0, Math.round((Number(bat.fin) || 0) - (Number(t0) || 0))];
+  let t = Number(t0) || 0, pas = 0, n = 0;
+  for (const b of bat.liste) {
+    ent.push(Math.round(b.t - t), b.pas - pas, (b.pause ? 1 : 0) + (b.console ? 2 : 0), b.n - n);
+    t = b.t; pas = b.pas; n = b.n;
+  }
+  return 'B1' + J.encoder(ent);
+}
+function decoderBattements(s, t0) {
+  const txt = String(s || '');
+  if (txt.slice(0, 2) !== 'B1') return null;
+  const ent = J.decoder(txt.slice(2));
+  if (!ent || ent.length < 3 || (ent.length - 3) % 4) return null;
+  const base = Number(t0) || 0;
+  const out = { exiges: !!ent[0], plein: !!ent[1], fin: base + ent[2], t0: base, liste: [] };
+  let t = base, pas = 0, n = 0;
+  for (let i = 3; i < ent.length; i += 4) {
+    t += ent[i]; pas += ent[i + 1]; n += ent[i + 3];
+    out.liste.push({ t, pas, pause: ent[i + 2] & 1, console: (ent[i + 2] >> 1) & 1, n });
+  }
+  return out;
+}
+
+const QMS = 1000 / 32 / J.QUANTUM_TMOD;   // un tmod en 1024es → des millisecondes de jeu
+const arrondi = (x, k) => (x === null || !Number.isFinite(x) ? null : Math.round(x * (k || 1000)) / (k || 1000));
+function mediane(v) {
+  if (!v.length) return null;
+  const t = v.slice().sort((a, b) => a - b);
+  return t.length % 2 ? t[(t.length - 1) / 2] : (t[t.length / 2 - 1] + t[t.length / 2]) / 2;
+}
+
+/**
+ * La position de l'Arbre : le temps de jeu (ms) au pas p, pour chaque pas
+ * demandé. `pas` : le journal relu ([q, bits] à plat, lireJournal).
+ */
+function positionsArbre(pas) {
+  const n = pas.length / 2;
+  return (voulus) => {
+    const tri = [...new Set(voulus)].sort((a, b) => a - b);
+    const m = new Map();
+    let cumul = 0, i = 0;
+    for (const p of tri) {
+      while (i < p && i < n) { cumul += pas[i * 2]; i++; }
+      m.set(p, p <= n ? cumul * QMS : null);
+    }
+    return m;
+  };
+}
+
+/**
+ * La position d'une arcade : la ligne du temps de jeu, épreuves bout à bout
+ * avec une console (temps fixe) entre chacune. `images` : pour chaque
+ * épreuve, la liste de ses tmod (1024es) journalisés. Un battement en
+ * console n'a pas de position ; un battement « hors console » au pas p est
+ * dans l'épreuve qui contient l'image p + 1 (celle qui vient), donc juste
+ * après la console qui la précède quand il tombe pile sur une frontière.
+ */
+function positionsArcade(images, consoleImages) {
+  const fins = [];          // le nombre d'images au bout de chaque épreuve
+  const debuts = [];        // le temps de jeu (1024es) au début de chaque épreuve, consoles comprises
+  let total = 0, temps = 0;
+  const C = consoleImages * J.QUANTUM_TMOD;
+  for (let k = 0; k < images.length; k++) {
+    if (k) temps += C;
+    debuts.push(temps);
+    for (const q of images[k]) temps += q;
+    total += images[k].length;
+    fins.push(total);
+  }
+  return {
+    totalMs: temps * QMS,
+    position(b) {
+      if (b.console) return null;
+      const p = b.pas;
+      // la première épreuve dont le bout est AU-DELÀ de p
+      let lo = 0, hi = fins.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (fins[mid] <= p) lo = mid + 1; else hi = mid; }
+      if (lo >= fins.length) return null;            // après la dernière épreuve : une console
+      const avant = lo ? fins[lo - 1] : 0;
+      let t = debuts[lo];
+      const imgs = images[lo];
+      for (let i = 0; i < p - avant; i++) t += imgs[i];
+      return t * QMS;
+    },
+  };
+}
+
+/**
+ * L'EXAMEN des battements d'une partie (cf. « LE RALENTI »).
+ *
+ * @param {object} bat  { liste: [{ t, n, pas, pause, console }], exiges, plein, fin }
+ * @param {object} o    { position(b) → ms | null, pasFinal, totalMs }
+ * @returns {{ refus: null | { gravite, raison }, indices: string[], details: object }}
+ */
+function examinerBattements(bat, o) {
+  const indices = [];
+  const liste = (bat && Array.isArray(bat.liste)) ? bat.liste : [];
+  // L'ordre d'envoi, les doublons écartés. Deux battements partis presque
+  // ensemble peuvent arriver croisés : celui qui part avant ne peut pas être
+  // arrivé APRÈS l'arrivée du suivant — on lui prend l'heure la plus tôt.
+  const vus = new Set();
+  const bs = liste.filter((b) => b && Number.isFinite(b.t) && Number.isInteger(b.n) && Number.isInteger(b.pas))
+    .slice().sort((a, b) => a.n - b.n)
+    .filter((b) => (vus.has(b.n) ? false : (vus.add(b.n), true)))
+    .map((b) => ({ t: b.t, n: b.n, pas: b.pas, pause: b.pause ? 1 : 0, console: b.console ? 1 : 0 }));
+  for (let i = bs.length - 2; i >= 0; i--) if (bs[i].t > bs[i + 1].t) bs[i].t = bs[i + 1].t;
+  const totalMs = Number(o.totalMs) || 0;
+  const d = { recus: bs.length, exiges: !!(bat && bat.exiges), plein: !!(bat && bat.plein),
+    actifs: 0, rapportMedian: null, rapportGlobal: null, transitions: 0, transitionsParMinute: 0,
+    pauses: 0, pausesCourtes: 0, pauseMs: 0, jeuMasqueMs: 0, partMasquee: 0, couverture: 0, excesMs: 0,
+    trous: 0, jeuTrouMs: 0 };
+  const fin = (refus) => ({ refus: refus || null, indices, details: d });
+
+  // 1. Le compteur ne recule pas et ne dépasse pas le journal.
+  for (let i = 0; i < bs.length; i++) {
+    if (i && bs[i].pas < bs[i - 1].pas) {
+      return fin({ gravite: 'grave', raison: `battements incohérents : le compteur de pas recule (${bs[i - 1].pas} puis ${bs[i].pas})` });
+    }
+    if (bs[i].pas > o.pasFinal) {
+      return fin({ gravite: 'grave', raison: `battements incohérents : un battement annonce ${bs[i].pas} pas, le journal en compte ${o.pasFinal}` });
+    }
+  }
+
+  // Les positions dans le temps de jeu (null : inconnue — une console).
+  const pos = bs.map((b) => {
+    const g = o.position(b);
+    return g === null || g === undefined || !Number.isFinite(g) ? null : g;
+  });
+
+  // 2. Les pauses : bascules, durées, pauses courtes — sur TOUS les battements.
+  let debutPause = null;
+  for (let i = 0; i < bs.length; i++) {
+    if (i && bs[i].pause !== bs[i - 1].pause) d.transitions++;
+    if (i && bs[i - 1].pause) d.pauseMs += bs[i].t - bs[i - 1].t;
+    if (bs[i].pause && debutPause === null) { debutPause = bs[i].t; d.pauses++; }
+    if (!bs[i].pause && debutPause !== null) {
+      if (bs[i].t - debutPause < B.pauseCourteMs) d.pausesCourtes++;
+      debutPause = null;
+    }
+  }
+
+  // 3. Les intervalles, d'un battement placé au suivant.
+  const rapports = [];
+  let jeuActif = 0, reelActif = 0, masque = 0, couvert = 0;
+  let prec = -1;
+  let minExces = Infinity;
+  const exces = (g, t) => {
+    const v = g - B.excesFacteur * t;
+    if (minExces !== Infinity) d.excesMs = Math.max(d.excesMs, v - minExces);
+    minExces = Math.min(minExces, v);
+  };
+  // Un battement sauté (en console) qui se dit en pause met en pause tout
+  // l'intervalle qui l'enjambe : la pause peut tomber pendant une console.
+  let pauseEntre = false;
+  for (let i = 0; i < bs.length; i++) {
+    if (pos[i] === null) { if (bs[i].pause) pauseEntre = true; continue; }
+    exces(pos[i], bs[i].t);
+    if (prec >= 0) {
+      const a = bs[prec], b = bs[i];
+      const dj = pos[i] - pos[prec], dr = b.t - a.t;
+      if (!a.pause && !b.pause && !pauseEntre) {
+        jeuActif += Math.max(0, dj);
+        reelActif += Math.max(0, dr);
+        // Un TROU : plus de vingt secondes sans battement en plein jeu. Le jeu
+        // qui s'y écoule n'est pas couvert (les battements ont pu être
+        // bloqués le temps de jouer au ralenti) ; il compte dans la somme.
+        if (dr > B.trouMs) { d.trous++; d.jeuTrouMs += Math.max(0, dj); } else couvert += Math.max(0, dj);
+        if (dj > 0 && dr >= B.intervalleMinMs) rapports.push(dj / dr);
+      } else {
+        masque += Math.max(0, dj);
+      }
+    }
+    pauseEntre = false;
+    prec = i;
+  }
+  // La fin elle-même est un battement : l'heure où le serveur l'a reçue, au
+  // bout du journal. Le jeu ne peut pas l'avoir rejointe plus vite que l'heure.
+  if (bat && Number.isFinite(Number(bat.fin)) && Number(bat.fin) > 0 && prec >= 0) exces(totalMs, Number(bat.fin));
+
+  const span = bs.length > 1 ? bs[bs.length - 1].t - bs[0].t : 0;
+  d.actifs = rapports.length;
+  d.rapportMedian = arrondi(mediane(rapports));
+  d.rapportGlobal = reelActif > 0 ? arrondi(jeuActif / reelActif) : null;
+  d.transitionsParMinute = span > 0 ? arrondi(d.transitions / (span / 60000), 10) : 0;
+  d.jeuMasqueMs = Math.round(masque);
+  d.partMasquee = totalMs > 0 ? arrondi(Math.min(1, masque / totalMs)) : 0;
+  d.couverture = totalMs > 0 ? arrondi(Math.min(1, couvert / totalMs)) : 0;
+  d.jeuTrouMs = Math.round(d.jeuTrouMs);
+  d.pauseMs = Math.round(d.pauseMs);
+  d.excesMs = Math.round(d.excesMs);
+  const pct = (x) => Math.round(x * 100) + ' %';
+  const virg = (x) => String(x).replace('.', ',');
+
+  // 4. Le ralenti : la médiane des intervalles actifs.
+  if (d.actifs >= B.intervallesMin && d.rapportMedian !== null) {
+    if (d.rapportMedian < B.rapportRefus) {
+      return fin({ gravite: 'grave', raison: `ralenti : le jeu avance à ${virg(d.rapportMedian)} fois l'horloge du serveur`
+        + ` (médiane de ${d.actifs} intervalles ; un jeu normal la suit à 1)` });
+    }
+    if (d.rapportMedian < B.rapportIndice) indices.push(`jeu en retard sur l'horloge du serveur (${virg(d.rapportMedian)} fois, ${d.actifs} intervalles)`);
+  }
+
+  // 5. Le jeu sous les pauses déclarées.
+  if (d.jeuMasqueMs >= B.masqueRefusMs && d.partMasquee >= B.masqueRefus) {
+    return fin({ gravite: 'grave', raison: `fausses pauses : ${pct(d.partMasquee)} du jeu s'écoule entre des battements « en pause »`
+      + ` (${d.transitions} bascules pause ↔ jeu)` });
+  }
+  if (d.jeuMasqueMs >= B.masqueIndiceMs && d.partMasquee >= B.masqueIndice) {
+    indices.push(`pauses suspectes : ${pct(d.partMasquee)} du jeu s'écoule entre des battements « en pause »`);
+  }
+  if (span >= B.transitionsDureeMinMs && d.transitionsParMinute > B.transitionsParMinute) {
+    indices.push(`pauses en rafale : ${virg(d.transitionsParMinute)} bascules pause ↔ jeu par minute`
+      + (d.pausesCourtes ? `, dont ${d.pausesCourtes} pause(s) de moins de ${B.pauseCourteMs / 1000} s` : ''));
+  }
+
+  // 6. Les battements absents.
+  if (d.exiges && !d.plein && totalMs >= B.jeuSignificatifMs
+      && (d.couverture < B.couvertureMin || d.actifs < B.actifsMinAbsents)) {
+    return fin({ gravite: 'suspect', raison: `battements absents : ${d.recus} reçu(s), ${d.actifs} intervalle(s) actif(s)`
+      + ` pour ${Math.round(totalMs / 1000)} s de jeu (couverture ${pct(d.couverture)}`
+      + `${d.trous ? `, ${d.trous} trou(s) de plus de ${B.trouMs / 1000} s` : ''})` });
+  }
+
+  // 7. La somme des intervalles actifs : le compteur figé sans se dire en pause.
+  if (reelActif >= B.globalReelMinMs && d.rapportGlobal !== null) {
+    if (d.rapportGlobal < B.globalRefus) {
+      return fin({ gravite: 'grave', raison: `ralenti : ${virg(d.rapportGlobal)} s de jeu par seconde réelle hors pauses`
+        + ` (${Math.round(jeuActif / 1000)} s de jeu en ${Math.round(reelActif / 1000)} s)` });
+    }
+    if (d.rapportGlobal < B.globalIndice) indices.push(`jeu en retard sur l'horloge hors pauses (${virg(d.rapportGlobal)})`);
+  }
+
+  // 8. Le jeu qui va plus vite que l'horloge du serveur (le compteur qui
+  // « rattrape » d'un coup ce qu'il avait annoncé en retard, ou l'inverse).
+  if (d.excesMs > B.excesRefusMs) {
+    return fin({ gravite: 'grave', raison: `battements incohérents : ${Math.round(d.excesMs / 1000)} s de jeu de plus que l'heure écoulée entre deux battements` });
+  }
+  if (d.excesMs > B.excesIndiceMs) indices.push(`jeu en avance sur l'horloge du serveur entre deux battements (${Math.round(d.excesMs / 1000)} s)`);
+  return fin(null);
+}
+
+// L'alerte d'un refus des battements, pour le registre (signalerTriche).
+function alerteRalenti(jeu, examen) {
+  const r = examen.refus;
+  const dt = examen.details;
+  return { jeu, type: 'ralenti', gravite: r.gravite, resume: r.raison,
+    details: { rapportMedian: dt.rapportMedian, rapportGlobal: dt.rapportGlobal, actifs: dt.actifs, recus: dt.recus,
+      transitions: dt.transitions, partMasquee: dt.partMasquee, couverture: dt.couverture, excesMs: dt.excesMs } };
+}
+
+/**
+ * L'ARBRE CREUX. `partie` = { graine, journal, scoreDeclare, dureeMs,
+ * battements? } — `battements` : ce que fermerBattements a rendu, plus `fin`
+ * (l'heure de réception de la fin). Sans ce champ (une partie d'avant les
+ * battements, rejouée par l'admin), rien n'est examiné.
  *
  * @returns {{ verdict: 'conforme'|'divergent'|'refuse', scoreVerifie: number|null,
- *             raison: string, indices: string[], details: object, tempsJeuMs: number }}
+ *             raison: string, indices: string[], details: object, tempsJeuMs: number,
+ *             alerte?: object }}  alerte : un refus des battements, pour signalerTriche
  */
 function verifierArbre(partie) {
   const indices = [];
   const r = PixizRejeu.rejouer(moteurArbre(), partie.graine, partie.journal);
   const details = { pas: r.pas, tmodMoyen: Math.round(r.tmodMoyen * 1000) / 1000, multi: r.multi, couleurs: r.couleurs };
-  const sortie = (verdict, raison) => ({
+  let alerte = null;
+  const sortie = (verdict, raison) => Object.assign({
     verdict, raison: raison || '', indices, details, tempsJeuMs: r.tempsJeuMs,
     scoreVerifie: verdict === 'conforme' ? r.score : (r.ok ? r.score : null),
-  });
+  }, alerte ? { alerte } : {});
+  // Les battements, examinés sur le journal tel qu'il est écrit.
+  let examen = null;
+  if (partie.battements) {
+    const lu = PixizRejeu.lireJournal(partie.journal);
+    if (lu.pas) {
+      const n = lu.pas.length / 2;
+      const placer = positionsArbre(lu.pas);
+      const pl = placer(partie.battements.liste.map((b) => b.pas).concat([n]));
+      examen = examinerBattements(partie.battements, { position: (b) => pl.get(b.pas), pasFinal: n, totalMs: pl.get(n) });
+      details.battements = examen.details;
+    }
+  }
   if (!r.ok) return sortie('divergent', r.raison);
   const declare = Math.round(Number(partie.scoreDeclare));
   if (r.score !== declare) return sortie('divergent', `score rejoué ${r.score}, déclaré ${declare}`);
@@ -232,12 +788,20 @@ function verifierArbre(partie) {
   details.commandesParSeconde = Math.round(parSeconde * 10) / 10;
   if (parSeconde > SEUILS.arbre.commandesParSeconde) indices.push(`rythme de commandes surhumain (${details.commandesParSeconde} par seconde)`);
   if (r.score > SEUILS.arbre.exploit) indices.push(`score très au-dessus de l'exploit connu (${r.score} > ${SEUILS.arbre.exploit})`);
+  if (examen) {
+    for (const i of examen.indices) indices.push(i);
+    if (examen.refus) {
+      alerte = alerteRalenti('minipixiz', examen);
+      return sortie('refuse', examen.refus.raison);
+    }
+  }
   return sortie('conforme', '');
 }
 
 /**
  * L'ARCADE DE MINI-FEVER. `partie` = { graine, palier, journal (objet ou
- * texte JSON), declare: { niveau, jouees, gagnee }, dureeMs }.
+ * texte JSON), declare: { niveau, jouees, gagnee }, dureeMs, battements? }
+ * (cf. verifierArbre pour les battements).
  *
  * @returns {{ verdict, niveauVerifie, gagneesVerifiees: string[], raison,
  *             indices, details, tempsJeuMs }}
@@ -305,6 +869,24 @@ function verifierArcade(partie) {
   details.minimumMs = minimumMs;
   const horl = horloges(indices, tempsJeuMs, Number(partie.dureeMs) || 0, minimumMs);
   if (horl) return sortie('refuse', horl, extra);
+  // Les battements, sur la ligne du temps « épreuves et consoles ».
+  if (partie.battements) {
+    const images = eps.map((ep) => {
+      const lu = FeverRejeu.lireOps(ep && ep.o);
+      const l = [];
+      let q = FeverRejeu.TMOD_DEPART;
+      for (const o of lu.ops || []) if (o.t === 0) { q += o.dq; for (let i = 0; i < o.n; i++) l.push(q); }
+      return l;
+    });
+    const ligne = positionsArcade(images, consoleMin);
+    const pasFinal = images.reduce((s, l) => s + l.length, 0);
+    const examen = examinerBattements(partie.battements, { position: ligne.position, pasFinal, totalMs: ligne.totalMs });
+    details.battements = examen.details;
+    for (const i of examen.indices) indices.push(i);
+    if (examen.refus) {
+      return sortie('refuse', examen.refus.raison, Object.assign({ alerte: alerteRalenti('minifever', examen) }, extra));
+    }
+  }
   if (ecarts) {
     indices.push(`${ecarts} épreuve(s) rejouée(s) autrement que déclaré (${raisons.join(' ; ')})`);
     return sortie('ecart', '', extra);
@@ -381,6 +963,65 @@ function rythmePartie(p, ref) {
       && ppm > Number(ref.decile) * SEUILS.rythme.facteurDecile) {
     note('moyen', `${quoi} : ${String(Math.round(ppm / ref.decile * 10) / 10).replace('.', ',')} fois le 9e décile`
       + ` des parties conformes de la période (${Math.round(ref.decile)} points par minute, ${ref.n} parties)`);
+  }
+  return out;
+}
+
+/*
+ * ── LA TENDANCE au ralenti, partie après partie ─────────────────────────
+ *
+ * Le rapport DURÉE RÉELLE / TEMPS DE JEU d'une partie notée : duree_ms (du
+ * jeton à la fin, pauses comprises) sur le temps de jeu de référence. À
+ * l'Arbre, c'est temps_jeu_ms. À Mini-Fever, temps_jeu_ms ne compte que les
+ * ÉPREUVES (la console n'est pas au journal) : la référence est donc
+ * details.minimumMs, les épreuves plus leurs consoles — sans quoi une arcade
+ * honnête vaudrait déjà ≈ 2.
+ *
+ * Une partie normale tourne autour de 1,05 : à l'Arbre, le bouquet
+ * d'ouverture et le chargement (quelques secondes) avant le premier pas ; à
+ * Mini-Fever, le premier briefing et le dernier débriefing, qui ne sont pas
+ * dans le minimum. Ralentie ×2, elle vaut 2. Un joueur qui laisse sa fenêtre
+ * de côté une fois de temps en temps monte au-dessus de 1,5 sur UNE partie ;
+ * cinq parties de plus d'une minute de suite, toutes au-dessus, c'est ou bien
+ * un joueur qui pause sans arrêt (la pause de l'Arbre voile le plateau, mais
+ * elle laisse le temps de réfléchir), ou bien un ralenti que les battements
+ * n'ont pas vu — les parties d'avant les battements, ou le tricheur outillé
+ * qui déclare de fausses longues pauses. Une alerte « suspect », l'admin
+ * juge. Les parties de moins d'une minute de jeu ne comptent pas : quelques
+ * secondes de chargement suffisent à les pousser au-delà de 1,5.
+ */
+function rapportReelJeu(p) {
+  const d = (p && p.details) || {};
+  const ref = p && p.jeu === 'minifever' ? Number(d.minimumMs != null ? d.minimumMs : p.minimum_ms) : Number(p && p.temps_jeu_ms);
+  const duree = Number(p && p.duree_ms);
+  return ref > 0 && duree > 0 ? Math.round(duree / ref * 100) / 100 : null;
+}
+const referenceJeu = (p) => (p.jeu === 'minifever'
+  ? Number((p.details && p.details.minimumMs) != null ? p.details.minimumMs : p.minimum_ms) || 0
+  : Number(p.temps_jeu_ms) || 0);
+
+/**
+ * `parties` : les parties conformes (ou à écart toléré) d'UN jeu d'un joueur,
+ * de la plus récente à la plus ancienne. Rend la série en cours (les
+ * parties pesantes consécutives au-dessus du rapport) et, quand elle vient
+ * d'atteindre 5, 10, 15…, l'alerte à lever.
+ *
+ * @returns {{ serie: number, rapports: number[], alerte: null|{ resume, details } }}
+ */
+function tendanceRalenti(parties) {
+  const T = SEUILS.tendance;
+  const pesantes = (parties || []).filter((p) => referenceJeu(p) >= T.jeuMinMs);
+  const rapports = pesantes.map(rapportReelJeu);
+  let serie = 0;
+  while (serie < rapports.length && rapports[serie] !== null && rapports[serie] > T.rapport) serie++;
+  const out = { serie, rapports: rapports.slice(0, T.parties), alerte: null };
+  if (serie >= T.parties && serie % T.parties === 0) {
+    const r = rapports.slice(0, T.parties);
+    out.alerte = {
+      resume: `${serie} parties d'affilée dont la durée réelle dépasse ${String(T.rapport).replace('.', ',')} fois le temps de jeu`
+        + ` (dernières : ${r.map((x) => String(x).replace('.', ',')).join(', ')})`,
+      details: { serie, rapports: r, parties: pesantes.slice(0, T.parties).map((p) => p.id) },
+    };
   }
   return out;
 }
@@ -559,4 +1200,7 @@ module.exports = {
   SEUILS, poserSecret, creerJeton, lireJeton, dejaRendu, marquerRendu,
   verifierArbre, verifierArcade, verifierEnFil, auditer, pictosAttendus, moteurFever,
   rythmePartie, pointsParMinute, dureeLisible,
+  DEMARRAGE, ouvrirBattements, noterBattement, fermerBattements, debitBattement,
+  encoderBattements, decoderBattements, examinerBattements, positionsArbre, positionsArcade,
+  rapportReelJeu, tendanceRalenti,
 };

@@ -17574,6 +17574,7 @@ app.post('/api/minifever/partie', (req, res) => {
   if (!info || !info.nom) return res.json({ ok: false, error: 'palier' });
   if (!antitricheDebit(username)) return res.json({ ok: false, error: 'rate_limited' });
   const p = AT.creerJeton({ jeu: 'minifever', username, mode: palier });
+  AT.ouvrirBattements(p.id, username, 'minifever', p.t);
   if (process.env.DATABASE_URL) {
     db.creerPartieVerifiee({ id: p.id, jeu: 'minifever', username, graine: p.graine, mode: palier, jour: parisDayKey() })
       .catch(dbErr('creerPartieVerifiee'));
@@ -17631,8 +17632,10 @@ app.post('/api/minifever/score', async (req, res) => {
   }
 
   // Le rejeu, dans son fil (hors de la boucle du serveur).
+  const bat = antitricheBattementsDe(c, username, recuA);
   const v = await AT.verifierEnFil('arcade', { graine: c.g, palier, journal: b.journal,
-    declare: { niveau, jouees }, dureeMs: recuA - c.t });
+    declare: { niveau, jouees }, dureeMs: recuA - c.t, battements: bat });
+  antitricheApresBattements(username, v, bat, c.t);
   const classable = v.verdict === 'conforme' || v.verdict === 'ecart';
   const score = classable ? minifeverScore(palier, v.niveauVerifie) : 0;
 
@@ -17761,10 +17764,91 @@ function antitricheNoterPartie(p) {
   if (p.verdict !== 'conforme' && p.verdict !== 'ecart') {
     console.log(`[ANTITRICHE] ${p.username} ${p.jeu} ${p.id} ÉCARTÉE (${p.verdict}) — ${p.raison}`);
   }
-  if (!process.env.DATABASE_URL) return;
+  if (!process.env.DATABASE_URL) { antitricheTendance(p); return; }
   db.finirPartieVerifiee(Object.assign({ source: 'serveur', jour: parisDayKey() }, p))
-    .then((ok) => { if (!ok) console.log(`[ANTITRICHE] partie ${p.id} : déjà rendue en base`); })
+    .then((ok) => {
+      if (!ok) { console.log(`[ANTITRICHE] partie ${p.id} : déjà rendue en base`); return; }
+      return antitricheTendance(p);
+    })
     .catch(dbErr('finirPartieVerifiee'));
+}
+
+/*
+ * LES BATTEMENTS d'une partie vérifiée (antitricheLight.js, « LE RALENTI »).
+ *
+ * Toutes les deux secondes, et à chaque changement d'état, le jeu dit où en
+ * est son journal ; le serveur DATE le battement de sa propre horloge — la
+ * seule qu'un « speed hack » ne ralentit pas. Le battement n'est accepté que
+ * pour une partie en cours (un jeton donné, pas encore rendu) du joueur de
+ * la session, au débit d'un seau de trente qui se remplit de deux par
+ * seconde (le jeu en envoie un toutes les deux secondes, plus un par
+ * changement d'état).
+ *
+ * Après un redémarrage, le registre (en mémoire) a oublié les parties en
+ * cours : le jeu, à qui l'on répond « inconnue », renvoie alors son jeton, et
+ * une partie née AVANT ce démarrage se réinscrit — sans qu'on exige d'elle les
+ * battements perdus. Une partie née depuis n'a pas d'excuse : si le registre
+ * ne la connaît pas, on ne l'y remet pas.
+ */
+app.post('/api/antitriche/battement', (req, res) => {
+  const b = req.body || {};
+  const sid = getSidPorteParLaRequete(req, b);
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'not_authenticated' });
+  const maintenant = Date.now();
+  if (!AT.debitBattement(username, maintenant)) return res.json({ ok: false, error: 'rate_limited' });
+  const id = String(b.id || '').slice(0, 64);
+  let r = AT.noterBattement(id, username, b, maintenant);
+  if (r.erreur === 'inconnue' && b.jeton) {
+    const c = AT.lireJeton(b.jeton, { username, maintenant });
+    if (!c.erreur && c.id === id && Number(c.t) < AT.DEMARRAGE && !AT.dejaRendu(c.id)
+        && (c.j === 'minipixiz' || c.j === 'minifever')) {
+      AT.ouvrirBattements(c.id, username, c.j, c.t, { reprise: true });
+      r = AT.noterBattement(id, username, b, maintenant);
+    }
+  }
+  res.json(r.erreur ? { ok: false, error: r.erreur } : { ok: true });
+});
+
+// Les battements d'une partie rendue, prêts pour le rejeu : sortis du
+// registre, avec l'heure de la fin (le dernier « battement » de la partie).
+function antitricheBattementsDe(c, username, recuA) {
+  return Object.assign(AT.fermerBattements(c.id, username, c.t), { fin: recuA });
+}
+// Un refus des battements part en alerte ; la partie, elle, garde ses
+// battements bruts (pour être rejouée plus tard depuis l'admin).
+function antitricheApresBattements(username, v, bat, t0) {
+  if (v.alerte) signalerTriche(username, v.alerte);
+  if (v.details && bat) v.details.battementsBruts = AT.encoderBattements(bat, t0);
+}
+
+/*
+ * LA TENDANCE AU RALENTI (antitricheLight.tendanceRalenti) : après chaque
+ * partie conforme, les dernières parties conformes du même jeu. Cinq
+ * d'affilée qui durent plus d'une fois et demie leur temps de jeu lèvent une
+ * alerte `ralenti_tendance` (suspect) — puis à dix, à quinze… Elle couvre les
+ * parties d'avant les battements, et le joueur qui pause sans arrêt. Sans
+ * base, la mémoire garde les vingt dernières de chaque joueur.
+ */
+const antitricheConformesMemoire = new Map();      // 'jeu|pseudo' -> [parties, la plus récente d'abord]
+async function antitricheTendance(p) {
+  if (p.verdict !== 'conforme' && p.verdict !== 'ecart') return;
+  const T = AT.SEUILS.tendance;
+  let parties;
+  try {
+    if (process.env.DATABASE_URL) {
+      parties = await db.dernieresPartiesConformes(p.username, p.jeu, T.lecture);
+    } else {
+      const cle = `${p.jeu}|${String(p.username).toLowerCase()}`;
+      const l = antitricheConformesMemoire.get(cle) || [];
+      l.unshift({ id: p.id, jeu: p.jeu, duree_ms: p.dureeMs, temps_jeu_ms: p.tempsJeuMs, details: { minimumMs: p.details && p.details.minimumMs } });
+      if (l.length > T.lecture) l.length = T.lecture;
+      antitricheConformesMemoire.set(cle, l);
+      parties = l;
+    }
+  } catch (e) { console.error('[ANTITRICHE] tendance :', e.message); return; }
+  const t = AT.tendanceRalenti(parties);
+  if (t.alerte) signalerTriche(p.username, { jeu: p.jeu, type: 'ralenti_tendance', gravite: 'suspect', resume: t.alerte.resume, details: t.alerte.details });
 }
 
 /*
@@ -18281,6 +18365,19 @@ async function ficheSuspicion(u) {
       meilleur: Math.max(...v) }, distributionScores(v, Math.max(...v), false)));
   }
 
+  // Le RALENTI, partie par partie : la durée réelle sur le temps de jeu
+  // (AT.rapportReelJeu — à Mini-Fever, le temps de jeu compte ses consoles),
+  // et ce que les battements en ont dit (details.battements). Puis, par jeu,
+  // la série en cours de parties conformes qui durent trop
+  // (AT.tendanceRalenti : l'alerte ralenti_tendance part à cinq).
+  for (const pv of partiesVerifiees) pv.rapportReel = AT.rapportReelJeu(pv);
+  const tendancesRalenti = ['minipixiz', 'minifever'].map((jeu) => {
+    const l = partiesVerifiees.filter((pv) => pv.jeu === jeu && (pv.verdict === 'conforme' || pv.verdict === 'ecart'));
+    if (!l.length) return null;
+    const t = AT.tendanceRalenti(l);
+    return { jeu, serie: t.serie, rapports: t.rapports, seuil: AT.SEUILS.tendance.rapport, parties: AT.SEUILS.tendance.parties };
+  }).filter(Boolean);
+
   const items = mem && Array.isArray(mem.gameItems) ? mem.gameItems
     : (row ? await sur(db.getUserGameItems(row.id), []) : []);
   const info = (nom) => {
@@ -18309,7 +18406,7 @@ async function ficheSuspicion(u) {
     },
     alertes, historique, scores, parPartie,
     swapou: { bilan: swapouBilan, parties: partiesSwapou, ia: swapouIa },
-    partiesVerifiees,
+    partiesVerifiees, tendancesRalenti,
     comptesLies: { groupe, connexions },
     kikooz: { dons, journal: kikoozRecus },
     pictos: { actuels: items.map(info), retires: [...(pictosRetires.get(u) || [])].map(info) },
@@ -18570,6 +18667,7 @@ app.post('/api/minipixiz/arbre/partie', (req, res) => {
   if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'not_authenticated' });
   if (!antitricheDebit(username)) return res.json({ ok: false, error: 'rate_limited' });
   const p = AT.creerJeton({ jeu: 'minipixiz', username, mode: 0 });
+  AT.ouvrirBattements(p.id, username, 'minipixiz', p.t);
   if (process.env.DATABASE_URL) {
     db.creerPartieVerifiee({ id: p.id, jeu: 'minipixiz', username, graine: p.graine, mode: 0, jour: parisDayKey() })
       .catch(dbErr('creerPartieVerifiee'));
@@ -18599,8 +18697,10 @@ app.post('/api/minipixiz/arbre/fin', async (req, res) => {
     return refus('jeton', c.erreur);
   }
   if (await antitricheDejaRendu(c.id)) return refus('jeton_deja_rendu', 'cette partie a déjà été rendue');
+  const bat = antitricheBattementsDe(c, username, recuA);
   const v = await AT.verifierEnFil('arbre', { graine: c.g, journal: String(b.journal || ''),
-    scoreDeclare: declare, dureeMs: recuA - c.t });
+    scoreDeclare: declare, dureeMs: recuA - c.t, battements: bat });
+  antitricheApresBattements(username, v, bat, c.t);
   const classable = v.verdict === 'conforme';
   let r = { updated: false, newScore: 0, oldScore: 0, oldPos: 0, newPos: 0 };
   if (classable && v.scoreVerifie > 0) r = persistScore(username, 'minipixiz_classic', v.scoreVerifie, '');
@@ -18636,7 +18736,10 @@ app.get('/api/admin/antitriche/parties', adminAuth, async (req, res) => {
     // et son signal, au regard des parties conformes de la même période.
     const reference = {};
     for (const r of await db.rythmesDeReference(depuis)) reference[`${r.jeu}|${r.mode}`] = r;
-    for (const p of parties) p.rythme = AT.rythmePartie(p, reference[`${p.jeu}|${p.mode}`]);
+    for (const p of parties) {
+      p.rythme = AT.rythmePartie(p, reference[`${p.jeu}|${p.mode}`]);
+      p.rapportReel = AT.rapportReelJeu(p);
+    }
     res.json({ ok: true, parties, bilan, reference, bureauAccepte: antitricheBureauAccepte, seuils: AT.SEUILS, jour: parisDayKey() });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -18651,10 +18754,16 @@ app.post('/api/admin/antitriche/parties/:id/rejouer', adminAuth, async (req, res
   if (!p) return res.status(404).json({ ok: false, error: 'introuvable' });
   if (!p.journal || p.source !== 'serveur') return res.status(400).json({ ok: false, error: 'rien à rejouer' });
   const dureeMs = Number(p.duree_ms) || 0;
+  // Les battements gardés avec la partie (s'il y en a : les parties d'avant
+  // les battements se rejouent sans).
+  const bruts = p.details && p.details.battementsBruts;
+  const t0 = new Date(p.cree_le).getTime();
+  const battements = bruts ? AT.decoderBattements(bruts, t0) : null;
   let v;
   try {
     if (p.jeu === 'minipixiz') {
-      v = await AT.verifierEnFil('arbre', { graine: Number(p.graine), journal: p.journal, scoreDeclare: p.score_declare, dureeMs });
+      v = await AT.verifierEnFil('arbre', { graine: Number(p.graine), journal: p.journal, scoreDeclare: p.score_declare, dureeMs,
+        battements: battements || undefined });
     } else {
       let j = null;
       try { j = JSON.parse(p.journal); } catch { /* illisible : le rejeu le dira */ }
@@ -18662,12 +18771,13 @@ app.post('/api/admin/antitriche/parties/:id/rejouer', adminAuth, async (req, res
       const info = MINIFEVER_PALIERS[p.mode] || {};
       const fin = require('./public/minifever/rejeu.js').derouler(info, verdicts);
       v = await AT.verifierEnFil('arcade', { graine: Number(p.graine), palier: Number(p.mode), journal: j,
-        declare: { niveau: fin.niveau, jouees: fin.jouees }, dureeMs });
+        declare: { niveau: fin.niveau, jouees: fin.jouees }, dureeMs, battements: battements || undefined });
       if (v.verdict === 'conforme' || v.verdict === 'ecart') v.scoreVerifie = minifeverScore(Number(p.mode), v.niveauVerifie);
     }
   } catch (e) {
     v = { verdict: 'non_verifiable', raison: 'rejeu en panne : ' + e.message };
   }
+  if (v.details && bruts) v.details.battementsBruts = bruts;
   await db.majVerdictPartieVerifiee(p.id, v);
   res.json({ ok: true, verdict: v.verdict, raison: v.raison || '', scoreVerifie: v.scoreVerifie == null ? null : v.scoreVerifie, indices: v.indices || [] });
 });

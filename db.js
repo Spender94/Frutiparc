@@ -3288,10 +3288,22 @@ async function listerPartiesVerifiees(opts = {}) {
   params.push(Math.max(1, Math.min(Number(opts.limit) || 200, 1000)));
   const { rows } = await pool.query(
     `SELECT id, jeu, username, graine, mode, source, cree_le, fini_le, jour, score_declare,
-            score_verifie, verdict, raison, indices, details, classe, duree_ms, temps_jeu_ms,
+            score_verifie, verdict, raison, indices, details - 'battementsBruts' AS details, classe, duree_ms, temps_jeu_ms,
             valide_par, length(journal)::int AS taille_journal
        FROM parties_verifiees WHERE ${cond.join(' AND ')}
       ORDER BY fini_le DESC LIMIT $${params.length}`, params);
+  return rows;
+}
+// Les dernières parties CONFORMES (ou à écart toléré) d'un joueur à un jeu, la
+// plus récente d'abord — pour la tendance au ralenti
+// (antitricheLight.tendanceRalenti) : leurs durées réelles et de jeu.
+async function dernieresPartiesConformes(username, jeu, limit) {
+  const { rows } = await pool.query(
+    `SELECT id, jeu, duree_ms, temps_jeu_ms, (details->>'minimumMs')::int AS minimum_ms, fini_le
+       FROM parties_verifiees
+      WHERE LOWER(username) = $1 AND jeu = $2 AND fini_le IS NOT NULL AND verdict IN ('conforme', 'ecart')
+      ORDER BY fini_le DESC LIMIT $3`,
+    [String(username || '').toLowerCase(), String(jeu || ''), Math.max(1, Math.min(Number(limit) || 20, 200))]);
   return rows;
 }
 // Par joueur : combien de parties, combien écartées, le meilleur classé.
@@ -6199,6 +6211,7 @@ module.exports = {
   majVerdictPartieVerifiee,
   classerPartieVerifiee,
   listerPartiesVerifiees,
+  dernieresPartiesConformes,
   bilanPartiesVerifiees,
   meilleursVerifiesParJour,
   rythmesDeReference,
