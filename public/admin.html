@@ -677,6 +677,21 @@
     5 min 12 s, ×4 après 10 min 25 s), un gros score en peu de temps est donc rare — un programme qui joue à la place du
     joueur, lui, se rejoue parfaitement.
   </p>
+  <p class="integ-note">
+    <b>Battements (le ralenti).</b> Pendant la partie, le jeu dit au serveur toutes les deux secondes où en est son journal,
+    et c'est l'horloge du <i>serveur</i> qui date chaque battement : une extension qui ralentit le navigateur (« speed
+    hack ») fait tourner le jeu moins vite que cette horloge-là. <b>Rapport</b> : la médiane, intervalle par intervalle, du
+    temps de jeu sur le temps réel — ≈ 1 chez un joueur normal, 0,5 sous un ralenti ×2. Sous
+    <span id="pv-seuil-rapport">0,8</span> (sur au moins <span id="pv-seuil-actifs">20</span> intervalles actifs), la
+    partie est <span class="vd vd-refuse">refuse</span> et part en alerte <i>ralenti</i> ; entre ce seuil et 0,9, c'est un
+    indice. <b>Actifs</b> : les intervalles hors pause qui comptent. <b>Bascules</b> : les passages pause ↔ jeu (une vraie
+    pause est rare et longue) ; <b>masqué</b> : la part du jeu écoulée entre des battements « en pause » — presque rien chez
+    un joueur normal, presque tout chez celui qui déclare de fausses pauses. Une partie de plus d'une minute dont le jeu
+    n'est pas couvert aux trois quarts par des battements (bloqués, ou un <b>trou</b> de plus de vingt secondes en plein
+    jeu) est écartée (« battements absents »). <b>Réel / jeu</b>, sous la durée réelle : la durée réelle sur le
+    temps de jeu (à Mini-Fever, consoles comprises) — ≈ 1,05 d'ordinaire ; cinq parties conformes d'affilée au-delà de
+    1,5 lèvent l'alerte <i>ralenti_tendance</i>.
+  </p>
   <div class="integ-inter">
     <label><input type="checkbox" id="pv-bureau" onchange="portagesBureau(this.checked)">
       MiniPixiz : classer aussi le record d'arbre battu au bureau (SWF) — non vérifiable</label>
@@ -693,7 +708,7 @@
   </table>
   <h3>Les parties</h3>
   <table>
-    <thead><tr><th>Fin</th><th>Joueur</th><th>Jeu</th><th>Déclaré</th><th>Vérifié</th><th>Verdict</th><th>Indices</th><th>Durée réelle</th><th>Temps de jeu</th><th>Rythme</th><th>Classée</th><th></th></tr></thead>
+    <thead><tr><th>Fin</th><th>Joueur</th><th>Jeu</th><th>Déclaré</th><th>Vérifié</th><th>Verdict</th><th>Indices</th><th>Durée réelle</th><th>Temps de jeu</th><th title="Les battements datés par le serveur : le jeu suit-il son horloge ?">Battements</th><th>Rythme</th><th>Classée</th><th></th></tr></thead>
     <tbody id="pv-parties"></tbody>
   </table>
   <h3>Audit des scores déjà classés</h3>
@@ -2064,6 +2079,11 @@ async function loadPortagesVerif() {
       $('#pv-seuil-ppm').textContent = Number(S.arbre.pointsParMinute).toLocaleString('fr-FR');
       $('#pv-seuil-score').textContent = Number(S.arbre.scoreRythme).toLocaleString('fr-FR');
     }
+    if (S.battements) {
+      pvSeuilsBat = S.battements;
+      $('#pv-seuil-rapport').textContent = pvVirg(S.battements.rapportRefus);
+      $('#pv-seuil-actifs').textContent = S.battements.intervallesMin;
+    }
     pvParties = d.parties;
     const signalees = d.parties.filter((p) => p.rythme && p.rythme.signal).length;
     if (signalees) $('#pv-etat').innerHTML += ` · <b class="rythme-moyen">${signalees} rythme${signalees > 1 ? 's' : ''} anormal${signalees > 1 ? 'aux' : ''}</b>`;
@@ -2109,9 +2129,11 @@ function pvAfficherParties() {
       <td>${nb(p.score_verifie)}</td>
       <td><span class="vd vd-${esc(p.verdict)}">${esc(p.verdict.replace('_', ' '))}</span>${p.raison ? `<div style="font-size:11px;color:#777">${esc(p.raison)}</div>` : ''}</td>
       <td style="font-size:11px;color:#c8860a">${ind.map(esc).join('<br>') || '—'}</td>
-      <td style="white-space:nowrap" title="${esc(debutFin)}">${p.duree_ms ? pvDuree(p.duree_ms) : '—'}</td>
+      <td style="white-space:nowrap" title="${esc(debutFin)}">${p.duree_ms ? pvDuree(p.duree_ms) : '—'}${p.rapportReel
+        ? `<div style="font-size:11px;color:${p.rapportReel > 1.5 ? '#c8860a' : '#777'}" title="Durée réelle sur temps de jeu${p.jeu === 'minifever' ? ' (consoles comprises)' : ''}">réel / jeu ${pvVirg(p.rapportReel)}</div>` : ''}</td>
       <td style="white-space:nowrap">${p.temps_jeu_ms ? pvDuree(p.temps_jeu_ms) : '—'}${ry.images
         ? `<div style="font-size:11px;color:#777" title="Images rejouées par le serveur${fps ? ', ≈ ' + fps + ' par seconde' : ''}">${nb(ry.images)} images</div>` : ''}</td>
+      <td style="white-space:nowrap">${pvBattements(p.details && p.details.battements)}</td>
       <td style="white-space:nowrap">${ry.pointsParMinute == null ? '—'
         : `<span class="${ry.signal ? 'rythme-' + esc(ry.signal) : ''}">${nb(ry.pointsParMinute)} pts/min</span>`}${(ry.raisons || []).length
         ? `<div style="font-size:11px;white-space:normal;max-width:260px" class="rythme-${esc(ry.signal)}">${ry.raisons.map(esc).join('<br>')}</div>` : ''}</td>
@@ -2119,7 +2141,24 @@ function pvAfficherParties() {
       <td style="white-space:nowrap">${peutRejouer ? `<button class="btn btn-sm" title="Rejouer la partie à nouveau" onclick="portagesRejouer('${esc(p.id)}')">Rejouer</button>` : ''}
         ${peutClasser ? `<button class="btn btn-sm" title="Classer cette partie au challenge du jour malgré le verdict" onclick="portagesClasser('${esc(p.id)}')">Classer</button>` : ''}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="12" style="text-align:center;color:#999;padding:14px">${seul ? 'Aucun rythme anormal.' : 'Aucune partie.'}</td></tr>`;
+  }).join('') || `<tr><td colspan="13" style="text-align:center;color:#999;padding:14px">${seul ? 'Aucun rythme anormal.' : 'Aucune partie.'}</td></tr>`;
+}
+const pvVirg = (x) => String(x).replace('.', ',');
+// Ce que les battements ont dit d'une partie (details.battements).
+let pvSeuilsBat = { rapportRefus: 0.8, rapportIndice: 0.9, intervallesMin: 20 };
+function pvBattements(b) {
+  if (!b) return '<span style="color:#999" title="Partie d’avant les battements">—</span>';
+  const S = pvSeuilsBat;
+  const r = b.rapportMedian;
+  const assez = b.actifs >= S.intervallesMin;
+  const coul = r == null ? '#999' : !assez ? '#777' : r < S.rapportRefus ? '#b31111' : r < S.rapportIndice ? '#c8860a' : 'inherit';
+  const masque = b.partMasquee ? Math.round(b.partMasquee * 100) : 0;
+  return `<b style="color:${coul}" title="Médiane du temps de jeu sur le temps réel, intervalle par intervalle${assez ? '' : ' (trop peu d’intervalles pour juger)'}">${r == null ? '—' : pvVirg(r)}</b>`
+    + `<div style="font-size:11px;color:#777" title="${b.recus} battement(s) reçu(s) ; somme des intervalles actifs : ${b.rapportGlobal == null ? '—' : pvVirg(b.rapportGlobal)} ; couverture ${Math.round((b.couverture || 0) * 100)} %">${b.actifs} actif${b.actifs > 1 ? 's' : ''}`
+    + ` · ${b.transitions} bascule${b.transitions > 1 ? 's' : ''}${b.transitionsParMinute ? ` (${pvVirg(b.transitionsParMinute)}/min)` : ''}</div>`
+    + (masque ? `<div style="font-size:11px;color:${masque >= 20 ? '#b31111' : '#777'}">masqué ${masque} %</div>` : '')
+    + (b.trous ? `<div style="font-size:11px;color:#c8860a" title="Plus de vingt secondes sans battement en plein jeu">${b.trous} trou${b.trous > 1 ? 's' : ''}</div>` : '')
+    + (b.exiges === false ? '<div style="font-size:11px;color:#999" title="Partie née avant le redémarrage du serveur">non exigés</div>' : '');
 }
 async function portagesBureau(on) {
   const msg = on
@@ -2601,12 +2640,26 @@ function alRenduFiche(d) {
     + (d.swapou.ia.length ? `<table><thead><tr><th>Joué avec l’IA, le</th><th>Score</th><th>Donnée</th></tr></thead><tbody>${d.swapou.ia.map((x) => `<tr><td>${tFmtDate(x.created_at)}</td><td>${alNb(x.score)}</td><td>${esc(x.data || '')}</td></tr>`).join('')}</tbody></table>` : ''));
 
   // 5. Les parties vérifiées des portages.
+  // Le ralenti : la série en cours, par jeu, puis partie par partie le
+  // rapport durée réelle / temps de jeu et la médiane des battements.
+  const tendances = (d.tendancesRalenti || []).map((t) => {
+    const fort = t.serie >= t.parties;
+    return `<div class="al-resume" style="margin-top:6px${fort ? ';color:#b31111' : ''}">${alJeu(t.jeu)} : `
+      + `${t.serie ? `<b>${t.serie}</b> partie${t.serie > 1 ? 's' : ''} conforme${t.serie > 1 ? 's' : ''} d'affilée au-delà de ${pvVirg(t.seuil)} fois le temps de jeu`
+        : `la dernière partie conforme ne dure pas plus de ${pvVirg(t.seuil)} fois son temps de jeu`}`
+      + `${t.rapports.length ? ` — dernières : ${t.rapports.map((r) => (r == null ? '—' : pvVirg(r))).join(', ')}` : ''}`
+      + `${fort ? ' (alerte ralenti_tendance)' : ''}</div>`;
+  }).join('');
   h += alSection('Parties vérifiées (MiniPixiz, Mini-Fever)', d.partiesVerifiees.length, d.partiesVerifiees.length
-    ? `<table><thead><tr><th>Fin</th><th>Jeu</th><th>Déclaré</th><th>Vérifié</th><th>Verdict</th><th>Classée</th><th>Temps de jeu</th></tr></thead><tbody>${d.partiesVerifiees.map((p) => `<tr>
+    ? tendances + `<table><thead><tr><th>Fin</th><th>Jeu</th><th>Déclaré</th><th>Vérifié</th><th>Verdict</th><th>Classée</th><th>Durée réelle</th><th>Temps de jeu</th>`
+      + `<th title="Durée réelle sur temps de jeu (à Mini-Fever, consoles comprises) : ≈ 1,05 d'ordinaire, 2 sous un ralenti ×2 — ou de longues pauses">Réel / jeu</th>`
+      + `<th title="Médiane des battements : le temps de jeu sur le temps réel, daté par le serveur">Battements</th></tr></thead><tbody>${d.partiesVerifiees.map((p) => `<tr>
         <td style="white-space:nowrap">${tFmtDate(p.fini_le)}</td><td>${alJeu(p.jeu)}</td>
         <td>${alNb(p.score_declare)}</td><td>${p.score_verifie == null ? '—' : alNb(p.score_verifie)}</td>
         <td><span class="vd vd-${esc(p.verdict)}">${esc(String(p.verdict).replace('_', ' '))}</span>${p.raison ? `<div style="font-size:11px;color:#777">${esc(p.raison)}</div>` : ''}</td>
-        <td>${p.classe ? 'oui' : 'non'}</td><td>${p.temps_jeu_ms ? svDuree(p.temps_jeu_ms) : '—'}</td></tr>`).join('')}</tbody></table>`
+        <td>${p.classe ? 'oui' : 'non'}</td><td>${p.duree_ms ? svDuree(p.duree_ms) : '—'}</td><td>${p.temps_jeu_ms ? svDuree(p.temps_jeu_ms) : '—'}</td>
+        <td>${p.rapportReel == null ? '—' : `<b style="color:${p.rapportReel > 1.5 ? '#c8860a' : 'inherit'}">${pvVirg(p.rapportReel)}</b>`}</td>
+        <td style="white-space:nowrap">${pvBattements(p.details && p.details.battements)}</td></tr>`).join('')}</tbody></table>`
     : '<div class="al-vide">Aucune partie vérifiée.</div>');
 
   // 6. Les pictos : retirer, rendre.
