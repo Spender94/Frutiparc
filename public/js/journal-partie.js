@@ -97,7 +97,102 @@ function graineDe(graine, k) {
 const QUANTUM_TMOD = 1024;
 const quantifierTmod = (t) => Math.max(1, Math.round((Number(t) || 0) * QUANTUM_TMOD));
 
-const API = { encoder, decoder, generateur, graineDe, QUANTUM_TMOD, quantifierTmod, zig, dezig };
+/*
+ * LES BATTEMENTS d'une partie vérifiée (antitricheLight.js, « LE RALENTI »).
+ *
+ * Le journal prouve CE QUI a été joué, pas À QUELLE VITESSE : un « speed
+ * hack » qui ralentit l'horloge du navigateur fait tourner le jeu deux fois
+ * moins vite, et le journal reste authentique. Pendant la partie, on dit donc
+ * au serveur, toutes les deux secondes, où en est le journal (`pas`) et si le
+ * jeu est figé (`pause`) ou entre deux épreuves (`console`) ; c'est LUI qui
+ * date chaque battement, avec son horloge à lui. Un ralenti ralentit aussi
+ * nos minuteries — les battements arrivent plus espacés, sans importance.
+ *
+ * Un battement part aussi AUSSITÔT que l'état change : la pause posée ou
+ * levée, une épreuve finie ou lancée. L'état se relit à chaque image
+ * (requestAnimationFrame), tous les quarts de seconde (une minuterie, qui
+ * tourne encore onglet caché) et sur les événements qui le font changer
+ * (focus, clavier, pointeur) — écoutés APRÈS ceux du jeu, l'état y est déjà
+ * à jour. Le serveur sait ainsi que l'intervalle qui suit un battement « en
+ * jeu » est du jeu d'un bout à l'autre, et celui qui suit un battement « en
+ * pause », de la pause.
+ *
+ *   const b = JournalPartie.battements({ sid, id, jeton, etat })
+ *     etat() → { pas, pause, console } ou null (la partie n'est plus là :
+ *              les battements s'arrêtent)
+ *   b.finir() → une promesse : le dernier battement est parti (et revenu,
+ *               ou une seconde et demie s'est écoulée). À appeler juste
+ *               avant d'envoyer la fin.
+ *
+ * Le jeton ne part qu'une fois que le serveur a dit ne pas connaître la
+ * partie (il a redémarré pendant qu'on jouait) : il s'en sert pour la
+ * réinscrire.
+ */
+function battements(o) {
+  if (!o || !o.id || !o.sid || typeof o.etat !== 'function' || typeof fetch === 'undefined') return null;
+  const url = o.url || '/api/antitriche/battement';
+  const periode = o.periode || 2000;
+  const periodePause = o.periodePause || 10000;   // figé, rien ne presse
+  let n = 0, fini = false, avecJeton = false, minuteur = null, cle = null, raf = null, veille = null;
+  const lire = () => { try { return o.etat(); } catch (e) { return null; } };
+  const clef = (e) => (e.pause ? 'p' : '-') + (e.console ? 'c' : '-');
+  const programmer = (ms) => {
+    if (minuteur) clearTimeout(minuteur);
+    minuteur = fini ? null : setTimeout(envoyer, ms);
+  };
+  function envoyer() {
+    if (fini) return Promise.resolve(null);
+    const e = lire();
+    if (!e) { arreter(); return Promise.resolve(null); }
+    cle = clef(e);
+    const corps = { sid: o.sid, id: o.id, n: ++n, pas: Math.max(0, Math.trunc(Number(e.pas)) || 0), pause: e.pause ? 1 : 0 };
+    if (e.console) corps.console = 1;
+    if (avecJeton && o.jeton) corps.jeton = o.jeton;
+    programmer(e.pause ? periodePause : periode);
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corps), keepalive: true })
+      .then((r) => r.json())
+      .then((j) => { if (j && j.error === 'inconnue') avecJeton = true; return j; })
+      .catch(() => null);
+  }
+  const surveiller = () => {
+    if (fini) return;
+    const e = lire();
+    if (!e) { arreter(); return; }
+    if (clef(e) !== cle) envoyer();
+  };
+  const image = () => { if (fini) return; surveiller(); raf = requestAnimationFrame(image); };
+  const EVENEMENTS = ['blur', 'focus', 'keydown', 'keyup', 'pointerdown', 'pointerup', 'touchstart', 'mousedown'];
+  const ecouter = (on) => {
+    if (typeof window === 'undefined' || !window.addEventListener) return;
+    for (const ev of EVENEMENTS) window[on ? 'addEventListener' : 'removeEventListener'](ev, surveiller);
+    if (typeof document !== 'undefined') document[on ? 'addEventListener' : 'removeEventListener']('visibilitychange', surveiller);
+  };
+  function arreter() {
+    if (fini) return;
+    fini = true;
+    if (minuteur) clearTimeout(minuteur);
+    if (veille) clearInterval(veille);
+    if (raf && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(raf);
+    ecouter(false);
+  }
+  envoyer();
+  if (typeof requestAnimationFrame !== 'undefined') raf = requestAnimationFrame(image);
+  veille = setInterval(surveiller, 250);
+  ecouter(true);
+  return {
+    signaler: envoyer,
+    arreter,
+    finir() {
+      if (fini) return Promise.resolve(null);
+      const dernier = envoyer();
+      arreter();
+      return Promise.race([dernier, new Promise((res) => setTimeout(res, 1500))]);
+    },
+  };
+}
+
+const API = { encoder, decoder, generateur, graineDe, QUANTUM_TMOD, quantifierTmod, zig, dezig, battements };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.JournalPartie = API;

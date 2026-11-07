@@ -58,6 +58,11 @@ function brancher(socle, graine, premier) {
   let dirty = false;
   let tmodTotal = 0;                // toutes les images, console comprise
   let qEnCours = 0;                 // le tmod de l'image qui se joue (0 hors image)
+  // Les images JOURNALISÉES, toutes épreuves bout à bout : le compteur des
+  // battements (journal-partie.js). Le serveur sait le retrouver dans le
+  // journal ; la console, qui n'y est pas, il la reconstitue (cf.
+  // antitricheLight.js, « LE RALENTI »).
+  let images = 0;
 
   const orig = {
     tirer: socle.tirer.bind(socle),
@@ -120,6 +125,7 @@ function brancher(socle, graine, premier) {
     tmodTotal += q;
     if (cur) {
       vider();
+      images++;
       if (cur.serie && q === cur.q) {
         cur.serie.n++;              // une image de plus, identique : la série s'allonge
       } else {
@@ -143,6 +149,9 @@ function brancher(socle, graine, premier) {
 
   return {
     get epreuves() { return epreuves.length; },
+    get images() { return images; },
+    // Une épreuve en cours d'enregistrement ? Sinon, c'est la console.
+    get enEpreuve() { return !!cur; },
     get tempsDeJeuMs() { return Math.round(tmodTotal / J.QUANTUM_TMOD / 32 * 1000); },
     journal() { return { v: VERSION, epreuves: epreuves.slice() }; },
   };

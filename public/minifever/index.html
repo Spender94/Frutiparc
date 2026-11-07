@@ -106,6 +106,7 @@
 const E = window.MinifeverEngine;
 const C = window.MinifeverClient;
 const { JEUX } = window.MinifeverJeux;
+const J = window.JournalPartie || {};
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -174,7 +175,7 @@ function demanderPartie(palier) {
     body: JSON.stringify({ sid, palier }), signal: ctrl ? ctrl.signal : undefined,
   })
     .then((r) => r.json())
-    .then((j) => (j && j.ok && j.jeton ? { graine: Number(j.graine) >>> 0, jeton: j.jeton } : null))
+    .then((j) => (j && j.ok && j.jeton ? { id: j.id, graine: Number(j.graine) >>> 0, jeton: j.jeton } : null))
     .catch(() => null)
     .then((p) => { clearTimeout(minuteur); return p; });
 }
@@ -213,6 +214,21 @@ function jouer() {
     }
     socle = client.nouvellePartie(ArcadeVerifiee, JEUX, { palier: m.palier });
     socle.verif = verif;
+    // LES BATTEMENTS (journal-partie.js) : les images journalisées, toutes
+    // épreuves bout à bout ; « console » entre deux épreuves (le journal ne
+    // la garde pas, le serveur la reconstitue), « pause » quand la partie
+    // est figée. Ils s'arrêtent seuls si le joueur relance une partie.
+    const cette = socle;
+    if (partie && partie.id && J.battements) {
+      verif.battements = J.battements({
+        sid, id: partie.id, jeton: partie.jeton,
+        etat: () => (socle !== cette || !verif.enregistreur ? null : {
+          pas: verif.enregistreur.images,
+          pause: client.enPause || document.hidden,
+          console: !verif.enregistreur.enEpreuve,
+        }),
+      });
+    }
     client.demarrer();
     direEnPartie(true);
     majEtat();
@@ -280,6 +296,10 @@ function finArcade(d) {
     : d.niveau + '/' + d.objectif + ' épreuves — choisir un mode pour rejouer');
   const base = $('etat').textContent;
   const cette = socle;                // si le joueur a relancé, on se tait
+  // Le dernier battement part juste avant la fin.
+  const v0 = (cette && cette.verif) || {};
+  const finBattements = v0.battements ? v0.battements.finir() : Promise.resolve();
+  v0.battements = null;
   const dire = (t) => { if (socle === cette) $('etat').textContent = base + ' · ' + t; };
   if (!sid) { dire('connecte-toi pour enregistrer tes scores'); return; }
   if (!(d.niveau > 0)) { dire('aucune épreuve remportée : rien à classer'); return; }
@@ -309,7 +329,7 @@ function finArcade(d) {
         dire(t);
       });
   };
-  envoyer();
+  finBattements.then(envoyer);
 }
 
 /* ── Le chargement, puis la première épreuve — toute seule, comme le SWF. ── */

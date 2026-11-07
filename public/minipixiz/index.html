@@ -1033,6 +1033,7 @@
        */
       var arbreEnPreparation = false;
       var classementArbre = null;
+      var battementsArbre = null;
       var MOTIFS_ARBRE = {
         hors_ligne: 'partie jouée sans le serveur : elle n\u2019est pas classée.',
         partie_refusee: 'le serveur n\u2019a pas retrouvé cette partie en la rejouant : elle n\u2019est pas classée.',
@@ -1108,9 +1109,15 @@
             // multiplicateur), pas celui du moteur de puzzle — d'où la lecture
             // sur le lieu et non sur `info`. Il part avec le journal de la
             // partie : le serveur la rejoue avant de la classer.
+            // Les battements s'arrêtent là, sur un dernier, juste avant la fin.
+            var finBattements = battementsArbre ? battementsArbre.finir() : Promise.resolve();
+            battementsArbre = null;
             if (classe === 'Arbre' && client.lieu && client.lieu.score > 0 && plateforme.sid) {
               var journalArbre = enregistreur ? enregistreur.journal() : '';
-              plateforme.envoyerPartieArbre(partie, client.lieu.score, journalArbre)
+              var scoreArbre = client.lieu.score;
+              finBattements.then(function () {
+                return plateforme.envoyerPartieArbre(partie, scoreArbre, journalArbre);
+              })
                 .then(function (r) {
                   classementArbre = r;
                   if (!r.ok) console.warn('[arbre] partie non classée :', r.error, r.raison || '');
@@ -1177,6 +1184,24 @@
         // échappe, et le pas qu'il arrondit est celui que le moteur joue.
         if (classe === 'Arbre' && l && window.MinipixizRejeu) enregistreur = window.MinipixizRejeu.brancher(l);
         client.demarrer();
+        // LES BATTEMENTS de l'arbre vérifié (journal-partie.js) : le nombre de
+        // pas écrits au journal, et « en pause » chaque fois que le moteur de
+        // l'arbre ne fait pas de pas — la pause (P, Échap, le bouton, la
+        // fenêtre passée derrière), le bouquet d'ouverture, le panneau
+        // d'expérience, une cinématique. Ils s'arrêtent seuls si l'on quitte
+        // l'arbre sans finir.
+        if (classe === 'Arbre' && l && enregistreur && partie && partie.id && window.JournalPartie
+            && window.JournalPartie.battements) {
+          battementsArbre = window.JournalPartie.battements({
+            sid: plateforme.sid, id: partie.id, jeton: partie.jeton,
+            etat: function () {
+              if (client.lieu !== l) return null;
+              return { pas: enregistreur.nombre,
+                pause: !!(client.pause || client.ouverture || client.evolution || client.cine
+                  || client.nouvelle || document.hidden) };
+            },
+          });
+        }
         return l;
       }
 
