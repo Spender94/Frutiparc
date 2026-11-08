@@ -9,8 +9,9 @@
  * Ici, le calcul lui-même, sur de VRAIES parties (le vrai moteur, joué au
  * hasard par le banc d'essai) et des battements simulés comme le navigateur
  * les enverrait : un joueur normal, un joueur qui fait deux longues pauses,
- * un ralenti ×2 et ×1,3, des battements bloqués, des fausses pauses un
- * battement sur deux, un compteur qui ment ; la ligne du temps de Mini-Fever
+ * un joueur qui pause toutes les deux secondes (permis), un ralenti ×2, ×1,3,
+ * ×1,15 et ×1,05 (AUCUN n'est toléré), des battements bloqués, des fausses
+ * pauses un battement sur deux, un compteur qui ment ; la ligne du temps de Mini-Fever
  * (épreuves et consoles) ; le registre (à qui la partie, combien, à quel
  * débit) ; l'écriture des battements gardés ; la tendance partie après partie.
  */
@@ -150,7 +151,26 @@ test('ralenti : deux longues pauses (la fenêtre passée derrière) ne changent 
   assert.equal(b.pauses, 2);
   assert.equal(b.transitions, 4);
   assert.ok(b.pauseMs >= 77000, 'les pauses se mesurent');
-  assert.ok(b.partMasquee < 0.05, 'une vraie pause ne masque presque rien : ' + b.partMasquee);
+  assert.equal(b.jeuSousPauseMs, 0, 'une vraie pause ne fait avancer le jeu de rien');
+  assert.ok(b.rapportGlobal > 0.99, 'somme ' + b.rapportGlobal);
+});
+
+test('ralenti : pauser toutes les deux secondes est permis (chaque morceau de jeu est mesuré)', () => {
+  // Une demi-seconde de pause toutes les deux secondes de jeu, toute la partie.
+  const pauses = [];
+  for (let a = 2000; a < lgArbre.total - 1000; a += 2000) pauses.push({ a, ms: 500 });
+  const v = arbre(battements(lgArbre, { pauses, gigue: 40 }));
+  assert.equal(v.verdict, 'conforme', v.raison);
+  const b = v.details.battements;
+  assert.ok(b.transitions > 80, b.transitions + ' bascules');
+  assert.ok(b.transitionsParMinute > 30, b.transitionsParMinute + ' bascules par minute');
+  assert.equal(b.jeuSousPauseMs, 0);
+  assert.ok(b.rapportGlobal > 0.98 && b.rapportGlobal < 1.02, 'somme ' + b.rapportGlobal);
+  assert.deepEqual(v.indices, []);
+  // Les mêmes pauses, au ralenti ×1,25 (le jeu à 0,8) : refusé.
+  const lent = arbre(battements(lgArbre, { pauses, lent: 0.8 }));
+  assert.equal(lent.verdict, 'refuse');
+  assert.match(lent.raison, /^ralenti : le jeu avance à 0,8 fois l'horloge du serveur hors pauses/);
 });
 
 test('ralenti : ×2 est refusé (médiane ≈ 0,5), en alerte « ralenti » grave', () => {
@@ -164,13 +184,20 @@ test('ralenti : ×2 est refusé (médiane ≈ 0,5), en alerte « ralenti » grav
   assert.ok(Math.abs(v.details.battements.rapportMedian - 0.5) < 0.03);
 });
 
-test('ralenti : ×1,3 tombe sous 0,8 (refusé), ×1,15 n’est qu’un indice', () => {
-  const v13 = arbre(battements(lgArbre, { lent: 1 / 1.3 }));
-  assert.equal(v13.verdict, 'refuse');
-  assert.ok(Math.abs(v13.details.battements.rapportMedian - 0.77) < 0.02, String(v13.details.battements.rapportMedian));
-  const v115 = arbre(battements(lgArbre, { lent: 1 / 1.15 }));
-  assert.equal(v115.verdict, 'conforme');
-  assert.ok(v115.indices.some((i) => /en retard sur l'horloge du serveur \(0,8/.test(i)), v115.indices.join(' | '));
+test('ralenti : aucun ralenti toléré — ×1,3, ×1,15, ×1,1 et ×1,05 refusés ; ×1,03 un indice ; ×1,01 rien', () => {
+  for (const [f, r] of [[1.3, 0.77], [1.15, 0.87], [1.1, 0.91], [1.05, 0.95]]) {
+    const v = arbre(battements(lgArbre, { lent: 1 / f, gigue: 60 }));
+    assert.equal(v.verdict, 'refuse', '×' + f);
+    assert.match(v.raison, /^ralenti : .* hors pauses/);
+    assert.equal(v.alerte.type, 'ralenti');
+    assert.ok(Math.abs(v.details.battements.rapportGlobal - r) < 0.01, '×' + f + ' : ' + v.details.battements.rapportGlobal);
+  }
+  const v103 = arbre(battements(lgArbre, { lent: 1 / 1.03, gigue: 60 }));
+  assert.equal(v103.verdict, 'conforme', v103.raison);
+  assert.ok(v103.indices.some((i) => /légèrement en retard sur l'horloge du serveur \(0,97/.test(i)), v103.indices.join(' | '));
+  const v101 = arbre(battements(lgArbre, { lent: 1 / 1.01, gigue: 60 }));
+  assert.equal(v101.verdict, 'conforme', v101.raison);
+  assert.deepEqual(v101.indices, []);
 });
 
 test('ralenti : sans battements, une partie de plus d’une minute est refusée (« battements absents », suspect)', () => {
@@ -206,26 +233,38 @@ test('ralenti : bloquer les battements le temps de jouer au ralenti laisse un tr
   liste.push({ t: finReel, n: ++n, pas: lg.pasFinal, pause: 0, console: 0 });
   const v = arbre({ liste, exiges: true, plein: false, fin: finReel + 80, t0 });
   assert.equal(v.verdict, 'refuse');
-  assert.match(v.raison, /^battements absents .*1 trou\(s\) de plus de 20 s/);
+  // Le trou compte dans la somme : le ralenti s'y voit.
+  assert.match(v.raison, /^ralenti : le jeu avance à 0,667 fois/);
   assert.equal(v.details.battements.trous, 1);
   assert.ok(v.details.battements.rapportMedian > 0.97, 'la médiane, elle, ne voyait rien');
+  // Sans même le dernier battement : le bout de la partie n'est pas couvert.
+  const sansFin = arbre({ liste: liste.slice(0, -1), exiges: true, plein: false, fin: finReel + 80, t0 });
+  assert.equal(sansFin.verdict, 'refuse');
+  assert.match(sansFin.raison, /^battements absents .*1 trou\(s\) de plus de 20 s/);
   // Un battement perdu de temps en temps (le réseau) ne fait pas de trou.
   const troue = battements(lgArbre);
   troue.liste = troue.liste.filter((b, i) => i % 3 !== 1);
   const v2 = arbre(troue);
   assert.equal(v2.verdict, 'conforme', v2.raison);
   assert.equal(v2.details.battements.trous, 0);
+  assert.ok(v2.details.battements.manquants > 10);
+  assert.ok(v2.details.battements.couverture > 0.95, 'couverture ' + v2.details.battements.couverture);
 });
 
 test('ralenti : de fausses pauses un battement sur deux, au ralenti ×2, sont refusées', () => {
   const v = arbre(battements(lgArbre, { lent: 0.5, fausses: true }));
   assert.equal(v.verdict, 'refuse');
-  assert.match(v.raison, /^fausses pauses/);
+  assert.match(v.raison, /^ralenti : le jeu avance à 0,5 fois/, 'les morceaux « en jeu » sont mesurés');
   assert.equal(v.alerte.gravite, 'grave');
   const b = v.details.battements;
-  assert.equal(b.actifs, 0);
-  assert.ok(b.partMasquee > 0.9);
-  assert.ok(b.transitionsParMinute > 6);
+  assert.ok(b.jeuSousPauseMs > 40000, 'et le jeu sous les pauses se voit : ' + b.jeuSousPauseMs);
+  // Toutes les pauses fausses (jamais un battement « en jeu ») : le jeu sous pause.
+  const tout = battements(lgArbre, { lent: 0.5 });
+  for (const x of tout.liste) x.pause = 1;
+  const vt = arbre(tout);
+  assert.equal(vt.verdict, 'refuse');
+  assert.match(vt.raison, /^fausses pauses : \d+ s de jeu écoulées pendant des pauses annoncées/);
+  assert.equal(vt.alerte.gravite, 'grave');
 });
 
 test('ralenti : un compteur qui recule, ou qui dépasse le journal, est un mensonge', () => {
@@ -311,8 +350,21 @@ test('ralenti : Mini-Fever normal ≈ 1, ×2 refusé, pauses légitimes conforme
   while (!lgArcade.a(enConsole).console) enConsole += 100;
   const pc = arcade(battements(lgArcade, { pauses: [{ a: enConsole + 1000, ms: 35000 }] }));
   assert.equal(pc.verdict, 'conforme', pc.raison);
-  assert.ok(pc.details.battements.rapportGlobal > 0.95, 'somme ' + pc.details.battements.rapportGlobal);
+  assert.ok(pc.details.battements.rapportGlobal > 0.98, 'somme ' + pc.details.battements.rapportGlobal);
   assert.equal(pc.details.battements.trous, 0);
+  assert.equal(pc.details.battements.jeuSousPauseMs, 0, 'la console n’est pas du jeu sous la pause');
+  // Une pause dans CHAQUE console : toujours conforme.
+  const dansConsoles = [];
+  let g = 0, avant = false;
+  for (; g < lgArcade.total; g += 50) {
+    const c = !!lgArcade.a(g).console;
+    if (c && !avant) dansConsoles.push({ a: g + 1000, ms: 4000 });
+    avant = c;
+  }
+  assert.ok(dansConsoles.length >= 3, dansConsoles.length + ' consoles');
+  const pcs = arcade(battements(lgArcade, { pauses: dansConsoles }));
+  assert.equal(pcs.verdict, 'conforme', pcs.raison);
+  assert.deepEqual(pcs.indices.filter((i) => /pause|retard/.test(i)), []);
   const x2 = arcade(battements(lgArcade, { lent: 0.5 }));
   assert.equal(x2.verdict, 'refuse');
   assert.match(x2.raison, /^ralenti/);
@@ -323,7 +375,12 @@ test('ralenti : Mini-Fever normal ≈ 1, ×2 refusé, pauses légitimes conforme
 test('ralenti : Mini-Fever, battements bloqués ou fausses pauses — refusés', () => {
   const vide = { liste: [], exiges: true, plein: false, fin: 1e12 + 300000, t0: 1e12 };
   assert.match(arcade(vide).raison, /^battements absents/);
-  assert.match(arcade(battements(lgArcade, { lent: 0.5, fausses: true })).raison, /^fausses pauses/);
+  assert.match(arcade(battements(lgArcade, { lent: 0.5, fausses: true })).raison, /^ralenti : le jeu avance à 0,5/);
+  const tout = battements(lgArcade, { lent: 0.5 });
+  for (const x of tout.liste) x.pause = 1;
+  assert.match(arcade(tout).raison, /^fausses pauses/);
+  // Le ralenti « léger » de Mini-Fever (0,9) : refusé lui aussi.
+  assert.match(arcade(battements(lgArcade, { lent: 0.9 })).raison, /^ralenti : le jeu avance à 0,9/);
 });
 
 // ── Le registre ──────────────────────────────────────────────────────────
@@ -360,12 +417,13 @@ test('registre : le plafond par partie, par joueur, et le débit', () => {
   for (let i = 0; i < 7; i++) { ids.push(id + 'j' + i); AT.ouvrirBattements(ids[i], 'denis', 'minifever', Date.now()); }
   assert.deepEqual(AT.noterBattement(ids[0], 'denis', { n: 1, pas: 0 }), { erreur: 'inconnue' });
   assert.deepEqual(AT.noterBattement(ids[6], 'denis', { n: 1, pas: 0 }), { ok: true });
-  // Le débit : trente d'un coup, puis deux par seconde.
+  // Le débit : un seau plein d'un coup, puis quelques-uns par seconde.
   const t = 5e12;
+  const D = AT.SEUILS.battements;
   let ok = 0;
-  for (let i = 0; i < 40; i++) if (AT.debitBattement('emile', t)) ok++;
-  assert.equal(ok, AT.SEUILS.battements.debitCapacite);
-  assert.equal(AT.debitBattement('emile', t + 400), false);
+  for (let i = 0; i < D.debitCapacite + 10; i++) if (AT.debitBattement('emile', t)) ok++;
+  assert.equal(ok, D.debitCapacite);
+  assert.equal(AT.debitBattement('emile', t + 500 / D.debitParSeconde), false);
   assert.equal(AT.debitBattement('emile', t + 1000), true);
 });
 

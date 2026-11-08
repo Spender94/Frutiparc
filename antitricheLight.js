@@ -122,14 +122,29 @@ const SEUILS = {
   battements: {
     periodeMs: 2000, periodePauseMs: 10000,
     parPartie: 3000, partiesParJoueur: 6, partiesMax: 20000,
-    debitCapacite: 30, debitParSeconde: 2,
+    // Le débit suit les pauses en rafale, désormais permises : un battement à
+    // chaque bascule, une bascule par seconde chez qui pause toutes les deux
+    // secondes, plus les battements réguliers.
+    debitCapacite: 60, debitParSeconde: 5,
     intervalleMinMs: 1000,
-    rapportRefus: 0.8, rapportIndice: 0.9, intervallesMin: 20,
-    globalRefus: 0.6, globalIndice: 0.75, globalReelMinMs: 40000,
-    jeuSignificatifMs: 60000, couvertureMin: 0.75, actifsMinAbsents: 10, trouMs: 20000,
-    masqueRefus: 0.5, masqueIndice: 0.2, masqueRefusMs: 30000, masqueIndiceMs: 15000,
+    // LE RALENTI, SANS TOLÉRANCE (décision du parc, novembre 2026 : « aucun
+    // ralentissement du jeu, quel qu'il soit, même de l'ordre de 0,8 ou
+    // 0,9 »). Sur la SOMME des intervalles de jeu : refus sous 0,96, indice
+    // sous 0,98. Les parties relevées dans Chromium (cf. « LE RALENTI »)
+    // tiennent entre 1,001 et 1,004, pauses comprises ; un réseau
+    // capricieux ne pèse pas sur la somme (ses retards s'y compensent) ; un
+    // ralenti de 5 % ne passe plus. La médiane des intervalles d'au moins une
+    // seconde reste un second garde, plus large (0,9), contre un compteur
+    // qui rattraperait son retard d'un bloc.
+    globalRefus: 0.96, globalIndice: 0.98, globalReelMinMs: 40000,
+    rapportRefus: 0.9, rapportIndice: 0.95, intervallesMin: 20,
+    jeuSignificatifMs: 60000, couvertureMin: 0.9, actifsMinAbsents: 10, trouMs: 20000,
+    // En pause, le jeu ne fait AUCUN pas ; un battement part à chaque bascule,
+    // donc entre un battement « en pause » et le suivant le compteur ne bouge
+    // pas — à une image ou deux près, le temps que la reprise soit vue.
+    jeuSousPauseParIntervalleMs: 300, jeuSousPauseRefusMs: 10000, jeuSousPauseIndiceMs: 3000,
     excesFacteur: 1.1, excesIndiceMs: 5000, excesRefusMs: 10000,
-    transitionsParMinute: 6, transitionsDureeMinMs: 120000, pauseCourteMs: 5000,
+    pauseCourteMs: 5000,
   },
   // La tendance : cinq parties conformes d'affilée (de plus d'une minute de
   // jeu chacune) dont la durée réelle dépasse une fois et demie le temps de
@@ -285,34 +300,37 @@ function horloges(indices, tempsJeuMs, dureeMs, minimumMs) {
  * l'ordre où le jeu les a envoyés (`n`), dans cet ordre :
  *   1. le compteur ne recule jamais et ne dépasse jamais le journal final —
  *      sinon le battement ment : REFUS ;
- *   2. les intervalles ACTIFS — aucun battement en pause d'un bout à l'autre
- *      (ni aux deux bouts, ni sur un battement de console sauté entre eux :
- *      la pause peut tomber pendant une console), du jeu entre eux, au moins
- *      une seconde réelle — donnent chacun un rapport jeu / réel. Leur
- *      MÉDIANE vaut ≈ 1 chez un joueur normal, ≈ 0,5 sous un ralenti ×2. La
- *      médiane, et pas la somme : une pause commencée en cours d'intervalle
- *      (un battement perdu) fait un intervalle aberrant, pas une tendance.
- *      Sous le seuil, sur assez d'intervalles : REFUS ; entre le seuil et
- *      0,9 : indice ;
- *   3. le jeu sous les pauses : un intervalle en pause ne compte pas — mais
- *      le jeu qui s'y écoule se mesure. Une vraie pause n'en masque presque
- *      rien (le battement part à l'instant où elle commence et à l'instant où
- *      elle finit). Des pauses déclarées un battement sur deux pour masquer
- *      le ralenti en masquent presque tout : REFUS au-delà de la moitié du
- *      jeu (et trente secondes), indice au-delà d'un cinquième. Les bascules
- *      pause ↔ jeu par minute et les pauses très courtes se lisent aussi
- *      (indice au-delà de six par minute sur deux minutes) ;
- *   4. une partie qui pèse (plus d'une minute de jeu) dont le jeu n'est pas
- *      couvert aux trois quarts par des intervalles actifs : les battements
- *      ont été bloqués — en tout, ou le temps de jouer au ralenti, ce qui
- *      laisse un TROU (plus de vingt secondes sans battement en plein jeu ;
- *      le jeu d'un trou n'est pas couvert) — REFUS (« battements absents »,
- *      gravité « suspect »). Tant pis pour un réseau très capricieux : l'admin
- *      peut classer à la main ;
- *   5. la SOMME des intervalles actifs (temps de jeu sur temps réel,
- *      intervalles sans jeu et trous compris) : elle attrape le compteur qui
- *      « prend de l'avance » puis reste figé sans se dire en pause, que la
- *      médiane ne voit pas ;
+ *   2. les intervalles, d'un battement placé au suivant, n'ont qu'UN état :
+ *      celui du battement qui les ouvre (le jeu en envoie un à chaque
+ *      bascule). « En jeu », l'intervalle doit avancer comme l'horloge du
+ *      serveur ; « en pause », il ne doit avancer de RIEN. Les pauses sont
+ *      donc permises, aussi nombreuses soient-elles (décision du parc,
+ *      novembre 2026 : pauser toutes les deux secondes n'exploite aucune
+ *      faille du jeu — la pause de Frutisnake sous la potion noire non
+ *      plus) : chaque morceau de jeu entre deux pauses est mesuré ;
+ *   3. le RALENTI, sans tolérance (même décision : « aucun ralentissement du
+ *      jeu, quel qu'il soit, même de l'ordre de 0,8 ou 0,9 ») : la SOMME des
+ *      intervalles de jeu (temps de jeu sur temps réel, hors pauses ; sur au
+ *      moins quarante secondes réelles). Refus sous 0,96, indice sous 0,98.
+ *      La médiane des intervalles d'au moins une seconde suit, en second
+ *      garde (refus sous 0,9) ;
+ *   4. le jeu sous les pauses : ce qui s'écoule pendant un intervalle « en
+ *      pause », au-delà de 0,3 s (la reprise vue une image plus tard), est du
+ *      jeu qui tournait sous une pause annoncée — une FAUSSE pause : REFUS
+ *      au-delà de dix secondes, indice au-delà de trois. Une pause tombée
+ *      pendant une console de Mini-Fever (le battement n'a pas de position) :
+ *      l'intervalle qui l'enjambe peut contenir la console et un battement de
+ *      jeu de chaque côté ; c'est au-delà qu'on compte ;
+ *   5. une partie qui pèse (plus d'une minute de jeu) dont le jeu n'est pas
+ *      couvert à 90 % par des intervalles connus : les battements ont été
+ *      bloqués — en tout, ou le temps de jouer au ralenti, ce qui laisse un
+ *      TROU (plus de vingt secondes sans battement en plein jeu, ou un bout
+ *      de partie de plus de vingt secondes après le dernier) — REFUS
+ *      (« battements absents », gravité « suspect »). Un battement perdu
+ *      entre deux battements « en jeu » ne coûte rien (l'intervalle reste du
+ *      jeu) ; touchant une pause, l'intervalle n'a pas d'état connu et son
+ *      jeu n'est pas couvert. Un réseau très capricieux : l'admin peut
+ *      classer à la main ;
  *   6. entre DEUX battements quelconques (et jusqu'à la fin, reçue elle aussi
  *      à l'heure du serveur), le jeu n'a pas pu avancer plus vite que
  *      l'horloge du serveur, au facteur 1,1 près et dix secondes de marge —
@@ -326,51 +344,39 @@ function horloges(indices, tempsJeuMs, dureeMs, minimumMs) {
  *                              Arbre creux           Mini-Fever
  *     normale                  médiane 1,00          1,00
  *                              somme 1,004           1,001
- *     deux pauses de 32 s      1,00 (1,2 % masqué)   1,00 (0,3 à 3,6 %)
+ *     deux pauses de 32 s      1,00                  1,00
  *     ralenti ×2               0,50                  0,50
  *     ralenti ×1,3             0,769                 0,769
  *     battements bloqués       0 reçu : refusée      0 reçu : refusée
- *     fausses pauses, ×2       0 actif, 100 % masqué 6 actifs, 76 % masqué
- *                              90 bascules           85 bascules
  *
- * (La couverture d'une partie normale : 98 à 99 % ; 94 % quand une pause
- * tombe pendant une console, que l'intervalle qui l'enjambe masque. Le
- * rapport réel / jeu : 1,01 et 0,97 à 0,98 en partie normale, 1,37 et 1,50
- * à 1,60 avec les deux pauses, 2,01 et 1,96 au ralenti ×2.)
- *
- * D'où : le refus sous 0,8 — un ralenti de 25 % et plus ; à ×1,3 la partie
- * tombe à 0,77 et elle est refusée —, l'indice sous 0,9 (un ralenti de 10 à
- * 25 % : on le voit, l'admin juge), sur au moins vingt intervalles (≈
- * quarante secondes de jeu ; une partie plus courte ne pèse rien au
- * classement, l'Arbre reste à ×1 jusqu'à 1 min 34 s de jeu). Un écran normal
- * ne perd que les images de plus d'une demi-seconde (Timer.maxDeltaTime) :
- * les parties relevées tournaient jusqu'à cinq navigateurs à la fois sur la
- * même machine, et la médiane n'a pas bougé de 1,00. La somme : refus sous
- * 0,6, indice sous 0,75 — plus large que la médiane, parce qu'une image figée
- * par le système, non déclarée, la tire vers le bas sans rien dire. Le jeu sous les
- * pauses : une vraie pause en masque au plus un battement (deux secondes) ;
- * trente pauses dans une partie de dix minutes, c'est encore 10 %, loin des
- * 50 % du refus. La couverture : 98 % d'ordinaire, le refus à 75 % laisse une
- * minute de réseau coupé sur cinq.
+ * (La couverture d'une partie normale : 98 à 99 %. Le rapport réel / jeu :
+ * 1,01 et 0,97 à 0,98 en partie normale, 1,37 et 1,50 à 1,60 avec les deux
+ * pauses, 2,01 et 1,96 au ralenti ×2.) Les deux moteurs comptent le temps de
+ * jeu comme Flash : la moyenne glissante du temps réel entre images, sans
+ * saut à la reprise d'une pause (l'horloge tourne pendant la pause, le jeu
+ * ne fait pas de pas) ; seule une image de plus d'une demi-seconde est
+ * perdue (Timer.maxDeltaTime). Les parties relevées tournaient jusqu'à cinq
+ * navigateurs à la fois sur la même machine sans que la médiane bouge de
+ * 1,00. D'où le refus à 0,96 : un ralenti de 5 % (0,952) ne passe plus, et il
+ * reste à un écran honnête quatre pour cent de marge — deux secondes d'images
+ * figées par minute. ×1,03 (0,97) est un indice, ×1,01 rien.
  *
  * CE QUI RESTE CONTOURNABLE (dit tel quel) — le battement est écrit par le
  * navigateur, le serveur n'en garantit que l'HEURE :
- *   · un ralenti léger : ×1,1 donne 0,91 (rien), ×1,15 donne 0,87 (un
- *     indice) ; c'est 10 à 15 % de temps de réflexion en plus ;
- *   · de FAUSSES pauses longues (et non plus un battement sur deux) : le
- *     tricheur outillé fait « avancer » son compteur au rythme de l'horloge
- *     du serveur, puis se déclare en pause le temps que le jeu ralenti
- *     rattrape — la partie ressemble à celle d'un joueur qui fait de grandes
- *     pauses. Le temps réel le trahit quand même : la TENDANCE
- *     (tendanceRalenti) relève les joueurs dont les parties durent, l'une
- *     après l'autre, bien plus que leur temps de jeu (2 sous un ralenti ×2) ;
+ *   · un ralenti de moins de 4 % : il passe, ou fait un indice ;
+ *   · le tricheur OUTILLÉ, qui réécrit le script du jeu pour fabriquer ses
+ *     battements : son compteur « avance » au rythme de l'horloge du serveur,
+ *     puis il se déclare en pause le temps que le jeu ralenti rattrape — la
+ *     partie ressemble à celle d'un joueur qui pause beaucoup. (Un « speed
+ *     hack » ordinaire, lui, ne peut rien en faire : il ralentit aussi la
+ *     pause, et chaque morceau de jeu reste mesuré.) Le temps réel le trahit
+ *     quand même : la TENDANCE (tendanceRalenti) relève les joueurs dont les
+ *     parties durent, l'une après l'autre, bien plus que leur temps de jeu
+ *     (2 sous un ralenti ×2) — une alerte, pas un refus : un joueur honnête
+ *     qui pause énormément peut y monter aussi, l'admin juge ;
  *   · bloquer les battements d'une partie de moins d'une minute de jeu : rien
- *     n'est exigé d'elle (elle ne pèse rien) ; en bloquer un quart sur une
- *     partie plus longue : la couverture passe encore ;
- *   · la pause elle-même, honnête : elle fige le jeu, mais laisse voir le
- *     plateau sous son voile (90 % à l'Arbre, 50 % à Mini-Fever) — qui pause
- *     sans arrêt pour réfléchir n'est pas un ralenti ; la tendance et les
- *     « pauses en rafale » le montrent, l'admin juge ;
+ *     n'est exigé d'elle (elle ne pèse rien) ; en bloquer un dixième autour
+ *     des pauses sur une partie plus longue : la couverture passe encore ;
  *   · et toujours : le rejeu prouve qu'une partie a été jouée, pas QUI l'a
  *     jouée (un programme qui joue à la place du joueur suit l'horloge).
  */
@@ -597,8 +603,8 @@ function examinerBattements(bat, o) {
   const totalMs = Number(o.totalMs) || 0;
   const d = { recus: bs.length, exiges: !!(bat && bat.exiges), plein: !!(bat && bat.plein),
     actifs: 0, rapportMedian: null, rapportGlobal: null, transitions: 0, transitionsParMinute: 0,
-    pauses: 0, pausesCourtes: 0, pauseMs: 0, jeuMasqueMs: 0, partMasquee: 0, couverture: 0, excesMs: 0,
-    trous: 0, jeuTrouMs: 0 };
+    pauses: 0, pausesCourtes: 0, pauseMs: 0, jeuSousPauseMs: 0, manquants: 0, jeuInconnuMs: 0,
+    couverture: 0, excesMs: 0, trous: 0, jeuTrouMs: 0 };
   const fin = (refus) => ({ refus: refus || null, indices, details: d });
 
   // 1. Le compteur ne recule pas et ne dépasse pas le journal.
@@ -629,9 +635,32 @@ function examinerBattements(bat, o) {
     }
   }
 
-  // 3. Les intervalles, d'un battement placé au suivant.
+  /*
+   * 3. Les intervalles, d'un battement placé au suivant.
+   *
+   * UN INTERVALLE N'A QU'UN ÉTAT : celui du battement qui l'ouvre. Le jeu en
+   * envoie un à CHAQUE bascule pause ↔ jeu (journal-partie.js) : entre deux
+   * battements consécutifs, rien n'a changé. Un intervalle « en pause » ne
+   * doit donc faire avancer le jeu de rien du tout ; un intervalle « en jeu »
+   * doit avancer comme l'horloge du serveur. Les pauses, si fréquentes
+   * soient-elles, sont ainsi permises sans rien masquer : le joueur qui pause
+   * toutes les deux secondes est mesuré sur chacun de ses morceaux de jeu.
+   *
+   * Un battement MANQUANT (numéro sauté : perdu en route, ou bloqué) entre
+   * deux battements « en jeu » : du jeu (une pause aurait laissé un battement
+   * « en pause » de plus, et sa durée tirerait le rapport vers le BAS — ça ne
+   * blanchit personne). Touchant une pause, l'intervalle n'a pas d'état
+   * connu : il ne compte ni d'un côté ni de l'autre, et son jeu n'est pas
+   * couvert.
+   *
+   * Une pause tombée PENDANT une console (le battement en pause n'a pas de
+   * position) : l'intervalle qui l'enjambe ne compte pas dans le rapport, et
+   * il peut contenir, en plus de la console, jusqu'à un battement de jeu de
+   * chaque côté — c'est au-delà qu'on parle de jeu sous la pause.
+   */
+  const consoleMs = Number(o.consoleMs) || 0;
   const rapports = [];
-  let jeuActif = 0, reelActif = 0, masque = 0, couvert = 0;
+  let jeuActif = 0, reelActif = 0, sousPause = 0, couvert = 0, inconnu = 0;
   let prec = -1;
   let minExces = Infinity;
   const exces = (g, t) => {
@@ -648,7 +677,21 @@ function examinerBattements(bat, o) {
     if (prec >= 0) {
       const a = bs[prec], b = bs[i];
       const dj = pos[i] - pos[prec], dr = b.t - a.t;
-      if (!a.pause && !b.pause && !pauseEntre) {
+      // Les battements sautés entre les deux, hors consoles (un battement en
+      // console est reçu mais sans position : il n'est pas manquant).
+      const manque = b.n - a.n - 1 - (i - prec - 1);
+      if (manque > 0) d.manquants += manque;
+      if (manque > 0 && (a.pause || b.pause || pauseEntre)) {
+        inconnu += Math.max(0, dj);
+      } else if (pauseEntre) {
+        sousPause += Math.max(0, dj - consoleMs - 2 * B.jeuSousPauseParIntervalleMs - 2000);
+        couvert += Math.max(0, dj);
+      } else if (a.pause) {
+        // En pause : le compteur ne bouge pas. Ce qui s'y écoule, au-delà d'une
+        // image ou deux, est du jeu qui tournait sous une pause annoncée.
+        sousPause += Math.max(0, dj - B.jeuSousPauseParIntervalleMs);
+        couvert += Math.max(0, dj);
+      } else {
         jeuActif += Math.max(0, dj);
         reelActif += Math.max(0, dr);
         // Un TROU : plus de vingt secondes sans battement en plein jeu. Le jeu
@@ -656,8 +699,6 @@ function examinerBattements(bat, o) {
         // bloqués le temps de jouer au ralenti) ; il compte dans la somme.
         if (dr > B.trouMs) { d.trous++; d.jeuTrouMs += Math.max(0, dj); } else couvert += Math.max(0, dj);
         if (dj > 0 && dr >= B.intervalleMinMs) rapports.push(dj / dr);
-      } else {
-        masque += Math.max(0, dj);
       }
     }
     pauseEntre = false;
@@ -666,14 +707,21 @@ function examinerBattements(bat, o) {
   // La fin elle-même est un battement : l'heure où le serveur l'a reçue, au
   // bout du journal. Le jeu ne peut pas l'avoir rejointe plus vite que l'heure.
   if (bat && Number.isFinite(Number(bat.fin)) && Number(bat.fin) > 0 && prec >= 0) exces(totalMs, Number(bat.fin));
+  // Le bout de la partie après le dernier battement placé, en jeu : sans
+  // battement, son jeu n'est pas couvert — et au-delà de vingt secondes de
+  // jeu, c'est un trou (les battements coupés le temps de finir au ralenti).
+  if (prec >= 0 && !bs[prec].pause && totalMs - pos[prec] > B.trouMs) {
+    d.trous++;
+    d.jeuTrouMs += totalMs - pos[prec];
+  }
 
   const span = bs.length > 1 ? bs[bs.length - 1].t - bs[0].t : 0;
   d.actifs = rapports.length;
   d.rapportMedian = arrondi(mediane(rapports));
   d.rapportGlobal = reelActif > 0 ? arrondi(jeuActif / reelActif) : null;
   d.transitionsParMinute = span > 0 ? arrondi(d.transitions / (span / 60000), 10) : 0;
-  d.jeuMasqueMs = Math.round(masque);
-  d.partMasquee = totalMs > 0 ? arrondi(Math.min(1, masque / totalMs)) : 0;
+  d.jeuSousPauseMs = Math.round(sousPause);
+  d.jeuInconnuMs = Math.round(inconnu);
   d.couverture = totalMs > 0 ? arrondi(Math.min(1, couvert / totalMs)) : 0;
   d.jeuTrouMs = Math.round(d.jeuTrouMs);
   d.pauseMs = Math.round(d.pauseMs);
@@ -681,7 +729,15 @@ function examinerBattements(bat, o) {
   const pct = (x) => Math.round(x * 100) + ' %';
   const virg = (x) => String(x).replace('.', ',');
 
-  // 4. Le ralenti : la médiane des intervalles actifs.
+  // 4. Le ralenti, d'abord sur la SOMME des intervalles de jeu (cf. les
+  // seuils : aucun ralenti toléré), puis sur leur médiane.
+  if (reelActif >= B.globalReelMinMs && d.rapportGlobal !== null) {
+    if (d.rapportGlobal < B.globalRefus) {
+      return fin({ gravite: 'grave', raison: `ralenti : le jeu avance à ${virg(d.rapportGlobal)} fois l'horloge du serveur hors pauses`
+        + ` (${Math.round(jeuActif / 1000)} s de jeu en ${Math.round(reelActif / 1000)} s ; un jeu normal la suit à 1)` });
+    }
+    if (d.rapportGlobal < B.globalIndice) indices.push(`jeu légèrement en retard sur l'horloge du serveur (${virg(d.rapportGlobal)} fois hors pauses)`);
+  }
   if (d.actifs >= B.intervallesMin && d.rapportMedian !== null) {
     if (d.rapportMedian < B.rapportRefus) {
       return fin({ gravite: 'grave', raison: `ralenti : le jeu avance à ${virg(d.rapportMedian)} fois l'horloge du serveur`
@@ -690,17 +746,14 @@ function examinerBattements(bat, o) {
     if (d.rapportMedian < B.rapportIndice) indices.push(`jeu en retard sur l'horloge du serveur (${virg(d.rapportMedian)} fois, ${d.actifs} intervalles)`);
   }
 
-  // 5. Le jeu sous les pauses déclarées.
-  if (d.jeuMasqueMs >= B.masqueRefusMs && d.partMasquee >= B.masqueRefus) {
-    return fin({ gravite: 'grave', raison: `fausses pauses : ${pct(d.partMasquee)} du jeu s'écoule entre des battements « en pause »`
-      + ` (${d.transitions} bascules pause ↔ jeu)` });
+  // 5. Le jeu qui tourne sous une pause annoncée : une pause ne fait aucun pas.
+  // (Les pauses elles-mêmes, si fréquentes soient-elles, sont permises.)
+  if (d.jeuSousPauseMs > B.jeuSousPauseRefusMs) {
+    return fin({ gravite: 'grave', raison: `fausses pauses : ${Math.round(d.jeuSousPauseMs / 1000)} s de jeu écoulées pendant des pauses annoncées`
+      + ` (une pause ne fait avancer le jeu de rien)` });
   }
-  if (d.jeuMasqueMs >= B.masqueIndiceMs && d.partMasquee >= B.masqueIndice) {
-    indices.push(`pauses suspectes : ${pct(d.partMasquee)} du jeu s'écoule entre des battements « en pause »`);
-  }
-  if (span >= B.transitionsDureeMinMs && d.transitionsParMinute > B.transitionsParMinute) {
-    indices.push(`pauses en rafale : ${virg(d.transitionsParMinute)} bascules pause ↔ jeu par minute`
-      + (d.pausesCourtes ? `, dont ${d.pausesCourtes} pause(s) de moins de ${B.pauseCourteMs / 1000} s` : ''));
+  if (d.jeuSousPauseMs > B.jeuSousPauseIndiceMs) {
+    indices.push(`jeu pendant des pauses annoncées (${Math.round(d.jeuSousPauseMs / 1000)} s)`);
   }
 
   // 6. Les battements absents.
@@ -709,15 +762,6 @@ function examinerBattements(bat, o) {
     return fin({ gravite: 'suspect', raison: `battements absents : ${d.recus} reçu(s), ${d.actifs} intervalle(s) actif(s)`
       + ` pour ${Math.round(totalMs / 1000)} s de jeu (couverture ${pct(d.couverture)}`
       + `${d.trous ? `, ${d.trous} trou(s) de plus de ${B.trouMs / 1000} s` : ''})` });
-  }
-
-  // 7. La somme des intervalles actifs : le compteur figé sans se dire en pause.
-  if (reelActif >= B.globalReelMinMs && d.rapportGlobal !== null) {
-    if (d.rapportGlobal < B.globalRefus) {
-      return fin({ gravite: 'grave', raison: `ralenti : ${virg(d.rapportGlobal)} s de jeu par seconde réelle hors pauses`
-        + ` (${Math.round(jeuActif / 1000)} s de jeu en ${Math.round(reelActif / 1000)} s)` });
-    }
-    if (d.rapportGlobal < B.globalIndice) indices.push(`jeu en retard sur l'horloge hors pauses (${virg(d.rapportGlobal)})`);
   }
 
   // 8. Le jeu qui va plus vite que l'horloge du serveur (le compteur qui
@@ -735,7 +779,7 @@ function alerteRalenti(jeu, examen) {
   const dt = examen.details;
   return { jeu, type: 'ralenti', gravite: r.gravite, resume: r.raison,
     details: { rapportMedian: dt.rapportMedian, rapportGlobal: dt.rapportGlobal, actifs: dt.actifs, recus: dt.recus,
-      transitions: dt.transitions, partMasquee: dt.partMasquee, couverture: dt.couverture, excesMs: dt.excesMs } };
+      transitions: dt.transitions, jeuSousPauseMs: dt.jeuSousPauseMs, manquants: dt.manquants, couverture: dt.couverture, excesMs: dt.excesMs } };
 }
 
 /**
@@ -880,7 +924,8 @@ function verifierArcade(partie) {
     });
     const ligne = positionsArcade(images, consoleMin);
     const pasFinal = images.reduce((s, l) => s + l.length, 0);
-    const examen = examinerBattements(partie.battements, { position: ligne.position, pasFinal, totalMs: ligne.totalMs });
+    const examen = examinerBattements(partie.battements, { position: ligne.position, pasFinal, totalMs: ligne.totalMs,
+      consoleMs: consoleMin * J.QUANTUM_TMOD * QMS });
     details.battements = examen.details;
     for (const i of examen.indices) indices.push(i);
     if (examen.refus) {

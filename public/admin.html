@@ -681,12 +681,13 @@
     <b>Battements (le ralenti).</b> Pendant la partie, le jeu dit au serveur toutes les deux secondes où en est son journal,
     et c'est l'horloge du <i>serveur</i> qui date chaque battement : une extension qui ralentit le navigateur (« speed
     hack ») fait tourner le jeu moins vite que cette horloge-là. <b>Rapport</b> : la médiane, intervalle par intervalle, du
-    temps de jeu sur le temps réel — ≈ 1 chez un joueur normal, 0,5 sous un ralenti ×2. Sous
-    <span id="pv-seuil-rapport">0,8</span> (sur au moins <span id="pv-seuil-actifs">20</span> intervalles actifs), la
-    partie est <span class="vd vd-refuse">refuse</span> et part en alerte <i>ralenti</i> ; entre ce seuil et 0,9, c'est un
-    indice. <b>Actifs</b> : les intervalles hors pause qui comptent. <b>Bascules</b> : les passages pause ↔ jeu (une vraie
-    pause est rare et longue) ; <b>masqué</b> : la part du jeu écoulée entre des battements « en pause » — presque rien chez
-    un joueur normal, presque tout chez celui qui déclare de fausses pauses. Une partie de plus d'une minute dont le jeu
+    temps de jeu sur le temps réel, hors pauses — ≈ 1 chez un joueur normal, 0,5 sous un ralenti ×2. AUCUN ralenti n'est
+    toléré : sous <span id="pv-seuil-rapport">0,96</span>, la partie est <span class="vd vd-refuse">refuse</span> et part
+    en alerte <i>ralenti</i> ; entre ce seuil et 0,98, c'est un indice. <b>Actifs</b> : les intervalles de jeu qui
+    comptent (au moins <span id="pv-seuil-actifs">20</span> pour juger la médiane). <b>Bascules</b> : les passages pause ↔
+    jeu — les pauses sont permises, même toutes les deux secondes ; le jeu en envoie un battement à chaque bascule, et
+    pendant une pause il ne doit avancer de rien : <b>jeu sous pause</b> dit ce qui a tourné pendant des pauses annoncées
+    (zéro chez un joueur normal ; au-delà de dix secondes, refus). Une partie de plus d'une minute dont le jeu
     n'est pas couvert aux trois quarts par des battements (bloqués, ou un <b>trou</b> de plus de vingt secondes en plein
     jeu) est écartée (« battements absents »). <b>Réel / jeu</b>, sous la durée réelle : la durée réelle sur le
     temps de jeu (à Mini-Fever, consoles comprises) — ≈ 1,05 d'ordinaire ; cinq parties conformes d'affilée au-delà de
@@ -2081,7 +2082,7 @@ async function loadPortagesVerif() {
     }
     if (S.battements) {
       pvSeuilsBat = S.battements;
-      $('#pv-seuil-rapport').textContent = pvVirg(S.battements.rapportRefus);
+      $('#pv-seuil-rapport').textContent = pvVirg(S.battements.globalRefus);
       $('#pv-seuil-actifs').textContent = S.battements.intervallesMin;
     }
     pvParties = d.parties;
@@ -2145,18 +2146,25 @@ function pvAfficherParties() {
 }
 const pvVirg = (x) => String(x).replace('.', ',');
 // Ce que les battements ont dit d'une partie (details.battements).
-let pvSeuilsBat = { rapportRefus: 0.8, rapportIndice: 0.9, intervallesMin: 20 };
+let pvSeuilsBat = { globalRefus: 0.96, globalIndice: 0.98, globalReelMinMs: 40000, rapportRefus: 0.9, rapportIndice: 0.95, intervallesMin: 20 };
 function pvBattements(b) {
   if (!b) return '<span style="color:#999" title="Partie d’avant les battements">—</span>';
   const S = pvSeuilsBat;
-  const r = b.rapportMedian;
-  const assez = b.actifs >= S.intervallesMin;
-  const coul = r == null ? '#999' : !assez ? '#777' : r < S.rapportRefus ? '#b31111' : r < S.rapportIndice ? '#c8860a' : 'inherit';
-  const masque = b.partMasquee ? Math.round(b.partMasquee * 100) : 0;
-  return `<b style="color:${coul}" title="Médiane du temps de jeu sur le temps réel, intervalle par intervalle${assez ? '' : ' (trop peu d’intervalles pour juger)'}">${r == null ? '—' : pvVirg(r)}</b>`
-    + `<div style="font-size:11px;color:#777" title="${b.recus} battement(s) reçu(s) ; somme des intervalles actifs : ${b.rapportGlobal == null ? '—' : pvVirg(b.rapportGlobal)} ; couverture ${Math.round((b.couverture || 0) * 100)} %">${b.actifs} actif${b.actifs > 1 ? 's' : ''}`
+  // Le nombre qui décide : la SOMME des intervalles de jeu (hors pauses) ;
+  // la médiane suit en infobulle. (Les parties d'avant la règle stricte n'ont
+  // que la médiane.)
+  const r = b.rapportGlobal != null ? b.rapportGlobal : b.rapportMedian;
+  const refus = b.rapportGlobal != null ? S.globalRefus : S.rapportRefus;
+  const indice = b.rapportGlobal != null ? S.globalIndice : S.rapportIndice;
+  const assez = b.rapportGlobal != null ? true : b.actifs >= S.intervallesMin;
+  const coul = r == null ? '#999' : !assez ? '#777' : r < refus ? '#b31111' : r < indice ? '#c8860a' : 'inherit';
+  const sousPause = Math.round((b.jeuSousPauseMs || 0) / 1000);
+  const masque = b.partMasquee ? Math.round(b.partMasquee * 100) : 0;     // parties d'avant la règle stricte
+  return `<b style="color:${coul}" title="Temps de jeu sur le temps réel, hors pauses (médiane des intervalles : ${b.rapportMedian == null ? '—' : pvVirg(b.rapportMedian)})${assez ? '' : ' — trop peu d’intervalles pour juger'}">${r == null ? '—' : pvVirg(r)}</b>`
+    + `<div style="font-size:11px;color:#777" title="${b.recus} battement(s) reçu(s)${b.manquants ? ', ' + b.manquants + ' manquant(s)' : ''} ; couverture ${Math.round((b.couverture || 0) * 100)} %">${b.actifs} actif${b.actifs > 1 ? 's' : ''}`
     + ` · ${b.transitions} bascule${b.transitions > 1 ? 's' : ''}${b.transitionsParMinute ? ` (${pvVirg(b.transitionsParMinute)}/min)` : ''}</div>`
-    + (masque ? `<div style="font-size:11px;color:${masque >= 20 ? '#b31111' : '#777'}">masqué ${masque} %</div>` : '')
+    + (sousPause ? `<div style="font-size:11px;color:${sousPause > 10 ? '#b31111' : '#c8860a'}" title="Jeu écoulé pendant des pauses annoncées : une pause ne fait avancer le jeu de rien">jeu sous pause ${sousPause} s</div>` : '')
+    + (masque ? `<div style="font-size:11px;color:#777" title="Ancienne mesure (avant la règle stricte)">masqué ${masque} %</div>` : '')
     + (b.trous ? `<div style="font-size:11px;color:#c8860a" title="Plus de vingt secondes sans battement en plein jeu">${b.trous} trou${b.trous > 1 ? 's' : ''}</div>` : '')
     + (b.exiges === false ? '<div style="font-size:11px;color:#999" title="Partie née avant le redémarrage du serveur">non exigés</div>' : '');
 }
