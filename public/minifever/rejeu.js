@@ -261,25 +261,30 @@ function rejouerEpreuve(ctx, graine, k, ep) {
  * palier au bout, ou plus de vies). Un journal dont les épreuves ne suivent
  * pas cette règle ne vient pas du jeu.
  *
+ * `regle.sansPlafond` (le Challenge depuis le barème de novembre 2026) :
+ * l'objectif atteint ne finit plus la partie — elle continue à la difficulté
+ * maximale jusqu'à la dernière vie (Arcade.monter).
+ *
  * @returns {{ ok: boolean, raison?: string, niveau: number, jouees: number,
  *             gagnee: boolean, difs: number[] }}
  */
-function derouler(palierInfo, verdicts) {
+function derouler(palierInfo, verdicts, regle) {
   const o = palierInfo;
+  const sans = !!(regle && regle.sansPlafond);
   let niveau = 0, vies = o.vies, dif = 0;
   const difs = [];
   for (let i = 0; i < verdicts.length; i++) {
-    if (niveau >= o.lvl || vies <= 0) return { ok: false, raison: `épreuve ${i + 1} jouée après la fin de partie`, niveau, jouees: i, gagnee: niveau >= o.lvl, difs };
+    if ((!sans && niveau >= o.lvl) || vies <= 0) return { ok: false, raison: `épreuve ${i + 1} jouée après la fin de partie`, niveau, jouees: i, gagnee: niveau >= o.lvl, difs };
     difs.push(dif);
     if (verdicts[i]) {
       niveau++;
-      if (niveau < o.lvl) dif = o.min + Math.round((o.max - o.min) * (niveau / o.lvl));
+      if (niveau < o.lvl || sans) dif = o.min + Math.round((o.max - o.min) * Math.min(1, niveau / o.lvl));
     } else {
       vies--;
     }
   }
   const gagnee = niveau >= o.lvl;
-  if (!gagnee && vies > 0) return { ok: false, raison: 'partie interrompue (ni palier fini, ni vies épuisées)', niveau, jouees: verdicts.length, gagnee, difs };
+  if ((sans || !gagnee) && vies > 0) return { ok: false, raison: `partie interrompue (${sans ? 'il restait des vies' : 'ni palier fini, ni vies épuisées'})`, niveau, jouees: verdicts.length, gagnee, difs };
   return { ok: true, niveau, jouees: verdicts.length, gagnee, difs };
 }
 

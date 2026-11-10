@@ -1680,7 +1680,8 @@ const RANKINGS = {
   miniwave_classic:  { name: 'MiniWave',                game: 'miniwave',  type: 'C' },
   //   · Mini-Fever — l'ARCADE : le jeu jamais sorti, porté en natif. UN SEUL
   //     tableau, au BARÈME AFFICHÉ : une épreuve remportée vaut dix points,
-  //     multipliés par (1 + palier) — l'infernal paie quadruple. Choisir plus
+  //     multipliés par 1, 2, 3, 6 selon le palier (×4 en infernal avant le
+  //     barème de novembre 2026, cf. minifeverRegle). Choisir plus
   //     dur rapporte donc plus, c'est la règle, elle est écrite sur la page du
   //     jeu et dans le libellé de chaque ligne (« 900 · 30 épreuves en
   //     difficile »). Le palier joué voyage dans la donnée de score. C'est un
@@ -1788,7 +1789,7 @@ const LEGACY_RANKINGS = [
   // points. g='minipixiz'/'miniwave' : fileIcon.swf connaît déjà les deux.
   { rk: '13', internal: 'minipixiz_classic', ty: 'point',     rn: 'MiniPixiz',    gs: '1', g: 'minipixiz', section: 'C' },
   { rk: '14', internal: 'miniwave_classic',  ty: 'point',     rn: 'MiniWave',     gs: '1', g: 'miniwave',  section: 'C' },
-  // Mini-Fever : le classement UNIQUE du portage (niveau × 10 × (1 + palier),
+  // Mini-Fever : le classement UNIQUE du portage (niveau × 10 × multiplicateur du palier,
   // cf. minifeverScore), affiché sous CHALLENGE avec les autres jeux — mais
   // c'est un RECORD permanent : il est explicitement écarté de la remise à
   // zéro quotidienne et des médailles du jour (DAILY_RESET_RANKING_SET, même
@@ -17564,9 +17565,44 @@ app.get('/api/miniwave/challenge', async (req, res) => {
 const MINIFEVER_PALIERS = require('./public/minifever/engine.js').PALIERS;
 const MINIFEVER_POINTS = 10;              // par épreuve réussie, avant le palier
 
-function minifeverScore(palier, niveau) {
-  return niveau * MINIFEVER_POINTS * (1 + palier);
+/*
+ * LE BARÈME DE NOVEMBRE 2026 (retours du forum, tranchés par l'admin) :
+ *   · l'infernal paie ×6 (×4 avant) — facile ×1, normal ×2, difficile ×3 ;
+ *   · plus de plafond : l'objectif du palier atteint (40, 80, 100, 100), le
+ *     mode est « terminé », mais la partie continue à la difficulté maximale
+ *     jusqu'à la dernière vie — les meilleurs ne finissent plus tous ex aequo.
+ * Il entre en vigueur au LENDEMAIN de la mise en ligne, à minuit : le
+ * classement du jour ne mélange pas deux barèmes. Le jour est fixé au premier
+ * démarrage (app_state `minifever_bareme_v2`), ou par MINIFEVER_BAREME_DEPUIS.
+ * Une partie suit la règle du jour où son jeton a été donné.
+ */
+const MINIFEVER_MULT_V1 = [1, 2, 3, 4];
+let minifeverBaremeDepuis = /^\d{4}-\d{2}-\d{2}$/.test(String(process.env.MINIFEVER_BAREME_DEPUIS || ''))
+  ? process.env.MINIFEVER_BAREME_DEPUIS : null;
+function minifeverRegle(jour) {
+  const v2 = !!minifeverBaremeDepuis && String(jour || parisDayKey()) >= minifeverBaremeDepuis;
+  return { v: v2 ? 2 : 1, sansPlafond: v2, mult: v2 ? AT.MINIFEVER_MULT_V2 : MINIFEVER_MULT_V1 };
 }
+async function minifeverChargerBareme() {
+  if (minifeverBaremeDepuis) return;
+  const demain = parisDayKey(new Date(Date.now() + 24 * 3600 * 1000));
+  if (process.env.DATABASE_URL) {
+    try {
+      const lu = await db.getAppState('minifever_bareme_v2');
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(lu || ''))) { minifeverBaremeDepuis = lu; }
+      else { minifeverBaremeDepuis = demain; await db.setAppState('minifever_bareme_v2', demain); }
+    } catch (e) { console.error('[MINIFEVER] barème :', e.message); minifeverBaremeDepuis = demain; }
+  } else minifeverBaremeDepuis = demain;
+  console.log(`[MINIFEVER] barème de novembre (infernal ×6, sans plafond) à partir du ${minifeverBaremeDepuis}`);
+}
+
+function minifeverScore(palier, niveau, regle) {
+  const r = regle || minifeverRegle();
+  return niveau * MINIFEVER_POINTS * (r.mult[palier] || (1 + palier));
+}
+// La donnée du score : « palier:épreuves » — l'affichage, les quêtes et
+// l'audit lisent les épreuves telles quelles, quel que soit le barème.
+const minifeverDonnee = (palier, niveau) => `${palier}:${niveau}`;
 
 /*
  * LA PARTIE SE PROUVE (antitricheLight.js). Le déroulé déclaré ne suffit plus :
@@ -17577,6 +17613,12 @@ function minifeverScore(palier, niveau) {
  * chaque épreuve : seules les victoires qu'il voit lui-même comptent, au score
  * comme à l'album. Sans jeton, ou sur un jeton déjà rendu, rien n'est classé.
  */
+// Le barème du jour, pour la ligne sous la scène.
+app.get('/api/minifever/bareme', (req, res) => {
+  const r = minifeverRegle();
+  res.json({ ok: true, mult: r.mult, sansPlafond: r.sansPlafond, depuis: minifeverBaremeDepuis });
+});
+
 app.post('/api/minifever/partie', (req, res) => {
   const sid = getSidPorteParLaRequete(req, req.body || {});
   const username = resolveUsernameFromSid(sid);
@@ -17591,7 +17633,9 @@ app.post('/api/minifever/partie', (req, res) => {
     db.creerPartieVerifiee({ id: p.id, jeu: 'minifever', username, graine: p.graine, mode: palier, jour: parisDayKey() })
       .catch(dbErr('creerPartieVerifiee'));
   }
-  res.json({ ok: true, id: p.id, graine: p.graine, jeton: p.jeton });
+  const regle = minifeverRegle(parisDayKey(new Date(p.t)));
+  res.json({ ok: true, id: p.id, graine: p.graine, jeton: p.jeton,
+    regle: { sansPlafond: regle.sansPlafond, mult: regle.mult[palier] } });
 });
 
 app.post('/api/minifever/score', async (req, res) => {
@@ -17616,14 +17660,18 @@ app.post('/api/minifever/score', async (req, res) => {
   const jouees = Math.trunc(Number(b.jouees));
   const info = MINIFEVER_PALIERS[palier];
   if (!info || !info.nom) return refus('palier');
-  if (!Number.isFinite(niveau) || niveau < 0 || niveau > info.lvl) return refus('niveau');
+  if (!Number.isFinite(niveau) || niveau < 0) return refus('niveau');
   // Les épreuves jouées, ce sont les réussies plus les ratées ; et on ne rate
   // pas plus souvent qu'on n'a de vies.
   if (!Number.isFinite(jouees) || jouees < niveau || jouees - niveau > info.vies) return refus('partie');
 
   // Le jeton : sans lui, la partie n'a pas de graine connue du serveur, donc
   // rien à rejouer. Elle est notée (l'admin voit qui poste sans jouer).
-  const declareScore = minifeverScore(palier, niveau);
+  // La règle (et le plafond) d'avant le jeton : celle du jour ; le jeton lu,
+  // celle du jour où il a été donné.
+  let regle = minifeverRegle();
+  if (!regle.sansPlafond && niveau > info.lvl) return refus('niveau');
+  let declareScore = minifeverScore(palier, niveau, regle);
   if (!b.jeton) {
     antitricheNoterSansPartie(username, 'minifever', palier, declareScore, 'sans_jeton',
       'score envoyé sans jeton de partie');
@@ -17642,14 +17690,17 @@ app.post('/api/minifever/score', async (req, res) => {
     console.log(`[ANTITRICHE] ${username} rend une 2e fois la partie Mini-Fever ${c.id}`);
     return refus('jeton_deja_rendu', 'cette partie a déjà été rendue');
   }
+  regle = minifeverRegle(parisDayKey(new Date(c.t)));
+  if (!regle.sansPlafond && niveau > info.lvl) return refus('niveau');
+  declareScore = minifeverScore(palier, niveau, regle);
 
   // Le rejeu, dans son fil (hors de la boucle du serveur).
   const bat = antitricheBattementsDe(c, username, recuA);
   const v = await AT.verifierEnFil('arcade', { graine: c.g, palier, journal: b.journal,
-    declare: { niveau, jouees }, dureeMs: recuA - c.t, battements: bat });
+    declare: { niveau, jouees }, dureeMs: recuA - c.t, battements: bat, sansPlafond: regle.sansPlafond });
   antitricheApresBattements(username, v, bat, c.t);
   const classable = v.verdict === 'conforme' || v.verdict === 'ecart';
-  const score = classable ? minifeverScore(palier, v.niveauVerifie) : 0;
+  const score = classable ? minifeverScore(palier, v.niveauVerifie, regle) : 0;
 
   // Les pictos : une épreuve remportée — et rejouée gagnée — pour la première
   // fois entre à l'album.
@@ -17675,7 +17726,7 @@ app.post('/api/minifever/score', async (req, res) => {
   }
 
   let r = { updated: false, newScore: score, oldScore: 0 };
-  if (score > 0) r = persistScore(username, 'minifever_arcade', score, String(palier));
+  if (score > 0) r = persistScore(username, 'minifever_arcade', score, minifeverDonnee(palier, v.niveauVerifie));
   antitricheNoterPartie({
     id: c.id, jeu: 'minifever', username, graine: c.g, mode: palier,
     scoreDeclare: declareScore, scoreVerifie: classable ? score : null, verdict: v.verdict,
@@ -17693,7 +17744,7 @@ app.post('/api/minifever/score', async (req, res) => {
   // `record` : le meilleur du jour qui reste quand la partie ne le bat pas —
   // le client le dit au joueur, au lieu de le laisser croire à une perte.
   res.json({ ok: true, score, classe: !!r.updated, record: Number(r.oldScore) || 0,
-    pictos: neufs.map((e) => e.nom), verdict: v.verdict });
+    pictos: neufs.map((e) => e.nom), verdict: v.verdict, mult: regle.mult[palier] });
 });
 
 /*
@@ -18781,10 +18832,12 @@ app.post('/api/admin/antitriche/parties/:id/rejouer', adminAuth, async (req, res
       try { j = JSON.parse(p.journal); } catch { /* illisible : le rejeu le dira */ }
       const verdicts = (j && Array.isArray(j.epreuves)) ? j.epreuves.map((e) => !!(e && e.g)) : [];
       const info = MINIFEVER_PALIERS[p.mode] || {};
-      const fin = require('./public/minifever/rejeu.js').derouler(info, verdicts);
+      // La règle du jour où la partie a été donnée (barème de novembre : sans plafond).
+      const regle = minifeverRegle(p.jour || parisDayKey(new Date(p.cree_le)));
+      const fin = require('./public/minifever/rejeu.js').derouler(info, verdicts, regle);
       v = await AT.verifierEnFil('arcade', { graine: Number(p.graine), palier: Number(p.mode), journal: j,
-        declare: { niveau: fin.niveau, jouees: fin.jouees }, dureeMs, battements: battements || undefined });
-      if (v.verdict === 'conforme' || v.verdict === 'ecart') v.scoreVerifie = minifeverScore(Number(p.mode), v.niveauVerifie);
+        declare: { niveau: fin.niveau, jouees: fin.jouees }, dureeMs, battements: battements || undefined, sansPlafond: regle.sansPlafond });
+      if (v.verdict === 'conforme' || v.verdict === 'ecart') v.scoreVerifie = minifeverScore(Number(p.mode), v.niveauVerifie, regle);
     }
   } catch (e) {
     v = { verdict: 'non_verifiable', raison: 'rejeu en panne : ' + e.message };
@@ -18807,7 +18860,11 @@ app.post('/api/admin/antitriche/parties/:id/classer', adminAuth, async (req, res
   const rk = p.jeu === 'minifever' ? 'minifever_arcade' : 'minipixiz_classic';
   const score = Number(p.score_declare) || 0;
   if (score <= 0) return res.status(400).json({ ok: false, error: 'score nul' });
-  const r = persistScore(username, rk, score, p.jeu === 'minifever' ? String(p.mode) : '');
+  // Mini-Fever : les épreuves, d'après le score et le barème du jour de la partie.
+  const donnee = p.jeu === 'minifever'
+    ? minifeverDonnee(Number(p.mode), Math.round(score / minifeverScore(Number(p.mode), 1, minifeverRegle(p.jour))))
+    : '';
+  const r = persistScore(username, rk, score, donnee);
   await db.classerPartieVerifiee(p.id, 'admin');
   console.log(`[ADMIN] antitriche : partie ${p.id} de ${username} classée à la main (${rk} ${score}, updated=${r.updated})`);
   res.json({ ok: true, updated: r.updated, score });
@@ -31089,10 +31146,12 @@ function formatChallengeScoreLabel(rankingId, score, data) {
   // points, puis d'où ils viennent : le compte d'épreuves et le palier joué
   // (dix points l'épreuve, multipliés par 1 + palier).
   if (rankingId === 'minifever_arcade') {
-    const palier = Math.trunc(Number(data));
+    // « palier:épreuves » (barème de novembre 2026), ou « palier » avant.
+    const [dp, dn] = String(data == null ? '' : data).split(':');
+    const palier = Math.trunc(Number(dp));
     const p = MINIFEVER_PALIERS[palier];
     if (p && p.nom) {
-      const niveau = Math.round(n / (MINIFEVER_POINTS * (1 + palier)));
+      const niveau = dn !== undefined && Number.isFinite(Number(dn)) ? Math.trunc(Number(dn)) : Math.round(n / (MINIFEVER_POINTS * (1 + palier)));
       return `${n.toLocaleString('fr-FR')} · ${niveau} épreuve${niveau > 1 ? 's' : ''} en ${p.nom}`;
     }
     return n.toLocaleString('fr-FR');
@@ -33303,10 +33362,13 @@ app.use((req, res) => {
 // Start HTTP server
 // ─────────────────────────────────────────────
 async function boot() {
+  // Mini-Fever : le jour où le barème de novembre entre en vigueur (sans base, demain).
+  if (!process.env.DATABASE_URL) await minifeverChargerBareme();
   if (process.env.DATABASE_URL) {
     try {
       await db.initSchema();
       console.log('[DB] Connected and schema ready');
+      await minifeverChargerBareme();
       // Les notes de Championnat que le serveur tient (championFicheTenue) :
       // en premier, les sockets sont déjà ouvertes et un salon peut en lire une.
       await chargerNotesChampionnat();

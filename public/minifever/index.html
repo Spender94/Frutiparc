@@ -175,7 +175,7 @@ function demanderPartie(palier) {
     body: JSON.stringify({ sid, palier }), signal: ctrl ? ctrl.signal : undefined,
   })
     .then((r) => r.json())
-    .then((j) => (j && j.ok && j.jeton ? { id: j.id, graine: Number(j.graine) >>> 0, jeton: j.jeton } : null))
+    .then((j) => (j && j.ok && j.jeton ? { id: j.id, graine: Number(j.graine) >>> 0, jeton: j.jeton, regle: j.regle || {} } : null))
     .catch(() => null)
     .then((p) => { clearTimeout(minuteur); return p; });
 }
@@ -212,7 +212,10 @@ function jouer() {
         verif.enregistreur = window.MinifeverRejeu.brancher(this, graine);
       }
     }
-    socle = client.nouvellePartie(ArcadeVerifiee, JEUX, { palier: m.palier });
+    // La règle du jour donnée avec le jeton : sans plafond depuis le barème
+    // de novembre 2026 (l'objectif atteint, on joue jusqu'à la dernière vie).
+    const sansPlafond = !!(partie && partie.regle && partie.regle.sansPlafond);
+    socle = client.nouvellePartie(ArcadeVerifiee, JEUX, { palier: m.palier, sansPlafond });
     socle.verif = verif;
     // LES BATTEMENTS (journal-partie.js) : les images journalisées, toutes
     // épreuves bout à bout ; « console » entre deux épreuves (le journal ne
@@ -243,7 +246,8 @@ function majEtat(texte) {
     $('etat').textContent = 'épreuve ' + Math.max(1, socle.niveau);
   } else {
     const p = socle.info;
-    $('etat').textContent = p.nom + ' · épreuve ' + (socle.niveau + 1) + '/' + p.lvl
+    $('etat').textContent = p.nom + ' · épreuve ' + (socle.niveau + 1)
+      + (socle.gagnee ? ' (mode terminé, on continue !)' : '/' + p.lvl)
       + ' · ' + socle.vies + ' vie' + (socle.vies > 1 ? 's' : '');
   }
 }
@@ -291,9 +295,11 @@ const MOTIFS = {
   jeton_deja_rendu: 'cette partie a déjà été rendue',
 };
 function finArcade(d) {
-  majEtat(d.gagnee
-    ? 'mode ' + d.nom + ' terminé ! — cliquer sur un mode pour rejouer'
-    : d.niveau + '/' + d.objectif + ' épreuves — choisir un mode pour rejouer');
+  majEtat(d.sansPlafond
+    ? d.niveau + ' épreuves' + (d.gagnee ? ' — mode ' + d.nom + ' terminé, et au-delà !' : '/' + d.objectif) + ' — choisir un mode pour rejouer'
+    : d.gagnee
+      ? 'mode ' + d.nom + ' terminé ! — cliquer sur un mode pour rejouer'
+      : d.niveau + '/' + d.objectif + ' épreuves — choisir un mode pour rejouer');
   const base = $('etat').textContent;
   const cette = socle;                // si le joueur a relancé, on se tait
   // Le dernier battement part juste avant la fin.
@@ -322,7 +328,8 @@ function finArcade(d) {
           return;
         }
         if (!r.ok) { dire('score NON enregistré : ' + (MOTIFS[r.error] || MOTIFS.reseau)); return; }
-        let t = r.score + ' pts' + (d.palier > 0 ? ' (×' + (1 + d.palier) + ')' : '');
+        const mult = Number(r.mult) || (1 + d.palier);
+        let t = r.score + ' pts' + (mult > 1 ? ' (×' + mult + ')' : '');
         if (r.classe) t += ' — au classement du jour';
         else if (r.record > 0) t += ' — ton meilleur du jour reste ' + r.record + ' : le classement garde le meilleur';
         if (r.pictos && r.pictos.length) t += ' · picto : ' + r.pictos.join(', ');
@@ -331,6 +338,14 @@ function finArcade(d) {
   };
   finBattements.then(envoyer);
 }
+
+/* ── Le barème du jour, sous la scène (il a changé en novembre 2026). ── */
+fetch('/api/minifever/bareme').then((r) => r.json()).then((b) => {
+  if (!b || !b.ok || !Array.isArray(b.mult)) return;
+  $('bareme').textContent = 'arcade : 10 pts par épreuve remportée, × ' + b.mult[1] + ' en normal, × ' + b.mult[2]
+    + ' en difficile, × ' + b.mult[3] + ' en infernal'
+    + (b.sansPlafond ? ' — sans plafond : on joue jusqu\'à la dernière vie' : '') + ' — un seul classement';
+}).catch(() => {});
 
 /* ── Le chargement, puis la première épreuve — toute seule, comme le SWF. ── */
 C.charger('/minifever/sprites/', (c) => {

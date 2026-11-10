@@ -109,7 +109,7 @@ const SEUILS = {
   tempsMargeMs: 15000,
   arbre: { tmodMin: 0.05, tmodSuspect: 0.08, exploit: 30000, commandesParSeconde: 20,
     pointsParMinute: 2500, scoreRythme: 3000 },
-  arcade: { tmodMin: 0.4, tmodSuspect: 0.6, tolerance: 25, epreuvesMax: 400, victoiresRythme: 10 },
+  arcade: { tmodMin: 0.4, tmodSuspect: 0.6, tolerance: 25, epreuvesMax: 600, victoiresRythme: 10 },
   // Longues pauses : plus de trois fois le temps de jeu, et cinq minutes.
   pauseFacteur: 3,
   pauseMargeMs: 300000,
@@ -382,6 +382,9 @@ function horloges(indices, tempsJeuMs, dureeMs, minimumMs) {
  *     jouée (un programme qui joue à la place du joueur suit l'horloge).
  */
 const B = SEUILS.battements;
+// Le barème de Mini-Fever depuis novembre 2026 (server.js, minifeverRegle) :
+// dix points l'épreuve, ×1, ×2, ×3 et ×6 (l'infernal, ×4 avant).
+const MINIFEVER_MULT_V2 = [1, 2, 3, 6];
 const DEMARRAGE = Date.now();          // une partie née avant ce démarrage n'a pas pu tout battre
 
 // Le registre, en mémoire : id -> { u, jeu, t0, liste, plein, reprise, vu }.
@@ -868,8 +871,9 @@ function verifierArcade(partie) {
   if (eps.length > SEUILS.arcade.epreuvesMax) return sortie('divergent', 'partie démesurée');
   // Le déroulé : les difficultés et la fin de partie suivent la règle du jeu.
   const verdicts = eps.map((e) => !!(e && e.g));
-  const d = FeverRejeu.derouler(info, verdicts);
+  const d = FeverRejeu.derouler(info, verdicts, { sansPlafond: !!partie.sansPlafond });
   details.epreuves = eps.length;
+  if (partie.sansPlafond) details.sansPlafond = true;
   if (!d.ok) return sortie('divergent', d.raison);
   for (let k = 0; k < eps.length; k++) {
     if (Math.trunc(Number(eps[k].d)) !== d.difs[k]) {
@@ -1149,11 +1153,18 @@ function auditer(o) {
     const note = (grav, txt) => { raisons.push(txt); g = g ? pire(grav, g) : grav; };
     const score = Number(s.score) || 0;
     if (Number(s.verifie) >= score) continue;
-    const p = Number.parseInt(String(s.data == null ? '' : s.data), 10);
+    // La donnée : « palier », ou « palier:épreuves » depuis le barème de
+    // novembre 2026 (infernal ×6, parties sans plafond).
+    const [dp, dn] = String(s.data == null ? '' : s.data).split(':');
+    const p = Number.parseInt(dp, 10);
     const info = PALIERS[p];
     let niveau = null;
     if (!info || !info.nom) note('fort', `palier illisible (« ${String(s.data).slice(0, 10)} »)`);
-    else {
+    else if (dn !== undefined) {
+      niveau = Number.parseInt(dn, 10);
+      const unites = [10 * (1 + p), 10 * MINIFEVER_MULT_V2[p]];
+      if (!(niveau >= 0) || !unites.some((u) => niveau * u === score)) note('fort', `score qui ne suit pas le barème (${niveau} épreuves en ${info.nom})`);
+    } else {
       const unite = 10 * (1 + p);
       if (score % unite !== 0) note('fort', `score qui n'est pas un multiple du barème (${unite})`);
       else {
@@ -1248,5 +1259,5 @@ module.exports = {
   rythmePartie, pointsParMinute, dureeLisible,
   DEMARRAGE, ouvrirBattements, noterBattement, fermerBattements, debitBattement,
   encoderBattements, decoderBattements, examinerBattements, positionsArbre, positionsArcade,
-  rapportReelJeu, tendanceRalenti,
+  rapportReelJeu, tendanceRalenti, MINIFEVER_MULT_V2,
 };

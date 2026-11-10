@@ -105,11 +105,14 @@ function epreuveVoulue(graine, k, dif, veut) {
  * jusqu'à la fin des vies (ou le palier au bout). Rend le corps à poster
  * (sans sid ni jeton) et ce que la partie vaut.
  */
-function arcadeConstruite(graine, palier, victoires) {
+function arcadeConstruite(graine, palier, victoires, regle) {
   const info = E.PALIERS[palier];
+  // `regle.sansPlafond` : le barème de novembre 2026 — l'objectif atteint, la
+  // partie continue jusqu'à la dernière vie (rejeu.js, derouler).
+  const sans = !!(regle && regle.sansPlafond);
   const eps = [];
   let niveau = 0, vies = info.vies, dif = 0, tmod = 0;
-  while (niveau < info.lvl && vies > 0) {
+  while ((sans || niveau < info.lvl) && vies > 0) {
     const veut = niveau < victoires;
     let ep = epreuveVoulue(graine, eps.length, dif, veut);
     if (!ep) ep = epreuveVoulue(graine, eps.length, dif, !veut);
@@ -119,7 +122,7 @@ function arcadeConstruite(graine, palier, victoires) {
     for (const o of lu.ops) if (o.t === 0) tmod += 819 * o.n;
     if (ep.g) {
       niveau++;
-      if (niveau < info.lvl) dif = info.min + Math.round((info.max - info.min) * (niveau / info.lvl));
+      if (niveau < info.lvl || sans) dif = info.min + Math.round((info.max - info.min) * Math.min(1, niveau / info.lvl));
     } else vies--;
   }
   const consoleMin = FR.consoleMinimale(E);

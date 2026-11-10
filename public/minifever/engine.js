@@ -500,6 +500,11 @@ class Arcade extends Socle {
   constructor(o) {
     super(o);
     this.palier = (o && o.palier) || 0;
+    // SANS PLAFOND (le Challenge, depuis le barème de novembre 2026) :
+    // l'objectif du palier atteint, le mode est « terminé » (gagnee), mais la
+    // partie continue, à la difficulté maximale, jusqu'à la dernière vie. Le
+    // tableau départage enfin ceux qui finissaient tous à cent.
+    this.sansPlafond = !!(o && o.sansPlafond);
     const p = PALIERS[Math.min(this.palier, PALIERS.length - 1)];
     this.niveau = 0;               // épreuves RÉUSSIES
     this.vies = p.vies;
@@ -522,19 +527,22 @@ class Arcade extends Socle {
   monter() {
     this.niveau++;
     const o = this.info;
-    if (this.niveau >= o.lvl) {
+    if (this.niveau >= o.lvl && !this.gagnee) {
       this.gagnee = true;
-      this.termine = true;
-      this.evenement('finPartie', this.bilan());
-      return;
+      if (!this.sansPlafond) {
+        this.termine = true;
+        this.evenement('finPartie', this.bilan());
+        return;
+      }
+      this.evenement('objectif', this.bilan());
     }
-    this.dif = o.min + Math.round((o.max - o.min) * (this.niveau / o.lvl));
+    this.dif = o.min + Math.round((o.max - o.min) * Math.min(1, this.niveau / o.lvl));
   }
 
   bilan() {
     return { gagnee: this.gagnee, palier: this.palier, nom: this.info.nom,
       niveau: this.niveau, objectif: this.info.lvl, vies: this.vies,
-      jouees: this.jouees, dif: this.dif };
+      jouees: this.jouees, dif: this.dif, sansPlafond: this.sansPlafond };
   }
 
   initEtape(n) {

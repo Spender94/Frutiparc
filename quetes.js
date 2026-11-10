@@ -299,7 +299,11 @@ BKIWI_CIRCUITS.forEach((nom, i) => {
 // ── Mini-Fever ──
 MINIFEVER_PALIERS.forEach((nom, p) => {
   mesure('minifever-arcade' + p, { jeu: 'minifever', groupe: 'Mini-Fever', nom: `Arcade ${nom} : épreuves remportées`,
-    source: { rk: 'minifever_arcade', data: String(p) }, unite: 'épreuves', valeur: (v) => v / (10 * (1 + p)),
+    // La donnée : « palier:épreuves » (barème de novembre 2026 : infernal ×6,
+    // parties sans plafond), ou « palier » seul avant — les épreuves se
+    // déduisaient alors du score (dix points × (1 + palier)).
+    source: { rk: 'minifever_arcade', data: String(p) }, unite: 'épreuves',
+    valeur: (v, d) => { const n = String(d == null ? '' : d).split(':')[1]; return n !== undefined ? Number(n) : v / (10 * (1 + p)); },
     plafond: MINIFEVER_OBJECTIFS[p],
     titre: `Remporte {seuil} en arcade ${nom}`, detail: 'Mini-Fever, mode arcade',
     reperes: [{ nom: 'Mode terminé', v: MINIFEVER_OBJECTIFS[p] }] });
@@ -386,7 +390,9 @@ function valeurDe(m, evt) {
     if (evt.type !== 'doigt' || evt.rk !== s.rk) return null;
   } else if (s.rk) {
     if (evt.type !== 'score' || evt.rk !== s.rk) return null;
-    if (s.data !== undefined && String(evt.data == null ? '' : evt.data) !== s.data) return null;
+    // (une donnée « clé:suite » répond à sa clé : le palier de Mini-Fever, suivi des épreuves)
+    const d = String(evt.data == null ? '' : evt.data);
+    if (s.data !== undefined && d !== s.data && !d.startsWith(s.data + ':')) return null;
   } else if (s.mode) {
     if (evt.type !== 'mode' || evt.jeu !== m.jeu || evt.mode !== s.mode) return null;
   } else return null;

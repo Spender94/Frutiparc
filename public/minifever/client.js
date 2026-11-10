@@ -775,7 +775,8 @@ class Client {
     ctx.fillText(String((s.niveau || 0) + 1), LARGEUR / 2, 158);
     ctx.font = '10px "Trebuchet MS", sans-serif';
     ctx.fillStyle = '#8fa0c8';
-    ctx.fillText('sur ' + (s.info ? s.info.lvl : '?'), LARGEUR / 2, 172);
+    // Sans plafond, l'objectif passé : on le rappelle, la partie continue.
+    ctx.fillText(s.gagnee && s.sansPlafond ? 'objectif ' + s.info.lvl + ' passé !' : 'sur ' + (s.info ? s.info.lvl : '?'), LARGEUR / 2, 172);
 
     // Les vies, en bulles.
     const n = Math.max(0, s.vies || 0);
