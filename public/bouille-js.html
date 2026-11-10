@@ -126,6 +126,7 @@
         .catch(function () { return null; }),
       fetch('/fbouille/maquillage-egerie.json').then(function (r) { return r.ok ? r.json() : null; })
         .catch(function () { return null; }),
+      M.prechargerSixSept ? M.prechargerSixSept() : null,   // les chiffres de « 67 », pour les planches
     ]).then(function (chargement) {
       var defs = chargement[0], paquetEmotes = chargement[1];
       try { if (chargement[2]) M.grefferMaquillage(defs, chargement[2]); } catch (e) { /* sans maquillage */ }

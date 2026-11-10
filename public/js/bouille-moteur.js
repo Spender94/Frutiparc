@@ -149,7 +149,7 @@
    */
   const ANIMATIONS = ['stop', 'parle', 'rire', 'mdr', 'langue', 'rougir', 'regard',
     'siffle', 'gum', 'question', 'miam', 'pleure', 'larme', 'beurk', 'jutsu', 'tousse',
-    'gumm', 'clin', 'bisou'];
+    'gumm', 'clin', 'bisou', 'sixsept'];
   // Les noms tels que le parc les affiche déjà — ceux du forum (EXPRESSIONS,
   // public/fb/index.html) et de la page de démonstration. Le SWF, lui, ne
   // nomme pas ses humeurs : emoteList n'est qu'un tableau de couples.
@@ -157,7 +157,7 @@
     'Déterminé', 'Embarrassé', 'Totoché'];
   const NOMS_ANIMATIONS = ['Repos', 'Parler', 'Rire', 'MDR', 'Langue', 'Rougir',
     'Regard', 'Sifflote', 'Chewing-gum', 'Question', 'Miam', 'Pleurer', 'Larme',
-    'Beurk', 'Jutsu', 'Tousse', 'Gum d’hiko', 'Clin d’œil', 'Bisou'];
+    'Beurk', 'Jutsu', 'Tousse', 'Gum d’hiko', 'Clin d’œil', 'Bisou', '67'];
   // actionList nomme « siffle » et « pleure » ce que la pellicule étiquette
   // « sifflote » et « pleurer ». playAnim() vise les étiquettes.
   const ETIQUETTES = { siffle: 'sifflote', pleure: 'pleurer' };
@@ -1241,6 +1241,37 @@
    */
   const CLIN_OUVRE = 20;
   const CLIN_FIN = 38;
+  /*
+   * « 67 » (id 19) — réclamée par tout le parc. Une recette encore : les yeux
+   * se ferment L'UN APRÈS L'AUTRE, un battement chacun, la tête penche du côté
+   * de l'œil clos, et de chaque côté du visage un 6 et un 7 se pèsent — l'un
+   * monte quand l'autre descend. Les deux chiffres ne sont pas dessinés pour
+   * l'occasion : ce sont ceux des points gagnés à Frutisnake (Popup.as,
+   * `chiffresRouge`, l'image n+1 porte le chiffre n).
+   */
+  const SS_BATTEMENT = 9;              // un œil : un petit quart de seconde
+  const SS_BATTEMENTS = 8;             // six, sept, six, sept…
+  const SS_FIN = SS_BATTEMENT * SS_BATTEMENTS + 6;
+  const SS_PENCHE = 0.06;              // radians
+  const SS_CENTRE = { x: 50, y: 60 };  // le pivot de la tête, repère de la scène
+  const SS_POSE = { x6: 2, x7: 70, y: 62, amp: 8, taille: 24 };   // les deux chiffres, repère de la scène
+  const SS_CHIFFRES = { 6: '/snake3/sprites/chiffresRouge007.svg', 7: '/snake3/sprites/chiffresRouge008.svg' };
+  const ssImages = {};
+  /** Les deux chiffres, chargés : une promesse (les planches d'images l'attendent). */
+  function prechargerSixSept() {
+    if (typeof global.Image !== 'function') return Promise.resolve();
+    return Promise.all([6, 7].map((n) => new Promise((ok) => {
+      imageChiffre(n);
+      const im = ssImages[n];
+      if (im.complete) ok(); else { im.addEventListener('load', ok); im.addEventListener('error', ok); }
+    })));
+  }
+  function imageChiffre(n) {
+    if (typeof global.Image !== 'function') return null;
+    if (!ssImages[n]) { const im = new global.Image(); im.src = SS_CHIFFRES[n]; ssImages[n] = im; }
+    const im = ssImages[n];
+    return im.complete && im.naturalWidth ? im : null;
+  }
   // BISOU : « rougir » mène la fin ; la bouche en bec ne doit pas rendre la
   // main avant elle — on lui donne plus de tours qu'il n'en faut.
   const BISOU_TOURS = 40;
@@ -1279,7 +1310,7 @@
     this.fardKaki = (id === 13);
     // Et les deux chutes ne durent que le temps de la leur — le clin d'œil
     // aussi, qui tient son compte de la même façon.
-    if (id !== 14 && id !== 15 && id !== 17) this.chute = null;
+    if (id !== 14 && id !== 15 && id !== 17 && id !== 19) this.chute = null;
     // Comme les substitutions de dessins : elles ne valent que pour l'émote
     // qui les a posées (cf. `remplacements`). Et la colombe ne survit pas au
     // gum qui l'a lâchée.
@@ -1517,6 +1548,18 @@
       muet();
       if (bb) bb.allerImage(sourire[1] + 1, false);
       this.chute = { quoi: 'clin', t: 0 };
+    } else if (id === 19) {
+      // « 67 » : le visage au repos, la bouche du Sourire ; le moteur ferme
+      // les yeux tour à tour (cf. avancerChute, SS_BATTEMENT).
+      const sourire = HUMEURS[3];
+      r.flStop = false; r.next = 0;
+      face.allerImage(1, false);
+      if (oaO) oaO.allerImage('ferme', false);
+      if (obO) obO.allerImage(r.emoteEye + 1, false);
+      muet();
+      if (bb) bb.allerImage(sourire[1] + 1, false);
+      imageChiffre(6); imageChiffre(7);            // qu'ils soient là au premier battement
+      this.chute = { quoi: 'sixsept', t: 0 };
     } else if (id === 18) {
       /*
        * BISOU — la pellicule de « rougir », dont le seul apport est le fard
@@ -1711,6 +1754,20 @@
       if (ch.t >= TOUX_FIN) { this.chute = null; this.jouerAnim(0); }
       return true;
     }
+    if (ch.quoi === 'sixsept') {
+      if (ch.t >= SS_FIN) { this.chute = null; this.jouerAnim(0); return true; }
+      if (ch.t % SS_BATTEMENT === 0) {
+        const face = this.racine.face;
+        const oa = face && face.enfantNomme('oa'), oaO = oa && oa.enfantNomme('o');
+        const ob = face && face.enfantNomme('ob'), obO = ob && ob.enfantNomme('o');
+        const ouvert = this.racine.emoteEye + 1;
+        const k = Math.floor(ch.t / SS_BATTEMENT);
+        const fini = k >= SS_BATTEMENTS;             // les deux se rouvrent pour finir
+        if (oaO) oaO.allerImage(!fini && k % 2 === 0 ? 'ferme' : ouvert, false);
+        if (obO) obO.allerImage(!fini && k % 2 === 1 ? 'ferme' : ouvert, false);
+      }
+      return true;
+    }
     if (ch.quoi === 'clin') {
       // L'œil clos se rouvre à l'humeur du moment ; le sourire tient encore.
       if (ch.t === CLIN_OUVRE) {
@@ -1730,8 +1787,22 @@
    * Les sursauts partent aux battements de `TOUX_SURSAUTS` et durent le temps
    * de la courbe relevée ; entre eux, la tête est à sa place.
    */
+  /** « 67 » : où en est la balance, de −1 (le 6 en haut) à +1 (le 7 en haut) ; null hors de l'émote. */
+  Moteur.prototype.balanceSixSept = function () {
+    const ch = this.chute;
+    if (!ch || ch.quoi !== 'sixsept') return null;
+    const t = Math.min(ch.t, SS_BATTEMENT * SS_BATTEMENTS);
+    return -Math.cos(Math.PI * t / SS_BATTEMENT) * (ch.t >= SS_BATTEMENT * SS_BATTEMENTS ? 0 : 1);
+  };
+
   Moteur.prototype.secousseToux = function () {
     const ch = this.chute;
+    if (ch && ch.quoi === 'sixsept') {
+      // La tête penche du côté de l'œil clos : trois degrés, autour de son centre.
+      const b = this.balanceSixSept(), a = b * SS_PENCHE, cx = SS_CENTRE.x, cy = SS_CENTRE.y;
+      const cos = Math.cos(a), sin = Math.sin(a);
+      return { a: cos, b: sin, c: -sin, d: cos, e: cx - cos * cx + sin * cy, f: cy - sin * cx - cos * cy };
+    }
     if (!ch || ch.quoi !== 'toux') return null;
     const pas = (this.emotes && this.emotes.toux && this.emotes.toux.secousse) || null;
     if (!pas || !pas.length) return null;
@@ -2100,6 +2171,22 @@
      * bouche, pas du crâne ; on le laisse donc immobile pendant que la tête
      * sursaute sous lui.
      */
+    // « 67 » : les deux chiffres de Frutisnake, de part et d'autre, qui se pèsent.
+    const bal = this.balanceSixSept();
+    if (bal !== null) {
+      const i6 = imageChiffre(6), i7 = imageChiffre(7);
+      const P = SS_POSE, R = repos;
+      ctx.save();
+      ctx.transform(R.a, R.b, R.c, R.d, R.e, R.f);
+      const poser = (im, x, dy) => {
+        if (!im) return;
+        const h = P.taille, w = h * im.naturalWidth / im.naturalHeight;
+        ctx.drawImage(im, x, P.y + dy, w, h);
+      };
+      poser(i6, P.x6, bal * P.amp);
+      poser(i7, P.x7, -bal * P.amp);
+      ctx.restore();
+    }
     if (ch && ch.quoi === 'toux' && ch.nuage && ch.t < TOUX_NUAGE
       && this.emotes && this.emotes.toux && this.emotes.toux.nuage) {
       const nu = this.emotes.toux.nuage;
@@ -2611,6 +2698,7 @@
   const API = {
     Moteur, Bouille, Clip,
     PALETTE, CHAUVE_VARIANTE, HUMEURS, ANIMATIONS, NOMS_HUMEURS, NOMS_ANIMATIONS, ETIQUETTES,
+    prechargerSixSept,
     decode62, encode62, teindre, cxTeinte, composerCx, composerM, etatsDe, facteurPour,
     // Les prunelles : le rouleau d'iris d'une famille, et la greffe de celles
     // qu'on récolte ailleurs (cf. scripts/extract-prunelles-bouille.js).

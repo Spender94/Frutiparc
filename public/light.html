@@ -12782,6 +12782,10 @@
        fard de « rougir », les yeux clos et la bouche en bec du sifflote. */
     add("clin", "fait un clin d’œil", [";)", ";-)", "clin"]);               // id 17
     add("bisou", "envoie un bisou", [":*", ":-*", "bisou", "smack"]);        // id 18
+    /* « 67 » — réclamée par tout le parc. Les yeux clignent l'un après
+       l'autre, et le 6 et le 7 des points de Frutisnake se pèsent de chaque
+       côté de la tête (recette du moteur, cf. bouille-moteur.js). */
+    add("sixsept", "fait six-seveeen", ["67", "6 7", "6-7", "sixseven"]);     // id 19
   })();
   function detectEmote(text) {
     var key = String(text == null ? "" : text).trim();   // whole-message, case-sensitive
@@ -12944,7 +12948,7 @@
     // passé au kaki ; « jutsu » et « tousse » empruntent leur chute à une
     // autre famille ; « gumm » rejoue le chewing-gum ordinaire avec les
     // dessins de fin d'hiko (cf. jouerAnim, public/js/bouille-moteur.js).
-    beurk:13, jutsu:14, tousse:15, gumm:16, clin:17, bisou:18 };
+    beurk:13, jutsu:14, tousse:15, gumm:16, clin:17, bisou:18, sixsept:19 };
   // Caption phrases for the bouille overlay — the EXACT desktop wording
   // (lang_french.as chat.action, entrées 2 à 12).
   var ANIM_LABEL = { parle:"parle", rire:"rigole", mdr:"éclate de rire",
@@ -12953,7 +12957,7 @@
     question:"se pose des questions", rougir:"rougit", sifflote:"sifflote",
     gum:"fait une bulle de chewing-gum", regard:"regarde ailleurs",
     beurk:"a la nausée", jutsu:"chocapic no jutsu", tousse:"tousse",
-    gumm:"s’en met plein la figure", clin:"fait un clin d’œil", bisou:"envoie un bisou" };
+    gumm:"s’en met plein la figure", clin:"fait un clin d’œil", bisou:"envoie un bisou", sixsept:"fait six-seveeen" };
   /*
    * LA RÉACTION QUI PASSE SUR LE CHAT.
    *
