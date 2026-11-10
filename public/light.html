@@ -8702,6 +8702,25 @@
         break;
       }
 
+      // ── Invitation à un SALON (`/invite pseudo`, tapé au bureau ou ici) ──
+      // `<ab u="qui invite" g="salon" p="mot de passe">sujet</ab>` — celle que
+      // `listener.main.onInvite` lit au bureau. Le light ne la lisait pas :
+      // l'invité ne voyait rien. Une ligne, et un bouton pour entrer. (Les
+      // trames `ab` qui portent `r` sont l'accusé de NOS invitations Flash ;
+      // le light invite en tapant la commande, le serveur répond en clair.)
+      case "ab": {
+        var salonInvite = attr(xml, "g");
+        if (!salonInvite || attr(xml, "r") || attr(xml, "k")) break;
+        var invitePar = xmlUnescape(attr(xml, "u"));
+        var corpsInvite = xml.match(/^<ab\b[^>]*>([\s\S]*?)<\/ab>\s*$/);
+        var sujetInvite = (corpsInvite ? xmlUnescape(corpsInvite[1]).trim() : "") || roomLabel(salonInvite);
+        if (!state.roomLabels) state.roomLabels = {};
+        if (sujetInvite && !state.roomLabels[salonInvite]) state.roomLabels[salonInvite] = sujetInvite;
+        systemAction((invitePar || "Quelqu'un") + " t'invite dans le salon « " + sujetInvite + " ».",
+          "Rejoindre", function () { ouvrirSalon(salonInvite); });
+        break;
+      }
+
       // ── Invitation reçue : quelqu'un nous écrit en privé ──
       // Le serveur nous a déjà abonnés au salon ; on l'enregistre pour qu'il
       // apparaisse dans le sélecteur. On ne bascule PAS de force : interrompre

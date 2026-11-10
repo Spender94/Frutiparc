@@ -38051,6 +38051,40 @@ function setUserExternalStatus(username, externalIdx) {
 // aussi ce que fait `channelMng.create` d'époque quand le nom est déjà pris.
 const SALON_JOUEUR = 'sal_';
 
+/*
+ * INVITER QUELQU'UN DANS UN SALON — `/invite pseudo`.
+ *
+ * Le bureau Flash tape la commande, et c'est son client qui l'envoie en trame
+ * `<ab u="pseudo" g="salon" r="…">`. Le light, lui, envoie la LIGNE telle
+ * quelle : elle tombait en « Commande inconnue », et l'on ne pouvait pas
+ * faire entrer quelqu'un dans un salon privé. Les deux chemins passent ici.
+ *
+ * Rend { k } (un refus : 1 demande illisible, 201 frutiz inconnu, 202 salon
+ * inconnu, 205 déjà dans le salon), ou { cible, refuse, enLigne } : l'invité
+ * a refusé (liste noire, préférence « Invitation salon »), ou l'invitation
+ * est partie vers toutes ses connexions — `<ab u="qui invite" g p>sujet</ab>`,
+ * que le bureau (listener.main.onInvite) et le light savent lire.
+ */
+function inviterAuSalon(inviter, cibleBrute, g) {
+  if (!cibleBrute || !g || !inviter) return { k: 1 };
+  const ch = channels[g];
+  if (!ch) return { k: 202 };
+  const cible = resolveKnownUsername(normalizeUsername(cibleBrute));
+  if (!cible || !users[cible]) return { k: 201 };
+  if (ch.users.has(cible)) return { k: 205, cible };
+  if (refuseInvitation(users[cible], 'invite_channel_behavior', inviter)) {
+    console.log(`[CBee]  ${inviter} invite ${cible} → refused (liste noire / préférence)`);
+    return { cible, refuse: true };
+  }
+  const sujet = ch.topic || ch.desc || g;
+  const sockets = getSocketsForUsername(cible);
+  for (const ts of sockets) {
+    sendToClient(ts, `<${CMD.invite} u="${escapeXml(getDisplayName(inviter))}" g="${escapeXml(g)}" p="${escapeXml(ch.pass || '')}">${escapeXml(sujet)}</${CMD.invite}>`);
+  }
+  console.log(`[CBee]  ${inviter} invited ${cible} to channel ${g}`);
+  return { cible, enLigne: sockets.length > 0 };
+}
+
 function estSalonJoueur(nom) { return String(nom || '').indexOf(SALON_JOUEUR) === 0; }
 
 /** Le sujet d'un salon → sa clé. Accents rabattus, tout le reste en tirets. */
@@ -38166,59 +38200,20 @@ async function handleCBeeMessage(socket, rawXml) {
   }
 
   // ── Channel invite: /invite <user> in a salon ──
+  // (le bureau Flash l'envoie ainsi ; le light tape « /invite pseudo », cf. inviterAuSalon)
   const invTarget = msg.attrs.u || '';
-  const invGroup = msg.attrs.g || '';
   const invReqId = msg.attrs.r || '';
-  const inviter = client.username || '';
-
-  if (!invTarget || !invGroup || !inviter) {
-    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTarget)}" r="${escapeXml(invReqId)}" k="1" />`);
+  const inv = inviterAuSalon(client.username || '', invTarget, msg.attrs.g || '');
+  if (inv.k) {
+    sendToClient(socket, `<${CMD.invite} u="${escapeXml(inv.cible || invTarget)}" r="${escapeXml(invReqId)}" k="${inv.k}" />`);
     break;
   }
-
-  const invChannel = channels[invGroup];
-  if (!invChannel) {
-    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTarget)}" r="${escapeXml(invReqId)}" k="202" />`);
-    break;
-  }
-
-  const invTargetName = resolveKnownUsername(normalizeUsername(invTarget));
-  if (!invTargetName || !users[invTargetName]) {
-    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTarget)}" r="${escapeXml(invReqId)}" k="201" />`);
-    break;
-  }
-
-  // Check if target is already in the channel
-  if (invChannel.users.has(invTargetName)) {
-    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTargetName)}" r="${escapeXml(invReqId)}" k="205" />`);
-    break;
-  }
-
-  // Sa liste noire (préférence « Invitation salon ») refuse : le demandeur
-  // lit ce que le client d'époque lui montrait — `chat.onrefuse` —, et rien
-  // ne part chez l'autre.
-  if (refuseInvitation(users[invTargetName], 'invite_channel_behavior', inviter)) {
-    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTargetName)}" r="${escapeXml(invReqId)}" />`);
+  // Succès, ou refus de l'invité (le demandeur lit « … a refusé l'invitation »).
+  sendToClient(socket, `<${CMD.invite} u="${escapeXml(inv.cible)}" r="${escapeXml(invReqId)}" />`);
+  if (inv.refuse) {
     const ta = buildChatTimeAttrs();
-    sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(invGroup)}" h="${ta.h}" d="${ta.d}"><![CDATA[<i>${escapeXml(getDisplayName(invTargetName))} a refusé l'invitation à rejoindre ce salon</i>]]></${CMD.send}>`);
-    console.log(`[CBee]  ${inviter} invite ${invTargetName} → refused (liste noire / préférence)`);
-    break;
+    sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(msg.attrs.g || '')}" h="${ta.h}" d="${ta.d}"><![CDATA[<i>${escapeXml(getDisplayName(inv.cible))} a refusé l'invitation à rejoindre ce salon</i>]]></${CMD.send}>`);
   }
-
-  // Success: acknowledge to sender
-  sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTargetName)}" r="${escapeXml(invReqId)}" />`);
-
-  // Forward invite to target (without r attribute so listener.main.onInvite processes it)
-  const invTopic = invChannel.topic || invChannel.desc || invGroup;
-  const invPass = invChannel.pass || '';
-  for (const targetSock of getSocketsForUsername(invTargetName)) {
-    sendToClient(
-      targetSock,
-      `<${CMD.invite} u="${escapeXml(getDisplayName(inviter))}" g="${escapeXml(invGroup)}" p="${escapeXml(invPass)}">${escapeXml(invTopic)}</${CMD.invite}>`
-    );
-  }
-
-  console.log(`[CBee]  ${inviter} invited ${invTargetName} to channel ${invGroup}`);
   break;
 }
 
@@ -39750,6 +39745,22 @@ case 'send': {
       break;
     }
 
+    // ── /invite pseudo : le faire entrer dans ce salon (cf. inviterAuSalon) ──
+    if (/^\/invite(\s|$)/i.test(text)) {
+      const dire = (html) => sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${html}</i>]]></${CMD.send}>`);
+      const qui = unescapeXml(text).replace(/^\/invite/i, '').trim().replace(/^@/, '');
+      if (!qui) { dire(escapeXml('Syntaxe : /invite pseudo — il reçoit une invitation à rejoindre ce salon.')); break; }
+      const inv = inviterAuSalon(client.username, qui, g);
+      const nom = escapeXml(inv.cible ? getDisplayName(inv.cible) : qui);
+      if (inv.k === 201) dire(`Aucun frutiz ne s'appelle ${nom}.`);
+      else if (inv.k === 205) dire(`${nom} est déjà dans ce salon.`);
+      else if (inv.k) dire('Invitation impossible.');
+      else if (inv.refuse) dire(`${nom} a refusé l'invitation à rejoindre ce salon`);
+      else if (!inv.enLigne) dire(`${nom} n'est pas connecté(e) : l'invitation ne lui parviendra pas.`);
+      else dire(`Invitation envoyée à ${nom}.`);
+      break;
+    }
+
     // ── /aide, /help, /? : les commandes du chat ──
     // Le SWF répond lui-même (chat.cmd.help, dans le client) et n'envoie
     // jamais la ligne ; le light, lui, n'avait rien — « Commande inconnue ».
@@ -39759,6 +39770,7 @@ case 'send': {
         'Commandes du chat :',
         '/log, /logs, /chatlog ou /chatlogs — les logs du salon (ses messages des dernières 24 heures)',
         '/! pseudo message — un message que seul ce frutiz (présent dans le salon) verra ; rien dans les logs',
+        '/invite pseudo — l\'inviter à rejoindre ce salon (pour un salon privé : créez-le, puis invitez)',
         '/ignore pseudo — ne plus voir ses messages sur les salons (il rejoint ta liste noire) ; /ignore seul : la liste',
         '/unignore pseudo — le relire',
         '/donne kikooz pseudo [message] — offrir des kikooz',
