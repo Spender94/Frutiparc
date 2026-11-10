@@ -12679,6 +12679,18 @@ async function quetesIndivV2(u, S, historique) {
   if (att) for (const evt of att) quetesAppliquer(u, quetesIndivListe(u), evt);
   return liste;
 }
+// Ce qu'un joueur ne PEUT pas faire, donc qu'on ne lui propose pas : la
+// Question à 60 kikooz pour l'équipe qui en écrit et en pose les questions
+// (badge animateur, ou rôle admin « animateur », qui ouvre l'onglet Kiloute) —
+// « je n'ai pas le droit de jouer aux questions à 60 kikooz, par conflit
+// d'intérêt ».
+function quetesExclusPour(u) {
+  const x = users[String(u || '').toLowerCase()];
+  if (!x) return [];
+  const anime = !!x.isAnimator || adminRoleList(x.adminRole).includes('animateur');
+  return anime ? ['exploit-question'] : [];
+}
+
 // Le calcul seul (sert aussi à l'aperçu de l'admin) : rend { quetes, connu, r }.
 async function quetesTaillerV2(u, lundi, historique, paliers, ajust) {
   const R = Object.assign({}, quetesReglages.paliers, ajust || {});
@@ -12693,7 +12705,7 @@ async function quetesTaillerV2(u, lundi, historique, paliers, ajust) {
   }
   const r = Quetes.proposerV2({ historique, paliers, premiersPas }, Quetes.aleaSeme('paliers:' + u + ':' + lundi),
     { minJours: quetesReglages.individuelles.minJours, budget: R.budget, maxQuetes: R.maxQuetes, gains: R.gains, decouverte: R.decouverte,
-      activites: R.activites, exploits: R.exploits, pas: R.pas, parts: R.parts });
+      activites: R.activites, exploits: R.exploits, pas: R.pas, parts: R.parts, exclus: quetesExclusPour(u) });
   let n = 0;
   const quetes = r.quetes.map((sp) => Quetes.definitionV2(sp, sp.genre === 'premierspas' ? sp.cle : 'ind-' + (++n))).filter(Boolean);
   const connu = Object.keys(r.niveaux).length > 0;

@@ -7784,10 +7784,13 @@ async function loadQuetes() {
           ${d.v2 ? '<b style="color:#2f8f2f">(en vigueur cette semaine)</b>' : '<span style="color:#c8860a">(pas encore en vigueur cette semaine)</span>'}
           <div style="color:#777;font-size:12px;margin:3px 0 6px;line-height:1.45">Chaque lundi, cinq paliers par jeu sont calculés sur les meilleurs du jour de tout le parc (fenêtre ci-dessus) :
             Bronze (la moitié du parc l'atteint), Argent (30 %), Or (15 %), Platine (5 %), Légende (1 %). Le niveau d'un joueur est le palier de son résultat habituel.
-            Ses quêtes visent ce qu'atteint une part du parc (réglée ci-dessous) ; qui fait déjà mieux d'habitude est relevé d'un pas au-dessus de lui.
+            Ses quêtes sont <b>à sa mesure</b>, tirées de ses propres jours sur la fenêtre : la facile, son score habituel ; la moyenne, ses bons jours (un sur quatre) ;
+            la difficile, son meilleur — chacune au moins un cran au-dessus de la précédente, au plus son habituel × le pas personnel (un jour de chance ne fait pas une cible).
+            La cible du parc (la part réglée ci-dessous) ne sert que si elle est <b>plus facile</b> que la sienne : on ne demande jamais à un joueur ce qu'il n'a jamais approché.
+            Une découverte (un jeu pas joué de la fenêtre) demande trois parties, pas un score. La Question à 60 kikooz n'est jamais proposée aux animateurs.
             Aucune cible ne dépasse le plafond de la mesure : le maximum d'une partie (100 épreuves en arcade difficile de Mini-Fever, 100 % des salles…), sinon le record du parc.
             La paie suit le palier qu'atteint la cible, et chacun reçoit des quêtes jusqu'au budget.</div>
-          <div style="margin-bottom:6px"><b>Niveaux des quêtes :</b> une facile vise ce qu'atteignent
+          <div style="margin-bottom:6px"><b>Cibles du parc</b> (quand elles sont plus faciles que celles du joueur) : une facile, ce qu'atteignent
             <input type="number" min="1" max="95" step="0.5" id="qt-p-part-facile" value="${Math.round(R.paliers.parts.facile * 1000) / 10}" style="width:52px"> % du parc, une moyenne
             <input type="number" min="1" max="95" step="0.5" id="qt-p-part-moyenne" value="${Math.round(R.paliers.parts.moyenne * 1000) / 10}" style="width:52px"> %, une difficile
             <input type="number" min="1" max="95" step="0.5" id="qt-p-part-difficile" value="${Math.round(R.paliers.parts.difficile * 1000) / 10}" style="width:52px"> %
@@ -7798,7 +7801,7 @@ async function loadQuetes() {
           <div style="margin-bottom:6px"><b>Hors scores :</b>
             <label style="margin-right:12px"><input type="number" min="0" max="4" id="qt-p-activites" value="${R.paliers.activites}" style="width:40px"> quête(s) de la vie du parc (forum, salons, Prunostics, assiduité)</label>
             <label><input type="number" min="0" max="2" id="qt-p-exploits" value="${R.paliers.exploits}" style="width:40px"> exploit(s) (podium, Question à 60 kikooz, records de Kaluga)</label></div>
-          <div style="margin-bottom:6px"><b>Pas personnel</b> (qui fait déjà mieux que la cible du parc) : une facile vise son score habituel, une moyenne
+          <div style="margin-bottom:6px"><b>Pas personnel</b> (le plus haut qu'on demande) : une facile vise son score habituel, une moyenne au plus
             <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-moyenne" value="${R.paliers.pas.moyenne}" style="width:52px"> × ce score, une difficile
             <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-difficile" value="${R.paliers.pas.difficile}" style="width:52px"> × (les temps : ÷
             <input type="number" min="1" max="3" step="0.05" id="qt-p-pas-moyenneTemps" value="${R.paliers.pas.moyenneTemps}" style="width:52px"> et ÷

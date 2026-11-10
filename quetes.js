@@ -42,7 +42,10 @@ const PALIERS = ['bronze', 'argent', 'or', 'platine', 'legende'];
 const PALIER_NOM = { bronze: 'Bronze', argent: 'Argent', or: 'Or', platine: 'Platine', legende: 'Légende' };
 const PALIER_PART = { bronze: 0.5, argent: 0.3, or: 0.15, platine: 0.05, legende: 0.01 };
 // Une découverte se cale un peu sous le Bronze : six sur dix l'atteignent.
+// (Le repère reste calculé ; la quête, elle, demande des parties.)
 const DECOUVERTE_PART = 0.6;
+const DECOUVERTE_PARTIES = 3;
+const nombreEnLettres = (n) => (['zéro', 'une', 'deux', 'trois', 'quatre', 'cinq'][n] || String(n));
 
 const REGLAGES_DEFAUT = Object.freeze({
   // 'ferme' : personne · 'testeurs' : les pseudos listés · 'tous' : tout le parc
@@ -957,6 +960,11 @@ function arrondir(m, v) {
   return m.inverse ? Math.ceil(v / p) * p : Math.max(p, Math.floor(v / p) * p);
 }
 function quantile(tries, q) { return tries[Math.min(tries.length - 1, Math.floor(q * tries.length))]; }
+/** Le cran d'une cible : le pas de son arrondi (cf. arrondir). */
+function pasCible(m, v) {
+  if (m.unite === 'temps') return m.base === 'cs' ? 50 : 500;
+  return m.unite === 'points' ? pas(v) : 1;
+}
 
 // Les mesures assez jouées, des plus pratiquées aux moins pratiquées.
 function candidats(historique, rnd, minJours) {
@@ -1080,12 +1088,22 @@ function definitionContrat(prop) {
  * (son niveau, les exploits qu'on lui propose) ; le nombre de jours joués n'y
  * change rien.
  *
- * LES CIBLES DE SES QUÊTES suivent le parc, pas lui : sur la même lecture
- * (un joueur, une voix : son score habituel), une facile vise ce qu'atteignent
- * 55 % des joueurs, une moyenne 25 %, une difficile 12,5 % (réglage `parts`).
- * Qui fait déjà mieux, d'habitude, qu'une de ces cibles a la sienne relevée
- * d'un PAS au-dessus de son score habituel — une quête qu'il réussit tous les
- * jours n'en est pas une.
+ * LES CIBLES DE SES QUÊTES sont à SA mesure (retours de novembre 2026 : « ça
+ * analyse les scores de tout le parc, mais ce n'est pas censé être ajusté à
+ * notre niveau ? » — 263 400 à Frutisnake pour qui n'a jamais dépassé 500,
+ * 21 800 à Kaluga pour qui plafonne à 19 000). Chaque niveau a une cible
+ * TIRÉE DE SES PROPRES JOURS sur la fenêtre :
+ *   facile     son score habituel (la médiane de ses meilleurs du jour) ;
+ *   moyenne    ses bons jours (un sur quatre), au moins un cran au-dessus de
+ *              la facile, au plus son habituel × `pas.moyenne` (1,25) ;
+ *   difficile  son meilleur de la fenêtre, au moins un cran au-dessus de la
+ *              moyenne, au plus son habituel × `pas.difficile` (1,5) — un
+ *              jour de chance ne fait pas une cible.
+ * Le parc garde deux rôles. Il PAIE (la paie suit le palier qu'atteint la
+ * cible, ci-dessous). Et il ADOUCIT : quand la cible du parc d'un niveau (ce
+ * qu'atteignent 55 %, 25 %, 12,5 % des joueurs, réglage `parts`) est plus
+ * facile que la sienne, c'est elle qu'il reçoit. Jamais plus dure : personne
+ * ne se voit demander ce qu'il n'a jamais approché.
  *
  * LE PLAFOND (plafondDe) : aucune cible ne dépasse ce qu'on peut faire en UNE
  * partie — le maximum théorique de la mesure quand le jeu en a un (cent
@@ -1096,8 +1114,9 @@ function definitionContrat(prop) {
  * LA PAIE suit le palier (Bronze 5 … Légende 25), et chacun reçoit des quêtes
  * jusqu'à un BUDGET de kikooz possibles : un débutant en a davantage, plus
  * douces ; un expert moins, plus dures. Plus une DÉCOUVERTE (un jeu qu'il n'a
- * pas joué de la fenêtre) et, pour qui débute, les PREMIERS PAS (une fois dans
- * sa vie : le forum, un Prunostic, trois jeux du Challenge).
+ * pas joué de la fenêtre : y jouer trois parties — on ne sait rien de son
+ * niveau, on ne lui demande pas un score) et, pour qui débute, les PREMIERS
+ * PAS (une fois dans sa vie : le forum, un Prunostic, trois jeux du Challenge).
  */
 
 /*
@@ -1341,15 +1360,28 @@ function proposerV2(entree, alea, options) {
     // Le pas au-dessus de son score habituel (la facile : ce score même).
     const pas = (k) => (k === 'facile' ? 1 : m.inverse ? pasDe[k + 'Temps'] : pasDe[k]);
     const perso = (k) => arrondir(m, m.inverse ? mediane / pas(k) : mediane * pas(k));
+    // La plus facile, la plus dure de deux cibles ; un cran au-dessus d'une cible.
+    const plusFacile = (a, b) => (atteint(m, a, b) ? b : a);
+    const plusDure = (a, b) => (atteint(m, a, b) ? a : b);
+    const cran = (v) => { const q = pasCible(m, v); return m.inverse ? v - q : v + q; };
+    // SES cibles, tirées de ses propres jours (cf. « Le modèle des paliers »).
+    const sienne = {};
+    sienne.facile = arrondir(m, mediane);
+    sienne.moyenne = plusFacile(plusDure(arrondir(m, quantile(c.tries, 0.25)), cran(sienne.facile)),
+      plusDure(perso('moyenne'), cran(sienne.facile)));
+    sienne.difficile = plusFacile(plusDure(arrondir(m, c.tries[0]), cran(sienne.moyenne)),
+      plusDure(perso('difficile'), cran(sienne.moyenne)));
     let avant = null;   // la cible du niveau d'en dessous
     const vers = (k) => {
       const T = duParc(k);
-      // Il fait déjà aussi bien d'habitude (ou le niveau d'en dessous y est
-      // déjà) : la cible du parc ne lui demanderait rien, on vise au-dessus de lui.
-      const releve = T == null || atteint(m, mediane, T) || (avant != null && atteint(m, avant, T));
-      const b = borner(m, releve ? perso(k) : T, P);
+      // La cible du parc, quand elle est plus FACILE que la sienne et lui
+      // demande encore quelque chose (il ne l'atteint pas d'habitude, et le
+      // niveau d'en dessous non plus) ; sinon la sienne.
+      const duParcSert = T != null && !atteint(m, mediane, T) && !(avant != null && atteint(m, avant, T))
+        && atteint(m, sienne[k], T);
+      const b = borner(m, duParcSert ? T : sienne[k], P);
       avant = b.seuil;
-      return { seuil: b.seuil, part: releve || b.borne ? null : parts[k], borne: b.borne };
+      return { seuil: b.seuil, part: !duParcSert || b.borne ? null : parts[k], borne: b.borne };
     };
     const poser = (niveau, cible, pile) => {
       const seuil = cible.seuil;
@@ -1387,9 +1419,12 @@ function proposerV2(entree, alea, options) {
   // Puis la vie du parc et un exploit, hors scores : ils comptent aussi.
   const pas = new Set(E.premiersPas || []);
   const meilleur = Math.max(-1, ...Object.values(niveaux).map((p) => PALIERS.indexOf(p)));
+  // `exclus` : ce qu'il ne PEUT pas faire — la Question à 60 kikooz pour
+  // l'équipe qui en écrit et en pose les questions (conflit d'intérêt).
+  const exclus = new Set(o.exclus || []);
   const parc = (sorte) => melanger(Object.keys(PARC).filter((cle) => {
     const x = PARC[cle];
-    return x.sorte === sorte && !(x.sauf && pas.has(x.sauf)) && !(x.min && meilleur < PALIERS.indexOf(x.min));
+    return x.sorte === sorte && !exclus.has(cle) && !(x.sauf && pas.has(x.sauf)) && !(x.min && meilleur < PALIERS.indexOf(x.min));
   }), rnd).map((cle) => ({ genre: 'parc', cle, sorte, palier: PARC[cle].palier, niveau: PARC_NIVEAU[PARC[cle].palier], gain: gains[PARC[cle].palier] }));
   const A = parc('activite'), XP = parc('exploit');
   // Deux activités du même coin (deux quêtes de forum) : une seule.
@@ -1469,6 +1504,16 @@ function definitionV2(spec, id) {
   const m = MESURES[spec.mesure];
   if (!m) return null;
   const decouverte = spec.genre === 'decouverte';
+  // LA DÉCOUVERTE : un jeu qu'il n'a pas joué de la fenêtre — on ne sait rien
+  // de son niveau, on ne lui demande donc pas un score (« 263 400 à
+  // Frutisnake » pour qui n'y joue jamais), mais d'y jouer.
+  if (decouverte) {
+    const n = Number(spec.parties) || DECOUVERTE_PARTIES;
+    return { id: String(id), niveau: spec.niveau || 'facile', palier: spec.palier, gain: spec.gain, type: 'parties', etiquette: m.jeu,
+      famille: m.cle, taillee: true, v2: true, decouverte, params: { jeu: m.jeu, n },
+      titre: `Découvre ${m.groupe} : joue ${nombreEnLettres(n)} parties`,
+      detail: `Découverte · ${m.groupe} — un jeu que tu n’as pas joué ces dernières semaines` };
+  }
   // (une part : « 12,5 % » ; les réserves d'avant les parts n'ont que leur palier)
   const pc = (x) => String(Math.round(x * 1000) / 10).replace('.', ',') + ' %';
   const detail = decouverte
@@ -1479,7 +1524,7 @@ function definitionV2(spec, id) {
         ? `${m.nom} · atteint par ${pc(Number(spec.part))} du parc`
         : spec.part === undefined && spec.parc !== false
           ? `${m.nom} · atteint par ${pc(PALIER_PART[spec.palier])} du parc`
-          : `${m.nom} · ${spec.niveau === 'facile' ? 'ton score habituel' : spec.niveau === 'moyenne' ? 'un cran au-dessus de tes scores habituels' : 'bien au-dessus de tes scores habituels'}`;
+          : `${m.nom} · ${spec.niveau === 'facile' ? 'ton score habituel' : spec.niveau === 'moyenne' ? 'tes bons jours' : 'à hauteur de tes meilleurs jours'}`;
   return { id: String(id), niveau: spec.niveau, palier: spec.palier, gain: spec.gain, type: 'mesure', etiquette: m.jeu, famille: m.cle,
     taillee: true, v2: true, decouverte, params: { mesure: m.cle, seuil: spec.seuil }, detail };
 }
