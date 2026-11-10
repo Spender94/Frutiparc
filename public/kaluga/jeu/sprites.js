@@ -1199,7 +1199,21 @@ J.Bads = Bads;
 
 // ── Ant ───────────────────────────────────────────────────────────────────
 class Ant extends Bads {
-  constructeur() { this.speed = 0.3; this.crunchSpeed = 0.0002; this.init(); }
+  /*
+   * LA FOURMI POSÉE EN DÉCOR. Le lancer de fourmis (AntLaunch.landing) marque
+   * chaque atterrissage d'une fourmi immobile : `newDecor('spBadsAnt')`, un
+   * simple dessin que le décor attache — avec la même liaison, donc la même
+   * classe, mais sans partie (`game`) ni place dans les listes. En AS2,
+   * `this.game.map` sur un `game` absent valait undefined sans bruit, et le
+   * constructeur passait. Ici il levait une erreur à chaque image où le décor
+   * essayait de la poser : la première fourmi comptée, plus rien ne bougeait,
+   * et l'épreuve (seule ou dans l'heptathlon) ne finissait jamais. Sans
+   * partie, la fourmi reste ce qu'elle est en décor : une image.
+   */
+  constructeur() {
+    if (!this.game) return;
+    this.speed = 0.3; this.crunchSpeed = 0.0002; this.init();
+  }
   init() {
     this.type = 'Ant';
     this.timer = 0;
