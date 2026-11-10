@@ -2225,6 +2225,17 @@
   .sc-ligne .b img, .sc-ligne .b canvas { width: 18px; height: 18px; display: block; }
   .sc-ligne .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sc-ligne .s { text-align: right; white-space: nowrap; }
+  /* Le nombre de parties derrière un score (idée de Liptonair) : rien de
+     plus au tableau d'origine — une infobulle au survol, et au doigt une
+     petite bulle sous la ligne, le temps de la lire. */
+  .sc-ligne .s[data-parties] { cursor: help; }
+  .sc-ligne { position: relative; }
+  .sc-bulle {
+    position: absolute; right: 0; top: 100%; z-index: 5; margin-top: 1px;
+    background: #fffbe8; border: 1px solid #c9a46a; border-radius: 4px; padding: 2px 6px;
+    font-size: 10px; font-weight: normal; white-space: nowrap; color: #5a3e1b;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2); pointer-events: none;
+  }
   .sc-ligne .h { text-align: right; white-space: nowrap; }
   /* Ma ligne : le bureau ne la distingue pas non plus, mais sur un téléphone
      on la cherche des yeux — un fond très léger, rien de plus. */
@@ -6647,6 +6658,15 @@
     });
   }
 
+  /* « obtenu à la 4e partie · 10 parties aujourd'hui » — ce que le serveur
+     sait de la ligne (cf. partiesDuJourMem) ; rien s'il ne sait rien. */
+  function texteParties(s) {
+    var auj = !challengeScores.past;
+    var bouts = [];
+    if (s.partie > 0) bouts.push("obtenu à la " + s.partie + (s.partie === 1 ? "re" : "e") + " partie");
+    if (s.parties > 0) bouts.push(s.parties + " partie" + (s.parties > 1 ? "s" : "") + (auj ? " aujourd’hui" : " ce jour-là"));
+    return bouts.join(" · ");
+  }
   function renderScoresBody() {
     var box = $("#sc-table");
     if (!box || !challengeScores) return;
@@ -6747,7 +6767,8 @@
           + (s.bouille ? FPBouilleVignette.html(s.bouille) : "")
           + '</span>'
           + '<span class="n" data-fiche="' + xmlEscape(s.user) + '">' + xmlEscape(s.user) + '</span>'
-          + '<span class="s">' + xmlEscape(s.label) + '</span>'
+          + '<span class="s"' + (texteParties(s) ? ' data-parties="' + xmlEscape(texteParties(s)) + '" title="' + xmlEscape(texteParties(s)) + '"' : '')
+          + '>' + xmlEscape(s.label) + '</span>'
           + annexes.map(function (c) {
             return '<span class="d">' + vignetteScoreData(c.lib, s.extra) + '</span>';
           }).join("")
@@ -6759,6 +6780,18 @@
     box.innerHTML = html;
     brancherPseudos(box);
     FPBouilleVignette.brancher(box);
+    // Au doigt (pas de survol) : un appui sur le score montre la bulle trois secondes.
+    Array.prototype.forEach.call(box.querySelectorAll(".sc-ligne .s[data-parties]"), function (el) {
+      el.addEventListener("click", function () {
+        var vieille = box.querySelector(".sc-bulle");
+        if (vieille) vieille.remove();
+        var b = document.createElement("div");
+        b.className = "sc-bulle";
+        b.textContent = el.getAttribute("data-parties");
+        el.parentNode.appendChild(b);
+        setTimeout(function () { if (b.parentNode) b.remove(); }, 3000);
+      });
+    });
     Array.prototype.forEach.call(box.querySelectorAll(".sc-page-btn"), function (b) {
       b.addEventListener("click", function () {
         scoresDebut = Math.max(0, scoresDebut + Number(b.getAttribute("data-pas")) * SC_PAR_PAGE);

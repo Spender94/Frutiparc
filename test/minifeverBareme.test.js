@@ -159,15 +159,35 @@ test('serveur : le barème du jour se lit, et le jeton dit la règle', async () 
 test('serveur : l’infernal paie ×6, et le tableau dit les épreuves', async () => {
   const u = 'barb' + RUN;
   const sid = await sidPour(u);
+  // Une première partie, modeste (un facile), puis l'infernale, qui la bat.
+  const f = partie(u, 0, 1, 905, { sansPlafond: true });
+  assert.equal((await finir(sid, f.corps)).ok, true);
   const i = partie(u, 3, 4, 902, { sansPlafond: true });
-  assert.ok(i.niveau >= 1);
+  assert.ok(i.niveau >= 1 && i.niveau * 60 > f.niveau * 10);
+  await new Promise((r) => setTimeout(r, 3100));   // deux parties, pas deux écritures de la même
   const r = await finir(sid, i.corps);
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.equal(r.score, i.niveau * 10 * 6);
   assert.equal(r.mult, 6);
-  const d = await (await fetch(`${BASE}/api/light/challenge?sid=${encodeURIComponent(sid)}`)).json();
-  const moi = d.games.find((g) => g.game === 'minifever').scores.find((s) => s.isMe);
+  const ligne = async () => {
+    const d = await (await fetch(`${BASE}/api/light/challenge?sid=${encodeURIComponent(sid)}`)).json();
+    return d.games.find((g) => g.game === 'minifever').scores.find((s) => s.isMe);
+  };
+  const moi = await ligne();
   assert.equal(moi.label, `${(i.niveau * 60).toLocaleString('fr-FR')} · ${i.niveau} épreuve${i.niveau > 1 ? 's' : ''} en infernal`);
+  // LE NOMBRE DE PARTIES (idée de Liptonair) : le meilleur du jour vient de
+  // la 2e partie, sur deux.
+  assert.deepEqual([moi.partie, moi.parties], [2, 2]);
+  // Une troisième, moins bonne : le record reste celui de la 2e, sur trois.
+  await new Promise((r2) => setTimeout(r2, 3100));
+  const f2 = partie(u, 0, 1, 906, { sansPlafond: true });
+  const r3 = await finir(sid, f2.corps);
+  assert.equal(r3.classe, false);
+  assert.deepEqual([(await ligne()).partie, (await ligne()).parties], [2, 3]);
+  // Le light le dit en infobulle, sans rien changer au tableau d'origine.
+  const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(LIGHT, /function texteParties\(s\)[\s\S]*?obtenu à la[\s\S]*?aujourd’hui/);
+  assert.match(LIGHT, /data-parties="' \+ xmlEscape\(texteParties\(s\)\) \+ '" title="/);
 });
 
 test('serveur : au-delà de l’objectif, plus de refus « niveau » — la partie va au rejeu', async () => {

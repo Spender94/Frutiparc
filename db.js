@@ -1444,6 +1444,15 @@ async function initSchema() {
         n         INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (jour, username, jeu)
       );
+      -- La partie du jour (1re, 2e…) qui a fait le meilleur score du jour d'un
+      -- classement du Challenge : l'infobulle « obtenu à la 4e partie ».
+      CREATE TABLE IF NOT EXISTS partie_record_jour (
+        jour        TEXT NOT NULL,
+        username    TEXT NOT NULL,
+        ranking_id  TEXT NOT NULL,
+        partie      INTEGER NOT NULL,
+        PRIMARY KEY (jour, username, ranking_id)
+      );
 
       -- Tracks one-off data migrations that can't be expressed as idempotent
       -- DDL (e.g. a one-time UPDATE that must NOT re-run on later boots).
@@ -4982,6 +4991,22 @@ async function activiteChat(jour, username) {
      ON CONFLICT (jour, username) DO UPDATE SET chat = activite_jour.chat + 1`,
     [jour, String(username).toLowerCase()]);
 }
+// La partie du jour qui a fait le meilleur score du jour d'un classement.
+async function partieRecordNoter(jour, username, rankingId, partie) {
+  await pool.query(
+    `INSERT INTO partie_record_jour (jour, username, ranking_id, partie) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (jour, username, ranking_id) DO UPDATE SET partie = EXCLUDED.partie`,
+    [jour, String(username).toLowerCase(), rankingId, Math.max(1, Math.trunc(Number(partie) || 1))]);
+}
+// Les parties d'un jour : combien par joueur et par jeu, et laquelle a fait
+// chaque meilleur score du jour.
+async function partiesDuJour(jour) {
+  const [a, b] = await Promise.all([
+    pool.query('SELECT username, jeu, n FROM parties_joueur_jour WHERE jour = $1', [jour]),
+    pool.query('SELECT username, ranking_id, partie FROM partie_record_jour WHERE jour = $1', [jour]),
+  ]);
+  return { parties: a.rows, records: b.rows };
+}
 async function partieJoueurNoter(jour, username, jeu) {
   await pool.query(
     `INSERT INTO parties_joueur_jour (jour, username, jeu, n) VALUES ($1, $2, $3, 1)
@@ -6487,6 +6512,8 @@ module.exports = {
   activiteMinutes,
   activiteChat,
   partieJoueurNoter,
+  partieRecordNoter,
+  partiesDuJour,
   palmares,
   nomsAffiches,
   forumDernierMessageDe,

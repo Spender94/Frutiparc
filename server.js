@@ -2998,6 +2998,7 @@ function persistScore(username, rankingId, score, data, opts) {
         console.error('[DB] score save error:', e.message);
       });
     }
+    if (scoreImproved && isDailyResetRanking(rankingId)) noterPartieDuRecord(username, rankingId);
   }
   const newPos = computePosition(rankingId, username);
   return { updated, newScore: updated ? n : oldScore, oldScore, oldPos, newPos };
@@ -8931,6 +8932,37 @@ setInterval(() => { try { releverPresence(); } catch (e) { console.error('[PRESE
 // de Frutisnake perdue en dix secondes, puis une autre, font bien deux parties.
 const PARTIE_FUSION_MS = 3000;
 const partiesRecentes = new Map();   // 'pseudo|jeu' → instant
+/*
+ * LES PARTIES DU JOUR, et laquelle a fait le meilleur score (idée de
+ * Liptonair : « savoir que le temps de BK a été fait à la 4e partie, ou à la
+ * 40e »). Le compte par joueur et par jeu, c'est celui de noterPartie
+ * (parties_joueur_jour, les écritures d'une même partie fusionnées) ; quand
+ * un score bat le meilleur du jour d'un classement du Challenge, on retient
+ * le numéro de la partie en cours (partie_record_jour). Le tableau du light
+ * le dit en infobulle, sans toucher au rendu d'origine.
+ */
+const partiesDuJourMem = { jour: '', n: new Map(), rec: new Map() };   // 'u|jeu' → n ; 'u|rk' → k
+function partiesDuJourCourant() {
+  const j = parisDayKey();
+  if (partiesDuJourMem.jour !== j) { partiesDuJourMem.jour = j; partiesDuJourMem.n.clear(); partiesDuJourMem.rec.clear(); }
+  return partiesDuJourMem;
+}
+function noterPartieDuRecord(username, rankingId) {
+  const u = String(username || '').toLowerCase();
+  const jeu = RANKINGS[rankingId] && RANKINGS[rankingId].game;
+  if (!u || !jeu) return;
+  const M = partiesDuJourCourant();
+  const k = Math.max(1, M.n.get(u + '|' + jeu) || 1);
+  M.rec.set(u + '|' + rankingId, k);
+  if (process.env.DATABASE_URL) db.partieRecordNoter(M.jour, u, rankingId, k).catch(dbErr('partieRecordNoter'));
+}
+async function chargerPartiesDuJour() {
+  const M = partiesDuJourCourant();
+  const r = await db.partiesDuJour(M.jour);
+  for (const x of r.parties) M.n.set(String(x.username).toLowerCase() + '|' + x.jeu, Number(x.n) || 0);
+  for (const x of r.records) M.rec.set(String(x.username).toLowerCase() + '|' + x.ranking_id, Number(x.partie) || 1);
+}
+
 function noterPartie(username, jeu) {
   const cle = String(username || '').toLowerCase();
   if (!cle || !jeu || NPC_USERNAMES.has(cle) || !users[cle]) return;
@@ -8938,6 +8970,8 @@ function noterPartie(username, jeu) {
   if (t - (partiesRecentes.get(k) || 0) < PARTIE_FUSION_MS) return;
   partiesRecentes.set(k, t);
   if (partiesRecentes.size > 5000) for (const [kk, tt] of partiesRecentes) if (t - tt > PARTIE_FUSION_MS) partiesRecentes.delete(kk);
+  const M = partiesDuJourCourant();
+  M.n.set(k, (M.n.get(k) || 0) + 1);
   quetesEvenement(cle, { type: 'partie', jeu });
   noterInteraction(cle);
   if (process.env.DATABASE_URL) {
@@ -31278,6 +31312,18 @@ app.get('/api/light/challenge', async (req, res) => {
   // donnée annexe — celle que le SWF passe aux petites bibliothèques /sd/ pour
   // dessiner l'écurie, le rang, le perso ou le tzongre. On ne l'envoie que si
   // le jeu a une colonne pour la recevoir : ailleurs elle n'a pas de rendu.
+  // Les parties du jour (cf. partiesDuJourMem) : aujourd'hui en mémoire, un
+  // jour passé en base. `parties` : combien ce jour-là à ce jeu ; `partie` :
+  // laquelle a fait le score de la ligne (inconnue avant le relevé).
+  let PJ = null;
+  if (!passe) PJ = partiesDuJourCourant();
+  else if (process.env.DATABASE_URL) {
+    try {
+      const r = await db.partiesDuJour(jour);
+      PJ = { n: new Map(r.parties.map((x) => [String(x.username).toLowerCase() + '|' + x.jeu, Number(x.n) || 0])),
+        rec: new Map(r.records.map((x) => [String(x.username).toLowerCase() + '|' + x.ranking_id, Number(x.partie) || 0])) };
+    } catch (e) { console.error(`[LIGHT] parties du ${jour} : ${e.message}`); }
+  }
   const ligne = (rkId, e, pos) => {
     const l = {
       pos,
@@ -31288,6 +31334,12 @@ app.get('/api/light/challenge', async (req, res) => {
       time: heureDe(e.at),
       isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
     };
+    if (PJ) {
+      const u = String(e.u).toLowerCase(), jeu = RANKINGS[rkId] && RANKINGS[rkId].game;
+      const n = PJ.n.get(u + '|' + jeu), k = PJ.rec.get(u + '|' + rkId);
+      if (n > 0) l.parties = n;
+      if (k > 0 && (!n || k <= n)) l.partie = k;
+    }
     if (scoreDataSpecFor(rkId)) l.extra = formatRankingExtraData(rkId, e.data, e.s);
     return l;
   };
@@ -33369,6 +33421,7 @@ async function boot() {
       await db.initSchema();
       console.log('[DB] Connected and schema ready');
       await minifeverChargerBareme();
+      await chargerPartiesDuJour().catch((e) => console.error('[PARTIES] du jour :', e.message));
       // Les notes de Championnat que le serveur tient (championFicheTenue) :
       // en premier, les sockets sont déjà ouvertes et un salon peut en lire une.
       await chargerNotesChampionnat();

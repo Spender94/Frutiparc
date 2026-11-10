@@ -148,7 +148,8 @@ test('les colonnes annexes se glissent entre le score et l’heure', () => {
   // `score.score_type.<t>` (lang_french.as) — « Temps » pour un chrono,
   // « Consécration » pour la consécration, « Expérience » pour l'XP.
   assert.match(LIGHT, /\+ '<span class="s">' \+ xmlEscape\(titreColonneScore\(g\)\) \+ '<\/span>'\s*\n\s*\+ annexes\.map/);
-  assert.match(LIGHT, /\+ '<span class="s">' \+ xmlEscape\(s\.label\) \+ '<\/span>'\s*\n\s*\+ annexes\.map/);
+  // (le score peut porter l'infobulle des parties du jour : data-parties / title)
+  assert.match(LIGHT, /\+ '<span class="s"'[^\n]*\n\s*\+ '>' \+ xmlEscape\(s\.label\) \+ '<\/span>'\s*\n\s*\+ annexes\.map/);
 });
 
 test('le mobile n’en montre aucune : la grille y reste celle d’avant', () => {
