@@ -484,9 +484,15 @@ class Client {
     if (this.enPause) this.dessinerPause(ctx);
   }
 
-  /** Le voile de pause : la scène assombrie, le mot, et comment repartir. */
+  /*
+   * L'écran de pause : NOIR, le mot, et comment repartir. Un voile à 50 %
+   * laissait voir l'épreuve figée — la pause devenait un temps de réflexion
+   * illimité (les pistons, le memory, la marmite se résolvaient à l'arrêt).
+   * Retour des joueurs (novembre 2026) : « un écran noir quand elle est
+   * enclenchée ». La pause reste permise ; elle ne montre plus rien.
+   */
   dessinerPause(ctx) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, LARGEUR, HAUTEUR);
     ctx.textAlign = 'center';
     ctx.font = 'bold 30px "Trebuchet MS", sans-serif';

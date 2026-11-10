@@ -294,7 +294,8 @@ function horloges(indices, tempsJeuMs, dureeMs, minimumMs) {
  *     dernier battement d'une épreuve au premier de la suivante, console
  *     comprise. La console n'est donc PAS une pause : elle se compte. La
  *     vraie pause de Mini-Fever (la fenêtre passée derrière) fige tout, ne
- *     fait aucune image, et pose un voile noir à 50 %.
+ *     fait aucune image, et noircit tout l'écran (on ne réfléchit pas sur une
+ *     épreuve figée).
  *
  * Ce qu'on en tire (examinerBattements), sur les battements remis dans
  * l'ordre où le jeu les a envoyés (`n`), dans cet ordre :

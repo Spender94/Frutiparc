@@ -375,3 +375,16 @@ test('PAUSE : l\'arcade se fige aussi à la console ; ni l\'accueil ni l\'écran
     assert.equal(b.client.enPause, false, 'pas de pause sur l\'accueil');
   } finally { b.restaurer(); }
 });
+
+test('PAUSE : l’écran devient NOIR — on ne réfléchit plus sur une épreuve figée', () => {
+  // Retour des joueurs : le voile à 50 % laissait voir les pistons, le memory,
+  // la marmite — la pause devenait un temps de réflexion illimité.
+  const traces = [];
+  const ctx = new Proxy({}, {
+    get: (o, k) => (k in o ? o[k] : (k === 'fillRect' ? (...a) => traces.push({ fillStyle: o.fillStyle, a }) : () => {})),
+    set: (o, k, v) => { o[k] = v; return true; },
+  });
+  C.Client.prototype.dessinerPause.call({}, ctx);
+  assert.equal(traces.length, 1, 'un seul aplat');
+  assert.equal(traces[0].fillStyle, '#000000', 'noir, opaque');
+});
