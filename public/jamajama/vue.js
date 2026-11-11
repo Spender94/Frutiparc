@@ -60,6 +60,9 @@
       this.padX = Math.floor((Consts.WIDTH - dim.width * 32) / 2);
       this.padY = Math.floor((Consts.HEIGHT - dim.height * 32) / 2);
       this.vues = new Map();               // uid → état visuel
+      // Le sel de la partie : les variantes des décors (eau, bords, cailloux)
+      // se tirent une fois au lancement du niveau, case par case.
+      this.sel = Math.floor(Math.random() * 0x7fffffff);
       this.fx = [];                        // arcs, flammes, flash… au-dessus
       this.voile = null;                   // le fondu (iris) au premier plan
       this.compteur = 0;
@@ -900,7 +903,7 @@
           if (v.sprite.id === Element.EXIT && v.sprite._opened) {
             Rendu.dessiner(ctx, v.cle, 'Hole');
           }
-          Rendu.dessiner(ctx, v.cle, v.frame, { clips: this._clipsDe(v) });
+          Rendu.dessiner(ctx, v.cle, v.frame, { clips: this._clipsDe(v), graine: this._graine(v.sprite.pos) });
         } catch (e) { /* une image manquante ne fige pas la partie */ }
         if (v.sprite.id === Element.BOMB && v.compteur > 0 && v.sprite.alive) {
           ctx.translate(16, 0);
@@ -919,11 +922,16 @@
       for (const [nom, f] of Object.entries(v.clips)) c[nom] = f;
       return c;
     }
+    // La graine d'une case (ou d'un bord) : sa place, mêlée au sel de la partie.
+    _graine(pos, cote) {
+      const p = pos || { x: 0, y: 0 };
+      return (this.sel + (p.x | 0) * 7919 + (p.y | 0) * 104729 + (cote | 0) * 1299709) >>> 0;
+    }
     _dessinerBords(ctx) {
       const larg = this.dim.width, haut = this.dim.height;
       const cote = (frame, x, y) => {
         ctx.save(); ctx.translate(x, y);
-        try { Rendu.dessiner(ctx, 'jama_Side', frame); } catch (e) {}
+        try { Rendu.dessiner(ctx, 'jama_Side', frame, { graine: this._graine({ x: x / 32, y: y / 32 }, frame) }); } catch (e) {}
         ctx.restore();
       };
       for (let x = 0; x < larg; x++) { cote(1, x * 32, 0); cote(3, x * 32, (haut - 1) * 32); }

@@ -186,10 +186,21 @@
    *                                                   que rien n'arrête
    * @param prefixe (interne) le chemin déjà parcouru par la récursion
    */
+  // L'image d'une variante : stable pour un chemin et une graine donnés (la
+  // case, mêlée au sel de la partie — cf. Vue), de 1 à n.
+  function tirage(n, chemin, graine) {
+    let h = (Number(graine) || 0) >>> 0;
+    const c = String(chemin || '');
+    for (let i = 0; i < c.length; i++) h = (Math.imul(h, 31) + c.charCodeAt(i)) >>> 0;
+    h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d) >>> 0; h ^= h >>> 12;
+    return (h >>> 0) % n + 1;
+  }
   function dessiner(ctx, cle, ref, sur, prefixe) {
     sur = sur || {};
     if (sur.temps === undefined) sur = Object.assign({ temps }, sur);
     const s = symbole(cle);
+    // Un symbole qui se tire lui-même au sort (les cailloux) : pareil.
+    if (s && s.tirage && !prefixe && sur.graine !== undefined) ref = tirage(s.tirage, cle, sur.graine);
     const etat = etatDe(s, ref);
     if (!etat) return;
     const cacher = sur.cacher || [];
@@ -256,6 +267,10 @@
             for (let i = 0; i < chemin.length; i++) graine = (graine * 31 + chemin.charCodeAt(i)) % 997;
             ref2 = Math.floor((sur.temps + graine + (p.frame || 1) - 1) % s2.anime) + 1;
           }
+          // Une VARIANTE tirée au sort (gotoAndStop(random) à son image 1 :
+          // les remous de l'eau, les motifs d'un bord) : une image, choisie
+          // une fois pour cette case, et qui n'en bouge plus.
+          if (s2 && s2.tirage && !p.nom) ref2 = tirage(s2.tirage, chemin, sur.graine);
         }
         dessiner(ctx, p.clip, ref2, sur, chemin);
       } else if (p.champ !== undefined) {

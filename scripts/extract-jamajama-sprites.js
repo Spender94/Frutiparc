@@ -138,13 +138,26 @@ swf.parcourir((code, corps, len) => {
 // bouclent. Sans cette distinction, la flamme restait sur sa première image —
 // qui est VIDE — et les coupes du parchemin paraissaient éteintes.
 const arrets = new Map();
+/*
+ * ET CEUX QUI SE TIRENT AU SORT, UNE FOIS. Les variantes d'un décor — les
+ * cinq remous d'une case d'eau, les six motifs d'un bord de carte, les trois
+ * cailloux — sont un clip dont l'image 1 fait gotoAndStop(random(n) + 1) :
+ * RandomNumber (0x30) puis GotoFrame2 (0x9F) SANS son drapeau « play ». Pas
+ * de stop() là-dedans : on les prenait donc pour des clips qui tournent, et
+ * l'eau comme les bords changeaient d'image sans arrêt. La flamme du joker,
+ * elle, fait gotoAndPlay(random) — drapeau levé — et tourne bel et bien.
+ */
+const tirages = new Set();
 swf.parcourir((code, corps, len, id, frame) => {
   if (code !== 12 || !id) return;
   let o = corps;
   const fin = corps + len;
+  let hasard = false;
   while (o < fin) {
     const c = b[o];
     if (c === 0) break;
+    if (c === 0x30) hasard = true;                     // ActionRandomNumber
+    if (c === 0x9F && hasard && !(b[o + 3] & 1)) tirages.add(id);   // GotoFrame2, sans « play »
     if (c === 0x07) {                                  // ActionStop
       if (!arrets.has(id)) arrets.set(id, []);
       if (arrets.get(id).indexOf(frame) < 0) arrets.get(id).push(frame);
@@ -437,7 +450,8 @@ function extraireCible(nom, id) {
     // client le fera avancer. Les autres attendent que le jeu les envoie
     // quelque part.
     const longueur = longueurs.get(id) || 1;
-    if (longueur > 1 && !arrets.has(id)) entree.anime = longueur;
+    if (longueur > 1 && tirages.has(id)) entree.tirage = longueur;
+    else if (longueur > 1 && !arrets.has(id)) entree.anime = longueur;
     // Le nombre d'images du fichier, même quand la dernière est vide : c'est
     // ce que Rendu.longueur() rend, et ce sur quoi les effets calent leur fin.
     if (longueur > 1) entree.longueur = longueur;
