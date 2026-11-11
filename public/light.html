@@ -10169,7 +10169,11 @@
     blindtest.muet = true; blindtest.repond = false; blindtest.etat = -1;
     blindtest.recharge = !!avecSon;
     blindtest.bloque = false;
-    cadre.innerHTML = '<iframe title="extrait" allow="autoplay" frameborder="0"'
+    // `autoplay *`, PAS `autoplay` : sans liste, la permission ne vaut que pour
+    // l'origine écrite dans `src` — la nôtre, /api/blindtest/embed. Or le cadre
+    // est redirigé vers youtube-nocookie.com, qui la perdait : le lecteur né
+    // sonore au clic restait à l'arrêt (« son bloqué par le navigateur »).
+    cadre.innerHTML = '<iframe title="extrait" allow="autoplay *" frameborder="0"'
       + ' src="/api/blindtest/embed?k=' + encodeURIComponent(blindtest.jeton)
       + (avecSon ? "&m=0" : "")
       + '&r=' + Date.now() + '"></iframe>';

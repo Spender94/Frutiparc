@@ -22789,7 +22789,12 @@ app.get('/api/blindtest/embed', (req, res) => {
   const dest = String(req.get('sec-fetch-dest') || '');
   const site = String(req.get('sec-fetch-site') || '');
   res.set('Cache-Control', 'no-store');
-  res.set('Referrer-Policy', 'no-referrer');
+  // `strict-origin`, PAS `no-referrer` : la politique posée ici vaut pour la
+  // requête qui suit la redirection, et le lecteur intégré de YouTube refuse
+  // de jouer sans Referer (onError 153, « Erreur de configuration du lecteur
+  // vidéo ») — le blindtest restait muet pour tout le monde. YouTube ne reçoit
+  // ainsi que l'origine du site : ni le chemin, ni le jeton du cadre.
+  res.set('Referrer-Policy', 'strict-origin');
   if ((dest && dest !== 'iframe') || (site && site !== 'same-origin')) {
     return res.status(403).type('text').send('L\'extrait du blindtest ne s\'écoute que dans le salon.');
   }

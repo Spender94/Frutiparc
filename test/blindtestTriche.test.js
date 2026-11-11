@@ -117,6 +117,18 @@ test('serveur : /api/blindtest/embed refuse une navigation d\'onglet et un autre
   assert.match(route, /controls: '0'/);
 });
 
+// « Le blindtest ne marche plus : Écouter/Couper clignote, puis plus rien. »
+// Le lecteur intégré de YouTube EXIGE un Referer : sans lui, il répond
+// onError 153 (« Erreur de configuration du lecteur vidéo ») et ne joue rien.
+// Or la politique posée sur la redirection vaut pour la requête qui la suit :
+// `no-referrer` privait YouTube de Referer, pour tout le monde. `strict-origin`
+// ne lui donne que l'origine du site — ni le chemin, ni le jeton du cadre.
+test('serveur : la redirection vers YouTube garde un Referer (origine seule)', () => {
+  const route = SRV.slice(SRV.indexOf("app.get('/api/blindtest/embed'"), SRV.indexOf("app.get('/api/blindtest/state'"));
+  assert.doesNotMatch(route, /'no-referrer'/, 'sans Referer, YouTube répond erreur 153');
+  assert.match(route, /res\.set\('Referrer-Policy', 'strict-origin'\);/, 'l\'origine seule, jamais le jeton');
+});
+
 const PORT = 3667;
 const BASE = `http://127.0.0.1:${PORT}`;
 const CLE = 'cle-blindtest-triche';
@@ -239,6 +251,7 @@ test('serveur vivant : le cadre a l\'extrait, l\'onglet et l\'autre site ont une
     assert.strictEqual(cadre.status, 302);
     assert.match(cadre.headers.get('location'), /^https:\/\/www\.youtube-nocookie\.com\/embed\//);
     assert.strictEqual(cadre.headers.get('cache-control'), 'no-store', 'la redirection ne se garde pas en cache');
+    assert.strictEqual(cadre.headers.get('referrer-policy'), 'strict-origin', 'YouTube reçoit l\'origine, sinon erreur 153');
 
     // L'adresse collée dans un onglet : porte close, et rien à lire.
     const onglet = await ouvrir({ 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Site': 'none', 'Sec-Fetch-Mode': 'navigate' });

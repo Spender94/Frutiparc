@@ -277,7 +277,9 @@
                 var c = document.getElementById("bt-b-cadre");
                 if (!c || !etat.jeton) return;
                 if (etat.poignee) { clearInterval(etat.poignee); etat.poignee = null; }
-                c.innerHTML = '<iframe title="extrait" allow="autoplay" frameborder="0"'
+                // `autoplay *` : le cadre est redirigé vers youtube-nocookie.com,
+                // et un `allow` sans liste ne vaut que pour l'origine du src.
+                c.innerHTML = '<iframe title="extrait" allow="autoplay *" frameborder="0"'
                     + ' style="width:320px;height:180px;border:0"'
                     + ' src="/api/blindtest/embed?k=' + encodeURIComponent(etat.jeton)
                     + (avecSon ? "&m=0" : "")

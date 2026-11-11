@@ -126,9 +126,15 @@ test('les deux clients lancent le lecteur dès l\'arrivée de l\'extrait — si 
 
   // Les deux iframes délèguent la permission de jouer : sans allow="autoplay",
   // Chrome ne laisse pas un cadre d'un autre domaine démarrer quoi que ce soit.
+  //
+  // ET À TOUT DOMAINE (`autoplay *`). Sans liste, `allow` ne vaut que pour
+  // l'origine écrite dans `src` — la nôtre, /api/blindtest/embed —, or le
+  // cadre est REDIRIGÉ vers youtube-nocookie.com : il y perdait la permission,
+  // et le lecteur né sonore au clic restait à l'arrêt (« son bloqué par le
+  // navigateur », pour tout le monde).
   for (const [nom, b] of [['mobile', BLOC_LIGHT], ['bureau', BLOC_BUREAU]]) {
-    assert.match(b, /<iframe title="extrait" allow="autoplay"/,
-      nom + ' : la permission de jouer est déléguée au cadre');
+    assert.match(b, /<iframe title="extrait" allow="autoplay \*"/,
+      nom + ' : la permission de jouer suit le cadre jusqu\'à YouTube');
   }
 });
 
