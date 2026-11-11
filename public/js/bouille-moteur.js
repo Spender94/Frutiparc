@@ -149,7 +149,7 @@
    */
   const ANIMATIONS = ['stop', 'parle', 'rire', 'mdr', 'langue', 'rougir', 'regard',
     'siffle', 'gum', 'question', 'miam', 'pleure', 'larme', 'beurk', 'jutsu', 'tousse',
-    'gumm', 'clin', 'bisou', 'sixsept'];
+    'gumm', 'clin', 'bisou', 'sixsept', 'assomme', 'explose'];
   // Les noms tels que le parc les affiche déjà — ceux du forum (EXPRESSIONS,
   // public/fb/index.html) et de la page de démonstration. Le SWF, lui, ne
   // nomme pas ses humeurs : emoteList n'est qu'un tableau de couples.
@@ -157,7 +157,7 @@
     'Déterminé', 'Embarrassé', 'Totoché'];
   const NOMS_ANIMATIONS = ['Repos', 'Parler', 'Rire', 'MDR', 'Langue', 'Rougir',
     'Regard', 'Sifflote', 'Chewing-gum', 'Question', 'Miam', 'Pleurer', 'Larme',
-    'Beurk', 'Jutsu', 'Tousse', 'Gum d’hiko', 'Clin d’œil', 'Bisou', '67'];
+    'Beurk', 'Jutsu', 'Tousse', 'Gum d’hiko', 'Clin d’œil', 'Bisou', '67', 'Assommé', 'Explose'];
   // actionList nomme « siffle » et « pleure » ce que la pellicule étiquette
   // « sifflote » et « pleurer ». playAnim() vise les étiquettes.
   const ETIQUETTES = { siffle: 'sifflote', pleure: 'pleurer' };
@@ -1256,22 +1256,51 @@
   const SS_CENTRE = { x: 50, y: 60 };  // le pivot de la tête, repère de la scène
   const SS_POSE = { x6: 2, x7: 70, y: 62, amp: 8, taille: 24 };   // les deux chiffres, repère de la scène
   const SS_CHIFFRES = { 6: '/snake3/sprites/chiffresRouge007.svg', 7: '/snake3/sprites/chiffresRouge008.svg' };
+  /*
+   * LES EFFETS RECYCLÉS DES JEUX. Les émotes d'après « 67 » ne dessinent rien
+   * non plus : elles posent sur la bouille des images que le parc a déjà —
+   * les étoiles et le nuage de MiniPixiz, la bombe de Frutisnake. Une image
+   * se charge à la première demande et sert à toutes les bouilles ; tant
+   * qu'elle n'est pas là, l'émote joue sans elle.
+   *
+   *   20 assomme   un coup sur la tête : elle s'enfonce, les yeux se ferment,
+   *                trois étoiles de MiniPixiz (partMiniStarFull) lui tournent
+   *                autour du crâne pendant qu'elle dodeline ;
+   *   21 explose   la bombe de Frutisnake (clip « bombe », 22 images) posée
+   *                sur le crâne : la mèche brûle, elle tremble, la boule de
+   *                feu passe ; le visage en sort noirci, les yeux clos, sous
+   *                deux nuages de MiniPixiz (partCloud) qui montent.
+   */
+  const PIXIZ = '/minipixiz/sprites/', SNAKE = '/snake3/sprites/';
+  const fichier3 = (n) => String(n).padStart(3, '0');
+  const AS_ETOILE = PIXIZ + 'shape697.svg';                   // partMiniStarFull
+  const AS_COUP = 7, AS_OUVRE = 92, AS_FIN = 108;
+  const AS_ORBITE = { x: 50, y: 12, rx: 26, ry: 7, taille: 13, vitesse: 0.17 };
+  const EX_BOMBE = (n) => SNAKE + 'bombe' + fichier3(n) + '.svg';      // 1 : la bombe ; 2 à 22 : la boule de feu
+  const EX_NUAGE = [745, 746, 747, 747, 748, 748, 749, 749, 750, 751].map((n) => PIXIZ + 'shape' + n + '.svg');   // partCloud
+  const EX_MECHE = 34;                 // la mèche brûle
+  const EX_FEU = 21;                   // les 21 images de la boule de feu, une par battement
+  const EX_OUVRE = 96, EX_PROPRE = 118, EX_FIN = 122;
+  const EX_POSE = { x: 50, y: 20, echelle: 0.62, ancre: { x: -16.15, y: -34.65 }, feu: { x: 50, y: 40, echelle: 0.4 } };
+  const EFFETS_URLS = [AS_ETOILE].concat(EX_NUAGE, Array.from({ length: 22 }, (_, i) => EX_BOMBE(i + 1)));
   const ssImages = {};
-  /** Les deux chiffres, chargés : une promesse (les planches d'images l'attendent). */
+  function imageEffet(url) {
+    if (typeof global.Image !== 'function') return null;
+    if (!ssImages[url]) { const im = new global.Image(); im.src = url; ssImages[url] = im; }
+    const im = ssImages[url];
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  /** Toutes les images d'effets, chargées : une promesse (les planches d'images l'attendent). */
   function prechargerSixSept() {
     if (typeof global.Image !== 'function') return Promise.resolve();
-    return Promise.all([6, 7].map((n) => new Promise((ok) => {
-      imageChiffre(n);
-      const im = ssImages[n];
+    const urls = [SS_CHIFFRES[6], SS_CHIFFRES[7]].concat(EFFETS_URLS);
+    return Promise.all(urls.map((u) => new Promise((ok) => {
+      imageEffet(u);
+      const im = ssImages[u];
       if (im.complete) ok(); else { im.addEventListener('load', ok); im.addEventListener('error', ok); }
     })));
   }
-  function imageChiffre(n) {
-    if (typeof global.Image !== 'function') return null;
-    if (!ssImages[n]) { const im = new global.Image(); im.src = SS_CHIFFRES[n]; ssImages[n] = im; }
-    const im = ssImages[n];
-    return im.complete && im.naturalWidth ? im : null;
-  }
+  const imageChiffre = (n) => imageEffet(SS_CHIFFRES[n]);
   // BISOU : « rougir » mène la fin ; la bouche en bec ne doit pas rendre la
   // main avant elle — on lui donne plus de tours qu'il n'en faut.
   const BISOU_TOURS = 40;
@@ -1310,7 +1339,7 @@
     this.fardKaki = (id === 13);
     // Et les deux chutes ne durent que le temps de la leur — le clin d'œil
     // aussi, qui tient son compte de la même façon.
-    if (id !== 14 && id !== 15 && id !== 17 && id !== 19) this.chute = null;
+    if (id !== 14 && id !== 15 && id !== 17 && id !== 19 && id !== 20 && id !== 21) this.chute = null;
     // Comme les substitutions de dessins : elles ne valent que pour l'émote
     // qui les a posées (cf. `remplacements`). Et la colombe ne survit pas au
     // gum qui l'a lâchée.
@@ -1548,6 +1577,26 @@
       muet();
       if (bb) bb.allerImage(sourire[1] + 1, false);
       this.chute = { quoi: 'clin', t: 0 };
+    } else if (id === 20) {
+      // ASSOMMÉ : les yeux clos, la bouche de la tristesse ; le moteur fait
+      // tourner les étoiles et rouvre les yeux (cf. avancerChute, AS_*).
+      const triste = HUMEURS[2];
+      r.flStop = false; r.next = 0;
+      face.allerImage(1, false);
+      oeil('ferme');
+      muet();
+      if (bb) bb.allerImage(triste[1] + 1, false);
+      imageEffet(AS_ETOILE);
+      this.chute = { quoi: 'assomme', t: 0 };
+    } else if (id === 21) {
+      // EXPLOSE : rien ne bouge d'abord — la bombe est sur le crâne, la mèche
+      // brûle. Le moteur fait le reste (cf. avancerChute, EX_*).
+      r.flStop = false; r.next = 0;
+      face.allerImage(1, false);
+      oeil(r.emoteEye + 1);
+      muet();
+      EFFETS_URLS.forEach(imageEffet);
+      this.chute = { quoi: 'explose', t: 0 };
     } else if (id === 19) {
       // « 67 » : le visage au repos, la bouche du Sourire ; le moteur ferme
       // les yeux tour à tour (cf. avancerChute, SS_BATTEMENT).
@@ -1754,6 +1803,27 @@
       if (ch.t >= TOUX_FIN) { this.chute = null; this.jouerAnim(0); }
       return true;
     }
+    if (ch.quoi === 'assomme' || ch.quoi === 'explose') {
+      const fin = ch.quoi === 'assomme' ? AS_FIN : EX_FIN;
+      if (ch.t >= fin) { this.chute = null; this.jouerAnim(0); return true; }
+      const face = this.racine.face;
+      const oa = face && face.enfantNomme('oa'), oaO = oa && oa.enfantNomme('o');
+      const ob = face && face.enfantNomme('ob'), obO = ob && ob.enfantNomme('o');
+      const yeux = (c) => { if (oaO) oaO.allerImage(c, false); if (obO) obO.allerImage(c, false); };
+      const ouvert = this.racine.emoteEye + 1;
+      if (ch.quoi === 'assomme') {
+        if (ch.t === AS_OUVRE) yeux(ouvert);
+      } else {
+        // La boule de feu passe : les yeux se ferment, la bouche tombe.
+        if (ch.t === EX_MECHE) {
+          yeux('ferme');
+          const b = face && face.enfantNomme('b'), bb = b && b.enfantNomme('b');
+          if (bb) bb.allerImage(HUMEURS[2][1] + 1, false);
+        }
+        if (ch.t === EX_OUVRE) yeux(ouvert);
+      }
+      return true;
+    }
     if (ch.quoi === 'sixsept') {
       if (ch.t >= SS_FIN) { this.chute = null; this.jouerAnim(0); return true; }
       if (ch.t % SS_BATTEMENT === 0) {
@@ -1787,6 +1857,15 @@
    * Les sursauts partent aux battements de `TOUX_SURSAUTS` et durent le temps
    * de la courbe relevée ; entre eux, la tête est à sa place.
    */
+  /** EXPLOSE : la suie sur le visage — une transformation de couleur, ou rien. */
+  Moteur.prototype.suie = function () {
+    const ch = this.chute;
+    if (!ch || ch.quoi !== 'explose' || ch.t < EX_MECHE + 3) return null;
+    const k = ch.t < EX_OUVRE ? 1 : Math.max(0, 1 - (ch.t - EX_OUVRE) / (EX_PROPRE - EX_OUVRE));
+    const m = 256 * (1 - 0.78 * k);
+    return { mr: m, mv: m, mb: m, ma: 256, ar: 18 * k, av: 14 * k, ab: 12 * k, aa: 0 };
+  };
+
   /** « 67 » : où en est la balance, de −1 (le 6 en haut) à +1 (le 7 en haut) ; null hors de l'émote. */
   Moteur.prototype.balanceSixSept = function () {
     const ch = this.chute;
@@ -1802,6 +1881,25 @@
       const b = this.balanceSixSept(), a = b * SS_PENCHE, cx = SS_CENTRE.x, cy = SS_CENTRE.y;
       const cos = Math.cos(a), sin = Math.sin(a);
       return { a: cos, b: sin, c: -sin, d: cos, e: cx - cos * cx + sin * cy, f: cy - sin * cx - cos * cy };
+    }
+    if (ch && (ch.quoi === 'assomme' || ch.quoi === 'explose')) {
+      const t = ch.t, cx = SS_CENTRE.x, cy = SS_CENTRE.y;
+      let a = 0, dx = 0, dy = 0;
+      if (ch.quoi === 'assomme') {
+        // Le coup l'enfonce d'un cran, puis elle dodeline — de moins en moins.
+        if (t < AS_COUP) dy = 7 * Math.sin(Math.PI * t / AS_COUP);
+        const reste = Math.max(0, 1 - t / AS_OUVRE);
+        a = 0.09 * Math.sin(t * AS_ORBITE.vitesse) * reste;
+      } else if (t < EX_MECHE) {
+        // Elle tremble sous la bombe, de plus en plus fort.
+        dx = Math.sin(t * 2.1) * 1.4 * t / EX_MECHE;
+      } else if (t < EX_MECHE + 12) {
+        // Le souffle : un sursaut en arrière, vite amorti.
+        const k = 1 - (t - EX_MECHE) / 12;
+        dy = 6 * k; a = -0.1 * k * Math.cos((t - EX_MECHE) * 1.2);
+      }
+      const cos = Math.cos(a), sin = Math.sin(a);
+      return { a: cos, b: sin, c: -sin, d: cos, e: cx - cos * cx + sin * cy + dx, f: cy - sin * cx - cos * cy + dy };
     }
     if (!ch || ch.quoi !== 'toux') return null;
     const pas = (this.emotes && this.emotes.toux && this.emotes.toux.secousse) || null;
@@ -2149,7 +2247,7 @@
     if (arriere && arriere.length) {
       this.dessinerFaceAvecArriere(ctx, face, M || IDENTITE, arriere);
     } else {
-      this.dessinerClip(ctx, face, M || IDENTITE, null, 1);
+      this.dessinerClip(ctx, face, M || IDENTITE, this.suie(), 1);
     }
     if (ac) {
       const avant = ac.filter((p) => p.avant !== false);
@@ -2171,6 +2269,53 @@
      * bouche, pas du crâne ; on le laisse donc immobile pendant que la tête
      * sursaute sous lui.
      */
+    // ASSOMMÉ et EXPLOSE : les effets recyclés, dans le repère de la scène.
+    if (ch && (ch.quoi === 'assomme' || ch.quoi === 'explose')) {
+      const R = repos, t = ch.t;
+      ctx.save();
+      ctx.transform(R.a, R.b, R.c, R.d, R.e, R.f);
+      // Une image centrée sur (x, y), à l'échelle k (sa taille d'origine est celle du jeu).
+      const centre = (im, x, y, k, alpha) => {
+        if (!im) return;
+        const w = im.naturalWidth * k, h = im.naturalHeight * k;
+        ctx.globalAlpha = alpha == null ? 1 : alpha;
+        ctx.drawImage(im, x - w / 2, y - h / 2, w, h);
+        ctx.globalAlpha = 1;
+      };
+      if (ch.quoi === 'assomme') {
+        const O = AS_ORBITE, im = imageEffet(AS_ETOILE);
+        const alpha = Math.min(1, Math.max(0, (t - 3) / 6), Math.max(0, (AS_FIN - 4 - t) / 14));
+        // Les trois étoiles, celles du fond d'abord (plus petites, plus pâles).
+        const etoiles = [0, 1, 2].map((i) => t * O.vitesse + i * 2 * Math.PI / 3)
+          .sort((a, b) => Math.sin(a) - Math.sin(b));
+        // (un liseré doré : l'étoile blanche de MiniPixiz se perdait sur des cheveux clairs)
+        ctx.shadowColor = '#d89000'; ctx.shadowBlur = 5;
+        for (const a of etoiles) {
+          const devant = (Math.sin(a) + 1) / 2;
+          centre(im, O.x + Math.cos(a) * O.rx, O.y + Math.sin(a) * O.ry,
+            O.taille / 21 * (0.7 + 0.3 * devant), alpha * (0.65 + 0.35 * devant));
+        }
+      } else {
+        const P = EX_POSE;
+        if (t < EX_MECHE) {
+          // La bombe, sa base posée sur le crâne, qui tremble avec lui.
+          const im = imageEffet(EX_BOMBE(1));
+          if (im) {
+            const k = P.echelle, dx = Math.sin(t * 2.1) * 1.4 * t / EX_MECHE;
+            ctx.drawImage(im, P.x + dx + P.ancre.x * k, P.y + P.ancre.y * k + 12 * k, im.naturalWidth * k, im.naturalHeight * k);
+          }
+        } else if (t < EX_MECHE + EX_FEU) {
+          centre(imageEffet(EX_BOMBE(2 + (t - EX_MECHE))), P.feu.x, P.feu.y, P.feu.echelle);
+        }
+        // Deux nuages qui montent du crâne, l'un après l'autre.
+        [[EX_MECHE + 10, 40, 1.9], [EX_MECHE + 22, 62, 1.5]].forEach(([depart, x, k]) => {
+          const n = Math.floor((t - depart) / 4);
+          if (n < 0 || n >= EX_NUAGE.length) return;
+          centre(imageEffet(EX_NUAGE[n]), x, 16 - (t - depart) * 0.35, k, 0.9);
+        });
+      }
+      ctx.restore();
+    }
     // « 67 » : les deux chiffres de Frutisnake, de part et d'autre, qui se pèsent.
     const bal = this.balanceSixSept();
     if (bal !== null) {
