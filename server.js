@@ -37665,6 +37665,18 @@ const CHAT_EMOTES = {};
   // triste, jouée une fois — et sa phrase à elle. Les deux partaient sur la
   // 11 : « larme » donnait un sanglot, légendé « pleure ».
   add('larme', 'laisse couler une larme', [":'(", ';(', 'larme', 'snif']);
+  // Les émotes ajoutées au light depuis (ids 13 à 20, cf. public/light.html).
+  // Elles manquaient ici : hors mode bleu, le light les reconnaît lui-même dans
+  // le texte reçu, mais en /blueon c'est CETTE table qui décide — « tousse »
+  // partait alors en ligne bleue. test/emoteBleu.test.js compare les deux.
+  add('beurk', 'a la nausée', ['beurk', 'berk', 'bwark']);
+  add('jutsu', 'chocapic no jutsu', ['jutsu', 'chocapic']);
+  add('tousse', 'tousse', ['tousse', 'cough', 'keuf']);
+  add('gumm', 's’en met plein la figure', ['gumm', 'gum2']);
+  add('clin', 'fait un clin d’œil', [';)', ';-)', 'clin']);
+  add('bisou', 'envoie un bisou', [':*', ':-*', 'bisou', 'smack']);
+  add('sixsept', 'fait six-seveeen', ['67', '6 7', '6-7', 'sixseven']);
+  add('assomme', 'est confus', ['confus', 'confuse', 'assommé', 'assomme', 'ouille', 'aïe']);
 })();
 function detectChatEmote(text) {
   const key = String(text == null ? '' : text).trim();

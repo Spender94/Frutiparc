@@ -35,6 +35,31 @@ test('serveur : l\'émote est relevée AVANT le mode bleu, qui la laisse passer'
     'une seule détection (pas de second `const emo`)');
 });
 
+// LES DEUX TABLES NE FONT QU'UNE. En mode bleu, c'est la table du SERVEUR qui
+// décide si un mot est une émote ; hors mode bleu, c'est celle du light. Le
+// light avait reçu beurk, jutsu, tousse, gumm, clin, bisou, 67 et confus ; le
+// serveur, non : « tousse » tapé en /blueon partait en ligne bleue. On rejoue
+// ici les deux listes d'`add(…)` et on les compare entrée par entrée.
+function tableDe(source, debut) {
+  const i = source.indexOf(debut);
+  assert.ok(i >= 0, 'table introuvable : ' + debut);
+  const corps = source.slice(source.indexOf('(function () {', i) + '(function () {'.length, source.indexOf('})();', i))
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*function add\(.*$/m, '');
+  const table = {};
+  // eslint-disable-next-line no-new-func
+  new Function('add', corps)((anim, label, toks) => { for (const t of toks) table[t] = anim + ' / ' + label; });
+  return table;
+}
+
+test('serveur et light reconnaissent exactement les mêmes émotes', () => {
+  const LIGHT = fs.readFileSync(path.join(ROOT, 'public', 'light.html'), 'utf8');
+  const client = tableDe(LIGHT, 'var EMOTE_MAP = {};');
+  const serveur = tableDe(SRV, 'const CHAT_EMOTES = {};');
+  assert.ok(Object.keys(client).length > 40, 'la table du light est bien lue');
+  assert.deepStrictEqual(serveur, client);
+});
+
 // ── Le serveur vivant ───────────────────────────────────────────────────────
 
 // (Pas 3659 : fetch refuse ce port, qu'il range parmi les ports « dangereux ».)
