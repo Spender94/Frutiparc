@@ -12789,8 +12789,10 @@
     /* LES EFFETS RECYCLÉS DES JEUX (cf. bouille-moteur.js) : les étoiles de
        MiniPixiz autour d'une tête assommée ; la bombe de Frutisnake sur le
        crâne, puis le visage noirci sous les nuages de MiniPixiz. */
-    add("assomme", "est assommé", ["assommé", "assomme", "ouille", "aïe"]);   // id 20
-    add("explose", "explose", ["boum", "explose", "kaboom"]);                // id 21
+    add("assomme", "est confus", ["confus", "confuse", "assommé", "assomme", "ouille", "aïe"]);   // id 20
+    /* « explose » (id 21) est prête dans le moteur, mais gardée pour plus
+       tard : aucun mot ne la déclenche encore.
+       add("explose", "explose", ["boum", "explose", "kaboom"]); */
   })();
   function detectEmote(text) {
     var key = String(text == null ? "" : text).trim();   // whole-message, case-sensitive
@@ -12962,7 +12964,7 @@
     question:"se pose des questions", rougir:"rougit", sifflote:"sifflote",
     gum:"fait une bulle de chewing-gum", regard:"regarde ailleurs",
     beurk:"a la nausée", jutsu:"chocapic no jutsu", tousse:"tousse",
-    gumm:"s’en met plein la figure", clin:"fait un clin d’œil", bisou:"envoie un bisou", sixsept:"fait six-seveeen", assomme:"est assommé", explose:"explose" };
+    gumm:"s’en met plein la figure", clin:"fait un clin d’œil", bisou:"envoie un bisou", sixsept:"fait six-seveeen", assomme:"est confus", explose:"explose" };
   /*
    * LA RÉACTION QUI PASSE SUR LE CHAT.
    *
