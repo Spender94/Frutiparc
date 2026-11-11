@@ -37678,9 +37678,19 @@ const CHAT_EMOTES = {};
   add('sixsept', 'fait six-seveeen', ['67', '6 7', '6-7', 'sixseven']);
   add('assomme', 'est confus', ['confus', 'confuse', 'assommé', 'assomme', 'ouille', 'aïe']);
 })();
+// LA MAJUSCULE DU TÉLÉPHONE. Le clavier met une capitale en tête de message :
+// « Tousse » ne jouait rien. Les MOTS (déclencheurs tout en minuscules) se
+// comparent donc aussi sans la casse ; les smileys, eux, la gardent — « :D »
+// n'est pas « :d », et « oO » n'est pas « OO ». Même règle dans light.html
+// (detectEmote) ; test/emotesMajuscules.test.js rejoue les deux.
+const CHAT_EMOTES_MOTS = {};
+for (const t of Object.keys(CHAT_EMOTES)) {
+  if (/^\p{Ll}[\p{Ll}\d]*$/u.test(t)) CHAT_EMOTES_MOTS[t] = CHAT_EMOTES[t];
+}
 function detectChatEmote(text) {
   const key = String(text == null ? '' : text).trim();
-  return key ? (CHAT_EMOTES[key] || null) : null;
+  if (!key) return null;
+  return CHAT_EMOTES[key] || CHAT_EMOTES_MOTS[key.toLowerCase()] || null;
 }
 
 function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {

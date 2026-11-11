@@ -12798,9 +12798,17 @@
        tard : aucun mot ne la déclenche encore.
        add("explose", "explose", ["boum", "explose", "kaboom"]); */
   })();
+  // LA MAJUSCULE DU TÉLÉPHONE : le clavier écrit « Tousse ». Les MOTS
+  // (déclencheurs tout en minuscules) se comparent aussi sans la casse ; les
+  // smileys la gardent (« :D » rit, « :d » tire la langue ; « oO » n'est pas
+  // « OO »). Même règle côté serveur (detectChatEmote).
+  var EMOTE_MOTS = {};
+  Object.keys(EMOTE_MAP).forEach(function (t) {
+    if (/^\p{Ll}[\p{Ll}\d]*$/u.test(t)) EMOTE_MOTS[t] = EMOTE_MAP[t];
+  });
   function detectEmote(text) {
-    var key = String(text == null ? "" : text).trim();   // whole-message, case-sensitive
-    var hit = EMOTE_MAP[key];
+    var key = String(text == null ? "" : text).trim();   // whole-message
+    var hit = EMOTE_MAP[key] || (key ? EMOTE_MOTS[key.toLowerCase()] : null);
     if (hit) return { isEmote: true, anim: hit.anim, label: hit.label };
     return { isEmote: false, anim: "parle", label: null };
   }
