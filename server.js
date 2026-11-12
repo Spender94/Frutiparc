@@ -31754,39 +31754,84 @@ app.get('/api/light/challenge', async (req, res) => {
 
   // LES MÉDAILLÉS DU MOIS : qui a ramassé le plus de médailles du Challenge
   // depuis le 1er (tableau olympique : l'or, puis l'argent, puis le bronze).
-  // Le mois repart de zéro chaque 1er ; le titre porte son nom.
+  // Le mois repart de zéro chaque 1er ; le titre porte son nom, et les mois
+  // passés se feuillettent (/api/light/medailles).
   try {
-    const m = await medaillesDuMoisCourant();
-    if (m) games.push(permanent('_medailles', 'Médaillés ' + m.titre, 'medailles', m.liste));
+    const m = await jeuMedaillesDuMois(parisDayKey().slice(0, 7), meLower, limit);
+    if (m) games.push(m);
   } catch (e) { console.error('[LIGHT] medailles du mois error:', e.message); }
 
   res.json({ day: jour, today: aujourdhui, yesterday, past: passe, games });
 });
 
-// Le tableau des médaillés du mois en cours (gardé cinq minutes : il ne bouge
-// qu'à minuit, à la remise des médailles). null sans base.
+/*
+ * LES MÉDAILLÉS D'UN MOIS, et leur ARCHIVE.
+ *
+ * Le tableau du mois en cours bouge à minuit (la remise des médailles) : on
+ * le garde cinq minutes. Un mois passé ne bouge plus : une heure. Le light
+ * feuillette les mois avec /api/light/medailles?mois=AAAA-MM — du premier
+ * mois où une médaille a été remise jusqu'au mois en cours. null sans base.
+ */
 const MOIS_MEDAILLES = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre',
   'octobre', 'novembre', 'décembre'];
-let medaillesMoisCache = null;               // { mois, at, liste }
-async function medaillesDuMoisCourant() {
-  if (!process.env.DATABASE_URL) return null;
-  const mois = parisDayKey().slice(0, 7);
-  if (!medaillesMoisCache || medaillesMoisCache.mois !== mois || Date.now() - medaillesMoisCache.at > 5 * 60 * 1000) {
-    const lignes = await db.medaillesDuMois(mois);
-    medaillesMoisCache = {
-      mois, at: Date.now(),
-      liste: lignes.filter((r) => users[r.u] && !joueurExcluDesClassements(r.u)).map((r) => ({
-        u: r.u,
-        s: r.ors * 1000000 + r.argents * 1000 + r.bronzes,
-        ors: r.ors, argents: r.argents, bronzes: r.bronzes,
-        label: `🥇 ${r.ors}  🥈 ${r.argents}  🥉 ${r.bronzes}`,
-      })),
-    };
-  }
-  const n = Number(mois.slice(5, 7)) - 1;
-  const nom = MOIS_MEDAILLES[n] || '';
-  return { mois, titre: (/^[aeiouyéèê]/.test(nom) ? 'd’' : 'de ') + nom, liste: medaillesMoisCache.liste };
+const medaillesMoisCache = new Map();        // « AAAA-MM » → { at, liste }
+let premierMoisMedailles = null;             // { at, mois }
+async function listeMedaillesDuMois(mois) {
+  const courant = mois === parisDayKey().slice(0, 7);
+  const c = medaillesMoisCache.get(mois);
+  if (c && Date.now() - c.at < (courant ? 5 : 60) * 60 * 1000) return c.liste;
+  const liste = (await db.medaillesDuMois(mois))
+    .filter((r) => users[r.u] && !joueurExcluDesClassements(r.u))
+    .map((r) => ({
+      u: r.u, s: r.ors * 1000000 + r.argents * 1000 + r.bronzes,
+      label: `🥇 ${r.ors}  🥈 ${r.argents}  🥉 ${r.bronzes}`,
+    }));
+  medaillesMoisCache.set(mois, { at: Date.now(), liste });
+  if (medaillesMoisCache.size > 60) medaillesMoisCache.delete(medaillesMoisCache.keys().next().value);
+  return liste;
 }
+async function premierMoisDesMedailles() {
+  if (!premierMoisMedailles || Date.now() - premierMoisMedailles.at > 3600 * 1000) {
+    premierMoisMedailles = { at: Date.now(), mois: await db.premierMoisMedailles() };
+  }
+  return premierMoisMedailles.mois;
+}
+// Le tableau, à la forme des classements du light (cf. `permanent`).
+async function jeuMedaillesDuMois(mois, meLower, limit) {
+  if (!process.env.DATABASE_URL || !/^\d{4}-(0[1-9]|1[0-2])$/.test(mois)) return null;
+  const courant = parisDayKey().slice(0, 7);
+  const premier = (await premierMoisDesMedailles()) || courant;
+  if (mois > courant || mois < premier) return null;
+  const tout = await listeMedaillesDuMois(mois);
+  const nom = MOIS_MEDAILLES[Number(mois.slice(5, 7)) - 1];
+  const an = mois.slice(0, 4) === courant.slice(0, 4) ? '' : ' ' + mois.slice(0, 4);
+  const iMoi = meLower ? tout.findIndex((e) => e.u === meLower) : -1;
+  return {
+    id: '_medailles', game: 'medailles', section: 'L', allTime: true, lowerIsBetter: false, podium: [],
+    name: 'Médaillés ' + (/^[aeiouyéèê]/.test(nom) ? 'd’' : 'de ') + nom + an,
+    court: 'Médaillés du mois',            // le libellé de la liste (le titre, lui, nomme le mois)
+    mois, moisPrecedent: mois > premier ? moisDecale(mois, -1) : null,
+    moisSuivant: mois < courant ? moisDecale(mois, 1) : null,
+    count: tout.length,
+    scores: tout.slice(0, limit).map((e, i) => ({
+      pos: i + 1, user: getDisplayName(e.u), bouille: bouilleOf(users[e.u], e.u), score: e.s, label: e.label,
+      time: '', isMe: i === iMoi,
+    })),
+    me: iMoi < 0 ? null : { pos: iMoi + 1, score: tout[iMoi].s, label: tout[iMoi].label },
+  };
+}
+app.get('/api/light/medailles', async (req, res) => {
+  try {
+    const me = resolveUsernameFromSid(String(req.query.sid || ''));
+    const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 20));
+    const g = await jeuMedaillesDuMois(String(req.query.mois || ''), me ? String(me).toLowerCase() : '', limit);
+    if (!g) return res.status(404).json({ ok: false, error: 'mois' });
+    res.json({ ok: true, game: g });
+  } catch (e) {
+    console.error('[LIGHT] medailles archive error:', e.message);
+    res.status(500).json({ ok: false, error: 'erreur' });
+  }
+});
 
 // ─────────────────────────────────────────────
 // Messagerie interne du mobile (/light)

@@ -2156,7 +2156,7 @@
      des pseudos, pas celui d'un élément de document.) */
   .sc-pages { display: flex; align-items: center; gap: 0; padding: 4px 0 2px; }
   .sc-page-esp { flex: 1 1 auto; }
-  .sc-page-btn {
+  .sc-page-btn, .sc-mois-btn {
     position: relative;
     flex: 0 0 80px; height: 16px; padding: 0; border: 0; border-radius: 8px;
     background: #FFAAAD; box-shadow: inset 0 0 0 1.5px #F28687;
@@ -6641,7 +6641,7 @@
         html += '<button type="button" class="sc-rk' + (i === scoresGameIdx ? " on" : "") + '"'
           + ' data-i="' + i + '">'
           + '<img src="' + puceDeClassement(g) + '" alt="" onerror="this.style.display=\'none\'">'
-          + '<span>' + xmlEscape(g.name) + '</span></button>';
+          + '<span>' + xmlEscape(g.court || g.name) + '</span></button>';
       });
     });
     // L'ARBRE NE SE REFAIT QUE S'IL CHANGE.
@@ -6795,7 +6795,33 @@
       });
       html += scPagination(g);
     }
+    // LES MÉDAILLÉS : l'archive se feuillette mois par mois.
+    if (g.id === '_medailles' && (g.moisPrecedent || g.moisSuivant)) {
+      html += '<div class="sc-pages sc-mois">'
+        + (g.moisPrecedent ? '<button type="button" class="sc-mois-btn" data-mois="' + g.moisPrecedent + '">mois précédent</button>' : '')
+        + '<span class="sc-page-esp"></span>'
+        + (g.moisSuivant ? '<button type="button" class="sc-mois-btn" data-mois="' + g.moisSuivant + '">mois suivant</button>' : '')
+        + '</div>';
+    }
     box.innerHTML = html;
+    Array.prototype.forEach.call(box.querySelectorAll(".sc-mois-btn"), function (b) {
+      b.addEventListener("click", function () {
+        var idx = scoresGameIdx;
+        b.disabled = true;
+        fetch("/api/light/medailles?mois=" + encodeURIComponent(b.getAttribute("data-mois"))
+          + "&limit=50&sid=" + encodeURIComponent(state.sid || ""), { cache: "no-store" })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (!d || !d.ok || !challengeScores || !challengeScores.games[idx]
+              || challengeScores.games[idx].id !== '_medailles') return;
+            challengeScores.games[idx] = d.game;
+            scoresDebut = 0;
+            renderScoresListe();
+            renderScoresBody();
+          })
+          .catch(function () { b.disabled = false; });
+      });
+    });
     brancherPseudos(box);
     FPBouilleVignette.brancher(box);
     // Au doigt (pas de survol) : un appui sur le score montre la bulle trois secondes.

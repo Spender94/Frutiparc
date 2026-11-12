@@ -5088,6 +5088,13 @@ async function medaillesDuMois(mois) {
   return r.rows;
 }
 
+// Le premier mois (« AAAA-MM ») où une médaille a été remise — hors la journée
+// synthétique des records importés (2000-01-01). null s'il n'y en a aucune.
+async function premierMoisMedailles() {
+  const r = await pool.query("SELECT MIN(awarded_day) AS j FROM challenge_medals WHERE awarded_day > '2015-01-01'");
+  return r.rows[0] && r.rows[0].j ? String(r.rows[0].j).slice(0, 7) : null;
+}
+
 async function palmares(depuis, jourDebut, pnj) {
   const d = depuis || null;
   const P = [d, pnj];
@@ -6532,7 +6539,7 @@ module.exports = {
   partieJoueurNoter,
   partieRecordNoter,
   partiesDuJour,
-  medaillesDuMois, palmares,
+  medaillesDuMois, premierMoisMedailles, palmares,
   nomsAffiches,
   forumDernierMessageDe,
   forumIncrementViews,
