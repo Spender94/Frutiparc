@@ -1673,6 +1673,7 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
     <div style="font-size:12px;color:#555;margin-bottom:8px">Le plateau tel que le joueur l'avait sous les yeux, reconstitué par le rejeu
       (rien ne vient de son navigateur). Les deux cases échangées sont encadrées. Une IA trouve volontiers de longues chaînes en
       jouant dans les rangées du HAUT ; un humain joue plutôt en bas, et prend son temps avant un gros coup.
+      La bande <b style="color:#c02020">rouge</b>, au-dessus des tirets, est la dernière ligne : celle où les fruits tremblent en jeu.
       <label style="margin-left:8px">Combo minimum :
         <select id="swc-seuil" onchange="swapouCoups(swcId)">
           <option value="9" selected>iceberg de fruits et plus</option><option value="10">cocktail swapolotof seul</option>
@@ -2447,6 +2448,11 @@ function swcPlateauImages(c) {
   let h = `<svg width="${L * T}" height="${H * T}" style="background:#7da43b url(/games/swapou2/images/bg.jpg);border:1px solid #4d6b1e">`;
   // Les quatre rangées du haut, voilées de clair : c'est là qu'on regarde.
   h += `<rect x="0" y="0" width="${L * T}" height="${4 * T}" fill="#fff" opacity=".22"/>`;
+  // LA DERNIÈRE LIGNE — la rangée du sommet, celle où les fruits TREMBLENT en
+  // jeu (Player.updateSudden : tout fruit de la rangée 0) : une ligne de plus
+  // et la partie est perdue. Teintée de rouge, fermée par les tirets du jeu.
+  h += `<rect x="0" y="0" width="${L * T}" height="${T}" fill="#e02020" opacity=".30"/>`
+    + `<line x1="0" y1="${T}" x2="${L * T}" y2="${T}" stroke="#fff" stroke-width="1.5" stroke-dasharray="6 4"/>`;
   lignes.forEach((l, y) => {
     for (let x = 0; x < L; x++) {
       const peau = l.substr(x * 2, 2);
@@ -2500,7 +2506,7 @@ async function swapouCoups(id) {
     $('#swc-corps').innerHTML = L.map((c) => `<div style="font-size:12px">
       ${swcPlateau(c)}
       <div><b>Coup ${c.coup}</b> · ${esc(SV_COMBOS[c.combo] || 'combo ' + c.combo)}</div>
-      <div>rangée <b style="color:${c.rangee <= 4 ? '#b31111' : 'inherit'}">${c.rangee}</b> sur ${c.hauteur} (du haut)${c.depuisSommet ? ` · ${c.depuisSommet}<sup>e</sup> de la pile` : ''}</div>
+      <div>rangée <b style="color:${c.rangee <= 4 ? '#b31111' : 'inherit'}">${c.rangee}</b> sur ${c.hauteur} (du haut)${c.rangee === 1 ? ' · <b style="color:#b31111">dernière ligne</b>' : ''}${c.depuisSommet ? ` · ${c.depuisSommet}<sup>e</sup> de la pile` : ''}</div>
       <div>${c.dx ? 'échange horizontal' : 'échange vertical'} · réflexion ${(c.ms / 1000).toFixed(1).replace('.', ',')} s${c.ia ? ' · <b style="color:#b31111">bouton IA</b>' : ''}</div>
     </div>`).join('');
   } catch (e) { $('#swc-corps').innerHTML = `<span style="color:#b31111">${esc(e.message)}</span>`; }
