@@ -5269,6 +5269,13 @@ function esc(s) {
   d.textContent = s;
   return d.innerHTML;
 }
+// Une valeur passée en argument dans un onclick="…" : encodée pour JavaScript
+// (JSON, guillemets compris) PUIS pour l'attribut. `'${esc(x)}'` ne suffit pas :
+// esc n'échappe pas l'apostrophe, et « Hôtesse d'accueil » ou « … '26 »
+// cassaient le bouton (test/adminModifierApostrophe.test.js).
+function jsArg(v) {
+  return esc(JSON.stringify(v == null ? '' : String(v))).replace(/"/g, '&quot;');
+}
 
 function fmtDate(s) {
   if (!s) return '-';
@@ -5315,7 +5322,7 @@ function renderUsers() {
       <td>${fmtDate(u.created_at)}</td>
       <td style="font-size:11px">${u.last_login ? fmtDateTime(u.last_login) : '<span style="color:#999">jamais</span>'}</td>
       <td>
-        <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}','${esc(u.display_name||u.username)}',${u.fruti_sign ?? -1},${u.fruti_sign_b ?? -1},'${esc(u.frutijob||'')}','${esc(u.email||'')}')">Modifier</button>
+        <button class="btn btn-sm" onclick="editUser(${jsArg(u.username)},${u.xp||0},${u.kikooz||0},${jsArg(u.fbouille||'')},${jsArg(u.display_name||u.username)},${u.fruti_sign ?? -1},${u.fruti_sign_b ?? -1},${jsArg(u.frutijob||'')},${jsArg(u.email||'')})">Modifier</button>
         <button class="btn btn-sm" onclick="renommerJoueur('${esc(u.username)}')" title="Changer le pseudo : le compte, son passé et ce que les autres ont de lui suivent. Le joueur est déconnecté.">Renommer</button>
         <button class="btn-danger btn-sm" onclick="deleteUser('${esc(u.username)}')">Supprimer</button>
       </td>
