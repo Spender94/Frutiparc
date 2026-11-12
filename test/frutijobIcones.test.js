@@ -102,10 +102,17 @@ test('light : les années voyagent avec le jeu', () => {
   // montre dans le badge (pas d'info-bulle sur un téléphone).
   const f = LIGHT.slice(LIGHT.indexOf('function frutijobAvecIcones(f) {'), LIGHT.indexOf('function ligneFiche('));
   assert.match(f, /m\.annees/);
-  assert.match(f, /"×" \+ a\.length/, 'le compteur');
+  // Toujours le compteur, même pour un seul titre (« ×1 ») : un badge dit
+  // COMBIEN, la bulle dit QUAND.
+  assert.match(f, /var court = "×" \+ a\.length;/, 'le compteur, « ×1 » compris');
   assert.match(f, /addEventListener\("click"/, 'le clic (ou le toucher) montre les années');
   assert.match(f, /a\.join\(" · "\)/, 'les années ENTIÈRES : « 2025 · 2026 · 2027 »');
   assert.doesNotMatch(f, /if \(a\.length > 1\) \{\s*var minuteur/, 'aussi pour un seul titre');
+  // La bulle de la DERNIÈRE icône, centrée, dépassait du bord de la fiche
+  // (« 2023 · 2024 · 2025 · 2026 ») : la fiche défilait en largeur. Elle se
+  // recale dans la fiche à l'ouverture.
+  assert.match(f, /closest\("\.fiche-page"\)/, 'la bulle se mesure contre la fiche');
+  assert.match(f, /badge\.style\.marginLeft = /, 'et se décale pour y tenir');
   assert.match(LIGHT, /\.fiche-ligne \.val \.fj-badge \{/);
 });
 
