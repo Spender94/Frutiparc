@@ -475,6 +475,7 @@
   function colorFor(n) { var h = 0; n = n || ""; for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) | 0; return NICKCOL[Math.abs(h) % NICKCOL.length]; }
   function addChat(log, user, msg) {
     if (!log) return;
+    if (window.garderLeBas) window.garderLeBas(log);        // cf. /js/chat-bas.js
     var atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
     var ln = div("ln");
     ln.innerHTML = '<span class="nk" style="color:' + colorFor(user) + '">' + esc(user) + " &gt;</span> " + esc(msg);

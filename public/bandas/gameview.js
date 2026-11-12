@@ -1047,6 +1047,7 @@
   GV.chatMessage = function (user, msg) { addChatLine('<span class="nk">' + esc(user) + " &gt;</span> " + esc(msg)); };
   function addChatLine(html) {
     var box = $("#bd-chatbox");
+    if (window.garderLeBas) window.garderLeBas(box, 24);   // cf. /js/chat-bas.js
     var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
     var d = document.createElement("div");
     d.innerHTML = html;

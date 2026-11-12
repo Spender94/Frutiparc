@@ -340,6 +340,7 @@
 <script src="/js/bouille-vignette.js"></script>
 <script src="/js/differe-ui.js"></script>
 <script src="engine.js"></script>
+<script src="/js/chat-bas.js"></script>
 <script>
 (function () {
   "use strict";
@@ -718,6 +719,7 @@
   function colorFor(n) { var h = 0; n = n || ""; for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) | 0; return NICKCOL[Math.abs(h) % NICKCOL.length]; }
   function addChat(log, user, msg) {
     if (!log) return;
+    if (window.garderLeBas) window.garderLeBas(log);        // cf. /js/chat-bas.js
     var atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
     var ln = div("ln"); var col = log.id === "lobby-chat" ? colorFor(user) : "#c46a12";
     ln.innerHTML = '<span class="nk" style="color:' + col + '">' + esc(user) + " &gt;</span> " + esc(msg);
