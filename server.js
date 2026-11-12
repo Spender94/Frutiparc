@@ -992,27 +992,21 @@ for (const [id, info] of Object.entries(JAMA_MILESTONES)) {
 }
 
 /*
- * LES 28 PICTOS D'ÉPOQUE DE JAMAJAMA.
+ * LES 28 PICTOS D'ÉPOQUE DE JAMAJAMA — noms, conditions et compteurs dans
+ * jamaPictos.js (la proposition du forum, novembre 2026). Images : la planche
+ * de 2007 redessinée depuis les tracés du jeu, Games/poulpi/titems/jamaNN.png
+ * (la 28e est l'originale).
  *
- * L'album de 2005 en comptait 28 ; une planche de 2007 (28/28), retrouvée en
- * novembre 2026, les montre : ce sont les éléments du jeu. Leurs images sont
- * redessinées depuis les tracés du SWF (scripts/make-jamajama-pictos.js →
- * Games/poulpi/titems/jamaNN.png), dans l'ordre de la planche.
- *
- * LES CONDITIONS D'OBTENTION NE SONT PAS CONNUES : rien ne les distribue pour
- * l'instant (l'admin peut en donner). Les huit paliers ci-dessus restent en
- * place en attendant ; quand les conditions seront retrouvées, ces 28-ci les
- * remplaceront.
+ * LES HUIT PALIERS CI-DESSUS (« Premier coup de Tiki », « 10 niveaux
+ * joués »…) étaient une invention du portage, en attendant l'album : ils ne
+ * se distribuent plus. Ceux qui les ont les gardent, mais ils ne comptent pas
+ * dans les 28 de la consécration (cf. le filtre du registre plus bas).
  */
-const JAMA_PICTOS = [
-  'Banane', 'Orange', 'Pomme', 'Poire', 'Prune', 'Aimant', 'Aimant doré', 'Araignée', 'Bombe', 'Galets',
-  'Cocon', 'Eau', 'Archer', 'Sens unique', 'Statue de jade', 'Kohl en flammes', 'Grand Louki', 'Lurker', 'Mur',
-  'Louki', 'Rune', 'Tiki', 'Tiki carbonisé', 'Tiki surpris', 'Tiki joyeux', 'Winkle', 'Œil', 'Toute la bande',
-];
-JAMA_PICTOS.forEach((nom, i) => {
-  const n = String(i + 1).padStart(2, '0');
-  GAME_ITEM_INFO[`$jama_picto${n}`] = { name: nom, game: 'JamaJama', gif: `Games/poulpi/titems/jama${n}.png` };
-});
+const JamaPictos = require('./jamaPictos.js');
+for (const p of JamaPictos.PICTOS) {
+  GAME_ITEM_INFO[JamaPictos.ID(p.n)] = { name: p.nom, game: 'JamaJama',
+    gif: `Games/poulpi/titems/jama${String(p.n).padStart(2, '0')}.png` };
+}
 
 // Award JamaJama milestone pictos based on the cumulative number of saved
 // scores (= attempted/finished levels). Called from both the HTTP and
@@ -1033,16 +1027,8 @@ function awardJamaPictosOnScore(username) {
     slot.$plays = user.jamaPlayCount;
     jamaEcrireSlot(username, slot);
   }
-  if (!Array.isArray(user.gameItems)) user.gameItems = [];
-  const dbId = user._dbId;
-  for (const [id, info] of Object.entries(JAMA_MILESTONES)) {
-    if (user.jamaPlayCount >= info.threshold && !user.gameItems.includes(id)) {
-      user.gameItems.push(id);
-      if (dbId) db.addGameItem(dbId, id).catch((e) => console.error('[DB] addGameItem jama:', e.message));
-      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: `Nouveau picto débloqué sur JamaJama : ${info.name} !` });
-      console.log(`[JAMA]  picto ${id} for ${username} (plays=${user.jamaPlayCount})`);
-    }
-  }
+  // Les paliers de parties jouées ne se distribuent plus : les 28 pictos
+  // d'époque les remplacent (jamaPictos.js, distribués au rejeu).
 }
 
 // ─────────────────────────────────────────────
@@ -1117,6 +1103,8 @@ const GAME_PROGRESS_REGISTRY = [
     name: 'JamaJama',
     enabled: true,
     matchGame: 'JamaJama',
+    // Les 28 pictos d'époque seulement — pas les anciens paliers du portage.
+    filtreItem: (id) => /^\$jama_picto\d\d$/.test(id),
     // The original Frutiparc album for JamaJama held 28 pictos (player
     // memory, "quasi-sûr"). JamaJama's SWF (Games/poulpi/inc/{code,main}.as,
     // levels.xml) has NO native picto system — the album was a Frutiparc
@@ -1125,9 +1113,8 @@ const GAME_PROGRESS_REGISTRY = [
     // (something ≤ 4) is the most natural fit but unconfirmed. Until
     // someone surfaces the original list, we expose 28 as the canonical
     // denominator and award only the 8 JAMA_MILESTONES we currently track.
-    // Novembre 2026 : la liste des 28 est retrouvée (JAMA_PICTOS, images
-    // redessinées) ; restent leurs CONDITIONS, inconnues — d'ici là seuls les
-    // 8 paliers sont distribués, sur ce même dénominateur de 28.
+    // Novembre 2026 : les 28 sont retrouvés (images de la planche de 2007)
+    // et leurs conditions fixées (jamaPictos.js, proposition du forum).
     totalPictos: 28,
   },
   {
@@ -1160,7 +1147,8 @@ function computeConsecration(username) {
       total = 1;
     } else if (g.matchGame) {
       const gi = (user && Array.isArray(user.gameItems)) ? user.gameItems : [];
-      const ownedForGame = gi.filter((it) => getGameItemGame(it) === g.matchGame);
+      const ownedForGame = gi.filter((it) => getGameItemGame(it) === g.matchGame
+        && (!g.filtreItem || g.filtreItem(it)));
       unlocked = ownedForGame.length;
       if (typeof g.totalPictos === 'number') {
         total = g.totalPictos;
@@ -19324,6 +19312,9 @@ function jamaLireSlot(username) {
     niveaux: (o.niveaux && typeof o.niveaux === 'object') ? o.niveaux : {},
     $best: Number(o.$best) || 0,
     $plays: Number(o.$plays) || 0,
+    // L'état des pictos (jamaPictos.js) : compteurs et niveaux gagnés, tenus
+    // par le serveur seul — ce slot n'est pas de ceux que les clients écrivent.
+    pictos: (o.pictos && typeof o.pictos === 'object') ? o.pictos : null,
   };
 }
 function jamaEcrireSlot(username, slot) {
@@ -19352,7 +19343,7 @@ async function jamaContexteFiche(username, inventaire) {
     })),
     tournoi: jamaTournoi().map((t) => t.id),
     publies: jamaMesNiveaux(username).filter((n) => n.valide).length,
-    pictos: Object.entries(JAMA_MILESTONES).map(([id, m]) => ({ nom: m.name, obtenu: items.has(id) })),
+    pictos: JamaPictos.PICTOS.map((p) => ({ nom: p.nom, obtenu: items.has(JamaPictos.ID(p.n)) })),
   };
 }
 
@@ -19376,6 +19367,60 @@ app.get('/api/jamajama/donnees', async (req, res) => {
     // dit l'aide : « Vos propres niveaux validés y figurent également »).
     tournoi: jamaTournoi().map((t) => jamaEntreeTournoi(t, slot)),
   });
+});
+
+// ── LES PICTOS (jamaPictos.js) ──
+// Les niveaux de l'Aventure que nomment les conditions (levels.xml ne change
+// qu'au déploiement : on les lit une fois).
+let jamaCiblesCache = null;
+function jamaCibles() {
+  if (!jamaCiblesCache) jamaCiblesCache = JamaPictos.niveauxCibles(jamaRegles, jamaLevels().packs);
+  return jamaCiblesCache;
+}
+// L'état des pictos d'un joueur, depuis son slot ; la première fois, les
+// niveaux d'Aventure déjà finis (sa sauvegarde) comptent comme gagnés.
+function jamaEtatPictos(slot) {
+  return JamaPictos.importerAventure(JamaPictos.normaliser(slot.pictos), slot.aventure);
+}
+function jamaProgression(username, etat) {
+  const u = users[username];
+  return JamaPictos.progression(etat, {
+    cibles: jamaCibles(),
+    publies: jamaMesNiveaux(username).filter((n) => n.valide).length,
+    possedes: new Set((u && u.gameItems) || []),
+  });
+}
+// Donne les pictos acquis et pas encore possédés ; rend leurs noms. Deux
+// passes : le 28e (« les 27 autres ») peut tomber dans la foulée.
+function jamaDonnerPictos(username, etat) {
+  const u = users[username];
+  if (!u) return [];
+  if (!Array.isArray(u.gameItems)) u.gameItems = [];
+  const noms = [];
+  for (let passe = 0; passe < 2; passe++) {
+    for (const l of jamaProgression(username, etat)) {
+      if (!l.acquis || u.gameItems.includes(l.id)) continue;
+      u.gameItems.push(l.id);
+      if (u._dbId) db.addGameItem(u._dbId, l.id).catch((e) => console.error('[DB] addGameItem jama:', e.message));
+      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: `Nouveau picto débloqué sur JamaJama : ${l.nom} !` });
+      console.log(`[JAMA]  picto ${l.id} « ${l.nom} » pour ${username}`);
+      noms.push(l.nom);
+    }
+  }
+  return noms;
+}
+// Hors partie (un niveau validé dans l'Édition) : on relit l'état et on donne.
+function jamaVerifierPictos(username) {
+  const slot = jamaLireSlot(username);
+  return jamaDonnerPictos(username, jamaEtatPictos(slot));
+}
+// Où en est le joueur, picto par picto (pour l'affichage).
+app.get('/api/jamajama/pictos', (req, res) => {
+  const sid = getSidFromRequest(req);
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
+  const etat = jamaEtatPictos(jamaLireSlot(username));
+  res.json({ ok: true, pictos: jamaProgression(username, etat) });
 });
 
 // L'AIDE — help.xml, réécrite par Toad06 en 2024.
@@ -19502,6 +19547,14 @@ app.post('/api/jamajama/score', async (req, res) => {
 
   const slot = jamaLireSlot(username);
   slot.$plays += 1;
+  // LES PICTOS : la partie rejouée, rangée dans l'état du joueur.
+  const etatPictos = jamaEtatPictos(slot);
+  JamaPictos.enregistrerPartie(etatPictos, {
+    cle: cleTournoi ? 't' + cleTournoi : 'a' + Math.trunc(Number(b.pack)) + '.' + Math.trunc(Number(b.niveau)),
+    mouvements: verdict.mouvements, victorieux: verdict.victorieux, coups: verdict.coups,
+    stats: verdict.stats, elements: JamaPictos.elementsDe(jamaRegles, contenu),
+  }, jamaCibles(), jamaRegles.Element);
+  slot.pictos = etatPictos;
   let statut = null;
   let classement = null;
   if (cleTournoi) {
@@ -19523,11 +19576,8 @@ app.post('/api/jamajama/score', async (req, res) => {
     }
   }
   jamaEcrireSlot(username, slot);
-  const avantPictos = (users[username].gameItems || []).length;
   awardJamaPictosOnScore(username);
-  const pictos = (users[username].gameItems || []).slice(avantPictos)
-    .filter((id) => JAMA_MILESTONES[id])
-    .map((id) => JAMA_MILESTONES[id].name);
+  const pictos = jamaDonnerPictos(username, etatPictos);
   if (cleTournoi) statut = slot.niveaux[cleTournoi];
   console.log(`[JAMA]  ${username} ${b.source}${cleTournoi ? ' #' + cleTournoi : ''} : `
     + `${verdict.victorieux ? 'victoire en ' + verdict.coups + ' coups' : 'défaite'}`
@@ -19793,7 +19843,8 @@ app.post('/api/jamajama/edition/valider', async (req, res) => {
     n.date = Date.now();
     console.log(`[JAMA]  ${username} valide « ${n.titre} » (#${n.id}) en ${n.record} coups`);
     const entree = jamaTournoi().find((t) => t.id === n.id);
-    res.json({ ok: true, niveau: jamaCase(n), tournoi: jamaEntreeTournoi(entree, jamaLireSlot(username)) });
+    const pictos = jamaVerifierPictos(username);
+    res.json({ ok: true, niveau: jamaCase(n), tournoi: jamaEntreeTournoi(entree, jamaLireSlot(username)), pictos });
   } catch (e) {
     console.error('[JAMA]  valider un niveau :', e.message);
     res.json({ ok: false, error: 'base' });

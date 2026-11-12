@@ -378,7 +378,11 @@
     }
     get couche() { return this.below ? 'below' : 'over'; }
     setPlayground(pg) { this.playground = pg; this.board = pg.getBoard(); }
+    // LES STATISTIQUES DE LA PARTIE (cf. Partie.compter) : ce que le serveur
+    // relève au rejeu pour les pictos. Elles ne changent rien au jeu.
+    compter(cle, n) { if (this.playground && this.playground.compter) this.playground.compter(cle, n); }
     destroy() {
+      if (this.id === Element.SPIDER) this.compter('araigneeMorte');
       this.alive = false;
       this.playground.emet({ type: 'destroy', uid: this.uid });
       this.playground.spriteDestroyed(this);
@@ -553,6 +557,8 @@
     }
     move(d) {
       const n = this.pos.next(d);
+      // Une caisse posée sur un Zoeil le bouche (Eye.update s'arrête net).
+      if (this.board.getBelow(n).id === Element.EYE) this.compter('zoeil');
       this.board.get(n).crossed(this, d);
       this.playground.move(this.pos, d, null);
     }
@@ -579,6 +585,7 @@
     crossed(sprite, d) {
       // Deux fruits pareils fusionnent : les deux meurent sur place.
       this.playground.push(anims.simple({ type: 'fruitMerge', uid: sprite.uid, avec: this.uid }));
+      this.compter('fusion');
       this.board.erase(this);
       this.alive = false;
       this.board.erase(sprite);
@@ -633,6 +640,7 @@
     }
     _fillWithBox(box) {
       const moi = this;
+      this.compter('caisseEau');
       this.playground.pushEffect(anims.simple(
         { type: 'boxFall', uid: this.uid, box: box.uid },
         () => { box.destroy(); }));
@@ -766,6 +774,7 @@
           const s = this.board.get(c);
           if (s.id === Element.NONE || s.id === Element.PEEBLE || s.id === Element.RUNE
             || (s.id === Element.WATER && s.isFilledWithBox())) {
+            if (s.id === Element.PEEBLE || s.id === Element.RUNE) this.compter('flammeCaillou');
             this._progressing = true;
             lot.push(this._createFlames(c, delay));
           } else if (s.id === Element.GHOST) {
@@ -775,6 +784,7 @@
           } else if (s.id === Element.BOMB) {
             if (s.alive) {
               s.alive = false;
+              this.compter('bombe');
               s.touchByDeflagration();
               nouvelles.push(s);
               lot.push(this._createFlames(c, delay));
@@ -821,6 +831,7 @@
       return this._progressing;
     }
     explode() {
+      this.compter('bombe');
       Bomb._FLAMES = [];
       this.initDeflagration();
       this._burnBomb();
@@ -845,6 +856,7 @@
       return anims.simple({ type: 'flammes', x: c.x, y: c.y, delai: delay });
     }
     _burnSprite(s, delay) {
+      if (s.id === Element.FRUIT) this.compter('fruitBrule');
       this.board.erase(s);
       const moi = this;
       return anims.simple({ type: 'burn', uid: s.uid, delai: delay },
@@ -1012,6 +1024,7 @@
         { type: 'spiderMove', uid: this.uid, x: dest.x, y: dest.y, pas: 5 * dist }));
     }
     _leaveCocoon() {
+      this.compter('cocon');
       this._inCocoon = false;
       this.playground.pushEffect(anims.simple({ type: 'cocon', uid: this.uid }));
     }
@@ -1220,6 +1233,7 @@
       if (s.attractedByMagnet === true) return;
       if (s.isMoving === true) return;
       s.attractedByMagnet = true;
+      this.compter('aimant');
       s.move(d);
     }
   }
@@ -1320,6 +1334,7 @@
       }
     }
     _eat(s, d) {
+      this.compter('louki');
       this._loaded = true;
       this._load = s;
       this.playground.push(anims.simple({ type: 'loukiEat', uid: this.uid, cible: s.uid, d }));
@@ -1489,6 +1504,12 @@
       this._lotsJoues = 0;                                 // combien de _lots ont déjà joué
       this._evenements = [];                               // hors lot (immédiats)
       this._crochet = null;                                // le lot dont un crochet joue
+      // Les statistiques de la partie, pour les pictos (lues au rejeu par le
+      // serveur) : fusions, fruits brûlés, bombes, attractions, cocons,
+      // caisses à l'eau, bouchées de Louki, passages de sens unique, pas en
+      // fantôme, échanges avec Kohl, Winkle relâché dans l'eau, flammes sur
+      // cailloux ou runes, Zoeils bouchés, araignées mortes.
+      this.stats = {};
 
       this._drawPlayground();
       // Un niveau dont la case de départ est prise n'a pas de héros — le
@@ -1505,6 +1526,8 @@
       this.flush();
       this._resoudre();
     }
+
+    compter(cle, n) { this.stats[cle] = (this.stats[cle] || 0) + (n || 1); }
 
     // — accès —
     getBoard() { return this._board; }
@@ -1758,7 +1781,13 @@
       if (!this._board.isValid(n)) return;
       avatar.setOrientation(direction);
       if (avatar.canMove(direction)) {
+        const avant = avatar.pos.clone();
         avatar.move(direction);
+        if (avatar.pos.x !== avant.x || avatar.pos.y !== avant.y) {
+          if (this._inGhostMode) this.compter('fantome');
+          const dessous = this._board.getBelow(avatar.pos).id;
+          if (dessous === Element.ONE_WAY || dessous === Element.ONE_WAY_STRICT) this.compter('voieUnique');
+        }
         this.processReactionAfterMove();
         this.flush();
         this._movements.push(direction);
@@ -1776,6 +1805,9 @@
       this._movements.push(Replay.START_GHOST);
     }
     _stopGhostMode() {
+      const quitte = this._avatar;
+      if (quitte && quitte.alive && quitte.id === Element.KOHL) this.compter('kohl');
+      if (quitte && quitte.alive && quitte.id === Element.WINKLE && quitte.isInWater()) this.compter('winkleEau');
       this._turnCleared = false;
       this._inGhostMode = false;
       this.deactivateGhost();
@@ -1809,6 +1841,7 @@
       coups: partie.countMoves(),
       passesEsprit: partie.spiritSpaces(),
       mouvements: partie.getMovements(),
+      stats: Object.assign({}, partie.stats),
     };
   }
 

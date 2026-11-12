@@ -127,8 +127,16 @@ test('une victoire d’aventure compte, et décroche le premier picto', async ()
     { sid, source: 'aventure', pack: 0, niveau: 0, mouvements: solution });
   assert.ok(r.ok && r.victorieux, 'le serveur reconnaît la victoire');
   assert.equal(r.coups, solution.length, 'et compte les mêmes coups que le jeu');
-  assert.deepEqual(r.pictos, ['Premier coup de Tiki'],
-    'le picto du premier niveau joué tombe enfin');
+  assert.ok(Array.isArray(r.pictos), 'la réponse dit les pictos tombés');
+
+  // Les pictos : la Grotte 1 compte pour « Prêt pour la grande aventure »
+  // (1 / 16), et rien d'autre n'est donné d'avance.
+  const pi = await fetch(BASE + '/api/jamajama/pictos?sid=' + sid).then((x) => x.json());
+  assert.ok(pi.ok && pi.pictos.length === 28, JSON.stringify(pi));
+  const pret = pi.pictos.find((x) => x.nom === 'Prêt pour la grande aventure');
+  assert.equal(pret.actuel, 1);
+  assert.equal(pret.cible, 16);
+  assert.equal(pret.acquis, false);
 
   // L'aventure retenue : le client la sauve, le serveur la rend.
   await poster('/api/jamajama/aventure', { sid, dt: '0[0;' });

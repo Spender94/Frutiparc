@@ -8,7 +8,8 @@
 // ÉLÉMENTS DU JEU — les cinq fruits, les deux aimants, l'araignée et son
 // cocon, la bombe, les galets, l'eau, l'archer, le sens unique, la statue de
 // jade, Kohl en flammes, les deux Louki, le Lurker, le mur, la rune, Tiki
-// sous quatre visages, le Winkle, l'œil — et un dernier qui les réunit.
+// sous quatre visages, le Winkle, l'œil — et un dernier qui les réunit, dont
+// l'image ORIGINALE a été retrouvée depuis (jama28.png, laissée telle quelle).
 // Chacun est donc rendu ici depuis les symboles extraits du SWF
 // (public/jamajama/sprites, rendu.js), à l'image et à la pose de la planche,
 // à l'échelle de la planche, dans 48 × 48 (96 × 60 pour le groupe).
@@ -57,13 +58,8 @@ const PICTOS = [
   ['clip562', 6],                                // 25 Tiki joyeux
   ['jama_Winkle', 2],                            // 26 Winkle
   ['jama_Eye', 2],                               // 27 œil
-  [[                                             // 28 toute la bande
-    ['jama_fx_Fire', 5, null, { dx: -44, dy: -6, k: 1.7 }],
-    ['jama_Louki', 12, null, { dx: 2, dy: -26, k: 1.6 }],
-    ['jama_Winkle', 2, null, { dx: 40, dy: -16, k: 1.6 }],
-    ['jama_Bomb', 1, null, { dx: 20, dy: 0, k: 1.15 }],
-    ['clip562', 6, null, { dx: -22, dy: -4, k: 1.7 }],
-  ]],
+  // 28 « Tiki et ses amis » : l'image ORIGINALE, retrouvée (jama28.png) —
+  // ce script ne la touche pas.
 ];
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png' };
@@ -116,12 +112,10 @@ const serveur = http.createServer((req, res) => {
   }, PICTOS);
   fs.mkdirSync(SORTIE, { recursive: true });
   images.forEach((u, i) => {
+    if (i >= 27) return;                         // la 28e est l'originale
     const f = path.join(SORTIE, 'jama' + String(i + 1).padStart(2, '0') + '.png');
     fs.writeFileSync(f, Buffer.from(u.split(',')[1], 'base64'));
   });
-  // La planche de contrôle, pour l'œil (non versionnée si l'on ne veut pas).
-  await page.setContent('<body style="margin:8px;background:#fff">' + images.map((u) => `<img src="${u}" style="margin:2px">`).join('') + '</body>');
-  await page.screenshot({ path: path.join(SORTIE, '_planche.png'), clip: { x: 0, y: 0, width: 1280, height: 150 } });
   await nav.close();
   serveur.close();
   console.log(images.length + ' pictos écrits dans ' + path.relative(ROOT, SORTIE));

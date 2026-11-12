@@ -188,9 +188,12 @@ test('la fiche d\'un joueur montre ses niveaux, son tournoi et ses pictos JamaJa
   assert.strictEqual(valeur(t, "dont tikis d'or"), '1');
   assert.ok(t.includes('1 niveau joué'), 'la partie rejouée');
   assert.strictEqual(valeur(t, 'niveaux publiés'), '0');
-  assert.ok(t.includes('1 / 8') && t.includes('Premier coup de Tiki'), 'le premier picto JamaJama');
+  assert.ok(t.includes('0 / 28'), 'les 28 pictos JamaJama, aucun encore : ' + t.join(' | '));
 
-  // Et la fiche de l'auteur compte son niveau publié.
+  // Et la fiche de l'auteur compte son niveau publié — et son picto
+  // « Créateur », tombé à la validation.
   const ca = await lire(`/api/light/fruticard?sid=${joueur}&u=jamafiche_aut&g=jamajama`);
-  assert.strictEqual(valeur(textes(ca.lignes), 'niveaux publiés'), '1');
+  const ta = textes(ca.lignes);
+  assert.strictEqual(valeur(ta, 'niveaux publiés'), '1');
+  assert.ok(ta.includes('1 / 28') && ta.includes('Créateur'), ta.join(' | '));
 });
