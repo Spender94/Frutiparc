@@ -22,12 +22,13 @@ function assert(cond, msg) {
 
 // Les appels réseau du jeu, relevés (et servis à blanc).
 const appels = [];
+let refus = false;
 const corpsEnvoyes = [];
 function fetchFactice(url, opts) {
   appels.push(String(url));
   corpsEnvoyes.push({ url: String(url), body: opts && opts.body ? String(opts.body) : '' });
   let corps = JSON.stringify({ ok: true });
-  if (/fdclaim/.test(url)) corps = 'ok=1';
+  if (/fdclaim/.test(url)) corps = refus ? 'ok=0&remaining=0' : 'ok=1';
   else if (/swapou\/partie/.test(url)) corps = JSON.stringify({ ok: true, id: 'a'.repeat(24), graine: 1234 });
   // Le serveur a vérifié l'essai : il compte 3 confitures de fraise, et
   // n'a donné aucun picto.
@@ -111,5 +112,36 @@ const attendre = () => new Promise((r) => setTimeout(r, 20));
   Manager.startChallenge();
   await attendre();
   assert(appels.some((u) => /fdclaim/.test(u)), 'le Challenge réserve son FD');
+
+  // LE REFUS (plus de partie Challenge aujourd'hui) : un panneau, et son
+  // bouton « Fermer » ramène à l'écran principal. Le menu, lui, ne redemande
+  // pas la réservation à chaque image (le panneau se rouvrait aussitôt fermé).
+  const noeuds = {};
+  const faux = (id) => ({ id, style: {}, addEventListener() {}, remove() { delete noeuds[this.id]; } });
+  sandbox.document = {
+    getElementById: (id) => noeuds[id] || null,
+    createElement: () => faux(''),
+    body: { appendChild: (n) => { noeuds[n.id] = n; noeuds['fd-later'] = faux('fd-later'); } },
+  };
+  refus = true;
+  Manager.startMenu();
+  const m2 = Manager.mode;
+  m2.end(SW.Data.CHALLENGE);
+  pump(200, 2);
+  await attendre();
+  assert(noeuds['fd-overlay'], 'le refus ouvre le panneau');
+  const avant = appels.filter((u) => /fdclaim/.test(u)).length;
+  pump(200, 2);
+  await attendre();
+  pump(200, 2);
+  await attendre();
+  assert(appels.filter((u) => /fdclaim/.test(u)).length === avant, 'le menu ne redemande pas la partie sous le panneau');
+  noeuds['fd-later'].onclick();
+  assert(!noeuds['fd-overlay'], '« Fermer » retire le panneau');
+  assert(Manager.mode !== m2 && Manager.mode.animPhase === 0, '…et ramène à l’écran principal (un menu neuf)');
+  pump(200, 2);
+  await attendre();
+  assert(!noeuds['fd-overlay'], 'le panneau ne revient pas');
+  assert(appels.filter((u) => /fdclaim/.test(u)).length === avant, 'aucune nouvelle demande');
   console.log('essai.test.js — ' + nassert + ' assertions OK');
 })().catch((e) => { console.error(e); process.exit(1); });

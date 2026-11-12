@@ -1091,7 +1091,10 @@
         .then(function (r) { return r.text(); })
         .then(function (t) {
           if (/(^|&)ok=1(&|$)/.test(t)) { graine.then(function () { Manager.started(); }); return; }
-          if (Manager.mode && Manager.mode.netUnlock) Manager.mode.netUnlock();
+          // Refus : le menu reste VERROUILLÉ sous le panneau. Déverrouillé,
+          // il relançait la réservation à chaque image (animPhase 31 rappelle
+          // onEnd tant que rien ne le retient) : le panneau, à peine fermé,
+          // se rouvrait. « Fermer » ramène à l'écran principal du jeu.
           SW.showFdRefus(t);
         })
         .catch(function () { graine.then(function () { Manager.started(); }); });
@@ -1354,6 +1357,23 @@
     var bt = document.getElementById('fd-later');
     bt.onmousedown = function () { bt.style.transform = 'translateY(1px)'; };
     bt.onmouseup = function () { bt.style.transform = ''; };
-    bt.onclick = function () { wrap.remove(); };
+    var ferme = false;
+    function fermer(e) {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      if (ferme) return;
+      ferme = true;
+      wrap.remove();
+      // Retour à l'écran principal : un menu neuf (l'ancien avait déjà
+      // replié son décor pour lancer la partie).
+      if (Manager.mode instanceof Menu) Manager.startMenu();
+    }
+    bt.onclick = fermer;
+    // Au doigt : index.html écoute touchstart/touchend sur la FENÊTRE et les
+    // neutralise (preventDefault) — le « click » du bouton ne venait jamais,
+    // et le toucher partait au menu dessous. Le panneau garde ses touchers.
+    bt.addEventListener('touchend', fermer);
+    ['touchstart', 'touchmove', 'touchend'].forEach(function (n) {
+      wrap.addEventListener(n, function (e) { e.stopPropagation(); });
+    });
   };
 })();

@@ -2375,8 +2375,15 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       U.text(ctx, 'pts', 61.7, 56.25,
         { size: 12, color: '#b37851', font: 'cipher', align: 'left', baseline: 'alphabetic' });
       // Une partie d'essai le dit : son score ne part pas au classement.
-      if (SW.Data.essai) U.text(ctx, 'PARTIE D’ESSAI', 74, 112, { size: 11, color: '#fff1c9', align: 'center', baseline: 'alphabetic' });
-      else if (this.game && this.game.horsClassement) U.text(ctx, 'HORS CLASSEMENT', 74, 112, { size: 11, color: '#fff1c9', align: 'center', baseline: 'alphabetic' });
+      // Sous le parchemin du score — ou, quand le pack « coups » pose ses
+      // deux parchemins à cet endroit, sous le dernier (sinon le mot tombait
+      // en travers du cadran COUPS).
+      const mention = SW.Data.essai ? 'PARTIE D’ESSAI'
+        : (this.game && this.game.horsClassement) ? 'HORS CLASSEMENT' : '';
+      if (mention) {
+        const yMention = this.etoilesEnabled() ? 250 : this.movesEnabled() ? 168 : 112;
+        U.text(ctx, mention, 74, yMention, { size: 11, color: '#fff1c9', align: 'center', baseline: 'alphabetic' });
+      }
     }
     // Compteur de coups : sur SON parchemin, à la même place relative que le
     // score sur le sien, surmonté de son étiquette. N'apparaît que si le serveur
