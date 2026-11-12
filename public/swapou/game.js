@@ -1141,7 +1141,8 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   // dessine la grille + fruits annexes du joueur
   Animator.prototype.drawFruits = function (ctx, level) {
     if (!this.fruitsVisible) return;
-    const fruits = level.getFruits();
+    // La grille à montrer : celle d'avant, si l'IA simule un coup dessus.
+    const fruits = level.grilleVue ? level.grilleVue() : level.getFruits();
     for (let x = 0; x < level.width; x++)
       for (let y = 0; y < level.height; y++) {
         const f = fruits[x][y];

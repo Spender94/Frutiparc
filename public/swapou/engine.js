@@ -346,11 +346,25 @@
       save[x] = sx;
       for (let y = 0; y < this.height; y++) sx[y] = a[y];
     }
+    // LA GRILLE À MONTRER pendant la simulation (cf. grilleVue).
+    this.vue = save;
     return { tmp: tmp, save: save, combos: [] };
   };
 
+  /*
+   * La grille À DESSINER. L'IA du Duel essaie ses coups sur le VRAI plateau,
+   * une étape de chaîne par image (calcStart, calcNext… calcEnd) : entre
+   * deux images, la grille est celle de la simulation, avec ses fruits
+   * explosés en moins. Dans Flash, les fruits étaient des clips à part et
+   * rien ne se voyait ; ici le dessin parcourt la grille — les fruits de
+   * l'adversaire clignotaient. Tant qu'une simulation est ouverte, on montre
+   * la grille d'avant.
+   */
+  Level.prototype.grilleVue = function () { return this.vue || this.fruits; };
+
   Level.prototype.calcEnd = function (data) {
     this.fruits = data.save;
+    this.vue = null;
     for (let x = 0; x < this.width; x++) {
       const a = this.fruits[x];
       for (let y = 0; y < this.height; y++) {
