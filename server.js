@@ -991,6 +991,29 @@ for (const [id, info] of Object.entries(JAMA_MILESTONES)) {
   GAME_ITEM_INFO[id] = { name: info.name, game: 'JamaJama', gif: 'Games/poulpi/images/intro.jpg' };
 }
 
+/*
+ * LES 28 PICTOS D'ÉPOQUE DE JAMAJAMA.
+ *
+ * L'album de 2005 en comptait 28 ; une planche de 2007 (28/28), retrouvée en
+ * novembre 2026, les montre : ce sont les éléments du jeu. Leurs images sont
+ * redessinées depuis les tracés du SWF (scripts/make-jamajama-pictos.js →
+ * Games/poulpi/titems/jamaNN.png), dans l'ordre de la planche.
+ *
+ * LES CONDITIONS D'OBTENTION NE SONT PAS CONNUES : rien ne les distribue pour
+ * l'instant (l'admin peut en donner). Les huit paliers ci-dessus restent en
+ * place en attendant ; quand les conditions seront retrouvées, ces 28-ci les
+ * remplaceront.
+ */
+const JAMA_PICTOS = [
+  'Banane', 'Orange', 'Pomme', 'Poire', 'Prune', 'Aimant', 'Aimant doré', 'Araignée', 'Bombe', 'Galets',
+  'Cocon', 'Eau', 'Archer', 'Sens unique', 'Statue de jade', 'Kohl en flammes', 'Grand Louki', 'Lurker', 'Mur',
+  'Louki', 'Rune', 'Tiki', 'Tiki carbonisé', 'Tiki surpris', 'Tiki joyeux', 'Winkle', 'Œil', 'Toute la bande',
+];
+JAMA_PICTOS.forEach((nom, i) => {
+  const n = String(i + 1).padStart(2, '0');
+  GAME_ITEM_INFO[`$jama_picto${n}`] = { name: nom, game: 'JamaJama', gif: `Games/poulpi/titems/jama${n}.png` };
+});
+
 // Award JamaJama milestone pictos based on the cumulative number of saved
 // scores (= attempted/finished levels). Called from both the HTTP and
 // XMLSocket score-save paths.
@@ -1102,8 +1125,9 @@ const GAME_PROGRESS_REGISTRY = [
     // (something ≤ 4) is the most natural fit but unconfirmed. Until
     // someone surfaces the original list, we expose 28 as the canonical
     // denominator and award only the 8 JAMA_MILESTONES we currently track.
-    // TODO(jama-pictos): recover the original 28-picto list and replace
-    // JAMA_MILESTONES with the canonical set.
+    // Novembre 2026 : la liste des 28 est retrouvée (JAMA_PICTOS, images
+    // redessinées) ; restent leurs CONDITIONS, inconnues — d'ici là seuls les
+    // 8 paliers sont distribués, sur ce même dénominateur de 28.
     totalPictos: 28,
   },
   {
